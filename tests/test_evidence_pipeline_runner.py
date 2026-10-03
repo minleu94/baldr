@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import date
 from pathlib import Path
 
 import pytest
 
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.decision_desk_snapshot_repository import DecisionDeskSnapshotRepository
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_pipeline_runner import (
     EvidencePipelineRunner,
@@ -96,6 +98,41 @@ def test_runner_defaults_to_dry_run_and_does_not_write_events_or_outcomes(tmp_pa
         "summarize_forward_performance",
         "write_diagnostics_report",
     ]
+
+
+def test_runner_dry_run_preserves_entire_source_database_bytes_and_schema_version(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    DecisionDeskSnapshotRepository(config)
+
+    with sqlite3.connect(config.db_file) as connection:
+        schema_before = connection.execute(
+            "SELECT component, version, applied_at FROM schema_version "
+            "ORDER BY component"
+        ).fetchall()
+    database_before = config.db_file.read_bytes()
+
+    summary = EvidencePipelineRunner(config, db_path=config.db_file).run(
+        EvidencePipelineRunRequest(
+            decision_date="2026-07-01",
+            sources=("watchlist-trigger",),
+            windows=(5,),
+            db_path=str(config.db_file),
+            skip_snapshot=True,
+        )
+    )
+
+    with sqlite3.connect(config.db_file) as connection:
+        schema_after = connection.execute(
+            "SELECT component, version, applied_at FROM schema_version "
+            "ORDER BY component"
+        ).fetchall()
+    assert summary.dry_run is True
+    assert summary.events_inserted == 0
+    assert summary.outcomes_created == 0
+    assert config.db_file.read_bytes() == database_before
+    assert schema_after == schema_before
 
 
 def test_runner_summary_and_report_include_warning_breakdown(tmp_path: Path) -> None:

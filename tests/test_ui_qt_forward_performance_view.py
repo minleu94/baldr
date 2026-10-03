@@ -180,6 +180,28 @@ def test_forward_performance_table_headers_are_chinese() -> None:
     assert model.headerData(model.column_index("group_key"), Qt.Horizontal) == "群組"
     assert model.headerData(model.column_index("mean_forward_return_bp"), Qt.Horizontal) == "平均前瞻報酬"
     assert model.headerData(model.column_index("summary_status"), Qt.Horizontal) == "狀態"
+    assert model.headerData(model.column_index("pending_count"), Qt.Horizontal) == "待觀測/受阻"
+
+
+def test_forward_performance_view_identifies_blocked_time_contract_in_details() -> None:
+    app()
+    row = _row(
+        warning_counts={
+            "blocked_time_contract_requires_review": 1,
+            "maturity_calendar_comparison_blocked": 1,
+        }
+    )
+    view = ForwardPerformanceView(
+        FakeDashboardService(_result((row,))),
+        auto_refresh=False,
+        async_refresh=False,
+    )
+    view.refresh_dashboard()
+
+    details = view.detail_panel.toPlainText()
+    assert "樣本 / 待觀測或受阻 / 缺失: 12 / 1 / 2" in details
+    assert "blocked_time_contract_requires_review:1" in details
+    assert "maturity_calendar_comparison_blocked:1" in details
 
 
 def test_forward_performance_view_empty_and_degraded_states() -> None:

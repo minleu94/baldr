@@ -123,8 +123,8 @@ echo   Schedule: DAILY 16:00 Pacific local time
 echo   Taipei mapping: 07:00 PDT / 08:00 PST; both before 08:30
 echo   Action: %PIT_PREOPEN_ACTION%
 echo Task: %PAPER_PORTFOLIO_TASK%
-echo   Schedule: DAILY 16:15 Pacific local time
-echo   Taipei mapping: 07:15 PDT / 08:15 PST; adapter waits for Taipei 08:30
+echo   Schedule: DAILY Asia/Taipei 08:25 (+08:00), equivalent to 00:25 UTC
+echo   Pacific mapping: 17:25 PDT / 16:25 PST on the previous date; waits to 08:30
 echo   Action: %PAPER_PORTFOLIO_ACTION%
 echo Task: %FORMAL_PIT_SIDECAR_TASK%
 echo   Schedule: DAILY 18:00 Pacific local time
@@ -134,7 +134,8 @@ echo Task: %FORMAL_INPUT_TASK%
 echo   Schedule: DAILY 21:25
 echo   Action: %FORMAL_INPUT_ACTION%
 echo Task: baldr-ml-allocation-forward-daily
-echo   Schedule: DAILY 16:15 Pacific (dedicated XML registration; aggregate leaves it unchanged)
+echo   Schedule: DAILY Asia/Taipei 08:25 (+08:00), equivalent to 00:25 UTC
+echo   Pacific mapping: 17:25 PDT / 16:25 PST on the previous date (dedicated XML; aggregate leaves it unchanged)
 echo   Action: cmd.exe /c "scripts\scheduled\run_ml_allocation_forward_daily.cmd"
 if /I "%MODE%"=="dryrun" (
   echo Task: %WEEKLY_TASK%
@@ -223,8 +224,8 @@ if errorlevel 1 exit /b %ERRORLEVEL%
 schtasks.exe /Create /TN "%RECOMMENDATION_CALIBRATION_LEARNING_TASK%" /SC DAILY /ST 05:45 /TR "%RECOMMENDATION_CALIBRATION_LEARNING_ACTION%" /F
 if errorlevel 1 exit /b %ERRORLEVEL%
 
-rem Paper Portfolio 既有 task 只允許 dedicated wrapper 用 /Change 保留其餘
-rem principal/settings；不存在時才由它建立，不在 aggregate 路徑用 /F 覆蓋。
+rem Paper Portfolio 僅更新 exact existing task；dedicated COM updater preserves
+rem principal/settings and fails closed when the task is missing or unreadable.
 call "%SCRIPT_DIR%register_paper_portfolio_task.cmd" register
 if errorlevel 1 exit /b %ERRORLEVEL%
 

@@ -17,10 +17,29 @@ import pandas as pd
 import pytest
 
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
-from app_module.recommendation_calibration_consumer import RecommendationCalibrationProjection
+from app_module.recommendation_calibration_consumer import (
+    RecommendationCalibrationConsumer,
+    RecommendationCalibrationProjection,
+)
 from app_module.recommendation_service import RecommendationService
 from recommendation_test_support import build_recommendation_test_service, build_recommendation_test_preparer
 from ml_module.recommendation_inference_provenance import read_inference_projection_receipt
+
+
+def test_non_utf8_active_pointer_falls_back_with_encoding_blocker(tmp_path: Path) -> None:
+    pointer = tmp_path / "authority" / "active-pointer.json"
+    pointer.parent.mkdir()
+    pointer.write_bytes(b"\xff")
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=pointer,
+        feature_schema=(),
+        feature_registry_hash="sha256:" + "0" * 64,
+        data_root=tmp_path / "formal-data",
+    )
+
+    assert consumer.reload(decision_date="2026-10-02") == "rule_only"
+    assert consumer._blocker == "active_pointer_invalid_encoding"
+    assert consumer._model is None
 
 
 def _make_database(path: Path, *, days: int = 90, start: date = date(2014, 1, 1)) -> None:

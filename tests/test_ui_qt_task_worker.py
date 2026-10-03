@@ -127,6 +127,66 @@ def test_task_worker_does_not_inject_cancel_callback_into_legacy_callable():
     assert calls == ["ran"]
 
 
+@pytest.mark.parametrize("worker_class", [TaskWorker, ProgressTaskWorker])
+def test_worker_preserves_explicit_partial_cancel_result(worker_class):
+    finished = []
+    cancelled = []
+    holder = {}
+
+    def task(progress_callback=None, cancel_callback=None):
+        holder["worker"].cancel()
+        return {"cancelled": True, "completed_units": 2}
+
+    worker = worker_class(task)
+    holder["worker"] = worker
+    worker.finished.connect(finished.append)
+    worker.cancelled.connect(lambda: cancelled.append(True))
+
+    worker.run()
+
+    assert finished == [{"cancelled": True, "completed_units": 2}]
+    assert cancelled == []
+
+
+@pytest.mark.parametrize("worker_class", [TaskWorker, ProgressTaskWorker])
+def test_worker_does_not_mask_real_error_when_cancel_is_requested(worker_class):
+    errors = []
+    cancelled = []
+    holder = {}
+
+    def task(progress_callback=None, cancel_callback=None):
+        holder["worker"].cancel()
+        raise RuntimeError("writer failure after cancel request")
+
+    worker = worker_class(task)
+    holder["worker"] = worker
+    worker.error.connect(errors.append)
+    worker.cancelled.connect(lambda: cancelled.append(True))
+
+    worker.run()
+
+    assert len(errors) == 1
+    assert "writer failure after cancel request" in errors[0]
+    assert cancelled == []
+
+
+def test_worker_keeps_legacy_cancellation_signal_without_explicit_outcome():
+    cancelled = []
+    holder = {}
+
+    def task():
+        holder["worker"].cancel()
+        return "legacy result has no cancel outcome field"
+
+    worker = TaskWorker(task)
+    holder["worker"] = worker
+    worker.cancelled.connect(lambda: cancelled.append(True))
+
+    worker.run()
+
+    assert cancelled == [True]
+
+
 def test_shutdown_request_is_nonblocking_and_never_terminates():
     class _RunningWorker(_InspectableTaskWorker):
         def isRunning(self):

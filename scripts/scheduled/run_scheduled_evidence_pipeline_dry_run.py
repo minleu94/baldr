@@ -71,7 +71,7 @@ def _scheduled_recommendation_binding(
     checked = datetime.fromisoformat(str(payload.get("checked_at", "")).replace("Z", "+00:00"))
     if checked.tzinfo is None or checked.utcoffset() is None or checked > observed_at:
         raise ValueError("scheduled_recommendation_clock_invalid")
-    if checked.date().isoformat() != decision_date:
+    if checked.astimezone(TAIPEI).date().isoformat() != decision_date:
         raise ValueError("scheduled_recommendation_clock_date_mismatch")
     result_id = payload.get("result_id")
     if not isinstance(result_id, str) or not result_id.strip():
@@ -661,6 +661,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", required=True)
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--sources", default="all")
+    parser.add_argument("--validation-decision-date", help="Controlled read-only replay of an existing bound scheduled result; never changes its clocks")
+    parser.add_argument("--status-path", type=Path, help="Controlled validation status path; production defaults unchanged")
     parser.add_argument(
         "--bind-scheduled-recommendation", action="store_true",
         help="require the same-day saved canonical scheduled snapshot and pass its exact result ID",
@@ -790,12 +792,22 @@ def main(argv: list[str] | None = None) -> int:
     report_root.mkdir(parents=True, exist_ok=True)
 
     run_now = scheduled_now()
-    decision_date = run_now.date().isoformat()
+    decision_date = run_now.astimezone(TAIPEI).date().isoformat()
+    if args.validation_decision_date:
+        from datetime import date
+        replay_date = date.fromisoformat(args.validation_decision_date)
+        if not args.bind_scheduled_recommendation or args.status_path is None or replay_date > run_now.astimezone(TAIPEI).date():
+            raise ValueError("controlled replay requires exact binding, separate status and nonfuture date")
+        decision_date = replay_date.isoformat()
     today_key = decision_date.replace("-", "")
     run_stamp = run_now.strftime("%Y%m%d_%H%M%S_%f")
-    status_path = run_root / "latest_status.json"
+    status_path = args.status_path or (run_root / "latest_status.json")
+    status_path.parent.mkdir(parents=True, exist_ok=True)
     log_path = run_root / f"{run_stamp}_evidence_pipeline_dry_run.log"
-    report_path = report_root / f"{today_key}_evidence_pipeline_dry_run.md"
+    if args.status_path is not None:
+        report_root = status_path.parent / "reports"
+        report_root.mkdir(parents=True, exist_ok=True)
+    report_path = report_root / f"{today_key}_{run_stamp}_evidence_pipeline_dry_run.md"
     freshness_status_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
     recommendation_binding = None
     if args.bind_scheduled_recommendation:
@@ -1036,13 +1048,23 @@ def main(argv: list[str] | None = None) -> int:
     exit_effectiveness: dict[str, Any] | None = None
     exit_effectiveness_output: Path | None = None
     exit_effectiveness_log: Path | None = None
+    exit_effectiveness_requested_as_of_date: str | None = None
     if args.run_exit_effectiveness:
         effective_transition_output = (
             position_health_transition_output
             or output_root / "position_health_transition"
         )
+        exit_effectiveness_requested_as_of_date = (
+            _utc_now()
+            .astimezone(timezone.utc)
+            .astimezone(TAIPEI)
+            .date()
+            .isoformat()
+        )
         exit_effectiveness_output = (
-            output_root / "exit_effectiveness" / f"{today_key}.json"
+            output_root
+            / "exit_effectiveness"
+            / f"{exit_effectiveness_requested_as_of_date.replace('-', '')}.json"
         )
         exit_effectiveness_log = run_root / f"{run_stamp}_exit_effectiveness.log"
         exit_calendar_cache = Path(
@@ -1066,9 +1088,30 @@ def main(argv: list[str] | None = None) -> int:
             log_path=exit_effectiveness_log,
         )
 
+    exit_effectiveness_producer_receipt = (
+        exit_effectiveness.get("producer_receipt")
+        if isinstance(exit_effectiveness, dict)
+        else None
+    )
+    exit_effectiveness_as_of_date = (
+        exit_effectiveness_producer_receipt.get("as_of_date")
+        if isinstance(exit_effectiveness_producer_receipt, dict)
+        and isinstance(exit_effectiveness_producer_receipt.get("as_of_date"), str)
+        else None
+    )
+    exit_effectiveness_date_role = (
+        "not_requested"
+        if exit_effectiveness is None
+        else "unavailable"
+        if exit_effectiveness_as_of_date is None
+        else "same_analysis_day"
+        if exit_effectiveness_as_of_date == decision_date
+        else "current_outcome_sidecar"
+    )
+
     command = [
         sys.executable,
-        "scripts/run_evidence_pipeline.py",
+        str(REPO_ROOT / "scripts/run_evidence_pipeline.py"),
         "--decision-date",
         decision_date,
         "--dry-run",
@@ -1093,11 +1136,13 @@ def main(argv: list[str] | None = None) -> int:
     if recommendation_binding is not None:
         command.extend(("--result-id", recommendation_binding["result_id"]))
     pipeline_execution_error = None
+    child_stdout_path = log_path.with_suffix(".child-stdout.log")
     try:
-        completed = subprocess.run(
-            command, check=False, text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, timeout=PIPELINE_TIMEOUT_SECONDS,
-        )
+        with child_stdout_path.open("xb") as stream:
+            completed = subprocess.run(
+                command, check=False, text=True, stdout=stream,
+                stderr=subprocess.STDOUT, timeout=PIPELINE_TIMEOUT_SECONDS, cwd=REPO_ROOT,
+            )
     except subprocess.TimeoutExpired as error:
         pipeline_execution_error = "evidence_pipeline_child_timeout"
         completed = subprocess.CompletedProcess(command, 2, stdout=_process_output_text(error.stdout))
@@ -1105,6 +1150,14 @@ def main(argv: list[str] | None = None) -> int:
         pipeline_execution_error = f"evidence_pipeline_child_launch_failed:{type(error).__name__}"
         completed = subprocess.CompletedProcess(command, 2, stdout=str(error))
     pipeline_output = _process_output_text(completed.stdout)
+    if not pipeline_output and child_stdout_path.is_file():
+        try:
+            captured_bytes = _read_regular_file_no_follow(child_stdout_path.resolve(), run_root.resolve(), max_bytes=16 * 1024 * 1024)
+            pipeline_output = captured_bytes.decode("utf8")
+        except (OSError, ValueError, UnicodeError) as error:
+            pipeline_execution_error = f"evidence_pipeline_stdout_readback_failed:{type(error).__name__}"
+            if completed.returncode == 0:
+                completed = subprocess.CompletedProcess(command, 2, stdout="")
     pipeline_log_write_error = _persist_log(
         log_path,
         pipeline_output,
@@ -1129,6 +1182,9 @@ def main(argv: list[str] | None = None) -> int:
     # diagnosis, but propagate a non-zero scheduler result so a stale
     # baseline cannot look like a successful morning run.
     wrapper_exit_code = completed.returncode
+    if pipeline_summary is None and wrapper_exit_code == 0:
+        wrapper_exit_code = 2
+        pipeline_execution_error = "evidence_pipeline_terminal_summary_missing"
     if pipeline_log_write_error is not None and wrapper_exit_code == 0:
         wrapper_exit_code = 2
     if paper_health_refresh_blocked and wrapper_exit_code == 0:
@@ -1205,8 +1261,16 @@ def main(argv: list[str] | None = None) -> int:
         "log_path": str(log_path),
         "pipeline_log_write_error": pipeline_log_write_error,
         "pipeline_execution_error": pipeline_execution_error,
+        "pipeline_execution_started": not str(pipeline_execution_error or "").startswith("evidence_pipeline_child_launch_failed:"),
+        "pipeline_child_stdout_path": str(child_stdout_path),
+        "pipeline_command": command,
+        "pipeline_stdout_bytes": len(pipeline_output.encode("utf8")),
+        "pipeline_stdout_sha256": "sha256:" + hashlib.sha256(pipeline_output.encode("utf8")).hexdigest(),
+        "pipeline_report_exists": report_path.is_file(),
         "pipeline_timeout_seconds": PIPELINE_TIMEOUT_SECONDS,
         "recommendation_binding": recommendation_binding,
+        "controlled_validation": args.validation_decision_date is not None,
+        "decision_timezone": "Asia/Taipei",
         "exit_code": wrapper_exit_code,
         "checked_at": run_now.isoformat(timespec="seconds"),
         "manual_action_required": manual_action_required,
@@ -1268,6 +1332,11 @@ def main(argv: list[str] | None = None) -> int:
             else exit_effectiveness.get("status", "unknown")
         ),
         "exit_effectiveness_blocked": exit_effectiveness_blocked,
+        "exit_effectiveness_requested_as_of_date": (
+            exit_effectiveness_requested_as_of_date
+        ),
+        "exit_effectiveness_as_of_date": exit_effectiveness_as_of_date,
+        "exit_effectiveness_date_role": exit_effectiveness_date_role,
         "exit_effectiveness_output": (
             None
             if exit_effectiveness_output is None

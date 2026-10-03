@@ -4,11 +4,12 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 import gc
 import hashlib
+from io import BytesIO
 import json
 from pathlib import Path
 import sqlite3
 from typing import Any
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -43,6 +44,9 @@ from data_module.portfolio_ml_dataset_assembler import (
     SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION,
 )
 from scripts.run_paper_portfolio_daily import run as run_paper_preopen
+from scripts.scheduled import (
+    run_paper_event_source_capture_daily as capture_scheduler_module,
+)
 from scripts.scheduled import run_paper_execution_daily_isolated as isolated_paper_runner
 from scripts.scheduled.run_paper_event_source_capture_daily import (
     run_capture,
@@ -979,7 +983,7 @@ def test_twse_event_source_producer_preserves_raw_bytes_and_quote_observation_wi
     assert reason is None
 
 
-def test_twse_event_source_producer_rejects_missing_requested_symbol_before_write(
+def test_twse_event_source_producer_preserves_missing_symbol_response_for_diagnostics(
     tmp_path: Path,
 ) -> None:
     raw = formal_daily_input_producer_module._canonical_json(
@@ -1017,10 +1021,21 @@ def test_twse_event_source_producer_rejects_missing_requested_symbol_before_writ
                 url=request_url,
             ),
         )
-    assert not (output_dir / "raw_response.bin").exists()
+    assert (output_dir / "raw_response.bin").read_bytes() == raw
+    assert not (output_dir / "capture.json").exists()
+    attempt = json.loads(
+        (output_dir / "capture_attempt.json").read_text(encoding="utf-8")
+    )
+    assert attempt["parser"]["status"] == "failed"
+    assert attempt["parser"]["failure_reason"] == (
+        "market_source_capture_raw_response_requested_symbol_missing"
+    )
+    assert attempt["raw_response"]["sha256"] == "sha256:" + hashlib.sha256(raw).hexdigest()
+    assert attempt["raw_response"]["bytes"] == len(raw)
+    assert attempt["response"]["http_status"] == 200
 
 
-def test_twse_event_source_producer_rejects_wrong_final_url_before_write(
+def test_twse_event_source_producer_preserves_wrong_final_url_response_for_diagnostics(
     tmp_path: Path,
 ) -> None:
     raw = formal_daily_input_producer_module._canonical_json(
@@ -1058,7 +1073,156 @@ def test_twse_event_source_producer_rejects_wrong_final_url_before_write(
                 url=expected_url + "&unexpected=1",
             ),
         )
-    assert not (output_dir / "raw_response.bin").exists()
+    assert (output_dir / "raw_response.bin").read_bytes() == raw
+    assert not (output_dir / "capture.json").exists()
+    attempt = json.loads(
+        (output_dir / "capture_attempt.json").read_text(encoding="utf-8")
+    )
+    assert attempt["parser"]["status"] == "not_attempted"
+    assert attempt["response"]["final_url"] == expected_url + "&unexpected=1"
+    assert attempt["raw_response"]["sha256"] == "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def test_twse_event_source_producer_preserves_http_error_body_and_status(
+    tmp_path: Path,
+) -> None:
+    raw = b'{"error":"temporarily unavailable"}'
+    request_url = formal_daily_input_producer_module._twse_mis_request_url(
+        "tse_2330.tw"
+    )
+
+    def fetcher(request: object, timeout: float) -> object:
+        del request, timeout
+        raise HTTPError(
+            request_url,
+            503,
+            "service unavailable",
+            {"Content-Type": "application/json"},
+            BytesIO(raw),
+        )
+
+    output_dir = tmp_path / "http-error-capture"
+    with pytest.raises(PaperEventSourceCaptureError, match="HTTP status 不是 200"):
+        capture_twse_session_open_prices(
+            symbols=("2330",),
+            execution_date=date(2026, 9, 7),
+            output_dir=output_dir,
+            now=datetime(2026, 9, 7, 1, 0, 3, tzinfo=ZoneInfo("UTC")),
+            fetcher=fetcher,
+        )
+
+    receipt = json.loads(
+        (output_dir / "capture_attempt.json").read_text(encoding="utf-8")
+    )
+    assert (output_dir / "raw_response.bin").read_bytes() == raw
+    assert receipt["response"]["http_status"] == 503
+    assert receipt["response"]["content_type"] == "application/json"
+    assert receipt["raw_response"]["type"] == "bytes"
+    assert receipt["raw_response"]["sha256"] == (
+        "sha256:" + hashlib.sha256(raw).hexdigest()
+    )
+    assert receipt["failure"]["reason"] == "TWSE MIS HTTP status 不是 200"
+    assert not (output_dir / "capture.json").exists()
+
+
+@pytest.mark.parametrize("rtcode", ["000", "0", "0000"])
+def test_twse_mis_parser_accepts_only_observed_success_status_strings(
+    rtcode: str,
+) -> None:
+    raw = formal_daily_input_producer_module._canonical_json(
+        {
+            "rtcode": rtcode,
+            "rtmessage": "OK",
+            "msgArray": [
+                {
+                    "c": "2330",
+                    "ex": "tse",
+                    "d": "20260907",
+                    "t": "09:00:00",
+                    "tlong": "1788742800000",
+                    "o": "10.20",
+                }
+            ],
+        }
+    ).encode("utf-8")
+
+    rows, reason = formal_daily_input_producer_module._parse_twse_mis_raw_rows(
+        raw,
+        request_channels="tse_2330.tw",
+        execution_date=date(2026, 9, 7),
+        captured_at=datetime(2026, 9, 7, 1, 0, 3, tzinfo=ZoneInfo("UTC")),
+    )
+
+    assert reason is None
+    assert len(rows) == 1
+    assert rows[0]["stock_code"] == "2330"
+    assert rows[0]["execution_date"] == "2026-09-07"
+
+
+@pytest.mark.parametrize("rtcode", [0, False, None, [], {}, "999", "00000"])
+def test_twse_mis_parser_rejects_non_string_and_unknown_status_values(
+    rtcode: object,
+) -> None:
+    raw = formal_daily_input_producer_module._canonical_json(
+        {
+            "rtcode": rtcode,
+            "rtmessage": "OK",
+            "msgArray": [
+                {
+                    "c": "2330",
+                    "ex": "tse",
+                    "d": "20260907",
+                    "t": "09:00:00",
+                    "tlong": "1788742800000",
+                    "o": "10.20",
+                }
+            ],
+        }
+    ).encode("utf-8")
+
+    rows, reason = formal_daily_input_producer_module._parse_twse_mis_raw_rows(
+        raw,
+        request_channels="tse_2330.tw",
+        execution_date=date(2026, 9, 7),
+        captured_at=datetime(2026, 9, 7, 1, 0, 3, tzinfo=ZoneInfo("UTC")),
+    )
+
+    assert rows == []
+    assert reason == "market_source_capture_raw_response_status_invalid"
+
+
+def test_twse_event_source_producer_preserves_truncated_parse_body_and_hash(
+    tmp_path: Path,
+) -> None:
+    raw = b'{"rtcode":"000","rtmessage":"OK","msgArray":'
+    output_dir = tmp_path / "truncated-capture"
+
+    with pytest.raises(
+        PaperEventSourceCaptureError,
+        match="raw_response_json_invalid",
+    ):
+        capture_twse_session_open_prices(
+            symbols=("2330",),
+            execution_date=date(2026, 9, 7),
+            output_dir=output_dir,
+            now=datetime(2026, 9, 7, 1, 0, 3, tzinfo=ZoneInfo("UTC")),
+            fetcher=lambda request, timeout: _MockHttpResponse(
+                raw,
+                url=formal_daily_input_producer_module._twse_mis_request_url(
+                    "tse_2330.tw"
+                ),
+            ),
+        )
+
+    attempt = json.loads(
+        (output_dir / "capture_attempt.json").read_text(encoding="utf-8")
+    )
+    assert (output_dir / "raw_response.bin").read_bytes() == raw
+    assert attempt["parser"]["status"] == "failed"
+    assert attempt["raw_response"]["type"] == "bytes"
+    assert attempt["raw_response"]["bytes"] == len(raw)
+    assert attempt["raw_response"]["sha256"] == "sha256:" + hashlib.sha256(raw).hexdigest()
+    assert not (output_dir / "capture.json").exists()
 
 
 def test_twse_event_source_production_clock_uses_response_completion_and_rejects_close(
@@ -1115,6 +1279,7 @@ def test_twse_event_source_production_clock_uses_response_completion_and_rejects
     clock_values = iter(
         (
             datetime(2026, 9, 7, 1, 0, 1, tzinfo=ZoneInfo("UTC")),
+            datetime(2026, 9, 7, 1, 0, 2, tzinfo=ZoneInfo("UTC")),
             datetime(2026, 9, 7, 1, 0, 4, tzinfo=ZoneInfo("UTC")),
         )
     )
@@ -1134,6 +1299,7 @@ def test_twse_event_source_production_clock_uses_response_completion_and_rejects
         (
             # 13:29:59 Taipei: start is still inside the capture window.
             datetime(2026, 9, 7, 5, 29, 59, tzinfo=ZoneInfo("UTC")),
+            datetime(2026, 9, 7, 5, 29, 59, tzinfo=ZoneInfo("UTC")),
             # 13:30:01 Taipei: a slow response crossed the exclusive close.
             datetime(2026, 9, 7, 5, 30, 1, tzinfo=ZoneInfo("UTC")),
         )
@@ -1151,7 +1317,17 @@ def test_twse_event_source_production_clock_uses_response_completion_and_rejects
             now=None,
             fetcher=fetcher,
         )
-    assert not (tmp_path / "cross-close-capture" / "raw_response.bin").exists()
+    assert (
+        tmp_path / "cross-close-capture" / "raw_response.bin"
+    ).read_bytes() == raw
+    assert not (tmp_path / "cross-close-capture" / "capture.json").exists()
+    attempt = json.loads(
+        (tmp_path / "cross-close-capture" / "capture_attempt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert attempt["parser"]["status"] == "not_attempted"
+    assert attempt["raw_response"]["sha256"] == "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
 def test_twse_event_source_producer_rejects_late_capture_and_immutable_conflict(
@@ -1903,6 +2079,292 @@ def test_scheduled_event_capture_retry_pins_initial_recommendation_identity(
     assert "file hash changed" in str(attempts[1]["reason"])
 
 
+def test_scheduled_event_capture_archives_rejected_raw_before_retry(
+    tmp_path: Path,
+) -> None:
+    """被 parser 拒絕的 response 先隔離留存，再清 TEMP 並重試。"""
+
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    _write_recommendation(recommendation_root / "scheduled_rec_20260904.json")
+    market_db = tmp_path / "market.sqlite"
+    with sqlite3.connect(market_db) as connection:
+        connection.execute("CREATE TABLE daily_prices (日期 TEXT)")
+    controlled = tmp_path / "controlled"
+    status_root = controlled / "status"
+    calendar = _ChainCalendar(tmp_path / "calendar.sqlite")
+    rejected_raw = b'{"rtcode":"999","rtmessage":"not ready","msgArray":[]}'
+    accepted_raw = formal_daily_input_producer_module._canonical_json(
+        {
+            "rtcode": "000",
+            "rtmessage": "OK",
+            "msgArray": [
+                {
+                    "c": "2330",
+                    "ex": "tse",
+                    "d": "20260907",
+                    "t": "09:00:00",
+                    "tlong": "1788742800000",
+                    "o": "10.20",
+                }
+            ],
+        }
+    ).encode("utf-8")
+    responses = iter((rejected_raw, accepted_raw))
+    request_urls: list[str] = []
+
+    def fetcher(request: object, timeout: float) -> _MockHttpResponse:
+        del timeout
+        request_urls.append(str(request.full_url))  # type: ignore[attr-defined]
+        return _MockHttpResponse(next(responses), url=request_urls[-1])
+
+    result, exit_code = run_capture(
+        now=datetime(2026, 9, 7, 1, 0, 2, tzinfo=ZoneInfo("UTC")),
+        recommendation_root=recommendation_root,
+        market_db=market_db,
+        durable_root=controlled / "event_captures",
+        allowed_durable_root=controlled,
+        receipt_root=controlled / "receipts",
+        status_root=status_root,
+        calendar=calendar,
+        load_runtime=False,
+        fetcher=fetcher,
+        max_attempts=2,
+        retry_delay_seconds=0,
+    )
+
+    assert exit_code == 0
+    assert result["status"] == "source_capture_durable"
+    attempts = result["capture_attempts"]
+    assert isinstance(attempts, list)
+    assert len(attempts) == 2
+    failed = attempts[0]
+    assert failed["retryable"] is True
+    assert failed["diagnostic_status"] == "saved"
+    assert failed["temporary_cleanup"] == "removed"
+    diagnostic_raw_path = Path(str(failed["raw_response_path"]))
+    assert diagnostic_raw_path.read_bytes() == rejected_raw
+    assert failed["raw_response_sha256"] == "sha256:" + hashlib.sha256(rejected_raw).hexdigest()
+    assert not Path(str(failed["temporary_capture_root"])).exists()
+    diagnostic_receipt = json.loads(
+        Path(str(failed["attempt_receipt_path"])).read_text(encoding="utf-8")
+    )
+    assert diagnostic_receipt["scheduled_attempt"]["status"] == "failed"
+    assert diagnostic_receipt["parser"]["status"] == "failed"
+    assert diagnostic_receipt["response"]["http_status"] == 200
+    assert diagnostic_receipt["raw_response"]["sha256"] == (
+        "sha256:" + hashlib.sha256(rejected_raw).hexdigest()
+    )
+    assert not Path(str(failed["diagnostic_directory"])).is_relative_to(
+        controlled / "event_captures"
+    )
+
+    durable_capture = result["durable_capture"]
+    assert isinstance(durable_capture, dict)
+    durable_raw_path = Path(str(durable_capture["raw_response_path"]))
+    assert durable_raw_path.read_bytes() == accepted_raw
+    assert result["raw_response_hash"] == (
+        "sha256:" + hashlib.sha256(accepted_raw).hexdigest()
+    )
+    successful_attempt = attempts[1]
+    assert successful_attempt["temporary_cleanup"] == "removed"
+    success_receipt = successful_attempt["request_attempt"]
+    assert success_receipt["parser"]["status"] == "succeeded"
+    assert success_receipt["raw_response"]["sha256"] == (
+        "sha256:" + hashlib.sha256(accepted_raw).hexdigest()
+    )
+    assert len(request_urls) == 2
+
+
+def test_scheduled_event_capture_cleanup_error_survives_successful_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """成功 retry 保留 durable capture，但不能隱藏先前 TEMP 清理失敗。"""
+
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    _write_recommendation(recommendation_root / "scheduled_rec_20260904.json")
+    market_db = tmp_path / "market.sqlite"
+    with sqlite3.connect(market_db) as connection:
+        connection.execute("CREATE TABLE daily_prices (日期 TEXT)")
+    controlled = tmp_path / "controlled"
+    status_root = controlled / "status"
+    calendar = _ChainCalendar(tmp_path / "calendar.sqlite")
+    rejected_raw = b'{"rtcode":"999","rtmessage":"not ready","msgArray":[]}'
+    accepted_raw = formal_daily_input_producer_module._canonical_json(
+        {
+            "rtcode": "000",
+            "rtmessage": "OK",
+            "msgArray": [
+                {
+                    "c": "2330",
+                    "ex": "tse",
+                    "d": "20260907",
+                    "t": "09:00:00",
+                    "tlong": "1788742800000",
+                    "o": "10.20",
+                }
+            ],
+        }
+    ).encode("utf-8")
+    responses = iter((rejected_raw, accepted_raw))
+    first_temp_root = tmp_path / "temp-failed-attempt"
+    successful_temp_root = tmp_path / "temp-successful-attempt"
+    temp_roots = iter((first_temp_root, successful_temp_root))
+
+    def fetcher(request: object, timeout: float) -> _MockHttpResponse:
+        del timeout
+        return _MockHttpResponse(
+            next(responses),
+            url=str(request.full_url),  # type: ignore[attr-defined]
+        )
+
+    def fixed_temp_root(execution_date: date) -> Path:
+        del execution_date
+        return next(temp_roots)
+
+    def preserve_failed_attempt(temp_root: Path) -> tuple[str, str | None]:
+        assert temp_root == first_temp_root
+        return "preserved", "PermissionError:injected cleanup failure"
+
+    monkeypatch.setattr(
+        capture_scheduler_module,
+        "_new_capture_temp_root",
+        fixed_temp_root,
+    )
+    monkeypatch.setattr(
+        capture_scheduler_module,
+        "_cleanup_capture_temp_root",
+        preserve_failed_attempt,
+    )
+
+    result, exit_code = run_capture(
+        now=datetime(2026, 9, 7, 1, 0, 2, tzinfo=ZoneInfo("UTC")),
+        recommendation_root=recommendation_root,
+        market_db=market_db,
+        durable_root=controlled / "event_captures",
+        allowed_durable_root=controlled,
+        receipt_root=controlled / "receipts",
+        status_root=status_root,
+        calendar=calendar,
+        load_runtime=False,
+        fetcher=fetcher,
+        max_attempts=2,
+        retry_delay_seconds=0,
+    )
+
+    assert exit_code == 2
+    assert result["status"] == "blocked"
+    assert result["capture_status"] == "source_capture_durable"
+    assert result["durable_readback_verified"] is True
+    assert result["temporary_cleanup"] == "partial_failure"
+    blockers = result["blockers"]
+    assert isinstance(blockers, list)
+    assert len(blockers) == 1
+    assert str(blockers[0]).startswith("capture_temp_cleanup_failed:")
+    assert "PermissionError:injected cleanup failure" in str(blockers[0])
+
+    attempts = result["capture_attempts"]
+    assert isinstance(attempts, list) and len(attempts) == 2
+    failed, succeeded = attempts
+    assert failed["status"] == "failed"
+    assert failed["temporary_cleanup"] == "preserved"
+    assert failed["temporary_cleanup_error"] == (
+        "PermissionError:injected cleanup failure"
+    )
+    assert Path(str(failed["temporary_capture_root"])) == first_temp_root
+    assert first_temp_root.is_dir()
+    assert Path(str(failed["raw_response_path"])).read_bytes() == rejected_raw
+    assert succeeded["status"] == "succeeded"
+    assert succeeded["temporary_cleanup"] == "removed"
+    assert not successful_temp_root.exists()
+
+    durable_capture = result["durable_capture"]
+    assert isinstance(durable_capture, dict)
+    durable_raw_path = Path(str(durable_capture["raw_response_path"]))
+    assert durable_raw_path.read_bytes() == accepted_raw
+    assert Path(str(result["manifest_path"])).is_file()
+    assert result["preserved_temporary_capture_roots"] == [str(first_temp_root)]
+    cleanup_errors = result["temporary_cleanup_errors"]
+    assert cleanup_errors == [
+        {
+            "attempt": 1,
+            "temporary_capture_root": str(first_temp_root),
+            "error": "PermissionError:injected cleanup failure",
+        }
+    ]
+
+    status_readback = json.loads(
+        Path(str(result["status_path"])).read_text(encoding="utf-8")
+    )
+    assert status_readback == result
+
+
+def test_scheduled_event_capture_timeout_archives_attempt_without_raw_body(
+    tmp_path: Path,
+) -> None:
+    """HTTP timeout 留下真實 request attempt receipt，且標明沒有 response raw。"""
+
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    _write_recommendation(recommendation_root / "scheduled_rec_20260904.json")
+    market_db = tmp_path / "market.sqlite"
+    with sqlite3.connect(market_db) as connection:
+        connection.execute("CREATE TABLE daily_prices (日期 TEXT)")
+    controlled = tmp_path / "controlled"
+    status_root = controlled / "status"
+    calendar = _ChainCalendar(tmp_path / "calendar.sqlite")
+
+    def timeout_fetcher(request: object, timeout: float) -> object:
+        del request, timeout
+        raise TimeoutError("read timed out")
+
+    result, exit_code = run_capture(
+        now=datetime(2026, 9, 7, 1, 0, 2, tzinfo=ZoneInfo("UTC")),
+        recommendation_root=recommendation_root,
+        market_db=market_db,
+        durable_root=controlled / "event_captures",
+        allowed_durable_root=controlled,
+        receipt_root=controlled / "receipts",
+        status_root=status_root,
+        calendar=calendar,
+        load_runtime=False,
+        fetcher=timeout_fetcher,
+        max_attempts=1,
+        retry_delay_seconds=0,
+    )
+
+    assert exit_code == 2
+    assert result["status"] == "blocked"
+    assert result["temporary_cleanup"] == "removed_after_diagnostic_persist"
+    attempts = result["capture_attempts"]
+    assert isinstance(attempts, list) and len(attempts) == 1
+    failed = attempts[0]
+    assert failed["diagnostic_status"] == "saved"
+    assert failed["temporary_cleanup"] == "removed"
+    assert failed["raw_response_path"] is None
+    assert failed["raw_response_sha256"] is None
+    assert not Path(str(failed["temporary_capture_root"])).exists()
+    receipt = json.loads(
+        Path(str(failed["attempt_receipt_path"])).read_text(encoding="utf-8")
+    )
+    assert receipt["request"]["method"] == "GET"
+    assert "tse_2330.tw" in receipt["request"]["url"]
+    assert receipt["request_started_at"] is not None
+    assert receipt["request_completed_at"] is not None
+    assert receipt["response"] is None
+    assert receipt["raw_response"]["present"] is False
+    assert receipt["raw_response"]["sha256"] is None
+    assert receipt["failure"]["type"] == "TimeoutError"
+    status_readback = json.loads(
+        Path(str(result["status_path"])).read_text(encoding="utf-8")
+    )
+    assert status_readback["temporary_cleanup"] == result["temporary_cleanup"]
+    assert status_readback["capture_attempts"] == attempts
+    assert not list((controlled / "event_captures").rglob("manifest.json"))
+
+
 def test_isolated_eod_writer_binds_durable_capture_then_formal_reads_receipt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1935,7 +2397,11 @@ def test_isolated_eod_writer_binds_durable_capture_then_formal_reads_receipt(
 
     recommendation_root = source_root / "output" / "recommendation" / "runs"
     recommendation_root.mkdir(parents=True, exist_ok=True)
-    recommendation_path = recommendation_root / "scheduled_rec_20260904.json"
+    # Match the production freezer's create-only paper_frozen_<result_id>.json
+    # namespace; keep the source result_id and payload bytes unchanged.
+    recommendation_path = (
+        recommendation_root / "paper_frozen_scheduled_rec_20260904_200000.json"
+    )
     _write_recommendation(recommendation_path)
 
     repo = tmp_path / "repo"
@@ -1959,7 +2425,7 @@ def test_isolated_eod_writer_binds_durable_capture_then_formal_reads_receipt(
     capture_root = operation_root / "event_captures"
     raw = formal_daily_input_producer_module._canonical_json(
         {
-            "rtcode": "000",
+            "rtcode": "0000",
             "rtmessage": "OK",
             "msgArray": [
                 {

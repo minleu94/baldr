@@ -151,7 +151,7 @@ def test_scheduled_wrapper_stdout_survives_cp1252_console_with_chinese_paths(
     db_path = tmp_path / "資料" / "sqlite" / "twstock.db"
 
     def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args=args, returncode=0, stdout="pipeline ok\n")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout='{"overall_status":"passed","warnings":[]}\n')
 
     output_buffer = io.BytesIO()
     stdout = io.TextIOWrapper(output_buffer, encoding="cp1252", errors="strict")
@@ -773,9 +773,30 @@ def test_scheduled_wrapper_runs_daily_forward_binder_for_all_current_entries(
     assert payload["forward_position_thesis_binding_blocked"] is False
 
 
+@pytest.mark.parametrize(
+    ("pacific_now", "child_clock", "decision_date", "exit_as_of_date"),
+    [
+        (
+            datetime(2026, 9, 8, 5, 15, tzinfo=ZoneInfo("America/Los_Angeles")),
+            datetime(2026, 9, 8, 12, 15, tzinfo=timezone.utc),
+            "2026-09-08",
+            "2026-09-08",
+        ),
+        (
+            datetime(2026, 10, 2, 16, 22, tzinfo=ZoneInfo("America/Los_Angeles")),
+            datetime(2026, 10, 2, 23, 22, tzinfo=timezone.utc),
+            "2026-10-03",
+            "2026-10-03",
+        ),
+    ],
+)
 def test_scheduled_wrapper_runs_bounded_exit_effectiveness_child(
     tmp_path: Path,
     monkeypatch,
+    pacific_now: datetime,
+    child_clock: datetime,
+    decision_date: str,
+    exit_as_of_date: str,
 ) -> None:
     output_root = tmp_path / "output"
     paper_operation_root = tmp_path / "paper-operation"
@@ -787,13 +808,13 @@ def test_scheduled_wrapper_runs_bounded_exit_effectiveness_child(
     monkeypatch.setattr(
         run_scheduled_evidence_pipeline_dry_run,
         "scheduled_now",
-        lambda: datetime(2026, 9, 8, 5, 15, tzinfo=ZoneInfo("America/Los_Angeles")),
+        lambda: pacific_now,
     )
-    child_clock = datetime(2026, 9, 8, 12, 15, tzinfo=timezone.utc)
     monkeypatch.setattr(
         run_scheduled_evidence_pipeline_dry_run, "_utc_now", lambda: child_clock
     )
-    requested_output_path = output_root / "exit_effectiveness" / "20260908.json"
+    exit_date_key = exit_as_of_date.replace("-", "")
+    requested_output_path = output_root / "exit_effectiveness" / f"{exit_date_key}.json"
     requested_output_path.parent.mkdir(parents=True)
     old_payload = _exit_effectiveness_payload(
         generated_at=child_clock - timedelta(seconds=20)
@@ -855,9 +876,20 @@ def test_scheduled_wrapper_runs_bounded_exit_effectiveness_child(
     assert payload["exit_effectiveness_receipt"]["receipt"]["research_only"] is True
     assert payload["exit_effectiveness_receipt"]["receipt"]["historical_backfill"] is False
     assert payload["exit_effectiveness_artifact_identity_status"] == "verified"
+    assert payload["decision_date"] == decision_date
+    assert payload["exit_effectiveness_requested_as_of_date"] == exit_as_of_date
+    assert payload["exit_effectiveness_as_of_date"] == exit_as_of_date
+    assert payload["exit_effectiveness_date_role"] == (
+        "same_analysis_day"
+        if exit_as_of_date == decision_date
+        else "current_outcome_sidecar"
+    )
+    assert payload["exit_effectiveness_receipt"]["producer_receipt"]["generated_at"] == (
+        (child_clock + timedelta(seconds=1)).isoformat()
+    )
     actual_artifact = Path(payload["exit_effectiveness_artifact_path"])
     assert actual_artifact.parent == requested_output_path.parent
-    assert actual_artifact.name.startswith("20260908_")
+    assert actual_artifact.name.startswith(f"{exit_date_key}_")
     assert payload["exit_effectiveness_receipt"]["artifact_path"] == str(actual_artifact)
     assert payload["exit_effectiveness_receipt"]["receipt"]["artifact_path"] == str(
         actual_artifact
@@ -879,7 +911,7 @@ def test_scheduled_wrapper_runs_bounded_exit_effectiveness_child(
     assert exit_command[exit_command.index("--paper-ledger-db") + 1] == str(paper_ledger)
     assert exit_command[exit_command.index("--market-db") + 1] == str(market_db)
     assert exit_command[exit_command.index("--output") + 1] == str(
-        output_root / "exit_effectiveness" / "20260908.json"
+        requested_output_path
     )
     assert exit_kwargs["timeout"] == 300
     assert exit_kwargs["cwd"] == str(run_scheduled_evidence_pipeline_dry_run.REPO_ROOT)
@@ -906,6 +938,50 @@ def test_exit_effectiveness_verifies_initial_requested_artifact_path(tmp_path: P
     assert actual_path == requested_path.resolve()
     assert file_hash == receipt["artifact_file_sha256"]
     assert runner.EXIT_EFFECTIVENESS_ARTIFACT_MAX_BYTES == 32 * 1024 * 1024
+
+
+def test_exit_effectiveness_verifier_binds_taipei_date_not_pacific_or_utc(
+    tmp_path: Path,
+) -> None:
+    runner = run_scheduled_evidence_pipeline_dry_run
+    child_started_at = datetime(2026, 10, 2, 23, 22, tzinfo=timezone.utc)
+    child_completed_at = child_started_at + timedelta(seconds=2)
+    assert child_started_at.astimezone(
+        ZoneInfo("America/Los_Angeles")
+    ).date().isoformat() == "2026-10-02"
+    requested_path = tmp_path / "output" / "exit_effectiveness" / "20261003.json"
+    receipt = _fake_exit_effectiveness_stdout(
+        output_path=requested_path,
+        generated_at=child_started_at + timedelta(seconds=1),
+    )
+    assert receipt["generated_at"] == "2026-10-02T23:22:01+00:00"
+    assert receipt["as_of_date"] == "2026-10-03"
+
+    actual_path, file_hash = runner._verify_exit_effectiveness_artifact(
+        receipt=receipt,
+        requested_output_path=requested_path,
+        child_started_at=child_started_at,
+        child_completed_at=child_completed_at,
+    )
+
+    assert actual_path == requested_path.resolve()
+    assert file_hash == receipt["artifact_file_sha256"]
+    with pytest.raises(ValueError, match="as_of_date_mismatch"):
+        runner._verify_exit_effectiveness_artifact(
+            receipt=receipt,
+            requested_output_path=requested_path.with_name("20261002.json"),
+            child_started_at=child_started_at,
+            child_completed_at=child_completed_at,
+        )
+    utc_or_pacific_day_receipt = dict(receipt)
+    utc_or_pacific_day_receipt["as_of_date"] = "2026-10-02"
+    with pytest.raises(ValueError, match="as_of_date_mismatch"):
+        runner._verify_exit_effectiveness_artifact(
+            receipt=utc_or_pacific_day_receipt,
+            requested_output_path=requested_path,
+            child_started_at=child_started_at,
+            child_completed_at=child_completed_at,
+        )
 
 
 def test_exit_effectiveness_v1_missing_path_blocks_without_stale_fallback(

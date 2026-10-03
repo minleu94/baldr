@@ -646,8 +646,15 @@ class EvidencePipelineRunner:
 
     def _capture_step(self, request: EvidencePipelineRunRequest, dry_run: bool) -> tuple[Any, EvidencePipelineStepSummary]:
         timer = _Timer()
-        repository = EvidenceEventRepository(self.config, db_path=self.db_path)
-        service = EvidenceCaptureService(EvidenceEventService(repository), self._build_importers(request))
+        repository = EvidenceEventRepository(
+            self.config,
+            db_path=self.db_path,
+            read_only=dry_run,
+        )
+        service = EvidenceCaptureService(
+            EvidenceEventService(repository),
+            self._build_importers(request, dry_run=dry_run),
+        )
         summaries = []
         sources = self._capture_sources(request.sources)
         for source in sources:
@@ -708,13 +715,22 @@ class EvidencePipelineRunner:
             duration_ms=timer.elapsed_ms(),
         )
 
-    def _build_importers(self, request: EvidencePipelineRunRequest) -> dict[str, Any]:
+    def _build_importers(
+        self,
+        request: EvidencePipelineRunRequest,
+        *,
+        dry_run: bool,
+    ) -> dict[str, Any]:
         importers: dict[str, Any] = {
             "recommendation": RecommendationEvidenceImporter(
                 build_recommendation_execution_queries(self.config)
             ),
         }
-        snapshot_repository = DecisionDeskSnapshotRepository(self.config, db_path=self.db_path)
+        snapshot_repository = DecisionDeskSnapshotRepository(
+            self.config,
+            db_path=self.db_path,
+            read_only=dry_run,
+        )
         stored = snapshot_repository.latest_before_or_on(request.decision_date)
         if stored is None:
             stored = self._transient_snapshot_for_request(request)
@@ -788,7 +804,11 @@ class EvidencePipelineRunner:
     def _outcome_step(self, request: EvidencePipelineRunRequest, dry_run: bool) -> tuple[Any, EvidencePipelineStepSummary]:
         timer = _Timer()
         try:
-            repository = EvidenceEventRepository(self.config, db_path=self.db_path)
+            repository = EvidenceEventRepository(
+                self.config,
+                db_path=self.db_path,
+                read_only=dry_run,
+            )
             summary = ForwardPerformanceService(self.config, repository).calculate(
                 windows=request.windows,
                 dry_run=dry_run,
@@ -835,7 +855,11 @@ class EvidencePipelineRunner:
     ) -> tuple[list[dict[str, Any]], EvidencePipelineStepSummary]:
         timer = _Timer()
         try:
-            repository = EvidenceEventRepository(self.config, db_path=self.db_path)
+            repository = EvidenceEventRepository(
+                self.config,
+                db_path=self.db_path,
+                read_only=dry_run,
+            )
             summaries = ForwardPerformanceReadModel(repository).summarize(
                 group_by=request.group_by,
                 filters=ForwardPerformanceFilter(

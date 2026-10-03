@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, cast
 
 from app_module.machine_status_classification import (
     MACHINE_STATUS_HUMAN_REVIEW,
@@ -19,6 +19,10 @@ from app_module.machine_status_classification import (
     classify_machine_status,
 )
 from app_module.recommendation.persistence import ExecutionPersistenceError
+from app_module.recommendation.contracts import (
+    RecommendationExecution,
+    SnapshotCohort,
+)
 from app_module.recommendation.queries import LegacyRecommendationOriginalPayload
 from app_module.saved_recommendation_queries import (
     build_recommendation_execution_queries,
@@ -124,6 +128,16 @@ class ScheduledEvidenceStatus:
     evidence_progress_warnings: tuple[str, ...] = ()
     evidence_progress_next_action: str | None = None
     evidence_progress_status_path: Path | None = None
+    # Derived only from a matching canonical execution whose payload/index and
+    # embedded scheduled cohort were verified.  These fields do not rewrite
+    # the saved cohort quality or Recommendation/Advice result.
+    recommendation_cohort_integrity_basis: str | None = None
+    recommendation_canonical_payload_hash: str | None = None
+    recommendation_cohort_hash: str | None = None
+    recommendation_cohort_requested_count: int | None = None
+    recommendation_cohort_quality_missing_count: int | None = None
+    recommendation_cohort_quality_degraded_count: int | None = None
+    recommendation_cohort_classifications: tuple[tuple[str, int], ...] = ()
 
     @property
     def has_production_write_risk(self) -> bool:
@@ -224,16 +238,26 @@ class ScheduledEvidenceStatusService:
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._last_good_status: ScheduledEvidenceStatus | None = None
 
-    def load_latest(self) -> ScheduledEvidenceStatus:
+    def load_latest(
+        self,
+        *,
+        recommendation_queries: Any | None = None,
+    ) -> ScheduledEvidenceStatus:
         checked_at = _timestamp(self._clock())
         try:
-            candidate = self._load_latest()
+            candidate = self._load_latest(
+                recommendation_queries=recommendation_queries,
+            )
         except Exception as exc:  # noqa: BLE001
             diagnostic = f"status_loader_error:{type(exc).__name__}:{exc}"
             return self._fallback_after_failure(checked_at, (diagnostic,))
         return self._accept_candidate(candidate, checked_at)
 
-    def _load_latest(self) -> ScheduledEvidenceStatus:
+    def _load_latest(
+        self,
+        *,
+        recommendation_queries: Any | None = None,
+    ) -> ScheduledEvidenceStatus:
         diagnostics: list[str] = []
         freshness_path = self.output_root / "scheduled" / "data_freshness" / "latest_status.json"
         recommendation_path = self.output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
@@ -298,7 +322,10 @@ class ScheduledEvidenceStatusService:
             or checks.get("technical_indicators_latest_date")
         )
         decision_date_key = _date_key(evidence.get("decision_date")) or _date_key(latest_data_date)
-        read_models = self._read_saved_recommendations(diagnostics)
+        read_models = self._read_saved_recommendations(
+            diagnostics,
+            recommendation_queries=recommendation_queries,
+        )
         manual_recommendation: dict[str, Any] = {}
         manual_recommendation_path: Path | None = None
         canonical_manual_selected = False
@@ -342,6 +369,18 @@ class ScheduledEvidenceStatusService:
             if date_key and raw_date == evidence.get("decision_date"):
                 evidence_dates.add(date_key)
         joint_dates = tuple(sorted(recommendation_dates & evidence_dates))
+        (
+            cohort_integrity_basis,
+            canonical_payload_hash,
+            cohort_hash,
+            cohort_requested_count,
+            cohort_quality_missing_count,
+            cohort_quality_degraded_count,
+            cohort_classifications,
+        ) = _canonical_recommendation_cohort_summary(
+            read_models,
+            _str_or_none(recommendation_payload.get("result_id")),
+        )
 
         return ScheduledEvidenceStatus(
             freshness_status=str(freshness.get("status") or "missing"),
@@ -476,12 +515,29 @@ class ScheduledEvidenceStatusService:
             ),
             evidence_progress_next_action=_str_or_none(progress.get("next_action")),
             evidence_progress_status_path=progress_path if progress else None,
+            recommendation_cohort_integrity_basis=cohort_integrity_basis,
+            recommendation_canonical_payload_hash=canonical_payload_hash,
+            recommendation_cohort_hash=cohort_hash,
+            recommendation_cohort_requested_count=cohort_requested_count,
+            recommendation_cohort_quality_missing_count=cohort_quality_missing_count,
+            recommendation_cohort_quality_degraded_count=cohort_quality_degraded_count,
+            recommendation_cohort_classifications=cohort_classifications,
         )
 
-    def _read_saved_recommendations(self, diagnostics: list[str]) -> tuple[Any, ...]:
+    def _read_saved_recommendations(
+        self,
+        diagnostics: list[str],
+        *,
+        recommendation_queries: Any | None = None,
+    ) -> tuple[Any, ...]:
+        queries = (
+            recommendation_queries
+            if recommendation_queries is not None
+            else self.recommendation_queries
+        )
         read_models: list[Any] = []
         try:
-            read_models.extend(self.recommendation_queries.list())
+            read_models.extend(queries.list())
         except (ExecutionPersistenceError, ValueError) as exc:
             diagnostics.append(f"recommendation_query_failure:{type(exc).__name__}")
         known_by_id = {
@@ -501,7 +557,7 @@ class ScheduledEvidenceStatusService:
                 # A root-level legacy filename that reuses a canonical ID is
                 # ambiguous even when the canonical index itself is valid.
                 exact_query = getattr(
-                    self.recommendation_queries,
+                    queries,
                     "get_legacy_original_payload",
                     None,
                 )
@@ -530,7 +586,7 @@ class ScheduledEvidenceStatusService:
                 ambiguous_ids.add(result_id)
                 continue
             exact_query = getattr(
-                self.recommendation_queries,
+                queries,
                 "get_legacy_original_payload",
                 None,
             )
@@ -567,7 +623,7 @@ class ScheduledEvidenceStatusService:
                 continue
             if projection.source == "registered_legacy_run":
                 try:
-                    read_model = self.recommendation_queries.get(result_id)
+                    read_model = queries.get(result_id)
                 except (ExecutionPersistenceError, ValueError, OSError) as exc:
                     diagnostics.append(
                         "recommendation_legacy_candidate_query_failure:"
@@ -664,6 +720,122 @@ class ScheduledEvidenceStatusService:
             last_good_loaded_at=None,
             diagnostics=diagnostics,
         )
+
+
+def _canonical_recommendation_cohort_summary(
+    read_models: tuple[Any, ...],
+    result_id: str | None,
+) -> tuple[
+    str | None,
+    str | None,
+    str | None,
+    int | None,
+    int | None,
+    int | None,
+    tuple[tuple[str, int], ...],
+]:
+    """Summarize a verified canonical cohort without changing its source quality."""
+
+    if not result_id:
+        return None, None, None, None, None, None, ()
+    matching = tuple(
+        item
+        for item in read_models
+        if _str_or_none(getattr(item, "result_id", None)) == result_id
+    )
+    if len(matching) != 1:
+        return None, None, None, None, None, None, ()
+
+    read_model = matching[0]
+    if (
+        getattr(read_model, "integrity_basis", None)
+        != "canonical_payload_and_index_verified"
+        or not _is_sha256_hash(getattr(read_model, "payload_hash", None))
+    ):
+        return None, None, None, None, None, None, ()
+    execution = getattr(read_model, "execution", None)
+    if type(execution) is not RecommendationExecution or execution.result_id != result_id:
+        return None, None, None, None, None, None, ()
+    cohort = execution.context.snapshot_cohort
+    if type(cohort) is not SnapshotCohort:
+        return None, None, None, None, None, None, ()
+
+    counts = {
+        "可用候選": 0,
+        "策略排除": 0,
+        "缺資料": 0,
+        "來源品質問題": 0,
+        "其他未判定": 0,
+    }
+    eligible_symbols = set(cohort.eligible_symbols)
+    missing_symbols = set(cohort.missing_symbols)
+    degraded_symbols = set(cohort.degraded_symbols)
+    excluded_symbols = set(cohort.excluded_symbols)
+    known_strategy_reasons = {
+        "liquidity_volume_ratio_below_min",
+        "strategy_filter_no_signal",
+    }
+
+    for symbol in cohort.requested_symbols:
+        row = cohort.coverage_by_symbol.get(symbol)
+        if symbol in eligible_symbols:
+            if row is None:
+                counts["可用候選"] += 1
+            elif row.warnings:
+                counts["來源品質問題"] += 1
+            elif (
+                row.quality == "observed"
+                and row.status == "pass"
+                and row.stage == "final_selection"
+                and set(row.reason_codes).issubset({"recommendation_selected"})
+            ):
+                counts["可用候選"] += 1
+            else:
+                counts["其他未判定"] += 1
+            continue
+        if row is None:
+            counts["其他未判定"] += 1
+            continue
+        if row.warnings:
+            counts["來源品質問題"] += 1
+        elif (
+            symbol in missing_symbols
+            and row.quality == "missing"
+            and row.status == "missing"
+        ):
+            counts["缺資料"] += 1
+        elif (
+            symbol in degraded_symbols
+            and row.quality == "degraded"
+            and row.status == "skipped"
+            and row.stage == "strategy_evaluation"
+            and bool(row.reason_codes)
+            and set(row.reason_codes).issubset(known_strategy_reasons)
+        ):
+            counts["策略排除"] += 1
+        else:
+            # Includes uncovered/excluded symbols and any unknown reason or
+            # mixed contract that cannot be safely treated as a clean exclusion.
+            counts["其他未判定"] += 1
+
+    classifications = tuple(counts.items())
+    if sum(count for _, count in classifications) != cohort.requested_count:
+        return None, None, None, None, None, None, ()
+    return (
+        "canonical_payload_and_index_verified",
+        cast(str, read_model.payload_hash),
+        cohort.cohort_hash,
+        cohort.requested_count,
+        cohort.missing_count,
+        cohort.degraded_count,
+        classifications,
+    )
+
+
+def _is_sha256_hash(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 71 or not value.startswith("sha256:"):
+        return False
+    return all(character in "0123456789abcdef" for character in value[7:])
 
 
 def _classify_forward_outcome(

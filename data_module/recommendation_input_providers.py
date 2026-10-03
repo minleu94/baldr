@@ -103,6 +103,76 @@ class HistoricalRecommendationMarketFrameProvider:
                 )
         raise FileNotFoundError("歷史推薦缺少唯讀行情來源")
 
+    def load_with_minimum_bars(
+        self, cutoff: str | None, minimum_bars: int
+    ) -> pd.DataFrame:
+        """以 cutoff 前最近的實際交易日期數讀取足量指標 warmup。"""
+
+        if type(minimum_bars) is not int or minimum_bars <= 0:
+            raise ValueError("minimum_bars 必須是正整數")
+        if getattr(self.config, "use_sqlite", False):
+            db_path = Path(self.config.db_file).resolve()
+            uri = f"{db_path.as_uri()}?mode=ro"
+            with closing(sqlite3.connect(uri, uri=True)) as connection:
+                connection.execute("PRAGMA query_only=ON")
+                tables = {
+                    str(row[0])
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+                if "daily_prices" not in tables:
+                    return pd.DataFrame(columns=["日期", "證券代號"])
+                normalized_cutoff = cutoff
+                if normalized_cutoff is None:
+                    latest = connection.execute(
+                        "SELECT MAX(日期) FROM daily_prices"
+                    ).fetchone()[0]
+                    if latest is None:
+                        return pd.DataFrame(columns=["日期", "證券代號"])
+                    normalized_cutoff = _normalize_source_date(latest)
+                cutoff_key = _normalize_source_date(normalized_cutoff).replace("-", "")
+                date_rows = connection.execute(
+                    "SELECT DISTINCT 日期 FROM daily_prices "
+                    "WHERE replace(replace(CAST(日期 AS TEXT), '-', ''), '/', '') <= ? "
+                    "ORDER BY replace(replace(CAST(日期 AS TEXT), '-', ''), '/', '') DESC "
+                    "LIMIT ?",
+                    (cutoff_key, minimum_bars),
+                ).fetchall()
+                if not date_rows:
+                    return pd.DataFrame(columns=["日期", "證券代號"])
+                selected_dates = [str(row[0]) for row in date_rows]
+                placeholders = ",".join("?" for _ in selected_dates)
+                if "technical_indicators" in tables:
+                    query = (
+                        "SELECT p.*, t.* FROM daily_prices p LEFT JOIN "
+                        "technical_indicators t ON p.證券代號=t.證券代號 "
+                        "AND p.日期=t.日期 "
+                    )
+                else:
+                    query = "SELECT p.* FROM daily_prices p "
+                query += (
+                    f"WHERE p.日期 IN ({placeholders}) "
+                    "ORDER BY p.日期, p.證券代號"
+                )
+                frame = pd.read_sql_query(query, connection, params=selected_dates)
+                return frame.loc[:, ~frame.columns.duplicated()].copy()
+
+        paths = (
+            getattr(self.config, "all_stocks_data_file", None),
+            getattr(self.config, "stock_data_file", None),
+        )
+        for candidate in paths:
+            if candidate is None or not candidate.is_file():
+                continue
+            frame = pd.read_csv(
+                candidate,
+                encoding="utf-8-sig",
+                dtype={"證券代號": str, "股票代號": str},
+            )
+            return _latest_market_bars(frame, cutoff, minimum_bars)
+        raise FileNotFoundError("歷史推薦缺少唯讀行情來源")
+
 
 class PITRecommendationMembershipProvider:
     """以推薦既有 PIT 日期／scope 規則讀取產業 membership。"""
@@ -253,6 +323,44 @@ def _normalize_source_date(value: object) -> str:
     if len(normalized) != 8 or not normalized.isdigit():
         raise ValueError(f"unsupported decision date: {text}")
     return datetime.strptime(normalized, "%Y%m%d").date().isoformat()
+
+
+def _latest_market_bars(
+    frame: pd.DataFrame, cutoff: str | None, minimum_bars: int
+) -> pd.DataFrame:
+    if frame.empty or "日期" not in frame.columns:
+        return frame.copy()
+    cutoff_key = (
+        _normalize_source_date(cutoff).replace("-", "") if cutoff is not None else None
+    )
+    keys = frame["日期"].map(_market_date_key)
+    valid = keys.notna()
+    if cutoff_key is not None:
+        valid &= keys.le(cutoff_key)
+    eligible_keys = sorted(set(keys.loc[valid].astype(str)), reverse=True)
+    selected_keys = set(eligible_keys[:minimum_bars])
+    return frame.loc[valid & keys.isin(selected_keys)].copy()
+
+
+def _market_date_key(value: object) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, (pd.Timestamp, datetime, date)):
+        return value.strftime("%Y%m%d")
+    text = str(value).strip()
+    normalized = text.replace("-", "").replace("/", "")
+    if len(normalized) >= 8 and normalized[:8].isdigit():
+        try:
+            return datetime.strptime(normalized[:8], "%Y%m%d").strftime("%Y%m%d")
+        except ValueError:
+            return None
+    try:
+        parsed = pd.Timestamp(text)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(parsed):
+        return None
+    return parsed.strftime("%Y%m%d")
 
 
 __all__ = (

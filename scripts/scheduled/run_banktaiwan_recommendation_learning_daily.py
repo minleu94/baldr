@@ -37,6 +37,13 @@ from ml_module.recommendation_cost_scenario import (
     RecommendationCostScenario,
     build_banktaiwan_cost_scenario,
 )
+from ml_module.current_restated_research_bridge import (
+    CurrentRestatedResearchError,
+    CurrentRestatedResearchInvocation,
+    add_current_restated_research_arguments,
+    parse_current_restated_research_invocation,
+    run_current_restated_research_sidecar,
+)
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -2574,6 +2581,27 @@ def _child_command(
             str(snapshot.invocation_output_path),
         ]
     )
+    research_invocation = getattr(args, "current_restated_research_invocation", None)
+    if research_invocation is not None:
+        command.extend(research_invocation.child_arguments())
+        upstream_fields = (
+            (
+                "--research-upstream-terminal-receipt",
+                getattr(args, "research_upstream_terminal_receipt", None),
+            ),
+            (
+                "--research-upstream-terminal-receipt-sha256",
+                getattr(args, "research_upstream_terminal_receipt_sha256", None),
+            ),
+            (
+                "--research-expected-upstream-binding-sha256",
+                getattr(args, "research_expected_upstream_binding_sha256", None),
+            ),
+        )
+        if any(value is None for _flag, value in upstream_fields):
+            raise OperationalLaneError("Bank research child requires the complete Legacy terminal barrier")
+        for flag, value in upstream_fields:
+            command.extend((flag, str(value)))
     return command
 
 
@@ -3480,6 +3508,9 @@ def _run_locked(
     sleep: Callable[[float], None],
     now_provider: Callable[[], datetime],
 ) -> tuple[int, dict[str, Any]]:
+    research_invocation = getattr(args, "current_restated_research_invocation", None)
+    if research_invocation is not None and type(research_invocation) is not CurrentRestatedResearchInvocation:
+        research_invocation = None
     official_day: bool | None = None
     calendar_reason = "not_checked"
     calendar: object | None = None
@@ -3874,6 +3905,56 @@ def run_once(
 ) -> tuple[int, dict[str, Any]]:
     """執行一次具 lock、retry、receipt 與 non-trading 分類的每日 attempt。"""
 
+    try:
+        research_invocation = parse_current_restated_research_invocation(args)
+    except (CurrentRestatedResearchError, OSError, TypeError, ValueError) as exc:
+        return 2, {
+            "schema_version": OPERATION_SCHEMA_VERSION,
+            "status": "failed_dependency",
+            "task": TASK_NAME,
+            "reason": "current_restated_research_input_invalid",
+            "error": f"{type(exc).__name__}: {exc}",
+            "formal_order_allowed": False,
+            "shadow_only": True,
+            "broker_action": False,
+        }
+    setattr(args, "current_restated_research_invocation", research_invocation)
+
+    upstream_values = (
+        getattr(args, "research_upstream_terminal_receipt", None),
+        getattr(args, "research_upstream_terminal_receipt_sha256", None),
+        getattr(args, "research_expected_upstream_binding_sha256", None),
+    )
+    if research_invocation is None and any(value is not None for value in upstream_values):
+        return 2, {
+            "schema_version": "banktaiwan-recommendation-learning-research-only.v1",
+            "status": "failed_dependency",
+            "task": TASK_NAME,
+            "reason": "upstream_terminal_pins_require_current_restated_research_opt_in",
+            "formal_order_allowed": False,
+            "shadow_only": True,
+            "broker_action": False,
+        }
+    if research_invocation is not None:
+        if any(value is None for value in upstream_values):
+            return 2, {
+                "schema_version": "banktaiwan-recommendation-learning-research-only.v1",
+                "status": "failed_dependency",
+                "task": TASK_NAME,
+                "reason": "current_restated_research_requires_complete_legacy_terminal_barrier",
+                "model_training_performed": False,
+                "verified_model_reused": False,
+                "formal_calibration_performed": False,
+                "formal_order_allowed": False,
+                "shadow_only": True,
+                "broker_action": False,
+            }
+        return _run_current_restated_research_sidecar_entry(
+            args,
+            invocation=research_invocation,
+            actual_invocation=list(sys.argv),
+        )
+
     wait_seconds = int(getattr(args, "upstream_projection_wait_seconds", 0))
     attempt_deadline = (
         monotonic()
@@ -3944,6 +4025,82 @@ def _parse_upstream_projection_wait_seconds(value: str) -> int:
     return seconds
 
 
+def _run_current_restated_research_sidecar_entry(
+    args: argparse.Namespace,
+    *,
+    invocation: CurrentRestatedResearchInvocation,
+    actual_invocation: list[str],
+) -> tuple[int, dict[str, Any]]:
+    """重驗既有 Legacy terminal 並以相同 source-row cohort 寫 Bank sidecar。"""
+
+    try:
+        result = run_current_restated_research_sidecar(
+            invocation,
+            lane="banktaiwan",
+            cost_scenario=_build_scenario(args),
+            actual_invocation=actual_invocation,
+            upstream_terminal_receipt_path=Path(
+                args.research_upstream_terminal_receipt
+            ),
+            expected_upstream_terminal_receipt_sha256=str(
+                args.research_upstream_terminal_receipt_sha256
+            ),
+            expected_upstream_binding_sha256=str(
+                args.research_expected_upstream_binding_sha256
+            ),
+            repository_root=ROOT,
+        )
+        return 0, {
+            "schema_version": "banktaiwan-recommendation-learning-research-only.v1",
+            "status": result.status,
+            "terminal": True,
+            "task": TASK_NAME,
+            "lane": "banktaiwan",
+            "mode": "source_row_outcome_research",
+            "receipt_path": str(result.receipt_path),
+            "receipt_sha256": result.receipt_sha256,
+            "binding_sha256": result.binding_sha256,
+            "sample_cohort_sha256": result.sample_cohort_sha256,
+            "core19_numeric_vector_sha256_by_symbol": dict(
+                result.core19_numeric_vector_sha256_by_symbol
+            ),
+            "upstream_legacy_terminal_receipt_path": str(
+                args.research_upstream_terminal_receipt
+            ),
+            "upstream_legacy_terminal_receipt_sha256": str(
+                args.research_upstream_terminal_receipt_sha256
+            ),
+            "upstream_binding_sha256": str(
+                args.research_expected_upstream_binding_sha256
+            ),
+            "model_training_performed": False,
+            "verified_model_reused": True,
+            "formal_calibration_performed": False,
+            "formal_order_allowed": False,
+            "shadow_only": True,
+            "broker_action": False,
+            "historical_pit_eligible": False,
+            "decision_time_eligible": False,
+            "recommendation_cohort_status": "not_a_daily_recommendation_cohort",
+            "full_allocation_status": "blocked_full_allocation_teacher_unavailable",
+        }
+    except (CurrentRestatedResearchError, OSError, TypeError, ValueError) as exc:
+        return 2, {
+            "schema_version": "banktaiwan-recommendation-learning-research-only.v1",
+            "status": "failed_dependency",
+            "task": TASK_NAME,
+            "reason": "current_restated_research_sidecar_failed",
+            "error": f"{type(exc).__name__}: {exc}",
+            "model_training_performed": False,
+            "verified_model_reused": False,
+            "formal_calibration_performed": False,
+            "formal_order_allowed": False,
+            "shadow_only": True,
+            "broker_action": False,
+            "historical_pit_eligible": False,
+        }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-root", type=Path, default=None)
@@ -3983,6 +4140,10 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--research-upstream-terminal-receipt", type=Path, default=None)
+    parser.add_argument("--research-upstream-terminal-receipt-sha256", default=None)
+    parser.add_argument("--research-expected-upstream-binding-sha256", default=None)
+    add_current_restated_research_arguments(parser)
     return parser
 
 
@@ -3991,6 +4152,31 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     if args.dry_run:
+        if args.current_restated_research_only or any(
+            value is not None
+            for value in (
+                args.research_upstream_terminal_receipt,
+                args.research_upstream_terminal_receipt_sha256,
+                args.research_expected_upstream_binding_sha256,
+            )
+        ):
+            print(
+                json.dumps(
+                    {
+                        "schema_version": "banktaiwan-recommendation-learning-research-only.v1",
+                        "status": "failed_dependency",
+                        "reason": "dry_run_cannot_consume_or_publish_research_terminal_receipts",
+                        "model_training_performed": False,
+                        "formal_calibration_performed": False,
+                        "formal_order_allowed": False,
+                        "shadow_only": True,
+                        "broker_action": False,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return 2
         return _dry_run(args)
     code, payload = run_once(args)
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))

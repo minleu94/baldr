@@ -83,6 +83,7 @@ class _ExcludedEvidenceCapture:
     def __init__(self, data_root: Path) -> None:
         self.data_root = data_root.resolve(strict=True)
         self.files: list[ValidatedEvidenceFileV1] = []
+        self.physical_dependencies: list[ExcludedPhysicalDependencyV1] = []
         self._roles: set[str] = set()
 
     def read_bytes(
@@ -93,6 +94,7 @@ class _ExcludedEvidenceCapture:
         expected_directory: Path | None = None,
     ) -> tuple[bytes, str]:
         try:
+            _assert_no_reparse_components(path, self.data_root)
             resolved_before = path.resolve(strict=True)
             parent_before = path.parent.resolve(strict=True)
             resolved_before.relative_to(self.data_root)
@@ -101,7 +103,8 @@ class _ExcludedEvidenceCapture:
         if expected_directory is not None and parent_before != expected_directory:
             raise ValueError(f"排除修訂證據目錄在驗證期間改變：{path.parent}")
         try:
-            if not stat.S_ISREG(resolved_before.stat().st_mode):
+            before_info = resolved_before.stat()
+            if not stat.S_ISREG(before_info.st_mode):
                 raise ValueError(f"排除修訂證據不是一般檔案：{path}")
         except OSError as exc:
             raise ValueError(f"無法檢查排除修訂證據：{path}") from exc
@@ -120,16 +123,36 @@ class _ExcludedEvidenceCapture:
         ):
             raise ValueError(f"排除修訂證據路徑在讀取期間改變：{path}")
         try:
-            if not stat.S_ISREG(resolved_after.stat().st_mode):
+            after_info = resolved_after.stat()
+            if not stat.S_ISREG(after_info.st_mode):
                 raise ValueError(f"排除修訂證據讀取後不是一般檔案：{path}")
         except OSError as exc:
             raise ValueError(f"無法檢查排除修訂證據讀取後狀態：{path}") from exc
+
+        if (
+            len(payload) != before_info.st_size
+            or len(payload) != after_info.st_size
+            or before_info.st_size != after_info.st_size
+            or before_info.st_mtime_ns != after_info.st_mtime_ns
+        ):
+            raise ValueError(f"排除修訂證據在讀取期間改變：{path}")
 
         if role_id in self._roles:
             raise ValueError(f"排除修訂 evidence role 重複：{role_id}")
         digest = _hash_bytes(payload)
         self._roles.add(role_id)
         self.files.append(ValidatedEvidenceFileV1(role_id=role_id, sha256=digest))
+        self.physical_dependencies.append(
+            ExcludedPhysicalDependencyV1(
+                namespace=SourceEvidenceNamespaceV1.EXCLUDED_DAILY_PRICE_REVISION.value,
+                role_id=role_id,
+                path=str(resolved_after),
+                bytes=len(payload),
+                mtime_ns=after_info.st_mtime_ns,
+                sha256="sha256:" + digest,
+                captured_at=datetime.now(timezone.utc),
+            )
+        )
         return payload, digest
 
     def read_json(
@@ -159,14 +182,75 @@ class _ValidatedExcludedRun:
     plan: dict[str, Any]
     journal: dict[str, Any]
     files: tuple[ValidatedEvidenceFileV1, ...]
+    dependencies: tuple[ExcludedPhysicalDependencyV1, ...]
     keys: tuple[tuple[str, str], ...]
     dates: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExcludedPhysicalDependencyV1:
+    """既有 excluded validator 同次讀取的實體來源檔案 pin。"""
+
+    namespace: str
+    role_id: str
+    path: str
+    bytes: int
+    mtime_ns: int
+    sha256: str
+    captured_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ExcludedRevisionRunStateV1:
+    """已驗證的單一 excluded revision run 狀態。"""
+
+    run_id: str
+    state: str
+    source_start_date: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExcludedRevisionCaptureV1:
+    """同次嚴格驗證所得的正式 evidence 與實體 dependency pins。"""
+
+    evidence: ValidatedNamespaceEvidenceV1
+    dependencies: tuple[ExcludedPhysicalDependencyV1, ...]
+    runs: tuple[ExcludedRevisionRunStateV1, ...]
+
+
+def _assert_no_reparse_components(path: Path, data_root: Path) -> None:
+    """拒絕資料根目錄到 evidence 檔案間的連結或 Windows reparse 元件。"""
+
+    absolute = Path(os.path.abspath(path))
+    root = data_root.resolve(strict=True)
+    try:
+        relative = absolute.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"排除修訂證據路徑位於資料根目錄外：{path}") from exc
+    current = root
+    for component in relative.parts:
+        current = current / component
+        try:
+            info = current.lstat()
+        except OSError as exc:
+            raise ValueError(f"排除修訂證據路徑元件無法檢查：{current}") from exc
+        attributes = getattr(info, "st_file_attributes", 0)
+        reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+        is_junction = getattr(current, "is_junction", None)
+        if (
+            stat.S_ISLNK(info.st_mode)
+            or bool(attributes & reparse_flag)
+            or (callable(is_junction) and is_junction())
+        ):
+            raise ValueError(f"排除修訂證據路徑不得穿越連結或 junction：{current}")
 
 
 def _root(database_path: Path) -> Path:
     resolved = Path(database_path).resolve()
     parent = resolved.parent
-    return parent.parent if parent.name.lower() == "sqlite" else parent
+    root = parent.parent if parent.name.lower() == "sqlite" else parent
+    _assert_no_reparse_components(Path(database_path), root)
+    return root
 
 
 def _resolve_relative(root: Path, value: object, *, must_exist: bool = True) -> Path:
@@ -176,6 +260,7 @@ def _resolve_relative(root: Path, value: object, *, must_exist: bool = True) -> 
     if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
         raise ValueError("修訂路徑越界")
     candidate = root.joinpath(*relative.parts)
+    _assert_no_reparse_components(candidate, root)
     resolved = candidate.resolve(strict=must_exist)
     try:
         resolved.relative_to(root.resolve())
@@ -491,7 +576,9 @@ def _validate_market_chain(
     for source_index, source in enumerate(sources):
         if not isinstance(source, dict) or not isinstance(source.get("path"), str):
             raise ValueError("正式市場來源清冊格式不符")
-        source_path = Path(source["path"]).resolve(strict=True)
+        source_path_value = Path(source["path"])
+        _assert_no_reparse_components(source_path_value, root)
+        source_path = source_path_value.resolve(strict=True)
         try:
             source_path.relative_to(root.resolve())
         except ValueError as exc:
@@ -869,6 +956,7 @@ def _validated_excluded_runs(database_path: Path) -> tuple[_ValidatedExcludedRun
                     plan=plan,
                     journal=journal,
                     files=tuple(capture.files),
+                    dependencies=tuple(capture.physical_dependencies),
                     keys=tuple(sorted(keys)),
                     dates=tuple(sorted(dates)),
                 )
@@ -899,6 +987,38 @@ def _assert_cutoff_safe(
             "excluded daily-price source revision blocks historical PIT from "
             f"{min(starts).isoformat()}; rebuild from explicitly revised sources"
         )
+
+
+def collect_excluded_revision_capture(
+    database_path: Path,
+) -> ExcludedRevisionCaptureV1:
+    """回傳同次嚴格驗證所讀取的 typed roles 與實體 dependency pins。"""
+
+    runs = _validated_excluded_runs(database_path)
+    return ExcludedRevisionCaptureV1(
+        evidence=ValidatedNamespaceEvidenceV1(
+            namespace=SourceEvidenceNamespaceV1.EXCLUDED_DAILY_PRICE_REVISION,
+            presence=(
+                SourceEvidencePresenceV1.PRESENT
+                if runs
+                else SourceEvidencePresenceV1.EMPTY
+            ),
+            files=tuple(item for run in runs for item in run.files),
+        ),
+        dependencies=tuple(
+            dependency
+            for run in runs
+            for dependency in run.dependencies
+        ),
+        runs=tuple(
+            ExcludedRevisionRunStateV1(
+                run_id=run.marker_path.parent.name,
+                state=str(run.marker["state"]),
+                source_start_date=str(run.plan["source_start_date"]),
+            )
+            for run in runs
+        ),
+    )
 
 
 def collect_excluded_daily_price_revision_evidence(

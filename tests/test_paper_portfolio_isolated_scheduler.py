@@ -807,21 +807,21 @@ def test_run_state_diagnoses_event_receipt_conflict_and_incomplete_write(
     assert fsync_receipt.read_bytes() == fsync_bytes
 
 
-def test_paper_portfolio_schedule_wakes_before_or_at_taipei_cutoff_in_both_dst_modes() -> None:
+def test_paper_portfolio_taipei_wake_is_five_minutes_before_cutoff_in_both_dst_modes() -> None:
     pacific = ZoneInfo("America/Los_Angeles")
-    for local_day in ("2026-01-12", "2026-07-13"):
+    taipei_zone = ZoneInfo(preopen_adapter.SCHEDULED_WAKE_TIMEZONE)
+    for local_date, expected_pacific_time in (
+        ("2026-01-13", "16:25"),
+        ("2026-07-14", "17:25"),
+    ):
         trigger = datetime.fromisoformat(
-            f"{local_day}T{preopen_adapter.SCHEDULED_WAKE_LOCAL_TIME}:00"
-        ).replace(
-            tzinfo=pacific
+            f"{local_date}T{preopen_adapter.SCHEDULED_WAKE_LOCAL_TIME}:00+08:00"
         )
-        taipei = trigger.astimezone(ZoneInfo("Asia/Taipei"))
-        if local_day == "2026-01-12":
-            assert taipei.timetz().replace(tzinfo=None) == datetime.strptime(
-                "08:15", "%H:%M"
-            ).time()
-        else:
-            assert taipei.timetz().replace(tzinfo=None) == datetime.strptime(
-                "07:15", "%H:%M"
-            ).time()
-        assert taipei.date().isoformat() > local_day
+        taipei = trigger.astimezone(taipei_zone)
+        pacific_time = trigger.astimezone(pacific)
+        cutoff = taipei.replace(hour=8, minute=30)
+
+        assert taipei.strftime("%H:%M%z") == "08:25+0800"
+        assert cutoff - taipei == timedelta(minutes=5)
+        assert pacific_time.strftime("%H:%M") == expected_pacific_time
+        assert pacific_time.date() < taipei.date()

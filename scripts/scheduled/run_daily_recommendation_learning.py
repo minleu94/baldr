@@ -96,6 +96,12 @@ from ml_module.recommendation_cost_scenario import (  # noqa: E402
     normalize_cost_scenario,
 )
 from ml_module.model_artifact_manifest import ModelArtifactManifest  # noqa: E402
+from ml_module.current_restated_research_bridge import (  # noqa: E402
+    CurrentRestatedResearchError,
+    add_current_restated_research_arguments,
+    parse_current_restated_research_invocation,
+    run_current_restated_research_sidecar,
+)
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -531,6 +537,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Do not create today's forward capture.",
     )
+    add_current_restated_research_arguments(parser)
     return parser
 
 
@@ -552,6 +559,86 @@ def _cost_scenario_from_args(
         instrument_type=str(args.research_instrument_type),
     )
     return None, scenario
+
+
+def _run_current_restated_research_entry(
+    args: argparse.Namespace,
+    *,
+    invocation: Any,
+    actual_invocation: list[str],
+) -> int:
+    """只重驗現有 A/B/模型 pins 並輸出 Legacy research terminal。"""
+
+    try:
+        if (
+            args.cost_scenario != "legacy_fixed_bp"
+            or args.fixed_round_trip_cost_bp != 50
+            or args.research_order_amount_twd is not None
+            or args.research_order_quantity_shares is not None
+        ):
+            raise CurrentRestatedResearchError(
+                "Legacy current-restated lane requires fixed 50 bp and no BankTaiwan sizing"
+            )
+        cost_scenario = build_legacy_cost_scenario(50)
+        result = run_current_restated_research_sidecar(
+            invocation,
+            lane="legacy",
+            cost_scenario=cost_scenario,
+            actual_invocation=actual_invocation,
+            repository_root=ROOT,
+        )
+    except (CurrentRestatedResearchError, RecommendationCostScenarioError, OSError, TypeError, ValueError) as exc:
+        print(
+            json.dumps(
+                {
+                    "schema_version": "daily-recommendation-learning-research-only.v1",
+                    "status": "blocked",
+                    "reason": "current_restated_research_sidecar_failed",
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "model_training_performed": False,
+                    "verified_model_reused": False,
+                    "formal_calibration_performed": False,
+                    "formal_order_allowed": False,
+                    "shadow_only": True,
+                    "historical_pit_eligible": False,
+                    "decision_time_eligible": False,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 2
+
+    print(
+        json.dumps(
+            {
+                "schema_version": "daily-recommendation-learning-research-only.v1",
+                "status": result.status,
+                "terminal": True,
+                "lane": "legacy",
+                "mode": "source_row_outcome_research",
+                "receipt_path": str(result.receipt_path),
+                "receipt_sha256": result.receipt_sha256,
+                "binding_sha256": result.binding_sha256,
+                "sample_cohort_sha256": result.sample_cohort_sha256,
+                "core19_numeric_vector_sha256_by_symbol": dict(
+                    result.core19_numeric_vector_sha256_by_symbol
+                ),
+                "model_training_performed": False,
+                "verified_model_reused": True,
+                "formal_calibration_performed": False,
+                "formal_order_allowed": False,
+                "shadow_only": True,
+                "historical_pit_eligible": False,
+                "decision_time_eligible": False,
+                "recommendation_cohort_status": "not_a_daily_recommendation_cohort",
+                "full_allocation_status": "blocked_full_allocation_teacher_unavailable",
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
+    return 0
 
 
 def _stored_cost_scenario(
@@ -1351,6 +1438,33 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    try:
+        research_invocation = parse_current_restated_research_invocation(args)
+    except (CurrentRestatedResearchError, OSError, TypeError, ValueError) as exc:
+        print(
+            json.dumps(
+                {
+                    "schema_version": "daily-recommendation-learning-research-only.v1",
+                    "status": "blocked",
+                    "reason": "current_restated_research_input_invalid",
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "model_training_performed": False,
+                    "verified_model_reused": False,
+                    "formal_calibration_performed": False,
+                    "formal_order_allowed": False,
+                    "shadow_only": True,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 2
+    if research_invocation is not None:
+        return _run_current_restated_research_entry(
+            args,
+            invocation=research_invocation,
+            actual_invocation=list(sys.argv if argv is None else [sys.argv[0], *argv]),
+        )
     checked_clock = _taipei_now()
     config_kwargs: dict[str, Any] = {}
     if args.data_root is not None:

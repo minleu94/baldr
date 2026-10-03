@@ -35,6 +35,14 @@ _MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES = 8 * 1024 * 1024
 _SNAPSHOT_INVOCATION_STDOUT_NAME = "recommendation_snapshot.stdout.bin"
 
 from app_module.recommendation.queries import _read_regular_file_no_follow  # noqa: E402
+from app_module.recommendation.persistence import ExecutionArtifactIntegrityError  # noqa: E402
+from ml_module.current_restated_research_bridge import (  # noqa: E402
+    CurrentRestatedResearchError,
+    add_current_restated_research_arguments,
+    current_restated_research_input_binding_sha256,
+    parse_current_restated_research_invocation,
+    verify_current_restated_legacy_terminal_receipt,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -113,6 +121,10 @@ def build_parser() -> argparse.ArgumentParser:
             "forward an explicit skip for the optional Phase 3C candidate "
             "update to the quick updater"
         ),
+    )
+    add_current_restated_research_arguments(
+        parser,
+        include_reference_snapshot=True,
     )
     return parser
 
@@ -542,6 +554,235 @@ def _snapshot_child_payload_from_stdout(
     return payload, None
 
 
+def _validate_research_reference_snapshot(
+    args: argparse.Namespace,
+    *,
+    research_invocation: Any,
+) -> dict[str, Any]:
+    """驗證唯讀推薦快照旁證；它不會成為 source-row 研究 cohort。"""
+
+    result_id = getattr(args, "research_reference_snapshot_result_id", None)
+    cohort_hash = getattr(args, "research_reference_snapshot_cohort_hash", None)
+    output_path = getattr(args, "research_reference_snapshot_output_path", None)
+    expected_file_sha = getattr(args, "research_reference_snapshot_output_sha256", None)
+    if (
+        type(result_id) is not str
+        or not result_id.strip()
+        or not _is_sha256_text(cohort_hash)
+        or not isinstance(output_path, Path)
+        or not _is_sha256_text(expected_file_sha)
+    ):
+        raise ValueError("research reference snapshot requires exact id, cohort, path and bytes SHA pins")
+    configured_root_value = getattr(args, "output_root", None)
+    if not isinstance(configured_root_value, Path):
+        raise ValueError("research reference snapshot requires the configured output root")
+    configured_root = Path(os.path.abspath(configured_root_value.expanduser()))
+    if not configured_root.is_dir():
+        raise ValueError("research reference snapshot root must already exist as a directory")
+    reference_path = Path(os.path.abspath(output_path.expanduser()))
+    try:
+        reference_path.relative_to(configured_root)
+    except ValueError as exc:
+        raise ValueError("research reference snapshot must stay under the configured output root") from exc
+    raw_stdout = _read_regular_file_no_follow(
+        reference_path,
+        configured_root,
+        max_bytes=_MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES,
+    )
+    actual_file_sha = "sha256:" + hashlib.sha256(raw_stdout).hexdigest()
+    if actual_file_sha != expected_file_sha:
+        raise ValueError("research reference snapshot bytes differ from their expected SHA")
+    snapshot, error = _snapshot_child_payload_from_stdout(raw_stdout)
+    if snapshot is None or error is not None:
+        raise ValueError(error or "research reference snapshot receipt is unavailable")
+    status = snapshot.get("status")
+    if status not in {"passed", "passed_with_warnings", "warning", "degraded"}:
+        raise ValueError("research reference snapshot did not reach an accepted terminal state")
+    if snapshot.get("result_id") != result_id:
+        raise ValueError("research reference snapshot result id differs from its exact pin")
+    cohort = snapshot.get("snapshot_cohort")
+    if not isinstance(cohort, Mapping) or cohort.get("cohort_hash") != cohort_hash:
+        raise ValueError("research reference snapshot cohort differs from its exact pin")
+    decision_date = snapshot.get("decision_date")
+    if decision_date != research_invocation.current_event_date:
+        raise ValueError("research reference snapshot date differs from the source-row event date")
+    eligible_symbols = cohort.get("eligible_symbols")
+    if (
+        not isinstance(eligible_symbols, list)
+        or any(type(symbol) is not str or not symbol.strip() for symbol in eligible_symbols)
+        or len(set(eligible_symbols)) != len(eligible_symbols)
+    ):
+        raise ValueError("research reference snapshot eligible-symbol list is invalid")
+    source_symbols = set(research_invocation.current_symbols)
+    overlap = sorted(source_symbols.intersection(eligible_symbols))
+    return {
+        "result_id": result_id,
+        "cohort_hash": cohort_hash,
+        "decision_date": decision_date,
+        "status": status,
+        "output_path": str(reference_path),
+        "output_sha256": actual_file_sha,
+        "eligible_symbol_count": len(eligible_symbols),
+        "source_row_symbols": list(research_invocation.current_symbols),
+        "overlap_symbols": overlap,
+        "cohort_relation": (
+            "overlap_but_reference_only" if overlap else "no_symbol_overlap_reference_only"
+        ),
+        "used_as_research_training_cohort": False,
+    }
+
+
+def _research_child_payload_from_stdout(raw_stdout: bytes) -> dict[str, Any]:
+    """從 Legacy child stdout 讀唯一 terminal 摘要。"""
+
+    try:
+        text = raw_stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Legacy research child stdout is not UTF-8") from exc
+    decoder = json.JSONDecoder()
+    position = 0
+    matches: list[dict[str, Any]] = []
+    while position < len(text):
+        start = text.find("{", position)
+        if start < 0:
+            break
+        try:
+            value, end = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            position = start + 1
+            continue
+        position = end
+        if (
+            isinstance(value, dict)
+            and value.get("schema_version") == "daily-recommendation-learning-research-only.v1"
+        ):
+            matches.append(value)
+    if len(matches) != 1:
+        raise ValueError("Legacy research child stdout terminal is missing or ambiguous")
+    payload = matches[0]
+    if (
+        payload.get("status") != "verified_research_sidecar"
+        or payload.get("terminal") is not True
+        or payload.get("lane") != "legacy"
+        or payload.get("model_training_performed") is not False
+        or payload.get("verified_model_reused") is not True
+        or payload.get("formal_calibration_performed") is not False
+        or payload.get("historical_pit_eligible") is not False
+        or payload.get("decision_time_eligible") is not False
+    ):
+        raise ValueError("Legacy research child stdout does not assert the required terminal contract")
+    for name in ("receipt_path", "receipt_sha256", "binding_sha256"):
+        if type(payload.get(name)) is not str or not payload[name].strip():
+            raise ValueError(f"Legacy research child stdout is missing {name}")
+    return payload
+
+
+def _run_current_restated_research_pipeline(
+    args: argparse.Namespace,
+    *,
+    research_invocation: Any,
+    reference_snapshot: Mapping[str, Any],
+) -> int:
+    """只啟動 Legacy source-row child，驗證 terminal 後輸出 Bank barrier pins。"""
+
+    try:
+        timeout_seconds = float(args.child_timeout_seconds)
+        if timeout_seconds <= 0:
+            raise ValueError("research child timeout must be positive")
+        if (
+            getattr(args, "cost_scenario", "legacy_fixed_bp") != "legacy_fixed_bp"
+            or getattr(args, "fixed_round_trip_cost_bp", 50) != 50
+            or getattr(args, "research_order_amount_twd", None) is not None
+            or getattr(args, "research_order_quantity_shares", None) is not None
+        ):
+            raise ValueError("pipeline Legacy research lane only accepts the existing fixed 50 bp scenario")
+        command = [
+            sys.executable,
+            str(ROOT / "scripts" / "scheduled" / "run_daily_recommendation_learning.py"),
+            *research_invocation.child_arguments(),
+            "--cost-scenario",
+            "legacy_fixed_bp",
+            "--fixed-round-trip-cost-bp",
+            "50",
+        ]
+        environment = os.environ.copy()
+        environment.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+        completed = subprocess.run(
+            command,
+            cwd=str(ROOT),
+            env=environment,
+            capture_output=True,
+            text=False,
+            check=False,
+            timeout=timeout_seconds,
+        )
+        if completed.returncode != 0:
+            raise ValueError(f"Legacy research child exited with code {completed.returncode}")
+        child = _research_child_payload_from_stdout(completed.stdout or b"")
+        binding_sha = current_restated_research_input_binding_sha256(research_invocation)
+        if child.get("binding_sha256") != binding_sha:
+            raise ValueError("Legacy research child binding differs from the requested source/model pins")
+        verified = verify_current_restated_legacy_terminal_receipt(
+            Path(str(child["receipt_path"])),
+            expected_receipt_sha256=str(child["receipt_sha256"]),
+            expected_binding_sha256=binding_sha,
+            repository_root=ROOT,
+        )
+        if (
+            verified.get("sample_cohort_sha256") != child.get("sample_cohort_sha256")
+            or dict(verified.get("core19_numeric_vector_sha256_by_symbol", {}))
+            != child.get("core19_numeric_vector_sha256_by_symbol")
+        ):
+            raise ValueError("Legacy stdout terminal differs from its exact-byte receipt")
+        payload = {
+            "schema_version": "daily-recommendation-learning-pipeline-research-terminal.v1",
+            "task": TASK_NAME,
+            "status": "verified_research_sidecar",
+            "terminal": True,
+            "lane": "legacy",
+            "mode": "source_row_outcome_research",
+            "receipt_path": child["receipt_path"],
+            "receipt_sha256": child["receipt_sha256"],
+            "binding_sha256": binding_sha,
+            "sample_cohort_sha256": child["sample_cohort_sha256"],
+            "core19_numeric_vector_sha256_by_symbol": child[
+                "core19_numeric_vector_sha256_by_symbol"
+            ],
+            "recommendation_reference_snapshot": dict(reference_snapshot),
+            "recommendation_cohort_status": "reference_only_not_source_row_training_cohort",
+            "model_training_performed": False,
+            "verified_model_reused": True,
+            "formal_calibration_performed": False,
+            "formal_order_allowed": False,
+            "shadow_only": True,
+            "historical_pit_eligible": False,
+            "decision_time_eligible": False,
+            "full_allocation_status": "blocked_full_allocation_teacher_unavailable",
+            "actual_invocation": list(sys.argv),
+            "legacy_child_command": command,
+            "legacy_child_returncode": completed.returncode,
+        }
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        return 0
+    except (CurrentRestatedResearchError, OSError, TypeError, ValueError, subprocess.TimeoutExpired) as exc:
+        payload = {
+            "schema_version": "daily-recommendation-learning-pipeline-research-terminal.v1",
+            "task": TASK_NAME,
+            "status": "blocked",
+            "terminal": True,
+            "reason": "current_restated_research_pipeline_failed",
+            "error": f"{type(exc).__name__}: {exc}",
+            "recommendation_reference_snapshot": dict(reference_snapshot),
+            "model_training_performed": False,
+            "formal_calibration_performed": False,
+            "formal_order_allowed": False,
+            "shadow_only": True,
+            "historical_pit_eligible": False,
+        }
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        return 2
+
+
 def _write_snapshot_invocation_stdout_artifact(
     *,
     path: Path,
@@ -885,6 +1126,70 @@ def _is_sha256_text(value: object) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    try:
+        research_invocation = parse_current_restated_research_invocation(args)
+    except (CurrentRestatedResearchError, OSError, TypeError, ValueError) as exc:
+        parser_payload = {
+            "schema_version": "daily-recommendation-learning-pipeline.v1",
+            "status": "failed",
+            "task": TASK_NAME,
+            "reason": "current_restated_research_input_invalid",
+            "error": f"{type(exc).__name__}: {exc}",
+            "formal_order_allowed": False,
+            "shadow_only": True,
+        }
+        print(json.dumps(parser_payload, ensure_ascii=False, sort_keys=True))
+        return 2
+    reference_fields = (
+        args.research_reference_snapshot_result_id,
+        args.research_reference_snapshot_cohort_hash,
+        args.research_reference_snapshot_output_path,
+        args.research_reference_snapshot_output_sha256,
+    )
+    if research_invocation is None and any(value is not None for value in reference_fields):
+        print(
+            json.dumps(
+                {
+                    "schema_version": "daily-recommendation-learning-pipeline.v1",
+                    "status": "failed",
+                    "task": TASK_NAME,
+                    "reason": "research_reference_snapshot_pins_require_current_restated_research_opt_in",
+                    "formal_order_allowed": False,
+                    "shadow_only": True,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 2
+    if research_invocation is not None:
+        try:
+            reference = _validate_research_reference_snapshot(
+                args,
+                research_invocation=research_invocation,
+            )
+        except (ExecutionArtifactIntegrityError, OSError, TypeError, ValueError) as exc:
+            print(
+                json.dumps(
+                    {
+                        "schema_version": "daily-recommendation-learning-pipeline.v1",
+                        "status": "failed",
+                        "task": TASK_NAME,
+                        "reason": "current_restated_research_reference_snapshot_invalid",
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "formal_order_allowed": False,
+                        "shadow_only": True,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return 2
+        return _run_current_restated_research_pipeline(
+            args,
+            research_invocation=research_invocation,
+            reference_snapshot=reference,
+        )
     if args.child_timeout_seconds <= 0 or args.pipeline_timeout_seconds <= 0:
         raise ValueError("timeout budgets must be positive")
     data_root = args.data_root.expanduser().resolve()

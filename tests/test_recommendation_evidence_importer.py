@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import pytest
+
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.evidence_capture_service import EvidenceCaptureService
 from app_module.evidence_event_dtos import EvidenceEventType
 from app_module.evidence_event_importer_dtos import EvidenceCaptureRequest
 from app_module.evidence_event_importers import RecommendationEvidenceImporter
+from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.evidence_event_service import EvidenceEventService
 from app_module.recommendation.queries import RecommendationExecutionReadModel
+from data_module.config import TWStockConfig
 
 
 class FakeRecommendationQueries:
@@ -118,6 +124,62 @@ def test_recommendation_importer_uses_requested_decision_date_and_stable_source_
     assert event["decision_date"] == "2026-07-03"
     assert event["source_id"] == "rec-001"
     assert event["score_percentile_bp"] == 9000
+
+
+def test_legacy_recommendation_date_metadata_is_iso_encoded_before_event_hash(tmp_path):
+    taipei_zone = timezone(timedelta(hours=8))
+    timestamp = datetime(2026, 10, 2, 12, 15, 0, tzinfo=taipei_zone)
+    typed_result = _result()
+    typed_result.recommendations[0].eligible_universe_date = date(2026, 10, 2)
+    typed_result.created_at = timestamp
+
+    string_result = _result()
+    string_result.recommendations[0].eligible_universe_date = "2026-10-02"
+    string_result.created_at = timestamp.isoformat()
+
+    def capture_sample(result: RecommendationResultDTO, output: str):
+        importer = RecommendationEvidenceImporter(FakeRecommendationQueries(result))
+        repository = EvidenceEventRepository(
+            TWStockConfig(
+                data_root=tmp_path / output / "data",
+                output_root=tmp_path / output / "output",
+            )
+        )
+        service = EvidenceCaptureService(
+            EvidenceEventService(repository),
+            {"recommendation": importer},
+        )
+        request = EvidenceCaptureRequest(source="recommendation", result_id="rec-001")
+        payload = importer.collect(request).event_payloads[0]
+        summary = service.capture(request)
+        return payload, summary
+
+    typed_payload, typed_summary = capture_sample(typed_result, "typed")
+    string_payload, string_summary = capture_sample(string_result, "string")
+
+    assert typed_payload["metadata"]["eligible_universe_date"] == "2026-10-02"
+    assert typed_payload["metadata"]["source_created_at"] == "2026-10-02T12:15:00+08:00"
+    assert string_payload["metadata"]["eligible_universe_date"] == "2026-10-02"
+    assert string_payload["metadata"]["source_created_at"] == "2026-10-02T12:15:00+08:00"
+    assert typed_summary.events_seen == 1
+    assert typed_summary.sample_events[0]["event_hash"].startswith("sha256:")
+    assert typed_summary.sample_events[0]["event_hash"] == string_summary.sample_events[0]["event_hash"]
+
+
+def test_legacy_recommendation_hash_still_rejects_unknown_metadata_types(tmp_path):
+    result = _result()
+    result.recommendations[0].eligible_universe_date = object()
+    importer = RecommendationEvidenceImporter(FakeRecommendationQueries(result))
+    repository = EvidenceEventRepository(
+        TWStockConfig(data_root=tmp_path / "data", output_root=tmp_path / "output")
+    )
+    service = EvidenceCaptureService(
+        EvidenceEventService(repository),
+        {"recommendation": importer},
+    )
+
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        service.capture(EvidenceCaptureRequest(source="recommendation", result_id="rec-001"))
 
 
 def test_recommendation_importer_preserves_explicit_v4_identity_without_defaults():

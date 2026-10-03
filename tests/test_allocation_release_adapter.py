@@ -9,6 +9,7 @@ import joblib
 import pytest
 from typing import Any, cast
 
+import app_module.allocation_release_adapter as release_adapter_module
 from app_module.allocation_release_adapter import (
     AllocationReleaseAdapter,
     LoadedAllocationRelease,
@@ -37,6 +38,9 @@ _MODEL_ID = "allocator-v4-release-test"
 _UNIVERSE_ID = "pit-universe-test"
 _POLICY_ID = "balanced-v1"
 _POLICY_HASH = MissingPolicyBinding.create(policy_id=_POLICY_ID).policy_hash
+_QUARANTINED_V1_ARTIFACT_HASH = (
+    "sha256:5c851d94b4a9385b30317b345ff084cdc47cdc165394e5463061272fbad67a52"
+)
 
 
 def _write_json(path: Path, payload: object) -> bytes:
@@ -161,6 +165,26 @@ def test_release_adapter_blocks_known_pre_repair_artifact_before_deserialization
         artifact_hash_override=quarantined_hash,
     )
 
+    with pytest.raises(ValueError, match="quarantined by a daily-price source revision"):
+        AllocationReleaseAdapter().load(tmp_path / "release")
+
+
+def test_same_source_revision_also_quarantines_v1_before_deserialization(
+    tmp_path: Path,
+    training_result,
+    monkeypatch,
+) -> None:
+    _write_release(
+        tmp_path,
+        training_result,
+        artifact_hash_override=_QUARANTINED_V1_ARTIFACT_HASH,
+    )
+
+    monkeypatch.setattr(
+        release_adapter_module,
+        "_load_joblib_object",
+        lambda *_args, **_kwargs: pytest.fail("quarantined V1 artifact was deserialized"),
+    )
     with pytest.raises(ValueError, match="quarantined by a daily-price source revision"):
         AllocationReleaseAdapter().load(tmp_path / "release")
 

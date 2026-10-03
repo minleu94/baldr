@@ -489,8 +489,72 @@ def test_completed_empty_execution_clears_previous_stock_rows(qt_app, monkeypatc
     assert view.current_result_id == ""
     assert view.recommendations_model.rowCount() == 0
     assert view._selected_stock_code() == ""
-    assert notices and "沒有符合條件的股票" in notices[0]
+    assert notices and "篩選前沒有可評估的候選資料" in notices[0]
     view.close()
+
+
+def test_saved_empty_canonical_execution_load_keeps_identity_and_date(
+    qt_app,
+    tmp_path,
+):
+    from app_module.recommendation.composition import build_recommendation_composition
+
+    result_id = "rec-empty-canonical-readback"
+    execution = _execution(result_id, empty=True)
+    output_root = tmp_path / "output"
+
+    class _IsolatedConfig:
+        def resolve_output_path(self, subfolder):
+            path = output_root / subfolder
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+
+    config = _IsolatedConfig()
+    composition = build_recommendation_composition(config)
+    receipt = composition.save_service.save_execution(
+        execution,
+        label="空結果 canonical 讀回",
+        notes="test-owned isolated store",
+    )
+    assert receipt.result_id == result_id
+
+    view = RecommendationView(
+        recommendation_service=MagicMock(),
+        regime_service=SimpleNamespace(
+            detect_regime=lambda: SimpleNamespace(regime="Trend"),
+            get_strategy_config=lambda _regime: {},
+        ),
+    )
+    view.config = config
+    view.recommendation_composition = composition
+    view.saved_result_id_input.setText(result_id)
+    view.load_saved_result_button.setEnabled(True)
+
+    try:
+        view._load_saved_recommendation_result()
+        worker = view._saved_result_load_worker
+        assert worker is not None
+        assert worker.wait(10_000)
+        qt_app.processEvents()
+        qt_app.processEvents()
+
+        assert view.current_read_model is not None, view.result_status_label.text()
+        assert view.current_read_model.integrity_basis == (
+            "canonical_payload_and_index_verified"
+        )
+        assert view.current_result_id == result_id
+        assert view.current_execution == execution
+        assert view.current_execution.context.as_of_date == execution.context.as_of_date
+        assert view._verified_saved_result_id() == result_id
+        assert view._loaded_saved_result_identity == (
+            view._canonical_loaded_result_identity(view.current_read_model, result_id)
+        )
+        assert view.recommendations_model is not None
+        assert view.recommendations_model.rowCount() == 0
+        assert view.recommendations_model.getDataFrame().empty
+        assert "原結果沒有推薦列" in view.result_status_label.text()
+    finally:
+        view.close()
 
 
 def _config_for_request():

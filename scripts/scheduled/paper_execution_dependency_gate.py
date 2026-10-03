@@ -17,6 +17,7 @@ from io import StringIO
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import sqlite3
 import sys
@@ -106,6 +107,39 @@ PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES: dict[str, dict[str, object]] = {
         "expected_downstream": ("candidate research only",),
         "expected_update_entry": "UpdateService.update_phase3c_candidate_range",
     },
+    "tdcc_shareholding": {
+        "policy_version": "paper-eod-candidate-non-required.v1",
+        "reason_code": "tdcc_weekly_candidate_not_paper_eod_input",
+        "consumer_boundary": "tdcc_p0_candidate_shadow",
+        "consumer_basis": (
+            "TDCC weekly candidate source; candidate research only; "
+            "no Paper EOD downstream or production ingestion"
+        ),
+        "expected_frequency": "weekly candidate source",
+        "expected_downstream": ("candidate research only",),
+        "expected_update_entry": "UpdateService.update_phase3c_candidate_range",
+        "allowed_freshness_statuses": ("stale", "partial", "expected_wait"),
+        "expected_coverage": {
+            "weekly_calendar_policy": "last official session of the latest completed trading week",
+            "official_data_period_basis": (
+                "TDCC weekly snapshot data period is the last business day of the week; "
+                "no official publication deadline is stated"
+            ),
+            "official_publication_deadline": None,
+            "publication_grace_policy": "internal_conservative_two_subsequent_official_sessions",
+            "publication_grace_is_official_deadline": False,
+            "publication_grace_sessions": 2,
+            "issuer_or_scope_completeness_verified": False,
+            "expected_source_versions": [
+                "tdcc-official-od-1-5",
+                "tdcc-openapi-1-5.v1",
+            ],
+            "expected_source_version_groups": [[
+                "tdcc-official-od-1-5",
+                "tdcc-openapi-1-5.v1",
+            ]],
+        },
+    },
 }
 
 
@@ -139,6 +173,56 @@ def _parse_aware_timestamp(value: object) -> tuple[datetime | None, str | None]:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         return None, "naive"
     return parsed.astimezone(timezone.utc), None
+
+
+def _parse_tdcc_compact_period(value: object) -> date | None:
+    """Parse only the compact date form emitted by the weekly TDCC probe."""
+
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]{8}", value) is None:
+        return None
+    try:
+        parsed = datetime.strptime(value, "%Y%m%d").date()
+    except ValueError:
+        return None
+    return parsed if parsed.strftime("%Y%m%d") == value else None
+
+
+def _parse_tdcc_grace_date(value: object) -> date | None:
+    """Parse only the canonical ISO date used for the grace boundary."""
+
+    if (
+        not isinstance(value, str)
+        or len(value) != 10
+        or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None
+    ):
+        return None
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.isoformat() == value else None
+
+
+def _same_typed_json_value(actual: object, expected: object) -> bool:
+    """Compare JSON-shaped policy evidence without bool/int equality aliases."""
+
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict) or actual.keys() != expected.keys():
+            return False
+        return all(
+            _same_typed_json_value(actual[key], value)
+            for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            return False
+        return all(
+            _same_typed_json_value(actual_item, expected_item)
+            for actual_item, expected_item in zip(actual, expected, strict=True)
+        )
+    return actual == expected
 
 
 def _canonical_json(value: object) -> str:
@@ -497,13 +581,20 @@ def _candidate_non_eod_policy(
     source_id: str,
     source_status: str,
     source: Mapping[str, object],
+    target: date,
 ) -> dict[str, object] | None:
     """只接受具名、candidate-only 且完整符合來源契約的非 EOD source。"""
 
-    if source_status not in PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES:
-        return None
     policy = PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES.get(source_id)
     if policy is None or source.get("candidate_only") is not True:
+        return None
+    configured_statuses = policy.get("allowed_freshness_statuses")
+    allowed_statuses = (
+        configured_statuses
+        if isinstance(configured_statuses, tuple)
+        else tuple(PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES)
+    )
+    if source_status not in allowed_statuses:
         return None
     if source.get("frequency") != policy.get("expected_frequency"):
         return None
@@ -520,12 +611,126 @@ def _candidate_non_eod_policy(
     reason = source.get("reason")
     if not isinstance(reason, str) or not reason.strip():
         return None
+    if source_id == "tdcc_shareholding":
+        coverage = source.get("coverage")
+        required_coverage = policy.get("expected_coverage")
+        if not isinstance(coverage, Mapping) or not isinstance(required_coverage, Mapping):
+            return None
+        if any(
+            not _same_typed_json_value(coverage.get(key), value)
+            for key, value in required_coverage.items()
+        ):
+            return None
+        if not _valid_tdcc_candidate_periods(
+            source=source,
+            coverage=coverage,
+            source_status=source_status,
+            target=target,
+            reason=reason,
+        ):
+            return None
     return {
         "policy_version": policy["policy_version"],
         "reason_code": policy["reason_code"],
         "consumer_boundary": policy["consumer_boundary"],
         "consumer_basis": policy["consumer_basis"],
     }
+
+
+def _valid_tdcc_candidate_periods(
+    *,
+    source: Mapping[str, object],
+    coverage: Mapping[str, object],
+    source_status: str,
+    target: date,
+    reason: str,
+) -> bool:
+    """Validate TDCC's exact period/grace row contract before Paper exclusion."""
+
+    expected_text = source.get("expected_period")
+    actual_text = source.get("actual_period")
+    expected_period = _parse_tdcc_compact_period(expected_text)
+    previous_period = _parse_tdcc_compact_period(
+        coverage.get("previous_week_expected_period")
+    )
+    grace_through = _parse_tdcc_grace_date(
+        coverage.get("publication_grace_through")
+    )
+    actual_period = (
+        None
+        if actual_text is None
+        else _parse_tdcc_compact_period(actual_text)
+    )
+    if (
+        expected_period is None
+        or previous_period is None
+        or grace_through is None
+        or expected_period <= previous_period
+        or expected_period > target
+        or grace_through < expected_period
+        or (actual_text is not None and actual_period is None)
+        or (actual_period is not None and actual_period > target)
+    ):
+        return False
+
+    candidate_db_exists = coverage.get("candidate_db_exists")
+    table_exists = coverage.get("table_exists")
+    row_count = coverage.get("db_row_count")
+    latest_row_count = coverage.get("latest_session_row_count")
+    version_complete = coverage.get("source_version_coverage_complete")
+    observed_versions = coverage.get("observed_source_versions")
+    if (
+        candidate_db_exists is not True
+        or table_exists is not True
+        or type(row_count) is not int
+        or row_count < 0
+        or type(latest_row_count) is not int
+        or latest_row_count < 0
+        or type(version_complete) is not bool
+        or not isinstance(observed_versions, list)
+        or any(not isinstance(item, str) or not item for item in observed_versions)
+    ):
+        return False
+
+    missing_periods = source.get("missing_periods")
+    if not isinstance(missing_periods, list):
+        return False
+    parsed_missing = [_parse_tdcc_compact_period(item) for item in missing_periods]
+    if any(item is None for item in parsed_missing):
+        return False
+
+    if source_status == "stale":
+        return (
+            (actual_period is None or actual_period < expected_period)
+            and parsed_missing == [expected_period]
+        )
+    if source_status == "partial":
+        if (
+            actual_period is None
+            or actual_period < expected_period
+            or parsed_missing
+        ):
+            return False
+        duplicate_count = source.get("duplicate_key_count")
+        if duplicate_count is not None and (
+            type(duplicate_count) is not int or duplicate_count < 0
+        ):
+            return False
+        if (
+            actual_period == expected_period
+            and version_complete is True
+            and duplicate_count in (None, 0)
+        ):
+            return False
+        return True
+    if source_status == "expected_wait":
+        return (
+            target <= grace_through
+            and not parsed_missing
+            and (actual_period is None or actual_period == previous_period)
+            and "waiting through the second subsequent official session" in reason.lower()
+        )
+    return False
 
 
 def _paper_eod_freshness_projection(
@@ -644,11 +849,18 @@ def _paper_eod_freshness_projection(
                 continue
             source_status = source_status_by_id.get(warning_source_id, "")
             if source_status not in PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES:
-                blockers.append(
-                    "freshness_non_eod_source_status_not_degraded:"
-                    f"{warning_source_id}:{source_status or 'missing'}"
+                candidate_policy = _candidate_non_eod_policy(
+                    source_id=warning_source_id,
+                    source_status=source_status,
+                    source=source,
+                    target=target,
                 )
-                continue
+                if candidate_policy is None:
+                    blockers.append(
+                        "freshness_non_eod_source_status_not_degraded:"
+                        f"{warning_source_id}:{source_status or 'missing'}"
+                    )
+                    continue
             warning_sources.setdefault(warning_source_id, []).append(warning)
             ignored_warnings.append(warning)
 
@@ -686,6 +898,23 @@ def _paper_eod_freshness_projection(
                 continue
             blockers.append(f"freshness_lane_source_status_unknown:{source_id}")
         elif source_status not in PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES:
+            candidate_policy = _candidate_non_eod_policy(
+                source_id=source_id,
+                source_status=source_status,
+                source=source_by_id[source_id],
+                target=target,
+            )
+            if candidate_policy is not None:
+                not_required_for_paper_eod[source_id] = {
+                    **candidate_policy,
+                    "source_id": source_id,
+                    "freshness_status": source_status,
+                    "candidate_only": True,
+                    "reason": source_by_id[source_id].get("reason"),
+                    "not_required_for_paper_eod": True,
+                    "source_diagnostic": dict(source_by_id[source_id]),
+                }
+                continue
             blockers.append(f"freshness_lane_noncurrent_source_blocked:{source_id}:{source_status}")
         else:
             source = source_by_id[source_id]
@@ -693,6 +922,7 @@ def _paper_eod_freshness_projection(
                 source_id=source_id,
                 source_status=source_status,
                 source=source,
+                target=target,
             )
             if candidate_policy is not None:
                 not_required_for_paper_eod[source_id] = {

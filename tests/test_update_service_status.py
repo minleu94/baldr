@@ -86,6 +86,13 @@ def _sqlite_config(tmp_path):
     return config
 
 
+def _create_empty_sqlite_source(config):
+    """建立空白 SQLite 檔，讓來源修訂防護能檢查隔離測試資料根。"""
+    config.db_file.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(config.db_file) as connection:
+        connection.execute("CREATE TABLE fixture_empty_source (id INTEGER PRIMARY KEY)")
+
+
 def test_batch_daily_trading_days_include_start_date():
     calendar = _BoundedOfficialCalendarFixture(
         {
@@ -764,6 +771,7 @@ def test_merge_daily_data_includes_tpex_daily_price_dir(tmp_path):
     from scripts.merge_daily_data import merge_daily_data
 
     config = _sqlite_config(tmp_path)
+    _create_empty_sqlite_source(config)
     pd.DataFrame({
         "日期": ["20260617"],
         "證券代號": ["2330"],
@@ -790,6 +798,7 @@ def test_merge_daily_data_includes_tpex_daily_price_dir(tmp_path):
 
 def test_update_service_merge_daily_data_forwards_progress(tmp_path):
     config = _config(tmp_path)
+    _create_empty_sqlite_source(config)
     pd.DataFrame(
         {
             "證券代號": ["2330"],
@@ -946,6 +955,7 @@ def test_merge_daily_data_cancellation_preserves_existing_output(tmp_path):
     from scripts.merge_daily_data import merge_daily_data
 
     config = _config(tmp_path)
+    _create_empty_sqlite_source(config)
     original = pd.DataFrame(
         {
             "日期": ["20260617"],
@@ -991,6 +1001,7 @@ def test_merge_daily_data_cancellation_stops_inside_file_read_batch(tmp_path, mo
 
     merge_module = importlib.import_module("scripts.merge_daily_data")
     config = _config(tmp_path)
+    _create_empty_sqlite_source(config)
     source_file = config.daily_price_dir / "20260618.csv"
     source_file.write_text("stub\n", encoding="utf-8")
 
@@ -1057,6 +1068,7 @@ def test_merge_daily_data_reports_file_and_chunk_progress(tmp_path):
     from scripts.merge_daily_data import merge_daily_data
 
     config = _config(tmp_path)
+    _create_empty_sqlite_source(config)
     for date_key, stock_code in (("20260618", "2330"), ("20260619", "0050")):
         pd.DataFrame(
             {
@@ -1091,6 +1103,7 @@ def test_merge_daily_data_returns_structured_no_op_when_all_csv_are_already_merg
     from scripts.merge_daily_data import merge_daily_data
 
     config = _config(tmp_path)
+    _create_empty_sqlite_source(config)
     existing = pd.DataFrame(
         {
             "日期": ["20260618"],
@@ -1871,6 +1884,7 @@ def test_smart_incremental_recomputes_full_prefix_and_publishes_warmup_window(
     tmp_path, monkeypatch
 ):
     config = _config(tmp_path)
+    _create_empty_sqlite_source(config)
     pd.DataFrame({
         "日期": [
             "2026-01-01",
@@ -1948,6 +1962,7 @@ def test_smart_incremental_recomputes_full_prefix_and_publishes_warmup_window(
 
 def test_smart_incremental_technical_calculation_skips_when_indicator_is_current(tmp_path, monkeypatch):
     config = _config(tmp_path)
+    _create_empty_sqlite_source(config)
     pd.DataFrame({
         "日期": ["2026-01-01", "2026-01-02", "2026-01-03"],
         "證券代號": ["2330"] * 3,

@@ -15,6 +15,7 @@ import pytest
 from app_module.recommendation.input_preparation import (
     RecommendationInputPreparer,
     load_recommendation_market_frame,
+    minimum_recommendation_history_rows,
     prepare_recommendation_market,
     resolve_recommendation_cutoff,
 )
@@ -360,6 +361,74 @@ def test_historical_sqlite_market_read_is_readonly_and_missing_db_is_not_created
     with pytest.raises(sqlite3.OperationalError):
         HistoricalRecommendationMarketFrameProvider(missing)("2026-05-20")
     assert not missing_path.exists()
+
+
+def test_historical_market_warmup_uses_last_distinct_bars_before_cutoff(
+    tmp_path: Path,
+) -> None:
+    config = _test_config(tmp_path)
+    config.use_sqlite = True
+    config.db_file.parent.mkdir(parents=True, exist_ok=True)
+    trade_dates = pd.bdate_range("2026-01-01", periods=130)
+    with sqlite3.connect(config.db_file) as connection:
+        connection.execute(
+            'CREATE TABLE daily_prices ("日期" TEXT, "證券代號" TEXT, "收盤價" TEXT)'
+        )
+        connection.executemany(
+            "INSERT INTO daily_prices VALUES (?, ?, ?)",
+            [
+                (value.strftime("%Y%m%d"), "2330", str(index + 1))
+                for index, value in enumerate(trade_dates)
+            ],
+        )
+    before = sha256(config.db_file.read_bytes()).hexdigest()
+    cutoff = trade_dates[124].date().isoformat()
+
+    frame = HistoricalRecommendationMarketFrameProvider(config).load_with_minimum_bars(
+        cutoff,
+        120,
+    )
+
+    normalized = pd.to_datetime(frame["日期"].astype(str), format="%Y%m%d")
+    assert normalized.nunique() == 120
+    assert normalized.min() == trade_dates[5]
+    assert normalized.max() == trade_dates[124]
+    assert normalized.max().date().isoformat() == cutoff
+    assert sha256(config.db_file.read_bytes()).hexdigest() == before
+
+
+def test_indicator_warmup_tracks_enabled_windows_and_parent_disable() -> None:
+    long_ma = {
+        "config_schema_version": 1,
+        "technical": {
+            "trend": {
+                "enabled": True,
+                "ma": {"enabled": True, "windows": [5, 120]},
+            }
+        },
+    }
+    long_rsi = {
+        "config_schema_version": 1,
+        "technical": {
+            "momentum": {
+                "enabled": True,
+                "rsi": {"enabled": True, "timeperiod": 100},
+            }
+        },
+    }
+    parent_disabled = {
+        "config_schema_version": 1,
+        "technical": {
+            "momentum": {
+                "enabled": False,
+                "rsi": {"enabled": True, "timeperiod": 100},
+            }
+        },
+    }
+
+    assert minimum_recommendation_history_rows(long_ma) == 120
+    assert minimum_recommendation_history_rows(long_rsi) == 101
+    assert minimum_recommendation_history_rows(parent_disabled) == 60
 
 
 def test_historical_csv_source_priority_is_all_stocks_then_primary(

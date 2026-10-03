@@ -60,7 +60,8 @@ MARKET_DB = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"
 LEDGER_DB = OPERATIONAL_ROOT / "paper_trade_ledger.sqlite"
 SCHEMA_VERSION = "paper-portfolio-daily-isolated-scope.v1"
 TAIPEI_PREOPEN_CUTOFF = datetime_time(8, 30)
-SCHEDULED_WAKE_LOCAL_TIME = "16:15"
+SCHEDULED_WAKE_LOCAL_TIME = "08:25"
+SCHEDULED_WAKE_TIMEZONE = "Asia/Taipei"
 RUN_STATE_SCHEMA_VERSION = "paper-portfolio-isolated-run-state.v1"
 RUN_STATE_HEARTBEAT_INTERVAL_SECONDS = 60
 RUN_STATE_STALE_AFTER_SECONDS = 180
@@ -731,8 +732,8 @@ def _wait_until_taipei_cutoff(
 ) -> datetime:
     """在排程的早期喚醒後等待真實台北 08:30，再回傳可用時間。
 
-    排程設在 16:15 Pacific：PDT 時為台北 07:15，PST 時為台北 08:15。
-    此 guard 讓同一個 task 在兩種 DST 狀態都只於已到達 08:30 cutoff 後讀取來源；
+    排程設在 timezone-aware Asia/Taipei 08:25（+08:00）。準時啟動時只等待
+    五分鐘到 08:30 cutoff；此 guard 只在真實 cutoff 後讀取來源；
     測試可注入 clock/sleep，正式入口使用實際系統時間。
     """
 
@@ -921,8 +922,9 @@ def main(argv: list[str] | None = None) -> int:
     explicit_decision = None
     if args.decision_at is not None:
         explicit_decision = datetime.fromisoformat(str(args.decision_at).replace("Z", "+00:00"))
-    # Task Scheduler 在 Pacific 16:15 喚醒；兩種 DST offset 都早於台北 cutoff，
-    # 故此處只等待真實時鐘到 08:30，絕不以「最近已到達」把前一日當成今日輸入。
+    # Task Scheduler uses an explicit Asia/Taipei +08:00 08:25 boundary.
+    # This waits only for the real 08:30 clock, never selecting yesterday as
+    # today's input when a task starts before the cutoff.
     run_state = _PaperRunState(OPERATIONAL_ROOT)
     run_state.start(observed_at=datetime.now(timezone.utc))
     try:

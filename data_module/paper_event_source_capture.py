@@ -13,6 +13,7 @@ import argparse
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+from http.client import IncompleteRead
 import json
 import os
 from pathlib import Path
@@ -48,12 +49,24 @@ from data_module.formal_daily_input_producer import (  # noqa: E402
 PAPER_EVENT_CAPTURE_PRODUCER_VERSION = "twse-mis-session-open-capture.v1"
 PAPER_EVENT_CAPTURE_BINDING_SCHEMA_VERSION = "paper-event-capture-binding.v1"
 PAPER_EVENT_CAPTURE_DURABLE_SCHEMA_VERSION = "paper-event-capture-durable.v1"
+PAPER_EVENT_CAPTURE_ATTEMPT_SCHEMA_VERSION = "paper-event-capture-attempt.v1"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 MAX_TIMEOUT_SECONDS = 30.0
 
 
 class PaperEventSourceCaptureError(ValueError):
     """官方 Paper event source capture 的 fail-closed 錯誤。"""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        attempt_receipt: Mapping[str, object] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.attempt_receipt = (
+            None if attempt_receipt is None else dict(attempt_receipt)
+        )
 
 
 def _utc_now() -> datetime:
@@ -204,12 +217,19 @@ def _response_headers(response: object) -> tuple[str, str | None]:
     return content_type, encoding
 
 
-def _fetch_raw_response(
+def _fetch_raw_response_attempt(
     request_url: str,
     *,
     timeout_seconds: float,
     fetcher: Callable[[Request, float], object],
-) -> tuple[bytes, dict[str, object], datetime]:
+) -> tuple[object, dict[str, object], datetime, datetime, str | None]:
+    """Return raw attempt metadata even when the Paper parser will reject it.
+
+    Paper capture archives bounded response bytes and an attempt receipt before
+    applying the producer's fail-closed response checks, so rejected responses
+    remain diagnosable.
+    """
+
     request = Request(
         request_url,
         headers={
@@ -218,41 +238,186 @@ def _fetch_raw_response(
         },
         method="GET",
     )
+    request_started_at = _utc_now()
+    response_details: dict[str, object] | None = None
     try:
         response_context = fetcher(request, timeout_seconds)
         with cast(Any, response_context) as response:
             status = getattr(response, "status", None)
             final_url = response.geturl()
             content_type, content_encoding = _response_headers(response)
-            raw = response.read(PAPER_EXECUTION_EVENT_CAPTURE_MAX_BYTES + 1)
+            response_details = {
+                "http_status": status,
+                "final_url": final_url,
+                "content_type": content_type,
+                "content_encoding": content_encoding,
+            }
+            read_error: str | None = None
+            try:
+                raw = response.read(PAPER_EXECUTION_EVENT_CAPTURE_MAX_BYTES + 1)
+            except IncompleteRead as error:
+                raw = error.partial
+                read_error = type(error).__name__
             # Timestamp after response.read() completes.  This is deliberately
             # separate from the caller's start/observation clock so a slow
             # official response cannot be recorded as an earlier capture.
             completed_at = _utc_now()
-    except (OSError, HTTPError, URLError) as error:
+    except HTTPError as error:
+        status = error.code
+        final_url = error.geturl()
+        content_type, content_encoding = _response_headers(error)
+        read_error = None
+        try:
+            raw = error.read(PAPER_EXECUTION_EVENT_CAPTURE_MAX_BYTES + 1)
+        except IncompleteRead as read_exception:
+            raw = read_exception.partial
+            read_error = type(read_exception).__name__
+        except OSError as read_exception:
+            raw = None
+            read_error = type(read_exception).__name__
+        completed_at = _utc_now()
+    except (OSError, URLError) as error:
+        completed_at = _utc_now()
+        receipt = _build_capture_attempt_receipt(
+            request_url=request_url,
+            request_started_at=request_started_at,
+            request_completed_at=completed_at,
+            response=response_details,
+            raw=None,
+            parser_status="not_attempted",
+            failure_type=type(error).__name__,
+            failure_reason=f"TWSE MIS bounded GET 失敗:{type(error).__name__}",
+        )
         raise PaperEventSourceCaptureError(
-            f"TWSE MIS bounded GET 失敗:{type(error).__name__}"
+            f"TWSE MIS bounded GET 失敗:{type(error).__name__}",
+            attempt_receipt=receipt,
         ) from error
-    if isinstance(status, bool) or status != 200:
+    return (
+        raw,
+        {
+            "http_status": status,
+            "final_url": final_url,
+            "content_type": content_type,
+            "content_encoding": content_encoding,
+        },
+        request_started_at,
+        completed_at,
+        read_error,
+    )
+
+
+def _fetch_raw_response(
+    request_url: str,
+    *,
+    timeout_seconds: float,
+    fetcher: Callable[[Request, float], object],
+) -> tuple[bytes, dict[str, object], datetime]:
+    """Fetch a response under the legacy fail-closed three-value contract.
+
+    Prospective quote consumers must never treat a rejected Paper source
+    response as usable merely because Paper now retains its raw attempt bytes.
+    """
+
+    raw, response, _started_at, completed_at, read_error = (
+        _fetch_raw_response_attempt(
+            request_url,
+            timeout_seconds=timeout_seconds,
+            fetcher=fetcher,
+        )
+    )
+    if isinstance(response.get("http_status"), bool) or response.get("http_status") != 200:
         raise PaperEventSourceCaptureError("TWSE MIS HTTP status 不是 200")
-    if final_url != request_url:
+    if response.get("final_url") != request_url:
         raise PaperEventSourceCaptureError(
             "TWSE MIS response final URL 與固定 request 不一致"
         )
+    content_type = response.get("content_type")
+    media_type = (
+        content_type.split(";", 1)[0].strip().casefold()
+        if isinstance(content_type, str)
+        else ""
+    )
+    if media_type != "application/json":
+        raise PaperEventSourceCaptureError("TWSE MIS response content type 不是 JSON")
     if not isinstance(raw, bytes) or not raw:
         raise PaperEventSourceCaptureError("TWSE MIS response bytes 為空")
     if len(raw) > PAPER_EXECUTION_EVENT_CAPTURE_MAX_BYTES:
         raise PaperEventSourceCaptureError("TWSE MIS response 超過 bounded bytes")
-    if content_encoding not in {None, "", "identity"}:
+    if response.get("content_encoding") not in {None, "", "identity"}:
         raise PaperEventSourceCaptureError(
             "TWSE MIS response 使用不支援的 content encoding"
         )
-    return raw, {
-        "http_status": status,
-        "final_url": final_url,
-        "content_type": content_type,
-        "content_encoding": content_encoding,
-    }, completed_at
+    if read_error is not None:
+        raise PaperEventSourceCaptureError(
+            f"TWSE MIS response body read 不完整:{read_error}"
+        )
+    return raw, response, completed_at
+
+
+def _build_capture_attempt_receipt(
+    *,
+    request_url: str,
+    request_started_at: datetime | None,
+    request_completed_at: datetime | None,
+    response: Mapping[str, object] | None,
+    raw: object,
+    parser_status: str,
+    failure_type: str | None = None,
+    failure_reason: str | None = None,
+) -> dict[str, object]:
+    raw_is_bytes = isinstance(raw, bytes)
+    raw_bytes = cast(bytes, raw) if raw_is_bytes else None
+    return {
+        "schema_version": PAPER_EVENT_CAPTURE_ATTEMPT_SCHEMA_VERSION,
+        "request": {
+            "attempted": True,
+            "method": "GET",
+            "url": request_url,
+            "headers": {
+                "Accept": "application/json",
+                "User-Agent": "technical-analysis-paper-event-capture/1.0",
+            },
+        },
+        "request_started_at": (
+            None if request_started_at is None else request_started_at.isoformat()
+        ),
+        "request_completed_at": (
+            None if request_completed_at is None else request_completed_at.isoformat()
+        ),
+        "response": None if response is None else dict(response),
+        "raw_response": {
+            "present": raw_is_bytes,
+            "path": "raw_response.bin" if raw_is_bytes else None,
+            "type": None if raw is None else type(raw).__name__,
+            "bytes": None if raw_bytes is None else len(raw_bytes),
+            "sha256": None if raw_bytes is None else _sha256_bytes(raw_bytes),
+            "exceeded_limit": (
+                None
+                if raw_bytes is None
+                else len(raw_bytes) > PAPER_EXECUTION_EVENT_CAPTURE_MAX_BYTES
+            ),
+        },
+        "parser": {
+            "version": PAPER_EXECUTION_EVENT_CAPTURE_PARSER_VERSION,
+            "status": parser_status,
+            "failure_reason": failure_reason if parser_status == "failed" else None,
+        },
+        "failure": (
+            None
+            if failure_type is None and failure_reason is None
+            else {"type": failure_type, "reason": failure_reason}
+        ),
+    }
+
+
+def _write_capture_attempt_receipt(
+    output_root: Path,
+    receipt: Mapping[str, object],
+) -> Path:
+    receipt_path = output_root / "capture_attempt.json"
+    encoded = (_canonical_json(dict(receipt)) + "\n").encode("utf-8")
+    _write_create_only_bytes(receipt_path, encoded, "TWSE MIS capture attempt receipt")
+    return receipt_path
 
 
 def _validate_persisted_response_binding(
@@ -338,11 +503,66 @@ def capture_twse_session_open_prices(
         f"tse_{symbol}.tw" for symbol in normalized_symbols
     )
     request_url = _twse_mis_request_url(request_channels)
-    raw, response, completed_at = _fetch_raw_response(
-        request_url,
-        timeout_seconds=float(timeout_seconds),
-        fetcher=(fetcher or _urlopen_fetcher),
+    try:
+        raw, response, request_started_at, completed_at, read_error = (
+            _fetch_raw_response_attempt(
+                request_url,
+                timeout_seconds=float(timeout_seconds),
+                fetcher=(fetcher or _urlopen_fetcher),
+            )
+        )
+    except PaperEventSourceCaptureError as error:
+        if error.attempt_receipt is not None:
+            _write_capture_attempt_receipt(output_root, error.attempt_receipt)
+        raise
+
+    raw_receipt = _build_capture_attempt_receipt(
+        request_url=request_url,
+        request_started_at=request_started_at,
+        request_completed_at=completed_at,
+        response=response,
+        raw=raw,
+        parser_status="not_attempted",
     )
+    raw_value = cast(bytes, raw) if isinstance(raw, bytes) else None
+    raw_path = output_root / "raw_response.bin"
+    if raw_value is not None:
+        _write_create_only_bytes(raw_path, raw_value, "TWSE MIS raw response")
+
+    validation_reason: str | None = None
+    if isinstance(response.get("http_status"), bool) or response.get("http_status") != 200:
+        validation_reason = "TWSE MIS HTTP status 不是 200"
+    elif response.get("final_url") != request_url:
+        validation_reason = "TWSE MIS response final URL 與固定 request 不一致"
+    elif raw_value is None:
+        validation_reason = "TWSE MIS response type 不是 bytes"
+    elif not raw_value:
+        validation_reason = "TWSE MIS response bytes 為空"
+    elif len(raw_value) > PAPER_EXECUTION_EVENT_CAPTURE_MAX_BYTES:
+        validation_reason = "TWSE MIS response 超過 bounded bytes"
+    elif response.get("content_encoding") not in {None, "", "identity"}:
+        validation_reason = "TWSE MIS response 使用不支援的 content encoding"
+    elif read_error is not None:
+        validation_reason = f"TWSE MIS response body read 不完整:{read_error}"
+    if validation_reason is not None:
+        failed_receipt = _build_capture_attempt_receipt(
+            request_url=request_url,
+            request_started_at=request_started_at,
+            request_completed_at=completed_at,
+            response=response,
+            raw=raw,
+            parser_status="not_attempted",
+            failure_type="PaperEventSourceCaptureError",
+            failure_reason=validation_reason,
+        )
+        _write_capture_attempt_receipt(output_root, failed_receipt)
+        raise PaperEventSourceCaptureError(
+            validation_reason,
+            attempt_receipt=failed_receipt,
+        )
+
+    assert raw_value is not None  # Narrowed by validation above.
+    raw_hash = _sha256_bytes(raw_value)
     captured_at = _aware(now or completed_at, "captured_at")
     captured_local = captured_at.astimezone(TAIPEI)
     captured_time = captured_local.timetz().replace(tzinfo=None)
@@ -350,9 +570,24 @@ def capture_twse_session_open_prices(
         captured_local.date() != execution_date
         or not RULE_SESSION_OPEN <= captured_time < RULE_SESSION_CLOSE
     ):
-        raise PaperEventSourceCaptureError(
+        failure_reason = (
             "capture completion 必須位於 execution_date 當日台北 "
             "09:00..13:30 regular session"
+        )
+        failed_receipt = _build_capture_attempt_receipt(
+            request_url=request_url,
+            request_started_at=request_started_at,
+            request_completed_at=completed_at,
+            response=response,
+            raw=raw_value,
+            parser_status="not_attempted",
+            failure_type="PaperEventSourceCaptureError",
+            failure_reason=failure_reason,
+        )
+        _write_capture_attempt_receipt(output_root, failed_receipt)
+        raise PaperEventSourceCaptureError(
+            failure_reason,
+            attempt_receipt=failed_receipt,
         )
     event_at = datetime.combine(
         execution_date,
@@ -360,16 +595,36 @@ def capture_twse_session_open_prices(
         tzinfo=TAIPEI,
     ).astimezone(timezone.utc)
     rows, parse_reason = _parse_twse_mis_raw_rows(
-        raw,
+        raw_value,
         request_channels=request_channels,
         execution_date=execution_date,
         captured_at=captured_at,
     )
     if parse_reason is not None:
-        raise PaperEventSourceCaptureError(parse_reason)
-    raw_hash = _sha256_bytes(raw)
-    raw_path = output_root / "raw_response.bin"
-    _write_create_only_bytes(raw_path, raw, "TWSE MIS raw response")
+        failed_receipt = _build_capture_attempt_receipt(
+            request_url=request_url,
+            request_started_at=request_started_at,
+            request_completed_at=completed_at,
+            response=response,
+            raw=raw_value,
+            parser_status="failed",
+            failure_type="PaperEventSourceCaptureError",
+            failure_reason=parse_reason,
+        )
+        _write_capture_attempt_receipt(output_root, failed_receipt)
+        raise PaperEventSourceCaptureError(
+            parse_reason,
+            attempt_receipt=failed_receipt,
+        )
+    successful_receipt = _build_capture_attempt_receipt(
+        request_url=request_url,
+        request_started_at=request_started_at,
+        request_completed_at=completed_at,
+        response=response,
+        raw=raw_value,
+        parser_status="succeeded",
+    )
+    _write_capture_attempt_receipt(output_root, successful_receipt)
     body: dict[str, object] = {
         "schema_version": PAPER_EXECUTION_EVENT_CAPTURE_SCHEMA_VERSION,
         "producer": "data_module.paper_event_source_capture",
@@ -396,7 +651,7 @@ def capture_twse_session_open_prices(
         "captured_at": captured_at.isoformat(),
         "raw_response_path": raw_path.name,
         "raw_response_sha256": raw_hash,
-        "raw_response_bytes": len(raw),
+        "raw_response_bytes": len(raw_value),
         "raw_row_count": len(rows),
     }
     payload = {**body, "content_sha256": _payload_hash(body)}
@@ -443,8 +698,9 @@ def capture_twse_session_open_prices(
         "capture_file_hash": capture_file_hash,
         "raw_response_path": str(raw_path.resolve()),
         "raw_response_hash": raw_hash,
-        "raw_response_bytes": len(raw),
+        "raw_response_bytes": len(raw_value),
         "raw_row_count": len(rows),
+        "attempt_receipt": successful_receipt,
         "execution_date": execution_date.isoformat(),
         "execution_event_at": event_at.isoformat(),
         "captured_at": captured_at.isoformat(),

@@ -14,10 +14,11 @@ param(
     [string]$DecisionEvidenceAt = "05:25",
     [string]$ForwardOutcomeAt = "05:40",
     [string]$RecommendationCalibrationLearningAt = "05:45",
-    # Pacific 16:15 在 PDT／PST 分別對應台北次日 07:15／08:15；adapter
-    # 以台北真實 08:30 cutoff guard 等待後才讀取來源，兩種 offset 都維持
-    # 在開盤前喚醒，也避免 DST 漂移。
-    [string]$PaperPortfolioAt = "16:15",
+    # By default the dedicated updater installs a timezone-aware Taipei
+    # 08:25 trigger. This legacy-named parameter remains an explicit custom
+    # Windows-user-local HH:mm override for callers that request one.
+    [string]$PaperPortfolioAt,
+    [string]$PaperPortfolioExecutionTimeLimitOverride,
     # Paper EOD runs after the 04:20 update and 05:00 freshness receipt. The
     # adapter itself keeps the Taipei date/cutoff guard and bounded retry.
     [string]$PaperExecutionAt = "06:00",
@@ -32,6 +33,21 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not [string]::IsNullOrWhiteSpace($PaperPortfolioAt) -and
+    $PaperPortfolioAt -notmatch '^([01][0-9]|2[0-3]):[0-5][0-9]$') {
+    throw "PaperPortfolioAt is a custom Windows-user-local time and must use HH:mm."
+}
+if (-not [string]::IsNullOrWhiteSpace($PaperPortfolioExecutionTimeLimitOverride)) {
+    try {
+        if ([System.Xml.XmlConvert]::ToTimeSpan($PaperPortfolioExecutionTimeLimitOverride).TotalSeconds -le 0) {
+            throw 'duration_must_be_positive'
+        }
+    }
+    catch {
+        throw "PaperPortfolioExecutionTimeLimitOverride must be a positive ISO-8601 duration."
+    }
+}
 
 if ($Mode -ne 'DryRun') {
     $localTimeZone = [TimeZoneInfo]::Local.Id
@@ -112,6 +128,12 @@ $weeklyScript = Join-Path $RepoRoot "scripts\scheduled\run_v2_2_weekly_collectio
 $forwardTaskName = "baldr-ml-allocation-forward-daily"
 $forwardTaskScript = Join-Path $RepoRoot "scripts\scheduled\run_ml_allocation_forward_daily.cmd"
 
+$paperPortfolioDisplayTime = if ([string]::IsNullOrWhiteSpace($PaperPortfolioAt)) { "08:25" } else { $PaperPortfolioAt }
+$paperPortfolioDisplaySchedule = if ([string]::IsNullOrWhiteSpace($PaperPortfolioAt)) {
+    "DAILY Asia/Taipei 08:25 (+08:00)"
+} else {
+    "DAILY custom user-local $PaperPortfolioAt"
+}
 $dailyTasks = @(
     (New-DailyTaskSpec "baldr-data-update-quick-daily" "Non-UI baldr quick market data update." $updateScript $UpdateAt),
     (New-DailyTaskSpec "baldr-official-market-events-daily" "Append-only official market event publication." $officialEventsScript $OfficialEventsAt),
@@ -127,11 +149,13 @@ $dailyTasks = @(
     (New-DailyTaskSpec "baldr-forward-outcomes-daily" "Bounded close-to-close forward research outcome writer." $forwardOutcomeScript $ForwardOutcomeAt),
     (New-DailyTaskSpec "baldr-recommendation-calibration-learning-daily" "Bounded daily recommendation calibration shadow loop after forward outcome source." $recommendationCalibrationLearningScript $RecommendationCalibrationLearningAt),
     (New-DailyTaskSpec "baldr-paper-execution-eod-replay-daily" "Delayed EOD Paper execution after same-day update/freshness proof; bounded same-source retry." $paperExecutionScript $PaperExecutionAt),
-    (New-DailyTaskSpec "baldr-paper-portfolio-daily" "Pacific 16:15 wake-up; Taipei 08:30 guarded repository-only Paper valuation." $paperPortfolioScript $PaperPortfolioAt),
+    (New-DailyTaskSpec "baldr-paper-portfolio-daily" "Taipei 08:25 wake-up; Taipei 08:30 guarded repository-only Paper valuation." $paperPortfolioScript $paperPortfolioDisplayTime),
     (New-DailyTaskSpec "baldr-pit-sector-membership-preopen-capture-daily" "Candidate-only official PIT sector membership capture before Taipei open." $pitPreopenScript $PitPreopenAt),
     (New-DailyTaskSpec "baldr-formal-pit-sidecar-postcutoff-daily" "Candidate-only PIT sidecar capture after Taipei cutoff." $formalPitSidecarScript $FormalPitSidecarAt),
     (New-DailyTaskSpec "baldr-formal-input-producer-daily" "Bounded machine Rule, causal Paper ledger, and current PIT input handoff with durable receipts." $formalInputScript $FormalInputAt)
 )
+$paperTaskSpec = $dailyTasks | Where-Object { $_.Name -eq "baldr-paper-portfolio-daily" } | Select-Object -First 1
+$paperTaskSpec.Schedule = $paperPortfolioDisplaySchedule
 $weeklyTasks = @(
     (New-WeeklyTaskSpec "baldr-v2-2-weekly-collection" "Append-only weekly evidence collection with automatic maturity revalidation." $weeklyScript $WeeklyDay $WeeklyAt)
 )
@@ -152,6 +176,9 @@ foreach ($task in $selectedTasks) {
     Write-Host "  Action: $($task.Action)"
     Write-Host "  Description: $($task.Description)"
     Write-Host "  Enabled: $($task.Enabled)"
+}
+if (-not [string]::IsNullOrWhiteSpace($PaperPortfolioExecutionTimeLimitOverride)) {
+    Write-Host "Paper Portfolio explicit ExecutionTimeLimit override: $PaperPortfolioExecutionTimeLimitOverride"
 }
 
 $missingScripts = @(
@@ -195,9 +222,19 @@ foreach ($task in $selectedTasks) {
         continue
     }
     if ($task.Name -eq "baldr-paper-portfolio-daily") {
-        # 既有 Paper task 只能由 dedicated /Change 路徑更新 trigger/action；
-        # 它會區分 not-found 與 query error，保留 principal 與其餘 settings。
-        & $paperPortfolioRegistrationScript register
+        # The dedicated COM updater applies the timezone-aware default and
+        # preserves the current principal/settings. A custom local time is
+        # passed only when the caller explicitly supplies the legacy param.
+        $paperRegistrationArgs = @('register')
+        if (-not [string]::IsNullOrWhiteSpace($PaperPortfolioAt)) {
+            $paperRegistrationArgs += $PaperPortfolioAt
+        } elseif (-not [string]::IsNullOrWhiteSpace($PaperPortfolioExecutionTimeLimitOverride)) {
+            $paperRegistrationArgs += ''
+        }
+        if (-not [string]::IsNullOrWhiteSpace($PaperPortfolioExecutionTimeLimitOverride)) {
+            $paperRegistrationArgs += $PaperPortfolioExecutionTimeLimitOverride
+        }
+        & $paperPortfolioRegistrationScript @paperRegistrationArgs
         if ($LASTEXITCODE -ne 0) {
             throw "Paper Portfolio dedicated registration failed with exit code $LASTEXITCODE."
         }

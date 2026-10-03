@@ -246,6 +246,138 @@ class _ProbeMainWindow(MainWindow):
         super().closeEvent(event)
 
 
+def _read_update_process_state(window: object) -> tuple[bool | None, int | None, str | None]:
+    update_view = getattr(window, "update_view", None)
+    if update_view is None:
+        return None, None, "update_view_missing"
+    process = getattr(update_view, "_tpex_background_process", None)
+    process_id_raw = getattr(process, "pid", None)
+    process_id = (
+        process_id_raw
+        if type(process_id_raw) is int and process_id_raw > 0
+        else None
+    )
+    probe = getattr(update_view, "has_running_background_process", None)
+    if not callable(probe):
+        return None, process_id, "update_process_probe_unavailable"
+    try:
+        is_running = probe()
+    except Exception as exc:  # noqa: BLE001 - unknown process state must block close
+        return None, process_id, f"update_process_probe_error:{type(exc).__name__}"
+    if type(is_running) is not bool:
+        return (
+            None,
+            process_id,
+            f"update_process_probe_invalid_type:{type(is_running).__name__}",
+        )
+    return is_running, process_id, None
+
+
+def _read_close_state(window: object, dialog: object) -> dict[str, object]:
+    errors: list[str] = []
+    try:
+        workers = running_task_workers()
+        worker_types = sorted(
+            f"{type(worker).__module__}.{type(worker).__qualname__}"
+            for worker in workers
+        )
+    except Exception as exc:  # noqa: BLE001 - unknown worker state must block close
+        workers = None
+        worker_types = []
+        errors.append(f"task_worker_probe_error:{type(exc).__name__}")
+    try:
+        raw_research_busy = dialog.is_busy()  # type: ignore[attr-defined]
+        if type(raw_research_busy) is bool:
+            research_busy: bool | None = raw_research_busy
+        else:
+            research_busy = None
+            errors.append(
+                f"research_busy_probe_invalid_type:{type(raw_research_busy).__name__}"
+            )
+    except Exception as exc:  # noqa: BLE001 - unknown research state must block close
+        research_busy = None
+        errors.append(f"research_busy_probe_error:{type(exc).__name__}")
+    process_running, process_id, process_error = _read_update_process_state(window)
+    if process_error is not None:
+        errors.append(process_error)
+    is_idle = (
+        workers == ()
+        and research_busy is False
+        and process_running is False
+        and not errors
+    )
+    return {
+        "observed_at_utc": datetime.now(timezone.utc).isoformat(),
+        "task_worker_count": len(workers) if workers is not None else None,
+        "task_worker_types": worker_types,
+        "research_dialog_busy": research_busy,
+        "update_background_process_running": process_running,
+        "update_background_process_pid": process_id,
+        "probe_errors": errors,
+        "idle": is_idle,
+    }
+
+
+def _read_after_close_state(window: object) -> dict[str, object]:
+    errors: list[str] = []
+    try:
+        workers = running_task_workers()
+        worker_types = sorted(
+            f"{type(worker).__module__}.{type(worker).__qualname__}"
+            for worker in workers
+        )
+    except Exception as exc:  # noqa: BLE001 - unknown worker state must keep polling
+        workers = None
+        worker_types = []
+        errors.append(f"task_worker_probe_error:{type(exc).__name__}")
+    process_running, process_id, process_error = _read_update_process_state(window)
+    if process_error is not None:
+        errors.append(process_error)
+    return {
+        "observed_at_utc": datetime.now(timezone.utc).isoformat(),
+        "task_worker_count": len(workers) if workers is not None else None,
+        "task_worker_types": worker_types,
+        "update_background_process_running": process_running,
+        "update_background_process_pid": process_id,
+        "probe_errors": errors,
+        "idle": workers == () and process_running is False and not errors,
+    }
+
+
+class _ReadbackIdleCloseCoordinator:
+    """等全域 worker、研究視圖與 UpdateView 外部程序皆閒置後只關閉一次。"""
+
+    def __init__(
+        self,
+        window: object,
+        dialog: object,
+        receipt: dict[str, object],
+    ) -> None:
+        self._window = window
+        self._dialog = dialog
+        self._receipt = receipt
+        self._poll_count = 0
+        self.close_started = False
+
+    def request_close_if_idle(self) -> bool:
+        if self.close_started:
+            return True
+        self._poll_count += 1
+        state = _read_close_state(self._window, self._dialog)
+        self._receipt["idle_close_poll_count"] = self._poll_count
+        self._receipt["idle_close_last_state"] = state
+        if state["idle"] is not True:
+            return False
+        self.close_started = True
+        self._receipt["idle_close_before_state"] = state
+        self._receipt["idle_close_requests"] = _receipt_int(
+            self._receipt,
+            "idle_close_requests",
+        ) + 1
+        self._window.close()  # type: ignore[attr-defined]
+        return True
+
+
 def main() -> int:
     args = _parse_args()
     base_data_root = Path(args.data_root).expanduser().resolve()
@@ -266,6 +398,10 @@ def main() -> int:
         "research_workers_finished": False,
         "exact_identity_visible": False,
         "idle_close_requests": 0,
+        "idle_close_poll_count": 0,
+        "idle_close_before_state": None,
+        "idle_close_last_state": None,
+        "post_close_last_state": None,
         "main_window_close_event_count": 0,
         "watchdog_fired": False,
         "forced_termination": False,
@@ -512,10 +648,12 @@ def main() -> int:
 
         report_loaded = False
         journey_loaded = False
-        close_started = False
+        close_coordinator = _ReadbackIdleCloseCoordinator(window, dialog, receipt)
 
         def finish_after_close() -> None:
-            if _not_visible(window) and not running_task_workers():
+            post_close_state = _read_after_close_state(window)
+            receipt["post_close_last_state"] = post_close_state
+            if _not_visible(window) and post_close_state["idle"] is True:
                 app.quit()
             else:
                 QTimer.singleShot(20, finish_after_close)
@@ -526,14 +664,11 @@ def main() -> int:
         app.aboutToQuit.connect(mark_research_workers_finished)
 
         def finish_when_both_views_loaded() -> None:
-            nonlocal close_started
-            if close_started or not report_loaded or not journey_loaded:
+            if close_coordinator.close_started or not report_loaded or not journey_loaded:
                 return
-            close_started = True
-            receipt["idle_close_requests"] = _receipt_int(
-                receipt, "idle_close_requests"
-            ) + 1
-            window.close()
+            if not close_coordinator.request_close_if_idle():
+                QTimer.singleShot(20, finish_when_both_views_loaded)
+                return
             QTimer.singleShot(0, finish_after_close)
 
         def on_report_loaded(report: object) -> None:
@@ -752,7 +887,12 @@ def main() -> int:
         receipt["app_exec_returncode"] = app_exec_returncode
         receipt["window_hidden_after_exec"] = _not_visible(window)
         receipt["main_window_close_event_count"] = window.close_event_count
-        receipt["remaining_workers_after_exec"] = len(running_task_workers())
+        final_close_state = _read_after_close_state(window)
+        receipt["post_close_last_state"] = final_close_state
+        receipt["remaining_workers_after_exec"] = final_close_state["task_worker_count"]
+        receipt["update_background_process_running_after_exec"] = final_close_state[
+            "update_background_process_running"
+        ]
         rendered_identity = receipt.get("rendered_identity")
         report_identity = (
             rendered_identity.get("report_context", {})
@@ -840,6 +980,7 @@ def main() -> int:
             and receipt["forced_termination"] is False
             and receipt["window_hidden_after_exec"] is True
             and receipt["remaining_workers_after_exec"] == 0
+            and receipt["update_background_process_running_after_exec"] is False
             and app_exec_returncode == 0
             else 1
         )

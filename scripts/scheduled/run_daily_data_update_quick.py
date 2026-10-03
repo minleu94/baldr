@@ -1231,9 +1231,14 @@ def main(argv: list[str] | None = None) -> int:
                 action=lambda: candidate_updater(
                     start_date=start_date,
                     end_date=end_date,
-                    sources=("institutional", "credit"),
+                    sources=(
+                        ("institutional", "credit", "tdcc")
+                        if run_date.weekday() == 0
+                        else ("institutional", "credit")
+                    ),
                     include_latest_tdcc_snapshot=run_date.weekday() == 0,
-                    allow_online_calendar_probe=True,
+                    allow_online_calendar_probe=allow_calendar_online_probe,
+                    calendar=calendar,
                     progress_callback=None,
                 ),
                 warning_only=True,

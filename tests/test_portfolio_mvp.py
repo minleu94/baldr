@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -154,6 +155,63 @@ def test_portfolio_service_preserves_source_summary_on_trade_and_position(tmp_pa
     assert positions[0].source_id == "rec_001"
     assert positions[0].source_snapshot_hash == "hash001"
     assert positions[0].source_summary["total_score"] == 82.5
+
+
+def test_portfolio_summary_sums_only_recorded_costs_with_decimal_and_keeps_jsonl(tmp_path):
+    service = PortfolioService(make_config(tmp_path))
+    base = {
+        "portfolio_id": "default",
+        "stock_code": "2330",
+        "stock_name": "台積電",
+        "side": "buy",
+        "quantity": 1,
+        "price": 100,
+        "trade_date": "2026-01-02",
+    }
+    service.store.append_trade(
+        {
+            **base,
+            "trade_id": "trade-1",
+            "fees": "10.01",
+            "taxes": "0.00",
+            "currency": "TWD",
+        }
+    )
+    service.store.append_trade(
+        {
+            **base,
+            "trade_id": "trade-2",
+            "fees": "2.34",
+            "taxes": "5.67",
+            "currency": "TWD",
+        }
+    )
+    service.store.append_trade(
+        {
+            **base,
+            "trade_id": "trade-3",
+            "fees": "Infinity",
+            "currency": "USD",
+        }
+    )
+    trades_path = Path(tmp_path / "output" / "portfolio" / "trades.jsonl")
+    before = trades_path.read_bytes()
+
+    portfolio = service.get_portfolio()
+    costs = portfolio.recorded_trade_costs
+
+    assert costs is not None
+    assert costs.trade_count == 3
+    assert costs.fees_recorded_count == 2
+    assert costs.fees_missing_count == 1
+    assert costs.taxes_recorded_count == 2
+    assert costs.taxes_missing_count == 1
+    assert costs.fees_by_currency == {"TWD": Decimal("12.35")}
+    assert costs.taxes_by_currency == {"TWD": Decimal("5.67")}
+    assert portfolio.to_dict()["recorded_trade_costs"]["fees_by_currency"] == {
+        "TWD": "12.35"
+    }
+    assert trades_path.read_bytes() == before
 
 
 def test_portfolio_service_loads_legacy_trade_without_source_summary(tmp_path):

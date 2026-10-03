@@ -305,6 +305,68 @@ def test_scheduled_evidence_status_view_shows_latest_scheduled_run() -> None:
     assert "Run Metadata" in view.detail_panel.toPlainText()
 
 
+def test_scheduled_status_view_separates_engineering_run_from_research_cohort_quality() -> None:
+    app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    class FixedStatus:
+        def __init__(self, result):
+            self.result = result
+
+        def load_latest(self):
+            return self.result
+
+    verified = ScheduledEvidenceStatus(
+        recommendation_status="passed",
+        recommendation_source="scheduled_latest_status",
+        recommendation_result_id="rec_20261002_verified",
+        decision_date="2026-10-02",
+        recommendations_count=15,
+        recommendation_cohort_integrity_basis="canonical_payload_and_index_verified",
+        recommendation_canonical_payload_hash="sha256:" + "b" * 64,
+        recommendation_cohort_hash="sha256:" + "a" * 64,
+        recommendation_cohort_requested_count=200,
+        recommendation_cohort_quality_missing_count=0,
+        recommendation_cohort_quality_degraded_count=185,
+        recommendation_cohort_classifications=(
+            ("可用候選", 15),
+            ("策略排除", 185),
+            ("缺資料", 0),
+            ("來源品質問題", 0),
+            ("其他未判定", 0),
+        ),
+    )
+    view = ScheduledEvidenceStatusView(
+        FixedStatus(verified), auto_refresh=False, async_refresh=False
+    )
+    view.refresh_status()
+
+    card = view.recommendation_label.text()
+    details = view.detail_panel.toPlainText()
+    assert view.recommendation_label.wordWrap()
+    assert view.recommendation_label.minimumHeight() >= 112
+    assert "passed / scheduled_latest_status" in card
+    assert "可用候選 15 / 策略排除 185 / 缺資料 0 / 來源品質問題 0 / 其他未判定 0" in card
+    assert "推薦工程執行結果：passed" in details
+    assert "canonical_payload_and_index_verified" in details
+    assert "payload_hash=sha256:" in details
+    assert "保存的 cohort quality 原始統計（未改寫）：degraded=185 / missing=0" in details
+    assert "研究用途" in details
+    assert "不代表勝率或策略績效" in details
+
+    unverified = ScheduledEvidenceStatus(
+        recommendation_status="passed",
+        recommendation_source="scheduled_latest_status",
+        recommendation_result_id="rec_20261002_unverified",
+    )
+    unverified_view = ScheduledEvidenceStatusView(
+        FixedStatus(unverified), auto_refresh=False, async_refresh=False
+    )
+    unverified_view.refresh_status()
+    assert "未確認" in unverified_view.recommendation_label.text()
+    assert "來源品質問題 0" not in unverified_view.recommendation_label.text()
+
+
 @pytest.mark.parametrize(
     "error",
     (None, "controlled scheduled status error"),

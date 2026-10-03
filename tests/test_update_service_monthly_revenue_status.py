@@ -66,6 +66,32 @@ def test_fetch_mops_monthly_revenue_snapshot_candidate_is_candidate_only(
     assert not test_config.db_file.exists()
 
 
+def test_monthly_candidate_service_passes_cooperative_cancel_to_harvester(
+    test_config, monkeypatch
+) -> None:
+    observed = {}
+
+    def build_snapshot(**kwargs):
+        observed.update(kwargs)
+        return MopsMonthlyRevenueSnapshotResult(
+            rows=[], requested_periods=("2026-07",), fetched_periods=(),
+            diagnostics=(), cancelled=True,
+        )
+
+    monkeypatch.setattr(
+        "data_module.monthly_revenue_snapshot_harvester.build_mops_monthly_revenue_snapshot",
+        build_snapshot,
+    )
+    result = UpdateService(test_config).fetch_mops_monthly_revenue_snapshot_candidate(
+        start_period="2026-07", end_period="2026-07", fetch_date="2026-09-04",
+        sleep_seconds=0, cancel_callback=lambda: False,
+    )
+
+    assert result["cancelled"] is True
+    assert result["success"] is False
+    assert observed["cancel_callback"]() is False
+
+
 def test_monthly_revenue_dry_run_preserves_legacy_diagnostic_wire_payload(
     test_config,
     tmp_path,

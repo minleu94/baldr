@@ -271,14 +271,21 @@ class ScoringEngine:
         tech_config = config.get('technical', {})
         known = pd.Series(True, index=df.index)
 
+        def indicator_enabled(group: str, name: str) -> bool:
+            group_config = tech_config.get(group, {})
+            if not isinstance(group_config, dict) or group_config.get("enabled") is False:
+                return False
+            indicator_config = group_config.get(name, {})
+            return (
+                isinstance(indicator_config, dict)
+                and indicator_config.get("enabled", False) is True
+            )
+
         def require_observed(*aliases: str) -> None:
             nonlocal known
             column = next((name for name in aliases if name in df.columns), None)
             if column is None:
-                # Raw/direct callers may omit derived indicator columns.  In
-                # that case the individual kernel decides whether it can
-                # produce a score; an explicitly present non-finite column is
-                # the condition that must propagate an unknown value.
+                known &= False
                 return
             else:
                 known &= pd.to_numeric(df[column], errors="coerce").replace([np.inf, -np.inf], np.nan).notna()
@@ -292,46 +299,47 @@ class ScoringEngine:
             ("volatility", "bollinger", (("upperband", "upper_band", "BB_upper"), ("lowerband", "lower_band", "BB_lower"), ("收盤價", "Close", "close"))),
         )
         for group, name, columns in required_columns:
-            if tech_config.get(group, {}).get(name, {}).get("enabled", False):
+            if indicator_enabled(group, name):
                 for aliases in columns:
                     require_observed(*aliases)
-        ma_config = tech_config.get("trend", {}).get("ma", {})
-        if ma_config.get("enabled", False):
+        trend_config = tech_config.get("trend", {})
+        ma_config = trend_config.get("ma", {}) if isinstance(trend_config, dict) else {}
+        if indicator_enabled("trend", "ma"):
             for window in ma_config.get("windows", [5, 10, 20, 60]):
                 require_observed(f"MA{window}", f"SMA{window}", f"MA_{window}")
         
         # RSI 分數
-        if tech_config.get('momentum', {}).get('rsi', {}).get('enabled', False):
+        if indicator_enabled("momentum", "rsi"):
             rsi_score = self._calculate_rsi_score(df, regime)
             if rsi_score is not None:
                 scores.append(rsi_score)
         
         # MACD 分數
-        if tech_config.get('momentum', {}).get('macd', {}).get('enabled', False):
+        if indicator_enabled("momentum", "macd"):
             macd_score = self._calculate_macd_score(df, regime)
             if macd_score is not None:
                 scores.append(macd_score)
         
         # KD 分數
-        if tech_config.get('momentum', {}).get('kd', {}).get('enabled', False):
+        if indicator_enabled("momentum", "kd"):
             kd_score = self._calculate_kd_score(df)
             if kd_score is not None:
                 scores.append(kd_score)
         
         # ADX 分數
-        if tech_config.get('trend', {}).get('adx', {}).get('enabled', False):
+        if indicator_enabled("trend", "adx"):
             adx_score = self._calculate_adx_score(df)
             if adx_score is not None:
                 scores.append(adx_score)
         
         # 均線系統分數
-        if tech_config.get('trend', {}).get('ma', {}).get('enabled', False):
+        if indicator_enabled("trend", "ma"):
             ma_score = self._calculate_ma_score(df, tech_config.get('trend', {}).get('ma', {}))
             if ma_score is not None:
                 scores.append(ma_score)
         
         # 布林通道分數
-        if tech_config.get('volatility', {}).get('bollinger', {}).get('enabled', False):
+        if indicator_enabled("volatility", "bollinger"):
             bb_score = self._calculate_bollinger_score(df)
             if bb_score is not None:
                 scores.append(bb_score)

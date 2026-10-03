@@ -51,6 +51,7 @@ class MopsMonthlyRevenueSnapshotResult:
     requested_periods: tuple[str, ...]
     fetched_periods: tuple[str, ...]
     diagnostics: tuple[SourceDiagnostic, ...] = ()
+    cancelled: bool = False
 
     @property
     def valid_candidate(self) -> bool:
@@ -103,6 +104,8 @@ def build_mops_monthly_revenue_snapshot(
     save_html_dir: Path | None = None,
     sleep_seconds: float = 0.0,
     sleep: Callable[[float], object] = time.sleep,
+    cancel_callback: Callable[[], bool] | None = None,
+    progress_callback: Callable[[str, int], None] | None = None,
 ) -> MopsMonthlyRevenueSnapshotResult:
     requested_periods = tuple(_iter_periods(start_period, end_period))
     rows: list[dict[str, str]] = []
@@ -111,7 +114,16 @@ def build_mops_monthly_revenue_snapshot(
     fetched_at = _utc_now_text()
 
     request_pairs = [(market, period) for period in requested_periods for market in markets]
+    cancelled = False
     for index, (market, period) in enumerate(request_pairs):
+            if cancel_callback is not None:
+                try:
+                    if cancel_callback():
+                        cancelled = True
+                        break
+                except Exception:
+                    # 取消 callback 的故障不應假造取消或丟棄已取得來源。
+                    pass
             try:
                 html = fetch_html(market=market, period=period)
             except Exception as exc:
@@ -146,6 +158,14 @@ def build_mops_monthly_revenue_snapshot(
             diagnostics.extend(parse_diagnostics)
             if sleep_seconds > 0 and index < len(request_pairs) - 1:
                 sleep(sleep_seconds)
+            if progress_callback is not None:
+                try:
+                    progress_callback(
+                        f"已處理 MOPS {market} {period}",
+                        int(((index + 1) / max(len(request_pairs), 1)) * 100),
+                    )
+                except Exception:
+                    pass
 
     rows.sort(key=lambda row: (row["period"], row["market"], row["stock_code"]))
     return MopsMonthlyRevenueSnapshotResult(
@@ -153,6 +173,7 @@ def build_mops_monthly_revenue_snapshot(
         requested_periods=requested_periods,
         fetched_periods=tuple(sorted(fetched_periods)),
         diagnostics=tuple(diagnostics),
+        cancelled=cancelled,
     )
 
 

@@ -5511,9 +5511,11 @@ def _parse_twse_mis_raw_rows(
         return [], "market_source_capture_raw_response_json_invalid"
     if not isinstance(payload_value, Mapping):
         return [], "market_source_capture_raw_response_not_object"
-    if payload_value.get("rtcode") not in {"000", "0"}:
+    rtcode = payload_value.get("rtcode")
+    if type(rtcode) is not str or rtcode not in {"000", "0", "0000"}:
         return [], "market_source_capture_raw_response_status_invalid"
-    if payload_value.get("rtmessage") != "OK":
+    rtmessage = payload_value.get("rtmessage")
+    if type(rtmessage) is not str or rtmessage != "OK":
         return [], "market_source_capture_raw_response_message_invalid"
     messages = payload_value.get("msgArray")
     if not isinstance(messages, list) or not messages:

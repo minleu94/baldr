@@ -298,6 +298,9 @@ def _build_scheduled_postprocess_callback(
                 "scheduled_snapshot": True,
                 "research_only": True,
                 "decision_date": decision_date,
+                "date_semantics_schema": "scheduled-recommendation-date-roles.v1",
+                "decision_timezone": "Asia/Taipei",
+                "market_cutoff_date": typed_context.as_of_date,
                 **typed_temporal_values,
                 "max_stocks": max_stocks,
                 "top_n": top_n,
@@ -1613,7 +1616,7 @@ def main(argv: list[str] | None = None) -> int:
     run_root.mkdir(parents=True, exist_ok=True)
 
     now = scheduled_now()
-    decision_date = now.date().isoformat()
+    decision_date = now.astimezone(TAIPEI).date().isoformat()
     today_key = decision_date.replace("-", "")
     status_path = run_root / "latest_status.json"
     log_path = run_root / f"{today_key}_recommendation_snapshot.log"

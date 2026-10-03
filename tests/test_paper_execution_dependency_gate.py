@@ -9,10 +9,13 @@ import subprocess
 import sys
 from typing import cast
 
+import pytest
+
 from data_module.official_trading_calendar_cache import (
     build_twse_calendar_cache,
     write_twse_calendar_cache,
 )
+import scripts.scheduled.data_freshness_probe as freshness_probe
 from scripts.scheduled.paper_execution_dependency_gate import (
     _paper_eod_freshness_projection,
     inspect_dependency,
@@ -21,6 +24,60 @@ from scripts.scheduled.paper_execution_dependency_gate import (
 
 TARGET = "20260908"
 OBSERVED = datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
+
+
+class _WeekdayCalendar:
+    def get_trading_days_in_range(
+        self, start_date: date, end_date: date, *, allow_online_probe: bool = True
+    ) -> list[dict[str, object]]:
+        del allow_online_probe
+        records: list[dict[str, object]] = []
+        current = start_date
+        while current <= end_date:
+            is_open = current.weekday() < 5
+            records.append(
+                {
+                    "date": current,
+                    "date_str": current.isoformat(),
+                    "is_trading_day": is_open,
+                    "reason_code": "test_open" if is_open else "test_weekend",
+                }
+            )
+            current += timedelta(days=1)
+        return records
+
+
+def _real_tdcc_expected_wait_row(tmp_path: Path) -> dict[str, object]:
+    candidate_db = tmp_path / "candidate" / "phase3c.sqlite"
+    candidate_db.parent.mkdir(parents=True)
+    with sqlite3.connect(candidate_db) as conn:
+        conn.execute(
+            "CREATE TABLE tdcc_shareholding ("
+            "stock_code TEXT NOT NULL, decision_date TEXT NOT NULL, "
+            "source_version TEXT NOT NULL, available_at TEXT NOT NULL, "
+            "PRIMARY KEY (stock_code, decision_date))"
+        )
+        conn.execute(
+            "INSERT INTO tdcc_shareholding VALUES (?, ?, ?, ?)",
+            (
+                "000218",
+                "2026-09-25",
+                "tdcc-openapi-1-5.v1",
+                "2026-09-25T12:00:00+00:00",
+            ),
+        )
+    status = next(
+        item
+        for item in freshness_probe._phase3c_candidate_statuses(
+            candidate_db_path=candidate_db,
+            expected_session=None,
+            calendar=_WeekdayCalendar(),
+            reference_date=date(2026, 10, 2),
+            run_now=datetime(2026, 10, 2, 5, 0, tzinfo=freshness_probe.PACIFIC),
+        )
+        if item["source_id"] == "tdcc_shareholding"
+    )
+    return status
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
@@ -796,6 +853,19 @@ def _historical_degraded_payload(target: str) -> dict[str, object]:
     }
 
 
+def _payload_with_tdcc_candidate_row(
+    target: date,
+    tdcc_row: dict[str, object],
+) -> dict[str, object]:
+    payload = _historical_degraded_payload(target.strftime("%Y%m%d"))
+    source_statuses = cast(list[dict[str, object]], payload["source_statuses"])
+    source_statuses[:] = [
+        row for row in source_statuses if row.get("source_id") != "tdcc_shareholding"
+    ]
+    source_statuses.append(tdcc_row)
+    return payload
+
+
 def _today_candidate_projection_payload() -> dict[str, object]:
     """以 2026-09-22 的 candidate row contract 建立隔離 projection fixture。"""
 
@@ -924,6 +994,157 @@ def test_historical_payload_shape_fixture_classifies_two_non_eod_unknown_sources
         )
         assert tdcc_diagnostic["freshness_status"] == "unknown"
         assert statement_diagnostic["reason"] == "file_missing"
+
+
+def test_projection_accepts_real_tdcc_expected_wait_row_from_freshness_probe(
+    tmp_path: Path,
+) -> None:
+    target = date(2026, 10, 2)
+    tdcc_row = _real_tdcc_expected_wait_row(tmp_path)
+    assert tdcc_row["freshness_status"] == "expected_wait"
+    assert tdcc_row["frequency"] == "weekly candidate source"
+    assert tdcc_row["candidate_only"] is True
+
+    projection, blockers, _ignored = _paper_eod_freshness_projection(
+        _payload_with_tdcc_candidate_row(target, tdcc_row),
+        target=target,
+    )
+
+    assert blockers == []
+    assert projection["status"] == "degraded_non_eod_only"
+    excluded = cast(dict[str, dict[str, object]], projection["not_required_for_paper_eod"])
+    tdcc = excluded["tdcc_shareholding"]
+    assert tdcc["freshness_status"] == "expected_wait"
+    assert tdcc["reason_code"] == "tdcc_weekly_candidate_not_paper_eod_input"
+    assert tdcc["source_diagnostic"] == tdcc_row
+
+
+@pytest.mark.parametrize("status", ["stale", "partial"])
+def test_projection_accepts_named_tdcc_stale_or_partial_candidate_rows(
+    tmp_path: Path,
+    status: str,
+) -> None:
+    target = date(2026, 10, 2)
+    tdcc_row = _real_tdcc_expected_wait_row(tmp_path)
+    tdcc_row["freshness_status"] = status
+    tdcc_row["reason"] = f"fixture TDCC candidate status: {status}"
+    if status == "stale":
+        tdcc_row["actual_period"] = "20260918"
+        tdcc_row["missing_periods"] = ["20261002"]
+    else:
+        tdcc_row["actual_period"] = "20261002"
+        tdcc_row["duplicate_key_count"] = 1
+        coverage = cast(dict[str, object], tdcc_row["coverage"])
+        coverage["db_row_count"] = 2
+        coverage["latest_session_row_count"] = 2
+
+    projection, blockers, _ignored = _paper_eod_freshness_projection(
+        _payload_with_tdcc_candidate_row(target, tdcc_row),
+        target=target,
+    )
+
+    assert blockers == []
+    excluded = cast(dict[str, dict[str, object]], projection["not_required_for_paper_eod"])
+    assert excluded["tdcc_shareholding"]["freshness_status"] == status
+    assert excluded["tdcc_shareholding"]["source_diagnostic"] == tdcc_row
+
+
+@pytest.mark.parametrize(
+    "invalid_contract",
+    [
+        "not_candidate_only",
+        "wrong_frequency",
+        "wrong_downstream",
+        "wrong_update_entry",
+        "wrong_weekly_calendar",
+        "wrong_source_version_group",
+        "malformed_coverage",
+        "wrong_actual_week",
+        "after_grace",
+    ],
+)
+def test_projection_blocks_tdcc_expected_wait_when_binding_or_window_is_invalid(
+    tmp_path: Path,
+    invalid_contract: str,
+) -> None:
+    target = date(2026, 10, 2)
+    tdcc_row = _real_tdcc_expected_wait_row(tmp_path)
+    if invalid_contract == "not_candidate_only":
+        tdcc_row["candidate_only"] = False
+    elif invalid_contract == "wrong_frequency":
+        tdcc_row["frequency"] = "weekly official feed"
+    elif invalid_contract == "wrong_downstream":
+        tdcc_row["downstream"] = ["paper eod"]
+    elif invalid_contract == "wrong_update_entry":
+        tdcc_row["update_entry"] = "unexpected.update"
+    elif invalid_contract == "wrong_weekly_calendar":
+        coverage = cast(dict[str, object], tdcc_row["coverage"])
+        coverage["weekly_calendar_policy"] = "calendar-year weekdays"
+    elif invalid_contract == "wrong_source_version_group":
+        coverage = cast(dict[str, object], tdcc_row["coverage"])
+        coverage["expected_source_version_groups"] = [["tdcc-unregistered-version"]]
+    elif invalid_contract == "malformed_coverage":
+        tdcc_row["coverage"] = "not-an-object"
+    elif invalid_contract == "wrong_actual_week":
+        tdcc_row["actual_period"] = "2026-09-18"
+    elif invalid_contract == "after_grace":
+        target = date(2026, 10, 7)
+
+    projection, blockers, _ignored = _paper_eod_freshness_projection(
+        _payload_with_tdcc_candidate_row(target, tdcc_row),
+        target=target,
+    )
+
+    assert projection["status"] == "blocked"
+    assert any(
+        "tdcc_shareholding:expected_wait" in blocker for blocker in blockers
+    )
+    excluded = cast(dict[str, dict[str, object]], projection["not_required_for_paper_eod"])
+    assert "tdcc_shareholding" not in excluded
+
+
+@pytest.mark.parametrize(
+    "negative_case",
+    [
+        "expected_missing",
+        "actual_future",
+        "coverage_int_bool",
+        "date_suffix",
+        "failed_status",
+    ],
+)
+def test_projection_fails_closed_on_tdcc_period_and_typed_metadata_negatives(
+    tmp_path: Path,
+    negative_case: str,
+) -> None:
+    target = date(2026, 10, 2)
+    tdcc_row = _real_tdcc_expected_wait_row(tmp_path)
+    if negative_case in {"expected_missing", "actual_future", "coverage_int_bool"}:
+        tdcc_row["freshness_status"] = "stale"
+        tdcc_row["reason"] = "fixture stale candidate"
+        tdcc_row["actual_period"] = "20260918"
+        tdcc_row["missing_periods"] = ["20261002"]
+    if negative_case == "expected_missing":
+        tdcc_row["expected_period"] = None
+    elif negative_case == "actual_future":
+        tdcc_row["actual_period"] = "20991231"
+    elif negative_case == "coverage_int_bool":
+        coverage = cast(dict[str, object], tdcc_row["coverage"])
+        coverage["publication_grace_is_official_deadline"] = 0
+    elif negative_case == "date_suffix":
+        tdcc_row["expected_period"] = f"{tdcc_row['expected_period']}CORRUPT"
+    elif negative_case == "failed_status":
+        tdcc_row["freshness_status"] = "failed"
+
+    projection, blockers, _ignored = _paper_eod_freshness_projection(
+        _payload_with_tdcc_candidate_row(target, tdcc_row),
+        target=target,
+    )
+
+    assert projection["status"] == "blocked"
+    assert any("tdcc_shareholding" in blocker for blocker in blockers)
+    excluded = cast(dict[str, dict[str, object]], projection["not_required_for_paper_eod"])
+    assert "tdcc_shareholding" not in excluded
 
 
 def test_dependency_gate_blocks_stale_receipt_and_missing_target_source(tmp_path: Path) -> None:

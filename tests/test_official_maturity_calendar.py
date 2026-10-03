@@ -322,12 +322,29 @@ def test_scheduled_health_uses_future_planned_date_without_changing_outcome_basi
     )
     mismatch = EvidenceEventRepository(config).get_outcome(event.event_id, 5)
     assert mismatch is not None
-    assert mismatch.outcome_status.value == "ready"
-    assert mismatch.outcome_price_date == "2026-09-09"
+    assert mismatch.outcome_status.value == "pending"
+    assert mismatch.data_quality == EvidenceDataQuality.DEGRADED
+    assert mismatch.event_price_date == "2026-09-01"
+    assert mismatch.outcome_price_date is None
+    assert mismatch.outcome_close is None
+    assert mismatch.forward_return_bp is None
+    assert mismatch.benchmark_return_bp is None
+    assert mismatch.benchmark_excess_bp is None
+    assert mismatch.industry_return_bp is None
+    assert mismatch.industry_excess_bp is None
+    assert mismatch.max_adverse_excursion_bp is None
+    assert mismatch.max_favorable_excursion_bp is None
+    assert mismatch.metadata["expected_maturity_date"] == "2026-09-09"
     assert mismatch.metadata["return_basis"] == "close_to_close_event_date"
     assert mismatch.metadata["planned_official_maturity_date"] == "2026-09-08"
     assert mismatch.metadata["maturity_calendar_comparison"] == "blocked_mismatch"
+    assert mismatch.metadata["time_contract_state"] == "blocked_time_contract"
+    assert mismatch.metadata["readiness_blocker"] == "maturity_calendar_comparison_blocked"
+    assert "evidence_lineage" in mismatch.metadata
+    assert "blocked_time_contract_requires_review" in mismatch.warnings
+    assert "maturity_calendar_comparison_blocked" in mismatch.warnings
     assert mismatch_result["health"]["planned_official_maturity"][
         "comparison_blocked_count"
     ] == 1
     assert "maturity_calendar_comparison_blocked" in mismatch_result["blockers"]
+    assert mismatch_result["summary"]["blocked_time_contract_count"] == 1

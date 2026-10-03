@@ -39,6 +39,20 @@ RECONCILIATION_SAMPLE_LIMIT = 10
 CANONICAL_OBSERVATION_SCHEMA_VERSION = "phase3c-canonical-observation.v1"
 
 
+def _cancel_requested(callback: Optional[Callable[[], bool]]) -> bool:
+    if callback is None:
+        return False
+    try:
+        return bool(callback())
+    except Exception:
+        # 取消觀測是控制訊號；callback 故障不可冒充取消或資料錯誤。
+        return False
+
+
+class _CancellationRequestedBeforeFetch(Exception):
+    """停止尚未開始的單一官方請求，不代表來源錯誤。"""
+
+
 def configured_candidate_db_path() -> Optional[Path]:
     """回傳使用者明確設定的 candidate DB；不猜測或建立路徑。
 
@@ -99,6 +113,7 @@ class BackfillSummary:
     started_at: str
     finished_at: str
     daily_results: list[dict]
+    cancelled: bool = False
 
 
 @dataclass
@@ -174,6 +189,7 @@ class Phase3CBackfillRunner:
         rate_limit_seconds: float = 3.0,
         allow_online_calendar_probe: bool = False,
         include_latest_tdcc_snapshot: bool = False,
+        calendar: Optional[OfficialTradingCalendar] = None,
     ) -> None:
         root = production_data_root or os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")
         prod_db = production_db_path or Path(root) / "sqlite" / "twstock.db"
@@ -192,7 +208,7 @@ class Phase3CBackfillRunner:
         self.rate_limit_seconds = max(0.0, rate_limit_seconds)
         self.allow_online_calendar_probe = allow_online_calendar_probe
         self.include_latest_tdcc_snapshot = include_latest_tdcc_snapshot
-        self.calendar = OfficialTradingCalendar(db_path=prod_db)
+        self.calendar = calendar or OfficialTradingCalendar(db_path=prod_db)
 
     def _ensure_candidate_tables(self, conn: sqlite3.Connection) -> None:
         """建立 candidate working-copy 中的 Phase 3C 候選資料表與 checkpoint 表。"""
@@ -881,6 +897,7 @@ class Phase3CBackfillRunner:
         dry_run: bool = True,
         confirm_token: Optional[str] = None,
         progress_callback: Optional[Callable[[str, int], None]] = None,
+        cancel_callback: Optional[Callable[[], bool]] = None,
     ) -> BackfillSummary:
         """執行 Phase 3C 受控區間回補。"""
         started_at = datetime.now(timezone.utc).isoformat()
@@ -924,6 +941,7 @@ class Phase3CBackfillRunner:
             succeeded_count = 0
             skipped_count = 0
             failed_count = 0
+            was_cancelled = False
             tdcc_result_recorded = False
             tdcc_historical_status = (
                 "LATEST_SNAPSHOT_ENABLED；歷史日期仍 BLOCKED_NO_HISTORICAL_ENDPOINT"
@@ -933,70 +951,97 @@ class Phase3CBackfillRunner:
 
             if self.include_latest_tdcc_snapshot and "tdcc" in self.sources:
                 fetched_at = datetime.now(timezone.utc).isoformat()
-                try:
-                    time.sleep(self.rate_limit_seconds)
-                    tdcc_frame = fetch_latest_tdcc_shareholding()
-                    if tdcc_frame.empty:
-                        raise ValueError("TDCC 最新單週官方端點未回傳候選資料")
-                    unique_dates = sorted(
-                        str(value)
-                        for value in tdcc_frame["decision_date"].dropna().unique()
-                    )
-                    if len(unique_dates) != 1:
-                        raise ValueError("TDCC 最新 snapshot 必須只有一個資料日")
-                    snapshot_date = date.fromisoformat(unique_dates[0])
-                    if snapshot_date > date.today() or snapshot_date > end_date:
-                        raise ValueError("TDCC 最新 snapshot 日期晚於本次可接受日期")
-                    snapshot_date_str = snapshot_date.isoformat()
-                    self._validate_source_frame(
-                        tdcc_frame,
-                        "tdcc",
-                        snapshot_date_str,
-                    )
-                    if conn is not None and self.is_date_already_completed(
-                        conn,
-                        snapshot_date_str,
-                        "tdcc",
-                    ):
-                        result = DailyFetchResult(
-                            decision_date=snapshot_date_str,
-                            source="tdcc",
-                            is_trading_day=None,
-                            trading_day_reason="latest_weekly_snapshot",
-                            status="SKIPPED_ALREADY_EXISTS",
-                            http_status=None,
-                            row_count=0,
-                            error_message=None,
-                            fetched_at=fetched_at,
+                tdcc_failure_date = end_date.isoformat()
+                if _cancel_requested(cancel_callback):
+                    was_cancelled = True
+                    tdcc_result_recorded = True
+                else:
+                    try:
+                        time.sleep(self.rate_limit_seconds)
+                        if _cancel_requested(cancel_callback):
+                            was_cancelled = True
+                            tdcc_result_recorded = True
+                            raise _CancellationRequestedBeforeFetch()
+                        tdcc_frame = fetch_latest_tdcc_shareholding()
+                        if tdcc_frame.empty:
+                            raise ValueError("TDCC 最新單週官方端點未回傳候選資料")
+                        unique_dates = sorted(
+                            str(value)
+                            for value in tdcc_frame["decision_date"].dropna().unique()
                         )
-                        skipped_count += 1
-                    else:
-                        if not dry_run and conn is not None:
-                            tdcc_frame.to_sql(
-                                "tdcc_shareholding",
-                                conn,
-                                if_exists="append",
-                                index=False,
+                        if len(unique_dates) != 1:
+                            raise ValueError("TDCC 最新 snapshot 必須只有一個資料日")
+                        snapshot_date = date.fromisoformat(unique_dates[0])
+                        tdcc_failure_date = snapshot_date.isoformat()
+                        if snapshot_date > date.today() or snapshot_date > end_date:
+                            raise ValueError("TDCC 最新 snapshot 日期晚於本次可接受日期")
+                        snapshot_date_str = snapshot_date.isoformat()
+                        self._validate_source_frame(tdcc_frame, "tdcc", snapshot_date_str)
+                        if conn is not None and self.is_date_already_completed(
+                            conn, snapshot_date_str, "tdcc"
+                        ):
+                            result = DailyFetchResult(
+                                decision_date=snapshot_date_str,
+                                source="tdcc",
+                                is_trading_day=None,
+                                trading_day_reason="latest_weekly_snapshot",
+                                status="SKIPPED_ALREADY_EXISTS",
+                                http_status=None,
+                                row_count=0,
+                                error_message=None,
+                                fetched_at=fetched_at,
                             )
-                            conn.commit()
-                            total_rows_inserted += len(tdcc_frame)
-                        result = DailyFetchResult(
-                            decision_date=snapshot_date_str,
-                            source="tdcc",
-                            is_trading_day=None,
-                            trading_day_reason="latest_weekly_snapshot",
-                            status="SUCCESS",
-                            http_status=None,
-                            row_count=len(tdcc_frame),
-                            error_message=None,
-                            fetched_at=fetched_at,
-                        )
-                        succeeded_count += 1
-                    append_result(result)
-                except Exception as exc:
-                    append_result(
-                        DailyFetchResult(
-                            decision_date=end_date.isoformat(),
+                            skipped_count += 1
+                            append_result(result)
+                        elif not dry_run and conn is not None:
+                            tdcc_observation_at = datetime.now(timezone.utc).isoformat()
+                            # TDCC 資料列、來源 observation 與 SUCCESS checkpoint
+                            # 共用同一交易；失敗即全部回滾，重試可補缺列。
+                            with conn:
+                                conn.execute("BEGIN IMMEDIATE")
+                                outcome = self._reconcile_source_frame(
+                                    conn, "tdcc", snapshot_date_str, tdcc_frame, tdcc_observation_at
+                                )
+                                tdcc_reconciliation = outcome.report
+                                result = DailyFetchResult(
+                                    decision_date=snapshot_date_str,
+                                    source="tdcc",
+                                    is_trading_day=None,
+                                    trading_day_reason="latest_weekly_snapshot",
+                                    status="SUCCESS",
+                                    http_status=None,
+                                    row_count=len(tdcc_frame),
+                                    error_message=None,
+                                    fetched_at=fetched_at,
+                                    reconciliation=tdcc_reconciliation,
+                                )
+                                self._record_source_observation(
+                                    conn, result, outcome.canonical_payload_json
+                                )
+                                self._record_checkpoint(conn, result)
+                            results.append(result)
+                            total_rows_inserted += int(tdcc_reconciliation["inserted_row_count"])
+                            succeeded_count += 1
+                        else:
+                            result = DailyFetchResult(
+                                decision_date=snapshot_date_str,
+                                source="tdcc",
+                                is_trading_day=None,
+                                trading_day_reason="latest_weekly_snapshot",
+                                status="SUCCESS",
+                                http_status=None,
+                                row_count=len(tdcc_frame),
+                                error_message=None,
+                                fetched_at=fetched_at,
+                            )
+                            append_result(result)
+                            succeeded_count += 1
+                    except _CancellationRequestedBeforeFetch:
+                        pass
+                    except Exception as exc:
+                        logger.error(f"抓取 TDCC 最新 snapshot 失敗: {exc}")
+                        failed_result = DailyFetchResult(
+                            decision_date=tdcc_failure_date,
                             source="tdcc",
                             is_trading_day=None,
                             trading_day_reason="latest_weekly_snapshot",
@@ -1006,15 +1051,20 @@ class Phase3CBackfillRunner:
                             error_message=str(exc),
                             fetched_at=fetched_at,
                         )
-                    )
-                    failed_count += 1
-                tdcc_result_recorded = True
+                        append_result(failed_result)
+                        failed_count += 1
+                    tdcc_result_recorded = True
+                    if _cancel_requested(cancel_callback):
+                        was_cancelled = True
 
             trading_days_count = sum(1 for d in days_range if d["is_trading_day"] is True)
             non_trading_days_count = sum(1 for d in days_range if d["is_trading_day"] is False)
             unknown_days_count = sum(1 for d in days_range if d["is_trading_day"] is None)
 
             for idx, day_info in enumerate(days_range):
+                if _cancel_requested(cancel_callback):
+                    was_cancelled = True
+                    break
                 d_obj = day_info["date"]
                 assert isinstance(d_obj, date)
                 d_str = str(day_info["date_str"])
@@ -1027,6 +1077,9 @@ class Phase3CBackfillRunner:
                     progress_callback(f"處理 {d_str} ({idx + 1}/{total_days})...", pct)
 
                 for src in self.sources:
+                    if _cancel_requested(cancel_callback):
+                        was_cancelled = True
+                        break
                     fetch_started_at = datetime.now(timezone.utc).isoformat()
                     # 保留既有 fetched_at 的 fetch-start 語意；完整 payload
                     # 的 observation_at 會在 fetcher 返回後另行建立。
@@ -1055,8 +1108,8 @@ class Phase3CBackfillRunner:
                         skipped_count += 1
                         continue
 
-                    # 非官方交易日直接跳過
-                    if is_td is False or is_td is None:
+                    # 只有有證據的休市日可以合法跳過；日曆未知必須可重試，不能當作休市。
+                    if is_td is False:
                         append_result(
                             DailyFetchResult(
                                 decision_date=d_str,
@@ -1071,6 +1124,26 @@ class Phase3CBackfillRunner:
                             )
                         )
                         skipped_count += 1
+                        continue
+
+                    if is_td is None:
+                        append_result(
+                            DailyFetchResult(
+                                decision_date=d_str,
+                                source=src,
+                                is_trading_day=None,
+                                trading_day_reason=td_reason,
+                                status="BLOCKED_CALENDAR_UNKNOWN",
+                                http_status=None,
+                                row_count=0,
+                                error_message=(
+                                    f"官方交易日狀態未知：{d_str} ({td_reason})；"
+                                    "未抓取資料，需在日曆可驗證後重試"
+                                ),
+                                fetched_at=fetched_at,
+                            )
+                        )
+                        failed_count += 1
                         continue
 
                     # 斷點續跑檢查
@@ -1094,6 +1167,9 @@ class Phase3CBackfillRunner:
                     # 實際連線抓取
                     try:
                         time.sleep(self.rate_limit_seconds)
+                        if _cancel_requested(cancel_callback):
+                            was_cancelled = True
+                            break
                         df: Optional[pd.DataFrame] = None
                         if src == "institutional":
                             df = fetch_institutional_flows(d_obj)
@@ -1220,6 +1296,7 @@ class Phase3CBackfillRunner:
                         )
                         failed_count += 1
 
+            was_cancelled = was_cancelled or _cancel_requested(cancel_callback)
             finished_at = datetime.now(timezone.utc).isoformat()
             summary = BackfillSummary(
                 start_date=start_date.isoformat(),
@@ -1239,6 +1316,7 @@ class Phase3CBackfillRunner:
                 started_at=started_at,
                 finished_at=finished_at,
                 daily_results=[asdict(r) for r in results],
+                cancelled=was_cancelled,
             )
 
             # 寫入 summary 報告檔至非 tracked 輸出位置
@@ -1278,6 +1356,7 @@ class Phase3CBackfillRunner:
 - **未知／無證據日數**: {summary.unknown_days_count}
 
 ## 回補執行結果
+- **是否安全取消**: {summary.cancelled}
 - **成功完成日數**: {summary.succeeded_days_count}
 - **跳過日數 (非交易日/已存在/TDCC邊界)**: {summary.skipped_days_count}
 - **失敗待重試日數**: {summary.failed_days_count}

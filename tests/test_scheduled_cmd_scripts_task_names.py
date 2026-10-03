@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import sys
+import json
 import pytest
 
 
@@ -55,9 +57,9 @@ def test_register_cmd_contains_task_names_and_times() -> None:
     assert "05:45" in text
     assert "06:00" in text
     assert "16:00" in text
-    assert "16:15" in text
+    assert "08:25" in text
     assert "DAILY 17:30" not in text
-    assert "Taipei mapping: 07:15 PDT / 08:15 PST" in text
+    assert "Asia/Taipei 08:25 (+08:00)" in text
     assert "call :check_timezone" in text
     assert "21:25" in text
     assert "schtasks.exe /Create" in text
@@ -120,6 +122,7 @@ def test_register_powershell_defines_all_daily_and_weekly_tasks() -> None:
         "ForwardOutcomeAt",
         "RecommendationCalibrationLearningAt",
         "PaperPortfolioAt",
+        "PaperPortfolioExecutionTimeLimitOverride",
         "PaperExecutionAt",
         "PitPreopenAt",
         "FormalPitSidecarAt",
@@ -148,8 +151,8 @@ def test_query_and_unregister_cmd_include_all_task_names() -> None:
     unregister_text = (SCHEDULED_DIR / "unregister_baldr_scheduled_tasks.cmd").read_text(encoding="utf-8")
 
     for task_name in TASK_NAMES:
-        assert task_name in query_text
         assert task_name in unregister_text
+    assert "inspect_scheduled_task_registration.py" in query_text
     assert "baldr-evidence-working-copy-smoke-manual" not in query_text
     assert "baldr-evidence-working-copy-smoke-manual" in unregister_text
 
@@ -173,6 +176,8 @@ def test_query_cmd_returns_nonzero_when_a_task_is_missing(tmp_path: Path, missin
     )
     env = os.environ.copy()
     env["BALDR_SCHTASKS_EXE"] = str(fake_schtasks)
+    env["BALDR_COM_QUERY_PYTHON"] = str(tmp_path / "missing_python.exe")
+    env["BALDR_PYTHON"] = sys.executable
 
     result = subprocess.run(
         [
@@ -189,8 +194,12 @@ def test_query_cmd_returns_nonzero_when_a_task_is_missing(tmp_path: Path, missin
     )
 
     assert result.returncode == 1
-    assert f"Task not found: {missing_task}" in result.stdout
-    assert "1 of 21 task(s) missing or unavailable" in result.stdout
+    report = json.loads(result.stdout)
+    assert report["confirmed_missing_count"] == 0
+    assert report["unknown_count"] == 1
+    missing = next(item for item in report["tasks"] if item["name"] == missing_task)
+    assert missing["status"] == "unknown"
+    assert "Task not found:" not in result.stdout
 
 
 def test_query_cmd_returns_zero_when_all_tasks_exist(tmp_path: Path) -> None:
@@ -198,6 +207,8 @@ def test_query_cmd_returns_zero_when_all_tasks_exist(tmp_path: Path) -> None:
     fake_schtasks.write_text("@echo off\nexit /b 0\n", encoding="utf-8")
     env = os.environ.copy()
     env["BALDR_SCHTASKS_EXE"] = str(fake_schtasks)
+    env["BALDR_COM_QUERY_PYTHON"] = str(tmp_path / "missing_python.exe")
+    env["BALDR_PYTHON"] = sys.executable
 
     result = subprocess.run(
         [
@@ -214,7 +225,9 @@ def test_query_cmd_returns_zero_when_all_tasks_exist(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "all 21 task(s) are available" in result.stdout
+    report = json.loads(result.stdout)
+    assert report["available_count"] == 21
+    assert report["all_available"] is True
 
 
 def test_weekly_register_creates_only_the_sunday_sidecar_collection_task() -> None:
@@ -234,7 +247,10 @@ def test_weekly_task_is_queryable_and_unregistrable_without_daily_task_changes()
     query_text = (SCHEDULED_DIR / "query_baldr_scheduled_tasks.cmd").read_text(encoding="utf-8")
     unregister_text = (SCHEDULED_DIR / "unregister_baldr_scheduled_tasks.cmd").read_text(encoding="utf-8")
 
-    assert WEEKLY_TASK_NAME in query_text
+    from scripts.inspect_scheduled_task_registration import EXPECTED_TASKS
+
+    assert WEEKLY_TASK_NAME in {item["name"] for item in EXPECTED_TASKS}
+    assert "inspect_scheduled_task_registration.py" in query_text
     assert WEEKLY_TASK_NAME in unregister_text
 
 
@@ -259,13 +275,14 @@ def test_register_dryrun_displays_the_weekly_sunday_task_definition() -> None:
     assert "Dryrun only. No scheduled task was created." in result.stdout
 
 
-def test_weekly_collection_wrappers_invoke_only_collection_cli_without_history_or_confirm() -> None:
+def test_weekly_collection_wrappers_bind_controller_and_current_writer_without_pit_promotion() -> None:
     cmd_text = (SCHEDULED_DIR / "run_v2_2_weekly_collection.cmd").read_text(encoding="utf-8")
     powershell_text = (SCHEDULED_DIR / "run_v2_2_weekly_collection.ps1").read_text(encoding="utf-8")
 
     assert "powershell.exe" not in cmd_text.lower()
-    assert "collect_v2_2_weekly_evidence.py" in cmd_text
-    assert "collect_v2_2_weekly_evidence.py" in powershell_text
     for text in (cmd_text, powershell_text):
+        assert "weekly_collection_controller.py" in text
+        assert "run_current_fundamentals_scheduled.py" in text
+        assert "BALDR_ENABLE_CURRENT_FUNDAMENTAL_UPDATE" in text
         assert "--save-history" not in text
         assert "--confirm-action-items" not in text

@@ -1,0 +1,56 @@
+{
+  "schema_version": "paper-portfolio-task-registration-plan.v1",
+  "status": "prepared_not_applied",
+  "task_name": "baldr-paper-portfolio-daily",
+  "task_path": "\\baldr-paper-portfolio-daily",
+  "schedule": {
+    "type": "daily",
+    "decision_timezone": "Asia/Taipei",
+    "decision_local_time": "08:25",
+    "start_boundary": "2026-10-03T08:25:00+08:00",
+    "days_interval": 1,
+    "utc_time": "00:25",
+    "pacific_mapping": {
+      "PDT": "17:25 previous Pacific calendar date",
+      "PST": "16:25 previous Pacific calendar date"
+    },
+    "cutoff_guard": "Wait only until the real same-day Asia/Taipei 08:30 cutoff; do not read decision sources early."
+  },
+  "action": {
+    "executable": "cmd.exe",
+    "arguments_template": "/c \"<repo-root>\\scripts\\scheduled\\run_paper_portfolio_daily.cmd\"",
+    "working_directory": "<repo-root>"
+  },
+  "settings": {
+    "multiple_instances": "IgnoreNew",
+    "random_delay": "PT0S",
+    "start_when_available": false,
+    "execution_time_limit": "preserve existing Scheduler value",
+    "recommended_execution_time_limit": "PT30M",
+    "recommended_execution_time_limit_status": "not adopted: no measured post-cutoff producer duration is available; obtain a controlled run duration before considering an override",
+    "execution_time_limit_override": "Optional explicit ISO-8601 duration parameter; omitted by default",
+    "retry_policy": "Preserve the existing Scheduler retry setting; the current registration does not request a new retry policy.",
+    "disallow_start_if_on_batteries": "preserve existing true value",
+    "stop_if_going_on_batteries": "preserve existing true value",
+    "principal": "preserve existing InteractiveToken principal and LeastPrivilege run level"
+  },
+  "registration": {
+    "method": "Dedicated Python pywin32 Task Scheduler COM update of the existing task definition.",
+    "aggregate_policy": "Aggregate registration delegates Paper to this dedicated updater and does not create a Pacific-local trigger for it.",
+    "missing_task_policy": "Fail closed; do not create a replacement task or choose a new principal.",
+    "before_backup": "Create-only XML backup under output/qa/scheduled_registration_backups before mutation.",
+    "applied_by_this_plan": false,
+    "task_state_owner": "deployment owner; this worker did not apply or read back the trigger update"
+  },
+  "rollback": {
+    "method": "Re-register the saved before XML for the same root task path while preserving its existing principal and task ACL.",
+    "backup_root": "output/qa/scheduled_registration_backups",
+    "do_not_delete_task": true
+  },
+  "safety": {
+    "research_only": true,
+    "broker_order_allowed": false,
+    "formal_credit_granted": false,
+    "writes_market_database": false
+  }
+}

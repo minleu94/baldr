@@ -106,6 +106,24 @@ class FrozenRulePolicySourceProvider:
             after = self.path.read_bytes()
             if before != after:
                 raise ValueError("frozen_rule_policy_source_changed_during_read")
+            if payload.get("status") == "skipped_non_trading_day":
+                self._verify_non_trading_receipt(
+                    payload, decision_date=decision_date,
+                    decision_at=decision_at, observed_at=observed_at,
+                )
+                return SourceProviderResult(
+                    values={},
+                    provenance={
+                        "provider": type(self).__name__, "path": str(self.path),
+                        "status": "not_published_non_trading_day",
+                        "file_sha256": _sha256(before),
+                        "source_date": payload["taipei_date"],
+                        "observed_at": payload["observed_at"],
+                        "calendar": payload["calendar"],
+                    },
+                    missing=("policy",),
+                    warnings=("frozen_rule_policy_not_published_non_trading_day",),
+                )
             policy = self._read_and_verify(
                 payload,
                 decision_date=decision_date,
@@ -149,6 +167,38 @@ class FrozenRulePolicySourceProvider:
                 "position_thesis_policy_not_supplied_by_formal_rule",
             ),
         )
+
+    @staticmethod
+    def _verify_non_trading_receipt(
+        payload: Mapping[str, Any], *, decision_date: str,
+        decision_at: datetime, observed_at: datetime,
+    ) -> None:
+        # A verified no-work receipt supplies cadence evidence, never a policy.
+        if payload.get("schema_version") != FROZEN_RULE_POLICY_STATUS_SCHEMA_VERSION:
+            raise ValueError("frozen_rule_policy_source_schema_invalid")
+        for field in (
+            "candidate_only", "formal_oos_allowed", "promotion_eligible",
+            "broker_order_allowed", "writes_formal_controlled_paths",
+            "writes_market_database",
+        ):
+            if payload.get(field) is not (field == "candidate_only"):
+                raise ValueError(f"frozen_rule_policy_{field}_boundary_invalid")
+        source_date = _date_text(payload.get("taipei_date"))
+        if source_date > _date_text(decision_date):
+            raise ValueError("frozen_rule_policy_activation_date_future")
+        source_clock = _aware(payload.get("observed_at"))
+        if source_clock > decision_at or source_clock > observed_at:
+            raise ValueError("frozen_rule_policy_source_observed_at_future")
+        calendar = payload.get("calendar")
+        if (
+            not isinstance(calendar, Mapping)
+            or calendar.get("date") != source_date
+            or calendar.get("is_official_trading_day") is not False
+            or not calendar.get("reason")
+            or payload.get("reason") != calendar.get("reason")
+            or payload.get("exit_code") != 0
+        ):
+            raise ValueError("frozen_rule_policy_non_trading_receipt_invalid")
 
     def _read_and_verify(
         self,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 
 from data_module.config import TWStockConfig
 from app_module.evidence_event_dtos import (
@@ -145,6 +146,37 @@ def test_forward_outcome_uses_trading_day_window_not_calendar_days(tmp_path):
     assert outcome.forward_return_bp == 1000
     assert outcome.return_basis == "close_to_close_event_date"
     assert outcome.window_type == "trading_days"
+    assert "maturity_calendar_comparison" not in outcome.metadata
+
+
+def test_annual_plan_only_calendar_match_keeps_existing_ready_outcome(tmp_path):
+    config = _config(tmp_path)
+    _seed_prices(config.db_file)
+    event = _record_event(config)
+
+    class _AnnualPlanOnlyMatch:
+        def evaluate(self, **_kwargs):
+            return SimpleNamespace(
+                planned_date="2026-06-06",
+                status="planned_reached",
+                remaining_sessions=0,
+                calendar={"status": "annual_plan_only"},
+            )
+
+    forward = ForwardPerformanceService(
+        config,
+        EvidenceEventRepository(config),
+        maturity_calendar=_AnnualPlanOnlyMatch(),
+    )
+    summary = forward.calculate(windows=(5,), dry_run=False)
+    outcome = forward.repository.list_outcomes(event_id=event.event_id)[0]
+
+    assert summary.blocked_time_contract_count == 0
+    assert outcome.outcome_status == EvidenceOutcomeStatus.READY
+    assert outcome.outcome_price_date == "2026-06-06"
+    assert outcome.forward_return_bp is not None
+    assert outcome.metadata["planned_official_calendar"]["status"] == "annual_plan_only"
+    assert outcome.metadata["maturity_calendar_comparison"] == "match"
 
 
 def test_forward_outcome_uses_unnamed_market_index_when_event_benchmark_missing(tmp_path):

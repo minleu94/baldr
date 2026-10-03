@@ -135,3 +135,28 @@ def test_build_mops_snapshot_fetches_markets_and_periods_with_summary() -> None:
     assert result.rows[1]["source_version"] == (
         f"mops-static-twse-2026-04-sha256-{expected_digest}"
     )
+
+
+def test_monthly_snapshot_cooperative_cancel_keeps_completed_market_rows() -> None:
+    cancellation = {"requested": False}
+    calls: list[str] = []
+
+    def fake_fetch(*, market: str, period: str) -> str:
+        calls.append(market)
+        cancellation["requested"] = True
+        return MOPS_SAMPLE_HTML
+
+    result = build_mops_monthly_revenue_snapshot(
+        start_period="2026-03",
+        end_period="2026-03",
+        markets=("twse", "tpex"),
+        fetch_date=date(2026, 6, 16),
+        fetch_html=fake_fetch,
+        cancel_callback=lambda: cancellation["requested"],
+    )
+
+    assert result.cancelled is True
+    assert calls == ["twse"]
+    assert result.fetched_periods == ("2026-03",)
+    assert len(result.rows) == 1
+    assert result.rows[0]["market"] == "twse"

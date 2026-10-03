@@ -845,3 +845,34 @@ def test_evaluator_keeps_health_policy_hash_when_rule_source_is_present(
     assert result["policy_hash"] == DEFAULT_POLICY_HASH
     assert result["provenance"]["policy"]["policy_hash"] == "sha256:" + "a" * 64
     assert result["status"] == "degraded"
+
+
+@pytest.mark.parametrize("tamper", [None, "calendar", "boundary", "future"])
+def test_frozen_rule_non_trading_receipt_preserves_no_work(tmp_path, tamper):
+    from app_module.position_health_source_providers import FROZEN_RULE_POLICY_STATUS_SCHEMA_VERSION
+    payload = {
+        "schema_version": FROZEN_RULE_POLICY_STATUS_SCHEMA_VERSION,
+        "status": "skipped_non_trading_day", "taipei_date": "2026-09-06",
+        "observed_at": "2026-09-06T00:00:00+00:00", "exit_code": 0,
+        "reason": "weekend_closed",
+        "calendar": {"date": "2026-09-06", "is_official_trading_day": False,
+                     "reason": "weekend_closed"},
+        "candidate_only": True, "formal_oos_allowed": False,
+        "promotion_eligible": False, "broker_order_allowed": False,
+        "writes_formal_controlled_paths": False, "writes_market_database": False,
+    }
+    if tamper == "calendar": payload["calendar"]["is_official_trading_day"] = True
+    if tamper == "boundary": payload["formal_oos_allowed"] = True
+    if tamper == "future": payload["observed_at"] = "2026-09-09T00:00:00+00:00"
+    path = tmp_path / "rule.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    result = FrozenRulePolicySourceProvider(path).read(
+        decision_date="2026-09-08", decision_at=DECISION_AT, observed_at=DECISION_AT,
+    )
+    assert result.values == {}
+    assert result.missing == ("policy",)
+    if tamper is None:
+        assert not result.blockers
+        assert result.provenance["status"] == "not_published_non_trading_day"
+    else:
+        assert result.blockers

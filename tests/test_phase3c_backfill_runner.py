@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sqlite3
 import time
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
@@ -13,6 +14,8 @@ from data_module import phase3c_backfill_runner as runner_module
 from data_module.p0_candidate_repository import ProductionPathRejectedError
 from data_module.phase3c_backfill_runner import APPLY_CONFIRM_TOKEN, Phase3CBackfillRunner
 from scripts.update_phase3c_candidates import update_phase3c_candidates_range
+import scripts.update_phase3c_candidates as candidates_script
+import app_module.update_service as update_service_module
 
 
 def _production_db(tmp_path):
@@ -166,6 +169,309 @@ def test_runner_dry_run_leaves_candidate_db_untouched(tmp_path):
 
     assert summary.succeeded_days_count == 1
     assert not cand_db.exists()
+
+
+def test_runner_blocks_unknown_calendar_and_retries_after_calendar_recovers(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "candidate.db"
+
+    class _Calendar:
+        state = None
+
+        def get_trading_days_in_range(self, start, end, *, allow_online_probe):
+            assert start == end == date(2024, 7, 22)
+            assert allow_online_probe is False
+            return [{
+                "date": start,
+                "date_str": start.isoformat(),
+                "is_trading_day": self.state,
+                "reason_code": "test_calendar_unavailable" if self.state is None else "test_open",
+            }]
+
+    calendar = _Calendar()
+    phase3c_runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("institutional",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+        allow_online_calendar_probe=False,
+        calendar=calendar,
+    )
+    with patch(
+        "data_module.phase3c_backfill_runner.fetch_institutional_flows",
+        return_value=_institutional_frame(),
+    ) as fetch:
+        unresolved = phase3c_runner.run_backfill(
+            date(2024, 7, 22), date(2024, 7, 22), dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+        fetch.assert_not_called()
+        assert unresolved.failed_days_count == 1
+        assert unresolved.skipped_days_count == 0
+        assert unresolved.daily_results[0]["status"] == "BLOCKED_CALENDAR_UNKNOWN"
+        assert "2024-07-22" in unresolved.daily_results[0]["error_message"]
+        with sqlite3.connect(candidate_db) as conn:
+            checkpoint = conn.execute(
+                "SELECT status FROM phase3c_backfill_checkpoints "
+                "WHERE decision_date='2024-07-22' AND source='institutional'"
+            ).fetchone()
+        assert checkpoint == ("BLOCKED_CALENDAR_UNKNOWN",)
+
+        calendar.state = True
+        recovered = phase3c_runner.run_backfill(
+            date(2024, 7, 22), date(2024, 7, 22), dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    assert fetch.call_count == 1
+    assert recovered.failed_days_count == 0
+    assert recovered.daily_results[0]["status"] == "SUCCESS"
+
+
+def test_runner_keeps_verified_market_closure_as_a_skip_without_fetch(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+
+    class _Calendar:
+        def get_trading_days_in_range(self, start, end, *, allow_online_probe):
+            assert allow_online_probe is False
+            return [{
+                "date": start,
+                "date_str": start.isoformat(),
+                "is_trading_day": False,
+                "reason_code": "test_official_closure",
+            }]
+
+    phase3c_runner = Phase3CBackfillRunner(
+        tmp_path / "candidate.db",
+        sources=("institutional", "credit"),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+        allow_online_calendar_probe=False,
+        calendar=_Calendar(),
+    )
+    with patch("data_module.phase3c_backfill_runner.fetch_institutional_flows") as institutional, patch(
+        "data_module.phase3c_backfill_runner.fetch_credit_transactions"
+    ) as credit:
+        summary = phase3c_runner.run_backfill(
+            date(2024, 7, 22), date(2024, 7, 22), dry_run=True
+        )
+
+    institutional.assert_not_called()
+    credit.assert_not_called()
+    assert summary.failed_days_count == 0
+    assert summary.skipped_days_count == 2
+    assert {item["status"] for item in summary.daily_results} == {
+        "SKIPPED_NOT_TRADING_DAY"
+    }
+
+
+def test_phase3c_range_wrapper_passes_caller_calendar_and_offline_policy(
+    tmp_path, monkeypatch
+):
+    calendar = object()
+    observed = {}
+
+    class _Runner:
+        def __init__(self, **kwargs):
+            observed.update(kwargs)
+
+        def run_backfill(self, **_kwargs):
+            return SimpleNamespace(
+                failed_days_count=0,
+                total_days=1,
+                succeeded_days_count=1,
+                skipped_days_count=0,
+                daily_results=[],
+            )
+
+    monkeypatch.setattr(candidates_script, "Phase3CBackfillRunner", _Runner)
+    result = update_phase3c_candidates_range(
+        start_date="2024-07-22",
+        end_date="2024-07-22",
+        dry_run=True,
+        sources=("institutional",),
+        allow_online_calendar_probe=False,
+        calendar=calendar,
+    )
+
+    assert result["success"] is True
+    assert observed["calendar"] is calendar
+    assert observed["allow_online_calendar_probe"] is False
+
+
+def test_candidate_cli_explicit_calendar_cache_is_validated_and_forces_offline(
+    tmp_path, monkeypatch
+):
+    cache_path = tmp_path / "calendar_cache"
+    cache_path.mkdir()
+    observed = {}
+
+    class _Calendar:
+        def __init__(self, *, calendar_cache_path):
+            observed["calendar_cache_path"] = calendar_cache_path
+
+        def _load_cached_year_schedule(self, calendar_year):
+            observed.setdefault("years", []).append(calendar_year)
+            return object()
+
+    monkeypatch.setattr(candidates_script, "OfficialTradingCalendar", _Calendar)
+    calendar = candidates_script._calendar_for_candidate_cli(
+        cache_path,
+        "2025-12-31",
+        "2026-01-02",
+    )
+
+    assert isinstance(calendar, _Calendar)
+    assert observed["calendar_cache_path"] == cache_path.resolve()
+    assert observed["years"] == [2025, 2026]
+
+
+@pytest.mark.parametrize(
+    ("status", "failed_days", "skipped_days", "expected_exit_code"),
+    [
+        ("SKIPPED_NOT_TRADING_DAY", 0, 1, 0),
+        ("FAILED_RETRYABLE", 1, 0, 2),
+        ("BLOCKED_CALENDAR_UNKNOWN", 1, 0, 2),
+    ],
+)
+def test_candidate_cli_exit_code_tracks_no_work_and_retryable_calendar_results(
+    tmp_path,
+    monkeypatch,
+    status,
+    failed_days,
+    skipped_days,
+    expected_exit_code,
+):
+    class _Runner:
+        def __init__(self, **_kwargs):
+            pass
+
+        def run_backfill(self, **_kwargs):
+            return SimpleNamespace(
+                failed_days_count=failed_days,
+                total_days=1,
+                succeeded_days_count=0,
+                skipped_days_count=skipped_days,
+                daily_results=[{
+                    "decision_date": "2024-07-22",
+                    "source": "institutional",
+                    "status": status,
+                }],
+            )
+
+    monkeypatch.setattr(candidates_script, "Phase3CBackfillRunner", _Runner)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = candidates_script.main(
+        ["--date", "2024-07-22", "--sources", "institutional"]
+    )
+
+    assert exit_code == expected_exit_code
+
+
+def test_phase3c_range_wrapper_reports_unknown_calendar_dates_as_failure(
+    monkeypatch,
+):
+    class _Runner:
+        def __init__(self, **_kwargs):
+            pass
+
+        def run_backfill(self, **_kwargs):
+            return SimpleNamespace(
+                failed_days_count=1,
+                total_days=1,
+                succeeded_days_count=0,
+                skipped_days_count=0,
+                daily_results=[{
+                    "decision_date": "2024-07-22",
+                    "source": "institutional",
+                    "status": "BLOCKED_CALENDAR_UNKNOWN",
+                }],
+            )
+
+    monkeypatch.setattr(candidates_script, "Phase3CBackfillRunner", _Runner)
+    result = update_phase3c_candidates_range(
+        start_date="2024-07-22",
+        end_date="2024-07-22",
+        dry_run=True,
+        sources=("institutional",),
+    )
+
+    assert result["success"] is False
+    assert "2024-07-22" in result["message"]
+
+
+def test_phase3c_range_wrapper_preserves_cancelled_partial_summary(monkeypatch):
+    summary = SimpleNamespace(
+        failed_days_count=0,
+        cancelled=True,
+        total_days=4,
+        succeeded_days_count=2,
+        skipped_days_count=0,
+        daily_results=[{"status": "SUCCESS"}, {"status": "SUCCESS"}],
+    )
+
+    class _Runner:
+        def __init__(self, **_kwargs):
+            pass
+
+        def run_backfill(self, **_kwargs):
+            return summary
+
+    monkeypatch.setattr(candidates_script, "Phase3CBackfillRunner", _Runner)
+    result = update_phase3c_candidates_range(
+        start_date="2024-07-22",
+        end_date="2024-07-25",
+        dry_run=True,
+        sources=("institutional",),
+    )
+
+    assert result["success"] is False
+    assert result["cancelled"] is True
+    assert result["summary"] is summary
+    assert "已完成 2 天" in result["message"]
+
+
+def test_update_service_passes_calendar_to_phase3c_range(
+    tmp_path, monkeypatch
+):
+    candidate_db = tmp_path / "candidate.db"
+    calendar = object()
+    cancel_callback = lambda: False
+    observed = {}
+
+    def _update_range(**kwargs):
+        observed.update(kwargs)
+        return {"success": True, "summary": object(), "message": "ok"}
+
+    monkeypatch.setattr(
+        update_service_module,
+        "configured_candidate_db_path",
+        lambda: candidate_db,
+    )
+    monkeypatch.setattr(
+        candidates_script,
+        "update_phase3c_candidates_range",
+        _update_range,
+    )
+    service = update_service_module.UpdateService(
+        SimpleNamespace(meta_data_dir=tmp_path / "meta_data")
+    )
+
+    result = service.update_phase3c_candidate_range(
+        start_date="2024-07-22",
+        end_date="2024-07-22",
+        allow_online_calendar_probe=False,
+        calendar=calendar,
+        cancel_callback=cancel_callback,
+    )
+
+    assert result["success"] is True
+    assert observed["calendar"] is calendar
+    assert observed["allow_online_calendar_probe"] is False
+    assert observed["cancel_callback"] is cancel_callback
 
 
 def test_runner_sources_filter_excludes_tdcc_and_writes_checkpoints(tmp_path):
@@ -828,3 +1134,105 @@ def test_runner_latest_tdcc_snapshot_uses_payload_date_and_checkpoint(tmp_path):
         ).fetchone()
     assert tdcc_rows == [("2330", "2024-07-19")]
     assert checkpoint == ("2024-07-19", "tdcc", "SUCCESS", 1)
+
+
+def test_tdcc_rows_and_success_checkpoint_commit_atomically_and_retry_idempotently(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / "candidate.db"
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=("tdcc",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+        include_latest_tdcc_snapshot=True,
+    )
+    with sqlite3.connect(candidate_db) as conn:
+        runner._ensure_candidate_tables(conn)
+        conn.execute(
+            """
+            CREATE TRIGGER reject_tdcc_success_checkpoint
+            BEFORE INSERT ON phase3c_backfill_checkpoints
+            WHEN NEW.source = 'tdcc' AND NEW.status = 'SUCCESS'
+            BEGIN
+                SELECT RAISE(ABORT, 'fixture checkpoint failure');
+            END;
+            """
+        )
+
+    with patch(
+        "data_module.phase3c_backfill_runner.fetch_latest_tdcc_shareholding",
+        return_value=_tdcc_frame(),
+    ) as fetch:
+        failed = runner.run_backfill(
+            date(2024, 7, 19), date(2024, 7, 22), dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+        assert failed.daily_results[0]["status"] == "FAILED_RETRYABLE"
+        with sqlite3.connect(candidate_db) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM tdcc_shareholding").fetchone()[0] == 0
+            checkpoint = conn.execute(
+                "SELECT status FROM phase3c_backfill_checkpoints "
+                "WHERE source='tdcc' AND decision_date='2024-07-19'"
+            ).fetchone()
+            assert checkpoint == ("FAILED_RETRYABLE",)
+            conn.execute("DROP TRIGGER reject_tdcc_success_checkpoint")
+
+        recovered = runner.run_backfill(
+            date(2024, 7, 19), date(2024, 7, 22), dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+        repeated = runner.run_backfill(
+            date(2024, 7, 19), date(2024, 7, 22), dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    assert fetch.call_count == 3
+    assert recovered.daily_results[0]["status"] == "SUCCESS"
+    assert recovered.total_rows_inserted == 1
+    assert repeated.daily_results[0]["status"] == "SKIPPED_ALREADY_EXISTS"
+    with sqlite3.connect(candidate_db) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM tdcc_shareholding").fetchone()[0] == 1
+        checkpoint = conn.execute(
+            "SELECT status, row_count FROM phase3c_backfill_checkpoints "
+            "WHERE source='tdcc' AND decision_date='2024-07-19'"
+        ).fetchone()
+    assert checkpoint == ("SUCCESS", 1)
+
+
+def test_runner_cancellation_after_complete_fetch_preserves_result_and_reports_cancelled(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    cancellation = {"requested": False}
+    runner = Phase3CBackfillRunner(
+        tmp_path / "candidate.db",
+        sources=("institutional",),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+        calendar=SimpleNamespace(
+            get_trading_days_in_range=lambda start, end, *, allow_online_probe: [{
+                "date": start,
+                "date_str": start.isoformat(),
+                "is_trading_day": True,
+                "reason_code": "verified fixture session",
+            }]
+        ),
+    )
+
+    def _fetch(_day):
+        cancellation["requested"] = True
+        return _institutional_frame()
+
+    with patch("data_module.phase3c_backfill_runner.fetch_institutional_flows", side_effect=_fetch):
+        summary = runner.run_backfill(
+            date(2024, 7, 22), date(2024, 7, 22), dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+            cancel_callback=lambda: cancellation["requested"],
+        )
+
+    assert summary.cancelled is True
+    assert summary.succeeded_days_count == 1
+    assert summary.daily_results[0]["status"] == "SUCCESS"
+    assert summary.daily_results[0]["row_count"] == 1
+    with sqlite3.connect(tmp_path / "candidate.db") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM institutional_flows").fetchone()[0] == 1

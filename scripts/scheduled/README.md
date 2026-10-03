@@ -1,6 +1,10 @@
 # baldr Scheduled Operational Wrappers
 
-These wrappers are intentionally conservative. They use CMD files and Windows built-in `schtasks.exe` because the previous PowerShell `.ps1` registration path was blocked by local execution policy. Do not use `Set-ExecutionPolicy` or bypass local policy. Only the dedicated Decision/Evidence capture task enters confirmed append-only formal event capture；the separate forward-outcome task may update only the corresponding research outcome rows after a bounded current-date calculation；EOD Paper execution may append the separate research-only Paper ledger under its own bounded contract. 所有 Gate 都由機器重驗，不建立等待人工批准的排程 task。
+這些 wrappers 使用 CMD 入口；aggregate 保留 Windows `schtasks.exe`，完整唯讀查詢與 Paper 原地更新使用現有 Python／pywin32 Task Scheduler COM。PowerShell `.ps1` 曾被本機 execution policy 阻擋，不修改或繞過 policy。只有專用 Decision/Evidence capture task 進入既有 append-only event capture；Forward task 依有界當日計算更新研究 outcome rows，EOD Paper 依自身契約追加獨立研究 ledger。所有 Gate 都由機器重驗，不建立等待人工批准的排程 task。
+
+2026-10-02 整合修復的最新設定／受控 producer／consumer 證據見[整合修復紀錄](../../docs/06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md)。21 項 Exec WorkingDirectory 已原地設為 repo；Paper／ML 具時區 trigger 為台北 08:25，兩項暫停已恢復。以下 9/30、10/1 runtime 清冊是歷史，不能取代新設定讀回或新一次執行。
+
+另有兩個 Codex app heartbeat，不屬於此處的 Windows Task inventory：`baldr-scheduled-evidence-morning-report` 每天美西 05:30；`paper`（晚間學習與 Paper 排程驗收）每天美西 06:20。它們只讀同次 Task/run receipts、identity、hash 與有限 log，變化通知採 change-only，不啟動 producer、Task、訓練或 Paper action。時區使用 `America/Los_Angeles` 本地時間並隨 DST 變更；不要另建立固定 UTC task 或把 heartbeat 當成 Windows trigger。
 
 2026-09-30 Task inventory 與截至 2026-10-01 已讀回的 execution evidence 以[排程修復 QA](../../docs/06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)為準；該文件將受控人工執行、自然 trigger、safe no-work 與 failed dependency 分開記錄。最近的 21-task inventory 為 `output/qa/scheduled_task_inventory_20261001T002916Z_940402272834.json`（52,144 bytes、SHA-256 `9bbe91e9c6b1cc723222e87cd92a9751e8ff9985de9f3d7f4f76c2946193e374`），21/21 exact root task paths、0 errors。9/30 Pacific 16:15（10/1 Taipei 07:15）Paper Portfolio 與 ML forward 仍沒有同次 terminal：runtime 為 `waiting_for_taipei_cutoff`／`terminal=false`、heartbeat stale，latest 仍為前一日；原因尚未證實，不能用舊 latest 結案。inventory 在 Taipei 08:29:16 觀測，早於 08:30 cutoff 44 秒；不由 cutoff 到達推論成功。
 
@@ -8,13 +12,14 @@ These wrappers are intentionally conservative. They use CMD files and Windows bu
 
 Aggregate `register`／`register-all` 只允許在 Windows `Pacific Standard Time`
 主機建立這些以 Pacific local time 表示的 task；`dryrun` 仍可在其他時區唯讀檢查。
-Paper Portfolio 的 trigger 固定為 Pacific 16:15：PDT 時是台北次日 07:15、PST
-時是 08:15。adapter 以真實 Asia/Taipei 08:30 cutoff guard；兩種 offset 都會等待
-cutoff，不能把台北 09:30 開盤後時間稱為盤前。
+Paper Portfolio 與 ML forward 預設 trigger 為具時區的台北 08:25（UTC 00:25；
+前一個 Pacific 日期 PDT 17:25／PST 16:25）。adapter 等待真實台北 08:30，
+準時啟動時等待五分鐘；不能以人工或較早日期時鐘補造決策證據。
 完整 Windows 清冊目前是 20 個每日 task 加 1 個 weekly task，共 21 個；其中 ML forward 與 BankTaiwan shadow 使用專用管理路徑，不在 aggregate 18 daily + 1 weekly 註冊集合內。
 `baldr-ml-allocation-forward-daily` 使用 pinned UTF-16 XML 與獨立 preflight，
 aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unregister`
-也只會查詢並保留它，回復必須依 registration plan 的專用 delete 命令進行。
+也只會查詢並保留它；原地更新的回復使用同一 exact task 的 before XML，讀回
+原 trigger／settings／Enabled，不刪除 task。
 
 ## Tasks
 
@@ -32,8 +37,8 @@ aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unre
 | `baldr-decision-evidence-capture-daily` | enabled after register | daily local time 05:25 | 依台北時間選擇最近一個**已到達**的 08:30 `calendar_decision_at` 作為日曆選擇器；實際保存的 aware `decision_at`／`captured_at` 則使用本次 capture 的真實時鐘，`as_of` 明確綁定該選擇日。05:25 Pacific 約為台北 20:25，預設標為 `capture_mode=eod_research`、`research_only=true`，不宣告 `preopen_authority`／`natural_authority`，也不以 capture clock 改寫 source availability。既有 hash／unique key 使重跑轉為 duplicate；任一步失敗即回傳失敗並保留下一次重跑能力。它不推定交易日／成熟日、不改 Rule／Advice／Portfolio 狀態，也不連接券商執行。 |
 | `baldr-forward-outcomes-daily` | enabled after register | daily local time 05:40 | 在 Decision/Evidence capture 之後，wrapper 預設只處理帶有身份契約的 `recommendation_included` 事件，並在計算前跳過缺少策略／成本／benchmark／policy／snapshot／horizon 的事件，以台北當日可見資料及固定 120 個曆日／2,500 個合格事件上限，重算 5／10／20／60 交易日 close-to-close research outcome。選取先把未完成 outcome 排到前面，再以完整 policy／snapshot identity 套用 bounded 上限，避免新事件排擠舊 60 日 pending；`health` receipt 會分類 normal completion／normal no-op／natural maturity／engineering blocker／external source missing，列出 cohort／決策日與各 horizon ready／pending／missing。可用 `FORWARD_OUTCOME_EVENT_TYPE` 受控切換事件類型；只有 wrapper 明確傳入 `--confirm --allow-production-db-confirm` 才更新 `evidence_outcomes`；事件、推薦、Paper／Formal、模型與券商狀態不變。自然未成熟保留明確 warning／degraded；confirmed run 遇到工程 blocker 或外部來源缺失會以 `blocked`／`exit_code=2` fail closed，並留下 blocking reason／next action／recovery verification。不補未來價格、不做 historical backfill。 |
 | `baldr-recommendation-calibration-learning-daily` | enabled after register | daily local time 05:45 | 接續 05:40 forward outcome source，執行 bounded、read-only 的 recommendation calibration learning loop。若未設定 `RECOMMENDATION_LEARNING_SYMBOLS`，只會讀取同日已保存的 scheduled recommendation snapshot 明確股票群組，不做 universe discovery；原生 snapshot 的 `證券代號` 也會被視為 symbol source。snapshot 尚未到位或 provider 暫時不可用時，以 exit 2 寫入 `failed_dependency`、`finalized=false`、`recoverable=true` 的 attempt；同一 decision date 資料到齊後可直接重跑，舊 receipt 不覆寫。只有來源完整性破壞、active model fault 或明確 emergency rollback 才進入 fail-closed rollback。replay 使用 latest bounded decision-date window，讓新成熟資料可進入下一 training cycle。candidate 一次 freeze，之後每日 live capture 只保存當下 feature／candidate／active champion identity；自然成熟由可驗證 capture + market close source 產生，缺 observed liquidity cost 時 after-cost 維度保持 missing。promotion 沿 `baldr-ml-promotion-authority-daily` authority family，固定 distinct decision-date／Brier／gap／probability-cap／cooldown gates；不足、無改善或正常成熟不足只保留 current/rule-only，成功 receipt 才鎖定同日冪等。輸出位於 `RECOMMENDATION_LEARNING_OUTPUT_ROOT/recommendation_learning/`；永遠不寫 recommendation result、evidence DB、Portfolio、Formal 或 broker state。非 Asia/Taipei 交易日明確跳過 live capture。Task Scheduler 以 file path 直接啟動時，入口會先綁定 repository root，確保 technical reuse 的內部 import 與 package／pytest 邊界一致；unexpected exception 會以 fail-closed terminal receipt 記錄 run、stage、error 與 bounded child projection，並保留原 log，不會把未完成執行留成 `running`。 |
-| `baldr-paper-portfolio-daily` | enabled after register | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，adapter guard 至 08:30） | 由 `run_paper_portfolio_daily_isolated.py` 先以 D 槽 snapshot 的 SQLite read-only consistent backup 建立 repository state；兩種 offset 都等待真實台北 08:30，再 append preopen/T-1 估值 snapshot。isolated status 固定使用 `paper-portfolio-daily-isolated-scope.v1`，並發布 `paper-preopen-coverage.v1` 與 `paper-state-write-contract.v1`，供 Forward child 綁定當日 producer receipt。之後 D snapshot 永遠只讀，EOD 與 Formal 共用 repository state。盤前只以 `mode=ro/query_only` 讀市場 SQLite 與 EOD ledger；不覆寫既有 snapshot、不把 snapshot 當成交、不自動調倉、不修改 Advice，也不具券商執行能力。 |
-| `baldr-ml-allocation-forward-daily` | registered by dedicated XML | daily local time 16:15 Pacific（PDT 台北次日 07:15；PST 台北次日 08:15，等待 Asia/Taipei 08:30，08:35 後 fail closed） | 只執行 repository-isolated、candidate-only ML forward shadow。每日 config producer 依 offline official calendar、單一交易日 freshness、archive custody 與固定 V2 release manifest hash 建立 create-only config；child 必須保留完整 outer payload，`forward_credit_granted=false`。不寫市場 SQLite、不下單、不改正式 Paper／Formal 狀態；註冊前先執行 `run_ml_allocation_forward_daily.py --preflight`，aggregate registration 不會替換其設定。 |
+| `baldr-paper-portfolio-daily` | enabled after register | daily Asia/Taipei 08:25（UTC 00:25；前一個 Pacific 日期 PDT 17:25／PST 16:25，等待真實 08:30） | 由 `run_paper_portfolio_daily_isolated.py` 先以 D 槽 snapshot 的 SQLite read-only consistent backup 建立 repository state；兩種 offset 都等待真實台北 08:30，再 append preopen/T-1 估值 snapshot。isolated status 固定使用 `paper-portfolio-daily-isolated-scope.v1`，並發布 `paper-preopen-coverage.v1` 與 `paper-state-write-contract.v1`，供 Forward child 綁定當日 producer receipt。之後 D snapshot 永遠只讀，EOD 與 Formal 共用 repository state。盤前只以 `mode=ro/query_only` 讀市場 SQLite 與 EOD ledger；不覆寫既有 snapshot、不把 snapshot 當成交、不自動調倉、不修改 Advice，也不具券商執行能力。 |
+| `baldr-ml-allocation-forward-daily` | registered by dedicated XML | daily Asia/Taipei 08:25（UTC 00:25；等待真實 08:30，08:35 後 fail closed） | 只執行 repository-isolated、candidate-only ML forward shadow。每日 config producer 依 offline official calendar、單一交易日 freshness、archive custody 與固定 V2 release manifest hash 建立 create-only config；child 必須保留完整 outer payload，`forward_credit_granted=false`。不寫市場 SQLite、不下單、不改正式 Paper／Formal 狀態；註冊前先執行 `run_ml_allocation_forward_daily.py --preflight`，aggregate registration 不會替換其設定。 |
 | `baldr-pit-sector-membership-preopen-capture-daily` | enabled after dedicated register | daily local time 16:00（PDT 台北 07:00；PST 台北 08:00） | 在台北 08:30 前以官方 TWSE／TPEx response completion timestamp 建立 current-day PIT machine candidate，保存 raw custody、machine consumer readback 與 durable archive；同一 task 會先重驗當日獨立 denominator，缺少時自動以 data.gov dataset/resource、官方 Swagger 與授權文件建立 bounded create-only refresh；來源失敗會保留具體 status 並讓 sidecar 下輪重試。若 clock 或 response 越過 cutoff，fail closed，不建立可被當日 handoff 消費的 archive。 |
 | `baldr-formal-pit-sidecar-postcutoff-daily` | enabled after dedicated register | daily local time 18:00（PDT 台北 09:00；PST 台北 10:00） | 先只讀盤前已完成的 PIT archive，以當下 Taipei decision clock 重建 handoff；sidecar 階段通過獨立 denominator、coverage、license scope 與 assembler readback 才 create-only 發布 sidecar，隨後同一 action 呼叫 `run_paper_event_source_capture_daily.py`，在台北 09:00..13:30 以固定 TWSE MIS endpoint 保存 Paper session-open raw bytes。沒有完整證據寫 blocked receipt，不重新抓取同一自然日 PIT HTTP source；Paper capture 缺來源時只保留 bounded retry 診斷，不建立 fill。 |
 | `baldr-formal-input-producer-daily` | enabled after register | daily local time 21:25（PDT 台北 12:25；PST 台北 13:25） | 使用當下自然時間執行 Rule／causal Paper ledger／current PIT 的 bounded machine handoff。Rule 與 ledger 的 immutable manifest、source custody、publication context 與 receipt 寫入 repository output durable root；candidate 與 development 工作區每輪使用新的 TEMP 子目錄。缺 Rule source 不會阻止 PIT capture；缺任一 input 會保存具體 blocker，candidate-only 或 blocked 回傳非零狀態，不計入 Formal 3/3。 |
@@ -115,9 +120,9 @@ forward receipt，彙總當日／當週實際 capture、5／10／20／60 maturit
 state 後續由公開 `scripts/run_paper_portfolio_daily.py` append，D snapshot 不再是
 writer target。若呼叫端設定 `PAPER_EXECUTION_RECOMMENDATION_JSON`，cmd 只會以同一
 repository state 建立 T+1 next-session-open、bounded、research-only candidate；
-不接受環境變數將 state／ledger 導回 D。16:15 Pacific 的 Paper Portfolio
-hook 仍不追加 ledger；adapter 會在 PDT 早於台北 08:30 時等待真實 cutoff，
-PST 則於 08:30 執行；目前 Pacific 06:00（PDT／PST 對應台北 21:00／22:00）的 EOD replay task
+不接受環境變數將 state／ledger 導回 D。台北 08:25 的 Paper Portfolio
+hook 仍不追加 ledger；adapter 等待真實台北 08:30 cutoff，
+目前 Pacific 06:00（PDT／PST 對應台北 21:00／22:00）的 EOD replay task
 透過 `run_paper_execution_daily_isolated.cmd`／`run_paper_execution_daily_isolated.py` 固定使用
 固定的 `D:\Min\Python\Project\FA_Data\output\recommendation\runs` 自動選取下一
 official session 到期的 frozen recommendation，並以 repository operation root 的
@@ -151,11 +156,12 @@ receipt 在 hash/read 間變動，一律 `failed_read_only_integrity`。snapshot
 
 若唯讀 scheduler query 顯示 `baldr-paper-portfolio-daily` 尚未採用最新時序，使用專用的
 `scripts\scheduled\register_paper_portfolio_task.cmd dryrun` 核對後，再以同一腳本的
-`register` 模式只更新這一個 task。既有 task 使用 `schtasks /Change` 只改 16:15
-trigger 與 action，保留原有 principal、登入、電池與其他 settings；只有查不到 task
-時才以 `/Create` 建立。16:15 Pacific 對應 PDT 台北 07:15、PST 台北 08:15，adapter
-在兩種 offset 都等待真實台北 08:30；不能把 09:30 視為盤前。這個腳本不會呼叫 aggregate
-registration，也不會修改其他 task。
+`register` 模式只更新已存在的 exact root task，先保存 XML 備份，使用 COM
+`TASK_UPDATE` 保留 principal、登入、電池、retry、Enabled 與 timeout；缺 task 或查詢
+錯誤 fail closed，不建立替代 task。預設台北 08:25；`register [HH:mm]`
+保留明確的 Windows 本機時間 override，第三參數可明確指定 ISO duration，省略則
+保留 timeout。輸出必須為 `registered_and_readback_verified` 才視為套用完成；失敗時依
+before XML 回復並讀回，不刪 task。此入口不呼叫 aggregate，也不修改其他 task。
 
 Paper EOD task 若在唯讀 scheduler query 中缺失，使用專用的
 `scripts\scheduled\register_paper_execution_task.cmd dryrun` 檢查後，再以同一腳本的
@@ -667,7 +673,7 @@ baldr-decision-evidence-capture-daily
   cmd.exe /c "<repo>\scripts\scheduled\run_decision_evidence_capture.cmd"
 
 baldr-paper-portfolio-daily
-  DAILY 16:15 Pacific (07:15 PDT / 08:15 PST Taipei; adapter guard)
+  DAILY Asia/Taipei 08:25 (+08:00; UTC 00:25; 17:25 PDT / 16:25 PST previous date)
   cmd.exe /c "<repo>\scripts\scheduled\run_paper_portfolio_daily.cmd"
 ```
 
@@ -709,17 +715,17 @@ schtasks /Query /TN baldr-paper-portfolio-daily /V /FO LIST
 schtasks /Query /TN baldr-v2-2-weekly-collection /V /FO LIST
 ```
 
-Missing tasks are reported as friendly `Task not found` messages by the query wrapper.
+查詢錯誤、sandbox Access denied 與 detail error 均為 unknown；完整 COM enumeration
+後才能判定 missing。wrapper 不把本機查詢失敗當成 task 不存在，也不把 producer exit
+當作 Scheduler LastTaskResult。
 
-For a machine-readable, side-effect-free check, run
-`scripts\inspect_scheduled_task_registration.py`. In addition to querying each
-expected task（含 05:45 learning 與 05:50 BankTaiwan，共 21 項），it verifies that the corresponding repository wrapper files exist and, when
-`schtasks /Query` exposes `Task To Run`, that the registered action contains the
-expected wrapper path. The report keeps these checks separate from
-`all_available`; an available task without a visible action is marked
-`action_unobserved`, and `configuration_ready` is true only when task
-availability, local wrappers, observed actions, and action matching all pass.
-No task is created or changed.
+機器可讀的唯讀檢查使用 `scripts\inspect_scheduled_task_registration.py`，或上述 CMD
+query 入口。工具核對 21 個 exact root tasks（含 05:45 learning 與 05:50 BankTaiwan）、
+本機 wrapper、實際 action、WorkingDirectory 與 trigger；COM 補充 State、原生
+LastTaskResult、last／next host-local time、missed count、timeout、retry、parallel、
+battery 與 StartWhenAvailable。`configuration_ready` 只表示設定核對完整，不證明 producer
+或資料品質成功。缺 action／working directory 為 unobserved；query error 為 unknown。
+工具遮蔽帳號、secret 與 SID，不修改 task，也不提升 Windows 權限。
 
 Query 的 task inventory 與機器 inspector 由 regression 核對完全一致；CMD summary 的
 expected count 由清單推導，不再以舊的 20 項硬編碼。這只是可觀測性，不會讓 aggregate
@@ -1102,7 +1108,7 @@ manifest bytes 被替換時 fail closed。如需變更，使用
 `ML_FORWARD_ARCHIVE_ROOT` 明確指定，不能以一般
 `OUTPUT_ROOT` 的 D 槽 fallback 取代上述 custody。
 
-wrapper 從 Pacific 16:15 喚醒後只等待真實台北 08:30；子程序超過台北
+wrapper 從具時區台北 08:25 喚醒後只等待真實台北 08:30；子程序超過台北
 08:35、外層 capacity／read-only status 失敗、或
 `daily_orchestration.natural_forward_completion_clock` 沒有在期限內完成，
 都保留完整 outer blocked payload，不給 forward credit。archive 與 operational
@@ -1251,6 +1257,9 @@ bounded no-follow regular-file reader 與穩定 file identity/hash 驗證。明�
 
 ## Codex Morning Summary
 
-The Codex app automation `baldr scheduled evidence morning report` runs separately at about local time 05:30. It only reads Windows Task Scheduler status, `latest_status.json`, the latest data update status, the latest recommendation snapshot status, the latest evidence dry-run report, and relevant log warning / error sections, then writes a Traditional Chinese summary to the user.
+The Codex app has two separate read-only heartbeats. `baldr-scheduled-evidence-morning-report` runs daily at 05:30 Pacific local time and reads the Windows Task status plus the same-run update, freshness, recommendation and evidence receipts. `paper` (「晚間學習與 Paper 排程驗收」) runs daily at 06:20 Pacific local time and checks the Paper／ML run identity, immutable receipts, terminal state and bounded warning sections. Both use `America/Los_Angeles`, so DST is handled by the local-time schedule. Their prompts were updated in place and read back; they notify only on meaningful changes and do not launch producer tasks, train models, modify receipts, or perform Paper actions. They are Codex app automations, not Windows Task Scheduler entries.
 
 It must not rerun data update, rerun data freshness, rerun the evidence pipeline, enter confirm write mode, create or modify Windows Task Scheduler tasks, write the production evidence DB, change portfolio / scoring / recommendation weights, apply lifecycle actions, push, or produce trading advice.
+
+
+2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。

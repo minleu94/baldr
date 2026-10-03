@@ -25,7 +25,12 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtTest import QTest
 
-from app_module.dtos.portfolio_dtos import PortfolioDTO, PositionDTO, TradeDTO
+from app_module.dtos.portfolio_dtos import (
+    PortfolioDTO,
+    PositionDTO,
+    RecordedTradeCostSummaryDTO,
+    TradeDTO,
+)
 from app_module.recommendation.legacy_dtos import (
     RecommendationDTO,
     RecommendationResultDTO,
@@ -41,7 +46,11 @@ from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioSnapshotRepository,
 )
 from app_module.paper_trade_ledger import PaperTradeLedgerRepository
-from ui_qt.views.portfolio_view import AddTradeDialog, PortfolioView
+from ui_qt.views.portfolio_view import (
+    AddTradeDialog,
+    PortfolioView,
+    _format_recorded_trade_costs,
+)
 from ui_qt.workers.task_worker import TaskWorker, running_task_workers
 
 
@@ -455,6 +464,28 @@ def test_portfolio_page_hydrates_summary_and_table_from_one_portfolio_dto(tmp_pa
     assert view.card_invested.value_label.text() == (
         f"TWD {dto.total_invested_amount:,.2f}"
     )
+    assert "毛額，未扣費稅" in view.card_invested.title_label.text()
+    assert "毛額，未扣費稅" in view.card_pnl.title_label.text()
+
+
+def test_portfolio_ui_exposes_recorded_fees_and_taxes_without_netting() -> None:
+    summary = RecordedTradeCostSummaryDTO(
+        trade_count=3,
+        fees_recorded_count=2,
+        fees_missing_count=1,
+        taxes_recorded_count=3,
+        taxes_missing_count=0,
+        fees_by_currency={"TWD": Decimal("12.35")},
+        taxes_by_currency={"TWD": Decimal("5.67")},
+    )
+
+    text = _format_recorded_trade_costs(summary)
+
+    assert "手續費 TWD 12.35" in text
+    assert "交易稅 TWD 5.67" in text
+    assert "已記錄 2/3 筆" in text
+    assert "1 筆缺值或格式無效" in text
+    assert "已記錄 3/3 筆" in text
 
 
 def test_portfolio_view_reflows_positions_and_existing_evidence_tabs_on_narrow_width(tmp_path):

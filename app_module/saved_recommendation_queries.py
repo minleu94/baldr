@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import fields, replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Mapping, cast
 
@@ -181,6 +182,8 @@ def saved_recommendation_capture_projection(
                 else None
             )
         )
+        if execution_result_config(execution).get("scheduled_snapshot") is True:
+            result["decision_date"] = canonical_scheduled_decision_date(read_model)
         result["data_as_of_date"] = execution_result_config(execution).get(
             "data_as_of_date"
         )
@@ -266,16 +269,37 @@ def canonical_scheduled_decision_date(
         return None
     if parsed.isoformat() != value:
         return None
-    sealed_dates = tuple(
-        candidate
-        for candidate in (
-            execution.context.as_of_date,
-            execution.request.as_of_date,
-        )
-        if candidate is not None
-    )
-    if any(candidate != parsed for candidate in sealed_dates):
-        return None
+    sealed_dates = (execution.context.as_of_date, execution.request.as_of_date)
+    data_value = config.get("data_as_of_date")
+    if data_value is None:
+        # 明確舊同日格式的相容性：沒有分離的資料日期時不得猜測較早 cutoff。
+        if any(candidate is not None and candidate != parsed for candidate in sealed_dates):
+            return None
+    else:
+        if type(data_value) is not str:
+            return None
+        try:
+            data_date = date.fromisoformat(data_value)
+        except ValueError:
+            return None
+        if data_date.isoformat() != data_value or data_date > parsed:
+            return None
+        if any(candidate != data_date for candidate in sealed_dates):
+            return None
+        decision_at = execution.context.decision_at
+        if (decision_at is None or decision_at.tzinfo is None
+                or decision_at.utcoffset() is None
+                or decision_at.astimezone(ZoneInfo("Asia/Taipei")).date() != parsed):
+            return None
+        if (config.get("temporal_mode") != "natural_producer_clock"
+                or config.get("cutoff_policy") != "source_latest_available_exact"
+                or config.get("cutoff_selection") != "producer_selected_latest_available_cutoff"):
+            return None
+        schema = config.get("date_semantics_schema")
+        if schema is not None and (schema != "scheduled-recommendation-date-roles.v1"
+                or config.get("decision_timezone") != "Asia/Taipei"
+                or config.get("market_cutoff_date") != data_value):
+            return None
     return parsed.isoformat()
 
 

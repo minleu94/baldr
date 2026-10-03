@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timezone
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,9 @@ from app_module.recommendation.contracts import (
     QualityStatus,
     RecommendationConfigSnapshot,
     RecommendationExecution,
+    SnapshotCohort,
+    SnapshotCohortCoverage,
+    SnapshotCohortCoverageStatus,
     Request,
 )
 from app_module.recommendation.persistence import RecommendationExecutionPersistence
@@ -1068,3 +1072,203 @@ def test_scheduled_recommendation_inventory_requires_saved_scheduled_marker(
     assert status.recommendation_snapshot_observed_days == 2
     assert status.manual_recommendation_observed_days == 0
     assert status.recommendation_result_id == "scheduled_rec_20260907_050100"
+
+
+def _classification_test_cohort() -> SnapshotCohort:
+    requested = ("0050", "0066", "1101", "2330", "2603", "2881", "6488")
+    eligible = ("0050", "0066")
+    missing = ("1101",)
+    degraded = ("0066", "2330", "2603", "6488")
+    excluded = ("2881",)
+    coverage_rows = {
+        "0066": {
+            "status": "skipped",
+            "quality": "degraded",
+            "stage": "strategy_evaluation",
+            "reason_codes": ["liquidity_volume_ratio_below_min"],
+            "warnings": [],
+        },
+        "0050": {
+            "status": "pass",
+            "quality": "observed",
+            "stage": "final_selection",
+            "reason_codes": ["recommendation_selected"],
+            "warnings": [],
+        },
+        "1101": {
+            "status": "missing",
+            "quality": "missing",
+            "stage": "source_fetch",
+            "reason_codes": ["source_unavailable"],
+            "warnings": [],
+        },
+        "2330": {
+            "status": "skipped",
+            "quality": "degraded",
+            "stage": "strategy_evaluation",
+            "reason_codes": ["liquidity_volume_ratio_below_min"],
+            "warnings": [],
+        },
+        "2603": {
+            "status": "skipped",
+            "quality": "degraded",
+            "stage": "strategy_evaluation",
+            "reason_codes": ["strategy_filter_no_signal"],
+            "warnings": ["source_quality_warning"],
+        },
+        "2881": {
+            "status": "excluded",
+            "quality": "observed",
+            "stage": "final_selection",
+            "reason_codes": ["not_selected"],
+            "warnings": [],
+        },
+        "6488": {
+            "status": "skipped",
+            "quality": "degraded",
+            "stage": "strategy_evaluation",
+            "reason_codes": ["unrecognized_future_reason"],
+            "warnings": [],
+        },
+    }
+    definitions = {
+        "eligible_definition": "final scheduled recommendation DTO rows",
+        "missing_definition": "screening rows with quality=missing; same-day retry candidates",
+        "degraded_definition": "screening rows with quality=degraded; visible but not source-missing",
+        "excluded_definition": "requested rows not selected and not missing/degraded",
+    }
+    body = {
+        "schema_version": "scheduled-recommendation-snapshot-cohort.v1",
+        "requested_symbols": list(requested),
+        "eligible_symbols": list(eligible),
+        "missing_symbols": list(missing),
+        "degraded_symbols": list(degraded),
+        "excluded_symbols": list(excluded),
+        "requested_count": len(requested),
+        "eligible_count": len(eligible),
+        "missing_count": len(missing),
+        "degraded_count": len(degraded),
+        "excluded_count": len(excluded),
+        "coverage_status": SnapshotCohortCoverageStatus.PARTIAL.value,
+        "coverage_by_symbol": coverage_rows,
+        **definitions,
+    }
+    cohort_hash = "sha256:" + hashlib.sha256(
+        json.dumps(
+            body,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    return SnapshotCohort(
+        cohort_hash=cohort_hash,
+        requested_symbols=requested,
+        eligible_symbols=eligible,
+        missing_symbols=missing,
+        degraded_symbols=degraded,
+        excluded_symbols=excluded,
+        requested_count=len(requested),
+        eligible_count=len(eligible),
+        missing_count=len(missing),
+        degraded_count=len(degraded),
+        excluded_count=len(excluded),
+        coverage_status=SnapshotCohortCoverageStatus.PARTIAL,
+        coverage_by_symbol={
+            symbol: SnapshotCohortCoverage(
+                status=row["status"],
+                quality=row["quality"],
+                stage=row["stage"],
+                reason_codes=tuple(row["reason_codes"]),
+                warnings=tuple(row["warnings"]),
+            )
+            for symbol, row in coverage_rows.items()
+        },
+    )
+
+
+def test_scheduled_status_derives_classifications_only_from_matching_verified_cohort(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    result_id = "canonical-cohort-result"
+    recommendation_status_path = (
+        output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
+    )
+    recommendation_status = json.loads(
+        recommendation_status_path.read_text(encoding="utf-8")
+    )
+    recommendation_status["result_id"] = result_id
+    recommendation_status["recommendations_count"] = 1
+    recommendation_status_path.write_text(
+        json.dumps(recommendation_status),
+        encoding="utf-8",
+    )
+
+    decision_date = date(2026, 9, 7)
+    execution = RecommendationExecution(
+        result_id=result_id,
+        request=Request(as_of_date=decision_date),
+        context=Context(as_of_date=decision_date, snapshot_cohort=_classification_test_cohort()),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(items=()),
+        quality=QualityReport(QualityStatus.COMPLETE),
+    )
+    read_model = RecommendationExecutionReadModel(
+        execution=execution,
+        label=result_id,
+        notes="",
+        persisted_at=datetime(2026, 9, 7, 5, 0, tzinfo=timezone.utc),
+        payload_hash="sha256:" + "a" * 64,
+        artifact_location=f"{result_id}.json",
+        schema_version="recommendation-execution.v1",
+        schema_revision=2,
+        raw_artifact_sha256="sha256:" + "b" * 64,
+        integrity_basis="canonical_payload_and_index_verified",
+    )
+
+    status = ScheduledEvidenceStatusService(
+        _Config(output_root),
+        recommendation_queries=_QueryStub((read_model,)),
+    ).load_latest()
+
+    assert status.recommendation_status == "passed"
+    assert status.recommendations_count == 1
+    assert status.recommendation_cohort_integrity_basis == (
+        "canonical_payload_and_index_verified"
+    )
+    assert status.recommendation_canonical_payload_hash == "sha256:" + "a" * 64
+    assert status.recommendation_cohort_hash == execution.context.snapshot_cohort.cohort_hash
+    assert status.recommendation_cohort_requested_count == 7
+    assert status.recommendation_cohort_quality_missing_count == 1
+    assert status.recommendation_cohort_quality_degraded_count == 4
+    assert dict(status.recommendation_cohort_classifications) == {
+        "可用候選": 1,
+        "策略排除": 1,
+        "缺資料": 1,
+        "來源品質問題": 1,
+        "其他未判定": 3,
+    }
+    assert execution.context.snapshot_cohort.coverage_status is SnapshotCohortCoverageStatus.PARTIAL
+
+    legacy_claim = replace(read_model, integrity_basis="legacy_read_time_hash_only")
+    unverified = ScheduledEvidenceStatusService(
+        _Config(output_root),
+        recommendation_queries=_QueryStub((legacy_claim,)),
+    ).load_latest()
+    assert unverified.recommendation_cohort_integrity_basis is None
+    assert unverified.recommendation_canonical_payload_hash is None
+    assert unverified.recommendation_cohort_hash is None
+    assert unverified.recommendation_cohort_requested_count is None
+    assert unverified.recommendation_cohort_quality_missing_count is None
+    assert unverified.recommendation_cohort_quality_degraded_count is None
+    assert unverified.recommendation_cohort_classifications == ()
+
+    malformed_hash_model = replace(read_model, payload_hash="sha256:invalid")
+    malformed_hash = ScheduledEvidenceStatusService(
+        _Config(output_root),
+        recommendation_queries=_QueryStub((malformed_hash_model,)),
+    ).load_latest()
+    assert malformed_hash.recommendation_cohort_integrity_basis is None
+    assert malformed_hash.recommendation_cohort_classifications == ()

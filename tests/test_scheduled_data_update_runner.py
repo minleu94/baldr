@@ -913,8 +913,15 @@ def test_quick_update_can_skip_candidate_without_resolving_configured_path(
     assert observed["candidate_calls"] == 0
 
 
+@pytest.mark.parametrize(
+    ("run_date", "expected_sources", "include_tdcc"),
+    [
+        (date(2026, 7, 3), ("institutional", "credit"), False),
+        (date(2026, 7, 6), ("institutional", "credit", "tdcc"), True),
+    ],
+)
 def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, run_date, expected_sources, include_tdcc
 ) -> None:
     _patch_capacity_preflight_for_unit_test(monkeypatch)
     _patch_verified_technical_reuse_for_metadata_unit_test(monkeypatch)
@@ -924,6 +931,18 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
     candidate_path = tmp_path / "candidate" / "phase3c.sqlite"
     observed = {"candidate_calls": 0, "configured_path_lookups": 0}
 
+    class _Calendar:
+        def get_recent_official_trading_days(self, reference_date, count, **_kwargs):
+            return [{
+                "date": reference_date,
+                "date_str": reference_date.isoformat(),
+                "is_trading_day": True,
+                "reason_code": "test_verified_calendar",
+                "evidence": {"source": "test-cache-and-closure-context"},
+            }]
+
+    calendar = _Calendar()
+
     class _FakeUpdateService:
         def __init__(self, _config) -> None:
             pass
@@ -931,8 +950,8 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
         def check_data_overview(self):
             return {
                 "success": True,
-                "daily_data": {"latest_date": "2026-07-03"},
-                "technical_indicators": {"latest_date": "2026-07-03"},
+                "daily_data": {"latest_date": run_date.isoformat()},
+                "technical_indicators": {"latest_date": run_date.isoformat()},
             }
 
         def _success(self, *_args, **_kwargs):
@@ -947,16 +966,17 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
 
         def update_phase3c_candidate_range(self, **_kwargs):
             observed["candidate_calls"] += 1
+            observed["candidate_kwargs"] = _kwargs
             return {
                 "success": True,
                 "candidate_only": True,
                 "candidate_db_path": str(candidate_path),
                 "summary": BackfillSummary(
-                    start_date="2026-07-01",
-                    end_date="2026-07-03",
+                    start_date=run_date.isoformat(),
+                    end_date=run_date.isoformat(),
                     candidate_db_path=str(candidate_path),
                     dry_run=False,
-                    sources=["institutional", "credit"],
+                    sources=list(_kwargs["sources"]),
                     total_days=3,
                     trading_days_count=3,
                     non_trading_days_count=0,
@@ -976,6 +996,11 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
             return {"success": True, "is_current": True}
 
     monkeypatch.setattr(runner, "UpdateService", _FakeUpdateService)
+    monkeypatch.setattr(
+        runner,
+        "_calendar_for_run",
+        lambda *_args, **_kwargs: (calendar, False),
+    )
     def _configured_candidate_path():
         observed["configured_path_lookups"] += 1
         return candidate_path
@@ -988,7 +1013,14 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
     monkeypatch.setattr(
         runner,
         "scheduled_now",
-        lambda: runner.datetime(2026, 7, 3, 4, 20, tzinfo=timezone.utc),
+        lambda: runner.datetime(
+            run_date.year,
+            run_date.month,
+            run_date.day,
+            12,
+            0,
+            tzinfo=timezone.utc,
+        ),
     )
 
     assert runner.main(
@@ -1007,6 +1039,10 @@ def test_quick_update_reports_candidate_step_when_candidate_path_is_configured(
     )
     assert observed["candidate_calls"] == 1
     assert observed["configured_path_lookups"] == 1
+    assert observed["candidate_kwargs"]["sources"] == expected_sources
+    assert observed["candidate_kwargs"]["include_latest_tdcc_snapshot"] is include_tdcc
+    assert observed["candidate_kwargs"]["calendar"] is calendar
+    assert observed["candidate_kwargs"]["allow_online_calendar_probe"] is False
     assert candidate_step["status"] == "passed"
     assert candidate_step["result"]["candidate_only"] is True
     assert candidate_step["result"]["summary"]["succeeded_days_count"] == 3

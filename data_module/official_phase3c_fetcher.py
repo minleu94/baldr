@@ -4,9 +4,15 @@ import requests
 import pandas as pd
 import logging
 from datetime import datetime, date, timezone
-from typing import List, Dict, Any, Optional, Callable
-import io
-from decimal import Decimal, ROUND_HALF_UP
+from typing import List, Dict, Any, Mapping, Optional, Callable
+from decimal import Decimal, InvalidOperation
+
+from data_module.p0_official_source_parsers import (
+    OfficialParserResult,
+    RawFetchEnvelope,
+    parse_tdcc_shareholding,
+    parse_tpex_credit_openapi,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +23,19 @@ HEADERS = {
 
 OFFICIAL_PAYLOAD_MAX_ATTEMPTS = 3
 OFFICIAL_PAYLOAD_RETRY_SECONDS = 30
+TDCC_OPENAPI_URL = "https://openapi.tdcc.com.tw/v1/opendata/1-5"
+TDCC_OPENAPI_SOURCE_VERSION = "tdcc-openapi-1-5.v1"
+TDCC_OPENAPI_MAX_BYTES = 16 * 1024 * 1024
+TPEX_CREDIT_OPENAPI_URL = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_margin_balance"
+TPEX_CREDIT_OPENAPI_SOURCE_VERSION = "tpex-mainboard-margin-openapi.v1"
 
 
 class OfficialPayloadNotReady(ValueError):
     """官方端點已回應，但指定交易日的明細尚未完成發布。"""
+
+
+class _PayloadSizeLimitExceeded(ValueError):
+    """Bounded official fetch exceeded its source-specific response cap."""
 
 
 def observed_only_availability_fields() -> Dict[str, Any]:
@@ -55,6 +70,28 @@ def safe_int(val) -> int:
     except Exception:
         return 0
 
+
+def _strict_credit_int(value: Any, *, field: str) -> int:
+    """Parse one required credit quantity without converting malformed text to zero."""
+
+    if value is None or pd.isna(value):
+        raise ValueError(f"missing credit quantity: {field}")
+    text = str(value).replace(",", "").strip()
+    if text == "X":
+        return 0
+    if not text:
+        raise ValueError(f"empty credit quantity: {field}")
+    try:
+        quantity = Decimal(text)
+    except InvalidOperation as exc:
+        raise ValueError(f"invalid credit quantity for {field}: {text!r}") from exc
+    if not quantity.is_finite() or quantity != quantity.to_integral_value():
+        raise ValueError(f"non-integral credit quantity for {field}: {text!r}")
+    parsed = int(quantity)
+    if parsed < 0:
+        raise ValueError(f"negative credit quantity for {field}: {text!r}")
+    return parsed
+
 def safe_request(
     url: str,
     params: Optional[Dict] = None,
@@ -65,19 +102,96 @@ def safe_request(
     """帶可明確限定逾時與重試次數的安全請求。"""
     if timeout_seconds <= 0 or max_attempts <= 0:
         raise ValueError("timeout_seconds and max_attempts must be positive")
+    last_http_status: int | None = None
     for attempt in range(max_attempts):
         try:
             resp = requests.get(url, params=params, headers=HEADERS, timeout=timeout_seconds)
             if resp.status_code == 200:
                 return resp
+            last_http_status = int(resp.status_code)
             message = "正在重試..." if attempt + 1 < max_attempts else "不再重試。"
             logger.warning(f"請求失敗: {url}, 狀態碼: {resp.status_code}, {message}")
+            resp.close()
         except requests.RequestException as e:
             message = "正在重試..." if attempt + 1 < max_attempts else "不再重試。"
             logger.warning(f"請求例外: {url}, 錯誤: {e}, {message}")
         if attempt + 1 < max_attempts:
             time.sleep(3)
-    raise RuntimeError(f"無法取得資料: {url}")
+    status_suffix = (
+        f" (last HTTP status={last_http_status})"
+        if last_http_status is not None
+        else ""
+    )
+    raise RuntimeError(f"無法取得資料: {url}{status_suffix}")
+
+
+def _safe_request_bounded_payload(
+    url: str,
+    *,
+    max_response_bytes: int,
+    timeout_seconds: int = 10,
+    max_attempts: int = 3,
+) -> tuple[bytes, dict[str, str], int]:
+    """Stream a source-specific payload under a hard decoded-byte limit."""
+
+    if max_response_bytes <= 0 or timeout_seconds <= 0 or max_attempts <= 0:
+        raise ValueError("response cap, timeout, and attempts must be positive")
+    last_error: Exception | None = None
+    for attempt in range(max_attempts):
+        response = None
+        try:
+            response = requests.get(
+                url,
+                headers=HEADERS,
+                timeout=timeout_seconds,
+                stream=True,
+            )
+            if response.status_code != 200:
+                last_error = RuntimeError(
+                    f"HTTP status {response.status_code} for {url}"
+                )
+            else:
+                headers = {str(key): str(value) for key, value in response.headers.items()}
+                content_length = response.headers.get("Content-Length")
+                if content_length is not None:
+                    try:
+                        declared_bytes = int(content_length)
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError("invalid Content-Length header") from exc
+                    if declared_bytes < 0:
+                        raise ValueError("negative Content-Length header")
+                    if declared_bytes > max_response_bytes:
+                        raise _PayloadSizeLimitExceeded(
+                            f"Content-Length {declared_bytes} exceeds {max_response_bytes} bytes"
+                        )
+
+                chunks: list[bytes] = []
+                received_bytes = 0
+                for chunk in response.iter_content(chunk_size=64 * 1024):
+                    if not chunk:
+                        continue
+                    received_bytes += len(chunk)
+                    if received_bytes > max_response_bytes:
+                        raise _PayloadSizeLimitExceeded(
+                            f"response exceeds {max_response_bytes} bytes while streaming"
+                        )
+                    chunks.append(bytes(chunk))
+                return b"".join(chunks), headers, int(response.status_code)
+        except _PayloadSizeLimitExceeded:
+            raise
+        except requests.RequestException as exc:
+            last_error = exc
+        except Exception as exc:
+            last_error = exc
+        finally:
+            if response is not None:
+                response.close()
+        if attempt + 1 < max_attempts:
+            time.sleep(3)
+    raise RuntimeError(
+        f"bounded official request failed: {url}: "
+        f"{type(last_error).__name__ if last_error else 'UnknownError'}: {last_error}"
+    ) from last_error
 
 
 def _request_ready_json(
@@ -135,11 +249,14 @@ def _security_table_rows(
     payload: Dict[str, Any],
     *,
     minimum_columns: int,
+    strict_rows: bool = False,
 ) -> list[list[Any]]:
     """同時支援舊版 ``aaData`` 與現行 ``tables[].data`` shape。"""
 
     legacy_rows = payload.get("aaData")
     if isinstance(legacy_rows, list) and legacy_rows:
+        if strict_rows and any(not isinstance(row, list) for row in legacy_rows):
+            raise ValueError("official security table contains a non-row value")
         return [row for row in legacy_rows if isinstance(row, list)]
 
     for table in payload.get("tables", []):
@@ -154,13 +271,149 @@ def _security_table_rows(
             len(fields) >= minimum_columns
             and first_field in _SECURITY_CODE_FIELD_NAMES
         ):
+            if strict_rows and any(not isinstance(row, list) for row in rows):
+                raise ValueError("official security table contains a non-row value")
             return [row for row in rows if isinstance(row, list)]
     return []
+
+
+def _parse_legacy_credit_rows(
+    rows: list[list[Any]],
+    *,
+    decision_date: date,
+    source_version: str,
+    minimum_columns: int,
+    quantity_columns: Mapping[str, int],
+) -> list[dict[str, Any]]:
+    """Accept one complete legacy market table or fail it as a whole."""
+
+    if not rows:
+        raise ValueError(f"{source_version} contains no valid detail rows")
+    availability = observed_only_availability_fields()
+    parsed_rows: list[dict[str, Any]] = []
+    seen_symbols: set[str] = set()
+    for index, row in enumerate(rows, start=1):
+        if len(row) < minimum_columns:
+            raise ValueError(
+                f"{source_version} row {index} is short: "
+                f"expected at least {minimum_columns} columns, got {len(row)}"
+            )
+        stock_code = str(row[0] or "").strip()
+        if not stock_code:
+            raise ValueError(f"{source_version} row {index} has no stock code")
+        if stock_code in seen_symbols:
+            raise ValueError(f"{source_version} duplicate stock code: {stock_code}")
+        seen_symbols.add(stock_code)
+        quantities = {
+            name: _strict_credit_int(row[column], field=f"{name}[{index}]")
+            for name, column in quantity_columns.items()
+        }
+        parsed_rows.append(
+            {
+                "stock_code": stock_code,
+                "decision_date": decision_date.isoformat(),
+                "source_version": source_version,
+                **availability,
+                **quantities,
+                "financing": None,
+                "securities_lending": None,
+            }
+        )
+    if not parsed_rows:
+        raise ValueError(f"{source_version} contains no valid detail rows")
+    return parsed_rows
 
 
 def _table_count(payload: Dict[str, Any]) -> int:
     tables = payload.get("tables")
     return len(tables) if isinstance(tables, list) else 0
+
+
+def _response_payload_bytes(response: Any) -> bytes:
+    payload = getattr(response, "content", None)
+    if isinstance(payload, (bytes, bytearray, memoryview)):
+        return bytes(payload)
+    text = getattr(response, "text", None)
+    if isinstance(text, str):
+        encoding = getattr(response, "encoding", None) or "utf-8"
+        return text.encode(str(encoding))
+    raise TypeError("官方回應缺少 bytes payload")
+
+
+def _require_complete_parse(result: OfficialParserResult, source_name: str) -> None:
+    if not result.accepted:
+        raise ValueError(f"{source_name} payload has no accepted rows")
+    if result.quarantine or result.duplicate_row_count or result.blocked_row_count:
+        raise ValueError(
+            f"{source_name} payload is incomplete: accepted={result.accepted_row_count}, "
+            f"quarantined={result.quarantine_row_count}, "
+            f"duplicates={result.duplicate_row_count}, blocked={result.blocked_row_count}"
+        )
+    if result.accepted_row_count != result.raw_row_count:
+        raise ValueError(
+            f"{source_name} payload row conservation failed: "
+            f"raw={result.raw_row_count}, accepted={result.accepted_row_count}"
+        )
+
+
+def _fetch_tpex_credit_openapi(decision_date: date) -> list[dict[str, Any]]:
+    """Read exact-date TPEx credit rows from its registered official OpenAPI."""
+
+    response = safe_request(TPEX_CREDIT_OPENAPI_URL)
+    payload = _response_payload_bytes(response)
+    fetched_at = datetime.now(timezone.utc)
+    envelope = RawFetchEnvelope(
+        source_id="credit_transactions",
+        source_version=TPEX_CREDIT_OPENAPI_SOURCE_VERSION,
+        endpoint_id="tpex:openapi:tpex_mainboard_margin_balance",
+        request_parameters={},
+        fetched_at=fetched_at,
+        http_status=int(getattr(response, "status_code", 200)),
+        http_headers=dict(getattr(response, "headers", {}) or {}),
+        payload=payload,
+    )
+    parsed = parse_tpex_credit_openapi(envelope)
+    _require_complete_parse(parsed, "TPEx credit OpenAPI")
+    requested_date = decision_date.isoformat()
+    observed_dates = {row.observation_date for row in parsed.accepted}
+    if observed_dates != {requested_date}:
+        raise ValueError(
+            "TPEx credit OpenAPI observation date mismatch: "
+            f"expected {requested_date}, got {sorted(observed_dates)}"
+        )
+
+    availability = {
+        "publication_at": None,
+        "first_observed_at": fetched_at.isoformat(),
+        "available_at": fetched_at.isoformat(),
+        "available_date": None,
+        "quality": "degraded",
+    }
+    rows: list[dict[str, Any]] = []
+    seen_symbols: set[str] = set()
+    for observation in parsed.accepted:
+        if observation.symbol in seen_symbols:
+            raise ValueError(
+                f"TPEx credit OpenAPI duplicate symbol for {requested_date}: "
+                f"{observation.symbol}"
+            )
+        seen_symbols.add(observation.symbol)
+        quantities = observation.quantities
+        rows.append(
+            {
+                "stock_code": observation.symbol,
+                "decision_date": observation.observation_date,
+                "source_version": observation.source_version,
+                **availability,
+                "margin_purchase": quantities["margin_purchase_shares"],
+                "margin_balance": quantities["margin_balance_shares"],
+                "short_sale": quantities["short_sale_shares"],
+                "short_balance": quantities["short_balance_shares"],
+                "financing": None,
+                "securities_lending": None,
+            }
+        )
+    return rows
 
 # ==========================================
 # 三大法人 (Institutional Flows)
@@ -338,7 +591,11 @@ def fetch_credit_transactions(decision_date: date) -> pd.DataFrame:
                 raise OfficialPayloadNotReady(
                     f"TWSE MI_MARGN 回應狀態非 OK: stat={data.get('stat')!r}"
                 )
-            if not _security_table_rows(data, minimum_columns=13):
+            if not _security_table_rows(
+                data,
+                minimum_columns=13,
+                strict_rows=True,
+            ):
                 raise OfficialPayloadNotReady(
                     "TWSE MI_MARGN 回應缺少有效明細 table: "
                     f"tables={_table_count(data)}"
@@ -350,26 +607,24 @@ def fetch_credit_transactions(decision_date: date) -> pd.DataFrame:
             source_label="TWSE MI_MARGN",
             validate=_validate_twse_credit,
         )
-        twse_rows = _security_table_rows(data, minimum_columns=13)
-        availability = observed_only_availability_fields()
-        for row in twse_rows:
-            if len(row) < 13:
-                continue
-            stock_code = str(row[0]).strip()
-            if not stock_code:
-                continue
-            rows.append({
-                "stock_code": stock_code,
-                "decision_date": decision_date.isoformat(),
-                "source_version": "twse-official-MI_MARGN",
-                **availability,
-                "margin_purchase": safe_int(row[2]),
-                "margin_balance": safe_int(row[6]),
-                "short_sale": safe_int(row[9]),
-                "short_balance": safe_int(row[12]),
-                "financing": None,
-                "securities_lending": None,
-            })
+        twse_rows = _security_table_rows(
+            data,
+            minimum_columns=13,
+            strict_rows=True,
+        )
+        parsed_twse_rows = _parse_legacy_credit_rows(
+            twse_rows,
+            decision_date=decision_date,
+            source_version="twse-official-MI_MARGN",
+            minimum_columns=13,
+            quantity_columns={
+                "margin_purchase": 2,
+                "margin_balance": 6,
+                "short_sale": 9,
+                "short_balance": 12,
+            },
+        )
+        rows.extend(parsed_twse_rows)
     except Exception as e:
         source_errors.append(f"TWSE MI_MARGN: {type(e).__name__}: {e}")
 
@@ -387,7 +642,11 @@ def fetch_credit_transactions(decision_date: date) -> pd.DataFrame:
                     f"TPEX 信用交易回應狀態非 ok: stat={data.get('stat')!r}"
                 )
             # 現行明細至少要含至「券餘額」(index 14)，避免誤選摘要表。
-            if not _security_table_rows(data, minimum_columns=15):
+            if not _security_table_rows(
+                data,
+                minimum_columns=15,
+                strict_rows=True,
+            ):
                 raise OfficialPayloadNotReady(
                     "TPEX 信用交易回應缺少有效明細 table: "
                     f"tables={_table_count(data)}"
@@ -399,30 +658,41 @@ def fetch_credit_transactions(decision_date: date) -> pd.DataFrame:
             source_label="TPEX margin",
             validate=_validate_tpex_credit,
         )
-        tpex_rows = _security_table_rows(data, minimum_columns=15)
-        availability = observed_only_availability_fields()
-        for row in tpex_rows:
-            if len(row) >= 15:
-                try:
-                    stock_code = str(row[0]).strip()
-                    if not stock_code:
-                        continue
-                    rows.append({
-                        "stock_code": stock_code,
-                        "decision_date": decision_date.isoformat(),
-                        "source_version": "tpex-official-margin_bal",
-                        **availability,
-                        "margin_purchase": safe_int(row[3]),
-                        "margin_balance": safe_int(row[6]),
-                        "short_sale": safe_int(row[11]),
-                        "short_balance": safe_int(row[14]),
-                        "financing": None,
-                        "securities_lending": None,
-                    })
-                except (IndexError, TypeError):
-                    continue
-    except Exception as e:
-        source_errors.append(f"TPEX margin: {type(e).__name__}: {e}")
+        tpex_rows = _security_table_rows(
+            data,
+            minimum_columns=15,
+            strict_rows=True,
+        )
+        parsed_tpex_rows = _parse_legacy_credit_rows(
+            tpex_rows,
+            decision_date=decision_date,
+            source_version="tpex-official-margin_bal",
+            minimum_columns=15,
+            quantity_columns={
+                "margin_purchase": 3,
+                "margin_balance": 6,
+                "short_sale": 11,
+                "short_balance": 14,
+            },
+        )
+        rows.extend(parsed_tpex_rows)
+    except Exception as primary_exc:
+        try:
+            fallback_rows = _fetch_tpex_credit_openapi(decision_date)
+            rows.extend(fallback_rows)
+            logger.warning(
+                "TPEx margin legacy route failed; accepted exact-date registered "
+                "OpenAPI fallback (%s rows): %s",
+                len(fallback_rows),
+                primary_exc,
+            )
+        except Exception as fallback_exc:
+            source_errors.append(
+                "TPEX margin legacy: "
+                f"{type(primary_exc).__name__}: {primary_exc}; "
+                "TPEX margin OpenAPI: "
+                f"{type(fallback_exc).__name__}: {fallback_exc}"
+            )
 
     if source_errors:
         raise RuntimeError("；".join(source_errors))
@@ -433,78 +703,162 @@ def fetch_credit_transactions(decision_date: date) -> pd.DataFrame:
 # TDCC 集保庫存 (Shareholding Tiers)
 # ==========================================
 def _fetch_tdcc_shareholding(expected_date: Optional[date]) -> pd.DataFrame:
-    """抓取最新一週集保資料；可選擇要求資料日與指定日期一致。"""
-    url = "https://smart.tdcc.com.tw/opendata/getOD.ashx?id=1-5"
-    logger.info(f"爬取 TDCC 集保庫存: {url}")
-    try:
-        resp = safe_request(url)
-        resp.encoding = 'utf-8'
+    """讀取 TDCC 單週資料；只接受 canonical parser 驗證過的完整單一期間。"""
 
-        df_raw = pd.read_csv(io.StringIO(resp.text))
-
-        if df_raw.empty or "資料日期" not in df_raw.columns:
-            return pd.DataFrame()
-
-        payload_dates = {
-            str(value).strip()
-            for value in df_raw["資料日期"].dropna().tolist()
-        }
-        if len(payload_dates) != 1:
-            raise ValueError("TDCC payload 必須只有一個明確資料日期")
-        latest_date_str = next(iter(payload_dates))
+    legacy_url = "https://smart.tdcc.com.tw/opendata/getOD.ashx?id=1-5"
+    routes = (
+        (
+            "TDCC legacy CSV",
+            "tdcc-official-od-1-5",
+            "tdcc:1-5",
+            legacy_url,
+            False,
+        ),
+        (
+            "TDCC OpenAPI",
+            TDCC_OPENAPI_SOURCE_VERSION,
+            "tdcc:openapi:1-5",
+            TDCC_OPENAPI_URL,
+            True,
+        ),
+    )
+    route_errors: list[str] = []
+    for label, source_version, endpoint_id, url, is_bounded in routes:
+        logger.info("爬取 %s 集保庫存: %s", label, url)
         try:
-            data_date = datetime.strptime(latest_date_str, "%Y%m%d").date()
-        except ValueError as exc:
-            raise ValueError(f"TDCC payload 資料日期格式無效: {latest_date_str}") from exc
+            if is_bounded:
+                payload, headers, http_status = _safe_request_bounded_payload(
+                    url,
+                    max_response_bytes=TDCC_OPENAPI_MAX_BYTES,
+                )
+            else:
+                response = safe_request(url)
+                payload = _response_payload_bytes(response)
+                headers = {
+                    str(key): str(value)
+                    for key, value in dict(getattr(response, "headers", {}) or {}).items()
+                }
+                http_status = int(getattr(response, "status_code", 200))
 
-        if expected_date is not None and data_date != expected_date:
-            logger.warning(
-                f"TDCC 最新資料日期為 {data_date}，與 decision_date {expected_date} 不符，略過。"
+            fetched_at = datetime.now(timezone.utc)
+            envelope = RawFetchEnvelope(
+                source_id="tdcc_shareholding",
+                source_version=source_version,
+                endpoint_id=endpoint_id,
+                request_parameters={},
+                fetched_at=fetched_at,
+                http_status=http_status,
+                http_headers=headers,
+                payload=payload,
             )
-            return pd.DataFrame()
+            parsed = parse_tdcc_shareholding(envelope)
+            _require_complete_parse(parsed, label)
+            observation_dates = {row.observation_date for row in parsed.accepted}
+            if len(observation_dates) != 1:
+                raise ValueError(
+                    f"{label} payload must contain one official data date; "
+                    f"got {sorted(observation_dates)}"
+                )
+            data_date_str = next(iter(observation_dates))
+            data_date = date.fromisoformat(data_date_str)
+            if expected_date is not None and data_date != expected_date:
+                raise ValueError(
+                    f"{label} latest data date {data_date} does not match exact "
+                    f"requested date {expected_date}"
+                )
 
-        grouped = df_raw.groupby("證券代號")
-        rows: list[dict[str, Any]] = []
-        availability = observed_only_availability_fields()
+            grouped: dict[str, dict[int, dict[str, int]]] = {}
+            seen_tiers: set[tuple[str, int]] = set()
+            for observation in parsed.accepted:
+                quantities = observation.quantities
+                tier = quantities["holder_tier"]
+                ratio_bp = quantities["holding_ratio_bp"]
+                if not 1 <= tier <= 17:
+                    raise ValueError(
+                        f"{label} invalid holding tier {tier} for {observation.symbol}"
+                    )
+                if not 0 <= ratio_bp <= 10_000:
+                    raise ValueError(
+                        f"{label} invalid holding ratio {ratio_bp} bp for {observation.symbol}"
+                    )
+                holder_count = quantities["holder_count"]
+                shares = quantities["shares"]
+                if holder_count < 0 or shares < 0:
+                    raise ValueError(
+                        f"{label} negative holder count or shares at tier {tier} "
+                        f"for {observation.symbol}"
+                    )
+                natural_key = (observation.symbol, tier)
+                if natural_key in seen_tiers:
+                    raise ValueError(
+                        f"{label} duplicate symbol/tier row: {observation.symbol}/{tier}"
+                    )
+                seen_tiers.add(natural_key)
+                grouped.setdefault(observation.symbol, {})[tier] = {
+                    "holder_count": holder_count,
+                    "shares": shares,
+                    "holding_ratio_bp": ratio_bp,
+                }
 
-        for stock_code, group in grouped:
-            ratio_col = [col for col in group.columns if '比例' in col]
-            if not ratio_col:
-                continue
-            ratio_col_name = ratio_col[0]
+            rows = []
+            expected_tiers = set(range(1, 18))
+            for stock_code, tiers in sorted(grouped.items()):
+                if set(tiers) != expected_tiers:
+                    missing = sorted(expected_tiers - set(tiers))
+                    unexpected = sorted(set(tiers) - expected_tiers)
+                    raise ValueError(
+                        f"{label} incomplete tier set for {stock_code}: "
+                        f"missing={missing}, unexpected={unexpected}"
+                    )
 
-            # 使用 Decimal 計算比例避免浮點數誤差，然後轉換為 bp
-            def sum_ratios(df_subset):
-                total = Decimal('0')
-                for val in df_subset[ratio_col_name]:
-                    try:
-                        total += Decimal(str(val))
-                    except Exception:
-                        pass
-                return total
+                # The captured complete official payload is row-conserved by
+                # total shares = levels 1..15 minus level 16 and total holders
+                # = levels 1..15. Levels 16/17 are integrity controls only;
+                # their undocumented semantics are not projected as bands.
+                total_shares = tiers[17]["shares"]
+                observed_shares = sum(tiers[tier]["shares"] for tier in range(1, 16))
+                adjustment_shares = tiers[16]["shares"]
+                if total_shares != observed_shares - adjustment_shares:
+                    raise ValueError(
+                        f"{label} tier-17 share conservation failed for {stock_code}"
+                    )
+                total_holders = tiers[17]["holder_count"]
+                observed_holders = sum(
+                    tiers[tier]["holder_count"] for tier in range(1, 16)
+                )
+                if total_holders != observed_holders:
+                    raise ValueError(
+                        f"{label} tier-17 holder conservation failed for {stock_code}"
+                    )
 
-            large_holder_ratio = sum_ratios(group[group["持股分級"] == 15])
-            retail_holder_ratio = sum_ratios(group[group["持股分級"] <= 5])
+                large_bp = tiers[15]["holding_ratio_bp"]
+                retail_bp = sum(
+                    tiers[tier]["holding_ratio_bp"] for tier in range(1, 6)
+                )
+                rows.append(
+                    {
+                        "stock_code": stock_code,
+                        "decision_date": data_date.isoformat(),
+                        "source_version": source_version,
+                        "publication_at": None,
+                        "first_observed_at": fetched_at.isoformat(),
+                        "available_at": fetched_at.isoformat(),
+                        "available_date": None,
+                        "quality": "degraded",
+                        "shareholding_tiers": "weekly_distribution_available",
+                        "large_holder_ratio_bp": large_bp,
+                        "retail_holder_ratio_bp": retail_bp,
+                        "dispersion_index_bp": retail_bp - large_bp,
+                    }
+                )
+            if not rows:
+                raise ValueError(f"{label} produced no symbol summaries")
+            return pd.DataFrame(rows)
+        except Exception as exc:
+            route_errors.append(f"{label}: {type(exc).__name__}: {exc}")
 
-            large_bp = int((large_holder_ratio * Decimal('100')).to_integral_value(rounding=ROUND_HALF_UP))
-            retail_bp = int((retail_holder_ratio * Decimal('100')).to_integral_value(rounding=ROUND_HALF_UP))
-            disp_bp = retail_bp - large_bp
-
-            rows.append({
-                "stock_code": str(stock_code),
-                "decision_date": data_date.isoformat(),
-                "source_version": "tdcc-official-od-1-5",
-                **availability,
-                "shareholding_tiers": "weekly_distribution_available",
-                "large_holder_ratio_bp": large_bp,
-                "retail_holder_ratio_bp": retail_bp,
-                "dispersion_index_bp": disp_bp,
-            })
-
-        return pd.DataFrame(rows)
-    except Exception as e:
-        logger.error(f"TDCC 集保庫存爬取失敗: {e}")
-        return pd.DataFrame()
+    logger.error("TDCC 集保庫存官方來源均未通過：%s", "；".join(route_errors))
+    return pd.DataFrame()
 
 
 def fetch_tdcc_shareholding(decision_date: date) -> pd.DataFrame:

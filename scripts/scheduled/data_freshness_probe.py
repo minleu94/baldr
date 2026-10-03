@@ -16,7 +16,7 @@ import os
 import re
 import sqlite3
 import stat
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 import sys
 from typing import Any, Iterable
@@ -32,6 +32,7 @@ from data_module.official_trading_calendar import (
 )
 from data_module.phase3c_backfill_runner import configured_candidate_db_path
 from data_module.p0_candidate_repository import validate_candidate_working_copy_path
+from data_module.scheduled_research_acquisition_binding import verify_weekly_acquisition
 from app_module.update_status_history import (
     MAX_STATUS_HISTORY_BYTES,
     UPDATE_STATUS_HISTORY_SCHEMA,
@@ -41,6 +42,7 @@ from scripts.scheduled.scheduled_clock import scheduled_now
 
 
 PACIFIC = ZoneInfo("America/Los_Angeles")
+TAIPEI = ZoneInfo("Asia/Taipei")
 DAILY_DATA_CUTOFF_LOCAL = time(4, 30)
 _DATE_RE = re.compile(r"(?<!\d)(\d{8})(?!\d)")
 _ISO_DATE_RE = re.compile(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)")
@@ -731,18 +733,187 @@ def _coverage_bp(covered: int, eligible: int) -> int | None:
     return (covered * 10000) // eligible
 
 
+def _roll_forward_weekend_filing_deadline(due_date: date) -> date:
+    """Apply the general weekend extension; do not infer other holidays."""
+    if due_date.weekday() == 5:
+        return due_date + timedelta(days=2)
+    if due_date.weekday() == 6:
+        return due_date + timedelta(days=1)
+    return due_date
+
+
 def _expected_latest_monthly_period(reference_date: date) -> str:
-    months_back = 2 if reference_date.day < 10 else 1
+    monthly_due_date = _roll_forward_weekend_filing_deadline(
+        date(reference_date.year, reference_date.month, 10)
+    )
+    months_back = 1 if reference_date > monthly_due_date else 2
     month_index = reference_date.year * 12 + reference_date.month - 1 - months_back
     year, month_zero = divmod(month_index, 12)
     return f"{year:04d}-{month_zero + 1:02d}"
 
 
 def _expected_latest_statement_period(reference_date: date) -> str:
-    current_quarter = (reference_date.month - 1) // 3 + 1
-    index = reference_date.year * 4 + current_quarter - 2
-    year, quarter_zero = divmod(index, 4)
-    return f"{year:04d}-Q{quarter_zero + 1}"
+    """Return the latest calendar-year reporting period past its filing window.
+
+    Q1--Q3 are due within 45 days after quarter-end; the annual/Q4 statement is
+    due within three months after year-end. A Saturday/Sunday deadline rolls to
+    Monday under the general weekend rule. The adjusted due date remains
+    inclusive, so a period becomes expected only on the following day. This is
+    an aggregate freshness baseline, not evidence of a company's actual
+    publication time; non-weekend holidays, issuer exceptions, and company
+    coverage are not evaluated here.
+    """
+    eligible_periods: list[tuple[int, int]] = []
+    for year in range(reference_date.year - 2, reference_date.year + 1):
+        for quarter in range(1, 4):
+            quarter_end_month = quarter * 3
+            next_month = quarter_end_month + 1
+            quarter_end = date(year, next_month, 1) - timedelta(days=1)
+            due_date = _roll_forward_weekend_filing_deadline(
+                quarter_end + timedelta(days=45)
+            )
+            if reference_date > due_date:
+                eligible_periods.append((year, quarter))
+
+        annual_due_date = _roll_forward_weekend_filing_deadline(
+            date(year + 1, 3, 31)
+        )
+        if reference_date > annual_due_date:
+            eligible_periods.append((year, 4))
+
+    if not eligible_periods:
+        return ""
+    year, quarter = max(eligible_periods)
+    return f"{year:04d}-Q{quarter}"
+
+
+def _official_sessions_in_week(
+    calendar: OfficialTradingCalendar,
+    week_start: date,
+    *,
+    allow_online_probe: bool,
+) -> tuple[list[date], list[str]]:
+    records = calendar.get_trading_days_in_range(
+        week_start,
+        week_start + timedelta(days=4),
+        allow_online_probe=allow_online_probe,
+    )
+    sessions: list[date] = []
+    unresolved: list[str] = []
+    for record in records:
+        date_str = str(record.get("date_str") or "")
+        if record.get("is_trading_day") is None:
+            unresolved.append(date_str)
+        elif record.get("is_trading_day") is True:
+            try:
+                sessions.append(date.fromisoformat(date_str))
+            except ValueError:
+                unresolved.append(date_str or "invalid_date")
+    return sessions, unresolved
+
+
+def _expected_tdcc_weekly_periods(
+    reference_date: date,
+    calendar: OfficialTradingCalendar | None,
+    *,
+    allow_online_probe: bool = True,
+) -> tuple[str | None, str | None, date | None, str | None]:
+    """Resolve last completed TDCC week, prior week, and a two-session grace.
+
+    A week is complete once its last official session has passed. A missing
+    snapshot can wait through the end of the second subsequent official
+    session; older-than-one-week observations remain stale during that grace.
+    """
+    if calendar is None:
+        return None, None, None, "official calendar was not supplied"
+    if not callable(getattr(calendar, "get_trading_days_in_range", None)):
+        return None, None, None, "official calendar cannot resolve weekly date ranges"
+
+    current_week_start = reference_date - timedelta(days=reference_date.weekday())
+    selected_week_offset: int | None = None
+    expected_date: date | None = None
+    for week_offset in range(9):
+        week_start = current_week_start - timedelta(days=7 * week_offset)
+        sessions, unresolved = _official_sessions_in_week(
+            calendar,
+            week_start,
+            allow_online_probe=allow_online_probe,
+        )
+        if unresolved:
+            return None, None, None, (
+                "official weekly calendar unresolved: " + ", ".join(unresolved)
+            )
+        if not sessions:
+            continue
+        week_last_session = max(sessions)
+        if week_offset == 0 and week_last_session > reference_date:
+            continue
+        expected_date = week_last_session
+        selected_week_offset = week_offset
+        break
+
+    if expected_date is None or selected_week_offset is None:
+        return None, None, None, "no completed official trading week was resolved"
+
+    previous_period: str | None = None
+    for week_offset in range(selected_week_offset + 1, selected_week_offset + 9):
+        week_start = current_week_start - timedelta(days=7 * week_offset)
+        sessions, unresolved = _official_sessions_in_week(
+            calendar,
+            week_start,
+            allow_online_probe=allow_online_probe,
+        )
+        if unresolved:
+            return None, None, None, (
+                "previous official weekly calendar unresolved: "
+                + ", ".join(unresolved)
+            )
+        if sessions:
+            previous_period = max(sessions).strftime("%Y%m%d")
+            break
+    if previous_period is None:
+        return None, None, None, "previous official trading week was not resolved"
+
+    grace_records = calendar.get_trading_days_in_range(
+        expected_date + timedelta(days=1),
+        expected_date + timedelta(days=14),
+        allow_online_probe=allow_online_probe,
+    )
+    grace_sessions: list[date] = []
+    for record in grace_records:
+        date_str = str(record.get("date_str") or "")
+        if record.get("is_trading_day") is None:
+            return None, None, None, f"official publication-window calendar unresolved: {date_str}"
+        if record.get("is_trading_day") is True:
+            try:
+                grace_sessions.append(date.fromisoformat(date_str))
+            except ValueError:
+                return None, None, None, f"invalid official calendar date: {date_str}"
+            if len(grace_sessions) == 2:
+                break
+    if len(grace_sessions) < 2:
+        return None, None, None, "two-session TDCC publication window was not resolved"
+
+    return (
+        expected_date.strftime("%Y%m%d"),
+        previous_period,
+        grace_sessions[-1],
+        None,
+    )
+
+
+def _tdcc_publication_window_open(
+    run_now: datetime | None,
+    reference_date: date,
+    grace_through: date,
+) -> bool:
+    if run_now is None:
+        as_of_date = reference_date
+    elif run_now.tzinfo is None:
+        as_of_date = run_now.date()
+    else:
+        as_of_date = run_now.astimezone(TAIPEI).date()
+    return as_of_date <= grace_through
 
 
 def _static_file_status(
@@ -803,6 +974,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--status-path")
     parser.add_argument("--log-path")
     parser.add_argument("--quick-status-path")
+    parser.add_argument("--weekly-parent-receipt-path", type=Path)
+    parser.add_argument("--weekly-parent-receipt-sha256")
     parser.add_argument("--stale-days", type=int, default=7)
     parser.add_argument("--calendar-cache-path")
     parser.add_argument("--temporary-closure-path")
@@ -1194,12 +1367,20 @@ def _build_operational_source_statuses(
         _source_status(
             source_id="fundamental.monthly_revenues",
             authority="TWSE / TPEx / MOPS announcement lanes recorded in availability map",
-            frequency="monthly; normally announced by the 10th of the following month",
+            frequency=(
+                "monthly; general deadline is the 10th of the following month, "
+                "rolled to Monday when it falls on a weekend"
+            ),
             actual_period=revenue_latest,
             published_at=None,
             available_at=revenue_available,
             expected_period=revenue_expected,
-            coverage={"db_row_count": revenue_count},
+            coverage={
+                "db_row_count": revenue_count,
+                "general_weekend_deadline_policy": "roll_saturday_sunday_to_monday",
+                "non_weekend_holiday_adjustments_evaluated": False,
+                "issuer_specific_deadline_exceptions_evaluated": False,
+            },
             missing_periods=[revenue_expected] if revenue_status == "stale" else [],
             duplicate_key_count=None,
             freshness_status=revenue_status,
@@ -1231,8 +1412,11 @@ def _build_operational_source_statuses(
     statement_expected = _expected_latest_statement_period(expected_date)
     statement_present = _table_exists(conn, "fundamental_statement_items")
     statement_status = (
-        "current" if statement_latest == statement_expected else "stale"
-        if statement_present else "not_applicable"
+        "not_applicable"
+        if not statement_present
+        else "stale"
+        if not statement_latest or statement_latest < statement_expected
+        else "partial"
     )
     if statement_status == "stale":
         _append_warning(warnings, "quarterly_statement_expected_period_not_available")
@@ -1240,21 +1424,37 @@ def _build_operational_source_statuses(
         _source_status(
             source_id="fundamental.quarterly_statements",
             authority="MOPS financial statement publication/document lanes",
-            frequency="quarterly; latest quarter only after official publication",
+            frequency=(
+                "calendar-year general baseline: Q1-Q3 due within 45 days and "
+                "annual/Q4 within three months; weekend deadlines roll to Monday"
+            ),
             actual_period=statement_latest,
             published_at=None,
             available_at=statement_available,
             expected_period=statement_expected,
-            coverage={"db_row_count": statement_count},
+            coverage={
+                "db_row_count": statement_count,
+                "period_scope_completeness_verified": False,
+                "issuer_specific_deadline_exceptions_evaluated": False,
+                "non_weekend_holiday_adjustments_evaluated": False,
+                "general_weekend_deadline_policy": "roll_saturday_sunday_to_monday",
+                "per_row_available_date_pit_qualification": False,
+                "available_date_max_is_independent_of_latest_period": True,
+            },
             missing_periods=[statement_expected] if statement_status == "stale" else [],
             duplicate_key_count=None,
             freshness_status=statement_status,
             reason=(
-                "expected quarter is present"
-                if statement_status == "current"
+                "expected calendar-year due-window period is represented; issuer scope, "
+                "per-row availability, and PIT qualification are unverified"
+                if statement_status == "partial"
                 else "candidate statement table is not present in this database"
                 if statement_status == "not_applicable"
-                else "statement table is behind the official quarterly publication cadence"
+                else (
+                    "aggregate statement period is below the calendar-year general "
+                    "due-window "
+                    "baseline; issuer exceptions and company coverage are unverified"
+                )
             ),
             update_entry="candidate MOPS statement publication acquisition",
             scheduled_task="not in daily quick update; candidate route only",
@@ -1317,24 +1517,46 @@ def _phase3c_candidate_statuses(
     *,
     candidate_db_path: Path | None,
     expected_session: str | None,
+    calendar: OfficialTradingCalendar | None = None,
+    reference_date: date | None = None,
+    run_now: datetime | None = None,
+    allow_online_probe: bool = True,
 ) -> list[dict[str, Any]]:
     table_specs = (
         (
             "institutional_flows",
             "TWSE + TPEx institutional official endpoints",
-            frozenset({"twse-official-T86", "tpex-official-3itrade"}),
+            (
+                frozenset({"twse-official-T86"}),
+                frozenset({"tpex-official-3itrade"}),
+            ),
             "baldr-data-update-quick-daily",
         ),
         (
             "credit_transactions",
             "TWSE + TPEx margin official endpoints",
-            frozenset({"twse-official-MI_MARGN", "tpex-official-margin_bal"}),
+            (
+                frozenset({"twse-official-MI_MARGN"}),
+                frozenset(
+                    {
+                        "tpex-official-margin_bal",
+                        "tpex-mainboard-margin-openapi.v1",
+                    }
+                ),
+            ),
             "baldr-data-update-quick-daily",
         ),
         (
             "tdcc_shareholding",
             "TDCC public holdings lane",
-            frozenset({"tdcc-official-od-1-5"}),
+            (
+                frozenset(
+                    {
+                        "tdcc-official-od-1-5",
+                        "tdcc-openapi-1-5.v1",
+                    }
+                ),
+            ),
             "baldr-data-update-quick-daily (Monday latest snapshot only)",
         ),
     )
@@ -1351,7 +1573,8 @@ def _phase3c_candidate_statuses(
             db_error = f"{type(exc).__name__}:{exc}"
 
     try:
-        for source_id, authority, expected_versions, scheduled_task in table_specs:
+        for source_id, authority, expected_version_groups, scheduled_task in table_specs:
+            expected_versions = frozenset().union(*expected_version_groups)
             exists = conn is not None and _table_exists(conn, source_id)
             count = (
                 int(conn.execute(f'SELECT COUNT(*) FROM "{source_id}"').fetchone()[0])
@@ -1394,11 +1617,73 @@ def _phase3c_candidate_statuses(
                     ).fetchone()
                     latest_available_at = str(row[0]) if row and row[0] is not None else None
 
-            version_coverage_complete = expected_versions.issubset(observed_versions)
+            version_coverage_complete = all(
+                not group.isdisjoint(observed_versions)
+                for group in expected_version_groups
+            )
+            weekly_calendar_error: str | None = None
+            weekly_previous_period: str | None = None
+            weekly_grace_through: date | None = None
             if source_id == "tdcc_shareholding":
-                freshness_status = "unknown" if count else "not_applicable"
-                expected_period = None
-                missing_periods: list[str] = []
+                if candidate_db_path is None:
+                    expected_period = None
+                elif reference_date is None:
+                    expected_period = None
+                    weekly_calendar_error = "reference date was not supplied"
+                else:
+                    try:
+                        (
+                            expected_period,
+                            weekly_previous_period,
+                            weekly_grace_through,
+                            weekly_calendar_error,
+                        ) = _expected_tdcc_weekly_periods(
+                            reference_date,
+                            calendar,
+                            allow_online_probe=allow_online_probe,
+                        )
+                    except (
+                        AttributeError,
+                        OfficialTradingCalendarError,
+                        TypeError,
+                        ValueError,
+                    ) as exc:
+                        expected_period = None
+                        weekly_calendar_error = (
+                            f"{type(exc).__name__}: {exc}"
+                        )
+                grace_open = bool(
+                    weekly_grace_through is not None
+                    and reference_date is not None
+                    and _tdcc_publication_window_open(
+                        run_now,
+                        reference_date,
+                        weekly_grace_through,
+                    )
+                )
+                missing_periods = []
+                if weekly_calendar_error or expected_period is None:
+                    freshness_status = "unknown"
+                elif latest == expected_period:
+                    freshness_status = (
+                        "current"
+                        if version_coverage_complete and not duplicate_key_count
+                        else "partial"
+                    )
+                elif latest and latest > expected_period:
+                    freshness_status = (
+                        "unknown"
+                        if reference_date is not None
+                        and latest > reference_date.strftime("%Y%m%d")
+                        else "partial"
+                    )
+                elif grace_open and (
+                    latest is None or latest == weekly_previous_period
+                ):
+                    freshness_status = "expected_wait"
+                else:
+                    freshness_status = "stale"
+                    missing_periods = [expected_period]
             else:
                 expected_period = expected_session
                 missing_periods = (
@@ -1415,7 +1700,9 @@ def _phase3c_candidate_statuses(
                 else:
                     freshness_status = "current"
 
-            if candidate_db_path is None:
+            if source_id == "tdcc_shareholding" and weekly_calendar_error:
+                reason = f"official weekly calendar is unknown: {weekly_calendar_error}"
+            elif candidate_db_path is None:
                 reason = "PHASE3C_CANDIDATE_DB_PATH is not configured"
             elif db_error is not None:
                 reason = f"candidate DB read failed: {db_error}"
@@ -1423,10 +1710,44 @@ def _phase3c_candidate_statuses(
                 reason = "configured candidate DB does not exist"
             elif not exists:
                 reason = "candidate table does not exist"
+            elif source_id == "tdcc_shareholding" and freshness_status == "current":
+                reason = "latest completed-week TDCC snapshot is present"
             elif freshness_status == "current":
                 reason = "latest official session and both market source versions are present"
-            elif source_id == "tdcc_shareholding" and count:
-                reason = "weekly candidate observations are present; daily freshness is not applicable"
+            elif source_id == "tdcc_shareholding" and freshness_status == "expected_wait":
+                reason = (
+                    "waiting through the second subsequent official session for the "
+                    "latest completed-week TDCC snapshot"
+                )
+            elif source_id == "tdcc_shareholding" and freshness_status == "stale":
+                if (
+                    latest is not None
+                    and weekly_previous_period is not None
+                    and latest < weekly_previous_period
+                ):
+                    reason = (
+                        "latest TDCC observation is older than the previous completed "
+                        "week; stale regardless of the internal publication grace"
+                    )
+                elif latest is None:
+                    reason = "no TDCC weekly snapshot is available"
+                else:
+                    reason = (
+                        "latest completed-week TDCC snapshot is missing after the "
+                        "internal two-session grace ended"
+                    )
+            elif source_id == "tdcc_shareholding" and freshness_status == "partial":
+                if latest and expected_period and latest > expected_period:
+                    reason = (
+                        "weekly observation is newer than the expected completed-week "
+                        "period; cadence requires review"
+                    )
+                else:
+                    reason = "weekly snapshot is present but source-version or key coverage is incomplete"
+            elif source_id == "tdcc_shareholding" and freshness_status == "unknown":
+                reason = (
+                    "weekly observation date or calendar boundary cannot be safely classified"
+                )
             elif missing_periods:
                 reason = "latest candidate observation is behind the expected official session"
             else:
@@ -1436,7 +1757,11 @@ def _phase3c_candidate_statuses(
                 _source_status(
                     source_id=source_id,
                     authority=authority,
-                    frequency="daily candidate source" if source_id != "tdcc_shareholding" else "weekly candidate source",
+                    frequency=(
+                        "daily candidate source"
+                        if source_id != "tdcc_shareholding"
+                        else "weekly candidate source"
+                    ),
                     actual_period=latest,
                     published_at=None,
                     available_at=latest_available_at,
@@ -1448,8 +1773,37 @@ def _phase3c_candidate_statuses(
                         "db_row_count": count,
                         "latest_session_row_count": current_row_count,
                         "expected_source_versions": sorted(expected_versions),
+                        "expected_source_version_groups": [
+                            sorted(group) for group in expected_version_groups
+                        ],
                         "observed_source_versions": observed_versions,
                         "source_version_coverage_complete": version_coverage_complete,
+                        **(
+                            {
+                                "weekly_calendar_policy": (
+                                    "last official session of the latest completed trading week"
+                                ),
+                                "official_data_period_basis": (
+                                    "TDCC weekly snapshot data period is the last business "
+                                    "day of the week; no official publication deadline is stated"
+                                ),
+                                "official_publication_deadline": None,
+                                "publication_grace_policy": (
+                                    "internal_conservative_two_subsequent_official_sessions"
+                                ),
+                                "publication_grace_is_official_deadline": False,
+                                "previous_week_expected_period": weekly_previous_period,
+                                "publication_grace_sessions": 2,
+                                "publication_grace_through": (
+                                    weekly_grace_through.isoformat()
+                                    if weekly_grace_through is not None
+                                    else None
+                                ),
+                                "issuer_or_scope_completeness_verified": False,
+                            }
+                            if source_id == "tdcc_shareholding"
+                            else {}
+                        ),
                     },
                     missing_periods=missing_periods,
                     duplicate_key_count=duplicate_key_count,
@@ -1617,6 +1971,41 @@ def main(argv: list[str] | None = None) -> int:
             quick_checked_at.isoformat(timespec="seconds") if quick_checked_at else None
         )
 
+    # 研究採集是獨立唯讀投影，不併入正式／候選 freshness 或整體通過狀態。
+    try:
+        from scripts.audit_scheduled_research_acquisition import audit_quick_monthly_capture
+
+        quick_monthly_research = audit_quick_monthly_capture(
+            quick_update_status_path,
+            quick_payload=quick_payload,
+            quick_binding=quick_binding,
+            now=run_now,
+        )
+    except (OSError, ValueError, TypeError, KeyError, ImportError, SyntaxError) as exc:
+        quick_monthly_research = {
+            "status": "blocked",
+            "reason": str(exc) or type(exc).__name__,
+            "error_type": type(exc).__name__,
+            "formal_credit": False,
+        }
+    weekly_research = verify_weekly_acquisition(
+        output_root,
+        now=run_now,
+        receipt_path=args.weekly_parent_receipt_path,
+        expected_sha256=args.weekly_parent_receipt_sha256,
+    )
+    checks["research_acquisition"] = {
+        "status": "blocked"
+        if "blocked" in {quick_monthly_research.get("status"), weekly_research.get("status")}
+        else "observed",
+        "quick_monthly_candidate": quick_monthly_research,
+        "weekly_collection": weekly_research,
+        "independent_of_formal_and_candidate_freshness": True,
+        "formal_credit": False,
+        "historical_pit_credit": False,
+        "database_write_performed_by_probe": False,
+    }
+
     source_statuses: list[dict[str, Any]] = []
     candidate_db_path: Path | None = None
     configured_candidate_path = configured_candidate_db_path()
@@ -1724,6 +2113,10 @@ def main(argv: list[str] | None = None) -> int:
                     _phase3c_candidate_statuses(
                         candidate_db_path=candidate_db_path,
                         expected_session=checks.get("expected_official_session"),
+                        calendar=calendar,
+                        reference_date=run_date,
+                        run_now=run_now,
+                        allow_online_probe=True,
                     )
                 )
                 source_statuses.extend(

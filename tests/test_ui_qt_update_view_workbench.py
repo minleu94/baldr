@@ -150,6 +150,7 @@ class FakeUpdateService:
         snapshot_file=None,
         availability_file=None,
         source_version=None,
+        cancel_callback=None,
     ):
         self.calls.append((
             "dry_run_mops_monthly_revenue_backfill",
@@ -171,6 +172,7 @@ class FakeUpdateService:
         snapshot_file=None,
         availability_file=None,
         source_version=None,
+        cancel_callback=None,
     ):
         self.calls.append((
             "apply_mops_monthly_revenue_backfill",

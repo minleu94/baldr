@@ -43,6 +43,20 @@ class EvidenceImporter(Protocol):
     def collect(self, request: EvidenceCaptureRequest) -> EvidenceImportResult: ...
 
 
+def _legacy_metadata_date(value: Any) -> Any:
+    """將 legacy recommendation 的具名日期欄位穩定投影為 ISO 日期。"""
+    if type(value) is date:
+        return value.isoformat()
+    return value
+
+
+def _legacy_metadata_datetime(value: Any) -> Any:
+    """將 legacy recommendation 的具名時間欄位投影為保留原時區的 ISO timestamp。"""
+    if type(value) is datetime:
+        return value.isoformat()
+    return value
+
+
 class UnsupportedEvidenceImporter:
     def __init__(self, source_name: str, reason: str = "source provider is not configured") -> None:
         self.source_name = source_name
@@ -216,10 +230,14 @@ class RecommendationEvidenceImporter:
                         "stock_name": str(getattr(rec, "stock_name", "")),
                         "threshold_mode": threshold_mode,
                         "eligible_universe_size": getattr(rec, "eligible_universe_size", None),
-                        "eligible_universe_date": getattr(rec, "eligible_universe_date", None),
+                        "eligible_universe_date": _legacy_metadata_date(
+                            getattr(rec, "eligible_universe_date", None)
+                        ),
                         "ranking_method": getattr(rec, "ranking_method", None),
                         "recommendation_rank": index + 1,
-                        "source_created_at": getattr(result, "created_at", None),
+                        "source_created_at": _legacy_metadata_datetime(
+                            getattr(result, "created_at", None)
+                        ),
                         **identity["metadata"],
                         # V4.1 只保存決策當下已存在的 component score；
                         # 這些欄位供後續 price/volume ablation 使用，不回填歷史事件。

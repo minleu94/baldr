@@ -293,3 +293,6 @@ EOF 空白清理後，root 對精確提交候選版本完成 302-path regression
 
 
 2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。
+
+
+Health最後串接已控制實跑：臺北10/4決策對10/2行情，離線官方日曆驗證休市範圍；5個條件、67個Decimal指標及轉換proposal無blocker，Evidence errors0／report存在／degraded。控制衍生輸出隔離於QA，canonical35筆既有proposal保留；原自然Task結果與品質缺件不改寫。詳見上述Final closeout報告。

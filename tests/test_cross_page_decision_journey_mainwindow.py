@@ -75,7 +75,8 @@ def _wait_for(predicate, timeout_ms: int = 12_000) -> None:
         instance.processEvents()
         if predicate():
             return
-        QTest.qWait(10)
+        # 讓真實 Python worker 取得 GIL；Qt polling 的期限與條件不變。
+        time.sleep(0.01)
     instance.processEvents()
     assert predicate()
 

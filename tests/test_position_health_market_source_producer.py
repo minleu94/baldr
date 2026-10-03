@@ -727,3 +727,35 @@ def test_cli_leaves_capture_clock_with_producer(tmp_path: Path, monkeypatch) -> 
     assert isinstance(captured["produce"], dict)
     assert captured["produce"]["decision_at"] is None
     assert captured["produce"]["observed_at"] is None
+
+
+@pytest.mark.parametrize("scenario", ["valid_weekend", "intervening_trade", "future", "calendar_missing"])
+def test_health_market_day_requires_verified_calendar_gap(tmp_path, scenario):
+    from tests.test_position_health_source_providers import _write_isolated_calendar_cache
+    baseline, quick, freshness, market, output = _make_inputs(tmp_path)
+    now = datetime(2026,9,13,1,0,tzinfo=timezone.utc)
+    payload = json.loads(baseline.read_text(encoding="utf-8")); payload["as_of_date"] = "2026-09-13"
+    _write_json(baseline, payload)
+    payload = json.loads(quick.read_text(encoding="utf-8"));payload.update(end_date="2026-09-12",completed_at="2026-09-12T12:00:00+00:00")
+    _write_json(quick,payload)
+    market_day = "20260910" if scenario == "intervening_trade" else ("20260914" if scenario == "future" else "20260911")
+    payload = json.loads(freshness.read_text(encoding="utf-8"));payload["checked_at"] = "2026-09-13T00:00:00+00:00"
+    payload["checks"].update(expected_official_session=market_day,daily_prices_latest_date_key=market_day,technical_indicators_latest_date=market_day)
+    _write_json(freshness,payload)
+    with sqlite3.connect(market) as conn:
+        conn.execute("UPDATE technical_indicators SET 日期=?",(market_day,))
+        conn.execute("UPDATE daily_prices SET 日期=?",(market_day,))
+    cache = None if scenario == "calendar_missing" else _write_isolated_calendar_cache(tmp_path)
+    producer = PositionHealthMarketSourceProducer(market_db_path=market,quick_status_path=quick,freshness_status_path=freshness,calendar_cache_path=cache,now_provider=lambda:now)
+    if scenario != "valid_weekend":
+        with pytest.raises(PositionHealthMarketSourceError):
+            producer.produce(baseline_path=baseline,output_dir=output,decision_date="2026-09-13",decision_at=now,observed_at=now)
+        assert not output.exists()
+    else:
+        result = producer.produce(baseline_path=baseline,output_dir=output,decision_date="2026-09-13",decision_at=now,observed_at=now)
+        assert result["decision_date"] == "2026-09-13"
+        assert result["market_data_date"] == "2026-09-11"
+        assert result["market_calendar"]["status"] == "verified"
+        assert result["condition_row_count"] == 1
+        condition = json.loads(Path(result["condition_source_path"]).read_text(encoding="utf-8"))
+        assert condition["as_of_date"] == "2026-09-13" and condition["market_data_date"] == "2026-09-11"

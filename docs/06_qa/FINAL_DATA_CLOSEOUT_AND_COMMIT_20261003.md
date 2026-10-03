@@ -65,3 +65,14 @@
 本輪native資料庫副本已無損gzip封存，3848364032原bytes、1565883435archive bytes，完整解壓SHA為6dbc12a50c3ab84d5021e68c2e5458e3ec129137d8d76b77fafe9f795a8875b2；僅釋放可重建的本輪副本，原始source與apply備份不動。還原方式及身份receipt保存在native_final；本機C容量201GiB、D257GiB為此刻觀測，不作未來producer容量承諾。
 
 逐檔提交清單與before bytes保存在ignored QA。授權範圍內三階段相關code／測試／文件以ML研究、排程資料接線、四用途UI與文檔三組本機提交；不推送。root `paper_event_source_capture.py`是來源未證的重複副本，保留untracked不提交；raw、DB、runtime、automation TOML及工具輸出不stage。automation只改prompt、其他欄位逐一相同。原native task LastTaskResult2仍是原實際自然結果，下一次發布／排程需自然回讀，不能以本輪控制實跑改寫歷史成功。
+
+
+### 補充：Health日期與控制驗證隔離的最終修復
+
+最後回讀找到兩個真正接線缺口：wrapper refresh 使用主機run_now.date，導致臺北10/4的baseline標成10/3；market source又把decision日當資料日，拒絕合法週末Quick與10/2行情。現在refresh沿用同一臺北decision_date；source獨立保存market_data_date，驗證freshness expected_official_session，只有hash-bound、未過期、可得時間合法的離線官方日曆確認market日是該範圍唯一交易日，才接受較早行情與其間休市Quick receipt。未知日曆、跨交易日、未來日期或不符版本仍拒絕，不以SQLite max(date)猜日期。
+
+受控10/4 replay先前產生5筆canonical WATCH proposal，在新來源回讀時觸發同股同日不可覆寫保護。已保存完整SQLite backup及5筆JSON，逐一對原written收據event_id／proposal／日期／reviewer／auto_action／三個WATCH state核驗，在一致transaction移出本輪5筆可恢復控制提案，35筆既有紀錄逐列不變。沒有刪原始資料、交易、人工接受或正式PIT；未放寬repository保護。備份／restore_rows／receipt保存在controlled_proposal_restore_d94d44a9c8ad46bca5c5ffa1944d0de8。
+
+`--validation-decision-date`下的baseline、market source、transition repository與Exit輸出現在使用status旁本次controlled_runs命名空間。canonical推薦／Quick／官方日曆仍唯讀精確綁定；production預設路徑不變。最後獨立控制實跑：decision10/4、market10/2、5個condition及67個Decimal metric，source與transition blockers皆空；Evidence summary／report存在、child errors0、stdout22587 bytes、SHA cd10ad84421f8a51ee260e6f7f9e59982ceb76c0775d994a31a8c1e786f1b9e2，wrapper exit0／degraded。watchlist／portfolio／risk來源quality gaps及人類論點、1418身分與自然H5不足仍揭露，exit0不代表正式策略、完整品質或投資效果。canonical proposal DB回讀仍35筆，控制實跑未新增。
+
+新增calendar gap／validation namespace與相關repository測試77 passed／1 skipped；refresh跨主機／臺北日及provider回歸99 passed／1 skipped。跨頁12檔初跑2個Qt tight polling等待失敗，改為processEvents＋短sleep讓Python worker取得GIL，原12秒期限與assertion不變；最終51 passed。最終原生Windows會話在1265個code SHA before／after一致下完成1477、實際800×676視窗、取消／重試及workbench／market／portfolio／selection入口截圖；mypy754檔通過。原初失敗均保留。本機三組commit為0ea901b（研究）、dbd7825（排程）、3dcfcf4（UI／文件），後續Health日期與QA隔離另外補充commit；沒有push／merge／deploy。

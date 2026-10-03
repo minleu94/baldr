@@ -32,6 +32,7 @@ from app_module.portfolio_condition_monitor import (
 from app_module.position_health_source_providers import (
     CONDITION_SOURCE_SCHEMA_VERSION,
     METRICS_SOURCE_SCHEMA_VERSION,
+    OfficialCalendarSourceProvider,
 )
 
 
@@ -375,11 +376,15 @@ class PositionHealthMarketSourceProducer:
         quick_status_path: str | Path,
         freshness_status_path: str | Path,
         now_provider: Callable[[], datetime] | None = None,
+        calendar_cache_path: str | Path | None = None,
+        temporary_closure_path: str | Path | None = None,
     ) -> None:
         self.market_db_path = Path(market_db_path).expanduser().resolve()
         self.quick_status_path = Path(quick_status_path).expanduser().resolve()
         self.freshness_status_path = Path(freshness_status_path).expanduser().resolve()
         self.now_provider = now_provider or (lambda: datetime.now(UTC))
+        self.calendar_cache_path = calendar_cache_path
+        self.temporary_closure_path = temporary_closure_path
 
     def produce(
         self,
@@ -510,10 +515,32 @@ class PositionHealthMarketSourceProducer:
 
         quick, quick_hash = _read_json(self.quick_status_path, "quick_status")
         freshness, freshness_hash = _read_json(self.freshness_status_path, "freshness_status")
+        checks = freshness.get("checks")
+        market_date = decision
+        calendar_provenance: dict[str, Any] = {}
+        if isinstance(checks, Mapping) and checks.get("expected_official_session"):
+            market_date = _parse_date(checks["expected_official_session"], "expected_official_session")
+        if market_date > decision:
+            raise PositionHealthMarketSourceError("market_data_date_future")
+        if market_date < decision:
+            if self.calendar_cache_path is None:
+                raise PositionHealthMarketSourceError("market_date_calendar_evidence_missing")
+            calendar = OfficialCalendarSourceProvider(
+                calendar_cache_path=self.calendar_cache_path,
+                temporary_closure_path=self.temporary_closure_path,
+            ).read_range(
+                start_date=market_date.isoformat(), end_date=decision.isoformat(),
+                decision_at=receipt_cutoff, observed_at=receipt_observed,
+            )
+            if calendar.blockers or calendar.values.get("trading_dates") != (market_date.isoformat(),):
+                raise PositionHealthMarketSourceError("market_date_not_latest_verified_session")
+            calendar_provenance = dict(calendar.provenance)
         available_at, status_warnings = self._validate_receipts(
             quick,
             freshness,
             decision=decision,
+            market_date=market_date,
+            closed_date_range_verified=bool(calendar_provenance),
             cutoff=receipt_cutoff,
             observed=receipt_observed,
         )
@@ -535,7 +562,7 @@ class PositionHealthMarketSourceProducer:
 
         rows, db_binding = self._read_market_rows(
             codes=tuple(item["stock_code"] for item in positions),
-            decision=decision,
+            decision=market_date,
         )
         capture_completed = _parse_aware(
             self.now_provider(), "market_capture_completed_at"
@@ -564,6 +591,7 @@ class PositionHealthMarketSourceProducer:
             "schema_version": SOURCE_VERSION,
             "source_id": source_id,
             "decision_date": decision.isoformat(),
+            "market_data_date": market_date.isoformat(),
             "selected_rows": rows,
         }
         source_hash = _sha256_json(source_binding)
@@ -601,6 +629,8 @@ class PositionHealthMarketSourceProducer:
             "source_id": source_id,
             "source_snapshot_hash": source_hash,
             "as_of_date": decision.isoformat(),
+            "market_data_date": market_date.isoformat(),
+            "market_calendar": calendar_provenance,
             "upstream_receipt_available_at": available_at.isoformat(),
             "available_at": capture_completed.isoformat(),
             "decision_cutoff_at": cutoff.isoformat(),
@@ -654,6 +684,8 @@ class PositionHealthMarketSourceProducer:
             "producer": f"{type(self).__module__}.{type(self).__name__}",
             "status": status,
             "decision_date": decision.isoformat(),
+            "market_data_date": market_date.isoformat(),
+            "market_calendar": calendar_provenance,
             "decision_cutoff_at": cutoff.isoformat(),
             "available_at": capture_completed.isoformat(),
             "observed_at": observed.isoformat(),
@@ -707,6 +739,8 @@ class PositionHealthMarketSourceProducer:
         decision: date,
         cutoff: datetime,
         observed: datetime,
+        market_date: date | None = None,
+        closed_date_range_verified: bool = False,
     ) -> tuple[datetime, list[str]]:
         if not _quick_market_lane_ready(quick):
             raise PositionHealthMarketSourceError("quick_status_not_passed")
@@ -715,7 +749,10 @@ class PositionHealthMarketSourceProducer:
         if quick.get("errors") not in (None, [], ()):
             raise PositionHealthMarketSourceError("quick_status_errors_present")
         quick_date = _parse_date(quick.get("end_date"), "quick_status_end_date")
-        if quick_date != decision:
+        target_date = market_date or decision
+        if quick_date != target_date and not (
+            closed_date_range_verified and target_date < quick_date <= decision
+        ):
             raise PositionHealthMarketSourceError("quick_status_date_mismatch")
         completed = _parse_aware(quick.get("completed_at"), "quick_status_completed_at")
         if completed > cutoff or completed > observed:
@@ -725,7 +762,7 @@ class PositionHealthMarketSourceProducer:
         checks = freshness.get("checks")
         if not isinstance(checks, Mapping):
             raise PositionHealthMarketSourceError("freshness_checks_missing")
-        target_key = decision.strftime("%Y%m%d")
+        target_key = target_date.strftime("%Y%m%d")
         # The long-running updater has emitted both singular and plural key
         # spellings across existing receipt versions.  Accept only those two
         # explicit canonical names; never infer freshness from the SQLite

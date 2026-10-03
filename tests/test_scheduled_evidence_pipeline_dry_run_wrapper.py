@@ -372,7 +372,8 @@ def test_scheduled_wrapper_preserves_ready_with_advisories(tmp_path: Path, monke
     assert payload["pipeline_advisory_counts"] == {"portfolio_alerts_chip_estimated:2330": 1}
 
 
-def test_scheduled_wrapper_refreshes_paper_health_before_child(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("host_hour", [5, 10])
+def test_scheduled_wrapper_refreshes_paper_health_before_child(tmp_path: Path, monkeypatch, host_hour) -> None:
     output_root = tmp_path / "output"
     db_path = tmp_path / "data" / "sqlite" / "twstock.db"
     paper_operation_root = tmp_path / "paper-operation"
@@ -406,7 +407,7 @@ def test_scheduled_wrapper_refreshes_paper_health_before_child(tmp_path: Path, m
     monkeypatch.setattr(
         run_scheduled_evidence_pipeline_dry_run,
         "scheduled_now",
-        lambda: datetime(2026, 9, 8, 5, 15, tzinfo=ZoneInfo("America/Los_Angeles")),
+        lambda: datetime(2026, 9, 8, host_hour, 15, tzinfo=ZoneInfo("America/Los_Angeles")),
     )
 
     pipeline_summary = {
@@ -465,6 +466,12 @@ def test_scheduled_wrapper_refreshes_paper_health_before_child(tmp_path: Path, m
     )
     assert payload["manual_action_required"] is False
 
+
+    health_refresh = captured["health_refresh"]
+    assert isinstance(health_refresh, dict)
+    expected = datetime(2026,9,8,host_hour,15,tzinfo=ZoneInfo("America/Los_Angeles")).astimezone(ZoneInfo("Asia/Taipei")).date()
+    assert health_refresh["as_of_date"] == expected
+    assert command[command.index("--decision-date") + 1] == expected.isoformat()
 
 def test_scheduled_wrapper_blocks_stale_health_when_refresh_is_blocked(
     tmp_path: Path,
@@ -1204,3 +1211,35 @@ def test_scheduled_wrapper_surfaces_exit_effectiveness_timeout_without_stale_fal
     assert "partial child output" in Path(payload["exit_effectiveness_log"]).read_text(
         encoding="utf-8"
     )
+
+
+def test_controlled_validation_health_artifacts_are_separate_from_canonical(tmp_path, monkeypatch):
+    runner=run_scheduled_evidence_pipeline_dry_run
+    now,_status,_payload,_reader=_binding_fixture(tmp_path,monkeypatch)
+    monkeypatch.setattr(runner,"scheduled_now",lambda:now)
+    captured={}
+    class Refresh:
+        def __init__(self,**kwargs):pass
+        def refresh(self,**kwargs):
+            captured["health"]=kwargs
+            p=Path(kwargs["output_dir"])/"latest.json";p.parent.mkdir(parents=True);p.write_text("{}",encoding="utf-8")
+            return {"status":"passed","latest_path":str(p),"blockers":[],"warnings":[]}
+    class Market:
+        def __init__(self,**kwargs):captured["market_init"]=kwargs
+        def produce(self,**kwargs):
+            captured["market"]=kwargs
+            return {"status":"degraded","blockers":[],"warnings":[]}
+    def evaluate(**kwargs):
+        captured["transition"]=kwargs
+        return {"status":"degraded","blockers":[],"warnings":[]}
+    monkeypatch.setattr(runner,"PositionHealthDailyRefreshService",Refresh)
+    monkeypatch.setattr(runner,"PositionHealthMarketSourceProducer",Market)
+    monkeypatch.setattr(runner,"evaluate_baseline_file",evaluate)
+    monkeypatch.setattr(subprocess,"run",lambda *args,**kwargs:subprocess.CompletedProcess(args=args,returncode=0,stdout=json.dumps({"overall_status":"degraded","warnings_count":0,"warning_counts":{},"errors_count":0,"blocking_gaps":[],"source_coverage":{}})))
+    canonical=tmp_path
+    qa=tmp_path/"qa";status=qa/"validation.json"
+    runner.main(["--data-root",str(tmp_path/"data"),"--output-root",str(canonical),"--db-path",str(tmp_path/"market.sqlite"),"--dry-run","--bind-scheduled-recommendation","--validation-decision-date","2026-09-29","--status-path",str(status),"--refresh-paper-health","--produce-position-health-sources","--evaluate-position-health-transition"])
+    for item in [captured["health"],captured["market"],captured["transition"]]:
+        assert Path(item["output_dir"]).is_relative_to(qa/"controlled_runs")
+    assert not (canonical/"position_health_transition").exists()
+    assert captured["health"]["as_of_date"].isoformat()=="2026-09-29"

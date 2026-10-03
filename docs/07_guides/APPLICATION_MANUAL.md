@@ -4069,3 +4069,6 @@ HTTP 錯誤、partial read、超限或 schema 不符時，有限 raw body 與 `c
 更新頁月營收區可按「更新現況研究資料」：使用既有兩市場 raw/CSV 快照，全列與SHA驗證後以Decimal將千元轉TWD、備份及append-only套用current表。缺少raw、期間不符或資料遭修改會拒絕；不為此操作補歷史公告日，不解除正式回填precheck。weekly來源收集成功後另接current基本面writer；有互斥鎖或600秒逾時會回失敗／待回讀，不能當成功。
 
 基本面現況可以更新至2026-08月營收／2026-Q2季報，而正式PIT仍較舊；兩者契約不同。現金流未明示期間不得作累計彙總；原OpenAPI單位未驗證的列保留但不顯示可判讀數值。Advice或ML仍缺時先查所選保存來源及來源資格；source revision quarantine必須完成正式歷史重建／接受，不能將研究模型當正式概率。排程exit0僅為程序結果，需核對報告、資料日期、兩市場版本、row counts及來源品質；週末官方未發布依cadence列自然等待。
+
+
+Health排程使用臺北決策日，行情日另存market_data_date；週末沿用前一交易日必須由未過期hash-bound官方離線日曆驗證其間全部休市。缺日曆或跨過新交易日仍拒絕。控制回讀需同時指定精確保存推薦、非未來validation日期及獨立status path，Health／source／proposal／Exit寫入旁側controlled_runs；不要以控制測試代替自然排程收據或覆寫canonical同股同日提案。人類論點與入場身分仍需真實來源；degraded報告可閱讀，不代表可執行交易。

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 from json import JSONDecodeError
@@ -794,7 +794,6 @@ def main(argv: list[str] | None = None) -> int:
     run_now = scheduled_now()
     decision_date = run_now.astimezone(TAIPEI).date().isoformat()
     if args.validation_decision_date:
-        from datetime import date
         replay_date = date.fromisoformat(args.validation_decision_date)
         if not args.bind_scheduled_recommendation or args.status_path is None or replay_date > run_now.astimezone(TAIPEI).date():
             raise ValueError("controlled replay requires exact binding, separate status and nonfuture date")
@@ -804,6 +803,10 @@ def main(argv: list[str] | None = None) -> int:
     status_path = args.status_path or (run_root / "latest_status.json")
     status_path.parent.mkdir(parents=True, exist_ok=True)
     log_path = run_root / f"{run_stamp}_evidence_pipeline_dry_run.log"
+    artifact_output_root = (
+        status_path.parent / "controlled_runs" / run_stamp
+        if args.validation_decision_date else output_root
+    )
     if args.status_path is not None:
         report_root = status_path.parent / "reports"
         report_root.mkdir(parents=True, exist_ok=True)
@@ -876,8 +879,13 @@ def main(argv: list[str] | None = None) -> int:
 
     paper_health_refresh: dict[str, Any] | None = None
     if args.refresh_paper_health:
-        health_output_dir = paper_health_baseline.parent
-        previous_baseline = paper_health_baseline if paper_health_baseline.is_file() else health_output_dir / "latest.json"
+        previous_baseline = paper_health_baseline
+        health_output_dir = (
+            artifact_output_root / "position_health"
+            if args.validation_decision_date else paper_health_baseline.parent
+        )
+        if not previous_baseline.is_file():
+            previous_baseline = health_output_dir / "latest.json"
         try:
             paper_health_refresh = PositionHealthDailyRefreshService(
                 state_db_path=paper_operation_root / "paper_portfolio" / "paper_portfolio.sqlite",
@@ -890,7 +898,7 @@ def main(argv: list[str] | None = None) -> int:
                     coverage_status_path=paper_health_status_path,
                 ),
             ).refresh(
-                as_of_date=run_now.date(),
+                as_of_date=date.fromisoformat(decision_date),
                 output_dir=health_output_dir,
                 previous_baseline_path=previous_baseline,
                 observed_at=run_now,
@@ -943,7 +951,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.produce_position_health_sources:
         source_output = Path(
             args.paper_health_source_output
-            or output_root / "position_health_sources"
+            or artifact_output_root / "position_health_sources"
         )
         quick_status_path = Path(
             args.paper_health_quick_status_path
@@ -958,6 +966,8 @@ def main(argv: list[str] | None = None) -> int:
                 market_db_path=args.db_path,
                 quick_status_path=quick_status_path,
                 freshness_status_path=source_freshness_path,
+                calendar_cache_path=(args.paper_health_calendar_cache or paper_operation_root / "calendar_cache"),
+                temporary_closure_path=args.paper_health_temporary_closure_cache,
             ).produce(
                 baseline_path=paper_health_baseline,
                 output_dir=source_output,
@@ -1012,7 +1022,7 @@ def main(argv: list[str] | None = None) -> int:
     position_health_transition: dict[str, Any] | None = None
     position_health_transition_output: Path | None = None
     if args.evaluate_position_health_transition:
-        position_health_transition_output = output_root / "position_health_transition"
+        position_health_transition_output = artifact_output_root / "position_health_transition"
         try:
             position_health_transition = evaluate_baseline_file(
                 baseline_path=paper_health_baseline,
@@ -1052,7 +1062,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.run_exit_effectiveness:
         effective_transition_output = (
             position_health_transition_output
-            or output_root / "position_health_transition"
+            or artifact_output_root / "position_health_transition"
         )
         exit_effectiveness_requested_as_of_date = (
             _utc_now()
@@ -1062,7 +1072,7 @@ def main(argv: list[str] | None = None) -> int:
             .isoformat()
         )
         exit_effectiveness_output = (
-            output_root
+            artifact_output_root
             / "exit_effectiveness"
             / f"{exit_effectiveness_requested_as_of_date.replace('-', '')}.json"
         )

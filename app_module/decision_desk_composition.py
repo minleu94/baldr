@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
+from pathlib import Path
+from app_module.official_quote_exclusion_diagnostics import OfficialQuoteExclusionDiagnostics
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import DecisionDeskQuality, MarketRegimeSummary
 from data_module.pit_sector_membership_reader import PITSectorMembershipReader
 
@@ -144,6 +147,7 @@ def build_decision_desk_composition(
     """組裝可降級的 Decision Desk service graph。"""
 
     provider = DecisionDeskMarketRegimeProvider(regime_service)
+    cadence = MarketSessionCadence.for_config(config)
     if market_frame_loader is None:
         try:
             market_frame_loader = dependencies["DecisionMarketFrameLoader"](config.db_file)
@@ -161,8 +165,10 @@ def build_decision_desk_composition(
         "MarketBreadthService",
         lambda: dependencies["MarketBreadthService"](
             dependencies["SQLiteDailyPriceMarketBreadthProvider"](
-                config.db_file, market_frame_loader=market_frame_loader
-            )
+                config.db_file, market_frame_loader=market_frame_loader,
+                quote_diagnostics=OfficialQuoteExclusionDiagnostics(Path(config.db_file).parent.parent / "output/scheduled/daily_price_source_custody", clock=cadence.clock),
+            ),
+            cadence=cadence,
         ),
     )
     if industry_strength_service is None and "IndustryStrengthService" in dependencies:
@@ -190,7 +196,7 @@ def build_decision_desk_composition(
         sector_rotation_service = optional_service(
             "SectorRotationService",
             lambda: dependencies["SectorRotationService"](
-                dependencies["SQLiteIndustryIndexSectorRotationProvider"](config.db_file)
+                dependencies["SQLiteIndustryIndexSectorRotationProvider"](config.db_file), cadence=cadence
             ),
         )
 
@@ -217,6 +223,7 @@ def build_decision_desk_composition(
                 watchlist_service
             ),
             ranking_provider=dependencies["SQLiteRankingProvider"](config.db_file),
+            cadence=cadence,
         ),
     )
     relative_strength_liquidity_service = optional_service(
@@ -224,7 +231,8 @@ def build_decision_desk_composition(
         lambda: dependencies["RelativeStrengthLiquidityService"](
             provider=dependencies["SQLiteDailyPriceRelativeStrengthLiquidityProvider"](
                 config.db_file, market_frame_loader=market_frame_loader
-            )
+            ),
+            cadence=cadence,
         ),
     )
     market_data_visibility_service = optional_service(
@@ -233,6 +241,7 @@ def build_decision_desk_composition(
     )
     builder = dependencies["DecisionDeskSnapshotBuilder"](
         provider=provider,
+        cadence=cadence,
         market_breadth_service=market_breadth_service,
         sector_rotation_service=sector_rotation_service,
         relative_strength_liquidity_service=relative_strength_liquidity_service,

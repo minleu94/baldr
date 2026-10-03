@@ -10,6 +10,7 @@ import pytest
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
+    PortfolioAlertSummary,
     DecisionDeskRiskPromptSummary,
     MarketBreadthSummary,
     MarketRegimeSummary,
@@ -395,7 +396,7 @@ def test_runner_persists_paper_provenance_and_importer_consumes_same_snapshot(tm
         sector_rotation=SectorRotationSummary(date(2026, 9, 1), DecisionDeskQuality.OBSERVED, ()),
         relative_strength_liquidity=RelativeStrengthLiquiditySummary(date(2026, 9, 1), DecisionDeskQuality.OBSERVED, ()),
         watchlist_triggers=WatchlistTriggerSummary(date(2026, 9, 1), DecisionDeskQuality.OBSERVED, ()),
-        portfolio_alerts=result.portfolio_alerts,
+        portfolio_alerts=PortfolioAlertSummary(date(2026, 9, 1), DecisionDeskQuality.OBSERVED, (), alert_count=0, population_status="no_positions"),
         risk_prompts=DecisionDeskRiskPromptSummary(date(2026, 9, 1), DecisionDeskQuality.OBSERVED, ()),
     )
     runner = EvidencePipelineRunner(TWStockConfig(data_root=tmp_path / "data", output_root=tmp_path / "output"), paper_evidence_source=source)
@@ -410,13 +411,47 @@ def test_runner_persists_paper_provenance_and_importer_consumes_same_snapshot(tm
         EvidenceCaptureRequest(source="portfolio-alert", decision_date="2026-09-01")
     )
 
-    assert merged.overall_quality is DecisionDeskQuality.DEGRADED
-    assert merged.portfolio_alerts.attributions[0].source_label == "paper_position_health"
-    assert any(prompt.code == "2330" for prompt in merged.risk_prompts.prompts)
+    assert merged.overall_quality is DecisionDeskQuality.OBSERVED
+    assert merged.portfolio_alerts is base.portfolio_alerts
+    assert merged.risk_prompts is base.risk_prompts
+    assert metadata["portfolio_alerts"]["attributions"][0]["source_label"] == "paper_position_health"
+    assert metadata["capture_ready"] is False
+    assert metadata["user_action_required"] is False
+    assert any(prompt["code"] == "2330" for prompt in metadata["risk_prompts"]["prompts"])
+    assert not merged.risk_prompts.prompts
     assert provider.metadata["paper_evidence_source"]["paper_snapshot_id"] == "paper-main-20260901"
-    assert imported.event_payloads[0]["metadata"]["paper_evidence_source"]["paper_snapshot_id"] == "paper-main-20260901"
+    assert not imported.event_payloads
+    assert stored.metadata_json["paper_evidence_source"]["paper_snapshot_id"] == "paper-main-20260901"
 
 
 def test_degraded_transient_section_is_available_but_not_capture_ready() -> None:
     payload = {"as_of_date": "2026-09-01", "quality": "degraded", "warnings": ["stale"]}
     assert _transient_section_available(payload) is True
+
+
+@pytest.mark.parametrize("quality", [DecisionDeskQuality.OBSERVED, DecisionDeskQuality.DEGRADED])
+def test_machine_paper_does_not_replace_confirmed_user_holdings_or_hide_their_failure(tmp_path, quality):
+    from app_module.decision_desk_dtos import PortfolioAlertAttribution
+    source, *_ = _source(tmp_path)
+    d=date(2026,9,1)
+    user=PortfolioAlertSummary(d,quality,("user_condition_missing",),alert_count=1,alert_codes=("2330",),
+        attributions=(PortfolioAlertAttribution("2330","manual:user-confirmed","unknown","unavailable",50,
+            required_human_fields=("entry_thesis",),user_position_verified=True),),population_status="has_positions")
+    base=DecisionDeskSnapshot(as_of_date=d,generated_at=__import__("datetime").datetime(2026,9,1,5,15),schema_version=2,
+        overall_quality=quality,market_regime=MarketRegimeSummary(d,DecisionDeskQuality.OBSERVED,()),
+        market_breadth=MarketBreadthSummary(d,DecisionDeskQuality.OBSERVED,()),sector_rotation=SectorRotationSummary(d,DecisionDeskQuality.OBSERVED,()),
+        relative_strength_liquidity=RelativeStrengthLiquiditySummary(d,DecisionDeskQuality.OBSERVED,()),
+        watchlist_triggers=WatchlistTriggerSummary(d,DecisionDeskQuality.OBSERVED,()),portfolio_alerts=user,
+        risk_prompts=DecisionDeskRiskPromptSummary(d,quality,("risk_prompt_source_quality:portfolio_alerts:"+quality.value,)))
+    runner=EvidencePipelineRunner(TWStockConfig(data_root=tmp_path / "data",output_root=tmp_path / "output"),paper_evidence_source=source)
+    merged,research=runner._apply_paper_evidence_source(base,d)
+    assert merged.portfolio_alerts is user
+    assert merged.risk_prompts is base.risk_prompts
+    assert merged.overall_quality is quality
+    assert research["capture_ready"] is False
+    assert research["user_action_required"] is False
+    stored=build_stored_decision_desk_snapshot(merged,decision_date=d.isoformat(),metadata={"paper_evidence_source":research})
+    loaded=stored.to_decision_desk_snapshot()
+    assert loaded.portfolio_alerts.attributions[0].required_human_fields==("entry_thesis",)
+    assert loaded.portfolio_alerts.attributions[0].user_position_verified is True
+    assert loaded.source_lineage["paper_research"]["capture_ready"] is False

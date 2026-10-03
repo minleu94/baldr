@@ -119,7 +119,8 @@ def test_binding_missing_stops_before_any_child_and_records_failure(tmp_path, mo
     payload = json.loads((tmp_path / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json").read_text(encoding="utf-8"))
     assert payload["pipeline_execution_started"] is False
     assert payload["writes_evidence_db"] is False
-    assert payload["manual_action_required"] is True
+    assert payload["manual_action_required"] is False
+    assert payload["engineering_action_required"] is True
 
 
 def test_binding_is_forwarded_and_timeout_preserves_partial_output(tmp_path, monkeypatch):
@@ -179,7 +180,8 @@ def test_scheduled_wrapper_stdout_survives_cp1252_console_with_chinese_paths(
     assert payload["db_path"] == str(db_path)
     assert payload["confirm"] is False
     assert payload["production_scheduler_allowed"] is False
-    assert payload["manual_action_required"] is True
+    assert payload["manual_action_required"] is False
+    assert payload["engineering_action_required"] is True
     assert "輸出" in payload["report_path"]
     assert "\\u8f38\\u51fa" in raw_output
     assert (output_root / "scheduled" / "evidence_pipeline_dry_run" / "latest_status.json").exists()
@@ -272,7 +274,8 @@ def test_scheduled_wrapper_persists_pipeline_source_coverage_summary(
     assert command[command.index("--paper-evidence-health-baseline") + 1] == str(paper_health_baseline)
     assert command[command.index("--paper-evidence-status-path") + 1] == str(paper_status_path)
     assert payload["pipeline_actionable_warning_count"] == 3
-    assert payload["manual_action_required"] is True
+    assert payload["manual_action_required"] is False
+    assert payload["engineering_action_required"] is True
     assert payload["natural_maturity_only"] is False
 
 
@@ -561,7 +564,8 @@ def test_scheduled_wrapper_blocks_stale_health_when_refresh_is_blocked(
     assert payload["paper_health_refresh_status"] == "blocked"
     assert payload["paper_health_refresh_blocked"] is True
     assert payload["paper_evidence_health_baseline"] == str(sentinel)
-    assert payload["manual_action_required"] is True
+    assert payload["manual_action_required"] is False
+    assert payload["engineering_action_required"] is True
 
 
 def test_scheduled_wrapper_connects_market_sources_to_transition_evaluator(
@@ -1243,3 +1247,39 @@ def test_controlled_validation_health_artifacts_are_separate_from_canonical(tmp_
         assert Path(item["output_dir"]).is_relative_to(qa/"controlled_runs")
     assert not (canonical/"position_health_transition").exists()
     assert captured["health"]["as_of_date"].isoformat()=="2026-09-29"
+
+
+@pytest.mark.parametrize("errors,user_required,expected_exit", [(1,False,2),(0,True,0),(0,False,0)])
+def test_wrapper_separates_failed_child_summary_from_confirmed_user_action(tmp_path,monkeypatch,errors,user_required,expected_exit):
+    root=tmp_path / "output"
+    freshness=root / "scheduled/data_freshness/latest_status.json"
+    freshness.parent.mkdir(parents=True)
+    freshness.write_text(json.dumps({"status":"passed"}),encoding="utf-8")
+    child={"overall_status":"failed" if errors else "ready","errors_count":errors,"warnings_count":0,"warning_counts":{},
+        "blocking_gaps":[],"source_coverage":{"user_action_required":user_required,"user_actions":[{"stock_code":"2330","required_human_fields":["entry_thesis"]}] if user_required else []}}
+    monkeypatch.setattr(subprocess,"run",lambda *a,**k:subprocess.CompletedProcess(args=a,returncode=0,stdout=json.dumps(child)))
+    code=run_scheduled_evidence_pipeline_dry_run.main(["--dry-run","--data-root",str(tmp_path / "data"),
+        "--output-root",str(root),"--db-path",str(tmp_path / "market.db")])
+    result=json.loads((root / "scheduled/evidence_pipeline_dry_run/latest_status.json").read_text(encoding="utf-8"))
+    assert code==expected_exit
+    assert result["pipeline_exit_code"]==0
+    assert result["manual_action_required"] is user_required
+    assert result["engineering_action_required"] is bool(errors)
+    if errors:
+        assert result["pipeline_execution_error"]=="evidence_pipeline_terminal_summary_failed"
+        assert result["status"]=="failed"
+
+
+@pytest.mark.parametrize("source_id,warning,engineering", [
+    ("fundamental.monthly_revenues","monthly_revenue_expected_period_not_available",False),
+    ("fundamental.statement_availability_map",None,False),
+    ("market.tpex_daily_price","source_freshness_degraded:market.tpex_daily_price",True)])
+def test_freshness_qualification_does_not_hide_operational_faults(tmp_path,source_id,warning,engineering):
+    path=tmp_path / "freshness.json"
+    path.write_text(json.dumps({"status":"degraded","errors":[],"warnings":[warning] if warning else [],
+        "source_statuses":[{"source_id":source_id,"freshness_status":"stale","reason":"source unavailable","actual_period":"2024-Q1"}]}),encoding="utf-8")
+    result=run_scheduled_evidence_pipeline_dry_run._freshness_action_classification(path,"degraded")
+    assert result["freshness_engineering_action_required"] is engineering
+    assert result["source_qualification_required"] is (not engineering)
+    if not engineering:
+        assert result["source_qualification_gaps"][0]["source_id"]==source_id

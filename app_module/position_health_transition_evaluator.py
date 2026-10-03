@@ -240,6 +240,8 @@ class DailyPositionHealthTransitionEvaluator:
             "warnings": list(dict.fromkeys(global_warnings)),
             "blockers": list(dict.fromkeys(global_blockers)),
             "positions": result_positions,
+            "manual_action_required": any(item.get("user_action_required") is True for item in result_positions),
+            "research_qualification_required": any(item.get("required_governance_fields") for item in result_positions),
         }
         return output
 
@@ -599,7 +601,12 @@ class DailyPositionHealthTransitionEvaluator:
             forward_binding=forward_binding,
         )
         why = "；".join(reasons) if reasons else "position_health_transition_evaluated"
-        why_not = list(dict.fromkeys([*reasons, *required_human_fields]))
+        scope = str(position.get("source_scope") or provenance.get("source_scope") or "unclassified")
+        user_owned = scope == "user_portfolio" and position.get("user_position_verified") is True
+        governance_fields = list(dict.fromkeys(required_human_fields))
+        if not user_owned:
+            required_human_fields = []
+        why_not = list(dict.fromkeys([*reasons, *governance_fields]))
 
         row: dict[str, Any] = {
             "position_id": position_id or None,
@@ -625,7 +632,10 @@ class DailyPositionHealthTransitionEvaluator:
                 else str(condition_result.status or "unknown").lower()
             ),
             "reasons": reasons,
+            "source_scope": scope,
             "required_human_fields": list(dict.fromkeys(required_human_fields)),
+            "required_governance_fields": governance_fields if not user_owned else [],
+            "user_action_required": bool(user_owned and required_human_fields),
             "why": why,
             "why_not": why_not,
             "thesis_source_type": thesis_source_type,
@@ -819,6 +829,10 @@ def evaluate_baseline_file(
     if transition_repository_path is not None:
         repository = PositionHealthTransitionRepository(transition_repository_path)
     provenance = dict(payload)
+    if (payload.get("source_type") == "paper_snapshot_read_only"
+            and payload.get("research_only") is True
+            and payload.get("source_snapshot_id") and payload.get("source_snapshot_rows_sha256")):
+        provenance["source_scope"] = "paper_research"
     provenance.update(
         {
             "baseline_path": str(source),

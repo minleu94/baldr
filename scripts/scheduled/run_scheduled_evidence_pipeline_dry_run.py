@@ -122,6 +122,47 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _freshness_action_classification(path: Path, status: str) -> dict[str, Any]:
+    """Separate named fundamental qualification gaps from operational faults.
+
+    This does not change aggregate freshness, scheduler eligibility, or PIT gates.
+    Unknown sources, unexpected warnings, malformed receipts, and transport/data
+    errors still require engineering investigation.
+    """
+    qualification_ids = {
+        "fundamental.monthly_revenues", "fundamental.quarterly_statements",
+        "fundamental.current_monthly_observations", "fundamental.current_statement_observations",
+        "fundamental.statement_availability_map",
+    }
+    allowed_warnings = {
+        "monthly_revenue_expected_period_not_available", "quarterly_statement_expected_period_not_available",
+        "source_freshness_degraded:fundamental.current_monthly_observations",
+        "source_freshness_degraded:fundamental.current_statement_observations",
+    }
+    try:
+        if path.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError("freshness_receipt_too_large")
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        rows = payload.get("source_statuses", [])
+        if not isinstance(rows, list) or not all(isinstance(item, dict) for item in rows):
+            raise ValueError("freshness_source_statuses_invalid")
+        gaps = [dict(item) for item in rows
+            if item.get("freshness_status") not in {"current", "not_applicable", "expected_wait"}]
+        engineering = bool(status not in {"passed", "degraded"} or payload.get("errors")
+            or any(str(warning) not in allowed_warnings for warning in payload.get("warnings", []))
+            or any(item.get("source_id") not in qualification_ids for item in gaps))
+        qualifications = [item for item in gaps if item.get("source_id") in qualification_ids]
+        # A degraded receipt must carry the specific qualification evidence.
+        if status == "degraded" and not qualifications:
+            engineering = True
+        return {"freshness_engineering_action_required": engineering,
+            "source_qualification_required": bool(qualifications), "source_qualification_gaps": qualifications}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {"freshness_engineering_action_required": True,
+            "source_qualification_required": False, "source_qualification_gaps": [],
+            "classification_error": "freshness_receipt_unverified"}
+
+
 def _pipeline_status_fields(summary: dict[str, Any] | None) -> dict[str, Any]:
     if not summary:
         return {"pipeline_summary_available": False}
@@ -823,7 +864,7 @@ def main(argv: list[str] | None = None) -> int:
                 "task": "baldr-evidence-pipeline-dry-run-daily", "status": "failed",
                 "decision_date": decision_date, "checked_at": run_now.isoformat(),
                 "dry_run": True, "confirm": False, "writes_evidence_db": False,
-                "production_scheduler_allowed": False, "manual_action_required": True,
+                "production_scheduler_allowed": False, "manual_action_required": False, "engineering_action_required": True,
                 "exit_code": 2, "pipeline_summary_available": False,
                 "pipeline_execution_started": False,
                 "recommendation_binding_error": f"{type(error).__name__}:{error}",
@@ -1195,6 +1236,14 @@ def main(argv: list[str] | None = None) -> int:
     if pipeline_summary is None and wrapper_exit_code == 0:
         wrapper_exit_code = 2
         pipeline_execution_error = "evidence_pipeline_terminal_summary_missing"
+    if pipeline_summary is not None and wrapper_exit_code == 0 and (
+        pipeline_summary.get("overall_status") == "failed"
+        or not isinstance(pipeline_summary.get("errors_count", 0), int)
+        or isinstance(pipeline_summary.get("errors_count", 0), bool)
+        or pipeline_summary.get("errors_count", 0) != 0
+    ):
+        wrapper_exit_code = 2
+        pipeline_execution_error = "evidence_pipeline_terminal_summary_failed"
     if pipeline_log_write_error is not None and wrapper_exit_code == 0:
         wrapper_exit_code = 2
     if paper_health_refresh_blocked and wrapper_exit_code == 0:
@@ -1240,7 +1289,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     pipeline_errors_count = int(pipeline_fields.get("pipeline_errors_count") or 0)
     pipeline_blocking_gaps = list(pipeline_fields.get("pipeline_blocking_gaps") or [])
-    manual_action_required = bool(
+    validation_attention_required = bool(
         wrapper_exit_code != 0
         or freshness_status != "passed"
         or pipeline_summary is None
@@ -1256,6 +1305,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         or exit_effectiveness_blocked
     )
+    freshness_actions = _freshness_action_classification(freshness_status_path, freshness_status)
+    coverage = (pipeline_summary or {}).get("source_coverage") or {}
+    user_actions = list(coverage.get("user_actions") or [])
+    manual_action_required = bool(coverage.get("user_action_required") is True or (
+        position_health_transition is not None and position_health_transition.get("manual_action_required") is True))
+    engineering_action_required = bool(wrapper_exit_code != 0 or freshness_actions["freshness_engineering_action_required"]
+        or pipeline_summary is None or pipeline_errors_count or pipeline_blocking_gaps
+        or pipeline_actionable_warning_count or paper_health_refresh_blocked or paper_health_source_blocked
+        or forward_binding_blocked or exit_effectiveness_blocked)
     payload = {
         "task": "baldr-evidence-pipeline-dry-run-daily",
         "status": status,
@@ -1284,8 +1342,15 @@ def main(argv: list[str] | None = None) -> int:
         "exit_code": wrapper_exit_code,
         "checked_at": run_now.isoformat(timespec="seconds"),
         "manual_action_required": manual_action_required,
+        "user_actions": user_actions,
+        "engineering_action_required": engineering_action_required,
+        **freshness_actions,
+        "validation_attention_required": validation_attention_required,
+        "paper_research": coverage.get("paper_research"),
+        "research_qualification_required": bool(position_health_transition is not None
+            and position_health_transition.get("research_qualification_required") is True),
         "natural_maturity_only": bool(
-            pipeline_natural_maturity_warning_count > 0 and not manual_action_required
+            pipeline_natural_maturity_warning_count > 0 and not validation_attention_required
         ),
         "paper_health_refresh_status": (
             "not_requested"

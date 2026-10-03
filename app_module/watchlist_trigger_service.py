@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Protocol, Sequence
 import pandas as pd
 from decimal import Decimal, ROUND_HALF_UP
 
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import DecisionDeskQuality, WatchlistTriggerSummary
 
 
@@ -32,11 +33,13 @@ class WatchlistTriggerService:
         watchlist_provider: WatchlistProvider,
         ranking_provider: RankingProvider,
         *,
+        cadence: MarketSessionCadence | None = None,
         entry_threshold_bp: int = 6000,
     ) -> None:
         self.watchlist_provider = watchlist_provider
         self.ranking_provider = ranking_provider
         self.entry_threshold_bp = entry_threshold_bp
+        self.cadence = cadence
 
     def build_snapshot(self, as_of_date: date) -> WatchlistTriggerSummary:
         try:
@@ -90,6 +93,11 @@ class WatchlistTriggerService:
         if actual_date > as_of_date:
             return WatchlistTriggerSummary(None, DecisionDeskQuality.MISSING, ("watchlist_trigger_future_source_rejected",))
 
+        assessment = self.cadence.assess(as_of_date, actual_date) if self.cadence else None
+        if assessment is not None and assessment.status == "future_rejected":
+            return WatchlistTriggerSummary(actual_date, DecisionDeskQuality.MISSING, ("watchlist_trigger_future_source_rejected",), meta={"cadence": assessment.metadata})
+        if assessment is not None:
+            has_fallback = not assessment.current
         previous_scores = self._load_previous_scores(actual_date)
 
         new_candidates: list[str] = []
@@ -148,6 +156,7 @@ class WatchlistTriggerService:
             trigger_count=None if quality == DecisionDeskQuality.MISSING else len(triggered_codes),
             triggered_codes=triggered_codes,
             top_signal=top_signal,
+            meta={"cadence": assessment.metadata} if assessment else None,
         )
 
     def _load_previous_scores(self, as_of_date: date) -> dict[str, Any]:

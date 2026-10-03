@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -78,7 +78,7 @@ def _transient_capture_ready(payload: Mapping[str, Any]) -> bool:
 
     return (
         str(payload.get("quality") or "missing") in {"observed", "estimated"}
-        and not list(payload.get("warnings") or [])
+        and not any(_canonical_advisory_token(token) is None for token in _warning_tokens(payload.get("warnings")))
     )
 
 
@@ -143,7 +143,7 @@ class EvidencePipelineRunner:
     ) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
-        self.clock = clock or (lambda: datetime.utcnow().replace(microsecond=0))
+        self.clock = clock or (lambda: datetime.now(timezone.utc).replace(microsecond=0))
         self.run_id_factory = run_id_factory or (lambda: f"epr_{uuid4().hex[:12]}")
         self.paper_evidence_source = paper_evidence_source
         self._transient_decision_desk_snapshot: StoredDecisionDeskSnapshot | None = None
@@ -414,6 +414,9 @@ class EvidencePipelineRunner:
                 "watchlist_trigger_snapshot_section_missing",
                 "portfolio_alert_snapshot_section_missing",
                 "risk_prompt_snapshot_section_missing",
+                "watchlist_trigger_snapshot_quality_not_ready",
+                "portfolio_alert_snapshot_quality_not_ready",
+                "risk_prompt_snapshot_quality_not_ready",
             }
         ]
         if not watchlist_ready:
@@ -434,6 +437,18 @@ class EvidencePipelineRunner:
                 if not risk_available
                 else "risk_prompt_snapshot_quality_not_ready"
             )
+        research = stored.metadata_json.get("paper_evidence_source")
+        if isinstance(research, dict):
+            reconciled["paper_research"] = deepcopy(research)
+        attributions = stored.portfolio_alert_json.get("attributions", [])
+        user_actions = [
+            {"stock_code": item.get("stock_code"), "reason": "confirmed_user_position_fields_required", "required_human_fields": item.get("required_human_fields")}
+            for item in attributions if isinstance(item, dict)
+            and item.get("user_position_verified") is True
+            and bool(item.get("required_human_fields"))
+        ]
+        reconciled["user_actions"] = user_actions
+        reconciled["user_action_required"] = bool(user_actions)
         reconciled["blocking_gaps"] = gaps
 
         snapshot_ready = watchlist_ready and portfolio_ready and risk_ready
@@ -568,81 +583,32 @@ class EvidencePipelineRunner:
         snapshot: Any,
         decision_date: date,
     ) -> tuple[Any, dict[str, Any]]:
-        """Replace only portfolio/risk sections with verified Paper evidence.
-
-        The regular Decision Desk builder remains unchanged for UI and manual
-        flows.  Scheduled evidence opts into this explicit source so a manual
-        JSONL portfolio cannot silently masquerade as the isolated Paper
-        state.  The resulting section quality is deliberately preserved and
-        is still consumed by the normal readiness gate.
-        """
-
+        """Attach an isolated Paper research lane; preserve operational holdings."""
         if self.paper_evidence_source is None:
             return snapshot, {}
         result = self.paper_evidence_source.build(decision_date)
-        portfolio_alerts = result.portfolio_alerts
-        risk_prompts = DecisionDeskRiskPromptService().build_summary(
+        research_risk = DecisionDeskRiskPromptService().build_summary(
             as_of_date=decision_date,
             market_regime=snapshot.market_regime,
             market_breadth=snapshot.market_breadth,
             sector_rotation=snapshot.sector_rotation,
             relative_strength_liquidity=snapshot.relative_strength_liquidity,
             watchlist_triggers=snapshot.watchlist_triggers,
-            portfolio_alerts=portfolio_alerts,
+            portfolio_alerts=result.portfolio_alerts,
         )
-        sections = (
-            snapshot.market_regime,
-            snapshot.market_breadth,
-            snapshot.sector_rotation,
-            snapshot.relative_strength_liquidity,
-            snapshot.watchlist_triggers,
-            portfolio_alerts,
-            risk_prompts,
-        )
-        overall_quality = compute_overall_quality(sections)
-        if snapshot.overall_quality in {
-            # Keep an existing stronger failure from being hidden by a
-            # source replacement that happens to be observed.
-            DecisionDeskQuality.MISSING,
-            DecisionDeskQuality.DEGRADED,
-        } and overall_quality == DecisionDeskQuality.OBSERVED:
-            overall_quality = snapshot.overall_quality
-        old_warnings = tuple(
-            item
-            for item in snapshot.warnings
-            if not item.startswith(("portfolio_alerts:", "risk_prompts:"))
-        )
-        section_warnings = tuple(
-            f"portfolio_alerts:{item}" for item in portfolio_alerts.warnings
-        ) + tuple(f"risk_prompts:{item}" for item in risk_prompts.warnings)
+        metadata = deepcopy(result.metadata)
+        metadata.update({
+            "lane": "paper_research", "status": result.status,
+            "capture_ready": result.status == "ready" and not result.blockers,
+            "blockers": list(result.blockers), "warnings": list(result.warnings),
+            "portfolio_alerts": result.portfolio_alerts.to_dict(),
+            "risk_prompts": research_risk.to_dict(),
+            "user_action_required": False,
+            "operational_sections_replaced": False,
+        })
         lineage = deepcopy(getattr(snapshot, "source_lineage", {}) or {})
-        lineage["portfolio_alerts"] = {
-            "as_of_date": portfolio_alerts.as_of_date.isoformat()
-            if portfolio_alerts.as_of_date
-            else None,
-            "quality": portfolio_alerts.quality.value,
-            "warnings": list(portfolio_alerts.warnings),
-            "metadata": deepcopy(result.metadata),
-        }
-        lineage["risk_prompts"] = {
-            "as_of_date": risk_prompts.as_of_date.isoformat()
-            if risk_prompts.as_of_date
-            else None,
-            "quality": risk_prompts.quality.value,
-            "warnings": list(risk_prompts.warnings),
-            "metadata": {"derived_from": "paper_evidence_portfolio_alerts"},
-        }
-        return (
-            replace(
-                snapshot,
-                overall_quality=overall_quality,
-                warnings=tuple(dict.fromkeys(old_warnings + section_warnings)),
-                portfolio_alerts=portfolio_alerts,
-                risk_prompts=risk_prompts,
-                source_lineage=lineage,
-            ),
-            deepcopy(result.metadata),
-        )
+        lineage["paper_research"] = metadata
+        return replace(snapshot, source_lineage=lineage), metadata
 
     def _capture_step(self, request: EvidencePipelineRunRequest, dry_run: bool) -> tuple[Any, EvidencePipelineStepSummary]:
         timer = _Timer()
@@ -1002,7 +968,7 @@ def _split_warning_and_advisory_counts(value: Any) -> tuple[dict[str, int], dict
 
 def _canonical_advisory_token(token: str) -> str | None:
     normalized = token
-    for prefix in ("portfolio_alerts:", "risk_prompts:", "relative_strength_liquidity:"):
+    for prefix in ("portfolio_alerts:", "risk_prompts:", "relative_strength_liquidity:", "market_breadth:"):
         if normalized.startswith(prefix):
             normalized = normalized.removeprefix(prefix)
             break
@@ -1015,6 +981,7 @@ def _canonical_advisory_token(token: str) -> str | None:
         "portfolio_alert_top_source:",
         "portfolio_alerts_chip_estimated:",
         "relative_strength_liquidity_skipped_symbols:",
+        "market_breadth_source_declared_corporate_action_exclusions:",
     )):
         return normalized
     if normalized.startswith("risk_prompt_source_quality:") and normalized.endswith(":estimated"):

@@ -36,7 +36,9 @@ def test_missing_thesis_fields_fail_closed_to_watch(tmp_path: Path) -> None:
     assert payload["positions"][0]["state"] == "WATCH"
     assert payload["positions"][0]["entry_thesis"] is None
     assert payload["positions"][0]["invalidation"] is None
-    assert set(payload["positions"][0]["required_human_fields"]) == {
+    assert payload["positions"][0]["required_human_fields"] == []
+    assert payload["positions"][0]["user_action_required"] is False
+    assert set(payload["positions"][0]["required_governance_fields"]) == {
         "entry_thesis",
         "invalidation",
         "holding_horizon",

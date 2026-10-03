@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numbers
+import json
 import sqlite3
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -9,6 +10,8 @@ from typing import Protocol
 
 import pandas as pd
 
+from app_module.official_quote_exclusion_diagnostics import OfficialQuoteExclusionDiagnostics
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import DecisionDeskQuality, MarketBreadthSummary
 from app_module.decision_market_frame import DecisionMarketFrameLoader
 from app_module.dtos.market_loop_dtos import MarketBreadthDTO
@@ -25,7 +28,7 @@ class MarketBreadthProvider(Protocol):
 class MarketBreadthService:
     """Compute market breadth summary from injected DataFrame/provider."""
 
-    def __init__(self, provider: MarketBreadthProvider | None = None, *, data: pd.DataFrame | None = None):
+    def __init__(self, provider: MarketBreadthProvider | None = None, *, data: pd.DataFrame | None = None, cadence: MarketSessionCadence | None = None):
         if provider is None and data is None:
             raise ValueError("must provide provider or data")
         if provider is not None and data is not None:
@@ -33,6 +36,7 @@ class MarketBreadthService:
 
         self.provider = provider
         self.data = data
+        self.cadence = cadence
 
     def build_snapshot(self, as_of_date: date) -> MarketBreadthSummary:
         try:
@@ -66,12 +70,21 @@ class MarketBreadthService:
         snapshot_date = self._parse_snapshot_date(row_dict, as_of_date)
         quality = self._parse_quality(row_dict)
         warnings = list(self._parse_warnings(row_dict))
-        if snapshot_date != as_of_date:
+        assessment = self.cadence.assess(as_of_date, snapshot_date) if self.cadence else None
+        if assessment is not None and assessment.status == "future_rejected":
+            return MarketBreadthSummary(snapshot_date, DecisionDeskQuality.MISSING, ("market_breadth_future_source_rejected",), meta={"cadence": assessment.metadata})
+        if snapshot_date != as_of_date and not (assessment and assessment.current):
             fallback_warning = f"market_breadth_as_of_fallback:{snapshot_date.isoformat()}"
             if fallback_warning not in warnings:
                 warnings.append(fallback_warning)
             if quality is DecisionDeskQuality.OBSERVED:
                 quality = DecisionDeskQuality.DEGRADED
+        if assessment is not None and not assessment.current:
+            quality = DecisionDeskQuality.DEGRADED
+            warnings.append(f"market_breadth_cadence:{assessment.status}")
+        meta = self._parse_meta(row_dict)
+        if assessment is not None:
+            meta["cadence"] = assessment.metadata
         parsed = self._parse_counts(row_dict)
         if parsed is None:
             return MarketBreadthSummary(
@@ -93,7 +106,7 @@ class MarketBreadthService:
             advancing=advancing,
             declining=declining,
             unchanged=unchanged,
-            meta=self._parse_meta(row_dict),
+            meta=meta,
         )
 
     def _find_row(self, data: pd.DataFrame, target_date: date) -> pd.Series | None:
@@ -254,6 +267,9 @@ class MarketBreadthService:
         }
         meta: dict[str, object] = {}
         for key, value in row.items():
+            if key == "exclusions_json":
+                meta["exclusions"] = json.loads(str(value))
+                continue
             if key in excluded or pd.isna(value):
                 continue
             if isinstance(value, numbers.Integral):
@@ -275,10 +291,12 @@ class SQLiteDailyPriceMarketBreadthProvider:
         *,
         lookback_days: int = 60,
         market_frame_loader: DecisionMarketFrameLoader | None = None,
+        quote_diagnostics: OfficialQuoteExclusionDiagnostics | None = None,
     ):
         self.db_path = Path(db_path)
         self.lookback_days = lookback_days
         self.market_frame_loader = market_frame_loader
+        self.quote_diagnostics = quote_diagnostics
 
     def fetch(self, as_of_date: date) -> pd.DataFrame:
         if not self.db_path.exists():
@@ -368,6 +386,8 @@ class SQLiteDailyPriceMarketBreadthProvider:
         limit_up = 0
         limit_down = 0
         skipped = 0
+        exclusions: list[dict[str, object]] = []
+        corporate_action_exclusions = 0
 
         for _, row in current.iterrows():
             close_value = row["_close"]
@@ -378,6 +398,13 @@ class SQLiteDailyPriceMarketBreadthProvider:
             if change is None:
                 # 價差與方向都未知時，不得以收盤價差猜測當日方向。
                 skipped += 1
+                official = self.quote_diagnostics.corporate_action(str(row.get("證券代號")), actual_key,
+                    datetime.strptime(target_key, "%Y%m%d").date(), close_value, row.get("_volume")) if self.quote_diagnostics else None
+                if official:
+                    corporate_action_exclusions += 1
+                exclusions.append({"stock_code": str(row.get("證券代號")), "date": actual_key,
+                    "reason": "change_direction_unavailable", "raw_change": str(row.get("漲跌價差")),
+                    "raw_signs": {name: str(row.get(name)) for name in CHANGE_SIGN_COLUMNS}, "source": "sqlite_daily_prices", **(official or {})})
                 continue
             previous_close = close_value - change
 
@@ -398,12 +425,12 @@ class SQLiteDailyPriceMarketBreadthProvider:
         warnings: list[str] = []
         quality = DecisionDeskQuality.OBSERVED
         actual_date = self._parse_date_key(actual_key)
-        if actual_key != target_key and actual_date is not None:
+        unknown_skipped = skipped - corporate_action_exclusions
+        if unknown_skipped:
             quality = DecisionDeskQuality.DEGRADED
-            warnings.append(f"market_breadth_as_of_fallback:{actual_date.isoformat()}")
-        if skipped:
-            quality = DecisionDeskQuality.DEGRADED
-            warnings.append(f"market_breadth_skipped_rows:{skipped}")
+            warnings.append(f"market_breadth_skipped_rows:{unknown_skipped}")
+        if corporate_action_exclusions:
+            warnings.append(f"market_breadth_source_declared_corporate_action_exclusions:{corporate_action_exclusions}")
 
         row = {
             "as_of_date": actual_date.isoformat() if actual_date is not None else actual_key,
@@ -414,6 +441,10 @@ class SQLiteDailyPriceMarketBreadthProvider:
             "unchanged": unchanged,
             "source": "sqlite_daily_prices",
             "stock_count": int(len(current)),
+            "classified_stock_count": advancing + declining + unchanged,
+            "corporate_action_exclusions_count": corporate_action_exclusions,
+            "unknown_skipped_rows_count": unknown_skipped,
+            "exclusions_json": json.dumps(exclusions, ensure_ascii=False),
             "limit_up_count": limit_up,
             "limit_down_count": limit_down,
             "volume_expansion_bp": self._volume_expansion_bp(current, previous),

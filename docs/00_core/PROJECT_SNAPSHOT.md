@@ -1,5 +1,10 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-03 Operational 品質與研究來源隔離補驗
+
+最新工程驗收見 [行情發布節奏與 Paper 研究隔離](../06_qa/OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md)。Market/watchlist 日期差先驗官方日曆與專案截止，真 stale/缺價仍 fail closed。6171 以 hash-bound raw「除息」及實際 quote 證明非可比較排除；38 檔 ranking 排除已有具名原因，8 檔 listing/交易狀態未核實。Paper 改為獨立 research lane，保留普通持倉／風險品質，研究 governance 缺件不形成使用者補虛構交易／thesis 待辦。wrapper/child/summary 分別回讀；整體 freshness 的歷史月營收／季報與 availability map 缺件仍揭露，current research 不授正式 PIT。原始失敗與自然 task LastTaskResult 保留；本次無暫停任務、無資料 producer 重跑。
+
+
 ## 2026-10-03 整合修復目前狀態
 current-restated 年度 raw、Outcome Direct、B 數值來源、CORE19 訓練／保存、新 Python process 載入推論，以及原 Legacy Pipeline→Bank 研究 sidecar 已取得第三階段受控接受。最終 research model manifest 位於 `output/ml_research/integration_20261002/current_restated_core19_phase3_20261003T064855260194Z/`，SHA `f4f8b70f2da3515089007698c44497ca32fa7b56258cec8880e62e8aa6fe2e2b`；接受收據 `output/qa/integration_20261002/ml_validation/root_phase3_ml_acceptance_20261003T070413001284Z.json` SHA `007d245a4228d9f260ef3e4fd39373ce3eb4c62dac8129e88e29f33f2f8afc9f`。該接受僅限 current-restated／non-PIT 研究用途，不代表正式校準、teacher、promotion、交易權限或投資效果資格；10/2 當日 H5 尚未成熟，報酬與成本維持 null。正式 raw task 於 07:04:44.515124Z 恢復 Enabled=true／Ready，沒有手動重跑正式 raw。
 

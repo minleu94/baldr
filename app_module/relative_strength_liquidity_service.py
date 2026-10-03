@@ -8,6 +8,7 @@ from typing import Any, Mapping, Protocol
 
 import pandas as pd
 
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import DecisionDeskQuality, RelativeStrengthLiquiditySummary
 from app_module.decision_market_frame import DecisionMarketFrameLoader
 from app_module.dtos.market_loop_dtos import RelativeStrengthLiquidityDTO
@@ -24,11 +25,13 @@ class RelativeStrengthLiquidityService:
         self,
         provider: RelativeStrengthLiquidityProvider,
         *,
+        cadence: MarketSessionCadence | None = None,
         top_n: int = 10,
         min_avg_turnover: int = 20_000_000,
         max_skipped_symbol_ratio_bp: int = 500,
     ) -> None:
         self.provider = provider
+        self.cadence = cadence
         self.top_n = top_n
         self.min_avg_turnover = Decimal(int(min_avg_turnover))
         self.max_skipped_symbol_ratio_bp = min(10_000, max(0, int(max_skipped_symbol_ratio_bp)))
@@ -91,15 +94,28 @@ class RelativeStrengthLiquidityService:
             )
         effective_date = max(eligible_dates)
         warnings: list[str] = []
-        if effective_date != as_of_date:
+        assessment = self.cadence.assess(as_of_date, effective_date) if self.cadence else None
+        if assessment is not None and assessment.status == "future_rejected":
+            return RelativeStrengthLiquiditySummary(effective_date, DecisionDeskQuality.MISSING, ("relative_strength_liquidity_future_source_rejected",), meta={"cadence": assessment.metadata})
+        stale = not assessment.current if assessment else effective_date != as_of_date
+        if stale:
             warnings.append(f"relative_strength_liquidity_as_of_fallback:{effective_date.isoformat()}")
 
         ranking: list[dict[str, Any]] = []
         skipped = 0
+        exclusions: list[dict[str, Any]] = []
         for stock_code, stock_frame in data.groupby("_code", sort=False):
             item = self._rank_stock(str(stock_code), stock_frame, effective_date)
             if item is None:
                 skipped += 1
+                history = stock_frame.loc[stock_frame["_date"] <= effective_date].drop_duplicates("_date")
+                current = history.loc[history["_date"] == effective_date]
+                reason = ("insufficient_valid_history" if len(history) < 21 else
+                    "missing_effective_session_quote" if current.empty else
+                    "non_positive_close_or_lookback" if any(item <= 0 for item in history["_close"].tail(21)) else "turnover_unavailable")
+                exclusions.append({"stock_code": str(stock_code), "reason": reason, "valid_observations": len(history),
+                    "required_observations": 21, "latest_valid_date": max(history["_date"]).isoformat() if len(history) else None,
+                    "effective_date": effective_date.isoformat(), "source": "sqlite_daily_prices"})
                 continue
             ranking.append(item)
 
@@ -126,7 +142,7 @@ class RelativeStrengthLiquidityService:
         skipped_symbol_ratio_bp = self._ratio_bp(skipped, total_symbol_count)
         quality = (
             DecisionDeskQuality.DEGRADED
-            if effective_date != as_of_date or skipped_symbol_ratio_bp > self.max_skipped_symbol_ratio_bp
+            if stale or skipped_symbol_ratio_bp > self.max_skipped_symbol_ratio_bp
             else DecisionDeskQuality.OBSERVED
         )
         return RelativeStrengthLiquiditySummary(
@@ -144,6 +160,8 @@ class RelativeStrengthLiquidityService:
                 "skipped_symbol_ratio_bp": skipped_symbol_ratio_bp,
                 "max_skipped_symbol_ratio_bp": self.max_skipped_symbol_ratio_bp,
                 "ranking": ranking[: self.top_n],
+                "exclusions": exclusions,
+                "cadence": assessment.metadata if assessment else None,
             },
         )
 

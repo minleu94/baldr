@@ -38,6 +38,8 @@ class _AlertItem:
     chip_observed_event_count: int = 0
     chip_estimated_event_count: int = 0
     chip_unavailable_event_count: int = 0
+    required_human_fields: tuple[str, ...] = ()
+    user_position_verified: bool = False
 
 
 
@@ -151,6 +153,8 @@ class PortfolioAlertService:
                 chip_observed_event_count=item.chip_observed_event_count,
                 chip_estimated_event_count=item.chip_estimated_event_count,
                 chip_unavailable_event_count=item.chip_unavailable_event_count,
+                required_human_fields=item.required_human_fields,
+                user_position_verified=item.user_position_verified,
             )
             for item in sorted_alerts
         )
@@ -166,6 +170,14 @@ class PortfolioAlertService:
         for index, position in enumerate(positions):
             stock_code = self._read_stock_code(position, index)
             source_label = self._read_position_source_label(position)
+            source = getattr(position, "source_summary", {})
+            user_verified = (isinstance(source, Mapping) and source.get("source_scope") == "user_portfolio"
+                and source.get("user_position_verified") is True)
+            # An unknown thesis on a machine/legacy record cannot create a user obligation.
+            required_fields = tuple(field for field in (
+                "entry_thesis", "invalidation", "holding_horizon", "review_date")
+                if user_verified and isinstance(source.get("required_human_fields"), (list, tuple))
+                and field in source["required_human_fields"])
 
             try:
                 condition_result = self.condition_monitor.evaluate(position)
@@ -211,6 +223,8 @@ class PortfolioAlertService:
                         chip_observed_event_count=chip_result.observed_event_count,
                         chip_estimated_event_count=chip_result.estimated_event_count,
                         chip_unavailable_event_count=chip_result.unavailable_event_count,
+                        required_human_fields=required_fields,
+                        user_position_verified=bool(user_verified),
                     )
                 )
 

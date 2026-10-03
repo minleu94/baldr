@@ -26,8 +26,8 @@ def _as_dict(value: Any) -> Any:
         return value.isoformat()
     if value.__class__.__module__.startswith("numpy") and hasattr(value, "item"):
         return _as_dict(value.item())
-    if isinstance(value, tuple):
-        return [item for item in value]
+    if isinstance(value, (tuple, list)):
+        return [_as_dict(item) for item in value]
     if isinstance(value, dict):
         return {key: _as_dict(item) for key, item in value.items()}
     return value
@@ -359,6 +359,7 @@ class WatchlistTriggerSummary:
     trigger_count: int | None = None
     triggered_codes: tuple[str, ...] = ()
     top_signal: str | None = None
+    meta: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "warnings", _normalize_warnings(self.warnings))
@@ -372,6 +373,7 @@ class WatchlistTriggerSummary:
             "trigger_count": self.trigger_count,
             "triggered_codes": list(self.triggered_codes),
             "top_signal": self.top_signal,
+            **({"meta": _as_dict(self.meta)} if self.meta is not None else {}),
         }
 
 
@@ -387,6 +389,8 @@ class PortfolioAlertAttribution:
     chip_observed_event_count: int = 0
     chip_estimated_event_count: int = 0
     chip_unavailable_event_count: int = 0
+    required_human_fields: tuple[str, ...] = ()
+    user_position_verified: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "stock_code", str(self.stock_code))
@@ -408,6 +412,8 @@ class PortfolioAlertAttribution:
             "chip_risk_level": self.chip_risk_level,
             "severity": self.severity,
             "reasons": list(self.reasons),
+            **({"required_human_fields": list(self.required_human_fields), "user_position_verified": True}
+               if self.user_position_verified else {}),
             "data_quality_flags": list(self.data_quality_flags),
             "chip_observed_event_count": self.chip_observed_event_count,
             "chip_estimated_event_count": self.chip_estimated_event_count,
@@ -715,5 +721,5 @@ class DecisionDeskSnapshot:
                 else None
             ),
             "recommendations": self.recommendations.to_dict() if self.recommendations else None,
-            "source_lineage": deepcopy(self.source_lineage),
+            "source_lineage": _as_dict(self.source_lineage),
         }

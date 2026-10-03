@@ -4072,3 +4072,15 @@ HTTP 錯誤、partial read、超限或 schema 不符時，有限 raw body 與 `c
 
 
 Health排程使用臺北決策日，行情日另存market_data_date；週末沿用前一交易日必須由未過期hash-bound官方離線日曆驗證其間全部休市。缺日曆或跨過新交易日仍拒絕。控制回讀需同時指定精確保存推薦、非未來validation日期及獨立status path，Health／source／proposal／Exit寫入旁側controlled_runs；不要以控制測試代替自然排程收據或覆寫canonical同股同日提案。人類論點與入場身分仍需真實來源；degraded報告可閱讀，不代表可執行交易。
+
+## 2026-10-03 行情日期、來源排除與 Paper 研究判讀
+
+入口仍為 Daily Decision Desk／市場頁／觀察池／持倉與風險，以及排程 Evidence dry-run 報告。先看 Taipei 決策日，再看各區塊實際行情日與官方日曆來源；週末／假日最新行情日可早於決策日。日曆 unknown/過期、截止後真正 stale、缺行情仍須排錯，不能把只有排程 exit0 當成資料全正常。專案截止是 04:30 America/Los_Angeles（按 DST 換算），不是交易所發布時間證明。
+
+廣度會顯示被排除的代碼與原因；原始「除權／除息」只有 custody hash、來源日期、取得時間與價格/股數相符才列非可比較排除，不算平盤。相對強度只使用至少 21 個有效觀測值，逐檔列出缺當日報價或歷史不足；無上市／交易狀態證據時，不推論停牌／下市。排名為有足夠來源的子集合，不能解讀為全部股票都可分析。
+
+排程報告的普通持倉／風險與 Paper research 分開閱讀；Paper lane 有自己的 status、capture_ready、warnings/blockers 和 alerts/risk。1418 machine seed 與其他研究部位缺 entry identity／治理 thesis 時，顯示研究治理缺件，請勿為消除警告輸入虛構成交或人工 thesis。只有明確確認的使用者持倉且有待補欄位時，才列 user_actions/required_human_fields/manual_action_required；舊 manual 標籤本身不證明真實持倉歸屬。任何研究 proposal 都不會自動交易或更新正式持倉。
+
+報告需分別閱讀 engineering_action_required（程式、接線／來源故障）、source_qualification_required/gaps（具名歷史／正式來源資格缺件）、research_qualification_required（Paper 研究治理）、自然 Forward/Exit 樣本，以及 wrapper exit_code、pipeline_exit_code、summary errors/status 和 report 存在／stdout SHA。Risk 的 estimated 保留上游估計品質與附註；真正 degraded/missing 上游不會被清除。整體 degraded 不等於使用者必須補人工 thesis。
+
+目前 current 月營收/季報支援有來源覆蓋的當下個股研究；歷史 PIT、完整公司範圍、公告時點、季度未知 cash-flow basis 與正式 model/source revision 仍受原資格限制。遇到這些缺件，查看 source_id、actual/expected period 與 reason，不能全部解讀為週末等發布。實際收據與驗收見 [完整補驗報告](../06_qa/OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md)。

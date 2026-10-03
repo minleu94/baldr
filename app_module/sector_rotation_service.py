@@ -9,6 +9,7 @@ from typing import Any, Protocol, TypedDict
 
 import pandas as pd
 
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import DecisionDeskQuality, SectorRotationSummary
 from app_module.dtos.market_loop_dtos import SectorRotationDTO
 
@@ -27,13 +28,14 @@ class _SectorRankingItem(TypedDict):
 class SectorRotationService:
     """Build sector rotation summary from injected industry index data."""
 
-    def __init__(self, provider: SectorRotationProvider | None = None, *, data: pd.DataFrame | None = None):
+    def __init__(self, provider: SectorRotationProvider | None = None, *, data: pd.DataFrame | None = None, cadence: MarketSessionCadence | None = None):
         if provider is None and data is None:
             raise ValueError("must provide provider or data")
         if provider is not None and data is not None:
             raise ValueError("provider and data cannot both be provided")
         self.provider = provider
         self.data = data
+        self.cadence = cadence
 
     def build_snapshot(self, as_of_date: date) -> SectorRotationSummary:
         try:
@@ -64,6 +66,13 @@ class SectorRotationService:
                 warnings=warnings,
             )
 
+        assessment = self.cadence.assess(as_of_date, effective_date) if self.cadence else None
+        if assessment is not None and assessment.status == "future_rejected":
+            return SectorRotationSummary(effective_date, DecisionDeskQuality.MISSING, ("sector_rotation_future_source_rejected",), meta={"cadence": assessment.metadata})
+        if assessment and assessment.current:
+            parse_issues = [item for item in parse_issues if not item.startswith("sector_rotation_as_of_fallback:")]
+        elif assessment is not None:
+            parse_issues.append(f"sector_rotation_cadence:{assessment.status}")
         warnings = tuple(parse_issues)
         leading_sector: str | None
         trailing_sector: str | None
@@ -86,7 +95,7 @@ class SectorRotationService:
             leading_sector=leading_sector,
             trailing_sector=trailing_sector,
             rotation_intensity_bp=rotation_intensity_bp,
-            meta={"sector_ranking": ranked, "source": self._resolve_source(data)},
+            meta={"sector_ranking": ranked, "source": self._resolve_source(data), "cadence": assessment.metadata if assessment else None},
         )
 
     def build_snapshot_dto(self, as_of_date: date) -> SectorRotationDTO:

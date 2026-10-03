@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 from dataclasses import dataclass, field
 from datetime import date, datetime
 import hashlib
@@ -7,6 +9,7 @@ from typing import Any
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
+    _as_dict,
     DecisionDeskRiskPrompt,
     DecisionDeskRiskPromptSummary,
     DecisionDeskSnapshot,
@@ -186,6 +189,7 @@ class StoredDecisionDeskSnapshot:
             portfolio_alerts=_portfolio_alert(self.portfolio_alert_json),
             risk_prompts=_risk_prompt(self.risk_prompt_json),
             warnings=_warnings(self.warnings_json),
+            source_lineage=deepcopy(self.metadata_json.get("source_lineage") or {}),
         )
 
 
@@ -206,6 +210,8 @@ def build_stored_decision_desk_snapshot(
             "schema_version": snapshot.schema_version,
         }
     )
+    if snapshot.source_lineage:
+        metadata_json["source_lineage"] = _as_dict(snapshot.source_lineage)
     # Capture clock metadata is custody, not snapshot content identity.  A
     # retry at another minute must resolve to the same snapshot hash, while
     # decision/as-of and authority flags remain identity-bound.
@@ -389,6 +395,7 @@ def _watchlist_trigger(payload: SnapshotJson) -> WatchlistTriggerSummary:
         trigger_count=payload.get("trigger_count"),
         triggered_codes=tuple(str(item) for item in _list(payload.get("triggered_codes"))),
         top_signal=payload.get("top_signal"),
+        meta=deepcopy(payload.get("meta")) if isinstance(payload.get("meta"), dict) else None,
     )
 
 
@@ -405,6 +412,8 @@ def _portfolio_alert(payload: SnapshotJson) -> PortfolioAlertSummary:
             chip_observed_event_count=int(item.get("chip_observed_event_count") or 0),
             chip_estimated_event_count=int(item.get("chip_estimated_event_count") or 0),
             chip_unavailable_event_count=int(item.get("chip_unavailable_event_count") or 0),
+            required_human_fields=tuple(str(field) for field in _list(item.get("required_human_fields"))),
+            user_position_verified=item.get("user_position_verified") is True,
         )
         for item in _list(payload.get("attributions"))
         if isinstance(item, dict)

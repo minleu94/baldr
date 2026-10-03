@@ -5,6 +5,9 @@ from datetime import datetime
 from typing import Any, Callable
 
 from app_module.broker_flow_service import BrokerFlowService
+from pathlib import Path
+from app_module.official_quote_exclusion_diagnostics import OfficialQuoteExclusionDiagnostics
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import DecisionDeskQuality, MarketRegimeSummary
 from app_module.decision_market_frame import DecisionMarketFrameLoader
 from app_module.decision_desk_service import DecisionDeskSnapshotBuilder
@@ -121,6 +124,7 @@ def build_service_backed_decision_desk_snapshot_builder(
     active_watchlist_service = watchlist_service or _try_create("WatchlistService", lambda: WatchlistService(config))
     active_broker_flow_service = broker_flow_service or _try_create("BrokerFlowService", lambda: BrokerFlowService(config))
     market_frame_loader = DecisionMarketFrameLoader(config.db_file)
+    cadence = MarketSessionCadence.for_config(config, clock=clock)
 
     market_breadth_service = _try_create(
         "MarketBreadthService",
@@ -128,7 +132,9 @@ def build_service_backed_decision_desk_snapshot_builder(
             SQLiteDailyPriceMarketBreadthProvider(
                 config.db_file,
                 market_frame_loader=market_frame_loader,
-            )
+                quote_diagnostics=OfficialQuoteExclusionDiagnostics(Path(config.db_file).parent.parent / "output/scheduled/daily_price_source_custody", clock=cadence.clock),
+            ),
+            cadence=cadence,
         ),
     )
     active_pit_reader = pit_membership_reader or _configured_pit_reader(config)
@@ -151,13 +157,13 @@ def build_service_backed_decision_desk_snapshot_builder(
         sector_rotation_service = _try_create(
             "SectorRotationService",
             lambda: SectorRotationService(
-                SQLiteIndustryIndexSectorRotationProvider(config.db_file)
+                SQLiteIndustryIndexSectorRotationProvider(config.db_file), cadence=cadence
             ),
         )
     if sector_rotation_service is None:
         sector_rotation_service = _try_create(
             "SectorRotationService",
-            lambda: SectorRotationService(SQLiteIndustryIndexSectorRotationProvider(config.db_file)),
+            lambda: SectorRotationService(SQLiteIndustryIndexSectorRotationProvider(config.db_file), cadence=cadence),
         )
     relative_strength_liquidity_service = _try_create(
         "RelativeStrengthLiquidityService",
@@ -165,7 +171,8 @@ def build_service_backed_decision_desk_snapshot_builder(
             SQLiteDailyPriceRelativeStrengthLiquidityProvider(
                 config.db_file,
                 market_frame_loader=market_frame_loader,
-            )
+            ),
+            cadence=cadence,
         ),
     )
     watchlist_trigger_service = _try_create(
@@ -173,6 +180,7 @@ def build_service_backed_decision_desk_snapshot_builder(
         lambda: WatchlistTriggerService(
             WatchlistServiceWatchlistProvider(active_watchlist_service),
             SQLiteRankingProvider(config.db_file),
+            cadence=cadence,
         ),
     )
     portfolio_alert_service = None
@@ -203,6 +211,7 @@ def build_service_backed_decision_desk_snapshot_builder(
 
     return DecisionDeskSnapshotBuilder(
         provider=DecisionDeskMarketRegimeProvider(active_regime_service),
+        cadence=cadence,
         clock=clock,
         market_breadth_service=market_breadth_service,
         sector_rotation_service=sector_rotation_service,

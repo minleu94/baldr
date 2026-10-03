@@ -1263,3 +1263,11 @@ It must not rerun data update, rerun data freshness, rerun the evidence pipeline
 
 
 2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。
+
+## 2026-10-03 品質判讀與 research lane
+
+Evidence runner 使用 aware UTC 真實 clock。MarketSessionCadence 以既有 hash-bound 官方 cache 驗 latest completed session；04:30 Pacific 為專案 cutoff，不授 publication/PIT 證明。raw-bound corporate-action exclusions 與相對強度具名排除保留；只有既定 advisory 可以通過 capture-ready，未知警告仍阻擋。
+
+Paper adapter 只在 source_lineage/metadata/source_coverage 的 paper_research lane 附加 alerts/risk/status/warnings/blockers/ready，不取代普通 Portfolio/Risk。required_governance_fields 與來源確認使用者的 required_human_fields/user_actions 分開；legacy manual 名稱不能證明 real holding。wrapper summary failed/errors>0 強制 exit2，實際 child exit 另列。engineering_action_required、source_qualification_required/gaps、research_qualification_required、validation_attention_required 與自然 sample 分報；aggregate freshness／正式 PIT/model gates 不放寬。
+
+`--validation-decision-date` 控制實跑仍必須唯一 QA status-path 與 recommendation identity；所有衍生 writer 只在其 controlled_runs。自然 Windows LastTaskResult 不被控制 run 改寫。驗收見 [補驗報告](../../docs/06_qa/OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md)。

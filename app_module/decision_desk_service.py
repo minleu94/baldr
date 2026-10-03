@@ -6,6 +6,7 @@ from dataclasses import replace
 from copy import deepcopy
 from pathlib import Path
 
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     DecisionDeskSnapshot,
@@ -218,6 +219,7 @@ class DecisionDeskSnapshotBuilder:
         provider: DailyDecisionDeskProvider | None = None,
         *,
         schema_version: int = 2,
+        cadence: MarketSessionCadence | None = None,
         clock: Callable[[], datetime] | None = None,
         market_breadth_service: MarketBreadthSectionService | None = None,
         sector_rotation_service: SectorRotationSectionService | None = None,
@@ -233,6 +235,7 @@ class DecisionDeskSnapshotBuilder:
         portfolio_ledger_provider: Any | None = None,
     ):
         self.provider = provider
+        self.cadence = cadence
         self.schema_version = schema_version
         self.clock = clock or datetime.now
         self.market_breadth_service = market_breadth_service
@@ -385,12 +388,15 @@ class DecisionDeskSnapshotBuilder:
             return {"as_of_date": None, "quality": "blocked", "missing_inputs": ["ledger_read_model"],
                     "warnings": [f"portfolio_ledger_error:{type(exc).__name__}:{exc}"], "candidate_only": True}
 
-    @staticmethod
-    def _dated_section(section: Section, as_of_date: date, name: str) -> Section:
+    def _dated_section(self, section: Section, as_of_date: date, name: str) -> Section:
         if section.as_of_date is None or section.as_of_date > as_of_date:
             return type(section)(as_of_date=None, quality=DecisionDeskQuality.MISSING,
                                  warnings=tuple(section.warnings) + (f"{name}_date_unavailable_or_future",))
         if section.as_of_date < as_of_date:
+            if (self.cadence is not None and name in {
+                    "market_breadth", "sector_rotation", "relative_strength_liquidity", "watchlist_triggers"}
+                    and self.cadence.assess(as_of_date, section.as_of_date).current):
+                return section
             quality = DecisionDeskQuality.MISSING if section.quality == DecisionDeskQuality.MISSING else DecisionDeskQuality.DEGRADED
             return replace(section, quality=quality, warnings=tuple(section.warnings) + (f"{name}_as_of_fallback:{section.as_of_date.isoformat()}",))
         return section

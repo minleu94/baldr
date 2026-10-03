@@ -74,7 +74,10 @@ class PositionHealthBaselineService:
                     "invalidation": None,
                     "holding_horizon": None,
                     "review_date": None,
-                    "required_human_fields": list(self._REQUIRED_FIELDS),
+                    "source_scope": "paper_research",
+                    "required_human_fields": [],
+                    "required_governance_fields": list(self._REQUIRED_FIELDS),
+                    "user_action_required": False,
                     "reasons": [f"missing_{field}" for field in self._REQUIRED_FIELDS],
                     "source_trace": [
                         f"paper_baseline:{source.get('source_result_id') or source_path.stem}"
@@ -95,13 +98,15 @@ class PositionHealthBaselineService:
             "source_path": str(source_path.resolve()),
             "decision_date": str(source.get("decision_date") or ""),
             "research_only": True,
+            "source_scope": "paper_research",
+            "manual_action_required": False,
             "writes_positions_db": False,
             "auto_action_allowed": False,
             "positions": positions,
             "diagnostics": diagnostics,
             "warnings": (
                 [
-                    "human_thesis_required_before_health_transition_validation",
+                    "research_governance_required_before_health_transition_validation",
                     "position_health_baseline_is_not_an_exit_instruction",
                 ]
                 if positions

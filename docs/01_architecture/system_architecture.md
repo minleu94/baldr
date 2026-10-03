@@ -1134,3 +1134,11 @@ UI 修改：
 
 
 2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。
+
+## 2026-10-03 Decision Desk 品質與研究證據邊界
+
+UI composition 與非 UI factory 共用 MarketSessionCadence，四個行情／觀察池 service 及 builder 第二層 date gate 均以已取得、未過期、hash-bound 官方日曆與專案 cutoff 判讀不同行情日期；不授 PIT、不補缺價。MarketBreadth provider 的 corporate-action 診斷僅唯讀 retained TPEx raw custody，必須 hash/date/availability/close/volume 綁定；未知方向仍 fail closed。RelativeStrengthLiquidity meta 保留逐檔排除原因與有效觀測數。
+
+EvidencePipelineRunner 的 Paper adapter 保留普通 portfolio_alerts/risk_prompts 與其品質，把 Paper alerts/risk/status/ready/blockers/warnings 另放 source_lineage／stored metadata／source_coverage 的 paper_research lane。研究 lineage 經 DTO 邊界正規化與快照往返；不以研究 seed 覆蓋使用者持倉。Health evaluator 將機器／未分類治理缺件與明確 user_portfolio 待辦分列，proposal 與交易權限 guard 不變。Risk 正常繼承 estimated；ready 僅接受具名 advisory，其餘 missing/degraded source guard 保留。
+
+scheduled wrapper 分列實際 child code、summary errors、source qualification、research qualification、工程故障與使用者待辦；整體 freshness 與正式源資格不改綠。控制 run 的 baseline/conditions/metrics/proposal/Exit writers 留在 QA controlled_runs，正式 DB／Paper ledger／Evidence DB 僅讀。細節與 raw 證據見 [補驗報告](../06_qa/OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md)。

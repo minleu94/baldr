@@ -184,7 +184,7 @@ def test_decision_desk_builder_uses_fake_provider_to_build_complete_snapshot():
 
     assert snapshot.schema_version == 2
     assert snapshot.as_of_date == as_of_date
-    assert snapshot.overall_quality == DecisionDeskQuality.DEGRADED
+    assert snapshot.overall_quality == DecisionDeskQuality.ESTIMATED
     assert snapshot.market_regime.to_dict()["quality"] == DecisionDeskQuality.OBSERVED.value
     assert snapshot.market_breadth.to_dict()["quality"] == DecisionDeskQuality.ESTIMATED.value
     assert snapshot.watchlist_triggers.to_dict()["warnings"] == []
@@ -369,7 +369,7 @@ def test_decision_desk_builder_uses_injected_section_services():
     assert snapshot.sector_rotation.quality == DecisionDeskQuality.ESTIMATED
     assert snapshot.watchlist_triggers.quality == DecisionDeskQuality.OBSERVED
     assert snapshot.portfolio_alerts.quality == DecisionDeskQuality.OBSERVED
-    assert snapshot.overall_quality == DecisionDeskQuality.DEGRADED
+    assert snapshot.overall_quality == DecisionDeskQuality.ESTIMATED
 
 
 def test_decision_desk_builder_injects_smart_money_dashboard_summary_into_focus_cards():

@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -587,8 +587,41 @@ def test_verified_receipt_cost_mismatch_fails_closed_before_writing(
 def test_real_runner_writes_only_current_observed_research_candidate(
     short_output_root: Path,
     monkeypatch: pytest.MonkeyPatch,
+    record_property: Callable[[str, object], None],
 ) -> None:
+    from ml_module import recommendation_calibration_evidence as evidence
+    from scripts.scheduled.run_daily_recommendation_learning import (
+        _deduplicate_current_observed_samples,
+    )
+
     samples, references = _fixture_batch(monkeypatch, count=180)
+    captures: dict[str, Mapping[str, Any]] = {}
+    semantic_pairs: list[tuple[RecommendationCalibrationSample, str]] = []
+    for sample, reference in zip(samples, references, strict=True):
+        outcome = research_fit.verify_current_observed_outcome_receipt(
+            reference["outcome_path"]
+        )["outcomes"][0]
+        capture_row = {
+            "row_id": outcome["capture_row_id"],
+            "symbol": sample.symbol,
+            "decision_date": sample.decision_date,
+            "feature_values": list(sample.feature_values),
+        }
+        captures[reference["capture_path"]] = {"rows": [capture_row]}
+        semantic_hash = research_fit._current_observed_capture_semantic_hash(
+            capture_row=capture_row, outcome_row=outcome
+        )
+        semantic_pairs.append((sample, semantic_hash))
+
+    def verify_capture(path: str | Path, **kwargs: Any) -> Mapping[str, Any]:
+        reference = next(item for item in references if item["capture_path"] == str(path))
+        assert kwargs["expected_sha256"] == reference["capture_sha256"]
+        return captures[str(path)]
+
+    monkeypatch.setattr(evidence, "verify_current_observed_input_capture", verify_capture)
+    samples = _deduplicate_current_observed_samples(semantic_pairs + semantic_pairs)
+    assert len(samples) == 180
+    assert all(row.row_id.startswith("current-observed-natural-semantic:") for row in samples)
     evaluation_at = _evaluation_clock()
     learning_root = short_output_root / "l"
     formal_root = short_output_root / "d"
@@ -603,6 +636,24 @@ def test_real_runner_writes_only_current_observed_research_candidate(
         formal_marker: formal_marker.read_bytes(),
         canonical_marker: canonical_marker.read_bytes(),
     }
+
+    # 在真實 learner 啟動前，錯來源必須拒絕，且不得留下候選或收據。
+    first_capture_row = captures[references[0]["capture_path"]]["rows"][0]
+    first_capture_row["entry_price_pin"] = {"source_row_sha256": "sha256:" + "f" * 64}
+    with pytest.raises(ValueError, match="identities differ"):
+        research_fit.fit_current_observed_natural_research(
+            learning_output_root=learning_root,
+            samples=samples,
+            training_as_of=evaluation_at.date(),
+            evaluation_at=evaluation_at,
+            fixed_round_trip_cost_bp=50,
+            cost_scenario=build_legacy_cost_scenario(50),
+            outcome_receipts=references,
+            source_identity={"cycle_id": "fixture-current-cycle", "snapshot_sha256": "sha256:" + "b" * 64},
+            data_root=formal_root,
+        )
+    assert not (learning_root / "current_observed_natural_research").exists()
+    del first_capture_row["entry_price_pin"]
 
     result = research_fit.fit_current_observed_natural_research(
         learning_output_root=learning_root,
@@ -646,6 +697,15 @@ def test_real_runner_writes_only_current_observed_research_candidate(
     assert not (isolated_learning_root / "recommendation-calibration-active-pointer.json").exists()
     assert json.loads(Path(str(result["receipt_path"])).read_text(encoding="utf-8"))["research_only"] is True
     assert {path: path.read_bytes() for path in before} == before
+    assert result["candidate_manifest_hash"] is not None
+    assert result["candidate_artifact_hash"] is not None
+    for field in (
+        "status", "run_id", "dataset_hash", "candidate_id", "receipt_sha256",
+        "candidate_manifest_hash", "candidate_artifact_hash", "outcome_receipt_refs_sha256",
+    ):
+        record_property(field, result[field])
+    record_property("semantic_sample_count", len(samples))
+    record_property("source_verifiers", "controlled_fixture; actual_learner_candidate_receipt")
 
 
 def test_null_benchmark_probability_is_required_and_no_after_cost_probability_is_allowed(

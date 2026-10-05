@@ -149,3 +149,14 @@ Native 已有 1000×835 outer／125% 同版部分四用途／六分頁證據。1
 - 1000×835/125%既有接受限制沿用，不重做尺寸工程；本批不宣告1000×800通過。沒有產品修改，沒有新增/重跑tests。
 - 收據／截圖：`output/qa/native_acceptance_authorized_20261005/native_retry_final_receipt.json`、`2382_normal_load_receipt.json`、`library_identity.json`。2382圖正式Library `libfile_3dbdfe10c6c48191bd65b687bb8b7444`（`file_000000006d3081f4bf3bd49b257c7d4e`）；取消圖 `libfile_57e26618f2a081919724e90426e8be2a`；超時圖 `libfile_65f3870d3a908191998117af696e853c`。這批為 Native QA 證據，仍不是自然模型成熟證據。
 - 下一批由父層裁定1477重試超時的有限診斷；暫存清理盤點已交付但未執行，仍須遵守先Native閉環→已批准清理→唯一原計畫的順序。永久刪除另需逐項批准。
+
+## 2026-10-05 Generation 3 重試超時診斷（未再開 Native）
+
+- 結論：實際重試超時根因仍未知；已確認 driver 缺少 timeout 當下 worker/phase/error/stack 的觀測，不能回推90秒時是否仍運算、等待IO或signal遺漏。沒有明確產品bug，未修改產品程式，Native仍未通過、工程未完成。
+- 先前成功1477 strict-PE從03:08:25.013198Z開始到03:08:29.711005Z保存讀回約4.697807秒（包含modal/save）。當時native_runner_v23.py的_wait用processEvents+time.sleep(.02)。本批qWait(1)小型離屏A/B為0.359秒對0.047秒，證實可增加等待延遲，但不能外推或證明真實90秒根因。Batch7亦曾generation3超時，其pump已用Python sleep；因此不能把兩次缺口都歸因qWait。Batch9沒有開始重試，是取消中誤判。
+- timeout截圖仍分析中/舊結果，dialogs=0、completion_events=0、額外finished callback=0；沒有timeout isRunning/isFinished、progress/error/native_finished或stack紀錄。completed handler原本會先更新UI後開modal，支持當時不是完成modal卡住，但證據不足完全排除其他瞬時問題。
+- 靜態路徑每次建立新ProgressTaskWorker，cancel event預設false，_begin_execution_status重設UI cancel flag；隔離離屏cancel generation2→retry generation3完成及native_finished通過，22事件、新cancel flag=false。這僅驗證Qt訊號/執行緒，不替代真實Native。既有兩個精準測試2P/1.44秒（pytest cache permission warning），沒有全量重測。
+- graphify只查既有graph導引（72相關節點/427鄰邊），未重建或開子代理；目前HEAD原始碼為權威。沒有操作桌面、真實推薦/資料查詢、producer、learner、刪除或壓縮。
+- 修好的隔離driver `output/qa/native_retry_diagnosis_20261005/native_retry_instrumented_not_run.py` **尚未執行**，保持90秒及原接受條件；恢復sleep(.02)，pre-start接全部worker訊號，記錄run-enter/exit、thread id/generation/ns time、實際retry config/scope；timeout保存worker flags、UIphase/progress/last_activity、result identity與Python全thread stacks；modal保留wrapper避免id重用漏記錄。`worker_diagnostic.py`已py_compile，觀測器離屏探針exit0。首個探針末尾stdout cp1252錯誤已保留，修UTF8後另用probe_utf8成功，未覆寫舊證據。
+- 最小後續：父層安排新的桌面時段，先核對原來源/inputs/hash與retry config差異，只跑同一1477一次。遇error/timeout立即讀phase/stack/terminal紀錄，不延長期限掩蓋、不再盲跑；僅正確completed新identity才繼續save→fresh reopen→新run date/result/hash負例。依合作式shutdown安全收尾，不能強制terminate持有資料資源的thread；未安全退出就明示worker/桌面狀態。
+- 完整證據及策略：`output/qa/native_retry_diagnosis_20261005/README.md`、pump_probe.json、probe_utf8/receipt.json、affected.xml、graph_probe.json。本批只修ignored驗收driver與文檔，沒有用fixture pass宣告Native接受，清理/roadmap順序保持。

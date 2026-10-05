@@ -131,7 +131,15 @@ def fit_current_observed_natural_research(
         feature_count=len(feature_names),
     )
     canonical_source_identity = _canonical_mapping(source_identity, "source_identity")
-    verified_refs, receipt_rows = _verify_receipt_references(outcome_receipts)
+    semantic_ids = [
+        sample.row_id.startswith("current-observed-natural-semantic:")
+        for sample in ordered_samples
+    ]
+    if any(semantic_ids) and not all(semantic_ids):
+        raise ValueError("mixed semantic and capture sample identities")
+    verified_refs, receipt_rows = _verify_receipt_references(
+        outcome_receipts, semantic_row_ids=bool(semantic_ids) and all(semantic_ids)
+    )
     _verify_sample_receipt_binding(ordered_samples, verified_refs, receipt_rows)
     isolated_output_root = _isolated_output_root(
         learning_output_root,
@@ -462,14 +470,105 @@ def _validate_samples(
     }
 
 
+def _current_observed_capture_semantic_hash(
+    *,
+    capture_row: Mapping[str, Any],
+    outcome_row: Mapping[str, Any],
+) -> str:
+    """Hash stable source/feature/label meaning across immutable retries.
+
+    ``CurrentObservedFeatureRow.row_sha256`` intentionally includes each
+    invocation's local observation clock. That hash remains in each immutable
+    receipt and is verified before this function is called, but it is not a
+    semantic feature identity. The exact feature values, registry, source
+    table hashes, G6 snapshot pins and entry-price pin remain in the signature.
+    Outcome receipt/path IDs and re-observation clocks are similarly excluded;
+    raw row proofs, dates, source hashes, returns and costs stay bound.
+    """
+
+    capture_semantic = {
+        key: capture_row[key]
+        for key in (
+            "symbol",
+            "decision_date",
+            "feature_as_of_date",
+            "feature_available_date",
+            "feature_registry_id",
+            "feature_registry_hash",
+            "feature_schema_hash",
+            "feature_ids",
+            "feature_values",
+            "source_row_sha256_by_table",
+            "entry_price_pin",
+        )
+        if key in capture_row
+    }
+
+    def stable_reobserved_proof(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {
+                str(key): stable_reobserved_proof(item)
+                for key, item in value.items()
+                if key
+                not in {
+                    "local_observed_at",
+                    "observed_at",
+                    "validated_at",
+                    "evaluation_at",
+                    "proof_sha256",
+                }
+            }
+        if isinstance(value, list):
+            return [stable_reobserved_proof(item) for item in value]
+        if isinstance(value, tuple):
+            return [stable_reobserved_proof(item) for item in value]
+        return value
+
+    volatile_outcome_keys = {
+        "capture_row_id",
+        "capture_path",
+        "capture_sha256",
+        "capture_id",
+        "feature_available_at",
+        "feature_row_sha256",
+        "label_observed_at",
+    }
+    outcome_semantic = {
+        str(key): value
+        for key, value in outcome_row.items()
+        if key not in volatile_outcome_keys
+    }
+    for proof_key in (
+        "entry_consistency_source_proof",
+        "endpoint_price_proof",
+        "benchmark_entry_consistency_source_proof",
+        "benchmark_endpoint_price_proof",
+        "maturity_session_proof",
+    ):
+        if proof_key in outcome_semantic:
+            outcome_semantic[proof_key] = stable_reobserved_proof(
+                outcome_semantic[proof_key]
+            )
+    return _hash_payload(
+        {
+            "schema_version": "current-observed-natural-sample-semantic-identity.v2",
+            "capture_row": capture_semantic,
+            "outcome_row": outcome_semantic,
+        }
+    )
+
+
 def _verify_receipt_references(
     references: Sequence[Mapping[str, str]],
+    *,
+    semantic_row_ids: bool = False,
 ) -> tuple[tuple[dict[str, str], ...], dict[str, Mapping[str, Any]]]:
     if not references:
         raise ValueError("at least one independently verified outcome receipt reference is required")
     normalized_refs: list[dict[str, str]] = []
     receipt_rows: dict[str, Mapping[str, Any]] = {}
     seen_ref_bytes: set[str] = set()
+    semantic_hashes: dict[str, str] = {}
     for raw_reference in references:
         if not isinstance(raw_reference, Mapping):
             raise TypeError("outcome_receipts must contain mapping references")
@@ -504,7 +603,8 @@ def _verify_receipt_references(
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ValueError("current-observed outcome receipt failed re-verification") from exc
         receipt_schema = payload.get("schema_version")
-        if receipt_schema == _OUTCOME_RECEIPT_SCHEMA_V2:
+        capture: Mapping[str, Any] = {}
+        if semantic_row_ids or receipt_schema == _OUTCOME_RECEIPT_SCHEMA_V2:
             try:
                 from ml_module.recommendation_calibration_evidence import (
                     verify_current_observed_input_capture,
@@ -515,8 +615,9 @@ def _verify_receipt_references(
                     expected_sha256=reference["capture_sha256"],
                 )
             except (OSError, RuntimeError, TypeError, ValueError) as exc:
-                raise ValueError("v2 outcome capture failed independent re-verification") from exc
-            _verify_v2_outcome_query_composition(payload, capture)
+                raise ValueError("outcome capture failed independent re-verification") from exc
+            if receipt_schema == _OUTCOME_RECEIPT_SCHEMA_V2:
+                _verify_v2_outcome_query_composition(payload, capture)
         if (
             receipt_schema not in {_OUTCOME_RECEIPT_SCHEMA, _OUTCOME_RECEIPT_SCHEMA_V2}
             or payload.get("verification_status") not in _VERIFIED_OUTCOME_STATUSES
@@ -542,7 +643,26 @@ def _verify_receipt_references(
             if type(capture_row_id) is not str or not capture_row_id.strip():
                 raise ValueError("verified outcome row has no capture row identity")
             row_id = f"current-observed-natural:{reference['capture_id']}:{capture_row_id}"
-            if row_id in receipt_rows:
+            if semantic_row_ids:
+                capture_rows = capture.get("rows")
+                if not isinstance(capture_rows, list):
+                    raise ValueError("semantic identity requires verified capture rows")
+                matching = [
+                    row for row in capture_rows
+                    if isinstance(row, Mapping) and row.get("row_id") == capture_row_id
+                ]
+                if len(matching) != 1:
+                    raise ValueError("outcome row has no unique independently verified capture row")
+                semantic_hash = _current_observed_capture_semantic_hash(
+                    capture_row=matching[0], outcome_row=outcome
+                )
+                row_id = "current-observed-natural-semantic:" + semantic_hash.removeprefix("sha256:")[:32]
+                if row_id in semantic_hashes:
+                    if semantic_hashes[row_id] != semantic_hash:
+                        raise ValueError("conflicting semantic identity hash")
+                    continue
+                semantic_hashes[row_id] = semantic_hash
+            elif row_id in receipt_rows:
                 raise ValueError("outcome receipt set contains a duplicate matured capture row")
             receipt_rows[row_id] = outcome
         normalized_refs.append(reference)
@@ -781,7 +901,10 @@ def _verify_sample_receipt_binding(
         raise ValueError("sample row identities differ from verified outcome receipt rows")
     receipt_ids = {ref["capture_id"] for ref in references}
     for row_id, sample in sample_by_id.items():
-        if not any(row_id.startswith(f"current-observed-natural:{capture_id}:") for capture_id in receipt_ids):
+        if not row_id.startswith("current-observed-natural-semantic:") and not any(
+            row_id.startswith(f"current-observed-natural:{capture_id}:")
+            for capture_id in receipt_ids
+        ):
             raise ValueError("sample is not scoped to a verified current-observed capture")
         outcome = receipt_rows[row_id]
         required_cost_fields = (

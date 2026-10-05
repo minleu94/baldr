@@ -743,3 +743,52 @@ def test_isolated_output_rejects_reparse_leaf_when_windows_allows_symlink(
             learning_root,
             data_root=tmp_path / "formal-data",
         )
+
+
+@pytest.mark.parametrize("retry", [False, True])
+def test_runner_semantic_dedup_rebinds_verified_receipts_before_pending_fit(tmp_path, monkeypatch, retry):
+    from dataclasses import replace
+    from ml_module import recommendation_calibration_evidence as evidence
+    from scripts.scheduled.run_daily_recommendation_learning import _deduplicate_current_observed_samples
+
+    samples, references = _fixture_batch(monkeypatch, count=1)
+    reference = references[0]
+    outcome = research_fit.verify_current_observed_outcome_receipt(reference["outcome_path"])["outcomes"][0]
+    capture_row = {"row_id": outcome["capture_row_id"], "symbol": samples[0].symbol,
+                   "decision_date": samples[0].decision_date, "feature_values": list(samples[0].feature_values)}
+    capture = {"rows": [capture_row]}
+    monkeypatch.setattr(evidence, "verify_current_observed_input_capture", lambda *args, **kwargs: capture)
+    semantic_hash = research_fit._current_observed_capture_semantic_hash(capture_row=capture_row, outcome_row=outcome)
+    dedup = _deduplicate_current_observed_samples([(samples[0], semantic_hash)])
+    if retry:
+        second = dict(reference, capture_path="retry.json", capture_id="retry", outcome_path="retry-outcome.json")
+        original_verify = research_fit.verify_current_observed_outcome_receipt
+        payload = dict(original_verify(reference["outcome_path"]), capture_id="retry")
+        monkeypatch.setattr(research_fit, "verify_current_observed_outcome_receipt",
+                            lambda path, **kwargs: payload if str(path) == "retry-outcome.json" else original_verify(path, **kwargs))
+        references = (*references, second)
+    result = _fit(tmp_path=tmp_path, samples=dedup, references=references, evaluation_at=_evaluation_clock())
+    assert result["status"] == "pending"
+    assert result["sample_count"] == 1
+    assert result["formal_training_allowed"] is False
+    assert not Path(str(result["isolated_output_root"])).exists()
+    for tampered in (replace(dedup[0], row_id="current-observed-natural-semantic:" + "0" * 32),
+                     replace(dedup[0], feature_values=tuple(value + 1 for value in dedup[0].feature_values))):
+        with pytest.raises(ValueError, match="identities differ|payload differs"):
+            _fit(tmp_path=tmp_path, samples=(tampered,), references=references, evaluation_at=_evaluation_clock())
+    capture_row["entry_price_pin"] = {"source_row_sha256": "sha256:" + "f" * 64}
+    with pytest.raises(ValueError, match="identities differ"):
+        _fit(tmp_path=tmp_path, samples=dedup, references=references, evaluation_at=_evaluation_clock())
+
+
+def test_semantic_fit_requires_capture_reverification(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from ml_module import recommendation_calibration_evidence as evidence
+    samples, references = _fixture_batch(monkeypatch, count=1)
+    semantic = replace(samples[0], row_id="current-observed-natural-semantic:" + "a" * 32)
+    def reject_capture(*args, **kwargs):
+        raise ValueError("capture bytes changed")
+    monkeypatch.setattr(evidence, "verify_current_observed_input_capture", reject_capture)
+    with pytest.raises(ValueError, match="capture failed independent re-verification"):
+        _fit(tmp_path=tmp_path, samples=(semantic,), references=references, evaluation_at=_evaluation_clock())
+    assert not (tmp_path / "learning-root").exists()

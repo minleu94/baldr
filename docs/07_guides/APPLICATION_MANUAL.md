@@ -4217,3 +4217,12 @@ Forward 的 5／10／20／60 日結果以已驗證官方日曆的交易 session 
 重跑同一來源時會重新驗證行情、修訂、B 映射及股票範圍。觀察清單／持倉檔的路徑、bytes、mtime 和 hash 都屬來源身分；只有新 run ID 或 capture 時鐘不同才可重用。修改數量／成本或觸碰檔案時間均可能要求新 cycle。`skipped_same_inputs` 必須能追到完整舊模型的 exact terminal，不能只看外層 raw exit 0。
 
 重用鍵也保留 WAL 的 mtime。即使兩次 WAL 皆為空檔且主 DB／特徵內容相同，空 WAL 被重新建立仍可使新 run 選擇完整建置；這是保守的重用失配，不能據此宣稱行情已改變。它與前述 snapshot 來源驗證的空 WAL 例外是不同檢查，完整建置仍須通過原容量與來源保護。
+
+
+### 2026-10-05 Current-observed 自然研究的去重、標籤與狀態
+
+既有每日推薦學習入口不變。不可變 capture／outcome 的重試可有不同檔案與觀測時鐘；內容、來源、日期、特徵與成本相同時，訓練入口採同一 semantic 樣本 ID，仍逐份再驗原 receipt，從已驗 capture＋outcome 重算 ID 並逐欄比對。來源、特徵、報酬或成本衝突時拒絕，不可改 ID 或取最新檔繞過。成熟筆數仍不足時維持 pending，不建立候選或正式寫入。
+
+此路徑的 `upside_label` 沿用既有整數 bp 契約：Decimal 報酬以 ROUND_HALF_EVEN 取整後，`stock_return_bp > 0` 才為 1。因此極小正價差可能取整為 0bp，標籤為 0；原始買入／賣出價格與證據仍保留。它不是獲利機率，也不等於成本後獲利或超越 benchmark。
+
+`fitted_research_only` 表示研究候選已完成該次 fit，不應顯示成樣本等待 pending；它仍不授予正式訓練、歷史 PIT、自然 promotion 或投資有效性。若重驗失敗，查看 exact capture／outcome 路徑、hash、日期與 cost scenario 診斷，保留失敗證據；不能以回放或受控驗收替代真實自然結果。

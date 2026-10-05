@@ -121,6 +121,7 @@ from ml_module.recommendation_historical_replay import (  # noqa: E402
 )
 from ml_module.current_observed_natural_research_fit import (  # noqa: E402
     fit_current_observed_natural_research,
+    _current_observed_capture_semantic_hash,
 )
 from ml_module.recommendation_training_lineage import (  # noqa: E402
     RECOMMENDATION_TRAINING_CONTEXT_HISTORICAL_RESEARCH,
@@ -4758,94 +4759,6 @@ def _current_observed_outcome_samples(
     return tuple(samples)
 
 
-def _current_observed_capture_semantic_hash(
-    *,
-    capture_row: Mapping[str, Any],
-    outcome_row: Mapping[str, Any],
-) -> str:
-    """Hash stable source/feature/label meaning across immutable retries.
-
-    ``CurrentObservedFeatureRow.row_sha256`` intentionally includes each
-    invocation's local observation clock. That hash remains in each immutable
-    receipt and is verified before this function is called, but it is not a
-    semantic feature identity. The exact feature values, registry, source
-    table hashes, G6 snapshot pins and entry-price pin remain in the signature.
-    Outcome receipt/path IDs and re-observation clocks are similarly excluded;
-    raw row proofs, dates, source hashes, returns and costs stay bound.
-    """
-
-    capture_semantic = {
-        key: capture_row[key]
-        for key in (
-            "symbol",
-            "decision_date",
-            "feature_as_of_date",
-            "feature_available_date",
-            "feature_registry_id",
-            "feature_registry_hash",
-            "feature_schema_hash",
-            "feature_ids",
-            "feature_values",
-            "source_row_sha256_by_table",
-            "entry_price_pin",
-        )
-        if key in capture_row
-    }
-
-    def stable_reobserved_proof(value: object) -> object:
-        if isinstance(value, Mapping):
-            return {
-                str(key): stable_reobserved_proof(item)
-                for key, item in value.items()
-                if key
-                not in {
-                    "local_observed_at",
-                    "observed_at",
-                    "validated_at",
-                    "evaluation_at",
-                    "proof_sha256",
-                }
-            }
-        if isinstance(value, list):
-            return [stable_reobserved_proof(item) for item in value]
-        if isinstance(value, tuple):
-            return [stable_reobserved_proof(item) for item in value]
-        return value
-
-    volatile_outcome_keys = {
-        "capture_row_id",
-        "capture_path",
-        "capture_sha256",
-        "capture_id",
-        "feature_available_at",
-        "feature_row_sha256",
-        "label_observed_at",
-    }
-    outcome_semantic = {
-        str(key): value
-        for key, value in outcome_row.items()
-        if key not in volatile_outcome_keys
-    }
-    for proof_key in (
-        "entry_consistency_source_proof",
-        "endpoint_price_proof",
-        "benchmark_entry_consistency_source_proof",
-        "benchmark_endpoint_price_proof",
-        "maturity_session_proof",
-    ):
-        if proof_key in outcome_semantic:
-            outcome_semantic[proof_key] = stable_reobserved_proof(
-                outcome_semantic[proof_key]
-            )
-    return _source_contract_hash_payload(
-        {
-            "schema_version": "current-observed-natural-sample-semantic-identity.v2",
-            "capture_row": capture_semantic,
-            "outcome_row": outcome_semantic,
-        }
-    )
-
-
 def _deduplicate_current_observed_samples(
     samples: list[tuple[RecommendationCalibrationSample, str]],
 ) -> tuple[RecommendationCalibrationSample, ...]:
@@ -5307,7 +5220,7 @@ def _run_current_observed_natural_research_lane(
         }
 
     research_status = str(natural_research.get("status") or "pending")
-    status = research_status if research_status in {"completed", "pending", "blocked", "failed"} else "pending"
+    status = research_status if research_status in {"completed", "fitted_research_only", "pending", "blocked", "failed"} else "pending"
     return {
         **base_status,
         "status": status,

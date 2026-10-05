@@ -1476,7 +1476,7 @@ class RecommendationNaturalOutcomeService:
                         source_rows_sha256_by_table=symbol_source_hashes,
                     ),
                     "stock_return_bp": _return_bp(entry_price, endpoint_price),
-                    "upside_label": int(endpoint_price > entry_price),
+                    "upside_label": int(_return_bp(entry_price, endpoint_price) > 0),
                     "benchmark_symbol": "TAIEX",
                     "benchmark_entry_close_twd": _decimal_text(benchmark_entry),
                     "benchmark_endpoint_close_twd": _decimal_text(benchmark_endpoint),

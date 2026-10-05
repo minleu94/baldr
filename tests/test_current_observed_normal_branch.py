@@ -634,3 +634,17 @@ def test_historical_main_run_never_captures_or_fits_current_observations(
     assert payload["current_observed_natural_lane"]["reason"] == "current_evaluation_date_required"
     assert payload["training_sample_count"] == 0
     assert payload["natural_training_sample_count"] == 0
+
+
+def test_normal_lane_preserves_fitted_research_only_status(tmp_path, monkeypatch, capsys):
+    checked_at = datetime.now(TAIPEI)
+    harness, state = _prepare_main_lane(tmp_path, monkeypatch, decision_day=checked_at.date(),
+                                      checked_at=checked_at, replay_samples=())
+    monkeypatch.setattr(harness.module, "_current_observed_natural_research_fit", lambda **kwargs: {
+        "status": "fitted_research_only", "historical_pit_eligible": False,
+        "formal_training_allowed": False, "promotion_credit_created": False})
+    assert harness.module.main(harness.args) == 0
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    lane = payload["current_observed_natural_lane"]
+    assert lane["status"] == "fitted_research_only"
+    assert lane["current_observed_natural_research"]["formal_training_allowed"] is False

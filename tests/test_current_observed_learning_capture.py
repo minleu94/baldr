@@ -82,7 +82,11 @@ def _open_session_evidence(day: date, tmp_path: Path) -> dict[str, object]:
 
     cache_dir = tmp_path / "official" / "calendar"
     cache_path = cache_dir / f"twse_holiday_schedule_{day.year}_fixture.json"
-    captured_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+    # Fixture evidence must predate every fixed intraday observation in this module.
+    captured_at = min(
+        datetime.now(timezone.utc) - timedelta(minutes=30),
+        datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc) - timedelta(days=1),
+    )
     raw_response = json.dumps(
         [
             {

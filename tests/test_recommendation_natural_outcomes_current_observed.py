@@ -571,3 +571,21 @@ def test_current_observed_receipt_path_must_stay_in_same_learning_root(tmp_path:
             output_path=tmp_path / "outside" / "bad.json",
         )
     monkeypatch.undo()
+
+
+@pytest.mark.parametrize(("endpoint", "expected_bp", "expected_label"),
+                         [("100.001", 0, 0), ("100", 0, 0), ("99.999", 0, 0), ("100.01", 1, 1)])
+def test_current_outcome_upside_uses_same_integer_bp_contract_as_sample(tmp_path, monkeypatch, endpoint, expected_bp, expected_label):
+    capture = _capture()
+    capture_path = _write_capture(tmp_path, capture)
+    _install_capture_verifier(monkeypatch, capture_path, capture)
+    source = _source(tmp_path, endpoint_close=endpoint)
+    service = _service()
+    monkeypatch.setattr(service, "_load_current_observed_outcome_source", lambda **kwargs: source)
+    receipt = service.build_current_observed_outcomes_for_capture(
+        capture_path, required_source_contract={}, evaluation_at=datetime.now(timezone.utc),
+        output_path=tmp_path / "recommendation_learning" / "current_observed_outcomes" / "rounding" / "outcome.json")
+    row = receipt["outcomes"][0]
+    assert row["stock_return_bp"] == expected_bp
+    assert row["upside_label"] == expected_label
+    assert row["sell_price_twd"] == endpoint

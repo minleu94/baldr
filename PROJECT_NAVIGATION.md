@@ -1,7 +1,7 @@
 # 專案導航文件
 
 **版本**：v1.4.10
-**最後更新**：2026-10-03
+**最後更新**：2026-10-05
 
 本輪請先看 [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)、[V4.1 歷史方法包 QA](docs/06_qa/V4_1_HISTORICAL_METHOD_PACK_2026_09_12.md)、[Luna整合驗收](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)及[工作區檔案說明](docs/06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)。個股研究入口由持倉／觀察清單共用，操作與限制以 [Manual](docs/07_guides/APPLICATION_MANUAL.md) 為準。
 2026-09-21 V5 日常操作與可讀性工程入口：先從「決策工作台」的每日優先摘要開始；日常使用、進階研究、系統維護的分層與個股研究報告按需 tab 由 [UI Features](docs/02_features/UI_FEATURES_DOCUMENTATION.md) 和 [V5 acceptance evidence](docs/06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md) 對照。這是 bounded 工程進度，不取代 Snapshot／Product／6M／Version scoped authority。
@@ -14,7 +14,7 @@
 - current-restated 受控研究路徑與原 Legacy／Bank sidecar 操作、來源時鐘、hash 參數、cold-process 驗證及回退限制，見 [APPLICATION_MANUAL §7.0.1](docs/07_guides/APPLICATION_MANUAL.md)。主要實際入口為 `scripts/build_ml_pit_year_shards.py`、`scripts/build_ml_current_restated_outcome_store.py`、`scripts/train_bounded_restated_research.py` 及既有 Legacy／Bank scheduled wrapper 的明確 research-only opt-in。它不改推薦清單、不走 Formal／PIT、也不切正式模型指標。
 - 同一研究流程的來源 context 由 `data_module.ml_daily_price_revision_gate.load_verified_current_restated_source_context()` 對 snapshot receipt、原 DB 與修訂依賴作 typed revalidation；context envelope 由 `ml_module.current_restated_research_bridge.save_verified_current_restated_context_file()` create-only 保存並再載入驗證。current 向量必須由 B immutable numeric loader 與 C 的 `verify_b_current_vector_against_core19()` 綁定來源 bytes／registry／日期後取得，不能手工拼造 JSON 或把它轉成歷史 PIT row。
 - 每日 G9 的完整推薦 cohort 由 `scripts/scheduled/run_daily_recommendation_learning.py` 接入；`ml_module/current_observed_feature_snapshot_composer.py` 對 17–50 檔建立保留逐批來源的 v2，單批查詢仍不超過 16 檔。`recommendation_calibration_evidence.py` 公開 verifier 重播輸入來源，`recommendation_natural_outcome_service.py` 核驗之後二十個官方 session 的結果，`current_observed_natural_research_fit.py` 僅在隔離研究根擬合。原 capture 與後續結果各自保留日期、快照及雜湊，不授正式 PIT／promotion 資格；操作與排錯見 [APPLICATION_MANUAL](docs/07_guides/APPLICATION_MANUAL.md)。
-- 資料更新頁分開顯示 Formal 與 Candidate 狀態；freshness 檢查需核對資料根、DB、cutoff、目前期別與 receipt。跨越台北 04:30 cutoff 要重新 probe。取消是合作式停止，已完成的安全提交可能保留；TDCC candidate 只接受可重試的原子 row/checkpoint 結果。操作細節在[完整手冊第 4 節](docs/07_guides/APPLICATION_MANUAL.md)。
+- 資料更新頁分開顯示 Formal 與 Candidate 狀態；freshness 檢查需核對資料根、DB、cutoff、目前期別與 receipt。跨越 `America/Los_Angeles` 的 04:30 發布週期 cutoff 要重新 probe；此時區隨美西夏令時間變更，不是台北 04:30。取消是合作式停止，已完成的安全提交可能保留；TDCC candidate 只接受可重試的原子 row/checkpoint 結果。操作細節在[完整手冊第 4 節](docs/07_guides/APPLICATION_MANUAL.md)。
 - 排程／heartbeat 的現況及唯讀職責見 [Evidence Scheduled Morning Check](docs/07_guides/EVIDENCE_SCHEDULED_MORNING_CHECK.md) 與 [scheduled README](scripts/scheduled/README.md)。
 
 **目標讀者**：專案開發者、新加入工程師

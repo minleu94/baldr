@@ -566,3 +566,9 @@ SQLite v1/v2→獨立v3 COW converter、CLI dry-run/convert/activation-preview/a
 F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚未批准；F2／F3 A/A不重開。UX07未啟動，新Native／真人／自然資格另列。原整份計畫階段done1／partial5／pending3、UX done2／partial14／pending8保持，有限工程完成不等於整份產品計畫完成。沒有清理、producer／ML重跑、Native或push；其他對話檔案保留排除。
 
 [JSON路徑逐項驗證與正式批准邊界](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)
+
+## 2026-10-05 UX07 圖表方案調查（最新）
+
+UX07 官方資料與 repo 可行性調查已交付，修正上段「未啟動」狀態；選型、離線原型與 UX08 整合尚未完成，原整份計畫完成數不因研究交付自動增加。首版建議保留原生個股圖與同源表，stage4 主圖候選為 Lightweight Charts＋本機資料；外部連結可選，Hosted Widgets 的逐台股商品／元件覆蓋與桌面散布條件仍待確認。現有 fast chart 是回測用 inline Canvas，並非個股 OHLC 契約；本地沒有 LWC bundle，本批沒有安裝／下載或原型效能量測。下一批先固定 DTO、來源及 cutoff 契約，再由父層決定鎖版資產與隔離 renderer 原型。
+
+正式 JSON 未套用、F1 例外未批准；無 Native、producer／ML、清理或 push。[UX07 比較、來源入口、待驗項目與遷移路徑](../06_qa/UX07_CHART_FEASIBILITY_20261005.md)。

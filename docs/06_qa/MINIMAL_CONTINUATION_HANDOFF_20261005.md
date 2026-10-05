@@ -91,3 +91,16 @@
 最小下一條 Native 流程已限定：獨立 QA settings／小型既有隔離來源；1477 原來源→Rule 分頁→scope 1477→開始→取消後必須等 `已取消` 且 worker 結束→檢查 last-good 與原 artifact 不變→一次重試；正常資訊 modal 只確認可見資訊，完成以新 execution/result/invocation 與 completed 終態綁定→正常 Save→保存 receipt/hash→新程序精確讀同一新 result。日期／股票／run／source／hash 在每一步從該步實際結果取證，不沿用舊 run；獨立 Native 負例另驗。每步沿用 90 秒上限，不反覆修跑；若失敗，停止並分清產品與驅動缺陷。本輪未執行上述流程，完整 Native 待辦保留。
 
 桌面時段未確認前不顯示 QA 視窗，不修改使用者視窗與資料。暫存清理與大計畫維持前批順序及 Sol Medium＋Fast／Luna Max 後續配置。本輪不 producer、重訓、子代理、cleanup 或外觀擴張。回退僅針對本批 commit 的 UI／測試／文件；原計畫追加段落可還原修改前副本，原保存來源未變。
+
+## 2026-10-05 使用者授權桌面 Native 有限驗收
+
+- 本批基線 dev `e312dc61141d7f0a812466e0ba5f7c0b56ecbbae`，使用者明確授權桌面；僅 PySide6 QTest 的 Windows Native 隔離驗收視窗。無 node_repl Native 控制工具。未訓練、未執行 producer／全套回歸、未修改正式資料／排程／持倉、未刪暫存。
+- 首次 sandbox 程序在原來源載入後 screen grab 失敗，尚未取消／重試；以已授權 desktop access 執行相同流程，不計為產品失敗。
+- 1477 精確原保存來源 `rec_3a882dd9fc06407298ccbd2a5e1c994f` 成功載入（決策 2026-10-05／行情 2026-10-02）。取消 generation 2 確认「已取消」且 worker 結束，完整 last-good UI 與原來源 JSON 保持不變。
+- 重試進入 generation 3，但 `completed retry` 等待逾 90 秒：無完成事件、無 worker_finished_objects、無新 completed result 身分。harness 記錄 TimeoutError 後關閉自己的視窗並退出。新身份→保存→新程序重開，以及新 run 的錯 date/result-run/hash Native 拒絕 **仍未驗收**；不能拿舊來源完整性負例替代。重試超時是工程／驗收阻礙，原因尚未定位，不能稱為等待自然成熟。本批沒有再次重跑1477。
+- 外部停止只嘗試 PID 綁定核對，當時 QA PID 已不存在，未停止任何程序。中間推測 mouseClick 未返回已由最終收據更正：實際進入 completed retry 的 bounded_wait，generation=3。桌面已釋放，自己的1477與2382 QA程序均退出；其他應用未關閉。
+- 2382 用真實只讀 consumer、Native 報告視窗正常 load_button→背景worker完成，非 MainWindow 全流程／持倉驗收。為禁止正式目錄與 logging 寫入，僅在 config 初始化封鎖該寫入，consumer 讀取與回報未替換。初始 badge/提示更新為「部分可用／報告部分載入」，as_of=2026-10-05，行情 2026-10-02/收盤332；ML current_stock_research run=`20261002-ffb8777d33621369a15c3c22`、source hash=`76368e75edaa665ee363cc25506687288f3ddeb2475c40cdb4c933fb16ba8d2e`，與先前真實2382來源一致。
+- Header 疑點拆開：正常 load 沒有殘留「尚未載入」，證實該初始狀態源於 offscreen 直呼 render 未走 loaded callback；但未選定保存來源時「來源：未標示／決策日：未知／資料日：未知」仍存在，下方獨立行情來源另有2026-10-02。這是未提供 source context 的文字歧義，未取得資料混用證據，不直接判為產品 bug，也未改 UI。若要確認 MainWindow 選定來源脈絡需另批有限驗收。
+- 1000×835/125%既有接受限制沿用，不重做尺寸工程；本批不宣告1000×800通過。沒有產品修改，沒有新增/重跑tests。
+- 收據／截圖：`output/qa/native_acceptance_authorized_20261005/native_retry_final_receipt.json`、`2382_normal_load_receipt.json`、`library_identity.json`。2382圖正式Library `libfile_3dbdfe10c6c48191bd65b687bb8b7444`（`file_000000006d3081f4bf3bd49b257c7d4e`）；取消圖 `libfile_57e26618f2a081919724e90426e8be2a`；超時圖 `libfile_65f3870d3a908191998117af696e853c`。這批為 Native QA 證據，仍不是自然模型成熟證據。
+- 下一批由父層裁定1477重試超時的有限診斷；暫存清理盤點已交付但未執行，仍須遵守先Native閉環→已批准清理→唯一原計畫的順序。永久刪除另需逐項批准。

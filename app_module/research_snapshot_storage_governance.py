@@ -39,6 +39,8 @@ from data_module.ml_storage_capacity import (
     filesystem_usage,
     heavy_chain_capacity_budget,
 )
+from data_module.watchlist_repository import WatchlistRepository
+from data_module.watchlist_item_storage import WatchlistStorageCapacityError
 
 
 SCHEMA_VERSION = "research-snapshot-storage-governance.v1"
@@ -578,7 +580,7 @@ def _scan_watchlists(
                 "code": "watchlist_inventory_completeness_unasserted",
                 "message": "已掃描提供來源，但未確認已列出全部 Watchlist 來源",
             })
-    except (OSError, sqlite3.Error, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, sqlite3.Error, UnicodeError, json.JSONDecodeError, ValueError, WatchlistStorageCapacityError) as exc:
         result["issues"].append(_issue(exc))
     return result
 
@@ -594,34 +596,75 @@ def _scan_watchlist_db(db_path: Path, root: Path, rank_root: Path, budget: _Budg
     try:
         connection.execute("PRAGMA query_only=ON")
         tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if not set(_WATCHLIST_COLUMNS).issubset(tables):
-            raise StorageGovernanceError("watchlist_db_schema_unknown", "Watchlist SQLite 缺少已知 tables")
+        if "watchlist_storage_meta" in tables:
+            _scan_item_watchlist_db(connection, db_path, root, rank_root, budget, result)
+        else:
+            _scan_legacy_watchlist_db(connection, tables, db_path, root, rank_root, budget, result)
+    finally:
+        connection.close()
+    after = db_path.stat(follow_symlinks=False)
+    sidecars = (Path(f"{db_path}-wal"), Path(f"{db_path}-shm"), Path(f"{db_path}-journal"))
+    if any(path.exists() for path in sidecars):
+        raise StorageGovernanceError("watchlist_db_sidecar_changed", "SQLite 讀取前後出現 WAL/SHM/journal sidecar")
+    if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
+        raise StorageGovernanceError("watchlist_db_changed_during_read", "SQLite 讀取前後 stat 不一致")
+
+
+def _scan_legacy_watchlist_db(
+    connection: sqlite3.Connection, tables: set[str], db_path: Path,
+    root: Path, rank_root: Path, budget: _Budget, result: dict[str, Any],
+) -> None:
+    """沿用舊 v1/v2 全份 payload reader，不在診斷時升版。"""
+    if tables == {"watchlists"}:
+        actual = {str(row[1]) for row in connection.execute("PRAGMA table_info(watchlists)")}
+        required = {"watchlist_id", "payload_json", "revision"}
+        if actual not in (required, required | {"source_hash"}):
+            raise StorageGovernanceError("watchlist_db_schema_unknown", "Watchlist SQLite v1 欄位 schema 未知")
+    elif tables == set(_WATCHLIST_COLUMNS):
         for table, expected in _WATCHLIST_COLUMNS.items():
             actual = {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")}
             if actual != expected:
                 raise StorageGovernanceError("watchlist_db_schema_unknown", "Watchlist SQLite 欄位 schema 未知")
-        rows_seen = 0
-        payload_bytes = 0
-        for table in ("watchlists", "watchlist_revisions"):
-            cursor = connection.execute(f"SELECT payload_json FROM {table}")
-            while rows := cursor.fetchmany(64):
-                for (raw_value,) in rows:
-                    raw = str(raw_value).encode("utf-8")
-                    rows_seen += 1
-                    payload_bytes += len(raw)
-                    if rows_seen > MAX_WATCHLIST_ROWS or payload_bytes > MAX_WATCHLIST_PAYLOAD_BYTES:
-                        raise StorageGovernanceError("watchlist_scan_budget_exceeded", "Watchlist rows/payload 超過預算")
-                    budget.add_read(len(raw))
-                    payload = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object)
-                    _scan_watchlist_payload(payload, db_path, root, rank_root, result)
-    finally:
-        connection.close()
-    after = db_path.stat(follow_symlinks=False)
-    sidecars = (Path(f"{db_path}-wal"), Path(f"{db_path}-shm"))
-    if any(path.exists() for path in sidecars):
-        raise StorageGovernanceError("watchlist_db_sidecar_changed", "SQLite 讀取前後出現 WAL/SHM sidecar")
-    if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
-        raise StorageGovernanceError("watchlist_db_changed_during_read", "SQLite 讀取前後 stat 不一致")
+    else:
+        raise StorageGovernanceError("watchlist_db_schema_unknown", "Watchlist SQLite 缺少已知 tables")
+    rows_seen = 0
+    payload_bytes = 0
+    for table in sorted(tables):
+        cursor = connection.execute(f"SELECT payload_json FROM {table}")
+        while rows := cursor.fetchmany(64):
+            for (raw_value,) in rows:
+                raw = str(raw_value).encode("utf-8")
+                rows_seen += 1
+                payload_bytes += len(raw)
+                if rows_seen > MAX_WATCHLIST_ROWS or payload_bytes > MAX_WATCHLIST_PAYLOAD_BYTES:
+                    raise StorageGovernanceError("watchlist_scan_budget_exceeded", "Watchlist rows/payload 超過預算")
+                budget.add_read(len(raw))
+                payload = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object)
+                _scan_watchlist_payload(payload, db_path, root, rank_root, result)
+
+
+def _scan_item_watchlist_db(
+    connection: sqlite3.Connection, db_path: Path, root: Path, rank_root: Path,
+    budget: _Budget, result: dict[str, Any],
+) -> None:
+    """驗 unique objects 與 sparse journal；完整歷史 hash 由增量 replay API 另驗。"""
+    remaining = MAX_SCAN_HASH_BYTES - budget.bytes_read
+    if remaining <= 0:
+        raise StorageGovernanceError("scan_byte_budget_exceeded", "Watchlist 沒有剩餘讀取預算")
+    inventory = WatchlistRepository(db_path).get_item_storage_inventory(connection=connection, max_scan_bytes=remaining)
+    valid_keys = ("complete", "schema_valid", "object_hashes_valid", "delta_refs_valid", "revision_chain_valid", "current_projection_valid")
+    if inventory.get("schema_version") != 3 or inventory.get("storage_format") != "watchlist-item-events.v1" or any(inventory.get(key) is not True for key in valid_keys):
+        raise StorageGovernanceError("watchlist_item_storage_invalid", "Watchlist 項目 schema/hash/refs/chain/projection 核驗失敗")
+    payload_bytes = inventory.get("payload_bytes")
+    scanned_bytes = inventory.get("scanned_bytes")
+    counts = inventory.get("row_counts")
+    if type(payload_bytes) is not int or type(scanned_bytes) is not int or not isinstance(counts, Mapping) or any(type(value) is not int or value < 0 for value in counts.values()):
+        raise StorageGovernanceError("watchlist_item_inventory_unknown", "Watchlist 項目盤點計量未知")
+    if payload_bytes < 0 or scanned_bytes < payload_bytes or payload_bytes > MAX_WATCHLIST_PAYLOAD_BYTES or sum(counts.values()) > MAX_WATCHLIST_ROWS:
+        raise StorageGovernanceError("watchlist_scan_budget_exceeded", "Watchlist 項目 rows/payload 超過預算")
+    budget.add_read(scanned_bytes)
+    for obj in inventory["objects"]:
+        _scan_watchlist_payload({"items": [obj["item"]]}, db_path, root, rank_root, result)
 
 
 def _scan_watchlist_payload(payload: Any, source: Path, root: Path, rank_root: Path, result: dict[str, Any]) -> None:

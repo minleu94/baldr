@@ -4582,3 +4582,16 @@ CLI（只管理派生索引，沒有 producer）：
 發布前依既有治理工具作唯讀容量／引用診斷與 retention dry-run。實體、WAL、staging、索引及備份都須納預算；容量未知或引用盤點不完整不給 writer 授權。較長保留預估與自然成長分列，中央 reserve 以檢查當下 policy 為準。retention 候選不代表永久刪除授權。
 
 詳細配置、案例、資源數值與限制見 [F4 QA](../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)。
+
+
+### Watchlist 項目 revision 儲存（2026-10-05）
+
+收藏入口仍為每日研究來源頁與個股研究 original-rank 報告，書籤v1/v2與來源／方法／個股身份不變。一般使用者沿原觀察清單操作；既有JSON／v1/v2不自動升級。只有明示建立的新／空canonical SQLite庫採schema3 `watchlist-item-events.v1`。舊v2 active庫仍按原格式保存，達原預算停止；v1唯讀，initialize=True對既有v1/v2會拒絕，避免改原資料。
+
+保存新格式時，current是一份完整清單，歷史以不可變item與增量events保存；重複收藏不多寫，編輯／移除產生新revision，歷史保留精確來源身份。資料庫delete是tombstone，沒有清理舊revision。完整history hash需要逐版replay；治理scan_complete/reference_complete只表示unique source/chain/current核驗，不等於全部歷史payload已重播。
+
+硬限制維持4MiB聚合payload（current＋unique item＋headers＋events）、32MiB DB、64MiB scan、4096rows，不增加上限；容量reserve讀當下中央policy，不以舊點時數字推斷。capacity_unknown／capacity_insufficient／payload_limit_exceeded／database_limit_exceeded時停止保存、保留last-good，先唯讀盤點容量與目前庫格式；不得清理來源、刪revision或降低reserve來繞過。unknown_schema_marker／object_hash_mismatch／delta/current ref或current_revision_source_hash_mismatch表示來源或儲存身份不能信任，保留原DB與錯誤，停止新增並交owner，不另建空清單掩蓋。取消與CAS衝突維持原版，重新讀取明確來源後再重試。
+
+正式舊SQLite庫沒有apply／converter工具可用；本包的dry-run只是唯讀設計盤點。後續流程是固定舊庫hash/stat→新獨立副本→逐版IDs/metadata/bookmark/順序/完整payload hash核對→新舊庫/backup/暫存總容量驗證→父層審核→明確批准後才切activation/path，失敗回原path/marker、保留兩庫。不要把既有JSON copy工具當作SQLite v2 converter，也不要以新隔離250次通過批准正式遷移。
+
+實際受控20／120／250總留存781,365／3,887,695／7,912,388 B；新v3 actual三程序App讀回通過，正式deployment／Native／自然資格另驗。[逐項數值、限制與回滾](../06_qa/F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md)。

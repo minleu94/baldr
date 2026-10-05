@@ -75,3 +75,14 @@ Latest resource receipt v4 SHA `1d6cee9ec6f29370bb7a68e9696b6605020663f7f9bd1cf8
 回滾僅本包明列Main配置hunks、integration test與文件增補，以reviewed反向patch／新local commit；不reset/clean、不刪immutable源／原資料／QA、不回滾other owner。本包未執行回滾刪除或push。其他對話的容量／Evidence三檔保留、僅允許readonly政策／entrypoint查核，排除stage；根Paper不讀內容、不改。
 
 接線與隔離終驗已完成，**長保留／正式部署仍有上述預算與inventory阻塞，F4不可全關閉**。F1仍18.62<20，父層處理明確例外或後續方向，不做microtweak／重測湊數。新Native／3–5位真人與自然資格各自另驗；舊1477 Native已在6691ec78通過、不重跑。1000×835 outer／125%沿已接受，不加1000×800硬門檻。完成本批後停止，父層安排容量／Watchlist子責任與下一包，不重新開F2／F3或新方法。
+
+
+## 2026-10-05 F4 項目 revision 儲存與長留存實測（最新）
+
+新／空庫採 schema3 `watchlist-item-events.v1`，不可變item＋稀疏events取代每版完整清單；舊v1/v2與兩種bookmark可讀，禁止初始化隱升級。4MiB payload／32MiB DB／64MiB scan／4096rows不變，容量未知／不足及schema/hash/refs/sourcehash不一致拒絕；歷史完整payload hash由有界增量replay另驗。
+
+受控同日期3股×120列，實際發布／收藏250次，20／120／250總實體留存781,365／3,887,695／7,912,388 B；250時Watchlist DB4,145,152 B、聚合payload2,600,012 B、全治理掃描6,202,133 B。三節點capacity／scan／references及全部250歷史回放通過，actual v3 offscreen MainWindow三程序讀回通過。39項統一路由＋最後新增sourcehash拒絕1案共40 distinct有通過證據；mypy791、最後單點module mypy、6檔compile與精度／未來函數guard通過。
+
+新隔離v3長留存限制已修，舊格式歷史估算不回寫；**正式v1/v2 COW converter／activation切換尚未實作及核准**。本批僅readonly dry-run，原DBbytes不變；不得把正式部署未做寫成等自然成熟，F4不能全關閉。F1差1.38pp交父層、F2/F3 A/A不重開，新Native／真人／自然資格另列；不清理、不push、不改其他owner。
+
+[完整收據與 COW 剩餘工程](F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md)

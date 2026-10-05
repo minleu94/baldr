@@ -310,55 +310,14 @@ class WatchlistService:
 
     @classmethod
     def _repository_is_ready(cls, path: Path) -> bool:
-        """以唯讀方式確認 canonical schema；啟動時不建立或升級 DB。"""
-
+        """只把可寫 v2 或嚴格 v3 視為 canonical repository。"""
         if not path.is_file():
             return False
         try:
-            with closing(
-                sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
-            ) as conn:
-                conn.execute("PRAGMA query_only=ON")
-                tables = {
-                    str(row[0])
-                    for row in conn.execute(
-                        "SELECT name FROM sqlite_master WHERE type='table'"
-                    ).fetchall()
-                }
-                if not {"watchlists", "watchlist_revisions"}.issubset(tables):
-                    return False
-                watchlist_columns = {
-                    str(row[1])
-                    for row in conn.execute("PRAGMA table_info(watchlists)")
-                }
-                revision_columns = {
-                    str(row[1])
-                    for row in conn.execute(
-                        "PRAGMA table_info(watchlist_revisions)"
-                    )
-                }
-                return {
-                    "watchlist_id",
-                    "payload_json",
-                    "revision",
-                    "source_hash",
-                    "is_deleted",
-                    "last_revision_id",
-                }.issubset(watchlist_columns) and {
-                    "revision_id",
-                    "watchlist_id",
-                    "revision",
-                    "operation",
-                    "payload_json",
-                    "payload_hash",
-                    "source_hash",
-                    "identity_status",
-                    "continuity_event_id",
-                    "revision_of",
-                    "created_at",
-                }.issubset(revision_columns)
-        except sqlite3.Error:
+            detected = WatchlistRepository(path).detect_storage_format()
+        except (OSError, sqlite3.Error, ValueError):
             return False
+        return detected.get("schema_version") in {2, 3} and detected.get("ready") is True
 
     @classmethod
     def discover_repository(

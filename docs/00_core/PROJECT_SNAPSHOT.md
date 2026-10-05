@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 最新：原產品計畫階段 0 首包
+
+沿用唯一原計畫，已交付 UX01 有界基線、UX16 來源子集及 UX17 五次 Native 新程序量測；產品程式未改，階段 1 優化未開始。首屏中位數10.148秒、Workbench首次資料10.126秒；30次真實列選取高亮p95=116.60ms，不能當篩選／圖表驗收。IndustryMapper建構中位數3.206秒、BacktestView1.098秒。首次市場探索另觸發重背景切片，總CPU60.94秒／RSS1.57GB、約90秒合作關閉才退出，是下一包工程問題入口；沒有歸因自然成熟或宣稱已優化。
+
+來源矩陣只核對有界正式D讀取與既有QA identity，全市場、暖機、精確cutoff、benchmark與PIT資格未升格。五跑完整性無未允許差異，僅同bytes/hash的SQLite SHM mtime可變；所有本包QA PID退出。外層runner末尾中文print失敗保留，提交版修輸出／CPU命名而未重跑。分工、同版hash、場景分離、限制及下一包依賴見[效能基線](../06_qa/PRODUCT_STAGE01_PERFORMANCE_BASELINE_20261005.md)與[來源矩陣](../06_qa/PRODUCT_STAGE01_SOURCE_MATRIX_20261005.md)。本包不訓練／producer／永久刪除／push，交父層覆核。
+
 ## 2026-10-05 最新：測試暫存可還原隔離收尾
 
 879白名單測試暫存根已同C盤隔離，4,951,450,624bytes檔案配置量前後一致，不釋放容量；372根保留，58具引用根與19占用／權限未通過項未動，r015僅d/e/f成功，g/h/i保留。真實fixture還原／重新隔離與879項metadata核對通過，未永久刪除、未改權限，還原映射與[完整收據](../06_qa/TEST_TEMP_REVERSIBLE_ISOLATION_20261005.md)已保存。

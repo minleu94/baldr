@@ -130,3 +130,10 @@
 - 1251原白名單中879根同C盤隔離至C:/ta_iso_1005，642純pytest fixture、229空根、8mypy快取，108054檔、AllocationSize前後4,951,450,624bytes一致；不釋放檔案容量，未永久刪除／清空回收筒／改權限。r015 d/e/f成功，g/h/i保留；R20/R26 user Temp136空根成功，具QA引用的群組保留。372根保留，58引用根及19占用／權限未通過者均未動，精確理由／映射／還原步驟見[整理收據](TEST_TEMP_REVERSIBLE_ISOLATION_20261005.md)與output/qa/reversible_cleanup_20261005。實際r015 d還原並重新隔離、全879項identity核對通過。
 - 最新只讀容量：C free237,505,548,288／既有需求215,285,235,712；D free300,638,941,184／既有需求295,279,001,600，兩者點時間PASS；不歸因本批隔離，不啟動writer，實際writer前重新查核。本批必要永久刪除清單為空；若要真正釋空間，879項未批准候選另需逐路徑批准。
 - Native不重開：此前driver的pre-start訊號／run與timeout觀測、sleep(.02)等待及讀回sealed config／paint條件修正已記錄；歷史90秒根因仍未知，最終4.5秒真實鏈已接受。未開代理／producer／訓練／全量tests，未動正式資料／模型／持倉／排程。本批結束交回父層，按唯一原plan啟動後續階段。
+
+
+## 2026-10-05 原產品計畫階段 0 首包
+
+沿用原計畫，UX01有界基線／UX16來源子集／UX17量測已交付；產品程式未改，階段1優化尚未開始。首屏median10.148秒、資料10.126秒，30次列選取高亮p95=116.60ms；不能當篩選／圖表驗收。首次市場探索Overview worker發生重資料切片，loaded全程CPU60.94秒／RSS1.57GB、約90秒合作退出，是下一包工程入口，不歸因自然成熟。來源／正式資格／暖機／全市場與benchmark缺口仍見矩陣；原UX依賴不跳過。
+
+完整結論／同版hash／失敗紀錄／兩位Luna工具派發及自省限制見[效能基線](PRODUCT_STAGE01_PERFORMANCE_BASELINE_20261005.md)及[來源矩陣](PRODUCT_STAGE01_SOURCE_MATRIX_20261005.md)。五個child與輸入guard通過，PID均退出；外層末尾Unicode print exit1保留，提交版僅輸出與CPU命名收尾，基線未重跑。不重開已接受的1477／learner、不producer／訓練／全量回歸／永久刪除／push，unknown根檔及還原隔離均保留。本包本地commit／blob核驗後停止交父層。

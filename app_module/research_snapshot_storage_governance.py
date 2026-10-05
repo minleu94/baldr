@@ -522,6 +522,120 @@ def _read_json(
     return payload, raw
 
 
+def _scan_cow_watchlist_metadata(
+    children: Sequence[os.DirEntry[str]], budget: _Budget,
+) -> tuple[set[Path], set[Path], dict[Path, Mapping[str, Any]]]:
+    """只辨識精確COW審計格式；不把metadata誤作使用者清單。"""
+    managed: set[Path] = set()
+    databases: set[Path] = set()
+    lineages: dict[Path, Mapping[str, Any]] = {}
+    records: dict[Path, tuple[dict[str, Any], bytes]] = {}
+    for child in children:
+        if child.name.endswith(".cow-lock"):
+            raise StorageGovernanceError("watchlist_source_busy", "COW鎖尚未釋放")
+        if not (child.name.endswith((".cow-active.json", ".cow-conversion.v1.json"))
+                or ".cow-rollback." in child.name and child.name.endswith(".json")):
+            continue
+        path = Path(child.path).resolve()
+        if child.is_symlink() or _is_reparse_stat(child.stat(follow_symlinks=False)):
+            raise StorageGovernanceError("watchlist_cow_metadata_linked", "COW metadata不接受link")
+        records[path] = _read_json(path, MAX_WATCHLIST_JSON_BYTES, budget, require_canonical=False)
+
+    def bound_path(value: Any) -> Path:
+        if not isinstance(value, str) or not Path(value).is_absolute():
+            raise StorageGovernanceError("watchlist_cow_path_invalid", "COW必須使用明示absolute path")
+        path = Path(value)
+        if path.is_symlink() or _is_reparse(path) or not path.is_file():
+            raise StorageGovernanceError("watchlist_cow_path_invalid", "COW來源不完整或含link")
+        return path.resolve()
+
+    # Explicit targets may be in another directory; read only audit files named by
+    # the canonical pointer, under the same entry/byte budgets.
+    for record, _ in tuple(records.values()):
+        if record.get("schema_version") != "watchlist-cow-activation.v1":
+            continue
+        for key in ("receipt_path", "backup_marker_path"):
+            path = bound_path(record.get(key))
+            if path not in records:
+                budget.add_entry()
+                records[path] = _read_json(path, MAX_WATCHLIST_JSON_BYTES, budget, require_canonical=False)
+
+    for path, (record, raw) in records.items():
+        schema = record.get("schema_version")
+        if schema == "watchlist-cow-conversion.v1":
+            source, target = bound_path(record.get("source_path")), bound_path(record.get("target_path"))
+            if (record.get("status") != "ready" or type(record.get("source_schema_version")) is not int
+                    or record.get("source_schema_version") not in (1, 2)
+                    or record.get("target_schema_version") != 3 or source == target
+                    or str(path) != record.get("receipt_path")
+                    or path != target.with_name(target.name + ".cow-conversion.v1.json")
+                    or not isinstance(record.get("comparison"), dict)):
+                raise StorageGovernanceError("watchlist_cow_receipt_invalid", "COW收據schema/path/comparison未知")
+            for key in ("source_sha256", "target_sha256"):
+                if not isinstance(record.get(key), str) or not _SHA256_RE.fullmatch(record[key]):
+                    raise StorageGovernanceError("watchlist_cow_receipt_invalid", "COW收據hash未知")
+            databases.update((source, target)); managed.add(path)
+        elif schema == "watchlist-cow-rollback.v1":
+            source, target = bound_path(record.get("source_path")), bound_path(record.get("target_path"))
+            activation_id = record.get("activation_id")
+            if (not isinstance(activation_id, str) or not re.fullmatch(r"[0-9a-f]{32}", activation_id)
+                    or path != source.with_name(source.name + ".cow-rollback." + activation_id + ".json")
+                    or not isinstance(record.get("original_state"), dict)):
+                raise StorageGovernanceError("watchlist_cow_backup_invalid", "COW回滾審計schema/path未知")
+            databases.update((source, target)); managed.add(path)
+        elif schema != "watchlist-cow-activation.v1":
+            raise StorageGovernanceError("watchlist_cow_metadata_schema_unknown", "COW metadata schema未知")
+    for path, (record, raw) in records.items():
+        if record.get("schema_version") != "watchlist-cow-activation.v1":
+            continue
+        source, target = bound_path(record.get("source_path")), bound_path(record.get("target_path"))
+        receipt = bound_path(record.get("receipt_path"))
+        backup = bound_path(record.get("backup_marker_path"))
+        if (record.get("status") not in ("active", "rolled_back")
+                or str(source) != record.get("canonical_path")
+                or path != source.with_name(source.name + ".cow-active.json")
+                or receipt not in records or backup not in records):
+            raise StorageGovernanceError("watchlist_cow_marker_invalid", "COW pointer/path/審計檔不完整")
+        receipt_record, receipt_raw = records[receipt]
+        backup_record, backup_raw = records[backup]
+        if (receipt_record.get("schema_version") != "watchlist-cow-conversion.v1"
+                or backup_record.get("schema_version") != "watchlist-cow-rollback.v1"
+                or record.get("receipt_sha256") != hashlib.sha256(receipt_raw).hexdigest()
+                or record.get("backup_marker_sha256") != hashlib.sha256(backup_raw).hexdigest()
+                or record.get("activation_id") != backup_record.get("activation_id")
+                or record.get("source_sha256") != receipt_record.get("source_sha256")
+                or record.get("prepared_target_sha256") != receipt_record.get("target_sha256")
+                or any(bound_path(item.get(key)) != expected for item in (receipt_record, backup_record)
+                       for key, expected in (("source_path", source), ("target_path", target)))):
+            raise StorageGovernanceError("watchlist_cow_marker_invalid", "COW pointer審計hash/path不一致")
+        lineage = record.get("target_base_lineage")
+        if not isinstance(lineage, dict):
+            raise StorageGovernanceError("watchlist_cow_lineage_unknown", "COW基準歷史未知")
+        for watchlist_id, entry in lineage.items():
+            if (not isinstance(watchlist_id, str) or not watchlist_id or not isinstance(entry, dict)
+                    or type(entry.get("revision_count")) is not int or entry["revision_count"] < 0
+                    or not isinstance(entry.get("lineage_sha256"), str)
+                    or (entry["revision_count"] > 0 and not _SHA256_RE.fullmatch(entry["lineage_sha256"]))
+                    or (entry["revision_count"] == 0 and entry["lineage_sha256"] != "")):
+                raise StorageGovernanceError("watchlist_cow_lineage_unknown", "COW基準歷史欄位未知")
+        lineages[target] = lineage
+        databases.update((source, target)); managed.add(path)
+    return managed, databases, lineages
+
+
+def _verify_cow_lineage(inventory: Mapping[str, Any] | None, expected: Mapping[str, Any]) -> None:
+    """沿activation同一chain codec驗已有inventory，不再讀DB。"""
+    from app_module.watchlist_cow_activation import (
+        WatchlistCowActivationError, watchlist_cow_lineage_from_inventory,
+    )
+    if inventory is None:
+        raise StorageGovernanceError("watchlist_cow_lineage_invalid", "COW target必須是v3")
+    try:
+        watchlist_cow_lineage_from_inventory(inventory, expected)
+    except WatchlistCowActivationError as exc:
+        raise StorageGovernanceError("watchlist_cow_lineage_invalid", str(exc)) from exc
+
+
 def _scan_watchlists(
     directory: Path | None,
     root: Path,
@@ -545,7 +659,16 @@ def _scan_watchlists(
                 budget.add_entry()
                 children.append(child)
         json_paths: list[Path] = []
-        db_path: Path | None = None
+        child_pins = {
+            Path(child.path).resolve(): (stat.st_size, stat.st_mtime_ns, stat.st_ino, stat.st_dev)
+            for child in children for stat in (Path(child.path).stat(follow_symlinks=False),)
+        }
+        cow_metadata, cow_databases, cow_lineages = _scan_cow_watchlist_metadata(children, budget)
+        cow_pins = {}
+        for path in cow_metadata | cow_databases:
+            stat = path.stat(follow_symlinks=False)
+            cow_pins[path] = child_pins.get(path, (stat.st_size, stat.st_mtime_ns, stat.st_ino, stat.st_dev))
+        db_paths: set[Path] = set(cow_databases)
         for child in children:
             if child.is_symlink():
                 raise StorageGovernanceError("watchlist_symlink_found", "Watchlist 來源含 symbolic link")
@@ -554,8 +677,10 @@ def _scan_watchlists(
                 raise StorageGovernanceError("watchlist_reparse_point_found", "Watchlist 來源含 junction/reparse point")
             if child.name.lower().endswith(("-wal", "-shm", ".json.tmp")):
                 raise StorageGovernanceError("watchlist_source_busy", "Watchlist 有 WAL/SHM/staging sidecar")
+            if Path(child.path).resolve() in cow_metadata or Path(child.path).resolve() in cow_databases:
+                continue
             if child.name == "watchlists.db":
-                db_path = Path(child.path)
+                db_paths.add(Path(child.path).resolve())
             elif child.name == "watchlists.db.active":
                 # marker 可能由舊版以不同空白格式寫入，只做有界 JSON/schema 驗證。
                 payload = _read_json(Path(child.path), 64 * 1024, budget, require_canonical=False)[0]
@@ -569,11 +694,25 @@ def _scan_watchlists(
             payload, _ = _read_json(path, MAX_WATCHLIST_JSON_BYTES, budget, require_canonical=False)
             _scan_watchlist_payload(payload, path, root, rank_root, result)
             result["source_count"] += 1
-        if db_path is not None:
+        for db_path in sorted(db_paths):
             if db_path.stat().st_size > MAX_WATCHLIST_DB_BYTES:
                 raise StorageGovernanceError("watchlist_db_size_limit", "Watchlist SQLite 超過 32 MiB")
-            _scan_watchlist_db(db_path, root, rank_root, budget, result)
+            inventory = _scan_watchlist_db(db_path, root, rank_root, budget, result)
+            if db_path in cow_lineages:
+                _verify_cow_lineage(inventory, cow_lineages[db_path])
             result["source_count"] += 1
+        if cow_metadata:
+            for path, expected in cow_pins.items():
+                stat = path.stat(follow_symlinks=False)
+                if (stat.st_size, stat.st_mtime_ns, stat.st_ino, stat.st_dev) != expected:
+                    raise StorageGovernanceError("watchlist_cow_changed_during_scan", "COW來源或審計檔掃描期間變動")
+            with os.scandir(directory) as iterator:
+                names = set()
+                for child in iterator:
+                    budget.add_entry()
+                    names.add(child.name)
+            if names != {child.name for child in children}:
+                raise StorageGovernanceError("watchlist_cow_changed_during_scan", "COW來源目錄掃描期間變動")
         result["complete"] = bool(inventory_complete)
         if not inventory_complete:
             result["issues"].append({
@@ -585,7 +724,7 @@ def _scan_watchlists(
     return result
 
 
-def _scan_watchlist_db(db_path: Path, root: Path, rank_root: Path, budget: _Budget, result: dict[str, Any]) -> None:
+def _scan_watchlist_db(db_path: Path, root: Path, rank_root: Path, budget: _Budget, result: dict[str, Any]) -> dict[str, Any] | None:
     if db_path.is_symlink():
         raise StorageGovernanceError("watchlist_db_symlink", "不讀取 Watchlist SQLite symbolic link")
     before = db_path.stat(follow_symlinks=False)
@@ -593,11 +732,12 @@ def _scan_watchlist_db(db_path: Path, root: Path, rank_root: Path, budget: _Budg
         raise StorageGovernanceError("watchlist_db_size_limit", "Watchlist SQLite 超過 32 MiB")
     uri = f"{db_path.resolve().as_uri()}?mode=ro&immutable=1"
     connection = sqlite3.connect(uri, uri=True)
+    inventory: dict[str, Any] | None = None
     try:
         connection.execute("PRAGMA query_only=ON")
         tables = {str(row[0]) for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if "watchlist_storage_meta" in tables:
-            _scan_item_watchlist_db(connection, db_path, root, rank_root, budget, result)
+            inventory = _scan_item_watchlist_db(connection, db_path, root, rank_root, budget, result)
         else:
             _scan_legacy_watchlist_db(connection, tables, db_path, root, rank_root, budget, result)
     finally:
@@ -608,6 +748,7 @@ def _scan_watchlist_db(db_path: Path, root: Path, rank_root: Path, budget: _Budg
         raise StorageGovernanceError("watchlist_db_sidecar_changed", "SQLite 讀取前後出現 WAL/SHM/journal sidecar")
     if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
         raise StorageGovernanceError("watchlist_db_changed_during_read", "SQLite 讀取前後 stat 不一致")
+    return inventory
 
 
 def _scan_legacy_watchlist_db(
@@ -646,7 +787,7 @@ def _scan_legacy_watchlist_db(
 def _scan_item_watchlist_db(
     connection: sqlite3.Connection, db_path: Path, root: Path, rank_root: Path,
     budget: _Budget, result: dict[str, Any],
-) -> None:
+) -> dict[str, Any]:
     """驗 unique objects 與 sparse journal；完整歷史 hash 由增量 replay API 另驗。"""
     remaining = MAX_SCAN_HASH_BYTES - budget.bytes_read
     if remaining <= 0:
@@ -665,6 +806,7 @@ def _scan_item_watchlist_db(
     budget.add_read(scanned_bytes)
     for obj in inventory["objects"]:
         _scan_watchlist_payload({"items": [obj["item"]]}, db_path, root, rank_root, result)
+    return inventory
 
 
 def _scan_watchlist_payload(payload: Any, source: Path, root: Path, rank_root: Path, result: dict[str, Any]) -> None:

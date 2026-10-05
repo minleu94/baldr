@@ -347,7 +347,15 @@ class WatchlistRepository:
         return IDENTITY_STATUS_UNKNOWN
 
     def _open_read_only(self) -> sqlite3.Connection:
-        return sqlite3.connect(f"{self.db_path.as_uri()}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"{self.db_path.as_uri()}?mode=ro", uri=True)
+        try:
+            conn.execute("PRAGMA query_only=ON")
+            # Inventory spans several queries; one read transaction prevents mixed revisions.
+            conn.execute("BEGIN")
+            return conn
+        except Exception:
+            conn.close()
+            raise
 
     @staticmethod
     def _decode_payload(raw: str) -> dict[str, Any]:
@@ -406,7 +414,7 @@ class WatchlistRepository:
                         if item["watchlist_id"] == watchlist_id), None)
             if row is None:
                 return None
-            payload_json = item_storage.canonical_json(row["payload"])
+            payload_json = str(row["payload_json"])
             return {"payload_json": payload_json, "revision": row["revision"],
                     "source_hash": row["source_hash"], "is_deleted": row["is_deleted"],
                     "last_revision_id": row["last_revision_id"], "legacy_schema": False,

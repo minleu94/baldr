@@ -51,3 +51,19 @@ F2/F3 A/A不重開；F1 18.62%<20%差1.38pp交父層方向，不重測微調。�
 raw根 `output/qa/f4_item_revision_storage_20261005/`：`actual_retention_receipt.json` SHA `6ca0a2a8c47784bbe5399341de6c04521c1f4d4a176f911bd357481ebce8cea0`；`actual_app_storage_readback_receipt.json` SHA `26ff6f07644511a9c3b44f84b7641309923f305a410ea8234441b27cc1014a78`；`final_guard_readonly_revalidation.json`、`legacy20_readonly_migration_dry_run_v2.json`、focused/guard/mypy logs與來源pins。raw output不提交，唯一原plan只append，原174073bytes前綴SHA `d2fe59c9a48099d2c1c81faaf08ef2ad91e34a3b3b14fc2a1dc3febe91af9323`保留。
 
 回滾僅本包production/test/document hunks，以reviewed反向patch或新local revert commit；不reset/clean、不覆寫owner。若已有新v3庫，舊程式不能讀它，回滾前須保留新庫並回原path/config，而非刪庫。未執行真實遷移／回滾刪除，Git commit/blob/status以最後readback收據及Git為準。
+
+
+## 2026-10-05 F4 SQLite COW converter 與明示 activation（最新）
+
+SQLite v1/v2→獨立v3 COW converter、CLI dry-run/convert/activation-preview/activate/status/rollback、fresh-service pointer與錯marker拒寫、bounded governance audit接線已實作並完成隔離驗證；取代前批「converter尚待工程」狀態。lexical codec保留逐版raw payload/hash、IDs/metadata/timestamps/source/order，v1缺歷史只標synthetic baseline。原4MiB/32MiB/64MiB/4096上限不變，取消、容量未知/不足、bad rows/schema、concurrent writer及身份錯誤failclosed。
+
+限定路由 70 passed，mypy 793 source files + CLI 1 source file pass，11檔compile及精度/未來函數guard通過。已許可舊20-session fixture副本由CLI新程序完成轉換、啟用讀回、target r21追加、rollback回source r20；target r21、雙DB/audit保留，不自動合併。原fixture及17份已接受immutable pins保持相同；無producer重跑、正式資料套用、Native、清理或push。
+
+本批COW實作工程關閉；正式使用者apply另行核准。預設canonical SQLite不存在、legacy default.json存在，實際store/mode/override仍待父層確認；沒有初始化缺失DB或讀真實JSON。F1差1.38pp交父層方向，F2/F3 A/A不重開；新Native/真人/自然資格分列，不能把部署批准寫成等自然成熟。
+
+[逐項COW驗證、操作與正式部署邊界](F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md)
+
+
+### 最終容量守衛收尾（2026-10-05）
+
+啟用與回退發布 audit／marker 前重新核對當下中央 reserve；容量未知／不足具名拒絕並保留原指標、雙庫與內容。最終限定路由72 passed（focused_root_05.log；另有pytest cache唯讀警告），mypy793及CLI1通過，11檔compile／7產品檔精度與未來函數AST守衛0違規。14個獨立程序實際CLI回放全部exit0、隔離guard0違規，17份immutable來源及原20-session fixture SHA不變。最終case為output/qa/f4_cow_converter_activation_20261005/cli-roundtrip/run-615b305783f9；原失敗與中間收據保留，不替換為自然或正式驗收。

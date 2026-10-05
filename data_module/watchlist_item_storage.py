@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 from pathlib import Path
 import sqlite3
 from typing import Any, Callable, Iterator, Mapping, Sequence
@@ -16,6 +17,8 @@ MAX_PAYLOAD_BYTES = 4 * 1024 * 1024
 MAX_DATABASE_BYTES = 32 * 1024 * 1024
 MAX_SCAN_BYTES = 64 * 1024 * 1024
 MAX_ROWS = 4096
+IMPORT_PROVENANCE_SCHEMA = "watchlist-cow-import.v1"
+PAYLOAD_LAYOUT_CODEC = "watchlist-json-raw-array.v1"
 
 
 class WatchlistStorageIntegrityError(ValueError):
@@ -52,6 +55,79 @@ class WatchlistWriteCapacityRequest:
 def canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False,
                       separators=(",", ":"))
+
+
+def _unique_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise WatchlistStorageIntegrityError("duplicate_json_key", key)
+        result[key] = value
+    return result
+
+
+def _finite_json_float(token: str) -> float:
+    # numeric-boundary: dto
+    # 純 JSON payload 解碼邊界；此處不做財務數值計算。
+    # 此浮點數只用於 JSON codec 相容舊 reader，不參與任何金融計算。
+    value = float(token)  # numeric-boundary: dto
+    if not math.isfinite(value):
+        raise WatchlistStorageIntegrityError("nonfinite_json_number")
+    return value
+
+
+def strict_json_loads(raw: str) -> Any:
+    """解析舊 reader 可讀的 JSON，拒絕重複鍵與非有限數值。"""
+
+    def reject_constant(token: str) -> Any:
+        raise WatchlistStorageIntegrityError("nonfinite_json_number", token)
+
+    try:
+        return json.loads(
+            raw,
+            object_pairs_hook=_unique_object_pairs,
+            parse_float=_finite_json_float,
+            parse_constant=reject_constant,
+        )
+    except WatchlistStorageIntegrityError:
+        raise
+    except (json.JSONDecodeError, UnicodeError, TypeError, ValueError) as exc:
+        raise WatchlistStorageIntegrityError("invalid_json_payload", str(exc)) from exc
+
+
+def _payload_json(payload: Mapping[str, Any], payload_layout: Mapping[str, Any] | None) -> str:
+    if payload_layout is None:
+        return canonical_json(dict(payload))
+    if payload_layout.get("codec") != PAYLOAD_LAYOUT_CODEC:
+        raise WatchlistStorageIntegrityError("unknown_payload_layout_codec")
+    empty_raw = payload_layout.get("empty_raw")
+    if empty_raw is not None:
+        if payload.get("items") != [] or not isinstance(empty_raw, str):
+            raise WatchlistStorageIntegrityError("invalid_payload_layout")
+        parsed = strict_json_loads(empty_raw)
+        if parsed != dict(payload):
+            raise WatchlistStorageIntegrityError("payload_layout_envelope_mismatch")
+        return empty_raw
+    prefix = payload_layout.get("prefix")
+    suffix = payload_layout.get("suffix")
+    separators = payload_layout.get("separators")
+    raw_items = payload_layout.get("item_json")
+    if (not isinstance(prefix, str) or not isinstance(suffix, str)
+            or not isinstance(separators, list) or not isinstance(raw_items, list)
+            or any(not isinstance(item, str) for item in separators + raw_items)):
+        raise WatchlistStorageIntegrityError("invalid_payload_layout")
+    if len(separators) != max(0, len(raw_items) - 1):
+        raise WatchlistStorageIntegrityError("invalid_payload_layout")
+    raw = prefix
+    for index, item_raw in enumerate(raw_items):
+        if index:
+            raw += separators[index - 1]
+        raw += item_raw
+    raw += suffix
+    parsed = strict_json_loads(raw)
+    if parsed != dict(payload):
+        raise WatchlistStorageIntegrityError("payload_layout_envelope_mismatch")
+    return raw
 
 
 def sha256_text(value: str) -> str:
@@ -140,8 +216,8 @@ def _item_key_tokens(items: Sequence[Mapping[str, Any]]) -> list[str]:
 def _decode_item(raw: str, expected_hash: str) -> dict[str, Any]:
     if sha256_text(raw) != expected_hash:
         raise WatchlistStorageIntegrityError("object_hash_mismatch")
-    value = json.loads(raw)
-    if not isinstance(value, dict) or canonical_json(value) != raw:
+    value = strict_json_loads(raw)
+    if not isinstance(value, dict):
         raise WatchlistStorageIntegrityError("invalid_item_object")
     return value
 
@@ -198,11 +274,30 @@ def save_v3(
     continuity_event_id: str, revision_of: str, created_at: str,
     expected_revision: int | None, before_commit: Callable[[str, str], None] | None = None,
     plan_only: bool = False,
+    payload_raw_override: str | None = None,
+    item_json_overrides: Sequence[str] | None = None,
+    payload_layout: Mapping[str, Any] | None = None,
+    import_provenance: Mapping[str, Any] | None = None,
+    revision_number: int | None = None,
+    imported_is_deleted: bool = False,
 ) -> tuple[int, int, int]:
     """在呼叫端交易內寫入一個稀疏 revision；回傳 revision、payload bytes、row 數。"""
     validate_schema(conn)
     stats = storage_stats(conn)
-    raw = canonical_json(dict(payload))
+    imported = import_provenance is not None
+    if imported != (revision_number is not None):
+        raise WatchlistStorageIntegrityError("invalid_import_revision_metadata")
+    if import_provenance is not None:
+        if import_provenance.get("schema") != IMPORT_PROVENANCE_SCHEMA:
+            raise WatchlistStorageIntegrityError("unknown_import_provenance")
+        if isinstance(revision_number, bool) or int(revision_number or 0) < 1:
+            raise WatchlistStorageIntegrityError("invalid_import_revision_number")
+    elif payload_layout is not None or payload_raw_override is not None or item_json_overrides is not None or imported_is_deleted:
+        raise WatchlistStorageIntegrityError("import_only_payload_override")
+    raw = payload_raw_override if payload_raw_override is not None else _payload_json(payload, payload_layout)
+    parsed_raw = strict_json_loads(raw)
+    if not isinstance(parsed_raw, dict) or parsed_raw != dict(payload):
+        raise WatchlistStorageIntegrityError("payload_raw_override_mismatch")
     if "items" not in payload:
         raise WatchlistStorageIntegrityError("missing_items_payload")
     items_value = payload.get("items")
@@ -210,7 +305,19 @@ def save_v3(
         raise WatchlistStorageIntegrityError("invalid_items_payload")
     items = [dict(item) for item in items_value]
     keys = _item_key_tokens(items)
-    item_raws = [canonical_json(item) for item in items]
+    if item_json_overrides is None:
+        item_raws = [canonical_json(item) for item in items]
+    else:
+        item_raws = list(item_json_overrides)
+        if len(item_raws) != len(items):
+            raise WatchlistStorageIntegrityError("import_item_json_count_mismatch")
+        for item, item_raw in zip(items, item_raws):
+            if not isinstance(item_raw, str) or strict_json_loads(item_raw) != item:
+                raise WatchlistStorageIntegrityError("import_item_json_mismatch")
+    if payload_layout is not None:
+        layout_items = payload_layout.get("item_json")
+        if not isinstance(layout_items, list) or layout_items != item_raws:
+            raise WatchlistStorageIntegrityError("import_payload_layout_item_mismatch")
     hashes = [sha256_text(item_raw) for item_raw in item_raws]
     new_hash_set = set(hashes)
     stored = conn.execute(
@@ -219,7 +326,7 @@ def save_v3(
         "FROM watchlist_revisions_v3 WHERE revision_id=?", (revision_id,)
     ).fetchone()
     payload_hash = sha256_text(raw)
-    is_deleted = False
+    is_deleted = bool(imported_is_deleted)
     if stored is not None:
         if (str(stored[1]) != watchlist_id or str(stored[3]) != operation
                 or str(stored[4]) != payload_hash or str(stored[5]) != source_hash
@@ -236,8 +343,10 @@ def save_v3(
     if actual != expected_revision:
         raise RuntimeError("watchlist_revision_conflict")
     prior_revision_id = "" if current_row is None else str(current_row[4] or "")
-    if revision_of and revision_of != prior_revision_id:
+    if not imported and revision_of and revision_of != prior_revision_id:
         raise RuntimeError("watchlist_revision_conflict")
+    if imported and actual is not None and int(revision_number or 0) <= actual:
+        raise WatchlistStorageIntegrityError("import_revision_not_increasing")
     current_refs = conn.execute(
         "SELECT ci.position,ci.object_hash,io.item_json FROM watchlist_current_items ci "
         "JOIN watchlist_item_objects io USING(object_hash) WHERE ci.watchlist_id=? ORDER BY ci.position",
@@ -265,8 +374,8 @@ def save_v3(
     event_pairs = [(event, canonical_json(event)) for event in events]
     event_hashes = [_event_hash(encoded) for _, encoded in event_pairs]
     delta_hash = sha256_text(canonical_json(event_hashes))
-    revision = (actual or 0) + 1
-    revision_of_value = revision_of or prior_revision_id
+    revision = revision_number if revision_number is not None else (actual or 0) + 1
+    revision_of_value = revision_of if imported else (revision_of or prior_revision_id)
     header = {
         "operation": operation, "source_hash": source_hash,
         "identity_status": identity_status, "continuity_event_id": continuity_event_id,
@@ -276,6 +385,9 @@ def save_v3(
         "watchlist_id": watchlist_id, "revision_id": revision_id,
         "revision_number": revision, "payload_hash": payload_hash,
     }
+    if imported:
+        header["import_provenance"] = dict(import_provenance or {})
+        header["payload_layout"] = {key: value for key, value in (payload_layout or {}).items() if key != "item_json"}
     header_json = canonical_json(header)
     previous_chain = ""
     if actual is not None:
@@ -331,14 +443,14 @@ def save_v3(
     conn.execute(
         "INSERT INTO watchlist_revisions_v3 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (revision_id, watchlist_id, revision, operation, payload_hash, source_hash,
-         identity_status, continuity_event_id, revision_of_value, created_at, 0,
+         identity_status, continuity_event_id, revision_of_value, created_at, int(is_deleted),
          header_json, delta_hash, chain_hash),
     )
     conn.execute(
-        "INSERT INTO watchlists VALUES(?,?,?,?,0,?) ON CONFLICT(watchlist_id) DO UPDATE SET "
+        "INSERT INTO watchlists VALUES(?,?,?,?,?,?) ON CONFLICT(watchlist_id) DO UPDATE SET "
         "payload_json=excluded.payload_json,revision=excluded.revision,source_hash=excluded.source_hash,"
-        "is_deleted=0,last_revision_id=excluded.last_revision_id",
-        (watchlist_id, raw, revision, source_hash, revision_id),
+        "is_deleted=excluded.is_deleted,last_revision_id=excluded.last_revision_id",
+        (watchlist_id, raw, revision, source_hash, int(is_deleted), revision_id),
     )
     conn.execute("DELETE FROM watchlist_current_items WHERE watchlist_id=?", (watchlist_id,))
     conn.executemany(
@@ -389,15 +501,22 @@ def delete_v3(
     if revision_of and revision_of != prior_revision:
         raise RuntimeError("watchlist_revision_conflict")
     payload_raw = str(current[0])
-    payload = json.loads(payload_raw)
+    payload = strict_json_loads(payload_raw)
     payload_hash = sha256_text(payload_raw)
     revision = expected_revision + 1
+    prior_header_row = conn.execute(
+        "SELECT header_json FROM watchlist_revisions_v3 WHERE watchlist_id=? AND revision=?",
+        (watchlist_id, expected_revision),
+    ).fetchone()
+    prior_header = {} if prior_header_row is None else strict_json_loads(str(prior_header_row[0]))
     header = {"operation": operation, "source_hash": str(current[2] or ""),
               "identity_status": identity_status, "continuity_event_id": continuity_event_id,
               "revision_of": revision_of or prior_revision, "created_at": created_at,
               "is_deleted": True, "payload_envelope": {key: value for key, value in payload.items() if key != "items"},
               "watchlist_id": watchlist_id, "revision_id": revision_id,
               "revision_number": revision, "payload_hash": payload_hash}
+    if isinstance(prior_header, dict) and "payload_layout" in prior_header:
+        header["payload_layout"] = prior_header["payload_layout"]
     header_json = canonical_json(header)
     delta_hash = sha256_text(canonical_json([]))
     prior_chain_row = conn.execute(
@@ -445,6 +564,26 @@ def _validate_header(
             raise WatchlistStorageIntegrityError("revision_header_mismatch", key)
     if not isinstance(header.get("payload_envelope"), dict):
         raise WatchlistStorageIntegrityError("invalid_payload_envelope")
+    provenance = header.get("import_provenance")
+    if provenance is not None:
+        if (not isinstance(provenance, dict)
+                or provenance.get("schema") != IMPORT_PROVENANCE_SCHEMA
+                or provenance.get("source_schema_version") not in {1, 2}
+                or not isinstance(provenance.get("source_sha256"), str)
+                or len(provenance["source_sha256"]) != 64
+                or not isinstance(provenance.get("source_revision_id"), str)
+                or provenance.get("source_revision_number") != revision
+                or not isinstance(provenance.get("synthetic_baseline"), bool)
+                or not isinstance(provenance.get("current_is_deleted"), bool)):
+            raise WatchlistStorageIntegrityError("invalid_import_provenance")
+        if not isinstance(header.get("payload_layout"), dict):
+            raise WatchlistStorageIntegrityError("invalid_import_payload_layout")
+        if header["payload_layout"].get("codec") != PAYLOAD_LAYOUT_CODEC:
+            raise WatchlistStorageIntegrityError("unknown_payload_layout_codec")
+    elif ("payload_layout" in header
+          and (not isinstance(header.get("payload_layout"), dict)
+               or header["payload_layout"].get("codec") != PAYLOAD_LAYOUT_CODEC)):
+        raise WatchlistStorageIntegrityError("unknown_payload_layout_codec")
 
 
 def iter_revisions(conn: sqlite3.Connection, watchlist_id: str, *, include_payload: bool = True) -> Iterator[dict[str, Any]]:
@@ -452,10 +591,12 @@ def iter_revisions(conn: sqlite3.Connection, watchlist_id: str, *, include_paylo
     storage_stats(conn)
     validate_schema(conn)
     object_cache: dict[str, dict[str, Any]] = {}
+    raw_object_cache: dict[str, str] = {}
     for object_hash, item_json in conn.execute(
         "SELECT object_hash,item_json FROM watchlist_item_objects"
     ):
         object_cache[str(object_hash)] = _decode_item(str(item_json), str(object_hash))
+        raw_object_cache[str(object_hash)] = str(item_json)
     event_cache: dict[int, list[tuple[str, str, str, str]]] = {}
     for event_id, revision, revision_id, event_json, event_hash in conn.execute(
         "SELECT event_id,revision,revision_id,event_json,event_hash FROM watchlist_revision_events "
@@ -470,29 +611,39 @@ def iter_revisions(conn: sqlite3.Connection, watchlist_id: str, *, include_paylo
     current: dict[str, str] = {}
     order: list[str] = []
     previous_chain = ""
-    expected_revision = 1
+    expected_revision: int | None = None
+    prior_revision = 0
+    prior_revision_id = ""
     for row in rows:
         (revision_id, wid, revision, operation, payload_hash, source_hash, identity_status,
-         event_id, revision_of, created_at, deleted, header_json, delta_hash, chain_hash) = row
-        if int(revision) != expected_revision:
-            raise WatchlistStorageIntegrityError("revision_sequence_mismatch")
-        header = json.loads(str(header_json))
+         continuity_event_id, revision_of, created_at, deleted, header_json, delta_hash, chain_hash) = row
+        header = strict_json_loads(str(header_json))
         if not isinstance(header, dict) or canonical_json(header) != str(header_json):
             raise WatchlistStorageIntegrityError("invalid_revision_header")
+        provenance = header.get("import_provenance")
+        imported = isinstance(provenance, dict) and provenance.get("schema") == IMPORT_PROVENANCE_SCHEMA
+        if expected_revision is None:
+            if not imported and int(revision) != 1:
+                raise WatchlistStorageIntegrityError("revision_sequence_mismatch")
+        elif imported:
+            if int(revision) <= prior_revision:
+                raise WatchlistStorageIntegrityError("revision_sequence_mismatch")
+        elif int(revision) != prior_revision + 1 or str(revision_of or "") != prior_revision_id:
+            raise WatchlistStorageIntegrityError("revision_sequence_mismatch")
         _validate_header(header, str(wid), str(revision_id), int(revision), str(operation),
-                         str(payload_hash), str(source_hash or ""), str(identity_status or "unknown"),
-                         str(event_id or ""), str(revision_of or ""), str(created_at), bool(deleted))
+                         str(payload_hash), str(source_hash or ""), str(identity_status or ""),
+                         str(continuity_event_id or ""), str(revision_of or ""), str(created_at), bool(deleted))
         event_rows = event_cache.pop(int(revision), [])
         events: list[dict[str, Any]] = []
         hashes: list[str] = []
-        for event_index, (event_id, event_revision_id, event_raw, event_hash) in enumerate(event_rows):
+        for event_index, (stored_event_id, event_revision_id, event_raw, event_hash) in enumerate(event_rows):
             if event_revision_id != str(revision_id):
                 raise WatchlistStorageIntegrityError("event_revision_ref_mismatch")
-            if event_id != f"{revision_id}:{event_index}":
+            if stored_event_id != f"{revision_id}:{event_index}":
                 raise WatchlistStorageIntegrityError("invalid_event_order")
             if _event_hash(event_raw) != str(event_hash):
                 raise WatchlistStorageIntegrityError("event_hash_mismatch")
-            event = json.loads(event_raw)
+            event = strict_json_loads(event_raw)
             if not isinstance(event, dict) or canonical_json(event) != event_raw:
                 raise WatchlistStorageIntegrityError("invalid_event")
             events.append(event)
@@ -557,21 +708,30 @@ def iter_revisions(conn: sqlite3.Connection, watchlist_id: str, *, include_paylo
         envelope = header.get("payload_envelope", {})
         if not isinstance(envelope, dict):
             raise WatchlistStorageIntegrityError("invalid_payload_envelope")
-        current_payload_raw = _payload_from_refs(conn, current, order, envelope, object_cache)
+        layout = header.get("payload_layout")
+        current_payload_raw = _payload_from_refs(
+            conn, current, order, envelope, object_cache, raw_object_cache, layout,
+        )
         if sha256_text(current_payload_raw) != str(payload_hash):
             raise WatchlistStorageIntegrityError("revision_payload_hash_mismatch")
         result: dict[str, Any] = {
             "revision_id": str(revision_id), "watchlist_id": str(wid), "revision": int(revision),
             "operation": str(operation), "payload_hash": str(payload_hash),
-            "source_hash": str(source_hash or ""), "identity_status": str(identity_status or "unknown"),
-            "continuity_event_id": str(event_id or ""), "revision_of": str(revision_of or ""),
+            "source_hash": str(source_hash or ""), "identity_status": str(identity_status or ""),
+            "continuity_event_id": str(continuity_event_id or ""), "revision_of": str(revision_of or ""),
             "created_at": str(created_at), "is_deleted": bool(deleted), "header": header,
         }
+        if imported and isinstance(provenance, dict):
+            result["is_synthetic_baseline"] = bool(provenance.get("synthetic_baseline"))
+            result["source_revision_id"] = str(provenance.get("source_revision_id", ""))
+            result["source_schema_version"] = int(provenance["source_schema_version"])
         if include_payload:
-            result["payload"] = json.loads(current_payload_raw)
+            result["payload"] = strict_json_loads(current_payload_raw)
         yield result
         previous_chain = str(chain_hash)
-        expected_revision += 1
+        prior_revision = int(revision)
+        prior_revision_id = str(revision_id)
+        expected_revision = prior_revision + 1
     if event_cache:
         raise WatchlistStorageIntegrityError("orphan_event")
 
@@ -580,8 +740,11 @@ def _payload_from_refs(
     conn: sqlite3.Connection, objects: Mapping[str, str], order: list[str],
     envelope: Mapping[str, Any] | None = None,
     object_cache: Mapping[str, dict[str, Any]] | None = None,
+    raw_object_cache: Mapping[str, str] | None = None,
+    payload_layout: Mapping[str, Any] | None = None,
 ) -> str:
     items: list[dict[str, Any]] = []
+    item_raws: list[str] = []
     for token in order:
         object_hash = objects[token]
         item = None if object_cache is None else object_cache.get(object_hash)
@@ -591,9 +754,16 @@ def _payload_from_refs(
         if item is None:
             raise WatchlistStorageIntegrityError("delta_object_ref_missing")
         items.append(item)
+        raw_item = None if raw_object_cache is None else raw_object_cache.get(object_hash)
+        item_raws.append(raw_item if raw_item is not None else canonical_json(item))
     # 未知的頂層 payload 欄位逐 revision 保存在小型 header，不複製 item references。
     payload = dict(envelope or {})
     payload["items"] = items
+    if payload_layout is not None:
+        if "item_json" in payload_layout and payload_layout["item_json"] != item_raws:
+            raise WatchlistStorageIntegrityError("payload_layout_object_mismatch")
+        # Raw items are derived from immutable refs, never repeated in revision headers.
+        return _payload_json(payload, {**payload_layout, "item_json": item_raws})
     return canonical_json(payload)
 
 
@@ -611,6 +781,7 @@ def inventory(conn: sqlite3.Connection, *, max_scan_bytes: int = MAX_SCAN_BYTES)
     }
 
     object_cache: dict[str, dict[str, Any]] = {}
+    raw_object_cache: dict[str, str] = {}
     objects: list[dict[str, Any]] = []
     for object_hash, item_json, byte_count in conn.execute(
         "SELECT object_hash,item_json,payload_bytes FROM watchlist_item_objects ORDER BY object_hash"
@@ -620,6 +791,7 @@ def inventory(conn: sqlite3.Connection, *, max_scan_bytes: int = MAX_SCAN_BYTES)
         if int(byte_count) != len(item_json.encode("utf-8")):
             raise WatchlistStorageIntegrityError("object_size_mismatch")
         object_cache[object_hash] = item
+        raw_object_cache[object_hash] = item_json
         objects.append({"object_hash": object_hash, "item": item,
                         "payload_bytes": int(byte_count), "reference_count": 0})
     result["object_hashes_valid"] = True
@@ -634,7 +806,7 @@ def inventory(conn: sqlite3.Connection, *, max_scan_bytes: int = MAX_SCAN_BYTES)
         raw = str(event_json)
         if sha256_text(raw) != str(event_hash):
             raise WatchlistStorageIntegrityError("event_hash_mismatch")
-        event = json.loads(raw)
+        event = strict_json_loads(raw)
         if not isinstance(event, dict) or canonical_json(event) != raw:
             raise WatchlistStorageIntegrityError("invalid_event")
         record = {"event_id": str(event_id), "watchlist_id": str(watchlist_id),
@@ -657,13 +829,18 @@ def inventory(conn: sqlite3.Connection, *, max_scan_bytes: int = MAX_SCAN_BYTES)
          continuity, revision_of, created, deleted, header_raw, delta_hash, chain_hash) = row
         rid, wid, rev = str(rid), str(wid_raw), int(rev_raw)
         prior_rev, prior_id, prior_chain = previous_by_watchlist.get(wid, (0, "", ""))
-        if rev != prior_rev + 1 or (rev == 1 and str(revision_of or "")) or (rev > 1 and str(revision_of or "") != prior_id):
-            raise WatchlistStorageIntegrityError("revision_chain_link_mismatch")
-        header = json.loads(str(header_raw))
+        header = strict_json_loads(str(header_raw))
         if not isinstance(header, dict) or canonical_json(header) != str(header_raw):
             raise WatchlistStorageIntegrityError("invalid_revision_header")
+        provenance = header.get("import_provenance")
+        imported = isinstance(provenance, dict) and provenance.get("schema") == IMPORT_PROVENANCE_SCHEMA
+        if imported:
+            if rev < 1 or (prior_rev and rev <= prior_rev):
+                raise WatchlistStorageIntegrityError("revision_chain_link_mismatch")
+        elif rev != prior_rev + 1 or (rev == 1 and str(revision_of or "")) or (rev > 1 and str(revision_of or "") != prior_id):
+            raise WatchlistStorageIntegrityError("revision_chain_link_mismatch")
         _validate_header(header, wid, rid, rev, str(operation), str(payload_hash),
-                         str(source_hash or ""), str(identity_status or "unknown"),
+                         str(source_hash or ""), str(identity_status or ""),
                          str(continuity or ""), str(revision_of or ""), str(created), bool(deleted))
         refs, order = state_by_watchlist.get(wid, ({}, []))
         refs, order = dict(refs), list(order)
@@ -727,17 +904,27 @@ def inventory(conn: sqlite3.Connection, *, max_scan_bytes: int = MAX_SCAN_BYTES)
             raise WatchlistStorageIntegrityError("delta_hash_mismatch")
         if sha256_text(prior_chain + str(header_raw) + str(delta_hash)) != str(chain_hash):
             raise WatchlistStorageIntegrityError("revision_chain_hash_mismatch")
+        envelope = header.get("payload_envelope", {})
+        if not isinstance(envelope, dict):
+            raise WatchlistStorageIntegrityError("invalid_payload_envelope")
+        raw_payload = _payload_from_refs(
+            conn, refs, order, envelope, object_cache, raw_object_cache,
+            header.get("payload_layout"),
+        )
+        if sha256_text(raw_payload) != str(payload_hash):
+            raise WatchlistStorageIntegrityError("revision_payload_hash_mismatch")
         state_by_watchlist[wid] = (refs, order)
         previous_by_watchlist[wid] = (rev, rid, str(chain_hash))
         revisions.append({"revision_id": rid, "watchlist_id": wid, "revision": rev,
                           "operation": str(operation), "payload_hash": str(payload_hash),
-                          "source_hash": str(source_hash or ""), "identity_status": str(identity_status),
+                          "source_hash": str(source_hash or ""), "identity_status": str(identity_status or ""),
                           "continuity_event_id": str(continuity or ""), "revision_of": str(revision_of or ""),
                           "created_at": str(created), "is_deleted": bool(deleted),
                           "header": header, "delta_hash": str(delta_hash), "chain_hash": str(chain_hash),
                           "event_count": len(group)})
     if event_groups:
         raise WatchlistStorageIntegrityError("orphan_event")
+    result["historical_payload_hashes_verified"] = True
     result["delta_refs_valid"] = True
     result["revision_chain_valid"] = True
     result["revisions"] = revisions
@@ -759,10 +946,15 @@ def inventory(conn: sqlite3.Connection, *, max_scan_bytes: int = MAX_SCAN_BYTES)
         "FROM watchlists ORDER BY watchlist_id"
     ):
         wid, raw, revision = str(wid_raw), str(payload_raw), int(revision_raw)
-        payload = json.loads(raw)
+        payload = strict_json_loads(raw)
         if not isinstance(payload, dict) or "items" not in payload or not isinstance(payload["items"], list):
             raise WatchlistStorageIntegrityError("invalid_current_payload")
-        if canonical_json(payload) != raw:
+        final_revision = next(
+            (entry for entry in revisions if entry["watchlist_id"] == wid and entry["revision"] == revision), None)
+        imported_current = (final_revision is not None and (
+            isinstance(final_revision["header"].get("import_provenance"), dict)
+            or isinstance(final_revision["header"].get("payload_layout"), dict)))
+        if not imported_current and canonical_json(payload) != raw:
             raise WatchlistStorageIntegrityError("noncanonical_current_payload")
         rows = current_rows.pop(wid, [])
         if [position for position, _ in rows] != list(range(len(rows))):
@@ -777,8 +969,6 @@ def inventory(conn: sqlite3.Connection, *, max_scan_bytes: int = MAX_SCAN_BYTES)
         final = previous_by_watchlist.get(wid)
         if final is None or final[0] != revision or final[1] != str(last_id):
             raise WatchlistStorageIntegrityError("current_revision_mismatch")
-        final_revision = revisions[-1] if revisions and revisions[-1]["watchlist_id"] == wid else next(
-            (entry for entry in revisions if entry["watchlist_id"] == wid and entry["revision"] == revision), None)
         if (final_revision is None or final_revision["is_deleted"] != bool(deleted)
                 or final_revision["payload_hash"] != sha256_text(raw)):
             raise WatchlistStorageIntegrityError("current_revision_payload_mismatch")
@@ -787,7 +977,8 @@ def inventory(conn: sqlite3.Connection, *, max_scan_bytes: int = MAX_SCAN_BYTES)
         if final_revision["header"].get("payload_envelope") != {key: value for key, value in payload.items() if key != "items"}:
             raise WatchlistStorageIntegrityError("current_revision_envelope_mismatch")
         known_watchlists.add(wid)
-        watchlists.append({"watchlist_id": wid, "payload": payload, "revision": revision,
+        watchlists.append({"watchlist_id": wid, "payload": payload, "payload_json": raw,
+                           "revision": revision,
                            "source_hash": str(source_hash or ""), "is_deleted": bool(deleted),
                            "last_revision_id": str(last_id or "")})
     if current_rows or set(previous_by_watchlist) != known_watchlists:

@@ -15,6 +15,11 @@ from uuid import uuid4
 import pandas as pd
 from data_module.watchlist_repository import WatchlistRepository
 from data_module.watchlist_migration import migrate_watchlist_copy
+from app_module.watchlist_cow_activation import (
+    cow_activation_marker_path,
+    resolve_watchlist_sqlite_activation,
+    watchlist_service_writer_guard,
+)
 from app_module.dtos.decision_continuity_dtos import DecisionIdentity
 from dataclasses import dataclass, asdict, field
 from app_module.daily_market_research_bookmark import (
@@ -150,6 +155,7 @@ class WatchlistStorageStatus:
     legacy_path: Path
     upgrade_available: bool
     message: str
+    activation_marker_sha256: str | None = None
 
     @property
     def is_repository(self) -> bool:
@@ -215,7 +221,6 @@ class WatchlistService:
             config: TWStockConfig 實例
         """
         self.config = config
-        self.repository = repository
         # 儲存在 output_root/watchlist/
         self.watchlist_dir = config.resolve_output_path('watchlist')
         self.watchlist_dir.mkdir(parents=True, exist_ok=True)
@@ -223,13 +228,25 @@ class WatchlistService:
         # 預設觀察清單檔案
         self.default_watchlist_file = self.watchlist_dir / "default.json"
         self.canonical_repository_path = self.repository_path(config)
+        # 顯式 COW marker 即使無效，也不可退回 JSON writer。一般未遷移
+        # 的 JSON 啟動流程維持原樣；只有 marker 已存在時才做此額外 discovery。
+        if cow_activation_marker_path(
+            self.canonical_repository_path
+        ).exists():
+            repository, storage_status = self.discover_repository(config)
+        self.repository = repository
         self._storage_status = storage_status or self._legacy_storage_status()
         
         # 載入預設觀察清單
-        self._ensure_default_watchlist()
+        if self._storage_status.mode != "blocked":
+            self._ensure_default_watchlist()
         if storage_status is None and self.repository is None:
             self._storage_status = self._legacy_storage_status()
-        elif self.repository is None and not self._storage_status.upgrade_available:
+        elif (
+            self.repository is None
+            and self._storage_status.mode != "blocked"
+            and not self._storage_status.upgrade_available
+        ):
             # discover_repository 可能在預設 JSON 尚不存在時先回報 legacy；
             # _ensure_default_watchlist 完成後只更新提示，不觸發 migration。
             self._storage_status = self._legacy_storage_status(
@@ -256,7 +273,13 @@ class WatchlistService:
     def _legacy_source_paths(cls, repository_path: Path) -> tuple[Path, ...]:
         """列出 bounded upgrade 會處理的原始 JSON；只讀，不建立檔案。"""
 
-        return tuple(sorted(Path(repository_path).parent.glob("*.json")))
+        ignored_suffixes = (".cow-conversion.v1.json", ".cow-active.json")
+        return tuple(sorted(
+            path
+            for path in Path(repository_path).parent.glob("*.json")
+            if not path.name.endswith(ignored_suffixes)
+            and ".cow-rollback." not in path.name
+        ))
 
     @classmethod
     def _read_activation_marker(cls, repository_path: Path) -> dict[str, Any] | None:
@@ -327,6 +350,83 @@ class WatchlistService:
 
         repository_path = cls.repository_path(config)
         legacy_path = repository_path.with_name("default.json")
+        explicit = resolve_watchlist_sqlite_activation(repository_path)
+        if explicit.get("status") == "blocked":
+            return (
+                None,
+                WatchlistStorageStatus(
+                    mode="blocked",
+                    repository_path=repository_path,
+                    legacy_path=legacy_path,
+                    upgrade_available=False,
+                    message=(
+                        "COW activation 狀態無效；已封鎖觀察清單 writer。"
+                        f" ({explicit.get('code', 'invalid_explicit_marker')})"
+                    ),
+                ),
+            )
+        if explicit.get("status") == "active":
+            selected_path = Path(str(explicit["repository_path"]))
+            return (
+                WatchlistRepository(selected_path),
+                WatchlistStorageStatus(
+                    mode="repository",
+                    repository_path=selected_path,
+                    legacy_path=legacy_path,
+                    upgrade_available=False,
+                    message="已由明示 COW activation 指向 SQLite v3；原來源與目標庫均保留。",
+                    activation_marker_sha256=str(explicit.get("marker_sha256", "")) or None,
+                ),
+            )
+        if explicit.get("status") == "rolled_back":
+            mode = str(explicit.get("mode", ""))
+            if mode == "sqlite_v1_readonly":
+                return (
+                    WatchlistRepository(repository_path),
+                    WatchlistStorageStatus(
+                        mode="repository_readonly",
+                        repository_path=repository_path,
+                        legacy_path=legacy_path,
+                        upgrade_available=False,
+                        message="COW 已回復原 v1 SQLite；來源僅供唯讀，writer 已封鎖。",
+                        activation_marker_sha256=str(explicit.get("marker_sha256", "")) or None,
+                    ),
+                )
+            if mode == "sqlite_v2":
+                return (
+                    WatchlistRepository(repository_path),
+                    WatchlistStorageStatus(
+                        mode="repository",
+                        repository_path=repository_path,
+                        legacy_path=legacy_path,
+                        upgrade_available=False,
+                        message="COW 已回復原 v2 SQLite 指向；來源 bytes 保留。",
+                        activation_marker_sha256=str(explicit.get("marker_sha256", "")) or None,
+                    ),
+                )
+            if mode == "legacy_json":
+                legacy_sources = cls._legacy_source_paths(repository_path)
+                return (
+                    None,
+                    WatchlistStorageStatus(
+                        mode="upgrade_available" if legacy_sources else "legacy_json",
+                        repository_path=repository_path,
+                        legacy_path=legacy_path,
+                        upgrade_available=bool(legacy_sources),
+                        message="COW 已回復原 JSON 指向；SQLite 來源與 v3 目標均保留。",
+                        activation_marker_sha256=str(explicit.get("marker_sha256", "")) or None,
+                    ),
+                )
+            return (
+                None,
+                WatchlistStorageStatus(
+                    mode="blocked",
+                    repository_path=repository_path,
+                    legacy_path=legacy_path,
+                    upgrade_available=False,
+                    message="COW rollback mode 不受支援；已封鎖 writer。",
+                ),
+            )
         legacy_sources = cls._legacy_source_paths(repository_path)
         if cls._canonical_is_active(repository_path, legacy_sources):
             return (
@@ -378,6 +478,14 @@ class WatchlistService:
         """回傳 UI 可核對的目前儲存模式。"""
 
         return self._storage_status
+
+    def _require_active_writer(self) -> None:
+        """封鎖損毀 explicit state 與回復後的 v1 唯讀來源。"""
+
+        if self._storage_status.mode == "blocked":
+            raise RuntimeError("watchlist_activation_blocked: explicit activation state 無效")
+        if self._storage_status.mode == "repository_readonly":
+            raise RuntimeError("watchlist_storage_readonly: 原 v1 repository 僅供讀取")
 
     @staticmethod
     def _validate_legacy_payload(payload: Any) -> frozenset[str]:
@@ -516,6 +624,7 @@ class WatchlistService:
         失敗都不切換 service writer，原 JSON 仍是可用來源，可再次重試。
         """
 
+        self._require_active_writer()
         legacy_sources = self._legacy_source_paths(self.canonical_repository_path)
         if self.repository is not None:
             self._storage_status = self._repository_storage_status(
@@ -663,26 +772,30 @@ class WatchlistService:
         revision_id: str | None = None,
         continuity_event_id: str | None = None,
     ):
+        self._require_active_writer()
         watchlist_file = self._watchlist_file(watchlist_id)
         watchlist.updated_at = datetime.now().isoformat()
         data = {"version": 1, "name": watchlist.name, "description": watchlist.description,
                 "created_at": watchlist.created_at, "updated_at": watchlist.updated_at,
                 "items": [item.to_storage_mapping() for item in watchlist.items]}
-        if self.repository is not None:
-            watchlist.revision = self.repository.save(
-                watchlist_id,
-                data,
-                expected_revision=watchlist.revision,
-                operation=operation,
-                revision_id=revision_id,
-                continuity_event_id=continuity_event_id,
-            )
-            return
-        raw = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False)
-        # 同目錄原子取代；不先搬走來源，失敗仍保留既有有效 JSON。
-        temp_file = watchlist_file.with_suffix(".json.tmp")
-        temp_file.write_text(raw, encoding="utf-8")
-        temp_file.replace(watchlist_file)
+        with watchlist_service_writer_guard(
+            self.canonical_repository_path,
+            expected_marker_sha256=self._storage_status.activation_marker_sha256,
+        ):
+            if self.repository is not None:
+                watchlist.revision = self.repository.save(
+                    watchlist_id,
+                    data,
+                    expected_revision=watchlist.revision,
+                    operation=operation,
+                    revision_id=revision_id,
+                    continuity_event_id=continuity_event_id,
+                )
+                return
+            raw = json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False)
+            temp_file = watchlist_file.with_suffix(".json.tmp")
+            temp_file.write_text(raw, encoding="utf-8")
+            temp_file.replace(watchlist_file)
 
     def query_stock_names(self, stock_codes: List[str]) -> Dict[str, str]:
         """UI 的名稱查詢接點；只讀既有來源，不初始化市場資料庫。"""
@@ -1692,34 +1805,27 @@ class WatchlistService:
         revision_id: str | None = None,
         continuity_event_id: str | None = None,
     ) -> bool:
-        """
-        刪除觀察清單
-        
-        Args:
-            watchlist_id: 觀察清單ID
-        
-        Returns:
-            是否成功刪除
-        """
-        # 不允許刪除預設清單
+        self._require_active_writer()
         if watchlist_id == "default":
             return False
-        
         watchlist_file = self._watchlist_file(watchlist_id)
-        if self.repository is not None:
-            loaded = self.repository.load(watchlist_id)
-            return (
-                self.repository.delete(
-                    watchlist_id,
-                    expected_revision=loaded[1],
-                    revision_id=revision_id,
-                    continuity_event_id=continuity_event_id,
+        with watchlist_service_writer_guard(
+            self.canonical_repository_path,
+            expected_marker_sha256=self._storage_status.activation_marker_sha256,
+        ):
+            if self.repository is not None:
+                loaded = self.repository.load(watchlist_id)
+                return (
+                    self.repository.delete(
+                        watchlist_id,
+                        expected_revision=loaded[1],
+                        revision_id=revision_id,
+                        continuity_event_id=continuity_event_id,
+                    )
+                    if loaded
+                    else False
                 )
-                if loaded
-                else False
-            )
-        if watchlist_file.exists():
-            watchlist_file.unlink()
-            return True
-        
-        return False
+            if watchlist_file.exists():
+                watchlist_file.unlink()
+                return True
+            return False

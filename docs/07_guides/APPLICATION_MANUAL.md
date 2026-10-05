@@ -4595,3 +4595,34 @@ CLI（只管理派生索引，沒有 producer）：
 正式舊SQLite庫沒有apply／converter工具可用；本包的dry-run只是唯讀設計盤點。後續流程是固定舊庫hash/stat→新獨立副本→逐版IDs/metadata/bookmark/順序/完整payload hash核對→新舊庫/backup/暫存總容量驗證→父層審核→明確批准後才切activation/path，失敗回原path/marker、保留兩庫。不要把既有JSON copy工具當作SQLite v2 converter，也不要以新隔離250次通過批准正式遷移。
 
 實際受控20／120／250總留存781,365／3,887,695／7,912,388 B；新v3 actual三程序App讀回通過，正式deployment／Native／自然資格另驗。[逐項數值、限制與回滾](../06_qa/F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md)。
+
+
+### SQLite v1/v2 COW 遷移與明示啟用（2026-10-05）
+
+此工具把明示指定的舊 SQLite v1/v2 轉成獨立 schema3 副本；不會改寫原庫、舊 `.active` 或 JSON。它取代前節「沒有 converter」的工程狀態。正式使用者來源與切換仍須另行核准；本批只授權生成 fixture 與已許可 QA fixture。不要直接套用以下示例到正式路徑。
+
+入口 `scripts/watchlist_sqlite_cow.py`。`--source` 是舊 canonical SQLite 檔，`--destination` 是不存在的新獨立檔；兩者不能相同或共用 link。以下路徑只表示已核准的隔離 fixture：
+
+```powershell
+$source = 'C:\approved-fixture\watchlist\watchlists.db'
+$target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py dry-run --source $source --destination $target
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py convert --source $source --destination $target
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py activation-preview --source $source --destination $target
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py activate --source $source --destination $target
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py status --source $source
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py rollback --source $source
+```
+
+dry-run 唯讀檢查格式、完整歷史與容量，不建 target。convert 建獨立副本與 `<target>.cow-conversion.v1.json` 收據，逐版驗證精確 raw payload/hash、ID、revision number、metadata、時間、source hash、items 與順序；原 JSON whitespace、escape、key order、數字拼法也保留。v1 只有 current 時只建立明示 synthetic baseline，保留原 revision number，不偽造缺失歷史。正常新 revision 仍使用原 compact codec。服務 API 的 `cancel_check` 支援合作取消；CLI 中斷後若留下 staging/鎖，保留原檔與審計資訊，交 owner 確認狀態後處理，不自動清理或覆寫重跑。
+
+activation-preview 檢查收據及來源／副本身份；activate 才寫 `<source>.cow-active.json`，並保存 `<source>.cow-rollback.<id>.json` 回復審計。`--receipt` 可明示 converter 收據；通常沿預設 sibling path。沒有 config 自動切換。以原 canonical path 建立的新 WatchlistService／新程序會辨識明示指向；不要在使用者操作期間切換。status 的 JSON 是目前指向檢查，blocked 時 CLI exit 2；成功 exit 0。轉換 ready 不等於已啟用，啟用成功不等於自然模型或 Native 資格。
+
+rollback 回復原路徑／模式並保留兩庫、收據與審計。原 v1 回復後唯讀，原 v2 回復後可沿原格式正常保存。啟用期間 target 新增的 revision 保留在新庫，不會合併回舊庫；重新啟用已變動的 target 可能因原 prepared hash 不符而拒絕，需另行明示方案。active 期間允許正常 append，但原 baseline chain 必須一致。重複啟用／回復只接受已核驗狀態，未知指向拒絕；無效明示 marker 不回退 JSON writer 或建立空清單。
+
+容量未知／不足、disk full、取消、busy writer／sidecar、來源 hash/stat 改變、錯 schema、壞 JSON／hash／歷史、target 已存在與 audit/pointer 不一致都拒絕。保留 last-good 與錯誤收據，不刪原庫、target、stage 或歷史來繞過。4MiB payload／32MiB DB／64MiB scan／4096 rows 及中央 reserve 不變；新舊庫、保留 staging、收據／marker 與備份需求納入點時 capacity。詳見 [COW QA](../06_qa/F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md)。
+
+
+### 最終容量守衛收尾（2026-10-05）
+
+啟用與回退發布 audit／marker 前重新核對當下中央 reserve；容量未知／不足具名拒絕並保留原指標、雙庫與內容。最終限定路由72 passed（focused_root_05.log；另有pytest cache唯讀警告），mypy793及CLI1通過，11檔compile／7產品檔精度與未來函數AST守衛0違規。14個獨立程序實際CLI回放全部exit0、隔離guard0違規，17份immutable來源及原20-session fixture SHA不變。最終case為output/qa/f4_cow_converter_activation_20261005/cli-roundtrip/run-615b305783f9；原失敗與中間收據保留，不替換為自然或正式驗收。

@@ -18,6 +18,7 @@ from data_module.watchlist_repository import WatchlistRepository
 ACTIVATION_SCHEMA = "watchlist-cow-activation.v1"
 BACKUP_SCHEMA = "watchlist-cow-rollback.v1"
 RECEIPT_SCHEMA = "watchlist-cow-conversion.v1"
+JSON_SOURCE_FORMAT = "legacy_json_v1"
 _CancelCheck = Callable[[], bool | None]
 
 
@@ -35,6 +36,30 @@ def cow_activation_marker_path(canonical_repository_path: str | Path) -> Path:
 
     path = Path(canonical_repository_path)
     return path.with_name(f"{path.name}.cow-active.json")
+
+
+def watchlist_cow_activation_source_candidates(
+    canonical_repository_path: str | Path,
+) -> tuple[tuple[Path, Path], ...]:
+    """列出 canonical SQLite 與目錄內 JSON COW marker 的來源候選。"""
+
+    canonical = Path(canonical_repository_path).expanduser().resolve(strict=False)
+    candidates: dict[Path, Path] = {canonical: cow_activation_marker_path(canonical)}
+    suffix = ".cow-active.json"
+    try:
+        markers = canonical.parent.glob(f"*{suffix}")
+        for marker in markers:
+            if marker == candidates[canonical]:
+                continue
+            if not marker.name.endswith(suffix):
+                continue
+            source = marker.with_name(marker.name[: -len(suffix)])
+            if source.suffix.lower() == ".json":
+                resolved_source = source.resolve(strict=False)
+                candidates[resolved_source] = marker
+    except OSError:
+        pass
+    return tuple(sorted(candidates.items(), key=lambda item: str(item[0]).casefold()))
 
 
 def cow_conversion_receipt_path(target_path: str | Path) -> Path:
@@ -261,18 +286,12 @@ def _validate_receipt(
     if not target.is_file():
         raise WatchlistCowActivationError("missing_target", str(target))
     for path in (source, target):
-        _assert_no_sidecars(path)
         try:
             file_stat = path.stat()
         except OSError as exc:
             raise WatchlistCowActivationError("path_unavailable", str(path)) from exc
         if getattr(file_stat, "st_nlink", 1) > 1:
             raise WatchlistCowActivationError("path_alias", str(path))
-    _assert_writable_directory(source)
-    if check_writers:
-        _assert_no_writer(source)
-        _assert_no_writer(target)
-
     payload, raw = _read_json(receipt, "invalid_receipt")
     if payload.get("schema_version") != RECEIPT_SCHEMA or payload.get("status") != "ready":
         raise WatchlistCowActivationError("receipt_not_ready", str(receipt))
@@ -284,8 +303,28 @@ def _validate_receipt(
     target_schema = _required_int(payload, "target_schema_version")
     source_size = _required_int(payload, "source_size_bytes")
     target_size = _required_int(payload, "target_size_bytes")
-    if source_schema not in {1, 2} or target_schema != 3:
+    source_format = payload.get("source_format")
+    if source_format not in (None, JSON_SOURCE_FORMAT):
+        raise WatchlistCowActivationError("unknown_source_format", str(source_format))
+    if target_schema != 3 or (source_format is None and source_schema not in {1, 2}) or (
+        source_format == JSON_SOURCE_FORMAT and source_schema != 1
+    ):
         raise WatchlistCowActivationError("unknown_schema", "receipt schema 不受支援")
+    if source_format == JSON_SOURCE_FORMAT:
+        if payload.get("canonical_path") != str(source):
+            raise WatchlistCowActivationError("receipt_path_mismatch", "JSON canonical_path mismatch")
+        _assert_json_source_scope(source, target)
+        _assert_no_sidecars(target)
+    else:
+        _assert_no_sidecars(source)
+        _assert_no_sidecars(target)
+    _assert_writable_directory(source)
+    if check_writers:
+        if source_format is None:
+            _assert_no_writer(source)
+        _assert_no_writer(target)
+    if source_format == JSON_SOURCE_FORMAT and source.stat().st_size != source_size:
+        raise WatchlistCowActivationError("source_changed", str(source))
     if source.stat().st_size != source_size or target.stat().st_size != target_size:
         raise WatchlistCowActivationError("stale_hash", "source／target size 與 receipt 不同")
     source_hash = _sha256(source)
@@ -296,7 +335,7 @@ def _validate_receipt(
         raise WatchlistCowActivationError("stale_hash", str(target))
     if not _source_stat_matches(payload, source):
         raise WatchlistCowActivationError("source_changed", "source stat identity 與 receipt 不同")
-    if _detect(source, expected={1, 2}).get("schema_version") != source_schema:
+    if source_format is None and _detect(source, expected={1, 2}).get("schema_version") != source_schema:
         raise WatchlistCowActivationError("unknown_schema", "source schema 與 receipt 不同")
     _detect(target, expected={3})
     return payload, receipt, hashlib.sha256(raw).hexdigest()
@@ -399,6 +438,21 @@ def _legacy_json_sources(source: Path) -> tuple[Path, ...]:
     ))
 
 
+def _assert_json_source_scope(source: Path, target: Path) -> None:
+    """Refuse one-file COW when service discovery would omit JSON siblings."""
+
+    canonical = source.parent / "watchlists.db"
+    if canonical.exists():
+        raise WatchlistCowActivationError("canonical_repository_exists", str(canonical))
+    if target.resolve(strict=False) == canonical.resolve(strict=False):
+        raise WatchlistCowActivationError("canonical_target_refused", str(target))
+    if _legacy_json_sources(source) != (source.resolve(strict=True),):
+        raise WatchlistCowActivationError(
+            "source_scope_ambiguous",
+            "JSON COW 僅支援目錄內唯一的 watchlist JSON；目前來源範圍不完整",
+        )
+
+
 def _legacy_marker_is_valid(raw: bytes | None) -> bool:
     if raw is None:
         return False
@@ -416,12 +470,18 @@ def _legacy_marker_is_valid(raw: bytes | None) -> bool:
     )
 
 
-def _original_state(source: Path, source_schema: int) -> dict[str, Any]:
+def _original_state(
+    source: Path,
+    source_schema: int,
+    source_format: str | None = None,
+) -> dict[str, Any]:
     marker_path = _legacy_marker_path(source)
     marker_raw = marker_path.read_bytes() if marker_path.is_file() else None
     json_sources = _legacy_json_sources(source)
     json_hashes = {str(path): _sha256(path) for path in json_sources}
-    if source_schema == 1:
+    if source_format == JSON_SOURCE_FORMAT:
+        mode = "legacy_json_v1"
+    elif source_schema == 1:
         mode = "sqlite_v1_readonly"
     elif _legacy_marker_is_valid(marker_raw) or (marker_raw is None and not json_sources):
         mode = "sqlite_v2"
@@ -473,27 +533,124 @@ def watchlist_service_writer_guard(
     canonical_repository_path: str | Path,
     *,
     expected_marker_sha256: str | None,
+    activation_source_path: str | Path | None = None,
+    expected_target_path: str | Path | None = None,
 ) -> Iterator[None]:
-    """Serialize service writes with COW pointer changes and reject stale instances."""
+    """Serialize service writes with COW pointers and pin active JSON sources."""
 
     canonical = _resolved(canonical_repository_path, must_exist=False)
-    marker_path = cow_activation_marker_path(canonical)
-    with _marker_lock(canonical):
+    owner = _resolved(
+        activation_source_path if activation_source_path is not None else canonical,
+        must_exist=False,
+    )
+    marker_path = cow_activation_marker_path(owner)
+    with _marker_lock(owner):
+        present_markers = [
+            marker for _, marker in watchlist_cow_activation_source_candidates(canonical)
+            if marker.exists()
+        ]
+        if len(present_markers) > 1:
+            raise WatchlistCowActivationError("invalid_explicit_marker", "multiple COW markers found")
+        if present_markers and present_markers[0] != marker_path:
+            raise WatchlistCowActivationError("stale_service_pointer", str(present_markers[0]))
         if marker_path.exists():
             current, raw = _marker_payload(marker_path)
-            current_hash = hashlib.sha256(raw).hexdigest()
+            source_format = current.get("source_format")
+            if source_format not in (None, JSON_SOURCE_FORMAT):
+                raise WatchlistCowActivationError("invalid_explicit_marker", "unknown source format")
             if (
                 current.get("schema_version") != ACTIVATION_SCHEMA
-                or current.get("canonical_path") != str(canonical)
-                or current.get("source_path") != str(canonical)
+                or current.get("canonical_path") != str(owner)
+                or current.get("source_path") != str(owner)
                 or current.get("status") not in {"active", "rolled_back"}
             ):
                 raise WatchlistCowActivationError("invalid_explicit_marker", str(marker_path))
-            if expected_marker_sha256 is None or current_hash != expected_marker_sha256:
+            if expected_marker_sha256 is None or hashlib.sha256(raw).hexdigest() != expected_marker_sha256:
                 raise WatchlistCowActivationError("stale_service_pointer", str(marker_path))
+            if expected_target_path is not None and current.get("status") == "active":
+                if _resolved(str(current.get("target_path", ""))) != _resolved(expected_target_path):
+                    raise WatchlistCowActivationError("stale_service_pointer", str(marker_path))
+            if source_format == JSON_SOURCE_FORMAT and current.get("status") == "active":
+                with _held_json_source(owner) as source_handle:
+                    _verify_held_json_source(
+                        source_handle,
+                        source_path=owner,
+                        expected_sha256=str(current.get("source_sha256", "")),
+                        expected_size=_required_int(current, "source_size_bytes"),
+                        expected_stat=current.get("source_stat"),
+                    )
+                    yield
+                return
         elif expected_marker_sha256 is not None:
             raise WatchlistCowActivationError("stale_service_pointer", str(marker_path))
         yield
+
+
+@contextmanager
+def _held_json_source(path: Path) -> Iterator[Any]:
+    """Hold the converter's cross-process read lock, excluding writes and renames."""
+
+    try:
+        from data_module.watchlist_json_cow import held_json_source
+    except ImportError as exc:
+        raise WatchlistCowActivationError("source_read_lock_unavailable", str(path)) from exc
+    try:
+        with held_json_source(path) as source_handle:
+            yield source_handle
+    except OSError as exc:
+        raise WatchlistCowActivationError("source_read_lock_unavailable", str(path)) from exc
+
+
+def _verify_held_json_source(
+    source_handle: Any,
+    *,
+    source_path: Path,
+    expected_sha256: str,
+    expected_size: int,
+    expected_stat: Any,
+) -> None:
+    try:
+        source_handle.seek(0)
+        digest = hashlib.sha256()
+        size = 0
+        while True:
+            chunk = source_handle.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            digest.update(chunk)
+        source_handle.seek(0)
+        actual_stat = os.fstat(source_handle.fileno())
+    except (OSError, AttributeError, ValueError) as exc:
+        raise WatchlistCowActivationError("source_read_lock_unavailable", str(source_path)) from exc
+    if size != expected_size or digest.hexdigest() != expected_sha256:
+        raise WatchlistCowActivationError("source_changed", str(source_path))
+    if not isinstance(expected_stat, Mapping):
+        raise WatchlistCowActivationError("source_changed", "source stat pin missing")
+    actual = {
+        "size": int(actual_stat.st_size),
+        "mtime_ns": int(actual_stat.st_mtime_ns),
+        "inode": int(getattr(actual_stat, "st_ino", 0)),
+        "device": int(getattr(actual_stat, "st_dev", 0)),
+    }
+    try:
+        path_stat = source_path.stat()
+    except OSError as exc:
+        raise WatchlistCowActivationError("source_changed", str(source_path)) from exc
+    path_identity = {
+        "size": int(path_stat.st_size),
+        "mtime_ns": int(path_stat.st_mtime_ns),
+        "inode": int(getattr(path_stat, "st_ino", 0)),
+        "device": int(getattr(path_stat, "st_dev", 0)),
+    }
+    if any(
+        isinstance(expected_stat.get(key), bool)
+        or not isinstance(expected_stat.get(key), int)
+        or expected_stat[key] != actual[key]
+        or actual[key] != path_identity[key]
+        for key in actual
+    ):
+        raise WatchlistCowActivationError("source_changed", str(source_path))
 
 
 def _atomic_create(path: Path, raw: bytes) -> None:
@@ -550,6 +707,9 @@ def _validate_active_marker(canonical: Path, marker: Mapping[str, Any]) -> dict[
         raise WatchlistCowActivationError("invalid_explicit_marker", "status 不支援")
     source = _resolved(str(marker.get("source_path", "")))
     target = _resolved(str(marker.get("target_path", "")))
+    source_format = marker.get("source_format")
+    if source_format not in (None, JSON_SOURCE_FORMAT):
+        raise WatchlistCowActivationError("invalid_explicit_marker", "unknown source format")
     if source != canonical:
         raise WatchlistCowActivationError("invalid_explicit_marker", "source 必須是 canonical repository path")
     backup_path = _resolved(str(marker.get("backup_marker_path", "")))
@@ -561,6 +721,11 @@ def _validate_active_marker(canonical: Path, marker: Mapping[str, Any]) -> dict[
         raise WatchlistCowActivationError("rollback_marker_invalid", "rollback marker identity 不符")
     if backup.get("source_path") != str(source) or backup.get("target_path") != str(target):
         raise WatchlistCowActivationError("rollback_marker_invalid", "rollback marker paths 不符")
+    if source_format == JSON_SOURCE_FORMAT and (
+        backup.get("source_format") != JSON_SOURCE_FORMAT
+        or backup.get("canonical_path") != str(source)
+    ):
+        raise WatchlistCowActivationError("rollback_marker_invalid", "JSON rollback source identity mismatch")
     original_state = backup.get("original_state")
     if not isinstance(original_state, Mapping):
         raise WatchlistCowActivationError("rollback_marker_invalid", "缺 original state")
@@ -580,18 +745,44 @@ def _validate_active_marker(canonical: Path, marker: Mapping[str, Any]) -> dict[
         or receipt.get("target_sha256") != marker.get("prepared_target_sha256")
     ):
         raise WatchlistCowActivationError("invalid_receipt", "receipt pins 與 activation 不符")
+    if receipt.get("source_format") != source_format:
+        raise WatchlistCowActivationError("invalid_receipt", "receipt source format mismatch")
+    if source_format == JSON_SOURCE_FORMAT and receipt.get("canonical_path") != str(source):
+        raise WatchlistCowActivationError("invalid_receipt", "JSON receipt canonical path mismatch")
+    if source_format == JSON_SOURCE_FORMAT and (
+        marker.get("source_size_bytes") != receipt.get("source_size_bytes")
+        or marker.get("source_stat") != receipt.get("source_stat")
+        or backup.get("source_size_bytes") != receipt.get("source_size_bytes")
+        or backup.get("source_stat") != receipt.get("source_stat")
+    ):
+        raise WatchlistCowActivationError("invalid_explicit_marker", "JSON source stat pins mismatch")
     if int(marker.get("source_schema_version", 0)) != int(receipt.get("source_schema_version", -1)):
         raise WatchlistCowActivationError("invalid_explicit_marker", "source schema pin 不一致")
     # active期間 source 必須逐 byte 不變；rollback 後 v2 已重新成為
     # 正常 writer，之後的合法 append 不會令 COW pointer 失效。
-    if status == "active" or original_mode not in {"sqlite_v2", "legacy_json"}:
+    if source_format == JSON_SOURCE_FORMAT:
+        if (source.parent / "watchlists.db").exists():
+            raise WatchlistCowActivationError(
+                "canonical_repository_exists", str(source.parent / "watchlists.db")
+            )
+        if status == "active":
+            _assert_json_source_scope(source, target)
+            if (
+                _sha256(source) != marker.get("source_sha256")
+                or not _source_stat_matches(receipt, source)
+            ):
+                raise WatchlistCowActivationError("source_changed", str(source))
+    elif status == "active" or original_mode not in {"sqlite_v2", "legacy_json"}:
         if _sha256(source) != marker.get("source_sha256"):
             raise WatchlistCowActivationError("source_changed", str(source))
-    _assert_no_sidecars(source)
+    if source_format is None:
+        _assert_no_sidecars(source)
     _assert_no_sidecars(target)
-    _assert_no_writer(source)
+    if source_format is None:
+        _assert_no_writer(source)
     _assert_no_writer(target)
-    _detect(source, expected={int(receipt.get("source_schema_version", 0))})
+    if source_format is None:
+        _detect(source, expected={int(receipt.get("source_schema_version", 0))})
     _detect(target, expected={3})
     base = marker.get("target_base_lineage")
     if not isinstance(base, Mapping):
@@ -600,8 +791,10 @@ def _validate_active_marker(canonical: Path, marker: Mapping[str, Any]) -> dict[
     return {
         "status": status,
         "canonical_path": str(canonical),
+        "source_format": source_format,
         "source_path": str(source),
         "target_path": str(target),
+        "source_schema_version": int(receipt.get("source_schema_version", 0)),
         "receipt_path": str(receipt_path),
         "backup_marker_path": str(backup_path),
         "original_state": backup.get("original_state"),
@@ -683,7 +876,8 @@ def _preview(
     )
     lineage = _base_lineage_snapshot(target_resolved)
     source_schema = int(receipt["source_schema_version"])
-    original = _original_state(source_resolved, source_schema)
+    source_format = receipt.get("source_format")
+    original = _original_state(source_resolved, source_schema, source_format)
     return {
         "status": "ready",
         "source_path": str(source_resolved),
@@ -691,6 +885,11 @@ def _preview(
         "receipt_path": str(receipt_path_resolved),
         "receipt_sha256": receipt_hash,
         "source_sha256": str(receipt["source_sha256"]),
+        "source_size_bytes": int(receipt["source_size_bytes"]),
+        "source_stat": receipt.get("source_stat"),
+        "source_format": source_format,
+        "canonical_path": str(source_resolved),
+        "target_size_bytes": int(receipt["target_size_bytes"]),
         "prepared_target_sha256": str(receipt["target_sha256"]),
         "source_schema_version": source_schema,
         "target_schema_version": 3,
@@ -700,6 +899,29 @@ def _preview(
         "item_count": int(receipt.get("item_count", 0)),
         "comparison": receipt.get("comparison"),
     }
+
+
+def _revalidate_json_activation_under_lock(
+    source: Path, target: Path, receipt_path: Path, preview: Mapping[str, Any], source_handle: Any
+) -> None:
+    _verify_held_json_source(source_handle, source_path=source,
+                            expected_sha256=str(preview["source_sha256"]),
+                            expected_size=_required_int(preview, "source_size_bytes"),
+                            expected_stat=preview.get("source_stat"))
+    receipt, raw = _read_json(receipt_path, "invalid_receipt")
+    if hashlib.sha256(raw).hexdigest() != preview.get("receipt_sha256"):
+        raise WatchlistCowActivationError("receipt_changed", str(receipt_path))
+    if receipt.get("source_format") != JSON_SOURCE_FORMAT or receipt.get("canonical_path") != str(source):
+        raise WatchlistCowActivationError("invalid_receipt", "JSON source identity mismatch")
+    if receipt.get("source_sha256") != preview.get("source_sha256") or receipt.get("target_sha256") != preview.get("prepared_target_sha256"):
+        raise WatchlistCowActivationError("invalid_receipt", "source/target hash pin changed")
+    if target.stat().st_size != _required_int(preview, "target_size_bytes") or _sha256(target) != preview.get("prepared_target_sha256"):
+        raise WatchlistCowActivationError("stale_hash", str(target))
+    _assert_json_source_scope(source, target)
+    _detect(target, expected={3})
+    if _base_lineage_snapshot(target) != preview.get("target_base_lineage"):
+        raise WatchlistCowActivationError("target_lineage_mismatch", str(target))
+    _verify_original_state(source, preview["original_state"], verify_json=False)
 
 
 def preview_watchlist_sqlite_activation(
@@ -720,6 +942,55 @@ def preview_watchlist_sqlite_activation(
             "source_path": str(Path(source).expanduser().resolve()),
             "target_path": str(Path(target).expanduser().resolve()),
         }
+
+
+def _publish_activation_markers(
+    source: Path,
+    target: Path,
+    preview: Mapping[str, Any],
+    marker_path: Path,
+    cancel_check: _CancelCheck | None,
+) -> None:
+    activation_id = uuid4().hex
+    backup_path = _backup_path(source, activation_id)
+    backup: dict[str, Any] = {
+        "schema_version": BACKUP_SCHEMA,
+        "activation_id": activation_id,
+        "canonical_path": str(source),
+        "source_path": str(source),
+        "target_path": str(target),
+        "original_state": preview["original_state"],
+    }
+    marker: dict[str, Any] = {
+        "schema_version": ACTIVATION_SCHEMA,
+        "status": "active",
+        "activation_id": activation_id,
+        "canonical_path": str(source),
+        "source_path": str(source),
+        "target_path": str(target),
+        "receipt_path": str(preview["receipt_path"]),
+        "receipt_sha256": str(preview["receipt_sha256"]),
+        "source_schema_version": int(preview["source_schema_version"]),
+        "source_sha256": str(preview["source_sha256"]),
+        "prepared_target_sha256": str(preview["prepared_target_sha256"]),
+        "target_base_lineage": preview["target_base_lineage"],
+        "backup_marker_path": str(backup_path),
+    }
+    if preview.get("source_format") is not None:
+        source_format = str(preview["source_format"])
+        backup["source_format"] = source_format
+        backup["source_size_bytes"] = int(preview["source_size_bytes"])
+        backup["source_stat"] = preview["source_stat"]
+        marker["source_format"] = source_format
+        marker["source_size_bytes"] = int(preview["source_size_bytes"])
+        marker["source_stat"] = preview["source_stat"]
+    backup_raw = json.dumps(backup, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    marker["backup_marker_sha256"] = hashlib.sha256(backup_raw).hexdigest()
+    marker_raw = json.dumps(marker, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    _cancel_if_requested(cancel_check)
+    _assert_metadata_capacity(source, target, backup_raw, marker_raw)
+    _atomic_create(backup_path, backup_raw)
+    _atomic_create(marker_path, marker_raw)
 
 
 def activate_watchlist_sqlite(
@@ -751,6 +1022,28 @@ def activate_watchlist_sqlite(
                     str(current.get("message", "")),
                 )
             raise WatchlistCowActivationError("another_activation_active", str(marker_path))
+        if initial.get("source_format") == JSON_SOURCE_FORMAT:
+            with _sqlite_writer_locks(target_path_resolved):
+                with _held_json_source(canonical) as source_handle:
+                    _revalidate_json_activation_under_lock(
+                        canonical,
+                        target_path_resolved,
+                        Path(str(initial["receipt_path"])),
+                        initial,
+                        source_handle,
+                    )
+                    _cancel_if_requested(cancel_check)
+                    _publish_activation_markers(
+                        canonical, target_path_resolved, initial, marker_path, cancel_check
+                    )
+            resolved = resolve_watchlist_sqlite_activation(canonical)
+            if resolved.get("status") != "active":
+                raise WatchlistCowActivationError(
+                    str(resolved.get("code", "marker_publish_failed")),
+                    str(resolved.get("message", "")),
+                )
+            return {**resolved, "status": "activated"}
+
         with _sqlite_writer_locks(canonical, target_path_resolved):
             # Recheck receipt and history only after both writers are excluded.
             preview = _preview(
@@ -835,6 +1128,70 @@ def _verify_original_state(
     return mode
 
 
+def _rollback_json_under_lock(
+    canonical: Path,
+    target: Path,
+    marker_path: Path,
+    marker_hash: str,
+    activation_id: str,
+    cancel_check: _CancelCheck | None,
+) -> str:
+    with _sqlite_writer_locks(target):
+        with _held_json_source(canonical) as source_handle:
+            current, current_raw = _marker_payload(marker_path)
+            if hashlib.sha256(current_raw).hexdigest() != marker_hash:
+                raise WatchlistCowActivationError("marker_changed", str(marker_path))
+            if current.get("status") != "active" or current.get("activation_id") != activation_id:
+                raise WatchlistCowActivationError("marker_changed", str(marker_path))
+            _verify_held_json_source(
+                source_handle,
+                source_path=canonical,
+                expected_sha256=str(current.get("source_sha256", "")),
+                expected_size=_required_int(current, "source_size_bytes"),
+                expected_stat=current.get("source_stat"),
+            )
+            _assert_json_source_scope(canonical, target)
+            backup_path = _resolved(str(current.get("backup_marker_path", "")))
+            backup, backup_raw = _read_json(backup_path, "rollback_marker_invalid")
+            if hashlib.sha256(backup_raw).hexdigest() != current.get("backup_marker_sha256"):
+                raise WatchlistCowActivationError("rollback_marker_invalid", "rollback marker hash mismatch")
+            state = backup.get("original_state")
+            if not isinstance(state, Mapping):
+                raise WatchlistCowActivationError("rollback_marker_invalid", "original state missing")
+            mode = _verify_original_state(canonical, state, verify_json=False)
+            if mode != "legacy_json_v1":
+                raise WatchlistCowActivationError("rollback_mode_unknown", mode)
+            receipt_path = _resolved(str(current.get("receipt_path", "")))
+            receipt, receipt_raw = _read_json(receipt_path, "invalid_receipt")
+            if (
+                hashlib.sha256(receipt_raw).hexdigest() != current.get("receipt_sha256")
+                or receipt.get("schema_version") != RECEIPT_SCHEMA
+                or receipt.get("status") != "ready"
+                or receipt.get("source_format") != JSON_SOURCE_FORMAT
+                or receipt.get("canonical_path") != str(canonical)
+                or receipt.get("source_sha256") != current.get("source_sha256")
+                or receipt.get("target_sha256") != current.get("prepared_target_sha256")
+                or receipt.get("source_schema_version") != 1
+                or receipt.get("target_schema_version") != 3
+            ):
+                raise WatchlistCowActivationError("invalid_receipt", "JSON receipt pins changed")
+            _detect(target, expected={3})
+            base = current.get("target_base_lineage")
+            if not isinstance(base, Mapping):
+                raise WatchlistCowActivationError("invalid_explicit_marker", "target base lineage missing")
+            _history_prefixes(target, base)
+            _cancel_if_requested(cancel_check)
+            current["status"] = "rolled_back"
+            current["rollback_source_schema_version"] = 1
+            current["rollback_source_format"] = JSON_SOURCE_FORMAT
+            current["rollback_original_mode"] = mode
+            current["rollback_marker_sha256"] = hashlib.sha256(backup_raw).hexdigest()
+            replacement = json.dumps(current, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            _assert_metadata_capacity(canonical, target, replacement)
+            _atomic_replace(marker_path, replacement)
+            return mode
+
+
 def rollback_watchlist_sqlite(
     source: str | Path,
     *,
@@ -860,6 +1217,29 @@ def rollback_watchlist_sqlite(
 
     target = _resolved(str(resolved["target_path"]))
     _cancel_if_requested(cancel_check)
+    if resolved.get("source_format") == JSON_SOURCE_FORMAT:
+        with _marker_lock(canonical):
+            current, current_raw = _marker_payload(marker_path)
+            if hashlib.sha256(current_raw).hexdigest() != resolved.get("marker_sha256"):
+                raise WatchlistCowActivationError("marker_changed", str(marker_path))
+            if current.get("status") != "active" or current.get("activation_id") != resolved.get("activation_id"):
+                raise WatchlistCowActivationError("marker_changed", str(marker_path))
+            mode = _rollback_json_under_lock(
+                canonical,
+                target,
+                marker_path,
+                str(resolved.get("marker_sha256", "")),
+                str(resolved.get("activation_id", "")),
+                cancel_check,
+            )
+        after = resolve_watchlist_sqlite_activation(canonical)
+        if after.get("status") != "rolled_back":
+            raise WatchlistCowActivationError(
+                str(after.get("code", "rollback_failed")),
+                str(after.get("message", "")),
+            )
+        return {**after, "status": "rolled_back", "original_mode": mode}
+
     with _marker_lock(canonical):
         current, current_raw = _marker_payload(marker_path)
         if hashlib.sha256(current_raw).hexdigest() != resolved.get("marker_sha256"):

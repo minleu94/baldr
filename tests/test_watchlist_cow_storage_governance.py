@@ -91,3 +91,58 @@ def test_cow_governance_audit_changed_during_scan_is_incomplete(tmp_path: Path, 
     assert result["storage"]["references_complete"] is False
     assert any(issue["code"] == "watchlist_cow_changed_during_scan" for issue in result["issues"])
     assert (source.read_bytes(), target.read_bytes()) == original
+
+
+@pytest.mark.parametrize("external_target", [False, True])
+def test_json_cow_governance_retains_json_and_target_after_append_rollback(
+    tmp_path: Path, external_target: bool
+) -> None:
+    from data_module.watchlist_json_cow import convert_watchlist_json
+    from app_module.watchlist_cow_activation import activate_watchlist_sqlite, rollback_watchlist_sqlite
+    from data_module.watchlist_repository import WatchlistRepository
+
+    snapshots = tmp_path / "snapshots"
+    snapshots.mkdir()
+    source = tmp_path / "watchlist" / "default.json"
+    source.parent.mkdir()
+    target = source.with_name("watchlists.v3-cow.sqlite")
+    if external_target:
+        target = tmp_path / "independent" / "watchlists.v3-cow.sqlite"
+        target.parent.mkdir()
+    payload = _payload([_item("2330", "manual", "original", notes="保留收藏理由")])
+    payload["opaque_history"] = [{"date": "2026-10-01", "reason": "合成歷史"}]
+    source.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    original = source.read_bytes()
+    assert convert_watchlist_json(source, target)["status"] == "ready"
+    assert activate_watchlist_sqlite(source, target)["status"] == "activated"
+    active = _diagnose(snapshots, source)
+    assert active["storage"]["references_complete"] is True, active["issues"]
+    repository = WatchlistRepository(target)
+    value, revision = repository.load("default")
+    value["items"].append(_item("2454", "manual", "new"))
+    repository.save("default", value, expected_revision=revision)
+    assert rollback_watchlist_sqlite(source)["status"] == "rolled_back"
+    restored = _diagnose(snapshots, source)
+    assert restored["storage"]["references_complete"] is True, restored["issues"]
+    assert restored["storage"]["watchlist_sources_scanned"] == 2
+    assert source.read_bytes() == original
+    assert repository.load("default")[1] == 2
+    assert not source.with_name("watchlists.db").exists()
+
+
+def test_json_cow_governance_active_source_change_fails_closed(tmp_path: Path) -> None:
+    from data_module.watchlist_json_cow import convert_watchlist_json
+    from app_module.watchlist_cow_activation import activate_watchlist_sqlite
+
+    snapshots = tmp_path / "snapshots"
+    snapshots.mkdir()
+    source = tmp_path / "watchlist" / "default.json"
+    source.parent.mkdir()
+    source.write_text(json.dumps(_payload([_item("2330", "manual", "old")])), encoding="utf-8")
+    target = source.with_name("watchlists.v3-cow.sqlite")
+    assert convert_watchlist_json(source, target)["status"] == "ready"
+    assert activate_watchlist_sqlite(source, target)["status"] == "activated"
+    source.write_bytes(source.read_bytes() + b"\n")
+    result = _diagnose(snapshots, source)
+    assert result["storage"]["references_complete"] is False
+    assert any(issue["code"] == "watchlist_cow_source_hash_mismatch" for issue in result["issues"])

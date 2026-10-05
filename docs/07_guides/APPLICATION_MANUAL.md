@@ -4626,3 +4626,27 @@ rollback 回復原路徑／模式並保留兩庫、收據與審計。原 v1 回�
 ### 最終容量守衛收尾（2026-10-05）
 
 啟用與回退發布 audit／marker 前重新核對當下中央 reserve；容量未知／不足具名拒絕並保留原指標、雙庫與內容。最終限定路由72 passed（focused_root_05.log；另有pytest cache唯讀警告），mypy793及CLI1通過，11檔compile／7產品檔精度與未來函數AST守衛0違規。14個獨立程序實際CLI回放全部exit0、隔離guard0違規，17份immutable來源及原20-session fixture SHA不變。最終case為output/qa/f4_cow_converter_activation_20261005/cli-roundtrip/run-615b305783f9；原失敗與中間收據保留，不替換為自然或正式驗收。
+
+
+### Legacy JSON v1 COW 與原觀察清單升級入口（2026-10-05）
+
+一般預設清單實際沿 legacy JSON v1 保存。原「升級儲存」按鈕是明示切換：只有單一 JSON 來源且沒有 canonical SQLite 時，建立獨立 `watchlists.v3-cow-<來源名>-<唯一ID>.sqlite`、核對完整來源後才啟用；不建立中間 v2 canonical。多份 JSON、已有歧義來源、錯 marker、容量或身份錯誤具名拒絕，保留原清單與錯誤。既有 canonical 的修復相容路徑另依原契約。
+
+CLI 同一入口；只有 dry-run／convert 要指定 `--source-format legacy-json`，其餘步驟從轉換收據辨識格式。以下僅是已核准隔離 fixture 的示例，正式使用者來源與切換另行確認／批准：
+
+```powershell
+$source = 'C:\approved-fixture\watchlist\default.json'
+$target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py dry-run --source $source --destination $target --source-format legacy-json
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py convert --source $source --destination $target --source-format legacy-json
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py activation-preview --source $source --destination $target
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py activate --source $source --destination $target
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py status --source $source
+.\.venv\Scripts\python.exe scripts\watchlist_sqlite_cow.py rollback --source $source
+```
+
+來源必須是受支持的 UTF-8 JSON v1 object／items array；BOM、錯編碼、未支持版本或已知欄位型態／內容錯誤拒絕，不靠轉型猜值。原檔 bytes、合法未知巢狀欄位、項目順序、日期、理由、來源與書籤保留；沒有可驗證 revision ledger 的 JSON 只建立明示 synthetic baseline，opaque 歷史原樣保留。來源由唯讀鎖固定至發布，中央容量 reserve 與既有 payload／DB／scan 上限維持。
+
+`<source>.cow-active.json` 綁定 JSON 來源與 target。成功啟用後以原來源設定開新程序，重核來源與收藏內容；保存沿 v3 revision。錯 marker／過期 writer 拒絕，不偷偷回 JSON。rollback 切回原 JSON，原 JSON 可按原模式繼續保存；target 期間新增內容、雙來源、conversion receipt 與 rollback audit 全保留，不自動合併或清理。具名拒絕時先核對 status、來源／收據身份和點時容量，保留 stage 與錯誤交 owner；不能刪檔／降 reserve 換成功。
+
+本批只驗合成隔離來源；正式 default.json 未遷移、缺失 watchlists.db 未初始化，Native／自然資格另驗。詳見 [Legacy JSON COW QA](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)。

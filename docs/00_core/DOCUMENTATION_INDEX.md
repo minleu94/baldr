@@ -96,3 +96,6 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 - 2026-10-05：[F4項目revision儲存與20／120／250實測](../06_qa/F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md)：新v3長留存與actual App通過，原預算不變；正式舊SQLite COW converter與切換仍待工程／核准。
 
 - 2026-10-05：[F4 SQLite COW converter／明示activation終驗](../06_qa/F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md)：隔離工程完成；20→21→rollback20保留雙庫與target新歷史。正式store/mode與使用者apply批准另列，不讀真實JSON、不初始化缺失DB。
+
+
+- 2026-10-05：[F4 Legacy JSON COW／原升級入口終驗](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)：單JSON至獨立v3、新程序讀回及rollback保留新內容；正式apply另行批准，F1例外尚未批准，UX07未啟動。

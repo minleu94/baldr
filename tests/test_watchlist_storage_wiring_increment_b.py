@@ -46,7 +46,7 @@ def _write_json(path: Path, payload: dict[str, object]) -> bytes:
     return path.read_bytes()
 
 
-def test_second_source_failure_keeps_json_active_and_retry_activates_all(
+def test_multiple_json_sources_are_refused_without_creating_canonical(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     settings = _config(tmp_path)
@@ -58,19 +58,10 @@ def test_second_source_failure_keeps_json_active_and_retry_activates_all(
     second_before = _write_json(second_path, _payload("2317", "鴻海"))
     canonical = WatchlistService.repository_path(settings)
 
-    original_migrate = watchlist_service_module.migrate_watchlist_copy
+    def forbidden_migration(*args, **kwargs):
+        raise AssertionError("多清單不可偷偷退回 canonical v2 migration")
 
-    def fail_second(source, destination, *, sandbox_root, watchlist_id="default"):
-        if watchlist_id == "secondary":
-            raise RuntimeError("injected second source failure")
-        return original_migrate(
-            source,
-            destination,
-            sandbox_root=sandbox_root,
-            watchlist_id=watchlist_id,
-        )
-
-    monkeypatch.setattr(watchlist_service_module, "migrate_watchlist_copy", fail_second)
+    monkeypatch.setattr(watchlist_service_module, "migrate_watchlist_copy", forbidden_migration)
     failed = service.upgrade_to_repository()
 
     assert not failed.is_repository
@@ -89,24 +80,13 @@ def test_second_source_failure_keeps_json_active_and_retry_activates_all(
     assert default_path.read_bytes() == default_before
     assert second_path.read_bytes() == second_before
 
-    monkeypatch.setattr(
-        watchlist_service_module, "migrate_watchlist_copy", original_migrate
-    )
-    activated = service.upgrade_to_repository()
-    assert activated.is_repository
-    assert "啟用並核對成功" in activated.message
-    assert service.repository is not None
-    assert canonical.is_file()
-    marker = WatchlistService.activation_marker_path(canonical)
-    assert marker.is_file()
-    assert service.repository.list_ids() == ["default", "secondary"]
+    refused_again = service.upgrade_to_repository()
+    assert not refused_again.is_repository
+    assert not canonical.exists()
     assert default_path.read_bytes() == default_before
     assert second_path.read_bytes() == second_before
 
-    reopened_repository, reopened_status = WatchlistService.discover_repository(settings)
-    assert reopened_repository is not None
-    assert reopened_status.is_repository
-    assert reopened_repository.list_ids() == ["default", "secondary"]
+    assert not list(watchlist_dir.glob("*.cow-active.json"))
 
 
 def test_source_verification_failure_does_not_publish_canonical(
@@ -117,17 +97,18 @@ def test_source_verification_failure_does_not_publish_canonical(
     watchlist_dir = service.watchlist_dir
     default_path = watchlist_dir / "default.json"
     default_before = default_path.read_bytes()
-    _write_json(watchlist_dir / "secondary.json", _payload("2317", "鴻海"))
     canonical = WatchlistService.repository_path(settings)
 
-    def fail_verification(*args, **kwargs):
-        raise RuntimeError("injected source mismatch")
+    from data_module import watchlist_json_cow
 
-    monkeypatch.setattr(WatchlistService, "_verify_repository_payloads", fail_verification)
+    def fail_verification(*args, **kwargs):
+        raise watchlist_json_cow._Blocked("stage_payload_mismatch")
+
+    monkeypatch.setattr(watchlist_json_cow, "_validate_stage", fail_verification)
     failed = service.upgrade_to_repository()
 
     assert not failed.is_repository
-    assert "比對" in failed.message or "mismatch" in failed.message
+    assert "mismatch" in failed.message
     assert service.repository is None
     assert not canonical.exists()
     assert default_path.read_bytes() == default_before
@@ -165,6 +146,12 @@ def test_marker_failure_recovers_only_after_exact_source_hash_readback(
     secondary_path = watchlist_dir / "secondary.json"
     secondary_before = _write_json(secondary_path, _payload("2317", "鴻海"))
     canonical = WatchlistService.repository_path(settings)
+
+    # 既有 v2 與原 JSON 的 repair/activation 相容路徑；不重新建缺失的 v2。
+    for path, watchlist_id in [(default_path, "default"), (secondary_path, "secondary")]:
+        watchlist_service_module.migrate_watchlist_copy(
+            path, canonical, sandbox_root=watchlist_dir, watchlist_id=watchlist_id,
+        )
 
     with monkeypatch.context() as marker_failure:
         def fail_marker(cls, repository_path, payload):

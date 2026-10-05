@@ -343,3 +343,16 @@ SQLite v1/v2→獨立v3 COW converter、CLI dry-run/convert/activation-preview/a
 ### 最終容量守衛收尾（2026-10-05）
 
 啟用與回退發布 audit／marker 前重新核對當下中央 reserve；容量未知／不足具名拒絕並保留原指標、雙庫與內容。最終限定路由72 passed（focused_root_05.log；另有pytest cache唯讀警告），mypy793及CLI1通過，11檔compile／7產品檔精度與未來函數AST守衛0違規。14個獨立程序實際CLI回放全部exit0、隔離guard0違規，17份immutable來源及原20-session fixture SHA不變。最終case為output/qa/f4_cow_converter_activation_20261005/cli-roundtrip/run-615b305783f9；原失敗與中間收據保留，不替換為自然或正式驗收。
+
+
+## 2026-10-05 Legacy JSON v1 COW 與明示切換（最新）
+
+實際一般啟動沿 legacy JSON v1；本批補齊單一 JSON→獨立 SQLite v3 converter、原升級按鈕的 convert／核對／activate、新程序 discovery、source-aware writer 與 rollback，不建立缺失 canonical。多份 JSON、已有 canonical 歧義、錯來源／marker、容量／版本／型態／編碼與並發 writer 具名拒絕。來源 raw bytes 與合法未知巢狀欄位保留，opaque history 不臆造 ledger；JSON 無版本鏈只建明示 synthetic baseline。回退回 JSON，保留 target 新 revision、雙來源和 audit，不自動合併。既有 SQLite COW 路徑沿原契約。
+
+限定統一路由 113 passed，Workbench85、validator25／4skip、mypy 794及CLI1、12檔compile與6產品檔精度／未來函數AST守衛0違規。14個隔離新程序完成 JSON CLI轉換／啟用／追加／回退，來源 bytes unchanged、target r2保留、canonical未建立；合成 JSON 起點20／120／250次保存之總留存 181,902／444,060／816,793 B，未冒稱自然來源／全書籤負載增長。17份已接受immutable來源SHA及正式JSONsize／mtime保持，正式資料未套用。
+
+正式來源 `D:/Min/Python/Project/FA_Data/output/watchlist/default.json` 為1948B；候選 `watchlists.v3-cow.sqlite`、marker `default.json.cow-active.json` 與 canonical `watchlists.db` 仍不存在。本批不讀原 JSON 內容／不初始化缺失 DB。真正apply另由父層／使用者確認單來源、writer時段、當下容量與明示批准，再按Manual dry-run→convert→preview→activate→新程序讀回；rollback保留雙來源／新內容。PID39400／41588無原PID/starttime owner收據，保留未停止，不能當writer已停止的證據。
+
+F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚未批准；F2／F3 A/A不重開。UX07未啟動，新Native／真人／自然資格另列。原整份計畫階段done1／partial5／pending3、UX done2／partial14／pending8保持，有限工程完成不等於整份產品計畫完成。沒有清理、producer／ML重跑、Native或push；其他對話檔案保留排除。
+
+[JSON路徑逐項驗證與正式批准邊界](./F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)

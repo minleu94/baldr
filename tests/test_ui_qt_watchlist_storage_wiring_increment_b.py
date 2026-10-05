@@ -30,7 +30,7 @@ def _config(root: Path) -> SimpleNamespace:
     )
 
 
-def test_watchlist_page_requires_explicit_upgrade_and_shows_canonical_success(
+def test_watchlist_page_requires_explicit_upgrade_and_shows_cow_success(
     tmp_path: Path,
     qapp: QApplication,
     monkeypatch: pytest.MonkeyPatch,
@@ -49,12 +49,22 @@ def test_watchlist_page_requires_explicit_upgrade_and_shows_canonical_success(
         "ui_qt.views.watchlist_view.QMessageBox.information",
         lambda _parent, _title, message: messages.append(str(message)),
     )
+    monkeypatch.setattr(
+        "ui_qt.views.watchlist_view.QMessageBox.warning",
+        lambda _parent, _title, message: messages.append(str(message)),
+    )
     view.upgrade_storage_btn.click()
     qapp.processEvents()
 
     status = service.get_storage_status()
-    assert status.is_repository
+    assert status.is_repository, status.message
     assert not view.upgrade_storage_btn.isVisible()
-    assert "canonical" in view.storage_status_label.text()
+    assert "SQLite" in view.storage_status_label.text()
+    assert service.repository is not None
+    assert service.repository.detect_storage_format()["schema_version"] == 3
+    assert service.repository.db_path.name.startswith("watchlists.v3-cow-default-")
+    assert service.repository.db_path.suffix == ".sqlite"
+    assert not WatchlistService.repository_path(service.config).exists()
+    assert (service.watchlist_dir / "default.json.cow-active.json").is_file()
     assert messages and "啟用並核對成功" in messages[-1]
     view.close()

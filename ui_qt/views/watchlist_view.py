@@ -175,7 +175,7 @@ class WatchlistView(QWidget):
         self.upgrade_storage_btn.setProperty("variant", "secondary")
         self.upgrade_storage_btn.setAccessibleName("升級觀察清單儲存")
         self.upgrade_storage_btn.setToolTip(
-            "只在你明確按下後，將既有 JSON 複製核對至 canonical SQLite；原 JSON 不會被刪除。"
+            "只在你明確按下後，將原 JSON 複製並核對到獨立 SQLite，成功後切換儲存；原 JSON 保留。"
         )
         self.upgrade_storage_btn.clicked.connect(self._upgrade_watchlist_storage)
         storage_row.addWidget(self.upgrade_storage_btn)
@@ -767,7 +767,7 @@ class WatchlistView(QWidget):
             return
         self._refresh_storage_status()
         if isinstance(status, WatchlistStorageStatus) and status.is_repository:
-            self._set_status_label("儲存升級成功，已切換至唯一 canonical SQLite writer。", level="success")
+            self._set_status_label("儲存升級成功，後續保存使用 SQLite 觀察清單；原 JSON 保留。", level="success")
             QMessageBox.information(self, "觀察清單儲存升級", status.message)
             self._load_watchlist()
             return

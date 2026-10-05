@@ -220,7 +220,10 @@ def test_json_idempotency_query_identity_remove_restore_and_explicit_sqlite_upgr
         revision["operation"]
         for revision in final_service.list_watchlist_revisions()
     ]
-    assert "legacy_import" in operations
+    # JSON 原檔沒有可核驗版本鏈；COW 明示 synthetic baseline，不臆造舊 import ledger。
+    assert "migration_baseline" in operations
+    assert "legacy_import" not in operations
+    assert final_repository.detect_storage_format()["schema_version"] == 3
     assert "research_bookmark_removed" in operations
     assert "research_bookmark_restored" in operations
 

@@ -524,10 +524,11 @@ def _read_json(
 
 def _scan_cow_watchlist_metadata(
     children: Sequence[os.DirEntry[str]], budget: _Budget,
-) -> tuple[set[Path], set[Path], dict[Path, Mapping[str, Any]]]:
+) -> tuple[set[Path], set[Path], dict[Path, Mapping[str, Any]], dict[Path, str | None]]:
     """只辨識精確COW審計格式；不把metadata誤作使用者清單。"""
     managed: set[Path] = set()
     databases: set[Path] = set()
+    json_sources: dict[Path, str | None] = {}
     lineages: dict[Path, Mapping[str, Any]] = {}
     records: dict[Path, tuple[dict[str, Any], bytes]] = {}
     for child in children:
@@ -574,6 +575,10 @@ def _scan_cow_watchlist_metadata(
             for key in ("source_sha256", "target_sha256"):
                 if not isinstance(record.get(key), str) or not _SHA256_RE.fullmatch(record[key]):
                     raise StorageGovernanceError("watchlist_cow_receipt_invalid", "COW收據hash未知")
+            if record.get("source_format") not in (None, "legacy_json_v1"):
+                raise StorageGovernanceError("watchlist_cow_receipt_invalid", "COW來源格式未知")
+            if record.get("source_format") == "legacy_json_v1":
+                json_sources[source] = str(record["source_sha256"])
             databases.update((source, target)); managed.add(path)
         elif schema == "watchlist-cow-rollback.v1":
             source, target = bound_path(record.get("source_path")), bound_path(record.get("target_path"))
@@ -605,6 +610,8 @@ def _scan_cow_watchlist_metadata(
                 or record.get("activation_id") != backup_record.get("activation_id")
                 or record.get("source_sha256") != receipt_record.get("source_sha256")
                 or record.get("prepared_target_sha256") != receipt_record.get("target_sha256")
+                or record.get("source_format") != receipt_record.get("source_format")
+                or backup_record.get("source_format") != receipt_record.get("source_format")
                 or any(bound_path(item.get(key)) != expected for item in (receipt_record, backup_record)
                        for key, expected in (("source_path", source), ("target_path", target)))):
             raise StorageGovernanceError("watchlist_cow_marker_invalid", "COW pointer審計hash/path不一致")
@@ -619,8 +626,11 @@ def _scan_cow_watchlist_metadata(
                     or (entry["revision_count"] == 0 and entry["lineage_sha256"] != "")):
                 raise StorageGovernanceError("watchlist_cow_lineage_unknown", "COW基準歷史欄位未知")
         lineages[target] = lineage
+        if source in json_sources and record.get("status") == "rolled_back":
+            # 回退後原 JSON 恢復日常 writer；合法新內容不沿用啟用前的檔案 hash。
+            json_sources[source] = None
         databases.update((source, target)); managed.add(path)
-    return managed, databases, lineages
+    return managed, databases, lineages, json_sources
 
 
 def _verify_cow_lineage(inventory: Mapping[str, Any] | None, expected: Mapping[str, Any]) -> None:
@@ -663,12 +673,14 @@ def _scan_watchlists(
             Path(child.path).resolve(): (stat.st_size, stat.st_mtime_ns, stat.st_ino, stat.st_dev)
             for child in children for stat in (Path(child.path).stat(follow_symlinks=False),)
         }
-        cow_metadata, cow_databases, cow_lineages = _scan_cow_watchlist_metadata(children, budget)
+        cow_metadata, cow_databases, cow_lineages, cow_json_sources = _scan_cow_watchlist_metadata(children, budget)
         cow_pins = {}
         for path in cow_metadata | cow_databases:
             stat = path.stat(follow_symlinks=False)
             cow_pins[path] = child_pins.get(path, (stat.st_size, stat.st_mtime_ns, stat.st_ino, stat.st_dev))
-        db_paths: set[Path] = set(cow_databases)
+        # JSON COW 保留原 JSON 與 target DB；不能把原 JSON 交給 SQLite reader。
+        json_paths.extend(cow_json_sources)
+        db_paths: set[Path] = cow_databases - cow_json_sources.keys()
         for child in children:
             if child.is_symlink():
                 raise StorageGovernanceError("watchlist_symlink_found", "Watchlist 來源含 symbolic link")
@@ -691,7 +703,10 @@ def _scan_watchlists(
             else:
                 raise StorageGovernanceError("watchlist_source_schema_unknown", "Watchlist 目錄含未知檔案")
         for path in sorted(json_paths):
-            payload, _ = _read_json(path, MAX_WATCHLIST_JSON_BYTES, budget, require_canonical=False)
+            payload, raw = _read_json(path, MAX_WATCHLIST_JSON_BYTES, budget, require_canonical=False)
+            expected_json_sha = cow_json_sources.get(path.resolve())
+            if expected_json_sha is not None and hashlib.sha256(raw).hexdigest() != expected_json_sha:
+                raise StorageGovernanceError("watchlist_cow_source_hash_mismatch", "啟用中的 JSON 原來源已變動")
             _scan_watchlist_payload(payload, path, root, rank_root, result)
             result["source_count"] += 1
         for db_path in sorted(db_paths):

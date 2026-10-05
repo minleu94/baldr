@@ -17,9 +17,14 @@ def build_parser() -> argparse.ArgumentParser:
     actions = parser.add_subparsers(dest="action", required=True)
     for action in ("dry-run", "convert", "activation-preview", "activate", "status", "rollback"):
         child = actions.add_parser(action)
-        child.add_argument("--source", type=Path, required=True, help="原canonical SQLite DB路徑；不讀JSON替代")
+        child.add_argument("--source", type=Path, required=True, help="來源SQLite DB；僅明示legacy-json時為單一JSON檔")
         if action in {"dry-run", "convert", "activation-preview", "activate"}:
             child.add_argument("--destination", type=Path, required=True, help="獨立新v3 DB路徑；不能等於原檔")
+        if action in {"dry-run", "convert"}:
+            child.add_argument(
+                "--source-format", choices=("sqlite", "legacy-json"), default="sqlite",
+                help="輸入格式；預設sqlite，legacy-json只轉換指定的單一JSON檔",
+            )
         if action in {"activation-preview", "activate"}:
             child.add_argument("--receipt", type=Path, help="副本核驗收據；預設target.cow-conversion.v1.json")
     return parser
@@ -29,8 +34,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.action in {"dry-run", "convert"}:
-            from data_module.watchlist_sqlite_cow import convert_watchlist_sqlite, dry_run_watchlist_sqlite
-            operation = dry_run_watchlist_sqlite if args.action == "dry-run" else convert_watchlist_sqlite
+            if args.source_format == "legacy-json":
+                from data_module.watchlist_json_cow import convert_watchlist_json, dry_run_watchlist_json
+                operation = dry_run_watchlist_json if args.action == "dry-run" else convert_watchlist_json
+            else:
+                from data_module.watchlist_sqlite_cow import convert_watchlist_sqlite, dry_run_watchlist_sqlite
+                operation = dry_run_watchlist_sqlite if args.action == "dry-run" else convert_watchlist_sqlite
             result = operation(args.source, args.destination)
         else:
             from app_module.watchlist_cow_activation import (

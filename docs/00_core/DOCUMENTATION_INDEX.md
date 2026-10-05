@@ -3,6 +3,7 @@
 本索引只指向主題權威與目錄入口，不複製 QA 收據、測試數字或目前狀態。判讀衝突時使用下列 Scoped SSOT；日期化驗收內容保留於各自 receipt。
 
 - 原產品計畫階段 0 首包：[來源能力矩陣](../06_qa/PRODUCT_STAGE01_SOURCE_MATRIX_20261005.md)、[效能基線與下一包依賴](../06_qa/PRODUCT_STAGE01_PERFORMANCE_BASELINE_20261005.md)。
+- 原產品計畫階段 1 限定修正：[啟動、盤勢價格批次與首次圖表驗證](../06_qa/PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)。
 
 ## 權威入口
 

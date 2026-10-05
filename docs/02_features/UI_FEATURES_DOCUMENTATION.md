@@ -473,6 +473,8 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 
 ## 更新記錄
 
+- 2026-10-05：回測四張圖與推薦組合兩張圖延至首次結果頁使用建立；待顯示資料採快照且以最新結果取代，切回重用 widget。單張繪圖失敗保留資料、顯示提示並可再次進頁重試。盤勢關閉等待 native worker 結束；取消粒度與 Native 首次使用／效能驗證見 [階段1限定收據](../06_qa/PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)，操作與排錯見 Manual。
+
 - 2026-10-05：個股研究 ML 稽核按鈕依狀態切換展開／收合；current／saved／未知 scope 標題與日期分開，不把保存來源標成當前。歷史回顧呈現已讀回的所選日期；ML 品質降級保留具體原因，未提供時明示。操作與限制見 Manual；本輪 offscreen 與 consumer 測試不替代待驗 Native 流程。
 
 - 2026-09-30：完成九個主工作區的長頁捲動、表格／清單五列 viewport 與主視窗幾何整合驗收；完整矩陣與 OS 原生驗收邊界見 UI Layout Audit。

@@ -62,12 +62,6 @@ from app_module.research_result_presentation import (
     build_walkforward_reliability_notice,
 )
 from app_module.portfolio_source_adapter import build_backtest_trade_source
-from ui_qt.widgets.fast_chart_widget import (
-    create_drawdown_curve_widget,
-    create_equity_curve_widget,
-    create_holding_days_histogram_widget,
-    create_trade_return_histogram_widget,
-)
 
 # 引入重構提取的常數與 Helper 函數
 from ui_qt.views.backtest.helpers import (
@@ -1228,7 +1222,8 @@ class BacktestView(QWidget):
         allow_current_benchmark: bool = True,
     ):
         """Plot recommendation portfolio value and drawdown charts."""
-        if not hasattr(self, "portfolio_equity_chart"):
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is None:
             return
 
         equity_series = build_recommendation_portfolio_equity_series(result.equity_curve)
@@ -1245,11 +1240,18 @@ class BacktestView(QWidget):
             except Exception as exc:
                 logger.info("[BacktestView] Recommendation benchmark load failed: {exc}")
 
-        self.portfolio_equity_chart.plot(equity_series, benchmark_series, None, result.trades)
+        result_panel.queue_portfolio_chart_plot(
+            "portfolio_equity_chart",
+            equity_series,
+            benchmark_series,
+            None,
+            result.trades,
+        )
 
-        if hasattr(self, "portfolio_drawdown_chart"):
-            drawdown_series, max_dd_info = build_recommendation_portfolio_drawdown(equity_series)
-            self.portfolio_drawdown_chart.plot(drawdown_series, max_dd_info)
+        drawdown_series, max_dd_info = build_recommendation_portfolio_drawdown(equity_series)
+        result_panel.queue_portfolio_chart_plot(
+            "portfolio_drawdown_chart", drawdown_series, max_dd_info
+        )
 
     def _on_backtest_error(self, error_msg: str):
         """回測錯誤"""
@@ -2618,10 +2620,13 @@ class BacktestView(QWidget):
                 if getattr(self, "run_repository", None):
                     self._refresh_history()
         elif tab_key == "charts":
+            result_panel.ensure_chart_widgets()
             if "charts" not in self._result_tab_first_load_done:
                 self._result_tab_first_load_done.add("charts")
                 if hasattr(self, "chart_run_combo") and getattr(self, "chart_data_service", None):
                     self._update_chart_run_combo()
+        elif tab_key == "recommendation":
+            result_panel.ensure_portfolio_chart_widgets()
         elif tab_key == "registry":
             if "registry_compare" not in self._result_tab_first_load_done:
                 self._result_tab_first_load_done.add("registry_compare")
@@ -3967,7 +3972,8 @@ class BacktestView(QWidget):
 
     def _plot_charts_from_report(self, report: BacktestReportDTO):
         """直接從 BacktestReportDTO 繪製圖表（不需要保存）"""
-        if not hasattr(self, 'equity_chart'):
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is None or not result_panel.charts_available:
             return
 
         import numpy as np
@@ -4006,7 +4012,13 @@ class BacktestView(QWidget):
                 # 獲取交易明細（用於顯示買賣點）
                 trade_list = details.get('trade_list')
 
-                self.equity_chart.plot(equity_series, benchmark_series, report.annual_return, trade_list)
+                result_panel.queue_chart_plot(
+                    "equity_chart",
+                    equity_series,
+                    benchmark_series,
+                    report.annual_return,
+                    trade_list,
+                )
 
         # 2. 回撤曲線
         if equity_series is not None and len(equity_series) > 0:
@@ -4037,7 +4049,9 @@ class BacktestView(QWidget):
                     'peak_value': peak_value
                 }
 
-                self.drawdown_chart.plot(drawdown_series, max_dd_info)
+                result_panel.queue_chart_plot(
+                    "drawdown_chart", drawdown_series, max_dd_info
+                )
             except Exception as e:
                 logger.info("[BacktestView] 繪製回撤曲線失敗: {e}")
                 import traceback
@@ -4071,7 +4085,7 @@ class BacktestView(QWidget):
                                 else None
                             ),
                         }
-                        self.return_hist.plot(returns, stats)
+                        result_panel.queue_chart_plot("return_hist", returns, stats)
             except Exception as e:
                 logger.info("[BacktestView] 繪製報酬分佈失敗: {e}")
                 import traceback
@@ -4094,7 +4108,7 @@ class BacktestView(QWidget):
                     holding_days = holding_days.astype(int)
 
                     if len(holding_days) > 0:
-                        self.holding_hist.plot(holding_days)
+                        result_panel.queue_chart_plot("holding_hist", holding_days)
             except Exception as e:
                 logger.info("[BacktestView] 繪製持有天數分佈失敗: {e}")
                 import traceback

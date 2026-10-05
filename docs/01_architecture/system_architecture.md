@@ -1026,7 +1026,7 @@ Roadmap Hub 只負責入口與短版 Next，不保存完整歷史或架構細節
 
 - 推薦所需的最新價格／成交量衍生特徵由 `decision_module/derived_market_features.py` 單次計算，篩選、推薦 DTO 與 negative evidence 只讀取同一份 enrichment 結果。
 - `decision_module/indicator_reuse.py` 先經 `IndicatorParameterRegistry` 驗證與正規化；只有標準預設參數及完整有效的預存欄位可以 reuse。自訂參數、缺欄位、全無效欄位、ATR 與 ADX 保持重新計算或 fail-closed。
-- `DecisionMarketFrameLoader` 只在單次 `DecisionDeskSnapshotBuilder.build_snapshot()` 內供 Market Breadth、Relative Strength / Liquidity 與 Smart Money 共用 `daily_prices` frame；每次 snapshot 開始都 reset，SQL 固定 `日期 <= as_of_date`，不形成跨日或跨排程 stale cache。
+- `DecisionMarketFrameLoader` 只在單次 `DecisionDeskSnapshotBuilder.build_snapshot()` 內供 Market Breadth、Relative Strength / Liquidity 與 Smart Money 共用 `daily_prices` frame；每次 snapshot 開始都 reset，SQL 固定 `日期 <= as_of_date`，不形成跨日或跨排程 stale cache。Smart Money 的近期價格按整批股票一次分組，最多保留兩個來源 stat／決策日／window 鍵，對外回傳清單副本；reset 清除 frame 與價格快取，來源或日期／window 改變會失效。stat 是同輪快取鍵，不是來源 custody hash，也不承諾偵測同輪 WAL-only 寫入。可選取消 callback 在 Smart Money SQL progress handler 與批次之間合作檢查，取消例外不降級為空結果；其餘盤勢區段 SQL 仍只在區段前後檢查。UI 等 native thread 結束才完成關閉。詳見 [限定效能收據](../06_qa/PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)。
 - `RecommendationService.run_recommendation()`、`BacktestService.run_backtest()`、`UpdateService.calculate_technical_indicators()` 與 `DecisionDeskSnapshotBuilder.build_snapshot()` 的公開呼叫方式不變，且未新增 SQLite schema migration。
 
 ## 15. 驗證

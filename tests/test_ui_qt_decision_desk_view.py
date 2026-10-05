@@ -1,4 +1,6 @@
 import os
+import threading
+import time
 from datetime import date, datetime, timezone
 from dataclasses import replace
 from zoneinfo import ZoneInfo
@@ -31,6 +33,7 @@ from app_module.decision_desk_dtos import (
     IndustryStrengthSummary,
 )
 from app_module.decision_desk_service import DecisionDeskSnapshotBuilder
+from app_module.exceptions import BacktestCancelledError
 from app_module.market_data_visibility_dtos import (
     InstitutionalFlowMarketSummary,
     MarketDataVisibilitySummary,
@@ -251,6 +254,61 @@ def test_decision_desk_view_auto_refreshes_when_first_shown():
 
     assert builder.calls == [target_date]
     view.close()
+
+
+def test_closing_decision_desk_cancels_worker_and_closes_after_native_thread_finishes():
+    app_instance = app()
+    started = threading.Event()
+    cancellation_seen = threading.Event()
+    native_thread_finished = threading.Event()
+
+    class CancellableBuilder:
+        def build_snapshot(self, as_of_date: date, cancel_callback=None):
+            started.set()
+            while True:
+                if cancel_callback():
+                    cancellation_seen.set()
+                    break
+                time.sleep(0.005)
+            raise BacktestCancelledError("載入已取消")
+
+    view = DecisionDeskView(
+        CancellableBuilder(),
+        as_of_date=date(2026, 6, 15),
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    view.show()
+    view.refresh_snapshot()
+
+    deadline = time.monotonic() + 2
+    while not started.is_set() and time.monotonic() < deadline:
+        app_instance.processEvents()
+        time.sleep(0.005)
+    assert started.is_set()
+
+    worker = view._refresh_worker
+    assert worker is not None
+    worker.native_thread_finished.connect(native_thread_finished.set)
+    view.close()
+    assert view._closing
+
+    deadline = time.monotonic() + 3
+    while not (
+        native_thread_finished.is_set()
+        and view._refresh_worker is None
+        and not view.isVisible()
+    ):
+        app_instance.processEvents()
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.005)
+
+    assert cancellation_seen.is_set()
+    assert native_thread_finished.is_set()
+    assert view._refresh_worker is None
+    assert not view.isVisible()
+    assert view._last_snapshot is None
 
 
 def test_decision_desk_view_refresh_calls_builder_and_renders_snapshot():

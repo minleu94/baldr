@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import sqlite3
+import inspect
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from typing import Iterable, Mapping, Protocol
+from typing import Callable, Iterable, Mapping, Protocol
 
 from app_module.decision_market_frame import DecisionMarketFrameLoader
+from app_module.exceptions import BacktestCancelledError
 from decision_module.flow_contracts import BrokerFlowEvent
 from app_module.dtos.smart_money_semantic_dtos import (
     SmartMoneyDashboardSummary,
@@ -45,15 +47,22 @@ class SQLiteSmartMoneyPriceProvider:
         self.market_frame_loader = market_frame_loader
 
     def load_recent_prices(
-        self, stock_code: str, decision_date: date, limit: int
+        self,
+        stock_code: str,
+        decision_date: date,
+        limit: int,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> list[tuple[date, Decimal]]:
         if limit <= 0 or not self.db_path.exists():
             return []
         if self.market_frame_loader is not None:
-            return self.market_frame_loader.load_recent_prices(
+            return _call_with_optional_cancel_callback(
+                self.market_frame_loader.load_recent_prices,
                 stock_code,
                 decision_date,
                 limit,
+                cancel_callback=cancel_callback,
             )
         target_key = decision_date.strftime("%Y%m%d")
         try:
@@ -73,6 +82,7 @@ class SQLiteSmartMoneyPriceProvider:
                     (str(stock_code), target_key, int(limit)),
                 ).fetchall()
         except sqlite3.Error:
+            _raise_if_cancelled(cancel_callback)
             return []
 
         prices: list[tuple[date, Decimal]] = []
@@ -156,8 +166,14 @@ class _StaticPriceProvider:
         self.prices = prices
 
     def load_recent_prices(
-        self, stock_code: str, decision_date: date, limit: int
+        self,
+        stock_code: str,
+        decision_date: date,
+        limit: int,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> list[tuple[date, Decimal]]:
+        _raise_if_cancelled(cancel_callback)
         return self.prices[:limit]
 
 
@@ -199,6 +215,41 @@ def _parse_event_date(raw: object) -> date:
     return date.fromisoformat(text)
 
 
+def _raise_if_cancelled(
+    cancel_callback: Callable[[], bool] | None,
+) -> None:
+    if cancel_callback is not None and cancel_callback():
+        raise BacktestCancelledError("Smart Money 摘要已取消。")
+
+
+def _call_with_optional_cancel_callback(
+    method,
+    *args,
+    cancel_callback: Callable[[], bool] | None,
+):
+    if cancel_callback is None:
+        return method(*args)
+
+    supports_callback = False
+    try:
+        parameters = inspect.signature(method).parameters.values()
+        supports_callback = any(
+            parameter.name == "cancel_callback"
+            and parameter.kind is not inspect.Parameter.POSITIONAL_ONLY
+            for parameter in parameters
+        ) or any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters)
+    except (TypeError, ValueError):
+        pass
+
+    _raise_if_cancelled(cancel_callback)
+    if supports_callback:
+        result = method(*args, cancel_callback=cancel_callback)
+    else:
+        result = method(*args)
+    _raise_if_cancelled(cancel_callback)
+    return result
+
+
 def _bp(numerator: int, denominator: int) -> int | None:
     if denominator <= 0:
         return None
@@ -228,14 +279,28 @@ class SmartMoneySemanticService:
         self.price_provider = price_provider
 
     def build_stock_semantics(
-        self, stock_code: str, decision_date: date
+        self,
+        stock_code: str,
+        decision_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> SmartMoneySemanticSummary:
-        events = self._events_for_stock(stock_code, decision_date)
+        _raise_if_cancelled(cancel_callback)
+        events = self._events_for_stock(
+            stock_code,
+            decision_date,
+            cancel_callback=cancel_callback,
+        )
         stock_name = next((event.stock_name for _, event in events if event.stock_name), stock_code)
         w5 = self._window_stats(events, 5, top_n=3)
         w20 = self._window_stats(events, 20, top_n=5)
         w60 = self._window_stats(events, 60, top_n=5)
-        price_position_bp, distance_to_high_bp = self._price_position(stock_code, decision_date)
+        _raise_if_cancelled(cancel_callback)
+        price_position_bp, distance_to_high_bp = self._price_position(
+            stock_code,
+            decision_date,
+            cancel_callback=cancel_callback,
+        )
         primary_state, dominant_side, flags = self._classify(
             w5, w20, w60, price_position_bp, distance_to_high_bp
         )
@@ -276,8 +341,13 @@ class SmartMoneySemanticService:
         )
 
     def build_dashboard_summary(
-        self, decision_date: date, stock_codes: tuple[str, ...] = ()
+        self,
+        decision_date: date,
+        stock_codes: tuple[str, ...] = (),
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> SmartMoneyDashboardSummary:
+        _raise_if_cancelled(cancel_callback)
         codes = stock_codes or tuple(
             sorted(
                 {
@@ -287,7 +357,14 @@ class SmartMoneySemanticService:
                 }
             )
         )
-        summaries = tuple(self.build_stock_semantics(code, decision_date) for code in codes)
+        summaries = tuple(
+            self._build_stock_semantics_cancellable(
+                code,
+                decision_date,
+                cancel_callback=cancel_callback,
+            )
+            for code in codes
+        )
         priority = tuple(
             item
             for item in summaries
@@ -301,6 +378,7 @@ class SmartMoneySemanticService:
         )[:10]
         warnings = tuple(warning for item in summaries for warning in item.warnings)
         quality = "degraded" if warnings else "observed"
+        _raise_if_cancelled(cancel_callback)
         return SmartMoneyDashboardSummary(
             decision_date=decision_date,
             as_of_date=decision_date,
@@ -311,8 +389,13 @@ class SmartMoneySemanticService:
         )
 
     def _events_for_stock(
-        self, stock_code: str | None, decision_date: date
+        self,
+        stock_code: str | None,
+        decision_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> list[tuple[date, BrokerFlowEvent]]:
+        _raise_if_cancelled(cancel_callback)
         selected: list[tuple[date, BrokerFlowEvent]] = []
         for event in self.broker_flow_provider.get_events(force_reload=False):
             if stock_code is not None and str(event.stock_code) != str(stock_code):
@@ -325,6 +408,20 @@ class SmartMoneySemanticService:
                 selected.append((event_date, event))
         selected.sort(key=lambda item: item[0], reverse=True)
         return selected
+
+    def _build_stock_semantics_cancellable(
+        self,
+        stock_code: str,
+        decision_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None,
+    ) -> SmartMoneySemanticSummary:
+        return _call_with_optional_cancel_callback(
+            self.build_stock_semantics,
+            stock_code,
+            decision_date,
+            cancel_callback=cancel_callback,
+        )
 
     def _window_stats(
         self,
@@ -425,11 +522,23 @@ class SmartMoneySemanticService:
         return buy_days, sell_days
 
     def _price_position(
-        self, stock_code: str, decision_date: date
+        self,
+        stock_code: str,
+        decision_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> tuple[int | None, int | None]:
         if self.price_provider is None:
             return None, None
-        rows = self.price_provider.load_recent_prices(stock_code, decision_date, 60)
+        _raise_if_cancelled(cancel_callback)
+        rows = _call_with_optional_cancel_callback(
+            self.price_provider.load_recent_prices,
+            stock_code,
+            decision_date,
+            60,
+            cancel_callback=cancel_callback,
+        )
+        _raise_if_cancelled(cancel_callback)
         normalized_rows: list[tuple[date, Decimal]] = []
         for raw_date, raw_price in rows:
             price_date = raw_date if isinstance(raw_date, date) else _parse_event_date(raw_date)

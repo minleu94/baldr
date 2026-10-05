@@ -21,6 +21,7 @@ from data_module.db_manager import DBManager
 
 logger = logging.getLogger(__name__)
 IndustryDatabaseFactory = Callable[[Any], Any]
+_DATE_NOT_PRECOMPUTED = object()
 
 INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR = "industry_index_source_observation"
 INDUSTRY_INDEX_SOURCE_OBSERVATION_SCHEMA_VERSION = "industry-index-source-observation.v1"
@@ -76,7 +77,29 @@ def _industry_index_date_iso(value: Any) -> str | None:
     return None if pd.isna(parsed) else parsed.date().isoformat()
 
 
-def _canonical_frame_value(value: Any, *, column: str) -> Any:
+def _industry_index_date_iso_cached(
+    value: Any,
+    cache: dict[tuple[type[Any], Any], str | None],
+) -> str | None:
+    """在單次來源觀測內重用重複日期，不跨來源載入保留 cache。"""
+
+    if type(value) not in (str, int, float):
+        return _industry_index_date_iso(value)
+    if type(value) is float and value != value:
+        return _industry_index_date_iso(value)
+
+    cache_key = (type(value), value)
+    if cache_key not in cache:
+        cache[cache_key] = _industry_index_date_iso(value)
+    return cache[cache_key]
+
+
+def _canonical_frame_value(
+    value: Any,
+    *,
+    column: str,
+    parsed_date: Any = _DATE_NOT_PRECOMPUTED,
+) -> Any:
     """把載入後的單一儲存格轉成可重算的 JSON scalar。"""
 
     try:
@@ -86,7 +109,11 @@ def _canonical_frame_value(value: Any, *, column: str) -> Any:
         pass
 
     if column == "日期":
-        parsed_day = _industry_index_date_iso(value)
+        parsed_day = (
+            _industry_index_date_iso(value)
+            if parsed_date is _DATE_NOT_PRECOMPUTED
+            else parsed_date
+        )
         if parsed_day is not None:
             return parsed_day
 
@@ -109,9 +136,25 @@ def industry_index_frame_rowset_sha256(frame: pd.DataFrame) -> str:
     """雜湊傳給 mapper 的產業指數列，不代表 upstream source authority。"""
 
     columns = [str(column) for column in frame.columns]
+    # SQLite 查詢的每個交易日會重複出現在多個產業指數列。日期 canonical
+    # 結果只依單一儲存格值決定，因此在本次 hash 計算內 memoize，避免對同一
+    # YYYYMMDD 重複呼叫 datetime.strptime；cache 不跨 frame／reader 生命週期，
+    # 不會把舊來源身份或 freshness 帶到下一次載入。
+    date_cache: dict[tuple[type[Any], Any], str | None] = {}
+
+    def canonical_value(value: Any, *, column: str) -> Any:
+        if column != "日期":
+            return _canonical_frame_value(value, column=column)
+        parsed_date = _industry_index_date_iso_cached(value, date_cache)
+        return _canonical_frame_value(
+            value,
+            column=column,
+            parsed_date=parsed_date,
+        )
+
     rows = [
         [
-            _canonical_frame_value(value, column=columns[index])
+            canonical_value(value, column=columns[index])
             for index, value in enumerate(row)
         ]
         for row in frame.itertuples(index=False, name=None)
@@ -220,11 +263,14 @@ def industry_index_source_observation_hash_matches(
 def _industry_index_date_range(frame: pd.DataFrame) -> list[str]:
     if "日期" not in frame.columns:
         return []
+    date_cache: dict[tuple[type[Any], Any], str | None] = {}
     return sorted(
         {
             parsed_day
             for value in frame["日期"]
-            if (parsed_day := _industry_index_date_iso(value)) is not None
+            if (
+                parsed_day := _industry_index_date_iso_cached(value, date_cache)
+            ) is not None
         }
     )
 

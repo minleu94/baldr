@@ -17,6 +17,9 @@ from data_module.company_registry import (
 from data_module.industry_mapper_data_provider import (
     INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR,
     IndustryMapperDataProvider,
+    _canonical_frame_value,
+    _industry_index_date_iso,
+    _industry_index_date_range,
     industry_index_frame_rowset_sha256,
     industry_index_source_observation_hash_matches,
 )
@@ -379,6 +382,95 @@ def test_industry_index_rowset_identity_tracks_order_and_numeric_dtype() -> None
     assert industry_index_frame_rowset_sha256(integer_values) != (
         industry_index_frame_rowset_sha256(float_values)
     )
+
+
+def test_industry_index_date_memo_preserves_canonical_hash_and_invalid_rows() -> None:
+    frame = pd.DataFrame(
+        {
+            "日期": pd.Series(
+                [
+                    "20261001",
+                    "20261001",
+                    20261001,
+                    20261001.0,
+                    pd.Timestamp("2026-10-01"),
+                    datetime(2026, 10, 2, 12, tzinfo=timezone.utc),
+                    None,
+                    pd.NA,
+                    pd.NaT,
+                    float("nan"),
+                    "malformed-date",
+                    20261340,
+                ],
+                dtype=object,
+            ),
+            "指數名稱": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
+            "收盤指數": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111],
+        }
+    )
+
+    # 直接走 canonical scalar 舊入口建立參考值，驗證 memo 只重用日期解析，
+    # 不改完整欄位順序、列順序、缺失值或格式錯誤日期的 fallback。
+    columns = [str(column) for column in frame.columns]
+    rows = [
+        [
+            _canonical_frame_value(value, column=columns[index])
+            for index, value in enumerate(row)
+        ]
+        for row in frame.itertuples(index=False, name=None)
+    ]
+    expected_payload = json.dumps(
+        {"columns": columns, "rows": rows},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    expected_hash = "sha256:" + hashlib.sha256(expected_payload).hexdigest()
+
+    assert industry_index_frame_rowset_sha256(frame) == expected_hash
+    expected_dates = sorted(
+        {
+            parsed_date
+            for value in frame["日期"]
+            if (parsed_date := _industry_index_date_iso(value)) is not None
+        }
+    )
+    assert _industry_index_date_range(frame) == expected_dates
+
+    changed_frame = frame.copy()
+    changed_frame.loc[0, "收盤指數"] = 999
+    assert industry_index_frame_rowset_sha256(changed_frame) != expected_hash
+
+
+def test_industry_index_date_memo_parses_each_repeated_scalar_once(monkeypatch) -> None:
+    import data_module.industry_mapper_data_provider as provider_module
+
+    frame = pd.DataFrame(
+        {
+            "日期": ["20261001"] * 20 + ["20261002"] * 20 + [20261001] * 20,
+            "收盤指數": list(range(60)),
+        }
+    )
+    calls = []
+    original = provider_module._industry_index_date_iso
+
+    def counted(value):
+        calls.append((type(value), value))
+        return original(value)
+
+    monkeypatch.setattr(provider_module, "_industry_index_date_iso", counted)
+    first_hash = industry_index_frame_rowset_sha256(frame)
+    assert len(calls) == 3
+    assert first_hash == industry_index_frame_rowset_sha256(frame)
+
+    calls.clear()
+    assert _industry_index_date_range(frame) == ["2026-10-01", "2026-10-02"]
+    assert len(calls) == 3
+
+    changed_frame = frame.copy()
+    changed_frame.loc[0, "日期"] = "20261003"
+    assert industry_index_frame_rowset_sha256(changed_frame) != first_hash
 
 
 def test_main_and_legacy_index_reader_keep_distinct_empty_and_error_semantics(

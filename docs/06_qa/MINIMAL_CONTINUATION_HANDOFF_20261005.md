@@ -137,3 +137,12 @@
 沿用原計畫，UX01有界基線／UX16來源子集／UX17量測已交付；產品程式未改，階段1優化尚未開始。首屏median10.148秒、資料10.126秒，30次列選取高亮p95=116.60ms；不能當篩選／圖表驗收。首次市場探索Overview worker發生重資料切片，loaded全程CPU60.94秒／RSS1.57GB、約90秒合作退出，是下一包工程入口，不歸因自然成熟。來源／正式資格／暖機／全市場與benchmark缺口仍見矩陣；原UX依賴不跳過。
 
 完整結論／同版hash／失敗紀錄／兩位Luna工具派發及自省限制見[效能基線](PRODUCT_STAGE01_PERFORMANCE_BASELINE_20261005.md)及[來源矩陣](PRODUCT_STAGE01_SOURCE_MATRIX_20261005.md)。五個child與輸入guard通過，PID均退出；外層末尾Unicode print exit1保留，提交版僅輸出與CPU命名收尾，基線未重跑。不重開已接受的1477／learner、不producer／訓練／全量回歸／永久刪除／push，unknown根檔及還原隔離均保留。本包本地commit／blob核驗後停止交父層。
+
+
+## 2026-10-05 階段1限定效能修正包
+
+兩位指定Luna Max完成7個產品檔及6個test檔修正，root整合；profiler及main未改。日期解析單次memoize、回測／組合首次圖表lazy與可見錯誤重試、同輪盤勢整批近期價格及合作取消／native-finished關閉已驗。同條件5跑首屏10.148→8.642s（14.84%）、Industry3.206→1.842s（42.56%）、Backtest1.098→0.893s（18.62%），完整rowset SHA不變；四筆只啟動RSS約0.70→0.57GB。Loaded30關閉13.349s且worker0；完整盤勢正常完成另以Native探針驗，peakRSS1.452GB不與提前取消0.675GB混報。30列高亮p95 49.65ms不代表全互動速度。
+
+Market61、root loader9（8項重跑）、整合47、Workbench85、validator25／4skip、mypy766、13檔compile通過；唯一Windows fixture長路徑失敗保留，短新Temp重跑1pass。5＋1 Native場景12個launcher／Python PID觀測均退出。來源與資源邊界、code／summary SHA與原始收據見[階段1收據](PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)，commit readback留output。原plan append-only，UX01→UX16/17→UX18/19→UX04/05依賴維持。階段1／UX17仍部分完成：早期breadth／relative SQL僅區段前後取消，來源availability／warm-up／PIT／universe／benchmark與自然ML資格未全部完成；不新增方法或UX18 Gate。
+
+1477既有Native驗收不重開，1000×835／125%接受與1000×800限制維持；沒有writer／訓練／永久刪除／push，未知paper檔及C:/ta_iso_1005映射未動。本地commit/blob/status驗證後停止交父層。

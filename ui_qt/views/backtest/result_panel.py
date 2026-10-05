@@ -3,6 +3,9 @@
 包含所有實驗摘要、圖表、最佳化結果、比較與批次/推薦結果呈現分頁
 """
 
+import logging
+from copy import deepcopy
+
 from PySide6.QtWidgets import (
     QAbstractItemView, QListView, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QGroupBox, QTableView, QTextEdit, QComboBox, 
@@ -10,12 +13,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from ui_qt.widgets.fast_chart_widget import (
-    create_drawdown_curve_widget,
-    create_equity_curve_widget,
-    create_holding_days_histogram_widget,
-    create_trade_return_histogram_widget,
-)
 from ui_qt.views.research_lab.run_registry_compare_widget import RunRegistryCompareWidget
 from ui_qt.views.backtest.analyst_diagnostics_widget import AnalystDiagnosticsWidget
 from app_module.decision_quality_dashboard_service import create_decision_quality_dashboard_service
@@ -29,6 +26,8 @@ from ui_qt.views.forward_performance_view import ForwardPerformanceView
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
+
+logger = logging.getLogger(__name__)
 
 
 class BacktestResultPanel(QWidget):
@@ -46,6 +45,19 @@ class BacktestResultPanel(QWidget):
         
         # 預留的 trades_model 內部變數
         self._trades_model = None
+        self._charts_available = False
+        self._chart_widgets_initialized = False
+        self._chart_widgets = {}
+        self._chart_content_layouts = {}
+        self._chart_placeholders = {}
+        self._chart_error_labels = {}
+        self._pending_chart_plots = {}
+        self._portfolio_chart_widgets_initialized = False
+        self._portfolio_chart_widgets = {}
+        self._portfolio_chart_content_layouts = {}
+        self._portfolio_chart_placeholders = {}
+        self._portfolio_chart_error_labels = {}
+        self._pending_portfolio_chart_plots = {}
         
         self._setup_ui()
         
@@ -56,6 +68,167 @@ class BacktestResultPanel(QWidget):
     @trades_model.setter
     def trades_model(self, value):
         self._trades_model = value
+
+    @property
+    def charts_available(self) -> bool:
+        return self._charts_available
+
+    @property
+    def chart_widgets_initialized(self) -> bool:
+        return self._chart_widgets_initialized
+
+    @property
+    def portfolio_chart_widgets_initialized(self) -> bool:
+        return self._portfolio_chart_widgets_initialized
+
+    def _chart_widget(self, name: str):
+        if name not in {"equity_chart", "drawdown_chart", "return_hist", "holding_hist"}:
+            raise AttributeError(name)
+        if not self.ensure_chart_widgets():
+            raise AttributeError(name)
+        return self._chart_widgets[name]
+
+    @property
+    def equity_chart(self):
+        return self._chart_widget("equity_chart")
+
+    @property
+    def drawdown_chart(self):
+        return self._chart_widget("drawdown_chart")
+
+    @property
+    def return_hist(self):
+        return self._chart_widget("return_hist")
+
+    @property
+    def holding_hist(self):
+        return self._chart_widget("holding_hist")
+
+    def ensure_chart_widgets(self) -> bool:
+        """在使用者首次開啟圖表頁時建立真實圖表元件並回放待繪結果。"""
+        if not self._charts_available:
+            return False
+        if self._chart_widgets_initialized:
+            self._replay_pending_chart_plots()
+            return True
+
+        # 延後載入 QtWebEngine／圖表工廠，避免摘要頁建立圖表 canvas。
+        from ui_qt.widgets.fast_chart_widget import (
+            create_drawdown_curve_widget,
+            create_equity_curve_widget,
+            create_holding_days_histogram_widget,
+            create_trade_return_histogram_widget,
+        )
+
+        factories = {
+            "equity_chart": create_equity_curve_widget,
+            "drawdown_chart": create_drawdown_curve_widget,
+            "return_hist": create_trade_return_histogram_widget,
+            "holding_hist": create_holding_days_histogram_widget,
+        }
+        created = {name: factory() for name, factory in factories.items()}
+        for name, widget in created.items():
+            placeholder = self._chart_placeholders.pop(name)
+            self._chart_content_layouts[name].removeWidget(placeholder)
+            placeholder.deleteLater()
+            self._chart_content_layouts[name].addWidget(widget)
+        self._chart_widgets.update(created)
+        self._chart_widgets_initialized = True
+        self._replay_pending_chart_plots()
+        return True
+
+    def _replay_pending_chart_plots(self) -> None:
+        for name, (args, kwargs) in tuple(self._pending_chart_plots.items()):
+            try:
+                self._chart_widgets[name].plot(*args, **kwargs)
+            except Exception:
+                logger.exception(
+                    "Could not render %s chart; retaining pending plot for retry.",
+                    name,
+                )
+                error_label = self._chart_error_labels[name]
+                error_label.setText("此圖表未能繪製；重新切換分頁可重試。")
+                error_label.setVisible(True)
+                continue
+            self._pending_chart_plots.pop(name, None)
+            error_label = self._chart_error_labels[name]
+            error_label.clear()
+            error_label.setVisible(False)
+
+    def queue_chart_plot(self, name: str, *args, **kwargs) -> None:
+        """保留尚未顯示的回測圖表結果，首次開頁時再交給真圖表。"""
+        if name not in {"equity_chart", "drawdown_chart", "return_hist", "holding_hist"}:
+            raise KeyError(name)
+        if self._chart_widgets_initialized:
+            self._chart_widgets[name].plot(*args, **kwargs)
+            return
+        self._pending_chart_plots[name] = deepcopy((args, kwargs))
+
+    def _portfolio_chart_widget(self, name: str):
+        if name not in {"portfolio_equity_chart", "portfolio_drawdown_chart"}:
+            raise AttributeError(name)
+        if not self.ensure_portfolio_chart_widgets():
+            raise AttributeError(name)
+        return self._portfolio_chart_widgets[name]
+
+    @property
+    def portfolio_equity_chart(self):
+        return self._portfolio_chart_widget("portfolio_equity_chart")
+
+    @property
+    def portfolio_drawdown_chart(self):
+        return self._portfolio_chart_widget("portfolio_drawdown_chart")
+
+    def ensure_portfolio_chart_widgets(self) -> bool:
+        """在首次進入推薦回放結果頁時建立組合圖表。"""
+        if self._portfolio_chart_widgets_initialized:
+            self._replay_pending_portfolio_chart_plots()
+            return True
+
+        from ui_qt.widgets.fast_chart_widget import (
+            create_drawdown_curve_widget,
+            create_equity_curve_widget,
+        )
+
+        created = {
+            "portfolio_equity_chart": create_equity_curve_widget(),
+            "portfolio_drawdown_chart": create_drawdown_curve_widget(),
+        }
+        for name, widget in created.items():
+            placeholder = self._portfolio_chart_placeholders.pop(name)
+            self._portfolio_chart_content_layouts[name].removeWidget(placeholder)
+            placeholder.deleteLater()
+            self._portfolio_chart_content_layouts[name].addWidget(widget)
+        self._portfolio_chart_widgets.update(created)
+        self._portfolio_chart_widgets_initialized = True
+        self._replay_pending_portfolio_chart_plots()
+        return True
+
+    def _replay_pending_portfolio_chart_plots(self) -> None:
+        for name, (args, kwargs) in tuple(self._pending_portfolio_chart_plots.items()):
+            try:
+                self._portfolio_chart_widgets[name].plot(*args, **kwargs)
+            except Exception:
+                logger.exception(
+                    "Could not render %s chart; retaining pending plot for retry.",
+                    name,
+                )
+                error_label = self._portfolio_chart_error_labels[name]
+                error_label.setText("此圖表未能繪製；重新切換分頁可重試。")
+                error_label.setVisible(True)
+                continue
+            self._pending_portfolio_chart_plots.pop(name, None)
+            error_label = self._portfolio_chart_error_labels[name]
+            error_label.clear()
+            error_label.setVisible(False)
+
+    def queue_portfolio_chart_plot(self, name: str, *args, **kwargs) -> None:
+        if name not in {"portfolio_equity_chart", "portfolio_drawdown_chart"}:
+            raise KeyError(name)
+        if self._portfolio_chart_widgets_initialized:
+            self._portfolio_chart_widgets[name].plot(*args, **kwargs)
+            return
+        self._pending_portfolio_chart_plots[name] = deepcopy((args, kwargs))
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -157,6 +330,7 @@ class BacktestResultPanel(QWidget):
         
         # Tab 2: 圖表
         if self.parent_view.chart_data_service:
+            self._charts_available = True
             chart_tab = QWidget()
             chart_layout = QVBoxLayout(chart_tab)
             
@@ -170,18 +344,28 @@ class BacktestResultPanel(QWidget):
             chart_layout.addLayout(run_select_row)
             
             chart_tabs = QTabWidget()
-            
-            self.equity_chart = create_equity_curve_widget()
-            chart_tabs.addTab(self.equity_chart, "權益曲線")
-            
-            self.drawdown_chart = create_drawdown_curve_widget()
-            chart_tabs.addTab(self.drawdown_chart, "回撤曲線")
-            
-            self.return_hist = create_trade_return_histogram_widget()
-            chart_tabs.addTab(self.return_hist, "交易報酬")
-            
-            self.holding_hist = create_holding_days_histogram_widget()
-            chart_tabs.addTab(self.holding_hist, "持有天數")
+
+            chart_specs = (
+                ("equity_chart", "權益曲線"),
+                ("drawdown_chart", "回撤曲線"),
+                ("return_hist", "交易報酬"),
+                ("holding_hist", "持有天數"),
+            )
+            for name, title in chart_specs:
+                chart_page = QWidget()
+                chart_page_layout = QVBoxLayout(chart_page)
+                placeholder = QLabel("圖表將於首次開啟此頁時載入。")
+                placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                error_label = QLabel()
+                error_label.setWordWrap(True)
+                error_label.setStyleSheet("color: #b00020; padding: 4px;")
+                error_label.setVisible(False)
+                chart_page_layout.addWidget(placeholder)
+                chart_page_layout.addWidget(error_label)
+                self._chart_content_layouts[name] = chart_page_layout
+                self._chart_placeholders[name] = placeholder
+                self._chart_error_labels[name] = error_label
+                chart_tabs.addTab(chart_page, title)
             
             chart_layout.addWidget(chart_tabs)
             self._register_result_tab("charts", chart_tab, "圖表")
@@ -399,10 +583,24 @@ class BacktestResultPanel(QWidget):
         chart_layout = QVBoxLayout(chart_container)
         chart_layout.setContentsMargins(0, 0, 0, 0)
         self.portfolio_chart_tabs = QTabWidget()
-        self.portfolio_equity_chart = create_equity_curve_widget()
-        self.portfolio_drawdown_chart = create_drawdown_curve_widget()
-        self.portfolio_chart_tabs.addTab(self.portfolio_equity_chart, "組合價值")
-        self.portfolio_chart_tabs.addTab(self.portfolio_drawdown_chart, "回撤")
+        for name, title in (
+            ("portfolio_equity_chart", "組合價值"),
+            ("portfolio_drawdown_chart", "回撤"),
+        ):
+            chart_page = QWidget()
+            chart_page_layout = QVBoxLayout(chart_page)
+            placeholder = QLabel("圖表將於首次開啟此頁時載入。")
+            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            error_label = QLabel()
+            error_label.setWordWrap(True)
+            error_label.setStyleSheet("color: #b00020; padding: 4px;")
+            error_label.setVisible(False)
+            self._portfolio_chart_content_layouts[name] = chart_page_layout
+            self._portfolio_chart_placeholders[name] = placeholder
+            self._portfolio_chart_error_labels[name] = error_label
+            self.portfolio_chart_tabs.addTab(chart_page, title)
+            chart_page_layout.addWidget(placeholder)
+            chart_page_layout.addWidget(error_label)
         chart_layout.addWidget(self.portfolio_chart_tabs)
         self.portfolio_detail_tabs.addTab(chart_container, "圖表")
         

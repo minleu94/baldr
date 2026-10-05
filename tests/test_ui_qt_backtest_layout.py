@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import os
 import sys
+import logging
 from collections.abc import Iterator
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+import pandas as pd
 from PySide6.QtCore import QCoreApplication, QEvent, QPoint, Qt
 from PySide6.QtGui import QFont, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
@@ -398,5 +401,189 @@ def test_backtest_shell_keeps_controls_and_results_usable(
 
     host.close()
     host.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
+
+def test_backtest_charts_load_on_first_result_use_and_replay_pending_reports(
+    qt_app: QApplication,
+    test_config,
+) -> None:
+    view = BacktestView(
+        backtest_service=MagicMock(),
+        config=test_config,
+        batch_backtest_service=MagicMock(),
+    )
+    panel = view.result_panel
+    assert panel.charts_available
+    assert not panel.chart_widgets_initialized
+    assert not panel.portfolio_chart_widgets_initialized
+
+    trade_list = pd.DataFrame(
+        {"報酬率%": [5.0, -1.5], "持有天數": [2, 4]}
+    )
+    equity_curve = pd.DataFrame(
+        {"equity": [100.0, 110.0, 105.0]},
+        index=pd.to_datetime(["2026-10-01", "2026-10-02", "2026-10-03"]),
+    )
+    report = SimpleNamespace(
+        details={
+            "equity_curve": equity_curve,
+            "trade_list": trade_list,
+        },
+        annual_return=0.12,
+    )
+    view._plot_charts_from_report(report)
+
+    assert not panel.chart_widgets_initialized
+    assert set(panel._pending_chart_plots) == {
+        "equity_chart",
+        "drawdown_chart",
+        "return_hist",
+        "holding_hist",
+    }
+    first_queued_equity, _, _, queued_trades = panel._pending_chart_plots[
+        "equity_chart"
+    ][0]
+    equity_curve.loc[pd.Timestamp("2026-10-02"), "equity"] = 999.0
+    trade_list.loc[0, "報酬率%"] = 99.0
+    assert first_queued_equity.tolist() == [100.0, 110.0, 105.0]
+    assert queued_trades.loc[0, "報酬率%"] == 5.0
+
+    next_trades = pd.DataFrame({"報酬率%": [7.5], "持有天數": [8]})
+    next_equity_curve = pd.DataFrame(
+        {"equity": [200.0, 230.0, 210.0]},
+        index=pd.to_datetime(["2026-10-01", "2026-10-02", "2026-10-03"]),
+    )
+    view._plot_charts_from_report(
+        SimpleNamespace(
+            details={"equity_curve": next_equity_curve, "trade_list": next_trades},
+            annual_return=0.18,
+        )
+    )
+    queued_equity = panel._pending_chart_plots["equity_chart"][0][0]
+    assert queued_equity.tolist() == [200.0, 230.0, 210.0]
+
+    assert panel.focus_result_tab("charts")
+    qt_app.processEvents()
+    assert panel.chart_widgets_initialized
+    assert not panel._pending_chart_plots
+    chart_widgets = dict(panel._chart_widgets)
+    assert set(chart_widgets) == {
+        "equity_chart",
+        "drawdown_chart",
+        "return_hist",
+        "holding_hist",
+    }
+    assert "230" in chart_widgets["equity_chart"].numeric_text.text()
+    assert "7.5%" in chart_widgets["return_hist"].numeric_text.text()
+    assert "6-20d" in chart_widgets["holding_hist"].numeric_text.text()
+
+    assert panel.focus_result_tab("summary")
+    qt_app.processEvents()
+    assert panel.focus_result_tab("charts")
+    qt_app.processEvents()
+    assert all(panel._chart_widgets[name] is widget for name, widget in chart_widgets.items())
+
+    portfolio_result = SimpleNamespace(
+        equity_curve=pd.DataFrame(
+            {
+                "date": ["2026-10-01", "2026-10-02", "2026-10-03"],
+                "equity": [100.0, 120.0, 110.0],
+            }
+        ),
+        trades=pd.DataFrame(),
+    )
+    view._plot_recommendation_portfolio_charts(
+        portfolio_result,
+        allow_current_benchmark=False,
+    )
+    assert not panel.portfolio_chart_widgets_initialized
+    assert set(panel._pending_portfolio_chart_plots) == {
+        "portfolio_equity_chart",
+        "portfolio_drawdown_chart",
+    }
+    pending_portfolio_series = panel._pending_portfolio_chart_plots[
+        "portfolio_equity_chart"
+    ][0][0]
+    portfolio_result.equity_curve.loc[1, "equity"] = 999.0
+    assert pending_portfolio_series.iloc[1] == 120.0
+
+    panel.set_research_mode("recommendation_replay")
+    assert panel.focus_result_tab("recommendation")
+    qt_app.processEvents()
+    assert panel.result_tab_key(panel.result_tabs.currentIndex()) == "recommendation"
+    assert panel.portfolio_chart_widgets_initialized
+    assert not panel._pending_portfolio_chart_plots
+    portfolio_widgets = dict(panel._portfolio_chart_widgets)
+    assert "120" in portfolio_widgets["portfolio_equity_chart"].numeric_text.text()
+
+    panel.set_research_mode("single_stock")
+    qt_app.processEvents()
+    panel.set_research_mode("recommendation_replay")
+    qt_app.processEvents()
+    assert all(
+        panel._portfolio_chart_widgets[name] is widget
+        for name, widget in portfolio_widgets.items()
+    )
+
+    view.close()
+    view.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    qt_app.processEvents()
+
+
+def test_backtest_chart_plot_failure_is_visible_isolated_and_retryable(
+    qt_app: QApplication,
+    test_config,
+    monkeypatch,
+    caplog,
+) -> None:
+    import ui_qt.widgets.fast_chart_widget as chart_module
+
+    class FailingChart(QWidget):
+        def plot(self, *args, **kwargs):
+            raise RuntimeError("chart payload failure")
+
+    view = BacktestView(
+        backtest_service=MagicMock(),
+        config=test_config,
+        batch_backtest_service=MagicMock(),
+    )
+    panel = view.result_panel
+    failed_chart = FailingChart()
+    monkeypatch.setattr(chart_module, "create_equity_curve_widget", lambda: failed_chart)
+
+    trade_list = pd.DataFrame({"報酬率%": [3.0], "持有天數": [2]})
+    view._plot_charts_from_report(
+        SimpleNamespace(
+            details={
+                "equity_curve": pd.DataFrame(
+                    {"equity": [100.0, 120.0]},
+                    index=pd.to_datetime(["2026-10-01", "2026-10-02"]),
+                ),
+                "trade_list": trade_list,
+            },
+            annual_return=0.1,
+        )
+    )
+
+    caplog.set_level(logging.ERROR, logger="ui_qt.views.backtest.result_panel")
+    assert panel.focus_result_tab("charts")
+    qt_app.processEvents()
+
+    assert "equity_chart" in panel._pending_chart_plots
+    assert set(panel._pending_chart_plots) == {"equity_chart"}
+    assert not panel._chart_error_labels["equity_chart"].isHidden()
+    assert "未能繪製" in panel._chart_error_labels["equity_chart"].text()
+    assert "3%" in panel._chart_widgets["return_hist"].numeric_text.text()
+    assert "chart payload failure" in caplog.text
+
+    monkeypatch.setattr(failed_chart, "plot", lambda *args, **kwargs: None)
+    assert panel.ensure_chart_widgets()
+    assert not panel._pending_chart_plots
+    assert panel._chart_error_labels["equity_chart"].isHidden()
+
+    view.close()
+    view.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     qt_app.processEvents()

@@ -2,6 +2,9 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
+from app_module.exceptions import BacktestCancelledError
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     MarketBreadthSummary,
@@ -397,6 +400,31 @@ def test_decision_desk_builder_injects_smart_money_dashboard_summary_into_focus_
     assert snapshot.stock_focus is not None
     assert any(card.stock_code == "9999" and card.source == "smart_money" for card in snapshot.stock_focus.priority_stocks)
     assert any(card.stock_code == "8888" and card.source == "smart_money" for card in snapshot.stock_focus.risk_stocks)
+
+
+def test_smart_money_cancellation_is_not_downgraded_to_a_degraded_snapshot():
+    as_of_date = date(2026, 6, 15)
+
+    class CancelledSmartMoneyService:
+        def build_dashboard_summary(self, decision_date: date, stock_codes: tuple[str, ...] = ()):
+            raise BacktestCancelledError("摘要取消")
+
+    builder = DecisionDeskSnapshotBuilder(
+        AllObservedDecisionDeskProvider(),
+        relative_strength_liquidity_service=FakeSectionService(
+            "relative_strength_liquidity",
+            RelativeStrengthLiquiditySummary(
+                as_of_date=as_of_date,
+                quality=DecisionDeskQuality.OBSERVED,
+                warnings=(),
+                top_strength_codes=("2330",),
+            ),
+        ),
+        smart_money_service=CancelledSmartMoneyService(),
+    )
+
+    with pytest.raises(BacktestCancelledError, match="摘要取消"):
+        builder.build_snapshot(as_of_date, cancel_callback=lambda: False)
 
 
 def test_decision_desk_builder_degrades_only_failed_section():

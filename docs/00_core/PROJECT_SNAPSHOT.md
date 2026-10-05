@@ -1,5 +1,14 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 階段1限定效能修正包
+
+兩位指定Luna Max完成7個產品檔及6個test檔修正，root整合；profiler及main未改。日期解析單次memoize、回測／組合首次圖表lazy與可見錯誤重試、同輪盤勢整批近期價格及合作取消／native-finished關閉已驗。同條件5跑首屏10.148→8.642s（14.84%）、Industry3.206→1.842s（42.56%）、Backtest1.098→0.893s（18.62%），完整rowset SHA不變；四筆只啟動RSS約0.70→0.57GB。Loaded30關閉13.349s且worker0；完整盤勢正常完成另以Native探針驗，peakRSS1.452GB不與提前取消0.675GB混報。30列高亮p95 49.65ms不代表全互動速度。
+
+Market61、root loader9（8項重跑）、整合47、Workbench85、validator25／4skip、mypy766、13檔compile通過；唯一Windows fixture長路徑失敗保留，短新Temp重跑1pass。5＋1 Native場景12個launcher／Python PID觀測均退出。來源與資源邊界、code／summary SHA與原始收據見[限定收據](../06_qa/PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)，commit readback留output。原plan append-only，UX01→UX16/17→UX18/19→UX04/05依賴維持。階段1／UX17仍部分完成：早期breadth／relative SQL僅區段前後取消，來源availability／warm-up／PIT／universe／benchmark與自然ML資格未全部完成；不新增方法或UX18 Gate。
+
+1477既有Native驗收不重開，1000×835／125%接受與1000×800限制維持；沒有writer／訓練／永久刪除／push，未知paper檔及C:/ta_iso_1005映射未動。本地commit/blob/status驗證後停止交父層。
+
+
 ## 2026-10-05 最新：原產品計畫階段 0 首包
 
 沿用唯一原計畫，已交付 UX01 有界基線、UX16 來源子集及 UX17 五次 Native 新程序量測；產品程式未改，階段 1 優化未開始。首屏中位數10.148秒、Workbench首次資料10.126秒；30次真實列選取高亮p95=116.60ms，不能當篩選／圖表驗收。IndustryMapper建構中位數3.206秒、BacktestView1.098秒。首次市場探索另觸發重背景切片，總CPU60.94秒／RSS1.57GB、約90秒合作關閉才退出，是下一包工程問題入口；沒有歸因自然成熟或宣稱已優化。

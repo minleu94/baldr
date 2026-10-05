@@ -3,7 +3,7 @@
 from datetime import date, datetime, timezone
 from typing import Any, Callable
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QWidget,
@@ -455,6 +455,7 @@ class DecisionDeskView(QWidget):
         worker.finished.connect(lambda snapshot: self._on_refresh_worker_finished(snapshot, generation, request_date))
         worker.error.connect(lambda error: self._on_refresh_worker_error(error, generation, request_date))
         worker.cancelled.connect(lambda: self._on_refresh_worker_cancelled(generation))
+        worker.native_thread_finished.connect(self._on_refresh_worker_native_thread_finished)
         worker.start()
 
     def _release_refresh_worker(self) -> None:
@@ -500,6 +501,10 @@ class DecisionDeskView(QWidget):
         if generation is not None and generation != self._worker_generation:
             return
         self._release_refresh_worker()
+
+    def _on_refresh_worker_native_thread_finished(self) -> None:
+        if self._closing:
+            QTimer.singleShot(0, self.close)
 
     def closeEvent(self, event) -> None:
         self.begin_shutdown()

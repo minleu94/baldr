@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import inspect
 from datetime import date, datetime
 from typing import Any, Callable, Protocol, TypeVar
 from dataclasses import replace
 from copy import deepcopy
 from pathlib import Path
 
+from app_module.exceptions import BacktestCancelledError
 from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
@@ -73,6 +75,35 @@ class RelativeStrengthLiquiditySectionService(Protocol):
 
 class SmartMoneyDashboardService(Protocol):
     def build_dashboard_summary(self, decision_date: date, stock_codes: tuple[str, ...] = ()): ...
+
+
+def _raise_if_cancelled(cancel_callback: Callable[[], bool] | None) -> None:
+    if cancel_callback is not None and cancel_callback():
+        raise BacktestCancelledError("決策台摘要載入已取消。")
+
+
+def _call_with_optional_cancel_callback(method, *args, cancel_callback, **kwargs):
+    if cancel_callback is None:
+        return method(*args, **kwargs)
+
+    supports_callback = False
+    try:
+        parameters = inspect.signature(method).parameters.values()
+        supports_callback = any(
+            parameter.name == "cancel_callback"
+            and parameter.kind is not inspect.Parameter.POSITIONAL_ONLY
+            for parameter in parameters
+        ) or any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters)
+    except (TypeError, ValueError):
+        pass
+
+    _raise_if_cancelled(cancel_callback)
+    if supports_callback:
+        result = method(*args, **kwargs, cancel_callback=cancel_callback)
+    else:
+        result = method(*args, **kwargs)
+    _raise_if_cancelled(cancel_callback)
+    return result
 
 
 class DecisionMarketFrameResetter(Protocol):
@@ -251,15 +282,27 @@ class DecisionDeskSnapshotBuilder:
         self.recommendation_provider = recommendation_provider
         self.portfolio_ledger_provider = portfolio_ledger_provider
 
-    def build_snapshot(self, as_of_date: date) -> DecisionDeskSnapshot:
+    def build_snapshot(
+        self,
+        as_of_date: date,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DecisionDeskSnapshot:
+        _raise_if_cancelled(cancel_callback)
         if self.market_frame_loader is not None:
             self.market_frame_loader.reset(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         market_regime = self._build_market_regime(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         market_breadth = self._build_market_breadth(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         sector_rotation = self._build_sector_rotation(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         relative_strength_liquidity = self._build_relative_strength_liquidity(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         watchlist_triggers = self._build_watchlist_triggers(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         portfolio_alerts = self._build_portfolio_alerts(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         market_regime = self._dated_section(market_regime, as_of_date, "market_regime")
         market_breadth = self._dated_section(market_breadth, as_of_date, "market_breadth")
         sector_rotation = self._dated_section(sector_rotation, as_of_date, "sector_rotation")
@@ -267,6 +310,7 @@ class DecisionDeskSnapshotBuilder:
         watchlist_triggers = self._dated_section(watchlist_triggers, as_of_date, "watchlist_triggers")
         portfolio_alerts = self._dated_section(portfolio_alerts, as_of_date, "portfolio_alerts")
         ledger_lineage = self._build_ledger_lineage(as_of_date) if self.portfolio_ledger_provider is not None else None
+        _raise_if_cancelled(cancel_callback)
         if ledger_lineage is not None and ledger_lineage.get("quality") != "complete":
             blocked = ledger_lineage.get("quality") == "blocked"
             portfolio_alerts = replace(
@@ -280,7 +324,9 @@ class DecisionDeskSnapshotBuilder:
                 attributions=() if blocked else portfolio_alerts.attributions,
             )
         recommendations = self._build_recommendations(as_of_date) if self.recommendation_provider is not None else None
+        _raise_if_cancelled(cancel_callback)
         market_data_visibility = self._build_market_data_visibility(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         risk_prompts = self.risk_prompt_service.build_summary(
             as_of_date=as_of_date,
             market_regime=market_regime,
@@ -318,21 +364,27 @@ class DecisionDeskSnapshotBuilder:
         smart_money_summary = None
         if self.smart_money_service is not None:
             try:
-                smart_money_summary = self.smart_money_service.build_dashboard_summary(
+                smart_money_summary = _call_with_optional_cancel_callback(
+                    self.smart_money_service.build_dashboard_summary,
                     as_of_date,
+                    cancel_callback=cancel_callback,
                     stock_codes=self._collect_smart_money_candidate_codes(
                         relative_strength_liquidity,
                         watchlist_triggers,
                         portfolio_alerts,
                     ),
                 )
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 warnings = tuple(warnings) + (f"smart_money_dashboard_error:{exc}",)
                 overall_quality = DecisionDeskQuality.DEGRADED
+        _raise_if_cancelled(cancel_callback)
         action_summary = None
         sector_focus = None
         stock_focus = None
         try:
+            _raise_if_cancelled(cancel_callback)
             dashboard = self.dashboard_composer.compose(
                 market_regime=market_regime,
                 market_breadth=market_breadth,
@@ -345,6 +397,9 @@ class DecisionDeskSnapshotBuilder:
             action_summary = dashboard.action_summary
             sector_focus = dashboard.sector_focus
             stock_focus = dashboard.stock_focus
+            _raise_if_cancelled(cancel_callback)
+        except BacktestCancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             warnings = tuple(warnings) + (f"dashboard_composer_error:{exc}",)
             overall_quality = DecisionDeskQuality.DEGRADED
@@ -384,6 +439,8 @@ class DecisionDeskSnapshotBuilder:
                 payload["quality"] = "degraded" if payload["quality"] != "blocked" else "blocked"
                 payload["warnings"] = list(payload.get("warnings", ())) + ["portfolio_ledger_date_fallback"]
             return deepcopy(payload)
+        except BacktestCancelledError:
+            raise
         except Exception as exc:
             return {"as_of_date": None, "quality": "blocked", "missing_inputs": ["ledger_read_model"],
                     "warnings": [f"portfolio_ledger_error:{type(exc).__name__}:{exc}"], "candidate_only": True}
@@ -424,6 +481,8 @@ class DecisionDeskSnapshotBuilder:
             return RecommendationDeskSummary(cutoff, quality, warnings, result.result_id,
                                              tuple(item.stock_code for item in result.recommendations),
                                              str(context.get("profile_id") or result.config.get("profile_id") or ""), context)
+        except BacktestCancelledError:
+            raise
         except Exception as exc:
             return RecommendationDeskSummary(None, DecisionDeskQuality.MISSING, (f"recommendation_snapshot_error:{exc}",))
 
@@ -434,6 +493,8 @@ class DecisionDeskSnapshotBuilder:
             return None
         try:
             return self.market_data_visibility_service.build_summary(as_of_date=as_of_date)
+        except BacktestCancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             warning = f"market_data_visibility_error:{exc}"
             source_names = (
@@ -505,6 +566,8 @@ class DecisionDeskSnapshotBuilder:
                                            regime_confidence=dto.match_score_bp,
                                            meta={**dict(dto.details or {}), "source_id": dto.source_id, "source_version": dto.source_version})
             snapshot = self.provider.fetch_market_regime(as_of_date)
+        except BacktestCancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             return MarketRegimeSummary(
                 as_of_date=as_of_date,
@@ -526,6 +589,8 @@ class DecisionDeskSnapshotBuilder:
         if self.market_breadth_service is not None:
             try:
                 snapshot = self.market_breadth_service.build_snapshot(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return MarketBreadthSummary(
                     as_of_date=as_of_date,
@@ -535,6 +600,8 @@ class DecisionDeskSnapshotBuilder:
         elif self.provider is not None:
             try:
                 snapshot = self.provider.fetch_market_breadth(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return MarketBreadthSummary(
                     as_of_date=as_of_date,
@@ -561,6 +628,8 @@ class DecisionDeskSnapshotBuilder:
         if self.sector_rotation_service is not None:
             try:
                 snapshot = self.sector_rotation_service.build_snapshot(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return SectorRotationSummary(
                     as_of_date=as_of_date,
@@ -570,6 +639,8 @@ class DecisionDeskSnapshotBuilder:
         elif self.provider is not None:
             try:
                 snapshot = self.provider.fetch_sector_rotation(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return SectorRotationSummary(
                     as_of_date=as_of_date,
@@ -595,6 +666,8 @@ class DecisionDeskSnapshotBuilder:
         if self.relative_strength_liquidity_service is not None:
             try:
                 snapshot = self.relative_strength_liquidity_service.build_snapshot(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return RelativeStrengthLiquiditySummary(
                     as_of_date=as_of_date,
@@ -615,6 +688,8 @@ class DecisionDeskSnapshotBuilder:
         if self.watchlist_trigger_service is not None:
             try:
                 snapshot = self.watchlist_trigger_service.build_snapshot(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return WatchlistTriggerSummary(
                     as_of_date=as_of_date,
@@ -626,6 +701,8 @@ class DecisionDeskSnapshotBuilder:
         elif self.provider is not None:
             try:
                 snapshot = self.provider.fetch_watchlist_triggers(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return WatchlistTriggerSummary(
                     as_of_date=as_of_date,
@@ -658,6 +735,8 @@ class DecisionDeskSnapshotBuilder:
         if self.portfolio_alert_service is not None:
             try:
                 snapshot = self.portfolio_alert_service.build_snapshot(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return PortfolioAlertSummary(
                     as_of_date=as_of_date,
@@ -670,6 +749,8 @@ class DecisionDeskSnapshotBuilder:
         elif self.provider is not None:
             try:
                 snapshot = self.provider.fetch_portfolio_alerts(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return PortfolioAlertSummary(
                     as_of_date=as_of_date,

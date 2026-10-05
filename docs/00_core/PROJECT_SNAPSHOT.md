@@ -1,5 +1,13 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 UX08 原生圖同源契約與最新批准邊界
+
+以631d6ad為基線，個股原生價格圖與精確數值表共用純投影、來源身份與 cutoff；已知股號／日期／hash／來源失配拒絕，未來／晚到資料排除，缺件保 unknown。原生圖建構或填值失敗保留已核對表格，單日技術快照不延伸歷史線，身份不足事件不畫交易 marker。限定59案例通過，Workbench85、validator25通過／4略過、mypy795及4檔compile／quant guard通過；詳見[UX08限定收據](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md)。UX08整項／stage4仍partial：互動期間、歷史線／markers、圖商原型選型、paint故障與Native／真人驗收待辦。
+
+父層轉達使用者23:32 UTC同意F1效能例外結案：實測18.621965821542936%，20%目標未達、差15.1294400013285ms保留，不能標benchmark pass；不再微調／重測。此批准不涵蓋正式JSON遷移或前景Native。
+
+使用者新增個人資料必須與可分享市場包分離的約束；既有FA_Data/output/watchlist新DB位置不符合，正式啟用仍阻擋。首選設計為每位使用者LOCALAPPDATA/baldr/personal，專用DB候選C:\Users\archi\AppData\Local\baldr\personal\watchlists\watchlists.v3.sqlite，設定／pointer／receipt／audit／內容備份亦在個人root；尚未選定、建立或接入writer。獨立personal-storage lane負責路徑與匯出隔離工程，本批只留設計與交接，沒有遷移、匯出／分享或改共用config。較早段落保留歷史邊界，最新批准與約束以本段為準。
+
 ## 2026-10-05 頁面內操作說明
 
 各頁「i」說明改為操作、欄位與結果判讀的分區內容，補齊決策工作台、個股研究、市場總覽、研究母體盤勢、每日研究條件及 SQLite 檢視入口；資料更新各來源子頁可直接開啟共用說明。說明可捲動與複製文字，回測明列策略分數門檻及最佳化設定位置。內容與操作見 [Manual](../07_guides/APPLICATION_MANUAL.md#頁面的-i-說明按鈕)。本次變更範圍為說明與入口，不涉及研究公式、交易紀錄或正式資料更新。

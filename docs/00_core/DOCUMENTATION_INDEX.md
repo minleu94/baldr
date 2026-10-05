@@ -26,6 +26,8 @@
 
 ## 其他正式入口
 
+- UX08原生圖同源投影、截止日／精確表格／fallback及個人資料分離設計：[限定工程驗證](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md)。
+
 - 四用途既有功能的有限工程缺口、Luna Max 分工與當次驗收：[Astra 工程收尾](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md)。是否完成以該文件最後接受與 Snapshot 為準。
 
 - 理想目標架構與 Current → Target 演進：[target_system_architecture.md](../01_architecture/target_system_architecture.md)

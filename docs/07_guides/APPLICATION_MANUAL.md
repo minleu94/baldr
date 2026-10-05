@@ -1409,7 +1409,23 @@ TDCC 既有手動重播使用 `scripts/capture_tdcc_shareholding_candidate.py --
 
 價格／技術圖會明示圖表涵蓋範圍與最新涵蓋日；每根 K 線或折線點不一定是最新日。將游標移到資料點可查看該日日期、開高低收與成交量；原始資料缺少的欄位會顯示「未提供」，不會由畫面補造。
 
+價格頁維持離線原生圖，不需要 TradingView 或 WebEngine。圖與開高低收／量等數值表共用同一份核對後資料；先看查詢截止日、實際涵蓋日與來源，再查看每列數字。歷史或保存來源切換保持原截止日，不借最新行情補舊圖；明確另開「當下獨立研究」時仍沿既有服務當下查詢日，返回保存決策恢復其原日期，pinned 日研究快照不改查當下。截止後資料與明示晚於截止日才可得的資料不顯示；來源缺少可得時間時保留未知，日期篩選通過不等於歷史 PIT 已合格。
+
+服務回傳股號不符，或價格投影的已知日期／來源身份／行指紋核對失敗時，拒絕該份圖表及價格表，不沿用另一來源的數字；請核對來源詳情後重新載入原來源。沒有行指紋的舊 DTO 保留身份未知，不補造 hash。圖表初始化或填入資料失敗時，已核對數值表仍可閱讀；缺 OHLC 降為收盤線，缺量不補零。技術資料目前是單日快照表，不延伸為歷史技術線；尚未具備完整股號／來源指紋的事件不冒充圖上已驗證交易標記。本批不新增縮放／平移或外部圖商整合。
+
 歷史 Portfolio Alert 會保留事件日期與來源。它描述的是當時保存的警示快照，不是目前持倉清單，也不能單憑歷史警示推定現在仍持有該股票；請回「持倉管理」確認目前帳本與價格。
+
+#### 市場資料與個人狀態分離（2026-10-05 最新要求；正式路徑待確認）
+
+抓取的市場／來源資料與收藏、個人研究紀錄、筆記、記帳及持倉狀態必須使用獨立 root 與專用儲存；不同表或 `FA_Data/output` 下的另一個 DB 仍不足以防止整包帶出。現在的觀察清單目錄、COW 新 DB 候選及 marker 在 `OUTPUT_ROOT/watchlist`，預設仍位於市場包內；這是既有工程路徑，不是已符合分離要求的正式部署。
+
+建議個人 root 為 `%LOCALAPPDATA%/baldr/personal`，此電腦的候選完整值為 `C:\Users\archi\AppData\Local\baldr\personal`；觀察清單專用 DB 候選為 `C:\Users\archi\AppData\Local\baldr\personal\watchlists\watchlists.v3.sqlite`。若需 D 槽，另一候選為 `D:\Min\Python\Project\baldr_PersonalData\watchlists\watchlists.v3.sqlite`，兩者都在 `FA_Data` 外。正式位置須由使用者看過確認；目前未建立目錄、搬移、切 writer 或修改其他 owner 帳本。
+
+未來個人路徑設定須獨立於 `DATA_ROOT`／`OUTPUT_ROOT`，不能為搬收藏而改整個市場來源根。activation pointer、conversion receipt、rollback audit、SQLite sidecar 及內容備份全部留個人 root；新的 reader／writer／fresh-process discovery 必須同步認識該路徑，不能只把 target DB 移到 C 槽而繼續在市場包寫 marker。現有 Portfolio JSONL 仍沿原 owner 路徑，本批不遷移。
+
+市場資料匯出只允許明示的市場 DB／原始來源清單，不遞迴打包整個 `FA_Data` 或所有 `OUTPUT_ROOT`，也不附加個人 DB。排除整個個人 root，以及舊 `output/watchlist`、`output/portfolio`、個人 Journal／筆記、activation 設定、receipt／audit／backups 與相關 WAL／SHM。這是新要求與後續匯出驗證規則，尚未宣稱程式已實作防洩漏匯出；使用者未要求分享，本批不分享或上傳任何 DB。
+
+正式遷移須先完成新個人路徑／marker discovery 工程與隔離測試，再核對單一來源、writer 時段、當下容量、實際寫入權限及批准。保留原 JSON 精確內容備份與 pin；回退只切 writer／pointer，保留新 DB、新 revision、雙來源與 audit，不合併、不刪檔。尚在市場 root 的 legacy 個人檔案仍須排除，不能只備份一份到 C 槽就宣稱市場包已乾淨。
 
 每個來源依自己的可得時間與 cadence 判讀。每日行情依官方交易 session，月營收與季報依公告／可得 cadence；週末／假日的上一個官方交易日不會只因資料日早於查詢日就被標為過期。`current` 與合法的 `expected_wait` 只有在個股資料期與 receipt 預期資料期相符時才可保持 fresh，`stale`／`partial` 顯示過期或範圍不足，`failed`／`unknown` 顯示 partial／degraded。freshness receipt 缺失、損壞、日期或資料根不符時不採用，報告保留來源日期但更新狀態為未知，不把它猜成過期。基本面每表最多顯示 24 筆，先依報告期／資料日選最新期，再以可得時間選同一期版本，避免較晚取得的歷史 row 擠掉最新報告。
 

@@ -33,6 +33,7 @@ from app_module.stock_research_report_dtos import (
     StockOutcomeDTO,
     StockPositionSnapshotDTO,
     StockPricePointDTO,
+    StockReportSourceDTO,
     StockResearchReportDTO,
     StockTradingRestrictionDTO,
 )
@@ -125,6 +126,13 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     assert chart_range is not None
     assert "圖表範圍：2026-09-08 至 2026-09-08" in chart_range.text()
     assert "最新涵蓋日：2026-09-08" in chart_range.text()
+    price_table = view.findChild(QTableView, "stockResearchPriceHistoryTable")
+    assert price_table is not None
+    assert price_table.model() is not None
+    assert price_table.model().rowCount() == 1
+    assert price_table.model().columnCount() == 8
+    assert price_table.model().index(0, 0).data() == "2026-09-08"
+    assert price_table.model().index(0, 4).data() == "100"
     assert chart.grab().isNull() is False
     view.tabs.setCurrentIndex(0)
     screenshot_path = os.environ.get("STOCK_RESEARCH_SCREENSHOT_PATH", "").strip()
@@ -315,6 +323,349 @@ def _report_for(code: str, price: str) -> StockResearchReportDTO:
             ),
         ),
     )
+
+
+def _chart_report(
+    code: str,
+    as_of: str,
+    dates: tuple[str, ...],
+    *,
+    source_context: dict[str, str] | None = None,
+) -> StockResearchReportDTO:
+    points = tuple(
+        StockPricePointDTO(
+            data_date=data_date,
+            open_price=Decimal("10")
+            + Decimal(index)
+            + Decimal("0.123456789123456789"),
+            high_price=Decimal("10")
+            + Decimal(index)
+            + Decimal("0.987654321987654321"),
+            low_price=Decimal("10")
+            + Decimal(index)
+            + Decimal("0.111111111111111111"),
+            close_price=Decimal("10")
+            + Decimal(index)
+            + Decimal("0.456789123456789123"),
+            change=Decimal("0.123456789123456789"),
+            volume=9_876_543_210 + index,
+            turnover=Decimal("123456789.123456789") + Decimal(index),
+            source_id="sqlite.daily_prices",
+        )
+        for index, data_date in enumerate(dates)
+    )
+    return StockResearchReportDTO(
+        stock_code=code,
+        stock_name=code,
+        as_of=as_of,
+        sources=(
+            StockReportSourceDTO(
+                source_id="sqlite.daily_prices",
+                source_label="每日價格",
+            ),
+        ),
+        price_points=points,
+        research_context=source_context or {},
+    )
+
+
+def _price_page_table(view: StockResearchReportView) -> QTableView | None:
+    layout = view._page_layouts["price"]
+    for index in range(layout.count()):
+        widget = layout.itemAt(index).widget()
+        if (
+            isinstance(widget, QTableView)
+            and widget.objectName() == "stockResearchPriceHistoryTable"
+        ):
+            return widget
+    return None
+
+
+def test_price_projection_drives_exact_table_and_native_chart_at_cutoff() -> None:
+    _app()
+    context = ResearchStockContextDTO(
+        stock_code="2330",
+        decision_date="2026-09-07",
+    )
+    report = _chart_report(
+        "2330",
+        "2026-09-07",
+        ("2026-09-06", "2026-09-07", "2026-09-08"),
+        source_context={"decision_date": "2026-09-07"},
+    )
+    view = StockResearchReportView(SimpleNamespace())
+    view._active_code = "2330"
+    view._loaded_request_context = context
+    view._render_price(report)
+
+    chart = next(
+        widget
+        for index in range(view._page_layouts["price"].count())
+        if isinstance(
+            (widget := view._page_layouts["price"].itemAt(index).widget()),
+            StockPriceChartWidget,
+        )
+    )
+    assert tuple(point.data_date for point in chart._points) == (
+        "2026-09-06",
+        "2026-09-07",
+    )
+    table = _price_page_table(view)
+    assert table is not None and table.model() is not None
+    model = table.model()
+    assert model.rowCount() == 2
+    assert model.columnCount() == 8
+    assert model.index(0, 0).data() == "2026-09-07"
+    assert model.index(0, 1).data() == "11.123456789123456789"
+    assert model.index(0, 2).data() == "11.987654321987654321"
+    assert model.index(0, 3).data() == "11.111111111111111111"
+    assert model.index(0, 4).data() == "11.456789123456789123"
+    assert model.index(0, 6).data() == "9,876,543,211"
+    assert model.index(0, 7).data() == "123,456,790.123456789"
+    assert model.index(1, 0).data() == "2026-09-06"
+
+    tooltip = chart._point_tooltip(chart._points[-1])
+    assert "11.123456789123456789" in tooltip
+    assert "9,876,543,211" in tooltip
+    assert "來源：sqlite.daily_prices" in tooltip
+    assert "可得時間：未知（來源未提供）" in tooltip
+    assert "資料列 SHA-256：未知" in tooltip
+
+    metadata = next(
+        widget
+        for index in range(view._page_layouts["price"].count())
+        if isinstance(
+            (widget := view._page_layouts["price"].itemAt(index).widget()),
+            QLabel,
+        )
+        and widget.objectName() == "stockResearchPriceChartRange"
+    )
+    assert "截止日：2026-09-07" in metadata.text()
+    assert "每日價格" in metadata.text()
+    assert "可得時間：未知（來源未提供）" in metadata.text()
+    assert "歷史可得性（PIT）尚未核證" in metadata.text()
+    assert "價格列指紋核對：unknown" in metadata.toolTip()
+    assert "歷史 PIT 核證：not eligible" in metadata.toolTip()
+    view.close()
+
+
+@pytest.mark.parametrize("failure_stage", ["constructor", "set_points"])
+def test_native_chart_failure_keeps_projected_exact_price_table(
+    failure_stage: str,
+    monkeypatch,
+) -> None:
+    _app()
+    report = _chart_report("2330", "2026-09-07", ("2026-09-07",))
+    if failure_stage == "constructor":
+        def _fail_constructor(*_args, **_kwargs):
+            raise RuntimeError("native constructor failed")
+
+        monkeypatch.setattr(
+            "ui_qt.views.stock_research_report_view.StockPriceChartWidget",
+            _fail_constructor,
+        )
+    else:
+        def _fail_set_points(_self, _points) -> None:
+            raise RuntimeError("native set_points failed")
+
+        monkeypatch.setattr(StockPriceChartWidget, "set_points", _fail_set_points)
+
+    view = StockResearchReportView(SimpleNamespace())
+    view._active_code = "2330"
+    view._render_price(report)
+
+    fallback = next(
+        widget
+        for index in range(view._page_layouts["price"].count())
+        if isinstance(
+            (widget := view._page_layouts["price"].itemAt(index).widget()),
+            QLabel,
+        )
+        and widget.objectName() == "stockResearchPriceChartFallback"
+    )
+    assert "仍保留同一投影的精確價格資料" in fallback.text()
+    assert fallback.toolTip() == f"native {failure_stage} failed"
+    table = _price_page_table(view)
+    assert table is not None and table.model() is not None
+    assert table.model().rowCount() == 1
+    assert table.model().index(0, 4).data() == "10.456789123456789123"
+    view.close()
+
+
+def test_source_pin_rejection_hides_old_chart_and_table_values() -> None:
+    _app()
+    view = StockResearchReportView(SimpleNamespace())
+    view._active_code = "2330"
+    valid_report = _chart_report("2330", "2026-09-07", ("2026-09-07",))
+    view._render_price(valid_report)
+    assert _price_page_table(view) is not None
+
+    context = ResearchStockContextDTO(
+        stock_code="2330",
+        decision_date="2026-09-07",
+        result_id="expected-result",
+    )
+    mismatched_report = _chart_report(
+        "2330",
+        "2026-09-07",
+        ("2026-09-07",),
+        source_context={
+            "decision_date": "2026-09-07",
+            "result_id": "different-result",
+        },
+    )
+    view._loaded_request_context = context
+    view._render_price(mismatched_report)
+
+    assert _price_page_table(view) is None
+    labels = [
+        view._page_layouts["price"].itemAt(index).widget()
+        for index in range(view._page_layouts["price"].count())
+    ]
+    failure_panel = next(
+        widget
+        for widget in labels
+        if widget is not None and widget.toolTip() == "source_context_pin_mismatch"
+    )
+    assert "股號、日期或來源核對失敗" in failure_panel.text()
+    assert "different-result" not in failure_panel.text()
+    view.close()
+
+
+def test_report_load_rejects_wrong_stock_and_pinned_date_before_summary() -> None:
+    _app()
+    view = StockResearchReportView(SimpleNamespace())
+    view._active_code = "2330"
+    view._request_id = 4
+    loaded: list[StockResearchReportDTO] = []
+    failures: list[str] = []
+    view.reportLoaded.connect(loaded.append)
+    view.reportFailed.connect(failures.append)
+
+    view._on_report_loaded(4, "2330", _report_for("2317", "100"))
+    assert loaded == []
+    assert failures and "報告股票代碼不符" in failures[-1]
+    assert view._loaded_report is None
+
+    context = ResearchStockContextDTO(
+        stock_code="2330",
+        decision_date="2026-09-07",
+        source_kind="recommendation",
+    )
+    view.context = context
+    view._request_id = 5
+    view._on_report_loaded(
+        5,
+        "2330",
+        _chart_report("2330", "2026-09-08", ("2026-09-08",)),
+        context,
+    )
+    assert loaded == []
+    assert failures and "報告資料日不符" in failures[-1]
+    assert view._loaded_report is None
+    view.close()
+
+
+def test_saved_source_a_b_a_restores_cutoffs_and_current_scope_uses_report_date() -> None:
+    _app()
+    view = StockResearchReportView(SimpleNamespace())
+    view._active_code = "2330"
+    view.tabs.setCurrentIndex(1)
+
+    scenarios = (
+        (
+            ResearchStockContextDTO(
+                stock_code="2330",
+                decision_date="2026-09-06",
+                result_id="saved-A",
+                source_id="saved-A",
+                source_kind="recommendation",
+                ml_scope_mode="selected_saved_decision",
+            ),
+            "2026-09-06",
+            ("2026-09-05", "2026-09-06", "2026-09-07"),
+            ("2026-09-05", "2026-09-06"),
+        ),
+        (
+            ResearchStockContextDTO(
+                stock_code="2330",
+                decision_date="2026-09-05",
+                result_id="saved-B",
+                source_id="saved-B",
+                source_kind="recommendation",
+                ml_scope_mode="selected_saved_decision",
+            ),
+            "2026-09-05",
+            ("2026-09-04", "2026-09-05", "2026-09-06"),
+            ("2026-09-04", "2026-09-05"),
+        ),
+        (
+            ResearchStockContextDTO(
+                stock_code="2330",
+                decision_date="2026-09-06",
+                result_id="saved-A",
+                source_id="saved-A",
+                source_kind="recommendation",
+                ml_scope_mode="selected_saved_decision",
+            ),
+            "2026-09-06",
+            ("2026-09-05", "2026-09-06", "2026-09-07"),
+            ("2026-09-05", "2026-09-06"),
+        ),
+        (
+            ResearchStockContextDTO(
+                stock_code="2330",
+                decision_date="2026-09-05",
+                ml_scope_mode="current_stock_research",
+            ),
+            "2026-09-07",
+            ("2026-09-05", "2026-09-06", "2026-09-07"),
+            ("2026-09-05", "2026-09-06", "2026-09-07"),
+        ),
+    )
+
+    for request_id, (context, as_of, dates, expected_dates) in enumerate(
+        scenarios,
+        start=1,
+    ):
+        source_context = {
+            key: value
+            for key, value in (
+                ("decision_date", context.decision_date),
+                ("result_id", context.result_id),
+                ("source_id", context.source_id),
+                ("source_kind", context.source_kind),
+                ("ml_scope_mode", context.ml_scope_mode),
+            )
+            if value
+        }
+        report = _chart_report(
+            "2330",
+            as_of,
+            dates,
+            source_context=source_context,
+        )
+        view.context = context
+        view._active_code = "2330"
+        view._request_id = request_id
+        view._on_report_loaded(request_id, "2330", report, context)
+
+        chart = next(
+            widget
+            for index in range(view._page_layouts["price"].count())
+            if isinstance(
+                (widget := view._page_layouts["price"].itemAt(index).widget()),
+                StockPriceChartWidget,
+            )
+        )
+        assert tuple(point.data_date for point in chart._points) == expected_dates
+        table = _price_page_table(view)
+        assert table is not None and table.model() is not None
+        assert tuple(
+            table.model().index(row, 0).data()
+            for row in range(table.model().rowCount())
+        ) == tuple(reversed(expected_dates))
+    view.close()
 
 
 def test_missing_change_direction_is_not_presented_as_a_rise() -> None:
@@ -1108,7 +1459,11 @@ def test_report_loaded_does_not_backfill_unbound_or_invalid_quote_date(case: str
     assert view.context.data_date == ""
     assert "資料日：未知" in view.context_path_label.text()
     assert context_events == []
-    assert view._loaded_context_identity == view._context_identity(context, "1477")
+    if case in {"wrong_report_stock", "wrong_context_decision"}:
+        assert view._loaded_context_identity is None
+        assert view._loaded_report is None
+    else:
+        assert view._loaded_context_identity == view._context_identity(context, "1477")
     view.close()
 
 

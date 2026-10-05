@@ -68,6 +68,7 @@ from app_module.research_result_presentation import (
     build_stock_research_event_table,
 )
 from app_module.stock_research_report_service import StockResearchReportReadService
+from app_module.stock_research_chart_payload import project_stock_chart_payload
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
@@ -217,16 +218,19 @@ class StockPriceChartWidget(QWidget):
     def _point_tooltip(point: StockPricePointDTO) -> str:
         return "\n".join(
             (
-                f"日期：{point.data_date or '未提供'}",
+                f"資料日：{point.data_date or '未知'}",
                 "｜".join(
                     (
-                        f"開盤：{_chart_decimal_text(point.open_price)}",
-                        f"最高：{_chart_decimal_text(point.high_price)}",
-                        f"最低：{_chart_decimal_text(point.low_price)}",
-                        f"收盤：{_chart_decimal_text(point.close_price)}",
+                        f"開：{_chart_exact_decimal_text(point.open_price)}",
+                        f"高：{_chart_exact_decimal_text(point.high_price)}",
+                        f"低：{_chart_exact_decimal_text(point.low_price)}",
+                        f"收：{_chart_exact_decimal_text(point.close_price)}",
                     )
                 ),
                 f"成交量：{_chart_integer_text(point.volume)}",
+                f"來源：{point.source_id or '未知'}",
+                f"可得時間：{point.available_at or '未知（來源未提供）'}",
+                f"資料列 SHA-256：{point.source_snapshot_hash or '未知'}",
             )
         )
 
@@ -479,6 +483,7 @@ class StockResearchReportView(QWidget):
         self._closing = False
         self._loaded_report: StockResearchReportDTO | None = None
         self._loaded_context_identity: tuple[str, ...] | None = None
+        self._loaded_request_context: ResearchStockContextDTO | None = None
         self._saved_decision_context: ResearchStockContextDTO | None = None
         self._rendered_report_tabs: set[str] = set()
         self._setup_ui()
@@ -1320,6 +1325,22 @@ class StockResearchReportView(QWidget):
         if not isinstance(report, StockResearchReportDTO):
             self._on_report_error(request_id, code, "service returned an invalid report DTO")
             return
+        if str(report.stock_code).strip() != str(code).strip():
+            self._on_report_error(
+                request_id,
+                code,
+                f"報告股票代碼不符：要求 {code}，收到 {report.stock_code}",
+            )
+            return
+        request_context = context if context is not None else self.context
+        requested_cutoff = _stock_chart_requested_cutoff(request_context)
+        if requested_cutoff and str(report.as_of).strip() != requested_cutoff:
+            self._on_report_error(
+                request_id,
+                code,
+                f"報告資料日不符：要求 {requested_cutoff}，收到 {report.as_of or '未知'}",
+            )
+            return
         if context is not None and context.source_kind == "daily_market_research_snapshot":
             loaded_context = self._context_with_daily_snapshot_data_date(
                 context,
@@ -1347,6 +1368,7 @@ class StockResearchReportView(QWidget):
             self.activeContextChanged.emit(loaded_context)
         else:
             loaded_context = context
+        self._loaded_request_context = context if context is not None else self.context
         self._loaded_context_identity = self._context_identity(loaded_context, code)
         self._render_report(report)
         daily_snapshot_problem = (
@@ -1558,6 +1580,7 @@ class StockResearchReportView(QWidget):
 
         self._loaded_report = None
         self._loaded_context_identity = None
+        self._loaded_request_context = None
         self._rendered_report_tabs = set()
         self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
         self.market_status_label.setText("當下上市／交易狀態：尚未載入本股。")
@@ -1918,57 +1941,130 @@ class StockResearchReportView(QWidget):
     def _render_price(self, report: StockResearchReportDTO) -> None:
         layout = self._reset_page("price")
         layout.addWidget(self._section_heading("價格與成交量", report, "price"))
-        chart = StockPriceChartWidget()
-        chart.set_points(report.price_points)
-        layout.addWidget(chart)
-        chart_mode_label = QLabel(
-            {
-                "ohlc_volume": "圖表型態：完整開高低收 K 線＋成交量；僅使用既有價格資料。",
-                "ohlc": "圖表型態：完整開高低收 K 線；成交量資料不足，未繪製量柱。",
-                "close": "圖表型態：收盤價走勢；開高低收欄位不完整，未補造 K 線。",
-            }[chart.display_mode]
+        context = self._loaded_request_context
+        cutoff_date = _stock_chart_cutoff_date(report, context)
+        projection = project_stock_chart_payload(
+            report,
+            cutoff_date=cutoff_date,
+            expected_stock_code=self._active_code or report.stock_code,
+            expected_source_context=_stock_chart_expected_source_context(context),
         )
+        payload = projection.payload
+        if projection.status == "rejected" or payload is None:
+            panel = self._missing_panel(
+                "股號、日期或來源核對失敗；已隱藏不一致資料。"
+            )
+            panel.setToolTip(projection.reason or "來源核對失敗")
+            layout.addWidget(panel)
+            layout.addStretch()
+            return
+
+        chart: StockPriceChartWidget | None = None
+        try:
+            chart = StockPriceChartWidget()
+            chart.set_points(payload.price_points)
+            layout.addWidget(chart)
+            chart_mode_text = {
+                "ohlc_volume": "原生圖表：OHLC K 線與成交量；下方表格保留來源精度。",
+                "ohlc": "原生圖表：OHLC K 線；成交量缺值會保留。",
+                "close": "原生圖表：收盤線；不完整 OHLC 不補值。",
+            }[chart.display_mode]
+        except Exception as exc:
+            if chart is not None:
+                chart.hide()
+                chart.deleteLater()
+            fallback_label = QLabel(
+                "原生圖表目前無法呈現；下方仍保留同一投影的精確價格資料。"
+            )
+            fallback_label.setObjectName("stockResearchPriceChartFallback")
+            fallback_label.setProperty("role", "muted")
+            fallback_label.setWordWrap(True)
+            fallback_label.setToolTip(
+                str(exc).splitlines()[0] if str(exc) else "圖表初始化失敗"
+            )
+            layout.addWidget(fallback_label)
+            chart_mode_text = "原生圖表無法呈現；價格明細仍可檢視。"
+
+        chart_mode_label = QLabel(chart_mode_text)
         chart_mode_label.setObjectName("stockResearchPriceChartMode")
         chart_mode_label.setProperty("role", "muted")
         chart_mode_label.setWordWrap(True)
         layout.addWidget(chart_mode_label)
+
         chart_range_label = QLabel(
-            f"{_price_chart_range_text(report.price_points)}；"
-            "將游標移到每根 K 線／折線點查看該日日期、開高低收與成交量。"
-            if report.price_points
-            else "圖表範圍：目前沒有可繪製的價格資料。"
+            _stock_chart_metadata_text(
+                report,
+                payload.price_points,
+                cutoff_date=payload.cutoff_date,
+            )
         )
         chart_range_label.setObjectName("stockResearchPriceChartRange")
         chart_range_label.setProperty("role", "muted")
         chart_range_label.setWordWrap(True)
+        chart_range_label.setToolTip(
+            _stock_chart_metadata_tooltip(
+                report,
+                payload.source_context,
+                projection_reason=projection.reason,
+                source_context_status=payload.source_context_status,
+                price_source_status=payload.price_source_status,
+                price_hash_status=payload.price_hash_status,
+                price_availability_status=payload.price_availability_status,
+                technical_status=payload.technical_status,
+                marker_status=payload.marker_status,
+                historical_pit_eligible=payload.historical_pit_eligible,
+            )
+        )
         layout.addWidget(chart_range_label)
-        if report.price_points:
+
+        if payload.price_points:
+            table_points = tuple(reversed(payload.table_rows))
             rows = tuple(
                 (
                     point.data_date,
-                    _decimal_text(point.close_price),
-                    _decimal_text(point.change),
-                    _integer_text(point.volume),
-                    _decimal_text(point.turnover),
+                    _chart_exact_decimal_text(point.open_price),
+                    _chart_exact_decimal_text(point.high_price),
+                    _chart_exact_decimal_text(point.low_price),
+                    _chart_exact_decimal_text(point.close_price),
+                    _chart_exact_decimal_text(point.change),
+                    _chart_integer_text(point.volume),
+                    _chart_exact_decimal_text(point.turnover),
                 )
-                for point in reversed(report.price_points)
+                for point in table_points
             )
-            self._add_table(layout, ("日期", "收盤價", "漲跌價差", "成交股數", "成交金額"), rows, 310)
+            row_tooltips = tuple(
+                tuple(_price_point_source_tooltip(point) for _ in range(8))
+                for point in table_points
+            )
+            self._add_table(
+                layout,
+                ("資料日", "開盤", "最高", "最低", "收盤", "漲跌", "成交量", "成交額"),
+                rows,
+                310,
+                tooltips=row_tooltips,
+                object_name="stockResearchPriceHistoryTable",
+            )
         else:
-            layout.addWidget(self._missing_panel("價格資料不足；請從「數據更新」檢查 daily_prices。"))
-        if report.technical is not None:
-            group = QGroupBox(f"技術指標｜資料日 {report.technical.data_date or '—'}")
+            layout.addWidget(
+                self._missing_panel("沒有可顯示的價格資料；每日行情欄位未提供。")
+            )
+
+        technical = payload.technical_snapshot
+        if technical is not None:
+            group = QGroupBox(f"技術指標快照｜資料日 {technical.data_date or '未知'}")
             group_layout = QVBoxLayout(group)
             rows = tuple(
-                (metric.label, _metric_text(metric), metric.data_as_of or "—", metric.quality)
-                for metric in report.technical.indicators
+                (metric.label, _metric_text(metric), metric.data_as_of or "-", metric.quality)
+                for metric in technical.indicators
             )
-            self._add_table(group_layout, ("指標", "值", "資料日", "品質"), rows, 240)
-            if report.technical.limitations:
-                group_layout.addWidget(self._wrapped_label(_join_or_missing(report.technical.limitations, "")))
+            self._add_table(group_layout, ("指標", "數值", "資料日", "品質"), rows, 240)
+            if technical.limitations:
+                group_layout.addWidget(
+                    self._wrapped_label(_join_or_missing(technical.limitations, ""))
+                )
             layout.addWidget(group)
         else:
-            layout.addWidget(self._missing_panel("技術指標不足；不以缺欄位推論趨勢。"))
+            layout.addWidget(self._missing_panel("截至日期沒有可核對的技術指標快照。"))
         layout.addStretch()
 
     def _render_fundamental(self, report: StockResearchReportDTO) -> None:
@@ -3093,11 +3189,176 @@ def _integer_text(value: int | None) -> str:
 
 
 def _chart_decimal_text(value: Decimal | None) -> str:
-    return _decimal_text(value) if value is not None else "未提供"
+    return _decimal_text(value) if value is not None else "未知"
+
+
+def _chart_exact_decimal_text(value: Decimal | None) -> str:
+    """價格圖與資料表保留來源 Decimal 精度，不做顯示四捨五入。"""
+
+    if value is None:
+        return "—（未提供）"
+    if not value.is_finite():
+        return "—（非有限數值）"
+    return format(value, ",f")
 
 
 def _chart_integer_text(value: int | None) -> str:
-    return _integer_text(value) if value is not None else "未提供"
+    return _integer_text(value) if value is not None else "—（未提供）"
+
+
+def _price_point_source_tooltip(point: StockPricePointDTO) -> str:
+    return "\n".join(
+        (
+            f"來源：{point.source_id or '未知'}",
+            f"可得時間：{point.available_at or '未知（來源未提供）'}",
+            f"資料列 SHA-256：{point.source_snapshot_hash or '未知'}",
+            f"資料品質：{point.quality or '未知'}",
+        )
+    )
+
+
+_STOCK_CHART_SOURCE_CONTEXT_FIELDS = (
+    "decision_date",
+    "data_date",
+    "result_id",
+    "identity_status",
+    "source_snapshot_id",
+    "source_snapshot_hash",
+    "profile_id",
+    "profile_version",
+    "source_id",
+    "source_version",
+    "mapping_source_id",
+    "mapping_version",
+    "mapping_observed_date",
+    "source_kind",
+    "source_workspace",
+    "ml_scope_mode",
+    "daily_snapshot_root",
+    "daily_snapshot_cohort_id",
+    "daily_snapshot_condition_keys",
+    "daily_snapshot_combine_mode",
+)
+
+
+def _stock_chart_expected_source_context(
+    context: ResearchStockContextDTO | None,
+) -> dict[str, str] | None:
+    if context is None:
+        return None
+    expected = {
+        field: value
+        for field in _STOCK_CHART_SOURCE_CONTEXT_FIELDS
+        if (value := str(getattr(context, field, "") or "").strip())
+    }
+    return expected or None
+
+
+def _stock_chart_requested_cutoff(
+    context: ResearchStockContextDTO | None,
+) -> str | None:
+    if context is None:
+        return None
+    current_scope = (
+        context.ml_scope_mode == "current_stock_research"
+        and context.source_kind != "daily_market_research_snapshot"
+    )
+    if current_scope:
+        return None
+    return str(context.decision_date or "").strip() or None
+
+
+def _stock_chart_cutoff_date(
+    report: StockResearchReportDTO,
+    context: ResearchStockContextDTO | None,
+) -> str | None:
+    if context is not None:
+        current_scope = (
+            context.ml_scope_mode == "current_stock_research"
+            and context.source_kind != "daily_market_research_snapshot"
+        )
+        if not current_scope:
+            pinned_date = str(context.decision_date or "").strip()
+            if pinned_date:
+                return pinned_date
+    return str(report.as_of or "").strip() or None
+
+
+def _stock_chart_metadata_text(
+    report: StockResearchReportDTO,
+    points: Sequence[StockPricePointDTO],
+    *,
+    cutoff_date: str | None,
+) -> str:
+    range_text = _price_chart_range_text(points)
+    source_labels = {
+        str(source.source_id).strip(): str(source.source_label).strip()
+        for source in report.sources
+        if str(source.source_id).strip()
+    }
+    source_ids = tuple(
+        dict.fromkeys(
+            point.source_id.strip()
+            for point in points
+            if point.source_id.strip()
+        )
+    )
+    source_text = (
+        "、".join(source_labels.get(source_id) or source_id for source_id in source_ids)
+        if source_ids
+        else "未知"
+    )
+    availability = tuple(dict.fromkeys(point.available_at.strip() for point in points))
+    if not availability or all(not value for value in availability):
+        availability_text = "未知（來源未提供）"
+    elif len(availability) == 1:
+        availability_text = availability[0] or "未知（來源未提供）"
+    else:
+        availability_text = "各資料列不同，詳見資料提示"
+    return (
+        f"{range_text}；截止日：{cutoff_date or '未知'}；"
+        f"報告 as_of：{report.as_of or '未知'}；本機來源：{source_text}；"
+        f"可得時間：{availability_text}；"
+        "歷史可得性（PIT）尚未核證，不代表決策當下可得。"
+    )
+
+
+def _stock_chart_metadata_tooltip(
+    report: StockResearchReportDTO,
+    source_context: Sequence[tuple[str, str]],
+    *,
+    projection_reason: str,
+    source_context_status: str,
+    price_source_status: str,
+    price_hash_status: str,
+    price_availability_status: str,
+    technical_status: str,
+    marker_status: str,
+    historical_pit_eligible: bool,
+) -> str:
+    context_text = "\n".join(f"{key}：{value}" for key, value in source_context)
+    statuses = "\n".join(
+        (
+            f"投影結果：{projection_reason or '未知'}",
+            f"來源情境核對：{source_context_status or 'unknown'}",
+            f"價格來源核對：{price_source_status or 'unknown'}",
+            f"價格列指紋核對：{price_hash_status or 'unknown'}",
+            f"可得時間核對：{price_availability_status or 'unknown'}",
+            f"技術快照狀態：{technical_status or 'unknown'}",
+            f"事件標記狀態：{marker_status or 'unknown'}",
+            f"歷史 PIT 核證：{'eligible' if historical_pit_eligible else 'not eligible'}",
+        )
+    )
+    return "\n".join(
+        part
+        for part in (
+            f"股票代碼：{report.stock_code}",
+            f"報告 as_of：{report.as_of or '未知'}",
+            statuses,
+            context_text,
+        )
+        if part
+    )
 
 
 def _price_chart_range_text(points: Sequence[StockPricePointDTO]) -> str:
@@ -3112,9 +3373,7 @@ def _price_chart_range_text(points: Sequence[StockPricePointDTO]) -> str:
     elif drawable_count == len(points):
         count_text = f"共 {len(points)} 個資料點"
     else:
-        count_text = (
-            f"共 {len(points)} 筆原始價格資料，圖上可繪製 {drawable_count} 點"
-        )
+        count_text = f"共 {len(points)} 筆原始價格資料，圖上可繪製 {drawable_count} 點"
     return (
         f"{range_label}：{first_date} 至 {latest_date}（{count_text}）；"
         f"最新涵蓋日：{latest_date}"

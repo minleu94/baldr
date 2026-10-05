@@ -28,7 +28,7 @@ Before 見[階段0收據](PRODUCT_STAGE01_PERFORMANCE_BASELINE_20261005.md)。Af
 | BacktestView，5跑 median | 1097.90ms | 893.45ms（884.30–938.70） | 18.62% |
 | 30列高亮 p95 nearest-rank | 116.60ms | 49.65ms（max 91.67） | 單次場景，非全互動 SLA |
 
-父／child 時鐘起點不同，不相減。選定 IndustryMapper 瓶頸超過改動前凍結的20%改善預期；BacktestView 單項為18.62%，沒有把它改寫為20%達標。首屏與同情境 RSS 沒有超過10%回退；30列高亮低於既定300ms預期。這些是本包的限定預期，不是全產品成熟度 Gate。
+父／child 時鐘起點不同，不相減。修改前 `STAGE1_INTAKE_AND_ROLLBACK.md` 凍結的是 IndustryMapper 與 BacktestView 兩段各自至少20%：IndustryMapper 42.56%通過；BacktestView 18.62%未達，差1.38個百分點，不能用前者通過代表兩者全過。首屏與同情境 RSS 沒有超過10%回退；30列高亮低於既定300ms預期。父層接受本包改善並要求不為湊百分比再微調Backtest；門檻原值及未達結果保留，因此本包門檻為部分通過，不是全產品成熟度 Gate。
 
 四筆只啟動的20ms取樣 Python process-tree peak RSS：before 699,899,904–701,960,192 bytes；after 572,538,880–577,310,720 bytes。只啟動 process read bytes 各為 before 212,315,094／after 212,287,584，整個程序 CPU before 10.3125–10.96875s／after 8.59375–9.28125s。read bytes 是 OS process counter，不是實體磁碟讀取或 cache-cold 數字；CPU 包含啟動、事件迴圈與關閉。
 

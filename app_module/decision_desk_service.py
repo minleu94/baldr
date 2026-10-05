@@ -100,8 +100,9 @@ def _call_with_optional_cancel_callback(method, *args, cancel_callback, **kwargs
     _raise_if_cancelled(cancel_callback)
     if supports_callback:
         result = method(*args, **kwargs, cancel_callback=cancel_callback)
-    else:
-        result = method(*args, **kwargs)
+        _raise_if_cancelled(cancel_callback)
+        return result
+    result = method(*args, **kwargs)
     _raise_if_cancelled(cancel_callback)
     return result
 
@@ -293,11 +294,17 @@ class DecisionDeskSnapshotBuilder:
         _raise_if_cancelled(cancel_callback)
         market_regime = self._build_market_regime(as_of_date)
         _raise_if_cancelled(cancel_callback)
-        market_breadth = self._build_market_breadth(as_of_date)
+        market_breadth = self._build_market_breadth(
+            as_of_date,
+            cancel_callback=cancel_callback,
+        )
         _raise_if_cancelled(cancel_callback)
         sector_rotation = self._build_sector_rotation(as_of_date)
         _raise_if_cancelled(cancel_callback)
-        relative_strength_liquidity = self._build_relative_strength_liquidity(as_of_date)
+        relative_strength_liquidity = self._build_relative_strength_liquidity(
+            as_of_date,
+            cancel_callback=cancel_callback,
+        )
         _raise_if_cancelled(cancel_callback)
         watchlist_triggers = self._build_watchlist_triggers(as_of_date)
         _raise_if_cancelled(cancel_callback)
@@ -584,11 +591,20 @@ class DecisionDeskSnapshotBuilder:
             )
         return snapshot
 
-    def _build_market_breadth(self, as_of_date: date) -> MarketBreadthSummary:
+    def _build_market_breadth(
+        self,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> MarketBreadthSummary:
         snapshot: MarketBreadthSummary | None
         if self.market_breadth_service is not None:
             try:
-                snapshot = self.market_breadth_service.build_snapshot(as_of_date)
+                snapshot = _call_with_optional_cancel_callback(
+                    self.market_breadth_service.build_snapshot,
+                    as_of_date,
+                    cancel_callback=cancel_callback,
+                )
             except BacktestCancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -599,7 +615,11 @@ class DecisionDeskSnapshotBuilder:
                 )
         elif self.provider is not None:
             try:
-                snapshot = self.provider.fetch_market_breadth(as_of_date)
+                snapshot = _call_with_optional_cancel_callback(
+                    self.provider.fetch_market_breadth,
+                    as_of_date,
+                    cancel_callback=cancel_callback,
+                )
             except BacktestCancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -662,10 +682,19 @@ class DecisionDeskSnapshotBuilder:
             )
         return snapshot
 
-    def _build_relative_strength_liquidity(self, as_of_date: date) -> RelativeStrengthLiquiditySummary:
+    def _build_relative_strength_liquidity(
+        self,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> RelativeStrengthLiquiditySummary:
         if self.relative_strength_liquidity_service is not None:
             try:
-                snapshot = self.relative_strength_liquidity_service.build_snapshot(as_of_date)
+                snapshot = _call_with_optional_cancel_callback(
+                    self.relative_strength_liquidity_service.build_snapshot,
+                    as_of_date,
+                    cancel_callback=cancel_callback,
+                )
             except BacktestCancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001

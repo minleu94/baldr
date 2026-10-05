@@ -3,6 +3,7 @@ from decimal import Decimal
 import sqlite3
 
 import pandas as pd
+import pytest
 
 from app_module.market_breadth_service import (
     MarketBreadthProvider,
@@ -10,6 +11,7 @@ from app_module.market_breadth_service import (
     SQLiteDailyPriceMarketBreadthProvider,
 )
 from app_module.decision_desk_dtos import DecisionDeskQuality
+from app_module.exceptions import BacktestCancelledError
 
 
 class FakeMarketBreadthProvider:
@@ -65,7 +67,7 @@ def test_market_breadth_service_builds_summary_from_df_with_injected_provider():
         }
     )
     service = MarketBreadthService(FakeMarketBreadthProvider(frame))
-    snapshot = service.build_snapshot(date(2026, 6, 15))
+    snapshot = service.build_snapshot(date(2026, 6, 15), cancel_callback=lambda: False)
 
     assert snapshot.quality == DecisionDeskQuality.OBSERVED
     assert snapshot.as_of_date == date(2026, 6, 15)
@@ -393,3 +395,76 @@ def test_new_extreme_count_matches_reference_for_ties_missing_dates_and_window_b
     assert SQLiteDailyPriceMarketBreadthProvider._new_extreme_count(
         data, current, "20261004", 5, "high"
     ) is None
+
+
+def test_sqlite_market_breadth_cancellation_during_select_allows_same_provider_retry(
+    tmp_path, monkeypatch
+):
+    db_path = tmp_path / "breadth-cancel.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            '''
+            CREATE TABLE daily_prices (
+                "日期" TEXT,
+                "證券代號" TEXT,
+                "收盤價" REAL,
+                "漲跌價差" REAL,
+                "成交股數" INTEGER,
+                "漲跌(+/-)" TEXT
+            )
+            '''
+        )
+        connection.executemany(
+            'INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?)',
+            [
+                ("20260612", "2330", 100, 1, 1000, "+"),
+                ("20260615", "2330", 101, 1, 1100, "+"),
+            ],
+        )
+
+    provider = SQLiteDailyPriceMarketBreadthProvider(db_path, lookback_days=3)
+    provider.SQLITE_CANCEL_CHECK_INTERVAL = 1
+    cancel_state = {"requested": False}
+    original_read_sql_query = pd.read_sql_query
+
+    def trace_select(query, connection, *args, **kwargs):
+        def observe(statement: str) -> None:
+            if "SELECT DISTINCT" in statement.upper() and "DAILY_PRICES" in statement.upper():
+                cancel_state["requested"] = True
+
+        connection.set_trace_callback(observe)
+        return original_read_sql_query(query, connection, *args, **kwargs)
+
+    monkeypatch.setattr(pd, "read_sql_query", trace_select)
+    with pytest.raises(BacktestCancelledError):
+        provider.fetch(date(2026, 6, 15), cancel_callback=lambda: cancel_state["requested"])
+
+    assert cancel_state["requested"] is True
+    monkeypatch.setattr(pd, "read_sql_query", original_read_sql_query)
+    frame = provider.fetch(date(2026, 6, 15))
+    assert not frame.empty
+
+
+def test_sqlite_market_breadth_does_not_mask_database_error_as_cancellation(
+    tmp_path, monkeypatch
+):
+    db_path = tmp_path / "breadth-db-error.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            'CREATE TABLE daily_prices ("日期" TEXT, "證券代號" TEXT, "收盤價" REAL, "漲跌" REAL, "成交股數" INTEGER)'
+        )
+        connection.execute(
+            'INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?)',
+            ("20260615", "2330", 101, 1, 1000),
+        )
+
+    requested = {"value": False}
+
+    def unrelated_database_error(*_args, **_kwargs):
+        requested["value"] = True
+        raise pd.errors.DatabaseError("unrelated query failure")
+
+    monkeypatch.setattr(pd, "read_sql_query", unrelated_database_error)
+    provider = SQLiteDailyPriceMarketBreadthProvider(db_path)
+    with pytest.raises(pd.errors.DatabaseError, match="unrelated query failure"):
+        provider.fetch(date(2026, 6, 15), cancel_callback=lambda: requested["value"])

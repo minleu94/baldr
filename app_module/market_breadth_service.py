@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import inspect
 import numbers
 import json
 import sqlite3
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Callable, Protocol
 
 import pandas as pd
 
 from app_module.official_quote_exclusion_diagnostics import OfficialQuoteExclusionDiagnostics
 from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import DecisionDeskQuality, MarketBreadthSummary
-from app_module.decision_market_frame import DecisionMarketFrameLoader
+from app_module.decision_market_frame import (
+    DecisionMarketFrameLoader,
+    _install_sqlite_cancel_handler,
+)
+from app_module.exceptions import BacktestCancelledError
 from app_module.dtos.market_loop_dtos import MarketBreadthDTO
 from app_module.price_change_direction import (
     CHANGE_SIGN_COLUMNS,
@@ -23,6 +28,61 @@ from app_module.price_change_direction import (
 
 class MarketBreadthProvider(Protocol):
     def fetch(self, as_of_date: date) -> pd.DataFrame: ...
+
+
+def _raise_if_cancelled(cancel_callback: Callable[[], bool] | None) -> None:
+    if cancel_callback is not None and cancel_callback():
+        raise BacktestCancelledError("市場廣度載入已取消。")
+
+
+def _call_with_optional_cancel_callback(
+    method: Callable[..., Any],
+    *args: Any,
+    cancel_callback: Callable[[], bool] | None,
+) -> Any:
+    if cancel_callback is None:
+        return method(*args)
+
+    supports_callback = False
+    try:
+        parameters = inspect.signature(method).parameters.values()
+        supports_callback = any(
+            parameter.name == "cancel_callback"
+            and parameter.kind is not inspect.Parameter.POSITIONAL_ONLY
+            for parameter in parameters
+        ) or any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters)
+    except (TypeError, ValueError):
+        pass
+
+    _raise_if_cancelled(cancel_callback)
+    if supports_callback:
+        return method(*args, cancel_callback=cancel_callback)
+    result = method(*args)
+    _raise_if_cancelled(cancel_callback)
+    return result
+
+
+def _map_series_with_cancellation(
+    values: pd.Series,
+    mapper: Callable[[Any], Any],
+    cancel_callback: Callable[[], bool] | None,
+) -> pd.Series:
+    if cancel_callback is None:
+        return values.map(mapper)
+
+    _raise_if_cancelled(cancel_callback)
+    mapped_count = 0
+
+    def map_with_check(value: Any) -> Any:
+        nonlocal mapped_count
+        if mapped_count % 256 == 0:
+            _raise_if_cancelled(cancel_callback)
+        mapped_count += 1
+        return mapper(value)
+
+    mapped = values.map(map_with_check)
+    _raise_if_cancelled(cancel_callback)
+    return mapped
 
 
 class MarketBreadthService:
@@ -38,12 +98,24 @@ class MarketBreadthService:
         self.data = data
         self.cadence = cadence
 
-    def build_snapshot(self, as_of_date: date) -> MarketBreadthSummary:
+    def build_snapshot(
+        self,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> MarketBreadthSummary:
+        _raise_if_cancelled(cancel_callback)
         try:
             if self.provider is not None:
-                data = self.provider.fetch(as_of_date)
+                data = _call_with_optional_cancel_callback(
+                    self.provider.fetch,
+                    as_of_date,
+                    cancel_callback=cancel_callback,
+                )
             else:
                 data = self.data
+        except BacktestCancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             return MarketBreadthSummary(
                 as_of_date=as_of_date,
@@ -51,6 +123,7 @@ class MarketBreadthService:
                 warnings=(f"market_breadth_provider_error:{exc}",),
             )
 
+        _raise_if_cancelled(cancel_callback)
         if data is None or data.empty:
             return MarketBreadthSummary(
                 as_of_date=as_of_date,
@@ -58,7 +131,7 @@ class MarketBreadthService:
                 warnings=("market_breadth_missing",),
             )
 
-        row = self._find_row(data, as_of_date)
+        row = self._find_row(data, as_of_date, cancel_callback=cancel_callback)
         if row is None:
             return MarketBreadthSummary(
                 as_of_date=as_of_date,
@@ -109,12 +182,22 @@ class MarketBreadthService:
             meta=meta,
         )
 
-    def _find_row(self, data: pd.DataFrame, target_date: date) -> pd.Series | None:
+    def _find_row(
+        self,
+        data: pd.DataFrame,
+        target_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> pd.Series | None:
         candidate_columns = ("as_of_date", "date", "trade_date", "timestamp", "time")
         for column in candidate_columns:
+            _raise_if_cancelled(cancel_callback)
             if column not in data.columns:
                 continue
-            parsed_column = self._parse_date_series(data[column])
+            parsed_column = self._parse_date_series(
+                data[column],
+                cancel_callback=cancel_callback,
+            )
             if parsed_column is None:
                 continue
             matched = parsed_column == target_date
@@ -132,16 +215,29 @@ class MarketBreadthService:
                     return row
         return None
 
-    def build_snapshot_dto(self, as_of_date: date) -> MarketBreadthDTO:
+    def build_snapshot_dto(
+        self,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> MarketBreadthDTO:
         """建立含決策日與有效日的跨頁 DTO。"""
 
-        summary = self.build_snapshot(as_of_date)
+        summary = self.build_snapshot(as_of_date, cancel_callback=cancel_callback)
         return MarketBreadthDTO.from_summary(summary, decision_date=as_of_date)
 
-    def _parse_date_series(self, values: pd.Series) -> pd.Series | None:
+    def _parse_date_series(
+        self,
+        values: pd.Series,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> pd.Series | None:
         parsed: list[date | None] = []
-        for item in values:
+        for index, item in enumerate(values):
+            if index % 256 == 0:
+                _raise_if_cancelled(cancel_callback)
             parsed.append(self._parse_date_value(item))
+        _raise_if_cancelled(cancel_callback)
         if all(item is None for item in parsed):
             return None
         return pd.Series(parsed, index=values.index)
@@ -285,6 +381,8 @@ class MarketBreadthService:
 class SQLiteDailyPriceMarketBreadthProvider:
     """Read-only provider that derives market breadth from SQLite daily_prices."""
 
+    SQLITE_CANCEL_CHECK_INTERVAL = 1000
+
     def __init__(
         self,
         db_path: str | Path,
@@ -298,13 +396,25 @@ class SQLiteDailyPriceMarketBreadthProvider:
         self.market_frame_loader = market_frame_loader
         self.quote_diagnostics = quote_diagnostics
 
-    def fetch(self, as_of_date: date) -> pd.DataFrame:
+    def fetch(
+        self,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> pd.DataFrame:
+        _raise_if_cancelled(cancel_callback)
         if not self.db_path.exists():
             return pd.DataFrame()
 
         target_key = as_of_date.strftime("%Y%m%d")
         if self.market_frame_loader is not None:
-            prices = self.market_frame_loader.load(as_of_date, self.lookback_days + 1)
+            prices = _call_with_optional_cancel_callback(
+                self.market_frame_loader.load,
+                as_of_date,
+                self.lookback_days + 1,
+                cancel_callback=cancel_callback,
+            )
+            _raise_if_cancelled(cancel_callback)
             if prices.empty:
                 return pd.DataFrame()
             normalized_keys = [
@@ -318,59 +428,96 @@ class SQLiteDailyPriceMarketBreadthProvider:
             ]
             if not available_keys:
                 return pd.DataFrame()
-            return self._build_breadth_frame(prices, max(available_keys), target_key)
+            return self._build_breadth_frame(
+                prices,
+                max(available_keys),
+                target_key,
+                cancel_callback=cancel_callback,
+            )
 
         db_uri = f"{self.db_path.resolve().as_uri()}?mode=ro"
-        with sqlite3.connect(db_uri, uri=True) as conn:
-            conn.execute("PRAGMA query_only=ON")
-            date_rows = pd.read_sql_query(
-                """
-                SELECT DISTINCT 日期
-                FROM daily_prices
-                WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') <= ?
-                ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') DESC
-                LIMIT ?
-                """,
-                conn,
-                params=(target_key, self.lookback_days + 1),
-            )
-            if date_rows.empty:
-                return pd.DataFrame()
+        was_sql_cancelled = lambda: False
+        try:
+            with sqlite3.connect(db_uri, uri=True) as conn:
+                conn.execute("PRAGMA query_only=ON")
+                if cancel_callback is not None:
+                    was_sql_cancelled = _install_sqlite_cancel_handler(
+                        conn,
+                        cancel_callback,
+                        check_interval=self.SQLITE_CANCEL_CHECK_INTERVAL,
+                    )
+                date_rows = pd.read_sql_query(
+                    """
+                    SELECT DISTINCT 日期
+                    FROM daily_prices
+                    WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') <= ?
+                    ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') DESC
+                    LIMIT ?
+                    """,
+                    conn,
+                    params=(target_key, self.lookback_days + 1),
+                )
+                if date_rows.empty:
+                    return pd.DataFrame()
 
-            normalized_dates = [
-                str(item).replace("-", "").replace("/", "")
-                for item in date_rows["日期"].tolist()
-            ]
-            actual_key = normalized_dates[0]
-            placeholders = ",".join("?" for _ in normalized_dates)
-            table_columns = {
-                str(row[1])
-                for row in conn.execute('PRAGMA table_info("daily_prices")')
-            }
-            sign_projection = ", ".join(
-                f'"{name}"' if name in table_columns else f'NULL AS "{name}"'
-                for name in CHANGE_SIGN_COLUMNS
-            )
-            prices = pd.read_sql_query(
-                f"""
-                SELECT 日期, 證券代號, 收盤價, 漲跌價差, 成交股數, {sign_projection}
-                FROM daily_prices
-                WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') IN ({placeholders})
-                """,
-                conn,
-                params=tuple(normalized_dates),
-            )
+                normalized_dates = [
+                    str(item).replace("-", "").replace("/", "")
+                    for item in date_rows["日期"].tolist()
+                ]
+                actual_key = normalized_dates[0]
+                placeholders = ",".join("?" for _ in normalized_dates)
+                table_columns = {
+                    str(row[1])
+                    for row in conn.execute('PRAGMA table_info("daily_prices")')
+                }
+                sign_projection = ", ".join(
+                    f'"{name}"' if name in table_columns else f'NULL AS "{name}"'
+                    for name in CHANGE_SIGN_COLUMNS
+                )
+                prices = pd.read_sql_query(
+                    f"""
+                    SELECT 日期, 證券代號, 收盤價, 漲跌價差, 成交股數, {sign_projection}
+                    FROM daily_prices
+                    WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') IN ({placeholders})
+                    """,
+                    conn,
+                    params=tuple(normalized_dates),
+                )
+        except (sqlite3.Error, pd.errors.DatabaseError) as exc:
+            if was_sql_cancelled():
+                raise BacktestCancelledError("市場廣度 SQL 查詢已取消。") from exc
+            raise
 
+        _raise_if_cancelled(cancel_callback)
         if prices.empty:
             return pd.DataFrame()
 
-        return self._build_breadth_frame(prices, actual_key, target_key)
+        return self._build_breadth_frame(
+            prices,
+            actual_key,
+            target_key,
+            cancel_callback=cancel_callback,
+        )
 
-    def _build_breadth_frame(self, prices: pd.DataFrame, actual_key: str, target_key: str) -> pd.DataFrame:
+    def _build_breadth_frame(
+        self,
+        prices: pd.DataFrame,
+        actual_key: str,
+        target_key: str,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> pd.DataFrame:
+        _raise_if_cancelled(cancel_callback)
         data = prices.copy()
-        data["_date_key"] = data["日期"].map(self._normalize_date_key)
-        data["_close"] = data["收盤價"].map(self._to_decimal)
-        data["_volume"] = data["成交股數"].map(self._to_decimal)
+        data["_date_key"] = _map_series_with_cancellation(
+            data["日期"], self._normalize_date_key, cancel_callback
+        )
+        data["_close"] = _map_series_with_cancellation(
+            data["收盤價"], self._to_decimal, cancel_callback
+        )
+        data["_volume"] = _map_series_with_cancellation(
+            data["成交股數"], self._to_decimal, cancel_callback
+        )
 
         current = data.loc[data["_date_key"] == actual_key].copy()
         current = current.dropna(subset=["證券代號", "_close"])
@@ -389,7 +536,9 @@ class SQLiteDailyPriceMarketBreadthProvider:
         exclusions: list[dict[str, object]] = []
         corporate_action_exclusions = 0
 
-        for _, row in current.iterrows():
+        for index, (_, row) in enumerate(current.iterrows()):
+            if index % 128 == 0:
+                _raise_if_cancelled(cancel_callback)
             close_value = row["_close"]
             change, _ = resolve_signed_change(
                 row.get("漲跌價差"),
@@ -447,12 +596,23 @@ class SQLiteDailyPriceMarketBreadthProvider:
             "exclusions_json": json.dumps(exclusions, ensure_ascii=False),
             "limit_up_count": limit_up,
             "limit_down_count": limit_down,
-            "volume_expansion_bp": self._volume_expansion_bp(current, previous),
-            "new_high_20_count": self._new_extreme_count(data, current, actual_key, 20, "high"),
-            "new_low_20_count": self._new_extreme_count(data, current, actual_key, 20, "low"),
-            "new_high_60_count": self._new_extreme_count(data, current, actual_key, 60, "high"),
-            "new_low_60_count": self._new_extreme_count(data, current, actual_key, 60, "low"),
+            "volume_expansion_bp": self._volume_expansion_bp(
+                current, previous, cancel_callback=cancel_callback
+            ),
+            "new_high_20_count": self._new_extreme_count(
+                data, current, actual_key, 20, "high", cancel_callback=cancel_callback
+            ),
+            "new_low_20_count": self._new_extreme_count(
+                data, current, actual_key, 20, "low", cancel_callback=cancel_callback
+            ),
+            "new_high_60_count": self._new_extreme_count(
+                data, current, actual_key, 60, "high", cancel_callback=cancel_callback
+            ),
+            "new_low_60_count": self._new_extreme_count(
+                data, current, actual_key, 60, "low", cancel_callback=cancel_callback
+            ),
         }
+        _raise_if_cancelled(cancel_callback)
         return pd.DataFrame([row])
 
     @staticmethod
@@ -484,11 +644,26 @@ class SQLiteDailyPriceMarketBreadthProvider:
         return keys[-1] if keys else None
 
     @staticmethod
-    def _volume_expansion_bp(current: pd.DataFrame, previous: pd.DataFrame) -> int | None:
+    def _volume_expansion_bp(
+        current: pd.DataFrame,
+        previous: pd.DataFrame,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> int | None:
         if current.empty or previous.empty or "_volume" not in current.columns or "_volume" not in previous.columns:
             return None
-        current_volume = sum((item for item in current["_volume"] if item is not None), Decimal("0"))
-        previous_volume = sum((item for item in previous["_volume"] if item is not None), Decimal("0"))
+        current_volume = Decimal("0")
+        for index, item in enumerate(current["_volume"]):
+            if index % 256 == 0:
+                _raise_if_cancelled(cancel_callback)
+            if item is not None:
+                current_volume += item
+        previous_volume = Decimal("0")
+        for index, item in enumerate(previous["_volume"]):
+            if index % 256 == 0:
+                _raise_if_cancelled(cancel_callback)
+            if item is not None:
+                previous_volume += item
         if previous_volume <= 0:
             return None
         return int(((current_volume / previous_volume) * Decimal("10000")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
@@ -500,7 +675,10 @@ class SQLiteDailyPriceMarketBreadthProvider:
         actual_key: str,
         window: int,
         direction: str,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> int | None:
+        _raise_if_cancelled(cancel_callback)
         keys = sorted(key for key in data["_date_key"].dropna().unique() if key <= actual_key)
         window_keys = keys[-window:]
         if len(window_keys) < window:
@@ -514,9 +692,11 @@ class SQLiteDailyPriceMarketBreadthProvider:
         # the existing tie-inclusive high/low definition is unchanged.
         extreme_by_stock: dict[object, Decimal] = {}
         is_high = direction == "high"
-        for stock_code, close_value in history[["證券代號", "_close"]].itertuples(
+        for index, (stock_code, close_value) in enumerate(history[["證券代號", "_close"]].itertuples(
             index=False, name=None
-        ):
+        )):
+            if index % 256 == 0:
+                _raise_if_cancelled(cancel_callback)
             existing = extreme_by_stock.get(stock_code)
             if existing is None or (
                 close_value > existing if is_high else close_value < existing
@@ -524,12 +704,15 @@ class SQLiteDailyPriceMarketBreadthProvider:
                 extreme_by_stock[stock_code] = close_value
 
         count = 0
-        for stock_code, current_close in current[["證券代號", "_close"]].itertuples(
+        for index, (stock_code, current_close) in enumerate(current[["證券代號", "_close"]].itertuples(
             index=False, name=None
-        ):
+        )):
+            if index % 256 == 0:
+                _raise_if_cancelled(cancel_callback)
             if current_close is None:
                 continue
             extreme = extreme_by_stock.get(stock_code)
             if extreme is not None and current_close == extreme:
                 count += 1
+        _raise_if_cancelled(cancel_callback)
         return count

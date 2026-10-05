@@ -15,6 +15,28 @@ from app_module.exceptions import BacktestCancelledError
 from app_module.price_change_direction import CHANGE_SIGN_COLUMNS
 
 
+def _install_sqlite_cancel_handler(
+    connection: sqlite3.Connection,
+    cancel_callback: Callable[[], bool] | None,
+    *,
+    check_interval: int = 1000,
+) -> Callable[[], bool]:
+    """安裝只屬於此 SQLite 連線的合作式取消檢查。"""
+
+    sql_cancelled = False
+
+    def cancel_sql() -> int:
+        nonlocal sql_cancelled
+        if cancel_callback is not None and cancel_callback():
+            sql_cancelled = True
+            return 1
+        return 0
+
+    if cancel_callback is not None:
+        connection.set_progress_handler(cancel_sql, max(1, int(check_interval)))
+    return lambda: sql_cancelled
+
+
 class DecisionMarketFrameLoader:
     """在單次 snapshot 內重用 daily_prices，下一次 snapshot 必須 reset。"""
 
@@ -176,22 +198,16 @@ class DecisionMarketFrameLoader:
 
         target_key = as_of_date.strftime("%Y%m%d")
         db_uri = f"{self.db_path.resolve().as_uri()}?mode=ro"
-        sql_cancelled = False
-
-        def cancel_sql() -> int:
-            nonlocal sql_cancelled
-            if cancel_callback is not None and cancel_callback():
-                sql_cancelled = True
-                return 1
-            return 0
+        was_sql_cancelled = lambda: False
 
         try:
             with sqlite3.connect(db_uri, uri=True) as conn:
                 conn.execute("PRAGMA query_only=ON")
                 if cancel_callback is not None:
-                    conn.set_progress_handler(
-                        cancel_sql,
-                        self.SQLITE_CANCEL_CHECK_INTERVAL,
+                    was_sql_cancelled = _install_sqlite_cancel_handler(
+                        conn,
+                        cancel_callback,
+                        check_interval=self.SQLITE_CANCEL_CHECK_INTERVAL,
                     )
                 table_columns = {
                     str(row[1])
@@ -233,11 +249,11 @@ class DecisionMarketFrameLoader:
                 self._raise_if_cancelled(cancel_callback)
                 return frame
         except sqlite3.Error as exc:
-            if sql_cancelled:
+            if was_sql_cancelled():
                 raise BacktestCancelledError("決策台市場查詢已取消。") from exc
             return pd.DataFrame(columns=self.COLUMNS)
         except pd.errors.DatabaseError as exc:
-            if sql_cancelled:
+            if was_sql_cancelled():
                 raise BacktestCancelledError("決策台市場查詢已取消。") from exc
             raise
 

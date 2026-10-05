@@ -1,7 +1,15 @@
 from datetime import date, timedelta
+import sqlite3
+
 import pandas as pd
+import pytest
 from app_module.decision_desk_dtos import DecisionDeskQuality
-from app_module.relative_strength_liquidity_service import RelativeStrengthLiquidityService
+from app_module.exceptions import BacktestCancelledError
+from app_module.relative_strength_liquidity_service import (
+    RelativeStrengthLiquidityService,
+    SQLiteDailyPriceRelativeStrengthLiquidityProvider,
+    _map_series_with_cancellation,
+)
 
 
 DATE_COL = "\u65e5\u671f"
@@ -61,7 +69,7 @@ def test_relative_strength_liquidity_service_ranks_strength_and_low_liquidity():
         min_avg_turnover=20_000_000, # 20M
     )
 
-    snapshot = service.build_snapshot(target_date)
+    snapshot = service.build_snapshot(target_date, cancel_callback=lambda: False)
 
     assert snapshot.quality == DecisionDeskQuality.OBSERVED
     assert snapshot.top_strength_codes == ("2330", "2454")
@@ -74,6 +82,87 @@ def test_relative_strength_liquidity_service_ranks_strength_and_low_liquidity():
     # strength_5d_bp: 2330: (121 - 116) / 116 * 10000 = 431 bp
     assert ranking[0]["strength_20d_bp"] > 0
     assert ranking[0]["strength_5d_bp"] > 0
+
+
+def test_relative_strength_cancellation_aware_map_preserves_categorical_result():
+    values = pd.Series(
+        pd.Categorical(["strong", "weak", "strong"], categories=["strong", "weak"]),
+        index=[4, 8, 12],
+        name="signal",
+    )
+    mapper = lambda value: {"strong": "買進", "weak": "觀望"}[value]
+
+    expected = values.map(mapper)
+    actual = _map_series_with_cancellation(values, mapper, lambda: False)
+
+    assert actual.equals(expected)
+    assert actual.dtype == expected.dtype
+    assert actual.index.equals(values.index)
+    assert actual.name == values.name
+
+
+def test_sqlite_relative_strength_cancellation_during_select_allows_same_provider_retry(
+    tmp_path, monkeypatch
+):
+    db_path = tmp_path / "relative-cancel.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            f'CREATE TABLE daily_prices ("{DATE_COL}" TEXT, "{CODE_COL}" TEXT, "{CLOSE_COL}" TEXT, "{VOLUME_COL}" TEXT)'
+        )
+        connection.executemany(
+            f'INSERT INTO daily_prices VALUES (?, ?, ?, ?)',
+            [
+                ("2026-06-12", "2330", "100", "1000"),
+                ("2026-06-15", "2330", "101", "1100"),
+            ],
+        )
+
+    provider = SQLiteDailyPriceRelativeStrengthLiquidityProvider(db_path, lookback_days=3)
+    provider.SQLITE_CANCEL_CHECK_INTERVAL = 1
+    cancel_state = {"requested": False}
+    original_read_sql_query = pd.read_sql_query
+
+    def trace_select(query, connection, *args, **kwargs):
+        def observe(statement: str) -> None:
+            if "SELECT DISTINCT" in statement.upper() and "DAILY_PRICES" in statement.upper():
+                cancel_state["requested"] = True
+
+        connection.set_trace_callback(observe)
+        return original_read_sql_query(query, connection, *args, **kwargs)
+
+    monkeypatch.setattr(pd, "read_sql_query", trace_select)
+    with pytest.raises(BacktestCancelledError):
+        provider.fetch(date(2026, 6, 15), cancel_callback=lambda: cancel_state["requested"])
+
+    assert cancel_state["requested"] is True
+    monkeypatch.setattr(pd, "read_sql_query", original_read_sql_query)
+    frame = provider.fetch(date(2026, 6, 15))
+    assert not frame.empty
+
+
+def test_sqlite_relative_strength_does_not_mask_database_error_as_cancellation(
+    tmp_path, monkeypatch
+):
+    db_path = tmp_path / "relative-db-error.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            f'CREATE TABLE daily_prices ("{DATE_COL}" TEXT, "{CODE_COL}" TEXT, "{CLOSE_COL}" TEXT, "{VOLUME_COL}" TEXT)'
+        )
+        connection.execute(
+            'INSERT INTO daily_prices VALUES (?, ?, ?, ?)',
+            ("2026-06-15", "2330", "101", "1000"),
+        )
+
+    requested = {"value": False}
+
+    def unrelated_database_error(*_args, **_kwargs):
+        requested["value"] = True
+        raise pd.errors.DatabaseError("unrelated query failure")
+
+    monkeypatch.setattr(pd, "read_sql_query", unrelated_database_error)
+    provider = SQLiteDailyPriceRelativeStrengthLiquidityProvider(db_path)
+    with pytest.raises(pd.errors.DatabaseError, match="unrelated query failure"):
+        provider.fetch(date(2026, 6, 15), cancel_callback=lambda: requested["value"])
 
 
 def test_relative_strength_liquidity_service_keeps_observed_for_small_partial_skips():

@@ -1,21 +1,81 @@
 from __future__ import annotations
 
+import inspect
 import sqlite3
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 import pandas as pd
 
 from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import DecisionDeskQuality, RelativeStrengthLiquiditySummary
-from app_module.decision_market_frame import DecisionMarketFrameLoader
+from app_module.decision_market_frame import (
+    DecisionMarketFrameLoader,
+    _install_sqlite_cancel_handler,
+)
+from app_module.exceptions import BacktestCancelledError
 from app_module.dtos.market_loop_dtos import RelativeStrengthLiquidityDTO
 
 
 class RelativeStrengthLiquidityProvider(Protocol):
     def fetch(self, as_of_date: date) -> pd.DataFrame: ...
+
+
+def _raise_if_cancelled(cancel_callback: Callable[[], bool] | None) -> None:
+    if cancel_callback is not None and cancel_callback():
+        raise BacktestCancelledError("相對強弱與流動性載入已取消。")
+
+
+def _call_with_optional_cancel_callback(
+    method: Callable[..., Any],
+    *args: Any,
+    cancel_callback: Callable[[], bool] | None,
+) -> Any:
+    if cancel_callback is None:
+        return method(*args)
+
+    supports_callback = False
+    try:
+        parameters = inspect.signature(method).parameters.values()
+        supports_callback = any(
+            parameter.name == "cancel_callback"
+            and parameter.kind is not inspect.Parameter.POSITIONAL_ONLY
+            for parameter in parameters
+        ) or any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters)
+    except (TypeError, ValueError):
+        pass
+
+    _raise_if_cancelled(cancel_callback)
+    if supports_callback:
+        return method(*args, cancel_callback=cancel_callback)
+    result = method(*args)
+    _raise_if_cancelled(cancel_callback)
+    return result
+
+
+def _map_series_with_cancellation(
+    values: pd.Series,
+    mapper: Callable[[Any], Any],
+    cancel_callback: Callable[[], bool] | None,
+) -> pd.Series:
+    if cancel_callback is None:
+        return values.map(mapper)
+
+    _raise_if_cancelled(cancel_callback)
+    mapped_count = 0
+
+    def map_with_check(value: Any) -> Any:
+        nonlocal mapped_count
+        if mapped_count % 256 == 0:
+            _raise_if_cancelled(cancel_callback)
+        mapped_count += 1
+        return mapper(value)
+
+    mapped = values.map(map_with_check)
+    _raise_if_cancelled(cancel_callback)
+    return mapped
 
 
 class RelativeStrengthLiquidityService:
@@ -36,9 +96,21 @@ class RelativeStrengthLiquidityService:
         self.min_avg_turnover = Decimal(int(min_avg_turnover))
         self.max_skipped_symbol_ratio_bp = min(10_000, max(0, int(max_skipped_symbol_ratio_bp)))
 
-    def build_snapshot(self, as_of_date: date) -> RelativeStrengthLiquiditySummary:
+    def build_snapshot(
+        self,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> RelativeStrengthLiquiditySummary:
+        _raise_if_cancelled(cancel_callback)
         try:
-            frame = self.provider.fetch(as_of_date)
+            frame = _call_with_optional_cancel_callback(
+                self.provider.fetch,
+                as_of_date,
+                cancel_callback=cancel_callback,
+            )
+        except BacktestCancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             return RelativeStrengthLiquiditySummary(
                 as_of_date=as_of_date,
@@ -46,6 +118,7 @@ class RelativeStrengthLiquidityService:
                 warnings=(f"relative_strength_liquidity_provider_error:{exc}",),
             )
 
+        _raise_if_cancelled(cancel_callback)
         if frame is None or frame.empty:
             return RelativeStrengthLiquiditySummary(
                 as_of_date=as_of_date,
@@ -53,16 +126,33 @@ class RelativeStrengthLiquidityService:
                 warnings=("relative_strength_liquidity_missing",),
             )
 
-        result = self._build_from_frame(frame, as_of_date)
+        result = self._build_from_frame(
+            frame,
+            as_of_date,
+            cancel_callback=cancel_callback,
+        )
+        _raise_if_cancelled(cancel_callback)
         return result
 
-    def build_snapshot_dto(self, as_of_date: date) -> RelativeStrengthLiquidityDTO:
+    def build_snapshot_dto(
+        self,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> RelativeStrengthLiquidityDTO:
         """建立含決策日與有效日的相對強弱 DTO。"""
 
-        summary = self.build_snapshot(as_of_date)
+        summary = self.build_snapshot(as_of_date, cancel_callback=cancel_callback)
         return RelativeStrengthLiquidityDTO.from_summary(summary, decision_date=as_of_date)
 
-    def _build_from_frame(self, frame: pd.DataFrame, as_of_date: date) -> RelativeStrengthLiquiditySummary:
+    def _build_from_frame(
+        self,
+        frame: pd.DataFrame,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> RelativeStrengthLiquiditySummary:
+        _raise_if_cancelled(cancel_callback)
         required = {"日期", "證券代號", "收盤價", "成交股數"}
         if not required.issubset(set(frame.columns)):
             return RelativeStrengthLiquiditySummary(
@@ -72,10 +162,18 @@ class RelativeStrengthLiquidityService:
             )
 
         data = frame.copy()
-        data["_date"] = data["日期"].map(self._parse_date)
-        data["_close"] = data["收盤價"].map(self._to_decimal)
-        data["_volume"] = data["成交股數"].map(self._to_decimal)
-        data["_code"] = data["證券代號"].map(lambda value: str(value).strip())
+        data["_date"] = _map_series_with_cancellation(
+            data["日期"], self._parse_date, cancel_callback
+        )
+        data["_close"] = _map_series_with_cancellation(
+            data["收盤價"], self._to_decimal, cancel_callback
+        )
+        data["_volume"] = _map_series_with_cancellation(
+            data["成交股數"], self._to_decimal, cancel_callback
+        )
+        data["_code"] = _map_series_with_cancellation(
+            data["證券代號"], lambda value: str(value).strip(), cancel_callback
+        )
         data = data.dropna(subset=["_date", "_close", "_volume", "_code"])
 
         if data.empty:
@@ -104,7 +202,11 @@ class RelativeStrengthLiquidityService:
         ranking: list[dict[str, Any]] = []
         skipped = 0
         exclusions: list[dict[str, Any]] = []
-        for stock_code, stock_frame in data.groupby("_code", sort=False):
+        for stock_index, (stock_code, stock_frame) in enumerate(
+            data.groupby("_code", sort=False)
+        ):
+            if stock_index % 64 == 0:
+                _raise_if_cancelled(cancel_callback)
             item = self._rank_stock(str(stock_code), stock_frame, effective_date)
             if item is None:
                 skipped += 1
@@ -118,6 +220,8 @@ class RelativeStrengthLiquidityService:
                     "effective_date": effective_date.isoformat(), "source": "sqlite_daily_prices"})
                 continue
             ranking.append(item)
+
+        _raise_if_cancelled(cancel_callback)
 
         if not ranking:
             return RelativeStrengthLiquiditySummary(
@@ -259,6 +363,8 @@ class RelativeStrengthLiquidityService:
 class SQLiteDailyPriceRelativeStrengthLiquidityProvider:
     """Read-only provider that supplies price and volume history from SQLite daily_prices."""
 
+    SQLITE_CANCEL_CHECK_INTERVAL = 1000
+
     def __init__(
         self,
         db_path: str | Path,
@@ -270,16 +376,34 @@ class SQLiteDailyPriceRelativeStrengthLiquidityProvider:
         self.lookback_days = lookback_days
         self.market_frame_loader = market_frame_loader
 
-    def fetch(self, as_of_date: date) -> pd.DataFrame:
+    def fetch(
+        self,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> pd.DataFrame:
+        _raise_if_cancelled(cancel_callback)
         if not self.db_path.exists():
             return pd.DataFrame()
         if self.market_frame_loader is not None:
-            return self.market_frame_loader.load(as_of_date, self.lookback_days)
+            return _call_with_optional_cancel_callback(
+                self.market_frame_loader.load,
+                as_of_date,
+                self.lookback_days,
+                cancel_callback=cancel_callback,
+            )
         target_key = as_of_date.strftime("%Y%m%d")
+        was_sql_cancelled = lambda: False
         try:
             db_uri = f"{self.db_path.resolve().as_uri()}?mode=ro"
             with sqlite3.connect(db_uri, uri=True) as conn:
                 conn.execute("PRAGMA query_only=ON")
+                if cancel_callback is not None:
+                    was_sql_cancelled = _install_sqlite_cancel_handler(
+                        conn,
+                        cancel_callback,
+                        check_interval=self.SQLITE_CANCEL_CHECK_INTERVAL,
+                    )
                 date_rows = pd.read_sql_query(
                     """
                     SELECT DISTINCT 日期
@@ -292,13 +416,14 @@ class SQLiteDailyPriceRelativeStrengthLiquidityProvider:
                     params=(target_key, self.lookback_days),
                 )
                 if date_rows.empty:
+                    _raise_if_cancelled(cancel_callback)
                     return pd.DataFrame()
                 normalized_dates = [
                     str(item).replace("-", "").replace("/", "")
                     for item in date_rows["日期"].tolist()
                 ]
                 placeholders = ",".join("?" for _ in normalized_dates)
-                return pd.read_sql_query(
+                frame = pd.read_sql_query(
                     f"""
                     SELECT 日期, 證券代號, 收盤價, 成交股數
                     FROM daily_prices
@@ -308,5 +433,13 @@ class SQLiteDailyPriceRelativeStrengthLiquidityProvider:
                     conn,
                     params=tuple(normalized_dates),
                 )
-        except sqlite3.OperationalError:
+                _raise_if_cancelled(cancel_callback)
+                return frame
+        except sqlite3.OperationalError as exc:
+            if was_sql_cancelled():
+                raise BacktestCancelledError("相對強弱與流動性 SQL 查詢已取消。") from exc
             return pd.DataFrame()
+        except (sqlite3.Error, pd.errors.DatabaseError) as exc:
+            if was_sql_cancelled():
+                raise BacktestCancelledError("相對強弱與流動性 SQL 查詢已取消。") from exc
+            raise

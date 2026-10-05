@@ -1,5 +1,16 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 階段1早期SQL取消小包
+
+基於2acdbe2c，四檔backend補Builder→Breadth／Relative service→provider→shared loader取消callback，獨立SQLite分支亦用連線專屬progress handler；SQL確實中止才轉取消例外，真實DB故障不遮蔽，舊provider／Series.map dtype／Decimal／cutoff／排名不改。47 focused、50 UI/Shutdown整合、mypy766及7檔compile通過。Native早期SELECT中關閉：worker仍running時視窗保留，32.77ms至native-finished、131.31ms至hidden、沒有完成snapshot／殘留worker；取消→同來源按鈕重試21.141s正常產生真實snapshot。3個Native場景6個launcher／Python PID全退出，input guard／來源rowset SHA不變。
+
+最終單跑loaded30首屏9.350s、p95 54.173ms、peakRSS618,389,504 bytes、全程13.421s退出；這是spot check，不替換舊5跑median。五跑凍結gate逐項核對：首屏-14.84%、四筆純啟動RSS-18.19%、loaded30+close峰值-57.00%（含提前取消）、p95 49.65<300ms皆通過；Industry42.56%通過20%，Backtest18.62%未達20%（原凍結是兩段各自20%，已更正文案，不放寬或微調湊數）。上包13.349s是全程序時間而非close latency，PID退出證實不是只藏UI。完整normal retry RSS1,456,594,944 bytes與提前取消分列。
+
+詳見[取消與gate收據](../06_qa/PRODUCT_STAGE1_SQL_CANCELLATION_20261005.md)與output/qa/product_stage01_20261005/stage1_sql_verified.json。main／view／原初始化優化／profiler的未變blob已核對，舊數字保持其版本身份。沒有重跑五baseline／訓練／producer／大DBcopy／永久清理／push；未知paper檔與C:/ta_iso_1005映射未動。停止交父層。
+
+下一原plan包是stage1／UX02純呈現共用狀態字典，先接Research Console／Backtest，沿用上下文列與分層元件，保留未知碼、狀態維度及結果身份；本包只盤點，未實作。UX16來源能力、UX19容量／writer依賴與自然ML資格分開，不拿自然成熟阻擋UX17／UX02工程。不宣告整個stage1／UX17或全部gate完成，也不盲跳UX18／新ML。
+
+
 ## 2026-10-05 階段1限定效能修正包
 
 兩位指定Luna Max完成7個產品檔及6個test檔修正，root整合；profiler及main未改。日期解析單次memoize、回測／組合首次圖表lazy與可見錯誤重試、同輪盤勢整批近期價格及合作取消／native-finished關閉已驗。同條件5跑首屏10.148→8.642s（14.84%）、Industry3.206→1.842s（42.56%）、Backtest1.098→0.893s（18.62%），完整rowset SHA不變；四筆只啟動RSS約0.70→0.57GB。Loaded30關閉13.349s且worker0；完整盤勢正常完成另以Native探針驗，peakRSS1.452GB不與提前取消0.675GB混報。30列高亮p95 49.65ms不代表全互動速度。

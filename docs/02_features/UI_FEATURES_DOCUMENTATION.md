@@ -473,6 +473,8 @@ Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下
 
 ## 更新記錄
 
+- 2026-10-05：內建Breadth／Relative Strength的共用與獨立SQLite讀取接入合作取消，視窗等native worker結束才退出；Native查詢中關閉及取消→正常重試通過，取消不冒充完成。四檔backend改動，UI main／view未改；原速度目標與Backtest未達項保留，見 [SQL取消收據](../06_qa/PRODUCT_STAGE1_SQL_CANCELLATION_20261005.md)。
+
 - 2026-10-05：回測四張圖與推薦組合兩張圖延至首次結果頁使用建立；待顯示資料採快照且以最新結果取代，切回重用 widget。單張繪圖失敗保留資料、顯示提示並可再次進頁重試。盤勢關閉等待 native worker 結束；取消粒度與 Native 首次使用／效能驗證見 [階段1限定收據](../06_qa/PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)，操作與排錯見 Manual。
 
 - 2026-10-05：個股研究 ML 稽核按鈕依狀態切換展開／收合；current／saved／未知 scope 標題與日期分開，不把保存來源標成當前。歷史回顧呈現已讀回的所選日期；ML 品質降級保留具體原因，未提供時明示。操作與限制見 Manual；本輪 offscreen 與 consumer 測試不替代待驗 Native 流程。

@@ -904,3 +904,31 @@ def test_market_regime_source_data_date_survives_desk_lineage() -> None:
         snapshot.source_lineage["market_regime"]["metadata"]["source_data_date"]
         == source_data_date.isoformat()
     )
+
+
+def test_decision_desk_forwards_cancel_callback_to_market_services() -> None:
+    as_of_date = date(2026, 6, 15)
+    callback = lambda: False
+
+    class CallbackBreadthService:
+        def build_snapshot(self, received_date: date, *, cancel_callback=None):
+            assert received_date == as_of_date
+            assert cancel_callback is callback
+            raise BacktestCancelledError("breadth cancelled")
+
+    class CallbackRelativeStrengthService:
+        def build_snapshot(self, received_date: date, *, cancel_callback=None):
+            assert received_date == as_of_date
+            assert cancel_callback is callback
+            raise BacktestCancelledError("relative strength cancelled")
+
+    builder = DecisionDeskSnapshotBuilder(
+        AllObservedDecisionDeskProvider(),
+        market_breadth_service=CallbackBreadthService(),
+        relative_strength_liquidity_service=CallbackRelativeStrengthService(),
+    )
+
+    with pytest.raises(BacktestCancelledError, match="breadth cancelled"):
+        builder._build_market_breadth(as_of_date, cancel_callback=callback)
+    with pytest.raises(BacktestCancelledError, match="relative strength cancelled"):
+        builder._build_relative_strength_liquidity(as_of_date, cancel_callback=callback)

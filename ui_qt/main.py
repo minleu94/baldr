@@ -683,7 +683,9 @@ class MainWindow(QMainWindow):
             def on_market_tab_changed(index):
                 """當市場觀察 tab 被點擊時，檢查是否需要載入數據"""
                 current_widget = market_tabs.widget(index)
-                if current_widget is strong_stocks:
+                if current_widget is market_regime:
+                    market_regime.load_data_if_needed()
+                elif current_widget is strong_stocks:
                     strong_stocks.load_data_if_needed()
                 elif current_widget is weak_stocks:
                     weak_stocks.load_data_if_needed()
@@ -1197,6 +1199,17 @@ class MainWindow(QMainWindow):
             self._select_main_workspace("recommendation")
             recommendation.result_source_tabs.setCurrentWidget(daily)
 
+        # 原大盤／強弱頁保留自己的全市場來源；研究模式只接同一個
+        # verified source view，不在切頁時呼叫 producer 或另建母體。
+        shared_consumers = []
+        for index in range(market_tabs.count()):
+            consumer = market_tabs.widget(index)
+            bind_source = getattr(consumer, "set_shared_research_source", None)
+            if callable(bind_source):
+                bind_source(daily)
+                shared_consumers.append(consumer)
+        self.shared_market_consumers = tuple(shared_consumers)
+
         cohort_view = DailyMarketCohortView(daily, open_list, parent=self)
         self.daily_market_cohort_view = cohort_view
         market_tabs.addTab(cohort_view, "研究母體盤勢")
@@ -1599,6 +1612,14 @@ class MainWindow(QMainWindow):
                 begin_shutdown()
             except Exception as exc:  # pragma: no cover - defensive UI path
                 self._record_shutdown_message(f"{attribute} 關閉 gate 設定失敗：{exc}")
+
+        for view in getattr(self, "shared_market_consumers", ()):
+            begin_shutdown = getattr(view, "begin_shutdown", None)
+            if callable(begin_shutdown):
+                try:
+                    begin_shutdown()
+                except Exception as exc:  # pragma: no cover - defensive UI path
+                    self._record_shutdown_message(f"研究盤勢 consumer 關閉 gate 設定失敗：{exc}")
 
     def _set_shutdown_ui(self) -> None:
         """鎖住內容操作但保留事件迴圈與狀態列可更新。"""

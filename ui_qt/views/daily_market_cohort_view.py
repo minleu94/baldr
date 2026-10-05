@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
+
 from ui_qt.research_universe_presentation import research_universe_text
 
 from typing import Callable
 
 from PySide6.QtWidgets import (
-    QGroupBox, QHBoxLayout, QLabel, QPushButton, QTableWidget,
+    QDialog, QGroupBox, QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QTableWidget, QTabWidget,
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
@@ -40,6 +42,10 @@ class DailyMarketCohortView(QWidget):
         self.projection: object | None = None
         self._snapshot: object | None = None
         self.original_ranking: object | None = None
+        self._capability_report: object | None = None
+        self._capability_dialog: QDialog | None = None
+        self._capability_text: QPlainTextEdit | None = None
+        self._capability_table: QTableWidget | None = None
         layout = QVBoxLayout(self)
         title_layout = QHBoxLayout()
         title = QLabel("研究母體盤勢")
@@ -80,6 +86,10 @@ class DailyMarketCohortView(QWidget):
         self.ranking_label.setWordWrap(True)
         layout.addWidget(self.ranking_label)
         controls = QHBoxLayout()
+        self.capability_button = QPushButton("查看已開能力與來源")
+        self.capability_button.setEnabled(False)
+        self.capability_button.clicked.connect(self._show_capability_audit)
+        controls.addWidget(self.capability_button)
         self.reload_button = QPushButton("重讀同一研究來源")
         self.reload_button.clicked.connect(source_view.reload_published_snapshot)
         controls.addWidget(self.reload_button)
@@ -115,11 +125,21 @@ class DailyMarketCohortView(QWidget):
                 snapshot, rows,
                 expected_snapshot_root=getattr(service, "snapshot_root", None),
             )
+            from app_module.daily_market_research_capabilities import (
+                project_daily_market_research_capabilities,
+            )
+            capability_report = project_daily_market_research_capabilities(
+                snapshot, rows,
+                expected_snapshot_root=getattr(service, "snapshot_root", None),
+            )
         except Exception as exc:
             self.clear_snapshot()
             self.status_label.setText(f"研究母體未知；共用投影拒絕：{type(exc).__name__}: {exc}")
             return
         self.projection = projection
+        self._capability_report = capability_report
+        self.capability_button.setEnabled(True)
+        self._refresh_capability_audit()
         self.scope_label.setText(
             f"母體 {projection.cohort_id}：{len(projection.declared_stock_codes)} 檔"
             f"（{', '.join(projection.declared_stock_codes)}）；非全市場，篩選不改變此分母。"
@@ -250,7 +270,88 @@ class DailyMarketCohortView(QWidget):
         self.projection = None
         self._snapshot = None
         self.original_ranking = None
+        self._capability_report = None
+        self.capability_button.setEnabled(False)
+        self._refresh_capability_audit()
         self.methods_table.setRowCount(0)
         self.members_table.setRowCount(0)
+        self.scope_label.setText(
+            "研究母體未知；目前沒有可用的已驗證快照，不能沿舊母體判定完整。"
+        )
         self.identity_label.setText("研究母體未知；目前沒有可用的已驗證快照。")
         self.status_label.setText(self.source_view.status_label.text())
+
+    def _show_capability_audit(self) -> None:
+        """明示查看同一 immutable 來源的已開能力；不重算或開新方法。"""
+
+        if self._capability_report is None:
+            return
+        if self._capability_dialog is None:
+            dialog = QDialog(self)
+            dialog.setWindowTitle("已開能力與來源核對")
+            dialog.resize(900, 650)
+            layout = QVBoxLayout(dialog)
+            label = QLabel(
+                "僅 close／MA20／MA60 與兩條固定觀察；完整相對具名 declared cohort。\n"
+                "可得性及未記錄成本維持未知；這是當次保存來源的核對，不授予全市場或歷史 PIT。"
+            )
+            label.setWordWrap(True)
+            layout.addWidget(label)
+            tabs = QTabWidget(dialog)
+            self._capability_table = QTableWidget(0, 7, tabs)
+            self._capability_table.setHorizontalHeaderLabels(
+                ["已開項目", "字段／單位", "暖機", "缺值", "可得性", "版本", "成本／來源"]
+            )
+            self._capability_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            apply_financial_table_style(self._capability_table)
+            tabs.addTab(self._capability_table, "已開能力矩陣")
+            self._capability_text = QPlainTextEdit(dialog)
+            self._capability_text.setReadOnly(True)
+            tabs.addTab(self._capability_text, "逐股與完整來源明細")
+            layout.addWidget(tabs)
+            self._capability_dialog = dialog
+        self._refresh_capability_audit()
+        self._capability_dialog.show()
+
+    def _refresh_capability_audit(self) -> None:
+        if self._capability_text is None:
+            return
+        report = self._capability_report
+        to_dict = getattr(report, "to_dict", None)
+        if not callable(to_dict):
+            self._capability_text.setPlainText("來源已失效；請重新核對同一研究來源。")
+            if self._capability_table is not None:
+                self._capability_table.setRowCount(0)
+            return
+        payload = to_dict()
+        self._capability_text.setPlainText(json.dumps(payload, ensure_ascii=False, indent=2))
+        table = self._capability_table
+        if table is None:
+            return
+        catalog = payload.get("catalog", {})
+        entries = tuple(catalog.get("features", ())) + tuple(catalog.get("methods", ()))
+        table.setRowCount(len(entries))
+        for index, entry in enumerate(entries):
+            field = entry.get("field", "未知")
+            fields = ", ".join(field) if isinstance(field, list) else str(field)
+            warmup = entry.get("warmup", {})
+            count = warmup.get("required_observation_count")
+            warmup_text = (
+                "不需暖機" if warmup.get("state") == "not_required"
+                else f"{count} 筆；依保存前綴" if count is not None
+                else "沿輸入欄位暖機"
+            )
+            source = entry.get("source", {})
+            source_text = str(source.get("source_table") or ", ".join(source.get("input_fields", ())) or "詳見來源明細")
+            values = (
+                str(entry.get("key", "未知")), f"{fields}\n{entry.get('unit', '未知')}",
+                warmup_text, "未知；不補值", "官方時點未知", str(entry.get("version", "未知")),
+                f"量測成本未知\n{source_text}",
+            )
+            detail = json.dumps(entry, ensure_ascii=False, indent=2)
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setToolTip(detail)
+                table.setItem(index, column, item)
+        table.resizeColumnsToContents()
+        table.resizeRowsToContents()

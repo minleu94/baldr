@@ -618,3 +618,6 @@ python ui_qt/main.py
 完整操作與排錯見 APPLICATION_MANUAL 的歷史索引小節；[詳細驗證、來源選項與F1–F4凍結清單](docs/06_qa/UX09_HISTORY_INDEX_AND_RECOVERY_20261005.md)。
 
 程式入口：`app_module/research_membership_history_index.py`、`research_membership_history_view.py`；CLI：`scripts/manage_membership_history_index.py`；測試：`test_research_membership_history_index.py`、`test_ux09_history_recovery_consumers.py`、`test_ux09_history_browse_view.py`、`test_membership_history_cli.py`。
+
+
+- 2026-10-05：[F2／F3 原市場共享來源及已開能力矩陣](docs/06_qa/F2_F3_SHARED_CONSUMERS_AND_CAPABILITIES_20261005.md)，A／A 限定完成；F1／F4 與新 Native／真人另列。

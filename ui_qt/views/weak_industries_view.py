@@ -75,6 +75,12 @@ class WeakIndustriesView(QWidget):
         info_btn = InfoButton("weak_industries", self)
         title_layout.addWidget(info_btn)
         main_layout.addLayout(title_layout)
+        self.source_scope_label = QLabel(
+            "本頁母體沿既有全產業／映射來源，非具名股票研究 cohort；"
+            "資料日／來源／版本依本頁已核對結果，缺少母體成分身份時比較性未知。"
+        )
+        self.source_scope_label.setWordWrap(True)
+        main_layout.addWidget(self.source_scope_label)
         
         # 控制欄
         controls_widget = QWidget()

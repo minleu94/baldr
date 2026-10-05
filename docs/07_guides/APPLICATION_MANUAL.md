@@ -4555,3 +4555,17 @@ CLI（只管理派生索引，沒有 producer）：
 資源限制與量測、故障點及有限版本回滾見 [UX09 長歷史收據](../06_qa/UX09_HISTORY_INDEX_AND_RECOVERY_20261005.md)。保留所有generation的儲存會累積，按每次實體 index／staging與保留版本規劃容量；合成長歷史只驗工程，不是自然20日增長實證，永久刪除仍須逐次明確授權。
 
 索引每個 generation 上限 64 MiB；每頁以 1 MiB chunk 重核整個 index SHA，manifest／artifact 頁讀合計上限 32 MiB；最多 32 refs（當期 pin 驗證可能另讀 1 manifest），browse 輸出上限 32 MiB。這些是程式硬預算，不能把預算拒絕改稱自然資料未成熟。年度交易日快取改為最多 4096 個目錄 entries、單年度 32 MiB 累積檔案預算，逐份驗證只保留最新有效版本；臨時休市 overlay 仍最多 32 份，超限回報未知，不擅自猜交易日。
+
+## 2026-10-05 原盤勢／強弱頁共享研究來源與已開能力核對
+
+原「大盤指數」「強勢個股」「弱勢個股」保留原全市場來源。強弱頁選「研究快照母體」讀每日研究名單已接受的 immutable 快照；大盤在指數面板併列獨立具名研究摘要。母體、決策日、方法契約及manifest/hash在共享部分相同，完整只相對 declared cohort。全市場／產業頁的既有統計依自己的來源、資料日與母體判讀，沒有共同成分身份時比較性未知，不能用三股研究母體代表全市場。
+
+共享強／弱個股依「本日／本周」讀原publisher的四種獨立period/direction模式，全eligible保存列、原StockScreener完整標籤與每股實際比較窗；不重新計分，不反推未保存numeric score，也不把Top/Bottom當一般前幾％或勝率。原排名缺件／wrong source回報原因，不能當榜外；母體排除與原引擎未納入排名分別列出，未保存淘汰理由保持unknown。切頁、切模式、返回只讀既存來源，不觸發producer。shared mode的非版本化收藏不能取代既有同來源研究名單／個股版本化收藏流程。
+
+歷史或研究來源變更、來源清除與模式切換，使先前cache／background回呼失效；重新核對strict snapshot與rank父source。讀取採有界背景工作，取消在安全點完成、過期回應不得改當期顯示；關閉時freeze pending並合作取消。不借來源故障偷偷換latest／全市場來源，也不自動capture或重建。
+
+「研究母體盤勢」新增「查看已開能力與來源」明示audit，固定同一次核驗來源。只登記close／MA20／MA60與close_above_ma20／close_above_ma60的field、unit、warmup、missing、availability、version、cost與source，並保留逐股值／狀態／理由。MA暖機沿保存contract／觀測前綴；官方availability、未記錄時點及量測成本保持未知，不能猜秒數／交易成本。未開方法不在字典內，也不以索引、當期保存或shared接線授historical PIT／自然成熟資格。
+
+能力audit是可讀的detached保存來源資料；清除來源後失效，既有收藏schema與原method/snapshothash不改。正式全市場名冊(B)、新TopN／更改百分位版本、source/capacity owner子責任不在本包；部署與整條跨頁整合F4另驗。
+
+操作步驟：先在每日研究名單明示讀來源，再於強弱市場頁選「研究快照母體」及本日／本周；大盤頁查看併列的研究摘要，指數檢測仍為明示獨立操作。強弱頁以「載入數據／刷新」重核既存 pin；切來源或模式會合作取消前次讀取，等安全完成後啟新讀取。研究母體頁以「重讀同一研究來源」明示讀回。錯源／缺件依狀態原因核對原 manifest，不能自動採集補缺。能力入口先看五項矩陣（可水平捲動），再切逐股完整明細或查看 tooltip；來源清除後重新明示讀取。詳細證據見 [F2／F3 QA](../06_qa/F2_F3_SHARED_CONSUMERS_AND_CAPABILITIES_20261005.md)。

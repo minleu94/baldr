@@ -17,6 +17,11 @@ from app_module.dtos import RegimeResultDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import create_scroll_area
+from ui_qt.shared_market_research_consumer import (
+    SharedMarketResearchConsumer,
+    SharedMarketResearchRead,
+    shared_market_research_summary,
+)
 
 
 # ============================================================================
@@ -61,6 +66,16 @@ class MarketRegimeView(QWidget):
         self.regime_service = regime_service
         
         self._setup_ui()
+        self.shared_research_consumer = SharedMarketResearchConsumer(self)
+        self.shared_research_consumer.sourceChanged.connect(
+            self._on_shared_research_source_changed
+        )
+        self.shared_research_consumer.resultReady.connect(
+            self._on_shared_research_result
+        )
+        self.shared_research_consumer.failed.connect(
+            self._on_shared_research_failure
+        )
         # 不自動計算，等待用戶點擊「檢測市場狀態」按鈕
     
     def _setup_ui(self):
@@ -276,6 +291,14 @@ class MarketRegimeView(QWidget):
         layer3_layout.addWidget(self.layer3_scroll_area)
         layer3_group.setLayout(layer3_layout)
         status_layout.addWidget(layer3_group)
+        self.shared_research_summary_label = QLabel(
+            "研究母體摘要與上方大盤指數判斷分開；尚未讀取共用快照。"
+        )
+        self.shared_research_summary_label.setWordWrap(True)
+        self.shared_research_summary_label.setStyleSheet(
+            f"color: {COLOR_TEXT_SECONDARY}; border-top: 1px solid {COLOR_BORDER}; padding-top: 8px;"
+        )
+        status_layout.addWidget(self.shared_research_summary_label)
         
         # 保存 layer3_group 的引用，以便控制顯示/隱藏
         self.layer3_group = layer3_group
@@ -338,6 +361,50 @@ class MarketRegimeView(QWidget):
             page_content, object_name="marketRegimePageScrollArea"
         )
         page_layout.addWidget(self.page_scroll_area)
+
+    def set_shared_research_source(self, source_view: object | None) -> None:
+        self.shared_research_consumer.set_source(source_view)
+
+    def begin_shutdown(self) -> bool:
+        return self.shared_research_consumer.begin_shutdown()
+
+    def _on_shared_research_source_changed(self, snapshot: object) -> None:
+        if snapshot is None:
+            self.shared_research_summary_label.setText(
+                "研究母體摘要不可用；上方大盤指數判斷仍使用原本來源。"
+            )
+            self.shared_research_summary_label.setToolTip("")
+            return
+        self.shared_research_summary_label.setText(
+            "共用研究母體讀取中；上方大盤指數判斷維持原本來源。"
+        )
+        self.shared_research_consumer.request()
+
+    def _on_shared_research_result(self, read: SharedMarketResearchRead) -> None:
+        summary, audit = shared_market_research_summary(read)
+        self.shared_research_summary_label.setText(
+            "研究母體摘要（與大盤指數判斷分開）\n" + summary
+        )
+        self.shared_research_summary_label.setToolTip(audit)
+
+    def _on_shared_research_failure(self, message: str) -> None:
+        self.shared_research_summary_label.setText(
+            "研究母體摘要無法核驗；上方大盤指數判斷仍使用原本來源。"
+        )
+        self.shared_research_summary_label.setToolTip(str(message))
+
+    def load_data_if_needed(self) -> None:
+        """切回大盤頁時，嚴格重驗研究摘要，不重跑指數判斷。"""
+
+        if self.shared_research_consumer.snapshot is None:
+            self._on_shared_research_failure(
+                "尚無已接受的研究快照；大盤指數判斷仍使用原本來源。"
+            )
+            return
+        self.shared_research_summary_label.setText(
+            "共用研究母體重新核驗中；上方大盤指數判斷維持原本來源。"
+        )
+        self.shared_research_consumer.request()
     
     def _detect_regime(self):
         """檢測市場狀態"""

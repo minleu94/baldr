@@ -18,10 +18,13 @@ from app_module.watchlist_service import WatchlistService
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
+from ui_qt.shared_market_research_consumer import SharedStockResearchMixin
 
 
-class WeakStocksView(QWidget):
+class WeakStocksView(SharedStockResearchMixin, QWidget):
     """弱勢個股視圖"""
+
+    _shared_direction = "weak"
     
     def __init__(self, screening_service: ScreeningService, watchlist_service: WatchlistService = None, parent=None):
         """初始化弱勢個股視圖
@@ -45,6 +48,7 @@ class WeakStocksView(QWidget):
         }
         
         self._setup_ui()
+        self.init_shared_research_consumer()
         # 不自動計算，等待用戶點擊「載入數據」按鈕或切換到這個 tab
         self._show_empty_state()
     
@@ -86,6 +90,7 @@ class WeakStocksView(QWidget):
         self.period_btn_week.clicked.connect(lambda: self._on_period_changed('week'))
         control_layout.addWidget(self.period_btn_day)
         control_layout.addWidget(self.period_btn_week)
+        self.setup_shared_research_controls(control_layout)
         
         control_layout.addStretch()
         
@@ -126,6 +131,7 @@ class WeakStocksView(QWidget):
             QSizePolicy.Policy.Minimum,
         )
         main_layout.addWidget(self.controls_scroll_area)
+        main_layout.addWidget(self.source_scope_label)
         
         # 表格
         self.stocks_table = QTableView()
@@ -177,10 +183,13 @@ class WeakStocksView(QWidget):
     
     def _on_period_changed(self, period: str):
         """時間範圍改變"""
-        if period == 'day':
-            self.period_btn_week.setChecked(False)
-        else:
-            self.period_btn_day.setChecked(False)
+        self.period_btn_day.setChecked(period == 'day')
+        self.period_btn_week.setChecked(period == 'week')
+
+        if self.is_shared_research_mode():
+            self._clear_shared_research_table()
+            self.request_shared_research()
+            return
         
         # 檢查緩存，如果有緩存就直接使用，不重新計算
         if self._cached_data[period] is not None:
@@ -264,6 +273,11 @@ class WeakStocksView(QWidget):
         Args:
             use_cache: 是否使用緩存（True=有緩存就不重新計算，False=強制重新計算）
         """
+        if self.is_shared_research_mode():
+            self._clear_shared_research_table()
+            self.request_shared_research()
+            return
+
         self._set_status_label(self.status_label, "載入中…", level="info")
         try:
             # 獲取當前選擇的時間範圍
@@ -415,6 +429,14 @@ class WeakStocksView(QWidget):
     def load_data_if_needed(self):
         """如果需要，載入數據（當 tab 被點擊時調用）"""
         period = 'day' if self.period_btn_day.isChecked() else 'week'
+        if self.is_shared_research_mode():
+            if self.shared_research_consumer.snapshot is None:
+                self._on_shared_research_failure(
+                    "尚無已接受的研究快照；請先從每日研究名單讀取來源。"
+                )
+            else:
+                self.request_shared_research()
+            return
         if self._cached_data[period] is None:
             self._show_empty_state()
             self.refresh_btn.setVisible(False)

@@ -4489,3 +4489,22 @@ CLI範例（僅發布已有 feature 來源的對應模式；需要四模式時�
 - **G9／Bank**：須重新取得合格同日 G6 來源後才可恢復技術來源消費；舊 blocked run 不會被回溯改綠，snapshot 或獨立來源成功不代替學習成功。
 - **Paper EOD**：具名「sector archive 未在決策前保存」且 retryable=false 的歷史拒絕，僅在 source、candidate、receipt 完整驗證且無 ledger 後視為 rejected 終態，保留於 queue.resolved_historical_receipts。已驗證且未選來源的 queue 診斷不建立 pending identity；原始問題收據仍逐筆檢查。未知 blocker、混合身份錯誤、遭修改的 candidate 或真正 pending 的錯過會期仍阻擋。不得補造舊 entry、追認成交、刪除舊收據或授予 formal credit。
 - **排錯**：先看 exact immutable receipt 與 stdout，再看 snapshot_failure.json 或容量 required/free bytes。舊的 10/5 failed receipt 代表當時失敗；修正是否於自然排程生效，要以修正後新 run 的證據驗收。
+
+
+## 2026-10-05 研究快照儲存唯讀診斷與發布復原
+
+執行 ` .\.venv\Scripts\python.exe scripts/diagnose_research_snapshot_storage.py --snapshot-root <feature根目錄> --rank-root <rank根目錄> --watchlist-dir <實際清單檔所在目錄> `。這只盤點檔案與來源參照；不啟動 producer、不修改收藏或資料庫、不刪除檔案，也不提供清理批准。
+
+參數：`--snapshot-root` 必填；`--rank-root` 省略時用 feature 根的 `original_rankings`；`--watchlist-dir` 應指向含完整 JSON 清單／SQLite extension 的實際 ledger 目錄，例如隔離 case 的 `watchlist/`，不能只傳再上一層。未提供或來源不完整時仍可看已讀取 bytes，但 references_complete 為 false、候選停用。`--watchlist-inventory-complete` 必須由操作者明示已列齊全部 current／history 清單來源；預設不宣稱完整，即使已讀完所提供目錄。隔離 ledger 不能代表正式全部清單，請省略此旗標。`--output` 選填且只接受 repository `output/qa/research_snapshot_storage_governance/` 下的收據；請用新名稱保留歷次結果。
+
+結果判讀：`scan_complete` 表示有界檔案盤點完成；`references_complete` 表示所提供的完整清單來源與 hash／identity／parent 參照一致，僅相對於該明示目錄，不保證掌握別處收藏。既有所有 manifest 及其 objects 都保留；dry_run_candidates 只列無 manifest 參照的 object 或暫存供審閱，automatic_action 永遠 none，cleanup_authorized／permanent_delete_enabled 永遠 false。候選不等於安全刪除名單。不要把缺件、未知 schema、參照不完整或過量掃描當成清理理由。
+
+限制：保留與掃描合計預算 64 MiB／4096 entries、讀取驗證 64 MiB；每批新增／暫存峰各 8 MiB，單檔亦有 schema 對應上限。中央容量 reserve 取當下 shared policy，收據記錄實際 bytes／GiB 與來源；within_budget 是此預檢結果，不是來源資格或 writer 授權。診斷不替代 verified reader、正式 DB source revision／PIT 或投資方法驗證。CLI exit 0 只代表 scan_complete，仍須讀 references_complete、issues、alerts 與 capacity。
+
+成長推估目前 CLI 沒有自然歷史樣本時標 insufficient_history，不產生 7／30／90 日數字。API 可提供最多 90 筆 timezone-aware bytes 樣本與整數單批新增量；推估僅線性容量觀察，不是自然 producer 或模型成熟證據，盤點不完整時不推估。
+
+排錯：缺根、hash／identity 不符、未知版本、symlink／Windows junction、writer lock／WAL／SHM／staging sidecar、未知清單子目錄或超預算時，查看具名 issues 並補正明示來源後重新診斷；不要移除舊快照或清單來取得 pass。容量不足先停 writer，再由使用者選擇儲存／政策方案，禁止診斷自動釋空間。
+
+發布中斷後可使用同一明示來源與方法重試；feature 與 ranking 使用 OS lock、不可變 objects／manifest 與原子 latest 指標。指標替換前故障保留舊完整版本，替換後完整新版本可讀；舊 pinned 收藏仍按既有 source guards 檢查，過期／錯來源仍拒絕，不藉重試授予資格。並行發布 busy 或 pointer_changed 需等待同根程序完成後重新讀取，不覆蓋指標。參見 [本批驗證](../06_qa/UX19_STORAGE_AND_PUBLICATION_RECOVERY_20261005.md)。
+
+可另執行 ` .\.venv\Scripts\python.exe scripts/qa_isolated_app_startup.py --output-root output/qa/<新的隔離目錄> ` 做空資料、真實 MainWindow 的 offscreen 最小啟動／關閉；只允許隔離配置，Python audit hook 不是 OS 級完整監控，也不代表 Native／正式資料／真人驗收。

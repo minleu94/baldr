@@ -220,6 +220,22 @@ def _read_json(path: Path, *, maximum: int, missing_code: str, invalid_code: str
     return raw, parsed
 
 
+def _current_pointer_bytes_or_missing(path: Path) -> bytes | None:
+    """讀取 canonical pointer；保留檔案缺席狀態供 compare-and-swap 比對。"""
+    try:
+        raw, _pointer = _read_json(
+            path,
+            maximum=_MAX_RANKING_POINTER_BYTES,
+            missing_code="ranking_pointer_missing",
+            invalid_code="ranking_pointer_invalid",
+        )
+    except OriginalStockRankingError as exc:
+        if exc.code == "ranking_pointer_missing":
+            return None
+        raise
+    return raw
+
+
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
         return MappingProxyType({str(key): _freeze(item) for key, item in value.items()})
@@ -1080,12 +1096,7 @@ class OriginalStockRankingPublisher:
             lock_context = _producer_lock(self.ranking_root)
             if not lock_context.__enter__():
                 _fail("ranking_publish_busy", "另一個排名發布程序持有 exclusive lock。")
-            if old_pointer is not None and _read_json(
-                pointer_path,
-                maximum=_MAX_RANKING_POINTER_BYTES,
-                missing_code="ranking_pointer_missing",
-                invalid_code="ranking_pointer_invalid",
-            )[0] != old_pointer:
+            if _current_pointer_bytes_or_missing(pointer_path) != old_pointer:
                 _fail("ranking_pointer_changed_during_publish", "取得發布鎖前 pointer 已被其他程序修改。")
 
             # verified unchanged 早退後才檢查本次寫入容量；沒有自動刪除或清理。
@@ -1270,12 +1281,7 @@ class OriginalStockRankingPublisher:
                     os.fsync(stream.fileno())
                 _check_cancel(cancel_callback)
                 _assert_parent_context_current(parent, expected_engine=engine)
-                if old_pointer is not None and _read_json(
-                    pointer_path,
-                    maximum=_MAX_RANKING_POINTER_BYTES,
-                    missing_code="ranking_pointer_missing",
-                    invalid_code="ranking_pointer_invalid",
-                )[0] != old_pointer:
+                if _current_pointer_bytes_or_missing(pointer_path) != old_pointer:
                     _fail("ranking_pointer_changed_during_publish", "發布前原始排名 pointer 已被其他程序修改。")
                 os.replace(temp_pointer, pointer_path)
                 temp_pointer = None

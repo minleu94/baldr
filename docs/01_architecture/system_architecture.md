@@ -1237,3 +1237,10 @@ scheduled wrapper 分列實際 child code、summary errors、source qualificatio
 `ResearchStockContextDTO.rank_context` 為嚴格 typed 原排名身份；bookmark decoder 明確分 v1／v2，v1 context 固定原欄位投影以保 byte/hash 語意。`OriginalStockRankingRepository.read_pinned` 直接核驗原 manifest/artifact 與 parent feature，不依 latest 指標。個股 report 讀取 pinned native row 與原 feature，Main 只做確認、收藏與獨立最新路由，session 保留 rank_context。觀察清單使用原 research_bookmark extension、同一 JSON／SQLite ledger，以 source_id 精確還原並按相同 query／source 解析上一檔／下一檔。
 
 已完成原排名選股→個股原排名／原 feature→版本化收藏→新程序 pinned 讀回→精確返回原收藏。v2 保存四模式、實際比較窗、原母體／方法／hash／排序／所選股；舊非 rank v1 內容與 bookmark/query/payload 雜湊不變，沒有真實清單遷移。缺件／錯版本／日期／股號／hash／來源修訂顯示原因，可明確另開最新個股研究，保留原證據。完整 Top/Bottom 字串照原 publisher 顯示，3–5 筆週 fallback 明示實際日期與非完整週，不反推 score／勝率。 驗證見[限定 QA](../06_qa/UX18_RANK_BOOKMARK_SOURCE_VERSIONING_20261005.md)。
+
+
+## 2026-10-05 UX19 有界儲存與發布復原延伸
+
+本批唯讀參照盤點與 dry-run 不提供永久刪除授權；歷史 manifest／artifact／v1-v2 收藏參照保留，未知 schema、缺件、來源不完整及超預算採保守保留。排名首次發布的缺件指標 CAS 與隔離跨程序復原收據、容量時點政策及驗證結果見 [限定收尾收據](../06_qa/UX19_STORAGE_AND_PUBLICATION_RECOVERY_20261005.md)。未改原引擎／排名／方法／日期，未重跑既有真實 publisher 或 ML。
+
+真實 MainWindow 九工作區在空資料、隔離配置、offscreen 子程序最小啟動／正常關閉通過（PID 23772，worker 0，guard 無違規）；這不替代帶正式資料的 App 功能、Native 或真人驗收。其他 consumer／完整方法字典／正式母體與排程／其他 writer 生命周期／長期自然成長仍是工程待辦；Backtest18.62%／20%保持未達，來源 availability／PIT／自然資格另列。使用者其他對話的容量／Evidence 變更保留且不納入本批提交，中央政策以時點 pin 為準。

@@ -1,5 +1,14 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 UX19 儲存與發布復原（最新限定收尾）
+
+原排名缺件指標 CAS 已修正；有界唯讀 hash／manifest／v1-v2 收藏參照診斷與保守 dry-run 完成，沒有永久刪除授權或自動清理。根層95項＋另列8故障案例共103個不同案例通過；mypy784、7檔compile及quant guard通過。真實 MainWindow空隔離資料offscreen九頁啟動／正常關閉通過（最新worker33872／launcher33136均退出、worker0），不替代正式資料／Native／真人驗收。
+
+既有17檔33,714bytes／4v2／8refs只讀診斷通過；未assert正式所有Watchlist，references_complete=false、候選0。growth歷史不足，不造7／30／90日自然推估。永久刪除停用，未知／不完整來源採保留；其他consumer／完整方法字典／正式母體與排程／其他writer生命周期仍是工程待辦，Backtest18.62%／20%未達不變，來源availability／PIT／自然資格與Native分列。
+
+承接a466cced，另一對話39cc1ec的容量／Evidence／Paper與共享文檔已保留，本批不計為自身成果或代改；中央reserve時點20GiB、正式DB與WAL pins保持，SHM僅mtime變動不聲稱全stat一致。詳見[限定收尾收據](../06_qa/UX19_STORAGE_AND_PUBLICATION_RECOVERY_20261005.md)。下列較早章節保留其版本邊界。
+
+
 ## 2026-10-05 原排名收藏與個股來源版本化（最新限定收尾）
 
 已完成原排名選股→個股原排名／原 feature→版本化收藏→新程序 pinned 讀回→精確返回原收藏。v2 保存四模式、實際比較窗、原母體／方法／hash／排序／所選股；舊非 rank v1 內容與 bookmark/query/payload 雜湊不變，沒有真實清單遷移。缺件／錯版本／日期／股號／hash／來源修訂顯示原因，可明確另開最新個股研究，保留原證據。完整 Top/Bottom 字串照原 publisher 顯示，3–5 筆週 fallback 明示實際日期與非完整週，不反推 score／勝率。
@@ -452,6 +461,14 @@ Health最後串接已控制實跑：臺北10/4決策對10/2行情，離線官方
 既有 StockScreener day／week × strong／weak 原生結果新增獨立 immutable ranking publisher／verified reader；Daily 名單、候選與研究母體 Market 共用同一 parent snapshot及排名身份。僅明示≤16股研究母體，不改原公式、feature v2或舊收藏。原 Top／Bottom 標籤不能按一般百分位／勝率解讀，數值 score 未由舊引擎暴露；未知／不相容來源維持不可用。原排名收藏／個股來源版本化、其他consumer、完整方法／母體／正式排程及長期storage仍須工程。詳見[限定QA](../06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)，新 Native／真人與全App啟動未由本包驗收。
 
 - 2026-10-05 更新：新增原排名有限工程入口及接受邊界。
+
+
+## 2026-10-05 UX19 有界儲存與發布復原延伸
+
+本批唯讀參照盤點與 dry-run 不提供永久刪除授權；歷史 manifest／artifact／v1-v2 收藏參照保留，未知 schema、缺件、來源不完整及超預算採保守保留。排名首次發布的缺件指標 CAS 與隔離跨程序復原收據、容量時點政策及驗證結果見 [限定收尾收據](../06_qa/UX19_STORAGE_AND_PUBLICATION_RECOVERY_20261005.md)。未改原引擎／排名／方法／日期，未重跑既有真實 publisher 或 ML。
+
+真實 MainWindow 九工作區在空資料、隔離配置、offscreen 子程序最小啟動／正常關閉通過（PID 23772，worker 0，guard 無違規）；這不替代帶正式資料的 App 功能、Native 或真人驗收。其他 consumer／完整方法字典／正式母體與排程／其他 writer 生命周期／長期自然成長仍是工程待辦；Backtest18.62%／20%保持未達，來源 availability／PIT／自然資格另列。使用者其他對話的容量／Evidence 變更保留且不納入本批提交，中央政策以時點 pin 為準。
+
 
 ### 2026-10-05 每日鏈容量與接線修正（受控工程驗證）
 

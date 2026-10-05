@@ -1,4 +1,9 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
+## 2026-10-05 09:23 UTC：1477 Native 操作鏈完成
+
+1477 真實隔離 Native 已完成取消terminal→generation3重試（4.5秒）→新身份→保存→新程序同一execution/hash讀回，以及截止日／artifact日期／result-run／index hash四項拒絕。新來源 `rec_e677f9ba56d84a5cbcd6f18d5778a01c`，決策10/5、行情10/2；實際未入選篩選紀錄只供研究。最終可見讀回與拒絕畫面已核對並保存Library，所有本批QA程序退出、桌面釋放。產品程式未改；修正的是driver觀測、sealed config欄位斷言與畫面刷新等待，原90秒上限未延長。下方較早「Native仍缺／需桌面時段」段落保留為歷史，以本節及[完整驗收](../06_qa/NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005.md)為最新狀態。
+
+本筆只完成原Native工程接受範圍，沒有增加自然／正式模型、PIT或交易資格。既有learner／資料／UI測試不重跑，未訓練、未跑producer、未清理暫存或push。容量／外部來源與自然成熟限制仍依各自最新收據；後續安全清理由父層安排，永久刪除仍需逐項批准，原唯一推進計畫保留。
 
 ## 2026-10-05 最新有界收尾與呈現修正
 

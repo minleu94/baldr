@@ -115,3 +115,12 @@
 - 修好的隔離driver `output/qa/native_retry_diagnosis_20261005/native_retry_instrumented_not_run.py` **尚未執行**，保持90秒及原接受條件；恢復sleep(.02)，pre-start接全部worker訊號，記錄run-enter/exit、thread id/generation/ns time、實際retry config/scope；timeout保存worker flags、UIphase/progress/last_activity、result identity與Python全thread stacks；modal保留wrapper避免id重用漏記錄。`worker_diagnostic.py`已py_compile，觀測器離屏探針exit0。首個探針末尾stdout cp1252錯誤已保留，修UTF8後另用probe_utf8成功，未覆寫舊證據。
 - 最小後續：父層安排新的桌面時段，先核對原來源/inputs/hash與retry config差異，只跑同一1477一次。遇error/timeout立即讀phase/stack/terminal紀錄，不延長期限掩蓋、不再盲跑；僅正確completed新identity才繼續save→fresh reopen→新run date/result/hash負例。依合作式shutdown安全收尾，不能強制terminate持有資料資源的thread；未安全退出就明示worker/桌面狀態。
 - 完整證據及策略：`output/qa/native_retry_diagnosis_20261005/README.md`、pump_probe.json、probe_utf8/receipt.json、affected.xml、graph_probe.json。本批只修ignored驗收driver與文檔，沒有用fixture pass宣告Native接受，清理/roadmap順序保持。
+
+## 2026-10-05 09:23 UTC：Native有界操作鏈已完成（更新較早待驗）
+
+- 本次基線770625cd，遵照使用者09:11UTC授權直接操作；1477 generation2真正已取消、native thread完成且last-good保留，generation3在4.5秒完成並保存新來源 `rec_e677f9ba56d84a5cbcd6f18d5778a01c`。新程序PID34768與首次35148不同，完整execution/result/hash一致；決策2026-10-05、行情2026-10-02。payload `sha256:708fcd18c1980817203549d7a81440811c01a5677d39642e1d26cd6d9c0b5802`，raw artifact `sha256:40c62704e28ccd1f52e724de456b7b1af93942f0e6b90d62b590ff6f0e822965`。
+- 本次正常UI新分析設定為PE999／volume ratio min1，因量能未入選，與原PE1的舊來源原因分開記錄；不得稱為推薦成功或原run。新來源Native截止日10/4拒絕10/5未來Advice；42,087-byte隔離副本的artifact日期／result-run／index hash三負例拒絕且保留同一last-good，原artifact/index不變。缺少source_snapshot_hash的欄位仍留空，沒有代填。
+- driver觀測修正後真正重試一次就完成。讀回driver誤查Request.universe的失敗保留，改讀sealed config；metadata通過但畫面擷取偏早的版本也保留，最終reopen3加可見提示／表格條件及repaint350ms並實際看圖。只重開讀回／負例程序，未重跑已完成分析；沒有產品修正，不延長90秒。此前超時根因因原telemetry不足仍不回填為已定位。
+- [完整Native驗收](NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005.md)及本機output/qa/native_retry_completion_20261005/acceptance.json、attempt1/native_retry_final_receipt.json、reopen3/reopen_negative_receipt.json、library_identity.json為最終證據。新程序圖Library `libfile_4a0caaa465ec819188c4b880b112470c`，錯hash圖 `libfile_0583c30490608191981996418201059c`，其餘3圖ID見驗收表。
+- 四個自己的QA程序均退出，09:23:01UTC核對PID全無，桌面釋放。未修改正式資料/持倉/排程、未訓練/producer/全量tests、未清理、未push。本次僅完成原Native工程鏈，不授自然成熟/正式模型/PIT資格；1000×835/125%沿用，不宣告1000×800。2382header前批正常load結果保留。
+- Native已達標，交回父層安排安全清理，再依指定原plan分階段推進；永久刪除另需逐項批准。原plan正文保留，追加本收據，不另開替代計畫。

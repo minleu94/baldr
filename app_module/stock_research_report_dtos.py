@@ -337,6 +337,70 @@ class StockSavedSourceOptionDTO:
 
 
 @dataclass(frozen=True)
+class StockOriginalRankingReportDTO:
+    """個股報告中的原始日／週排名來源，不包含數值評分。"""
+
+    status: str = "unknown"
+    reason: str = ""
+    rank_kind: str = "original_stock_ranking"
+    period: str = ""
+    direction: str = ""
+    direction_label: str = ""
+    native_score_label: str = ""
+    rank: int | None = None
+    decision_date: str = ""
+    comparison_date: str = ""
+    latest_date: str = ""
+    comparison_window_dates: tuple[str, ...] = ()
+    comparison_window_rule: str = ""
+    volume_reference_point_count: int = 0
+    declared_stock_codes: tuple[str, ...] = ()
+    eligible_stock_codes: tuple[str, ...] = ()
+    missing_rank_stock_codes: tuple[str, ...] = ()
+    research_universe_json: str = ""
+    research_universe_sha256: str = ""
+    method_name: str = ""
+    method_version: str = ""
+    method_contract_sha256: str = ""
+    engine_file_sha256: str = ""
+    engine_parameters_json: str = ""
+    engine_parameters_sha256: str = ""
+    source_schema_sha256: str = ""
+    selected_input_fingerprint_sha256: str = ""
+    ranking_root: str = ""
+    snapshot_root: str = ""
+    rank_manifest_identity_sha256: str = ""
+    rank_manifest_sha256: str = ""
+    parent_snapshot_identity_sha256: str = ""
+    parent_snapshot_sha256: str = ""
+    parent_cohort_id: str = ""
+    filter_state: str = "all"
+    sort_key: str = "rank"
+    descending: bool = False
+    research_only: bool = True
+    historical_pit_eligible: bool = False
+
+    def __post_init__(self) -> None:
+        if self.status not in {"available", "unknown"}:
+            raise ValueError("原始排名狀態只接受 available 或 unknown")
+        if self.period and self.period not in {"day", "week"}:
+            raise ValueError("原始排名 period 只接受 day 或 week")
+        if self.direction and self.direction not in {"strong", "weak"}:
+            raise ValueError("原始排名 direction 只接受 strong 或 weak")
+        if self.status == "available":
+            if type(self.rank) is not int or self.rank < 1:
+                raise ValueError("已核驗的原始排名必須保留正整數原名次")
+            if self.direction_label not in {"Top", "Bottom"}:
+                raise ValueError("已核驗的原始排名只呈現 Top 或 Bottom 標籤")
+            if not self.native_score_label:
+                raise ValueError("已核驗的原始排名必須逐字保留 publisher 原始標籤")
+            if not self.comparison_date or not self.latest_date:
+                raise ValueError("已核驗的原始排名必須保留實際比較日與最新日")
+        elif self.rank is not None:
+            raise ValueError("來源未知時原始名次必須保持未知")
+
+
+@dataclass(frozen=True)
 class StockAdviceSnapshotDTO:
     """沿用既有 Advice DTO；本 DTO 不新增評分或交易動作。"""
 
@@ -382,6 +446,7 @@ class StockResearchReportDTO:
     saved_source_options: tuple[StockSavedSourceOptionDTO, ...] = ()
     shared_daily_features: Mapping[str, Any] = field(default_factory=dict)
     research_context: Mapping[str, str] = field(default_factory=dict)
+    original_ranking: StockOriginalRankingReportDTO | None = None
     read_only: bool = True
     schema_version: str = STOCK_RESEARCH_REPORT_SCHEMA_VERSION
 

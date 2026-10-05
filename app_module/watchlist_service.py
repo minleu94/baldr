@@ -7,7 +7,7 @@ import json
 import hashlib
 import os
 from pathlib import Path
-from typing import Any, List, Dict, Optional, Set, Literal
+from typing import Any, List, Dict, Optional, Set, Literal, Mapping
 from datetime import date, datetime
 from contextlib import closing
 import sqlite3
@@ -19,12 +19,45 @@ from app_module.dtos.decision_continuity_dtos import DecisionIdentity
 from dataclasses import dataclass, asdict, field
 from app_module.daily_market_research_bookmark import (
     DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE,
+    ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE,
     DailyMarketResearchBookmark,
     DailyMarketResearchBookmarkError,
     DailyMarketResearchBookmarkMutationResult,
     DailyMarketResearchBookmarkRestoreToken,
+    OriginalStockRankingBookmark,
     decode_daily_market_research_bookmark,
 )
+from app_module.research_session.session_dtos import ResearchStockContextDTO
+from app_module.original_stock_ranking import OriginalStockRankingError
+
+
+_RESEARCH_BOOKMARK_SOURCES = frozenset(
+    {DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE, ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE}
+)
+
+
+def _bookmark_source(bookmark: Any) -> str:
+    if isinstance(bookmark, OriginalStockRankingBookmark):
+        return ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE
+    return DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+
+
+def _rank_bookmark_error_status(code: str) -> Literal[
+    "missing", "unsupported_version", "wrong_hash", "date_mismatch",
+    "stock_mismatch", "source_refused",
+]:
+    normalized = str(code or "").lower()
+    if "schema_mismatch" in normalized or "unsupported_version" in normalized:
+        return "unsupported_version"
+    if "hash" in normalized or "identity_mismatch" in normalized or "query_hash" in normalized:
+        return "wrong_hash"
+    if "date" in normalized or "parent_mismatch" in normalized:
+        return "date_mismatch"
+    if "stock" in normalized or "selected_row" in normalized:
+        return "stock_mismatch"
+    if "missing" in normalized or "not_found" in normalized:
+        return "missing"
+    return "source_refused"
 
 
 @dataclass
@@ -59,7 +92,13 @@ class WatchlistItem:
         source = str(data.get("source", "manual") or "manual")
         if "research_bookmark" in data and source == "manual":
             # 收藏 payload 即使損毀也留在自己的來源命名空間，不會重新解讀為 manual/Advice。
-            source = DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+            raw_bookmark = data.get("research_bookmark")
+            source = (
+                ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE
+                if isinstance(raw_bookmark, dict)
+                and raw_bookmark.get("schema_version") == "daily-market-research-bookmark.v2"
+                else DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+            )
         return cls(
             stock_code=stock_code,
             stock_name=str(data.get("stock_name", data.get("證券名稱", stock_code)) or stock_code),
@@ -129,6 +168,34 @@ class WatchlistItemRemovalResult:
     expected_source: str
     watchlist_id: str
     revision: int | None = None
+
+
+@dataclass(frozen=True)
+class RankResearchBookmarkReadResult:
+    """rank bookmark pinned readback result for UI/report consumers."""
+
+    status: Literal[
+        "loaded",
+        "missing",
+        "unsupported_version",
+        "wrong_hash",
+        "date_mismatch",
+        "stock_mismatch",
+        "source_refused",
+    ]
+    code: str
+    message: str
+    bookmark_id: str
+    source_id: str
+    payload_sha256: str = ""
+    bookmark: OriginalStockRankingBookmark | None = None
+    context: ResearchStockContextDTO | None = None
+    row: Mapping[str, Any] | None = None
+    watchlist_revision: int | None = None
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == "loaded" and self.bookmark is not None and self.context is not None
 
 
 class WatchlistService:
@@ -367,7 +434,7 @@ class WatchlistService:
             ):
                 raise ValueError("候選池存在不可遷移的項目")
             code = item["stock_code"].strip()
-            is_bookmark = item.get("source") == DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+            is_bookmark = item.get("source") in _RESEARCH_BOOKMARK_SOURCES
             if is_bookmark or "research_bookmark" in item:
                 if not is_bookmark:
                     raise ValueError("研究收藏 source 欄位不符；拒絕 fallback 或升級")
@@ -378,7 +445,8 @@ class WatchlistService:
                 except DailyMarketResearchBookmarkError as exc:
                     raise ValueError("研究收藏 payload 無法驗證；未升級 JSON") from exc
                 if (
-                    bookmark.bookmark_id != item.get("source_id")
+                    item.get("source") != _bookmark_source(bookmark)
+                    or bookmark.bookmark_id != item.get("source_id")
                     or bookmark.stock_code != code
                     or bookmark.stock_name != item.get("stock_name")
                     or bookmark.bookmark_id in bookmark_ids
@@ -879,7 +947,7 @@ class WatchlistService:
         code = str(stock_code or "").strip()
         identity = str(source_id or "").strip()
         source = str(expected_source or "").strip()
-        if source == DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE:
+        if source in _RESEARCH_BOOKMARK_SOURCES:
             return WatchlistItemRemovalResult(
                 status="conflict",
                 code="use_bookmark_removal",
@@ -1052,7 +1120,7 @@ class WatchlistService:
 
     def add_research_bookmark(
         self,
-        bookmark: DailyMarketResearchBookmark | Dict[str, Any],
+        bookmark: DailyMarketResearchBookmark | OriginalStockRankingBookmark | Dict[str, Any],
         watchlist_id: str = "default",
         *,
         revision_id: str | None = None,
@@ -1061,8 +1129,11 @@ class WatchlistService:
         """保存一筆不可變研究收藏，不按股票代號去重。"""
 
         verified_bookmark = decode_daily_market_research_bookmark(
-            bookmark.to_dict() if isinstance(bookmark, DailyMarketResearchBookmark) else bookmark
+            bookmark.to_dict()
+            if isinstance(bookmark, (DailyMarketResearchBookmark, OriginalStockRankingBookmark))
+            else bookmark
         )
+        expected_source = _bookmark_source(verified_bookmark)
         current = self._load_watchlist(watchlist_id)
         if current is None:
             current = Watchlist(
@@ -1092,7 +1163,7 @@ class WatchlistService:
                     existing.to_dict() == expected_payload
                     and item.stock_code == verified_bookmark.stock_code
                     and item.stock_name == verified_bookmark.stock_name
-                    and item.source == DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+                    and item.source == expected_source
                     and item.source_id == verified_bookmark.bookmark_id
                 ):
                     return DailyMarketResearchBookmarkMutationResult(
@@ -1126,7 +1197,7 @@ class WatchlistService:
                 stock_code=verified_bookmark.stock_code,
                 stock_name=verified_bookmark.stock_name,
                 added_at=datetime.now().isoformat(),
-                source=DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE,
+                source=expected_source,
                 source_id=verified_bookmark.bookmark_id,
                 research_bookmark=expected_payload,
             )
@@ -1147,11 +1218,35 @@ class WatchlistService:
             revision=current.revision,
         )
 
+    def add_rank_research_bookmark(
+        self,
+        bookmark: OriginalStockRankingBookmark | Dict[str, Any],
+        watchlist_id: str = "default",
+        *,
+        revision_id: str | None = None,
+        continuity_event_id: str | None = None,
+    ) -> DailyMarketResearchBookmarkMutationResult:
+        """將已驗證的原始排名收藏寫入既有 Watchlist ledger。"""
+
+        verified = decode_daily_market_research_bookmark(
+            bookmark.to_dict() if isinstance(bookmark, OriginalStockRankingBookmark) else bookmark
+        )
+        if not isinstance(verified, OriginalStockRankingBookmark):
+            raise DailyMarketResearchBookmarkError(
+                "bookmark_schema_mismatch", "rank bookmark API 僅接受原始排名 v2 收藏"
+            )
+        return self.add_research_bookmark(
+            verified,
+            watchlist_id,
+            revision_id=revision_id,
+            continuity_event_id=continuity_event_id,
+        )
+
     def get_research_bookmark(
         self,
         bookmark_id: str,
         watchlist_id: str = "default",
-    ) -> DailyMarketResearchBookmark | None:
+    ) -> DailyMarketResearchBookmark | OriginalStockRankingBookmark | None:
         """讀取指定收藏身份；符合 ID 但格式錯誤的 payload 會拒絕讀取。"""
 
         identity = str(bookmark_id or "").strip()
@@ -1174,27 +1269,125 @@ class WatchlistService:
             )
         item = matches[0]
         if (
-            item.source != DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+            item.source not in _RESEARCH_BOOKMARK_SOURCES
             or item.source_id != identity
         ):
             raise DailyMarketResearchBookmarkError(
                 "bookmark_item_identity_mismatch", "收藏項目的 source/source_id 與 bookmark_id 不一致。"
             )
         bookmark = decode_daily_market_research_bookmark(item.research_bookmark)
+        if item.source != _bookmark_source(bookmark):
+            raise DailyMarketResearchBookmarkError(
+                "bookmark_item_identity_mismatch", "bookmark source 與 schema/source 不符"
+            )
         if bookmark.stock_code != item.stock_code or bookmark.stock_name != item.stock_name:
             raise DailyMarketResearchBookmarkError(
                 "bookmark_item_stock_mismatch", "收藏 payload 與 watchlist item 的股票身份不一致。"
             )
         return bookmark
 
+    def get_rank_research_bookmark_context(
+        self,
+        bookmark_id: str,
+        *,
+        db_path: str | Path,
+        watchlist_id: str = "default",
+    ) -> RankResearchBookmarkReadResult:
+        """驗證收藏 payload 後，依 pins 唯讀取回原始排名列。"""
+
+        identity = str(bookmark_id or "").strip()
+        current = self._load_watchlist(watchlist_id)
+        revision = current.revision if current is not None else None
+        if not identity or current is None:
+            return RankResearchBookmarkReadResult(
+                status="missing", code="bookmark_not_found", message="找不到排名收藏。",
+                bookmark_id=identity, source_id=identity, watchlist_revision=revision,
+            )
+        matches = [
+            item for item in current.items
+            if isinstance(item.research_bookmark, dict)
+            and item.research_bookmark.get("bookmark_id") == identity
+        ]
+        if not matches:
+            return RankResearchBookmarkReadResult(
+                status="missing", code="bookmark_not_found", message="找不到排名收藏。",
+                bookmark_id=identity, source_id=identity, watchlist_revision=revision,
+            )
+        if len(matches) != 1:
+            return RankResearchBookmarkReadResult(
+                status="source_refused", code="bookmark_identity_ambiguous",
+                message="排名收藏身份不唯一，拒絕讀回。", bookmark_id=identity,
+                source_id=identity, watchlist_revision=revision,
+            )
+        raw = matches[0].research_bookmark
+        assert isinstance(raw, dict)
+        if raw.get("schema_version") != "daily-market-research-bookmark.v2":
+            return RankResearchBookmarkReadResult(
+                status="unsupported_version", code="bookmark_schema_mismatch",
+                message="此收藏不是支援的原始排名版本。", bookmark_id=identity,
+                source_id=identity, watchlist_revision=revision,
+            )
+        try:
+            bookmark = self.get_research_bookmark(identity, watchlist_id)
+            if not isinstance(bookmark, OriginalStockRankingBookmark):
+                raise DailyMarketResearchBookmarkError(
+                    "bookmark_schema_mismatch", "payload 不是原始排名收藏"
+                )
+            rank_context = bookmark.context.rank_context
+            if rank_context is None:
+                raise DailyMarketResearchBookmarkError(
+                    "bookmark_rank_context_missing", "排名收藏缺少 pinned context"
+                )
+            from app_module.original_stock_ranking import (
+                read_original_stock_ranking_row_from_context,
+            )
+
+            row = read_original_stock_ranking_row_from_context(rank_context, db_path=db_path)
+        except DailyMarketResearchBookmarkError as exc:
+            status = _rank_bookmark_error_status(exc.code)
+            return RankResearchBookmarkReadResult(
+                status=status, code=exc.code, message=str(exc),
+                bookmark_id=identity, source_id=identity,
+                payload_sha256=str(raw.get("payload_sha256") or ""),
+                watchlist_revision=revision,
+            )
+        except OriginalStockRankingError as exc:
+            status = _rank_bookmark_error_status(exc.code)
+            return RankResearchBookmarkReadResult(
+                status=status, code=exc.code, message=str(exc),
+                bookmark_id=identity, source_id=identity,
+                payload_sha256=str(raw.get("payload_sha256") or ""),
+                watchlist_revision=revision,
+            )
+        return RankResearchBookmarkReadResult(
+            status="loaded", code="rank_bookmark_loaded",
+            message="已從 pinned manifest 讀回排名來源。",
+            bookmark_id=identity, source_id=identity,
+            payload_sha256=bookmark.payload_sha256, bookmark=bookmark,
+            context=bookmark.context, row=row, watchlist_revision=revision,
+        )
+
     def get_research_bookmark_context(
         self,
         bookmark_id: str,
         watchlist_id: str = "default",
+        *,
+        db_path: str | Path | None = None,
     ):
         """以 watchlist 來源重建 pinned context，不建立 Advice 身份。"""
 
         bookmark = self.get_research_bookmark(bookmark_id, watchlist_id)
+        if isinstance(bookmark, OriginalStockRankingBookmark):
+            if db_path is None:
+                raise DailyMarketResearchBookmarkError(
+                    "bookmark_source_db_required", "排名收藏讀回需要明確的唯讀 DB 路徑以執行來源防護"
+                )
+            result = self.get_rank_research_bookmark_context(
+                bookmark_id, db_path=db_path, watchlist_id=watchlist_id
+            )
+            if not result.succeeded or result.context is None:
+                raise DailyMarketResearchBookmarkError(result.code, result.message)
+            return result.context
         return bookmark.context if bookmark is not None else None
 
     def remove_research_bookmark(
@@ -1225,14 +1418,14 @@ class WatchlistService:
                 bookmark_id=identity,
                 watchlist_id=watchlist_id,
             )
-        matches: list[tuple[int, WatchlistItem, DailyMarketResearchBookmark]] = []
+        matches: list[tuple[int, WatchlistItem, DailyMarketResearchBookmark | OriginalStockRankingBookmark]] = []
         for index, item in enumerate(current.items):
             raw = item.research_bookmark
             if not isinstance(raw, dict) or raw.get("bookmark_id") != identity:
                 continue
             bookmark = decode_daily_market_research_bookmark(raw)
             if (
-                item.source != DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+                item.source != _bookmark_source(bookmark)
                 or item.source_id != identity
                 or bookmark.stock_code != item.stock_code
                 or bookmark.stock_name != item.stock_name
@@ -1326,7 +1519,7 @@ class WatchlistService:
         bookmark = decode_daily_market_research_bookmark(bookmark_payload)
         if (
             bookmark.bookmark_id != token.bookmark_id
-            or payload.get("source") != DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+            or payload.get("source") != _bookmark_source(bookmark)
             or payload.get("source_id") != token.bookmark_id
             or payload.get("stock_code") != bookmark.stock_code
             or payload.get("stock_name") != bookmark.stock_name
@@ -1359,7 +1552,7 @@ class WatchlistService:
                         revision=current.revision,
                     )
                 if (
-                    item.source != DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+                    item.source != _bookmark_source(existing)
                     or item.source_id != token.bookmark_id
                     or item.stock_code != existing.stock_code
                     or item.stock_name != existing.stock_name
@@ -1391,7 +1584,7 @@ class WatchlistService:
                 )
         restored_item = WatchlistItem.from_mapping(payload)
         if (
-            restored_item.source != DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+            restored_item.source != _bookmark_source(bookmark)
             or restored_item.source_id != token.bookmark_id
             or restored_item.stock_code != bookmark.stock_code
         ):
@@ -1571,4 +1764,3 @@ class WatchlistService:
             return True
         
         return False
-

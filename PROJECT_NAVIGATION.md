@@ -587,3 +587,7 @@ python ui_qt/main.py
 入口：每日研究條件的日／週及強／弱選項 → 相容不可變原排名 → 研究母體盤勢同源呈現。發布CLI為scripts/publish_original_stock_ranking.py；backend app_module/original_stock_ranking.py；呈現ui_qt/original_ranking_presentation.py。原feature／舊收藏不改，未提供來源未知。[操作](docs/07_guides/APPLICATION_MANUAL.md)、[QA及限制](docs/06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)。
 
 - 2026-10-05 更新：新增原排名有限工程入口及接受邊界。
+
+## 2026-10-05 原排名收藏與個股來源版本化（最新限定收尾）
+
+已完成原排名選股→個股原排名／原 feature→版本化收藏→新程序 pinned 讀回→精確返回原收藏。v2 保存四模式、實際比較窗、原母體／方法／hash／排序／所選股；舊非 rank v1 內容與 bookmark/query/payload 雜湊不變，沒有真實清單遷移。缺件／錯版本／日期／股號／hash／來源修訂顯示原因，可明確另開最新個股研究，保留原證據。完整 Top/Bottom 字串照原 publisher 顯示，3–5 筆週 fallback 明示實際日期與非完整週，不反推 score／勝率。 入口：daily_market_research_bookmark.py 的 v2 factory／dispatch、original_stock_ranking.py 的 pinned reader、watchlist_service.py 的同 ledger 儲存、StockReport service／view 與 Main 路由。 [操作](docs/07_guides/APPLICATION_MANUAL.md)、[限定 QA](docs/06_qa/UX18_RANK_BOOKMARK_SOURCE_VERSIONING_20261005.md)。

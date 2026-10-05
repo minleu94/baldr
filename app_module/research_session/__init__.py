@@ -7,6 +7,7 @@ Qt, pandas, persistence, and domain computation.
 
 from .session_dtos import (
     RESEARCH_WORKFLOW_PATH,
+    ResearchRankContextDTO,
     ResearchSessionSnapshotDTO,
     ResearchStockContextDTO,
     format_research_workflow_path,
@@ -29,6 +30,7 @@ __all__ = [
     "ActiveSymbolChanged",
     "CurrentRecommendationRunChanged",
     "ResearchSessionEvent",
+    "ResearchRankContextDTO",
     "ResearchSessionSnapshotDTO",
     "ResearchStockContextDTO",
     "ResearchSessionStore",

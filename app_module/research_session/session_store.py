@@ -73,6 +73,7 @@ class ResearchSessionStore:
                 daily_snapshot_cohort_id=context.daily_snapshot_cohort_id,
                 daily_snapshot_condition_keys=context.daily_snapshot_condition_keys,
                 daily_snapshot_combine_mode=context.daily_snapshot_combine_mode,
+                rank_context=context.rank_context,
                 source=source,
             )
         )

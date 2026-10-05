@@ -42,6 +42,8 @@ from app_module.research_session import (
 )
 from app_module.daily_market_research_bookmark import (
     DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE,
+    ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA,
+    decode_daily_market_research_bookmark,
 )
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.info_button import InfoButton
@@ -1336,6 +1338,19 @@ class WatchlistView(QWidget):
         if not isinstance(value, Mapping):
             return "書籤格式錯誤；來源不可核驗"
         schema = str(value.get("schema_version", "") or "").strip()
+        if schema == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
+            try:
+                decoded = decode_daily_market_research_bookmark(value)
+                rank_context = decoded.rank_context
+            except Exception as exc:
+                code = str(getattr(exc, "code", "") or "").strip()
+                return f"原排名書籤無效；來源不可核驗：{code or type(exc).__name__}"
+            period = "週" if rank_context.period == "week" else "日"
+            direction = "強勢 Top" if rank_context.direction == "strong" else "弱勢 Bottom"
+            return (
+                f"已收藏原排名｜{period}／{direction}｜第 {rank_context.selected_rank} 名｜"
+                f"決策日 {rank_context.decision_date}"
+            )
         if schema != "daily-market-research-bookmark.v1":
             return f"書籤版本不支援：{schema or '未提供'}"
         required = (
@@ -1384,6 +1399,54 @@ class WatchlistView(QWidget):
                 "每日研究書籤缺少精確身份；已拒絕下鑽，請勿改用手動來源。",
             )
             return None
+        if bookmark.get("schema_version") == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
+            getter = getattr(
+                self.watchlist_service,
+                "get_rank_research_bookmark_context",
+                None,
+            )
+            if not callable(getter):
+                fail("觀察清單服務無法讀回原排名收藏；已拒絕下鑽。")
+                return None
+            db_path = self._rank_bookmark_db_path()
+            if not db_path:
+                fail("沒有可核驗原排名收藏來源的資料庫路徑；已拒絕下鑽。")
+                return None
+            try:
+                read_result = getter(bookmark_id, db_path=db_path)
+            except Exception as error:
+                fail(f"原排名收藏讀回失敗；已拒絕下鑽：{error}")
+                return None
+            status = str(getattr(read_result, "status", "") or "")
+            if status != "loaded":
+                code = str(getattr(read_result, "code", "") or status or "source_refused")
+                message = str(
+                    getattr(read_result, "message", "")
+                    or self._rank_bookmark_status_text(status, code)
+                )
+                fail(f"原排名收藏 {self._rank_bookmark_status_text(status, code)}；{message}")
+                return None
+            context = getattr(read_result, "context", None)
+            exact_source_id = str(getattr(read_result, "source_id", "") or "")
+            if (
+                exact_source_id != bookmark_id
+                or not self._bookmark_context_matches_record(
+                    context, bookmark, expected_stock_code
+                )
+            ):
+                fail("原排名收藏回傳的精確 source_id／股票／版本與此列不一致；已拒絕下鑽。")
+                return None
+            returned_bookmark = getattr(read_result, "bookmark", None)
+            to_dict = getattr(returned_bookmark, "to_dict", None)
+            if callable(to_dict):
+                try:
+                    if dict(to_dict()) != dict(bookmark):
+                        fail("原排名收藏 payload 與服務讀回身份不一致；已拒絕下鑽。")
+                        return None
+                except Exception as error:
+                    fail(f"原排名收藏 payload 無法精確比較；已拒絕下鑽：{error}")
+                    return None
+            return context
         getter = getattr(self.watchlist_service, "get_research_bookmark_context", None)
         if not callable(getter):
             fail("觀察清單服務無法讀回每日研究書籤；已拒絕下鑽。")
@@ -1411,6 +1474,24 @@ class WatchlistView(QWidget):
     ) -> bool:
         if not isinstance(context, ResearchStockContextDTO):
             return False
+        if bookmark.get("schema_version") == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
+            try:
+                decoded = decode_daily_market_research_bookmark(bookmark)
+                decoded_payload = decoded.to_dict()
+                expected_context = decoded.context
+            except Exception:
+                return False
+            return (
+                decoded_payload == dict(bookmark)
+                and context == expected_context
+                and context.stock_code == expected_stock_code
+                and context.source_kind == "original_stock_ranking_bookmark"
+                and context.source_workspace == "watchlist"
+                and context.source_id == str(bookmark.get("bookmark_id", "") or "")
+                and context.rank_context is not None
+                and context.rank_context.selected_stock_code == expected_stock_code
+                and context.result_id == ""
+            )
         context_values = {
             "stock_code": context.stock_code,
             "source_kind": context.source_kind,
@@ -1482,6 +1563,27 @@ class WatchlistView(QWidget):
     ) -> str:
         if context is None or not isinstance(bookmark, Mapping):
             return "書籤格式無效、不支援或已無法讀回；不會改用手動或最新來源。"
+        if bookmark.get("schema_version") == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
+            rank = context.rank_context
+            if rank is None:
+                return "原排名收藏缺少 typed rank context；來源不可核驗，不會自動改用最新來源。"
+            return "\n".join(
+                (
+                    f"{context.stock_code}｜原始排名唯讀收藏",
+                    f"模式：{'週' if rank.period == 'week' else '日'}／"
+                    f"{'強勢 Top' if rank.direction == 'strong' else '弱勢 Bottom'}｜"
+                    f"原名次：{rank.selected_rank}",
+                    f"決策日：{rank.decision_date}｜比較日：{rank.comparison_date} → {rank.latest_date}",
+                    f"實際比較窗口：{'、'.join(rank.comparison_window_dates)}｜規則：{rank.comparison_window_rule}",
+                    f"排名來源 ID：{rank.rank_snapshot_id}｜排名來源 SHA-256：{rank.source_hash}",
+                    f"父快照 ID：{rank.parent_snapshot_id}｜父快照 SHA-256：{rank.parent_snapshot_hash}",
+                    f"研究母體 SHA-256：{rank.research_universe_sha256}",
+                    f"方法／版本：{rank.method_name} {rank.method_version}｜方法契約 SHA-256：{rank.method_contract_sha256}",
+                    f"引擎 SHA-256：{rank.engine_file_sha256}｜來源 schema SHA-256：{rank.source_schema_sha256}",
+                    f"收藏完整性 SHA-256：{bookmark.get('payload_sha256', '未提供')}｜查詢 SHA-256：{bookmark.get('query_sha256', '未提供')}",
+                    "開啟時只重驗此收藏固定的 rank manifest；publisher numeric score 未公開。",
+                )
+            )
         methods = bookmark.get("method_contracts", {})
         try:
             methods_text = json.dumps(
@@ -1851,7 +1953,15 @@ class WatchlistView(QWidget):
         if self._row_declares_research_bookmark(row):
             context = self._context_from_row_bookmark(row, code)
             if context is None:
-                return False
+                # 明確的「另開最新」操作可以建立全新、無排名來源的 context；
+                # 原收藏仍保留且不會因最新研究而變更。
+                context = ResearchStockContextDTO(
+                    stock_code=code,
+                    stock_name=str(row.get("證券名稱", "") or "").strip(),
+                    source_kind="explicit_latest_stock_research",
+                    source_label="原收藏無法核驗；使用者明確另開最新個股研究",
+                    source_workspace="stock_research",
+                )
         else:
             context = ResearchStockContextDTO(
                 stock_code=code,
@@ -1871,6 +1981,61 @@ class WatchlistView(QWidget):
     def _bookmark_group_matches_context(
         bookmark: Mapping[str, object], context: ResearchStockContextDTO
     ) -> bool:
+        if bookmark.get("schema_version") == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
+            try:
+                decoded = decode_daily_market_research_bookmark(bookmark)
+                bookmark_context = decoded.context
+                other_rank = decoded.rank_context
+                base_rank = context.rank_context
+            except Exception:
+                return False
+            if base_rank is None:
+                return False
+            # 每筆收藏綁定不同選取列；群組比較只忽略選取股票／名次，仍精確比較
+            # 同一 pinned manifest、模式、查詢偏好及外層 Daily 查詢身份。
+            rank_fields = (
+                "rank_kind",
+                "period",
+                "direction",
+                "rank_snapshot_id",
+                "source_hash",
+                "ranking_root",
+                "snapshot_root",
+                "decision_date",
+                "parent_snapshot_id",
+                "parent_snapshot_hash",
+                "parent_cohort_id",
+                "comparison_date",
+                "latest_date",
+                "comparison_window_dates",
+                "comparison_window_rule",
+                "volume_reference_point_count",
+                "declared_stock_codes",
+                "eligible_stock_codes",
+                "missing_rank_stock_codes",
+                "research_universe_json",
+                "research_universe_sha256",
+                "method_name",
+                "method_version",
+                "method_contract_sha256",
+                "engine_file_sha256",
+                "engine_parameters_json",
+                "engine_parameters_sha256",
+                "source_schema_sha256",
+                "filter_state",
+                "sort_key",
+                "descending",
+            )
+            return (
+                all(getattr(other_rank, field) == getattr(base_rank, field) for field in rank_fields)
+                and bookmark_context.source_workspace == "watchlist"
+                and bookmark_context.daily_snapshot_root == context.daily_snapshot_root
+                and bookmark_context.daily_snapshot_cohort_id == context.daily_snapshot_cohort_id
+                and bookmark_context.daily_snapshot_condition_keys
+                == context.daily_snapshot_condition_keys
+                and bookmark_context.daily_snapshot_combine_mode
+                == context.daily_snapshot_combine_mode
+            )
         if WatchlistView._research_bookmark_label(bookmark).startswith(
             ("書籤版本不支援", "書籤資料不完整")
         ):
@@ -1899,6 +2064,26 @@ class WatchlistView(QWidget):
             and str(bookmark.get("combine_mode", "") or "").upper()
             == context.daily_snapshot_combine_mode
         )
+
+    def _rank_bookmark_db_path(self) -> str | None:
+        config = self.config or getattr(self.watchlist_service, "config", None)
+        value = getattr(config, "db_file", None) or getattr(
+            config, "sqlite_db_file", None
+        )
+        return str(value) if value else None
+
+    @staticmethod
+    def _rank_bookmark_status_text(status: str, code: str = "") -> str:
+        labels = {
+            "missing": "不存在或已被移除",
+            "unsupported_version": "版本不支援",
+            "wrong_hash": "完整性 hash 不符",
+            "date_mismatch": "來源日期不符",
+            "stock_mismatch": "股票身份不符",
+            "source_refused": "原始排名來源已拒絕",
+        }
+        label = labels.get(status, "來源無法核驗")
+        return f"{label}（{code}）" if code else label
 
     def _find_bookmark_record_for_context(
         self, context: ResearchStockContextDTO
@@ -1942,8 +2127,11 @@ class WatchlistView(QWidget):
         base = self._find_bookmark_record_for_context(context)
         if base is None:
             return ()
+        is_rank_bookmark = (
+            base[1].get("schema_version") == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA
+        )
         query_hash = str(base[1].get("query_sha256", "") or "")
-        if not query_hash:
+        if not is_rank_bookmark and not query_hash:
             return ()
         frame = self.stocks_model.getDataFrame() if self.stocks_model is not None else None
         if frame is None:
@@ -1955,7 +2143,7 @@ class WatchlistView(QWidget):
                 continue
             if not self._bookmark_group_matches_context(record, context):
                 continue
-            if str(record.get("query_sha256", "") or "") != query_hash:
+            if not is_rank_bookmark and str(record.get("query_sha256", "") or "") != query_hash:
                 continue
             if self._research_bookmark_label(record).startswith(
                 ("書籤版本不支援", "書籤資料不完整")
@@ -1985,8 +2173,11 @@ class WatchlistView(QWidget):
         if base is None or self.stocks_model is None:
             return None
         base_record = base[1]
+        is_rank_bookmark = (
+            base_record.get("schema_version") == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA
+        )
         query_hash = str(base_record.get("query_sha256", "") or "")
-        if not query_hash:
+        if not is_rank_bookmark and not query_hash:
             return None
         frame = self.stocks_model.getDataFrame()
         candidates: list[tuple[object, Mapping[str, object], ResearchStockContextDTO]] = []
@@ -1998,7 +2189,10 @@ class WatchlistView(QWidget):
                 continue
             if (
                 self._bookmark_group_matches_context(record, context)
-                and str(record.get("query_sha256", "") or "") == query_hash
+                and (
+                    is_rank_bookmark
+                    or str(record.get("query_sha256", "") or "") == query_hash
+                )
                 and self._research_bookmark_label(record).startswith("已收藏")
             ):
                 resolved = self._context_from_row_bookmark(

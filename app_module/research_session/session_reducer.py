@@ -151,6 +151,11 @@ def reduce_session_event(
                 if supplied_context is not None
                 else event.daily_snapshot_combine_mode
             ) or "",
+            rank_context=(
+                supplied_context.rank_context
+                if supplied_context is not None
+                else event.rank_context
+            ),
         )
         return replace(
             snapshot,

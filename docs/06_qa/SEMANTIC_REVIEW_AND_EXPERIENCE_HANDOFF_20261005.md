@@ -1,5 +1,14 @@
 # 2026-10-05 有界語意審查與體驗接手
 
+## 2026-10-05 原排名收藏與個股來源版本化（最新限定收尾）
+
+已完成原排名選股→個股原排名／原 feature→版本化收藏→新程序 pinned 讀回→精確返回原收藏。v2 保存四模式、實際比較窗、原母體／方法／hash／排序／所選股；舊非 rank v1 內容與 bookmark/query/payload 雜湊不變，沒有真實清單遷移。缺件／錯版本／日期／股號／hash／來源修訂顯示原因，可明確另開最新個股研究，保留原證據。完整 Top/Bottom 字串照原 publisher 顯示，3–5 筆週 fallback 明示實際日期與非完整週，不反推 score／勝率。
+
+受影響測試 136 首輪通過＋1 項定向修正後通過（合計 137 個案例）；Workbench 85；更新頁 validator 25 通過／4 略過；mypy 783 檔；18 個 Python 檔語法與 quant guard 通過。 真實既有 D 來源的 2382 四模式，在程序 24368 保存至隔離清單，程序 26516 重開核對來源與返回；兩程序正常退出且 worker=0。17 個 feature/rank 原檔及 DB/WAL/SHM stat、原引擎／母體設定保持不變；未重跑既有真實來源 publisher／learner，未寫正式 DB／registry 或真實收藏。排名來源測試僅用三股小型 fixture DB 與隔離產物。
+
+其他原大盤／強弱 consumer 融合、完整 feature/method dictionary、正式合格母體／排程部署、長期 storage/growth 及其他 lifecycle crash 驗收仍是第一版工程。Backtest 18.62%／20% 未達保留。正式母體權威、official availability／歷史 membership／PIT，以及舊 Top/Bottom 口徑與 numeric score 暴露屬來源／方法版本決策。Native 鍵鼠／縮放／跨頁、完整 App startup 與 3–5 位真人驗收另待桌面時段；不把工程缺件稱為自然成熟。 詳見[本批限定 QA](UX18_RANK_BOOKMARK_SOURCE_VERSIONING_20261005.md)。原計畫 append-only；本地 commit/blob 核驗後交父層，不 push／清理／操控用戶視窗，未知 capture 與還原映射不動。以下較早紀錄只代表其版本當時狀態。
+
+
 ## 2026-10-05 UX13／18共用盤勢最新限定交接
 
 基線 f07f298，具名 cohort Market→同快照名單→pinned個股閉環完成；原排名未提供明示unknown，僅排序原Decimal指標值，不做強弱／投資分數。partial缺件保完整分母與unknown，不假造下鑽列。45受影響tests／9重疊UI重驗、Workbench85、validator25／4skip、mypy777＋變更DailyView單檔、compile7／quant guard通過。真2382／1477／2026-10-05與隔離缺件／revision／schema拒絕恢復Native通過，12code pins與正式source stat穩定，worker0／程序退出；非全App／效能／真人驗收。6張Library IDs與逐項收據見[最新QA章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。

@@ -451,6 +451,8 @@ class StockResearchReportView(QWidget):
     activeContextChanged = Signal(object)
     returnRequested = Signal()
     createAnalysisRequested = Signal(str)
+    rankBookmarkRequested = Signal(object)
+    latestResearchRequested = Signal(object)
     readyToClose = Signal()
 
     def __init__(
@@ -575,6 +577,49 @@ class StockResearchReportView(QWidget):
         )
         self.daily_market_research_condition_label.setVisible(False)
         root.addWidget(self.daily_market_research_condition_label)
+
+        self.original_ranking_label = QLabel("")
+        self.original_ranking_label.setObjectName("stockResearchOriginalRanking")
+        self.original_ranking_label.setAccessibleName("已核驗原始排名來源")
+        self.original_ranking_label.setWordWrap(True)
+        self.original_ranking_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.original_ranking_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border-left: 4px solid {MIDNIGHT_ANALYST.accent}; padding: 7px;"
+        )
+        self.original_ranking_label.setVisible(False)
+        root.addWidget(self.original_ranking_label)
+
+        rank_action_row = QHBoxLayout()
+        self.favorite_original_ranking_button = QPushButton("收藏此原排名研究")
+        self.favorite_original_ranking_button.setObjectName(
+            "favoriteOriginalRankingResearch"
+        )
+        self.favorite_original_ranking_button.setAccessibleName("收藏此原排名研究")
+        self.favorite_original_ranking_button.setToolTip(
+            "只收藏目前 context 所指向的原始排名版本，不讀取其他模式或最新排名。"
+        )
+        self.favorite_original_ranking_button.clicked.connect(
+            self.request_rank_bookmark
+        )
+        self.favorite_original_ranking_button.setVisible(False)
+        rank_action_row.addWidget(self.favorite_original_ranking_button)
+        self.open_latest_rank_research_button = QPushButton("另開最新研究")
+        self.open_latest_rank_research_button.setObjectName(
+            "openLatestResearchFromOriginalRanking"
+        )
+        self.open_latest_rank_research_button.setAccessibleName("另開最新研究")
+        self.open_latest_rank_research_button.setToolTip(
+            "以新 context 開啟當下個股研究；不變更或覆蓋這筆原排名來源。"
+        )
+        self.open_latest_rank_research_button.clicked.connect(
+            self.request_latest_research
+        )
+        self.open_latest_rank_research_button.setVisible(False)
+        rank_action_row.addWidget(self.open_latest_rank_research_button)
+        rank_action_row.addStretch()
+        root.addLayout(rank_action_row)
 
         status_row = QHBoxLayout()
         self.status_badge = StatusBadge("尚未載入", "info")
@@ -809,10 +854,32 @@ class StockResearchReportView(QWidget):
             "daily_snapshot_condition_keys",
             "daily_snapshot_combine_mode",
         )
-        return (str(stock_code or "").strip(),) + tuple(
+        outer_identity = tuple(
             str(getattr(context, field, "") or "").strip() if context is not None else ""
             for field in fields
         )
+        rank_context = getattr(context, "rank_context", None) if context is not None else None
+        rank_fields = (
+            "rank_kind",
+            "period",
+            "direction",
+            "rank_snapshot_id",
+            "source_hash",
+            "parent_snapshot_id",
+            "parent_snapshot_hash",
+            "decision_date",
+            "selected_stock_code",
+            "selected_rank",
+            "comparison_date",
+            "latest_date",
+        )
+        rank_identity = tuple(
+            str(getattr(rank_context, field, "") or "")
+            if rank_context is not None
+            else ""
+            for field in rank_fields
+        )
+        return (str(stock_code or "").strip(),) + outer_identity + rank_identity
 
     @staticmethod
     def _context_with_saved_analysis_data_date(
@@ -1040,13 +1107,82 @@ class StockResearchReportView(QWidget):
         if (
             context is not None
             and context.source_workspace == "watchlist"
-            and context.source_kind == "daily_market_research_snapshot"
+            and context.source_kind in {
+                "daily_market_research_snapshot",
+                "original_stock_ranking_bookmark",
+            }
             and context.stock_code.strip() != code
         ):
             resolver = self.research_bookmark_context_resolver
             resolved = resolver(context, code) if callable(resolver) else None
             if resolved is None:
-                self._set_status("目標股票沒有同快照、同條件的收藏，無法比較；請明確另開研究。", "warning")
+                self._set_status(
+                    "目標股票沒有同版本、同查詢的精確收藏，無法沿用目前來源；請明確另開研究。",
+                    "warning",
+                )
+                return
+            if (
+                context.source_kind == "original_stock_ranking_bookmark"
+                and (
+                    resolved.rank_context is None
+                    or resolved.rank_context.selected_stock_code != code
+                )
+            ):
+                self._set_status("目標收藏的原排名股票身份不符；已拒絕切換。", "warning")
+                return
+            self.context = resolved
+        elif (
+            context is not None
+            and context.rank_context is not None
+            and context.source_kind == "original_stock_ranking"
+            and context.rank_context.selected_stock_code != code
+        ):
+            try:
+                from app_module.original_stock_ranking import (
+                    load_original_stock_ranking_from_context,
+                    research_context_for_original_stock_ranking,
+                )
+
+                config = getattr(self.service, "config", None)
+                db_path = getattr(config, "db_file", None) or getattr(
+                    config, "sqlite_db_file", None
+                )
+                if not db_path:
+                    raise ValueError("沒有資料庫路徑可重驗原排名來源")
+                snapshot, ranking = load_original_stock_ranking_from_context(
+                    context.rank_context,
+                    db_path=db_path,
+                )
+                inherited = replace(context, stock_code=code, stock_name="", rank_context=None)
+                resolved = research_context_for_original_stock_ranking(
+                    snapshot,
+                    ranking,
+                    ranking_root=context.rank_context.ranking_root,
+                    stock_code=code,
+                    source_workspace=context.source_workspace,
+                    source_label=context.source_label or "原始日／週排名研究",
+                    inherited_context=inherited,
+                    filter_state=context.rank_context.filter_state,
+                    sort_key=context.rank_context.sort_key,
+                    descending=context.rank_context.descending,
+                )
+            except Exception as exc:
+                code_text = str(getattr(exc, "code", "") or "").strip()
+                reason = f"{code_text}: {exc}" if code_text else str(exc)
+                self._set_status(
+                    f"無法從同一份 pinned 原排名切換到 {code}；請使用「另開最新研究」。原因：{reason}",
+                    "warning",
+                )
+                return
+            if (
+                resolved.rank_context is None
+                or resolved.rank_context.period != context.rank_context.period
+                or resolved.rank_context.direction != context.rank_context.direction
+                or resolved.rank_context.rank_snapshot_id
+                != context.rank_context.rank_snapshot_id
+                or resolved.rank_context.source_hash != context.rank_context.source_hash
+            ):
+                self._set_status("目標列不屬於同一 pinned 排名版本；已拒絕切換。", "warning")
                 return
             self.context = resolved
         self._request_id += 1
@@ -1506,6 +1642,124 @@ class StockResearchReportView(QWidget):
         # signal 的短暫競態讓使用者失去返回按鈕。
         self.return_button.setEnabled(not self._closing)
         self.return_button.setVisible(bool(self.context and self.context.has_source))
+        self._sync_original_rank_actions()
+
+    def request_rank_bookmark(self) -> bool:
+        """只提出收藏目前已核驗的原排名 context，由 host 確認後保存。"""
+
+        context = self.context
+        report = self._loaded_report
+        ranking = report.original_ranking if report is not None else None
+        if (
+            context is None
+            or context.rank_context is None
+            or ranking is None
+            or ranking.status != "available"
+            or context.rank_context.selected_stock_code != self._active_code
+        ):
+            reason = (
+                ranking.reason
+                if ranking is not None and ranking.status == "unknown"
+                else "目前沒有已核驗、且與報告股票一致的原排名來源。"
+            )
+            self.favorite_original_ranking_button.setToolTip(
+                f"來源未知或身份不一致，已停用收藏。原因：{reason}"
+            )
+            self._set_status(
+                f"無法收藏原排名研究；來源仍保持未知。原因：{reason}",
+                "warning",
+            )
+            return False
+        self.rankBookmarkRequested.emit(context)
+        return True
+
+    def request_latest_research(self) -> bool:
+        """以獨立 host 路由另開最新研究，保留目前 pinned context。"""
+
+        context = self.context
+        if context is None or context.rank_context is None:
+            return False
+        self.latestResearchRequested.emit(context)
+        return True
+
+    def _sync_original_rank_actions(self) -> None:
+        context = self.context
+        is_rank_context = bool(context is not None and context.rank_context is not None)
+        report = self._loaded_report
+        ranking = report.original_ranking if report is not None else None
+        self.original_ranking_label.setVisible(is_rank_context)
+        self.favorite_original_ranking_button.setVisible(is_rank_context)
+        self.open_latest_rank_research_button.setVisible(is_rank_context)
+        available = bool(
+            is_rank_context
+            and report is not None
+            and ranking is not None
+            and ranking.status == "available"
+            and ranking.rank is not None
+            and context is not None
+            and context.rank_context is not None
+            and context.rank_context.selected_stock_code == self._active_code
+            and context.rank_context.period in {"day", "week"}
+            and context.rank_context.direction in {"strong", "weak"}
+        )
+        self.favorite_original_ranking_button.setEnabled(
+            available and not self._closing
+        )
+        self.open_latest_rank_research_button.setEnabled(
+            is_rank_context and not self._closing
+        )
+        if not is_rank_context:
+            self.original_ranking_label.clear()
+            self.original_ranking_label.setToolTip("")
+            return
+        if ranking is None or ranking.status != "available":
+            reason = (
+                ranking.reason
+                if ranking is not None and ranking.reason
+                else "報告尚未取得已核驗的原排名 row。"
+            )
+            requested_mode = "週" if context.rank_context.period == "week" else "日"
+            requested_direction = (
+                "強勢 Top" if context.rank_context.direction == "strong" else "弱勢 Bottom"
+            )
+            self.original_ranking_label.setText(
+                f"原始排名：未知（{requested_mode}／{requested_direction}）；"
+                f"不以其他模式、價格或最新排名回填。原因：{reason}。"
+                "可另開最新研究；這不會覆蓋原來源。"
+            )
+            self.favorite_original_ranking_button.setToolTip(
+                f"目前原排名來源未核驗，禁止收藏。原因：{reason}"
+            )
+        else:
+            requested_mode = "週" if ranking.period == "week" else "日"
+            requested_direction = "強勢 Top" if ranking.direction == "strong" else "弱勢 Bottom"
+            self.original_ranking_label.setText(
+                f"已核驗原始排名：{requested_mode}／{requested_direction}｜"
+                f"第 {ranking.rank} 名｜publisher 原始標籤：{ranking.native_score_label}｜"
+                f"比較日 {ranking.comparison_date} → 最新日 {ranking.latest_date}｜"
+                f"決策日 {ranking.decision_date}｜週期規則 {ranking.comparison_window_rule}"
+            )
+            self.favorite_original_ranking_button.setToolTip(
+                "收藏此已核驗原排名版本；確認後保存來源 hash、研究母體與方法版本。"
+            )
+        context_rank = context.rank_context
+        self.original_ranking_label.setToolTip(
+            "\n".join(
+                (
+                    f"排名 manifest identity：{context_rank.rank_snapshot_id}",
+                    f"排名 manifest SHA-256：{context_rank.source_hash}",
+                    f"排名 root：{context_rank.ranking_root}",
+                    f"父快照 identity／SHA-256：{context_rank.parent_snapshot_id}／{context_rank.parent_snapshot_hash}",
+                    f"研究母體 SHA-256：{context_rank.research_universe_sha256}",
+                    f"研究母體：{context_rank.research_universe_json}",
+                    f"方法：{context_rank.method_name} {context_rank.method_version}｜契約 SHA-256：{context_rank.method_contract_sha256}",
+                    f"引擎 SHA-256：{context_rank.engine_file_sha256}",
+                    f"實際比較窗口：{'、'.join(context_rank.comparison_window_dates)}",
+                    f"排名 row 保存順序：{context_rank.sort_key}／descending={context_rank.descending}",
+                    "publisher numeric score 未公開；本報告不推導分數或勝率。",
+                )
+            )
+        )
 
     def _render_report(self, report: StockResearchReportDTO) -> None:
         self._loaded_report = report

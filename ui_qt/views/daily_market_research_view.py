@@ -36,6 +36,7 @@ from app_module.daily_market_cohort_projection import (
 )
 from app_module.daily_market_research_screener import DailyMarketResearchScreenRow
 from app_module.original_stock_ranking import VerifiedOriginalStockRanking
+from app_module.original_stock_ranking import research_context_for_original_stock_ranking
 from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
 from app_module.daily_market_research_bookmark import (
     create_daily_market_research_bookmark,
@@ -1983,9 +1984,18 @@ class DailyMarketResearchView(QWidget):
             and self._has_selected_row()
         )
         if hasattr(self, "bookmark_selected_research_button"):
+            is_original_rank = (
+                str(self.sort_key_combo.currentData() or "")
+                == "original_strength_rank"
+            )
+            bookmark_source_ready = (
+                self._original_ranking is not None
+                if is_original_rank
+                else self._snapshot is not None
+            )
             self.bookmark_selected_research_button.setEnabled(
                 self.watchlist_service is not None
-                and self._snapshot is not None
+                and bookmark_source_ready
                 and not self._shutting_down
                 and (self._worker is None or not self._worker.isRunning())
                 and self._has_selected_row()
@@ -2002,13 +2012,7 @@ class DailyMarketResearchView(QWidget):
         """保存已核驗的選取列；只有使用者確認後才呼叫觀察清單服務。"""
 
         if str(self.sort_key_combo.currentData() or "") == "original_strength_rank":
-            self.status_label.setText(
-                "無法用原始排名排序儲存書籤；目前書籤格式不保存排名期間、方向與來源身份。"
-            )
-            self.status_label.setToolTip(
-                "切回股票代號、日期或 MA 排序後即可使用現有研究書籤。"
-            )
-            return False
+            return self._bookmark_selected_original_ranking()
         if (
             self.watchlist_service is None
             or self._snapshot is None
@@ -2074,6 +2078,148 @@ class DailyMarketResearchView(QWidget):
             f"{'已收藏' if status == 'added' else '此研究已收藏'} {stock_code}；來源仍固定於原 manifest。"
         )
         return True
+
+    def _bookmark_selected_original_ranking(self) -> bool:
+        if (
+            self.watchlist_service is None
+            or self._snapshot is None
+            or self._original_ranking is None
+            or self._shutting_down
+        ):
+            reason = self._original_ranking_error or "尚未有可核驗原始排名。"
+            self.status_label.setText(f"原始排名來源不可用；未收藏。原因：{reason}")
+            return False
+        selected = self.results_table.selectionModel().selectedRows()
+        if len(selected) != 1:
+            self.status_label.setText("請先選取一列已核驗的原始排名結果。")
+            return False
+        item = self.results_table.item(selected[0].row(), 0)
+        row = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        stock_code = str(getattr(row, "stock_code", "") or "").strip()
+        if not stock_code:
+            self.status_label.setText("選取列缺少原始股票身份；未收藏。")
+            return False
+        try:
+            from app_module.daily_market_research_bookmark import (
+                create_original_stock_ranking_bookmark,
+            )
+
+            context_builder = getattr(self.service, "context_for_stock", None)
+            if not callable(context_builder):
+                raise ValueError("rank bookmark requires the verified parent context builder")
+            inherited_context = context_builder(row, stock_name="")
+            repository = getattr(self.service, "original_ranking_repository", None)
+            ranking_root = getattr(repository, "ranking_root", "")
+            filter_state = str(self.filter_state_combo.currentData() or "all")
+            descending = (
+                str(self.sort_direction_combo.currentData() or "asc").lower()
+                in {"desc", "descending"}
+            )
+            bookmark = create_original_stock_ranking_bookmark(
+                self._snapshot,
+                self._original_ranking,
+                ranking_root=ranking_root,
+                stock_code=stock_code,
+                source_context=research_context_for_original_stock_ranking(
+                    self._snapshot,
+                    self._original_ranking,
+                    ranking_root=ranking_root,
+                    stock_code=stock_code,
+                    source_workspace="recommendation",
+                    source_label="原始日／週排名研究",
+                    inherited_context=inherited_context,
+                    filter_state=filter_state,
+                    sort_key="rank",
+                    descending=descending,
+                ),
+                filter_state=filter_state,
+                sort_key="rank",
+                descending=descending,
+            )
+        except Exception as exc:
+            self.status_label.setText(
+                f"原始排名書籤無法核驗；未收藏：{type(exc).__name__}: {exc}"
+            )
+            return False
+        if not self._confirm_original_ranking_bookmark(bookmark, stock_code):
+            self.status_label.setText("已取消原排名收藏；觀察清單未變更。")
+            return False
+        add_bookmark = getattr(
+            self.watchlist_service, "add_rank_research_bookmark", None
+        )
+        if not callable(add_bookmark):
+            self.status_label.setText("觀察清單服務不支援版本化原排名收藏；未保存。")
+            return False
+        try:
+            result = add_bookmark(bookmark)
+        except Exception as exc:
+            self.status_label.setText(
+                f"原排名收藏保存失敗：{type(exc).__name__}: {exc}。"
+            )
+            return False
+        status = str(getattr(result, "status", "") or "")
+        if status == "conflict":
+            message = str(getattr(result, "message", "") or "書籤身份衝突")
+            self.status_label.setText(f"{message}；未覆寫既有收藏。")
+            return False
+        if status not in {"added", "already_present"}:
+            self.status_label.setText(
+                str(getattr(result, "message", "原排名收藏未能保存。"))
+            )
+            return False
+        self.bookmarkSaved.emit(bookmark)
+        self.status_label.setText(
+            f"{'已收藏' if status == 'added' else '此原排名已收藏'} {stock_code}；保留此版本來源。"
+        )
+        return True
+
+    def _confirm_original_ranking_bookmark(
+        self, bookmark: object, stock_code: str
+    ) -> bool:
+        callback = self.bookmark_confirmation_callback
+        if callback is not None:
+            try:
+                return bool(callback(bookmark))
+            except Exception as exc:
+                self.status_label.setText(
+                    f"原排名收藏確認流程失敗：{type(exc).__name__}: {exc}；未保存。"
+                )
+                return False
+        ranking = self._original_ranking
+        if ranking is None:
+            return False
+        row = next(
+            (item for item in ranking.rows if item.get("stock_code") == stock_code),
+            None,
+        )
+        if row is None:
+            return False
+        rank_label = str(row.get("score_label") or "")
+        query = getattr(bookmark, "query", {})
+        query_text = str(query or "")
+        details = (
+            f"股票：{stock_code}｜原名次：{row.get('rank')}｜publisher 標籤：{rank_label}\n"
+            f"模式：{'週' if ranking.period == 'week' else '日'}／"
+            f"{'強勢 Top' if ranking.direction == 'strong' else '弱勢 Bottom'}\n"
+            f"比較日：{row.get('comparison_date')} → 最新日：{row.get('latest_date')}\n"
+            f"研究母體：{ranking.metadata.get('research_universe_sha256', '未知')}\n"
+            f"方法：{ranking.metadata.get('engine_method', '未知')} "
+            f"{ranking.metadata.get('engine_version', '')}\n"
+            f"排名來源 manifest：{ranking.manifest_identity_sha256}\n"
+            f"排名來源 SHA-256：{ranking.manifest_sha256}"
+        )
+        if query_text:
+            details += f"\n保存查詢偏好：{query_text}"
+        return (
+            QMessageBox.question(
+                self,
+                "確認收藏此原排名研究",
+                f"將此已驗證的原排名來源版本加入觀察清單？\n\n{details}",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            == QMessageBox.StandardButton.Yes
+        )
 
     def _confirm_research_bookmark(self, bookmark: object, row: object) -> bool:
         callback = self.bookmark_confirmation_callback
@@ -2147,12 +2293,65 @@ class DailyMarketResearchView(QWidget):
             return False
         try:
             context = context_builder(row, stock_name="")
+            is_original_rank = (
+                str(self.sort_key_combo.currentData() or "")
+                == "original_strength_rank"
+            )
+            if is_original_rank:
+                ranking = self._original_ranking
+                repository = getattr(self.service, "original_ranking_repository", None)
+                ranking_root = getattr(repository, "ranking_root", "")
+                if ranking is None:
+                    raise ValueError(
+                        self._original_ranking_error or "原始排名尚未通過來源驗證。"
+                    )
+                context = research_context_for_original_stock_ranking(
+                    self._snapshot,
+                    ranking,
+                    ranking_root=ranking_root,
+                    stock_code=str(getattr(row, "stock_code", "") or "").strip(),
+                    source_workspace="recommendation",
+                    source_label="原始日／週排名研究",
+                    inherited_context=context,
+                    filter_state=str(self.filter_state_combo.currentData() or "all"),
+                    sort_key="rank",
+                    descending=(
+                        str(self.sort_direction_combo.currentData() or "asc").lower()
+                        in {"desc", "descending"}
+                    ),
+                )
         except Exception as exc:
             self.status_label.setText(
                 f"無法建立釘選快照 context：{type(exc).__name__}: {exc}"
             )
             return False
         stock_code = str(getattr(row, "stock_code", "") or "").strip()
+        if getattr(context, "rank_context", None) is not None:
+            rank_context = context.rank_context
+            expected_rank = {
+                "source_kind": "original_stock_ranking",
+                "source_workspace": "recommendation",
+                "stock_code": stock_code,
+                "decision_date": str(getattr(row, "decision_date", "") or ""),
+            }
+            for name, value in expected_rank.items():
+                if str(getattr(context, name, "") or "").strip() != value:
+                    self.status_label.setText(
+                        f"下鑽 rank context 的 {name} 與選取列身份不一致；未開啟報告。"
+                    )
+                    return False
+            if rank_context.selected_stock_code != stock_code:
+                self.status_label.setText("rank context 選取股票不符；未開啟報告。")
+                return False
+            if rank_context.source_hash != self._original_ranking.manifest_sha256:
+                self.status_label.setText("rank context manifest hash 與目前已驗證排名不同。")
+                return False
+            self._selected_stock_code = stock_code
+            self.stockResearchRequested.emit(context)
+            self.status_label.setText(
+                f"已開啟 {stock_code} 的唯讀個股研究；原始排名列與 hash 已固定。"
+            )
+            return True
         expected = {
             "stock_code": stock_code,
             "source_kind": "daily_market_research_snapshot",

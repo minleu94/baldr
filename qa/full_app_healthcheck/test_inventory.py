@@ -6,6 +6,8 @@ from pathlib import Path
 # This registry serves as a guardrail to ensure that only allowed tests are bridged.
 
 TEST_INVENTORY: dict[str, str] = {
+    "tests/test_rank_research_bookmark.py": "service-oracle-recommendation",
+    "tests/test_rank_research_bookmark_flow.py": "ui-healthcheck-candidate-bridge",
     "tests/test_original_stock_ranking.py": "service-oracle-recommendation",
     "tests/test_original_stock_ranking_consumers.py": "ui-healthcheck-candidate-bridge",
     "tests/test_daily_market_research_universe.py": "service-oracle-recommendation",

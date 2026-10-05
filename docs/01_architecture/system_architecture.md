@@ -1228,6 +1228,12 @@ scheduled wrapper 分列實際 child code、summary errors、source qualificatio
 
 ## 2026-10-05 原生排名獨立研究來源
 
-`app_module/original_stock_ranking.py` 以既有 verified feature snapshot＋母體設定為 parent，唯讀核對原 DB rowset及原引擎 hash，只有明示publisher lazy import並呼叫 StockScreener純frame入口。獨立artifact／manifest／四mode latest最後atomic切換；reader不載入pandas或引擎，不producer。Daily service提供original_ranking_root與read_original_ranking；背景UI worker將同一 DTO分享至Market投影與候選摘要，錯mode／來源拒絕。原feature／bookmark schema保留，新排名收藏明示拒絕。容量／OSlock／sourceguard及實證見[QA](../06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)。
+`app_module/original_stock_ranking.py` 以既有 verified feature snapshot＋母體設定為 parent，唯讀核對原 DB rowset及原引擎 hash，只有明示publisher lazy import並呼叫 StockScreener純frame入口。獨立artifact／manifest／四mode latest最後atomic切換；reader不載入pandas或引擎，不producer。Daily service提供original_ranking_root與read_original_ranking；背景UI worker將同一 DTO分享至Market投影與候選摘要，錯mode／來源拒絕。原 feature／v1 bookmark schema 保留；新排名收藏另存 v2，個股 pinned 路由見下方最新章。容量／OSlock／sourceguard及實證見[QA](../06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)。
 
 - 2026-10-05 更新：新增原排名有限工程入口及接受邊界。
+
+## 2026-10-05 原排名收藏與個股來源版本化（最新限定收尾）
+
+`ResearchStockContextDTO.rank_context` 為嚴格 typed 原排名身份；bookmark decoder 明確分 v1／v2，v1 context 固定原欄位投影以保 byte/hash 語意。`OriginalStockRankingRepository.read_pinned` 直接核驗原 manifest/artifact 與 parent feature，不依 latest 指標。個股 report 讀取 pinned native row 與原 feature，Main 只做確認、收藏與獨立最新路由，session 保留 rank_context。觀察清單使用原 research_bookmark extension、同一 JSON／SQLite ledger，以 source_id 精確還原並按相同 query／source 解析上一檔／下一檔。
+
+已完成原排名選股→個股原排名／原 feature→版本化收藏→新程序 pinned 讀回→精確返回原收藏。v2 保存四模式、實際比較窗、原母體／方法／hash／排序／所選股；舊非 rank v1 內容與 bookmark/query/payload 雜湊不變，沒有真實清單遷移。缺件／錯版本／日期／股號／hash／來源修訂顯示原因，可明確另開最新個股研究，保留原證據。完整 Top/Bottom 字串照原 publisher 顯示，3–5 筆週 fallback 明示實際日期與非完整週，不反推 score／勝率。 驗證見[限定 QA](../06_qa/UX18_RANK_BOOKMARK_SOURCE_VERSIONING_20261005.md)。

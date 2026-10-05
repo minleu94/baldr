@@ -83,3 +83,7 @@
 [UX18原引擎排名不可變發布與同源讀回](UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md) 記錄四模式 bounded publisher、拒絕／中斷、同源consumer、背景實D讀回及剩餘工程／來源／Native決策。
 
 - 2026-10-05 更新：新增原排名有限工程入口及接受邊界。
+
+## 2026-10-05 原排名收藏與個股來源版本化（最新限定收尾）
+
+[原排名收藏與個股來源版本化](UX18_RANK_BOOKMARK_SOURCE_VERSIONING_20261005.md)：已完成原排名選股→個股原排名／原 feature→版本化收藏→新程序 pinned 讀回→精確返回原收藏。v2 保存四模式、實際比較窗、原母體／方法／hash／排序／所選股；舊非 rank v1 內容與 bookmark/query/payload 雜湊不變，沒有真實清單遷移。缺件／錯版本／日期／股號／hash／來源修訂顯示原因，可明確另開最新個股研究，保留原證據。完整 Top/Bottom 字串照原 publisher 顯示，3–5 筆週 fallback 明示實際日期與非完整週，不反推 score／勝率。 受影響測試 136 首輪通過＋1 項定向修正後通過（合計 137 個案例）；Workbench 85；更新頁 validator 25 通過／4 略過；mypy 783 檔；18 個 Python 檔語法與 quant guard 通過。 既有 publisher QA 的「原排名收藏尚待」僅是上一版本狀態；本批僅補 consumer／收藏，未重跑 publisher。

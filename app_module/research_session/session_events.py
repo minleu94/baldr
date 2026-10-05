@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Optional, Union
 
-from .session_dtos import ResearchStockContextDTO
+from .session_dtos import ResearchRankContextDTO, ResearchStockContextDTO
 
 
 @dataclass(frozen=True)
@@ -66,6 +66,7 @@ class StockResearchContextChanged:
     daily_snapshot_cohort_id: Optional[str] = None
     daily_snapshot_condition_keys: Optional[str] = None
     daily_snapshot_combine_mode: Optional[str] = None
+    rank_context: Optional[ResearchRankContextDTO] = None
 
 
 # 讓呼叫端可用較泛化的名稱，並保持單一事件契約。

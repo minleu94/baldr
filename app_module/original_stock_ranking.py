@@ -14,7 +14,9 @@ from pathlib import Path
 import re
 import tempfile
 from types import MappingProxyType, SimpleNamespace
-from typing import TYPE_CHECKING, Any, Literal, NoReturn
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
+
+from app_module.research_session.session_dtos import ResearchRankContextDTO
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -550,27 +552,77 @@ class OriginalStockRankingRepository:
         period: OriginalPeriod,
         direction: OriginalDirection,
     ) -> VerifiedOriginalStockRanking:
+        """依既有 latest pointer 讀取目前發佈的不可變排名。"""
+
+        return self._read(
+            snapshot,
+            db_path=db_path,
+            period=period,
+            direction=direction,
+            pinned_manifest_sha256=None,
+            pinned_manifest_identity_sha256=None,
+        )
+
+    def read_pinned(
+        self,
+        snapshot: VerifiedDailyMarketSnapshot,
+        *,
+        db_path: str | Path,
+        period: OriginalPeriod,
+        direction: OriginalDirection,
+        manifest_sha256: str,
+        manifest_identity_sha256: str,
+    ) -> VerifiedOriginalStockRanking:
+        """依明示 manifest hash 讀回 immutable 排名，不解析 latest pointer。"""
+
+        if not _is_sha(manifest_sha256):
+            _fail("ranking_manifest_hash_invalid", "pinned manifest_sha256 無效。")
+        if not _is_sha(manifest_identity_sha256):
+            _fail("ranking_manifest_identity_invalid", "pinned manifest identity 無效。")
+        return self._read(
+            snapshot,
+            db_path=db_path,
+            period=period,
+            direction=direction,
+            pinned_manifest_sha256=manifest_sha256,
+            pinned_manifest_identity_sha256=manifest_identity_sha256,
+        )
+
+    def _read(
+        self,
+        snapshot: VerifiedDailyMarketSnapshot,
+        *,
+        db_path: str | Path,
+        period: OriginalPeriod,
+        direction: OriginalDirection,
+        pinned_manifest_sha256: str | None,
+        pinned_manifest_identity_sha256: str | None,
+    ) -> VerifiedOriginalStockRanking:
         selected_period, selected_direction = _parse_period_direction(period, direction)
         parent = _load_parent_context(self.snapshot_root, snapshot, db_path)
         _ensure_latest_and_core(parent.captured, parent.declared_codes, parent.snapshot.decision_date.isoformat(), selected_period)
         _engine_path, engine = _engine_contract()
         pointer_path = self.ranking_root / _pointer_name(selected_period, selected_direction)
-        pointer_raw, pointer = _read_json(
-            pointer_path,
-            maximum=_MAX_RANKING_POINTER_BYTES,
-            missing_code="ranking_pointer_missing",
-            invalid_code="ranking_pointer_invalid",
-        )
-        del pointer_raw
-        if set(pointer) != _POINTER_KEYS or pointer.get("schema_version") != ORIGINAL_RANKING_POINTER_SCHEMA:
-            _fail("ranking_pointer_schema_mismatch", "原始排名 pointer schema 不相容。")
-        if pointer.get("period") != selected_period or pointer.get("direction") != selected_direction:
-            _fail("ranking_pointer_scope_mismatch", "原始排名 pointer period/direction 不符。")
-        if pointer.get("parent_manifest_sha256") != parent.snapshot.manifest_sha256:
-            _fail("ranking_parent_manifest_mismatch", "原始排名綁定的來源 manifest 已不同。")
-        digest = pointer.get("manifest_sha256")
-        if not isinstance(digest, str) or not _is_sha(digest):
-            _fail("ranking_pointer_invalid", "原始排名 pointer manifest hash 無效。")
+        pointer: dict[str, Any] | None = None
+        if pinned_manifest_sha256 is None:
+            pointer_raw, pointer = _read_json(
+                pointer_path,
+                maximum=_MAX_RANKING_POINTER_BYTES,
+                missing_code="ranking_pointer_missing",
+                invalid_code="ranking_pointer_invalid",
+            )
+            del pointer_raw
+            if set(pointer) != _POINTER_KEYS or pointer.get("schema_version") != ORIGINAL_RANKING_POINTER_SCHEMA:
+                _fail("ranking_pointer_schema_mismatch", "原始排名 pointer schema 不相容。")
+            if pointer.get("period") != selected_period or pointer.get("direction") != selected_direction:
+                _fail("ranking_pointer_scope_mismatch", "原始排名 pointer period/direction 不符。")
+            if pointer.get("parent_manifest_sha256") != parent.snapshot.manifest_sha256:
+                _fail("ranking_parent_manifest_mismatch", "原始排名綁定的來源 manifest 已不同。")
+            digest = pointer.get("manifest_sha256")
+            if not isinstance(digest, str) or not _is_sha(digest):
+                _fail("ranking_pointer_invalid", "原始排名 pointer manifest hash 無效。")
+        else:
+            digest = pinned_manifest_sha256
         manifest_raw, manifest = _read_json(
             self.ranking_root / _manifest_relpath(digest),
             maximum=_MAX_RANKING_MANIFEST_BYTES,
@@ -583,6 +635,11 @@ class OriginalStockRankingRepository:
             _fail("ranking_manifest_schema_mismatch", "原始排名 manifest schema 不相容。")
         if manifest.get("manifest_identity_sha256") != _identity_sha256(manifest):
             _fail("ranking_manifest_identity_mismatch", "原始排名穩定 identity 不符。")
+        if (
+            pinned_manifest_identity_sha256 is not None
+            and manifest.get("manifest_identity_sha256") != pinned_manifest_identity_sha256
+        ):
+            _fail("ranking_manifest_identity_mismatch", "pinned manifest identity 與內容不符。")
         _validate_manifest_binding(manifest, parent, selected_period, selected_direction, engine)
         artifact_digest = manifest.get("artifact_sha256")
         if not isinstance(artifact_digest, str) or not _is_sha(artifact_digest):
@@ -619,17 +676,30 @@ class OriginalStockRankingRepository:
         eligible_count = manifest.get("eligible_universe_size")
         if type(eligible_count) is not int or not 0 <= eligible_count <= len(parent.declared_codes) or eligible_count != len(rows):
             _fail("ranking_eligible_count_mismatch", "eligible universe size 與排名列數不符。")
-        if pointer.get("manifest_sha256") != digest or pointer.get("parent_manifest_sha256") != parent.snapshot.manifest_sha256:
-            _fail("ranking_pointer_manifest_mismatch", "原始排名 pointer 與 manifest 不符。")
-        current_manifest_raw, current_pointer = _read_json(
-            pointer_path,
-            maximum=_MAX_RANKING_POINTER_BYTES,
-            missing_code="ranking_pointer_missing",
-            invalid_code="ranking_pointer_invalid",
-        )
-        if current_manifest_raw != _canonical_bytes(pointer) or current_pointer != pointer:
-            _fail("ranking_pointer_changed_during_read", "讀取期間原始排名 pointer 已變更。")
+        if pointer is not None:
+            if pointer.get("manifest_sha256") != digest or pointer.get("parent_manifest_sha256") != parent.snapshot.manifest_sha256:
+                _fail("ranking_pointer_manifest_mismatch", "原始排名 pointer 與 manifest 不符。")
+            current_manifest_raw, current_pointer = _read_json(
+                pointer_path,
+                maximum=_MAX_RANKING_POINTER_BYTES,
+                missing_code="ranking_pointer_missing",
+                invalid_code="ranking_pointer_invalid",
+            )
+            if current_manifest_raw != _canonical_bytes(pointer) or current_pointer != pointer:
+                _fail("ranking_pointer_changed_during_read", "讀取期間原始排名 pointer 已變更。")
         _assert_parent_context_current(parent, expected_engine=engine)
+        comparison_windows: dict[str, dict[str, Any]] = {}
+        for code, captured_stock in parent.captured.items():
+            comparison_index, comparison_rule = _comparison_index(
+                len(captured_stock.points), selected_period
+            )
+            comparison_windows[code] = {
+                "dates": tuple(
+                    _date_text(point.data_date)
+                    for point in captured_stock.points[comparison_index:]
+                ),
+                "rule": comparison_rule,
+            }
         metadata = {
             "run_id": str(manifest["manifest_identity_sha256"]),
             "publisher_run_identity_sha256": manifest["manifest_identity_sha256"],
@@ -652,6 +722,12 @@ class OriginalStockRankingRepository:
             "comparison_rules": manifest["source"]["comparison_rules"],
             "parent_manifest_sha256": parent.snapshot.manifest_sha256,
             "parent_manifest_identity_sha256": parent.snapshot.manifest_identity_sha256,
+            "parent_cohort_id": parent.snapshot.cohort_id,
+            "decision_date": parent.snapshot.decision_date.isoformat(),
+            "snapshot_root": self.snapshot_root.as_posix(),
+            "ranking_root": self.ranking_root.as_posix(),
+            "manifest_sha256": digest,
+            "artifact_sha256": artifact_digest,
             "research_universe": manifest["research_universe"],
             "research_universe_id": manifest["research_universe"].get("universe_id"),
             "research_universe_version": manifest["research_universe"].get("version"),
@@ -660,6 +736,7 @@ class OriginalStockRankingRepository:
             "qualification": manifest["qualification"],
             "native_score_semantics": manifest["qualification"]["native_score_semantics"],
             "numeric_score_status": manifest["qualification"]["numeric_score_status"],
+            "comparison_windows": comparison_windows,
         }
         return VerifiedOriginalStockRanking(
             period=selected_period,
@@ -674,6 +751,252 @@ class OriginalStockRankingRepository:
             missing_rank_stock_codes=missing_codes,
             metadata=_freeze(metadata),
         )
+
+
+def _thaw(value: Any) -> Any:
+    """將只讀 metadata 轉成 canonical JSON 可用的獨立複本。"""
+
+    if isinstance(value, Mapping):
+        return {str(key): _thaw(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_thaw(item) for item in value]
+    return value
+
+
+def _canonical_text(value: Any) -> str:
+    return _canonical_bytes(_thaw(value)).decode("utf-8")
+
+
+def _canonical_hash(value: Any) -> str:
+    return hashlib.sha256(_canonical_bytes(_thaw(value))).hexdigest()
+
+
+def research_rank_context_for_original_stock_ranking(
+    ranking: VerifiedOriginalStockRanking,
+    stock_code: str,
+    *,
+    filter_state: str = "all",
+    sort_key: str = "rank",
+    descending: bool = False,
+) -> ResearchRankContextDTO:
+    """由已驗證 publisher 結果與原始排序列建立完整 immutable rank context。"""
+
+    if not isinstance(ranking, VerifiedOriginalStockRanking):
+        _fail("ranking_context_source_unverified", "rank context 需要 repository 驗證過的排名結果。")
+    code = str(stock_code or "").strip()
+    rows = tuple(ranking.rows)
+    matching = [row for row in rows if row.get("stock_code") == code]
+    if len(matching) != 1:
+        _fail("ranking_context_stock_mismatch", "選取股票不在唯一的 verified 原始排名列中。")
+    if filter_state not in {"all", "match", "no_match", "unknown"}:
+        _fail("ranking_context_filter_invalid", "rank filter_state 不支援。")
+    if not isinstance(sort_key, str) or not sort_key.strip() or not isinstance(descending, bool):
+        _fail("ranking_context_sort_invalid", "rank sort key/direction 無效。")
+    metadata = ranking.metadata
+    try:
+        universe = _thaw(metadata["research_universe_identity"])
+        parameters = _thaw(metadata["engine_parameters"])
+        windows = metadata["comparison_windows"]
+        window = windows[code]
+        volume = metadata["volume_history"][code]
+        fingerprints = metadata["input_fingerprints"]
+        method_contract = {
+            "method_name": str(metadata["engine_method"]),
+            "method_version": str(metadata["engine_version"]),
+            "engine_file_sha256": str(metadata["engine_file_sha256"]),
+        }
+        selected_row = matching[0]
+        window_dates = tuple(str(value) for value in window["dates"])
+        method_parameters_sha = _canonical_hash(parameters)
+        universe_sha = _canonical_hash(universe)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise OriginalStockRankingError(
+            "ranking_context_source_incomplete", "已驗證排名缺少建立 rank context 所需的 manifest 脈絡。"
+        ) from exc
+    expected_rank = int(selected_row["rank"])
+    if (
+        type(selected_row.get("rank")) is not int
+        or expected_rank < 1
+        or rows[expected_rank - 1].get("stock_code") != code
+        or not window_dates
+        or window_dates[0] != selected_row.get("comparison_date")
+        or window_dates[-1] != selected_row.get("latest_date")
+    ):
+        _fail("ranking_context_row_mismatch", "選取列 rank/date window 與 immutable source 不一致。")
+    return ResearchRankContextDTO(
+        rank_kind="original_stock_ranking",
+        period=ranking.period,
+        direction=ranking.direction,
+        rank_snapshot_id=ranking.manifest_identity_sha256,
+        source_hash=ranking.manifest_sha256,
+        ranking_root=str(metadata["ranking_root"]),
+        snapshot_root=str(metadata["snapshot_root"]),
+        decision_date=ranking.decision_date,
+        parent_snapshot_id=str(metadata["parent_manifest_identity_sha256"]),
+        parent_snapshot_hash=str(metadata["parent_manifest_sha256"]),
+        parent_cohort_id=str(metadata["parent_cohort_id"]),
+        selected_stock_code=code,
+        selected_rank=expected_rank,
+        comparison_date=str(selected_row["comparison_date"]),
+        latest_date=str(selected_row["latest_date"]),
+        comparison_window_dates=window_dates,
+        comparison_window_rule=str(window["rule"]),
+        volume_reference_point_count=int(volume["actual_reference_point_count"]),
+        declared_stock_codes=tuple(ranking.declared_stock_codes),
+        eligible_stock_codes=tuple(str(row["stock_code"]) for row in rows),
+        missing_rank_stock_codes=tuple(ranking.missing_rank_stock_codes),
+        research_universe_json=_canonical_text(universe),
+        research_universe_sha256=universe_sha,
+        method_name=method_contract["method_name"],
+        method_version=method_contract["method_version"],
+        method_contract_sha256=_canonical_hash(method_contract),
+        engine_file_sha256=method_contract["engine_file_sha256"],
+        engine_parameters_json=_canonical_text(parameters),
+        engine_parameters_sha256=method_parameters_sha,
+        source_schema_sha256=str(metadata["source_schema_sha256"]),
+        selected_input_fingerprint_sha256=str(fingerprints[code]),
+        filter_state=cast(Literal["all", "match", "no_match", "unknown"], filter_state),
+        sort_key=sort_key.strip(),
+        descending=descending,
+    )
+
+
+def research_context_for_original_stock_ranking(
+    snapshot: VerifiedDailyMarketSnapshot,
+    ranking: VerifiedOriginalStockRanking,
+    *,
+    ranking_root: str | Path,
+    stock_code: str,
+    stock_name: str = "",
+    source_workspace: str = "recommendation",
+    source_label: str = "原始強弱排名",
+    inherited_context: Any = None,
+    filter_state: str = "all",
+    sort_key: str = "rank",
+    descending: bool = False,
+) -> Any:
+    """由 verified rank row 建立單股研究 context，沿用當下外層研究查詢。"""
+
+    from app_module.research_session.session_dtos import ResearchStockContextDTO
+
+    rank_context = research_rank_context_for_original_stock_ranking(
+        ranking,
+        stock_code,
+        filter_state=filter_state,
+        sort_key=sort_key,
+        descending=descending,
+    )
+    expected_root = Path(ranking_root).expanduser().resolve()
+    if (
+        str(expected_root) != rank_context.ranking_root
+        or snapshot.manifest_sha256 != rank_context.parent_snapshot_hash
+        or snapshot.manifest_identity_sha256 != rank_context.parent_snapshot_id
+        or snapshot.cohort_id != rank_context.parent_cohort_id
+        or snapshot.decision_date.isoformat() != rank_context.decision_date
+    ):
+        _fail("ranking_context_parent_mismatch", "rank context 與 verified parent snapshot/root 不一致。")
+    inherited = inherited_context if isinstance(inherited_context, ResearchStockContextDTO) else None
+    if inherited is not None and (
+        inherited.stock_code != rank_context.selected_stock_code
+        or (inherited.decision_date and inherited.decision_date != rank_context.decision_date)
+    ):
+        _fail("ranking_context_parent_mismatch", "繼承的研究 context 股票或日期與 rank row 不一致。")
+    return ResearchStockContextDTO(
+        stock_code=rank_context.selected_stock_code,
+        stock_name=str(stock_name or (inherited.stock_name if inherited else "") or stock_code),
+        decision_date=rank_context.decision_date,
+        data_date=rank_context.latest_date,
+        result_id="",
+        source_snapshot_id=rank_context.parent_snapshot_id,
+        source_snapshot_hash=rank_context.parent_snapshot_hash,
+        source_kind="original_stock_ranking",
+        source_label=source_label,
+        source_workspace=source_workspace or (inherited.source_workspace if inherited else "recommendation"),
+        source_id=rank_context.rank_snapshot_id,
+        daily_snapshot_root=rank_context.snapshot_root,
+        daily_snapshot_cohort_id=rank_context.parent_cohort_id,
+        daily_snapshot_condition_keys=(
+            inherited.daily_snapshot_condition_keys if inherited else ""
+        ),
+        daily_snapshot_combine_mode=(
+            inherited.daily_snapshot_combine_mode if inherited else ""
+        ),
+        rank_context=rank_context,
+    )
+
+
+def load_original_stock_ranking_from_context(
+    rank_context: ResearchRankContextDTO | Mapping[str, Any],
+    *,
+    db_path: str | Path,
+) -> tuple[VerifiedDailyMarketSnapshot, VerifiedOriginalStockRanking]:
+    """重驗 DTO 所指向的 parent/manifest/source，回傳 pinned verified bundle。"""
+
+    from datetime import date
+    from app_module.daily_market_snapshot_repository import DailyMarketSnapshotRepository
+
+    if isinstance(rank_context, Mapping):
+        try:
+            rank_context = ResearchRankContextDTO.from_mapping(rank_context)
+        except (TypeError, ValueError) as exc:
+            raise OriginalStockRankingError("ranking_context_invalid", "rank context mapping 不符合固定 DTO schema。") from exc
+    if not isinstance(rank_context, ResearchRankContextDTO):
+        _fail("ranking_context_invalid", "rank context 必須是已驗證的 ResearchRankContextDTO。")
+    try:
+        snapshot = DailyMarketSnapshotRepository(rank_context.snapshot_root).load_manifest(
+            rank_context.parent_snapshot_hash,
+            rank_context.parent_cohort_id,
+            date.fromisoformat(rank_context.decision_date),
+        )
+    except Exception as exc:
+        raise OriginalStockRankingError(
+            "ranking_context_parent_refused", "無法以 rank context 的 pinned identity 讀回 parent snapshot。"
+        ) from exc
+    if (
+        snapshot.manifest_sha256 != rank_context.parent_snapshot_hash
+        or snapshot.manifest_identity_sha256 != rank_context.parent_snapshot_id
+        or snapshot.cohort_id != rank_context.parent_cohort_id
+        or snapshot.decision_date.isoformat() != rank_context.decision_date
+    ):
+        _fail("ranking_context_parent_mismatch", "pinned parent snapshot hash/date/cohort 不一致。")
+    repository = OriginalStockRankingRepository(rank_context.snapshot_root, rank_context.ranking_root)
+    ranking = repository.read_pinned(
+        snapshot,
+        db_path=db_path,
+        period=rank_context.period,
+        direction=rank_context.direction,
+        manifest_sha256=rank_context.source_hash,
+        manifest_identity_sha256=rank_context.rank_snapshot_id,
+    )
+    expected = research_rank_context_for_original_stock_ranking(
+        ranking,
+        rank_context.selected_stock_code,
+        filter_state=rank_context.filter_state,
+        sort_key=rank_context.sort_key,
+        descending=rank_context.descending,
+    )
+    if expected.to_dict() != rank_context.to_dict():
+        _fail("ranking_context_identity_mismatch", "rank context mode/window/universe/method/hash/order 與 pinned manifest 不一致。")
+    return snapshot, ranking
+
+
+def read_original_stock_ranking_row_from_context(
+    rank_context: ResearchRankContextDTO | Mapping[str, Any],
+    *,
+    db_path: str | Path,
+) -> Mapping[str, Any]:
+    """重驗 DTO 並回傳 immutable artifact 中的原始 selected row。"""
+
+    _snapshot, ranking = load_original_stock_ranking_from_context(
+        rank_context,
+        db_path=db_path,
+    )
+    selected = rank_context
+    if isinstance(selected, Mapping):
+        selected = ResearchRankContextDTO.from_mapping(selected)
+    if not isinstance(selected, ResearchRankContextDTO):
+        _fail("ranking_context_invalid", "rank context 型別無效。")
+    return ranking.rows[selected.selected_rank - 1]
 
 
 class OriginalStockRankingPublisher:

@@ -937,6 +937,12 @@ class MainWindow(QMainWindow):
             self.stock_research_workspace.report_view.research_bookmark_context_resolver = (
                 self._resolve_research_bookmark_stock
             )
+            self.stock_research_workspace.report_view.rankBookmarkRequested.connect(
+                self._save_original_ranking_bookmark
+            )
+            self.stock_research_workspace.report_view.latestResearchRequested.connect(
+                self._open_latest_bookmark_research
+            )
             self.stock_research_workspace.report_view.activeContextChanged.connect(
                 lambda context: self.research_session_store.set_stock_context(
                     context, source="stock_research"
@@ -1104,6 +1110,7 @@ class MainWindow(QMainWindow):
                 "daily_snapshot_cohort_id",
                 "daily_snapshot_condition_keys",
                 "daily_snapshot_combine_mode",
+                "rank_context",
             }
             payload = {key: value.get(key, "") for key in fields}
             if not str(payload.get("stock_code") or "").strip():
@@ -1160,6 +1167,7 @@ class MainWindow(QMainWindow):
                             source_label=context.source_label,
                             source_workspace=context.source_workspace,
                             ml_scope_mode=context.ml_scope_mode,
+                            rank_context=context.rank_context,
                             source="stock_drilldown",
                         )
                     )
@@ -1204,8 +1212,134 @@ class MainWindow(QMainWindow):
         daily.bookmarkSaved.connect(lambda *_args: watchlist._load_watchlist())
         watchlist.latestResearchRequested.connect(self._open_latest_bookmark_research)
 
+    def _save_original_ranking_bookmark(self, value: object) -> None:
+        """經使用者確認後，收藏報告目前 context 指向的原排名版本。"""
+
+        context = self._coerce_stock_research_context(value)
+        if context is None or context.rank_context is None:
+            self.statusBar().showMessage("原排名收藏 context 不完整；未保存。")
+            return
+        rank = context.rank_context
+        if rank.selected_stock_code != context.stock_code:
+            self.statusBar().showMessage("原排名收藏股票身份不一致；已拒絕保存。")
+            return
+        service = getattr(self, "watchlist_service", None)
+        add_bookmark = getattr(service, "add_rank_research_bookmark", None)
+        if not callable(add_bookmark):
+            self.statusBar().showMessage("觀察清單服務不支援版本化原排名收藏；未保存。")
+            return
+        config = getattr(self, "config", None)
+        db_path = getattr(config, "db_file", None) or getattr(
+            config, "sqlite_db_file", None
+        )
+        if not db_path:
+            self.statusBar().showMessage("未配置原排名核驗資料庫；未保存。")
+            return
+        try:
+            from app_module.daily_market_research_bookmark import (
+                create_original_stock_ranking_bookmark_from_context,
+            )
+
+            bookmark = create_original_stock_ranking_bookmark_from_context(
+                context,
+                db_path=db_path,
+                sort_key=rank.sort_key,
+                descending=rank.descending,
+                filter_state=rank.filter_state,
+            )
+        except Exception as exc:
+            code = str(getattr(exc, "code", "") or "").strip()
+            reason = f"{code}: {exc}" if code else f"{type(exc).__name__}: {exc}"
+            self.statusBar().showMessage(
+                f"原排名來源已拒絕或版本不符；未收藏。原因：{reason}"
+            )
+            return
+        detail = self._original_ranking_bookmark_confirmation_text(context)
+        if (
+            QMessageBox.question(
+                self,
+                "確認收藏此原排名研究",
+                f"將目前報告所指向的原始排名版本加入觀察清單？\n\n{detail}",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            self.statusBar().showMessage("已取消原排名收藏；觀察清單未變更。")
+            return
+        try:
+            result = add_bookmark(bookmark)
+        except Exception as exc:
+            self.statusBar().showMessage(
+                f"原排名收藏保存失敗：{type(exc).__name__}: {exc}。"
+            )
+            return
+        status = str(getattr(result, "status", "") or "")
+        if status == "conflict":
+            message = str(getattr(result, "message", "") or "收藏身份衝突")
+            self.statusBar().showMessage(f"{message}；未覆寫既有收藏。")
+            return
+        if status not in {"added", "already_present"}:
+            self.statusBar().showMessage(
+                str(getattr(result, "message", "原排名收藏未能保存。"))
+            )
+            return
+        watchlist_view = getattr(self, "watchlist_view", None)
+        refresh = getattr(watchlist_view, "_load_watchlist", None)
+        if callable(refresh):
+            refresh()
+        bookmark_id = str(
+            getattr(result, "source_id", "")
+            or getattr(result, "bookmark_id", "")
+            or getattr(bookmark, "bookmark_id", "")
+        )
+        self.statusBar().showMessage(
+            f"{'已收藏' if status == 'added' else '此原排名已收藏'} {context.stock_code}；"
+            f"來源 ID：{bookmark_id or '已核驗'}。"
+        )
+
+    def _original_ranking_bookmark_confirmation_text(
+        self, context: ResearchStockContextDTO
+    ) -> str:
+        rank = context.rank_context
+        report_view = getattr(
+            getattr(self, "stock_research_workspace", None), "report_view", None
+        )
+        report = getattr(report_view, "_loaded_report", None)
+        ranking = getattr(report, "original_ranking", None)
+        label = str(getattr(ranking, "native_score_label", "") or "")
+        rank_number = getattr(ranking, "rank", None)
+        window = "、".join(rank.comparison_window_dates)
+        return (
+            f"股票：{context.stock_code}｜模式：{'週' if rank.period == 'week' else '日'}／"
+            f"{'強勢 Top' if rank.direction == 'strong' else '弱勢 Bottom'}｜"
+            f"原名次：{rank_number if rank_number is not None else rank.selected_rank}｜"
+            f"publisher 標籤：{label or '原標籤待報告核對'}\n"
+            f"決策日：{rank.decision_date}｜實際比較日：{rank.comparison_date} → {rank.latest_date}\n"
+            f"比較窗口：{window}｜規則：{rank.comparison_window_rule}\n"
+            f"研究母體 SHA-256：{rank.research_universe_sha256}\n"
+            f"方法／版本：{rank.method_name} {rank.method_version}｜"
+            f"契約 SHA-256：{rank.method_contract_sha256}\n"
+            f"排名 manifest identity／SHA-256：{rank.rank_snapshot_id}／{rank.source_hash}\n"
+            f"父快照 identity／SHA-256：{rank.parent_snapshot_id}／{rank.parent_snapshot_hash}"
+        )
+
     def _open_latest_bookmark_research(self, value: object) -> None:
         context = self._coerce_stock_research_context(value)
+        if context is not None and (
+            context.rank_context is not None
+            or context.source_kind == "explicit_latest_stock_research"
+        ):
+            latest_context = ResearchStockContextDTO(
+                stock_code=context.stock_code,
+                stock_name=context.stock_name,
+                source_kind="explicit_latest_stock_research",
+                source_label="使用者明確要求另開最新個股研究",
+                source_workspace="stock_research",
+            )
+            self._open_stock_research_context(latest_context)
+            self._select_main_workspace("stock_research")
+            return
         recommendation = getattr(self, "recommendation_view", None)
         daily = getattr(recommendation, "daily_market_research_view", None)
         opener = getattr(daily, "open_latest_research", None)
@@ -1230,6 +1364,12 @@ class MainWindow(QMainWindow):
 
         if (
             context.source_workspace == "recommendation"
+            and context.source_kind == "original_stock_ranking"
+            and context.rank_context is not None
+        ):
+            return context.rank_context.eligible_stock_codes
+        if (
+            context.source_workspace == "recommendation"
             and context.source_kind == "daily_market_research_snapshot"
         ):
             view = getattr(self, "recommendation_view", None)
@@ -1237,7 +1377,11 @@ class MainWindow(QMainWindow):
             return tuple(getter()) if callable(getter) else ()
         if (
             context.source_workspace == "watchlist"
-            and context.source_kind == "daily_market_research_snapshot"
+            and context.source_kind
+            in {
+                "daily_market_research_snapshot",
+                "original_stock_ranking_bookmark",
+            }
         ):
             view = getattr(self, "watchlist_view", None)
             getter = getattr(view, "research_bookmark_stock_codes", None)
@@ -1299,6 +1443,37 @@ class MainWindow(QMainWindow):
             view = None
         else:
             view = None
+        if (
+            context.rank_context is not None
+            and context.source_workspace == "watchlist"
+        ):
+            restore = getattr(view, "restore_research_bookmark_stock", None)
+            selected = bool(restore(context)) if callable(restore) else False
+            if not selected:
+                self.statusBar().showMessage(
+                    "原排名收藏來源 ID 或 hash 無法精確返回；未用同股其他收藏替代。"
+                )
+            return
+        if (
+            context.rank_context is not None
+            and context.source_workspace == "recommendation"
+        ):
+            restore = getattr(view, "restore_research_snapshot_stock", None)
+            selected = (
+                bool(
+                    restore(
+                        context.stock_code,
+                        manifest_sha256=context.rank_context.parent_snapshot_hash,
+                    )
+                )
+                if callable(restore)
+                else False
+            )
+            if not selected:
+                self.statusBar().showMessage(
+                    "原排名父快照已變動或目前來源無法定位；未切換到其他模式或最新結果。"
+                )
+            return
         if context.source_kind == "daily_market_research_snapshot":
             if context.source_workspace == "watchlist":
                 restore = getattr(view, "restore_research_bookmark_stock", None)

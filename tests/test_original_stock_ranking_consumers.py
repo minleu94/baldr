@@ -266,7 +266,9 @@ def test_source_revision_failure_clears_old_rank_and_disables_rank_sort(
     app.processEvents()
 
 
-def test_original_rank_bookmark_is_refused_before_watchlist_write(tmp_path: Path) -> None:
+def test_original_rank_bookmark_never_falls_back_to_legacy_watchlist_write(
+    tmp_path: Path, monkeypatch
+) -> None:
     app = _app()
     root, snapshot, rows, service = _fixture(tmp_path)
     ranking = _ranking(snapshot)
@@ -280,7 +282,11 @@ def test_original_rank_bookmark_is_refused_before_watchlist_write(tmp_path: Path
             return SimpleNamespace(status="added")
 
     watchlist = WatchlistSpy()
-    view = DailyMarketResearchView(service, watchlist_service=watchlist)
+    view = DailyMarketResearchView(
+        service,
+        watchlist_service=watchlist,
+        bookmark_confirmation_callback=lambda _bookmark: True,
+    )
     view._snapshot = snapshot
     view._cohort_projection = project_daily_market_cohort(
         snapshot,
@@ -292,10 +298,19 @@ def test_original_rank_bookmark_is_refused_before_watchlist_write(tmp_path: Path
     view._all_rows = rows
     view._sync_original_rank_sort_controls()
     _set_data(view.sort_key_combo, "original_strength_rank")
+    view.results_table.selectRow(0)
+
+    class BookmarkFactoryStub:
+        bookmark_id = "rank-bookmark-test"
+
+    monkeypatch.setattr(
+        "app_module.daily_market_research_bookmark.create_original_stock_ranking_bookmark",
+        lambda *_args, **_kwargs: BookmarkFactoryStub(),
+    )
 
     assert view.bookmark_selected_research() is False
     assert watchlist.calls == []
-    assert "書籤格式不保存排名期間、方向與來源身份" in view.status_label.text()
+    assert "manifest" in view.status_label.text()
     view.close()
     app.processEvents()
 

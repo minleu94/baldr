@@ -33,10 +33,37 @@ from app_module.research_session.session_dtos import ResearchStockContextDTO
 
 
 DAILY_MARKET_RESEARCH_BOOKMARK_SCHEMA = "daily-market-research-bookmark.v1"
+ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA = "daily-market-research-bookmark.v2"
 DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE = "daily_market_research_bookmark"
+ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE = "original_stock_ranking_bookmark"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SORT_KEYS = frozenset({"stock_code", "data_date", "close", "ma20", "ma60"})
 _CONDITION_KEYS = frozenset({"close_above_ma20", "close_above_ma60"})
+_V1_CONTEXT_KEYS = (
+    "stock_code",
+    "stock_name",
+    "decision_date",
+    "data_date",
+    "result_id",
+    "identity_status",
+    "source_snapshot_id",
+    "source_snapshot_hash",
+    "profile_id",
+    "profile_version",
+    "source_id",
+    "source_version",
+    "mapping_source_id",
+    "mapping_version",
+    "mapping_observed_date",
+    "source_kind",
+    "source_label",
+    "source_workspace",
+    "ml_scope_mode",
+    "daily_snapshot_root",
+    "daily_snapshot_cohort_id",
+    "daily_snapshot_condition_keys",
+    "daily_snapshot_combine_mode",
+)
 _PAYLOAD_KEYS = frozenset(
     {
         "schema_version",
@@ -74,6 +101,22 @@ _PAYLOAD_KEYS = frozenset(
         "context",
     }
 )
+_RANK_PAYLOAD_KEYS = frozenset(
+    {
+        "schema_version",
+        "bookmark_id",
+        "payload_sha256",
+        "query_sha256",
+        "stock_code",
+        "stock_name",
+        "source",
+        "source_workspace",
+        "source_id",
+        "result_id",
+        "context",
+    }
+)
+_RANK_CONTEXT_KEYS = frozenset({*_V1_CONTEXT_KEYS, "rank_context"})
 
 
 class DailyMarketResearchBookmarkError(ValueError):
@@ -155,7 +198,7 @@ class DailyMarketResearchBookmark:
         )
 
     def _body(self) -> dict[str, Any]:
-        context = asdict(self.context)
+        context = _v1_context_payload(self.context)
         return {
             "schema_version": DAILY_MARKET_RESEARCH_BOOKMARK_SCHEMA,
             "bookmark_id": self.bookmark_id,
@@ -199,6 +242,57 @@ class DailyMarketResearchBookmark:
 
 
 @dataclass(frozen=True, slots=True)
+class OriginalStockRankingBookmark:
+    """保存原始強弱排名 manifest 身份與選取股票，不複製或重算數值分數。"""
+
+    bookmark_id: str
+    stock_code: str
+    stock_name: str
+    context_json: str
+    _query_sha256: str
+    _payload_sha256: str
+
+    @property
+    def context(self) -> ResearchStockContextDTO:
+        value = json.loads(self.context_json)
+        if not isinstance(value, Mapping):
+            _fail("bookmark_context_invalid", "rank bookmark context 必須是 object")
+        return ResearchStockContextDTO(**dict(value))
+
+    @property
+    def rank_context(self):
+        return self.context.rank_context
+
+    @property
+    def query_sha256(self) -> str:
+        return self._query_sha256
+
+    @property
+    def payload_sha256(self) -> str:
+        return self._payload_sha256
+
+    def _body(self) -> dict[str, Any]:
+        return {
+            "schema_version": ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA,
+            "bookmark_id": self.bookmark_id,
+            "payload_sha256": self._payload_sha256,
+            "query_sha256": self._query_sha256,
+            "stock_code": self.stock_code,
+            "stock_name": self.stock_name,
+            "source": ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE,
+            "source_workspace": "watchlist",
+            "source_id": self.bookmark_id,
+            "result_id": "",
+            "context": json.loads(self.context_json),
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        """回傳 rank bookmark v2 payload 的獨立 JSON-safe 複本。"""
+
+        return self._body()
+
+
+@dataclass(frozen=True, slots=True)
 class DailyMarketResearchBookmarkRestoreToken:
     """精確移除一筆收藏後，用來回復原項目的不透明快照。"""
 
@@ -231,6 +325,12 @@ class DailyMarketResearchBookmarkMutationResult:
     @property
     def succeeded(self) -> bool:
         return self.status in {"added", "already_present", "removed", "restored"}
+
+    @property
+    def source_id(self) -> str:
+        """Watchlist item source_id 與精確 bookmark_id 相同。"""
+
+        return self.bookmark_id
 
 
 def create_daily_market_research_bookmark(
@@ -398,13 +498,195 @@ def create_daily_market_research_bookmark(
     return _from_payload_fields({**body, "payload_sha256": payload_sha})
 
 
+def _rank_context_payload(context: ResearchStockContextDTO) -> dict[str, Any]:
+    if context.rank_context is None:
+        _fail("bookmark_rank_context_missing", "rank bookmark 缺少 typed rank context")
+    payload = {key: getattr(context, key) for key in _V1_CONTEXT_KEYS}
+    payload["rank_context"] = context.rank_context.to_dict()
+    return payload
+
+
+def _rank_query_payload(context: ResearchStockContextDTO) -> dict[str, Any]:
+    rank_context = context.rank_context
+    if rank_context is None:
+        _fail("bookmark_rank_context_missing", "rank bookmark 缺少 typed rank context")
+    return {
+        "rank_context": rank_context.to_dict(),
+        "daily_snapshot_root": context.daily_snapshot_root,
+        "daily_snapshot_cohort_id": context.daily_snapshot_cohort_id,
+        "daily_snapshot_condition_keys": context.daily_snapshot_condition_keys,
+        "daily_snapshot_combine_mode": context.daily_snapshot_combine_mode,
+    }
+
+
+def create_original_stock_ranking_bookmark(
+    snapshot: VerifiedDailyMarketSnapshot,
+    ranking: Any,
+    *,
+    ranking_root: str | Path,
+    stock_code: str,
+    stock_name: str = "",
+    source_context: ResearchStockContextDTO | None = None,
+    filter_state: str | None = None,
+    sort_key: str | None = None,
+    descending: bool | None = None,
+) -> OriginalStockRankingBookmark:
+    """將已驗證 publisher row 與外層研究查詢保存為 rank bookmark v2。"""
+
+    from app_module.original_stock_ranking import (
+        research_context_for_original_stock_ranking,
+    )
+
+    previous_rank = source_context.rank_context if source_context is not None else None
+    selected_filter = filter_state or (previous_rank.filter_state if previous_rank else "all")
+    selected_sort = sort_key or (previous_rank.sort_key if previous_rank else "rank")
+    selected_descending = (
+        descending if descending is not None else (previous_rank.descending if previous_rank else False)
+    )
+    publisher_context = research_context_for_original_stock_ranking(
+        snapshot,
+        ranking,
+        ranking_root=ranking_root,
+        stock_code=stock_code,
+        stock_name=stock_name,
+        inherited_context=source_context,
+        filter_state=selected_filter,
+        sort_key=selected_sort,
+        descending=selected_descending,
+    )
+    rank_context = publisher_context.rank_context
+    if rank_context is None:
+        _fail("bookmark_rank_context_missing", "已驗證排名未建立 typed rank context")
+    if previous_rank is not None and (
+        previous_rank.rank_snapshot_id != rank_context.rank_snapshot_id
+        or previous_rank.source_hash != rank_context.source_hash
+        or previous_rank.selected_stock_code != rank_context.selected_stock_code
+        or previous_rank.selected_rank != rank_context.selected_rank
+    ):
+        _fail("bookmark_rank_context_mismatch", "來源 context 與 pinned ranking identity/selected row 不一致")
+    if source_context is not None:
+        if (
+            source_context.daily_snapshot_root
+            and str(Path(source_context.daily_snapshot_root).expanduser().resolve()) != rank_context.snapshot_root
+        ):
+            _fail("bookmark_snapshot_root_mismatch", "外層每日查詢 root 與 pinned parent snapshot 不一致")
+        if (
+            source_context.daily_snapshot_cohort_id
+            and source_context.daily_snapshot_cohort_id != rank_context.parent_cohort_id
+        ):
+            _fail("bookmark_snapshot_cohort_mismatch", "外層每日查詢 cohort 與 pinned parent snapshot 不一致")
+    context = ResearchStockContextDTO(
+        stock_code=publisher_context.stock_code,
+        stock_name=publisher_context.stock_name,
+        decision_date=publisher_context.decision_date,
+        data_date=publisher_context.data_date,
+        result_id="",
+        source_snapshot_id=publisher_context.source_snapshot_id,
+        source_snapshot_hash=publisher_context.source_snapshot_hash,
+        source_kind=ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE,
+        source_label="原始強弱排名收藏",
+        source_workspace="watchlist",
+        source_id="pending",
+        daily_snapshot_root=publisher_context.daily_snapshot_root,
+        daily_snapshot_cohort_id=publisher_context.daily_snapshot_cohort_id,
+        daily_snapshot_condition_keys=publisher_context.daily_snapshot_condition_keys,
+        daily_snapshot_combine_mode=publisher_context.daily_snapshot_combine_mode,
+        rank_context=rank_context,
+    )
+    query_payload = _rank_query_payload(context)
+    query_sha = _sha256(query_payload)
+    identity_payload = {
+        "schema_version": ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA,
+        "stock_code": context.stock_code,
+        "source_hash": rank_context.source_hash,
+        "rank_snapshot_id": rank_context.rank_snapshot_id,
+        "period": rank_context.period,
+        "direction": rank_context.direction,
+        "filter_state": rank_context.filter_state,
+        "sort_key": rank_context.sort_key,
+        "descending": rank_context.descending,
+        "daily_snapshot_condition_keys": context.daily_snapshot_condition_keys,
+        "daily_snapshot_combine_mode": context.daily_snapshot_combine_mode,
+        "query_sha256": query_sha,
+    }
+    bookmark_id = f"rank-{_sha256(identity_payload)}"
+    context = ResearchStockContextDTO(
+        stock_code=context.stock_code,
+        stock_name=context.stock_name,
+        decision_date=context.decision_date,
+        data_date=context.data_date,
+        result_id="",
+        source_snapshot_id=context.source_snapshot_id,
+        source_snapshot_hash=context.source_snapshot_hash,
+        source_kind=ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE,
+        source_label="原始強弱排名收藏",
+        source_workspace="watchlist",
+        source_id=bookmark_id,
+        daily_snapshot_root=context.daily_snapshot_root,
+        daily_snapshot_cohort_id=context.daily_snapshot_cohort_id,
+        daily_snapshot_condition_keys=context.daily_snapshot_condition_keys,
+        daily_snapshot_combine_mode=context.daily_snapshot_combine_mode,
+        rank_context=rank_context,
+    )
+    context_payload = _rank_context_payload(context)
+    provisional = OriginalStockRankingBookmark(
+        bookmark_id=bookmark_id,
+        stock_code=context.stock_code,
+        stock_name=context.stock_name,
+        context_json=_canonical_json(context_payload),
+        _query_sha256=query_sha,
+        _payload_sha256="",
+    )
+    body = provisional.to_dict()
+    body.pop("payload_sha256", None)
+    decoded = decode_daily_market_research_bookmark(
+        {**body, "payload_sha256": _sha256(body)}
+    )
+    if not isinstance(decoded, OriginalStockRankingBookmark):
+        _fail("bookmark_schema_mismatch", "rank bookmark factory 未產生 v2 收藏")
+    return decoded
+
+
+def create_original_stock_ranking_bookmark_from_context(
+    context: ResearchStockContextDTO,
+    *,
+    db_path: str | Path,
+    sort_key: str | None = None,
+    descending: bool | None = None,
+    filter_state: str | None = None,
+) -> OriginalStockRankingBookmark:
+    """從報表 context 的 pinned rank manifest 讀回原列後建立 bookmark。"""
+
+    if not isinstance(context, ResearchStockContextDTO) or context.rank_context is None:
+        _fail("bookmark_rank_context_missing", "收藏需要包含 typed rank context 的研究 context")
+    from app_module.original_stock_ranking import load_original_stock_ranking_from_context
+
+    snapshot, ranking = load_original_stock_ranking_from_context(
+        context.rank_context,
+        db_path=db_path,
+    )
+    return create_original_stock_ranking_bookmark(
+        snapshot,
+        ranking,
+        ranking_root=context.rank_context.ranking_root,
+        stock_code=context.stock_code,
+        stock_name=context.stock_name,
+        source_context=context,
+        filter_state=filter_state,
+        sort_key=sort_key,
+        descending=descending,
+    )
+
+
 def decode_daily_market_research_bookmark(
     value: Mapping[str, Any] | Any,
-) -> DailyMarketResearchBookmark:
+) -> DailyMarketResearchBookmark | OriginalStockRankingBookmark:
     """嚴格解碼已保存的 payload，並跨版本保留收藏當時捕獲的方法契約。"""
 
     if not isinstance(value, Mapping):
         _fail("bookmark_payload_invalid", "研究收藏 payload 必須是 object")
+    if value.get("schema_version") == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
+        return _decode_original_stock_ranking_bookmark(value)
     payload = dict(value)
     if set(payload) != _PAYLOAD_KEYS:
         _fail("bookmark_schema_mismatch", "研究收藏欄位不符合固定 v1 schema")
@@ -503,7 +785,7 @@ def decode_daily_market_research_bookmark(
     context = payload.get("context")
     if not isinstance(context, Mapping):
         _fail("bookmark_context_invalid", "研究收藏缺少 typed context")
-    expected_context = asdict(
+    expected_context = _v1_context_payload(
         ResearchStockContextDTO(
             stock_code=code,
             stock_name=name,
@@ -566,10 +848,114 @@ def decode_daily_market_research_bookmark(
     return result
 
 
-def _from_payload_fields(payload: Mapping[str, Any]) -> DailyMarketResearchBookmark:
-    """供 verified factory 和嚴格 decoder 共用的內部建構器。"""
+def _decode_original_stock_ranking_bookmark(
+    value: Mapping[str, Any],
+) -> OriginalStockRankingBookmark:
+    """嚴格驗證 rank v2 payload、完整 context 與 typed extension。"""
 
-    return decode_daily_market_research_bookmark(payload)
+    payload = dict(value)
+    if set(payload) != _RANK_PAYLOAD_KEYS:
+        _fail("bookmark_schema_mismatch", "rank bookmark 欄位不符合固定 v2 schema")
+    if payload.get("schema_version") != ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
+        _fail("bookmark_schema_mismatch", "rank bookmark schema version 不支援")
+    claimed_payload_hash = _require_sha256(payload.get("payload_sha256"), "payload_sha256")
+    body = {key: item for key, item in payload.items() if key != "payload_sha256"}
+    if _sha256(body) != claimed_payload_hash:
+        _fail("bookmark_payload_hash_mismatch", "rank bookmark payload SHA-256 不符")
+    code = _require_text(payload.get("stock_code"), "stock_code")
+    name = _require_text(payload.get("stock_name"), "stock_name")
+    bookmark_id = _require_text(payload.get("bookmark_id"), "bookmark_id")
+    query_sha = _require_sha256(payload.get("query_sha256"), "query_sha256")
+    context_value = payload.get("context")
+    if not isinstance(context_value, Mapping) or set(context_value) != _RANK_CONTEXT_KEYS:
+        _fail("bookmark_context_invalid", "rank bookmark context 欄位不符合固定 schema")
+    context_payload = dict(context_value)
+    if any(type(context_payload.get(key)) is not str for key in _V1_CONTEXT_KEYS):
+        _fail("bookmark_context_invalid", "rank bookmark context 欄位必須是文字")
+    forbidden_context_identity = {
+        "identity_status", "profile_id", "profile_version", "source_version",
+        "mapping_source_id", "mapping_version", "mapping_observed_date", "ml_scope_mode",
+    }
+    if any(context_payload.get(key) != "" for key in forbidden_context_identity):
+        _fail("bookmark_context_invalid", "rank bookmark 不可攜帶 Advice、ML 或 mapping 身份")
+    try:
+        context = ResearchStockContextDTO(**context_payload)
+    except (TypeError, ValueError) as exc:
+        raise DailyMarketResearchBookmarkError(
+            "bookmark_context_invalid", "rank bookmark context 日期、股票或 typed rank extension 無效"
+        ) from exc
+    rank_context = context.rank_context
+    if rank_context is None or _rank_context_payload(context) != context_payload:
+        _fail("bookmark_context_invalid", "rank bookmark context 不是完整 canonical typed payload")
+    if (
+        context.stock_code != code
+        or context.stock_name != name
+        or context.decision_date != rank_context.decision_date
+        or context.data_date != rank_context.latest_date
+        or context.source_snapshot_id != rank_context.parent_snapshot_id
+        or context.source_snapshot_hash != rank_context.parent_snapshot_hash
+        or context.daily_snapshot_root != rank_context.snapshot_root
+        or context.daily_snapshot_cohort_id != rank_context.parent_cohort_id
+        or context.source_kind != ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE
+        or context.source_label != "原始強弱排名收藏"
+        or context.source_workspace != "watchlist"
+        or context.result_id != ""
+        or context.source_id != bookmark_id
+    ):
+        _fail("bookmark_context_invalid", "rank bookmark context source/date/selected stock 不一致")
+    condition_keys = context.daily_snapshot_condition_keys.split(",") if context.daily_snapshot_condition_keys else []
+    if (
+        len(condition_keys) != len(set(condition_keys))
+        or any(not key or key not in _CONDITION_KEYS for key in condition_keys)
+        or (condition_keys and context.daily_snapshot_combine_mode not in {"AND", "OR"})
+        or (not condition_keys and context.daily_snapshot_combine_mode)
+    ):
+        _fail("bookmark_query_invalid", "rank bookmark 未保留有效的外層 daily condition query")
+    if _sha256(_rank_query_payload(context)) != query_sha:
+        _fail("bookmark_query_hash_mismatch", "rank bookmark query SHA-256 不符")
+    expected_identity = {
+        "schema_version": ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA,
+        "stock_code": code,
+        "source_hash": rank_context.source_hash,
+        "rank_snapshot_id": rank_context.rank_snapshot_id,
+        "period": rank_context.period,
+        "direction": rank_context.direction,
+        "filter_state": rank_context.filter_state,
+        "sort_key": rank_context.sort_key,
+        "descending": rank_context.descending,
+        "daily_snapshot_condition_keys": context.daily_snapshot_condition_keys,
+        "daily_snapshot_combine_mode": context.daily_snapshot_combine_mode,
+        "query_sha256": query_sha,
+    }
+    if bookmark_id != f"rank-{_sha256(expected_identity)}":
+        _fail("bookmark_identity_mismatch", "rank bookmark_id 與 publisher/query identity 不符")
+    if (
+        payload.get("source") != ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE
+        or payload.get("source_workspace") != "watchlist"
+        or payload.get("source_id") != bookmark_id
+        or payload.get("result_id") != ""
+    ):
+        _fail("bookmark_context_invalid", "rank bookmark 不可帶入 manual 或 Advice identity")
+    result = OriginalStockRankingBookmark(
+        bookmark_id=bookmark_id,
+        stock_code=code,
+        stock_name=name,
+        context_json=_canonical_json(context_payload),
+        _query_sha256=query_sha,
+        _payload_sha256=claimed_payload_hash,
+    )
+    if result.to_dict() != payload:
+        _fail("bookmark_payload_noncanonical", "rank bookmark payload 不是 canonical v2 表示")
+    return result
+
+
+def _from_payload_fields(payload: Mapping[str, Any]) -> DailyMarketResearchBookmark:
+    """由舊版 v1 factory 建立並收窄型別的已驗證 bookmark。"""
+
+    decoded = decode_daily_market_research_bookmark(payload)
+    if not isinstance(decoded, DailyMarketResearchBookmark):
+        _fail("bookmark_schema_mismatch", "daily bookmark factory 未產生 v1 收藏")
+    return decoded
 
 
 def _build_payload_body(
@@ -772,3 +1158,10 @@ def _sha256(value: Any) -> str:
 
 def _fail(code: str, message: str) -> NoReturn:
     raise DailyMarketResearchBookmarkError(code, message)
+
+
+def _v1_context_payload(context: ResearchStockContextDTO) -> dict[str, Any]:
+    """保留 v1 原始 context 欄位投影，避免新增 DTO default 改寫舊 hash。"""
+
+    values = asdict(context)
+    return {key: values[key] for key in _V1_CONTEXT_KEYS}

@@ -65,6 +65,7 @@ from app_module.stock_research_report_dtos import (
     StockReportSectionDTO,
     StockReportSourceDTO,
     StockResearchReportDTO,
+    StockOriginalRankingReportDTO,
     StockTechnicalSnapshotDTO,
 )
 from app_module.stock_research_report_provider_adapters import (
@@ -72,6 +73,7 @@ from app_module.stock_research_report_provider_adapters import (
     stock_price_row_fingerprint_sha256,
 )
 from app_module.watchlist_analysis_service import WatchlistAnalysisDTO, WatchlistAnalysisService
+from app_module.research_session import ResearchRankContextDTO
 from data_module.current_market_status_observation import CurrentMarketStatusReader
 
 
@@ -196,6 +198,12 @@ class StockResearchReportReadService:
 
         code = _normalize_stock_code(stock_code)
         context_map = _context_map(context)
+        rank_context = _rank_context_from(context)
+        is_rank_research_context = (
+            context_map.get("source_kind")
+            in {"original_stock_ranking", "original_stock_ranking_bookmark"}
+            or rank_context is not None
+        )
         is_daily_research_snapshot = (
             context_map.get("source_kind") == _DAILY_MARKET_RESEARCH_SOURCE_KIND
         )
@@ -207,20 +215,26 @@ class StockResearchReportReadService:
         current_date = actual_clock.astimezone(_TAIPEI).date()
         requested_cutoff = _coerce_date(as_of_date)
         context_cutoff = (
-            _coerce_date(context_map.get("decision_date"))
+            _coerce_date(
+                getattr(rank_context, "decision_date", "")
+                or context_map.get("decision_date")
+            )
+            if is_rank_research_context
+            else _coerce_date(context_map.get("decision_date"))
             if is_daily_research_snapshot
             else None
         )
-        pinned_context_date_invalid = is_daily_research_snapshot and context_cutoff is None
+        has_pinned_research_context = is_daily_research_snapshot or is_rank_research_context
+        pinned_context_date_invalid = has_pinned_research_context and context_cutoff is None
         pinned_context_date_mismatch = (
-            is_daily_research_snapshot
+            has_pinned_research_context
             and requested_cutoff is not None
             and context_cutoff is not None
             and requested_cutoff != context_cutoff
         )
         cutoff = (
             context_cutoff
-            if is_daily_research_snapshot and context_cutoff is not None
+            if has_pinned_research_context and context_cutoff is not None
             else requested_cutoff or current_date
         )
         if cutoff > current_date:
@@ -233,6 +247,23 @@ class StockResearchReportReadService:
         sections: list[StockReportSectionDTO] = []
         limitations: list[str] = []
         errors: list[str] = []
+        original_ranking = (
+            _read_original_rank_report(
+                rank_context,
+                db_path=getattr(self.config, "db_file", None)
+                or getattr(self.config, "sqlite_db_file", None),
+                expected_stock_code=code,
+                date_mismatch=pinned_context_date_invalid or pinned_context_date_mismatch,
+                source_context_present=is_rank_research_context,
+            )
+            if is_rank_research_context
+            else None
+        )
+        if original_ranking is not None and original_ranking.status == "unknown":
+            limitations.append(
+                "原始排名來源未知；名次不以現況、其他模式或最新研究回填。原因："
+                + (original_ranking.reason or "來源尚未核驗。")
+            )
         context_code = context_map.get("stock_code", "")
         name = (
             context_map.get("stock_name", "")
@@ -413,6 +444,99 @@ class StockResearchReportReadService:
                         "why_not": list(evaluation.why_not),
                     },
                 }
+            elif is_rank_research_context:
+                # 只從 rank context 所指向的同一 parent snapshot 讀 feature row；
+                # 不用 Daily latest 或重新投影補缺。
+                if rank_context is None or original_ranking is None or original_ranking.status != "available":
+                    shared_daily_features = {
+                        "projection_status": "unknown",
+                        "projection_reason": (
+                            original_ranking.reason
+                            if original_ranking is not None
+                            else "rank_context_missing"
+                        ),
+                        "readback": {
+                            "mode": "refused_pinned_original_rank_parent_feature",
+                            "historical_pit_eligible": False,
+                        },
+                    }
+                else:
+                    try:
+                        from app_module.original_stock_ranking import (
+                            load_original_stock_ranking_from_context,
+                        )
+
+                        pinned_snapshot, _pinned_ranking = (
+                            load_original_stock_ranking_from_context(
+                                rank_context,
+                                db_path=Path(
+                                    str(
+                                        getattr(self.config, "db_file", None)
+                                        or getattr(self.config, "sqlite_db_file")
+                                    )
+                                ),
+                            )
+                        )
+                        pinned_feature = pinned_snapshot.stock_snapshots.get(code)
+                        if not isinstance(pinned_feature, Mapping):
+                            raise ValueError("ranking_context_parent_feature_missing")
+                        shared_daily_features = dict(pinned_feature)
+                        shared_daily_features["readback"] = {
+                            "mode": "verified_pinned_original_rank_parent_feature",
+                            "manifest_sha256": pinned_snapshot.manifest_sha256,
+                            "manifest_identity_sha256": pinned_snapshot.manifest_identity_sha256,
+                            "parent_manifest_sha256": pinned_snapshot.manifest_sha256,
+                            "parent_manifest_identity_sha256": pinned_snapshot.manifest_identity_sha256,
+                            "parent_cohort_id": pinned_snapshot.cohort_id,
+                            "parent_decision_date": pinned_snapshot.decision_date.isoformat(),
+                            "rank_manifest_sha256": rank_context.source_hash,
+                            "rank_manifest_identity_sha256": rank_context.rank_snapshot_id,
+                            "stock_code": code,
+                            "data_date": rank_context.latest_date,
+                            "input_fingerprint_sha256": pinned_feature.get(
+                                "input_fingerprint_sha256", ""
+                            ),
+                            "snapshot_identity_sha256": pinned_feature.get(
+                                "snapshot_identity_sha256", ""
+                            ),
+                            "usage": pinned_feature.get("policy", {}).get(
+                                "usage", "current_observed_research_only"
+                            ),
+                            "historical_pit_eligible": False,
+                        }
+                    except Exception as exc:
+                        rank_error_code = str(getattr(exc, "code", "") or "").strip()
+                        rank_error = str(exc).splitlines()[0].strip() or type(exc).__name__
+                        rank_reason = (
+                            f"{rank_error_code}: {rank_error}"
+                            if rank_error_code
+                            else rank_error
+                        )
+                        limitations.append(
+                            "原始排名父快照 feature row 無法由 pinned source 讀回；"
+                            "原排名與其 feature context 都保持未知，不改讀最新來源。原因："
+                            + rank_reason
+                        )
+                        errors.append(rank_reason)
+                        original_ranking = replace(
+                            original_ranking,
+                            status="unknown",
+                            reason=rank_reason,
+                            rank=None,
+                            native_score_label="",
+                        )
+                        shared_daily_features = {
+                            "projection_status": "failed",
+                            "projection_error": rank_reason,
+                            "readback": {
+                                "mode": "refused_pinned_original_rank_parent_feature",
+                                "parent_manifest_sha256": rank_context.parent_snapshot_hash,
+                                "parent_manifest_identity_sha256": rank_context.parent_snapshot_id,
+                                "rank_manifest_sha256": rank_context.source_hash,
+                                "rank_manifest_identity_sha256": rank_context.rank_snapshot_id,
+                                "historical_pit_eligible": False,
+                            },
+                        }
             elif self.daily_market_snapshot_repository is not None:
                 db_path = Path(getattr(self.config, "db_file", None) or getattr(self.config, "sqlite_db_file"))
                 schema_identity = daily_snapshot_schema_identity(
@@ -793,6 +917,7 @@ class StockResearchReportReadService:
             saved_source_options=tuple(source_options),
             shared_daily_features=shared_daily_features,
             research_context=context_map,
+            original_ranking=original_ranking,
         )
 
     def _read_prices(
@@ -3811,6 +3936,129 @@ def _context_map(context: object | None) -> dict[str, str]:
         for field in fields
         if str(getattr(context, field, "") or "").strip()
     }
+
+
+def _rank_context_from(context: object | None) -> ResearchRankContextDTO | None:
+    """只接受 context 明確攜帶的已核驗排名脈絡。"""
+
+    value = (
+        context.get("rank_context")
+        if isinstance(context, Mapping)
+        else getattr(context, "rank_context", None)
+    )
+    if isinstance(value, ResearchRankContextDTO):
+        return value
+    if isinstance(value, Mapping):
+        try:
+            return ResearchRankContextDTO.from_mapping(value)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _read_original_rank_report(
+    rank_context: ResearchRankContextDTO | None,
+    *,
+    db_path: object | None,
+    expected_stock_code: str,
+    date_mismatch: bool,
+    source_context_present: bool,
+) -> StockOriginalRankingReportDTO:
+    """從 pinned rank artifact 讀取原始 row；失敗時只回報未知。"""
+
+    def context_value(name: str, default: Any = "") -> Any:
+        return getattr(rank_context, name, default) if rank_context is not None else default
+
+    mode_label = "Top" if context_value("direction") == "strong" else "Bottom"
+    metadata = {
+        "rank_kind": context_value("rank_kind", "original_stock_ranking"),
+        "period": context_value("period", ""),
+        "direction": context_value("direction", ""),
+        "direction_label": mode_label,
+        "decision_date": context_value("decision_date", ""),
+        "comparison_window_dates": tuple(context_value("comparison_window_dates", ()) or ()),
+        "comparison_window_rule": context_value("comparison_window_rule", ""),
+        "volume_reference_point_count": context_value("volume_reference_point_count", 0),
+        "declared_stock_codes": tuple(context_value("declared_stock_codes", ()) or ()),
+        "eligible_stock_codes": tuple(context_value("eligible_stock_codes", ()) or ()),
+        "missing_rank_stock_codes": tuple(context_value("missing_rank_stock_codes", ()) or ()),
+        "research_universe_json": context_value("research_universe_json", ""),
+        "research_universe_sha256": context_value("research_universe_sha256", ""),
+        "method_name": context_value("method_name", ""),
+        "method_version": context_value("method_version", ""),
+        "method_contract_sha256": context_value("method_contract_sha256", ""),
+        "engine_file_sha256": context_value("engine_file_sha256", ""),
+        "engine_parameters_json": context_value("engine_parameters_json", ""),
+        "engine_parameters_sha256": context_value("engine_parameters_sha256", ""),
+        "source_schema_sha256": context_value("source_schema_sha256", ""),
+        "selected_input_fingerprint_sha256": context_value(
+            "selected_input_fingerprint_sha256", ""
+        ),
+        "ranking_root": context_value("ranking_root", ""),
+        "snapshot_root": context_value("snapshot_root", ""),
+        "rank_manifest_identity_sha256": context_value("rank_snapshot_id", ""),
+        "rank_manifest_sha256": context_value("source_hash", ""),
+        "parent_snapshot_identity_sha256": context_value("parent_snapshot_id", ""),
+        "parent_snapshot_sha256": context_value("parent_snapshot_hash", ""),
+        "parent_cohort_id": context_value("parent_cohort_id", ""),
+        "filter_state": context_value("filter_state", "all"),
+        "sort_key": context_value("sort_key", "rank"),
+        "descending": context_value("descending", False),
+    }
+    reason = ""
+    if not source_context_present or rank_context is None:
+        reason = "排名來源脈絡缺漏或格式不支援。"
+    elif date_mismatch:
+        reason = "報告查詢日與排名決策日不一致；已拒絕跨日回填。"
+    elif rank_context.selected_stock_code != expected_stock_code:
+        reason = "排名來源股票與目前個股不一致。"
+    elif not db_path or not str(db_path).strip():
+        reason = "未配置可核驗原排名來源所需的資料庫路徑。"
+    else:
+        try:
+            from app_module.original_stock_ranking import (
+                read_original_stock_ranking_row_from_context,
+            )
+
+            row = read_original_stock_ranking_row_from_context(
+                rank_context,
+                db_path=Path(str(db_path)),
+            )
+            if not isinstance(row, Mapping):
+                raise TypeError("pinned rank reader did not return a row mapping")
+            row_code = str(row.get("stock_code") or "").strip()
+            row_rank = row.get("rank")
+            score_label = str(row.get("score_label") or "")
+            comparison_date = str(row.get("comparison_date") or "").strip()
+            latest_date = str(row.get("latest_date") or "").strip()
+            if row_code != expected_stock_code:
+                raise ValueError("pinned rank row stock mismatch")
+            if type(row_rank) is not int or row_rank < 1:
+                raise ValueError("pinned rank row rank is invalid")
+            if not score_label:
+                raise ValueError("pinned rank row has no publisher label")
+            if not comparison_date or not latest_date:
+                raise ValueError("pinned rank row is missing its actual comparison dates")
+            expected_prefix = "Top " if rank_context.direction == "strong" else "Bottom "
+            if not score_label.startswith(expected_prefix):
+                raise ValueError("pinned rank row native label does not match direction")
+            return StockOriginalRankingReportDTO(
+                status="available",
+                rank=row_rank,
+                native_score_label=score_label,
+                comparison_date=comparison_date,
+                latest_date=latest_date,
+                **metadata,
+            )
+        except Exception as exc:
+            code = str(getattr(exc, "code", "") or "").strip()
+            message = str(exc).splitlines()[0].strip() or type(exc).__name__
+            reason = f"{code}: {message}" if code else message
+    return StockOriginalRankingReportDTO(
+        status="unknown",
+        reason=reason,
+        **metadata,
+    )
 
 
 def _error_text(label: str, error: BaseException) -> str:

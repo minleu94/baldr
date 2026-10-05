@@ -41,6 +41,7 @@ from data_module.ml_research_output_boundary import (
 )
 from data_module.ml_storage_capacity import (
     BYTES_PER_GIB,
+    CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES,
     MLStorageCapacityBudget,
     MLStorageChainReservation,
     StorageCapacityError,
@@ -69,7 +70,7 @@ MAX_B_SEMANTIC_LINE_BYTES = 1024 * 1024
 B_DAILY_FEATURE_IDS = DAILY_PRICE_FEATURE_IDS
 CURRENT_CYCLE_PERSISTENT_BUDGET_BYTES = 2 * BYTES_PER_GIB
 CURRENT_CYCLE_TEMPORARY_BUDGET_BYTES = 2 * BYTES_PER_GIB
-CURRENT_CYCLE_SAFETY_RESERVE_BYTES = 200 * BYTES_PER_GIB
+CURRENT_CYCLE_SAFETY_RESERVE_BYTES = CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES
 RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}\Z")
 SYMBOL_RE = re.compile(r"\d{4}\Z")
 SHA256_RE = re.compile(r"(?:sha256:)?[0-9a-fA-F]{64}\Z")
@@ -546,8 +547,8 @@ def _create_consistent_snapshot(
     )
     namespace_after = _source_namespace_pins(source)
     same_dependencies = (
-        database_before == database_after
-        and wal_before == wal_after
+        _snapshot_dependency_identity(database_before) == _snapshot_dependency_identity(database_after)
+        and _snapshot_dependency_identity(wal_before) == _snapshot_dependency_identity(wal_after)
         and namespace_before == namespace_after
     )
     if (
@@ -555,8 +556,33 @@ def _create_consistent_snapshot(
         or data_version_before[0] != data_version_after[0]
         or journal_mode_before != journal_mode_after
     ):
+        _write_create_only(receipt_path.with_name("snapshot_failure.json"), {
+            "schema_version": "integration-consistent-sqlite-snapshot-failure.v1",
+            "status": "waiting_source",
+            "started_at": started_at.isoformat(),
+            "completed_at": _utc_now().isoformat(),
+            "source_database_before": database_before,
+            "source_database_after": database_after,
+            "source_wal_before": wal_before,
+            "source_wal_after": wal_after,
+            "revision_namespace_before": namespace_before,
+            "revision_namespace_after": namespace_after,
+            "data_version_before": data_version_before[0],
+            "data_version_after": data_version_after[0],
+            "journal_mode_before": journal_mode_before,
+            "journal_mode_after": journal_mode_after,
+            "research_only": True,
+            "formal_credit": False,
+        })
         raise _WaitingForSource(
-            "source database, WAL, data_version, or revision dependencies changed during snapshot"
+            "source database, WAL, data_version, or revision dependencies changed during snapshot: "
+            + ",".join(name for name, changed in (
+                ("database", _snapshot_dependency_identity(database_before) != _snapshot_dependency_identity(database_after)),
+                ("wal", _snapshot_dependency_identity(wal_before) != _snapshot_dependency_identity(wal_after)),
+                ("revision_namespace", namespace_before != namespace_after),
+                ("data_version", data_version_before[0] != data_version_after[0]),
+                ("journal_mode", journal_mode_before != journal_mode_after),
+            ) if changed)
         )
     snapshot_pin = _pin_regular_file(snapshot, label="consistent SQLite snapshot")
     completed_at = _utc_now()
@@ -845,7 +871,7 @@ def _capacity_check(
         raise ValueError("snapshot_upper_bound_bytes must be a non-negative integer")
     # Snapshot bytes are a one-time, separately measured copy. The remaining
     # persistent and temporary allowances match the existing bounded Direct
-    # producer; neither the full-universe 35/40 budget nor the 200 GiB reserve
+    # producer; neither the full-universe 35/40 budget nor the centrally configured reserve
     # is weakened.
     combined_persistent_estimate = (
         snapshot_upper_bound_bytes + CURRENT_CYCLE_PERSISTENT_BUDGET_BYTES
@@ -863,7 +889,7 @@ def _capacity_check(
         temporary_peak_bytes_observed=CURRENT_CYCLE_TEMPORARY_BUDGET_BYTES,
     )
     return {
-        "policy": "bounded_current_stock_cycle_persistent_2gib_plus_snapshot_upper_bound_temporary_2gib_reserve_200gib.v1",
+        "policy": "bounded_current_stock_cycle_persistent_2gib_plus_snapshot_upper_bound_temporary_2gib_reserve_20gib.v2",
         "budget": budget.as_dict(),
         "child_persistent_budget_bytes": CURRENT_CYCLE_PERSISTENT_BUDGET_BYTES,
         "temporary_peak_budget_bytes": CURRENT_CYCLE_TEMPORARY_BUDGET_BYTES,
@@ -1015,8 +1041,8 @@ def _source_observation_pins(source_database: Path) -> dict[str, Any]:
     shm_after = _optional_file_pin(shm_path, label="source SQLite shared-memory file")
     namespace_after = _source_namespace_pins(source)
     if (
-        database_before != database_after
-        or wal_before != wal_after
+        _snapshot_dependency_identity(database_before) != _snapshot_dependency_identity(database_after)
+        or _snapshot_dependency_identity(wal_before) != _snapshot_dependency_identity(wal_after)
         or namespace_before != namespace_after
         or version_before[0] != version_after[0]
         or journal_mode != journal_mode_after
@@ -1058,11 +1084,25 @@ def _stable_pin_identity(value: object) -> object:
     return value
 
 
+def _snapshot_dependency_identity(pin: object) -> object:
+    """來源以實際內容驗證；空 WAL 與不存在皆沒有未併入的交易頁。"""
+    if pin is None or (isinstance(pin, Mapping) and (
+        pin.get("present") is False or (
+            pin.get("bytes") == 0
+            and pin.get("sha256") == hashlib.sha256(b"").hexdigest()
+        )
+    )):
+        return None
+    if isinstance(pin, Mapping):
+        return {key: pin.get(key) for key in ("path", "bytes", "sha256")}
+    return pin
+
+
 def _stable_source_dependency_identity(source_observation: Mapping[str, Any]) -> object:
     return _stable_pin_identity(
         {
-            "database": source_observation.get("database"),
-            "wal": source_observation.get("wal"),
+            "database": _snapshot_dependency_identity(source_observation.get("database")),
+            "wal": _snapshot_dependency_identity(source_observation.get("wal")),
             "revision_namespace_files": source_observation.get("revision_namespace_files"),
         }
     )
@@ -2909,7 +2949,7 @@ def run_current_stock_research_cycle(
         if capacity.get("within_budget") is not True:
             terminal_status = "blocked_capacity"
             terminal_reason = "bounded_current_stock_research_cycle_capacity_policy_not_met"
-            next_action = "free_or_provision_headroom_for_snapshot_plus_2gib_persistent_2gib_temporary_and_200gib_reserve"
+            next_action = "free_or_provision_headroom_for_snapshot_plus_2gib_persistent_2gib_temporary_and_20gib_reserve"
             event("capacity", "blocked_capacity", next_action, {"capacity": capacity})
             terminal = _cycle_terminal(
                 cycle_root=cycle_root,
@@ -3446,7 +3486,7 @@ def run_current_stock_research_cycle(
         terminal_status = "blocked_capacity"
         terminal_reason = str(exc)
         terminal_error_type = type(exc).__name__
-        next_action = "free_or_provision_snapshot_plus_2gib_persistent_2gib_temporary_and_200gib_reserve"
+        next_action = "free_or_provision_snapshot_plus_2gib_persistent_2gib_temporary_and_20gib_reserve"
         state["capacity_error"] = dict(getattr(exc, "preflight", {}))
         try:
             event(state.get("stage", "capacity"), "blocked_capacity", next_action)

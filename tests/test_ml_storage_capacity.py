@@ -457,15 +457,15 @@ def test_directory_size_skips_real_windows_junction(tmp_path: Path) -> None:
     assert directory_size_bytes(root) == 0
 
 
-def test_scheduled_default_policy_keeps_two_hundred_gib_reserve() -> None:
+def test_scheduled_default_policy_keeps_twenty_gib_reserve_plus_work_budget() -> None:
     budget = scheduled_default_capacity_budget()
 
     assert budget.as_dict()["safety_reserve_bytes"] == SCHEDULED_SAFETY_RESERVE_BYTES
     assert budget.persistent_new_bytes_budget == SCHEDULED_PERSISTENT_NEW_BYTES_BUDGET
     assert budget.temporary_peak_bytes_budget == SCHEDULED_TEMPORARY_PEAK_BYTES_BUDGET
-    assert SCHEDULED_SAFETY_RESERVE_BYTES == 200 * BYTES_PER_GIB
+    assert SCHEDULED_SAFETY_RESERVE_BYTES == 20 * BYTES_PER_GIB
     assert SCHEDULED_REQUIRED_FREE_BYTES == (
-        200 * BYTES_PER_GIB
+        20 * BYTES_PER_GIB
         + SCHEDULED_PERSISTENT_NEW_BYTES_BUDGET
         + SCHEDULED_TEMPORARY_PEAK_BYTES_BUDGET
     )
@@ -484,7 +484,7 @@ def test_heavy_budget_defaults_and_low_reserve_are_explicit() -> None:
         CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES
     )
     with pytest.raises(ValueError, match="at least"):
-        resolve_heavy_chain_safety_reserve(125 * BYTES_PER_GIB)
+        resolve_heavy_chain_safety_reserve(19 * BYTES_PER_GIB)
 
 
 def test_unknown_estimates_are_explicit_capacity_blockers() -> None:

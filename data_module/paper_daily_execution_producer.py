@@ -84,7 +84,7 @@ PAPER_PORTFOLIO_ID = "paper-main"
 PAPER_EXECUTION_PENDING_QUEUE_STATES = frozenset(
     {"pending_execution", "candidate_only_pending_append"}
 )
-PAPER_EXECUTION_TERMINAL_QUEUE_STATES = frozenset({"processed", "superseded"})
+PAPER_EXECUTION_TERMINAL_QUEUE_STATES = frozenset({"processed", "superseded", "rejected"})
 # 只有完全相符的會期前日曆 blocker，才可由較晚 processed receipt 結案。
 _UNPROVEN_TWSE_CALENDAR_BLOCKER = (
     "official_calendar_not_proven:twse_holiday_schedule_unavailable"
@@ -887,6 +887,15 @@ def resolve_pending_recommendation(
         for key, receipt in effective_receipts.items()
         if receipt.state in PAPER_EXECUTION_TERMINAL_QUEUE_STATES
     }
+    if _resolved_historical_receipt_diagnostics is not None:
+        for receipt in terminal_receipts.values():
+            if receipt.state == "rejected":
+                _resolved_historical_receipt_diagnostics.append({
+                    "receipt_path": str(receipt.path),
+                    "receipt_content_sha256": str(receipt.receipt_content_hash),
+                    "status": "rejected_nonretryable_policy",
+                    "proof": "原source、candidate及receipt雜湊已驗證；拒絕終態不授成交或formal credit",
+                })
     processed_receipts = tuple(
         receipt
         for receipt in effective_receipts.values()
@@ -1801,6 +1810,10 @@ def _load_queue_receipts_with_historical_issues(
             else _strict_date(execution_value, f"{path.name}.execution_date")
         )
         if not isinstance(source_hash, str) or not isinstance(source_result_id, str):
+            if source_hash is None and source_result_id is None:
+                # 上方已驗證 source-less queue diagnostic 的 receipt/candidate；
+                # 它不是待執行來源，不能永久自我衍生新的 queue blocker。
+                continue
             # _validate_queue_receipt has already rejected this path.  Keep the
             # guard for type narrowing and future schema additions.
             issues.append(f"{path.name}:receipt source identity is invalid")
@@ -1836,7 +1849,9 @@ def _load_queue_receipts_with_historical_issues(
             _QueueReceipt(
                 path=path,
                 state=(
-                    "pending_execution"
+                    "rejected"
+                    if _is_nonretryable_policy_rejection(raw_value)
+                    else "pending_execution"
                     if state in PAPER_EXECUTION_LEGACY_PENDING_QUEUE_STATES
                     else str(state)
                 ),
@@ -2006,6 +2021,27 @@ def _recoverable_calendar_receipt_issue(
     )
 
 
+def _is_nonretryable_policy_rejection(value: Mapping[object, object]) -> bool:
+    """僅識別已保存的政策時間拒絕；不把來源缺漏或未知失敗當成功。"""
+    result = value.get("result")
+    if not isinstance(result, Mapping):
+        return False
+    blockers = result.get("blockers")
+    return (
+        value.get("queue_state") in {"failed", "rejected"}
+        and result.get("status") == "blocked"
+        and result.get("retryable") is False
+        and value.get("ledger") is None
+        and result.get("ledger") is None
+        and isinstance(blockers, list) and bool(blockers)
+        and all(isinstance(item, str) and (
+            item == "paper_event_source_capture_missing_durable_manifest"
+            or item == "paper policy sector archive rejected:PITArchiveConsumerError:archive was not persisted before consumer decision"
+        ) for item in blockers)
+        and any(isinstance(item, str) and item.startswith("paper policy sector archive rejected:") for item in blockers)
+    )
+
+
 def _validate_queue_receipt(
     path: Path,
     value: Mapping[object, object],
@@ -2031,6 +2067,23 @@ def _validate_queue_receipt(
         recorded_at = _aware_datetime(value.get("recorded_at"), f"{path.name}.recorded_at")
     except PaperExecutionProducerError as error:
         return f"recorded_at_invalid:{error}"
+    result = value.get("result")
+    if (
+        value.get("queue_state") == "failed"
+        and value.get("source_file_hash") is None
+        and value.get("source_result_id") is None
+        and value.get("decision_date") is None
+        and value.get("execution_date") is None
+        and value.get("ledger") is None
+        and isinstance(result, Mapping)
+        and result.get("status") == "blocked"
+        and result.get("ledger") is None
+        and isinstance(result.get("queue"), Mapping)
+        and str(result["queue"].get("reason", "")).startswith("pending_execution_receipt_invalid:")
+        and result.get("blockers") == [result["queue"].get("reason")]
+    ):
+        # 沒有選中來源的診斷不建立待執行 identity；原始錯誤收據仍逐筆驗證。
+        return _validate_required_candidate_hashes(value, result)
     source_hash = value.get("source_file_hash")
     if not _is_sha256(source_hash):
         return "source_file_hash_missing_or_invalid"
@@ -2102,6 +2155,8 @@ def _validate_queue_receipt(
         return "result_execution_date_mismatch"
     if result_value.get("decision_date") != recommendation_value.get("decision_date"):
         return "result_decision_date_mismatch"
+    if _is_nonretryable_policy_rejection(value):
+        return _validate_required_candidate_hashes(value, result_value)
     if state == "superseded":
         superseded_by = value.get("superseded_by_source_file_hash")
         if not _is_sha256(superseded_by) or superseded_by == source_hash:

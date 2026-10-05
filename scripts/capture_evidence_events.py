@@ -31,6 +31,7 @@ from data_module.ml_storage_capacity import (
     acquire_heavy_chain_reservation,
     heavy_chain_lock_path,
     release_heavy_chain_reservation,
+    validate_heavy_chain_reservation_handoff,
 )
 
 
@@ -210,6 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     config = _config_from_args(args)
     effective_dry_run = bool(args.dry_run or not args.confirm)
     reservation = None
+    handoff = None
     if not effective_dry_run:
         canonical_config = TWStockConfig()
         release_root = resolve_canonical_evidence_release_root(
@@ -218,8 +220,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         if release_root is not None:
             lock_path = heavy_chain_lock_path(release_root)
-            reservation = acquire_heavy_chain_reservation(lock_path)
-            if reservation is None:
+            handoff = validate_heavy_chain_reservation_handoff(lock_path)
+            if handoff is None:
+                reservation = acquire_heavy_chain_reservation(lock_path)
+            if reservation is None and handoff is None:
                 print(
                     json.dumps(
                         {
@@ -236,6 +240,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _run_capture(args, config, effective_dry_run=effective_dry_run)
     finally:
+        if handoff is not None:
+            handoff.close()
         if reservation is not None:
             release_heavy_chain_reservation(reservation)
 

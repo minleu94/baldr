@@ -452,3 +452,7 @@ Health最後串接已控制實跑：臺北10/4決策對10/2行情，離線官方
 既有 StockScreener day／week × strong／weak 原生結果新增獨立 immutable ranking publisher／verified reader；Daily 名單、候選與研究母體 Market 共用同一 parent snapshot及排名身份。僅明示≤16股研究母體，不改原公式、feature v2或舊收藏。原 Top／Bottom 標籤不能按一般百分位／勝率解讀，數值 score 未由舊引擎暴露；未知／不相容來源維持不可用。原排名收藏／個股來源版本化、其他consumer、完整方法／母體／正式排程及長期storage仍須工程。詳見[限定QA](../06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)，新 Native／真人與全App啟動未由本包驗收。
 
 - 2026-10-05 更新：新增原排名有限工程入口及接受邊界。
+
+### 2026-10-05 每日鏈容量與接線修正（受控工程驗證）
+
+使用者授權把中央 ML 執行後餘量由 200 GiB 改為 20 GiB；本輪工作預算與未知用量 fail-closed 不變，正式 raw 預設總需求為 95 GiB。Decision Evidence 採父子 lease；G6 空 WAL／mtime 與真正內容改變分列；Paper 已驗證不可重試政策拒絕作 rejected 終態，歷史失敗保留。G9／Bank 同次來源 Gate 不放寬。驗證與回滾見 `docs/06_qa/HEARTBEAT_CHAIN_REPAIR_20261005.md`；沒有宣稱新自然排程成功、正式 PIT 或 formal credit。

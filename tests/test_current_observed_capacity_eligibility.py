@@ -124,6 +124,27 @@ def _current_cycle_terminal(
     }
 
 
+def test_legacy_capacity_receipt_keeps_its_original_reserve_proof(tmp_path: Path) -> None:
+    research_root = tmp_path / "research"
+    formal_root = tmp_path / "formal"
+    terminal = _current_cycle_terminal(research_root, formal_root)
+    capacity = terminal["capacity"]
+    reserve = 200 * BYTES_PER_GIB
+    capacity["policy"] = "bounded_current_stock_cycle_persistent_2gib_plus_snapshot_upper_bound_temporary_2gib_reserve_200gib.v1"
+    capacity["safety_reserve_bytes"] = reserve
+    capacity["budget"]["safety_reserve_bytes"] = reserve
+    check = _capacity_check(probe_path=str(research_root),
+                            persistent=capacity["combined_persistent_estimate_bytes"],
+                            temporary=CURRENT_CYCLE_TEMPORARY_BUDGET_BYTES, reserve=reserve)
+    check["filesystem_checks"] = [{**check, "filesystem_checks": [], "is_probe_filesystem": True}]
+    capacity["check"] = check
+    kwargs = dict(expected_raw_run_id="raw-current", expected_source_date="2026-10-02",
+                  formal_output_root=formal_root, expected_research_root=research_root)
+    assert current_stock_research_capacity_passed(terminal, **kwargs)
+    capacity["budget"]["safety_reserve_bytes"] = SCHEDULED_SAFETY_RESERVE_BYTES
+    assert not current_stock_research_capacity_passed(terminal, **kwargs)
+
+
 def _formal_capacity_block(tmp_path: Path, *, child_status: str = "completed") -> dict[str, Any]:
     output_root = tmp_path / "FA_Data" / "output"
     raw_root = output_root / "release_v4" / "ml_pit_year_shards"

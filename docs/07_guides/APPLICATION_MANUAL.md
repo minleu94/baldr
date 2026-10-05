@@ -4210,9 +4210,9 @@ Forward 的 5／10／20／60 日結果以已驗證官方日曆的交易 session 
 
 `scripts/smoke_evidence_pipeline.py` 僅供隔離測試資料庫，無論 dry-run 或 confirm 都拒絕配置中的正式 DB 及其別名路徑；它使用相同 verified calendar 與實際日期，缺日曆不會產生假 READY。以 `--db-path <隔離DB>`、`--recommendation-result-id <該QA根的保存結果ID>`、`--decision-date <決策日>` 指定測試，並將 `--data-root`／`--output-root` 指向獨立 QA 目錄；先使用 `--dry-run`，再核對摘要中的日曆阻塞數與實際結果。
 
-`blocked_insufficient_storage` 是實際容量阻礙。研究 cycle 保留 200 GiB reserve，另計來源 DB／WAL 快照上限、2 GiB 持久增量與 2 GiB 暫存；磁碟顯示仍有數百 GiB 不等於可通過。依 terminal 的 required／available bytes 排錯，不能降低 reserve。專用目錄可使用 NTFS 標準壓縮繼承，但未量測的新資料不能套用舊壓縮率。停止 writer 後移除本次新增設定可回到舊預設；保留 D 槽產物及全部原始回執，先前 C 槽容量不足仍需處理。
+`blocked_insufficient_storage` 是實際容量阻礙。研究 cycle 依 2026-10-05 使用者授權採中央 20 GiB reserve，另計來源 DB／WAL 快照上限、2 GiB 持久增量與 2 GiB 暫存；磁碟顯示仍有數百 GiB 不等於可通過。依 terminal 的 required／available bytes 排錯，可用空間須涵蓋完整工作用量加 reserve，不能只因磁碟尚有空間而跳過預算。專用目錄可使用 NTFS 標準壓縮繼承，但未量測的新資料不能套用舊壓縮率。停止 writer 後移除本次新增設定可回到舊預設；保留 D 槽產物及全部原始回執，先前 C 槽容量不足仍需處理。
 
-外層正式 raw-PIT bootstrap 另需要 200 GiB reserve、35 GiB 持久預算及 40 GiB 暫存，共 275 GiB。它因空間不足而停止時，正式歷史建置仍未完成。G9 只有在 raw 的錯誤類型、bootstrap stage、指定輸出根、整數容量帳及唯一 headroom blocker 都吻合時，才繼續核對獨立研究支線；仍須讀回 exact completed G6 terminal 的自身容量、來源、快照、模型及 registry 證據。重用則沿新 terminal 核驗原 completed terminal 與其原容量證據。任何 child failed、錯 hash、不同容量 stage、少於 200 GiB reserve 或缺少證明都不能接受；獨立研究成功不會把外層正式狀態改綠。
+外層正式 raw-PIT bootstrap 依 2026-10-05 使用者授權改為 20 GiB reserve、35 GiB 持久預算及 40 GiB 暫存，共 95 GiB。它因空間不足而停止時，正式歷史建置仍未完成。G9 只有在 raw 的錯誤類型、bootstrap stage、指定輸出根、整數容量帳及唯一 headroom blocker 都吻合時，才繼續核對獨立研究支線；仍須讀回 exact completed G6 terminal 的自身容量、來源、快照、模型及 registry 證據。重用則沿新 terminal 核驗原 completed terminal 與其原容量證據。任何 child failed、錯 hash、不同容量 stage、少於收據政策規定的 reserve 或缺少證明都不能接受；獨立研究成功不會把外層正式狀態改綠。
 
 重跑同一來源時會重新驗證行情、修訂、B 映射及股票範圍。觀察清單／持倉檔的路徑、bytes、mtime 和 hash 都屬來源身分；只有新 run ID 或 capture 時鐘不同才可重用。修改數量／成本或觸碰檔案時間均可能要求新 cycle。`skipped_same_inputs` 必須能追到完整舊模型的 exact terminal，不能只看外層 raw exit 0。
 
@@ -4479,3 +4479,13 @@ CLI範例（僅發布已有 feature 來源的對應模式；需要四模式時�
 來源缺件、舊版不支援、stock／日期／hash／母體／方法不相容或來源修訂時，原排名不可用並列出原因；其他可讀行情不代表原排名有效。可明確另開最新個股研究，不覆蓋舊payload／證據，也不啟動producer。保留原snapshot/rank根目錄與母體設定原檔，查錯後另存新版本。
 
 所有排名限明示有界研究，非全市場、正式推薦、numeric score、勝率或歷史PIT。新工程先驗backend/offscreen；Native鍵鼠／縮放／跨頁及真人驗收仍待桌面時段。隔離QA清單不等於已遷移用戶真實清單。
+
+
+### 2026-10-05 每日研究鏈阻塞修正
+
+- **容量**：排程入口維持整數 bytes 預算。正式 raw 本輪需求為持久 35 GiB＋暫存 40 GiB＋執行後餘量 20 GiB；研究 cycle 則為實際 DB/WAL 快照上限＋持久 2 GiB＋暫存 2 GiB＋餘量 20 GiB。更大的顯式餘量仍被尊重；未知用量或空間不足仍阻擋。預設可用空間不等於已成功建置、可連跑若干日或正式資格成立。既有 200 GiB 收據依原政策完整驗證，不改寫舊失敗。
+- **Decision Evidence**：父 wrapper 取得 canonical heavy-chain reservation 後，對 Evidence child 登記一次性授權並傳遞既有驗證 lease。獨立 CLI 仍自行取得鎖；偽造 marker、鎖根錯誤或失效 owner 一律拒絕。snapshot 成功仍不能替代 Evidence stdout/summary。
+- **G6 snapshot**：以 DB/WAL 實際 bytes/SHA、data_version、journal mode 與修訂證據驗證同次來源。空 WAL 與不存在的 WAL 不含交易頁，讀取引起的 mtime 改變不單獨拒絕；非空 WAL、DB 內容或 revision 改變仍停止。真正不一致時另存 snapshot_failure.json 的前後 pins，原成功 receipt 不產生。watchlist/holding 輸入仍保留原 mtime/hash 檢查。
+- **G9／Bank**：須重新取得合格同日 G6 來源後才可恢復技術來源消費；舊 blocked run 不會被回溯改綠，snapshot 或獨立來源成功不代替學習成功。
+- **Paper EOD**：具名「sector archive 未在決策前保存」且 retryable=false 的歷史拒絕，僅在 source、candidate、receipt 完整驗證且無 ledger 後視為 rejected 終態，保留於 queue.resolved_historical_receipts。已驗證且未選來源的 queue 診斷不建立 pending identity；原始問題收據仍逐筆檢查。未知 blocker、混合身份錯誤、遭修改的 candidate 或真正 pending 的錯過會期仍阻擋。不得補造舊 entry、追認成交、刪除舊收據或授予 formal credit。
+- **排錯**：先看 exact immutable receipt 與 stdout，再看 snapshot_failure.json 或容量 required/free bytes。舊的 10/5 failed receipt 代表當時失敗；修正是否於自然排程生效，要以修正後新 run 的證據驗收。

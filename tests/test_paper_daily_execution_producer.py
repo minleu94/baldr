@@ -2863,3 +2863,37 @@ def test_schedule_snapshots_before_t1_candidate_handoff() -> None:
     execution = text.index("run_paper_execution_daily.py")
     assert valuation < execution
     assert "--confirm-append-paper-ledger" not in text
+
+
+@pytest.mark.parametrize("tamper", [False, True])
+def test_nonretryable_policy_rejection_closes_only_verified_old_source(tmp_path: Path, tamper: bool) -> None:
+    """舊政策拒絕可結束 queue，但任何 candidate 異動仍需阻擋。"""
+    paths = _paths(tmp_path)
+    result = run_paper_execution_daily(paths, now=EOD_REPLAY_NOW, calendar=_open_calendar())
+    candidate_path = Path(str(result["candidate_path"]))
+    body = json.loads(candidate_path.read_text(encoding="utf-8"))
+    body.pop("content_sha256", None)
+    body.update(status="blocked", retryable=False, ledger=None, formal_credit=False,
+                blockers=["paper policy sector archive rejected:PITArchiveConsumerError:archive was not persisted before consumer decision",
+                          "paper_event_source_capture_missing_durable_manifest"])
+    body["content_sha256"] = paper_producer._payload_hash(body)
+    candidate_path.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+    result.update(body, candidate_path=str(candidate_path), candidate_file_hash=paper_producer._file_sha256(candidate_path))
+    saved = persist_operational_receipt(result, tmp_path / "receipts", observed=EOD_REPLAY_NOW)
+    receipt_path = Path(saved["operational_receipt"]["path"])
+    before = receipt_path.read_bytes()
+    if tamper:
+        candidate_path.write_bytes(candidate_path.read_bytes() + b" ")
+    diagnostics = []
+    selected, reason = resolve_pending_recommendation(
+        paths.recommendation_json.parent, observed=EOD_REPLAY_NOW + timedelta(days=1),
+        market_db=paths.market_db, calendar=_open_calendar(), receipt_root=tmp_path / "receipts",
+        _resolved_historical_receipt_diagnostics=diagnostics,
+    )
+    assert selected is None
+    if tamper:
+        assert reason.startswith("pending_execution_receipt_invalid:")
+    else:
+        assert not reason.startswith("pending_execution_receipt_invalid:")
+        assert diagnostics[0]["status"] == "rejected_nonretryable_policy"
+    assert receipt_path.read_bytes() == before

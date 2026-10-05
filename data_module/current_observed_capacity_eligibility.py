@@ -22,7 +22,7 @@ FORMAL_BOOTSTRAP_CAPACITY_STAGE = "scheduled_raw_pit_bootstrap"
 CURRENT_CYCLE_CAPACITY_STAGE = "bounded_current_stock_research_cycle_before_snapshot"
 CURRENT_CYCLE_CAPACITY_POLICY = (
     "bounded_current_stock_cycle_persistent_2gib_plus_snapshot_upper_bound_"
-    "temporary_2gib_reserve_200gib.v1"
+    "temporary_2gib_reserve_20gib.v2"
 )
 CURRENT_CYCLE_CHILD_PERSISTENT_BUDGET_BYTES = 2 * BYTES_PER_GIB
 CURRENT_CYCLE_TEMPORARY_BUDGET_BYTES = 2 * BYTES_PER_GIB
@@ -112,10 +112,14 @@ def is_formal_bootstrap_capacity_block(payload: Mapping[str, Any]) -> bool:
     budget = storage.get("capacity_budget")
     if not isinstance(capacity, Mapping) or not isinstance(budget, Mapping):
         return False
+    reserve = budget.get("safety_reserve_bytes")
+    if type(reserve) is not int or reserve not in {SCHEDULED_SAFETY_RESERVE_BYTES, 200 * BYTES_PER_GIB}:
+        return False
+    required = reserve + SCHEDULED_PERSISTENT_NEW_BYTES_BUDGET + SCHEDULED_TEMPORARY_PEAK_BYTES_BUDGET
 
     if (
         storage.get("within_minimum_free_space") is not True
-        or storage.get("minimum_free_space_bytes") != SCHEDULED_SAFETY_RESERVE_BYTES
+        or storage.get("minimum_free_space_bytes") != reserve
         or _normal_absolute_path(storage.get("probe_path")) != raw_output_root
         or capacity.get("stage") != FORMAL_BOOTSTRAP_CAPACITY_STAGE
         or _normal_absolute_path(capacity.get("probe_path")) != raw_output_root
@@ -134,14 +138,14 @@ def is_formal_bootstrap_capacity_block(payload: Mapping[str, Any]) -> bool:
         "persistent_storage_budget_bytes": SCHEDULED_PERSISTENT_NEW_BYTES_BUDGET,
         "temporary_peak_bytes_budget": SCHEDULED_TEMPORARY_PEAK_BYTES_BUDGET,
         "temporary_storage_budget_bytes": SCHEDULED_TEMPORARY_PEAK_BYTES_BUDGET,
-        "safety_reserve_bytes": SCHEDULED_SAFETY_RESERVE_BYTES,
+        "safety_reserve_bytes": reserve,
     }
     if any(not _exact_int(budget.get(key), value) for key, value in expected_budget.items()):
         return False
     expected_capacity_budget = {
         "persistent_new_bytes_budget": SCHEDULED_PERSISTENT_NEW_BYTES_BUDGET,
         "temporary_peak_bytes_budget": SCHEDULED_TEMPORARY_PEAK_BYTES_BUDGET,
-        "safety_reserve_bytes": SCHEDULED_SAFETY_RESERVE_BYTES,
+        "safety_reserve_bytes": reserve,
     }
     if any(
         not _exact_int(capacity.get(key), value)
@@ -155,7 +159,7 @@ def is_formal_bootstrap_capacity_block(payload: Mapping[str, Any]) -> bool:
         if key in capacity and not _exact_int(capacity.get(key), value):
             return False
     if (
-        not _exact_int(capacity.get("required_free_bytes"), SCHEDULED_REQUIRED_FREE_BYTES)
+        not _exact_int(capacity.get("required_free_bytes"), required)
         or not _exact_int(capacity.get("persistent_new_bytes_estimate"), SCHEDULED_PERSISTENT_NEW_BYTES_BUDGET)
         or not _exact_int(capacity.get("temporary_peak_bytes_observed"), SCHEDULED_TEMPORARY_PEAK_BYTES_BUDGET)
     ):
@@ -168,8 +172,8 @@ def is_formal_bootstrap_capacity_block(payload: Mapping[str, Any]) -> bool:
         not _nonnegative_int(free_bytes)
         or not _nonnegative_int(total_bytes)
         or not _nonnegative_int(used_bytes)
-        or free_bytes < SCHEDULED_SAFETY_RESERVE_BYTES
-        or free_bytes >= SCHEDULED_REQUIRED_FREE_BYTES
+        or free_bytes < reserve
+        or free_bytes >= required
         or used_bytes + free_bytes != total_bytes
         or storage.get("free_bytes") != free_bytes
         or storage.get("total_bytes") != total_bytes
@@ -229,11 +233,18 @@ def current_stock_research_capacity_passed(
     check = capacity.get("check")
     if not isinstance(budget, Mapping) or not isinstance(check, Mapping):
         return False
+    policy = capacity.get("policy")
+    expected_reserve = (
+        SCHEDULED_SAFETY_RESERVE_BYTES if policy == CURRENT_CYCLE_CAPACITY_POLICY
+        else 200 * BYTES_PER_GIB if policy == "bounded_current_stock_cycle_persistent_2gib_plus_snapshot_upper_bound_temporary_2gib_reserve_200gib.v1"
+        else None
+    )
+    if expected_reserve is None:
+        return False
     if (
-        capacity.get("policy") != CURRENT_CYCLE_CAPACITY_POLICY
-        or capacity.get("within_budget") is not True
+        capacity.get("within_budget") is not True
         or not _exact_int(
-            capacity.get("safety_reserve_bytes"), SCHEDULED_SAFETY_RESERVE_BYTES
+            capacity.get("safety_reserve_bytes"), expected_reserve
         )
         or check.get("stage") != CURRENT_CYCLE_CAPACITY_STAGE
         or _normal_absolute_path(check.get("probe_path")) != research_root
@@ -259,13 +270,13 @@ def current_stock_research_capacity_passed(
         or actual_snapshot > upper_bound
         or not _nonnegative_int(persistent_budget)
         or not _nonnegative_int(temporary_budget)
-        or not _exact_int(safety_reserve, SCHEDULED_SAFETY_RESERVE_BYTES)
+        or not _exact_int(safety_reserve, expected_reserve)
         or not _nonnegative_int(measured_growth)
     ):
         return False
     if (
         temporary_budget != CURRENT_CYCLE_TEMPORARY_BUDGET_BYTES
-        or safety_reserve != SCHEDULED_SAFETY_RESERVE_BYTES
+        or safety_reserve != expected_reserve
         or capacity.get("snapshot_within_measured_upper_bound") is not True
         or persistent_budget != upper_bound + CURRENT_CYCLE_CHILD_PERSISTENT_BUDGET_BYTES
         or not _exact_int(capacity.get("combined_persistent_estimate_bytes"), persistent_budget)
@@ -276,7 +287,7 @@ def current_stock_research_capacity_passed(
         return False
 
     required_free = (
-        SCHEDULED_SAFETY_RESERVE_BYTES
+        expected_reserve
         + persistent_budget
         + CURRENT_CYCLE_TEMPORARY_BUDGET_BYTES
     )
@@ -285,7 +296,7 @@ def current_stock_research_capacity_passed(
         "persistent_new_bytes_estimate": persistent_budget,
         "temporary_peak_bytes_budget": CURRENT_CYCLE_TEMPORARY_BUDGET_BYTES,
         "temporary_peak_bytes_observed": CURRENT_CYCLE_TEMPORARY_BUDGET_BYTES,
-        "safety_reserve_bytes": SCHEDULED_SAFETY_RESERVE_BYTES,
+        "safety_reserve_bytes": expected_reserve,
         "required_free_bytes": required_free,
     }
     if not _capacity_check_passed(

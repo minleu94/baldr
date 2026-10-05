@@ -8,6 +8,7 @@ Portfolio 狀態，也不觸發任何券商執行。
 from __future__ import annotations
 
 import argparse
+from contextvars import ContextVar
 import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
@@ -36,7 +37,15 @@ from app_module.scheduled_writer_reservation import (
     ScheduledWriterReservationError,
     wait_for_scheduled_writer_reservation,
 )
-from data_module.ml_storage_capacity import release_heavy_chain_reservation
+from data_module.ml_storage_capacity import (
+    MLStorageChainReservation,
+    build_heavy_chain_reservation_handoff_environment,
+    release_heavy_chain_reservation,
+)
+
+_CHILD_RESERVATION: ContextVar[MLStorageChainReservation | None] = ContextVar(
+    "decision_capture_child_reservation", default=None
+)
 
 
 TASK_NAME = "baldr-decision-evidence-capture-daily"
@@ -437,15 +446,33 @@ def _run_json_cli(
     environment = os.environ.copy()
     environment.setdefault("PYTHONUTF8", "1")
     try:
-        completed = subprocess.run(
-            list(command),
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=False,
-            check=False,
-            env=environment,
-            timeout=timeout_seconds,
-        )
+        reservation = _CHILD_RESERVATION.get()
+        if reservation is not None and len(command) > 1 and Path(command[1]).name == "capture_evidence_events.py":
+            environment = build_heavy_chain_reservation_handoff_environment(
+                reservation, environment=environment, parent_pid=os.getpid()
+            )
+            with subprocess.Popen(
+                list(command), cwd=REPO_ROOT, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, env=environment,
+            ) as child:
+                try:
+                    reservation.authorize_child(child.pid)
+                    stdout, stderr = child.communicate(timeout=timeout_seconds)
+                except BaseException:
+                    child.kill()
+                    child.communicate()
+                    raise
+                completed = subprocess.CompletedProcess(command, child.returncode, stdout, stderr)
+        else:
+            completed = subprocess.run(
+                list(command),
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=False,
+                check=False,
+                env=environment,
+                timeout=timeout_seconds,
+            )
     except subprocess.TimeoutExpired as exc:
         stdout_artifact, stdout_text, stdout_truncated, stdout_bytes, stdout_sha256 = _bounded_output(
             exc.stdout
@@ -1664,6 +1691,7 @@ def run(
             execution_now = now
 
         if should_execute_capture:
+            reservation_token = _CHILD_RESERVATION.set(reservation)
             payload = _run_once(
                 data_root=data_root,
                 output_root=output_root,
@@ -1689,6 +1717,8 @@ def run(
     except Exception as exc:  # noqa: BLE001 - persist a terminal failed receipt
         payload = _exception_payload(context, exc)
     finally:
+        if "reservation_token" in locals():
+            _CHILD_RESERVATION.reset(reservation_token)
         if reservation is not None:
             try:
                 release_heavy_chain_reservation(reservation)

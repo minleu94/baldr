@@ -1,5 +1,9 @@
 # 2026-10-05 有界語意審查與體驗接手
 
+## 最新優先：UX18 既有日特徵研究 consumer
+
+50f45ce後依原plan第8.7允許的partial research，完成close／MA20／MA60共用快照到個股read_report／研究理由／首屏的有限垂直切片。穩定identity、4筆有界cache、來源日期與末段有效OHLC必要暖機及三態均有定向證據；不重算指標／排名、不新策略或writer。首屏未知不再自行比較。歷史availability／calendar／PIT仍unknown／false；Backtest18.62%子gate不放寬，整階段依賴不改。完整UX18及UX19工程、UX04／05其他consumer和自然ML用途依賴分列於[原QA收據新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。原plan append-only，本地commit／blob/status核驗後停止交父層；不重做既有ML／效能／1477，不清理／push或觸碰未知paper檔／還原映射。以下記錄保留其原版本。
+
 ## 最新優先：UX16唯讀來源契約與UX02 Native中文
 
 dc14c080之後的有限包新增current-observed source contract／CLI、loader向後相容的時鐘投影與strict SQL。具名cutoff／cohort／來源版本／rowset hash核對可重讀研究資料；不生成特徵、正式snapshot或新方法。Root定向21passed、mypy3files、compile4檔、quant guard通過，9個UI blob同版沿用原UI gate；正式D2檔3日6列穩定，availability未知／cutoff-screened0，PIT與正式資格保持false。

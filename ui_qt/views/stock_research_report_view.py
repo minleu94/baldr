@@ -6,10 +6,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import inspect
 from typing import Any
 
@@ -2706,6 +2706,40 @@ def _price_change_text(points: Sequence[StockPricePointDTO]) -> str:
     return f"最新一日漲跌：{point.change:+,} TWD（資料日 {point.data_date}）。"
 
 
+def _shared_ma_observation(report: StockResearchReportDTO, key: str) -> tuple[str, Decimal | None, str]:
+    """新快照的三態為唯一比較依據；不完整快照不退回自行比較。"""
+    snapshot = report.shared_daily_features
+    conditions = snapshot.get("conditions", {})
+    condition = conditions.get("close_above_" + key.lower(), {}) if isinstance(conditions, Mapping) else {}
+    if not isinstance(condition, Mapping):
+        condition = {}
+    state = condition.get("state")
+    relation = condition.get("relation")
+    date_text = report.price_points[-1].data_date if report.price_points else ""
+    expected_state = "match" if relation == "above" else "no_match"
+    if (
+        isinstance(relation, str)
+        and relation in {"above", "below", "equal"}
+        and state == expected_state
+        and date_text
+        and condition.get("data_date") == date_text
+        and snapshot.get("market_date") == date_text
+    ):
+        try:
+            value = Decimal(str(condition.get("reference_value")))
+        except (InvalidOperation, ValueError):
+            value = None
+        if value is not None and value.is_finite() and value > 0:
+            return {"above": "高於", "below": "低於", "equal": "等於"}[str(relation)], value, ""
+    features = snapshot.get("features", {})
+    feature = features.get(key, {}) if isinstance(features, Mapping) else {}
+    if isinstance(feature, Mapping) and feature.get("warmup_state") == "unknown":
+        count, required = feature.get("warmup_observed_count"), feature.get("warmup_required_count")
+        if isinstance(count, int) and isinstance(required, int):
+            return "", None, f"連續有效 OHLC {count}/{required} 筆，必要暖機尚未確認"
+    return "", None, "來源日期、品質或必要暖機尚未確認"
+
+
 def _report_evidence_text(report: StockResearchReportDTO) -> str:
     """At most three existing facts; comparisons require the same market date."""
     if not report.price_points:
@@ -2715,6 +2749,11 @@ def _report_evidence_text(report: StockResearchReportDTO) -> str:
         return "收盤價格未提供。"
     change = f"（漲跌 {point.change:+,.2f}）" if point.change is not None else "（漲跌方向未提供）"
     facts = [f"{point.data_date} 收盤 {_decimal_text(point.close_price)} TWD{change}"]
+    if report.shared_daily_features:
+        for key in ("MA20", "MA60"):
+            relation, value, reason = _shared_ma_observation(report, key)
+            facts.append(f"收盤{relation} {key} {_decimal_text(value)}" if relation else f"{key} 尚無法判讀（{reason}）")
+        return "；".join(facts)
     if report.technical is not None:
         metrics = {metric.key: metric.value for metric in report.technical.indicators}
         for key in ("MA20", "MA60"):
@@ -2833,6 +2872,12 @@ def _report_sufficiency_text(report: StockResearchReportDTO) -> str:
 def _report_conclusion(report: StockResearchReportDTO) -> str:
     """挑出既有 evidence 的一句話作結，不生成新投資結論。"""
 
+    if report.shared_daily_features:
+        observations = [(key, *_shared_ma_observation(report, key)) for key in ("MA20", "MA60")]
+        known = [relation + key for key, relation, _value, _reason in observations if relation]
+        unknown = [key for key, relation, _value, _reason in observations if not relation]
+        parts = (["收盤" + "、".join(known)] if known else []) + (["、".join(unknown) + " 尚無法判讀"] if unknown else [])
+        return "；".join(parts) + "；僅為研究技術觀察，不是買賣建議。"
     if report.price_points and report.price_points[-1].close_price is not None and report.technical is not None:
         point = report.price_points[-1]
         if report.technical.data_date == point.data_date:

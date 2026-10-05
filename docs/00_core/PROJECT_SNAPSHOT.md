@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 UX18 既有日特徵研究切片
+
+既有close／MA20／MA60經共用readonly snapshot實際接入個股研究 `read_report()`、研究理由與首屏。穩定identity綁來源內容／日期／scope／版本，instance cache最多4筆；最後連續有效OHLC不足20／60筆或日期／品質不符，條件為unknown，首屏不另作比較。只投影原指標、Decimal比較，不重算／改分數排名或建立writer。必要observed-prefix不授官方日曆／availability／歷史PIT資格。
+
+原計畫第8.7允許具名partial research，本包完成有限consumer工程；第10整體階段依賴維持，Backtest18.62%／20%未達，UX18全feature／方法／其他consumer與UX19有界producer／manifest／原子發布／容量仍待。工程缺件不稱為等自然成熟。操作見[Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux18-共用日特徵與個股觀察)，驗證與done／partial／pending見[既有QA收據新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。本包不重跑效能／ML／Native1477，不碰正式DB／未知paper檔／還原映射，不清理或push。
+
 ## 2026-10-05 UX16唯讀來源契約與UX02 Native中文
 
 新增current-observed來源契約API／CLI，重用loader opt-in時鐘與strict SQL，保存明示cohort、cutoff、scoped rowset/schema hash及main/WAL/SHM身份；錯日期／來源／scope、晚到／無效時鐘、partial與unknown均具名，原caller預設不變。正式D兩檔3日讀取6列，scope齊全但availability、全市場universe、特徵暖機、歷史產業成員與benchmark未授資格；cutoff-screened0列，PIT／formal training／published snapshot false。Root定向21passed、mypy3files、compile4檔與quant guard通過，9個UI blob不變沿用既有UI gate。

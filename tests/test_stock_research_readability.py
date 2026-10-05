@@ -64,6 +64,28 @@ def test_current_facts_replace_historical_headline_and_bound_precision():
     assert "收盤低於MA20" not in _report_conclusion(stale)
 
 
+def test_shared_conditions_control_headline_and_evidence_without_recomparison():
+    report = _report()
+    snapshot = {
+        "market_date": "2026-10-02",
+        "conditions": {
+            "close_above_ma20": {"state": "unknown", "relation": "unknown"},
+            "close_above_ma60": {"state": "no_match", "relation": "equal", "data_date": "2026-10-02", "reference_value": "332"},
+        },
+        "features": {"MA20": {"warmup_state": "unknown", "warmup_observed_count": 12, "warmup_required_count": 20}},
+    }
+    projected = replace(report, shared_daily_features=snapshot)
+    assert "MA20 尚無法判讀" in _report_conclusion(projected)
+    assert "等於MA60" in _report_conclusion(projected)
+    assert "低於MA20" not in _report_conclusion(projected)
+    assert "12/20" in _report_evidence_text(projected)
+    assert "收盤等於 MA60 332.00" in _report_evidence_text(projected)
+    snapshot["conditions"]["close_above_ma60"]["data_date"] = "2026-10-01"
+    assert "MA20、MA60 尚無法判讀" in _report_conclusion(projected)
+    snapshot["conditions"]["close_above_ma60"]["relation"] = []
+    assert "MA20、MA60 尚無法判讀" in _report_conclusion(projected)
+
+
 def test_missing_conditions_are_limits_and_do_not_change_watch_policy():
     report = _report()
     assert _key_risks(StockAdviceSnapshotDTO(), report.events, report.position, ("來源讀取失敗",)) == ()

@@ -37,6 +37,7 @@ from app_module.price_change_direction import (
     resolve_signed_change as _resolve_signed_change,
 )
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
+from app_module.daily_market_feature_snapshot import DailyMarketFeatureSnapshotService
 from data_module.current_official_valuation import CurrentOfficialValuationReadProvider
 from data_module.recommendation_current_fundamental_provider import (
     RecommendationCurrentFundamentalProvider,
@@ -149,6 +150,9 @@ class StockResearchReportReadService:
             else None
         )
         self.clock = clock or (lambda: datetime.now(_TAIPEI))
+        self.daily_market_feature_snapshot_service = DailyMarketFeatureSnapshotService(
+            max_entries=4
+        )
         self.freshness_status_path = _resolve_freshness_status_path(config, freshness_status_path)
         self.candidate_db_file = Path(candidate_db_file) if candidate_db_file is not None else None
         self.current_ownership_capture_root = (
@@ -268,6 +272,44 @@ class StockResearchReportReadService:
                     missing_reason="找不到不晚於查詢日的技術指標；請先更新技術資料。",
                 )
             )
+
+        shared_daily_features: Mapping[str, Any] = {}
+        try:
+            self._check_cancel(cancel_callback)
+            shared_feature_snapshot = self.daily_market_feature_snapshot_service.project(
+                stock_code=code,
+                decision_date=cutoff,
+                scope_identity=f"stock-report-symbol:{code}",
+                price_points=price_points,
+                technical=technical,
+            )
+            shared_daily_features = shared_feature_snapshot.to_dict()
+        except StockResearchReportCancelled:
+            raise
+        except Exception as exc:
+            error = _error_text("共用每日特徵", exc)
+            errors.append(error)
+            limitations.append(error)
+            # 即使投影器發生意外錯誤，也不能回退成另一套 close/MA 比較。
+            # 明確保留未知條件，讓報告與下游呈現都能顯示失敗原因。
+            shared_daily_features = {
+                "projection_status": "failed",
+                "projection_error": error,
+                "conditions": {
+                    "close_above_ma20": {
+                        "state": "unknown",
+                        "relation": "unknown",
+                        "reason": "shared_daily_feature_projection_failed",
+                        "detail": error,
+                    },
+                    "close_above_ma60": {
+                        "state": "unknown",
+                        "relation": "unknown",
+                        "reason": "shared_daily_feature_projection_failed",
+                        "detail": error,
+                    },
+                },
+            }
 
         fundamentals: tuple[StockFundamentalObservationDTO, ...] = ()
         fundamental_sources: tuple[StockReportSourceDTO, ...] = ()
@@ -513,7 +555,12 @@ class StockResearchReportReadService:
             )
 
         rule_reasons = _dedupe(
-            (*_technical_rule_observations(price_points, technical), *advice.rule_reasons,)
+            (
+                *_technical_rule_observations(
+                    technical, shared_daily_features
+                ),
+                *advice.rule_reasons,
+            )
             + tuple(
                 reason
                 for event in events
@@ -585,6 +632,7 @@ class StockResearchReportReadService:
             ml=ml,
             rule_reasons=rule_reasons,
             saved_source_options=tuple(source_options),
+            shared_daily_features=shared_daily_features,
             research_context=context_map,
         )
 
@@ -3753,17 +3801,57 @@ def _key_risks(
     return _dedupe(tuple(reason for reason in risks if not is_research_data_limitation(reason)))[:8]
 
 
-def _technical_rule_observations(points: tuple[StockPricePointDTO, ...], technical: StockTechnicalSnapshotDTO | None) -> tuple[str, ...]:
+def _technical_rule_observations(
+    technical: StockTechnicalSnapshotDTO | None,
+    shared_daily_features: Mapping[str, Any],
+) -> tuple[str, ...]:
     """只解釋截止當下已讀到的指標，不產生分數、機率或交易適合度。"""
-    if technical is None:
-        return ()
-    values = {metric.key: metric.value for metric in technical.indicators if metric.value is not None}
-    facts = [f"技術觀察：{key}={values[key]}（資料日 {technical.data_date}；來源 {technical.source_id}）" for key in ('RSI','MACD','ADX') if key in values]
-    if points and points[-1].data_date == technical.data_date and points[-1].close_price is not None:
-        close = points[-1].close_price
-        for key in ('MA20','MA60'):
-            value = values.get(key)
-            if value is not None:
-                relation = '高於' if close > value else '低於' if close < value else '等於'
-                facts.append(f"技術觀察：收盤 {close} {relation} {key} {value}（資料日 {technical.data_date}；只解釋行情，不是推薦或勝率）")
+    values = (
+        {metric.key: metric.value for metric in technical.indicators if metric.value is not None}
+        if technical is not None
+        else {}
+    )
+    facts: list[str] = []
+    if technical is not None:
+        facts.extend(
+            f"技術觀察：{key}={values[key]}（資料日 {technical.data_date}；來源 {technical.source_id}）"
+            for key in ("RSI", "MACD", "ADX")
+            if key in values
+        )
+    raw_conditions = shared_daily_features.get("conditions", {})
+    conditions = raw_conditions if isinstance(raw_conditions, Mapping) else {}
+    projection_error = str(shared_daily_features.get("projection_error", "") or "")
+    for key, condition_name in (
+        ("MA20", "close_above_ma20"),
+        ("MA60", "close_above_ma60"),
+    ):
+        raw_condition = conditions.get(condition_name)
+        condition = raw_condition if isinstance(raw_condition, Mapping) else {}
+        state = str(condition.get("state", "unknown") or "unknown").lower()
+        data_date = str(condition.get("data_date", "") or "")
+        if state not in {"match", "no_match"}:
+            reason = str(condition.get("reason", "") or "shared_daily_feature_condition_missing")
+            detail = str(condition.get("detail", "") or projection_error)
+            explanation = f"原因 {reason}"
+            if detail:
+                explanation += f"：{detail}"
+            facts.append(
+                f"技術觀察：收盤與 {key} 未能判定（資料日 {data_date or '未知'}；{explanation}）。"
+            )
+            continue
+
+        relation = str(condition.get("relation", "unknown") or "unknown").lower()
+        relation_label = {"above": "高於", "below": "低於", "equal": "等於"}.get(relation)
+        close_value = condition.get("close_value")
+        reference_value = condition.get("reference_value")
+        if relation_label is None or close_value is None or reference_value is None:
+            reason = str(condition.get("reason", "") or "shared_daily_feature_condition_incomplete")
+            facts.append(
+                f"技術觀察：收盤與 {key} 未能判定（資料日 {data_date or '未知'}；原因 {reason}）。"
+            )
+            continue
+        facts.append(
+            f"技術觀察：收盤 {close_value} {relation_label} {key} {reference_value}"
+            f"（資料日 {data_date or '未知'}；只解釋行情，不是推薦或勝率）"
+        )
     return tuple(facts)

@@ -4277,6 +4277,8 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 ## 2026-10-05 UX16 唯讀研究來源契約
 
+此preflight只核對來源。個股頁實際使用的close／MA20／MA60共用特徵與暖機觀察另見本文末UX18補充。
+
 進階唯讀入口為 `scripts/inspect_current_observed_source_contract.py`，用於共用特徵／每日快照實作前核對來源，沒有新增主UI按鈕。先依 `TWStockConfig` 確認實際SQLite位置，再明示決策cutoff、臺北日期、讀取窗口與研究股票範圍。以下是日期化範例，使用時須改為實際截止時刻與來源，不可把範例當今天的資格：
 
 ```powershell
@@ -4298,3 +4300,13 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 讀回JSON後，先看`status`與`blockers`，再看source的實際scoped rowset hash、scope分母／missing_symbols、每檔窗口、availability、features與benchmark。`observed`只表示研究來源已觀測；`partial`保留具名缺件／重複／晚到原因；`rejected`不可當穩定來源，CLI返回2。明示股票全數出現不代表每檔窗口齊全、全市場完整、暖機通過或正式資格。晚於cutoff或無有效時鐘的列不進cutoff-screened子集；無availability仍可讀當期研究，但PIT、正式訓練與published_snapshot保持false。
 
 遇`source_schema_read_failed`／`source_query_failed`，核對路徑、schema與執行環境權限，不自動下載或重建DB；`source_changed_during_read`表示來源／sidecar身份變動，保留收據並在來源穩定時另次讀取；錯日期／scope／rowset pin要回到原保存來源核對，不改pin繞過。JSON檔已存在時換新QA檔名；不清理原件。相關實作、定向測試與Native畫面來源見 [UX16限定收據](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+## 2026-10-05 UX18 共用日特徵與個股觀察
+
+入口仍是「個股研究」或持倉／觀察清單下鑽。選股票及既有來源／決策日後，正常載入報告即可；沒有新增參數、按鈕或writer。首屏結論與三項依據讀同一份共用close／MA20／MA60研究快照，呈現收盤高於、低於或等於均線；equal表示未符合「高於」條件，不代表賣出或風險評級。
+
+必要暖機以最後連續有效OHLC計算：MA20需20筆、MA60需60筆。缺值／無效範圍中斷連續段，不跳過缺口。資料日與技術日不一致、來源品質／身份不完整或暖機不足時，畫面顯示「尚無法判讀」，研究理由保留具名原因；一項未知不遮蔽另一項可讀觀察。原table均線值不重算，RSI／MACD／ADX、Advice與排名沿既有輸出。
+
+進階稽核可從報告DTO的 `shared_daily_features` 查看contract版本、snapshot／input hash、股票scope、decision／market date、TWD/share單位、來源fingerprint、warmup_required_count／observed_count及conditions三態。cache僅此service最多4筆；相同輸入復用，來源內容／日期／scope／版本變化即重新投影，不沿用舊身份。舊DTO沒有該欄位時保持原呈現。
+
+`sufficient_observed_prefix`只證明有限SMA的必要觀測窗口，官方交易日曆與available-at仍unknown、historical_pit_eligible=false；不證明歷史PIT、producer公式等價、遞迴EMA暖機或正式模型／勝率。首屏只是研究技術觀察。若不足20／60筆，核對實際末段OHLC及缺口；若日期／品質不符，核對所選來源，不能補假時鐘或略過guard。投影讀取故障保留原錯誤且條件未知，正常取消不變成成功。工程驗證與仍待項目見[QA新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md#最新延伸ux18-既有日特徵的實際研究-consumer)。

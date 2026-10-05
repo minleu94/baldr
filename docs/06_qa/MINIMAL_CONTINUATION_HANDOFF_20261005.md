@@ -1,5 +1,9 @@
 # 最小續接清單（2026-10-05，Batch9）
 
+## 最新優先：UX18 既有日特徵研究 consumer
+
+以50f45ce為基線：close／MA20／MA60共用readonly snapshot已接個股 `read_report()`、研究理由及首屏；source內容／日期／scope／版本綁identity，LRU最多4筆，末段有效OHLC必要20／60暖機不足或來源不符保持unknown。原數值／排名不重算，故障fail closed／取消傳遞。原plan append-only，有限研究切片不代表整個UX18／19或階段2完成；Backtest18.62%／20%維持未達。完整feature／method／選股consumer、UX19 bounded writer／manifest／整批完整性／原子發布／容量是工程待辦；歷史PIT／自然成熟另列。詳見[既有QA收據新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。不重跑ML／效能／Native1477，未碰正式DB／paper檔／還原映射，未清理／push。以下較早段落只作其版本歷史。
+
 ## 最新優先：UX16唯讀來源契約與UX02 Native中文
 
 以dc14c080為基線新增source contract／CLI及loader opt-in timing／strict SQL，原預設caller不變。Root最終21passed、mypy3files、compile4檔、quant guard通過；9個UI blob不變，沿用85／25+4skip。正式D兩檔3日6列穩定研究讀取、scoped hash保留；availability未知、cutoff-screened0、PIT／formal training／published snapshot false。所有已知／未知／拒絕與前置失敗見[UX16限定收據](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)，不要重跑60檔審查／learner／1477／效能baseline。

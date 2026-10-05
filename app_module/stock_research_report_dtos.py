@@ -380,6 +380,7 @@ class StockResearchReportDTO:
     ml: StockMLSnapshotDTO = StockMLSnapshotDTO()
     rule_reasons: tuple[str, ...] = ()
     saved_source_options: tuple[StockSavedSourceOptionDTO, ...] = ()
+    shared_daily_features: Mapping[str, Any] = field(default_factory=dict)
     research_context: Mapping[str, str] = field(default_factory=dict)
     read_only: bool = True
     schema_version: str = STOCK_RESEARCH_REPORT_SCHEMA_VERSION

@@ -8,6 +8,8 @@
 
 ## 2026-10-03 整合修復現況入口
 
+- UX18有限consumer：`app_module/daily_market_feature_snapshot.py` 投影既有close／MA20／MA60，個股 `read_report()`、理由與首屏實際共用三態；來源／版本／日期綁identity，必要暖機不足保持unknown。操作見[Manual](docs/07_guides/APPLICATION_MANUAL.md#2026-10-05-ux18-共用日特徵與個股觀察)，依賴與驗證見[原QA收據新章](docs/06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。完整UX18／UX19發布仍待，Backtest子gate未改。
+
 - UX16唯讀來源契約：`app_module/current_observed_source_contract.py` 重用 `DecisionMarketFrameLoader` 的opt-in時鐘欄位與strict SQL讀取，`scripts/inspect_current_observed_source_contract.py` 提供明示cohort／cutoff／rowset pin的研究preflight入口；[Manual](docs/07_guides/APPLICATION_MANUAL.md)與[限定收據](docs/06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)說明未知／拒絕與資格。沒有正式snapshot writer或新方法入口。
 
 - 本輪四用途工程補全與完整驗收追蹤：[Astra 工程收尾](docs/06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md)。新現況來源由 `data_module/current_fundamental_snapshots.py`、`current_official_valuation.py`、`current_market_status_observation.py` 管理；個股 ML／Exit 唯讀接線在 `app_module/stock_research_report_provider_adapters.py`。同名 source 的日期、run 與 SHA 不可互換。

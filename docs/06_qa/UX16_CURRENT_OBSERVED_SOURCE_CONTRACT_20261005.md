@@ -1,5 +1,40 @@
 # UX16 唯讀來源契約與 UX02 Native 中文驗證（2026-10-05）
 
+## 最新延伸：UX18 既有日特徵的實際研究 consumer
+
+基線 `50f45ce692703d8b80be91c3c6f8bf2ed2a32e17`。本包依原計畫第8.7／10／11節，完成 current-observed 研究模式的有限垂直切片：`daily_market_feature_snapshot.py` 投影已讀到的 close／MA20／MA60，`StockResearchReportReadService.read_report()` 實際呼叫並將結果交給研究理由與首屏。不是新增 CLI 或未使用的矩陣；不新增公式、方法、分數、排名、SQL、producer或持久化 writer。
+
+契約 `daily-market-feature-snapshot.v1` 保存股票、決策日、單股scope、實際資料日、單位 TWD/share、來源／每列fingerprint、實際DTO內容hash與snapshot identity。Decimal比較輸出 `match／no_match／unknown`，above／below／equal是既有觀察，equal屬no_match。同輸入共用immutable snapshot；同日價格或指標內容、來源hash、scope、決策日、契約版本變動會使cache失效。每service的RLock／LRU最多4筆；`to_dict()`建立新的mapping，不讓caller改動cache。
+
+暖機沿用既有 `calculate_causal_indicators` 的SMA20／60必要條件：截止當下最後一段連續有效、正值、範圍一致的OHLC。缺值／壞值會中斷，不跳過缺口湊筆數；未來日、重複／壞日期、缺最新收盤、技術來源日期／品質／identity不符則具名unknown。最多120筆既有報告窗口能證明有限SMA的**必要observed-prefix**，不證明原producer計算等價、官方交易日曆完整、EMA遞迴暖機或歷史PIT。原technical table數值只投影，不重算。官方availability與calendar completeness保持unknown，historical_pit_eligible=false。
+
+新DTO欄位 `shared_daily_features` 是加法相容；舊DTO預設空mapping保留原呈現。新報告研究理由與首屏讀同一三態；若暖機／來源未確認，顯示尚無法判讀，不能再由首屏自行比較而得出另一結論。投影故障保留錯誤與unknown，取消仍傳遞。RSI／MACD／ADX及既有Advice／原排名不改。
+
+### 依賴裁定與原計畫狀態
+
+原第10節把階段1列為整體階段2前置；沒有把Backtest20%單獨列成每個唯讀constructor的硬gate。第8.7明示可用「准許研究」來源及具名partial research，父層最新授權本包有限consumer接線。因此本切片可完成，**不宣稱階段1／2全過，也不放行UX19正式發布**。Backtest18.62%／20%仍未達，不調門檻或重測湊數。
+
+| 原計畫項目 | 狀態／下一個實際依賴 |
+|---|---|
+| UX16 | 唯讀來源契約已交付；完整universe、官方availability、歷史成員／PIT仍partial。 |
+| UX17 | 效能partial；Backtest子gate未達，既有數字凍結。 |
+| UX18 | close／MA20／MA60版本、單位、暖機、三態、cache與研究consumer已接；完整feature dictionary／固定method契約／選股consumer／增量與全量等價仍待。 |
+| UX19 | 待工程：既有owner的有界producer、decision manifest、整批完整性、原子發布、重播／修訂、容量與成長預算。這些不能稱為等待自然成熟。 |
+| UX04／05 | 待共用snapshot的完整契約及其他consumer接線；本包僅個股首屏／理由。 |
+| UX20／21／ML | 沿原自然capture／outcome與資格契約累積；歷史PIT及natural maturity不足限制其用途，不阻止本包研究工程。 |
+
+benchmark未用於本包price-vs-MA觀察；未提供benchmark證據不會偽造值，也不新增此切片的依賴。後續相對特徵需工程核驗版本／窗口／cutoff。歷史PIT、官方時鐘與自然成熟是證據缺件，與可修的source／warmup／manifest工程分列。
+
+測試結果與commit讀回記錄於本章末的「UX18驗證收尾」；下列UX16／Native資料保留其原版本與來源，不借用為新consumer的真實Native證據。
+
+### UX18驗證收尾
+
+- Root backend定向bundle：51 passed／2 failed；兩個失敗是短Temp祖先的no-follow handle無法錨定，導致既有Advice測試降級。只把這兩項改用repo隔離QA basetemp重驗，2 passed；53個不同測試皆有通過證據，不稱首輪全過、不改安全guard。XML：`output/qa/ux18_shared_features_20261005/final_backend.xml`／`advice_recheck.xml`。
+- Root UI定向50 passed，含共用unknown／equal／日期不符／壞mapping及舊DTO原行為；Workbench85 passed；validator25 passed／4 skipped／0 failed。pytest預設cache寫入警告不影響斷言；後續bundle停用cacheprovider。UI XML：`ui_focused.xml`／`workbench.xml`。
+- full mypy最後769 source files通過；首輪新module3個型別錯已修（selected_metric型別與latest_row None narrowing）。7個changed Python檔compile、quant guard通過。Agent新backend9 passed；其首輪future fixture誤設cutoff的1失敗修正後通過。Consumer4 passed，另含舊PIT readback的一跑4 passed是重疊證據，不累加。
+- 真實consumer測試使用小型隔離SQLite，實際 `read_report()`→shared snapshot→DTO／rule_reasons；驗證同源object reuse、同日來源修訂identity失效、20／60暖機、短歷史／日期不符、投影故障fail closed與取消。沒有實際learner、正式DB／registry、Native1477、效能重跑或市場producer；validator既有12列受控指標fixture不是正式producer運行。
+- 原plan保持原bytes前綴，append-only追加本包done／partial／pending與依賴；本地precommit／commit_readback保存逐檔raw SHA、Git blob、HEAD／parent／status。raw output與本機active_task依git排除規則不stage。未知paper檔未讀／hash／改／stage，C:/ta_iso_1005映射未動，未清理或push。完成commit／核驗後停止交父層。
+
 基線 `dc14c080ed77ad1a314bb0aa17542993ee153def`。沿用唯一 `output/plans/baldr_product_experience_plan_20261004.md` 第8.7／11節，Root Sol整合兩位指定Luna Max；來源實作與Native QA分工不重疊。
 
 ## 可交付範圍與依賴

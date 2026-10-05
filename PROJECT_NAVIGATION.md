@@ -8,6 +8,8 @@
 
 ## 2026-10-03 整合修復現況入口
 
+- UX16唯讀來源契約：`app_module/current_observed_source_contract.py` 重用 `DecisionMarketFrameLoader` 的opt-in時鐘欄位與strict SQL讀取，`scripts/inspect_current_observed_source_contract.py` 提供明示cohort／cutoff／rowset pin的研究preflight入口；[Manual](docs/07_guides/APPLICATION_MANUAL.md)與[限定收據](docs/06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)說明未知／拒絕與資格。沒有正式snapshot writer或新方法入口。
+
 - 本輪四用途工程補全與完整驗收追蹤：[Astra 工程收尾](docs/06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md)。新現況來源由 `data_module/current_fundamental_snapshots.py`、`current_official_valuation.py`、`current_market_status_observation.py` 管理；個股 ML／Exit 唯讀接線在 `app_module/stock_research_report_provider_adapters.py`。同名 source 的日期、run 與 SHA 不可互換。
 
 - 目前已確認狀態與仍待驗收事項：先讀 [PROJECT_SNAPSHOT](docs/00_core/PROJECT_SNAPSHOT.md)，再讀[三階段整合修復紀錄](docs/06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md)。後者保留各次真實成功、失敗、原生 Task 與 QA 收據，不可用較早失敗段落覆蓋上方現況。

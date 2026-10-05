@@ -51,6 +51,7 @@ class DecisionMarketFrameLoader:
         "成交股數",
         *CHANGE_SIGN_COLUMNS,
     )
+    SOURCE_TIMING_COLUMNS = ("available_at", "observed_at")
 
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
@@ -58,6 +59,8 @@ class DecisionMarketFrameLoader:
         self._lookback_days = 0
         self._frame: pd.DataFrame | None = None
         self._frame_source_identity: tuple[object, ...] | None = None
+        self._include_source_timing = False
+        self._raise_sql_errors = False
         self._recent_price_cache: dict[
             tuple[tuple[object, ...], date, int],
             dict[str, list[tuple[date, Decimal]]],
@@ -70,6 +73,8 @@ class DecisionMarketFrameLoader:
             self._lookback_days = 0
             self._frame = None
             self._frame_source_identity = None
+            self._include_source_timing = False
+            self._raise_sql_errors = False
             self._recent_price_cache.clear()
 
     def load(
@@ -78,9 +83,11 @@ class DecisionMarketFrameLoader:
         lookback_days: int,
         *,
         cancel_callback: Callable[[], bool] | None = None,
+        include_source_timing: bool = False,
+        raise_sql_errors: bool = False,
     ) -> pd.DataFrame:
         if lookback_days <= 0:
-            return pd.DataFrame(columns=self.COLUMNS)
+            return pd.DataFrame(columns=self._columns(include_source_timing))
         self._raise_if_cancelled(cancel_callback)
         with self._lock:
             source_identity = self._source_identity()
@@ -89,17 +96,30 @@ class DecisionMarketFrameLoader:
                 or self._as_of_date != as_of_date
                 or self._frame_source_identity != source_identity
                 or lookback_days > self._lookback_days
+                or self._include_source_timing != bool(include_source_timing)
+                or self._raise_sql_errors != bool(raise_sql_errors)
             ):
                 self._recent_price_cache.clear()
-                frame = self._read_frame(
-                    as_of_date,
-                    lookback_days,
-                    cancel_callback=cancel_callback,
-                )
+                if include_source_timing or raise_sql_errors:
+                    frame = self._read_frame(
+                        as_of_date,
+                        lookback_days,
+                        cancel_callback=cancel_callback,
+                        include_source_timing=include_source_timing,
+                        raise_sql_errors=raise_sql_errors,
+                    )
+                else:
+                    frame = self._read_frame(
+                        as_of_date,
+                        lookback_days,
+                        cancel_callback=cancel_callback,
+                    )
                 self._frame = frame
                 self._as_of_date = as_of_date
                 self._lookback_days = lookback_days
                 self._frame_source_identity = source_identity
+                self._include_source_timing = bool(include_source_timing)
+                self._raise_sql_errors = bool(raise_sql_errors)
             self._raise_if_cancelled(cancel_callback)
             frame = self._slice_to_lookback(self._frame, lookback_days)
             self._raise_if_cancelled(cancel_callback)
@@ -192,9 +212,11 @@ class DecisionMarketFrameLoader:
         lookback_days: int,
         *,
         cancel_callback: Callable[[], bool] | None = None,
+        include_source_timing: bool = False,
+        raise_sql_errors: bool = False,
     ) -> pd.DataFrame:
         if not self.db_path.exists():
-            return pd.DataFrame(columns=self.COLUMNS)
+            return pd.DataFrame(columns=self._columns(include_source_timing))
 
         target_key = as_of_date.strftime("%Y%m%d")
         db_uri = f"{self.db_path.resolve().as_uri()}?mode=ro"
@@ -226,7 +248,7 @@ class DecisionMarketFrameLoader:
                 )
                 self._raise_if_cancelled(cancel_callback)
                 if date_rows.empty:
-                    return pd.DataFrame(columns=self.COLUMNS)
+                    return pd.DataFrame(columns=self._columns(include_source_timing))
                 normalized_dates = [
                     str(value).strip().replace("-", "").replace("/", "")
                     for value in date_rows["日期"].tolist()
@@ -236,9 +258,15 @@ class DecisionMarketFrameLoader:
                     f'"{name}"' if name in table_columns else f'NULL AS "{name}"'
                     for name in CHANGE_SIGN_COLUMNS
                 )
+                timing_projection = ""
+                if include_source_timing:
+                    timing_projection = ", " + ", ".join(
+                        f'"{name}"' if name in table_columns else f'NULL AS "{name}"'
+                        for name in self.SOURCE_TIMING_COLUMNS
+                    )
                 frame = pd.read_sql_query(
                     f"""
-                    SELECT 日期, 證券代號, 收盤價, 漲跌價差, 成交股數, {sign_projection}
+                    SELECT 日期, 證券代號, 收盤價, 漲跌價差, 成交股數, {sign_projection}{timing_projection}
                     FROM daily_prices
                     WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') IN ({placeholders})
                     ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') ASC, 證券代號 ASC
@@ -251,11 +279,19 @@ class DecisionMarketFrameLoader:
         except sqlite3.Error as exc:
             if was_sql_cancelled():
                 raise BacktestCancelledError("決策台市場查詢已取消。") from exc
-            return pd.DataFrame(columns=self.COLUMNS)
+            if raise_sql_errors:
+                raise
+            return pd.DataFrame(columns=self._columns(include_source_timing))
         except pd.errors.DatabaseError as exc:
             if was_sql_cancelled():
                 raise BacktestCancelledError("決策台市場查詢已取消。") from exc
             raise
+
+    @classmethod
+    def _columns(cls, include_source_timing: bool) -> tuple[str, ...]:
+        if include_source_timing:
+            return (*cls.COLUMNS, *cls.SOURCE_TIMING_COLUMNS)
+        return cls.COLUMNS
 
     def _source_identity(self) -> tuple[object, ...]:
         path = self.db_path.resolve()

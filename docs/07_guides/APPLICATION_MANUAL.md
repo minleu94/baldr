@@ -4274,3 +4274,27 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 | 未知／未識別原碼 | 保留原碼查來源，不把未知畫成正常、零值或安全。 |
 
 當期研究日、資料日、歷史事件日與所選保存決策日沿既有欄位分別標示；狀態翻譯不重綁日期／run／來源。不符合日期或來源身份仍拒絕。若畫面顯示「報告部分載入」，可以閱讀已提供區塊並查看缺件；若顯示真實錯誤，保留訊息後修復具名來源，不能以重新命名狀態授予資格。部分入口維持既有專用詞彙，這次沒有全頁全狀態改版。測試與真實唯讀離屏證據見 [UX02 收據](../06_qa/UX02_SHARED_STATUS_VOCABULARY_20261005.md)。
+
+## 2026-10-05 UX16 唯讀研究來源契約
+
+進階唯讀入口為 `scripts/inspect_current_observed_source_contract.py`，用於共用特徵／每日快照實作前核對來源，沒有新增主UI按鈕。先依 `TWStockConfig` 確認實際SQLite位置，再明示決策cutoff、臺北日期、讀取窗口與研究股票範圍。以下是日期化範例，使用時須改為實際截止時刻與來源，不可把範例當今天的資格：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\inspect_current_observed_source_contract.py --db-path D:/Min/Python/Project/FA_Data/sqlite/twstock.db --source-ref configured-main-daily-prices --decision-cutoff 2026-10-05T16:00:00+08:00 --as-of-date 2026-10-05 --window-trading-days 3 --symbols 2382 1477
+```
+
+| 參數 | 意義與限制 |
+|---|---|
+| `--db-path`／`--source-ref` | DB必填，使用mode=ro與query_only；ref為具名參照，不代替內容hash。省略ref會以絕對路徑與表名標識。 |
+| `--decision-cutoff`／`--as-of-date` | 必填含時區ISO時刻與YYYY-MM-DD；日期須等於cutoff轉Asia/Taipei後日期，不接受未來cutoff。交易日不是官方availability證據。 |
+| `--window-trading-days` | 必填1–60，指來源表最近N個不同交易日；不等於個股完整交易日曆或指標暖機。 |
+| `--symbols` | 明示cohort分母；省略則分母unknown，讀到的股票數不冒稱全市場universe。 |
+| `--source-pin-file`／`--expected-scope-identity`／`--expected-rowset-sha256` | 可選前次JSON source pin、股票範圍identity與scoped內容hash。任何不相符都拒絕，不借用其他日期／版本。 |
+| `--feature-spec-file` | 可選JSON list或`{"features": [...]}`，每項具name、source_table、columns、window_sessions；可加version、unit、warmup_sessions。只記錄呼叫者宣告，不計算特徵或證明暖機；省略保持unknown。 |
+| `--company-classification-csv` | 可選當期公司分類，記錄實讀rowset與時鐘限制；不建立歷史產業effective intervals。 |
+| `--benchmark-evidence-file` | 可選宣告identity、source_ref、window_start／end；本工具不核驗benchmark，verified保持false。 |
+| `--output` | 預設只輸出stdout；可選repo `output/qa/`下新的`.json`，create-only，不覆寫既有檔或正式資料。 |
+
+讀回JSON後，先看`status`與`blockers`，再看source的實際scoped rowset hash、scope分母／missing_symbols、每檔窗口、availability、features與benchmark。`observed`只表示研究來源已觀測；`partial`保留具名缺件／重複／晚到原因；`rejected`不可當穩定來源，CLI返回2。明示股票全數出現不代表每檔窗口齊全、全市場完整、暖機通過或正式資格。晚於cutoff或無有效時鐘的列不進cutoff-screened子集；無availability仍可讀當期研究，但PIT、正式訓練與published_snapshot保持false。
+
+遇`source_schema_read_failed`／`source_query_failed`，核對路徑、schema與執行環境權限，不自動下載或重建DB；`source_changed_during_read`表示來源／sidecar身份變動，保留收據並在來源穩定時另次讀取；錯日期／scope／rowset pin要回到原保存來源核對，不改pin繞過。JSON檔已存在時換新QA檔名；不清理原件。相關實作、定向測試與Native畫面來源見 [UX16限定收據](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。

@@ -1,5 +1,13 @@
 # 2026-10-05 有界語意審查與體驗接手
 
+## 最新優先：UX16唯讀來源契約與UX02 Native中文
+
+dc14c080之後的有限包新增current-observed source contract／CLI、loader向後相容的時鐘投影與strict SQL。具名cutoff／cohort／來源版本／rowset hash核對可重讀研究資料；不生成特徵、正式snapshot或新方法。Root定向21passed、mypy3files、compile4檔、quant guard通過，9個UI blob同版沿用原UI gate；正式D2檔3日6列穩定，availability未知／cutoff-screened0，PIT與正式資格保持false。
+
+四用途Native中文已清楚無豆腐字：三頁受控fixture，個股明示hash的記錄唯讀DTO（2382／10-05／331.0／ML unavailable），不是此run即時DB／自然模型證據。四輪8個QA PID退出，前3失敗與來源限制保留。詳見[UX16／Native限定收據](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+保留唯一原plan／UX01→UX16/17→UX18/19依賴，stage1 Backtest18.62%／20%門檻未全部通過；下一包為具版本／單位／暖機的共用feature dictionary、增量等價與UX19 manifest／完整性／原子發布／容量前置，由父層裁定放行，不跳新方法。歷史產業／PIT、benchmark與availability未知不冒稱驗證，也不阻擋具名當期研究。沒有重訓／producer／全量回歸／1477／清理／push；unknown paper檔與隔離還原映射未動。本批commit/blob/status核驗後停止回報，舊節只作歷史。
+
 ## 2026-10-05 小型 learner／Library 收尾（本節優先於歷史待辦）
 
 接手核驗：`dev` HEAD `cd908443fe8a4afb098a5103e70ff6fe728ef6aa`；只有未知未追蹤 `paper_event_source_capture.py`，未讀、未改、未提交。既有 checkpoint、60 檔有界審查與 UI gate 不重做。

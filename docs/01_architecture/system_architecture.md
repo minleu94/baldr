@@ -5,6 +5,8 @@
 
 ## 2026-10-03 current-restated 研究支線與 Data Update 狀態邊界
 
+UX16來源preflight由 `app_module/current_observed_source_contract.py` 重用 `DecisionMarketFrameLoader`：僅在明示opt-in時讀取available_at／observed_at並啟用strict SQL錯誤，cache模式隔離，原Decision Desk caller預設schema不變。研究manifest保存明示股票cohort、cutoff、有限交易日窗口、schema／scoped rowset hash、來源檔及sidecar identity與具名unknown／partial／rejected。`scripts/inspect_current_observed_source_contract.py`是唯讀CLI，僅可另存create-only QA JSON；不計算新特徵、不發布正式snapshot，也不取代Rule Champion custody／repository。當期分類不生成歷史產業effective intervals，feature暖機與benchmark宣告不視為核驗；PIT／正式訓練／published_snapshot均不升格。操作與同版驗證見[UX16限定收據](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
 2026-10-04 的現況補全沿既有邊界實作：`current_fundamental_snapshots` 保存 append-only、具單位／期間基礎與分開時鐘的觀測；`current_official_valuation` 保存兩市場原始回應、不可變回執及按行情日驗證的 PE／PB／yield；`current_market_status_observation` 提供有來源的目前上市／交易狀態。這些都不回填正式 PIT 資料表或歷史公告時鐘。
 
 Main 向 `StockResearchReportReadService` 注入研究 ML registry、Portfolio service 與 condition monitor；report service 未收到自訂 Exit provider 時，建立 `stock_research_report_provider_adapters.PortfolioExitReadProvider`。Registry 位於 active research root 的 `current_stock_research_registry`，使用 index→record→sidecar／model／current-vector 的精確 hash 鏈；它只讀已產生的結果，不在開頁時訓練。保存決策與當下獨立研究以 `ml_scope_mode` 分開，來源身分由共用的記憶體 research session 同步；保存推薦結果沿既有 canonical store 持久化，session 本身不提供跨程序還原。現況持倉日期與行情日期是不同欄位，歷史查詢不借用今天持倉。實際執行及接受狀態以 [本輪 QA](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md) 與 Snapshot 為準。

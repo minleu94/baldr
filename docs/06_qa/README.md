@@ -11,6 +11,8 @@
 
 ## 近期證據入口（依主題）
 
+- [UX16 current-observed來源契約與UX02 Native中文](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：唯讀API／CLI、scoped hash／時鐘／資格未知、四用途代表畫面及尚未放行依賴。
+
 | 要查的內容 | 證據入口 |
 | --- | --- |
 | 最新有限驗收、native 未通過情境、容量／正式資格阻礙與 checkpoint 提交邊界 | [最小續接清單（2026-10-05，Batch9）](MINIMAL_CONTINUATION_HANDOFF_20261005.md) |

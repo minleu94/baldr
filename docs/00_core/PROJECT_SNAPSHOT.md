@@ -1,5 +1,13 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 UX16唯讀來源契約與UX02 Native中文
+
+新增current-observed來源契約API／CLI，重用loader opt-in時鐘與strict SQL，保存明示cohort、cutoff、scoped rowset/schema hash及main/WAL/SHM身份；錯日期／來源／scope、晚到／無效時鐘、partial與unknown均具名，原caller預設不變。正式D兩檔3日讀取6列，scope齊全但availability、全市場universe、特徵暖機、歷史產業成員與benchmark未授資格；cutoff-screened0列，PIT／formal training／published snapshot false。Root定向21passed、mypy3files、compile4檔與quant guard通過，9個UI blob不變沿用既有UI gate。
+
+四用途Native代表畫面中文清楚無豆腐字；三頁受控DTO，個股用明示hash的記錄唯讀DTO（2382／10-05／331.0／ML unavailable），非新即時來源或模型資格。四輪8個QA PID均退出，失敗與來源identity各自保留。詳見[UX16／Native限定收據](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+原plan append-only，stage1 Backtest18.62%／20%門檻仍未全過；本包只交付UX16 preflight，不放行UX18新方法或UX19正式writer。下一包需具版本／單位／暖機的共用feature dictionary及增量等價性、decision manifest／整批完整性／原子發布／容量等依賴。歷史PIT缺件不阻擋具名當期研究；不重做1477／效能／learner／producer／全量回歸／清理／push。未知根檔與C:/ta_iso_1005映射未動。本地commit與blob/status核驗後停止交父層。
+
 ## 2026-10-05 UX02 共用狀態有限切片
 
 `ui_qt/status_vocabulary.py` 提供純呈現 `status_label`／`status_detail`，明確區分 data／load／research／qualification／event／validation；未知碼保留，completed 不跨維度授予資格。盤勢、持倉系統健康、選股、個股及 Console 的既有入口共用詞彙；Workbench 將時間等待／休市與具名故障分開，回測保留 PASS／WARN／FAIL 並加白話驗證狀態。原始診斷、來源及日期／身份沿原 DTO 保留，沒有修改策略／producer／模型或拒絕 guards。

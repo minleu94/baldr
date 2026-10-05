@@ -1,5 +1,15 @@
 # 最小續接清單（2026-10-05，Batch9）
 
+## 最新優先：UX16唯讀來源契約與UX02 Native中文
+
+以dc14c080為基線新增source contract／CLI及loader opt-in timing／strict SQL，原預設caller不變。Root最終21passed、mypy3files、compile4檔、quant guard通過；9個UI blob不變，沿用85／25+4skip。正式D兩檔3日6列穩定研究讀取、scoped hash保留；availability未知、cutoff-screened0、PIT／formal training／published snapshot false。所有已知／未知／拒絕與前置失敗見[UX16限定收據](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)，不要重跑60檔審查／learner／1477／效能baseline。
+
+四用途Native代表畫面已用既有JhengHei清楚顯示中文；三頁受控，個股記錄DTO明示SHA／331.0／10-05／ML unavailable，非此run即時DB。前三失敗保留；四輪driver／launcher均退出。未改產品UI、OS設定或使用者視窗。Native畫面不授新自然資格，不替代1000×835已接受與1000×800限制。
+
+原plan只追加本包結果；stage1 Backtest18.62%仍低於20%原門檻，不宣告全部通過。下一包先按父層裁定處置stage1與UX16缺證據，再選具單位／版本／暖機依據的共用feature dictionary與增量等價性；UX19需原universe／decision manifest／完整性／原子發布／revision／容量，不啟UX18新方法或正式writer。當期研究可以具名復用，歷史PIT未知不當全產品阻塞。Phase3C法人lane本包未讀；若後續復用9/29個股與10/2aggregate，須另核同版identity。
+
+本地commit/blob/status收據留 `output/qa/ux02_native_source_contract_20261005/`，以Git實際HEAD為準。無push、producer、訓練、永久清理或大DBcopy；未知paper檔與C:/ta_iso_1005保留。本批完成後停止，由父層安排下一批。
+
 ## 2026-10-05 小型 learner／Library 收尾（本節優先於歷史待辦）
 
 接手核驗：`dev` HEAD `cd908443fe8a4afb098a5103e70ff6fe728ef6aa`；只有未知未追蹤 `paper_event_source_capture.py`，未讀、未改、未提交。既有 checkpoint、60 檔有界審查與 UI gate 不重做。

@@ -61,6 +61,9 @@ from app_module.decision_continuity_controller import DecisionContinuityControll
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.research_result_presentation import (
     ResearchTablePresentation,
+    is_research_data_limitation,
+    research_limitation_text,
+    research_risk_text,
     build_shareholding_tier_table,
     build_stock_research_event_table,
 )
@@ -635,7 +638,7 @@ class StockResearchReportView(QWidget):
         )
         layout.addWidget(self.summary_limitations_panel)
 
-        self.summary_detail_toggle = QPushButton("顯示進階：逐項證據與欄位")
+        self.summary_detail_toggle = QPushButton("展開資料稽核：摘要欄位與原始診斷")
         self.summary_detail_toggle.setCheckable(True)
         self.summary_detail_toggle.setProperty("variant", "secondary")
         self.summary_detail_toggle.setAccessibleName("顯示個股研究逐項證據")
@@ -720,9 +723,9 @@ class StockResearchReportView(QWidget):
 
         self.summary_detail_group.setVisible(expanded)
         self.summary_detail_toggle.setText(
-            "隱藏進階：逐項證據與欄位"
+            "收合資料稽核：摘要欄位與原始診斷"
             if expanded
-            else "顯示進階：逐項證據與欄位"
+            else "展開資料稽核：摘要欄位與原始診斷"
         )
 
     def _toggle_summary_sources(self, expanded: bool) -> None:
@@ -1194,7 +1197,6 @@ class StockResearchReportView(QWidget):
         if context is not None and context.ml_scope_mode == "current_stock_research":
             advice_identity = (
                 f"保存 Advice 決策日：{context.decision_date or '未選保存來源'}"
-                + (f"｜來源：{context.result_id}" if context.result_id else "")
             )
             self.query_as_of_label.setText(
                 f"本次當下觀測日（as_of）：{report.as_of or '未知'}｜{advice_identity}｜"
@@ -1228,37 +1230,27 @@ class StockResearchReportView(QWidget):
         self._summary_values["advice"].setText(_advice_summary(report.advice))
         next_step = _report_next_step(report)
         self._summary_values["next_step"].setText(next_step)
-        summary_reasons = []
-        if report.attention_reasons:
-            summary_reasons.append(report.attention_reasons[0])
-        if report.key_risks:
-            summary_reasons.append(report.key_risks[0])
-        if not summary_reasons and report.limitations:
-            summary_reasons.append(report.limitations[0])
         self.summary_focus.set_summary(
             conclusion=_report_conclusion(report),
-            reasons=summary_reasons,
+            reasons=(_report_pending_text(report),),
             next_step=next_step,
             evidence=_report_evidence_text(report),
-            change=_price_change_text(report.price_points),
-            risk=_join_or_missing(
-                report.key_risks,
-                "目前沒有可呈現的風險／反證 row；不代表風險不存在。",
-            ),
-            sufficiency=_report_sufficiency_text(report),
-            reasons_title="重點",
+            risk=_report_risk_text(report),
+            sufficiency=_report_limitations_text(report),
+            reasons_title="待驗證條件",
+        )
+        self.summary_focus.sufficiency_label.setText(
+            "資料／模型限制：" + _report_limitations_text(report)
         )
         limitations = _join_or_missing(
             report.limitations,
             "來源未提供其他限制說明。",
         )
-        visible_limitations = "；".join(
-            item.strip() for item in limitations.split("；")[:2] if item.strip()
-        )
-        if len(limitations.split("；")) > 2:
-            visible_limitations += "；其餘限制請開啟進階內容。"
-        self._find_widget("stockResearchLimitations").setText(visible_limitations)
+        self._find_widget("stockResearchLimitations").setText("完整來源限制與診斷請展開資料稽核。")
         self.summary_limitations_detail_label.setText(limitations)
+        historical = _historical_portfolio_alert_summary(report.events)
+        if historical:
+            self.summary_limitations_detail_label.setText(limitations + "\n\n" + historical)
 
         self._render_sources(report)
         self._render_report_tab(self.tabs.currentIndex())
@@ -1834,6 +1826,7 @@ class StockResearchReportView(QWidget):
         layout.addWidget(rule_group)
 
         ml_group = QGroupBox("ML 研究輸出（以 bp／H5 呈現；不是機率或交易指令）")
+        ml_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         ml_layout = QVBoxLayout(ml_group)
         ml = report.ml
         ml_scope = getattr(ml, "scope_mode", "")
@@ -1841,6 +1834,15 @@ class StockResearchReportView(QWidget):
             "current_stock_research": "當下個股獨立研究（不併入保存 Advice）",
             "selected_saved_decision": "精確選定的保存決策來源",
         }.get(ml_scope, "未提供／未識別")
+        ml_layout.addWidget(self._wrapped_label(_ml_estimate_summary(ml)))
+        audit_group = QGroupBox("資料稽核：模型身份、來源與原始診斷")
+        audit_group.setObjectName("stockResearchMLAudit")
+        audit_layout = QVBoxLayout(audit_group)
+        audit_group.setVisible(False)
+        audit_toggle = QPushButton("展開資料稽核（版本／Run／雜湊／原始診斷）")
+        audit_toggle.setObjectName("stockResearchMLAuditToggle")
+        audit_toggle.setCheckable(True)
+        audit_toggle.toggled.connect(audit_group.setVisible)
         ml_rows = [
             ("範圍", scope_label),
             ("狀態", ml.status or "未提供"),
@@ -1856,7 +1858,7 @@ class StockResearchReportView(QWidget):
             ("研究股票範圍", "、".join(getattr(ml, "scope_symbols", ()) or ()) or "—"),
         ]
         self._add_table(
-            ml_layout,
+            audit_layout,
             ("項目", "內容"),
             ml_rows,
             360,
@@ -1873,7 +1875,7 @@ class StockResearchReportView(QWidget):
         if prediction_rows:
             prediction_group = QGroupBox("研究估算：成本後基準超額報酬")
             prediction_layout = QVBoxLayout(prediction_group)
-            self._add_table(
+            prediction_table = self._add_table(
                 prediction_layout,
                 ("Horizon／Expert", "估算值"),
                 prediction_rows,
@@ -1883,7 +1885,11 @@ class StockResearchReportView(QWidget):
                 numeric_columns=(1,),
                 max_visible_rows=None,
             )
-            ml_layout.addWidget(prediction_group)
+            prediction_table.setFixedHeight(
+                max(64, prediction_table.horizontalHeader().sizeHint().height()
+                    + min(3, len(prediction_rows)) * 28 + 8)
+            )
+            audit_layout.addWidget(prediction_group)
         h5_rows = (
             ("H5 狀態", getattr(ml, "h5_status", "unknown") or "unknown"),
             ("H5 Horizon", str(getattr(ml, "h5_horizon", "") or "—")),
@@ -1904,20 +1910,51 @@ class StockResearchReportView(QWidget):
             compact_columns=True,
             max_visible_rows=None,
         )
-        ml_layout.addWidget(h5_group)
+        ml_layout.addWidget(self._wrapped_label(_report_pending_text(report)))
+        if ml.h5_status == "mature":
+            ml_layout.addWidget(h5_group)
+        else:
+            audit_layout.addWidget(h5_group)
         if ml.qualification:
-            ml_layout.addWidget(self._wrapped_label("資格狀態：" + "；".join(ml.qualification)))
+            audit_layout.addWidget(self._wrapped_label("資格狀態：" + "；".join(ml.qualification)))
         if ml.explanations:
-            ml_layout.addWidget(self._wrapped_label("可解釋輸出：" + _join_or_missing(ml.explanations, "未提供")))
+            audit_layout.addWidget(self._wrapped_label("可解釋輸出：" + _join_or_missing(ml.explanations, "未提供")))
         if ml.status in {"unavailable", "missing"}:
-            ml_layout.addWidget(self._missing_panel(_join_or_missing(ml.limitations, "目前沒有可用的個股 ML 研究資料。")))
+            ml_layout.addWidget(self._missing_panel("目前沒有合格的個股 ML 研究輸出；不補造估計或機率。"))
         if ml.limitations:
-            ml_layout.addWidget(self._wrapped_label("ML 限制：" + "；".join(ml.limitations)))
-        layout.addWidget(ml_group)
+            ml_layout.addWidget(self._wrapped_label("ML 限制：" + "；".join(research_limitation_text(x) for x in ml.limitations[:2])))
+            audit_layout.addWidget(self._wrapped_label("ML 原始限制：" + "；".join(ml.limitations)))
+        layout.removeWidget(rule_group)
+        audit_layout.addWidget(rule_group)
+        layout.removeWidget(advice_group)
+        audit_layout.addWidget(advice_group)
+        rec = report.advice.recommendation
+        advice_text = (
+            f"原保存 Advice（決策 {rec.decision_date or '未提供'}｜資料 {rec.data_as_of_date or '未提供'}）："
+            f"{_advice_action_label(rec.advice_action.value)}；不當作另一日期的當期建議。"
+            if rec is not None else "保存 Advice 尚未選定或未提供；可選此股原始來源，當下 ML 仍是獨立研究。"
+        )
+        layout.insertWidget(1, self._wrapped_label(advice_text))
+        ml_layout.addWidget(audit_toggle)
+        ml_layout.addWidget(audit_group)
+        layout.insertWidget(0, ml_group)
 
         history_group = QGroupBox("歷史建議與後續結果")
         history_layout = QVBoxLayout(history_group)
-        self._add_event_table(history_layout, report.events)
+        history_layout.addWidget(self._wrapped_label(
+            f"{len(report.events)} 筆歷史保存事件；不代表目前持倉或本次研究結論。"
+            + (f" 最近事件日 {report.events[0].event_date or '未提供'}。" if report.events else "")
+        ))
+        history_audit = QGroupBox("歷史資料稽核：原始事件與後續結果")
+        history_audit.setObjectName("stockResearchHistoryAudit")
+        history_audit_layout = QVBoxLayout(history_audit)
+        self._add_event_table(history_audit_layout, report.events)
+        history_audit.setVisible(False)
+        history_toggle = QPushButton("展開歷史資料稽核")
+        history_toggle.setCheckable(True)
+        history_toggle.toggled.connect(history_audit.setVisible)
+        history_layout.addWidget(history_toggle)
+        history_layout.addWidget(history_audit)
         layout.addWidget(history_group)
         layout.addWidget(self._wrapped_label("研究報告不觸發自動下單；持倉修改仍沿既有確認與記錄流程。"))
         layout.addStretch()
@@ -1991,7 +2028,12 @@ class StockResearchReportView(QWidget):
         advice: StockAdviceSnapshotDTO,
         position: StockPositionSnapshotDTO | None = None,
     ) -> None:
-        presentation = self.presentation_service.from_report_parts(advice, position)
+        # StockPositionSnapshotDTO has no stock_code; its read model is rendered
+        # in the holding tab, rather than passed to the position domain adapter.
+        presentation = (
+            self.presentation_service.from_report_parts(advice, position)
+            if advice.recommendation is not None else None
+        )
         if presentation is not None and advice.recommendation is not None:
             layout.addWidget(
                 self._wrapped_label(
@@ -2417,7 +2459,7 @@ def _quality_tone(value: str) -> str:
 def _decimal_text(value: Decimal | None) -> str:
     if value is None:
         return "—"
-    return f"{value:,}"
+    return f"{value:,.2f}"
 
 
 def _integer_text(value: int | None) -> str:
@@ -2591,24 +2633,74 @@ def _price_change_text(points: Sequence[StockPricePointDTO]) -> str:
 
 
 def _report_evidence_text(report: StockResearchReportDTO) -> str:
-    """整理首屏可引用的主要證據與日期，不建立新金融指標。"""
+    """At most three existing facts; comparisons require the same market date."""
+    if not report.price_points:
+        return "沒有可引用的行情證據。"
+    point = report.price_points[-1]
+    if point.close_price is None:
+        return "收盤價格未提供。"
+    change = f"（漲跌 {point.change:+,.2f}）" if point.change is not None else "（漲跌方向未提供）"
+    facts = [f"{point.data_date} 收盤 {_decimal_text(point.close_price)} TWD{change}"]
+    if report.technical is not None:
+        metrics = {metric.key: metric.value for metric in report.technical.indicators}
+        for key in ("MA20", "MA60"):
+            value = metrics.get(key)
+            if value is not None:
+                if report.technical.data_date == point.data_date:
+                    relation = "高於" if point.close_price > value else "低於" if point.close_price < value else "等於"
+                    facts.append(f"收盤{relation} {key} {_decimal_text(value)}")
+                else:
+                    facts.append(f"{key} {_decimal_text(value)}（{report.technical.data_date}；日期不同，不直接比較）")
+    return "；".join(facts[:3])
 
-    parts: list[str] = []
-    if report.price_points:
-        point = report.price_points[-1]
-        parts.append(
-            f"價格 {point.data_date} 收盤 {_decimal_text(point.close_price)} TWD"
-        )
-    if report.technical is not None and report.technical.data_date:
-        parts.append(f"技術指標 {report.technical.data_date}")
-    for item in report.fundamentals:
-        date_text = item.as_of_date or item.period
-        if date_text:
-            parts.append(f"基本面 {date_text}")
-            break
-    if report.flows and report.flows[0].data_date:
-        parts.append(f"籌碼 {report.flows[0].data_date}")
-    return "；".join(parts) if parts else "目前沒有可引用的主要資料日期。"
+
+def _report_risk_text(report: StockResearchReportDTO) -> str:
+    risks = [research_risk_text(reason) for reason in report.key_risks if not is_research_data_limitation(reason)]
+    return "；".join(risks[:3]) if risks else "目前未讀到可確認的股票／持倉風險依據；不代表沒有風險。"
+
+
+def _report_limitations_text(report: StockResearchReportDTO) -> str:
+    errors = [f"{section.label}讀取失敗；詳見資料稽核。" for section in report.sections if section.status == "error"]
+    health = report.position.health_reasons if report.position is not None else ()
+    diagnostics = [research_limitation_text(reason) for reason in health if is_research_data_limitation(reason)]
+    ml = report.ml
+    if ml.status not in {"available", "verified"}:
+        diagnostics.append(f"ML 狀態：{_quality_label(ml.status)}；" + ("；".join(research_limitation_text(x) for x in ml.limitations[:1]) or "資格／降級原因未提供，不能當正式建議。"))
+    diagnostics.extend(research_limitation_text(x) for x in report.limitations)
+    unique = list(dict.fromkeys((*errors, *diagnostics)))
+    text = "；".join(unique[:3]) if unique else _report_sufficiency_text(report)
+    return text + ("；其餘限制保留於資料稽核。" if len(unique) > 3 else "")
+
+
+def _ml_estimate_summary(ml: object) -> str:
+    predictions = getattr(ml, "predicted_benchmark_excess_return_bp", {}) or {}
+    estimates = [f"{horizon}：{value:+d} bp" for horizon, value in predictions.items() if type(value) is int]
+    estimate = "；".join(estimates[:3]) if estimates else "未提供合格估計值"
+    formal = getattr(ml, "formal_qualified", False)
+    research = getattr(ml, "research_only", True)
+    qualification = "來源標記正式資格；本頁仍只讀研究" if formal and not research else "僅研究，未具正式資格"
+    target = str(getattr(ml, "target_metric", "") or "")
+    after_cost_targets = {
+        "cost-adjusted benchmark excess bp", "cost_adjusted_benchmark_excess_bp",
+        "benchmark_excess_after_cost_bp", "cost_adjusted_benchmark_excess_return_bp",
+        "benchmark_excess_after_standard_80bp_cost", "成本後基準超額報酬",
+    }
+    cost_label = "成本後基準超額報酬" if target.casefold() in after_cost_targets else "基準超額報酬（成本定義未提供）"
+    return (
+        f"研究估計（{cost_label}）：{estimate}。原始目標定義保留於稽核。"
+        "基準名稱、期間的交易日／日曆日定義、估計所扣成本情境與數值未提供。"
+        f"{qualification}；不是股價漲跌預測、獲利機率或已驗證收益。"
+    )
+
+
+def _report_pending_text(report: StockResearchReportDTO) -> str:
+    ml = report.ml
+    if ml.h5_status == "mature":
+        return f"H5 已有觀測結果（結束日 {ml.h5_horizon_end_date or '未提供'}）；仍需核對基準、成本與資格。"
+    if ml.h5_status in {"blocked", "failed", "error"}:
+        return "H5 結果驗證受阻，先核對來源／成熟條件；不能當作單純等待。"
+    status_label = {"pending": "等待結果", "unknown": "成熟條件未知", "unavailable": "結果未提供", "not_due": "尚未到期"}.get(ml.h5_status, "來源成熟狀態未識別")
+    return f"H5 尚未確認成熟（{status_label}）；結束日 {ml.h5_horizon_end_date or '未提供'}，等待合格結果讀回。"
 
 
 def _report_sufficiency_text(report: StockResearchReportDTO) -> str:
@@ -2642,17 +2734,28 @@ def _report_sufficiency_text(report: StockResearchReportDTO) -> str:
 def _report_conclusion(report: StockResearchReportDTO) -> str:
     """挑出既有 evidence 的一句話作結，不生成新投資結論。"""
 
-    historical_alert = _historical_portfolio_alert_summary(report.events)
-    if historical_alert:
-        return historical_alert
+    if report.price_points and report.price_points[-1].close_price is not None and report.technical is not None:
+        point = report.price_points[-1]
+        if report.technical.data_date == point.data_date:
+            metrics = {metric.key: metric.value for metric in report.technical.indicators}
+            relations = []
+            for key in ("MA20", "MA60"):
+                value = metrics.get(key)
+                if value is not None:
+                    relation = "高於" if point.close_price > value else "低於" if point.close_price < value else "等於"
+                    relations.append(relation + key)
+            if relations:
+                return "收盤" + "、".join(relations) + "；僅為同日技術觀察，不是買賣建議。"
 
     if report.attention_reasons:
         reason = report.attention_reasons[0]
         if not report.price_points or report.price_points[-1].close_price is None:
             return f"資料不足，需核對：{reason}"
         return f"需核對資料：{reason}"
-    if report.rule_reasons:
-        return f"值得深入核對：{report.rule_reasons[0]}"
+    historical_reasons = {reason for event in report.events for reason in (*event.reasons, *event.why_not_reasons, *event.risk_reasons)}
+    current_rules = [reason for reason in report.rule_reasons if reason not in historical_reasons and not is_research_data_limitation(reason)]
+    if current_rules:
+        return f"值得深入核對：{research_risk_text(current_rules[0])}"
     return "目前沒有足夠資料支持「值得看」結論。"
 
 
@@ -2748,7 +2851,7 @@ def _report_next_step(report: StockResearchReportDTO) -> str:
         return "先從「數據更新」補齊價格資料，再回來查看價格／技術分頁。"
     if report.advice.recommendation is None and report.advice.limitations:
         return "若要核對推薦理由，回到推薦分析明確選定原始來源；不要用同股或最新結果代替。"
-    if report.position is not None:
+    if report.position is not None and report.position.is_holding:
         return "若是持倉，先到持倉／Health／Exit 分頁核對成本、資料日與失效條件。"
     return "先核對價格、基本面與籌碼的資料日，再按需開啟進階來源與歷史內容。"
 

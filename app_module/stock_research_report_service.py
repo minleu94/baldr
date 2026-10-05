@@ -25,6 +25,7 @@ from app_module.advice_composer import AdviceComposer
 from app_module.advice_dtos import AdviceMode
 from app_module.advice_policy import AdvicePolicy
 from app_module.position_health_service import PositionHealthService
+from app_module.research_result_presentation import is_research_data_limitation
 from app_module.portfolio_condition_monitor import (
     PortfolioConditionMonitor,
     PortfolioConditionResult,
@@ -529,9 +530,15 @@ class StockResearchReportReadService:
         if self.db is None:
             limitations.append("未配置 SQLite；此報告只顯示可由外部 provider 提供的資料。")
         limitations.extend(errors)
+        if position is not None:
+            limitations.extend(reason for reason in (*position.health_reasons, *position.exit_reasons)
+                               if is_research_data_limitation(reason))
+        if advice.recommendation is not None:
+            limitations.extend(reason for reason in advice.recommendation.risk_reasons
+                               if is_research_data_limitation(reason))
         limitations = list(_dedupe(limitations))
         attention_reasons = _attention_reasons(price_points, fundamentals, flows, sections, advice, position)
-        key_risks = _key_risks(advice, events, position, limitations)
+        key_risks = _key_risks(advice, events, position, limitations, as_of_date=cutoff_text)
         available_modules = tuple(
             module
             for module, available in (
@@ -3726,16 +3733,24 @@ def _key_risks(
     events: Sequence[StockEvidenceEventDTO],
     position: StockPositionSnapshotDTO | None,
     limitations: Sequence[str],
+    *,
+    as_of_date: str = "",
 ) -> tuple[str, ...]:
-    risks: list[str] = list(advice.recommendation.risk_reasons if advice.recommendation else ())
-    for event in events:
-        risks.extend(event.risk_reasons)
-    if position is not None:
+    """Current risk projection; historical events and missingness stay separate."""
+    saved_date = (
+        advice.saved_analysis.decision_date if advice.saved_analysis
+        else advice.recommendation.decision_date if advice.recommendation is not None
+        else ""
+    )
+    risks = list(advice.recommendation.risk_reasons) if (
+        advice.recommendation is not None
+        and (not as_of_date or not saved_date or saved_date == as_of_date)
+    ) else []
+    if position is not None and position.is_holding:
         risks.extend(position.health_reasons)
         risks.extend(position.exit_reasons)
-    if not risks:
-        risks.extend(limitations[:3])
-    return _dedupe(risks)[:8]
+    # Events retain their original date/reasons in the history DTO, never current risk.
+    return _dedupe(tuple(reason for reason in risks if not is_research_data_limitation(reason)))[:8]
 
 
 def _technical_rule_observations(points: tuple[StockPricePointDTO, ...], technical: StockTechnicalSnapshotDTO | None) -> tuple[str, ...]:

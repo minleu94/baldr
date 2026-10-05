@@ -125,7 +125,7 @@ def test_market_not_applicable_and_unverified_basis_have_explicit_ui_labels() ->
         basis_verified=False,
         aggregate_feature_eligible=False,
     )
-    assert "900 TWD" in _metric_text(metric)
+    assert "900.00 TWD" in _metric_text(metric)
     tooltip = _fundamental_basis_tooltip(metric)
     assert "期間基礎尚未核實" in tooltip
     assert "未具聚合特徵資格" in tooltip

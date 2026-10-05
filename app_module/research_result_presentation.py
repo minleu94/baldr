@@ -535,3 +535,36 @@ def _format_decimal(value: Any, *, places: int) -> str:
 
 def _format_int(value: Any) -> str:
     return f"{_to_int(value):,}"
+
+
+def is_research_data_limitation(reason: str) -> bool:
+    """Identify missing source/contract diagnostics, without changing risk policy."""
+    token = reason.strip().casefold()
+    return token.endswith(("_missing", "_unavailable", "_unverified", "_unknown")) or token in {
+        "基本面資料不足", "籌碼／分點資料不足", "缺少最新可用價格",
+        "最新價格 row 沒有收盤價", "部分來源過期或讀取失敗",
+        "feedback_failed", "feedback_degraded",
+    }
+
+
+def research_limitation_text(reason: str) -> str:
+    """Keep raw diagnostics in audit details; explain known missingness in Chinese."""
+    labels = {
+        "condition_result_missing": "持倉健康缺少條件結果；WATCH 是待核對，未確認股票風險。",
+        "source_trace_missing": "持倉健康缺少可追溯來源，暫不能判讀。",
+        "feedback_failed": "持倉回饋驗證失敗，請核對原始診斷。",
+        "feedback_degraded": "持倉回饋資料降級，請核對適用範圍。",
+    }
+    if reason in labels:
+        return labels[reason]
+    if is_research_data_limitation(reason) and "_" in reason:
+        return "來源或條件資料缺件；原始代碼保留於資料稽核。"
+    # Long identifiers and pipeline details are still retained verbatim in audit.
+    if any(marker in reason.casefold() for marker in ("sha256", "run_id", "pipeline")):
+        return "來源驗證有診斷限制；請展開資料稽核核對原始原因。"
+    return reason if _looks_human(reason) else "來源限制尚未對應中文說明；原始診斷保留於資料稽核。"
+
+
+def research_risk_text(reason: str) -> str:
+    text = _reason_text((reason,), max_items=None)
+    return text.replace("其他原因（請看 tooltip）", "來源有風險註記，原始原因詳見資料稽核")

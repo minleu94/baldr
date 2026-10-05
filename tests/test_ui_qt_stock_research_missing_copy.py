@@ -69,7 +69,7 @@ def test_rule_reason_keeps_existing_positive_rule_wording() -> None:
     assert _report_conclusion(report) == "值得深入核對：已保存的規則理由"
 
 
-def test_historical_portfolio_alert_keeps_priority_over_missing_data_copy() -> None:
+def test_historical_portfolio_alert_does_not_replace_current_missing_data_copy() -> None:
     report = StockResearchReportDTO(
         stock_code="2330",
         attention_reasons=("缺少最新可用價格",),
@@ -88,6 +88,6 @@ def test_historical_portfolio_alert_keeps_priority_over_missing_data_copy() -> N
 
     conclusion = _report_conclusion(report)
 
-    assert conclusion.startswith("歷史持倉警示：2026-09-30")
-    assert "這是事件當時的保存記錄，不代表目前持倉狀態。" in conclusion
+    assert conclusion == "資料不足，需核對：缺少最新可用價格"
+    assert "歷史持倉警示" not in conclusion
     assert "值得看" not in conclusion

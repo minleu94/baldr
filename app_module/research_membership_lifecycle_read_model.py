@@ -12,7 +12,10 @@ import json
 from pathlib import Path
 import re
 from types import MappingProxyType
-from typing import Any, Protocol
+from typing import Any, Protocol, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app_module.research_membership_history_index import MembershipHistoryPage
 
 from app_module.daily_market_feature_snapshot import DAILY_MARKET_CONDITION_KEYS
 from app_module.daily_market_snapshot_repository import (
@@ -39,7 +42,9 @@ from app_module.research_membership_lifecycle import (
 MAX_HISTORY_OBSERVATIONS = 32
 MAX_HISTORY_DIRECTORY_ENTRIES = 4096
 MAX_HISTORY_JSON_BYTES = 32 * 1024 * 1024
-MAX_CALENDAR_CACHE_CANDIDATES = 32
+MAX_CALENDAR_CACHE_CANDIDATES = MAX_HISTORY_DIRECTORY_ENTRIES
+MAX_CALENDAR_CACHE_SCAN_BYTES = 32 * 1024 * 1024
+MAX_TEMPORARY_CLOSURE_CACHE_CANDIDATES = 32
 _MANIFEST_NAME_RE = re.compile(r"^(?P<sha256>[0-9a-f]{64})\.json$")
 _METHOD_WINDOW_POLICY = "daily_close_at_decision_date.v1"
 _DEFAULT_CALENDAR_CACHE_RELATIVE_PATH = Path(
@@ -100,6 +105,7 @@ _REASON_LABELS = {
     "source_available_at_unrecorded": "快照未保存來源可用時間；此結果不證明歷史 PIT 資格。",
 }
 
+_REASON_LABELS["history_index_page_has_more"] = "本頁以外尚有較早觀測；首次觀測與連續期數只涵蓋本頁，首次命中不推論。"
 _REASON_LABELS["history_snapshot_published_after_decision_day"] = (
     "歷史快照在決策日之後發布；當時可得性未獲證明。"
 )
@@ -361,23 +367,24 @@ class OfflineOfficialCalendarSessionProvider:
             if candidates is None:
                 loaded[year] = None
                 return None
-            verified: list[Any] = []
+            selected: Any | None = None
+            scanned_bytes = 0
             for candidate in candidates:
                 _raise_if_cancelled(None)
                 try:
-                    verified.append(
-                        load_verified_twse_calendar_cache(
-                            candidate,
-                            calendar_year=year,
-                            observed_at=as_of,
-                        )
+                    scanned_bytes += candidate.stat().st_size
+                    if scanned_bytes > MAX_CALENDAR_CACHE_SCAN_BYTES:
+                        loaded[year] = None
+                        return None
+                    item = load_verified_twse_calendar_cache(
+                        candidate,
+                        calendar_year=year,
+                        observed_at=as_of,
                     )
+                    if selected is None or str(item.evidence.get("captured_at", "")) > str(selected.evidence.get("captured_at", "")):
+                        selected = item
                 except (OSError, OfficialCalendarCacheError):
                     continue
-            verified.sort(
-                key=lambda item: str(item.evidence.get("captured_at", ""))
-            )
-            selected = verified[-1] if verified else None
             loaded[year] = selected
             return selected
 
@@ -515,6 +522,7 @@ def read_membership_lifecycle(
     *,
     cancel_callback: Callable[[], bool] | None = None,
     session_provider: CalendarSessionProvider | None = None,
+    history_page: MembershipHistoryPage | None = None,
 ) -> MembershipLifecycleReadModel:
     """讀固定快照並回放可比較生命週期；不寫 ledger、不產生市場資料。"""
 
@@ -522,11 +530,10 @@ def read_membership_lifecycle(
     mode = _normalize_combine_mode(combine_mode)
     _raise_if_cancelled(cancel_callback)
     as_of = _manifest_datetime(current.manifest, "published_at")
-    scan = _scan_history(
-        repository,
-        current,
-        as_of=as_of,
-        cancel_callback=cancel_callback,
+    scan = (
+        _scan_indexed_history(repository, current, history_page, cancel_callback=cancel_callback)
+        if history_page is not None
+        else _scan_history(repository, current, as_of=as_of, cancel_callback=cancel_callback)
     )
     effective_session_provider = (
         _QuerySessionMemo(session_provider)
@@ -566,7 +573,7 @@ def read_membership_lifecycle(
     # 當歷史來源／範圍本身不完整時，不把可讀的舊列跨過邊界比較。
     snapshots_for_classification = (
         all_snapshots
-        if coverage is HistoryCoverage.COMPLETE and current_complete
+        if (coverage is HistoryCoverage.COMPLETE or scan.reason == "history_index_page_has_more") and current_complete
         else (current_snapshot,)
     )
 
@@ -788,6 +795,56 @@ def read_membership_lifecycle(
         history_manifest_ids=history_manifest_ids,
         reason=scan_reason,
     )
+
+
+def load_membership_history_page_snapshots(
+    repository: DailyMarketSnapshotRepository,
+    current: VerifiedDailyMarketSnapshot,
+    page: MembershipHistoryPage,
+    *, cancel_callback: Callable[[], bool] | None = None,
+) -> tuple[VerifiedDailyMarketSnapshot, ...]:
+    """只核驗本頁 artifacts；當期 anchor 與每個 revision 的 refs 不可混源。"""
+    from app_module.research_membership_history_index import MembershipHistoryIndexError
+
+    pin = page.current_pin
+    if (pin.manifest_sha256 != current.manifest_sha256
+            or pin.manifest_identity_sha256 != current.manifest_identity_sha256
+            or pin.cohort_id != current.cohort_id or pin.decision_date != current.decision_date
+            or len(page.refs) > 32):
+        raise MembershipHistoryIndexError("source_changed", "歷史頁與固定當期來源不符")
+    bounded = _BudgetedSnapshotRepository(repository.output_root, cancel_callback=cancel_callback)
+    verified_current = bounded.load_manifest(current.manifest_sha256, current.cohort_id, current.decision_date)
+    if verified_current.manifest_identity_sha256 != current.manifest_identity_sha256:
+        raise MembershipHistoryIndexError("source_changed", "當期來源已修改")
+    as_of = _manifest_datetime(current.manifest, "published_at")
+    snapshots: list[VerifiedDailyMarketSnapshot] = []
+    try:
+        for ref in page.refs:
+            _raise_if_cancelled(cancel_callback)
+            item = bounded.load_manifest(ref.manifest_sha256, ref.cohort_id, ref.decision_date)
+            if (item.manifest_identity_sha256 != ref.manifest_identity_sha256
+                    or item.cohort_id != current.cohort_id
+                    or _manifest_datetime(item.manifest, "published_at") != ref.published_at
+                    or not _visible_as_of(item, as_of, current.decision_date)):
+                raise MembershipHistoryIndexError("source_changed", "本頁觀測與索引來源不符")
+            snapshots.append(item)
+    except _HistoryBoundary as exc:
+        raise MembershipHistoryIndexError("page_budget_exceeded", "本頁來源 JSON 超過 32 MiB；保持未知") from exc
+    return tuple(snapshots)
+
+
+def _scan_indexed_history(
+    repository: DailyMarketSnapshotRepository, current: VerifiedDailyMarketSnapshot,
+    page: MembershipHistoryPage, *, cancel_callback: Callable[[], bool] | None,
+) -> _HistoryScan:
+    snapshots = load_membership_history_page_snapshots(repository, current, page, cancel_callback=cancel_callback)
+    if not any(item.manifest_sha256 == current.manifest_sha256 for item in snapshots):
+        snapshots = (*snapshots, current)
+    coverage = HistoryCoverage.TRUNCATED if page.has_more else HistoryCoverage.COMPLETE
+    reason = "history_index_page_has_more" if page.has_more else "history_complete"
+    if any(item.completeness != "complete_declared_cohort" for item in snapshots):
+        coverage, reason = HistoryCoverage.UNKNOWN, "history_snapshot_partial_completeness_boundary"
+    return _HistoryScan(snapshots, coverage, tuple(item.manifest_sha256 for item in snapshots), reason)
 
 
 def _scan_history(
@@ -1313,7 +1370,7 @@ def _temporary_closure_cache_candidates(root: Path) -> tuple[Path, ...] | None:
         if item.name.startswith("twse_temporary_closure_")
         and item.name.endswith(".json")
     ]
-    if len(values) > MAX_CALENDAR_CACHE_CANDIDATES or any(
+    if len(values) > MAX_TEMPORARY_CLOSURE_CACHE_CANDIDATES or any(
         item.is_symlink() for item in values
     ):
         return None

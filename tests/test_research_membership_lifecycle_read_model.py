@@ -438,3 +438,17 @@ def test_root_duplicate_read_is_stable_and_budget_or_cancel_fails_closed(tmp_pat
     assert result.rows_by_stock["2382"].status is LifecycleStatus.HISTORY_INSUFFICIENT
     with pytest.raises(DailyMarketResearchCancelled):
         read_membership_lifecycle(DailyMarketSnapshotRepository(tmp_path), current, CONDITION_KEYS, "AND", cancel_callback=lambda: True, session_provider=sessions)
+
+
+def test_root_calendar_archive_over_32_is_streamed_and_byte_budget_still_fails_closed(tmp_path: Path, monkeypatch) -> None:
+    from test_official_trading_calendar_cache import _cache
+    import app_module.research_membership_lifecycle_read_model as reader
+    root = tmp_path / "calendar"
+    for index in range(40):
+        _cache(root / f"twse_holiday_schedule_2026_{index:03d}.json", captured_at=datetime(2026, 10, 1, 8, tzinfo=TAIPEI))
+    provider = reader.create_offline_official_calendar_session_provider(root)
+    as_of = datetime(2026, 10, 5, 16, tzinfo=TAIPEI)
+    result = provider.expected_session(date(2026, 10, 5), as_of=as_of)
+    assert result.verified and result.expected_previous_date == date(2026, 10, 2)
+    monkeypatch.setattr(reader, "MAX_CALENDAR_CACHE_SCAN_BYTES", 1)
+    assert not provider.expected_session(date(2026, 10, 5), as_of=as_of).verified

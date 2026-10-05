@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
+    QDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -115,6 +116,14 @@ class DailyMarketResearchView(QWidget):
         self._lifecycle_query_key: tuple[str, tuple[str, ...], str] | None = None
         self._lifecycle_pending = False
         self._lifecycle_error = "歷史不足／尚未核對"
+        self._history_dialog: QDialog | None = None
+        self._history_page: object | None = None
+        self._history_cursors: list[str | None] = [None]
+        self._history_position = 0
+        self._history_base_position = 0
+        self._history_page_query_key: tuple[object, ...] | None = None
+        self._history_message = "尚未讀取歷史；瀏覽不會自動建立索引。"
+        self._history_operation = ""
         self._cohort_full_rows: tuple[object, ...] = ()
         self._all_rows: tuple[object, ...] = ()
         self._visible_rows: tuple[object, ...] = ()
@@ -490,6 +499,20 @@ class DailyMarketResearchView(QWidget):
         research_actions.addWidget(self.bookmark_selected_research_button, 1)
         root.addLayout(research_actions)
 
+        history_actions = QHBoxLayout()
+        self.history_browse_button = QPushButton("查看選中股票歷史")
+        self.history_rebuild_button = QPushButton("建立／重建歷史索引")
+        self.history_browse_button.setObjectName("dailyMarketMembershipHistoryBrowse")
+        self.history_rebuild_button.setObjectName("dailyMarketMembershipHistoryRebuild")
+        self.history_browse_button.setToolTip("每頁最多 32 個原觀測，逐頁核對來源；不改當期名單或收藏。")
+        self.history_rebuild_button.setToolTip("只重建派生索引；保留原快照、舊索引版本與收藏，不補跑歷史。")
+        self.history_browse_button.clicked.connect(lambda: self._request_history_page(reset=True))
+        self.history_rebuild_button.clicked.connect(self._request_history_rebuild)
+        history_actions.addWidget(self.history_browse_button)
+        history_actions.addWidget(self.history_rebuild_button)
+        history_actions.addStretch()
+        root.addLayout(history_actions)
+
         for widget in (
             self.stock_codes_input,
             self.cohort_id_input,
@@ -740,6 +763,177 @@ class DailyMarketResearchView(QWidget):
             return reader(snapshot, period=period, direction=direction)
 
         self._start_operation("original_ranking_read", operation)
+
+    def _ensure_history_dialog(self) -> None:
+        if self._history_dialog is not None:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("已保存研究觀測歷史")
+        dialog.resize(900, 470)
+        layout = QVBoxLayout(dialog)
+        self.history_status_label = QLabel(self._history_message)
+        self.history_status_label.setWordWrap(True)
+        layout.addWidget(self.history_status_label)
+        notice = QLabel("固定當期來源與截至時點，每頁最多 32 個觀測；同日修訂各列。這是該日保存條件，不授予歷史 PIT 或自然樣本資格。")
+        notice.setWordWrap(True)
+        layout.addWidget(notice)
+        self.history_table = QTableWidget(0, 5)
+        self.history_table.setHorizontalHeaderLabels(("觀測日期", "股票", "保存條件", "理由／限制", "發布時刻"))
+        self.history_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.history_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        apply_financial_table_style(self.history_table)
+        self.history_table.setColumnWidth(3, 340)
+        layout.addWidget(self.history_table, 1)
+        actions = QHBoxLayout()
+        self.history_previous_button = QPushButton("上一頁")
+        self.history_next_button = QPushButton("較早一頁")
+        self.history_previous_button.clicked.connect(lambda: self._request_history_page(step=-1))
+        self.history_next_button.clicked.connect(lambda: self._request_history_page(step=1))
+        actions.addWidget(self.history_previous_button)
+        actions.addWidget(self.history_next_button)
+        actions.addStretch()
+        layout.addLayout(actions)
+        self._history_dialog = dialog
+
+    def _history_stock_code(self) -> str:
+        selected = self.results_table.selectionModel().selectedRows()
+        if len(selected) != 1:
+            return ""
+        item = self.results_table.item(selected[0].row(), 0)
+        return item.text().strip() if item is not None else ""
+
+    def _history_query_key(self) -> tuple[object, ...]:
+        return (*self._membership_query_key(), self._history_stock_code())
+
+    def _request_history_page(self, *, reset: bool = False, step: int = 0) -> None:
+        if self._snapshot is None or self._shutting_down or self._worker is not None:
+            return
+        reader = getattr(self.service, "read_membership_history_page", None)
+        if not callable(reader) or not self._history_stock_code():
+            return
+        self._ensure_history_dialog()
+        assert self._history_dialog is not None
+        self._history_dialog.show()
+        if reset:
+            self._history_cursors = [None]
+            self._history_position = 0
+            self._history_base_position = 0
+            self._history_page = None
+        target = self._history_position + step
+        if target < 0:
+            return
+        if step == 1:
+            cursor = getattr(self._history_page, "next_cursor", None)
+            if not cursor:
+                return
+            # 有界導航窗口向前滑動，不限制整個長歷史可瀏覽的頁數。
+            if target == len(self._history_cursors) and len(self._history_cursors) >= 64:
+                self._history_cursors.pop(0)
+                self._history_base_position += 1
+                self._history_position -= 1
+                target -= 1
+            if target == len(self._history_cursors):
+                self._history_cursors.append(str(cursor))
+        if target >= len(self._history_cursors):
+            return
+        key, snapshot = self._history_query_key(), self._snapshot
+        cursor = self._history_cursors[target]
+        self._history_message = "正在背景核對本頁來源；當期名單仍保留。"
+        self._history_operation = "membership_history_page"
+        self._render_history_page()
+
+        def operation(cancel_callback: Callable[[], bool]) -> object:
+            page = reader(snapshot, cursor=cursor, page_size=32,
+                          condition_keys=key[1], combine_mode=key[2], stock_code=key[3],
+                          cancel_callback=cancel_callback)
+            return {"query_key": key, "page": page, "position": target}
+
+        self._start_operation("membership_history_page", operation)
+
+    def _request_history_rebuild(self) -> None:
+        if self._snapshot is None or self._shutting_down or self._worker is not None:
+            return
+        builder = getattr(self.service, "rebuild_membership_history_index", None)
+        if not callable(builder):
+            return
+        key = self._membership_query_key()
+        self._history_operation = "membership_history_rebuild"
+        self._history_message = "正在背景重建派生索引；不修改原快照或收藏。"
+        self.status_label.setText(self._history_message)
+
+        def operation(cancel_callback: Callable[[], bool]) -> object:
+            result = builder(cancel_callback=cancel_callback)
+            return {"query_key": key, "build": result}
+
+        self._start_operation("membership_history_rebuild", operation)
+
+    def _accept_history_operation(self, kind: str, result: object) -> None:
+        if not isinstance(result, Mapping):
+            self._history_message = "歷史結果缺少來源身份；保持未知。"
+        elif kind == "membership_history_rebuild":
+            if result.get("query_key") != self._membership_query_key():
+                self._history_message = "來源或條件已切換；舊建立回呼不覆蓋當期畫面。"
+                self._render_history_page()
+                return
+            build = result.get("build")
+            if getattr(build, "activated", False) is not True:
+                self._history_message = "索引沒有完整啟用收據；原來源保留，請明示重試。"
+                self._render_history_page()
+                return
+            self._history_message = "派生索引已完成；可重新核對歷程或明示查看歷史。"
+            self._history_page = None
+            self._lifecycle_query_key = None
+            self._lifecycle_pending = True
+        else:
+            page = result.get("page")
+            if result.get("query_key") != self._history_query_key():
+                self._history_message = "股票或條件已切換；舊歷史頁不安裝，請從第一頁重讀。"
+                self._render_history_page()
+                return
+            if (getattr(page, "current_manifest_sha256", "") != self._manifest_sha256
+                    or getattr(page, "current_manifest_identity_sha256", "") != self._manifest_identity_sha256
+                    or getattr(page, "cohort_id", "") != self._loaded_cohort_id
+                    or tuple(getattr(page, "condition_keys", ())) != tuple(sorted(self._selected_condition_keys()))
+                    or getattr(page, "combine_mode", "") != str(self.combine_mode_combo.currentData() or "AND")
+                    or getattr(page, "stock_code", "") != self._history_stock_code()):
+                self._history_page = None
+                self._history_message = "歷史來源身份不符；可從第一頁重新核對。"
+            else:
+                self._history_page = page
+                self._history_page_query_key = self._history_query_key()
+                self._history_position = int(result.get("position", 0))
+                self._history_message = (f"第 {self._history_base_position + self._history_position + 1} 頁；本頁 {len(tuple(getattr(page, 'rows', ())))} 個觀測；"
+                                         + ("尚有較早觀測。" if getattr(page, "has_more", False) else "已到此來源截至時點的最早頁。"))
+        self._render_history_page()
+
+    def _render_history_page(self) -> None:
+        if self._history_dialog is None:
+            return
+        if self._history_page is not None and self._history_page_query_key != self._history_query_key():
+            self._history_page = None
+            self._history_page_query_key = None
+            self._history_cursors = [None]
+            self._history_position = 0
+            self._history_base_position = 0
+            self._history_message = "股票或條件已切換；請明示從第一頁重新核對。"
+        self.history_status_label.setText(self._history_message)
+        rows = tuple(getattr(self._history_page, "rows", ()) or ())[:32]
+        self.history_table.setRowCount(len(rows))
+        for index, row in enumerate(rows):
+            values = (getattr(row, "decision_date", ""), getattr(row, "stock_code", ""),
+                      _STATE_LABELS.get(str(getattr(row, "state", "unknown")), "未知"),
+                      getattr(row, "reason", ""), getattr(row, "published_at", ""))
+            audit = (f"manifest={getattr(row, 'manifest_sha256', '')}\n"
+                     f"identity={getattr(row, 'manifest_identity_sha256', '')}\n"
+                     f"artifact={getattr(row, 'artifact_sha256', '')}\n"
+                     f"cutoff={getattr(row, 'cutoff_at', '')}")
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                item.setToolTip(audit)
+                self.history_table.setItem(index, col, item)
+        busy = self._worker is not None
+        self.history_previous_button.setEnabled(not busy and self._history_position > 0)
+        self.history_next_button.setEnabled(not busy and bool(getattr(self._history_page, "next_cursor", None)))
 
     def _membership_query_key(self) -> tuple[str, tuple[str, ...], str]:
         return (self._manifest_sha256, self._selected_condition_keys(),
@@ -1150,6 +1344,7 @@ class DailyMarketResearchView(QWidget):
         worker.start()
 
     def _set_busy(self, busy: bool, kind: str = "") -> None:
+        main_busy = busy and not kind.startswith("membership_history_")
         if busy:
             self.status_label.setText(
                 "正在明示更新有界研究快照；來源仍是研究用途。"
@@ -1160,14 +1355,17 @@ class DailyMarketResearchView(QWidget):
             available = self.service is not None
             self.refresh_button.setEnabled(available and not busy)
             self.reload_button.setEnabled(available and not busy)
-            self.preset_combo.setEnabled(not busy and self.preset_combo.count() > 0)
+            self.preset_combo.setEnabled(not main_busy and self.preset_combo.count() > 0)
             self.apply_preset_button.setEnabled(
-                available and self._snapshot is not None and not busy
+                available and self._snapshot is not None and not main_busy
             )
             self.cancel_button.setEnabled(busy)
-            self.open_selected_stock_button.setEnabled(not busy and self._has_selected_row())
+            self.history_browse_button.setEnabled(not busy and self._has_selected_row() and callable(getattr(self.service, "read_membership_history_page", None)))
+            self.history_rebuild_button.setEnabled(not busy and self._snapshot is not None and callable(getattr(self.service, "rebuild_membership_history_index", None)))
+            self._render_history_page()
+            self.open_selected_stock_button.setEnabled(not main_busy and self._has_selected_row())
             self.bookmark_selected_research_button.setEnabled(
-                not busy
+                not main_busy
                 and self.watchlist_service is not None
                 and self._snapshot is not None
                 and self._has_selected_row()
@@ -1187,21 +1385,21 @@ class DailyMarketResearchView(QWidget):
                 self.original_rank_period_combo,
                 self.original_rank_direction_combo,
             ):
-                widget.setEnabled(not busy)
-            self.sort_key_combo.setEnabled(not busy and self._cohort_projection is not None)
+                widget.setEnabled(not main_busy)
+            self.sort_key_combo.setEnabled(not main_busy and self._cohort_projection is not None)
             self.sort_direction_combo.setEnabled(
-                not busy and self._cohort_projection is not None
+                not main_busy and self._cohort_projection is not None
             )
             can_read_original = callable(
                 getattr(self.service, "read_original_ranking", None)
             )
             self.original_rank_period_combo.setEnabled(
-                can_read_original and not busy
+                can_read_original and not main_busy
             )
             self.original_rank_direction_combo.setEnabled(
-                can_read_original and not busy
+                can_read_original and not main_busy
             )
-            self._sync_original_rank_sort_controls(busy=busy)
+            self._sync_original_rank_sort_controls(busy=main_busy)
 
     def _on_operation_started(self, generation: int, kind: str) -> None:
         if generation == self._operation_generation and not self._shutting_down:
@@ -1212,6 +1410,9 @@ class DailyMarketResearchView(QWidget):
             return
         if isinstance(result, Mapping) and result.get("cancelled") is True:
             self._on_operation_cancelled(generation)
+            return
+        if kind in {"membership_history_page", "membership_history_rebuild"}:
+            self._accept_history_operation(kind, result)
             return
         if kind == "membership_lifecycle_read":
             self._accept_membership_read(result)
@@ -1246,6 +1447,12 @@ class DailyMarketResearchView(QWidget):
     ) -> None:
         if generation != self._operation_generation or self._shutting_down:
             return
+        if operation_kind in {"membership_history_page", "membership_history_rebuild"}:
+            self._history_page = None
+            self._history_message = "歷史索引／本頁核對失敗；原來源保留，可明示重建或重試：" + str(message).splitlines()[0]
+            self._render_history_page()
+            self.status_label.setText(self._history_message)
+            return
         if operation_kind == "membership_lifecycle_read":
             self._lifecycle_result = None
             self._lifecycle_error = "歷程讀取失敗／保持未知：" + str(message).splitlines()[0]
@@ -1272,12 +1479,17 @@ class DailyMarketResearchView(QWidget):
             self._lifecycle_error = "歷程讀取已取消／保持未知"
             self._render_candidate_summary()
             self._render_rows()
+        if self._history_operation:
+            self._history_message = "歷史工作已取消；未完成頁不可用，原索引／快照保留。"
+            self._render_history_page()
         self.status_label.setText("快照工作已取消；未把未完成讀取呈現為有效結果。")
 
     def _on_worker_native_finished(self, worker: TaskWorker, generation: int) -> None:
         if self._worker is not worker:
             return
         self._worker = None
+        completed_history = bool(self._history_operation)
+        self._history_operation = ""
         if not self._shutting_down and generation == self._operation_generation:
             self._set_busy(False)
             self._sync_open_button()
@@ -1285,6 +1497,10 @@ class DailyMarketResearchView(QWidget):
                 self._request_original_ranking_read()
             elif self._lifecycle_pending and self._snapshot is not None:
                 self._request_membership_read()
+            elif completed_history:
+                self.status_label.setText(self._history_message)
+                self._history_operation = ""
+                self._render_history_page()
             elif self._snapshot is not None and self._lifecycle_query_key is not None:
                 self.status_label.setText(
                     "已核驗目前快照；入選歷程核對完成，限制見候選摘要。"
@@ -1326,6 +1542,9 @@ class DailyMarketResearchView(QWidget):
         self._lifecycle_query_key = None
         self._lifecycle_pending = False
         self._lifecycle_error = "歷史不足／尚未核對"
+        self._history_page = None
+        self._history_message = "目前來源不可用；原索引保留，歷史頁保持未知。"
+        self._render_history_page()
         self._cohort_projection = None
         self._cohort_members_by_code = {}
         self._cohort_full_rows = ()
@@ -1335,6 +1554,11 @@ class DailyMarketResearchView(QWidget):
         self._loaded_cohort_id = cohort_id
         self._loaded_decision_date = decision_date
         self._selected_stock_code = ""
+        self._history_page = None
+        self._history_cursors = [None]
+        self._history_position = 0
+        self._history_message = "當期來源已切換；請明示重新讀取歷史。"
+        self._render_history_page()
         self._clear_original_ranking(
             "snapshot 已接受；正在讀取綁定此 manifest 的原始來源。"
         )
@@ -2144,9 +2368,14 @@ class DailyMarketResearchView(QWidget):
         return bool(self.results_table.selectionModel().selectedRows())
 
     def _sync_open_button(self) -> None:
+        busy = self._worker is not None or self._shutting_down
+        self.history_browse_button.setEnabled(not busy and self._has_selected_row() and callable(getattr(self.service, "read_membership_history_page", None)))
+        self.history_rebuild_button.setEnabled(not busy and self._snapshot is not None and callable(getattr(self.service, "rebuild_membership_history_index", None)))
+        self._render_history_page()
+        main_available = self._worker is None or not self._worker.isRunning() or bool(self._history_operation)
         self.open_selected_stock_button.setEnabled(
             not self._shutting_down
-            and (self._worker is None or not self._worker.isRunning())
+            and main_available
             and self._has_selected_row()
         )
         if hasattr(self, "bookmark_selected_research_button"):
@@ -2163,7 +2392,7 @@ class DailyMarketResearchView(QWidget):
                 self.watchlist_service is not None
                 and bookmark_source_ready
                 and not self._shutting_down
-                and (self._worker is None or not self._worker.isRunning())
+                and main_available
                 and self._has_selected_row()
             )
         if hasattr(self, "apply_preset_button"):
@@ -2171,7 +2400,7 @@ class DailyMarketResearchView(QWidget):
                 self.service is not None
                 and self._snapshot is not None
                 and not self._shutting_down
-                and (self._worker is None or not self._worker.isRunning())
+                and main_available
             )
 
     def bookmark_selected_research(self) -> bool:

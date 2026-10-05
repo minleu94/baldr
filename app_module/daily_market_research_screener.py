@@ -42,6 +42,8 @@ from app_module.research_session.session_dtos import ResearchStockContextDTO
 from app_module.sqlite_read_only import ReadOperationCancelled
 
 if TYPE_CHECKING:
+    from app_module.research_membership_history_index import MembershipHistoryIndexBuildResult, MembershipHistoryPage
+    from app_module.research_membership_history_view import MembershipHistoryBrowsePage
     from app_module.research_membership_lifecycle_read_model import (
         CalendarSessionProvider, MembershipLifecycleReadModel,
     )
@@ -282,6 +284,7 @@ class DailyMarketResearchScreenerService:
         *,
         original_ranking_root: str | Path | None = None,
         membership_session_provider: CalendarSessionProvider | None = None,
+        history_index_root: str | Path | None = None,
     ) -> None:
         raw_db_path = getattr(config, "db_file", None) or getattr(
             config, "sqlite_db_file", None
@@ -290,6 +293,7 @@ class DailyMarketResearchScreenerService:
             raise ValueError("研究選股器需要明示既有 SQLite db_file")
         self.config = config
         self._membership_session_provider = membership_session_provider
+        self._history_index_root = Path(history_index_root).expanduser().resolve() if history_index_root is not None else None
         self.db_path = Path(raw_db_path).expanduser().resolve()
         # 預設使用 repository 隔離的研究輸出，不沿用正式資料根目錄。
         default_root = (
@@ -308,6 +312,68 @@ class DailyMarketResearchScreenerService:
             load_research_universe_spec(universe_config_path)
             if universe_config_path is not None
             else None
+        )
+
+    @property
+    def history_index_root(self) -> Path:
+        """派生索引預設在來源旁；唯讀查詢不建立任何索引檔。"""
+        from app_module.research_membership_history_index import default_membership_history_cache_root
+        return self._history_index_root or default_membership_history_cache_root(self.snapshot_root)
+
+    def rebuild_membership_history_index(
+        self, *, cancel_callback: Callable[[], bool] | None = None,
+    ) -> MembershipHistoryIndexBuildResult:
+        """明示重建派生索引；既有源檔和舊 generation 保留。"""
+        from app_module.research_membership_history_index import rebuild_membership_history_index, MembershipHistoryIndexError
+        try:
+            return rebuild_membership_history_index(self.snapshot_root, self.history_index_root, cancel_check=cancel_callback)
+        except MembershipHistoryIndexError as exc:
+            if exc.reason == "cancelled":
+                raise DailyMarketResearchCancelled(str(exc)) from exc
+            raise
+
+    def rollback_membership_history_index(self, generation_id: str) -> MembershipHistoryIndexBuildResult:
+        """只重新啟用本索引根內已完成、相容且核驗的 generation。"""
+        from app_module.research_membership_history_index import rollback_membership_history_index
+        return rollback_membership_history_index(self.snapshot_root, self.history_index_root, generation_id=generation_id)
+
+    def _read_membership_index_page(
+        self, snapshot: VerifiedDailyMarketSnapshot, *, cursor: str | None,
+        page_size: int, cancel_callback: Callable[[], bool] | None,
+    ) -> MembershipHistoryPage:
+        from app_module.research_membership_history_index import read_membership_history_page, MembershipHistoryIndexError
+        try:
+            return read_membership_history_page(
+                self.snapshot_root, self.history_index_root, cohort=snapshot.cohort_id,
+                as_of=datetime.fromisoformat(str(snapshot.manifest["published_at"])),
+                current_pin=snapshot.manifest_sha256, date_to=snapshot.decision_date,
+                page_size=page_size, cursor=cursor, cancel_check=cancel_callback,
+            )
+        except MembershipHistoryIndexError as exc:
+            if exc.reason == "cancelled":
+                raise DailyMarketResearchCancelled(str(exc)) from exc
+            raise
+
+    def read_membership_history_page(
+        self, snapshot: VerifiedDailyMarketSnapshot, *, cursor: str | None = None,
+        page_size: int = 32, condition_keys: tuple[str, ...] = ("close_above_ma20", "close_above_ma60"),
+        combine_mode: str = "AND", stock_code: str | None = None,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> MembershipHistoryBrowsePage:
+        """有界核驗一頁，固定原 anchor；不改當期名單或原收藏。"""
+        from app_module.research_membership_history_view import MembershipHistoryBrowsePage, project_membership_history_rows
+        from app_module.research_membership_lifecycle_read_model import load_membership_history_page_snapshots
+        candidates = self.filter_rows(snapshot, condition_keys, combine_mode)
+        chosen = stock_code or (candidates[0].stock_code if candidates else "")
+        if not any(row.stock_code == chosen for row in candidates):
+            raise ValueError("歷史股票不在固定當期母體")
+        page = self._read_membership_index_page(snapshot, cursor=cursor, page_size=page_size, cancel_callback=cancel_callback)
+        snapshots = load_membership_history_page_snapshots(self.repository, snapshot, page, cancel_callback=cancel_callback)
+        return MembershipHistoryBrowsePage(
+            snapshot.manifest_sha256, snapshot.manifest_identity_sha256, snapshot.cohort_id,
+            tuple(sorted(condition_keys)), combine_mode.strip().upper(), chosen,
+            page.generation_id, page.source_fingerprint, page.next_cursor, page.has_more,
+            project_membership_history_rows(snapshots, stock_code=chosen, condition_keys=condition_keys, combine_mode=combine_mode),
         )
 
     def read_membership_lifecycle(
@@ -331,9 +397,11 @@ class DailyMarketResearchScreenerService:
             provider = create_offline_official_calendar_session_provider(
                 cache, temporary_closure_path=getattr(self.config, "temporary_closure_path", None),
             )
+        page = (self._read_membership_index_page(snapshot, cursor=None, page_size=31, cancel_callback=cancel_callback)
+                if self.history_index_root.exists() else None)
         return read_membership_lifecycle(
             self.repository, snapshot, condition_keys, combine_mode,
-            cancel_callback=cancel_callback, session_provider=provider,
+            cancel_callback=cancel_callback, session_provider=provider, history_page=page,
         )
 
     def read_original_ranking(

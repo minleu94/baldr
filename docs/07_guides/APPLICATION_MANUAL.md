@@ -4529,3 +4529,29 @@ CLI範例（僅發布已有 feature 來源的對應模式；需要四模式時�
 安全與排錯：歷程唯讀既有 artifacts 與已保存官方日曆，不寫正式 DB／registry、不隱性採集或補跑過去。日曆沿 config.official_calendar_cache_path，未指定則既有 output/paper_execution_eod_replay/calendar_cache；臨時停市來源沿 temporary_closure_path，沒有線上 fallback。日曆必須在固定 publication 時點已可取得且核驗；缺日曆、hash 不符或超出掃描預算時，摘要會顯示具體未知原因。取消歷程保留已核驗當期快照；明示重讀可重試。這是研究觀測比較，不授予 historical PIT、自然 ML、正式推薦或投資資格。限定驗證與回滾見 [UX09 收據](../06_qa/UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md)。
 
 年度快取採 annual_planned_cache.v1，只核驗預期交易節奏。未設定額外停市 overlay 時沿用年度計畫；若明示設定的 overlay 缺失、毀損或尚未可得，保持未知。此計畫不證明當日實際開市，也不補上原始資料 available_at。掃描上限為 32 個歷史觀測、4096 個目錄項目、32 MiB JSON；長期歷史索引與分頁仍待工程實作。
+
+
+## 2026-10-05 研究歷史索引、分頁與版本復原
+
+入口：每日研究條件核對已發布快照，選中股票後按「查看選中股票歷史」。歷史另開視窗，固定當期 cohort／manifest 身份及其 publication 截至時點，每頁最多 32 個已保存觀測；「較早一頁」向前查、「上一頁」返回，主頁按鈕可回第一頁。只保存目前頁與最多 64 頁游標的滑動導航窗口，向更早頁讀取不受 64 頁限制。來源、股票或 MA／AND/OR 切換後，舊回呼與頁面失效，明示從第一頁重新核對；當期清單、原排名與收藏不被歷史頁覆蓋。
+
+建立：第一次需要長歷史時，按「建立／重建歷史索引」。這是使用者明示的派生檔操作，背景逐 manifest 建立新 SQLite generation，完工核驗後原子啟用；刷新列表、查詢、排序與分頁都不自動建立索引、不產生歷程事件、不補跑過去。預設索引位於快照根旁 `<snapshot根名>_membership_history_index`，也可由服務的 history_index_root 明示配置，禁止放回 immutable source 裡。所有原快照、objects、母體設定與舊 generation 保留，不遷移真實 DB／收藏、不改 Windows 排程、不自動清理。歷史讀取與建立期間主線個股、既有清單、篩選仍可使用；取消只等待有界安全點，不能假顯示成功。
+
+畫面判讀：歷史頁的「保存條件」是那次 immutable artifact 的 MA 查詢三態，列決策日、當次理由及發布時刻；來源提示保留 manifest／artifact hash、identity與 cutoff。同日不同 revision 各列，不能任選一筆拼連續性。晚發布、partial、未知或缺股明示未知，不算未命中。當期入選歷程只用本頁足以證明的有效相鄰觀測判持續／退出／重新入選；若尚有較早頁，最早觀測與連續期數僅覆蓋本頁，不能宣稱全歷史首次入選。缺日、方法／母體改版、錯來源／修訂及保存中斷仍形成未知邊界。source_available_at 未記錄維持未記錄，索引不授 historical PIT 或自然樣本資格。
+
+相容性：index／pointer／cursor 只接受程式明載支持的 v1；目前 source reader 支援 manifest v2，原本就拒絕的 legacy manifest v1不隱性升級。合法 MA bookmark v1／原排名 bookmark v2仍按原 immutable refs讀回，不因索引故障改成 latest。未建立索引時舊小批次有界 reader可用；索引一旦存在卻損毀、不完整或 schema 未支持，具名拒絕而不冒充完整歷史。來源目錄新增／移除造成目錄 stat 變更時 stale cursor拒絕；本頁及固定當期 pin 的 manifest／artifact 逐一 hash 核驗。未讀到的 artifact 不作全域重掃，不能宣稱整個 archive 已全量驗證；明示重建後從第一頁開始。
+
+復原：在啟用安全點前失敗／取消的新 generation不啟用，原完整 active與來源保留；啟用是不可拆的原子操作，晚到的取消可能已留下完整的新 active，應以 completed receipt 與 active generation核對，不能把完整啟用當未完成。修好相同來源後明示重建／重試。若當前 index版本或 pointer不可用，可明示重新建立受支持的派生索引，或回退至索引根內已完成、核驗且 source fingerprint仍相同的 generation。source 已變更則不能回退舊 generation當現況；先核對原 pinned來源，收藏仍另按原 guards讀取。索引 schema未知不能借回退免除來源核驗。
+
+CLI（只管理派生索引，沒有 producer）：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\manage_membership_history_index.py rebuild --snapshot-root "<既有研究快照根>" --index-root "<獨立派生索引根>"
+.\.venv\Scripts\python.exe scripts\manage_membership_history_index.py rollback --snapshot-root "<同一研究快照根>" --index-root "<同一派生索引根>" --generation-id "<保留的已完成generation ID>"
+```
+
+`--snapshot-root` 必填；`--index-root` 未提供沿上述 sibling 預設；rollback 必須提供 generation ID，不接受任意還原路徑。completed／activated 只代表派生索引成功；not_completed具名 reason不改原資料。查看 receipts 的 generation ID／source fingerprint與 manifest count，再重新核對當期來源。舊 schema、hash／identity不符、source_changed、invalid_cursor、empty、cancelled及超預算皆有明示結果；不可刪除舊資料來換 pass。
+
+資源限制與量測、故障點及有限版本回滾見 [UX09 長歷史收據](../06_qa/UX09_HISTORY_INDEX_AND_RECOVERY_20261005.md)。保留所有generation的儲存會累積，按每次實體 index／staging與保留版本規劃容量；合成長歷史只驗工程，不是自然20日增長實證，永久刪除仍須逐次明確授權。
+
+索引每個 generation 上限 64 MiB；每頁以 1 MiB chunk 重核整個 index SHA，manifest／artifact 頁讀合計上限 32 MiB；最多 32 refs（當期 pin 驗證可能另讀 1 manifest），browse 輸出上限 32 MiB。這些是程式硬預算，不能把預算拒絕改稱自然資料未成熟。年度交易日快取改為最多 4096 個目錄 entries、單年度 32 MiB 累積檔案預算，逐份驗證只保留最新有效版本；臨時休市 overlay 仍最多 32 份，超限回報未知，不擅自猜交易日。

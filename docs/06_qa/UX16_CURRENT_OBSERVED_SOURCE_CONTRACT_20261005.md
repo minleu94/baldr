@@ -1,5 +1,36 @@
 # UX16 唯讀來源契約與 UX02 Native 中文驗證（2026-10-05）
 
+## 2026-10-05 UX13／18／05：具名母體盤勢與既有值排序
+
+基線 `f07f298002f21067bd6634c498c90fb4a4e3c229`。新增純共用 cohort 投影，盤勢與名單接收同一 verified v2 snapshot，沿原 pinned context 開個股；不重做已驗收固定方法契約。manifest／artifact／scope／日期／方法／根目錄／rows 與原條件結果逐一核對，同 hash 偽造方法判斷也拒絕。原排名未提供明示 unknown，只排序原 close／MA20／MA60／資料日／股票代碼，Decimal 精確，同值股票代碼穩定，缺值置尾；無新綜合分數／alpha／強弱公式。
+
+- 母體：declared／published／missing 分開；合法 partial 缺件仍是 unknown 並計入完整 declared 分母。篩選不改盤勢分母，缺件不建立可開啟的假個股列。
+- 接線：Main 新增市場探索「研究母體盤勢」，重載委派原名單 worker；名單 snapshotAccepted／snapshotCleared 同步兩頁。原大盤／原強弱頁仍為原獨立來源，不宣稱完成所有 consumer 融合。
+- UI：摘要首屏列日期／母體、兩法三態與原排名未知；完整來源 path／manifest／方法 ID／family／參數／hash 保留提示，切股／返回沿原 manifest。完整原 MA 數值可在名單橫向捲動查閱，排序依原精度。
+- 測試：root 7個受影響模組 **45 passed**；首屏文字修正後相關三模組 **9 passed**（重疊，不加總）。兩個 Luna 的13／8項已包含於 root 清單，不另加。Workbench **85 passed**；validator **25 passed／4 skipped／0 failed**，只使用隔離 fixture；mypy完整樹 **777 source files clean**，文字修正後 DailyView 單檔再通過；7個 changed Python 檔 isolated compile 與 quant guard 通過。
+- 初測 root bridge 1pass 有預設 pytest cache 權限 warning，後續兩次均用 scoped QA cache，沒有隱藏失敗。第一輪 Native 功能通過但名單審計文字擠壓摘要，保留原圖／收據；修正純呈現後第二輪再驗同閉環，未改公式／guards。
+- 最終 Native：`output/qa/ux13_shared_market_20261005/native_150531/receipt.json`，Windows QTest／1100×820／只初始化三個實際工作區，非全App啟動／效能／真人驗收。真 D DB 唯讀，具名 **2382／1477**，決策日與兩股行情資料日皆 **2026-10-05**；兩固定方法各符合1／不符合1／未知0／分母2。Market→名單（排序／唯讀重載）→2382研究→切1477→返回，manifest／method／日期／逐條判斷一致。
+- 隔離 SQLite 另驗暖機缺件 unknown、MA60降冪未知置尾、篩選不改分母、來源修訂造成新版發布、舊 schema 唯讀拒絕而兩頁清空、明確更新恢復且舊 immutable 保留。不能將受控資料稱成真 D 缺件或歷史 PIT。
+- 最終12個程式pin前後一致、正式 DB／WAL stat pin 前後一致，QA worker=0、Python程序已退出。兩輪圖與 source/manifest/hash／原始測試 XML 均保留；沒有全量producer／訓練／正式DB寫入／清理／push。
+
+Library正式檔（最終Native；前四真D唯讀、後二隔離受控）：
+
+| 畫面 | library_file_id |
+|---|---|
+| 真兩股研究母體盤勢 | `libfile_12168c326de481918b86df691bc45dba` |
+| 真兩股指標排序名單 | `libfile_0fe44f01adf481919c326e0f869b57e3` |
+| 真2382個股同條件 | `libfile_0732ae68354c8191b069204491c8bd08` |
+| 真1477個股同條件 | `libfile_ad60f4c313b88191b4538911f67b18b1` |
+| 受控舊schema兩頁未知 | `libfile_f22c1fdd45108191bb333eee02d9dcd5` |
+| 受控明確更新與缺件恢復 | `libfile_c75794575ca481919c53c777c2503784` |
+
+cloud保存6／6成功，完整file/version/xattrs與原local path對照保留`library_results.json`；Windows本地xattr已知不支援，不假稱已寫入本地身分。
+
+限定完成：本包具名母體共用盤勢／名單投影、既有值排序與三工作區工程閉環。整體UX13／18／19、stage2／3仍partial；原排名發布及全母體／其他consumer融合、完整features/methods、收藏／回訪、排程／長期容量與crash治理仍是工程待辦。Backtest **18.62%<20%** 未達維持；歷史PIT／availability／自然ML與3–5真人驗收另列外部證據，不假造成熟，也不把工程缺件說成等待自然成熟。v2契約改版仍無自動遷移。
+
+唯一原計畫append-only；本地commit後以實際owned blob數核驗，不推送，未知根paper檔、C:/ta_iso_1005還原映射不動。停止交父層安排。
+
+
 ## 最新延伸：UX18 兩條固定方法契約與 manifest 綁定
 
 基線 c50cefcd，本包 root Sol 整合兩位明確授權 GPT6 Luna Max，僅補 `close_above_ma20`／`close_above_ma60` 研究觀察契約與拒絕讀回，不改公式或新增方法。Scope／回滾前置保存於 `output/qa/ux18_method_contract_20261005/rollback.md`；原計畫實作前137258 bytes、SHA256 `533846f7be6bc66dcda59033809a3e8d34ab16cffb6a5073f91d344b7ae96b7f`，僅追加本包。

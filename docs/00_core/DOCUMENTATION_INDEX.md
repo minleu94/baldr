@@ -2,7 +2,7 @@
 
 本索引只指向主題權威與目錄入口，不複製 QA 收據、測試數字或目前狀態。判讀衝突時使用下列 Scoped SSOT；日期化驗收內容保留於各自 receipt。
 
-- UX16研究來源preflight／UX18既有日特徵與固定方法綁定／UX19隔離發布閉環／UX04與UX05日常同源flow／UX02中文Native代表畫面：[來源契約與限定驗證](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+- UX16研究來源preflight／UX18既有日特徵與固定方法綁定／UX13共用母體盤勢與指標排序／UX19隔離發布閉環／UX04與UX05日常同源flow／UX02中文Native代表畫面：[來源契約與限定驗證](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
 
 - 原產品計畫階段 0 首包：[來源能力矩陣](../06_qa/PRODUCT_STAGE01_SOURCE_MATRIX_20261005.md)、[效能基線與下一包依賴](../06_qa/PRODUCT_STAGE01_PERFORMANCE_BASELINE_20261005.md)。
 - 原產品計畫階段 1 限定修正：[啟動、盤勢價格批次與首次圖表驗證](../06_qa/PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)。

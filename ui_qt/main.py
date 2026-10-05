@@ -95,6 +95,7 @@ from app_module.decision_continuity_controller import DecisionContinuityControll
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.stock_research_report_service import StockResearchReportReadService
 from app_module.daily_market_research_screener import DailyMarketResearchScreenerService
+from ui_qt.views.daily_market_cohort_view import DailyMarketCohortView
 from app_module.stock_research_report_provider_adapters import CurrentRestatedMLRunRegistry
 
 # 導入策略模組以觸發註冊
@@ -812,6 +813,7 @@ class MainWindow(QMainWindow):
                     self._open_stock_research_context
                 )
             self.recommendation_view = recommendation
+            self._connect_daily_market_cohort_view(recommendation, market_tabs)
             print("[MainWindow] 推薦分析視圖創建成功")
 
             # 觀察清單標籤（作為獨立 Tab，方便管理）
@@ -1173,6 +1175,23 @@ class MainWindow(QMainWindow):
             stock_codes=self._stock_codes_for_research_context(context),
         )
         self._select_main_workspace("stock_research")
+
+    def _connect_daily_market_cohort_view(self, recommendation, market_tabs) -> None:
+        """盤勢讀名單的同一 verified snapshot，不另啟日期不同的計算。"""
+
+        daily = recommendation.daily_market_research_view
+
+        def open_list() -> None:
+            self._select_main_workspace("recommendation")
+            recommendation.result_source_tabs.setCurrentWidget(daily)
+
+        cohort_view = DailyMarketCohortView(daily, open_list, parent=self)
+        self.daily_market_cohort_view = cohort_view
+        market_tabs.addTab(cohort_view, "研究母體盤勢")
+        market_tabs.currentChanged.connect(
+            lambda index: cohort_view.on_first_open()
+            if market_tabs.widget(index) is cohort_view else None
+        )
 
     def _stock_codes_for_research_context(
         self,

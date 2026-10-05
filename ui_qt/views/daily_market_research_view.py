@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
 
 from PySide6.QtCore import QDate, QSignalBlocker, Qt, QTime, Signal
@@ -26,6 +26,13 @@ from PySide6.QtWidgets import (
 )
 
 from app_module.research_session import ResearchStockContextDTO
+from app_module.daily_market_cohort_projection import (
+    DailyMarketCohortSortKey,
+    project_daily_market_cohort,
+    sort_daily_market_cohort_members,
+)
+from app_module.daily_market_research_screener import DailyMarketResearchScreenRow
+from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.workers.task_worker import TaskWorker
@@ -54,11 +61,15 @@ class DailyMarketResearchView(QWidget):
     """只讀呈現已發布快照，並由使用者明示啟動有界更新。"""
 
     stockResearchRequested = Signal(object)
+    snapshotAccepted = Signal(object)
+    snapshotCleared = Signal()
 
     def __init__(self, service: object | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.service = service
         self._snapshot: object | None = None
+        self._cohort_projection: object | None = None
+        self._cohort_members_by_code: dict[str, object] = {}
         self._all_rows: tuple[object, ...] = ()
         self._visible_rows: tuple[object, ...] = ()
         self._manifest_sha256 = ""
@@ -167,6 +178,33 @@ class DailyMarketResearchView(QWidget):
         form.addRow("條件規則", condition_row)
         root.addWidget(inputs)
 
+        self.market_cohort_group = QGroupBox("研究母體盤勢")
+        self.market_cohort_group.setObjectName("dailyMarketResearchCohortSummary")
+        cohort_layout = QVBoxLayout(self.market_cohort_group)
+        cohort_layout.setContentsMargins(10, 7, 10, 7)
+        cohort_layout.setSpacing(4)
+        self.cohort_identity_label = QLabel(
+            "尚未載入具名研究 cohort；此區不代表全市場。"
+        )
+        self.cohort_identity_label.setObjectName("dailyMarketResearchCohortIdentity")
+        self.cohort_identity_label.setAccessibleName("研究母體來源、日期與方法雜湊")
+        self.cohort_identity_label.setWordWrap(True)
+        self.cohort_identity_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        cohort_layout.addWidget(self.cohort_identity_label)
+        self.cohort_summary_label = QLabel(
+            "固定方法的符合／不符合／未知分母尚未載入。"
+        )
+        self.cohort_summary_label.setObjectName("dailyMarketResearchCohortCounts")
+        self.cohort_summary_label.setAccessibleName("研究母體固定方法三態計數")
+        self.cohort_summary_label.setWordWrap(True)
+        self.cohort_summary_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        cohort_layout.addWidget(self.cohort_summary_label)
+        root.addWidget(self.market_cohort_group)
+
         action_row = QHBoxLayout()
         self.refresh_button = QPushButton("更新研究快照")
         self.refresh_button.setObjectName("dailyMarketResearchUpdateSnapshot")
@@ -209,6 +247,31 @@ class DailyMarketResearchView(QWidget):
         action_row.addWidget(self.filter_state_combo)
         root.addLayout(action_row)
 
+        sort_row = QHBoxLayout()
+        sort_row.addWidget(QLabel("名單排序"))
+        self.sort_key_combo = QComboBox()
+        self.sort_key_combo.setObjectName("sort_key_combo")
+        self.sort_key_combo.setAccessibleName("研究母體名單排序欄位")
+        for label, key in (
+            ("股票代碼", "stock_code"),
+            ("資料日", "data_date"),
+            ("收盤價", "close"),
+            ("MA20", "ma20"),
+            ("MA60", "ma60"),
+        ):
+            self.sort_key_combo.addItem(label, key)
+        self.sort_key_combo.setEnabled(False)
+        sort_row.addWidget(self.sort_key_combo)
+        self.sort_direction_combo = QComboBox()
+        self.sort_direction_combo.setObjectName("sort_direction_combo")
+        self.sort_direction_combo.setAccessibleName("研究母體名單排序方向")
+        self.sort_direction_combo.addItem("遞增", "asc")
+        self.sort_direction_combo.addItem("遞減", "desc")
+        self.sort_direction_combo.setEnabled(False)
+        sort_row.addWidget(self.sort_direction_combo)
+        sort_row.addStretch(1)
+        root.addLayout(sort_row)
+
         self.summary_label = QLabel("尚未載入已發布研究快照。")
         self.summary_label.setObjectName("dailyMarketResearchSummary")
         self.summary_label.setAccessibleName("每日研究快照與狀態計數")
@@ -223,17 +286,27 @@ class DailyMarketResearchView(QWidget):
         self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         root.addWidget(self.status_label)
 
-        self.results_table = QTableWidget(0, 6)
+        self.results_table = QTableWidget(0, 9)
         self.results_table.setObjectName("dailyMarketResearchResults")
         self.results_table.setAccessibleName("每日研究條件結果")
         self.results_table.setHorizontalHeaderLabels(
-            ("股票代碼", "資料日", "收盤／MA20", "收盤／MA60", "整體狀態", "理由／未知原因")
+            (
+                "股票代碼",
+                "資料日",
+                "收盤／MA20",
+                "收盤／MA60",
+                "整體狀態",
+                "理由／未知原因",
+                "收盤價",
+                "MA20",
+                "MA60",
+            )
         )
         self.results_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.results_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.results_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.results_table.setAlternatingRowColors(True)
-        self.results_table.setSortingEnabled(True)
+        self.results_table.setSortingEnabled(False)
         self.results_table.horizontalHeader().setStretchLastSection(True)
         self.results_table.horizontalHeader().setSectionResizeMode(
             0, self.results_table.horizontalHeader().ResizeMode.ResizeToContents
@@ -262,11 +335,16 @@ class DailyMarketResearchView(QWidget):
             self.ma60_checkbox,
             self.combine_mode_combo,
             self.filter_state_combo,
+            self.sort_key_combo,
+            self.sort_direction_combo,
         ):
             if isinstance(widget, QCheckBox):
                 widget.toggled.connect(self._apply_filter_controls)
             elif isinstance(widget, QComboBox):
-                widget.currentIndexChanged.connect(self._apply_filter_controls)
+                if widget in (self.sort_key_combo, self.sort_direction_combo):
+                    widget.currentIndexChanged.connect(self._render_rows)
+                else:
+                    widget.currentIndexChanged.connect(self._apply_filter_controls)
 
     def _set_service_availability(self) -> None:
         available = self.service is not None
@@ -447,8 +525,14 @@ class DailyMarketResearchView(QWidget):
                 self.ma60_checkbox,
                 self.combine_mode_combo,
                 self.filter_state_combo,
+                self.sort_key_combo,
+                self.sort_direction_combo,
             ):
                 widget.setEnabled(not busy)
+            self.sort_key_combo.setEnabled(not busy and self._cohort_projection is not None)
+            self.sort_direction_combo.setEnabled(
+                not busy and self._cohort_projection is not None
+            )
 
     def _on_operation_started(self, generation: int, kind: str) -> None:
         if generation == self._operation_generation and not self._shutting_down:
@@ -528,10 +612,13 @@ class DailyMarketResearchView(QWidget):
             self._on_operation_error(self._operation_generation, "快照決策日期不是 YYYY-MM-DD。")
             return
         self._snapshot = snapshot
+        self._cohort_projection = None
+        self._cohort_members_by_code = {}
         self._manifest_sha256 = manifest_sha256
         self._manifest_identity_sha256 = manifest_identity
         self._loaded_cohort_id = cohort_id
         self._loaded_decision_date = decision_date
+        self._selected_stock_code = ""
         if sync_cutoff:
             blocker_date = QSignalBlocker(self.decision_date_edit)
             blocker_time = QSignalBlocker(self.decision_time_edit)
@@ -548,10 +635,187 @@ class DailyMarketResearchView(QWidget):
                     QTime.fromString(cutoff.astimezone(_TAIPEI).strftime("%H:%M:%S"), "HH:mm:ss")
                 )
             del blocker_date, blocker_time
+        self._project_market_cohort(snapshot)
         self._render_snapshot()
         self.status_label.setText(
             f"已唯讀核驗 cohort {cohort_id}、決策日 {decision_date} 與當前來源身份；"
             "只呈現研究快照，不代表正式推薦或 historical PIT。"
+        )
+        self.snapshotAccepted.emit(snapshot)
+
+    def _project_market_cohort(self, snapshot: object) -> None:
+        self._cohort_projection = None
+        self._cohort_members_by_code = {}
+        self._render_market_cohort_projection()
+        if self.service is None:
+            return
+        filter_rows = getattr(self.service, "filter_rows", None)
+        if not callable(filter_rows):
+            self.cohort_identity_label.setText(
+                "研究母體盤勢不可用：完整固定方法 rows 服務尚未提供。"
+            )
+            return
+        try:
+            full_rows = tuple(
+                filter_rows(
+                    snapshot,
+                    ("close_above_ma20", "close_above_ma60"),
+                    "AND",
+                )
+            )
+            snapshot_root = getattr(self.service, "snapshot_root", None)
+            expected_snapshot_root = (
+                str(snapshot_root) if snapshot_root is not None else None
+            )
+            self._cohort_projection = project_daily_market_cohort(
+                cast(VerifiedDailyMarketSnapshot, snapshot),
+                cast(Sequence[DailyMarketResearchScreenRow], full_rows),
+                expected_snapshot_root=expected_snapshot_root,
+            )
+            self._cohort_members_by_code = {
+                str(getattr(member, "stock_code", "") or "").strip(): member
+                for member in tuple(
+                    getattr(self._cohort_projection, "members", ()) or ()
+                )
+                if str(getattr(member, "stock_code", "") or "").strip()
+            }
+        except Exception as exc:
+            self._cohort_projection = None
+            self._cohort_members_by_code = {}
+            self.cohort_identity_label.setText(
+                "研究母體盤勢無法核驗；名單與分母維持未知。"
+            )
+            self.cohort_identity_label.setToolTip(
+                f"{type(exc).__name__}: {exc}"
+            )
+            self.cohort_summary_label.setText(
+                "固定方法計數未提供；不以缺少資料推定不符合。"
+            )
+            return
+        self._render_market_cohort_projection()
+
+    def _render_market_cohort_projection(self) -> None:
+        projection = self._cohort_projection
+        available = projection is not None
+        self.sort_key_combo.setEnabled(available and not self._shutting_down)
+        self.sort_direction_combo.setEnabled(available and not self._shutting_down)
+        if projection is None:
+            if self._snapshot is None:
+                self.cohort_identity_label.setText(
+                    "尚未載入具名研究 cohort；此區不代表全市場。"
+                )
+                self.cohort_summary_label.setText(
+                    "固定方法的符合／不符合／未知分母尚未載入。"
+                )
+            else:
+                self.cohort_identity_label.setText(
+                    f"快照 {self._loaded_cohort_id}／{self._loaded_decision_date} "
+                    "已接受；同一 snapshot 的盤勢投影尚未核驗。"
+                )
+                self.cohort_summary_label.setText(
+                    "原排名未提供；指標排序非投資分數。固定方法計數維持未知。"
+                )
+            return
+
+        cohort_id = str(getattr(projection, "cohort_id", "") or "")
+        decision_date = str(getattr(projection, "decision_date", "") or "")
+        source_ref = str(getattr(projection, "source_ref", "") or "")
+        if not source_ref:
+            source_refs = {
+                f"{key}={value}"
+                for member in tuple(getattr(projection, "members", ()) or ())
+                for key, value in tuple(getattr(member, "source_refs", ()) or ())
+                if str(key).strip() and str(value).strip()
+            }
+            source_ref = "、".join(sorted(source_refs)) or "未提供"
+        source_id = str(getattr(projection, "source_snapshot_id", "") or "")
+        source_hash = str(getattr(projection, "source_snapshot_hash", "") or "")
+        method_hash = str(
+            getattr(projection, "method_contracts_sha256", "") or "未提供"
+        )
+        declared_codes = tuple(
+            getattr(projection, "declared_stock_codes", ()) or ()
+        )
+        published_codes = tuple(
+            getattr(projection, "published_stock_codes", ()) or ()
+        )
+        missing_codes = tuple(
+            getattr(projection, "missing_stock_codes", ()) or ()
+        )
+        declared_count = len(declared_codes)
+        published_count = int(
+            getattr(projection, "published_count", len(published_codes))
+        )
+        completeness = str(getattr(projection, "completeness", "") or "未提供")
+        identity_text = (
+            "具名研究 cohort；非全市場／非正式推薦｜"
+            f"資料來源 {source_ref}｜決策日 {decision_date}｜cohort {cohort_id}\n"
+            f"已發布列 {published_count}/{declared_count}｜完整性 {completeness}｜"
+            f"source snapshot ID {source_id}｜source hash {source_hash}\n"
+            f"method_contracts_sha256 {method_hash}"
+        )
+        if missing_codes:
+            identity_text += f"｜缺少已發布列：{', '.join(str(code) for code in missing_codes)}"
+        visible_identity = (
+            "具名研究 cohort；非全市場／非正式推薦｜"
+            f"決策日 {decision_date}｜cohort {cohort_id}\n"
+            f"已發布列 {published_count}/{declared_count}；來源／方法身分見提示。"
+        )
+        if missing_codes:
+            visible_identity += f"｜缺少已發布列：{', '.join(str(code) for code in missing_codes)}"
+        self.cohort_identity_label.setText(visible_identity)
+        self.cohort_identity_label.setToolTip(identity_text)
+
+        count_lines: list[str] = []
+        method_audit_lines: list[str] = []
+        for item in tuple(getattr(projection, "method_counts", ()) or ()):
+            key = str(getattr(item, "key", "") or "")
+            label = _CONDITION_LABELS.get(key, key or "固定方法")
+            method_id = str(getattr(item, "method_id", "") or "方法 ID 未提供")
+            family = str(getattr(item, "family", "") or "")
+            version = str(getattr(item, "version", "") or "")
+            parameters = getattr(item, "parameters", {}) or {}
+            if isinstance(parameters, Mapping):
+                parameters_text = ", ".join(
+                    f"{name}={value}" for name, value in parameters.items()
+                )
+            elif isinstance(parameters, Sequence) and not isinstance(
+                parameters, (str, bytes)
+            ):
+                parameters_text = ", ".join(
+                    f"{pair[0]}={pair[1]}"
+                    for pair in parameters
+                    if isinstance(pair, Sequence)
+                    and not isinstance(pair, (str, bytes))
+                    and len(pair) == 2
+                )
+            else:
+                parameters_text = str(parameters)
+            method_details = "／".join(
+                part for part in (method_id, family, version, parameters_text) if part
+            )
+            method_audit_lines.append(f"{label} [{method_details}]")
+            count_lines.append(
+                f"{label}（v{version}）：符合 "
+                f"{getattr(item, 'match_count', 0)}、不符合 "
+                f"{getattr(item, 'no_match_count', 0)}、未知 "
+                f"{getattr(item, 'unknown_count', 0)}；分母 "
+                f"{getattr(item, 'denominator', declared_count)}。"
+            )
+        if not count_lines:
+            count_lines.append("固定方法計數未提供；不以缺少資料推定不符合。")
+        rank_state = str(getattr(projection, "original_rank_state", "unknown") or "unknown")
+        if rank_state == "unknown":
+            count_lines.append("原排名未提供；指標排序非投資分數。")
+        if missing_codes:
+            count_lines.append(
+                "缺少已發布個股列仍計入分母並列為未知；未建立可開啟的替代名單列。"
+            )
+        self.cohort_summary_label.setText("\n".join(count_lines))
+        self.cohort_summary_label.setToolTip(
+            "計數只涵蓋此具名研究 cohort。條件方法與版本來自已發布 snapshot；"
+            "不宣稱全市場排名、alpha 或投資分數。\n"
+            + "\n".join(method_audit_lines)
         )
 
     def _render_production_result(self, result: object) -> None:
@@ -629,14 +893,9 @@ class DailyMarketResearchView(QWidget):
             "研究快照不代表完整市場母體、正式推薦或 historical PIT 資格。"
         )
 
-    def _render_rows(self) -> None:
-        selected_filter = str(self.filter_state_combo.currentData() or "all")
-        rows = tuple(
-            row
-            for row in self._all_rows
-            if selected_filter == "all"
-            or str(getattr(row, "combined_state", "unknown") or "unknown") == selected_filter
-        )
+    def _render_rows(self, *_args: object) -> None:
+        rows = self._current_filtered_rows()
+        rows = self._sort_filtered_rows(rows)
         self._visible_rows = rows
         self.results_table.setSortingEnabled(False)
         self.results_table.clearContents()
@@ -647,13 +906,17 @@ class DailyMarketResearchView(QWidget):
                 str(getattr(condition, "key", "")): condition
                 for condition in (getattr(row, "conditions", ()) or ())
             }
+            member = self._cohort_members_by_code.get(stock_code)
             values = (
                 stock_code,
-                str(getattr(row, "data_date", "") or "未知"),
+                str(getattr(member, "data_date", None) or getattr(row, "data_date", "") or "未知"),
                 self._condition_text(condition_map.get("close_above_ma20")),
                 self._condition_text(condition_map.get("close_above_ma60")),
                 self._state_text(getattr(row, "combined_state", "unknown")),
                 self._reason_text(row),
+                self._market_value_text(member, "close"),
+                self._market_value_text(member, "ma20"),
+                self._market_value_text(member, "ma60"),
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -661,11 +924,75 @@ class DailyMarketResearchView(QWidget):
                 if column == 0:
                     item.setData(
                         Qt.ItemDataRole.AccessibleTextRole,
-                        f"股票代碼 {stock_code}",
+                        f"股票代碼 {stock_code}，來源 manifest {self._manifest_sha256}",
                     )
                 self.results_table.setItem(row_number, column, item)
-        self.results_table.setSortingEnabled(True)
         self._sync_open_button()
+
+    def _current_filtered_rows(self) -> tuple[object, ...]:
+        selected_filter = str(self.filter_state_combo.currentData() or "all")
+        return tuple(
+            row
+            for row in self._all_rows
+            if selected_filter == "all"
+            or str(getattr(row, "combined_state", "unknown") or "unknown") == selected_filter
+        )
+
+    def _sort_filtered_rows(self, rows: tuple[object, ...]) -> tuple[object, ...]:
+        projection = self._cohort_projection
+        if projection is None:
+            return rows
+        rows_by_code: dict[str, object] = {}
+        for row in rows:
+            code = str(getattr(row, "stock_code", "") or "").strip()
+            if not code or code in rows_by_code:
+                self.status_label.setText(
+                    "研究名單股票身份重複或缺漏；停止顯示可下鑽名單。"
+                )
+                return ()
+            rows_by_code[code] = row
+        key = str(self.sort_key_combo.currentData() or "stock_code")
+        direction = str(self.sort_direction_combo.currentData() or "asc")
+        try:
+            members = sort_daily_market_cohort_members(
+                tuple(getattr(projection, "members", ()) or ()),
+                cast(DailyMarketCohortSortKey, key),
+                descending=direction == "desc",
+            )
+        except Exception as exc:
+            self.status_label.setText(
+                f"研究名單排序身份無法核驗：{type(exc).__name__}: {exc}"
+            )
+            return ()
+        ordered_codes = tuple(
+            str(getattr(member, "stock_code", "") or "").strip()
+            for member in members
+        )
+        if not set(rows_by_code).issubset(set(ordered_codes)):
+            self.status_label.setText(
+                "名單列不在目前研究母體投影中；停止顯示可下鑽名單。"
+            )
+            return ()
+        return tuple(rows_by_code[code] for code in ordered_codes if code in rows_by_code)
+
+    @staticmethod
+    def _market_value_text(member: object | None, key: str) -> str:
+        value = getattr(member, key, None) if member is not None else None
+        if value is None:
+            return "未知"
+        return str(value)
+
+    def visible_research_row_identities(self) -> tuple[tuple[str, str, str], ...]:
+        """回傳依目前排序顯示的股票碼及其已發布快照身份。"""
+
+        return tuple(
+            (
+                str(getattr(row, "stock_code", "") or "").strip(),
+                str(getattr(row, "source_snapshot_id", "") or "").strip(),
+                str(getattr(row, "source_snapshot_hash", "") or "").strip(),
+            )
+            for row in self._visible_rows
+        )
 
     @staticmethod
     def _condition_text(condition: object | None) -> str:
@@ -886,6 +1213,8 @@ class DailyMarketResearchView(QWidget):
             self.ma60_checkbox,
             self.combine_mode_combo,
             self.filter_state_combo,
+            self.sort_key_combo,
+            self.sort_direction_combo,
             self.results_table,
         ):
             widget.setEnabled(False)
@@ -897,12 +1226,26 @@ class DailyMarketResearchView(QWidget):
 
     def _clear_current_snapshot(self) -> None:
         self._snapshot = None
+        self._cohort_projection = None
+        self._cohort_members_by_code = {}
         self._all_rows = ()
         self._visible_rows = ()
         self._manifest_sha256 = ""
         self._manifest_identity_sha256 = ""
         self._loaded_cohort_id = ""
         self._loaded_decision_date = ""
+        self._selected_stock_code = ""
         self.results_table.setRowCount(0)
         self.summary_label.setText("目前沒有可核驗快照；未知條件不會視為不符合。")
+        self.cohort_identity_label.setText(
+            "尚未載入具名研究 cohort；此區不代表全市場。"
+        )
+        self.cohort_identity_label.setToolTip("")
+        self.cohort_summary_label.setText(
+            "固定方法的符合／不符合／未知分母尚未載入。"
+        )
+        self.cohort_summary_label.setToolTip("")
+        self.sort_key_combo.setEnabled(False)
+        self.sort_direction_combo.setEnabled(False)
         self.open_selected_stock_button.setEnabled(False)
+        self.snapshotCleared.emit()

@@ -1,5 +1,12 @@
 # 系統架構
 
+## 2026-10-05 UX13 具名研究母體共用投影
+
+`DailyMarketResearchScreenerService` 唯讀讀回原 verified v2 快照；`daily_market_cohort_projection.py` 將完整發布 rows 與相同 manifest 投影為 immutable 母體 DTO，核對 scope／日期／hash／方法／實際條件結果，保留 declared／published／missing 分母。既有 Decimal 值排序不改發布資料或原方法；原強弱排名不存在時明示 unknown。
+
+`DailyMarketResearchView` 發出 snapshotAccepted／snapshotCleared；Main 的 `DailyMarketCohortView` 直接收相同物件，盤勢重載委派名單既有 worker，沒有第二份資料庫讀取或跨日期計算。市場探索 → 同來源名單 → 原 pinned 個股研究路由沿用既有 DTO，篩選不改市場方法統計分母。這是具名≤16檔研究入口；其他原大盤／強弱 consumer 不在此共用契約內，完整市場融合仍待工程。
+
+
 ## 2026-10-05 UX18 固定研究方法與發布契約
 
 兩條既有 close／MA20／MA60 觀察的方法 metadata 由 application 層單一契約 owner 提供；feature snapshot 在投影時捕獲方法規格與 canonical hash，納入 input fingerprint／cache identity，而非序列化時重讀可變規格。producer 將同一規格綁入 immutable manifest，repository 同時驗證現行契約、manifest、逐股 payload 與條件身分；screener 和 StockReport 的 pinned readback 保留同一方法結果，不另創公式或分數。

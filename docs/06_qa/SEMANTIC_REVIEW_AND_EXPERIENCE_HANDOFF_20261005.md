@@ -1,5 +1,12 @@
 # 2026-10-05 有界語意審查與體驗接手
 
+## 2026-10-05 UX13／18共用盤勢最新限定交接
+
+基線 f07f298，具名 cohort Market→同快照名單→pinned個股閉環完成；原排名未提供明示unknown，僅排序原Decimal指標值，不做強弱／投資分數。partial缺件保完整分母與unknown，不假造下鑽列。45受影響tests／9重疊UI重驗、Workbench85、validator25／4skip、mypy777＋變更DailyView單檔、compile7／quant guard通過。真2382／1477／2026-10-05與隔離缺件／revision／schema拒絕恢復Native通過，12code pins與正式source stat穩定，worker0／程序退出；非全App／效能／真人驗收。6張Library IDs與逐項收據見[最新QA章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+原計畫保留append-only，本地commit/blob核驗後停止，不push／全量producer／正式DBwrite／train／清理。整體UX13／18／19、stage2／3仍partial；原排名發布／其他consumer融合／完整母體與收藏等工程另包。Backtest18.62%<20%未達不改，PIT／自然ML／真人證據不偽造。未知paper檔／還原映射不動。
+
+
 ## 最新接續：UX18 固定研究方法契約（基線 c50cefcd）
 
 兩條既有 MA20／MA60 方法 metadata 綁 cache／manifest／逐股三態結果，錯方法／版本／參數／日期／hash 拒絕，舊 schema 僅明確更新重產；實際驗證與提交見 [QA 方法綁定新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md) 及 Git。公式與用途不改，不授 alpha／勝率；原排名與市場共用 consumer 超出小改列下一包，UX18／19 與 stage2／3 仍 partial。

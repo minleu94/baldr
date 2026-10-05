@@ -1,5 +1,10 @@
 # 專案導航文件
 
+## 2026-10-05 具名母體盤勢與指標排序
+
+市場探索的研究母體盤勢 → 推薦分析每日研究條件 → pinned 個股研究，共用同一 verified 日快照。投影與數值排序入口為 `app_module/daily_market_cohort_projection.py`，呈現為 `ui_qt/views/daily_market_cohort_view.py`／`daily_market_research_view.py`，Main 只接訊號與導覽。方法 registry／manifest／producer 保持原版本；原排名未提供保持 unknown。完整操作見 [Manual](docs/07_guides/APPLICATION_MANUAL.md#2026-10-05-ux1318-具名研究母體盤勢與指標排序)。
+
+
 ### UX04／05 日常研究flow導航（2026-10-05）
 
 讀模型與三態組合：app_module/daily_market_research_screener.py；來源UI：ui_qt/views/daily_market_research_view.py及RecommendationView；下鑽：MainWindow→ResearchStockContextDTO／session→StockResearchReportReadService→StockResearchReportView。原producer／repository復用，沒有第二套條件計算。操作見[Manual](docs/07_guides/APPLICATION_MANUAL.md#2026-10-05-ux0405-每日研究條件與同源個股)，來源／驗證見[QA新章](docs/06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。

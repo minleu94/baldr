@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ui_qt.research_universe_presentation import research_universe_text
+
 from typing import Callable
 
 from PySide6.QtWidgets import (
@@ -109,6 +111,12 @@ class DailyMarketCohortView(QWidget):
             f"manifest {projection.source_snapshot_hash}\n"
             f"方法契約 {projection.method_contracts_sha256}"
         )
+        universe_text, universe_detail = research_universe_text(
+            projection.research_universe, published_count=projection.published_count,
+            declared_count=len(projection.declared_stock_codes),
+        )
+        self.scope_label.setText(self.scope_label.text() + "\n" + universe_text)
+        self.scope_label.setToolTip(universe_detail)
         self.methods_table.setRowCount(len(projection.method_counts))
         for index, counts in enumerate(projection.method_counts):
             label = {

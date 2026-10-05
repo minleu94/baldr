@@ -1213,3 +1213,14 @@ scheduled wrapper 分列實際 child code、summary errors、source qualificatio
 新增 app_module/daily_market_research_presets.py：不可變五個固定 preset 及純 ResearchCandidateSummary；讀既有 verified snapshot／screener rows，不引入 repository、producer、writer 或新方法。complete declared 股票分母與 published rows 須完整一一對應，重複／越界／缺列拒絕；partial 缺 artifact 算unknown但不創個股context。UI以明確命令套既有MA條件，精確stock／snapshot ID／hash保選取，原bookmark query只捕獲實際 controls，不另存會改寫方法的preset identity。原強弱未發布保持unknown，原Decimal sort、source/date資格及exact返回路由不變。
 
 定向與背景offscreen限定驗證見[QA新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)；Native新增互動待使用者桌面時段，不授全stage1–3或自然／模型資格。
+
+
+### UX16／18 有界母體來源契約延伸（2026-10-05，基線7e11f5a8）
+
+明示母體設定是隔離研究批次來源：ID／版本／截至日／原檔hash、納入／排除與理由、已知或未知設定分母。可選manifest extension納入原不可變identity，讀取與consumer重新核對來源revision／刪除／成員／date；舊無設定cohort保留來源與原始分母未知。清單、母體盤勢及候選摘要共享同一契約，設定不授予PIT或推薦資格，不計算新分數。CLI明示讀included，禁止無設定手動更新默默降格已綁來源。
+
+原排名來源audit：原計畫指StockScreener本日／本週價量強弱排序（原公式不改）。ScreeningResultDTO有period／method／version／eligible count，但即時結果未有不可變run／完整成員排除／hash發布；strong_stocks_view僅記憶體快取。saved recommendation屬另一rank kind不能代用。有限currentDB schema唯讀未找到rank／screen tables，不推論全球不存在。原排名未知且停用；需原引擎不可變結果發布工程，不稱等待自然成熟。
+
+本包無Native前景或使用者視窗操作，無訓練、全市場producer、正式DB／registry或真實書籤寫入；永久清理仍未執行。驗證與commit結果見同章最終收據補記。
+
+最終驗證：104相關tests、WB85、validator25/4skip/0fail、mypy781、compile13及guard通過；真D三股隔離發布／2382讀回／offscreen同源通過。詳見UX16 QA最新最終驗證章；原排名publisher與Native仍pending，未push。

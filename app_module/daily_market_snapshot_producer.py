@@ -24,6 +24,7 @@ from app_module.daily_market_feature_snapshot import (
     DailyMarketFeatureSnapshotService,
     daily_market_feature_input_fingerprint,
 )
+from app_module.daily_market_research_universe import ResearchUniverseSpec
 from app_module.daily_market_snapshot_repository import (
     DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA,
     DAILY_MARKET_SNAPSHOT_POINTER_SCHEMA,
@@ -130,6 +131,7 @@ class DailyMarketSnapshotProductionResult:
     rebuild_reason: str = ""
     error_code: str = ""
     error_message: str = ""
+    research_universe: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -151,6 +153,11 @@ class DailyMarketSnapshotProductionResult:
             "rebuild_reason": self.rebuild_reason,
             "error_code": self.error_code,
             "error_message": self.error_message,
+            "research_universe": (
+                dict(self.research_universe)
+                if self.research_universe is not None
+                else None
+            ),
         }
 
 
@@ -189,6 +196,7 @@ class DailyMarketSnapshotProducer:
         stock_codes: Sequence[str],
         source_loader: SourceLoader,
         before_publish: Callable[[], None] | None = None,
+        research_universe: ResearchUniverseSpec | None = None,
     ) -> DailyMarketSnapshotProductionResult:
         logical_cohort = str(cohort_id).strip()
         if not logical_cohort:
@@ -202,6 +210,25 @@ class DailyMarketSnapshotProducer:
             raise ValueError("stock_codes 必須明示至少一檔股票")
         if not callable(source_loader):
             raise TypeError("source_loader 必須可呼叫")
+
+        universe_binding: dict[str, Any] | None = None
+        if research_universe is not None:
+            if not isinstance(research_universe, ResearchUniverseSpec):
+                raise TypeError("research_universe must be a ResearchUniverseSpec")
+            if research_universe.as_of_date != decision_date:
+                raise ValueError("research_universe as_of_date must match decision_cutoff")
+            if logical_cohort != research_universe.universe_id:
+                raise ValueError("cohort_id must match configured universe_id")
+            if declared_codes != research_universe.included_stock_codes:
+                raise ValueError("stock_codes must exactly match configured included members")
+            research_universe.assert_source_stable()
+            universe_binding = research_universe.to_manifest_binding()
+
+        def validate_before_publish() -> None:
+            if before_publish is not None:
+                before_publish()
+            if research_universe is not None:
+                research_universe.assert_source_stable()
 
         now = self.clock()
         if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
@@ -232,7 +259,9 @@ class DailyMarketSnapshotProducer:
                 decision_date=decision_date,
                 declared_codes=declared_codes,
                 source_loader=source_loader,
-                before_publish=before_publish,
+                before_publish=validate_before_publish,
+                research_universe=research_universe,
+                universe_binding=universe_binding,
             )
 
     def _produce_locked(
@@ -244,10 +273,13 @@ class DailyMarketSnapshotProducer:
         declared_codes: tuple[str, ...],
         source_loader: SourceLoader,
         before_publish: Callable[[], None] | None,
+        research_universe: ResearchUniverseSpec | None,
+        universe_binding: Mapping[str, Any] | None,
     ) -> DailyMarketSnapshotProductionResult:
         previous, rebuild_reason, previous_error = self._load_previous(
             cohort_id=cohort_id,
             decision_date=decision_date,
+            allow_research_universe_update=research_universe is not None,
         )
         if previous_error:
             return self._result(
@@ -260,6 +292,25 @@ class DailyMarketSnapshotProducer:
                 error_message=previous_error[1],
                 total_retention_bytes=self._retained_bytes(),
             )
+
+        if research_universe is None and self._latest_declares_research_universe():
+            return self._result(
+                "research_universe_config_required",
+                cohort_id,
+                decision_date,
+                declared_stock_codes=declared_codes,
+                error_code="snapshot_research_universe_config_required",
+                error_message="latest is pinned to a configured research universe; pass its config to produce",
+                total_retention_bytes=self._retained_bytes(),
+            )
+        if previous is not None:
+            previous_binding = previous.manifest.get("research_universe")
+            if previous_binding != universe_binding:
+                if previous_binding is not None or universe_binding is not None:
+                    rebuild_reason = "research_universe_binding_changed"
+                # A changed membership/version/source binding must be rebuilt
+                # in full; old per-stock artifacts are never reused across it.
+                previous = None
 
         try:
             contracts, contracts_sha256 = current_method_contract_binding()
@@ -387,6 +438,7 @@ class DailyMarketSnapshotProducer:
             and not recomputed_codes
             and tuple(previous.manifest.get("declared_stock_codes", ())) == declared_codes
             and previous.manifest.get("decision_cutoff") == cutoff.isoformat()
+            and previous.manifest.get("research_universe") == universe_binding
         )
         if unchanged and previous is not None:
             try:
@@ -418,6 +470,7 @@ class DailyMarketSnapshotProducer:
                 manifest_identity_sha256=previous.manifest_identity_sha256,
                 total_retention_bytes=self._retained_bytes(),
                 rebuild_reason=rebuild_reason,
+                research_universe=universe_binding,
             )
 
         publish_time = _normalise_clock(self.clock())
@@ -484,6 +537,8 @@ class DailyMarketSnapshotProducer:
             "published_at": publish_time.isoformat(),
             "policy": {"research_only": True, "historical_pit_eligible": False},
         }
+        if universe_binding is not None:
+            manifest["research_universe"] = dict(universe_binding)
         manifest["manifest_identity_sha256"] = snapshot_manifest_identity_sha256(manifest)
         manifest_bytes = canonical_snapshot_json_bytes(manifest)
         manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
@@ -811,10 +866,15 @@ class DailyMarketSnapshotProducer:
             total_retention_bytes=projected_retention,
             capacity_preflight=publish_preflight,
             rebuild_reason=rebuild_reason,
+            research_universe=universe_binding,
         )
 
     def _load_previous(
-        self, *, cohort_id: str, decision_date: date
+        self,
+        *,
+        cohort_id: str,
+        decision_date: date,
+        allow_research_universe_update: bool = False,
     ) -> tuple[Any | None, str, tuple[str, str] | None]:
         try:
             previous = self.repository.load_latest(
@@ -825,6 +885,11 @@ class DailyMarketSnapshotProducer:
             )
             return previous, "", None
         except DailyMarketSnapshotVerificationError as exc:
+            if allow_research_universe_update and exc.code in {
+                "snapshot_research_universe_source_missing",
+                "snapshot_research_universe_source_changed",
+            }:
+                return None, "research_universe_binding_changed", None
             if exc.code == "snapshot_pointer_missing":
                 return None, "", None
             if exc.code == "snapshot_manifest_legacy_v1":
@@ -836,6 +901,45 @@ class DailyMarketSnapshotProducer:
             return None, "", (exc.code, str(exc))
         except Exception as exc:
             return None, "", ("prior_snapshot_read_failed", f"{type(exc).__name__}: {exc}")
+
+    def _latest_declares_research_universe(self) -> bool:
+        """Detect a pinned universe even if the caller changes its cohort ID."""
+
+        try:
+            pointer_bytes, pointer = self.repository._read_json_file(
+                Path("latest.json"),
+                limit=DAILY_MARKET_SNAPSHOT_MAX_POINTER_BYTES,
+                missing_code="snapshot_pointer_missing",
+                invalid_code="snapshot_pointer_invalid",
+            )
+            if (
+                set(pointer) != {"schema_version", "manifest_sha256"}
+                or pointer.get("schema_version") != DAILY_MARKET_SNAPSHOT_POINTER_SCHEMA
+            ):
+                return False
+            manifest_sha = str(pointer.get("manifest_sha256") or "")
+            manifest_bytes, manifest = self.repository._read_json_file(
+                Path(snapshot_manifest_relpath(manifest_sha)),
+                limit=DAILY_MARKET_SNAPSHOT_MAX_MANIFEST_BYTES,
+                missing_code="snapshot_manifest_missing",
+                invalid_code="snapshot_manifest_invalid",
+            )
+            if (
+                hashlib.sha256(manifest_bytes).hexdigest() != manifest_sha
+                or canonical_snapshot_json_bytes(manifest) != manifest_bytes
+                or snapshot_manifest_identity_sha256(manifest)
+                != manifest.get("manifest_identity_sha256")
+            ):
+                return False
+            second_pointer_bytes, _ = self.repository._read_json_file(
+                Path("latest.json"),
+                limit=DAILY_MARKET_SNAPSHOT_MAX_POINTER_BYTES,
+                missing_code="snapshot_pointer_missing",
+                invalid_code="snapshot_pointer_invalid",
+            )
+            return pointer_bytes == second_pointer_bytes and "research_universe" in manifest
+        except Exception:
+            return False
 
     def _validate_input(self, item: DailyMarketSnapshotInput, expected_code: str) -> None:
         if not isinstance(item, DailyMarketSnapshotInput):

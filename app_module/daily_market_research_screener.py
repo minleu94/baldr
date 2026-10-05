@@ -12,6 +12,12 @@ from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo
 
 from app_module.daily_market_method_contract import method_contracts_payload
+from app_module.daily_market_research_universe import (
+    ResearchUniverseContractError,
+    ResearchUniverseSpec,
+    load_research_universe_spec,
+    validate_research_universe_manifest_binding,
+)
 from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_CONDITION_KEYS,
     daily_market_feature_input_fingerprint,
@@ -25,6 +31,7 @@ from app_module.daily_market_snapshot_repository import (
     DailyMarketSnapshotVerificationError,
     VerifiedDailyMarketSnapshot,
     snapshot_manifest_relpath,
+    validate_research_universe_binding,
 )
 from app_module.daily_market_snapshot_source import SQLiteDailyMarketSnapshotSource
 from app_module.research_session.session_dtos import ResearchStockContextDTO
@@ -160,6 +167,10 @@ class DailyMarketResearchScreenRow:
     input_fingerprint_sha256: str
     snapshot_root: str
     completeness: str
+    research_universe: Mapping[str, Any] | None = None
+    research_universe_membership: str = "legacy_declared_research_only"
+    original_rank: int | None = None
+    original_rank_unknown_reason: str = "original_rank_immutable_source_missing"
     research_scope_label: str = DAILY_MARKET_RESEARCH_SCOPE_LABEL
     research_only: bool = True
     historical_pit_eligible: bool = False
@@ -184,6 +195,14 @@ class DailyMarketResearchScreenRow:
             "input_fingerprint_sha256": self.input_fingerprint_sha256,
             "snapshot_root": self.snapshot_root,
             "completeness": self.completeness,
+            "research_universe": (
+                dict(self.research_universe)
+                if self.research_universe is not None
+                else None
+            ),
+            "research_universe_membership": self.research_universe_membership,
+            "original_rank": self.original_rank,
+            "original_rank_unknown_reason": self.original_rank_unknown_reason,
             "research_scope_label": self.research_scope_label,
             "research_only": self.research_only,
             "historical_pit_eligible": self.historical_pit_eligible,
@@ -252,6 +271,7 @@ class DailyMarketResearchScreenerService:
         self,
         config: object,
         snapshot_root: str | Path | None = None,
+        universe_config_path: str | Path | None = None,
     ) -> None:
         raw_db_path = getattr(config, "db_file", None) or getattr(
             config, "sqlite_db_file", None
@@ -268,6 +288,11 @@ class DailyMarketResearchScreenerService:
         )
         self.snapshot_root = Path(snapshot_root or default_root).expanduser().resolve()
         self.repository = DailyMarketSnapshotRepository(self.snapshot_root)
+        self.research_universe_spec = (
+            load_research_universe_spec(universe_config_path)
+            if universe_config_path is not None
+            else None
+        )
 
     def produce_snapshot(
         self,
@@ -291,6 +316,15 @@ class DailyMarketResearchScreenerService:
         if not logical_cohort:
             raise ValueError("cohort_id 不可為空")
         # 只有明示產生時才載入 writer 契約；唯讀列表與篩選不載入 producer。
+        universe_spec = self.research_universe_spec
+        if universe_spec is not None:
+            if universe_spec.as_of_date != cutoff.date():
+                raise ValueError("research_universe as_of_date must match decision_cutoff")
+            if logical_cohort != universe_spec.universe_id:
+                raise ValueError("cohort_id must match configured universe_id")
+            if tuple(sorted(codes)) != universe_spec.included_stock_codes:
+                raise ValueError("stock_codes must exactly match configured included members")
+            universe_spec.assert_source_stable()
         from app_module.daily_market_snapshot_producer import (
             DailyMarketSnapshotInput,
             DailyMarketSnapshotProducer,
@@ -340,6 +374,7 @@ class DailyMarketResearchScreenerService:
                 stock_codes=codes,
                 source_loader=source_loader,
                 before_publish=before_publish,
+                research_universe=universe_spec,
             )
         if cancel_seen:
             raise DailyMarketResearchCancelled("使用者已取消每日快照產生；未回報為完成。")
@@ -369,6 +404,30 @@ class DailyMarketResearchScreenerService:
             if manifest_sha256
             else self.repository.load_latest(cohort, decision_date)
         )
+        if self.research_universe_spec is not None:
+            binding = initial.manifest.get("research_universe")
+            if not isinstance(binding, Mapping):
+                raise DailyMarketSnapshotVerificationError(
+                    "snapshot_research_universe_config_mismatch",
+                    "configured read requires a manifest with the same research_universe",
+                )
+            try:
+                self.research_universe_spec.assert_source_stable()
+                validate_research_universe_manifest_binding(
+                    self.research_universe_spec, binding
+                )
+                validate_research_universe_binding(
+                    binding,
+                    decision_date=decision_date,
+                    cohort_id=cohort,
+                    declared_stock_codes=initial.manifest.get(
+                        "declared_stock_codes", ()
+                    ),
+                )
+            except ResearchUniverseContractError as exc:
+                raise DailyMarketSnapshotVerificationError(
+                    "snapshot_research_universe_config_mismatch", str(exc)
+                ) from exc
         raw_codes = initial.manifest.get("declared_stock_codes", ())
         if not isinstance(raw_codes, Sequence) or isinstance(raw_codes, (str, bytes)):
             raise DailyMarketSnapshotVerificationError(
@@ -516,6 +575,10 @@ class DailyMarketResearchScreenerService:
         if len(snapshot.stock_snapshots) > DAILY_MARKET_SNAPSHOT_MAX_STOCKS:
             raise ValueError("snapshot cohort 超出最多 16 檔的產品限制")
         rows: list[DailyMarketResearchScreenRow] = []
+        raw_universe = snapshot.manifest.get("research_universe")
+        research_universe = (
+            dict(raw_universe) if isinstance(raw_universe, Mapping) else None
+        )
         for code in sorted(snapshot.stock_snapshots):
             payload = snapshot.stock_snapshots[code]
             raw_conditions = payload.get("conditions")
@@ -548,6 +611,12 @@ class DailyMarketResearchScreenerService:
                     ),
                     snapshot_root=str(self.snapshot_root),
                     completeness=snapshot.completeness,
+                    research_universe=research_universe,
+                    research_universe_membership=(
+                        "included_for_review"
+                        if research_universe is not None
+                        else "legacy_declared_research_only"
+                    ),
                 )
             )
         return tuple(rows)

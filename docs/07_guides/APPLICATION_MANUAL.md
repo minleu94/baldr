@@ -4416,3 +4416,33 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 套用、手動篩選及排序只查目前已核驗快照，不重讀來源或啟動producer，不改snapshot／date／method／qualification；選中股票仍可見且身份相同時保留選取。收藏保存實際條件／ANDOR／filter／sort，原來源返回仍按exact identity。沒有快照時套用停用；先重讀，缺件核對來源，只有自己明確更新才沿既有小cohort producer，不能用預設繞過guard。
 
 本包僅背景tests及offscreen驗證，新增Native鍵鼠／縮放／跨頁互動仍待下一個使用者桌面時段；不能用offscreen替代真人驗收。research-only、available-at／calendar unknown、PIT=false與ML資格限制保留，工程待辦見[既有QA收據](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+
+## 具名有界研究母體（UX16／18，2026-10-05）
+
+每日研究清單、研究母體盤勢與候選摘要共用已核驗快照中的母體設定：ID、版本、截至日、設定來源 SHA256、納入股票、排除股票與理由。設定分母可為未知；發布涵蓋率的分母是設定納入檔數，篩選隱藏不改變它。設定排除與查詢篩選隱藏分開呈現。這是明確研究批次，不能當作全市場或完整合格投資母體。
+
+來源由隔離 CLI 明確傳入 `--universe-config`；以設定內的納入股票作為唯一明示來源（不得同時傳 `--symbols`）；`--cohort-id` 可省略，明示時必須與設定 ID 相等，最多16股、每股最多120列。設定是研究用途，不授予歷史PIT、資料可用性或推薦資格。現有兩個MA方法與未知原因依原快照計算。無設定的舊快照仍可讀為宣告cohort，母體設定來源與原始分母保持未知。
+
+已綁設定的快照在讀回時重新核對設定檔內容雜湊及截至日；設定刪除、修改、成員重複或不一致會拒絕來源。請保留原設定檔；需要新成員時建立明示新版本並重新發布隔離來源。圖形介面的手動更新不得把已綁母體默默降回無設定cohort，請用相同設定的隔離CLI。錯誤會保留既有來源，不能以畫面列數推估缺失母體。
+
+「原排名」仍未知且停用。原計畫指既有StockScreener本日／本週價量強弱公式；目前該結果只在即時DTO／頁面快取，缺少不可變發布、run、完整成員／排除與來源hash，不能拿MA、價位或其他推薦排名替代。這是待實作的上游來源工程，並非自然成熟等待。
+
+本包僅背景及offscreen驗證，不代表Native鍵鼠、縮放、全App啟動或真人驗收；正式資料庫、真實書籤與模型registry不寫入。
+
+
+設定檔範例（自行明確決定批次成員，檔案不超過32KiB；納入與排除合計最多32股）：
+
+```json
+{"schema_version":"daily-market-research-universe.v1","universe_id":"my-research-batch","version":"v1","as_of_date":"2026-10-05","method":"daily-market-close-ma.v1","included_stock_codes":["1477","2330","2382"],"excluded_stock_codes":[{"stock_code":"2317","reason":"本次研究批次明示排除"}],"population_count":4,"scope":"bounded_research_cohort","research_only":true,"complete_fixed_cohort":true}
+```
+
+`method` 是現有close／MA20／MA60觀察的相容性標記，並非原強弱排名方法。`as_of_date` 須與明示截止時間的台北日期一致，截止時間不得晚於執行當下。`version` 是批次設定版本；`population_count` 若已知必須等於納入與排除合計，未知用JSON `null` 且 `complete_fixed_cohort=false`；此值不是全市場數量。排除每股須有理由，重複或與納入重疊拒絕。`research_only` 必須為true，固定scope不得宣稱全市場或正式資格。
+
+操作：保存設定 → 使用隔離output發布 → 檢查JSON結果的status／error／capacity → GUI設定同一隔離snapshot root，按「重讀已發布快照」 → 在名單／母體盤勢核對ID、截至日、納入分母、缺件及三態。CLI範例：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\produce_daily_market_research_snapshot.py --db-path "<TWStockConfig的db_file>" --output-root "output/qa/my_research_batch" --decision-cutoff "2026-10-05T23:59:59+08:00" --universe-config "output/qa/my_research_batch/universe.json" --read-stock 2382
+```
+
+output必須為repo `output/` 的明示隔離子目錄。`--read-stock` 是納入股票中的可選讀回驗證。CLI不修改主要App預設root；整合測試／有權限的配置呼叫端須明示 `snapshot_root`，不要把隔離QA來源當正式來源。保留200GiB容量安全保留、每次新增／暫存各8MiB與既有retention界限；阻擋時不降低保留政策或自動刪除資料。

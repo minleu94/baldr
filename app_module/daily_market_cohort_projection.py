@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -28,6 +29,7 @@ from app_module.daily_market_snapshot_repository import (
     VerifiedDailyMarketSnapshot,
     canonical_snapshot_sha256,
     snapshot_manifest_identity_sha256,
+    validate_research_universe_binding,
 )
 
 
@@ -102,6 +104,7 @@ class DailyMarketCohortProjection:
     method_counts: tuple[DailyMarketCohortMethodCount, ...]
     members: tuple[DailyMarketCohortMember, ...]
     original_rank_state: Literal["unknown"] = "unknown"
+    research_universe: Mapping[str, Any] | None = None
 
 
 def project_daily_market_cohort(
@@ -198,6 +201,10 @@ def project_daily_market_cohort(
         published_count=len(payload_codes),
         method_counts=method_counts,
         members=tuple(members),
+        research_universe=(
+            MappingProxyType(deepcopy(dict(manifest["research_universe"])))
+            if isinstance(manifest.get("research_universe"), Mapping) else None
+        ),
     )
 
 
@@ -284,6 +291,16 @@ def _validate_snapshot(
             _fail("cohort_method_contracts_invalid", f"manifest 缺少方法契約：{key}")
         contracts[key] = item
 
+    if "research_universe" in manifest:
+        binding = validate_research_universe_binding(
+            manifest.get("research_universe"), decision_date=snapshot.decision_date,
+            cohort_id=snapshot.cohort_id, declared_stock_codes=declared_codes,
+        )
+        if binding is None or (
+            tuple(binding["included_stock_codes"]) != declared_codes
+            or binding["universe_id"] != snapshot.cohort_id
+        ):
+            _fail("cohort_research_universe_mismatch", "研究母體與宣告成員／cohort 不符")
     records = _manifest_stock_records(manifest)
     if set(records) != payload_codes:
         _fail("cohort_payload_scope_mismatch", "manifest 記錄與已發布 payload 不一致")

@@ -21,6 +21,11 @@ from app_module.daily_market_method_contract import (
     method_contracts_payload,
     method_contracts_sha256,
 )
+from app_module.daily_market_research_universe import (
+    ResearchUniverseContractError,
+    load_research_universe_spec,
+    validate_research_universe_manifest_binding,
+)
 from app_module.research_run_dtos import canonical_json
 
 
@@ -99,6 +104,89 @@ def cohort_identity_sha256(cohort_id: str, declared_stock_codes: Sequence[str]) 
             "declared_stock_codes": sorted(set(declared_stock_codes)),
         }
     )
+
+
+def validate_research_universe_binding(
+    binding: Mapping[str, Any] | None,
+    *,
+    decision_date: date,
+    cohort_id: str | None = None,
+    declared_stock_codes: Sequence[str] | None = None,
+) -> dict[str, Any] | None:
+    """Reopen and verify a pinned optional research-universe binding."""
+
+    if binding is None:
+        return None
+    if not isinstance(binding, Mapping):
+        _fail(
+            "snapshot_research_universe_binding_invalid",
+            "research_universe must be an object",
+        )
+    source_ref = binding.get("source_ref")
+    if not isinstance(source_ref, str) or not source_ref.strip():
+        _fail(
+            "snapshot_research_universe_binding_invalid",
+            "research_universe source_ref is required",
+        )
+    try:
+        spec = load_research_universe_spec(source_ref)
+    except ResearchUniverseContractError as exc:
+        source_codes = {
+            "universe_source_missing": "snapshot_research_universe_source_missing",
+            "universe_source_changed": "snapshot_research_universe_source_changed",
+        }
+        _fail(
+            source_codes.get(
+                exc.code, "snapshot_research_universe_binding_invalid"
+            ),
+            str(exc),
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        _fail(
+            "snapshot_research_universe_binding_invalid",
+            f"research_universe source cannot be read: {exc}",
+        )
+    try:
+        validate_research_universe_manifest_binding(spec, binding)
+    except ResearchUniverseContractError as exc:
+        code = (
+            "snapshot_research_universe_source_changed"
+            if exc.code == "universe_binding_mismatch"
+            and binding.get("source_sha256") != spec.source_sha256
+            else "snapshot_research_universe_binding_invalid"
+        )
+        _fail(code, str(exc))
+    except (TypeError, ValueError) as exc:
+        _fail("snapshot_research_universe_binding_invalid", str(exc))
+    if spec.as_of_date != decision_date:
+        _fail(
+            "snapshot_research_universe_date_mismatch",
+            "research_universe as_of_date must match decision_date",
+        )
+    if cohort_id is not None and spec.universe_id != cohort_id:
+        _fail(
+            "snapshot_research_universe_cohort_mismatch",
+            "research_universe universe_id must match cohort_id",
+        )
+    if declared_stock_codes is not None and tuple(
+        spec.included_stock_codes
+    ) != tuple(declared_stock_codes):
+        _fail(
+            "snapshot_research_universe_membership_mismatch",
+            "included_stock_codes must match declared_stock_codes",
+        )
+    try:
+        spec.assert_source_stable()
+    except ResearchUniverseContractError as exc:
+        code = (
+            "snapshot_research_universe_source_missing"
+            if exc.code == "universe_source_missing"
+            else "snapshot_research_universe_source_changed"
+            if exc.code == "universe_source_changed"
+            else "snapshot_research_universe_binding_invalid"
+        )
+        _fail(code, str(exc))
+    return dict(spec.to_manifest_binding())
 
 
 def snapshot_manifest_relpath(manifest_sha256: str) -> str:
@@ -305,7 +393,7 @@ class DailyMarketSnapshotRepository:
             "published_at",
             "policy",
         }
-        allowed_fields = required_fields | {"source_ref"}
+        allowed_fields = required_fields | {"source_ref", "research_universe"}
         if not required_fields.issubset(manifest) or not set(manifest).issubset(allowed_fields):
             _fail("snapshot_manifest_invalid", "manifest 欄位不符合 v2 契約")
         if manifest.get("schema_version") != DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA:
@@ -364,6 +452,18 @@ class DailyMarketSnapshotRepository:
 
         if "source_ref" in manifest and not isinstance(manifest["source_ref"], dict):
             _fail("snapshot_source_ref_invalid", "manifest source_ref 必須是 object")
+        if "research_universe" in manifest:
+            if manifest.get("research_universe") is None:
+                _fail(
+                    "snapshot_research_universe_binding_invalid",
+                    "research_universe extension cannot be null",
+                )
+            validate_research_universe_binding(
+                manifest.get("research_universe"),
+                decision_date=manifest_date,
+                cohort_id=cohort_id,
+                declared_stock_codes=declared_codes,
+            )
         records_raw = manifest.get("stocks")
         if not isinstance(records_raw, list) or len(records_raw) > len(declared_codes):
             _fail("snapshot_stock_records_invalid", "manifest stocks 數量無效")

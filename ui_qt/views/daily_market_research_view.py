@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ui_qt.research_universe_presentation import research_universe_text
+
 from datetime import date, datetime, time
 from typing import Callable, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
@@ -692,6 +694,12 @@ class DailyMarketResearchView(QWidget):
 
         if self.service is None or self._shutting_down:
             return
+        if self._snapshot is not None and "research_universe" in self._snapshot.manifest:
+            self._show_input_error(
+                "此快照已綁定母體設定；請用隔離 CLI 的 --universe-config 明示原設定或新版本，"
+                "不能由手動股票欄位改寫來源。"
+            )
+            return
         producer = getattr(self.service, "produce_snapshot", None)
         if not callable(producer):
             self._show_input_error("快照更新服務尚未提供。")
@@ -1068,6 +1076,12 @@ class DailyMarketResearchView(QWidget):
         )
         if missing_codes:
             visible_identity += f"｜缺少已發布列：{', '.join(str(code) for code in missing_codes)}"
+        universe_text, universe_detail = research_universe_text(
+            getattr(projection, "research_universe", None),
+            published_count=published_count, declared_count=declared_count,
+        )
+        visible_identity += "\n" + universe_text
+        identity_text += "\n" + universe_detail
         self.cohort_identity_label.setText(visible_identity)
         self.cohort_identity_label.setToolTip(identity_text)
 
@@ -1316,6 +1330,14 @@ class DailyMarketResearchView(QWidget):
         details.append(
             "unknown 保留為未知；缺少 artifact 不建立可開啟的替代列。"
         )
+        universe_text, universe_detail = research_universe_text(
+            getattr(self._cohort_projection, "research_universe", None),
+            published_count=summary.published_count, declared_count=summary.declared_count,
+        )
+        self.candidate_summary_label.setText(
+            self.candidate_summary_label.text() + "\n" + universe_text
+        )
+        details.append(universe_detail)
         self.candidate_summary_label.setToolTip("\n".join(details))
 
     def _render_rows(self, *_args: object) -> None:

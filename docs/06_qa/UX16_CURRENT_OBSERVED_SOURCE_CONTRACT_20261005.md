@@ -274,3 +274,21 @@ Windows Native QTest保存程序PID33448、重開PID14424及舊文案恢復後�
 - 下一可背景包：UX16／18母體與原排名來源契約，先凍結既有ScreeningResultDTO的排序方法／版本、day/week、完整合格母體／topN及來源pin，無原排名不得造分數；或由父層依原plan分派UX09生命周期契約。禁止全量producer、訓練、大DB副本、永久清理、真實書籤寫入／遷移及前景操作持續生效。
 
 操作詳見Manual的新固定方法預設章。sole原plan僅追加，原145161-byte prefix保持；本地commit與blob/status以同包commit_readback／Git為準，未push。QA raw產物仍ignored。
+
+
+### UX16／18 有界母體來源契約延伸（2026-10-05，基線7e11f5a8）
+
+明示母體設定是隔離研究批次來源：ID／版本／截至日／原檔hash、納入／排除與理由、已知或未知設定分母。可選manifest extension納入原不可變identity，讀取與consumer重新核對來源revision／刪除／成員／date；舊無設定cohort保留來源與原始分母未知。清單、母體盤勢及候選摘要共享同一契約，設定不授予PIT或推薦資格，不計算新分數。CLI明示讀included，禁止無設定手動更新默默降格已綁來源。
+
+原排名來源audit：原計畫指StockScreener本日／本週價量強弱排序（原公式不改）。ScreeningResultDTO有period／method／version／eligible count，但即時結果未有不可變run／完整成員排除／hash發布；strong_stocks_view僅記憶體快取。saved recommendation屬另一rank kind不能代用。有限currentDB schema唯讀未找到rank／screen tables，不推論全球不存在。原排名未知且停用；需原引擎不可變結果發布工程，不稱等待自然成熟。
+
+本包無Native前景或使用者視窗操作，無訓練、全市場producer、正式DB／registry或真實書籤寫入；永久清理仍未執行。驗證與commit結果見同章最終收據補記。
+
+
+### 本包最終驗證與接受邊界
+
+- 最終受影響9檔共104 passed；Workbench85 passed；validator25 passed／4 skipped／0 failed；全域mypy781 source files通過；13個changed Python compile通過；金融float／look-ahead guard及diff check通過。母體JSON／manifest嚴格比較包含bool／int alias拒絕。第一輪6個failure是新測試fixture明示reserve=1違反中央200GiB，已改mock204GiB並保留200GiB guard；原failure receipts保留，未降低產品容量限制。各局部agent測試與104重疊，不加總。
+- 真D SQLite唯讀小批次1477／2330／2382，以明示設定排除2317（研究批次選擇，不是資料／投資風險判斷）。設定納入3／排除1／已知設定分母4，發布涵蓋3/3、缺件0；producer新增14832 bytes、暫存峰4455 bytes，200GiB預檢通過。2382個股consumer讀回verified；正式DB／WAL／SHM前後stat一致。沒有原排名／新分數／learner。
+- manifest SHA256 `2d241068d3b6df9a06c65267da0c0925c30d3244c6116da626d6a537f742311c`；identity `6c4a3fd3c82f074f5085a9ac6dff0437c7ba287c80ea8e696bc16118d3f2d9e6`；設定來源SHA `264dd7632fded527d82f20e7199c5f48d7acb33f9f56e33ee85b2feabfbe3379`。截圖為真D唯讀＋隔離發布有界母體，offscreen；名單／盤勢／候選同identity與分母，手動更新不啟worker；source inventory與code pins前後一致、worker0。首輪未註冊中文字型的截圖保留為initial_font失敗證據，harness採既有font helper重拍後可讀；產品字型未改。
+- QA收據：`output/qa/ux16_universe_20261005/verification_summary.json`、`related.xml/log`、`real_producer_receipt.json/log`、`offscreen_receipt.json`及兩張`real_configured_*.png`。本地commit/blob以同目錄commit_readback與Git為準；QA raw仍ignored，未push。唯一原plan原146969-byte prefix SHA `1be4f4eb34aa6d043915f60280a65ae4ab8c5482198a8ea0e503931318a05713`保留，僅追加。
+- 已完成工程：有界母體設定custody、可選v2manifest extension、source revision/deletion/member/date拒絕、明示小批次CLI、同源consumer呈現、來源未知與排名停用。仍缺工程：原StockScreener day/week不可變結果發布（run／method/version／完整eligible成員與排除／原始rank/score/topN／sourcehash），以及原plan其他生命周期／storage/growth項；不稱等自然成熟。來源決策另須明確合格母體權威與可用性/PIT證據，本包手工研究成員不是正式母體。Native鍵鼠／縮放／跨頁及真人驗收未執行；全App startup未由本包證明。下一背景包建議先原排名publisher契約，沿原公式不重算新分數。永久清理、真實書籤遷移仍未授權執行。

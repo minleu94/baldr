@@ -212,3 +212,8 @@ registry 879、missing 108，stale 與 collection errors 均為 0，`service-ora
 舊文件反覆附加 2026-06-23、08-14、08-28 的清單、數量與中途測試結果，形成多份「current」敘述。本輪收斂成單一機器摘要，原文可由基線 `71500ef6fc834da285c19255e5c03f1846412329` 的同路徑或本輪精確備份還原。沒有刪除獨立測試的斷言來迎合清冊。
 
 七份 retired diagnostics 的精確檔名、原因與回滾，統一保存在[整併查核](PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)；不再維護另一份重複 README 或當前檔案列表。
+
+
+## 2026-10-05 UX05 有界新增分類
+
+本包只登錄 tests/test_daily_market_research_presets.py 為service-oracle-recommendation、tests/test_ux05_research_presets_ui.py 為ui-healthcheck-candidate-bridge。與相關route共43項定向通過，不升為healthcheck direct bridge。本包不refresh全量清冊／collection，上述舊全量數字不是今日完整數目；其餘先前新增而尚未登錄項目不在本包重新分類。

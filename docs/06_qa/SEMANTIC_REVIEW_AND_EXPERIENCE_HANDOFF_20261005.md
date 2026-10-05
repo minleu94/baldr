@@ -255,3 +255,10 @@ Market61、root loader9（8項重跑）、整合47、Workbench85、validator25�
 Storage/UI agent21項＋root related93項已解決全部失敗；WB85、validator25／4skip、mypy778、compile／quant guard通過。Native保存／新程序重開與post-copy final readback均passed，PID33448／14424／36364退出、worker0；原快照／正式DB stat不變。raw與最終codepins在 `output/qa/ux03_research_bookmark_20261005/`，最終Native收據SHA=`4b0360162532a6fc9569e8741a79695c3e57efae73d41f55bda43f1d977ffdc4`；Library四圖ID見library_metadata。真正HEAD／提交以新commit_readback與Git為準，勿以舊handoff倒退。
 
 僅更新既定原計畫 `output/plans/baldr_product_experience_plan_20261004.md` append葉片，原內容保留。完整stage1–3與其他工程pending、Backtest18.62%／20%、真人／PIT／availability／自然ML資格仍各自保留；後續由父層安排。清理／永久刪除、push、producer／learner、真實使用者視窗操作皆未執行。
+
+
+## 2026-10-05 UX04／05 預設與候選摘要背景包
+
+基線42ff54b；五個固定MA預設明確套用、完整母體／缺件／三態與可見排除理由、選取支持／反證／資料限制立即刷新，來源／日期／方法／資格和exact收藏／返回保留。原排名未提供停用，不造新方法／分數／勝率。final43定向、WB85、validator25／4skip、mypy779、compile／guard與真D已發布2股readonly offscreen通過；receipt SHA=82ab54465294c69dc81828b009b40febb69dd31168f9a74d2307e1ebe9b40602，原snapshot／DB stat／code pins不變、worker0。初字型probe overload誤判與漏接選取信號修正後重驗，原收據保留，見同一UX16 QA新增章。
+
+**新Native互動尚待桌面時段**：本包不開前景或操控鍵鼠，背景code/tests仍可繼續。原plan首版stage1–3尚缺Backtest18.62%／20%凍結改善、完整合格母體及原排名版本／day-week／topN發布、其他同源市場／強弱consumer融合，以及長期storage/growth與跨程序crash工程；PIT／official availability／自然ML／真人限制分列。下一背景包可先UX16／18母體與原排名來源契約。soleplan append-only，原前綴保留；本地commit/blob核驗後交父層，未push／正式或全量producer／training／永久清理／真實收藏寫入／遷移，未知paper與restore maps不動。

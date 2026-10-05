@@ -418,3 +418,10 @@ Health最後串接已控制實跑：臺北10/4決策對10/2行情，離線官方
 每日研究列可明確收藏至既有觀察清單，保存原快照／方法／日期／query身份；同內容冪等、不同來源同股共存。重開程式、同查詢切股及返回均精確讀原書籤，無效來源拒絕比較；latest另開是明確唯讀操作。JSON／SQLite沿用既有payload，顯式升級具備嚴格semantic去重，不自動遷移使用者清單，也沒有第二份持倉ledger。
 
 相關114項有限測試、Workbench85、validator25／4 skip、mypy778、compile／quant guard與真D已發布兩股來源＋隔離觀察清單Native閉環通過。完整stage1–3／UX、Backtest18.62%／20%未達、PIT／自然ML／正式資格與真人驗收限制未解除。詳見[收藏收據](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)，真正HEAD以Git與本包commit_readback為準。
+
+
+## 2026-10-05 UX04／05 固定方法預設與候選摘要
+
+每日研究條件新增五個固定 MA20／60 查詢預設，選取後須明確套用；只篩選已核驗快照。手動條件／原來源回訪不自動覆蓋，切換預設或Decimal指標排序不改來源／日期／方法／研究資格。完整 declared 分母、已發布／缺件、組合三態、顯示／因篩選隱藏與具名原因可見；缺少 artifact 不造可開列，未知不當反證。原強弱排名未提供，選項停用；不造分數或勝率。選取摘要立即刷新，原方法identity保留詳情。
+
+本包 final 43 affected passed、Workbench85、validator25／4skip／0fail、mypy779、compile／quant guard通過；已發布真D2382／1477 readonly offscreen及preset→收藏payload roundtrip→同源開啟／返回身份核對通過。未啟動正式／全量producer，沒有真實清單寫入／遷移、正式DBwrite、訓練、前景Native或鍵鼠；本包新增Native互動仍待下一使用者桌面時段。完整stage1–3未宣告完成，Backtest18.62%／20%未達及PIT／availability／自然ML／真人證據限制保留。詳見既有[UX16 QA](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)與[Manual](../07_guides/APPLICATION_MANUAL.md)。

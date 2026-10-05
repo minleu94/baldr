@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
-from typing import Any, Callable, Mapping, Sequence, cast
+from typing import Callable, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
 
 from PySide6.QtCore import QDate, QSignalBlocker, Qt, QTime, Signal
@@ -36,6 +36,13 @@ from app_module.daily_market_research_screener import DailyMarketResearchScreenR
 from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
 from app_module.daily_market_research_bookmark import (
     create_daily_market_research_bookmark,
+)
+from app_module.daily_market_research_presets import (
+    DAILY_MARKET_RESEARCH_PRESETS,
+    ResearchFilterPreset,
+    get_research_filter_preset,
+    match_research_filter_preset,
+    summarize_research_candidates,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.table_style import apply_financial_table_style
@@ -190,7 +197,38 @@ class DailyMarketResearchView(QWidget):
         condition_row.addWidget(self.combine_mode_combo)
         condition_row.addStretch(1)
         form.addRow("條件規則", condition_row)
+
+        preset_row = QHBoxLayout()
+        self.preset_combo = QComboBox()
+        self.preset_combo.setObjectName("dailyMarketResearchPreset")
+        self.preset_combo.setAccessibleName("每日研究條件預設選擇")
+        self._populate_research_presets()
+        preset_row.addWidget(self.preset_combo)
+        self.apply_preset_button = QPushButton("套用預設")
+        self.apply_preset_button.setObjectName("dailyMarketResearchApplyPreset")
+        self.apply_preset_button.setAccessibleName("明確套用每日研究條件預設")
+        self.apply_preset_button.setEnabled(False)
+        self.apply_preset_button.setToolTip(
+            "只有按此按鈕才把選取預設套用到目前已核驗快照的篩選；不會重讀或產生資料。"
+        )
+        self.apply_preset_button.clicked.connect(self.apply_selected_preset)
+        preset_row.addWidget(self.apply_preset_button)
+        preset_row.addStretch(1)
+        form.addRow("條件預設", preset_row)
         root.addWidget(inputs)
+
+        self.preset_help_label = QLabel(
+            "固定收盤價與 MA20／MA60 比較；MA20 需 20 個有效觀測、MA60 需 60 個，"
+            "暖機不足保留為未知。僅供研究，沒有強弱排名或勝率含義；選取預設後須按「套用預設」。"
+        )
+        self.preset_help_label.setObjectName("dailyMarketResearchPresetHelp")
+        self.preset_help_label.setAccessibleName("每日研究方法與預設使用說明")
+        self.preset_help_label.setWordWrap(True)
+        self.preset_help_label.setToolTip(
+            "方法只比較已核驗快照提供的 close、MA20 與 MA60。需要的觀測暖機不足時維持未知；"
+            "不推定交易日完整性、可得時間、historical PIT、預測能力或投資結論。"
+        )
+        root.addWidget(self.preset_help_label)
 
         self.market_cohort_group = QGroupBox("研究母體盤勢")
         self.market_cohort_group.setObjectName("dailyMarketResearchCohortSummary")
@@ -274,6 +312,11 @@ class DailyMarketResearchView(QWidget):
             ("MA60", "ma60"),
         ):
             self.sort_key_combo.addItem(label, key)
+        self.sort_key_combo.addItem("原始強弱排名（未提供）", "original_strength_rank")
+        rank_item = self.sort_key_combo.model().item(self.sort_key_combo.count() - 1)
+        if rank_item is not None:
+            rank_item.setEnabled(False)
+            rank_item.setToolTip("此快照未提供原始強弱排名；不提供排名排序或篩選。")
         self.sort_key_combo.setEnabled(False)
         sort_row.addWidget(self.sort_key_combo)
         self.sort_direction_combo = QComboBox()
@@ -292,6 +335,28 @@ class DailyMarketResearchView(QWidget):
         self.summary_label.setWordWrap(True)
         self.summary_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         root.addWidget(self.summary_label)
+
+        self.candidate_summary_label = QLabel(
+            "候選母體分母與三態摘要尚未載入；不推估缺列或未知數。"
+        )
+        self.candidate_summary_label.setObjectName("dailyMarketResearchCandidateSummary")
+        self.candidate_summary_label.setAccessibleName("每日研究候選母體摘要")
+        self.candidate_summary_label.setWordWrap(True)
+        self.candidate_summary_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        root.addWidget(self.candidate_summary_label)
+
+        self.selected_summary_label = QLabel(
+            "選取一列以查看支持、反證與資料限制；僅供研究，不是投資結論。"
+        )
+        self.selected_summary_label.setObjectName("dailyMarketResearchSelectedSummary")
+        self.selected_summary_label.setAccessibleName("選取候選的證據與資料限制摘要")
+        self.selected_summary_label.setWordWrap(True)
+        self.selected_summary_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        root.addWidget(self.selected_summary_label)
 
         self.status_label = QLabel("首次開啟時只會唯讀核對已發布快照；不會自動更新。")
         self.status_label.setObjectName("dailyMarketResearchStatus")
@@ -330,6 +395,7 @@ class DailyMarketResearchView(QWidget):
         )
         apply_financial_table_style(self.results_table)
         self.results_table.itemSelectionChanged.connect(self._sync_open_button)
+        self.results_table.itemSelectionChanged.connect(self._render_selected_summary)
         self.results_table.itemDoubleClicked.connect(lambda _item: self.open_selected_stock())
         root.addWidget(self.results_table, 1)
 
@@ -378,10 +444,127 @@ class DailyMarketResearchView(QWidget):
                 else:
                     widget.currentIndexChanged.connect(self._apply_filter_controls)
 
+    def _populate_research_presets(self) -> None:
+        for preset in DAILY_MARKET_RESEARCH_PRESETS:
+            preset_id = preset.preset_id.strip()
+            label = preset.label.strip() or preset_id
+            if not preset_id:
+                continue
+            self.preset_combo.addItem(label, preset_id)
+            index = self.preset_combo.count() - 1
+            description = preset.description
+            if description:
+                self.preset_combo.setItemData(
+                    index, description, Qt.ItemDataRole.ToolTipRole
+                )
+        if self.preset_combo.count() == 0:
+            self.preset_combo.addItem("預設尚未提供", "")
+            self.preset_combo.setEnabled(False)
+            self.preset_combo.setToolTip(
+                "預設 API 尚未載入；仍可使用 MA20／MA60 手動條件。"
+            )
+            return
+        default_index = self.preset_combo.findData("all_observations")
+        if default_index >= 0:
+            self.preset_combo.setCurrentIndex(default_index)
+        self.preset_combo.currentIndexChanged.connect(self._show_pending_preset_help)
+
+    def _show_pending_preset_help(self, *_args: object) -> None:
+        preset = self._get_research_preset(str(self.preset_combo.currentData() or ""))
+        if preset is None:
+            return
+        description = preset.description.strip()
+        if description:
+            self.preset_combo.setToolTip(
+                f"待套用：{description}\n目前查詢不會因選取此項而改變；按「套用預設」才更新篩選。"
+            )
+
+    @staticmethod
+    def _get_research_preset(preset_id: str) -> ResearchFilterPreset | None:
+        try:
+            return get_research_filter_preset(preset_id)
+        except ValueError:
+            return None
+
+    def get_active_preset_id(self) -> str | None:
+        """回傳目前手動條件精確符合的 preset ID；自訂組合回傳 None。"""
+
+        try:
+            value = match_research_filter_preset(
+                self._selected_condition_keys(),
+                str(self.combine_mode_combo.currentData() or "AND"),
+                str(self.filter_state_combo.currentData() or "all"),
+            )
+        except (TypeError, ValueError):
+            return None
+        return str(value) if value else None
+
+    def apply_selected_preset(self) -> bool:
+        """明確套用選取預設到目前已載入 snapshot 的本機篩選。"""
+
+        worker_busy = self._worker is not None and self._worker.isRunning()
+        if (
+            self._snapshot is None
+            or self.service is None
+            or self._shutting_down
+            or worker_busy
+        ):
+            self.status_label.setText(
+                "目前無法套用預設：需要已核驗且閒置的研究快照；未讀取或產生資料。"
+            )
+            return False
+        preset_id = str(self.preset_combo.currentData() or "").strip()
+        preset = self._get_research_preset(preset_id)
+        if preset is None:
+            self.status_label.setText("選取的研究預設不可用；目前快照與篩選未變。")
+            return False
+        condition_keys = tuple(
+            str(key)
+            for key in tuple(getattr(preset, "condition_keys", ()) or ())
+        )
+        if not condition_keys or any(
+            key not in {"close_above_ma20", "close_above_ma60"}
+            for key in condition_keys
+        ):
+            self.status_label.setText("研究預設條件不受支援；目前快照與篩選未變。")
+            return False
+        combine_mode = str(getattr(preset, "combine_mode", "") or "").upper()
+        filter_state = str(getattr(preset, "filter_state", "") or "")
+        if combine_mode not in {"AND", "OR"} or filter_state not in _FILTER_VALUES:
+            self.status_label.setText("研究預設的組合方式或狀態篩選無效；目前快照未變。")
+            return False
+        blockers = [
+            QSignalBlocker(widget)
+            for widget in (
+                self.ma20_checkbox,
+                self.ma60_checkbox,
+                self.combine_mode_combo,
+                self.filter_state_combo,
+            )
+        ]
+        self.ma20_checkbox.setChecked("close_above_ma20" in condition_keys)
+        self.ma60_checkbox.setChecked("close_above_ma60" in condition_keys)
+        self.combine_mode_combo.setCurrentIndex(
+            max(0, self.combine_mode_combo.findData(combine_mode))
+        )
+        self.filter_state_combo.setCurrentIndex(
+            max(0, self.filter_state_combo.findData(filter_state))
+        )
+        del blockers
+        self._apply_filter_controls()
+        label = preset.label or preset_id
+        self.status_label.setText(
+            f"已套用「{label}」到目前已核驗快照；來源、日期與 hash 保持固定，未呼叫 producer。"
+        )
+        return True
+
     def _set_service_availability(self) -> None:
         available = self.service is not None
         self.refresh_button.setEnabled(available)
         self.reload_button.setEnabled(available)
+        self.apply_preset_button.setEnabled(
+            available and self._snapshot is not None and not self._shutting_down
+        )
         if not available:
             self.status_label.setText("每日研究快照服務尚未接線；目前不會執行讀取或更新。")
 
@@ -617,6 +800,10 @@ class DailyMarketResearchView(QWidget):
             available = self.service is not None
             self.refresh_button.setEnabled(available and not busy)
             self.reload_button.setEnabled(available and not busy)
+            self.preset_combo.setEnabled(not busy and self.preset_combo.count() > 0)
+            self.apply_preset_button.setEnabled(
+                available and self._snapshot is not None and not busy
+            )
             self.cancel_button.setEnabled(busy)
             self.open_selected_stock_button.setEnabled(not busy and self._has_selected_row())
             self.bookmark_selected_research_button.setEnabled(
@@ -634,6 +821,7 @@ class DailyMarketResearchView(QWidget):
                 self.ma60_checkbox,
                 self.combine_mode_combo,
                 self.filter_state_combo,
+                self.preset_combo,
                 self.sort_key_combo,
                 self.sort_direction_combo,
             ):
@@ -723,6 +911,7 @@ class DailyMarketResearchView(QWidget):
         if parsed_date.isoformat() != decision_date:
             self._on_operation_error(self._operation_generation, "快照決策日期不是 YYYY-MM-DD。")
             return
+        self.results_table.clearSelection()
         self._snapshot = snapshot
         self._cohort_projection = None
         self._cohort_members_by_code = {}
@@ -812,6 +1001,10 @@ class DailyMarketResearchView(QWidget):
         self.sort_key_combo.setEnabled(available and not self._shutting_down)
         self.sort_direction_combo.setEnabled(available and not self._shutting_down)
         if projection is None:
+            self.preset_help_label.setToolTip(
+                "固定 close／MA20／MA60 收盤比較；MA20 需 20 個有效觀測、"
+                "MA60 需 60 個有效觀測，暖機不足為未知。僅供研究，不代表預測或投資結論。"
+            )
             if self._snapshot is None:
                 self.cohort_identity_label.setText(
                     "尚未載入具名研究 cohort；此區不代表全市場。"
@@ -929,6 +1122,13 @@ class DailyMarketResearchView(QWidget):
             "不宣稱全市場排名、alpha 或投資分數。\n"
             + "\n".join(method_audit_lines)
         )
+        self.preset_help_label.setToolTip(
+            "固定 close／MA20／MA60 收盤比較；MA20 需 20 個有效觀測、"
+            "MA60 需 60 個有效觀測，暖機不足為未知。僅供研究，不代表預測或投資結論。\n"
+            "已發布方法契約：\n"
+            + "\n".join(method_audit_lines)
+            + f"\nmethod_contracts_sha256={method_hash}"
+        )
 
     def _render_production_result(self, result: object) -> None:
         status = str(getattr(result, "status", "unknown") or "unknown")
@@ -954,10 +1154,12 @@ class DailyMarketResearchView(QWidget):
                 f"{self._loaded_decision_date}｜{self._loaded_cohort_id}｜"
                 "請至少選擇一條研究條件；既有快照未變更。"
             )
+            self._render_candidate_summary()
             return
         filter_rows = getattr(self.service, "filter_rows", None)
         if not callable(filter_rows):
             self.status_label.setText("研究條件篩選服務尚未提供；快照保持已核驗但不展示推論。")
+            self._render_candidate_summary("研究條件篩選服務尚未提供。")
             return
         try:
             self._all_rows = tuple(
@@ -971,11 +1173,15 @@ class DailyMarketResearchView(QWidget):
             self._all_rows = ()
             self._visible_rows = ()
             self._render_rows()
+            self._render_candidate_summary(
+                f"研究條件篩選未能核驗：{type(exc).__name__}: {exc}"
+            )
             self.status_label.setText(
                 f"研究條件篩選失敗；條件保持未知：{type(exc).__name__}: {exc}"
             )
             return
         self._render_summary()
+        self._render_candidate_summary()
         self._render_rows()
 
     def _render_summary(self) -> None:
@@ -992,20 +1198,142 @@ class DailyMarketResearchView(QWidget):
             _CONDITION_LABELS.get(key, key) for key in self._selected_condition_keys()
         )
         combine_mode = str(self.combine_mode_combo.currentData() or "AND")
+        active_preset_id = self.get_active_preset_id()
+        active_preset = (
+            self._get_research_preset(active_preset_id)
+            if active_preset_id is not None
+            else None
+        )
+        active_query_label = (
+            active_preset.label or active_preset_id
+            if active_preset is not None
+            else "自訂查詢"
+        )
+        filter_state = str(self.filter_state_combo.currentData() or "all")
+        filter_label = next(
+            (
+                label
+                for label, value in (
+                    ("全部", "all"),
+                    ("符合", "match"),
+                    ("不符合", "no_match"),
+                    ("未知", "unknown"),
+                )
+                if value == filter_state
+            ),
+            "全部",
+        )
         self.summary_label.setText(
-            f"基準日 {self._loaded_decision_date}｜cohort {self._loaded_cohort_id}｜"
-            f"範圍 {scope_label}｜完整性 {completeness}｜條件 {condition_names}（{combine_mode}）｜"
-            f"共 {len(self._all_rows)} 檔：符合 {counts['match']}、"
-            f"不符合 {counts['no_match']}、未知 {counts['unknown']}。"
+            f"目前查詢：{active_query_label}｜條件 {condition_names}（{combine_mode}）｜"
+            f"狀態篩選 {filter_label}｜核驗列 {len(self._all_rows)}："
+            f"符合 {counts['match']}、不符合 {counts['no_match']}、未知 {counts['unknown']}。"
         )
         self.summary_label.setToolTip(
+            f"決策日: {self._loaded_decision_date}\n"
+            f"cohort: {self._loaded_cohort_id}\n"
+            f"scope: {scope_label}\n"
+            f"active preset: {active_preset_id or 'custom'}\n"
+            f"completeness: {completeness}\n"
             f"manifest_identity_sha256: {self._manifest_identity_sha256}\n"
             f"manifest_sha256: {self._manifest_sha256}\n"
-            f"completeness: {completeness}\n"
             "研究快照不代表完整市場母體、正式推薦或 historical PIT 資格。"
         )
 
+    def _render_candidate_summary(self, error: str = "") -> None:
+        if self._snapshot is None:
+            self.candidate_summary_label.setText(
+                "候選母體分母與三態摘要尚未載入；不推估缺列或未知數。"
+            )
+            self.candidate_summary_label.setToolTip("")
+            return
+        try:
+            summary = summarize_research_candidates(
+                self._snapshot,
+                self._all_rows,
+                str(self.filter_state_combo.currentData() or "all"),
+            )
+        except Exception as exc:
+            detail = error or f"{type(exc).__name__}: {exc}"
+            self.candidate_summary_label.setText(
+                "候選摘要未知：無法核驗完整 cohort 分母、發布列、缺列與三態數量。"
+            )
+            self.candidate_summary_label.setToolTip(detail)
+            return
+        if summary is None:
+            self.candidate_summary_label.setText(
+                "候選摘要未知：來源未提供完整分母或狀態計數。"
+            )
+            self.candidate_summary_label.setToolTip(error)
+            return
+
+        self.candidate_summary_label.setText(
+            f"研究母體：宣告 {summary.declared_count} 檔｜已發布 {summary.published_count}｜"
+            f"缺件 {summary.missing_count}｜符合 {summary.match_count}｜"
+            f"未符合 {summary.no_match_count}｜未知 {summary.unknown_count}\n"
+            f"目前顯示 {summary.visible_count}｜因篩選隱藏 {summary.excluded_count}"
+        )
+        missing_codes = list(summary.missing_stock_codes)
+        unknown_details: list[str] = []
+        for row in self._all_rows:
+            if str(getattr(row, "combined_state", "unknown") or "unknown") != "unknown":
+                continue
+            reasons = [
+                f"{_CONDITION_LABELS.get(str(getattr(condition, 'key', '') or ''), '研究條件')}："
+                f"{str(getattr(condition, 'reason', '') or '未知原因未提供')}"
+                for condition in tuple(getattr(row, "conditions", ()) or ())
+                if str(getattr(condition, "state", "unknown") or "unknown") == "unknown"
+            ]
+            reason_text = "；".join(reasons) or "未知原因未提供"
+            unknown_details.append(
+                f"{str(getattr(row, 'stock_code', '') or '未提供')}: {reason_text}"
+            )
+        reason_lines = list(summary.excluded_reasons)
+        missing_top = "、".join(missing_codes[:2]) or "無"
+        unknown_top = "；".join(unknown_details[:2]) or "無"
+        excluded_top = "；".join(reason_lines[:2]) or "無"
+        self.candidate_summary_label.setText(
+            self.candidate_summary_label.text()
+            + f"\n缺件：{missing_top}｜未知原因：{unknown_top}｜排除原因：{excluded_top}"
+        )
+        details = [
+            f"宣告={summary.declared_count}; 已發布={summary.published_count}; "
+            f"缺件={summary.missing_count}; 符合={summary.match_count}; "
+            f"未符合={summary.no_match_count}; 未知={summary.unknown_count}; "
+            f"顯示={summary.visible_count}; 因篩選隱藏={summary.excluded_count}"
+        ]
+        details.append(
+            "缺少已發布 artifact 股票："
+            + (", ".join(missing_codes) if missing_codes else "未提供／無")
+        )
+        details.append(
+            "具名未知列原因："
+            + ("；".join(unknown_details) if unknown_details else "未提供／無")
+        )
+        details.append(
+            "排除原因："
+            + ("；".join(reason_lines) if reason_lines else "未提供／無")
+        )
+        details.append(
+            "unknown 保留為未知；缺少 artifact 不建立可開啟的替代列。"
+        )
+        self.candidate_summary_label.setToolTip("\n".join(details))
+
     def _render_rows(self, *_args: object) -> None:
+        selected_identity: tuple[str, str, str] | None = None
+        selected = self.results_table.selectionModel().selectedRows()
+        if len(selected) == 1:
+            selected_item = self.results_table.item(selected[0].row(), 0)
+            selected_row = (
+                selected_item.data(Qt.ItemDataRole.UserRole)
+                if selected_item is not None
+                else None
+            )
+            if selected_row is not None:
+                selected_identity = (
+                    str(getattr(selected_row, "stock_code", "") or "").strip(),
+                    str(getattr(selected_row, "source_snapshot_id", "") or "").strip(),
+                    str(getattr(selected_row, "source_snapshot_hash", "") or "").strip(),
+                )
         rows = self._current_filtered_rows()
         rows = self._sort_filtered_rows(rows)
         self._visible_rows = rows
@@ -1039,7 +1367,118 @@ class DailyMarketResearchView(QWidget):
                         f"股票代碼 {stock_code}，來源 manifest {self._manifest_sha256}",
                     )
                 self.results_table.setItem(row_number, column, item)
+        if selected_identity is not None:
+            for row_number, row in enumerate(rows):
+                identity = (
+                    str(getattr(row, "stock_code", "") or "").strip(),
+                    str(getattr(row, "source_snapshot_id", "") or "").strip(),
+                    str(getattr(row, "source_snapshot_hash", "") or "").strip(),
+                )
+                if identity == selected_identity:
+                    self.results_table.selectRow(row_number)
+                    break
         self._sync_open_button()
+        self._render_selected_summary()
+
+    def _render_selected_summary(self) -> None:
+        selected = self.results_table.selectionModel().selectedRows()
+        if len(selected) != 1:
+            self.selected_summary_label.setText(
+                "選取一列以查看支持、反證與資料限制；僅供研究，不是投資結論。"
+            )
+            self.selected_summary_label.setToolTip("")
+            return
+        item = self.results_table.item(selected[0].row(), 0)
+        row = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if row is None:
+            self.selected_summary_label.setText(
+                "選取列缺少已核驗的快照條件；證據摘要未知。"
+            )
+            self.selected_summary_label.setToolTip("")
+            return
+        conditions = tuple(getattr(row, "conditions", ()) or ())
+        by_key = {
+            str(getattr(condition, "key", "") or ""): condition
+            for condition in conditions
+        }
+        supporting: list[str] = []
+        refuting: list[str] = []
+        limitations: list[str] = []
+        for key, condition in by_key.items():
+            label = _CONDITION_LABELS.get(key, key or "研究條件")
+            state = str(getattr(condition, "state", "unknown") or "unknown")
+            relation = _RELATION_LABELS.get(
+                str(getattr(condition, "relation", "unknown") or "unknown"),
+                "關係未知",
+            )
+            reason = str(getattr(condition, "reason", "") or "").strip()
+            if state == "match":
+                supporting.append(f"{label}（{relation}）")
+            elif state == "no_match":
+                refuting.append(f"{label}（{relation}；條件不符合）")
+            elif state == "unknown":
+                limitations.append(
+                    f"{label}：{reason or '未知原因未提供'}"
+                )
+        if not supporting and str(getattr(row, "combined_state", "unknown")) == "match":
+            supporting.append("符合的條件證據未提供")
+        if not refuting and str(getattr(row, "combined_state", "unknown")) == "no_match":
+            refuting.append("不符合條件的細節未提供")
+        if not limitations and str(getattr(row, "combined_state", "unknown")) == "unknown":
+            limitations.append("未知原因未提供")
+
+        code = str(getattr(row, "stock_code", "") or "未提供")
+        state = str(getattr(row, "combined_state", "unknown") or "unknown")
+        member = self._cohort_members_by_code.get(code)
+        data_date = str(
+            getattr(member, "data_date", None)
+            or getattr(row, "data_date", "")
+            or "未知"
+        )
+        decision_date = str(
+            getattr(row, "decision_date", "") or self._loaded_decision_date or "未知"
+        )
+        method_details: list[str] = []
+        for key, condition in by_key.items():
+            method_id = str(getattr(condition, "method_id", "") or "").strip()
+            family = str(getattr(condition, "family", "") or "").strip()
+            version = str(getattr(condition, "version", "") or "").strip()
+            parameters = getattr(condition, "parameters", None)
+            method_text = "／".join(
+                part for part in (method_id, family, version) if part
+            )
+            if isinstance(parameters, Mapping) and parameters:
+                method_text += "（" + ", ".join(
+                    f"{name}={value}" for name, value in parameters.items()
+                ) + "）"
+            if method_text:
+                method_details.append(
+                    f"{_CONDITION_LABELS.get(key, key)}：{method_text}"
+                )
+        visible_methods = "固定 MA20（20 個有效觀測）／MA60（60 個有效觀測）比較"
+        methods = "；".join(method_details) if method_details else visible_methods
+        visible_limitations = [
+            f"{reason[:80]}{'…' if len(reason) > 80 else ''}"
+            for reason in limitations[:2]
+        ]
+        self.selected_summary_label.setText(
+            f"{code}｜{self._state_text(state)}｜支持："
+            f"{'；'.join(dict.fromkeys(supporting[:2])) or '無'}｜反證："
+            f"{'；'.join(dict.fromkeys(refuting[:2])) or '無'}｜資料限制："
+            f"{'；'.join(dict.fromkeys(visible_limitations)) or '無'}\n"
+            f"方法：{visible_methods}｜決策日 {decision_date}｜資料日 {data_date}｜"
+            "研究條件描述，非強弱、勝率或投資結論。"
+        )
+        self.selected_summary_label.setToolTip(
+            f"決策日={decision_date}; 資料日={data_date}\n"
+            f"方法={methods}\n"
+            f"manifest_sha256={self._manifest_sha256}\n"
+            f"manifest_identity_sha256={self._manifest_identity_sha256}\n"
+            f"支持理由來源={self._as_texts(getattr(row, 'why', ()))}\n"
+            f"不符合條件來源={self._as_texts(getattr(row, 'why_not', ()))}\n"
+            f"支持={supporting}\n反證={refuting}\n資料限制={limitations}\n"
+            "close/MA 條件不構成預測、勝率或投資建議。"
+        )
 
     def _current_filtered_rows(self) -> tuple[object, ...]:
         selected_filter = str(self.filter_state_combo.currentData() or "all")
@@ -1209,6 +1648,13 @@ class DailyMarketResearchView(QWidget):
                 and not self._shutting_down
                 and (self._worker is None or not self._worker.isRunning())
                 and self._has_selected_row()
+            )
+        if hasattr(self, "apply_preset_button"):
+            self.apply_preset_button.setEnabled(
+                self.service is not None
+                and self._snapshot is not None
+                and not self._shutting_down
+                and (self._worker is None or not self._worker.isRunning())
             )
 
     def bookmark_selected_research(self) -> bool:
@@ -1479,8 +1925,11 @@ class DailyMarketResearchView(QWidget):
         self._loaded_cohort_id = ""
         self._loaded_decision_date = ""
         self._selected_stock_code = ""
+        self.results_table.clearSelection()
         self.results_table.setRowCount(0)
         self.summary_label.setText("目前沒有可核驗快照；未知條件不會視為不符合。")
+        self._render_candidate_summary()
+        self._render_selected_summary()
         self.cohort_identity_label.setText(
             "尚未載入具名研究 cohort；此區不代表全市場。"
         )
@@ -1492,4 +1941,5 @@ class DailyMarketResearchView(QWidget):
         self.sort_key_combo.setEnabled(False)
         self.sort_direction_combo.setEnabled(False)
         self.open_selected_stock_button.setEnabled(False)
+        self.apply_preset_button.setEnabled(False)
         self.snapshotCleared.emit()

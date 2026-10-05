@@ -260,3 +260,17 @@ Windows Native QTest保存程序PID33448、重開PID14424及舊文案恢復後�
 | 原來源2382回看 | `libfile_63e77e02663c8191a4869e6ef57ea6a5` |
 | 同查詢1477切股 | `libfile_184839b48a1881918ed475f4cc95e439` |
 | 受控錯日期拒絕 | `libfile_9b12614716a08191b0391f8347552de6` |
+
+
+## 最新延伸：UX04／05 固定方法預設、篩選與候選摘要（基線42ff54b）
+
+- 實作：純preset／summary契約＋DailyMarketResearchView。全部觀察沿既有兩MAANDall；任一均線ORmatch／MA20match／MA60match／ANDunknown為明確可選預設。下拉選取不改查詢，按套用才變；manual不自動覆寫。busy拒套用，source／date／method／qualification保持固定，原排名未提供選項停用。
+- 母體：declared固定分母；published完整row映射。missing算unknown但不造可開列；重複／越界／缺row拒摘要，不把可見檔數冒充母體。因篩選隱藏先具名列state與顯示filter，再附原理由，未符合不等於弱勢或風險評級。
+- 候選：支持、明確no_match反證、unknown資料限制分開；短固定20／60方法與日期可見，完整method契約提示；選取訊號立即刷新，exact stock／snapshot ID／hash保留可見選取。收藏／下鑽／返回仍原查詢身份。
+- 最終受影響43passed（9測試檔；related.xml／log），WB85、validator25／4skip／0failed、mypy779，4產品／測試＋inventory及offscreen helper共6Python compile、float／lookahead guard、diffcheck。Agent7與20／最後8項是重疊局部報告，不加總。新兩測試登錄service oracle／candidate UI，未宣告healthcheck direct bridge。
+- 原失敗保留：QRawFont.supportsCharacter(str) overload誤判中文字型，改Unicode codepoint probe後Microsoft JhengHei覆蓋通過；未變產品字型。第一次實圖發現選取摘要訊號漏接，已修並加立即selectRow斷言，final43／UI mandatory gates及offscreen重驗通過。原font failure／selection finding receipts保留；不以初次圖宣告最終通過。
+- final offscreen：output/qa/ux05_presets_20261005/offscreen_final/receipt.json；SHA256=`82ab54465294c69dc81828b009b40febb69dd31168f9a74d2307e1ebe9b40602`。只有既有已發布真D兩股snapshot reader，不producer；manifest hash=`e9ac099482e7b6181a771758c39bc53753b417e04dc397a777046e5f34f4f085`，method契約沿原pin。預設／OR／手動／Decimal排序、preset後bookmark純payload roundtrip、開啟context／exact返回通過。snapshot inventory SHA、正式DB/WAL stat與code pins前後相同，worker0，工具程序正常退出；**非Native／全App startup／真人／自然樣本或模型資格驗收**。
+- 本包首版尚缺：stage1 Backtest凍結改善18.62%<20%；stage2完整合格母體與原排名(day/week、來源／版本／topN)、更多既有feature／consumer契約，以及長期storage/growth／跨process crash工程；stage3同源強弱入口及其他市場consumer融合。固定兩MA方法／預設、名單→個股→收藏→exact返回本葉片完成；新preset的Native鍵鼠／縮放／跨頁互動尚待桌面時段。歷史PIT／official availability／自然ML與真人3–5是各自外部證據，不將工程缺項改稱等待成熟。
+- 下一可背景包：UX16／18母體與原排名來源契約，先凍結既有ScreeningResultDTO的排序方法／版本、day/week、完整合格母體／topN及來源pin，無原排名不得造分數；或由父層依原plan分派UX09生命周期契約。禁止全量producer、訓練、大DB副本、永久清理、真實書籤寫入／遷移及前景操作持續生效。
+
+操作詳見Manual的新固定方法預設章。sole原plan僅追加，原145161-byte prefix保持；本地commit與blob/status以同包commit_readback／Git為準，未push。QA raw產物仍ignored。

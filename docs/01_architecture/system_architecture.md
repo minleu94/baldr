@@ -1206,3 +1206,10 @@ scheduled wrapper 分列實際 child code、summary errors、source qualificatio
 `app_module/daily_market_research_bookmark.py`保存已核驗source與query的不可變契約；factory重用既有snapshot reader綁root／manifest／artifact，decoder只驗封存方法／hash，不以live registry改寫歷史。`WatchlistService`在既有items加入可選extension，JSON與SQLite沿用原儲存邊界；dedup採bookmark identity，不偽造Advice result_id、不複製為持倉ledger。
 
 顯式migration的可選item semantic identity由app service嚴格驗證後傳給data層，預設仍保留舊stockcode重複guard；沒有data→app新依賴、schema重建或自動真實資料遷移。Qt Daily View只在確認後寫觀察清單；Watchlist和Main以exact bookmark context讀回／切股／返回。Stock report切股須先解析同manifest／query的目標bookmark；找不到則拒絕，不能replace原bookmark ID為另一股。明確latest讀取另一路徑，不更新原收藏或呼叫producer。範圍與驗證見[QA](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+
+## 2026-10-05 UX05 唯讀篩選 preset 呈現契約
+
+新增 app_module/daily_market_research_presets.py：不可變五個固定 preset 及純 ResearchCandidateSummary；讀既有 verified snapshot／screener rows，不引入 repository、producer、writer 或新方法。complete declared 股票分母與 published rows 須完整一一對應，重複／越界／缺列拒絕；partial 缺 artifact 算unknown但不創個股context。UI以明確命令套既有MA條件，精確stock／snapshot ID／hash保選取，原bookmark query只捕獲實際 controls，不另存會改寫方法的preset identity。原強弱未發布保持unknown，原Decimal sort、source/date資格及exact返回路由不變。
+
+定向與背景offscreen限定驗證見[QA新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)；Native新增互動待使用者桌面時段，不授全stage1–3或自然／模型資格。

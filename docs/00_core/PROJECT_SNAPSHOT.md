@@ -411,3 +411,10 @@ EOF 空白清理後，root 對精確提交候選版本完成 302-path regression
 
 
 Health最後串接已控制實跑：臺北10/4決策對10/2行情，離線官方日曆驗證休市範圍；5個條件、67個Decimal指標及轉換proposal無blocker，Evidence errors0／report存在／degraded。控制衍生輸出隔離於QA，canonical35筆既有proposal保留；原自然Task結果與品質缺件不改寫。詳見上述Final closeout報告。
+
+
+## 2026-10-05 UX03／06／13 收藏原研究限定閉環
+
+每日研究列可明確收藏至既有觀察清單，保存原快照／方法／日期／query身份；同內容冪等、不同來源同股共存。重開程式、同查詢切股及返回均精確讀原書籤，無效來源拒絕比較；latest另開是明確唯讀操作。JSON／SQLite沿用既有payload，顯式升級具備嚴格semantic去重，不自動遷移使用者清單，也沒有第二份持倉ledger。
+
+相關114項有限測試、Workbench85、validator25／4 skip、mypy778、compile／quant guard與真D已發布兩股來源＋隔離觀察清單Native閉環通過。完整stage1–3／UX、Backtest18.62%／20%未達、PIT／自然ML／正式資格與真人驗收限制未解除。詳見[收藏收據](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)，真正HEAD以Git與本包commit_readback為準。

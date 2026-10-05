@@ -4,6 +4,7 @@
 """
 
 from collections.abc import Mapping
+import json
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout, QLabel,
@@ -39,6 +40,9 @@ from app_module.research_session import (
     ResearchStockContextDTO,
     format_research_workflow_path,
 )
+from app_module.daily_market_research_bookmark import (
+    DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE,
+)
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
@@ -54,6 +58,7 @@ class WatchlistView(QWidget):
     sendToBacktestRequested = Signal(dict)
     stockAnalysisRequested = Signal(str)
     stockResearchRequested = Signal(object)
+    latestResearchRequested = Signal(object)
     
     def __init__(
         self,
@@ -79,6 +84,7 @@ class WatchlistView(QWidget):
         self.analysis_service = WatchlistAnalysisService(config) if config and hasattr(config, "output_root") else None
         self._analysis_request_id = 0
         self._analysis_worker: TaskWorker | None = None
+        self._research_bookmark_restore_tokens: list[object] = []
         logger.info("[WatchlistView] watchlist_service 設置完成")
         
         # 初始化選股清單服務（用於回測）
@@ -310,6 +316,14 @@ class WatchlistView(QWidget):
         self.stock_research_btn = self.stock_analysis_btn
         self.stock_analysis_btn.setEnabled(False)
         self.stock_analysis_btn.clicked.connect(self._open_stock_analysis)
+        self.latest_research_btn = QPushButton("以最新來源另開研究")
+        self.latest_research_btn.setProperty("variant", "secondary")
+        self.latest_research_btn.setAccessibleName("以最新來源另開唯讀研究")
+        self.latest_research_btn.setToolTip(
+            "明確要求以目前最新來源另開唯讀研究；不更改已保存書籤的來源。"
+        )
+        self.latest_research_btn.setEnabled(False)
+        self.latest_research_btn.clicked.connect(self._open_latest_source_research)
         self.choose_source_btn = QPushButton("選擇原推薦來源")
         self.choose_source_btn.setProperty("variant", "secondary")
         self.choose_source_btn.setAccessibleName("選擇原推薦來源")
@@ -318,6 +332,13 @@ class WatchlistView(QWidget):
         )
         self.choose_source_btn.setVisible(False)
         self.choose_source_btn.clicked.connect(self._choose_recommendation_source)
+        self.restore_research_bookmark_btn = QPushButton("還原剛移除的研究書籤")
+        self.restore_research_bookmark_btn.setProperty("variant", "ghost")
+        self.restore_research_bookmark_btn.setEnabled(False)
+        self.restore_research_bookmark_btn.setVisible(False)
+        self.restore_research_bookmark_btn.clicked.connect(
+            self._restore_last_research_bookmark
+        )
         analysis_layout.addLayout(analysis_header_layout)
 
         self.analysis_context_label = QLabel(
@@ -349,7 +370,9 @@ class WatchlistView(QWidget):
         self.research_actions_layout = research_actions_layout
         research_actions_layout.setSpacing(8)
         research_actions_layout.addWidget(self.stock_analysis_btn)
+        research_actions_layout.addWidget(self.latest_research_btn)
         research_actions_layout.addWidget(self.choose_source_btn)
+        research_actions_layout.addWidget(self.restore_research_bookmark_btn)
         research_actions_layout.addStretch()
         batch_actions_layout = QHBoxLayout()
         self.batch_actions_layout = batch_actions_layout
@@ -615,7 +638,17 @@ class WatchlistView(QWidget):
     @staticmethod
     def _empty_frame() -> pd.DataFrame:
         return pd.DataFrame(
-            columns=["證券代號", "證券名稱", "加入時間", "來源", "推薦來源", "備註"]
+            columns=[
+                "證券代號",
+                "證券名稱",
+                "加入時間",
+                "來源",
+                "推薦來源",
+                "每日研究收藏",
+                "備註",
+                "source",
+                "research_bookmark",
+            ]
         )
 
     def _set_status_label(self, text: str, *, level: str) -> None:
@@ -773,9 +806,22 @@ class WatchlistView(QWidget):
                     'stock_code': '證券代號',
                     'stock_name': '證券名稱',
                     'added_at': '加入時間',
-                    'source': '來源',
                     'notes': '備註'
                 })
+                if "source" not in df.columns:
+                    df["source"] = ""
+                df["來源"] = [
+                    "每日研究收藏"
+                    if str(value or "").strip() == DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+                    else str(value or "未標示")
+                    for value in df["source"]
+                ]
+                if "research_bookmark" not in df.columns:
+                    df["research_bookmark"] = None
+                df["每日研究收藏"] = [
+                    self._research_bookmark_row_label(row)
+                    for _, row in df.iterrows()
+                ]
                 # 格式化時間
                 if '加入時間' in df.columns:
                     df['加入時間'] = pd.to_datetime(df['加入時間'], errors='coerce').dt.strftime('%Y-%m-%d %H:%M')
@@ -793,7 +839,13 @@ class WatchlistView(QWidget):
             try:
                 self.stocks_model = PandasTableModel(df)
                 # 保留完整來源資料供下鑽；候選表只顯示可讀欄位，避免洩出原始識別字典。
-                self.stocks_model.setVisibleColumns(list(self._empty_frame().columns))
+                self.stocks_model.setVisibleColumns(
+                    [
+                        column
+                        for column in self._empty_frame().columns
+                        if column not in {"source", "research_bookmark"}
+                    ]
+                )
                 logger.info("[WatchlistView._load_watchlist] PandasTableModel 創建成功")
             except Exception as e:
                 logger.error(f"[WatchlistView._load_watchlist] 創建 PandasTableModel 失敗: {e}")
@@ -997,41 +1049,165 @@ class WatchlistView(QWidget):
         if not selection or not self.stocks_model:
             QMessageBox.warning(self, "提示", "請先選擇要移除的股票")
             return
-        
-        # 確認對話框
-        reply = QMessageBox.question(
-            self, "確認", 
-            f"確定要移除選中的 {len(selection)} 檔股票嗎？",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        
-        if reply != QMessageBox.Yes:
-            return
-        
-        # 取得選中的股票代號
-        df = self.stocks_model.getDataFrame()
-        stock_codes = []
+
+        frame = self.stocks_model.getDataFrame()
+        bookmark_ids: list[str] = []
+        legacy_rows: list[tuple[str, str, str]] = []
+        bookmarked_codes = {
+            str(row.get("證券代號", "") or "").strip()
+            for _, row in frame.iterrows()
+            if self._row_declares_research_bookmark(row)
+        }
         for index in selection:
-            row = index.row()
-            if row < len(df):
-                stock_code = df.iloc[row]['證券代號']
-                stock_codes.append(stock_code)
-        
-        # 移除股票
+            if index.row() < 0 or index.row() >= len(frame):
+                continue
+            row = frame.iloc[index.row()]
+            raw_bookmark = row.get("research_bookmark")
+            if self._row_declares_research_bookmark(row):
+                if not isinstance(raw_bookmark, Mapping):
+                    self._set_status_label(
+                        "選取列含無法解析的每日研究書籤；拒絕以股票代碼移除整列。",
+                        level="error",
+                    )
+                    return
+                bookmark_id = str(raw_bookmark.get("bookmark_id", "") or "").strip()
+                if not bookmark_id:
+                    self._set_status_label(
+                        "選取列的每日研究書籤缺少精確 ID；拒絕以股票代碼移除整列。",
+                        level="error",
+                    )
+                    return
+                bookmark_ids.append(bookmark_id)
+            else:
+                stock_code = str(row.get("證券代號", "") or "").strip()
+                if stock_code:
+                    source_id_value = row.get("source_id", "")
+                    source_id = (
+                        source_id_value.strip()
+                        if isinstance(source_id_value, str)
+                        else ""
+                    )
+                    source_value = row.get("source", row.get("來源", ""))
+                    expected_source = (
+                        source_value.strip()
+                        if isinstance(source_value, str)
+                        else ""
+                    )
+                    legacy_rows.append((stock_code, source_id, expected_source))
+
+        if bookmark_ids and not callable(
+            getattr(self.watchlist_service, "remove_research_bookmark", None)
+        ):
+            self._set_status_label(
+                "觀察清單服務不支援精確移除每日研究書籤；未移除任何列。",
+                level="error",
+            )
+            return
+        precise_item_remover = getattr(
+            self.watchlist_service, "remove_watchlist_item", None
+        )
+        if any(code in bookmarked_codes for code, _, _ in legacy_rows) and not callable(
+            precise_item_remover
+        ):
+            self._set_status_label(
+                "同股另有每日研究書籤，且服務無法精確定位一般觀察列；未刪除任何項目。",
+                level="error",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "確認移除",
+            f"確定要移除選取的 {len(bookmark_ids)} 個精確研究書籤與 "
+            f"{len(legacy_rows)} 筆一般觀察列嗎？\n"
+            "研究書籤會按 bookmark ID 精確移除，不會按股票代碼刪除同股其他來源。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
         try:
-            removed_count = self.watchlist_service.remove_stocks(stock_codes)
-            if removed_count > 0:
-                QMessageBox.information(self, "成功", f"已移除 {removed_count} 檔股票")
+            removed_items = 0
+            remove_bookmark = getattr(
+                self.watchlist_service, "remove_research_bookmark", None
+            )
+            for bookmark_id in bookmark_ids:
+                result = remove_bookmark(bookmark_id)
+                status = str(getattr(result, "status", "") or "")
+                if status in {"removed", "deleted", "success", "ok"} or bool(
+                    getattr(result, "removed", False)
+                ):
+                    removed_items += 1
+                    restore_token = getattr(result, "restore_token", None)
+                    if restore_token is not None:
+                        self._research_bookmark_restore_tokens.append(restore_token)
+            generic_codes: list[str] = []
+            for stock_code, source_id, expected_source in legacy_rows:
+                if stock_code not in bookmarked_codes:
+                    generic_codes.append(stock_code)
+                    continue
+                result = precise_item_remover(
+                    stock_code,
+                    source_id,
+                    expected_source,
+                )
+                if str(getattr(result, "status", "") or "") == "removed":
+                    removed_items += 1
+            if generic_codes:
+                removed_items += int(self.watchlist_service.remove_stocks(generic_codes))
+            self.restore_research_bookmark_btn.setEnabled(
+                bool(self._research_bookmark_restore_tokens)
+            )
+            self.restore_research_bookmark_btn.setVisible(
+                bool(self._research_bookmark_restore_tokens)
+            )
+            if removed_items > 0:
+                QMessageBox.information(self, "成功", f"已精確移除 {removed_items} 個項目")
                 self._load_watchlist()
                 self.watchlistUpdated.emit()
+            else:
+                self._set_status_label("沒有項目符合精確移除條件。", level="warning")
         except Exception as e:
             QMessageBox.critical(self, "錯誤", f"移除股票失敗：\n{str(e)}")
+
+    def _restore_last_research_bookmark(self) -> bool:
+        if not self._research_bookmark_restore_tokens:
+            return False
+        restore = getattr(self.watchlist_service, "restore_research_bookmark", None)
+        if not callable(restore):
+            self._set_status_label("觀察清單服務不支援還原研究書籤。", level="error")
+            return False
+        token = self._research_bookmark_restore_tokens[-1]
+        try:
+            result = restore(token)
+        except Exception as error:
+            self._set_status_label(f"研究書籤還原失敗：{error}", level="error")
+            return False
+        status = str(getattr(result, "status", "") or "")
+        if not (
+            status in {"restored", "already_present", "added", "success", "ok"}
+            or bool(getattr(result, "restored", False))
+        ):
+            self._set_status_label(
+                str(getattr(result, "message", "研究書籤未能還原。")),
+                level="warning",
+            )
+            return False
+        self._research_bookmark_restore_tokens.pop()
+        available = bool(self._research_bookmark_restore_tokens)
+        self.restore_research_bookmark_btn.setEnabled(available)
+        self.restore_research_bookmark_btn.setVisible(available)
+        self._load_watchlist()
+        self.watchlistUpdated.emit()
+        self._set_status_label("已還原剛移除的精確研究書籤。", level="success")
+        return True
     
     def _clear_watchlist(self):
         """清空觀察清單"""
         reply = QMessageBox.question(
             self, "確認", 
-            "確定要清空整個候選池嗎？此操作無法復原。",
+            "確定要清空整個候選池嗎？每日研究書籤也會一併移除；此操作無法復原。",
             QMessageBox.Yes | QMessageBox.No
         )
         
@@ -1056,6 +1232,7 @@ class WatchlistView(QWidget):
         rows = selection.selectedRows() if selection else []
         if self.stocks_model is None or len(rows) != 1:
             self.stock_analysis_btn.setEnabled(False)
+            self.latest_research_btn.setEnabled(False)
             self._set_source_choice_state(None)
             self._set_watchlist_focus_summary(
                 count=self.stocks_model.rowCount() if self.stocks_model is not None else 0,
@@ -1074,8 +1251,19 @@ class WatchlistView(QWidget):
         # 可能只是 provider lineage，不能讓同股不同 result 共用同一個摘要。
         source_id = identity.result_id if identity.is_linked else legacy_source_id
         self.stock_analysis_btn.setEnabled(True)
+        self.latest_research_btn.setEnabled(True)
         self._set_source_choice_state(row)
         self._set_watchlist_focus_summary(row=row)
+        research_bookmark = row.get("research_bookmark")
+        if self._row_declares_research_bookmark(row):
+            context = self._context_from_row_bookmark(row, code)
+            self.analysis_context_label.setText(
+                self._bookmark_context_summary(research_bookmark, context)
+            )
+            self.analysis_text.setPlainText(
+                self._research_bookmark_detail(research_bookmark, context)
+            )
+            return
         self._request_stock_summary(code, source_id, request_id)
 
     @staticmethod
@@ -1108,8 +1296,219 @@ class WatchlistView(QWidget):
         if identity.identity_status == IDENTITY_STATUS_CONFLICT:
             return "來源不一致，需核對"
         if identity.is_linked:
-            return "已連結保存來源"
+            return "已連結原推薦"
         return "未連結原推薦"
+
+    @staticmethod
+    def _has_research_bookmark(value: object) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, Mapping):
+            return True
+        if isinstance(value, float):
+            return not pd.isna(value)
+        return True
+
+    @classmethod
+    def _row_declares_research_bookmark(cls, row: object) -> bool:
+        if not hasattr(row, "get"):
+            return False
+        if cls._has_research_bookmark(row.get("research_bookmark")):
+            return True
+        source = str(row.get("source", row.get("來源", "")) or "").strip()
+        return source == DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+
+    @classmethod
+    def _research_bookmark_row_label(cls, row: object) -> str:
+        if not hasattr(row, "get"):
+            return "書籤列格式錯誤；來源不可核驗"
+        value = row.get("research_bookmark")
+        if not cls._has_research_bookmark(value) and cls._row_declares_research_bookmark(row):
+            return "書籤內容缺失；來源不可核驗"
+        return cls._research_bookmark_label(value)
+
+    @classmethod
+    def _research_bookmark_label(cls, value: object) -> str:
+        if not cls._has_research_bookmark(value):
+            return "—"
+        if not isinstance(value, Mapping):
+            return "書籤格式錯誤；來源不可核驗"
+        schema = str(value.get("schema_version", "") or "").strip()
+        if schema != "daily-market-research-bookmark.v1":
+            return f"書籤版本不支援：{schema or '未提供'}"
+        required = (
+            "bookmark_id",
+            "payload_sha256",
+            "query_sha256",
+            "filter_state",
+            "stock_code",
+            "source_snapshot_id",
+            "source_snapshot_hash",
+            "decision_date",
+            "snapshot_root",
+            "cohort_id",
+            "condition_keys",
+            "combine_mode",
+            "method_contracts_sha256",
+            "context",
+        )
+        missing = [key for key in required if key not in value or value[key] in (None, "")]
+        if missing:
+            return "書籤資料不完整；來源不可核驗"
+        decision_date = str(value.get("decision_date", "未知"))
+        cohort_id = str(value.get("cohort_id", "未提供"))
+        return f"已收藏｜日期 {decision_date}｜cohort {cohort_id}"
+
+    def _context_from_row_bookmark(
+        self,
+        row: object,
+        expected_stock_code: str,
+        *,
+        report_error: bool = True,
+    ) -> ResearchStockContextDTO | None:
+        def fail(message: str, *, level: str = "error") -> None:
+            if report_error:
+                self._set_status_label(message, level=level)
+
+        bookmark = row.get("research_bookmark") if hasattr(row, "get") else None
+        if not isinstance(bookmark, Mapping):
+            fail(
+                "每日研究書籤內容缺失或格式錯誤；已拒絕下鑽，請勿改用手動來源。",
+            )
+            return None
+        bookmark_id = str(bookmark.get("bookmark_id", "") or "").strip()
+        if not bookmark_id:
+            fail(
+                "每日研究書籤缺少精確身份；已拒絕下鑽，請勿改用手動來源。",
+            )
+            return None
+        getter = getattr(self.watchlist_service, "get_research_bookmark_context", None)
+        if not callable(getter):
+            fail("觀察清單服務無法讀回每日研究書籤；已拒絕下鑽。")
+            return None
+        try:
+            context = getter(bookmark_id)
+        except Exception as error:
+            fail(f"每日研究書籤無效或不支援，已拒絕下鑽：{error}")
+            return None
+        if context is None:
+            fail("每日研究書籤不存在或來源已撤回；已拒絕下鑽。")
+            return None
+        if not self._bookmark_context_matches_record(
+            context, bookmark, expected_stock_code
+        ):
+            fail("讀回的每日研究書籤與此列來源身份不一致；已拒絕下鑽。")
+            return None
+        return context
+
+    @staticmethod
+    def _bookmark_context_matches_record(
+        context: object,
+        bookmark: Mapping[str, object],
+        expected_stock_code: str,
+    ) -> bool:
+        if not isinstance(context, ResearchStockContextDTO):
+            return False
+        context_values = {
+            "stock_code": context.stock_code,
+            "source_kind": context.source_kind,
+            "source_workspace": context.source_workspace,
+            "source_id": context.source_id,
+            "result_id": context.result_id,
+            "decision_date": context.decision_date,
+            "data_date": context.data_date,
+            "source_snapshot_id": context.source_snapshot_id,
+            "source_snapshot_hash": context.source_snapshot_hash,
+            "daily_snapshot_root": context.daily_snapshot_root,
+            "daily_snapshot_cohort_id": context.daily_snapshot_cohort_id,
+            "daily_snapshot_condition_keys": context.daily_snapshot_condition_keys,
+            "daily_snapshot_combine_mode": context.daily_snapshot_combine_mode,
+        }
+        condition_keys = bookmark.get("condition_keys", ())
+        if isinstance(condition_keys, str):
+            expected_conditions = ",".join(
+                part.strip() for part in condition_keys.split(",") if part.strip()
+            )
+        else:
+            expected_conditions = ",".join(
+                str(part).strip() for part in (condition_keys or ()) if str(part).strip()
+            )
+        expected = {
+            "stock_code": expected_stock_code,
+            "source_kind": "daily_market_research_snapshot",
+            "source_workspace": "watchlist",
+            "source_id": str(bookmark.get("bookmark_id", "") or ""),
+            "result_id": "",
+            "decision_date": str(bookmark.get("decision_date", "") or ""),
+            "data_date": str(bookmark.get("data_date", "") or ""),
+            "source_snapshot_id": str(bookmark.get("source_snapshot_id", "") or ""),
+            "source_snapshot_hash": str(bookmark.get("source_snapshot_hash", "") or ""),
+            "daily_snapshot_root": str(bookmark.get("snapshot_root", "") or ""),
+            "daily_snapshot_cohort_id": str(bookmark.get("cohort_id", "") or ""),
+            "daily_snapshot_condition_keys": expected_conditions,
+            "daily_snapshot_combine_mode": str(
+                bookmark.get("combine_mode", "") or ""
+            ).upper(),
+        }
+        for field_name, expected_value in expected.items():
+            actual_value = str(context_values[field_name] or "").strip()
+            expected_text = str(expected_value or "").strip()
+            if field_name == "data_date" and not actual_value:
+                # StockResearchReport may clear the first-read data date while
+                # retaining its exact bookmark source identity.
+                continue
+            if actual_value != expected_text:
+                return False
+        return True
+
+    @classmethod
+    def _bookmark_context_summary(
+        cls, bookmark: object, context: ResearchStockContextDTO | None
+    ) -> str:
+        if context is None:
+            return "狀態：書籤無法核驗｜決策日：未知｜資料日：未知｜來源：拒絕比較"
+        return (
+            "狀態：每日研究收藏｜"
+            f"決策日：{context.decision_date or '未知'}｜"
+            f"資料日：{context.data_date or '未知'}｜"
+            "來源：固定於原始快照"
+        )
+
+    @staticmethod
+    def _research_bookmark_detail(
+        bookmark: object, context: ResearchStockContextDTO | None
+    ) -> str:
+        if context is None or not isinstance(bookmark, Mapping):
+            return "書籤格式無效、不支援或已無法讀回；不會改用手動或最新來源。"
+        methods = bookmark.get("method_contracts", {})
+        try:
+            methods_text = json.dumps(
+                methods, ensure_ascii=False, sort_keys=True, default=str
+            )
+        except (TypeError, ValueError):
+            methods_text = str(methods)
+        return "\n".join(
+            (
+                f"{context.stock_code}｜每日研究唯讀書籤",
+                f"決策日：{context.decision_date}｜資料日：{context.data_date or '未提供'}",
+                f"來源 manifest：{context.source_snapshot_id}",
+                f"來源 hash：{context.source_snapshot_hash}",
+                f"書籤完整性 hash：{bookmark.get('payload_sha256', '未提供')}",
+                f"快照身份 hash：{bookmark.get('snapshot_identity_sha256', '未提供')}",
+                f"輸入指紋 hash：{bookmark.get('input_fingerprint_sha256', '未提供')}",
+                f"cohort：{context.daily_snapshot_cohort_id}",
+                f"條件：{context.daily_snapshot_condition_keys}｜組合：{context.daily_snapshot_combine_mode}",
+                f"結果篩選：{bookmark.get('filter_state', '未提供')}",
+                f"排序偏好：{bookmark.get('sort_key', '未提供')}｜"
+                f"降冪：{'是' if bookmark.get('descending') is True else '否'}",
+                f"方法契約：{methods_text}",
+                f"方法契約 hash：{bookmark.get('method_contracts_sha256', '未提供')}",
+                f"query hash：{bookmark.get('query_sha256', '未提供')}",
+                "開啟時只使用此書籤固定來源。",
+            )
+        )
 
     def _set_source_choice_state(self, row: object | None) -> None:
         """顯示 legacy row 的 explicit source selection path。"""
@@ -1413,19 +1812,243 @@ class WatchlistView(QWidget):
         frame = self.stocks_model.getDataFrame()
         row = frame.iloc[rows[0].row()]
         code = str(row["證券代號"]).strip()
-        if code:
-            source_value = row.get("source_id", "")
-            source_id = source_value.strip() if isinstance(source_value, str) else ""
-            decision_identity = self._row_decision_identity(row, code)
+        if self._row_declares_research_bookmark(row):
+            context = self._context_from_row_bookmark(row, code)
+            if context is None:
+                return
             self.stockAnalysisRequested.emit(code)
-            self.stockResearchRequested.emit(
-                self._build_stock_research_context(
-                    code,
-                    str(row.get("證券名稱", "") or "").strip(),
-                    source_id,
-                    decision_identity=decision_identity,
-                )
+            self.stockResearchRequested.emit(context)
+            self._set_status_label(
+                f"已開啟 {code} 的唯讀每日研究書籤；來源固定於原 manifest。",
+                level="success",
             )
+            return
+        if not code:
+            return
+        source_value = row.get("source_id", "")
+        source_id = source_value.strip() if isinstance(source_value, str) else ""
+        decision_identity = self._row_decision_identity(row, code)
+        self.stockAnalysisRequested.emit(code)
+        self.stockResearchRequested.emit(
+            self._build_stock_research_context(
+                code,
+                str(row.get("證券名稱", "") or "").strip(),
+                source_id,
+                decision_identity=decision_identity,
+            )
+        )
+
+    def _open_latest_source_research(self, _checked=False) -> bool:
+        """由使用者明確要求另一個以最新來源為準的唯讀研究。"""
+
+        selected = self._selected_watchlist_row()
+        if selected is None:
+            self._set_status_label("請先選取一檔股票，再明確要求以最新來源另開研究。", level="info")
+            return False
+        row, code = selected
+        if not code:
+            return False
+        if self._row_declares_research_bookmark(row):
+            context = self._context_from_row_bookmark(row, code)
+            if context is None:
+                return False
+        else:
+            context = ResearchStockContextDTO(
+                stock_code=code,
+                stock_name=str(row.get("證券名稱", "") or "").strip(),
+                source_kind="watchlist_latest_request",
+                source_label="使用者明確要求以最新來源另開唯讀研究",
+                source_workspace="watchlist",
+            )
+        self.latestResearchRequested.emit(context)
+        self._set_status_label(
+            f"已送出 {code} 的最新來源唯讀研究請求；已保存研究書籤未變更。",
+            level="info",
+        )
+        return True
+
+    @staticmethod
+    def _bookmark_group_matches_context(
+        bookmark: Mapping[str, object], context: ResearchStockContextDTO
+    ) -> bool:
+        if WatchlistView._research_bookmark_label(bookmark).startswith(
+            ("書籤版本不支援", "書籤資料不完整")
+        ):
+            return False
+        keys = bookmark.get("condition_keys", ())
+        if isinstance(keys, str):
+            conditions = ",".join(
+                part.strip() for part in keys.split(",") if part.strip()
+            )
+        elif isinstance(keys, (list, tuple)):
+            conditions = ",".join(str(part).strip() for part in keys if str(part).strip())
+        else:
+            return False
+        return (
+            str(bookmark.get("source_snapshot_id", "") or "")
+            == context.source_snapshot_id
+            and str(bookmark.get("source_snapshot_hash", "") or "")
+            == context.source_snapshot_hash
+            and str(bookmark.get("decision_date", "") or "")
+            == context.decision_date
+            and str(bookmark.get("snapshot_root", "") or "")
+            == context.daily_snapshot_root
+            and str(bookmark.get("cohort_id", "") or "")
+            == context.daily_snapshot_cohort_id
+            and conditions == context.daily_snapshot_condition_keys
+            and str(bookmark.get("combine_mode", "") or "").upper()
+            == context.daily_snapshot_combine_mode
+        )
+
+    def _find_bookmark_record_for_context(
+        self, context: ResearchStockContextDTO
+    ) -> tuple[object, Mapping[str, object]] | None:
+        if self.stocks_model is None or not context.source_id:
+            return None
+        frame = self.stocks_model.getDataFrame()
+        matches: list[tuple[object, Mapping[str, object]]] = []
+        for _, row in frame.iterrows():
+            record = row.get("research_bookmark")
+            if (
+                isinstance(record, Mapping)
+                and str(record.get("bookmark_id", "") or "") == context.source_id
+                and self._bookmark_context_matches_record(
+                    context,
+                    record,
+                    str(row.get("證券代號", "") or "").strip(),
+                )
+            ):
+                matches.append((row, record))
+        if len(matches) != 1:
+            return None
+        row, record = matches[0]
+        code = str(row.get("證券代號", "") or "").strip()
+        verified = self._context_from_row_bookmark(
+            row, code, report_error=False
+        )
+        if verified is None or not self._bookmark_context_matches_record(
+            verified, record, code
+        ):
+            return None
+        return row, record
+
+    def research_bookmark_stock_codes(
+        self, context: ResearchStockContextDTO
+    ) -> tuple[str, ...]:
+        """列出相同 manifest、日期、篩選與 AND/OR 群組的有效書籤股票。"""
+
+        if not isinstance(context, ResearchStockContextDTO):
+            return ()
+        base = self._find_bookmark_record_for_context(context)
+        if base is None:
+            return ()
+        query_hash = str(base[1].get("query_sha256", "") or "")
+        if not query_hash:
+            return ()
+        frame = self.stocks_model.getDataFrame() if self.stocks_model is not None else None
+        if frame is None:
+            return ()
+        codes: list[str] = []
+        for _, row in frame.iterrows():
+            record = row.get("research_bookmark")
+            if not isinstance(record, Mapping):
+                continue
+            if not self._bookmark_group_matches_context(record, context):
+                continue
+            if str(record.get("query_sha256", "") or "") != query_hash:
+                continue
+            if self._research_bookmark_label(record).startswith(
+                ("書籤版本不支援", "書籤資料不完整")
+            ):
+                continue
+            code = str(row.get("證券代號", "") or "").strip()
+            resolved = self._context_from_row_bookmark(
+                row, code, report_error=False
+            )
+            if resolved is None or not self._bookmark_context_matches_record(
+                resolved, record, code
+            ):
+                continue
+            if code and code not in codes:
+                codes.append(code)
+        return tuple(codes)
+
+    def research_bookmark_context_for_stock(
+        self, context: ResearchStockContextDTO, stock_code: str
+    ) -> ResearchStockContextDTO | None:
+        """在完全相同的來源與條件群組中讀回指定股票的書籤 context。"""
+
+        requested = str(stock_code or "").strip()
+        if not requested or not isinstance(context, ResearchStockContextDTO):
+            return None
+        base = self._find_bookmark_record_for_context(context)
+        if base is None or self.stocks_model is None:
+            return None
+        base_record = base[1]
+        query_hash = str(base_record.get("query_sha256", "") or "")
+        if not query_hash:
+            return None
+        frame = self.stocks_model.getDataFrame()
+        candidates: list[tuple[object, Mapping[str, object], ResearchStockContextDTO]] = []
+        for _, row in frame.iterrows():
+            if str(row.get("證券代號", "") or "").strip() != requested:
+                continue
+            record = row.get("research_bookmark")
+            if not isinstance(record, Mapping):
+                continue
+            if (
+                self._bookmark_group_matches_context(record, context)
+                and str(record.get("query_sha256", "") or "") == query_hash
+                and self._research_bookmark_label(record).startswith("已收藏")
+            ):
+                resolved = self._context_from_row_bookmark(
+                    row, requested, report_error=False
+                )
+                if resolved is None or not self._bookmark_context_matches_record(
+                    resolved, record, requested
+                ):
+                    continue
+                candidates.append((row, record, resolved))
+        if len(candidates) != 1:
+            if candidates:
+                self._set_status_label(
+                    "此股票在相同研究條件下有多個不同書籤；無法唯一還原，已拒絕切換。",
+                    level="warning",
+                )
+            return None
+        return candidates[0][2]
+
+    def restore_research_bookmark_stock(
+        self, context: ResearchStockContextDTO
+    ) -> bool:
+        """只選取與傳入 bookmark ID 及來源身份完全一致的列。"""
+
+        if not isinstance(context, ResearchStockContextDTO) or self.stocks_model is None:
+            self._set_status_label("每日研究書籤 context 無效；無法還原原列。", level="warning")
+            return False
+        frame = self.stocks_model.getDataFrame()
+        matches: list[int] = []
+        for row_number, (_, row) in enumerate(frame.iterrows()):
+            record = row.get("research_bookmark")
+            code = str(row.get("證券代號", "") or "").strip()
+            if isinstance(record, Mapping) and self._bookmark_context_matches_record(
+                context, record, code
+            ):
+                resolved = self._context_from_row_bookmark(
+                    row, code, report_error=False
+                )
+                if resolved is not None and self._bookmark_context_matches_record(
+                    resolved, record, code
+                ):
+                    matches.append(row_number)
+        if len(matches) != 1:
+            self._set_status_label(
+                "找不到唯一且來源完全相同的研究書籤；未選取同股其他書籤。",
+                level="warning",
+            )
+            return False
+        self.stocks_table.selectRow(matches[0])
+        return True
 
     def _open_universe_stock_analysis(self, item: QListWidgetItem) -> None:
         """由保存的選股清單下鑽；沒有 result id 時仍保留股票識別。"""

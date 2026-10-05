@@ -71,3 +71,8 @@
 
 
 2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。
+
+
+## 2026-10-05 收藏原研究
+
+[UX03／06／13收藏原來源收據](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：限定保存／精確返回／同查詢切股／錯來源拒絕與Library Native證據，與完整stage／自然資格分開。

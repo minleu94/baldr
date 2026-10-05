@@ -834,6 +834,7 @@ class MainWindow(QMainWindow):
                             )
                         )
                     self.watchlist_view = watchlist
+                    self._connect_research_bookmark_routes(recommendation, watchlist)
                     if hasattr(watchlist, "stockResearchRequested"):
                         watchlist.stockResearchRequested.connect(
                             self._open_stock_research_context
@@ -933,6 +934,9 @@ class MainWindow(QMainWindow):
                 self._return_from_stock_research_report
             )
             self.stock_research_workspace.report_view.createAnalysisRequested.connect(self._prepare_stock_research_analysis)
+            self.stock_research_workspace.report_view.research_bookmark_context_resolver = (
+                self._resolve_research_bookmark_stock
+            )
             self.stock_research_workspace.report_view.activeContextChanged.connect(
                 lambda context: self.research_session_store.set_stock_context(
                     context, source="stock_research"
@@ -1193,6 +1197,31 @@ class MainWindow(QMainWindow):
             if market_tabs.widget(index) is cohort_view else None
         )
 
+    def _connect_research_bookmark_routes(self, recommendation, watchlist) -> None:
+        """收藏通知只刷新觀察清單；最新研究必須由使用者另行要求。"""
+
+        daily = recommendation.daily_market_research_view
+        daily.bookmarkSaved.connect(lambda *_args: watchlist._load_watchlist())
+        watchlist.latestResearchRequested.connect(self._open_latest_bookmark_research)
+
+    def _open_latest_bookmark_research(self, value: object) -> None:
+        context = self._coerce_stock_research_context(value)
+        recommendation = getattr(self, "recommendation_view", None)
+        daily = getattr(recommendation, "daily_market_research_view", None)
+        opener = getattr(daily, "open_latest_research", None)
+        if context is None or not callable(opener):
+            return
+        opener(context)
+        self._select_main_workspace("recommendation")
+        recommendation.result_source_tabs.setCurrentWidget(daily)
+
+    def _resolve_research_bookmark_stock(
+        self, context: ResearchStockContextDTO, stock_code: str,
+    ) -> ResearchStockContextDTO | None:
+        view = getattr(self, "watchlist_view", None)
+        resolver = getattr(view, "research_bookmark_context_for_stock", None)
+        return resolver(context, stock_code) if callable(resolver) else None
+
     def _stock_codes_for_research_context(
         self,
         context: ResearchStockContextDTO,
@@ -1206,6 +1235,13 @@ class MainWindow(QMainWindow):
             view = getattr(self, "recommendation_view", None)
             getter = getattr(view, "research_snapshot_stock_codes", None)
             return tuple(getter()) if callable(getter) else ()
+        if (
+            context.source_workspace == "watchlist"
+            and context.source_kind == "daily_market_research_snapshot"
+        ):
+            view = getattr(self, "watchlist_view", None)
+            getter = getattr(view, "research_bookmark_stock_codes", None)
+            return tuple(getter(context)) if callable(getter) else ()
         if context.source_workspace == "watchlist":
             view = getattr(self, "watchlist_view", None)
             model = getattr(view, "stocks_model", None)
@@ -1264,11 +1300,15 @@ class MainWindow(QMainWindow):
         else:
             view = None
         if context.source_kind == "daily_market_research_snapshot":
-            restore = getattr(view, "restore_research_snapshot_stock", None)
-            selected = (
-                bool(restore(context.stock_code, manifest_sha256=context.source_snapshot_hash))
-                if callable(restore) else False
-            )
+            if context.source_workspace == "watchlist":
+                restore = getattr(view, "restore_research_bookmark_stock", None)
+                selected = bool(restore(context)) if callable(restore) else False
+            else:
+                restore = getattr(view, "restore_research_snapshot_stock", None)
+                selected = (
+                    bool(restore(context.stock_code, manifest_sha256=context.source_snapshot_hash))
+                    if callable(restore) else False
+                )
             if not selected:
                 self.statusBar().showMessage(
                     "原每日研究快照已變動或股票不在目前清單；請核對來源，不能用同股替代原結果。"

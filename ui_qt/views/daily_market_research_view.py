@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -33,6 +34,9 @@ from app_module.daily_market_cohort_projection import (
 )
 from app_module.daily_market_research_screener import DailyMarketResearchScreenRow
 from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
+from app_module.daily_market_research_bookmark import (
+    create_daily_market_research_bookmark,
+)
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.workers.task_worker import TaskWorker
@@ -63,10 +67,20 @@ class DailyMarketResearchView(QWidget):
     stockResearchRequested = Signal(object)
     snapshotAccepted = Signal(object)
     snapshotCleared = Signal()
+    bookmarkSaved = Signal(object)
 
-    def __init__(self, service: object | None = None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        service: object | None = None,
+        parent: QWidget | None = None,
+        watchlist_service: object | None = None,
+        *,
+        bookmark_confirmation_callback: Callable[[object], bool] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.service = service
+        self.watchlist_service = watchlist_service
+        self.bookmark_confirmation_callback = bookmark_confirmation_callback
         self._snapshot: object | None = None
         self._cohort_projection: object | None = None
         self._cohort_members_by_code: dict[str, object] = {}
@@ -324,7 +338,25 @@ class DailyMarketResearchView(QWidget):
         self.open_selected_stock_button.setAccessibleName("由研究快照開啟選中個股報告")
         self.open_selected_stock_button.setEnabled(False)
         self.open_selected_stock_button.clicked.connect(self.open_selected_stock)
-        root.addWidget(self.open_selected_stock_button)
+
+        self.bookmark_selected_research_button = QPushButton("收藏此研究")
+        self.bookmark_selected_research_button.setObjectName(
+            "dailyMarketResearchBookmark"
+        )
+        self.bookmark_selected_research_button.setAccessibleName("收藏此研究")
+        self.bookmark_selected_research_button.setToolTip(
+            "確認後，將目前選取列與完整快照來源、日期、方法及查詢條件保存到既有觀察清單。"
+        )
+        self.bookmark_selected_research_button.setEnabled(False)
+        self.bookmark_selected_research_button.clicked.connect(
+            self.bookmark_selected_research
+        )
+        self.open_selected_stock_button.setMinimumHeight(34)
+        self.bookmark_selected_research_button.setMinimumHeight(34)
+        research_actions = QHBoxLayout()
+        research_actions.addWidget(self.open_selected_stock_button, 1)
+        research_actions.addWidget(self.bookmark_selected_research_button, 1)
+        root.addLayout(research_actions)
 
         for widget in (
             self.stock_codes_input,
@@ -372,6 +404,77 @@ class DailyMarketResearchView(QWidget):
             return reader(cohort_id, cancel_callback=cancel_callback)
 
         self._start_operation("initial_read", operation)
+
+    def open_latest_research(self, context: object) -> bool:
+        """依書籤的 cohort／條件明確唯讀載入最新已發布快照，不觸發 producer。"""
+
+        if self.service is None or self._shutting_down:
+            self.status_label.setText("每日研究服務不可用；未切換研究來源。")
+            return False
+        if self._worker is not None and self._worker.isRunning():
+            self.status_label.setText("每日研究讀取仍在執行；目前無法切換來源。")
+            return False
+        if str(getattr(context, "source_kind", "") or "") != (
+            "daily_market_research_snapshot"
+        ):
+            self.status_label.setText("此 context 不是每日研究書籤；未讀取其他來源。")
+            return False
+        cohort_id = str(
+            getattr(context, "daily_snapshot_cohort_id", "") or ""
+        ).strip()
+        condition_keys = tuple(
+            part.strip()
+            for part in str(
+                getattr(context, "daily_snapshot_condition_keys", "") or ""
+            ).split(",")
+            if part.strip()
+        )
+        combine_mode = str(
+            getattr(context, "daily_snapshot_combine_mode", "") or ""
+        ).upper()
+        if (
+            not cohort_id
+            or not condition_keys
+            or any(key not in {"close_above_ma20", "close_above_ma60"} for key in condition_keys)
+            or combine_mode not in {"AND", "OR"}
+        ):
+            self.status_label.setText(
+                "書籤缺少有效 cohort、條件或 AND／OR；拒絕改用其他來源。"
+            )
+            return False
+        reader = getattr(self.service, "read_latest_published_snapshot", None)
+        if not callable(reader):
+            reader = getattr(self.service, "read_latest", None)
+        if not callable(reader):
+            self.status_label.setText("研究服務未提供唯讀 latest 入口；未更新快照。")
+            return False
+
+        blockers = [
+            QSignalBlocker(widget)
+            for widget in (
+                self.cohort_id_input,
+                self.ma20_checkbox,
+                self.ma60_checkbox,
+                self.combine_mode_combo,
+            )
+        ]
+        self.cohort_id_input.setText(cohort_id)
+        self.ma20_checkbox.setChecked("close_above_ma20" in condition_keys)
+        self.ma60_checkbox.setChecked("close_above_ma60" in condition_keys)
+        self.combine_mode_combo.setCurrentIndex(
+            max(0, self.combine_mode_combo.findData(combine_mode))
+        )
+        del blockers
+
+        def operation(cancel_callback: Callable[[], bool]) -> object:
+            return reader(cohort_id, cancel_callback=cancel_callback)
+
+        self._initial_read_started = True
+        self.status_label.setText(
+            f"明確要求唯讀讀取 cohort {cohort_id} 的最新已發布快照；未呼叫 producer。"
+        )
+        self._start_operation("latest_research_read", operation)
+        return True
 
     def reload_published_snapshot(self) -> None:
         """唯讀重讀指定 cohort／日期的已發布快照。"""
@@ -516,6 +619,12 @@ class DailyMarketResearchView(QWidget):
             self.reload_button.setEnabled(available and not busy)
             self.cancel_button.setEnabled(busy)
             self.open_selected_stock_button.setEnabled(not busy and self._has_selected_row())
+            self.bookmark_selected_research_button.setEnabled(
+                not busy
+                and self.watchlist_service is not None
+                and self._snapshot is not None
+                and self._has_selected_row()
+            )
             for widget in (
                 self.stock_codes_input,
                 self.cohort_id_input,
@@ -557,7 +666,10 @@ class DailyMarketResearchView(QWidget):
                     f"{self.status_label.text()}；讀回 manifest 與來源核驗完成。"
                 )
             return
-        self._accept_snapshot(result, sync_cutoff=kind == "initial_read")
+        self._accept_snapshot(
+            result,
+            sync_cutoff=kind in {"initial_read", "latest_research_read"},
+        )
 
     def _on_operation_error(self, generation: int, message: str) -> None:
         if generation != self._operation_generation or self._shutting_down:
@@ -1090,6 +1202,137 @@ class DailyMarketResearchView(QWidget):
             and (self._worker is None or not self._worker.isRunning())
             and self._has_selected_row()
         )
+        if hasattr(self, "bookmark_selected_research_button"):
+            self.bookmark_selected_research_button.setEnabled(
+                self.watchlist_service is not None
+                and self._snapshot is not None
+                and not self._shutting_down
+                and (self._worker is None or not self._worker.isRunning())
+                and self._has_selected_row()
+            )
+
+    def bookmark_selected_research(self) -> bool:
+        """保存已核驗的選取列；只有使用者確認後才呼叫觀察清單服務。"""
+
+        if (
+            self.watchlist_service is None
+            or self._snapshot is None
+            or self._shutting_down
+        ):
+            self.status_label.setText("觀察清單服務或已核驗快照尚未提供；未保存研究書籤。")
+            return False
+        selected = self.results_table.selectionModel().selectedRows()
+        if len(selected) != 1:
+            self.status_label.setText("請先選取一列已核驗的每日研究結果。")
+            return False
+        item = self.results_table.item(selected[0].row(), 0)
+        row = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if row is None:
+            self.status_label.setText("選取列缺少快照來源資料；未保存研究書籤。")
+            return False
+
+        stock_code = str(getattr(row, "stock_code", "") or "").strip()
+        try:
+            bookmark = create_daily_market_research_bookmark(
+                self._snapshot,
+                row,
+                sort_key=str(self.sort_key_combo.currentData() or "stock_code"),
+                descending=str(self.sort_direction_combo.currentData() or "asc").lower()
+                in {"desc", "descending"},
+                filter_state=str(self.filter_state_combo.currentData() or "all"),
+                stock_name="",
+            )
+        except Exception as exc:
+            self.status_label.setText(
+                f"無法建立完整研究書籤：{type(exc).__name__}: {exc}；未保存。"
+            )
+            return False
+
+        if not self._confirm_research_bookmark(bookmark, row):
+            self.status_label.setText("已取消收藏；觀察清單未變更。")
+            return False
+
+        add_bookmark = getattr(self.watchlist_service, "add_research_bookmark", None)
+        if not callable(add_bookmark):
+            self.status_label.setText("觀察清單服務不支援每日研究書籤；未保存。")
+            return False
+        try:
+            result = add_bookmark(bookmark)
+        except Exception as exc:
+            self.status_label.setText(
+                f"研究書籤保存失敗：{type(exc).__name__}: {exc}。"
+            )
+            return False
+
+        status = str(getattr(result, "status", "") or "")
+        if status == "conflict":
+            message = str(getattr(result, "message", "") or "書籤身份衝突")
+            self.status_label.setText(f"{message}；未覆寫既有書籤。")
+            return False
+        if status not in {"added", "already_present"}:
+            self.status_label.setText(
+                str(getattr(result, "message", "研究書籤未能保存。"))
+            )
+            return False
+        self.bookmarkSaved.emit(bookmark)
+        self.status_label.setText(
+            f"{'已收藏' if status == 'added' else '此研究已收藏'} {stock_code}；來源仍固定於原 manifest。"
+        )
+        return True
+
+    def _confirm_research_bookmark(self, bookmark: object, row: object) -> bool:
+        callback = self.bookmark_confirmation_callback
+        if callback is not None:
+            try:
+                return bool(callback(bookmark))
+            except Exception as exc:
+                self.status_label.setText(
+                    f"研究書籤確認流程失敗：{type(exc).__name__}: {exc}；未保存。"
+                )
+                return False
+
+        manifest = getattr(self._snapshot, "manifest", {})
+        if not isinstance(manifest, Mapping):
+            manifest = {}
+        stock_code = str(getattr(row, "stock_code", "") or "").strip()
+        decision_date = str(getattr(row, "decision_date", "") or "未知")
+        data_date = str(getattr(row, "data_date", "") or "未知")
+        conditions = ", ".join(self._selected_condition_keys()) or "未提供"
+        combine_mode = str(self.combine_mode_combo.currentData() or "AND")
+        filter_state = str(self.filter_state_combo.currentData() or "all")
+        source_id = str(
+            getattr(row, "source_snapshot_id", "")
+            or manifest.get("source_snapshot_id", "")
+            or "未提供"
+        )
+        source_hash = str(
+            getattr(row, "source_snapshot_hash", "")
+            or self._manifest_sha256
+            or "未提供"
+        )
+        method_hash = str(manifest.get("method_contracts_sha256", "未提供"))
+        query = getattr(bookmark, "query", None)
+        if query is None:
+            query = getattr(bookmark, "query_json", "")
+        query_text = str(query or "").strip()
+        detail = (
+            f"股票：{stock_code}\n決策日：{decision_date}｜資料日：{data_date}\n"
+            f"方法／條件：{conditions}｜組合：{combine_mode}\n"
+            f"列狀態篩選：{filter_state}\n"
+            f"方法契約雜湊：{method_hash}\n來源 manifest：{source_id}\n來源 hash：{source_hash}"
+        )
+        if query_text:
+            detail += f"\n查詢：{query_text}"
+        return (
+            QMessageBox.question(
+                self,
+                "確認收藏此研究",
+                f"將已驗證的原研究來源加入觀察清單？\n\n{detail}",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            == QMessageBox.StandardButton.Yes
+        )
 
     def open_selected_stock(self) -> bool:
         if self.service is None or self._snapshot is None or self._shutting_down:
@@ -1205,6 +1448,7 @@ class DailyMarketResearchView(QWidget):
             self.reload_button,
             self.cancel_button,
             self.open_selected_stock_button,
+            self.bookmark_selected_research_button,
             self.stock_codes_input,
             self.cohort_id_input,
             self.decision_date_edit,

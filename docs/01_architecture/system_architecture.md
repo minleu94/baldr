@@ -1199,3 +1199,10 @@ scheduled wrapper 分列實際 child code、summary errors、source qualificatio
 ### UX02 狀態呈現邊界（2026-10-05）
 
 `ui_qt/status_vocabulary.py` 是無 IO 的純顯示 helper，依具名維度翻譯已知碼並保留未知碼。consumer 使用同一label／detail，DTO與domain狀態、日期／來源／hash契約不變；專用狀態保留原fallback。此層不分類來源真偽、不算金融數值、不授予正式資格。
+
+
+## 2026-10-05 每日研究書籤邊界
+
+`app_module/daily_market_research_bookmark.py`保存已核驗source與query的不可變契約；factory重用既有snapshot reader綁root／manifest／artifact，decoder只驗封存方法／hash，不以live registry改寫歷史。`WatchlistService`在既有items加入可選extension，JSON與SQLite沿用原儲存邊界；dedup採bookmark identity，不偽造Advice result_id、不複製為持倉ledger。
+
+顯式migration的可選item semantic identity由app service嚴格驗證後傳給data層，預設仍保留舊stockcode重複guard；沒有data→app新依賴、schema重建或自動真實資料遷移。Qt Daily View只在確認後寫觀察清單；Watchlist和Main以exact bookmark context讀回／切股／返回。Stock report切股須先解析同manifest／query的目標bookmark；找不到則拒絕，不能replace原bookmark ID為另一股。明確latest讀取另一路徑，不更新原收藏或呼叫producer。範圍與驗證見[QA](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。

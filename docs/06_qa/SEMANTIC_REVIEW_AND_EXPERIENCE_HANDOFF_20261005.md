@@ -246,3 +246,12 @@ Market61、root loader9（8項重跑）、整合47、Workbench85、validator25�
 `ui_qt/status_vocabulary.py` 提供純呈現 `status_label`／`status_detail`，明確區分 data／load／research／qualification／event／validation；未知碼保留，completed 不跨維度授予資格。盤勢、持倉系統健康、選股、個股及 Console 的既有入口共用詞彙；Workbench 將時間等待／休市與具名故障分開，回測保留 PASS／WARN／FAIL 並加白話驗證狀態。原始診斷、來源及日期／身份沿原 DTO 保留，沒有修改策略／producer／模型或拒絕 guards。
 
 本包是 UX02 有限落點，非全頁狀態重構或整個階段1完成。Backtest 初始化18.62%仍未達20%凍結門檻；UX16來源／PIT及UX19 writer／容量依賴另列，不以自然成熟阻擋本包工程。詳見 [UX02驗證收據](../06_qa/UX02_SHARED_STATUS_VOCABULARY_20261005.md)。未重跑效能／learner／Native1477、未producer／清理／push，未知根檔及C:/ta_iso_1005還原映射未動。完成本地commit／blob核驗後停止交父層。
+
+
+## 2026-10-05 UX03／06／13 收藏原來源增量交付
+
+基線3239d23；收藏→既有觀察清單→同源個股→同query已收藏股票切換→exact返回已完成限定工程閉環。JSON／SQLite兼容且明確同股書籤升級已由隔離fixture核驗；沒有自動真實遷移或第二ledger。取消、冪等、錯來源拒絕及精確移除／還原均有受控證據。
+
+Storage/UI agent21項＋root related93項已解決全部失敗；WB85、validator25／4skip、mypy778、compile／quant guard通過。Native保存／新程序重開與post-copy final readback均passed，PID33448／14424／36364退出、worker0；原快照／正式DB stat不變。raw與最終codepins在 `output/qa/ux03_research_bookmark_20261005/`，最終Native收據SHA=`4b0360162532a6fc9569e8741a79695c3e57efae73d41f55bda43f1d977ffdc4`；Library四圖ID見library_metadata。真正HEAD／提交以新commit_readback與Git為準，勿以舊handoff倒退。
+
+僅更新既定原計畫 `output/plans/baldr_product_experience_plan_20261004.md` append葉片，原內容保留。完整stage1–3與其他工程pending、Backtest18.62%／20%、真人／PIT／availability／自然ML資格仍各自保留；後續由父層安排。清理／永久刪除、push、producer／learner、真實使用者視窗操作皆未執行。

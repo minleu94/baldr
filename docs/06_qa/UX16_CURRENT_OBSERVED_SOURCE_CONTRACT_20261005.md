@@ -217,3 +217,46 @@ Stock記錄DTO來源 `output/qa/ux02_status_20261005/report_observation.json` �
 原始QA位於 `output/qa/ux02_native_source_contract_20261005/`，不提交output。`intake.json` 記錄輸入／輸出與責任；`plan_before.md` 保留唯一原計畫修改前bytes；`active_task_before.yaml` 保留本機shared state前像。量化防禦linter通過，仍須以cutoff／來源／型別測試與人工審查判讀，不視為完整正確性證明。
 
 本包禁止正式DB／registry寫入、producer／訓練、大DBcopy、全量重複回歸、Native1477重開與永久清理。未知 `paper_event_source_capture.py`、C:/ta_iso_1005隔離／還原映射保持原樣；本地commit與blob/status核驗後停止交父層，不push。
+
+
+## 最新延伸：UX03／06／13 收藏原研究與精確返回（2026-10-05）
+
+本包基線為 `3239d23`，完成每日研究列 → 明確收藏 → 既有觀察清單 → 原來源個股 → 同查詢已收藏股票切換 → exact 返回的限定閉環。這是既定原計畫階段1–3中的工程葉片；不宣告完整 UX03／06／13 或三階段全部完成。
+
+`daily_market_research_bookmark.py` 的 factory 以既有 pinned reader 重驗快照根、manifest／artifact，保存原 manifest identity／hash、日期、每股 input／snapshot identity、完整 declared cohort、條件／AND／OR、filter_state／排序偏好，以及 captured 方法契約／hash。strict decoder 拒絕 schema、payload／query／identity hash、日期與方法不一致；保留封存契約，不拿 live registry 覆寫舊收藏。context 保持 daily source kind、`source_workspace=watchlist`、`source_id=bookmark_id`，沒有偽造 Advice result_id。
+
+Watchlist JSON 與 SQLite 仍共用既有 items payload；相同內容重複收藏完全不寫，另一來源／查詢的同股收藏各自保存。精確移除／token 還原不刪同股其他來源，普通列與研究書籤同碼時也使用精確身份。顯式升級的 semantic identity 由 app service 驗證後傳給 data migration，未新增 data→app 反向依賴，沒有自動遷移真實使用者資料。無效書籤不可降格手動或 latest；「以最新來源另開研究」只讀 published latest、同步實際來源截止時間，原書籤不變。
+
+### 有限驗證
+
+- Storage agent：5 個新測試及4個既有 wiring／migration測試通過；UI agent：12個新測試通過，兩者 compile／targeted mypy 通過。Agent 未交付獨立 rawlog，收據明確標為 delegated report。
+- Root related route共93項：初次88 passed／5 failed；1項是舊推薦文案被改動，已恢復並精準重驗通過；4項是 Windows no-follow唯讀祖目錄 handle 被沙箱擋住，已經自動核准 elevation，在已確認 fresh 的專屬 `.t` fixture重驗4 passed。未修改／放寬安全 guard，沒有全量重跑。
+- 最終 Workbench85 passed；validator25 passed／4 skipped／0 failed；全域mypy778 source files通過；12個Python路徑compile通過；float／look-ahead guard通過。相關唯一測試合計114，Workbench另85；不是全repo regression或效能量測。
+
+原輸出與退出碼：`output/qa/ux03_research_bookmark_20261005/verification_summary.json`、`related.log`、`followup_tool_results.json`、`workbench.log`、`validator.log`、`mypy.log`、`compile_receipt.json`、`guard_receipt.json`。初次QA wrapper cp1252顯示尾段出錯，但子命令原log／exit receipt完整保留；wrapper已修正UTF-8，不把console錯誤冒充產品通過或重跑已成功guard。
+
+### Native 與來源身份
+
+Windows Native QTest保存程序PID33448、重開PID14424及舊文案恢復後最終重開PID36364均已退出，worker=0。使用上一包已發布的真 D唯讀2382／1477快照，沒有 producer／learner重跑、正式DB／registry寫入、真實觀察清單修改或使用者視窗操作。隔離JSON完成取消不寫、重複不寫、新程序讀回、兩股同query切換、exact返回、取消移除、精確移除／還原、明確latest不改書籤，以及錯hash／manifest identity／日期拒絕。
+
+兩股原manifest SHA-256=`e9ac099482e7b6181a771758c39bc53753b417e04dc397a777046e5f34f4f085`，方法契約hash=`029bcb5ada592619d9748d327eef509db0642a1c6904b652b31f186027025dc5`，query hash=`56532a0a108749d98ece9001db0fdd4a695f4de2456bdf58de2117bdb1280f42`，決策日／兩股資料日皆2026-10-05。原快照完整檔案inventory與正式DB／WAL stat前後一致，最終Native的程式碼pins與提交候選工作樹一致。
+
+最終來源收據 `output/qa/ux03_research_bookmark_20261005/native_bookmark/final_after_copy_restore/reopen_receipt.json`，SHA-256=`4b0360162532a6fc9569e8741a79695c3e57efae73d41f55bda43f1d977ffdc4`；保存收據SHA=`2c69f805a40cd5bd1b70b1bf3b3baa526fe96261d3b4fe7396ef899157bfa29e`。完整三程序清單與hash見 `native_manifest.json`。
+
+這是實際工作區／Main路由／service的Native受控驗證，不是完整App啟動、真人3–5人驗收或使用者實際清單。QA harness僅初始化本包工作區；其他上市狀態／ML等output來源未全配置，截圖明示缺件，不由此推論完整App來源已齊，也不將工程缺口改稱自然成熟。
+
+四張PNG已正式保存Library，來源標記「真D已發布來源唯讀＋隔離觀察清單／錯來源context」。IDs與PNG SHA見 `library_metadata.json`／`library_results.json`；Windows無Python os.setxattr，返回的本機version metadata保留在權威sidecar，沒有虛稱xattr已套用。
+
+### 接受邊界與剩餘工作
+
+完成限定收藏工程閉環；完整群組／提醒工作流、其餘市場來源整合、完整method/universe、排程／儲存成長／crash工程，以及原計畫其他工程項仍按原pending推進。Backtest18.62%／20%未達保持未達；官方availability、歷史PIT、自然ML與正式推薦資格、真人驗收各自保留限制，不拿本包工程／受控資料升格。清理C／專案暫存仍未執行，永久刪除另須逐次批准。
+### 本包正式 Library 圖片 ID
+
+來源均為真 D已發布快照唯讀＋隔離觀察清單／錯context，Native QTest；不是使用者真實收藏或自然模型證據。
+
+| 畫面 | library_file_id |
+|---|---|
+| 隔離觀察清單（真D已發布來源） | `libfile_9334e6d2811081918562dfa83c7ed788` |
+| 原來源2382回看 | `libfile_63e77e02663c8191a4869e6ef57ea6a5` |
+| 同查詢1477切股 | `libfile_184839b48a1881918ed475f4cc95e439` |
+| 受控錯日期拒絕 | `libfile_9b12614716a08191b0391f8347552de6` |

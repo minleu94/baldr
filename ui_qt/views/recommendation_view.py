@@ -2611,6 +2611,7 @@ class RecommendationView(QWidget):
         self.result_source_tabs.addTab(result_panel, "已保存推薦／策略研究")
         self.daily_market_research_view = DailyMarketResearchView(
             self.daily_market_research_service,
+            watchlist_service=self.watchlist_service,
             parent=self,
         )
         self.daily_market_research_view.stockResearchRequested.connect(

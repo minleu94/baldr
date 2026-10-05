@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -465,6 +465,9 @@ class StockResearchReportView(QWidget):
         super().__init__(parent)
         self.service = service
         self.context = context
+        self.research_bookmark_context_resolver: Callable[
+            [ResearchStockContextDTO, str], ResearchStockContextDTO | None
+        ] | None = None
         self.presentation_service = presentation_service or DecisionPresentationService()
         self.stock_codes = tuple(str(code).strip() for code in stock_codes if str(code).strip())
         self._request_id = 0
@@ -1033,6 +1036,19 @@ class StockResearchReportView(QWidget):
         if not code:
             self._set_status("請輸入股票代碼。", "warning")
             return
+        context = self.context
+        if (
+            context is not None
+            and context.source_workspace == "watchlist"
+            and context.source_kind == "daily_market_research_snapshot"
+            and context.stock_code.strip() != code
+        ):
+            resolver = self.research_bookmark_context_resolver
+            resolved = resolver(context, code) if callable(resolver) else None
+            if resolved is None:
+                self._set_status("目標股票沒有同快照、同條件的收藏，無法比較；請明確另開研究。", "warning")
+                return
+            self.context = resolved
         self._request_id += 1
         request_id = self._request_id
         self._active_code = code

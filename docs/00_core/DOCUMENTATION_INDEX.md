@@ -51,3 +51,9 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 整理前的日期化摘要與詳細分類保存在 [歷史索引](../09_archive/DOCUMENTATION_INDEX_HISTORY_2026_09_27.md)，只作文件演進追溯。
 
 - 2026-10-05 UX02：[共用狀態詞彙有限切片與驗證](../06_qa/UX02_SHARED_STATUS_VOCABULARY_20261005.md)。
+
+
+## 2026-10-05 收藏原研究入口
+
+- [完整Manual](../07_guides/APPLICATION_MANUAL.md)：每日研究收藏、觀察清單exact回看、精確移除／還原、latest另開與排錯。
+- [限定QA](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：114項相關／WB85／validator／mypy778、Native閉環、Library IDs與未解除限制。

@@ -4569,3 +4569,16 @@ CLI（只管理派生索引，沒有 producer）：
 能力audit是可讀的detached保存來源資料；清除來源後失效，既有收藏schema與原method/snapshothash不改。正式全市場名冊(B)、新TopN／更改百分位版本、source/capacity owner子責任不在本包；部署與整條跨頁整合F4另驗。
 
 操作步驟：先在每日研究名單明示讀來源，再於強弱市場頁選「研究快照母體」及本日／本周；大盤頁查看併列的研究摘要，指數檢測仍為明示獨立操作。強弱頁以「載入數據／刷新」重核既存 pin；切來源或模式會合作取消前次讀取，等安全完成後啟新讀取。研究母體頁以「重讀同一研究來源」明示讀回。錯源／缺件依狀態原因核對原 manifest，不能自動採集補缺。能力入口先看五項矩陣（可水平捲動），再切逐股完整明細或查看 tooltip；來源清除後重新明示讀取。詳細證據見 [F2／F3 QA](../06_qa/F2_F3_SHARED_CONSUMERS_AND_CAPABILITIES_20261005.md)。
+
+
+## 2026-10-05 明示研究來源配置與手動部署
+
+研究模式目前為手動／按需。標準 `ui_qt/main.py` 無參數啟動沿原預設，不建立新的 Windows 排程，也不在啟動或切頁時發布快照。需要指定已保存來源時，啟動方傳入公開 `MainWindow` 參數：`daily_market_snapshot_root`、`daily_market_snapshot_cohort_id`、`original_stock_ranking_root`。前兩者必須成對；母體 ID 取自原 manifest，不猜 ID，也不把來源根目錄改成正式 DB。原排名來源保留其父 research source identity；bookmark v1／v2 仍沿原收藏契約。
+
+明示 cohort 會成為研究名單的初始輸入；這只設定來源，不自動讀取或發布。先核對 manifest 的 cohort／date／hash 與排名父來源，再開研究名單明示讀取。個股檢視後，research v1 依既有操作返回研究名單再收藏；original-rank v2 可在個股原排名報告按「收藏此原排名研究」。兩者重新開啟／精確返回都核對當次來源身份；新程序用相同明示配置讀回收藏，不自動轉 latest。來源缺件、舊 manifest schema、wrong identity 或修改的資料身份拒絕讀回，依具名原因修正配置；不要用採集、刪檔或改 hash 來補通過。合法收藏 v1／v2 與來源 manifest 版本是不同契約，不能混為一談。
+
+停止時透過主視窗正常關閉，背景工作合作取消後收尾；回到預設部署只撤回啟動方的三項自訂參數並開新程序，不移動／刪除保存來源或原收藏。本批 isolated QA 關閉的是自己 child，不操作使用者視窗。
+
+發布前依既有治理工具作唯讀容量／引用診斷與 retention dry-run。實體、WAL、staging、索引及備份都須納預算；容量未知或引用盤點不完整不給 writer 授權。較長保留預估與自然成長分列，中央 reserve 以檢查當下 policy 為準。retention 候選不代表永久刪除授權。
+
+詳細配置、案例、資源數值與限制見 [F4 QA](../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)。

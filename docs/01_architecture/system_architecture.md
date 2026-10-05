@@ -1275,3 +1275,10 @@ F2／F3 在已接受的 A／A 研究限定範圍完成：原大盤指數併列�
 第一版工程剩 F1（18.62%／20%，差 1.38pp；不重測微調）及 F4（整條跨頁整合、部署、長期總容量）。新 Native／3–5 位真人另驗；舊1477 Native已在6691ec78完成，不重列待辦。1000×835 outer／125%沿已接受，不加1000×800硬門檻。工程缺陷不稱等自然成熟；source/capacity／Evidence 屬另一 owner，保留其變更並排除本批提交。沒有清理、正式資料寫入、訓練、前景視窗操作或 push。
 
 [本批詳細收據](../06_qa/F2_F3_SHARED_CONSUMERS_AND_CAPABILITIES_20261005.md)
+
+
+## 2026-10-05 明示研究來源配置接線
+
+MainWindow 公開 optional `daily_market_snapshot_root`／`daily_market_snapshot_cohort_id`／`original_stock_ranking_root`。快照 root 與 cohort 必須成對且非空；rank root 只搭配完整研究配置，驗證在 QObject／服務初始化之前。DailyMarketResearchScreenerService 使用指定 snapshot/rank roots，StockResearchReportReadService 使用同一 snapshot root/cohort，研究名單初始欄位同步 cohort；配置不啟動讀取／producer。無參數沿原預設。收藏沿既有 research v1／original-rank v2，沒有新增 schema 或資料遷移。
+
+F4 實際跨頁、新程序回看與總資源驗收以 [F4 詳細收據](../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md) 的逐項結果為準；配置接線不授正式排程或自然資格。

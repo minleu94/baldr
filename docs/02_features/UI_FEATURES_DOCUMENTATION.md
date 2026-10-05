@@ -574,3 +574,8 @@ F2／F3 在已接受的 A／A 研究限定範圍完成：原大盤指數併列�
 第一版工程剩 F1（18.62%／20%，差 1.38pp；不重測微調）及 F4（整條跨頁整合、部署、長期總容量）。新 Native／3–5 位真人另驗；舊1477 Native已在6691ec78完成，不重列待辦。1000×835 outer／125%沿已接受，不加1000×800硬門檻。工程缺陷不稱等自然成熟；source/capacity／Evidence 屬另一 owner，保留其變更並排除本批提交。沒有清理、正式資料寫入、訓練、前景視窗操作或 push。
 
 [本批詳細收據](../06_qa/F2_F3_SHARED_CONSUMERS_AND_CAPABILITIES_20261005.md)
+
+
+## 2026-10-05 明示 research source 啟動配置
+
+MainWindow 啟動方可明示研究 snapshot root／cohort 與 original-rank root；快照 root/cohort 成對、非空，原排名 root 不能單獨配置。研究名單初始 cohort 同步明示值，啟動仍不自動讀取／採集；無參數沿原 defaults。操作依 [完整 Manual](../07_guides/APPLICATION_MANUAL.md) 的明示研究來源配置小節；雙來源跨頁與資源終驗依 [F4 QA](../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)，不以 offscreen 取代 Native／真人。

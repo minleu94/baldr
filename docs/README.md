@@ -49,3 +49,6 @@
 
 
 - 2026-10-05：[F2／F3 原市場共享來源及已開能力矩陣](06_qa/F2_F3_SHARED_CONSUMERS_AND_CAPABILITIES_20261005.md)，A／A 限定完成；F1／F4 與新 Native／真人另列。
+
+
+- 2026-10-05：[F4跨頁整合與資源終驗](06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)：actual三程序雙收藏讀回通過；20-session實測有效，120/250長保留因二次payload超現有預算blocked，F4未全關閉；F1／新Native／真人另列。

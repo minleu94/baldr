@@ -273,7 +273,31 @@ class MainWindow(QMainWindow):
             )
         return composition.builder
 
-    def __init__(self, *, policy_config_path: str | Path | None = None):
+    def __init__(
+        self,
+        *,
+        policy_config_path: str | Path | None = None,
+        daily_market_snapshot_root: str | Path | None = None,
+        daily_market_snapshot_cohort_id: str | None = None,
+        original_stock_ranking_root: str | Path | None = None,
+    ):
+        if (daily_market_snapshot_root is None) != (
+            daily_market_snapshot_cohort_id is None
+        ):
+            raise ValueError(
+                "daily_market_snapshot_root 與 daily_market_snapshot_cohort_id 必須一起明示"
+            )
+        for name, value in (
+            ("daily_market_snapshot_root", daily_market_snapshot_root),
+            ("daily_market_snapshot_cohort_id", daily_market_snapshot_cohort_id),
+            ("original_stock_ranking_root", original_stock_ranking_root),
+        ):
+            if value is not None and not str(value).strip():
+                raise ValueError(f"{name} 不可為空")
+        if original_stock_ranking_root is not None and daily_market_snapshot_root is None:
+            raise ValueError(
+                "original_stock_ranking_root 必須搭配明示每日研究快照 root／cohort"
+            )
         super().__init__()
         self.setWindowTitle("baldr")
         primary_screen = QApplication.primaryScreen()
@@ -364,7 +388,26 @@ class MainWindow(QMainWindow):
             # 個股研究報告只組合既有 read contract；MainWindow 注入已驗證的
             # current-restated ML registry，不重算推薦，也不把 owner 邏輯搬入 UI。
             self.stock_research_ml_registry = CurrentRestatedMLRunRegistry()
-            self.daily_market_research_screener_service = DailyMarketResearchScreenerService(self.config)
+            self.daily_market_snapshot_root = (
+                Path(daily_market_snapshot_root).expanduser().resolve()
+                if daily_market_snapshot_root is not None
+                else None
+            )
+            self.daily_market_snapshot_cohort_id = (
+                str(daily_market_snapshot_cohort_id).strip()
+                if daily_market_snapshot_cohort_id is not None
+                else None
+            )
+            self.original_stock_ranking_root = (
+                Path(original_stock_ranking_root).expanduser().resolve()
+                if original_stock_ranking_root is not None
+                else None
+            )
+            self.daily_market_research_screener_service = DailyMarketResearchScreenerService(
+                self.config,
+                snapshot_root=self.daily_market_snapshot_root,
+                original_ranking_root=self.original_stock_ranking_root,
+            )
             self.stock_research_report_service = StockResearchReportReadService(
                 self.config,
                 portfolio_service=self.portfolio_service,
@@ -372,6 +415,8 @@ class MainWindow(QMainWindow):
                 ml_provider=self.stock_research_ml_registry,
                 freshness_status_path=self._data_freshness_status_path(),
                 candidate_db_file=configured_candidate_db_path() if self.config.profile != 'test' else None,
+                daily_market_snapshot_root=self.daily_market_snapshot_root,
+                daily_market_snapshot_cohort_id=self.daily_market_snapshot_cohort_id,
             )
             self.decision_outcome_journey_service = (
                 DecisionOutcomeJourneyService.from_config(
@@ -388,6 +433,12 @@ class MainWindow(QMainWindow):
 
             # 設置 UI
             self._setup_ui()
+            if self.daily_market_snapshot_cohort_id is not None:
+                # Keep the reader field aligned with the explicitly configured
+                # source while leaving snapshot loading as a user action.
+                self.recommendation_view.daily_market_research_view.cohort_id_input.setText(
+                    self.daily_market_snapshot_cohort_id
+                )
             self.setMinimumWidth(
                 min(self.RESPONSIVE_MIN_WIDTH, self._initial_window_geometry.width())
             )

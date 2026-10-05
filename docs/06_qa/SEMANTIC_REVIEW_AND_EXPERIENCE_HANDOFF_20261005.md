@@ -346,3 +346,16 @@ F2／F3 在已接受的 A／A 研究限定範圍完成：原大盤指數併列�
 第一版工程剩 F1（18.62%／20%，差 1.38pp；不重測微調）及 F4（整條跨頁整合、部署、長期總容量）。新 Native／3–5 位真人另驗；舊1477 Native已在6691ec78完成，不重列待辦。1000×835 outer／125%沿已接受，不加1000×800硬門檻。工程缺陷不稱等自然成熟；source/capacity／Evidence 屬另一 owner，保留其變更並排除本批提交。沒有清理、正式資料寫入、訓練、前景視窗操作或 push。
 
 [本批詳細收據](F2_F3_SHARED_CONSUMERS_AND_CAPABILITIES_20261005.md)
+
+
+## 2026-10-05 F4跨頁整合與資源終驗（最新）
+
+MainWindow明示snapshot root/cohort、original-rank root接線完成；actual9工作區三個不同子程序跑通research v1源頁收藏／original-rank v2報告收藏、精確返回、新程序同source/report identity讀回及no-arg配置回滾。8個發布檔案hash在跨頁／cancel／fresh process／close後不變，schema/cancel/stale last-good與有限cache核對通過；不是Native或自然資格。25個不重複受影響案例有通過證據，Workbench85、validator25/4skip/0fail、mypy790、兩檔compile與Main量化guard通過。
+
+20個同日受控session共用tiny3股×120列DB，實體留存1,714,653 B、index staging32,768 B另計、index WAL0、單份backup32,768 B；當下policy SHA6e7b018f...111e880／20GiB reserve的隔離preflight通過。Formal inventory unknown，不授writer，retention僅dry-run。
+
+**120／250 sessions仍blocked**：Watchlist revision保存整份清單，payload呈二次累積，下界37,251,702／159,588,787 B，均超4MiB payload及32MiB DB上限；精確未來physical未知。原9.9／20.5MB線性預估已撤回，以resource v4為準。不能宣告F4全閉／首版完成，也不能把已知儲存預算限制寫成等自然成熟；後續容量／Watchlist owner需提出可審核方案，本包不擅改policy／migration／清理。
+
+F2／F3 A／A不重開；F1保持18.62%／20%、差1.38pp，由父層處理例外／後續方向，不重測微調。正式WindowsTask未查改，manual/on-demand沿用；其他owner三檔與Paper未納提交，未寫正式資料、未操作使用者視窗、未刪資料、未push。新Native／真人／自然資格另列，舊1477 Native不重跑，1000×835 outer／125%維持、不新增1000×800門檻。
+
+[本批逐項收據／明確阻塞／回滾](F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)

@@ -124,3 +124,9 @@
 - [完整Native驗收](NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005.md)及本機output/qa/native_retry_completion_20261005/acceptance.json、attempt1/native_retry_final_receipt.json、reopen3/reopen_negative_receipt.json、library_identity.json為最終證據。新程序圖Library `libfile_4a0caaa465ec819188c4b880b112470c`，錯hash圖 `libfile_0583c30490608191981996418201059c`，其餘3圖ID見驗收表。
 - 四個自己的QA程序均退出，09:23:01UTC核對PID全無，桌面釋放。未修改正式資料/持倉/排程、未訓練/producer/全量tests、未清理、未push。本次僅完成原Native工程鏈，不授自然成熟/正式模型/PIT資格；1000×835/125%沿用，不宣告1000×800。2382header前批正常load結果保留。
 - Native已達標，交回父層安排安全清理，再依指定原plan分階段推進；永久刪除另需逐項批准。原plan正文保留，追加本收據，不另開替代計畫。
+
+## 2026-10-05 可恢復暫存整理已交付
+
+- 1251原白名單中879根同C盤隔離至C:/ta_iso_1005，642純pytest fixture、229空根、8mypy快取，108054檔、AllocationSize前後4,951,450,624bytes一致；不釋放檔案容量，未永久刪除／清空回收筒／改權限。r015 d/e/f成功，g/h/i保留；R20/R26 user Temp136空根成功，具QA引用的群組保留。372根保留，58引用根及19占用／權限未通過者均未動，精確理由／映射／還原步驟見[整理收據](TEST_TEMP_REVERSIBLE_ISOLATION_20261005.md)與output/qa/reversible_cleanup_20261005。實際r015 d還原並重新隔離、全879項identity核對通過。
+- 最新只讀容量：C free237,505,548,288／既有需求215,285,235,712；D free300,638,941,184／既有需求295,279,001,600，兩者點時間PASS；不歸因本批隔離，不啟動writer，實際writer前重新查核。本批必要永久刪除清單為空；若要真正釋空間，879項未批准候選另需逐路徑批准。
+- Native不重開：此前driver的pre-start訊號／run與timeout觀測、sleep(.02)等待及讀回sealed config／paint條件修正已記錄；歷史90秒根因仍未知，最終4.5秒真實鏈已接受。未開代理／producer／訓練／全量tests，未動正式資料／模型／持倉／排程。本批結束交回父層，按唯一原plan啟動後續階段。

@@ -19,6 +19,7 @@ from app_module.daily_market_method_contract import (
     method_contracts_payload,
     method_contracts_sha256,
 )
+from app_module.original_stock_ranking import VerifiedOriginalStockRanking
 from app_module.daily_market_research_screener import (
     DailyMarketResearchConditionResult,
     DailyMarketResearchScreenRow,
@@ -103,8 +104,9 @@ class DailyMarketCohortProjection:
     published_count: int
     method_counts: tuple[DailyMarketCohortMethodCount, ...]
     members: tuple[DailyMarketCohortMember, ...]
-    original_rank_state: Literal["unknown"] = "unknown"
+    original_rank_state: Literal["unknown", "verified"] = "unknown"
     research_universe: Mapping[str, Any] | None = None
+    original_ranking: VerifiedOriginalStockRanking | None = None
 
 
 def project_daily_market_cohort(
@@ -112,6 +114,7 @@ def project_daily_market_cohort(
     rows: Sequence[DailyMarketResearchScreenRow],
     *,
     expected_snapshot_root: str | Path | None = None,
+    original_ranking: VerifiedOriginalStockRanking | None = None,
 ) -> DailyMarketCohortProjection:
     """將 verified v2 snapshot 與全 cohort screener rows 投影成共用 readmodel。
 
@@ -121,6 +124,8 @@ def project_daily_market_cohort(
     """
 
     manifest, declared_codes, contracts = _validate_snapshot(snapshot)
+    if original_ranking is not None:
+        _validate_original_ranking(snapshot, original_ranking)
     payload_codes = tuple(sorted(snapshot.stock_snapshots))
     row_by_code, snapshot_root = _validate_rows(
         snapshot,
@@ -201,11 +206,37 @@ def project_daily_market_cohort(
         published_count=len(payload_codes),
         method_counts=method_counts,
         members=tuple(members),
+        original_rank_state=("verified" if original_ranking is not None else "unknown"),
         research_universe=(
             MappingProxyType(deepcopy(dict(manifest["research_universe"])))
             if isinstance(manifest.get("research_universe"), Mapping) else None
         ),
+        original_ranking=original_ranking,
     )
+
+
+def _validate_original_ranking(
+    snapshot: VerifiedDailyMarketSnapshot,
+    ranking: VerifiedOriginalStockRanking,
+) -> None:
+    """將獨立原生排名讀回綁定到完全相同的 feature manifest。"""
+
+    if not isinstance(ranking, VerifiedOriginalStockRanking):
+        _fail("cohort_original_ranking_unverified", "original ranking is not verified")
+    metadata = ranking.metadata
+    if (
+        ranking.readiness != "research_only"
+        or ranking.period not in {"day", "week"}
+        or ranking.direction not in {"strong", "weak"}
+        or ranking.decision_date != snapshot.decision_date.isoformat()
+        or metadata.get("parent_manifest_sha256") != snapshot.manifest_sha256
+        or metadata.get("parent_manifest_identity_sha256")
+        != snapshot.manifest_identity_sha256
+    ):
+        _fail(
+            "cohort_original_ranking_identity_mismatch",
+            "original ranking does not match the exact feature snapshot identity",
+        )
 
 
 def sort_daily_market_cohort_members(

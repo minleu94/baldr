@@ -13,6 +13,14 @@ from PySide6.QtWidgets import (
 
 from app_module.daily_market_cohort_projection import project_daily_market_cohort
 from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
+from ui_qt.original_ranking_presentation import (
+    original_rank_cell,
+    original_rank_row_tooltip,
+    ranking_audit_tooltip,
+    ranking_matches_snapshot,
+    ranking_rows_by_code,
+    ranking_summary_text,
+)
 from ui_qt.views.daily_market_research_view import DailyMarketResearchView
 from ui_qt.widgets.table_style import apply_financial_table_style
 
@@ -29,6 +37,8 @@ class DailyMarketCohortView(QWidget):
         super().__init__(parent)
         self.source_view = source_view
         self.projection: object | None = None
+        self._snapshot: object | None = None
+        self.original_ranking: object | None = None
         layout = QVBoxLayout(self)
         title = QLabel("研究母體盤勢")
         layout.addWidget(title)
@@ -50,10 +60,11 @@ class DailyMarketCohortView(QWidget):
         apply_financial_table_style(self.methods_table)
         group_layout.addWidget(self.methods_table)
         layout.addWidget(group)
-        self.members_table = QTableWidget(0, 5)
+        self.members_table = QTableWidget(0, 6)
         self.members_table.setHorizontalHeaderLabels(
             ["母體股票", "行情資料日", "收盤價", "MA20", "MA60"]
         )
+        self.members_table.setHorizontalHeaderItem(5, QTableWidgetItem("原始名次"))
         self.members_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         apply_financial_table_style(self.members_table)
         layout.addWidget(self.members_table)
@@ -76,6 +87,8 @@ class DailyMarketCohortView(QWidget):
         layout.addWidget(self.status_label)
         source_view.snapshotAccepted.connect(self.accept_snapshot)
         source_view.snapshotCleared.connect(self.clear_snapshot)
+        source_view.originalRankingAccepted.connect(self.accept_original_ranking)
+        source_view.originalRankingCleared.connect(self.clear_original_ranking)
 
     def on_first_open(self) -> None:
         self.source_view.on_first_open()
@@ -84,6 +97,8 @@ class DailyMarketCohortView(QWidget):
         if not isinstance(snapshot, VerifiedDailyMarketSnapshot):
             self.clear_snapshot()
             return
+        self._snapshot = snapshot
+        self.original_ranking = None
         service = self.source_view.service
         filter_rows = getattr(service, "filter_rows", None)
         if not callable(filter_rows):
@@ -114,6 +129,7 @@ class DailyMarketCohortView(QWidget):
         universe_text, universe_detail = research_universe_text(
             projection.research_universe, published_count=projection.published_count,
             declared_count=len(projection.declared_stock_codes),
+            original_rank_available=self.original_ranking is not None,
         )
         self.scope_label.setText(self.scope_label.text() + "\n" + universe_text)
         self.scope_label.setToolTip(universe_detail)
@@ -158,8 +174,77 @@ class DailyMarketCohortView(QWidget):
             "盤勢與名單共享已驗證快照；未知包含缺資料，不能當成不符合。"
         )
 
+        self._render_members_table()
+        self.ranking_label.setText(ranking_summary_text(self.original_ranking))
+        self.ranking_label.setToolTip(ranking_audit_tooltip(self.original_ranking))
+
+    def _render_members_table(self) -> None:
+        projection = self.projection
+        if projection is None:
+            self.members_table.setRowCount(0)
+            return
+        rows_by_code = ranking_rows_by_code(self.original_ranking) or {}
+        members = tuple(getattr(projection, "members", ()) or ())
+        self.members_table.setRowCount(len(members))
+        for index, member in enumerate(members):
+            code = str(getattr(member, "stock_code", "") or "")
+            ranking_row = rows_by_code.get(code)
+            values = (
+                code,
+                str(getattr(member, "data_date", None) or "未知"),
+                "未知" if getattr(member, "close", None) is None else str(member.close),
+                "未知" if getattr(member, "ma20", None) is None else str(member.ma20),
+                "未知" if getattr(member, "ma60", None) is None else str(member.ma60),
+                original_rank_cell(self.original_ranking, code),
+            )
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if column == 5:
+                    item.setToolTip(
+                        original_rank_row_tooltip(self.original_ranking, ranking_row)
+                    )
+                self.members_table.setItem(index, column, item)
+        self.members_table.resizeColumnsToContents()
+
+    def accept_original_ranking(self, ranking: object) -> None:
+        snapshot = self._snapshot
+        if snapshot is None or not ranking_matches_snapshot(
+            snapshot,
+            ranking,
+            period=str(self.source_view.original_rank_period_combo.currentData() or "day"),
+            direction=str(self.source_view.original_rank_direction_combo.currentData() or "strong"),
+        ):
+            self.clear_original_ranking()
+            return
+        projection = self.source_view._cohort_projection
+        if (
+            projection is None
+            or getattr(projection, "original_ranking", None) is not ranking
+        ):
+            self.clear_original_ranking()
+            return
+        self.original_ranking = ranking
+        self.projection = projection
+        self.ranking_label.setText(ranking_summary_text(ranking))
+        self.ranking_label.setToolTip(ranking_audit_tooltip(ranking))
+        self._render_members_table()
+
+    def clear_original_ranking(self) -> None:
+        self.original_ranking = None
+        projection = self.source_view._cohort_projection
+        if (
+            projection is not None
+            and getattr(projection, "original_ranking", None) is None
+        ):
+            self.projection = projection
+        self.ranking_label.setText(self.source_view.original_ranking_label.text())
+        self.ranking_label.setToolTip(self.source_view.original_ranking_label.toolTip())
+        self._render_members_table()
+
     def clear_snapshot(self) -> None:
         self.projection = None
+        self._snapshot = None
+        self.original_ranking = None
         self.methods_table.setRowCount(0)
         self.members_table.setRowCount(0)
         self.identity_label.setText("研究母體未知；目前沒有可用的已驗證快照。")

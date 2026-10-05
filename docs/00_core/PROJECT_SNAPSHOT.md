@@ -436,3 +436,10 @@ Health最後串接已控制實跑：臺北10/4決策對10/2行情，離線官方
 本包無Native前景或使用者視窗操作，無訓練、全市場producer、正式DB／registry或真實書籤寫入；永久清理仍未執行。驗證與commit結果見同章最終收據補記。
 
 最終驗證：104相關tests、WB85、validator25/4skip/0fail、mypy781、compile13及guard通過；真D三股隔離發布／2382讀回／offscreen同源通過。詳見UX16 QA最新最終驗證章；原排名publisher與Native仍pending，未push。
+
+
+## 2026-10-05 UX18 原排名發布延伸
+
+既有 StockScreener day／week × strong／weak 原生結果新增獨立 immutable ranking publisher／verified reader；Daily 名單、候選與研究母體 Market 共用同一 parent snapshot及排名身份。僅明示≤16股研究母體，不改原公式、feature v2或舊收藏。原 Top／Bottom 標籤不能按一般百分位／勝率解讀，數值 score 未由舊引擎暴露；未知／不相容來源維持不可用。原排名收藏／個股來源版本化、其他consumer、完整方法／母體／正式排程及長期storage仍須工程。詳見[限定QA](../06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)，新 Native／真人與全App啟動未由本包驗收。
+
+- 2026-10-05 更新：新增原排名有限工程入口及接受邊界。

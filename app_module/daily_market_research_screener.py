@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo
 
 from app_module.daily_market_method_contract import method_contracts_payload
+from app_module.original_stock_ranking import (
+    OriginalStockRankingRepository,
+    VerifiedOriginalStockRanking,
+)
 from app_module.daily_market_research_universe import (
     ResearchUniverseContractError,
     ResearchUniverseSpec,
@@ -272,6 +276,8 @@ class DailyMarketResearchScreenerService:
         config: object,
         snapshot_root: str | Path | None = None,
         universe_config_path: str | Path | None = None,
+        *,
+        original_ranking_root: str | Path | None = None,
     ) -> None:
         raw_db_path = getattr(config, "db_file", None) or getattr(
             config, "sqlite_db_file", None
@@ -288,10 +294,30 @@ class DailyMarketResearchScreenerService:
         )
         self.snapshot_root = Path(snapshot_root or default_root).expanduser().resolve()
         self.repository = DailyMarketSnapshotRepository(self.snapshot_root)
+        self.original_ranking_repository = OriginalStockRankingRepository(
+            self.snapshot_root,
+            ranking_root=original_ranking_root,
+        )
         self.research_universe_spec = (
             load_research_universe_spec(universe_config_path)
             if universe_config_path is not None
             else None
+        )
+
+    def read_original_ranking(
+        self,
+        snapshot: VerifiedDailyMarketSnapshot,
+        *,
+        period: Literal["day", "week"],
+        direction: Literal["strong", "weak"],
+    ) -> VerifiedOriginalStockRanking:
+        """讀取綁定已核驗 feature snapshot 的不可變原生排名。"""
+
+        return self.original_ranking_repository.read(
+            snapshot,
+            db_path=self.db_path,
+            period=period,
+            direction=direction,
         )
 
     def produce_snapshot(

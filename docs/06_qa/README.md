@@ -76,3 +76,10 @@
 ## 2026-10-05 收藏原研究
 
 [UX03／06／13收藏原來源收據](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：限定保存／精確返回／同查詢切股／錯來源拒絕與Library Native證據，與完整stage／自然資格分開。
+
+
+## 2026-10-05 原排名發布驗證
+
+[UX18原引擎排名不可變發布與同源讀回](UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md) 記錄四模式 bounded publisher、拒絕／中斷、同源consumer、背景實D讀回及剩餘工程／來源／Native決策。
+
+- 2026-10-05 更新：新增原排名有限工程入口及接受邊界。

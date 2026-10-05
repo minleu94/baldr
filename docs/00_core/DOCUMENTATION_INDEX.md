@@ -57,3 +57,10 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 
 - [完整Manual](../07_guides/APPLICATION_MANUAL.md)：每日研究收藏、觀察清單exact回看、精確移除／還原、latest另開與排錯。
 - [限定QA](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：114項相關／WB85／validator／mypy778、Native閉環、Library IDs與未解除限制。
+
+
+## 2026-10-05 原排名工程收據
+
+- [UX18原引擎排名發布與同源讀回](../06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)：有限研究四mode、來源拒絕、原標籤語意、offscreen與剩餘工程；操作入口仍以Application Manual為準。
+
+- 2026-10-05 更新：新增原排名有限工程入口及接受邊界。

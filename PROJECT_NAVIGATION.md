@@ -580,3 +580,10 @@ python ui_qt/main.py
 ## 更新記錄
 
 - 2026-09-06：新增八卡 DTO／服務／儲存與整合交接導航，保持正式資料及 V4 外部 Gate。
+
+
+## 2026-10-05 原排名研究導航
+
+入口：每日研究條件的日／週及強／弱選項 → 相容不可變原排名 → 研究母體盤勢同源呈現。發布CLI為scripts/publish_original_stock_ranking.py；backend app_module/original_stock_ranking.py；呈現ui_qt/original_ranking_presentation.py。原feature／舊收藏不改，未提供來源未知。[操作](docs/07_guides/APPLICATION_MANUAL.md)、[QA及限制](docs/06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)。
+
+- 2026-10-05 更新：新增原排名有限工程入口及接受邊界。

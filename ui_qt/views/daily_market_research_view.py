@@ -35,6 +35,7 @@ from app_module.daily_market_cohort_projection import (
     sort_daily_market_cohort_members,
 )
 from app_module.daily_market_research_screener import DailyMarketResearchScreenRow
+from app_module.original_stock_ranking import VerifiedOriginalStockRanking
 from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
 from app_module.daily_market_research_bookmark import (
     create_daily_market_research_bookmark,
@@ -47,6 +48,16 @@ from app_module.daily_market_research_presets import (
     summarize_research_candidates,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.original_ranking_presentation import (
+    original_rank_cell,
+    original_rank_row_tooltip,
+    ranking_audit_tooltip,
+    ranking_matches_snapshot,
+    ranking_rows_by_code,
+    ranking_summary_text,
+    ranking_window_text,
+    sort_by_original_rank,
+)
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.workers.task_worker import TaskWorker
 
@@ -76,6 +87,8 @@ class DailyMarketResearchView(QWidget):
     stockResearchRequested = Signal(object)
     snapshotAccepted = Signal(object)
     snapshotCleared = Signal()
+    originalRankingAccepted = Signal(object)
+    originalRankingCleared = Signal()
     bookmarkSaved = Signal(object)
 
     def __init__(
@@ -93,6 +106,10 @@ class DailyMarketResearchView(QWidget):
         self._snapshot: object | None = None
         self._cohort_projection: object | None = None
         self._cohort_members_by_code: dict[str, object] = {}
+        self._original_ranking: VerifiedOriginalStockRanking | None = None
+        self._original_ranking_error = ""
+        self._original_ranking_pending = False
+        self._cohort_full_rows: tuple[object, ...] = ()
         self._all_rows: tuple[object, ...] = ()
         self._visible_rows: tuple[object, ...] = ()
         self._manifest_sha256 = ""
@@ -316,6 +333,9 @@ class DailyMarketResearchView(QWidget):
             self.sort_key_combo.addItem(label, key)
         self.sort_key_combo.addItem("原始強弱排名（未提供）", "original_strength_rank")
         rank_item = self.sort_key_combo.model().item(self.sort_key_combo.count() - 1)
+        self.sort_key_combo.setItemText(
+            self.sort_key_combo.count() - 1, "原始名次（原引擎）"
+        )
         if rank_item is not None:
             rank_item.setEnabled(False)
             rank_item.setToolTip("此快照未提供原始強弱排名；不提供排名排序或篩選。")
@@ -330,6 +350,33 @@ class DailyMarketResearchView(QWidget):
         sort_row.addWidget(self.sort_direction_combo)
         sort_row.addStretch(1)
         root.addLayout(sort_row)
+
+        original_rank_row = QHBoxLayout()
+        original_rank_row.addWidget(QLabel("原排名期間"))
+        self.original_rank_period_combo = QComboBox()
+        self.original_rank_period_combo.setObjectName("original_rank_period_combo")
+        self.original_rank_period_combo.setAccessibleName("原始排名期間")
+        self.original_rank_period_combo.addItem("日比較", "day")
+        self.original_rank_period_combo.addItem("週比較", "week")
+        original_rank_row.addWidget(self.original_rank_period_combo)
+        original_rank_row.addWidget(QLabel("原排名方向"))
+        self.original_rank_direction_combo = QComboBox()
+        self.original_rank_direction_combo.setObjectName("original_rank_direction_combo")
+        self.original_rank_direction_combo.setAccessibleName("原始排名強弱方向")
+        self.original_rank_direction_combo.addItem("強勢", "strong")
+        self.original_rank_direction_combo.addItem("弱勢", "weak")
+        original_rank_row.addWidget(self.original_rank_direction_combo)
+        original_rank_row.addStretch(1)
+        root.addLayout(original_rank_row)
+
+        self.original_ranking_label = QLabel("原始排名：未知；尚未讀取不可變來源")
+        self.original_ranking_label.setObjectName("dailyMarketOriginalRanking")
+        self.original_ranking_label.setAccessibleName("原始排名來源狀態")
+        self.original_ranking_label.setWordWrap(True)
+        self.original_ranking_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        root.addWidget(self.original_ranking_label)
 
         self.summary_label = QLabel("尚未載入已發布研究快照。")
         self.summary_label.setObjectName("dailyMarketResearchSummary")
@@ -367,7 +414,7 @@ class DailyMarketResearchView(QWidget):
         self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         root.addWidget(self.status_label)
 
-        self.results_table = QTableWidget(0, 9)
+        self.results_table = QTableWidget(0, 10)
         self.results_table.setObjectName("dailyMarketResearchResults")
         self.results_table.setAccessibleName("每日研究條件結果")
         self.results_table.setHorizontalHeaderLabels(
@@ -382,6 +429,9 @@ class DailyMarketResearchView(QWidget):
                 "MA20",
                 "MA60",
             )
+        )
+        self.results_table.setHorizontalHeaderItem(
+            9, QTableWidgetItem("原始名次")
         )
         self.results_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.results_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -437,12 +487,23 @@ class DailyMarketResearchView(QWidget):
             self.filter_state_combo,
             self.sort_key_combo,
             self.sort_direction_combo,
+            self.original_rank_period_combo,
+            self.original_rank_direction_combo,
         ):
             if isinstance(widget, QCheckBox):
                 widget.toggled.connect(self._apply_filter_controls)
             elif isinstance(widget, QComboBox):
-                if widget in (self.sort_key_combo, self.sort_direction_combo):
+                if widget is self.sort_key_combo:
+                    widget.currentIndexChanged.connect(self._on_sort_key_changed)
+                elif widget is self.sort_direction_combo:
                     widget.currentIndexChanged.connect(self._render_rows)
+                elif widget in (
+                    self.original_rank_period_combo,
+                    self.original_rank_direction_combo,
+                ):
+                    widget.currentIndexChanged.connect(
+                        self._request_original_ranking_read
+                    )
                 else:
                     widget.currentIndexChanged.connect(self._apply_filter_controls)
 
@@ -564,11 +625,170 @@ class DailyMarketResearchView(QWidget):
         available = self.service is not None
         self.refresh_button.setEnabled(available)
         self.reload_button.setEnabled(available)
+        can_read_original = callable(
+            getattr(self.service, "read_original_ranking", None)
+        )
+        self.original_rank_period_combo.setEnabled(can_read_original)
+        self.original_rank_direction_combo.setEnabled(can_read_original)
         self.apply_preset_button.setEnabled(
             available and self._snapshot is not None and not self._shutting_down
         )
+        self._sync_original_rank_sort_controls()
         if not available:
             self.status_label.setText("每日研究快照服務尚未接線；目前不會執行讀取或更新。")
+
+    def _sync_original_rank_sort_controls(self, *, busy: bool = False) -> None:
+        verified = (
+            self._snapshot is not None
+            and self._cohort_projection is not None
+            and self._original_ranking is not None
+        )
+        rank_index = self.sort_key_combo.findData("original_strength_rank")
+        rank_item = self.sort_key_combo.model().item(rank_index) if rank_index >= 0 else None
+        if rank_item is not None:
+            rank_item.setText("原始名次（原引擎）" if verified else "原始名次（未提供相容來源）")
+            rank_item.setEnabled(verified and not busy)
+            rank_item.setToolTip(
+                "只使用已核驗的原生名次；缺名次列保持未知並置於末端。"
+                if verified
+                else "原始排名來源尚未核驗；目前不可排序。"
+            )
+        projection_ready = self._cohort_projection is not None
+        self.sort_key_combo.setEnabled(projection_ready and not busy)
+        selected_key = str(self.sort_key_combo.currentData() or "stock_code")
+        if selected_key == "original_strength_rank" and not verified:
+            blocker = QSignalBlocker(self.sort_key_combo)
+            self.sort_key_combo.setCurrentIndex(
+                max(0, self.sort_key_combo.findData("stock_code"))
+            )
+            del blocker
+            selected_key = "stock_code"
+            self._set_sort_direction_ascending()
+        self.sort_direction_combo.setEnabled(
+            projection_ready and not busy and selected_key != "original_strength_rank"
+        )
+
+    def _set_sort_direction_ascending(self) -> None:
+        blocker = QSignalBlocker(self.sort_direction_combo)
+        index = self.sort_direction_combo.findData("asc")
+        if index >= 0:
+            self.sort_direction_combo.setCurrentIndex(index)
+        del blocker
+
+    def _on_sort_key_changed(self, *_args: object) -> None:
+        if str(self.sort_key_combo.currentData() or "") == "original_strength_rank":
+            self._set_sort_direction_ascending()
+        busy = self._worker is not None and self._worker.isRunning()
+        self._sync_original_rank_sort_controls(busy=busy)
+        self._render_rows()
+
+    def _request_original_ranking_read(self, *_args: object) -> None:
+        if self._shutting_down:
+            return
+        reader = getattr(self.service, "read_original_ranking", None)
+        if not callable(reader):
+            self._original_ranking_pending = False
+            self._fail_original_ranking("reader unavailable")
+            self.original_rank_period_combo.setEnabled(False)
+            self.original_rank_direction_combo.setEnabled(False)
+            return
+        snapshot = self._snapshot
+        if snapshot is None:
+            self._original_ranking_pending = False
+            self._original_ranking = None
+            self.original_ranking_label.setText(
+                "原始排名：未知；讀取已核驗 snapshot 後才會查詢來源。"
+            )
+            self.original_ranking_label.setToolTip("")
+            self._sync_original_rank_sort_controls()
+            return
+        period = str(self.original_rank_period_combo.currentData() or "day")
+        direction = str(self.original_rank_direction_combo.currentData() or "strong")
+        if self._original_ranking is not None and ranking_matches_snapshot(
+            snapshot,
+            self._original_ranking,
+            period=period,
+            direction=direction,
+        ):
+            self._original_ranking_pending = False
+            return
+        self._clear_original_ranking(
+            "原始排名讀取中；名次暫為未知。",
+            clear_projection=True,
+        )
+        worker = self._worker
+        if worker is not None and worker.isRunning():
+            self._original_ranking_pending = True
+            return
+        self._original_ranking_pending = False
+
+        def operation(_cancel_callback: Callable[[], bool]) -> object:
+            return reader(snapshot, period=period, direction=direction)
+
+        self._start_operation("original_ranking_read", operation)
+
+    def _accept_original_ranking(self, generation: int, ranking: object) -> None:
+        if generation != self._operation_generation or self._shutting_down:
+            return
+        if self._original_ranking_pending:
+            self._clear_original_ranking(
+                "舊 mode 的 readback 已捨棄；接著讀取目前選取 mode。",
+                clear_projection=True,
+            )
+            return
+        snapshot = self._snapshot
+        period = str(self.original_rank_period_combo.currentData() or "day")
+        direction = str(self.original_rank_direction_combo.currentData() or "strong")
+        if snapshot is None or not ranking_matches_snapshot(
+            snapshot,
+            ranking,
+            period=period,
+            direction=direction,
+        ):
+            self._fail_original_ranking("讀回來源身份或模式與已接受的 snapshot 不符")
+            return
+        if ranking_rows_by_code(ranking) is None:
+            self._fail_original_ranking("原生排名列未通過消費端格式核對")
+            return
+        self._original_ranking = ranking
+        self._original_ranking_error = ""
+        self._original_ranking_pending = False
+        self.original_ranking_label.setText(ranking_summary_text(ranking))
+        self.original_ranking_label.setToolTip(original_rank_row_tooltip(ranking, None))
+        self._project_market_cohort(snapshot)
+        self._render_candidate_summary()
+        self._render_rows()
+        self._sync_original_rank_sort_controls()
+        self.originalRankingAccepted.emit(ranking)
+
+    def _clear_original_ranking(
+        self,
+        message: str,
+        *,
+        clear_projection: bool = False,
+    ) -> None:
+        self._original_ranking = None
+        self._original_ranking_error = message
+        if clear_projection and self._snapshot is not None:
+            self._project_market_cohort(self._snapshot)
+        self.original_ranking_label.setText(f"原始排名：未知；{message}")
+        self.original_ranking_label.setToolTip(message)
+        self._sync_original_rank_sort_controls(
+            busy=self._worker is not None and self._worker.isRunning()
+        )
+        self.originalRankingCleared.emit()
+
+    def _fail_original_ranking(self, message: str) -> None:
+        self._original_ranking_pending = False
+        short_message = str(message).splitlines()[0].strip() or "原始來源不可用"
+        self._clear_original_ranking(
+            f"來源不可用或身份不符（{short_message}）；名次保持未知。",
+            clear_projection=True,
+        )
+        self.status_label.setText(
+            f"原始排名未核驗；{short_message}；snapshot 研究結果仍可檢視。"
+        )
+        self.original_ranking_label.setToolTip(str(message))
 
     def on_first_open(self) -> None:
         """第一次切入此來源時唯讀核對 latest，不啟動 producer。"""
@@ -790,7 +1010,11 @@ class DailyMarketResearchView(QWidget):
         worker.finished.connect(
             lambda result, g=generation, op=kind: self._on_operation_finished(g, op, result)
         )
-        worker.error.connect(lambda message, g=generation: self._on_operation_error(g, message))
+        worker.error.connect(
+            lambda message, g=generation, op=kind: self._on_operation_error(
+                g, message, operation_kind=op
+            )
+        )
         worker.cancelled.connect(lambda g=generation: self._on_operation_cancelled(g))
         worker.native_thread_finished.connect(
             lambda current=worker, g=generation: self._on_worker_native_finished(current, g)
@@ -832,12 +1056,24 @@ class DailyMarketResearchView(QWidget):
                 self.preset_combo,
                 self.sort_key_combo,
                 self.sort_direction_combo,
+                self.original_rank_period_combo,
+                self.original_rank_direction_combo,
             ):
                 widget.setEnabled(not busy)
             self.sort_key_combo.setEnabled(not busy and self._cohort_projection is not None)
             self.sort_direction_combo.setEnabled(
                 not busy and self._cohort_projection is not None
             )
+            can_read_original = callable(
+                getattr(self.service, "read_original_ranking", None)
+            )
+            self.original_rank_period_combo.setEnabled(
+                can_read_original and not busy
+            )
+            self.original_rank_direction_combo.setEnabled(
+                can_read_original and not busy
+            )
+            self._sync_original_rank_sort_controls(busy=busy)
 
     def _on_operation_started(self, generation: int, kind: str) -> None:
         if generation == self._operation_generation and not self._shutting_down:
@@ -848,6 +1084,9 @@ class DailyMarketResearchView(QWidget):
             return
         if isinstance(result, Mapping) and result.get("cancelled") is True:
             self._on_operation_cancelled(generation)
+            return
+        if kind == "original_ranking_read":
+            self._accept_original_ranking(generation, result)
             return
         if kind == "produce" and isinstance(result, Mapping):
             production = result.get("production")
@@ -867,8 +1106,19 @@ class DailyMarketResearchView(QWidget):
             sync_cutoff=kind in {"initial_read", "latest_research_read"},
         )
 
-    def _on_operation_error(self, generation: int, message: str) -> None:
+    def _on_operation_error(
+        self,
+        generation: int,
+        message: str,
+        *,
+        operation_kind: str = "",
+    ) -> None:
         if generation != self._operation_generation or self._shutting_down:
+            return
+        if operation_kind == "original_ranking_read":
+            if self._original_ranking_pending:
+                return
+            self._fail_original_ranking(str(message))
             return
         short_message = str(message).splitlines()[0].strip() or "未知快照讀取錯誤"
         self.status_label.setText(
@@ -890,6 +1140,8 @@ class DailyMarketResearchView(QWidget):
         if not self._shutting_down and generation == self._operation_generation:
             self._set_busy(False)
             self._sync_open_button()
+            if self._original_ranking_pending and self._snapshot is not None:
+                self._request_original_ranking_read()
 
     def cancel_active_operation(self) -> None:
         worker = self._worker
@@ -923,11 +1175,16 @@ class DailyMarketResearchView(QWidget):
         self._snapshot = snapshot
         self._cohort_projection = None
         self._cohort_members_by_code = {}
+        self._cohort_full_rows = ()
+        self._original_ranking_pending = False
         self._manifest_sha256 = manifest_sha256
         self._manifest_identity_sha256 = manifest_identity
         self._loaded_cohort_id = cohort_id
         self._loaded_decision_date = decision_date
         self._selected_stock_code = ""
+        self._clear_original_ranking(
+            "snapshot 已接受；正在讀取綁定此 manifest 的原始來源。"
+        )
         if sync_cutoff:
             blocker_date = QSignalBlocker(self.decision_date_edit)
             blocker_time = QSignalBlocker(self.decision_time_edit)
@@ -951,6 +1208,13 @@ class DailyMarketResearchView(QWidget):
             "只呈現研究快照，不代表正式推薦或 historical PIT。"
         )
         self.snapshotAccepted.emit(snapshot)
+        self._original_ranking_pending = callable(
+            getattr(self.service, "read_original_ranking", None)
+        )
+        if not self._original_ranking_pending:
+            self.original_ranking_label.setText(
+                "原始排名：未知；此 service 未提供不可變來源 reader。"
+            )
 
     def _project_market_cohort(self, snapshot: object) -> None:
         self._cohort_projection = None
@@ -972,6 +1236,7 @@ class DailyMarketResearchView(QWidget):
                     "AND",
                 )
             )
+            self._cohort_full_rows = cast(tuple[object, ...], full_rows)
             snapshot_root = getattr(self.service, "snapshot_root", None)
             expected_snapshot_root = (
                 str(snapshot_root) if snapshot_root is not None else None
@@ -980,6 +1245,7 @@ class DailyMarketResearchView(QWidget):
                 cast(VerifiedDailyMarketSnapshot, snapshot),
                 cast(Sequence[DailyMarketResearchScreenRow], full_rows),
                 expected_snapshot_root=expected_snapshot_root,
+                original_ranking=self._original_ranking,
             )
             self._cohort_members_by_code = {
                 str(getattr(member, "stock_code", "") or "").strip(): member
@@ -1008,6 +1274,9 @@ class DailyMarketResearchView(QWidget):
         available = projection is not None
         self.sort_key_combo.setEnabled(available and not self._shutting_down)
         self.sort_direction_combo.setEnabled(available and not self._shutting_down)
+        self._sync_original_rank_sort_controls(
+            busy=self._worker is not None and self._worker.isRunning()
+        )
         if projection is None:
             self.preset_help_label.setToolTip(
                 "固定 close／MA20／MA60 收盤比較；MA20 需 20 個有效觀測、"
@@ -1079,9 +1348,17 @@ class DailyMarketResearchView(QWidget):
         universe_text, universe_detail = research_universe_text(
             getattr(projection, "research_universe", None),
             published_count=published_count, declared_count=declared_count,
+            original_rank_available=self._original_ranking is not None,
         )
-        visible_identity += "\n" + universe_text
-        identity_text += "\n" + universe_detail
+        visible_identity += "\n" + universe_text + "\n" + ranking_summary_text(
+            self._original_ranking
+        )
+        identity_text += (
+            "\n"
+            + universe_detail
+            + "\n"
+            + ranking_audit_tooltip(self._original_ranking)
+        )
         self.cohort_identity_label.setText(visible_identity)
         self.cohort_identity_label.setToolTip(identity_text)
 
@@ -1124,7 +1401,7 @@ class DailyMarketResearchView(QWidget):
         if not count_lines:
             count_lines.append("固定方法計數未提供；不以缺少資料推定不符合。")
         rank_state = str(getattr(projection, "original_rank_state", "unknown") or "unknown")
-        if rank_state == "unknown":
+        if rank_state != "verified":
             count_lines.append("原排名未提供；指標排序非投資分數。")
         if missing_codes:
             count_lines.append(
@@ -1333,11 +1610,18 @@ class DailyMarketResearchView(QWidget):
         universe_text, universe_detail = research_universe_text(
             getattr(self._cohort_projection, "research_universe", None),
             published_count=summary.published_count, declared_count=summary.declared_count,
+            original_rank_available=self._original_ranking is not None,
         )
         self.candidate_summary_label.setText(
-            self.candidate_summary_label.text() + "\n" + universe_text
+            self.candidate_summary_label.text()
+            + "\n"
+            + universe_text
+            + "\n"
+            + ranking_summary_text(self._original_ranking)
         )
         details.append(universe_detail)
+        details.append(ranking_summary_text(self._original_ranking))
+        details.append(original_rank_row_tooltip(self._original_ranking, None))
         self.candidate_summary_label.setToolTip("\n".join(details))
 
     def _render_rows(self, *_args: object) -> None:
@@ -1362,6 +1646,7 @@ class DailyMarketResearchView(QWidget):
         self.results_table.setSortingEnabled(False)
         self.results_table.clearContents()
         self.results_table.setRowCount(len(rows))
+        ranking_rows = ranking_rows_by_code(self._original_ranking) or {}
         for row_number, row in enumerate(rows):
             stock_code = str(getattr(row, "stock_code", "") or "")
             condition_map = {
@@ -1379,6 +1664,7 @@ class DailyMarketResearchView(QWidget):
                 self._market_value_text(member, "close"),
                 self._market_value_text(member, "ma20"),
                 self._market_value_text(member, "ma60"),
+                original_rank_cell(self._original_ranking, stock_code),
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -1387,6 +1673,13 @@ class DailyMarketResearchView(QWidget):
                     item.setData(
                         Qt.ItemDataRole.AccessibleTextRole,
                         f"股票代碼 {stock_code}，來源 manifest {self._manifest_sha256}",
+                    )
+                if column == 9:
+                    item.setToolTip(
+                        original_rank_row_tooltip(
+                            self._original_ranking,
+                            ranking_rows.get(stock_code),
+                        )
                     )
                 self.results_table.setItem(row_number, column, item)
         if selected_identity is not None:
@@ -1502,6 +1795,20 @@ class DailyMarketResearchView(QWidget):
             "close/MA 條件不構成預測、勝率或投資建議。"
         )
 
+        selected_ranking_rows = ranking_rows_by_code(self._original_ranking) or {}
+        selected_rank = selected_ranking_rows.get(code)
+        rank_line = f"原始名次：{original_rank_cell(self._original_ranking, code)}"
+        if selected_rank is not None:
+            rank_line += f" · 比較窗 {ranking_window_text(selected_rank)}"
+        self.selected_summary_label.setText(
+            self.selected_summary_label.text() + "\n" + rank_line
+        )
+        self.selected_summary_label.setToolTip(
+            self.selected_summary_label.toolTip()
+            + "\n"
+            + original_rank_row_tooltip(self._original_ranking, selected_rank)
+        )
+
     def _current_filtered_rows(self) -> tuple[object, ...]:
         selected_filter = str(self.filter_state_combo.currentData() or "all")
         return tuple(
@@ -1526,6 +1833,18 @@ class DailyMarketResearchView(QWidget):
             rows_by_code[code] = row
         key = str(self.sort_key_combo.currentData() or "stock_code")
         direction = str(self.sort_direction_combo.currentData() or "asc")
+        if key == "original_strength_rank":
+            ordered_rows = sort_by_original_rank(
+                rows,
+                self._original_ranking,
+                stock_code=lambda item: str(getattr(item, "stock_code", "") or ""),
+            )
+            if ordered_rows is None:
+                self._fail_original_ranking(
+                    "原生名次列無法在維持來源身份時使用"
+                )
+                return rows
+            return ordered_rows
         try:
             members = sort_daily_market_cohort_members(
                 tuple(getattr(projection, "members", ()) or ()),
@@ -1682,6 +2001,14 @@ class DailyMarketResearchView(QWidget):
     def bookmark_selected_research(self) -> bool:
         """保存已核驗的選取列；只有使用者確認後才呼叫觀察清單服務。"""
 
+        if str(self.sort_key_combo.currentData() or "") == "original_strength_rank":
+            self.status_label.setText(
+                "無法用原始排名排序儲存書籤；目前書籤格式不保存排名期間、方向與來源身份。"
+            )
+            self.status_label.setToolTip(
+                "切回股票代號、日期或 MA 排序後即可使用現有研究書籤。"
+            )
+            return False
         if (
             self.watchlist_service is None
             or self._snapshot is None
@@ -1940,12 +2267,21 @@ class DailyMarketResearchView(QWidget):
         self._snapshot = None
         self._cohort_projection = None
         self._cohort_members_by_code = {}
+        self._cohort_full_rows = ()
+        self._original_ranking_pending = False
+        self._original_ranking = None
+        self._original_ranking_error = ""
         self._all_rows = ()
         self._visible_rows = ()
         self._manifest_sha256 = ""
         self._manifest_identity_sha256 = ""
         self._loaded_cohort_id = ""
         self._loaded_decision_date = ""
+        self.original_ranking_label.setText(
+            "原始排名：未知；尚無已接受 snapshot。"
+        )
+        self.original_ranking_label.setToolTip("")
+        self.originalRankingCleared.emit()
         self._selected_stock_code = ""
         self.results_table.clearSelection()
         self.results_table.setRowCount(0)

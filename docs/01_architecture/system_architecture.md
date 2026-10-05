@@ -1224,3 +1224,10 @@ scheduled wrapper 分列實際 child code、summary errors、source qualificatio
 本包無Native前景或使用者視窗操作，無訓練、全市場producer、正式DB／registry或真實書籤寫入；永久清理仍未執行。驗證與commit結果見同章最終收據補記。
 
 最終驗證：104相關tests、WB85、validator25/4skip/0fail、mypy781、compile13及guard通過；真D三股隔離發布／2382讀回／offscreen同源通過。詳見UX16 QA最新最終驗證章；原排名publisher與Native仍pending，未push。
+
+
+## 2026-10-05 原生排名獨立研究來源
+
+`app_module/original_stock_ranking.py` 以既有 verified feature snapshot＋母體設定為 parent，唯讀核對原 DB rowset及原引擎 hash，只有明示publisher lazy import並呼叫 StockScreener純frame入口。獨立artifact／manifest／四mode latest最後atomic切換；reader不載入pandas或引擎，不producer。Daily service提供original_ranking_root與read_original_ranking；背景UI worker將同一 DTO分享至Market投影與候選摘要，錯mode／來源拒絕。原feature／bookmark schema保留，新排名收藏明示拒絕。容量／OSlock／sourceguard及實證見[QA](../06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)。
+
+- 2026-10-05 更新：新增原排名有限工程入口及接受邊界。

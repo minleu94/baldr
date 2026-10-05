@@ -231,7 +231,7 @@ class _ProjectionService:
 
 
 def _install_projection(monkeypatch, projections, calls):
-    def project(snapshot, rows, *, expected_snapshot_root=None):
+    def project(snapshot, rows, *, expected_snapshot_root=None, original_ranking=None):
         calls.append((snapshot, tuple(rows), expected_snapshot_root))
         return projections[snapshot.manifest_identity_sha256]
 

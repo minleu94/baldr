@@ -237,3 +237,17 @@ Storage/UI agent21項＋root related93項已解決全部失敗；WB85、validato
 - manifest SHA256 `2d241068d3b6df9a06c65267da0c0925c30d3244c6116da626d6a537f742311c`；identity `6c4a3fd3c82f074f5085a9ac6dff0437c7ba287c80ea8e696bc16118d3f2d9e6`；設定來源SHA `264dd7632fded527d82f20e7199c5f48d7acb33f9f56e33ee85b2feabfbe3379`。截圖為真D唯讀＋隔離發布有界母體，offscreen；名單／盤勢／候選同identity與分母，手動更新不啟worker；source inventory與code pins前後一致、worker0。首輪未註冊中文字型的截圖保留為initial_font失敗證據，harness採既有font helper重拍後可讀；產品字型未改。
 - QA收據：`output/qa/ux16_universe_20261005/verification_summary.json`、`related.xml/log`、`real_producer_receipt.json/log`、`offscreen_receipt.json`及兩張`real_configured_*.png`。本地commit/blob以同目錄commit_readback與Git為準；QA raw仍ignored，未push。唯一原plan原146969-byte prefix SHA `1be4f4eb34aa6d043915f60280a65ae4ab8c5482198a8ea0e503931318a05713`保留，僅追加。
 - 已完成工程：有界母體設定custody、可選v2manifest extension、source revision/deletion/member/date拒絕、明示小批次CLI、同源consumer呈現、來源未知與排名停用。仍缺工程：原StockScreener day/week不可變結果發布（run／method/version／完整eligible成員與排除／原始rank/score/topN／sourcehash），以及原plan其他生命周期／storage/growth項；不稱等自然成熟。來源決策另須明確合格母體權威與可用性/PIT證據，本包手工研究成員不是正式母體。Native鍵鼠／縮放／跨頁及真人驗收未執行；全App startup未由本包證明。下一背景包建議先原排名publisher契約，沿原公式不重算新分數。永久清理、真實書籤遷移仍未授權執行。
+
+
+## 最新延伸：2026-10-05 UX18 原引擎排名有限收尾（基線27768eb9）
+
+已交付：既有StockScreener原公式day/week × strong/weak四mode不可變publisher／verified reader；原engine/method/version/params、parent feature/universe/date/inputhash、原rank／舊score label與窗口、research-only資格；來源拒絕、OSlock、atomic manifest、unchanged、容量有界；Daily名單／candidate／Market同排名身份。原引擎檔案未改，不以MA／其他score替代，沒有新公式。
+
+驗證：87個不同affected有pass證據（首輪82pass／4fail→四案精準重驗4pass，新增inflight mode1pass），WB85、validator25／4skip、mypy783、12compile、guard／diff。初14typing、舊fixture參數及未提供label修正，失敗保留。真D既有三股feature parent不變，四modepublished→readback，repeatdaystrong unchanged且inventory不變；eligible3／missing0、18478bytes；DB/WAL/SHM stat、原5sourcefiles及engine SHA穩定。8offscreen圖同rank object／parent、worker0、finalcodepins吻合，不能替代Native。
+
+剩餘第一版工程具名：rank-aware收藏／回訪及StockReport來源context版本化（本包明示拒絕原排名排序收藏）；其他原大盤／強弱consumer融合；完整feature/method dictionary；正式合格母體與排程部署；長期storage/growth及其他lifecycle crash驗收。Backtest18.62%／20%門檻未達仍保留。來源決策：正式母體權威、officialavailability／歷史membership／PIT；legacyTop/Bottom百分比口徑非一般前幾％，numeric score未暴露，若修改須原引擎方法版本決策。手工研究母體不是正式全市場。工程缺件不稱等自然成熟。
+
+Native鍵鼠／縮放／跨頁、全Appstartup及3–5真人驗收另待桌面時段；未操控使用者視窗。沒有全市場採集／正式DB或registry寫入／train／大DBcopy／永久清理／push；未知paper及C:/ta_iso_1005映射不動。既有featurev2／舊bookmarks保持身份，無rank來源仍unknown，未靜默遷移。raw與commitreadback output/qa/original_rank_publisher_20261005；tracked證據 docs/06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md。原plan151202bytes前綴完整保留，只追加，本地commit核驗後停止交父層。
+
+
+[UX18完整收據](UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)

@@ -380,6 +380,7 @@ class StockResearchReportReadService:
                     shared_daily_features.get("conditions", {}),
                     condition_keys,
                     combine_mode,
+                    expected_decision_date=cutoff,
                 )
                 shared_daily_features["readback"] = {
                     "mode": "verified_pinned_daily_market_research_snapshot",

@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 UX18 兩條固定研究方法契約
+
+承接 c50cefcd，兩條既有 close 高於 MA20／MA60 觀察補完整固定方法契約與 manifest 綁定：方法 ID／家族／版本／固定參數／方向／必要欄位、決策日與可判讀資格／unknown 理由。cache 與快照身分保存同一契約，方法身分變更不能沿用舊結果；錯方法／版本／參數／日期／hash 拒絕。舊 schema 只能明確更新重產，唯讀不自動升版或改走 live；原公式、數值與研究用途保持，非 alpha／買賣勝率。
+
+本包限定完成與驗證以 [QA 方法綁定章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md) 的實際收據為準。UX18／19、stage2／3 仍部分完成：原排名／強弱、市場共用 consumer、完整方法／母體、收藏與長期容量仍待工程；Backtest18.62%／20% 未達維持，歷史 PIT／自然 ML／真人驗收分列外部證據，不阻擋本研究切片。
+
 ## 2026-10-05 UX04／05 日常研究名單接線
 
 以695797ec為基線，Recommendation新增明示cohort的每日研究條件來源，沿既有close／MA三態做AND／OR與why／why-not，個股固定同manifest／stock／as-of／source身分讀回。只有明確更新才bounded producer；預設repo output/research_snapshots/daily_market研究區，不改正式資料根或WindowsTask。來源修訂／缺件保unknown與中文更新提示，session／切股／返回保來源metadata。工程與Native限定結果以[QA最新flow章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)為準。

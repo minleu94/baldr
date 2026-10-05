@@ -26,7 +26,6 @@ from app_module.daily_market_feature_snapshot import (
 )
 from app_module.daily_market_snapshot_repository import (
     DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA,
-    DAILY_MARKET_SNAPSHOT_METHOD_VERSIONS,
     DAILY_MARKET_SNAPSHOT_POINTER_SCHEMA,
     DAILY_MARKET_SNAPSHOT_MAX_ARTIFACT_BYTES,
     DAILY_MARKET_SNAPSHOT_MAX_MANIFEST_BYTES,
@@ -35,6 +34,7 @@ from app_module.daily_market_snapshot_repository import (
     DailyMarketSnapshotVerificationError,
     canonical_snapshot_json_bytes,
     cohort_identity_sha256,
+    current_method_contract_binding,
     snapshot_artifact_relpath,
     snapshot_manifest_identity_sha256,
     snapshot_manifest_relpath,
@@ -261,6 +261,20 @@ class DailyMarketSnapshotProducer:
                 total_retention_bytes=self._retained_bytes(),
             )
 
+        try:
+            contracts, contracts_sha256 = current_method_contract_binding()
+        except DailyMarketSnapshotVerificationError as exc:
+            return self._result(
+                "prior_snapshot_invalid",
+                cohort_id,
+                decision_date,
+                declared_stock_codes=declared_codes,
+                rebuild_reason="method_contract_registry_invalid",
+                error_code=exc.code,
+                error_message=str(exc),
+                total_retention_bytes=self._retained_bytes(),
+            )
+
         previous_records = {
             str(item["stock_code"]): item
             for item in (previous.manifest.get("stocks", ()) if previous else ())
@@ -337,6 +351,8 @@ class DailyMarketSnapshotProducer:
                     decision_date=decision_date,
                     scope_identity=item.scope_identity,
                     input_hash=input_hash,
+                    method_contracts=contracts,
+                    method_contracts_sha256=contracts_sha256,
                 )
             except Exception as exc:
                 return self._result(
@@ -455,7 +471,8 @@ class DailyMarketSnapshotProducer:
             "decision_timezone": "Asia/Taipei",
             "feature_contract_version": DAILY_MARKET_FEATURE_CONTRACT_VERSION,
             "feature_keys": list(DAILY_MARKET_FEATURE_KEYS),
-            "method_versions": dict(DAILY_MARKET_SNAPSHOT_METHOD_VERSIONS),
+            "method_contracts": contracts,
+            "method_contracts_sha256": contracts_sha256,
             "stocks": ordered_records,
             "counts": {
                 "declared": len(declared_codes),
@@ -810,6 +827,9 @@ class DailyMarketSnapshotProducer:
         except DailyMarketSnapshotVerificationError as exc:
             if exc.code == "snapshot_pointer_missing":
                 return None, "", None
+            if exc.code == "snapshot_manifest_legacy_v1":
+                # 只有明確呼叫 producer 才可重投影 v2；reader 不會自動遷移舊版。
+                return None, "legacy_v1_requires_explicit_reproduction", None
             if exc.code in {"snapshot_cohort_mismatch", "snapshot_decision_date_mismatch"}:
                 # 日期或 cohort 不同時允許明確重建，並保留差異原因。
                 return None, exc.code, None
@@ -982,6 +1002,8 @@ def _validate_projected_snapshot(
     decision_date: date,
     scope_identity: str,
     input_hash: str,
+    method_contracts: Mapping[str, Any],
+    method_contracts_sha256: str,
 ) -> None:
     if (
         snapshot.stock_code != stock_code
@@ -994,6 +1016,12 @@ def _validate_projected_snapshot(
         raise ValueError("daily market snapshot 不可宣稱 historical PIT eligible")
     if payload.get("features") is None or payload.get("conditions") is None:
         raise ValueError("projector payload 缺少 features 或 conditions")
+    if payload.get("method_contracts") != method_contracts:
+        raise ValueError("projector snapshot method_contracts 與 producer registry 不一致")
+    if payload.get("method_contracts_sha256") != method_contracts_sha256:
+        raise ValueError("projector snapshot method_contracts_sha256 與 producer registry 不一致")
+    if getattr(snapshot, "method_contracts_sha256", None) != method_contracts_sha256:
+        raise ValueError("projector snapshot identity 未綁定目前 method contract hash")
 
 
 def _atomic_write_bytes(final_path: Path, payload: bytes, staging_dir: Path) -> None:

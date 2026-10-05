@@ -1,5 +1,11 @@
 # 最小續接清單（2026-10-05，Batch9）
 
+## 最新接續：UX18 固定研究方法契約（基線 c50cefcd）
+
+本包補既有 MA20／MA60 方向性觀察的方法契約、cache／manifest 身分及錯方法／版本／參數／日期／hash 拒絕。舊研究 schema 需明確更新重產，唯讀不升版或 live fallback；公式不改，不授 alpha／勝率。實際驗證與提交以 [方法綁定 QA 新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md) 及 Git 為準。
+
+原排名／強弱需補既有 ScreeningResultDTO 的排序方法／來源版本、day／week、母體與 top-N 邊界，不能取兩條 MA 條件創分數；市場目前另走 ScreeningService，超出本包小改，列下一包。UX18／19 與 stage2／3 仍 partial，Backtest18.62%／20%未達保留，歷史 PIT／自然 ML／3–5 位真人驗收另列；不重跑舊 Native1477、Frozen 效能、訓練、全量回歸或清理／push。
+
 ## 最新接續：UX04／05 日常研究名單與同源個股（基線695797ec）
 
 本包承接有限UX18／19工程，把研究快照接到Recommendation實際入口與個股pinned讀回：既有兩條close／MA AND／OR、三態why／why-not、來源metadata經session完整保留，返回核對原manifest。repo專用研究區僅明確更新才bounded寫入；不改正式DB／排程，不升研究或離線候選為推薦。真實來源Native QTest與受控缺資料／revision場景分列，數字與提交以[QA新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)及Git為準。

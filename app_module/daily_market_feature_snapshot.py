@@ -7,12 +7,18 @@ import json
 import math
 import numbers
 from collections import OrderedDict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from threading import RLock
 from typing import Any, Literal, Sequence
 
+from app_module.daily_market_method_contract import (
+    method_contracts_canonical_json,
+    method_contracts_payload,
+    method_contracts_sha256,
+)
 from app_module.stock_research_report_dtos import (
     StockMetricDTO,
     StockPricePointDTO,
@@ -20,7 +26,7 @@ from app_module.stock_research_report_dtos import (
 )
 
 
-DAILY_MARKET_FEATURE_CONTRACT_VERSION = "daily-market-feature-snapshot.v1"
+DAILY_MARKET_FEATURE_CONTRACT_VERSION = "daily-market-feature-snapshot.v2"
 DAILY_MARKET_FEATURE_MAX_CACHE_ENTRIES = 4
 DAILY_MARKET_FEATURE_KEYS = ("close", "MA20", "MA60")
 DAILY_MARKET_CONDITION_KEYS = ("close_above_ma20", "close_above_ma60")
@@ -85,9 +91,16 @@ class DailyMarketCondition:
     data_date: str | None
     reason: str | None = None
     semantics: str = "existing_observation"
+    method_id: str | None = None
+    family: str | None = None
+    version: str | None = None
+    parameters: tuple[tuple[str, int | str], ...] = ()
+    decision_date: str | None = None
+    eligibility: Literal["eligible", "unknown"] | None = None
+    unknown_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result: dict[str, Any] = {
             "name": self.name,
             "state": self.state,
             "relation": self.relation,
@@ -98,6 +111,19 @@ class DailyMarketCondition:
             "reason": self.reason,
             "semantics": self.semantics,
         }
+        if self.method_id is not None:
+            result.update(
+                {
+                    "method_id": self.method_id,
+                    "family": self.family,
+                    "version": self.version,
+                    "parameters": dict(self.parameters),
+                    "decision_date": self.decision_date,
+                    "eligibility": self.eligibility,
+                    "unknown_reason": self.unknown_reason,
+                }
+            )
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +143,15 @@ class DailyMarketFeatureSnapshot:
     official_availability_state: str = "unknown"
     market_calendar_completeness: str = "unknown"
     historical_pit_eligible: bool = False
+    method_contracts_sha256: str = ""
+    _method_contracts_json: str = "{}"
+
+    @property
+    def method_contracts(self) -> dict[str, Any]:
+        """回傳建立此 snapshot 時捕獲的契約副本，不讀取 live registry。"""
+
+        payload = json.loads(self._method_contracts_json)
+        return payload if isinstance(payload, dict) else {}
 
     def feature(self, key: str) -> DailyMarketFeature:
         for item in self.features:
@@ -137,6 +172,8 @@ class DailyMarketFeatureSnapshot:
             "contract_version": self.contract_version,
             "snapshot_identity_sha256": self.snapshot_identity_sha256,
             "input_fingerprint_sha256": self.input_fingerprint_sha256,
+            "method_contracts": self.method_contracts,
+            "method_contracts_sha256": self.method_contracts_sha256,
             "stock_code": self.stock_code,
             "decision_date": self.decision_date.isoformat(),
             "scope_identity": self.scope_identity,
@@ -204,10 +241,22 @@ class DailyMarketFeatureSnapshotService:
             raise TypeError("technical 僅接受 StockTechnicalSnapshotDTO 或 None")
 
         version = DAILY_MARKET_FEATURE_CONTRACT_VERSION
-        input_fingerprint = _input_fingerprint(code, decision_date, scope, points, technical)
+        contract_payload = method_contracts_payload()
+        contract_payload_json = method_contracts_canonical_json(contract_payload)
+        contract_sha256 = method_contracts_sha256(contract_payload)
+        input_fingerprint = _input_fingerprint(
+            code,
+            decision_date,
+            scope,
+            points,
+            technical,
+            contract_payload,
+            contract_sha256,
+        )
         snapshot_identity = _stable_hash(
             {
                 "contract_version": version,
+                "method_contracts_sha256": contract_sha256,
                 "stock_code": code,
                 "decision_date": decision_date.isoformat(),
                 "scope_identity": scope,
@@ -215,9 +264,10 @@ class DailyMarketFeatureSnapshotService:
             }
         )
         with self._lock:
-            if self._cache_version != version:
+            cache_version = f"{version}:{contract_sha256}"
+            if self._cache_version != cache_version:
                 self._cache.clear()
-                self._cache_version = version
+                self._cache_version = cache_version
             cached = self._cache.get(snapshot_identity)
             if cached is not None:
                 self._cache.move_to_end(snapshot_identity)
@@ -232,6 +282,9 @@ class DailyMarketFeatureSnapshotService:
                 version,
                 input_fingerprint,
                 snapshot_identity,
+                contract_payload,
+                contract_payload_json,
+                contract_sha256,
             )
             self._cache[snapshot_identity] = snapshot
             self._cache.move_to_end(snapshot_identity)
@@ -268,7 +321,17 @@ def daily_market_feature_input_fingerprint(
         raise TypeError("price_points 僅接受 StockPricePointDTO")
     if technical is not None and not isinstance(technical, StockTechnicalSnapshotDTO):
         raise TypeError("technical 僅接受 StockTechnicalSnapshotDTO 或 None")
-    return _input_fingerprint(code, decision_date, scope, points, technical)
+    contract_payload = method_contracts_payload()
+    contract_sha256 = method_contracts_sha256(contract_payload)
+    return _input_fingerprint(
+        code,
+        decision_date,
+        scope,
+        points,
+        technical,
+        contract_payload,
+        contract_sha256,
+    )
 
 
 def _project_snapshot(
@@ -280,6 +343,9 @@ def _project_snapshot(
     version: str,
     input_fingerprint: str,
     snapshot_identity: str,
+    contract_payload: Mapping[str, Any],
+    contract_payload_json: str,
+    contract_sha256: str,
 ) -> DailyMarketFeatureSnapshot:
     rows: list[_PriceRow] = []
     invalid_market_date = False
@@ -488,6 +554,8 @@ def _project_snapshot(
             close_feature,
             feature_map[ma_key],
             market_date,
+            decision_date,
+            contract_payload[name],
         )
         for name, ma_key in (
             ("close_above_ma20", "MA20"),
@@ -504,6 +572,8 @@ def _project_snapshot(
         contract_version=version,
         input_fingerprint_sha256=input_fingerprint,
         snapshot_identity_sha256=snapshot_identity,
+        method_contracts_sha256=contract_sha256,
+        _method_contracts_json=contract_payload_json,
     )
 
 
@@ -512,8 +582,16 @@ def _make_condition(
     close: DailyMarketFeature,
     moving_average: DailyMarketFeature,
     market_date: str | None,
+    decision_date: date,
+    method_contract: Mapping[str, Any],
 ) -> DailyMarketCondition:
     data_date = market_date
+    method_parameters = method_contract["parameters"]
+    parameters = tuple(
+        (str(key), value)
+        for key, value in method_parameters.items()
+        if isinstance(value, (int, str)) and not isinstance(value, bool)
+    )
     if close.state != "observed" or moving_average.state != "observed":
         reasons = [
             item.reason
@@ -530,6 +608,13 @@ def _make_condition(
             unit=PRICE_UNIT,
             data_date=data_date,
             reason=reason,
+            method_id=str(method_contract["method_id"]),
+            family=str(method_contract["family"]),
+            version=str(method_contract["version"]),
+            parameters=parameters,
+            decision_date=decision_date.isoformat(),
+            eligibility="unknown",
+            unknown_reason=reason,
         )
     assert close.value is not None
     assert moving_average.value is not None
@@ -550,6 +635,13 @@ def _make_condition(
         reference_value=moving_average.value,
         unit=PRICE_UNIT,
         data_date=data_date,
+        method_id=str(method_contract["method_id"]),
+        family=str(method_contract["family"]),
+        version=str(method_contract["version"]),
+        parameters=parameters,
+        decision_date=decision_date.isoformat(),
+        eligibility="eligible",
+        unknown_reason="",
     )
 
 
@@ -598,12 +690,16 @@ def _input_fingerprint(
     scope_identity: str,
     points: tuple[StockPricePointDTO, ...],
     technical: StockTechnicalSnapshotDTO | None,
+    contract_payload: Mapping[str, Any],
+    contract_sha256: str,
 ) -> str:
     payload = {
         "stock_code": stock_code,
         "decision_date": decision_date.isoformat(),
         "scope_identity": scope_identity,
         "contract_version": DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+        "method_contracts": contract_payload,
+        "method_contracts_sha256": contract_sha256,
         "price_points": [_canonical_value(point) for point in points],
         "technical": _canonical_value(technical),
     }

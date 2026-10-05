@@ -1,5 +1,35 @@
 # UX16 唯讀來源契約與 UX02 Native 中文驗證（2026-10-05）
 
+## 最新延伸：UX18 兩條固定方法契約與 manifest 綁定
+
+基線 c50cefcd，本包 root Sol 整合兩位明確授權 GPT6 Luna Max，僅補 `close_above_ma20`／`close_above_ma60` 研究觀察契約與拒絕讀回，不改公式或新增方法。Scope／回滾前置保存於 `output/qa/ux18_method_contract_20261005/rollback.md`；原計畫實作前137258 bytes、SHA256 `533846f7be6bc66dcda59033809a3e8d34ab16cffb6a5073f91d344b7ae96b7f`，僅追加本包。
+
+方法 ID 為 `daily_market.close_above_ma20`／`daily_market.close_above_ma60`，家族 `close_vs_moving_average`，版本 `1.0.0`，固定窗口20／60、方向 above、必要欄位 close 與對應 MA。逐股結果保存決策日、可判讀資格與 unknown 原因；match／no_match 都只表示已有足夠觀察輸入，非選股勝率／alpha／正式資格。官方 availability／calendar unknown 與 historical PIT=false 保持。
+
+方法規格於 feature 投影時捕獲並參與 input fingerprint／cache／snapshot identity；序列化不重新讀 live 規格。manifest v2 保存 `method_contracts`／`method_contracts_sha256`，inner artifact 與逐條結果必須同現行契約；pointer v1 容器只定位 immutable manifest，結構不變。錯方法／版本／參數／日期／hash 即使重算外層 pin 仍拒絕，實際 pinned StockReport 保 unknown、無 live fallback、無 Advice 替代。
+
+manifest v1 具名拒絕，需要明確按更新重產；唯讀不改 schema／產物，producer 只在明示執行且舊原件 hash／canonical／identity 核驗後 fresh 投影。候選完整驗證後才 atomic latest；舊 immutable 保留，腐敗 hash 不列為正常升版。
+
+最終有限 bundle **74 passed**（八個相關測試檔，含實際 producer→repository→screener→StockReport pinned 讀回與 UI bridge），`final_affected.xml` 為準，不將重疊的 agent62／12與 root15相加。六個產品檔 mypy clean，十一個改動 Python 檔隔離 py_compile、quant guard 與 diff check 通過；未改任何產品 UI blob，沒有重跑 Workbench／validator／全樹 mypy。初次 mypy 的 Literal 型別1錯已修；pytest早期 cache寫入警告保留，最終專用 cache 無警告。
+
+受控 SQLite 的 Windows Native QTest 驗 `v2 正向讀回→v1 唯讀拒絕且 inventory 不變→明確更新恢復v2且舊 immutable 不變`；三張圖與收據在 `output/qa/ux18_method_contract_20261005/native_controlled_final/receipt.json`。App 同款 theme，1100×820，八個 code pins 前後一致、worker0、QA PID退出；只驗本研究契約相容性，非真實 D／全 App startup／Frozen 效能／真人投資有效性。首次 Native 的 QA assertion 誤以為 tooltip 會帶 error code而失敗，依真實中文 v1／v2 訊息修驗證；前兩輪與最終產物均保留，產品拒絕 guard 未放寬。
+
+合法 registry version 改變：既有 v2 root 具名拒絕、不 reuse；新隔離 root 明示 fresh produce/readback 可保存新版本，沒有自動 v2→v2 migration。固定窗口 metadata 漂移至21違反既有 MA20公式，舊／新根均拒絕；feature cache fingerprint仍失效，不把 metadata 改動當新公式資格。
+
+三張最終 Native 圖已保存 Library：正向 `libfile_309475ca1b308191b1327e33264419ee`，舊版拒絕 `libfile_1348669570848191b6ba69dacd8bcca6`，明確更新恢復 `libfile_57f96a9f76bc8191833c8f323f74637c`。來源均受控 fixture；Windows 缺 os.setxattr，未寫本機雲端身分標記，Library API 三項保存成功。
+
+| 原項目 | 本包範圍與下一依賴 |
+|---|---|
+| UX18 | 兩條既有方法契約及實際 consumer 方法結果為本包限定範圍；整體 partial，其他 feature／方法與原排名／跨 consumer 共用待工程。 |
+| UX19 | manifest 方法綁定及舊 schema 受控更新為本包限定範圍；整體 partial，完整母體／排程／長期容量／跨程序崩潰待工程。 |
+| UX04／05／06 | 沿既有列表→pinned 個股讀回補身分驗證；強弱／原排名／收藏閉環尚未完成。 |
+| UX17／stage1 | Backtest18.62%／20%仍未達，不重測／放寬；不阻擋獲准的研究切片。 |
+| UX20–24 | 自然樣本／歷史 PIT／真人證據各自等待；新規則 outcome／ML 串接的工程缺項另列，不由本契約自動完成。 |
+
+原排名／市場共用超出小改：`ScreeningService` 的 day／week、排序方法、來源版本、母體／top-N 與 `ScreeningResultDTO` 需先有完整來源契約，再固定讀模接入同一發布結果。現研究快照沒有原排名，不能從 MA 條件創分數；下一包由父層安排。
+
+未改產品 UI，不重跑既有 Native1477／Frozen 效能／全量回歸；只有限 fixture producer／consumer，不訓練／寫正式 DB／registry／清理／push。未知 paper 檔與 C:/ta_iso_1005 還原映射未動；本地 commit/blob/status 核驗後停止。
+
 ## 最新延伸：UX04／05 日常研究名單與同源個股
 
 基線695797ec，原plan§6.2／6.4、8.6／8.7、stage2→stage3與UX04／05／06／15。本包將既有close／MA研究快照接入Recommendation日常來源tab與個股研究，不以隔離CLI完成取代使用入口。來源仍是明示研究cohort，不與已保存推薦混合；沒有新策略／score／排名／推薦或自然ML資格。

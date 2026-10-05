@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta
+import hashlib
 from pathlib import Path
 import sqlite3
 from types import SimpleNamespace
@@ -15,6 +18,11 @@ from app_module.daily_market_research_screener import (
     evaluate_daily_market_conditions,
 )
 from app_module.daily_market_snapshot_repository import DailyMarketSnapshotVerificationError
+from app_module.daily_market_snapshot_repository import (
+    canonical_snapshot_json_bytes,
+    snapshot_manifest_identity_sha256,
+    snapshot_manifest_relpath,
+)
 from app_module.research_session.session_dtos import ResearchStockContextDTO
 from app_module.research_session.session_store import ResearchSessionStore
 from app_module.stock_research_report_service import StockResearchReportReadService
@@ -235,6 +243,22 @@ def test_stock_report_loads_the_exact_pinned_manifest_and_fails_closed_on_revisi
     assert readback["filter_evaluation"]["combined_state"] == row.combined_state
     assert readback["filter_evaluation"]["why"] == list(row.why)
     assert readback["filter_evaluation"]["why_not"] == list(row.why_not)
+    # 實際列表與個股 pinned consumer 必須保留同一方法契約及判讀資格。
+    assert readback["filter_evaluation"]["conditions"] == [
+        condition.to_dict() for condition in row.conditions
+    ]
+    assert report.shared_daily_features["method_contracts"] == verified.manifest["method_contracts"]
+    assert report.shared_daily_features["method_contracts_sha256"] == verified.manifest["method_contracts_sha256"]
+    for condition in row.conditions:
+        binding = condition.to_dict()
+        assert binding["method_id"] == f"daily_market.{condition.key}"
+        assert binding["family"] == "close_vs_moving_average"
+        assert binding["version"] == "1.0.0"
+        assert binding["parameters"]["direction"] == "above"
+        assert binding["parameters"]["window"] in (20, 60)
+        assert binding["decision_date"] == decision_date.isoformat()
+        assert binding["eligibility"] != "unknown"
+        assert binding["unknown_reason"] == ""
     assert readback["historical_pit_eligible"] is False
     assert report.advice.saved_analysis is None
     assert report.advice.recommendation is None
@@ -280,6 +304,73 @@ def test_context_normalization_and_default_root_are_research_scoped(tmp_path: Pa
     assert context.daily_snapshot_cohort_id == "small-cohort"
     assert context.daily_snapshot_condition_keys == "close_above_ma20,close_above_ma60"
     assert context.daily_snapshot_combine_mode == "OR"
+
+
+@pytest.mark.parametrize("corruption", ("method_id", "version", "parameters", "decision_date", "method_hash", "legacy_schema"))
+def test_pinned_report_rejects_method_contract_corruption_without_live_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, corruption: str
+) -> None:
+    database, _price_date, decision_date = _seed_database(tmp_path)
+    snapshot_root = tmp_path / "research_snapshots"
+    screener = _service(database, snapshot_root)
+    _produce(monkeypatch, screener, decision_date)
+    verified = screener.read_latest("controlled-daily-market")
+    row = screener.filter_rows(verified, _CONDITIONS, "OR")[1]
+    context = screener.context_for_stock(row)
+    forged = deepcopy(dict(verified.manifest))
+    method = forged["method_contracts"]["close_above_ma20"]
+    if corruption == "method_id":
+        method["method_id"] = "daily_market.unprovided_method"
+    elif corruption == "version":
+        method["version"] = "9.0.0"
+    elif corruption == "parameters":
+        method["parameters"]["window"] = 21
+    elif corruption == "decision_date":
+        forged["decision_date"] = (decision_date - timedelta(days=1)).isoformat()
+    elif corruption == "method_hash":
+        forged["method_contracts_sha256"] = "f" * 64
+    else:
+        forged["schema_version"] = "daily-market-snapshot-manifest.v1"
+        del forged["method_contracts"]
+        del forged["method_contracts_sha256"]
+    # 重算外層 pin 也不能將錯方法契約變成合法快照。
+    forged["manifest_identity_sha256"] = snapshot_manifest_identity_sha256(forged)
+    forged_bytes = canonical_snapshot_json_bytes(forged)
+    forged_hash = hashlib.sha256(forged_bytes).hexdigest()
+    forged_path = snapshot_root / snapshot_manifest_relpath(forged_hash)
+    forged_path.write_bytes(forged_bytes)
+    context = replace(context, source_snapshot_hash=forged_hash, source_snapshot_id=forged["manifest_identity_sha256"])
+    inventory_before = {path.relative_to(snapshot_root): path.read_bytes() for path in snapshot_root.rglob("*.json")}
+    report_service = StockResearchReportReadService(
+        SimpleNamespace(db_file=database, output_root=None),
+        clock=lambda: datetime.combine(decision_date + timedelta(days=2), time(12), tzinfo=_TAIPEI),
+    )
+
+    def forbidden_live_projection(**_kwargs):
+        raise AssertionError("拒絕 pinned 方法契約後不得以 live 投影替代")
+
+    monkeypatch.setattr(report_service.daily_market_feature_snapshot_service, "project", forbidden_live_projection)
+    rejected = report_service.read_report("2330", context=context)
+    assert rejected.shared_daily_features["projection_status"] == "failed"
+    assert "readback" not in rejected.shared_daily_features
+    assert rejected.shared_daily_features["conditions"]["close_above_ma20"]["state"] == "unknown"
+    assert rejected.advice.saved_analysis is None
+    assert rejected.advice.recommendation is None
+    assert {path.relative_to(snapshot_root): path.read_bytes() for path in snapshot_root.rglob("*.json")} == inventory_before
+
+
+def test_partial_method_binding_cannot_preserve_a_match() -> None:
+    evaluation = evaluate_daily_market_conditions(
+        {"close_above_ma20": {
+            "state": "match", "relation": "above", "reason": "",
+            "version": "1.0.0", "decision_date": "2026-10-02",
+            "eligibility": "eligible", "unknown_reason": "",
+        }},
+        ("close_above_ma20",), "AND", expected_decision_date=date(2026, 10, 2),
+    )
+    assert evaluation.combined_state == "unknown"
+    assert evaluation.conditions[0].eligibility == "unknown"
+    assert evaluation.conditions[0].unknown_reason == "method_contract_invalid"
 
 
 def test_cancelled_explicit_production_does_not_publish(

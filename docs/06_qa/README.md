@@ -1,5 +1,7 @@
 # QA 相關文檔目錄
 
+- [UX16／UX18 固定方法綁定與研究 consumer 收據](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：兩條既有觀察、方法／參數／日期／hash 拒絕、舊 schema 明確更新；整體 UX18／19 仍 partial。
+
 - [V3.3 Engineering Closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)：15 capability、lineage verifier、operations handoff 與 external-only 清單。
 - [V4 每日自然證據運行閉環 QA Handoff](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md)：scheduler、progress receipt、cohort identity、Paper ledger、自然成熟與外部阻塞的交接證據。
 

@@ -14,9 +14,13 @@ from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_FEATURE_KEYS,
     DailyMarketFeatureSnapshotService,
 )
+from app_module.daily_market_method_contract import (
+    method_contracts_payload,
+    method_contracts_sha256,
+)
 from app_module.daily_market_snapshot_repository import (
     DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA,
-    DAILY_MARKET_SNAPSHOT_METHOD_VERSIONS,
+    DAILY_MARKET_SNAPSHOT_LEGACY_MANIFEST_SCHEMA,
     DAILY_MARKET_SNAPSHOT_POINTER_SCHEMA,
     DailyMarketSnapshotRepository,
     DailyMarketSnapshotVerificationError,
@@ -177,7 +181,8 @@ def _publish(
         "decision_timezone": "Asia/Taipei",
         "feature_contract_version": DAILY_MARKET_FEATURE_CONTRACT_VERSION,
         "feature_keys": list(DAILY_MARKET_FEATURE_KEYS),
-        "method_versions": dict(DAILY_MARKET_SNAPSHOT_METHOD_VERSIONS),
+        "method_contracts": method_contracts_payload(),
+        "method_contracts_sha256": method_contracts_sha256(),
         "stocks": records,
         "missing_stocks": missing,
         "counts": {
@@ -288,8 +293,8 @@ def test_reader_fails_closed_on_cohort_date_or_input_revision(
         ({"market_date": "2026-10-06"}, None, None, "snapshot_future_market_date"),
         ({"stock_code": "9999"}, None, None, "snapshot_stock_mismatch"),
         ({"snapshot_identity_sha256": "b" * 64}, None, None, "snapshot_identity_mismatch"),
-        (None, {"feature_contract_version": "daily-market-feature-snapshot.v2"}, None, "snapshot_contract_version_mismatch"),
-        (None, {"method_versions": {"close": "new-method"}}, None, "snapshot_method_version_mismatch"),
+        (None, {"feature_contract_version": "daily-market-feature-snapshot.v1"}, None, "snapshot_contract_version_mismatch"),
+        (None, {"method_contracts": {"close_above_ma20": {"method_id": "forged"}}}, None, "snapshot_method_contract_mismatch"),
         (None, {"counts": {"declared": True, "published": 1, "missing": 0}}, None, "snapshot_counts_mismatch"),
         (None, {"missing_stocks": [{"stock_code": "9999", "reason": "bad"}]}, None, "snapshot_missing_diagnostics_invalid"),
     ],
@@ -310,6 +315,54 @@ def test_reader_rejects_semantic_tampering_even_when_bytes_are_repinned(
         record_updates=record_updates,
         manifest_updates=manifest_updates,
     )
+
+    with pytest.raises(DailyMarketSnapshotVerificationError) as error:
+        _load(tmp_path)
+    assert error.value.code == error_code
+
+
+def test_reader_rejects_rehashed_forged_method_registry(tmp_path: Path):
+    payload = _snapshot_payload("2382")
+    forged_contracts = method_contracts_payload()
+    forged_contracts["close_above_ma20"]["parameters"]["window"] = 21
+    _publish(
+        tmp_path,
+        {"2382": payload},
+        ("2382",),
+        manifest_updates={
+            "method_contracts": forged_contracts,
+            "method_contracts_sha256": method_contracts_sha256(forged_contracts),
+        },
+    )
+
+    with pytest.raises(DailyMarketSnapshotVerificationError) as error:
+        _load(tmp_path)
+    assert error.value.code == "snapshot_method_contract_mismatch"
+
+
+@pytest.mark.parametrize(
+    ("binding_field", "replacement", "error_code"),
+    [
+        ("method_id", "daily_market.forged", "snapshot_method_id_mismatch"),
+        ("version", "9.0.0", "snapshot_method_version_mismatch"),
+        ("parameters", {"window": 21, "direction": "above"}, "snapshot_method_parameters_mismatch"),
+        ("decision_date", "2026-10-04", "snapshot_condition_decision_date_mismatch"),
+        ("method_contracts_sha256", "f" * 64, "snapshot_method_contract_hash_mismatch"),
+    ],
+)
+def test_reader_rejects_rehashed_inner_method_binding_tampering(
+    tmp_path: Path,
+    binding_field: str,
+    replacement: Any,
+    error_code: str,
+):
+    payload = _snapshot_payload("2382")
+    if binding_field == "method_contracts_sha256":
+        payload[binding_field] = replacement
+    else:
+        payload["conditions"]["close_above_ma20"][binding_field] = replacement
+    # _publish 會重算 artifact、manifest stable identity 與外層內容 hash。
+    _publish(tmp_path, {"2382": payload}, ("2382",))
 
     with pytest.raises(DailyMarketSnapshotVerificationError) as error:
         _load(tmp_path)

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+import hashlib
+import json
 from pathlib import Path
 from typing import Any, Mapping
 from zoneinfo import ZoneInfo
@@ -9,13 +12,22 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app_module.daily_market_feature_snapshot import DailyMarketFeatureSnapshotService
+from app_module import daily_market_method_contract
 from app_module.daily_market_snapshot_producer import (
     DailyMarketSnapshotInput,
     DailyMarketSnapshotProducer,
 )
 from app_module.daily_market_snapshot_repository import (
+    DAILY_MARKET_SNAPSHOT_LEGACY_MANIFEST_SCHEMA,
     DAILY_MARKET_SNAPSHOT_MAX_ARTIFACT_BYTES,
+    DAILY_MARKET_SNAPSHOT_POINTER_SCHEMA,
     DailyMarketSnapshotRepository,
+    DailyMarketSnapshotVerificationError,
+    canonical_json_bytes,
+    snapshot_artifact_relpath,
+    snapshot_identity_sha256,
+    snapshot_manifest_identity_sha256,
+    snapshot_manifest_relpath,
 )
 from app_module.stock_research_report_dtos import (
     StockMetricDTO,
@@ -154,6 +166,71 @@ def _produce(producer: DailyMarketSnapshotProducer, inputs, **kwargs):
     )
 
 
+def _repin_as_legacy_v1(root: Path) -> tuple[bytes, str, bytes]:
+    """將 fixture 的 latest 轉為舊 reader 可辨識的 v1 immutable 形狀。"""
+
+    pointer_path = root / "latest.json"
+    pointer = json.loads(pointer_path.read_bytes())
+    manifest_path = root / Path(snapshot_manifest_relpath(pointer["manifest_sha256"]))
+    manifest = json.loads(manifest_path.read_bytes())
+    legacy_feature_version = "daily-market-feature-snapshot.v1"
+
+    for record in manifest["stocks"]:
+        artifact_path = root / Path(record["artifact_relpath"])
+        payload = json.loads(artifact_path.read_bytes())
+        payload["contract_version"] = legacy_feature_version
+        payload.pop("method_contracts", None)
+        payload.pop("method_contracts_sha256", None)
+        for condition in payload["conditions"].values():
+            for field in (
+                "method_id",
+                "family",
+                "version",
+                "parameters",
+                "decision_date",
+                "eligibility",
+                "unknown_reason",
+            ):
+                condition.pop(field, None)
+        payload["snapshot_identity_sha256"] = snapshot_identity_sha256(
+            contract_version=legacy_feature_version,
+            stock_code=payload["stock_code"],
+            decision_date=payload["decision_date"],
+            scope_identity=payload["scope_identity"],
+            input_fingerprint_sha256=payload["input_fingerprint_sha256"],
+        )
+        artifact_bytes = canonical_json_bytes(payload)
+        artifact_sha256 = hashlib.sha256(artifact_bytes).hexdigest()
+        artifact_relpath = snapshot_artifact_relpath(artifact_sha256)
+        (root / Path(artifact_relpath)).write_bytes(artifact_bytes)
+        record["artifact_sha256"] = artifact_sha256
+        record["artifact_relpath"] = artifact_relpath
+        record["snapshot_identity_sha256"] = payload["snapshot_identity_sha256"]
+
+    manifest["schema_version"] = DAILY_MARKET_SNAPSHOT_LEGACY_MANIFEST_SCHEMA
+    manifest["feature_contract_version"] = legacy_feature_version
+    manifest.pop("method_contracts", None)
+    manifest.pop("method_contracts_sha256", None)
+    manifest["method_versions"] = {
+        "close": "existing_observation",
+        "MA20": "existing_observation",
+        "MA60": "existing_observation",
+        "conditions": "existing_observation",
+    }
+    manifest["manifest_identity_sha256"] = snapshot_manifest_identity_sha256(manifest)
+    manifest_bytes = canonical_json_bytes(manifest)
+    manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+    (root / Path(snapshot_manifest_relpath(manifest_sha256))).write_bytes(manifest_bytes)
+    pointer_bytes = canonical_json_bytes(
+        {
+            "schema_version": DAILY_MARKET_SNAPSHOT_POINTER_SCHEMA,
+            "manifest_sha256": manifest_sha256,
+        }
+    )
+    pointer_path.write_bytes(pointer_bytes)
+    return pointer_bytes, manifest_sha256, manifest_bytes
+
+
 def test_first_publish_reader_roundtrip_and_exact_noop_preserves_latest(tmp_path: Path):
     inputs = {code: _input(code) for code in ("1101", "2382")}
     producer = _producer(tmp_path / "snapshot")
@@ -198,6 +275,138 @@ def test_first_publish_reader_roundtrip_and_exact_noop_preserves_latest(tmp_path
     assert second.reused_stock_codes == ("1101", "2382")
     assert (producer.root / "latest.json").read_bytes() == pointer_before
     assert verified_again.manifest["published_at"] == manifest_before
+
+
+def test_legacy_v1_requires_explicit_production_and_keeps_old_immutables(tmp_path: Path):
+    root = tmp_path / "legacy-v1"
+    producer = _producer(root)
+    original = {"2382": _input("2382")}
+    assert _produce(producer, original).status == "published_complete"
+    legacy_pointer, legacy_manifest_sha256, legacy_manifest_bytes = _repin_as_legacy_v1(root)
+    legacy_manifest_path = root / Path(snapshot_manifest_relpath(legacy_manifest_sha256))
+
+    with pytest.raises(DailyMarketSnapshotVerificationError) as error:
+        DailyMarketSnapshotRepository(root).load_latest(
+            cohort_id="ux19-test-cohort", decision_date=DECISION_DATE
+        )
+    assert error.value.code == "snapshot_manifest_legacy_v1"
+    assert "v2" in str(error.value)
+
+    immutable_before_failure = {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*.json")
+        if path.name != "latest.json"
+    }
+    source_calls: list[str] = []
+
+    def unavailable(stock_code: str, requested_date: date):
+        source_calls.append(stock_code)
+        raise RuntimeError("fixture source unavailable")
+
+    failed = producer.produce(
+        cohort_id="ux19-test-cohort",
+        decision_cutoff=CUTOFF,
+        stock_codes=("2382",),
+        source_loader=unavailable,
+    )
+    assert failed.status == "source_unavailable"
+    assert failed.published is False
+    assert failed.rebuild_reason == "legacy_v1_requires_explicit_reproduction"
+    assert source_calls == ["2382"]
+    assert (root / "latest.json").read_bytes() == legacy_pointer
+    assert legacy_manifest_path.read_bytes() == legacy_manifest_bytes
+    assert {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*.json")
+        if path.name != "latest.json"
+    } == immutable_before_failure
+
+    revised = {"2382": _input("2382", offset=1)}
+    reproduced = _produce(producer, revised)
+    assert reproduced.status == "published_complete"
+    assert reproduced.published is True
+    assert reproduced.rebuild_reason == "legacy_v1_requires_explicit_reproduction"
+    assert reproduced.reused_stock_codes == ()
+    assert reproduced.recomputed_stock_codes == ("2382",)
+    verified = DailyMarketSnapshotRepository(root).load_latest(
+        cohort_id="ux19-test-cohort", decision_date=DECISION_DATE
+    )
+    assert verified.manifest["schema_version"] == "daily-market-snapshot-manifest.v2"
+    assert verified.manifest_sha256 == reproduced.manifest_sha256
+    assert legacy_manifest_path.read_bytes() == legacy_manifest_bytes
+    for relative_path, immutable_bytes in immutable_before_failure.items():
+        assert (root / relative_path).read_bytes() == immutable_bytes
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error_code"),
+    [
+        ("version", "snapshot_method_contract_mismatch"),
+        ("parameters", "snapshot_method_contract_registry_invalid"),
+    ],
+)
+def test_changed_method_registry_never_reuses_existing_v2_producer_snapshot(
+    tmp_path: Path, monkeypatch, mutation: str, expected_error_code: str
+):
+    root = tmp_path / mutation
+    inputs = {"2382": _input("2382")}
+    producer = _producer(root)
+    assert _produce(producer, inputs).status == "published_complete"
+    pointer_before = (root / "latest.json").read_bytes()
+    immutable_before = {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*.json")
+        if path.name != "latest.json"
+    }
+
+    changed_contract = deepcopy(daily_market_method_contract._METHOD_CONTRACTS["close_above_ma20"])
+    if mutation == "version":
+        changed_contract["version"] = "1.0.1"
+    else:
+        changed_contract["parameters"]["window"] = 21
+    monkeypatch.setitem(
+        daily_market_method_contract._METHOD_CONTRACTS,
+        "close_above_ma20",
+        changed_contract,
+    )
+
+    calls: list[str] = []
+
+    def track_source(stock_code: str, requested_date: date):
+        calls.append(stock_code)
+        return inputs[stock_code]
+
+    blocked = producer.produce(
+        cohort_id="ux19-test-cohort",
+        decision_cutoff=CUTOFF,
+        stock_codes=("2382",),
+        source_loader=track_source,
+    )
+    assert blocked.status == "prior_snapshot_invalid"
+    assert blocked.published is False
+    assert blocked.reused_stock_codes == ()
+    assert blocked.error_code == expected_error_code
+    assert calls == []
+    assert (root / "latest.json").read_bytes() == pointer_before
+    assert {
+        path.relative_to(root): path.read_bytes()
+        for path in root.rglob("*.json")
+        if path.name != "latest.json"
+    } == immutable_before
+
+    fresh_root_producer = _producer(tmp_path / f"fresh-{mutation}")
+    if mutation == "version":
+        fresh = _produce(fresh_root_producer, inputs)
+        assert fresh.status == "published_complete"
+        refreshed = DailyMarketSnapshotRepository(fresh_root_producer.root).load_latest(
+            cohort_id="ux19-test-cohort", decision_date=DECISION_DATE
+        )
+        assert refreshed.stock_snapshots["2382"]["conditions"]["close_above_ma20"]["version"] == "1.0.1"
+    else:
+        fresh = _produce(fresh_root_producer, inputs)
+        assert fresh.status == "prior_snapshot_invalid"
+        assert fresh.error_code == "snapshot_method_contract_registry_invalid"
+        assert fresh.reused_stock_codes == ()
 
 
 def test_incremental_source_revision_matches_fresh_full_projection(tmp_path: Path, monkeypatch):

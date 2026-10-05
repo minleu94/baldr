@@ -1,5 +1,11 @@
 # 2026-10-05 有界語意審查與體驗接手
 
+## 最新接續：UX18 固定研究方法契約（基線 c50cefcd）
+
+兩條既有 MA20／MA60 方法 metadata 綁 cache／manifest／逐股三態結果，錯方法／版本／參數／日期／hash 拒絕，舊 schema 僅明確更新重產；實際驗證與提交見 [QA 方法綁定新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md) 及 Git。公式與用途不改，不授 alpha／勝率；原排名與市場共用 consumer 超出小改列下一包，UX18／19 與 stage2／3 仍 partial。
+
+Backtest18.62%／20%未達、歷史 PIT／自然 ML／真人驗收限制維持，不以外部等待遮蔽工程缺項。原計畫追加保留，未讀／動未知 paper 或還原映射，不 push／清理／訓練／全量回歸；本地提交與 blob 核驗後停止交父層。
+
 ## 最新接續：UX04／05 日常研究名單與同源個股（基線695797ec）
 
 本包承接有限UX18／19工程，把研究快照接到Recommendation實際入口與個股pinned讀回：既有兩條close／MA AND／OR、三態why／why-not、來源metadata經session完整保留，返回核對原manifest。repo專用研究區僅明確更新才bounded寫入；不改正式DB／排程，不升研究或離線候選為推薦。真實來源Native QTest與受控缺資料／revision場景分列，數字與提交以[QA新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)及Git為準。

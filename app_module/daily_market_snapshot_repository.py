@@ -17,22 +17,20 @@ from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_FEATURE_CONTRACT_VERSION,
     DAILY_MARKET_FEATURE_KEYS,
 )
+from app_module.daily_market_method_contract import (
+    method_contracts_payload,
+    method_contracts_sha256,
+)
 from app_module.research_run_dtos import canonical_json
 
 
 DAILY_MARKET_SNAPSHOT_POINTER_SCHEMA = "daily-market-snapshot-pointer.v1"
-DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA = "daily-market-snapshot-manifest.v1"
+DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA = "daily-market-snapshot-manifest.v2"
+DAILY_MARKET_SNAPSHOT_LEGACY_MANIFEST_SCHEMA = "daily-market-snapshot-manifest.v1"
 DAILY_MARKET_SNAPSHOT_MAX_STOCKS = 16
 DAILY_MARKET_SNAPSHOT_MAX_POINTER_BYTES = 4 * 1024
 DAILY_MARKET_SNAPSHOT_MAX_MANIFEST_BYTES = 1024 * 1024
 DAILY_MARKET_SNAPSHOT_MAX_ARTIFACT_BYTES = 64 * 1024
-DAILY_MARKET_SNAPSHOT_METHOD_VERSIONS = {
-    "close": "existing_observation",
-    "MA20": "existing_observation",
-    "MA60": "existing_observation",
-    "conditions": "existing_observation",
-}
-
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _FEATURE_WINDOWS = {"MA20": 20, "MA60": 60}
 _POLICY = {
@@ -124,18 +122,20 @@ def snapshot_identity_sha256(
     decision_date: str,
     scope_identity: str,
     input_fingerprint_sha256: str,
+    method_contracts_sha256: str | None = None,
 ) -> str:
     """依 feature snapshot 既有穩定識別欄位重算雜湊。"""
 
-    return canonical_snapshot_sha256(
-        {
-            "contract_version": contract_version,
-            "stock_code": stock_code,
-            "decision_date": decision_date,
-            "scope_identity": scope_identity,
-            "input_fingerprint_sha256": input_fingerprint_sha256,
-        }
-    )
+    identity_payload = {
+        "contract_version": contract_version,
+        "stock_code": stock_code,
+        "decision_date": decision_date,
+        "scope_identity": scope_identity,
+        "input_fingerprint_sha256": input_fingerprint_sha256,
+    }
+    if method_contracts_sha256 is not None:
+        identity_payload["method_contracts_sha256"] = method_contracts_sha256
+    return canonical_snapshot_sha256(identity_payload)
 
 
 class DailyMarketSnapshotRepository:
@@ -275,6 +275,16 @@ class DailyMarketSnapshotRepository:
         decision_date: date,
         expected_codes: tuple[str, ...] | None,
     ) -> tuple[tuple[str, ...], list[dict[str, Any]]]:
+        if manifest.get("schema_version") == DAILY_MARKET_SNAPSHOT_LEGACY_MANIFEST_SCHEMA:
+            claimed_identity = _require_sha256(
+                manifest.get("manifest_identity_sha256"), "manifest_identity_sha256"
+            )
+            if snapshot_manifest_identity_sha256(manifest) != claimed_identity:
+                _fail("snapshot_manifest_identity_mismatch", "manifest stable identity 不符")
+            _fail(
+                "snapshot_manifest_legacy_v1",
+                "本地 v1 快照沒有方法契約綁定，reader 拒絕讀取；請明示重新產生 v2 快照。",
+            )
         required_fields = {
             "schema_version",
             "manifest_identity_sha256",
@@ -286,7 +296,8 @@ class DailyMarketSnapshotRepository:
             "decision_timezone",
             "feature_contract_version",
             "feature_keys",
-            "method_versions",
+            "method_contracts",
+            "method_contracts_sha256",
             "stocks",
             "missing_stocks",
             "counts",
@@ -296,7 +307,7 @@ class DailyMarketSnapshotRepository:
         }
         allowed_fields = required_fields | {"source_ref"}
         if not required_fields.issubset(manifest) or not set(manifest).issubset(allowed_fields):
-            _fail("snapshot_manifest_invalid", "manifest 欄位不符合 v1 契約")
+            _fail("snapshot_manifest_invalid", "manifest 欄位不符合 v2 契約")
         if manifest.get("schema_version") != DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA:
             _fail("snapshot_manifest_schema_mismatch", "manifest schema 不相容")
         claimed_identity = _require_sha256(
@@ -338,8 +349,10 @@ class DailyMarketSnapshotRepository:
             _fail("snapshot_contract_version_mismatch", "feature contract version 不相容")
         if manifest.get("feature_keys") != list(DAILY_MARKET_FEATURE_KEYS):
             _fail("snapshot_feature_keys_mismatch", "manifest features 不符合 reader 契約")
-        if manifest.get("method_versions") != DAILY_MARKET_SNAPSHOT_METHOD_VERSIONS:
-            _fail("snapshot_method_version_mismatch", "manifest method versions 不相容")
+        _validate_method_contract_binding(
+            manifest.get("method_contracts"),
+            manifest.get("method_contracts_sha256"),
+        )
         manifest_policy = manifest.get("policy")
         if (
             not isinstance(manifest_policy, dict)
@@ -369,7 +382,7 @@ class DailyMarketSnapshotRepository:
                 "source_refs",
             }
             if set(item) != required_record_fields:
-                _fail("snapshot_stock_records_invalid", "manifest stock record 欄位不符合 v1")
+                _fail("snapshot_stock_records_invalid", "manifest v2 stock record 欄位不符合契約")
             stock_code = item.get("stock_code")
             if not isinstance(stock_code, str) or stock_code not in declared_codes:
                 _fail("snapshot_stock_scope_invalid", "manifest artifact 超出 declared cohort")
@@ -502,6 +515,8 @@ class DailyMarketSnapshotRepository:
             "market_date",
             "features",
             "conditions",
+            "method_contracts",
+            "method_contracts_sha256",
             "policy",
         }
         if set(payload) != required_fields:
@@ -514,6 +529,22 @@ class DailyMarketSnapshotRepository:
             _fail("snapshot_decision_date_mismatch", f"{stock_code} artifact 日期不符")
         if payload.get("scope_identity") != record["source_identity"]:
             _fail("snapshot_scope_identity_mismatch", f"{stock_code} scope identity 不符")
+        if payload.get("method_contracts") != manifest.get("method_contracts"):
+            _fail(
+                "snapshot_method_contract_binding_mismatch",
+                f"{stock_code} 內層 method_contracts 與 manifest 不符",
+            )
+        if payload.get("method_contracts_sha256") != manifest.get(
+            "method_contracts_sha256"
+        ):
+            _fail(
+                "snapshot_method_contract_hash_mismatch",
+                f"{stock_code} 內層 method_contracts_sha256 與 manifest 不符",
+            )
+        _validate_method_contract_binding(
+            payload.get("method_contracts"),
+            payload.get("method_contracts_sha256"),
+        )
         if payload.get("input_fingerprint_sha256") != record["input_fingerprint_sha256"]:
             _fail("snapshot_input_hash_mismatch", f"{stock_code} artifact input hash 與 manifest 不符")
         if payload.get("snapshot_identity_sha256") != record["snapshot_identity_sha256"]:
@@ -525,6 +556,7 @@ class DailyMarketSnapshotRepository:
             decision_date=decision_date.isoformat(),
             scope_identity=str(payload["scope_identity"]),
             input_fingerprint_sha256=str(payload["input_fingerprint_sha256"]),
+            method_contracts_sha256=str(payload["method_contracts_sha256"]),
         )
         if payload.get("snapshot_identity_sha256") != recomputed_identity:
             _fail("snapshot_identity_mismatch", f"{stock_code} snapshot identity 重算不符")
@@ -568,6 +600,8 @@ class DailyMarketSnapshotRepository:
                 features["close"],
                 features[feature_key],
                 market_date,
+                decision_date,
+                manifest["method_contracts"][condition_key],
             )
 
     def _validate_feature(
@@ -667,6 +701,8 @@ class DailyMarketSnapshotRepository:
         close_feature: dict[str, Any],
         average_feature: dict[str, Any],
         market_date: Any,
+        decision_date: date,
+        method_contract: Mapping[str, Any],
     ) -> None:
         required_fields = {
             "name",
@@ -678,6 +714,13 @@ class DailyMarketSnapshotRepository:
             "data_date",
             "reason",
             "semantics",
+            "method_id",
+            "family",
+            "version",
+            "parameters",
+            "decision_date",
+            "eligibility",
+            "unknown_reason",
         }
         if not isinstance(condition, dict) or set(condition) != required_fields:
             _fail("snapshot_condition_schema_mismatch", f"{key} condition 欄位無效")
@@ -687,6 +730,16 @@ class DailyMarketSnapshotRepository:
             or condition.get("semantics") != "existing_observation"
         ):
             _fail("snapshot_condition_schema_mismatch", f"{key} condition semantics 不符")
+        if condition.get("method_id") != method_contract.get("method_id"):
+            _fail("snapshot_method_id_mismatch", f"{key} method_id 與 canonical contract 不符")
+        if condition.get("family") != method_contract.get("family"):
+            _fail("snapshot_method_family_mismatch", f"{key} method family 與 canonical contract 不符")
+        if condition.get("version") != method_contract.get("version"):
+            _fail("snapshot_method_version_mismatch", f"{key} method version 與 canonical contract 不符")
+        if condition.get("parameters") != method_contract.get("parameters"):
+            _fail("snapshot_method_parameters_mismatch", f"{key} method parameters 與 canonical contract 不符")
+        if condition.get("decision_date") != decision_date.isoformat():
+            _fail("snapshot_condition_decision_date_mismatch", f"{key} decision_date 與 snapshot 不符")
         if condition.get("data_date") != market_date:
             _fail("snapshot_condition_date_mismatch", f"{key} condition 日期不符")
         close_value = close_feature.get("value")
@@ -697,8 +750,13 @@ class DailyMarketSnapshotRepository:
         ):
             _fail("snapshot_condition_value_mismatch", f"{key} condition 值與 feature 不符")
         if close_feature.get("state") != "observed" or average_feature.get("state") != "observed":
-            if condition.get("state") != "unknown" or condition.get("relation") != "unknown":
+            if (
+                condition.get("state") != "unknown"
+                or condition.get("relation") != "unknown"
+                or condition.get("eligibility") != "unknown"
+            ):
                 _fail("snapshot_condition_state_invalid", f"{key} input unknown 時 condition 必須 unknown")
+            self._validate_unknown_condition_reason(condition, key)
             return
         try:
             close_decimal = Decimal(str(close_value))
@@ -711,8 +769,25 @@ class DailyMarketSnapshotRepository:
             else "equal"
         )
         expected_state = "match" if expected_relation == "above" else "no_match"
-        if condition.get("relation") != expected_relation or condition.get("state") != expected_state:
+        if (
+            condition.get("relation") != expected_relation
+            or condition.get("state") != expected_state
+            or condition.get("eligibility") != "eligible"
+            or condition.get("unknown_reason") != ""
+        ):
             _fail("snapshot_condition_state_invalid", f"{key} relation/state 與 Decimal 比較不符")
+
+    @staticmethod
+    def _validate_unknown_condition_reason(condition: Mapping[str, Any], key: str) -> None:
+        reason = condition.get("reason")
+        unknown_reason = condition.get("unknown_reason")
+        if (
+            not isinstance(reason, str)
+            or not reason.strip()
+            or condition.get("eligibility") != "unknown"
+            or unknown_reason != reason
+        ):
+            _fail("snapshot_condition_unknown_reason_invalid", f"{key} unknown condition 必須保存穩定理由碼")
 
     def _read_json_file(
         self,
@@ -748,6 +823,77 @@ class DailyMarketSnapshotRepository:
         if not path.is_file():
             _fail(missing_code, "snapshot 路徑不是一般檔案")
         return path
+
+
+def _validate_method_contract_binding(payload: Any, claimed_sha256: Any) -> None:
+    """要求 manifest/artifact 綁定目前唯一 canonical 方法 registry。"""
+
+    if not isinstance(payload, dict):
+        _fail("snapshot_method_contracts_invalid", "method_contracts 必須是 object")
+    expected_payload = method_contracts_payload()
+    expected_sha256 = method_contracts_sha256()
+    _require_sha256(expected_sha256, "canonical_method_contracts_sha256")
+    _validate_fixed_method_semantics(expected_payload)
+    if canonical_snapshot_sha256(expected_payload) != expected_sha256:
+        _fail("snapshot_method_contract_registry_invalid", "canonical method registry hash 不一致")
+    if payload != expected_payload:
+        _fail(
+            "snapshot_method_contract_mismatch",
+            "method_contracts 與目前 canonical registry 不一致",
+        )
+    claimed = _require_sha256(claimed_sha256, "method_contracts_sha256")
+    if claimed != expected_sha256 or canonical_snapshot_sha256(payload) != claimed:
+        _fail(
+            "snapshot_method_contract_hash_mismatch",
+            "method_contracts_sha256 與 canonical payload 不一致",
+        )
+
+
+def current_method_contract_binding() -> tuple[dict[str, Any], str]:
+    """回傳經固定 MA20/MA60 語義驗證的當前 canonical registry。"""
+
+    payload = method_contracts_payload()
+    claimed_sha256 = method_contracts_sha256(payload)
+    _validate_method_contract_binding(payload, claimed_sha256)
+    return payload, claimed_sha256
+
+
+def _validate_fixed_method_semantics(payload: Mapping[str, Any]) -> None:
+    """固定既有 MA20/MA60 比較語義，避免 metadata 改寫實際公式。"""
+
+    expected = {
+        "close_above_ma20": (20, "MA20"),
+        "close_above_ma60": (60, "MA60"),
+    }
+    if set(payload) != set(expected):
+        _fail("snapshot_method_contract_registry_invalid", "canonical method registry keys 不符合固定條件")
+    for key, (window, average_key) in expected.items():
+        contract = payload.get(key)
+        if not isinstance(contract, dict) or set(contract) != {
+            "method_id",
+            "family",
+            "version",
+            "parameters",
+            "required_fields",
+        }:
+            _fail("snapshot_method_contract_registry_invalid", f"{key} canonical method contract 無效")
+        parameters = contract.get("parameters")
+        if (
+            contract.get("method_id") != f"daily_market.{key}"
+            or contract.get("family") != "close_vs_moving_average"
+            or not isinstance(contract.get("version"), str)
+            or not contract["version"].strip()
+            or not isinstance(parameters, dict)
+            or set(parameters) != {"window", "direction"}
+            or type(parameters.get("window")) is not int
+            or parameters.get("window") != window
+            or parameters.get("direction") != "above"
+            or contract.get("required_fields") != ["close", average_key]
+        ):
+            _fail(
+                "snapshot_method_contract_registry_invalid",
+                f"{key} registry 不可改變既有 MA{window} 條件語義",
+            )
 
 
 def _normalize_expected_codes(value: Sequence[str] | None) -> tuple[str, ...] | None:

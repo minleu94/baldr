@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
+import app_module.daily_market_method_contract as method_contract_module
 import app_module.daily_market_feature_snapshot as snapshot_module
 from app_module.daily_market_feature_snapshot import (
     DailyMarketFeatureSnapshot,
@@ -353,10 +355,10 @@ def test_cache_identity_binds_full_values_scope_date_source_and_contract_version
     monkeypatch.setattr(
         snapshot_module,
         "DAILY_MARKET_FEATURE_CONTRACT_VERSION",
-        "daily-market-feature-snapshot.v2",
+        "daily-market-feature-snapshot.v3",
     )
     changed_version = service.project("2382", market_date, "cohort:a", points, technical)
-    assert changed_version.contract_version.endswith("v2")
+    assert changed_version.contract_version.endswith("v3")
     assert changed_version.snapshot_identity_sha256 != first.snapshot_identity_sha256
     assert len(service._cache) == 1
 
@@ -384,3 +386,74 @@ def test_snapshot_identity_and_serialization_are_stable_and_scope_is_required():
     assert first.to_dict()["features"]["MA20"]["value"] == "150.125"
     with pytest.raises(ValueError, match="scope_identity"):
         service.project("2382", date.fromisoformat(points[-1].data_date), " ", points, technical)
+
+
+def test_method_contract_is_captured_and_parameter_metadata_changes_identity(monkeypatch):
+    service = DailyMarketFeatureSnapshotService()
+    points = _prices(60)
+    market_date = date.fromisoformat(points[-1].data_date)
+    technical = _technical(points[-1].data_date)
+
+    original_contracts = method_contract_module.method_contracts_payload()
+    first = service.project("2382", market_date, "cohort:a", points, technical)
+    first_payload = first.to_dict()
+    assert first_payload["method_contracts"] == original_contracts
+    assert first_payload["method_contracts_sha256"] == method_contract_module.method_contracts_sha256(
+        original_contracts
+    )
+    assert original_contracts["close_above_ma20"] == {
+        "method_id": "daily_market.close_above_ma20",
+        "family": "close_vs_moving_average",
+        "version": "1.0.0",
+        "parameters": {"window": 20, "direction": "above"},
+        "required_fields": ["close", "MA20"],
+    }
+    bound_condition = first_payload["conditions"]["close_above_ma20"]
+    assert bound_condition["method_id"] == "daily_market.close_above_ma20"
+    assert bound_condition["family"] == "close_vs_moving_average"
+    assert bound_condition["version"] == "1.0.0"
+    assert bound_condition["parameters"] == {"window": 20, "direction": "above"}
+    assert bound_condition["decision_date"] == market_date.isoformat()
+    assert bound_condition["eligibility"] == "eligible"
+    assert bound_condition["unknown_reason"] == ""
+
+    changed_contracts = deepcopy(original_contracts)
+    # Fixture-only metadata revision: the projection's formula remains the fixed MA20.
+    changed_contracts["close_above_ma20"]["parameters"]["window"] = 21
+    monkeypatch.setattr(
+        snapshot_module,
+        "method_contracts_payload",
+        lambda: deepcopy(changed_contracts),
+    )
+    changed = service.project("2382", market_date, "cohort:a", points, technical)
+    assert changed.input_fingerprint_sha256 != first.input_fingerprint_sha256
+    assert changed.snapshot_identity_sha256 != first.snapshot_identity_sha256
+    assert changed.method_contracts_sha256 != first.method_contracts_sha256
+    assert len(service._cache) == 1
+    assert changed.condition("close_above_ma20").reference_value == first.feature("MA20").value
+    assert first.to_dict()["method_contracts"] == original_contracts
+    assert first.to_dict()["conditions"]["close_above_ma20"]["parameters"] == {
+        "window": 20,
+        "direction": "above",
+    }
+
+    monkeypatch.setattr(
+        snapshot_module,
+        "method_contracts_payload",
+        method_contract_module.method_contracts_payload,
+    )
+    # Market data may be older than the as-of decision date; binding uses the decision date.
+    restored_service = DailyMarketFeatureSnapshotService()
+    later_decision_date = market_date + timedelta(days=1)
+    stale_market_date = restored_service.project(
+        "2382", later_decision_date, "cohort:a", points, technical
+    )
+    stale_binding = stale_market_date.condition("close_above_ma20")
+    assert stale_market_date.market_date == market_date.isoformat()
+    assert stale_binding.decision_date == later_decision_date.isoformat()
+    assert stale_binding.eligibility == "eligible"
+
+    unknown = restored_service.project("2382", market_date, "cohort:b", points, None)
+    unknown_binding = unknown.to_dict()["conditions"]["close_above_ma20"]
+    assert unknown_binding["eligibility"] == "unknown"
+    assert unknown_binding["unknown_reason"] == "technical_missing"

@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from datetime import date, datetime
 import hashlib
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal
 from zoneinfo import ZoneInfo
 
+from app_module.daily_market_method_contract import method_contracts_payload
 from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_CONDITION_KEYS,
     daily_market_feature_input_fingerprint,
@@ -63,10 +65,13 @@ _REASON_LABELS = {
     "snapshot_context_data_date_mismatch": "研究行情日與快照行情日不一致",
     "snapshot_context_decision_date_mismatch": "研究決策日與快照決策日不一致",
     "snapshot_context_incomplete": "研究上下文缺少快照來源身份",
+    "decision_date_mismatch": "方法契約決策日與已驗證快照不一致",
+    "method_contract_invalid": "方法契約欄位缺漏或不一致",
 }
 
 ResearchConditionState = Literal["match", "no_match", "unknown"]
 ResearchConditionRelation = Literal["above", "below", "equal", "unknown"]
+ResearchEligibility = Literal["eligible", "unknown"]
 ResearchCombineMode = Literal["AND", "OR"]
 
 
@@ -82,14 +87,45 @@ class DailyMarketResearchConditionResult:
     state: ResearchConditionState
     relation: ResearchConditionRelation
     reason: str
+    method_id: str | None = None
+    family: str | None = None
+    version: str | None = None
+    parameters: Mapping[str, int | str] | None = None
+    decision_date: str | None = None
+    eligibility: ResearchEligibility | None = None
+    unknown_reason: str | None = None
 
-    def to_dict(self) -> dict[str, str]:
-        return {
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "key": self.key,
             "state": self.state,
             "relation": self.relation,
             "reason": self.reason,
         }
+        if any(
+            value is not None
+            for value in (
+                self.method_id,
+                self.family,
+                self.version,
+                self.parameters,
+                self.decision_date,
+                self.eligibility,
+                self.unknown_reason,
+            )
+        ):
+            result.update(
+                {
+                    "method_id": self.method_id,
+                    "family": self.family,
+                    "version": self.version,
+                    "parameters": dict(self.parameters or {}),
+                    "decision_date": self.decision_date,
+                    "eligibility": self.eligibility,
+                    "unknown_reason": self.unknown_reason,
+                }
+            )
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,13 +194,23 @@ def evaluate_daily_market_conditions(
     payload_conditions: Mapping[str, Any],
     condition_keys: Sequence[str],
     combine_mode: str,
+    *,
+    expected_decision_date: date | None = None,
 ) -> DailyMarketResearchFilterEvaluation:
     """以三態邏輯組合已發布的既有觀察條件。"""
 
     keys = _normalize_condition_keys(condition_keys)
     mode = _normalize_combine_mode(combine_mode)
+    if expected_decision_date is not None and (
+        isinstance(expected_decision_date, datetime)
+        or not isinstance(expected_decision_date, date)
+    ):
+        raise ValueError("expected_decision_date 必須是 date")
     results = tuple(
-        _condition_result(payload_conditions.get(key), key) for key in keys
+        _condition_result(
+            payload_conditions.get(key), key, expected_decision_date
+        )
+        for key in keys
     )
     states = tuple(item.state for item in results)
     if mode == "AND":
@@ -474,7 +520,12 @@ class DailyMarketResearchScreenerService:
             payload = snapshot.stock_snapshots[code]
             raw_conditions = payload.get("conditions")
             conditions = raw_conditions if isinstance(raw_conditions, Mapping) else {}
-            evaluation = evaluate_daily_market_conditions(conditions, keys, mode)
+            evaluation = evaluate_daily_market_conditions(
+                conditions,
+                keys,
+                mode,
+                expected_decision_date=snapshot.decision_date,
+            )
             rows.append(
                 DailyMarketResearchScreenRow(
                     stock_code=code,
@@ -589,7 +640,11 @@ def _normalize_combine_mode(value: str) -> ResearchCombineMode:
     return mode  # type: ignore[return-value]
 
 
-def _condition_result(raw: Any, key: str) -> DailyMarketResearchConditionResult:
+def _condition_result(
+    raw: Any,
+    key: str,
+    expected_decision_date: date | None = None,
+) -> DailyMarketResearchConditionResult:
     expected = {
         "match": "above",
         "no_match": {"below", "equal"},
@@ -603,6 +658,11 @@ def _condition_result(raw: Any, key: str) -> DailyMarketResearchConditionResult:
             relation="unknown",
             reason=f"快照未提供 {label} 的條件觀察。",
         )
+    method_metadata = _read_condition_method_metadata(
+        raw,
+        key,
+        expected_decision_date,
+    )
     raw_state = str(raw.get("state") or "")
     raw_relation = str(raw.get("relation") or "")
     if raw_state not in {"match", "no_match", "unknown"}:
@@ -622,9 +682,24 @@ def _condition_result(raw: Any, key: str) -> DailyMarketResearchConditionResult:
                 state="unknown",
                 relation="unknown",
                 reason=f"{label} 的狀態與相對位置不一致；拒絕推定符合。",
+                **method_metadata,
             )
+    if method_metadata.get("eligibility") == "unknown":
+        raw_state = "unknown"
+        raw_relation = "unknown"
     raw_reason = str(raw.get("reason") or "").strip()
     reason = _localized_reason(raw_reason)
+    if method_metadata.get("eligibility") == "unknown":
+        binding_reason = str(method_metadata.get("unknown_reason") or "").strip()
+        remaining_reasons = [
+            code for code in binding_reason.split("|") if code and code != raw_reason
+        ]
+        binding_label = _localized_reason("|".join(remaining_reasons))
+        reason = (
+            f"{reason}；{binding_label}"
+            if reason and binding_label
+            else binding_label or reason
+        )
     detail = str(raw.get("detail") or "").strip()
     if detail:
         reason = f"{reason}；{detail}" if reason else detail
@@ -635,7 +710,124 @@ def _condition_result(raw: Any, key: str) -> DailyMarketResearchConditionResult:
         state=raw_state,  # type: ignore[arg-type]
         relation=raw_relation,  # type: ignore[arg-type]
         reason=reason,
+        **method_metadata,
     )
+
+
+def _read_condition_method_metadata(
+    raw: Mapping[str, Any],
+    key: str,
+    expected_decision_date: date | None,
+) -> dict[str, Any]:
+    """保留 verified payload 的方法綁定；舊 minimal payload 維持原形。"""
+
+    metadata_keys = (
+        "method_id",
+        "family",
+        "version",
+        "parameters",
+        "decision_date",
+        "eligibility",
+        "unknown_reason",
+    )
+    if not any(name in raw for name in metadata_keys):
+        return {}
+
+    expected = method_contracts_payload().get(key)
+    raw_parameters = raw.get("parameters")
+    parameters = (
+        dict(raw_parameters)
+        if isinstance(raw_parameters, Mapping)
+        and all(
+            isinstance(name, str)
+            and isinstance(value, (int, str))
+            and not isinstance(value, bool)
+            for name, value in raw_parameters.items()
+        )
+        else None
+    )
+    raw_date = raw.get("decision_date")
+    decision_date = raw_date if isinstance(raw_date, str) else None
+    raw_eligibility = raw.get("eligibility")
+    eligibility: ResearchEligibility | None = (
+        "eligible"
+        if raw_eligibility == "eligible"
+        else "unknown"
+        if raw_eligibility == "unknown"
+        else None
+    )
+    raw_unknown_reason = raw.get("unknown_reason")
+    unknown_reason = (
+        raw_unknown_reason if isinstance(raw_unknown_reason, str) else None
+    )
+    method_id = raw.get("method_id") if isinstance(raw.get("method_id"), str) else None
+    family = raw.get("family") if isinstance(raw.get("family"), str) else None
+    version = raw.get("version") if isinstance(raw.get("version"), str) else None
+
+    valid_date = False
+    if decision_date is not None:
+        try:
+            parsed_date = date.fromisoformat(decision_date)
+            valid_date = parsed_date.isoformat() == decision_date
+        except ValueError:
+            valid_date = False
+    date_mismatch = (
+        expected_decision_date is not None
+        and decision_date != expected_decision_date.isoformat()
+    )
+    valid_contract = (
+        isinstance(expected, Mapping)
+        and method_id == expected.get("method_id")
+        and family == expected.get("family")
+        and version == expected.get("version")
+        and parameters == expected.get("parameters")
+        and valid_date
+        and eligibility in {"eligible", "unknown"}
+        and unknown_reason is not None
+        and (
+            (eligibility == "eligible" and unknown_reason == "")
+            or (eligibility == "unknown" and bool(unknown_reason))
+        )
+    )
+
+    metadata_unknown_reason = unknown_reason or ""
+    if date_mismatch:
+        metadata_unknown_reason = _join_unknown_reasons(
+            "decision_date_mismatch",
+            metadata_unknown_reason,
+        )
+        eligibility = "unknown"
+    elif not valid_contract:
+        metadata_unknown_reason = _join_unknown_reasons(
+            "method_contract_invalid",
+            metadata_unknown_reason,
+        )
+        eligibility = "unknown"
+    elif eligibility == "unknown" and not unknown_reason:
+        metadata_unknown_reason = "condition_inputs_unknown"
+
+    frozen_parameters = (
+        MappingProxyType(parameters) if parameters is not None else None
+    )
+    return {
+        "method_id": method_id,
+        "family": family,
+        "version": version,
+        "parameters": frozen_parameters,
+        "decision_date": decision_date,
+        "eligibility": eligibility,
+        "unknown_reason": metadata_unknown_reason,
+    }
+
+
+def _join_unknown_reasons(*values: str) -> str:
+    reasons: list[str] = []
+    for value in values:
+        for reason in value.split("|"):
+            normalized = reason.strip()
+            if normalized and normalized not in reasons:
+                reasons.append(normalized)
+    return "|".join(reasons)
 
 
 def _condition_explanation(item: DailyMarketResearchConditionResult) -> str:
@@ -651,5 +843,9 @@ def _condition_explanation(item: DailyMarketResearchConditionResult) -> str:
 def _localized_reason(code_or_text: str) -> str:
     if not code_or_text:
         return ""
+    if "|" in code_or_text:
+        return "；".join(
+            _localized_reason(part) for part in code_or_text.split("|") if part
+        )
     label = _REASON_LABELS.get(code_or_text)
     return f"{label}（{code_or_text}）" if label else code_or_text

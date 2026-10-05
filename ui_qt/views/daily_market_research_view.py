@@ -60,6 +60,7 @@ from ui_qt.original_ranking_presentation import (
     sort_by_original_rank,
 )
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.info_button import InfoButton
 from ui_qt.workers.task_worker import TaskWorker
 
 
@@ -130,13 +131,17 @@ class DailyMarketResearchView(QWidget):
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
 
+        title_layout = QHBoxLayout()
         title = QLabel("每日研究條件")
         title.setObjectName("dailyMarketResearchTitle")
         title.setAccessibleName("每日研究條件")
         title.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_primary}; font-size: 15px; font-weight: 700;"
         )
-        root.addWidget(title)
+        title_layout.addWidget(title)
+        title_layout.addStretch()
+        title_layout.addWidget(InfoButton("daily_market_research", self))
+        root.addLayout(title_layout)
 
         self.disclaimer_label = QLabel(
             "研究快照：僅表示明示 cohort 的既有 close／MA20／MA60 條件，"

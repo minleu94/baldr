@@ -16,6 +16,7 @@ from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.layout_helpers import create_scroll_area
+from ui_qt.widgets.info_button import InfoButton
 from app_module.sqlite_inspector_service import SqliteInspectorService
 
 
@@ -111,6 +112,7 @@ class SqliteInspectorWidget(QWidget):
         self.load_btn.clicked.connect(self._load_current_table_data)
         row1_layout.addWidget(self.load_btn)
         row1_layout.addStretch()
+        row1_layout.addWidget(InfoButton("sqlite_inspector", self))
         control_main_layout.addLayout(row1_layout)
 
         # 第二行：篩選條件 (股票代號、股票名稱、分點、日期篩選等)

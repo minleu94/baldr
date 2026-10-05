@@ -23,6 +23,7 @@ from ui_qt.original_ranking_presentation import (
 )
 from ui_qt.views.daily_market_research_view import DailyMarketResearchView
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.info_button import InfoButton
 
 
 class DailyMarketCohortView(QWidget):
@@ -40,8 +41,12 @@ class DailyMarketCohortView(QWidget):
         self._snapshot: object | None = None
         self.original_ranking: object | None = None
         layout = QVBoxLayout(self)
+        title_layout = QHBoxLayout()
         title = QLabel("研究母體盤勢")
-        layout.addWidget(title)
+        title_layout.addWidget(title)
+        title_layout.addStretch()
+        title_layout.addWidget(InfoButton("daily_market_cohort", self))
+        layout.addLayout(title_layout)
         self.scope_label = QLabel(
             "最多 16 檔具名研究母體；此頁不是全市場廣度或原強弱排名。"
         )

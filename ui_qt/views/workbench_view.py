@@ -76,6 +76,7 @@ from ui_qt.models.workbench_table_models import (
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.layout_helpers import set_scroll_content_constraints
+from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.theme_widgets import (
     CollapsibleSectionPanel,
@@ -256,13 +257,17 @@ class UnifiedDecisionWorkbenchView(QWidget):
         content_layout.setContentsMargins(0, 0, 0, 0)
         root_content_layout = content_layout
 
+        title_layout = QHBoxLayout()
         title = QLabel("決策工作台")
         title_font = QFont()
         title_font.setPointSize(17)
         title_font.setBold(True)
         title.setFont(title_font)
         title.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
-        content_layout.addWidget(title)
+        title_layout.addWidget(title)
+        title_layout.addStretch()
+        title_layout.addWidget(InfoButton("workbench", self))
+        content_layout.addLayout(title_layout)
 
         self._build_guided_home(root_content_layout)
         self.advanced_workbench_panel = CollapsibleSectionPanel(

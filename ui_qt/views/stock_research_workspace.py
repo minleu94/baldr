@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from PySide6.QtCore import QSize, Signal
-from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QTabWidget, QVBoxLayout, QWidget
 
 from app_module.decision_continuity_controller import DecisionContinuityController
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
@@ -13,6 +13,7 @@ from app_module.research_session import ResearchStockContextDTO
 from app_module.stock_research_report_service import StockResearchReportReadService
 from ui_qt.views.stock_research_report_view import StockResearchReportView
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
+from ui_qt.widgets.info_button import InfoButton
 
 
 class StockResearchWorkspace(QWidget):
@@ -32,6 +33,11 @@ class StockResearchWorkspace(QWidget):
         self.setObjectName("stockResearchWorkspace")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        title_layout = QHBoxLayout()
+        title_layout.addWidget(QLabel("個股研究"))
+        title_layout.addStretch()
+        title_layout.addWidget(InfoButton("stock_research", self))
+        layout.addLayout(title_layout)
         self.report_tabs = QTabWidget(self)
         self.report_tabs.setDocumentMode(True)
         self.report_view = StockResearchReportView(service, parent=self)

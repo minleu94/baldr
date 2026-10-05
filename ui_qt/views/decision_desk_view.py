@@ -41,6 +41,7 @@ from ui_qt.widgets.theme_widgets import (
     WarningList,
 )
 from ui_qt.widgets.layout_helpers import set_scroll_content_constraints
+from ui_qt.widgets.info_button import InfoButton
 
 
 def _current_taipei_decision_date() -> date:
@@ -129,6 +130,7 @@ class DecisionDeskView(QWidget):
         title_font.setBold(True)
         title.setFont(title_font)
         title_layout.addWidget(title)
+        title_layout.addWidget(InfoButton("market_overview", self))
         title_layout.addStretch()
 
         self.refresh_btn = QPushButton("更新決策摘要")

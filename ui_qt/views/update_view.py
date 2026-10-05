@@ -1446,6 +1446,7 @@ class UpdateView(QWidget):
             sub_title.setProperty("role", "pageTitle")
             sub_title_layout.addWidget(sub_title)
             sub_title_layout.addStretch()
+            sub_title_layout.addWidget(InfoButton("update", self))
             page_layout.addLayout(sub_title_layout)
 
             self._add_source_tab_content(page_layout, key)

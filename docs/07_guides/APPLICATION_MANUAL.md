@@ -4514,3 +4514,16 @@ CLI範例（僅發布已有 feature 來源的對應模式；需要四模式時�
 發布中斷後可使用同一明示來源與方法重試；feature 與 ranking 使用 OS lock、不可變 objects／manifest 與原子 latest 指標。指標替換前故障保留舊完整版本，替換後完整新版本可讀；舊 pinned 收藏仍按既有 source guards 檢查，過期／錯來源仍拒絕，不藉重試授予資格。並行發布 busy 或 pointer_changed 需等待同根程序完成後重新讀取，不覆蓋指標。參見 [本批驗證](../06_qa/UX19_STORAGE_AND_PUBLICATION_RECOVERY_20261005.md)。
 
 可另執行 ` .\.venv\Scripts\python.exe scripts/qa_isolated_app_startup.py --output-root output/qa/<新的隔離目錄> ` 做空資料、真實 MainWindow 的 offscreen 最小啟動／關閉；只允許隔離配置，Python audit hook 不是 OS 級完整監控，也不代表 Native／正式資料／真人驗收。
+
+
+## 2026-10-05 每日研究名單：入選歷程（UX09 有界切片）
+
+入口仍是每日研究名單。唯讀載入已發布快照後，背景核對既有歷史；清單的「入選歷程」與候選／選中個股摘要顯示本次新入選、持續符合、重新入選、未再符合或無法比較／歷史不足，並列前次決策日與理由。選中列的提示保留觀測及來源身份，供稽核回放；首次可見不等於自上市首次入選。
+
+選擇 close_above_ma20／close_above_ma60 和 AND／OR 會比較該固定查詢的完整觀測。排序、搜尋、顯示符合／未符合／未知只改畫面，不重讀同查詢、不產生新的歷程事件；明示「重讀已發布快照」重新核對來源。原始排名保留原引擎字串與獨立排序，不將名次變動當 MA 入選／退出，不新增 TopN 或數值分數。
+
+只有相同方法／版本／參數／窗口政策、具名母體與核驗交易節奏的完整相鄰觀測才可判變化。缺件、未知、漏交易日、取消、失敗、母體變更、改版、同日修訂與晚到回填不是退出；重新入選須可證命中→有效未命中→再次命中，不能跨未知邊界。歷史不足時保持明示，自此保存的合格快照才能增加可比證據。
+
+安全與排錯：歷程唯讀既有 artifacts 與已保存官方日曆，不寫正式 DB／registry、不隱性採集或補跑過去。日曆沿 config.official_calendar_cache_path，未指定則既有 output/paper_execution_eod_replay/calendar_cache；臨時停市來源沿 temporary_closure_path，沒有線上 fallback。日曆必須在固定 publication 時點已可取得且核驗；缺日曆、hash 不符或超出掃描預算時，摘要會顯示具體未知原因。取消歷程保留已核驗當期快照；明示重讀可重試。這是研究觀測比較，不授予 historical PIT、自然 ML、正式推薦或投資資格。限定驗證與回滾見 [UX09 收據](../06_qa/UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md)。
+
+年度快取採 annual_planned_cache.v1，只核驗預期交易節奏。未設定額外停市 overlay 時沿用年度計畫；若明示設定的 overlay 缺失、毀損或尚未可得，保持未知。此計畫不證明當日實際開市，也不補上原始資料 available_at。掃描上限為 32 個歷史觀測、4096 個目錄項目、32 MiB JSON；長期歷史索引與分頁仍待工程實作。

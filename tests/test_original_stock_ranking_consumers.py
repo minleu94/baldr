@@ -133,7 +133,10 @@ def test_native_ranking_object_is_shared_by_cohort_and_market_views(tmp_path: Pa
         "1003",
     )
     assert {id(row) for row in market_view._visible_rows} == {id(row) for row in rows}
-    rank_column = market_view.results_table.columnCount() - 1
+    rank_column = next(
+        index for index in range(market_view.results_table.columnCount())
+        if market_view.results_table.horizontalHeaderItem(index).text() == "原始名次"
+    )
     first_row = next(
         index
         for index in range(market_view.results_table.rowCount())

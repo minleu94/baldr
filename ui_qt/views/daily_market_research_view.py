@@ -111,6 +111,10 @@ class DailyMarketResearchView(QWidget):
         self._original_ranking: VerifiedOriginalStockRanking | None = None
         self._original_ranking_error = ""
         self._original_ranking_pending = False
+        self._lifecycle_result: object | None = None
+        self._lifecycle_query_key: tuple[str, tuple[str, ...], str] | None = None
+        self._lifecycle_pending = False
+        self._lifecycle_error = "歷史不足／尚未核對"
         self._cohort_full_rows: tuple[object, ...] = ()
         self._all_rows: tuple[object, ...] = ()
         self._visible_rows: tuple[object, ...] = ()
@@ -420,7 +424,7 @@ class DailyMarketResearchView(QWidget):
         self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         root.addWidget(self.status_label)
 
-        self.results_table = QTableWidget(0, 10)
+        self.results_table = QTableWidget(0, 11)
         self.results_table.setObjectName("dailyMarketResearchResults")
         self.results_table.setAccessibleName("每日研究條件結果")
         self.results_table.setHorizontalHeaderLabels(
@@ -439,6 +443,10 @@ class DailyMarketResearchView(QWidget):
         self.results_table.setHorizontalHeaderItem(
             9, QTableWidgetItem("原始名次")
         )
+        self.results_table.setHorizontalHeaderItem(10, QTableWidgetItem("入選歷程"))
+        # 邏輯欄位不移位，讓歷程緊接目前符合狀態出現在可見區。
+        self.results_table.horizontalHeader().moveSection(10, 5)
+        self.results_table.setColumnWidth(10, 220)
         self.results_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.results_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.results_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -732,6 +740,120 @@ class DailyMarketResearchView(QWidget):
             return reader(snapshot, period=period, direction=direction)
 
         self._start_operation("original_ranking_read", operation)
+
+    def _membership_query_key(self) -> tuple[str, tuple[str, ...], str]:
+        return (self._manifest_sha256, self._selected_condition_keys(),
+                str(self.combine_mode_combo.currentData() or "AND"))
+
+    def _request_membership_read(self) -> None:
+        if self._snapshot is None or self._shutting_down:
+            return
+        reader = getattr(self.service, "read_membership_lifecycle", None)
+        key = self._membership_query_key()
+        if not key[1]:
+            self._lifecycle_result = None
+            self._lifecycle_pending = False
+            self._lifecycle_error = "請選擇 MA 條件；入選歷程未知"
+            return
+        if key == self._lifecycle_query_key:
+            return
+        self._lifecycle_result = None
+        self._lifecycle_error = "歷史不足／正在核對"
+        if not callable(reader):
+            self._lifecycle_pending = False
+            self._lifecycle_error = "歷史不足／此服務未提供歷程 reader"
+            return
+        if self._worker is not None and self._worker.isRunning():
+            self._lifecycle_pending = True
+            return
+        snapshot = self._snapshot
+        self._lifecycle_pending = False
+        self._lifecycle_query_key = key
+
+        def operation(cancel_callback: Callable[[], bool]) -> object:
+            result = reader(snapshot, key[1], key[2], cancel_callback=cancel_callback)
+            return {"query_key": key, "lifecycle": result}
+
+        self._start_operation("membership_lifecycle_read", operation)
+
+    def _accept_membership_read(self, result: object) -> None:
+        if not isinstance(result, Mapping):
+            self._lifecycle_error = "歷程來源未提供可核驗結果"
+            return
+        if result.get("query_key") != self._membership_query_key():
+            self._lifecycle_pending = True
+            return
+        model = result.get("lifecycle")
+        if (getattr(model, "current_manifest_sha256", "") != self._manifest_sha256
+                or getattr(model, "current_manifest_identity_sha256", "")
+                != self._manifest_identity_sha256
+                or tuple(getattr(model, "condition_keys", ()) or ())
+                != tuple(sorted(self._selected_condition_keys()))
+                or getattr(model, "combine_mode", "")
+                != str(self.combine_mode_combo.currentData() or "AND")
+                or str(getattr(model, "current_decision_date", "")) != self._loaded_decision_date
+                or getattr(model, "cohort_id", "") != self._loaded_cohort_id):
+            self._lifecycle_error = "歷程來源身份不符；保持未知"
+            self._lifecycle_result = None
+        else:
+            self._lifecycle_result = model
+            self._lifecycle_error = ""
+        self._render_candidate_summary()
+        self._render_rows()
+
+    def _membership_row(self, stock_code: str) -> object | None:
+        if self._lifecycle_query_key != self._membership_query_key():
+            return None
+        return next((row for row in tuple(getattr(self._lifecycle_result, "rows", ()) or ())
+                     if str(getattr(row, "stock_code", "")) == stock_code), None)
+
+    def _membership_text(self, stock_code: str) -> str:
+        row = self._membership_row(stock_code)
+        if row is None:
+            return self._lifecycle_error or "歷史不足／尚未核對"
+        raw = getattr(row, "status", "unknown")
+        status = str(getattr(raw, "value", raw)).lower()
+        labels = {"new": "本次新入選", "continued": "持續符合",
+                  "reentered": "重新入選", "exited": "未再符合",
+                  "still_no_match": "持續未符合", "first_observation": "首次觀測／歷史不足",
+                  "history_insufficient": "歷史不足", "incomparable": "無法比較",
+                  "unknown": "未知"}
+        label = labels.get(status, "未知")
+        previous = getattr(row, "previous_date", None)
+        reason = str(getattr(row, "reason_display", "") or getattr(row, "reason", "") or "未提供比較理由")
+        return f"{label} · 前次 {previous or '未提供'} · {reason}"
+
+    def _membership_tooltip(self, stock_code: str) -> str:
+        row = self._membership_row(stock_code)
+        return (self._membership_text(stock_code) + "\n"
+                + f"目前觀測={getattr(row, 'current_observation_id', '')}\n"
+                + f"前次觀測={getattr(row, 'previous_observation_id', '')}\n"
+                + f"manifest={self._manifest_sha256}\n"
+                + f"首次觀測={getattr(row, 'first_seen', None)}；最後命中={getattr(row, 'last_hit', None)}；連續有效期={getattr(row, 'streak', 0)}\n"
+                + f"history observations={getattr(row, 'history_observation_ids', ())}\n"
+                + f"source identities={getattr(row, 'source_refs', getattr(row, 'source_identities', ()))}\n"
+                + "僅比較相同 MA 查詢及具名母體的完整已發布觀測；刷新不寫入歷程事件。")
+
+    def _membership_summary_text(self) -> str:
+        rows = tuple(getattr(self._lifecycle_result, "rows", ()) or ())
+        if not rows or self._lifecycle_query_key != self._membership_query_key():
+            return "入選歷程：" + (self._lifecycle_error or "歷史不足／尚未核對")
+        counts: dict[str, int] = {}
+        for row in rows:
+            text = self._membership_text(str(getattr(row, "stock_code", ""))).split(" · ")[0]
+            counts[text] = counts.get(text, 0) + 1
+        reason = str(getattr(self._lifecycle_result, "reason_display", "")
+                     or getattr(self._lifecycle_result, "reason", ""))
+        if reason == "history_complete":
+            reason = "已核對可見快照範圍；不表示可比較歷史足夠"
+        reasons = tuple(dict.fromkeys(
+            str(getattr(row, "reason_display", "") or "") for row in rows
+            if getattr(row, "reason_display", "")
+        ))
+        if all(getattr(row, "previous_date", None) is None for row in rows):
+            reason += "；歷史不足／沒有有效前次比較"
+        return ("入選歷程：" + "、".join(f"{label} {count}" for label, count in counts.items())
+                + "；" + reason + ("；" + "；".join(reasons[:3]) if reasons else ""))
 
     def _accept_original_ranking(self, generation: int, ranking: object) -> None:
         if generation != self._operation_generation or self._shutting_down:
@@ -1091,6 +1213,9 @@ class DailyMarketResearchView(QWidget):
         if isinstance(result, Mapping) and result.get("cancelled") is True:
             self._on_operation_cancelled(generation)
             return
+        if kind == "membership_lifecycle_read":
+            self._accept_membership_read(result)
+            return
         if kind == "original_ranking_read":
             self._accept_original_ranking(generation, result)
             return
@@ -1121,6 +1246,12 @@ class DailyMarketResearchView(QWidget):
     ) -> None:
         if generation != self._operation_generation or self._shutting_down:
             return
+        if operation_kind == "membership_lifecycle_read":
+            self._lifecycle_result = None
+            self._lifecycle_error = "歷程讀取失敗／保持未知：" + str(message).splitlines()[0]
+            self._render_candidate_summary()
+            self._render_rows()
+            return
         if operation_kind == "original_ranking_read":
             if self._original_ranking_pending:
                 return
@@ -1137,6 +1268,10 @@ class DailyMarketResearchView(QWidget):
     def _on_operation_cancelled(self, generation: int) -> None:
         if generation != self._operation_generation or self._shutting_down:
             return
+        if self._lifecycle_query_key is not None and self._lifecycle_result is None:
+            self._lifecycle_error = "歷程讀取已取消／保持未知"
+            self._render_candidate_summary()
+            self._render_rows()
         self.status_label.setText("快照工作已取消；未把未完成讀取呈現為有效結果。")
 
     def _on_worker_native_finished(self, worker: TaskWorker, generation: int) -> None:
@@ -1148,6 +1283,14 @@ class DailyMarketResearchView(QWidget):
             self._sync_open_button()
             if self._original_ranking_pending and self._snapshot is not None:
                 self._request_original_ranking_read()
+            elif self._lifecycle_pending and self._snapshot is not None:
+                self._request_membership_read()
+            elif self._snapshot is not None and self._lifecycle_query_key is not None:
+                self.status_label.setText(
+                    "已核驗目前快照；入選歷程核對完成，限制見候選摘要。"
+                    if self._lifecycle_result is not None
+                    else "已核驗目前快照；" + self._lifecycle_error
+                )
 
     def cancel_active_operation(self) -> None:
         worker = self._worker
@@ -1179,6 +1322,10 @@ class DailyMarketResearchView(QWidget):
             return
         self.results_table.clearSelection()
         self._snapshot = snapshot
+        self._lifecycle_result = None
+        self._lifecycle_query_key = None
+        self._lifecycle_pending = False
+        self._lifecycle_error = "歷史不足／尚未核對"
         self._cohort_projection = None
         self._cohort_members_by_code = {}
         self._cohort_full_rows = ()
@@ -1444,6 +1591,10 @@ class DailyMarketResearchView(QWidget):
             return
         condition_keys = self._selected_condition_keys()
         if not condition_keys:
+            self._lifecycle_result = None
+            self._lifecycle_pending = False
+            self._lifecycle_query_key = None
+            self._lifecycle_error = "請選擇 MA 條件；入選歷程未知"
             self._all_rows = ()
             self._visible_rows = ()
             self._render_rows()
@@ -1479,7 +1630,9 @@ class DailyMarketResearchView(QWidget):
             return
         self._render_summary()
         self._render_candidate_summary()
+        self._request_membership_read()
         self._render_rows()
+        self._render_candidate_summary()
 
     def _render_summary(self) -> None:
         counts = {state: 0 for state in _STATE_LABELS}
@@ -1625,6 +1778,8 @@ class DailyMarketResearchView(QWidget):
             + "\n"
             + ranking_summary_text(self._original_ranking)
         )
+        self.candidate_summary_label.setText(self.candidate_summary_label.text() + "\n" + self._membership_summary_text())
+        details.append(self._membership_summary_text())
         details.append(universe_detail)
         details.append(ranking_summary_text(self._original_ranking))
         details.append(original_rank_row_tooltip(self._original_ranking, None))
@@ -1671,6 +1826,7 @@ class DailyMarketResearchView(QWidget):
                 self._market_value_text(member, "ma20"),
                 self._market_value_text(member, "ma60"),
                 original_rank_cell(self._original_ranking, stock_code),
+                " · ".join(self._membership_text(stock_code).split(" · ")[:2]),
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -1687,6 +1843,8 @@ class DailyMarketResearchView(QWidget):
                             ranking_rows.get(stock_code),
                         )
                     )
+                if column == 10:
+                    item.setToolTip(self._membership_tooltip(stock_code))
                 self.results_table.setItem(row_number, column, item)
         if selected_identity is not None:
             for row_number, row in enumerate(rows):
@@ -1814,6 +1972,9 @@ class DailyMarketResearchView(QWidget):
             + "\n"
             + original_rank_row_tooltip(self._original_ranking, selected_rank)
         )
+
+        self.selected_summary_label.setText(self.selected_summary_label.text() + "\n入選歷程：" + self._membership_text(code))
+        self.selected_summary_label.setToolTip(self.selected_summary_label.toolTip() + "\n" + self._membership_tooltip(code))
 
     def _current_filtered_rows(self) -> tuple[object, ...]:
         selected_filter = str(self.filter_state_combo.currentData() or "all")
@@ -2469,6 +2630,10 @@ class DailyMarketResearchView(QWidget):
 
     def _clear_current_snapshot(self) -> None:
         self._snapshot = None
+        self._lifecycle_result = None
+        self._lifecycle_query_key = None
+        self._lifecycle_pending = False
+        self._lifecycle_error = "歷史不足／尚未核對"
         self._cohort_projection = None
         self._cohort_members_by_code = {}
         self._cohort_full_rows = ()

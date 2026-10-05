@@ -42,6 +42,9 @@ from app_module.research_session.session_dtos import ResearchStockContextDTO
 from app_module.sqlite_read_only import ReadOperationCancelled
 
 if TYPE_CHECKING:
+    from app_module.research_membership_lifecycle_read_model import (
+        CalendarSessionProvider, MembershipLifecycleReadModel,
+    )
     from app_module.daily_market_snapshot_producer import DailyMarketSnapshotProductionResult
 
 
@@ -278,12 +281,15 @@ class DailyMarketResearchScreenerService:
         universe_config_path: str | Path | None = None,
         *,
         original_ranking_root: str | Path | None = None,
+        membership_session_provider: CalendarSessionProvider | None = None,
     ) -> None:
         raw_db_path = getattr(config, "db_file", None) or getattr(
             config, "sqlite_db_file", None
         )
         if raw_db_path is None or not str(raw_db_path).strip():
             raise ValueError("研究選股器需要明示既有 SQLite db_file")
+        self.config = config
+        self._membership_session_provider = membership_session_provider
         self.db_path = Path(raw_db_path).expanduser().resolve()
         # 預設使用 repository 隔離的研究輸出，不沿用正式資料根目錄。
         default_root = (
@@ -302,6 +308,32 @@ class DailyMarketResearchScreenerService:
             load_research_universe_spec(universe_config_path)
             if universe_config_path is not None
             else None
+        )
+
+    def read_membership_lifecycle(
+        self,
+        snapshot: VerifiedDailyMarketSnapshot,
+        condition_keys: tuple[str, ...],
+        combine_mode: str,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> MembershipLifecycleReadModel:
+        """唯讀比較既有快照，沒有 producer 或隱性歷程寫入。"""
+        from app_module.research_membership_lifecycle_read_model import (
+            create_offline_official_calendar_session_provider,
+            read_membership_lifecycle,
+        )
+        provider = self._membership_session_provider
+        if provider is None:
+            cache = (getattr(self.config, "official_calendar_cache_path", None)
+                     or Path(__file__).resolve().parents[1]
+                     / "output/paper_execution_eod_replay/calendar_cache")
+            provider = create_offline_official_calendar_session_provider(
+                cache, temporary_closure_path=getattr(self.config, "temporary_closure_path", None),
+            )
+        return read_membership_lifecycle(
+            self.repository, snapshot, condition_keys, combine_mode,
+            cancel_callback=cancel_callback, session_provider=provider,
         )
 
     def read_original_ranking(

@@ -28,3 +28,10 @@
 | `agents/`、`superpowers/`、`strategies/` | Agent 規範、設計追溯、策略說明 | [Agent](agents/README.md)、[Superpowers](superpowers/README.md)、[策略](strategies/README.md) |
 
 根目錄 `AGENTS.md` 是 Codex 指令入口；[PROJECT_NAVIGATION.md](../PROJECT_NAVIGATION.md) 是開發者功能導航。文件生命週期與更新責任見[DOCUMENTATION_STRUCTURE](00_core/DOCUMENTATION_STRUCTURE.md)及[DOC_COVERAGE_MAP](00_core/DOC_COVERAGE_MAP.md)。
+
+
+## 2026-10-05 UX09 有界 MA 名單入選歷程
+
+既有兩條 MA 三態快照經純比較模型、有限歷史 reader 與背景 UI 呈現本次新入選／持續符合／重新入選／未再符合，並保存前次日期、理由與可回放來源身份；不是策略升降級服務。無效／缺件／漏日／同日修訂／版本或母體變更及回填保持未知，不在刷新時寫事件。日曆只讀現有快取，publication 前可得性核驗；現有真實來源只有同日，不能作跨日自然歷程證明。
+
+此為原計畫 §8.1／UX09 的研究讀取切片；不更換母體權威或舊標籤、不啟動自然 capture／outcome 階段5，不宣告首版完成。完整方法字典、其他 consumer 融合、正式母體／排程與其他 writer 生命周期仍是工程待辦，Backtest18.62%／20%不變；Native與真人驗收另待桌面時段。詳見 [UX09 限定收據](06_qa/UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md)。

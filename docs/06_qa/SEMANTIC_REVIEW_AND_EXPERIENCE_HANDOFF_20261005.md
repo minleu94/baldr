@@ -310,3 +310,15 @@ Native鍵鼠／縮放／跨頁、全Appstartup及3–5真人驗收另待桌面�
 本批唯讀參照盤點與 dry-run 不提供永久刪除授權；歷史 manifest／artifact／v1-v2 收藏參照保留，未知 schema、缺件、來源不完整及超預算採保守保留。排名首次發布的缺件指標 CAS 與隔離跨程序復原收據、容量時點政策及驗證結果見 [限定收尾收據](UX19_STORAGE_AND_PUBLICATION_RECOVERY_20261005.md)。未改原引擎／排名／方法／日期，未重跑既有真實 publisher 或 ML。
 
 真實 MainWindow 九工作區在空資料、隔離配置、offscreen 子程序最小啟動／正常關閉通過（PID 23772，worker 0，guard 無違規）；這不替代帶正式資料的 App 功能、Native 或真人驗收。其他 consumer／完整方法字典／正式母體與排程／其他 writer 生命周期／長期自然成長仍是工程待辦；Backtest18.62%／20%保持未達，來源 availability／PIT／自然資格另列。使用者其他對話的容量／Evidence 變更保留且不納入本批提交，中央政策以時點 pin 為準。
+
+
+## 2026-10-05 UX09 有界 MA 名單入選歷程
+
+既有兩條 MA 三態快照經純比較模型、有限歷史 reader 與背景 UI 呈現本次新入選／持續符合／重新入選／未再符合，並保存前次日期、理由與可回放來源身份；不是策略升降級服務。無效／缺件／漏日／同日修訂／版本或母體變更及回填保持未知，不在刷新時寫事件。日曆只讀現有快取，publication 前可得性核驗；現有真實來源只有同日，不能作跨日自然歷程證明。
+
+此為原計畫 §8.1／UX09 的研究讀取切片；不更換母體權威或舊標籤、不啟動自然 capture／outcome 階段5，不宣告首版完成。完整方法字典、其他 consumer 融合、正式母體／排程與其他 writer 生命周期仍是工程待辦，Backtest18.62%／20%不變；Native與真人驗收另待桌面時段。詳見 [UX09 限定收據](UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md)。
+
+
+### UX09 最終限定收據（2026-10-05）
+
+78 個不重複受影響案例、Workbench 85、validator 25／4 略過、mypy 786、8 檔編譯通過。真實單日三檔維持未知（翌日發布且無有效前次比較），17 檔來源雜湊及正式 DB/WAL/SHM 狀態不變；未授予 PIT／自然成熟。完整第一版與 Backtest 18.62%／20% gate 未變，長期歷史索引／分頁、部署／其他 consumer 與 Native 驗收仍待完成；容量工作屬其他 owner。詳細證據與回滾見 UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md。

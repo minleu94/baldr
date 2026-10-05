@@ -477,3 +477,15 @@ Health最後串接已控制實跑：臺北10/4決策對10/2行情，離線官方
 ### 2026-10-05 每日鏈容量與接線修正（受控工程驗證）
 
 使用者授權把中央 ML 執行後餘量由 200 GiB 改為 20 GiB；本輪工作預算與未知用量 fail-closed 不變，正式 raw 預設總需求為 95 GiB。Decision Evidence 採父子 lease；G6 空 WAL／mtime 與真正內容改變分列；Paper 已驗證不可重試政策拒絕作 rejected 終態，歷史失敗保留。G9／Bank 同次來源 Gate 不放寬。驗證與回滾見 `docs/06_qa/HEARTBEAT_CHAIN_REPAIR_20261005.md`；沒有宣稱新自然排程成功、正式 PIT 或 formal credit。
+
+
+## 2026-10-05 UX09 有界 MA 名單入選歷程
+
+既有兩條 MA 三態快照經純比較模型、有限歷史 reader 與背景 UI 呈現本次新入選／持續符合／重新入選／未再符合，並保存前次日期、理由與可回放來源身份；不是策略升降級服務。無效／缺件／漏日／同日修訂／版本或母體變更及回填保持未知，不在刷新時寫事件。日曆只讀現有快取，publication 前可得性核驗；現有真實來源只有同日，不能作跨日自然歷程證明。
+
+此為原計畫 §8.1／UX09 的研究讀取切片；不更換母體權威或舊標籤、不啟動自然 capture／outcome 階段5，不宣告首版完成。完整方法字典、其他 consumer 融合、正式母體／排程與其他 writer 生命周期仍是工程待辦，Backtest18.62%／20%不變；Native與真人驗收另待桌面時段。詳見 [UX09 限定收據](../06_qa/UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md)。
+
+
+### UX09 最終限定收據（2026-10-05）
+
+78 個不重複受影響案例、Workbench 85、validator 25／4 略過、mypy 786、8 檔編譯通過。真實單日三檔維持未知（翌日發布且無有效前次比較），17 檔來源雜湊及正式 DB/WAL/SHM 狀態不變；未授予 PIT／自然成熟。完整第一版與 Backtest 18.62%／20% gate 未變，長期歷史索引／分頁、部署／其他 consumer 與 Native 驗收仍待完成；容量工作屬其他 owner。詳細證據與回滾見 UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md。

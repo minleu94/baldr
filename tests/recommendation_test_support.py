@@ -2,9 +2,32 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
+from types import SimpleNamespace
 from typing import Any
 
 from app_module.recommendation_service import RecommendationService
+
+
+class _TestMarketSessionCadence:
+    """Test-only verified calendar double; session policy has dedicated tests."""
+
+    def __init__(self, clock: Any) -> None:
+        self.clock = clock
+
+    def assess(self, decision_date: date, actual_date: date) -> Any:
+        return SimpleNamespace(
+            status="current",
+            expected_date=actual_date,
+            metadata={
+                "decision_date": decision_date.isoformat(),
+                "actual_date": actual_date.isoformat(),
+                "cutoff_policy": "test_verified_session",
+                "historical_pit": False,
+                "blockers": [],
+                "calendar": {"status": "verified_test_double"},
+            },
+        )
 
 
 def build_recommendation_test_preparer(
@@ -23,6 +46,9 @@ def build_recommendation_test_preparer(
         config,
         market_data_provider=market_data_provider,
         pit_membership_reader=pit_membership_reader,
+        market_session_cadence_factory=(
+            lambda _config, *, clock: _TestMarketSessionCadence(clock)
+        ),
     )
 
 

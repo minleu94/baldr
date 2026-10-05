@@ -57,6 +57,59 @@ RESEARCH_DIRECT_STORE_RECEIPT_SCHEMA_VERSION = (
     "ml-research-direct-numeric-receipt.v1"
 )
 
+DAILY_PRICE_FEATURE_IDS: Mapping[str, str] = MappingProxyType(
+    {
+        "open": "daily_prices.開盤價",
+        "high": "daily_prices.最高價",
+        "low": "daily_prices.最低價",
+        "close": "daily_prices.收盤價",
+        "volume": "daily_prices.成交股數",
+        "amount": "daily_prices.成交金額",
+        "trade_count": "daily_prices.成交筆數",
+    }
+)
+DAILY_PRICE_FEATURE_INFO: Mapping[str, tuple[int, str]] = MappingProxyType(
+    {
+        DAILY_PRICE_FEATURE_IDS["open"]: (2, "TWD/share"),
+        DAILY_PRICE_FEATURE_IDS["high"]: (2, "TWD/share"),
+        DAILY_PRICE_FEATURE_IDS["low"]: (2, "TWD/share"),
+        DAILY_PRICE_FEATURE_IDS["close"]: (2, "TWD/share"),
+        DAILY_PRICE_FEATURE_IDS["volume"]: (0, "share"),
+        DAILY_PRICE_FEATURE_IDS["amount"]: (0, "TWD"),
+        DAILY_PRICE_FEATURE_IDS["trade_count"]: (0, "trade"),
+    }
+)
+_PROJECTION_DAILY_SOURCE_FIELD_ALIASES: Mapping[
+    str, Mapping[str, tuple[str, ...]]
+] = MappingProxyType(
+    {
+        "twse": MappingProxyType(
+            {
+                DAILY_PRICE_FEATURE_IDS["open"]: ("開盤價",),
+                DAILY_PRICE_FEATURE_IDS["high"]: ("最高價",),
+                DAILY_PRICE_FEATURE_IDS["low"]: ("最低價",),
+                DAILY_PRICE_FEATURE_IDS["close"]: ("收盤價",),
+                DAILY_PRICE_FEATURE_IDS["volume"]: ("成交股數",),
+                DAILY_PRICE_FEATURE_IDS["amount"]: ("成交金額",),
+                DAILY_PRICE_FEATURE_IDS["trade_count"]: ("成交筆數",),
+            }
+        ),
+        "tpex": MappingProxyType(
+            {
+                DAILY_PRICE_FEATURE_IDS["open"]: ("開盤",),
+                DAILY_PRICE_FEATURE_IDS["high"]: ("最高",),
+                DAILY_PRICE_FEATURE_IDS["low"]: ("最低",),
+                DAILY_PRICE_FEATURE_IDS["close"]: ("收盤",),
+                DAILY_PRICE_FEATURE_IDS["volume"]: ("成交股數",),
+                # TPEx labels amount units explicitly. Do not infer a unit from
+                # an unknown or abbreviated heading such as 「成交金額(千元)」.
+                DAILY_PRICE_FEATURE_IDS["amount"]: ("成交金額(元)",),
+                DAILY_PRICE_FEATURE_IDS["trade_count"]: ("成交筆數",),
+            }
+        ),
+    }
+)
+
 
 class ResearchAdapterError(RevisionAwareCandidateError):
     """Direct/OOC 研究適配器校驗或轉換失敗。"""
@@ -64,7 +117,7 @@ class ResearchAdapterError(RevisionAwareCandidateError):
 
 def _resolve_research_path(path: Path, label: str) -> Path:
     try:
-        return resolve_ml_research_output_path(path)
+        return resolve_ml_research_output_path(path, access="write")
     except MLResearchOutputBoundaryError as exc:
         raise ResearchAdapterError(f"{label}: {exc}") from exc
 
@@ -73,6 +126,37 @@ def _strict_int(value: Any, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ResearchAdapterError(f"{field_name} must be a strict integer; bool is rejected")
     return value
+
+
+def _normalized_projection_field_name(value: str) -> str:
+    """Normalize whitespace only; raw projection keys remain untouched."""
+
+    return "".join(value.split())
+
+
+def _projection_exact_value(
+    exact_values: Mapping[str, Any], *, venue: object, feature_id: str
+) -> tuple[str, Any] | None:
+    if not isinstance(venue, str) or venue not in _PROJECTION_DAILY_SOURCE_FIELD_ALIASES:
+        raise ResearchAdapterError("projection venue is missing or unsupported")
+    aliases = _PROJECTION_DAILY_SOURCE_FIELD_ALIASES[venue].get(feature_id)
+    if not aliases:
+        raise ResearchAdapterError("projection feature has no venue-specific source mapping")
+    normalized_aliases = {_normalized_projection_field_name(alias) for alias in aliases}
+    matches = [
+        key
+        for key in exact_values
+        if isinstance(key, str)
+        and _normalized_projection_field_name(key) in normalized_aliases
+    ]
+    if len(matches) > 1:
+        raise ResearchAdapterError(
+            f"projection source fields are ambiguous for {feature_id} at {venue}"
+        )
+    if not matches:
+        return None
+    source_name = matches[0]
+    return source_name, exact_values[source_name]
 
 
 def _strict_aware_utc(value: Any, field_name: str) -> datetime:
@@ -540,15 +624,7 @@ class ResearchDirectOOCAdapter:
         """串流轉換已釘選來源列；事件日與 current availability 各自保存。"""
         schema = str(candidate_manifest.get("schema_version") or "")
         parent_dir = manifest_path.parent
-        feature_info = {
-            "daily_prices.開盤價": (2, "TWD/share"),
-            "daily_prices.最高價": (2, "TWD/share"),
-            "daily_prices.最低價": (2, "TWD/share"),
-            "daily_prices.收盤價": (2, "TWD/share"),
-            "daily_prices.成交股數": (0, "share"),
-            "daily_prices.成交金額": (0, "TWD"),
-            "daily_prices.成交筆數": (0, "trade"),
-        }
+        feature_info = DAILY_PRICE_FEATURE_INFO
 
         def observations() -> Sequence[tuple[int, dict[str, Any]]]:
             # 目前候選只涵蓋有限研究窗口；所有列會逐列驗證後落盤，禁止把零列當已支援。
@@ -603,6 +679,7 @@ class ResearchDirectOOCAdapter:
                         exact = item.get("exact_numeric_values")
                         if not isinstance(exact, dict):
                             raise ResearchAdapterError("projection exact_numeric_values is not an object")
+                        venue = item.get("venue")
                         source_pin = {
                             "raw_response_sha256": item.get("source_raw_response_sha256"),
                             "source_receipt_sha256": item.get("source_receipt_sha256"),
@@ -612,24 +689,28 @@ class ResearchDirectOOCAdapter:
                             raise ResearchAdapterError("projection source row pins are incomplete")
                         if not all(str(source_pin[key]) in {str(pin.get("sha256")) for pin in input_files.values()} for key in ("raw_response_sha256", "source_receipt_sha256")):
                             raise ResearchAdapterError("projection row source pins do not match copied source bytes")
-                        names = {
-                            "開盤價": "daily_prices.開盤價",
-                            "最高價": "daily_prices.最高價",
-                            "最低價": "daily_prices.最低價",
-                            "收盤價": "daily_prices.收盤價",
-                            "成交股數": "daily_prices.成交股數",
-                            "成交金額": "daily_prices.成交金額",
-                            "成交筆數": "daily_prices.成交筆數",
-                        }
                         values: list[dict[str, Any]] = []
                         missing: list[str] = []
-                        for source_name, feature_id in names.items():
-                            raw_value = exact.get(source_name)
-                            if raw_value is None:
+                        for feature_id in DAILY_PRICE_FEATURE_INFO:
+                            selected = _projection_exact_value(
+                                exact, venue=venue, feature_id=feature_id
+                            )
+                            if selected is None:
                                 missing.append(feature_id)
                                 continue
+                            source_name, raw_value = selected
                             if not isinstance(raw_value, dict):
+                                if raw_value is None:
+                                    missing.append(feature_id)
+                                    continue
                                 raise ResearchAdapterError(f"projection numeric {source_name} has invalid schema")
+                            if raw_value.get("state") == "source_missing":
+                                missing.append(feature_id)
+                                continue
+                            if raw_value.get("state") not in (None, "numeric"):
+                                raise ResearchAdapterError(
+                                    f"projection numeric {source_name} has a non-numeric source state"
+                                )
                             source_int = _strict_int(raw_value.get("value_int"), f"{source_name}.value_int")
                             denominator = _strict_int(raw_value.get("scale"), f"{source_name}.scale")
                             exponent = 0

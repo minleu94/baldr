@@ -1,0 +1,17 @@
+{
+  "schema_version": "official-market-status-notice-sources.v1",
+  "sources": [
+    {
+      "notice_url": "https://www.twse.com.tw/zh/announcement/announcement/detail.html?DAEFD7C7ACC511F19A80005056BE3760="
+    },
+    {
+      "notice_url": "https://www.twse.com.tw/zh/announcement/announcement/detail.html?2BFE5104AC3311F19A80005056BE3760="
+    },
+    {
+      "notice_url": "https://www.tpex.org.tw/storage/eb_data/11508/11500050581.html"
+    },
+    {
+      "notice_url": "https://www.tpex.org.tw/storage/eb_data/11509/11500054131.html"
+    }
+  ]
+}

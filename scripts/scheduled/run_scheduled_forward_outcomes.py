@@ -73,8 +73,6 @@ def main(argv: list[str] | None = None) -> int:
     config_kwargs = {}
     if args.data_root is not None:
         config_kwargs["data_root"] = args.data_root
-    if args.output_root is not None:
-        config_kwargs["output_root"] = args.output_root
     config = TWStockConfig(**config_kwargs)
     result = run_scheduled_forward_outcomes(
         config=config,

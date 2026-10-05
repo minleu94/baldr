@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_EVEN, localcontext
 import hashlib
 import json
 from collections import defaultdict
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, cast
 
 from data_module.ml_historical_snapshot_provider import (
+    CurrentObservedRawSnapshot,
     HistoricalIndexObservation,
     HistoricalPriceObservation,
     HistoricalRawSnapshot,
@@ -28,6 +29,115 @@ from ml_module.historical_contracts import HistoricalFeatureRow
 
 
 FeatureSchema = tuple[tuple[str, str, str], ...]
+
+
+@dataclass(frozen=True)
+class CurrentObservedFeatureRow:
+    """Feature vector observed from one frozen current-restated snapshot."""
+
+    symbol: str
+    decision_date: str
+    feature_as_of_date: str
+    local_current_observed_at: datetime
+    cycle_id: str
+    cycle_terminal_path: str
+    cycle_terminal_sha256: str
+    snapshot_database_path: str
+    snapshot_database_sha256: str
+    snapshot_receipt_path: str
+    snapshot_receipt_sha256: str
+    source_context_envelope_path: str
+    source_context_envelope_sha256: str
+    source_row_sha256_by_table: tuple[tuple[str, str], ...]
+    feature_registry_id: str
+    feature_registry_hash: str
+    feature_schema_hash: str
+    feature_ids: tuple[str, ...]
+    values: tuple[tuple[str, int | None], ...]
+    missing_feature_ids: tuple[str, ...]
+    historical_pit_eligible: bool = False
+    formal_training_allowed: bool = False
+    research_only: bool = True
+
+    def __post_init__(self) -> None:
+        if self.local_current_observed_at.tzinfo is None or self.local_current_observed_at.utcoffset() is None:
+            raise ValueError("local_current_observed_at must be timezone-aware")
+        decision = date.fromisoformat(self.decision_date)
+        if date.fromisoformat(self.feature_as_of_date) >= decision:
+            raise ValueError("current-observed feature date must precede decision date")
+        if (
+            self.historical_pit_eligible is not False
+            or self.formal_training_allowed is not False
+            or self.research_only is not True
+        ):
+            raise ValueError("current-observed feature eligibility flags are invalid")
+        if not self.values or tuple(feature_id for feature_id, _ in self.values) != self.feature_ids:
+            raise ValueError("current-observed feature values do not match the feature IDs")
+        if len(self.feature_ids) != 20 or len(set(self.feature_ids)) != len(self.feature_ids):
+            raise ValueError("current-observed vector must contain 20 unique feature slots")
+        expected_missing = tuple(
+            feature_id for feature_id, value in self.values if value is None
+        )
+        if self.missing_feature_ids != expected_missing:
+            raise ValueError("current-observed missing-feature mask differs from values")
+        for label, value in (
+            ("cycle_terminal_sha256", self.cycle_terminal_sha256),
+            ("snapshot_database_sha256", self.snapshot_database_sha256),
+            ("snapshot_receipt_sha256", self.snapshot_receipt_sha256),
+            ("source_context_envelope_sha256", self.source_context_envelope_sha256),
+            ("feature_registry_hash", self.feature_registry_hash),
+            ("feature_schema_hash", self.feature_schema_hash),
+        ):
+            if not _is_sha256_text(value):
+                raise ValueError(f"current-observed {label} is invalid")
+        if not self.cycle_id.strip() or not self.cycle_terminal_path.strip():
+            raise ValueError("current-observed exact cycle identity is required")
+        if not self.snapshot_database_path.strip() or not self.snapshot_receipt_path.strip():
+            raise ValueError("current-observed exact snapshot identity is required")
+        if not self.source_context_envelope_path.strip():
+            raise ValueError("current-observed exact source-context identity is required")
+        if (
+            tuple(name for name, _ in self.source_row_sha256_by_table)
+            != ("daily_prices", "technical_indicators", "market_indices", "industry_indices")
+            or any(not _is_sha256_text(value) for _, value in self.source_row_sha256_by_table)
+        ):
+            raise ValueError("current-observed source-row table hashes are invalid")
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, type(None)))
+            for _, value in self.values
+        ):
+            raise TypeError("current-observed feature values must be integer units or missing")
+
+    @property
+    def row_sha256(self) -> str:
+        return _hash_payload(
+            {
+                "schema_version": "recommendation-current-observed-feature-row.v1",
+                "symbol": self.symbol,
+                "decision_date": self.decision_date,
+                "feature_as_of_date": self.feature_as_of_date,
+                "local_current_observed_at": self.local_current_observed_at.isoformat(),
+                "cycle_id": self.cycle_id,
+                "cycle_terminal_path": self.cycle_terminal_path,
+                "cycle_terminal_sha256": self.cycle_terminal_sha256,
+                "snapshot_database_path": self.snapshot_database_path,
+                "snapshot_database_sha256": self.snapshot_database_sha256,
+                "snapshot_receipt_path": self.snapshot_receipt_path,
+                "snapshot_receipt_sha256": self.snapshot_receipt_sha256,
+                "source_context_envelope_path": self.source_context_envelope_path,
+                "source_context_envelope_sha256": self.source_context_envelope_sha256,
+                "source_row_sha256_by_table": [list(item) for item in self.source_row_sha256_by_table],
+                "feature_registry_id": self.feature_registry_id,
+                "feature_registry_hash": self.feature_registry_hash,
+                "feature_schema_hash": self.feature_schema_hash,
+                "feature_ids": list(self.feature_ids),
+                "feature_values": [value for _, value in self.values],
+                "missing_feature_ids": list(self.missing_feature_ids),
+                "historical_pit_eligible": False,
+                "formal_training_allowed": False,
+                "research_only": True,
+            }
+        )
 
 CURRENT_RESTATED_CORE19_FEATURE_IDS = tuple(
     feature_id
@@ -233,6 +343,53 @@ class HistoricalFeatureBuilder:
         price_unavailable_contracts: Sequence[Mapping[str, Any]] = (),
     ) -> tuple[HistoricalFeatureRow, ...]:
         """Compute prefix-invariant integer features using only snapshot T-1 rows."""
+        result = self._compute(
+            snapshot,
+            industry_index_name_by_symbol=industry_index_name_by_symbol,
+            price_unavailable_contracts=price_unavailable_contracts,
+            current_observed=False,
+        )
+        if any(type(row) is not HistoricalFeatureRow for row in result):
+            raise RuntimeError("historical feature builder returned a non-historical row")
+        return cast(tuple[HistoricalFeatureRow, ...], result)
+
+    def compute_current_observed(
+        self,
+        snapshot: CurrentObservedRawSnapshot,
+        *,
+        industry_index_name_by_symbol: Mapping[str, str],
+        price_unavailable_contracts: Sequence[Mapping[str, Any]] = (),
+    ) -> tuple[CurrentObservedFeatureRow, ...]:
+        """Compute current-restated features without assigning historical availability."""
+
+        if type(snapshot) is not CurrentObservedRawSnapshot:
+            raise TypeError("snapshot must be a typed current-observed snapshot")
+        if (
+            snapshot.current_restated is not True
+            or snapshot.historical_pit_eligible is not False
+            or snapshot.formal_training_allowed is not False
+        ):
+            raise ValueError("current-observed snapshot is not research-only")
+        if self._registry.registry_hash != CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash:
+            raise ValueError("current-observed feature registry must be canonical 20-slot registry")
+        result = self._compute(
+            snapshot,
+            industry_index_name_by_symbol=industry_index_name_by_symbol,
+            price_unavailable_contracts=price_unavailable_contracts,
+            current_observed=True,
+        )
+        if any(type(row) is not CurrentObservedFeatureRow for row in result):
+            raise RuntimeError("current-observed feature builder returned a non-current row")
+        return cast(tuple[CurrentObservedFeatureRow, ...], result)
+
+    def _compute(
+        self,
+        snapshot: HistoricalRawSnapshot | CurrentObservedRawSnapshot,
+        *,
+        industry_index_name_by_symbol: Mapping[str, str],
+        price_unavailable_contracts: Sequence[Mapping[str, Any]],
+        current_observed: bool,
+    ) -> tuple[HistoricalFeatureRow, ...] | tuple[CurrentObservedFeatureRow, ...]:
         cutoff = snapshot.feature_as_of_date
         explicit_gap_dates, feature_context_dates = (
             _validated_feature_contract_scope(price_unavailable_contracts)
@@ -295,7 +452,7 @@ class HistoricalFeatureBuilder:
                     f"{symbol}: {','.join(missing_context_dates)}"
                 )
 
-        rows: list[HistoricalFeatureRow] = []
+        rows: list[HistoricalFeatureRow | CurrentObservedFeatureRow] = []
         for symbol in sorted(price_by_symbol):
             observations = sorted(price_by_symbol[symbol], key=lambda row: row.trading_date)
             explicit_dates = {
@@ -419,14 +576,56 @@ class HistoricalFeatureBuilder:
                 "stock_minus_market_20d_bp": _difference(stock_20, market_20),
                 "industry_relative_return_20d_bp": _difference(stock_20, industry_20),
             }
-            rows.append(HistoricalFeatureRow(
-                symbol=symbol,
-                decision_date=snapshot.decision_date,
-                feature_as_of_date=cutoff,
-                available_date=snapshot.decision_date,
-                values=tuple((feature_id, values[feature_id]) for feature_id in self.load_contract.canonical_ids),
-            ))
-        return tuple(rows)
+            feature_values = tuple(
+                (feature_id, values[feature_id])
+                for feature_id in self.load_contract.canonical_ids
+            )
+            if current_observed:
+                if type(snapshot) is not CurrentObservedRawSnapshot:
+                    raise TypeError("current-observed computation requires a current-observed snapshot")
+                missing_feature_ids = tuple(
+                    feature_id for feature_id, value in feature_values if value is None
+                )
+                rows.append(
+                    CurrentObservedFeatureRow(
+                        symbol=symbol,
+                        decision_date=snapshot.decision_date,
+                        feature_as_of_date=cutoff,
+                        local_current_observed_at=snapshot.local_current_observed_at,
+                        cycle_id=snapshot.cycle_id,
+                        cycle_terminal_path=snapshot.cycle_terminal_path,
+                        cycle_terminal_sha256=snapshot.cycle_terminal_sha256,
+                        snapshot_database_path=snapshot.snapshot_database_path,
+                        snapshot_database_sha256=snapshot.snapshot_database_sha256,
+                        snapshot_receipt_path=snapshot.snapshot_receipt_path,
+                        snapshot_receipt_sha256=snapshot.snapshot_receipt_sha256,
+                        source_context_envelope_path=snapshot.source_context_envelope_path,
+                        source_context_envelope_sha256=snapshot.source_context_envelope_sha256,
+                        source_row_sha256_by_table=tuple(
+                            (name, snapshot.source_rows_sha256_by_table[name])
+                            for name in ("daily_prices", "technical_indicators", "market_indices", "industry_indices")
+                        ),
+                        feature_registry_id=self._registry.registry_id,
+                        feature_registry_hash=self._registry.registry_hash,
+                        feature_schema_hash=self.load_contract.schema_hash,
+                        feature_ids=self.load_contract.canonical_ids,
+                        values=feature_values,
+                        missing_feature_ids=missing_feature_ids,
+                    )
+                )
+            else:
+                rows.append(
+                    HistoricalFeatureRow(
+                        symbol=symbol,
+                        decision_date=snapshot.decision_date,
+                        feature_as_of_date=cutoff,
+                        available_date=snapshot.decision_date,
+                        values=feature_values,
+                    )
+                )
+        if current_observed:
+            return cast(tuple[CurrentObservedFeatureRow, ...], tuple(rows))
+        return cast(tuple[HistoricalFeatureRow, ...], tuple(rows))
 
 
 def compute_current_restated_core19_projection(
@@ -786,6 +985,13 @@ def _hash_payload(payload: object) -> str:
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     return f"sha256:{digest}"
+
+
+def _is_sha256_text(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    digest = value.removeprefix("sha256:")
+    return len(digest) == 64 and all(character in "0123456789abcdef" for character in digest)
 
 
 _BASIS_POINTS = Decimal(10_000)

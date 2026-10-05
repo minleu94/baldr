@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -22,14 +24,28 @@ from app_module.recommendation.contracts import (
     SnapshotCohortCoverageStatus,
     Request,
 )
+from app_module.recommendation.current_market_status_preflight import (
+    CURRENT_MARKET_STATUS_POINTER_RELATIVE,
+    CurrentMarketStatusPreflight,
+    validate_current_market_status_evidence,
+)
 from app_module.recommendation.persistence import RecommendationExecutionPersistence
 from app_module.recommendation.queries import (
     RecommendationExecutionQueries,
     RecommendationExecutionReadModel,
 )
 from data_module.result_artifact_store import ResultArtifactStore
-from decision_module.recommendation.contracts import DecisionBatch
+from decision_module.recommendation.contracts import (
+    CandidateAssessment,
+    DecisionBatch,
+    FilterOutcome,
+)
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
+from data_module.current_market_status_observation import (
+    MarketStatusEvidence,
+    build_snapshot,
+    sha256_bytes,
+)
 
 
 class _Config:
@@ -1074,13 +1090,13 @@ def test_scheduled_recommendation_inventory_requires_saved_scheduled_marker(
     assert status.recommendation_result_id == "scheduled_rec_20260907_050100"
 
 
-def _classification_test_cohort() -> SnapshotCohort:
-    requested = ("0050", "0066", "1101", "2330", "2603", "2881", "6488")
+def _classification_test_cohort(*, include_current_delisted: bool = False) -> SnapshotCohort:
+    requested: tuple[str, ...] = ("0050", "0066", "1101", "2330", "2603", "2881", "6488")
     eligible = ("0050", "0066")
     missing = ("1101",)
     degraded = ("0066", "2330", "2603", "6488")
-    excluded = ("2881",)
-    coverage_rows = {
+    excluded: tuple[str, ...] = ("2881",)
+    coverage_rows: dict[str, dict[str, object]] = {
         "0066": {
             "status": "skipped",
             "quality": "degraded",
@@ -1131,6 +1147,16 @@ def _classification_test_cohort() -> SnapshotCohort:
             "warnings": [],
         },
     }
+    if include_current_delisted:
+        requested = tuple(sorted((*requested, "4130")))
+        excluded = tuple(sorted((*excluded, "4130")))
+        coverage_rows["4130"] = {
+            "status": "fail",
+            "quality": "observed",
+            "stage": "current_market_status_gate",
+            "reason_codes": ["official_delisted"],
+            "warnings": [],
+        }
     definitions = {
         "eligible_definition": "final scheduled recommendation DTO rows",
         "missing_definition": "screening rows with quality=missing; same-day retry candidates",
@@ -1176,11 +1202,11 @@ def _classification_test_cohort() -> SnapshotCohort:
         coverage_status=SnapshotCohortCoverageStatus.PARTIAL,
         coverage_by_symbol={
             symbol: SnapshotCohortCoverage(
-                status=row["status"],
-                quality=row["quality"],
-                stage=row["stage"],
-                reason_codes=tuple(row["reason_codes"]),
-                warnings=tuple(row["warnings"]),
+                status=cast(str | None, row.get("status")),
+                quality=cast(str | None, row.get("quality")),
+                stage=cast(str | None, row.get("stage")),
+                reason_codes=tuple(cast(list[str], row.get("reason_codes", []))),
+                warnings=tuple(cast(list[str], row.get("warnings", []))),
             )
             for symbol, row in coverage_rows.items()
         },
@@ -1239,18 +1265,21 @@ def test_scheduled_status_derives_classifications_only_from_matching_verified_co
         "canonical_payload_and_index_verified"
     )
     assert status.recommendation_canonical_payload_hash == "sha256:" + "a" * 64
-    assert status.recommendation_cohort_hash == execution.context.snapshot_cohort.cohort_hash
+    cohort = execution.context.snapshot_cohort
+    assert cohort is not None
+    assert status.recommendation_cohort_hash == cohort.cohort_hash
     assert status.recommendation_cohort_requested_count == 7
     assert status.recommendation_cohort_quality_missing_count == 1
     assert status.recommendation_cohort_quality_degraded_count == 4
     assert dict(status.recommendation_cohort_classifications) == {
         "可用候選": 1,
         "策略排除": 1,
+        "市場狀態排除": 0,
         "缺資料": 1,
         "來源品質問題": 1,
         "其他未判定": 3,
     }
-    assert execution.context.snapshot_cohort.coverage_status is SnapshotCohortCoverageStatus.PARTIAL
+    assert cohort.coverage_status is SnapshotCohortCoverageStatus.PARTIAL
 
     legacy_claim = replace(read_model, integrity_basis="legacy_read_time_hash_only")
     unverified = ScheduledEvidenceStatusService(
@@ -1272,3 +1301,261 @@ def test_scheduled_status_derives_classifications_only_from_matching_verified_co
     ).load_latest()
     assert malformed_hash.recommendation_cohort_integrity_basis is None
     assert malformed_hash.recommendation_cohort_classifications == ()
+
+
+def _valid_current_delisted_evidence(
+    source_root: Path,
+    *,
+    symbol: str,
+    decision_at: datetime,
+) -> dict[str, object]:
+    assert symbol == "4130"
+    source_root = source_root.resolve()
+    pointer_path = source_root / CURRENT_MARKET_STATUS_POINTER_RELATIVE
+    output_dir = pointer_path.parent
+    run_id = "scheduled-status-4130-fixture"
+    run_dir = output_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    raw_dir = run_dir / "raw"
+    raw_dir.mkdir(exist_ok=True)
+    raw_path = raw_dir / "s0001.bin"
+    raw_body = b"Fixture bytes for a current official termination notice.\n"
+    raw_path.write_bytes(raw_body)
+    raw_sha256 = sha256_bytes(raw_body)
+    source_id = "tpex.terminated_listing"
+    source_url = "https://www.tpex.org.tw/www/zh-tw/company/deListed"
+    captured_at = (
+        decision_at.astimezone(timezone.utc) - timedelta(minutes=20)
+    ).replace(microsecond=0)
+    snapshot_observed_at = captured_at + timedelta(seconds=3)
+    captured_text = captured_at.isoformat(timespec="microseconds")
+    capture = {
+        "source_id": source_id,
+        "url": source_url,
+        "final_url": source_url,
+        "status": "captured",
+        "parse_status": "parsed",
+        "http_status": 200,
+        "captured_at": captured_text,
+        "raw_path": str(raw_path),
+        "raw_sha256": raw_sha256,
+        "raw_bytes": len(raw_body),
+    }
+    evidence = MarketStatusEvidence(
+        symbol=symbol,
+        source_id=source_id,
+        evidence_type="terminated",
+        observed_at=captured_text,
+        raw_sha256=raw_sha256,
+        source_url=source_url,
+        effective_from="2026-07-28",
+        published_date="2026-07-27",
+        notice_reference="fixture-official-termination-notice",
+        market="tpex",
+        name="Fixture delisted issuer",
+    )
+    snapshot = build_snapshot(
+        observed_at=snapshot_observed_at,
+        source_captures=[capture],
+        evidence=[evidence],
+    )
+    snapshot.update(
+        {
+            "run_id": run_id,
+            "source_count": 1,
+            "successful_source_count": 1,
+            "partial_failure": False,
+        }
+    )
+    snapshot_path = run_dir / "snapshot.json"
+    snapshot_path.write_text(
+        json.dumps(snapshot, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    snapshot_sha256 = sha256_bytes(snapshot_path.read_bytes())
+    manifest_path = run_dir / "manifest.json"
+    manifest = {
+        "schema_version": "current-market-status-capture-manifest.v1",
+        "run_id": run_id,
+        "snapshot_path": str(snapshot_path),
+        "snapshot_sha256": snapshot_sha256,
+        "raw_sources": [
+            {
+                "source_id": source_id,
+                "raw_path": str(raw_path),
+                "raw_sha256": raw_sha256,
+                "captured_at": captured_text,
+                "status": "captured",
+                "parse_status": "parsed",
+            }
+        ],
+    }
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    manifest_sha256 = sha256_bytes(manifest_path.read_bytes())
+    pointer = {
+        "schema_version": "current-market-status-pointer.v1",
+        "scope": "current_only",
+        "pit_eligible": False,
+        "run_id": run_id,
+        "published_at": snapshot_observed_at.isoformat(),
+        "snapshot_path": f"{run_id}/snapshot.json",
+        "snapshot_sha256": snapshot_sha256,
+        "manifest_path": f"{run_id}/manifest.json",
+        "manifest_sha256": manifest_sha256,
+        "source_count": 1,
+        "successful_source_count": 1,
+        "partial_failure": False,
+    }
+    pointer_path.parent.mkdir(parents=True, exist_ok=True)
+    pointer_path.write_text(
+        json.dumps(pointer, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    result = CurrentMarketStatusPreflight(source_root.resolve()).get(
+        symbol,
+        cutoff_at=decision_at,
+        decision_date=decision_at.astimezone(ZoneInfo("Asia/Taipei")).date(),
+    )
+    assert result.disposition == "verified_delisted", result.reason_code
+    assert result.evidence is not None
+    assert validate_current_market_status_evidence(
+        result.evidence,
+        expected_symbol=symbol,
+        decision_at=decision_at,
+    )
+    return dict(result.evidence)
+
+
+def _current_delisted_read_model(
+    *,
+    evidence: dict[str, object],
+    assessment_symbol: str = "4130",
+    decision_at: datetime | None = None,
+) -> RecommendationExecutionReadModel:
+    result_id = "canonical-current-delisted-result"
+    decision_date = date(2026, 9, 7)
+    invocation_at = decision_at or datetime(2026, 9, 7, 5, 0, tzinfo=timezone.utc)
+    execution = RecommendationExecution(
+        result_id=result_id,
+        request=Request(as_of_date=decision_date),
+        context=Context(
+            as_of_date=decision_date,
+            decision_at=invocation_at,
+            snapshot_cohort=_classification_test_cohort(include_current_delisted=True),
+        ),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(
+            items=(),
+            assessments=(
+                CandidateAssessment(
+                    stock_code=assessment_symbol,
+                    eligible=False,
+                    filter_outcomes={
+                        "current_market_status_gate": FilterOutcome(
+                            filter_id="current_market_status_gate",
+                            passed=False,
+                            reason="official_delisted",
+                            evidence=evidence,
+                        )
+                    },
+                ),
+            ),
+        ),
+        quality=QualityReport(QualityStatus.COMPLETE),
+    )
+    return RecommendationExecutionReadModel(
+        execution=execution,
+        label=result_id,
+        notes="",
+        persisted_at=datetime(2026, 9, 7, 5, 1, tzinfo=timezone.utc),
+        payload_hash="sha256:" + "a" * 64,
+        artifact_location=f"{result_id}.json",
+        schema_version="recommendation-execution.v1",
+        schema_revision=2,
+        raw_artifact_sha256="sha256:" + "b" * 64,
+        integrity_basis="canonical_payload_and_index_verified",
+    )
+
+
+def _load_current_delisted_classification(
+    tmp_path: Path,
+    *,
+    evidence: dict[str, object],
+    assessment_symbol: str = "4130",
+    decision_at: datetime | None = None,
+) -> ScheduledEvidenceStatusService:
+    output_root = tmp_path / "output"
+    _write_minimal_scheduled_statuses(output_root)
+    result_id = "canonical-current-delisted-result"
+    status_path = output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
+    latest_status = json.loads(status_path.read_text(encoding="utf-8"))
+    latest_status["result_id"] = result_id
+    latest_status["recommendations_count"] = 1
+    status_path.write_text(json.dumps(latest_status), encoding="utf-8")
+    read_model = _current_delisted_read_model(
+        evidence=evidence,
+        assessment_symbol=assessment_symbol,
+        decision_at=decision_at,
+    )
+    return ScheduledEvidenceStatusService(
+        _Config(output_root),
+        recommendation_queries=_QueryStub((read_model,)),
+    )
+
+
+def test_scheduled_status_classifies_only_verified_current_delisted_exclusion(
+    tmp_path: Path,
+) -> None:
+    decision_at = datetime(2026, 10, 4, 13, 0, tzinfo=timezone.utc)
+    evidence = _valid_current_delisted_evidence(
+        tmp_path / "canonical_source", symbol="4130", decision_at=decision_at
+    )
+
+    status = _load_current_delisted_classification(
+        tmp_path, evidence=evidence, decision_at=decision_at
+    ).load_latest()
+
+    assert dict(status.recommendation_cohort_classifications)["市場狀態排除"] == 1
+    assert dict(status.recommendation_cohort_classifications)["其他未判定"] == 3
+    assert status.recommendation_cohort_requested_count == 8
+
+
+@pytest.mark.parametrize(
+    ("case", "assessment_symbol"),
+    (
+        ("missing_lineage", "4130"),
+        ("wrong_evidence_symbol", "4130"),
+        ("wrong_assessment_symbol", "2330"),
+        ("decision_clock_mismatch", "4130"),
+    ),
+)
+def test_scheduled_status_keeps_unverified_delisted_rows_unclassified(
+    tmp_path: Path,
+    case: str,
+    assessment_symbol: str,
+) -> None:
+    decision_at = datetime(2026, 10, 4, 13, 0, tzinfo=timezone.utc)
+    evidence = _valid_current_delisted_evidence(
+        tmp_path / "canonical_source", symbol="4130", decision_at=decision_at
+    )
+    if case == "missing_lineage":
+        evidence.pop("manifest_path")
+    elif case == "wrong_evidence_symbol":
+        evidence["symbol"] = "9999"
+    model_decision_at = decision_at
+    if case == "decision_clock_mismatch":
+        model_decision_at = decision_at + timedelta(seconds=1)
+
+    status = _load_current_delisted_classification(
+        tmp_path,
+        evidence=evidence,
+        assessment_symbol=assessment_symbol,
+        decision_at=model_decision_at,
+    ).load_latest()
+
+    classifications = dict(status.recommendation_cohort_classifications)
+    assert classifications["市場狀態排除"] == 0
+    assert classifications["其他未判定"] == 4

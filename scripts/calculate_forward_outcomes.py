@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
@@ -10,8 +11,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.forward_outcome_context import (
+    build_official_maturity_calendar,
+    resolve_canonical_evidence_release_root,
+)
 from app_module.forward_performance_service import ForwardPerformanceService
+from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE
 from data_module.config import TWStockConfig
+from data_module.ml_storage_capacity import (
+    acquire_heavy_chain_reservation,
+    heavy_chain_lock_path,
+    release_heavy_chain_reservation,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,28 +47,69 @@ def _parse_windows(value: str) -> tuple[int, ...]:
     return windows
 
 
-def main() -> int:
-    args = build_parser().parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     config_kwargs = {}
     if args.data_root is not None:
         config_kwargs["data_root"] = args.data_root
     if args.output_root is not None:
         config_kwargs["output_root"] = args.output_root
     config = TWStockConfig(**config_kwargs)
-    repo = EvidenceEventRepository(config)
-    service = ForwardPerformanceService(config, repo)
-    summary = service.calculate(
-        windows=_parse_windows(args.windows),
-        dry_run=args.dry_run,
-        decision_date=args.decision_date,
-        start_date=args.start_date,
-        end_date=args.end_date,
-        event_type=args.event_type,
-        symbol=args.symbol,
-        limit=args.limit,
-    )
-    print(json.dumps(summary.to_dict(), ensure_ascii=False, sort_keys=True))
-    return 0
+    reservation = None
+    try:
+        if not args.dry_run:
+            canonical_config = TWStockConfig()
+            release_root = resolve_canonical_evidence_release_root(
+                canonical_config=canonical_config,
+                db_path=config.db_file,
+            )
+            if release_root is not None:
+                reservation = acquire_heavy_chain_reservation(
+                    heavy_chain_lock_path(release_root)
+                )
+                if reservation is None:
+                    print(
+                        json.dumps(
+                            {
+                                "status": "blocked_writer_busy",
+                                "db_path": str(config.db_file),
+                                "lock_path": str(heavy_chain_lock_path(release_root)),
+                            },
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                        file=sys.stderr,
+                    )
+                    return 2
+        invocation_at = datetime.now(timezone.utc)
+        calendar = build_official_maturity_calendar(
+            config=config,
+            observed_at=invocation_at,
+        )
+        repository = EvidenceEventRepository(config, read_only=bool(args.dry_run))
+        service = ForwardPerformanceService(
+            config,
+            repository,
+            maturity_calendar=calendar,
+        )
+        summary = service.calculate(
+            windows=_parse_windows(args.windows),
+            dry_run=args.dry_run,
+            decision_date=args.decision_date,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            event_type=args.event_type,
+            symbol=args.symbol,
+            limit=args.limit,
+            data_as_of_date=invocation_at.astimezone(
+                TAIWAN_MARKET_TIMEZONE
+            ).date().isoformat(),
+            invocation_at=invocation_at,
+        )
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, sort_keys=True))
+        return 0
+    finally:
+        release_heavy_chain_reservation(reservation)
 
 
 if __name__ == "__main__":

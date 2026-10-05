@@ -2726,7 +2726,7 @@ def test_wait_deadline_emits_bounded_heartbeat_and_times_out(
     assert any(row.get("waited_seconds", 0) >= 30 for row in heartbeat_rows)
 
 
-def test_run_once_caps_child_timeout_below_two_hour_task_budget(
+def test_run_once_preserves_two_hour_child_within_five_hour_task_budget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2757,10 +2757,10 @@ def test_run_once_caps_child_timeout_below_two_hour_task_budget(
     )
 
     assert code == 0
-    assert child_timeouts == [6900]
-    assert payload["attempt_budget"]["total_limit_seconds"] == 7200
+    assert child_timeouts == [7200]
+    assert payload["attempt_budget"]["total_limit_seconds"] == 18_000
     assert payload["attempt_budget"]["terminal_flush_reserve_seconds"] == 300
-    assert payload["attempt_budget"]["effective_child_timeout_seconds"] == 6900
+    assert payload["attempt_budget"]["effective_child_timeout_seconds"] == 7200
     assert payload["upstream_projection_wait"]["status"] == "upstream_not_running"
 
 
@@ -2822,7 +2822,7 @@ def test_run_once_wait_timeout_or_stopped_never_starts_child(
     assert child_calls == []
 
 
-def test_run_once_reduces_child_timeout_by_time_spent_waiting(
+def test_run_once_preserves_child_timeout_when_upstream_wait_fits_reserved_budget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2884,8 +2884,11 @@ def test_run_once_reduces_child_timeout_by_time_spent_waiting(
     assert code == 0
     assert payload["upstream_projection_wait"]["status"] == "ready"
     assert payload["upstream_projection_wait"]["waited_seconds"] == 125.0
-    assert child_timeouts == [6775]
-    assert payload["attempt_budget"]["effective_child_timeout_seconds"] == 6775
+    # The 125-second wait consumes the dedicated upstream wait budget. The
+    # original 2-hour child allowance still fits inside the 5-hour Task budget.
+    assert child_timeouts == [7200]
+    assert payload["attempt_budget"]["effective_child_timeout_seconds"] == 7200
+    assert payload["attempt_budget"]["total_limit_seconds"] == 18_000
 
 
 def test_upstream_wait_defaults_off_but_bank_wrapper_enables_fixed_cap() -> None:
@@ -2896,5 +2899,14 @@ def test_upstream_wait_defaults_off_but_bank_wrapper_enables_fixed_cap() -> None
         / "scheduled"
         / "run_banktaiwan_recommendation_learning_daily.cmd"
     ).read_text(encoding="utf-8")
-    assert 'set "BANKTAIWAN_UPSTREAM_PROJECTION_WAIT_SECONDS=1800"' in wrapper
+    assert 'set "BANKTAIWAN_UPSTREAM_PROJECTION_WAIT_SECONDS=10500"' in wrapper
     assert "--upstream-projection-wait-seconds" in wrapper
+    assert operational._MAX_UPSTREAM_PROJECTION_WAIT_SECONDS == 10_500
+    assert operational._BANK_TASK_EXECUTION_BUDGET_SECONDS == 5 * 60 * 60
+    registration = (
+        Path(__file__).parents[1]
+        / "scripts"
+        / "scheduled"
+        / "register_banktaiwan_recommendation_learning_task.cmd"
+    ).read_text(encoding="utf-8")
+    assert "New-TimeSpan -Hours 5" in registration

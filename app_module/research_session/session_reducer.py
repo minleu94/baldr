@@ -58,6 +58,7 @@ def reduce_session_event(
                 source_kind=None,
                 source_label=None,
                 source_workspace=None,
+                ml_scope_mode=None,
                 active_profile=None,
             )
         context = ResearchStockContextDTO(
@@ -121,6 +122,11 @@ def reduce_session_event(
             source_workspace=_normalize(
                 supplied_context.source_workspace if supplied_context is not None else event.source_workspace
             ) or "",
+            ml_scope_mode=_normalize(
+                supplied_context.ml_scope_mode
+                if supplied_context is not None
+                else event.ml_scope_mode
+            ) or "",
         )
         return replace(
             snapshot,
@@ -145,6 +151,7 @@ def reduce_session_event(
             source_kind=context.source_kind or None,
             source_label=context.source_label or None,
             source_workspace=context.source_workspace or None,
+            ml_scope_mode=context.ml_scope_mode or None,
         )
 
     return snapshot

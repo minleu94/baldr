@@ -41,7 +41,8 @@ from app_module.update_status_history import (
 from scripts.scheduled.scheduled_clock import scheduled_now
 
 
-PACIFIC = ZoneInfo("America/Los_Angeles")
+DAILY_DATA_CUTOFF_TIMEZONE = "America/Los_Angeles"
+PACIFIC = ZoneInfo(DAILY_DATA_CUTOFF_TIMEZONE)
 TAIPEI = ZoneInfo("Asia/Taipei")
 DAILY_DATA_CUTOFF_LOCAL = time(4, 30)
 _DATE_RE = re.compile(r"(?<!\d)(\d{8})(?!\d)")
@@ -1927,6 +1928,7 @@ def main(argv: list[str] | None = None) -> int:
         "db_path": str(db_path),
         "db_exists": db_path.exists(),
         "calendar_cutoff_local": DAILY_DATA_CUTOFF_LOCAL.strftime("%H:%M"),
+        "calendar_cutoff_timezone": DAILY_DATA_CUTOFF_TIMEZONE,
         "read_only": True,
     }
     warnings: list[str] = []

@@ -8,7 +8,7 @@ import gzip
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any
+from typing import Any, Literal, Sequence
 from zoneinfo import ZoneInfo
 import pytest
 
@@ -191,9 +191,20 @@ def test_snapshot_context_rejects_changed_original_namespace_bytes(tmp_path: Pat
 
 @pytest.fixture(autouse=True)
 def _research_path_boundary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def resolver(path: Path) -> Path:
+    def resolver(
+        path: Path,
+        *,
+        repository_root: Path | None = None,
+        extra_forbidden_roots: Sequence[Path] = (),
+        access: Literal["read", "write"] = "read",
+    ) -> Path:
         (tmp_path / "output" / "ml_research").mkdir(parents=True, exist_ok=True)
-        return resolve_ml_research_output_path(path, repository_root=tmp_path)
+        return resolve_ml_research_output_path(
+            path,
+            repository_root=repository_root or tmp_path,
+            extra_forbidden_roots=extra_forbidden_roots,
+            access=access,
+        )
     monkeypatch.setattr(raw_module, "resolve_ml_research_output_path", resolver)
     install_test_revision_gate(monkeypatch)
 

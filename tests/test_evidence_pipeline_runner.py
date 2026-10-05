@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.decision_desk_snapshot_repository import DecisionDeskSnapshotRepository
 from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.evidence_event_service import EvidenceEventService
+from app_module.evidence_event_dtos import EvidenceDataQuality, EvidenceEventType
 from app_module.evidence_pipeline_runner import (
     EvidencePipelineRunner,
     _advisory_count,
@@ -23,6 +26,7 @@ from app_module.evidence_pipeline_runner_dtos import (
 )
 from app_module.recommendation_repository import RecommendationRepository
 from data_module.config import TWStockConfig
+from tests.forward_outcome_test_support import write_verified_test_calendar_cache
 from tests.test_evidence_pipeline_smoke import _seed_market_db
 
 
@@ -30,6 +34,9 @@ def _config(tmp_path: Path) -> TWStockConfig:
     config = TWStockConfig(data_root=tmp_path / "data", output_root=tmp_path / "output")
     config.db_file = tmp_path / "data" / "sqlite" / "twstock.db"
     config.db_file.parent.mkdir(parents=True, exist_ok=True)
+    config.official_calendar_cache_path = write_verified_test_calendar_cache(
+        tmp_path / "calendar"
+    ).parent
     return config
 
 
@@ -98,6 +105,115 @@ def test_runner_defaults_to_dry_run_and_does_not_write_events_or_outcomes(tmp_pa
         "summarize_forward_performance",
         "write_diagnostics_report",
     ]
+
+
+def test_outcome_step_uses_frozen_invocation_clock_and_taipei_data_cutoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(tmp_path)
+    invocation_at = datetime(2026, 10, 4, 16, 10, tzinfo=timezone.utc)
+    captured: dict[str, object] = {}
+
+    class _Repository:
+        def __init__(self, _config, *, db_path, read_only):
+            captured["db_path"] = db_path
+            captured["read_only"] = read_only
+
+    class _ForwardService:
+        def __init__(self, _config, _repository, *, maturity_calendar):
+            captured["calendar"] = maturity_calendar
+
+        def calculate(self, **kwargs):
+            captured["calculate_kwargs"] = kwargs
+            return SimpleNamespace(
+                warnings_count=0,
+                events_scanned=0,
+                outcomes_created=0,
+                outcomes_updated=0,
+                pending_insufficient_future_data=0,
+            )
+
+    monkeypatch.setattr(
+        "app_module.evidence_pipeline_runner.EvidenceEventRepository",
+        _Repository,
+    )
+    monkeypatch.setattr(
+        "app_module.evidence_pipeline_runner.ForwardPerformanceService",
+        _ForwardService,
+    )
+    runner = EvidencePipelineRunner(config, clock=lambda: invocation_at)
+    runner._invocation_at = invocation_at
+
+    _summary, step = runner._outcome_step(
+        EvidencePipelineRunRequest(
+            decision_date="2026-10-04",
+            skip_snapshot=True,
+            skip_capture=True,
+            skip_outcomes=False,
+            skip_summary=True,
+        ),
+        dry_run=True,
+    )
+
+    calendar = captured["calendar"]
+    assert calendar.observed_at == invocation_at
+    assert captured["read_only"] is True
+    assert captured["calculate_kwargs"]["data_as_of_date"] == "2026-10-05"
+    assert captured["calculate_kwargs"]["invocation_at"] == invocation_at
+    assert step.status == "ready"
+
+
+def test_replay_outcome_keeps_explicit_replay_cutoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(tmp_path)
+    invocation_at = datetime(2026, 10, 4, 16, 10, tzinfo=timezone.utc)
+    runner = EvidencePipelineRunner(config, clock=lambda: invocation_at)
+    runner._invocation_at = invocation_at
+    captured: dict[str, object] = {}
+
+    class _Repository:
+        def __init__(self, _config, *, db_path, read_only):
+            captured["read_only"] = read_only
+
+    class _ForwardService:
+        def __init__(self, _config, _repository, *, maturity_calendar):
+            captured["calendar"] = maturity_calendar
+
+        def calculate(self, **kwargs):
+            captured["calculate_kwargs"] = kwargs
+            return SimpleNamespace(
+                warnings_count=0,
+                events_scanned=0,
+                outcomes_created=0,
+                outcomes_updated=0,
+                pending_insufficient_future_data=0,
+            )
+
+    monkeypatch.setattr(
+        "app_module.evidence_pipeline_runner.EvidenceEventRepository",
+        _Repository,
+    )
+    monkeypatch.setattr(
+        "app_module.evidence_pipeline_runner.ForwardPerformanceService",
+        _ForwardService,
+    )
+    _summary, _step = runner._outcome_step(
+        EvidencePipelineRunRequest(
+            decision_date="2026-07-02",
+            replay_context={"replay_data_as_of_date": "2026-07-02"},
+            skip_snapshot=True,
+            skip_capture=True,
+            skip_summary=True,
+        ),
+        dry_run=True,
+    )
+
+    assert captured["calculate_kwargs"]["data_as_of_date"] == "2026-07-02"
+    assert captured["calculate_kwargs"]["invocation_at"] == invocation_at
+    assert captured["calendar"].observed_at == invocation_at
 
 
 def test_runner_dry_run_preserves_entire_source_database_bytes_and_schema_version(
@@ -357,20 +473,38 @@ def test_runner_production_like_db_confirm_requires_extra_flag(tmp_path: Path, m
 def test_runner_outcome_step_can_report_pending_future_data(tmp_path: Path) -> None:
     config = _config(tmp_path)
     _seed_market_db(config, days=3)
-    result_id = _seed_recommendation(config)
+    event = EvidenceEventService(EvidenceEventRepository(config)).record_event(
+        event_date="2026-07-01",
+        decision_date="2026-07-01",
+        symbol="2330",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="recommendation_result",
+        source_id="runner-outcome-pending",
+        reason_codes=("rank_top",),
+        data_quality=EvidenceDataQuality.OBSERVED,
+        warnings=(),
+        as_of_date="2026-07-01",
+        available_date="2026-07-01",
+        source_version="test",
+    )
 
     summary = EvidencePipelineRunner(config, db_path=config.db_file).run(
         EvidencePipelineRunRequest(
             decision_date="2026-07-01",
             sources=("recommendation",),
-            result_id=result_id,
             windows=(5,),
             confirm=True,
             dry_run=False,
             db_path=str(config.db_file),
+            replay_context={"replay_data_as_of_date": "2026-07-03"},
+            skip_snapshot=True,
+            skip_capture=True,
+            skip_summary=True,
         )
     )
 
+    assert event.event_id
     assert summary.outcomes_pending == 1
 
 

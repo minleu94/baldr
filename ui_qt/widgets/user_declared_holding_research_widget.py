@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.user_declared_holding_research import (
     ConditionObservation,
     SavedRecommendationConditionContextProvider,
@@ -219,11 +220,21 @@ class UserDeclaredHoldingResearchWidget(QWidget):
         self.portfolio_id = portfolio_id
         self._now_provider = now_provider or getattr(service, "now", lambda: datetime.now(timezone.utc))
         self.market_source = market_source or self._default_market_source()
+        config = getattr(self.portfolio_service, "config", None)
+        quote_cadence = (
+            MarketSessionCadence.for_config(
+                config, clock=lambda: _safe_now(self._now_provider)
+            )
+            if config is not None
+            else None
+        )
         self.condition_source = condition_source or (
             PortfolioConditionResearchProvider(
                 self.market_source,
                 condition_monitor=condition_monitor,
                 condition_context_source=self._default_condition_context_source(),
+                quote_cadence=quote_cadence,
+                now_provider=lambda: _safe_now(self._now_provider),
             )
             if self.market_source is not None
             else None

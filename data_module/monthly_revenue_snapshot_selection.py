@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import stat
 
 
 _SNAPSHOT_FILENAME = re.compile(
@@ -12,6 +13,7 @@ _SNAPSHOT_FILENAME = re.compile(
     r"(?P<start>\d{4}-\d{2})_(?P<end>\d{4}-\d{2})_"
     r"(?P<fetch_date>\d{4}-\d{2}-\d{2})\.csv$"
 )
+_CAPTURE_DIRECTORY = re.compile(r"^run_\d{4}-\d{2}-\d{2}_[0-9a-f]{32}$")
 
 
 @dataclass(frozen=True)
@@ -56,13 +58,28 @@ def iter_monthly_revenue_snapshot_files(snapshot_dir: Path) -> tuple[Path, ...]:
     """列出候選 snapshot；忽略備份檔、目錄與 symlink。"""
 
     root = Path(snapshot_dir).expanduser()
-    if not root.is_dir():
+    if _is_reparse_point(root) or not root.is_dir():
         return ()
-    return tuple(
+    candidates = [
         path
         for path in root.glob("mops_monthly_revenue_snapshot_*.csv")
-        if path.is_file() and not path.is_symlink() and ".before_" not in path.name
-    )
+        if _is_safe_snapshot_file(path)
+    ]
+
+    captures_root = root / "captures"
+    if not _is_reparse_point(captures_root) and captures_root.is_dir():
+        for capture_dir in captures_root.iterdir():
+            if (
+                _CAPTURE_DIRECTORY.fullmatch(capture_dir.name)
+                and not _is_reparse_point(capture_dir)
+                and capture_dir.is_dir()
+            ):
+                candidates.extend(
+                    path
+                    for path in capture_dir.glob("mops_monthly_revenue_snapshot_*.csv")
+                    if _is_safe_snapshot_file(path)
+                )
+    return tuple(candidates)
 
 
 def select_latest_monthly_revenue_snapshot(snapshot_dir: Path) -> Path | None:
@@ -81,9 +98,9 @@ def select_latest_monthly_revenue_snapshot(snapshot_dir: Path) -> Path | None:
                 info.fetch_date or "",
                 info.start_period or "",
                 _mtime_ns(path),
-                path.name,
+                str(path),
             )
-        return (0, "", "", "", _mtime_ns(path), path.name)
+        return (0, "", "", "", _mtime_ns(path), str(path))
 
     return max(candidates, key=sort_key)
 
@@ -94,3 +111,20 @@ def _mtime_ns(path: Path) -> int:
     except OSError:
         # 檔案仍可被列出但 metadata 讀取受限時，期別／抓取日排序仍可用。
         return 0
+
+
+def _is_safe_snapshot_file(path: Path) -> bool:
+    return (
+        not _is_reparse_point(path)
+        and path.is_file()
+        and ".before_" not in path.name
+    )
+
+
+def _is_reparse_point(path: Path) -> bool:
+    try:
+        info = path.lstat()
+    except OSError:
+        return True
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    return path.is_symlink() or bool(getattr(info, "st_file_attributes", 0) & reparse_flag)

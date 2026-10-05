@@ -1,6 +1,7 @@
 """受控取得兩市場MOPS現況財報，保存原件後正規化並追加非PIT觀測。"""
 from __future__ import annotations
 import argparse
+from collections.abc import Mapping
 from datetime import datetime,timezone
 import hashlib,json,sqlite3,sys,os
 from pathlib import Path
@@ -42,7 +43,7 @@ def main(argv:list[str]|None=None)->int:
     year,quarter=map(int,args.period.split('-Q'))
     root=args.output_root/('current-mops-statements-'+uuid4().hex);root.mkdir(parents=True,exist_ok=False)
     records=[];receipts=[];failed=False
-    def publish(payload:dict)->None:
+    def publish(payload: Mapping[str, object]) -> None:
         if args.status_path is not None:
             args.status_path.parent.mkdir(parents=True,exist_ok=True)
             temporary=args.status_path.with_name(args.status_path.name+'.'+uuid4().hex+'.tmp')
@@ -56,31 +57,53 @@ def main(argv:list[str]|None=None)->int:
         for statement,(route,_,_) in STATEMENTS.items():
             params={'encodeURIComponent':'1','step':'1','firstin':'1','off':'1','isQuery':'Y','TYPEK':'sii' if market=='twse' else 'otc','year':str(year-1911),'season':f'{quarter:02d}'}
             url=f'https://mopsov.twse.com.tw/mops/web/ajax_{route}'
-            receipt={'requested_url':url,'params':params,'market':market,'statement':statement,'started_at':datetime.now(timezone.utc).isoformat()}
+            receipt: dict[str, object] = {'requested_url':url,'params':params,'market':market,'statement':statement,'started_at':datetime.now(timezone.utc).isoformat(),'source_available_at':None}
             try:
+                source_available_at: datetime | None = None
                 if saved_capture is not None:
                     candidates=[r for r in saved_capture.payload['requests'] if r['market']==market and r['statement']==statement]
-                    if len(candidates)!=1 or candidates[0].get('http_status')!=200 or candidates[0]['requested_url']!=url or candidates[0]['params']!=params:
-                        raise ValueError('既有capture的HTTP／request身分不符')
+                    if len(candidates)!=1 or candidates[0].get('http_status')!=200 or candidates[0]['requested_url']!=url or candidates[0].get('final_url')!=url or candidates[0]['params']!=params:
+                        raise ValueError('\u65e2\u6709capture\u7684HTTP\uff0frequest\u8eab\u5206\u4e0d\u7b26')
                     original=candidates[0]
                     original_path=args.captured_run/f'{market}_{statement}.html'
                     body=_read_stable_bytes(original_path,max_bytes=32*1024*1024)
                     if len(body)!=original['bytes'] or hashlib.sha256(body).hexdigest()!=original['sha256']:
-                        raise ValueError('既有raw hash不符')
+                        raise ValueError('\u65e2\u6709raw hash\u4e0d\u7b26')
                     raw_path=root/f'{market}_{statement}.html';raw_path.write_bytes(body)
-                    receipt.update(http_status=200,final_url=original['final_url'],bytes=len(body),sha256=original['sha256'],raw_file=str(raw_path),original_capture_receipt_sha256=saved_capture.sha256,original_started_at=original['started_at'],http_request_performed=False)
+                    receipt.update(http_status=200,final_url=original['final_url'],bytes=len(body),sha256=original['sha256'],raw_file=str(raw_path),original_capture_receipt_sha256=saved_capture.sha256,original_started_at=original['started_at'],original_completed_at=original.get('completed_at'),http_request_performed=False)
+                    captured_at=original.get('completed_at')
+                    source_available_at=None
+                    if captured_at:
+                        source_available_at=datetime.fromisoformat(str(captured_at).replace('Z','+00:00'))
+                        if source_available_at.tzinfo is None or source_available_at.utcoffset() is None:
+                            raise ValueError('captured run completion timestamp lacks a timezone')
                 else:
-                  with requests.post(url,data=params,timeout=(10,30),stream=True) as response:
-                    chunks=[];size=0
-                    for chunk in response.iter_content(65536):
-                        size+=len(chunk)
-                        if size>32*1024*1024: raise ValueError('官方回應超過有界上限')
-                        chunks.append(chunk)
-                    body=b''.join(chunks);raw_path=root/f'{market}_{statement}.html';raw_path.write_bytes(body)
-                    receipt.update(http_status=response.status_code,final_url=response.url,bytes=size,sha256=hashlib.sha256(body).hexdigest(),raw_file=str(raw_path))
-                    response.raise_for_status()
+                    with requests.post(url,data=params,timeout=(10,30),stream=True,allow_redirects=False) as response:
+                        chunks=[];size=0
+                        for chunk in response.iter_content(65536):
+                            size+=len(chunk)
+                            if size>32*1024*1024: raise ValueError('\u5b98\u65b9\u56de\u61c9\u8d85\u904e\u6709\u754c\u4e0a\u9650')
+                            chunks.append(chunk)
+                        body=b''.join(chunks)
+                        body_completed_at=datetime.now(timezone.utc)
+                        raw_path=root/f'{market}_{statement}.html';raw_path.write_bytes(body)
+                        receipt.update(
+                            http_status=response.status_code,
+                            final_url=response.url,
+                            bytes=size,
+                            sha256=hashlib.sha256(body).hexdigest(),
+                            raw_file=str(raw_path),
+                            response_body_completed_at=body_completed_at.isoformat(),
+                        )
+                        if response.status_code != 200:
+                            response.raise_for_status()
+                            raise ValueError('MOPS response was not HTTP 200')
+                        if response.url != url:
+                            raise ValueError('MOPS response final URL differs from the requested endpoint')
+                        source_available_at=body_completed_at
                 observed=datetime.now(timezone.utc)
-                rows,summary=parse_current_statement_html(body.decode('utf8'),market=market,period=args.period,statement=statement,observed_at=observed)
+                receipt['source_available_at']=source_available_at.isoformat() if source_available_at is not None else None
+                rows,summary=parse_current_statement_html(body.decode('utf8'),market=market,period=args.period,statement=statement,observed_at=observed,source_available_at=source_available_at)
                 records.extend(rows);receipt.update(status='normalized',completed_at=observed.isoformat(),normalization=summary)
             except Exception as exc:
                 receipt.update(status='failed',error_type=type(exc).__name__,reason=str(exc));failed=True

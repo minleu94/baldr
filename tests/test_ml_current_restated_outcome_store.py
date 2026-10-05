@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sqlite3
 from types import SimpleNamespace
+from typing import Literal, Sequence
 
 import pytest
 
@@ -352,10 +353,18 @@ def test_current_restated_annual_raw_to_outcome_loader_positive(
         training_as_of=training_as_of,
     )
 
-    def research_root(path: Path, *, repository_root: Path | None = None) -> Path:
+    def research_root(
+        path: Path,
+        *,
+        repository_root: Path | None = None,
+        extra_forbidden_roots: Sequence[Path] = (),
+        access: Literal["read", "write"] = "read",
+    ) -> Path:
         return resolve_ml_research_output_path(
             path,
             repository_root=repository_root or tmp_path,
+            extra_forbidden_roots=extra_forbidden_roots,
+            access=access,
         )
 
     monkeypatch.setattr(raw_exporter, "resolve_ml_research_output_path", research_root)
@@ -428,6 +437,20 @@ def test_current_restated_annual_raw_to_outcome_loader_positive(
         repository_root=tmp_path,
     )
     assert verified.status == "current_restated_outcome_numeric_ready"
+    expected_context_proof = json.dumps(
+        outcome_manifest["source_context_revalidation"],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    assert verified.source_context_revalidation_json == expected_context_proof
+    assert verified.source_context_revalidation_sha256 == hashlib.sha256(
+        expected_context_proof
+    ).hexdigest()
+    assert verified.source_context_revalidation_sha256 == outcome_manifest["source_pins"][
+        "revalidated_context_bundle_sha256"
+    ].removeprefix("sha256:")
     assert verified.historical_pit_eligible is False
     assert verified.formal_training_eligible is False
     assert verified.full_teacher_qualified is False

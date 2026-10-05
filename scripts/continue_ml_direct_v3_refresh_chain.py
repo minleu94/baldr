@@ -109,41 +109,64 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     _configure_utf8_streams()
     args = build_parser().parse_args(argv)
-    store_output_dir = args.store_output_dir.resolve()
-    training_output_dir = args.training_output_dir.resolve()
-    output_root = args.output_root.resolve()
     research_mode = bool(getattr(args, "allow_research", False))
     if research_mode:
-        for candidate_path, label in (
-            (store_output_dir, "store_output_dir"),
-            (training_output_dir, "training_output_dir"),
-            (output_root, "output_root"),
-        ):
-            try:
-                resolve_ml_research_output_path(candidate_path)
-            except ValueError as exc:
-                raise ValueError(
-                    f"allow_research path rejected for {label}: {candidate_path}"
-                ) from exc
-    primary_status_path = (
-        args.status_path.resolve()
-        if args.status_path is not None
-        else training_output_dir / "v3_refresh_chain_status.json"
-    )
+        store_output_dir = resolve_ml_research_output_path(
+            args.store_output_dir,
+            repository_root=ROOT,
+            access="write",
+        )
+        training_output_dir = resolve_ml_research_output_path(
+            args.training_output_dir,
+            repository_root=ROOT,
+            access="write",
+        )
+        output_root = resolve_ml_research_output_path(
+            args.output_root,
+            repository_root=ROOT,
+            access="write",
+        )
+        args.store_output_dir = store_output_dir
+        args.training_output_dir = training_output_dir
+        args.output_root = output_root
+    else:
+        store_output_dir = args.store_output_dir.resolve()
+        training_output_dir = args.training_output_dir.resolve()
+        output_root = args.output_root.resolve()
+    if args.status_path is not None:
+        primary_status_path = (
+            args.status_path
+            if research_mode
+            else args.status_path.resolve()
+        )
+    else:
+        primary_status_path = training_output_dir / "v3_refresh_chain_status.json"
     status_path = (
         training_output_dir / "v3_refresh_chain_recovery_status.json"
         if args.resume_after_legacy_chain and args.status_path is None
         else primary_status_path
     )
     if research_mode:
-        resolve_ml_research_output_path(status_path)
+        status_path = resolve_ml_research_output_path(
+            status_path,
+            repository_root=ROOT,
+            access="write",
+        )
+    else:
+        status_path = status_path.resolve()
     operational_log_dir = _operational_log_dir(
         args=args,
         primary_status_path=primary_status_path,
         store_output_dir=store_output_dir,
     )
     if research_mode:
-        resolve_ml_research_output_path(operational_log_dir)
+        operational_log_dir = resolve_ml_research_output_path(
+            operational_log_dir,
+            repository_root=ROOT,
+            access="write",
+        )
+    else:
+        operational_log_dir = operational_log_dir.resolve()
     direct_process: subprocess.Popen[Any] | None = None
     ooc_process: subprocess.Popen[Any] | None = None
     release_process: subprocess.Popen[Any] | None = None
@@ -737,7 +760,7 @@ def _operational_log_dir(
     store_output_dir: Path,
 ) -> Path:
     if args.operational_log_dir is not None:
-        return args.operational_log_dir.resolve()
+        return args.operational_log_dir
     if args.status_path is not None:
         return primary_status_path.parent / "logs"
     return store_output_dir / "logs"

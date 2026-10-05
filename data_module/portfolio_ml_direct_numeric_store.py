@@ -245,7 +245,7 @@ class PortfolioMLDirectNumericRequest:
         if not isinstance(self.resume, bool):
             raise TypeError("resume must be bool")
         if self.allow_research:
-            resolve_ml_research_output_path(self.output_root)
+            resolve_ml_research_output_path(self.output_root, access="write")
 
 
 @dataclass(frozen=True)
@@ -391,11 +391,11 @@ class PortfolioMLDirectNumericStoreBuilder:
             or raw_manifest.get("schema_version") == "ml-research-adapted-raw-manifest.v1"
         )
         if is_research:
-            resolve_ml_research_output_path(request.output_root)
+            resolve_ml_research_output_path(request.output_root, access="write")
             if request.shared_block_store_root is not None:
-                resolve_ml_research_output_path(request.shared_block_store_root)
+                resolve_ml_research_output_path(request.shared_block_store_root, access="write")
             if request.shared_numeric_store_root is not None:
-                resolve_ml_research_output_path(request.shared_numeric_store_root)
+                resolve_ml_research_output_path(request.shared_numeric_store_root, access="write")
         shared_contract = legacy._validate_shared_block_dataset_manifest(
             raw_manifest
         )

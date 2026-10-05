@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -27,15 +29,24 @@ def _pin(path: Path) -> dict[str, object]:
 def _context_inputs(
     root: Path,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    wal_absent: bool = False,
 ) -> tuple[Path, Path, Path, str, str, datetime, datetime]:
     source = root / "data" / "twstock.db"
     snapshot = root / "output" / "ml_research" / "snapshot.sqlite"
     wal = root / "data" / "twstock.db-wal"
     source.parent.mkdir(parents=True)
     snapshot.parent.mkdir(parents=True)
-    source.write_bytes(b"source database bytes")
+    source_connection = sqlite3.connect(source)
+    source_connection.execute("PRAGMA journal_mode=WAL")
+    source_connection.execute("CREATE TABLE source_pin_fixture (value INTEGER)")
+    source_connection.execute("INSERT INTO source_pin_fixture VALUES (1)")
+    source_connection.commit()
+    source_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    source_connection.close()
     snapshot.write_bytes(b"consistent snapshot bytes")
-    wal.write_bytes(b"")
+    if not wal_absent:
+        wal.write_bytes(b"")
 
     namespace_roots = (
         (
@@ -71,18 +82,35 @@ def _context_inputs(
     decision_at = datetime.fromisoformat("2026-10-03T00:30:00+00:00")
     training_as_of = datetime.fromisoformat("2026-10-03T00:31:00+00:00")
     receipt = {
-        "schema_version": "integration-consistent-sqlite-snapshot.v1",
+        "schema_version": (
+            "integration-consistent-sqlite-snapshot.v2"
+            if wal_absent
+            else "integration-consistent-sqlite-snapshot.v1"
+        ),
         "status": "consistent_snapshot_created",
         "started_at": "2026-10-03T00:22:24.800625+00:00",
         "completed_at": completed_at,
         "source_database_path": str(source.resolve()),
         "source_observation": {
             "database": _pin(source),
-            "wal": _pin(wal),
+            "wal": (
+                {"path": str(wal.absolute()), "status": "absent", "present": False}
+                if wal_absent
+                else _pin(wal)
+            ),
             "revision_namespace_files": namespace_files,
         },
         "source_generation_before": 2,
         "source_generation_after": 2,
+        **(
+            {
+                "source_journal_mode_before": "wal",
+                "source_journal_mode_after": "wal",
+                "source_journal_mode_reader": "sqlite_file_header_read_write_version.v1",
+            }
+            if wal_absent
+            else {}
+        ),
         "snapshot": _pin(snapshot),
         "snapshot_quick_check": "ok",
         "consistency": "sqlite_backup_from_single_query_only_read_transaction",
@@ -166,6 +194,18 @@ def _context_inputs(
     )
 
 
+def _replace_receipt_wal_pin(receipt_path: Path, wal_path: Path) -> str:
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["source_observation"]["wal"] = _pin(wal_path)
+    receipt_bytes = json.dumps(
+        receipt,
+        ensure_ascii=False,
+        sort_keys=True,
+    ).encode("utf-8")
+    receipt_path.write_bytes(receipt_bytes)
+    return hashlib.sha256(receipt_bytes).hexdigest()
+
+
 def test_source_context_binds_snapshot_original_db_and_namespace_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -202,6 +242,301 @@ def test_source_context_binds_snapshot_original_db_and_namespace_bytes(
     assert context.revision_dependency_bundle_sha256.startswith("sha256:")
     assert context.historical_pit_eligible is False
     assert context.current_restated is True
+
+
+def test_source_context_accepts_mtime_drift_only_for_pinned_empty_present_wal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        snapshot,
+        receipt_path,
+        source,
+        snapshot_sha,
+        receipt_sha,
+        decision_at,
+        training_as_of,
+    ) = _context_inputs(tmp_path, monkeypatch)
+    wal_path = source.with_name(source.name + "-wal")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    wal_pin = receipt["source_observation"]["wal"]
+    assert wal_pin["path"] == str(wal_path.resolve())
+    assert wal_pin["bytes"] == 0
+    assert wal_pin["sha256"] == hashlib.sha256(b"").hexdigest()
+
+    live_info = wal_path.stat()
+    os.utime(
+        wal_path,
+        ns=(live_info.st_atime_ns, int(wal_pin["mtime_ns"]) + 1_000_000_000),
+    )
+    assert wal_path.stat().st_mtime_ns != wal_pin["mtime_ns"]
+
+    context = gate.load_verified_current_restated_source_context(
+        snapshot,
+        receipt_path,
+        expected_snapshot_database_sha256=snapshot_sha,
+        expected_snapshot_receipt_sha256=receipt_sha,
+        original_database_path=source,
+        decision_at=decision_at,
+        training_as_of=training_as_of,
+    )
+
+    assert context.source_wal_present is True
+    assert context.source_wal_sha256 == "sha256:" + hashlib.sha256(b"").hexdigest()
+
+
+def test_source_context_rejects_bytes_added_to_pinned_empty_wal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        snapshot,
+        receipt_path,
+        source,
+        snapshot_sha,
+        receipt_sha,
+        decision_at,
+        training_as_of,
+    ) = _context_inputs(tmp_path, monkeypatch)
+    wal_path = source.with_name(source.name + "-wal")
+    wal_path.write_bytes(b"unexpected WAL bytes")
+
+    with pytest.raises(ValueError, match="source WAL byte length differs from its receipt pin"):
+        gate.load_verified_current_restated_source_context(
+            snapshot,
+            receipt_path,
+            expected_snapshot_database_sha256=snapshot_sha,
+            expected_snapshot_receipt_sha256=receipt_sha,
+            original_database_path=source,
+            decision_at=decision_at,
+            training_as_of=training_as_of,
+        )
+
+
+def test_source_context_keeps_nonempty_wal_mtime_pin_strict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        snapshot,
+        receipt_path,
+        source,
+        snapshot_sha,
+        _receipt_sha,
+        decision_at,
+        training_as_of,
+    ) = _context_inputs(tmp_path, monkeypatch)
+    wal_path = source.with_name(source.name + "-wal")
+    wal_path.write_bytes(b"pinned nonempty WAL")
+    receipt_sha = _replace_receipt_wal_pin(receipt_path, wal_path)
+    wal_pin = json.loads(receipt_path.read_text(encoding="utf-8"))["source_observation"]["wal"]
+    live_info = wal_path.stat()
+    os.utime(
+        wal_path,
+        ns=(live_info.st_atime_ns, int(wal_pin["mtime_ns"]) + 1_000_000_000),
+    )
+
+    with pytest.raises(ValueError, match="source WAL modification timestamp differs from its receipt pin"):
+        gate.load_verified_current_restated_source_context(
+            snapshot,
+            receipt_path,
+            expected_snapshot_database_sha256=snapshot_sha,
+            expected_snapshot_receipt_sha256=receipt_sha,
+            original_database_path=source,
+            decision_at=decision_at,
+            training_as_of=training_as_of,
+        )
+
+
+def test_source_context_keeps_nonempty_wal_hash_pin_strict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        snapshot,
+        receipt_path,
+        source,
+        snapshot_sha,
+        _receipt_sha,
+        decision_at,
+        training_as_of,
+    ) = _context_inputs(tmp_path, monkeypatch)
+    wal_path = source.with_name(source.name + "-wal")
+    wal_path.write_bytes(b"pinned nonempty WAL")
+    receipt_sha = _replace_receipt_wal_pin(receipt_path, wal_path)
+    wal_pin = json.loads(receipt_path.read_text(encoding="utf-8"))["source_observation"]["wal"]
+    wal_path.write_bytes(b"changed WAL value!!")
+    os.utime(
+        wal_path,
+        ns=(wal_path.stat().st_atime_ns, int(wal_pin["mtime_ns"])),
+    )
+
+    with pytest.raises(ValueError, match="source WAL actual-bytes SHA-256 differs from its receipt pin"):
+        gate.load_verified_current_restated_source_context(
+            snapshot,
+            receipt_path,
+            expected_snapshot_database_sha256=snapshot_sha,
+            expected_snapshot_receipt_sha256=receipt_sha,
+            original_database_path=source,
+            decision_at=decision_at,
+            training_as_of=training_as_of,
+        )
+
+
+def test_source_context_rejects_original_database_change_with_empty_wal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        snapshot,
+        receipt_path,
+        source,
+        snapshot_sha,
+        receipt_sha,
+        decision_at,
+        training_as_of,
+    ) = _context_inputs(tmp_path, monkeypatch)
+    with source.open("ab") as stream:
+        stream.write(b"changed source DB")
+
+    with pytest.raises(ValueError, match="original source database byte length differs from its receipt pin"):
+        gate.load_verified_current_restated_source_context(
+            snapshot,
+            receipt_path,
+            expected_snapshot_database_sha256=snapshot_sha,
+            expected_snapshot_receipt_sha256=receipt_sha,
+            original_database_path=source,
+            decision_at=decision_at,
+            training_as_of=training_as_of,
+        )
+
+
+def test_source_context_rejects_wal_change_during_hashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        snapshot,
+        receipt_path,
+        source,
+        snapshot_sha,
+        receipt_sha,
+        decision_at,
+        training_as_of,
+    ) = _context_inputs(tmp_path, monkeypatch)
+    wal_path = source.with_name(source.name + "-wal")
+    original_open = Path.open
+    changed = False
+
+    class _TouchAfterRead:
+        def __init__(self, stream):
+            self._stream = stream
+
+        def __enter__(self):
+            self._stream.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._stream.__exit__(*args)
+
+        def read(self, size: int = -1):
+            nonlocal changed
+            value = self._stream.read(size)
+            if not changed:
+                info = wal_path.stat()
+                os.utime(
+                    wal_path,
+                    ns=(info.st_atime_ns, info.st_mtime_ns + 1_000_000),
+                )
+                changed = True
+            return value
+
+    def _open_with_wal_touch(path: Path, *args, **kwargs):
+        stream = original_open(path, *args, **kwargs)
+        if path.resolve(strict=True) == wal_path.resolve(strict=True):
+            return _TouchAfterRead(stream)
+        return stream
+
+    monkeypatch.setattr(Path, "open", _open_with_wal_touch)
+    with pytest.raises(ValueError, match="source WAL changed while hashing"):
+        gate.load_verified_current_restated_source_context(
+            snapshot,
+            receipt_path,
+            expected_snapshot_database_sha256=snapshot_sha,
+            expected_snapshot_receipt_sha256=receipt_sha,
+            original_database_path=source,
+            decision_at=decision_at,
+            training_as_of=training_as_of,
+        )
+
+
+def test_source_context_accepts_explicit_absent_wal_without_creating_a_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot, receipt_path, source, snapshot_sha, receipt_sha, decision_at, training_as_of = (
+        _context_inputs(tmp_path, monkeypatch, wal_absent=True)
+    )
+    wal_path = source.with_name(source.name + "-wal")
+    assert not wal_path.exists()
+
+    context = gate.load_verified_current_restated_source_context(
+        snapshot,
+        receipt_path,
+        expected_snapshot_database_sha256=snapshot_sha,
+        expected_snapshot_receipt_sha256=receipt_sha,
+        original_database_path=source,
+        decision_at=decision_at,
+        training_as_of=training_as_of,
+    )
+
+    assert context.source_wal_present is False
+    assert context.source_wal_sha256 is None
+    assert context.source_wal_path == str(wal_path.absolute())
+    assert not wal_path.exists()
+
+
+def test_source_context_rejects_wal_creation_after_absent_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot, receipt_path, source, snapshot_sha, receipt_sha, decision_at, training_as_of = (
+        _context_inputs(tmp_path, monkeypatch, wal_absent=True)
+    )
+    wal_path = source.with_name(source.name + "-wal")
+    wal_path.write_bytes(b"appeared after snapshot")
+
+    with pytest.raises(ValueError, match="required to remain absent"):
+        gate.load_verified_current_restated_source_context(
+            snapshot,
+            receipt_path,
+            expected_snapshot_database_sha256=snapshot_sha,
+            expected_snapshot_receipt_sha256=receipt_sha,
+            original_database_path=source,
+            decision_at=decision_at,
+            training_as_of=training_as_of,
+        )
+
+
+def test_snapshot_v1_remains_strict_when_its_pinned_wal_disappears(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot, receipt_path, source, snapshot_sha, receipt_sha, decision_at, training_as_of = (
+        _context_inputs(tmp_path, monkeypatch)
+    )
+    source.with_name(source.name + "-wal").unlink()
+
+    with pytest.raises(ValueError, match="source WAL path cannot be resolved"):
+        gate.load_verified_current_restated_source_context(
+            snapshot,
+            receipt_path,
+            expected_snapshot_database_sha256=snapshot_sha,
+            expected_snapshot_receipt_sha256=receipt_sha,
+            original_database_path=source,
+            decision_at=decision_at,
+            training_as_of=training_as_of,
+        )
 
 
 def test_source_context_rejects_naive_time_and_namespace_mutation(

@@ -3,10 +3,11 @@ from __future__ import annotations
 from bisect import bisect_right
 from contextlib import closing
 from dataclasses import asdict, dataclass, replace
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 import sqlite3
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 from uuid import uuid4
 
 from app_module.evidence_event_dtos import (
@@ -27,8 +28,11 @@ from app_module.event_price_resolver import (
 )
 from app_module.official_maturity_calendar import OfficialMaturityCalendar
 from app_module.outcome_maturity_service import OutcomeMaturity, OutcomeMaturityService
+from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE
+from data_module.twse_quote_observation_capture import SESSION_CLOSE
 
 
+_DATETIME_TYPE = datetime
 DEFAULT_MARKET_BENCHMARK_ID = "TAIEX"
 INDEX_TABLES = {"market_indices", "industry_indices"}
 INDEX_DATE_COLUMNS = ("日期", "Date", "date")
@@ -157,10 +161,35 @@ class ForwardOutcomeSummary:
     blocked_time_contract_count: int = 0
     warnings_count: int = 0
     dry_run: bool = True
+    invocation_at: str | None = None
+    invocation_date_taipei: str | None = None
+    requested_data_as_of_date: str | None = None
+    effective_data_as_of_date: str | None = None
+    price_read_cutoff_date: str | None = None
+    price_read_cutoff_basis: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+
+@dataclass(frozen=True)
+class _ForwardPriceReadWindow:
+    invocation_at: datetime
+    invocation_date_taipei: str
+    requested_data_as_of_date: str | None
+    effective_data_as_of_date: str
+    price_read_cutoff_date: str
+    price_read_cutoff_basis: str
+
+    def to_metadata(self) -> dict[str, str | None]:
+        return {
+            "invocation_at": self.invocation_at.isoformat(),
+            "invocation_date_taipei": self.invocation_date_taipei,
+            "requested_data_as_of_date": self.requested_data_as_of_date,
+            "effective_data_as_of_date": self.effective_data_as_of_date,
+            "price_read_cutoff_date": self.price_read_cutoff_date,
+            "price_read_cutoff_basis": self.price_read_cutoff_basis,
+        }
 
 class ForwardPerformanceService:
     """Calculate close-to-close forward research outcomes for evidence events."""
@@ -172,14 +201,18 @@ class ForwardPerformanceService:
         *,
         db_path: str | Path | None = None,
         maturity_calendar: OfficialMaturityCalendar | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.config = config
         self.repository = repository or EvidenceEventRepository(config)
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
-        self._daily_price_cache: dict[str, tuple[tuple[str, ...], tuple[tuple[str, Decimal], ...]]] = {}
+        self._daily_price_cache: dict[
+            tuple[str, str | None], tuple[tuple[str, ...], tuple[tuple[str, Decimal], ...]]
+        ] = {}
         self._index_return_cache: dict[tuple[str, str | None, str, str], int | None] = {}
         self._index_table_columns_cache: dict[str, tuple[str, ...]] = {}
         self._maturity_calendar = maturity_calendar
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._corporate_action_policy = CorporateActionPolicy(CorporateActionProvider(self.db_path))
         self._trading_restriction_policy = TradingRestrictionPolicy(TradingRestrictionProvider(self.db_path))
 
@@ -195,11 +228,16 @@ class ForwardPerformanceService:
         symbol: str | None = None,
         limit: int | None = None,
         data_as_of_date: str | None = None,
+        invocation_at: datetime | None = None,
         require_cohort_identity: bool = False,
     ) -> ForwardOutcomeSummary:
         self._daily_price_cache.clear()
         self._index_return_cache.clear()
         self._index_table_columns_cache.clear()
+        read_window = self._resolve_price_read_window(
+            data_as_of_date=data_as_of_date,
+            invocation_at=invocation_at,
+        )
         windows = tuple(int(item) for item in windows)
         events = self.repository.list_events(
             symbol=symbol,
@@ -253,9 +291,14 @@ class ForwardPerformanceService:
             counters["events_ready"] += 1
             for window in tuple(int(item) for item in windows):
                 existing = self.repository.get_outcome(event.event_id, window)
-                outcome = self._build_outcome(event, window, data_as_of_date=data_as_of_date)
+                outcome = self._build_outcome(
+                    event,
+                    window,
+                    data_as_of_date=read_window.price_read_cutoff_date,
+                )
                 outcome = replace(outcome, metadata={
                     **outcome.metadata,
+                    **read_window.to_metadata(),
                     "evidence_lineage": EvidenceEventService.lineage_for(event),
                     "is_execution_pnl": False,
                     **_event_identity_metadata(event),
@@ -265,7 +308,7 @@ class ForwardPerformanceService:
                     counters["blocked_time_contract_count"] += 1
                 if outcome.outcome_status == EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA:
                     counters["pending_insufficient_future_data"] += 1
-                if outcome.outcome_status == EvidenceOutcomeStatus.MISSING_PRICE:
+                if "missing_event_price" in outcome.warnings:
                     counters["missing_event_price"] += 1
                 if "missing_outcome_price" in outcome.warnings:
                     counters["missing_outcome_price"] += 1
@@ -286,14 +329,107 @@ class ForwardPerformanceService:
             # exposing a partially written batch to the next scheduled run.
             self.repository.upsert_outcomes(pending_writes)
 
-        return ForwardOutcomeSummary(dry_run=dry_run, **counters)
+        return ForwardOutcomeSummary(
+            events_scanned=counters["events_scanned"],
+            events_skipped_incomplete_identity=counters[
+                "events_skipped_incomplete_identity"
+            ],
+            events_ready=counters["events_ready"],
+            outcomes_created=counters["outcomes_created"],
+            outcomes_updated=counters["outcomes_updated"],
+            pending_insufficient_future_data=counters[
+                "pending_insufficient_future_data"
+            ],
+            missing_event_price=counters["missing_event_price"],
+            missing_outcome_price=counters["missing_outcome_price"],
+            missing_benchmark=counters["missing_benchmark"],
+            missing_industry_benchmark=counters["missing_industry_benchmark"],
+            blocked_time_contract_count=counters["blocked_time_contract_count"],
+            warnings_count=counters["warnings_count"],
+            dry_run=dry_run,
+            invocation_at=read_window.invocation_at.isoformat(),
+            invocation_date_taipei=read_window.invocation_date_taipei,
+            requested_data_as_of_date=read_window.requested_data_as_of_date,
+            effective_data_as_of_date=read_window.effective_data_as_of_date,
+            price_read_cutoff_date=read_window.price_read_cutoff_date,
+            price_read_cutoff_basis=read_window.price_read_cutoff_basis,
+        )
+
+    def _resolve_price_read_window(
+        self,
+        *,
+        data_as_of_date: str | None,
+        invocation_at: datetime | None,
+    ) -> _ForwardPriceReadWindow:
+        clock_now = self._aware_utc(self._clock(), field_name="clock")
+        frozen_at = (
+            clock_now
+            if invocation_at is None
+            else self._aware_utc(invocation_at, field_name="invocation_at")
+        )
+        if frozen_at > clock_now:
+            raise ValueError("invocation_at cannot be in the future")
+
+        invocation_local = frozen_at.astimezone(TAIWAN_MARKET_TIMEZONE)
+        invocation_day = invocation_local.date()
+        requested_day = (
+            invocation_day
+            if data_as_of_date is None
+            else self._parse_iso_date(data_as_of_date, field_name="data_as_of_date")
+        )
+        if requested_day > invocation_day:
+            raise ValueError("data_as_of_date cannot be later than invocation date")
+
+        session_closed = invocation_local.timetz().replace(tzinfo=None) >= SESSION_CLOSE
+        clock_read_day = (
+            invocation_day
+            if session_closed
+            else invocation_day - timedelta(days=1)
+        )
+        price_read_day = min(requested_day, clock_read_day)
+        if requested_day < invocation_day:
+            cutoff_basis = "explicit_historical_data_as_of_date"
+        elif session_closed:
+            cutoff_basis = "official_session_close_elapsed"
+        else:
+            cutoff_basis = "current_session_close_not_reached"
+
+        return _ForwardPriceReadWindow(
+            invocation_at=frozen_at,
+            invocation_date_taipei=invocation_day.isoformat(),
+            requested_data_as_of_date=(
+                None if data_as_of_date is None else requested_day.isoformat()
+            ),
+            effective_data_as_of_date=requested_day.isoformat(),
+            price_read_cutoff_date=price_read_day.isoformat(),
+            price_read_cutoff_basis=cutoff_basis,
+        )
+
+    @staticmethod
+    def _aware_utc(value: datetime, *, field_name: str) -> datetime:
+        if not isinstance(value, _DATETIME_TYPE):
+            raise ValueError(f"{field_name} must be an aware datetime")
+        try:
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise ValueError(f"{field_name} must be an aware datetime")
+            return value.astimezone(timezone.utc)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name} must be an aware datetime") from exc
+
+    @classmethod
+    def _parse_iso_date(cls, value: str, *, field_name: str) -> date:
+        normalized = cls._date_iso(value)
+        try:
+            return date.fromisoformat(normalized)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name} must be a valid ISO date") from exc
 
     def _build_outcome(
         self,
         event: EvidenceEvent,
         window_days: int,
         *,
-        data_as_of_date: str | None = None,
+        data_as_of_date: str,
     ) -> EvidenceOutcome:
         warnings: list[str] = []
         event_price = self._find_event_price(str(event.symbol), event.event_date, data_as_of_date=data_as_of_date)
@@ -313,79 +449,150 @@ class ForwardPerformanceService:
         assert event_close is not None
         event_price_metadata: dict[str, Any] = {
             "return_basis": "close_to_close_event_date",
-            "expected_maturity_date_basis": "symbol_price_series_row_offset_legacy",
-            "maturity_status_basis": "symbol_price_series_row_offset_legacy",
+            "expected_maturity_date_basis": "verified_official_market_sessions_required",
+            "maturity_status_basis": "verified_official_market_sessions_required",
         }
         if event_price.fallback_reason is not None:
             event_price_metadata["event_price_fallback_reason"] = event_price.fallback_reason
+
+        if self._maturity_calendar is None:
+            event_price_metadata.update(
+                {
+                    "maturity_basis": "verified_official_market_sessions_required",
+                    "time_contract_state": "blocked_time_contract",
+                    "readiness_blocker": "official_maturity_calendar_unavailable",
+                    "target_price_state": "waiting_for_verified_official_session",
+                    "maturity_calendar_comparison": "official_calendar_not_configured",
+                }
+            )
+            return EvidenceOutcome(
+                outcome_id=f"out_{uuid4().hex}",
+                event_id=event.event_id,
+                window_days=window_days,
+                event_price_date=event_price_date,
+                event_close=str(event_close),
+                outcome_status=EvidenceOutcomeStatus.PENDING,
+                data_quality=EvidenceDataQuality.DEGRADED,
+                warnings=(
+                    "blocked_time_contract_requires_review",
+                    "official_maturity_calendar_unavailable",
+                ),
+                metadata=event_price_metadata,
+            )
+
         maturity = self._outcome_maturity(
             str(event.symbol),
             event_price_date,
             window_days,
             data_as_of_date=data_as_of_date,
         )
+        # Preserve row-offset results only as diagnostics. The verified
+        # calendar below is the sole source of the maturity date/status used
+        # to determine outcome readiness.
+        event_price_metadata["expected_maturity_date_basis"] = (
+            "legacy_price_row_offset"
+        )
+        event_price_metadata["maturity_status_basis"] = "legacy_price_row_offset"
         if maturity.expected_trading_date is not None:
             event_price_metadata["expected_maturity_date"] = maturity.expected_trading_date
         event_price_metadata["maturity_status"] = maturity.status
         event_price_metadata["remaining_trading_days"] = maturity.remaining_trading_days
-        if self._maturity_calendar is not None:
-            planned = self._maturity_calendar.evaluate(
-                event_date=event_price_date,
-                window_days=window_days,
-                as_of_date=(
-                    data_as_of_date
-                    or event_price_date
-                ),
-            )
-            event_price_metadata.update(
-                {
-                    "planned_official_maturity_date": planned.planned_date,
-                    "planned_official_maturity_status": planned.status,
-                    "planned_official_maturity_remaining_sessions": (
-                        planned.remaining_sessions
-                    ),
-                    "planned_official_calendar": planned.calendar,
-                }
-            )
-            legacy_expected = maturity.expected_trading_date
-            if legacy_expected is None or planned.planned_date is None:
-                comparison = (
-                    "official_calendar_unavailable"
-                    if planned.planned_date is None
-                    else "legacy_expected_unavailable"
-                )
-            else:
-                comparison = (
-                    "match"
-                    if legacy_expected == planned.planned_date
-                    else "blocked_mismatch"
-                )
-            event_price_metadata["maturity_calendar_comparison"] = comparison
-            if comparison == "blocked_mismatch":
-                event_price_metadata["time_contract_state"] = "blocked_time_contract"
-                event_price_metadata["readiness_blocker"] = (
-                    "maturity_calendar_comparison_blocked"
-                )
-                return EvidenceOutcome(
-                    outcome_id=f"out_{uuid4().hex}",
-                    event_id=event.event_id,
-                    window_days=window_days,
-                    event_price_date=event_price_date,
-                    event_close=str(event_close),
-                    outcome_status=EvidenceOutcomeStatus.PENDING,
-                    data_quality=EvidenceDataQuality.DEGRADED,
-                    warnings=(
-                        "blocked_time_contract_requires_review",
-                        "maturity_calendar_comparison_blocked",
-                    ),
-                    metadata=event_price_metadata,
-                )
-        outcome_price = self._find_outcome_price(
-            str(event.symbol),
-            event_price_date,
-            window_days,
-            data_as_of_date=data_as_of_date,
+        calendar_as_of_date = self._date_iso(data_as_of_date)
+        planned = self._maturity_calendar.evaluate(
+            event_date=event_price_date,
+            window_days=window_days,
+            as_of_date=calendar_as_of_date,
         )
+        event_price_metadata.update(
+            {
+                "maturity_basis": "official_market_sessions",
+                "planned_official_maturity_date": planned.planned_date,
+                "planned_official_maturity_status": planned.status,
+                "planned_official_maturity_remaining_sessions": (
+                    planned.remaining_sessions
+                ),
+                "planned_official_calendar": planned.calendar,
+            }
+        )
+        legacy_expected = maturity.expected_trading_date
+        if legacy_expected is None or planned.planned_date is None:
+            comparison = (
+                "official_calendar_unavailable"
+                if planned.planned_date is None
+                else "legacy_expected_unavailable"
+            )
+        else:
+            comparison = (
+                "match"
+                if legacy_expected == planned.planned_date
+                else "legacy_price_row_offset_differs"
+            )
+        event_price_metadata["maturity_calendar_comparison"] = comparison
+        if planned.planned_date is None:
+            event_price_metadata["time_contract_state"] = "blocked_time_contract"
+            event_price_metadata["readiness_blocker"] = (
+                "official_maturity_calendar_unavailable"
+            )
+            event_price_metadata["target_price_state"] = "waiting_for_verified_official_session"
+            return EvidenceOutcome(
+                outcome_id=f"out_{uuid4().hex}",
+                event_id=event.event_id,
+                window_days=window_days,
+                event_price_date=event_price_date,
+                event_close=str(event_close),
+                outcome_status=EvidenceOutcomeStatus.PENDING,
+                data_quality=EvidenceDataQuality.DEGRADED,
+                warnings=(
+                    "blocked_time_contract_requires_review",
+                    "official_maturity_calendar_unavailable",
+                ),
+                metadata=event_price_metadata,
+            )
+        planned_date = str(planned.planned_date)
+        event_price_metadata["official_maturity_date"] = planned_date
+        if planned_date > calendar_as_of_date:
+            event_price_metadata["target_price_state"] = "waiting_for_planned_official_session"
+            event_price_metadata["source_price_gap_reason"] = None
+            return EvidenceOutcome(
+                outcome_id=f"out_{uuid4().hex}",
+                event_id=event.event_id,
+                window_days=window_days,
+                event_price_date=event_price_date,
+                event_close=str(event_close),
+                outcome_status=EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA,
+                data_quality=EvidenceDataQuality.MISSING,
+                warnings=("insufficient_future_data",),
+                metadata=event_price_metadata,
+            )
+        outcome_price, lookup_status = self._find_exact_official_outcome_price(
+            str(event.symbol),
+            planned_date,
+            data_as_of_date=calendar_as_of_date,
+        )
+        event_price_metadata["official_target_price_lookup_status"] = lookup_status
+        if outcome_price is None:
+            event_price_metadata["target_price_state"] = "missing_at_planned_official_session"
+            event_price_metadata["source_price_gap_reason"] = (
+                "no_close_on_planned_official_session"
+            )
+            event_price_metadata["official_target_price_lookup_detail"] = lookup_status
+            return EvidenceOutcome(
+                outcome_id=f"out_{uuid4().hex}",
+                event_id=event.event_id,
+                window_days=window_days,
+                event_price_date=event_price_date,
+                event_close=str(event_close),
+                outcome_status=EvidenceOutcomeStatus.MISSING_PRICE,
+                data_quality=EvidenceDataQuality.MISSING,
+                warnings=(
+                    "missing_outcome_price",
+                    "official_target_session_price_missing",
+                ),
+                metadata=event_price_metadata,
+            )
+        event_price_metadata["target_price_state"] = "observed_on_planned_official_session"
+        event_price_metadata["source_price_gap_reason"] = None
+        event_price_metadata["official_target_price_lookup_detail"] = lookup_status
         if outcome_price is None:
             return EvidenceOutcome(
                 outcome_id=f"out_{uuid4().hex}",
@@ -464,7 +671,7 @@ class ForwardPerformanceService:
     ) -> EventPriceResolution | None:
         target = self._date_key(event_date)
         as_of = self._date_key(data_as_of_date) if data_as_of_date else None
-        _, values = self._daily_price_series(symbol)
+        _, values = self._daily_price_series(symbol, as_of_date=data_as_of_date)
         resolution = EventPriceResolver().resolve(
             decision_date=self._date_iso(target),
             data_as_of_date=self._date_iso(as_of) if as_of is not None else None,
@@ -485,7 +692,7 @@ class ForwardPerformanceService:
         *,
         data_as_of_date: str | None,
     ) -> OutcomeMaturity:
-        keys, _ = self._daily_price_series(symbol)
+        keys, _ = self._daily_price_series(symbol, as_of_date=data_as_of_date)
         trading_dates = tuple(self._date_iso(key) for key in keys)
         as_of = data_as_of_date or (trading_dates[-1] if trading_dates else event_price_date)
         return OutcomeMaturityService().evaluate(
@@ -505,7 +712,7 @@ class ForwardPerformanceService:
     ) -> tuple[str, Decimal] | None:
         target = self._date_key(event_price_date)
         as_of = self._date_key(data_as_of_date) if data_as_of_date else None
-        keys, values = self._daily_price_series(symbol)
+        keys, values = self._daily_price_series(symbol, as_of_date=data_as_of_date)
         start_index = bisect_right(keys, target)
         outcome_index = start_index + int(window_days) - 1
         if outcome_index >= len(values):
@@ -514,6 +721,49 @@ class ForwardPerformanceService:
         if as_of and date_key > as_of:
             return None
         return (self._date_iso(date_key), close_value)
+
+    def _find_exact_official_outcome_price(
+        self,
+        symbol: str,
+        planned_date: str,
+        *,
+        data_as_of_date: str,
+    ) -> tuple[tuple[str, Decimal] | None, str]:
+        """Read only the exact, already-matured official target session close."""
+
+        target_key = self._date_key(planned_date)
+        as_of_key = self._date_key(data_as_of_date)
+        if target_key > as_of_key:
+            return None, "target_after_data_cutoff"
+        date_column = "\u65e5\u671f"
+        symbol_column = "\u8b49\u5238\u4ee3\u865f"
+        close_column = "\u6536\u76e4\u50f9"
+        with closing(
+            sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as conn:
+            conn.execute("PRAGMA query_only = ON")
+            rows = conn.execute(
+                f"""
+                SELECT {self._quote_identifier(date_column)},
+                       {self._quote_identifier(close_column)}
+                FROM daily_prices
+                WHERE {self._quote_identifier(symbol_column)} = ?
+                  AND REPLACE(REPLACE(CAST({self._quote_identifier(date_column)} AS TEXT), '-', ''), '/', '') = ?
+                LIMIT 2
+                """,
+                (symbol, target_key),
+            ).fetchall()
+        if not rows:
+            return None, "no_daily_price_row_on_planned_official_session"
+        if len(rows) != 1:
+            return None, "multiple_daily_price_rows_on_planned_official_session"
+        raw_date, raw_close = rows[0]
+        if self._date_key(raw_date) != target_key:
+            return None, "daily_price_date_does_not_match_planned_official_session"
+        close_value = self._to_decimal(raw_close)
+        if close_value is None or close_value <= 0:
+            return None, "daily_price_close_missing_or_invalid_on_planned_official_session"
+        return (self._date_iso(raw_date), close_value), "verified_unique_close"
 
     def _index_return_bp(
         self,
@@ -696,22 +946,35 @@ class ForwardPerformanceService:
     def _quote_identifier(value: str) -> str:
         return '"' + value.replace('"', '""') + '"'
 
-    def _daily_price_series(self, symbol: str) -> tuple[tuple[str, ...], tuple[tuple[str, Decimal], ...]]:
-        if symbol in self._daily_price_cache:
-            return self._daily_price_cache[symbol]
+    def _daily_price_series(
+        self,
+        symbol: str,
+        *,
+        as_of_date: str | None = None,
+    ) -> tuple[tuple[str, ...], tuple[tuple[str, Decimal], ...]]:
+        as_of_key = self._date_key(as_of_date) if as_of_date is not None else None
+        cache_key = (symbol, as_of_key)
+        if cache_key in self._daily_price_cache:
+            return self._daily_price_cache[cache_key]
         rows: list[tuple[str, Decimal]] = []
         with closing(sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
             conn.execute("PRAGMA query_only = ON")
-            fetched = conn.execute(
-                """
-                SELECT 日期, 收盤價
+            date_column = "\u65e5\u671f"
+            symbol_column = "\u8b49\u5238\u4ee3\u865f"
+            close_column = "\u6536\u76e4\u50f9"
+            date_sql = self._quote_identifier(date_column)
+            symbol_sql = self._quote_identifier(symbol_column)
+            close_sql = self._quote_identifier(close_column)
+            normalized_date_sql = f"REPLACE(REPLACE(CAST({date_sql} AS TEXT), '-', ''), '/', '')"
+            query = f"""
+                SELECT {date_sql}, {close_sql}
                 FROM daily_prices
-                WHERE 證券代號 = ?
-                  AND 收盤價 IS NOT NULL
-                ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') ASC
-                """,
-                (symbol,),
-            ).fetchall()
+                WHERE {symbol_sql} = ?
+                  AND {close_sql} IS NOT NULL
+                  AND (? IS NULL OR {normalized_date_sql} <= ?)
+                ORDER BY {normalized_date_sql} ASC
+            """
+            fetched = conn.execute(query, (symbol, as_of_key, as_of_key)).fetchall()
         for raw_date, raw_close in fetched:
             close_value = self._to_decimal(raw_close)
             if close_value is None:
@@ -719,7 +982,7 @@ class ForwardPerformanceService:
             rows.append((self._date_key(raw_date), close_value))
         values = tuple(rows)
         keys = tuple(row[0] for row in values)
-        self._daily_price_cache[symbol] = (keys, values)
+        self._daily_price_cache[cache_key] = (keys, values)
         return keys, values
 
     @staticmethod

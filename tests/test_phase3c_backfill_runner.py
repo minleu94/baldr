@@ -1236,3 +1236,178 @@ def test_runner_cancellation_after_complete_fetch_preserves_result_and_reports_c
     assert summary.daily_results[0]["row_count"] == 1
     with sqlite3.connect(tmp_path / "candidate.db") as conn:
         assert conn.execute("SELECT COUNT(*) FROM institutional_flows").fetchone()[0] == 1
+
+
+
+def _official_institutional_frame(*, foreign_buy=100, foreign_sell=50, foreign_net=50):
+    frame = _institutional_frame()
+    frame['source_version'] = 'twse-official-T86'
+    frame['foreign_investor_buy'] = foreign_buy
+    frame['foreign_investor_sell'] = foreign_sell
+    frame['foreign_investor_net'] = foreign_net
+    return frame
+
+
+class _InstitutionalOpenCalendar:
+    def get_trading_days_in_range(self, start, end, *, allow_online_probe):
+        assert start == end == date(2024, 7, 22)
+        assert allow_online_probe is False
+        return [{
+            'date': start,
+            'date_str': start.isoformat(),
+            'is_trading_day': True,
+            'reason_code': 'test_open',
+        }]
+
+
+def test_institutional_conflict_is_projected_but_checkpoint_and_base_remain_failed(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / 'candidate.db'
+    base = _official_institutional_frame()
+    incoming = _official_institutional_frame(foreign_buy=110, foreign_net=60)
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=('institutional',),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+        calendar=_InstitutionalOpenCalendar(),
+        allow_online_calendar_probe=False,
+    )
+    _seed_source_rows(runner, candidate_db, 'institutional', base, checkpoint_status='FAILED_RETRYABLE')
+
+    with patch(
+        'data_module.phase3c_backfill_runner.fetch_institutional_flows',
+        return_value=incoming,
+    ):
+        summary = runner.run_backfill(
+            date(2024, 7, 22), date(2024, 7, 22), dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    assert summary.failed_days_count == 1
+    assert summary.daily_results[0]['status'] == 'FAILED_RETRYABLE'
+    with sqlite3.connect(candidate_db) as conn:
+        base_row = conn.execute(
+            "SELECT foreign_investor_buy,foreign_investor_net FROM institutional_flows "
+            "WHERE stock_code='2330' AND decision_date='2024-07-22'",
+        ).fetchone()
+        checkpoint = conn.execute(
+            "SELECT status FROM phase3c_backfill_checkpoints "
+            "WHERE source='institutional' AND decision_date='2024-07-22'",
+        ).fetchone()[0]
+        revision_count = conn.execute('SELECT COUNT(*) FROM institutional_current_revisions').fetchone()[0]
+        observation_count = conn.execute(
+            "SELECT COUNT(*) FROM phase3c_source_observations "
+            "WHERE source='institutional' AND decision_date='2024-07-22'",
+        ).fetchone()[0]
+    assert base_row == (100, 50)
+    assert checkpoint == 'FAILED_RETRYABLE'
+    assert revision_count == 1
+    assert observation_count == 1
+
+
+def test_institutional_reversion_to_base_is_projected_on_successful_retry(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / 'candidate.db'
+    base = _official_institutional_frame()
+    correction = _official_institutional_frame(foreign_buy=110, foreign_net=60)
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=('institutional',),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+        calendar=_InstitutionalOpenCalendar(),
+        allow_online_calendar_probe=False,
+    )
+    _seed_source_rows(runner, candidate_db, 'institutional', base, checkpoint_status='FAILED_RETRYABLE')
+
+    with patch(
+        'data_module.phase3c_backfill_runner.fetch_institutional_flows',
+        return_value=correction,
+    ):
+        first = runner.run_backfill(
+            date(2024, 7, 22), date(2024, 7, 22), dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+    assert first.daily_results[0]['status'] == 'FAILED_RETRYABLE'
+    time.sleep(0.01)
+
+    with patch(
+        'data_module.phase3c_backfill_runner.fetch_institutional_flows',
+        return_value=base,
+    ):
+        second = runner.run_backfill(
+            date(2024, 7, 22), date(2024, 7, 22), dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    assert second.daily_results[0]['status'] == 'SUCCESS'
+    with sqlite3.connect(candidate_db) as conn:
+        rows = conn.execute(
+            'SELECT payload_json FROM institutional_current_revisions '
+            "WHERE stock_code='2330' AND decision_date='2024-07-22' "
+            'ORDER BY julianday(observed_at)',
+        ).fetchall()
+        checkpoint = conn.execute(
+            "SELECT status FROM phase3c_backfill_checkpoints "
+            "WHERE source='institutional' AND decision_date='2024-07-22'",
+        ).fetchone()[0]
+    assert [json.loads(row[0])['foreign_investor_net'] for row in rows] == [60, 50]
+    assert checkpoint == 'SUCCESS'
+
+
+def test_institutional_projection_failure_rolls_back_base_and_keeps_failed_observation(tmp_path):
+    prod_root, prod_db = _production_db(tmp_path)
+    candidate_db = tmp_path / 'candidate.db'
+    runner = Phase3CBackfillRunner(
+        candidate_db,
+        sources=('institutional',),
+        production_data_root=prod_root,
+        production_db_path=prod_db,
+        rate_limit_seconds=0,
+        calendar=_InstitutionalOpenCalendar(),
+        allow_online_calendar_probe=False,
+    )
+    original_project = runner._project_current_institutional_observation
+
+    def project_then_fail(conn, result, canonical_payload_json):
+        original_project(conn, result, canonical_payload_json)
+        raise RuntimeError('injected projection failure after insert')
+
+    with patch(
+        'data_module.phase3c_backfill_runner.fetch_institutional_flows',
+        return_value=_official_institutional_frame(),
+    ), patch.object(
+        runner,
+        '_project_current_institutional_observation',
+        side_effect=project_then_fail,
+    ):
+        summary = runner.run_backfill(
+            date(2024, 7, 22), date(2024, 7, 22), dry_run=False,
+            confirm_token=APPLY_CONFIRM_TOKEN,
+        )
+
+    assert len(summary.daily_results) == 1
+    assert summary.daily_results[0]['status'] == 'FAILED_RETRYABLE'
+    assert 'injected projection failure after insert' in summary.daily_results[0]['error_message']
+    with sqlite3.connect(candidate_db) as conn:
+        base_count = conn.execute(
+            "SELECT COUNT(*) FROM institutional_flows WHERE decision_date='2024-07-22'",
+        ).fetchone()[0]
+        checkpoint = conn.execute(
+            "SELECT status FROM phase3c_backfill_checkpoints "
+            "WHERE source='institutional' AND decision_date='2024-07-22'",
+        ).fetchone()[0]
+        observation_count = conn.execute(
+            "SELECT COUNT(*) FROM phase3c_source_observations "
+            "WHERE source='institutional' AND decision_date='2024-07-22'",
+        ).fetchone()[0]
+        revisions_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='institutional_current_revisions'",
+        ).fetchone()
+    assert base_count == 0
+    assert checkpoint == 'FAILED_RETRYABLE'
+    assert observation_count == 1
+    assert revisions_table is None

@@ -25,6 +25,10 @@ from data_module.official_phase3c_fetcher import (
     fetch_latest_tdcc_shareholding,
 )
 from data_module.official_trading_calendar import OfficialTradingCalendar
+from data_module.institutional_revision_read_model import (
+    SUPPORTED_SOURCE_VERSIONS as INSTITUTIONAL_REVISION_SOURCE_VERSIONS,
+    project_observation as project_institutional_observation,
+)
 from data_module.p0_candidate_repository import (
     validate_candidate_working_copy_path,
 )
@@ -395,6 +399,49 @@ class Phase3CBackfillRunner:
                 canonical_payload_json,
                 json.dumps(report, ensure_ascii=False, sort_keys=True),
             ),
+        )
+
+    @staticmethod
+    def _project_current_institutional_observation(
+        conn: sqlite3.Connection,
+        result: DailyFetchResult,
+        canonical_payload_json: Optional[str],
+    ) -> None:
+        """Project only a verified official institutional observation into the current read model."""
+        report = result.reconciliation
+        if result.source != "institutional" or not isinstance(report, dict):
+            return
+        if report.get("observation_timing_error") is not None:
+            return
+        versions = report.get("source_versions")
+        if not isinstance(versions, list) or not versions:
+            return
+        if any(version not in INSTITUTIONAL_REVISION_SOURCE_VERSIONS for version in versions):
+            return
+        observation_hash = report.get("observation_hash")
+        observation_at = report.get("observation_at")
+        if not isinstance(observation_hash, str) or not isinstance(observation_at, str):
+            return
+        stored = conn.execute(
+            "SELECT observed_at,row_count,canonical_payload_json "
+            "FROM phase3c_source_observations "
+            "WHERE source='institutional' AND decision_date=? AND observation_hash=?",
+            (result.decision_date, observation_hash),
+        ).fetchone()
+        if stored is None:
+            raise ValueError("verified institutional source observation was not persisted")
+        stored_clock, stored_count, stored_payload = tuple(stored)
+        if stored_clock != observation_at or stored_payload != canonical_payload_json:
+            raise ValueError("persisted institutional source observation identity mismatch")
+        project_institutional_observation(
+            conn,
+            {
+                "canonical_payload_json": stored_payload,
+                "observation_hash": observation_hash,
+                "observed_at": stored_clock,
+                "decision_date": result.decision_date,
+                "row_count": int(stored_count),
+            },
         )
 
     @staticmethod
@@ -929,14 +976,20 @@ class Phase3CBackfillRunner:
                 result: DailyFetchResult,
                 *,
                 canonical_payload_json: Optional[str] = None,
+                project_institutional_revision: bool = False,
             ) -> None:
-                results.append(result)
                 if conn is not None:
-                    self._record_source_observation(
-                        conn, result, canonical_payload_json
-                    )
-                    self._record_checkpoint(conn, result)
-                    conn.commit()
+                    with conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        self._record_source_observation(
+                            conn, result, canonical_payload_json
+                        )
+                        if project_institutional_revision:
+                            self._project_current_institutional_observation(
+                                conn, result, canonical_payload_json
+                            )
+                        self._record_checkpoint(conn, result)
+                results.append(result)
 
             succeeded_count = 0
             skipped_count = 0
@@ -1231,6 +1284,10 @@ class Phase3CBackfillRunner:
                                         self._record_source_observation(
                                             conn, result, canonical_payload_json
                                         )
+                                        if src == "institutional":
+                                            self._project_current_institutional_observation(
+                                                conn, result, canonical_payload_json
+                                            )
                                         self._record_checkpoint(conn, result)
                                 except SourceReconciliationError as exc:
                                     reconciliation = asdict(exc.report)
@@ -1238,20 +1295,25 @@ class Phase3CBackfillRunner:
                                     logger.error(
                                         f"候選資料 reconciliation {src} ({d_str}) 失敗: {exc}"
                                     )
+                                    failed_result = DailyFetchResult(
+                                        decision_date=d_str,
+                                        source=src,
+                                        is_trading_day=True,
+                                        trading_day_reason=td_reason,
+                                        status="FAILED_RETRYABLE",
+                                        http_status=None,
+                                        row_count=0,
+                                        error_message=str(exc),
+                                        fetched_at=fetched_at,
+                                        reconciliation=reconciliation,
+                                    )
                                     append_result(
-                                        DailyFetchResult(
-                                            decision_date=d_str,
-                                            source=src,
-                                            is_trading_day=True,
-                                            trading_day_reason=td_reason,
-                                            status="FAILED_RETRYABLE",
-                                            http_status=None,
-                                            row_count=0,
-                                            error_message=str(exc),
-                                            fetched_at=fetched_at,
-                                            reconciliation=reconciliation,
-                                        ),
+                                        failed_result,
                                         canonical_payload_json=canonical_payload_json,
+                                        project_institutional_revision=(
+                                            src == "institutional"
+                                            and exc.kind == "reconciliation_conflict"
+                                        ),
                                     )
                                     failed_count += 1
                                     continue

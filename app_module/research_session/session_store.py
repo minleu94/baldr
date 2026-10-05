@@ -68,6 +68,7 @@ class ResearchSessionStore:
                 source_kind=context.source_kind,
                 source_label=context.source_label,
                 source_workspace=context.source_workspace,
+                ml_scope_mode=context.ml_scope_mode,
                 source=source,
             )
         )

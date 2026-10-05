@@ -70,13 +70,6 @@ from ui_qt.views.update.update_all_coordinator import run_update_all
 from ui_qt.views.update.source_update_coordinator import SourceUpdateRequest
 
 
-def _taiwan_market_qdate() -> QDate:
-    """將資料更新 UI 的「今日」統一對齊台灣市場日期。"""
-
-    today = taiwan_market_today()
-    return QDate(today.year, today.month, today.day)
-
-
 def _safe_nonnegative_int(value: Any) -> int:
     """把服務層計數安全投影到 UI；malformed 值不可中止整個狀態畫面。"""
 
@@ -415,6 +408,12 @@ class UpdateView(QWidget):
         """
         super().__init__(parent)
         self.update_service = update_service
+        try:
+            self._market_date_at_start: date | None = taiwan_market_today()
+            self._market_date_error: str | None = None
+        except Exception as exc:
+            self._market_date_at_start = None
+            self._market_date_error = str(exc).strip() or type(exc).__name__
         self.p0_source_audit_path = (
             Path(p0_source_audit_path).expanduser().resolve()
             if p0_source_audit_path is not None
@@ -1025,7 +1024,7 @@ class UpdateView(QWidget):
 
         # 2. 隱藏的全域日期變數（使底層一鍵更新/單項更新抓取 UI 輸入的邏輯直接生效）
         self.end_date = QDateEdit()
-        self.end_date.setDate(_taiwan_market_qdate())
+        self.end_date.setDate(self._default_taiwan_market_qdate(self.end_date))
         self._configure_date_edit(self.end_date)
         self.lookback_days = QSpinBox()
         self.lookback_days.setRange(1, 365)
@@ -1830,11 +1829,21 @@ class UpdateView(QWidget):
             form_layout.addRow("本次寫入版本名稱：", self.monthly_revenue_source_version_input)
             layout.addWidget(config_group)
 
-            expected_period = self._latest_expected_monthly_revenue_period()
-            self.monthly_revenue_candidate_hint_label = QLabel(
-                f"預期檢查期別：{expected_period}（依目前日期與公告節奏）；"
-                "下方抓取只建立候選快照，不會直接寫入正式資料庫。"
-            )
+            try:
+                if self._market_date_error is not None:
+                    raise RuntimeError(self._market_date_error)
+                expected_period = self._latest_expected_monthly_revenue_period()
+            except RuntimeError:
+                expected_hint = (
+                    "目前無法取得台灣市場日期，暫不推算預期月營收期別；"
+                    "請確認系統時間服務後重試。"
+                )
+            else:
+                expected_hint = (
+                    f"預期檢查期別：{expected_period}（依台灣日期與公告節奏）；"
+                    "下方抓取只建立候選快照，不會直接寫入正式資料庫。"
+                )
+            self.monthly_revenue_candidate_hint_label = QLabel(expected_hint)
             self.monthly_revenue_candidate_hint_label.setWordWrap(True)
             self.monthly_revenue_candidate_hint_label.setProperty("role", "hint")
             layout.addWidget(self.monthly_revenue_candidate_hint_label)
@@ -1902,7 +1911,9 @@ class UpdateView(QWidget):
             date_layout.setSpacing(8)
 
             end_date_edit = QDateEdit()
-            end_date_edit.setDate(_taiwan_market_qdate())
+            end_date_edit.setDate(
+                self._default_taiwan_market_qdate(end_date_edit)
+            )
             self._configure_date_edit(end_date_edit)
             end_date_edit.setToolTip(
                 "【結束日期】\n"
@@ -2154,21 +2165,44 @@ class UpdateView(QWidget):
             if button:
                 button.setEnabled(enabled)
 
+    def _default_taiwan_market_qdate(self, date_edit: QDateEdit) -> QDate:
+        """用頁面啟動時的台灣日期設定欄位；日期未知時不借用主機日期。"""
+
+        market_date = self._market_date_at_start
+        if market_date is None:
+            date_edit.setEnabled(False)
+            date_edit.setToolTip(
+                "無法取得台灣市場日期，日期欄位已停用；確認時間服務後請重新開啟此頁。"
+            )
+            return QDate()
+        return QDate(market_date.year, market_date.month, market_date.day)
+
+    def _reject_if_startup_market_date_unknown(self) -> bool:
+        if self._market_date_at_start is not None:
+            return False
+        QMessageBox.warning(
+            self,
+            "台灣市場日期不可用",
+            "頁面啟動時無法取得台灣市場日期，未啟動資料更新。"
+            "請確認時間服務後重新開啟此頁。",
+        )
+        return True
+
     @staticmethod
     def _safe_update_end_date() -> date:
-        """回傳不晚於 host 今日的台灣市場日期，避免查詢未來日期。"""
-
+        """回傳台灣市場日期；未知時拒絕推算查詢區間。"""
         try:
-            market_date = taiwan_market_today()
-        except Exception:
-            market_date = date.today()
-        return min(market_date, date.today())
+            return taiwan_market_today()
+        except Exception as exc:
+            raise RuntimeError("無法取得台灣市場日期，未推算或啟動資料更新。") from exc
 
     @classmethod
-    def _latest_expected_monthly_revenue_period(cls) -> str:
+    def _latest_expected_monthly_revenue_period(
+        cls, *, current: date | None = None
+    ) -> str:
         """依月初／月中公告節奏提示本次應抓的月營收期別。"""
 
-        current = cls._safe_update_end_date()
+        current = current if current is not None else cls._safe_update_end_date()
         months_back = 2 if current.day < 10 else 1
         month_index = current.year * 12 + (current.month - 1) - months_back
         year, month_zero = divmod(month_index, 12)
@@ -2220,12 +2254,18 @@ class UpdateView(QWidget):
         }.get(source)
         if source_token is None:
             return
-        start_date, end_date = self._candidate_update_window(source)
         source_label = {
             "institutional_flow": "三大法人",
             "credit_transaction": "信用交易",
             "tdcc_shareholding": "集保股權",
         }[source]
+        try:
+            start_date, end_date = self._candidate_update_window(source)
+        except RuntimeError as exc:
+            message = f"{exc}未啟動{source_label}候選更新。"
+            self._log(message)
+            QMessageBox.warning(self, "台灣市場日期不可用", message)
+            return
         try:
             decision_status = self.update_service.check_decision_data_status()
         except Exception as exc:
@@ -2388,8 +2428,19 @@ class UpdateView(QWidget):
             )
             return
 
-        target_period = self._latest_expected_monthly_revenue_period()
-        fetch_date = self._safe_update_end_date().isoformat()
+        try:
+            fetch_market_date = self._safe_update_end_date()
+            target_period = self._latest_expected_monthly_revenue_period(
+                current=fetch_market_date
+            )
+        except RuntimeError as exc:
+            QMessageBox.warning(
+                self,
+                "台灣市場日期不可用",
+                f"{exc}月營收候選抓取未啟動。",
+            )
+            return
+        fetch_date = fetch_market_date.isoformat()
         output_dir = Path(self.update_service.config.output_root) / "monthly_revenue_mops_snapshots"
         reply = QMessageBox.question(
             self,
@@ -2721,7 +2772,15 @@ class UpdateView(QWidget):
     def _set_shared_end_date_today(self, source_name: str):
         end_date_widget = getattr(self, f"{source_name}_end_date", None)
         if end_date_widget:
-            end_date_widget.setDate(_taiwan_market_qdate())
+            try:
+                market_date = self._safe_update_end_date()
+            except RuntimeError as exc:
+                QMessageBox.warning(self, "台灣市場日期不可用", str(exc))
+                return
+            end_date_widget.setEnabled(True)
+            end_date_widget.setDate(
+                QDate(market_date.year, market_date.month, market_date.day)
+            )
             self._sync_dates(source_name)
 
     def _sync_dates(self, source_name: str):
@@ -4497,6 +4556,8 @@ class UpdateView(QWidget):
         """以背景工作執行更新所有數據"""
         if self._reject_busy_write("全部資料更新"):
             return
+        if self._reject_if_startup_market_date_unknown():
+            return
         self._current_update_mode = mode
         self._active_update_operation = "快速更新" if mode == "quick" else "安全更新"
         self._active_update_start_date, self._active_update_end_date = (
@@ -4628,6 +4689,8 @@ class UpdateView(QWidget):
     def _execute_update(self):
         """執行數據更新"""
         if self._reject_busy_write("單一資料來源更新"):
+            return
+        if self._reject_if_startup_market_date_unknown():
             return
         # 獲取更新類型
         update_type = None

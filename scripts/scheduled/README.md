@@ -4,6 +4,30 @@
 
 2026-10-02 整合修復的最新設定／受控 producer／consumer 證據見[整合修復紀錄](../../docs/06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md)。21 項 Exec WorkingDirectory 已原地設為 repo；Paper／ML 具時區 trigger 為台北 08:25，兩項暫停已恢復。以下 9/30、10/1 runtime 清冊是歷史，不能取代新設定讀回或新一次執行。
 
+2026-10-04 的接線修復與逐批實測見[四用途工程收尾](../../docs/06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md)。工程驗收狀態以該文件為準；Windows Task 顯示 Enabled／Ready、受控執行成功、下一次自然 trigger 成功是三種不同證據，不互相替代。
+
+Decision Capture／Forward 的確認寫入共用 G6 的 canonical `OUTPUT_ROOT/release_v4/.ml_heavy_chain.lock`；單次報告 `--output-root` 不改變正式 DB 的鎖根。Forward 最長等待 10,500 秒，並保留臺北日界前 3,600 秒完成預算；Capture 另按兩個 child timeout 與收尾時間計算。取得 lease 後重驗時鐘與來源，finally 釋放自身 lease後再落終端拒絕收據；timeout、跨日、release failure 都不能當成成功。Forward dry-run 與 health reader 均唯讀、不等待 writer；手動 Forward、`capture_evidence_events.py` 與 Evidence pipeline CLI 遇 canonical lock 忙時立即拒絕，取得鎖前不建立可寫 repository。手動 Capture 預設 dry-run，Evidence／Decision Desk 來源 repository 同樣唯讀。
+
+Forward 核心及既有入口共用 verified official maturity calendar，5／10／20／60 視窗只在計畫官方 session 取價。尚未到期為 `insufficient_future_data`，到期卻缺唯一有效 close 為 `missing_price` 並保留 null 報酬，日曆不可驗證為 `blocked_time_contract`。`expected_maturity_date` 的 row-offset 僅作 `legacy_price_row_offset` 診斷，不延長 horizon；`planned_official_maturity_date` 才是目標日。自然入口 cutoff 為實際臺北日期，歷史 replay 保留逐日 cutoff；來源 cache 與操作方式見 [Manual](../../docs/07_guides/APPLICATION_MANUAL.md)。
+
+### 官方資料的三個獨立 child
+
+`run_official_market_event_backfill.cmd` 交由 `run_official_market_status_bundle.py` 依序執行既有歷史事件、現況上市／交易限制及現況官方估值。各 child 以同一 wrapper run ID 綁定不可變回執、實際 stdout／stderr bytes SHA 與 raw；前一 child 失敗仍執行其餘 child，整批狀態保留失敗。歷史事件 publication 的正式資格門檻不變，現況觀測不取得歷史 PIT 資格。
+
+現況上市狀態與個別公告來源清單在 `data_module/official_market_status_notice_sources.json`；清單只記官方 URL，股票、起迄日期和結論仍由本次原文解析。每個來源失敗均保存診斷；只缺某個來源時仍可讀已驗證的現況證據，UI 必須同時顯示 coverage 不完整。估值捕獲放在 `<OUTPUT_ROOT>/current_valuation`，提供官方 PE／PB／殖利率；TPEx 主端點失敗時可使用官方 OpenAPI fallback，保留前次失敗 raw／receipt。缺 PE 不填零，不用 PB 推算。
+
+### 原始行情到目前股票研究模型
+
+`--project-daily-source-rows` 在 same-run projection 完成後接 `ml_daily_source_row_research_adapter.py`，重驗 B manifest／row custody，建立研究 numeric store；再由 `current_stock_research_cycle.py` 讀取目前觀察清單與真實持倉的聯集。Operational status 仍在 canonical `OUTPUT_ROOT`，模型研究產物由共同 resolver 讀取本機 `output/ml_research_storage.json` 的 active root；設定缺席才用 `<repo>/output/ml_research`，舊根只按原 pin 讀取。設定格式、保護目錄、容量與回復方式見 [Manual](../../docs/07_guides/APPLICATION_MANUAL.md#研究儲存位置與容量排錯)，不把 formal publication pointer 指向研究資料。
+
+cycle 綁定 raw run／行情日／B terminal、實際股票範圍、唯讀一致 SQLite snapshot、revision source context、outcome、fit、sidecar 與 registry。scope 超出既有 bounded bridge 的 2–16 檔界線、來源缺欄、日期／hash 不符或容量不足時保留具體 blocker。snapshot 的決策觀測時鐘與驗證完成後的 fit freeze 分開保存；不回填 availability。沒有 WAL 的來源採明確 absent v2 契約，保留真實 SQLite header／journal mode／前後內容 pins，不建立假 WAL 來通過驗證。
+
+收據明確釘選為既存 0-byte WAL 且 SHA 為空內容時，允許兩次驗證之間只有 mtime 改變；實際路徑、非 reparse、大小、內容雜湊及同次讀取前後 stat 仍須一致。WAL 新增內容、非空 WAL 的時間或內容變動、主 DB／snapshot／receipt 變動仍拒絕。舊 failed run 不因修補改成成功；需以當前來源建立新的獨立 run。
+
+法人來源的新增觀測與現況 revision 投影在同一交易內處理，包含官方數值回復 base 的情形；投影失敗則回滾該次資料寫入並保留失敗觀測及 checkpoint。相同觀測時鐘的全部修訂須各自核驗來源，九個法人數值欄位須一致，不能只比較最後兩筆；僅 source_version 改變且九欄相同不新增修訂。現況 reader 目前供個股報告的法人區塊使用，不宣稱它已成為推薦排名或 CORE19／20 模型特徵；正式 base 與歷史 PIT 資格不變。
+
+相同輸入重用需要股票範圍、觀察清單／持倉完整 input pins（含 bytes／mtime／hash）、行情內容、來源修訂及 B registry／映射／選定股票數值語意全符；僅 capture 時鐘或新 run ID 不同不必再訓練，映射或資料改變則不可重用。每次仍保存新的 child 回執並重驗舊模型閉環。研究 cycle 的容量上限獨立核算為 2 GiB 持久增量、2 GiB 暫存、來源 DB／WAL 快照上限與 200 GiB reserve；正式重型 raw 的 35／40／200 GiB 門檻不變。外層 raw core exit 0 不能替代 nested cycle 的 completed／skipped_same_inputs terminal。
+
 另有兩個 Codex app heartbeat，不屬於此處的 Windows Task inventory：`baldr-scheduled-evidence-morning-report` 每天美西 05:30；`paper`（晚間學習與 Paper 排程驗收）每天美西 06:20。它們只讀同次 Task/run receipts、identity、hash 與有限 log，變化通知採 change-only，不啟動 producer、Task、訓練或 Paper action。時區使用 `America/Los_Angeles` 本地時間並隨 DST 變更；不要另建立固定 UTC task 或把 heartbeat 當成 Windows trigger。
 
 2026-09-30 Task inventory 與截至 2026-10-01 已讀回的 execution evidence 以[排程修復 QA](../../docs/06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md)為準；該文件將受控人工執行、自然 trigger、safe no-work 與 failed dependency 分開記錄。最近的 21-task inventory 為 `output/qa/scheduled_task_inventory_20261001T002916Z_940402272834.json`（52,144 bytes、SHA-256 `9bbe91e9c6b1cc723222e87cd92a9751e8ff9985de9f3d7f4f76c2946193e374`），21/21 exact root task paths、0 errors。9/30 Pacific 16:15（10/1 Taipei 07:15）Paper Portfolio 與 ML forward 仍沒有同次 terminal：runtime 為 `waiting_for_taipei_cutoff`／`terminal=false`、heartbeat stale，latest 仍為前一日；原因尚未證實，不能用舊 latest 結案。inventory 在 Taipei 08:29:16 觀測，早於 08:30 cutoff 44 秒；不由 cutoff 到達推論成功。
@@ -26,9 +50,9 @@ aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unre
 | Task | State | Trigger | Behavior |
 |---|---:|---|---|
 | `baldr-data-update-quick-daily` | enabled after register | daily local time 04:20 | Runs the non-UI quick data update path for the recent weekday window. Writes market data CSV / SQLite updates plus status and logs under `OUTPUT_ROOT/scheduled/data_update_quick/`. If TPEX has failed dates, the task continues later steps and writes `passed_with_warnings`. After all core phases, technical publication, terminal history and status complete successfully, the `.cmd` may run its default-on, bounded monthly-revenue research child; `BALDR_CAPTURE_MONTHLY_REVENUE_RESEARCH_CANDIDATE=0` disables it. It creates repository candidates only and does not write formal mappings or DB. |
-| `baldr-official-market-events-daily` | enabled after register | daily local time 04:50 | 以官方來源建立 append-only market-event vintages；無公告／生效／修訂時間的事件 fail closed，不反推歷史可得時間。若 verified latest publication 的歷史起點被縮窄，task 會自動切換到 2014–當年度做 recovery；coverage 完整後才恢復兩年增量，避免 pointer 長期遺失歷史。TWT49U 若只變更 `股票名稱`，必須保留兩版 raw／hash，並在 `economic_content_hash`、`display_revision_of`、`revision_sequence` 與後來 raw `retrieved_at` 可重驗時標為 `display_name_only`；不同價格、日期、代號、source 或無法連結的 predecessor 繼續 fail closed。 |
+| `baldr-official-market-events-daily` | enabled after register | daily local time 04:50 | 依上節同批依序執行 historical events、current market status 與 official valuation；各 child 獨立驗證回執及失敗狀態，歷史 publication 原有 coverage／PIT gate 不變。缺歷史事件不阻止安全的現況 capture，也不因此把研究來源提升成正式來源。 |
 | `baldr-data-freshness-check-daily` | enabled after register | daily local time 05:00 | Read-only SQLite / `DATA_ROOT` freshness check. Also verifies raw TWSE / TPEX daily price files for the latest SQLite daily date. Writes only status and logs under `OUTPUT_ROOT/scheduled/data_freshness/`. |
-| `baldr-ml-raw-pit-refresh-daily` | enabled after register | daily local time 05:05 | 先讀取 data-update quick 的 terminal freshness proof。`.cmd` 預設在 core freshness proof 後、source-revision hold 前，捕獲前瞻日價 candidate，再以該 same-run verified manifest/path pin 執行單日 source-row research projection；`BALDR_ENABLE_ML_DAILY_SOURCE_ROW_PROJECTION=0` 只停 projection，既有 `BALDR_ENABLE_ML_PROSPECTIVE_DAILY_CAPTURE=0` 同時停 capture 與 projection。Child failure 只加診斷，不改 core status、revision hold 或 exit；terminal readback 收據在投影候選內，nested status 在 `OUTPUT_ROOT/scheduled/ml_raw_pit_refresh/latest_status.json`。這不是 features／labels、Direct/OOC、訓練或 Formal eligibility。正式 raw publication 仍先做唯讀容量 preflight：保留至少 200 GiB reserve、scheduled raw persistent 上限 35 GiB、temporary 上限 40 GiB，required headroom 至少 275 GiB；低於門檻時輸出 `blocked_insufficient_storage` 且不啟動 builder。既有同 cutoff 且較新的 publication 會安全 skip，不寫來源 SQLite；成功 publication 完成後仍由 Direct/OOC maintenance watcher 依 pointer/hash 接續，revision hold 不變。 |
+| `baldr-ml-raw-pit-refresh-daily` | enabled after register | daily local time 05:05 | 先驗 quick terminal freshness proof，再於 formal source-revision hold 前執行前瞻 capture、same-run projection、B adapter／numeric store 與 bounded current-stock research cycle（詳上節）。`BALDR_ENABLE_ML_DAILY_SOURCE_ROW_PROJECTION=0` 停 projection 及依賴 children，`BALDR_ENABLE_ML_PROSPECTIVE_DAILY_CAPTURE=0` 同時停 capture。Nested failure 保留獨立 terminal，不改 core revision hold／exit。正式 raw builder 仍要求 35 GiB 持久、40 GiB 暫存及 200 GiB reserve；同 cutoff 已有較新 publication 可安全 skip，成功 formal publication 仍由 Direct／OOC watcher 接續。 |
 | `baldr-recommendation-snapshot-daily` | enabled after register | daily local time 05:10 | Runs the research-only recommendation snapshot path after freshness. Saves the canonical execution artifact at `OUTPUT_ROOT/recommendation/runs/execution_artifacts/<opaque-id-sha256>.json` and indexes it in the same runs directory's `recommendation_runs.db`. Status/logs remain under `OUTPUT_ROOT/scheduled/recommendation_snapshot/`. The wrapper verifies the create-only save and query readback before forwarding the typed saved result. Historical legacy `<result_id>.json` files are read-only. The scheduled result explicitly carries strategy `scheduled-recommendation-default-v1`, market benchmark `TAIEX`, primary cohort horizon `20`, and gross/unpriced cost identity `gross-close-to-close-no-cost-v1`; the latter is not a cost-adjusted claim. The scheduled caller also emits immutable candidate-only packets under the repository `output/forward_position_thesis/YYYY-MM-DD/`; recommendation reasons and Decimal-text scores are preserved, while missing explicit invalidation／horizon policy remains `awaiting_explicit_policy`. It does not write the production evidence DB, does not confirm evidence, does not change portfolio state, and does not automate trading. |
 | `baldr-evidence-pipeline-dry-run-daily` | enabled after register | daily local time 05:15 | Runs `scripts/run_evidence_pipeline.py` with `--dry-run` and forwards the resolved `DATA_ROOT` / `OUTPUT_ROOT` explicitly. Before the child, it refreshes the derived Paper health baseline from the repository snapshot using the preopen status receipt and the append-only Paper trade ledger; the scheduled path also enables `PaperPositionIdentityProvider`, which derives a stable ID only from a verified bounded flat-to-positive Paper fill. Same-snapshot or receipt-backed no-event continuity may preserve human fields, while missing coverage or entry evidence keeps the current row `WATCH`/unknown and preserves prior fields in history. Because the v1 ledger has no same-day sequence/time, multiple material fills for one stock on one date are blocked instead of ordered by `fill_id`. It then runs `--produce-position-health-sources`: quick/freshness receipts are checked first, and a read-only SQLite capture of selected `technical_indicators`/`daily_prices` rows is bound to real capture start/completion timestamps. The condition and Decimal metrics artifacts are create-only immutable; missing identity never falls back to stock code, and condition remains observation-only until a governed thesis/current condition exists. The CMD caller also consumes every immutable receipt under `output/forward_position_thesis/bindings/` through `--paper-health-forward-binding`; the consumer rechecks candidate/recommendation file and content hashes, Paper source event/order/fill, ledger row and evidence hash, then adds lineage provenance only. Missing or awaiting binding stays degraded and never supplies a human thesis. The CMD caller also runs `--evaluate-position-health-transition`, passing the source capture completion to the evaluator so an earlier quick receipt cannot backfill a later database read. The evaluator writes only the isolated `OUTPUT_ROOT/position_health_transition/` proposal receipt and append-only proposal repository. The same 05:15 CMD action passes `--run-exit-effectiveness`, which invokes `scripts/run_exit_effectiveness_daily.py` as a bounded 300-second child with the transition SQLite, repository Paper ledger, market SQLite, and verified calendar cache. Its create-only research artifact is written under `OUTPUT_ROOT/exit_effectiveness/YYYYMMDD.json`; timeout, malformed output, blocked source, or non-zero child status is surfaced in `latest_status.json` and returns non-zero. The child has no historical as-of switch, never applies a transition, never places an order, and never treats a stale prior artifact as a successful run. Missing thesis/condition/metrics remains `degraded`; only a proposal is written, never a human approval or execution action. Writes report, status, and logs under `OUTPUT_ROOT/scheduled/evidence_pipeline_dry_run/`; health source artifacts are under `OUTPUT_ROOT/position_health_sources/`. Scheduled status inherits freshness and pipeline overall status: missing / stale / blocking data is `degraded`, while complete observed-or-estimated MoneyDJ provenance is `ready_with_advisories`. |
 | `baldr-ml-promotion-evidence-daily` | enabled after register | daily local time 05:17 | 固定 discovery 並重驗 formal OOC v5、雙 replay、Shadow outcome、逐 horizon calibration／drift 與 hash custody。證據不完整時只寫 blocked status，不更新 compatible pointer；若 OOC readiness 不足，blocker 會附上 `formal_ooc_dataset_full_market_not_ready:<readiness_check,...>` 的具體檢查名；若 direct store 落後最新 verified official market-event publication，會輸出 `formal_ooc_corporate_action_custody_stale:<field,...>`；完整時也只發布 unsigned evidence。 |
@@ -788,6 +812,12 @@ UI 若要讀取外部 status，另需設定 `DATA_FRESHNESS_STATUS_ARTIFACT` 指
 `BALDR_FRESHNESS_STATUS_PATH`／`BALDR_FRESHNESS_LOG_PATH` 或參數覆寫，避免維運入口維護第二套
 日期／freshness 判定。
 
+Freshness receipt 的 `checks` 明示 `calendar_cutoff_local="04:30"` 與
+`calendar_cutoff_timezone="America/Los_Angeles"`。狀態頁按該時區的每日 cutoff
+比較檢查／查詢是否處於同一發布週期，不以台北午夜判過期；跨下一 cutoff 就要求重新
+probe。舊的無時區收據只相容精確 `baldr-data-freshness-check-daily` 的既有固定契約。
+未知時區、未來或無時區 checked_at 仍拒絕；本契約不授予來源公告時間或歷史 PIT 資格。
+
 The same runner appends bounded `data-update-status-history.v1` records to `history.jsonl` (or the explicit `--history-path`) for the running and terminal attempts. The history is append-only and idempotent by record hash; it does not backfill an existing `latest_status.json` and does not change any downstream readiness or write permission.
 
 The status boundary converts service result dataclasses (including the Phase 3C `BackfillSummary`), paths, dates, and scalar wrappers before writing JSON or history. A serialization problem in one step therefore cannot leave the run permanently reported as `running`; the terminal status is still published and the original structured result remains visible in the artifact.
@@ -1254,6 +1284,48 @@ bounded no-follow regular-file reader 與穩定 file identity/hash 驗證。明�
 或 coverage pin（包括 invalid 或明確空 pin）不得被 auto-discovery 取代；
 原 Rule／sidecar／history／ledger 路徑各守其既有契約。resolver proof 只列明來源、hash、
 日期與 coverage，不重寫舊 archive、不取 symbols 交集，也不升格 Formal。
+
+### Snapshot 官方基本面來源根
+
+Snapshot／personalization CLI 的 `--current-fundamental-source-root` 控制 current PE 與 MOPS 月營收來源，與 `--output-root` 的推薦產物目的地分離。來源優先序為顯式 CLI、`CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT`、獨立 canonical `TWStockConfig` 的 `OUTPUT_ROOT`／`DATA_ROOT/output`。05:10 CMD 轉送來源參數；05:45 pipeline 轉送同一 canonical source root 至 snapshot child。Bank 保持讀取保存 snapshot 與獨立學習 lane，不新增 snapshot producer。自訂 `OUTPUT_ROOT` 若用作 Shadow，須另明示 canonical source root。Snapshot receipt 與 execution lineage 必須能核對實際來源；不可把錯根造成的缺 PE／YoY 判成自然資料不足。
+
+### G6 raw 與 G9 current-observed 的依賴等待
+
+05:45 recommendation-learning wrapper 保留 Shadow lane 的推薦快照與學習輸出，另從
+`CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT` 讀取 G6 狀態。該變數預設沿用 raw wrapper 的
+`OUTPUT_ROOT`，未設定時採 `DATA_ROOT/output`。pipeline 先釘選並等待台北當日啟動的一個
+raw run，再執行 Quick、official refresh、snapshot 與 learning；避免 Quick 與尚未完成的
+G6 爭用同一資料鎖。等待上限取 10,500 秒與 pipeline 三小時剩餘期限扣除 Quick、learning
+各一個 child timeout 及五分鐘 terminal flush reserve 後的較小值；預設約 55 分鐘。
+後續每個 child 仍保留五分鐘收尾；learning 之前的 child 另保留一個 learning timeout。
+若剩餘額度不足，該步不啟動並留下 timeout，不借未驗證快照來完成學習。
+同一 exact raw run id、cycle terminal path 與 SHA 一直傳至 learning，不在交接時另取 latest。
+Quick 的 plan、receipt、status、child output 及鎖也使用同一 canonical source root。
+Quick 的資料範圍與可重用收據末日比對 G6 已驗證的 `source_date`；週末決策日不送進
+交易日更新範圍，收據 `available_at` 保留原值且仍須通過實際來源驗證。只有確實需要
+Quick writer 時，先在既有總期限與保留預算內最多等 30 秒取得再釋放同一 OS reservation，
+讓完成中的 G6 正常交還鎖；Quick 啟動後仍自行取得原鎖，新的競爭仍可使它安全停止。
+未取得有效 G6 pin 時不啟動或重用 Quick；獨立 official／snapshot 可繼續，但 learning 保持
+blocked。不得以 Shadow 的舊 raw status 取代 canonical raw root。
+
+來源日期先套用共同的 04:30 America/Los_Angeles cutoff，再由既有離線官方日曆解析
+最新 session。cutoff 後來源可為當日，cutoff 前、週末及已驗官方休市則取該邊界前最近
+官方交易日；G9 feature `as_of` 仍維持決策日前一官方 session。pointer 改變、未允許的
+parent／child 失敗、terminal pin 不符或等待跨台北決策日都會留下明確 blocker，停止
+該次 current-observed child。逾時不算 capture 成功，也不回填捕獲時鐘。
+
+`blocked_insufficient_storage` 僅有 `InsufficientFreeSpace`／`scheduled_raw_pit_bootstrap`
+這個明確正式建置 headroom 例外可進入研究 terminal 讀回：formal root、固定 35/40/200 GiB
+整數容量帳與唯一 blocker 皆須吻合，available 不得低於 200 GiB。再核實獨立 completed G6
+的自身容量與完整來源／研究資格；重用須驗原 completed terminal 的相同證據。其他容量
+失敗或 child failed 不接受，外層正式 raw status、275 GiB 門檻及所有正式資格旗標不變。
+
+05:50 BankTaiwan wrapper 最多等待 10,500 秒取得同次 G9 Task projection 與 terminal，
+並在五小時總預算內保留既有兩小時 child 與五分鐘 terminal flush。新 task 註冊採
+`PT5H`；既有 task 的註冊路徑仍保留現場設定，須另做精確設定更新與讀回。2026-10-04
+07:16:35 UTC 已將現有 Bank task 從 `PT2H` 更新為 `PT5H`，只有期限節點改變，
+LastRun／LastTaskResult 保持；詳見 [本輪收尾證據](../../docs/06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md)。
+這些期限約束交接時間，不保證超過預算的 G6／G9 仍能完成。
 
 ## Codex Morning Summary
 

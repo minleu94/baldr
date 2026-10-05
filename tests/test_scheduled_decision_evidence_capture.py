@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -11,6 +11,12 @@ import pytest
 from app_module.evidence_event_importer_dtos import (
     EvidenceCaptureRequest,
     capture_context_identity,
+)
+from app_module.scheduled_writer_reservation import ScheduledWriterReservationWait
+from data_module.ml_storage_capacity import (
+    acquire_heavy_chain_reservation,
+    heavy_chain_lock_path,
+    release_heavy_chain_reservation,
 )
 from scripts.scheduled import run_scheduled_decision_evidence_capture as runner
 
@@ -231,6 +237,7 @@ def test_after_close_capture_passes_real_clock_and_marks_eod_research(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[list[str]] = []
+    child_timeouts: list[float] = []
     results = iter(
         (
             _snapshot_result(saved=True, duplicate=False),
@@ -238,10 +245,23 @@ def test_after_close_capture_passes_real_clock_and_marks_eod_research(
         )
     )
 
-    def fake_run(command, **_kwargs):
+    def fake_run(command, **kwargs):
+        competing = acquire_heavy_chain_reservation(
+            heavy_chain_lock_path(tmp_path / "output" / "release_v4")
+        )
+        assert competing is None
         calls.append(list(command))
+        child_timeouts.append(kwargs["timeout_seconds"])
         return _with_command_temporal(next(results), list(command))
 
+    wait_arguments: dict[str, object] = {}
+    original_wait = runner.wait_for_scheduled_writer_reservation
+
+    def track_wait(**kwargs):
+        wait_arguments.update(kwargs)
+        return original_wait(**kwargs)
+
+    monkeypatch.setattr(runner, "wait_for_scheduled_writer_reservation", track_wait)
     monkeypatch.setattr(runner, "_run_json_cli", fake_run)
     payload = runner.run(
         data_root=tmp_path / "data",
@@ -255,6 +275,13 @@ def test_after_close_capture_passes_real_clock_and_marks_eod_research(
     assert payload["decision_at"] == "2026-09-16T20:25:00.123456+08:00"
     assert payload["captured_at"] == "2026-09-16T20:25:00.123456+08:00"
     assert payload["capture_mode"] == "eod_research"
+    assert payload["reservation_wait"]["status"] == "acquired"
+    assert payload["reservation_acquire_guard"]["passed"] is True
+    assert wait_arguments["timeout_seconds"] == runner.SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS
+    assert wait_arguments["latest_acquire_at"] == datetime.fromisoformat(
+        payload["reservation_acquire_guard"]["latest_acquire_at"]
+    )
+    assert child_timeouts == [120, 120]
     assert payload["preopen_authority"] is False
     assert (
         payload["capture_context_hash"]
@@ -270,6 +297,85 @@ def test_after_close_capture_passes_real_clock_and_marks_eod_research(
     )
     assert calls[0][calls[0].index("--as-of") + 1] == "2026-09-16"
     assert calls[0][calls[0].index("--capture-mode") + 1] == "eod_research"
+    after_release = acquire_heavy_chain_reservation(
+        heavy_chain_lock_path(tmp_path / "output" / "release_v4")
+    )
+    assert after_release is not None
+    release_heavy_chain_reservation(after_release)
+
+
+def test_natural_capture_clock_is_sampled_after_reservation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    results = iter(
+        (
+            _snapshot_result(saved=True, duplicate=False),
+            _evidence_result(inserted=1, duplicates=0),
+        )
+    )
+    monkeypatch.setattr(
+        runner,
+        "_run_json_cli",
+        lambda command, **_kwargs: _with_command_temporal(next(results), list(command)),
+    )
+
+    payload = runner.run(
+        data_root=tmp_path / "data",
+        output_root=tmp_path / "output",
+        calendar=_OpenCalendar(),
+    )
+
+    assert payload["status"] == "passed"
+    assert payload["reservation_wait"]["status"] == "acquired"
+    checked_at = datetime.fromisoformat(payload["captured_at"]).astimezone(timezone.utc)
+    wait_ended_at = datetime.fromisoformat(
+        str(payload["reservation_wait"]["wait_ended_at_utc"]).replace("Z", "+00:00")
+    )
+    assert checked_at >= wait_ended_at
+
+
+def test_canonical_db_uses_configured_lock_when_receipts_go_to_shadow_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_data = tmp_path / "canonical-data"
+    canonical_output = tmp_path / "canonical-output"
+    shadow_output = tmp_path / "shadow-output"
+    monkeypatch.setenv("DATA_ROOT", str(canonical_data))
+    monkeypatch.setenv("OUTPUT_ROOT", str(canonical_output))
+    results = iter(
+        (
+            _snapshot_result(saved=True, duplicate=False),
+            _evidence_result(inserted=1, duplicates=0),
+        )
+    )
+
+    def fake_run(command, **_kwargs):
+        competing = acquire_heavy_chain_reservation(
+            heavy_chain_lock_path(canonical_output / "release_v4")
+        )
+        assert competing is None
+        return _with_command_temporal(next(results), list(command))
+
+    monkeypatch.setattr(runner, "_run_json_cli", fake_run)
+    payload = runner.run(
+        data_root=canonical_data,
+        output_root=shadow_output,
+        db_path=canonical_data / "sqlite" / "twstock.db",
+        now=datetime.fromisoformat("2026-07-30T09:00:00+08:00"),
+        calendar=_OpenCalendar(),
+    )
+
+    assert payload["status"] == "passed"
+    assert payload["canonical_reservation_root"] == str(canonical_output.resolve())
+    assert payload["artifact_output_root"] == str(shadow_output.resolve())
+    assert str(payload["status_path"]).startswith(str(shadow_output.resolve()))
+    after_release = acquire_heavy_chain_reservation(
+        heavy_chain_lock_path(canonical_output / "release_v4")
+    )
+    assert after_release is not None
+    release_heavy_chain_reservation(after_release)
 
 
 def test_subsecond_decision_identity_and_captured_retry_contract() -> None:
@@ -485,6 +591,11 @@ def test_closed_day_persists_skip_without_running_subprocess(
         "_run_json_cli",
         lambda command, **_kwargs: calls.append(command),
     )
+    monkeypatch.setattr(
+        runner,
+        "wait_for_scheduled_writer_reservation",
+        lambda **_kwargs: pytest.fail("closed days must not wait for the writer lock"),
+    )
 
     payload = runner.run(
         data_root=tmp_path / "data",
@@ -509,6 +620,11 @@ def test_explicit_closed_decision_at_fails_closed_without_capture(
         runner,
         "_run_json_cli",
         lambda *_args, **_kwargs: pytest.fail("不應呼叫 capture CLI"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "wait_for_scheduled_writer_reservation",
+        lambda **_kwargs: pytest.fail("unknown calendar must not wait for the writer lock"),
     )
 
     payload = runner.run(
@@ -536,6 +652,11 @@ def test_unknown_calendar_persists_degraded_without_capture(
         "_run_json_cli",
         lambda *_args, **_kwargs: pytest.fail("不應呼叫 capture CLI"),
     )
+    monkeypatch.setattr(
+        runner,
+        "wait_for_scheduled_writer_reservation",
+        lambda **_kwargs: pytest.fail("unknown calendar must not wait for the writer lock"),
+    )
 
     payload = runner.run(
         data_root=tmp_path / "data",
@@ -547,6 +668,94 @@ def test_unknown_calendar_persists_degraded_without_capture(
     assert payload["status"] == "degraded_calendar_unknown"
     assert payload["trading_calendar_validated"] is False
     assert payload["events_inserted"] == 0
+
+
+def test_writer_reservation_timeout_blocks_without_launching_children(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timeout_receipt = {
+        "schema_version": "scheduled-writer-reservation-wait.v1",
+        "status": "timed_out",
+        "attempt_count": 2,
+        "lock_path": str(heavy_chain_lock_path(tmp_path / "output" / "release_v4")),
+    }
+    monkeypatch.setattr(
+        runner,
+        "wait_for_scheduled_writer_reservation",
+        lambda **_kwargs: ScheduledWriterReservationWait(None, timeout_receipt),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_run_json_cli",
+        lambda *_args, **_kwargs: pytest.fail("capture child ran after lock timeout"),
+    )
+
+    payload = runner.run(
+        data_root=tmp_path / "data",
+        output_root=tmp_path / "output",
+        now=datetime.fromisoformat("2026-07-30T09:00:00+08:00"),
+        calendar=_OpenCalendar(),
+    )
+
+    assert payload["status"] == "blocked_reservation_timeout"
+    assert payload["reservation_wait"] == timeout_receipt
+    assert payload["snapshot"]["status"] == "not_run"
+    assert payload["evidence"]["status"] == "not_run"
+    assert payload["safety_boundary"]["writes_decision_desk_snapshot"] is False
+    assert payload["safety_boundary"]["writes_evidence_events"] is False
+
+
+def test_acquire_guard_rejects_wall_clock_jump_past_completion_reserve(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_datetime = runner.datetime
+    before = original_datetime.fromisoformat("2026-10-04T10:00:00+08:00")
+    after_cutoff = original_datetime.fromisoformat("2026-10-04T23:58:00+08:00")
+    calls = 0
+
+    class JumpClock(original_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            nonlocal calls
+            if tz == runner.TAIPEI:
+                calls += 1
+                return before if calls == 1 else after_cutoff
+            return original_datetime.now(tz)
+
+    def acquire_immediately(**kwargs):
+        lease = acquire_heavy_chain_reservation(
+            heavy_chain_lock_path(Path(kwargs["release_root"]))
+        )
+        assert lease is not None
+        return ScheduledWriterReservationWait(
+            lease,
+            {"schema_version": "scheduled-writer-reservation-wait.v1", "status": "acquired"},
+        )
+
+    monkeypatch.setattr(runner, "datetime", JumpClock)
+    monkeypatch.setattr(runner, "wait_for_scheduled_writer_reservation", acquire_immediately)
+    monkeypatch.setattr(
+        runner,
+        "_run_json_cli",
+        lambda *_args, **_kwargs: pytest.fail("capture child ran past completion cutoff"),
+    )
+
+    payload = runner.run(
+        data_root=tmp_path / "data",
+        output_root=tmp_path / "output",
+        calendar=_OpenCalendar(),
+    )
+
+    assert payload["status"] == "blocked_reservation_acquire_guard"
+    assert payload["failure_reasons"] == ["heavy_chain_reservation_after_completion_cutoff"]
+    assert payload["reservation_acquire_guard"]["passed"] is False
+    after_release = acquire_heavy_chain_reservation(
+        heavy_chain_lock_path(tmp_path / "output" / "release_v4")
+    )
+    assert after_release is not None
+    release_heavy_chain_reservation(after_release)
 
 
 def test_snapshot_requires_all_seven_sections() -> None:

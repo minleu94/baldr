@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 import sqlite3
 
 import pandas as pd
@@ -22,6 +23,36 @@ class FakeMarketBreadthProvider:
 class BrokenMarketBreadthProvider:
     def fetch(self, as_of_date: date) -> pd.DataFrame:
         raise RuntimeError("provider temporary unavailable")
+
+
+def _reference_new_extreme_count(
+    data: pd.DataFrame,
+    current: pd.DataFrame,
+    actual_key: str,
+    window: int,
+    direction: str,
+) -> int | None:
+    keys = sorted(key for key in data["_date_key"].dropna().unique() if key <= actual_key)
+    window_keys = keys[-window:]
+    if len(window_keys) < window:
+        return None
+    history = data.loc[data["_date_key"].isin(window_keys)].dropna(
+        subset=["證券代號", "_close"]
+    )
+    if history.empty:
+        return None
+
+    count = 0
+    for _, row in current.iterrows():
+        stock_code = row["證券代號"]
+        current_close = row["_close"]
+        stock_history = history.loc[history["證券代號"] == stock_code, "_close"]
+        if stock_history.empty or current_close is None:
+            continue
+        extreme = max(stock_history) if direction == "high" else min(stock_history)
+        if current_close == extreme:
+            count += 1
+    return count
 
 
 def test_market_breadth_service_builds_summary_from_df_with_injected_provider():
@@ -291,3 +322,74 @@ def test_sqlite_provider_skips_unclassified_row_without_close_difference_fallbac
     assert snapshot.breadth_ratio_bp == 5280
     assert snapshot.meta["stock_count"] == 1962
     assert "market_breadth_skipped_rows:1" in snapshot.warnings
+
+
+def test_new_extreme_count_matches_reference_for_ties_missing_dates_and_window_bounds():
+    rows = [
+        ("20261001", "A", Decimal("1")),
+        ("20261002", "A", Decimal("100")),
+        ("20261003", "A", Decimal("110")),
+        ("20261003", "A", Decimal("110")),
+        ("20261004", "A", Decimal("110")),
+        ("20261005", "A", Decimal("999")),
+        ("20261002", "B", Decimal("90")),
+        ("20261003", "B", Decimal("80")),
+        ("20261004", "B", Decimal("80")),
+        ("20261002", "C", Decimal("50")),
+        ("20261003", "C", None),
+        ("20261004", "C", Decimal("55")),
+        ("20261001", "D", Decimal("1")),
+        ("20261002", "D", Decimal("10")),
+        ("20261003", "D", Decimal("12")),
+        ("20261004", "D", Decimal("12")),
+        ("20261002", "E", Decimal("10")),
+        ("20261003", "E", Decimal("9")),
+        ("20261004", "E", Decimal("9")),
+        ("20261005", "E", Decimal("0")),
+        ("20261002", "F", Decimal("9")),
+        ("20261003", "F", Decimal("12")),
+        ("20261004", "F", Decimal("10")),
+        ("20261002", "G", Decimal("10")),
+        ("20261003", "G", Decimal("13")),
+        ("20261004", "G", Decimal("12")),
+        ("20261005", "G", Decimal("1000")),
+        ("20261001", "H", Decimal("1")),
+        ("20261002", "H", Decimal("5")),
+        ("20261003", "H", Decimal("5")),
+        ("20261004", "H", Decimal("5")),
+        ("20261002", None, Decimal("5")),
+    ]
+    data = pd.DataFrame(rows, columns=["_date_key", "證券代號", "_close"])
+    current = data.loc[data["_date_key"] == "20261004"].copy()
+    current = pd.concat(
+        [
+            current,
+            pd.DataFrame(
+                [("20261004", "NO_HISTORY", Decimal("1"))],
+                columns=["_date_key", "證券代號", "_close"],
+            ),
+        ],
+        ignore_index=True,
+    )
+
+    for direction, expected in (("high", 4), ("low", 3)):
+        actual = SQLiteDailyPriceMarketBreadthProvider._new_extreme_count(
+            data, current, "20261004", 3, direction
+        )
+        assert actual == expected
+        assert actual == _reference_new_extreme_count(
+            data, current, "20261004", 3, direction
+        )
+
+    # The older outlier H is outside a three-session window, but inside four.
+    assert SQLiteDailyPriceMarketBreadthProvider._new_extreme_count(
+        data, current, "20261004", 4, "low"
+    ) == 2
+    assert SQLiteDailyPriceMarketBreadthProvider._new_extreme_count(
+        data, current, "20261004", 4, "low"
+    ) == _reference_new_extreme_count(data, current, "20261004", 4, "low")
+    # Only four distinct dates are available at the cutoff; future rows do not
+    # satisfy a five-session window.
+    assert SQLiteDailyPriceMarketBreadthProvider._new_extreme_count(
+        data, current, "20261004", 5, "high"
+    ) is None

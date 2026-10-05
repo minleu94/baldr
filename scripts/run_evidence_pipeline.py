@@ -12,8 +12,14 @@ if str(ROOT) not in sys.path:
 
 from app_module.evidence_pipeline_runner import EvidencePipelineRunner, write_pipeline_report
 from app_module.evidence_pipeline_runner_dtos import EvidencePipelineRunRequest
+from app_module.forward_outcome_context import resolve_canonical_evidence_release_root
 from app_module.paper_decision_desk_evidence_source import PaperDecisionDeskEvidenceSource
 from data_module.config import TWStockConfig
+from data_module.ml_storage_capacity import (
+    acquire_heavy_chain_reservation,
+    heavy_chain_lock_path,
+    release_heavy_chain_reservation,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -109,9 +115,33 @@ def main(argv: list[str] | None = None) -> int:
         report_output=args.report_output,
         allow_production_db_confirm=bool(args.allow_production_db_confirm),
     )
+    reservation = None
     if args.confirm:
         print("WARNING: confirm mode writes only to the explicit --db-path.", file=sys.stderr)
     try:
+        if args.confirm and not dry_run:
+            canonical_config = TWStockConfig()
+            release_root = resolve_canonical_evidence_release_root(
+                canonical_config=canonical_config,
+                db_path=config.db_file,
+            )
+            if release_root is not None:
+                lock_path = heavy_chain_lock_path(release_root)
+                reservation = acquire_heavy_chain_reservation(lock_path)
+                if reservation is None:
+                    print(
+                        json.dumps(
+                            {
+                                "status": "blocked_writer_busy",
+                                "db_path": str(config.db_file),
+                                "lock_path": str(lock_path),
+                            },
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
+                        file=sys.stderr,
+                    )
+                    return 2
         paper_source = None
         if bool(args.paper_evidence_operation_root) != bool(args.paper_evidence_health_baseline):
             parser.error(
@@ -139,6 +169,8 @@ def main(argv: list[str] | None = None) -> int:
         ).run(request)
     except ValueError as exc:
         parser.error(str(exc))
+    finally:
+        release_heavy_chain_reservation(reservation)
     print(json.dumps(summary.to_dict(), ensure_ascii=True, sort_keys=True, indent=2))
     return 0
 

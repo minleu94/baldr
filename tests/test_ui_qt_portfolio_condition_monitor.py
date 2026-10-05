@@ -63,6 +63,21 @@ class FakePortfolioService:
         from decimal import Decimal
         return Decimal("950.0")
 
+    def get_current_price_observation(self, stock_code):
+        from datetime import date
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            stock_code=stock_code,
+            price=Decimal("950.0"),
+            data_date=date(2026, 10, 2),
+            source_id="sqlite.daily_prices",
+            source_snapshot_hash="a" * 64,
+            freshness_status="current",
+            expected_date=date(2026, 10, 2),
+        )
+
 
 class FakeJournalService:
     def list_journal_entries(self, stock_code=""):
@@ -104,6 +119,8 @@ def test_portfolio_view_displays_condition_monitor_result_in_positions_table():
     assert df.iloc[0]["監控原因"] == "評分下降 23.0 分"
     assert df.iloc[0]["進場分數"] == "85.0"
     assert df.iloc[0]["目前分數"] == "62.0"
+    assert df.iloc[0]["行情資料日"] == "2026-10-02"
+    assert df.iloc[0]["行情新鮮度"] == "current"
 
 
 def test_portfolio_view_accepts_broker_flow_service_dependency():
@@ -133,6 +150,7 @@ def test_portfolio_view_updates_lifecycle_review_for_selected_position():
 
     assert "證據降級" in view.lbl_lifecycle_status.text()
     assert view.lbl_lifecycle_source.text() == "recommendation_result:rec_001"
+    assert "行情資料日：2026-10-02" in view.lbl_mon_current_price.text()
     assert "entry price gap is within policy" in view.lbl_lifecycle_execution.text()
     assert "condition monitor status:warning" in view.lbl_lifecycle_signal.text()
     assert "signal:degraded" in view.lbl_lifecycle_tokens.text()

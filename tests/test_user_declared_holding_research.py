@@ -77,11 +77,20 @@ def _market(
         stock_code=stock_code,
         price=price,
         as_of_date=as_of_date,
-        source_id="market-fixture",
+        source_id=f"daily_price_file:{as_of_date.strftime('%Y%m%d')}.csv",
         source_snapshot_hash=source_snapshot_hash or "sha256:" + "1" * 64,
         available_at=available_at,
         quality=quality,
     )
+
+
+class _MatchingMarketCadence:
+    def assess(self, decision_date: date, actual_date: date):
+        return SimpleNamespace(
+            status="current" if decision_date == actual_date else "stale",
+            expected_date=decision_date,
+            metadata={"blockers": ()},
+        )
 
 
 def _condition(
@@ -262,7 +271,10 @@ def test_research_read_model_uses_pit_sources_and_decimal_mark_to_declared_cost(
     assert row.auto_action_allowed is False
     assert row.calibration_status == "excluded_user_declared"
     assert row.effectiveness_cohort == "excluded_user_declared"
-    assert any(item.startswith("market:market-fixture@2026-09-15#sha256:") for item in row.source_trace)
+    assert any(
+        item.startswith("market:daily_price_file:20260915.csv@2026-09-15#sha256:")
+        for item in row.source_trace
+    )
     assert any(item.startswith("condition:condition-fixture@2026-09-15#sha256:") for item in row.source_trace)
     assert "condition_reason:風險條件需人工複核" in row.source_trace
 
@@ -546,6 +558,8 @@ def test_real_condition_provider_maps_monitor_rules_with_traceable_actions(
         market,
         condition_monitor=PortfolioConditionMonitor(),
         condition_context_source=context,
+        quote_cadence=_MatchingMarketCadence(),
+        now_provider=lambda: NOW,
     )
     model = service.read_research(
         evaluation_date=EVALUATION_DATE,
@@ -564,6 +578,80 @@ def test_real_condition_provider_maps_monitor_rules_with_traceable_actions(
     assert any("condition_reason:Regime" in item for item in reduce_row.source_trace)
     assert any("condition_reason:已觸發停損點" in item for item in exit_row.source_trace)
     assert any(item.startswith("condition:portfolio_condition_monitor:") for item in hold_row.source_trace)
+
+
+def test_stale_price_rule_cannot_generate_reduce_or_exit_action(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    record = service.create_holding(_draft(stock_code="2317"), request_id="create-stale")
+    market = _market(
+        "2317",
+        price=Decimal("90"),
+        as_of_date=date(2026, 9, 14),
+    )
+    context = ConditionRuleContext(
+        source_id="condition-rule:stale",
+        source_snapshot_hash="sha256:" + "3" * 64,
+        as_of_date=EVALUATION_DATE,
+        available_at=NOW,
+        source_summary={"stop_loss_pct": "0.05"},
+    )
+    provider = PortfolioConditionResearchProvider(
+        lambda _stock_code, _date: market,
+        condition_monitor=PortfolioConditionMonitor(),
+        condition_context_source=lambda _record, _date: context,
+        quote_cadence=_MatchingMarketCadence(),
+        now_provider=lambda: NOW,
+    )
+
+    observation = provider.get_condition_observation(record, EVALUATION_DATE)
+
+    assert observation is not None
+    assert observation.suggested_action == RESEARCH_ACTION_WAIT
+    assert any("freshness" in reason for reason in observation.reasons)
+    assert not any("已觸發停損點" in reason for reason in observation.reasons)
+    assert not any("已觸發停利點" in reason for reason in observation.reasons)
+
+
+@pytest.mark.parametrize(
+    ("observed_stock_code", "expected_reason"),
+    [
+        ("2454", "market_observation_stock_code_mismatch"),
+        ("", "market_observation_stock_code_missing"),
+    ],
+)
+def test_wrong_or_missing_market_stock_code_cannot_generate_exit(
+    tmp_path: Path,
+    observed_stock_code: str,
+    expected_reason: str,
+) -> None:
+    service = _service(tmp_path)
+    record = service.create_holding(_draft(stock_code="2317"), request_id="create-wrong-market")
+    market = _market(
+        observed_stock_code,
+        price=Decimal("90"),
+    )
+    context = ConditionRuleContext(
+        source_id="condition-rule:wrong-market-symbol",
+        source_snapshot_hash="sha256:" + "3" * 64,
+        as_of_date=EVALUATION_DATE,
+        available_at=NOW,
+        source_summary={"stop_loss_pct": "0.05"},
+    )
+    provider = PortfolioConditionResearchProvider(
+        lambda _stock_code, _date: market,
+        condition_monitor=PortfolioConditionMonitor(),
+        condition_context_source=lambda _record, _date: context,
+        quote_cadence=_MatchingMarketCadence(),
+        now_provider=lambda: NOW,
+    )
+
+    observation = provider.get_condition_observation(record, EVALUATION_DATE)
+
+    assert observation is not None
+    assert observation.stock_code == "2317"
+    assert observation.suggested_action == RESEARCH_ACTION_WAIT
+    assert observation.reasons == (expected_reason,)
+    assert observation.availability_custody is False
 
 
 def test_historical_local_file_observation_requires_availability_custody(

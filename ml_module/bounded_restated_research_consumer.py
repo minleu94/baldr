@@ -37,6 +37,10 @@ from data_module.bounded_allocation_full_feature_restatement import (
     TECHNICAL_FEATURE_IDS,
     TECHNICAL_SOURCE_ID,
 )
+from data_module.ml_research_output_boundary import (
+    MLResearchOutputBoundaryError,
+    resolve_ml_research_output_path,
+)
 from ml_module.allocation_contracts import (
     AllocationTargets,
     AllocationWeightContract,
@@ -309,7 +313,16 @@ def fit_bounded_restated_research(
 ) -> dict[str, Any]:
     """透過研究介面呼叫既有純 allocation fit 演算法。"""
 
-    output_dir = Path(output_directory).resolve()
+    try:
+        output_dir = resolve_ml_research_output_path(
+            output_directory,
+            repository_root=_ml_research_repository_root(),
+            access="write",
+        )
+    except MLResearchOutputBoundaryError as exc:
+        raise BoundedRestatedResearchError(
+            "training output must be inside the configured active ML research root"
+        ) from exc
     if output_dir.exists():
         raise BoundedRestatedResearchError(
             f"training output already exists: {output_dir}"
@@ -435,6 +448,10 @@ def fit_bounded_restated_research(
         "formal_oos_allowed": False,
         "production_action_allowed": False,
     }
+
+
+def _ml_research_repository_root() -> Path:
+    return Path(__file__).resolve().parents[1]
 
 
 def _parse_sample(

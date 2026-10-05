@@ -1,6 +1,7 @@
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from dataclasses import replace
+from zoneinfo import ZoneInfo
 
 import sys
 
@@ -37,6 +38,7 @@ from app_module.market_data_visibility_dtos import (
     SourceVisibilityStatus,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
+import ui_qt.views.decision_desk_view as decision_desk_view_module
 from ui_qt.views.decision_desk_view import DecisionDeskView
 
 
@@ -179,6 +181,58 @@ def test_decision_desk_view_initialization_does_not_call_builder():
 
     assert builder.calls == []
     assert "尚未載入" in view.overall_status_label.text()
+
+
+def test_decision_desk_default_date_uses_taipei_across_host_midnight(monkeypatch):
+    app()
+    taipei_date = date(2026, 10, 5)
+    pacific_date = date(2026, 10, 4)
+    pacific = ZoneInfo("America/Los_Angeles")
+
+    # Both instants fall on October 4 in Los Angeles while already on October
+    # 5 in Taipei, including times on either side of UTC midnight.
+    for instant_utc in (
+        datetime(2026, 10, 4, 16, 30, tzinfo=timezone.utc),
+        datetime(2026, 10, 5, 6, 30, tzinfo=timezone.utc),
+    ):
+        assert instant_utc.astimezone(pacific).date() == pacific_date
+
+        class FrozenDateTime:
+            @classmethod
+            def now(cls, tz=None):
+                assert tz is timezone.utc
+                return instant_utc.astimezone(tz)
+
+        monkeypatch.setattr(decision_desk_view_module, "datetime", FrozenDateTime)
+        view = DecisionDeskView(
+            FakeBuilder(_snapshot()),
+            auto_refresh=False,
+            async_refresh=False,
+        )
+        assert view.as_of_date == taipei_date
+        assert view.decision_date_card.value_label.text() == taipei_date.isoformat()
+        view.close()
+
+
+def test_decision_desk_preserves_explicit_historical_date_without_reading_clock(monkeypatch):
+    app()
+
+    class ForbiddenClock:
+        @classmethod
+        def now(cls, tz=None):
+            raise AssertionError("explicit as_of_date must not consult the default clock")
+
+    monkeypatch.setattr(decision_desk_view_module, "datetime", ForbiddenClock)
+    explicit_date = date(2026, 6, 15)
+    view = DecisionDeskView(
+        FakeBuilder(_snapshot()),
+        as_of_date=explicit_date,
+        auto_refresh=False,
+        async_refresh=False,
+    )
+    assert view.as_of_date == explicit_date
+    assert view.decision_date_card.value_label.text() == explicit_date.isoformat()
+    view.close()
 
 
 def test_decision_desk_view_auto_refreshes_when_first_shown():
@@ -698,3 +752,57 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
     assert "僅供研究可見性" in view.visibility_action_hint.text()
     assert "三大法人" in view.visibility_sources_label.text()
     assert "缺漏" in view.visibility_sources_label.text()
+
+
+def test_decision_desk_displays_valid_regime_source_date_separately_from_decision_date():
+    app()
+    base = _snapshot()
+    summary = replace(base.market_regime, meta={"source_data_date": "2026-06-13"})
+    snapshot = replace(base, market_regime=summary)
+    view = rendered_view(FakeBuilder(snapshot))
+
+    text = view.market_regime_value.text()
+    assert "行情日：2026-06-13" in text
+    assert "判斷日：2026-06-15" in text
+    view.close()
+
+    for source_data_date in ("2026-6-13", "2026-06-16", None):
+        summary = replace(
+            base.market_regime,
+            meta={"source_data_date": source_data_date},
+        )
+        view = rendered_view(FakeBuilder(replace(base, market_regime=summary)))
+        text = view.market_regime_value.text()
+        assert "行情日：未知" in text
+        assert "判斷日：2026-06-15" in text
+        view.close()
+
+
+def test_decision_desk_shows_unknown_regime_metrics_and_preserves_real_zero():
+    app()
+    base = _snapshot()
+    missing_score = replace(
+        base.market_regime,
+        regime_score=None,
+        regime_confidence=9109,
+    )
+    view = rendered_view(
+        FakeBuilder(replace(base, market_regime=missing_score))
+    )
+    text = view.market_regime_value.text()
+    assert "得分：未知" in text
+    assert "訊號強度：9109" in text
+    assert "行情日：未知" in text
+    assert "判斷日：2026-06-15" in text
+    view.close()
+
+    real_zero = replace(
+        base.market_regime,
+        regime_score=0,
+        regime_confidence=0,
+    )
+    view = rendered_view(FakeBuilder(replace(base, market_regime=real_zero)))
+    text = view.market_regime_value.text()
+    assert "得分：0" in text
+    assert "訊號強度：0" in text
+    view.close()

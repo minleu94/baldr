@@ -26,6 +26,7 @@ if /I not "%LOCAL_TIME_ZONE%"=="Pacific Standard Time" (
 echo Mode: %MODE%
 echo Task: %TASK_NAME%
 echo Schedule: DAILY %TASK_TIME% Pacific local time
+echo Execution limit for new task: PT5H; existing task settings are preserved by this script
 echo Taipei mapping: 20:50 PDT / 21:50 PST; after the 05:10 snapshot and 05:45 legacy learning hooks
 echo Action: %TASK_ACTION%
 echo Lane root: DATA_ROOT parent ^+ FA_Data_Shadow_BankTaiwan, override BANKTAIWAN_RECOMMENDATION_LEARNING_OUTPUT_ROOT
@@ -73,9 +74,9 @@ if errorlevel 1 exit /b %ERRORLEVEL%
 
 :apply_new_settings
 if not "%TASK_CREATED%"=="1" goto query_task
-call "%BALDR_POWERSHELL_EXE%" -NoProfile -Command "$settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries; Set-ScheduledTask -TaskName '%TASK_NAME%' -Settings $settings | Out-Null"
+call "%BALDR_POWERSHELL_EXE%" -NoProfile -Command "$settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 5) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries; Set-ScheduledTask -TaskName '%TASK_NAME%' -Settings $settings | Out-Null"
 if errorlevel 1 (
-  echo Registration incomplete: could not apply IgnoreNew / two-hour execution limit to the new task.
+  echo Registration incomplete: could not apply IgnoreNew / five-hour execution limit to the new task.
   exit /b 2
 )
 

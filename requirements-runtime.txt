@@ -26,6 +26,7 @@ statsmodels>=0.12.2
 ta>=0.5.25
 TA-Lib>=0.4.19
 tqdm>=4.60.0
+urllib3>=2,<3
 webdriver-manager>=3.8.0
 yfinance>=0.1.63
 pywin32>=306; sys_platform == "win32"

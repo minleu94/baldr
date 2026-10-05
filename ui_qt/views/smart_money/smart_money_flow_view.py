@@ -17,6 +17,7 @@ from PySide6.QtGui import QColor
 from ui_qt.widgets.info_button import InfoButton
 from app_module.broker_flow_service import BrokerFlowService
 from app_module.broker_flow_dashboard_dtos import BrokerFlowDashboardQuery
+from app_module.paper_portfolio_time import taiwan_market_today
 from app_module.watchlist_service import WatchlistService
 from ui_qt.views.smart_money.summary_strip import SummaryStrip
 from ui_qt.views.smart_money.terminal_table_model import (
@@ -53,7 +54,9 @@ class SmartMoneyFlowView(QWidget):
         self._request_ids = {"dashboard": 0, "detail": 0, "branch": 0}
         self._workers = {}
         self._retired_workers = []
-        self._dashboard_as_of_date = date.today()
+        # Details must share the dashboard's verified Taiwan-market cutoff.
+        # Until the first snapshot arrives, there is no safe as-of date to use.
+        self._dashboard_as_of_date: date | None = None
         self._requested_stock_code: str | None = None
 
         # 色彩設定 (更為精緻的深藍黑背景)
@@ -632,10 +635,30 @@ class SmartMoneyFlowView(QWidget):
         self._on_branch_changed()
 
     def _refresh_data(self):
+        try:
+            requested_as_of_date = taiwan_market_today()
+        except Exception as exc:
+            # Do not start a request with the workstation's local date. Keep an
+            # already-rendered snapshot intact, but make the failed refresh clear.
+            previous = self._workers.get("dashboard")
+            if previous is not None:
+                previous.cancel(cooperative=True, wait=False)
+                self._retired_workers.append(previous)
+            self._request_ids["dashboard"] += 1
+            self._workers.pop("dashboard", None)
+            self.refresh_btn.setEnabled(True)
+            self.period_combo.setEnabled(True)
+            self.scope_combo.setEnabled(True)
+            detail = str(exc).strip().splitlines()
+            self.load_status_label.setText(
+                f"主力資料日期無法取得：{detail[0] if detail else type(exc).__name__}"
+            )
+            return
+
         query = BrokerFlowDashboardQuery(
             period=self._get_current_period_val(),
             scope=str(self.scope_combo.currentData()),
-            requested_as_of_date=date.today(),
+            requested_as_of_date=requested_as_of_date,
             limit_per_side=50,
         )
         self.refresh_btn.setEnabled(False)
@@ -722,6 +745,8 @@ class SmartMoneyFlowView(QWidget):
             self.select_stock(self._requested_stock_code)
 
     def _on_scanner_selection_changed(self):
+        if self._dashboard_as_of_date is None:
+            return
         selection = self.scanner_table.selectionModel().selectedRows()
         if not selection:
             return
@@ -851,7 +876,7 @@ class SmartMoneyFlowView(QWidget):
 
     def _on_branch_changed(self):
         branch_key = self.branch_combo.currentData()
-        if not branch_key:
+        if not branch_key or self._dashboard_as_of_date is None:
             return
 
         period = self._get_current_period_val()
@@ -943,6 +968,8 @@ class SmartMoneyFlowView(QWidget):
             return
         self._requested_stock_code = stock_code
         self.load_data_if_needed()
+        if self._dashboard_as_of_date is None:
+            return
         if not hasattr(self, 'scanner_model') or self.scanner_model is None:
             return
 

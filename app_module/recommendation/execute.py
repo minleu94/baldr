@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from copy import copy, deepcopy
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
@@ -82,6 +82,12 @@ from ml_module.recommendation_cost_scenario import (
 _LEGACY_STATE_FIELDS = LEGACY_COMPATIBILITY_FIELDS
 
 _SCHEDULED_DECISION_TIMEZONE = ZoneInfo("America/Los_Angeles")
+
+
+def _utc_now() -> datetime:
+    """Return the single aware clock sample captured for one invocation."""
+
+    return datetime.now(timezone.utc)
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,6 +246,10 @@ def execute_recommendation(
         capture_sink.update(capture)
 
     resolved_id = _requested_result_id(runtime_config, result_id)
+    invocation_frozen_at = _utc_now()
+    capture["invocation_frozen_at"] = invocation_frozen_at.isoformat(
+        timespec="microseconds"
+    )
     capture["caller_created_at"] = created_at
     _notify_progress(progress, "recommendation_started", 10, capture)
     if cancel is not None and cancel():
@@ -272,6 +282,7 @@ def execute_recommendation(
         begin_input_session(
             getattr(service, "config", None),
             market_data_provider=market_data_provider,
+            invocation_frozen_at=invocation_frozen_at,
         )
         if callable(begin_input_session)
         else None
@@ -304,6 +315,7 @@ def execute_recommendation(
             historical_research=historical_research,
             select_latest_available_cutoff=select_latest_available_cutoff,
             input_session=input_session,
+            invocation_frozen_at=invocation_frozen_at,
         )
         if type(captured_body_result) is not RecommendationBodyResult:
             raise TypeError(
@@ -359,6 +371,10 @@ def execute_recommendation(
     if caught is not None and postprocess_callback is not None:
         # 新 direct execution seam 表示 caller 要求返回完整 capture；不得將
         # callback 尚未有機會建立的 partial FAILED execution 公布給 scheduled consumer。
+        _sync_partial_capture_sink(
+            capture_sink,
+            capture,
+        )
         raise caught.with_traceback(traceback)
 
     # A partial legacy context is a compatibility sidecar only.  If the body
@@ -453,6 +469,14 @@ def execute_recommendation(
             scheduled=scheduled_input or scheduled_output,
         )
 
+    # Event construction validates current-fundamental lineage and may fail
+    # after a successful body. Publish the exact invocation snapshot first so
+    # callers can inspect the source diagnostics without publishing an execution.
+    _sync_partial_capture_sink(
+        capture_sink,
+        capture,
+    )
+
     if caught is not None:
         execution = _build_execution(
             result_id=result_id_from_context,
@@ -464,6 +488,7 @@ def execute_recommendation(
             status=ExecutionStatus.FAILED,
             failure_reason=f"{type(caught).__name__}: {caught}",
             request=request,
+            max_stocks=max_stocks,
         )
     elif cancelled_after_body:
         execution = _build_execution(
@@ -477,6 +502,7 @@ def execute_recommendation(
             failure_reason="cancelled_after_recommendation_body",
             request=request,
             body_result=body_result,
+            max_stocks=max_stocks,
         )
     else:
         execution = _build_execution(
@@ -492,6 +518,7 @@ def execute_recommendation(
             invocation_context=invocation_context,
             postprocess_facts=postprocess_facts,
             body_result=body_result,
+            max_stocks=max_stocks,
         )
 
     if capture_sink is not None:
@@ -500,6 +527,18 @@ def execute_recommendation(
         capture_sink["execution"] = execution
     _notify_progress(progress, "recommendation_execution_finished", 100, capture)
     return execution
+
+
+def _sync_partial_capture_sink(
+    capture_sink: MutableMapping[str, Any] | None,
+    capture: Mapping[str, Any],
+) -> None:
+    """Expose the exact invocation capture before later event validation."""
+
+    if capture_sink is None:
+        return
+    capture_sink.clear()
+    capture_sink.update(capture)
 
 
 def _contains_scheduled_marker(
@@ -902,6 +941,7 @@ def _build_execution(
     body_result: RecommendationBodyResult | None = None,
     compatibility_snapshot: LegacyCompatibilitySnapshot | None = None,
     post_calibration_handoff: RecommendationPostCalibrationHandoffV1,
+    max_stocks: int,
 ) -> RecommendationExecution:
     body_context = body_result.context if body_result is not None else None
     if compatibility_snapshot is not None and type(
@@ -929,7 +969,7 @@ def _build_execution(
             legacy_context={},
             body_context=body_context,
             request_config_snapshot=None,
-            max_stocks=200,
+            max_stocks=max_stocks,
             top_n=50,
         )
     strategy_identity = (
@@ -1091,6 +1131,7 @@ def _build_execution(
         status=status,
         body_result=body_result,
         result_id=result_id,
+        max_stocks=max_stocks,
         context_as_of_date=actual_date,
         context_decision_at=decision_at,
     )
@@ -1163,6 +1204,7 @@ def _capture_events(
     status: ExecutionStatus,
     body_result: RecommendationBodyResult | None,
     result_id: str,
+    max_stocks: int,
     context_as_of_date: date | None,
     context_decision_at: datetime | None,
 ) -> tuple[ExecutionEvent, ...]:
@@ -1174,27 +1216,69 @@ def _capture_events(
     )
     legacy_context = legacy_state.get("last_run_context", {})
     if legacy_context:
+        diagnostics_raw = legacy_context.get(
+            "current_market_status_preflight_diagnostics", ()
+        )
+        if not isinstance(diagnostics_raw, (tuple, list)) or any(
+            type(item) is not str for item in diagnostics_raw
+        ):
+            raise TypeError(
+                "current_market_status_preflight_diagnostics 必須是字串序列"
+            )
+        legacy_details: dict[str, object] = {
+            "result_id": str(legacy_context.get("result_id") or ""),
+            "source_id": str(legacy_context.get("source_id") or ""),
+            "market_data_fingerprint": str(
+                legacy_context.get("market_data_fingerprint") or ""
+            ),
+            "data_fingerprint": str(
+                legacy_context.get("data_fingerprint") or ""
+            ),
+            "warnings": _string_tuple(legacy_context.get("warnings")),
+            "eligible_universe_size": _optional_int(
+                legacy_context.get("eligible_universe_size")
+            ),
+            "current_market_status_preflight_diagnostics": _string_tuple(
+                diagnostics_raw
+            ),
+        }
+        if body_result is not None:
+            legacy_details["invocation_id"] = body_result.invocation_id
+        market_data_provenance = _market_data_provenance_details(
+            legacy_context,
+            status=status,
+            body_result=body_result,
+            result_id=result_id,
+            context_as_of_date=context_as_of_date,
+            context_decision_at=context_decision_at,
+        )
+        if market_data_provenance is not None:
+            legacy_details["market_data_provenance"] = market_data_provenance
         events.append(
             ExecutionEvent(
                 event_type="legacy_invocation_context",
-                message="封存本次 legacy recommendation context；來源版本未被 typed source ref 證明。",
+                message=(
+                    "封存本次 legacy recommendation context；行情資料日只記錄同次執行"
+                    "的來源日期與指紋，不代表可得時間或 PIT 資格。"
+                ),
                 occurred_at=_datetime_value(legacy_context.get("decision_at")),
-                details={
-                    "result_id": str(legacy_context.get("result_id") or ""),
-                    "source_id": str(legacy_context.get("source_id") or ""),
-                    "market_data_fingerprint": str(
-                        legacy_context.get("market_data_fingerprint") or ""
-                    ),
-                    "data_fingerprint": str(
-                        legacy_context.get("data_fingerprint") or ""
-                    ),
-                    "warnings": _string_tuple(legacy_context.get("warnings")),
-                    "eligible_universe_size": _optional_int(
-                        legacy_context.get("eligible_universe_size")
-                    ),
-                },
+                details=legacy_details,
             )
         )
+        # A lineage event is a record of a successfully published typed body,
+        # not of a partial legacy context. Failed body construction has no
+        # invocation identity to bind; preserve its ordinary failure events
+        # without masking the original exception with an invalid empty ID.
+        if body_result is not None:
+            current_lineage_event = _current_fundamental_lineage_event(
+                legacy_context,
+                result_id=result_id,
+                invocation_id=body_result.invocation_id,
+                decision_at=context_decision_at,
+                max_stocks=max_stocks,
+            )
+            if current_lineage_event is not None:
+                events.append(current_lineage_event)
     personal_policy_snapshot = legacy_context.get("personal_use_policy")
     if personal_policy_snapshot is not None:
         if not isinstance(personal_policy_snapshot, Mapping):
@@ -2023,6 +2107,565 @@ def _capture_events(
             )
         )
     return tuple(events)
+
+
+_MARKET_DATA_PROVENANCE_SCHEMA = "recommendation-market-data-provenance.v1"
+
+
+def _market_data_provenance_details(
+    legacy_context: Mapping[str, Any],
+    *,
+    status: ExecutionStatus,
+    body_result: RecommendationBodyResult | None,
+    result_id: str,
+    context_as_of_date: date | None,
+    context_decision_at: datetime | None,
+) -> Mapping[str, object] | None:
+    """封存同次執行的行情日與來源識別，不宣稱可得時間或 PIT 資格。"""
+
+    if status is not ExecutionStatus.COMPLETED or body_result is None:
+        return None
+    facts = body_result.context
+    if facts.legacy_context.thaw() != legacy_context:
+        return None
+    invocation_id = body_result.invocation_id
+    prefix = f"{result_id}:"
+    invocation_suffix = (
+        invocation_id[len(prefix) :] if invocation_id.startswith(prefix) else ""
+    )
+    if (
+        body_result.result_id != result_id
+        or facts.result_id != result_id
+        or facts.invocation_id != invocation_id
+        or len(invocation_suffix) != 32
+        or any(character not in "0123456789abcdef" for character in invocation_suffix)
+        or legacy_context.get("result_id") != result_id
+    ):
+        return None
+
+    scope = legacy_context.get("fundamental_input_scope")
+    if type(scope) is not str or scope not in (
+        "natural_current_observation",
+        "formal_pit",
+    ):
+        return None
+    as_of = _canonical_market_date(facts.as_of_date)
+    legacy_as_of = _canonical_market_date(legacy_context.get("as_of_date"))
+    data_date = _canonical_market_date(legacy_context.get("data_date"))
+    if (
+        as_of is None
+        or context_as_of_date != as_of
+        or legacy_as_of != as_of
+        or data_date is None
+        or data_date > as_of
+    ):
+        return None
+
+    source_id = facts.source_id
+    fingerprint = facts.market_data_fingerprint
+    if (
+        type(source_id) is not str
+        or not source_id.strip()
+        or legacy_context.get("source_id") != source_id
+        or not _is_raw_sha256_digest(fingerprint)
+        or legacy_context.get("market_data_fingerprint") != fingerprint
+    ):
+        return None
+
+    typed_decision_at = _datetime_value(facts.decision_at)
+    if typed_decision_at != context_decision_at:
+        return None
+    legacy_decision_at_raw = legacy_context.get("decision_at")
+    if legacy_decision_at_raw not in (None, ""):
+        legacy_decision_at = _datetime_value(legacy_decision_at_raw)
+        if legacy_decision_at is None or legacy_decision_at != typed_decision_at:
+            return None
+
+    return {
+        "schema_version": _MARKET_DATA_PROVENANCE_SCHEMA,
+        "result_id": result_id,
+        "invocation_id": invocation_id,
+        "scope": scope,
+        "as_of_date": as_of.isoformat(),
+        "data_date": data_date.isoformat(),
+        "decision_at": (
+            typed_decision_at.isoformat() if typed_decision_at is not None else None
+        ),
+        "source_id": source_id,
+        "market_data_fingerprint": fingerprint,
+    }
+
+
+def _canonical_market_date(value: object) -> date | None:
+    if type(value) is date:
+        return value
+    if type(value) is not str:
+        return None
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.isoformat() == value else None
+
+
+_CURRENT_FUNDAMENTAL_LINEAGE_SCHEMA = (
+    "recommendation-current-fundamental-lineage.v1"
+)
+_CURRENT_FUNDAMENTAL_LINEAGE_MAX_BYTES = 16 * 1024 * 1024
+_CURRENT_FUNDAMENTAL_INPUT_FIELDS = frozenset(
+    {
+        "stock_code",
+        "metric",
+        "scope",
+        "input_role",
+        "parent_report_period",
+        "period",
+        "available_date",
+        "available_at",
+        "observed_at",
+        "source_available_at",
+        "availability_basis",
+        "expected_market_date",
+        "market_calendar_session_date",
+        "market_calendar_reason_code",
+        "as_of_date",
+        "source",
+        "source_version",
+        "raw_source_version",
+        "raw_source_sha256",
+        "raw_response_sha256",
+        "market",
+        "unit",
+        "period_basis",
+        "basis_verified",
+        "aggregate_feature_eligible",
+        "formal_pit_eligible",
+        "value",
+    }
+)
+_CURRENT_FUNDAMENTAL_REQUEST_FIELDS = frozenset(
+    {
+        "request_id",
+        "stock_code",
+        "metric",
+        "scope",
+        "decision_date",
+        "current_observation_cutoff_at",
+    }
+)
+
+
+def _current_lineage_json_value(
+    value: object, field_path: str, *, max_sequence_items: int
+) -> object:
+    """Freeze small current-input evidence without binary floats or ambient objects."""
+
+    if value is None or type(value) in (str, int, bool):
+        return value
+    if type(value) is Decimal:
+        if not value.is_finite():
+            raise ValueError(f"{field_path} must be a finite Decimal")
+        return str(value)
+    if type(value) is datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError(f"{field_path} datetime must be aware")
+        return value.isoformat()
+    if type(value) is date:
+        return value.isoformat()
+    if isinstance(value, Mapping):
+        converted: dict[str, object] = {}
+        for key, child in cast(Mapping[object, object], value).items():
+            if type(key) is not str:
+                raise TypeError(f"{field_path} mapping keys must be strings")
+            converted[cast(str, key)] = _current_lineage_json_value(
+                child,
+                f"{field_path}.{cast(str, key)}",
+                max_sequence_items=max_sequence_items,
+            )
+        return converted
+    if isinstance(value, (list, tuple)):
+        sequence = cast(Sequence[object], value)
+        if len(sequence) > max_sequence_items:
+            raise ValueError(f"{field_path} exceeds the bounded lineage row limit")
+        return tuple(
+            _current_lineage_json_value(
+                child,
+                f"{field_path}[{index}]",
+                max_sequence_items=max_sequence_items,
+            )
+            for index, child in enumerate(sequence)
+        )
+    if type(value) is float:
+        raise TypeError(f"{field_path} must not persist a binary float")
+    raise TypeError(f"{field_path} has unsupported lineage type {type(value).__name__}")
+
+
+def _current_fundamental_lineage_event(
+    legacy_context: Mapping[str, Any],
+    *,
+    result_id: str,
+    invocation_id: str,
+    decision_at: datetime | None,
+    max_stocks: int,
+) -> ExecutionEvent | None:
+    """Persist only current-observation facts captured by this body invocation.
+
+    Historical/fixed-cutoff callers keep their existing formal-PIT payloads and
+    never gain a current-fundamental event.
+    """
+
+    if legacy_context.get("fundamental_input_scope") != "natural_current_observation":
+        return None
+    if type(max_stocks) is not int or max_stocks < 1:
+        raise ValueError("current-fundamental lineage has an invalid universe bound")
+    request_limit = 2 * max_stocks
+    fact_limit = 3 * max_stocks
+    if (
+        legacy_context.get("result_id") != result_id
+        or type(invocation_id) is not str
+        or not invocation_id.strip()
+    ):
+        raise ValueError("current-fundamental lineage is not bound to this execution")
+    cutoff_at = _datetime_value(legacy_context.get("current_observation_cutoff_at"))
+    captured_decision_at = _datetime_value(legacy_context.get("decision_at"))
+    if cutoff_at is None:
+        raise ValueError("current-fundamental lineage lacks same-invocation aware clocks")
+    if (
+        decision_at is not None
+        and captured_decision_at is not None
+        and captured_decision_at != decision_at
+    ):
+        raise ValueError("current-fundamental lineage decision clock differs from its body")
+    event_decision_at = decision_at or captured_decision_at
+
+    source_id = legacy_context.get("source_id")
+    market_fingerprint = legacy_context.get("market_data_fingerprint")
+    data_fingerprint = legacy_context.get("data_fingerprint")
+    if (
+        type(source_id) is not str
+        or not source_id.strip()
+        or not _is_raw_sha256_digest(market_fingerprint)
+        or not _is_raw_sha256_digest(data_fingerprint)
+    ):
+        raise ValueError("current-fundamental lineage lacks same-run source fingerprints")
+
+    requests = _current_lineage_rows(
+        legacy_context.get("fundamental_input_requests"),
+        allowed_fields=_CURRENT_FUNDAMENTAL_REQUEST_FIELDS,
+        field_name="fundamental_input_requests",
+        max_rows=request_limit,
+    )
+    facts = _current_lineage_rows(
+        legacy_context.get("fundamental_inputs"),
+        allowed_fields=_CURRENT_FUNDAMENTAL_INPUT_FIELDS,
+        field_name="fundamental_inputs",
+        max_rows=fact_limit,
+    )
+    captured_observations = _current_lineage_rows(
+        legacy_context.get("current_fundamental_observations"),
+        allowed_fields=_CURRENT_FUNDAMENTAL_INPUT_FIELDS,
+        field_name="current_fundamental_observations",
+        max_rows=fact_limit,
+    )
+    facts = tuple(
+        _truthful_monthly_lineage_fact(row)
+        for row in _merge_current_fundamental_facts(facts, captured_observations)
+    )
+    if len(facts) > fact_limit:
+        raise ValueError("current-fundamental facts exceed the selected universe bound")
+    diagnostic_source_row_count = legacy_context.get(
+        "fundamental_input_diagnostic_source_row_count", 0
+    )
+    diagnostic_comparator_row_count = legacy_context.get(
+        "fundamental_input_diagnostic_comparator_row_count", 0
+    )
+    if (
+        type(diagnostic_source_row_count) is not int
+        or diagnostic_source_row_count < 0
+        or type(diagnostic_comparator_row_count) is not int
+        or diagnostic_comparator_row_count < 0
+    ):
+        raise ValueError("current-fundamental diagnostic source counts are invalid")
+    # Monthly provider diagnostics are emitted per scanned source revision,
+    # per comparator revision, plus bounded per-request resolution messages.
+    # This keeps every original warning while tying the row limit to the exact
+    # read-only source row counts captured by this invocation.
+    diagnostic_limit = (
+        2 * diagnostic_source_row_count
+        + 2 * diagnostic_comparator_row_count
+        + 4 * len(requests)
+    )
+    diagnostics_raw = legacy_context.get("fundamental_input_diagnostics", ())
+    if not isinstance(diagnostics_raw, (tuple, list)):
+        raise TypeError("fundamental_input_diagnostics must be a sequence")
+    if len(diagnostics_raw) > diagnostic_limit or any(
+        type(item) is not str for item in diagnostics_raw
+    ):
+        raise ValueError("fundamental_input_diagnostics is malformed or unbounded")
+    diagnostics = tuple(diagnostics_raw)
+
+    for request in requests:
+        if request.get("scope") != "natural_current_observation":
+            raise ValueError("current-fundamental event contains a non-current request")
+    for fact in facts:
+        _validate_current_fundamental_fact(fact, cutoff_at)
+
+    details = {
+        "schema_version": _CURRENT_FUNDAMENTAL_LINEAGE_SCHEMA,
+        "result_id": result_id,
+        "invocation_id": invocation_id,
+        "scope": "natural_current_observation",
+        "max_stocks": max_stocks,
+        "as_of_date": str(legacy_context.get("as_of_date") or ""),
+        "data_date": str(legacy_context.get("data_date") or ""),
+        "expected_market_date": legacy_context.get("expected_market_date"),
+        "market_calendar_status": legacy_context.get("market_calendar_status"),
+        "market_calendar_reason_code": legacy_context.get(
+            "market_calendar_reason_code"
+        ),
+        "decision_at": (
+            event_decision_at.astimezone(timezone.utc).isoformat()
+            if event_decision_at is not None
+            else None
+        ),
+        "current_observation_cutoff_at": cutoff_at.astimezone(
+            timezone.utc
+        ).isoformat(),
+        "source_id": source_id,
+        "market_data_fingerprint": market_fingerprint,
+        "data_fingerprint": data_fingerprint,
+        "requests": requests,
+        "facts": facts,
+        "diagnostics": diagnostics,
+        "diagnostic_source_row_count": diagnostic_source_row_count,
+        "diagnostic_comparator_row_count": diagnostic_comparator_row_count,
+    }
+    safe_details = _current_lineage_json_value(
+        details,
+        "current_fundamental_lineage",
+        max_sequence_items=max(request_limit, fact_limit, diagnostic_limit),
+    )
+    if not isinstance(safe_details, Mapping):
+        raise TypeError("current-fundamental lineage event details are not a mapping")
+    serialized = json.dumps(
+        safe_details,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if len(serialized) > _CURRENT_FUNDAMENTAL_LINEAGE_MAX_BYTES:
+        raise ValueError("current-fundamental lineage event exceeds its byte limit")
+    return ExecutionEvent(
+        event_type="current_fundamental_lineage",
+        message="Same-invocation natural current fundamental inputs and diagnostics.",
+        occurred_at=event_decision_at or cutoff_at,
+        details=safe_details,
+    )
+
+
+def _current_lineage_rows(
+    value: object,
+    *,
+    allowed_fields: frozenset[str],
+    field_name: str,
+    max_rows: int,
+) -> tuple[Mapping[str, object], ...]:
+    if not isinstance(value, (tuple, list)):
+        raise TypeError(f"{field_name} must be a sequence")
+    if len(value) > max_rows:
+        raise ValueError(f"{field_name} exceeds the bounded lineage row limit")
+    rows: list[Mapping[str, object]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping):
+            raise TypeError(f"{field_name}[{index}] must be a mapping")
+        if item.get("scope") != "natural_current_observation":
+            continue
+        stock_code = item.get("stock_code")
+        if type(stock_code) is not str or not stock_code.strip():
+            raise ValueError(f"{field_name}[{index}] lacks stock_code")
+        copied: dict[str, object] = {}
+        for key in sorted(allowed_fields):
+            if key in item:
+                copied[key] = _current_lineage_json_value(
+                    item[key],
+                    f"{field_name}[{index}].{key}",
+                    max_sequence_items=max_rows,
+                )
+        rows.append(copied)
+    return tuple(rows)
+
+
+def _truthful_monthly_lineage_fact(
+    fact: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Distinguish a source-version content hash from original response bytes."""
+
+    if fact.get("metric") != "monthly_revenue":
+        return fact
+    copied = dict(fact)
+    source_version = str(copied.get("source_version") or "")
+    raw_source_version = str(copied.get("raw_source_version") or "")
+    if not raw_source_version:
+        raw_source_version = _extract_monthly_raw_source_version(source_version)
+    source_hash = _extract_monthly_source_content_hash(raw_source_version)
+    declared_hash = copied.pop("raw_source_sha256", None)
+    if declared_hash is not None and declared_hash != source_hash:
+        raise ValueError("monthly source version content hash does not match its token")
+    copied["raw_source_version"] = raw_source_version
+    copied["source_version_content_sha256"] = source_hash
+    copied["source_version_content_hash_basis"] = (
+        "decoded_html_reencoded_utf8"
+    )
+    copied["verified_response_body_bytes_sha256"] = None
+    copied["response_body_bytes_hash_status"] = (
+        "not_persisted_on_current_observation_row"
+    )
+    return copied
+
+
+def _extract_monthly_raw_source_version(source_version: str) -> str:
+    marker = ":raw:"
+    if marker not in source_version:
+        raise ValueError("monthly lineage source version lacks a raw-source token")
+    raw_token = source_version.split(marker, 1)[1]
+    for terminator in (":derived:sha256:", ":same-report-yoy-baseline:"):
+        if terminator in raw_token:
+            raw_token = raw_token.split(terminator, 1)[0]
+    if not raw_token:
+        raise ValueError("monthly lineage raw-source token is empty")
+    return raw_token
+
+
+def _extract_monthly_source_content_hash(raw_source_version: str) -> str:
+    import re
+
+    match = re.search(r"(?:-sha256-|:sha256:)([0-9a-f]{64})$", raw_source_version)
+    if match is None:
+        raise ValueError("monthly lineage source-version content hash is invalid")
+    return match.group(1)
+
+
+def _merge_current_fundamental_facts(
+    projected_facts: Sequence[Mapping[str, object]],
+    captured_observations: Sequence[Mapping[str, object]],
+) -> tuple[Mapping[str, object], ...]:
+    """Include only projected inputs and the latest same-report source rows."""
+
+    latest_period_by_stock: dict[str, str] = {}
+    for observation in captured_observations:
+        if observation.get("metric") != "monthly_revenue":
+            continue
+        if observation.get("input_role") != "reported_period_value":
+            continue
+        code = str(observation.get("stock_code") or "")
+        period = str(observation.get("period") or "")
+        if code and period:
+            latest_period_by_stock[code] = max(
+                period, latest_period_by_stock.get(code, "")
+            )
+
+    selected_observations = tuple(
+        observation
+        for observation in captured_observations
+        if observation.get("metric") != "monthly_revenue"
+        or (
+            observation.get("input_role") == "reported_period_value"
+            and observation.get("period")
+            == latest_period_by_stock.get(str(observation.get("stock_code") or ""))
+        )
+        or (
+            observation.get("input_role")
+            == "same_report_prior_year_comparison_baseline"
+            and observation.get("parent_report_period")
+            == latest_period_by_stock.get(str(observation.get("stock_code") or ""))
+        )
+    )
+    merged: dict[tuple[str, str, str, str, str], dict[str, object]] = {}
+    for row in (*selected_observations, *projected_facts):
+        key = (
+            str(row.get("stock_code") or ""),
+            str(row.get("metric") or ""),
+            str(row.get("period") or ""),
+            str(row.get("source_version") or ""),
+            str(row.get("input_role") or ""),
+        )
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = dict(row)
+            continue
+        for name, value in row.items():
+            if name in existing and existing[name] != value:
+                raise ValueError(
+                    "current-fundamental projected fact conflicts with captured source row: "
+                    f"{key[0]}:{key[1]}:{key[2]}:{name}"
+                )
+            existing[name] = value
+    return tuple(
+        merged[key]
+        for key in sorted(merged)
+    )
+
+
+def _validate_current_fundamental_fact(
+    fact: Mapping[str, object], cutoff_at: datetime
+) -> None:
+    metric = fact.get("metric")
+    if metric not in {"pe", "monthly_revenue"}:
+        raise ValueError("current-fundamental event contains an unsupported metric")
+    if fact.get("formal_pit_eligible") is not False:
+        raise ValueError("natural current fundamental facts cannot be formal PIT")
+    for field_name in ("available_at",):
+        field_clock = _datetime_value(fact.get(field_name))
+        if field_clock is None or field_clock > cutoff_at:
+            raise ValueError(f"current-fundamental {field_name} is missing or after freeze")
+    for field_name in ("observed_at", "source_available_at"):
+        raw_clock = fact.get(field_name)
+        if raw_clock is None:
+            continue
+        field_clock = _datetime_value(raw_clock)
+        if field_clock is None or field_clock > cutoff_at:
+            raise ValueError(f"current-fundamental {field_name} is invalid or after freeze")
+    for field_name in ("source", "source_version", "market"):
+        if type(fact.get(field_name)) is not str or not str(fact[field_name]).strip():
+            raise ValueError(f"current-fundamental {field_name} is missing")
+    if metric == "pe":
+        raw_hash = fact.get("raw_response_sha256")
+        if not _is_raw_sha256_digest(raw_hash):
+            raise ValueError("current PE raw-response hash is invalid")
+        if type(fact.get("value")) is not str or type(fact.get("as_of_date")) is not str:
+            raise ValueError("current PE value/date must be captured as strings")
+        if type(fact.get("expected_market_date")) is not str:
+            raise ValueError("current PE expected market date is missing")
+        if fact.get("as_of_date") != fact.get("expected_market_date"):
+            raise ValueError("current PE capture date differs from the report quote date")
+    else:
+        source_hash = fact.get("source_version_content_sha256")
+        if not _is_raw_sha256_digest(source_hash):
+            raise ValueError("current monthly source-version content hash is invalid")
+        if fact.get("source_version_content_hash_basis") != "decoded_html_reencoded_utf8":
+            raise ValueError("current monthly source-version hash semantics are unclear")
+        if fact.get("verified_response_body_bytes_sha256") is not None:
+            raise ValueError("current monthly response-byte hash was not persisted")
+        if fact.get("response_body_bytes_hash_status") != "not_persisted_on_current_observation_row":
+            raise ValueError("current monthly response-byte hash status is unclear")
+        raw_source_version = fact.get("raw_source_version")
+        if type(raw_source_version) is not str or _extract_monthly_source_content_hash(raw_source_version) != source_hash:
+            raise ValueError("current monthly raw-source token and content hash differ")
+        for field_name in ("value", "period", "unit", "period_basis"):
+            if type(fact.get(field_name)) is not str:
+                raise ValueError(f"current monthly {field_name} must be a string")
+        if fact.get("unit") != "TWD" or fact.get("period_basis") != "monthly_flow":
+            raise ValueError("current monthly fact unit/basis is not verified")
+        if fact.get("basis_verified") is not True or fact.get("aggregate_feature_eligible") is not False:
+            raise ValueError("current monthly fact basis/aggregate flags are unsafe")
+
+
+def _is_raw_sha256_digest(value: object) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
 
 
 def _company_registry_contract_hash_matches(

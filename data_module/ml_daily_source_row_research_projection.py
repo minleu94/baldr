@@ -18,6 +18,10 @@ from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from data_module.market_data_integrity import official_twse_price_table
+from data_module.ml_research_output_boundary import (
+    get_ml_research_root,
+    resolve_ml_research_output_path,
+)
 from data_module.ml_prospective_daily_price_capture import (
     MAX_RECEIPT_BYTES,
     MAX_SOURCE_RESPONSE_BYTES,
@@ -43,7 +47,7 @@ from data_module.tpex_daily_price_source import (
 
 PROJECTION_SCHEMA_VERSION = "ml-daily-source-row-research-projection.v1"
 PROJECTION_COMPLETION_SCHEMA_VERSION = "ml-daily-source-row-research-completion.v1"
-PROJECTION_OUTPUT_ROOT = Path("output/qa/ml_daily_source_row_research_projections")
+PROJECTION_OUTPUT_ROOT = Path("daily_source_row_projections")
 MAX_PROJECTION_BYTES = 1 << 30
 MAX_PROJECTION_MANIFEST_BYTES = 4 * 1024 * 1024
 MAX_PROJECTION_ROW_BYTES = 128 * 1024
@@ -584,6 +588,7 @@ def project_daily_source_rows(
     repo_input = Path(os.path.abspath(str(repository_root.expanduser())))
     _reject_link_components(repo_input, Path(repo_input.anchor), "repository root")
     repo = repo_input.resolve(strict=True)
+    research_root = get_ml_research_root(repository_root=repo)
     input_manifest_path = Path(os.path.abspath(str(candidate_manifest_path.expanduser())))
     _reject_link_components(input_manifest_path, repo, "input candidate manifest")
     try:
@@ -809,7 +814,7 @@ def project_daily_source_rows(
         resolved_output_root = (
             Path(os.path.abspath(str(output_root.expanduser())))
             if output_root is not None
-            else repo / PROJECTION_OUTPUT_ROOT
+            else research_root / PROJECTION_OUTPUT_ROOT
         )
         _validate_output_root(repo, resolved_output_root, input_root)
         capacity_parent = _existing_parent(resolved_output_root)
@@ -863,12 +868,12 @@ def project_daily_source_rows(
         }
 
     if output_root is None:
-        resolved_output_root = repo / PROJECTION_OUTPUT_ROOT
+        resolved_output_root = research_root / PROJECTION_OUTPUT_ROOT
     else:
         resolved_output_root = Path(os.path.abspath(str(output_root.expanduser())))
     _validate_output_root(repo, resolved_output_root, input_root)
     candidate_root = resolved_output_root / source_date / projection_id
-    _reject_link_components(candidate_root, repo, "projection candidate root")
+    _reject_link_components(candidate_root, research_root, "projection candidate root")
     if candidate_root.exists() or candidate_root.is_symlink():
         raise MLSourceRowProjectionError("projection candidate root already exists")
     estimated = (
@@ -881,7 +886,8 @@ def project_daily_source_rows(
     if estimated > MAX_PROJECTION_BYTES:
         raise MLSourceRowProjectionError("projection estimate exceeds the 1 GiB candidate cap")
     _check_free_space(candidate_root.parent, estimated)
-    _create_candidate_directory(candidate_root, root=repo)
+    _ensure_directory(research_root, root=Path(research_root.anchor))
+    _create_candidate_directory(candidate_root, root=research_root)
     copied: dict[str, bytes] = {
         "inputs/candidate_manifest.json": manifest_bytes,
         "inputs/capture_receipt.json": capture_receipt_bytes,
@@ -894,9 +900,13 @@ def project_daily_source_rows(
     total_written = 0
     for relative, payload in copied.items():
         target = candidate_root / Path(relative)
-        total_written = _write_create_only(target, payload, root=repo, current_total=total_written)
+        total_written = _write_create_only(
+            target, payload, root=research_root, current_total=total_written
+        )
     rows_path = candidate_root / "observations.jsonl"
-    total_written = _write_create_only(rows_path, rows_bytes, root=repo, current_total=total_written)
+    total_written = _write_create_only(
+        rows_path, rows_bytes, root=research_root, current_total=total_written
+    )
     _verify_readback(rows_path, rows_bytes, root=candidate_root, label="projected observations", limit=MAX_PROJECTION_BYTES)
     for relative, payload in copied.items():
         _verify_readback(
@@ -971,7 +981,7 @@ def project_daily_source_rows(
     total_written = _write_create_only(
         candidate_root / "manifest.json",
         manifest_bytes_out,
-        root=repo,
+        root=research_root,
         current_total=total_written,
     )
     _verify_readback(
@@ -1004,7 +1014,7 @@ def project_daily_source_rows(
     total_written = _write_create_only(
         candidate_root / "completion_receipt.json",
         completion_bytes,
-        root=repo,
+        root=research_root,
         current_total=total_written,
     )
     _verify_readback(
@@ -1042,15 +1052,24 @@ def project_daily_source_rows(
 
 def _validate_output_root(repository_root: Path, output_root: Path, input_root: Path) -> None:
     repo = repository_root.resolve(strict=True)
-    allowed_root = (repo / PROJECTION_OUTPUT_ROOT).resolve(strict=False)
-    output = Path(os.path.abspath(str(output_root.expanduser())))
-    _reject_link_components(output, repo, "projection output root")
+    research_root = get_ml_research_root(repository_root=repo)
+    allowed_root = resolve_ml_research_output_path(
+        research_root / PROJECTION_OUTPUT_ROOT,
+        repository_root=repo,
+        access="write",
+    )
+    output = resolve_ml_research_output_path(
+        output_root,
+        repository_root=repo,
+        access="write",
+    )
     try:
         output.relative_to(allowed_root)
     except ValueError as error:
         raise MLSourceRowProjectionError(
-            "projection output must be under the dedicated repository QA output root"
+            "projection output must be under the active ML research projection root"
         ) from error
+    _reject_link_components(output, Path(output.anchor), "projection output root")
     if output == input_root or input_root in output.parents or output in input_root.parents:
         raise MLSourceRowProjectionError("projection output must be isolated from input candidate")
 

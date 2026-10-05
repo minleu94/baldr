@@ -17,7 +17,7 @@ import platform
 import stat
 import sys
 from types import MappingProxyType
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, overload
 from uuid import uuid4
 import zlib
 from zoneinfo import ZoneInfo
@@ -45,9 +45,23 @@ class CurrentRestatedResearchError(ValueError):
     """current-restated 研究輸入或 artifact 違反明確時鐘／整數契約。"""
 
 
+# Keep the minimum-history qualification separate from the event calendar's
+# cardinality. Earlier v1 receipts described exactly 905 sessions; new v2
+# receipts bind the complete verified Direct calendar, which may be longer.
+_CURRENT_RESTATED_FOLD_CALENDAR_V1 = "current-restated-verified-fold-qualification.v1"
+_CURRENT_RESTATED_FOLD_CALENDAR_V2 = "current-restated-verified-fold-qualification.v2"
+_CURRENT_RESTATED_MINIMUM_CALENDAR_SESSIONS = 905
+
+
+# The annual feed includes stock, indicator and industry rows that are streamed
+# for custody but are not retained by this bridge. Keep its workload bounded
+# separately from the smaller semantic TAIEX calendar row cap.
 _MAX_CURRENT_RESTATED_RAW_SHARD_BYTES = 32 * 1024 * 1024
-_MAX_CURRENT_RESTATED_RAW_SHARD_CONTENT_BYTES = 96 * 1024 * 1024
-_MAX_CURRENT_RESTATED_RAW_ROWS = 100_000
+_MAX_CURRENT_RESTATED_RAW_ROWS = 1_000_000
+_MAX_CURRENT_RESTATED_BENCHMARK_ROWS = 100_000
+_MAX_CURRENT_RESTATED_RAW_ROW_BYTES = 1 * 1024 * 1024
+_MAX_CURRENT_RESTATED_RAW_DATASET_CONTENT_BYTES = 2 * 1024 * 1024 * 1024
+_MAX_MODEL_FIT_AUDIT_BYTES = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +88,36 @@ class CurrentRestatedResearchInvocation:
     b_current_observation_freeze: str
     inference_at: str | None
     output_root: Path
+
+    def __post_init__(self) -> None:
+        """Canonicalize pinned digests for direct and CLI construction alike.
+
+        The CLI parser already strips an optional ``sha256:`` prefix. Scheduled
+        callers also construct this value directly from receipts, which retain
+        that prefix. Store one canonical bare-hex representation so the same
+        verified bytes compare identically on either call path.
+        """
+
+        digest_fields = (
+            "source_context_sha256",
+            "outcome_receipt_sha256",
+            "raw_publication_manifest_sha256",
+            "raw_dataset_manifest_sha256",
+            "outcome_feature_registry_sha256",
+            "b_consumption_receipt_sha256",
+            "b_candidate_manifest_sha256",
+            "b_adapted_manifest_sha256",
+            "b_feature_registry_sha256",
+            "model_manifest_sha256",
+            "model_bundle_sha256",
+        )
+        for field_name in digest_fields:
+            value = getattr(self, field_name)
+            object.__setattr__(
+                self,
+                field_name,
+                _plain_sha256(value, f"invocation.{field_name}"),
+            )
 
     def stable_binding_payload(self) -> dict[str, Any]:
         """回傳 parent／child 可比較的來源身分；排除每次執行的 inference clock。"""
@@ -231,6 +275,7 @@ def parse_current_restated_research_invocation(
             path = resolve_ml_research_output_path(
                 value,
                 repository_root=repository_root,
+                access="read",
             )
         except (OSError, TypeError, ValueError) as exc:
             raise CurrentRestatedResearchError(f"{role} path is outside approved research output") from exc
@@ -285,6 +330,7 @@ def parse_current_restated_research_invocation(
         output_root = resolve_ml_research_output_path(
             output_value,
             repository_root=repository_root,
+            access="write",
         )
     except (OSError, TypeError, ValueError) as exc:
         raise CurrentRestatedResearchError("research output root is outside approved output/ml_research") from exc
@@ -407,6 +453,7 @@ class PreparedCurrentRestatedCore19Dataset:
     excluded_unusable_row_count: int
     derived_at: str
     outcome_cost_contract: Mapping[str, Any]
+    raw_source_scan: Mapping[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
@@ -436,6 +483,7 @@ def prepare_verified_current_restated_core19_dataset(
     from data_module.portfolio_ml_current_restated_outcome_store import (
         VerifiedCurrentRestatedOutcomeArtifact,
     )
+
     from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
     from ml_module.historical_feature_builder import (
         CURRENT_RESTATED_CORE19_FEATURE_IDS,
@@ -632,12 +680,13 @@ def prepare_verified_current_restated_core19_dataset(
     ):
         raise CurrentRestatedResearchError("Direct full calendar bytes differ from its SHA pin")
 
-    market_state_by_date, market_source_hash_by_date = (
+    market_state_by_date, market_source_hash_by_date, raw_source_scan = (
         _load_verified_current_restated_market_history(
             artifact=artifact,
             calendar_dates=calendar_dates,
             registry_by_source=registry_by_source,
             market_close_ids=market_close_ids,
+            include_scan=True,
         )
     )
     for event_date, direct_state in direct_market_state_by_date.items():
@@ -1053,6 +1102,7 @@ def prepare_verified_current_restated_core19_dataset(
         excluded_unusable_row_count=excluded_unusable,
         derived_at=datetime.now(timezone.utc).isoformat(),
         outcome_cost_contract=MappingProxyType(_outcome_cost_contract_payload(artifact.outcome_cost_contract)),
+        raw_source_scan=_freeze_json(raw_source_scan),
     )
 
 
@@ -1249,6 +1299,9 @@ def verify_b_current_vector_against_core19(
             }
         )
         bridge_rows[symbol] = current_row
+    _verify_current_restated_raw_source_scan(
+        _plain_json(prepared.raw_source_scan, "Prepared raw source scan")
+    )
     payload = {
         "schema_version": "current-restated-b7-to-core19-bridge.v1",
         "status": "verified_exact_b7_source_match_core19_derived",
@@ -1277,6 +1330,7 @@ def verify_b_current_vector_against_core19(
         "direct_feature_registry_sha256": _plain_sha256(
             direct_artifact.feature_registry_sha256, "Direct feature registry SHA"
         ),
+        "raw_source_scan": _plain_json(prepared.raw_source_scan, "Prepared raw source scan"),
         "event_date_calendar_sha256": _plain_sha256(
             direct_artifact.event_date_calendar_sha256, "Direct calendar SHA"
         ),
@@ -1315,6 +1369,7 @@ def verify_current_restated_legacy_terminal_receipt(
         path = resolve_ml_research_output_path(
             receipt_path,
             repository_root=repository_root,
+            access="read",
         )
     except (OSError, TypeError, ValueError) as exc:
         raise CurrentRestatedResearchError("Legacy terminal receipt is outside research output") from exc
@@ -1609,6 +1664,7 @@ def run_current_restated_research_sidecar(
     output_root = resolve_ml_research_output_path(
         invocation.output_root,
         repository_root=repository_root,
+        access="write",
     )
     output_root.mkdir(parents=True, exist_ok=True)
     run_dir = output_root / "source_row_research" / lane / (
@@ -1700,22 +1756,17 @@ def _read_manifest_fit_audit_for_model(
     manifest_path: Path,
 ) -> Mapping[str, Any]:
     descriptor = _mapping(manifest.get("fit_audit"), "model.fit_audit")
-    model_path = resolve_ml_research_output_path(manifest_path)
+    model_path = resolve_ml_research_output_path(manifest_path, access="read")
     filename = descriptor.get("filename")
-    if type(filename) is not str or Path(filename).name != filename or filename in {"", ".", ".."}:
+    if type(filename) is not str or Path(filename).name != filename or filename != "fit_audit.json":
         raise CurrentRestatedResearchError("model fit-audit filename is invalid")
     audit_path = model_path.parent / filename
-    if audit_path.is_symlink() or not audit_path.is_file() or audit_path.resolve(strict=True) != audit_path:
-        raise CurrentRestatedResearchError("model fit audit is not a regular file")
-    before = audit_path.stat()
-    if before.st_size > 8 * 1024 * 1024:
-        raise CurrentRestatedResearchError("model fit audit exceeds its bounded read limit")
-    raw = audit_path.read_bytes()
-    after = audit_path.stat()
-    if len(raw) != before.st_size or before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns:
-        raise CurrentRestatedResearchError("model fit audit changed while being read")
-    if _sha256_bytes(raw) != _plain_sha256(descriptor.get("sha256"), "model.fit_audit.sha256"):
-        raise CurrentRestatedResearchError("reloaded model fit audit bytes changed")
+    raw = _read_bounded_fit_audit_bytes(
+        audit_path,
+        expected_bytes=descriptor.get("bytes"),
+        expected_sha256=descriptor.get("sha256"),
+        label="reloaded model fit audit",
+    )
     try:
         value = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -1723,6 +1774,56 @@ def _read_manifest_fit_audit_for_model(
     if not isinstance(value, dict) or _canonical_json_bytes(value) != raw:
         raise CurrentRestatedResearchError("reloaded model fit audit is not canonical JSON")
     return _mapping(value, "model.fit_audit")
+
+
+def _read_bounded_fit_audit_bytes(
+    path: Path,
+    *,
+    expected_bytes: Any,
+    expected_sha256: Any,
+    label: str,
+) -> bytes:
+    """Read one model fit-audit file under the shared bounded custody contract."""
+    if path.is_symlink() or not path.is_file() or path.resolve(strict=True) != path:
+        raise CurrentRestatedResearchError(f"{label} is not a regular file")
+    before = path.stat()
+    if not stat.S_ISREG(before.st_mode):
+        raise CurrentRestatedResearchError(f"{label} is not a regular file")
+    if before.st_size > _MAX_MODEL_FIT_AUDIT_BYTES:
+        raise CurrentRestatedResearchError(f"{label} exceeds its bounded read limit")
+    if type(expected_bytes) is not int or expected_bytes < 0 or before.st_size != expected_bytes:
+        raise CurrentRestatedResearchError(f"{label} declared byte count differs from the file")
+
+    with path.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_size != before.st_size
+            or opened.st_mtime_ns != before.st_mtime_ns
+            or getattr(opened, "st_ino", None) != getattr(before, "st_ino", None)
+            or getattr(opened, "st_dev", None) != getattr(before, "st_dev", None)
+        ):
+            raise CurrentRestatedResearchError(f"{label} changed before being read")
+        raw = stream.read(_MAX_MODEL_FIT_AUDIT_BYTES + 1)
+        opened_after = os.fstat(stream.fileno())
+    after = path.stat()
+    if (
+        len(raw) > _MAX_MODEL_FIT_AUDIT_BYTES
+        or len(raw) != expected_bytes
+        or before.st_size != after.st_size
+        or before.st_mtime_ns != after.st_mtime_ns
+        or getattr(before, "st_ino", None) != getattr(after, "st_ino", None)
+        or getattr(before, "st_dev", None) != getattr(after, "st_dev", None)
+        or opened_after.st_size != before.st_size
+        or opened_after.st_mtime_ns != before.st_mtime_ns
+        or getattr(opened_after, "st_ino", None) != getattr(before, "st_ino", None)
+        or path.is_symlink()
+        or path.resolve(strict=True) != path
+    ):
+        raise CurrentRestatedResearchError(f"{label} changed while being read")
+    if _sha256_bytes(raw) != _plain_sha256(expected_sha256, "model.fit_audit.sha256"):
+        raise CurrentRestatedResearchError(f"{label} actual-byte SHA-256 mismatch")
+    return raw
 
 
 def _sidecar_sample_cohort_payload(
@@ -2018,16 +2119,53 @@ def _core19_source_feature_ids(feature_id: str) -> tuple[str, ...]:
         raise CurrentRestatedResearchError(f"CORE19 registry contains an unknown feature: {feature_id}") from exc
 
 
+@overload
 def _load_verified_current_restated_market_history(
     *,
     artifact: Any,
     calendar_dates: Sequence[date],
     registry_by_source: Mapping[str, Any],
     market_close_ids: Sequence[str],
+    include_scan: Literal[False] = False,
 ) -> tuple[
     dict[date, dict[str, tuple[int | None, bool, bool, bool]]],
     dict[date, str],
-]:
+]: ...
+
+
+@overload
+def _load_verified_current_restated_market_history(
+    *,
+    artifact: Any,
+    calendar_dates: Sequence[date],
+    registry_by_source: Mapping[str, Any],
+    market_close_ids: Sequence[str],
+    include_scan: Literal[True],
+) -> tuple[
+    dict[date, dict[str, tuple[int | None, bool, bool, bool]]],
+    dict[date, str],
+    dict[str, Any],
+]: ...
+
+
+def _load_verified_current_restated_market_history(
+    *,
+    artifact: Any,
+    calendar_dates: Sequence[date],
+    registry_by_source: Mapping[str, Any],
+    market_close_ids: Sequence[str],
+    include_scan: bool = False,
+) -> (
+    tuple[
+        dict[date, dict[str, tuple[int | None, bool, bool, bool]]],
+        dict[date, str],
+    ]
+    | tuple[
+        dict[date, dict[str, tuple[int | None, bool, bool, bool]]],
+        dict[date, str],
+        dict[str, Any],
+    ]
+):
     """由 A 已驗證並釘選的 raw 年分片重建完整 benchmark 日期路徑。"""
 
     from pathlib import PurePosixPath
@@ -2128,18 +2266,30 @@ def _load_verified_current_restated_market_history(
     if len(pin_by_role) != len(pins) or len(pin_by_role) != len(shard_entries):
         raise CurrentRestatedResearchError("raw shard pin inventory is duplicated or incomplete")
 
-    states: dict[date, dict[str, tuple[int | None, bool, bool, bool]]] = {}
-    source_hashes: dict[date, str] = {}
-    total_rows = 0
-    for shard in shard_entries:
-        if not isinstance(shard, dict):
+    dataset_row_count = dataset.get("row_count")
+    if type(dataset_row_count) is not int or dataset_row_count < 0:
+        raise CurrentRestatedResearchError("raw dataset declared row_count is invalid")
+
+    validated_shards: list[tuple[Mapping[str, Any], int, Any, Path, int]] = []
+    seen_years: set[int] = set()
+    declared_total_rows = 0
+    for index, shard_value in enumerate(shard_entries):
+        if not isinstance(shard_value, dict):
             raise CurrentRestatedResearchError("raw shard manifest entry is malformed")
-        year = shard.get("year")
+        year = shard_value.get("year")
+        declared_rows = shard_value.get("row_count")
         if isinstance(year, bool) or not isinstance(year, int):
             raise CurrentRestatedResearchError("raw shard year must be an integer")
+        if year in seen_years:
+            raise CurrentRestatedResearchError("raw annual shard inventory repeats a year")
+        seen_years.add(year)
+        if type(declared_rows) is not int or declared_rows < 0:
+            raise CurrentRestatedResearchError(
+                f"raw shard year {year} declared row_count is invalid"
+            )
         role_id = f"raw_shard_year_{year}"
         pin = pin_by_role.get(role_id)
-        relative_shard = shard.get("path")
+        relative_shard = shard_value.get("path")
         if type(relative_shard) is not str or not relative_shard or "\\" in relative_shard:
             raise CurrentRestatedResearchError("raw shard path is not canonical POSIX text")
         shard_parts = PurePosixPath(relative_shard)
@@ -2147,19 +2297,47 @@ def _load_verified_current_restated_market_history(
             raise CurrentRestatedResearchError("raw shard path contains an unsafe component")
         declared_shard_path = publication_root.joinpath(*shard_parts.parts).resolve(strict=True)
         pinned_shard_path = _verified_research_path(Path(pin.path)) if pin is not None else None
+        compressed_bytes = shard_value.get("compressed_bytes")
         if (
             pin is None
+            or type(compressed_bytes) is not int
+            or compressed_bytes < 0
             or not declared_shard_path.is_relative_to(publication_root)
             or pinned_shard_path != declared_shard_path
-            or pin.bytes != shard.get("compressed_bytes")
-            or pin.row_count != shard.get("row_count")
+            or pin.bytes != compressed_bytes
+            or pin.row_count != declared_rows
             or _plain_sha256(pin.sha256, f"{role_id}.sha256")
-            != _plain_sha256(shard.get("compressed_sha256"), f"{role_id}.compressed_sha256")
+            != _plain_sha256(shard_value.get("compressed_sha256"), f"{role_id}.compressed_sha256")
             or pin.content_sha256 is None
             or _plain_sha256(pin.content_sha256, f"{role_id}.content_sha256")
-            != _plain_sha256(shard.get("content_sha256"), f"{role_id}.content_sha256")
+            != _plain_sha256(shard_value.get("content_sha256"), f"{role_id}.content_sha256")
         ):
             raise CurrentRestatedResearchError("raw annual shard bytes differ from the verified loader pins")
+        declared_total_rows += declared_rows
+        if declared_total_rows > _MAX_CURRENT_RESTATED_RAW_ROWS:
+            raise CurrentRestatedResearchError(
+                "raw annual dataset declared row count exceeds its bound: "
+                f"observed={declared_total_rows}; budget={_MAX_CURRENT_RESTATED_RAW_ROWS}"
+            )
+        validated_shards.append(
+            (shard_value, year, pin, declared_shard_path, declared_rows)
+        )
+    if dataset_row_count is not None and dataset_row_count != declared_total_rows:
+        raise CurrentRestatedResearchError(
+            "raw dataset row_count differs from its annual shard declarations: "
+            f"dataset={dataset_row_count}; shards={declared_total_rows}"
+        )
+
+    states: dict[date, dict[str, tuple[int | None, bool, bool, bool]]] = {}
+    source_hashes: dict[date, str] = {}
+    total_rows = 0
+    total_content_bytes = 0
+    maximum_row_bytes = 0
+    maximum_compressed_bytes = 0
+    benchmark_rows = 0
+    shard_scan_rows: list[dict[str, Any]] = []
+    for shard, year, pin, declared_shard_path, declared_rows in validated_shards:
+        role_id = f"raw_shard_year_{year}"
         before = declared_shard_path.stat()
         if (
             not stat.S_ISREG(before.st_mode)
@@ -2169,15 +2347,47 @@ def _load_verified_current_restated_market_history(
             or before.st_mtime_ns != pin.mtime_ns
         ):
             raise CurrentRestatedResearchError("raw annual shard file identity differs from its pin")
-        compressed = declared_shard_path.read_bytes()
-        if _sha256_bytes(compressed) != _plain_sha256(pin.sha256, f"{role_id}.sha256"):
+        with declared_shard_path.open("rb") as shard_file:
+            compressed = shard_file.read(_MAX_CURRENT_RESTATED_RAW_SHARD_BYTES + 1)
+        if len(compressed) > _MAX_CURRENT_RESTATED_RAW_SHARD_BYTES:
+            raise CurrentRestatedResearchError(
+                "raw annual shard compressed bytes exceed their bound: "
+                f"observed_at_least={len(compressed)}; "
+                f"budget={_MAX_CURRENT_RESTATED_RAW_SHARD_BYTES}"
+            )
+        compressed_sha256 = _sha256_bytes(compressed)
+        if compressed_sha256 != _plain_sha256(pin.sha256, f"{role_id}.sha256"):
             raise CurrentRestatedResearchError("raw annual shard compressed bytes changed")
 
         content_hash = sha256()
         shard_rows = 0
+        shard_content_bytes = 0
+        shard_maximum_row_bytes = 0
+        shard_benchmark_rows = 0
         try:
             with gzip.GzipFile(fileobj=BytesIO(compressed), mode="rb") as stream:
-                for line_number, raw_line in enumerate(stream, start=1):
+                line_number = 0
+                while True:
+                    raw_line = stream.readline(_MAX_CURRENT_RESTATED_RAW_ROW_BYTES + 1)
+                    if not raw_line:
+                        break
+                    line_number += 1
+                    if len(raw_line) > _MAX_CURRENT_RESTATED_RAW_ROW_BYTES:
+                        raise CurrentRestatedResearchError(
+                            "raw annual shard JSONL row exceeds its byte bound: "
+                            f"observed_at_least={len(raw_line)}; "
+                            f"budget={_MAX_CURRENT_RESTATED_RAW_ROW_BYTES}"
+                        )
+                    shard_maximum_row_bytes = max(shard_maximum_row_bytes, len(raw_line))
+                    maximum_row_bytes = max(maximum_row_bytes, len(raw_line))
+                    shard_content_bytes += len(raw_line)
+                    total_content_bytes += len(raw_line)
+                    if total_content_bytes > _MAX_CURRENT_RESTATED_RAW_DATASET_CONTENT_BYTES:
+                        raise CurrentRestatedResearchError(
+                            "raw annual dataset decompressed bytes exceed its bound: "
+                            f"observed_at_least={total_content_bytes}; "
+                            f"budget={_MAX_CURRENT_RESTATED_RAW_DATASET_CONTENT_BYTES}"
+                        )
                     content_hash.update(raw_line)
                     if not raw_line.strip():
                         raise CurrentRestatedResearchError("raw annual shard contains an empty row")
@@ -2187,12 +2397,22 @@ def _load_verified_current_restated_market_history(
                     shard_rows += 1
                     total_rows += 1
                     if total_rows > _MAX_CURRENT_RESTATED_RAW_ROWS:
-                        raise CurrentRestatedResearchError("raw annual shard row count exceeds its bound")
+                        raise CurrentRestatedResearchError(
+                            "raw annual dataset actual row count exceeds its bound: "
+                            f"observed={total_rows}; budget={_MAX_CURRENT_RESTATED_RAW_ROWS}"
+                        )
                     event_date = _strict_date(cast(str, row.get("event_date")), "raw.event_date")
                     if event_date.year != year:
                         raise CurrentRestatedResearchError("raw annual shard contains a cross-year row")
                     if row.get("source_table") != "market_indices" or row.get("entity_id") != artifact.benchmark_entity_id:
                         continue
+                    benchmark_rows += 1
+                    shard_benchmark_rows += 1
+                    if benchmark_rows > _MAX_CURRENT_RESTATED_BENCHMARK_ROWS:
+                        raise CurrentRestatedResearchError(
+                            "raw TAIEX benchmark row count exceeds its semantic bound: "
+                            f"observed={benchmark_rows}; budget={_MAX_CURRENT_RESTATED_BENCHMARK_ROWS}"
+                        )
                     if event_date in states:
                         raise CurrentRestatedResearchError("raw shards repeat a TAIEX source date")
                     if (
@@ -2249,7 +2469,30 @@ def _load_verified_current_restated_market_history(
             or shard_rows != pin.row_count
             or "sha256:" + content_hash.hexdigest() != pin.content_sha256
         ):
-            raise CurrentRestatedResearchError("raw annual shard changed during verified read")
+            raise CurrentRestatedResearchError(
+                "raw annual shard changed during verified read or its row count differs: "
+                f"year={year}; actual_rows={shard_rows}; declared_rows={declared_rows}"
+            )
+        maximum_compressed_bytes = max(maximum_compressed_bytes, len(compressed))
+        shard_scan_rows.append(
+            {
+                "year": year,
+                "declared_rows": declared_rows,
+                "actual_rows": shard_rows,
+                "compressed_bytes": len(compressed),
+                "compressed_sha256": "sha256:" + compressed_sha256,
+                "decompressed_bytes": shard_content_bytes,
+                "content_sha256": "sha256:" + content_hash.hexdigest(),
+                "maximum_jsonl_row_bytes": shard_maximum_row_bytes,
+                "benchmark_rows": shard_benchmark_rows,
+            }
+        )
+
+    if total_rows != declared_total_rows:
+        raise CurrentRestatedResearchError(
+            "raw annual dataset actual row count differs from its declarations: "
+            f"actual={total_rows}; declared={declared_total_rows}"
+        )
 
     expected_dates = tuple(calendar_dates)
     if (
@@ -2259,6 +2502,24 @@ def _load_verified_current_restated_market_history(
         raise CurrentRestatedResearchError(
             "verified TAIEX raw rows do not cover the complete pinned benchmark calendar"
         )
+    raw_source_scan = {
+        "schema_version": "current-restated-raw-source-scan.v1",
+        "declared_row_count": declared_total_rows,
+        "actual_row_count": total_rows,
+        "dataset_manifest_declared_row_count": dataset_row_count,
+        "benchmark_row_count": benchmark_rows,
+        "decompressed_byte_count": total_content_bytes,
+        "maximum_jsonl_row_bytes": _MAX_CURRENT_RESTATED_RAW_ROW_BYTES,
+        "maximum_observed_jsonl_row_bytes": maximum_row_bytes,
+        "maximum_compressed_shard_bytes": _MAX_CURRENT_RESTATED_RAW_SHARD_BYTES,
+        "maximum_observed_compressed_shard_bytes": maximum_compressed_bytes,
+        "maximum_decompressed_dataset_bytes": _MAX_CURRENT_RESTATED_RAW_DATASET_CONTENT_BYTES,
+        "maximum_raw_rows": _MAX_CURRENT_RESTATED_RAW_ROWS,
+        "maximum_benchmark_rows": _MAX_CURRENT_RESTATED_BENCHMARK_ROWS,
+        "shards": shard_scan_rows,
+    }
+    if include_scan:
+        return states, source_hashes, raw_source_scan
     return states, source_hashes
 
 
@@ -2692,6 +2953,8 @@ def _stable_current_vector_bridge_payload(value: Mapping[str, Any]) -> dict[str,
         _plain_sha256(payload.get(name), f"current vector bridge {name}")
     for name in ("source_observed_at", "direct_artifact_available_at", "b_current_observation_freeze", "core19_derived_at"):
         _aware_iso(str(payload.get(name)), f"current vector bridge {name}")
+    if "raw_source_scan" in payload:
+        _verify_current_restated_raw_source_scan(payload.get("raw_source_scan"))
     symbols = payload.get("symbols")
     rows = payload.get("rows")
     if (
@@ -2758,6 +3021,121 @@ def _stable_current_vector_bridge_payload(value: Mapping[str, Any]) -> dict[str,
         stable_rows.append(stable_row)
     stable["rows"] = stable_rows
     return stable
+
+
+def _verify_current_restated_raw_source_scan(value: Any) -> None:
+    scan = _mapping(value, "current vector bridge raw_source_scan")
+    if scan.get("schema_version") != "current-restated-raw-source-scan.v1":
+        raise CurrentRestatedResearchError("raw-source scan diagnostic schema is invalid")
+    expected_budgets = {
+        "maximum_jsonl_row_bytes": _MAX_CURRENT_RESTATED_RAW_ROW_BYTES,
+        "maximum_compressed_shard_bytes": _MAX_CURRENT_RESTATED_RAW_SHARD_BYTES,
+        "maximum_decompressed_dataset_bytes": _MAX_CURRENT_RESTATED_RAW_DATASET_CONTENT_BYTES,
+        "maximum_raw_rows": _MAX_CURRENT_RESTATED_RAW_ROWS,
+        "maximum_benchmark_rows": _MAX_CURRENT_RESTATED_BENCHMARK_ROWS,
+    }
+    for name, expected in expected_budgets.items():
+        if type(scan.get(name)) is not int or scan.get(name) != expected:
+            raise CurrentRestatedResearchError(
+                f"raw-source scan resource budget is invalid: {name}"
+            )
+    integer_fields = (
+        "declared_row_count",
+        "actual_row_count",
+        "benchmark_row_count",
+        "decompressed_byte_count",
+        "maximum_observed_jsonl_row_bytes",
+        "maximum_observed_compressed_shard_bytes",
+    )
+    for name in integer_fields:
+        item = scan.get(name)
+        if type(item) is not int or item < 0:
+            raise CurrentRestatedResearchError(
+                f"raw-source scan resource count is invalid: {name}"
+            )
+    manifest_rows = scan.get("dataset_manifest_declared_row_count")
+    if type(manifest_rows) is not int or manifest_rows < 0:
+        raise CurrentRestatedResearchError(
+            "raw-source scan dataset manifest row count is invalid"
+        )
+    actual_rows = cast(int, scan["actual_row_count"])
+    declared_rows = cast(int, scan["declared_row_count"])
+    benchmark_rows = cast(int, scan["benchmark_row_count"])
+    decompressed_bytes = cast(int, scan["decompressed_byte_count"])
+    maximum_row_bytes = cast(int, scan["maximum_observed_jsonl_row_bytes"])
+    maximum_compressed_bytes = cast(int, scan["maximum_observed_compressed_shard_bytes"])
+    if (
+        actual_rows != declared_rows
+        or manifest_rows != declared_rows
+        or actual_rows > _MAX_CURRENT_RESTATED_RAW_ROWS
+        or benchmark_rows > _MAX_CURRENT_RESTATED_BENCHMARK_ROWS
+        or decompressed_bytes > _MAX_CURRENT_RESTATED_RAW_DATASET_CONTENT_BYTES
+        or maximum_row_bytes > _MAX_CURRENT_RESTATED_RAW_ROW_BYTES
+        or maximum_compressed_bytes > _MAX_CURRENT_RESTATED_RAW_SHARD_BYTES
+    ):
+        raise CurrentRestatedResearchError(
+            "raw-source scan resource metrics exceed their declared bounds or disagree"
+        )
+    shards = scan.get("shards")
+    if not isinstance(shards, list) or not shards:
+        raise CurrentRestatedResearchError("raw-source scan shard metrics are absent")
+    seen_years: set[int] = set()
+    sum_rows = 0
+    sum_benchmark_rows = 0
+    sum_decompressed_bytes = 0
+    max_shard_row_bytes = 0
+    max_shard_compressed_bytes = 0
+    for index, shard_value in enumerate(shards):
+        shard = _mapping(shard_value, f"raw_source_scan.shards[{index}]")
+        year = shard.get("year")
+        if type(year) is not int or year in seen_years:
+            raise CurrentRestatedResearchError("raw-source scan has invalid or duplicate shard year")
+        seen_years.add(year)
+        for name in (
+            "declared_rows",
+            "actual_rows",
+            "compressed_bytes",
+            "decompressed_bytes",
+            "maximum_jsonl_row_bytes",
+            "benchmark_rows",
+        ):
+            item = shard.get(name)
+            if type(item) is not int or item < 0:
+                raise CurrentRestatedResearchError(
+                    f"raw-source scan shard metric is invalid: {name}"
+                )
+        shard_declared_rows = cast(int, shard["declared_rows"])
+        shard_actual_rows = cast(int, shard["actual_rows"])
+        shard_compressed_bytes = cast(int, shard["compressed_bytes"])
+        shard_decompressed_bytes = cast(int, shard["decompressed_bytes"])
+        shard_max_row_bytes = cast(int, shard["maximum_jsonl_row_bytes"])
+        shard_benchmark_rows = cast(int, shard["benchmark_rows"])
+        if (
+            shard_declared_rows != shard_actual_rows
+            or shard_actual_rows > _MAX_CURRENT_RESTATED_RAW_ROWS
+            or shard_compressed_bytes > _MAX_CURRENT_RESTATED_RAW_SHARD_BYTES
+            or shard_decompressed_bytes > _MAX_CURRENT_RESTATED_RAW_DATASET_CONTENT_BYTES
+            or shard_max_row_bytes > _MAX_CURRENT_RESTATED_RAW_ROW_BYTES
+            or shard_benchmark_rows > _MAX_CURRENT_RESTATED_BENCHMARK_ROWS
+        ):
+            raise CurrentRestatedResearchError(
+                "raw-source scan shard metrics exceed their declared bounds or disagree"
+            )
+        _plain_sha256(shard.get("compressed_sha256"), "raw-source scan compressed shard SHA")
+        _plain_sha256(shard.get("content_sha256"), "raw-source scan content SHA")
+        sum_rows += shard_actual_rows
+        sum_benchmark_rows += shard_benchmark_rows
+        sum_decompressed_bytes += shard_decompressed_bytes
+        max_shard_row_bytes = max(max_shard_row_bytes, shard_max_row_bytes)
+        max_shard_compressed_bytes = max(max_shard_compressed_bytes, shard_compressed_bytes)
+    if (
+        sum_rows != actual_rows
+        or sum_benchmark_rows != benchmark_rows
+        or sum_decompressed_bytes != decompressed_bytes
+        or max_shard_row_bytes != maximum_row_bytes
+        or max_shard_compressed_bytes != maximum_compressed_bytes
+    ):
+        raise CurrentRestatedResearchError("raw-source scan aggregate metrics differ from its shard rows")
 
 
 def _verify_current_vector_bridge_revalidation(
@@ -3070,6 +3448,22 @@ class CurrentRestatedOutcomeFitRun:
     vector_bridge: VerifiedCurrentRestatedBVectorBridge
 
 
+def _require_unoccupied_research_model_output(output_directory: Path) -> Path:
+    """Resolve a research model output slot and require create-only absence."""
+
+    candidate = Path(output_directory)
+    if candidate.is_symlink():
+        raise CurrentRestatedResearchError(
+            f"research model output must not be a symlink: {candidate}"
+        )
+    output_dir = resolve_ml_research_output_path(candidate, access="write")
+    if output_dir.exists():
+        raise CurrentRestatedResearchError(
+            f"research model output already exists: {output_dir}"
+        )
+    return output_dir
+
+
 def fit_and_save_verified_current_restated_core19_model(
     *,
     direct_artifact: object,
@@ -3093,6 +3487,11 @@ def fit_and_save_verified_current_restated_core19_model(
         VerifiedCurrentRestatedOutcomeArtifact,
     )
 
+    # Reject an occupied create-only model slot before preparing or fitting the
+    # research model. The final writer repeats this check immediately before
+    # creating the leaf to close the fit-time race.
+    output_directory = _require_unoccupied_research_model_output(output_directory)
+
     if type(direct_artifact) is not VerifiedCurrentRestatedOutcomeArtifact:
         raise CurrentRestatedResearchError("fit requires A's public verified outcome artifact")
     if type(source_context_file) is not VerifiedCurrentRestatedContextFile:
@@ -3101,6 +3500,10 @@ def fit_and_save_verified_current_restated_core19_model(
         raise CurrentRestatedResearchError("shared source context is not A's verified type")
     _verify_direct_context_binding(direct_artifact, source_context_file)
     prepared = prepare_verified_current_restated_core19_dataset(direct_artifact)
+    _require_complete_current_restated_event_calendar(
+        prepared.event_date_calendar,
+        expected_direct_calendar_sha256=direct_artifact.event_date_calendar_sha256,
+    )
     vector_bridge = verify_b_current_vector_against_core19(
         direct_artifact=direct_artifact,
         prepared=prepared,
@@ -3153,6 +3556,7 @@ def fit_and_save_verified_current_restated_core19_model(
         folds=prepared.folds,
         event_date_calendar=prepared.event_date_calendar,
         direct_manifest_sha256=direct_artifact.artifact_receipt_bytes_sha256,
+        direct_event_date_calendar_sha256=direct_artifact.event_date_calendar_sha256,
     )
     outcome_cost_contract = dict(prepared.outcome_cost_contract)
     target_contract = _outcome_target_contract(outcome_cost_contract)
@@ -3233,23 +3637,46 @@ def fit_and_save_verified_current_restated_core19_model(
     )
 
 
+def _require_complete_current_restated_event_calendar(
+    event_date_calendar: Sequence[str],
+    *,
+    expected_direct_calendar_sha256: str,
+) -> tuple[tuple[str, ...], str]:
+    """Validate the full pinned event calendar before fitting or qualification."""
+
+    calendar = tuple(event_date_calendar)
+    if len(calendar) < _CURRENT_RESTATED_MINIMUM_CALENDAR_SESSIONS:
+        raise CurrentRestatedResearchError(
+            "current-restated fit requires at least 905 verified event-date sessions"
+        )
+    parsed_calendar = tuple(_strict_date(value, "event_date_calendar") for value in calendar)
+    if parsed_calendar != tuple(sorted(set(parsed_calendar))):
+        raise CurrentRestatedResearchError("verified event-date calendar must be ordered and unique")
+    calendar_sha256 = _sha256_bytes(_canonical_json_bytes(list(calendar)))
+    if _plain_sha256(
+        expected_direct_calendar_sha256,
+        "Direct event-date calendar SHA",
+    ) != calendar_sha256:
+        raise CurrentRestatedResearchError(
+            "complete event-date calendar differs from the verified Direct manifest"
+        )
+    return calendar, calendar_sha256
+
+
 def _bind_verified_current_restated_fold_qualification(
     audit_value: Mapping[str, Any],
     *,
     folds: Sequence[PurgedWalkForwardFold],
     event_date_calendar: Sequence[str],
     direct_manifest_sha256: str,
+    direct_event_date_calendar_sha256: str,
 ) -> dict[str, Any]:
     """將 public Direct loader 的完整 calendar 與實際 fold 邊界寫入 audit。"""
 
-    calendar = tuple(event_date_calendar)
-    if len(calendar) != 905:
-        raise CurrentRestatedResearchError(
-            "current-restated fit requires the verified complete 905-session calendar"
-        )
-    parsed_calendar = tuple(_strict_date(value, "event_date_calendar") for value in calendar)
-    if parsed_calendar != tuple(sorted(set(parsed_calendar))):
-        raise CurrentRestatedResearchError("verified event-date calendar must be sorted and unique")
+    calendar, calendar_sha256 = _require_complete_current_restated_event_calendar(
+        event_date_calendar,
+        expected_direct_calendar_sha256=direct_event_date_calendar_sha256,
+    )
     calendar_index = {value: index for index, value in enumerate(calendar)}
     direct_sha = _plain_sha256(direct_manifest_sha256, "Direct manifest SHA")
     audit = _plain_json(audit_value, "fit audit")
@@ -3353,10 +3780,13 @@ def _bind_verified_current_restated_fold_qualification(
             "hgb_max_iter_applicability": "not_used_by_ridge_logistic_profile",
         },
         "current_restated_verified_fold_qualification": {
-            "schema_version": "current-restated-verified-fold-qualification.v1",
+            "schema_version": _CURRENT_RESTATED_FOLD_CALENDAR_V2,
             "direct_manifest_sha256": direct_sha,
+            "direct_event_date_calendar_sha256": calendar_sha256,
+            "calendar_scope": "complete_verified_direct_event_date_calendar",
+            "minimum_event_date_calendar_count": _CURRENT_RESTATED_MINIMUM_CALENDAR_SESSIONS,
             "event_date_calendar_count": len(calendar),
-            "event_date_calendar_sha256": _sha256_bytes(_canonical_json_bytes(list(calendar))),
+            "event_date_calendar_sha256": calendar_sha256,
             "minimum_mature_train_dates": 125,
             "minimum_test_dates": 63,
             "minimum_purge_trading_days": 60,
@@ -3393,66 +3823,54 @@ def _verify_direct_context_binding(
     ):
         raise CurrentRestatedResearchError("Direct artifact source paths differ from the revalidated context")
 
-    manifest_path = Path(str(direct_artifact.artifact_receipt_path))
-    _verified_research_file(
+    manifest_path = _verified_research_path(Path(str(direct_artifact.artifact_receipt_path)))
+    if direct_artifact.status != "current_restated_outcome_numeric_ready":
+        raise CurrentRestatedResearchError("Direct artifact is not a verified numeric-ready artifact")
+    manifest_before = manifest_path.stat()
+    manifest_pin = _verified_research_file(
         manifest_path,
         str(direct_artifact.artifact_receipt_bytes_sha256),
         role="verified Direct outcome manifest",
     )
-    manifest_stat = manifest_path.stat()
-    if manifest_stat.st_size > 16 * 1024 * 1024:
-        raise CurrentRestatedResearchError("verified Direct manifest exceeds its bounded read limit")
-    manifest_bytes = manifest_path.read_bytes()
-    after_stat = manifest_path.stat()
+    manifest_after = manifest_path.stat()
     if (
-        len(manifest_bytes) != manifest_stat.st_size
-        or manifest_stat.st_size != after_stat.st_size
-        or manifest_stat.st_mtime_ns != after_stat.st_mtime_ns
+        manifest_pin["bytes"] != manifest_before.st_size
+        or manifest_after.st_size != manifest_before.st_size
+        or manifest_after.st_mtime_ns != manifest_before.st_mtime_ns
     ):
-        raise CurrentRestatedResearchError("verified Direct manifest changed while being read")
-    if _sha256_bytes(manifest_bytes) != _plain_sha256(
-        direct_artifact.artifact_receipt_bytes_sha256,
-        "Direct artifact receipt bytes SHA",
-    ):
-        raise CurrentRestatedResearchError("verified Direct manifest private-read bytes differ from its external pin")
-    try:
-        direct_manifest = json.loads(manifest_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise CurrentRestatedResearchError("verified Direct manifest is invalid UTF-8 JSON") from exc
-    if (
-        not isinstance(direct_manifest, dict)
-        or _canonical_json_bytes(direct_manifest) + b"\n" != manifest_bytes
-        or direct_manifest.get("schema_version") != "portfolio-ml-current-restated-outcome-store.v1"
-        or direct_manifest.get("status") != "current_restated_outcome_numeric_ready"
-    ):
-        raise CurrentRestatedResearchError("verified Direct manifest does not satisfy its canonical schema")
-    direct_context = _mapping(
-        direct_manifest.get("source_context_revalidation"),
-        "Direct.source_context_revalidation",
+        raise CurrentRestatedResearchError("verified Direct manifest changed while being hashed")
+    proof_bytes = getattr(direct_artifact, "source_context_revalidation_json", None)
+    if not isinstance(proof_bytes, bytes) or not proof_bytes or len(proof_bytes) > 4 * 1024 * 1024:
+        raise CurrentRestatedResearchError("verified Direct source-context proof is missing or exceeds 4 MiB")
+    proof_sha = _plain_sha256(
+        getattr(direct_artifact, "source_context_revalidation_sha256", None),
+        "Direct source-context proof SHA",
     )
-    source_pins = _mapping(direct_manifest.get("source_pins"), "Direct.source_pins")
+    if _sha256_bytes(proof_bytes) != proof_sha:
+        raise CurrentRestatedResearchError("verified Direct source-context proof bytes differ from its SHA pin")
+    try:
+        direct_context = json.loads(proof_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CurrentRestatedResearchError("verified Direct source-context proof is invalid UTF-8 JSON") from exc
+    if (
+        not isinstance(direct_context, dict)
+        or _canonical_json_bytes(direct_context) != proof_bytes
+    ):
+        raise CurrentRestatedResearchError("verified Direct source-context proof is not canonical JSON")
     direct_bundle_sha = _plain_sha256(
         direct_artifact.revision_dependency_bundle_sha256,
         "Direct.revision_dependency_bundle_sha256",
     )
     if (
         _plain_sha256(
-            direct_manifest.get("revision_dependency_bundle_sha256"),
-            "Direct manifest revision dependency bundle",
-        )
-        != direct_bundle_sha
-        or _plain_sha256(
             direct_context.get("revision_dependency_bundle_sha256"),
             "Direct lineage revision dependency bundle",
         )
         != direct_bundle_sha
         or _sha256_bytes(_canonical_json_bytes(direct_context))
-        != _plain_sha256(
-            source_pins.get("revalidated_context_bundle_sha256"),
-            "Direct lineage context bundle SHA",
-        )
+        != proof_sha
     ):
-        raise CurrentRestatedResearchError("Direct manifest does not bind its original context lineage")
+        raise CurrentRestatedResearchError("Direct verified proof does not bind its original context lineage")
 
     saved_payload = context_file.saved_payload
     direct_context_fields = (
@@ -3460,6 +3878,7 @@ def _verify_direct_context_binding(
         "source_database_sha256",
         "source_wal_path",
         "source_wal_sha256",
+        "source_wal_present",
         "snapshot_database_path",
         "snapshot_database_sha256",
         "snapshot_receipt_path",
@@ -3680,9 +4099,21 @@ def save_current_restated_outcome_model(
         raise CurrentRestatedResearchError(
             "fit dataset manifest differs from the exact Direct manifest bytes supplied to save"
         )
+    qualification_for_pin = _mapping(
+        audit.get("current_restated_verified_fold_qualification"),
+        "fit_audit.current_restated_verified_fold_qualification",
+    )
+    if qualification_for_pin.get("schema_version") == _CURRENT_RESTATED_FOLD_CALENDAR_V2:
+        direct_manifest_pin["event_date_calendar_sha256"] = _plain_sha256(
+            qualification_for_pin.get("direct_event_date_calendar_sha256"),
+            "fit_audit.direct_event_date_calendar_sha256",
+        )
     _validate_verified_current_restated_fold_qualification(
         audit,
         expected_direct_manifest_sha256=direct_manifest_pin["sha256"],
+        expected_direct_event_date_calendar_sha256=cast(
+            str | None, direct_manifest_pin.get("event_date_calendar_sha256")
+        ),
     )
     direct_receipt_pin = _verified_research_file(
         direct_receipt_path,
@@ -3747,9 +4178,7 @@ def save_current_restated_outcome_model(
     registry_bytes = _canonical_json_bytes(normalized_registry)
     audit_bytes = _canonical_json_bytes(audit)
     generated_at = datetime.now(timezone.utc)
-    output_dir = resolve_ml_research_output_path(output_directory)
-    if output_dir.exists():
-        raise CurrentRestatedResearchError(f"research model output already exists: {output_dir}")
+    output_dir = _require_unoccupied_research_model_output(output_directory)
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=False, exist_ok=False)
     manifest_path = output_dir / "manifest.json"
@@ -3903,7 +4332,7 @@ def load_current_restated_outcome_model(
     then passed through the repository's same-private-buffer loader contract.
     """
 
-    path = resolve_ml_research_output_path(manifest_path)
+    path = resolve_ml_research_output_path(manifest_path, access="read")
     if path.name != "manifest.json" or path.is_symlink() or not path.is_file():
         raise CurrentRestatedResearchError("research model manifest is not a regular manifest.json")
     failed_receipt = path.parent / "failed_receipt.json"
@@ -4101,6 +4530,11 @@ def load_current_restated_outcome_model(
             direct_manifest_for_qualification.get("sha256"),
             "direct_source.manifest.sha256",
         ),
+        expected_direct_event_date_calendar_sha256=(
+            cast(str, direct_manifest_for_qualification.get("event_date_calendar_sha256"))
+            if direct_manifest_for_qualification.get("event_date_calendar_sha256") is not None
+            else None
+        ),
     )
     if model_entry.get("sha256") != trusted_model_sha or sha256(model_bytes).hexdigest() != trusted_model_sha:
         raise CurrentRestatedResearchError("model bundle does not match the out-of-band trusted SHA-256")
@@ -4261,7 +4695,7 @@ def save_verified_current_restated_context_file(
         "source_context": context_payload,
     }
     payload_bytes = _canonical_json_bytes(envelope)
-    target = resolve_ml_research_output_path(output_path)
+    target = resolve_ml_research_output_path(output_path, access="write")
     if target.is_symlink() or not target.parent.is_dir():
         raise CurrentRestatedResearchError(
             "context envelope parent must already exist below output/ml_research"
@@ -4296,7 +4730,7 @@ def load_verified_current_restated_context_file(
 ) -> VerifiedCurrentRestatedContextFile:
     """核對跨流程固定 bytes，並以 A 的 strict loader 重新驗原始來源。"""
 
-    target = resolve_ml_research_output_path(context_path)
+    target = resolve_ml_research_output_path(context_path, access="read")
     if target.is_symlink() or not target.is_file():
         raise CurrentRestatedResearchError("source context envelope must be a regular file")
     try:
@@ -4476,7 +4910,6 @@ def _verify_source_context_payload(value: Any, training_as_of: Any) -> None:
         raise CurrentRestatedResearchError("serialized source context capability flags are invalid")
     for field in (
         "source_database_sha256",
-        "source_wal_sha256",
         "snapshot_database_sha256",
         "snapshot_receipt_sha256",
         "revision_namespace_bundle_sha256",
@@ -4484,6 +4917,33 @@ def _verify_source_context_payload(value: Any, training_as_of: Any) -> None:
         "revision_dependency_bundle_sha256",
     ):
         _plain_sha256(str(payload.get(field)), f"source_context.{field}")
+    wal_present = payload.get("source_wal_present", True)
+    if type(wal_present) is not bool:
+        raise CurrentRestatedResearchError("source context WAL presence flag is invalid")
+    if wal_present:
+        _plain_sha256(
+            str(payload.get("source_wal_sha256")), "source_context.source_wal_sha256"
+        )
+    else:
+        database_value = payload.get("source_database_path")
+        wal_value = payload.get("source_wal_path")
+        expected_wal = (
+            Path(database_value).with_name(Path(database_value).name + "-wal")
+            if isinstance(database_value, str) and database_value.strip()
+            else None
+        )
+        if (
+            payload.get("schema_version") != "verified-current-restated-source-context.v2"
+            or payload.get("source_wal_sha256") is not None
+            or not isinstance(wal_value, str)
+            or not Path(wal_value).is_absolute()
+            or expected_wal is None
+            or os.path.normcase(os.path.abspath(wal_value)).casefold()
+            != os.path.normcase(os.path.abspath(str(expected_wal))).casefold()
+        ):
+            raise CurrentRestatedResearchError(
+                "absent source WAL context is not explicitly and consistently pinned"
+            )
 
 
 def _validate_model_bundle(
@@ -4793,6 +5253,7 @@ def _validate_verified_current_restated_fold_qualification(
     audit: Mapping[str, Any],
     *,
     expected_direct_manifest_sha256: str,
+    expected_direct_event_date_calendar_sha256: str | None = None,
 ) -> None:
     """拒絕只宣告 60/5 或小型 smoke fold 的模型發布與重載。"""
 
@@ -4812,18 +5273,54 @@ def _validate_verified_current_restated_fold_qualification(
     if not isinstance(qualification, Mapping):
         raise CurrentRestatedResearchError("fit audit lacks verified full-calendar fold qualification")
     calendar = audit.get("event_date_calendar")
-    if (
-        qualification.get("schema_version") != "current-restated-verified-fold-qualification.v1"
-        or not isinstance(calendar, list)
-        or len(calendar) != 905
-        or qualification.get("event_date_calendar_count") != 905
-        or qualification.get("minimum_mature_train_dates") != 125
-        or qualification.get("minimum_test_dates") != 63
-        or qualification.get("minimum_purge_trading_days") != 60
-        or qualification.get("minimum_embargo_trading_days") != 5
-        or qualification.get("minimum_qualified_fold_count") != 4
-    ):
-        raise CurrentRestatedResearchError("fit audit does not bind the required 905-session 125/63/60/5 profile")
+    if not isinstance(calendar, list) or any(type(item) is not str for item in calendar):
+        raise CurrentRestatedResearchError("fit audit complete event-date calendar is invalid")
+    qualification_schema = qualification.get("schema_version")
+    calendar_count = qualification.get("event_date_calendar_count")
+    common_policy_valid = (
+        type(calendar_count) is int
+        and qualification.get("minimum_mature_train_dates") == 125
+        and qualification.get("minimum_test_dates") == 63
+        and qualification.get("minimum_purge_trading_days") == 60
+        and qualification.get("minimum_embargo_trading_days") == 5
+        and qualification.get("minimum_qualified_fold_count") == 4
+    )
+    if qualification_schema == _CURRENT_RESTATED_FOLD_CALENDAR_V1:
+        calendar_contract_valid = len(calendar) == _CURRENT_RESTATED_MINIMUM_CALENDAR_SESSIONS and (
+            calendar_count == _CURRENT_RESTATED_MINIMUM_CALENDAR_SESSIONS
+        )
+    elif qualification_schema == _CURRENT_RESTATED_FOLD_CALENDAR_V2:
+        calendar_contract_valid = (
+            len(calendar) >= _CURRENT_RESTATED_MINIMUM_CALENDAR_SESSIONS
+            and calendar_count == len(calendar)
+            and qualification.get("minimum_event_date_calendar_count")
+            == _CURRENT_RESTATED_MINIMUM_CALENDAR_SESSIONS
+            and qualification.get("calendar_scope")
+            == "complete_verified_direct_event_date_calendar"
+            and _plain_sha256(
+                qualification.get("direct_event_date_calendar_sha256"),
+                "fold_qualification.direct_event_date_calendar_sha256",
+            )
+            == _plain_sha256(
+                qualification.get("event_date_calendar_sha256"),
+                "fold_qualification.event_date_calendar_sha256",
+            )
+            and expected_direct_event_date_calendar_sha256 is not None
+            and _plain_sha256(
+                qualification.get("direct_event_date_calendar_sha256"),
+                "fold_qualification.direct_event_date_calendar_sha256",
+            )
+            == _plain_sha256(
+                expected_direct_event_date_calendar_sha256,
+                "expected_direct_event_date_calendar_sha256",
+            )
+        )
+    else:
+        calendar_contract_valid = False
+    if not common_policy_valid or not calendar_contract_valid:
+        raise CurrentRestatedResearchError(
+            "fit audit does not bind a complete verified calendar with the required 905/125/63/60/5/minimum-4 profile"
+        )
     expected_direct = _plain_sha256(
         expected_direct_manifest_sha256, "expected_direct_manifest_sha256"
     )
@@ -4999,7 +5496,7 @@ def _verified_research_file(path: Path, expected_sha256: str, *, role: str) -> d
 
 
 def _verified_research_path(path: Path) -> Path:
-    resolved = resolve_ml_research_output_path(path)
+    resolved = resolve_ml_research_output_path(path, access="read")
     if resolved.is_symlink() or not resolved.is_file() or resolved.resolve(strict=True) != resolved:
         raise CurrentRestatedResearchError("Direct input must be a regular file below output/ml_research")
     return resolved
@@ -5010,6 +5507,13 @@ def _read_verified_child(root: Path, entry: Mapping[str, Any]) -> bytes:
     if filename not in {"models.joblib", "feature_registry.json", "fit_audit.json"}:
         raise CurrentRestatedResearchError("manifest artifact filename is not allowlisted")
     path = root / str(filename)
+    if filename == "fit_audit.json":
+        return _read_bounded_fit_audit_bytes(
+            path,
+            expected_bytes=entry.get("bytes"),
+            expected_sha256=entry.get("sha256"),
+            label="model fit audit",
+        )
     if path.is_symlink() or not path.is_file() or path.resolve(strict=True) != path:
         raise CurrentRestatedResearchError("model artifact file is missing or not regular")
     raw = path.read_bytes()

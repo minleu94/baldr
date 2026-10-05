@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from dataclasses import replace
 import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from app_module.recommendation.contracts import (
     Context,
     DecisionBatch,
+    ExecutionEvent,
     ExecutionStatus,
     IndexStatus,
     RecommendationExecution,
@@ -22,6 +26,10 @@ from app_module.recommendation.persistence import PartialExecutionPersistenceErr
 from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.recommendation.contracts import ReferenceKind, VersionReference
 from decision_module.recommendation.contracts import RecommendationItem
+from decision_module.recommendation.contracts import (
+    CandidateAssessment,
+    FilterOutcome,
+)
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.views import recommendation_view as view_module
 from ui_qt.views.recommendation.execution_coordinator import RecommendationExecutionRequest
@@ -88,6 +96,184 @@ def _execution(
         ),
         failure_reason=None if status is ExecutionStatus.COMPLETED else "cancelled by test",
     )
+
+
+def _screening_only_execution(result_id: str) -> RecommendationExecution:
+    from app_module.recommendation.negative_evidence_projection import (
+        project_canonical_negative_evidence,
+    )
+
+    rows = (
+        {
+            "stock_code": "1477",
+            "stock_name": "聚陽",
+            "status": "fail",
+            "reason_codes": ("liquidity_below_minimum",),
+            "quality": "observed",
+            "stage": "liquidity_gate",
+            "threshold_name": "average_dollar_volume_minimum",
+            "observed_value": "120000",
+            "required_value": "500000",
+            "total_score": "",
+            "score_bp": None,
+            "score_percentile_bp": None,
+            "eligible_universe_size": None,
+            "threshold_mode": "fixed",
+            "warnings": (),
+            "industry": "紡織",
+            "as_of_date": "2026-09-23",
+            "data_fingerprint": "sha256:" + "a" * 64,
+        },
+        {
+            "stock_code": "1101",
+            "stock_name": "台泥",
+            "status": "fail",
+            "reason_codes": ("liquidity_below_minimum",),
+            "quality": "observed",
+            "stage": "liquidity_gate",
+            "threshold_name": "average_dollar_volume_minimum",
+            "observed_value": "95000",
+            "required_value": "500000",
+            "total_score": "",
+            "score_bp": None,
+            "score_percentile_bp": None,
+            "eligible_universe_size": None,
+            "threshold_mode": "fixed",
+            "warnings": (),
+            "industry": "水泥",
+            "as_of_date": "2026-09-23",
+            "data_fingerprint": "sha256:" + "b" * 64,
+        },
+    )
+    assessments = tuple(
+        CandidateAssessment(
+            stock_code=str(row["stock_code"]),
+            eligible=False,
+            filter_outcomes={
+                f"legacy:{row['stage']}": FilterOutcome(
+                    filter_id=f"legacy:{row['stage']}",
+                    passed=False,
+                    reason=str(row["reason_codes"][0]),
+                    evidence=row,
+                )
+            },
+        )
+        for row in rows
+    )
+    decision = DecisionBatch(items=(), assessments=assessments, regime="Trend")
+    negative_evidence = project_canonical_negative_evidence(decision)
+    execution = _execution(result_id, empty=True)
+    return replace(
+        execution,
+        decision=decision,
+        events=(
+            ExecutionEvent(
+                event_type="legacy_negative_evidence_capture",
+                message="封存同次 typed 篩選列。",
+                details=negative_evidence.as_event_details(),
+            ),
+        ),
+    )
+
+
+def _official_delisted_screening_execution(result_id: str) -> RecommendationExecution:
+    from app_module.recommendation.negative_evidence_projection import (
+        project_canonical_negative_evidence,
+    )
+
+    row = {
+        "stock_code": "1477",
+        "stock_name": "聚陽",
+        "status": "fail",
+        "reason_codes": ("official_delisted",),
+        "quality": "observed",
+        "stage": "current_market_status_gate",
+        "threshold_name": "listing_status",
+        "observed_value": "delisted",
+        "required_value": "listed",
+        "total_score": "",
+        "score_bp": None,
+        "score_percentile_bp": None,
+        "eligible_universe_size": None,
+        "threshold_mode": "fixed",
+        "warnings": (),
+        "industry": "紡織",
+        "as_of_date": "2026-09-23",
+        "data_fingerprint": "sha256:" + "c" * 64,
+    }
+    assessment = CandidateAssessment(
+        stock_code="1477",
+        eligible=False,
+        filter_outcomes={
+            "legacy:current_market_status_gate": FilterOutcome(
+                filter_id="legacy:current_market_status_gate",
+                passed=False,
+                reason="official_delisted",
+                evidence=row,
+            )
+        },
+    )
+    decision = DecisionBatch(items=(), assessments=(assessment,), regime="Trend")
+    projection = project_canonical_negative_evidence(decision)
+    execution = _execution(result_id, empty=True)
+    return replace(
+        execution,
+        decision=decision,
+        events=(
+            ExecutionEvent(
+                event_type="legacy_negative_evidence_capture",
+                message="封存同次 typed 篩選列。",
+                details=projection.as_event_details(),
+            ),
+        ),
+    )
+
+
+def test_screening_rows_require_completed_typed_same_run_evidence():
+    execution = _screening_only_execution("rec-screening-validation")
+    assert view_module._screening_only_result_rows(execution)
+
+    for status in (ExecutionStatus.FAILED, ExecutionStatus.CANCELLED):
+        noncompleted = replace(
+            execution,
+            status=status,
+            decision=None,
+            failure_reason=f"{status.value} before completion",
+        )
+        assert view_module._screening_only_result_rows(noncompleted) == []
+
+    forged_event = ExecutionEvent(
+        event_type="legacy_negative_evidence_capture",
+        message="與 typed assessments 不一致的事件。",
+        details={"screening_matrix": ()},
+    )
+    forged_same_run = replace(execution, events=(forged_event,))
+    assert view_module._screening_only_result_rows(forged_same_run) == []
+
+    no_assessments = _execution("rec-screening-no-assessments", empty=True)
+    unrelated_event = execution.events[0]
+    forged_empty = replace(no_assessments, events=(unrelated_event,))
+    assert view_module._screening_only_result_rows(forged_empty) == []
+
+
+def test_official_delisting_rows_localize_stage_and_reason_at_display_boundary():
+    from app_module.recommendation.negative_evidence_projection import (
+        project_canonical_negative_evidence,
+    )
+
+    execution = _official_delisted_screening_execution(
+        "rec-screening-official-delisted"
+    )
+    typed_row = project_canonical_negative_evidence(execution.decision).screening_matrix[0]
+    assert typed_row["stage"] == "current_market_status_gate"
+    assert typed_row["reason_codes"] == ("official_delisted",)
+    event_row = execution.events[0].details["screening_matrix"][0]
+    assert event_row["stage"] == "current_market_status_gate"
+    assert event_row["reason_codes"] == ("official_delisted",)
+
+    display_row = view_module._screening_only_result_rows(execution)[0]
+    assert display_row["階段"] == "官方市場狀態（current_market_status_gate）"
+    assert display_row["原因代碼"] == "已核驗下市／終止（official_delisted）"
 
 
 def _readback(execution: RecommendationExecution, label: str, notes: str):
@@ -490,7 +676,209 @@ def test_completed_empty_execution_clears_previous_stock_rows(qt_app, monkeypatc
     assert view.recommendations_model.rowCount() == 0
     assert view._selected_stock_code() == ""
     assert notices and "篩選前沒有可評估的候選資料" in notices[0]
+    save_warnings = []
+    save_prompts = []
+    monkeypatch.setattr(
+        view_module.QMessageBox,
+        "warning",
+        lambda *args: save_warnings.append(str(args[-1])),
+    )
+    monkeypatch.setattr(
+        view_module.QInputDialog,
+        "getText",
+        lambda *_args, **_kwargs: save_prompts.append("prompt") or ("", True),
+    )
+    view._save_recommendation_result()
+    assert save_warnings and "含有推薦列或同次封存篩選列" in save_warnings[0]
+    assert not save_prompts
+    assert not view.save_result_btn.isVisible()
     view.close()
+
+
+@pytest.mark.parametrize(
+    "status", (ExecutionStatus.FAILED, ExecutionStatus.CANCELLED)
+)
+def test_noncompleted_execution_cannot_be_saved_as_screening_result(
+    qt_app, monkeypatch, status
+):
+    execution = _execution(f"rec-noncompleted-{status.value}", status=status, empty=True)
+    composition, _receipt, _read_model = _save_composition(
+        execution,
+        label="不應保存",
+        notes="不應呼叫 canonical writer",
+        query_results=None,
+    )
+    view = _view_with_execution(qt_app, execution, composition=composition)
+    prompts = []
+    warnings = []
+    monkeypatch.setattr(
+        view_module.QInputDialog,
+        "getText",
+        lambda *_args, **_kwargs: prompts.append("asked") or ("", True),
+    )
+    monkeypatch.setattr(
+        view_module.QMessageBox,
+        "warning",
+        lambda *args: warnings.append(str(args[-1])),
+    )
+
+    view._save_recommendation_result()
+
+    composition.save_service.save_execution.assert_not_called()
+    composition.queries.get.assert_not_called()
+    assert prompts == []
+    assert warnings and "completed execution" in warnings[0]
+    view.close()
+
+
+def test_screening_only_execution_saves_reopens_and_researches_exact_stock(
+    qt_app,
+    tmp_path,
+    monkeypatch,
+):
+    from app_module.recommendation.composition import build_recommendation_composition
+    from app_module.watchlist_analysis_service import WatchlistAnalysisService
+    from data_module.config import TWStockConfig
+
+    execution = _screening_only_execution("rec-screening-only-roundtrip")
+    config = TWStockConfig(
+        data_root=tmp_path / "data",
+        output_root=tmp_path / "output",
+    )
+    composition = build_recommendation_composition(config)
+    universe_service = MagicMock()
+    view = RecommendationView(
+        recommendation_service=MagicMock(),
+        regime_service=SimpleNamespace(
+            detect_regime=lambda: SimpleNamespace(regime="Trend"),
+            get_strategy_config=lambda _regime: {},
+        ),
+        config=config,
+        universe_service=universe_service,
+    )
+    view.recommendation_composition = composition
+    view._execution_generation = 4
+    information = []
+    save_dialog_titles = []
+    monkeypatch.setattr(
+        view_module.QMessageBox,
+        "information",
+        lambda *_args: information.append(_args),
+    )
+    monkeypatch.setattr(
+        view_module.QMessageBox,
+        "warning",
+        lambda *_args: pytest.fail(f"不應出現保存警告：{_args[-1]}"),
+    )
+    monkeypatch.setattr(
+        view_module.QMessageBox,
+        "critical",
+        lambda *_args: pytest.fail(f"canonical 保存不應失敗：{_args[-1]}"),
+    )
+
+    def enter_save_name(_parent, title, _prompt, *, text):
+        save_dialog_titles.append((title, text))
+        return "1477 未入選篩選紀錄", True
+
+    monkeypatch.setattr(view_module.QInputDialog, "getText", enter_save_name)
+    view.show()
+    view._on_recommendation_finished(execution, generation=4)
+    qt_app.processEvents()
+
+    frame = view.recommendations_model.getDataFrame()
+    assert list(frame["證券代號"]) == ["1477", "1101"]
+    assert frame["紀錄類型"].tolist() == ["篩選紀錄／未入選"] * 2
+    assert frame["原因代碼"].tolist() == ["liquidity_below_minimum"] * 2
+    assert view.current_execution is execution and not view.current_execution.items
+    assert view.result_title_label.text() == "4. 篩選紀錄／未入選（僅研究，不代表推薦）"
+    assert view.save_result_btn.text() == "保存篩選紀錄"
+    assert not view.add_to_watchlist_btn.isVisible()
+    assert not view.send_to_backtest_btn.isVisible()
+    assert not view.send_profile_to_portfolio_backtest_btn.isVisible()
+    assert not view.export_report_btn.isVisible()
+    assert view.stock_research_btn.text() == "研究未入選股票"
+    assert not view.stock_research_btn.isEnabled()
+
+    view.results_table.selectRow(1)
+    qt_app.processEvents()
+    assert view.stock_research_btn.isEnabled()
+    assert "未入選（僅供研究，不代表推薦）" in view.detail_text.toPlainText()
+    immediate_contexts = []
+    view.stockResearchRequested.connect(immediate_contexts.append)
+    QTest.mouseClick(view.stock_research_btn, Qt.LeftButton)
+    assert len(immediate_contexts) == 1
+    assert immediate_contexts[0].stock_code == "1101"
+    assert immediate_contexts[0].decision_date == "2026-09-23"
+    assert immediate_contexts[0].result_id == ""
+    assert "篩選紀錄／未入選" in immediate_contexts[0].source_label
+
+    QTest.mouseClick(view.save_result_btn, Qt.LeftButton)
+    qt_app.processEvents()
+    assert save_dialog_titles and save_dialog_titles[0][0] == "保存篩選紀錄"
+    assert view.current_read_model is not None
+    assert view.current_read_model.integrity_basis == "canonical_payload_and_index_verified"
+    assert view.current_read_model.execution == execution
+    assert view.current_read_model.execution.items == ()
+    assert view.current_result_id == execution.result_id
+    assert view._verified_saved_result_id() == execution.result_id
+    assert view.recommendations_model.getDataFrame()["證券代號"].tolist() == ["1477", "1101"]
+    assert universe_service.save_watchlist.call_count == 0
+    assert information[-1][1] == "篩選紀錄已保存"
+    assert "未建立觀察清單、回測或推薦" in information[-1][-1]
+
+    source_service = WatchlistAnalysisService(config)
+    exclusion = source_service.fetch("1101", execution.result_id, date(2026, 9, 23))
+    assert exclusion.status == "not_in_result"
+    assert exclusion.result_id == execution.result_id
+    assert exclusion.reasons == "liquidity_below_minimum"
+    listed = source_service.list_saved_sources("1101", as_of_date=date(2026, 9, 23))
+    assert [item["result_id"] for item in listed] == [execution.result_id]
+    assert listed[0]["membership_status"] == "not_in_result"
+
+    reopened = RecommendationView(
+        recommendation_service=MagicMock(),
+        regime_service=SimpleNamespace(
+            detect_regime=lambda: SimpleNamespace(regime="Trend"),
+            get_strategy_config=lambda _regime: {},
+        ),
+        config=config,
+        universe_service=MagicMock(),
+    )
+    reopened.show()
+    reopened.saved_result_id_input.setText(execution.result_id)
+    QTest.mouseClick(reopened.load_saved_result_button, Qt.LeftButton)
+    worker = reopened._saved_result_load_worker
+    assert worker is not None and worker.wait(10_000)
+    qt_app.processEvents()
+    qt_app.processEvents()
+    assert reopened.current_read_model is not None
+    assert reopened.current_read_model.result_id == execution.result_id
+    assert reopened.current_result_id == execution.result_id
+    assert reopened._verified_saved_result_id() == execution.result_id
+    assert reopened.current_execution.items == ()
+    assert reopened.recommendations_model.getDataFrame()["證券代號"].tolist() == [
+        "1477",
+        "1101",
+    ]
+    assert "篩選紀錄" in reopened.result_status_label.text()
+    assert "不代表推薦" in reopened.result_status_label.text()
+    reopened.results_table.selectRow(1)
+    qt_app.processEvents()
+    assert reopened.stock_research_btn.text() == "研究未入選股票"
+    assert reopened.stock_research_btn.isEnabled()
+    reopened_contexts = []
+    reopened.stockResearchRequested.connect(reopened_contexts.append)
+    QTest.mouseClick(reopened.stock_research_btn, Qt.LeftButton)
+    assert len(reopened_contexts) == 1
+    assert reopened_contexts[0].stock_code == "1101"
+    assert reopened_contexts[0].decision_date == "2026-09-23"
+    assert reopened_contexts[0].result_id == execution.result_id
+    assert reopened_contexts[0].source_id == execution.result_id
+    assert "已保存篩選紀錄／未入選" == reopened_contexts[0].source_label
+
+    reopened.close()
+    view.close()
+    qt_app.processEvents()
 
 
 def test_saved_empty_canonical_execution_load_keeps_identity_and_date(

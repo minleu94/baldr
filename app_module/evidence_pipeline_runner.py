@@ -32,6 +32,7 @@ from app_module.evidence_event_importers import (
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_event_service import EvidenceEventService
 from app_module.evidence_pipeline_runner_support import derive_overall_status
+from app_module.forward_outcome_context import build_official_maturity_calendar
 from app_module.evidence_pipeline_runner_dtos import (
     EvidencePipelineDiagnostic,
     EvidencePipelineRunRequest,
@@ -48,7 +49,7 @@ from app_module.evidence_pipeline_runner_dtos import (
     scheduler_readiness_after_run,
 )
 from app_module.evidence_source_coverage_service import EvidenceSourceCoverageService
-from app_module.paper_portfolio_time import taiwan_market_today
+from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE, taiwan_market_today
 from app_module.paper_decision_desk_evidence_source import (
     PaperDecisionDeskEvidenceSource,
 )
@@ -147,13 +148,15 @@ class EvidencePipelineRunner:
         self.run_id_factory = run_id_factory or (lambda: f"epr_{uuid4().hex[:12]}")
         self.paper_evidence_source = paper_evidence_source
         self._transient_decision_desk_snapshot: StoredDecisionDeskSnapshot | None = None
+        self._invocation_at: datetime | None = None
 
     def run(self, request: EvidencePipelineRunRequest) -> EvidencePipelineRunSummary:
         self._validate_request(request)
         effective_dry_run = bool(request.dry_run or not request.confirm)
         self.db_path = self._active_db_path(request, effective_dry_run)
         self._transient_decision_desk_snapshot = None
-        started_at = self.clock().isoformat()
+        self._invocation_at = self.clock()
+        started_at = self._invocation_at.isoformat()
         run_id = self.run_id_factory()
         steps: list[EvidencePipelineStepSummary] = []
         source_coverage, source_step = self._source_coverage_step(request, effective_dry_run)
@@ -770,12 +773,27 @@ class EvidencePipelineRunner:
     def _outcome_step(self, request: EvidencePipelineRunRequest, dry_run: bool) -> tuple[Any, EvidencePipelineStepSummary]:
         timer = _Timer()
         try:
+            invocation_at = self._invocation_at or self.clock()
+            calendar = build_official_maturity_calendar(
+                config=self.config,
+                observed_at=invocation_at,
+            )
+            replay_data_as_of = request.replay_context.get("replay_data_as_of_date")
+            data_as_of_date = (
+                str(replay_data_as_of)
+                if isinstance(replay_data_as_of, str) and replay_data_as_of.strip()
+                else invocation_at.astimezone(TAIWAN_MARKET_TIMEZONE).date().isoformat()
+            )
             repository = EvidenceEventRepository(
                 self.config,
                 db_path=self.db_path,
                 read_only=dry_run,
             )
-            summary = ForwardPerformanceService(self.config, repository).calculate(
+            summary = ForwardPerformanceService(
+                self.config,
+                repository,
+                maturity_calendar=calendar,
+            ).calculate(
                 windows=request.windows,
                 dry_run=dry_run,
                 decision_date=request.decision_date,
@@ -783,6 +801,8 @@ class EvidencePipelineRunner:
                 end_date=request.end_date,
                 symbol=request.symbol,
                 limit=request.limit,
+                data_as_of_date=data_as_of_date,
+                invocation_at=invocation_at,
             )
             warnings = summary.warnings_count
             status = STEP_DEGRADED if warnings else STEP_READY

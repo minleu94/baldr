@@ -1,5 +1,26 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 有限續接驗收（Batch9）
+
+最新邊界見 [最小續接清單](../06_qa/MINIMAL_CONTINUATION_HANDOFF_20261005.md)。G11 修後同版七項工程檢查已通過：120 modules、1892 passed／12 Windows symlink skipped，Workbench 85 passed、validator 25 passed／4 skipped、mypy 766＋38、222 paths compile 與量化 guard。原生同股來源選擇、精確保存重開、錯股／不存在來源拒絕、current-ML 往返及 1000x835 四用途內容已取證；1000x800 未過，完整重試的新 execution 身分／保存重開及錯日期／run/hash 原生驗收仍不足。最後一次 probe 在「取消中」提前返回並停止，沒有啟動重試，不改寫原失敗。自然 ML 容量、DNS／正式歷史 PIT／revision 資格仍有實際阻礙，不能宣稱只剩自然累積。目前只凍結 217 個提交候選；未 stage 或 commit。下列早期批次保留其當時範圍，不能代替最新驗收。
+
+## 2026-10-05 G11 第一批定向驗證
+
+現況法人／信用／集保公開 service 已以 1477、2382 真實資料完成定向讀回；候選／非歷史 PIT、未知可得時間、有效零值及明示歷史隔離維持。既有 TDCC 原件以可追溯副本供預設 reader 使用，沒有新 HTTP 或自然成功宣稱。Quick 的 tier／aggregate 保存上限已對齊實際全市場檔案，手動重播沿用既有入口並與排程身份分離。收據位於本機 `output/qa/g11_sol_batch1_20261005/`；原生六情境、全套同版驗收與 commit 尚未執行。
+
+## 2026-10-05 四用途工程補全（最後驗收進行中）
+
+本輪以 `dev`／`13f7a410c2ad850d981ed552ef09515220718ade` 為基線，六個實際使用 Luna Max 的分工與逐批證據集中於 [Astra 工程收尾](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md)。目前只剩 G11 現況法人／信用／集保讀取及自然保存接線、修後同版測試與原生驗收、容量讀回、文件／本機提交；不新增功能或重訓。
+
+- **資料、選股與研究**：現況月營收／季報、官方估值、法人修訂及官方下市狀態已接入既有 consumer。G6 真實研究週期與十股公開模型讀回已接受；G9 最後 50 檔於 10/4 23:33–23:41 UTC 完成 16／16／16／2 四批。決策 10/5、行情 10/2，台北 07:40 的 entry 全部 pending，沒有本批 capture／outcome／fit。正式歷史學習仍受來源 revision gate 限制。G11 另發現目前個股報告的信用／集保沒有消費既有候選，正在補 reader；不能把這項缺口稱為自然樣本不足。
+- **盤勢與持倉**：預設查詢日採臺北時鐘，明示歷史截止保留；判斷日與實際行情日分列。無來源手動持倉仍顯示來源不足／WATCH，可檢視股數、成本、行情與損益。入口頁首誤用最後交易日、未知盤勢得分顯示 0，以及切換後舊提示短暫重疊均已修正並納入 v15 回歸。
+- **Forward**：受控更新 172 筆、新增 0 筆，43 事件不變；dry-run 14 項及獨立讀回 24 項通過。52 ready／118 pending，1538 的 H5 9/17／H10 9/24 缺官方收盤價，保持 null 與 `external_source_missing`。原自然失敗收據不變。
+- **最後工程驗收**：G11 修前的 `astra-final-v15` 七項全部通過，114 個測試模組 1,818 passed／10 Windows symlink 權限 skip／1 warning；Workbench 85 passed，validator 25 passed／0 failed／4 真下載／合併 skip，mypy 765＋35 檔、213 paths 編譯及量化 guard 通過。原生 v19 實際內容已檢視，QA 持有被延遲釋放的舊 table 而失敗；工具修正與 G11 新驗收尚待執行，未稱六情境通過。
+- **自然排程**：10/5 01:12 UTC 的 21 tasks enabled／Ready、設定相符。新 weekly 自然 RC0，後續 current-fundamentals 真實 applied 83,606 values／1,976 stocks，歷史 PIT false；core 保留 pending_human_review。新 Paper 已追加六持倉快照，quote date 10/2、ledger transitions 0。ML 08:30 因容量 guard 失敗；PIT preopen DNS 失敗、postcutoff 缺 verified denominator 分別保留。設定正確不代表所有自然 runs 成功。兩個既有 operational prompts V6 已磁碟讀回，快取重載 unknown。
+- **容量與外部限制**：C 上十五份已結束隔離副本的可逆壓縮共節省 17,339,938,160 bytes，內容 SHA／長度／mtime 不變；兩份原 SHA 不符的副本已排除且未修改。01:56 UTC 直接呼叫原容量 guard，C 可用 211,794,477,056 bytes，距自然 ML 原 200.5 GiB 門檻仍差 3,490,758,656 bytes；D 可用 281,570,017,280 bytes，自然 ML 來源卷通過，但正式 bootstrap 275 GiB 仍差 13,708,984,320 bytes。不降低門檻或重播過期自然 run。歷史公告可得映射／單位 basis／正式 revision 資格仍有缺件，須按功能影響判讀；H5／20 交易日及 Paper／Exit 真實成熟樣本繼續累積。
+
+尚未建立本次 commit。未知根目錄 `paper_event_source_capture.py` 保留並排除；QA 原件、DB、runtime 與私人設定不提交。
+
 ## 2026-10-03 Operational 品質與研究來源隔離補驗
 
 最新工程驗收見 [行情發布節奏與 Paper 研究隔離](../06_qa/OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md)。Market/watchlist 日期差先驗官方日曆與專案截止，真 stale/缺價仍 fail closed。6171 以 hash-bound raw「除息」及實際 quote 證明非可比較排除；38 檔 ranking 排除已有具名原因，8 檔 listing/交易狀態未核實。Paper 改為獨立 research lane，保留普通持倉／風險品質，研究 governance 缺件不形成使用者補虛構交易／thesis 待辦。wrapper/child/summary 分別回讀；整體 freshness 的歷史月營收／季報與 availability map 缺件仍揭露，current research 不授正式 PIT。原始失敗與自然 task LastTaskResult 保留；本次無暫停任務、無資料 producer 重跑。
@@ -294,7 +315,7 @@ EOF 空白清理後，root 對精確提交候選版本完成 302-path regression
 - [2026-09-27 整理前快照全文](../09_archive/PROJECT_SNAPSHOT_HISTORY_2026_09_27.md)：保留 9/8–9/26 逐輪觀測與收據連結；舊「待完成」不自動成為目前待辦。
 - [2026-09-08 舊快照](../09_archive/PROJECT_SNAPSHOT_HISTORY_2026_09_08.md)：更早的整合歷史。
 
-本頁維護最新範圍與未解除限制；新的驗收細節保存於專項 QA，不把逐輪流水帳重新貼回本頁。最新摘要為 2026-10-01 本頁頂端 current section；9/30 排程 matrix 與下方歷史段落只代表標明的當時觀測。個別自然／受控 receipt 不代表 21 項排程全數通過。
+本頁維護最新範圍與未解除限制；新的驗收細節保存於專項 QA，不把逐輪流水帳重新貼回本頁。目前狀態見頁首 2026-10-04 區段；9/30 排程 matrix 與下方歷史段落只代表標明的當時觀測。個別自然／受控 receipt 不代表 21 項排程全數通過。
 
 
 2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。

@@ -94,6 +94,7 @@ from app_module.research_session import (
 from app_module.decision_continuity_controller import DecisionContinuityController
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.stock_research_report_service import StockResearchReportReadService
+from app_module.stock_research_report_provider_adapters import CurrentRestatedMLRunRegistry
 
 # 導入策略模組以觸發註冊
 import decision_module.strategies
@@ -358,12 +359,14 @@ class MainWindow(QMainWindow):
                 self.universe_service = None
                 print(f"警告：選股清單服務初始化失敗: {e}")
 
-            # 個股研究報告只組合既有 read contract；不在 MainWindow
-            # 重算推薦，也不把 Health／Exit／ML owner 實作搬進 UI。
+            # 個股研究報告只組合既有 read contract；MainWindow 注入已驗證的
+            # current-restated ML registry，不重算推薦，也不把 owner 邏輯搬入 UI。
+            self.stock_research_ml_registry = CurrentRestatedMLRunRegistry()
             self.stock_research_report_service = StockResearchReportReadService(
                 self.config,
                 portfolio_service=self.portfolio_service,
                 condition_monitor=PortfolioConditionMonitor(),
+                ml_provider=self.stock_research_ml_registry,
                 freshness_status_path=self._data_freshness_status_path(),
                 candidate_db_file=configured_candidate_db_path() if self.config.profile != 'test' else None,
             )
@@ -1087,6 +1090,7 @@ class MainWindow(QMainWindow):
                 "source_kind",
                 "source_label",
                 "source_workspace",
+                "ml_scope_mode",
             }
             payload = {key: value.get(key, "") for key in fields}
             if not str(payload.get("stock_code") or "").strip():
@@ -1141,6 +1145,7 @@ class MainWindow(QMainWindow):
                             source_kind=context.source_kind,
                             source_label=context.source_label,
                             source_workspace=context.source_workspace,
+                            ml_scope_mode=context.ml_scope_mode,
                             source="stock_drilldown",
                         )
                     )

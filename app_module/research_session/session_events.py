@@ -61,6 +61,7 @@ class StockResearchContextChanged:
     source: str = "unknown"
     # 允許 host 直接傳入 immutable DTO；展開欄位仍保留以相容舊呼叫端。
     context: Optional[ResearchStockContextDTO] = None
+    ml_scope_mode: Optional[str] = None
 
 
 # 讓呼叫端可用較泛化的名稱，並保持單一事件契約。

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from dataclasses import asdict, replace
 from decimal import Decimal
 import json
 import os
@@ -11,21 +12,29 @@ import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel, QTableView
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QTableView
 from PySide6.QtTest import QTest
 
 from app_module.research_session import ResearchStockContextDTO
+from app_module.watchlist_analysis_service import WatchlistAnalysisDTO
 from app_module.stock_research_report_dtos import (
+    StockAdviceSnapshotDTO,
     StockEvidenceEventDTO,
+    StockMarketStatusEvidenceDTO,
+    StockMarketStatusSnapshotDTO,
     StockMetricDTO,
+    StockMLSnapshotDTO,
     StockOutcomeDTO,
+    StockPositionSnapshotDTO,
     StockPricePointDTO,
     StockResearchReportDTO,
+    StockTradingRestrictionDTO,
 )
 from app_module.stock_research_report_service import StockResearchReportReadService
 from app_module.research_result_presentation import (
@@ -59,7 +68,7 @@ def _real_service(tmp_path: Path) -> StockResearchReportReadService:
         )
     return StockResearchReportReadService(
         SimpleNamespace(db_file=database, output_root=tmp_path / "output"),
-        clock=lambda: datetime(2026, 9, 8, 15, 0, 0),
+        clock=lambda: datetime(2026, 9, 8, 15, 0, 0, tzinfo=ZoneInfo("Asia/Taipei")),
     )
 
 
@@ -129,6 +138,156 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     if narrow_screenshot_path:
         assert view.grab().save(narrow_screenshot_path)
     view.close()
+
+
+def test_market_status_and_position_quote_dates_render_separately(tmp_path: Path) -> None:
+    view = StockResearchReportView(_real_service(tmp_path))
+    view._render_market_status(
+        StockMarketStatusSnapshotDTO(
+            status="partial",
+            listing_status="listed",
+            market="上市",
+            name="台積電",
+            trading_restrictions=(
+                StockTradingRestrictionDTO(
+                    restriction_type="注意股票",
+                    restriction_state="active",
+                    effective_from="2026-10-03",
+                    effective_to="2026-10-04",
+                    resumed_on="",
+                    published_date="2026-10-02",
+                    notice_reference="notice-2330",
+                    source_id="mops-status-2330",
+                    details="來源公告註記",
+                ),
+            ),
+            status_evidence=(
+                StockMarketStatusEvidenceDTO(
+                    evidence_type="listing_status",
+                    source_id="exchange-status-2330",
+                    observed_at="2026-10-04T09:00:00+08:00",
+                    published_date="2026-10-02",
+                    effective_from="2026-10-02",
+                    source_data_dates=("2026-10-02",),
+                    notice_reference="listing-notice-2330",
+                ),
+            ),
+            source_ids=("exchange-status-2330", "mops-status-2330"),
+            source_data_dates=("2026-10-02",),
+            observed_at="2026-10-04T09:00:00+08:00",
+            source_warnings=("部分市場限制來源沒有回應。",),
+            partial_failure=True,
+            scope="current_only",
+            pit_eligible=False,
+            limitations=("現況證據不能回填歷史。",),
+        )
+    )
+    status_text = view.market_status_label.text()
+    evidence_text = view.market_status_evidence_label.text()
+    assert "部分來源可用" in status_text
+    assert "上市狀態：已上市" in status_text
+    assert "範圍：current_only" in status_text
+    assert "可用於歷史 PIT：否" in status_text
+    assert "公告日：2026-10-02" in status_text
+    assert "有效期間：2026-10-03 至 2026-10-04" in status_text
+    assert "不代表交易建議" in status_text
+    assert "公告日：2026-10-02" in evidence_text
+    assert "資料日：2026-10-02" in evidence_text
+    assert "來源警示：部分市場限制來源沒有回應。" in status_text
+    assert "部分來源讀取失敗" in status_text
+
+    view._render_position(
+        StockPositionSnapshotDTO(
+            is_holding=True,
+            position_as_of="2026-10-04",
+            quote_data_date="2026-10-02",
+            quote_available_at="",
+            quantity=Decimal("1000"),
+            average_cost=Decimal("99.50"),
+            current_price=Decimal("100.00"),
+            unrealized_pnl=Decimal("500.00"),
+            last_trade_date="2026-10-03",
+        )
+    )
+    position_page = view.tabs.widget(4).widget()
+    tables = position_page.findChildren(QTableView)
+    assert tables
+    model = tables[0].model()
+    rows = {
+        str(model.index(row, 0).data()): str(model.index(row, 1).data())
+        for row in range(model.rowCount())
+    }
+    assert rows["持倉讀取日"] == "2026-10-04"
+    assert rows["行情資料日"] == "2026-10-02"
+    assert rows["行情可得時間"] == "來源未提供"
+    assert rows["最後交易日"] == "2026-10-03"
+    assert rows["持倉讀取日"] != rows["最後交易日"]
+    view.close()
+
+
+def test_position_rerender_hides_stale_placeholder_before_deferred_delete(
+    tmp_path: Path,
+) -> None:
+    app = _app()
+    view = StockResearchReportView(_real_service(tmp_path))
+    view.resize(860, 620)
+    view._render_position(None)
+    position_page = view.tabs.widget(4).widget()
+    assert position_page is not None
+    stale_label = next(
+        label
+        for label in position_page.findChildren(QLabel)
+        if "沒有此股票的持倉 row" in label.text()
+    )
+
+    view.tabs.setCurrentIndex(4)
+    view.show()
+    app.processEvents()
+    assert stale_label.isVisible()
+
+    view._render_position(
+        StockPositionSnapshotDTO(
+            is_holding=True,
+            position_as_of="2026-10-05",
+            quote_data_date="2026-10-02",
+            quote_available_at="",
+            quantity=Decimal("1000"),
+            average_cost=Decimal("281"),
+            current_price=Decimal("332"),
+            unrealized_pnl=Decimal("51000"),
+        )
+    )
+
+    # The clear-and-render slot must hide stale content before Qt processes deleteLater().
+    assert stale_label.isHidden()
+    assert stale_label.parentWidget() is not None
+    assert "沒有此股票的持倉 row" in stale_label.text()
+    view.close()
+
+
+def test_mainwindow_injects_current_restated_ml_registry_read_provider(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    app = _app()
+    monkeypatch.setenv("DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("OUTPUT_ROOT", str(tmp_path / "output"))
+    from app_module.stock_research_report_provider_adapters import (
+        CurrentRestatedMLRunRegistry,
+    )
+    from ui_qt.main import MainWindow, _drain_qt_deferred_deletes
+
+    window = MainWindow()
+    try:
+        assert isinstance(window.stock_research_ml_registry, CurrentRestatedMLRunRegistry)
+        assert window.stock_research_report_service.ml_provider is (
+            window.stock_research_ml_registry
+        )
+        assert callable(window.stock_research_report_service.ml_provider)
+    finally:
+        window.close()
+        app.processEvents()
+        _drain_qt_deferred_deletes(app, (window,))
 
 
 def test_search_return_uses_keyboard_and_keeps_accessible_status(tmp_path: Path) -> None:
@@ -310,6 +469,337 @@ def test_context_path_keeps_daily_summary_compact_and_full_trace_in_advanced_sou
     view.close()
 
 
+def test_current_ml_scope_switch_keeps_exact_saved_advice_identity() -> None:
+    app = _app()
+    saved = ResearchStockContextDTO(
+        stock_code="1477",
+        stock_name="聚陽",
+        decision_date="2026-09-23",
+        data_date="2026-09-22",
+        result_id="rec-1477-exact",
+        identity_status="linked",
+        source_snapshot_id="snapshot-1477",
+        source_snapshot_hash="sha256:" + "a" * 64,
+        source_id="rec-1477-exact",
+        source_kind="recommendation",
+        source_label="已保存篩選紀錄／未入選",
+        source_workspace="recommendation",
+        ml_scope_mode="selected_saved_decision",
+    )
+    view = StockResearchReportView(SimpleNamespace())
+    view.context = saved
+    view._saved_decision_context = saved
+    view._active_code = "1477"
+    view._loaded_report = _report_for("1477", "123")
+    view._load_stock = lambda _code: None
+    view._render_decision(view._loaded_report)
+    view.tabs.setCurrentIndex(5)
+    view.show()
+    app.processEvents()
+    assert view.current_ml_mode_button.isVisible()
+    assert view.current_ml_mode_button.isEnabled()
+    QTest.mouseClick(view.current_ml_mode_button, Qt.LeftButton)
+
+    assert view.context is not None
+    assert view.context.ml_scope_mode == "current_stock_research"
+    assert view.context.result_id == saved.result_id
+    assert view.context.decision_date == saved.decision_date
+    assert view.context.source_snapshot_id == saved.source_snapshot_id
+    assert view.context.source_snapshot_hash == saved.source_snapshot_hash
+    assert "不合併保存 Advice" in view.context_path_label.text()
+    current_context = view.context
+
+    view._render_decision(view._loaded_report)
+    app.processEvents()
+    assert view.saved_ml_mode_button.isVisible()
+    assert view.saved_ml_mode_button.isEnabled()
+    QTest.mouseClick(view.saved_ml_mode_button, Qt.LeftButton)
+
+    assert view.context == saved
+    assert view.context.ml_scope_mode == "selected_saved_decision"
+    assert current_context.ml_scope_mode == "current_stock_research"
+    assert view.context.ml_scope_mode == "selected_saved_decision"
+
+    view.context = replace(view.context, stock_code="1101")
+    view._active_code = "1101"
+    view._loaded_report = _report_for("1101", "77")
+    view._render_decision(view._loaded_report)
+    app.processEvents()
+    assert view.saved_ml_mode_button.isHidden()
+    QTest.mouseClick(view.current_ml_mode_button, Qt.LeftButton)
+    assert view._saved_decision_context == saved
+    view._use_selected_saved_decision_mode()
+    assert view._saved_decision_context == saved
+    assert view.context.stock_code == "1101"
+    assert view.context.ml_scope_mode == "current_stock_research"
+    view.close()
+    app.processEvents()
+
+
+def test_新建研究頁從現況範圍可返回精確保存決策() -> None:
+    app = _app()
+    saved_context = ResearchStockContextDTO(
+        stock_code="1477",
+        stock_name="聚陽",
+        decision_date="2026-09-23",
+        data_date="2026-09-22",
+        result_id="rec-1477-exact",
+        identity_status="linked",
+        source_snapshot_id="snapshot-1477",
+        source_snapshot_hash="sha256:" + "a" * 64,
+        source_id="rec-1477-exact",
+        source_kind="recommendation",
+        source_label="已保存篩選紀錄／未入選",
+        source_workspace="recommendation",
+        ml_scope_mode="selected_saved_decision",
+    )
+    current_context = replace(saved_context, ml_scope_mode="current_stock_research")
+    view = StockResearchReportView(SimpleNamespace())
+    view._load_stock = lambda _code: None
+    view._active_code = "1477"
+
+    # 這是新建的 view，只收到當下模式 DTO；不得依賴原 view 的暫存欄位。
+    view.set_context(current_context)
+    report = _report_for("1477", "123")
+    view._loaded_report = report
+    view._render_decision(report)
+    view.tabs.setCurrentIndex(5)
+    view.show()
+    app.processEvents()
+
+    expected_saved_context = replace(
+        current_context,
+        ml_scope_mode="selected_saved_decision",
+    )
+    assert view._saved_decision_context == expected_saved_context
+    assert view.saved_ml_mode_button.isVisible()
+    assert view.saved_ml_mode_button.isEnabled()
+    QTest.mouseClick(view.saved_ml_mode_button, Qt.LeftButton)
+
+    assert view.context == expected_saved_context
+    assert view.context.result_id == saved_context.result_id
+    assert view.context.decision_date == saved_context.decision_date
+    assert view.context.data_date == saved_context.data_date
+    assert view.context.source_id == saved_context.source_id
+    assert view.context.source_snapshot_id == saved_context.source_snapshot_id
+    assert view.context.source_snapshot_hash == saved_context.source_snapshot_hash
+    view.close()
+    app.processEvents()
+
+
+def test_新建研究頁的現況context沒有result_id不建立保存備份() -> None:
+    app = _app()
+    view = StockResearchReportView(SimpleNamespace())
+    view._load_stock = lambda _code: None
+    view._active_code = "1477"
+    view.set_context(
+        ResearchStockContextDTO(
+            stock_code="1477",
+            stock_name="聚陽",
+            ml_scope_mode="current_stock_research",
+        )
+    )
+    report = _report_for("1477", "123")
+    view._loaded_report = report
+    view._render_decision(report)
+    view.tabs.setCurrentIndex(5)
+    view.show()
+    app.processEvents()
+
+    assert view._saved_decision_context is None
+    assert view.saved_ml_mode_button.isHidden()
+    view.close()
+    app.processEvents()
+
+
+def test_same_stock_source_change_clears_old_report_while_new_run_loads(monkeypatch) -> None:
+    from ui_qt.views import stock_research_report_view as view_module
+
+    class _Signal:
+        def connect(self, _callback):
+            return None
+
+    class _PendingWorker:
+        def __init__(self, _task):
+            self.started = _Signal()
+            self.finished = _Signal()
+            self.error = _Signal()
+            self.cancelled = _Signal()
+            self.native_thread_finished = _Signal()
+
+        def start(self):
+            return None
+
+        def isRunning(self):
+            return False
+
+    monkeypatch.setattr(view_module, "TaskWorker", _PendingWorker)
+    first = ResearchStockContextDTO(
+        stock_code="1477",
+        decision_date="2026-09-23",
+        data_date="2026-09-22",
+        result_id="rec-first",
+        source_snapshot_id="snapshot-first",
+        source_snapshot_hash="sha256:" + "a" * 64,
+        source_workspace="recommendation",
+    )
+    second = ResearchStockContextDTO(
+        stock_code="1477",
+        decision_date="2026-09-24",
+        data_date="2026-09-23",
+        result_id="rec-second",
+        source_snapshot_id="snapshot-second",
+        source_snapshot_hash="sha256:" + "b" * 64,
+        source_workspace="recommendation",
+    )
+    view = StockResearchReportView(SimpleNamespace(), first)
+    view._loaded_report = _report_for("1477", "123")
+    view._loaded_context_identity = view._context_identity(first, "1477")
+
+    view.set_context(second)
+
+    assert view.context == second
+    assert view._loaded_report is None
+    assert view._loaded_context_identity is None
+    assert "載入中" in view.summary_focus.conclusion_label.text()
+    view.close()
+
+
+def test_market_status_clears_on_switch_and_keeps_same_stock_last_good() -> None:
+    app = _app()
+    view = StockResearchReportView(SimpleNamespace())
+    old_report = _report_for("1477", "123")
+    view._active_code = "1477"
+    view._loaded_report = old_report
+    view._loaded_context_identity = view._context_identity(None, "1477")
+    view._render_market_status(
+        StockMarketStatusSnapshotDTO(
+            status="available",
+            listing_status="listed",
+            market="上市",
+            name="聚陽",
+            source_ids=("status-source-1477",),
+            source_data_dates=("2026-10-02",),
+            observed_at="2026-10-04T09:00:00+08:00",
+            scope="current_only",
+            pit_eligible=False,
+        )
+    )
+
+    view._set_loading_state("1477")
+    assert "status-source-1477" in view.market_status_evidence_label.text()
+    assert "重新載入中；以下內容是同一檔股票的上次可用資料。" in (
+        view.summary_focus.conclusion_label.text()
+    )
+    view._on_report_cancelled(view._request_id, "1477")
+    assert "status-source-1477" in view.market_status_evidence_label.text()
+    assert "讀取已取消；畫面仍保留同一檔股票的上次可用資料。" in (
+        view.summary_focus.conclusion_label.text()
+    )
+
+    view._request_id += 1
+    view._active_code = "2382"
+    view._set_loading_state("2382")
+    assert view.market_status_label.text() == "當下上市／交易狀態：尚未載入本股。"
+    assert view.market_status_evidence_label.text() == "尚未載入本股的狀態來源證據。"
+    assert "status-source-1477" not in view.market_status_evidence_label.text()
+    view._on_report_cancelled(view._request_id, "2382")
+    assert view.market_status_label.text() == "當下上市／交易狀態：尚未載入本股。"
+    assert view.market_status_evidence_label.text() == "尚未載入本股的狀態來源證據。"
+    assert "讀取已取消" in view.summary_focus.conclusion_label.text()
+    view.close()
+    app.processEvents()
+
+
+def test_ml_panel_displays_integer_bp_h5_and_exact_current_scope() -> None:
+    view = StockResearchReportView(SimpleNamespace())
+    view.context = ResearchStockContextDTO(
+        stock_code="1477",
+        decision_date="2026-09-23",
+        result_id="rec-1477-exact",
+        source_snapshot_hash="sha256:" + "a" * 64,
+        source_workspace="recommendation",
+        ml_scope_mode="current_stock_research",
+    )
+    report = _report_for("1477", "123")
+    report = replace(
+        report,
+        advice=StockAdviceSnapshotDTO(rule_reasons=("保存來源原理由",)),
+        rule_reasons=("當下趨勢觀測", "保存來源原理由", "歷史事件風險"),
+        events=(
+            StockEvidenceEventDTO(
+                event_id="event-1477-old",
+                event_date="2026-10-01",
+                decision_date="2026-10-01",
+                event_type="historical_advice",
+                reasons=("歷史事件風險",),
+            ),
+        ),
+        ml=StockMLSnapshotDTO(
+            status="degraded",
+            model_version="current-restated-v1",
+            dataset_version="dataset-current-v1",
+            inference_at="2026-10-04T08:00:00+00:00",
+            research_or_formal="research_only",
+            run_id="run-1477-20261004",
+            scope_mode="current_stock_research",
+            event_date="2026-10-02",
+            model_manifest_sha256="sha256:" + "b" * 64,
+            model_bundle_sha256="sha256:" + "c" * 64,
+            source_snapshot_hash="sha256:" + "d" * 64,
+            target_metric="cost-adjusted benchmark excess bp",
+            predicted_benchmark_excess_return_bp={"H5": 128},
+            h5_status="mature",
+            h5_horizon=5,
+            h5_gross_stock_return_bp=420,
+            h5_gross_benchmark_return_bp=180,
+            h5_benchmark_excess_after_standard_80bp_cost=160,
+            h5_after_lane_cost_stock_return_bp=340,
+            h5_horizon_end_date="2026-10-02",
+            scope_symbols=("1477",),
+            qualification=("僅研究，不具歷史 PIT 或正式資格",),
+        ),
+    )
+    view._active_code = "1477"
+    view._render_report(report)
+    view._render_decision(report)
+
+    tables = {table.objectName(): table for table in view.findChildren(QTableView)}
+    ml_identity = tables["stockResearchMLIdentityTable"].model()
+    rendered_identity = [
+        ml_identity.data(ml_identity.index(row, 1), Qt.DisplayRole)
+        for row in range(ml_identity.rowCount())
+    ]
+    assert "當下個股獨立研究（不併入保存 Advice）" in rendered_identity
+    assert "run-1477-20261004" in rendered_identity
+    assert "2026-10-02" in rendered_identity
+    assert "current-stock independent research" not in "\n".join(rendered_identity)
+
+    prediction_model = tables["stockResearchMLBenchmarkExcessTable"].model()
+    assert prediction_model.data(prediction_model.index(0, 0), Qt.DisplayRole) == "H5"
+    assert prediction_model.data(prediction_model.index(0, 1), Qt.DisplayRole) == "+128 bp"
+    h5_model = tables["stockResearchMLH5Table"].model()
+    h5_rows = {
+        h5_model.data(h5_model.index(row, 0), Qt.DisplayRole): h5_model.data(
+            h5_model.index(row, 1), Qt.DisplayRole
+        )
+        for row in range(h5_model.rowCount())
+    }
+    assert h5_rows["H5 狀態"] == "mature"
+    assert h5_rows["基準超額（扣標準 80bp）"] == "160 bp"
+    assert view.query_as_of_label.text().startswith("本次當下觀測日（as_of）")
+    assert "保存 Advice 決策日：2026-09-23" in view.query_as_of_label.text()
+    assert "不併入保存 Advice" in view.query_as_of_label.text()
+    rule_group_titles = {
+        group.title()
+        for group in view.findChildren(QGroupBox)
+        if "Rule 證據" in group.title() or "已保存 Advice 原 Rule 理由" in group.title()
+    }
+    assert "當下技術／Rule 證據（本次資料日期：2026-09-08）" in rule_group_titles
+    assert "已保存 Advice 原 Rule 理由（原決策日：2026-09-23）" in rule_group_titles
+    view.close()
+
+
 def test_shareholding_tier_table_translates_json_to_semantic_rows() -> None:
     raw = json.dumps(
         [
@@ -485,3 +975,157 @@ def test_event_table_humanizes_risk_prompt_and_portfolio_alert_variants() -> Non
     assert "持倉條件已失效" in presentation.rows[0][3]
     assert "portfolio_alert:condition_invalid" not in presentation.rows[0]
     assert "每日決策台風險提示" in presentation.details[0]
+
+
+def _saved_analysis_report(
+    *,
+    status: str = "saved",
+    stock_code: str = "1477",
+    result_id: str = "rec-1477-run",
+    decision_date: str = "2026-10-05",
+    data_date: str = "2026-10-02",
+    report_stock_code: str = "1477",
+) -> StockResearchReportDTO:
+    analysis = WatchlistAnalysisDTO(
+        stock_code=stock_code,
+        status=status,
+        result_id=result_id,
+        decision_date=decision_date,
+        data_date=data_date,
+    )
+    return replace(
+        _report_for(report_stock_code, "123"),
+        as_of="2026-10-05",
+        advice=StockAdviceSnapshotDTO(
+            status="degraded" if status == "saved" else "unavailable",
+            saved_analysis=analysis,
+        ),
+    )
+
+
+def _blank_saved_source_context(
+    *,
+    stock_code: str = "1477",
+    result_id: str = "rec-1477-run",
+    decision_date: str = "2026-10-05",
+) -> ResearchStockContextDTO:
+    return ResearchStockContextDTO(
+        stock_code=stock_code,
+        decision_date=decision_date,
+        data_date="",
+        result_id=result_id,
+        source_id=result_id,
+        source_kind="recommendation",
+        source_workspace="recommendation",
+    )
+
+
+@pytest.mark.parametrize("analysis_status", ["saved", "not_in_result"])
+def test_report_loaded_backfills_same_saved_result_quote_date_everywhere(
+    analysis_status: str,
+) -> None:
+    view = StockResearchReportView(SimpleNamespace())
+    context = _blank_saved_source_context()
+    saved_context = replace(context, ml_scope_mode="selected_saved_decision")
+    report = _saved_analysis_report(status=analysis_status)
+    view.context = context
+    view._saved_decision_context = saved_context
+    view._active_code = "1477"
+    view._request_id = 7
+    context_events: list[ResearchStockContextDTO] = []
+    report_events: list[StockResearchReportDTO] = []
+    view.activeContextChanged.connect(context_events.append)
+    view.reportLoaded.connect(report_events.append)
+
+    view._on_report_loaded(7, "1477", report, context)
+
+    assert view.context == replace(context, data_date="2026-10-02")
+    assert view._saved_decision_context == replace(saved_context, data_date="2026-10-02")
+    assert "資料日：2026-10-02" in view.context_path_label.text()
+    assert view._loaded_context_identity == view._context_identity(view.context, "1477")
+    assert len(context_events) == 1
+    assert asdict(context_events[0]) == asdict(view.context)
+    assert asdict(context_events[0])["data_date"] == "2026-10-02"
+    assert report_events == [report]
+    assert report_events[0].to_dict()["advice"]["saved_analysis"]["data_date"] == "2026-10-02"
+    view.close()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "no_analysis",
+        "unsupported_status",
+        "wrong_saved_stock",
+        "wrong_saved_result",
+        "wrong_saved_decision",
+        "future_quote_date",
+        "noncanonical_quote_date",
+        "wrong_report_stock",
+        "wrong_context_stock",
+        "wrong_context_result",
+        "wrong_context_decision",
+    ],
+)
+def test_report_loaded_does_not_backfill_unbound_or_invalid_quote_date(case: str) -> None:
+    view = StockResearchReportView(SimpleNamespace())
+    context = _blank_saved_source_context()
+    report = _saved_analysis_report()
+
+    if case == "no_analysis":
+        report = replace(report, advice=StockAdviceSnapshotDTO(status="unavailable"))
+    elif case == "unsupported_status":
+        report = _saved_analysis_report(status="missing")
+    elif case == "wrong_saved_stock":
+        report = _saved_analysis_report(stock_code="2382")
+    elif case == "wrong_saved_result":
+        report = _saved_analysis_report(result_id="rec-other-run")
+    elif case == "wrong_saved_decision":
+        report = _saved_analysis_report(decision_date="2026-10-04")
+    elif case == "future_quote_date":
+        report = _saved_analysis_report(data_date="2026-10-06")
+    elif case == "noncanonical_quote_date":
+        report = _saved_analysis_report(data_date="2026-10-2")
+    elif case == "wrong_report_stock":
+        report = _saved_analysis_report(report_stock_code="2382")
+    elif case == "wrong_context_stock":
+        context = _blank_saved_source_context(stock_code="2382")
+    elif case == "wrong_context_result":
+        context = _blank_saved_source_context(result_id="rec-other-run")
+    elif case == "wrong_context_decision":
+        context = _blank_saved_source_context(decision_date="2026-10-04")
+
+    view.context = context
+    view._render_context_path()
+    view._active_code = "1477"
+    view._request_id = 9
+    context_events: list[ResearchStockContextDTO] = []
+    view.activeContextChanged.connect(context_events.append)
+
+    view._on_report_loaded(9, "1477", report, context)
+
+    assert view.context == context
+    assert view.context.data_date == ""
+    assert "資料日：未知" in view.context_path_label.text()
+    assert context_events == []
+    assert view._loaded_context_identity == view._context_identity(context, "1477")
+    view.close()
+
+
+def test_report_loaded_never_overwrites_nonempty_context_date_even_if_conflicting() -> None:
+    view = StockResearchReportView(SimpleNamespace())
+    context = replace(_blank_saved_source_context(), data_date="2026-10-01")
+    report = _saved_analysis_report(data_date="2026-10-02")
+    view.context = context
+    view._render_context_path()
+    view._active_code = "1477"
+    view._request_id = 11
+    context_events: list[ResearchStockContextDTO] = []
+    view.activeContextChanged.connect(context_events.append)
+
+    view._on_report_loaded(11, "1477", report, context)
+
+    assert view.context == context
+    assert "資料日：2026-10-01" in view.context_path_label.text()
+    assert context_events == []
+    view.close()

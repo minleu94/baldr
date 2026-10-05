@@ -5,6 +5,10 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
+from app_module import scheduled_forward_outcome_service as forward_runner
+from app_module import scheduled_writer_reservation as writer_reservation
 from app_module.evidence_event_dtos import EvidenceDataQuality, EvidenceEventType
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_event_service import EvidenceEventService
@@ -17,6 +21,48 @@ from data_module.official_trading_calendar_cache import (
     write_twse_calendar_cache,
     write_twse_temporary_closure_cache,
 )
+
+
+def _install_deterministic_writer_acquisition_clock(
+    monkeypatch: pytest.MonkeyPatch,
+    config: TWStockConfig,
+) -> None:
+    """Freeze service and reservation wall clocks, retaining the real waiter."""
+    start = datetime(2026, 10, 4, 20, 0, tzinfo=timezone(timedelta(hours=8)))
+    original_wait = forward_runner.wait_for_scheduled_writer_reservation
+    clock_calls = 0
+    utc_clock_calls = 0
+
+    class DeterministicClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            nonlocal clock_calls
+            current = start + timedelta(seconds=clock_calls * 10)
+            clock_calls += 1
+            return current.replace(tzinfo=None) if tz is None else current.astimezone(tz)
+
+    def utc_now_for_test() -> datetime:
+        nonlocal utc_clock_calls
+        invocation_offset = max(0, clock_calls - 1) * 10
+        current = start.astimezone(timezone.utc) + timedelta(
+            seconds=invocation_offset + utc_clock_calls % 3
+        )
+        utc_clock_calls += 1
+        return current
+
+    def wait_with_clock(**kwargs):
+        assert Path(kwargs["release_root"]).resolve() == (
+            config.output_root.resolve() / "release_v4"
+        )
+        return original_wait(**kwargs)
+
+    monkeypatch.setattr(forward_runner, "datetime", DeterministicClock)
+    monkeypatch.setattr(writer_reservation, "_utc_now", utc_now_for_test)
+    monkeypatch.setattr(
+        forward_runner,
+        "wait_for_scheduled_writer_reservation",
+        wait_with_clock,
+    )
 
 
 def _write_calendar(
@@ -210,13 +256,43 @@ def test_temporary_closure_scope_is_explicit_and_invalid_cache_blocks(
     )
 
 
+@pytest.mark.parametrize(
+    (
+        "source_gap_now",
+        "expected_legacy_maturity_date",
+        "expected_price_read_cutoff_date",
+        "expected_price_read_cutoff_basis",
+    ),
+    (
+        pytest.param(
+            datetime(2026, 9, 10, 6, 1, tzinfo=timezone(timedelta(hours=8))),
+            None,
+            "2026-09-09",
+            "current_session_close_not_reached",
+            id="before-official-close-excludes-same-day-price",
+        ),
+        pytest.param(
+            datetime(2026, 9, 10, 14, 1, tzinfo=timezone(timedelta(hours=8))),
+            "2026-09-10",
+            "2026-09-10",
+            "official_session_close_elapsed",
+            id="after-official-close-includes-same-day-price",
+        ),
+    ),
+)
 def test_scheduled_health_uses_future_planned_date_without_changing_outcome_basis(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_gap_now: datetime,
+    expected_legacy_maturity_date: str | None,
+    expected_price_read_cutoff_date: str,
+    expected_price_read_cutoff_basis: str,
 ) -> None:
     config = TWStockConfig(
         data_root=tmp_path / "data",
         output_root=tmp_path / "output",
     )
+    _install_deterministic_writer_acquisition_clock(monkeypatch, config)
     with sqlite3.connect(config.db_file) as conn:
         conn.executescript(
             """
@@ -241,8 +317,8 @@ def test_scheduled_health_uses_future_planned_date_without_changing_outcome_basi
             """
         )
         # Official sessions after 9/1 are 9/2, 9/3, 9/4, 9/7, 9/8.
-        # The fixture omits official 9/7 and carries five later stock rows,
-        # so the legacy row-offset target ends on 9/9.
+        # The source has a row but no close for the official 9/8 target;
+        # five later non-null rows make the legacy row-offset end on 9/10.
         stock_days = (
             "20260901",
             "20260902",
@@ -250,9 +326,11 @@ def test_scheduled_health_uses_future_planned_date_without_changing_outcome_basi
             "20260904",
             "20260908",
             "20260909",
+            "20260910",
         )
         for index, day in enumerate(stock_days):
-            conn.execute("INSERT INTO daily_prices VALUES (?, ?, ?)", (day, "2330", 100 + index))
+            stock_close = None if day == "20260908" else 100 + index
+            conn.execute("INSERT INTO daily_prices VALUES (?, ?, ?)", (day, "2330", stock_close))
             conn.execute("INSERT INTO market_indices VALUES (?, ?, ?)", (day, "TAIEX", 10_000 + index))
             conn.execute(
                 "INSERT INTO industry_indices VALUES (?, ?, ?)",
@@ -309,9 +387,9 @@ def test_scheduled_health_uses_future_planned_date_without_changing_outcome_basi
         "official_annual_plan_only"
     )
 
-    mismatch_result = run_scheduled_forward_outcomes(
+    source_gap_result = run_scheduled_forward_outcomes(
         config=config,
-        now=datetime(2026, 9, 10, 6, 1, tzinfo=timezone(timedelta(hours=8))),
+        now=source_gap_now,
         confirm=True,
         allow_production_db_confirm=True,
         windows=(5,),
@@ -320,31 +398,62 @@ def test_scheduled_health_uses_future_planned_date_without_changing_outcome_basi
         data_as_of_date="2026-09-10",
         calendar_cache_path=cache_path.parent,
     )
-    mismatch = EvidenceEventRepository(config).get_outcome(event.event_id, 5)
-    assert mismatch is not None
-    assert mismatch.outcome_status.value == "pending"
-    assert mismatch.data_quality == EvidenceDataQuality.DEGRADED
-    assert mismatch.event_price_date == "2026-09-01"
-    assert mismatch.outcome_price_date is None
-    assert mismatch.outcome_close is None
-    assert mismatch.forward_return_bp is None
-    assert mismatch.benchmark_return_bp is None
-    assert mismatch.benchmark_excess_bp is None
-    assert mismatch.industry_return_bp is None
-    assert mismatch.industry_excess_bp is None
-    assert mismatch.max_adverse_excursion_bp is None
-    assert mismatch.max_favorable_excursion_bp is None
-    assert mismatch.metadata["expected_maturity_date"] == "2026-09-09"
-    assert mismatch.metadata["return_basis"] == "close_to_close_event_date"
-    assert mismatch.metadata["planned_official_maturity_date"] == "2026-09-08"
-    assert mismatch.metadata["maturity_calendar_comparison"] == "blocked_mismatch"
-    assert mismatch.metadata["time_contract_state"] == "blocked_time_contract"
-    assert mismatch.metadata["readiness_blocker"] == "maturity_calendar_comparison_blocked"
-    assert "evidence_lineage" in mismatch.metadata
-    assert "blocked_time_contract_requires_review" in mismatch.warnings
-    assert "maturity_calendar_comparison_blocked" in mismatch.warnings
-    assert mismatch_result["health"]["planned_official_maturity"][
+    source_gap = EvidenceEventRepository(config).get_outcome(event.event_id, 5)
+    assert source_gap is not None
+    assert source_gap.outcome_status.value == "missing_price"
+    assert source_gap.data_quality == EvidenceDataQuality.MISSING
+    assert source_gap.event_price_date == "2026-09-01"
+    assert source_gap.outcome_price_date is None
+    assert source_gap.outcome_close is None
+    assert source_gap.forward_return_bp is None
+    assert source_gap.benchmark_return_bp is None
+    assert source_gap.benchmark_excess_bp is None
+    assert source_gap.industry_return_bp is None
+    assert source_gap.industry_excess_bp is None
+    assert source_gap.max_adverse_excursion_bp is None
+    assert source_gap.max_favorable_excursion_bp is None
+    assert source_gap.metadata["requested_data_as_of_date"] == "2026-09-10"
+    assert source_gap.metadata["effective_data_as_of_date"] == "2026-09-10"
+    assert source_gap.metadata["price_read_cutoff_date"] == (
+        expected_price_read_cutoff_date
+    )
+    assert source_gap.metadata["price_read_cutoff_basis"] == (
+        expected_price_read_cutoff_basis
+    )
+    if expected_legacy_maturity_date is None:
+        # The database contains a valid 9/10 close, but it is not readable
+        # before that session closes. With only four post-event closes through
+        # 9/9, there is no legacy fifth-row maturity date to report.
+        assert "expected_maturity_date" not in source_gap.metadata
+        assert source_gap.metadata["maturity_calendar_comparison"] == (
+            "legacy_expected_unavailable"
+        )
+    else:
+        assert source_gap.metadata["expected_maturity_date"] == (
+            expected_legacy_maturity_date
+        )
+        assert source_gap.metadata["maturity_calendar_comparison"] == (
+            "legacy_price_row_offset_differs"
+        )
+    assert source_gap.metadata["return_basis"] == "close_to_close_event_date"
+    assert source_gap.metadata["maturity_basis"] == "official_market_sessions"
+    assert source_gap.metadata["planned_official_maturity_date"] == "2026-09-08"
+    assert source_gap.metadata["target_price_state"] == (
+        "missing_at_planned_official_session"
+    )
+    assert source_gap.metadata["source_price_gap_reason"] == (
+        "no_close_on_planned_official_session"
+    )
+    assert source_gap.metadata["official_target_price_lookup_detail"] == (
+        "daily_price_close_missing_or_invalid_on_planned_official_session"
+    )
+    assert source_gap.outcome_price_date is None
+    assert "missing_outcome_price" in source_gap.warnings
+    assert "official_target_session_price_missing" in source_gap.warnings
+    assert "evidence_lineage" in source_gap.metadata
+    assert source_gap_result["health"]["classification"] == "external_source_missing"
+    assert source_gap_result["health"]["planned_official_maturity"][
         "comparison_blocked_count"
-    ] == 1
-    assert "maturity_calendar_comparison_blocked" in mismatch_result["blockers"]
-    assert mismatch_result["summary"]["blocked_time_contract_count"] == 1
+    ] == 0
+    assert "outcome_price_missing" in source_gap_result["blockers"]
+    assert source_gap_result["summary"]["blocked_time_contract_count"] == 0

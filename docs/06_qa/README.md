@@ -13,6 +13,8 @@
 
 | 要查的內容 | 證據入口 |
 | --- | --- |
+| 最新有限驗收、native 未通過情境、容量／正式資格阻礙與 checkpoint 提交邊界 | [最小續接清單（2026-10-05，Batch9）](MINIMAL_CONTINUATION_HANDOFF_20261005.md) |
+| 四用途來源接線、現況基本面／估值、研究 ML 自動路徑與同版原生 UI 的本輪實作及驗收 | [Astra 工程收尾（2026-10-03 至 05）](ASTRA_ENGINEERING_CLOSEOUT_20261003.md) |
 | 本次Windows／Codex排程修復、Gemini ML真實建置／訓練／推論及原Legacy／Bank受控讀回；產品收尾進度與保留限制 | [10/2–10/3整合修復紀錄](INTEGRATION_REPAIR_ACCEPTANCE_20261002.md) |
 | 2026-09-30 排程修復、自然 Quick warning／Freshness degraded／Official events publication_scope=formal_historical／nested `corporate_action_adjustment_custody` `prospective_only=true`、`formal_source_contract_eligible=false`、`historical_pit_eligible=false`、Paper no-work、Evidence #3 engineering pass／business degraded、Bank#2 barrier pass／source failed、PIT／ML／fundamental blocker | [9/30 排程修復與執行驗收](SCHEDULED_OPERATIONS_REPAIR_20260930.md) |
 | Windows 排程、來源契約與資料接線 | [9/29 全項審視及修復](SCHEDULED_OPERATIONS_REPAIR_20260929.md) |

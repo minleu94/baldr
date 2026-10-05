@@ -888,11 +888,10 @@ def test_public_service_real_builder_saves_result_and_reverse_reads_receipt(
         }
     )
 
-    # Freeze only the RecommendationService clock so this real producer test
-    # exercises an actual T-1 market cutoff: 2026-07-27 16:50 UTC is the next
-    # Taipei market date (2026-07-28).  The source itself still selects its
-    # latest row; no weekday/date-difference inference is used.
+    # Freeze the producer clock at 00:50 Taipei on the next market date;
+    # the daily market frame still ends on the prior completed session.
     import app_module.recommendation_service as recommendation_service_module
+    import app_module.recommendation.execute as recommendation_execute_module
 
     class _FrozenRecommendationDatetime(datetime):
         @classmethod
@@ -904,6 +903,11 @@ def test_public_service_real_builder_saves_result_and_reverse_reads_receipt(
         recommendation_service_module,
         "datetime",
         _FrozenRecommendationDatetime,
+    )
+    monkeypatch.setattr(
+        recommendation_execute_module,
+        "_utc_now",
+        lambda: datetime(2026, 7, 27, 16, 50, tzinfo=timezone.utc),
     )
     recommendations = service.run_recommendation(
         {"recommendation_ranking": {"threshold_mode": "fixed"}},
@@ -924,6 +928,7 @@ def test_public_service_real_builder_saves_result_and_reverse_reads_receipt(
     )
     assert service.last_run_context["calibration_projection_receipt"]["result_id"] == result_id
     assert service.last_run_context["as_of_date"] == "2026-07-27"
+    assert service.last_run_context["data_date"] == "2026-07-27"
     assert service.last_run_context["temporal_contract"] == (
         "recommendation-producer-clock.v1"
     )
@@ -988,6 +993,9 @@ def test_public_service_real_builder_saves_result_and_reverse_reads_receipt(
     )
     assert loaded is not None
     assert loaded.result_id == result_id
+    assert loaded.run_context["as_of_date"] == "2026-07-27"
+    assert loaded.run_context["data_date"] == "2026-07-27"
+    assert loaded.run_context["personalization_scope"]["decision_date"] == "2026-07-28"
     receipt_metadata = loaded.run_context["calibration_projection_receipt"]
     persisted_provenance = loaded.recommendations[0].calibration_provenance
     assert persisted_provenance["projection_receipt_hash"] == receipt_metadata["receipt_hash"]
@@ -1565,9 +1573,24 @@ def test_real_consumer_independent_after_cost_baseline_reaches_advice_presentati
         calibration_consumer=consumer,
     )
     recommendation = _recommendation()
+    result_id = "rec-independent-after-cost-20260622"
+    service.last_run_context["result_id"] = result_id
     service._apply_recommendation_calibration([recommendation], decision_date="2026-07-27")
     projection = service.last_calibration_projections["AAA"]
-    assert projection.status == "active_candidate", projection.warnings
+    assert projection.status == "active_candidate", (
+        projection.warnings,
+        service.last_run_context.get("calibration_projection_receipt_error_detail"),
+    )
+    assert service.last_run_context["calibration_projection_receipt_status"] == "persisted"
+    receipt_metadata = service.last_run_context["calibration_projection_receipt"]
+    assert receipt_metadata["result_id"] == result_id
+    receipt = read_inference_projection_receipt(
+        receipt_metadata["path"],
+        expected_receipt_hash=receipt_metadata["receipt_hash"],
+        expected_decision_date="2026-07-27",
+        expected_result_id=result_id,
+    )
+    assert receipt.payload["result_id"] == result_id
     assert projection.after_cost_profit_probability_bp is not None
     model_prediction = consumer._model.predict((1000, 2000))
     assert projection.raw_after_cost_profit_probability_bp == (
@@ -1594,7 +1617,7 @@ def test_real_consumer_independent_after_cost_baseline_reaches_advice_presentati
     )
 
     advice_result = RecommendationResultDTO(
-        result_id="rec-independent-after-cost-20260622",
+        result_id=result_id,
         result_name="independent after-cost recommendation",
         config={
             "strategy_status": "promoted",

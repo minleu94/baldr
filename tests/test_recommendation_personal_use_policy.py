@@ -511,6 +511,7 @@ def test_policy_snapshot_is_saved_as_event_and_legacy_execution_has_none(
             status=ExecutionStatus.CANCELLED,
             body_result=None,
             result_id=str(context.get("result_id") or ""),
+            max_stocks=1,
             context_as_of_date=(
                 date.fromisoformat(str(context["as_of_date"]))
                 if context.get("as_of_date")
@@ -681,6 +682,7 @@ def test_v3_baseline_binds_receipt_universe_without_confusing_projection_and_ran
             status=ExecutionStatus.CANCELLED,
             body_result=None,
             result_id=result_id,
+            max_stocks=len(projected_codes),
             context_as_of_date=decision_day,
             context_decision_at=decision_at,
         )
@@ -751,6 +753,7 @@ def test_personal_policy_event_rejects_unbound_mode_or_future_confirmation(
             status=ExecutionStatus.CANCELLED,
             body_result=None,
             result_id="policy-event-negative",
+            max_stocks=1,
             context_as_of_date=None,
             context_decision_at=datetime.fromisoformat(
                 decision_at.replace("Z", "+00:00")
@@ -975,6 +978,7 @@ def test_v2_event_and_choice_readback_bind_source_trust_without_changing_v1_wire
         status=ExecutionStatus.CANCELLED,
         body_result=None,
         result_id=result_id,
+        max_stocks=1,
         context_as_of_date=date(2026, 9, 27),
         context_decision_at=decision_at,
     )
@@ -1117,6 +1121,7 @@ def test_current_mapper_source_snapshot_is_detached_hashed_and_saved_as_event(
         status=ExecutionStatus.CANCELLED,
         body_result=None,
         result_id="current-mapper-result",
+        max_stocks=1,
         context_as_of_date=date(2026, 9, 24),
         context_decision_at=datetime.fromisoformat("2026-09-27T18:00:00+00:00"),
     )
@@ -1203,6 +1208,7 @@ def test_current_mapper_source_snapshot_is_detached_hashed_and_saved_as_event(
             status=ExecutionStatus.CANCELLED,
             body_result=None,
             result_id="current-mapper-result",
+            max_stocks=1,
             context_as_of_date=date(2026, 9, 24),
             context_decision_at=datetime.fromisoformat(
                 "2026-09-27T18:00:00+00:00"
@@ -1229,6 +1235,7 @@ def test_current_mapper_source_snapshot_is_detached_hashed_and_saved_as_event(
             status=ExecutionStatus.CANCELLED,
             body_result=None,
             result_id="current-mapper-result",
+            max_stocks=1,
             context_as_of_date=date(2026, 9, 24),
             context_decision_at=datetime.fromisoformat(
                 "2026-09-27T18:00:00+00:00"
@@ -1261,6 +1268,7 @@ def test_current_mapper_source_snapshot_is_detached_hashed_and_saved_as_event(
             status=ExecutionStatus.CANCELLED,
             body_result=None,
             result_id="current-mapper-result",
+            max_stocks=1,
             context_as_of_date=date(2026, 9, 24),
             context_decision_at=datetime.fromisoformat(
                 "2026-09-27T18:00:00+00:00"
@@ -1292,6 +1300,7 @@ def test_current_mapper_source_snapshot_is_detached_hashed_and_saved_as_event(
         status=ExecutionStatus.CANCELLED,
         body_result=None,
         result_id="current-mapper-result",
+        max_stocks=1,
         context_as_of_date=date(2026, 9, 24),
         context_decision_at=datetime.fromisoformat(
             "2026-09-27T18:00:00+00:00"
@@ -1515,6 +1524,7 @@ def test_current_mapper_event_preserves_missing_decision_clock_as_unknown(
         status=ExecutionStatus.CANCELLED,
         body_result=None,
         result_id="clockless-current-mapper-result",
+        max_stocks=1,
         context_as_of_date=date(2026, 9, 24),
         context_decision_at=None,
     )

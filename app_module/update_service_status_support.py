@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app_module.dtos.update_loop_dtos import enrich_status_mapping
 
@@ -41,7 +41,9 @@ _FRESHNESS_SEVERITY = {
     "unknown": 3,
 }
 
-_TAIPEI = ZoneInfo("Asia/Taipei")
+_FRESHNESS_CUTOFF_TIMEZONE = "America/Los_Angeles"
+_FRESHNESS_CUTOFF_LOCAL = "04:30"
+_FRESHNESS_PRODUCER_TASK = "baldr-data-freshness-check-daily"
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,7 @@ class FreshnessReceiptBinding:
     evaluated_at: datetime
     candidate_db_path: str | None = None
     calendar_cutoff_local: str = "04:30"
+    calendar_cutoff_timezone: str = _FRESHNESS_CUTOFF_TIMEZONE
 
 
 def _normalized_path(value: Any) -> str | None:
@@ -91,6 +94,16 @@ def _parse_cutoff_local(value: Any) -> time | None:
         return time(int(value[:2]), int(value[3:]))
     except ValueError:
         return None
+
+
+def _publication_cycle_bucket(value: datetime, cutoff: time, zone: ZoneInfo) -> date:
+    """Return the 04:30-local publication cycle containing an aware timestamp."""
+
+    local_value = value.astimezone(zone)
+    local_time = local_value.timetz().replace(tzinfo=None)
+    if local_time < cutoff:
+        return local_value.date() - timedelta(days=1)
+    return local_value.date()
 
 
 def _canonical_period(value: Any) -> str | None:
@@ -133,12 +146,18 @@ def _receipt_binding_error(
 ) -> str | None:
     if binding.evaluated_at.tzinfo is None or binding.evaluated_at.utcoffset() is None:
         return "狀態查詢時鐘不是含時區的時間"
+    if receipt.get("task") != _FRESHNESS_PRODUCER_TASK:
+        return "收據來源工作不明，無法驗證 freshness 時區"
     checks = receipt.get("checks")
     if not isinstance(checks, Mapping):
         return "receipt 缺少 checks 綁定資訊"
     cutoff = _parse_cutoff_local(binding.calendar_cutoff_local)
     if cutoff is None:
         return "目前 freshness cutoff 格式無效"
+    if binding.calendar_cutoff_local != _FRESHNESS_CUTOFF_LOCAL:
+        return "收據 freshness cutoff 與來源契約不一致"
+    if binding.calendar_cutoff_timezone != _FRESHNESS_CUTOFF_TIMEZONE:
+        return "收據 freshness cutoff 時區與來源契約不一致"
     for key, expected in (
         ("data_root", binding.data_root),
         ("output_root", binding.output_root),
@@ -149,18 +168,33 @@ def _receipt_binding_error(
         return "receipt SQLite 路徑與目前資料庫不符"
     if checks.get("calendar_cutoff_local") != binding.calendar_cutoff_local:
         return "receipt 日曆 cutoff 與目前政策不符"
+    if "calendar_cutoff_timezone" in checks:
+        receipt_timezone = checks.get("calendar_cutoff_timezone")
+    else:
+        # This exact legacy task had a fixed Pacific cutoff before the explicit
+        # timezone field was added. Do not infer a timezone for another source.
+        receipt_timezone = binding.calendar_cutoff_timezone
+    if not isinstance(receipt_timezone, str) or not receipt_timezone.strip():
+        return "收據 freshness cutoff 時區格式無效"
+    try:
+        cutoff_zone = ZoneInfo(receipt_timezone)
+    except (TypeError, ValueError, ZoneInfoNotFoundError):
+        return "收據 freshness cutoff 時區格式無效"
+    if (
+        cutoff_zone.key != _FRESHNESS_CUTOFF_TIMEZONE
+        or cutoff_zone.key != binding.calendar_cutoff_timezone
+    ):
+        return "收據 freshness cutoff 時區未知或不相容"
     checked_at = _parse_aware_timestamp(receipt.get("checked_at"))
     evaluated_at = binding.evaluated_at.astimezone(timezone.utc)
     if checked_at is None:
         return "receipt checked_at 缺少有效時區或格式錯誤"
     if checked_at > evaluated_at:
         return "receipt checked_at 晚於目前狀態查詢時間"
-    checked_local = checked_at.astimezone(_TAIPEI)
-    evaluated_local = evaluated_at.astimezone(_TAIPEI)
-    if checked_local.date() != evaluated_local.date():
-        return "receipt checked_at 已跨過台灣市場日"
-    if checked_local.time() < cutoff <= evaluated_local.time():
-        return "receipt checked_at 與查詢時間跨越 freshness cutoff，需重新驗證"
+    checked_bucket = _publication_cycle_bucket(checked_at, cutoff, cutoff_zone)
+    evaluated_bucket = _publication_cycle_bucket(evaluated_at, cutoff, cutoff_zone)
+    if checked_bucket != evaluated_bucket:
+        return "收據 checked_at 已跨越 Pacific 04:30 發布週期，需重新驗證"
     candidate = checks.get("phase3c_candidate_db")
     if not isinstance(candidate, Mapping):
         return "receipt 缺少 Candidate DB 路徑狀態"

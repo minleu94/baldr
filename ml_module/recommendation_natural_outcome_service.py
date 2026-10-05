@@ -8,7 +8,7 @@ return/label，避免把歷史考試或手工數字接到 promotion authority。
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
@@ -22,6 +22,7 @@ from typing import Any, Mapping
 from zoneinfo import ZoneInfo
 
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
+from data_module.natural_maturity_session_resolver import NaturalMaturitySessionResolver
 from ml_module.recommendation_calibration_evidence import (
     MaturedRecommendationOutcome,
     NaturalEvidenceReceiptReference,
@@ -573,6 +574,957 @@ class RecommendationNaturalOutcomeService:
             evidence=evidence,
             diagnostics=tuple([f"pending_rows={pending}", *diagnostics]),
         )
+
+    def build_current_observed_outcomes_for_capture(
+        self,
+        capture_path: str | Path,
+        *,
+        required_source_contract: Mapping[str, Any],
+        evaluation_at: datetime,
+        output_path: str | Path,
+        max_rows: int = 1_000,
+    ) -> Mapping[str, Any]:
+        """建立 current-observed 研究結果；不經 historical evidence builder。
+
+        這條 lane 僅接受新的 immutable input capture 與明確綁定的後續
+        G6 current-restated snapshot。原始 entry pin 由 capture verifier
+        重驗，舊 prediction capture 不會被補價或轉換成這種 receipt。
+        """
+
+        if max_rows <= 0:
+            raise ValueError("current-observed outcome row bound must be positive")
+        if evaluation_at.tzinfo is None or evaluation_at.utcoffset() is None:
+            raise ValueError("evaluation_at must contain a timezone")
+        evaluation_clock = evaluation_at.astimezone(timezone.utc)
+        if evaluation_clock > datetime.now(timezone.utc):
+            raise ValueError("evaluation_at cannot be future-dated")
+        capture_input = Path(capture_path).expanduser()
+        if capture_input.is_symlink():
+            raise ValueError("current-observed input capture must not be a symlink")
+        capture_file = capture_input.resolve(strict=True)
+        capture_file_sha256 = _sha256_file(capture_file)
+        outcome_root = _current_observed_outcome_root(capture_file)
+        receipt_path = Path(os.path.abspath(Path(output_path).expanduser()))
+        _require_path_under_root_without_symlinks(receipt_path, outcome_root)
+
+        capture: dict[str, Any] = {}
+        try:
+            from ml_module.recommendation_calibration_evidence import (
+                verify_current_observed_input_capture,
+            )
+
+            capture_value = verify_current_observed_input_capture(
+                capture_file,
+                expected_sha256=capture_file_sha256,
+            )
+            if not isinstance(capture_value, Mapping):
+                raise ValueError("current-observed input capture verifier returned no payload")
+            capture = dict(capture_value)
+            self._validate_current_observed_input_capture(
+                capture,
+                capture_file_sha256=capture_file_sha256,
+                evaluation_at=evaluation_clock,
+                max_rows=max_rows,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+            body = _current_observed_outcome_receipt_body(
+                status="blocked",
+                reason="current_observed_input_capture_verification_failed",
+                capture_path=str(capture_file),
+                capture_sha256=capture_file_sha256,
+                capture_id=None,
+                capture_cycle_id=None,
+                decision_date=None,
+                evaluation_at=_utc_text(evaluation_clock),
+                endpoint_date=None,
+                outcomes=(),
+                pending_rows=(),
+                diagnostics=(f"{type(exc).__name__}:{str(exc)[:240]}",),
+                current_observed_snapshot=None,
+                source_contract_binding_sha256=None,
+                capture_schema_version=str(capture.get("schema_version") or ""),
+            )
+            return _persist_current_observed_outcome_receipt(receipt_path, body)
+
+        try:
+            source = self._load_current_observed_outcome_source(
+                required_source_contract=required_source_contract,
+                capture=capture,
+                evaluation_at=evaluation_clock,
+            )
+        except _CurrentObservedOutcomePending as exc:
+            body = _current_observed_outcome_receipt_body(
+                status="pending",
+                reason=str(exc),
+                capture_path=str(capture_file),
+                capture_sha256=capture_file_sha256,
+                capture_id=str(capture.get("capture_id") or ""),
+                capture_cycle_id=str(capture.get("cycle_id") or ""),
+                decision_date=str(capture.get("decision_date") or ""),
+                evaluation_at=_utc_text(evaluation_clock),
+                endpoint_date=None,
+                outcomes=(),
+                pending_rows=tuple(
+                    {
+                        "capture_row_id": str(row.get("row_id") or ""),
+                        "symbol": str(row.get("symbol") or ""),
+                        "reason": str(exc),
+                    }
+                    for row in capture.get("rows", ())
+                    if isinstance(row, Mapping)
+                ),
+                diagnostics=(str(exc),),
+                current_observed_snapshot=None,
+                source_contract_binding_sha256=None,
+                capture_schema_version=str(capture.get("schema_version") or ""),
+            )
+            return _persist_current_observed_outcome_receipt(receipt_path, body)
+        except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+            body = _current_observed_outcome_receipt_body(
+                status="blocked",
+                reason="later_current_observed_source_verification_failed",
+                capture_path=str(capture_file),
+                capture_sha256=capture_file_sha256,
+                capture_id=str(capture.get("capture_id") or ""),
+                capture_cycle_id=str(capture.get("cycle_id") or ""),
+                decision_date=str(capture.get("decision_date") or ""),
+                evaluation_at=_utc_text(evaluation_clock),
+                endpoint_date=None,
+                outcomes=(),
+                pending_rows=(),
+                diagnostics=(f"{type(exc).__name__}:{str(exc)[:240]}",),
+                current_observed_snapshot=None,
+                source_contract_binding_sha256=None,
+                capture_schema_version=str(capture.get("schema_version") or ""),
+            )
+            return _persist_current_observed_outcome_receipt(receipt_path, body)
+
+        try:
+            outcomes, pending_rows, diagnostics = self._current_observed_outcome_rows(
+                capture=capture,
+                capture_path=capture_file,
+                capture_sha256=capture_file_sha256,
+                source=source,
+                evaluation_at=evaluation_clock,
+                max_rows=max_rows,
+            )
+        except _CurrentObservedOutcomePending as exc:
+            body = _current_observed_outcome_receipt_body(
+                status="pending",
+                reason=str(exc),
+                capture_path=str(capture_file),
+                capture_sha256=capture_file_sha256,
+                capture_id=str(capture.get("capture_id") or ""),
+                capture_cycle_id=str(capture.get("cycle_id") or ""),
+                decision_date=str(capture.get("decision_date") or ""),
+                evaluation_at=_utc_text(evaluation_clock),
+                endpoint_date=source.endpoint_date,
+                outcomes=(),
+                pending_rows=tuple(
+                    {
+                        "capture_row_id": str(row.get("row_id") or ""),
+                        "symbol": str(row.get("symbol") or ""),
+                        "reason": str(exc),
+                    }
+                    for row in capture.get("rows", ())
+                    if isinstance(row, Mapping)
+                ),
+                diagnostics=(str(exc),),
+                current_observed_snapshot=source.to_receipt_dict(),
+                source_contract_binding_sha256=source.source_contract_binding_sha256,
+                capture_schema_version=str(capture.get("schema_version") or ""),
+            )
+            return _persist_current_observed_outcome_receipt(receipt_path, body)
+        except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+            body = _current_observed_outcome_receipt_body(
+                status="blocked",
+                reason="current_observed_outcome_row_verification_failed",
+                capture_path=str(capture_file),
+                capture_sha256=capture_file_sha256,
+                capture_id=str(capture.get("capture_id") or ""),
+                capture_cycle_id=str(capture.get("cycle_id") or ""),
+                decision_date=str(capture.get("decision_date") or ""),
+                evaluation_at=_utc_text(evaluation_clock),
+                endpoint_date=source.endpoint_date,
+                outcomes=(),
+                pending_rows=(),
+                diagnostics=(f"{type(exc).__name__}:{str(exc)[:240]}",),
+                current_observed_snapshot=source.to_receipt_dict(),
+                source_contract_binding_sha256=source.source_contract_binding_sha256,
+                capture_schema_version=str(capture.get("schema_version") or ""),
+            )
+            return _persist_current_observed_outcome_receipt(receipt_path, body)
+        status = "matured" if outcomes and not pending_rows else "partial" if outcomes else "pending"
+        reason = (
+            "current_observed_outcomes_verified"
+            if status == "matured"
+            else "current_observed_outcomes_partially_verified"
+            if status == "partial"
+            else "current_observed_outcomes_not_ready"
+        )
+        body = _current_observed_outcome_receipt_body(
+            status=status,
+            reason=reason,
+            capture_path=str(capture_file),
+            capture_sha256=capture_file_sha256,
+            capture_id=str(capture["capture_id"]),
+            capture_cycle_id=str(capture["cycle_id"]),
+            decision_date=str(capture["decision_date"]),
+            evaluation_at=_utc_text(evaluation_clock),
+            endpoint_date=source.endpoint_date,
+            outcomes=tuple(outcomes),
+            pending_rows=tuple(pending_rows),
+            diagnostics=tuple(diagnostics),
+            current_observed_snapshot=source.to_receipt_dict(),
+            source_contract_binding_sha256=source.source_contract_binding_sha256,
+            capture_schema_version=str(capture.get("schema_version") or ""),
+        )
+        return _persist_current_observed_outcome_receipt(receipt_path, body)
+
+    def _validate_current_observed_input_capture(
+        self,
+        capture: Mapping[str, Any],
+        *,
+        capture_file_sha256: str,
+        evaluation_at: datetime,
+        max_rows: int,
+    ) -> None:
+        capture_schema_version = capture.get("schema_version")
+        if capture_schema_version not in {
+            "recommendation-current-observed-input-capture.v1",
+            "recommendation-current-observed-input-capture.v2",
+        }:
+            raise ValueError("current-observed input capture schema is unsupported")
+        capture_is_v2 = capture_schema_version == "recommendation-current-observed-input-capture.v2"
+        if (
+            capture.get("current_restated") is not True
+            or capture.get("historical_pit_eligible") is not False
+            or capture.get("formal_training_allowed") is not False
+            or capture.get("research_only") is not True
+        ):
+            raise ValueError("current-observed input capture eligibility flags are invalid")
+        capture_day = _date(str(capture.get("decision_date") or ""))
+        captured_at = _parse_aware_datetime(capture.get("captured_at"), "captured_at")
+        if captured_at > evaluation_at:
+            raise ValueError("current-observed capture is later than outcome evaluation")
+        if capture_day > evaluation_at.astimezone(ZoneInfo("Asia/Taipei")).date():
+            raise ValueError("current-observed capture date is later than outcome evaluation")
+        rows = capture.get("rows")
+        if not isinstance(rows, list) or not rows or len(rows) > max_rows:
+            raise ValueError("current-observed capture rows are empty or exceed the bound")
+        row_ids = [str(row.get("row_id") or "") for row in rows if isinstance(row, Mapping)]
+        symbols = [str(row.get("symbol") or "") for row in rows if isinstance(row, Mapping)]
+        declared_symbols = capture.get("symbols")
+        if (
+            len(row_ids) != len(rows)
+            or any(not value for value in row_ids)
+            or len(row_ids) != len(set(row_ids))
+            or len(symbols) != len(rows)
+            or any(not value for value in symbols)
+            or len(symbols) != len(set(symbols))
+            or not isinstance(declared_symbols, list)
+            or set(str(value) for value in declared_symbols) != set(symbols)
+            or len(declared_symbols) != len(symbols)
+        ):
+            raise ValueError("current-observed capture row identity is invalid")
+        if capture_is_v2 and (len(symbols) <= 16 or len(symbols) > 50 or symbols != sorted(symbols)):
+            raise ValueError("current-observed v2 capture must be a sorted 17–50 symbol cohort")
+        if not capture_is_v2 and len(symbols) > 16:
+            raise ValueError("current-observed v1 capture exceeds its 16-symbol scope")
+        binding = capture.get("source_contract_binding")
+        feature_snapshot = (
+            binding.get("current_observed_feature_snapshot")
+            if isinstance(binding, Mapping)
+            else None
+        )
+        if not isinstance(feature_snapshot, Mapping):
+            raise ValueError("current-observed capture frozen feature snapshot is missing")
+        if (
+            feature_snapshot.get("schema_version")
+            != (
+                "recommendation-current-observed-feature-snapshot.v2"
+                if capture_is_v2
+                else "recommendation-current-observed-feature-snapshot.v1"
+            )
+            or feature_snapshot.get("status") != "captured"
+            or feature_snapshot.get("verified") is not True
+            or feature_snapshot.get("current_restated") is not True
+            or feature_snapshot.get("historical_pit_eligible") is not False
+            or feature_snapshot.get("formal_training_allowed") is not False
+            or feature_snapshot.get("research_only") is not True
+            or capture.get("feature_snapshot_sha256") != feature_snapshot.get("content_sha256")
+            or capture.get("cycle_id") != feature_snapshot.get("cycle_id")
+            or capture.get("raw_run_id") != feature_snapshot.get("raw_run_id")
+            or capture.get("cycle_source_date") != feature_snapshot.get("cycle_source_date")
+            or capture.get("feature_registry_id") != feature_snapshot.get("feature_registry_id")
+            or capture.get("feature_registry_hash") != feature_snapshot.get("feature_registry_hash")
+            or capture.get("feature_schema_hash") != feature_snapshot.get("feature_schema_hash")
+        ):
+            raise ValueError("current-observed capture feature snapshot identity mismatch")
+        if capture_is_v2:
+            _validate_current_observed_feature_snapshot_v2(feature_snapshot, symbols)
+        frozen_rows_value = feature_snapshot.get("rows")
+        if not isinstance(frozen_rows_value, list):
+            raise ValueError("current-observed capture frozen feature rows are invalid")
+        frozen_rows = {
+            str(row.get("symbol") or ""): row
+            for row in frozen_rows_value
+            if isinstance(row, Mapping) and str(row.get("symbol") or "")
+        }
+        if set(frozen_rows) != set(symbols) or len(frozen_rows_value) != len(symbols):
+            raise ValueError("current-observed capture frozen feature scope is incomplete")
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise ValueError("current-observed capture row is invalid")
+            symbol = str(row.get("symbol") or "")
+            frozen = frozen_rows[symbol]
+            row_pin = row.get("entry_price_pin")
+            if not isinstance(row_pin, Mapping):
+                raise ValueError("current-observed capture entry price pin is invalid")
+            if (
+                str(row.get("decision_date") or "")[:10] != capture_day.isoformat()
+                or _date(str(row.get("feature_as_of_date") or "")) >= capture_day
+                or row.get("feature_available_date") != capture_day.isoformat()
+                or str(frozen.get("decision_date") or "")[:10] != capture_day.isoformat()
+                or row.get("feature_as_of_date") != frozen.get("feature_as_of_date")
+                or row.get("feature_available_date") != frozen.get("feature_available_date")
+                or row.get("feature_registry_id") != frozen.get("feature_registry_id")
+                or row.get("feature_registry_hash") != frozen.get("feature_registry_hash")
+                or row.get("feature_schema_hash") != frozen.get("feature_schema_hash")
+                or row.get("feature_ids") != frozen.get("feature_ids")
+                or row.get("feature_values") != frozen.get("feature_values")
+                or row.get("feature_row_sha256") != frozen.get("row_sha256")
+                or _parse_aware_datetime(row.get("feature_available_at"), "feature_available_at")
+                != _parse_aware_datetime(frozen.get("local_current_observed_at"), "frozen feature observation")
+                or str(row.get("row_id") or "")
+                != str(row_pin.get("row_id") or "")
+            ):
+                raise ValueError("current-observed capture feature/decision dates are invalid")
+            feature_ids = row.get("feature_ids")
+            feature_values = row.get("feature_values")
+            if (
+                not isinstance(feature_ids, list)
+                or len(feature_ids) != 20
+                or len(set(feature_ids)) != 20
+                or not isinstance(feature_values, list)
+                or len(feature_values) != 20
+                or not _is_current_outcome_sha256(row.get("feature_row_sha256"))
+            ):
+                raise ValueError("current-observed capture feature row schema is invalid")
+        benchmark_pin = capture.get("benchmark_entry_price_pin")
+        if not isinstance(benchmark_pin, Mapping):
+            raise ValueError("current-observed TAIEX entry pin is missing")
+        if (
+            benchmark_pin.get("symbol") != "TAIEX"
+            or benchmark_pin.get("source_date") != capture_day.isoformat()
+            or benchmark_pin.get("source_available_at") is not None
+        ):
+            raise ValueError("current-observed TAIEX entry pin identity is invalid")
+        pins = capture.get("entry_price_pin_by_symbol")
+        if not isinstance(pins, Mapping) or set(str(key) for key in pins) != set(symbols):
+            raise ValueError("current-observed stock entry pin coverage is invalid")
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise ValueError("current-observed capture row is invalid")
+            symbol = str(row.get("symbol") or "")
+            pin = row.get("entry_price_pin")
+            indexed_pin = pins.get(symbol)
+            if not isinstance(pin, Mapping) or not isinstance(indexed_pin, Mapping) or dict(pin) != dict(indexed_pin):
+                raise ValueError(f"current-observed entry pin differs for {symbol}")
+            _validate_current_observed_entry_pin(
+                pin,
+                expected_symbol=symbol,
+                expected_date=capture_day.isoformat(),
+                captured_at=captured_at,
+            )
+        _validate_current_observed_entry_pin(
+            benchmark_pin,
+            expected_symbol="TAIEX",
+            expected_date=capture_day.isoformat(),
+            captured_at=captured_at,
+        )
+        content_sha256 = capture.get("content_sha256")
+        if not _is_current_outcome_sha256(content_sha256):
+            raise ValueError("current-observed capture content hash is invalid")
+        content_body = {
+            key: value
+            for key, value in capture.items()
+            if key
+            not in {
+                "content_sha256",
+                "capture_id",
+                "_verified_capture_path",
+                "_verified_capture_sha256",
+            }
+        }
+        if _hash_payload(content_body) != content_sha256:
+            raise ValueError("current-observed capture content hash mismatch")
+        capture_id = str(capture.get("capture_id") or "")
+        cycle_id = str(capture.get("cycle_id") or "")
+        if (
+            capture_id
+            != f"current-observed:{capture_day.isoformat()}:{cycle_id}:{str(content_sha256)[7:]}"
+            or not cycle_id
+            or not capture.get("source_contract_binding")
+        ):
+            raise ValueError("current-observed capture identity or binding is incomplete")
+        if not _is_current_outcome_sha256(capture_file_sha256):
+            raise ValueError("current-observed capture file hash is invalid")
+
+    def _load_current_observed_outcome_source(
+        self,
+        *,
+        required_source_contract: Mapping[str, Any],
+        capture: Mapping[str, Any],
+        evaluation_at: datetime,
+        expected_session_proof: Mapping[str, Any] | None = None,
+    ) -> "_CurrentObservedOutcomeSource":
+        source_gate = _source_contract_gate(required_source_contract)
+        if source_gate is not None and source_gate[0] is not True:
+            raise _CurrentObservedOutcomePending(str(source_gate[1]))
+        contract = required_source_contract.get("source_contract")
+        receipt = required_source_contract.get("source_contract_receipt")
+        if not isinstance(contract, Mapping) or not isinstance(receipt, Mapping):
+            raise _CurrentObservedOutcomePending("later_source_contract_not_available")
+        technical = contract.get("technical")
+        technical = technical if isinstance(technical, Mapping) else {}
+        snapshot = technical.get("current_observed_feature_snapshot")
+        if not isinstance(snapshot, Mapping):
+            raise _CurrentObservedOutcomePending("later_current_observed_snapshot_not_available")
+        source_snapshot_schema = snapshot.get("schema_version")
+        if (
+            source_snapshot_schema
+            not in {
+                "recommendation-current-observed-feature-snapshot.v1",
+                "recommendation-current-observed-feature-snapshot.v2",
+            }
+            or snapshot.get("status") != "captured"
+            or snapshot.get("verified") is not True
+            or snapshot.get("current_restated") is not True
+            or snapshot.get("historical_pit_eligible") is not False
+            or snapshot.get("formal_training_allowed") is not False
+            or snapshot.get("research_only") is not True
+        ):
+            raise ValueError("later current-observed source flags or schema are invalid")
+        if source_snapshot_schema == "recommendation-current-observed-feature-snapshot.v2":
+            if (
+                snapshot.get("scope_mode") != "verified_scheduled_snapshot_cohort"
+                or not _is_current_outcome_sha256(snapshot.get("composition_sha256"))
+                or "source_rows_sha256_by_table" in snapshot
+            ):
+                raise ValueError("later current-observed v2 source composition is invalid")
+        source_day = _date(str(snapshot.get("decision_date") or ""))
+        evaluation_day = evaluation_at.astimezone(ZoneInfo("Asia/Taipei")).date()
+        if source_day != evaluation_day:
+            raise _CurrentObservedOutcomePending("later_current_observed_decision_date_mismatch")
+        observed_at = _parse_aware_datetime(snapshot.get("observed_at"), "current_observed.observed_at")
+        if observed_at > evaluation_at:
+            raise _CurrentObservedOutcomePending("later_current_observation_is_after_evaluation")
+        capture_at = _parse_aware_datetime(capture.get("captured_at"), "captured_at")
+        if observed_at <= capture_at:
+            raise _CurrentObservedOutcomePending("later_current_observation_does_not_follow_capture")
+
+        source_binding = _current_outcome_source_binding(contract, receipt, snapshot)
+        _verify_source_contract_binding(
+            source_binding,
+            require_ready=True,
+            capture_day=source_day,
+            capture_rows=tuple(
+                _current_outcome_verification_row(row, source_day)
+                for row in snapshot.get("rows", ())
+                if isinstance(row, Mapping)
+            ),
+            capture_at=str(snapshot.get("observed_at") or ""),
+        )
+        from ml_module.recommendation_calibration_evidence import (
+            load_current_observed_context_from_pinned_snapshot,
+        )
+
+        context = load_current_observed_context_from_pinned_snapshot(snapshot)
+        database_path = Path(str(snapshot.get("snapshot_database_path") or "")).resolve(strict=True)
+        database_sha256 = str(snapshot.get("snapshot_database_sha256") or "")
+        if (
+            Path(str(context.snapshot_database_path)).resolve() != database_path
+            or str(context.snapshot_database_sha256) != database_sha256
+            or str(context.snapshot_receipt_sha256) != str(snapshot.get("snapshot_receipt_sha256") or "")
+            or Path(str(context.snapshot_receipt_path)).resolve()
+            != Path(str(snapshot.get("snapshot_receipt_path") or "")).resolve()
+        ):
+            raise ValueError("later current-observed context pins differ from snapshot")
+        symbols = tuple(
+            sorted(
+                str(row.get("symbol") or "")
+                for row in capture.get("rows", ())
+                if isinstance(row, Mapping)
+            )
+        )
+        capture_is_v2 = (
+            capture.get("schema_version") == "recommendation-current-observed-input-capture.v2"
+        )
+        if (
+            not symbols
+            or len(symbols) > (50 if capture_is_v2 else 16)
+            or len(symbols) != len(set(symbols))
+        ):
+            raise ValueError("current-observed outcome symbol scope is invalid")
+        entry_pins = capture.get("entry_price_pin_by_symbol")
+        benchmark_pin = capture.get("benchmark_entry_price_pin")
+        if not isinstance(entry_pins, Mapping) or not isinstance(benchmark_pin, Mapping):
+            raise ValueError("current-observed capture entry pins are missing for source batching")
+        query_batches: list[dict[str, Any]] = []
+        raw_snapshots_by_symbol: dict[str, Any] = {}
+        query_batch_by_symbol: dict[str, Mapping[str, Any]] = {}
+        raw_snapshots: list[Any] = []
+        provider = MLHistoricalSnapshotProvider(database_path)
+        for ordinal, offset in enumerate(range(0, len(symbols), 16)):
+            batch_symbols = symbols[offset : offset + 16]
+            raw_snapshot = provider.load_current_observed(
+                decision_date=source_day.isoformat(),
+                history_start_date=str(snapshot.get("history_start_date") or ""),
+                symbols=batch_symbols,
+                source_context=context,
+                local_current_observed_at=observed_at,
+                expected_feature_as_of_date=str(snapshot.get("feature_as_of_date") or ""),
+                cycle_id=str(snapshot.get("cycle_id") or ""),
+                cycle_terminal_path=str(snapshot.get("cycle_terminal_path") or ""),
+                cycle_terminal_sha256=str(snapshot.get("cycle_terminal_sha256") or ""),
+                source_context_envelope_path=str(snapshot.get("source_context_envelope_path") or ""),
+                source_context_envelope_sha256=str(snapshot.get("source_context_envelope_sha256") or ""),
+            )
+            table_hashes = dict(raw_snapshot.source_rows_sha256_by_table)
+            if (
+                raw_snapshot.current_restated is not True
+                or raw_snapshot.historical_pit_eligible is not False
+                or raw_snapshot.formal_training_allowed is not False
+                or raw_snapshot.research_only is not True
+                or raw_snapshot.cycle_id != str(snapshot.get("cycle_id") or "")
+                or raw_snapshot.snapshot_database_sha256 != database_sha256
+                or raw_snapshot.local_current_observed_at.astimezone(timezone.utc) != observed_at
+                or raw_snapshot.requested_symbols != batch_symbols
+                or raw_snapshot.decision_date != source_day.isoformat()
+                or raw_snapshot.feature_as_of_date != str(snapshot.get("feature_as_of_date") or "")
+                or set(table_hashes)
+                != {"daily_prices", "technical_indicators", "market_indices", "industry_indices"}
+                or any(not _is_current_outcome_sha256(value) for value in table_hashes.values())
+                or observed_at <= capture_at
+            ):
+                raise ValueError("later current-observed raw batch identity mismatch")
+            if raw_snapshots:
+                first = raw_snapshots[0]
+                for field_name in (
+                    "decision_date",
+                    "feature_as_of_date",
+                    "local_current_observed_at",
+                    "snapshot_database_path",
+                    "snapshot_database_sha256",
+                    "snapshot_receipt_path",
+                    "snapshot_receipt_sha256",
+                    "cycle_id",
+                    "cycle_terminal_path",
+                    "cycle_terminal_sha256",
+                    "source_context_envelope_path",
+                    "source_context_envelope_sha256",
+                ):
+                    if getattr(raw_snapshot, field_name) != getattr(first, field_name):
+                        raise ValueError(f"current-observed query batches have mixed {field_name}")
+                if table_hashes["market_indices"] != dict(first.source_rows_sha256_by_table).get(
+                    "market_indices"
+                ):
+                    raise ValueError("current-observed query batches disagree on market-index source rows")
+            batch_entry_observation = {
+                "entry_price_pin_by_symbol": {
+                    symbol: dict(entry_pins[symbol]) for symbol in batch_symbols
+                },
+                "benchmark_entry_price_pin": dict(benchmark_pin),
+            }
+            query_identity_sha256 = _hash_payload(
+                {"symbols": list(batch_symbols), "source_rows_sha256_by_table": table_hashes}
+            )
+            batch_descriptor: dict[str, Any] = {
+                "schema_version": "recommendation-current-observed-outcome-query-batch.v1",
+                "ordinal": ordinal,
+                "symbols": list(batch_symbols),
+                "row_count": len(batch_symbols),
+                "query_identity_sha256": query_identity_sha256,
+                "source_rows_sha256_by_table": table_hashes,
+                "input_entry_observation_sha256": _hash_payload(batch_entry_observation),
+            }
+            batch_descriptor["batch_sha256"] = _hash_payload(batch_descriptor)
+            query_batches.append(batch_descriptor)
+            raw_snapshots.append(raw_snapshot)
+            for symbol in batch_symbols:
+                raw_snapshots_by_symbol[symbol] = raw_snapshot
+                query_batch_by_symbol[symbol] = batch_descriptor
+        raw_snapshot = raw_snapshots[0]
+
+        capture_day = _date(str(capture.get("decision_date") or ""))
+        if expected_session_proof is not None:
+            proof_value: Mapping[str, Any] = expected_session_proof
+            endpoint_date = str(expected_session_proof.get("endpoint_date") or "")
+        else:
+            resolver_template = self.session_resolver
+            calendar_cache_path = getattr(resolver_template, "calendar_cache_path", None)
+            if calendar_cache_path is None:
+                raise _CurrentObservedOutcomePending("official_calendar_resolver_unavailable")
+            resolver = NaturalMaturitySessionResolver(
+                db_path=database_path,
+                calendar_cache_path=calendar_cache_path,
+                temporary_closure_path=getattr(resolver_template, "temporary_closure_path", None),
+            )
+            resolution = resolver.resolve(
+                capture_day.isoformat(),
+                evaluation_at,
+                horizon_sessions=20,
+            )
+            resolved_proof = getattr(resolution, "proof", None)
+            resolved_endpoint = getattr(resolution, "endpoint_date", None)
+            if getattr(resolution, "status", None) != "ready" or not isinstance(resolved_proof, Mapping):
+                raise _CurrentObservedOutcomePending(
+                    f"natural_maturity_session_proof_not_ready:{getattr(resolution, 'reason', 'unknown')}"
+                )
+            proof_value = resolved_proof
+            endpoint_date = str(resolved_endpoint or "")
+        proof = verify_natural_maturity_session_proof(
+            proof_value,
+            capture_date=capture_day.isoformat(),
+            label_end_date=str(endpoint_date or ""),
+            evaluation_at=evaluation_at,
+            expected_db_path=database_path,
+        )
+        if (
+            len(proof.get("session_dates", ())) != 20
+            or str(proof.get("endpoint_date") or "") != str(endpoint_date or "")
+        ):
+            raise ValueError("later maturity proof does not contain exactly twenty official sessions")
+        if _date(str(snapshot.get("feature_as_of_date") or "")) < _date(str(endpoint_date or "")):
+            raise _CurrentObservedOutcomePending("current_snapshot_has_not_observed_maturity_endpoint")
+        if observed_at.astimezone(ZoneInfo("Asia/Taipei")).date() < _date(str(endpoint_date or "")):
+            raise _CurrentObservedOutcomePending("current_observation_date_precedes_maturity_endpoint")
+        if _sha256_file(database_path) != database_sha256:
+            raise ValueError("later current-observed source database changed during outcome read")
+        return _CurrentObservedOutcomeSource(
+            feature_snapshot=dict(snapshot),
+            source_contract_path=str(receipt.get("contract_path") or ""),
+            source_contract_file_sha256=str(receipt.get("contract_file_sha256") or ""),
+            source_contract_content_sha256=str(receipt.get("contract_content_sha256") or ""),
+            source_contract_binding_sha256=_hash_payload(dict(source_binding)),
+            raw_snapshot=raw_snapshot,
+            session_proof=dict(proof),
+            endpoint_date=str(endpoint_date),
+            database_sha256=database_sha256,
+            source_rows_sha256_by_table=dict(raw_snapshot.source_rows_sha256_by_table),
+            observed_at=_utc_text(observed_at),
+            observed_date=observed_at.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat(),
+            raw_snapshots_by_symbol=raw_snapshots_by_symbol,
+            query_batch_by_symbol=query_batch_by_symbol,
+            query_batches=tuple(query_batches),
+            input_capture_schema_version=str(capture.get("schema_version") or ""),
+        )
+
+    def _current_observed_outcome_rows(
+        self,
+        *,
+        capture: Mapping[str, Any],
+        capture_path: Path,
+        capture_sha256: str,
+        source: "_CurrentObservedOutcomeSource",
+        evaluation_at: datetime,
+        max_rows: int,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]], list[str]]:
+        rows = capture.get("rows")
+        if not isinstance(rows, list) or len(rows) > max_rows:
+            raise ValueError("current-observed capture row count changed after verification")
+        try:
+            scenario = cost_scenario_from_metadata(
+                capture,
+                fixed_round_trip_cost_bp=(
+                    int(capture["fixed_round_trip_cost_bp"])
+                    if capture.get("fixed_round_trip_cost_bp") is not None
+                    else None
+                ),
+            )
+        except (KeyError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+            raise ValueError(f"current-observed capture cost scenario is invalid: {exc}") from exc
+        declared_cost_hash = str(capture.get("cost_scenario_hash") or "")
+        expected_cost_contract_hash = recommendation_cost_contract_hash(
+            scenario.fixed_round_trip_cost_bp,
+            cost_scenario=scenario if scenario.is_estimated else None,
+        )
+        expected_label_registry_hash = recommendation_label_registry_hash(
+            cost_scenario=scenario if scenario.is_estimated else None,
+        )
+        if (
+            declared_cost_hash != scenario.scenario_hash
+            or capture.get("cost_status") != "verified"
+            or capture.get("cost_scenario_id") != scenario.scenario_id
+            or capture.get("cost_scenario_version") != scenario.scenario_version
+            or capture.get("cost_scenario_basis") != scenario.cost_basis
+            or capture.get("cost_basis") != scenario.cost_basis
+            or capture.get("cost_contract_hash") != expected_cost_contract_hash
+            or capture.get("label_registry_hash") != expected_label_registry_hash
+        ):
+            raise ValueError("current-observed capture cost scenario hash mismatch")
+
+        raw_snapshot = source.raw_snapshot
+        source_is_v2 = (
+            source.input_capture_schema_version
+            == "recommendation-current-observed-input-capture.v2"
+        )
+        capture_symbols = tuple(
+            sorted(str(row.get("symbol") or "") for row in rows if isinstance(row, Mapping))
+        )
+        if source_is_v2:
+            _validate_current_observed_outcome_query_batches(
+                source.query_batches,
+                source.query_batch_by_symbol,
+                capture_symbols,
+                capture,
+            )
+        else:
+            if not isinstance(getattr(raw_snapshot, "source_rows_sha256_by_table", None), Mapping):
+                raise ValueError("later current-observed source row hashes are missing")
+            price_hash = raw_snapshot.source_rows_sha256_by_table.get("daily_prices")
+            if not _is_current_outcome_sha256(price_hash):
+                raise ValueError("later daily price table query hash is invalid")
+        proof = source.session_proof
+        source_observed_at = _parse_aware_datetime(source.observed_at, "current-observed local clock")
+        if source_observed_at > evaluation_at:
+            raise ValueError("current-observed source clock follows outcome evaluation")
+        if source_observed_at.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat() != source.observed_date:
+            raise ValueError("current-observed source date differs from its local observation clock")
+        if _parse_aware_datetime(capture.get("captured_at"), "captured_at") >= source_observed_at:
+            raise ValueError("later current-observed source does not follow input capture")
+        market = proof.get("market")
+        if not isinstance(market, Mapping):
+            raise ValueError("verified maturity proof has no TAIEX source")
+        baseline = market.get("baseline_observation")
+        market_observations = market.get("observations")
+        if not isinstance(baseline, Mapping) or not isinstance(market_observations, list):
+            raise ValueError("verified maturity proof TAIEX rows are incomplete")
+        market_by_date: dict[str, Mapping[str, Any]] = {}
+        for item in market_observations:
+            if not isinstance(item, Mapping):
+                raise ValueError("verified maturity proof contains invalid TAIEX row")
+            date_text = str(item.get("date") or "")[:10]
+            if not date_text or date_text in market_by_date:
+                raise ValueError("verified maturity proof has duplicate TAIEX date rows")
+            market_by_date[date_text] = item
+        capture_day = _date(str(capture.get("decision_date") or ""))
+        baseline_date = capture_day.isoformat()
+        endpoint = source.endpoint_date
+        if str(baseline.get("date") or "")[:10] != baseline_date:
+            raise ValueError("TAIEX baseline date differs from current-observed entry date")
+        benchmark_entry_pin = capture.get("benchmark_entry_price_pin")
+        if not isinstance(benchmark_entry_pin, Mapping):
+            raise ValueError("TAIEX entry pin is missing")
+        benchmark_entry = _decimal_or_none(benchmark_entry_pin.get("close_price_twd"))
+        benchmark_baseline = _decimal_or_none(baseline.get("close"))
+        benchmark_endpoint_item = market_by_date.get(endpoint)
+        benchmark_endpoint = (
+            _decimal_or_none(benchmark_endpoint_item.get("close"))
+            if isinstance(benchmark_endpoint_item, Mapping)
+            else None
+        )
+        if benchmark_entry is None or benchmark_baseline is None or benchmark_entry != benchmark_baseline:
+            raise ValueError("TAIEX capture entry close differs from the later verified source")
+        if benchmark_endpoint is None or benchmark_endpoint <= 0:
+            raise _CurrentObservedOutcomePending("TAIEX maturity endpoint close is unavailable")
+        expected_sessions = tuple(str(item)[:10] for item in proof.get("session_dates", ()))
+        if (
+            len(expected_sessions) != 20
+            or expected_sessions != tuple(sorted(set(expected_sessions)))
+            or any(item not in market_by_date for item in expected_sessions)
+            or expected_sessions[-1] != endpoint
+        ):
+            raise ValueError("TAIEX current source does not cover the exact twenty-session proof")
+        for date_text in expected_sessions:
+            item = market_by_date[date_text]
+            if not _is_current_outcome_sha256(item.get("row_hash")):
+                raise ValueError("TAIEX official session row proof is incomplete")
+            scheduled_at = _parse_aware_datetime(
+                _taiex_scheduled_timestamp(item),
+                "TAIEX scheduled close",
+            )
+            if scheduled_at > evaluation_at:
+                raise ValueError("TAIEX scheduled close is later than outcome evaluation")
+            if scheduled_at > _parse_aware_datetime(source.observed_at, "current observation clock"):
+                raise _CurrentObservedOutcomePending("current_observation_precedes_maturity_session_close")
+
+        outcomes: list[dict[str, Any]] = []
+        pending: list[dict[str, str]] = []
+        diagnostics: list[str] = []
+        for capture_row in rows:
+            if not isinstance(capture_row, Mapping):
+                raise ValueError("current-observed capture row is invalid")
+            symbol = str(capture_row.get("symbol") or "")
+            row_id = str(capture_row.get("row_id") or "")
+            symbol_snapshot = source.raw_snapshots_by_symbol.get(symbol, raw_snapshot)
+            symbol_source_hashes = getattr(symbol_snapshot, "source_rows_sha256_by_table", None)
+            if not isinstance(symbol_source_hashes, Mapping):
+                raise ValueError(f"later current-observed source row hashes are missing for {symbol}")
+            symbol_source_hashes = dict(symbol_source_hashes)
+            if source_is_v2:
+                if (
+                    set(symbol_source_hashes)
+                    != {"daily_prices", "technical_indicators", "market_indices", "industry_indices"}
+                    or not _is_current_outcome_sha256(symbol_source_hashes.get("daily_prices"))
+                    or symbol_source_hashes.get("market_indices")
+                    != source.source_rows_sha256_by_table.get("market_indices")
+                ):
+                    raise ValueError(f"later current-observed source hash map is invalid for {symbol}")
+            elif not _is_current_outcome_sha256(symbol_source_hashes.get("daily_prices")):
+                # v1 單批收據沿用既有日價格查詢雜湊契約；四表精確映射只
+                # 要求新的分批 v2 路徑。
+                raise ValueError(f"later current-observed price hash is invalid for {symbol}")
+            prices = tuple(getattr(symbol_snapshot, "prices", ()))
+            entry_pin = capture_row.get("entry_price_pin")
+            if not isinstance(entry_pin, Mapping):
+                raise ValueError(f"current-observed entry pin is missing for {symbol}")
+            entry_price = _decimal_or_none(entry_pin.get("close_price_twd"))
+            if entry_price is None or entry_price <= 0:
+                raise ValueError(f"current-observed entry close is invalid for {symbol}")
+            later_entry_rows = [
+                item
+                for item in prices
+                if str(getattr(item, "symbol", "")).strip() == symbol
+                and str(getattr(item, "trading_date", ""))[:10] == baseline_date
+            ]
+            later_endpoint_rows = [
+                item
+                for item in prices
+                if str(getattr(item, "symbol", "")).strip() == symbol
+                and str(getattr(item, "trading_date", ""))[:10] == endpoint
+            ]
+            if len(later_entry_rows) != 1:
+                pending.append({"capture_row_id": row_id, "symbol": symbol, "reason": "entry_price_source_row_missing_or_duplicate"})
+                continue
+            later_entry = later_entry_rows[0]
+            if not self._positive_price(getattr(later_entry, "close_price", None)):
+                pending.append({"capture_row_id": row_id, "symbol": symbol, "reason": "entry_price_source_close_invalid"})
+                continue
+            if _decimal_or_none(getattr(later_entry, "close_price", None)) != entry_price:
+                raise ValueError(f"later current-restated entry close differs from original pin for {symbol}")
+            if len(later_endpoint_rows) != 1:
+                pending.append({"capture_row_id": row_id, "symbol": symbol, "reason": "endpoint_price_source_row_missing_or_duplicate"})
+                continue
+            later_endpoint = later_endpoint_rows[0]
+            endpoint_price = _decimal_or_none(getattr(later_endpoint, "close_price", None))
+            if endpoint_price is None or endpoint_price <= 0:
+                pending.append({"capture_row_id": row_id, "symbol": symbol, "reason": "endpoint_price_source_close_invalid"})
+                continue
+            cost_estimate = estimate_round_trip_cost(
+                scenario,
+                market_replay_date=capture_day,
+                buy_price_twd=entry_price,
+                sell_price_twd=endpoint_price,
+            )
+            session_proof = _current_observed_session_proof(
+                proof,
+                observed_at=source.observed_at,
+                observed_date=source.observed_date,
+                source_database_sha256=source.database_sha256,
+                source_rows_sha256_by_table=source.source_rows_sha256_by_table,
+                evaluation_at=evaluation_at,
+            )
+            benchmark_endpoint_proof = _current_observed_taiex_row_proof(
+                benchmark_endpoint_item,
+                observed_at=source.observed_at,
+                source_database_sha256=source.database_sha256,
+                source_rows_sha256_by_table=source.source_rows_sha256_by_table,
+            )
+            outcome_row: dict[str, Any] = {
+                    "capture_row_id": row_id,
+                    "capture_path": str(capture_path),
+                    "capture_sha256": capture_sha256,
+                    "symbol": symbol,
+                    "capture_decision_date": baseline_date,
+                    "feature_as_of_date": str(capture_row.get("feature_as_of_date") or "")[:10],
+                    "feature_available_at": capture_row.get("feature_available_at"),
+                    "feature_available_date": capture_row.get("feature_available_date"),
+                    "feature_registry_id": capture_row.get("feature_registry_id"),
+                    "feature_registry_hash": capture_row.get("feature_registry_hash"),
+                    "feature_schema_hash": capture_row.get("feature_schema_hash"),
+                    "feature_ids": list(capture_row.get("feature_ids") or []),
+                    "feature_values": list(capture_row.get("feature_values") or []),
+                    "missing_feature_ids": [
+                        feature_id
+                        for feature_id, value in zip(
+                            capture_row.get("feature_ids") or (),
+                            capture_row.get("feature_values") or (),
+                        )
+                        if value is None
+                    ],
+                    "feature_row_sha256": capture_row.get("feature_row_sha256"),
+                    "entry_source_date": str(entry_pin.get("source_date") or ""),
+                    "entry_close_price_twd": _decimal_text(entry_price),
+                    "entry_price_pin_sha256": str(entry_pin.get("source_row_sha256") or ""),
+                    "entry_price_proof": dict(entry_pin),
+                    "entry_consistency_source_proof": _current_price_row_proof(
+                        later_entry,
+                        observed_at=source.observed_at,
+                        source_database_sha256=source.database_sha256,
+                        source_rows_sha256_by_table=symbol_source_hashes,
+                    ),
+                    "label_end_date": endpoint,
+                    "label_available_date": source.observed_date,
+                    "label_observed_at": source.observed_at,
+                    "sell_price_twd": _decimal_text(endpoint_price),
+                    "endpoint_price_proof": _current_price_row_proof(
+                        later_endpoint,
+                        observed_at=source.observed_at,
+                        source_database_sha256=source.database_sha256,
+                        source_rows_sha256_by_table=symbol_source_hashes,
+                    ),
+                    "stock_return_bp": _return_bp(entry_price, endpoint_price),
+                    "upside_label": int(endpoint_price > entry_price),
+                    "benchmark_symbol": "TAIEX",
+                    "benchmark_entry_close_twd": _decimal_text(benchmark_entry),
+                    "benchmark_endpoint_close_twd": _decimal_text(benchmark_endpoint),
+                    "benchmark_return_bp": _return_bp(benchmark_entry, benchmark_endpoint),
+                    "benchmark_entry_price_proof": dict(benchmark_entry_pin),
+                    "benchmark_entry_consistency_source_proof": _current_observed_taiex_row_proof(
+                        baseline,
+                        observed_at=source.observed_at,
+                        source_database_sha256=source.database_sha256,
+                        source_rows_sha256_by_table=source.source_rows_sha256_by_table,
+                    ),
+                    "benchmark_endpoint_price_proof": benchmark_endpoint_proof,
+                    "maturity_session_proof": session_proof,
+                    "label_source_cycle_id": source.feature_snapshot.get("cycle_id"),
+                    "label_source_raw_run_id": source.feature_snapshot.get("raw_run_id"),
+                    "label_source_snapshot_database_sha256": source.database_sha256,
+                    "label_source_rows_sha256_by_table": dict(symbol_source_hashes),
+                    "cost_scenario_id": scenario.scenario_id,
+                    "cost_scenario_version": scenario.scenario_version,
+                    "cost_scenario_hash": scenario.scenario_hash,
+                    "cost_basis": scenario.cost_basis,
+                    "cost_contract_hash": capture.get("cost_contract_hash"),
+                    "label_registry_hash": capture.get("label_registry_hash"),
+                    "cost_estimate_status": cost_estimate.status,
+                    "estimated_buy_cost_twd": _optional_decimal_text(cost_estimate.estimated_buy_cost_twd),
+                    "estimated_sell_cost_twd": _optional_decimal_text(cost_estimate.estimated_sell_cost_twd),
+                    "estimated_round_trip_cost_twd": _optional_decimal_text(cost_estimate.estimated_round_trip_cost_twd),
+                    "estimated_round_trip_cost_bp": cost_estimate.estimated_round_trip_cost_bp,
+                    "gross_buy_amount_twd": _optional_decimal_text(cost_estimate.gross_buy_amount_twd),
+                    "gross_sell_amount_twd": _optional_decimal_text(cost_estimate.gross_sell_amount_twd),
+                    "net_profit_twd": _optional_decimal_text(cost_estimate.net_profit_twd),
+                    "cost_estimate_diagnostics": list(cost_estimate.diagnostics),
+                    "observed_liquidity_cost_bp": None,
+                    "after_cost_profit_label": None,
+                    "source_available_at": None,
+                    "current_restated": True,
+                    "historical_pit_eligible": False,
+                    "formal_training_allowed": False,
+                    "research_only": True,
+                }
+            if source_is_v2:
+                label_batch = source.query_batch_by_symbol.get(symbol)
+                if not isinstance(label_batch, Mapping):
+                    raise ValueError(f"current-observed query batch is missing for {symbol}")
+                outcome_row["label_source_batch_ordinal"] = label_batch.get("ordinal")
+                outcome_row["label_source_batch_sha256"] = label_batch.get("batch_sha256")
+            outcomes.append(outcome_row)
+        return outcomes, pending, diagnostics
 
     def scan_and_build_evidence(
         self,
@@ -3200,3 +4152,1117 @@ def _source_contract_gate(
     if not isinstance(receipt, Mapping) or not str(receipt.get("contract_path") or ""):
         return False, "prospective_source_contract_receipt_missing"
     return True, ""
+
+
+class _CurrentObservedOutcomePending(RuntimeError):
+    """A valid current-observed outcome is not mature or not yet available."""
+
+
+@dataclass(frozen=True)
+class _CurrentObservedOutcomeSource:
+    feature_snapshot: Mapping[str, Any]
+    source_contract_path: str
+    source_contract_file_sha256: str
+    source_contract_content_sha256: str
+    source_contract_binding_sha256: str
+    raw_snapshot: Any
+    session_proof: Mapping[str, Any]
+    endpoint_date: str
+    database_sha256: str
+    source_rows_sha256_by_table: Mapping[str, str]
+    observed_at: str
+    observed_date: str
+    raw_snapshots_by_symbol: Mapping[str, Any] = field(default_factory=dict)
+    query_batch_by_symbol: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    query_batches: tuple[Mapping[str, Any], ...] = ()
+    input_capture_schema_version: str = "recommendation-current-observed-input-capture.v1"
+
+    def to_receipt_dict(self) -> dict[str, Any]:
+        snapshot = self.feature_snapshot
+        payload: dict[str, Any] = {
+            "schema_version": snapshot.get("schema_version"),
+            "cycle_id": snapshot.get("cycle_id"),
+            "raw_run_id": snapshot.get("raw_run_id"),
+            "source_date": snapshot.get("cycle_source_date"),
+            "decision_date": snapshot.get("decision_date"),
+            "feature_as_of_date": snapshot.get("feature_as_of_date"),
+            "observed_at": self.observed_at,
+            "local_observed_at": self.observed_at,
+            "discovery_status_path": snapshot.get("discovery_status_path"),
+            "discovery_status_sha256": snapshot.get("discovery_status_sha256"),
+            "cycle_terminal_path": snapshot.get("cycle_terminal_path"),
+            "cycle_terminal_sha256": snapshot.get("cycle_terminal_sha256"),
+            "snapshot_database_path": snapshot.get("snapshot_database_path"),
+            "snapshot_database_sha256": self.database_sha256,
+            "snapshot_receipt_path": snapshot.get("snapshot_receipt_path"),
+            "snapshot_receipt_sha256": snapshot.get("snapshot_receipt_sha256"),
+            "source_context_envelope_path": snapshot.get("source_context_envelope_path"),
+            "source_context_envelope_sha256": snapshot.get("source_context_envelope_sha256"),
+            "feature_snapshot_sha256": snapshot.get("content_sha256"),
+            "resolver_session_proof": dict(self.session_proof),
+            "source_contract_path": self.source_contract_path,
+            "source_contract_file_sha256": self.source_contract_file_sha256,
+            "source_contract_content_sha256": self.source_contract_content_sha256,
+            "source_contract_binding_sha256": self.source_contract_binding_sha256,
+            "historical_pit_eligible": False,
+            "formal_training_allowed": False,
+            "current_restated": True,
+            "research_only": True,
+        }
+        if self.input_capture_schema_version == "recommendation-current-observed-input-capture.v2":
+            if snapshot.get("schema_version") == "recommendation-current-observed-feature-snapshot.v2":
+                payload["composition_sha256"] = snapshot.get("composition_sha256")
+            else:
+                payload["feature_source_rows_sha256_by_table"] = dict(
+                    snapshot.get("source_rows_sha256_by_table") or {}
+                )
+            payload["outcome_query_batches"] = [dict(batch) for batch in self.query_batches]
+            payload["outcome_query_batches_sha256"] = _hash_payload(
+                {
+                    "schema_version": "recommendation-current-observed-outcome-query-composition.v1",
+                    "capture_symbols": sorted(self.query_batch_by_symbol),
+                    "batches": [dict(batch) for batch in self.query_batches],
+                }
+            )
+        else:
+            feature_source_hashes = snapshot.get("source_rows_sha256_by_table")
+            payload["source_rows_sha256_by_table"] = dict(
+                feature_source_hashes
+                if isinstance(feature_source_hashes, Mapping)
+                else self.source_rows_sha256_by_table
+            )
+            payload["outcome_query_source_rows_sha256_by_table"] = dict(
+                self.source_rows_sha256_by_table
+            )
+            if snapshot.get("schema_version") == "recommendation-current-observed-feature-snapshot.v2":
+                payload["composition_sha256"] = snapshot.get("composition_sha256")
+        return payload
+
+
+def _current_observed_outcome_receipt_body(
+    *,
+    status: str,
+    reason: str,
+    capture_path: str,
+    capture_sha256: str,
+    capture_id: str | None,
+    capture_cycle_id: str | None,
+    decision_date: str | None,
+    evaluation_at: str,
+    endpoint_date: str | None,
+    outcomes: tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]],
+    pending_rows: tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]],
+    diagnostics: tuple[str, ...] | list[str],
+    current_observed_snapshot: Mapping[str, Any] | None,
+    source_contract_binding_sha256: str | None,
+    capture_schema_version: str = "",
+) -> dict[str, Any]:
+    receipt_schema = (
+        "recommendation-current-observed-natural-outcome-receipt.v2"
+        if capture_schema_version == "recommendation-current-observed-input-capture.v2"
+        else "recommendation-current-observed-natural-outcome-receipt.v1"
+    )
+    body: dict[str, Any] = {
+        "schema_version": receipt_schema,
+        "status": status,
+        "reason": reason,
+        "capture_path": capture_path,
+        "capture_sha256": capture_sha256,
+        "capture_id": capture_id,
+        "capture_cycle_id": capture_cycle_id,
+        "decision_date": decision_date,
+        "evaluation_at": evaluation_at,
+        "horizon_sessions": 20,
+        "endpoint_date": endpoint_date,
+        "matured_sample_count": len(outcomes),
+        "pending_sample_count": len(pending_rows),
+        "source_contract_binding_sha256": source_contract_binding_sha256,
+        "source_available_at": None,
+        "current_observed_snapshot": (
+            dict(current_observed_snapshot) if current_observed_snapshot is not None else None
+        ),
+        "outcomes": [dict(row) for row in outcomes],
+        "pending_rows": [dict(row) for row in pending_rows],
+        "diagnostics": list(diagnostics),
+        "current_restated": True,
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "research_only": True,
+        "natural_outcome_only": True,
+        "historical_replay_is_natural_evidence": False,
+        "promotion_credit_created": False,
+    }
+    body["receipt_content_sha256"] = _hash_payload(body)
+    return body
+
+
+def _persist_current_observed_outcome_receipt(
+    path: Path,
+    body: Mapping[str, Any],
+) -> dict[str, Any]:
+    """以 create-only 寫 receipt；重跑只能讀回完全相同的 bytes。"""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = dict(body)
+    payload["receipt_path"] = str(path.resolve())
+    payload.pop("receipt_content_sha256", None)
+    payload["receipt_content_sha256"] = _hash_payload(payload)
+    encoded = (json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        existing_bytes = path.read_bytes()
+        if existing_bytes != encoded:
+            raise RuntimeError("immutable current-observed outcome receipt conflict")
+    else:
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(encoded)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
+    result = dict(payload)
+    result["receipt_path"] = str(path.resolve())
+    result["receipt_file_sha256"] = _sha256_file(path)
+    return result
+
+
+def _current_outcome_source_binding(
+    contract: Mapping[str, Any],
+    receipt: Mapping[str, Any],
+    snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    contract_path = str(receipt.get("contract_path") or "")
+    content_hash = str(receipt.get("contract_content_sha256") or "")
+    file_hash = str(receipt.get("contract_file_sha256") or "")
+    feature_hash = str(snapshot.get("content_sha256") or "")
+    if not contract_path or not all(
+        _is_current_outcome_sha256(item) for item in (content_hash, file_hash, feature_hash)
+    ):
+        raise ValueError("later current-observed source contract receipt pins are incomplete")
+    binding: dict[str, Any] = {
+        "schema_version": "recommendation-calibration-capture-source-binding.v2",
+        "binding_mode": "current_observed",
+        "contract_path": contract_path,
+        "contract_content_sha256": content_hash,
+        "contract_file_sha256": file_hash,
+        "decision_date": contract.get("decision_date"),
+        "symbols": list(contract.get("symbols", ()))
+        if isinstance(contract.get("symbols"), (list, tuple))
+        else [],
+        "current_observed_feature_snapshot": dict(snapshot),
+        "current_observed_feature_snapshot_sha256": feature_hash,
+        "feature_snapshot_content_sha256": feature_hash,
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "current_restated": True,
+        "research_only": True,
+        "source_semantics": "current_observed_outcome_source;not_historical_PIT",
+    }
+    for field_name in (
+        "cycle_id",
+        "raw_run_id",
+        "cycle_source_date",
+        "discovery_status_path",
+        "discovery_status_sha256",
+        "cycle_terminal_path",
+        "cycle_terminal_sha256",
+        "discovery_raw_run_id",
+        "discovery_cycle_terminal_path",
+        "discovery_cycle_terminal_sha256",
+        "discovery_cycle_terminal_status",
+        "reuse_source_identity",
+        "snapshot_database_path",
+        "snapshot_database_sha256",
+        "snapshot_receipt_path",
+        "snapshot_receipt_sha256",
+        "source_context_envelope_path",
+        "source_context_envelope_sha256",
+        "feature_as_of_date",
+        "observed_at",
+        "feature_registry_id",
+        "feature_registry_hash",
+        "feature_schema_hash",
+        "rows_sha256",
+        "row_count",
+    ):
+        binding[field_name] = snapshot.get(field_name)
+    if snapshot.get("schema_version") == "recommendation-current-observed-feature-snapshot.v2":
+        binding["scope_mode"] = snapshot.get("scope_mode")
+        binding["cohort_hash"] = snapshot.get("cohort_hash")
+        binding["composition_sha256"] = snapshot.get("composition_sha256")
+    elif "composition_sha256" in snapshot:
+        binding["composition_sha256"] = snapshot.get("composition_sha256")
+    return binding
+
+
+def _current_outcome_verification_row(row: Mapping[str, Any], decision_day: date) -> dict[str, Any]:
+    result = dict(row)
+    result["decision_date"] = str(row.get("decision_date") or decision_day.isoformat())[:10]
+    result["feature_available_date"] = decision_day.isoformat()
+    return result
+
+
+def _validate_current_observed_feature_snapshot_v2(
+    snapshot: Mapping[str, Any],
+    expected_symbols: list[str],
+) -> None:
+    """Check v2 cohort partition and child commitments before outcomes use it."""
+
+    table_names = {
+        "daily_prices",
+        "technical_indicators",
+        "market_indices",
+        "industry_indices",
+    }
+    symbols_value = snapshot.get("symbols")
+    rows_value = snapshot.get("rows")
+    if (
+        snapshot.get("scope_mode") != "verified_scheduled_snapshot_cohort"
+        or not isinstance(symbols_value, list)
+        or symbols_value != expected_symbols
+        or not isinstance(rows_value, list)
+        or snapshot.get("row_count") != len(rows_value)
+        or len(rows_value) != len(expected_symbols)
+        or "source_rows_sha256_by_table" in snapshot
+        or _hash_payload({"rows": rows_value}) != snapshot.get("rows_sha256")
+    ):
+        raise ValueError("current-observed v2 feature cohort identity is invalid")
+    feature_body = {key: value for key, value in snapshot.items() if key != "content_sha256"}
+    if (
+        not _is_current_outcome_sha256(snapshot.get("content_sha256"))
+        or _hash_payload(feature_body) != snapshot.get("content_sha256")
+    ):
+        raise ValueError("current-observed v2 feature snapshot content hash mismatch")
+
+    composition = snapshot.get("batch_composition")
+    full_cohort = composition.get("full_cohort") if isinstance(composition, Mapping) else None
+    if (
+        not isinstance(composition, Mapping)
+        or composition.get("schema_version")
+        != "recommendation-current-observed-feature-batch-composition.v1"
+        or composition.get("scope_mode") != "verified_scheduled_snapshot_cohort"
+        or composition.get("cohort_hash") != snapshot.get("cohort_hash")
+        or not _is_current_outcome_sha256(snapshot.get("cohort_hash"))
+        or not isinstance(full_cohort, Mapping)
+        or not isinstance(composition.get("snapshot_source_binding"), Mapping)
+        or composition.get("symbols") != expected_symbols
+        or composition.get("rows_sha256") != snapshot.get("rows_sha256")
+        or composition.get("max_symbols_per_batch") != 16
+        or composition.get("max_total_symbols") != 50
+    ):
+        raise ValueError("current-observed v2 batch composition is invalid")
+    cohort_body = {key: value for key, value in full_cohort.items() if key != "cohort_hash"}
+    source_binding = composition.get("snapshot_source_binding")
+    required_source_binding_keys = {
+        "snapshot_output_root",
+        "result_id",
+        "schema_version",
+        "schema_revision",
+        "integrity_basis",
+        "raw_artifact_sha256",
+        "payload_hash",
+        "cohort_hash",
+        "invocation_output_path",
+        "invocation_output_size",
+        "invocation_output_sha256",
+        "decision_date",
+        "data_as_of_date",
+        "decision_at",
+        "available_at",
+    }
+    if (
+        _hash_payload(cohort_body) != snapshot.get("cohort_hash")
+        or full_cohort.get("cohort_hash") != snapshot.get("cohort_hash")
+        or not isinstance(source_binding, Mapping)
+        or not required_source_binding_keys.issubset(set(source_binding))
+        or source_binding.get("integrity_basis") != "canonical_payload_and_index_verified"
+        or source_binding.get("cohort_hash") != snapshot.get("cohort_hash")
+    ):
+        raise ValueError("current-observed v2 saved source binding or cohort hash is invalid")
+    batches_value = composition.get("batches")
+    if (
+        not isinstance(batches_value, list)
+        or not batches_value
+        or composition.get("batch_count") != len(batches_value)
+    ):
+        raise ValueError("current-observed v2 batch list is incomplete")
+    composition_body = {
+        key: value for key, value in composition.items() if key != "composition_sha256"
+    }
+    composition_sha256 = composition.get("composition_sha256")
+    if (
+        not _is_current_outcome_sha256(composition_sha256)
+        or _hash_payload(composition_body) != composition_sha256
+        or snapshot.get("composition_sha256") != composition_sha256
+    ):
+        raise ValueError("current-observed v2 batch composition hash mismatch")
+    for field_name in (
+        "cycle_id",
+        "raw_run_id",
+        "cycle_source_date",
+        "decision_date",
+        "feature_as_of_date",
+        "observed_at",
+        "rows_sha256",
+        "snapshot_database_path",
+        "snapshot_database_sha256",
+        "snapshot_receipt_path",
+        "snapshot_receipt_sha256",
+        "source_context_envelope_path",
+        "source_context_envelope_sha256",
+        "cycle_terminal_path",
+        "cycle_terminal_sha256",
+        "feature_registry_id",
+        "feature_registry_hash",
+        "feature_schema_hash",
+        "cohort_hash",
+    ):
+        if composition.get(field_name) != snapshot.get(field_name):
+            raise ValueError(f"current-observed v2 composition pin differs: {field_name}")
+
+    parent_rows = {
+        str(row.get("symbol") or ""): row
+        for row in rows_value
+        if isinstance(row, Mapping) and str(row.get("symbol") or "")
+    }
+    if set(parent_rows) != set(expected_symbols) or len(parent_rows) != len(rows_value):
+        raise ValueError("current-observed v2 parent rows are not a unique complete cohort")
+    parent_entry = snapshot.get("entry_observation")
+    if not isinstance(parent_entry, Mapping):
+        raise ValueError("current-observed v2 parent entry observation is missing")
+    parent_entry_pins = parent_entry.get("entry_price_pin_by_symbol")
+    parent_benchmark_pin = parent_entry.get("benchmark_entry_price_pin")
+    if (
+        not isinstance(parent_entry_pins, Mapping)
+        or set(str(key) for key in parent_entry_pins) != set(expected_symbols)
+        or not isinstance(parent_benchmark_pin, Mapping)
+    ):
+        raise ValueError("current-observed v2 parent entry pin scope is incomplete")
+
+    covered: list[str] = []
+    for ordinal, batch_value in enumerate(batches_value):
+        if not isinstance(batch_value, Mapping):
+            raise ValueError("current-observed v2 batch descriptor is invalid")
+        batch = dict(batch_value)
+        expected_keys = {
+            "schema_version",
+            "ordinal",
+            "symbols",
+            "row_count",
+            "rows_sha256",
+            "child_snapshot_content_sha256",
+            "source_rows_sha256_by_table",
+            "entry_observation",
+            "batch_sha256",
+        }
+        batch_symbols = batch.get("symbols")
+        source_hashes = batch.get("source_rows_sha256_by_table")
+        batch_entry = batch.get("entry_observation")
+        if (
+            set(batch) != expected_keys
+            or batch.get("schema_version") != "recommendation-current-observed-feature-batch.v1"
+            or type(batch.get("ordinal")) is not int
+            or batch.get("ordinal") != ordinal
+            or not isinstance(batch_symbols, list)
+            or not batch_symbols
+            or batch_symbols != sorted(set(str(value) for value in batch_symbols))
+            or len(batch_symbols) > 16
+            or batch.get("row_count") != len(batch_symbols)
+            or not isinstance(source_hashes, Mapping)
+            or set(source_hashes) != table_names
+            or any(not _is_current_outcome_sha256(value) for value in source_hashes.values())
+            or not _is_current_outcome_sha256(batch.get("child_snapshot_content_sha256"))
+            or not isinstance(batch_entry, Mapping)
+            or not _is_current_outcome_sha256(batch.get("rows_sha256"))
+        ):
+            raise ValueError("current-observed v2 batch descriptor fields are invalid")
+        batch_body = {key: value for key, value in batch.items() if key != "batch_sha256"}
+        if (
+            not _is_current_outcome_sha256(batch.get("batch_sha256"))
+            or _hash_payload(batch_body) != batch.get("batch_sha256")
+        ):
+            raise ValueError("current-observed v2 child batch hash mismatch")
+        batch_rows = [parent_rows[str(symbol)] for symbol in batch_symbols]
+        if _hash_payload({"rows": batch_rows}) != batch.get("rows_sha256"):
+            raise ValueError("current-observed v2 child batch rows hash mismatch")
+        batch_entry_pins = batch_entry.get("entry_price_pin_by_symbol")
+        if (
+            batch_entry.get("schema_version") != parent_entry.get("schema_version")
+            or not isinstance(batch_entry_pins, Mapping)
+            or set(str(key) for key in batch_entry_pins) != set(batch_symbols)
+            or batch_entry.get("benchmark_entry_price_pin") != parent_benchmark_pin
+            or any(batch_entry.get(key) != parent_entry.get(key) for key in (
+                "decision_date",
+                "cycle_source_date",
+                "local_observed_at",
+                "scheduled_market_close_at",
+                "scheduled_market_close_time",
+                "exchange",
+                "timezone",
+                "entry_session_proof",
+                "entry_session_proof_sha256",
+                "calendar_evidence",
+                "calendar_evidence_sha256",
+                "source_database_path",
+                "source_database_sha256",
+                "source_available_at",
+                "current_restated",
+                "research_only",
+                "historical_pit_eligible",
+                "formal_training_allowed",
+            ))
+            or any(batch_entry_pins.get(symbol) != parent_entry_pins.get(symbol) for symbol in batch_symbols)
+        ):
+            raise ValueError("current-observed v2 child entry proof differs from parent")
+        covered.extend(str(symbol) for symbol in batch_symbols)
+    if covered != expected_symbols:
+        raise ValueError("current-observed v2 batches do not exactly cover the cohort")
+
+
+def _validate_current_observed_outcome_query_batches(
+    batches: tuple[Mapping[str, Any], ...],
+    batch_by_symbol: Mapping[str, Mapping[str, Any]],
+    expected_symbols: tuple[str, ...],
+    capture: Mapping[str, Any],
+) -> None:
+    table_names = {
+        "daily_prices",
+        "technical_indicators",
+        "market_indices",
+        "industry_indices",
+    }
+    pins = capture.get("entry_price_pin_by_symbol")
+    benchmark = capture.get("benchmark_entry_price_pin")
+    if (
+        not batches
+        or not isinstance(pins, Mapping)
+        or not isinstance(benchmark, Mapping)
+        or set(batch_by_symbol) != set(expected_symbols)
+    ):
+        raise ValueError("current-observed outcome query batch scope is incomplete")
+    covered: list[str] = []
+    for ordinal, value in enumerate(batches):
+        batch = dict(value)
+        expected_keys = {
+            "schema_version",
+            "ordinal",
+            "symbols",
+            "row_count",
+            "query_identity_sha256",
+            "source_rows_sha256_by_table",
+            "input_entry_observation_sha256",
+            "batch_sha256",
+        }
+        symbols_value = batch.get("symbols")
+        table_hashes = batch.get("source_rows_sha256_by_table")
+        if (
+            set(batch) != expected_keys
+            or batch.get("schema_version")
+            != "recommendation-current-observed-outcome-query-batch.v1"
+            or type(batch.get("ordinal")) is not int
+            or batch.get("ordinal") != ordinal
+            or not isinstance(symbols_value, list)
+            or not symbols_value
+            or symbols_value != sorted(set(str(symbol) for symbol in symbols_value))
+            or len(symbols_value) > 16
+            or batch.get("row_count") != len(symbols_value)
+            or not set(str(symbol) for symbol in symbols_value).issubset(set(str(key) for key in pins))
+            or not isinstance(table_hashes, Mapping)
+            or set(table_hashes) != table_names
+            or any(not _is_current_outcome_sha256(item) for item in table_hashes.values())
+            or not _is_current_outcome_sha256(batch.get("query_identity_sha256"))
+            or not _is_current_outcome_sha256(batch.get("input_entry_observation_sha256"))
+        ):
+            raise ValueError("current-observed outcome query batch fields are invalid")
+        expected_query_identity = _hash_payload(
+            {
+                "symbols": symbols_value,
+                "source_rows_sha256_by_table": dict(table_hashes),
+            }
+        )
+        entry_observation = {
+            "entry_price_pin_by_symbol": {
+                symbol: dict(pins[symbol]) for symbol in symbols_value
+            },
+            "benchmark_entry_price_pin": dict(benchmark),
+        }
+        body = {key: item for key, item in batch.items() if key != "batch_sha256"}
+        if (
+            batch.get("query_identity_sha256") != expected_query_identity
+            or batch.get("input_entry_observation_sha256") != _hash_payload(entry_observation)
+            or not _is_current_outcome_sha256(batch.get("batch_sha256"))
+            or _hash_payload(body) != batch.get("batch_sha256")
+        ):
+            raise ValueError("current-observed outcome query batch hash mismatch")
+        covered.extend(str(symbol) for symbol in symbols_value)
+        for symbol in symbols_value:
+            if batch_by_symbol.get(symbol) != batch:
+                raise ValueError("current-observed outcome batch lookup differs from manifest")
+    if covered != list(expected_symbols):
+        raise ValueError("current-observed outcome query batches do not exactly cover capture")
+
+
+def _validate_current_observed_entry_pin(
+    pin: Mapping[str, Any],
+    *,
+    expected_symbol: str,
+    expected_date: str,
+    captured_at: datetime,
+) -> None:
+    if (
+        pin.get("schema_version") != "recommendation-current-observed-entry-price-pin.v1"
+        or str(pin.get("symbol") or "") != expected_symbol
+        or str(pin.get("source_date") or "")[:10] != expected_date
+        or pin.get("source_available_at") is not None
+        or pin.get("historical_pit_eligible") is not False
+        or pin.get("formal_training_allowed") is not False
+        or pin.get("research_only") is not True
+        or pin.get("current_restated") is not True
+    ):
+        raise ValueError(f"current-observed entry pin identity is invalid for {expected_symbol}")
+    close_value = _decimal_or_none(pin.get("close_price_twd"))
+    if close_value is None or not close_value.is_finite() or close_value <= 0:
+        raise ValueError(f"current-observed entry pin close is invalid for {expected_symbol}")
+    source_row_values = pin.get("source_row_values")
+    if not isinstance(source_row_values, Mapping):
+        raise ValueError(f"current-observed entry pin row values are missing for {expected_symbol}")
+    expected_table = "market_indices" if expected_symbol == "TAIEX" else "daily_prices"
+    if (
+        source_row_values.get("table") != expected_table
+        or str(source_row_values.get("symbol") or "") != expected_symbol
+        or str(source_row_values.get("source_date") or "")[:10] != expected_date
+        or source_row_values.get("raw_close_value") != pin.get("raw_close_value")
+        or _hash_payload(dict(source_row_values)) != pin.get("source_row_sha256")
+    ):
+        raise ValueError(f"current-observed entry pin raw row hash is invalid for {expected_symbol}")
+    if _decimal_or_none(pin.get("raw_close_value")) != close_value:
+        raise ValueError(f"current-observed raw close differs from Decimal pin for {expected_symbol}")
+    local_observed_at = _parse_aware_datetime(pin.get("local_observed_at"), "entry_pin.local_observed_at")
+    if local_observed_at > captured_at or local_observed_at > datetime.now(timezone.utc):
+        raise ValueError(f"current-observed entry pin clock is invalid for {expected_symbol}")
+    if not _is_current_outcome_sha256(pin.get("source_row_sha256")):
+        raise ValueError(f"current-observed entry row hash is invalid for {expected_symbol}")
+    for field_name in (
+        "snapshot_database_sha256",
+        "snapshot_receipt_sha256",
+        "source_context_envelope_sha256",
+        "cycle_terminal_sha256",
+    ):
+        if not _is_current_outcome_sha256(pin.get(field_name)):
+            raise ValueError(f"current-observed entry pin {field_name} is invalid")
+    for field_name in (
+        "snapshot_database_path",
+        "snapshot_receipt_path",
+        "source_context_envelope_path",
+        "cycle_terminal_path",
+        "cycle_id",
+        "raw_run_id",
+    ):
+        if not str(pin.get(field_name) or "").strip():
+            raise ValueError(f"current-observed entry pin {field_name} is missing")
+
+
+def _current_price_row_proof(
+    row: Any,
+    *,
+    observed_at: str,
+    source_database_sha256: str,
+    source_rows_sha256_by_table: Mapping[str, str],
+) -> dict[str, Any]:
+    payload = _current_price_row_payload(row)
+    return {
+        "schema_version": "current-observed-price-row-proof.v1",
+        "source_table": "daily_prices",
+        **payload,
+        "row_sha256": _hash_payload(
+            {
+                "source_database_sha256": source_database_sha256,
+                "source_table_query_sha256": source_rows_sha256_by_table.get("daily_prices"),
+                "row": payload,
+            }
+        ),
+        "source_database_sha256": source_database_sha256,
+        "source_table_query_sha256": source_rows_sha256_by_table.get("daily_prices"),
+        "local_observed_at": observed_at,
+        "source_available_at": None,
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "research_only": True,
+    }
+
+
+def _current_price_row_payload(row: Any) -> dict[str, Any]:
+    return {
+        "symbol": str(getattr(row, "symbol", "")).strip(),
+        "source_date": str(getattr(row, "trading_date", ""))[:10],
+        "volume": getattr(row, "volume", None),
+        "turnover_amount_minor": getattr(row, "turnover_amount_minor", None),
+        "open_price": _optional_decimal_text(getattr(row, "open_price", None)),
+        "high_price": _optional_decimal_text(getattr(row, "high_price", None)),
+        "low_price": _optional_decimal_text(getattr(row, "low_price", None)),
+        "close_price": _optional_decimal_text(getattr(row, "close_price", None)),
+    }
+
+
+def _current_observed_taiex_row_proof(
+    observation: Mapping[str, Any] | None,
+    *,
+    observed_at: str,
+    source_database_sha256: str,
+    source_rows_sha256_by_table: Mapping[str, str],
+) -> dict[str, Any]:
+    if not isinstance(observation, Mapping):
+        raise ValueError("TAIEX proof row is invalid")
+    scheduled_at = _taiex_scheduled_timestamp(observation)
+    close = _decimal_or_none(observation.get("close"))
+    source_rows_hash = source_rows_sha256_by_table.get("market_indices")
+    if (
+        not _is_current_outcome_sha256(observation.get("row_hash"))
+        or not _is_current_outcome_sha256(source_rows_hash)
+        or close is None
+        or not close.is_finite()
+        or close <= 0
+    ):
+        raise ValueError("TAIEX source row hashes are invalid")
+    local_observed = _parse_aware_datetime(observed_at, "TAIEX local observation")
+    parsed_scheduled = _parse_aware_datetime(scheduled_at, "TAIEX scheduled close")
+    if parsed_scheduled > local_observed:
+        raise ValueError("TAIEX source was observed before scheduled close")
+    return {
+        "schema_version": "current-observed-taiex-row-proof.v1",
+        "source_table": "market_indices",
+        "index_name": "TAIEX",
+        "source_date": str(observation.get("date") or "")[:10],
+        "close_price_twd": _decimal_text(close),
+        "source_row_sha256": str(observation.get("row_hash") or ""),
+        "source_database_sha256": source_database_sha256,
+        "source_table_query_sha256": source_rows_hash,
+        "scheduled_close_at": scheduled_at,
+        "local_observed_at": observed_at,
+        "source_available_at": None,
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "research_only": True,
+    }
+
+
+def _current_observed_session_proof(
+    resolver_proof: Mapping[str, Any],
+    *,
+    observed_at: str,
+    observed_date: str,
+    source_database_sha256: str,
+    source_rows_sha256_by_table: Mapping[str, str],
+    evaluation_at: datetime,
+) -> dict[str, Any]:
+    market = resolver_proof.get("market")
+    if not isinstance(market, Mapping):
+        raise ValueError("official session resolver proof has no TAIEX rows")
+    observations = market.get("observations")
+    baseline = market.get("baseline_observation")
+    if not isinstance(observations, list) or not isinstance(baseline, Mapping):
+        raise ValueError("official session resolver proof has no TAIEX observations")
+    expected_sessions = tuple(str(value)[:10] for value in resolver_proof.get("session_dates", ()))
+    if (
+        len(expected_sessions) != 20
+        or expected_sessions != tuple(sorted(set(expected_sessions)))
+        or tuple(str(item.get("date") or "")[:10] for item in observations if isinstance(item, Mapping))
+        != expected_sessions
+        or not _is_current_outcome_sha256(source_rows_sha256_by_table.get("market_indices"))
+    ):
+        raise ValueError("verified session proof does not contain twenty ordered TAIEX rows")
+    observed_clock = _parse_aware_datetime(observed_at, "current-observed maturity clock")
+    baseline_close_at = _parse_aware_datetime(
+        _taiex_scheduled_timestamp(baseline),
+        "TAIEX baseline scheduled close",
+    )
+    if baseline_close_at > observed_clock:
+        raise ValueError("current source observation predates TAIEX baseline close")
+    baseline_row = {
+        "date": str(baseline.get("date") or "")[:10],
+        "close": str(baseline.get("close") or ""),
+        "row_sha256": str(baseline.get("row_hash") or ""),
+        "scheduled_close_at": _taiex_scheduled_timestamp(baseline),
+        "local_observed_at": observed_at,
+        "source_available_at": None,
+    }
+    if not _is_current_outcome_sha256(baseline_row["row_sha256"]):
+        raise ValueError("verified session proof baseline TAIEX row hash is invalid")
+    session_rows: list[dict[str, Any]] = []
+    for item in observations:
+        if not isinstance(item, Mapping):
+            raise ValueError("official session resolver TAIEX row is invalid")
+        scheduled_close_at = _taiex_scheduled_timestamp(item)
+        parsed_scheduled = _parse_aware_datetime(scheduled_close_at, "TAIEX scheduled close")
+        if parsed_scheduled > evaluation_at:
+            raise ValueError("TAIEX scheduled close follows outcome evaluation")
+        if parsed_scheduled > observed_clock:
+            raise ValueError("current source observation predates a TAIEX session close")
+        if not _is_current_outcome_sha256(item.get("row_hash")):
+            raise ValueError("current-observed session TAIEX row hash is invalid")
+        close = _decimal_or_none(item.get("close"))
+        if close is None or not close.is_finite() or close <= 0:
+            raise ValueError("current-observed session TAIEX close is invalid")
+        session_rows.append(
+            {
+                "date": str(item.get("date") or "")[:10],
+                "close": _decimal_text(close),
+                "row_sha256": str(item.get("row_hash") or ""),
+                "scheduled_close_at": scheduled_close_at,
+                "local_observed_at": observed_at,
+                "source_available_at": None,
+            }
+        )
+    return {
+        "schema_version": "recommendation-current-observed-maturity-proof.v1",
+        "resolver_proof_sha256": _hash_payload(dict(resolver_proof)),
+        "resolver_proof": dict(resolver_proof),
+        "capture_decision_date": resolver_proof.get("capture_date"),
+        "entry_source_date": resolver_proof.get("capture_date"),
+        "baseline_observation": baseline_row,
+        "label_end_date": resolver_proof.get("endpoint_date"),
+        "horizon_sessions": 20,
+        "session_dates": list(resolver_proof.get("session_dates") or []),
+        "calendar_evidence": dict(resolver_proof.get("calendar") or {}),
+        "taiex_session_rows": session_rows,
+        "source_database_sha256": source_database_sha256,
+        "market_indices_query_sha256": source_rows_sha256_by_table.get("market_indices"),
+        "local_observed_at": observed_at,
+        "label_available_date": observed_date,
+        "resolver_available_at_semantics": "scheduled_close_not_source_body_availability",
+        "source_available_at": None,
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "current_restated": True,
+        "research_only": True,
+    }
+
+
+def _taiex_scheduled_timestamp(observation: Mapping[str, Any]) -> str:
+    value = observation.get("available_at")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("TAIEX scheduled close timestamp is missing")
+    return value
+
+
+def _optional_decimal_text(value: Any) -> str | None:
+    parsed = _decimal_or_none(value)
+    return None if parsed is None else format(parsed, "f")
+
+
+def _decimal_text(value: Decimal) -> str:
+    if not value.is_finite():
+        raise ValueError("decimal source value must be finite")
+    return format(value, "f")
+
+
+def _is_current_outcome_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 71
+        and value.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in value[7:])
+    )
+
+
+def _current_observed_outcome_root(capture_path: Path) -> Path:
+    """Outcome receipts share the learning root with their input captures."""
+
+    capture = capture_path.resolve(strict=True)
+    for parent in capture.parents:
+        if parent.name == "current_observed_captures" and parent.parent.name == "recommendation_learning":
+            if parent.is_symlink() or parent.parent.is_symlink():
+                raise ValueError("current-observed capture store cannot contain symlink roots")
+            return parent.parent / "current_observed_outcomes"
+    raise ValueError("current-observed capture is outside the learning capture store")
+
+
+def _require_path_under_root_without_symlinks(path: Path, root: Path) -> None:
+    candidate = Path(os.path.abspath(path))
+    allowed_root = Path(os.path.abspath(root))
+    try:
+        relative = candidate.relative_to(allowed_root)
+    except ValueError as exc:
+        raise ValueError("current-observed outcome receipt is outside its learning root") from exc
+    if not relative.parts or candidate.suffix.lower() != ".json":
+        raise ValueError("current-observed outcome receipt path is invalid")
+    cursor = allowed_root
+    if cursor.exists() and cursor.is_symlink():
+        raise ValueError("current-observed outcome store root cannot be a symlink")
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.exists() and cursor.is_symlink():
+            raise ValueError("current-observed outcome path cannot contain symlinks")
+
+
+def verify_current_observed_outcome_receipt(
+    path: str | Path,
+    *,
+    expected_sha256: str | None = None,
+    capture_path: str | Path | None = None,
+) -> Mapping[str, Any]:
+    """Re-verify a current-only outcome receipt and return its frozen rows.
+
+    The check reopens the exact capture and later source contract, validates
+    their immutable pins, recomputes the official 20-session proof, and
+    rebuilds every row from the pinned current-restated snapshot. It does not
+    route the result through historical/PIT evidence.
+    """
+
+    receipt_input = Path(path).expanduser()
+    if receipt_input.is_symlink():
+        raise ValueError("current-observed outcome receipt must not be a symlink")
+    receipt_path = receipt_input.resolve(strict=True)
+    if not receipt_path.is_file() or receipt_path.suffix.lower() != ".json":
+        raise ValueError("current-observed outcome receipt path is invalid")
+    try:
+        payload_value = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("current-observed outcome receipt JSON is invalid") from exc
+    if not isinstance(payload_value, Mapping):
+        raise ValueError("current-observed outcome receipt root is invalid")
+    payload = dict(payload_value)
+    receipt_schema_version = payload.get("schema_version")
+    if receipt_schema_version not in {
+        "recommendation-current-observed-natural-outcome-receipt.v1",
+        "recommendation-current-observed-natural-outcome-receipt.v2",
+    }:
+        raise ValueError("current-observed outcome receipt schema is unsupported")
+    if (
+        payload.get("current_restated") is not True
+        or payload.get("historical_pit_eligible") is not False
+        or payload.get("formal_training_allowed") is not False
+        or payload.get("research_only") is not True
+        or payload.get("natural_outcome_only") is not True
+        or payload.get("promotion_credit_created") is not False
+        or payload.get("historical_replay_is_natural_evidence") is not False
+    ):
+        raise ValueError("current-observed outcome receipt eligibility flags are invalid")
+    declared_path = str(payload.get("receipt_path") or "")
+    if not declared_path or Path(declared_path).resolve() != receipt_path:
+        raise ValueError("current-observed outcome receipt path binding mismatch")
+    actual_receipt_sha256 = _sha256_file(receipt_path)
+    if expected_sha256 is not None and actual_receipt_sha256 != expected_sha256:
+        raise ValueError("current-observed outcome receipt file hash mismatch")
+    content_sha256 = payload.get("receipt_content_sha256")
+    if not _is_current_outcome_sha256(content_sha256):
+        raise ValueError("current-observed outcome receipt content hash is invalid")
+    content_body = {key: value for key, value in payload.items() if key != "receipt_content_sha256"}
+    if _hash_payload(content_body) != content_sha256:
+        raise ValueError("current-observed outcome receipt content hash mismatch")
+
+    capture_path_value = capture_path if capture_path is not None else payload.get("capture_path")
+    if not isinstance(capture_path_value, (str, Path)) or not str(capture_path_value).strip():
+        raise ValueError("current-observed outcome receipt capture path is missing")
+    capture_input = Path(capture_path_value).expanduser()
+    if capture_input.is_symlink():
+        raise ValueError("current-observed input capture must not be a symlink")
+    capture_file = capture_input.resolve(strict=True)
+    if str(capture_file) != str(payload.get("capture_path") or ""):
+        raise ValueError("current-observed outcome capture path binding mismatch")
+    outcome_root = _current_observed_outcome_root(capture_file)
+    _require_path_under_root_without_symlinks(receipt_path, outcome_root)
+    capture_sha256 = _sha256_file(capture_file)
+    if capture_sha256 != payload.get("capture_sha256"):
+        raise ValueError("current-observed outcome input capture file hash mismatch")
+
+    from ml_module.recommendation_calibration_evidence import verify_current_observed_input_capture
+
+    capture_value = verify_current_observed_input_capture(
+        capture_file,
+        expected_sha256=capture_sha256,
+    )
+    if not isinstance(capture_value, Mapping):
+        raise ValueError("current-observed input capture verifier returned no payload")
+    capture = dict(capture_value)
+    expected_receipt_schema = (
+        "recommendation-current-observed-natural-outcome-receipt.v2"
+        if capture.get("schema_version") == "recommendation-current-observed-input-capture.v2"
+        else "recommendation-current-observed-natural-outcome-receipt.v1"
+    )
+    if receipt_schema_version != expected_receipt_schema:
+        raise ValueError("current-observed outcome receipt and capture schema versions differ")
+    evaluation_at = _parse_aware_datetime(payload.get("evaluation_at"), "outcome evaluation_at")
+    capture_day_text = str(capture.get("decision_date") or "")[:10]
+    if (
+        payload.get("capture_id") != capture.get("capture_id")
+        or payload.get("capture_cycle_id") != capture.get("cycle_id")
+        or payload.get("decision_date") != capture_day_text
+    ):
+        raise ValueError("current-observed outcome capture identity mismatch")
+    _validate_current_observed_capture_for_service(
+        capture,
+        capture_sha256=capture_sha256,
+        evaluation_at=evaluation_at,
+    )
+
+    outcomes_value = payload.get("outcomes")
+    pending_value = payload.get("pending_rows")
+    if not isinstance(outcomes_value, list) or not isinstance(pending_value, list):
+        raise ValueError("current-observed outcome receipt row arrays are invalid")
+    if (
+        payload.get("matured_sample_count") != len(outcomes_value)
+        or payload.get("pending_sample_count") != len(pending_value)
+    ):
+        raise ValueError("current-observed outcome receipt row counts are invalid")
+    status = str(payload.get("status") or "")
+    if status not in {"matured", "partial", "pending", "blocked"}:
+        raise ValueError("current-observed outcome receipt status is unsupported")
+    current_snapshot = payload.get("current_observed_snapshot")
+    if current_snapshot is None:
+        if status not in {"pending", "blocked"} or outcomes_value:
+            raise ValueError("current-observed outcome receipt has no verified source snapshot")
+        if receipt_schema_version.endswith(".v2"):
+            if status == "pending":
+                reason = str(payload.get("reason") or "")
+                expected_pending = [
+                    {
+                        "capture_row_id": str(row.get("row_id") or ""),
+                        "symbol": str(row.get("symbol") or ""),
+                        "reason": reason,
+                    }
+                    for row in capture.get("rows", ())
+                    if isinstance(row, Mapping)
+                ]
+                if (
+                    not reason
+                    or _hash_payload(pending_value) != _hash_payload(expected_pending)
+                    or _hash_payload(payload.get("diagnostics")) != _hash_payload([reason])
+                ):
+                    raise ValueError("v2 pending current-observed outcome receipt is inconsistent")
+            elif pending_value:
+                raise ValueError("blocked v2 current-observed outcome receipt contains pending rows")
+        result = dict(payload)
+        result["receipt_file_sha256"] = actual_receipt_sha256
+        result["verification_status"] = (
+            "verified_pending"
+            if status == "pending"
+            else "verified_blocked_receipt"
+            if status == "blocked"
+            else "verified_without_matured_rows"
+        )
+        return result
+    if not isinstance(current_snapshot, Mapping):
+        raise ValueError("current-observed outcome source snapshot proof is invalid")
+    if status not in {"matured", "partial", "pending", "blocked"}:
+        raise ValueError("current-observed outcome receipt status/source binding is inconsistent")
+    resolver_proof = current_snapshot.get("resolver_session_proof")
+    if not isinstance(resolver_proof, Mapping):
+        raise ValueError("current-observed outcome receipt lacks its verified session proof")
+    source_contract_input = Path(str(current_snapshot.get("source_contract_path") or ""))
+    if source_contract_input.is_symlink():
+        raise ValueError("current-observed outcome source contract must not be a symlink")
+    source_contract_path = source_contract_input.resolve(strict=True)
+    if _sha256_file(source_contract_path) != current_snapshot.get(
+        "source_contract_file_sha256"
+    ):
+        raise ValueError("current-observed outcome source contract pin is invalid")
+    try:
+        contract_value = json.loads(source_contract_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("current-observed outcome source contract JSON is invalid") from exc
+    if not isinstance(contract_value, Mapping):
+        raise ValueError("current-observed outcome source contract root is invalid")
+    audit: dict[str, Any] = {
+        "source_contract": dict(contract_value),
+        "source_contract_receipt": {
+            "contract_path": str(source_contract_path),
+            "contract_file_sha256": current_snapshot.get("source_contract_file_sha256"),
+            "contract_content_sha256": current_snapshot.get("source_contract_content_sha256"),
+        },
+    }
+    snapshot_value = contract_value.get("technical")
+    snapshot_value = snapshot_value if isinstance(snapshot_value, Mapping) else {}
+    feature_snapshot_value = snapshot_value.get("current_observed_feature_snapshot")
+    if not isinstance(feature_snapshot_value, Mapping):
+        raise ValueError("current-observed outcome source feature snapshot is missing")
+    database_path = Path(str(feature_snapshot_value.get("snapshot_database_path") or "")).resolve(strict=True)
+    provider = MLHistoricalSnapshotProvider(database_path)
+    service = RecommendationNaturalOutcomeService(provider)
+    source = service._load_current_observed_outcome_source(
+        required_source_contract=audit,
+        capture=capture,
+        evaluation_at=evaluation_at,
+        expected_session_proof=resolver_proof,
+    )
+    if _hash_payload(source.to_receipt_dict()) != _hash_payload(dict(current_snapshot)):
+        raise ValueError("current-observed outcome source snapshot proof changed")
+    try:
+        rebuilt_outcomes, rebuilt_pending, rebuilt_diagnostics = service._current_observed_outcome_rows(
+            capture=capture,
+            capture_path=capture_file,
+            capture_sha256=capture_sha256,
+            source=source,
+            evaluation_at=evaluation_at,
+            max_rows=max(1, len(capture.get("rows", ()))),
+        )
+    except _CurrentObservedOutcomePending as exc:
+        expected_pending = [
+            {
+                "capture_row_id": str(row.get("row_id") or ""),
+                "symbol": str(row.get("symbol") or ""),
+                "reason": str(exc),
+            }
+            for row in capture.get("rows", ())
+            if isinstance(row, Mapping)
+        ]
+        if (
+            status != "pending"
+            or outcomes_value
+            or _hash_payload(pending_value) != _hash_payload(expected_pending)
+            or _hash_payload(payload.get("diagnostics")) != _hash_payload([str(exc)])
+            or payload.get("endpoint_date") != source.endpoint_date
+            or payload.get("source_contract_binding_sha256")
+            != source.source_contract_binding_sha256
+        ):
+            raise ValueError("pending current-observed outcome receipt no longer verifies") from exc
+        result = dict(payload)
+        result["receipt_file_sha256"] = actual_receipt_sha256
+        result["verification_status"] = "verified_pending"
+        return result
+    except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+        if status != "blocked" or outcomes_value or pending_value:
+            raise ValueError("current-observed outcome rows no longer verify") from exc
+        result = dict(payload)
+        result["receipt_file_sha256"] = actual_receipt_sha256
+        result["verification_status"] = "verified_blocked_receipt"
+        return result
+    if status == "blocked":
+        if outcomes_value or pending_value:
+            raise ValueError("blocked current-observed outcome receipt contains rows")
+        result = dict(payload)
+        result["receipt_file_sha256"] = actual_receipt_sha256
+        result["verification_status"] = "verified_blocked_receipt"
+        return result
+    rebuilt_status = "matured" if rebuilt_outcomes and not rebuilt_pending else "partial" if rebuilt_outcomes else "pending"
+    if (
+        status != rebuilt_status
+        or payload.get("endpoint_date") != source.endpoint_date
+        or _hash_payload(outcomes_value) != _hash_payload(rebuilt_outcomes)
+        or _hash_payload(pending_value) != _hash_payload(rebuilt_pending)
+        or _hash_payload(payload.get("diagnostics")) != _hash_payload(rebuilt_diagnostics)
+        or payload.get("source_contract_binding_sha256") != source.source_contract_binding_sha256
+    ):
+        raise ValueError("current-observed outcome receipt rows or maturity binding changed")
+    result = dict(payload)
+    result["receipt_file_sha256"] = actual_receipt_sha256
+    result["verification_status"] = "verified"
+    return result
+
+
+def _validate_current_observed_capture_for_service(
+    capture: Mapping[str, Any],
+    *,
+    capture_sha256: str,
+    evaluation_at: datetime,
+) -> None:
+    validator = RecommendationNaturalOutcomeService.__new__(RecommendationNaturalOutcomeService)
+    validator._validate_current_observed_input_capture(
+        capture,
+        capture_file_sha256=capture_sha256,
+        evaluation_at=evaluation_at,
+        max_rows=max(1, len(capture.get("rows", ()))),
+    )

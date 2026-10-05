@@ -1,99 +1,264 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
+from data_module.config import TWStockConfig
 from data_module.ml_research_output_boundary import (
+    ML_RESEARCH_STORAGE_SCHEMA_VERSION,
     MLResearchOutputBoundaryError,
+    get_ml_research_root,
     resolve_ml_research_output_path,
 )
 
 
-def _research_root(repository_root: Path) -> Path:
-    root = repository_root / "output" / "ml_research"
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+def _write_config(repository: Path, active_root: str | Path, *, body: bytes | None = None) -> Path:
+    config_path = repository / "output" / "ml_research_storage.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    if body is None:
+        body = json.dumps(
+            {
+                "schema_version": ML_RESEARCH_STORAGE_SCHEMA_VERSION,
+                "active_root": str(active_root),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    config_path.write_bytes(body)
+    return config_path
 
 
-def test_resolver_accepts_only_repository_research_root(
+def test_absent_config_keeps_legacy_root_active_without_creating_it(tmp_path: Path) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    legacy = repository / "output" / "ml_research"
+
+    assert get_ml_research_root(repository_root=repository) == legacy
+    assert not legacy.exists()
+    assert resolve_ml_research_output_path(
+        legacy / "runs" / "old" / "manifest.json",
+        repository_root=repository,
+        access="read",
+    ) == legacy / "runs" / "old" / "manifest.json"
+    assert resolve_ml_research_output_path(
+        legacy / "new" / "manifest.json",
+        repository_root=repository,
+        access="write",
+    ) == legacy / "new" / "manifest.json"
+    assert not legacy.exists()
+
+
+def test_configured_root_is_only_write_root_while_legacy_pins_remain_readable(
     tmp_path: Path,
 ) -> None:
-    root = _research_root(tmp_path)
-    requested = root / "run" / "manifest.json"
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    legacy = repository / "output" / "ml_research"
+    active = tmp_path / "D" / "FA_ML_Research"
+    _write_config(repository, active)
 
+    assert get_ml_research_root(repository_root=repository) == active
+    assert not active.exists()
     assert resolve_ml_research_output_path(
-        requested,
-        repository_root=tmp_path,
-    ) == requested.resolve()
+        legacy / "old-cycle" / "terminal.json",
+        repository_root=repository,
+        access="read",
+    ) == legacy / "old-cycle" / "terminal.json"
     assert resolve_ml_research_output_path(
-        Path("output") / "ml_research" / "run" / "manifest.json",
-        repository_root=tmp_path,
-    ) == requested.resolve()
+        active / "new-cycle" / "terminal.json",
+        repository_root=repository,
+        access="read",
+    ) == active / "new-cycle" / "terminal.json"
+    assert resolve_ml_research_output_path(
+        active / "new-cycle" / "terminal.json",
+        repository_root=repository,
+        access="write",
+    ) == active / "new-cycle" / "terminal.json"
+    with pytest.raises(MLResearchOutputBoundaryError, match="writes must be"):
+        resolve_ml_research_output_path(
+            legacy / "new-cycle" / "terminal.json",
+            repository_root=repository,
+            access="write",
+        )
+    with pytest.raises(MLResearchOutputBoundaryError, match="inside the legacy or configured"):
+        resolve_ml_research_output_path(
+            tmp_path / "unapproved" / "manifest.json",
+            repository_root=repository,
+            access="read",
+        )
+
+
+def test_current_observed_reader_resolves_exact_legacy_and_active_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import ml_module.recommendation_calibration_evidence as evidence_module
+
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    legacy = repository / "output" / "ml_research"
+    active = tmp_path / "D" / "FA_ML_Research"
+    _write_config(repository, active)
+    monkeypatch.setattr(
+        evidence_module, "_CURRENT_OBSERVED_RESEARCH_ROOT", legacy
+    )
+
+    roots = evidence_module._current_observed_research_roots()
+
+    assert roots == (legacy.resolve(strict=False), active.resolve(strict=False))
+    cycle_receipt = active / "current_stock_cycles" / "2026-10-05" / "cycle-key" / "terminal.json"
+    assert evidence_module._is_below_current_observed_cycle_root(cycle_receipt, roots)
+    assert not evidence_module._is_below_current_observed_cycle_root(
+        tmp_path / "other" / "terminal.json", roots
+    )
 
 
 @pytest.mark.parametrize(
-    "relative_path",
-    (
-        Path("output") / "ml_research_copy" / "candidate",
-        Path("output") / "release_v4" / "candidate",
-        Path("output") / "v4_ml_derived_h5_20260907_real_v2" / "manifest.json",
-        Path("..") / "output" / "ml_research" / "escaped",
-    ),
+    "active_root",
+    [
+        "relative/research",
+        "D:/Min/Python/Project/FA_Data/output/research",
+    ],
 )
-def test_resolver_rejects_prefix_escape_and_formal_roots(
-    tmp_path: Path,
-    relative_path: Path,
+def test_config_rejects_relative_or_protected_active_roots(
+    tmp_path: Path, active_root: str
 ) -> None:
-    _research_root(tmp_path)
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    _write_config(repository, active_root)
 
     with pytest.raises(MLResearchOutputBoundaryError):
-        resolve_ml_research_output_path(relative_path, repository_root=tmp_path)
+        get_ml_research_root(repository_root=repository)
 
 
-def test_resolver_rejects_configured_data_root_even_under_research_root(
+def test_config_rejects_known_shadow_roots_but_not_a_name_substring(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    protected = _research_root(tmp_path) / "source-data"
-    protected.mkdir()
-    monkeypatch.setenv("DATA_ROOT", str(protected))
-
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    data_root_factory = TWStockConfig.__dataclass_fields__["data_root"].default_factory
+    data_root = Path(data_root_factory())
+    _write_config(
+        repository,
+        data_root.parent / "FA_Data_Shadow" / "research",
+    )
     with pytest.raises(MLResearchOutputBoundaryError, match="protected root"):
+        get_ml_research_root(repository_root=repository)
+
+    legal_root = tmp_path / "test_shadow_root" / "FA_ML_Research"
+    _write_config(repository, legal_root)
+    assert get_ml_research_root(repository_root=repository) == legal_root
+
+
+def test_repo_output_root_override_does_not_block_legacy_research(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    monkeypatch.setenv("DATA_ROOT", str(tmp_path / "FA_Data"))
+    monkeypatch.setenv("OUTPUT_ROOT", str(repository / "output"))
+
+    legacy = repository / "output" / "ml_research"
+    assert get_ml_research_root(repository_root=repository) == legacy
+    assert resolve_ml_research_output_path(
+        legacy / "old" / "manifest.json",
+        repository_root=repository,
+        access="read",
+    ) == legacy / "old" / "manifest.json"
+
+
+def test_config_rejects_overlap_with_legacy_root_and_parent_traversal(tmp_path: Path) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    legacy = repository / "output" / "ml_research"
+    _write_config(repository, legacy / "new")
+    with pytest.raises(MLResearchOutputBoundaryError, match="separate from the legacy"):
+        get_ml_research_root(repository_root=repository)
+
+    _write_config(repository, str(tmp_path / "safe" / ".." / "escape"))
+    with pytest.raises(MLResearchOutputBoundaryError, match="cannot contain"):
+        get_ml_research_root(repository_root=repository)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"{not-json",
+        b'{"schema_version":"wrong","active_root":"D:/ML"}',
+        b'{"schema_version":"ml-research-storage.v1","active_root":"D:/A","active_root":"D:/B"}',
+        b'{"schema_version":"ml-research-storage.v1","active_root":"D:/ML","extra":true}',
+    ],
+)
+def test_existing_invalid_config_fails_closed_instead_of_using_legacy(
+    tmp_path: Path, payload: bytes
+) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    _write_config(repository, "D:/ML", body=payload)
+
+    with pytest.raises(MLResearchOutputBoundaryError):
+        get_ml_research_root(repository_root=repository)
+    with pytest.raises(MLResearchOutputBoundaryError):
         resolve_ml_research_output_path(
-            protected / "candidate",
-            repository_root=tmp_path,
+            repository / "output" / "ml_research" / "old.json",
+            repository_root=repository,
+            access="read",
         )
 
 
-def test_resolver_rejects_extra_formal_registry_root(
-    tmp_path: Path,
-) -> None:
-    root = _research_root(tmp_path)
-    registry = root / "formal-registry"
+def test_config_is_bounded_and_storage_file_reparse_is_rejected(tmp_path: Path) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    config_path = _write_config(repository, "D:/ML")
+    config_path.write_bytes(b" " * (16 * 1024 + 1))
+    with pytest.raises(MLResearchOutputBoundaryError, match="bounded size"):
+        get_ml_research_root(repository_root=repository)
 
-    with pytest.raises(MLResearchOutputBoundaryError, match="protected root"):
-        resolve_ml_research_output_path(
-            registry / "latest.json",
-            repository_root=tmp_path,
-            extra_forbidden_roots=(registry,),
-        )
-
-
-def test_resolver_rejects_symlink_alias_inside_approved_root(
-    tmp_path: Path,
-) -> None:
-    root = _research_root(tmp_path)
-    target = root / "target"
-    target.mkdir()
-    alias = root / "alias"
+    target = tmp_path / "config-target.json"
+    target.write_text(
+        json.dumps(
+            {
+                "schema_version": ML_RESEARCH_STORAGE_SCHEMA_VERSION,
+                "active_root": "D:/ML",
+            }
+        ),
+        encoding="utf-8",
+    )
     try:
-        alias.symlink_to(target, target_is_directory=True)
-    except (OSError, NotImplementedError) as exc:
-        pytest.skip(f"作業系統未授予建立測試 symlink 的權限：{exc}")
+        config_path.unlink()
+        config_path.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("This Windows environment cannot create a symlink for the negative test")
+    with pytest.raises(MLResearchOutputBoundaryError, match="reparse"):
+        get_ml_research_root(repository_root=repository)
 
+
+def test_extra_forbidden_root_and_candidate_reparse_are_rejected(tmp_path: Path) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    active = tmp_path / "D" / "FA_ML_Research"
+    _write_config(repository, active)
+    protected = active / "protected"
+    with pytest.raises(MLResearchOutputBoundaryError, match="protected root"):
+        resolve_ml_research_output_path(
+            protected / "manifest.json",
+            repository_root=repository,
+            extra_forbidden_roots=(protected,),
+            access="write",
+        )
+
+    target = tmp_path / "external"
+    target.mkdir()
+    link = active / "alias"
+    active.mkdir(parents=True)
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("This Windows environment cannot create a symlink for the negative test")
     with pytest.raises(MLResearchOutputBoundaryError, match="symlink or junction"):
         resolve_ml_research_output_path(
-            alias / "candidate",
-            repository_root=tmp_path,
+            link / "escape.json",
+            repository_root=repository,
+            access="write",
         )

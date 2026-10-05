@@ -18,6 +18,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -57,6 +58,7 @@ FORMAL_PIT_INELIGIBILITY_REASON = (
     "historical publication/revision custody; MOPS announcement evidence is "
     "kept as a separate sidecar and cannot promote these values to formal PIT."
 )
+STATEMENT_NORMALIZATION_VERSION = "official-openapi-current-statement-normalizer.v2"
 
 
 @dataclass
@@ -94,12 +96,26 @@ def build_candidate(
     """Read captured official responses and write a current-only candidate."""
 
     target_period, period_end = _normalise_target_period(period)
+    openapi_root = Path(openapi_root).expanduser()
+    availability_roots = tuple(Path(root).expanduser() for root in availability_roots)
+    output_root = Path(output_root).expanduser()
+    output_paths = _candidate_output_paths(output_root)
+    source_roots = _candidate_source_roots(openapi_root, availability_roots)
+    _validate_output_root_separation(output_root, source_roots)
+
     manifest_path = Path(openapi_root) / "endpoint_manifest.json"
     manifest = _read_json_object(manifest_path)
-    capture_at = _parse_aware_datetime(
-        observed_at.isoformat() if observed_at is not None else str(manifest.get("captured_at", "")),
-        field_name="observed_at",
+    source_capture_at = _parse_aware_datetime(
+        str(manifest.get("captured_at", "")),
+        field_name="captured_at",
     )
+    capture_at = (
+        source_capture_at
+        if observed_at is None
+        else _parse_aware_datetime(observed_at.isoformat(), field_name="observed_at")
+    )
+    if capture_at < source_capture_at:
+        raise ValueError("observed_at 不得早於 endpoint manifest 的 captured_at")
     now = datetime.now(timezone.utc)
     if capture_at > now:
         raise ValueError("observed_at cannot be in the future")
@@ -112,8 +128,10 @@ def build_candidate(
     logical_records: dict[tuple[str, str, str, str], dict[str, str]] = {}
     conflicted_keys: set[tuple[str, str, str, str]] = set()
     endpoint_summaries: list[dict[str, Any]] = []
+    endpoint_source_paths: list[Path] = []
 
     for filename, raw_meta in sorted(endpoints.items()):
+        endpoint_source_paths.append(Path(openapi_root) / str(filename))
         if not isinstance(raw_meta, Mapping):
             diagnostics.malformed_endpoints.append(
                 {"file": str(filename), "reason": "manifest_entry_not_object"}
@@ -283,6 +301,10 @@ def build_candidate(
         availability_roots,
         target_period,
     )
+    _validate_output_file_separation(
+        output_paths.values(),
+        (manifest_path, *endpoint_source_paths, *availability_files),
+    )
     current_identity = {
         (row["stock_code"], _statement_type_from_item_code(row["item_code"]), row["period"])
         for row in records
@@ -294,19 +316,18 @@ def build_candidate(
     missing_availability = sorted(current_identity - availability_identity)
     missing_numeric = sorted(availability_identity - current_identity)
 
-    output_root = Path(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
-    observations_path = output_root / "statement_current_observations.csv"
-    mapping_path = output_root / "statement_availability_q2_mapping.csv"
-    manifest_output_path = output_root / "statement_current_candidate.json"
-    pit_status_path = output_root / "statement_formal_pit_status.json"
-    preview_path = output_root / "statement_current_preview.json"
-    command_path = output_root / "apply_current_statement_snapshot_command.txt"
+    observations_path = output_paths["observations"]
+    mapping_path = output_paths["availability_mapping"]
+    manifest_output_path = output_paths["candidate_manifest"]
+    pit_status_path = output_paths["pit_status"]
+    preview_path = output_paths["preview"]
+    command_path = output_paths["apply_command"]
 
     _write_records(observations_path, records)
     _write_mapping(mapping_path, availability_rows)
     manifest_output = {
-        "schema_version": "current-fundamental-statement-candidate.v1",
+        "schema_version": "current-fundamental-statement-candidate.v2",
         "kind": "statement_item",
         "period": target_period,
         "as_of_date": period_end.isoformat(),
@@ -320,9 +341,12 @@ def build_candidate(
         "source_policy": {
             "numeric_source": "official TWSE/TPEx OpenAPI",
             "numeric_unit_policy": (
-                "Official statement monetary fields are reported in thousand TWD; "
-                "Decimal values are multiplied by 1000 before unit=TWD. "
-                "Per-share fields remain TWD/share and share-count fields remain shares."
+                "The captured OpenAPI envelope does not prove row-level units; "
+                "raw Decimal values are preserved and unit is unknown."
+            ),
+            "period_basis_policy": (
+                "The captured OpenAPI envelope does not prove row-level period basis; "
+                "period_basis is unknown and basis/aggregate eligibility are false."
             ),
             "announcement_sidecar": "MOPS EZSearch F26/F27/F28",
             "formal_pit_eligible": False,
@@ -390,13 +414,17 @@ def build_candidate(
     _write_json(
         pit_status_path,
         {
-            "schema_version": "fundamental-statement-pit-status.v1",
+            "schema_version": "fundamental-statement-pit-status.v2",
             "period": target_period,
             "formal_pit_eligible": False,
             "numeric_source": "official TWSE/TPEx OpenAPI current snapshot",
             "numeric_unit_policy": (
-                "Monetary OpenAPI fields are thousand TWD and are scaled with Decimal; "
-                "per-share and share-count fields retain TWD/share and shares."
+                "The current OpenAPI capture does not prove row-level units; raw "
+                "Decimal values are preserved with unit=unknown."
+            ),
+            "period_basis_policy": (
+                "The current OpenAPI capture does not prove row-level period basis; "
+                "period_basis=unknown and basis/aggregate eligibility=false."
             ),
             "announcement_source": "MOPS EZSearch F26/F27/F28",
             "reason": FORMAL_PIT_INELIGIBILITY_REASON,
@@ -500,41 +528,164 @@ def _make_record(
     source_version: str,
     market: str,
 ) -> dict[str, str]:
-    unit = _unit_for_item(raw_item_name)
-    stored_value = value * Decimal(1000) if unit == "TWD" else value
+    item_name = _display_item_name(statement_type, raw_item_name)
+    unit = "unknown"
+    source_version = _normalized_statement_source_version(
+        source_version,
+        stock_code=stock_code,
+        market=market,
+        statement_type=statement_type,
+        period=period,
+        item_code=item_code,
+        item_name=item_name,
+        value=format(value, "f"),
+        unit=unit,
+    )
     return {
         "stock_code": stock_code,
         "kind": "statement_item",
         "period": period,
         "as_of_date": period_end.isoformat(),
         "item_code": item_code,
-        "item_name": _display_item_name(statement_type, raw_item_name),
-        "value": format(stored_value, "f"),
+        "item_name": item_name,
+        "value": format(value, "f"),
         "unit": unit,
         "observed_at": observed_at.isoformat(),
         "source": source,
         "source_version": source_version,
         "market": market,
+        "period_basis": "unknown",
+        "basis_verified": "0",
+        "aggregate_feature_eligible": "0",
     }
 
 
-def _unit_for_item(item_name: str) -> str:
-    if "每股" in item_name or "EPS" in item_name.upper():
-        return "TWD/share"
-    if "股數" in item_name:
-        return "shares"
-    return "TWD"
+def _normalized_statement_source_version(
+    raw_source_version: str,
+    *,
+    stock_code: str,
+    market: str,
+    statement_type: str,
+    period: str,
+    item_code: str,
+    item_name: str,
+    value: str,
+    unit: str,
+) -> str:
+    """將正規化列綁定至原始擷取與目前正規化版本。"""
+    if re.fullmatch(
+        r"official-openapi-statement-endpoints\.v1:sha256:[0-9a-f]{64}",
+        raw_source_version,
+    ) is None:
+        raise ValueError("statement source version must retain its raw endpoint SHA-256")
+    payload = "\0".join(
+        (
+            STATEMENT_NORMALIZATION_VERSION,
+            raw_source_version,
+            stock_code,
+            market,
+            statement_type,
+            period,
+            item_code,
+            item_name,
+            value,
+            unit,
+            "period_basis=unknown",
+            "basis_verified=0",
+            "aggregate_feature_eligible=0",
+        )
+    ).encode("utf-8")
+    digest = hashlib.sha256(payload).hexdigest()
+    return (
+        f"{STATEMENT_NORMALIZATION_VERSION}:{market}:{statement_type}:{period}:"
+        f"raw:{raw_source_version}:derived:sha256:{digest}"
+    )
+
+
+def _candidate_output_paths(output_root: Path) -> dict[str, Path]:
+    """列出候選建置會寫入的所有固定輸出檔。"""
+    return {
+        "observations": output_root / "statement_current_observations.csv",
+        "availability_mapping": output_root / "statement_availability_q2_mapping.csv",
+        "candidate_manifest": output_root / "statement_current_candidate.json",
+        "pit_status": output_root / "statement_formal_pit_status.json",
+        "preview": output_root / "statement_current_preview.json",
+        "apply_command": output_root / "apply_current_statement_snapshot_command.txt",
+    }
+
+
+def _candidate_source_roots(
+    openapi_root: Path, availability_roots: Sequence[Path]
+) -> tuple[Path, ...]:
+    roots = [openapi_root]
+    for raw_root in availability_roots:
+        root = raw_root.expanduser()
+        if root.is_file() or root.name.lower() == "mapping.csv":
+            root = root.parent
+        roots.append(root)
+    return tuple(root.resolve(strict=False) for root in roots)
+
+
+def _normalized_path(path: Path) -> str:
+    return os.path.normcase(os.path.normpath(str(Path(path).expanduser().resolve(strict=False))))
+
+
+def _path_is_within(path: Path, parent: Path) -> bool:
+    normalized_path = _normalized_path(path)
+    normalized_parent = _normalized_path(parent)
+    try:
+        return os.path.commonpath((normalized_path, normalized_parent)) == normalized_parent
+    except ValueError:
+        return False
+
+
+def _validate_output_root_separation(
+    output_root: Path, source_roots: Sequence[Path]
+) -> None:
+    resolved_output_root = output_root.resolve(strict=False)
+    for source_root in source_roots:
+        if _path_is_within(resolved_output_root, source_root) or _path_is_within(
+            source_root, resolved_output_root
+        ):
+            raise ValueError(
+                "候選輸出根目錄與 OpenAPI 或 availability 來源根目錄重疊，拒絕寫入"
+            )
+
+
+def _validate_output_file_separation(
+    output_paths: Iterable[Path], source_paths: Iterable[Path]
+) -> None:
+    for output_path in output_paths:
+        resolved_output = output_path.expanduser().resolve(strict=False)
+        normalized_output = os.path.normcase(os.path.normpath(str(resolved_output)))
+        for source_path in source_paths:
+            resolved_source = source_path.expanduser().resolve(strict=False)
+            normalized_source = os.path.normcase(os.path.normpath(str(resolved_source)))
+            if normalized_output == normalized_source:
+                raise ValueError(
+                    f"候選輸出檔與來源檔路徑相同，拒絕覆寫：{resolved_output}"
+                )
+            if resolved_output.exists() and resolved_source.exists():
+                try:
+                    same_file = os.path.samefile(resolved_output, resolved_source)
+                except OSError as exc:
+                    raise ValueError(
+                        "無法確認候選輸出檔與來源檔是否為同一實體檔案"
+                    ) from exc
+                if same_file:
+                    raise ValueError(
+                        f"候選輸出檔與來源檔指向同一實體檔案，拒絕覆寫：{resolved_source}"
+                    )
 
 
 def _display_item_name(statement_type: str, field_name: str) -> str:
-    """Keep report type and Q2 income cumulative basis visible to readers."""
-
+    """Keep the report type visible without guessing the source basis."""
     if statement_type == "income":
-        prefix, basis = "損益表", "YTD"
+        prefix, basis = "損益表", "期間基礎未驗證"
     elif statement_type == "cashflow":
-        prefix, basis = "現金流量表", "YTD"
+        prefix, basis = "現金流量表", "期間基礎未明示"
     else:
-        prefix, basis = "資產負債表", "期末"
+        prefix, basis = "資產負債表", "期間基礎未驗證"
     return f"{prefix}:{basis}:{field_name}"
 
 

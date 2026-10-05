@@ -16,7 +16,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QAction
 import pandas as pd
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -1102,13 +1102,13 @@ class WatchlistView(QWidget):
         return DecisionIdentity(stock_code=stock_code, identity_status=IDENTITY_STATUS_UNKNOWN)
 
     def _source_link_label(self, row: object) -> str:
-        """來源連結只代表可追溯，不表示推薦或結果已通過驗證。"""
+        """來源連結只代表可追溯，不表示該股已入選或結果已通過驗證。"""
         code = str(row.get("證券代號", "") or "") if hasattr(row, "get") else ""
         identity = self._row_decision_identity(row, code)
         if identity.identity_status == IDENTITY_STATUS_CONFLICT:
             return "來源不一致，需核對"
         if identity.is_linked:
-            return "已連結原推薦"
+            return "已連結保存來源"
         return "未連結原推薦"
 
     def _set_source_choice_state(self, row: object | None) -> None:
@@ -1125,7 +1125,7 @@ class WatchlistView(QWidget):
         identity = self._row_decision_identity(row, code)
         needs_choice = bool(code) and not identity.is_linked
         button.setVisible(needs_choice)
-        button.setEnabled(needs_choice and bool(self._saved_source_options()))
+        button.setEnabled(needs_choice and bool(self._saved_source_options(code)))
 
     def _selected_watchlist_row(self) -> tuple[object, str] | None:
         model = self.stocks_model
@@ -1140,13 +1140,15 @@ class WatchlistView(QWidget):
         row = frame.iloc[row_number]
         return row, str(row.get("證券代號", "") or "").strip()
 
-    def _saved_source_options(self) -> list[dict[str, str]]:
+    def _saved_source_options(self, stock_code: str) -> list[dict[str, str]]:
         service = self.analysis_service
         list_sources = getattr(service, "list_saved_sources", None)
-        if not callable(list_sources):
+        code = str(stock_code or "").strip()
+        if not callable(list_sources) or not code:
             return []
         try:
-            values = list_sources()
+            cutoff = datetime.now(ZoneInfo("Asia/Taipei")).date()
+            values = list_sources(code, as_of_date=cutoff)
         except Exception as error:
             logger.warning("[WatchlistView] 讀取保存結果選項失敗：%s", error)
             return []
@@ -1160,21 +1162,36 @@ class WatchlistView(QWidget):
         row, code = selected
         if not code:
             return
-        options = self._saved_source_options()
+        options = self._saved_source_options(code)
         if not options:
             self._set_status_label(
                 "目前沒有可選的保存推薦結果；請先到推薦分析保存原始結果。",
                 level="warning",
             )
             return
-        labels = [
-            f"{item['result_id']}｜{item.get('result_name') or '未命名結果'}"
-            for item in options
-        ]
+        labels = []
+        for item in options:
+            membership = item.get("membership_status")
+            pinned_dates = (
+                f"決策日 {item.get('decision_date') or '未提供'}｜"
+                f"資料日 {item.get('data_date') or '未提供'}"
+            )
+            if membership == "not_in_result":
+                detail = (
+                    f"同股明列未入選：{item.get('screening_reason') or '未提供原因'}｜"
+                    f"{pinned_dates}"
+                )
+            elif membership == "saved":
+                detail = f"此股已入選｜{pinned_dates}"
+            else:
+                detail = "來源待驗證"
+            labels.append(
+                f"{item['result_id']}｜{item.get('result_name') or '未命名結果'}｜{detail}"
+            )
         selected_label, accepted = QInputDialog.getItem(
             self,
-            "選擇原推薦來源",
-            f"為 {code} 明確選取保存結果（不會自動套用最新結果）：",
+            "選擇同股保存來源",
+            f"為 {code} 明確選取同股保存結果；未入選紀錄只作排除證據，不代表推薦：",
             labels,
             0,
             False,
@@ -1183,7 +1200,74 @@ class WatchlistView(QWidget):
             return
         source = options[labels.index(selected_label)]
         result_id = str(source["result_id"]).strip()
-        identity = DecisionIdentity(result_id=result_id, stock_code=code)
+        if self.analysis_service is None:
+            self._set_status_label("保存分析服務尚未配置；未寫入來源。", level="error")
+            return
+        cutoff = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        try:
+            analysis = self.analysis_service.fetch(code, result_id, cutoff)
+        except Exception as error:
+            self._set_status_label(f"無法驗證來源內容；未寫入來源：{error}", level="error")
+            return
+        analysis_date = str(
+            getattr(analysis, "decision_date", "")
+            or getattr(analysis, "analysis_date", "")
+        ).strip()
+        try:
+            parsed_date = date.fromisoformat(analysis_date)
+        except ValueError:
+            parsed_date = None
+        status = str(getattr(analysis, "status", "") or "")
+        current_identity = (
+            status,
+            analysis_date,
+            str(getattr(analysis, "data_date", "") or "").strip(),
+            str(getattr(analysis, "source_id", "") or "").strip(),
+            str(getattr(analysis, "source_snapshot_id", "") or "").strip(),
+            str(getattr(analysis, "source_snapshot_hash", "") or "").strip(),
+        )
+        selected_identity = tuple(
+            str(source.get(field_name, "") or "").strip()
+            for field_name in (
+                "membership_status",
+                "decision_date",
+                "data_date",
+                "source_id",
+                "source_snapshot_id",
+                "source_snapshot_hash",
+            )
+        )
+        exact_membership = status == "saved" or (
+            status == "not_in_result"
+            and bool(str(getattr(analysis, "reasons", "") or "").strip())
+        )
+        if (
+            str(getattr(analysis, "stock_code", "") or "").strip() != code
+            or str(getattr(analysis, "result_id", "") or "").strip() != result_id
+            or current_identity != selected_identity
+            or not exact_membership
+            or parsed_date is None
+            or parsed_date.isoformat() != analysis_date
+            or parsed_date > cutoff
+        ):
+            self._set_status_label(
+                "來源與目前股票、決策日或保存內容不一致；未寫入來源，請重新載入清單。",
+                level="warning",
+            )
+            return
+        source_snapshot_id = str(getattr(analysis, "source_snapshot_id", "") or "").strip()
+        source_snapshot_hash = str(getattr(analysis, "source_snapshot_hash", "") or "").strip()
+        if source_snapshot_id == result_id:
+            source_snapshot_id = ""
+        if source_snapshot_hash == result_id:
+            source_snapshot_hash = ""
+        identity = DecisionIdentity(
+            result_id=result_id,
+            stock_code=code,
+            source_snapshot_id=source_snapshot_id,
+            source_snapshot_hash=source_snapshot_hash,
+            decision_date=analysis_date,
+        )
         source_value = row.get("source_id", "")
         expected_source_id = source_value.strip() if isinstance(source_value, str) else ""
         binder = getattr(self.watchlist_service, "bind_stock_decision_identity", None)
@@ -1206,10 +1290,14 @@ class WatchlistView(QWidget):
             )
             return
         self._load_watchlist()
-        self._set_status_label(
-            f"已明確綁定 {code} → {result_id}；後續研究會沿用此來源。",
-            level="success",
-        )
+        if status == "not_in_result":
+            message = (
+                f"已連結 {code} → {result_id} 的同股篩選紀錄；此股明列未入選，"
+                "只保留排除證據，不會當成推薦。"
+            )
+        else:
+            message = f"已驗證並連結 {code} → {result_id}；後續研究沿用此同股來源。"
+        self._set_status_label(message, level="success")
         # 重載後依 exact result_id 定位該列，避免同股不同結果回到第一列。
         self.select_stock(code, result_id)
 
@@ -1414,6 +1502,15 @@ class WatchlistView(QWidget):
         if result_id and not identity.is_linked:
             if identity_status != IDENTITY_STATUS_CONFLICT:
                 identity_status = "linked"
+        if result_id and getattr(result, "status", "") == "not_in_result":
+            has_explicit_exclusion = bool(str(getattr(result, "reasons", "") or "").strip())
+            source_label = (
+                "保存篩選列（明列未入選；不代表看空）"
+                if has_explicit_exclusion
+                else "保存結果未包含此股"
+            )
+        else:
+            source_label = "已保存推薦結果" if result_id else "觀察清單（尚未選定原始來源）"
         return ResearchStockContextDTO(
             stock_code=code,
             stock_name=stock_name,
@@ -1427,7 +1524,7 @@ class WatchlistView(QWidget):
             profile_version=profile_version,
             source_id=source or lineage_id,
             source_kind=str(getattr(result, "source_kind", "") or "recommendation"),
-            source_label=("已保存推薦結果" if result_id else "觀察清單（尚未選定原始推薦）"),
+            source_label=source_label,
             source_workspace="watchlist",
         )
 

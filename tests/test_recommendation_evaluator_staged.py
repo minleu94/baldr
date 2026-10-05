@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import FrozenInstanceError
-from datetime import date
+from dataclasses import FrozenInstanceError, replace
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,8 @@ from app_module.recommendation.score_projection import (
 from app_module.recommendation_ranking_pipeline import build_ranking_plan
 from app_module.recommendation.evaluation_driver import evaluate_candidate_staged
 from app_module.recommendation.source_fact_projection import (
+    project_current_monthly_revenue_records,
+    project_current_pe_observation,
     project_monthly_revenue_records,
     project_pe_observation,
 )
@@ -29,6 +32,7 @@ from decision_module.recommendation.contracts import (
     RecommendationItem,
 )
 from decision_module.recommendation.evaluate import (
+    CandidateCurrentMarketStatusFact,
     CandidatePrefilterFact,
     CandidateEvaluationOutcome,
     CandidateSeed,
@@ -50,6 +54,10 @@ from decision_module.recommendation.evaluate import (
     StrategyEvaluationError,
 )
 from data_module.fundamental_data import MonthlyRevenueRecord
+from data_module.recommendation_current_fundamental_provider import (
+    CurrentObservedMonthlyRevenueInput,
+    CurrentObservedPEInput,
+)
 from data_module.recommendation_input_providers import ValuationPEObservation
 from data_module.config import TWStockConfig
 from recommendation_test_support import build_recommendation_test_preparer
@@ -442,52 +450,343 @@ def test_future_pe_and_missing_source_errors_map_to_missing_without_fallback_rea
     assert errored.outcome.source_responses[0].error.error_type == "ReaderUnavailable"
 
 
-def test_nonfinite_source_decimals_keep_legacy_error_and_comparison_semantics() -> None:
-    evaluator = RecommendationEvaluator()
-    infinity_step = evaluator.start(
-        _seed(),
+def test_natural_current_pe_requires_matching_capture_and_frozen_clock() -> None:
+    frozen = datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc)
+    policy = replace(
         _policy(pe_max=Decimal("15")),
+        fundamental_input_scope="natural_current_observation",
+        current_observation_cutoff_at=frozen,
     )
-    assert infinity_step.request is not None
-    infinity_result = evaluator.advance(
-        infinity_step.state,
-        _response(
-            infinity_step.request,
-            project_pe_observation(
-                ValuationPEObservation(
-                    value="Infinity",
-                    as_of_date=CUTOFF.isoformat(),
-                    available_date=CUTOFF.isoformat(),
-                    source="fixture",
-                    source_version="v1",
-                    quality="observed",
-                )
+    source_observation = CurrentObservedPEInput(
+        stock_code="2330",
+        value=Decimal("12.00"),
+        as_of_date=CUTOFF,
+        available_at=frozen.replace(hour=11, minute=59),
+        source="twse.openapi.bwibbu_all",
+        source_version="capture-v1",
+        market="twse",
+        raw_response_sha256="a" * 64,
+        market_calendar_session_date=CUTOFF,
+        market_calendar_reason_code="twstock_db_market_indices_evidence",
+    )
+    projected = project_current_pe_observation(source_observation)
+    assert projected.formal_pit_eligible is False
+    assert projected.availability_basis == "official_body_capture"
+    assert projected.raw_response_sha256 == "a" * 64
+    assert projected.as_of_date == CUTOFF
+    assert projected.available_date == source_observation.available_at.astimezone(
+        ZoneInfo("Asia/Taipei")
+    ).date()
+
+    evaluator = RecommendationEvaluator()
+    step = evaluator.start(
+        _seed(score=RecommendationScore(Decimal("70.01"))),
+        policy,
+    )
+    assert step.request is not None
+    assert step.request.fundamental_input_scope == "natural_current_observation"
+    assert step.request.current_observation_cutoff_at == frozen
+    passed = evaluator.advance(step.state, _response(step.request, projected))
+    assert passed.outcome is not None
+    assert passed.outcome.reason_codes == ("pending_final_selection",)
+    stale = PEFact(
+        value=Decimal("12.00"),
+        available_date=CUTOFF,
+        as_of_date=CUTOFF,
+        source="twse.openapi.bwibbu_all",
+        source_version="capture-v1",
+        stock_code="2330",
+        available_at=frozen.replace(hour=12, minute=0, second=1),
+        availability_basis="official_body_capture",
+        raw_response_sha256="a" * 64,
+        formal_pit_eligible=False,
+    )
+    late_step = evaluator.start(
+        _seed(invocation_id="late-current", score=RecommendationScore(Decimal("70.01"))),
+        replace(policy, invocation_id="late-current"),
+    )
+    assert late_step.request is not None
+    late = evaluator.advance(late_step.state, _response(late_step.request, stale))
+    assert late.outcome is not None
+    assert late.outcome.reason_codes == ("valuation_pe_missing",)
+
+
+def test_current_pe_projection_keeps_quote_date_separate_from_capture_date() -> None:
+    quote_date = date(2026, 5, 19)
+    captured_at = datetime(2026, 5, 20, 16, 30, tzinfo=timezone.utc)
+    observation = CurrentObservedPEInput(
+        stock_code="2330",
+        value=Decimal("12"),
+        as_of_date=quote_date,
+        available_at=captured_at,
+        source="twse.openapi.bwibbu_all",
+        source_version="capture-v1",
+        market="twse",
+        raw_response_sha256="a" * 64,
+        market_calendar_session_date=quote_date,
+        market_calendar_reason_code="twstock_db_market_indices_evidence",
+    )
+
+    projected = project_current_pe_observation(observation)
+
+    assert projected.as_of_date == quote_date
+    assert projected.available_date == date(2026, 5, 21)
+    assert projected.available_at == captured_at
+
+
+def test_natural_current_revenue_yoy_requires_current_period_and_exact_baseline() -> None:
+    frozen = datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc)
+    policy = replace(
+        _policy(revenue_min=Decimal("10")),
+        fundamental_input_scope="natural_current_observation",
+        current_observation_cutoff_at=frozen,
+    )
+    current = CurrentObservedMonthlyRevenueInput(
+        stock_code="2330",
+        period="2026-04",
+        revenue=Decimal("110"),
+        observed_at=frozen.replace(hour=11, minute=59),
+        source_available_at=None,
+        available_at=frozen.replace(hour=11, minute=59),
+        source="mops.monthly_revenue_static_snapshot",
+        source_version=(
+            "mops-current-revenue-normalizer.v2:twse:2026-04:raw:"
+            "mops-static-twse-2026-04-sha256-" + "b" * 64
+            + ":derived:sha256:" + "c" * 64
+        ),
+        market="twse",
+        raw_source_version="mops-static-twse-2026-04-sha256-" + "b" * 64,
+        raw_source_sha256="b" * 64,
+    )
+    prior = MonthlyRevenueRecord(
+        stock_code="2330",
+        period="2025-04",
+        as_of_date=date(2025, 4, 30),
+        raw_date=date(2025, 4, 30),
+        announced_date=date(2025, 5, 10),
+        available_date=date(2025, 5, 12),
+        revenue=Decimal("100"),
+        source="financial_data.monthly_revenue_csv",
+        source_version="pit-v1",
+    )
+    current_comparator = CurrentObservedMonthlyRevenueInput(
+        stock_code="2330",
+        period="2025-04",
+        revenue=Decimal("100"),
+        observed_at=current.observed_at,
+        source_available_at=None,
+        available_at=current.available_at,
+        source="mops.monthly_revenue_static_snapshot",
+        source_version=(
+            "mops-current-revenue-yoy-comparator.v1:twse:2025-04:from:2026-04:raw:"
+            "mops-static-twse-2026-04-sha256-" + "b" * 64
+            + ":derived:sha256:" + "d" * 64
+        ),
+        market="twse",
+        raw_source_version="mops-static-twse-2026-04-sha256-" + "b" * 64,
+        raw_source_sha256="b" * 64,
+        input_role="same_report_prior_year_comparison_baseline",
+        parent_report_period="2026-04",
+    )
+    facts = project_current_monthly_revenue_records(
+        (current, current_comparator), (prior,), stock_code="2330"
+    )
+    assert [record.period for record in facts.records] == ["2025-04", "2026-04"]
+    assert facts.records[0].availability_basis == "local_verified_observation"
+    assert facts.records[0].source_version.startswith(
+        "mops-current-revenue-yoy-comparator.v1:"
+    )
+    assert facts.records[0].formal_pit_eligible is False
+    assert facts.records[1].availability_basis == "local_verified_observation"
+    assert facts.records[1].source_available_at is None
+
+    evaluator = RecommendationEvaluator()
+    step = evaluator.start(
+        _seed(score=RecommendationScore(Decimal("70.01"))),
+        policy,
+    )
+    assert step.request is not None
+    passed = evaluator.advance(step.state, _response(step.request, facts))
+    assert passed.outcome is not None
+    assert passed.outcome.reason_codes == ("pending_final_selection",)
+
+    no_baseline = project_current_monthly_revenue_records(
+        (
+            current,
+            CurrentObservedMonthlyRevenueInput(
+                stock_code="2330",
+                period="2025-04",
+                revenue=Decimal("100"),
+                observed_at=current.observed_at,
+                source_available_at=None,
+                available_at=current.available_at,
+                source="mops.monthly_revenue_static_snapshot",
+                source_version=(
+                    "mops-current-revenue-normalizer.v2:twse:2025-04:raw:"
+                    "mops-static-twse-2025-04-sha256-" + "a" * 64
+                    + ":derived:sha256:" + "e" * 64
+                ),
+                market="twse",
+                raw_source_version="mops-static-twse-2025-04-sha256-" + "a" * 64,
+                raw_source_sha256="a" * 64,
             ),
         ),
+        (),
+        stock_code="2330",
     )
-    assert infinity_result.outcome is not None
-    assert infinity_result.outcome.reason_codes == ("valuation_pe_above_max",)
-
-    nan_step = evaluator.start(_seed(), _policy(pe_max=Decimal("15")))
-    assert nan_step.request is not None
-    with pytest.raises(InvalidOperation):
-        evaluator.advance(
-            nan_step.state,
-            _response(
-                nan_step.request,
-                project_pe_observation(
-                    ValuationPEObservation(
-                        value="NaN",
-                        as_of_date=CUTOFF.isoformat(),
-                        available_date=CUTOFF.isoformat(),
-                        source="fixture",
-                        source_version="v1",
-                        quality="observed",
-                    )
-                ),
+    assert [record.period for record in no_baseline.records] == ["2026-04"]
+    assert RecommendationEvaluator._revenue_yoy(
+        no_baseline,
+        cutoff=CUTOFF,
+        stock_code="2330",
+        fundamental_input_scope="natural_current_observation",
+        current_observation_cutoff_at=frozen,
+    ) is None
+    stale_reported_prior = replace(
+        facts.records[1],
+        period="2025-04",
+        source_version=(
+            "mops-current-revenue-normalizer.v2:twse:2025-04:raw:"
+            "mops-static-twse-2025-04-sha256-" + "a" * 64
+            + ":derived:sha256:" + "e" * 64
+        ),
+        revenue=Decimal("100"),
+        input_role="reported_period_value",
+        parent_report_period=None,
+    )
+    stale_reported_prior_facts = MonthlyRevenueFacts(
+        records=(facts.records[1], stale_reported_prior)
+    )
+    assert RecommendationEvaluator._revenue_yoy(
+        stale_reported_prior_facts,
+        cutoff=CUTOFF,
+        stock_code="2330",
+        fundamental_input_scope="natural_current_observation",
+        current_observation_cutoff_at=frozen,
+    ) is None
+    unqualified_formal_baseline = project_current_monthly_revenue_records(
+        (current,), (prior,), stock_code="2330"
+    )
+    assert [record.period for record in unqualified_formal_baseline.records] == [
+        "2026-04"
+    ]
+    assert RecommendationEvaluator._revenue_yoy(
+        unqualified_formal_baseline,
+        cutoff=CUTOFF,
+        stock_code="2330",
+        fundamental_input_scope="natural_current_observation",
+        current_observation_cutoff_at=frozen,
+    ) is None
+    missing_baseline_step = evaluator.advance(
+        step.state,
+        _response(step.request, no_baseline),
+    )
+    assert missing_baseline_step.outcome is not None
+    assert missing_baseline_step.outcome.reason_codes == (
+        "fundamental_revenue_yoy_missing",
+    )
+    formal_latest_only = MonthlyRevenueFacts(
+        records=(
+            MonthlyRevenueFact(
+                period="2026-04",
+                available_date=date(2026, 5, 12),
+                source_version="old-current-period",
+                revenue=Decimal("90"),
+                stock_code="2330",
+                availability_basis="formal_pit_available_date",
+                formal_pit_eligible=True,
             ),
+            facts.records[0],
         )
+    )
+    assert RecommendationEvaluator._revenue_yoy(
+        formal_latest_only,
+        cutoff=CUTOFF,
+        stock_code="2330",
+        fundamental_input_scope="natural_current_observation",
+        current_observation_cutoff_at=frozen,
+    ) is None
 
+
+def test_current_observation_facts_are_not_usable_by_historical_policy() -> None:
+    current_pe = PEFact(
+        value=Decimal("12"),
+        available_date=CUTOFF,
+        as_of_date=CUTOFF,
+        stock_code="2330",
+        available_at=datetime(2026, 5, 20, 11, 0, tzinfo=timezone.utc),
+        availability_basis="official_body_capture",
+        raw_response_sha256="a" * 64,
+        formal_pit_eligible=False,
+    )
+    evaluator = RecommendationEvaluator()
+    step = evaluator.start(_seed(), _policy(pe_max=Decimal("15")))
+    assert step.request is not None
+    result = evaluator.advance(step.state, _response(step.request, current_pe))
+    assert result.outcome is not None
+    assert result.outcome.reason_codes == ("valuation_pe_missing",)
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected_reason"),
+    (
+        ("-5", "valuation_pe_non_positive"),
+        ("0", "valuation_pe_non_positive"),
+        ("5", "pending_final_selection"),
+        ("Infinity", "valuation_pe_non_finite"),
+        ("NaN", "valuation_pe_non_finite"),
+    ),
+)
+@pytest.mark.parametrize("fundamental_scope", ("formal_pit", "natural_current_observation"))
+def test_pe_max_requires_positive_finite_value_in_both_scopes(
+    raw_value: str,
+    expected_reason: str,
+    fundamental_scope: str,
+) -> None:
+    frozen = datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc)
+    policy = _policy(pe_max=Decimal("15"))
+    if fundamental_scope == "natural_current_observation":
+        policy = replace(
+            policy,
+            fundamental_input_scope=fundamental_scope,
+            current_observation_cutoff_at=frozen,
+        )
+    current = fundamental_scope == "natural_current_observation"
+    fact = PEFact(
+        value=Decimal(raw_value),
+        available_date=CUTOFF,
+        as_of_date=CUTOFF,
+        source="fixture",
+        source_version="source-version-v1",
+        stock_code="2330" if current else None,
+        available_at=frozen if current else None,
+        availability_basis="official_body_capture" if current else "formal_pit_available_date",
+        raw_response_sha256="a" * 64 if current else None,
+        formal_pit_eligible=not current,
+    )
+    evaluator = RecommendationEvaluator()
+    step = evaluator.start(
+        _seed(score=RecommendationScore(Decimal("70.01"))),
+        policy,
+    )
+    assert step.request is not None
+
+    result = evaluator.advance(step.state, _response(step.request, fact))
+
+    assert result.outcome is not None
+    assert result.outcome.reason_codes == (expected_reason,)
+    if expected_reason.startswith("valuation_pe_non_"):
+        assert result.outcome.quality == "degraded"
+        assert result.outcome.observed_value == raw_value
+        assert result.outcome.required_value == "finite PE > 0 and <= 15"
+        assert result.outcome.source_responses[0].value == fact
+    else:
+        assert result.outcome.quality == "observed"
+
+
+
+def test_nonfinite_monthly_revenue_keeps_existing_comparison_semantics() -> None:
+    evaluator = RecommendationEvaluator()
     revenue_step = evaluator.start(_seed(), _policy(revenue_min=Decimal("0")))
     assert revenue_step.request is not None
     with pytest.raises(InvalidOperation):
@@ -601,6 +900,9 @@ def test_app_source_projection_preserves_dates_lineage_and_raw_quality_literals(
             revenue=Decimal("110.00"),
             source="fixture-csv",
             quality_literal="estimated",
+            stock_code="2330",
+            availability_basis="formal_pit_available_date",
+            formal_pit_eligible=True,
         ),
     )
 
@@ -769,7 +1071,10 @@ def test_staged_industry_request_preserves_mapper_reason_performance_order(
     )
 
     read_events: list[tuple[str, str, str]] = []
-    input_session = preparer.begin(config)
+    input_session = preparer.begin(
+        config,
+        invocation_frozen_at=datetime(2026, 5, 20, 12, 0, tzinfo=timezone.utc),
+    )
 
     def read_pe(*, stock_code: str, decision_date: str) -> ValuationPEObservation:
         read_events.append(("pe", stock_code, decision_date))
@@ -1112,6 +1417,51 @@ def test_typed_prefilter_and_quantile_empty_batch_keep_final_dispositions() -> N
     assert empty.decision.items == ()
     assert empty.decision.assessments == ()
     assert empty.dispositions == ()
+
+
+def test_verified_current_delisting_is_typed_observed_exclusion() -> None:
+    evidence = {
+        "schema_version": "current-market-status-preflight.v1",
+        "symbol": "4130",
+        "scope": "current_only",
+        "pit_eligible": False,
+        "raw_sha256": "sha256:" + "a" * 64,
+    }
+    outcome = RecommendationEvaluator.current_market_status_outcome(
+        CandidateCurrentMarketStatusFact(
+            invocation_id="r019-current-market-status",
+            stock_code="4130",
+            evidence=evidence,
+        )
+    )
+
+    result = RecommendationEvaluator().evaluate_batch_result(
+        (outcome,), _policy("r019-current-market-status")
+    )
+
+    assert result.decision.items == ()
+    assert len(result.decision.assessments) == 1
+    assessment = result.decision.assessments[0]
+    assert assessment.stock_code == "4130"
+    assert assessment.eligible is False
+    gate = assessment.filter_outcomes["current_market_status_gate"]
+    assert gate.passed is False
+    assert gate.reason == "official_delisted"
+    assert dict(gate.evidence) == evidence
+    disposition = result.dispositions[0]
+    assert (
+        disposition.status,
+        disposition.quality,
+        disposition.stage,
+        disposition.reason_codes,
+        disposition.scored,
+    ) == (
+        "fail",
+        "observed",
+        "current_market_status_gate",
+        ("official_delisted",),
+        False,
+    )
 
 
 def test_evaluation_result_exposes_final_ranking_disposition() -> None:

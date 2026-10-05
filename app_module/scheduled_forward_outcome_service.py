@@ -26,7 +26,12 @@ from app_module.forward_performance_service import (
     ForwardOutcomeSummary,
     ForwardPerformanceService,
 )
-from app_module.official_maturity_calendar import OfficialMaturityCalendar
+from app_module.forward_outcome_context import build_official_maturity_calendar
+from app_module.scheduled_writer_reservation import (
+    ScheduledWriterReservationError,
+    wait_for_scheduled_writer_reservation,
+)
+from data_module.ml_storage_capacity import release_heavy_chain_reservation
 
 
 TASK_NAME = "baldr-forward-outcomes-daily"
@@ -39,10 +44,16 @@ MAX_LOOKBACK_CALENDAR_DAYS = 3660
 MAX_EVENTS = 100_000
 MAX_WINDOWS = 16
 TAIPEI = ZoneInfo("Asia/Taipei")
+SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS = 10_500
+FORWARD_OUTCOME_COMPLETION_RESERVE_SECONDS = 3_600
 
 
 class ScheduledForwardOutcomeError(RuntimeError):
     """排程 outcome producer 的輸入或來源不符合安全契約。"""
+
+
+class _ScheduledWriterAcquireGuardBlocked(RuntimeError):
+    """Keep a locked-run guard receipt pending until its lease is released."""
 
 
 def run_scheduled_forward_outcomes(
@@ -74,7 +85,9 @@ def run_scheduled_forward_outcomes(
     的事件會在計算前跳過並統計，不會佔用 outcome 寫入額度。
     """
 
-    checked_raw = now or datetime.now(TAIPEI)
+    invocation_at = datetime.now(TAIPEI)
+    natural_clock = now is None
+    checked_raw = now or invocation_at
     checked_at = _require_aware_datetime(checked_raw).astimezone(TAIPEI)
     resolved_db = Path(db_path).expanduser().resolve() if db_path is not None else Path(config.db_file).expanduser().resolve()
     resolved_output = (
@@ -82,6 +95,7 @@ def run_scheduled_forward_outcomes(
         if output_root is not None
         else Path(config.output_root).expanduser().resolve()
     )
+    reservation_root = Path(config.output_root).expanduser().resolve()
     status_dir = resolved_output / "scheduled" / "forward_outcomes"
     status_path = status_dir / "latest_status.json"
     run_id = checked_at.astimezone(ZoneInfo("UTC")).strftime("%Y%m%dT%H%M%S%fZ")
@@ -92,10 +106,13 @@ def run_scheduled_forward_outcomes(
         "task": TASK_NAME,
         "run_id": run_id,
         "status": "running",
+        "invocation_started_at": invocation_at.isoformat(timespec="seconds"),
         "checked_at": checked_at.isoformat(timespec="seconds"),
         "database_mode": "read_write_only_when_confirmed",
         "db_path": str(resolved_db),
         "output_root": str(resolved_output),
+        "artifact_output_root": str(resolved_output),
+        "canonical_reservation_root": str(reservation_root),
         "return_basis": RETURN_BASIS,
         "confirm": bool(confirm),
         "writes_evidence_db": False,
@@ -109,6 +126,7 @@ def run_scheduled_forward_outcomes(
         "require_cohort_identity": bool(require_cohort_identity),
     }
 
+    reservation = None
     try:
         normalized_windows = _normalise_windows(windows)
         lookback = _positive_bounded_int(
@@ -121,6 +139,129 @@ def run_scheduled_forward_outcomes(
             label="max_events",
             maximum=MAX_EVENTS,
         )
+        initial_preflight = _read_only_db_preflight(resolved_db)
+        payload["source_preflight"] = initial_preflight
+        payload["source_db_before"] = _file_stat(resolved_db)
+        if not bool(initial_preflight.get("ready")):
+            payload.update(
+                {
+                    "status": "blocked",
+                    "blockers": list(initial_preflight.get("blockers") or []),
+                    "exit_code": 2,
+                }
+            )
+            return _persist_receipt(payload, status_path=status_path, run_path=run_path)
+        production_db = Path(config.db_file).expanduser().resolve()
+        if confirm and resolved_db == production_db and not allow_production_db_confirm:
+            payload.update(
+                {
+                    "status": "blocked",
+                    "blockers": ["production_db_confirmation_required"],
+                    "exit_code": 2,
+                }
+            )
+            return _persist_receipt(payload, status_path=status_path, run_path=run_path)
+
+        if confirm:
+            latest_acquire_at = datetime.combine(
+                invocation_at.date() + timedelta(days=1),
+                datetime.min.time(),
+                tzinfo=TAIPEI,
+            ) - timedelta(seconds=FORWARD_OUTCOME_COMPLETION_RESERVE_SECONDS)
+
+            def publish_wait_progress(progress: Mapping[str, object]) -> None:
+                status_path.parent.mkdir(parents=True, exist_ok=True)
+                wait_status = {
+                    "schema_version": SCHEMA_VERSION,
+                    "task": TASK_NAME,
+                    "run_id": run_id,
+                    "status": "waiting_for_heavy_chain_reservation",
+                    "invocation_started_at": invocation_at.isoformat(timespec="seconds"),
+                    "db_path": str(resolved_db),
+                    "output_root": str(resolved_output),
+                    "artifact_output_root": str(resolved_output),
+                    "canonical_reservation_root": str(reservation_root),
+                    "confirm": True,
+                    "writes_evidence_db": False,
+                    "reservation_wait": dict(progress),
+                }
+                _write_atomic(
+                    status_path,
+                    json.dumps(wait_status, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+                )
+
+            try:
+                wait_result = wait_for_scheduled_writer_reservation(
+                    release_root=reservation_root / "release_v4",
+                    timeout_seconds=SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
+                    latest_acquire_at=latest_acquire_at,
+                    on_progress=publish_wait_progress,
+                )
+            except ScheduledWriterReservationError as exc:
+                payload.update(
+                    {
+                        "status": "blocked",
+                        "reservation_wait": dict(exc.receipt),
+                        "blockers": [
+                            f"heavy_chain_reservation_failed:{type(exc.cause).__name__}"
+                        ],
+                        "exit_code": 2,
+                        "writes_evidence_db": False,
+                    }
+                )
+                raise _ScheduledWriterAcquireGuardBlocked
+            if wait_result.reservation is None:
+                payload.update(
+                    {
+                        "status": "blocked",
+                        "reservation_wait": dict(wait_result.receipt),
+                        "blockers": ["heavy_chain_reservation_timeout"],
+                        "exit_code": 2,
+                        "writes_evidence_db": False,
+                    }
+                )
+                return _persist_receipt(payload, status_path=status_path, run_path=run_path)
+            reservation = wait_result.reservation
+            payload["reservation_wait"] = dict(wait_result.receipt)
+            actual_after_acquire = datetime.now(TAIPEI)
+            acquire_guard = {
+                "checked_at": actual_after_acquire.isoformat(timespec="seconds"),
+                "latest_acquire_at": latest_acquire_at.isoformat(timespec="seconds"),
+                "completion_reserve_seconds": FORWARD_OUTCOME_COMPLETION_RESERVE_SECONDS,
+                "passed": (
+                    actual_after_acquire.date() == invocation_at.date()
+                    and actual_after_acquire < latest_acquire_at
+                ),
+            }
+            payload["reservation_acquire_guard"] = acquire_guard
+            if not bool(acquire_guard["passed"]):
+                checked_at = actual_after_acquire
+                payload.update(
+                    {
+                        "checked_at": checked_at.isoformat(timespec="seconds"),
+                        "status": "blocked",
+                        "blockers": [
+                            "heavy_chain_reservation_crossed_taipei_day"
+                            if checked_at.date() != invocation_at.date()
+                            else "heavy_chain_reservation_after_completion_cutoff"
+                        ],
+                        "exit_code": 2,
+                        "writes_evidence_db": False,
+                    }
+                )
+                raise _ScheduledWriterAcquireGuardBlocked
+            if natural_clock:
+                checked_at = actual_after_acquire
+        else:
+            payload["reservation_wait"] = {
+                "status": "not_required",
+                "reason": "dry_run_does_not_write_evidence_db",
+            }
+
+        # Natural checked_at and all default date bounds are chosen only after
+        # the writer reservation is held. Explicit replay clocks remain exact.
+        if natural_clock and reservation is not None:
+            payload["checked_at"] = checked_at.isoformat(timespec="seconds")
         visible_date = _normalise_iso_date(data_as_of_date, label="data_as_of_date")
         if visible_date is None:
             visible_date = checked_at.date()
@@ -147,20 +288,13 @@ def run_scheduled_forward_outcomes(
                 "data_as_of_date": visible_date.isoformat(),
             }
         )
-        maturity_calendar = None
-        if calendar_cache_path is not None:
-            maturity_calendar = OfficialMaturityCalendar(
-                calendar_cache_path,
-                observed_at=checked_at,
-                temporary_closure_path=temporary_closure_path,
-            )
-            payload["maturity_calendar"] = maturity_calendar.describe()
-        else:
-            payload["maturity_calendar"] = {
-                "status": "not_configured",
-                "read_only": True,
-                "network_fetch": False,
-            }
+        maturity_calendar = build_official_maturity_calendar(
+            config=config,
+            observed_at=checked_at,
+            calendar_cache_path=calendar_cache_path,
+            temporary_closure_path=temporary_closure_path,
+        )
+        payload["maturity_calendar"] = maturity_calendar.describe()
         payload["calendar_observation"] = _read_calendar_observation(
             resolved_output,
             checked_at.date(),
@@ -178,20 +312,15 @@ def run_scheduled_forward_outcomes(
                     "exit_code": 2,
                 }
             )
+            if reservation is not None:
+                raise _ScheduledWriterAcquireGuardBlocked
             return _persist_receipt(payload, status_path=status_path, run_path=run_path)
 
-        production_db = Path(config.db_file).expanduser().resolve()
-        if confirm and resolved_db == production_db and not allow_production_db_confirm:
-            payload.update(
-                {
-                    "status": "blocked",
-                    "blockers": ["production_db_confirmation_required"],
-                    "exit_code": 2,
-                }
-            )
-            return _persist_receipt(payload, status_path=status_path, run_path=run_path)
-
-        repository = EvidenceEventRepository(config, db_path=resolved_db)
+        repository = EvidenceEventRepository(
+            config,
+            db_path=resolved_db,
+            read_only=not confirm,
+        )
         service = ForwardPerformanceService(
             config,
             repository,
@@ -207,6 +336,7 @@ def run_scheduled_forward_outcomes(
             symbol=symbol,
             limit=bounded_max_events,
             data_as_of_date=visible_date.isoformat(),
+            invocation_at=checked_at,
             require_cohort_identity=require_cohort_identity,
         )
         summary_payload = asdict(summary)
@@ -245,6 +375,19 @@ def run_scheduled_forward_outcomes(
             exit_code = 0
         payload.update({"status": status, "exit_code": exit_code})
         _apply_health_terminal_state(payload, confirm=confirm)
+    except ScheduledWriterReservationError as exc:
+        payload.update(
+            {
+                "status": "blocked",
+                "reservation_wait": dict(exc.receipt),
+                "blockers": [f"heavy_chain_reservation_failed:{type(exc.cause).__name__}"],
+                "exit_code": 2,
+                "writes_evidence_db": False,
+            }
+        )
+    except _ScheduledWriterAcquireGuardBlocked:
+        # Publish this terminal state only after finally releases the lease.
+        pass
     except (ScheduledForwardOutcomeError, ValueError, OSError, sqlite3.Error) as exc:
         payload.update(
             {
@@ -261,6 +404,22 @@ def run_scheduled_forward_outcomes(
                 "exit_code": 2,
             }
         )
+    finally:
+        if reservation is not None:
+            try:
+                release_heavy_chain_reservation(reservation)
+            except Exception as exc:  # noqa: BLE001 - lock release is part of writer custody
+                payload.update(
+                    {
+                        "status": "blocked",
+                        "exit_code": 2,
+                        "reservation_release_error": f"{type(exc).__name__}:{exc}",
+                        "blockers": _merge_text_items(
+                            payload.get("blockers"),
+                            "heavy_chain_reservation_release_failed",
+                        ),
+                    }
+                )
     return _persist_receipt(payload, status_path=status_path, run_path=run_path)
 
 
@@ -488,7 +647,7 @@ def _build_daily_health(
     pending 長窗口不會被當日新事件長期排擠。健康摘要只讀取，不改寫 SQLite。
     """
 
-    repository = EvidenceEventRepository(config, db_path=db_path)
+    repository = EvidenceEventRepository(config, db_path=db_path, read_only=True)
     diagnostic_events = repository.list_events(
         event_type=event_type,
         symbol=symbol,
@@ -532,6 +691,7 @@ def _build_daily_health(
     planned_maturity_elapsed_count = 0
     calendar_mismatch_count = 0
     pending_date_bases: list[str] = []
+    outcome_source_gaps: list[dict[str, Any]] = []
     for event in complete_events:
         metadata = event.metadata if isinstance(event.metadata, Mapping) else {}
         policy_id = str(metadata.get("universe_policy_id") or metadata.get("universe_id") or "").strip()
@@ -585,6 +745,35 @@ def _build_daily_health(
                     "value",
                     str(outcome.outcome_status),
                 )
+                target_price_state = metadata.get("target_price_state")
+                source_price_gap_reason = metadata.get("source_price_gap_reason")
+                if (
+                    target_price_state == "missing_at_planned_official_session"
+                    or (isinstance(source_price_gap_reason, str) and source_price_gap_reason)
+                ):
+                    lookup_detail = metadata.get("official_target_price_lookup_detail")
+                    outcome_source_gaps.append(
+                        {
+                            "event_id": outcome.event_id,
+                            "symbol": event.symbol,
+                            "window_days": int(window),
+                            "outcome_status": outcome_status,
+                            "maturity_basis": metadata.get("maturity_basis"),
+                            "planned_official_maturity_date": metadata.get(
+                                "planned_official_maturity_date"
+                            ),
+                            "expected_maturity_date": metadata.get(
+                                "expected_maturity_date"
+                            ),
+                            "target_price_state": target_price_state,
+                            "source_price_gap_reason": source_price_gap_reason,
+                            "official_target_price_lookup_detail": (
+                                dict(lookup_detail)
+                                if isinstance(lookup_detail, Mapping)
+                                else lookup_detail
+                            ),
+                        }
+                    )
                 if outcome_status == "ready":
                     state = "ready"
                 elif outcome_status in {"pending", "insufficient_future_data"}:
@@ -688,6 +877,10 @@ def _build_daily_health(
     if calendar_mismatch_count:
         blockers.append("maturity_calendar_comparison_blocked")
         classification = "actionable_engineering_blocker"
+    if summary.blocked_time_contract_count:
+        if "official_maturity_calendar_unavailable" not in blockers:
+            blockers.append("official_maturity_calendar_unavailable")
+        classification = "actionable_engineering_blocker"
 
     warning_values: list[str] = []
     if summary.pending_insufficient_future_data and not pending_dates:
@@ -697,10 +890,13 @@ def _build_daily_health(
             warning_values.append("planned_maturity_elapsed_without_outcome_price")
     if calendar_mismatch_count:
         warning_values.append("maturity_calendar_comparison_blocked")
+    if summary.blocked_time_contract_count:
+        warning_values.append("official_maturity_calendar_unavailable")
 
     return {
         "schema_version": "scheduled-forward-outcome-health.v2",
         "classification": classification,
+        "blocked_time_contract_count": int(summary.blocked_time_contract_count),
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
         "bounded_limit": int(limit),
@@ -734,7 +930,18 @@ def _build_daily_health(
             "waiting_for_calendar_count": calendar_waiting_count,
             "elapsed_without_outcome_price_count": planned_maturity_elapsed_count,
             "comparison_blocked_count": calendar_mismatch_count,
+            "time_contract_blocked_count": int(summary.blocked_time_contract_count),
         },
+        "outcome_source_gaps": sorted(
+            outcome_source_gaps,
+            key=lambda item: (
+                str(item.get("planned_official_maturity_date") or ""),
+                str(item.get("symbol") or ""),
+                int(item.get("window_days") or 0),
+                str(item.get("event_id") or ""),
+            ),
+        ),
+        "outcome_source_gap_count": len(outcome_source_gaps),
         "blockers": blockers,
         "warnings": [
             *warning_values,

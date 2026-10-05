@@ -113,7 +113,7 @@ class VerifiedCurrentRestatedSourceContext:
     source_database_path: str
     source_database_sha256: str
     source_wal_path: str
-    source_wal_sha256: str
+    source_wal_sha256: str | None
     snapshot_database_path: str
     snapshot_database_sha256: str
     snapshot_receipt_path: str
@@ -135,6 +135,7 @@ class VerifiedCurrentRestatedSourceContext:
     revision_dependency_bundle_sha256: str
     current_restated: bool = True
     historical_pit_eligible: bool = False
+    source_wal_present: bool = True
 
 
 def assert_model_artifact_source_revision_safe(artifact_hash: str) -> None:
@@ -544,9 +545,13 @@ def load_verified_current_restated_source_context(
         raise CurrentRestatedContractNotConnectedError(
             "snapshot receipt root must be an object"
         )
+    snapshot_schema = receipt.get("schema_version")
     if (
-        receipt.get("schema_version")
-        != "integration-consistent-sqlite-snapshot.v1"
+        snapshot_schema
+        not in {
+            "integration-consistent-sqlite-snapshot.v1",
+            "integration-consistent-sqlite-snapshot.v2",
+        }
         or receipt.get("status") != "consistent_snapshot_created"
         or receipt.get("consistency")
         != "sqlite_backup_from_single_query_only_read_transaction"
@@ -590,6 +595,31 @@ def load_verified_current_restated_source_context(
             "snapshot receipt is not bound to the supplied original source database"
         )
 
+    source_wal_present = True
+    if snapshot_schema == "integration-consistent-sqlite-snapshot.v2":
+        if (
+            source_wal.get("status") != "absent"
+            or source_wal.get("present") is not False
+            or any(field in source_wal for field in ("bytes", "mtime_ns", "sha256"))
+            or not isinstance(receipt.get("source_journal_mode_before"), str)
+            or not receipt.get("source_journal_mode_before")
+            or receipt.get("source_journal_mode_before")
+            != receipt.get("source_journal_mode_after")
+            or receipt.get("source_journal_mode_reader")
+            != "sqlite_file_header_read_write_version.v1"
+            or receipt.get("source_journal_mode_before") not in {"wal", "rollback"}
+        ):
+            raise CurrentRestatedContractNotConnectedError(
+                "snapshot v2 must prove an absent WAL during a stable SQLite journal-mode read transaction"
+            )
+        source_wal_present = False
+        if _source_context_sqlite_journal_mode(source_path) != receipt.get(
+            "source_journal_mode_before"
+        ):
+            raise CurrentRestatedContractNotConnectedError(
+                "snapshot v2 journal-mode observation differs from the original SQLite header"
+            )
+
     receipt_snapshot_path = _source_context_receipt_path(
         snapshot.get("path"), "snapshot.path"
     )
@@ -615,13 +645,27 @@ def load_verified_current_restated_source_context(
         source_db,
         label="original source database",
     )
-    source_wal_path = _source_context_regular_path(
-        _source_context_receipt_path(source_wal.get("path"), "source_observation.wal.path"),
-        "source WAL",
+    wal_receipt_path = _source_context_receipt_path(
+        source_wal.get("path"), "source_observation.wal.path"
     )
-    source_wal_sha256 = _source_context_check_file_pin(
-        source_wal_path, source_wal, label="source WAL"
-    )
+    expected_wal_path = source_path.with_name(source_path.name + "-wal")
+    if os.path.normcase(os.path.abspath(str(wal_receipt_path))).casefold() != os.path.normcase(
+        os.path.abspath(str(expected_wal_path))
+    ).casefold():
+        raise CurrentRestatedContractNotConnectedError(
+            "snapshot receipt WAL path is not the original database WAL path"
+        )
+    if source_wal_present:
+        source_wal_path = _source_context_regular_path(wal_receipt_path, "source WAL")
+        source_wal_sha256: str | None = _source_context_check_file_pin(
+            source_wal_path,
+            source_wal,
+            label="source WAL",
+            allow_pinned_empty_file_mtime_drift=True,
+        )
+    else:
+        source_wal_path = _source_context_absent_file_path(wal_receipt_path, "source WAL")
+        source_wal_sha256 = None
     snapshot_sha256 = _source_context_check_file_pin(
         snapshot_path, snapshot, label="snapshot database"
     )
@@ -969,9 +1013,15 @@ def load_verified_current_restated_source_context(
     _source_context_check_file_pin(
         source_path, source_db, label="original source database recheck"
     )
-    _source_context_check_file_pin(
-        source_wal_path, source_wal, label="source WAL recheck"
-    )
+    if source_wal_present:
+        _source_context_check_file_pin(
+            source_wal_path,
+            source_wal,
+            label="source WAL recheck",
+            allow_pinned_empty_file_mtime_drift=True,
+        )
+    else:
+        _source_context_absent_file_path(source_wal_path, "source WAL recheck")
     _source_context_check_file_pin(
         snapshot_path, snapshot, label="snapshot database recheck"
     )
@@ -1041,7 +1091,9 @@ def load_verified_current_restated_source_context(
         source_database_path=str(source_path),
         source_database_sha256="sha256:" + source_db_sha256,
         source_wal_path=str(source_wal_path),
-        source_wal_sha256="sha256:" + source_wal_sha256,
+        source_wal_sha256=(
+            None if source_wal_sha256 is None else "sha256:" + source_wal_sha256
+        ),
         snapshot_database_path=str(snapshot_path),
         snapshot_database_sha256="sha256:" + snapshot_sha256,
         snapshot_receipt_path=str(receipt_path),
@@ -1060,6 +1112,7 @@ def load_verified_current_restated_source_context(
         source_revision_evidence_files=tuple(
             sorted(gate_evidence_files, key=lambda item: (item[0], item[1]))
         ),
+        source_wal_present=source_wal_present,
         revision_dependencies_verified_at=revision_dependencies_verified_at,
         revision_dependency_files=tuple(
             sorted(
@@ -1934,6 +1987,46 @@ def _source_context_regular_path(path: Path, label: str) -> Path:
     return resolved
 
 
+def _source_context_absent_file_path(path: Path, label: str) -> Path:
+    """Validate an explicitly observed absent leaf without creating it."""
+
+    absolute = Path(os.path.abspath(path))
+    _source_context_reject_reparse(absolute.parent, label)
+    try:
+        absolute.lstat()
+    except FileNotFoundError:
+        return absolute
+    except OSError as exc:
+        raise CurrentRestatedContractNotConnectedError(
+            f"{label} absence cannot be verified: {absolute}"
+        ) from exc
+    raise CurrentRestatedContractNotConnectedError(
+        f"{label} was required to remain absent: {absolute}"
+    )
+
+
+def _source_context_sqlite_journal_mode(path: Path) -> str:
+    try:
+        with path.open("rb") as stream:
+            header = stream.read(20)
+    except OSError as exc:
+        raise CurrentRestatedContractNotConnectedError(
+            "original SQLite journal-mode header cannot be read"
+        ) from exc
+    if len(header) < 20 or header[:16] != b"SQLite format 3\x00":
+        raise CurrentRestatedContractNotConnectedError(
+            "original source database has no valid SQLite file header"
+        )
+    versions = (header[18], header[19])
+    if versions == (2, 2):
+        return "wal"
+    if versions == (1, 1):
+        return "rollback"
+    raise CurrentRestatedContractNotConnectedError(
+        "original SQLite journal-mode header is unsupported or transitional"
+    )
+
+
 def _source_context_reject_reparse(path: Path, label: str) -> None:
     absolute = Path(os.path.abspath(path))
     current = Path(absolute.parts[0])
@@ -1975,6 +2068,7 @@ def _source_context_check_file_pin(
     payload: Mapping[str, Any],
     *,
     label: str,
+    allow_pinned_empty_file_mtime_drift: bool = False,
 ) -> str:
     expected_bytes = _source_context_nonnegative_int(
         payload.get("bytes"), f"{label}.bytes"
@@ -1997,7 +2091,17 @@ def _source_context_check_file_pin(
         raise CurrentRestatedContractNotConnectedError(
             f"{label} byte length differs from its receipt pin"
         )
-    if getattr(info, "st_mtime_ns", int(info.st_mtime * 1_000_000_000)) != expected_mtime_ns:
+    empty_sha256 = hashlib.sha256(b"").hexdigest()
+    pinned_empty_file_mtime_drift = (
+        allow_pinned_empty_file_mtime_drift
+        and expected_bytes == 0
+        and expected_sha256 == empty_sha256
+    )
+    if (
+        getattr(info, "st_mtime_ns", int(info.st_mtime * 1_000_000_000))
+        != expected_mtime_ns
+        and not pinned_empty_file_mtime_drift
+    ):
         raise CurrentRestatedContractNotConnectedError(
             f"{label} modification timestamp differs from its receipt pin"
         )

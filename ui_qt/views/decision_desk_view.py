@@ -1,6 +1,6 @@
 """每日決策工作台 View."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Callable
 
 from PySide6.QtCore import Qt, Signal
@@ -28,6 +28,7 @@ from app_module.decision_presentation import (
 )
 from app_module.market_data_visibility_dtos import MarketDataVisibilitySummary
 from app_module.research_session import ResearchStockContextDTO
+from data_module.market_session_policy import resolve_project_market_session_boundary
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.theme_widgets import (
@@ -39,6 +40,31 @@ from ui_qt.widgets.theme_widgets import (
     WarningList,
 )
 from ui_qt.widgets.layout_helpers import set_scroll_content_constraints
+
+
+def _current_taipei_decision_date() -> date:
+    """Return the project decision date in Taipei, independent of host timezone."""
+    return resolve_project_market_session_boundary(datetime.now(timezone.utc)).taipei_date
+
+
+def _market_regime_source_data_date(section: Any) -> str:
+    """Return only a canonical source date no later than the section cutoff."""
+    meta = getattr(section, "meta", None)
+    raw_value = meta.get("source_data_date") if isinstance(meta, dict) else None
+    if not isinstance(raw_value, str):
+        return "未知"
+    section_as_of_date = getattr(section, "as_of_date", None)
+    try:
+        parsed = date.fromisoformat(raw_value)
+    except ValueError:
+        return "未知"
+    if (
+        parsed.isoformat() != raw_value
+        or not isinstance(section_as_of_date, date)
+        or parsed > section_as_of_date
+    ):
+        return "未知"
+    return raw_value
 
 
 class DecisionDeskView(QWidget):
@@ -58,7 +84,9 @@ class DecisionDeskView(QWidget):
     ):
         super().__init__(parent)
         self.decision_desk_builder = decision_desk_builder or DecisionDeskSnapshotBuilder()
-        self.as_of_date = as_of_date or date.today()
+        self.as_of_date = (
+            as_of_date if as_of_date is not None else _current_taipei_decision_date()
+        )
         self.async_refresh = async_refresh
         self.navigate_to_smart_money_callback = navigate_to_smart_money_callback
         self.presentation_service = presentation_service or DecisionPresentationService()
@@ -536,8 +564,10 @@ class DecisionDeskView(QWidget):
         self._set_section_quality(self.market_regime_status, snapshot.market_regime.quality)
         self.market_regime_value.setText(
             f"市場狀態：{snapshot.market_regime.regime_label or '未定義'}；"
-            f"得分：{snapshot.market_regime.regime_score or 0}；"
-            f"訊號強度：{snapshot.market_regime.regime_confidence or 0}"
+            f"得分：{snapshot.market_regime.regime_score if snapshot.market_regime.regime_score is not None else '未知'}；"
+            f"訊號強度：{snapshot.market_regime.regime_confidence if snapshot.market_regime.regime_confidence is not None else '未知'}；"
+            f"行情日：{_market_regime_source_data_date(snapshot.market_regime)}；"
+            f"判斷日：{snapshot.as_of_date.isoformat()}"
         )
 
         self._set_section_quality(self.market_breadth_status, snapshot.market_breadth.quality)

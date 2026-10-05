@@ -443,7 +443,7 @@ CSV 送入 SQLite 前會先在寫入用副本上正規化欄位與識別值：�
 
 唯讀 probe 會檢查最近 10 個官方交易 session、TWSE／TPEx raw 與 SQLite 的 row count／code set、market／industry／broker 覆蓋，以及 technical eligible coverage。狀態 token 為 `current`、`expected_wait`、`stale`、`failed`、`partial`、`not_applicable`、`unknown`；`candidate` 只代表已取得候選，不代表正式 mapping／SQLite 已套用。probe 的 `latest_status.json` 由既有 `UpdateService.check_data_status` 唯讀投影到更新頁，不會因檔案存在而把缺月／缺季資料標為正常。個股報告只採用與查詢日、同一 `data_root`／SQLite 綁定的 receipt；receipt 缺失、損壞、日期或資料根不符時保留 `unknown`，不以資料日早於查詢日猜成過期。
 
-狀態頁消費 receipt 時還會重驗 `DATA_ROOT`、SQLite／Candidate DB 路徑、來源實際期別與 `calendar_cutoff_local`。台北 04:30 是 freshness 判讀邊界：receipt 在 cutoff 前檢查、查詢時已到或越過 04:30，必須重新執行唯讀 probe；同日且來源日期沒有變動也不能沿用 cutoff 前的 `expected_wait`。在 cutoff 後同側的 receipt 可以投影其明確 `stale` 狀態；consumer 不會自行推定 current／stale。`unknown`／`needs_revalidation` 時，先執行既有唯讀 freshness probe（或觸發其既有排程）以產生帶本次資料根、資料庫與 cutoff 的新 receipt，並查看 freshness log 與目前 DB 日期；probe 完成後再按「檢查數據狀態」重新讀回。此按鈕只讀既有狀態，不會啟動 probe；不要手改 receipt 時鐘或日期。
+狀態頁消費 receipt 時還會重驗 `DATA_ROOT`、SQLite／Candidate DB 路徑、來源實際期別、`calendar_cutoff_local` 與 `calendar_cutoff_timezone`。Freshness 的每日發布截止為 **04:30 America/Los_Angeles**（台北夏令期間 19:30、冬令期間 20:30），不是台北 04:30。檢查與查詢必須位於同一發布週期：洛杉磯午夜到 04:30 前仍屬前一週期，跨台北午夜本身不使收據失效；一旦跨越下一個洛杉磯 04:30，就必須重新執行唯讀 probe，即使來源日期沒有變動也不能沿用舊的 `expected_wait`。新收據明示 IANA 時區；舊收據僅在精確辨識為本專案既有 Freshness task 且符合其固定時區契約時相容，未知或不符時區要求重驗。合法收據可投影其明確 `stale` 狀態，consumer 不自行推定 current／stale。`unknown`／`needs_revalidation` 時，先執行既有唯讀 freshness probe（或觸發其既有排程）並查看 log、目前 DB 日期與新收據，再按「檢查數據狀態」讀回。此按鈕只讀既有狀態，不會啟動 probe；不要手改 receipt 的時區、時鐘或日期。
 
 「取消目前工作」是合作式停止，worker 會在日期、檔案或 transaction 安全邊界接收取消。已安全提交的 CSV／SQLite 部分結果可能保留；取消不會強制終止 QThread，也不會把已保留資料宣稱成全範圍更新成功。畫面若同時有真正的 parser／writer exception，錯誤仍保留為 failed；工作結束後先按「檢查數據狀態」，再依失敗步驟決定是否重試。
 
@@ -1094,6 +1094,14 @@ quantile 目前是 opt-in，不能宣稱比 fixed 更準。
 
 V1.7 後，「保存結果」會一併保存推薦當下的 screening matrix：每檔候選會以 pass / fail / degraded / skipped / missing 標示狀態，並保留 Why Not、Liquidity exclusion、歷史不足、無訊號或例外降級等原因。2026-07-06 後，若個股因 `min_volume_ratio` / `volume_ratio_min` 成交量門檻而沒有策略結果，會以 `liquidity_volume_ratio_below_min` 進入 Liquidity payload；這只補來源追溯，不會改分數、不會自動調整持倉、不會自動降級策略版本。
 
+即時推薦會先核對本次執行固定的官方市場狀態來源。只有具備同股終止公告、原件雜湊、有效日期及擷取時鐘，而且公告已在決策當時生效的股票，才以「官方市場狀態（current_market_status_gate）」及「已核驗下市／終止（official_delisted）」排除；它仍保留在本次篩選紀錄。這項排除先於歷史長度檢查，因此已下市股票不再誤報成等待累積歷史行情。來源不可讀、時間不符或公告無法核驗時，保留未知狀態並繼續既有資料檢查，不猜填下市。明示歷史截日與歷史研究不使用新取得的現況證據。
+
+排程狀態的「市場狀態排除」還會核對同一保存執行的篩選列與逐股證據；只有文字原因而缺少來源身分不能取得此分類。排錯時先檢查同筆結果中的來源 run、官方 URL、擷取時間與有效日；再檢查正式來源根的 `release_v4/current_market_status/current_market_status_pointer.json`。重新更新來源後須重新執行推薦，舊保存結果不會被目前狀態改寫。
+
+個股研究的來源選單、頁首與 Advice 會分開呈現決策日和保存當次實際資料日，例如 10/5 決策使用 10/2 行情。新保存結果會保留當次已取得的行情日期與來源指紋；載入時核對同筆結果、執行身分及日期，不用目前最新資料改寫舊結果。已有自然觀測 lineage 的保存結果可沿原封存證據取回日期；其他舊結果若未保存可驗證日期，仍顯示未知。日期欄位本身不證明公告時間、歷史可得性、可重播快照或模型資格，也不會把較舊行情改標為最新。
+
+若重新開啟後日期不符，先核對所選股票、結果 ID、決策日及來源選項；錯日期或錯來源仍拒絕。若舊結果沒有日期證據，可從同股研究入口另做目前分析並保存成新結果；不要把新日期填回舊歷史分析。來源選單保留明確選擇，切股後須使用新股票自己的來源。
+
 「目前策略傾向摘要」只描述已勾選技術指標與圖形模式推導出的摘要，不是可調偏好控制。若需要改變偏短線、偏長線或盤整 / 趨勢取向，應回到 Profile 或進階設定調整實際條件。
 
 推薦分析不會自動下單、不會自動調整持倉，也不會把自訂 Profile 視為已通過回測驗證。策略版本 Profile 只代表該版本通過既有 gate，可作推薦設定來源，仍需自行判讀資料品質、風險與研究證據。
@@ -1182,13 +1190,13 @@ ML 的模型訓練位於 `ml_module/allocation_training_service.py`，凍結模�
 
 #### 7.0.1 Current-restated 年度研究資料、Outcome Direct 與推薦學習操作（2026-10-03）
 
-本節說明受控研究路徑：以已驗證的 readonly SQLite snapshot 建立年度 raw shards，產生 outcome-only Direct 數值與標籤，訓練並重新載入研究模型，再由 Legacy、Pipeline 或 Bank Taiwan 學習入口使用已釘選模型建立 source-row sidecar。研究樣本是 B 與 Direct 驗證的來源列（目前例為 2317、2330），不是推薦清單。所有研究輸出都應放在 repository 的 `output/ml_research/<唯一執行目錄>`；不得寫入正式資料根、正式模型或 release pointer。實際 CLI 參數以各入口的 `--help` 為準，來源收據與 hash 必須取自同一份已驗收產物，不可自行改寫清冊來符合參數。
+本節說明受控研究路徑：以已驗證的 readonly SQLite snapshot 建立年度 raw shards，產生 outcome-only Direct 數值與標籤，訓練並重新載入研究模型，再由 Legacy、Pipeline 或 Bank Taiwan 學習入口使用已釘選模型建立 source-row sidecar。研究樣本是 B 與 Direct 驗證的來源列（目前例為 2317、2330），不是推薦清單。本節 G6 與受控 current-restated 研究輸出都應放在 configured active research root 的唯一執行目錄；不得寫入正式資料根、正式模型或 release pointer。實際 CLI 參數以各入口的 `--help` 為準，來源收據與 hash 必須取自同一份已驗收產物，不可自行改寫清冊來符合參數。 下方 `<active研究根>` 請先在 repo 以 `.\.venv\Scripts\python.exe -c "from data_module.ml_research_output_boundary import get_ml_research_root; print(get_ml_research_root())"` 取得；本機設定方式見本手冊「研究儲存位置與容量排錯」。歷史已驗收的 C 槽路徑範例保留原 pin，不能改成 D 槽後重用舊 hash。
 
 Current-restated 保留歷史事件日期，同時保存當前觀測、修訂依賴驗證及衍生完成的實際時鐘。這些時鐘不能互相替代；匯出時間不是歷史公告時間，未知公告時間仍是未知。這是以現今可驗資料做的年代順序研究，不具歷史 PIT 或正式 OOS 資格。一般 PIT 型別仍拒絕不符合當時可得性的特徵。
 
 **取得 typed source context 與 current vector**
 
-先用 `data_module.ml_daily_price_revision_gate.load_verified_current_restated_source_context()` 讀取已釘選的 snapshot DB／receipt，並以原始來源 DB、兩份檔案的實際 bytes SHA、當下含時區的 `decision_at` 與 `training_as_of` 驗證 namespace 與實體 dependency closure。接著由 `ml_module.current_restated_research_bridge.save_verified_current_restated_context_file()` 將 typed context create-only 保存到新的 `output/ml_research/<唯一執行目錄>`；記錄它回傳的檔案路徑及 bytes SHA，再用 `load_verified_current_restated_context_file()` 重新驗證後才能交給 fit。資料選取時鐘、context 的再次驗證時鐘與真正模型 fit cutoff 是不同時鐘；不能以 snapshot 完成時間、資料日期或 QA readback 手工拼一份 context JSON。
+先用 `data_module.ml_daily_price_revision_gate.load_verified_current_restated_source_context()` 讀取已釘選的 snapshot DB／receipt，並以原始來源 DB、兩份檔案的實際 bytes SHA、當下含時區的 `decision_at` 與 `training_as_of` 驗證 namespace 與實體 dependency closure。接著由 `ml_module.current_restated_research_bridge.save_verified_current_restated_context_file()` 將 typed context create-only 保存到新的 `<active研究根>/<唯一執行目錄>`；記錄它回傳的檔案路徑及 bytes SHA，再用 `load_verified_current_restated_context_file()` 重新驗證後才能交給 fit。資料選取時鐘、context 的再次驗證時鐘與真正模型 fit cutoff 是不同時鐘；不能以 snapshot 完成時間、資料日期或 QA readback 手工拼一份 context JSON。
 
 已接受的輸入邊界為 `output/ml_research/integration_20261002/source_snapshot_20261003T002224799623Z/`（snapshot DB actual SHA `6dbc12a50c3ab84d5021e68c2e5458e3ec129137d8d76b77fafe9f795a8875b2`；receipt bytes SHA `83e9fd7a2107af7ebd988ae53ad3a4bcc73e7f51d0f98a6fde2a57b39ddef784`）、`annual_current_restated_20261003T024252809641Z/runs/current-restated-1c2e9c5f0ea133fd47bfd823/`（publication／Core dataset bytes SHA `507041d1a174f178e7a88d84fc2e01f12ebd618cb6e2bc78ae2e74c03e69a511`／`83408f8ea7c00b151bb15662deb96bf437d5b535e12bab68b0050e54ebf07c30`），以及 `current_restated_direct_20261003T032031415703Z/runs/current-restated-outcome-196e0cff4d2cffaf22d4e083/`（manifest bytes SHA `04b39a482cd9a40ebba0b06b1f3e63a17cf6cd04a2fc3c8221a2ce107f894471`）。這些是受控 run 身分範例；再次執行必須使用全新輸出目錄並重新釘選當次 bytes，不能把歷史收據套到更新後的來源。
 
@@ -1201,7 +1209,7 @@ Current 向量由 `data_module.ml_research_direct_ooc_adapter.load_verified_ml_r
 ```powershell
 .\.venv\Scripts\python.exe scripts\build_ml_pit_year_shards.py `
   --database <已驗證的snapshot.db> `
-  --output-dir <repo>\output\ml_research\<唯一raw執行目錄> `
+  --output-dir <active研究根>\<唯一raw執行目錄> `
   --decision-at <含時區的ISO-8601截點> `
   --history-start-date <YYYY-MM-DD> `
   --years 2023 2024 2025 2026 `
@@ -1230,7 +1238,7 @@ Current 向量由 `data_module.ml_research_direct_ooc_adapter.load_verified_ml_r
   --raw-publication-manifest <raw發布清冊.json> `
   --expected-raw-publication-manifest-sha256 <raw發布清冊bytes SHA-256> `
   --expected-core-dataset-manifest-sha256 <Core清冊bytes SHA-256> `
-  --output-dir <repo>\output\ml_research\<唯一Direct執行目錄> `
+  --output-dir <active研究根>\<唯一Direct執行目錄> `
   --target-symbols 2317 2330 `
   --benchmark-entity-id TAIEX `
   --minimum-train-dates 125 `
@@ -1266,7 +1274,7 @@ Outcome 標籤的 `benchmark_excess_return_bp` 是股票 gross 報酬減 benchma
   --b-current-observation-freeze <含時區的ISO-8601觀測截點> `
   --current-symbols 2317,2330 `
   --current-event-date <YYYY-MM-DD> `
-  --output-directory <repo>\output\ml_research\<唯一模型目錄>
+  --output-directory <active研究根>\<唯一模型目錄>
 ```
 
 `--b-current-observation-freeze` 是 B 來源觀測的 freeze，不是訓練時間。Trainer 以實際 UTC 時鐘建立 fit 時間與模型收據；不得用歷史時間或未來時間覆寫。保存後記錄 model manifest、bundle、feature registry、training audit 與當次完整 code pins。
@@ -1304,7 +1312,7 @@ Outcome 標籤的 `benchmark_excess_return_bp` 是股票 gross 報酬減 benchma
 | `--research-current-symbols`、`--research-current-event-date` | 指定經 Direct 與 B 共同驗證的來源符號及事件日期。 |
 | `--research-b-current-observation-freeze` | B 來源觀測的含時區 freeze。 |
 | `--research-inference-at` | 可選的含時區推論時鐘；省略採實際現在時間。 |
-| `--research-output-root` | 位於 repository `output/ml_research` 內的新研究輸出根。 |
+| `--research-output-root` | 位於 configured active research root 內的新研究輸出根；舊 repository 根在切換後僅供唯讀。 |
 
 Legacy 使用 `--cost-scenario legacy_fixed_bp --fixed-round-trip-cost-bp 50`，且不接受 upstream terminal 參數。Pipeline 入口另接受四個推薦 snapshot **參考旁證**參數：`--research-reference-snapshot-result-id`、`--research-reference-snapshot-cohort-hash`、`--research-reference-snapshot-output-path`、`--research-reference-snapshot-output-sha256`。推薦 snapshot 不是訓練樣本；若其中沒有 2317／2330，不得描述成 cohort match。啟用 `--current-restated-research-only` 時，Pipeline 會在日常 producer 前返回，只唯讀驗證推薦 snapshot 參考旁證、啟動 Legacy research child，並寫入研究 sidecar 收據；不執行日常 producers 或 snapshot 工作。未啟用研究模式時，正式預設仍走原日常流程。研究分支會寫入隔離研究產物，因此不能稱為全程唯讀或僅供模型驗證的指令。
 
@@ -1316,7 +1324,7 @@ Legacy 的固定 50 bp 假設與 Bank 依真實 T+1 買賣價格估算的費用�
 
 - SHA、binding、source context、code pin 或 Bank upstream 驗證失敗：停止流程，保留原檔與錯誤輸出，重新核對同一 publication、receipt、model 及輸入向量。不可改 manifest/hash、略過 gate 或借用舊模型。
 - 輸出目錄已存在：為下一次受控嘗試建立新的唯一研究目錄；研究產物採 create-only，不要刪除或覆寫先前收據。
-- fold 數、歷史涵蓋或 label maturity 不足：依實際來源缺件調查，保持 blocked/null。不得降低 125／63／60／5 門檻、壓縮全域日曆、放寬 purge／embargo 或將缺標籤填成 0。
+- fold 數、歷史涵蓋或 label maturity 不足：依實際來源缺件調查，保持 blocked/null。不得降低 125／63／60／5 門檻、壓縮全域日曆、放寬 purge／embargo 或將缺標籤填成 0。 新日曆資格版本接受至少 905 個完整來源交易日，實際數量與全日曆 SHA 綁定 verified Direct manifest；超過 905 日不截短成固定長度。每 fold 至少 125 個成熟訓練日、63 個測試日、60 日 purge、5 日 embargo，且至少四個合格 fold，仍在 fit 前驗證。只有資料真的缺少成熟 fold 才屬累積等待，來源／格式／路徑錯誤仍列工程失敗。
 - PowerShell 執行 Unicode `--help` 時若遇到 cp1252 編碼錯誤，先設定 `$env:PYTHONIOENCODING='utf-8'` 再讀 help；這只影響終端輸出編碼，不改變模型或資料。
 - 原始資料時鐘、模型 fit／inference 時鐘及 Bank policy estimate date 是不同欄位。不要以檔案修改時間、匯出完成時間或 policy date 推定來源公告時間。
 
@@ -1382,6 +1390,14 @@ Legacy 的固定 50 bp 假設與 Bank 依真實 T+1 買賣價格估算的費用�
 2026-10-03 的 c625 原生觀察中，載入缺少最新可用價格的 9999 後，結論顯示「資料不足，需核對：缺少最新可用價格」，且先前 2330 報告內容已清除。這只確認缺件時的文案與跨股票內容隔離，不代表補齊價格或驗證個股來源；對應畫面記錄為 `output/qa/integration_20261002/phase3_native/observation_20261003T104832574Z_vc625_missing9999_new_copy_actual_pixels.json`（SHA-256 `56bc0690abf205920bff594d6c962ee0027c8d1aa397d2e5162f5bad865afbcb`）。
 
 「籌碼／產業事件」依分點交易、法人、信用、集保股權分散、產業／事件分區閱讀。集保持股級距每列分別顯示持股範圍、人數、股數與占集保庫存比例；`—` 表示未提供，`0` 才是來源提供的零。第 15 級為 1,000,001 股以上，第 16 級為差異數調整，第 17 級為合計；調整列不是一般持股級距，不將它判讀為大戶。比例僅將來源整數基點轉成百分比，沒有重新計算持股或交易訊號。分級定義依 [官方資料標準附件](https://schema.nat.gov.tw/gsp/frontstage/resource.download/9f7d9184-20a0-49eb-b7dd-96e23686c4ef)。
+
+目前研究可顯示另行核驗的法人、信用與集保觀測資料。從觀察清單選股票並開啟「個股研究」，在未指定歷史日期的目前研究查看「籌碼／產業事件」，再到來源表核對該筆資料日、來源資格及觀測時間。法人／信用使用候選資料庫中可重算雜湊、核對股票與數值的正規化觀測；集保使用官方原件與 manifest 重播。信用數量依來源單位顯示，不能把不同市場的股數／張數直接混加。
+
+「目前觀測／非歷史 PIT」表示此刻能核驗這份資料，不表示決策當時已發布。`observed_at` 是本地觀測或讀回時鐘；來源未提供的公告／可得時間仍顯示未提供，不能拿觀測時鐘補成發布時間。保存的 Advice、明示歷史日期及模型訓練資格各自維持原契約，不會借用今天的新觀測補舊判斷。遇到原件雜湊、來源、股票、期別或時鐘不符時，該觀測不顯示數值；先查看來源診斷，再重試目前研究，不要改日期或關閉保護繞過錯誤。
+
+自然更新沿用既有每日 Quick：法人與信用更新候選觀測；週一 TDCC 路徑另保存獨立官方原件至 `{OUTPUT_ROOT}/current_observed_market_ownership/tdcc/<capture-id>/`。這份原件有自己的擷取身份，不能說成較早 candidate DB 的同一次 HTTP 回應；每個 run 保留原始收據。週末、假日或官方尚未更換週資料時，報告日期可能合法維持上一期。原件抓取失敗與來源尚未發布分開判讀，排程 dry-run 不抓資料、不寫正式 EvidenceDB。
+
+TDCC 既有手動重播使用 `scripts/capture_tdcc_shareholding_candidate.py --raw-file <既有原件> --output-dir <repo/output/內的新目錄>`，沿用原件 metadata 時鐘，不能附排程 run ID。`--output-root` 是 Quick 的保存入口，必須附 `--capture-id` 與該 Quick 的 `--scheduled-run-id`；它只接受新的官方 HTTP 擷取，不能將手動重播冒稱自然排程成功。完整 tier／aggregate 保留有界大小檢查，64 MiB 上限涵蓋目前官方全市場檔案。
 
 事件列表先看日期、事件、品質與摘要，選取一列後於下方閱讀可換行的來源、原因、風險與後續結果。內部識別與原始欄位保留在提示中；未有中文對應的代碼會標示其他／未對應，不猜成投資結論。來源資料日與可得時間分開判讀。若級距格式無法解析，畫面會顯示格式提示並保留原始內容供查核，請重新載入或檢查來源明細，不把格式錯誤視為沒有持股。
 
@@ -1579,7 +1595,7 @@ MOPS snapshot 可以作月營收**數值**主來源，但不能自行證明歷�
 
 此分頁提供三個操作：
 
-- `抓取最新候選快照`：依頁面顯示的預期期別，向 MOPS 官方 static endpoint 取得 TWSE／TPEx 數值候選。只寫入 `OUTPUT_ROOT/monthly_revenue_mops_snapshots/` 下的受控 CSV 與 `raw_html/`，不寫正式 SQLite、不修改正式 availability mapping；完成後會自動把輸出 CSV 帶入快照欄位。
+- `抓取最新候選快照`：依頁面顯示的預期期別，向 MOPS 官方 static endpoint 取得 TWSE／TPEx 數值候選。每次在 `OUTPUT_ROOT/monthly_revenue_mops_snapshots/captures/run_<抓取日>_<UUID>/` 建立獨立目錄，將受控 CSV 與同層 `raw_html/` 保存在一起；同日重抓亦保留前次原件。不寫正式 SQLite、不修改正式 availability mapping；完成後會自動把本次輸出 CSV 帶入快照欄位。
 
 - `先檢查，不寫入`：只檢查可回填筆數與診斷結果，不寫入正式資料庫。
 - `確認後寫入月營收`：先跳出確認視窗，再建立 DB 備份並寫入 `fundamental_monthly_revenues`。此按鈕不抓取新 MOPS HTML、不修改 raw CSV，也不更新 availability mapping。
@@ -2811,7 +2827,7 @@ RECOMMENDATION_OFFICIAL_REQUEST_DELAY_SECONDS=1
 ```
 
 直接檢查同一 pipeline 時，可明確指定相同參數；`--child-timeout-seconds=3600` 與
-`--pipeline-timeout-seconds=7200` 是 pipeline 的預設硬上限：
+`--pipeline-timeout-seconds=10800` 是 pipeline 的預設硬上限（2026-10-04 更新）：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\scheduled\run_daily_recommendation_learning_pipeline.py `
@@ -2843,6 +2859,10 @@ pipeline 的四個子步驟與判讀如下：
    Asia/Taipei official trading day，再保存 source-bound feature capture；週末、休市、缺 symbol
    rows 或 source contract 不合格時會 skip／blocked，不能以 `--skip-capture-current` 的
    `not_requested` 當成日曆或自然 evidence 證明。
+
+目前日期的正常分支與歷史來源修訂拒絕分支，都會獨立處理 current-observed 自然研究 lane。`--skip-capture-current` 只停用本次新增輸入 capture：狀態為 `not_requested`，仍會驗證並掃描既有 immutable captures 的到期結果。當日收盤前，新 entry 為 `pending`（`official_session_not_closed_yet_wait_for_scheduled_close`），`same_day_rows_consulted=false`；不讀未收盤列，也不阻止舊樣本的成熟掃描。歷史決策日不執行這條現在觀測支線。
+
+判讀 learning CLI 時，同時查看頂層退出碼、`run.status`、`dependencies`、`current_observed_input_capture` 與 `current_observed_natural_research`，並核對它們的 exact receipts。RC0 可以與研究支線 pending、正式 `failed_dependency` 同時存在，不能據此判定正式模型可用。自然研究 fit 不將樣本加入正式 replay／training；`historical_pit_eligible`、`formal_training_allowed` 與 `promotion_credit_created` 保持 false。
 
 每個 child 的 timeout 都是可恢復狀態，timeout 不刪除既有 durable receipt；pipeline 的總時間用盡時，
 尚未執行的 child 會以 `pipeline_timeout:<step>` blocker 收尾。snapshot 不可用時 learning 不會啟動，
@@ -3940,7 +3960,7 @@ Daily Quick wrapper 的月營收 research child 只有 core phases／technical p
 
 本節保留本輪早期修復時的模板與當時限制，後續真實訓練／保存／新程序推論及Legacy／Bank已完成受控研究驗證。現行操作與接受範圍以7.0.1及[整合修復紀錄](../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md)為準；下方「仍待」只描述該早期檢查點，不能當目前狀態。
 
-以下命令仍是參數模板，`<...>` 必須換成修後 CLI 及當次真實 readback；此刻不是全流程已通過宣告。固定使用新 `output/ml_research` 輸出根與 aware 的真研究 freeze，不照抄 10/1 歷史截點。完整入口說明見 7.0.1；訓練、重新載入與 Legacy／Bank verified research context 的確切命令會在取得實跑證據後同步於此。
+以下命令仍是參數模板，`<...>` 必須換成修後 CLI 及當次真實 readback；此刻不是全流程已通過宣告。固定使用 active research root 下的新輸出目錄與 aware 的真研究 freeze，不照抄 10/1 歷史截點。完整入口說明見 7.0.1；訓練、重新載入與 Legacy／Bank verified research context 的確切命令會在取得實跑證據後同步於此。
 
 #### 1. 目的與安全邊界
 市場歷史行情修訂後，正式 PIT 閘門依決策時點拒絕回填。研究流程保留 actual revision／current observation clock 與歷史 event／label 時鐘；研究使用不代表當年已可得或正式模型資格。
@@ -3952,7 +3972,7 @@ Daily Quick wrapper 的月營收 research child 只有 core phases／technical p
 #### 2. 路徑 A：年度 Shards -> Direct Numeric Store -> Raw-to-OOC 全鏈路操作
 
 ##### 步驟 A1：匯出修訂感知研究年度 Shards
-目前修訂歷史的實跑入口是 `build_ml_pit_year_shards.py --current-restated-research`。先取得單一 readonly transaction 建立的一致副本與 receipt，核對副本／receipt 的 actual bytes SHA；原始來源路徑用來驗證修訂 namespace 與 dependency closure，不會寫入來源。此模式必須明列最多 20 檔 symbols，使用新的 repo `output/ml_research` 輸出。
+目前修訂歷史的實跑入口是 `build_ml_pit_year_shards.py --current-restated-research`。先取得單一 readonly transaction 建立的一致副本與 receipt，核對副本／receipt 的 actual bytes SHA；原始來源路徑用來驗證修訂 namespace 與 dependency closure，不會寫入來源。此模式必須明列最多 20 檔 symbols，使用 active research root 下的新輸出目錄。
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\build_ml_pit_year_shards.py `
@@ -4084,3 +4104,116 @@ Health排程使用臺北決策日，行情日另存market_data_date；週末沿�
 報告需分別閱讀 engineering_action_required（程式、接線／來源故障）、source_qualification_required/gaps（具名歷史／正式來源資格缺件）、research_qualification_required（Paper 研究治理）、自然 Forward/Exit 樣本，以及 wrapper exit_code、pipeline_exit_code、summary errors/status 和 report 存在／stdout SHA。Risk 的 estimated 保留上游估計品質與附註；真正 degraded/missing 上游不會被清除。整體 degraded 不等於使用者必須補人工 thesis。
 
 目前 current 月營收/季報支援有來源覆蓋的當下個股研究；歷史 PIT、完整公司範圍、公告時點、季度未知 cash-flow basis 與正式 model/source revision 仍受原資格限制。遇到這些缺件，查看 source_id、actual/expected period 與 reason，不能全部解讀為週末等發布。實際收據與驗收見 [完整補驗報告](../06_qa/OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md)。
+
+## 2026-10-04 保存來源、當下研究與持倉日期
+
+本節描述本輪介面及來源契約，實際版本接受範圍見 [Astra 工程收尾](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md)。驗收尚未完成時，不以本節當作全系統已通過證據。
+
+1. 從觀察清單或持倉開啟指定股票，在「Rule / ML / 歷史」選擇同股的保存來源，再按「載入選定來源」。候選同時核對股票、結果、決策日、行情日及來源快照識別；若清單載入後來源被改寫，必須重新取得清單，不能沿用舊選項。 保存來源的行情日不得晚於該來源本身的決策日或本次查詢日；非空但無法解析的日期也會被拒絕，不能藉較晚查詢日使用來源決策當時尚不存在的行情。
+2. 沒有來源時，前往指定股票分析並執行。若分析正常完成、該股未入選，但有完整封存的篩選理由，仍可保存並在報告明確選取；它代表該次排除結果。未完成、取消、失敗或沒有封存證據的空結果不能保存；未入選紀錄不開放加入候選、回測或個人推薦決定。
+3. 欲查看現在的模型觀測，按「查看當下獨立 ML 研究（保留保存 Advice）」。保存 Advice 的身分保留，ML 改查當下同股、同一行情列指紋的研究 run；按「返回此股已選保存來源與 Advice」回到原範圍。切股會清除舊股票內容並重新核對來源。
+4. ML 若可讀，顯示模型／資料版本、run、行情日、實際推論時間、整數基點預測及 H5 狀態。基點是扣標準 80bp 成本後的 benchmark excess 研究目標，不是勝率；H5 尚未成熟時，實際報酬、成本與成功結果保持空值。缺來源、錯日期或不符 hash 時保留具體原因，不能借其他股票或其他保存決策的結果。
+
+市場總覽的預設判讀日、主力流向的當下查詢日，以及資料更新的預設日期／「今天」與月營收預期期別，均使用 Asia/Taipei 的日期。主機在洛杉磯或 UTC 跨日時，不再將臺北日期截回主機的昨天；明確指定的歷史判讀日仍照原值查詢，資料日及發布截止另依各來源驗證。
+
+市場總覽的「市場情緒」另列判斷日與行情日：判斷日是本次請求的生效日期，行情日是截日以內最後一筆有效指數收盤價的日期。例如週一盤前判斷可使用上週五已完成行情，兩個日期各自保留。行情日期缺漏、無法解析或晚於該段截止時顯示未知，不借廣度日期補填，也不改變原有盤勢計算及歷史轉換規則。得分或訊號強度未提供時亦顯示「未知」；真正的零值仍顯示 0。
+
+若主力流向提示「台灣市場日期無法取得」，本次不啟動新的查詢；排除時區或系統時鐘問題後按重新整理。尚未取得 dashboard 日期時，個股／分點明細也不會先用主機日期查詢。資料更新若無法取得台灣日期，會停用初始日期欄位並顯示原因；先排除問題，再重新開啟程式恢復日期控制。按「今天」或執行更新時仍會重驗日期，失敗會中止該次工作，不推定另一個截止日。
+
+從已完成且保存的未入選結果直接開啟個股研究時，頁首亦可顯示該筆已核驗行情日；必須同股票、同結果、同決策日且行情日不晚於決策日。已有非空日期不被另一日期覆寫，錯股／錯 run／錯日期仍拒絕。
+
+持倉頁與個股報告分別標示「持倉觀測日」及「行情資料日」。現況數量、成本、曝險及未實現損益來自真實帳本與有日期的行情，損益使用 Decimal；最後交易日不充當行情日，週末行情日也不充當今天的持倉觀測日。只有價格與成本、沒有可評估進場假設時，保留價格／損益觀察，不能據此判斷假設仍符合或健康。行情過期或 freshness 未驗證時，報告仍列明資料日，但不產生當下 Health／Exit 判定。查歷史日期而沒有可核驗歷史持倉快照時，不顯示今天的數量、成本或 Exit。Exit 為現有持倉條件的唯讀解釋；缺真實 entry／thesis 身分依然揭露，不推導或執行賣出。
+
+切股、改來源或重新載入時，舊報告提示與表格會立即隱藏，再顯示本次內容；不把尚未完成的新請求與上一份持倉內容混在一起。
+
+手動持倉若沒有推薦、回測或策略來源，條件監控顯示「來源不足」並說明無法對照進場假設；已有來源但沒有可評估 thesis 時才顯示「待更新」及價格／成本僅供損益觀察。兩者都不因已有價格與成本而顯示「仍符合」。
+
+從未連結推薦來源的持倉列開啟個股研究，頁首資料日取自同一次表格載入、同一部位與股票的行情快照。例如最後交易日為 7/31、最新行情為 10/2，頁首顯示 10/2；不把 7/31 或今天當作行情日。沒有有效行情日期時保留未知。已連結的保存推薦則保留該筆來源自己的日期與 run，不能用目前行情覆蓋；要取得更新行情，先重新整理持倉再開啟研究。
+
+保存來源若缺少行情資料日，來源與 Advice 都保留未知，決策日仍獨立顯示。重新載入不會用決策日或今天日期補造行情日；請回查該筆保存結果的來源完整性，或為同一股票重新執行並保存新的分析，再明確選取新來源。無來源恢復亦維持此規則，不自動套用另一筆最新推薦。
+
+持倉表新增「行情資料日」與「行情新鮮度」，條件監控明細亦列出該報價的資料日。持倉頁、市場總覽的持倉警報、個股報告及使用者宣告持倉研究，共用行情日期／來源指紋與官方市場節奏的核對。週末可使用最近已完成交易日的行情；無日期、缺值或過期價格僅保留損益觀察，不能單獨觸發停損／停利或顯示價格條件仍符合。若等待行情，先更新每日行情並重新整理，再核對日期與 freshness；不把最後交易日改填成行情日。歷史研究不借用今天的行情資格。
+
+個股報告的新鮮度另核對 Freshness 收據的資料根與 SQLite。當下報告可沿用台北前一日或休市前的日價收據，但收據必須有不晚於本次讀取的明確時鐘，且收據的實際／預期期別、股票實際行情日，均符合官方日曆與 04:30 America/Los_Angeles 專案發布截止。即使收據是在今天產生，跨過下一個發布截止後也須重新核對；月季資料與歷史報告不因此取得跨日資格。缺日曆、錯誤根目錄／資料庫或期別不符時保留未知，不影響已知行情及損益數值的展示，也不補造 PIT、進場假設或 Health 結論。 若日價來源明示 `available_at`，它還必須包含時區且不晚於 Freshness 收據或本次讀取時鐘；錯誤值不作 freshness 證明，也不原樣顯示為合法取得時間。這個欄位來自已綁定 Quick 收據的完成／檢查時間，不代表上游公告時刻。欄位缺失或 null 則保留未知時間，日價 freshness 仍依實際行情與官方發布節奏判斷，不用 probe 時鐘補填。
+
+若更新行情後仍顯示缺少新鮮度收據，先在「數據更新」檢查每日行情來源，再核對既有 Freshness 排程輸出的 `<OUTPUT_ROOT>/scheduled/data_freshness/latest_status.json`。頁面的「檢查此資料源狀態」只讀取狀態，不會重跑這個 probe。需要手動診斷時使用 `scripts/scheduled/data_freshness_probe.py --data-root <DATA_ROOT> --output-root <OUTPUT_ROOT> --db-path <TWStockConfig.db_file>`，必要時明示 `--calendar-cache-path` 及 `--temporary-closure-path`；它唯讀檢查資料庫並寫入本次狀態／日誌。收據必須由該資料根、資料庫及原始行情真正產生，不能複製另一環境的收據或改寫其路徑來解除未知。
+
+市場總覽或 Evidence 呼叫持倉快訊時，若實際行情日晚於請求截日，會列出股票、行情日與截日，停用該行情的價格條件判定；來源日期與雜湊不會被改早。仍可看到現況價格觀察及品質警示，但不能把它當作歷史停損／停利事件或歷史 PIT 證據。正常同日查詢，以及週末使用已核實的最近交易日行情，維持原本判讀。
+
+現況基本面列出單位與期間基礎：月營收是單月 TWD，損益表是年初累計，資產負債表是期末；現金流若來源未明示期間基礎，保留數值但禁止彙總及衍生比率。現金流目前供報告逐項觀察，既有推薦基本面 provider 與 CORE19／20 特徵沒有使用它，不能將期間基礎未知說成整條 ML 無法運作。`source_available_at` 是有實際 HTTP 完成證據的取得時間；缺此證據時保持未知，另列本機驗證時間。這兩個時間都不能代替歷史公告時間。
+
+個股報告的法人區塊採用已核驗的最新現況修訂，保留原始 base、來源及實際觀測時鐘。後續官方數值回復原值時，新的修訂會明確反映回復，不繼續沿用較早差異。同一觀測時鐘、同股的九個法人買進／賣出／淨額欄位不一致時，reader 拒絕任意選一筆；每筆來源與內容雜湊仍分別核驗。僅 source_version 改變且九欄一致不新增現況修訂。發生衝突時核對原始 observation 與修訂紀錄，不能修改時間解決。這條現況路徑目前不參與推薦排名或 CORE19／20 特徵，也不取得歷史 PIT 資格。
+
+自然執行的 PE／月營收條件只讀本次 invocation 截止時已取得的現況觀測。月營收年增率只使用同份官方當期報表的去年同月比較值；比較列須同股、同來源、市場、原件 hash、取得時鐘、TWD 單位及單月期間基礎，並綁定當期報表。原始千元先轉 TWD；先前曾觀測的舊年度報表不能代替缺失或被阻擋的同報表比較值。比較列保留當期報表及原始 hash 身分，並記錄其實際新增觀測時鐘，不宣稱它在去年即已可得。本輪原件有七筆沒有可用去年同期值，仍不產生年增率。指定截止日（包括明確指定今天）的執行維持正式 PIT 路徑，不借這些現況列。保存結果中的 `current_fundamental_lineage` 事件保留同次請求、數值、來源、日期與取得時鐘；月營收的來源版本內容雜湊與原 HTTP bytes 雜湊分開記錄，原列未保存後者時保持未知。
+
+手動套用既有月營收快照時，使用 `scripts/apply_current_monthly_snapshot.py --snapshot <CSV完整路徑> --db-file <TWStockConfig.db_file> --backup-dir <備份目錄> --lock-path <OUTPUT_ROOT>/release_v4/.ml_heavy_chain.lock --evidence-file <本次獨立驗證JSON>`。鎖必須與該正式 DB 的 G6／Quick／Forward 使用同一 canonical 根；不能改成報告目錄或省略 `release_v4`。預設只做 preview，確認原件核驗、當期筆數及同期比較筆數後，加入 `--apply` 才新增現況觀測。原 HTML 預設位於 CSV 同層的 `raw_html`；若另存，明確加 `--raw-html-dir <原件目錄>`。它與自然排程共用同一 materializer，先核對 CSV／HTML、單位／期間及來源版本，再取得寫入鎖、檢查容量並備份。缺原件或不匹配時 blocked，正式歷史月營收表不變。若顯示 `apply_failed_readback_required`，先讀回該批資料及 receipt 確認是否已提交，不能逕自重試；每次使用獨立 evidence 檔案保留前次失敗證據。evidence 目的地若與輸入 CSV、資料庫及其 sidecar 相同，或落在 raw HTML 原件目錄內，程式會在規劃或寫入前拒絕；此時 stdout 明示沒有寫出 evidence。
+
+官方 PE、PB 與殖利率由 `OUTPUT_ROOT/current_valuation/` 的原始回應及回執讀取，殖利率單位為百分比。估值日與行情資料日還必須符合官方日曆的最近已完成交易日，才可用於當下 ready 判讀；盤中不把尚未完成的當日當成收盤資料，週末可合法沿用上一交易日。較舊、超前或日曆無法核驗時保留各自診斷，不能因兩份資料同樣過期就視為新鮮。另一市場已成功擷取但沒有此股票列時標示不適用，不降級該股已核驗來源；真正擷取失敗、缺件或 hash 不符仍顯示限制。
+
+自然選股的行情與 PE 共用 04:30 America/Los_Angeles 專案截止（台北夏令期間 19:30、冬令期間 20:30）及已驗證官方交易日曆。截止前仍使用前一完成交易日的行情與該日 PE；較新的當日估值檔不能遮蔽這個指定日來源。來源已在本次實際決策時鐘前取得才可使用，不能把「行情日期」當成其取得時間。指定日缺件或損壞時先重新擷取官方估值並重新分析，不能改日期或改選較舊來源來消除警告。手動擷取入口為 `scripts/capture_current_official_valuation.py --output-root <OUTPUT_ROOT>`；每次保留獨立 raw／receipt，不寫正式估值表。官方缺 PE 時保持缺值，不以零代填。 PE 必須為有限且大於零的 Decimal 才能通過 PE 上限條件；零、負值與非有限原值保留來源與診斷，但不因此成為低估值候選。正式與現況路徑各自先通過原有日期／來源資格，再套用相同數值規則。
+
+上市／交易狀態只解釋官方名錄或公告已核實的現況，列來源、觀測時間、限制期間與部分來源失敗；缺報價本身不證明停牌或終止上市櫃。現況公告不回寫舊保存推薦的排名排除理由。排錯先核對所選股票與日期，再看該區來源回執；重新載入可重試。切股或更換來源時，上市／交易限制與來源明細立即清成「尚未載入本股」，取消或失敗也不保留前一筆內容；同股、同一來源的重新載入則可保留明示的上次可用報告。
+
+官方擷取遇 HTTP 520 時，會與既有暫時性 HTTP 錯誤採相同的有上限重試。既有擷取契約只保存每個來源的最終回應，不宣稱保留每次網路重試的 body；先前已保存的失敗批次不會覆寫。若重試後仍失敗，該批維持部分來源失敗，不能將不同 run 的成功項目拼成一份完整批次。TPEx 終止上櫃表只有在欄位、日期、列長及總筆數相符時才採用；取得日與事件生效日分開保存。
+
+官方來源 bundle 的每次 run 收據為不可變紀錄；程式呼叫端重用既有 `wrapper_run_id` 時會在啟動子程序前拒絕，發布時也不覆寫競態建立的收據。重試應建立新的 run，不刪除原失敗或部分檔案；只有完整寫出本次收據後才更新 latest 指標。
+
+### 自動選股的官方基本面來源與結果目錄
+
+`scripts/scheduled/run_scheduled_recommendation_snapshot.py` 與 `scripts/run_personalization_recommendation.py` 的 `--output-root` 是推薦結果目的地；若結果保存在 Shadow，官方 PE 與 MOPS 月營收仍應從 canonical 資料輸出根讀取。必要時以 `--current-fundamental-source-root <canonical output>` 指定來源。解析順序為明確 CLI 來源參數、`CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT`、獨立 `TWStockConfig(data_root=...).output_root`；最後一項遵循專案的 `OUTPUT_ROOT` 設定，通常預設為 `DATA_ROOT/output`。結果目錄參數不覆蓋來源設定。
+
+05:10 snapshot wrapper 轉送獨立來源參數，05:45 pipeline 將其 canonical source root 傳入 snapshot child，再用該 child 的 exact result ID／cohort hash／stdout path 和 SHA 啟動學習。Bank 讀取已保存的 snapshot，不為它另造股票清單。若自訂環境把 `OUTPUT_ROOT` 用作 Shadow，應明確設定 `CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT` 指向官方 capture 所在根。
+
+05:45 pipeline 先等待當日同一 G6 raw run，再依序處理 Quick、官方來源、推薦快照與學習。Quick 的鎖、收據與輸出都沿用 canonical source root；已驗證且對應行情日的技術收據可重用。等待使用三小時 pipeline 總期限，先保留 Quick 與 learning 各一個 child timeout 及五分鐘收尾，預設可等待約 55 分鐘。後續每個 child 也保留五分鐘收尾，learning 之前另留一個 learning timeout；額度不足的步驟不啟動，明確記為 timeout。未取得 exact G6 terminal path／SHA 時，Quick 與 current-observed learning 保持 blocked；獨立來源與快照步驟的完成不代表學習已通過。排錯須比對同一 raw run、terminal hash 與當日來源日期，不以後來的 latest 取代。
+
+Pipeline 的 `--calendar-cache-path` 與 `--temporary-closure-path` 同時傳給 Quick 及 learning；直接呼叫 `run_daily_recommendation_learning.py` 時，臨時休市參數名稱為 `--temporary-closure-cache-path`。Learning 的年度日曆依序使用明確 CLI、`NATURAL_MATURITY_CALENDAR_CACHE_PATH`、既有 `ML_FORWARD_CALENDAR_CACHE_ROOT`，最後使用 repository 的 `output/paper_execution_eod_replay/calendar_cache`。臨時休市使用明確 CLI 或 `NATURAL_MATURITY_TEMPORARY_CLOSURE_PATH`。依賴檢查、特徵日期、當日 capture 與成熟結果必須使用同一來源；過期、損壞或涵蓋不足時更新既有官方日曆擷取，不能用價格列或自行建立的工作日清單取代。年曆上的預定開市日不保證當日行情已發布，也不表示不存在臨時休市。
+
+目前 05:50 BankTaiwan wrapper 最多等待 10,500 秒取得同次 G9 terminal，在五小時總預算內保留兩小時 child 與五分鐘收尾。2026-10-04 已將既有 Bank task 的執行期限更新為 `PT5H`；本手冊較早日期的 1,800 秒等待描述是當時設定，不適用於本版。期限到達時保留具名失敗，不用其他 run 或尚未核實的 latest 繼續。
+
+Quick 的資料日使用 G6 已驗證的 `source_date`，例如週日 10/04 決策可使用已完成的 10/02 行情；不要求把收據取得時間改成週日，也不要求交易所提供週日價格。重用仍核對原收據、實際來源及截止時鐘。需要寫入時，pipeline 先在保留預算內最多等待 30 秒完成同一 OS 鎖的交接；Quick 本身仍要重新取得鎖。逾時或又遇其他 writer 時保留原阻擋，不刪鎖或修改 ACL。
+
+遇到 PE 或 YoY 缺失，先比對 snapshot receipt 的 `current_fundamental_source_root`、官方 capture 路徑、指定行情日與本次 cutoff，再檢查同股的 execution lineage。空 Shadow 目錄不是官方沒有資料的證據。來源已存在但讀不到屬接線或配置問題；錯日期、損壞的 raw／receipt 或 cutoff 之後才取得的資料仍拒絕，不能回退舊正式 PE 充當當日觀測。一般 UI 依自己的資料設定讀取；隔離 QA 來源不會成為正式資料根。
+
+既有 scheduled default strategy 目前沒有開啟 PE／月營收 YoY 篩選；修正來源根不會替使用者或自然排程新增條件。需核對「當次已使用的條件」與「provider 可取得的資料」，不能將可讀資料說成已影響當次排名。
+
+現況自動學習的自然樣本支線使用前一官方交易日特徵，以及同日收盤後核驗的收盤價作研究標籤基準；這不是可成交 entry 或當時可執行的交易績效。非交易日沒有同日收盤基準時保持 pending，不借上一日價格造樣本。正常交易日完成 capture 後，須再累積 **20 個官方交易日**及完整股票／TAIEX 來源證據，才可進隔離的自然研究 fit。這條支線沒有模型機率或交易權限，不給正式決策、forward evidence、promotion credit，也不建立 active pointer。個股 ML／Paper 的 H5 是其他既有五日觀測用途，不以此二十日 label 冒充 H5 成熟。
+
+正常推薦仍使用原本的預設候選範圍與 `top_n=50`。Learning 必須涵蓋同一筆已保存推薦的全部 eligible 股票：1–16 檔沿用 v1；17–50 檔以 v2 記錄完整 cohort，依股票碼排序，每批最多查詢 16 檔。批次數、每批來源雜湊及整體組合身分都可在 source contract 中核對；不截掉第 17 檔以後的候選，也不把某一批當成整份 capture。超過上限、重複／缺漏股票、錯 result ID、stdout 原件或來源雜湊不符時，整份觀測停止，保留明確診斷。手動指定 17 檔以上而沒有同筆保存推薦證明，也不接受為正常排程 cohort。
+
+盤前可取得前一交易日的特徵，但當日收盤基準尚不存在時，輸入 capture 仍為 pending；不能用先前收盤價補造已完成樣本。成熟結果使用之後取得的、獨立核驗的 G6 快照查原 capture 全部股票，保留原訊號日特徵與後續結果來源兩組身分；新一天的推薦股票組成或快照版本可以不同，不能把後來的價格或特徵回填原 capture。若批次查詢或來源驗證失敗，整份結果 blocked；來源有效而個別到期價格缺件，則該股票保持具名缺件，沒有成功標籤。
+
+月營收 CLI `scripts/fetch_mops_monthly_revenue_snapshot.py` 的 `--output-dir` 是擷取基底目錄。輸出中的 `capture_dir`、`output_csv`、`raw_html_dir` 指向本次唯一 run，後續驗證或套用請使用該次回傳的完整 CSV 路徑，不自行拼接舊頂層檔名。候選選取兼容原頂層 CSV 與 `captures/run_<抓取日>_<UUID>/` 的單層 CSV，依資料期別、抓取日、mtime 與路徑穩定排序；不遞迴備份或任意子目錄，遇 symlink／junction／reparse 路徑拒絕使用。底層寫檔若目標已存在會拒絕覆寫，保留舊原件；應從正常擷取入口取得新的 run，而非刪除舊檔重試。`--no-save-html` 仍僅供數值候選，沒有原 HTML 的候選不能通過要求原件的現況套用驗證。
+
+季報擷取若收到非 HTTP 200、redirect 或非預期回應網址，會保留上限 32 MiB 內完整收到的回應原文、實際 HTTP 狀態、網址、bytes、SHA 及回應完成時間，並將該批標為失敗。失敗回應不解析或套用，`source_available_at` 保持未知；請依本次 receipt 排查來源，不能將 HTTP 完成時間視為公告日或把失敗改成成功。
+
+### 研究儲存位置與容量排錯
+
+新研究產物由 repository 本機設定 `output/ml_research_storage.json` 指定位置；設定只接受 `schema_version` 與 `active_root` 兩個欄位，例如 `{"schema_version":"ml-research-storage.v1","active_root":"D:/Min/Python/Project/FA_ML_Research"}`。設定檔不納入 Git。缺席時仍使用 `<repo>/output/ml_research`；存在但內容或路徑不合法時停止，不悄悄換回舊位置。`active_root` 必須是絕對路徑，不能與 repository、正式資料、release 或學習 Shadow 根重疊，也不能經過 symlink／junction。
+
+切換前停止研究 writer，核對目的地容量，再建立設定並重新啟動程式。所有新 G6 projection、B store、股票研究 snapshot／模型及 registry 寫入 active root；既有 C 槽產物仍按原絕對路徑與 hash 唯讀使用，不搬移、不重寫回執。UI 開頁只讀 registry，不啟動訓練。Raw operational status 仍在 canonical `OUTPUT_ROOT`，G9／Bank 的自然學習 capture、候選模型與結果仍在各自 Shadow root；不要把三者設成同一目錄。
+
+研究 snapshot 的來源檢查允許一種空 WAL 中繼資料變動：收據與實際檔案皆為既存 0 bytes、空內容 SHA，僅跨次驗證的 mtime 不同。每次仍檢查路徑、非 reparse、大小、SHA 及讀取前後穩定性。WAL 新增任何內容、非空 WAL 改變或主 DB／snapshot pin 不符仍停止；先保留失敗收據，再依當前來源建立新 run，不能改寫舊 terminal 或手動 checkpoint 正式 DB 來通過。
+
+同輸入重用另核對 SQLite shared-memory 的來源路徑、bytes 與 SHA；唯讀連線可能改動該鎖資訊檔的 mtime，因此只允許跨次觀測的合法整數 mtime 不同。缺欄位、路徑／大小／內容變動或不合法型別仍拒絕；主 DB、WAL 與其他來源身分不適用此 shared-memory 例外。Registry 的 SHA 可接受裸 64 位小寫十六進位或明確的 `sha256:` 前綴，正規化後仍須符合實際檔案內容。
+
+Forward 的 5／10／20／60 日結果以已驗證官方日曆的交易 session 決定到期日，並讀取該日的實際收盤價。尚未到期時保持等待；已到期但官方缺收盤價時，顯示來源價格缺件，報酬、benchmark excess 與成功結果保持空值。系統不會跳過缺價日、改用更晚價格湊足筆數。排錯時核對 `planned_official_maturity_date`、`target_price_state` 及原始行情來源；`expected_maturity_date` 保留舊按有效價格列數計算的診斷，不是目前結果的到期依據。官方日曆未通過驗證時仍停止計算，不回退舊列數算法。
+
+每次計算固定一個帶時區的執行時鐘。臺北 13:30 前，事件價、成熟度診斷與到期價查詢都排除當日資料，即使 DB 已存在當日列也不使用；當日才到期的結果仍等待收盤。13:30 後仍須有到期日的真實收盤價，沒有價格便回報來源缺件，不補值。明示較早的歷史 cutoff 保持該日收盤界線；未來日期或沒有時區的時鐘會被拒絕。收據的 `invocation_date_taipei` 是執行日期，`requested_data_as_of_date`／`effective_data_as_of_date` 是原始／正規化後的請求日期，`price_read_cutoff_date` 才是價格查詢上界，三者都不表示已有該日行情。例如週一盤前的查詢上界可以是週日，但實際最近行情仍是週五，實際結果日期另看 `event_price_date`／`outcome_price_date`。
+
+排程 Forward 使用 `--windows`、`--lookback-calendar-days`、`--max-events` 限制視窗、查詢天數與事件數；明示 `--start-date`／`--end-date`／`--data-as-of-date` 仍須通過當次時間界線。`--calendar-cache-path`／`--temporary-closure-path` 指向既有可核驗日曆，未指定時使用 repo 既有 calendar cache；缺 cache 應更新官方來源，不能製造工作日清單。無 `--confirm` 時為唯讀 dry-run，不初始化 Evidence schema、不寫 outcomes，也不等待寫入鎖。
+
+確認寫入正式 DB 時，Scheduled Forward 與 G6／Decision Capture 共用 canonical `OUTPUT_ROOT/release_v4/.ml_heavy_chain.lock`。Forward 最長等待 10,500 秒，且取得鎖須早於臺北日界前 3,600 秒；取得後再驗實際日期、來源及剩餘預算，未取得或已跨界便留下阻塞收據。Decision Capture 使用自己的 child 與收尾預算。`--output-root` 可將 Forward 收據另存，但不會改變正式 DB 的鎖根。遇到等待、timeout 或 release failure，先核對同 run 的 reservation／clock guard／terminal receipt，保留原收據，等原 writer 結束後重試；不要刪 lock metadata、改 ACL 或強制結束其他 writer。
+
+手動 `scripts/calculate_forward_outcomes.py` 保留既有預設寫入行為；先以 `--dry-run` 及 `--decision-date`／`--start-date`／`--end-date`／`--windows`／`--limit` 核對範圍。其正式 DB 寫入遇鎖忙會立即回報 `blocked_writer_busy`，不套用排程的 10,500 秒等待；手動 Evidence pipeline 同樣先取得 canonical lease。隔離 replay 的每日 cutoff 保留為該重播日，不讀未來價格；重播 DB 不得覆蓋配置中的正式 DB。
+
+手動 `scripts/capture_evidence_events.py` 預設 dry-run；以 `--source`、`--result-id`／`--decision-date` 及必要的 cutoff／capture mode 核對來源後，才使用既有 `--confirm` 寫入。正式 DB 的 confirmed capture 同樣先取得 canonical lease，busy 時回 `blocked_writer_busy`／exit 2，尚未建立可寫 repository；另存 `--output-root` 不會另開一把鎖。`--dry-run --confirm` 仍以 dry-run 為準，Evidence 與 Decision Desk 來源 repository 都維持唯讀；隔離 DB 不會鎖住正式資料根。
+
+`scripts/smoke_evidence_pipeline.py` 僅供隔離測試資料庫，無論 dry-run 或 confirm 都拒絕配置中的正式 DB 及其別名路徑；它使用相同 verified calendar 與實際日期，缺日曆不會產生假 READY。以 `--db-path <隔離DB>`、`--recommendation-result-id <該QA根的保存結果ID>`、`--decision-date <決策日>` 指定測試，並將 `--data-root`／`--output-root` 指向獨立 QA 目錄；先使用 `--dry-run`，再核對摘要中的日曆阻塞數與實際結果。
+
+`blocked_insufficient_storage` 是實際容量阻礙。研究 cycle 保留 200 GiB reserve，另計來源 DB／WAL 快照上限、2 GiB 持久增量與 2 GiB 暫存；磁碟顯示仍有數百 GiB 不等於可通過。依 terminal 的 required／available bytes 排錯，不能降低 reserve。專用目錄可使用 NTFS 標準壓縮繼承，但未量測的新資料不能套用舊壓縮率。停止 writer 後移除本次新增設定可回到舊預設；保留 D 槽產物及全部原始回執，先前 C 槽容量不足仍需處理。
+
+外層正式 raw-PIT bootstrap 另需要 200 GiB reserve、35 GiB 持久預算及 40 GiB 暫存，共 275 GiB。它因空間不足而停止時，正式歷史建置仍未完成。G9 只有在 raw 的錯誤類型、bootstrap stage、指定輸出根、整數容量帳及唯一 headroom blocker 都吻合時，才繼續核對獨立研究支線；仍須讀回 exact completed G6 terminal 的自身容量、來源、快照、模型及 registry 證據。重用則沿新 terminal 核驗原 completed terminal 與其原容量證據。任何 child failed、錯 hash、不同容量 stage、少於 200 GiB reserve 或缺少證明都不能接受；獨立研究成功不會把外層正式狀態改綠。
+
+重跑同一來源時會重新驗證行情、修訂、B 映射及股票範圍。觀察清單／持倉檔的路徑、bytes、mtime 和 hash 都屬來源身分；只有新 run ID 或 capture 時鐘不同才可重用。修改數量／成本或觸碰檔案時間均可能要求新 cycle。`skipped_same_inputs` 必須能追到完整舊模型的 exact terminal，不能只看外層 raw exit 0。
+
+重用鍵也保留 WAL 的 mtime。即使兩次 WAL 皆為空檔且主 DB／特徵內容相同，空 WAL 被重新建立仍可使新 run 選擇完整建置；這是保守的重用失配，不能據此宣稱行情已改變。它與前述 snapshot 來源驗證的空 WAL 例外是不同檢查，完整建置仍須通過原容量與來源保護。

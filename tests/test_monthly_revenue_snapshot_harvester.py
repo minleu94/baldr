@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from datetime import date
 from hashlib import sha256
+from pathlib import Path
 
+import pytest
+
+import data_module.monthly_revenue_snapshot_harvester as harvester
 from data_module.monthly_revenue_snapshot_harvester import (
     build_mops_monthly_revenue_snapshot,
     parse_mops_monthly_revenue_snapshot_html,
+    write_mops_snapshot_csv,
 )
 
 
@@ -128,13 +133,34 @@ def test_build_mops_snapshot_fetches_markets_and_periods_with_summary() -> None:
     assert result.requested_periods == ("2026-03", "2026-04")
     assert result.fetched_periods == ("2026-03", "2026-04")
     assert "parsed_rows: 2" in result.to_markdown()
-    expected_digest = sha256(MOPS_SAMPLE_HTML.encode("utf-8")).hexdigest()
-    assert result.rows[0]["source_version"] == (
-        f"mops-static-twse-2026-03-sha256-{expected_digest}"
+    for row in result.rows:
+        assert row["source_version"].startswith(
+            f"mops-static-snapshot.v2:twse:{row['period']}:body_completed_at:"
+        )
+        assert row["source_version"].endswith(
+            f":sha256:{sha256(MOPS_SAMPLE_HTML.encode('utf-8')).hexdigest()}"
+        )
+
+
+def test_build_records_each_source_time_after_its_response_completes(monkeypatch) -> None:
+    source_times = iter(("2026-10-04T00:01:02.123456Z", "2026-10-04T00:03:04.654321Z"))
+    monkeypatch.setattr(harvester, "_utc_now_text", lambda: next(source_times))
+
+    result = build_mops_monthly_revenue_snapshot(
+        start_period="2026-03",
+        end_period="2026-03",
+        markets=("twse", "tpex"),
+        fetch_date=date(2026, 10, 4),
+        fetch_html=lambda **_kwargs: MOPS_SAMPLE_HTML,
     )
-    assert result.rows[1]["source_version"] == (
-        f"mops-static-twse-2026-04-sha256-{expected_digest}"
-    )
+
+    assert [(row["market"], row["fetched_at"]) for row in result.rows] == [
+        ("tpex", "2026-10-04T00:03:04.654321Z"),
+        ("twse", "2026-10-04T00:01:02.123456Z"),
+    ]
+    assert all("body_completed_at:" in row["source_version"] for row in result.rows)
+    assert "2026-10-04T00:03:04.654321+00:00" in result.rows[0]["source_version"]
+    assert "2026-10-04T00:01:02.123456+00:00" in result.rows[1]["source_version"]
 
 
 def test_monthly_snapshot_cooperative_cancel_keeps_completed_market_rows() -> None:
@@ -160,3 +186,51 @@ def test_monthly_snapshot_cooperative_cancel_keeps_completed_market_rows() -> No
     assert result.fetched_periods == ("2026-03",)
     assert len(result.rows) == 1
     assert result.rows[0]["market"] == "twse"
+
+
+def test_raw_capture_target_collision_refuses_to_replace_existing_bytes(tmp_path) -> None:
+    raw_dir = tmp_path / "raw_html"
+    raw_dir.mkdir()
+    raw_path = raw_dir / "twse_2026-03.html"
+    original = b"previous raw capture\x00bytes"
+    raw_path.write_bytes(original)
+
+    with pytest.raises(FileExistsError):
+        build_mops_monthly_revenue_snapshot(
+            start_period="2026-03",
+            end_period="2026-03",
+            markets=("twse",),
+            fetch_date=date(2026, 10, 4),
+            fetch_html=lambda **_kwargs: MOPS_SAMPLE_HTML,
+            save_html_dir=raw_dir,
+        )
+
+    assert raw_path.read_bytes() == original
+
+
+def test_csv_capture_target_collision_refuses_to_replace_existing_bytes(tmp_path) -> None:
+    csv_path = tmp_path / "snapshot.csv"
+    original = b"previous csv capture\x00bytes"
+    csv_path.write_bytes(original)
+
+    with pytest.raises(FileExistsError):
+        write_mops_snapshot_csv(csv_path, [])
+
+    assert csv_path.read_bytes() == original
+
+
+def test_capture_directory_creation_rejects_reparse_output_root(tmp_path, monkeypatch) -> None:
+    output_base = tmp_path / "snapshots"
+    output_base.mkdir()
+    monkeypatch.setattr(
+        harvester,
+        "_is_reparse_point",
+        lambda path: Path(path) == output_base,
+    )
+
+    with pytest.raises(ValueError, match="reparse point"):
+        harvester.create_monthly_revenue_snapshot_capture_directory(
+            output_base, fetch_date=date(2026, 10, 4)
+        )
+
+    assert not (output_base / "captures").exists()

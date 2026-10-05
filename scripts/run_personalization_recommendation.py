@@ -13,6 +13,7 @@ from dataclasses import replace
 from datetime import date, datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping, cast
@@ -92,6 +93,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument(
+        "--current-fundamental-source-root",
+        type=Path,
+        help=(
+            "canonical output root for official current valuation and MOPS monthly "
+            "captures; independent of personal recommendation artifacts"
+        ),
+    )
     parser.add_argument("--config-json", required=True)
     parser.add_argument("--result-id", required=True)
     parser.add_argument("--result-name", required=True)
@@ -126,6 +135,23 @@ def _parser() -> argparse.ArgumentParser:
         help="明確標記 as-of 與實際 producer decision clock 不同的歷史研究重播",
     )
     return parser
+
+
+def _resolve_current_fundamental_source_root(
+    *,
+    data_root: Path,
+    profile: str,
+    explicit_root: Path | None,
+) -> Path:
+    if explicit_root is not None:
+        return explicit_root.expanduser().resolve()
+    configured_root = os.environ.get("CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT", "").strip()
+    if configured_root:
+        return Path(configured_root).expanduser().resolve()
+    # This config is deliberately independent of --output-root, which is the
+    # personal artifact destination for this invocation.
+    canonical_config = TWStockConfig(data_root=data_root, profile=profile)
+    return Path(canonical_config.output_root).expanduser().resolve()
 
 
 def _load_config(path: Path) -> dict[str, Any]:
@@ -1137,6 +1163,11 @@ def main(argv: list[str] | None = None) -> int:
         output_root = Path(args.output_root).expanduser().resolve()
         effective_data_root = _profiled_root(data_root, args.profile)
         effective_output_root = _profiled_root(output_root, args.profile)
+        current_fundamental_source_root = _resolve_current_fundamental_source_root(
+            data_root=data_root,
+            profile=args.profile,
+            explicit_root=args.current_fundamental_source_root,
+        )
         config_path = Path(args.config_json).expanduser().resolve()
         journal_path = (
             Path(args.journal_path).expanduser().resolve()
@@ -1336,7 +1367,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         producer = RecommendationService(
             config,
-            input_preparer=build_default_recommendation_input_preparer(config),
+            input_preparer=build_default_recommendation_input_preparer(
+                config,
+                current_fundamental_source_root=current_fundamental_source_root,
+            ),
             regime_service=RegimeService(config, use_persistent_history=True),
         )
         adapter = PersonalizationRecommendationSaveAdapter()

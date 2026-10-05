@@ -44,6 +44,13 @@ from data_module.ml_daily_source_row_research_projection import (
     PROJECTION_OUTPUT_ROOT as DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT,
     project_daily_source_rows,
 )
+from data_module.ml_research_output_boundary import (
+    get_ml_research_root,
+    resolve_ml_research_output_path,
+)
+from scripts.scheduled.ml_daily_source_row_research_adapter import (
+    run_daily_source_row_research_adapter,
+)
 from data_module.ml_daily_price_revision_gate import (
     DailyPriceSourceRevisionError,
     check_daily_price_source_revision,
@@ -246,7 +253,15 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "project a verified prospective TWSE/TPEx candidate into a separate "
-            "repository-local source-row research candidate"
+            "candidate under the configured isolated ML research root"
+        ),
+    )
+    parser.add_argument(
+        "--research-output-root",
+        type=Path,
+        help=(
+            "isolated root for downstream research artifacts; must equal the "
+            "configured active ML research root"
         ),
     )
     return parser
@@ -465,11 +480,22 @@ def _assert_unlinked_path(
         raise ValueError(f"{label} escapes its allowed root") from exc
     repository_root = Path(os.path.abspath(str(REPO_ROOT)))
     if root_abs != repository_root:
-        _assert_unlinked_path(
-            root_abs,
-            root=repository_root,
-            label=f"{label} allowed root",
-        )
+        try:
+            root_abs.relative_to(repository_root)
+        except ValueError:
+            # External storage is valid only when the central boundary
+            # identifies it as the configured active research write root.
+            resolve_ml_research_output_path(
+                root_abs,
+                repository_root=repository_root,
+                access="write",
+            )
+        else:
+            _assert_unlinked_path(
+                root_abs,
+                root=repository_root,
+                label=f"{label} allowed root",
+            )
     try:
         root_info = os.lstat(root_abs)
     except OSError as exc:
@@ -861,7 +887,10 @@ def _validate_daily_price_capture_for_projection(
 
 
 def _project_daily_source_rows_from_capture(
-    capture: Mapping[str, Any], *, source_date: str
+    capture: Mapping[str, Any],
+    *,
+    source_date: str,
+    research_output_root: Path | None = None,
 ) -> dict[str, Any]:
     base: dict[str, Any] = {
         "research_only": True,
@@ -881,6 +910,15 @@ def _project_daily_source_rows_from_capture(
             "capture_status": str(capture.get("status") or "missing"),
         }
     try:
+        pinned_research_root = (
+            get_ml_research_root(repository_root=REPO_ROOT)
+            if research_output_root is None
+            else resolve_ml_research_output_path(
+                research_output_root,
+                repository_root=REPO_ROOT,
+                access="write",
+            )
+        )
         input_pins = _validate_daily_price_capture_for_projection(
             capture, source_date=source_date
         )
@@ -888,12 +926,13 @@ def _project_daily_source_rows_from_capture(
             candidate_manifest_path=Path(input_pins["manifest_path"]),
             expected_manifest_sha256=input_pins["manifest_sha256"],
             repository_root=REPO_ROOT,
-            output_root=REPO_ROOT / DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT,
+            output_root=pinned_research_root / DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT,
             preview_only=False,
         )
         terminal = _validate_and_write_projection_terminal_receipt(
             projection,
             input_pins=input_pins,
+            research_output_root=pinned_research_root,
         )
         return {**base, **terminal}
     except Exception as exc:  # noqa: BLE001 - research hook must not alter core/hold result
@@ -908,7 +947,10 @@ def _project_daily_source_rows_from_capture(
 
 
 def _validate_and_write_projection_terminal_receipt(
-    result: Mapping[str, Any], *, input_pins: Mapping[str, Any]
+    result: Mapping[str, Any],
+    *,
+    input_pins: Mapping[str, Any],
+    research_output_root: Path | None = None,
 ) -> dict[str, Any]:
     if result.get("status") != "completed_research_only":
         raise ValueError("daily source row projection has no terminal completion")
@@ -918,7 +960,18 @@ def _validate_and_write_projection_terminal_receipt(
     if not isinstance(projection_id, str) or re.fullmatch(r"[0-9a-f]{64}", projection_id) is None:
         raise ValueError("daily source row projection id is invalid")
     source_date = str(input_pins["source_date"])
-    projection_root = Path(os.path.abspath(str(REPO_ROOT / DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT)))
+    pinned_research_root = resolve_ml_research_output_path(
+        get_ml_research_root(repository_root=REPO_ROOT)
+        if research_output_root is None
+        else research_output_root,
+        repository_root=REPO_ROOT,
+        access="write",
+    )
+    projection_root = resolve_ml_research_output_path(
+        pinned_research_root / DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT,
+        repository_root=REPO_ROOT,
+        access="write",
+    )
     candidate_root = projection_root / source_date / projection_id
     candidate_root_value = result.get("candidate_root")
     if not isinstance(candidate_root_value, str) or Path(os.path.abspath(candidate_root_value)) != candidate_root:
@@ -1110,6 +1163,7 @@ def _validate_and_write_projection_terminal_receipt(
         "schema_version": _DAILY_SOURCE_ROW_TERMINAL_RECEIPT_SCHEMA,
         "terminal_status": "completed_research_only",
         "source_date": source_date,
+        "research_output_root": str(pinned_research_root),
         "input_candidate": {
             "candidate_id": input_pins["candidate_id"],
             "manifest_path": input_pins["manifest_relative_path"],
@@ -1123,15 +1177,17 @@ def _validate_and_write_projection_terminal_receipt(
         },
         "projection": {
             "projection_id": projection_id,
-            "candidate_root": candidate_root.relative_to(REPO_ROOT).as_posix(),
-            "manifest_path": manifest_path.relative_to(REPO_ROOT).as_posix(),
+            "candidate_root": candidate_root.relative_to(pinned_research_root).as_posix(),
+            "manifest_path": manifest_path.relative_to(pinned_research_root).as_posix(),
             "manifest_sha256": manifest_sha,
-            "intermediate_completion_receipt_path": completion_path.relative_to(REPO_ROOT).as_posix(),
+            "intermediate_completion_receipt_path": completion_path.relative_to(
+                pinned_research_root
+            ).as_posix(),
             "intermediate_completion_receipt_sha256": completion_sha,
             "intermediate_completion_status": completion["completion_status"],
             "projection_started_at": projection_started_at.isoformat(),
             "intermediate_completion_started_at": completion_started_at.isoformat(),
-            "observations_path": observations_path.relative_to(REPO_ROOT).as_posix(),
+            "observations_path": observations_path.relative_to(pinned_research_root).as_posix(),
             "observations_sha256": observations_sha,
             "observations_bytes": observations_bytes,
             "projected_row_count": observations_rows,
@@ -2182,6 +2238,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             "source-quality-candidate-sample-limit must be non-negative"
         )
     output_root = args.output_root.resolve()
+    active_research_root = get_ml_research_root(repository_root=REPO_ROOT)
+    requested_research_root = (
+        active_research_root
+        if args.research_output_root is None
+        else args.research_output_root.expanduser()
+    )
+    research_output_root = resolve_ml_research_output_path(
+        requested_research_root,
+        repository_root=REPO_ROOT,
+        access="write",
+    )
+    if research_output_root != active_research_root:
+        raise ValueError("research-output-root must equal the configured active ML research root")
     release_root = (
         args.release_root.resolve()
         if args.release_root is not None
@@ -2245,6 +2314,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         "labels_included": False,
         "model_use_claimed": False,
     }
+    prospective_adapter_status: dict[str, object] = {
+        "status": "not_run_projection_pending",
+        "research_only": True,
+        "formal_credit": False,
+        "historical_pit_eligible": False,
+        "formal_oos_allowed": False,
+        "model_use_claimed": False,
+        "production_alpha_bp": 0,
+    }
+    prospective_cycle_status: dict[str, object] = {
+        "status": "not_run_daily_source_row_b_adapter_pending",
+        "research_only": True,
+        "formal_credit": False,
+        "historical_pit_eligible": False,
+        "formal_oos_allowed": False,
+        "production_action_allowed": False,
+    }
     inherited_env_value = os.environ.get(HEAVY_CHAIN_RESERVATION_HELD_ENV)
 
     def _write_status(payload: Mapping[str, Any]) -> None:
@@ -2270,7 +2356,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             enriched["prospective_daily_source_row_projection"] = dict(
                 prospective_projection_status
             )
+            enriched["prospective_daily_source_row_b_adapter"] = dict(
+                prospective_adapter_status
+            )
+            enriched["current_stock_research_cycle"] = dict(prospective_cycle_status)
         _write_json(status_path, enriched)
+
+    def _write_current_stock_cycle_status(
+        payload: Mapping[str, object],
+    ) -> None:
+        nonlocal prospective_cycle_status
+        prospective_cycle_status = dict(payload)
+        # Preserve the independent raw-run state while making the cycle's exact
+        # stage, pins, next action, and terminal status visible to operations.
+        _write_status(
+            _base_status(
+                status="running",
+                output_root=output_root,
+                raw_root=raw_root,
+                database=database,
+                status_path=status_path,
+                log_path=log_path,
+                # Keep the true raw-run start clock; a cycle progress callback
+                # must not reset the G9 decision-day identity.
+                started_at=started_at.isoformat(timespec="seconds"),
+                source_date=proof.latest_core_date.isoformat(),
+                latest_core_date=proof.latest_core_date.isoformat(),
+                decision_at=proof.decision_at,
+                data_update_status=proof.data_update_status,
+                data_update_status_path=str(data_update_status_path),
+                daily_price_source_dirs=[str(path) for path in daily_price_source_dirs],
+                current_stock_research_cycle=dict(prospective_cycle_status),
+            )
+        )
 
     def _write_source_revision_blocked(
         proof: _CoreFreshnessProof,
@@ -2372,6 +2490,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         _project_daily_source_rows_from_capture(
                             prospective_capture_status,
                             source_date=proof.latest_core_date.isoformat(),
+                            research_output_root=research_output_root,
                         )
                     )
                     _append_log(
@@ -2380,6 +2499,111 @@ def main(argv: Sequence[str] | None = None) -> int:
                             {
                                 "event": "prospective_daily_source_row_projection",
                                 **prospective_projection_status,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
+                    if (
+                        prospective_projection_status.get("status")
+                        == "projected_research_only"
+                        and prospective_projection_status.get(
+                            "terminal_receipt_readback_verified"
+                        )
+                        is True
+                    ):
+                        try:
+                            prospective_adapter_status = (
+                                run_daily_source_row_research_adapter(
+                                    raw_run_id=run_id,
+                                    source_date=proof.latest_core_date.isoformat(),
+                                    projection_status=prospective_projection_status,
+                                    repository_root=REPO_ROOT,
+                                    research_output_root=research_output_root,
+                                )
+                            )
+                        except Exception as exc:  # noqa: BLE001 - independent research child
+                            prospective_adapter_status = {
+                                "status": "failed_closed",
+                                "schema_version": "ml-daily-source-row-b-adapter-run.v1",
+                                "raw_run_id": run_id,
+                                "source_date": proof.latest_core_date.isoformat(),
+                                "error_type": type(exc).__name__,
+                                "error": str(exc),
+                                "research_only": True,
+                                "formal_credit": False,
+                                "historical_pit_eligible": False,
+                                "formal_oos_allowed": False,
+                                "model_use_claimed": False,
+                                "production_alpha_bp": 0,
+                            }
+                    else:
+                        prospective_adapter_status = {
+                            "status": "not_run_projection_not_terminal_verified",
+                            "raw_run_id": run_id,
+                            "source_date": proof.latest_core_date.isoformat(),
+                            "research_only": True,
+                            "formal_credit": False,
+                            "historical_pit_eligible": False,
+                            "formal_oos_allowed": False,
+                            "model_use_claimed": False,
+                            "production_alpha_bp": 0,
+                        }
+                    if prospective_adapter_status.get("status") == "completed_research_only":
+                        try:
+                            from scripts.scheduled.current_stock_research_cycle import (
+                                run_current_stock_research_cycle,
+                            )
+
+                            prospective_cycle_status = run_current_stock_research_cycle(
+                                raw_run_id=run_id,
+                                source_date=proof.latest_core_date.isoformat(),
+                                b_adapter_terminal_path=(
+                                    str(prospective_adapter_status.get("terminal_receipt_path") or "")
+                                ),
+                                b_adapter_terminal_sha256=(
+                                    str(prospective_adapter_status.get("terminal_receipt_sha256") or "")
+                                ),
+                                data_root=args.data_root.resolve(),
+                                canonical_output_root=output_root,
+                                release_root=release_root,
+                                repository_root=REPO_ROOT,
+                                research_output_root=research_output_root,
+                                status_callback=_write_current_stock_cycle_status,
+                                reservation=lock,
+                            )
+                        except Exception as exc:  # noqa: BLE001 - cycle is independent of formal raw status
+                            prospective_cycle_status = {
+                                "status": "failed",
+                                "raw_run_id": run_id,
+                                "source_date": proof.latest_core_date.isoformat(),
+                                "error_type": type(exc).__name__,
+                                "error": str(exc),
+                                "next_action": "inspect_current_stock_research_cycle_and_retry_with_a_new_raw_run_id",
+                                "research_only": True,
+                                "formal_credit": False,
+                                "historical_pit_eligible": False,
+                                "formal_oos_allowed": False,
+                                "production_action_allowed": False,
+                            }
+                            _write_current_stock_cycle_status(prospective_cycle_status)
+                    else:
+                        prospective_cycle_status = {
+                            "status": "not_run_b_adapter_not_completed",
+                            "raw_run_id": run_id,
+                            "source_date": proof.latest_core_date.isoformat(),
+                            "b_adapter_status": prospective_adapter_status.get("status"),
+                            "research_only": True,
+                            "formal_credit": False,
+                            "historical_pit_eligible": False,
+                            "formal_oos_allowed": False,
+                            "production_action_allowed": False,
+                        }
+                    _append_log(
+                        log_path,
+                        json.dumps(
+                            {
+                                "event": "prospective_daily_source_row_b_adapter",
+                                **prospective_adapter_status,
                             },
                             ensure_ascii=False,
                         ),

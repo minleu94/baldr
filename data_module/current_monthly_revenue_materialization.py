@@ -61,18 +61,33 @@ def plan_current_revenue(snapshot: Path, *, raw_html_dir: Path | None = None) ->
             raise ValueError('官方原件未明示千元，不能猜測金額單位')
         if len({row['fetched_at'] for row in expected}) != 1:
             raise ValueError('同一原件有不同抓取時間')
-        version = _snapshot_source_version(market=market, period=period, html=html)
+        captured_at: str | None = None
+        source_version = expected[0]["source_version"]
+        if source_version.startswith("mops-static-snapshot.v2:"):
+            captured_at = expected[0]["fetched_at"]
+        version = _snapshot_source_version(
+            market=market,
+            period=period,
+            html=html,
+            captured_at=captured_at,
+        )
+        if version != source_version:
+            raise ValueError("候選來源版本與原始HTML捕獲身分不符")
         parsed, diagnostics = parse_mops_monthly_revenue_snapshot_html(
             html, market=market, period=period, fetched_at=expected[0]['fetched_at'], source_version=version,
         )
         key = lambda r: r['stock_code']
         if diagnostics or sorted(parsed, key=key) != sorted(expected, key=key):
             raise ValueError('候選CSV與原始HTML逐列內容／來源hash不符')
-        pins.append({'path': str(path), 'bytes': len(entity), 'sha256': hashlib.sha256(entity).hexdigest(), 'source_version': version, 'rows': len(parsed), 'market': market, 'period': period, 'source_unit': '千元'})
-    records = monthly_snapshot_rows(snapshot)
+        pins.append({'path': str(path), 'bytes': len(entity), 'sha256': hashlib.sha256(entity).hexdigest(), 'source_version': version, 'source_available_at': captured_at, 'rows': len(parsed), 'market': market, 'period': period, 'source_unit': '千元'})
+    # 逐列吻合且原始 HTML 雜湊已核對後，才傳入來源版本供月流量基礎驗證。
+    verified_source_versions = frozenset(str(pin["source_version"]) for pin in pins)
+    records = monthly_snapshot_rows(
+        snapshot, verified_source_versions=verified_source_versions
+    )
     if _read_stable_bytes(snapshot, max_bytes=32 * 1024 * 1024) != raw:
         raise ValueError('驗證期間候選檔案變動')
-    custody = {'schema_version': 'current-monthly-revenue-plan.v1', 'snapshot_path': str(snapshot), 'snapshot_sha256': hashlib.sha256(raw).hexdigest(), 'raw_artifacts': pins, 'raw_row_count': len(rows), 'normalized_record_count': len(records), 'periods': sorted(periods), 'observed_at': records[0]['observed_at'], 'target_table': 'fundamental_current_observations', 'formal_pit_eligible': False, 'formal_monthly_table_written': False, 'unit': 'TWD'}
+    custody = {'schema_version': 'current-monthly-revenue-plan.v3', 'normalization_version': 'mops-current-revenue-normalizer.v2', 'snapshot_path': str(snapshot), 'snapshot_sha256': hashlib.sha256(raw).hexdigest(), 'raw_artifacts': pins, 'raw_row_count': len(rows), 'normalized_record_count': len(records), 'same_report_yoy_comparator_count': sum(row['item_code'] == 'revenue_yoy_comparator' for row in records), 'periods': sorted(periods), 'observed_at': records[0]['observed_at'], 'target_table': 'fundamental_current_observations', 'formal_pit_eligible': False, 'formal_monthly_table_written': False, 'unit': 'TWD', 'period_basis': 'monthly_flow', 'basis_verified': all(row['basis_verified'] == '1' for row in records), 'aggregate_feature_eligible': False}
     return CurrentRevenuePlan(records, custody)
 
 

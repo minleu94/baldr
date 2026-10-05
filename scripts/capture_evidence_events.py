@@ -24,8 +24,14 @@ from app_module.evidence_event_importers import (
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_event_service import EvidenceEventService
 from app_module.decision_desk_snapshot_repository import DecisionDeskSnapshotRepository
+from app_module.forward_outcome_context import resolve_canonical_evidence_release_root
 from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from data_module.config import TWStockConfig
+from data_module.ml_storage_capacity import (
+    acquire_heavy_chain_reservation,
+    heavy_chain_lock_path,
+    release_heavy_chain_reservation,
+)
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -128,8 +134,13 @@ def _decision_date_for_snapshot(args: argparse.Namespace) -> str:
     return datetime.now(TAIPEI).date().isoformat()
 
 
-def _decision_desk_importers(config: TWStockConfig, decision_date: str):
-    repository = DecisionDeskSnapshotRepository(config)
+def _decision_desk_importers(
+    config: TWStockConfig,
+    decision_date: str,
+    *,
+    read_only: bool,
+):
+    repository = DecisionDeskSnapshotRepository(config, read_only=read_only)
     stored = repository.latest_before_or_on(decision_date) if decision_date else None
     if stored is None:
         reason = "durable decision desk snapshot not found; run capture_decision_desk_snapshot.py first"
@@ -151,20 +162,21 @@ def _decision_desk_importers(config: TWStockConfig, decision_date: str):
     }
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    config = _config_from_args(args)
+def _run_capture(args: argparse.Namespace, config: TWStockConfig, *, effective_dry_run: bool) -> int:
 
     decision_at = _parse_aware_datetime(args.decision_at, field_name="decision_at")
     captured_at = _parse_aware_datetime(args.captured_at, field_name="captured_at")
     if decision_at is not None and captured_at is not None and captured_at < decision_at:
         raise ValueError("captured_at 不得早於 decision_at")
 
-    repository = EvidenceEventRepository(config)
+    repository = EvidenceEventRepository(config, read_only=effective_dry_run)
     event_service = EvidenceEventService(repository)
     recommendation_queries = build_recommendation_execution_queries(config)
-    ddd_importers = _decision_desk_importers(config, _decision_date_for_snapshot(args))
+    ddd_importers = _decision_desk_importers(
+        config,
+        _decision_date_for_snapshot(args),
+        read_only=effective_dry_run,
+    )
     capture_service = EvidenceCaptureService(
         event_service,
         {
@@ -181,7 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         result_id=args.result_id,
         symbol=args.symbol,
         limit=args.limit,
-        dry_run=(args.dry_run or not args.confirm),
+        dry_run=effective_dry_run,
         confirm=bool(args.confirm),
         decision_at=decision_at,
         as_of=args.as_of,
@@ -189,8 +201,43 @@ def main(argv: list[str] | None = None) -> int:
         capture_mode=args.capture_mode,
     )
     summary = capture_service.capture(request)
-    print(json.dumps(summary.to_dict(), ensure_ascii=False, sort_keys=True, indent=2))
+    print(json.dumps(summary.to_dict(), ensure_ascii=True, sort_keys=True, indent=2))
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    config = _config_from_args(args)
+    effective_dry_run = bool(args.dry_run or not args.confirm)
+    reservation = None
+    if not effective_dry_run:
+        canonical_config = TWStockConfig()
+        release_root = resolve_canonical_evidence_release_root(
+            canonical_config=canonical_config,
+            db_path=config.db_file,
+        )
+        if release_root is not None:
+            lock_path = heavy_chain_lock_path(release_root)
+            reservation = acquire_heavy_chain_reservation(lock_path)
+            if reservation is None:
+                print(
+                    json.dumps(
+                        {
+                            "status": "blocked_writer_busy",
+                            "db_path": str(config.db_file.expanduser().resolve()),
+                            "lock_path": str(lock_path),
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                    file=sys.stderr,
+                )
+                return 2
+    try:
+        return _run_capture(args, config, effective_dry_run=effective_dry_run)
+    finally:
+        if reservation is not None:
+            release_heavy_chain_reservation(reservation)
 
 
 if __name__ == "__main__":

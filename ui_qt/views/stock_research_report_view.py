@@ -45,10 +45,13 @@ from app_module.stock_research_report_dtos import (
     StockEvidenceEventDTO,
     StockFlowObservationDTO,
     StockFundamentalObservationDTO,
+    StockMarketStatusEvidenceDTO,
+    StockMarketStatusSnapshotDTO,
     StockMetricDTO,
     StockPositionSnapshotDTO,
     StockPricePointDTO,
     StockResearchReportDTO,
+    StockTradingRestrictionDTO,
 )
 from app_module.decision_presentation import (
     DecisionPresentationService,
@@ -466,6 +469,8 @@ class StockResearchReportView(QWidget):
         self._workers: set[TaskWorker] = set()
         self._closing = False
         self._loaded_report: StockResearchReportDTO | None = None
+        self._loaded_context_identity: tuple[str, ...] | None = None
+        self._saved_decision_context: ResearchStockContextDTO | None = None
         self._rendered_report_tabs: set[str] = set()
         self._setup_ui()
         if context is not None and context.stock_code:
@@ -610,6 +615,19 @@ class StockResearchReportView(QWidget):
         )
         layout.addWidget(self.summary_focus)
 
+        self.market_status_group = QGroupBox("當下上市／交易狀態（不作建議或排名）")
+        self.market_status_group.setObjectName("stockResearchMarketStatusGroup")
+        market_status_layout = QVBoxLayout(self.market_status_group)
+        self.market_status_label = self._wrapped_label("尚未載入當下狀態。")
+        self.market_status_label.setObjectName("stockResearchMarketStatus")
+        market_status_layout.addWidget(self.market_status_label)
+        self.market_status_evidence_label = self._wrapped_label("")
+        self.market_status_evidence_label.setObjectName(
+            "stockResearchMarketStatusEvidence"
+        )
+        market_status_layout.addWidget(self.market_status_evidence_label)
+        layout.addWidget(self.market_status_group)
+
         self.summary_limitations_panel = self._label_panel(
             "資料缺口（先看）",
             "目前尚未載入。",
@@ -722,10 +740,99 @@ class StockResearchReportView(QWidget):
         self._set_navigation_state()
 
     def set_context(self, context: ResearchStockContextDTO) -> None:
+        if context.result_id:
+            if (
+                context.ml_scope_mode != "current_stock_research"
+                or self._saved_decision_context is None
+            ):
+                self._saved_decision_context = replace(
+                    context,
+                    ml_scope_mode="selected_saved_decision",
+                )
+        else:
+            self._saved_decision_context = None
         self.context = context
         self.stock_search.setText(context.stock_code)
         self._render_context_path()
         self._load_stock(context.stock_code)
+
+    @staticmethod
+    def _context_identity(
+        context: ResearchStockContextDTO | None,
+        stock_code: str,
+    ) -> tuple[str, ...]:
+        fields = (
+            "decision_date",
+            "data_date",
+            "result_id",
+            "identity_status",
+            "source_snapshot_id",
+            "source_snapshot_hash",
+            "profile_id",
+            "profile_version",
+            "source_id",
+            "source_version",
+            "mapping_source_id",
+            "mapping_version",
+            "mapping_observed_date",
+            "source_kind",
+            "source_workspace",
+            "ml_scope_mode",
+        )
+        return (str(stock_code or "").strip(),) + tuple(
+            str(getattr(context, field, "") or "").strip() if context is not None else ""
+            for field in fields
+        )
+
+    @staticmethod
+    def _context_with_saved_analysis_data_date(
+        context: ResearchStockContextDTO | None,
+        stock_code: str,
+        report: StockResearchReportDTO,
+    ) -> ResearchStockContextDTO | None:
+        """只沿用同一已保存結果中可驗證的行情日，不推測或改寫來源身份。"""
+
+        if context is None or str(context.data_date or "").strip():
+            return context
+        code = str(stock_code or "").strip()
+        analysis = report.advice.saved_analysis
+        if (
+            not code
+            or str(context.stock_code or "").strip() != code
+            or str(report.stock_code or "").strip() != code
+            or analysis is None
+            or analysis.status not in {"saved", "not_in_result"}
+            or str(analysis.stock_code or "").strip() != code
+        ):
+            return context
+
+        context_result_id = str(context.result_id or "").strip()
+        analysis_result_id = str(analysis.result_id or "").strip()
+        if not context_result_id or analysis_result_id != context_result_id:
+            return context
+
+        raw_decision_date = str(context.decision_date or "")
+        analysis_decision_date = str(analysis.decision_date or "")
+        if not raw_decision_date or analysis_decision_date != raw_decision_date:
+            return context
+        try:
+            decision_date = date.fromisoformat(raw_decision_date)
+        except ValueError:
+            return context
+        if decision_date.isoformat() != raw_decision_date:
+            return context
+
+        raw_data_date = analysis.data_date
+        if not isinstance(raw_data_date, str) or not raw_data_date:
+            return context
+        try:
+            data_date = date.fromisoformat(raw_data_date)
+        except ValueError:
+            return context
+        if data_date.isoformat() != raw_data_date or data_date > decision_date:
+            return context
+
+        return replace(context, data_date=raw_data_date)
 
     def _render_context_path(self) -> None:
         """日常只留必要脈絡，完整 identity 保留在來源進階與 tooltip。"""
@@ -743,9 +850,16 @@ class StockResearchReportView(QWidget):
             return
         source = context.source_label or context.source_id or "未標示"
         return_text = "可返回來源" if context.has_source else "沒有可返回來源"
+        ml_scope_text = (
+            "當下 ML 獨立研究，不合併保存 Advice"
+            if context.ml_scope_mode == "current_stock_research"
+            else "選定保存來源"
+            if context.ml_scope_mode == "selected_saved_decision"
+            else "依來源身分判定"
+        )
         visible = (
             f"來源：{source}｜決策日：{context.decision_date or '未知'}｜"
-            f"資料日：{context.data_date or '未知'}｜{return_text}"
+            f"資料日：{context.data_date or '未知'}｜ML範圍：{ml_scope_text}｜{return_text}"
         )
         full_trace = _context_trace_text(context, source=source, return_text=return_text)
         self.context_path_label.setText(visible)
@@ -784,7 +898,6 @@ class StockResearchReportView(QWidget):
         self.stock_search.setText(code)
         self.activeStockChanged.emit(code)
         self._cancel_active_worker()
-        self._set_loading_state(code)
 
         context = self.context
         if context is not None and context.stock_code.strip() != code:
@@ -793,6 +906,16 @@ class StockResearchReportView(QWidget):
             context = replace(context, stock_code=code, stock_name="")
             self.context = context
             self._render_context_path()
+        requested_identity = self._context_identity(context, code)
+        if (
+            self._loaded_report is not None
+            and str(self._loaded_report.stock_code).strip() == code
+            and self._loaded_context_identity != requested_identity
+        ):
+            # 同一股票更換保存 run／日期／scope 時，不能在背景載入期間
+            # 把上一份 Advice 或 ML 暫時掛到新來源標籤下。
+            self._clear_loaded_report()
+        self._set_loading_state(code)
         self.activeContextChanged.emit(context)
 
         def task(cancel_callback=None) -> StockResearchReportDTO:
@@ -812,8 +935,8 @@ class StockResearchReportView(QWidget):
             )
         )
         worker.finished.connect(
-            lambda report, rid=request_id, requested_code=code: self._on_report_loaded(
-                rid, requested_code, report
+            lambda report, rid=request_id, requested_code=code, requested_context=context: self._on_report_loaded(
+                rid, requested_code, report, requested_context
             )
         )
         worker.error.connect(
@@ -882,12 +1005,34 @@ class StockResearchReportView(QWidget):
         request_id: int,
         code: str,
         report: object,
+        context: ResearchStockContextDTO | None = None,
     ) -> None:
         if request_id != self._request_id or code != self._active_code:
             return
         if not isinstance(report, StockResearchReportDTO):
             self._on_report_error(request_id, code, "service returned an invalid report DTO")
             return
+        loaded_context = self._context_with_saved_analysis_data_date(context, code, report)
+        context_was_enriched = loaded_context is not None and loaded_context != context
+        if context_was_enriched and self.context == context:
+            self.context = loaded_context
+            self._render_context_path()
+            saved_context = self._saved_decision_context
+            if (
+                saved_context is not None
+                and not str(saved_context.data_date or "").strip()
+                and saved_context.stock_code == loaded_context.stock_code
+                and saved_context.result_id == loaded_context.result_id
+                and saved_context.decision_date == loaded_context.decision_date
+            ):
+                self._saved_decision_context = replace(
+                    saved_context,
+                    data_date=loaded_context.data_date,
+                )
+            self.activeContextChanged.emit(loaded_context)
+        else:
+            loaded_context = context
+        self._loaded_context_identity = self._context_identity(loaded_context, code)
         self._render_report(report)
         incomplete = report.advice.recommendation is None or any(section.status in {'missing','error','partial','unavailable'} for section in report.sections)
         self._set_status("報告部分載入；可讀內容與缺件分開列示，請選擇保存來源或建立分析。" if incomplete else "報告已載入；內容只讀取既有來源。", "partial" if incomplete else "observed")
@@ -958,8 +1103,11 @@ class StockResearchReportView(QWidget):
         """跨股票切換時清掉可見舊頁，避免新代碼下殘留舊 DTO。"""
 
         self._loaded_report = None
+        self._loaded_context_identity = None
         self._rendered_report_tabs = set()
         self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
+        self.market_status_label.setText("當下上市／交易狀態：尚未載入本股。")
+        self.market_status_evidence_label.setText("尚未載入本股的狀態來源證據。")
         for value in self._summary_values.values():
             value.setText("尚未載入。")
         self.summary_detail_toggle.setChecked(False)
@@ -999,9 +1147,7 @@ class StockResearchReportView(QWidget):
         next_step: str,
     ) -> None:
         data_date = _report_data_date(report)
-        self.query_as_of_label.setText(
-            f"上次可用報告查詢日（as_of）：{report.as_of or '未知'}"
-        )
+        self.query_as_of_label.setText(f"上次可用報告查詢日（as_of）：{report.as_of or '未知'}")
         identity = (
             f"{report.stock_code} {report.stock_name or '未提供名稱'}｜{report.market}"
             f"｜上次可用資料 {data_date}"
@@ -1044,13 +1190,25 @@ class StockResearchReportView(QWidget):
     def _render_report(self, report: StockResearchReportDTO) -> None:
         self._loaded_report = report
         self._rendered_report_tabs = {"summary"}
-        self.query_as_of_label.setText(
-            f"本次研究查詢日（as_of）：{report.as_of or '未知'}"
-        )
+        context = self.context
+        if context is not None and context.ml_scope_mode == "current_stock_research":
+            advice_identity = (
+                f"保存 Advice 決策日：{context.decision_date or '未選保存來源'}"
+                + (f"｜來源：{context.result_id}" if context.result_id else "")
+            )
+            self.query_as_of_label.setText(
+                f"本次當下觀測日（as_of）：{report.as_of or '未知'}｜{advice_identity}｜"
+                "當下 ML 為獨立研究，不併入保存 Advice。"
+            )
+        else:
+            self.query_as_of_label.setText(
+                f"本次研究查詢日（as_of）：{report.as_of or '未知'}"
+            )
         self.identity_label.setText(
             f"{report.stock_code} {report.stock_name or '未提供名稱'}｜{report.market}"
             + (f"｜{report.industry}" if report.industry else "")
         )
+        self._render_market_status(report.market_status)
         self._summary_values["latest_price"].setText(_latest_price_text(report.price_points))
         self._summary_values["attention"].setText(
             _join_or_missing(
@@ -1141,7 +1299,9 @@ class StockResearchReportView(QWidget):
                     _quality_label(source.quality),
                     source.data_as_of or "—",
                     source.available_at or "—",
-                    _quality_label(source.freshness),
+                    _coverage_status_label(source.coverage_status)
+                    if source.coverage_status
+                    else _quality_label(source.freshness),
                     source.version or "—",
                     str(source.row_count),
                     source.frequency or "—",
@@ -1168,6 +1328,22 @@ class StockResearchReportView(QWidget):
                 ),
                 rows,
                 self.sources_table,
+                tooltips=(
+                    tuple(
+                        "\n".join(
+                            item
+                            for item in (
+                                f"市場 coverage：{_coverage_status_label(source.coverage_status)}"
+                                if source.coverage_status
+                                else "",
+                                "；".join(source.limitations),
+                            )
+                            if item
+                        )
+                        for _ in range(11)
+                    )
+                    for source in report.sources
+                ) if report.sources else None,
             )
         )
         self.sources_table.resizeColumnsToContents()
@@ -1250,14 +1426,24 @@ class StockResearchReportView(QWidget):
             )
             for item in report.fundamentals
         )
+        value_tooltips = tuple(
+            tuple(
+                _fundamental_basis_tooltip(item) if column in {6, 7, 8} else ""
+                for column in range(9)
+            )
+            for item in report.fundamentals
+        )
         self._add_table(
             layout,
             ("類型", "項目", "期間", "資料日", "公告日", "資料可得時間", "值", "品質", "版本"),
             rows,
             420,
+            tooltips=value_tooltips,
         )
         layout.addWidget(
             self._wrapped_label(
+                "原始值如實呈現；值欄提示說明期間基礎、基礎核實與特徵彙總資格。"
+                "未核實或不具彙總資格時，不推算累計或比率。"
                 "目前查閱含已實際觀測的官方快照；歷史日期查詢只使用符合可得日限制的資料。"
                 "現況快照沒有原公告日，不作歷史回測證據；各項資料日期可能不同。"
             )
@@ -1433,10 +1619,13 @@ class StockResearchReportView(QWidget):
         group_layout = QVBoxLayout(group)
         rows = (
             ("持倉狀態", "持有中" if position.is_holding else "非持倉"),
+            ("持倉讀取日", position.position_as_of or "—"),
             ("持有股數", _decimal_text(position.quantity)),
             ("平均成本", _decimal_text(position.average_cost)),
             ("投入金額", _decimal_text(position.invested_amount)),
-            ("最新持倉價格", _decimal_text(position.current_price)),
+            ("持倉估值行情價格", _decimal_text(position.current_price)),
+            ("行情資料日", position.quote_data_date or "—"),
+            ("行情可得時間", position.quote_available_at or "來源未提供"),
             ("未實現損益", _decimal_text(position.unrealized_pnl)),
             ("未實現損益%", _percent_text(position.unrealized_pnl_pct)),
             ("曝險", _bp_text(position.exposure_bp)),
@@ -1459,6 +1648,87 @@ class StockResearchReportView(QWidget):
             layout.addWidget(self._missing_panel(_join_or_missing(position.limitations, "")))
         layout.addStretch()
 
+    def _render_market_status(
+        self, status: StockMarketStatusSnapshotDTO | None
+    ) -> None:
+        """顯示當下市場狀態證據，並保留非 PIT／非建議用途界線。"""
+
+        if status is None:
+            self.market_status_label.setText("當下上市／交易狀態：未提供。")
+            self.market_status_evidence_label.setText(
+                "缺少狀態快照；不得由缺少行情推論停牌或下市。"
+            )
+            return
+
+        status_labels = {
+            "available": "來源可用",
+            "partial": "部分來源可用",
+            "unknown": "未核實",
+            "unavailable": "不可用",
+        }
+        listing_labels = {
+            "listed": "已上市",
+            "delisted": "已下市",
+            "conflict": "來源衝突",
+            "unknown": "未核實",
+        }
+        status_text = status_labels.get(status.status, f"未知狀態（{status.status}）")
+        listing_text = listing_labels.get(
+            status.listing_status, f"未知狀態（{status.listing_status}）"
+        )
+        lines = [
+            f"核對狀態：{status_text}｜上市狀態：{listing_text}｜市場：{status.market or '未提供'}｜名稱：{status.name or '未提供'}",
+            f"範圍：{status.scope or '未提供'}｜可用於歷史 PIT：{'是' if status.pit_eligible else '否'}｜觀測時間：{status.observed_at or '未提供'}",
+            "行情／事件資料日：" + ("、".join(status.source_data_dates) or "未提供"),
+        ]
+        for restriction in status.trading_restrictions:
+            lines.append(self._market_restriction_text(restriction))
+        if not status.trading_restrictions and status.status in {"unknown", "unavailable"}:
+            lines.append("目前沒有經核實的交易限制內容；不得由缺少行情推論停牌或下市。")
+        if status.source_warnings:
+            lines.append("來源警示：" + "；".join(status.source_warnings))
+        if status.partial_failure:
+            lines.append("部分來源讀取失敗；本狀態不是完整查核結果。")
+        if status.limitations:
+            lines.append("限制：" + "；".join(status.limitations))
+        self.market_status_label.setText("\n".join(lines))
+
+        evidence_lines = []
+        for evidence in status.status_evidence:
+            evidence_lines.append(self._market_status_evidence_text(evidence))
+        if status.source_ids:
+            evidence_lines.append("來源 ID：" + "、".join(status.source_ids))
+        self.market_status_evidence_label.setText(
+            "\n".join(evidence_lines) if evidence_lines else "來源證據明細未提供。"
+        )
+
+    @staticmethod
+    def _market_restriction_text(restriction: StockTradingRestrictionDTO) -> str:
+        effective = " 至 ".join(
+            value or "未提供"
+            for value in (restriction.effective_from, restriction.effective_to)
+        )
+        return (
+            f"交易限制註記：{restriction.restriction_type}／{restriction.restriction_state}｜"
+            f"有效期間：{effective}｜公告日：{restriction.published_date or '未提供'}｜"
+            f"復牌日：{restriction.resumed_on or '未提供'}｜"
+            f"來源：{restriction.source_id or '未提供'}｜{restriction.details or '未提供明細'}。"
+            "此註記只呈現來源證據，不代表交易建議。"
+        )
+
+    @staticmethod
+    def _market_status_evidence_text(evidence: StockMarketStatusEvidenceDTO) -> str:
+        valid_from = evidence.effective_from or "未提供"
+        valid_to = evidence.effective_to or "未提供"
+        return (
+            f"證據：{evidence.evidence_type}｜來源：{evidence.source_id}｜"
+            f"資料日：{'、'.join(evidence.source_data_dates) or '未提供'}｜"
+            f"公告日：{evidence.published_date or '未提供'}｜"
+            f"有效期間：{valid_from} 至 {valid_to}｜"
+            f"擷取時間：{evidence.observed_at or '未提供'}｜"
+            f"公告參照：{evidence.notice_reference or '未提供'}"
+        )
+
     def _render_decision(self, report: StockResearchReportDTO) -> None:
         layout = self._reset_page("decision")
         source_group = QGroupBox("明確選擇此股的保存推薦來源")
@@ -1477,6 +1747,32 @@ class StockResearchReportView(QWidget):
         self.create_analysis_button.setObjectName("stockResearchCreateAnalysis")
         self.create_analysis_button.clicked.connect(lambda: self.createAnalysisRequested.emit(self._active_code))
         source_layout.addWidget(self.create_analysis_button)
+        self.current_ml_mode_button = QPushButton("查看當下獨立 ML 研究（保留保存 Advice）")
+        self.current_ml_mode_button.setObjectName("stockResearchCurrentMLMode")
+        self.current_ml_mode_button.setToolTip(
+            "以目前觀測日期讀取此股的獨立 ML 研究；保留已選保存 Advice 身分，不將 ML 合併進 Advice。"
+        )
+        self.current_ml_mode_button.clicked.connect(self._use_current_stock_research_mode)
+        self.current_ml_mode_button.setEnabled(
+            self.context is None
+            or self.context.ml_scope_mode != "current_stock_research"
+        )
+        source_layout.addWidget(self.current_ml_mode_button)
+        saved_context = self._saved_decision_context
+        self.saved_ml_mode_button = QPushButton("返回此股已選保存來源與 Advice")
+        self.saved_ml_mode_button.setObjectName("stockResearchSavedDecisionMode")
+        self.saved_ml_mode_button.clicked.connect(self._use_selected_saved_decision_mode)
+        self.saved_ml_mode_button.setVisible(
+            bool(saved_context and saved_context.stock_code == report.stock_code)
+        )
+        self.saved_ml_mode_button.setEnabled(
+            bool(saved_context and saved_context.stock_code == report.stock_code)
+            and not (
+                self.context is not None
+                and self.context.ml_scope_mode == "selected_saved_decision"
+            )
+        )
+        source_layout.addWidget(self.saved_ml_mode_button)
         source_layout.addWidget(self._wrapped_label("只列查詢日期內且包含此股的最近保存來源（最多檢查30筆）。若無來源，可建立指定股票分析、保存後返回本頁重新載入，再明確選取。未入選時仍保留排除理由，不補造 Advice／ML 機率。"))
         layout.addWidget(source_group)
         advice_group = QGroupBox("Advice（沿用既有 AdviceComposer）")
@@ -1486,20 +1782,135 @@ class StockResearchReportView(QWidget):
 
         rule_group = QGroupBox("Rule 證據")
         rule_layout = QVBoxLayout(rule_group)
-        rule_layout.addWidget(self._wrapped_label(_join_or_missing(report.rule_reasons, "目前沒有可追溯 Rule reason。")))
+        context = self.context
+        if context is not None and context.ml_scope_mode == "current_stock_research":
+            saved_rule_reasons = set(report.advice.rule_reasons)
+            historical_rule_reasons = {
+                reason
+                for event in report.events
+                for reason in (
+                    *event.reasons,
+                    *event.why_not_reasons,
+                    *event.risk_reasons,
+                )
+            }
+            current_rule_reasons = tuple(
+                reason
+                for reason in report.rule_reasons
+                if reason not in saved_rule_reasons
+                and reason not in historical_rule_reasons
+            )
+            rule_group.setTitle(
+                f"當下技術／Rule 證據（本次資料日期：{report.as_of or '未知'}）"
+            )
+            rule_layout.addWidget(
+                self._wrapped_label(
+                    _join_or_missing(
+                        current_rule_reasons,
+                        "目前沒有可追溯的當下技術／Rule 理由。",
+                    )
+                )
+            )
+            if context.result_id:
+                saved_group = QGroupBox(
+                    f"已保存 Advice 原 Rule 理由（原決策日：{context.decision_date or '未知'}）"
+                )
+                saved_layout = QVBoxLayout(saved_group)
+                saved_layout.addWidget(
+                    self._wrapped_label(
+                        _join_or_missing(
+                            report.advice.rule_reasons,
+                            "所選保存來源沒有可呈現的原 Rule 理由。",
+                        )
+                    )
+                )
+                rule_layout.addWidget(saved_group)
+        else:
+            rule_layout.addWidget(
+                self._wrapped_label(
+                    _join_or_missing(report.rule_reasons, "目前沒有可追溯 Rule reason。")
+                )
+            )
         layout.addWidget(rule_group)
 
-        ml_group = QGroupBox("ML（有合格結果才顯示）")
+        ml_group = QGroupBox("ML 研究輸出（以 bp／H5 呈現；不是機率或交易指令）")
         ml_layout = QVBoxLayout(ml_group)
         ml = report.ml
-        if ml.status not in {"unavailable", "missing"} and ml.model_version and ml.dataset_version:
-            ml_layout.addWidget(self._wrapped_label(
-                f"狀態：{ml.status}\n模型版本：{ml.model_version}\nDataset：{ml.dataset_version}\n"
-                f"推論時間：{ml.inference_at or '—'}\nLane：{ml.research_or_formal or '—'}"
-            ))
+        ml_scope = getattr(ml, "scope_mode", "")
+        scope_label = {
+            "current_stock_research": "當下個股獨立研究（不併入保存 Advice）",
+            "selected_saved_decision": "精確選定的保存決策來源",
+        }.get(ml_scope, "未提供／未識別")
+        ml_rows = [
+            ("範圍", scope_label),
+            ("狀態", ml.status or "未提供"),
+            ("事件日", getattr(ml, "event_date", "") or "—"),
+            ("Run ID", getattr(ml, "run_id", "") or "—"),
+            ("目標", getattr(ml, "target_metric", "") or "基準超額報酬"),
+            ("模型版本", ml.model_version or "—"),
+            ("Dataset 版本", ml.dataset_version or "—"),
+            ("推論時間", ml.inference_at or "—"),
+            ("模型 manifest SHA-256", getattr(ml, "model_manifest_sha256", "") or "—"),
+            ("模型 bundle SHA-256", getattr(ml, "model_bundle_sha256", "") or "—"),
+            ("來源 snapshot SHA-256", getattr(ml, "source_snapshot_hash", "") or "—"),
+            ("研究股票範圍", "、".join(getattr(ml, "scope_symbols", ()) or ()) or "—"),
+        ]
+        self._add_table(
+            ml_layout,
+            ("項目", "內容"),
+            ml_rows,
+            360,
+            object_name="stockResearchMLIdentityTable",
+            compact_columns=True,
+            max_visible_rows=None,
+        )
+        predictions = getattr(ml, "predicted_benchmark_excess_return_bp", {}) or {}
+        prediction_rows = [
+            (str(horizon), f"{value:+d} bp" if value > 0 else f"{value} bp")
+            for horizon, value in sorted(predictions.items(), key=lambda item: str(item[0]))
+            if type(value) is int
+        ]
+        if prediction_rows:
+            prediction_group = QGroupBox("研究估算：成本後基準超額報酬")
+            prediction_layout = QVBoxLayout(prediction_group)
+            self._add_table(
+                prediction_layout,
+                ("Horizon／Expert", "估算值"),
+                prediction_rows,
+                140,
+                object_name="stockResearchMLBenchmarkExcessTable",
+                compact_columns=True,
+                numeric_columns=(1,),
+                max_visible_rows=None,
+            )
+            ml_layout.addWidget(prediction_group)
+        h5_rows = (
+            ("H5 狀態", getattr(ml, "h5_status", "unknown") or "unknown"),
+            ("H5 Horizon", str(getattr(ml, "h5_horizon", "") or "—")),
+            ("H5 結束日", getattr(ml, "h5_horizon_end_date", "") or "—"),
+            ("股票總報酬", _bp_text(getattr(ml, "h5_gross_stock_return_bp", None))),
+            ("基準總報酬", _bp_text(getattr(ml, "h5_gross_benchmark_return_bp", None))),
+            ("基準超額（扣標準 80bp）", _bp_text(getattr(ml, "h5_benchmark_excess_after_standard_80bp_cost", None))),
+            ("股票報酬（扣此 lane 成本）", _bp_text(getattr(ml, "h5_after_lane_cost_stock_return_bp", None))),
+        )
+        h5_group = QGroupBox("H5 成熟度與實際觀測")
+        h5_layout = QVBoxLayout(h5_group)
+        self._add_table(
+            h5_layout,
+            ("項目", "內容"),
+            h5_rows,
+            240,
+            object_name="stockResearchMLH5Table",
+            compact_columns=True,
+            max_visible_rows=None,
+        )
+        ml_layout.addWidget(h5_group)
+        if ml.qualification:
+            ml_layout.addWidget(self._wrapped_label("資格狀態：" + "；".join(ml.qualification)))
+        if ml.explanations:
             ml_layout.addWidget(self._wrapped_label("可解釋輸出：" + _join_or_missing(ml.explanations, "未提供")))
-        else:
-            ml_layout.addWidget(self._missing_panel(_join_or_missing(ml.limitations, "目前沒有可用的個股 ML 分析。")))
+        if ml.status in {"unavailable", "missing"}:
+            ml_layout.addWidget(self._missing_panel(_join_or_missing(ml.limitations, "目前沒有可用的個股 ML 研究資料。")))
         if ml.limitations:
             ml_layout.addWidget(self._wrapped_label("ML 限制：" + "；".join(ml.limitations)))
         layout.addWidget(ml_group)
@@ -1511,6 +1922,53 @@ class StockResearchReportView(QWidget):
         layout.addWidget(self._wrapped_label("研究報告不觸發自動下單；持倉修改仍沿既有確認與記錄流程。"))
         layout.addStretch()
 
+    def _use_current_stock_research_mode(self) -> None:
+        report = self._loaded_report
+        context = self.context
+        if report is None or report.stock_code != self._active_code:
+            self._set_status("目前報告尚未就緒，無法切換現況研究範圍。", "warning")
+            return
+        if context is None or context.stock_code != report.stock_code:
+            context = ResearchStockContextDTO(
+                stock_code=report.stock_code,
+                stock_name=report.stock_name,
+                source_workspace="",
+            )
+        elif (
+            context.result_id
+            and context.ml_scope_mode != "current_stock_research"
+            and (
+                self._saved_decision_context is None
+                or (
+                    self._saved_decision_context.stock_code == context.stock_code
+                    and self._saved_decision_context.result_id == context.result_id
+                )
+            )
+        ):
+            self._saved_decision_context = replace(
+                context,
+                ml_scope_mode="selected_saved_decision",
+            )
+        self.set_context(
+            replace(
+                context,
+                ml_scope_mode="current_stock_research",
+            )
+        )
+
+    def _use_selected_saved_decision_mode(self) -> None:
+        report = self._loaded_report
+        context = self._saved_decision_context
+        if (
+            report is None
+            or context is None
+            or context.stock_code != report.stock_code
+            or not context.result_id
+        ):
+            self._set_status("目前沒有此股可返回的精確保存來源。", "warning")
+            return
+        self.set_context(replace(context, ml_scope_mode="selected_saved_decision"))
+
     def _use_saved_source(self) -> None:
         report = self._loaded_report
         if report is None or report.stock_code != self._active_code:
@@ -1520,10 +1978,12 @@ class StockResearchReportView(QWidget):
         if option is None:
             self._set_status("請先明確選取保存來源。", "warning")
             return
-        self.set_context(ResearchStockContextDTO(stock_code=report.stock_code, stock_name=report.stock_name,
+        selected_context = ResearchStockContextDTO(stock_code=report.stock_code, stock_name=report.stock_name,
             result_id=option.result_id, source_id=option.result_id, decision_date=option.decision_date,
             data_date=option.data_date, source_kind="recommendation", source_label=option.label,
-            source_workspace="recommendation"))
+            source_workspace="recommendation", ml_scope_mode="selected_saved_decision")
+        self._saved_decision_context = selected_context
+        self.set_context(selected_context)
 
     def _render_advice_content(
         self,
@@ -1641,6 +2101,7 @@ class StockResearchReportView(QWidget):
             item = layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                widget.hide()
                 widget.deleteLater()
             child = item.layout()
             if child is not None:
@@ -1930,6 +2391,7 @@ def _quality_label(value: str) -> str:
         "stale": "過期",
         "fresh": "新鮮",
         "missing": "缺資料",
+        "not_applicable": "不適用（該市場無此股估值列）",
         "error": "讀取失敗",
         "degraded": "品質降級",
         "estimated": "估計",
@@ -2000,9 +2462,51 @@ def _bp_text(value: int | None) -> str:
 
 
 def _metric_text(metric: StockMetricDTO | StockFundamentalObservationDTO) -> str:
+    note = str(metric.value_text or "").strip()
     if metric.value is not None:
-        return _decimal_text(metric.value) + (f" {metric.unit}" if metric.unit else "")
-    return metric.value_text or "—"
+        value = _decimal_text(metric.value) + (f" {metric.unit}" if metric.unit else "")
+        return f"{value}（{note}）" if note else value
+    return note or "—"
+
+
+def _fundamental_basis_tooltip(metric: StockFundamentalObservationDTO) -> str:
+    basis = metric.period_basis or "unknown"
+    basis_verified = "已核實" if metric.basis_verified else "未核實"
+    if metric.aggregate_feature_eligible is True:
+        aggregate = "可供符合範圍的聚合特徵使用"
+    elif metric.aggregate_feature_eligible is False:
+        aggregate = "未具聚合特徵資格；不供累計或比率運算"
+    else:
+        aggregate = "聚合特徵資格未提供"
+    basis_note = (
+        "期間基礎尚未核實；不得推算累計或比率。"
+        if basis == "unknown" or not metric.basis_verified
+        else f"期間基礎為 {basis}。"
+    )
+    pit = "符合正式 PIT" if metric.formal_pit_eligible else "不具正式 PIT 資格"
+    return (
+        f"原始值保留：{_metric_text(metric)}\n"
+        f"期間基礎：{basis}（{basis_verified}）\n"
+        f"特徵聚合資格：{aggregate}\n"
+        f"歷史資格：{pit}\n{basis_note}"
+    )
+
+
+def _coverage_status_label(status: str) -> str:
+    labels = {
+        "ready": "市場來源已完成",
+        "not_applicable": "已完成擷取；此市場沒有該股估值列",
+        "partial": "市場來源部分完成",
+        "missing": "缺少市場來源",
+        "unavailable": "市場來源不可用",
+        "failed": "市場來源失敗",
+        "invalid": "市場來源驗證失敗",
+        "stale": "市場來源資料過期",
+        "out_of_sync": "市場日期不同步",
+        "freshness_unverified": "市場新鮮度未核實",
+        "blocked_ambiguous_market": "跨市場代碼歧義",
+    }
+    return labels.get(status, f"市場狀態未核實（{status}）")
 
 
 def _ownership_metric_text(metric: StockMetricDTO) -> str:
@@ -2198,6 +2702,22 @@ def _read_report_with_context_cutoff(
         "cancel_callback": cancel_callback,
     }
     raw_date = context.decision_date.strip() if context is not None else ""
+    current_ml_scope = bool(
+        context is not None
+        and context.ml_scope_mode == "current_stock_research"
+    )
+    parameters = inspect.signature(read_report).parameters.values()
+    accepts_cutoff = any(
+        parameter.name == "as_of_date"
+        or parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+    if current_ml_scope:
+        if not accepts_cutoff:
+            raise TypeError("研究報告 service 不接受明確的當下觀測 cutoff")
+        # 明確以 service 的當下時鐘為報告查詢日，不沿用 saved Advice 的歷史決策日。
+        kwargs["as_of_date"] = None
+        return read_report(stock_code, **kwargs)
     if raw_date:
         try:
             cutoff = date.fromisoformat(raw_date)
@@ -2205,12 +2725,6 @@ def _read_report_with_context_cutoff(
             raise ValueError("研究 context 決策日必須是 YYYY-MM-DD") from exc
         if cutoff.isoformat() != raw_date:
             raise ValueError("研究 context 決策日必須是 YYYY-MM-DD")
-        parameters = inspect.signature(read_report).parameters.values()
-        accepts_cutoff = any(
-            parameter.name == "as_of_date"
-            or parameter.kind is inspect.Parameter.VAR_KEYWORD
-            for parameter in parameters
-        )
         if not accepts_cutoff:
             raise TypeError("研究報告 service 不接受 context 決策日 cutoff")
         kwargs["as_of_date"] = raw_date

@@ -13,12 +13,14 @@ import pytest
 from data_module.formal_market_revision import RECEIPT_DIR
 from data_module.ml_daily_source_row_research_projection import (
     MLSourceRowProjectionError,
+    PROJECTION_OUTPUT_ROOT,
     _exact_decimal,
     _project_twse_rows,
     _project_tpex_rows,
     _strict_json_object,
     project_daily_source_rows,
 )
+from data_module.ml_research_output_boundary import get_ml_research_root
 from data_module.ml_prospective_daily_price_capture import (
     capture_prospective_daily_price_candidate,
 )
@@ -26,6 +28,8 @@ from data_module.official_daily_price_custody import persist_official_daily_pric
 from data_module.tpex_daily_price_backfill import normalize_tpex_daily_price_rows
 from data_module.tpex_daily_price_source import _rows_from_after_trading_response
 from scripts import project_ml_daily_source_rows as cli
+from scripts.scheduled import ml_daily_source_row_research_adapter as research_adapter
+from scripts.scheduled import run_ml_raw_pit_refresh as raw_runner
 
 
 SOURCE_DATE = "2026-09-30"
@@ -186,6 +190,23 @@ def _candidate(tmp_path: Path) -> tuple[Path, Path, Path, dict[str, bytes]]:
         if path.is_file()
     }
     return repo, database, manifest_path, source_bytes
+
+
+def _configure_active_research_root(repo: Path, active_root: Path) -> None:
+    active_root.mkdir(parents=True, exist_ok=True)
+    config_path = repo / "output" / "ml_research_storage.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "ml-research-storage.v1",
+                "active_root": str(active_root),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
 
 
 def _short_case_root(factory: pytest.TempPathFactory, name: str) -> Path:
@@ -409,7 +430,9 @@ def test_projection_write_is_create_only_readback_verified_and_research_only(
     repo, database, manifest_path, source_before = _candidate(tmp_path)
     database_before = hashlib.sha256(database.read_bytes()).hexdigest()
     manifest_sha = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
-    output_root = repo / "output" / "qa" / "ml_daily_source_row_research_projections"
+    active_root = tmp_path / "FA_ML_Research"
+    _configure_active_research_root(repo, active_root)
+    output_root = active_root / PROJECTION_OUTPUT_ROOT
     result = project_daily_source_rows(
         candidate_manifest_path=manifest_path,
         expected_manifest_sha256=manifest_sha,
@@ -445,7 +468,6 @@ def test_projection_write_is_create_only_readback_verified_and_research_only(
         for path in (repo / "source-custody").rglob("*")
         if path.is_file()
     } == source_before
-
     with pytest.raises(MLSourceRowProjectionError, match="explicit SHA-256 pin"):
         project_daily_source_rows(
             candidate_manifest_path=manifest_path,
@@ -453,6 +475,73 @@ def test_projection_write_is_create_only_readback_verified_and_research_only(
             repository_root=repo,
             output_root=output_root,
             preview_only=False,
+        )
+
+
+def test_raw_runner_projects_and_verifies_receipt_under_external_active_root(
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp_path = _short_case_root(tmp_path_factory, "raw-runner-active-root")
+    repo, database, manifest_path, _source_before = _candidate(tmp_path)
+    active_root = tmp_path / "FA_ML_Research"
+    _configure_active_research_root(repo, active_root)
+    monkeypatch.setattr(raw_runner, "REPO_ROOT", repo)
+
+    capture = capture_prospective_daily_price_candidate(
+        source_output_root=repo / "source-custody",
+        database_path=database,
+        source_date=SOURCE_DATE,
+        candidate_root=repo / "output" / "ml_prospective_daily_price_candidates",
+        preview_only=False,
+    )
+    assert capture["status"] == "already_captured"
+    assert Path(str(capture["candidate_path"])).resolve() == manifest_path.resolve()
+
+    projection_status = raw_runner._project_daily_source_rows_from_capture(
+        capture,
+        source_date=SOURCE_DATE,
+        research_output_root=active_root,
+    )
+
+    assert projection_status["status"] == "projected_research_only", projection_status
+    assert projection_status["terminal_receipt_readback_verified"] is True
+    candidate_root = Path(str(projection_status["projection_candidate_root"]))
+    assert candidate_root.is_relative_to(active_root)
+    terminal_path = Path(str(projection_status["terminal_receipt_path"]))
+    terminal = json.loads(terminal_path.read_text(encoding="utf-8"))
+    assert terminal["research_output_root"] == str(active_root.resolve())
+    for key in (
+        "candidate_root",
+        "manifest_path",
+        "intermediate_completion_receipt_path",
+        "observations_path",
+    ):
+        relative = Path(str(terminal["projection"][key]))
+        assert not relative.is_absolute()
+        assert ".." not in relative.parts
+        resolved = active_root / relative
+        assert resolved.is_dir() if key == "candidate_root" else resolved.is_file()
+
+    # The same public consumer used after raw capture must accept this exact
+    # terminal and all pinned projection files from the configured external root.
+    validated = research_adapter._validate_projection(
+        projection_status,
+        source_date=SOURCE_DATE,
+        repository_root=repo,
+        now=datetime.now(timezone.utc) + timedelta(seconds=1),
+    )
+    assert validated["candidate_root"] == candidate_root.resolve()
+    assert validated["terminal_path"] == terminal_path.resolve()
+
+    unapproved_root = tmp_path / "unapproved-research-root"
+    unapproved_root.mkdir()
+    with pytest.raises(ValueError, match="configured active ML research root"):
+        raw_runner._assert_unlinked_path(
+            unapproved_root / "candidate",
+            root=unapproved_root,
+            label="projection candidate root",
+            allow_missing_leaf=True,
         )
 
 
@@ -491,7 +580,7 @@ def test_projection_leaves_no_success_receipt_when_revision_changes(
         return binding
 
     monkeypatch.setattr(projection, "_revision_binding", changed_on_final_check)
-    output_root = repo / "output" / "qa" / "ml_daily_source_row_research_projections"
+    output_root = get_ml_research_root(repository_root=repo) / PROJECTION_OUTPUT_ROOT
     with pytest.raises(MLSourceRowProjectionError, match="before projection completion"):
         project_daily_source_rows(
             candidate_manifest_path=manifest_path,

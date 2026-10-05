@@ -1,10 +1,10 @@
 """Run the normal daily recommendation-to-learning shadow pipeline.
 
-This is the 05:45 entrypoint.  It keeps the official event refresh,
-technical/source custody, recommendation snapshot, and calibration learning
-on one durable output root.  Optional MoneyDJ broker pages remain outside the
-core lane; every other dependency is reported explicitly and the learning
-step never receives caller-supplied symbols unless the operator asks for it.
+This is the 05:45 entrypoint. It keeps the shadow recommendation snapshot and
+learning artifacts together while reading the current-observed G6 raw status
+from its separate canonical DATA_ROOT/output root. Before learning starts, it
+waits within the pipeline budget for one exact same-day raw run and immutable
+cycle terminal. Optional MoneyDJ broker pages remain outside the core lane.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import argparse
 from datetime import date, datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import stat
@@ -33,9 +34,24 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 TASK_NAME = "baldr-recommendation-calibration-learning-daily"
 _MAX_SNAPSHOT_INVOCATION_STDOUT_BYTES = 8 * 1024 * 1024
 _SNAPSHOT_INVOCATION_STDOUT_NAME = "recommendation_snapshot.stdout.bin"
+_LEARNING_TERMINAL_FLUSH_RESERVE_SECONDS = 5 * 60
+_QUICK_LOCK_RELEASE_MAX_WAIT_SECONDS = 30.0
+_QUICK_LOCK_RELEASE_POLL_SECONDS = 0.25
 
 from app_module.recommendation.queries import _read_regular_file_no_follow  # noqa: E402
 from app_module.recommendation.persistence import ExecutionArtifactIntegrityError  # noqa: E402
+from data_module.ml_research_output_boundary import get_ml_research_root  # noqa: E402
+from data_module.ml_storage_capacity import (  # noqa: E402
+    acquire_heavy_chain_reservation,
+    heavy_chain_lock_path,
+    release_heavy_chain_reservation,
+)
+from scripts.scheduled.current_observed_raw_cycle_dependency import (  # noqa: E402
+    CurrentObservedRawCycleBlocked,
+    CurrentObservedRawCyclePin,
+    expected_current_observed_source_date,
+    wait_for_current_observed_raw_cycle,
+)
 from ml_module.current_restated_research_bridge import (  # noqa: E402
     CurrentRestatedResearchError,
     add_current_restated_research_arguments,
@@ -87,16 +103,37 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--calendar-cache-path",
         type=Path,
-        help="annual TWSE calendar cache forwarded to the quick updater",
+        help="annual TWSE calendar cache forwarded to the Quick updater and G9 learning child",
     )
     parser.add_argument(
         "--temporary-closure-path",
         type=Path,
-        help="official temporary-closure cache forwarded to the quick updater",
+        help="official temporary-closure cache forwarded to the Quick updater and G9 learning child",
     )
     parser.add_argument("--daily-delay-seconds", type=float, default=0.5)
     parser.add_argument("--tpex-delay-seconds", type=float, default=0.5)
     parser.add_argument("--broker-delay-seconds", type=float, default=0.5)
+    parser.add_argument(
+        "--current-observed-source-output-root",
+        type=Path,
+        default=None,
+        help=(
+            "canonical DATA_ROOT/output root containing the G6 raw status; "
+            "kept separate from this pipeline's recommendation snapshot root"
+        ),
+    )
+    parser.add_argument(
+        "--current-observed-wait-max-seconds",
+        type=float,
+        default=10_500.0,
+        help="maximum same-day wait for the exact G6 raw/cycle terminal",
+    )
+    parser.add_argument(
+        "--current-observed-wait-poll-seconds",
+        type=float,
+        default=15.0,
+        help="poll interval for the exact G6 raw/cycle terminal barrier",
+    )
     parser.add_argument(
         "--child-timeout-seconds",
         type=float,
@@ -106,7 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pipeline-timeout-seconds",
         type=float,
-        default=7200.0,
+        default=10_800.0,
         help="hard wall-clock budget for all subprocesses in this daily run",
     )
     parser.add_argument(
@@ -127,6 +164,30 @@ def build_parser() -> argparse.ArgumentParser:
         include_reference_snapshot=True,
     )
     return parser
+
+
+def _recommendation_snapshot_child_arguments(
+    *,
+    data_root: Path,
+    artifact_output_root: Path,
+    current_fundamental_source_root: Path,
+    max_stocks: int,
+    top_n: int,
+) -> list[str]:
+    """Keep snapshot artifact and official-current source roots distinct."""
+
+    return [
+        "--data-root",
+        str(data_root),
+        "--output-root",
+        str(artifact_output_root),
+        "--current-fundamental-source-root",
+        str(current_fundamental_source_root),
+        "--max-stocks",
+        str(max_stocks),
+        "--top-n",
+        str(top_n),
+    ]
 
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -174,6 +235,21 @@ def _terminal_receipt_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
                 "status": value.get("status"),
                 "returncode": value.get("returncode"),
                 "recoverable": value.get("recoverable"),
+                "reason": value.get("reason"),
+                "raw_run_id": value.get("raw_run_id"),
+                "pinned_raw_run_id": value.get("pinned_raw_run_id"),
+                "source_date": value.get("source_date"),
+                "expected_source_date": value.get("expected_source_date"),
+                "terminal_receipt_path": value.get("terminal_receipt_path"),
+                "terminal_receipt_sha256": value.get("terminal_receipt_sha256"),
+                "raw_status_path": value.get("raw_status_path"),
+                "raw_status_sha256": value.get("raw_status_sha256"),
+                "wait_started_at": value.get("wait_started_at"),
+                "wait_completed_at": value.get("wait_completed_at"),
+                "wait_deadline_at": value.get("wait_deadline_at"),
+                "wait_seconds": value.get("wait_seconds"),
+                "budget_reservation": value.get("budget_reservation"),
+                "lock_release_barrier": value.get("lock_release_barrier"),
                 "child_stdout_artifact_path": value.get("child_stdout_artifact_path"),
                 "child_stdout_artifact_size": value.get("child_stdout_artifact_size"),
                 "child_stdout_sha256": value.get("child_stdout_sha256"),
@@ -194,6 +270,13 @@ def _terminal_receipt_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
         "steps": step_projection,
         "status_path": payload.get("status_path"),
         "log_path": payload.get("log_path"),
+        "current_observed_source_output_root": payload.get(
+            "current_observed_source_output_root"
+        ),
+        "pipeline_timeout_seconds": payload.get("pipeline_timeout_seconds"),
+        "current_observed_wait_max_seconds": payload.get(
+            "current_observed_wait_max_seconds"
+        ),
         "terminal": True,
     }
 
@@ -283,29 +366,166 @@ def _technical_window_matches_decision(
     *,
     decision_date: str,
     now: datetime,
+    expected_source_date: str | None = None,
 ) -> bool:
     if hint.get("status") != "ready":
         return False
     start = _iso_date(hint.get("source_date_start"))
     end = _iso_date(hint.get("source_date_end"))
-    if not start or not end or start > end or end != decision_date:
+    expected_date = _iso_date(expected_source_date or decision_date)
+    if (
+        not start
+        or not end
+        or expected_date is None
+        or start > expected_date
+        or end != expected_date
+    ):
         return False
     available_at = _aware_datetime(hint.get("available_at"))
     if available_at is None or available_at > now:
         return False
-    return available_at.astimezone(TAIPEI).date().isoformat() == decision_date
+    return True
+
+
+def _wait_for_quick_lock_release(
+    lock_path: Path,
+    *,
+    max_wait_seconds: float,
+    poll_seconds: float = _QUICK_LOCK_RELEASE_POLL_SECONDS,
+    monotonic: Any = time.monotonic,
+    sleep: Any = time.sleep,
+) -> dict[str, Any]:
+    """Wait briefly until the exact Quick/raw shared OS lock is available.
+
+    A successful probe acquires and immediately releases the public heavy-chain
+    reservation. Quick then acquires its own normal reservation after this
+    handoff point. A failed probe never starts the Quick writer.
+    """
+
+    canonical_lock_path = Path(lock_path).expanduser().resolve()
+    bounded_wait = min(
+        _QUICK_LOCK_RELEASE_MAX_WAIT_SECONDS,
+        max(0.0, float(max_wait_seconds)),
+    )
+    bounded_poll = max(0.01, float(poll_seconds))
+    wall_started = datetime.now(timezone.utc)
+    monotonic_started = float(monotonic())
+    deadline = monotonic_started + bounded_wait
+    attempts = 0
+    while True:
+        attempts += 1
+        try:
+            reservation = acquire_heavy_chain_reservation(canonical_lock_path)
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            monotonic_finished = float(monotonic())
+            return {
+                "status": "blocked",
+                "reason": f"quick_heavy_chain_lock_probe_failed:{type(exc).__name__}",
+                "lock_path": str(canonical_lock_path),
+                "attempt_count": attempts,
+                "started_at_utc": wall_started.isoformat(timespec="microseconds"),
+                "finished_at_utc": datetime.now(timezone.utc).isoformat(
+                    timespec="microseconds"
+                ),
+                "waited_seconds": max(0.0, monotonic_finished - monotonic_started),
+                "max_wait_seconds": bounded_wait,
+                "reservation_proof": "acquisition_failed",
+                "error_type": type(exc).__name__,
+            }
+        if reservation is not None:
+            try:
+                release_heavy_chain_reservation(reservation)
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                monotonic_finished = float(monotonic())
+                return {
+                    "status": "blocked",
+                    "reason": f"quick_heavy_chain_lock_release_failed:{type(exc).__name__}",
+                    "lock_path": str(canonical_lock_path),
+                    "attempt_count": attempts,
+                    "started_at_utc": wall_started.isoformat(timespec="microseconds"),
+                    "finished_at_utc": datetime.now(timezone.utc).isoformat(
+                        timespec="microseconds"
+                    ),
+                    "waited_seconds": max(0.0, monotonic_finished - monotonic_started),
+                    "max_wait_seconds": bounded_wait,
+                    "reservation_proof": "acquired_but_release_failed",
+                    "error_type": type(exc).__name__,
+                }
+            monotonic_finished = float(monotonic())
+            return {
+                "status": "released",
+                "reason": None,
+                "lock_path": str(canonical_lock_path),
+                "attempt_count": attempts,
+                "started_at_utc": wall_started.isoformat(timespec="microseconds"),
+                "finished_at_utc": datetime.now(timezone.utc).isoformat(
+                    timespec="microseconds"
+                ),
+                "waited_seconds": max(0.0, monotonic_finished - monotonic_started),
+                "max_wait_seconds": bounded_wait,
+                "reservation_proof": "exclusive_reservation_acquired_and_released",
+            }
+        now_monotonic = float(monotonic())
+        if now_monotonic >= deadline:
+            return {
+                "status": "timed_out",
+                "reason": "quick_heavy_chain_lock_release_wait_timed_out",
+                "lock_path": str(canonical_lock_path),
+                "attempt_count": attempts,
+                "started_at_utc": wall_started.isoformat(timespec="microseconds"),
+                "finished_at_utc": datetime.now(timezone.utc).isoformat(
+                    timespec="microseconds"
+                ),
+                "waited_seconds": max(0.0, now_monotonic - monotonic_started),
+                "max_wait_seconds": bounded_wait,
+                "reservation_proof": "reservation_unavailable_until_deadline",
+            }
+        sleep(min(bounded_poll, deadline - now_monotonic))
+
+
+def _child_budget_reservation(
+    *,
+    name: str,
+    child_timeout_seconds: float,
+    pipeline_deadline: float,
+    monotonic_now: float,
+    timeout_ceiling_seconds: float | None = None,
+) -> dict[str, float]:
+    remaining = pipeline_deadline - monotonic_now
+    terminal_flush_reserve = float(_LEARNING_TERMINAL_FLUSH_RESERVE_SECONDS)
+    learning_child_reserve = (
+        0.0 if name == "recommendation_learning" else child_timeout_seconds
+    )
+    available_for_child = remaining - terminal_flush_reserve - learning_child_reserve
+    timeout_ceiling = (
+        child_timeout_seconds
+        if timeout_ceiling_seconds is None
+        else max(0.0, timeout_ceiling_seconds)
+    )
+    effective_timeout = min(timeout_ceiling, available_for_child)
+    return {
+        "remaining_pipeline_seconds": max(0.0, remaining),
+        "terminal_receipt_flush_reserve_seconds": terminal_flush_reserve,
+        "learning_child_timeout_reserve_seconds": learning_child_reserve,
+        "available_for_child_seconds": max(0.0, available_for_child),
+        "child_timeout_ceiling_seconds": timeout_ceiling,
+        "effective_child_timeout_seconds": max(0.0, effective_timeout),
+    }
 
 
 def _technical_child_plan(
     *,
     data_root: Path,
     source_db: Path,
+    formal_output_root: Path | None = None,
     source_date_start: str,
     source_date_end: str,
 ) -> dict[str, Any]:
     """解析 technical canonical routing，不把正常 refresh 綁成 receipt 前置條件。"""
 
-    formal_output_root = (data_root / "output").resolve()
+    formal_output_root = (
+        formal_output_root or (data_root / "output")
+    ).expanduser().resolve()
     expected_source_db = (data_root / "sqlite" / "twstock.db").resolve()
     status_path = _status_path(formal_output_root, "data_update_quick")
     plan: dict[str, Any] = {
@@ -334,10 +554,17 @@ def _technical_child_plan(
     return plan
 
 
-def _formal_receipt_window_hint(*, data_root: Path, source_db: Path) -> dict[str, Any]:
+def _formal_receipt_window_hint(
+    *,
+    data_root: Path,
+    source_db: Path,
+    formal_output_root: Path | None = None,
+) -> dict[str, Any]:
     """讀取 bounded formal window hint；最終驗證仍由 quick 既有 verifier 負責。"""
 
-    formal_output_root = (data_root / "output").resolve()
+    formal_output_root = (
+        formal_output_root or (data_root / "output")
+    ).expanduser().resolve()
     status_path = _status_path(formal_output_root, "data_update_quick")
     base = {
         "status": "unavailable",
@@ -1124,6 +1351,79 @@ def _is_sha256_text(value: object) -> bool:
     )
 
 
+def _learning_child_arguments(
+    *,
+    args: argparse.Namespace,
+    data_root: Path,
+    output_root: Path,
+    source_db: Path,
+    decision_date: str,
+    snapshot_result_id: object,
+    snapshot_cohort_hash: object,
+    snapshot_invocation_output_sha256: object,
+    snapshot_invocation_output_path: object,
+    current_cycle_pin: CurrentObservedRawCyclePin,
+    current_observed_source_output_root: Path,
+) -> list[str]:
+    arguments = [
+        "--data-root", str(data_root),
+        "--output-root", str(output_root),
+        "--source-db", str(source_db),
+        "--history-start-date", str(args.history_start_date),
+        "--fixed-round-trip-cost-bp", str(args.fixed_round_trip_cost_bp),
+        "--max-decision-dates", str(args.max_decision_dates),
+        "--replay-selection-policy", "latest_eligible_dates",
+        "--decision-date", decision_date,
+        "--training-as-of", decision_date,
+    ]
+    arguments.extend(
+        current_cycle_pin.learning_arguments(
+            source_output_root=current_observed_source_output_root
+        )
+    )
+    if args.cost_scenario == "banktaiwan_estimated_research":
+        arguments.extend(
+            [
+                "--cost-scenario", args.cost_scenario,
+                "--cost-policy-estimate-date", str(args.cost_policy_estimate_date),
+                "--research-order-lot-type", str(args.research_order_lot_type),
+                "--research-instrument-type", str(args.research_instrument_type),
+            ]
+        )
+        if args.research_order_amount_twd is not None:
+            arguments.extend(
+                ["--research-order-amount-twd", str(args.research_order_amount_twd)]
+            )
+        if args.research_order_quantity_shares is not None:
+            arguments.extend(
+                [
+                    "--research-order-quantity-shares",
+                    str(args.research_order_quantity_shares),
+                ]
+            )
+    if args.symbols:
+        arguments.extend(["--symbols", str(args.symbols)])
+    else:
+        arguments.extend(
+            [
+                "--snapshot-output-root", str(output_root),
+                "--snapshot-result-id", str(snapshot_result_id),
+                "--snapshot-cohort-hash", str(snapshot_cohort_hash),
+                "--snapshot-invocation-output-sha256",
+                str(snapshot_invocation_output_sha256),
+                "--snapshot-invocation-output-path",
+                str(snapshot_invocation_output_path),
+            ]
+        )
+    if args.calendar_cache_path is not None:
+        arguments.extend(["--calendar-cache-path", str(args.calendar_cache_path)])
+    if args.temporary_closure_path is not None:
+        arguments.extend(
+            ["--temporary-closure-cache-path", str(args.temporary_closure_path)]
+        )
+    return arguments
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -1190,10 +1490,34 @@ def main(argv: list[str] | None = None) -> int:
             research_invocation=research_invocation,
             reference_snapshot=reference,
         )
-    if args.child_timeout_seconds <= 0 or args.pipeline_timeout_seconds <= 0:
+    if not all(
+        math.isfinite(value)
+        for value in (
+            args.child_timeout_seconds,
+            args.pipeline_timeout_seconds,
+            args.current_observed_wait_max_seconds,
+            args.current_observed_wait_poll_seconds,
+        )
+    ) or (
+        args.child_timeout_seconds <= 0
+        or args.pipeline_timeout_seconds <= 0
+        or args.current_observed_wait_max_seconds < 0
+        or args.current_observed_wait_poll_seconds <= 0
+    ):
         raise ValueError("timeout budgets must be positive")
     data_root = args.data_root.expanduser().resolve()
     output_root = args.output_root.expanduser().resolve()
+    configured_current_source_root = (
+        args.current_observed_source_output_root
+        or (
+            Path(os.environ["CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT"])
+            if os.environ.get("CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT")
+            else Path(os.environ["OUTPUT_ROOT"])
+            if os.environ.get("OUTPUT_ROOT")
+            else data_root / "output"
+        )
+    )
+    current_observed_source_output_root = configured_current_source_root.expanduser().resolve()
     source_db = (args.source_db or data_root / "sqlite" / "twstock.db").expanduser().resolve()
     decision_date = datetime.now(TAIPEI).date().isoformat()
     run_root = output_root / "scheduled" / "recommendation_calibration_learning"
@@ -1219,6 +1543,9 @@ def main(argv: list[str] | None = None) -> int:
         {
             "OUTPUT_ROOT": str(output_root),
             "RECOMMENDATION_LEARNING_OUTPUT_ROOT": str(output_root),
+            "CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT": str(
+                current_observed_source_output_root
+            ),
             "DB_PATH": str(source_db),
             "PYTHONUTF8": "1",
             "PYTHONIOENCODING": "utf-8",
@@ -1232,24 +1559,45 @@ def main(argv: list[str] | None = None) -> int:
         run_id=run_id,
         terminal_receipt_path=terminal_receipt_path,
     )
+    payload["current_observed_source_output_root"] = str(
+        current_observed_source_output_root
+    )
+    payload["pipeline_timeout_seconds"] = args.pipeline_timeout_seconds
+    payload["current_observed_wait_max_seconds"] = args.current_observed_wait_max_seconds
     _write_json(status_path, payload)
 
     pipeline_deadline = time.monotonic() + args.pipeline_timeout_seconds
 
     def run_child_bounded(**kwargs: Any) -> dict[str, Any]:
-        remaining = pipeline_deadline - time.monotonic()
-        if remaining <= 0:
-            name = str(kwargs["name"])
-            script = str(kwargs["script"])
+        name = str(kwargs["name"])
+        script = str(kwargs["script"])
+        timeout_ceiling = kwargs.pop("timeout_ceiling_seconds", None)
+        budget_reservation = _child_budget_reservation(
+            name=name,
+            child_timeout_seconds=float(args.child_timeout_seconds),
+            pipeline_deadline=pipeline_deadline,
+            monotonic_now=float(time.monotonic()),
+            timeout_ceiling_seconds=(
+                float(timeout_ceiling) if timeout_ceiling is not None else None
+            ),
+        )
+        timeout_seconds = budget_reservation["effective_child_timeout_seconds"]
+        remaining = budget_reservation["remaining_pipeline_seconds"]
+        if timeout_seconds <= 0.0:
             child_environment = kwargs.get("environment") or environment
             child_output_root = Path(
                 child_environment["RECOMMENDATION_LEARNING_OUTPUT_ROOT"]
             )
             status_file = _status_path(child_output_root, name)
             log_handle = kwargs["log_handle"]
+            budget_reason = (
+                f"pipeline_deadline_exhausted:{name}"
+                if remaining <= 0.0
+                else f"pipeline_reserved_budget_exhausted:{name}"
+            )
             log_handle.write(
                 f"\n===== {name} TIMED OUT =====\n"
-                "pipeline_timeout_seconds_exhausted\n"
+                f"{budget_reason}\n"
             )
             return {
                 "name": name,
@@ -1260,28 +1608,115 @@ def main(argv: list[str] | None = None) -> int:
                 "status_path": str(status_file),
                 "child_status": None,
                 "child_warnings": [],
-                "child_blockers": [f"pipeline_timeout:{name}"],
+                "child_blockers": [budget_reason],
                 "stdout_stderr_tail": "",
                 "timeout_seconds": 0.0,
+                "budget_reservation": budget_reservation,
                 "recoverable": True,
             }
-        timeout_seconds = min(args.child_timeout_seconds, remaining)
-        return _run_child(timeout_seconds=timeout_seconds, **kwargs)
+        result = _run_child(timeout_seconds=timeout_seconds, **kwargs)
+        result["budget_reservation"] = budget_reservation
+        return result
 
     stage = "pipeline_start"
+    source_cycle_pin: CurrentObservedRawCyclePin | None = None
+    source_cycle_blocked: CurrentObservedRawCycleBlocked | None = None
+    expected_source_date = ""
     try:
+        stage = "current_observed_source_cycle_wait"
+        try:
+            source_date_clock = datetime.now(TAIPEI)
+            expected_source_date = expected_current_observed_source_date(
+                decision_date=date.fromisoformat(decision_date),
+                observed_at=source_date_clock,
+                source_db=source_db,
+                calendar_cache_path=args.calendar_cache_path,
+                temporary_closure_path=args.temporary_closure_path,
+            )
+            # The wait must leave one bounded child slot for Quick, one for
+            # learning, and the existing terminal receipt flush reserve.
+            wait_deadline_monotonic = (
+                pipeline_deadline
+                - 2.0 * float(args.child_timeout_seconds)
+                - _LEARNING_TERMINAL_FLUSH_RESERVE_SECONDS
+            )
+            available_wait_seconds = max(
+                0.0,
+                wait_deadline_monotonic - time.monotonic(),
+            )
+            bounded_wait_seconds = min(
+                float(args.current_observed_wait_max_seconds),
+                available_wait_seconds,
+            )
+
+            def save_dependency_wait_progress(progress: Mapping[str, Any]) -> None:
+                payload["steps"]["current_observed_source_cycle_wait"] = dict(progress)
+                _write_json(status_path, payload)
+
+            source_cycle_result = wait_for_current_observed_raw_cycle(
+                source_output_root=current_observed_source_output_root,
+                research_root=get_ml_research_root(repository_root=ROOT),
+                repository_root=ROOT,
+                decision_date=date.fromisoformat(decision_date),
+                expected_source_date=expected_source_date,
+                deadline_monotonic=wait_deadline_monotonic,
+                max_wait_seconds=bounded_wait_seconds,
+                poll_seconds=float(args.current_observed_wait_poll_seconds),
+                progress_callback=save_dependency_wait_progress,
+            )
+            if isinstance(source_cycle_result, CurrentObservedRawCyclePin):
+                source_cycle_pin = source_cycle_result
+            elif isinstance(source_cycle_result, CurrentObservedRawCycleBlocked):
+                source_cycle_blocked = source_cycle_result
+            else:
+                raise TypeError("current-observed dependency returned an unsupported result")
+        except (OSError, RuntimeError, TypeError, ValueError, IndexError) as exc:
+            now_text = datetime.now(TAIPEI).isoformat(timespec="seconds")
+            source_cycle_blocked = CurrentObservedRawCycleBlocked(
+                reason=(
+                    "current_observed_dependency_configuration_invalid:"
+                    f"{type(exc).__name__}"
+                ),
+                wait_started_at=now_text,
+                wait_completed_at=now_text,
+                wait_deadline_at=now_text,
+                wait_seconds=0.0,
+                expected_source_date=expected_source_date,
+            )
+        if source_cycle_pin is not None:
+            source_cycle_step = source_cycle_pin.as_step()
+            source_cycle_step["expected_source_date"] = expected_source_date
+            quick_source_date = source_cycle_pin.source_date
+        else:
+            assert source_cycle_blocked is not None
+            source_cycle_step = source_cycle_blocked.as_step()
+            quick_source_date = expected_source_date
+        payload["steps"]["current_observed_source_cycle_wait"] = source_cycle_step
+        _write_json(status_path, payload)
+
         with log_path.open("a", encoding="utf-8") as log_handle:
             technical_now = datetime.now(TAIPEI)
-            if args.skip_technical_refresh:
+            technical_step: dict[str, Any]
+            if source_cycle_pin is None:
+                technical_step = {
+                    "name": "data_update_quick",
+                    "status": "blocked",
+                    "reason": "exact_current_observed_g6_cycle_not_available_before_quick",
+                    "formal_output_root": str(current_observed_source_output_root),
+                    "raw_cycle_dependency": source_cycle_step,
+                }
+            elif args.skip_technical_refresh:
                 stage = "technical_window_hint"
                 technical_plan = _formal_receipt_window_hint(
                     data_root=data_root,
                     source_db=source_db,
+                    formal_output_root=current_observed_source_output_root,
                 )
                 if _technical_window_matches_decision(
                     technical_plan,
                     decision_date=decision_date,
                     now=technical_now,
+                    expected_source_date=quick_source_date,
                 ):
                     stage = "technical_reuse"
                     reuse = _verify_formal_technical_reuse(
@@ -1333,23 +1768,27 @@ def main(argv: list[str] | None = None) -> int:
                 technical_plan = _technical_child_plan(
                     data_root=data_root,
                     source_db=source_db,
-                    source_date_start=decision_date,
-                    source_date_end=decision_date,
+                    formal_output_root=current_observed_source_output_root,
+                    source_date_start=quick_source_date,
+                    source_date_end=quick_source_date,
                 )
                 if technical_plan.get("status") == "ready":
                     stage = "technical_window_hint"
                     window_hint = _formal_receipt_window_hint(
                         data_root=data_root,
                         source_db=source_db,
+                        formal_output_root=current_observed_source_output_root,
                     )
                     if _technical_window_matches_decision(
                         window_hint,
                         decision_date=decision_date,
                         now=technical_now,
+                        expected_source_date=quick_source_date,
                     ):
                         hinted_plan = _technical_child_plan(
                             data_root=data_root,
                             source_db=source_db,
+                            formal_output_root=current_observed_source_output_root,
                             source_date_start=str(window_hint["source_date_start"]),
                             source_date_end=str(window_hint["source_date_end"]),
                         )
@@ -1413,13 +1852,96 @@ def main(argv: list[str] | None = None) -> int:
                         temporary_closure_path=args.temporary_closure_path,
                     )
                     stage = "technical_child"
-                    technical_step = run_child_bounded(
-                        name="data_update_quick",
-                        script="scripts/scheduled/run_daily_data_update_quick.py",
-                        arguments=technical_arguments,
-                        environment=technical_environment,
-                        log_handle=log_handle,
+                    quick_script = "scripts/scheduled/run_daily_data_update_quick.py"
+                    quick_lock_path = heavy_chain_lock_path(
+                        current_observed_source_output_root / "release_v4"
                     )
+                    quick_initial_budget = _child_budget_reservation(
+                        name="data_update_quick",
+                        child_timeout_seconds=float(args.child_timeout_seconds),
+                        pipeline_deadline=pipeline_deadline,
+                        monotonic_now=float(time.monotonic()),
+                    )
+                    if quick_initial_budget["effective_child_timeout_seconds"] <= 0.0:
+                        technical_step = run_child_bounded(
+                            name="data_update_quick",
+                            script=quick_script,
+                            arguments=technical_arguments,
+                            environment=technical_environment,
+                            log_handle=log_handle,
+                        )
+                        technical_step["lock_release_barrier"] = {
+                            "status": "not_attempted",
+                            "reason": "quick_child_budget_exhausted_before_lock_barrier",
+                            "lock_path": str(quick_lock_path),
+                            "attempt_count": 0,
+                            "waited_seconds": 0.0,
+                            "reservation_proof": "not_attempted_no_child_budget",
+                        }
+                    else:
+                        barrier_wait_budget = min(
+                            _QUICK_LOCK_RELEASE_MAX_WAIT_SECONDS,
+                            quick_initial_budget["effective_child_timeout_seconds"],
+                        )
+                        lock_release_barrier = _wait_for_quick_lock_release(
+                            quick_lock_path,
+                            max_wait_seconds=barrier_wait_budget,
+                            monotonic=time.monotonic,
+                            sleep=time.sleep,
+                        )
+                        if lock_release_barrier.get("status") == "released":
+                            remaining_quick_timeout_ceiling = max(
+                                0.0,
+                                float(args.child_timeout_seconds)
+                                - float(lock_release_barrier.get("waited_seconds") or 0.0),
+                            )
+                            technical_step = run_child_bounded(
+                                name="data_update_quick",
+                                script=quick_script,
+                                arguments=technical_arguments,
+                                environment=technical_environment,
+                                log_handle=log_handle,
+                                timeout_ceiling_seconds=remaining_quick_timeout_ceiling,
+                            )
+                            technical_step["lock_release_barrier"] = lock_release_barrier
+                        else:
+                            barrier_status = str(lock_release_barrier.get("status"))
+                            technical_step = {
+                                "name": "data_update_quick",
+                                "script": quick_script,
+                                "command": [
+                                    sys.executable,
+                                    str(ROOT / quick_script),
+                                    *technical_arguments,
+                                ],
+                                "returncode": None,
+                                "status": (
+                                    "timed_out"
+                                    if barrier_status == "timed_out"
+                                    else "blocked"
+                                ),
+                                "status_path": str(
+                                    _status_path(
+                                        current_observed_source_output_root,
+                                        "data_update_quick",
+                                    )
+                                ),
+                                "child_status": None,
+                                "child_warnings": [],
+                                "child_blockers": [
+                                    str(
+                                        lock_release_barrier.get("reason")
+                                        or "quick_heavy_chain_lock_release_unverified"
+                                    )
+                                ],
+                                "stdout_stderr_tail": "",
+                                "timeout_seconds": float(
+                                    lock_release_barrier.get("waited_seconds") or 0.0
+                                ),
+                                "budget_reservation": quick_initial_budget,
+                                "lock_release_barrier": lock_release_barrier,
+                                "recoverable": True,
+                            }
                     technical_step.update(
                         {
                             "source": "formal_data_root",
@@ -1481,12 +2003,15 @@ def main(argv: list[str] | None = None) -> int:
             snapshot_step = run_child_bounded(
                 name="recommendation_snapshot",
                 script="scripts/scheduled/run_scheduled_recommendation_snapshot.py",
-                arguments=[
-                    "--data-root", str(data_root),
-                    "--output-root", str(output_root),
-                    "--max-stocks", str(args.max_stocks),
-                    "--top-n", str(args.top_n),
-                ],
+                arguments=_recommendation_snapshot_child_arguments(
+                    data_root=data_root,
+                    artifact_output_root=output_root,
+                    current_fundamental_source_root=(
+                        current_observed_source_output_root
+                    ),
+                    max_stocks=args.max_stocks,
+                    top_n=args.top_n,
+                ),
                 environment=environment,
                 log_handle=log_handle,
                 snapshot_stdout_artifact_path=snapshot_stdout_artifact_path,
@@ -1546,76 +2071,58 @@ def main(argv: list[str] | None = None) -> int:
                     "reason": "same_day_recommendation_snapshot_unavailable",
                 }
             else:
-                learning_arguments = [
-                    "--data-root", str(data_root),
-                    "--output-root", str(output_root),
-                    "--source-db", str(source_db),
-                    "--history-start-date", str(args.history_start_date),
-                    "--fixed-round-trip-cost-bp", str(args.fixed_round_trip_cost_bp),
-                    "--max-decision-dates", str(args.max_decision_dates),
-                    "--replay-selection-policy", "latest_eligible_dates",
-                    "--decision-date", decision_date,
-                    "--training-as-of", decision_date,
-                ]
-                if args.cost_scenario == "banktaiwan_estimated_research":
-                    learning_arguments.extend(
-                        [
-                            "--cost-scenario", args.cost_scenario,
-                            "--cost-policy-estimate-date", str(args.cost_policy_estimate_date),
-                            "--research-order-lot-type", str(args.research_order_lot_type),
-                            "--research-instrument-type", str(args.research_instrument_type),
-                        ]
+                if source_cycle_pin is None:
+                    reason = str(
+                        source_cycle_step.get("reason")
+                        or "current_stock_cycle_dependency_blocked"
                     )
-                    if args.research_order_amount_twd is not None:
-                        learning_arguments.extend(
-                            ["--research-order-amount-twd", str(args.research_order_amount_twd)]
-                        )
-                    if args.research_order_quantity_shares is not None:
-                        learning_arguments.extend(
-                            [
-                                "--research-order-quantity-shares",
-                                str(args.research_order_quantity_shares),
-                            ]
-                        )
-                if args.symbols:
-                    learning_arguments.extend(["--symbols", str(args.symbols)])
-                else:
-                    learning_arguments.extend(
-                        [
-                            "--snapshot-output-root", str(output_root),
-                            "--snapshot-result-id", str(snapshot_result_id),
-                            "--snapshot-cohort-hash", str(snapshot_cohort_hash),
-                            "--snapshot-invocation-output-sha256",
-                            str(snapshot_invocation_output_sha256),
-                            "--snapshot-invocation-output-path",
-                            str(snapshot_invocation_output_path),
-                        ]
-                    )
-                stage = "recommendation_learning"
-                learning_step = run_child_bounded(
-                    name="recommendation_learning",
-                    script="scripts/scheduled/run_daily_recommendation_learning.py",
-                    arguments=learning_arguments,
-                    environment=environment,
-                    log_handle=log_handle,
-                )
-                payload["steps"]["recommendation_learning"] = learning_step
-                payload["warnings"].extend(list(learning_step.get("child_warnings") or []))
-                payload["blockers"].extend(list(learning_step.get("child_blockers") or []))
-                learning_status = _read_json(output_root / "recommendation_learning" / "latest_status.json")
-                if isinstance(learning_status, Mapping):
-                    payload["learning_latest_status"] = {
-                        "status": learning_status.get("status"),
-                        "decision": learning_status.get("decision"),
-                        "decision_reason": learning_status.get("decision_reason"),
-                        "symbol_source": learning_status.get("symbol_source"),
-                        "symbols": learning_status.get("symbols"),
-                        "symbol_coverage": learning_status.get("symbol_coverage"),
-                        "run_scope": learning_status.get("run_scope"),
-                        "live_capture": learning_status.get("live_capture"),
+                    payload["blockers"].append(reason)
+                    payload["steps"]["recommendation_learning"] = {
+                        "status": "blocked",
+                        "reason": "exact_current_observed_g6_cycle_not_available",
+                        "raw_cycle_dependency": source_cycle_step,
                     }
-                if learning_step.get("status") not in {"passed", "passed_with_warnings"}:
-                    payload["blockers"].append("recommendation_learning_failed")
+                else:
+                    learning_arguments = _learning_child_arguments(
+                        args=args,
+                        data_root=data_root,
+                        output_root=output_root,
+                        source_db=source_db,
+                        decision_date=decision_date,
+                        snapshot_result_id=snapshot_result_id,
+                        snapshot_cohort_hash=snapshot_cohort_hash,
+                        snapshot_invocation_output_sha256=snapshot_invocation_output_sha256,
+                        snapshot_invocation_output_path=snapshot_invocation_output_path,
+                        current_cycle_pin=source_cycle_pin,
+                        current_observed_source_output_root=current_observed_source_output_root,
+                    )
+                    stage = "recommendation_learning"
+                    learning_step = run_child_bounded(
+                        name="recommendation_learning",
+                        script="scripts/scheduled/run_daily_recommendation_learning.py",
+                        arguments=learning_arguments,
+                        environment=environment,
+                        log_handle=log_handle,
+                    )
+                    payload["steps"]["recommendation_learning"] = learning_step
+                    payload["warnings"].extend(list(learning_step.get("child_warnings") or []))
+                    payload["blockers"].extend(list(learning_step.get("child_blockers") or []))
+                    learning_status = _read_json(
+                        output_root / "recommendation_learning" / "latest_status.json"
+                    )
+                    if isinstance(learning_status, Mapping):
+                        payload["learning_latest_status"] = {
+                            "status": learning_status.get("status"),
+                            "decision": learning_status.get("decision"),
+                            "decision_reason": learning_status.get("decision_reason"),
+                            "symbol_source": learning_status.get("symbol_source"),
+                            "symbols": learning_status.get("symbols"),
+                            "symbol_coverage": learning_status.get("symbol_coverage"),
+                            "run_scope": learning_status.get("run_scope"),
+                            "live_capture": learning_status.get("live_capture"),
+                        }
+                    if learning_step.get("status") not in {"passed", "passed_with_warnings"}:
+                        payload["blockers"].append("recommendation_learning_failed")
 
     except Exception as exc:
         payload["blockers"].append(f"pipeline_exception:{type(exc).__name__}")

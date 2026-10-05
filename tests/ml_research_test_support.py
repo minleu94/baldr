@@ -37,6 +37,7 @@ def write_snapshot_context_receipt(
     root: Path,
     *,
     completed_at: str,
+    wal_absent: bool = False,
 ) -> tuple[Path, str]:
     """建立 integration receipt 同形的 synthetic source context。"""
     source_root = root / "source_context"
@@ -45,8 +46,10 @@ def write_snapshot_context_receipt(
     source_wal_path = source_root / "original_source.sqlite-wal"
     if not source_database_path.exists():
         source_database_path.write_bytes(b"synthetic original source database")
-    if not source_wal_path.exists():
+    if not wal_absent and not source_wal_path.exists():
         source_wal_path.write_bytes(b"")
+    if wal_absent and source_wal_path.exists():
+        raise ValueError("absent-WAL fixture must not start with a WAL file")
 
     namespace_roots = {
         SourceEvidenceNamespaceV1.DAILY_PRICE_REPAIR_RECEIPT: source_root / revision_gate.REPAIR_RECEIPT_RELATIVE_DIR,
@@ -67,18 +70,39 @@ def write_snapshot_context_receipt(
         raise ValueError("completed_at must include a timezone")
     started = completed - timedelta(seconds=60)
     payload = {
-        "schema_version": "integration-consistent-sqlite-snapshot.v1",
+        "schema_version": (
+            "integration-consistent-sqlite-snapshot.v2"
+            if wal_absent
+            else "integration-consistent-sqlite-snapshot.v1"
+        ),
         "status": "consistent_snapshot_created",
         "started_at": started.isoformat(),
         "completed_at": completed.isoformat(),
         "source_database_path": str(source_database_path.resolve()),
         "source_observation": {
             "database": _pin(source_database_path),
-            "wal": _pin(source_wal_path),
+            "wal": (
+                {
+                    "path": str(source_wal_path.absolute()),
+                    "status": "absent",
+                    "present": False,
+                }
+                if wal_absent
+                else _pin(source_wal_path)
+            ),
             "revision_namespace_files": namespace_files,
         },
         "source_generation_before": 2,
         "source_generation_after": 2,
+        **(
+            {
+                "source_journal_mode_before": "wal",
+                "source_journal_mode_after": "wal",
+                "source_journal_mode_reader": "sqlite_file_header_read_write_version.v1",
+            }
+            if wal_absent
+            else {}
+        ),
         "snapshot": _pin(snapshot_database_path),
         "snapshot_quick_check": "ok",
         "consistency": "sqlite_backup_from_single_query_only_read_transaction",

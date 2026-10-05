@@ -674,6 +674,7 @@ def test_freshness_probe_marks_target_waiting_before_daily_cutoff(tmp_path, monk
     assert _source(payload, "tpex.daily_prices.raw")["freshness_status"] == "expected_wait"
     assert _source(payload, "sqlite.daily_prices")["freshness_status"] == "expected_wait"
     assert payload["checks"]["calendar_cutoff_local"] == "04:30"
+    assert payload["checks"]["calendar_cutoff_timezone"] == "America/Los_Angeles"
 
 
 def test_freshness_probe_detects_partial_stock_reconciliation(tmp_path, monkeypatch):

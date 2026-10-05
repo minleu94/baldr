@@ -668,6 +668,7 @@ class UpdateService :
         try:
             from data_module.monthly_revenue_snapshot_harvester import (
                 build_mops_monthly_revenue_snapshot,
+                create_monthly_revenue_snapshot_capture_directory,
                 write_mops_snapshot_csv,
             )
 
@@ -685,17 +686,21 @@ class UpdateService :
                     10,
                 )
             output_dir = Path(self.config.output_root) / "monthly_revenue_mops_snapshots"
+            capture_dir = create_monthly_revenue_snapshot_capture_directory(
+                output_dir, fetch_date=target_date
+            )
+            raw_html_dir = capture_dir / "raw_html"
             result = build_mops_monthly_revenue_snapshot(
                 start_period=start_period,
                 end_period=end_period,
                 markets=normalized_markets,
                 fetch_date=target_date,
-                save_html_dir=output_dir / "raw_html",
+                save_html_dir=raw_html_dir,
                 sleep_seconds=max(0.0, float(sleep_seconds)),
                 cancel_callback=cancel_callback,
                 progress_callback=progress_callback,
             )
-            output_csv = output_dir / (
+            output_csv = capture_dir / (
                 f"mops_monthly_revenue_snapshot_{start_period}_{end_period}_"
                 f"{target_date.isoformat()}.csv"
             )
@@ -719,7 +724,8 @@ class UpdateService :
                 "cancelled": result.cancelled,
                 "candidate_only": True,
                 "output_csv": str(output_csv) if result.rows and not result.cancelled else None,
-                "raw_html_dir": str(output_dir / "raw_html"),
+                "raw_html_dir": str(raw_html_dir),
+                "capture_dir": str(capture_dir),
                 "start_period": start_period,
                 "end_period": end_period,
                 "fetch_date": target_date.isoformat(),

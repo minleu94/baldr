@@ -1885,7 +1885,10 @@ def _make_daily_source_projection_fixture(
 ) -> dict[str, object]:
     projection_id = "f" * 64
     source_date = str(capture["source_date"])
-    output_root = repo_root / runner.DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT
+    output_root = (
+        runner.get_ml_research_root(repository_root=repo_root)
+        / runner.DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT
+    )
     candidate_root = output_root / source_date / projection_id
     candidate_root.mkdir(parents=True)
     observations_bytes = b'{"venue":"twse","value_int":12}\n{"venue":"tpex","value_int":13}\n'
@@ -2226,6 +2229,8 @@ def test_daily_source_row_projection_pins_terminal_result_before_source_hold(
     )
     events: list[str] = []
     builder_called = False
+    status_path = output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json"
+    callback_failure: str | None = None
 
     def capture_candidate(**kwargs: object) -> dict[str, object]:
         events.append("capture")
@@ -2242,7 +2247,8 @@ def test_daily_source_row_projection_pins_terminal_result_before_source_hold(
         assert kwargs["expected_manifest_sha256"] == capture["candidate_manifest_sha256"]
         assert kwargs["repository_root"] == repo_root
         assert kwargs["output_root"] == (
-            repo_root / runner.DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT
+            runner.get_ml_research_root(repository_root=repo_root)
+            / runner.DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT
         )
         assert kwargs["preview_only"] is False
         return projection_result
@@ -2255,13 +2261,82 @@ def test_daily_source_row_projection_pins_terminal_result_before_source_hold(
             "error": "test hold remains in force",
         }
 
+    def adapt_candidate(**kwargs: object) -> dict[str, object]:
+        events.append("b_adapter")
+        assert kwargs["source_date"] == "2026-08-12"
+        projection_status = kwargs["projection_status"]
+        assert isinstance(projection_status, dict)
+        assert projection_status["status"] == "projected_research_only"
+        assert projection_status["source_date"] == "2026-08-12"
+        assert projection_status["projection_id"] == projection_result["projection_id"]
+        assert kwargs["repository_root"] == repo_root
+        return {
+            "schema_version": "ml-daily-source-row-b-adapter-run.v1",
+            "status": "completed_research_only",
+            "raw_run_id": kwargs["raw_run_id"],
+            "source_date": "2026-08-12",
+            "formal_credit": False,
+            "historical_pit_eligible": False,
+            "formal_oos_allowed": False,
+            "model_use_claimed": False,
+            "production_alpha_bp": 0,
+        }
+
     def fail_builder(*_args: object, **_kwargs: object) -> None:
         nonlocal builder_called
         builder_called = True
         raise AssertionError("builder must not run after source revision hold")
 
+    from scripts.scheduled import current_stock_research_cycle as cycle_module
+
+    def report_cycle_progress(**kwargs: object) -> dict[str, object]:
+        nonlocal callback_failure
+        events.append("cycle")
+        callback = kwargs.get("status_callback")
+        assert callable(callback)
+        before = json.loads(status_path.read_text(encoding="utf-8"))
+        try:
+            callback(
+                {
+                    "status": "running",
+                    "stage": "snapshot",
+                    "raw_run_id": before["run_id"],
+                    "source_date": "2026-08-12",
+                    "next_action": "verify_snapshot",
+                }
+            )
+            after = json.loads(status_path.read_text(encoding="utf-8"))
+            for key in (
+                "schema_version",
+                "task",
+                "run_id",
+                "started_at",
+                "output_root",
+                "raw_output_root",
+                "database",
+                "status_path",
+                "log_path",
+                "process_id",
+            ):
+                assert after[key] == before[key], key
+            assert after["schema_version"] == runner._SCHEMA_VERSION
+            assert after["output_root"] == str(output_root.resolve())
+            assert after["current_stock_research_cycle"]["stage"] == "snapshot"
+        except Exception as exc:
+            callback_failure = f"{type(exc).__name__}: {exc}"
+            raise
+        return {
+            "status": "waiting_source",
+            "raw_run_id": before["run_id"],
+            "source_date": "2026-08-12",
+            "research_only": True,
+            "formal_credit": False,
+        }
+
     monkeypatch.setattr(runner, "capture_prospective_daily_price_candidate", capture_candidate)
     monkeypatch.setattr(runner, "project_daily_source_rows", project_candidate)
+    monkeypatch.setattr(runner, "run_daily_source_row_research_adapter", adapt_candidate)
+    monkeypatch.setattr(cycle_module, "run_current_stock_research_cycle", report_cycle_progress)
     monkeypatch.setattr(runner, "_source_revision_blocker", source_hold)
     monkeypatch.setattr(runner.subprocess, "Popen", fail_builder)
 
@@ -2278,15 +2353,21 @@ def test_daily_source_row_projection_pins_terminal_result_before_source_hold(
         ]
     )
 
-    status_path = output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json"
     payload = json.loads(status_path.read_text(encoding="utf-8"))
     projection = payload["prospective_daily_source_row_projection"]
     assert exit_code == 0
-    assert events == ["capture", "projection", "source_revision_hold"]
+    assert events == ["capture", "projection", "b_adapter", "cycle", "source_revision_hold"]
+    assert callback_failure is None, callback_failure
     assert builder_called is False
     assert payload["status"] == "blocked_source_revision"
     assert payload["source_revision_gate"]["blocker_kind"] == "test_temporal_hold"
     assert payload["prospective_daily_price_capture"]["status"] == capture_status
+    assert payload["prospective_daily_source_row_b_adapter"]["status"] == (
+        "completed_research_only"
+    )
+    assert payload["prospective_daily_source_row_b_adapter"]["raw_run_id"] == payload[
+        "run_id"
+    ]
     assert projection["status"] == "projected_research_only"
     assert projection["terminal_receipt_readback_verified"] is True
     assert projection["formal_credit"] is False

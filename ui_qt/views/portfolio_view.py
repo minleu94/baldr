@@ -56,6 +56,7 @@ from app_module.portfolio_condition_monitor import (
     PortfolioConditionMonitor,
     PortfolioCurrentSnapshot,
 )
+from app_module.paper_portfolio_time import taiwan_market_today
 from portfolio_module import PortfolioValidationError
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.info_button import InfoButton
@@ -1032,6 +1033,9 @@ class PortfolioView(QWidget):
         # 分別讀取而顯示不同版本的持倉狀態。
         self._last_portfolio_dto: PortfolioDTO | None = None
         self._position_presentations: dict[str, Any] = {}
+        self._position_current_snapshots: dict[
+            str, tuple[str, PortfolioCurrentSnapshot | None]
+        ] = {}
         self._position_health_read_model: PositionHealthReadModel | None = None
         self._position_health_by_id: dict[str, PositionHealthPresentationDTO] = {}
         self.selected_stock_code: str = ""
@@ -3118,11 +3122,13 @@ class PortfolioView(QWidget):
                 if not isinstance(portfolio, PortfolioDTO):
                     raise TypeError("PortfolioService.get_portfolio must return PortfolioDTO")
             positions = list(portfolio.positions)
+            self._position_current_snapshots = {}
             self._position_presentations = {}
 
             if not positions:
                 df = pd.DataFrame(columns=[
                     "證券代號", "證券名稱", "持有股數", "平均成本", "目前價格",
+                    "行情資料日", "行情新鮮度",
                     "投入金額（毛額，未扣費稅）", "未實現損益（毛額，未扣費稅）",
                     "未實現損益%（毛額）", "已實現損益（毛額，未扣費稅）",
                     "來源脈絡", "進場分數", "目前分數", "狀態監控", "監控原因",
@@ -3133,13 +3139,18 @@ class PortfolioView(QWidget):
                 data = []
                 for p in positions:
                     snapshot = self._current_snapshot_for_position(p.stock_code, p)
+                    position_id = str(getattr(p, "position_id", "") or "").strip()
+                    if position_id:
+                        self._position_current_snapshots[position_id] = (
+                            str(getattr(p, "stock_code", "") or "").strip(),
+                            snapshot,
+                        )
                     monitor_result = self.condition_monitor.evaluate(p, snapshot)
                     monitor_reason = "；".join(monitor_result.reasons)
                     presentation = self.presentation_service.from_position(
                         p,
                         condition_result=monitor_result,
                     )
-                    position_id = str(getattr(p, "position_id", "") or "").strip()
                     if position_id:
                         self._position_presentations[position_id] = presentation
                     health = self._health_for_position(p)
@@ -3166,6 +3177,12 @@ class PortfolioView(QWidget):
                         "持有股數": p.quantity,
                         "平均成本": p.average_cost,
                         "目前價格": p.current_price if p.current_price is not None else "-",
+                        "行情資料日": (
+                            snapshot.quote_data_date.isoformat()
+                            if snapshot.quote_data_date is not None
+                            else "未知"
+                        ),
+                        "行情新鮮度": snapshot.quote_freshness_status or "unverified",
                         "投入金額（毛額，未扣費稅）": p.invested_amount,
                         "未實現損益（毛額，未扣費稅）": (
                             p.unrealized_pnl if p.unrealized_pnl is not None else "-"
@@ -3226,7 +3243,35 @@ class PortfolioView(QWidget):
         position: Any | None = None,
     ) -> Optional[PortfolioCurrentSnapshot]:
         """只讀取價格與持倉來源摘要；缺 current score 時由 monitor 保守標示待更新。"""
-        current_price = self.portfolio_service.get_current_price(stock_code)
+        observation_reader = getattr(
+            self.portfolio_service, "get_current_price_observation", None
+        )
+        try:
+            observation = observation_reader(stock_code) if callable(observation_reader) else None
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not read dated quote for %s: %s", stock_code, exc)
+            observation = None
+        raw_price = getattr(observation, "price", None)
+        current_price = (
+            raw_price
+            if isinstance(raw_price, (Decimal, int, float, str)) and not isinstance(raw_price, bool)
+            else None
+        )
+        raw_quote_date = getattr(observation, "data_date", None)
+        quote_data_date = (
+            raw_quote_date
+            if isinstance(raw_quote_date, date) and not isinstance(raw_quote_date, datetime)
+            else None
+        )
+        raw_expected_date = getattr(observation, "expected_date", None)
+        quote_expected_date = (
+            raw_expected_date
+            if isinstance(raw_expected_date, date) and not isinstance(raw_expected_date, datetime)
+            else None
+        )
+        raw_source_id = getattr(observation, "source_id", "")
+        raw_source_hash = getattr(observation, "source_snapshot_hash", "")
+        raw_freshness = getattr(observation, "freshness_status", "unverified")
         source_summary = getattr(position, "source_summary", {}) if position is not None else {}
         if not isinstance(source_summary, dict):
             source_summary = {}
@@ -3236,7 +3281,48 @@ class PortfolioView(QWidget):
             current_regime=current_regime,
             current_total_score=current_total_score,
             current_price=current_price,
+            quote_data_date=quote_data_date,
+            quote_source_id=raw_source_id if isinstance(raw_source_id, str) else "",
+            quote_source_snapshot_hash=(raw_source_hash if isinstance(raw_source_hash, str) else ""),
+            quote_freshness_status=(
+                raw_freshness if isinstance(raw_freshness, str) else "unverified"
+            ),
+            quote_expected_date=quote_expected_date,
         )
+
+    def _cached_current_snapshot_for_position(
+        self,
+        position: object | None,
+        stock_code: str,
+    ) -> PortfolioCurrentSnapshot | None:
+        """Return only the quote snapshot rendered for this exact position row."""
+        position_id = str(getattr(position, "position_id", "") or "").strip()
+        code = str(stock_code or "").strip()
+        if not position_id or not code:
+            return None
+        cached = self._position_current_snapshots.get(position_id)
+        if cached is None or cached[0] != code:
+            return None
+        snapshot = cached[1]
+        return snapshot if isinstance(snapshot, PortfolioCurrentSnapshot) else None
+
+    def _cached_position_quote_date(
+        self,
+        position: object | None,
+        stock_code: str,
+    ) -> str:
+        snapshot = self._cached_current_snapshot_for_position(position, stock_code)
+        quote_date = snapshot.quote_data_date if snapshot is not None else None
+        if not isinstance(quote_date, date) or isinstance(quote_date, datetime):
+            return ""
+        try:
+            today = taiwan_market_today()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not validate quote date for %s: %s", stock_code, exc)
+            return ""
+        if not isinstance(today, date) or isinstance(today, datetime) or quote_date > today:
+            return ""
+        return quote_date.isoformat()
 
     def _presentation_for_position(
         self,
@@ -3700,12 +3786,16 @@ class PortfolioView(QWidget):
             position_source_summary = {}
         validated_result_id = self._validated_recommendation_result_id(position, code)
         identity_status = "linked" if validated_result_id else "unlinked"
+        if validated_result_id:
+            data_date = presentation.data_as_of_date if presentation is not None else ""
+        else:
+            data_date = self._cached_position_quote_date(position, code)
         self.stockResearchRequested.emit(
             ResearchStockContextDTO(
                 stock_code=code,
                 stock_name=self._selected_position_name(),
                 decision_date=str(position_source_summary.get("decision_date", "") or ""),
-                data_date=(presentation.data_as_of_date if presentation is not None else ""),
+                data_date=data_date,
                 result_id=validated_result_id,
                 identity_status=identity_status,
                 source_snapshot_id=str(position_source_summary.get("source_snapshot_id", "") or ""),
@@ -4011,7 +4101,9 @@ class PortfolioView(QWidget):
             return
 
         try:
-            snapshot = self._current_snapshot_for_position(position_dto.stock_code)
+            snapshot = self._cached_current_snapshot_for_position(
+                position_dto, position_dto.stock_code
+            )
             monitor_result = self.condition_monitor.evaluate(position_dto, snapshot)
             details = monitor_result.details
             self._update_lifecycle_review(
@@ -4022,11 +4114,30 @@ class PortfolioView(QWidget):
 
             # 價格對照
             self.lbl_mon_entry_price.setText(f"TWD {position_dto.average_cost:,.2f}")
-            if position_dto.current_price is not None:
-                price_text = f"TWD {position_dto.current_price:,.2f}"
-                price_date = self._position_price_date(position_dto)
-                if price_date:
-                    price_text += f"（價格日期：{price_date}）"
+            display_price = (
+                snapshot.current_price
+                if snapshot is not None and snapshot.current_price is not None
+                else position_dto.current_price
+            )
+            if display_price is not None:
+                price_text = f"TWD {display_price:,.2f}"
+                quote_date = snapshot.quote_data_date if snapshot is not None else None
+                freshness = (
+                    str(snapshot.quote_freshness_status or "unverified")
+                    if snapshot is not None
+                    else "unverified"
+                )
+                if quote_date is not None:
+                    price_text += f"（行情資料日：{quote_date.isoformat()}；freshness：{freshness}）"
+                else:
+                    price_text += "（行情資料日未知；僅供損益觀察）"
+                quote_evidence_check = getattr(
+                    self.condition_monitor, "has_current_quote_evidence", None
+                )
+                if snapshot is not None and not (
+                    callable(quote_evidence_check) and quote_evidence_check(snapshot)
+                ):
+                    price_text += "；僅供損益觀察"
                 self.lbl_mon_current_price.setText(price_text)
             else:
                 self.lbl_mon_current_price.setText("-")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 import json
 import logging
 import math
@@ -37,6 +38,7 @@ from data_module.ml_storage_capacity import (
     release_heavy_chain_reservation,
 )
 from data_module.phase3c_backfill_runner import configured_candidate_db_path
+from data_module.tdcc_shareholding_candidate import TDCC_SOURCE_VERSION, TDCC_URL
 from scripts.scheduled.scheduled_clock import scheduled_now
 
 
@@ -793,6 +795,272 @@ def _bounded_process_text(value: object, limit: int = 2000) -> str:
     return text[-limit:]
 
 
+def _first_json_object(value: object) -> dict[str, Any] | None:
+    text = _bounded_process_text(value, limit=8 * 1024 * 1024).lstrip()
+    try:
+        decoded, _end = json.JSONDecoder().raw_decode(text)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def _aware_utc_clock(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _run_tdcc_current_ownership_capture(
+    *,
+    output_root: Path,
+    run_id: str,
+    capture_id: str,
+    timeout_seconds: int = 150,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Save an independent Monday TDCC raw observation under canonical output."""
+
+    script = REPO_ROOT / "scripts" / "capture_tdcc_shareholding_candidate.py"
+    resolved_root = output_root.expanduser().resolve()
+    capture_dir = resolved_root / "current_observed_market_ownership" / "tdcc" / capture_id
+    command = [
+        sys.executable,
+        str(script),
+        "--output-root",
+        str(resolved_root),
+        "--capture-id",
+        capture_id,
+        "--scheduled-run-id",
+        run_id,
+        "--timeout",
+        "120",
+    ]
+    if dry_run:
+        return {
+            "success": True,
+            "status": "planned",
+            "run_id": run_id,
+            "capture_id": capture_id,
+            "output_directory": str(capture_dir),
+            "command": [*command, "--dry-run"],
+            "network_requested": False,
+            "writes_performed": False,
+        }
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "success": False,
+            "status": "failed",
+            "reason": "tdcc_current_ownership_capture_timeout",
+            "message": "TDCC current ownership capture timed out",
+            "run_id": run_id,
+            "capture_id": capture_id,
+            "output_directory": str(capture_dir),
+            "timeout_seconds": timeout_seconds,
+            "command": command,
+            "stdout_tail": _bounded_process_text(exc.stdout),
+            "stderr_tail": _bounded_process_text(exc.stderr),
+        }
+    except OSError as exc:
+        return {
+            "success": False,
+            "status": "failed",
+            "reason": f"tdcc_current_ownership_capture_start_failed:{type(exc).__name__}",
+            "message": f"TDCC current ownership child could not start: {type(exc).__name__}",
+            "run_id": run_id,
+            "capture_id": capture_id,
+            "output_directory": str(capture_dir),
+            "command": command,
+            "error": str(exc)[:1000],
+        }
+    manifest = _first_json_object(completed.stdout)
+    base_result: dict[str, Any] = {
+        "run_id": run_id,
+        "capture_id": capture_id,
+        "output_directory": str(capture_dir),
+        "command": command,
+        "return_code": completed.returncode,
+        "stdout_tail": _bounded_process_text(completed.stdout),
+        "stderr_tail": _bounded_process_text(completed.stderr),
+    }
+    if completed.returncode != 0 or manifest is None:
+        reason = "tdcc_current_ownership_child_not_captured"
+        return {
+            **base_result,
+            "success": False,
+            "status": "failed",
+            "reason": reason,
+            "message": reason,
+            "child_manifest": manifest,
+        }
+    if manifest.get("schema_version") != "tdcc-current-ownership-capture.v1":
+        reason = "tdcc_capture_schema_mismatch"
+        return {**base_result, "success": False, "status": "failed", "reason": reason, "message": reason}
+    if (
+        manifest.get("capture_id") != capture_id
+        or manifest.get("scheduled_run_id") != run_id
+        or manifest.get("source_id") != "tdcc_shareholding"
+        or manifest.get("source_version") != TDCC_SOURCE_VERSION
+        or manifest.get("endpoint") != TDCC_URL
+    ):
+        reason = "tdcc_capture_identity_mismatch"
+        return {**base_result, "success": False, "status": "failed", "reason": reason, "message": reason}
+    report_date = manifest.get("report_date")
+    if not isinstance(report_date, str) or len(report_date) != 10 or report_date[4:5] != "-":
+        reason = "tdcc_capture_report_date_invalid"
+        return {**base_result, "success": False, "status": "failed", "reason": reason, "message": reason}
+    manifest_path = capture_dir / f"tdcc_1-5_{report_date.replace('-', '')}_manifest.json"
+    try:
+        manifest_bytes = manifest_path.read_bytes()
+        if len(manifest_bytes) > 1024 * 1024:
+            raise ValueError("manifest exceeds bounded readback size")
+        saved_manifest = json.loads(manifest_bytes.decode("utf-8"))
+        if saved_manifest != manifest:
+            raise ValueError("child stdout manifest differs from the immutable saved manifest")
+        raw_path = Path(str(saved_manifest["raw_file"])).resolve(strict=True)
+        if not raw_path.name.startswith("tdcc_1-5_raw_"):
+            raise ValueError("raw artifact name is outside the TDCC reader contract")
+        if raw_path.parent != capture_dir.resolve():
+            raise ValueError("raw artifact is outside its create-only capture directory")
+        raw_bytes = raw_path.read_bytes()
+        if len(raw_bytes) > 32 * 1024 * 1024:
+            raise ValueError("raw artifact exceeds bounded readback size")
+        metadata_path = raw_path.with_name(raw_path.name + ".meta.json")
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if not isinstance(metadata, dict):
+            raise ValueError("raw sidecar metadata is not an object")
+        tier_name = str(saved_manifest["full_tier_file"])
+        expected_stem = f"tdcc_1-5_{report_date.replace('-', '')}"
+        if tier_name != f"{expected_stem}_tiers.csv":
+            raise ValueError("tier artifact name does not match the source report date")
+        tier_path = (capture_dir / tier_name).resolve(strict=True)
+        if tier_path.parent != capture_dir.resolve():
+            raise ValueError("tier artifact is outside its create-only capture directory")
+        tier_bytes = tier_path.read_bytes()
+        if len(tier_bytes) > 64 * 1024 * 1024:
+            raise ValueError("tier artifact exceeds bounded readback size")
+        aggregate_name = str(saved_manifest["aggregate_file"])
+        if aggregate_name != f"{expected_stem}_aggregate.csv":
+            raise ValueError("aggregate artifact name does not match the source report date")
+        aggregate_path = (capture_dir / aggregate_name).resolve(strict=True)
+        if aggregate_path.parent != capture_dir.resolve():
+            raise ValueError("aggregate artifact is outside its create-only capture directory")
+        if aggregate_path.stat().st_size > 64 * 1024 * 1024:
+            raise ValueError("aggregate artifact exceeds bounded readback size")
+        aggregate_bytes = aggregate_path.read_bytes()
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        return {
+            **base_result,
+            "success": False,
+            "status": "failed",
+            "reason": f"tdcc_capture_readback_failed:{type(exc).__name__}",
+            "message": f"TDCC capture readback failed: {type(exc).__name__}",
+            "error": str(exc)[:1000],
+        }
+    raw_sha = sha256(raw_bytes).hexdigest()
+    body_completed = saved_manifest.get("body_completed_at_utc")
+    request_started = saved_manifest.get("request_started_at_utc")
+    request_started_dt = _aware_utc_clock(request_started)
+    body_completed_dt = _aware_utc_clock(body_completed)
+    capture_metadata = saved_manifest.get("capture_metadata")
+    artifact_hashes = saved_manifest.get("artifact_hashes")
+    if (
+        raw_path.parent != capture_dir.resolve()
+        or not isinstance(capture_metadata, dict)
+        or not isinstance(artifact_hashes, dict)
+        or request_started_dt is None
+        or body_completed_dt is None
+        or body_completed_dt < request_started_dt
+        or body_completed_dt > datetime.now(timezone.utc)
+        or metadata.get("metadataclock_semantics") != "body_read_completed"
+        or saved_manifest.get("metadataclock_semantics") != "body_read_completed"
+        or metadata.get("capture_id") != capture_id
+        or metadata.get("scheduled_run_id") != run_id
+        or metadata.get("sha256") != raw_sha
+        or metadata.get("content_length") != len(raw_bytes)
+        or metadata.get("request_started_at_utc") != request_started
+        or metadata.get("body_completed_at_utc") != body_completed
+        or metadata.get("captured_at_utc") != body_completed
+        or saved_manifest.get("source_payload_sha256") != raw_sha
+        or capture_metadata.get("sha256") != raw_sha
+        or capture_metadata.get("content_length") != len(raw_bytes)
+        or capture_metadata.get("captured_at_utc") != body_completed
+        or capture_metadata.get("body_completed_at_utc") != body_completed
+        or capture_metadata.get("request_started_at_utc") != request_started
+        or saved_manifest.get("observed_at") != body_completed
+        or metadata.get("url") != TDCC_URL
+        or metadata.get("raw_file") != raw_path.name
+        or tier_path.resolve().parent != capture_dir.resolve()
+        or str(saved_manifest.get("aggregate_file")) != f"{expected_stem}_aggregate.csv"
+        or artifact_hashes.get(aggregate_name) != sha256(aggregate_bytes).hexdigest()
+        or artifact_hashes.get(tier_name) != sha256(tier_bytes).hexdigest()
+        or int(capture_metadata.get("http_status", 0)) != 200
+    ):
+        reason = "tdcc_capture_hash_or_clock_binding_mismatch"
+        return {**base_result, "success": False, "status": "failed", "reason": reason, "message": reason}
+    return {
+        **base_result,
+        "success": True,
+        "status": "captured",
+        "source_date": report_date,
+        "manifest_path": str(manifest_path.resolve()),
+        "manifest_sha256": sha256(manifest_bytes).hexdigest(),
+        "raw_path": str(raw_path),
+        "raw_sha256": raw_sha,
+        "raw_bytes": len(raw_bytes),
+        "body_completed_at_utc": body_completed,
+        "request_started_at_utc": request_started,
+        "publication_at": None,
+        "available_at": None,
+        "current_only": True,
+        "candidate_only": True,
+        "formal_db_written": False,
+    }
+
+
+def _candidate_tdcc_capture_ready(steps: list[dict[str, Any]]) -> bool:
+    candidate_step = next(
+        (item for item in steps if item.get("name") == "update_phase3c_candidate_sources"),
+        None,
+    )
+    if not isinstance(candidate_step, dict) or candidate_step.get("status") != "passed":
+        return False
+    result = candidate_step.get("result")
+    if not isinstance(result, Mapping) or result.get("success") is not True or result.get("skipped") is True:
+        return False
+    summary = result.get("summary")
+    if is_dataclass(summary) and not isinstance(summary, type):
+        summary = asdict(summary)
+    if not isinstance(summary, Mapping):
+        return False
+    sources = summary.get("sources")
+    if not isinstance(sources, (list, tuple)) or "tdcc" not in sources:
+        return False
+    daily_results = summary.get("daily_results")
+    if not isinstance(daily_results, (list, tuple)):
+        return False
+    return any(
+        isinstance(item, Mapping)
+        and str(item.get("source", "")).casefold() == "tdcc"
+        and str(item.get("status", "")).upper() in {"SUCCESS", "SKIPPED_ALREADY_EXISTS"}
+        for item in daily_results
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     output_root = Path(args.output_root).expanduser().resolve()
@@ -1242,6 +1510,49 @@ def main(argv: list[str] | None = None) -> int:
                     progress_callback=None,
                 ),
                 warning_only=True,
+            )
+    if run_date.weekday() == 0:
+        if _candidate_tdcc_capture_ready(steps):
+            capture_started_at = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            tdcc_capture_id = f"{capture_started_at}-quick-{run_id}-{uuid4().hex}"
+            failed = _run_step(
+                steps=steps,
+                name="capture_tdcc_current_ownership",
+                action=lambda: _run_tdcc_current_ownership_capture(
+                    output_root=config.output_root,
+                    run_id=run_id,
+                    capture_id=tdcc_capture_id,
+                ),
+                warning_only=True,
+            )
+        else:
+            candidate_step = next(
+                (
+                    item
+                    for item in steps
+                    if item.get("name") == "update_phase3c_candidate_sources"
+                ),
+                None,
+            )
+            candidate_status = (
+                str(candidate_step.get("status"))
+                if isinstance(candidate_step, dict)
+                else "not_run"
+            )
+            steps.append(
+                {
+                    "name": "capture_tdcc_current_ownership",
+                    "status": "skipped",
+                    "message": "raw TDCC capture waits for a successful same-run Phase 3C TDCC result",
+                    "result": {
+                        "success": True,
+                        "skipped": True,
+                        "reason": "phase3c_tdcc_result_not_verified",
+                        "phase3c_step_status": candidate_status,
+                        "network_requested": False,
+                        "writes_performed": False,
+                    },
+                }
             )
     if failed is None:
         status = service.check_data_overview()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import StringIO
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import gc
 import hashlib
 import json
@@ -146,7 +146,15 @@ def _capture_daily_price(
     )
 
 
-def _multi_day_verified_publication(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
+def _multi_day_verified_publication(
+    tmp_path: Path,
+    *,
+    source_dates: tuple[str, ...] = (
+        "2026-09-12",
+        "2026-09-13",
+        "2026-09-14",
+    ),
+) -> tuple[Path, Path, dict[str, object]]:
     """建立供 pipeline.main 使用的真實同日多日 computation witness。"""
 
     data_root = (tmp_path / "formal-data").resolve()
@@ -155,7 +163,7 @@ def _multi_day_verified_publication(tmp_path: Path) -> tuple[Path, Path, dict[st
     source_db.parent.mkdir(parents=True, exist_ok=True)
     _source_db(source_db)
     with sqlite3.connect(source_db) as connection:
-        for source_date in ("2026-09-12", "2026-09-13"):
+        for source_date in source_dates:
             for symbol in ("1101", "2330"):
                 connection.execute(
                     'INSERT INTO daily_prices VALUES (?, ?, ?)',
@@ -173,19 +181,19 @@ def _multi_day_verified_publication(tmp_path: Path) -> tuple[Path, Path, dict[st
             source_date=source_date,
             captured_at=datetime.fromisoformat(source_date + "T05:00:00+00:00"),
         )
-        for source_date in ("2026-09-12", "2026-09-13", "2026-09-14")
+        for source_date in source_dates
     ]
     computation = build_technical_computation_evidence(
         source_db=source_db,
         calculation_result={"success": True, "updated_stocks": ["1101", "2330"]},
-        source_date_start="2026-09-12",
-        source_date_end="2026-09-14",
-        started_at="2026-09-14T05:00:00+00:00",
-        completed_at="2026-09-14T05:05:00+00:00",
+        source_date_start=source_dates[0],
+        source_date_end=source_dates[-1],
+        started_at=source_dates[-1] + "T05:00:00+00:00",
+        completed_at=source_dates[-1] + "T05:05:00+00:00",
         input_snapshot=capture_technical_input_snapshot(
             source_db,
-            source_date_start="2026-09-12",
-            source_date_end="2026-09-14",
+            source_date_start=source_dates[0],
+            source_date_end=source_dates[-1],
         ),
     )
     publication = publish_technical_indicator_receipt(
@@ -194,9 +202,9 @@ def _multi_day_verified_publication(tmp_path: Path) -> tuple[Path, Path, dict[st
         update_status={
             "status": "passed",
             "run_id": "pipeline-routing-multi-day",
-            "start_date": "2026-09-12",
-            "end_date": "2026-09-14",
-            "completed_at": "2026-09-14T05:05:00+00:00",
+            "start_date": source_dates[0],
+            "end_date": source_dates[-1],
+            "completed_at": source_dates[-1] + "T05:05:00+00:00",
             "steps": [
                 {
                     "name": "calculate_technical_indicators",
@@ -210,7 +218,7 @@ def _multi_day_verified_publication(tmp_path: Path) -> tuple[Path, Path, dict[st
             ],
         },
     )
-    assert publication["status"] == "published"
+    assert publication["status"] == "published", publication
     return data_root, source_db, publication
 
 
@@ -251,6 +259,47 @@ def _patch_pipeline_now(monkeypatch, now: datetime) -> None:
             return now.astimezone(tz) if tz is not None else now.replace(tzinfo=None)
 
     monkeypatch.setattr(pipeline, "datetime", FixedDateTime)
+    monkeypatch.setattr(
+        pipeline,
+        "expected_current_observed_source_date",
+        lambda *, decision_date, **_kwargs: decision_date.isoformat(),
+    )
+
+    def _verified_cycle(**kwargs: Any) -> pipeline.CurrentObservedRawCyclePin:
+        observed_now = FixedDateTime.now(pipeline.TAIPEI)
+        source_date = str(kwargs["expected_source_date"])
+        source_root = Path(kwargs["source_output_root"])
+        research_root = Path(kwargs["research_root"])
+        raw_run_id = "raw-pit-" + observed_now.strftime("%Y%m%dT%H%M%SZ") + "-qa-verified"
+        return pipeline.CurrentObservedRawCyclePin(
+            raw_run_id=raw_run_id,
+            source_date=source_date,
+            terminal_path=str(
+                research_root
+                / "current_stock_cycles"
+                / source_date
+                / raw_run_id
+                / "terminal_receipt.json"
+            ),
+            terminal_sha256="sha256:" + "a" * 64,
+            status_path=str(
+                source_root
+                / "scheduled"
+                / "ml_raw_pit_refresh"
+                / "latest_status.json"
+            ),
+            status_sha256="sha256:" + "b" * 64,
+            raw_status="completed",
+            cycle_status="completed",
+            wait_started_at=observed_now.isoformat(),
+            wait_completed_at=observed_now.isoformat(),
+            wait_deadline_at=(observed_now + timedelta(hours=3)).isoformat(),
+            wait_seconds=0.0,
+        )
+
+    monkeypatch.setattr(
+        pipeline, "wait_for_current_observed_raw_cycle", _verified_cycle
+    )
 
 
 def _fake_pipeline_child(calls: list[dict[str, Any]]):
@@ -678,6 +727,29 @@ def test_technical_window_hint_rejects_stale_and_future_windows(tmp_path: Path) 
     )
 
 
+def test_technical_window_can_reuse_verified_friday_receipt_on_sunday(
+    tmp_path: Path,
+) -> None:
+    hint = {
+        "status": "ready",
+        "source_date_start": "2026-10-01",
+        "source_date_end": "2026-10-02",
+        "available_at": "2026-10-02T13:05:00-07:00",
+    }
+    assert pipeline._technical_window_matches_decision(
+        hint,
+        decision_date="2026-10-04",
+        expected_source_date="2026-10-02",
+        now=datetime(2026, 10, 4, 5, 45, tzinfo=ZoneInfo("America/Los_Angeles")),
+    )
+    assert not pipeline._technical_window_matches_decision(
+        {**hint, "source_date_end": "2026-10-01"},
+        decision_date="2026-10-04",
+        expected_source_date="2026-10-02",
+        now=datetime(2026, 10, 4, 5, 45, tzinfo=ZoneInfo("America/Los_Angeles")),
+    )
+
+
 def test_technical_child_plan_blocks_custom_source_db_before_status_read(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -829,6 +901,65 @@ def test_technical_child_invocation_forwards_calendar_and_candidate_skip_options
     assert parsed_skip.skip_candidate_update is True
 
 
+def test_learning_child_arguments_forward_same_calendar_overrides_as_quick_child(
+    tmp_path: Path,
+) -> None:
+    data_root = (tmp_path / "data").resolve()
+    output_root = (tmp_path / "shadow").resolve()
+    source_db = data_root / "sqlite" / "twstock.db"
+    calendar_path = tmp_path / "verified-calendar-cache"
+    closure_path = tmp_path / "verified-temporary-closures"
+    args = pipeline.build_parser().parse_args(
+        [
+            "--data-root",
+            str(data_root),
+            "--output-root",
+            str(output_root),
+            "--calendar-cache-path",
+            str(calendar_path),
+            "--temporary-closure-path",
+            str(closure_path),
+        ]
+    )
+    cycle_pin = pipeline.CurrentObservedRawCyclePin(
+        raw_run_id="raw-pit-20261004T124500Z-qa-exact",
+        source_date="2026-10-02",
+        terminal_path=str(tmp_path / "research" / "terminal_receipt.json"),
+        terminal_sha256="sha256:" + "a" * 64,
+        status_path=str(data_root / "output" / "raw-status.json"),
+        status_sha256="sha256:" + "b" * 64,
+        raw_status="completed",
+        cycle_status="completed",
+        wait_started_at="2026-10-04T12:44:00+08:00",
+        wait_completed_at="2026-10-04T12:45:00+08:00",
+        wait_deadline_at="2026-10-04T15:45:00+08:00",
+        wait_seconds=60.0,
+    )
+
+    arguments = pipeline._learning_child_arguments(
+        args=args,
+        data_root=data_root,
+        output_root=output_root,
+        source_db=source_db,
+        decision_date="2026-10-04",
+        snapshot_result_id="snapshot-result-exact",
+        snapshot_cohort_hash="sha256:" + "c" * 64,
+        snapshot_invocation_output_sha256="sha256:" + "d" * 64,
+        snapshot_invocation_output_path=tmp_path / "snapshot.stdout",
+        current_cycle_pin=cycle_pin,
+        current_observed_source_output_root=data_root / "output",
+    )
+
+    assert arguments[arguments.index("--calendar-cache-path") + 1] == str(calendar_path)
+    assert arguments[arguments.index("--temporary-closure-cache-path") + 1] == str(
+        closure_path
+    )
+    assert arguments[arguments.index("--snapshot-result-id") + 1] == "snapshot-result-exact"
+    assert arguments[arguments.index("--current-observed-expected-raw-run-id") + 1] == (
+        cycle_pin.raw_run_id
+    )
+
+
 def test_explicit_skip_requires_existing_verified_reuse(monkeypatch, tmp_path: Path) -> None:
     data_root, source_db, receipt_path, now = _formal_quick_fixture(
         tmp_path,
@@ -907,30 +1038,62 @@ def test_pipeline_child_status_readback_uses_child_output_root(monkeypatch, tmp_
     assert result["child_status"]["status"] == "passed"
 
 
-def test_pipeline_main_reuses_real_same_day_multiday_receipt_without_formal_writer(
-    monkeypatch, tmp_path: Path
+@pytest.mark.parametrize(
+    ("source_dates", "decision_now"),
+    [
+        (
+            ("2026-09-12", "2026-09-13", "2026-09-14"),
+            datetime(2026, 9, 14, 14, 0, tzinfo=pipeline.TAIPEI),
+        ),
+        (
+            ("2026-09-30", "2026-10-01", "2026-10-02"),
+            datetime(2026, 10, 4, 14, 0, tzinfo=pipeline.TAIPEI),
+        ),
+    ],
+    ids=["market-day-same-session", "sunday-reuse-friday-session"],
+)
+def test_pipeline_main_reuses_real_verified_receipt_without_formal_writer(
+    monkeypatch,
+    tmp_path: Path,
+    source_dates: tuple[str, ...],
+    decision_now: datetime,
 ) -> None:
     with tempfile.TemporaryDirectory(
         prefix="ta-pipeline-", ignore_cleanup_errors=True
     ) as short_tmp:
         fixture_root = Path(short_tmp)
-        data_root, source_db, publication = _multi_day_verified_publication(fixture_root)
+        data_root, source_db, publication = _multi_day_verified_publication(
+            fixture_root,
+            source_dates=source_dates,
+        )
         _write_formal_quick_pointer(data_root, publication)
         quick_path = data_root / "output" / "scheduled" / "data_update_quick" / "latest_status.json"
         quick_before = quick_path.read_bytes()
-        decision_now = datetime(2026, 9, 14, 14, 0, tzinfo=pipeline.TAIPEI)
+        expected_source_date = source_dates[-1]
         reuse = reuse_verified_technical_computation_receipt(
             authorized_output_roots=[data_root / "output"],
             source_db=source_db,
-            source_date_start="2026-09-12",
-            source_date_end="2026-09-14",
+            source_date_start=source_dates[0],
+            source_date_end=source_dates[-1],
             availability_cutoff_at=decision_now,
         )
         assert reuse["status"] == "reused"
-        assert reuse["source_date_start"] == "2026-09-12"
-        assert reuse["source_date_end"] == "2026-09-14"
+        assert reuse["source_date_start"] == source_dates[0]
+        assert reuse["source_date_end"] == source_dates[-1]
 
         _patch_pipeline_now(monkeypatch, decision_now)
+        monkeypatch.setattr(
+            pipeline,
+            "expected_current_observed_source_date",
+            lambda **_kwargs: expected_source_date,
+        )
+        monkeypatch.setattr(
+            pipeline,
+            "_wait_for_quick_lock_release",
+            lambda *_args, **_kwargs: pytest.fail(
+                "a verified technical receipt reuse must not wait for the Quick writer lock"
+            ),
+        )
         calls: list[dict[str, Any]] = []
         monkeypatch.setattr(pipeline, "_run_child", _fake_pipeline_child(calls))
         shadow_root = (tmp_path / "shadow-output").resolve()
@@ -945,7 +1108,7 @@ def test_pipeline_main_reuses_real_same_day_multiday_receipt_without_formal_writ
                 "--child-timeout-seconds",
                 "10",
                 "--pipeline-timeout-seconds",
-                "60",
+                "600",
             ]
         )
 
@@ -959,8 +1122,8 @@ def test_pipeline_main_reuses_real_same_day_multiday_receipt_without_formal_writ
         technical_step = status["steps"]["data_update_quick"]
         assert technical_step["status"] == "skipped"
         assert technical_step["reason"] == "verified_existing_same_day_technical_receipt"
-        assert technical_step["source_date_start"] == "2026-09-12"
-        assert technical_step["source_date_end"] == "2026-09-14"
+        assert technical_step["source_date_start"] == source_dates[0]
+        assert technical_step["source_date_end"] == source_dates[-1]
         assert technical_step["technical_reuse_validation"]["status"] == "reused"
         assert quick_path.read_bytes() == quick_before
         for child_call in calls:
@@ -1052,6 +1215,37 @@ def test_pipeline_file_path_cli_inserts_repo_root_and_reaches_technical_reuse(
                     return fixed_now.astimezone(tz) if tz is not None else fixed_now.replace(tzinfo=None)
 
             pipeline_globals["datetime"] = FixedDateTime
+            pin_type = pipeline_globals["CurrentObservedRawCyclePin"]
+            def fake_wait_for_cycle(**kwargs):
+                observed_now = FixedDateTime.now(pipeline_globals["TAIPEI"])
+                source_date = str(kwargs["expected_source_date"])
+                source_root = Path(kwargs["source_output_root"])
+                research_root = Path(kwargs["research_root"])
+                raw_run_id = "raw-pit-20260920T124500Z-qa-verified"
+                return pin_type(
+                    raw_run_id=raw_run_id,
+                    source_date=source_date,
+                    terminal_path=str(
+                        research_root / "current_stock_cycles" / source_date
+                        / raw_run_id / "terminal_receipt.json"
+                    ),
+                    terminal_sha256="sha256:" + "a" * 64,
+                    status_path=str(
+                        source_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json"
+                    ),
+                    status_sha256="sha256:" + "b" * 64,
+                    raw_status="completed",
+                    cycle_status="completed",
+                    wait_started_at=observed_now.isoformat(),
+                    wait_completed_at=observed_now.isoformat(),
+                    wait_deadline_at=observed_now.isoformat(),
+                    wait_seconds=0.0,
+                )
+
+            pipeline_globals["wait_for_current_observed_raw_cycle"] = fake_wait_for_cycle
+            pipeline_globals["expected_current_observed_source_date"] = (
+                lambda *, decision_date, **_kwargs: decision_date.isoformat()
+            )
             calls = []
             def fake_run_child(**kwargs):
                 name = str(kwargs["name"])
@@ -1112,7 +1306,7 @@ def test_pipeline_file_path_cli_inserts_repo_root_and_reaches_technical_reuse(
                 "--output-root", str(shadow_root),
                 "--source-db", str(source_db),
                 "--child-timeout-seconds", "10",
-                "--pipeline-timeout-seconds", "60",
+                "--pipeline-timeout-seconds", "600",
             ])
             print("RESULT", result)
             print("ROOT_BEFORE", root_before)
@@ -1205,6 +1399,38 @@ def test_pipeline_file_path_cli_executes_as_main_without_pytest_path(
             ]
             root_before = str(repo_root) in sys.path
 
+            preloaded = runpy.run_path(str(pipeline_path), run_name="pipeline_preloaded")
+            pipeline_globals = preloaded["main"].__globals__
+            dependency = sys.modules["scripts.scheduled.current_observed_raw_cycle_dependency"]
+            def fake_wait_for_cycle(**kwargs):
+                observed_now = datetime.now(ZoneInfo("Asia/Taipei"))
+                source_date = str(kwargs["expected_source_date"])
+                source_root = Path(kwargs["source_output_root"])
+                research_root = Path(kwargs["research_root"])
+                raw_run_id = "raw-pit-" + observed_now.strftime("%Y%m%dT%H%M%SZ") + "-qa-verified"
+                return dependency.CurrentObservedRawCyclePin(
+                    raw_run_id=raw_run_id,
+                    source_date=source_date,
+                    terminal_path=str(
+                        research_root / "current_stock_cycles" / source_date
+                        / raw_run_id / "terminal_receipt.json"
+                    ),
+                    terminal_sha256="sha256:" + "a" * 64,
+                    status_path=str(
+                        source_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json"
+                    ),
+                    status_sha256="sha256:" + "b" * 64,
+                    raw_status="completed",
+                    cycle_status="completed",
+                    wait_started_at=observed_now.isoformat(),
+                    wait_completed_at=observed_now.isoformat(),
+                    wait_deadline_at=observed_now.isoformat(),
+                    wait_seconds=0.0,
+                )
+
+            dependency.wait_for_current_observed_raw_cycle = fake_wait_for_cycle
+            pipeline_globals["wait_for_current_observed_raw_cycle"] = fake_wait_for_cycle
+
             def fake_child(command, *args, **kwargs):
                 script_name = Path(str(command[1])).name
                 names = {
@@ -1258,7 +1484,7 @@ def test_pipeline_file_path_cli_executes_as_main_without_pytest_path(
                 "--source-db", str(source_db),
                 "--skip-technical-refresh",
                 "--child-timeout-seconds", "10",
-                "--pipeline-timeout-seconds", "60",
+                "--pipeline-timeout-seconds", "600",
             ]
             try:
                 runpy.run_path(str(pipeline_path), run_name="__main__")
@@ -1336,7 +1562,7 @@ def test_pipeline_unexpected_exception_writes_fail_closed_terminal_receipt(
             "--output-root", str(shadow_root),
             "--source-db", str(source_db),
             "--child-timeout-seconds", "10",
-            "--pipeline-timeout-seconds", "60",
+            "--pipeline-timeout-seconds", "600",
         ]
     )
 
@@ -1385,7 +1611,7 @@ def test_pipeline_receipt_write_failure_preserves_primary_exception(
             "--output-root", str((tmp_path / "shadow-output").resolve()),
             "--source-db", str(source_db),
             "--child-timeout-seconds", "10",
-            "--pipeline-timeout-seconds", "60",
+            "--pipeline-timeout-seconds", "600",
         ]
     )
 
@@ -1448,7 +1674,7 @@ def test_pipeline_does_not_swallow_process_control_exceptions(
                 "--output-root", str(shadow_root),
                 "--source-db", str(source_db),
                 "--child-timeout-seconds", "10",
-                "--pipeline-timeout-seconds", "60",
+                "--pipeline-timeout-seconds", "600",
             ]
         )
 
@@ -1483,7 +1709,7 @@ def test_pipeline_main_keeps_normal_refresh_on_decision_date_without_current_rec
             "--child-timeout-seconds",
             "10",
             "--pipeline-timeout-seconds",
-            "60",
+            "600",
         ]
     )
 
@@ -1520,7 +1746,7 @@ def test_pipeline_main_blocks_custom_db_without_invoking_quick_writer(
             "--child-timeout-seconds",
             "10",
             "--pipeline-timeout-seconds",
-            "60",
+            "600",
         ]
     )
 

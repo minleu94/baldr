@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 from app_module.decision_desk_dtos import DecisionDeskQuality, PortfolioAlertAttribution, PortfolioAlertSummary
+from app_module.portfolio_condition_monitor import PortfolioCurrentSnapshot
 
 
 class PortfolioPositionProvider(Protocol):
@@ -98,7 +99,11 @@ class PortfolioAlertService:
                 population_status="no_positions",
             )
 
-        attribution_items, hard_failures = self._collect_alerts(positions, warnings_for_quality)
+        attribution_items, hard_failures = self._collect_alerts(
+            positions,
+            warnings_for_quality,
+            as_of_date,
+        )
         alert_items = [item for item in attribution_items if item.severity > 0]
         source_summary = self._build_source_summary(alert_items)
         if source_summary:
@@ -164,6 +169,7 @@ class PortfolioAlertService:
         self,
         positions: Iterable[Any],
         warnings: list[str],
+        as_of_date: date,
     ) -> tuple[list[_AlertItem], int]:
         items: list[_AlertItem] = []
         hard_failures = 0
@@ -180,7 +186,45 @@ class PortfolioAlertService:
                 and field in source["required_human_fields"])
 
             try:
-                condition_result = self.condition_monitor.evaluate(position)
+                observation_reader = getattr(
+                    self.portfolio_service, "get_current_price_observation", None
+                )
+                observation = (
+                    observation_reader(stock_code)
+                    if callable(observation_reader)
+                    else None
+                )
+                quote_data_date = getattr(observation, "data_date", None)
+                quote_freshness_status = str(
+                    getattr(observation, "freshness_status", "unverified") or "unverified"
+                )
+                if (
+                    isinstance(quote_data_date, date)
+                    and not isinstance(quote_data_date, datetime)
+                    and quote_data_date > as_of_date
+                ):
+                    # 保留實際觀測供追溯；晚於指定截日的行情不能判定歷史持倉假設。
+                    quote_freshness_status = "unverified"
+                    warnings.append(
+                        f"持倉健康／風險提醒：{stock_code} 行情資料日 "
+                        f"{quote_data_date.isoformat()} 晚於截日 {as_of_date.isoformat()}；"
+                        "價格僅供損益觀察，不觸發停損／停利，且不具歷史 PIT 資格。"
+                    )
+                current_snapshot = (
+                    PortfolioCurrentSnapshot(
+                        current_price=getattr(observation, "price", None),
+                        quote_data_date=quote_data_date,
+                        quote_source_id=str(getattr(observation, "source_id", "") or ""),
+                        quote_source_snapshot_hash=str(
+                            getattr(observation, "source_snapshot_hash", "") or ""
+                        ),
+                        quote_freshness_status=quote_freshness_status,
+                        quote_expected_date=getattr(observation, "expected_date", None),
+                    )
+                    if observation is not None
+                    else None
+                )
+                condition_result = self.condition_monitor.evaluate(position, current_snapshot)
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"portfolio_alerts_condition_monitor_error:{stock_code}:{exc}")
                 hard_failures += 1

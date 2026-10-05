@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -18,12 +19,21 @@ import pytest
 
 from app_module.recommendation import execute as execute_module
 from app_module.recommendation.execute import (
+    _current_fundamental_lineage_event,
     _safe_contract_value,
     execute_recommendation,
 )
+from app_module.recommendation.codec import decode_execution, encode_execution
 from app_module.recommendation.contracts import ExecutionStatus
 from app_module.recommendation_service import RecommendationService
+from app_module.recommendation.input_preparation import RecommendationInputSession
+from data_module.recommendation_current_fundamental_provider import (
+    CurrentMonthlyRevenueReadResult,
+    CurrentObservedMonthlyRevenueInput,
+    CurrentObservedPEInput,
+)
 from recommendation_test_support import build_recommendation_test_preparer
+from decision_module.recommendation.evaluate import RecommendationEvaluator
 
 
 class _FrameProvider:
@@ -70,6 +80,7 @@ def _service(
     *,
     errors: dict[str, Exception] | None = None,
     provider: object | None = None,
+    output_root: Path | None = None,
 ) -> RecommendationService:
     frame = (
         pd.concat([_market_frame(code) for code in codes], ignore_index=True)
@@ -78,11 +89,14 @@ def _service(
             columns=["日期", "available_date", "證券代號", "證券名稱", "收盤價", "成交股數"]
         )
     )
-    config = SimpleNamespace(
+    config_values: dict[str, object] = dict(
         db_file=tmp_path / "missing-fundamentals.db",
         use_sqlite=False,
         pit_market_scope="twse_listed",
     )
+    if output_root is not None:
+        config_values["output_root"] = output_root
+    config = SimpleNamespace(**config_values)
     market_data_provider = provider or _FrameProvider(frame)
     service = RecommendationService(
         config,
@@ -227,6 +241,828 @@ def test_execute_never_calls_public_facade_and_freezes_nested_capture(
     assert execution.events[1].details["screening_matrix"][1]["reason_codes"][0] == old_matrix_reason
     with pytest.raises(TypeError):
         execution.events[1].details["screening_matrix"][1]["status"] = "changed"
+
+
+def test_explicit_config_cutoff_does_not_enter_natural_current_fundamental_scope(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path, ("AAA",), {"AAA": Decimal("88.5")})
+    capture: dict[str, Any] = {}
+
+    execution = execute_recommendation(
+        service,
+        _config("2026-05-20"),
+        top_n=1,
+        result_id="r011-explicit-config-pit",
+        capture_sink=capture,
+    )
+
+    assert execution.status is ExecutionStatus.COMPLETED
+    context = capture["compatibility_snapshot"].materialize()["last_run_context"]
+    assert context["fundamental_input_scope"] == "formal_pit"
+    assert context["current_observation_cutoff_at"] is None
+    assert context["fundamental_input_requests"] == []
+    assert not any(
+        event.event_type == "current_fundamental_lineage"
+        for event in execution.events
+    )
+
+
+def test_verified_current_delisting_excludes_before_history_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.test_recommendation_current_market_status_preflight import (
+        write_4130_pointer_fixture,
+    )
+
+    source_root = tmp_path / "official-status"
+    now = datetime.now(timezone.utc)
+    write_4130_pointer_fixture(
+        source_root,
+        captured_at=now - timedelta(seconds=3),
+        snapshot_observed_at=now - timedelta(seconds=1),
+    )
+    service = _service(
+        tmp_path,
+        ("4130",),
+        {"4130": Decimal("88.5")},
+        output_root=source_root,
+    )
+    config = _config()
+    config["as_of_date"] = None
+    history_preflight_calls: list[str] = []
+    original_preflight = RecommendationEvaluator.preflight_history
+
+    def observe_preflight(facts: Any) -> Any:
+        history_preflight_calls.append(facts.stock_code)
+        return original_preflight(facts)
+
+    monkeypatch.setattr(
+        RecommendationEvaluator,
+        "preflight_history",
+        staticmethod(observe_preflight),
+    )
+    capture: dict[str, Any] = {}
+
+    execution = execute_recommendation(
+        service,
+        config,
+        top_n=1,
+        result_id="current-status-4130-before-history",
+        capture_sink=capture,
+    )
+
+    assert execution.status is ExecutionStatus.COMPLETED
+    assert history_preflight_calls == []
+    assert execution.decision.items == ()
+    assert len(execution.decision.assessments) == 1
+    assessment = execution.decision.assessments[0]
+    assert assessment.stock_code == "4130"
+    assert assessment.eligible is False
+    gate = assessment.filter_outcomes["current_market_status_gate"]
+    assert gate.passed is False
+    assert gate.reason == "official_delisted"
+    assert gate.evidence["scope"] == "current_only"
+    assert gate.evidence["pit_eligible"] is False
+    assert gate.evidence["symbol"] == "4130"
+    legacy = capture["compatibility_snapshot"].materialize()
+    matrix_row = legacy["last_screening_matrix"][0]
+    assert matrix_row["status"] == "fail"
+    assert matrix_row["quality"] == "observed"
+    assert matrix_row["stage"] == "current_market_status_gate"
+    assert matrix_row["reason_codes"] == ["official_delisted"]
+    assert matrix_row["warnings"] == []
+
+
+def test_unknown_current_market_status_is_diagnostic_only_and_historical_skips_reader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    natural_service = _service(
+        tmp_path / "natural",
+        ("AAA",),
+        {"AAA": Decimal("88.5")},
+    )
+    natural_config = _config()
+    natural_config["as_of_date"] = None
+    natural_capture: dict[str, Any] = {}
+    natural_execution = execute_recommendation(
+        natural_service,
+        natural_config,
+        top_n=1,
+        result_id="current-status-unavailable-natural",
+        capture_sink=natural_capture,
+    )
+    assert natural_execution.status is ExecutionStatus.COMPLETED
+    assert natural_execution.quality.status.value == "unknown"
+    assert [item.stock_code for item in natural_execution.decision.items] == ["AAA"]
+    natural_context = natural_capture["compatibility_snapshot"].materialize()[
+        "last_run_context"
+    ]
+    diagnostics = natural_context["current_market_status_preflight_diagnostics"]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].startswith(
+        "current_market_status_preflight_unavailable:AAA:"
+    )
+    assert not any(
+        "current_market_status_preflight_unavailable" in warning
+        for warning in natural_execution.quality.warnings
+    )
+    diagnostic_event = next(
+        event
+        for event in natural_execution.events
+        if event.event_type == "legacy_invocation_context"
+    )
+    assert tuple(
+        diagnostic_event.details["current_market_status_preflight_diagnostics"]
+    ) == tuple(diagnostics)
+    reopened_natural = decode_execution(encode_execution(natural_execution))
+    reopened_diagnostic_event = next(
+        event
+        for event in reopened_natural.events
+        if event.event_type == "legacy_invocation_context"
+    )
+    assert reopened_diagnostic_event.details[
+        "current_market_status_preflight_diagnostics"
+    ] == diagnostic_event.details["current_market_status_preflight_diagnostics"]
+
+    calls: list[str] = []
+
+    def forbidden_historical_reader(
+        _self: RecommendationInputSession,
+        stock_code: str,
+        *,
+        cutoff_at: datetime,
+        decision_date: date,
+    ) -> Any:
+        calls.append(stock_code)
+        raise AssertionError("historical recommendation called current-only status")
+
+    monkeypatch.setattr(
+        RecommendationInputSession,
+        "get_current_market_status",
+        forbidden_historical_reader,
+    )
+    historical_service = _service(
+        tmp_path / "historical",
+        ("AAA",),
+        {"AAA": Decimal("88.5")},
+    )
+    historical_capture: dict[str, Any] = {}
+    historical_execution = execute_recommendation(
+        historical_service,
+        _config("2026-05-20"),
+        top_n=1,
+        result_id="current-status-not-called-historically",
+        capture_sink=historical_capture,
+    )
+    assert historical_execution.status is ExecutionStatus.COMPLETED
+    assert calls == []
+    historical_context = historical_capture["compatibility_snapshot"].materialize()[
+        "last_run_context"
+    ]
+    assert historical_context["current_market_status_preflight_diagnostics"] == []
+
+    latest_service = _service(
+        tmp_path / "select-latest",
+        ("AAA",),
+        {"AAA": Decimal("88.5")},
+    )
+    latest_config = _config()
+    latest_config["as_of_date"] = None
+    latest_execution = execute_recommendation(
+        latest_service,
+        latest_config,
+        top_n=1,
+        result_id="current-status-not-called-select-latest",
+        select_latest_available_cutoff=True,
+        capture_sink={},
+    )
+    assert latest_execution.status is ExecutionStatus.COMPLETED
+    assert calls == []
+
+
+def test_failed_natural_body_keeps_original_error_without_lineage_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path, ("AAA",), {"AAA": Decimal("88.5")})
+
+    def fail_before_publishing_body(_self: RecommendationService) -> None:
+        raise RuntimeError("body failed before typed result publication")
+
+    monkeypatch.setattr(
+        RecommendationService,
+        "_record_current_industry_mapping_use",
+        lambda _self, _usage: None,
+    )
+    monkeypatch.setattr(
+        RecommendationService,
+        "_finalize_current_industry_mapping_snapshot",
+        fail_before_publishing_body,
+    )
+    config = _config()
+    config["as_of_date"] = None
+    capture: dict[str, Any] = {}
+
+    execution = execute_recommendation(
+        service,
+        config,
+        top_n=1,
+        result_id="r011-natural-body-failure",
+        capture_sink=capture,
+    )
+
+    assert execution.status is ExecutionStatus.FAILED
+    assert execution.failure_reason == (
+        "RuntimeError: body failed before typed result publication"
+    )
+    context = capture["compatibility_snapshot"].materialize()["last_run_context"]
+    assert context["fundamental_input_scope"] == "natural_current_observation"
+    assert any(
+        event.event_type == "legacy_invocation_context"
+        for event in execution.events
+    )
+    error_event = next(
+        event
+        for event in execution.events
+        if event.event_type == "recommendation_execution_error"
+    )
+    assert error_event.details["exception_type"] == "RuntimeError"
+    assert "body failed before typed result publication" in error_event.message
+    assert not any(
+        event.event_type == "current_fundamental_lineage"
+        for event in execution.events
+    )
+
+
+def test_blocked_current_yoy_baseline_cannot_fall_back_to_formal_pit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path, ("2330",), {"2330": Decimal("88.5")})
+
+    class _BlockedBaselineProvider:
+        def load_monthly_revenues(
+            self,
+            *,
+            stock_code: str,
+            cutoff_at: datetime,
+        ) -> CurrentMonthlyRevenueReadResult:
+            observed_at = cutoff_at - timedelta(seconds=1)
+            current = CurrentObservedMonthlyRevenueInput(
+                stock_code=stock_code,
+                period="2026-04",
+                revenue=Decimal("150000"),
+                observed_at=observed_at,
+                source_available_at=None,
+                available_at=observed_at,
+                source="mops.monthly_revenue_static_snapshot",
+                source_version=(
+                    "mops-current-revenue-normalizer.v2:twse:2026-04:raw:"
+                    "mops-static-twse-2026-04-sha256-" + "a" * 64
+                    + ":derived:sha256:" + "b" * 64
+                ),
+                market="twse",
+                raw_source_version="mops-static-twse-2026-04-sha256-" + "a" * 64,
+                raw_source_sha256="a" * 64,
+            )
+            return CurrentMonthlyRevenueReadResult(
+                status="ready",
+                stock_code=stock_code,
+                cutoff_at=cutoff_at,
+                latest_period="2026-04",
+                observations=(current,),
+                diagnostics=(
+                    "current_monthly_revenue_unverified_revision_blocks_period:2025-04",
+                ),
+                blocked_periods=("2025-04",),
+            )
+
+    service.recommendation_input_preparer.current_fundamental_provider = (
+        _BlockedBaselineProvider()
+    )
+
+    def reject_formal_fallback(*_args: Any, **_kwargs: Any):
+        raise AssertionError("a blocked current baseline must not use a formal PIT fallback")
+
+    monkeypatch.setattr(
+        RecommendationService,
+        "_load_governed_monthly_revenues",
+        reject_formal_fallback,
+    )
+    config = _config()
+    config["as_of_date"] = None
+    config["filters"] = {"monthly_revenue_yoy_min": "10"}
+    capture: dict[str, Any] = {}
+
+    execution = execute_recommendation(
+        service,
+        config,
+        top_n=1,
+        result_id="r011-blocked-yoy-baseline",
+        capture_sink=capture,
+    )
+
+    assert execution.status is ExecutionStatus.COMPLETED
+    context = capture["compatibility_snapshot"].materialize()["last_run_context"]
+    assert context["fundamental_input_scope"] == "natural_current_observation"
+    assert "current_monthly_revenue_exact_prior_year_baseline_blocked:2330:2025-04" in (
+        context["fundamental_input_diagnostics"]
+    )
+    assert any(
+        "fundamental_revenue_yoy_missing" in row.reasons
+        for row in execution.assessments
+    )
+    assert [
+        item["period"]
+        for item in context["current_fundamental_observations"]
+        if item.get("metric") == "monthly_revenue"
+    ] == ["2026-04"]
+    lineage_event = next(
+        event
+        for event in execution.events
+        if event.event_type == "current_fundamental_lineage"
+    )
+    assert lineage_event.details["schema_version"] == (
+        "recommendation-current-fundamental-lineage.v1"
+    )
+    assert lineage_event.details["result_id"] == execution.result_id
+    assert lineage_event.details["scope"] == "natural_current_observation"
+    assert lineage_event.details["current_observation_cutoff_at"]
+    assert len(lineage_event.details["requests"]) == 1
+    assert lineage_event.details["facts"][0]["period"] == "2026-04"
+    assert any(
+        "current_monthly_revenue_exact_prior_year_baseline_blocked" in item
+        for item in lineage_event.details["diagnostics"]
+    )
+    reopened = decode_execution(encode_execution(execution))
+    assert reopened == execution
+    reopened_event = next(
+        event
+        for event in reopened.events
+        if event.event_type == "current_fundamental_lineage"
+    )
+    assert reopened_event.details == lineage_event.details
+
+
+def test_current_fundamental_lineage_event_is_same_run_and_codec_persistent(
+    tmp_path: Path,
+) -> None:
+    service = _service(
+        tmp_path,
+        ("AAA", "BBB"),
+        {"AAA": Decimal("88.5"), "BBB": Decimal("77.5")},
+    )
+
+    class _CurrentProvider:
+        future_stock_code: str | None = None
+        diagnostics: tuple[str, ...] = ()
+        source_row_count = 0
+        comparator_row_count = 0
+
+        def load_pe(
+            self,
+            *,
+            stock_code: str,
+            cutoff_at: datetime,
+            expected_market_date: date | str,
+        ) -> tuple[CurrentObservedPEInput, tuple[str, ...]]:
+            quote_date = (
+                expected_market_date
+                if isinstance(expected_market_date, date)
+                else date.fromisoformat(expected_market_date)
+            )
+            return (
+                CurrentObservedPEInput(
+                    stock_code=stock_code,
+                    value=Decimal("10") if stock_code == "AAA" else Decimal("20"),
+                    as_of_date=quote_date,
+                    available_at=cutoff_at - timedelta(milliseconds=100),
+                    source="official.valuation.capture",
+                    source_version=f"official-pe-v1:{stock_code}",
+                    market="twse",
+                    raw_response_sha256=("a" if stock_code == "AAA" else "b") * 64,
+                    market_calendar_session_date=quote_date,
+                    market_calendar_reason_code="last_completed_official_session",
+                ),
+                (),
+            )
+
+        def load_monthly_revenues(
+            self, *, stock_code: str, cutoff_at: datetime
+        ) -> CurrentMonthlyRevenueReadResult:
+            raw_hash = ("c" if stock_code == "AAA" else "d") * 64
+            raw_source_version = (
+                "mops-static-twse-2026-04-sha256-" + raw_hash
+            )
+            source = "mops.monthly_revenue_static_snapshot"
+            current_value = Decimal("100000") if stock_code == "AAA" else Decimal("400000")
+            baseline_value = Decimal("90000") if stock_code == "AAA" else Decimal("200000")
+            current_clock = (
+                cutoff_at + timedelta(seconds=1)
+                if stock_code == self.future_stock_code
+                else cutoff_at - timedelta(seconds=2)
+            )
+            comparator_clock = cutoff_at - timedelta(seconds=5)
+            current = CurrentObservedMonthlyRevenueInput(
+                stock_code=stock_code,
+                period="2026-04",
+                revenue=current_value,
+                observed_at=current_clock,
+                source_available_at=None,
+                available_at=current_clock,
+                source=source,
+                source_version=(
+                    "mops-current-revenue-normalizer.v2:twse:2026-04:raw:"
+                    + raw_source_version
+                    + ":derived:sha256:"
+                    + "e" * 64
+                ),
+                market="twse",
+                raw_source_version=raw_source_version,
+                raw_source_sha256=raw_hash,
+            )
+            comparator = CurrentObservedMonthlyRevenueInput(
+                stock_code=stock_code,
+                period="2025-04",
+                revenue=baseline_value,
+                observed_at=comparator_clock,
+                source_available_at=None,
+                available_at=comparator_clock,
+                source=source,
+                source_version=(
+                    "mops-current-revenue-yoy-comparator.v1:twse:2025-04:from:2026-04:raw:"
+                    + raw_source_version
+                    + ":derived:sha256:"
+                    + "f" * 64
+                ),
+                market="twse",
+                raw_source_version=raw_source_version,
+                raw_source_sha256=raw_hash,
+                input_role="same_report_prior_year_comparison_baseline",
+                parent_report_period="2026-04",
+            )
+            return CurrentMonthlyRevenueReadResult(
+                status="ready",
+                stock_code=stock_code,
+                cutoff_at=cutoff_at,
+                latest_period="2026-04",
+                observations=(current,),
+                diagnostics=self.diagnostics,
+                comparison_baseline=comparator,
+                diagnostic_source_row_count=self.source_row_count,
+                diagnostic_comparator_row_count=self.comparator_row_count,
+            )
+
+    current_provider = _CurrentProvider()
+    service.recommendation_input_preparer.current_fundamental_provider = current_provider
+    config = _config()
+    config["as_of_date"] = None
+    config["filters"] = {
+        "pe_ratio_max": "30",
+        "monthly_revenue_yoy_min": "10",
+    }
+
+    def run(code: str):
+        capture: dict[str, Any] = {}
+        execution = execute_recommendation(
+            service,
+            config,
+            max_stocks=1,
+            top_n=1,
+            universe=[code],
+            result_id=f"current-lineage-{code}",
+            capture_sink=capture,
+        )
+        assert execution.status is ExecutionStatus.COMPLETED
+        event = next(
+            item
+            for item in execution.events
+            if item.event_type == "current_fundamental_lineage"
+        )
+        return execution, capture, event
+
+    execution_a, capture_a, event_a = run("AAA")
+    encoded_a = encode_execution(execution_a)
+    reopened_a = decode_execution(encoded_a)
+    reopened_event_a = next(
+        item
+        for item in reopened_a.events
+        if item.event_type == "current_fundamental_lineage"
+    )
+    assert reopened_event_a.details == event_a.details
+    assert event_a.details["result_id"] == "current-lineage-AAA"
+    assert event_a.details["invocation_id"]
+    assert event_a.details["source_id"]
+    assert len(event_a.details["market_data_fingerprint"]) == 64
+    assert len(event_a.details["data_fingerprint"]) == 64
+    assert {fact["stock_code"] for fact in event_a.details["facts"]} == {"AAA"}
+    assert {fact["metric"] for fact in event_a.details["facts"]} == {
+        "pe",
+        "monthly_revenue",
+    }
+    monthly_facts_a = [
+        fact
+        for fact in event_a.details["facts"]
+        if fact["metric"] == "monthly_revenue"
+    ]
+    assert {fact["input_role"] for fact in monthly_facts_a} == {
+        "reported_period_value",
+        "same_report_prior_year_comparison_baseline",
+    }
+    assert all(fact["unit"] == "TWD" for fact in monthly_facts_a)
+    assert all(
+        fact["source_version_content_sha256"]
+        == fact["raw_source_version"].rsplit("-sha256-", 1)[-1]
+        for fact in monthly_facts_a
+    )
+    assert all(
+        fact["verified_response_body_bytes_sha256"] is None
+        and fact["response_body_bytes_hash_status"]
+        == "not_persisted_on_current_observation_row"
+        and "raw_source_sha256" not in fact
+        for fact in monthly_facts_a
+    )
+    assert all(fact["formal_pit_eligible"] is False for fact in event_a.details["facts"])
+    assert event_a.details["facts"]
+    assert event_a.details["requests"]
+
+    _, capture_b, event_b = run("BBB")
+    assert capture_a["compatibility_snapshot"].materialize()["last_run_context"][
+        "result_id"
+    ] == "current-lineage-AAA"
+    assert capture_b["compatibility_snapshot"].materialize()["last_run_context"][
+        "result_id"
+    ] == "current-lineage-BBB"
+    assert encode_execution(reopened_a) == encoded_a
+    assert {fact["stock_code"] for fact in event_b.details["facts"]} == {"BBB"}
+    assert all(fact["stock_code"] == "AAA" for fact in event_a.details["facts"])
+
+    current_provider.future_stock_code = "AAA"
+    with pytest.raises(ValueError, match="after freeze"):
+        run("AAA")
+
+    current_provider.future_stock_code = None
+    current_provider.diagnostics = tuple(f"source_warning:{index}" for index in range(9))
+    current_provider.source_row_count = 5
+    current_provider.comparator_row_count = 1
+    diagnostic_execution, _diagnostic_capture, diagnostic_event = run("AAA")
+    assert diagnostic_execution.status is ExecutionStatus.COMPLETED
+    assert diagnostic_event.details["diagnostics"] == current_provider.diagnostics
+    assert diagnostic_event.details["diagnostic_source_row_count"] == 5
+    assert diagnostic_event.details["diagnostic_comparator_row_count"] == 1
+
+    current_provider.diagnostics = tuple(f"source_warning:{index}" for index in range(21))
+    failed_capture: dict[str, Any] = {}
+    with pytest.raises(ValueError, match="fundamental_input_diagnostics is malformed or unbounded"):
+        execute_recommendation(
+            service,
+            config,
+            max_stocks=1,
+            top_n=1,
+            universe=["AAA"],
+            result_id="current-lineage-diagnostics-rejected",
+            capture_sink=failed_capture,
+        )
+    failed_context = failed_capture["compatibility_snapshot"].materialize()[
+        "last_run_context"
+    ]
+    assert failed_context["fundamental_input_diagnostics"] == list(
+        current_provider.diagnostics
+    )
+    assert "execution" not in failed_capture
+
+
+def test_current_pe_requires_each_stock_quote_on_expected_market_session(
+    tmp_path: Path,
+) -> None:
+    frame = pd.concat(
+        [
+            _market_frame("FRESH"),
+            _market_frame("STALE", start=date(2026, 4, 30)),
+        ],
+        ignore_index=True,
+    )
+    provider = _FrameProvider(frame)
+    service = _service(
+        tmp_path,
+        ("FRESH", "STALE"),
+        {"FRESH": Decimal("88.5"), "STALE": Decimal("77.5")},
+        provider=provider,
+    )
+
+    class _CurrentPEProvider:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def load_pe(
+            self,
+            *,
+            stock_code: str,
+            cutoff_at: datetime,
+            expected_market_date: date | str,
+        ) -> tuple[CurrentObservedPEInput, tuple[str, ...]]:
+            self.calls.append(stock_code)
+            quote_date = (
+                expected_market_date
+                if isinstance(expected_market_date, date)
+                else date.fromisoformat(expected_market_date)
+            )
+            return (
+                CurrentObservedPEInput(
+                    stock_code=stock_code,
+                    value=Decimal("12.5"),
+                    as_of_date=quote_date,
+                    available_at=cutoff_at - timedelta(seconds=1),
+                    source="official.valuation.capture",
+                    source_version=f"official-pe-v1:{stock_code}",
+                    market="twse",
+                    raw_response_sha256="a" * 64,
+                    market_calendar_session_date=quote_date,
+                    market_calendar_reason_code="last_completed_official_session",
+                ),
+                (),
+            )
+
+    current_provider = _CurrentPEProvider()
+    service.recommendation_input_preparer.current_fundamental_provider = (
+        current_provider
+    )
+    config = _config()
+    config["as_of_date"] = None
+    config["filters"] = {"pe_ratio_max": "30"}
+    capture: dict[str, Any] = {}
+
+    execution = execute_recommendation(
+        service,
+        config,
+        max_stocks=2,
+        top_n=2,
+        universe=["FRESH", "STALE"],
+        result_id="current-pe-per-stock-session-gate",
+        capture_sink=capture,
+    )
+
+    assert execution.status is ExecutionStatus.COMPLETED
+    assert current_provider.calls == ["FRESH"]
+    context = capture["compatibility_snapshot"].materialize()["last_run_context"]
+    assert context["expected_market_date"] == "2026-05-20"
+    assert context["fundamental_inputs"]
+    assert {
+        item["stock_code"]
+        for item in context["fundamental_inputs"]
+        if item["metric"] == "pe"
+    } == {"FRESH"}
+    assert (
+        "current_pe_stock_quote_date_not_expected_session:STALE:"
+        "expected=2026-05-20:observed=2026-05-19"
+    ) in context["fundamental_input_diagnostics"]
+
+
+def test_current_fundamental_lineage_bounds_follow_large_universe_and_roundtrip(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path, ("AAA",), {"AAA": Decimal("88.5")})
+    capture: dict[str, Any] = {}
+    config = _config()
+    config["as_of_date"] = None
+    execution = execute_recommendation(
+        service,
+        config,
+        max_stocks=1,
+        top_n=1,
+        universe=["AAA"],
+        result_id="lineage-large-shape-seed",
+        capture_sink=capture,
+    )
+    legacy_context = deepcopy(
+        capture["compatibility_snapshot"].materialize()["last_run_context"]
+    )
+    cutoff = datetime.fromisoformat(
+        legacy_context["current_observation_cutoff_at"]
+    )
+    observation_at = cutoff - timedelta(seconds=1)
+    requests: list[dict[str, object]] = []
+    projected_facts: list[dict[str, object]] = []
+    captured_observations: list[dict[str, object]] = []
+    diagnostics: list[str] = []
+    universe_size = 501
+    for index in range(universe_size):
+        code = f"{index:04d}"
+        raw_hash = f"{index + 1:064x}"
+        raw_source_version = (
+            f"mops-static-twse-2026-04-sha256-{raw_hash}"
+        )
+        requests.extend(
+            (
+                {
+                    "request_id": f"pe:{code}",
+                    "stock_code": code,
+                    "metric": "pe",
+                    "scope": "natural_current_observation",
+                    "decision_date": "2026-04-30",
+                    "current_observation_cutoff_at": cutoff.isoformat(),
+                },
+                {
+                    "request_id": f"monthly:{code}",
+                    "stock_code": code,
+                    "metric": "monthly_revenue",
+                    "scope": "natural_current_observation",
+                    "decision_date": "2026-04-30",
+                    "current_observation_cutoff_at": cutoff.isoformat(),
+                },
+            )
+        )
+        projected_facts.append(
+            {
+                "stock_code": code,
+                "metric": "pe",
+                "scope": "natural_current_observation",
+                "value": "12.5",
+                "as_of_date": "2026-04-30",
+                "expected_market_date": "2026-04-30",
+                "available_at": observation_at.isoformat(),
+                "observed_at": observation_at.isoformat(),
+                "source_available_at": None,
+                "source": "official.valuation.capture",
+                "source_version": f"valuation:{code}:v1",
+                "raw_response_sha256": "a" * 64,
+                "market": "twse",
+                "formal_pit_eligible": False,
+            }
+        )
+        current_version = (
+            "mops-current-revenue-normalizer.v2:twse:2026-04:raw:"
+            + raw_source_version
+            + ":derived:sha256:"
+            + "b" * 64
+        )
+        comparator_version = (
+            "mops-current-revenue-yoy-comparator.v1:twse:2025-04:from:2026-04:raw:"
+            + raw_source_version
+            + ":derived:sha256:"
+            + "c" * 64
+        )
+        common_monthly = {
+            "stock_code": code,
+            "metric": "monthly_revenue",
+            "scope": "natural_current_observation",
+            "unit": "TWD",
+            "period_basis": "monthly_flow",
+            "basis_verified": True,
+            "aggregate_feature_eligible": False,
+            "observed_at": observation_at.isoformat(),
+            "source_available_at": None,
+            "available_at": observation_at.isoformat(),
+            "availability_basis": "local_verified_observation",
+            "source": "mops.monthly_revenue_static_snapshot",
+            "raw_source_sha256": raw_hash,
+            "market": "twse",
+            "formal_pit_eligible": False,
+        }
+        captured_observations.extend(
+            (
+                {
+                    **common_monthly,
+                    "input_role": "reported_period_value",
+                    "parent_report_period": "2026-04",
+                    "period": "2026-04",
+                    "source_version": current_version,
+                    "value": "1000000",
+                },
+                {
+                    **common_monthly,
+                    "input_role": "same_report_prior_year_comparison_baseline",
+                    "parent_report_period": "2026-04",
+                    "period": "2025-04",
+                    "source_version": comparator_version,
+                    "value": "900000",
+                },
+            )
+        )
+        diagnostics.append(f"{code}:current_source_observed")
+
+    legacy_context["fundamental_input_requests"] = requests
+    legacy_context["fundamental_inputs"] = projected_facts
+    legacy_context["current_fundamental_observations"] = captured_observations
+    legacy_context["fundamental_input_diagnostics"] = diagnostics
+    event = _current_fundamental_lineage_event(
+        legacy_context,
+        result_id=execution.result_id,
+        invocation_id="large-universe-lineage-invocation",
+        decision_at=execution.context.decision_at,
+        max_stocks=universe_size,
+    )
+
+    assert event is not None
+    assert len(event.details["requests"]) == 2 * universe_size
+    assert len(event.details["facts"]) == 3 * universe_size
+    assert len(event.details["diagnostics"]) == universe_size
+    large_execution = replace(execution, events=(event,))
+    reopened = decode_execution(encode_execution(large_execution))
+    assert reopened == large_execution
 
 
 def test_contract_evidence_fails_closed_for_unknowns_keys_and_nonfinite_numbers() -> None:
@@ -509,6 +1345,7 @@ def test_verified_receipt_binding_survives_post_write_identity_race_without_a_b_
         _verified_candidate,
     )
     import app_module.recommendation_service as service_module
+    import app_module.recommendation.execute as execute_module
 
     registry = CORE_LONG_HISTORY_FEATURE_REGISTRY
     candidate_day = "2026-06-01"
@@ -589,10 +1426,15 @@ def test_verified_receipt_binding_survives_post_write_identity_race_without_a_b_
     class _FrozenRecommendationDatetime(datetime):
         @classmethod
         def now(cls, tz=None):  # type: ignore[no-untyped-def]
-            current = datetime(2026, 8, 3, 16, 50, tzinfo=timezone.utc)
+            current = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
             return current.astimezone(tz) if tz is not None else current.replace(tzinfo=None)
 
     monkeypatch.setattr(service_module, "datetime", _FrozenRecommendationDatetime)
+    monkeypatch.setattr(
+        execute_module,
+        "_utc_now",
+        lambda: datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc),
+    )
     original_writer = service_module.persist_inference_projection_receipt
     write_complete = False
 

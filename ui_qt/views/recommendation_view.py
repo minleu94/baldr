@@ -45,6 +45,11 @@ from app_module.recommendation.contracts import (
     RecommendationExecution,
     SaveReceipt,
 )
+from app_module.recommendation.negative_evidence_projection import (
+    LEGACY_NEGATIVE_EVIDENCE_EVENT_TYPE,
+    NegativeEvidenceProjectionError,
+    project_canonical_negative_evidence,
+)
 from app_module.recommendation.queries import RecommendationExecutionReadModel
 from decision_module.recommendation.contracts import RecommendationItem
 from app_module.recommendation_profile_service import (
@@ -78,6 +83,86 @@ from ui_qt.views.recommendation.presenter import (
     ranking_value_label,
     recommendation_item_to_view_row,
 )
+
+
+_SCREENING_STAGE_DISPLAY_LABELS = {
+    "current_market_status_gate": "官方市場狀態",
+}
+_SCREENING_REASON_DISPLAY_LABELS = {
+    "official_delisted": "已核驗下市／終止",
+}
+
+
+def _screening_code_display(value: str, labels: Mapping[str, str]) -> str:
+    label = labels.get(value)
+    return f"{label}（{value}）" if label else value
+
+
+def _screening_only_result_rows(
+    execution: RecommendationExecution | None,
+) -> list[dict[str, Any]]:
+    """只顯示同次 completed execution 封存且可由 typed evidence 重建的篩選列。"""
+
+    if (
+        type(execution) is not RecommendationExecution
+        or execution.status is not ExecutionStatus.COMPLETED
+        or execution.decision is None
+        or execution.items
+    ):
+        return []
+    events = [
+        event
+        for event in execution.events
+        if event.event_type == LEGACY_NEGATIVE_EVIDENCE_EVENT_TYPE
+    ]
+    if len(events) != 1:
+        return []
+    try:
+        projection = project_canonical_negative_evidence(execution.decision)
+    except (NegativeEvidenceProjectionError, TypeError, ValueError):
+        return []
+    if not projection.screening_matrix:
+        return []
+    event_rows = events[0].details.get("screening_matrix")
+    if not isinstance(event_rows, (tuple, list)):
+        return []
+    try:
+        sealed_rows = tuple(dict(row) for row in event_rows if isinstance(row, Mapping))
+        typed_rows = tuple(dict(row) for row in projection.screening_matrix)
+    except (TypeError, ValueError):
+        return []
+    if len(sealed_rows) != len(event_rows) or sealed_rows != typed_rows:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for row in typed_rows:
+        reason_codes = row.get("reason_codes")
+        warnings = row.get("warnings")
+        stage = str(row["stage"])
+        reason_codes_display = (
+            "、".join(
+                _screening_code_display(str(code), _SCREENING_REASON_DISPLAY_LABELS)
+                for code in reason_codes
+            )
+            if reason_codes
+            else row["status"]
+        )
+        rows.append(
+            {
+                "證券代號": row["stock_code"],
+                "證券名稱": row["stock_name"],
+                "紀錄類型": "篩選紀錄／未入選",
+                "原篩選狀態": row["status"],
+                "階段": _screening_code_display(stage, _SCREENING_STAGE_DISPLAY_LABELS),
+                "原因代碼": reason_codes_display,
+                "觀測值": row["observed_value"],
+                "要求值": row["required_value"],
+                "證據品質": row["quality"],
+                "備註": "、".join(warnings) if warnings else "",
+                "決策日": row["as_of_date"],
+            }
+        )
+    return rows
 
 
 def recommendation_empty_state_message(execution: RecommendationExecution) -> str:
@@ -3302,6 +3387,7 @@ class RecommendationView(QWidget):
         title_layout = QHBoxLayout()
         self.result_title_layout = title_layout
         title = QLabel("4. 推薦結果與風險判讀")
+        self.result_title_label = title
         title_font = QFont()
         title_font.setPointSize(12)
         title_font.setBold(True)
@@ -3310,7 +3396,7 @@ class RecommendationView(QWidget):
         title_layout.addStretch()
 
         # 保存結果按鈕
-        self.save_result_btn = QPushButton("保存結果")
+        self.save_result_btn = QPushButton("保存推薦結果")
         self.save_result_btn.setVisible(False)  # 初始隱藏
         self.save_result_btn.clicked.connect(self._save_recommendation_result)
         if self.config:
@@ -3328,7 +3414,7 @@ class RecommendationView(QWidget):
         self.stock_research_btn = QPushButton("查看個股研究")
         self.stock_research_btn.setVisible(False)
         self.stock_research_btn.setEnabled(False)
-        self.stock_research_btn.setToolTip("選取一檔推薦股票後，帶著原決策／資料日期查看個股研究。")
+        self.stock_research_btn.setToolTip("選取一檔結果股票後，帶著原決策／資料日期查看個股研究。")
         self.stock_research_btn.clicked.connect(self._open_selected_stock_research)
         title_layout.addWidget(self.stock_research_btn)
 
@@ -5057,31 +5143,71 @@ class RecommendationView(QWidget):
         # 顯示結果
         if not recommendations:
             empty_message = recommendation_empty_state_message(execution)
-            self.recommendations_model = PandasTableModel(pd.DataFrame())
+            screening_rows = _screening_only_result_rows(execution)
+            self.result_title_label.setText(
+                "4. 篩選紀錄／未入選（僅研究，不代表推薦）"
+                if screening_rows
+                else "4. 推薦結果與風險判讀"
+            )
+            self.save_result_btn.setText(
+                "保存篩選紀錄" if screening_rows else "保存推薦結果"
+            )
+            self.recommendations_model = PandasTableModel(
+                pd.DataFrame(screening_rows)
+            )
             self.results_table.setModel(self.recommendations_model)
             self._reserve_recommendation_table_rows()
-            if hasattr(self, "stock_research_btn"):
-                self.stock_research_btn.setVisible(False)
-                self.stock_research_btn.setEnabled(False)
-            self.result_status_label.setText(
-                f"結果未就緒：{empty_message}沒有結果不等於策略有效或失效。"
+            self._connect_result_table_interactions()
+            if previous_stock_code:
+                for row_number, code in enumerate(
+                    self.recommendations_model.getDataFrame().get("證券代號", ())
+                ):
+                    if str(code).strip() == previous_stock_code:
+                        self.results_table.selectRow(row_number)
+                        break
+            self.results_table.resizeColumnsToContents()
+            self._reserve_recommendation_table_rows()
+            self.stock_research_btn.setVisible(bool(screening_rows))
+            self.stock_research_btn.setText(
+                "研究未入選股票" if screening_rows else "查看個股研究"
             )
+            self.stock_research_btn.setEnabled(False)
+            if screening_rows:
+                self.progress_label.setText(
+                    f"篩選紀錄 {len(screening_rows)} 筆；未入選，僅供個股研究。"
+                )
+                self.progress_label.setVisible(True)
+                self.result_status_label.setText(
+                    f"本次執行沒有推薦列；以下 {len(screening_rows)} 筆為同次封存的"
+                    "篩選紀錄／未入選，僅供研究，不代表推薦。"
+                )
+            else:
+                self.result_status_label.setText(
+                    f"結果未就緒：{empty_message}沒有結果不等於策略有效或失效。"
+                )
             self.research_actions_toggle.setVisible(False)
             self.research_actions_toggle.setChecked(False)
             self.research_actions_widget.setVisible(False)
-            self.save_result_btn.setVisible(False)
+            self.save_result_btn.setVisible(bool(screening_rows and self.config))
             self._update_watchlist_action_state()
             self.send_to_backtest_btn.setVisible(False)
             self.send_profile_to_portfolio_backtest_btn.setVisible(False)
             self.export_report_btn.setVisible(False)
             QMessageBox.information(
                 self,
-                "分析完成",
-                empty_message,
+                "篩選紀錄／未入選" if screening_rows else "分析完成",
+                (
+                    f"以下 {len(screening_rows)} 筆是同次執行保存的篩選紀錄，"
+                    "目前沒有推薦列。列出未入選股票只供個股研究，不代表推薦。"
+                    if screening_rows
+                    else empty_message
+                ),
             )
             return
 
         # 轉換為 DataFrame
+        self.result_title_label.setText("4. 推薦結果與風險判讀")
+        self.save_result_btn.setText("保存推薦結果")
         ml_status = execution.ml_availability.status.value
         data = [
             recommendation_item_to_view_row(
@@ -5920,6 +6046,13 @@ class RecommendationView(QWidget):
             for item in execution.items
         ]
 
+    def _current_screening_table_rows(self) -> list[dict[str, Any]]:
+        return _screening_only_result_rows(self.current_execution)
+
+    def _current_result_table_rows(self) -> list[dict[str, Any]]:
+        recommendations = self._current_table_rows()
+        return recommendations or self._current_screening_table_rows()
+
     def _selected_stock_code(self) -> str:
         table = getattr(self, "results_table", None)
         model = getattr(self, "recommendations_model", None)
@@ -6115,7 +6248,23 @@ class RecommendationView(QWidget):
         self._update_company_source_snapshot_display(execution)
         self._update_research_context_banner()
         rows = self._current_table_rows()
+        screening_only_rows = (
+            self._current_screening_table_rows() if not rows else []
+        )
+        displayed_rows = rows or screening_only_rows
+        self.result_title_label.setText(
+            "4. 篩選紀錄／未入選（僅研究，不代表推薦）"
+            if screening_only_rows
+            else "4. 推薦結果與風險判讀"
+        )
+        self.save_result_btn.setText(
+            "保存篩選紀錄" if screening_only_rows else "保存推薦結果"
+        )
         self.recommendations_model = _recommendation_results_table_model(pd.DataFrame(rows))
+        if screening_only_rows:
+            self.recommendations_model = PandasTableModel(
+                pd.DataFrame(screening_only_rows)
+            )
         self.results_table.setModel(self.recommendations_model)
         self._reserve_recommendation_table_rows()
         self._connect_result_table_interactions()
@@ -6129,9 +6278,17 @@ class RecommendationView(QWidget):
         self.research_actions_toggle.setVisible(False)
         self.research_actions_toggle.setChecked(False)
         self.research_actions_widget.setVisible(False)
-        self.stock_research_btn.setVisible(bool(rows))
+        self.stock_research_btn.setVisible(bool(displayed_rows))
+        self.stock_research_btn.setText(
+            "研究未入選股票" if screening_only_rows else "查看個股研究"
+        )
         self.stock_research_btn.setEnabled(False)
-        if rows:
+        if screening_only_rows:
+            self.result_status_label.setText(
+                f"已讀取並驗證單筆 canonical 篩選紀錄 {requested_result_id}；"
+                f"以下 {len(screening_only_rows)} 筆為未入選紀錄，僅供個股研究，不代表推薦。"
+            )
+        elif rows:
             self.result_status_label.setText(
                 f"已讀取並驗證單筆 canonical 保存結果 {requested_result_id}（{len(rows)} 檔）。"
                 "這是保存當時的建議；資料與模式以當時紀錄為準。"
@@ -6230,6 +6387,21 @@ class RecommendationView(QWidget):
         button = getattr(self, "personal_prediction_capture_retry_button", None)
         if label is None or button is None:
             return
+        execution = self.current_execution
+        if (
+            execution is not None
+            and not execution.items
+            and _screening_only_result_rows(execution)
+        ):
+            self._personal_prediction_capture_status_result_id = ""
+            self._personal_prediction_capture_status_text = (
+                "篩選紀錄／未入選僅供個股研究，不建立個人模型擷取。"
+            )
+            self._personal_prediction_capture_eligible = False
+            label.setText(self._personal_prediction_capture_status_text)
+            button.setEnabled(False)
+            self._refresh_personal_model_assessment_controls()
+            return
         result_id = self._verified_saved_result_id()
         if not result_id:
             self._personal_prediction_capture_status_result_id = ""
@@ -6309,6 +6481,22 @@ class RecommendationView(QWidget):
     def _refresh_personal_model_assessment_controls(self) -> None:
         status = getattr(self, "personal_model_assessment_status_label", None)
         if status is None:
+            return
+        execution = self.current_execution
+        if (
+            execution is not None
+            and not execution.items
+            and _screening_only_result_rows(execution)
+        ):
+            for button in (
+                self.personal_model_assessment_capture_button,
+                self.personal_model_assessment_summary_button,
+                self.personal_model_assessment_read_button,
+            ):
+                button.setEnabled(False)
+            status.setText(
+                "篩選紀錄／未入選僅供個股研究，不可作為個人模型評估結果。"
+            )
             return
         result_id = self._verified_saved_result_id()
         current_id = getattr(self, "_personal_model_assessment_result_id", "")
@@ -6854,8 +7042,20 @@ class RecommendationView(QWidget):
     def _save_recommendation_result(self):
         """以同一 sealed execution 保存，並以 canonical query 驗證 readback。"""
         execution = self.current_execution
-        if execution is None or execution.status is not ExecutionStatus.COMPLETED or not execution.items:
-            QMessageBox.warning(self, "錯誤", "沒有可保存的 completed 推薦 execution")
+        screening_rows = self._current_screening_table_rows()
+        screening_only = bool(
+            execution is not None and not execution.items and screening_rows
+        )
+        if (
+            execution is None
+            or execution.status is not ExecutionStatus.COMPLETED
+            or (not execution.items and not screening_only)
+        ):
+            QMessageBox.warning(
+                self,
+                "錯誤",
+                "只有 completed execution 且含有推薦列或同次封存篩選列時才能保存。",
+            )
             return
 
         if self._verified_saved_result_id():
@@ -6880,16 +7080,30 @@ class RecommendationView(QWidget):
             label, notes = pending_metadata
             pending_receipt = None
         else:
+            save_title = "保存篩選紀錄" if screening_only else "保存推薦結果"
+            default_name = (
+                "篩選紀錄"
+                if screening_only
+                else "推薦結果"
+            )
             result_name, ok = QInputDialog.getText(
                 self,
-                "保存推薦結果",
+                save_title,
                 "請輸入結果名稱:",
-                text=f"推薦結果_{datetime.now().strftime('%Y%m%d_%H%M')}",
+                text=f"{default_name}_{datetime.now().strftime('%Y%m%d_%H%M')}",
             )
             if not ok or not result_name.strip():
                 return
             label = result_name.strip()
-            notes = f"Profile: {self.current_profile or '進階模式'}, Regime: {self.current_regime or '未知'}"
+            notes = (
+                (
+                    "紀錄類型：篩選紀錄／未入選；僅供研究，不代表推薦。"
+                    if screening_only
+                    else ""
+                )
+                + f"Profile: {self.current_profile or '進階模式'}, "
+                + f"Regime: {self.current_regime or '未知'}"
+            )
             self._pending_save_metadata = (label, notes)
 
         profile_label = "進階模式"
@@ -6937,8 +7151,12 @@ class RecommendationView(QWidget):
             self._pending_save_receipt = None
             self._pending_save_metadata = None
             selected_code = self._selected_stock_code()
-            rows = self._current_table_rows()
-            self.recommendations_model = _recommendation_results_table_model(pd.DataFrame(rows))
+            rows = self._current_result_table_rows()
+            self.recommendations_model = (
+                PandasTableModel(pd.DataFrame(rows))
+                if screening_only
+                else _recommendation_results_table_model(pd.DataFrame(rows))
+            )
             self.results_table.setModel(self.recommendations_model)
             self._reserve_recommendation_table_rows()
             self._connect_result_table_interactions()
@@ -6951,9 +7169,23 @@ class RecommendationView(QWidget):
             self._update_detail_text()
             self._refresh_personal_choice_controls()
             self._refresh_personal_prediction_capture_controls()
-            self._start_personal_prediction_capture(
-                expected_result_id=read_model.result_id
-            )
+            if not screening_only:
+                self._start_personal_prediction_capture(
+                    expected_result_id=read_model.result_id
+                )
+
+            if screening_only:
+                QMessageBox.information(
+                    self,
+                    "篩選紀錄已保存",
+                    "篩選紀錄／未入選已保存並完成 canonical readback 驗證。\n"
+                    f"結果 ID：{read_model.result_id}\n"
+                    f"決策日：{execution.context.as_of_date or '未提供'}\n"
+                    f"未入選篩選列：{len(screening_rows)} 筆\n"
+                    f"保存 artifact：{read_model.artifact_location}\n\n"
+                    "未建立觀察清單、回測或推薦；選取一列可開啟同一決策日的個股研究。",
+                )
+                return
 
             watchlist_id = None
             watchlist_error = ""
@@ -7048,6 +7280,13 @@ class RecommendationView(QWidget):
             controls.show_retry(
                 "上一筆選擇的寫入／讀回尚未確認。請重試同一個 request；"
                 f"結果 {pending['result_id']}，股票 {pending['stock_code']}。"
+            )
+            return
+        execution = self.current_execution
+        if execution is not None and not execution.items:
+            controls.set_context_available(
+                False,
+                "篩選紀錄僅供個股研究；未入選股票不會記錄為推薦採用或拒絕。",
             )
             return
         result_id = self._verified_saved_result_id()
@@ -7289,6 +7528,11 @@ class RecommendationView(QWidget):
             if execution is not None
             else ("", "")
         )
+        screening_only = bool(
+            execution is not None
+            and not execution.items
+            and _screening_only_result_rows(execution)
+        )
         has_v2_market_event, market_facts = (
             validated_company_source_v2_facts(execution)
             if execution is not None
@@ -7322,7 +7566,15 @@ class RecommendationView(QWidget):
             profile_version=profile_version,
             source_id=source_id,
             source_kind=source_kind,
-            source_label=("已保存推薦結果" if result_id else "目前推薦結果"),
+            source_label=(
+                (
+                    "已保存篩選紀錄／未入選"
+                    if result_id
+                    else "目前篩選紀錄／未入選"
+                )
+                if screening_only
+                else ("已保存推薦結果" if result_id else "目前推薦結果")
+            ),
             source_workspace="recommendation",
         )
 
@@ -7382,7 +7634,12 @@ class RecommendationView(QWidget):
         )
         profile = self._get_profile_option(profile_id)
         profile_label = profile.display_label if profile is not None else profile_id
-        source = "已保存推薦結果" if self._verified_saved_result_id() else "目前推薦結果"
+        screening_rows = self._current_screening_table_rows()
+        source = (
+            ("已保存篩選紀錄／未入選" if self._verified_saved_result_id() else "目前篩選紀錄／未入選")
+            if screening_rows
+            else ("已保存推薦結果" if self._verified_saved_result_id() else "目前推薦結果")
+        )
         result_id = self._verified_saved_result_id() or "目前未保存"
         decision_date = (
             context.as_of_date.isoformat()
@@ -7399,6 +7656,10 @@ class RecommendationView(QWidget):
             result_count = len(recommendations) if recommendations else 0
             if result_count:
                 result_summary = f"候選結果：{result_count} 檔；請先看理由與風險限制"
+            elif screening_rows:
+                result_summary = (
+                    f"篩選紀錄：{len(screening_rows)} 檔未入選；僅供研究，不代表推薦"
+                )
             else:
                 result_summary = "候選結果：尚未產生"
             summary_label.setText(
@@ -7419,7 +7680,22 @@ class RecommendationView(QWidget):
         if button is None:
             return
         selection = self.results_table.selectionModel()
-        button.setEnabled(bool(self.recommendations_model and selection and selection.selectedRows()))
+        screening_only = bool(
+            self.current_execution is not None
+            and not self.current_execution.items
+            and self._current_screening_table_rows()
+        )
+        button.setText("研究未入選股票" if screening_only else "查看個股研究")
+        if screening_only:
+            button.setToolTip(
+                "只會開啟所選篩選列的個股研究；未入選紀錄不代表推薦。"
+            )
+        else:
+            button.setToolTip(
+                "選取一檔結果股票後，帶著原決策／資料日期查看個股研究。"
+            )
+        selected_rows = selection.selectedRows() if selection is not None else []
+        button.setEnabled(bool(self.recommendations_model and len(selected_rows) == 1))
 
     def _verified_saved_result_id(self) -> str:
         read_model = self.current_read_model
@@ -7520,6 +7796,26 @@ class RecommendationView(QWidget):
                 recommendation=recommendation,
             )
 
+            screening_record = df.iloc[row].get("紀錄類型", "")
+            if screening_record == "篩選紀錄／未入選":
+                evidence_lines = [
+                    "篩選紀錄／未入選（僅供研究，不代表推薦）。",
+                    f"標的：{df.iloc[row].get('證券代號', '')} "
+                    f"{df.iloc[row].get('證券名稱', '')}",
+                    f"決策日：{df.iloc[row].get('決策日', '')}",
+                    f"篩選階段：{df.iloc[row].get('階段', '')}",
+                    f"原篩選狀態：{df.iloc[row].get('原篩選狀態', '')}",
+                    f"原因代碼：{df.iloc[row].get('原因代碼', '')}",
+                    f"觀測值／要求值：{df.iloc[row].get('觀測值', '')}／"
+                    f"{df.iloc[row].get('要求值', '')}",
+                    f"證據品質：{df.iloc[row].get('證據品質', '')}",
+                ]
+                warning_text = str(df.iloc[row].get("備註", "") or "").strip()
+                if warning_text:
+                    evidence_lines.append(f"來源警示：{warning_text}")
+                self.detail_text.setPlainText("\n".join(evidence_lines))
+                return
+
             html_content = ""
 
             # Explain 面板 v1：分數拆解（Phase 3.3）
@@ -7561,6 +7857,8 @@ class RecommendationView(QWidget):
     def _show_results_table_context_menu(self, pos):
         """顯示推薦結果表格的右鍵選單"""
         if not self.recommendations_model:
+            return
+        if self.current_execution is None or not self.current_execution.items:
             return
 
         index = self.results_table.currentIndex()

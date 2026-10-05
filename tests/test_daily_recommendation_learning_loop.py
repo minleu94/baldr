@@ -725,6 +725,298 @@ def test_natural_maturity_caller_binds_source_clock_and_explicit_calendar_paths(
     }
 
 
+def _write_scheduled_calendar_fixture(
+    root: Path,
+    *,
+    captured_at: datetime,
+    closed_dates: tuple[str, ...] = (),
+    max_age: timedelta = timedelta(days=31),
+) -> Path:
+    from data_module.official_trading_calendar_cache import (
+        build_twse_calendar_cache,
+        write_twse_calendar_cache,
+    )
+
+    rows = [
+        {
+            "Name": "Test New Year closure",
+            "Date": "1150101",
+            "Weekday": "test",
+            "Description": "Official market closed",
+        },
+        *[
+        {
+            "Name": "Test market closure",
+            "Date": value,
+            "Weekday": "test",
+            "Description": "Official market closed",
+        }
+        for value in closed_dates
+        ],
+    ]
+    raw_response = json.dumps(rows, separators=(",", ":")).encode("utf-8")
+    cache = build_twse_calendar_cache(
+        calendar_year=2026,
+        raw_response=raw_response,
+        requested_at=captured_at - timedelta(seconds=1),
+        captured_at=captured_at,
+        response_status=200,
+        response_headers={"ETag": '"scheduled-calendar-fixture"'},
+        response_url=(
+            "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule?queryYear=115"
+        ),
+        max_age=max_age,
+    )
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "twse_holiday_schedule_2026_fixture.json"
+    write_twse_calendar_cache(path, cache, allowed_root=root)
+    return path
+
+
+def test_official_trading_day_uses_verified_2026_cache_and_temporary_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+
+    monkeypatch.delenv("NATURAL_MATURITY_CALENDAR_CACHE_PATH", raising=False)
+    monkeypatch.delenv("ML_FORWARD_CALENDAR_CACHE_ROOT", raising=False)
+    monkeypatch.delenv("NATURAL_MATURITY_TEMPORARY_CLOSURE_PATH", raising=False)
+    cache_root = tmp_path / "verified-calendar"
+    _write_scheduled_calendar_fixture(
+        cache_root,
+        captured_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    closure_root = tmp_path / "temporary-closures"
+
+    result = daily_learning._official_trading_day(
+        provider=SimpleNamespace(database_path=tmp_path / "missing-source.sqlite"),
+        decision_date=date(2026, 10, 5),
+        calendar_cache_path=cache_root,
+        temporary_closure_path=closure_root,
+    )
+
+    assert result == (True, "twse_holiday_schedule_cache_open")
+
+
+@pytest.mark.parametrize("cache_mode", ["missing", "expired", "tampered"])
+def test_official_trading_day_keeps_missing_or_invalid_calendar_fail_closed(
+    tmp_path: Path,
+    monkeypatch,
+    cache_mode: str,
+) -> None:
+    import data_module.official_trading_calendar as calendar_module
+    import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+
+    cache_root = tmp_path / "calendar"
+    if cache_mode != "missing":
+        captured_at = datetime.now(timezone.utc) - timedelta(
+            days=40 if cache_mode == "expired" else 0,
+            seconds=1,
+        )
+        cache_path = _write_scheduled_calendar_fixture(
+            cache_root,
+            captured_at=captured_at,
+            max_age=timedelta(days=1) if cache_mode == "expired" else timedelta(days=31),
+        )
+        if cache_mode == "tampered":
+            cache_path.write_bytes(cache_path.read_bytes() + b"tampered")
+    else:
+        cache_root.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        calendar_module,
+        "safe_request",
+        lambda *args, **kwargs: pytest.fail("offline calendar check attempted network"),
+    )
+    result = daily_learning._official_trading_day(
+        provider=SimpleNamespace(database_path=tmp_path / "missing-source.sqlite"),
+        decision_date=date(2026, 10, 5),
+        calendar_cache_path=cache_root,
+    )
+
+    assert result[0] is None
+
+
+def test_official_trading_day_honors_explicit_env_and_temporary_calendar_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+    from data_module.official_trading_calendar_cache import (
+        build_twse_temporary_closure_cache,
+        write_twse_temporary_closure_cache,
+    )
+
+    captured_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    explicit_root = tmp_path / "explicit-calendar"
+    environment_root = tmp_path / "environment-calendar"
+    _write_scheduled_calendar_fixture(explicit_root, captured_at=captured_at)
+    _write_scheduled_calendar_fixture(
+        environment_root,
+        captured_at=captured_at,
+        closed_dates=("1151005",),
+    )
+    closure_root = tmp_path / "temporary-closure"
+    closure_root.mkdir()
+    source_url = "https://www.twse.com.tw/zh/announcement/announcement/detail.html?id=test"
+    closure = build_twse_temporary_closure_cache(
+        closure_date=date(2026, 10, 5),
+        raw_response=(
+            "臺灣證券交易所集中交易市場於115年10月5日全日休市一天，因颱風影響。"
+        ).encode("utf-8"),
+        source_url=source_url,
+        requested_at=captured_at - timedelta(seconds=1),
+        captured_at=captured_at,
+        response_status=200,
+        response_headers={"Content-Type": "text/html"},
+        response_url=source_url,
+    )
+    write_twse_temporary_closure_cache(
+        closure_root / "twse_temporary_closure_20261005_fixture.json",
+        closure,
+        allowed_root=tmp_path,
+    )
+    monkeypatch.setenv("NATURAL_MATURITY_CALENDAR_CACHE_PATH", str(environment_root))
+    monkeypatch.setenv("NATURAL_MATURITY_TEMPORARY_CLOSURE_PATH", str(closure_root))
+
+    provider = SimpleNamespace(database_path=tmp_path / "missing-source.sqlite")
+    explicit = daily_learning._official_trading_day(
+        provider=provider,
+        decision_date=date(2026, 10, 5),
+        calendar_cache_path=explicit_root,
+        temporary_closure_path=tmp_path / "missing-closures",
+    )
+    monkeypatch.delenv("NATURAL_MATURITY_TEMPORARY_CLOSURE_PATH", raising=False)
+    environment = daily_learning._official_trading_day(
+        provider=provider,
+        decision_date=date(2026, 10, 5),
+    )
+    temporary_closed = daily_learning._official_trading_day(
+        provider=provider,
+        decision_date=date(2026, 10, 5),
+        calendar_cache_path=explicit_root,
+        temporary_closure_path=closure_root,
+    )
+
+    assert explicit == (True, "twse_holiday_schedule_cache_open")
+    assert environment == (False, "twse_holiday_schedule_cache_closed")
+    assert temporary_closed == (False, "twse_temporary_closure_official")
+
+
+def test_dependency_and_capture_calendar_checks_receive_cli_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+
+    annual_path = tmp_path / "annual-calendar"
+    closure_path = tmp_path / "temporary-closure"
+    provider_db = tmp_path / "source.sqlite"
+    seen: list[dict[str, object]] = []
+
+    def _calendar_check(**kwargs):
+        seen.append(kwargs)
+        return (
+            (True, "verified_fixture")
+            if len(seen) == 1
+            else (None, "verified_calendar_missing")
+        )
+
+    monkeypatch.setattr(daily_learning, "_official_trading_day", _calendar_check)
+    monkeypatch.setattr(
+        daily_learning,
+        "_inspect_active_model_performance",
+        lambda **_: {"status": "clean", "diagnostics": ()},
+    )
+
+    class _Provider:
+        database_path = provider_db
+
+        def list_trading_dates(self, *, start_date, end_date, symbols):
+            return (start_date,)
+
+        def load_forward_price_window(self, *, start_date, end_date, symbols):
+            return None
+
+    daily_learning._inspect_dependencies(
+        provider=_Provider(),
+        output_root=tmp_path / "learning",
+        data_root=tmp_path / "data",
+        decision_date=date(2026, 10, 5),
+        symbols=("1477",),
+        replay_source_fingerprint="sha256:fixture",
+        policy=daily_learning.RecommendationPromotionPolicy(),
+        calendar_cache_path=annual_path,
+        temporary_closure_path=closure_path,
+    )
+    assert seen[-1]["calendar_cache_path"] == annual_path
+    assert seen[-1]["temporary_closure_path"] == closure_path
+
+    checked = datetime.now(ZoneInfo("Asia/Taipei"))
+    monkeypatch.setattr(daily_learning, "_taipei_now", lambda: checked)
+    capture_result = daily_learning._capture_current_if_requested(
+        args=SimpleNamespace(
+            capture_current=True,
+            decision_date=checked.date().isoformat(),
+            fixed_round_trip_cost_bp=50,
+            calendar_cache_path=annual_path,
+            temporary_closure_cache_path=closure_path,
+        ),
+        config=SimpleNamespace(),
+        output_root=tmp_path / "learning",
+        source_db=provider_db,
+        provider=_Provider(),
+        symbols=("1477",),
+        run_result=None,
+        replay_config=SimpleNamespace(),
+    )
+
+    assert capture_result["status"] == "failed"
+    assert seen[-1]["calendar_cache_path"] == annual_path
+    assert seen[-1]["temporary_closure_path"] == closure_path
+
+
+def test_current_feature_snapshot_uses_same_explicit_calendar_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+
+    annual_path = tmp_path / "explicit-annual-calendar"
+    closure_path = tmp_path / "explicit-temporary-closure"
+    seen: list[dict[str, object]] = []
+
+    def _resolve_paths(**kwargs):
+        seen.append(kwargs)
+        return tmp_path / "missing-calendar", tmp_path / "missing-closure"
+
+    monkeypatch.setattr(daily_learning, "_natural_maturity_calendar_paths", _resolve_paths)
+    observed_at = datetime.now(ZoneInfo("Asia/Taipei")) - timedelta(seconds=1)
+    result = daily_learning._current_observed_feature_snapshot_for_learning(
+        canonical_output_root=tmp_path / "canonical-output",
+        config=SimpleNamespace(db_file=tmp_path / "source.sqlite"),
+        decision_date=observed_at.date(),
+        history_start_date="2020-01-01",
+        symbols=("1477",),
+        observed_at=observed_at,
+        expected_raw_run_id="raw-exact-run",
+        expected_cycle_terminal_path=tmp_path / "terminal.json",
+        expected_cycle_terminal_sha256="sha256:" + "a" * 64,
+        calendar_cache_path=annual_path,
+        temporary_closure_path=closure_path,
+    )
+
+    assert result["status"] == "pending"
+    assert result["reason"] == "official_calendar_could_not_resolve_current_and_prior_sessions"
+    assert seen == [
+        {
+            "calendar_cache_path": annual_path,
+            "temporary_closure_path": closure_path,
+        }
+    ]
+
+
 @pytest.mark.parametrize("calendar_mode", ["missing", "expired"])
 def test_natural_maturity_calendar_gap_stays_pending_without_credit(
     tmp_path: Path,
@@ -816,17 +1108,64 @@ def test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day(
     output_root = tmp_path / "learning-shadow"
     scheduled_output_root = tmp_path / "scheduled-output"
     source_db = tmp_path / "source.db"
-    decision_day = date(2026, 9, 14)
+    # Keep the calendar verifier on the same fixed clock as this test. The
+    # cache remains a real hash-bound fixture; freezing its verifier clock
+    # prevents the fixture from expiring as wall time advances.
+    decision_day = date(2026, 10, 2)
     taipei = ZoneInfo("Asia/Taipei")
+    close_clock = datetime(2026, 10, 2, 16, 0, tzinfo=taipei)
+
+    from data_module.official_trading_calendar_cache import (
+        build_twse_calendar_cache,
+        write_twse_calendar_cache,
+    )
+
+    calendar_root = tmp_path / "calendar-cache"
+    calendar_root.mkdir(parents=True)
+    calendar_raw = json.dumps(
+        [
+            {
+                "Name": "test closed day",
+                "Date": "1150101",
+                "Weekday": "Thursday",
+                "Description": "test closed day",
+            }
+        ],
+        separators=(",", ":"),
+    ).encode("utf-8")
+    calendar_cache_path = calendar_root / "twse_holiday_schedule_2026_loop.json"
+    calendar_cache = build_twse_calendar_cache(
+        calendar_year=2026,
+        raw_response=calendar_raw,
+        requested_at=close_clock - timedelta(seconds=2),
+        captured_at=close_clock - timedelta(seconds=1),
+        response_status=200,
+        response_headers={"ETag": '"loop-calendar-fixture"'},
+        max_age=timedelta(days=31),
+    )
+    write_twse_calendar_cache(
+        calendar_cache_path,
+        calendar_cache,
+        allowed_root=calendar_root,
+    )
 
     monkeypatch.setenv("OUTPUT_ROOT", str(scheduled_output_root))
     monkeypatch.delenv("RECOMMENDATION_LEARNING_OUTPUT_ROOT", raising=False)
     monkeypatch.setattr(
         daily_learning,
         "_taipei_now",
-        lambda: datetime(2026, 9, 14, 9, 0, tzinfo=taipei),
+        lambda: close_clock,
     )
-    monkeypatch.setattr(daily_learning, "_official_trading_day", lambda **_: (True, "test_calendar"))
+    from data_module import official_trading_calendar as official_calendar_module
+
+    class _FrozenCalendarDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return close_clock.replace(tzinfo=None)
+            return close_clock.astimezone(tz)
+
+    monkeypatch.setattr(official_calendar_module, "datetime", _FrozenCalendarDateTime)
 
     class _Provider:
         def __init__(self, database_path: Path) -> None:
@@ -845,7 +1184,7 @@ def test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day(
         def load(self, *, decision_date: str, history_start_date: str, symbols: tuple[str, ...], industry_index_names):
             return SimpleNamespace(
                 decision_date=decision_date[:10],
-                feature_as_of_date="2026-09-13",
+                feature_as_of_date=(decision_day - timedelta(days=1)).isoformat(),
                 source_fingerprint=f"snapshot:{decision_date[:10]}",
                 prices=(),
                 technicals=(),
@@ -978,6 +1317,8 @@ def test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day(
         "100",
         "--fixed-round-trip-cost-bp",
         "50",
+        "--calendar-cache-path",
+        str(calendar_root),
     ]
 
     assert daily_learning.main(common_args) == 2
@@ -1005,21 +1346,21 @@ def test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day(
     def resolve_same_run_snapshot(**kwargs):
         assert kwargs["output_root"] == scheduled_output_root.resolve()
         assert kwargs["decision_date"] == decision_day
-        assert kwargs["result_id"] == "snapshot-2026-09-14"
+        assert kwargs["result_id"] == f"snapshot-{decision_day.isoformat()}"
         assert kwargs["expected_cohort_hash"] == cohort_hash
         assert kwargs["expected_invocation_output_sha256"] == "sha256:" + "d" * 64
         return (
             ("1101",),
             snapshot_cohort,
             {
-                "result_id": "snapshot-2026-09-14",
+                "result_id": f"snapshot-{decision_day.isoformat()}",
                 "raw_artifact_sha256": "sha256:" + "b" * 64,
                 "payload_hash": "sha256:" + "c" * 64,
                 "cohort_hash": cohort_hash,
                 "invocation_output_sha256": "sha256:" + "d" * 64,
                 "decision_date": decision_day.isoformat(),
-                "data_as_of_date": "2026-09-13",
-                "available_at": "2026-09-14T08:59:00+08:00",
+                "data_as_of_date": (decision_day - timedelta(days=1)).isoformat(),
+                "available_at": f"{decision_day.isoformat()}T15:00:00+08:00",
             },
         )
 
@@ -1036,7 +1377,7 @@ def test_daily_main_missing_snapshot_is_recoverable_and_unblocks_same_day(
         common_args
         + [
             "--snapshot-result-id",
-            "snapshot-2026-09-14",
+                f"snapshot-{decision_day.isoformat()}",
             "--snapshot-cohort-hash",
             cohort_hash,
             "--snapshot-invocation-output-sha256",
@@ -1072,6 +1413,104 @@ def test_preflight_failure_classifies_transient_and_integrity_faults() -> None:
     assert _preflight_requires_emergency(RuntimeError("historical SQLite source changed during snapshot load")) is True
     assert _preflight_requires_emergency(RuntimeError("historical SQLite source changed during read lease")) is True
     assert _preflight_requires_emergency(ValueError("required table is missing: daily_prices")) is True
+
+
+def test_source_revision_failure_does_not_skip_immutable_active_performance_check(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from data_module.ml_daily_price_revision_gate import DailyPriceSourceRevisionError
+    import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+
+    decision_day = date(2026, 10, 2)
+    checked_at = datetime(2026, 10, 2, 12, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    source_db = tmp_path / "source.db"
+    source_db.write_bytes(b"fixture")
+    performance_checks: list[date] = []
+
+    class _Provider:
+        database_path = source_db
+
+        def list_trading_dates(self, *, start_date, end_date, symbols):
+            return (start_date,)
+
+        def load_forward_price_window(self, *, start_date, end_date, symbols):
+            raise DailyPriceSourceRevisionError("formal market source revision blocks historical PIT")
+
+    monkeypatch.setattr(daily_learning, "_official_trading_day", lambda **_: (True, "fixture"))
+
+    def _inspect_performance(**kwargs):
+        performance_checks.append(kwargs["decision_date"])
+        return {"status": "clean", "reason": "verified_immutable_receipts", "diagnostics": ()}
+
+    monkeypatch.setattr(daily_learning, "_inspect_active_model_performance", _inspect_performance)
+    result = daily_learning._inspect_dependencies(
+        provider=_Provider(),
+        output_root=tmp_path / "learning",
+        data_root=tmp_path / "data",
+        decision_date=decision_day,
+        symbols=("2330",),
+        replay_source_fingerprint="sha256:fixture",
+        policy=daily_learning.RecommendationPromotionPolicy(),
+        checked_clock=checked_at,
+    )
+
+    assert performance_checks == [decision_day]
+    assert result["data_status"] == "failed"
+    assert result["outcome_status"] == "failed"
+    assert result["drift_status"] == "clean"
+    assert result["model_performance"]["reason"] == "verified_immutable_receipts"
+    assert any("source_preflight_failed:DailyPriceSourceRevisionError" in item for item in result["diagnostics"])
+
+
+def test_active_outcome_scan_keeps_revision_blocked_natural_evidence_pending(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from data_module.ml_daily_price_revision_gate import DailyPriceSourceRevisionError
+    import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+
+    output_root = tmp_path / "learning"
+    learning_root = output_root / "recommendation_learning"
+    learning_root.mkdir(parents=True)
+    (learning_root / "recommendation-calibration-active-pointer.json").write_text(
+        json.dumps({"status": "active", "effective_date": "2026-01-01"}),
+        encoding="utf-8",
+    )
+
+    class _Consumer:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def reload(self, *, decision_date: str) -> str:
+            return "active"
+
+        def active_identity(self, *, decision_date: str):
+            return {"candidate_id": "fixture-candidate", "effective_date": "2026-01-01"}
+
+    class _OutcomeService:
+        def scan_and_build_active_model_evidence(self, **kwargs):
+            raise DailyPriceSourceRevisionError("formal market source revision blocks historical PIT")
+
+    import app_module.recommendation_calibration_consumer as consumer_module
+
+    monkeypatch.setattr(consumer_module, "RecommendationCalibrationConsumer", _Consumer)
+    monkeypatch.setattr(daily_learning, "_build_natural_outcome_service", lambda **_: _OutcomeService())
+    result = daily_learning._scan_active_model_evidence(
+        output_root=output_root,
+        data_root=tmp_path / "data",
+        provider=SimpleNamespace(database_path=tmp_path / "source.db"),
+        source_db=tmp_path / "source.db",
+        decision_date=date(2026, 10, 2),
+        active_capture_result=None,
+        session_resolver=SimpleNamespace(),
+        evaluation_at=datetime(2026, 10, 2, 12, 0, tzinfo=ZoneInfo("Asia/Taipei")),
+    )
+
+    assert result["status"] == "pending"
+    assert result["reason"] == "natural_outcome_waiting_for_revision_qualified_source"
+    assert result["matured_sample_count"] == 0
+    assert result["historical_replay_is_natural_evidence"] is False
 
 
 def test_symbol_resolution_does_not_guess_legacy_latest_snapshot(tmp_path: Path) -> None:
@@ -1979,7 +2418,7 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
 
     def _clock_now() -> datetime:
         current = clock["day"]
-        return datetime(current.year, current.month, current.day, 9, 0, tzinfo=taipei)
+        return datetime(current.year, current.month, current.day, 16, 0, tzinfo=taipei)
 
     def _weekdays(start: date, count: int) -> tuple[date, ...]:
         values: list[date] = []
@@ -2168,6 +2607,16 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
     monkeypatch.setattr(replay_module, "HistoricalFeatureBuilder", _FeatureBuilder)
     monkeypatch.setattr(daily_learning, "_official_trading_day", lambda **_: (True, "test_clock_calendar"))
     monkeypatch.setattr(daily_learning, "_taipei_now", _clock_now)
+    # This regression advances a synthetic clock across many historical days.
+    # Real hash-bound cache/custody and pre-close cases are covered by the
+    # isolated current-observed calendar tests.
+    monkeypatch.setattr(
+        daily_learning,
+        "_verified_current_capture_session_proof",
+        lambda *, decision_date, **_: {
+            "scheduled_market_close_at": f"{decision_date.isoformat()}T13:30:00+08:00"
+        },
+    )
 
     calendar_root = tmp_path / "calendar-cache"
     calendar_root.mkdir(parents=True, exist_ok=True)
@@ -2524,16 +2973,19 @@ def test_daily_main_discovers_maturity_and_rolls_back_active_model_without_flags
         _run(day)
 
     evaluation_payload = _run(date(2026, 9, 14))
-    assert evaluation_payload["dependencies"]["model_performance"]["status"] == "pending"
+    # At the 16:00 synthetic close-time check the 20-session labels are
+    # available, so drift detection and rollback happen on the same day.
+    assert evaluation_payload["dependencies"]["model_performance"]["status"] == "drifted"
     assert evaluation_payload["active_model_natural_evidence"]["status"] == "matured"
     assert evaluation_payload["active_model_natural_evidence"]["matured_sample_count"] >= 20
+    assert evaluation_payload["run"]["decision"] == "rollback"
+    final_pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+    assert final_pointer["status"] == "rule_only"
 
-    # 最後一筆 capture 是 2026-08-17；保留正式的 20-session maturity 與
-    # distinct-date gate：2026-09-14 收盤資料可用後，2026-09-15 才是
-    # 二十個 active capture dates 全部自然成熟的第一個測試日。post-scan
-    # performance refresh 必須在該日自行發現 breach，不依賴人工 flags。
-    rollback_payload = _run(date(2026, 9, 15))
-    assert rollback_payload["dependencies"]["model_performance"]["status"] == "drifted"
-    assert rollback_payload["run"]["decision"] == "rollback"
+    # 最後一筆 capture 是 2026-08-17。到 2026-09-14 16:00，至少 20 筆
+    # 自然標籤已成熟，performance refresh 當天偵測 breach 並回滾；
+    # 2026-09-15 再確認 rule_only 指標穩定，且新檢查結果為 clean。
+    next_day_payload = _run(date(2026, 9, 15))
+    assert next_day_payload["dependencies"]["model_performance"]["status"] == "clean"
     final_pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
     assert final_pointer["status"] == "rule_only"

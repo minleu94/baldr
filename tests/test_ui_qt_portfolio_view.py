@@ -4,10 +4,14 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from decimal import Decimal
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from zoneinfo import ZoneInfo
+import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -51,6 +55,7 @@ from ui_qt.views.portfolio_view import (
     PortfolioView,
     _format_recorded_trade_costs,
 )
+import ui_qt.views.portfolio_view as portfolio_view_module
 from ui_qt.workers.task_worker import TaskWorker, running_task_workers
 
 
@@ -1023,17 +1028,157 @@ def test_portfolio_trade_delete_button_keeps_data_when_confirmation_is_cancelled
     assert [trade.trade_id for trade in service.trades] == ["t1", "t2"]
 
 
-def test_portfolio_monitoring_shows_price_as_of_manual_source_and_chinese_chip_risk(tmp_path):
+def test_portfolio_monitoring_does_not_treat_source_summary_date_as_quote_proof(tmp_path):
     view = make_portfolio_view(tmp_path)
     view.selected_stock_code = "2330"
 
     view._update_monitoring_tab()
 
-    assert "價格日期：2026-06-22" in view.lbl_mon_current_price.text()
+    assert "行情資料日未知" in view.lbl_mon_current_price.text()
+    assert "2026-06-22" not in view.lbl_mon_current_price.text()
     assert "手動建立，無推薦 / 回測來源" in view.lbl_strat_id.text()
     assert "偏空" in view.lbl_chip_risk_level.text()
     assert "bearish" in view.lbl_chip_risk_level.toolTip()
     assert "observed: 3" in view.lbl_chip_concentration.toolTip()
+
+
+def _manual_2382_service(tmp_path, quote_date):
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    position = service.positions[0]
+    position.position_id = "manual:2382"
+    position.stock_code = "2382"
+    position.stock_name = "Tai Wei"
+    position.last_trade_date = "2026-07-31"
+    position.source_summary = {}
+    service.positions = [position]
+    service.trades = []
+    calls: list[str] = []
+
+    def get_current_price_observation(stock_code: str):
+        calls.append(stock_code)
+        return SimpleNamespace(
+            stock_code=stock_code,
+            price=Decimal("332.0"),
+            data_date=quote_date,
+            source_id="sqlite.daily_prices",
+            source_snapshot_hash="a" * 64,
+            freshness_status="current",
+            expected_date=quote_date if isinstance(quote_date, date) else None,
+        )
+
+    service.get_current_price_observation = get_current_price_observation
+    return service, calls
+
+
+def _fixed_taipei_market_today() -> date:
+    fixed_now = datetime(2026, 10, 5, 12, tzinfo=ZoneInfo("Asia/Taipei"))
+    return fixed_now.date()
+
+
+def test_manual_position_research_uses_same_row_quote_date_without_requery(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        portfolio_view_module, "taiwan_market_today", _fixed_taipei_market_today
+    )
+    service, quote_calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    contexts = []
+    view.stockResearchRequested.connect(contexts.append)
+
+    assert view.select_stock("2382")
+    calls_before_open = len(quote_calls)
+    view._open_selected_stock_research()
+
+    assert len(quote_calls) == calls_before_open
+    assert len(contexts) == 1
+    context = contexts[0]
+    assert context.stock_code == "2382"
+    assert context.data_date == "2026-10-02"
+    assert context.decision_date == ""
+    assert context.result_id == ""
+    assert context.identity_status == "unlinked"
+    assert context.data_date != "2026-07-31"
+    view.close()
+
+
+@pytest.mark.parametrize(
+    "quote_date",
+    [None, datetime(2026, 10, 2, 16), date(2026, 10, 6)],
+    ids=["missing", "datetime-is-not-a-date", "future"],
+)
+def test_manual_position_research_keeps_missing_invalid_or_future_quote_date_unknown(
+    tmp_path, monkeypatch, quote_date
+):
+    monkeypatch.setattr(
+        portfolio_view_module, "taiwan_market_today", _fixed_taipei_market_today
+    )
+    service, _quote_calls = _manual_2382_service(tmp_path, quote_date)
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    contexts = []
+    view.stockResearchRequested.connect(contexts.append)
+
+    assert view.select_stock("2382")
+    view._open_selected_stock_research()
+
+    assert len(contexts) == 1
+    assert contexts[0].data_date == ""
+    assert contexts[0].result_id == ""
+    assert contexts[0].identity_status == "unlinked"
+    view.close()
+
+
+def test_manual_position_research_does_not_use_another_symbols_cached_quote(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        portfolio_view_module, "taiwan_market_today", _fixed_taipei_market_today
+    )
+    service, _quote_calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    cached = view._position_current_snapshots["manual:2382"][1]
+    view._position_current_snapshots["manual:2382"] = ("2317", cached)
+    contexts = []
+    view.stockResearchRequested.connect(contexts.append)
+
+    assert view.select_stock("2382")
+    view._open_selected_stock_research()
+
+    assert len(contexts) == 1
+    assert contexts[0].data_date == ""
+    view.close()
+
+
+def test_linked_position_research_keeps_canonical_saved_dates(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        portfolio_view_module, "taiwan_market_today", _fixed_taipei_market_today
+    )
+    service, _quote_calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    position = service.positions[0]
+    position.source_type = "recommendation_result"
+    position.source_id = "saved-2382"
+    position.source_summary = {
+        "decision_date": "2026-10-02",
+        "current_price_date": "2026-10-01",
+    }
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    monkeypatch.setattr(
+        view,
+        "_validated_recommendation_result_id",
+        lambda _position, _code: "saved-2382",
+    )
+    contexts = []
+    view.stockResearchRequested.connect(contexts.append)
+
+    assert view.select_stock("2382")
+    view._open_selected_stock_research()
+
+    assert len(contexts) == 1
+    assert contexts[0].decision_date == "2026-10-02"
+    assert contexts[0].data_date == "2026-10-01"
+    assert contexts[0].result_id == "saved-2382"
+    assert contexts[0].identity_status == "linked"
+    view.close()
 
 
 def test_portfolio_drill_down_passes_selected_stock_to_parent(tmp_path):

@@ -509,14 +509,27 @@ class SQLiteDailyPriceMarketBreadthProvider:
         if history.empty:
             return None
 
+        # Aggregate once by security instead of rescanning every history row
+        # for every current security.  Keep Decimal comparisons and equality so
+        # the existing tie-inclusive high/low definition is unchanged.
+        extreme_by_stock: dict[object, Decimal] = {}
+        is_high = direction == "high"
+        for stock_code, close_value in history[["證券代號", "_close"]].itertuples(
+            index=False, name=None
+        ):
+            existing = extreme_by_stock.get(stock_code)
+            if existing is None or (
+                close_value > existing if is_high else close_value < existing
+            ):
+                extreme_by_stock[stock_code] = close_value
+
         count = 0
-        for _, row in current.iterrows():
-            stock_code = row["證券代號"]
-            current_close = row["_close"]
-            stock_history = history.loc[history["證券代號"] == stock_code, "_close"]
-            if stock_history.empty or current_close is None:
+        for stock_code, current_close in current[["證券代號", "_close"]].itertuples(
+            index=False, name=None
+        ):
+            if current_close is None:
                 continue
-            extreme = max(stock_history) if direction == "high" else min(stock_history)
-            if current_close == extreme:
+            extreme = extreme_by_stock.get(stock_code)
+            if extreme is not None and current_close == extreme:
                 count += 1
         return count

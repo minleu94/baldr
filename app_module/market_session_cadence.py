@@ -5,13 +5,13 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
-from zoneinfo import ZoneInfo
-
 from app_module.position_health_source_providers import OfficialCalendarSourceProvider
-
-TAIPEI = ZoneInfo("Asia/Taipei")
-PACIFIC = ZoneInfo("America/Los_Angeles")
-
+from data_module.market_session_policy import (
+    PACIFIC,
+    TAIPEI,
+    project_market_publication_cutoff,
+    resolve_project_market_session_boundary,
+)
 
 @dataclass(frozen=True)
 class MarketSessionAssessment:
@@ -49,16 +49,17 @@ class MarketSessionCadence:
             "cutoff_policy": "project_daily_data_04:30_America/Los_Angeles", "historical_pit": False}
         if now.tzinfo is None or now.utcoffset() is None:
             return MarketSessionAssessment("unverified", None, {**meta, "blockers": ["cadence_clock_timezone_missing"]})
-        today = now.astimezone(TAIPEI).date()
-        if decision_date > today or actual_date > decision_date:
+        boundary = resolve_project_market_session_boundary(now)
+        today = boundary.taipei_date
+        if decision_date > boundary.taipei_date or actual_date > decision_date:
             return MarketSessionAssessment("future_rejected", None, meta)
         decision_at = now if decision_date == today else datetime.combine(decision_date, time.max, TAIPEI)
-        # Use the decision's Taipei date when deriving the Pacific deadline (DST-aware).
-        local = datetime.combine(decision_date, time(23), TAIPEI).astimezone(PACIFIC)
-        cutoff = datetime.combine(local.date(), time(4, 30), PACIFIC)
-        end = decision_date
-        if decision_date == today and now < cutoff:
-            end -= timedelta(days=1)
+        cutoff = project_market_publication_cutoff(decision_date)
+        end = (
+            boundary.calendar_end_date
+            if decision_date == boundary.taipei_date
+            else decision_date
+        )
         result = self.calendar.read_range(start_date=(end - timedelta(days=21)).isoformat(), end_date=end.isoformat(),
             decision_at=decision_at, observed_at=now)
         meta.update({"decision_at": decision_at.isoformat(), "observed_at": now.isoformat(),

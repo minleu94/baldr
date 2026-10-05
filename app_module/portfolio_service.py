@@ -1,12 +1,18 @@
 """Thin orchestration service for the Phase 4.1 Portfolio MVP."""
 
 import logging
-from dataclasses import replace
-from datetime import datetime
-from decimal import Decimal, DecimalException
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timezone
+from decimal import Decimal, DecimalException, InvalidOperation
+from hashlib import sha256
+import io
+import json
+import re
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 import pandas as pd
+
+from app_module.market_session_cadence import MarketSessionCadence, TAIPEI
 
 from app_module.dtos.portfolio_dtos import (
     LedgerEventDTO,
@@ -36,6 +42,20 @@ from portfolio_module.core import (
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class PortfolioQuoteObservation:
+    """唯讀行情列及其資料日、來源指紋和官方市場節奏評估。"""
+
+    stock_code: str
+    price: Decimal | None
+    data_date: date | None
+    source_id: str
+    source_snapshot_hash: str
+    freshness_status: str
+    expected_date: date | None
+    freshness_reason: str = ""
+
+
 class PortfolioService:
     """Coordinates trade storage and derived position views.
 
@@ -47,6 +67,9 @@ class PortfolioService:
         config: TWStockConfig,
         position_service: object = None,
         ledger_repository: Optional[PortfolioLedgerRepository] = None,
+        *,
+        market_session_cadence: MarketSessionCadence | None = None,
+        now_provider: Any | None = None,
     ):
         self.config = config
         self.position_service = position_service
@@ -54,6 +77,10 @@ class PortfolioService:
         # 只有呼叫者明確注入隔離 repository 才會啟用精確帳本；既有 JSONL
         # 相容路徑仍由既有測試與 UI 使用，避免偷偷切換正式 writer。
         self.ledger_repository = ledger_repository
+        self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
+        self.market_session_cadence = market_session_cadence or MarketSessionCadence.for_config(
+            config, clock=self._now_provider
+        )
 
     def record_trade(
         self,
@@ -341,6 +368,192 @@ class PortfolioService:
         except Exception as e:
             logger.warning("從 CSV 獲取 %s 最新收盤價失敗: %s", stock_code, e)
         return None
+
+    def get_current_price_observation(self, stock_code: str) -> PortfolioQuoteObservation:
+        """讀取目前價格與精確資料日；只有官方日曆確認的最新已完成交易日才標 current。
+
+        ``source_snapshot_hash`` 是所選正規化 SQLite 行的值指紋，或 CSV 原始位元組
+        的 SHA-256。此觀測不宣稱原始公告可用時間，也不提供歷史 PIT 資格。
+        """
+        raw_code = str(stock_code or "").strip()
+        if not raw_code:
+            return self._unverified_quote("", reason="stock_code_missing")
+        if re.fullmatch(r"[0-9]{1,6}", raw_code) is None:
+            return self._unverified_quote(raw_code, reason="stock_code_invalid")
+        code = raw_code.zfill(4)
+
+        if getattr(self.config, "use_sqlite", False):
+            try:
+                db = ReadOnlySQLiteManager(self.config.db_file)
+                frame = db.execute_query(
+                    "SELECT 日期, 證券代號, 開盤價, 最高價, 最低價, 收盤價, 成交股數, 成交金額 "
+                    "FROM daily_prices WHERE 證券代號 = ? ORDER BY 日期 DESC LIMIT 1;",
+                    (code,),
+                )
+                if not frame.empty:
+                    row = frame.iloc[0]
+                    row_code = str(row.get("證券代號") or code).strip().zfill(4)
+                    if row_code == code:
+                        return self._make_quote_observation(
+                            stock_code=code,
+                            price=row.get("收盤價"),
+                            data_date=self._parse_quote_date(row.get("日期")),
+                            source_id="sqlite.daily_prices",
+                            source_snapshot_hash=self._sqlite_quote_row_hash(code, row),
+                        )
+            except FileNotFoundError:
+                logger.debug("SQLite price database is unavailable: %s", self.config.db_file)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("從 SQLite 取得 %s 行情觀測失敗: %s", code, exc)
+
+        try:
+            daily_price_dir = self.config.daily_price_dir
+            if daily_price_dir.exists():
+                files = sorted(daily_price_dir.glob("*.csv"), reverse=True)
+                for path in files[:3]:
+                    raw = path.read_bytes()
+                    try:
+                        frame = pd.read_csv(io.BytesIO(raw), encoding="utf-8-sig")
+                    except UnicodeDecodeError:
+                        frame = pd.read_csv(io.BytesIO(raw), encoding="cp950")
+                    if "證券代號" not in frame.columns or "收盤價" not in frame.columns:
+                        continue
+                    frame["證券代號"] = frame["證券代號"].astype(str).str.replace(
+                        r"\.0$", "", regex=True
+                    ).str.zfill(4)
+                    matches = frame[frame["證券代號"] == code]
+                    if len(matches.index) != 1:
+                        continue
+                    return self._make_quote_observation(
+                        stock_code=code,
+                        price=matches.iloc[0]["收盤價"],
+                        data_date=self._parse_quote_date(path.stem),
+                        source_id="csv.daily_prices",
+                        source_snapshot_hash=sha256(raw).hexdigest(),
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("從 CSV 取得 %s 行情觀測失敗: %s", code, exc)
+        return self._unverified_quote(code, reason="quote_row_unavailable")
+
+    def _make_quote_observation(
+        self,
+        *,
+        stock_code: str,
+        price: Any,
+        data_date: date | None,
+        source_id: str,
+        source_snapshot_hash: str,
+    ) -> PortfolioQuoteObservation:
+        parsed_price = self._quote_decimal(price)
+        digest = str(source_snapshot_hash or "").strip().lower()
+        if digest.startswith("sha256:"):
+            digest = digest[7:]
+        if parsed_price is None or data_date is None or len(digest) != 64:
+            return PortfolioQuoteObservation(
+                stock_code=stock_code,
+                price=parsed_price,
+                data_date=data_date,
+                source_id=source_id,
+                source_snapshot_hash=digest,
+                freshness_status="unverified",
+                expected_date=None,
+                freshness_reason="quote_date_or_fingerprint_missing",
+            )
+        try:
+            now = self._now_provider()
+            if now.tzinfo is None or now.utcoffset() is None:
+                return PortfolioQuoteObservation(
+                    stock_code, parsed_price, data_date, source_id, digest,
+                    "unverified", None, "portfolio_clock_timezone_missing",
+                )
+            assessment = self.market_session_cadence.assess(
+                now.astimezone(TAIPEI).date(), data_date
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("評估 %s 行情日期 freshness 失敗: %s", stock_code, exc)
+            return PortfolioQuoteObservation(
+                stock_code, parsed_price, data_date, source_id, digest,
+                "unverified", None, "market_session_assessment_failed",
+            )
+        blockers = assessment.metadata.get("blockers", ())
+        return PortfolioQuoteObservation(
+            stock_code=stock_code,
+            price=parsed_price,
+            data_date=data_date,
+            source_id=source_id,
+            source_snapshot_hash=digest,
+            freshness_status=assessment.status,
+            expected_date=assessment.expected_date,
+            freshness_reason=";".join(str(item) for item in blockers),
+        )
+
+    @staticmethod
+    def _parse_quote_date(value: Any) -> date | None:
+        if isinstance(value, datetime):
+            return None
+        if isinstance(value, date):
+            return value
+        text = str(value or "").strip()
+        for fmt in ("%Y%m%d", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(text, fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _quote_decimal(value: Any) -> Decimal | None:
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            parsed = Decimal(str(value).replace(",", "").strip())
+        except (InvalidOperation, ValueError):
+            return None
+        if not parsed.is_finite() or parsed <= 0:
+            return None
+        return parsed
+
+    @classmethod
+    def _sqlite_quote_row_hash(cls, stock_code: str, row: Any) -> str:
+        def decimal_text(key: str) -> str | None:
+            raw = row.get(key)
+            if raw is None or str(raw).strip() == "":
+                return None
+            try:
+                parsed = Decimal(str(raw))
+            except (InvalidOperation, ValueError):
+                return None
+            return format(parsed.normalize(), "f") if parsed.is_finite() else None
+
+        data_date = cls._parse_quote_date(row.get("日期"))
+        payload = {
+            "schema_version": "portfolio-sqlite-daily-price-row.v1",
+            "stock_code": stock_code,
+            "data_date": data_date.isoformat() if data_date else str(row.get("日期") or ""),
+            "open_price": decimal_text("開盤價"),
+            "high_price": decimal_text("最高價"),
+            "low_price": decimal_text("最低價"),
+            "close_price": decimal_text("收盤價"),
+            "volume": str(row.get("成交股數")) if row.get("成交股數") is not None else None,
+            "turnover": decimal_text("成交金額"),
+        }
+        canonical = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+        return sha256(canonical).hexdigest()
+
+    @staticmethod
+    def _unverified_quote(stock_code: str, *, reason: str) -> PortfolioQuoteObservation:
+        return PortfolioQuoteObservation(
+            stock_code=stock_code,
+            price=None,
+            data_date=None,
+            source_id="",
+            source_snapshot_hash="",
+            freshness_status="unverified",
+            expected_date=None,
+            freshness_reason=reason,
+        )
 
     def _position_to_dto(self, position) -> PositionDTO:
         data = position.to_dict()

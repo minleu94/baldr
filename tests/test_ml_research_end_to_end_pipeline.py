@@ -21,7 +21,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Literal, Sequence
 
 import pytest
 
@@ -57,9 +57,20 @@ def _research(root: Path, *parts: str) -> Path:
 
 @pytest.fixture(autouse=True)
 def _research_path_boundary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def resolver(path: Path) -> Path:
+    def resolver(
+        path: Path,
+        *,
+        repository_root: Path | None = None,
+        extra_forbidden_roots: Sequence[Path] = (),
+        access: Literal["read", "write"] = "read",
+    ) -> Path:
         (tmp_path / "output" / "ml_research").mkdir(parents=True, exist_ok=True)
-        return resolve_ml_research_output_path(path, repository_root=tmp_path)
+        return resolve_ml_research_output_path(
+            path,
+            repository_root=repository_root or tmp_path,
+            extra_forbidden_roots=extra_forbidden_roots,
+            access=access,
+        )
     monkeypatch.setattr(adapter_module, "resolve_ml_research_output_path", resolver)
     monkeypatch.setattr(raw_module, "resolve_ml_research_output_path", resolver)
     monkeypatch.setattr(pit_exporter_module, "resolve_ml_research_output_path", resolver, raising=False)
@@ -376,7 +387,7 @@ def test_isolation_defenses_prevent_release_v4_and_naked_float(tmp_path: Path) -
     # 測試適配器防護
     dummy_manifest = tmp_path / "dummy.json"
     dummy_manifest.write_text("{}", encoding="utf-8")
-    with pytest.raises(Exception, match="ML research output"):
+    with pytest.raises(Exception, match="research writes must be inside the configured active ML research root"):
         ResearchAdaptRequest(
             raw_candidate_manifest_path=dummy_manifest,
             output_dir=forbidden_target,
@@ -384,7 +395,7 @@ def test_isolation_defenses_prevent_release_v4_and_naked_float(tmp_path: Path) -
         )
 
     # 測試 Direct Store 輸出防護
-    with pytest.raises(ValueError, match="ML research output"):
+    with pytest.raises(ValueError, match="research writes must be inside the configured active ML research root"):
         PortfolioMLDirectNumericRequest(
             raw_manifest_path=dummy_manifest,
             output_root=forbidden_target,
@@ -394,7 +405,7 @@ def test_isolation_defenses_prevent_release_v4_and_naked_float(tmp_path: Path) -
         )
 
     # 測試 Raw-to-OOC 輸出防護
-    with pytest.raises(ValueError, match="ML research output"):
+    with pytest.raises(ValueError, match="research writes must be inside the configured active ML research root"):
         PortfolioMLRawToOOCRequest(
             raw_manifest_path=dummy_manifest,
             output_root=forbidden_target,

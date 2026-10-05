@@ -6,8 +6,13 @@ from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import SupportsFloat, cast
+from zoneinfo import ZoneInfo
 
 from data_module.fundamental_data import MonthlyRevenueRecord
+from data_module.recommendation_current_fundamental_provider import (
+    CurrentObservedMonthlyRevenueInput,
+    CurrentObservedPEInput,
+)
 from data_module.recommendation_input_providers import ValuationPEObservation
 from decision_module.recommendation.industry_reasons import IndustryPerformanceReason
 from decision_module.recommendation.evaluate import (
@@ -39,6 +44,29 @@ def project_pe_observation(
     )
 
 
+def project_current_pe_observation(
+    observation: CurrentObservedPEInput | None,
+) -> PEFact:
+    """Project one current-only PE capture without granting formal PIT use."""
+
+    if observation is None:
+        return PEFact(value=None, available_date=None)
+    return PEFact(
+        value=_decimal_value(observation.value),
+        available_date=observation.available_at.astimezone(
+            ZoneInfo("Asia/Taipei")
+        ).date(),
+        as_of_date=observation.as_of_date,
+        source=observation.source,
+        source_version=observation.source_version,
+        stock_code=observation.stock_code,
+        available_at=observation.available_at,
+        availability_basis=observation.availability_basis,
+        raw_response_sha256=observation.raw_response_sha256,
+        formal_pit_eligible=False,
+    )
+
+
 def project_monthly_revenue_records(
     records: Sequence[MonthlyRevenueRecord],
 ) -> MonthlyRevenueFacts:
@@ -52,10 +80,132 @@ def project_monthly_revenue_records(
             revenue=record.revenue,
             source=record.source,
             quality_literal=record.legacy_quality_wire_value,
+            stock_code=record.stock_code,
+            availability_basis="formal_pit_available_date",
+            formal_pit_eligible=True,
         )
         for record in records
     )
     return MonthlyRevenueFacts(records=projected)
+
+
+def project_current_monthly_revenue_records(
+    current_records: Sequence[CurrentObservedMonthlyRevenueInput],
+    formal_records: Sequence[MonthlyRevenueRecord],
+    *,
+    stock_code: str,
+) -> MonthlyRevenueFacts:
+    """Use current-observation values and their exact current-lane baseline.
+
+    The current lane never borrows a formal PIT row: legacy monthly records
+    carry no reliable unit, and the comparator must share the current report's
+    unit, source identity, and availability clock.
+    """
+
+    current_for_stock = tuple(
+        record
+        for record in current_records
+        if record.stock_code == stock_code
+        and record.input_role == "reported_period_value"
+        and record.source_version.startswith("mops-current-revenue-normalizer.v2:")
+    )
+    if not current_for_stock:
+        return MonthlyRevenueFacts()
+    latest_period = max(record.period for record in current_for_stock)
+    current_period_rows = tuple(
+        record for record in current_for_stock if record.period == latest_period
+    )
+    latest_clock = max(_current_monthly_revision_clock(record) for record in current_period_rows)
+    latest_rows = tuple(
+        record
+        for record in current_period_rows
+        if _current_monthly_revision_clock(record) == latest_clock
+    )
+    if len({record.revenue for record in latest_rows}) != 1:
+        return MonthlyRevenueFacts()
+    latest = min(latest_rows, key=lambda record: record.source_version)
+    year_text, month_text = latest.period.split("-")
+    prior_period = f"{int(year_text) - 1:04d}-{int(month_text):02d}"
+
+    prior_current_rows = tuple(
+        record
+        for record in current_records
+        if record.stock_code == stock_code
+        and record.period == prior_period
+        and record.input_role == "same_report_prior_year_comparison_baseline"
+        and record.parent_report_period == latest.period
+        and record.source_version.startswith(
+            "mops-current-revenue-yoy-comparator.v1:"
+        )
+        and record.source == latest.source
+        and record.market == latest.market
+        and record.raw_source_version == latest.raw_source_version
+        and record.raw_source_sha256 == latest.raw_source_sha256
+        and record.source_available_at == latest.source_available_at
+        and record.unit == latest.unit
+        and record.period_basis == latest.period_basis
+        and record.basis_verified is True
+        and record.aggregate_feature_eligible is False
+        and record.formal_pit_eligible is False
+    )
+    if prior_current_rows:
+        prior_clock = max(
+            _current_monthly_revision_clock(record) for record in prior_current_rows
+        )
+        prior_current_rows = tuple(
+            record
+            for record in prior_current_rows
+            if _current_monthly_revision_clock(record) == prior_clock
+        )
+        if len({record.revenue for record in prior_current_rows}) != 1:
+            return MonthlyRevenueFacts()
+        prior_current = min(
+            prior_current_rows, key=lambda record: record.source_version
+        )
+        prior_fact = _current_monthly_fact(prior_current)
+    else:
+        # Keep the actual latest report value available for diagnostics and
+        # lineage, but do not substitute an older period's observed row as a
+        # same-report year-over-year comparator.
+        return MonthlyRevenueFacts(records=(_current_monthly_fact(latest),))
+    latest_fact = _current_monthly_fact(latest)
+    return MonthlyRevenueFacts(records=(prior_fact, latest_fact))
+
+
+def _current_monthly_revision_clock(
+    record: CurrentObservedMonthlyRevenueInput,
+) -> datetime:
+    """Rank actual source revisions separately from local materialization."""
+
+    return record.source_available_at or record.observed_at
+
+
+def _current_monthly_fact(
+    record: CurrentObservedMonthlyRevenueInput,
+) -> MonthlyRevenueFact:
+    return MonthlyRevenueFact(
+        period=record.period,
+        available_date=record.observed_at.astimezone(
+            ZoneInfo("Asia/Taipei")
+        ).date(),
+        source_version=record.source_version,
+        revenue=record.revenue,
+        source=record.source,
+        stock_code=record.stock_code,
+        available_at=record.available_at,
+        observed_at=record.observed_at,
+        source_available_at=record.source_available_at,
+        availability_basis=record.availability_basis,
+        raw_source_sha256=record.raw_source_sha256,
+        market=record.market,
+        unit=record.unit,
+        period_basis=record.period_basis,
+        basis_verified=record.basis_verified,
+        aggregate_feature_eligible=record.aggregate_feature_eligible,
+        formal_pit_eligible=False,
+        input_role=record.input_role,
+        parent_report_period=record.parent_report_period,
+    )
 
 
 def project_industry_context_fact(
@@ -210,6 +360,8 @@ def _optional_literal(value: object) -> str | None:
 
 
 __all__ = (
+    "project_current_monthly_revenue_records",
+    "project_current_pe_observation",
     "project_optional_final_score",
     "project_required_legacy_decimal",
     "project_industry_context_fact",

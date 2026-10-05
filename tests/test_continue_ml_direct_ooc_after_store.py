@@ -9,9 +9,6 @@ from types import SimpleNamespace
 import pytest
 
 import scripts.continue_ml_direct_ooc_after_store as continuation
-from data_module.ml_research_output_boundary import (
-    resolve_ml_research_output_path,
-)
 
 
 def test_main_publishes_live_waiting_status_before_store_wait(
@@ -67,23 +64,13 @@ def test_research_mode_blocks_before_formal_trainer_or_release(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(continuation, "ROOT", tmp_path)
     research_root = tmp_path / "output" / "ml_research"
     store_output_dir = research_root / "store"
     training_output_dir = research_root / "training"
     store_output_dir.mkdir(parents=True)
     training_output_dir.mkdir(parents=True)
 
-    def resolve(path: Path | str) -> Path:
-        return resolve_ml_research_output_path(
-            path,
-            repository_root=tmp_path,
-        )
-
-    monkeypatch.setattr(
-        continuation,
-        "resolve_ml_research_output_path",
-        resolve,
-    )
     monkeypatch.setattr(
         continuation,
         "_ensure_current_direct_schema",

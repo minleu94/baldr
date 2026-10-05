@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 from contextlib import closing, contextmanager
-from dataclasses import dataclass, field
-from datetime import date
+from dataclasses import dataclass, field, fields, replace
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import os
 from pathlib import Path
 import sqlite3
-from typing import Callable, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator, Mapping, cast
+from zoneinfo import ZoneInfo
 
 from data_module.ml_daily_price_revision_gate import (
+    VerifiedCurrentRestatedSourceContext,
     check_daily_price_source_revision,
 )
 
@@ -36,6 +38,8 @@ _VALIDATED_SCHEMA_CONTRACT = "historical-sqlite-schema.v1"
 HISTORICAL_SNAPSHOT_PROVIDER_CONTRACT_ID_V1 = (
     "twstock-historical-sqlite-four-table.v1"
 )
+_DAILY_PRICE_DATE_COLUMN = "\u65e5\u671f"
+_DAILY_PRICE_SYMBOL_COLUMN = "\u8b49\u5238\u4ee3\u865f"
 
 
 def _schema_digest(table_columns: tuple[tuple[str, tuple[str, ...]], ...]) -> str:
@@ -50,6 +54,13 @@ def _schema_digest(table_columns: tuple[tuple[str, tuple[str, ...]], ...]) -> st
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _is_sha256_text(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    digest = value.removeprefix("sha256:")
+    return len(digest) == 64 and all(character in "0123456789abcdef" for character in digest)
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +219,95 @@ class HistoricalRawSnapshot:
 
 
 @dataclass(frozen=True)
+class CurrentObservedRawSnapshot:
+    """Exact current-restated query result, explicitly outside historical PIT."""
+
+    decision_date: str
+    feature_as_of_date: str
+    prices: tuple[HistoricalPriceObservation, ...]
+    technicals: tuple[HistoricalTechnicalObservation, ...]
+    market: tuple[HistoricalIndexObservation, ...]
+    industries: tuple[HistoricalIndexObservation, ...]
+    source_fingerprint: str
+    query_count: int
+    local_current_observed_at: datetime
+    source_context: VerifiedCurrentRestatedSourceContext
+    snapshot_database_path: str
+    snapshot_database_sha256: str
+    snapshot_receipt_path: str
+    snapshot_receipt_sha256: str
+    source_rows_sha256_by_table: Mapping[str, str]
+    requested_symbols: tuple[str, ...]
+    cycle_id: str
+    cycle_terminal_path: str
+    cycle_terminal_sha256: str
+    source_context_envelope_path: str
+    source_context_envelope_sha256: str
+    source_tables: tuple[str, ...] = _SOURCE_TABLES
+    query_only: bool = True
+    shadow_only: bool = True
+    production_action_allowed: bool = False
+    current_restated: bool = True
+    historical_pit_eligible: bool = False
+    formal_training_allowed: bool = False
+    research_only: bool = True
+
+    def __post_init__(self) -> None:
+        if self.local_current_observed_at.tzinfo is None or self.local_current_observed_at.utcoffset() is None:
+            raise ValueError("local_current_observed_at must be timezone-aware")
+        if (
+            self.current_restated is not True
+            or self.historical_pit_eligible is not False
+            or self.formal_training_allowed is not False
+            or self.research_only is not True
+            or self.query_only is not True
+            or self.shadow_only is not True
+            or self.production_action_allowed is not False
+        ):
+            raise ValueError("current-observed snapshot eligibility flags are invalid")
+        if self.source_tables != _SOURCE_TABLES:
+            raise ValueError("current-observed snapshot source whitelist mismatch")
+        if (
+            not self.requested_symbols
+            or self.requested_symbols != tuple(sorted(set(self.requested_symbols)))
+            or len(self.requested_symbols) > 16
+        ):
+            raise ValueError("current-observed symbol scope is invalid")
+        if not self.cycle_id.strip() or not self.cycle_terminal_path.strip():
+            raise ValueError("current-observed cycle identity is required")
+        if not self.source_context_envelope_path.strip():
+            raise ValueError("current-observed source-context envelope path is required")
+        if (
+            Path(self.source_context.snapshot_database_path).resolve()
+            != Path(self.snapshot_database_path).resolve()
+            or str(self.source_context.snapshot_database_sha256)
+            != self.snapshot_database_sha256
+            or Path(self.source_context.snapshot_receipt_path).resolve()
+            != Path(self.snapshot_receipt_path).resolve()
+            or str(self.source_context.snapshot_receipt_sha256)
+            != self.snapshot_receipt_sha256
+        ):
+            raise ValueError("current-observed snapshot pins differ from verified context")
+        for label, value in (
+            ("cycle_terminal_sha256", self.cycle_terminal_sha256),
+            ("source_context_envelope_sha256", self.source_context_envelope_sha256),
+            ("snapshot_database_sha256", self.snapshot_database_sha256),
+            ("snapshot_receipt_sha256", self.snapshot_receipt_sha256),
+        ):
+            if not _is_sha256_text(value):
+                raise ValueError(f"current-observed {label} is invalid")
+        if _iso_date(self.feature_as_of_date) >= _iso_date(self.decision_date):
+            raise ValueError("current-observed feature date must precede decision date")
+        if set(self.source_rows_sha256_by_table) != set(_SOURCE_TABLES):
+            raise ValueError("current-observed snapshot must pin all four input tables")
+        if any(
+            not _is_sha256_text(value)
+            for value in self.source_rows_sha256_by_table.values()
+        ):
+            raise ValueError("current-observed source row hash is invalid")
+
+
+@dataclass(frozen=True)
 class HistoricalForwardPriceWindow:
     """Read-only raw close window used only after a feature decision cutoff."""
 
@@ -252,13 +352,114 @@ class MLHistoricalSnapshotProvider:
     ) -> HistoricalRawSnapshot:
         connection = self._connect()
         with closing(connection):
-            return self._load_on_connection(
+            snapshot = self._load_on_connection(
                 connection,
                 decision_date=decision_date,
                 history_start_date=history_start_date,
                 symbols=symbols,
                 industry_index_names=industry_index_names,
             )
+        if type(snapshot) is not HistoricalRawSnapshot:
+            raise RuntimeError("historical provider returned a non-historical snapshot")
+        return snapshot
+
+    def load_current_observed(
+        self,
+        *,
+        decision_date: str,
+        history_start_date: str,
+        symbols: tuple[str, ...],
+        source_context: VerifiedCurrentRestatedSourceContext,
+        local_current_observed_at: datetime | str,
+        expected_feature_as_of_date: str,
+        cycle_id: str,
+        cycle_terminal_path: str | Path,
+        cycle_terminal_sha256: str,
+        source_context_envelope_path: str | Path,
+        source_context_envelope_sha256: str,
+        industry_index_names: tuple[str, ...] = (),
+    ) -> CurrentObservedRawSnapshot:
+        """Read a bounded current-restated vector from an exact frozen snapshot.
+
+        The ordinary :meth:`load` remains revision-gated for historical PIT.
+        This explicit lane accepts only a source-context object for this exact
+        snapshot and records local observation time separately from source
+        availability.  It is research-only and can never qualify historical
+        training or OOS evidence.
+        """
+
+        if type(source_context) is not VerifiedCurrentRestatedSourceContext:
+            raise TypeError("source_context must be verifier-issued current-restated context")
+        if source_context.current_restated is not True or source_context.historical_pit_eligible is not False:
+            raise ValueError("source_context is not current-restated research-only evidence")
+        if Path(source_context.snapshot_database_path).resolve() != self.database_path:
+            raise ValueError("source context snapshot path differs from this provider")
+        if not isinstance(expected_feature_as_of_date, str):
+            raise TypeError("expected_feature_as_of_date must be ISO date text")
+        expected_as_of = _iso_date(expected_feature_as_of_date)
+        try:
+            decision = date.fromisoformat(decision_date[:10])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("decision_date must be ISO date text") from exc
+        if decision.isoformat() != decision_date[:10]:
+            raise ValueError("decision_date must be canonical ISO date text")
+        if isinstance(local_current_observed_at, datetime):
+            observed_at = local_current_observed_at
+        elif isinstance(local_current_observed_at, str):
+            try:
+                observed_at = datetime.fromisoformat(
+                    local_current_observed_at.replace("Z", "+00:00")
+                )
+            except ValueError as exc:
+                raise ValueError("local_current_observed_at must be ISO datetime text") from exc
+        else:
+            raise TypeError("local_current_observed_at must be an aware datetime or ISO text")
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            raise ValueError("local_current_observed_at must be timezone-aware")
+        observed_utc = observed_at.astimezone(timezone.utc)
+        if observed_utc < source_context.training_as_of.astimezone(timezone.utc):
+            raise ValueError("local observation predates its verified frozen snapshot")
+        if observed_at.astimezone(ZoneInfo("Asia/Taipei")).date() != decision:
+            raise ValueError("current-observed decision date differs from Taipei observation date")
+        if expected_as_of >= decision.isoformat():
+            raise ValueError("G9 current-observed feature date must precede decision date")
+        database_sha_before = _sha256_path(self.database_path)
+        expected_snapshot_sha = str(source_context.snapshot_database_sha256)
+        if database_sha_before != expected_snapshot_sha.removeprefix("sha256:"):
+            raise ValueError("current-observed snapshot bytes differ from source context")
+
+        normalized_symbols = _normalized_texts(symbols, field_name="symbols")
+        if not normalized_symbols or len(normalized_symbols) > 16:
+            raise ValueError("current-observed symbol scope must contain 1..16 symbols")
+        if tuple(sorted(set(normalized_symbols))) != normalized_symbols:
+            raise ValueError("current-observed symbol scope must be unique and sorted")
+        connection = self._connect()
+        with closing(connection):
+            current_snapshot = self._load_on_connection(
+                connection,
+                decision_date=decision.isoformat(),
+                history_start_date=history_start_date,
+                symbols=normalized_symbols,
+                industry_index_names=industry_index_names,
+                current_restated_context=source_context,
+                current_feature_as_of_date=expected_as_of,
+                cycle_id=cycle_id,
+                cycle_terminal_path=str(Path(cycle_terminal_path).resolve()),
+                cycle_terminal_sha256=cycle_terminal_sha256,
+                source_context_envelope_path=str(Path(source_context_envelope_path).resolve()),
+                source_context_envelope_sha256=source_context_envelope_sha256,
+            )
+        database_sha_after = _sha256_path(self.database_path)
+        if database_sha_after != database_sha_before:
+            raise RuntimeError("frozen current-observed snapshot changed during vector load")
+        if not isinstance(current_snapshot, CurrentObservedRawSnapshot):
+            raise RuntimeError("current-observed reader did not return its typed current snapshot")
+        if current_snapshot.feature_as_of_date != expected_as_of:
+            raise ValueError(
+                "current-observed source date differs from exact cycle terminal: "
+                f"{current_snapshot.feature_as_of_date}!={expected_as_of}"
+            )
+        return replace(current_snapshot, local_current_observed_at=observed_at)
 
     def _load_on_connection(
         self,
@@ -268,7 +469,14 @@ class MLHistoricalSnapshotProvider:
         history_start_date: str,
         symbols: tuple[str, ...],
         industry_index_names: tuple[str, ...] = (),
-    ) -> HistoricalRawSnapshot:
+        current_restated_context: VerifiedCurrentRestatedSourceContext | None = None,
+        current_feature_as_of_date: str | None = None,
+        cycle_id: str | None = None,
+        cycle_terminal_path: str | None = None,
+        cycle_terminal_sha256: str | None = None,
+        source_context_envelope_path: str | None = None,
+        source_context_envelope_sha256: str | None = None,
+    ) -> HistoricalRawSnapshot | CurrentObservedRawSnapshot:
         decision = _compact_date(decision_date)
         history_start = _compact_date(history_start_date)
         normalized_symbols = _normalized_texts(symbols, field_name="symbols")
@@ -276,24 +484,56 @@ class MLHistoricalSnapshotProvider:
         query_count = 0
         with self._read_snapshot_transaction(
             connection,
-            before_begin=lambda: check_daily_price_source_revision(
-                database_path=self.database_path,
-                decision_date=decision,
-                symbols=normalized_symbols,
+            before_begin=(
+                None
+                if current_restated_context is not None
+                else lambda: check_daily_price_source_revision(
+                    database_path=self.database_path,
+                    decision_date=decision,
+                    symbols=normalized_symbols,
+                )
             ),
             changed_message="historical SQLite source changed during snapshot load",
         ) as source_stat_before:
             schema = self._validate_schema(connection)
             symbol_clause = _placeholders(normalized_symbols)
-            cutoff_row = connection.execute(
-                f'SELECT MAX("日期") FROM daily_prices '
-                f'WHERE "日期" < ? AND "證券代號" IN ({symbol_clause})',
-                (decision, *normalized_symbols),
-            ).fetchone()
-            query_count += 1
-            if cutoff_row is None or cutoff_row[0] is None:
-                raise ValueError("no previous trading day is available for the requested symbols")
-            cutoff = str(cutoff_row[0])
+            if current_restated_context is not None:
+                if current_feature_as_of_date is None:
+                    raise ValueError("current-observed feature date is required")
+                cutoff = _compact_date(current_feature_as_of_date)
+                cutoff_rows = connection.execute(
+                    f'SELECT "{_DAILY_PRICE_SYMBOL_COLUMN}", '
+                    f'MAX("{_DAILY_PRICE_DATE_COLUMN}") FROM daily_prices '
+                    f'WHERE "{_DAILY_PRICE_DATE_COLUMN}" <= ? '
+                    f'AND "{_DAILY_PRICE_SYMBOL_COLUMN}" IN ({symbol_clause}) '
+                    f'GROUP BY "{_DAILY_PRICE_SYMBOL_COLUMN}"',
+                    (cutoff, *normalized_symbols),
+                ).fetchall()
+                query_count += 1
+                observed_dates = {
+                    str(row[0]).strip(): (_iso_date(row[1]) if row[1] else None)
+                    for row in cutoff_rows
+                }
+                missing_or_stale = tuple(
+                    symbol
+                    for symbol in normalized_symbols
+                    if observed_dates.get(symbol) != _iso_date(cutoff)
+                )
+                if missing_or_stale:
+                    raise ValueError(
+                        "current-observed snapshot lacks exact expected source date "
+                        f"for symbols={','.join(missing_or_stale)}"
+                    )
+            else:
+                cutoff_row = connection.execute(
+                    f'SELECT MAX("日期") FROM daily_prices '
+                    f'WHERE "日期" < ? AND "證券代號" IN ({symbol_clause})',
+                    (decision, *normalized_symbols),
+                ).fetchone()
+                query_count += 1
+                if cutoff_row is None or cutoff_row[0] is None:
+                    raise ValueError("no previous trading day is available for the requested symbols")
+                cutoff = str(cutoff_row[0])
 
             prices = tuple(
                 HistoricalPriceObservation(
@@ -365,6 +605,47 @@ class MLHistoricalSnapshotProvider:
             source_stat_before.st_mtime_ns,
         ):
             raise RuntimeError("historical SQLite source changed during snapshot load")
+        if current_restated_context is not None:
+            if (
+                not cycle_id
+                or not cycle_terminal_path
+                or not cycle_terminal_sha256
+                or not source_context_envelope_path
+                or not source_context_envelope_sha256
+            ):
+                raise ValueError("current-observed exact cycle pins are required")
+            row_sets = {
+                "daily_prices": prices,
+                "technical_indicators": technicals,
+                "market_indices": market,
+                "industry_indices": industries,
+            }
+            return CurrentObservedRawSnapshot(
+                decision_date=_iso_date(decision),
+                feature_as_of_date=_iso_date(cutoff),
+                prices=prices,
+                technicals=technicals,
+                market=market,
+                industries=industries,
+                source_fingerprint=(
+                    "sha256:"
+                    + current_restated_context.snapshot_database_sha256.removeprefix("sha256:")
+                ),
+                query_count=query_count,
+                local_current_observed_at=datetime.now(timezone.utc),
+                source_context=current_restated_context,
+                snapshot_database_path=str(Path(current_restated_context.snapshot_database_path).resolve()),
+                snapshot_database_sha256=str(current_restated_context.snapshot_database_sha256),
+                snapshot_receipt_path=str(Path(current_restated_context.snapshot_receipt_path).resolve()),
+                snapshot_receipt_sha256=str(current_restated_context.snapshot_receipt_sha256),
+                source_rows_sha256_by_table=_current_observation_row_hashes(row_sets),
+                requested_symbols=normalized_symbols,
+                cycle_id=cycle_id,
+                cycle_terminal_path=cycle_terminal_path,
+                cycle_terminal_sha256=cycle_terminal_sha256,
+                source_context_envelope_path=source_context_envelope_path,
+                source_context_envelope_sha256=source_context_envelope_sha256,
+            )
         return HistoricalRawSnapshot(
             decision_date=_iso_date(decision), feature_as_of_date=_iso_date(cutoff),
             prices=prices, technicals=technicals, market=market, industries=industries,
@@ -558,6 +839,42 @@ class MLHistoricalSnapshotProvider:
         return f"sha256:{digest}"
 
 
+def _sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _current_observation_row_hashes(
+    rows_by_table: Mapping[str, tuple[object, ...]],
+) -> dict[str, str]:
+    if set(rows_by_table) != set(_SOURCE_TABLES):
+        raise ValueError("current-observed row hash requires every whitelisted table")
+    output: dict[str, str] = {}
+    for table, rows in rows_by_table.items():
+        normalized_rows: list[dict[str, object]] = []
+        for row in rows:
+            item: dict[str, object] = {}
+            for row_field in fields(cast(Any, row)):
+                value = getattr(row, row_field.name)
+                if isinstance(value, Decimal):
+                    item[row_field.name] = format(value, "f")
+                else:
+                    item[row_field.name] = value
+            normalized_rows.append(item)
+        payload = json.dumps(
+            normalized_rows,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        output[table] = f"sha256:{hashlib.sha256(payload).hexdigest()}"
+    return output
+
+
 class MLHistoricalSnapshotReadLease:
     """Keep one read-only connection open for a bounded same-connection check.
 
@@ -628,7 +945,7 @@ class MLHistoricalSnapshotReadLease:
             industry_index_names=industry_index_names,
         )
         self._load_completed = True
-        return snapshot
+        return cast(HistoricalRawSnapshot, snapshot)
 
     def assert_unchanged(self) -> None:
         self._require_connection()

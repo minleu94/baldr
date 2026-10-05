@@ -625,7 +625,7 @@ class PITYearShardExporter:
             raise FileNotFoundError(database_path)
         output_root = request.output_root.resolve()
         if request.allow_source_revision_research:
-            output_root = resolve_ml_research_output_path(output_root)
+            output_root = resolve_ml_research_output_path(output_root, access="write")
         capacity_budget = _capacity_budget_for_request(request)
         # The first check must happen before mkdir/tempfile so a low-capacity
         # invocation is read-only and fail-closed at the process boundary.
@@ -2479,13 +2479,18 @@ def _current_restated_context_payload(
             {"role_id": role_id, "sha256": sha256}
         )
     return {
-        "schema_version": "verified-current-restated-source-context.v1",
+        "schema_version": (
+            "verified-current-restated-source-context.v1"
+            if context.source_wal_present
+            else "verified-current-restated-source-context.v2"
+        ),
         "current_restated": context.current_restated,
         "historical_pit_eligible": context.historical_pit_eligible,
         "source_database_path": context.source_database_path,
         "source_database_sha256": context.source_database_sha256,
         "source_wal_path": context.source_wal_path,
         "source_wal_sha256": context.source_wal_sha256,
+        "source_wal_present": context.source_wal_present,
         "snapshot_database_path": context.snapshot_database_path,
         "snapshot_database_sha256": context.snapshot_database_sha256,
         "snapshot_receipt_path": context.snapshot_receipt_path,

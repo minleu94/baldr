@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import subprocess
 import sys
 import os
+from typing import Any
 
 import numpy as np
 import pytest
@@ -155,6 +156,58 @@ def _event_calendar(samples: tuple[CurrentRestatedResearchSample, ...]) -> tuple
     return tuple(sorted({sample.row.event_date for sample in samples}))
 
 
+def test_fit_audit_readers_share_bounded_hash_checked_large_file_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "fit-audit-repository"
+    model_root = repository / "output" / "ml_research" / "models" / "large-audit"
+    model_root.mkdir(parents=True)
+    manifest_path = model_root / "manifest.json"
+    manifest_path.write_bytes(b"{}")
+    audit_path = model_root / "fit_audit.json"
+
+    # Match the observed v10 audit size, which exceeded the previous 8 MiB
+    # cap while remaining below the explicit 64 MiB bound.
+    target_size = 46_021_885
+    empty = research_bridge._canonical_json_bytes({"padding": ""})
+    padding = "x" * (target_size - len(empty))
+    raw = research_bridge._canonical_json_bytes({"padding": padding})
+    assert len(raw) == target_size
+    audit_path.write_bytes(raw)
+    digest = hashlib.sha256(raw).hexdigest()
+    del raw, padding
+
+    def test_resolver(path: Path, **kwargs: Any) -> Path:
+        kwargs.setdefault("repository_root", repository)
+        return resolve_ml_research_output_path(path, **kwargs)
+
+    monkeypatch.setattr(research_bridge, "resolve_ml_research_output_path", test_resolver)
+    descriptor = {"filename": "fit_audit.json", "bytes": target_size, "sha256": digest}
+    parsed = research_bridge._read_manifest_fit_audit_for_model(
+        {"fit_audit": descriptor}, manifest_path=manifest_path
+    )
+    assert len(parsed["padding"]) == target_size - len(empty)
+    del parsed
+
+    loaded_bytes = research_bridge._read_verified_child(model_root, descriptor)
+    assert len(loaded_bytes) == target_size
+    assert hashlib.sha256(loaded_bytes).hexdigest() == digest
+    del loaded_bytes
+
+    with pytest.raises(ValueError, match="actual-byte SHA-256 mismatch"):
+        research_bridge._read_verified_child(
+            model_root, {**descriptor, "sha256": "0" * 64}
+        )
+
+    monkeypatch.setattr(research_bridge, "_MAX_MODEL_FIT_AUDIT_BYTES", target_size - 1)
+    with pytest.raises(ValueError, match="bounded read limit"):
+        research_bridge._read_manifest_fit_audit_for_model(
+            {"fit_audit": descriptor}, manifest_path=manifest_path
+        )
+    with pytest.raises(ValueError, match="bounded read limit"):
+        research_bridge._read_verified_child(model_root, descriptor)
+
+
 def test_current_restated_outcome_fit_reuses_pure_regressor_without_teacher() -> None:
     samples = tuple(
         _sample(
@@ -176,6 +229,8 @@ def test_current_restated_outcome_fit_reuses_pure_regressor_without_teacher() ->
     assert result.audit["historical_pit"] is False
     assert result.audit["formal_oos_allowed"] is False
     assert result.audit["full_allocation_status"] == "blocked_full_allocation_teacher_unavailable"
+
+
     assert result.audit["production_alpha_bp"] == 0
     assert result.audit["production_action_allowed"] is False
     assert result.audit["target_heads"] == ["benchmark_excess_return_bp"]
@@ -192,6 +247,44 @@ def test_current_restated_outcome_fit_reuses_pure_regressor_without_teacher() ->
     assert result.audit["dataset_manifest_file_hash"] == _SOURCE_HASH.removeprefix("sha256:")
 
 
+def test_verified_fit_entry_rejects_existing_empty_model_leaf_before_training(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repo"
+    research_root = repository / "output" / "ml_research"
+    existing_output = research_root / "cycles" / "already-created" / "model"
+    existing_output.mkdir(parents=True)
+
+    def test_resolver(path: Path, **kwargs: Any) -> Path:
+        kwargs.setdefault("repository_root", repository)
+        return resolve_ml_research_output_path(path, **kwargs)
+
+    monkeypatch.setattr(research_bridge, "resolve_ml_research_output_path", test_resolver)
+    progress = {"started": False, "completed": False}
+
+    with pytest.raises(research_bridge.CurrentRestatedResearchError, match="already exists"):
+        research_bridge.fit_and_save_verified_current_restated_core19_model(
+            direct_artifact=object(),
+            source_context_file=object(),
+            b_artifact=object(),
+            b_consumption_receipt_path=research_root / "b" / "receipt.json",
+            expected_b_consumption_receipt_sha256="0" * 64,
+            expected_b_candidate_manifest_sha256="1" * 64,
+            expected_b_adapted_manifest_sha256="2" * 64,
+            expected_b_feature_registry_sha256="3" * 64,
+            current_symbols=("1477",),
+            current_event_date="2026-10-02",
+            output_directory=existing_output,
+            actual_invocation=("test",),
+            fit_progress=progress,
+        )
+
+    assert progress == {"started": False, "completed": False}
+    assert existing_output.is_dir()
+    assert list(existing_output.iterdir()) == []
+
+
 def test_core19_fit_bridge_prefixes_direct_receipt_sha_through_fit_and_save_spy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -200,8 +293,9 @@ def test_core19_fit_bridge_prefixes_direct_receipt_sha_through_fit_and_save_spy(
     research_root = repository / "output" / "ml_research"
     research_root.mkdir(parents=True)
 
-    def test_resolver(path: Path) -> Path:
-        return resolve_ml_research_output_path(path, repository_root=repository)
+    def test_resolver(path: Path, **kwargs: Any) -> Path:
+        kwargs.setdefault("repository_root", repository)
+        return resolve_ml_research_output_path(path, **kwargs)
 
     monkeypatch.setattr(research_bridge, "resolve_ml_research_output_path", test_resolver)
     install_test_revision_gate(monkeypatch)
@@ -252,6 +346,9 @@ def test_core19_fit_bridge_prefixes_direct_receipt_sha_through_fit_and_save_spy(
         "revision_dependency_bundle_sha256": source_context.revision_dependency_bundle_sha256,
         "source_context_revalidation": direct_context_payload,
         "source_pins": {"revalidated_context_bundle_sha256": context_bundle_sha},
+        # The production Direct manifest currently exceeds 16 MiB because
+        # walk-forward folds retain exact train/test sample identities.
+        "fold_policy": "x" * (16 * 1024 * 1024 + 1),
     }
     direct_manifest_bytes = research_bridge._canonical_json_bytes(direct_manifest_payload) + b"\n"
     direct_manifest_path.write_bytes(direct_manifest_bytes)
@@ -297,10 +394,22 @@ def test_core19_fit_bridge_prefixes_direct_receipt_sha_through_fit_and_save_spy(
         event_date_calendar=(),
         event_date_calendar_sha256="b" * 64,
         folds=(),
+        source_context_revalidation_json=research_bridge._canonical_json_bytes(
+            direct_context_payload
+        ),
+        source_context_revalidation_sha256=context_bundle_sha,
     )
 
     samples = tuple(_sample(index) for index in range(905))
     event_calendar = _event_calendar(samples)
+    direct_event_calendar_sha = hashlib.sha256(
+        research_bridge._canonical_json_bytes(list(event_calendar))
+    ).hexdigest()
+    direct_artifact = replace(
+        direct_artifact,
+        event_date_calendar=tuple(date.fromisoformat(item) for item in event_calendar),
+        event_date_calendar_sha256=direct_event_calendar_sha,
+    )
     folds = _folds(samples)
     from ml_module.historical_feature_builder import CURRENT_RESTATED_CORE19_FEATURE_IDS
 
@@ -438,7 +547,10 @@ def test_core19_fit_bridge_prefixes_direct_receipt_sha_through_fit_and_save_spy(
     assert run.fit_result.audit["full_allocation_status"] == "blocked_full_allocation_teacher_unavailable"
     qualification = run.fit_result.audit["current_restated_verified_fold_qualification"]
     assert qualification["direct_manifest_sha256"] == direct_manifest_sha
+    assert qualification["schema_version"] == "current-restated-verified-fold-qualification.v2"
+    assert qualification["direct_event_date_calendar_sha256"] == direct_event_calendar_sha
     assert qualification["event_date_calendar_count"] == 905
+    assert qualification["minimum_event_date_calendar_count"] == 905
     assert qualification["minimum_qualified_fold_count"] == 4
     assert len(qualification["folds"]) == 4
     assert run.fit_result.audit["fit_selection"]["horizons"] == [5]
@@ -694,8 +806,9 @@ def test_published_raw_turnover_registry_uses_strict_scale_abi(
     raw_root = repository / "output" / "ml_research" / "fixture"
     raw_root.mkdir(parents=True)
 
-    def test_resolver(path: Path) -> Path:
-        return resolve_ml_research_output_path(path, repository_root=repository)
+    def test_resolver(path: Path, **kwargs: Any) -> Path:
+        kwargs.setdefault("repository_root", repository)
+        return resolve_ml_research_output_path(path, **kwargs)
 
     monkeypatch.setattr(research_bridge, "resolve_ml_research_output_path", test_resolver)
     actual_published_descriptor = {
@@ -844,8 +957,9 @@ def test_current_restated_market_bridge_keeps_full_verified_calendar_and_label_a
     raw_root = run_root / "core_long_history"
     raw_root.mkdir(parents=True)
 
-    def test_resolver(path: Path) -> Path:
-        return resolve_ml_research_output_path(path, repository_root=repository)
+    def test_resolver(path: Path, **kwargs: Any) -> Path:
+        kwargs.setdefault("repository_root", repository)
+        return resolve_ml_research_output_path(path, **kwargs)
 
     monkeypatch.setattr(research_bridge, "resolve_ml_research_output_path", test_resolver)
     context_sha = "sha256:" + hashlib.sha256(b"fixture context bundle").hexdigest()
@@ -929,6 +1043,7 @@ def test_current_restated_market_bridge_keeps_full_verified_calendar_and_label_a
         "historical_pit_eligible": False,
         "formal_training_eligible": False,
         "manifest_hash": dataset_identity,
+        "row_count": len(rows),
         "source_context_bundle_sha256": context_sha,
         "features": raw_feature_registry,
         "shards": [
@@ -1113,8 +1228,9 @@ def test_current_restated_fit_saves_and_new_process_reloads_exact_model_bytes(
     research_root = repository / "output" / "ml_research"
     research_root.mkdir(parents=True)
 
-    def test_resolver(path: Path) -> Path:
-        return resolve_ml_research_output_path(path, repository_root=repository)
+    def test_resolver(path: Path, **kwargs: Any) -> Path:
+        kwargs.setdefault("repository_root", repository)
+        return resolve_ml_research_output_path(path, **kwargs)
 
     monkeypatch.setattr(research_bridge, "resolve_ml_research_output_path", test_resolver)
 
@@ -1248,6 +1364,11 @@ def test_current_restated_fit_saves_and_new_process_reloads_exact_model_bytes(
     direct_context = SimpleNamespace(
         artifact_receipt_path=str(direct_manifest),
         artifact_receipt_bytes_sha256=hashlib.sha256(direct_manifest_bytes).hexdigest(),
+        status="current_restated_outcome_numeric_ready",
+        source_context_revalidation_json=research_bridge._canonical_json_bytes(
+            original_direct_context
+        ),
+        source_context_revalidation_sha256=original_context_bundle_sha,
         source_database_sha256=source_context.source_database_sha256,
         snapshot_database_sha256=source_context.snapshot_database_sha256,
         snapshot_receipt_sha256=source_context.snapshot_receipt_sha256,
@@ -1263,23 +1384,21 @@ def test_current_restated_fit_saves_and_new_process_reloads_exact_model_bytes(
             direct_context,
             replace(fresh_context_file, revalidated_dependency_inventory_sha256="0" * 64),
         )
-    original_read_bytes = Path.read_bytes
     expected_status = b'"status":"current_restated_outcome_numeric_ready"'
     substituted_status = b'"status":"current_restated_outcome_numeric_stale"'
     assert len(expected_status) == len(substituted_status)
     substituted_manifest_bytes = direct_manifest_bytes.replace(expected_status, substituted_status, 1)
     assert len(substituted_manifest_bytes) == len(direct_manifest_bytes)
 
-    def same_size_replacement(path: Path) -> bytes:
-        if path == direct_manifest:
-            return substituted_manifest_bytes
-        return original_read_bytes(path)
-
-    with monkeypatch.context() as private_read_patch:
-        private_read_patch.setattr(research_bridge, "_verified_research_file", lambda *args, **kwargs: None)
-        private_read_patch.setattr(Path, "read_bytes", same_size_replacement)
-        with pytest.raises(ValueError, match="private-read bytes differ"):
-            research_bridge._verify_direct_context_binding(direct_context, fresh_context_file)
+    direct_manifest.write_bytes(substituted_manifest_bytes)
+    with pytest.raises(ValueError, match="actual-byte hash differs"):
+        research_bridge._verify_direct_context_binding(direct_context, fresh_context_file)
+    direct_manifest.write_bytes(direct_manifest_bytes)
+    tampered_proof_payload = vars(direct_context).copy()
+    tampered_proof_payload["source_context_revalidation_json"] = b'{"tampered":true}'
+    tampered_proof = SimpleNamespace(**tampered_proof_payload)
+    with pytest.raises(ValueError, match="proof bytes differ"):
+        research_bridge._verify_direct_context_binding(tampered_proof, fresh_context_file)
     direct_receipt = direct_root / "receipt.json"
     direct_receipt.write_text('{"schema_version":"test-direct-receipt.v1"}', encoding="utf-8")
     value_file = direct_root / "values.i64"
@@ -1319,6 +1438,9 @@ def test_current_restated_fit_saves_and_new_process_reloads_exact_model_bytes(
                 folds=_folds(samples),
                 event_date_calendar=_event_calendar(samples),
                 direct_manifest_sha256=hashlib.sha256(direct_manifest.read_bytes()).hexdigest(),
+                direct_event_date_calendar_sha256=hashlib.sha256(
+                    research_bridge._canonical_json_bytes(list(_event_calendar(samples)))
+                ).hexdigest(),
             ),
             "outcome_cost_contract": test_cost_contract,
             "target_contract": research_bridge._outcome_target_contract(test_cost_contract),
@@ -1359,6 +1481,34 @@ def test_current_restated_fit_saves_and_new_process_reloads_exact_model_bytes(
         output_directory=research_root / "models" / "outcome-only-test",
         actual_invocation=("synthetic-test-fit",),
     )
+
+    model_output = saved.manifest_path.parent
+    original_model_files = {
+        path.relative_to(model_output): path.read_bytes()
+        for path in model_output.rglob("*")
+        if path.is_file()
+    }
+    with pytest.raises(research_bridge.CurrentRestatedResearchError, match="already exists"):
+        save_current_restated_outcome_model(
+            fit_result=result,
+            feature_registry=({"feature_id": _FEATURE_ID, "scale": 2, "unit": "TWD per share"},),
+            feature_packs=(_PACK,),
+            source_context=source_context,
+            direct_manifest_path=direct_manifest,
+            expected_direct_manifest_sha256=hashlib.sha256(direct_manifest.read_bytes()).hexdigest(),
+            direct_receipt_path=direct_receipt,
+            expected_direct_receipt_sha256=hashlib.sha256(direct_receipt.read_bytes()).hexdigest(),
+            input_file_pins=file_pins,
+            fit_code_pins_before=fit_code_pins,
+            training_as_of=fit_freeze.isoformat(),
+            output_directory=model_output,
+            actual_invocation=("synthetic-test-fit-retry",),
+        )
+    assert {
+        path.relative_to(model_output): path.read_bytes()
+        for path in model_output.rglob("*")
+        if path.is_file()
+    } == original_model_files
 
     loaded = load_current_restated_outcome_model(
         saved.manifest_path,
@@ -1435,7 +1585,10 @@ from pathlib import Path
 import data_module.ml_research_output_boundary as boundary
 original = boundary.resolve_ml_research_output_path
 root = Path(sys.argv[1])
-boundary.resolve_ml_research_output_path = lambda path, **kwargs: original(path, repository_root=root, **kwargs)
+def scoped_resolver(path, **kwargs):
+    kwargs["repository_root"] = root
+    return original(path, **kwargs)
+boundary.resolve_ml_research_output_path = scoped_resolver
 script = sys.argv[2]
 sys.argv = [script, *sys.argv[3:]]
 runpy.run_path(script, run_name='__main__')
@@ -1477,7 +1630,10 @@ import data_module.ml_research_output_boundary as boundary
 import ml_module.current_restated_research_bridge as bridge
 from ml_module.current_restated_research_bridge import CurrentRestatedFeature, CurrentRestatedResearchRow
 boundary_root = Path(repo)
-bridge.resolve_ml_research_output_path = lambda path: boundary.resolve_ml_research_output_path(path, repository_root=boundary_root)
+def scoped_resolver(path, **kwargs):
+    kwargs["repository_root"] = boundary_root
+    return boundary.resolve_ml_research_output_path(path, **kwargs)
+bridge.resolve_ml_research_output_path = scoped_resolver
 model = bridge.load_current_restated_outcome_model(
     Path(manifest), expected_manifest_sha256=manifest_sha,
     expected_model_bundle_sha256=model_sha,

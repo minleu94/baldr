@@ -12,8 +12,10 @@ evidence.
 from __future__ import annotations
 
 import argparse
+import base64
 from dataclasses import replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import os
@@ -50,18 +52,41 @@ from app_module.recommendation.contracts import (  # noqa: E402
 from app_module.recommendation.persistence import ExecutionPersistenceError  # noqa: E402
 from app_module.recommendation.queries import _read_regular_file_no_follow  # noqa: E402
 from data_module.config import TWStockConfig  # noqa: E402
-from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider  # noqa: E402
+from data_module.current_observed_capacity_eligibility import (  # noqa: E402
+    classify_current_observed_raw_status,
+    current_stock_research_capacity_passed,
+)
+from data_module.ml_historical_snapshot_provider import (  # noqa: E402
+    MLHistoricalSnapshotProvider,
+)
+from data_module.ml_daily_price_revision_gate import (  # noqa: E402
+    DailyPriceSourceRevisionError,
+)
 from data_module.natural_maturity_session_resolver import (  # noqa: E402
     NATURAL_MATURITY_SESSION_RESOLVER_ID,
     NATURAL_MATURITY_SESSION_RESOLVER_VERSION,
     NaturalMaturitySessionResolver,
 )
 from data_module.official_trading_calendar import OfficialTradingCalendar  # noqa: E402
+from scripts.scheduled.current_observed_raw_cycle_dependency import (  # noqa: E402
+    expected_current_observed_source_date,
+)
+from data_module.twse_quote_observation_capture import (  # noqa: E402
+    SESSION_CLOSE as _CURRENT_RESEARCH_MARKET_CLOSE,
+)
 from data_module.recommendation_calibration_source_contract import (  # noqa: E402
+    _hash_payload as _source_contract_hash_payload,
     inspect_source_contract,
     write_source_contract,
 )
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY  # noqa: E402
+from ml_module.current_observed_feature_snapshot_composer import (  # noqa: E402
+    FEATURE_SNAPSHOT_V1 as CURRENT_OBSERVED_FEATURE_SNAPSHOT_V1,
+    FEATURE_SNAPSHOT_V2 as CURRENT_OBSERVED_FEATURE_SNAPSHOT_V2,
+    compose_current_observed_feature_snapshot_v2,
+    partition_current_observed_symbols,
+    verify_current_observed_feature_snapshot_v2,
+)
 from ml_module.historical_feature_builder import HistoricalFeatureBuilder  # noqa: E402
 from ml_module.recommendation_calibration_authority import (  # noqa: E402
     RecommendationPromotionPolicy,
@@ -70,9 +95,16 @@ from ml_module.recommendation_calibration_evidence import (  # noqa: E402
     ActiveModelPredictionCaptureService,
     RecommendationPredictionCaptureInput,
     RecommendationPredictionCaptureService,
+    _current_observed_raw_status_is_eligible,
+    load_current_observed_context_from_pinned_snapshot,
+    verify_current_observed_cycle_reuse,
     _verify_capture_bundle_payload,
     _verify_capture_document,
     _verify_capture_payload,
+    _write_json_once,
+    _normalized_sha256_hex,
+    verify_current_observed_input_capture,
+    verify_current_observed_official_calendar_evidence,
 )
 from ml_module.recommendation_calibration_training import (  # noqa: E402
     AFTER_COST_NULL_BENCHMARK_BASELINE_ID,
@@ -86,6 +118,12 @@ from ml_module.recommendation_calibration_training import (  # noqa: E402
 from ml_module.recommendation_historical_replay import (  # noqa: E402
     RecommendationHistoricalReplayConfig,
     RecommendationHistoricalReplayService,
+)
+from ml_module.current_observed_natural_research_fit import (  # noqa: E402
+    fit_current_observed_natural_research,
+)
+from ml_module.recommendation_training_lineage import (  # noqa: E402
+    RECOMMENDATION_TRAINING_CONTEXT_HISTORICAL_RESEARCH,
 )
 from ml_module.recommendation_cost_scenario import (  # noqa: E402
     RecommendationCostScenario,
@@ -101,6 +139,10 @@ from ml_module.current_restated_research_bridge import (  # noqa: E402
     add_current_restated_research_arguments,
     parse_current_restated_research_invocation,
     run_current_restated_research_sidecar,
+)
+from data_module.ml_research_output_boundary import (  # noqa: E402
+    get_ml_research_root,
+    resolve_ml_research_output_path,
 )
 
 
@@ -285,6 +327,7 @@ def _build_training_quality(
 from ml_module.recommendation_natural_outcome_service import (  # noqa: E402
     RecommendationNaturalOutcomeService,
     verify_active_model_evidence_payload,
+    verify_current_observed_outcome_receipt,
 )
 from ml_module.recommendation_probability_transform import (  # noqa: E402
     NULL_BENCHMARK_BASELINE_ID,
@@ -432,6 +475,18 @@ def build_parser() -> argparse.ArgumentParser:
             "省略時沿用 OUTPUT_ROOT／learning output root。"
         ),
     )
+    parser.add_argument(
+        "--current-observed-source-output-root",
+        type=Path,
+        default=None,
+        help=(
+            "Canonical output root containing the raw-run status used only by the "
+            "current-observed G6 research lane. Defaults to DATA_ROOT/output."
+        ),
+    )
+    parser.add_argument("--current-observed-expected-raw-run-id", default=None)
+    parser.add_argument("--current-observed-expected-cycle-terminal", type=Path, default=None)
+    parser.add_argument("--current-observed-expected-cycle-terminal-sha256", default=None)
     parser.add_argument(
         "--snapshot-result-id",
         default=None,
@@ -1165,6 +1220,56 @@ def _cost_scenario_root_conflict(
     return None
 
 
+def _is_rule_only_pointer_capture_lane_conflict(
+    output_root: Path,
+    requested_scenario: RecommendationCostScenario,
+    conflict: str | None,
+) -> bool:
+    """Allow only current-observed collection beside a lone legacy rule pointer.
+
+    This does not establish a formal cost-lane anchor.  It only permits the
+    isolated G9 observation path; callers must keep historical training and
+    promotion blocked for the invocation.
+    """
+
+    prefix = (
+        "cost_scenario_root_conflict:legacy_decision_receipt_requires_"
+        "verified_same_lane_anchor:"
+    )
+    if conflict is None or not conflict.startswith(prefix) or requested_scenario.is_estimated:
+        return False
+
+    output = Path(output_root).resolve()
+    learning_root = output / "recommendation_learning"
+    pointer_path = learning_root / "recommendation-calibration-active-pointer.json"
+    reported_marker = conflict[len(prefix) :]
+    try:
+        if Path(reported_marker).resolve(strict=False) != pointer_path.resolve(strict=False):
+            return False
+        if pointer_path.is_symlink() or not pointer_path.is_file():
+            return False
+        # Any other authority or decision marker makes this broader than the
+        # specifically authorized rule-only bootstrap case.
+        if (learning_root / "challenger" / "current.json").exists():
+            return False
+        if (learning_root / "latest_status.json").exists():
+            return False
+        decisions_root = learning_root / "decisions"
+        if decisions_root.is_symlink():
+            return False
+        if decisions_root.is_dir() and next(decisions_root.iterdir(), None) is not None:
+            return False
+        pointer_bytes = _read_regular_file_no_follow(
+            pointer_path,
+            output,
+            max_bytes=256 * 1024,
+        )
+        payload = json.loads(pointer_bytes.decode("utf-8"))
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+        return False
+    return isinstance(payload, Mapping) and _is_unverifiable_rule_only_pointer(payload)
+
+
 def _candidate_marker_anchor(
     payload: Mapping[str, Any],
     *,
@@ -1484,6 +1589,15 @@ def main(argv: list[str] | None = None) -> int:
         args.snapshot_output_root
         or Path(os.environ.get("OUTPUT_ROOT", str(config.output_root)))
     ).expanduser().resolve()
+    current_observed_source_output_root = (
+        args.current_observed_source_output_root
+        or Path(
+            os.environ.get(
+                "CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT",
+                str(config.data_root / "output"),
+            )
+        )
+    ).expanduser().resolve()
     source_artifact_root = (
         args.source_artifact_root or config.output_root
     ).expanduser().resolve()
@@ -1545,26 +1659,36 @@ def main(argv: list[str] | None = None) -> int:
         learning_output_root,
         cost_scenario,
     )
+    capture_only_legacy_rule_pointer = False
     if root_conflict is not None:
-        print(
-            json.dumps(
-                {
-                    "schema_version": "daily-recommendation-learning-cli-result.v3",
-                    "status": "failed",
-                    "decision": "retain_current",
-                    "decision_reason": "cost_scenario_root_conflict",
-                    "decision_date": decision_day.isoformat(),
-                    "output_root": str(learning_output_root),
-                    "error": root_conflict,
-                    **_scenario_cli_metadata(cost_scenario),
-                    "formal_order_allowed": False,
-                    "shadow_only": True,
-                },
-                ensure_ascii=False,
-                sort_keys=True,
+        capture_only_legacy_rule_pointer = (
+            decision_day == checked_clock.astimezone(TAIPEI).date()
+            and _is_rule_only_pointer_capture_lane_conflict(
+                learning_output_root,
+                cost_scenario,
+                root_conflict,
             )
         )
-        return 2
+        if not capture_only_legacy_rule_pointer:
+            print(
+                json.dumps(
+                    {
+                        "schema_version": "daily-recommendation-learning-cli-result.v3",
+                        "status": "failed",
+                        "decision": "retain_current",
+                        "decision_reason": "cost_scenario_root_conflict",
+                        "decision_date": decision_day.isoformat(),
+                        "output_root": str(learning_output_root),
+                        "error": root_conflict,
+                        **_scenario_cli_metadata(cost_scenario),
+                        "formal_order_allowed": False,
+                        "shadow_only": True,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return 2
     try:
         if args.symbols is None:
             symbols, snapshot_cohort, snapshot_source_binding = (
@@ -1686,6 +1810,21 @@ def main(argv: list[str] | None = None) -> int:
         max_decision_dates=args.max_decision_dates,
         selection_policy=args.replay_selection_policy,
     )
+    current_observed_feature_snapshot = _current_observed_feature_snapshot_for_learning(
+        canonical_output_root=current_observed_source_output_root,
+        config=config,
+        decision_date=decision_day,
+        history_start_date=replay_config.history_start_date,
+        symbols=symbols,
+        observed_at=checked_clock,
+        expected_raw_run_id=args.current_observed_expected_raw_run_id,
+        expected_cycle_terminal_path=args.current_observed_expected_cycle_terminal,
+        expected_cycle_terminal_sha256=args.current_observed_expected_cycle_terminal_sha256,
+        calendar_cache_path=args.calendar_cache_path,
+        temporary_closure_path=args.temporary_closure_cache_path,
+        snapshot_cohort=snapshot_cohort,
+        snapshot_source_binding=snapshot_source_binding,
+    )
     source_contract_audit = _audit_source_contract(
         data_root=config.data_root,
         output_root=source_artifact_root,
@@ -1699,6 +1838,7 @@ def main(argv: list[str] | None = None) -> int:
         replay_start_date=replay_config.replay_start_date,
         replay_end_date=replay_config.replay_end_date,
         availability_cutoff_at=checked_clock.isoformat(timespec="seconds"),
+        current_observed_snapshot=current_observed_feature_snapshot,
     )
     runner = _build_runner(
         learning_output_root,
@@ -1749,6 +1889,119 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
+    if capture_only_legacy_rule_pointer:
+        rule_only_current_input_capture = _persist_current_observed_input_capture(
+            output_root=learning_output_root,
+            source_contract_audit=source_contract_audit,
+            decision_date=decision_day,
+            captured_at=checked_clock,
+            cost_scenario=cost_scenario,
+            fixed_round_trip_cost_bp=effective_fixed_cost,
+        )
+        rule_only_current_natural_research: dict[str, Any] = {
+            "status": "pending",
+            "reason": "current_observed_research_not_run",
+            "scope": "current_observed_natural_research_only",
+            "historical_pit_eligible": False,
+            "formal_training_allowed": False,
+            "promotion_credit_created": False,
+        }
+        try:
+            calendar_cache_path, temporary_closure_path = _natural_maturity_calendar_paths(
+                calendar_cache_path=args.calendar_cache_path,
+                temporary_closure_path=args.temporary_closure_cache_path,
+            )
+            current_only_resolver = NaturalMaturitySessionResolver(
+                db_path=source_db,
+                calendar_cache_path=calendar_cache_path,
+                temporary_closure_path=temporary_closure_path,
+            )
+            rule_only_current_natural_research = _current_observed_natural_research_fit(
+                learning_output_root=learning_output_root,
+                data_root=config.data_root,
+                source_db=source_db,
+                source_contract_audit=source_contract_audit,
+                current_feature_snapshot=current_observed_feature_snapshot,
+                decision_date=decision_day,
+                evaluation_at=checked_clock,
+                fixed_round_trip_cost_bp=effective_fixed_cost,
+                cost_scenario=cost_scenario,
+                session_resolver=current_only_resolver,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+            rule_only_current_natural_research = {
+                **rule_only_current_natural_research,
+                "status": "blocked",
+                "reason": f"current_observed_natural_research_failed:{type(exc).__name__}",
+            }
+        dependencies = _dependency_failure(
+            reason=root_conflict or "legacy_rule_only_pointer_capture_lane",
+            data_status="failed",
+            outcome_status="failed",
+            drift_status="not_checked",
+            recovery_policy="recoverable_attempt",
+        )
+        dependencies.update(source_contract_audit)
+        dependencies.update(
+            {
+                "formal_cost_lane_status": "blocked_legacy_rule_only_pointer_has_no_cost_anchor",
+                "formal_training_allowed": False,
+                "historical_pit_eligible": False,
+                "current_observed_capture_only": True,
+                "current_observed_input_capture": rule_only_current_input_capture,
+                "current_observed_natural_research": rule_only_current_natural_research,
+            }
+        )
+        run_result = runner.run(
+            decision_date=decision_day.isoformat(),
+            run_scope=run_scope,
+            samples=(),
+            natural_evidence=None,
+            data_dependency_status="failed",
+            outcome_dependency_status="failed",
+            drift_status="not_checked",
+            emergency_rollback=False,
+            dependency_failure_reason=root_conflict,
+        )
+        payload = _cli_payload(
+            output_root=learning_output_root,
+            decision_day=decision_day,
+            symbols=symbols,
+            symbol_source=symbol_source,
+            replay_result=None,
+            manifest_path=None,
+            dependencies=dependencies,
+            run_result=run_result,
+            natural_result={
+                "status": "not_run",
+                "reason": "formal_cost_lane_conflict_keeps_historical_training_blocked",
+                "matured_sample_count": 0,
+                "historical_replay_is_natural_evidence": False,
+            },
+            active_natural_result={
+                "status": "not_run",
+                "reason": "legacy_rule_only_pointer_has_no_active_model",
+            },
+            live_capture={
+            "status": rule_only_current_input_capture.get("status", "pending"),
+            "feature_source_mode": "current_observed",
+            "current_observed_input_capture": rule_only_current_input_capture,
+            "current_observed_natural_research": rule_only_current_natural_research,
+                "historical_pit_training": "blocked",
+                "training_run": "not_run",
+            },
+            error=root_conflict,
+            recoverable=True,
+            symbol_coverage=snapshot_cohort,
+            run_scope=run_scope,
+            capture_scope=capture_scope,
+            experiment_scope=experiment_scope,
+            cost_scenario=cost_scenario,
+        )
+        payload["current_observed_capture_only_due_to_legacy_rule_pointer"] = True
+        payload["formal_cost_lane_status"] = "blocked"
+        print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        return 2
     try:
         provider = MLHistoricalSnapshotProvider(source_db)
         replay_result = RecommendationHistoricalReplayService(provider).build(replay_config)
@@ -1756,6 +2009,241 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, RuntimeError, ValueError, TypeError, sqlite3.Error) as exc:
         preflight_reason = f"replay_or_source_preflight_failed:{type(exc).__name__}"
         emergency_from_preflight = _preflight_requires_emergency(exc)
+        if isinstance(exc, DailyPriceSourceRevisionError):
+            # Historical PIT and current natural evidence are separate lanes.
+            # A market revision blocks replay/training, but it does not make
+            # immutable active-model receipts unreadable.  Inspect those
+            # receipts and any due natural evidence before returning; never
+            # feed natural samples into training on this branch.
+            is_current_evaluation = (
+                decision_day == checked_clock.astimezone(TAIPEI).date()
+            )
+            live_capture: dict[str, Any] = {
+                "status": "pending",
+                "reason": "current_observed_feature_source_not_verified",
+                "capture_eligible": False,
+            }
+            current_observed_input_capture: dict[str, Any] = {
+                "status": "pending",
+                "reason": "current_observed_feature_source_not_verified",
+                "capture_eligible": False,
+            }
+            if is_current_evaluation:
+                current_observed_input_capture = _persist_current_observed_input_capture(
+                    output_root=learning_output_root,
+                    source_contract_audit=source_contract_audit,
+                    decision_date=decision_day,
+                    captured_at=checked_clock,
+                    cost_scenario=cost_scenario,
+                    fixed_round_trip_cost_bp=effective_fixed_cost,
+                )
+                current_binding, current_binding_reason = _capture_source_contract_binding(
+                    source_contract_audit
+                )
+                current_inputs = _current_observed_capture_inputs(
+                    current_observed_feature_snapshot,
+                    decision_date=decision_day,
+                )
+                if current_binding is not None and current_inputs:
+                    live_capture = _capture_active_model_monitor(
+                        output_root=learning_output_root,
+                        data_root=config.data_root,
+                        decision_date=decision_day,
+                        captured_at=checked_clock.isoformat(),
+                        inputs=current_inputs,
+                        fixed_round_trip_cost_bp=effective_fixed_cost,
+                        cost_scenario=cost_scenario,
+                        source_contract_binding=current_binding,
+                    )
+                    live_capture["current_observed_input_capture"] = current_observed_input_capture
+                    live_capture["feature_source_mode"] = "current_observed"
+                    live_capture["cycle_id"] = current_observed_feature_snapshot.get("cycle_id")
+                    live_capture["feature_snapshot_sha256"] = current_observed_feature_snapshot.get(
+                        "content_sha256"
+                    )
+                else:
+                    live_capture = {
+                        "status": "pending",
+                        "reason": current_binding_reason
+                        or str(current_observed_feature_snapshot.get("reason") or "current_observed_features_missing"),
+                        "capture_eligible": False,
+                        "feature_source_mode": "current_observed",
+                        "feature_snapshot_status": current_observed_feature_snapshot.get("status"),
+                        "current_observed_input_capture": current_observed_input_capture,
+                    }
+                calendar_cache_path, temporary_closure_path = _natural_maturity_calendar_paths(
+                    calendar_cache_path=args.calendar_cache_path,
+                    temporary_closure_path=args.temporary_closure_cache_path,
+                )
+                revision_maturity_resolver = NaturalMaturitySessionResolver(
+                    db_path=source_db,
+                    calendar_cache_path=calendar_cache_path,
+                    temporary_closure_path=temporary_closure_path,
+                )
+                active_natural_result = _scan_active_model_evidence(
+                    output_root=learning_output_root,
+                    data_root=config.data_root,
+                    provider=provider,
+                    source_db=source_db,
+                    decision_date=decision_day,
+                    active_capture_result=None,
+                    session_resolver=revision_maturity_resolver,
+                    evaluation_at=checked_clock,
+                )
+                active_performance = _inspect_active_model_performance(
+                    output_root=learning_output_root,
+                    data_root=config.data_root,
+                    decision_date=decision_day,
+                    policy=RecommendationPromotionPolicy(),
+                    source_db=source_db,
+                )
+                current_observed_natural_research: dict[str, Any] = {
+                    "status": "pending",
+                    "reason": "current_evaluation_date_required",
+                    "scope": "current_observed_natural_research_only",
+                    "historical_pit_eligible": False,
+                    "formal_training_allowed": False,
+                    "promotion_credit_created": False,
+                }
+                if is_current_evaluation:
+                    try:
+                        current_observed_natural_research = _current_observed_natural_research_fit(
+                            learning_output_root=learning_output_root,
+                            data_root=config.data_root,
+                            source_db=source_db,
+                            source_contract_audit=source_contract_audit,
+                            current_feature_snapshot=current_observed_feature_snapshot,
+                            decision_date=decision_day,
+                            evaluation_at=checked_clock,
+                            fixed_round_trip_cost_bp=effective_fixed_cost,
+                            cost_scenario=cost_scenario,
+                            session_resolver=revision_maturity_resolver,
+                        )
+                    except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as fit_exc:
+                        current_observed_natural_research = {
+                            "status": "blocked",
+                            "reason": f"current_observed_natural_research_failed:{type(fit_exc).__name__}",
+                            "scope": "current_observed_natural_research_only",
+                            "historical_pit_eligible": False,
+                            "formal_training_allowed": False,
+                            "promotion_credit_created": False,
+                        }
+                if str(active_natural_result.get("status")) == "failed":
+                    active_performance = {
+                        **active_performance,
+                        "status": "failed",
+                        "reason": "active_model_natural_evidence_integrity_failure",
+                        "diagnostics": tuple(active_performance.get("diagnostics", ()))
+                        + ("active_model_natural_evidence_failed_fail_closed",),
+                    }
+            else:
+                active_natural_result = {
+                    "schema_version": "recommendation-natural-outcome-result.v1",
+                    "status": "pending",
+                    "reason": "natural_maturity_evaluation_date_mismatch",
+                    "capture_paths": [],
+                    "evaluation_date": decision_day.isoformat(),
+                    "matured_sample_count": 0,
+                    "evidence": None,
+                    "diagnostics": [
+                        "historical_decision_date_natural_lane_skipped_to_avoid_future_clock"
+                    ],
+                    "historical_replay_is_natural_evidence": False,
+                }
+                active_performance = {
+                    "status": "pending",
+                    "reason": "natural_maturity_evaluation_date_mismatch",
+                    "diagnostics": (
+                        "historical_decision_date_natural_lane_skipped_to_avoid_future_clock",
+                    ),
+                }
+                current_observed_natural_research = {
+                    "status": "pending",
+                    "reason": "current_evaluation_date_required",
+                    "scope": "current_observed_natural_research_only",
+                    "historical_pit_eligible": False,
+                    "formal_training_allowed": False,
+                    "promotion_credit_created": False,
+                }
+            dependencies = _dependency_failure(
+                reason=preflight_reason,
+                data_status="failed",
+                outcome_status="failed",
+                drift_status=str(active_performance.get("status") or "not_checked"),
+                recovery_policy=(
+                    "fail_closed_emergency_rollback"
+                    if emergency_from_preflight
+                    else "recoverable_attempt"
+                ),
+            )
+            dependencies.update(source_contract_audit)
+            dependencies["model_performance"] = active_performance
+            dependencies["active_natural_result"] = active_natural_result
+            dependencies["current_observed_input_capture"] = current_observed_input_capture
+            dependencies["current_observed_natural_research"] = current_observed_natural_research
+            dependencies["diagnostics"] = list(
+                dict.fromkeys(
+                    [
+                        preflight_reason,
+                        "historical_pit_blocked_training_not_run",
+                        "active_natural_evidence_checked_without_training",
+                    ]
+                    + [
+                        str(item)
+                        for item in active_performance.get("diagnostics", ())
+                        if str(item).strip()
+                    ]
+                )
+            )
+            run_result = runner.run(
+                decision_date=decision_day.isoformat(),
+                run_scope=run_scope,
+                samples=(),
+                natural_evidence=None,
+                data_dependency_status="failed",
+                outcome_dependency_status="failed",
+                drift_status=str(active_performance.get("status") or "not_checked"),
+                emergency_rollback=(
+                    emergency_from_preflight
+                    or str(active_performance.get("status")) in {"failed", "missing", "unavailable", "degraded", "drifted"}
+                ),
+                dependency_failure_reason=preflight_reason,
+            )
+            print(
+                json.dumps(
+                    _cli_payload(
+                        output_root=learning_output_root,
+                        decision_day=decision_day,
+                        symbols=symbols,
+                        symbol_source=symbol_source,
+                        replay_result=None,
+                        manifest_path=None,
+                        dependencies=dependencies,
+                        run_result=run_result,
+                        natural_result={
+                            "status": "pending",
+                            "reason": "historical_pit_blocked_training_not_run",
+                            "matured_sample_count": 0,
+                            "historical_replay_is_natural_evidence": False,
+                        },
+                        active_natural_result=active_natural_result,
+                        live_capture={
+                            **live_capture,
+                            "current_observed_natural_research": current_observed_natural_research,
+                            "historical_pit_training": "blocked",
+                            "training_run": "not_run",
+                        },
+                        error=f"{type(exc).__name__}: {exc}",
+                        recoverable=not emergency_from_preflight,
+                        symbol_coverage=snapshot_cohort,
+                        run_scope=run_scope,
+                        cost_scenario=cost_scenario,
+                    ),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return 2
         dependencies = _dependency_failure(
             reason=preflight_reason,
             data_status="failed",
@@ -1814,6 +2302,8 @@ def main(argv: list[str] | None = None) -> int:
         policy=RecommendationPromotionPolicy(),
         source_contract_audit=source_contract_audit,
         checked_clock=checked_clock,
+        calendar_cache_path=args.calendar_cache_path,
+        temporary_closure_path=args.temporary_closure_cache_path,
     )
     challenger_payload = _read_challenger_pointer(learning_output_root)
     challenger_path = _load_frozen_challenger(learning_output_root)
@@ -2080,8 +2570,30 @@ def main(argv: list[str] | None = None) -> int:
         replay_config=replay_config,
         source_contract_audit=source_contract_audit,
         cost_scenario=cost_scenario,
+        observed_at=checked_clock,
     )
     capture_failure, capture_recoverable = _capture_dependency_failure(capture_result)
+    current_observed_natural_lane = _run_current_observed_natural_research_lane(
+        learning_output_root=learning_output_root,
+        data_root=config.data_root,
+        source_db=source_db,
+        source_contract_audit=source_contract_audit,
+        current_feature_snapshot=current_observed_feature_snapshot,
+        decision_date=decision_day,
+        evaluation_at=checked_clock,
+        fixed_round_trip_cost_bp=effective_fixed_cost,
+        cost_scenario=cost_scenario,
+        capture_requested=args.capture_current,
+        calendar_cache_path=args.calendar_cache_path,
+        temporary_closure_path=args.temporary_closure_cache_path,
+    )
+    capture_result = dict(capture_result)
+    capture_result["current_observed_input_capture"] = current_observed_natural_lane[
+        "current_observed_input_capture"
+    ]
+    capture_result["current_observed_natural_research"] = current_observed_natural_lane[
+        "current_observed_natural_research"
+    ]
 
     calendar_cache_path, temporary_closure_path = _natural_maturity_calendar_paths(
         calendar_cache_path=args.calendar_cache_path,
@@ -2301,6 +2813,7 @@ def main(argv: list[str] | None = None) -> int:
         natural_maturity_context=natural_maturity_context,
     )
     payload["snapshot_source_binding"] = snapshot_source_binding
+    payload["current_observed_natural_lane"] = current_observed_natural_lane
     payload["natural_evidence_supplied"] = automatic_evidence is not None
     payload["ignored_caller_inputs"] = ignored_inputs
     payload["training_sample_count"] = len(training_samples)
@@ -2338,6 +2851,1070 @@ def _build_runner(
     )
 
 
+def _resolve_current_observed_learning_dates(
+    *,
+    decision_date: date,
+    observed_at: datetime,
+    source_db: Path,
+    calendar_cache_path: Path,
+    temporary_closure_path: Path | None,
+) -> tuple[str, str, Mapping[str, Any] | None]:
+    """Resolve the G6 source cycle separately from the prior feature session."""
+
+    source_cycle_date = expected_current_observed_source_date(
+        decision_date=decision_date,
+        observed_at=observed_at,
+        source_db=source_db,
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+    )
+    if date.fromisoformat(source_cycle_date) > decision_date:
+        raise ValueError("current-observed raw source date is after the decision date")
+
+    calendar = OfficialTradingCalendar(
+        db_path=source_db,
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+    )
+    feature_session = calendar.get_recent_official_trading_days(
+        decision_date - timedelta(days=1),
+        1,
+        include_reference=True,
+        allow_online_probe=False,
+    )[-1]
+    feature_as_of = str(feature_session["date_str"])
+    if date.fromisoformat(feature_as_of) >= decision_date:
+        raise ValueError("current-observed feature date is not strictly before decision date")
+
+    decision_session = calendar.get_recent_official_trading_days(
+        decision_date,
+        1,
+        include_reference=True,
+        allow_online_probe=False,
+    )[-1]
+    decision_session_evidence: Mapping[str, Any] | None = None
+    if (
+        source_cycle_date == decision_date.isoformat()
+        and str(decision_session.get("date_str") or "") == decision_date.isoformat()
+    ):
+        evidence = decision_session.get("evidence")
+        if isinstance(evidence, Mapping):
+            decision_session_evidence = evidence
+    return source_cycle_date, feature_as_of, decision_session_evidence
+
+
+def _current_observed_raw_cycle_discovery_problem(
+    payload: Mapping[str, Any],
+    *,
+    canonical_output_root: Path,
+    expected_source_date: str,
+    expected_raw_run_id: str | None = None,
+    expected_cycle_terminal_path: Path | None = None,
+    expected_cycle_terminal_sha256: str | None = None,
+) -> str | None:
+    """Validate a blocked formal raw run with an independently completed G6 child."""
+
+    output_root = canonical_output_root.resolve()
+    if (
+        payload.get("schema_version") != "ml-raw-pit-refresh-status.v1"
+        or not _current_observed_raw_status_is_eligible(payload)
+        or str(payload.get("output_root") or "") != str(output_root)
+    ):
+        return "canonical_raw_status_schema_status_or_root_mismatch"
+    raw_run_id = payload.get("run_id")
+    child = payload.get("current_stock_research_cycle")
+    if not isinstance(raw_run_id, str) or not raw_run_id.strip() or not isinstance(child, Mapping):
+        return "canonical_raw_status_has_no_exact_current_stock_cycle"
+    supplied_identity = (
+        expected_raw_run_id,
+        expected_cycle_terminal_path,
+        expected_cycle_terminal_sha256,
+    )
+    supplied_count = sum(item is not None for item in supplied_identity)
+    if supplied_count not in {0, 3}:
+        return "expected_current_stock_cycle_identity_is_incomplete"
+    if supplied_count == 3:
+        assert expected_raw_run_id is not None
+        assert expected_cycle_terminal_path is not None
+        assert expected_cycle_terminal_sha256 is not None
+        if raw_run_id != expected_raw_run_id:
+            return "canonical_raw_status_run_differs_from_expected_run"
+        reported_terminal = child.get("terminal_receipt_path")
+        reported_sha256 = child.get("terminal_receipt_sha256")
+        if (
+            not isinstance(reported_terminal, str)
+            or not reported_terminal.strip()
+            or not isinstance(reported_sha256, str)
+            or not _is_sha256_digest(reported_sha256)
+            or not _is_sha256_digest(expected_cycle_terminal_sha256)
+        ):
+            return "expected_current_stock_cycle_terminal_pin_is_invalid"
+        try:
+            reported_path = Path(reported_terminal).expanduser().resolve(strict=True)
+            expected_path = expected_cycle_terminal_path.expanduser().resolve(strict=True)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return "expected_current_stock_cycle_terminal_path_is_unreadable"
+        if reported_path != expected_path:
+            return "canonical_raw_status_terminal_path_differs_from_expected_terminal"
+        if reported_sha256 != expected_cycle_terminal_sha256:
+            return "canonical_raw_status_terminal_sha_differs_from_expected_terminal"
+    child_status = str(child.get("status") or "")
+    if (
+        child_status not in {"completed", "skipped_same_inputs"}
+        or child.get("raw_run_id") != raw_run_id
+        or child.get("source_date") != expected_source_date
+        or payload.get("latest_core_date") != expected_source_date
+        or payload.get("source_date") not in (None, expected_source_date)
+    ):
+        return "current_stock_cycle_is_not_the_expected_successful_or_verified_reuse_raw_run"
+    return None
+
+
+def _partition_current_observed_learning_scope(
+    symbols: tuple[str, ...],
+    *,
+    snapshot_cohort: Mapping[str, Any] | None,
+    snapshot_source_binding: Mapping[str, Any] | None,
+) -> tuple[tuple[str, ...], ...]:
+    """Partition a bounded scope and require exact saved cohort identity above 16."""
+
+    partitions = partition_current_observed_symbols(symbols)
+    ordered_symbols = tuple(symbol for batch in partitions for symbol in batch)
+    if ordered_symbols != symbols:
+        raise ValueError("current-observed symbols must be sorted and unique")
+    if len(symbols) <= 16:
+        return partitions
+    if not isinstance(snapshot_cohort, Mapping) or not isinstance(snapshot_source_binding, Mapping):
+        raise ValueError("17..50 symbols require a verified scheduled snapshot cohort")
+    cohort_symbols = snapshot_cohort.get("eligible_symbols")
+    cohort_hash = snapshot_cohort.get("cohort_hash")
+    source_root = snapshot_source_binding.get("snapshot_output_root")
+    if (
+        snapshot_cohort.get("schema_version") != "scheduled-recommendation-snapshot-cohort.v1"
+        or cohort_symbols != list(symbols)
+        or snapshot_cohort.get("eligible_count") != len(symbols)
+        or type(cohort_hash) is not str
+        or not _is_sha256_text(cohort_hash)
+        or snapshot_source_binding.get("cohort_hash") != cohort_hash
+    ):
+        raise ValueError("verified scheduled snapshot cohort does not match the full symbol scope")
+    if type(source_root) is not str or not source_root.strip():
+        raise ValueError("verified snapshot binding lacks its exact artifact output root")
+    root_path = Path(source_root)
+    if not root_path.is_absolute() or str(root_path.resolve()) != source_root:
+        raise ValueError("verified snapshot artifact root is not a canonical absolute path")
+    return partitions
+
+
+def _current_observed_feature_snapshot_for_learning(
+    *,
+    canonical_output_root: Path,
+    config: TWStockConfig,
+    decision_date: date,
+    history_start_date: str,
+    symbols: tuple[str, ...],
+    observed_at: datetime,
+    expected_raw_run_id: str | None = None,
+    expected_cycle_terminal_path: Path | None = None,
+    expected_cycle_terminal_sha256: str | None = None,
+    calendar_cache_path: Path | None = None,
+    temporary_closure_path: Path | None = None,
+    snapshot_cohort: Mapping[str, Any] | None = None,
+    snapshot_source_binding: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a current-only feature snapshot from one exact successful G6 cycle.
+
+    This lane is a dated research observation. It never upgrades historical PIT
+    or formal-training eligibility. Its feature date is strictly before the
+    decision date; the exact G6 raw-cycle date follows the shared publication
+    cutoff and is resolved separately.
+    """
+
+    def pending(reason: str, **details: Any) -> dict[str, Any]:
+        return {
+            "schema_version": "recommendation-current-observed-feature-snapshot.v1",
+            "status": "pending",
+            "verified": False,
+            "reason": reason,
+            "historical_pit_eligible": False,
+            "formal_training_allowed": False,
+            "research_only": True,
+            **details,
+        }
+
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        return pending("current_observation_clock_not_timezone_aware")
+    if (
+        not isinstance(expected_raw_run_id, str)
+        or not expected_raw_run_id.strip()
+        or expected_cycle_terminal_path is None
+        or not isinstance(expected_cycle_terminal_sha256, str)
+        or not _is_sha256_digest(expected_cycle_terminal_sha256)
+    ):
+        return pending("current_stock_cycle_exact_waited_identity_missing")
+    observed_utc = observed_at.astimezone(timezone.utc)
+    if observed_utc > datetime.now(timezone.utc):
+        return pending("current_observation_clock_is_future")
+    if observed_at.astimezone(TAIPEI).date() != decision_date:
+        return pending("current_observation_date_differs_from_decision_date")
+    raw_symbols = tuple(str(item).strip() for item in symbols if str(item).strip())
+    normalized_symbols = tuple(sorted(set(raw_symbols)))
+    if len(raw_symbols) != len(normalized_symbols):
+        return pending("current_observed_symbol_scope_contains_duplicates")
+    try:
+        symbol_batches = _partition_current_observed_learning_scope(
+            normalized_symbols,
+            snapshot_cohort=snapshot_cohort,
+            snapshot_source_binding=snapshot_source_binding,
+        )
+    except (TypeError, ValueError) as exc:
+        return pending(
+            "current_observed_symbol_scope_or_snapshot_binding_invalid",
+            requested_symbol_count=len(normalized_symbols),
+            error_type=type(exc).__name__,
+            diagnostic=str(exc),
+        )
+
+    calendar_path, closure_path = _natural_maturity_calendar_paths(
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+    )
+    try:
+        source_cycle_date, expected_feature_as_of, decision_session_evidence = (
+            _resolve_current_observed_learning_dates(
+                decision_date=decision_date,
+                observed_at=observed_at,
+                source_db=Path(getattr(config, "db_file")),
+                calendar_cache_path=calendar_path,
+                temporary_closure_path=closure_path,
+            )
+        )
+    except (IndexError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        return pending(
+            "official_calendar_could_not_resolve_current_and_prior_sessions",
+            error_type=type(exc).__name__,
+        )
+
+    output_root = canonical_output_root.resolve()
+    status_path = output_root / "scheduled" / "ml_raw_pit_refresh" / "latest_status.json"
+    try:
+        status_bytes = _read_regular_file_no_follow(
+            status_path,
+            output_root,
+            max_bytes=8 * 1024 * 1024,
+        )
+        status_payload = json.loads(status_bytes.decode("utf-8"))
+    except (OSError, RuntimeError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        return pending(
+            "canonical_raw_status_missing_or_unreadable",
+            status_path=str(status_path),
+            error_type=type(exc).__name__,
+        )
+    if not isinstance(status_payload, Mapping):
+        return pending("canonical_raw_status_root_is_not_an_object", status_path=str(status_path))
+    status_sha256 = "sha256:" + hashlib.sha256(status_bytes).hexdigest()
+    discovery_problem = _current_observed_raw_cycle_discovery_problem(
+        status_payload,
+        canonical_output_root=output_root,
+        expected_source_date=source_cycle_date,
+        expected_raw_run_id=expected_raw_run_id,
+        expected_cycle_terminal_path=expected_cycle_terminal_path,
+        expected_cycle_terminal_sha256=expected_cycle_terminal_sha256,
+    )
+    if discovery_problem is not None:
+        return pending(
+            discovery_problem,
+            status_path=str(status_path),
+            discovery_status_sha256=status_sha256,
+        )
+    raw_run_id = status_payload.get("run_id")
+    child = status_payload.get("current_stock_research_cycle")
+    assert isinstance(raw_run_id, str) and isinstance(child, Mapping)
+    child_status = str(child.get("status") or "")
+    capacity_block_exception = (
+        classify_current_observed_raw_status(status_payload) == "blocked_insufficient_storage"
+    )
+    formal_output_root = status_payload.get("output_root")
+    if capacity_block_exception and (
+        not isinstance(formal_output_root, str) or not formal_output_root.strip()
+    ):
+        return pending("formal_capacity_exception_output_root_missing")
+
+    discovery_terminal_path_value = child.get("terminal_receipt_path")
+    discovery_terminal_sha256 = child.get("terminal_receipt_sha256")
+    if not isinstance(discovery_terminal_path_value, str) or not discovery_terminal_path_value:
+        return pending("current_stock_cycle_terminal_path_missing")
+    if not _is_sha256_text(discovery_terminal_sha256):
+        return pending("current_stock_cycle_terminal_sha256_invalid")
+    try:
+        discovery_terminal_path = resolve_ml_research_output_path(
+            Path(discovery_terminal_path_value),
+            repository_root=ROOT,
+            access="read",
+        )
+        accepted_research_roots = (
+            get_ml_research_root(repository_root=ROOT),
+            resolve_ml_research_output_path(
+                ROOT / "output" / "ml_research",
+                repository_root=ROOT,
+                access="read",
+            ),
+        )
+        research_root = next(
+            root
+            for root in accepted_research_roots
+            if discovery_terminal_path.is_relative_to(root)
+        )
+        discovery_terminal_bytes = _read_regular_file_no_follow(
+            discovery_terminal_path,
+            research_root,
+            max_bytes=8 * 1024 * 1024,
+        )
+        actual_discovery_terminal_sha256 = "sha256:" + hashlib.sha256(discovery_terminal_bytes).hexdigest()
+        discovery_terminal_payload = json.loads(discovery_terminal_bytes.decode("utf-8"))
+    except (OSError, RuntimeError, TypeError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        return pending(
+            "current_stock_cycle_discovery_terminal_missing_or_unverifiable",
+            terminal_path=discovery_terminal_path_value,
+            error_type=type(exc).__name__,
+        )
+    if (
+        actual_discovery_terminal_sha256 != discovery_terminal_sha256
+        or not isinstance(discovery_terminal_payload, Mapping)
+        or discovery_terminal_payload.get("schema_version") != "current-stock-research-cycle-terminal.v1"
+        or discovery_terminal_payload.get("status") != child_status
+        or discovery_terminal_payload.get("raw_run_id") != raw_run_id
+        or discovery_terminal_payload.get("cycle_id") != raw_run_id
+        or discovery_terminal_payload.get("source_date") != source_cycle_date
+    ):
+        return pending(
+            "current_stock_cycle_discovery_terminal_identity_or_hash_mismatch",
+            terminal_path=str(discovery_terminal_path),
+            expected_terminal_sha256=discovery_terminal_sha256,
+            actual_terminal_sha256=actual_discovery_terminal_sha256,
+        )
+
+    reuse_source_identity: Mapping[str, Any] | None = None
+    terminal_research_root: Path | None = None
+    if child_status == "skipped_same_inputs":
+        try:
+            reuse_source_identity = verify_current_observed_cycle_reuse(
+                reuse_terminal_path=discovery_terminal_path,
+                reuse_terminal_sha256=str(discovery_terminal_sha256),
+                expected_raw_run_id=str(raw_run_id),
+                expected_source_date=source_cycle_date,
+                require_original_capacity=capacity_block_exception,
+                formal_output_root=(formal_output_root if capacity_block_exception else None),
+            )
+            terminal_path = Path(str(reuse_source_identity["original_terminal_path"]))
+            terminal_sha256 = str(reuse_source_identity["original_terminal_sha256"])
+            original_research_root = next(
+                (
+                    root
+                    for root in accepted_research_roots
+                    if terminal_path.is_relative_to(root)
+                ),
+                None,
+            )
+            if original_research_root is None:
+                raise ValueError("verified original terminal is outside approved research roots")
+            terminal_research_root = original_research_root
+            terminal_bytes = _read_regular_file_no_follow(
+                terminal_path,
+                original_research_root,
+                max_bytes=8 * 1024 * 1024,
+            )
+            actual_terminal_sha256 = "sha256:" + hashlib.sha256(terminal_bytes).hexdigest()
+            terminal_payload = json.loads(terminal_bytes.decode("utf-8"))
+            if (
+                actual_terminal_sha256 != terminal_sha256
+                or not isinstance(terminal_payload, Mapping)
+                or terminal_payload.get("status") != "completed"
+            ):
+                raise ValueError("verified reuse did not resolve to its exact completed source cycle")
+        except (OSError, RuntimeError, TypeError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            return pending(
+                "current_stock_cycle_reuse_chain_revalidation_failed",
+                error_type=type(exc).__name__,
+            )
+    else:
+        terminal_path = discovery_terminal_path
+        terminal_research_root = research_root
+        terminal_sha256 = str(discovery_terminal_sha256)
+        actual_terminal_sha256 = actual_discovery_terminal_sha256
+        terminal_bytes = discovery_terminal_bytes
+        terminal_payload = discovery_terminal_payload
+
+    if terminal_research_root is None:
+        return pending("current_stock_cycle_terminal_has_no_approved_research_root")
+
+    if capacity_block_exception and child_status == "completed":
+        if not current_stock_research_capacity_passed(
+            terminal_payload,
+            expected_raw_run_id=raw_run_id,
+            expected_source_date=source_cycle_date,
+            formal_output_root=str(formal_output_root),
+            expected_research_root=terminal_research_root,
+        ):
+            return pending("current_stock_cycle_capacity_proof_invalid_under_formal_block")
+
+    if (
+        terminal_payload.get("status") != "completed"
+        or terminal_payload.get("source_date") != source_cycle_date
+        or terminal_payload.get("raw_run_id") != terminal_payload.get("cycle_id")
+        or (
+            reuse_source_identity is None
+            and terminal_payload.get("raw_run_id") != raw_run_id
+        )
+        or (
+            reuse_source_identity is not None
+            and (
+                terminal_payload.get("raw_run_id") != reuse_source_identity.get("original_raw_run_id")
+                or terminal_payload.get("cycle_id") != reuse_source_identity.get("original_cycle_id")
+            )
+        )
+    ):
+        return pending("current_stock_cycle_source_terminal_identity_mismatch")
+
+    pins = terminal_payload.get("same_run_pins")
+    if not isinstance(pins, Mapping):
+        return pending("current_stock_cycle_terminal_exact_snapshot_pins_missing")
+    source_cycle_id = str(terminal_payload.get("cycle_id") or "")
+    source_raw_run_id = str(terminal_payload.get("raw_run_id") or "")
+    if not source_cycle_id or not source_raw_run_id:
+        return pending("current_stock_cycle_source_terminal_run_identity_missing")
+    required_pin_fields = (
+        "snapshot_database_path",
+        "snapshot_database_sha256",
+        "snapshot_receipt_path",
+        "snapshot_receipt_sha256",
+        "source_context_envelope_path",
+        "source_context_envelope_sha256",
+        "snapshot_completed_at",
+        "revision_dependencies_verified_at",
+        "current_restated_training_as_of",
+    )
+    if any(pins.get(field) in (None, "") for field in required_pin_fields):
+        return pending("current_stock_cycle_terminal_exact_snapshot_pins_incomplete")
+    context_snapshot_pins = {
+        "cycle_id": source_cycle_id,
+        "raw_run_id": source_raw_run_id,
+        "cycle_source_date": source_cycle_date,
+        "cycle_terminal_path": str(terminal_path),
+        "cycle_terminal_sha256": terminal_sha256,
+        **dict(pins),
+        "observed_at": observed_at.isoformat(),
+    }
+    try:
+        context = load_current_observed_context_from_pinned_snapshot(context_snapshot_pins)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        return pending(
+            "current_stock_cycle_source_context_revalidation_failed",
+            error_type=type(exc).__name__,
+        )
+    context_database_sha = _normalized_sha256_hex(context.snapshot_database_sha256)
+    terminal_database_sha = _normalized_sha256_hex(pins.get("snapshot_database_sha256"))
+    context_receipt_sha = _normalized_sha256_hex(context.snapshot_receipt_sha256)
+    terminal_receipt_sha = _normalized_sha256_hex(pins.get("snapshot_receipt_sha256"))
+    context_envelope_sha = _normalized_sha256_hex(pins.get("source_context_envelope_sha256"))
+    if any(
+        digest is None
+        for digest in (
+            context_database_sha,
+            terminal_database_sha,
+            context_receipt_sha,
+            terminal_receipt_sha,
+            context_envelope_sha,
+        )
+    ):
+        return pending("current_stock_cycle_terminal_snapshot_hash_invalid")
+    try:
+        snapshot_completed_at = datetime.fromisoformat(
+            str(pins["snapshot_completed_at"]).replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+        terminal_training_as_of = datetime.fromisoformat(
+            str(pins["current_restated_training_as_of"]).replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+        terminal_revision_verified_at = datetime.fromisoformat(
+            str(pins["revision_dependencies_verified_at"]).replace("Z", "+00:00")
+        ).astimezone(timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        return pending("current_stock_cycle_terminal_clock_pin_invalid")
+    if (
+        Path(str(context.snapshot_database_path)).resolve()
+        != Path(str(pins["snapshot_database_path"])).resolve()
+        or context_database_sha != terminal_database_sha
+        or Path(str(context.snapshot_receipt_path)).resolve()
+        != Path(str(pins["snapshot_receipt_path"])).resolve()
+        or context_receipt_sha != terminal_receipt_sha
+        or context.training_as_of.astimezone(timezone.utc) != terminal_training_as_of
+        or context.revision_dependencies_verified_at.astimezone(timezone.utc)
+        != terminal_revision_verified_at
+        or terminal_revision_verified_at < snapshot_completed_at
+        or terminal_training_as_of < terminal_revision_verified_at
+        or terminal_training_as_of < snapshot_completed_at
+    ):
+        return pending("current_stock_cycle_source_context_pins_conflict_with_terminal")
+    if (
+        observed_utc < context.training_as_of.astimezone(timezone.utc)
+        or observed_utc < snapshot_completed_at
+    ):
+        return pending("current_observation_predates_verified_snapshot_freeze")
+
+    snapshot_database = Path(str(context.snapshot_database_path)).resolve(strict=True)
+    child_snapshots: list[dict[str, Any]] = []
+    try:
+        provider = MLHistoricalSnapshotProvider(snapshot_database)
+        feature_builder = HistoricalFeatureBuilder(CORE_LONG_HISTORY_FEATURE_REGISTRY)
+        for batch_index, batch_symbols in enumerate(symbol_batches):
+            raw_snapshot = provider.load_current_observed(
+                decision_date=decision_date.isoformat(),
+                history_start_date=history_start_date,
+                symbols=batch_symbols,
+                source_context=context,
+                local_current_observed_at=observed_at,
+                expected_feature_as_of_date=expected_feature_as_of,
+                cycle_id=source_cycle_id,
+                cycle_terminal_path=terminal_path,
+                cycle_terminal_sha256=terminal_sha256,
+                source_context_envelope_path=str(pins["source_context_envelope_path"]),
+                source_context_envelope_sha256="sha256:" + str(context_envelope_sha),
+            )
+            feature_rows = feature_builder.compute_current_observed(
+                raw_snapshot,
+                industry_index_name_by_symbol={},
+            )
+            rows = [
+                {
+                    "symbol": row.symbol,
+                    "decision_date": row.decision_date,
+                    "feature_as_of_date": row.feature_as_of_date,
+                    "feature_available_date": decision_date.isoformat(),
+                    "local_current_observed_at": row.local_current_observed_at.isoformat(),
+                    "feature_registry_id": row.feature_registry_id,
+                    "feature_registry_hash": row.feature_registry_hash,
+                    "feature_schema_hash": row.feature_schema_hash,
+                    "feature_ids": list(row.feature_ids),
+                    "feature_values": [value for _, value in row.values],
+                    "missing_feature_ids": list(row.missing_feature_ids),
+                    "source_row_sha256_by_table": [
+                        list(item) for item in row.source_row_sha256_by_table
+                    ],
+                    "row_sha256": row.row_sha256,
+                    "historical_pit_eligible": False,
+                    "formal_training_allowed": False,
+                }
+                for row in feature_rows
+            ]
+            if tuple(str(row["symbol"]) for row in rows) != batch_symbols:
+                return pending(
+                    "current_observed_feature_symbol_coverage_mismatch",
+                    batch_ordinal=batch_index,
+                    expected_symbols=list(batch_symbols),
+                    observed_symbols=[str(row["symbol"]) for row in rows],
+                )
+            child = _current_observed_feature_child_snapshot(
+                rows=rows,
+                source_rows_sha256_by_table=raw_snapshot.source_rows_sha256_by_table,
+                batch_symbols=batch_symbols,
+                decision_date=decision_date,
+                expected_feature_as_of=expected_feature_as_of,
+                history_start_date=history_start_date,
+                observed_at=observed_at,
+                source_cycle_date=source_cycle_date,
+                source_cycle_id=source_cycle_id,
+                source_raw_run_id=source_raw_run_id,
+                discovery_raw_run_id=str(raw_run_id),
+                discovery_terminal_path=discovery_terminal_path,
+                discovery_terminal_sha256=str(discovery_terminal_sha256),
+                child_status=child_status,
+                reuse_source_identity=reuse_source_identity,
+                status_path=status_path,
+                status_sha256=status_sha256,
+                status_bytes=status_bytes,
+                terminal_path=terminal_path,
+                terminal_sha256=terminal_sha256,
+                snapshot_database=snapshot_database,
+                context=context,
+                pins=pins,
+                feature_builder=feature_builder,
+            )
+            child_snapshots.append(child)
+    except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+        return pending(
+            "current_observed_snapshot_or_feature_build_failed",
+            error_type=type(exc).__name__,
+            expected_feature_as_of_date=expected_feature_as_of,
+            cycle_source_date=source_cycle_date,
+            failed_batch_ordinal=len(child_snapshots),
+            failed_batch_symbols=list(symbol_batches[len(child_snapshots)]),
+            completed_batch_count=len(child_snapshots),
+        )
+    full_entry_observation = _read_current_observed_entry_prices(
+        snapshot_database=snapshot_database,
+        expected_database_sha256=str(context.snapshot_database_sha256),
+        decision_date=decision_date,
+        cycle_source_date=source_cycle_date,
+        decision_session_evidence=(
+            decision_session_evidence
+            if source_cycle_date == decision_date.isoformat()
+            else None
+        ),
+        symbols=normalized_symbols,
+        source_pins={
+            "cycle_id": source_cycle_id,
+            "raw_run_id": source_raw_run_id,
+            "cycle_terminal_path": str(terminal_path),
+            "cycle_terminal_sha256": str(terminal_sha256),
+            "snapshot_database_path": str(snapshot_database),
+            "snapshot_database_sha256": str(context.snapshot_database_sha256),
+            "snapshot_receipt_path": str(context.snapshot_receipt_path),
+            "snapshot_receipt_sha256": str(context.snapshot_receipt_sha256),
+            "source_context_envelope_path": str(pins["source_context_envelope_path"]),
+            "source_context_envelope_sha256": "sha256:" + str(context_envelope_sha),
+            "local_observed_at": str(pins["snapshot_completed_at"]),
+        },
+    )
+    if len(symbol_batches) > 1:
+        for batch_index, (batch_symbols, child_snapshot) in enumerate(
+            zip(symbol_batches, child_snapshots, strict=True)
+        ):
+            child_snapshot["entry_observation"] = _slice_current_observed_entry_observation(
+                full_entry_observation,
+                batch_symbols,
+            )
+            child_snapshot["content_sha256"] = _source_contract_hash_payload(
+                {key: value for key, value in child_snapshot.items() if key != "content_sha256"}
+            )
+            child_snapshots[batch_index] = child_snapshot
+        if snapshot_cohort is None or snapshot_source_binding is None:
+            return pending("current_observed_full_cohort_snapshot_binding_missing")
+        try:
+            composed = compose_current_observed_feature_snapshot_v2(
+                batch_snapshots=child_snapshots,
+                full_cohort=snapshot_cohort,
+                snapshot_source_binding=snapshot_source_binding,
+            )
+            verify_current_observed_feature_snapshot_v2(composed)
+        except (TypeError, ValueError) as exc:
+            return pending(
+                "current_observed_feature_composition_verification_failed",
+                error_type=type(exc).__name__,
+                diagnostic=str(exc),
+                completed_batch_count=len(child_snapshots),
+                expected_batch_count=len(symbol_batches),
+            )
+        return dict(composed)
+
+    body = child_snapshots[0]
+    body["entry_observation"] = full_entry_observation
+    body["content_sha256"] = _source_contract_hash_payload(
+        {key: value for key, value in body.items() if key != "content_sha256"}
+    )
+    return body
+
+
+def _slice_current_observed_entry_observation(
+    observation: Mapping[str, Any],
+    symbols: tuple[str, ...],
+) -> dict[str, Any]:
+    """Project one exact full-cohort entry proof to an immutable child batch."""
+
+    sliced = dict(observation)
+    raw_pins = observation.get("entry_price_pin_by_symbol")
+    if not isinstance(raw_pins, Mapping):
+        raise ValueError("current-observed full entry observation has no pin map")
+    pins = {symbol: raw_pins[symbol] for symbol in symbols if symbol in raw_pins}
+    sliced["entry_price_pin_by_symbol"] = pins
+    missing = observation.get("missing_symbols")
+    missing_symbols = (
+        [symbol for symbol in symbols if symbol in set(str(item) for item in missing)]
+        if isinstance(missing, list)
+        else []
+    )
+    if observation.get("status") == "captured":
+        if set(pins) != set(symbols) or missing_symbols:
+            raise ValueError("captured entry observation does not cover its exact feature batch")
+    else:
+        if not missing_symbols:
+            missing_symbols = [symbol for symbol in symbols if symbol not in pins]
+        sliced["missing_symbols"] = missing_symbols
+    return sliced
+
+
+def _current_observed_feature_child_snapshot(
+    *,
+    rows: list[dict[str, Any]],
+    source_rows_sha256_by_table: Mapping[str, str],
+    batch_symbols: tuple[str, ...],
+    decision_date: date,
+    expected_feature_as_of: str,
+    history_start_date: str,
+    observed_at: datetime,
+    source_cycle_date: str,
+    source_cycle_id: str,
+    source_raw_run_id: str,
+    discovery_raw_run_id: str,
+    discovery_terminal_path: Path,
+    discovery_terminal_sha256: str,
+    child_status: str,
+    reuse_source_identity: Mapping[str, Any] | None,
+    status_path: Path,
+    status_sha256: str,
+    status_bytes: bytes,
+    terminal_path: Path,
+    terminal_sha256: str,
+    snapshot_database: Path,
+    context: Any,
+    pins: Mapping[str, Any],
+    feature_builder: HistoricalFeatureBuilder,
+) -> dict[str, Any]:
+    """Create one hash-bound v1 snapshot for a <=16-symbol provider call."""
+
+    if tuple(str(row["symbol"]) for row in rows) != batch_symbols:
+        raise ValueError("current-observed feature child symbols differ from its batch")
+    source_context_envelope_digest = _normalized_sha256_hex(
+        pins.get("source_context_envelope_sha256")
+    )
+    if source_context_envelope_digest is None:
+        raise ValueError("current-observed source-context envelope SHA-256 is invalid")
+    entry_observation: dict[str, Any] = {
+        "status": "pending",
+        "reason": "entry_observation_not_attached",
+    }
+    body: dict[str, Any] = {
+        "schema_version": CURRENT_OBSERVED_FEATURE_SNAPSHOT_V1,
+        "status": "captured",
+        "verified": True,
+        "decision_date": decision_date.isoformat(),
+        "feature_as_of_date": expected_feature_as_of,
+        "history_start_date": history_start_date,
+        "observed_at": observed_at.isoformat(),
+        "cycle_source_date": source_cycle_date,
+        "cycle_id": source_cycle_id,
+        "raw_run_id": source_raw_run_id,
+        "discovery_raw_run_id": discovery_raw_run_id,
+        "discovery_cycle_terminal_path": str(discovery_terminal_path),
+        "discovery_cycle_terminal_sha256": str(discovery_terminal_sha256),
+        "discovery_cycle_terminal_status": child_status,
+        "reuse_source_identity": (
+            dict(reuse_source_identity) if isinstance(reuse_source_identity, Mapping) else None
+        ),
+        "discovery_status_path": str(status_path.resolve()),
+        "discovery_status_sha256": status_sha256,
+        "discovery_status_bytes_base64": base64.b64encode(status_bytes).decode("ascii"),
+        "cycle_terminal_path": str(terminal_path),
+        "cycle_terminal_sha256": terminal_sha256,
+        "snapshot_database_path": str(snapshot_database),
+        "snapshot_database_sha256": str(context.snapshot_database_sha256),
+        "snapshot_receipt_path": str(context.snapshot_receipt_path),
+        "snapshot_receipt_sha256": str(context.snapshot_receipt_sha256),
+        "source_context_envelope_path": str(pins["source_context_envelope_path"]),
+        "source_context_envelope_sha256": "sha256:" + source_context_envelope_digest,
+        "source_rows_sha256_by_table": {name: value for name, value in source_rows_sha256_by_table.items()},
+        "feature_registry_id": CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_id,
+        "feature_registry_hash": CORE_LONG_HISTORY_FEATURE_REGISTRY.registry_hash,
+        "feature_schema_hash": HistoricalFeatureBuilder(
+            CORE_LONG_HISTORY_FEATURE_REGISTRY
+        ).load_contract.schema_hash,
+        "symbols": list(batch_symbols),
+        "rows": rows,
+        "row_count": len(rows),
+        "rows_sha256": _source_contract_hash_payload({"rows": rows}),
+        "entry_observation": entry_observation,
+        "current_restated": True,
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "research_only": True,
+        "reason": "verified_current_observation_not_historical_pit",
+    }
+    body["content_sha256"] = _source_contract_hash_payload(body)
+    return body
+
+
+def _read_current_observed_entry_prices(
+    *,
+    snapshot_database: Path,
+    expected_database_sha256: str,
+    decision_date: date,
+    cycle_source_date: str,
+    decision_session_evidence: Mapping[str, Any] | None,
+    symbols: tuple[str, ...],
+    source_pins: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Pin exact same-date stock and TAIEX closes from the frozen G6 snapshot.
+
+    ``local_observed_at`` records when the immutable local snapshot completed;
+    no source-availability clock is inferred from its later verification time.
+    """
+
+    base: dict[str, Any] = {
+        "schema_version": "recommendation-current-observed-entry-observation.v1",
+        "decision_date": decision_date.isoformat(),
+        "cycle_source_date": cycle_source_date,
+        "source_database_path": str(snapshot_database.resolve()),
+        "source_database_sha256": expected_database_sha256,
+        "local_observed_at": source_pins.get("local_observed_at"),
+        "source_available_at": None,
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "current_restated": True,
+        "research_only": True,
+    }
+    if cycle_source_date != decision_date.isoformat():
+        return {
+            **base,
+            "status": "pending",
+            "reason": "same_date_entry_session_missing",
+            "missing_symbols": list(symbols),
+            "entry_price_pin_by_symbol": {},
+            "benchmark_entry_price_pin": None,
+        }
+    try:
+        observed_at = datetime.fromisoformat(
+            str(source_pins.get("local_observed_at") or "").replace("Z", "+00:00")
+        )
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            raise ValueError("snapshot local observation clock is not timezone-aware")
+        try:
+            session_proof = _build_current_observed_entry_session_proof(
+                decision_date=decision_date,
+                observed_at=observed_at,
+                calendar_evidence=decision_session_evidence,
+            )
+        except ValueError:
+            return {
+                **base,
+                "status": "pending",
+                "reason": "official_entry_session_calendar_unverified",
+                "missing_symbols": list(symbols),
+                "entry_price_pin_by_symbol": {},
+                "benchmark_entry_price_pin": None,
+            }
+        scheduled_close_at = datetime.fromisoformat(
+            str(session_proof["scheduled_market_close_at"])
+        )
+        if observed_at.astimezone(timezone.utc) < scheduled_close_at.astimezone(timezone.utc):
+            return {
+                **base,
+                "status": "pending",
+                "reason": "entry_source_observation_before_scheduled_market_close",
+                "scheduled_market_close_at": session_proof["scheduled_market_close_at"],
+                "entry_session_proof": session_proof,
+                "missing_symbols": list(symbols),
+                "entry_price_pin_by_symbol": {},
+                "benchmark_entry_price_pin": None,
+            }
+        if not _is_sha256_text(expected_database_sha256):
+            raise ValueError("snapshot database SHA-256 is invalid")
+        database = snapshot_database.resolve(strict=True)
+        before = database.stat()
+        if _sha256_file(database) != expected_database_sha256:
+            raise ValueError("snapshot database hash differs from verified context")
+        connection = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=10)
+        try:
+            connection.execute("PRAGMA query_only=ON")
+            stock_pins: dict[str, dict[str, Any]] = {}
+            for symbol in symbols:
+                result = connection.execute(
+                    'SELECT "\u8b49\u5238\u4ee3\u865f", "\u65e5\u671f", '
+                    'CAST("\u6536\u76e4\u50f9" AS TEXT) '
+                    'FROM daily_prices WHERE "\u65e5\u671f" IN (?, ?) '
+                    'AND "\u8b49\u5238\u4ee3\u865f"=?',
+                    (decision_date.strftime("%Y%m%d"), decision_date.isoformat(), symbol),
+                ).fetchall()
+                if len(result) != 1:
+                    return {
+                        **base,
+                        "status": "pending",
+                        "reason": "same_date_stock_close_missing_or_ambiguous",
+                        "missing_symbols": [symbol],
+                        "entry_price_pin_by_symbol": {},
+                        "benchmark_entry_price_pin": None,
+                    }
+                raw_symbol, raw_date, raw_close = result[0]
+                if str(raw_symbol).strip() != symbol or str(raw_date)[:10] not in {
+                    decision_date.isoformat(),
+                    decision_date.strftime("%Y%m%d"),
+                }:
+                    raise ValueError("same-date stock row identity mismatch")
+                close = _strict_positive_decimal(raw_close)
+                source_values = {
+                    "table": "daily_prices",
+                    "symbol": symbol,
+                    "source_date": decision_date.isoformat(),
+                    "raw_close_value": str(raw_close).strip(),
+                }
+                stock_pins[symbol] = _build_current_observed_entry_price_pin(
+                    row_id=(
+                        f"current-observed:{decision_date.isoformat()}:{source_pins.get('cycle_id')}:{symbol}"
+                    ),
+                    symbol=symbol,
+                    source_date=decision_date.isoformat(),
+                    close=close,
+                    source_values=source_values,
+                    source_pins=source_pins,
+                    session_proof=session_proof,
+                )
+            benchmark_rows = connection.execute(
+                'SELECT "\u65e5\u671f", CAST(COALESCE("\u6536\u76e4\u50f9", "\u6536\u76e4\u6307\u6578") AS TEXT) '
+                'FROM market_indices WHERE "\u65e5\u671f" IN (?, ?)',
+                (decision_date.strftime("%Y%m%d"), decision_date.isoformat()),
+            ).fetchall()
+            if len(benchmark_rows) != 1:
+                return {
+                    **base,
+                    "status": "pending",
+                    "reason": "same_date_taiex_close_missing_or_ambiguous",
+                    "missing_symbols": ["TAIEX"],
+                    "entry_price_pin_by_symbol": stock_pins,
+                    "benchmark_entry_price_pin": None,
+                }
+            raw_date, raw_close = benchmark_rows[0]
+            if str(raw_date)[:10] not in {
+                decision_date.isoformat(),
+                decision_date.strftime("%Y%m%d"),
+            }:
+                raise ValueError("same-date TAIEX row identity mismatch")
+            benchmark_close = _strict_positive_decimal(raw_close)
+            benchmark_source_values = {
+                "table": "market_indices",
+                "symbol": "TAIEX",
+                "source_date": decision_date.isoformat(),
+                "raw_close_value": str(raw_close).strip(),
+            }
+            benchmark_pin = _build_current_observed_entry_price_pin(
+                row_id=f"current-observed:{decision_date.isoformat()}:{source_pins.get('cycle_id')}:TAIEX",
+                symbol="TAIEX",
+                source_date=decision_date.isoformat(),
+                close=benchmark_close,
+                source_values=benchmark_source_values,
+                source_pins=source_pins,
+                session_proof=session_proof,
+            )
+        finally:
+            connection.close()
+        after = database.stat()
+        if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            raise RuntimeError("frozen snapshot changed during entry-price read")
+        if _sha256_file(database) != expected_database_sha256:
+            raise RuntimeError("frozen snapshot hash changed during entry-price read")
+    except (OSError, RuntimeError, sqlite3.Error, TypeError, ValueError, InvalidOperation) as exc:
+        return {
+            **base,
+            "status": "blocked",
+            "reason": f"same_date_entry_source_unverifiable:{type(exc).__name__}",
+            "missing_symbols": list(symbols),
+            "entry_price_pin_by_symbol": {},
+            "benchmark_entry_price_pin": None,
+        }
+    return {
+        **base,
+        "status": "captured",
+        "reason": "same_date_entry_prices_exactly_pinned",
+        "scheduled_market_close_at": session_proof["scheduled_market_close_at"],
+        "entry_session_proof": session_proof,
+        "missing_symbols": [],
+        "entry_price_pin_by_symbol": stock_pins,
+        "benchmark_entry_price_pin": benchmark_pin,
+    }
+
+
+def _build_current_observed_entry_session_proof(
+    *,
+    decision_date: date,
+    observed_at: datetime,
+    calendar_evidence: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Bind the exact official open-session decision and regular market close."""
+
+    if (
+        not isinstance(calendar_evidence, Mapping)
+        or calendar_evidence.get("target_date") != decision_date.isoformat()
+        or calendar_evidence.get("is_trading_day") is not True
+        or calendar_evidence.get("mode") != "hash_bound_official_calendar_cache"
+    ):
+        raise ValueError("official decision-date session evidence is unresolved")
+    verify_current_observed_official_calendar_evidence(
+        calendar_evidence,
+        decision_date=decision_date,
+        observed_at=observed_at,
+    )
+    calendar_sha256 = _source_contract_hash_payload(dict(calendar_evidence))
+    scheduled_close = datetime.combine(
+        decision_date,
+        _CURRENT_RESEARCH_MARKET_CLOSE,
+        tzinfo=TAIPEI,
+    ).isoformat()
+    body: dict[str, Any] = {
+        "schema_version": "recommendation-current-observed-entry-session-proof.v1",
+        "decision_date": decision_date.isoformat(),
+        "exchange": "TWSE_TAIWAN_EQUITIES",
+        "timezone": "Asia/Taipei",
+        "scheduled_market_close_time": _CURRENT_RESEARCH_MARKET_CLOSE.isoformat(),
+        "scheduled_market_close_at": scheduled_close,
+        "calendar_evidence": dict(calendar_evidence),
+        "calendar_evidence_sha256": calendar_sha256,
+        "local_observed_at": observed_at.isoformat(),
+        "source_available_at": None,
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "research_only": True,
+    }
+    body["proof_sha256"] = _source_contract_hash_payload(body)
+    return body
+
+
+def _strict_positive_decimal(value: object) -> Decimal:
+    if value is None or isinstance(value, bool):
+        raise ValueError("price value is missing")
+    parsed = Decimal(str(value).strip())
+    if not parsed.is_finite() or parsed <= 0:
+        raise ValueError("price value must be a finite positive Decimal")
+    return parsed
+
+
+def _build_current_observed_entry_price_pin(
+    *,
+    row_id: str,
+    symbol: str,
+    source_date: str,
+    close: Decimal,
+    source_values: Mapping[str, str],
+    source_pins: Mapping[str, Any],
+    session_proof: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": "recommendation-current-observed-entry-price-pin.v1",
+        "row_id": row_id,
+        "symbol": symbol,
+        "source_date": source_date,
+        "close_price_twd": format(close, "f"),
+        "raw_close_value": str(source_values["raw_close_value"]),
+        "source_table": str(source_values["table"]),
+        "source_row_values": dict(source_values),
+        "source_row_sha256": _source_contract_hash_payload(dict(source_values)),
+        "cycle_id": source_pins.get("cycle_id"),
+        "raw_run_id": source_pins.get("raw_run_id"),
+        "cycle_terminal_path": source_pins.get("cycle_terminal_path"),
+        "cycle_terminal_sha256": source_pins.get("cycle_terminal_sha256"),
+        "snapshot_database_path": source_pins.get("snapshot_database_path"),
+        "snapshot_database_sha256": source_pins.get("snapshot_database_sha256"),
+        "snapshot_receipt_path": source_pins.get("snapshot_receipt_path"),
+        "snapshot_receipt_sha256": source_pins.get("snapshot_receipt_sha256"),
+        "source_context_envelope_path": source_pins.get("source_context_envelope_path"),
+        "source_context_envelope_sha256": source_pins.get("source_context_envelope_sha256"),
+        "local_observed_at": source_pins.get("local_observed_at"),
+        "scheduled_market_close_at": session_proof.get("scheduled_market_close_at"),
+        "entry_session_proof_sha256": session_proof.get("proof_sha256"),
+        "source_available_at": None,
+        "current_restated": True,
+        "research_only": True,
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+    }
+
+
 def _audit_source_contract(
     *,
     data_root: Path,
@@ -2352,6 +3929,7 @@ def _audit_source_contract(
     replay_start_date: str,
     replay_end_date: str,
     availability_cutoff_at: str | None = None,
+    current_observed_snapshot: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a read-only source audit and persist its shadow receipt."""
 
@@ -2382,6 +3960,19 @@ def _audit_source_contract(
             replay_end_date=replay_end_date,
             availability_cutoff_at=availability_cutoff_at,
         )
+        if isinstance(current_observed_snapshot, Mapping):
+            contract = dict(contract)
+            technical_value = contract.get("technical")
+            technical = dict(technical_value) if isinstance(technical_value, Mapping) else {}
+            technical["current_observed_feature_snapshot"] = dict(current_observed_snapshot)
+            contract["technical"] = technical
+            contract["contract_sha256"] = _source_contract_hash_payload(
+                {
+                    key: value
+                    for key, value in contract.items()
+                    if key not in {"contract_sha256", "checked_at"}
+                }
+            )
         receipt = write_source_contract(
             contract,
             learning_output_root=learning_output_root,
@@ -2422,6 +4013,95 @@ def _capture_source_contract_binding(
     receipt = audit.get("source_contract_receipt")
     if not isinstance(contract, Mapping) or not isinstance(receipt, Mapping):
         return None, "prospective_source_contract_receipt_missing"
+    technical = contract.get("technical")
+    technical = technical if isinstance(technical, Mapping) else {}
+    current_snapshot = technical.get("current_observed_feature_snapshot")
+    if isinstance(current_snapshot, Mapping) and current_snapshot.get("status") == "captured":
+        if (
+            current_snapshot.get("verified") is not True
+            or current_snapshot.get("current_restated") is not True
+            or current_snapshot.get("historical_pit_eligible") is not False
+            or current_snapshot.get("formal_training_allowed") is not False
+            or current_snapshot.get("research_only") is not True
+        ):
+            return None, "current_observed_feature_snapshot_flags_invalid"
+        contract_path = str(receipt.get("contract_path") or "")
+        content_hash = str(receipt.get("contract_content_sha256") or "")
+        file_hash = str(receipt.get("contract_file_sha256") or "")
+        feature_snapshot_hash = str(current_snapshot.get("content_sha256") or "")
+        if not (
+            contract_path
+            and _is_sha256_text(content_hash)
+            and _is_sha256_text(file_hash)
+            and _is_sha256_text(feature_snapshot_hash)
+        ):
+            return None, "current_observed_binding_receipt_hash_missing"
+        binding = {
+            "schema_version": "recommendation-calibration-capture-source-binding.v2",
+            "binding_mode": "current_observed",
+            "contract_path": contract_path,
+            "contract_content_sha256": content_hash,
+            "contract_file_sha256": file_hash,
+            "decision_date": contract.get("decision_date"),
+            "symbols": list(contract.get("symbols", []))
+            if isinstance(contract.get("symbols"), list)
+            else [],
+            "current_observed_feature_snapshot": dict(current_snapshot),
+            "current_observed_feature_snapshot_sha256": feature_snapshot_hash,
+            "feature_snapshot_content_sha256": feature_snapshot_hash,
+            "cycle_id": current_snapshot.get("cycle_id"),
+            "raw_run_id": current_snapshot.get("raw_run_id"),
+            "cycle_source_date": current_snapshot.get("cycle_source_date"),
+            "discovery_status_path": current_snapshot.get("discovery_status_path"),
+            "discovery_status_sha256": current_snapshot.get("discovery_status_sha256"),
+            "cycle_terminal_path": current_snapshot.get("cycle_terminal_path"),
+            "cycle_terminal_sha256": current_snapshot.get("cycle_terminal_sha256"),
+            "discovery_raw_run_id": current_snapshot.get("discovery_raw_run_id"),
+            "discovery_cycle_terminal_path": current_snapshot.get(
+                "discovery_cycle_terminal_path"
+            ),
+            "discovery_cycle_terminal_sha256": current_snapshot.get(
+                "discovery_cycle_terminal_sha256"
+            ),
+            "discovery_cycle_terminal_status": current_snapshot.get(
+                "discovery_cycle_terminal_status"
+            ),
+            "reuse_source_identity": current_snapshot.get("reuse_source_identity"),
+            "snapshot_database_path": current_snapshot.get("snapshot_database_path"),
+            "snapshot_database_sha256": current_snapshot.get("snapshot_database_sha256"),
+            "snapshot_receipt_path": current_snapshot.get("snapshot_receipt_path"),
+            "snapshot_receipt_sha256": current_snapshot.get("snapshot_receipt_sha256"),
+            "source_context_envelope_path": current_snapshot.get(
+                "source_context_envelope_path"
+            ),
+            "source_context_envelope_sha256": current_snapshot.get(
+                "source_context_envelope_sha256"
+            ),
+            "feature_as_of_date": current_snapshot.get("feature_as_of_date"),
+            "observed_at": current_snapshot.get("observed_at"),
+            "feature_registry_id": current_snapshot.get("feature_registry_id"),
+            "feature_registry_hash": current_snapshot.get("feature_registry_hash"),
+            "feature_schema_hash": current_snapshot.get("feature_schema_hash"),
+            "rows_sha256": current_snapshot.get("rows_sha256"),
+            "row_count": current_snapshot.get("row_count"),
+            "historical_pit_eligible": False,
+            "formal_training_allowed": False,
+            "current_restated": True,
+            "research_only": True,
+            "source_semantics": "current_observed_after_actual_capture;not_historical_PIT",
+        }
+        if current_snapshot.get("schema_version") == CURRENT_OBSERVED_FEATURE_SNAPSHOT_V2:
+            composition = current_snapshot.get("batch_composition")
+            if not isinstance(composition, Mapping):
+                return None, "current_observed_v2_composition_missing"
+            binding.update(
+                {
+                    "scope_mode": "verified_scheduled_snapshot_cohort",
+                    "composition_sha256": current_snapshot.get("composition_sha256"),
+                    "cohort_hash": current_snapshot.get("cohort_hash"),
+                }
+            )
+        return binding, None
     lanes = contract.get("lanes")
     lanes = lanes if isinstance(lanes, Mapping) else {}
     price_up = lanes.get("price_up_calibration")
@@ -2443,8 +4123,6 @@ def _capture_source_contract_binding(
     )
     if not contract_path or not content_hash.startswith("sha256:") or not file_hash.startswith("sha256:"):
         return None, "prospective_source_contract_receipt_hash_missing"
-    technical = contract.get("technical")
-    technical = technical if isinstance(technical, Mapping) else {}
     technical_receipt = technical.get("publication_receipt")
     technical_receipt = technical_receipt if isinstance(technical_receipt, Mapping) else {}
     feature_snapshot = technical.get("prospective_feature_snapshot")
@@ -2489,6 +4167,1157 @@ def _capture_source_contract_binding(
     return binding, None
 
 
+def _current_observed_capture_inputs(
+    snapshot: Mapping[str, Any],
+    *,
+    decision_date: date,
+) -> tuple[RecommendationPredictionCaptureInput, ...]:
+    """Project one verified v1 or composed v2 observation into inference rows."""
+
+    schema_version = snapshot.get("schema_version")
+    if (
+        schema_version not in {
+            CURRENT_OBSERVED_FEATURE_SNAPSHOT_V1,
+            CURRENT_OBSERVED_FEATURE_SNAPSHOT_V2,
+        }
+        or snapshot.get("status") != "captured"
+        or snapshot.get("verified") is not True
+        or snapshot.get("current_restated") is not True
+        or snapshot.get("historical_pit_eligible") is not False
+        or snapshot.get("formal_training_allowed") is not False
+        or snapshot.get("research_only") is not True
+        or str(snapshot.get("decision_date") or "") != decision_date.isoformat()
+    ):
+        return ()
+    if schema_version == CURRENT_OBSERVED_FEATURE_SNAPSHOT_V2:
+        try:
+            verify_current_observed_feature_snapshot_v2(snapshot)
+        except (TypeError, ValueError):
+            return ()
+        composition = snapshot.get("batch_composition")
+        if (
+            snapshot.get("scope_mode") != "verified_scheduled_snapshot_cohort"
+            or
+            not isinstance(composition, Mapping)
+            or composition.get("scope_mode") != "verified_scheduled_snapshot_cohort"
+        ):
+            return ()
+    try:
+        observed_at = datetime.fromisoformat(
+            str(snapshot.get("observed_at") or "").replace("Z", "+00:00")
+        )
+        feature_as_of = date.fromisoformat(str(snapshot.get("feature_as_of_date") or ""))
+    except (TypeError, ValueError, OverflowError):
+        return ()
+    if (
+        observed_at.tzinfo is None
+        or observed_at.utcoffset() is None
+        or observed_at.astimezone(TAIPEI).date() != decision_date
+        or feature_as_of >= decision_date
+    ):
+        return ()
+    rows = snapshot.get("rows")
+    symbols = snapshot.get("symbols")
+    if not isinstance(rows, list) or not isinstance(symbols, list) or not rows:
+        return ()
+    normalized_symbols = tuple(sorted({str(symbol).strip() for symbol in symbols if str(symbol).strip()}))
+    rows_by_symbol = {
+        str(row.get("symbol") or ""): row
+        for row in rows
+        if isinstance(row, Mapping) and str(row.get("symbol") or "")
+    }
+    if set(rows_by_symbol) != set(normalized_symbols) or len(rows_by_symbol) != len(rows):
+        return ()
+    max_symbols = 16 if schema_version == CURRENT_OBSERVED_FEATURE_SNAPSHOT_V1 else 50
+    if not normalized_symbols or len(normalized_symbols) > max_symbols:
+        return ()
+    feature_registry = CORE_LONG_HISTORY_FEATURE_REGISTRY
+    inputs: list[RecommendationPredictionCaptureInput] = []
+    for symbol in normalized_symbols:
+        row = rows_by_symbol[symbol]
+        feature_ids = row.get("feature_ids")
+        raw_values = row.get("feature_values")
+        if (
+            feature_ids != list(feature_registry.canonical_ids)
+            or not isinstance(raw_values, list)
+            or len(raw_values) != len(feature_registry.canonical_ids)
+        ):
+            return ()
+        if any(value is not None and (type(value) is not int) for value in raw_values):
+            return ()
+        row_feature_as_of = str(row.get("feature_as_of_date") or "")
+        row_available_date = str(row.get("feature_available_date") or "")
+        if (
+            row.get("decision_date") != decision_date.isoformat()
+            or row_feature_as_of != feature_as_of.isoformat()
+            or row_available_date != decision_date.isoformat()
+        ):
+            return ()
+        inputs.append(
+            RecommendationPredictionCaptureInput(
+                row_id=(
+                    f"current-observed:{decision_date.isoformat()}:{snapshot.get('cycle_id')}:{symbol}"
+                ),
+                symbol=symbol,
+                decision_date=decision_date.isoformat(),
+                feature_as_of_date=row_feature_as_of,
+                feature_available_date=row_available_date,
+                feature_values=tuple(raw_values),
+                rule_probability_bp=NULL_BENCHMARK_PROBABILITY_BP,
+                rule_after_cost_probability_bp=AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP,
+                rule_baseline_id=NULL_BENCHMARK_BASELINE_ID,
+            )
+        )
+    return tuple(inputs)
+
+
+def _persist_current_observed_input_capture(
+    *,
+    output_root: Path,
+    source_contract_audit: Mapping[str, Any],
+    decision_date: date,
+    captured_at: datetime,
+    cost_scenario: RecommendationCostScenario,
+    fixed_round_trip_cost_bp: int | None,
+) -> dict[str, Any]:
+    """Persist a no-model feature/entry observation for future natural labels."""
+
+    binding, reason = _capture_source_contract_binding(source_contract_audit)
+    if binding is None or binding.get("binding_mode") != "current_observed":
+        return {
+            "status": "pending",
+            "reason": reason or "current_observed_source_binding_unavailable",
+            "capture_eligible": False,
+        }
+    feature_snapshot = binding.get("current_observed_feature_snapshot")
+    if not isinstance(feature_snapshot, Mapping):
+        return {"status": "blocked", "reason": "current_observed_feature_snapshot_missing"}
+    feature_schema_version = feature_snapshot.get("schema_version")
+    if feature_schema_version == CURRENT_OBSERVED_FEATURE_SNAPSHOT_V2:
+        try:
+            verify_current_observed_feature_snapshot_v2(feature_snapshot)
+        except (TypeError, ValueError) as exc:
+            return {
+                "status": "blocked",
+                "reason": "current_observed_v2_feature_snapshot_invalid",
+                "diagnostic": str(exc),
+                "capture_eligible": False,
+            }
+        composition = feature_snapshot.get("batch_composition")
+        if (
+            feature_snapshot.get("scope_mode") != "verified_scheduled_snapshot_cohort"
+            or
+            not isinstance(composition, Mapping)
+            or composition.get("scope_mode") != "verified_scheduled_snapshot_cohort"
+        ):
+            return {"status": "blocked", "reason": "current_observed_v2_scope_mode_invalid"}
+    elif feature_schema_version != CURRENT_OBSERVED_FEATURE_SNAPSHOT_V1:
+        return {"status": "blocked", "reason": "current_observed_feature_snapshot_schema_unsupported"}
+    entry_observation = feature_snapshot.get("entry_observation")
+    if not isinstance(entry_observation, Mapping):
+        return {"status": "blocked", "reason": "same_date_entry_observation_missing"}
+    if entry_observation.get("status") != "captured":
+        return {
+            "status": "pending",
+            "reason": str(entry_observation.get("reason") or "same_date_entry_observation_pending"),
+            "capture_eligible": False,
+            "feature_snapshot_status": feature_snapshot.get("status"),
+            "entry_observation_status": entry_observation.get("status"),
+            "missing_symbols": list(entry_observation.get("missing_symbols", [])),
+            "cycle_id": feature_snapshot.get("cycle_id"),
+        }
+    if (
+        captured_at.tzinfo is None
+        or captured_at.utcoffset() is None
+        or captured_at.astimezone(TAIPEI).date() != decision_date
+    ):
+        return {"status": "blocked", "reason": "current_input_capture_clock_invalid"}
+    capture_rows = feature_snapshot.get("rows")
+    entry_by_symbol = entry_observation.get("entry_price_pin_by_symbol")
+    benchmark_pin = entry_observation.get("benchmark_entry_price_pin")
+    symbols = feature_snapshot.get("symbols")
+    if (
+        not isinstance(capture_rows, list)
+        or not capture_rows
+        or not isinstance(entry_by_symbol, Mapping)
+        or not isinstance(benchmark_pin, Mapping)
+        or not isinstance(symbols, list)
+    ):
+        return {"status": "blocked", "reason": "current_input_capture_rows_or_entry_pins_invalid"}
+    scenario_metadata = cost_scenario.metadata()
+    normalized_scenario = normalize_cost_scenario(
+        scenario_metadata,
+        fixed_round_trip_cost_bp=None if cost_scenario.is_estimated else fixed_round_trip_cost_bp,
+    )
+    if normalized_scenario.scenario_hash != cost_scenario.scenario_hash:
+        return {"status": "blocked", "reason": "current_input_capture_cost_scenario_identity_mismatch"}
+    capture_body: dict[str, Any] = {
+        "schema_version": (
+            "recommendation-current-observed-input-capture.v2"
+            if feature_schema_version == CURRENT_OBSERVED_FEATURE_SNAPSHOT_V2
+            else "recommendation-current-observed-input-capture.v1"
+        ),
+        "status": "captured",
+        "decision_date": decision_date.isoformat(),
+        "captured_at": captured_at.isoformat(),
+        "cycle_id": str(feature_snapshot.get("cycle_id") or ""),
+        "raw_run_id": str(feature_snapshot.get("raw_run_id") or ""),
+        "cycle_source_date": str(feature_snapshot.get("cycle_source_date") or ""),
+        "feature_snapshot_sha256": str(feature_snapshot.get("content_sha256") or ""),
+        "feature_registry_id": feature_snapshot.get("feature_registry_id"),
+        "feature_registry_hash": feature_snapshot.get("feature_registry_hash"),
+        "feature_schema_hash": feature_snapshot.get("feature_schema_hash"),
+        "symbols": list(symbols),
+        "rows": [],
+        "entry_price_pin_by_symbol": dict(entry_by_symbol),
+        "benchmark_entry_price_pin": dict(benchmark_pin),
+        "source_contract_binding": dict(binding),
+        "cost_status": "verified",
+        "cost_scenario": scenario_metadata,
+        "cost_scenario_id": normalized_scenario.scenario_id,
+        "cost_scenario_version": normalized_scenario.scenario_version,
+        "cost_scenario_hash": normalized_scenario.scenario_hash,
+        "cost_scenario_basis": normalized_scenario.cost_basis,
+        "cost_basis": normalized_scenario.cost_basis,
+        "fixed_round_trip_cost_bp": (
+            None if normalized_scenario.is_estimated else normalized_scenario.fixed_round_trip_cost_bp
+        ),
+        "cost_contract_hash": recommendation_cost_contract_hash(
+            normalized_scenario.fixed_round_trip_cost_bp,
+            cost_scenario=normalized_scenario if normalized_scenario.is_estimated else None,
+        ),
+        "label_registry_hash": recommendation_label_registry_hash(
+            cost_scenario=normalized_scenario if normalized_scenario.is_estimated else None,
+        ),
+        "current_restated": True,
+        "research_only": True,
+        "natural_outcome_only": True,
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "prediction_output_present": False,
+    }
+    if feature_schema_version == CURRENT_OBSERVED_FEATURE_SNAPSHOT_V2:
+        capture_body.update(
+            {
+                "scope_mode": "verified_scheduled_snapshot_cohort",
+                "composition_sha256": feature_snapshot.get("composition_sha256"),
+                "cohort_hash": feature_snapshot.get("cohort_hash"),
+            }
+        )
+    for raw_row in capture_rows:
+        if not isinstance(raw_row, Mapping):
+            return {"status": "blocked", "reason": "current_input_capture_feature_row_invalid"}
+        symbol = str(raw_row.get("symbol") or "")
+        entry_pin = entry_by_symbol.get(symbol)
+        if not symbol or not isinstance(entry_pin, Mapping):
+            return {"status": "blocked", "reason": "current_input_capture_entry_symbol_mismatch"}
+        raw_values = raw_row.get("feature_values")
+        feature_ids = raw_row.get("feature_ids")
+        row_sha = str(raw_row.get("row_sha256") or "")
+        source_row_hashes = raw_row.get("source_row_sha256_by_table")
+        if (
+            raw_row.get("decision_date") != decision_date.isoformat()
+            or feature_ids != list(CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_ids)
+            or not isinstance(raw_values, list)
+            or len(raw_values) != len(CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_ids)
+            or any(value is not None and type(value) is not int for value in raw_values)
+            or not _is_sha256_text(row_sha)
+            or not isinstance(source_row_hashes, list)
+            or len(source_row_hashes) != 4
+            or any(
+                not isinstance(item, list)
+                or len(item) != 2
+                or type(item[0]) is not str
+                or not _is_sha256_text(item[1])
+                for item in source_row_hashes
+            )
+        ):
+            return {"status": "blocked", "reason": "current_input_capture_feature_row_contract_invalid"}
+        capture_body["rows"].append(
+            {
+                "row_id": str(entry_pin.get("row_id") or ""),
+                "symbol": symbol,
+                "decision_date": decision_date.isoformat(),
+                "feature_as_of_date": str(raw_row.get("feature_as_of_date") or ""),
+                "feature_available_date": str(raw_row.get("feature_available_date") or ""),
+                "feature_available_at": str(raw_row.get("local_current_observed_at") or ""),
+                "feature_registry_id": raw_row.get("feature_registry_id"),
+                "feature_registry_hash": raw_row.get("feature_registry_hash"),
+                "feature_schema_hash": raw_row.get("feature_schema_hash"),
+                "feature_ids": list(feature_ids),
+                "feature_values": list(raw_values),
+                "source_row_sha256_by_table": [list(item) for item in source_row_hashes],
+                "feature_row_sha256": row_sha,
+                "entry_price_pin": dict(entry_pin),
+            }
+        )
+    if {str(row["symbol"]) for row in capture_body["rows"]} != {
+        str(symbol) for symbol in symbols
+    } or len(capture_body["rows"]) != len(symbols):
+        return {"status": "blocked", "reason": "current_input_capture_scope_is_not_unique"}
+    content_sha256 = _source_contract_hash_payload(capture_body)
+    capture_body["capture_id"] = (
+        f"current-observed:{decision_date.isoformat()}:{capture_body['cycle_id']}:{content_sha256[7:]}"
+    )
+    capture_body["content_sha256"] = content_sha256
+    try:
+        verified = verify_current_observed_input_capture(capture_body)
+        cycle_token = hashlib.sha256(str(capture_body["cycle_id"]).encode("utf-8")).hexdigest()[:20]
+        capture_path = (
+            Path(output_root).resolve()
+            / "recommendation_learning"
+            / "current_observed_captures"
+            / decision_date.isoformat()
+            / cycle_token
+            / f"{content_sha256[7:]}.json"
+        )
+        _write_json_once(capture_path, verified)
+        persisted = verify_current_observed_input_capture(
+            capture_path,
+            expected_sha256=_sha256_file(capture_path),
+        )
+    except (OSError, RuntimeError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
+        return {
+            "status": "blocked",
+            "reason": f"current_input_capture_verification_failed:{type(exc).__name__}",
+            "diagnostic": str(exc),
+            "capture_eligible": False,
+        }
+    return {
+        "status": "captured",
+        "reason": "immutable_no_model_current_observation_saved",
+        "capture_id": persisted.get("capture_id"),
+        "capture_path": str(capture_path),
+        "capture_sha256": _sha256_file(capture_path),
+        "content_sha256": persisted.get("content_sha256"),
+        "cycle_id": persisted.get("cycle_id"),
+        "decision_date": persisted.get("decision_date"),
+        "symbol_count": len(persisted.get("rows", [])),
+        "cost_scenario_hash": persisted.get("cost_scenario_hash"),
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "research_only": True,
+        "prediction_output_present": False,
+    }
+
+
+def _path_is_plain(path: Path, *, directory: bool) -> bool:
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    attributes = getattr(info, "st_file_attributes", 0)
+    if stat.S_ISLNK(info.st_mode) or attributes & 0x400:
+        return False
+    return stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)
+
+
+def _current_observed_outcome_samples(
+    *,
+    capture: Mapping[str, Any],
+    outcome: Mapping[str, Any],
+    training_as_of: date,
+    feature_count: int,
+) -> tuple[RecommendationCalibrationSample, ...]:
+    """Convert only independently verified mature current-observed rows to research samples."""
+
+    if (
+        outcome.get("verification_status") != "verified"
+        or outcome.get("status") not in {"matured", "partial"}
+        or outcome.get("current_restated") is not True
+        or outcome.get("historical_pit_eligible") is not False
+        or outcome.get("formal_training_allowed") is not False
+        or outcome.get("research_only") is not True
+        or outcome.get("natural_outcome_only") is not True
+        or outcome.get("promotion_credit_created") is not False
+        or outcome.get("historical_replay_is_natural_evidence") is not False
+        or outcome.get("capture_id") != capture.get("capture_id")
+        or outcome.get("capture_sha256") != capture.get("capture_sha256")
+    ):
+        raise ValueError("current-observed outcome/capture identity or qualification differs")
+    raw_outcomes = outcome.get("outcomes")
+    capture_rows_raw = capture.get("rows")
+    if not isinstance(raw_outcomes, list) or not isinstance(capture_rows_raw, list):
+        raise ValueError("current-observed outcome or capture rows are malformed")
+    if type(outcome.get("matured_sample_count")) is not int or outcome["matured_sample_count"] != len(raw_outcomes):
+        raise ValueError("current-observed matured row count differs from verified rows")
+    rows_by_id = {
+        str(row.get("row_id") or ""): row
+        for row in capture_rows_raw
+        if isinstance(row, Mapping) and str(row.get("row_id") or "")
+    }
+    if len(rows_by_id) != len(capture_rows_raw):
+        raise ValueError("current-observed capture has duplicate or missing row identities")
+    fixed_cost = capture.get("fixed_round_trip_cost_bp")
+    if fixed_cost is not None and (type(fixed_cost) is not int or fixed_cost < 0):
+        raise ValueError("current-observed capture fixed cost is invalid")
+    scenario_value = capture.get("cost_scenario")
+    if not isinstance(scenario_value, Mapping):
+        raise ValueError("current-observed capture cost scenario metadata is missing")
+    scenario = normalize_cost_scenario(
+        scenario_value,
+        fixed_round_trip_cost_bp=fixed_cost,
+    )
+    if (
+        capture.get("cost_status") != "verified"
+        or capture.get("cost_scenario_id") != scenario.scenario_id
+        or capture.get("cost_scenario_version") != scenario.scenario_version
+        or capture.get("cost_scenario_hash") != scenario.scenario_hash
+        or capture.get("cost_basis") != scenario.cost_basis
+    ):
+        raise ValueError("current-observed capture cost scenario identity differs")
+
+    samples: list[RecommendationCalibrationSample] = []
+    seen: set[tuple[str, str, str]] = set()
+    for raw_row in raw_outcomes:
+        if not isinstance(raw_row, Mapping):
+            raise ValueError("current-observed mature row is not an object")
+        row = dict(raw_row)
+        capture_row_id = row.get("capture_row_id")
+        capture_row = rows_by_id.get(str(capture_row_id or ""))
+        if capture_row is None:
+            raise ValueError("current-observed mature row has no exact capture feature row")
+        symbol = row.get("symbol")
+        decision_text = row.get("capture_decision_date")
+        feature_as_of = row.get("feature_as_of_date")
+        feature_available = row.get("feature_available_date")
+        label_end = row.get("label_end_date")
+        label_available = row.get("label_available_date")
+        values = row.get("feature_values")
+        stock_return = row.get("stock_return_bp")
+        benchmark_return = row.get("benchmark_return_bp")
+        upside_label = row.get("upside_label")
+        if (
+            not isinstance(symbol, str)
+            or not symbol.strip()
+            or decision_text != capture.get("decision_date")
+            or decision_text != capture_row.get("decision_date")
+            or feature_as_of != capture_row.get("feature_as_of_date")
+            or feature_available != capture_row.get("feature_available_date")
+            or row.get("feature_row_sha256") != capture_row.get("feature_row_sha256")
+            or values != capture_row.get("feature_values")
+            or not isinstance(values, list)
+            or len(values) != feature_count
+            or any(value is not None and type(value) is not int for value in values)
+            or type(stock_return) is not int
+            or type(benchmark_return) is not int
+            or type(upside_label) is not int
+            or upside_label not in (0, 1)
+            or upside_label != int(stock_return > 0)
+            or type(decision_text) is not str
+            or type(feature_as_of) is not str
+            or type(feature_available) is not str
+            or type(label_end) is not str
+            or type(label_available) is not str
+            or row.get("source_available_at") is not None
+            or row.get("current_restated") is not True
+            or row.get("historical_pit_eligible") is not False
+            or row.get("formal_training_allowed") is not False
+            or row.get("research_only") is not True
+            or row.get("cost_scenario_hash") != scenario.scenario_hash
+            or row.get("cost_scenario_id") != scenario.scenario_id
+            or row.get("cost_scenario_version") != scenario.scenario_version
+            or row.get("cost_basis") != scenario.cost_basis
+        ):
+            raise ValueError("current-observed mature row differs from its frozen capture identity")
+        decision_day = date.fromisoformat(decision_text)
+        feature_day = date.fromisoformat(feature_as_of)
+        feature_available_day = date.fromisoformat(feature_available)
+        label_end_day = date.fromisoformat(label_end)
+        label_available_day = date.fromisoformat(label_available)
+        if (
+            feature_day >= decision_day
+            or feature_available_day > decision_day
+            or label_end_day < decision_day
+            or label_available_day < label_end_day
+            or label_available_day > training_as_of
+        ):
+            raise ValueError("current-observed mature row violates feature or label cutoff")
+        observed_at_value = row.get("label_observed_at")
+        if type(observed_at_value) is not str or not observed_at_value.strip():
+            raise ValueError("current-observed label observation clock is missing")
+        try:
+            observed_at = datetime.fromisoformat(observed_at_value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("current-observed label observation clock is invalid") from exc
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            raise ValueError("current-observed label observation clock must be aware")
+        if observed_at.astimezone(TAIPEI).date() != label_available_day:
+            raise ValueError("current-observed label date differs from its local observation clock")
+
+        estimated_cost_values: dict[str, str | int | None] = {}
+        estimated_cost_bp = row.get("estimated_round_trip_cost_bp")
+        if estimated_cost_bp is not None and (type(estimated_cost_bp) is not int or estimated_cost_bp < 0):
+            raise ValueError("current-observed estimated round-trip cost bp is invalid")
+        for field_name in (
+            "estimated_buy_cost_twd",
+            "estimated_sell_cost_twd",
+            "estimated_round_trip_cost_twd",
+            "gross_buy_amount_twd",
+            "gross_sell_amount_twd",
+            "net_profit_twd",
+        ):
+            raw_value = row.get(field_name)
+            if raw_value is not None:
+                if type(raw_value) is not str or not raw_value.strip():
+                    raise ValueError(f"current-observed {field_name} must be exact decimal text or null")
+                try:
+                    parsed_value = Decimal(raw_value)
+                except InvalidOperation as exc:
+                    raise ValueError(f"current-observed {field_name} is not decimal text") from exc
+                if not parsed_value.is_finite():
+                    raise ValueError(f"current-observed {field_name} must be finite")
+                if field_name != "net_profit_twd" and parsed_value < 0:
+                    raise ValueError(f"current-observed {field_name} cannot be negative")
+                estimated_cost_values[field_name] = raw_value
+            else:
+                estimated_cost_values[field_name] = None
+        if scenario.is_estimated:
+            cost_estimate_status = row.get("cost_estimate_status")
+            if cost_estimate_status not in {"estimated", "unavailable"}:
+                raise ValueError("current-observed estimated cost status is missing or unsupported")
+
+        identity = (symbol, decision_text, scenario.scenario_hash)
+        if identity in seen:
+            raise ValueError("current-observed outcome contains duplicate symbol/date/cost rows")
+        seen.add(identity)
+        row_id = f"current-observed-natural:{capture.get('capture_id')}:{capture_row_id}"
+        sample = RecommendationCalibrationSample.from_forward_return(
+            row_id=row_id,
+            symbol=symbol,
+            decision_date=decision_text,
+            feature_as_of_date=feature_as_of,
+            feature_available_date=feature_available,
+            label_end_date=label_end,
+            label_available_date=label_available,
+            feature_values=tuple(values),
+            stock_return_bp=stock_return,
+            benchmark_return_bp=benchmark_return,
+            fixed_round_trip_cost_bp=None if scenario.is_estimated else fixed_cost,
+            observed_liquidity_cost_bp=None,
+            rule_probability_bp=NULL_BENCHMARK_PROBABILITY_BP,
+            rule_baseline_id=NULL_BENCHMARK_BASELINE_ID,
+            source_quality="current_observed_natural_research",
+            cost_scenario=scenario if scenario.is_estimated else None,
+            cost_estimate=(
+                {
+                    **estimated_cost_values,
+                    "estimated_round_trip_cost_bp": estimated_cost_bp,
+                    "market_replay_date": decision_text,
+                }
+                if scenario.is_estimated
+                else None
+            ),
+            estimated_round_trip_cost_bp=(estimated_cost_bp if scenario.is_estimated else None),
+            estimated_round_trip_cost_twd=(
+                cast(str | None, estimated_cost_values["estimated_round_trip_cost_twd"])
+                if scenario.is_estimated
+                else None
+            ),
+            estimated_buy_cost_twd=(
+                cast(str | None, estimated_cost_values["estimated_buy_cost_twd"])
+                if scenario.is_estimated
+                else None
+            ),
+            estimated_sell_cost_twd=(
+                cast(str | None, estimated_cost_values["estimated_sell_cost_twd"])
+                if scenario.is_estimated
+                else None
+            ),
+            net_profit_twd=(
+                cast(str | None, estimated_cost_values["net_profit_twd"])
+                if scenario.is_estimated
+                else None
+            ),
+            market_replay_date=decision_text if scenario.is_estimated else None,
+        )
+        # This bootstrap lane has no model prediction for either target.  The
+        # verified outcome receipt may retain a legitimate fee/tax-derived
+        # after-cost label, but the calibration sample is deliberately limited
+        # to the gross-upside label and named null benchmark baseline.  Clear
+        # the factory's compatibility baseline when it inferred one from the
+        # after-cost label; never let that baseline masquerade as a forecast.
+        if (
+            sample.after_cost_profit_label is not None
+            or sample.rule_after_cost_probability_bp is not None
+            or sample.rule_after_cost_baseline_id is not None
+        ):
+            sample = replace(
+                sample,
+                after_cost_profit_label=None,
+                rule_after_cost_probability_bp=None,
+                rule_after_cost_baseline_id=None,
+            )
+        if (
+            sample.rule_after_cost_probability_bp is not None
+            or sample.rule_after_cost_baseline_id is not None
+            or sample.after_cost_profit_label is not None
+        ):
+            raise ValueError("current-observed no-model sample contains an after-cost prediction")
+        samples.append(sample)
+    return tuple(samples)
+
+
+def _current_observed_capture_semantic_hash(
+    *,
+    capture_row: Mapping[str, Any],
+    outcome_row: Mapping[str, Any],
+) -> str:
+    """Hash stable source/feature/label meaning across immutable retries.
+
+    ``CurrentObservedFeatureRow.row_sha256`` intentionally includes each
+    invocation's local observation clock. That hash remains in each immutable
+    receipt and is verified before this function is called, but it is not a
+    semantic feature identity. The exact feature values, registry, source
+    table hashes, G6 snapshot pins and entry-price pin remain in the signature.
+    Outcome receipt/path IDs and re-observation clocks are similarly excluded;
+    raw row proofs, dates, source hashes, returns and costs stay bound.
+    """
+
+    capture_semantic = {
+        key: capture_row[key]
+        for key in (
+            "symbol",
+            "decision_date",
+            "feature_as_of_date",
+            "feature_available_date",
+            "feature_registry_id",
+            "feature_registry_hash",
+            "feature_schema_hash",
+            "feature_ids",
+            "feature_values",
+            "source_row_sha256_by_table",
+            "entry_price_pin",
+        )
+        if key in capture_row
+    }
+
+    def stable_reobserved_proof(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {
+                str(key): stable_reobserved_proof(item)
+                for key, item in value.items()
+                if key
+                not in {
+                    "local_observed_at",
+                    "observed_at",
+                    "validated_at",
+                    "evaluation_at",
+                    "proof_sha256",
+                }
+            }
+        if isinstance(value, list):
+            return [stable_reobserved_proof(item) for item in value]
+        if isinstance(value, tuple):
+            return [stable_reobserved_proof(item) for item in value]
+        return value
+
+    volatile_outcome_keys = {
+        "capture_row_id",
+        "capture_path",
+        "capture_sha256",
+        "capture_id",
+        "feature_available_at",
+        "feature_row_sha256",
+        "label_observed_at",
+    }
+    outcome_semantic = {
+        str(key): value
+        for key, value in outcome_row.items()
+        if key not in volatile_outcome_keys
+    }
+    for proof_key in (
+        "entry_consistency_source_proof",
+        "endpoint_price_proof",
+        "benchmark_entry_consistency_source_proof",
+        "benchmark_endpoint_price_proof",
+        "maturity_session_proof",
+    ):
+        if proof_key in outcome_semantic:
+            outcome_semantic[proof_key] = stable_reobserved_proof(
+                outcome_semantic[proof_key]
+            )
+    return _source_contract_hash_payload(
+        {
+            "schema_version": "current-observed-natural-sample-semantic-identity.v2",
+            "capture_row": capture_semantic,
+            "outcome_row": outcome_semantic,
+        }
+    )
+
+
+def _deduplicate_current_observed_samples(
+    samples: list[tuple[RecommendationCalibrationSample, str]],
+) -> tuple[RecommendationCalibrationSample, ...]:
+    """Reuse identical verified captures, but block any source or label conflict."""
+
+    unique_samples: dict[
+        tuple[str, str, str], tuple[RecommendationCalibrationSample, str]
+    ] = {}
+    for sample, semantic_hash in samples:
+        if not _is_sha256_text(semantic_hash):
+            raise ValueError("current-observed semantic identity hash is invalid")
+        key = (sample.symbol, sample.decision_date, sample.cost_scenario_hash)
+        prior = unique_samples.get(key)
+        if prior is not None and (
+            prior[1] != semantic_hash
+            or replace(prior[0], row_id="semantic-identity-comparison")
+            != replace(sample, row_id="semantic-identity-comparison")
+        ):
+            raise ValueError("conflicting immutable current-observed rows")
+        if prior is None:
+            stable_row_id = (
+                "current-observed-natural-semantic:"
+                f"{semantic_hash.removeprefix('sha256:')[:32]}"
+            )
+            unique_samples[key] = (replace(sample, row_id=stable_row_id), semantic_hash)
+    return tuple(
+        sorted(
+            (item[0] for item in unique_samples.values()),
+            key=lambda row: (row.decision_date, row.symbol, row.row_id),
+        )
+    )
+
+
+def _current_observed_natural_research_fit(
+    *,
+    learning_output_root: Path,
+    data_root: Path,
+    source_db: Path,
+    source_contract_audit: Mapping[str, Any],
+    current_feature_snapshot: Mapping[str, Any],
+    decision_date: date,
+    evaluation_at: datetime,
+    fixed_round_trip_cost_bp: int | None,
+    cost_scenario: RecommendationCostScenario,
+    session_resolver: NaturalMaturitySessionResolver,
+) -> dict[str, Any]:
+    """Build and consume exact current-observed outcome receipts in an isolated shadow root."""
+
+    base_status = {
+        "scope": "current_observed_natural_research_only",
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "promotion_credit_created": False,
+        "formal_lane_status": "blocked_by_historical_source_revision",
+    }
+    if (
+        evaluation_at.tzinfo is None
+        or evaluation_at.utcoffset() is None
+        or evaluation_at.astimezone(TAIPEI).date() != decision_date
+    ):
+        return {**base_status, "status": "pending", "reason": "current_evaluation_clock_mismatch"}
+    binding, binding_reason = _capture_source_contract_binding(source_contract_audit)
+    snapshot_status = current_feature_snapshot.get("status")
+    if (
+        binding is None
+        or binding.get("binding_mode") != "current_observed"
+        or snapshot_status != "captured"
+    ):
+        return {
+            **base_status,
+            "status": "pending",
+            "reason": binding_reason or "verified_current_g6_snapshot_unavailable",
+            "snapshot_status": snapshot_status,
+        }
+
+    capture_root = (
+        learning_output_root.resolve()
+        / "recommendation_learning"
+        / "current_observed_captures"
+    )
+    if not capture_root.exists():
+        return {**base_status, "status": "pending", "reason": "no_current_observed_input_captures"}
+    if not _path_is_plain(capture_root, directory=True):
+        return {**base_status, "status": "blocked", "reason": "capture_root_is_not_a_plain_directory"}
+    capture_paths: list[Path] = []
+    try:
+        for date_entry in sorted(capture_root.iterdir(), key=lambda item: item.name):
+            if not _path_is_plain(date_entry, directory=True):
+                return {**base_status, "status": "blocked", "reason": "unsafe_capture_date_entry"}
+            try:
+                capture_day = date.fromisoformat(date_entry.name)
+            except ValueError:
+                return {**base_status, "status": "blocked", "reason": "unrecognized_capture_date_directory"}
+            if capture_day > decision_date:
+                continue
+            for cycle_entry in sorted(date_entry.iterdir(), key=lambda item: item.name):
+                if not _path_is_plain(cycle_entry, directory=True):
+                    return {**base_status, "status": "blocked", "reason": "unsafe_capture_cycle_entry"}
+                for capture_entry in sorted(cycle_entry.iterdir(), key=lambda item: item.name):
+                    if not _path_is_plain(capture_entry, directory=False) or capture_entry.suffix.lower() != ".json":
+                        return {**base_status, "status": "blocked", "reason": "unsafe_or_unrecognized_capture_entry"}
+                    capture_paths.append(capture_entry)
+                    if len(capture_paths) > 512:
+                        return {**base_status, "status": "blocked", "reason": "capture_scan_bound_exceeded"}
+    except OSError as exc:
+        return {
+            **base_status,
+            "status": "blocked",
+            "reason": f"capture_scan_failed:{type(exc).__name__}",
+        }
+    if not capture_paths:
+        return {**base_status, "status": "pending", "reason": "no_current_observed_input_captures"}
+
+    service = _build_natural_outcome_service(
+        provider=MLHistoricalSnapshotProvider(source_db),
+        source_db=source_db,
+        session_resolver=session_resolver,
+        evaluation_at=evaluation_at,
+    )
+    outcome_root = capture_root.parent / "current_observed_outcomes"
+    evaluation_token = evaluation_at.astimezone(timezone.utc).isoformat(timespec="microseconds")
+    evaluation_date = evaluation_at.astimezone(TAIPEI).date().isoformat()
+    outcome_refs: list[dict[str, str]] = []
+    samples: list[tuple[RecommendationCalibrationSample, str]] = []
+    pending_count = 0
+    diagnostics: list[str] = []
+    current_terminal_token = str(current_feature_snapshot.get("discovery_cycle_terminal_sha256") or "")
+    current_snapshot_token = str(current_feature_snapshot.get("content_sha256") or "")
+    if not _is_sha256_text(current_terminal_token) or not _is_sha256_text(current_snapshot_token):
+        return {**base_status, "status": "blocked", "reason": "current_g6_terminal_or_snapshot_hash_missing"}
+    for capture_path in capture_paths:
+        try:
+            capture_sha256 = _sha256_file(capture_path)
+            capture = verify_current_observed_input_capture(
+                capture_path,
+                expected_sha256=capture_sha256,
+            )
+            capture_date = str(capture.get("decision_date") or "")
+            if capture_date != capture_path.parent.parent.name:
+                raise ValueError("capture path date does not match capture payload")
+            token_body = {
+                "capture_sha256": capture_sha256,
+                "current_terminal_sha256": current_terminal_token,
+                "current_snapshot_sha256": current_snapshot_token,
+                "evaluation_at": evaluation_token,
+            }
+            token = hashlib.sha256(
+                json.dumps(token_body, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+            cycle_token = hashlib.sha256(
+                str(capture.get("cycle_id") or "").encode("utf-8")
+            ).hexdigest()[:20]
+            receipt_path = (
+                outcome_root
+                / capture_date
+                / cycle_token
+                / evaluation_date
+                / current_terminal_token.removeprefix("sha256:")[:20]
+                / f"{token}.json"
+            )
+            outcome_unverified = service.build_current_observed_outcomes_for_capture(
+                capture_path,
+                required_source_contract=source_contract_audit,
+                evaluation_at=evaluation_at,
+                output_path=receipt_path,
+                max_rows=1_000,
+            )
+            outcome_file_sha = outcome_unverified.get("receipt_file_sha256")
+            if type(outcome_file_sha) is not str or not _is_sha256_text(outcome_file_sha):
+                raise ValueError("outcome service returned no exact receipt file hash")
+            outcome = verify_current_observed_outcome_receipt(
+                receipt_path,
+                expected_sha256=outcome_file_sha,
+                capture_path=capture_path,
+            )
+            outcome_path = Path(str(outcome.get("receipt_path") or ""))
+            if (
+                outcome_path.resolve() != receipt_path.resolve()
+                or outcome.get("receipt_file_sha256") != outcome_file_sha
+                or outcome.get("verification_status") not in {
+                    "verified",
+                    "verified_pending",
+                    "verified_without_matured_rows",
+                    "verified_blocked_receipt",
+                }
+            ):
+                raise ValueError("outcome receipt verifier identity or status differs")
+            outcome_refs.append(
+                {
+                    "capture_path": str(capture_path.resolve()),
+                    "capture_sha256": capture_sha256,
+                    "capture_id": str(capture.get("capture_id") or ""),
+                    "outcome_path": str(receipt_path.resolve()),
+                    "outcome_sha256": outcome_file_sha,
+                    "outcome_status": str(outcome.get("status") or ""),
+                    "verification_status": str(outcome.get("verification_status") or ""),
+                }
+            )
+            if outcome.get("status") not in {"matured", "partial"}:
+                pending_count += int(outcome.get("pending_sample_count") or 0)
+                diagnostics.extend(
+                    str(item) for item in outcome.get("diagnostics", ()) if isinstance(item, str)
+                )
+                continue
+            mapped_samples = _current_observed_outcome_samples(
+                capture=capture,
+                outcome=outcome,
+                training_as_of=decision_date,
+                feature_count=len(CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_ids),
+            )
+            capture_rows = capture.get("rows")
+            outcome_rows = outcome.get("outcomes")
+            if not isinstance(capture_rows, list) or not isinstance(outcome_rows, list):
+                raise ValueError("verified current-observed rows are missing for semantic deduplication")
+            capture_id = str(capture.get("capture_id") or "")
+            sample_prefix = f"current-observed-natural:{capture_id}:"
+            for sample in mapped_samples:
+                if not sample.row_id.startswith(sample_prefix):
+                    raise ValueError("current-observed sample row identity is not capture-bound")
+                capture_row_id = sample.row_id[len(sample_prefix) :]
+                capture_row = next(
+                    (
+                        item
+                        for item in capture_rows
+                        if isinstance(item, Mapping) and item.get("row_id") == capture_row_id
+                    ),
+                    None,
+                )
+                outcome_row = next(
+                    (
+                        item
+                        for item in outcome_rows
+                        if isinstance(item, Mapping)
+                        and item.get("capture_row_id") == capture_row_id
+                    ),
+                    None,
+                )
+                if not isinstance(capture_row, Mapping) or not isinstance(outcome_row, Mapping):
+                    raise ValueError("verified current-observed semantic row proof is missing")
+                semantic_hash = _current_observed_capture_semantic_hash(
+                    capture_row=capture_row,
+                    outcome_row=outcome_row,
+                )
+                samples.append((sample, semantic_hash))
+            pending_count += int(outcome.get("pending_sample_count") or 0)
+        except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+            diagnostics.append(f"capture_or_outcome_rejected:{capture_path.name}:{type(exc).__name__}")
+
+    try:
+        final_samples = _deduplicate_current_observed_samples(samples)
+    except ValueError:
+        return {
+            **base_status,
+            "status": "blocked",
+            "reason": "conflicting_immutable_current_observed_rows_for_symbol_date_cost",
+            "outcome_receipt_count": len(outcome_refs),
+            "matured_row_count": len(samples),
+            "diagnostics": diagnostics,
+        }
+    base_status.update(
+        {
+            "outcome_receipts": outcome_refs,
+            "outcome_receipt_count": len(outcome_refs),
+            "matured_row_count": len(final_samples),
+            "pending_row_count": pending_count,
+            "diagnostics": list(dict.fromkeys(diagnostics)),
+            "current_snapshot_cycle_id": current_feature_snapshot.get("cycle_id"),
+            "current_snapshot_raw_run_id": current_feature_snapshot.get("raw_run_id"),
+            "current_snapshot_terminal_path": current_feature_snapshot.get("cycle_terminal_path"),
+            "current_snapshot_terminal_sha256": current_feature_snapshot.get("cycle_terminal_sha256"),
+            "current_snapshot_observed_at": current_feature_snapshot.get("observed_at"),
+            "training_as_of": evaluation_token,
+        }
+    )
+    if not final_samples:
+        return {**base_status, "status": "pending", "reason": "no_matured_current_observed_rows"}
+
+    source_contract_receipt = source_contract_audit.get("source_contract_receipt")
+    source_contract_receipt = (
+        source_contract_receipt if isinstance(source_contract_receipt, Mapping) else {}
+    )
+    discovery_status_bytes = current_feature_snapshot.get("discovery_status_bytes_base64")
+    source_identity = {
+        "schema_version": "current-observed-natural-research-source-identity.v1",
+        "evaluation_at": evaluation_token,
+        "training_as_of": decision_date.isoformat(),
+        "formal_lane": {
+            "status": "blocked_source_revision",
+            "historical_pit_eligible": False,
+            "formal_training_allowed": False,
+        },
+        "discovery": {
+            "raw_status_path": current_feature_snapshot.get("discovery_status_path"),
+            "raw_status_sha256": current_feature_snapshot.get("discovery_status_sha256"),
+            "raw_status_bytes_base64": discovery_status_bytes,
+            "discovery_raw_run_id": current_feature_snapshot.get("discovery_raw_run_id"),
+            "cycle_terminal_path": current_feature_snapshot.get("discovery_cycle_terminal_path"),
+            "cycle_terminal_sha256": current_feature_snapshot.get("discovery_cycle_terminal_sha256"),
+            "cycle_terminal_status": current_feature_snapshot.get("discovery_cycle_terminal_status"),
+        },
+        "source_cycle": {
+            "raw_run_id": current_feature_snapshot.get("raw_run_id"),
+            "cycle_id": current_feature_snapshot.get("cycle_id"),
+            "source_date": current_feature_snapshot.get("cycle_source_date"),
+            "terminal_path": current_feature_snapshot.get("cycle_terminal_path"),
+            "terminal_sha256": current_feature_snapshot.get("cycle_terminal_sha256"),
+            "reuse_source_identity": current_feature_snapshot.get("reuse_source_identity"),
+        },
+        "snapshot": {
+            "database_path": current_feature_snapshot.get("snapshot_database_path"),
+            "database_sha256": current_feature_snapshot.get("snapshot_database_sha256"),
+            "receipt_path": current_feature_snapshot.get("snapshot_receipt_path"),
+            "receipt_sha256": current_feature_snapshot.get("snapshot_receipt_sha256"),
+            "context_envelope_path": current_feature_snapshot.get("source_context_envelope_path"),
+            "context_envelope_sha256": current_feature_snapshot.get(
+                "source_context_envelope_sha256"
+            ),
+            "source_rows_sha256_by_table": current_feature_snapshot.get(
+                "source_rows_sha256_by_table"
+            ),
+            "observed_at": current_feature_snapshot.get("observed_at"),
+            "feature_as_of_date": current_feature_snapshot.get("feature_as_of_date"),
+            "symbols": current_feature_snapshot.get("symbols"),
+            "rows_sha256": current_feature_snapshot.get("rows_sha256"),
+            "content_sha256": current_feature_snapshot.get("content_sha256"),
+            "feature_registry_hash": current_feature_snapshot.get("feature_registry_hash"),
+            "feature_schema_hash": current_feature_snapshot.get("feature_schema_hash"),
+        },
+        "source_contract": {
+            "binding_mode": binding.get("binding_mode"),
+            "path": binding.get("contract_path"),
+            "content_sha256": binding.get("contract_content_sha256"),
+            "file_sha256": binding.get("contract_file_sha256"),
+            "receipt_path": source_contract_receipt.get("receipt_path"),
+            "receipt_file_sha256": source_contract_receipt.get("receipt_file_sha256"),
+        },
+        "outcome_receipts": outcome_refs,
+    }
+    fit_result = fit_current_observed_natural_research(
+        learning_output_root=learning_output_root,
+        samples=final_samples,
+        training_as_of=decision_date,
+        evaluation_at=evaluation_at,
+        fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+        cost_scenario=cost_scenario,
+        outcome_receipts=outcome_refs,
+        source_identity=source_identity,
+        data_root=data_root,
+    )
+    return {
+        **base_status,
+        **dict(fit_result),
+        "matured_training_row_count": len(final_samples),
+        "formal_training_allowed": False,
+        "historical_pit_eligible": False,
+        "promotion_credit_created": False,
+    }
+
+
+def _run_current_observed_natural_research_lane(
+    *,
+    learning_output_root: Path,
+    data_root: Path,
+    source_db: Path,
+    source_contract_audit: Mapping[str, Any],
+    current_feature_snapshot: Mapping[str, Any],
+    decision_date: date,
+    evaluation_at: datetime,
+    fixed_round_trip_cost_bp: int | None,
+    cost_scenario: RecommendationCostScenario,
+    capture_requested: bool,
+    calendar_cache_path: Path | None,
+    temporary_closure_path: Path | None,
+) -> dict[str, Any]:
+    """Capture prospective no-model observations and scan their natural labels.
+
+    This lane is deliberately independent from historical replay and the
+    formal calibration runner.  A missing same-day entry is a pending capture,
+    but does not stop the scan of older immutable captures which may have
+    matured since the previous run.
+    """
+
+    base_status: dict[str, Any] = {
+        "scope": "current_observed_natural_research_only",
+        "historical_pit_eligible": False,
+        "formal_training_allowed": False,
+        "promotion_credit_created": False,
+    }
+    local_evaluation_date: date | None = None
+    if evaluation_at.tzinfo is not None and evaluation_at.utcoffset() is not None:
+        local_evaluation_date = evaluation_at.astimezone(TAIPEI).date()
+    if local_evaluation_date != decision_date:
+        pending = {
+            **base_status,
+            "status": "pending",
+            "reason": "current_evaluation_date_required",
+        }
+        return {
+            **base_status,
+            "status": "pending",
+            "reason": "current_evaluation_date_required",
+            "current_observed_input_capture": {
+                "status": "pending",
+                "reason": "current_evaluation_date_required",
+                "capture_eligible": False,
+            },
+            "current_observed_natural_research": pending,
+        }
+    if not capture_requested:
+        input_capture = {
+            "status": "not_requested",
+            "reason": "current_capture_disabled_by_caller",
+            "capture_eligible": False,
+        }
+    else:
+        try:
+            input_capture = _persist_current_observed_input_capture(
+                output_root=learning_output_root,
+                source_contract_audit=source_contract_audit,
+                decision_date=decision_date,
+                captured_at=evaluation_at,
+                cost_scenario=cost_scenario,
+                fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+            )
+        except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+            input_capture = {
+                "status": "blocked",
+                "reason": f"current_observed_input_capture_failed:{type(exc).__name__}",
+                "capture_eligible": False,
+            }
+
+    try:
+        calendar_cache_path, temporary_closure_path = _natural_maturity_calendar_paths(
+            calendar_cache_path=calendar_cache_path,
+            temporary_closure_path=temporary_closure_path,
+        )
+        session_resolver = NaturalMaturitySessionResolver(
+            db_path=source_db,
+            calendar_cache_path=calendar_cache_path,
+            temporary_closure_path=temporary_closure_path,
+        )
+        natural_research = _current_observed_natural_research_fit(
+            learning_output_root=learning_output_root,
+            data_root=data_root,
+            source_db=source_db,
+            source_contract_audit=source_contract_audit,
+            current_feature_snapshot=current_feature_snapshot,
+            decision_date=decision_date,
+            evaluation_at=evaluation_at,
+            fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
+            cost_scenario=cost_scenario,
+            session_resolver=session_resolver,
+        )
+    except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
+        natural_research = {
+            **base_status,
+            "status": "blocked",
+            "reason": f"current_observed_natural_research_failed:{type(exc).__name__}",
+        }
+
+    research_status = str(natural_research.get("status") or "pending")
+    status = research_status if research_status in {"completed", "pending", "blocked", "failed"} else "pending"
+    return {
+        **base_status,
+        "status": status,
+        "decision_date": decision_date.isoformat(),
+        "evaluation_at": evaluation_at.isoformat(),
+        "current_observed_input_capture": input_capture,
+        "current_observed_natural_research": natural_research,
+    }
+
+
 def _inspect_dependencies(
     *,
     provider: MLHistoricalSnapshotProvider,
@@ -2500,6 +5329,8 @@ def _inspect_dependencies(
     policy: RecommendationPromotionPolicy,
     source_contract_audit: Mapping[str, Any] | None = None,
     checked_clock: datetime | None = None,
+    calendar_cache_path: Path | None = None,
+    temporary_closure_path: Path | None = None,
 ) -> dict[str, Any]:
     """Perform actual read-only source checks; no caller status becomes truth."""
 
@@ -2532,6 +5363,8 @@ def _inspect_dependencies(
         official_trading_day, calendar_reason = _official_trading_day(
             provider=provider,
             decision_date=decision_date,
+            calendar_cache_path=calendar_cache_path,
+            temporary_closure_path=temporary_closure_path,
         )
         if official_trading_day is None:
             data_status = "failed"
@@ -2552,18 +5385,31 @@ def _inspect_dependencies(
             diagnostics.append("source_schema_and_stat_stability_verified")
         if not trading_dates:
             diagnostics.append("non_trading_day_or_no_symbol_rows_live_capture_will_skip")
-        if (
-            checked_clock is not None
-            and decision_date != checked_clock.astimezone(TAIPEI).date()
-        ):
-            active_performance = {
-                "status": "pending",
-                "reason": "natural_maturity_evaluation_date_mismatch",
-                "diagnostics": (
-                    "historical_decision_date_natural_lane_skipped_to_avoid_future_clock",
-                ),
-            }
-        else:
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        data_status = "failed"
+        outcome_status = "failed"
+        recovery_policy = (
+            "fail_closed_emergency_rollback"
+            if _preflight_requires_emergency(exc)
+            else "recoverable_attempt"
+        )
+        diagnostics.append(f"source_preflight_failed:{type(exc).__name__}")
+    # Active performance evidence is an immutable-receipt read.  It has its
+    # own source boundary and must still be inspected when the historical
+    # replay provider rejects revised PIT data above.
+    if (
+        checked_clock is not None
+        and decision_date != checked_clock.astimezone(TAIPEI).date()
+    ):
+        active_performance = {
+            "status": "pending",
+            "reason": "natural_maturity_evaluation_date_mismatch",
+            "diagnostics": (
+                "historical_decision_date_natural_lane_skipped_to_avoid_future_clock",
+            ),
+        }
+    else:
+        try:
             active_performance = _inspect_active_model_performance(
                 output_root=output_root,
                 data_root=data_root,
@@ -2571,22 +5417,18 @@ def _inspect_dependencies(
                 policy=policy,
                 source_db=provider.database_path,
             )
-        drift_status = str(active_performance.get("status") or drift_status)
-        diagnostics.extend(
-            str(item)
-            for item in active_performance.get("diagnostics", ())
-            if str(item).strip()
-        )
-    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
-        data_status = "failed"
-        outcome_status = "failed"
-        drift_status = "not_checked"
-        recovery_policy = (
-            "fail_closed_emergency_rollback"
-            if _preflight_requires_emergency(exc)
-            else "recoverable_attempt"
-        )
-        diagnostics.append(f"source_preflight_failed:{type(exc).__name__}")
+        except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+            active_performance = {
+                "status": "failed",
+                "reason": f"active_model_performance_check_failed:{type(exc).__name__}",
+                "diagnostics": ("active_model_performance_receipt_check_failed",),
+            }
+    drift_status = str(active_performance.get("status") or drift_status)
+    diagnostics.extend(
+        str(item)
+        for item in active_performance.get("diagnostics", ())
+        if str(item).strip()
+    )
     return {
         "data_status": data_status,
         "outcome_status": outcome_status,
@@ -2615,11 +5457,68 @@ def _official_trading_day(
     *,
     provider: MLHistoricalSnapshotProvider,
     decision_date: date,
+    calendar_cache_path: Path | None = None,
+    temporary_closure_path: Path | None = None,
 ) -> tuple[bool | None, str]:
     """Use the existing official-calendar contract without network guessing."""
 
-    calendar = OfficialTradingCalendar(db_path=provider.database_path)
+    resolved_calendar_path, resolved_temporary_path = _natural_maturity_calendar_paths(
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+    )
+    calendar = OfficialTradingCalendar(
+        db_path=provider.database_path,
+        calendar_cache_path=resolved_calendar_path,
+        temporary_closure_path=resolved_temporary_path,
+    )
     return calendar.is_official_trading_day(decision_date, allow_online_probe=False)
+
+
+def _verified_current_capture_session_proof(
+    *,
+    provider: MLHistoricalSnapshotProvider,
+    decision_date: date,
+    observed_at: datetime,
+    calendar_cache_path: Path | None,
+    temporary_closure_path: Path | None,
+) -> dict[str, Any]:
+    """Return the hash-bound official session proof without a live lookup."""
+
+    resolved_calendar_path, resolved_temporary_path = _natural_maturity_calendar_paths(
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+    )
+    calendar = OfficialTradingCalendar(
+        db_path=provider.database_path,
+        calendar_cache_path=resolved_calendar_path,
+        temporary_closure_path=resolved_temporary_path,
+    )
+    is_trading_day, reason = calendar.is_official_trading_day(
+        decision_date,
+        allow_online_probe=False,
+    )
+    if is_trading_day is not True:
+        raise ValueError(f"official session is unresolved or closed: {reason}")
+    schedule_evidence_by_year = getattr(calendar, "_schedule_evidence", None)
+    schedule_evidence = (
+        schedule_evidence_by_year.get(decision_date.year)
+        if isinstance(schedule_evidence_by_year, Mapping)
+        else None
+    )
+    if (
+        not isinstance(schedule_evidence, Mapping)
+        or schedule_evidence.get("mode") != "hash_bound_official_calendar_cache"
+    ):
+        # A local market-index row can also resolve a trading day, but it is
+        # insufficient for a close-time proof. Never replace the official
+        # cache with a weekday or database-presence assumption.
+        raise ValueError("hash-bound official annual calendar cache is required")
+    evidence = calendar.evidence_for(decision_date)
+    return _build_current_observed_entry_session_proof(
+        decision_date=decision_date,
+        observed_at=observed_at,
+        calendar_evidence=evidence,
+    )
 
 
 def _capture_scope_token(scope: str | None, symbols: tuple[str, ...]) -> str:
@@ -2844,6 +5743,7 @@ def _capture_current_if_requested(
     replay_config: RecommendationHistoricalReplayConfig,
     source_contract_audit: Mapping[str, Any] | None = None,
     cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
+    observed_at: datetime | None = None,
 ) -> dict[str, Any]:
     if not args.capture_current:
         return {"status": "not_requested"}
@@ -2856,12 +5756,18 @@ def _capture_current_if_requested(
         ),
     )
     effective_fixed_cost = resolved_scenario.fixed_round_trip_cost_bp
+    capture_clock = observed_at or _taipei_now()
+    if capture_clock.tzinfo is None or capture_clock.utcoffset() is None:
+        return {
+            "status": "failed",
+            "reason": "current_capture_clock_must_be_timezone_aware",
+        }
     decision_day = (
         date.fromisoformat(str(args.decision_date)[:10])
         if args.decision_date
-        else _taipei_now().date()
+        else capture_clock.astimezone(TAIPEI).date()
     )
-    if decision_day != _taipei_now().date():
+    if decision_day != capture_clock.astimezone(TAIPEI).date():
         return {
             "status": "skipped",
             "reason": "capture_current_requires_current_asia_taipei_date",
@@ -2870,6 +5776,8 @@ def _capture_current_if_requested(
     official_trading_day, calendar_reason = _official_trading_day(
         provider=provider,
         decision_date=decision_day,
+        calendar_cache_path=args.calendar_cache_path,
+        temporary_closure_path=args.temporary_closure_cache_path,
     )
     if official_trading_day is None:
         return {
@@ -2886,6 +5794,33 @@ def _capture_current_if_requested(
             "decision_timezone": "Asia/Taipei",
             "calendar_reason": calendar_reason,
             "trading_calendar_source": "OfficialTradingCalendar",
+        }
+    try:
+        entry_session_proof = _verified_current_capture_session_proof(
+            provider=provider,
+            decision_date=decision_day,
+            observed_at=capture_clock,
+            calendar_cache_path=args.calendar_cache_path,
+            temporary_closure_path=args.temporary_closure_cache_path,
+        )
+        scheduled_close_at = datetime.fromisoformat(
+            str(entry_session_proof["scheduled_market_close_at"])
+        )
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        return {
+            "status": "failed",
+            "reason": "official_trading_calendar_evidence_unverified_fail_closed",
+            "calendar_diagnostic": f"{type(exc).__name__}:{exc}",
+            "decision_timezone": "Asia/Taipei",
+        }
+    if capture_clock.astimezone(scheduled_close_at.tzinfo) < scheduled_close_at:
+        return {
+            "status": "pending",
+            "reason": "official_session_not_closed_yet_wait_for_scheduled_close",
+            "decision_timezone": "Asia/Taipei",
+            "scheduled_market_close_at": scheduled_close_at.isoformat(),
+            "observed_at": capture_clock.isoformat(),
+            "same_day_rows_consulted": False,
         }
     source_contract_binding, source_contract_reason = _capture_source_contract_binding(
         source_contract_audit
@@ -2953,7 +5888,7 @@ def _capture_current_if_requested(
                 "candidate": {"status": "skipped", "reason": "live_capture_feature_rows_missing"},
                 "active_model_monitor": {"status": "skipped", "reason": "live_capture_feature_rows_missing"},
             }
-        capture_at = _taipei_now().isoformat(timespec="seconds")
+        capture_at = capture_clock.isoformat(timespec="seconds")
         scope_token = _capture_scope_token(capture_scope, symbols)
         candidate_capture: dict[str, Any]
         if not run_result.candidate_root or not run_result.candidate_id:
@@ -3160,6 +6095,7 @@ def _capture_active_model_monitor(
     inputs: tuple[RecommendationPredictionCaptureInput, ...],
     fixed_round_trip_cost_bp: int | None,
     cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
+    source_contract_binding: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Capture the actually delivered active output, even without a challenger."""
 
@@ -3200,12 +6136,22 @@ def _capture_active_model_monitor(
         candidate_id = str(identity.get("candidate_id") or "")
         if not candidate_id:
             raise ValueError("active candidate identity missing")
+        current_binding_hash = (
+            _source_contract_hash_payload(dict(source_contract_binding))
+            if source_contract_binding is not None
+            else ""
+        )
+        capture_name = (
+            f"{candidate_id}-{current_binding_hash.split(':', 1)[-1][:20]}.json"
+            if source_contract_binding is not None
+            else f"{candidate_id}.json"
+        )
         capture_path = (
             Path(output_root).resolve()
             / "recommendation_learning"
             / "active_captures"
             / decision_date.isoformat()
-            / f"{candidate_id}.json"
+            / capture_name
         )
         if capture_path.is_file():
             from ml_module.recommendation_calibration_evidence import _verify_active_model_capture_payload
@@ -3214,6 +6160,15 @@ def _capture_active_model_monitor(
             if not isinstance(payload, Mapping):
                 raise ValueError("active model capture is not an object")
             _verify_active_model_capture_payload(payload)
+            if source_contract_binding is not None and _capture_source_identity(
+                payload.get("source_contract_binding")
+            ) != _capture_source_identity(source_contract_binding):
+                return {
+                    "status": "failed",
+                    "reason": "active_capture_exists_with_different_source_identity",
+                    "capture_path": str(capture_path.resolve()),
+                    "active_candidate_id": payload.get("active_candidate_id"),
+                }
             return {
                 "status": "already_captured",
                 "capture_path": str(capture_path.resolve()),
@@ -3234,6 +6189,7 @@ def _capture_active_model_monitor(
             inputs=inputs,
             fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
             cost_scenario=cost_scenario,
+            source_contract_binding=source_contract_binding,
         )
         capture.persist(capture_path)
         return {
@@ -3367,6 +6323,27 @@ def _scan_active_model_evidence(
         payload["active_candidate_id"] = active_candidate_id
         payload["monitoring_window_policy"] = "max(active_effective_date, evaluation_date-120 calendar days)"
         return payload
+    except DailyPriceSourceRevisionError as exc:
+        # A valid capture may have matured while the formal historical
+        # revision gate is closed.  Keep that observation pending; do not
+        # convert source qualification into an active-model failure or roll
+        # back a model solely because the PIT-only label reader cannot use the
+        # revised source yet.
+        return {
+            "schema_version": "recommendation-natural-outcome-result.v1",
+            "status": "pending",
+            "reason": "natural_outcome_waiting_for_revision_qualified_source",
+            "capture_path": str(Path(output_root).resolve() / "recommendation_learning" / "active_captures"),
+            "capture_paths": [],
+            "evaluation_date": decision_date.isoformat(),
+            "matured_sample_count": 0,
+            "evidence": None,
+            "diagnostics": [
+                "formal_historical_source_revision_blocks_outcome_read",
+                f"source_revision_reason:{type(exc).__name__}",
+            ],
+            "historical_replay_is_natural_evidence": False,
+        }
     except (OSError, RuntimeError, TypeError, ValueError, json.JSONDecodeError) as exc:
         return {
             "schema_version": "recommendation-natural-outcome-result.v1",
@@ -3753,6 +6730,7 @@ def _resolve_same_run_snapshot_input(
     cohort_value = dict(cohort_payload)
     binding: dict[str, Any] = {
         "result_id": result_id,
+        "snapshot_output_root": str(Path(output_root).resolve()),
         "schema_version": read_model.schema_version,
         "schema_revision": read_model.schema_revision,
         "integrity_basis": read_model.integrity_basis,

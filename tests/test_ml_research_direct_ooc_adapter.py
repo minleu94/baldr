@@ -7,7 +7,7 @@ import hashlib
 import gzip
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, Sequence, cast
 import pytest
 
 from data_module.ml_research_direct_ooc_adapter import (
@@ -27,6 +27,8 @@ from data_module.ml_revision_aware_raw_candidate import (
     RevisionAwareRawRequest,
 )
 from data_module.ml_research_output_boundary import resolve_ml_research_output_path
+from data_module.ml_daily_source_row_research_projection import _project_tpex_rows
+from scripts.scheduled import current_stock_research_cycle as current_cycle
 from tests.ml_research_test_support import install_test_revision_gate, write_snapshot_context_receipt
 
 
@@ -36,9 +38,20 @@ def _research(root: Path, *parts: str) -> Path:
 
 @pytest.fixture(autouse=True)
 def _research_path_boundary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def resolver(path: Path) -> Path:
+    def resolver(
+        path: Path,
+        *,
+        repository_root: Path | None = None,
+        extra_forbidden_roots: Sequence[Path] = (),
+        access: Literal["read", "write"] = "read",
+    ) -> Path:
         (tmp_path / "output" / "ml_research").mkdir(parents=True, exist_ok=True)
-        return resolve_ml_research_output_path(path, repository_root=tmp_path)
+        return resolve_ml_research_output_path(
+            path,
+            repository_root=repository_root or tmp_path,
+            extra_forbidden_roots=extra_forbidden_roots,
+            access=access,
+        )
     monkeypatch.setattr(adapter_module, "resolve_ml_research_output_path", resolver)
     monkeypatch.setattr(raw_module, "resolve_ml_research_output_path", resolver)
     install_test_revision_gate(monkeypatch)
@@ -191,6 +204,116 @@ def _setup_daily_projection_candidate(
         "labels_included": False,
         "projection": {"manifest_sha256": manifest_sha, "observations_sha256": "sha256:" + obs_sha},
     }), encoding="utf-8")
+    return manifest_path
+
+
+def _setup_tpex_actual_header_projection_candidate(root: Path) -> Path:
+    """Project an observed TPEx raw-header row through the production parser."""
+
+    project_dir = root / "tpex_projection"
+    raw_path = project_dir / "inputs" / "sources" / "tpex" / "raw_response.bin"
+    receipt_path = project_dir / "inputs" / "sources" / "tpex" / "source_receipt.json"
+    raw_path.parent.mkdir(parents=True)
+    fields = [
+        "代號", "名稱", "收盤 ", "漲跌", "開盤 ", "最高 ", "最低",
+        "成交股數  ", " 成交金額(元)", " 成交筆數 ", "最後買價",
+        "最後買量<br>(張數)", "最後賣價", "最後賣量<br>(張數)",
+        "發行股數 ", "次日漲停價 ", "次日跌停價",
+    ]
+    row_values = [
+        "3207", "耀勝", "39.75", "-0.95", "41.80", "41.80", "39.70",
+        "245,000", "9,907,800", "180", "39.75", "5", "39.80", "2",
+        "66,422,124", "43.70", "35.80",
+    ]
+    raw_bytes = json.dumps(
+        {"tables": [{"date": "2026/10/02", "fields": fields, "data": [row_values]}]},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    receipt_bytes = b"fixture TPEx source receipt; no production evidence"
+    raw_path.write_bytes(raw_bytes)
+    receipt_path.write_bytes(receipt_bytes)
+    raw_sha = "sha256:" + hashlib.sha256(raw_bytes).hexdigest()
+    receipt_sha = "sha256:" + hashlib.sha256(receipt_bytes).hexdigest()
+    rows, table_count = _project_tpex_rows(
+        raw_bytes,
+        source_date="2026-10-02",
+        source_available_at="2026-10-02T11:20:18.576024+00:00",
+        raw_sha256=raw_sha,
+        receipt_sha256=receipt_sha,
+        expected_row_count=1,
+    )
+    assert table_count == 1
+    observations_path = project_dir / "observations.jsonl"
+    observations_path.write_bytes(
+        b"".join(
+            json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            + b"\n"
+            for item in rows
+        )
+    )
+    observation_sha = "sha256:" + hashlib.sha256(observations_path.read_bytes()).hexdigest()
+    input_files = {
+        "inputs/sources/tpex/raw_response.bin": {
+            "bytes": len(raw_bytes),
+            "sha256": raw_sha,
+        },
+        "inputs/sources/tpex/source_receipt.json": {
+            "bytes": len(receipt_bytes),
+            "sha256": receipt_sha,
+        },
+    }
+    manifest = {
+        "schema_version": "ml-daily-source-row-research-projection.v1",
+        "source_date": "2026-10-02",
+        "observations_file": {
+            "path": "observations.jsonl",
+            "sha256": observation_sha,
+            "bytes": observations_path.stat().st_size,
+            "row_count": len(rows),
+        },
+        "input_files": input_files,
+        "research_only": True,
+        "formal_dataset": False,
+        "formal_credit": False,
+    }
+    canonical = json.dumps(
+        manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    manifest["content_sha256"] = "sha256:" + hashlib.sha256(canonical).hexdigest()
+    manifest_path = project_dir / "manifest.json"
+    manifest_bytes = json.dumps(
+        manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    manifest_path.write_bytes(manifest_bytes)
+    manifest_sha = "sha256:" + hashlib.sha256(manifest_bytes).hexdigest()
+    (project_dir / "completion_receipt.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "ml-daily-source-row-research-completion.v1",
+                "completion_status": "awaiting_terminal_revision_validation",
+                "manifest_sha256": manifest_sha,
+                "observations_sha256": observation_sha,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (project_dir / "runner_terminal_verification_receipt.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "ml-daily-source-row-runner-terminal-receipt.v1",
+                "terminal_status": "completed_research_only",
+                "historical_pit_eligible": False,
+                "features_included": False,
+                "labels_included": False,
+                "projection": {
+                    "manifest_sha256": manifest_sha,
+                    "observations_sha256": observation_sha,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     return manifest_path
 
 
@@ -430,7 +553,7 @@ def test_isolation_guard_rejects_release_v4_target(tmp_path: Path) -> None:
     candidate_manifest = _setup_revision_aware_candidate(tmp_path)
     prohibited_out = tmp_path / "release_v4" / "illegal_target"
 
-    with pytest.raises(ResearchAdapterError, match="ML research output must be inside"):
+    with pytest.raises(ResearchAdapterError, match="research writes must be inside the configured active ML research root"):
         ResearchAdaptRequest(
             raw_candidate_manifest_path=candidate_manifest,
             output_dir=prohibited_out,
@@ -488,3 +611,95 @@ def test_portable_daily_projection_fixture_full_chain(tmp_path: Path) -> None:
     assert loaded.observations[0].event_date == "2026-10-02"
     assert loaded.observations[0].available_at.isoformat() == "2026-10-02T11:20:15.011784+00:00"
     assert len(loaded.observations[0].values) == 7
+
+
+def test_tpex_raw_header_projects_into_numeric_store_and_cycle_identity(
+    tmp_path: Path,
+) -> None:
+    candidate = _setup_tpex_actual_header_projection_candidate(tmp_path)
+    projected = json.loads(
+        (candidate.parent / "observations.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert projected["venue"] == "tpex"
+    assert "開盤 " in projected["exact_numeric_values"]
+    assert " 成交金額(元)" in projected["exact_numeric_values"]
+
+    adapted = ResearchDirectOOCAdapter(
+        _adapter_request(candidate, _research(tmp_path, "tpex_adapted"))
+    ).adapt()
+    store_root = _research(tmp_path, "tpex_store")
+    store_receipt = ResearchDirectNumericStoreConsumer(
+        adapter_receipt_path=adapted.adapter_receipt_path,
+        output_store_dir=store_root,
+        training_as_of="2026-10-03T00:30:00+00:00",
+    ).build_store()
+    assert store_receipt["feature_value_count"] == 7
+
+    store_registry_path = store_root / "feature_registry.json"
+    registry = json.loads(store_registry_path.read_text(encoding="utf-8"))
+    expected_feature_ids = set(adapter_module.DAILY_PRICE_FEATURE_INFO)
+    assert {item["feature_id"] for item in registry} == expected_feature_ids
+    stored_shard = store_receipt["stored_shards"][0]
+    shard_path = store_root / stored_shard["path"]
+    with gzip.open(shard_path, "rt", encoding="utf-8") as stream:
+        adapted_row = json.loads(next(stream))
+    assert adapted_row["symbol"] == "3207"
+    assert adapted_row["missing_mask"] == []
+    values_by_id = {value["feature_id"]: value for value in adapted_row["values"]}
+    assert set(values_by_id) == expected_feature_ids
+    assert values_by_id[adapter_module.DAILY_PRICE_FEATURE_IDS["open"]]["value_int"] == 4180
+    amount = values_by_id[adapter_module.DAILY_PRICE_FEATURE_IDS["amount"]]
+    assert (amount["value_int"], amount["scale"], amount["unit"]) == (9907800, 0, "TWD")
+
+    registry_bytes = store_registry_path.read_bytes()
+    terminal = {
+        "feature_registry_path": str(store_registry_path.resolve()),
+        "feature_registry_sha256": store_receipt["feature_registry_sha256"],
+        "feature_registry_bytes_sha256": "sha256:" + hashlib.sha256(registry_bytes).hexdigest(),
+        "adapted_manifest_path": str(adapted.adapted_manifest_path.resolve()),
+        "adapted_manifest_sha256": store_receipt["adapted_manifest_bytes_sha256"],
+        "adapted_manifest_canonical_sha256": store_receipt[
+            "adapted_manifest_canonical_sha256"
+        ],
+        "stored_shards": [
+            {
+                **shard,
+                "path": str((store_root / shard["path"]).resolve()),
+            }
+            for shard in store_receipt["stored_shards"]
+        ],
+    }
+    semantic_identity = current_cycle._current_b_semantic_identity(
+        b_terminal=terminal,
+        symbols=["3207"],
+        source_date="2026-10-02",
+        repository_root=tmp_path,
+    )
+    assert semantic_identity["feature_registry_sha256"] == store_receipt[
+        "feature_registry_sha256"
+    ]
+    assert semantic_identity["current_vector_semantic_sha256"].startswith("sha256:")
+
+
+def test_projection_source_mapping_fails_closed_on_ambiguous_alias_and_unknown_unit() -> None:
+    with pytest.raises(ResearchAdapterError, match="ambiguous"):
+        adapter_module._projection_exact_value(
+            {
+                "開盤 ": {"state": "numeric", "value_int": 4180, "scale": 100},
+                "開盤": {"state": "numeric", "value_int": 4190, "scale": 100},
+            },
+            venue="tpex",
+            feature_id=adapter_module.DAILY_PRICE_FEATURE_IDS["open"],
+        )
+
+    assert adapter_module._projection_exact_value(
+        {
+            "成交金額(千元)": {
+                "state": "numeric",
+                "value_int": 9908,
+                "scale": 1,
+            }
+        },
+        venue="tpex",
+        feature_id=adapter_module.DAILY_PRICE_FEATURE_IDS["amount"],
+    ) is None

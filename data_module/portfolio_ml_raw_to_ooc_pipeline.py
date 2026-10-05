@@ -166,7 +166,7 @@ class PortfolioMLRawToOOCRequest:
                 normalized_symbols,
             )
         if self.allow_research:
-            resolve_ml_research_output_path(self.output_root)
+            resolve_ml_research_output_path(self.output_root, access="write")
 
 
 @dataclass(frozen=True)
@@ -216,7 +216,7 @@ class PortfolioMLRawToOOCBuilder:
             or raw_manifest.get("schema_version") == "ml-research-adapted-raw-manifest.v1"
         )
         if is_research:
-            resolve_ml_research_output_path(request.output_root)
+            resolve_ml_research_output_path(request.output_root, access="write")
         raw_manifest_file_hash = _file_sha256(raw_manifest_path)
         identity = {
             "schema_version": PIPELINE_SCHEMA_VERSION,

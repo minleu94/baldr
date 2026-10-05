@@ -2,23 +2,26 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 import sqlite3
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pytest
 
 from app_module.recommendation.input_preparation import (
+    RecommendationInputSession,
     RecommendationInputPreparer,
     load_recommendation_market_frame,
     minimum_recommendation_history_rows,
     prepare_recommendation_market,
     resolve_recommendation_cutoff,
 )
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.recommendation_market_data_provider import (
     DefaultRecommendationMarketDataProvider,
 )
@@ -395,6 +398,200 @@ def test_historical_market_warmup_uses_last_distinct_bars_before_cutoff(
     assert normalized.max() == trade_dates[124]
     assert normalized.max().date().isoformat() == cutoff
     assert sha256(config.db_file.read_bytes()).hexdigest() == before
+
+
+def test_natural_market_warmup_uses_expected_session_and_separate_availability_date(
+    tmp_path: Path,
+) -> None:
+    config = _test_config(tmp_path)
+    config.use_sqlite = True
+    config.db_file.parent.mkdir(parents=True, exist_ok=True)
+    date_column = "\u65e5\u671f"
+    code_column = "\u8b49\u5238\u4ee3\u865f"
+    name_column = "\u8b49\u5238\u540d\u7a31"
+    trade_dates = pd.bdate_range(end="2026-10-05", periods=70)
+    with sqlite3.connect(config.db_file) as connection:
+        connection.execute(
+            f'CREATE TABLE daily_prices ("{date_column}" TEXT, "{code_column}" TEXT, '
+            f'"{name_column}" TEXT, close TEXT, available_date TEXT)'
+        )
+        connection.execute(
+            f'CREATE TABLE technical_indicators ("{date_column}" TEXT, "{code_column}" TEXT)'
+        )
+        rows = []
+        for index, value in enumerate(trade_dates):
+            day = value.date()
+            available = date(2026, 10, 3) if day == date(2026, 10, 2) else day
+            rows.append(
+                (
+                    day.strftime("%Y%m%d"),
+                    "2330",
+                    "test",
+                    str(index + 1),
+                    available.strftime("%Y%m%d"),
+                )
+            )
+        connection.executemany(
+            f'INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?)', rows
+        )
+
+    frozen_at = datetime(2026, 10, 5, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+    official_dates = tuple(value.date() for value in trade_dates if value.date() <= date(2026, 10, 2))
+
+    class _Calendar:
+        def read_range(
+            self,
+            *,
+            start_date: str,
+            end_date: str,
+            decision_at: datetime,
+            observed_at: datetime,
+        ):
+            start = date.fromisoformat(start_date)
+            end = date.fromisoformat(end_date)
+            return SimpleNamespace(
+                values={
+                    "trading_dates": tuple(
+                        item.isoformat()
+                        for item in official_dates
+                        if start <= item <= end
+                    )
+                },
+                blockers=(),
+                provenance={"status": "verified"},
+            )
+
+    provider = DefaultRecommendationMarketDataProvider(config)
+    session = RecommendationInputSession(
+        config=config,
+        market_data_provider=provider,
+        historical_market_provider=HistoricalRecommendationMarketFrameProvider(config),
+        pit_membership_provider=SimpleNamespace(),  # type: ignore[arg-type]
+        fundamental_input_provider=SimpleNamespace(),  # type: ignore[arg-type]
+        market_session_cadence=MarketSessionCadence(
+            _Calendar(), clock=lambda: frozen_at  # type: ignore[arg-type]
+        ),
+        invocation_frozen_at=frozen_at,
+    )
+
+    prepared = session.prepare_market_with_minimum_bars(
+        cutoff=None,
+        minimum_bars=5,
+        universe=("2330",),
+    )
+
+    normalized_dates = pd.to_datetime(prepared.frame[date_column]).dt.date
+    assert prepared.expected_market_date == "2026-10-02"
+    assert prepared.market_calendar_status == "current"
+    assert prepared.data_date == "2026-10-02"
+    assert normalized_dates.nunique() == 5
+    assert normalized_dates.max() == date(2026, 10, 2)
+    assert (
+        prepared.frame.loc[normalized_dates == date(2026, 10, 2), "available_date"]
+        .iloc[0]
+        .date()
+        == date(2026, 10, 3)
+    )
+
+
+def test_natural_availability_cutoff_is_invocation_date_not_caller_or_market_date(
+    tmp_path: Path,
+) -> None:
+    config = _test_config(tmp_path)
+    date_column = "\u65e5\u671f"
+    code_column = "\u8b49\u5238\u4ee3\u865f"
+    name_column = "\u8b49\u5238\u540d\u7a31"
+    close_column = "\u6536\u76e4\u50f9"
+    source = pd.DataFrame(
+        [
+            {
+                date_column: "2026-10-05",
+                code_column: "2330",
+                name_column: "future event date despite earlier availability",
+                close_column: "102",
+                "available_date": "2026-10-04",
+            },
+            {
+                date_column: "2026-10-01",
+                code_column: "2330",
+                name_column: "older future-available row",
+                close_column: "99",
+                "available_date": "2026-10-05",
+            },
+            {
+                date_column: "2026-10-02",
+                code_column: "2330",
+                name_column: "expected session",
+                close_column: "100",
+                "available_date": "2026-10-04",
+            },
+            {
+                date_column: "2026-10-02",
+                code_column: "2330",
+                name_column: "future revision",
+                close_column: "101",
+                "available_date": "2026-10-05",
+            },
+        ]
+    )
+    frozen_at = datetime(2026, 10, 4, 14, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+
+    class _Calendar:
+        def read_range(
+            self,
+            *,
+            start_date: str,
+            end_date: str,
+            decision_at: datetime,
+            observed_at: datetime,
+        ):
+            start = date.fromisoformat(start_date)
+            end = date.fromisoformat(end_date)
+            return SimpleNamespace(
+                values={
+                    "trading_dates": tuple(
+                        day.isoformat()
+                        for day in (date(2026, 10, 1), date(2026, 10, 2))
+                        if start <= day <= end
+                    )
+                },
+                blockers=(),
+                provenance={"status": "verified"},
+            )
+
+    provider = _FrameProvider(source)
+    session = RecommendationInputSession(
+        config=config,
+        market_data_provider=provider,
+        historical_market_provider=lambda _cutoff: source.copy(deep=True),  # type: ignore[arg-type]
+        pit_membership_provider=SimpleNamespace(),  # type: ignore[arg-type]
+        fundamental_input_provider=SimpleNamespace(),  # type: ignore[arg-type]
+        market_session_cadence=MarketSessionCadence(
+            _Calendar(), clock=lambda: frozen_at  # type: ignore[arg-type]
+        ),
+        invocation_frozen_at=frozen_at,
+    )
+
+    prepared = session.prepare_market(
+        cutoff=None,
+        decision_date="2026-10-03",
+        source_frame=source,
+    )
+
+    assert prepared.decision_cutoff == "2026-10-03"
+    assert prepared.expected_market_date == "2026-10-02"
+    assert prepared.market_calendar_status == "current"
+    assert prepared.data_date == "2026-10-02"
+    assert len(prepared.frame) == 1
+    assert prepared.frame.iloc[0][name_column] == "expected session"
+    assert prepared.frame.iloc[0]["available_date"].date() == date(2026, 10, 4)
+
+    source_scoped = session.prepare_market(cutoff=None, source_frame=source)
+    assert source_scoped.decision_cutoff == "2026-10-02"
+    assert source_scoped.data_date == "2026-10-02"
+    assert source_scoped.expected_market_date == "2026-10-02"
+    assert len(source_scoped.frame) == 1
+    assert source_scoped.frame.iloc[0]["available_date"].date() == date(2026, 10, 4)
 
 
 def test_indicator_warmup_tracks_enabled_windows_and_parent_disable() -> None:

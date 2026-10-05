@@ -46,6 +46,8 @@ class ResearchStockContextDTO:
     source_kind: str = ""
     source_label: str = ""
     source_workspace: str = ""
+    # 個股現況 ML scope 明確分流；不改寫 result_id 或既有 Advice identity。
+    ml_scope_mode: str = ""
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -67,9 +69,16 @@ class ResearchStockContextDTO:
             "source_kind",
             "source_label",
             "source_workspace",
+            "ml_scope_mode",
         ):
             value = getattr(self, field_name)
             object.__setattr__(self, field_name, "" if value is None else str(value).strip())
+        if self.ml_scope_mode not in {
+            "",
+            "current_stock_research",
+            "selected_saved_decision",
+        }:
+            raise ValueError("ml_scope_mode 僅接受明確支援的個股研究範圍")
 
     @property
     def has_source(self) -> bool:
@@ -111,3 +120,4 @@ class ResearchSessionSnapshotDTO:
     source_kind: Optional[str] = None
     source_label: Optional[str] = None
     source_workspace: Optional[str] = None
+    ml_scope_mode: Optional[str] = None

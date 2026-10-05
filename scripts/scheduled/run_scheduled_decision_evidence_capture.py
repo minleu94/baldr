@@ -26,11 +26,17 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from data_module.official_trading_calendar import OfficialTradingCalendar
+from data_module.config import TWStockConfig
 from app_module.evidence_event_importer_dtos import (
     EvidenceCaptureRequest,
     capture_context_identity,
     capture_context_is_valid,
 )
+from app_module.scheduled_writer_reservation import (
+    ScheduledWriterReservationError,
+    wait_for_scheduled_writer_reservation,
+)
+from data_module.ml_storage_capacity import release_heavy_chain_reservation
 
 
 TASK_NAME = "baldr-decision-evidence-capture-daily"
@@ -55,6 +61,8 @@ TEMPORAL_RECEIPT_FIELDS = (
     "capture_context_identity_hash",
 )
 DEFAULT_SUBPROCESS_TIMEOUT_SECONDS = 120
+SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS = 10_500
+DECISION_CAPTURE_FINALIZATION_RESERVE_SECONDS = 300
 REQUIRED_SNAPSHOT_SECTIONS = frozenset(
     {
         "market_regime",
@@ -66,6 +74,43 @@ REQUIRED_SNAPSHOT_SECTIONS = frozenset(
         "risk_prompt",
     }
 )
+
+
+def _configured_path(field_name: str) -> Path:
+    """Read a TWStockConfig path default without constructing its I/O config."""
+
+    fields = getattr(TWStockConfig, "__dataclass_fields__")
+    field = fields[field_name]
+    default_factory = getattr(field, "default_factory", None)
+    if callable(default_factory):
+        return Path(default_factory()).expanduser().resolve()
+    return Path(getattr(field, "default")).expanduser().resolve()
+
+
+def _canonical_reservation_root(
+    *,
+    data_root: Path,
+    output_root: Path,
+    db_path: Path | None,
+) -> Path:
+    """Keep canonical DB writes on the configured OUTPUT_ROOT lock namespace."""
+
+    resolved_data_root = Path(data_root).expanduser().resolve()
+    resolved_output_root = Path(output_root).expanduser().resolve()
+    resolved_db = (
+        Path(db_path).expanduser().resolve()
+        if db_path is not None
+        else resolved_data_root / "sqlite" / "twstock.db"
+    )
+    configured_data_root = _configured_path("data_root")
+    configured_output_root = _configured_path("output_root")
+    configured_db = configured_data_root / "sqlite" / "twstock.db"
+    passed_data_db = resolved_data_root / "sqlite" / "twstock.db"
+    if resolved_db == configured_db:
+        return configured_output_root
+    if resolved_db == passed_data_db and resolved_data_root == configured_data_root:
+        return configured_output_root
+    return resolved_output_root
 
 
 @dataclass(frozen=True)
@@ -313,6 +358,53 @@ def latest_reached_taipei_decision_at(now: datetime | None = None) -> datetime:
     if candidate > current_taipei:
         candidate -= timedelta(days=1)
     return candidate
+
+
+def _resolve_calendar_decision_at(
+    *,
+    checked_at: datetime,
+    resolved_decision_at: datetime,
+    explicit_decision_at: datetime | None,
+    as_of: date | str | None,
+    calendar_decision_at: datetime | None,
+) -> tuple[datetime, date | None, str]:
+    explicit_as_of = _as_of_date(as_of)
+    explicit_calendar_decision_at = (
+        _taipei_datetime(calendar_decision_at, field_name="calendar_decision_at")
+        if calendar_decision_at is not None
+        else None
+    )
+    if explicit_calendar_decision_at is not None:
+        if (
+            explicit_calendar_decision_at.timetz().replace(tzinfo=None)
+            != DECISION_TIME
+        ):
+            raise ValueError("calendar_decision_at must be Asia/Taipei 08:30")
+        resolved_calendar_decision_at = explicit_calendar_decision_at
+        decision_date_basis = "explicit_calendar_decision_at"
+    elif explicit_as_of is not None:
+        resolved_calendar_decision_at = datetime.combine(
+            explicit_as_of,
+            DECISION_TIME,
+            tzinfo=TAIPEI,
+        )
+        decision_date_basis = "explicit_as_of_date"
+    elif explicit_decision_at is not None:
+        # An explicit actual decision timestamp also supplies the natural-day
+        # selector when no separate as-of/calendar selector is given.
+        resolved_calendar_decision_at = datetime.combine(
+            resolved_decision_at.date(),
+            DECISION_TIME,
+            tzinfo=TAIPEI,
+        )
+        decision_date_basis = "explicit_decision_at_calendar_date"
+    else:
+        resolved_calendar_decision_at = latest_reached_taipei_decision_at(checked_at)
+        decision_date_basis = "latest_reached_calendar_decision_at"
+
+    if explicit_as_of is not None and explicit_as_of != resolved_calendar_decision_at.date():
+        raise ValueError("as_of must match calendar_decision_at date")
+    return resolved_calendar_decision_at, explicit_as_of, decision_date_basis
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -808,6 +900,7 @@ def _run_once(
     python_executable: str | None = None,
     subprocess_timeout_seconds: int = DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
     calendar: OfficialTradingCalendar | None = None,
+    reservation_wait: Mapping[str, object] | None = None,
     run_context: RunContext,
 ) -> dict[str, Any]:
     checked_raw = now or datetime.now(TAIPEI)
@@ -887,7 +980,8 @@ def _run_once(
         db_path=db_path,
         decision_date_basis=decision_date_basis,
     )
-    _atomic_write_json(status_path, payload)
+    if reservation_wait is not None:
+        payload["reservation_wait"] = dict(reservation_wait)
 
     calendar_service = calendar or OfficialTradingCalendar(db_path=db_path)
     try:
@@ -902,6 +996,44 @@ def _run_once(
     payload["trading_calendar_validated"] = is_trading_day is not None
     payload["trading_calendar_is_open"] = is_trading_day
     payload["trading_calendar_reason"] = calendar_reason
+    if (
+        is_trading_day is True
+        and reservation_wait is not None
+        and reservation_wait.get("status") != "acquired"
+    ):
+        payload.update(
+            {
+                "status": "blocked_reservation_not_acquired",
+                "failure_reasons": ["canonical_writer_reservation_not_acquired"],
+                "snapshot": {
+                    "status": "not_run",
+                    "saved": False,
+                    "duplicate": False,
+                    "reason": "canonical_writer_reservation_not_acquired",
+                },
+                "evidence": {
+                    "status": "not_run",
+                    "events_seen": 0,
+                    "events_inserted": 0,
+                    "duplicates": 0,
+                    "failures": 0,
+                    "reason": "canonical_writer_reservation_not_acquired",
+                },
+                "snapshot_saved": False,
+                "snapshot_duplicate": False,
+                "events_inserted": 0,
+                "events_duplicates": 0,
+                "events_failures": 0,
+                "safety_boundary": {
+                    **dict(payload["safety_boundary"]),
+                    "writes_decision_desk_snapshot": False,
+                    "writes_evidence_events": False,
+                },
+            }
+        )
+        _atomic_write_json(status_path, payload)
+        return payload
+    _atomic_write_json(status_path, payload)
     if is_trading_day is not True:
         safety_boundary = dict(payload["safety_boundary"])
         safety_boundary["writes_decision_desk_snapshot"] = False
@@ -1255,7 +1387,7 @@ def _exception_payload(context: RunContext, exc: Exception) -> dict[str, Any]:
         evidence_write = None
     else:
         evidence_write = False
-    return {
+    payload = {
         "schema_version": SCHEMA_VERSION,
         "receipt_schema_version": RECEIPT_SCHEMA_VERSION,
         "task": TASK_NAME,
@@ -1284,6 +1416,18 @@ def _exception_payload(context: RunContext, exc: Exception) -> dict[str, Any]:
             "broker_execution": False,
         },
     }
+    reservation_wait = context.steps.get("reservation_wait")
+    if reservation_wait is not None:
+        payload["reservation_wait"] = dict(reservation_wait)
+    canonical_reservation = context.steps.get("canonical_reservation_root")
+    if isinstance(canonical_reservation, Mapping) and isinstance(
+        canonical_reservation.get("path"), str
+    ):
+        payload["canonical_reservation_root"] = canonical_reservation["path"]
+    artifact_output = context.steps.get("artifact_output_root")
+    if isinstance(artifact_output, Mapping) and isinstance(artifact_output.get("path"), str):
+        payload["artifact_output_root"] = artifact_output["path"]
+    return payload
 
 
 def _finalize_run(context: RunContext, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -1350,24 +1494,216 @@ def run(
     calendar: OfficialTradingCalendar | None = None,
 ) -> dict[str, Any]:
     context = _create_run_context(Path(output_root))
+    invocation_at = datetime.now(TAIPEI)
+    reservation = None
+    should_execute_capture = True
+    payload: dict[str, Any]
     try:
-        payload = _run_once(
-            data_root=data_root,
-            output_root=output_root,
+        reservation_root = _canonical_reservation_root(
+            data_root=Path(data_root),
+            output_root=Path(output_root),
             db_path=db_path,
-            now=now,
-            decision_at=decision_at,
-            as_of=as_of,
-            captured_at=captured_at,
-            capture_mode=capture_mode,
-            calendar_decision_at=calendar_decision_at,
-            python_executable=python_executable,
-            subprocess_timeout_seconds=subprocess_timeout_seconds,
-            calendar=calendar,
-            run_context=context,
         )
+        context.steps["canonical_reservation_root"] = {"path": str(reservation_root)}
+        context.steps["artifact_output_root"] = {"path": str(Path(output_root).resolve())}
+        if subprocess_timeout_seconds <= 0:
+            raise ValueError("subprocess_timeout_seconds must be positive")
+        preflight_clock = _taipei_datetime(now or invocation_at, field_name="now")
+        preflight_captured_at = _taipei_datetime(
+            captured_at or preflight_clock,
+            field_name="captured_at",
+        )
+        preflight_decision_at = _taipei_datetime(
+            decision_at or preflight_captured_at,
+            field_name="decision_at",
+        )
+        preflight_calendar_decision_at, _preflight_as_of, _preflight_basis = (
+            _resolve_calendar_decision_at(
+                checked_at=preflight_clock,
+                resolved_decision_at=preflight_decision_at,
+                explicit_decision_at=decision_at,
+                as_of=as_of,
+                calendar_decision_at=calendar_decision_at,
+            )
+        )
+        calendar_service = calendar or OfficialTradingCalendar(db_path=db_path)
+        try:
+            preflight_is_open, preflight_calendar_reason = (
+                calendar_service.is_official_trading_day(
+                    preflight_calendar_decision_at.date()
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - the inner run records unknown
+            preflight_is_open = None
+            preflight_calendar_reason = f"calendar_exception:{type(exc).__name__}"
+
+        reservation_wait: Mapping[str, object] | None = None
+        execution_now: datetime | None = None
+        if preflight_is_open is True:
+            day_end = datetime.combine(
+                invocation_at.date() + timedelta(days=1),
+                datetime.min.time(),
+                tzinfo=TAIPEI,
+            )
+            wait_reserve_seconds = (2 * subprocess_timeout_seconds) + DECISION_CAPTURE_FINALIZATION_RESERVE_SECONDS
+            latest_acquire_at = day_end - timedelta(seconds=wait_reserve_seconds)
+
+            def publish_wait_progress(progress: Mapping[str, object]) -> None:
+                context.steps["reservation_wait"] = dict(progress)
+                _atomic_write_json(
+                    context.status_path,
+                    {
+                        "schema_version": SCHEMA_VERSION,
+                        "receipt_schema_version": RECEIPT_SCHEMA_VERSION,
+                        "task": TASK_NAME,
+                        "run_id": context.run_id,
+                        "run_started_at": context.started_at,
+                        "status": "waiting_for_heavy_chain_reservation",
+                        "status_path": str(context.status_path.resolve()),
+                        "receipt_path": str(context.receipt_path.resolve()),
+                        "data_root": str(Path(data_root).resolve()),
+                        "output_root": str(Path(output_root).resolve()),
+                        "canonical_reservation_root": str(reservation_root),
+                        "db_path": str(Path(db_path).resolve()) if db_path is not None else None,
+                        "reservation_wait": dict(progress),
+                        "safety_boundary": {
+                            "writes_decision_desk_snapshot": False,
+                            "writes_evidence_events": False,
+                            "changes_rule_state": False,
+                            "changes_advice_state": False,
+                            "changes_portfolio_state": False,
+                            "broker_execution": False,
+                        },
+                    },
+                )
+
+            try:
+                wait_result = wait_for_scheduled_writer_reservation(
+                    release_root=reservation_root / "release_v4",
+                    timeout_seconds=SCHEDULED_WRITER_RESERVATION_TIMEOUT_SECONDS,
+                    latest_acquire_at=latest_acquire_at,
+                    on_progress=publish_wait_progress,
+                )
+            except ScheduledWriterReservationError as exc:
+                context.steps["reservation_wait"] = dict(exc.receipt)
+                payload = _exception_payload(context, exc)
+                payload.update(
+                    {
+                        "status": "blocked_reservation_error",
+                        "failure_reasons": [
+                            f"heavy_chain_reservation_failed:{type(exc.cause).__name__}"
+                        ],
+                        "reservation_wait": dict(exc.receipt),
+                        "canonical_reservation_root": str(reservation_root),
+                    }
+                )
+                return _finalize_run(context, payload)
+            reservation_wait = dict(wait_result.receipt)
+            context.steps["reservation_wait"] = dict(reservation_wait)
+            if wait_result.reservation is None:
+                payload = _exception_payload(
+                    context,
+                    TimeoutError("canonical writer reservation wait timed out"),
+                )
+                payload.update(
+                    {
+                        "status": "blocked_reservation_timeout",
+                        "failure_reasons": ["heavy_chain_reservation_timeout"],
+                        "reservation_wait": dict(reservation_wait),
+                        "canonical_reservation_root": str(reservation_root),
+                    }
+                )
+                return _finalize_run(context, payload)
+            reservation = wait_result.reservation
+            actual_after_acquire = datetime.now(TAIPEI)
+            acquire_guard = {
+                "checked_at": actual_after_acquire.isoformat(timespec="seconds"),
+                "latest_acquire_at": latest_acquire_at.isoformat(timespec="seconds"),
+                "completion_reserve_seconds": wait_reserve_seconds,
+                "passed": (
+                    actual_after_acquire.date() == invocation_at.date()
+                    and actual_after_acquire < latest_acquire_at
+                ),
+            }
+            context.steps["reservation_acquire_guard"] = acquire_guard
+            if not bool(acquire_guard["passed"]):
+                failure_reason = (
+                    "heavy_chain_reservation_crossed_taipei_day"
+                    if actual_after_acquire.date() != invocation_at.date()
+                    else "heavy_chain_reservation_after_completion_cutoff"
+                )
+                payload = _exception_payload(
+                    context,
+                    RuntimeError(failure_reason),
+                )
+                payload.update(
+                    {
+                        "status": "blocked_reservation_acquire_guard",
+                        "failure_reasons": [failure_reason],
+                        "reservation_wait": dict(reservation_wait),
+                        "reservation_acquire_guard": acquire_guard,
+                    }
+                )
+                should_execute_capture = False
+            else:
+                execution_now = now if now is not None else actual_after_acquire
+        else:
+            # Closed/unknown calendar days retain their current no-writer
+            # behavior. If the authoritative result changes before execution,
+            # _run_once fails closed because no reservation was acquired.
+            reservation_wait = {
+                "status": "not_acquired",
+                "reason": (
+                    "official_market_closed"
+                    if preflight_is_open is False
+                    else "official_market_calendar_unknown"
+                ),
+                "calendar_reason": preflight_calendar_reason,
+            }
+            context.steps["reservation_wait"] = dict(reservation_wait)
+            execution_now = now
+
+        if should_execute_capture:
+            payload = _run_once(
+                data_root=data_root,
+                output_root=output_root,
+                db_path=db_path,
+                now=execution_now,
+                decision_at=decision_at,
+                as_of=as_of,
+                captured_at=captured_at,
+                capture_mode=capture_mode,
+                calendar_decision_at=calendar_decision_at,
+                python_executable=python_executable,
+                subprocess_timeout_seconds=subprocess_timeout_seconds,
+                calendar=calendar,
+                reservation_wait=reservation_wait,
+                run_context=context,
+            )
+            if "reservation_acquire_guard" in context.steps:
+                payload["reservation_acquire_guard"] = dict(
+                    context.steps["reservation_acquire_guard"]
+                )
+            payload["canonical_reservation_root"] = str(reservation_root)
+            payload["artifact_output_root"] = str(Path(output_root).resolve())
     except Exception as exc:  # noqa: BLE001 - persist a terminal failed receipt
         payload = _exception_payload(context, exc)
+    finally:
+        if reservation is not None:
+            try:
+                release_heavy_chain_reservation(reservation)
+            except Exception as exc:  # noqa: BLE001 - lease release is a safety boundary
+                if "payload" not in locals():
+                    payload = _exception_payload(context, exc)
+                payload.update(
+                    {
+                        "status": "failed_reservation_release",
+                        "failure_reasons": [
+                            f"heavy_chain_reservation_release_failed:{type(exc).__name__}"
+                        ],
+                        "reservation_release_error": str(exc),
+                    }
+                )
     return _finalize_run(context, payload)
 
 

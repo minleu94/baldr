@@ -295,6 +295,8 @@ class VerifiedCurrentRestatedOutcomeArtifact:
     event_date_calendar: tuple[date, ...]
     event_date_calendar_sha256: str
     folds: tuple[CurrentRestatedOutcomeFoldV1, ...]
+    source_context_revalidation_json: bytes
+    source_context_revalidation_sha256: str
     historical_pit_eligible: bool = False
     formal_training_eligible: bool = False
     full_teacher_qualified: bool = False
@@ -347,6 +349,7 @@ class PortfolioMLCurrentRestatedOutcomeStoreBuilder:
         output_root = resolve_ml_research_output_path(
             request.output_root,
             repository_root=repository_root,
+            access="write",
         )
         raw_publication_path = _resolve_research_input_path(
             request.raw_publication_manifest_path,
@@ -784,6 +787,11 @@ def load_verified_current_restated_outcome_artifact(
     source_context = _mapping(
         manifest.get("source_context_revalidation"), "source_context_revalidation"
     )
+    source_context_revalidation_json = _canonical_json(source_context).encode("utf-8")
+    if len(source_context_revalidation_json) > 4 * 1024 * 1024:
+        raise CurrentRestatedOutcomeStoreError(
+            "verified source-context proof exceeds its 4 MiB envelope bound"
+        )
     source_context_bundle_sha = _hash_json(source_context)
     if source_context_bundle_sha != source_pins.get("revalidated_context_bundle_sha256"):
         raise CurrentRestatedOutcomeStoreError(
@@ -934,6 +942,8 @@ def load_verified_current_restated_outcome_artifact(
         event_date_calendar=event_date_calendar,
         event_date_calendar_sha256=str(manifest["event_date_calendar_sha256"]),
         folds=folds,
+        source_context_revalidation_json=source_context_revalidation_json,
+        source_context_revalidation_sha256=source_context_bundle_sha.removeprefix("sha256:"),
     )
 
 
@@ -2781,6 +2791,7 @@ def _assert_context_stable(
         "source_database_sha256",
         "source_wal_path",
         "source_wal_sha256",
+        "source_wal_present",
         "snapshot_database_path",
         "snapshot_database_sha256",
         "snapshot_receipt_path",
@@ -3512,6 +3523,7 @@ def _resolve_research_input_path(
     resolved = resolve_ml_research_output_path(
         path,
         repository_root=repository_root,
+        access="read",
     )
     try:
         return resolved.resolve(strict=True)

@@ -221,6 +221,49 @@ def test_personal_live_execute_save_query_keeps_decision_and_market_dates_separa
     assert persisted_source_event.details["snapshot"]["data_as_of_date"] == _SOURCE_DATE
 
 
+def test_personal_live_short_supplied_frame_blocks_without_reloading_history(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import app_module.recommendation_service as recommendation_service_module
+
+    short_frame = _market_frame().iloc[:19].copy()
+    provider = _LiveFrameProvider(SimpleNamespace(use_sqlite=False), short_frame)
+    _config, service, _observed_dates = _service(tmp_path, provider)
+    service = service.with_personal_use_policy(
+        RecommendationPersonalUsePolicyV1.default_rule_only("desktop-user")
+    )
+    monkeypatch.setattr(recommendation_service_module, "datetime", _FrozenClock)
+
+    execution = execute_module.execute_recommendation(
+        service,
+        _runtime_config(),
+        max_stocks=1,
+        top_n=1,
+        result_id="personal-live-short-frame-20260927",
+    )
+
+    assert execution.status.value == "completed"
+    assert provider.calls == 1
+    assert execution.decision is not None
+    assert execution.decision.items == ()
+    negative_event = next(
+        event
+        for event in execution.events
+        if event.event_type == "legacy_negative_evidence_capture"
+    )
+    screening_matrix = negative_event.details["screening_matrix"]
+    assert len(screening_matrix) == 1
+    short_history = screening_matrix[0]
+    assert short_history["stock_code"] == "2330"
+    assert short_history["status"] == "missing"
+    assert short_history["reason_codes"] == ("insufficient_history",)
+    assert short_history["threshold_name"] == "minimum_history_rows"
+    assert short_history["observed_value"] == "19"
+    assert short_history["required_value"] == "20"
+    assert short_history["as_of_date"] == _DECISION_DATE
+
+
 def test_prepare_recommendation_market_uses_decision_date_only_for_live_filtering() -> None:
     provider = object()
     prepared = prepare_recommendation_market(
@@ -372,6 +415,7 @@ def test_legacy_input_session_keeps_original_prepare_market_keywords(
 
     assert execution.status.value == "completed"
     assert calls == [(None, None)]
+    assert provider.calls == 1
     assert execution.context.as_of_date == date.fromisoformat(_SOURCE_DATE)
     assert execution.context.data_snapshot_refs == ()
     source_event = next(

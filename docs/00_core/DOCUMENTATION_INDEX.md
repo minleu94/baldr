@@ -20,6 +20,8 @@
 
 ## 其他正式入口
 
+- 四用途既有功能的有限工程缺口、Luna Max 分工與當次驗收：[Astra 工程收尾](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md)。是否完成以該文件最後接受與 Snapshot 為準。
+
 - 理想目標架構與 Current → Target 演進：[target_system_architecture.md](../01_architecture/target_system_architecture.md)
 - Formal input readiness 最新查核：[FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md](../06_qa/FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md)
 - 2026-09-29 跨工作區 UI 版面、捲動與幾何驗收（六格 MainWindow offscreen 矩陣通過）：[UI_LAYOUT_AUDIT_20260929.md](../06_qa/UI_LAYOUT_AUDIT_20260929.md)

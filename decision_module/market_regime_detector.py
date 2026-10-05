@@ -271,6 +271,12 @@ class MarketRegimeDetector:
             
             # 獲取價格序列
             close = pd.to_numeric(df[close_col], errors='coerce')
+            source_rows = df.loc[close.notna() & np.isfinite(close), date_col]
+            source_data_date = (
+                source_rows.iloc[-1].strftime('%Y-%m-%d')
+                if not source_rows.empty
+                else None
+            )
             high = pd.to_numeric(df[high_col], errors='coerce') if high_col else close
             low = pd.to_numeric(df[low_col], errors='coerce') if low_col else close
             volume = pd.to_numeric(df[volume_col], errors='coerce') if volume_col else None
@@ -349,6 +355,8 @@ class MarketRegimeDetector:
             if 'details' not in regime_result:
                 regime_result['details'] = {}
             regime_result['details']['date'] = date
+            if source_data_date is not None:
+                regime_result['details']['source_data_date'] = source_data_date
             
             return RegimeAssessment(
                 regime=str(regime_result["regime"]),

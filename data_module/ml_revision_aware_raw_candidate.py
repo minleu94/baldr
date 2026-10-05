@@ -168,9 +168,9 @@ def _check_isolation(path: Path, label: str) -> None:
 
 
 def _resolve_research_path(path: Path, label: str) -> Path:
-    """所有正式 caller 都使用 repository 的固定 research allowlist。"""
+    """Candidate and custody outputs may only target the active research root."""
     try:
-        return resolve_ml_research_output_path(path)
+        return resolve_ml_research_output_path(path, access="write")
     except MLResearchOutputBoundaryError as exc:
         raise RevisionAwareCandidateError(f"{label}: {exc}") from exc
 
@@ -532,8 +532,13 @@ class RevisionAwareRawCandidateBuilder:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise RevisionAwareCandidateError("snapshot context receipt is not valid UTF-8 JSON") from exc
         snapshot = payload.get("snapshot")
+        snapshot_schema = payload.get("schema_version")
         if (
-            payload.get("schema_version") != "integration-consistent-sqlite-snapshot.v1"
+            snapshot_schema
+            not in {
+                "integration-consistent-sqlite-snapshot.v1",
+                "integration-consistent-sqlite-snapshot.v2",
+            }
             or payload.get("status") != "consistent_snapshot_created"
             or not isinstance(snapshot, dict)
             or payload.get("snapshot_quick_check") != "ok"
@@ -577,12 +582,37 @@ class RevisionAwareRawCandidateBuilder:
             raise RevisionAwareCandidateError("snapshot original database SHA-256 pin is invalid")
         if not isinstance(original_wal.get("path"), str) or not original_wal["path"]:
             raise RevisionAwareCandidateError("snapshot original source WAL path is missing")
-        for field_name in ("bytes", "mtime_ns"):
-            field_value = original_wal.get(field_name)
-            if isinstance(field_value, bool) or not isinstance(field_value, int) or field_value < 0:
-                raise RevisionAwareCandidateError(f"snapshot original source WAL {field_name} pin is invalid")
-        if not re.fullmatch(r"[0-9a-fA-F]{64}", str(original_wal.get("sha256") or "")):
-            raise RevisionAwareCandidateError("snapshot original source WAL SHA-256 pin is invalid")
+        source_wal_present = snapshot_schema == "integration-consistent-sqlite-snapshot.v1"
+        expected_wal_path = Path(original_database["path"]).with_name(
+            Path(original_database["path"]).name + "-wal"
+        )
+        if (
+            os.path.normcase(os.path.abspath(original_wal["path"])).casefold()
+            != os.path.normcase(os.path.abspath(str(expected_wal_path))).casefold()
+        ):
+            raise RevisionAwareCandidateError("snapshot WAL path is not the original database WAL")
+        if source_wal_present:
+            for field_name in ("bytes", "mtime_ns"):
+                field_value = original_wal.get(field_name)
+                if isinstance(field_value, bool) or not isinstance(field_value, int) or field_value < 0:
+                    raise RevisionAwareCandidateError(f"snapshot original source WAL {field_name} pin is invalid")
+            if not re.fullmatch(r"[0-9a-fA-F]{64}", str(original_wal.get("sha256") or "")):
+                raise RevisionAwareCandidateError("snapshot original source WAL SHA-256 pin is invalid")
+        elif (
+            original_wal.get("status") != "absent"
+            or original_wal.get("present") is not False
+            or any(field in original_wal for field in ("bytes", "mtime_ns", "sha256"))
+            or not isinstance(payload.get("source_journal_mode_before"), str)
+            or not payload.get("source_journal_mode_before")
+            or payload.get("source_journal_mode_before")
+            != payload.get("source_journal_mode_after")
+            or payload.get("source_journal_mode_reader")
+            != "sqlite_file_header_read_write_version.v1"
+            or payload.get("source_journal_mode_before") not in {"wal", "rollback"}
+        ):
+            raise RevisionAwareCandidateError(
+                "snapshot v2 must explicitly prove an absent WAL in a stable SQLite journal mode"
+            )
         normalized_namespace_pins: list[dict[str, Any]] = []
         for index, item in enumerate(namespace_files):
             if not isinstance(item, dict) or not isinstance(item.get("path"), str) or not item["path"]:
@@ -645,6 +675,16 @@ class RevisionAwareRawCandidateBuilder:
             }
             for item in verified_source_context.revision_namespace_files
         ]
+        wal_identity: dict[str, Any] = {
+            "path": verified_source_context.source_wal_path,
+            "present": verified_source_context.source_wal_present,
+            "sha256": verified_source_context.source_wal_sha256,
+        }
+        if verified_source_context.source_wal_present:
+            wal_identity["bytes"] = original_wal["bytes"]
+            wal_identity["mtime_ns"] = original_wal["mtime_ns"]
+        else:
+            wal_identity["status"] = "absent"
         original_source_identity = {
             "database": {
                 "path": verified_source_context.source_database_path,
@@ -652,12 +692,7 @@ class RevisionAwareRawCandidateBuilder:
                 "mtime_ns": original_database["mtime_ns"],
                 "sha256": verified_source_context.source_database_sha256,
             },
-            "wal": {
-                "path": verified_source_context.source_wal_path,
-                "bytes": original_wal["bytes"],
-                "mtime_ns": original_wal["mtime_ns"],
-                "sha256": verified_source_context.source_wal_sha256,
-            },
+            "wal": wal_identity,
             "revision_namespace_files": namespace_files_verified,
             "source_generation": verified_source_context.source_generation,
             "revision_namespace_bundle_sha256": verified_source_context.revision_namespace_bundle_sha256,
@@ -681,6 +716,7 @@ class RevisionAwareRawCandidateBuilder:
             "verified_current_restated_source_context": {
                 "source_database_sha256": verified_source_context.source_database_sha256,
                 "source_wal_sha256": verified_source_context.source_wal_sha256,
+                "source_wal_present": verified_source_context.source_wal_present,
                 "snapshot_database_sha256": verified_source_context.snapshot_database_sha256,
                 "snapshot_receipt_sha256": verified_source_context.snapshot_receipt_sha256,
                 "decision_at": verified_source_context.decision_at.isoformat(),

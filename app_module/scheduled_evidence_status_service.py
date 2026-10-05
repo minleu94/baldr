@@ -23,6 +23,9 @@ from app_module.recommendation.contracts import (
     RecommendationExecution,
     SnapshotCohort,
 )
+from app_module.recommendation.current_market_status_preflight import (
+    validate_current_market_status_evidence,
+)
 from app_module.recommendation.queries import LegacyRecommendationOriginalPayload
 from app_module.saved_recommendation_queries import (
     build_recommendation_execution_queries,
@@ -30,6 +33,11 @@ from app_module.saved_recommendation_queries import (
     canonical_scheduled_decision_date,
     saved_recommendation_capture_projection,
     select_latest_saved_recommendation,
+)
+from decision_module.recommendation.contracts import (
+    CandidateAssessment,
+    DecisionBatch,
+    FilterOutcome,
 )
 
 
@@ -763,6 +771,7 @@ def _canonical_recommendation_cohort_summary(
     counts = {
         "可用候選": 0,
         "策略排除": 0,
+        "市場狀態排除": 0,
         "缺資料": 0,
         "來源品質問題": 0,
         "其他未判定": 0,
@@ -813,6 +822,15 @@ def _canonical_recommendation_cohort_summary(
             and set(row.reason_codes).issubset(known_strategy_reasons)
         ):
             counts["策略排除"] += 1
+        elif (
+            symbol in excluded_symbols
+            and row.quality == "observed"
+            and row.status == "fail"
+            and row.stage == "current_market_status_gate"
+            and row.reason_codes == ("official_delisted",)
+            and _has_verified_current_delisted_assessment(execution, symbol)
+        ):
+            counts["市場狀態排除"] += 1
         else:
             # Includes uncovered/excluded symbols and any unknown reason or
             # mixed contract that cannot be safely treated as a clean exclusion.
@@ -830,6 +848,49 @@ def _canonical_recommendation_cohort_summary(
         cohort.degraded_count,
         classifications,
     )
+
+
+def _has_verified_current_delisted_assessment(
+    execution: RecommendationExecution,
+    symbol: str,
+) -> bool:
+    """Require a matching typed decision outcome and current-only source proof."""
+
+    decision_at = execution.context.decision_at
+    decision = execution.decision
+    if type(decision) is not DecisionBatch or type(decision_at) is not datetime:
+        return False
+    matching = tuple(
+        assessment
+        for assessment in decision.assessments
+        if type(assessment) is CandidateAssessment
+        and assessment.stock_code == symbol
+    )
+    if len(matching) != 1:
+        return False
+    assessment = matching[0]
+    if assessment.eligible is not False:
+        return False
+    filter_outcomes = assessment.filter_outcomes
+    if not isinstance(filter_outcomes, Mapping):
+        return False
+    outcome = filter_outcomes.get("current_market_status_gate")
+    if (
+        type(outcome) is not FilterOutcome
+        or outcome.filter_id != "current_market_status_gate"
+        or outcome.passed is not False
+        or outcome.reason != "official_delisted"
+        or not isinstance(outcome.evidence, Mapping)
+    ):
+        return False
+    try:
+        return validate_current_market_status_evidence(
+            outcome.evidence,
+            expected_symbol=symbol,
+            decision_at=decision_at,
+        )
+    except (OSError, TypeError, ValueError):
+        return False
 
 
 def _is_sha256_hash(value: object) -> bool:

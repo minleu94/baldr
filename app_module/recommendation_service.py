@@ -194,17 +194,28 @@ from app_module.recommendation.input_preparation import (
     RecommendationInputSession,
     minimum_recommendation_history_rows,
 )
+from app_module.recommendation.current_market_status_preflight import (
+    CurrentMarketStatusPreflightResult,
+    validate_current_market_status_evidence,
+)
+from data_module.fundamental_data import MonthlyRevenueRecord
+from data_module.recommendation_current_fundamental_provider import (
+    CurrentObservedMonthlyRevenueInput,
+)
 from app_module.recommendation.evaluation_driver import evaluate_candidate_staged
 from app_module.recommendation.score_projection import project_legacy_recommendation_score
 from app_module.recommendation.source_fact_projection import (
     project_industry_context_fact,
     project_legacy_industry_reason,
+    project_current_monthly_revenue_records,
+    project_current_pe_observation,
     project_monthly_revenue_records,
     project_optional_final_score,
     project_pe_observation,
     project_required_legacy_decimal,
 )
 from decision_module.recommendation.evaluate import (
+    CandidateCurrentMarketStatusFact,
     CandidatePrefilterFact,
     CandidateEvaluationOutcome,
     CandidateHistoryFacts,
@@ -2382,6 +2393,7 @@ class RecommendationService:
         historical_research: bool = False,
         select_latest_available_cutoff: bool = False,
         input_session: RecommendationInputSession | None = None,
+        invocation_frozen_at: datetime | None = None,
     ) -> RecommendationBodyResult:
         """執行推薦分析並直接回傳同次 invocation 的 typed body result。
 
@@ -2426,6 +2438,20 @@ class RecommendationService:
         temporal_mode = cutoff_resolution.temporal_mode
         cutoff_selection = cutoff_resolution.cutoff_selection
         cutoff_policy = cutoff_resolution.cutoff_policy
+        current_fundamental_scope = (
+            cutoff is None
+            and not historical_research
+            and invocation_frozen_at is not None
+        )
+        if invocation_frozen_at is not None and (
+            invocation_frozen_at.tzinfo is None
+            or invocation_frozen_at.utcoffset() is None
+        ):
+            raise ValueError("invocation_frozen_at must be timezone-aware")
+        if current_fundamental_scope:
+            if invocation_frozen_at is None:
+                raise RuntimeError("natural current scope requires an invocation freeze")
+            invocation_frozen_at = invocation_frozen_at.astimezone(timezone.utc)
         personal_live_clock = (
             self._personal_use_policy is not None
             and cutoff is None
@@ -2523,6 +2549,20 @@ class RecommendationService:
         }
         if personal_decision_clock is not None:
             self._personalization_execution_clocks["decision_at"] = decision_clock
+        market_warnings: list[str] = (
+            ["industry_membership_not_point_in_time"] if cutoff else []
+        )
+        if current_fundamental_scope and prepared_market.expected_market_date is not None:
+            if (
+                prepared_market.market_calendar_status != "current"
+                or prepared_market.data_date != prepared_market.expected_market_date
+            ):
+                market_warnings.append(
+                    "natural_market_data_session_insufficient:"
+                    f"{prepared_market.market_calendar_status or 'unverified'}:"
+                    f"expected={prepared_market.expected_market_date}:"
+                    f"observed={prepared_market.data_date or 'missing'}"
+                )
         resolved_result_id = str(result_id or config.get("result_id") or "").strip()
         if not resolved_result_id:
             # Allocate the run identity before calibration receipt publication.
@@ -2543,8 +2583,27 @@ class RecommendationService:
             "source_id": prepared_market.source_id,
             "market_data_fingerprint": prepared_market.market_data_fingerprint,
             "fundamental_inputs": [],
+            "fundamental_input_requests": [],
+            "current_fundamental_observations": [],
+            "fundamental_input_scope": (
+                "natural_current_observation"
+                if current_fundamental_scope
+                else "formal_pit"
+            ),
+            "current_observation_cutoff_at": (
+                invocation_frozen_at.isoformat(timespec="microseconds")
+                if current_fundamental_scope and invocation_frozen_at is not None
+                else None
+            ),
+            "current_market_status_preflight_diagnostics": [],
+            "fundamental_input_diagnostics": [],
+            "fundamental_input_diagnostic_source_row_count": 0,
+            "fundamental_input_diagnostic_comparator_row_count": 0,
             "data_date": prepared_market.data_date,
-            "warnings": ["industry_membership_not_point_in_time"] if cutoff else [],
+            "expected_market_date": prepared_market.expected_market_date,
+            "market_calendar_status": prepared_market.market_calendar_status,
+            "market_calendar_reason_code": prepared_market.market_calendar_reason_code,
+            "warnings": market_warnings,
             "temporal_contract": "recommendation-producer-clock.v1",
             "temporal_mode": temporal_mode,
             "cutoff_selection": cutoff_selection,
@@ -2681,6 +2740,14 @@ class RecommendationService:
                     else "fixed"
                 ),
                 eligible_universe_date=decision_date_value,
+                fundamental_input_scope=(
+                    "natural_current_observation"
+                    if current_fundamental_scope
+                    else "formal_pit"
+                ),
+                current_observation_cutoff_at=(
+                    invocation_frozen_at if current_fundamental_scope else None
+                ),
             )
 
         def evaluate_candidates(
@@ -2999,6 +3066,96 @@ class RecommendationService:
             if len(stock_df) > 0 and '證券名稱' in stock_df.columns:
                 stock_name_text = str(stock_df.iloc[-1].get('證券名稱', stock_code_text))
 
+            if (
+                current_fundamental_scope
+                and not select_latest_available_cutoff
+                and invocation_frozen_at is not None
+            ):
+                status_reader = getattr(input_session, "get_current_market_status", None)
+                if not callable(status_reader):
+                    status_result: object | None = None
+                    preflight_reason = "current_market_status_reader_unavailable"
+                else:
+                    try:
+                        status_result = status_reader(
+                            stock_code_text,
+                            cutoff_at=invocation_frozen_at,
+                            decision_date=invocation_frozen_at.astimezone(
+                                ZoneInfo("Asia/Taipei")
+                            ).date(),
+                        )
+                        preflight_reason = ""
+                    except Exception as exc:
+                        status_result = None
+                        preflight_reason = (
+                            "current_market_status_read_failed:"
+                            f"{type(exc).__name__}"
+                        )
+
+                if status_result is not None:
+                    if not isinstance(status_result, CurrentMarketStatusPreflightResult):
+                        preflight_reason = "current_market_status_result_invalid"
+                    elif status_result.symbol != stock_code_text:
+                        preflight_reason = "current_market_status_symbol_mismatch"
+                    elif status_result.disposition == "verified_delisted":
+                        if (
+                            status_result.reason_code != "official_delisted"
+                            or status_result.evidence is None
+                            or not validate_current_market_status_evidence(
+                                status_result.evidence,
+                                expected_symbol=stock_code_text,
+                                decision_at=invocation_frozen_at,
+                            )
+                        ):
+                            preflight_reason = (
+                                "current_market_status_evidence_unverified"
+                            )
+                        else:
+                            delisted_outcome = staged_evaluator.current_market_status_outcome(
+                                CandidateCurrentMarketStatusFact(
+                                    invocation_id=staged_invocation_id,
+                                    stock_code=stock_code_text,
+                                    evidence=status_result.evidence,
+                                )
+                            )
+                            stats["skipped_no_result"] += 1
+                            remember_candidate(
+                                delisted_outcome,
+                                stock_name=stock_name_text,
+                            )
+                            self.last_screening_matrix.append(
+                                self._matrix_row(
+                                    stock_code=stock_code_text,
+                                    stock_name=stock_name_text,
+                                    status=delisted_outcome.status,
+                                    reason_codes=list(delisted_outcome.reason_codes),
+                                    quality=delisted_outcome.quality,
+                                    stage=delisted_outcome.stage,
+                                    threshold_mode=threshold_mode,
+                                )
+                            )
+                            legacy_matrix_codes.append(stock_code_text)
+                            continue
+                    elif status_result.disposition == "unavailable":
+                        preflight_reason = status_result.reason_code
+                    elif status_result.disposition != "not_delisted":
+                        preflight_reason = "current_market_status_disposition_invalid"
+
+                if preflight_reason:
+                    diagnostic = (
+                        "current_market_status_preflight_unavailable:"
+                        f"{stock_code_text}:{preflight_reason}"
+                    )
+                    diagnostics = self.last_run_context[
+                        "current_market_status_preflight_diagnostics"
+                    ]
+                    if not isinstance(diagnostics, list):
+                        raise TypeError(
+                            "current_market_status_preflight_diagnostics must be a list"
+                        )
+                    if diagnostic not in diagnostics:
+                        diagnostics.append(diagnostic)
+
             history_outcome = staged_evaluator.preflight_history(
                 CandidateHistoryFacts(
                     invocation_id=staged_invocation_id,
@@ -3207,6 +3364,16 @@ class RecommendationService:
                         volume_change_min_percent=(
                             self._configured_volume_change_min_percent(config)
                         ),
+                        fundamental_input_scope=(
+                            "natural_current_observation"
+                            if current_fundamental_scope
+                            else "formal_pit"
+                        ),
+                        current_observation_cutoff_at=(
+                            invocation_frozen_at
+                            if current_fundamental_scope
+                            else None
+                        ),
                         industry_context_required=(
                             not bool(cutoff) and decision_date_value is not None
                         ),
@@ -3253,7 +3420,112 @@ class RecommendationService:
                     def read_candidate_fact(
                         request: NeedSourceFact,
                     ) -> SourceFactResponse:
+                        if request.kind in {
+                            SourceFactKind.PE,
+                            SourceFactKind.MONTHLY_REVENUE,
+                        }:
+                            self.last_run_context[
+                                "fundamental_input_requests"
+                            ].append(
+                                {
+                                    "request_id": request.request_id,
+                                    "stock_code": request.stock_code,
+                                    "metric": request.kind.value,
+                                    "scope": request.fundamental_input_scope,
+                                    "decision_date": request.decision_date.isoformat(),
+                                    "current_observation_cutoff_at": (
+                                        request.current_observation_cutoff_at.isoformat()
+                                        if request.current_observation_cutoff_at
+                                        is not None
+                                        else None
+                                    ),
+                                }
+                            )
                         if request.kind is SourceFactKind.PE:
+                            if request.fundamental_input_scope == "natural_current_observation":
+                                observation = None
+                                diagnostics: tuple[str, ...] = ()
+                                cutoff_at = request.current_observation_cutoff_at
+                                loader = getattr(input_session, "load_current_pe", None)
+                                market_session_current = (
+                                    prepared_market.expected_market_date is not None
+                                    and prepared_market.data_date
+                                    == prepared_market.expected_market_date
+                                    and prepared_market.market_calendar_status == "current"
+                                )
+                                stock_quote_date: str | None = None
+                                if not stock_df.empty and "日期" in stock_df.columns:
+                                    try:
+                                        stock_quote_date = self._normalize_decision_date(
+                                            stock_df.iloc[-1].get("日期")
+                                        )
+                                    except (TypeError, ValueError):
+                                        stock_quote_date = None
+                                stock_market_session_current = (
+                                    market_session_current
+                                    and stock_quote_date
+                                    == prepared_market.expected_market_date
+                                )
+                                if (
+                                    cutoff_at is not None
+                                    and stock_market_session_current
+                                    and callable(loader)
+                                ):
+                                    try:
+                                        observation, diagnostics = loader(
+                                            stock_code=request.stock_code,
+                                            cutoff_at=cutoff_at,
+                                            expected_market_date=prepared_market.expected_market_date,
+                                        )
+                                    except Exception as exc:
+                                        logger.error("current PE read failed: %s", exc)
+                                        raise
+                                else:
+                                    if prepared_market.expected_market_date is None:
+                                        diagnostics = (
+                                            "current_pe_expected_market_date_unverified",
+                                        )
+                                    elif not market_session_current:
+                                        diagnostics = (
+                                            "current_pe_market_data_session_not_current:"
+                                            f"{prepared_market.market_calendar_status or 'unverified'}:"
+                                            f"expected={prepared_market.expected_market_date}:"
+                                            f"observed={prepared_market.data_date or 'missing'}",
+                                        )
+                                    elif not stock_market_session_current:
+                                        diagnostics = (
+                                            "current_pe_stock_quote_date_not_expected_session:"
+                                            f"{request.stock_code}:"
+                                            f"expected={prepared_market.expected_market_date}:"
+                                            f"observed={stock_quote_date or 'missing'}",
+                                        )
+                                    else:
+                                        diagnostics = ("current_pe_reader_unavailable",)
+                                self.last_run_context[
+                                    "fundamental_input_diagnostics"
+                                ].extend(diagnostics)
+                                fact = project_current_pe_observation(observation)
+                                if observation is not None and fact.value is not None:
+                                    self.last_run_context["fundamental_inputs"].append(
+                                        {
+                                            "stock_code": request.stock_code,
+                                            "metric": "pe",
+                                            "scope": request.fundamental_input_scope,
+                                            "expected_market_date": prepared_market.expected_market_date,
+                                            "market_calendar_session_date": observation.market_calendar_session_date.isoformat(),
+                                            "market_calendar_reason_code": observation.market_calendar_reason_code,
+                                            "as_of_date": observation.as_of_date.isoformat(),
+                                            "available_at": observation.available_at.isoformat(),
+                                            "availability_basis": observation.availability_basis,
+                                            "source": observation.source,
+                                            "source_version": observation.source_version,
+                                            "raw_response_sha256": observation.raw_response_sha256,
+                                            "market": observation.market,
+                                            "formal_pit_eligible": False,
+                                            "value": str(observation.value),
+                                        }
+                                    )
+                                return SourceFactResponse(request=request, value=fact)
                             try:
                                 observation = input_session.load_pe(
                                     stock_code=request.stock_code,
@@ -3278,6 +3550,189 @@ class RecommendationService:
                             return SourceFactResponse(request=request, value=fact)
 
                         if request.kind is SourceFactKind.MONTHLY_REVENUE:
+                            if request.fundamental_input_scope == "natural_current_observation":
+                                cutoff_at = request.current_observation_cutoff_at
+                                loader = getattr(
+                                    input_session,
+                                    "load_current_monthly_revenues",
+                                    None,
+                                )
+                                current_records: tuple[
+                                    CurrentObservedMonthlyRevenueInput, ...
+                                ] = ()
+                                comparison_baseline: CurrentObservedMonthlyRevenueInput | None = None
+                                monthly_diagnostics: tuple[str, ...] = ()
+                                if cutoff_at is not None and callable(loader):
+                                    try:
+                                        current_result = loader(
+                                            stock_code=request.stock_code,
+                                            cutoff_at=cutoff_at,
+                                        )
+                                    except Exception as exc:
+                                        logger.error(
+                                            "current monthly revenue read failed: %s",
+                                            exc,
+                                        )
+                                        raise
+                                    monthly_diagnostics = tuple(current_result.diagnostics)
+                                    source_row_count = getattr(
+                                        current_result,
+                                        "diagnostic_source_row_count",
+                                        0,
+                                    )
+                                    comparator_row_count = getattr(
+                                        current_result,
+                                        "diagnostic_comparator_row_count",
+                                        0,
+                                    )
+                                    if (
+                                        type(source_row_count) is not int
+                                        or source_row_count < 0
+                                        or type(comparator_row_count) is not int
+                                        or comparator_row_count < 0
+                                    ):
+                                        raise TypeError(
+                                            "current monthly diagnostic source counts must be non-negative integers"
+                                        )
+                                    self.last_run_context[
+                                        "fundamental_input_diagnostic_source_row_count"
+                                    ] += source_row_count
+                                    self.last_run_context[
+                                        "fundamental_input_diagnostic_comparator_row_count"
+                                    ] += comparator_row_count
+                                    if current_result.status == "ready":
+                                        current_records = tuple(
+                                            current_result.observations
+                                        )
+                                        comparison_baseline = getattr(
+                                            current_result, "comparison_baseline", None
+                                        )
+                                        lineage_records = list(current_records)
+                                        if comparison_baseline is not None:
+                                            lineage_records.append(comparison_baseline)
+                                        self.last_run_context[
+                                            "current_fundamental_observations"
+                                        ].extend(
+                                            {
+                                                "stock_code": record.stock_code,
+                                                "metric": "monthly_revenue",
+                                                "scope": request.fundamental_input_scope,
+                                                "input_role": (
+                                                    "same_report_prior_year_comparison_baseline"
+                                                    if record is comparison_baseline
+                                                    else "reported_period_value"
+                                                ),
+                                                "parent_report_period": record.parent_report_period,
+                                                "period": record.period,
+                                                "value": str(record.revenue),
+                                                "unit": record.unit,
+                                                "period_basis": record.period_basis,
+                                                "basis_verified": record.basis_verified,
+                                                "aggregate_feature_eligible": record.aggregate_feature_eligible,
+                                                "observed_at": record.observed_at.isoformat(),
+                                                "source_available_at": (
+                                                    record.source_available_at.isoformat()
+                                                    if record.source_available_at is not None
+                                                    else None
+                                                ),
+                                                "available_at": record.available_at.isoformat(),
+                                                "availability_basis": record.availability_basis,
+                                                "source": record.source,
+                                                "source_version": record.source_version,
+                                                "raw_source_sha256": record.raw_source_sha256,
+                                                "market": record.market,
+                                                "formal_pit_eligible": False,
+                                            }
+                                            for record in lineage_records
+                                        )
+                                        if current_result.latest_period is not None:
+                                            year_text, month_text = (
+                                                current_result.latest_period.split("-")
+                                            )
+                                            prior_period = (
+                                                f"{int(year_text) - 1:04d}-{int(month_text):02d}"
+                                            )
+                                            baseline_period_blocked = (
+                                                prior_period in current_result.blocked_periods
+                                            )
+                                            if comparison_baseline is None and not any(
+                                                record.period == prior_period
+                                                for record in current_records
+                                            ):
+                                                monthly_diagnostics = (
+                                                    *monthly_diagnostics,
+                                                    (
+                                                        (
+                                                            "current_monthly_revenue_exact_prior_year_baseline_blocked:"
+                                                            if baseline_period_blocked
+                                                            else "current_monthly_revenue_exact_prior_year_baseline_missing:"
+                                                        )
+                                                        + f"{request.stock_code}:{prior_period}"
+                                                    ),
+                                                )
+                                else:
+                                    monthly_diagnostics = (
+                                        "current_monthly_revenue_reader_unavailable",
+                                    )
+                                self.last_run_context[
+                                    "fundamental_input_diagnostics"
+                                ].extend(monthly_diagnostics)
+                                projection_records = list(current_records)
+                                if comparison_baseline is not None:
+                                    projection_records.append(comparison_baseline)
+                                facts = project_current_monthly_revenue_records(
+                                    projection_records,
+                                    (),
+                                    stock_code=request.stock_code,
+                                )
+                                self.last_run_context["fundamental_inputs"].extend(
+                                    {
+                                        "stock_code": request.stock_code,
+                                        "metric": "monthly_revenue",
+                                        "scope": request.fundamental_input_scope,
+                                        "input_role": (
+                                            "same_report_prior_year_comparison_baseline"
+                                            if record.source_version.startswith(
+                                                "mops-current-revenue-yoy-comparator.v1:"
+                                            )
+                                            else "reported_period_value"
+                                        ),
+                                        "parent_report_period": record.parent_report_period,
+                                        "period": record.period,
+                                        "available_date": record.available_date.isoformat(),
+                                        "available_at": (
+                                            record.available_at.isoformat()
+                                            if record.available_at is not None
+                                            else None
+                                        ),
+                                        "observed_at": (
+                                            record.observed_at.isoformat()
+                                            if record.observed_at is not None
+                                            else None
+                                        ),
+                                        "source_available_at": (
+                                            record.source_available_at.isoformat()
+                                            if record.source_available_at is not None
+                                            else None
+                                        ),
+                                        "availability_basis": record.availability_basis,
+                                        "source": record.source,
+                                        "source_version": record.source_version,
+                                        "raw_source_sha256": record.raw_source_sha256,
+                                        "market": record.market,
+                                        "unit": record.unit,
+                                        "period_basis": record.period_basis,
+                                        "basis_verified": record.basis_verified,
+                                        "aggregate_feature_eligible": record.aggregate_feature_eligible,
+                                        "formal_pit_eligible": record.formal_pit_eligible,
+                                        "value": str(record.revenue),
+                                    }
+                                    for record in facts.records
+                                )
+                                return SourceFactResponse(
+                                    request=request,
+                                    value=facts,
+                                )
                             try:
                                 records = self._load_governed_monthly_revenues(
                                     input_session=input_session,

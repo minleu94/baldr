@@ -815,6 +815,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Scheduled research-only recommendation snapshot wrapper.")
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument(
+        "--current-fundamental-source-root",
+        type=Path,
+        default=None,
+        help=(
+            "canonical output root containing current official valuation and "
+            "MOPS monthly captures; independent of recommendation artifact output-root"
+        ),
+    )
     parser.add_argument("--max-stocks", type=int, default=200)
     parser.add_argument("--top-n", type=int, default=50)
     parser.add_argument(
@@ -839,6 +848,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="選擇輸出當日 Paper 專用 create-only 研究來源",
     )
     return parser
+
+
+def _resolve_current_fundamental_source_root(
+    *,
+    data_root: Path,
+    explicit_root: Path | None,
+    environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Resolve current PE/monthly source root independently of snapshot output."""
+
+    if explicit_root is not None:
+        return explicit_root.expanduser().resolve()
+    env = os.environ if environ is None else environ
+    configured_root = str(env.get("CURRENT_OBSERVED_SOURCE_OUTPUT_ROOT", "")).strip()
+    if configured_root:
+        return Path(configured_root).expanduser().resolve()
+    # Recreate the normal TWStockConfig output-root resolution without using
+    # this CLI's artifact --output-root override.
+    canonical_config = TWStockConfig(data_root=data_root)
+    return Path(canonical_config.output_root).expanduser().resolve()
 
 
 def _payload_base(
@@ -1612,6 +1641,7 @@ def _export_paper_frozen_source(
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     output_root = Path(args.output_root)
+    data_root = Path(args.data_root).expanduser().resolve()
     run_root = output_root / "scheduled" / "recommendation_snapshot"
     run_root.mkdir(parents=True, exist_ok=True)
 
@@ -1631,7 +1661,14 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        config = TWStockConfig(data_root=Path(args.data_root), output_root=output_root)
+        current_fundamental_source_root = _resolve_current_fundamental_source_root(
+            data_root=data_root,
+            explicit_root=args.current_fundamental_source_root,
+        )
+        payload["current_fundamental_source_root"] = str(
+            current_fundamental_source_root
+        )
+        config = TWStockConfig(data_root=data_root, output_root=output_root)
         recommendation_config = _scheduled_default_config()
         runtime_config = _runtime_config(recommendation_config)
         raw_caller_config = _canonical_json(recommendation_config)
@@ -1642,7 +1679,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         service = RecommendationService(
             config,
-            input_preparer=build_default_recommendation_input_preparer(config),
+            input_preparer=build_default_recommendation_input_preparer(
+                config,
+                current_fundamental_source_root=current_fundamental_source_root,
+            ),
             regime_service=RegimeService(config, use_persistent_history=True),
         )
         execution = service.execute_recommendation(

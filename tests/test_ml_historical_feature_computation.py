@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -10,11 +11,105 @@ from data_module.ml_historical_snapshot_provider import (
     HistoricalPriceObservation,
     HistoricalRawSnapshot,
     HistoricalTechnicalObservation,
+    CurrentObservedRawSnapshot,
 )
+from data_module.ml_daily_price_revision_gate import VerifiedCurrentRestatedSourceContext
 from data_module.ml_price_availability_contract import (
     build_price_unavailable_research_contract,
 )
 from ml_module.historical_feature_builder import HistoricalFeatureBuilder
+
+
+def _current_observed_snapshot() -> CurrentObservedRawSnapshot:
+    start = datetime.fromisoformat("2026-09-12")
+    dates = tuple((start + timedelta(days=day)).date().isoformat() for day in range(21))
+    prices = tuple(
+        HistoricalPriceObservation(
+            symbol="2330",
+            trading_date=day,
+            open_price=Decimal("100") + index,
+            high_price=Decimal("101") + index,
+            low_price=Decimal("99") + index,
+            close_price=Decimal("100") + index,
+            volume=100_000 + index,
+            turnover_amount_minor=10_000_000 + index,
+        )
+        for index, day in enumerate(dates)
+    )
+    market = tuple(
+        HistoricalIndexObservation("market", day, Decimal("10_000") + index)
+        for index, day in enumerate(dates)
+    )
+    industries = tuple(
+        HistoricalIndexObservation("T00", day, Decimal("1_000") + index)
+        for index, day in enumerate(dates)
+    )
+    technicals = (
+        HistoricalTechnicalObservation(
+            "2330", "2026-10-02", Decimal("55"), Decimal("0.5"), Decimal("25")
+        ),
+    )
+    observed = datetime.fromisoformat("2026-10-03T04:00:00+00:00")
+    snapshot_path = "C:/repo/output/ml_research/snapshot.sqlite"
+    receipt_path = "C:/repo/output/ml_research/snapshot_receipt.json"
+    snapshot_sha = "sha256:" + "1" * 64
+    receipt_sha = "sha256:" + "2" * 64
+    context = VerifiedCurrentRestatedSourceContext(
+        source_database_path="D:/data/twstock.db",
+        source_database_sha256="3" * 64,
+        source_wal_path="D:/data/twstock.db-wal",
+        source_wal_sha256=None,
+        snapshot_database_path=snapshot_path,
+        snapshot_database_sha256=snapshot_sha,
+        snapshot_receipt_path=receipt_path,
+        snapshot_receipt_sha256=receipt_sha,
+        decision_at=datetime.fromisoformat("2026-10-03T03:00:00+00:00"),
+        training_as_of=datetime.fromisoformat("2026-10-03T03:30:00+00:00"),
+        source_observed_at=datetime.fromisoformat("2026-10-03T02:00:00+00:00"),
+        source_generation=1,
+        revision_namespace_files=(),
+        revision_namespace_bundle_sha256="4" * 64,
+        source_revision_evidence_schema_version="validated-source-evidence.v1",
+        source_revision_evidence_scope_id="fixture",
+        source_revision_evidence_cutoff_date="2026-10-03",
+        source_revision_evidence_sha256="5" * 64,
+        source_revision_evidence_namespaces=(),
+        source_revision_evidence_files=(),
+        revision_dependencies_verified_at=datetime.fromisoformat("2026-10-03T03:15:00+00:00"),
+        revision_dependency_files=(),
+        revision_dependency_bundle_sha256="6" * 64,
+        source_wal_present=False,
+    )
+    hashes = {
+        table: "sha256:" + str(index) * 64
+        for index, table in enumerate(
+            ("daily_prices", "technical_indicators", "market_indices", "industry_indices"),
+            start=1,
+        )
+    }
+    return CurrentObservedRawSnapshot(
+        decision_date="2026-10-03",
+        feature_as_of_date="2026-10-02",
+        prices=prices,
+        technicals=technicals,
+        market=market,
+        industries=industries,
+        source_fingerprint=snapshot_sha,
+        query_count=4,
+        local_current_observed_at=observed,
+        source_context=context,
+        snapshot_database_path=snapshot_path,
+        snapshot_database_sha256=snapshot_sha,
+        snapshot_receipt_path=receipt_path,
+        snapshot_receipt_sha256=receipt_sha,
+        source_rows_sha256_by_table=hashes,
+        requested_symbols=("2330",),
+        cycle_id="raw-run-fixture",
+        cycle_terminal_path="C:/repo/output/ml_research/current_stock_cycles/2026-10-02/raw-run-fixture/terminal_receipt.json",
+        cycle_terminal_sha256="sha256:" + "7" * 64,
+        source_context_envelope_path="C:/repo/output/ml_research/current_stock_cycles/2026-10-02/raw-run-fixture/context/source_context.json",
+        source_context_envelope_sha256="sha256:" + "8" * 64,
+    )
 
 
 def _snapshot(*, future: bool = False) -> HistoricalRawSnapshot:
@@ -60,6 +155,33 @@ def test_computation_uses_integer_units_and_excludes_fundamental_and_broker() ->
     assert values["turnover_amount_minor"] == 21000
     assert all(value is None or type(value) is int for value in values.values())
     assert not any("fundamental" in name or "broker" in name for name in values)
+
+
+def test_current_observed_feature_row_pins_all_20_slots_without_pit_qualification() -> None:
+    row = HistoricalFeatureBuilder().compute_current_observed(
+        _current_observed_snapshot(),
+        industry_index_name_by_symbol={"2330": "T00"},
+    )[0]
+
+    assert row.symbol == "2330"
+    assert row.decision_date == "2026-10-03"
+    assert row.feature_as_of_date == "2026-10-02"
+    assert row.local_current_observed_at.isoformat() == "2026-10-03T04:00:00+00:00"
+    assert len(row.feature_ids) == 20
+    assert tuple(feature_id for feature_id, _ in row.values) == row.feature_ids
+    assert row.source_row_sha256_by_table[0][0] == "daily_prices"
+    assert len(row.source_row_sha256_by_table) == 4
+    assert row.historical_pit_eligible is False
+    assert row.formal_training_allowed is False
+    assert row.research_only is True
+    assert row.row_sha256.startswith("sha256:")
+    assert all(value is None or type(value) is int for _, value in row.values)
+
+
+def test_current_observed_feature_row_rejects_same_day_feature_cutoff() -> None:
+    snapshot = _current_observed_snapshot()
+    with pytest.raises(ValueError, match="must precede decision date"):
+        replace(snapshot, feature_as_of_date=snapshot.decision_date)
 
 
 def test_future_rows_are_ignored_and_do_not_change_existing_feature_vector() -> None:

@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from types import SimpleNamespace
 from typing import Any
 
 from app_module.decision_desk_dtos import (
@@ -840,3 +841,38 @@ def test_visibility_failure_is_typed_degraded_and_does_not_fail_snapshot() -> No
         snapshot.market_data_visibility.warnings
     )
     assert snapshot.action_summary is not None
+
+
+def test_market_regime_source_data_date_survives_desk_lineage() -> None:
+    decision_date = date(2026, 10, 5)
+    source_data_date = date(2026, 10, 2)
+    provider = AllObservedDecisionDeskProvider()
+    provider.regime_service = SimpleNamespace(
+        detect_regime_dto=lambda **_kwargs: SimpleNamespace(
+            decision_date=decision_date,
+            effective_date=decision_date,
+            regime="Trend",
+            regime_name_cn="Trend",
+            match_score_bp=9100,
+            quality="observed",
+            warnings=(),
+            details={
+                "date": decision_date.isoformat(),
+                "source_data_date": source_data_date.isoformat(),
+            },
+            source_id="market_regime_detector",
+            source_version="test",
+        )
+    )
+
+    snapshot = DecisionDeskSnapshotBuilder(provider).build_snapshot(decision_date)
+
+    assert snapshot.market_regime.as_of_date == decision_date
+    assert snapshot.market_regime.meta is not None
+    assert snapshot.market_regime.meta["date"] == decision_date.isoformat()
+    assert snapshot.market_regime.meta["source_data_date"] == source_data_date.isoformat()
+    assert snapshot.source_lineage["market_regime"]["as_of_date"] == decision_date.isoformat()
+    assert (
+        snapshot.source_lineage["market_regime"]["metadata"]["source_data_date"]
+        == source_data_date.isoformat()
+    )

@@ -1075,9 +1075,13 @@ class PortfolioConditionResearchProvider:
         *,
         condition_monitor: Any | None = None,
         condition_context_source: Any | None = None,
+        quote_cadence: Any | None = None,
+        now_provider: Callable[[], datetime] | None = None,
     ):
         self.market_source = market_source
         self.condition_context_source = condition_context_source
+        self.quote_cadence = quote_cadence
+        self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
         if condition_monitor is None:
             from app_module.portfolio_condition_monitor import PortfolioConditionMonitor
 
@@ -1112,6 +1116,36 @@ class PortfolioConditionResearchProvider:
         if market is None:
             return None
         _raise_if_cancelled(cancel_callback)
+        expected_stock_code = str(record.stock_code or "").strip().upper()
+        observed_stock_code = str(getattr(market, "stock_code", "") or "").strip().upper()
+        if observed_stock_code != expected_stock_code:
+            reason = (
+                "market_observation_stock_code_missing"
+                if not observed_stock_code
+                else "market_observation_stock_code_mismatch"
+            )
+            payload: dict[str, Any] = {
+                "holding_id": record.holding_id,
+                "expected_stock_code": expected_stock_code,
+                "observed_stock_code": observed_stock_code,
+                "evaluation_date": evaluation_date.isoformat(),
+                "market_source_id": str(getattr(market, "source_id", "") or ""),
+                "market_source_snapshot_hash": str(
+                    getattr(market, "source_snapshot_hash", "") or ""
+                ),
+                "reason": reason,
+            }
+            return ConditionObservation(
+                stock_code=record.stock_code,
+                suggested_action=RESEARCH_ACTION_WAIT,
+                as_of_date=evaluation_date,
+                source_id=f"portfolio_condition_monitor:{reason}:{record.holding_id}",
+                source_snapshot_hash=_sha256_mapping(_json_safe(payload)),
+                reasons=(reason,),
+                summary="市場報價股票代碼缺漏或與持倉不符，暫停持倉條件判斷。",
+                quality="degraded",
+                availability_custody=False,
+            )
         context = self._call_condition_context(
             record,
             evaluation_date,
@@ -1126,6 +1160,36 @@ class PortfolioConditionResearchProvider:
             )
         context_values = self._context_values(context)
         source_summary = dict(context_values.get("source_summary") or {})
+        quote_date = _parse_date(market.as_of_date, field_name="market.as_of_date")
+        quote_freshness_status = "unverified"
+        quote_expected_date: date | None = None
+        quote_source_id = str(market.source_id or "").strip()
+        quote_source_hash = str(market.source_snapshot_hash or "").strip().lower()
+        if quote_source_hash.startswith("sha256:"):
+            quote_source_hash = quote_source_hash[7:]
+        quote_source_supported = (
+            quote_source_id in {"sqlite.daily_prices", "csv.daily_prices"}
+            or bool(re.fullmatch(r"daily_price_file:\d{4}-?\d{2}-?\d{2}\.csv", quote_source_id))
+        )
+        now = self._now_provider()
+        if now.tzinfo is not None and now.utcoffset() is not None:
+            current_taipei_date = now.astimezone(_TAIPEI_TIMEZONE).date()
+            if evaluation_date < current_taipei_date:
+                quote_freshness_status = "historical_unverified"
+            elif evaluation_date > current_taipei_date:
+                quote_freshness_status = "future_rejected"
+            elif (
+                quote_date is not None
+                and quote_source_supported
+                and re.fullmatch(r"[0-9a-f]{64}", quote_source_hash) is not None
+                and self.quote_cadence is not None
+            ):
+                try:
+                    assessment = self.quote_cadence.assess(evaluation_date, quote_date)
+                    quote_freshness_status = str(assessment.status)
+                    quote_expected_date = assessment.expected_date
+                except Exception:  # noqa: BLE001
+                    quote_freshness_status = "unverified"
         has_comparable_regime = bool(
             str(source_summary.get("entry_regime") or source_summary.get("regime") or "").strip()
             and str(context_values.get("current_regime") or "").strip()
@@ -1185,13 +1249,26 @@ class PortfolioConditionResearchProvider:
                 current_regime=str(context_values.get("current_regime") or ""),
                 current_total_score=context_values.get("current_total_score"),
                 current_price=market.price,
+                quote_data_date=quote_date,
+                quote_source_id=quote_source_id,
+                quote_source_snapshot_hash=quote_source_hash,
+                quote_freshness_status=quote_freshness_status,
+                quote_expected_date=quote_expected_date,
             ),
+        )
+        result_details = dict(getattr(result, "details", {}) or {})
+        quote_blocked_without_independent_change = bool(
+            result_details.get("price_rule_blocked_by_quote_freshness")
+            and not result_details.get("regime_changed")
+            and not result_details.get("score_degraded")
         )
         action = {
             "valid": RESEARCH_ACTION_HOLD,
             "warning": RESEARCH_ACTION_REDUCE,
             "invalid": RESEARCH_ACTION_EXIT,
         }.get(str(getattr(result, "status", "")).lower(), RESEARCH_ACTION_WAIT)
+        if quote_blocked_without_independent_change:
+            action = RESEARCH_ACTION_WAIT
         payload = {
             "holding_id": record.holding_id,
             "stock_code": record.stock_code,
@@ -1202,7 +1279,7 @@ class PortfolioConditionResearchProvider:
             "status": str(getattr(result, "status", "")),
             "label": str(getattr(result, "label", "")),
             "reasons": list(getattr(result, "reasons", ()) or ()),
-            "details": dict(getattr(result, "details", {}) or {}),
+            "details": result_details,
         }
         return ConditionObservation(
             stock_code=record.stock_code,

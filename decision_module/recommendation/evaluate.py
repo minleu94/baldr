@@ -7,11 +7,14 @@ Decimal/int 與舊 quantile basis points；此模組不接觸 legacy 浮點 side
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from hashlib import sha256
+from types import MappingProxyType
+from zoneinfo import ZoneInfo
 
 from decision_module.recommendation.contracts import (
     CandidateAssessment,
@@ -110,6 +113,8 @@ class RecommendationEvaluationPolicy:
     minimum_universe_size: int | None = None
     ranking_method: str = "fixed"
     eligible_universe_date: date | None = None
+    fundamental_input_scope: str = "formal_pit"
+    current_observation_cutoff_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if type(self.invocation_id) is not str or not self.invocation_id.strip():
@@ -118,6 +123,22 @@ class RecommendationEvaluationPolicy:
             raise TypeError("decision_date_text 必須是 str")
         if self.decision_date is not None and type(self.decision_date) is not date:
             raise TypeError("decision_date 必須是 date 或 None")
+        if self.fundamental_input_scope not in {
+            "formal_pit",
+            "natural_current_observation",
+        }:
+            raise ValueError("fundamental_input_scope is unsupported")
+        frozen_at = self.current_observation_cutoff_at
+        if frozen_at is not None and (
+            type(frozen_at) is not datetime
+            or frozen_at.tzinfo is None
+            or frozen_at.utcoffset() is None
+        ):
+            raise ValueError("current_observation_cutoff_at must be aware")
+        if (self.fundamental_input_scope == "natural_current_observation") != (
+            frozen_at is not None
+        ):
+            raise ValueError("current fundamental scope requires one frozen clock")
         if (
             self.eligible_universe_date is not None
             and type(self.eligible_universe_date) is not date
@@ -201,12 +222,30 @@ class NeedSourceFact:
     kind: SourceFactKind
     stock_code: str
     decision_date: date
+    fundamental_input_scope: str = "formal_pit"
+    current_observation_cutoff_at: datetime | None = None
 
     def __post_init__(self) -> None:
         for name in ("request_id", "invocation_id", "stock_code"):
             value = getattr(self, name)
             if type(value) is not str or not value.strip():
                 raise ValueError(f"{name} 不可為空")
+        if self.fundamental_input_scope not in {
+            "formal_pit",
+            "natural_current_observation",
+        }:
+            raise ValueError("fundamental_input_scope is unsupported")
+        frozen_at = self.current_observation_cutoff_at
+        if frozen_at is not None and (
+            type(frozen_at) is not datetime
+            or frozen_at.tzinfo is None
+            or frozen_at.utcoffset() is None
+        ):
+            raise ValueError("current_observation_cutoff_at must be aware")
+        if (self.fundamental_input_scope == "natural_current_observation") != (
+            frozen_at is not None
+        ):
+            raise ValueError("current source request requires one frozen clock")
         if type(self.kind) is not SourceFactKind:
             raise TypeError("kind 必須是 SourceFactKind")
         if type(self.decision_date) is not date:
@@ -221,6 +260,11 @@ class PEFact:
     source: str | None = None
     source_version: str | None = None
     quality_literal: str | None = None
+    stock_code: str | None = None
+    available_at: datetime | None = None
+    availability_basis: str | None = None
+    raw_response_sha256: str | None = None
+    formal_pit_eligible: bool | None = None
 
     def __post_init__(self) -> None:
         if self.value is not None:
@@ -230,7 +274,22 @@ class PEFact:
             raise TypeError("PE available_date 必須是 date 或 None")
         if self.as_of_date is not None and type(self.as_of_date) is not date:
             raise TypeError("PE as_of_date 必須是 date 或 None")
-        for name in ("source", "source_version", "quality_literal"):
+        if self.available_at is not None and (
+            type(self.available_at) is not datetime
+            or self.available_at.tzinfo is None
+            or self.available_at.utcoffset() is None
+        ):
+            raise ValueError("PE available_at must be timezone-aware")
+        if self.formal_pit_eligible is not None and type(self.formal_pit_eligible) is not bool:
+            raise TypeError("formal_pit_eligible must be bool or None")
+        for name in (
+            "source",
+            "source_version",
+            "quality_literal",
+            "stock_code",
+            "availability_basis",
+            "raw_response_sha256",
+        ):
             value = getattr(self, name)
             if value is not None and type(value) is not str:
                 raise TypeError(f"{name} 必須是 str 或 None")
@@ -244,6 +303,20 @@ class MonthlyRevenueFact:
     revenue: Decimal
     source: str = "unknown"
     quality_literal: str | None = None
+    stock_code: str | None = None
+    available_at: datetime | None = None
+    observed_at: datetime | None = None
+    source_available_at: datetime | None = None
+    availability_basis: str | None = None
+    raw_source_sha256: str | None = None
+    market: str | None = None
+    unit: str | None = None
+    period_basis: str | None = None
+    basis_verified: bool | None = None
+    aggregate_feature_eligible: bool | None = None
+    formal_pit_eligible: bool | None = None
+    input_role: str = "reported_period_value"
+    parent_report_period: str | None = None
 
     def __post_init__(self) -> None:
         if type(self.period) is not str or len(self.period) != 7 or self.period[4] != "-":
@@ -265,6 +338,48 @@ class MonthlyRevenueFact:
             raise ValueError("source 不可為空")
         if self.quality_literal is not None and type(self.quality_literal) is not str:
             raise TypeError("quality_literal 必須是 str 或 None")
+
+
+        for name in (
+            "stock_code",
+            "availability_basis",
+            "raw_source_sha256",
+            "market",
+            "unit",
+            "period_basis",
+        ):
+            value = getattr(self, name)
+            if value is not None and type(value) is not str:
+                raise TypeError(f"{name} must be str or None")
+        for name in ("available_at", "observed_at", "source_available_at"):
+            value = getattr(self, name)
+            if value is not None and (
+                type(value) is not datetime
+                or value.tzinfo is None
+                or value.utcoffset() is None
+            ):
+                raise ValueError(f"{name} must be timezone-aware")
+        for name in (
+            "basis_verified",
+            "aggregate_feature_eligible",
+            "formal_pit_eligible",
+        ):
+            value = getattr(self, name)
+            if value is not None and type(value) is not bool:
+                raise TypeError(f"{name} must be bool or None")
+        if type(self.input_role) is not str:
+            raise TypeError("input_role must be str")
+        if self.input_role == "same_report_prior_year_comparison_baseline":
+            if type(self.parent_report_period) is not str:
+                raise ValueError("same-report comparator requires its parent report period")
+            expected_prior = (
+                f"{int(self.parent_report_period[:4]) - 1:04d}-"
+                f"{self.parent_report_period[5:]}"
+            ) if len(self.parent_report_period) == 7 else ""
+            if self.period != expected_prior:
+                raise ValueError("same-report comparator period does not match parent report")
+        elif self.parent_report_period is not None:
+            raise ValueError("only same-report comparators may set a parent report period")
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,6 +512,26 @@ class CandidateHistoryFacts:
                 raise ValueError(f"{name} 不可為空")
         if type(self.history_rows) is not int or self.history_rows < 0:
             raise ValueError("history_rows 必須是非負整數")
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateCurrentMarketStatusFact:
+    """Verified current-only official delisting evidence for one candidate."""
+
+    invocation_id: str
+    stock_code: str
+    evidence: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        for name in ("invocation_id", "stock_code"):
+            value = getattr(self, name)
+            if type(value) is not str or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string")
+        if not isinstance(self.evidence, Mapping):
+            raise TypeError("current market-status evidence must be a mapping")
+        if self.evidence.get("symbol") != self.stock_code:
+            raise ValueError("current market-status evidence symbol mismatch")
+        object.__setattr__(self, "evidence", MappingProxyType(dict(self.evidence)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -3553,6 +3688,38 @@ class RecommendationEvaluator:
             assessment=assessment,
         )
 
+    @staticmethod
+    def current_market_status_outcome(
+        fact: CandidateCurrentMarketStatusFact,
+    ) -> CandidateEvaluationOutcome:
+        """Represent verified current delisting as an observed exclusion."""
+
+        if type(fact) is not CandidateCurrentMarketStatusFact:
+            raise TypeError("fact must be CandidateCurrentMarketStatusFact")
+        stage = "current_market_status_gate"
+        reason = "official_delisted"
+        gate = FilterOutcome(
+            filter_id=stage,
+            passed=False,
+            reason=reason,
+            evidence=fact.evidence,
+        )
+        assessment = CandidateAssessment(
+            stock_code=fact.stock_code,
+            eligible=False,
+            filter_outcomes={stage: gate},
+            reasons=(reason,),
+        )
+        return CandidateEvaluationOutcome(
+            invocation_id=fact.invocation_id,
+            stock_code=fact.stock_code,
+            status="fail",
+            quality="observed",
+            stage=stage,
+            reason_codes=(reason,),
+            assessment=assessment,
+        )
+
     def advance(
         self,
         state: CandidateEvaluationState,
@@ -3594,18 +3761,31 @@ class RecommendationEvaluator:
             return self._success(state)
 
         if state.stage is CandidateStage.PE_RECEIVED:
-            pe_value = self._available_pe_value(state)
+            pe_value, pe_value_issue = self._eligible_pe_value(state)
             if pe_value is None:
+                invalid_observation = pe_value_issue is not None
+                raw_value = (
+                    state.pe_fact.value
+                    if invalid_observation and state.pe_fact is not None
+                    else None
+                )
                 return self._complete(
                     state,
                     self._failure(
                         state,
                         status="skipped",
-                        quality="missing",
-                        reason="valuation_pe_missing",
+                        quality="degraded" if invalid_observation else "missing",
+                        reason=pe_value_issue or "valuation_pe_missing",
                         threshold_name="filters.pe_ratio_max",
-                        observed_value="missing",
-                        required_value=str(state.policy.pe_ratio_max),
+                        observed_value=(
+                            str(raw_value) if raw_value is not None else "missing"
+                        ),
+                        required_value=(
+                            "finite PE > 0 and <= "
+                            f"{state.policy.pe_ratio_max}"
+                            if invalid_observation
+                            else str(state.policy.pe_ratio_max)
+                        ),
                     ),
                 )
             assert state.policy.pe_ratio_max is not None
@@ -3632,6 +3812,11 @@ class RecommendationEvaluator:
             yoy = self._revenue_yoy(
                 state.revenue_facts,
                 cutoff=state.policy.decision_date,
+                stock_code=state.seed.stock_code,
+                fundamental_input_scope=state.policy.fundamental_input_scope,
+                current_observation_cutoff_at=(
+                    state.policy.current_observation_cutoff_at
+                ),
             )
             if yoy is None:
                 return self._complete(
@@ -4080,6 +4265,14 @@ class RecommendationEvaluator:
                     state.seed.stock_code,
                     state.policy.decision_date.isoformat(),
                     kind.value,
+                    state.policy.fundamental_input_scope,
+                    (
+                        state.policy.current_observation_cutoff_at.astimezone(
+                            timezone.utc
+                        ).isoformat(timespec="microseconds")
+                        if state.policy.current_observation_cutoff_at is not None
+                        else ""
+                    ),
                 )
             ).encode("utf-8")
         ).hexdigest()
@@ -4089,6 +4282,10 @@ class RecommendationEvaluator:
             kind=kind,
             stock_code=state.seed.stock_code,
             decision_date=state.policy.decision_date,
+            fundamental_input_scope=state.policy.fundamental_input_scope,
+            current_observation_cutoff_at=(
+                state.policy.current_observation_cutoff_at
+            ),
         )
         waiting_stage = {
             SourceFactKind.PE: CandidateStage.WAITING_FOR_PE,
@@ -4253,29 +4450,76 @@ class RecommendationEvaluator:
         return cls._pe_enabled(policy) or cls._revenue_enabled(policy)
 
     @staticmethod
-    def _available_pe_value(state: CandidateEvaluationState) -> Decimal | None:
+    def _eligible_pe_value(
+        state: CandidateEvaluationState,
+    ) -> tuple[Decimal | None, str | None]:
         fact = state.pe_fact
         cutoff = state.policy.decision_date
+        if state.policy.fundamental_input_scope == "natural_current_observation":
+            frozen_at = state.policy.current_observation_cutoff_at
+            if (
+                fact is None
+                or fact.value is None
+                or frozen_at is None
+                or fact.available_at is None
+                or fact.available_at.astimezone(timezone.utc)
+                > frozen_at.astimezone(timezone.utc)
+                or fact.available_date is None
+                or fact.as_of_date is None
+                or fact.stock_code != state.seed.stock_code
+                or fact.formal_pit_eligible is not False
+                or fact.availability_basis != "official_body_capture"
+                or not _is_sha256_text(fact.raw_response_sha256)
+                or not fact.source
+                or not fact.source_version
+            ):
+                return None, None
+            current_taipei_date = frozen_at.astimezone(
+                ZoneInfo("Asia/Taipei")
+            ).date()
+            if (
+                fact.available_date > current_taipei_date
+                or fact.as_of_date > current_taipei_date
+            ):
+                return None, None
+            return _positive_finite_pe_value(fact.value)
         if (
             fact is None
             or fact.value is None
             or fact.available_date is None
             or cutoff is None
             or fact.available_date > cutoff
+            or fact.formal_pit_eligible is False
+            or fact.availability_basis
+            in {"official_body_capture", "local_verified_observation"}
         ):
-            return None
-        return fact.value
+            return None, None
+        return _positive_finite_pe_value(fact.value)
 
     @staticmethod
     def _revenue_yoy(
         facts: MonthlyRevenueFacts | None,
         *,
         cutoff: date | None,
+        stock_code: str | None = None,
+        fundamental_input_scope: str = "formal_pit",
+        current_observation_cutoff_at: datetime | None = None,
     ) -> Decimal | None:
+        if fundamental_input_scope == "natural_current_observation":
+            return _current_observed_revenue_yoy(
+                facts,
+                stock_code=stock_code,
+                cutoff_at=current_observation_cutoff_at,
+            )
         if facts is None or cutoff is None:
             return None
         available = tuple(
-            record for record in facts.records if record.available_date <= cutoff
+            record
+            for record in facts.records
+            if record.available_date <= cutoff
+            and record.formal_pit_eligible is not False
+            and record.availability_basis
+            not in {"official_body_capture", "local_verified_observation"}
         )
         if not available:
             return None
@@ -4307,8 +4551,172 @@ class RecommendationEvaluator:
         return format(value.normalize(), "f")
 
 
+def _current_observed_revenue_yoy(
+    facts: MonthlyRevenueFacts | None,
+    *,
+    stock_code: str | None,
+    cutoff_at: datetime | None,
+) -> Decimal | None:
+    if (
+        facts is None
+        or not stock_code
+        or cutoff_at is None
+        or cutoff_at.tzinfo is None
+        or cutoff_at.utcoffset() is None
+    ):
+        return None
+    frozen = cutoff_at.astimezone(timezone.utc)
+    local_date = frozen.astimezone(ZoneInfo("Asia/Taipei")).date()
+    current_by_period: dict[str, list[MonthlyRevenueFact]] = {}
+    for record in facts.records:
+        if record.stock_code != stock_code:
+            continue
+        year, month = (int(part) for part in record.period.split("-"))
+        from calendar import monthrange
+
+        if date(year, month, monthrange(year, month)[1]) > local_date:
+            continue
+        if record.availability_basis == "formal_pit_available_date":
+            continue
+        if record.availability_basis not in {
+            "official_body_capture",
+            "local_verified_observation",
+        }:
+            continue
+        if record.input_role == "reported_period_value":
+            if record.source_version.startswith(
+                "mops-current-revenue-yoy-comparator.v1:"
+            ):
+                continue
+        elif record.input_role == "same_report_prior_year_comparison_baseline":
+            if not record.source_version.startswith(
+                "mops-current-revenue-yoy-comparator.v1:"
+            ):
+                continue
+        else:
+            continue
+        if (
+            record.formal_pit_eligible is not False
+            or record.available_at is None
+            or record.observed_at is None
+            or record.available_at.astimezone(timezone.utc) > frozen
+            or record.observed_at.astimezone(timezone.utc) > frozen
+            or record.market not in {"twse", "tpex"}
+            or record.unit != "TWD"
+            or record.period_basis != "monthly_flow"
+            or record.basis_verified is not True
+            or record.aggregate_feature_eligible is not False
+            or record.source != "mops.monthly_revenue_static_snapshot"
+            or not record.source_version.startswith(
+                (
+                    "mops-current-revenue-normalizer.v2:",
+                    "mops-current-revenue-yoy-comparator.v1:",
+                )
+            )
+            or not _is_sha256_text(record.raw_source_sha256)
+            or record.available_date
+            != record.observed_at.astimezone(ZoneInfo("Asia/Taipei")).date()
+        ):
+            continue
+        if record.source_available_at is not None:
+            if (
+                record.source_available_at.astimezone(timezone.utc) > frozen
+                or record.source_available_at.astimezone(timezone.utc)
+                > record.observed_at.astimezone(timezone.utc)
+                or record.availability_basis != "official_body_capture"
+            ):
+                continue
+        elif record.availability_basis != "local_verified_observation":
+            continue
+        expected_available_at = max(
+            record.observed_at.astimezone(timezone.utc),
+            (
+                record.source_available_at.astimezone(timezone.utc)
+                if record.source_available_at is not None
+                else record.observed_at.astimezone(timezone.utc)
+            ),
+        )
+        if record.available_at.astimezone(timezone.utc) != expected_available_at:
+            continue
+        current_by_period.setdefault(record.period, []).append(record)
+
+    if not current_by_period:
+        return None
+    latest_period = max(current_by_period)
+    latest_rows = current_by_period[latest_period]
+    latest_clock = max(_current_monthly_revision_clock(row) for row in latest_rows)
+    latest_rows = [
+        row for row in latest_rows if _current_monthly_revision_clock(row) == latest_clock
+    ]
+    latest_values = {row.revenue for row in latest_rows}
+    if len(latest_values) != 1:
+        return None
+    latest = min(latest_rows, key=lambda row: row.source_version)
+    year_text, month_text = latest.period.split("-")
+    prior_period = f"{int(year_text) - 1:04d}-{int(month_text):02d}"
+
+    prior_current = [
+        row
+        for row in current_by_period.get(prior_period, [])
+        if row.input_role == "same_report_prior_year_comparison_baseline"
+        and row.parent_report_period == latest.period
+        and row.stock_code == latest.stock_code
+        and row.source == latest.source
+        and row.market == latest.market
+        and row.raw_source_sha256 == latest.raw_source_sha256
+        and row.source_available_at == latest.source_available_at
+        and row.unit == latest.unit
+        and row.period_basis == latest.period_basis
+        and row.basis_verified is True
+        and row.aggregate_feature_eligible is False
+        and row.formal_pit_eligible is False
+    ]
+    if prior_current:
+        prior_clock = max(_current_monthly_revision_clock(row) for row in prior_current)
+        prior_rows = [
+            row for row in prior_current if _current_monthly_revision_clock(row) == prior_clock
+        ]
+    else:
+        return None
+    if not prior_rows or len({row.revenue for row in prior_rows}) != 1:
+        return None
+    prior = min(prior_rows, key=lambda row: row.source_version)
+    if prior.revenue <= 0:
+        return None
+    return ((latest.revenue - prior.revenue) / prior.revenue) * Decimal("100.0")
+
+
+def _current_monthly_revision_clock(record: MonthlyRevenueFact) -> datetime:
+    """Prefer a source-body capture clock over local normalization time."""
+
+    if record.source_available_at is not None:
+        return record.source_available_at
+    if record.observed_at is None:
+        raise ValueError("current monthly record is missing its observation clock")
+    return record.observed_at
+
+
+def _positive_finite_pe_value(value: Decimal) -> tuple[Decimal | None, str | None]:
+    """Apply one numeric-meaning gate after scope-specific PE provenance checks."""
+
+    if not value.is_finite():
+        return None, "valuation_pe_non_finite"
+    if value <= 0:
+        return None, "valuation_pe_non_positive"
+    return value, None
+
+
+def _is_sha256_text(value: str | None) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
 __all__ = (
     "CandidateDecisionDisposition",
+    "CandidateCurrentMarketStatusFact",
     "CandidateEvaluationOutcome",
     "CandidateEvaluationState",
     "CandidateEvaluationStep",

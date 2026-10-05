@@ -1258,24 +1258,38 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError("poll/retry intervals must be non-negative and poll > 0")
     if args.max_restarts < 0:
         raise ValueError("max-restarts must be non-negative")
-    training_output_dir = args.training_output_dir.resolve()
-    log_path = training_output_dir / "logs" / "ml_direct_chain_maintenance.log"
     restart_count = 0
     last_prospective_guard: tuple[str, ...] | None = None
-    output_root = _required_path_argument(args, "output_root")
     if getattr(args, "allow_research", False):
-        for candidate_path, label in (
-            (args.store_output_dir.resolve(), "store_output_dir"),
-            (training_output_dir, "training_output_dir"),
-            (output_root, "output_root"),
-            (log_path, "log_path"),
-        ):
-            try:
-                resolve_ml_research_output_path(candidate_path)
-            except ValueError as exc:
-                raise ValueError(
-                    f"allow_research path rejected for {label}: {candidate_path}"
-                ) from exc
+        args.store_output_dir = resolve_ml_research_output_path(
+            args.store_output_dir,
+            repository_root=ROOT,
+            access="write",
+        )
+        training_output_dir = resolve_ml_research_output_path(
+            args.training_output_dir,
+            repository_root=ROOT,
+            access="write",
+        )
+        args.training_output_dir = training_output_dir
+        raw_output_root = getattr(args, "output_root", None)
+        if not isinstance(raw_output_root, (str, os.PathLike)):
+            raise TypeError("output_root must be a path")
+        output_root = resolve_ml_research_output_path(
+            raw_output_root,
+            repository_root=ROOT,
+            access="write",
+        )
+        args.output_root = output_root
+        log_path = resolve_ml_research_output_path(
+            training_output_dir / "logs" / "ml_direct_chain_maintenance.log",
+            repository_root=ROOT,
+            access="write",
+        )
+    else:
+        training_output_dir = args.training_output_dir.resolve()
+        log_path = training_output_dir / "logs" / "ml_direct_chain_maintenance.log"
+        output_root = _required_path_argument(args, "output_root")
     heavy_lock_path = resolve_heavy_chain_lock_path(output_root)
     if heavy_lock_path is None:
         # Isolated fixtures do not carry a release_v4 ancestor, but the

@@ -110,15 +110,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if args.allow_research:
         store_output_dir = resolve_ml_research_output_path(
-            args.store_output_dir
+            args.store_output_dir,
+            repository_root=ROOT,
+            access="read",
         )
         training_output_dir = resolve_ml_research_output_path(
-            args.training_output_dir
+            args.training_output_dir,
+            repository_root=ROOT,
+            access="write",
         )
         if args.output_root is not None:
-            resolve_ml_research_output_path(args.output_root)
+            resolve_ml_research_output_path(
+                args.output_root,
+                repository_root=ROOT,
+                access="write",
+            )
         status_path = training_output_dir / "continuation_status.json"
-        resolve_ml_research_output_path(status_path)
+        status_path = resolve_ml_research_output_path(
+            status_path,
+            repository_root=ROOT,
+            access="write",
+        )
         _atomic_write_json(
             status_path,
             {

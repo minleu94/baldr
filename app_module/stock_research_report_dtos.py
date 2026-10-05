@@ -60,6 +60,11 @@ class StockReportSourceDTO:
     frequency: str = ""
     expected_period: str = ""
     freshness_reason: str = ""
+    coverage_status: str = ""
+    observed_at: str = ""
+    candidate_only: bool = False
+    current_observed_only: bool = False
+    historical_pit_eligible: bool | None = None
 
     def __post_init__(self) -> None:
         if not self.source_id or not self.source_label:
@@ -108,6 +113,7 @@ class StockPricePointDTO:
     change: Decimal | None = None
     available_at: str = ""
     source_id: str = ""
+    source_snapshot_hash: str = ""
     quality: str = ReportQuality.OBSERVED.value
 
 
@@ -125,16 +131,24 @@ class StockTechnicalSnapshotDTO:
 class StockFundamentalObservationDTO:
     kind: str
     label: str
+    metric_name: str = ""
+    market: str = ""
     period: str = ""
     as_of_date: str = ""
     announced_date: str = ""
     available_at: str = ""
+    observed_at: str = ""
     value: Decimal | None = None
     value_text: str = ""
     unit: str = ""
     source_id: str = ""
     source_version: str = ""
+    source_snapshot_hash: str = ""
     quality: str = ReportQuality.OBSERVED.value
+    period_basis: str = "unknown"
+    basis_verified: bool = False
+    aggregate_feature_eligible: bool = False
+    formal_pit_eligible: bool = False
 
 
 @dataclass(frozen=True)
@@ -187,6 +201,11 @@ class StockEvidenceEventDTO:
 @dataclass(frozen=True)
 class StockPositionSnapshotDTO:
     is_holding: bool = False
+    position_id: str = ""
+    portfolio_id: str = ""
+    position_as_of: str = ""
+    quote_data_date: str = ""
+    quote_available_at: str = ""
     quantity: Decimal | None = None
     average_cost: Decimal | None = None
     invested_amount: Decimal | None = None
@@ -197,6 +216,7 @@ class StockPositionSnapshotDTO:
     source_type: str = ""
     source_id: str = ""
     source_snapshot_hash: str = ""
+    quote_source_snapshot_hash: str = ""
     opened_at: str = ""
     last_trade_date: str = ""
     health_status: str = ""
@@ -205,6 +225,68 @@ class StockPositionSnapshotDTO:
     health_source_trace: tuple[str, ...] = ()
     exit_status: str = "unavailable"
     exit_reasons: tuple[str, ...] = ()
+    exit_source_id: str = ""
+    exit_available_at: str = ""
+    exit_research_only: bool = True
+    exit_auto_action_allowed: bool = False
+    limitations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class StockTradingRestrictionDTO:
+    restriction_type: str
+    restriction_state: str
+    effective_from: str = ""
+    effective_to: str = ""
+    resumed_on: str = ""
+    published_date: str = ""
+    notice_reference: str = ""
+    source_id: str = ""
+    evidence_type: str = ""
+    observed_at: str = ""
+    source_data_dates: tuple[str, ...] = ()
+    market: str = ""
+    name: str = ""
+    details: str = ""
+    raw_sha256: str = ""
+    source_url: str = ""
+
+
+@dataclass(frozen=True)
+class StockMarketStatusEvidenceDTO:
+    evidence_type: str
+    source_id: str
+    observed_at: str = ""
+    published_date: str = ""
+    effective_from: str = ""
+    effective_to: str = ""
+    resumed_on: str = ""
+    notice_reference: str = ""
+    source_data_dates: tuple[str, ...] = ()
+    raw_sha256: str = ""
+    source_url: str = ""
+    market: str = ""
+    name: str = ""
+    details: str = ""
+    restriction_type: str = ""
+    restriction_state: str = ""
+
+
+@dataclass(frozen=True)
+class StockMarketStatusSnapshotDTO:
+    status: str = "unknown"
+    listing_status: str = "unknown"
+    market: str = ""
+    name: str = ""
+    trading_restrictions: tuple[StockTradingRestrictionDTO, ...] = ()
+    status_evidence: tuple[StockMarketStatusEvidenceDTO, ...] = ()
+    source_ids: tuple[str, ...] = ()
+    source_data_dates: tuple[str, ...] = ()
+    observed_at: str = ""
+    source_warnings: tuple[str, ...] = ()
+    partial_failure: bool = False
+    scope: str = "current_only"
+    pit_eligible: bool = False
     limitations: tuple[str, ...] = ()
 
 
@@ -216,9 +298,33 @@ class StockMLSnapshotDTO:
     model_version: str = ""
     dataset_version: str = ""
     inference_at: str = ""
+    available_at: str = ""
+    model_available_at: str = ""
     research_or_formal: str = ""
     explanations: tuple[str, ...] = ()
     source_id: str = ""
+    run_id: str = ""
+    scope_mode: str = ""
+    event_date: str = ""
+    model_manifest_sha256: str = ""
+    model_bundle_sha256: str = ""
+    source_snapshot_hash: str = ""
+    current_price_row_fingerprint_sha256: str = ""
+    target_metric: str = ""
+    predicted_benchmark_excess_return_bp: Mapping[str, int] = field(default_factory=dict)
+    h5_status: str = "unknown"
+    h5_horizon: int | None = None
+    h5_gross_stock_return_bp: int | None = None
+    h5_gross_benchmark_return_bp: int | None = None
+    h5_benchmark_excess_after_standard_80bp_cost: int | None = None
+    h5_after_lane_cost_stock_return_bp: int | None = None
+    h5_horizon_end_date: str = ""
+    scope_symbols: tuple[str, ...] = ()
+    research_only: bool = True
+    historical_pit_eligible: bool = False
+    formal_qualified: bool = False
+    production_action_allowed: bool = False
+    qualification: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
 
 
@@ -269,6 +375,7 @@ class StockResearchReportDTO:
     shareholding: tuple[StockMetricDTO, ...] = ()
     events: tuple[StockEvidenceEventDTO, ...] = ()
     position: StockPositionSnapshotDTO | None = None
+    market_status: StockMarketStatusSnapshotDTO = field(default_factory=StockMarketStatusSnapshotDTO)
     advice: StockAdviceSnapshotDTO = StockAdviceSnapshotDTO()
     ml: StockMLSnapshotDTO = StockMLSnapshotDTO()
     rule_reasons: tuple[str, ...] = ()

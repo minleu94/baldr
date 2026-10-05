@@ -1,13 +1,32 @@
 # 系統架構
 
-> **最後更新：2026-10-03｜目前程式結構；不代替運行狀態。**
+> **最後更新：2026-10-04｜目前程式結構；不代替運行狀態。**
 > `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。
 
 ## 2026-10-03 current-restated 研究支線與 Data Update 狀態邊界
 
+2026-10-04 的現況補全沿既有邊界實作：`current_fundamental_snapshots` 保存 append-only、具單位／期間基礎與分開時鐘的觀測；`current_official_valuation` 保存兩市場原始回應、不可變回執及按行情日驗證的 PE／PB／yield；`current_market_status_observation` 提供有來源的目前上市／交易狀態。這些都不回填正式 PIT 資料表或歷史公告時鐘。
+
+Main 向 `StockResearchReportReadService` 注入研究 ML registry、Portfolio service 與 condition monitor；report service 未收到自訂 Exit provider 時，建立 `stock_research_report_provider_adapters.PortfolioExitReadProvider`。Registry 位於 active research root 的 `current_stock_research_registry`，使用 index→record→sidecar／model／current-vector 的精確 hash 鏈；它只讀已產生的結果，不在開頁時訓練。保存決策與當下獨立研究以 `ml_scope_mode` 分開，來源身分由共用的記憶體 research session 同步；保存推薦結果沿既有 canonical store 持久化，session 本身不提供跨程序還原。現況持倉日期與行情日期是不同欄位，歷史查詢不借用今天持倉。實際執行及接受狀態以 [本輪 QA](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md) 與 Snapshot 為準。
+
+`ml_research_output_boundary` 是研究路徑共同入口：本機 `output/ml_research_storage.json` 缺席時用 repo `output/ml_research`，配置後新產物僅可寫 active root；舊 repo root 及 active root 均可按原 pin 唯讀。設定只准 schema／絕對 active_root，16 KiB bounded no-follow 讀取，壞設定不 fallback；與 repository、正式資料／release、學習 Shadow 重疊及 reparse alias 均拒絕。Raw status 的 canonical output、研究產物及 Shadow learning output 維持不同責任。Registry consumer 合併兩個合法根的 index，record 仍綁原路徑與完整來源身分，不能改寫舊 pin 或只按股票碼挑一筆。
+
+Forward 的官方成熟日曆由 `app_module.forward_outcome_context` 共用 factory 建立；來源為明示路徑、config 的日曆路徑或既有 repo `output/paper_execution_eod_replay/calendar_cache`，不隨報告 `OUTPUT_ROOT` 搬移。核心未注入驗證日曆時 fail closed；已注入時只讀計畫官方到期日的唯一有效 close，舊價格列位移日期僅保留為明示的 legacy 診斷。自然入口以實際臺北日期限制價格，歷史 replay 保留逐日 cutoff，日曆的當前驗證不補造歷史 PIT 資格。
+
+G6、Scheduled Decision Capture 與 Scheduled Forward 的 canonical writer 協調使用同一 `release_v4/.ml_heavy_chain.lock` OS reservation。`scheduled_writer_reservation` 提供 monotonic 有界等待；consumer 在取得鎖後重驗實際日期、來源與完成預留時間，持鎖涵蓋 RW repository／子程序，finally 只釋放自身 lease。Forward dry-run 與 health reader 是唯讀且不等待 writer；手動 Forward、`capture_evidence_events.py` 與 Evidence pipeline 寫 canonical DB 時採立即取得或明確拒絕，busy 回傳 RC2，未取得鎖前不建立 RW repository。手動 Capture 的 dry-run 對 Evidence／Decision Desk repository 均採唯讀。canonical lock root 由未套用單次 artifact override 的 `TWStockConfig` 決定，報告另存 QA 或 Shadow 不會改變同一 DB 的鎖。
+
+G9 的推薦 artifact root、canonical 來源根與 Shadow learning root 分開解析。Pipeline 將同一份官方年曆／臨時休市設定傳至 dependency、capture、feature 及成熟結果路徑；快照採 saved result／cohort／不可變 stdout 的精確身分，不以 mutable latest 代替。`ml_module/current_observed_feature_snapshot_composer.py` 對 17–50 檔完整 cohort 建立 v2，依排序分成每批至多 16 檔，保留各批四張來源表的實際雜湊；父層只有組合雜湊，不捏造全域來源列雜湊。1–16 檔仍使用 v1。公開 capture verifier 重開保存推薦與 stdout，並從 pinned G6 snapshot 逐批重算特徵、來源與型別。
+
+`recommendation_natural_outcome_service` 以原 capture 的完整股票範圍查後續 G6 快照，將當初 feature／entry 與之後二十個官方交易日的 endpoint／查詢批次分開綁定。後續推薦 cohort 與 feature snapshot 版本不必等同原 capture；原 capture 不能改寫，後續來源也必須獨立核驗。`current_observed_natural_research_fit` 只消費公開 outcome verifier 重播接受的收據與精確對應樣本，沿原 purged folds、成本及隔離輸出契約執行；不以後來來源冒充原決策時可得資料，也不建立正式 active pointer 或 promotion credit。
+正常 replay 與修訂拒絕分支都可執行當前日期的獨立 capture／fit；收盤前不讀同日價格，停用新 capture 仍可掃既有到期樣本。頂層退出碼、研究支線與正式依賴狀態分開判讀，操作與排錯見 [Manual](../07_guides/APPLICATION_MANUAL.md)。
+
+即時推薦的官方下市前置檢查由 `app_module/recommendation/current_market_status_preflight.py` 提供，沿 `RecommendationInputSession` 的 canonical 來源根解析固定 pointer，每次執行固定一次來源與時鐘，再快取逐股結果。它重用 `CurrentMarketStatusReader` 的 snapshot／manifest／raw 驗證，另核對同股終止公告與擷取、有效日期；驗證成功才在歷史長度檢查前產生具名排除。`DecisionBatch.assessments` 保存完整 current-only 證據，cohort 與排程狀態由同筆封存結果投影；顯示層只翻譯原因。歷史截日／研究回放不呼叫這個現況 gate，未知來源不授予排除或 PIT 資格。
+
+保存推薦的實際行情日由 `execute.py` 在同次完成結果的 `legacy_invocation_context.details.market_data_provenance` v1 封存，綁定 result／invocation、來源指紋、決策日與 nullable typed decision clock。`WatchlistAnalysisService` 只讀同一筆來源；自然觀測須與既有 current-fundamental lineage 一致，正式截日可保留空決策時鐘，不據此推造歷史可得性。這份日期證據不新增 `Context.data_snapshot_refs`，避免把顯示欄位誤升為可重播快照／交易來源。舊自然 lineage 可驗證時沿用，無證據的舊 artifact 保留未知，不取其他 run 補填。
+
 受控的 current-restated 研究支線已由 `data_module.ml_daily_price_revision_gate.load_verified_current_restated_source_context()` 驗證 snapshot、原 DB 與修訂相依，再由 `scripts/build_ml_pit_year_shards.py` 建立 current-observed 年度 raw、`scripts/build_ml_current_restated_outcome_store.py` 建立 Outcome Direct，並由 `ml_module/current_restated_research_bridge.py` 投影受限 CORE19、呼叫既有 outcome-only fitter 及以新 Python process 載入／推論。原 Legacy Pipeline 與 Bank Taiwan 只在明確 `current-restated-research-only` opt-in 下，以同一 context、模型、來源列 cohort 經研究 sidecar early return／terminal barrier 接入。這是分離的 research lane：historical PIT、formal training／校準、teacher、promotion、Recommendation cohort 與 production pointer 均不因此改變；沒有 verified industry membership 的第 20 欄維持排除／缺件。
 
-更新頁由 freshness producer 與唯讀 status consumer 分工：`scripts/scheduled/data_freshness_probe.py` 按台北 04:30 cutoff、verified calendar、實際資料根／DB 與各來源期別生成 receipt；`app_module/update_service_status_support.py` 只有在根、DB、candidate DB、market day、cutoff 與目前期別均吻合時才投影 receipt。查詢跨過 cutoff 時舊 receipt 回 `unknown`／`needs_revalidation`，須重新 probe；consumer 不會據時鐘自行把 `expected_wait` 升成 current 或 stale。`FORMAL_AVAILABLE` 與 `CANDIDATE_AVAILABLE` 分別描述正式表與隔離候選，UI 的日期／筆數分開呈現。
+更新頁由 freshness producer 與唯讀 status consumer 分工：`scripts/scheduled/data_freshness_probe.py` 按 America/Los_Angeles 04:30 cutoff、verified calendar、實際資料根／DB 與各來源期別生成 receipt，明示 `calendar_cutoff_timezone`。`app_module/update_service_status_support.py` 核對 producer、根、DB、candidate DB、期別與同一發布週期；洛杉磯 04:30 前歸前一週期，日界與夏令時間依 IANA 時區處理，不能用台北午夜或台北 04:30 判過期。舊的無時區欄位收據僅在精確辨識既有 producer 固定契約時相容。查詢跨過下一 cutoff 時回 `unknown`／`needs_revalidation`，須重新 probe；consumer 不會據時鐘自行把 `expected_wait` 升成 current 或 stale。`FORMAL_AVAILABLE` 與 `CANDIDATE_AVAILABLE` 分別描述正式表與隔離候選，UI 的日期／筆數分開呈現。
 
 UpdateView 的寫入 worker 以 callback 在日期／檔案／transaction 邊界合作式取消，不強制終止執行緒；已安全提交的資料可以保留，真正例外仍回報失敗。MOPS 月營收中止可保存完整 raw HTML response 作診斷，但未完成的 candidate CSV 不發布；畫面列出的已解析列數不是已可用候選。TDCC 週候選以資料列與 checkpoint 同 transaction、可冪等重試；不一致資料或部分未提交不得冒稱完整成功。運行及操作證據以 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[整合修復紀錄](../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md) 與 [Manual](../07_guides/APPLICATION_MANUAL.md) 為準。
 
@@ -1136,6 +1155,10 @@ UI 修改：
 2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。
 
 ## 2026-10-03 Decision Desk 品質與研究證據邊界
+
+`MarketRegimeDetector` 在請求截日篩選後、填補缺值前，將最後有限收盤價的真實日期存為 `details.source_data_date`；既有 `details.date` 仍表示請求／判斷生效日。Regime DTO 的 details 經 `MarketRegimeSummary.meta` 與 snapshot lineage 原樣傳遞，市場總覽分列判斷日與行情日。來源日期未知或晚於截止時不借另一資料集補填；此欄不改分類、歷史轉換、readiness 或 PIT 資格。
+
+未連結來源的 Portfolio → Research context，以表格載入時的 position ID／股票碼對應快照傳遞行情日，選取及監控讀取同一份快照；linked recommendation 仍保留 canonical identity 與來源日期。Report freshness 固定單次 aware report clock；只有當下日價可在 actual／expected／quote period 同時符合最新應發布官方 session 時跨日沿用，歷史及月季來源不放寬。現況基本面 provider 的預設日曆指向 repo 的 `output/paper_execution_eod_replay/calendar_cache`，年度及臨時休市來源仍經既有 validator 離線核驗；明示路徑可覆寫，不能因報告 `OUTPUT_ROOT` 移動就漏讀日曆。04:30 Pacific 發布節奏與 Forward 的 13:30 Taipei 收盤界線維持各自用途。
 
 UI composition 與非 UI factory 共用 MarketSessionCadence，四個行情／觀察池 service 及 builder 第二層 date gate 均以已取得、未過期、hash-bound 官方日曆與專案 cutoff 判讀不同行情日期；不授 PIT、不補缺價。MarketBreadth provider 的 corporate-action 診斷僅唯讀 retained TPEx raw custody，必須 hash/date/availability/close/volume 綁定；未知方向仍 fail closed。RelativeStrengthLiquidity meta 保留逐檔排除原因與有效觀測數。
 

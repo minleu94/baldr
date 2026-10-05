@@ -1830,6 +1830,13 @@ class StockResearchReportView(QWidget):
         ml_layout = QVBoxLayout(ml_group)
         ml = report.ml
         ml_scope = getattr(ml, "scope_mode", "")
+        if ml_scope == "current_stock_research":
+            ml_group.setTitle(f"當前ML研究（研究日：{report.as_of or '未提供'}）")
+        elif ml_scope == "selected_saved_decision":
+            ml_group.setTitle(
+                f"所選保存決策ML研究（模型事件日：{ml.event_date or '未提供'}）"
+            )
+        ml_group.setObjectName("stockResearchMLGroup")
         scope_label = {
             "current_stock_research": "當下個股獨立研究（不併入保存 Advice）",
             "selected_saved_decision": "精確選定的保存決策來源",
@@ -1843,6 +1850,12 @@ class StockResearchReportView(QWidget):
         audit_toggle.setObjectName("stockResearchMLAuditToggle")
         audit_toggle.setCheckable(True)
         audit_toggle.toggled.connect(audit_group.setVisible)
+        audit_toggle.toggled.connect(
+            lambda expanded: audit_toggle.setText(
+                "收合資料稽核（版本／Run／雜湊／原始診斷）"
+                if expanded else "展開資料稽核（版本／Run／雜湊／原始診斷）"
+            )
+        )
         ml_rows = [
             ("範圍", scope_label),
             ("狀態", ml.status or "未提供"),
@@ -1922,8 +1935,11 @@ class StockResearchReportView(QWidget):
         if ml.status in {"unavailable", "missing"}:
             ml_layout.addWidget(self._missing_panel("目前沒有合格的個股 ML 研究輸出；不補造估計或機率。"))
         if ml.limitations:
-            ml_layout.addWidget(self._wrapped_label("ML 限制：" + "；".join(research_limitation_text(x) for x in ml.limitations[:2])))
+            prefix = "ML 品質降級：" if ml.status == "degraded" else "ML 限制："
+            ml_layout.addWidget(self._wrapped_label(prefix + "；".join(research_limitation_text(x) for x in ml.limitations[:2])))
             audit_layout.addWidget(self._wrapped_label("ML 原始限制：" + "；".join(ml.limitations)))
+        elif ml.status == "degraded":
+            ml_layout.addWidget(self._wrapped_label("ML 品質降級：原因未提供。"))
         layout.removeWidget(rule_group)
         audit_layout.addWidget(rule_group)
         layout.removeWidget(advice_group)
@@ -1939,7 +1955,15 @@ class StockResearchReportView(QWidget):
         ml_layout.addWidget(audit_group)
         layout.insertWidget(0, ml_group)
 
-        history_group = QGroupBox("歷史建議與後續結果")
+        saved_analysis = report.advice.saved_analysis
+        saved_date = (
+            rec.decision_date if rec is not None
+            else saved_analysis.decision_date
+            if saved_analysis is not None and saved_analysis.result_id and saved_analysis.decision_date
+            else "未選定"
+        )
+        history_group = QGroupBox(f"歷史保存決策回顧（所選決策日：{saved_date or '未提供'}）")
+        history_group.setObjectName("stockResearchHistoryGroup")
         history_layout = QVBoxLayout(history_group)
         history_layout.addWidget(self._wrapped_label(
             f"{len(report.events)} 筆歷史保存事件；不代表目前持倉或本次研究結論。"

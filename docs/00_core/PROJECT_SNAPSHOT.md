@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 最新有界收尾與呈現修正
+
+checkpoint／ML 接線／首屏已有本地提交 `2ca83c3`、`71d70a7`、`cd90844`；`0831633c` 再完成 180 筆 semantic 樣本的真實小型 learner→候選→receipt 工程驗證（受控來源 verifier，19 passed／1 skipped），不授自然／正式模型資格。三張受控圖已交 Library。本輪最小修正 ML 稽核展開／收合文字，按 DTO scope 區別當前／保存 ML 並顯示日期；品質降級有原因就呈現、無原因就明示。affected tests 14、Workbench 85、validator 25／4 skip、mypy 766 通過，Manual 已同步。真實 2382 唯讀 consumer 的 H5 未成熟原因已呈現，offscreen 圖不替代 Native／持倉驗收。
+
+原生 1477 完整取消→重試→新身份→保存→新程序重開及 date／run／hash 操作負例仍缺；本輪只驗原保存來源 41KB 副本的三項完整性拒絕，原 bytes 不變。因不能保證獨立 QA 視窗／modal 不搶前景，未啟動 Native，需短暫桌面時段。容量 guard／cleanup 本輪未重驗／執行。詳細已驗／待驗、Library ID 與本地 commit 邊界見 [最小續接清單](../06_qa/MINIMAL_CONTINUATION_HANDOFF_20261005.md) 最新追補；下方 Batch9 的「未提交」等敘述保留為歷史，不作目前 Git 狀態。
+
 ## 2026-10-05 有限續接驗收（Batch9）
 
 最新邊界見 [最小續接清單](../06_qa/MINIMAL_CONTINUATION_HANDOFF_20261005.md)。G11 修後同版七項工程檢查已通過：120 modules、1892 passed／12 Windows symlink skipped，Workbench 85 passed、validator 25 passed／4 skipped、mypy 766＋38、222 paths compile 與量化 guard。原生同股來源選擇、精確保存重開、錯股／不存在來源拒絕、current-ML 往返及 1000x835 四用途內容已取證；1000x800 未過，完整重試的新 execution 身分／保存重開及錯日期／run/hash 原生驗收仍不足。最後一次 probe 在「取消中」提前返回並停止，沒有啟動重試，不改寫原失敗。自然 ML 容量、DNS／正式歷史 PIT／revision 資格仍有實際阻礙，不能宣稱只剩自然累積。目前只凍結 217 個提交候選；未 stage 或 commit。下列早期批次保留其當時範圍，不能代替最新驗收。

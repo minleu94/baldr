@@ -19,6 +19,7 @@ from app_module.stock_research_report_dtos import (
     StockResearchReportDTO, StockTechnicalSnapshotDTO, StockAdviceSnapshotDTO,
 )
 from app_module.stock_research_report_service import _key_risks
+from app_module.watchlist_analysis_service import WatchlistAnalysisDTO
 from app_module.position_health_service import PositionHealthService, PositionHealthState
 from ui_qt.views.stock_research_report_view import (
     StockResearchReportView, _decimal_text, _report_conclusion,
@@ -133,13 +134,60 @@ def test_controlled_2382_render_keeps_audit_collapsed_and_preserves_raw_identity
     assert "基準名稱" in visible and "未提供" in visible
     assert "controlled-fixture-2382" not in visible and "sha256:" not in visible
     assert "1.2%" not in visible
+    assert "ML 品質降級：來源資格仍為研究，未具正式資格。" in visible
     if output:
         assert view.grab().save(str(Path(output) / "2382_ml_collapsed_controlled.png"))
-    view.findChild(QPushButton, "stockResearchMLAuditToggle").click()
+    toggle = view.findChild(QPushButton, "stockResearchMLAuditToggle")
+    assert toggle is not None and not toggle.isChecked()
+    assert toggle.text().startswith("展開資料稽核")
+    toggle.click()
     app.processEvents()
     assert not audit.isHidden()
+    assert toggle.isChecked() and toggle.text().startswith("收合資料稽核")
     if output:
         assert view.grab().save(str(Path(output) / "2382_ml_audit_controlled.png"))
+    toggle.click()
+    app.processEvents()
+    assert audit.isHidden() and not toggle.isChecked()
+    assert toggle.text().startswith("展開資料稽核")
+    view.close()
+
+
+@pytest.mark.parametrize("scope", ["current_stock_research", "selected_saved_decision", ""])
+def test_ml_heading_uses_declared_scope_and_missing_degradation_reason(readable_fonts, scope):
+    report = _report()
+    report = replace(report, ml=replace(report.ml, scope_mode=scope,
+                                       event_date="2026-09-30", limitations=()))
+    view = StockResearchReportView(SimpleNamespace())
+    view._active_code = report.stock_code
+    view._render_report(report)
+    view.tabs.setCurrentIndex(5)
+    view.show()
+    readable_fonts.processEvents()
+    group = view.findChild(QGroupBox, "stockResearchMLGroup")
+    assert group is not None
+    if scope == "current_stock_research":
+        assert group.title() == "當前ML研究（研究日：2026-10-05）"
+    elif scope == "selected_saved_decision":
+        assert group.title() == "所選保存決策ML研究（模型事件日：2026-09-30）"
+    else:
+        assert group.title().startswith("ML 研究輸出")
+    visible = "\n".join(label.text() for label in view.findChildren(QLabel) if label.isVisible())
+    assert "ML 品質降級：原因未提供。" in visible
+    history = view.tabs.currentWidget().findChild(QGroupBox, "stockResearchHistoryGroup")
+    assert history is not None and "所選決策日：未選定" in history.title()
+    selected = replace(report, advice=replace(report.advice, saved_analysis=WatchlistAnalysisDTO(
+        stock_code="2382", status="saved", result_id="controlled-saved-2382",
+        decision_date="2026-09-30",
+    )))
+    view.close()
+    view = StockResearchReportView(SimpleNamespace())
+    view._active_code = selected.stock_code
+    view._render_report(selected)
+    view.tabs.setCurrentIndex(5)
+    readable_fonts.processEvents()
+    history = view.tabs.currentWidget().findChild(QGroupBox, "stockResearchHistoryGroup")
+    assert history is not None and "所選決策日：2026-09-30" in history.title()
     view.close()
 
 

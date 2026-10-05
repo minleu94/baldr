@@ -4303,6 +4303,8 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 ## 2026-10-05 UX18 共用日特徵與個股觀察
 
+此為預設live投影；明示隔離已發布快照的生產／讀回入口另見本文末UX19。
+
 入口仍是「個股研究」或持倉／觀察清單下鑽。選股票及既有來源／決策日後，正常載入報告即可；沒有新增參數、按鈕或writer。首屏結論與三項依據讀同一份共用close／MA20／MA60研究快照，呈現收盤高於、低於或等於均線；equal表示未符合「高於」條件，不代表賣出或風險評級。
 
 必要暖機以最後連續有效OHLC計算：MA20需20筆、MA60需60筆。缺值／無效範圍中斷連續段，不跳過缺口。資料日與技術日不一致、來源品質／身份不完整或暖機不足時，畫面顯示「尚無法判讀」，研究理由保留具名原因；一項未知不遮蔽另一項可讀觀察。原table均線值不重算，RSI／MACD／ADX、Advice與排名沿既有輸出。
@@ -4310,3 +4312,29 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 進階稽核可從報告DTO的 `shared_daily_features` 查看contract版本、snapshot／input hash、股票scope、decision／market date、TWD/share單位、來源fingerprint、warmup_required_count／observed_count及conditions三態。cache僅此service最多4筆；相同輸入復用，來源內容／日期／scope／版本變化即重新投影，不沿用舊身份。舊DTO沒有該欄位時保持原呈現。
 
 `sufficient_observed_prefix`只證明有限SMA的必要觀測窗口，官方交易日曆與available-at仍unknown、historical_pit_eligible=false；不證明歷史PIT、producer公式等價、遞迴EMA暖機或正式模型／勝率。首屏只是研究技術觀察。若不足20／60筆，核對實際末段OHLC及缺口；若日期／品質不符，核對所選來源，不能補假時鐘或略過guard。投影讀取故障保留原錯誤且條件未知，正常取消不變成成功。工程驗證與仍待項目見[QA新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md#最新延伸ux18-既有日特徵的實際研究-consumer)。
+
+## 2026-10-05 UX19 隔離研究快照生產與讀回
+
+進階入口是 `scripts/produce_daily_market_research_snapshot.py`，用既有SQLite唯讀資料在repo output明示隔離子目錄產生研究快照；沒有新增主UI按鈕或Windows排程。依TWStockConfig確認真實DB，選1–16股、cohort名稱及含時區cutoff，再執行。以下為日期化範例，應改為實際截止時間與隔離根，不把範例當當前來源資格：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\produce_daily_market_research_snapshot.py --db-path D:/Min/Python/Project/FA_Data/sqlite/twstock.db --output-root output/qa/my_daily_snapshot --cohort-id research-2382-1477 --decision-cutoff 2026-10-05T21:00:00+08:00 --symbols 2382 1477 --read-stock 2382
+```
+
+| 參數／結果 | 意義與限制 |
+|---|---|
+| `--db-path` | 既有來源，mode=ro／query_only；不重抓資料或寫正式DB。最低price／MA schema不合即拒。 |
+| `--output-root` | 必須repo output內明示隔離子目錄；不能repo output本身、來源DB或正式根。保存精簡immutable objects／manifests，latest最後原子切換。 |
+| `--cohort-id`／`--symbols` | 明示研究母體ID與1–16不重複股票；完整只指此declared cohort，不是市場universe或正式篩選資格。 |
+| `--decision-cutoff` | aware ISO時刻，轉Asia/Taipei日期；未來cutoff拒絕。交易日可讀不表示當時官方available-at已核驗。 |
+| `--read-stock` | 可選cohort內一股，發布後由既有個股read_report核驗讀回，JSON附consumer與consumer_status；失效回傳2，不改走live假裝快照成功。 |
+| reused／recomputed | 相同來源／日期／scope／版本重用核驗artifact；只有失效股票再投影原MA值。無更新不新建發布時間或identity。 |
+| capacity_preflight | 實寫前實測容量，保留200GiB及新增／暫存／累積預算；不足停，不自動清理原資料／收據。 |
+
+本包producer僅發布明示cohort完整版本；任何來源DTO載入或投影失敗即具名停止，保留上次latest。reader另能核驗具名partial research，不能把這項能力解讀為producer會自動略過缺股。
+
+研究consumer可在隔離設定明示 `StockResearchReportReadService(..., daily_market_snapshot_root=隔離根, daily_market_snapshot_cohort_id=同cohort)`；兩者須一起提供。既有read_report來源與日期照原操作，新增 `shared_daily_features.readback` 保存已核驗manifest身份／完整性。沒有設定時沿live投影；此包未切換日常App預設，也未部署正式排程。
+
+錯date／stock／scope／schema／版本／hash，或當前來源修訂造成input不一致，都拒絕快照並保留錯誤／unknown；核對實際DB、cohort／日期與來源後在新run重建，不改pin或減reserve求通過。writer失敗或中斷時上個latest仍可核驗，按舊manifest date／hash明示查看，不能標成今日成功。保留失敗／未完成診斷，不執行永久清理。`complete_declared_cohort`不代表MA暖機全過；仍查看每股warmup及condition unknown理由。
+
+此為current-observed research-only；官方可得時間／calendar completeness保持unknown、historical_pit_eligible=false。不授benchmark、自然成熟、正式訓練或ML資格，沒有新增策略／公式／排名。版本、原子發布與實跑限制見[既有QA收據UX19新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。

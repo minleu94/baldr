@@ -37,7 +37,9 @@ from app_module.price_change_direction import (
     resolve_signed_change as _resolve_signed_change,
 )
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
-from app_module.daily_market_feature_snapshot import DailyMarketFeatureSnapshotService
+from app_module.daily_market_feature_snapshot import DailyMarketFeatureSnapshotService, daily_market_feature_input_fingerprint
+from app_module.daily_market_snapshot_repository import DailyMarketSnapshotRepository
+from app_module.daily_market_snapshot_source import daily_snapshot_schema_identity, daily_snapshot_scope_identity
 from data_module.current_official_valuation import CurrentOfficialValuationReadProvider
 from data_module.recommendation_current_fundamental_provider import (
     RecommendationCurrentFundamentalProvider,
@@ -127,6 +129,8 @@ class StockResearchReportReadService:
         freshness_status_path: Path | str | None = None,
         candidate_db_file: Path | None = None,
         current_ownership_capture_root: Path | str | None = None,
+        daily_market_snapshot_root: Path | str | None = None,
+        daily_market_snapshot_cohort_id: str | None = None,
     ) -> None:
         self.config = config
         self.portfolio_service = portfolio_service
@@ -153,6 +157,13 @@ class StockResearchReportReadService:
         self.daily_market_feature_snapshot_service = DailyMarketFeatureSnapshotService(
             max_entries=4
         )
+        if (daily_market_snapshot_root is None) != (daily_market_snapshot_cohort_id is None):
+            raise ValueError("daily_market_snapshot_root 與 cohort_id 必須一起明示")
+        self.daily_market_snapshot_repository = (
+            DailyMarketSnapshotRepository(Path(daily_market_snapshot_root))
+            if daily_market_snapshot_root is not None else None
+        )
+        self.daily_market_snapshot_cohort_id = daily_market_snapshot_cohort_id
         self.freshness_status_path = _resolve_freshness_status_path(config, freshness_status_path)
         self.candidate_db_file = Path(candidate_db_file) if candidate_db_file is not None else None
         self.current_ownership_capture_root = (
@@ -276,14 +287,35 @@ class StockResearchReportReadService:
         shared_daily_features: Mapping[str, Any] = {}
         try:
             self._check_cancel(cancel_callback)
-            shared_feature_snapshot = self.daily_market_feature_snapshot_service.project(
-                stock_code=code,
-                decision_date=cutoff,
-                scope_identity=f"stock-report-symbol:{code}",
-                price_points=price_points,
-                technical=technical,
-            )
-            shared_daily_features = shared_feature_snapshot.to_dict()
+            if self.daily_market_snapshot_repository is not None:
+                db_path = Path(getattr(self.config, "db_file", None) or getattr(self.config, "sqlite_db_file"))
+                schema_identity = daily_snapshot_schema_identity(
+                    self._columns("daily_prices"), self._columns("technical_indicators")
+                )
+                scope_identity = daily_snapshot_scope_identity(db_path, code, schema_identity)
+                expected_hash = daily_market_feature_input_fingerprint(code, cutoff, scope_identity, price_points, technical)
+                verified = self.daily_market_snapshot_repository.load_latest(
+                    cohort_id=str(self.daily_market_snapshot_cohort_id),
+                    decision_date=cutoff,
+                    expected_input_hashes={code: expected_hash},
+                )
+                shared_daily_features = dict(verified.stock_snapshots[code])
+                shared_daily_features["readback"] = {
+                    "mode": "verified_published_research_snapshot",
+                    "manifest_sha256": verified.manifest_sha256,
+                    "manifest_identity_sha256": verified.manifest_identity_sha256,
+                    "completeness": verified.completeness,
+                    "cohort_id": self.daily_market_snapshot_cohort_id,
+                }
+            else:
+                shared_feature_snapshot = self.daily_market_feature_snapshot_service.project(
+                    stock_code=code,
+                    decision_date=cutoff,
+                    scope_identity=f"stock-report-symbol:{code}",
+                    price_points=price_points,
+                    technical=technical,
+                )
+                shared_daily_features = shared_feature_snapshot.to_dict()
         except StockResearchReportCancelled:
             raise
         except Exception as exc:

@@ -244,6 +244,33 @@ class DailyMarketFeatureSnapshotService:
             self._cache.clear()
 
 
+def daily_market_feature_input_fingerprint(
+    stock_code: str,
+    decision_date: date,
+    scope_identity: str,
+    price_points: Sequence[StockPricePointDTO],
+    technical: StockTechnicalSnapshotDTO | None,
+) -> str:
+    """回傳 project 使用的完整輸入摘要，不執行特徵投影。"""
+
+    code = str(stock_code).strip()
+    scope = str(scope_identity).strip()
+    if not code:
+        raise ValueError("stock_code 不可為空")
+    if not scope:
+        raise ValueError("scope_identity 不可為空，請由 caller 明示研究母體身份")
+    if isinstance(decision_date, datetime) or not isinstance(decision_date, date):
+        raise ValueError("decision_date 必須是 date，不可含時間")
+    if isinstance(price_points, (str, bytes)):
+        raise TypeError("price_points 必須是 StockPricePointDTO 序列")
+    points = tuple(price_points)
+    if any(not isinstance(point, StockPricePointDTO) for point in points):
+        raise TypeError("price_points 僅接受 StockPricePointDTO")
+    if technical is not None and not isinstance(technical, StockTechnicalSnapshotDTO):
+        raise TypeError("technical 僅接受 StockTechnicalSnapshotDTO 或 None")
+    return _input_fingerprint(code, decision_date, scope, points, technical)
+
+
 def _project_snapshot(
     stock_code: str,
     decision_date: date,

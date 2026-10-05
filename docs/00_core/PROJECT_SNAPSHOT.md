@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 UX19 最小研究快照閉環
+
+以 `3a975e3` 為基線，close／MA20／MA60 既有研究特徵新增隔離有界 producer、不可變 manifest／artifact 與 verified reader，個股 `read_report()` 可明示 opt-in 讀回。最多16檔、每股120列，僅失效股重投影；來源缺件停止發布，既有 latest 保留。reader 另可辨識具名 partial，但不把 cohort 完整等同全市場或特徵／PIT資格。實跑與驗證以[限定收據 UX19 新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)為準。
+
+預設 UI／live consumer 不改，沒有正式 DB writer、排程或新公式。整個 UX18／19、其他 consumer／選股融合及長期 storage 治理仍未完成；Backtest18.62%／20%仍未達，歷史 PIT／自然 ML 資格另列，不以成熟等待代替工程待辦。
+
 ## 2026-10-05 UX18 既有日特徵研究切片
 
 既有close／MA20／MA60經共用readonly snapshot實際接入個股研究 `read_report()`、研究理由與首屏。穩定identity綁來源內容／日期／scope／版本，instance cache最多4筆；最後連續有效OHLC不足20／60筆或日期／品質不符，條件為unknown，首屏不另作比較。只投影原指標、Decimal比較，不重算／改分數排名或建立writer。必要observed-prefix不授官方日曆／availability／歷史PIT資格。

@@ -1,5 +1,11 @@
 # 最小續接清單（2026-10-05，Batch9）
 
+## 最新優先：UX19 最小 producer／reader／consumer 閉環
+
+基線 `3a975e3`，本包允許既有兩股唯讀資料在隔離 output 實跑有界 producer；候選先驗 manifest／artifact，latest 最後原子切換，個股 consumer 明示 opt-in 並核對有限當前來源 hash。來源缺件停止發布；reader 支援具名 partial 驗證。實跑／測試結果與版本以[QA UX19 新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)及實際 Git 為準，較早「不 producer」只適用其原包。
+
+仍待完整 feature／method／其他 consumer 與選股融合、全母體與正式排程、長期 storage 治理；Backtest18.62%／20%未達，自然 PIT／ML 另列。不要重跑舊 ML、Native1477、效能或全套回歸，未授權清理／push；paper 檔與還原映射保留。
+
 ## 最新優先：UX18 既有日特徵研究 consumer
 
 以50f45ce為基線：close／MA20／MA60共用readonly snapshot已接個股 `read_report()`、研究理由及首屏；source內容／日期／scope／版本綁identity，LRU最多4筆，末段有效OHLC必要20／60暖機不足或來源不符保持unknown。原數值／排名不重算，故障fail closed／取消傳遞。原plan append-only，有限研究切片不代表整個UX18／19或階段2完成；Backtest18.62%／20%維持未達。完整feature／method／選股consumer、UX19 bounded writer／manifest／整批完整性／原子發布／容量是工程待辦；歷史PIT／自然成熟另列。詳見[既有QA收據新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。不重跑ML／效能／Native1477，未碰正式DB／paper檔／還原映射，未清理／push。以下較早段落只作其版本歷史。

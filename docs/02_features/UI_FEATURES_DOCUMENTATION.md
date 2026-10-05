@@ -1,5 +1,9 @@
 # UI 功能文件（Qt）
 
+### UX19 隔離研究快照來源（2026-10-05）
+
+個股研究 service 可明示 snapshot root／cohort，經 verified reader 讀已發布 close／MA 研究快照，來源不符保留 unknown 與具名錯誤。CLI 支援同一路徑的實際 `read_report()` 讀回；桌面 UI 預設仍用 live 有限投影，本包未新增 UI 操作。來源身分／資格與操作見 [Manual UX19](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux19-隔離研究快照生產與讀回)。
+
 ## 2026-10-05 個股日特徵共用三態
 
 正常個股研究載入後，首屏與研究理由共用既有close／MA20／MA60 snapshot的三態。暖機末段有效OHLC不足20／60筆、來源品質或日期未確認時顯示「尚無法判讀」，不再由首屏另行直比；一項未知保留另一項已確認觀察。沒有新按鈕、參數、公式或排名。舊DTO空mapping保留原呈現；必要observed-prefix不代表正式PIT／EMA／模型資格。操作與排錯見[Manual UX18](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux18-共用日特徵與個股觀察)，實際驗證見[既有QA收據新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。

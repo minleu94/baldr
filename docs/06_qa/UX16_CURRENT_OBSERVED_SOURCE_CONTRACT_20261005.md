@@ -1,5 +1,40 @@
 # UX16 唯讀來源契約與 UX02 Native 中文驗證（2026-10-05）
 
+## 最新延伸：UX19 隔離研究快照生產／讀取閉環
+
+基線 `3a975e3cb487577a13487b704de8cdefabd956d9`。本包明確授權開發並以小型既有readonly來源在隔離output實跑producer，不沿用前包「不producer」的scope-out阻擋新授權。原plan第8.7的既有特徵、manifest驗證與最後原子切換映射到UX18的 `DailyMarketFeatureSnapshotService`、既有StockReport查詢／DTO與research canonical JSON；不建立第二個正式Rule／Evidence writer，不部署Windows排程或修改正式market／evidence DB。
+
+`SQLiteDailyMarketSnapshotSource` 在同一query-only SQLite read transaction中沿用既有價格／technical查詢，明示股票每股最多120列；schema最低必要欄位不合即拒。source scope綁resolved DB path、實讀schema identity及股票，input hash綁完整有限DTO；main／WAL身份在讀取與發布前驗穩定，SHM索引metadata不作immutable內容資格。可得時間／官方日曆未知仍可作current-observed研究，不偽造historical available-at。
+
+`DailyMarketSnapshotProducer` 明示cohort最多16股，僅投影既存close／MA20／MA60；每股輸入、來源與版本未變就重用核驗過的artifact，失效範圍才project。immutable object／manifest以canonical JSON內容hash命名，manifest保存aware臺北cutoff／decision date、cohort ID與明示分母identity、來源refs／schema／input／snapshot／artifact pin、feature／existing-observation版本、counts／完整性／缺件及publish time。producer 本包僅發布明示 cohort 完整版本，來源缺件即具名停止；reader 另可核驗具名 partial research。完整性只指declared cohort artifact presence，不授全市場、feature、PIT或模型資格。
+
+candidate manifest／每股artifact先由同一reader核驗，latest pointer最後atomic replace；writer互斥、重複觸發／無更新保持穩定身份。失敗保留前次可讀版本，沒有半份artifact冒充latest。容量實寫前重驗，沿用200GiB reserve及有界新增／暫存／累積保留預算；不足具名退出，不降reserve或自動清理。精簡artifact不保存完整raw歷史。
+
+`DailyMarketSnapshotRepository.load_latest()` 每次核驗pointer→manifest→全部declared artifact，並重讀pointer拒讀取期間換版；沒有reader cache跳過驗證。錯stock／date／scope／schema／版本／hash／policy均拒絕，snapshot stable identity重算；`load_manifest()`可按hash唯讀核驗candidate／舊版本。StockReport新增明示snapshot root／cohort opt-in，實際既有read_report以當前有限來源hash核對後讀已發布snapshot；失效或錯來源保留unknown／具名error，不fallback成假stored-success。預設live path維持原行為。
+
+操作與排錯見[Manual UX19](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux19-隔離研究快照生產與讀回)。本包最小close／MA研究閉環不等整個UX18／19：其他feature／method／選股融合、全母體producer、正式排程、growth／長期reserve治理及自然PIT／ML資格仍分列待辦；Backtest18.62%／20%未達保持原門檻，未作效能微調。下列歷史收據保留其原版本。
+
+### UX19 真實兩股唯讀閉環收據
+
+以正式 D `twstock.db` 的2382／1477，在隔離 `output/qa/ux19_snapshot_loop_20261005/real_store_063021` 發布；cutoff為 `2026-10-05T21:30:21+08:00`。main為4,052,123,648 bytes，WAL為0 bytes；兩跑前後 size／mtime_ns／inode／device pins一致，沒有複製或全庫hash。實跑收據為同目錄上層 `real_loop_063021.json`，只作本地可讀證據，不宣稱跨環境可讀。
+
+首次 `published_complete`、重投影兩股；相同輸入再跑為 `unchanged`、重用兩股、重投影0股、新增0 bytes，檔案inventory與hash完全相同。manifest SHA256 `f458a73deeecf6ff727d66c11a79fa7be5072c9fc13045f0340ead311079a1da`，stable identity `8f92208e9169251bc33b34694665d4a153affcef51b891117b377d6808439048`，兩跑一致。新增immutable bytes7,647，連latest保留7,785 bytes；沒有長期storage／全市場容量合格的外推。
+
+實跑前當次C free236,507,041,792、D free294,142,619,648 bytes。producer在immutable寫入前與pointer切換前各重測；切換前C free236,507,029,504、reserve214,748,364,800、required214,765,142,016 bytes，within_budget=true。固定邊界為16股／120列、artifact64KiB／manifest1MiB／pointer4KiB、每run新增與暫存各8MiB、保留64MiB及最多4096項；不足停止，不清理。這是當次容量觀測，不沿用先前自然ML容量。
+
+兩次既有StockReport `read_report("2382")` 都為verified發布讀回：收盤331.0低於MA20 338.07499999999993、高於MA60 330.8749999999999，原值按Decimal比較，不重算均線或排名。兩股資料日10-05、必要MA暖機觀測60筆；仍僅 current-observed research-only，official availability／calendar unknown，PIT=false，非歷史可得時間、公式producer重算等價或模型資格。約1.30秒的兩次CLI操作時間不是Frozen效能基線或Backtest gate重測。
+
+半途寫入失敗證據限於受控故障注入與Windows原子提交邊界；不宣稱硬體斷電、其他OS或全母體部署驗收。初版integration有missing_stocks契約／未定義clock helper失敗，修正後consumer四項通過；初版CLI隔離測試fixture誤放在允許output內已修正，失敗收據保留。
+
+
+### UX19 最終工程驗證
+
+凍結產品版本後重新綁定6個執行模組raw SHA256，最終兩跑前後code_stable=true；前一 `real_loop_062647.json` 留作首版成功收據，最終依 `real_loop_063021.json`。定向pytest **106 passed／4.80秒**，涵蓋producer8、reader18、實際consumer4及既有feature／StockReport服務／provider契約；使用fresh `final_1334` basetemp與JUnit收據，不是全套回歸。772 source files mypy、9檔py_compile、精度與look-ahead guard及git diff check通過。
+
+故障／revision驗證包含同輸入no-op、單股修訂只投影失效股且artifact／identity與fresh full等價、候選寫入中斷或來源guard拒絕保留old latest、容量不足／壞pointer／未來cutoff／DTO邊界、同root第二instance busy、consumer同日來源修訂／錯date／cohort與reader schema／hash／stock拒絕。busy測試為同process獨立instance重入，不外推跨process死鎖／崩潰或硬體斷電完整驗收。
+
+19個指定產品／測試／文件進本地commit，原plan append-only與raw／Git blob／status核驗收據保存於本包output。UI code blob相對3a975e3未變，沿用該版UI85／validator25+4skip gate；本包不重跑UI或Native。沒有正式資料庫寫入、全市場producer、ML訓練、效能微調、清理或push；paper與還原映射未動。
+
 ## 最新延伸：UX18 既有日特徵的實際研究 consumer
 
 基線 `50f45ce692703d8b80be91c3c6f8bf2ed2a32e17`。本包依原計畫第8.7／10／11節，完成 current-observed 研究模式的有限垂直切片：`daily_market_feature_snapshot.py` 投影已讀到的 close／MA20／MA60，`StockResearchReportReadService.read_report()` 實際呼叫並將結果交給研究理由與首屏。不是新增 CLI 或未使用的矩陣；不新增公式、方法、分數、排名、SQL、producer或持久化 writer。

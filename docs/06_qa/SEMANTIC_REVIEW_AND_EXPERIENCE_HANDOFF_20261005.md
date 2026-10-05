@@ -1,5 +1,11 @@
 # 2026-10-05 有界語意審查與體驗接手
 
+## 最新 UX19 有限研究閉環（基線3a975e3）
+
+本包新增隔離 bounded producer→verified repository→實際 StockReport consumer，重用 close／MA20／MA60 與既有有限 DTO，不新增方法或正式 writer。來源缺件停止發布，失效股才重投影，候選核驗後原子切換 latest。限定實跑／測試與來源 pins 見 [UX19 QA 新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)，原計畫只追加結果。
+
+這不是完整 UX18／19 或階段2完成；其他 feature／method／consumer、選股融合、全母體排程與長期 storage 仍待，Backtest18.62%／20%與自然 PIT／ML 限制不改。已完成的語意審查、ML、Native 與效能不重做；paper、正式資料庫與還原映射未動。
+
 ## 最新優先：UX18 既有日特徵研究 consumer
 
 50f45ce後依原plan第8.7允許的partial research，完成close／MA20／MA60共用快照到個股read_report／研究理由／首屏的有限垂直切片。穩定identity、4筆有界cache、來源日期與末段有效OHLC必要暖機及三態均有定向證據；不重算指標／排名、不新策略或writer。首屏未知不再自行比較。歷史availability／calendar／PIT仍unknown／false；Backtest18.62%子gate不放寬，整階段依賴不改。完整UX18及UX19工程、UX04／05其他consumer和自然ML用途依賴分列於[原QA收據新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。原plan append-only，本地commit／blob/status核驗後停止交父層；不重做既有ML／效能／1477，不清理／push或觸碰未知paper檔／還原映射。以下記錄保留其原版本。

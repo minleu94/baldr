@@ -4075,6 +4075,8 @@ UTC 10/3 `01:15:57Z` 的生產 CLI 真來源驗收已讀回 1,962 筆／7,658 �
 
 既有 `baldr-formal-pit-sidecar-postcutoff-daily` 的 wrapper 會在合法台北交易時段帶起 `run_paper_event_source_capture_daily.py`。先讀凍結推薦與官方日曆，固定來源 request 取得回應；合法休市或沒有可處理來源時保留 no-work，不能手動改時鐘重播成當日成交。成功 durable capture 的 manifest、原始 body 與 recommendation hash 必須由 EOD consumer 再核對，capture 本身不建立 fill、不寫 ledger。
 
+根目錄 `paper_event_source_capture.py` 是相容入口，公開函式共用 `data_module.paper_event_source_capture`，命令列共用 `scripts/capture_paper_event_source.py`。可用 `python paper_event_source_capture.py --help` 查看參數；股票來源選 `--symbols`、`--symbols-file` 或 `--recommendation-json`，凍結推薦來源另需 `--durable-root`。實際採集仍須同時提供 `--live` 與 `--confirm-live-readonly`。成功及失敗嘗試的原始回應與收據均沿用正式 producer，輸出根目錄以專案位置及明示參數解析。
+
 HTTP 錯誤、partial read、超限或 schema 不符時，有限 raw body 與 `capture_attempt.json` 會在解析前保存，並將失敗診斷移到 status root 的失敗子目錄再清理 OS 暫存。Attempt receipt 揭露真實 request start／body completion、status、bytes／hash 與失敗型別；拒絕回應不能當有效 durable capture。無 body 的逾時仍保留失敗 receipt。最多三次嘗試，失敗請先看同次 attempt／status／log；修復來源後可用既有流程重試，不能覆寫原失敗證據或補公告時間。
 
 若較早嘗試的暫存清理失敗，即使後次已有合法 durable capture，整體仍 `blocked`／exit 2，另外明列 `capture_status=source_capture_durable`、cleanup blockers 與保留路徑。此時要處理揭露的暫存問題，不能把 capture 存在判成整體成功。Quote observation 繼續使用原三項 fail-closed fetch 契約：HTTP 200、固定 final URL、JSON media、非空 bytes／大小／encoding／完整讀取均驗證，才進入 quote parser；Paper 的失敗 raw custody 不會放寬 quote 使用條件。MIS 的成功碼只接受具名字串 `000`、`0`、`0000` 且 message 為 `OK`，其他型別或錯誤碼拒絕。詳見 [capture QA](../06_qa/PAPER_EVENT_SOURCE_CAPTURE_FAILURE_DIAGNOSTICS_QA_20261002.md)及[本輪實際驗收](../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md)。

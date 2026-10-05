@@ -488,8 +488,8 @@ def test_decision_desk_view_shows_missing_status():
     view = rendered_view(FakeBuilder(s))
 
     assert view.overall_status_label.text() == "摘要已載入"
-    assert "缺漏" in view.market_regime_status.text()
-    assert "缺漏" in view._status_badges[view.market_regime_status].text()
+    assert "資料缺件" in view.market_regime_status.text()
+    assert "資料缺件" in view._status_badges[view.market_regime_status].text()
     assert "資料可見性：缺漏" in view.overall_warn_label.toPlainText()
 
 
@@ -809,7 +809,7 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
     assert "降級" in view.visibility_quality_badge.text()
     assert "僅供研究可見性" in view.visibility_action_hint.text()
     assert "三大法人" in view.visibility_sources_label.text()
-    assert "缺漏" in view.visibility_sources_label.text()
+    assert "資料缺件" in view.visibility_sources_label.text()
 
 
 def test_decision_desk_displays_valid_regime_source_date_separately_from_decision_date():

@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 
 from app_module.dtos import BacktestReportDTO, ValidationStatus
+from ui_qt.status_vocabulary import status_detail
 
 
 def build_portfolio_promotion_success_message(version_id: str, run_id: str) -> str:
@@ -94,7 +95,7 @@ def format_backtest_summary(report: BacktestReportDTO) -> str:
         ValidationStatus.WARNING: "[WARN]",
         ValidationStatus.FAIL: "[FAIL]",
     }.get(report.validation_status, "[UNKNOWN]")
-    lines.append(f"驗證狀態: {status_text} {report.validation_status.value}")
+    lines.append(f"驗證狀態: {status_text} {status_detail(report.validation_status, dimension='validation')}")
     if report.validation_messages:
         lines.append("")
         lines.extend(report.validation_messages)

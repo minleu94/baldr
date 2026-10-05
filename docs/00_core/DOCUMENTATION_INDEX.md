@@ -47,3 +47,5 @@
 Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文件；本索引不重述其結果或狀態。
 
 整理前的日期化摘要與詳細分類保存在 [歷史索引](../09_archive/DOCUMENTATION_INDEX_HISTORY_2026_09_27.md)，只作文件演進追溯。
+
+- 2026-10-05 UX02：[共用狀態詞彙有限切片與驗證](../06_qa/UX02_SHARED_STATUS_VOCABULARY_20261005.md)。

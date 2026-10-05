@@ -30,6 +30,7 @@ from app_module.market_data_visibility_dtos import MarketDataVisibilitySummary
 from app_module.research_session import ResearchStockContextDTO
 from data_module.market_session_policy import resolve_project_market_session_boundary
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.theme_widgets import (
     CollapsibleSectionPanel,
@@ -513,13 +514,25 @@ class DecisionDeskView(QWidget):
             return
         super().closeEvent(event)
 
-    def _set_section_quality(self, status_label: QLabel, quality: DecisionDeskQuality) -> None:
+    def _set_section_quality(
+        self,
+        status_label: QLabel,
+        quality: DecisionDeskQuality,
+        as_of_date: date | None = None,
+    ) -> None:
         label = self._quality_label(quality)
+        detail = status_detail(quality, dimension="data")
+        if as_of_date is not None:
+            detail += f"；判讀日：{as_of_date.isoformat()}"
         status_label.setText(label)
+        status_label.setToolTip(detail)
+        status_label.setAccessibleDescription(detail)
         badge = self._status_badges.get(status_label)
         if badge is not None:
             badge.setText(label)
             badge.set_quality(self._quality_token(quality))
+            badge.setToolTip(detail)
+            badge.setAccessibleDescription(detail)
 
     def _refresh_snapshot(self) -> None:
         request_date = self.as_of_date
@@ -543,6 +556,10 @@ class DecisionDeskView(QWidget):
         )
         self.overall_quality_badge.setText(self._quality_label(snapshot.overall_quality))
         self.overall_quality_badge.set_quality(self._quality_token(snapshot.overall_quality))
+        overall_quality_detail = status_detail(snapshot.overall_quality, dimension="data")
+        self.overall_quality_badge.setToolTip(
+            f"{overall_quality_detail}；判讀日：{snapshot.as_of_date.isoformat()}"
+        )
         self.decision_date_card.value_label.setText(snapshot.as_of_date.isoformat())
         self.generated_at_card.value_label.setText(snapshot.generated_at.strftime("%H:%M:%S"))
 
@@ -566,7 +583,11 @@ class DecisionDeskView(QWidget):
                 warning_lines.append(visibility_warning)
         self.warning_list.set_warnings(warning_lines)
 
-        self._set_section_quality(self.market_regime_status, snapshot.market_regime.quality)
+        self._set_section_quality(
+            self.market_regime_status,
+            snapshot.market_regime.quality,
+            getattr(snapshot.market_regime, "as_of_date", snapshot.as_of_date),
+        )
         self.market_regime_value.setText(
             f"市場狀態：{snapshot.market_regime.regime_label or '未定義'}；"
             f"得分：{snapshot.market_regime.regime_score if snapshot.market_regime.regime_score is not None else '未知'}；"
@@ -575,19 +596,32 @@ class DecisionDeskView(QWidget):
             f"判斷日：{snapshot.as_of_date.isoformat()}"
         )
 
-        self._set_section_quality(self.market_breadth_status, snapshot.market_breadth.quality)
+        self._set_section_quality(
+            self.market_breadth_status,
+            snapshot.market_breadth.quality,
+            getattr(snapshot.market_breadth, "as_of_date", snapshot.as_of_date),
+        )
         self.market_breadth_value.setText(
             f"多方：{snapshot.market_breadth.advancing or 0}；空方：{snapshot.market_breadth.declining or 0}；"
             f"持平：{snapshot.market_breadth.unchanged or 0}；"
             f"廣度比率BP：{snapshot.market_breadth.breadth_ratio_bp if snapshot.market_breadth.breadth_ratio_bp is not None else 'N/A'}"
         )
 
-        self._set_section_quality(self.sector_rotation_status, snapshot.sector_rotation.quality)
+        self._set_section_quality(
+            self.sector_rotation_status,
+            snapshot.sector_rotation.quality,
+            getattr(snapshot.sector_rotation, "as_of_date", snapshot.as_of_date),
+        )
         self.sector_rotation_value.setText(self._format_sector_rotation(snapshot.sector_rotation))
 
         self._set_section_quality(
             self.relative_strength_liquidity_status,
             snapshot.relative_strength_liquidity.quality,
+            getattr(
+                snapshot.relative_strength_liquidity,
+                "as_of_date",
+                snapshot.as_of_date,
+            ),
         )
         self.relative_strength_liquidity_value.setText("")
         self.relative_strength_liquidity_value.hide()
@@ -599,12 +633,20 @@ class DecisionDeskView(QWidget):
             ]
         )
 
-        self._set_section_quality(self.watchlist_triggers_status, snapshot.watchlist_triggers.quality)
+        self._set_section_quality(
+            self.watchlist_triggers_status,
+            snapshot.watchlist_triggers.quality,
+            getattr(snapshot.watchlist_triggers, "as_of_date", snapshot.as_of_date),
+        )
         self.watchlist_triggers_value.setText(
             format_watchlist_trigger_review(snapshot.watchlist_triggers)
         )
 
-        self._set_section_quality(self.portfolio_alerts_status, snapshot.portfolio_alerts.quality)
+        self._set_section_quality(
+            self.portfolio_alerts_status,
+            snapshot.portfolio_alerts.quality,
+            getattr(snapshot.portfolio_alerts, "as_of_date", snapshot.as_of_date),
+        )
         portfolio_attribution_text = self._format_portfolio_attributions(getattr(snapshot.portfolio_alerts, "attributions", ()))
         self.portfolio_alerts_value.setText(
             f"警示數：{snapshot.portfolio_alerts.alert_count if snapshot.portfolio_alerts.alert_count is not None else '未知'}；"
@@ -613,7 +655,11 @@ class DecisionDeskView(QWidget):
             f"來源歸因：{portfolio_attribution_text}"
         )
 
-        self._set_section_quality(self.risk_prompts_status, snapshot.risk_prompts.quality)
+        self._set_section_quality(
+            self.risk_prompts_status,
+            snapshot.risk_prompts.quality,
+            getattr(snapshot.risk_prompts, "as_of_date", snapshot.as_of_date),
+        )
         self.risk_prompts_value.setText(self._format_risk_prompts(snapshot.risk_prompts.prompts))
 
         for section_text in self._collect_warnings(snapshot):
@@ -635,12 +681,9 @@ class DecisionDeskView(QWidget):
 
     @staticmethod
     def _visibility_quality_label(value: str) -> str:
-        return {
-            "OBSERVED": "已觀測",
-            "ESTIMATED": "估算",
-            "DEGRADED": "降級",
-            "MISSING": "缺漏",
-        }.get(str(value).upper(), str(value))
+        raw = str(value or "unknown").strip()
+        shared_label = status_label(raw, dimension="data")
+        return {"estimated": "估算"}.get(raw.lower(), shared_label)
 
     @staticmethod
     def _format_ratio_bp(value: int | None) -> str:
@@ -689,19 +732,23 @@ class DecisionDeskView(QWidget):
         self, summary: MarketDataVisibilitySummary | None
     ) -> None:
         if summary is None:
-            self.visibility_quality_badge.setText("缺漏")
+            self.visibility_quality_badge.setText(self._visibility_quality_label("MISSING"))
             self.visibility_quality_badge.set_quality("missing")
+            self.visibility_quality_badge.setToolTip(status_detail("MISSING", dimension="data"))
             self.market_data_impact_label.setText(
                 "資料影響：資料缺件，市場輔助資料尚未確認；不能把空白當成安全訊號。"
             )
             self.revenue_visibility_card.value_label.setText("尚未匯入（0 筆）")
             self.institutional_visibility_card.value_label.setText("尚未匯入（0 筆）")
-            self.visibility_sources_label.setText("來源狀態：缺漏")
+            self.visibility_sources_label.setText(
+                f"來源狀態：{self._visibility_quality_label('MISSING')}"
+            )
             return
 
         quality = str(summary.overall_quality).upper()
         self.visibility_quality_badge.setText(self._visibility_quality_label(quality))
         self.visibility_quality_badge.set_quality(quality.lower())
+        self.visibility_quality_badge.setToolTip(status_detail(quality, dimension="data"))
         impact_text = {
             "OBSERVED": "資料影響：市場輔助資料可檢視；仍以各項警示與日期為準。",
             "ESTIMATED": "資料影響：部分資料為估算；完整判讀請查看來源狀態。",
@@ -745,6 +792,10 @@ class DecisionDeskView(QWidget):
             for status in summary.source_statuses
         ]
         self.visibility_sources_label.setText("\n".join(source_lines) or "來源狀態：缺漏")
+        if source_lines:
+            self.visibility_quality_badge.setToolTip(
+                status_detail(quality, dimension="data") + "\n" + "\n".join(source_lines)
+            )
 
     def _render_answer_first_dashboard(self, snapshot: DecisionDeskSnapshot) -> None:
         action = getattr(snapshot, "action_summary", None)
@@ -1018,13 +1069,9 @@ class DecisionDeskView(QWidget):
 
     @staticmethod
     def _quality_label(quality: DecisionDeskQuality) -> str:
-        if quality == DecisionDeskQuality.OBSERVED:
-            return "觀察到"
-        if quality == DecisionDeskQuality.ESTIMATED:
-            return "估算"
-        if quality == DecisionDeskQuality.MISSING:
-            return "缺漏"
-        return "降級"
+        raw = getattr(quality, "value", quality)
+        shared_label = status_label(quality, dimension="data")
+        return {"estimated": "估算"}.get(str(raw).strip().lower(), shared_label)
 
     @staticmethod
     def _quality_token(quality: DecisionDeskQuality) -> str:

@@ -229,6 +229,20 @@ def _official_delisted_screening_execution(result_id: str) -> RecommendationExec
     )
 
 
+def test_ux02_completed_research_keeps_ml_limit_separate(qt_app, monkeypatch):
+    execution = _execution("ux02-current-research")
+    view = _view_with_execution(qt_app, execution)
+    view._execution_generation = 1
+    monkeypatch.setattr(view_module.QMessageBox, "information", lambda *_args: None)
+    view._on_recommendation_finished(execution, generation=1)
+    assert "研究完成" in view.result_status_label.text()
+    assert "ML來源：" in view.result_status_label.text()
+    assert "找到" in view.result_status_label.text()
+    assert "原始狀態" in view.result_status_label.toolTip()
+    assert view.current_execution is execution
+    view.close()
+
+
 def test_screening_rows_require_completed_typed_same_run_evidence():
     execution = _screening_only_execution("rec-screening-validation")
     assert view_module._screening_only_result_rows(execution)

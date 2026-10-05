@@ -59,6 +59,7 @@ from app_module.portfolio_condition_monitor import (
 from app_module.paper_portfolio_time import taiwan_market_today
 from portfolio_module import PortfolioValidationError
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.v5_research_summary import V5ResearchSummary
@@ -71,7 +72,7 @@ from app_module.decision_presentation import (
     decision_action_label,
     format_decision_presentation,
     format_position_health_presentation,
-    format_position_health_read_model,
+    position_health_blocker_label,
     position_health_action_label,
 )
 from app_module.position_health_transition_read_service import (
@@ -667,6 +668,7 @@ def _paper_status_text(value: Any) -> str:
     """Render Paper readiness tokens with a Chinese explanation and raw token."""
 
     raw_status = str(value or "unknown").strip().lower() or "unknown"
+    shared_label = status_label(value, dimension="event")
     labels = {
         "ready": "可用",
         "partial": "部分完成",
@@ -681,7 +683,19 @@ def _paper_status_text(value: Any) -> str:
         "missing": "缺漏",
         "unknown": "未知",
     }
-    return f"{labels.get(raw_status, raw_status)}（{raw_status}）"
+    label = shared_label if shared_label.lower() != raw_status else labels.get(raw_status, shared_label)
+    return f"{label}（{raw_status}）"
+
+
+def _system_status_label(raw: Any, *, dimension: str, fallback: dict[str, str]) -> str:
+    """使用共用詞彙，僅對共用表未涵蓋的既有碼沿用專用文字。"""
+
+    raw_value = getattr(raw, "value", raw)
+    code = str(raw_value if raw_value is not None else "unknown").strip() or "unknown"
+    label = status_label(raw, dimension=dimension)
+    if label.lower() == code.lower():
+        return fallback.get(code.lower(), label)
+    return label
 
 
 class GradientCard(QFrame):
@@ -2100,32 +2114,40 @@ class PortfolioView(QWidget):
     ) -> str:
         """Portfolio 專屬健康摘要，保留 blocked receipt 的實際 rows 計數。"""
 
+        status_text = _system_status_label(
+            model.status,
+            dimension="data",
+            fallback={"passed": "已驗證"},
+        )
+        source_text = _system_status_label(
+            model.source_status,
+            dimension="data",
+            fallback={"verified": "已驗證", "unverified": "未驗證"},
+        )
+        quality_text = _system_status_label(
+            model.quality,
+            dimension="data",
+            fallback={"verified": "已驗證", "unverified": "未驗證"},
+        )
         if not model.positions:
-            return format_position_health_read_model(model)
-
-        status_text = {
-            "passed": "已驗證",
-            "degraded": "降級",
-            "blocked": "封鎖",
-            "stale": "過期",
-        }.get(str(model.status), "未知")
-        source_text = {
-            "verified": "已驗證",
-            "observed": "已觀測",
-            "degraded": "降級",
-            "unverified": "未驗證",
-            "missing": "缺資料",
-            "blocked": "封鎖",
-            "stale": "過期",
-        }.get(str(model.source_status), str(model.source_status or "未知"))
-        quality_text = {
-            "verified": "已驗證",
-            "observed": "已觀測",
-            "degraded": "降級",
-            "unverified": "未驗證",
-            "unknown": "未知",
-            "blocked": "封鎖",
-        }.get(str(model.quality), str(model.quality or "未知"))
+            blockers = "；".join(
+                position_health_blocker_label(item) for item in model.blockers[:3]
+            )
+            receipt_missing = any(
+                str(item).startswith("position_health_receipt_unavailable")
+                for item in model.blockers
+            )
+            next_step = (
+                "下一步：尚無已完成的模擬持倉評估；每日評估完成後，按「重新整理」查看。"
+                if receipt_missing
+                else "下一步：目前沒有可用的模擬持倉評估；修復來源後按「重新整理」查看，期間維持觀察／未知。"
+            )
+            return (
+                "尚無持倉健康評估資料\n"
+                f"狀態：{status_text}（來源：{source_text}／品質：{quality_text}）\n"
+                f"{next_step}\n"
+                f"缺口／阻擋：{blockers or '尚無可用 evaluator receipt'}"
+            )
         blocked_count = self._position_health_blocked_row_count(model)
         records_text = f"有 {len(model.positions)} 筆評估紀錄"
         if blocked_count:
@@ -2278,9 +2300,17 @@ class PortfolioView(QWidget):
             self._format_portfolio_position_health_summary(model)
         )
         raw_timestamp = str(model.available_at or model.observed_at or "").strip()
-        self.position_health_summary_label.setToolTip(
-            f"來源原始 timestamp：{raw_timestamp}" if raw_timestamp else ""
-        )
+        status_details = [
+            f"系統狀態：{status_detail(model.status, dimension='data')}",
+            f"來源狀態：{status_detail(model.source_status, dimension='data')}",
+            f"資料品質：{status_detail(model.quality, dimension='data')}",
+            f"決策日：{model.decision_date or '未知'}",
+        ]
+        if raw_timestamp:
+            status_details.append(f"來源原始 timestamp：{raw_timestamp}")
+        summary_tooltip = "\n".join(status_details)
+        self.position_health_summary_label.setToolTip(summary_tooltip)
+        self.position_health_summary_label.setAccessibleDescription(summary_tooltip)
         detail_lines = [
             "Paper health 投影為唯讀研究建議；選取列查看評估原因／為何不直接執行。"
             if model.positions

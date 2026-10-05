@@ -29,6 +29,7 @@ from app_module.recommendation_learning_evidence_projection_service import (
 )
 from app_module.p0_source_control_center import P0SourceControlCenterDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.widgets.layout_helpers import ensure_visible_rows, set_scroll_content_constraints
 from ui_qt.widgets.theme_widgets import SectionPanel
 from ui_qt.views.update.update_formatters import format_p0_license_capture_status
@@ -75,9 +76,9 @@ _STATUS_LABELS = {
     "provisional": "暫定",
     "fixture": "測試資料",
     "replay": "回放",
-    "degraded": "降級",
-    "research_only_degraded": "研究限定／降級",
-    "missing": "缺漏",
+    "degraded": status_label("degraded", dimension="data"),
+    "research_only_degraded": status_label("research_only_degraded", dimension="data"),
+    "missing": status_label("missing", dimension="data"),
     "unknown": "未知",
     "contract_only": "僅契約",
     "blocked_provenance": "來源追溯受阻",
@@ -89,7 +90,7 @@ _STATUS_LABELS = {
     "not_supplied": "未提供",
     "not_observed": "未觀測",
     "verified": "已驗證",
-    "pending": "等待自然成熟",
+    "pending": status_label("pending", dimension="research"),
     "not_applicable": "不適用",
     "future_blocked": "未來日期已阻擋",
     "stale": "過期",
@@ -101,7 +102,7 @@ _STATUS_LABELS = {
     "formal_inputs_missing": "缺正式輸入",
     "not_ready": "尚未就緒",
     "unavailable": "不可用",
-    "failed": "失敗",
+    "failed": status_label("failed", dimension="load"),
     "read_only": "唯讀",
     "source_acceptance_pending": "等待來源接受",
 }
@@ -680,7 +681,9 @@ class ResearchConsoleView(QWidget):
                     "pending",
                 )
             )
-        _set_rows(self.learning_table, rows, status_column=6)
+        _set_rows(
+            self.learning_table, rows, status_column=6, status_dimension="research"
+        )
         self.learning_detail_label.setText(
             f"candidate identity：{candidate.candidate_id or '未知'}\n"
             f"candidate 狀態／原始原因：{candidate.status}／{candidate.reason or '未知'}\n"
@@ -739,7 +742,7 @@ class ResearchConsoleView(QWidget):
         )
         self.conclusion_banner.setText(_build_conclusion(console))
         self.pipeline_state_label.setText(
-            f"整體狀態：{_status_display(console.overall_status)}｜"
+            f"整體狀態：{_status_display(console.overall_status, dimension='research')}｜"
             f"待處理：{_join_blockers(console.blockers)}"
         )
         self.diagnostics_panel.setText(_build_diagnostics(console))
@@ -757,11 +760,13 @@ class ResearchConsoleView(QWidget):
                 for row in console.pipeline
             ),
             status_column=2,
+            status_dimension="load",
         )
         _set_rows(
             self.gate_table,
             ((row.gate_id, row.status, row.detail, row.artifact_citation or "Not Available") for row in console.gates),
             status_column=1,
+            status_dimension="qualification",
         )
         _set_rows(
             self.source_table,
@@ -777,6 +782,7 @@ class ResearchConsoleView(QWidget):
                 for row in console.sources
             ),
             status_column=2,
+            status_dimension="data",
         )
         control_center = console.source_control_center
         if control_center is None:
@@ -792,7 +798,8 @@ class ResearchConsoleView(QWidget):
                 "唯讀邊界：writes=false、formal_oos=false、scheduler=false、auto_accept=false\n"
                 "Global blockers：{blockers}".format(
                         status=_status_display(
-                        _control_center_status(control_center)
+                        _control_center_status(control_center),
+                        dimension="qualification",
                     ),
                     count=control_center.p0_source_count,
                     shadow=control_center.research_shadow_count,
@@ -820,11 +827,13 @@ class ResearchConsoleView(QWidget):
                     for row in control_center.rows
                 ),
                 status_column=2,
+                status_dimension="qualification",
             )
         _set_rows(
             self.artifact_table,
             ((row.artifact_type, row.artifact_id, row.status, row.citation) for row in console.artifacts),
             status_column=2,
+            status_dimension="research",
         )
         if self.learning_projection_service is not None and not self._async_refresh:
             self._refresh_learning_projection()
@@ -864,15 +873,27 @@ def _table(headers: tuple[str, ...]) -> QTableWidget:
     return table
 
 
-def _set_rows(table: QTableWidget, rows, *, status_column: int) -> None:
+def _set_rows(
+    table: QTableWidget,
+    rows,
+    *,
+    status_column: int,
+    status_dimension: str = "data",
+) -> None:
     materialized = tuple(rows)
     table.setRowCount(len(materialized))
     for row_index, values in enumerate(materialized):
         for column_index, value in enumerate(values):
             item = QTableWidgetItem(
-                _status_display(value) if column_index == status_column else _display(value)
+                _status_display(value, dimension=status_dimension)
+                if column_index == status_column
+                else _display(value)
             )
-            item.setToolTip(item.text())
+            item.setToolTip(
+                _status_detail_display(value, dimension=status_dimension)
+                if column_index == status_column
+                else item.text()
+            )
             if column_index == status_column:
                 item.setForeground(QColor(_STATUS_COLORS.get(str(value).lower(), "#94a3b8")))
             table.setItem(row_index, column_index, item)
@@ -884,11 +905,32 @@ def _display(value: object) -> str:
     return text.replace("missing", "Missing").replace("unknown", "Unknown")
 
 
-def _status_display(value: object) -> str:
-    raw = str(value or "").strip().lower()
-    if not raw:
-        return "缺漏／未知"
-    return _STATUS_LABELS.get(raw, _display(value))
+def _status_display(value: object, *, dimension: str = "data") -> str:
+    raw_value = getattr(value, "value", value)
+    raw = str(raw_value if raw_value is not None else "unknown").strip() or "unknown"
+    key = raw.lower()
+    shared_dimension = dimension
+    if key in {
+        "waiting_for_time",
+        "not_due",
+        "market_closed",
+        "skipped_market_closed",
+        "skipped_non_trading_day",
+    }:
+        shared_dimension = "event"
+    shared_label = status_label(value, dimension=shared_dimension)
+    if shared_label.lower() != raw.lower():
+        return shared_label
+    return _STATUS_LABELS.get(key, raw)
+
+
+def _status_detail_display(value: object, *, dimension: str = "data") -> str:
+    display = _status_display(value, dimension=dimension)
+    if display == status_label(value, dimension=dimension):
+        return status_detail(value, dimension=dimension)
+    raw_value = getattr(value, "value", value)
+    raw = str(raw_value if raw_value is not None else "unknown").strip() or "unknown"
+    return f"{display}（原始狀態：{raw}）"
 
 
 def _learning_lane_label(cost_lane: object) -> str:

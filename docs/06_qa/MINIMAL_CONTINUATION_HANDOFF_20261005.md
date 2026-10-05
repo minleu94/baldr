@@ -157,3 +157,10 @@ Market61、root loader9（8項重跑）、整合47、Workbench85、validator25�
 詳見[取消與gate收據](PRODUCT_STAGE1_SQL_CANCELLATION_20261005.md)與output/qa/product_stage01_20261005/stage1_sql_verified.json。main／view／原初始化優化／profiler的未變blob已核對，舊數字保持其版本身份。沒有重跑五baseline／訓練／producer／大DBcopy／永久清理／push；未知paper檔與C:/ta_iso_1005映射未動。停止交父層。
 
 下一原plan包是stage1／UX02純呈現共用狀態字典，先接Research Console／Backtest，沿用上下文列與分層元件，保留未知碼、狀態維度及結果身份；本包只盤點，未實作。UX16來源能力、UX19容量／writer依賴與自然ML資格分開，不拿自然成熟阻擋UX17／UX02工程。不宣告整個stage1／UX17或全部gate完成，也不盲跳UX18／新ML。
+
+
+## 2026-10-05 UX02 共用狀態有限切片
+
+`ui_qt/status_vocabulary.py` 提供純呈現 `status_label`／`status_detail`，明確區分 data／load／research／qualification／event／validation；未知碼保留，completed 不跨維度授予資格。盤勢、持倉系統健康、選股、個股及 Console 的既有入口共用詞彙；Workbench 將時間等待／休市與具名故障分開，回測保留 PASS／WARN／FAIL 並加白話驗證狀態。原始診斷、來源及日期／身份沿原 DTO 保留，沒有修改策略／producer／模型或拒絕 guards。
+
+本包是 UX02 有限落點，非全頁狀態重構或整個階段1完成。Backtest 初始化18.62%仍未達20%凍結門檻；UX16來源／PIT及UX19 writer／容量依賴另列，不以自然成熟阻擋本包工程。詳見 [UX02驗證收據](../06_qa/UX02_SHARED_STATUS_VOCABULARY_20261005.md)。未重跑效能／learner／Native1477、未producer／清理／push，未知根檔及C:/ta_iso_1005還原映射未動。完成本地commit／blob核驗後停止交父層。

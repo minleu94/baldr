@@ -1,5 +1,12 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 UX02 共用狀態有限切片
+
+`ui_qt/status_vocabulary.py` 提供純呈現 `status_label`／`status_detail`，明確區分 data／load／research／qualification／event／validation；未知碼保留，completed 不跨維度授予資格。盤勢、持倉系統健康、選股、個股及 Console 的既有入口共用詞彙；Workbench 將時間等待／休市與具名故障分開，回測保留 PASS／WARN／FAIL 並加白話驗證狀態。原始診斷、來源及日期／身份沿原 DTO 保留，沒有修改策略／producer／模型或拒絕 guards。
+
+本包是 UX02 有限落點，非全頁狀態重構或整個階段1完成。Backtest 初始化18.62%仍未達20%凍結門檻；UX16來源／PIT及UX19 writer／容量依賴另列，不以自然成熟阻擋本包工程。詳見 [UX02驗證收據](../06_qa/UX02_SHARED_STATUS_VOCABULARY_20261005.md)。未重跑效能／learner／Native1477、未producer／清理／push，未知根檔及C:/ta_iso_1005還原映射未動。完成本地commit／blob核驗後停止交父層。
+
+
 ## 2026-10-05 階段1早期SQL取消小包
 
 基於2acdbe2c，四檔backend補Builder→Breadth／Relative service→provider→shared loader取消callback，獨立SQLite分支亦用連線專屬progress handler；SQL確實中止才轉取消例外，真實DB故障不遮蔽，舊provider／Series.map dtype／Decimal／cutoff／排名不改。47 focused、50 UI/Shutdown整合、mypy766及7檔compile通過。Native早期SELECT中關閉：worker仍running時視窗保留，32.77ms至native-finished、131.31ms至hidden、沒有完成snapshot／殘留worker；取消→同來源按鈕重試21.141s正常產生真實snapshot。3個Native場景6個launcher／Python PID全退出，input guard／來源rowset SHA不變。

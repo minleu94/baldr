@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from typing import Protocol, Sequence
+from ui_qt.status_vocabulary import status_detail
 
 
 class ReviewItemLike(Protocol):
@@ -37,15 +38,15 @@ def review_queue_state_text(
 def _is_degraded_status(status: object) -> bool:
     return str(status) in {
         "critical",
+        "failed",
+        "error",
         "warning",
         "degraded",
         "missing",
         "blocked",
         "action_required",
-        "waiting_for_time",
         "source_missing",
         "invalid_evidence",
-        "machine_candidate",
         "machine_degraded",
         "stale",
         "unknown",
@@ -64,8 +65,20 @@ def evidence_feed_state_text(dashboard) -> str:
             "目前沒有背景證據列；這只代表 WorkbenchDashboardDTO payload 為空。"
             "Workbench 不讀 DB、不執行 replay、不補資料，也不代表 gate 已通過。"
         )
+    state_summary = "；".join(dict.fromkeys(
+        status_detail(item.status, dimension="event")
+        for item in dashboard.background_evidence_feed
+    ))
+    neutral_events = {"waiting_for_time", "not_due", "market_closed", "skipped_market_closed", "skipped_non_trading_day", "machine_candidate"}
     degraded = any(
-        _is_degraded_status(item.status) or _has_degraded_reason(item.degraded_reason)
+        _is_degraded_status(item.status) or (
+            _has_degraded_reason(item.degraded_reason) and (
+                str(item.status) not in neutral_events or any(
+                    token in str(item.degraded_reason).lower()
+                    for token in ("missing", "error", "failed", "mismatch", "invalid", "blocked")
+                )
+            )
+        )
         for item in dashboard.background_evidence_feed
     )
     human_count = sum(
@@ -76,16 +89,16 @@ def evidence_feed_state_text(dashboard) -> str:
     )
     if degraded and human_count:
         return (
-            f"背景證據流降級：{count} 筆來源中包含 missing / degraded / warning。"
+            f"背景證據流降級：{count} 筆來源。各項狀態：{state_summary}。"
             "請依來源追蹤與診斷訊號人工檢查；Workbench 不補值、不重跑 pipeline、不讀 replay DB。"
         )
     if degraded:
         return (
-            f"背景證據流含 {count} 筆機器狀態：來源缺件、自然等待或降級。"
+            f"背景證據流含 {count} 筆機器狀態：{state_summary}。"
             "請依來源追蹤與診斷訊號等待或修復來源；不需人工簽核，Workbench 不補值、不重跑 pipeline、不讀 replay DB。"
         )
     return (
-        f"背景證據流已載入 {count} 筆唯讀來源。"
+        f"背景證據流已載入 {count} 筆唯讀來源。各項狀態：{state_summary}。"
         "這是既有 DTO / service payload 的彙整，不是交易建議。"
     )
 

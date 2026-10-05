@@ -83,6 +83,7 @@ from ui_qt.views.recommendation.presenter import (
     ranking_value_label,
     recommendation_item_to_view_row,
 )
+from ui_qt.status_vocabulary import status_detail, status_label
 
 
 _SCREENING_STAGE_DISPLAY_LABELS = {
@@ -5239,8 +5240,12 @@ class RecommendationView(QWidget):
         self.progress_label.setText(f"找到 {len(recommendations)} 支推薦股票")
         self.progress_label.setVisible(True)
         self.result_status_label.setText(
+            f"{status_label(execution.status, dimension='research')}；ML來源：{status_label(ml_status)}。"
             f"找到 {len(recommendations)} 檔候選。先看表格與選取列的理由／風險；"
             "資料不足時請依提示處理。完成判讀後可保存結果或加入觀察清單。"
+        )
+        self.result_status_label.setToolTip(
+            f"{status_detail(execution.status, dimension='research')}；ML來源：{status_detail(ml_status)}"
         )
 
         # 顯示按鈕
@@ -6290,6 +6295,7 @@ class RecommendationView(QWidget):
             )
         elif rows:
             self.result_status_label.setText(
+                f"{status_label('completed', dimension='load')}（歷史保存結果）。"
                 f"已讀取並驗證單筆 canonical 保存結果 {requested_result_id}（{len(rows)} 檔）。"
                 "這是保存當時的建議；資料與模式以當時紀錄為準。"
             )

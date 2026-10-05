@@ -815,7 +815,7 @@ def test_paper_portfolio_readiness_tab_discloses_snapshot_and_missing_benchmark(
     assert "raw 累積 1 筆" in view.paper_readiness_summary_label.text()
     assert "TWD 1,000.00" in view.paper_readiness_summary_label.text()
     assert "Equal Weight：尚無" in view.paper_readiness_summary_label.text()
-    assert "成本帳：缺漏（missing）（0 筆）" in view.paper_readiness_summary_label.text()
+    assert "成本帳：資料缺件（missing）（0 筆）" in view.paper_readiness_summary_label.text()
     assert "equal_weight_benchmark_db_missing" in view.paper_readiness_detail_label.text()
     assert view.paper_snapshot_table.model().rowCount() == 1
 

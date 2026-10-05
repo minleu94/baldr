@@ -6,6 +6,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Mapping, Optional, Sequence
 from typing import Any
 
+from ui_qt.status_vocabulary import status_label
+
 
 def format_regime_names(regimes: Sequence[Optional[str]]) -> str:
     regime_names = {
@@ -297,6 +299,17 @@ def recommendation_item_to_view_row(
         "legacy_saved_fields": "verified" if projection is not None else "unavailable",
     }.get(ml_status, "unknown")
 
+    calibrated_probability_status = (
+        projected_value("calibrated_probability_status") or field_status
+    )
+    after_cost_status = (
+        projected_value("after_cost_profit_probability_status") or field_status
+    )
+    calibration_status = (
+        projected_value("calibration_status", "status") or field_status
+    )
+    provenance_status = projected_value("provenance_status") or "unavailable"
+
     row: dict[str, Any] = {
         "證券代號": item.stock_code,
         "證券名稱": item.stock_name or item.stock_code,
@@ -320,14 +333,16 @@ def recommendation_item_to_view_row(
         "threshold_mode": item.threshold_mode,
         "ranking_score_bp": projected_value("ranking_score_bp"),
         "calibrated_probability_bp": projected_value("calibrated_probability_bp"),
-        "calibrated_probability_status": (
-            projected_value("calibrated_probability_status") or field_status
+        "calibrated_probability_status": calibrated_probability_status,
+        "校準機率資料狀態": status_label(
+            calibrated_probability_status, dimension="data"
         ),
         "after_cost_profit_probability_bp": projected_value(
             "after_cost_profit_probability_bp"
         ),
-        "after_cost_profit_probability_status": (
-            projected_value("after_cost_profit_probability_status") or field_status
+        "after_cost_profit_probability_status": after_cost_status,
+        "成本後機率資料狀態": status_label(
+            after_cost_status, dimension="data"
         ),
         "evidence_confidence": projected_value("evidence_confidence") or "",
         "sample_size": projected_value("sample_size"),
@@ -341,7 +356,10 @@ def recommendation_item_to_view_row(
         "calibration_horizon": projected_value(
             "calibration_horizon", "horizon_trading_days", "horizon"
         ) or "",
-        "calibration_status": projected_value("calibration_status", "status") or field_status,
+        "calibration_status": calibration_status,
+        "校準資格狀態": status_label(
+            calibration_status, dimension="qualification"
+        ),
         "calibration_source": projected_value("calibration_source", "source") or "",
         "calibration_warnings": list(
             projected_value("calibration_warnings", "warnings") or ()
@@ -375,7 +393,7 @@ def recommendation_item_to_view_row(
             "provenance_compatibility": dict(
                 projected_value("provenance_compatibility") or {}
             ),
-            "provenance_status": projected_value("provenance_status") or "unavailable",
+            "provenance_status": provenance_status,
         },
     }
     if item.threshold_mode == "quantile":

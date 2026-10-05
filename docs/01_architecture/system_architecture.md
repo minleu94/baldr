@@ -1165,3 +1165,8 @@ UI composition 與非 UI factory 共用 MarketSessionCadence，四個行情／�
 EvidencePipelineRunner 的 Paper adapter 保留普通 portfolio_alerts/risk_prompts 與其品質，把 Paper alerts/risk/status/ready/blockers/warnings 另放 source_lineage／stored metadata／source_coverage 的 paper_research lane。研究 lineage 經 DTO 邊界正規化與快照往返；不以研究 seed 覆蓋使用者持倉。Health evaluator 將機器／未分類治理缺件與明確 user_portfolio 待辦分列，proposal 與交易權限 guard 不變。Risk 正常繼承 estimated；ready 僅接受具名 advisory，其餘 missing/degraded source guard 保留。
 
 scheduled wrapper 分列實際 child code、summary errors、source qualification、research qualification、工程故障與使用者待辦；整體 freshness 與正式源資格不改綠。控制 run 的 baseline/conditions/metrics/proposal/Exit writers 留在 QA controlled_runs，正式 DB／Paper ledger／Evidence DB 僅讀。細節與 raw 證據見 [補驗報告](../06_qa/OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md)。
+
+
+### UX02 狀態呈現邊界（2026-10-05）
+
+`ui_qt/status_vocabulary.py` 是無 IO 的純顯示 helper，依具名維度翻譯已知碼並保留未知碼。consumer 使用同一label／detail，DTO與domain狀態、日期／來源／hash契約不變；專用狀態保留原fallback。此層不分類來源真偽、不算金融數值、不授予正式資格。

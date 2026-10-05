@@ -69,6 +69,7 @@ from app_module.research_result_presentation import (
 )
 from app_module.stock_research_report_service import StockResearchReportReadService
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
 from ui_qt.widgets.layout_helpers import (
     ensure_visible_rows,
@@ -1174,9 +1175,11 @@ class StockResearchReportView(QWidget):
 
     def _set_status(self, text: str, quality: str) -> None:
         self.status_label.setText(text)
-        self.status_badge.setText(_quality_label(quality))
+        self.status_badge.setText(_quality_label(quality, dimension="load"))
         self.status_badge.set_quality(_quality_tone(quality))
-        self.status_badge.setAccessibleDescription(f"報告狀態：{text}")
+        self.status_badge.setAccessibleDescription(
+            f"報告狀態：{text}；{_quality_detail(quality, dimension='load')}"
+        )
 
     def _set_navigation_state(self) -> None:
         has_codes = bool(self.stock_codes)
@@ -1287,7 +1290,7 @@ class StockResearchReportView(QWidget):
             rows.append(
                 (
                     source.source_label,
-                    _quality_label(source.status),
+                    _quality_label(source.status, dimension="load"),
                     _quality_label(source.quality),
                     source.data_as_of or "—",
                     source.available_at or "—",
@@ -1325,6 +1328,9 @@ class StockResearchReportView(QWidget):
                         "\n".join(
                             item
                             for item in (
+                                f"來源狀態：{_quality_detail(source.status, dimension='load')}",
+                                f"資料品質：{_quality_detail(source.quality)}",
+                                f"更新狀態：{_quality_detail(source.freshness)}",
                                 f"市場 coverage：{_coverage_status_label(source.coverage_status)}"
                                 if source.coverage_status
                                 else "",
@@ -1664,7 +1670,7 @@ class StockResearchReportView(QWidget):
             "conflict": "來源衝突",
             "unknown": "未核實",
         }
-        status_text = status_labels.get(status.status, f"未知狀態（{status.status}）")
+        status_text = _market_status_label(status.status, status_labels)
         listing_text = listing_labels.get(
             status.listing_status, f"未知狀態（{status.listing_status}）"
         )
@@ -2449,24 +2455,52 @@ class StockResearchReportDialog(QDialog):
         )
 
 
-def _quality_label(value: str) -> str:
+def _quality_label(value: str, *, dimension: str = "data") -> str:
     labels = {
         "available": "可用",
         "observed": "已觀測",
         "partial": "部分可用",
         "stale": "過期",
         "fresh": "新鮮",
-        "missing": "缺資料",
         "not_applicable": "不適用（該市場無此股估值列）",
         "error": "讀取失敗",
-        "degraded": "品質降級",
         "estimated": "估計",
-        "unavailable": "不可用",
-        "unknown": "未知",
         "info": "讀取中",
         "warning": "注意",
     }
-    return labels.get(str(value).lower(), str(value) or "未知")
+    raw = getattr(value, "value", value)
+    token = str(raw if raw is not None else "unknown").strip() or "unknown"
+    shared_label = status_label(value, dimension=dimension)
+    if shared_label != token:
+        return shared_label
+    local_label = labels.get(token.lower())
+    return local_label if local_label is not None else shared_label
+
+
+def _quality_detail(value: object, *, dimension: str = "data") -> str:
+    label = _quality_label(value, dimension=dimension)
+    shared_label = status_label(value, dimension=dimension)
+    if label == shared_label:
+        return status_detail(value, dimension=dimension)
+    raw = getattr(value, "value", value)
+    raw_text = str(raw if raw is not None else "unknown").strip() or "unknown"
+    return f"{label}（原始狀態：{raw_text}）"
+
+
+def _market_status_label(value: object, local_labels: dict[str, str]) -> str:
+    raw = getattr(value, "value", value)
+    token = str(raw if raw is not None else "unknown").strip() or "unknown"
+    local_label = local_labels.get(token.lower())
+    if local_label is not None:
+        return local_label
+    dimension = (
+        "event"
+        if token.lower()
+        in {"waiting_for_time", "not_due", "market_closed", "skipped_market_closed", "skipped_non_trading_day"}
+        else "data"
+    )
+    shared_label = status_label(value, dimension=dimension)
+    return shared_label if shared_label != token else f"未知狀態（{token}）"
 
 
 def _quality_tone(value: str) -> str:
@@ -2475,7 +2509,7 @@ def _quality_tone(value: str) -> str:
         return "observed"
     if token in {"partial", "stale", "degraded", "estimated", "warning"}:
         return "warning"
-    if token in {"missing", "error", "unavailable"}:
+    if token in {"missing", "error", "failed", "unavailable"}:
         return "missing"
     return "info"
 
@@ -2572,7 +2606,23 @@ def _coverage_status_label(status: str) -> str:
         "freshness_unverified": "市場新鮮度未核實",
         "blocked_ambiguous_market": "跨市場代碼歧義",
     }
-    return labels.get(status, f"市場狀態未核實（{status}）")
+    local_label = labels.get(status)
+    if local_label is not None:
+        return local_label
+    dimension = (
+        "event"
+        if status
+        in {
+            "waiting_for_time",
+            "not_due",
+            "market_closed",
+            "skipped_market_closed",
+            "skipped_non_trading_day",
+        }
+        else "data"
+    )
+    shared_label = status_label(status, dimension=dimension)
+    return shared_label if shared_label != status else f"市場狀態未核實（{status}）"
 
 
 def _ownership_metric_text(metric: StockMetricDTO) -> str:
@@ -2702,7 +2752,11 @@ def _ml_estimate_summary(ml: object) -> str:
     estimate = "；".join(estimates[:3]) if estimates else "未提供合格估計值"
     formal = getattr(ml, "formal_qualified", False)
     research = getattr(ml, "research_only", True)
-    qualification = "來源標記正式資格；本頁仍只讀研究" if formal and not research else "僅研究，未具正式資格"
+    qualification = (
+        "來源標記正式資格；本頁仍只讀研究"
+        if formal and not research
+        else status_label("research_only", dimension="qualification")
+    )
     target = str(getattr(ml, "target_metric", "") or "")
     after_cost_targets = {
         "cost-adjusted benchmark excess bp", "cost_adjusted_benchmark_excess_bp",
@@ -2723,8 +2777,29 @@ def _report_pending_text(report: StockResearchReportDTO) -> str:
         return f"H5 已有觀測結果（結束日 {ml.h5_horizon_end_date or '未提供'}）；仍需核對基準、成本與資格。"
     if ml.h5_status in {"blocked", "failed", "error"}:
         return "H5 結果驗證受阻，先核對來源／成熟條件；不能當作單純等待。"
-    status_label = {"pending": "等待結果", "unknown": "成熟條件未知", "unavailable": "結果未提供", "not_due": "尚未到期"}.get(ml.h5_status, "來源成熟狀態未識別")
-    return f"H5 尚未確認成熟（{status_label}）；結束日 {ml.h5_horizon_end_date or '未提供'}，等待合格結果讀回。"
+    raw_status = str(getattr(ml, "h5_status", None) or "unknown").strip()
+    if raw_status in {
+        "waiting_for_time",
+        "not_due",
+        "market_closed",
+        "skipped_market_closed",
+        "skipped_non_trading_day",
+    }:
+        maturity_label = status_label(raw_status, dimension="event")
+    elif raw_status in {"pending", "unknown", "unavailable"}:
+        maturity_label = {
+            "pending": status_label(raw_status, dimension="research"),
+            "unknown": "成熟條件未知",
+            "unavailable": "結果未提供",
+        }[raw_status]
+    else:
+        shared_label = status_label(raw_status, dimension="research")
+        maturity_label = (
+            shared_label
+            if shared_label != raw_status
+            else f"來源成熟狀態未識別（{raw_status}）"
+        )
+    return f"H5 尚未確認成熟（{maturity_label}）；結束日 {ml.h5_horizon_end_date or '未提供'}，等待合格結果讀回。"
 
 
 def _report_sufficiency_text(report: StockResearchReportDTO) -> str:

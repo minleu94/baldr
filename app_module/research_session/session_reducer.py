@@ -59,6 +59,10 @@ def reduce_session_event(
                 source_label=None,
                 source_workspace=None,
                 ml_scope_mode=None,
+                daily_snapshot_root=None,
+                daily_snapshot_cohort_id=None,
+                daily_snapshot_condition_keys=None,
+                daily_snapshot_combine_mode=None,
                 active_profile=None,
             )
         context = ResearchStockContextDTO(
@@ -127,6 +131,26 @@ def reduce_session_event(
                 if supplied_context is not None
                 else event.ml_scope_mode
             ) or "",
+            daily_snapshot_root=_normalize(
+                supplied_context.daily_snapshot_root
+                if supplied_context is not None
+                else event.daily_snapshot_root
+            ) or "",
+            daily_snapshot_cohort_id=_normalize(
+                supplied_context.daily_snapshot_cohort_id
+                if supplied_context is not None
+                else event.daily_snapshot_cohort_id
+            ) or "",
+            daily_snapshot_condition_keys=_normalize(
+                supplied_context.daily_snapshot_condition_keys
+                if supplied_context is not None
+                else event.daily_snapshot_condition_keys
+            ) or "",
+            daily_snapshot_combine_mode=_normalize(
+                supplied_context.daily_snapshot_combine_mode
+                if supplied_context is not None
+                else event.daily_snapshot_combine_mode
+            ) or "",
         )
         return replace(
             snapshot,
@@ -152,6 +176,10 @@ def reduce_session_event(
             source_label=context.source_label or None,
             source_workspace=context.source_workspace or None,
             ml_scope_mode=context.ml_scope_mode or None,
+            daily_snapshot_root=context.daily_snapshot_root or None,
+            daily_snapshot_cohort_id=context.daily_snapshot_cohort_id or None,
+            daily_snapshot_condition_keys=context.daily_snapshot_condition_keys or None,
+            daily_snapshot_combine_mode=context.daily_snapshot_combine_mode or None,
         )
 
     return snapshot

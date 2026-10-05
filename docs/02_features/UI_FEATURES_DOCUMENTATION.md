@@ -1,5 +1,9 @@
 # UI 功能文件（Qt）
 
+### UX04／05 每日研究條件（2026-10-05）
+
+Recommendation內切換每日研究條件與既有推薦研究來源。明示≤16股；close／MA20／MA60兩條既有條件AND／OR，符合／不符合／未知及原因分列；明確更新與read-only重讀分開。選股→個股沿同manifest與as-of，切股／返回保原清單，來源修訂顯未知與更新引導，不升格正式推薦。操作與排錯見[Manual日常研究flow](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux0405-每日研究條件與同源個股)。
+
 ### UX19 隔離研究快照來源（2026-10-05）
 
 個股研究 service 可明示 snapshot root／cohort，經 verified reader 讀已發布 close／MA 研究快照，來源不符保留 unknown 與具名錯誤。CLI 支援同一路徑的實際 `read_report()` 讀回；桌面 UI 預設仍用 live 有限投影，本包未新增 UI 操作。來源身分／資格與操作見 [Manual UX19](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux19-隔離研究快照生產與讀回)。

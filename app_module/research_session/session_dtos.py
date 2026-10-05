@@ -48,6 +48,11 @@ class ResearchStockContextDTO:
     source_workspace: str = ""
     # 個股現況 ML scope 明確分流；不改寫 result_id 或既有 Advice identity。
     ml_scope_mode: str = ""
+    # 每日市場研究列固定指向已發布快照，不由路由操作觸發計算。
+    daily_snapshot_root: str = ""
+    daily_snapshot_cohort_id: str = ""
+    daily_snapshot_condition_keys: str = ""
+    daily_snapshot_combine_mode: str = ""
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -70,9 +75,28 @@ class ResearchStockContextDTO:
             "source_label",
             "source_workspace",
             "ml_scope_mode",
+            "daily_snapshot_root",
+            "daily_snapshot_cohort_id",
+            "daily_snapshot_condition_keys",
+            "daily_snapshot_combine_mode",
         ):
             value = getattr(self, field_name)
             object.__setattr__(self, field_name, "" if value is None else str(value).strip())
+        condition_keys = tuple(
+            dict.fromkeys(
+                part.strip()
+                for part in self.daily_snapshot_condition_keys.split(",")
+                if part.strip()
+            )
+        )
+        object.__setattr__(
+            self, "daily_snapshot_condition_keys", ",".join(condition_keys)
+        )
+        object.__setattr__(
+            self,
+            "daily_snapshot_combine_mode",
+            self.daily_snapshot_combine_mode.upper(),
+        )
         if self.ml_scope_mode not in {
             "",
             "current_stock_research",
@@ -121,3 +145,7 @@ class ResearchSessionSnapshotDTO:
     source_label: Optional[str] = None
     source_workspace: Optional[str] = None
     ml_scope_mode: Optional[str] = None
+    daily_snapshot_root: Optional[str] = None
+    daily_snapshot_cohort_id: Optional[str] = None
+    daily_snapshot_condition_keys: Optional[str] = None
+    daily_snapshot_combine_mode: Optional[str] = None

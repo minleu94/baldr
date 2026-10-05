@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-05 UX04／05 日常研究名單接線
+
+以695797ec為基線，Recommendation新增明示cohort的每日研究條件來源，沿既有close／MA三態做AND／OR與why／why-not，個股固定同manifest／stock／as-of／source身分讀回。只有明確更新才bounded producer；預設repo output/research_snapshots/daily_market研究區，不改正式資料根或WindowsTask。來源修訂／缺件保unknown與中文更新提示，session／切股／返回保來源metadata。工程與Native限定結果以[QA最新flow章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)為準。
+
+這是UX04／05／06有限切片，完整UX18／19與stage2／3仍未完成；更多feature／method、原排名／全母體融合、正式排程與長期storage治理待工程，Backtest18.62%／20%與自然PIT／ML限制不改。
+
 ## 2026-10-05 UX19 最小研究快照閉環
 
 以 `3a975e3` 為基線，close／MA20／MA60 既有研究特徵新增隔離有界 producer、不可變 manifest／artifact 與 verified reader，個股 `read_report()` 可明示 opt-in 讀回。最多16檔、每股120列，僅失效股重投影；來源缺件停止發布，既有 latest 保留。reader 另可辨識具名 partial，但不把 cohort 完整等同全市場或特徵／PIT資格。實跑與驗證以[限定收據 UX19 新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)為準。

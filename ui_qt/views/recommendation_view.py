@@ -8,9 +8,10 @@ from PySide6.QtWidgets import (
     QPushButton, QTableView, QGroupBox, QProgressBar,
     QTextEdit, QHeaderView, QCheckBox, QSpinBox, QDoubleSpinBox,
     QComboBox, QLineEdit, QMessageBox, QSplitter, QScrollArea,
-    QMenu, QDialog, QInputDialog, QToolButton, QFileDialog, QSizePolicy
+    QMenu, QDialog, QInputDialog, QToolButton, QFileDialog, QSizePolicy,
+    QTabWidget, QStyle,
 )
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 import pandas as pd
 from copy import deepcopy
@@ -84,6 +85,53 @@ from ui_qt.views.recommendation.presenter import (
     recommendation_item_to_view_row,
 )
 from ui_qt.status_vocabulary import status_detail, status_label
+from ui_qt.views.daily_market_research_view import DailyMarketResearchView
+
+
+class _CurrentPageSizeTabWidget(QTabWidget):
+    """只用作用中頁面計算尺寸，避免非作用中舊頁撐大 scroll 內容。"""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.currentChanged.connect(self._refresh_page_size)
+
+    def _refresh_page_size(self, _index: int) -> None:
+        self.updateGeometry()
+        parent = self.parentWidget()
+        if parent is not None:
+            parent.updateGeometry()
+
+    def _active_page_size(self, *, minimum: bool) -> QSize:
+        page = self.currentWidget()
+        if page is None:
+            return super().minimumSizeHint() if minimum else super().sizeHint()
+
+        page_size = page.minimumSizeHint() if minimum else page.sizeHint()
+        tab_size = self.tabBar().sizeHint()
+        margins = self.contentsMargins()
+        frame = self.style().pixelMetric(
+            QStyle.PixelMetric.PM_DefaultFrameWidth,
+            None,
+            self,
+        ) * 2
+        horizontal_margins = margins.left() + margins.right() + frame
+        vertical_margins = margins.top() + margins.bottom() + frame
+        if self.tabPosition() in {
+            QTabWidget.TabPosition.North,
+            QTabWidget.TabPosition.South,
+        }:
+            width = max(page_size.width(), tab_size.width()) + horizontal_margins
+            height = page_size.height() + tab_size.height() + vertical_margins
+        else:
+            width = page_size.width() + tab_size.width() + horizontal_margins
+            height = max(page_size.height(), tab_size.height()) + vertical_margins
+        return QSize(max(0, width), max(0, height))
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        return self._active_page_size(minimum=False)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        return self._active_page_size(minimum=True)
 
 
 _SCREENING_STAGE_DISPLAY_LABELS = {
@@ -673,6 +721,8 @@ class RecommendationView(QWidget):
         profile_service: Optional[RecommendationProfileService] = None,
         journal_service: Optional[JournalService] = None,
         personal_policy_path: str | Path | None = None,
+        *,
+        daily_market_research_service: object | None = None,
     ):
         """初始化推薦視圖
 
@@ -690,6 +740,7 @@ class RecommendationView(QWidget):
         self.watchlist_service = watchlist_service
         self.journal_service = journal_service
         self.config = config
+        self.daily_market_research_service = daily_market_research_service
         self.personal_policy_path = (
             self._resolve_personal_policy_path(personal_policy_path)
         )
@@ -2550,12 +2601,40 @@ class RecommendationView(QWidget):
         result_panel = self._create_result_panel()
         result_panel.setMinimumWidth(0)
         self.result_panel = result_panel
+        self.result_source_tabs = _CurrentPageSizeTabWidget()
+        self.result_source_tabs.setObjectName("recommendationSourceTabs")
+        self.result_source_tabs.setDocumentMode(True)
+        self.result_source_tabs.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Ignored,
+        )
+        self.result_source_tabs.addTab(result_panel, "已保存推薦／策略研究")
+        self.daily_market_research_view = DailyMarketResearchView(
+            self.daily_market_research_service,
+            parent=self,
+        )
+        self.daily_market_research_view.stockResearchRequested.connect(
+            self.stockResearchRequested.emit
+        )
+        self.daily_market_research_tab_index = self.result_source_tabs.addTab(
+            self.daily_market_research_view,
+            "每日研究條件",
+        )
+        self.result_source_tabs.currentChanged.connect(
+            self._on_recommendation_source_tab_changed
+        )
         self.result_scroll = create_scroll_area(
-            result_panel,
+            self.result_source_tabs,
             object_name="recommendationResultScroll",
             horizontal_scroll=False,
         )
         self.result_scroll.setMinimumWidth(0)
+        # 結果區已由外層 scroll area 管理內容高度；不可讓第二個來源 tab 的
+        # sizeHint 壓縮左側設定欄內既有輸入控制。
+        self.result_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Ignored,
+        )
         splitter.addWidget(self.result_scroll)
 
         # 兩側各自處理內容溢位；分割器不得把任一面板壓成不可操作的細縫。
@@ -2569,6 +2648,38 @@ class RecommendationView(QWidget):
         )
 
         main_layout.addWidget(splitter)
+
+    def _on_recommendation_source_tab_changed(self, index: int) -> None:
+        """切入每日研究來源時只讀 latest，不隱式啟動快照產生。"""
+
+        if index == getattr(self, "daily_market_research_tab_index", -1):
+            self.result_source_tabs.updateGeometry()
+            self.result_scroll.updateGeometry()
+            self.result_scroll.verticalScrollBar().setValue(0)
+            view = getattr(self, "daily_market_research_view", None)
+            if view is not None:
+                view.on_first_open()
+
+    def research_snapshot_stock_codes(self) -> tuple[str, ...]:
+        """讓主程式的個股下一檔沿用目前已核驗研究 cohort。"""
+
+        view = getattr(self, "daily_market_research_view", None)
+        if view is None:
+            return ()
+        return view.research_snapshot_stock_codes()
+
+    def restore_research_snapshot_stock(
+        self,
+        code: str,
+        manifest_sha256: str | None = None,
+    ) -> bool:
+        """返回來源時只還原同一個 manifest 下的股票列。"""
+
+        view = getattr(self, "daily_market_research_view", None)
+        if view is None:
+            return False
+        self.result_source_tabs.setCurrentWidget(view)
+        return view.restore_research_snapshot_stock(code, manifest_sha256)
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
@@ -3759,6 +3870,9 @@ class RecommendationView(QWidget):
         )
         self.personal_source_database_input.setObjectName(
             "personalRecommendationSourceDatabasePath"
+        )
+        self.personal_source_database_input.setMinimumHeight(
+            self.personal_source_database_input.sizeHint().height()
         )
         self.personal_source_database_input.setPlaceholderText(
             "輸入或選擇 SQLite 絕對路徑；不會從 DATA_ROOT 自動推定同意"
@@ -8107,6 +8221,12 @@ class RecommendationView(QWidget):
         QMessageBox.information(self, "取消", "匯出已被取消")
 
     def request_cooperative_shutdown(self) -> bool:
+        daily_view = getattr(self, "daily_market_research_view", None)
+        daily_view_ready = (
+            True
+            if daily_view is None
+            else bool(daily_view.begin_shutdown())
+        )
         saved_result_worker = getattr(self, "_saved_result_load_worker", None)
         if saved_result_worker is not None:
             self._saved_result_load_generation = getattr(
@@ -8130,10 +8250,15 @@ class RecommendationView(QWidget):
                 if worker is self.worker:
                     self._mark_execution_cancel_requested()
                 worker.cancel(cooperative=True, wait=False)
-        return not any(
+        return daily_view_ready and not any(
             worker is not None and worker.isRunning()
             for worker in workers
         )
+
+    def begin_shutdown(self) -> bool:
+        """供 MainWindow 凍結所有由此 view 管理的研究來源工作。"""
+
+        return self.request_cooperative_shutdown()
 
     def closeEvent(self, event):
         """關閉事件"""

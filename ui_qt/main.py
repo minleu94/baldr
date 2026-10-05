@@ -94,6 +94,7 @@ from app_module.research_session import (
 from app_module.decision_continuity_controller import DecisionContinuityController
 from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.stock_research_report_service import StockResearchReportReadService
+from app_module.daily_market_research_screener import DailyMarketResearchScreenerService
 from app_module.stock_research_report_provider_adapters import CurrentRestatedMLRunRegistry
 
 # 導入策略模組以觸發註冊
@@ -362,6 +363,7 @@ class MainWindow(QMainWindow):
             # 個股研究報告只組合既有 read contract；MainWindow 注入已驗證的
             # current-restated ML registry，不重算推薦，也不把 owner 邏輯搬入 UI。
             self.stock_research_ml_registry = CurrentRestatedMLRunRegistry()
+            self.daily_market_research_screener_service = DailyMarketResearchScreenerService(self.config)
             self.stock_research_report_service = StockResearchReportReadService(
                 self.config,
                 portfolio_service=self.portfolio_service,
@@ -792,6 +794,7 @@ class MainWindow(QMainWindow):
             print("[MainWindow] 創建推薦分析視圖...")
             recommendation = RecommendationView(
                 recommendation_service=self.recommendation_service,
+                daily_market_research_service=self.daily_market_research_screener_service,
                 regime_service=self.regime_service,
                 watchlist_service=self.watchlist_service,
                 config=self.config,
@@ -1091,6 +1094,10 @@ class MainWindow(QMainWindow):
                 "source_label",
                 "source_workspace",
                 "ml_scope_mode",
+                "daily_snapshot_root",
+                "daily_snapshot_cohort_id",
+                "daily_snapshot_condition_keys",
+                "daily_snapshot_combine_mode",
             }
             payload = {key: value.get(key, "") for key in fields}
             if not str(payload.get("stock_code") or "").strip():
@@ -1127,6 +1134,7 @@ class MainWindow(QMainWindow):
                 if callable(dispatch):
                     dispatch(
                         StockResearchContextChanged(
+                            context=context,
                             stock_code=context.stock_code,
                             stock_name=context.stock_name,
                             decision_date=context.decision_date,
@@ -1172,6 +1180,13 @@ class MainWindow(QMainWindow):
     ) -> tuple[str, ...]:
         """只從來源頁現有 model 取代碼，供研究頁上一檔／下一檔。"""
 
+        if (
+            context.source_workspace == "recommendation"
+            and context.source_kind == "daily_market_research_snapshot"
+        ):
+            view = getattr(self, "recommendation_view", None)
+            getter = getattr(view, "research_snapshot_stock_codes", None)
+            return tuple(getter()) if callable(getter) else ()
         if context.source_workspace == "watchlist":
             view = getattr(self, "watchlist_view", None)
             model = getattr(view, "stocks_model", None)
@@ -1229,6 +1244,17 @@ class MainWindow(QMainWindow):
             view = None
         else:
             view = None
+        if context.source_kind == "daily_market_research_snapshot":
+            restore = getattr(view, "restore_research_snapshot_stock", None)
+            selected = (
+                bool(restore(context.stock_code, manifest_sha256=context.source_snapshot_hash))
+                if callable(restore) else False
+            )
+            if not selected:
+                self.statusBar().showMessage(
+                    "原每日研究快照已變動或股票不在目前清單；請核對來源，不能用同股替代原結果。"
+                )
+            return
         selector = getattr(view, "select_stock", None)
         if callable(selector):
             selected = bool(selector(context.stock_code, context.result_id or None))
@@ -1330,7 +1356,7 @@ class MainWindow(QMainWindow):
     def _freeze_child_refresh_sources(self) -> None:
         """凍結有 pending generation 的子頁，避免取消後又補起新 worker。"""
 
-        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view"):
+        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view"):
             view = getattr(self, attribute, None)
             begin_shutdown = getattr(view, "begin_shutdown", None)
             if not callable(begin_shutdown):

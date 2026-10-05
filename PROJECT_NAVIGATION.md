@@ -1,5 +1,9 @@
 # 專案導航文件
 
+### UX04／05 日常研究flow導航（2026-10-05）
+
+讀模型與三態組合：app_module/daily_market_research_screener.py；來源UI：ui_qt/views/daily_market_research_view.py及RecommendationView；下鑽：MainWindow→ResearchStockContextDTO／session→StockResearchReportReadService→StockResearchReportView。原producer／repository復用，沒有第二套條件計算。操作見[Manual](docs/07_guides/APPLICATION_MANUAL.md#2026-10-05-ux0405-每日研究條件與同源個股)，來源／驗證見[QA新章](docs/06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
 ### UX19 隔離研究快照入口（2026-10-05）
 
 有界唯讀來源：`app_module/daily_market_snapshot_source.py`；發布：`daily_market_snapshot_producer.py`；核驗讀回：`daily_market_snapshot_repository.py`；實際 consumer：`StockResearchReportReadService.read_report()`；隔離 CLI：`scripts/produce_daily_market_research_snapshot.py`。既有 close／MA 投影仍由 `daily_market_feature_snapshot.py` 負責。操作與資格限制見 [Manual UX19](docs/07_guides/APPLICATION_MANUAL.md#2026-10-05-ux19-隔離研究快照生產與讀回)，[QA 收據](docs/06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)保存有限完成範圍。

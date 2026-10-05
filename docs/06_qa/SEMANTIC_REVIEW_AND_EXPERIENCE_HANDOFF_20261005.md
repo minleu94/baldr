@@ -1,5 +1,11 @@
 # 2026-10-05 有界語意審查與體驗接手
 
+## 最新接續：UX04／05 日常研究名單與同源個股（基線695797ec）
+
+本包承接有限UX18／19工程，把研究快照接到Recommendation實際入口與個股pinned讀回：既有兩條close／MA AND／OR、三態why／why-not、來源metadata經session完整保留，返回核對原manifest。repo專用研究區僅明確更新才bounded寫入；不改正式DB／排程，不升研究或離線候選為推薦。真實來源Native QTest與受控缺資料／revision場景分列，數字與提交以[QA新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)及Git為準。
+
+完整UX18／19／stage2／3仍待更多feature／method、全母體／原排名融合、其他consumer、正式排程／長期storage與跨process崩潰；Backtest18.62%／20%與自然PIT／ML限制不改。不重做舊ML、Frozen效能、Native1477或全量回歸，未授清理／security／push；paper與還原映射保留。
+
 ## 最新 UX19 有限研究閉環（基線3a975e3）
 
 本包新增隔離 bounded producer→verified repository→實際 StockReport consumer，重用 close／MA20／MA60 與既有有限 DTO，不新增方法或正式 writer。來源缺件停止發布，失效股才重投影，候選核驗後原子切換 latest。限定實跑／測試與來源 pins 見 [UX19 QA 新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)，原計畫只追加結果。

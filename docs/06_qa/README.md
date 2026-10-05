@@ -11,7 +11,7 @@
 
 ## 近期證據入口（依主題）
 
-- [UX16來源契約／UX18日特徵consumer／UX19隔離閉環與UX02 Native中文](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：唯讀API／CLI、既有close／MA共用三態與實際個股接線、scoped hash／時鐘／資格未知、四用途代表畫面及工程／證據依賴。
+- [UX16來源契約／UX18日特徵consumer／UX19隔離閉環／UX04與UX05日常同源flow與UX02 Native中文](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：唯讀API／CLI、既有close／MA共用三態與實際個股接線、scoped hash／時鐘／資格未知、四用途代表畫面及工程／證據依賴。
 
 | 要查的內容 | 證據入口 |
 | --- | --- |

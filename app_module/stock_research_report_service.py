@@ -39,6 +39,7 @@ from app_module.price_change_direction import (
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 from app_module.daily_market_feature_snapshot import DailyMarketFeatureSnapshotService, daily_market_feature_input_fingerprint
 from app_module.daily_market_snapshot_repository import DailyMarketSnapshotRepository
+from app_module.daily_market_snapshot_repository import DailyMarketSnapshotVerificationError
 from app_module.daily_market_snapshot_source import daily_snapshot_schema_identity, daily_snapshot_scope_identity
 from data_module.current_official_valuation import CurrentOfficialValuationReadProvider
 from data_module.recommendation_current_fundamental_provider import (
@@ -79,6 +80,7 @@ class StockResearchReportCancelled(RuntimeError):
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
+_DAILY_MARKET_RESEARCH_SOURCE_KIND = "daily_market_research_snapshot"
 _PRICE_LIMIT = 120
 _FLOW_LIMIT = 120
 _FUNDAMENTAL_LIMIT = 24
@@ -193,13 +195,34 @@ class StockResearchReportReadService:
         """讀取一份完整投影；每一個資料區塊都有限制筆數且可被取消。"""
 
         code = _normalize_stock_code(stock_code)
+        context_map = _context_map(context)
+        is_daily_research_snapshot = (
+            context_map.get("source_kind") == _DAILY_MARKET_RESEARCH_SOURCE_KIND
+        )
         # 更新器可能剛建立現況表／observed_at 欄；重新載入報告應立即看見。
         self._column_cache.clear()
         actual_clock = self.clock()
         if actual_clock.tzinfo is None or actual_clock.utcoffset() is None:
             raise ValueError("report clock must include a timezone")
         current_date = actual_clock.astimezone(_TAIPEI).date()
-        cutoff = _coerce_date(as_of_date) or current_date
+        requested_cutoff = _coerce_date(as_of_date)
+        context_cutoff = (
+            _coerce_date(context_map.get("decision_date"))
+            if is_daily_research_snapshot
+            else None
+        )
+        pinned_context_date_invalid = is_daily_research_snapshot and context_cutoff is None
+        pinned_context_date_mismatch = (
+            is_daily_research_snapshot
+            and requested_cutoff is not None
+            and context_cutoff is not None
+            and requested_cutoff != context_cutoff
+        )
+        cutoff = (
+            context_cutoff
+            if is_daily_research_snapshot and context_cutoff is not None
+            else requested_cutoff or current_date
+        )
         if cutoff > current_date:
             return self._future_cutoff_report(code, cutoff, context, actual_clock)
         cutoff_text = cutoff.isoformat()
@@ -210,7 +233,6 @@ class StockResearchReportReadService:
         sections: list[StockReportSectionDTO] = []
         limitations: list[str] = []
         errors: list[str] = []
-        context_map = _context_map(context)
         context_code = context_map.get("stock_code", "")
         name = (
             context_map.get("stock_name", "")
@@ -287,7 +309,110 @@ class StockResearchReportReadService:
         shared_daily_features: Mapping[str, Any] = {}
         try:
             self._check_cancel(cancel_callback)
-            if self.daily_market_snapshot_repository is not None:
+            if is_daily_research_snapshot:
+                if pinned_context_date_invalid or pinned_context_date_mismatch:
+                    raise DailyMarketSnapshotVerificationError(
+                        "snapshot_context_decision_date_mismatch",
+                        "個股研究決策日與 pinned 快照日期不符；請從每日研究名單重新載入。",
+                    )
+                snapshot_root = context_map.get("daily_snapshot_root", "").strip()
+                cohort_id = context_map.get("daily_snapshot_cohort_id", "").strip()
+                manifest_sha256 = context_map.get("source_snapshot_hash", "").strip()
+                manifest_identity = context_map.get("source_snapshot_id", "").strip()
+                raw_condition_keys = context_map.get(
+                    "daily_snapshot_condition_keys", ""
+                )
+                condition_keys = tuple(
+                    value.strip()
+                    for value in raw_condition_keys.split(",")
+                    if value.strip()
+                )
+                combine_mode = context_map.get("daily_snapshot_combine_mode", "")
+                if (
+                    not snapshot_root
+                    or not cohort_id
+                    or not manifest_sha256
+                    or not manifest_identity
+                ):
+                    raise DailyMarketSnapshotVerificationError(
+                        "snapshot_context_incomplete",
+                        "每日研究來源缺少快照路徑、cohort 或 hash；請重新載入名單。",
+                    )
+                db_path = Path(getattr(self.config, "db_file", None) or getattr(self.config, "sqlite_db_file"))
+                schema_identity = daily_snapshot_schema_identity(
+                    self._columns("daily_prices"), self._columns("technical_indicators")
+                )
+                scope_identity = daily_snapshot_scope_identity(db_path, code, schema_identity)
+                expected_hash = daily_market_feature_input_fingerprint(code, cutoff, scope_identity, price_points, technical)
+                pinned_repository = DailyMarketSnapshotRepository(Path(snapshot_root))
+                verified = pinned_repository.load_manifest(
+                    manifest_sha256,
+                    cohort_id=cohort_id,
+                    decision_date=cutoff,
+                    expected_input_hashes={code: expected_hash},
+                )
+                if verified.manifest_identity_sha256 != manifest_identity:
+                    raise DailyMarketSnapshotVerificationError(
+                        "snapshot_manifest_identity_mismatch",
+                        "每日研究來源的 manifest identity 不符；請重新載入名單。",
+                    )
+                shared_daily_features = dict(verified.stock_snapshots[code])
+                context_data_date = _coerce_date(context_map.get("data_date"))
+                payload_market_date = str(
+                    shared_daily_features.get("market_date") or ""
+                )
+                if (
+                    context_map.get("data_date", "").strip()
+                    and (
+                        context_data_date is None
+                        or context_data_date.isoformat() != payload_market_date
+                    )
+                ):
+                    raise DailyMarketSnapshotVerificationError(
+                        "snapshot_context_data_date_mismatch",
+                        "個股研究行情日與快照內行情日不符；請重新載入名單。",
+                    )
+                from app_module.daily_market_research_screener import (
+                    evaluate_daily_market_conditions,
+                )
+
+                evaluation = evaluate_daily_market_conditions(
+                    shared_daily_features.get("conditions", {}),
+                    condition_keys,
+                    combine_mode,
+                )
+                shared_daily_features["readback"] = {
+                    "mode": "verified_pinned_daily_market_research_snapshot",
+                    "manifest_sha256": verified.manifest_sha256,
+                    "manifest_identity_sha256": verified.manifest_identity_sha256,
+                    "source_snapshot_hash": verified.manifest_sha256,
+                    "source_snapshot_id": verified.manifest_identity_sha256,
+                    "completeness": verified.completeness,
+                    "cohort_id": cohort_id,
+                    "stock_code": code,
+                    "data_date": payload_market_date,
+                    "input_fingerprint_sha256": shared_daily_features.get(
+                        "input_fingerprint_sha256", ""
+                    ),
+                    "snapshot_identity_sha256": shared_daily_features.get(
+                        "snapshot_identity_sha256", ""
+                    ),
+                    "usage": shared_daily_features.get("policy", {}).get(
+                        "usage", "current_observed_research_only"
+                    ),
+                    "historical_pit_eligible": False,
+                    "filter_evaluation": {
+                        "condition_keys": list(evaluation.condition_keys),
+                        "combine_mode": evaluation.combine_mode,
+                        "combined_state": evaluation.combined_state,
+                        "conditions": [
+                            item.to_dict() for item in evaluation.conditions
+                        ],
+                        "why": list(evaluation.why),
+                        "why_not": list(evaluation.why_not),
+                    },
+                }
+            elif self.daily_market_snapshot_repository is not None:
                 db_path = Path(getattr(self.config, "db_file", None) or getattr(self.config, "sqlite_db_file"))
                 schema_identity = daily_snapshot_schema_identity(
                     self._columns("daily_prices"), self._columns("technical_indicators")
@@ -327,6 +452,7 @@ class StockResearchReportReadService:
             shared_daily_features = {
                 "projection_status": "failed",
                 "projection_error": error,
+                "projection_error_code": str(getattr(exc, "code", "") or ""),
                 "conditions": {
                     "close_above_ma20": {
                         "state": "unknown",
@@ -2492,6 +2618,16 @@ class StockResearchReportReadService:
         cutoff: date,
         context: Mapping[str, str],
     ) -> tuple[StockAdviceSnapshotDTO, StockReportSourceDTO | None]:
+        if context.get("source_kind") == _DAILY_MARKET_RESEARCH_SOURCE_KIND:
+            return (
+                StockAdviceSnapshotDTO(
+                    status=ReportQuality.UNAVAILABLE.value,
+                    limitations=(
+                        "每日市場研究快照只記錄既有條件觀察，不是已保存推薦或正式 Advice。",
+                    ),
+                ),
+                None,
+            )
         service = self.watchlist_analysis_service
         if service is None:
             return (
@@ -3660,6 +3796,8 @@ def _context_map(context: object | None) -> dict[str, str]:
         "source_label", "source_workspace", "source_version",
         "mapping_source_id", "mapping_version", "mapping_observed_date",
         "ml_scope_mode", "position_id", "portfolio_id",
+        "daily_snapshot_root", "daily_snapshot_cohort_id",
+        "daily_snapshot_condition_keys", "daily_snapshot_combine_mode",
     )
     if isinstance(context, Mapping):
         return {

@@ -69,6 +69,10 @@ class ResearchSessionStore:
                 source_label=context.source_label,
                 source_workspace=context.source_workspace,
                 ml_scope_mode=context.ml_scope_mode,
+                daily_snapshot_root=context.daily_snapshot_root,
+                daily_snapshot_cohort_id=context.daily_snapshot_cohort_id,
+                daily_snapshot_condition_keys=context.daily_snapshot_condition_keys,
+                daily_snapshot_combine_mode=context.daily_snapshot_combine_mode,
                 source=source,
             )
         )

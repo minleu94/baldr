@@ -554,6 +554,25 @@ class StockResearchReportView(QWidget):
         )
         root.addWidget(self.context_path_label)
 
+        self.daily_market_research_condition_label = QLabel("")
+        self.daily_market_research_condition_label.setObjectName(
+            "stockResearchDailyMarketCondition"
+        )
+        self.daily_market_research_condition_label.setAccessibleName(
+            "每日研究快照整體條件與理由"
+        )
+        self.daily_market_research_condition_label.setWordWrap(True)
+        self.daily_market_research_condition_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.daily_market_research_condition_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border-left: 4px solid {MIDNIGHT_ANALYST.accent}; padding: 7px;"
+        )
+        self.daily_market_research_condition_label.setVisible(False)
+        root.addWidget(self.daily_market_research_condition_label)
+
         status_row = QHBoxLayout()
         self.status_badge = StatusBadge("尚未載入", "info")
         self.status_badge.setObjectName("stockResearchStatusBadge")
@@ -782,6 +801,10 @@ class StockResearchReportView(QWidget):
             "source_kind",
             "source_workspace",
             "ml_scope_mode",
+            "daily_snapshot_root",
+            "daily_snapshot_cohort_id",
+            "daily_snapshot_condition_keys",
+            "daily_snapshot_combine_mode",
         )
         return (str(stock_code or "").strip(),) + tuple(
             str(getattr(context, field, "") or "").strip() if context is not None else ""
@@ -838,6 +861,114 @@ class StockResearchReportView(QWidget):
 
         return replace(context, data_date=raw_data_date)
 
+    @staticmethod
+    def _daily_snapshot_readback_problem(
+        context: ResearchStockContextDTO | None,
+        report: StockResearchReportDTO,
+    ) -> str:
+        """確認個股報告仍讀回 context 指定的 manifest 與 cohort。"""
+
+        if context is None:
+            return "每日研究快照缺少來源 context"
+        shared = report.shared_daily_features
+        if not isinstance(shared, Mapping):
+            return "報告沒有共用每日特徵讀回"
+        if str(shared.get("projection_status") or "") == "failed":
+            return str(shared.get("projection_error") or "每日特徵投影失敗")
+        readback = shared.get("readback")
+        if not isinstance(readback, Mapping):
+            return "已發布 manifest 讀回缺件"
+        if str(readback.get("mode") or "") != "verified_pinned_daily_market_research_snapshot":
+            return "讀回模式不是已驗證研究快照"
+        if str(readback.get("manifest_sha256") or "") != context.source_snapshot_hash:
+            return "manifest SHA-256 與來源 context 不一致"
+        if (
+            str(readback.get("manifest_identity_sha256") or "")
+            != context.source_snapshot_id
+        ):
+            return "manifest identity 與來源 context 不一致"
+        if (
+            str(readback.get("cohort_id") or "")
+            != getattr(context, "daily_snapshot_cohort_id", "")
+        ):
+            return "cohort 與來源 context 不一致"
+        expected_source_id = str(readback.get("source_snapshot_id") or "")
+        if expected_source_id and expected_source_id != context.source_snapshot_id:
+            return "讀回的 source snapshot identity 不一致"
+        expected_source_hash = str(readback.get("source_snapshot_hash") or "")
+        if expected_source_hash and expected_source_hash != context.source_snapshot_hash:
+            return "讀回的 source snapshot hash 不一致"
+        payload_code = str(shared.get("stock_code") or "").strip()
+        readback_code = str(readback.get("stock_code") or "").strip()
+        if readback_code and readback_code != str(context.stock_code or "").strip():
+            return "讀回股票代碼與目前研究股票不一致"
+        if payload_code and payload_code != str(context.stock_code or "").strip():
+            return "快照股票代碼與目前研究股票不一致"
+        expected_keys = tuple(
+            key.strip()
+            for key in str(getattr(context, "daily_snapshot_condition_keys", "")).split(",")
+            if key.strip()
+        )
+        expected_mode = str(getattr(context, "daily_snapshot_combine_mode", "") or "")
+        evaluation = readback.get("filter_evaluation")
+        if not isinstance(evaluation, Mapping):
+            return "context 指定的整體條件讀回缺件"
+        actual_keys = tuple(str(key) for key in evaluation.get("condition_keys", ()) or ())
+        if actual_keys != expected_keys:
+            return "整體條件 keys 與來源 context 不一致"
+        if str(evaluation.get("combine_mode") or "") != expected_mode:
+            return "整體條件 AND／OR 與來源 context 不一致"
+        return ""
+
+    @classmethod
+    def _context_with_daily_snapshot_data_date(
+        cls,
+        context: ResearchStockContextDTO,
+        stock_code: str,
+        report: StockResearchReportDTO,
+    ) -> ResearchStockContextDTO:
+        """只從同股、同 manifest 的已核驗 artifact 讀取資料日。"""
+
+        if (
+            str(context.stock_code or "").strip() != str(stock_code or "").strip()
+            or str(report.stock_code or "").strip() != str(stock_code or "").strip()
+            or cls._daily_snapshot_readback_problem(context, report)
+        ):
+            return context
+        shared = report.shared_daily_features
+        readback = shared.get("readback") if isinstance(shared, Mapping) else None
+        features = shared.get("features") if isinstance(shared, Mapping) else None
+        close_feature = features.get("close") if isinstance(features, Mapping) else None
+        raw_data_date = str(
+            (
+                readback.get("data_date")
+                if isinstance(readback, Mapping)
+                else ""
+            )
+            or shared.get("market_date")
+            or (
+                close_feature.get("data_date")
+                if isinstance(close_feature, Mapping)
+                else ""
+            )
+            or ""
+        ).strip()
+        if not raw_data_date:
+            return context
+        try:
+            parsed_data_date = date.fromisoformat(raw_data_date)
+            parsed_decision_date = date.fromisoformat(context.decision_date)
+        except ValueError:
+            return replace(context, data_date="")
+        if (
+            parsed_data_date.isoformat() != raw_data_date
+            or parsed_data_date > parsed_decision_date
+        ):
+            return replace(context, data_date="")
+        if raw_data_date == context.data_date:
+            return context
+        return replace(context, data_date=raw_data_date)
+
     def _render_context_path(self) -> None:
         """日常只留必要脈絡，完整 identity 保留在來源進階與 tooltip。"""
 
@@ -865,6 +996,12 @@ class StockResearchReportView(QWidget):
             f"來源：{source}｜決策日：{context.decision_date or '未知'}｜"
             f"資料日：{context.data_date or '未知'}｜ML範圍：{ml_scope_text}｜{return_text}"
         )
+        if context.source_kind == "daily_market_research_snapshot":
+            visible += (
+                f"｜研究 cohort：{getattr(context, 'daily_snapshot_cohort_id', '') or '未知'}"
+                f"｜條件：{getattr(context, 'daily_snapshot_condition_keys', '') or '未知'}"
+                f"（{getattr(context, 'daily_snapshot_combine_mode', '') or '未知'}）"
+            )
         full_trace = _context_trace_text(context, source=source, return_text=return_text)
         self.context_path_label.setText(visible)
         self.context_path_label.setToolTip(full_trace)
@@ -907,7 +1044,22 @@ class StockResearchReportView(QWidget):
         if context is not None and context.stock_code.strip() != code:
             # 來源清單切到另一檔時保留 result/source lineage，但不能把原股票
             # 名稱／身份快取帶到新代碼；service 會再以新代碼的實際資料辨識名稱。
-            context = replace(context, stock_code=code, stock_name="")
+            context = replace(
+                context,
+                stock_code=code,
+                stock_name="",
+                data_date=(
+                    ""
+                    if context.source_kind == "daily_market_research_snapshot"
+                    else context.data_date
+                ),
+            )
+            self.context = context
+            self._render_context_path()
+        elif context is not None and context.source_kind == "daily_market_research_snapshot":
+            # 每次重讀都要由該股票的 pinned artifact 回填資料日；來源核驗失敗時
+            # 不把上次載入日期留在目前 context 上。
+            context = replace(context, data_date="")
             self.context = context
             self._render_context_path()
         requested_identity = self._context_identity(context, code)
@@ -1016,7 +1168,14 @@ class StockResearchReportView(QWidget):
         if not isinstance(report, StockResearchReportDTO):
             self._on_report_error(request_id, code, "service returned an invalid report DTO")
             return
-        loaded_context = self._context_with_saved_analysis_data_date(context, code, report)
+        if context is not None and context.source_kind == "daily_market_research_snapshot":
+            loaded_context = self._context_with_daily_snapshot_data_date(
+                context,
+                code,
+                report,
+            )
+        else:
+            loaded_context = self._context_with_saved_analysis_data_date(context, code, report)
         context_was_enriched = loaded_context is not None and loaded_context != context
         if context_was_enriched and self.context == context:
             self.context = loaded_context
@@ -1038,9 +1197,148 @@ class StockResearchReportView(QWidget):
             loaded_context = context
         self._loaded_context_identity = self._context_identity(loaded_context, code)
         self._render_report(report)
+        daily_snapshot_problem = (
+            self._daily_snapshot_readback_problem(loaded_context, report)
+            if loaded_context is not None
+            and loaded_context.source_kind == "daily_market_research_snapshot"
+            else ""
+        )
+        self._render_daily_market_research_condition(
+            loaded_context,
+            report,
+            source_problem=daily_snapshot_problem,
+        )
         incomplete = report.advice.recommendation is None or any(section.status in {'missing','error','partial','unavailable'} for section in report.sections)
-        self._set_status("報告部分載入；可讀內容與缺件分開列示，請選擇保存來源或建立分析。" if incomplete else "報告已載入；內容只讀取既有來源。", "partial" if incomplete else "observed")
+        if daily_snapshot_problem:
+            self._set_status(
+                "每日研究快照來源無法核驗；條件保持未知。返回每日研究條件更新快照，"
+                f"重讀來源後再下鑽。原因：{daily_snapshot_problem}",
+                "warning",
+            )
+        elif (
+            loaded_context is not None
+            and loaded_context.source_kind == "daily_market_research_snapshot"
+        ):
+            if incomplete:
+                self._set_status(
+                    "研究條件已核驗；其他報告資料缺件分開列示。返回每日研究條件確認或更新來源。",
+                    "partial",
+                )
+            else:
+                self._set_status(
+                    "研究條件與來源已核驗；可返回每日研究條件查看同一 cohort。",
+                    "observed",
+                )
+        else:
+            self._set_status("報告部分載入；可讀內容與缺件分開列示，請選擇保存來源或建立分析。" if incomplete else "報告已載入；內容只讀取既有來源。", "partial" if incomplete else "observed")
         self.reportLoaded.emit(report)
+
+    def _render_daily_market_research_condition(
+        self,
+        context: ResearchStockContextDTO | None,
+        report: StockResearchReportDTO,
+        *,
+        source_problem: str,
+    ) -> None:
+        """首屏只呈現 service 對 pinned row 已算好的整體三態。"""
+
+        label = self.daily_market_research_condition_label
+        if context is None or context.source_kind != "daily_market_research_snapshot":
+            label.clear()
+            label.setToolTip("")
+            label.setVisible(False)
+            return
+        label.setVisible(True)
+        if source_problem:
+            label.setText(
+                "每日研究條件：未知（來源未核驗）｜返回每日研究條件更新快照重讀；"
+                f"原因：{source_problem}。此狀態不是不符合，也不取代報告內既有 Advice。"
+            )
+            label.setToolTip(
+                f"manifest identity：{context.source_snapshot_id}\n"
+                f"manifest SHA-256：{context.source_snapshot_hash}\n"
+                f"cohort：{getattr(context, 'daily_snapshot_cohort_id', '')}\n"
+                f"source root：{getattr(context, 'daily_snapshot_root', '')}"
+            )
+            return
+
+        shared = report.shared_daily_features
+        readback = shared.get("readback") if isinstance(shared, Mapping) else None
+        evaluation = readback.get("filter_evaluation") if isinstance(readback, Mapping) else None
+        if not isinstance(evaluation, Mapping):
+            label.setText(
+                "每日研究條件：未知（整體條件讀回缺件）；返回每日研究條件更新快照重讀。"
+            )
+            return
+        state = str(evaluation.get("combined_state") or "unknown")
+        state_label = {
+            "match": "符合",
+            "no_match": "不符合",
+            "unknown": "未知",
+        }.get(state, "未知")
+        keys = tuple(str(key) for key in evaluation.get("condition_keys", ()) or ())
+        names = {
+            "close_above_ma20": "收盤價高於 MA20",
+            "close_above_ma60": "收盤價高於 MA60",
+        }
+        condition_names = "、".join(names.get(key, key) for key in keys) or "未知條件"
+        mode = str(evaluation.get("combine_mode") or "未知")
+        why = self._daily_snapshot_reason_text(evaluation.get("why", ()))
+        why_not = self._daily_snapshot_reason_text(evaluation.get("why_not", ()))
+        conditions = evaluation.get("conditions", ())
+        condition_texts: list[str] = []
+        if isinstance(conditions, Sequence) and not isinstance(conditions, (str, bytes)):
+            for condition in conditions:
+                if not isinstance(condition, Mapping):
+                    continue
+                key = str(condition.get("key") or "")
+                condition_state = str(condition.get("state") or "unknown")
+                condition_label = {
+                    "match": "符合",
+                    "no_match": "不符合",
+                    "unknown": "未知",
+                }.get(condition_state, "未知")
+                relation = {
+                    "above": "高於",
+                    "below": "低於",
+                    "equal": "相等",
+                    "unknown": "關係未知",
+                }.get(str(condition.get("relation") or "unknown"), "")
+                detail = str(condition.get("reason") or "").strip()
+                entry = f"{names.get(key, key)}：{condition_label}"
+                if relation:
+                    entry += f"（{relation}）"
+                if detail:
+                    entry += f"；{detail}"
+                condition_texts.append(entry)
+        reason_parts = [
+            f"條件明細：{'；'.join(condition_texts)}" if condition_texts else "",
+            f"支持：{why}" if why else "",
+            f"不符合／未知原因：{why_not}" if why_not else "",
+        ]
+        detail = "｜".join(part for part in reason_parts if part)
+        label.setText(
+            f"每日研究條件（研究用途，非正式推薦）：{condition_names}（{mode}）→ {state_label}。"
+            f"資料日：{readback.get('data_date') or '未知'}。"
+            + (f" {detail}" if detail else "")
+        )
+        label.setToolTip(
+            f"manifest identity：{context.source_snapshot_id}\n"
+            f"manifest SHA-256：{context.source_snapshot_hash}\n"
+            f"cohort：{getattr(context, 'daily_snapshot_cohort_id', '')}\n"
+            f"condition keys：{getattr(context, 'daily_snapshot_condition_keys', '')}\n"
+            f"combine mode：{getattr(context, 'daily_snapshot_combine_mode', '')}\n"
+            f"source root：{getattr(context, 'daily_snapshot_root', '')}\n"
+            "此整體條件來自個股報告 verified readback，不在 UI 重算。"
+        )
+
+    @staticmethod
+    def _daily_snapshot_reason_text(value: object) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, Sequence):
+            return "；".join(str(item).strip() for item in value if str(item).strip())
+        return str(value or "").strip()
 
     def _on_report_error(self, request_id: int, code: str, error: object) -> None:
         if request_id != self._request_id or code != self._active_code:
@@ -2685,6 +2983,10 @@ def _context_trace_text(
             f"決策日：{context.decision_date or '未知'}｜資料日：{context.data_date or '未知'}",
             f"source_snapshot_id：{context.source_snapshot_id or '未知'}｜"
             f"source_snapshot_hash：{context.source_snapshot_hash or '未知'}",
+            f"daily_snapshot_root：{getattr(context, 'daily_snapshot_root', '') or '未知'}｜"
+            f"daily_snapshot_cohort_id：{getattr(context, 'daily_snapshot_cohort_id', '') or '未知'}",
+            f"daily_snapshot_condition_keys：{getattr(context, 'daily_snapshot_condition_keys', '') or '未知'}｜"
+            f"daily_snapshot_combine_mode：{getattr(context, 'daily_snapshot_combine_mode', '') or '未知'}",
             f"source_version：{context.source_version or '未知'}｜"
             f"mapping_source_id：{context.mapping_source_id or '未知'}｜"
             f"mapping_version：{context.mapping_version or '未知'}｜"
@@ -2949,9 +3251,14 @@ def _read_report_with_context_cutoff(
         "cancel_callback": cancel_callback,
     }
     raw_date = context.decision_date.strip() if context is not None else ""
+    pinned_daily_snapshot = bool(
+        context is not None
+        and context.source_kind == "daily_market_research_snapshot"
+    )
     current_ml_scope = bool(
         context is not None
         and context.ml_scope_mode == "current_stock_research"
+        and not pinned_daily_snapshot
     )
     parameters = inspect.signature(read_report).parameters.values()
     accepts_cutoff = any(
@@ -2965,6 +3272,8 @@ def _read_report_with_context_cutoff(
         # 明確以 service 的當下時鐘為報告查詢日，不沿用 saved Advice 的歷史決策日。
         kwargs["as_of_date"] = None
         return read_report(stock_code, **kwargs)
+    if pinned_daily_snapshot and not raw_date:
+        raise ValueError("每日研究快照 context 缺少決策日期，不能改查當下或最新行情")
     if raw_date:
         try:
             cutoff = date.fromisoformat(raw_date)

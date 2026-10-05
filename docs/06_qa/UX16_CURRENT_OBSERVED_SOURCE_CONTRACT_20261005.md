@@ -1,5 +1,29 @@
 # UX16 唯讀來源契約與 UX02 Native 中文驗證（2026-10-05）
 
+## 最新延伸：UX04／05 日常研究名單與同源個股
+
+基線695797ec，原plan§6.2／6.4、8.6／8.7、stage2→stage3與UX04／05／06／15。本包將既有close／MA研究快照接入Recommendation日常來源tab與個股研究，不以隔離CLI完成取代使用入口。來源仍是明示研究cohort，不與已保存推薦混合；沒有新策略／score／排名／推薦或自然ML資格。
+
+預設研究區為repo `output/research_snapshots/daily_market`，不沿TWStockConfig正式output或資料根；app開啟／read-only重讀／條件切換只查現有快照，按「更新研究快照」才沿同一bounded source／producer產生，保留16股／120列／200GiB reserve／64MiB／4096項與candidate→atomic latest。不更動WindowsTask或正式market DB，不自動清理失敗／歷史產物。
+
+條件只使用已存在的close_above_ma20／close_above_ma60；AND／OR採三態組合，每條unknown與理由獨立保留。例如OR已有一項符合、另一項未知時整體可符合，但未知欄不被寫成false；AND有不符合亦保留其他unknown。表列why／why-not、符合／不符合／未知計數、研究日與每股資料日，不把cohort count稱全市場覆蓋。
+
+下鑽固定manifest hash／stable ID、root／cohort、條件／組合及decision date。StockReport按當前有限來源hash核驗pinned版本，每股保相同snapshot/input identity與判斷；來源修訂、缺件／錯股／錯日保持unknown與中文更新提示，不fallback live假stored成功。session event／store／reducer及Main coerce保留metadata；切股資料日來自新股核驗結果，返回要求原manifest，不以同股的新清單或保存推薦替代。
+
+完整UX18／19仍缺更多feature／method、原排名與全母體融合、其他consumer、正式排程、長期storage治理與跨process崩潰驗收。Backtest18.62%／20%及自然PIT／ML限制維持；這是授權有限研究flow，不宣告完整stage2／3或正式推薦放行。本包定向／Native與commit證據見下列完成收據；舊章保持原版本。
+
+### UX04／05 完成收據（2026-10-05）
+
+已關閉有限 UX04 日常研究名單／UX05 既有兩條件 AND／OR 與三態原因／UX06 同源個股路徑。新增來源分頁曾擠壓舊 personal input（25px＜30px），已以結果區 scroll size policy 修正，沒有放寬測試；初輪 141 pass／1 fail 收據保留。最終整合144 pass／2 fail：QA長路徑令 create-only artifact os.link 遭 WinError3；僅這2案例改短 repo QA basetemp 重驗2 pass，合計 146 個不同定向測試有通過證據。Workbench 85 pass，update validator 25 pass／4 skip／0 fail，mypy 774 source files、10 個產品 Python 編譯、量化精度／未來函數 guard 與 diff check 通過。
+
+獨立 Windows Qt Native QTest 實際 Recommendation／Main 路由／StockReport 及正式 D 唯讀 service：2382／1477 明示更新成功，AND 符合名單 0、OR 2；選取 2382 的判斷與 why／why-not 與原列相同，切 1477、重載、返回仍固定 manifest／決策日、保留篩選與選取。唯讀重載與條件操作未新增快照。正式 main／WAL source pins 與10模組 code hashes 前後一致；此 Native scope 只初始化兩個實際工作區，不宣告完整 Main startup、人工驗收或 frozen 效能。
+
+另以專用微型受控 SQLite 做15列暖機缺資料 → unknown；只改此 fixture 的同日 close 後，個股舊 pin 與名單 readonly 重載皆拒絕，unknown 中文引導且快照 inventory 未變；明示更新後新 manifest 可恢復，未碰正式來源。窗口由本包開啟並關閉，worker count 回零，driver 正常退出。真實資料與受控情境各自留圖，非模型或自然成熟證據。
+
+診斷收據保留：新表格 AccessibleText API 已改 Qt 資料角色；Native 初版 QTest.qWait 阻擋 Python worker 的 GIL，thread dump 顯示卡在 SQLite progress callback，改為 QA driver 的10ms短 sleep＋processEvents後重驗，沒有修改產品效能或 frozen 門檻。直接 py_compile 寫入舊 session __pycache 遭本機權限拒絕，改 py_compile 指定本包10個獨立 cfile 通過，未放寬權限或清理舊快取。實看截圖又修 active source page size hints，避免另一保存來源頁撐高每日表格；有效研究 context 的狀態文案改回每日研究來源。
+
+收據：`output/qa/ux04_ux05_snapshot_flow_20261005/native_140743/receipt.json`；同目錄7張 Native PNG；`output/qa/ux04_ux05_snapshot_flow_20261005/affected_final.xml`、`workbench.xml`、`mypy_final.txt`、`update_validator.txt`、`commit_after.json`。正式DB未寫、未 ML／全市場／WindowsTask／大DB複製／清理／push，未知 paper 與還原映射保留。完整 UX18／19、stage2／3與既有 Backtest18.62%／20%門檻仍未關閉。
+
 ## 最新延伸：UX19 隔離研究快照生產／讀取閉環
 
 基線 `3a975e3cb487577a13487b704de8cdefabd956d9`。本包明確授權開發並以小型既有readonly來源在隔離output實跑producer，不沿用前包「不producer」的scope-out阻擋新授權。原plan第8.7的既有特徵、manifest驗證與最後原子切換映射到UX18的 `DailyMarketFeatureSnapshotService`、既有StockReport查詢／DTO與research canonical JSON；不建立第二個正式Rule／Evidence writer，不部署Windows排程或修改正式market／evidence DB。

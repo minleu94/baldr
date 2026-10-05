@@ -4338,3 +4338,20 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 錯date／stock／scope／schema／版本／hash，或當前來源修訂造成input不一致，都拒絕快照並保留錯誤／unknown；核對實際DB、cohort／日期與來源後在新run重建，不改pin或減reserve求通過。writer失敗或中斷時上個latest仍可核驗，按舊manifest date／hash明示查看，不能標成今日成功。保留失敗／未完成診斷，不執行永久清理。`complete_declared_cohort`不代表MA暖機全過；仍查看每股warmup及condition unknown理由。
 
 此為current-observed research-only；官方可得時間／calendar completeness保持unknown、historical_pit_eligible=false。不授benchmark、自然成熟、正式訓練或ML資格，沒有新增策略／公式／排名。版本、原子發布與實跑限制見[既有QA收據UX19新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+## 2026-10-05 UX04／05 每日研究條件與同源個股
+
+日常入口為「推薦分析」內的「每日研究條件」來源頁；既有推薦與策略研究保留原入口及資格。這份研究名單只涵蓋明示股票，不是全市場推薦或完整交易策略。來源區與狀態列先核對研究日、實際資料日、cohort與條件，不以ML候選或離線研究升格推薦。
+
+1. 輸入1–16個不重複股票代碼與cohort名稱，選臺北研究日期／時間。預設是明示2382／1477小型cohort，可編輯；不會默默截取全市場前N名。
+2. 「重讀已發布快照」只讀目前版本。初次缺快照或來源已修訂時，狀態清楚列出原因；明確按「更新研究快照」才產生這個小cohort的新版本。日期／時間須含臺北語意且不在未來；歷史日期仍是current-observed資料研究，不證明當時已可得。
+3. 勾選「收盤高於MA20」及「收盤高於MA60」，選AND（全部符合）或OR（至少一項符合），再用全部／符合／不符合／未知查看。這些操作只查已發布條件，不重跑策略或全量計算，亦不改原排名。
+4. 查看每股資料日、兩條三態、整體判斷及why／why-not。未知因暖機／來源缺件而保留；OR有一項符合可以整體符合，其他未知仍列示，不能把未知當反對證據或負樣本。
+5. 選股票後開啟個股研究。報告使用相同manifest／stock／decision date／source與snapshot身分，支持與反證採同組條件。上一檔／下一檔沿原研究清單；資料日按當前股票更新。重新載入核驗原pinned版本，不偷換另一份最新推薦。
+6. 返回來源清單會保留原篩選與選取，並要求相同manifest。清單已更新時，會提示原來源已變動，不能用同股替代；核對新來源後再明確下鑽。
+
+預設研究快照保存在repo `output/research_snapshots/daily_market`，與TWStockConfig正式資料／output根分開。僅保留精簡不可變artifact與manifest，latest最後原子切換；上限16股／120列、64MiB／4096項、200GiB reserve與既有byte budgets維持。不足停止、不降reserve、不自動刪原資料或證據，沒有新增正式排程。
+
+排錯：無快照時明確更新；股數／格式／未來時間不合時修正輸入；來源修訂或schema／hash不一致時重讀會拒舊來源，返回研究名單確認DB及cohort後明確更新。資料不足時查看每條未知原因與必要20／60觀測暖機，不略過guard。失敗保留舊manifest/date可追溯，畫面不能將舊版本說成新發布成功。取消／關閉只合作停止本頁工作，等待worker退出，不終止使用者其他程式。
+
+本包仍research-only、available-at／calendar unknown、PIT=false；不授自然模型／勝率／正式推薦資格。限定驗證與完整待辦見[日常研究flow QA](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md#最新延伸ux0405-日常研究名單與同源個股)。

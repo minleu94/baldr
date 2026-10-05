@@ -1,5 +1,9 @@
 # 系統架構
 
+## 2026-10-05 日常研究名單與pinned個股
+
+Main共用DailyMarketResearchScreenerService，Recommendation研究來源頁只讀snapshot並組合既有條件，明確更新命令才呼叫現有有界source／producer。列表row→ResearchStockContextDTO→session event/store/reducer→StockReport的pinned reader，固定manifest/root/cohort/date及條件；當前有限source input核驗失敗不fallback live。返回需原manifest，與原保存推薦／Advice資格分離。參數與研究區路徑見[Manual日常研究flow](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux0405-每日研究條件與同源個股)；本包不另建正式writer／scheduler。
+
 ## 2026-10-05 隔離日研究快照資料流
 
 `SQLiteDailyMarketSnapshotSource` 在同一 query-only transaction 重用 StockReport 既有有限價格／technical DTO 查詢；`DailyMarketSnapshotProducer` 重用既有 close／MA 特徵投影和容量政策，核驗候選後才原子替換 latest。`DailyMarketSnapshotRepository` 每次驗證 manifest／artifact／版本／身分與來源 pins；StockReport 明示 root／cohort 才讀已發布版本，live 預設維持。CLI 僅允許 repo output 的隔離子目錄，不是正式 Rule／Evidence writer 或排程。

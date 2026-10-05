@@ -1,5 +1,11 @@
 # 最小續接清單（2026-10-05，Batch9）
 
+## 最新接續：UX04／05 日常研究名單與同源個股（基線695797ec）
+
+本包承接有限UX18／19工程，把研究快照接到Recommendation實際入口與個股pinned讀回：既有兩條close／MA AND／OR、三態why／why-not、來源metadata經session完整保留，返回核對原manifest。repo專用研究區僅明確更新才bounded寫入；不改正式DB／排程，不升研究或離線候選為推薦。真實來源Native QTest與受控缺資料／revision場景分列，數字與提交以[QA新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)及Git為準。
+
+完整UX18／19／stage2／3仍待更多feature／method、全母體／原排名融合、其他consumer、正式排程／長期storage與跨process崩潰；Backtest18.62%／20%與自然PIT／ML限制不改。不重做舊ML、Frozen效能、Native1477或全量回歸，未授清理／security／push；paper與還原映射保留。
+
 ## 最新優先：UX19 最小 producer／reader／consumer 閉環
 
 基線 `3a975e3`，本包允許既有兩股唯讀資料在隔離 output 實跑有界 producer；候選先驗 manifest／artifact，latest 最後原子切換，個股 consumer 明示 opt-in 並核對有限當前來源 hash。來源缺件停止發布；reader 支援具名 partial 驗證。實跑／測試結果與版本以[QA UX19 新章](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)及實際 Git 為準，較早「不 producer」只適用其原包。

@@ -682,13 +682,26 @@ def test_rule_only_pointer_only_conflict_is_capture_lane_only(
     )
 
 
+@pytest.mark.parametrize("personal_enabled", [False, True])
 def test_daily_main_rule_only_pointer_allows_current_capture_but_blocks_formal_lane(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    personal_enabled: bool,
 ) -> None:
     from types import SimpleNamespace
     import scripts.scheduled.run_daily_recommendation_learning as daily_learning
+    import scripts.scheduled.personal_h20_daily_hook as personal_hook
+
+    personal_calls = []
+
+    def _personal_dispatch(config_path, binding, **kwargs):
+        # 原 entry 尚未保存時就已進入此獨立 port；不呼真模型或 fit。
+        assert capture_calls == []
+        personal_calls.append((config_path, kwargs))
+        return {"status": "synthetic_port_received", "effective_model_run": False}
+
+    monkeypatch.setattr(personal_hook, "run_personal_h20_for_current_cycle", _personal_dispatch)
 
     monkeypatch.setattr(
         daily_learning,
@@ -818,6 +831,8 @@ def test_daily_main_rule_only_pointer_allows_current_capture_but_blocks_formal_l
         "1477",
     ]
 
+    if personal_enabled:
+        args.extend(["--personal-h20-activation-config", str(tmp_path / "private" / "activation.json")])
     assert daily_learning.main(args) == 2
     payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert payload["current_observed_capture_only_due_to_legacy_rule_pointer"] is True
@@ -826,6 +841,10 @@ def test_daily_main_rule_only_pointer_allows_current_capture_but_blocks_formal_l
     assert len(capture_calls) == 1
     assert len(calls) == 1
     assert len(current_source_calls) == 1
+    assert len(personal_calls) == int(personal_enabled)
+    if personal_enabled:
+        assert personal_calls[0][1]["expected_raw_run_id"] == "raw-current-20261005"
+        assert payload["live_capture"]["current_observed_input_capture"]["personal_h20_daily"]["status"] == "synthetic_port_received"
     assert current_source_calls[0]["canonical_output_root"] == canonical_raw_output_root.resolve()
     assert current_source_calls[0]["expected_raw_run_id"] == "raw-current-20261005"
     assert current_source_calls[0]["expected_cycle_terminal_path"] == (

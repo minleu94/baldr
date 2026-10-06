@@ -449,6 +449,7 @@ def _build_natural_outcome_service(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--personal-h20-activation-config", type=Path, default=None)
     parser.add_argument("--data-root", type=Path, default=None)
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--source-db", type=Path, default=None)
@@ -1893,6 +1894,17 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
+    personal_h20_daily: dict[str, Any] | None = None
+    if getattr(args, "personal_h20_activation_config", None) is not None:
+        from scripts.scheduled.personal_h20_daily_hook import run_personal_h20_for_current_cycle
+
+        personal_binding, _ = _capture_source_contract_binding(source_contract_audit)
+        personal_h20_daily = run_personal_h20_for_current_cycle(
+            args.personal_h20_activation_config, personal_binding,
+            market_root=config.data_root,
+            expected_raw_run_id=args.current_observed_expected_raw_run_id,
+        )
+        source_contract_audit["personal_h20_daily"] = personal_h20_daily
     if capture_only_legacy_rule_pointer:
         rule_only_current_input_capture = _persist_current_observed_input_capture(
             output_root=learning_output_root,
@@ -1902,6 +1914,8 @@ def main(argv: list[str] | None = None) -> int:
             cost_scenario=cost_scenario,
             fixed_round_trip_cost_bp=effective_fixed_cost,
         )
+        if personal_h20_daily is not None:
+            rule_only_current_input_capture["personal_h20_daily"] = personal_h20_daily
         rule_only_current_natural_research: dict[str, Any] = {
             "status": "pending",
             "reason": "current_observed_research_not_run",
@@ -2041,6 +2055,8 @@ def main(argv: list[str] | None = None) -> int:
                     cost_scenario=cost_scenario,
                     fixed_round_trip_cost_bp=effective_fixed_cost,
                 )
+                if personal_h20_daily is not None:
+                    current_observed_input_capture["personal_h20_daily"] = personal_h20_daily
                 current_binding, current_binding_reason = _capture_source_contract_binding(
                     source_contract_audit
                 )

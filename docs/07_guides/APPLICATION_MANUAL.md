@@ -5201,4 +5201,6 @@ request schema 為 `personal-model-daily-request.v1`，必須明示 canonical re
 
 `scripts/prepare_personal_h20_activation.py` 預設只預覽；--enable需原可信fit receipt/raw SHA、private root、scope與expected revision。只有明示--execute才發佈activation.json下一CAS revision，不修改Task。--disable讀當前配置，明示原scope/root及expected revision，可在模型／fit已不可讀時寫新disabled revision；保存歷史不刪。若遇revision conflict先唯讀readback，不用覆蓋／清理解決。來源／配置hash錯誤、root與FA_Data或應用repo重疊、links/hardlinks均拒絕。
 
-目前新private位置尚未選定、正式產品consumer／同-run每日hook尚未完成；preview／configuration_published不等於模型已實際啟用。具體預覽、啟用及回滾命令見QA BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。本功能使用既有H20 absolute/no-cost return head；holdout劣於null230bp與after-cost未證明會持續顯示，研究啟用不授交易或formal/PIT資格。
+目前新private位置尚未選定，產品consumer／每日公開store整合尚未完成；中央同-run hook 已接線與合成驗證，preview／configuration_published不等於模型已實際啟用。具體預覽、啟用及回滾命令見QA BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。本功能使用既有H20 absolute/no-cost return head；holdout劣於null230bp與after-cost未證明會持續顯示，研究啟用不授交易或formal/PIT資格。
+
+既有 05:45 calibration-learning Task 保持原帳號、權限、時間及 action。cmd 僅在明示 `PERSONAL_H20_ACTIVATION_CONFIG` 存在，或原 LOCALAPPDATA/TechnicalAnalysis/TechnicalAnalysis/personal_h20/activation.json 存在時傳入 `--personal-h20-activation-config`；不存在沿原流程。disabled 配置不呼叫模型。enabled 配置需 exact 同-run completed-cycle pins 與可信 fit/contract，缺件明示 pending／blocked；在原 no-model entry capture／自然研究之前呼叫獨立每日 H20 port，不要求新 fit 或當日 entry 已收盤。原每日 formal/global 的 blocked 不因此變成成功。新 daily request 不接受 caller observed_at，由 producer 真時鐘保存觀測；次日讀回不能回填成前日推論。root、model、raw-run 或 hash 失配先核配置／原收據，不放寬來源 guard。

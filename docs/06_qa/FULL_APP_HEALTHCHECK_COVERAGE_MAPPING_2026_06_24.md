@@ -399,3 +399,6 @@ A01 是隔離 SQLite→版別 snapshot→個股讀回／capture oracle；A02 是
 
 
 2026-10-06/07 tests/test_personal_h20_activation.py：service-oracle-recommendation；隔離Temp的配置preview/CAS/revision conflict/alias/publication fault與disabled rollback，未操作Task或真model。無direct新增；首輪sandbox ancestor讀回紅收據保留，同guard允許環境重驗。來源/配置單元驗證不代表產品consumer或每日閉環已完成。
+
+
+2026-10-06/07 中央 H20 Task hook：tests/test_personal_h20_daily_hook.py 登錄 service-oracle-recommendation；原 current-observed CLI 增 opt-in/pending-entry 接線回歸。68 focused passed/3.55s，無 direct bridge 新增，未呼真 fit/model/Task。新 hook port 測試與原 capture tests 不代替 leaf 公開 store、產品 UI 或正式啟用驗證。

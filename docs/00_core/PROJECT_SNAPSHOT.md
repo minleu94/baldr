@@ -829,3 +829,5 @@ I20中央95d381a4：20exact entries，原20test/舊分類/direct12不變；metad
 
 
 2026-10-06/07 personal H20 activation 配置準備：app_module/recommendation/personal_h20_activation.py 為typed個人研究配置，不取代global probability policy。CLI預設preview、明示CAS發佈及新disabled revision回滾；原Task/principal/clock只讀核對。新private root尚未真寫；產品reader／同-run每日hook仍續接current-observed lane，不以enabled配置或QA預測冒稱模型日常正式啟用。原no-model capture public驗核已完成；日期跨Taipei午夜不得改觀測時鐘。詳見Manual9.9.1i與BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。
+
+2026-10-06/07 中央same-run hook已接原05:45 calibration Task的opt-in flag，principal/trigger/action不改；entry capture／自然fit前以exact raw-cycle pins呼獨立H20 port，disabled/未配置零模型。合成focused68、inventory13、3scripts mypy/compile/quant通過。leaf公開store/產品consumer尚未整合、新private root未發佈，正式日常effect未驗；不升formal/global/PIT/自然成熟/Stage/UX資格。操作及完整限制見Manual9.9.1i與BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。

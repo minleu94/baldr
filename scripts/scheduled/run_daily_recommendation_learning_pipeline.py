@@ -63,6 +63,7 @@ from ml_module.current_restated_research_bridge import (  # noqa: E402
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--personal-h20-activation-config", type=Path, default=None)
     parser.add_argument("--data-root", required=True, type=Path)
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--source-db", type=Path)
@@ -1421,6 +1422,9 @@ def _learning_child_arguments(
         arguments.extend(
             ["--temporary-closure-cache-path", str(args.temporary_closure_path)]
         )
+    activation_path = getattr(args, "personal_h20_activation_config", None)
+    if activation_path is not None:
+        arguments.extend(["--personal-h20-activation-config", str(activation_path)])
     return arguments
 
 

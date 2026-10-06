@@ -86,3 +86,13 @@ PERSONAL_* roots/policy env 未配置，AppConfigLocation=C:/Users/archi/AppData
 若revision已前進，先唯讀readback再明示expected-revision；不自猜、不覆蓋。publication失敗留下同revision不同body的history不阻擋安全disabled發佈，舊pointer保持原真值。配置不授global promotion／交易／after-cost/PIT；較差holdout2730 vs null2500與after-cost unproven繼續揭露，不作個人model啟用gate。
 
 今日原 public no-model capture已唯讀驗核：output/qa/baldr_real_model_intake_20261006/actual_today_input_capture_verified.json；來源10檔cohort與先前QA十檔不同，不混寫。Taipei 10/07後，10/06保存可讀回/replay/自然outcome，不能宣稱今日新觀測。Task/core reader接線仍待leaf exactAPI與中央composition，root尚未寫入，Task/ACL/憑證未動。
+
+## 中央 same-run Task hook（尚未實際啟用）
+
+中央接點固定既有05:45 calibration-learning Task；原 principal archi／Interactive／Limited、trigger、cmd action、工作目錄與settings不變。cmd只在配置檔已存在時傳optional --personal-h20-activation-config；LOCALAPPDATA預設路徑與上節preview一致，可明示env覆寫。未配置沿原行為；disabled在fit/source/model前退出。cmd未實際執行，不執行排程／網路／真訓練。
+
+run_daily_recommendation_learning_pipeline._learning_child_arguments 僅explicit flag多兩argument，其餘原exact raw-cycle pins不變。main在原no-model input entry persist與自然研究之前呼run_personal_h20_for_current_cycle；原global/formal root conflict仍blocked，收據另有personal_h20_daily，不以個人研究成功改全域資格。對缺來源、wrong raw-run/root/hash/contract或runner錯誤明示pending/blocked，不吞成成功。request用leaf凍結六欄及11原publiccontext pins，不接受caller observed_at、prediction或result_id；entry pending不是模型前置，outcome另明示原保存pins後續join。
+
+測試為合成port，沒有真model/fit/Task：tests/test_personal_h20_daily_hook.py＋原tests/test_current_observed_learning_capture.py同版68 passed/3.55s，raw h20_hook_final.log/XML；同WindowsTemp範圍允許no-follow祖先唯讀handle重驗，guard與ACL沒改。首輪7pass/2fail保留h20_hook.log/XML（fixture漏symbols已修；另一fail為sandbox C:/Users/archi祖先handle）。3scripts targeted mypy --explicit-package-bases --follow-imports=silent 0 errors；5Python compile與quant guard成功。新test分類service-oracle-recommendation，1289inventory，direct仍12；原UI mandatory f15收據沿用，本包未改UI。
+
+剩餘是leaf公開store/readback/schema最終固定、中央productconsumer、使用者實際private root選擇與閉環effect核驗；目前沒有實際config/Task啟用，不能用此68或configuration_published冒稱daily complete。新root仍AppConfigLocation/personal_h20最小建議，原holdout較差230bp/after-cost未證明保持揭露。

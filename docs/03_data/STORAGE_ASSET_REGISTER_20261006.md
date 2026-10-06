@@ -1,5 +1,13 @@
 # 資料資產用途與恢復登記
 
+## 2026-10-06 後續集中整理狀態
+
+- 先前可恢復隔離已完成：repo 351 個根、Croot r015/r20/r26 17 個根，共 368 個、5,439,427,167 logical bytes。完整保留內容與 manifest，尚未釋放容量；隔離根為 `C:/Projects/RepositoryBackups/technical_analysis_temp_quarantine_20261006` 與 `C:/Projects/RepositoryBackups/technical_analysis_croot_temp_quarantine_20261006`。metadata 全量複驗 0 差異，正式來源／H20／私人配置保護項目 0 變更。
+- 追加具名 10-root 計畫見[歷史測試集中清冊與還原指南](HISTORICAL_TEST_QUARANTINE_20261006.md)，共 5,633,484,456 logical bytes。用途、保留必要性、完整原新位置與還原方式已列出；空根只保存拓樸紀錄。
+- 追加計畫尚未搬移：主要對話批准已轉送，但同命令重試一次後，執行任務的自動審核仍不接受轉送內容作為可信授權，於 CreateProcess 前拒絕。10 個來源原處保留，`C:/Projects/RepositoryBackups/historical_test_quarantine_20261006` 尚未建立；未再試或改路線。
+- 批准記錄不是搬移證據。這批實際搬移量為 0 bytes；清冊的原位置仍是目前實際位置，目標位置只屬未執行計畫，durable manifest／證據副本未建立。
+- 本頁下方 19:59 cleanup terminal 是當時紀錄；後續已隔離的根依上述 manifest 查詢，不把歷史盤點再計為目前 root 或已釋放容量。`C:/ta_iso_1005` 仍保留原處，直到追加搬移實際完成。
+
 > 盤點時點：2026-10-06 19:21 UTC；cleanup terminal：19:59 UTC。容量為 logical GiB，部分是下限，不能當作可釋放空間。公開文件使用 `{REPO}`／`{DATA_ROOT}` 等 portable 說明，不包含個人 DB 內容或預測值。
 
 ## 分類與保留責任

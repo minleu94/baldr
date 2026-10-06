@@ -25,6 +25,7 @@ from typing import List, Dict, Optional
 
 from ui_qt.models.pandas_table_model import PandasTableModel
 from app_module.watchlist_service import WatchlistService, WatchlistStorageStatus
+from app_module.watchlist_review_state import WatchlistReviewSourceIdentity, WatchlistReviewState
 from app_module.dtos.decision_continuity_dtos import (
     DecisionIdentity,
     IDENTITY_STATUS_CONFLICT,
@@ -87,7 +88,7 @@ class WatchlistView(QWidget):
         self._analysis_request_id = 0
         self._analysis_worker: TaskWorker | None = None
         self._research_bookmark_restore_tokens: list[object] = []
-        self._observation_session_states: dict[str, str] = {}
+        self._observation_review: WatchlistReviewState | None = None
         logger.info("[WatchlistView] watchlist_service 設置完成")
         
         # 初始化選股清單服務（用於回測）
@@ -417,7 +418,7 @@ class WatchlistView(QWidget):
         self.observation_change_label = QLabel("較前變化：未知；沒有同源比較資料。")
         self.observation_change_label.setTextFormat(Qt.PlainText)
         self.observation_change_label.setWordWrap(True)
-        self.observation_state_label = QLabel("查看狀態：尚未選取（僅本次視窗，不保存、不排程提醒）")
+        self.observation_state_label = QLabel("查看狀態：尚未選取；私人理由與狀態不改研究證據。")
         self.observation_state_label.setWordWrap(True)
         observation_layout.addWidget(self.observation_reason_label)
         observation_layout.addWidget(self.observation_change_label)
@@ -425,9 +426,11 @@ class WatchlistView(QWidget):
         observation_actions = QHBoxLayout()
         self.confirm_observation_button = QPushButton("已確認查看")
         self.later_observation_button = QPushButton("稍後查看")
-        self.confirm_observation_button.clicked.connect(lambda: self._set_observation_state("已確認查看"))
-        self.later_observation_button.clicked.connect(lambda: self._set_observation_state("稍後查看"))
-        for button in (self.confirm_observation_button, self.later_observation_button):
+        self.edit_observation_reason_button = QPushButton("編輯收藏理由")
+        self.edit_observation_reason_button.clicked.connect(self._edit_observation_reason)
+        self.confirm_observation_button.clicked.connect(lambda: self._set_observation_state("confirmed"))
+        self.later_observation_button.clicked.connect(lambda: self._set_observation_state("deferred"))
+        for button in (self.edit_observation_reason_button, self.confirm_observation_button, self.later_observation_button):
             button.setEnabled(False)
             observation_actions.addWidget(button)
         observation_layout.addLayout(observation_actions)
@@ -1338,9 +1341,9 @@ class WatchlistView(QWidget):
         return json.dumps({key: row.get(key, None) for key in fields}, sort_keys=True, ensure_ascii=False, default=str)
 
     def _render_observation(self, row) -> None:
-        enabled = row is not None
-        self.confirm_observation_button.setEnabled(enabled)
-        self.later_observation_button.setEnabled(enabled)
+        self._observation_review = None
+        for button in (self.edit_observation_reason_button, self.confirm_observation_button, self.later_observation_button):
+            button.setEnabled(False)
         self.observation_change_label.setText("較前變化：未知；沒有同源比較資料，不借最新行情。")
         if row is None:
             self.observation_reason_label.setText("收藏理由：尚未選取")
@@ -1351,19 +1354,82 @@ class WatchlistView(QWidget):
             if not reason:
                 reason = "未提供；可查看原保存推薦理由或研究條件，不代作個人收藏理由。"
             self.observation_reason_label.setText(f"收藏理由：{reason}")
-            key = self._observation_identity(row)
-            state = self._observation_session_states.get(key, "待查看")
-        self.observation_state_label.setText(f"查看狀態：{state}（僅本次視窗，不保存、不排程提醒）")
+            state = "待核對；目前不可保存"
+            pins = row.get("review_source_identity")
+            getter = getattr(self.watchlist_service, "get_review_state", None)
+            if type(pins) is WatchlistReviewSourceIdentity and callable(getter):
+                try:
+                    review = getter(str(row.get("證券代號", "")), pins)
+                    if type(review) is not WatchlistReviewState or review.source_identity != pins:
+                        raise ValueError("私人查看狀態來源身份不一致")
+                    self._observation_review = review
+                    self.observation_reason_label.setText(f"收藏理由：{review.reason or '未提供'}")
+                    state = {"pending": "待查看", "confirmed": "已確認查看", "deferred": "稍後查看"}[review.state]
+                    state += "（已啟用私人保存）" if review.writable else "（唯讀；未啟用私人保存）"
+                    for button in (self.edit_observation_reason_button, self.confirm_observation_button, self.later_observation_button):
+                        button.setEnabled(review.writable and review.revision is not None)
+                    comparer = getattr(self.watchlist_service, "get_same_source_change", None)
+                    if review.revision is not None and review.revision > 1 and callable(comparer):
+                        change = comparer(pins.stock_code, pins, before_revision=review.revision - 1,
+                                          after_revision=review.revision)
+                        self.observation_change_label.setText(f"較前保存變化：{change.message}")
+                except Exception as exc:
+                    self._observation_review = None
+                    for button in (self.edit_observation_reason_button, self.confirm_observation_button, self.later_observation_button):
+                        button.setEnabled(False)
+                    state = f"來源／查看狀態不可核對：{str(exc).splitlines()[0]}"
+        self.observation_state_label.setText(f"查看狀態：{state}；不排程提醒、不改研究證據。")
+
+    def _edit_observation_reason(self) -> None:
+        review = self._observation_review
+        if review is None or not review.writable:
+            return
+        generation = self._analysis_request_id
+        reason, accepted = QInputDialog.getText(self, "編輯收藏理由", "只保存私人收藏理由，不改原研究證據：", text=review.reason)
+        if not accepted:
+            self._set_status_label("已取消理由編輯；未保存。", level="info")
+            return
+        if generation != self._analysis_request_id or self._observation_review != review:
+            self._set_status_label("選取來源已變動；未保存，請重新選取。", level="warning")
+            return
+        self._save_observation_review(reason, review.state, review)
 
     def _set_observation_state(self, state: str) -> None:
-        if state not in {"已確認查看", "稍後查看"}:
+        if state not in {"confirmed", "deferred"}:
             return
+        review = self._observation_review
+        if review is None or not review.writable:
+            return
+        self._save_observation_review(review.reason, state, review)
+
+    def _save_observation_review(self, reason, state, review: WatchlistReviewState) -> None:
         selected = self._selected_watchlist_row()
         if selected is None:
             return
-        row, _code = selected
-        self._observation_session_states[self._observation_identity(row)] = state
-        self._render_observation(row)
+        row, code = selected
+        if row.get("review_source_identity") != review.source_identity or review.revision is None:
+            self._set_status_label("來源身份已變動；未保存。", level="warning")
+            return
+        try:
+            saved = self.watchlist_service.save_review_state(
+                code, reason=reason, state=state, expected_revision=review.revision,
+                sourcepins=review.source_identity,
+            )
+            if type(saved) is not WatchlistReviewState or saved.source_identity != review.source_identity:
+                raise ValueError("保存回應身份不一致")
+            # 原來源／bookmark 不變；同步重讀後精確定位本列，不選同股其他版本。
+            self._load_watchlist()
+            frame = self.stocks_model.getDataFrame() if self.stocks_model is not None else None
+            if frame is not None:
+                for index, candidate in frame.iterrows():
+                    if candidate.get("review_source_identity") == review.source_identity:
+                        self.stocks_table.selectRow(int(index))
+                        break
+            if self._observation_review != saved:
+                raise ValueError("已保存，但目前讀回未能核對同一 revision／理由／狀態")
+            self._set_status_label("已保存並重讀私人理由／查看狀態；原研究證據未變更。", level="success")
+        except Exception as exc:
+            self._set_status_label(f"私人查看狀態保存／核對失敗：{str(exc).splitlines()[0]}；請重讀來源。", level="warning")
 
     @staticmethod
     def _row_decision_identity(row: object, stock_code: str) -> DecisionIdentity:

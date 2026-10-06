@@ -8,7 +8,7 @@ import hashlib
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, List, Dict, Optional, Set, Literal, Mapping
+from typing import Any, List, Dict, Optional, Set, Literal, Mapping, Callable
 from datetime import date, datetime
 from contextlib import closing
 import sqlite3
@@ -36,6 +36,11 @@ from app_module.daily_market_research_bookmark import (
 )
 from app_module.research_session.session_dtos import ResearchStockContextDTO
 from app_module.original_stock_ranking import OriginalStockRankingError
+from app_module.watchlist_review_state import (
+    WatchlistReviewSourceIdentity, WatchlistReviewState, WatchlistReviewStateError,
+    WatchlistSavedChange, ReviewState, REVIEW_EXTENSION, read_review_state,
+    review_source_identity, with_review_state, compare_saved_items,
+)
 
 
 _RESEARCH_BOOKMARK_SOURCES = frozenset(
@@ -82,6 +87,7 @@ class WatchlistItem:
     _storage_extensions: Dict[str, Any] = field(default_factory=dict, repr=False)
     _decision_identity_original: Dict[str, Any] | None = field(default=None, repr=False)
     _decision_identity_initial: Dict[str, Any] = field(default_factory=dict, repr=False)
+    _review_source_identity: WatchlistReviewSourceIdentity | None = field(default=None, repr=False)
     
     def __post_init__(self):
         """初始化後處理"""
@@ -118,6 +124,10 @@ class WatchlistItem:
             data,
             default_stock_code=stock_code,
         )
+        try:
+            review_identity = review_source_identity(data)
+        except (TypeError, ValueError):
+            review_identity = None
         return cls(
             stock_code=stock_code,
             stock_name=str(data.get("stock_name", data.get("證券名稱", stock_code)) or stock_code),
@@ -135,6 +145,7 @@ class WatchlistItem:
                 deepcopy(identity_payload) if isinstance(identity_payload, dict) else None
             ),
             _decision_identity_initial=asdict(decision_identity),
+            _review_source_identity=review_identity,
         )
 
     def to_storage_mapping(self) -> Dict[str, Any]:
@@ -145,6 +156,7 @@ class WatchlistItem:
         known_payload.pop("_storage_extensions", None)
         known_payload.pop("_decision_identity_original", None)
         known_payload.pop("_decision_identity_initial", None)
+        known_payload.pop("_review_source_identity", None)
         if self._decision_identity_original is not None:
             identity_payload = deepcopy(self._decision_identity_original)
             typed_identity = known_payload.get("decision_identity", {})
@@ -1410,9 +1422,104 @@ class WatchlistService:
                 'source_id': item.source_id,
                 'decision_identity': item.decision_identity.to_dict(),
                 'research_bookmark': item.research_bookmark,
+                'review_source_identity': item._review_source_identity,
             }
             for item in watchlist.items
         ]
+
+    def _review_writer_allowed(self) -> bool:
+        """基礎／legacy service 不授私人查看狀態 writer。"""
+        return False
+
+    def _require_review_writer(self) -> None:
+        raise WatchlistReviewStateError("review_personal_writer_not_active")
+
+    @staticmethod
+    def _review_item_index(items, code: str, identity: WatchlistReviewSourceIdentity) -> int:
+        if type(identity) is not WatchlistReviewSourceIdentity or identity.stock_code != code:
+            raise WatchlistReviewStateError("review_source_identity_mismatch")
+        matches = [index for index, item in enumerate(items)
+                   if isinstance(item, dict) and item.get("stock_code", item.get("證券代號")) == code
+                   and review_source_identity(item) == identity]
+        if len(matches) != 1:
+            raise WatchlistReviewStateError("review_item_missing_ambiguous_or_changed")
+        return matches[0]
+
+    def get_review_state(self, stock_code: str, expected_source_identity: WatchlistReviewSourceIdentity,
+                         *, watchlist_id: str = "default") -> WatchlistReviewState:
+        """沿原讀取守衛取得理由／狀態與 CAS revision，不初始化 writer。"""
+        watchlist = self._load_watchlist(watchlist_id)
+        if watchlist is None:
+            raise WatchlistReviewStateError("review_watchlist_missing")
+        matches = [item for item in watchlist.items if item.stock_code == stock_code
+                   and item._review_source_identity == expected_source_identity]
+        if type(expected_source_identity) is not WatchlistReviewSourceIdentity or len(matches) != 1:
+            raise WatchlistReviewStateError("review_item_missing_ambiguous_or_changed")
+        item = matches[0]
+        # 只讀 extension 與 notes；身份沿原 raw payload 捕獲，不把 typed defaults 回寫。
+        extension = item._storage_extensions.get(REVIEW_EXTENSION)
+        state: ReviewState = "pending"
+        if extension is not None:
+            if (not isinstance(extension, dict) or extension.get("schema_version") != "baldr.watchlist-review.v1"
+                    or extension.get("state") not in {"pending", "confirmed", "deferred"}
+                    or extension.get("source_identity_sha256") != expected_source_identity.item_sha256):
+                raise WatchlistReviewStateError("review_extension_identity_or_schema_mismatch")
+            state = extension["state"]
+        return WatchlistReviewState(expected_source_identity, item.notes, state, watchlist.revision,
+                                   self._review_writer_allowed())
+
+    def save_review_state(self, stock_code: str, *, reason: str, state: ReviewState,
+                          expected_revision: int, sourcepins: WatchlistReviewSourceIdentity,
+                          watchlist_id: str = "default",
+                          cancel_callback: Callable[[], bool] | None = None) -> WatchlistReviewState:
+        """同步 CAS 更新單列私人 annotation；交易進入後不交回 UI event loop。"""
+        if type(expected_revision) is not int or expected_revision < 1:
+            raise WatchlistReviewStateError("review_expected_revision_required")
+        if cancel_callback is not None and cancel_callback():
+            raise WatchlistReviewStateError("review_cancelled")
+        self._require_review_writer()
+        assert self.repository is not None
+        with self._writer_guard():
+            repository_id = self._repository_watchlist_id(watchlist_id)
+            current = self.repository.get_current(repository_id)
+            if current is None or current["is_deleted"]:
+                raise WatchlistReviewStateError("review_watchlist_missing")
+            if current["revision"] != expected_revision:
+                raise WatchlistReviewStateError("review_revision_conflict")
+            payload = deepcopy(current["payload"])
+            index = self._review_item_index(payload["items"], stock_code, sourcepins)
+            payload["items"][index] = with_review_state(payload["items"][index], reason, state)
+            if cancel_callback is not None and cancel_callback():
+                raise WatchlistReviewStateError("review_cancelled")
+            revision = self.repository.save(
+                repository_id, payload, expected_revision=expected_revision,
+                source_hash=current["source_hash"], operation="private_review_updated",
+            )
+        return read_review_state(payload["items"][index], revision=revision, writable=True)
+
+    def get_same_source_change(self, stock_code: str, expected_source_identity: WatchlistReviewSourceIdentity,
+                               *, before_revision: int, after_revision: int,
+                               watchlist_id: str = "default") -> WatchlistSavedChange:
+        """只查兩個明示保存 revision；缺來源／帳戶保持未知。"""
+        # 重用 adapter 的來源／activation 讀取核驗。
+        self.get_review_state(stock_code, expected_source_identity, watchlist_id=watchlist_id)
+        if self.repository is None or type(before_revision) is not int or type(after_revision) is not int:
+            return WatchlistSavedChange("unknown", before_revision, after_revision)
+        snapshots = {entry["revision"]: entry for entry in self.repository.iter_revisions(
+            self._repository_watchlist_id(watchlist_id), include_payload=True)
+            if entry["revision"] in {before_revision, after_revision} and not entry["is_deleted"]}
+        if set(snapshots) != {before_revision, after_revision}:
+            return WatchlistSavedChange("unknown", before_revision, after_revision)
+        after_items = snapshots[after_revision]["payload"]["items"]
+        after_index = self._review_item_index(after_items, stock_code, expected_source_identity)
+        after = after_items[after_index]
+        before_items = [item for item in snapshots[before_revision]["payload"]["items"]
+                        if item.get("stock_code") == stock_code and all(item.get(key) == after.get(key)
+                        for key in ("source", "source_id", "account_id"))]
+        if len(before_items) != 1:
+            return WatchlistSavedChange("unknown", before_revision, after_revision)
+        return compare_saved_items(before_items[0], after, before_revision=before_revision,
+                                   after_revision=after_revision)
 
     def add_research_bookmark(
         self,

@@ -245,7 +245,7 @@ def test_local_stock_filter_preserves_full_denominator_unknown_and_exact_return(
         app.processEvents()
 
 
-def test_observation_state_is_exact_row_local_and_does_not_write_evidence(app):
+def test_unconfigured_observation_state_refuses_writer_and_does_not_write_evidence(app):
     service = MagicMock()
     rows = [
         {"stock_code": "2330", "stock_name": "合成", "source": "manual", "source_id": source,
@@ -259,21 +259,22 @@ def test_observation_state_is_exact_row_local_and_does_not_write_evidence(app):
         before = view.stocks_model.getDataFrame().copy(deep=True)
         view.stocks_table.selectRow(0)
         view.confirm_observation_button.click()
-        assert "已確認查看" in view.observation_state_label.text()
+        assert not view.confirm_observation_button.isEnabled()
+        assert "目前不可保存" in view.observation_state_label.text()
         assert "觀察原因" in view.observation_reason_label.text()
         assert "未知" in view.observation_change_label.text()
         view.stocks_table.clearSelection()
         view.stocks_table.selectRow(1)
-        assert "待查看" in view.observation_state_label.text()
+        assert "目前不可保存" in view.observation_state_label.text()
         view.later_observation_button.click()
-        assert "稍後查看" in view.observation_state_label.text()
+        assert not view.later_observation_button.isEnabled()
         view.stocks_table.clearSelection()
         view.stocks_table.selectRow(0)
-        assert "已確認查看" in view.observation_state_label.text()
-        assert "不保存" in view.observation_state_label.text()
+        assert "目前不可保存" in view.observation_state_label.text()
         assert view.stocks_model.getDataFrame().equals(before)
         service.add_stocks.assert_not_called()
         service.bind_stock_decision_identity.assert_not_called()
+        service.save_review_state.assert_not_called()
         view.stocks_table.clearSelection()
         assert not view.confirm_observation_button.isEnabled()
     finally:

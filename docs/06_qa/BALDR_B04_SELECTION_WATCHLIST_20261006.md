@@ -79,3 +79,38 @@ Coverage：Manual 必須同步以上入口／步驟／判讀／限制／來源�
 | `tests/test_baldr_b04_selection_watchlist.py`、本 QA | 新增 | 同上 | 移除本 lane 驗證與交接說明，無 production dependency。 |
 
 回滾前確認整合 tree 沒有覆寫這些檔案的其他未提交工作；只回退本 lane commit，不 reset dev，不動 QA synthetic artifacts 或正式資料；再跑受影響 focused tests。完整 commit hash／changed blobs 由交付訊息提供，避免文件記錄自身 hash 形成循環。
+
+
+## 第二次委派：原庫私人 annotation 閉環（取代上文 session-only 限制）
+
+本次額外授權 `app_module/watchlist_service.py`、`app_module/personal_watchlist_service.py`、新 `app_module/watchlist_review_state.py` 與新 focused test；沿第一提交 `f05a0af4a2a855b64362bc1c2f6b31217068969e` 同 lane 實作。起始比較 dev `5441e1c747f2e54e68143eb293c5147617a986d5` 的兩個 service 與 lane 無差異。dev repository 有中央 B02 path helper 差異，保持唯讀，整合保留中央版本；不复制、改動 repository／item storage／shared DTO／codec／main／config／Manual／主 plan。
+
+### 最小 API 與保存邊界
+
+- `get_stocks()` 增加非持久化 `review_source_identity: WatchlistReviewSourceIdentity | None`，從原 raw item 捕獲；不接受手填身份。
+- `get_review_state(stock_code, expected_source_identity, *, watchlist_id="default") -> WatchlistReviewState`：回傳原 notes、typed state、revision、writable 與 source identity；既有來源／activation 守衛仍有效。
+- `save_review_state(stock_code, *, reason, state, expected_revision, sourcepins, watchlist_id="default", cancel_callback=None) -> WatchlistReviewState`：只准已啟用個人 adapter；沿原 writer guard 與 repository revision CAS，clone 原 payload，只改精確一列 `notes` 與 `baldr_watchlist_review` extension（schema `baldr.watchlist-review.v1`，state `pending/confirmed/deferred`，原來源 digest）。保留 extension 未知鍵、其他股票／payload／來源 hash 與 evidence。沒有新庫／平行 store。
+- `get_same_source_change(stock_code, expected_source_identity, *, before_revision, after_revision, watchlist_id="default") -> WatchlistSavedChange`：讀原 repository 的兩個明示已保存 revisions，stock/source/source_id/account_id 完整且相同才比較私人理由／狀態／原保存來源欄位；不足／跨帳戶／跨來源保持 unknown。不是價格或績效比較，不讀今日價格、行情庫或任意 latest。
+
+來源 digest 包含原不可變 item／證據欄位與未知欄位；排除可編輯 notes／review extension 及既有私人 stock_name／tags，DecisionIdentity 沿既有 DTO 補預設但不回寫 raw。同股不同來源／版本／帳戶仍隔離，未知 extension schema 或 hash 不符拒絕讀寫。回傳 identity 欄位不寫入儲存。理由上限 4096 字元，禁止 NUL。
+
+保存同步進入 CAS，不 yield Qt event loop；取消 callback 在交易前兩次核對。完成交易後不宣稱取消能撤销已保存 revision。UI dialog 取消、選列／載入 generation 改變都不呼叫保存；成功訊息前重新載入並比對同 identity／reason／state／revision。讀回失配明示保存／核對失敗，避免假稱未寫。legacy／未啟用個人 service 的按鈕禁用並拒 writer，不自動啟用。
+
+### 驗證與修正記錄
+
+新程序透過原 build service 讀回理由／confirmed／revision／identity；synthetic 保存前後核原來源 bytes、原 evidence、其他股票、未知欄位與 source hash。包含 stale revision、CAS 讀後競爭、同股來源 pins 改變、兩個取消時點、readonly、不支援 schema、同來源比較 unknown、offscreen confirm/edit/defer/reopen 與 modal 選列切換。
+
+初版競爭案例讓第二 service 在第一 writer guard 內進入，先被既有 marker lock 拒絕（1 failed / 35 passed），不能證明 CAS。修正 fixture 僅在 synthetic repository 層先保存 rival revision，再由第一 service 原 repository.save 核 CAS；保留晚到不得覆寫與來源 pins assertions，未改產品鎖規則。早期 default temp 的 canonical chooser 曾遇沙箱 no-follow ancestor 拒讀，後續使用 repository 內獨立 basetemp 驗證。
+
+Focused mypy：四個產品 source files `--follow-imports=silent` 成功；changed Python 六檔 py_compile 成功。重型 UI gate 仍交中央穩定 union 一次，不在 lane 重跑。
+
+### 中央接線／Manual 替換提案
+
+原 session-only Manual 提案改為：
+
+> 候選池「編輯收藏理由／已確認查看／稍後查看」在已啟用個人儲存且來源身份可核驗時，保存原個人 Watchlist revision；理由沿原備註、查看狀態沿私人 extension，重新開啟仍可讀回。只讀／未啟用模式不可保存。取消理由對話框或切換來源不保存。衝突須重讀並核對來源，不能覆寫晚到版本。稍後查看不是排程提醒。變化只比較兩份相同股票／來源／帳戶保存快照；資料不足維持未知，沒有今日行情推論。
+
+上文「理由編輯／跨程序狀態未完成」及未凍結 annotation API 提案已由本節的實作 API 取代；排程提醒、行情變化計算不在授權範圍。中央 selector／main 接線與 Manual 同步仍由整合 owner 執行。回滾第二提交只移除私人 annotation caller／helper，不刪來源或 SQLite 歷史；第一提交可獨立保留。QA synthetic artifacts 不提交。
+
+
+第二次委派最終 focused suite：`test_baldr_b04_watchlist_review_state.py`、`test_baldr_b04_selection_watchlist.py`、三個指定 layout／daily research tests、`test_personal_watchlist_service.py`、`test_watchlist_stock_analysis_navigation.py`、`test_ux03_research_bookmark_ui.py`、`test_rank_research_bookmark_flow.py`、`test_watchlist_empty_pool_presentation.py`，offscreen、`-q -o addopts= -p no:cacheprovider`、獨立 `output/qa/b04-review-final-20261006-run02` basetemp：**97 passed in 66.05s**。`git diff --check` 成功。全部 synthetic fixture；沒有正式個人啟用、migration 或資料寫入。

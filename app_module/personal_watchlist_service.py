@@ -269,6 +269,12 @@ class PersonalWatchlistService(WatchlistService):
                 "personal_watchlist_readonly: 明示升級並啟用個人儲存前不可保存"
             )
 
+    def _review_writer_allowed(self) -> bool:
+        return self._storage_status.mode == "repository" and self.repository is not None
+
+    def _require_review_writer(self) -> None:
+        self._require_active_writer()
+
     @contextmanager
     def _writer_guard(self) -> Iterator[None]:
         self._require_active_writer()

@@ -5218,3 +5218,28 @@ H20已真參與每日研究推論／原值保存，個股摘要讀其原預測�
 ### 2026-10-07 日常有限 BB 上軌版號接線補充
 
 隔離研究 runtime 與 observation policy 可明示相同 feature_contract_version=daily-market-feature-snapshot.v3.bbands30-upper；缺欄保持原 v2。先整合 parent 新版 API，再依原明示 universe/source pins 執行 preview，核完整 declared cohort、同版 method hash，通過後才 execute。runtime/policy、各 segment 或保存 parent 異版會拒絕；請核配置兩處版號與原保存來源，不改舊 artifact 修補。缺件、30 根暖機不足或可得性未核保持未知。有限上軌比較不代表 compression 完成、不授正式/PIT/訓練資格。本中央接線尚待 BBP01 真保存鏈整合驗證，未修改正式 Task、配額或 200GiB capture reserve。H20 cohort 列表／gross 排序、自然結果批次 caller 與第三條件 UI 由三個排他 lane 續作，現有個股 H20 卡片不代表完整模型選股流程完成。
+
+### 2026-10-07 中央整合：保存模型名單與自然結果
+
+上述「目前用途」及三包待接敘述保留為整合前紀錄。推薦工作區已新增「個人模型選股研究（H20毛報酬）」分頁，讀既有私人 root 的 activation／product reference／完整 daily manifest，不重新推論。原 canonical 推薦勝率與排序仍有各自用途；模型分頁依已保存 H20 gross 排序選股研究。
+
+1. 開啟推薦工作區的模型分頁，或按「讀取每日已保存模型名單」。背景核驗配置版本、模型 contract、cycle、manifest raw SHA 與每股原預測。配置未啟用或來源不可核時顯示不可用，不能用 QA／其他日期代替。
+2. 選「預測毛報酬由高到低」或「由低到高」。數值用整數 bp 排序；同值按股票代碼，未知列後置且保留。母體是該 manifest 的完整 1–50 股，並非全市場。每列分列決策日、來源日、特徵日，跨午夜不改日期。
+3. 選可核列按「研究選取股票」或雙擊。中央再次核同一份原 manifest／model／cycle／sample／prediction／capture pins 才下鑽；`sample_id` 不轉成推薦 `result_id`。個股報告沿該決策日，H20 卡核同一指標；指標已變更顯示不可用。
+4. 由個股研究返回來源，先重讀再定位同一 selection。只恢復本次記憶中的 exact selection，跨母體、模型、日期、hash、缺件或關閉回呼明拒，不用同股最新結果冒充原列。重新啟動後先讀保存名單再選取。
+
+H20 gross 是未扣成本的20交易日預測，不是獲利機率；高預測不代表買入。原候選的 Brier 2730 對 null 2500 僅是機率 head 品質揭露，gross 效果及扣成本效果另待自然資料成熟；不以此差異或未成熟作永久個人啟用 gate，不授自動交易、正式或 PIT 資格。
+
+既有 daily invocation 取得新 manifest 後，沿原 no-model entry 保存結果呼完整 cohort caller。entry 的 cycle／decision／source／features 須由原 verifier 精確核對；成功後只在私人 `h20_natural_entry_bindings` 保存 manifest 與 entry pins 指標。未取到或跨午夜錯配仍回全員 pending，不登記錯誤 entry。未配置／disabled 不呼模型或自然 ports。
+
+日後原流程取得受驗 outcome pins，用原 capture SHA 定址已登記 manifest，逐列呼原20-session verifier／projector；成熟 join 沿原 `h20_outcome_joins` create-only 保存，重試不重計、不複製預測、不掃 latest/glob。輸入與自然结果狀態分別見 learning 收據的 `current_observed_input_capture.personal_h20_natural`、`current_observed_natural_research.personal_h20_outcomes`。缺原登記保持 pending；不得事後借另一日期 entry 來補樣本。工程合成成熟案例不代表真自然品質已成熟。
+
+排錯核 activation revision、manifest raw pin、完整 symbols、三日期與 entry/outcome 原 pins。變更指標後請重新選取；錯配不改舊 artifact／來源時間／hash。停用沿既有 disabled 新 revision，保存歷史不刪。原 Pacific05:45 Task 未改或手動觸發；下一自然 run 與實際效果需另核新 source cycle、manifest 和原預測，不能以工程測試當排程成功。
+
+### 2026-10-07 BB 第三條件與收藏
+
+每日研究條件頁新增「收盤價高於布林上軌（30）」，預設不勾。勾選先篩選該保存來源；明示按「更新研究快照」才 opt-in 產生 v3，重讀／排序／收藏／返回不計算新的指標。契約 timeperiod=30、上下2個標準差、SMA、strict above；等於上軌為不符合。30根有效 OHLC 暖機不等於官方 session 完整。
+
+表格分列 BB 比較三態與原保存上軌值；v2未保存、缺件、暖機不足或方法未核顯示未知，來源參數 lineage 仍另列未知。AND／OR沿原規則；MA presets 會清除 BB 勾選。來源 tooltip 可查原 feature／warmup／manifest SHA，點股票沿原 exact DTO 下鑽返回。
+
+BB 收藏沿原 Watchlist JSON 保留來源及查詢，重開核原保存 v3 manifest／完整股票母體／row／condition／方法 hash。v2 原收藏 body/hash 保持；缺來源、異版、錯 pin 不重算或讀 latest。可明示另查該 cohort 最新研究，但新版本不冒充原收藏。BBP01 parent-v3 完整日常保存鏈仍待直接使用者批准採入與中央增量驗證；本 UI 不代表該鏈已完成，compression／U1 未決不升格。所有 UI 驗證為 offscreen，未宣稱前景 Native。

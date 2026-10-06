@@ -251,9 +251,13 @@ def read_personal_h20_daily_manifest(
 def read_personal_h20_product_for_stock(
     config_path: Path, *, stock_code: str, market_root: Path,
     daily_reader: Callable[..., Mapping[str, Any]], prediction_reader: Callable[..., Mapping[str, Any]],
+    expected_reference: PersonalH20ProductReference | None = None,
 ) -> PersonalH20ProductEvidence:
     """同一公開store受驗讀回；失敗回缺件，絕不呼predictor或補存。"""
     try:
+        if expected_reference is not None and read_personal_h20_product_reference(
+                config_path, market_root=market_root) != expected_reference:
+            raise ValueError("personal_h20_selected_reference_changed")
         activation = read_personal_h20_activation(config_path)
         if Path(activation.market_root) != market_root:
             raise ValueError("personal_h20_product_market_mismatch")
@@ -296,8 +300,60 @@ def read_personal_h20_product_for_stock(
             expected_candidate_id=activation.candidate_id, expected_contract_hash=activation.model_contract_hash)
         if read_personal_h20_activation(config_path) != activation:
             raise ValueError("personal_h20_activation_changed_during_product_read")
+        if expected_reference is not None and read_personal_h20_product_reference(
+                config_path, market_root=market_root) != expected_reference:
+            raise ValueError("personal_h20_selected_reference_changed")
         return evidence
     except FileNotFoundError:
         return PersonalH20ProductEvidence(stock_code, "pending", "等待每日已保存收據／配置；不以QA檔代替")
     except Exception as exc:
         return PersonalH20ProductEvidence(stock_code, "unavailable", str(exc)[:300])
+
+
+@dataclass(frozen=True, slots=True)
+class PersonalH20ProductReference:
+    """啟用設定與原 manifest 指標；不包含另一份預測。"""
+
+    activation: PersonalH20Activation
+    manifest_path: Path
+    manifest_sha256: str
+    cycle_id: str
+    decision_date: str
+    reference_sha256: str
+
+
+def read_personal_h20_product_reference(
+    config_path: Path, *, market_root: Path,
+) -> PersonalH20ProductReference:
+    """有界唯讀原指標，供完整母體與背景回呼共同核對。"""
+    activation = read_personal_h20_activation(config_path)
+    if not activation.enabled or Path(activation.market_root) != market_root:
+        raise ValueError("personal_h20_product_activation_unavailable")
+    root = Path(activation.personal_root)
+    pointer = root / "h20_product_reference.json"
+    paths = _activation_paths(activation.market_root, activation.personal_root)
+    assert_personal_store_path(paths, pointer)
+    raw = _read_regular_file_no_follow(pointer, root, max_bytes=64 * 1024)
+    body = json.loads(raw)
+    if (body["schema_version"] != "personal-h20-product-reference.v1"
+            or body["activation_revision"] != activation.revision
+            or body["scope_id"] != activation.scope_id
+            or body["candidate_id"] != activation.candidate_id
+            or body["contract_hash"] != activation.model_contract_hash):
+        raise ValueError("personal_h20_product_reference_identity_mismatch")
+    manifest = Path(body["receipt_path"])
+    pin = body["receipt_sha256"]
+    if (not manifest.is_absolute() or manifest.parent != root / "h20_daily_receipts"
+            or type(pin) is not str or len(pin) != 71 or not pin.startswith("sha256:")
+            or any(char not in "0123456789abcdef" for char in pin[7:])
+            or manifest.name != pin[7:] + ".json"):
+        raise ValueError("personal_h20_product_manifest_pin_required")
+    assert_personal_store_path(paths, manifest)
+    if (type(body["cycle_id"]) is not str or not body["cycle_id"]
+            or type(body["decision_date"]) is not str
+            or date.fromisoformat(body["decision_date"]).isoformat() != body["decision_date"]):
+        raise ValueError("personal_h20_product_reference_clock_required")
+    if read_personal_h20_activation(config_path) != activation:
+        raise ValueError("personal_h20_activation_changed_during_product_read")
+    return PersonalH20ProductReference(activation, manifest, pin, body["cycle_id"],
+        body["decision_date"], "sha256:" + hashlib.sha256(raw).hexdigest())

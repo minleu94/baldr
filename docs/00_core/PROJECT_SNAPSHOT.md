@@ -1,5 +1,15 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-07 中央三包與真保存模型名單整合
+
+H20C01 `0b6455dc→9e6b2246`、H20N01 `4b2a89a2→e61ae912`、BBUI01含收藏codec `1e5e9ced→30193df6` 已採。推薦工作區完整已保存cohort／gross整數排序／unknown列／exact下鑽返回接線完成，原canonical機率／ranking不改。日常原entry/outcome caller已接，create-only只登記pins指標，以原captureSHA定址舊manifest，不latest/glob；缺entry或錯日期保持pending。
+
+真enabled revision1與原候選保持；新程序禁止producer、唯讀10股全available、gross排序及exactselection恢復通過，privatebytes/mtime不變。decision10/07／source10/06／feature10/05原分域。這是已保存真模型名單consumer驗證，非全市場或前景Native；自然10pending／0成熟不升品質資格。下一原Task UTC10/07 12:45仍待父層唯讀驗收，未手動trigger。
+
+Affected首200P/1F（原新程序reader祖先metadata變動）、同原節點1P，coverage201P非單次全綠；刷新清旧列後UI2P。mandatory WB85、validator25/4skip/0fail、八根mypy848零錯誤；scripts3source、21Pythoncompile、quant、inventory13通過。filesystem/inventory1302/1302、missing/stale/docdrift0、direct12；前輪日常版號test漏登已補。完整數字與局限見 [中央整合QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md)，操作以Manual最新補充為準。
+
+BB第三條件UI與原保存收藏已可用，BBP01 frozen四檔仍因先前工具審核拒localcherry-pick等待直接真人批准，未重試／抽檔／換路。parent-v3全母體日常真保存鏈及小型acceptance delta未完成。9Stage1done/8partial、24UX2done/22partial、七有限closed與F1/Journey例外保持，不冒稱全部產品done。無push/mainmerge／真DBwrite／Task設定變更／ACL／交易／搬移／fit。
+
 ## 2026-10-06 個人 H20 真候選接線增量
 
 使用者已接受 U1 有限 BBANDS30 上軌比較與 U2 H20 gross、要求每日個人模型使用；早先「U1/U2 等答覆」為歷史狀態。A02 `7b5f055d→25530d9d` 已採，原 trainer 已有 H20 absolute/no-cost return head，不需新 trainer。中央可信原 fit 收據核 `rec-cal-3f8b2c276ef316e28de3806d`，真 same-bytes artifact 重播原9月28日三請求得到1613／1963／1086bp，等於原保存輸出；全部來源 bytes／mtime 不變。model final-fold 截點與 merged-lineage cutoff 分別綁定，中文 canonical hash 相容已補，中央68 focused passed、rebuild4 passed、mypy4 sources0 error。

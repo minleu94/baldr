@@ -36,6 +36,29 @@ def read_personal_h20_daily_receipt(path: str | Path, *, root: Path, expected_sh
         selected_stock=selected_stock, prediction_reader=read_personal_h20_prediction)
 
 
+def read_personal_h20_product_cohort(config_path: Path, *, market_root: Path,
+    cancel_callback: Callable[[], bool] | None = None) -> tuple[Any, Any]:
+    """背景載入原完整母體；設定／指標在讀取中變更即拒絕。"""
+    from app_module.recommendation.personal_h20_product_evidence import read_personal_h20_product_reference
+    from app_module.recommendation.personal_h20_research_cohort import read_personal_h20_research_cohort
+
+    reference = read_personal_h20_product_reference(config_path, market_root=market_root)
+    def reader(path: str | Path, *, root: Path, expected_sha256: str) -> Mapping[str, Any]:
+        if cancel_callback is not None and cancel_callback():
+            raise InterruptedError("personal_h20_cohort_cancelled")
+        return read_personal_h20_prediction(path, root=root, expected_sha256=expected_sha256)
+    cohort = read_personal_h20_research_cohort(reference.manifest_path,
+        root=Path(reference.activation.personal_root), expected_sha256=reference.manifest_sha256,
+        prediction_reader=reader)
+    if (cohort.candidate_id != reference.activation.candidate_id
+            or cohort.contract_hash != reference.activation.model_contract_hash
+            or cohort.cycle_id != reference.cycle_id or cohort.decision_date != reference.decision_date
+            or read_personal_h20_product_reference(config_path, market_root=market_root) != reference
+            or (cancel_callback is not None and cancel_callback())):
+        raise ValueError("personal_h20_cohort_reference_changed")
+    return reference, cohort
+
+
 def run_personal_h20_for_current_cycle(
     config_path: Path | None, source_binding: Mapping[str, Any] | None, *,
     market_root: Path,

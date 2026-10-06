@@ -1916,6 +1916,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         if personal_h20_daily is not None:
             rule_only_current_input_capture["personal_h20_daily"] = personal_h20_daily
+            from scripts.scheduled.personal_h20_natural_hook import register_personal_h20_natural_entry
+            rule_only_current_input_capture["personal_h20_natural"] = register_personal_h20_natural_entry(
+                args.personal_h20_activation_config, daily=personal_h20_daily, entry=rule_only_current_input_capture)
         rule_only_current_natural_research: dict[str, Any] = {
             "status": "pending",
             "reason": "current_observed_research_not_run",
@@ -1945,6 +1948,7 @@ def main(argv: list[str] | None = None) -> int:
                 fixed_round_trip_cost_bp=effective_fixed_cost,
                 cost_scenario=cost_scenario,
                 session_resolver=current_only_resolver,
+                personal_h20_activation_config=getattr(args, "personal_h20_activation_config", None),
             )
         except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
             rule_only_current_natural_research = {
@@ -2057,6 +2061,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 if personal_h20_daily is not None:
                     current_observed_input_capture["personal_h20_daily"] = personal_h20_daily
+                    from scripts.scheduled.personal_h20_natural_hook import register_personal_h20_natural_entry
+                    current_observed_input_capture["personal_h20_natural"] = register_personal_h20_natural_entry(
+                        args.personal_h20_activation_config, daily=personal_h20_daily, entry=current_observed_input_capture)
                 current_binding, current_binding_reason = _capture_source_contract_binding(
                     source_contract_audit
                 )
@@ -2138,6 +2145,7 @@ def main(argv: list[str] | None = None) -> int:
                             fixed_round_trip_cost_bp=effective_fixed_cost,
                             cost_scenario=cost_scenario,
                             session_resolver=revision_maturity_resolver,
+                            personal_h20_activation_config=getattr(args, "personal_h20_activation_config", None),
                         )
                     except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as fit_exc:
                         current_observed_natural_research = {
@@ -2606,6 +2614,7 @@ def main(argv: list[str] | None = None) -> int:
         capture_requested=args.capture_current,
         calendar_cache_path=args.calendar_cache_path,
         temporary_closure_path=args.temporary_closure_cache_path,
+        personal_h20_activation_config=getattr(args, "personal_h20_activation_config", None),
     )
     capture_result = dict(capture_result)
     capture_result["current_observed_input_capture"] = current_observed_natural_lane[
@@ -4825,6 +4834,7 @@ def _current_observed_natural_research_fit(
     fixed_round_trip_cost_bp: int | None,
     cost_scenario: RecommendationCostScenario,
     session_resolver: NaturalMaturitySessionResolver,
+    personal_h20_activation_config: Path | None = None,
 ) -> dict[str, Any]:
     """Build and consume exact current-observed outcome receipts in an isolated shadow root."""
 
@@ -4903,6 +4913,7 @@ def _current_observed_natural_research_fit(
     evaluation_token = evaluation_at.astimezone(timezone.utc).isoformat(timespec="microseconds")
     evaluation_date = evaluation_at.astimezone(TAIPEI).date().isoformat()
     outcome_refs: list[dict[str, str]] = []
+    personal_h20_outcomes: list[Mapping[str, Any]] = []
     samples: list[tuple[RecommendationCalibrationSample, str]] = []
     pending_count = 0
     diagnostics: list[str] = []
@@ -4981,6 +4992,10 @@ def _current_observed_natural_research_fit(
                     "verification_status": str(outcome.get("verification_status") or ""),
                 }
             )
+            if personal_h20_activation_config is not None:
+                from scripts.scheduled.personal_h20_natural_hook import consume_personal_h20_natural_outcome
+                personal_h20_outcomes.append(consume_personal_h20_natural_outcome(
+                    personal_h20_activation_config, pins=outcome_refs[-1]))
             if outcome.get("status") not in {"matured", "partial"}:
                 pending_count += int(outcome.get("pending_sample_count") or 0)
                 diagnostics.extend(
@@ -5057,6 +5072,8 @@ def _current_observed_natural_research_fit(
             "training_as_of": evaluation_token,
         }
     )
+    if personal_h20_activation_config is not None:
+        base_status["personal_h20_outcomes"] = personal_h20_outcomes
     if not final_samples:
         return {**base_status, "status": "pending", "reason": "no_matured_current_observed_rows"}
 
@@ -5157,6 +5174,7 @@ def _run_current_observed_natural_research_lane(
     capture_requested: bool,
     calendar_cache_path: Path | None,
     temporary_closure_path: Path | None,
+    personal_h20_activation_config: Path | None = None,
 ) -> dict[str, Any]:
     """Capture prospective no-model observations and scan their natural labels.
 
@@ -5215,6 +5233,12 @@ def _run_current_observed_natural_research_lane(
                 "capture_eligible": False,
             }
 
+    if personal_h20_activation_config is not None:
+        from scripts.scheduled.personal_h20_natural_hook import register_personal_h20_natural_entry
+        daily = source_contract_audit.get("personal_h20_daily")
+        input_capture["personal_h20_natural"] = register_personal_h20_natural_entry(
+            personal_h20_activation_config, daily=daily if isinstance(daily, Mapping) else None,
+            entry=input_capture)
     try:
         calendar_cache_path, temporary_closure_path = _natural_maturity_calendar_paths(
             calendar_cache_path=calendar_cache_path,
@@ -5236,6 +5260,7 @@ def _run_current_observed_natural_research_lane(
             fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
             cost_scenario=cost_scenario,
             session_resolver=session_resolver,
+            personal_h20_activation_config=personal_h20_activation_config,
         )
     except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
         natural_research = {

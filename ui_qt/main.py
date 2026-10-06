@@ -53,6 +53,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QLabel,
     QWidget,
+    QPushButton,
+    QVBoxLayout,
 )
 from typing import Dict, Any
 from collections.abc import Mapping
@@ -398,10 +400,16 @@ class MainWindow(QMainWindow):
         market_root = Path(self.config.data_root)
         configured = os.environ.get("PERSONAL_H20_ACTIVATION_CONFIG")
         config_path = Path(configured) if configured else market_root / "personal" / "recommendation_h20" / "activation.json"
-
+        expected_reference = None
+        if context.source_kind == "personal_h20_saved_cohort":
+            origin = getattr(self, "_personal_h20_research_origin", None)
+            if origin is None or origin[0] != context:
+                return
+            expected_reference = origin[2]
         worker = TaskWorker(read_personal_h20_product_for_stock, config_path,
             stock_code=report.stock_code, market_root=market_root,
-            daily_reader=read_personal_h20_daily_receipt, prediction_reader=read_personal_h20_prediction)
+            daily_reader=read_personal_h20_daily_receipt, prediction_reader=read_personal_h20_prediction,
+            expected_reference=expected_reference)
         self._personal_h20_worker = worker
 
         def apply(result: object) -> None:
@@ -416,6 +424,106 @@ class MainWindow(QMainWindow):
         worker.native_thread_finished.connect(
             lambda: setattr(self, "_personal_h20_worker", None)
             if getattr(self, "_personal_h20_worker", None) is worker else None)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _personal_h20_configuration(self) -> tuple[Path, Path]:
+        market_root = Path(self.config.data_root)
+        configured = os.environ.get("PERSONAL_H20_ACTIVATION_CONFIG")
+        return market_root, (Path(configured) if configured else
+            market_root / "personal" / "recommendation_h20" / "activation.json")
+
+    def _mount_personal_h20_research(self, recommendation: Any) -> None:
+        """既有推薦工作區掛入保存母體；選頁才唯讀載入。"""
+        from ui_qt.widgets.personal_h20_research_widget import PersonalH20ResearchWidget
+
+        panel = QWidget(recommendation)
+        layout = QVBoxLayout(panel)
+        refresh = QPushButton("讀取每日已保存模型名單", panel)
+        widget = PersonalH20ResearchWidget(panel)
+        layout.addWidget(refresh)
+        layout.addWidget(widget)
+        self.personal_h20_research_widget = widget
+        self.personal_h20_research_panel = panel
+        self._personal_h20_cohort_generation = 0
+        self._personal_h20_cohort_reference = None
+        self._personal_h20_research_origin = None
+        refresh.clicked.connect(lambda: self._refresh_personal_h20_cohort())
+        widget.researchRequested.connect(self._request_personal_h20_research)
+        tabs = recommendation.result_source_tabs
+        tabs.addTab(panel, "個人模型選股研究（H20毛報酬）")
+        tabs.currentChanged.connect(lambda _index:
+            self._refresh_personal_h20_cohort() if tabs.currentWidget() is panel else None)
+
+    def _request_personal_h20_research(self, selection: object) -> None:
+        from app_module.recommendation.personal_h20_research_cohort import PersonalH20ResearchSelection
+        widget = getattr(self, "personal_h20_research_widget", None)
+        if (isinstance(selection, PersonalH20ResearchSelection) and widget is not None
+                and widget.isEnabled() and widget.restore_selection(selection)):
+            self._refresh_personal_h20_cohort(selection, open_research=True)
+
+    def _refresh_personal_h20_cohort(self, selection: object = None, *, open_research: bool = False) -> None:
+        from app_module.recommendation.personal_h20_research_cohort import (
+            PersonalH20ResearchCohort, PersonalH20ResearchSelection,
+        )
+        from scripts.scheduled.personal_h20_daily_hook import read_personal_h20_product_cohort
+        from ui_qt.workers.task_worker import TaskWorker
+
+        widget = getattr(self, "personal_h20_research_widget", None)
+        if widget is None or widget._closing or getattr(self, "_shutdown_close_requested", False):
+            return
+        self._personal_h20_cohort_generation += 1
+        generation = self._personal_h20_cohort_generation
+        previous = getattr(self, "_personal_h20_cohort_worker", None)
+        if previous is not None and previous.isRunning():
+            previous.cancel(wait=False)
+        market_root, config_path = self._personal_h20_configuration()
+        widget.setEnabled(False)
+        widget._cohort = None
+        widget.table.setRowCount(0)
+        widget.summary_label.setText("正在唯讀核驗原完整模型名單、預測與來源 pins…")
+        worker = TaskWorker(read_personal_h20_product_cohort, config_path, market_root=market_root)
+        self._personal_h20_cohort_worker = worker
+        def current() -> bool:
+            return (generation == self._personal_h20_cohort_generation and not widget._closing
+                and not getattr(self, "_shutdown_close_requested", False)
+                and self._personal_h20_configuration() == (market_root, config_path))
+        def apply(result: object) -> None:
+            if not current() or not isinstance(result, tuple) or len(result) != 2:
+                return
+            reference, cohort = result
+            if not isinstance(cohort, PersonalH20ResearchCohort):
+                return
+            self._personal_h20_cohort_reference = reference
+            widget.set_cohort(cohort)
+            widget.setEnabled(True)
+            if selection is None:
+                return
+            if not isinstance(selection, PersonalH20ResearchSelection) or not widget.restore_selection(selection):
+                self.statusBar().showMessage("原模型／母體／日期／預測 pins 已變動或缺件；無法精確返回或下鑽。")
+                return
+            if not open_research:
+                return
+            row = next(row for row in cohort.rows if row.symbol == selection.symbol)
+            context = ResearchStockContextDTO(stock_code=row.symbol, decision_date=row.decision_date,
+                data_date=row.source_date or "", result_id="", identity_status="personal_research_only",
+                source_snapshot_id=cohort.cycle_id, source_snapshot_hash=cohort.manifest_sha256,
+                profile_id=cohort.candidate_id, source_id=row.prediction_id,
+                source_version=cohort.contract_hash, source_kind="personal_h20_saved_cohort",
+                source_label="已保存個人 H20 毛報酬模型研究；效果未成熟",
+                source_workspace="recommendation")
+            self._personal_h20_research_origin = (context, selection, reference)
+            self._open_stock_research_context(context)
+        def failed(message: str) -> None:
+            if current():
+                self._personal_h20_cohort_reference = None
+                widget.summary_label.setText("模型名單待核驗／目前不可用：" + str(message)[:300])
+                self.statusBar().showMessage("原保存模型名單無法核驗；不以其他日期或QA樣本代替。")
+        worker.finished.connect(apply)
+        worker.error.connect(failed)
+        worker.native_thread_finished.connect(lambda:
+            setattr(self, "_personal_h20_cohort_worker", None)
+            if getattr(self, "_personal_h20_cohort_worker", None) is worker else None)
         worker.native_thread_finished.connect(worker.deleteLater)
         worker.start()
 
@@ -1048,6 +1156,7 @@ class MainWindow(QMainWindow):
                     self._open_stock_research_context
                 )
             self.recommendation_view = recommendation
+            self._mount_personal_h20_research(recommendation)
             self._connect_daily_market_cohort_view(recommendation, market_tabs)
             print("[MainWindow] 推薦分析視圖創建成功")
 
@@ -1691,6 +1800,15 @@ class MainWindow(QMainWindow):
         else:
             context = self._coerce_stock_research_context(value)
         if context is None or not context.source_workspace:
+            return
+        if context.source_kind == "personal_h20_saved_cohort":
+            origin = getattr(self, "_personal_h20_research_origin", None)
+            if origin is None or origin[0] != context:
+                self.statusBar().showMessage("原模型選取身份不可用；不以股票字串返回其他名單。")
+                return
+            self._select_main_workspace("recommendation")
+            self.recommendation_view.result_source_tabs.setCurrentWidget(self.personal_h20_research_panel)
+            self._refresh_personal_h20_cohort(origin[1])
             return
         self._select_main_workspace(context.source_workspace)
         if context.source_workspace == "recommendation":

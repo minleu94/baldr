@@ -12,6 +12,7 @@ from app_module.recommendation.personal_h20_product_evidence import (
     PersonalH20ProductEvidence, personal_h20_product_text, project_personal_h20_product_evidence,
     publish_personal_h20_product_reference, read_personal_h20_product_for_stock,
     save_personal_h20_daily_manifest, read_personal_h20_daily_manifest,
+    read_personal_h20_product_reference,
 )
 from tests.test_personal_h20_activation import _activation
 
@@ -80,6 +81,51 @@ def test_manifest_full_scope_and_create_only_replay_do_not_create_extra_sample(t
             expected_symbols=["2330"], prediction_reader=reader)
     assert list((Path(activation.personal_root) / "h20_daily_receipts").glob("*.json")) == [daily]
     assert list(prediction.parent.glob("*.json")) == [prediction]
+
+
+def test_cohort_reference_preserves_original_pins_and_readonly_bytes(tmp_path):
+    activation, prediction, daily, _ = _store(tmp_path)
+    root = Path(activation.personal_root)
+    before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in root.rglob("*") if p.is_file()}
+    selected = read_personal_h20_product_reference(activation.config_path,
+        market_root=Path(activation.market_root))
+    assert selected.activation == activation
+    assert selected.manifest_path == daily
+    assert selected.manifest_sha256 == "sha256:" + hashlib.sha256(daily.read_bytes()).hexdigest()
+    assert (selected.cycle_id, selected.decision_date) == ("cycle", "2026-09-08")
+    assert before == {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in root.rglob("*") if p.is_file()}
+
+
+def test_background_cohort_reads_original_full_manifest_and_rejects_pointer_change(tmp_path, monkeypatch):
+    from scripts.scheduled import personal_h20_daily_hook as hook
+    activation, _, daily, reader = _store(tmp_path)
+    monkeypatch.setattr(hook, "read_personal_h20_prediction", reader)
+    reference, cohort = hook.read_personal_h20_product_cohort(activation.config_path,
+        market_root=Path(activation.market_root))
+    assert cohort.symbols == ("2330",) and cohort.rows[0].gross_return_bp == 123
+    assert reference.manifest_path == daily
+    def changed_reader(*args, **kwargs):
+        result = reader(*args, **kwargs)
+        pointer = Path(activation.personal_root) / "h20_product_reference.json"
+        body = json.loads(pointer.read_bytes())
+        body["cycle_id"] = "changed-cycle"
+        pointer.write_text(json.dumps(body), encoding="utf-8")
+        return result
+    monkeypatch.setattr(hook, "read_personal_h20_prediction", changed_reader)
+    with pytest.raises(ValueError, match="cohort_reference_changed"):
+        hook.read_personal_h20_product_cohort(activation.config_path, market_root=Path(activation.market_root))
+
+
+@pytest.mark.parametrize("field,value", [("candidate_id", "other"), ("activation_revision", 2),
+    ("receipt_sha256", "sha256:" + "f" * 64), ("decision_date", "unknown")])
+def test_cohort_reference_rejects_cross_model_revision_manifest_or_clock(tmp_path, field, value):
+    activation, _, _, _ = _store(tmp_path)
+    pointer = Path(activation.personal_root) / "h20_product_reference.json"
+    body = json.loads(pointer.read_bytes())
+    body[field] = value
+    pointer.write_text(json.dumps(body), encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_personal_h20_product_reference(activation.config_path, market_root=Path(activation.market_root))
 
 
 def test_product_reference_reads_original_capture_and_tamper_does_not_surface(tmp_path):

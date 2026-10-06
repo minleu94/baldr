@@ -245,3 +245,9 @@ UX23 registry readonly 整合：[QA](../06_qa/UX23_REGISTRY_INTEGRATION_20261006
 個人模型根明示 FA_Data/personal/recommendation_h20；精確配置CAS與原預測public reader、中央全cohort daily manifest pins／product reference、個股摘要背景readback已接線。三leaf current-observed tests分類service-oracle-recommendation，product evidence test為UI candidate；inventory1293／recommendation193／UIcandidate98／direct12。分類不授runtime credit。詳細操作／限制以 Manual9.9.1i與BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md為準。真clock跨日不可回填，原global資格與七有限closed／性能例外不變，pending自然結果不是工程gate。
 
 - [下一次原Task唯讀驗收／24UX已知工程差異](../06_qa/BALDR_NEXT_RUN_AND_REMAINING_ENGINEERING_20261007.md)：確切NextRunTime、原配置与新run/source/H20pin驗收；H20目前增量卡而非推薦排序，以及BBparent／UI與H20列表必要接線。不另造roadmap。
+
+
+### 2026-10-07 中央三包接線驗收入口
+
+- [完整模型名單／自然caller／BBUI中央整合](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md)：工程、真保存consumer、下一自然排程及品質成熟分域；BBP01批准阻塞另列。
+- [H20完整cohort與widget](../06_qa/BALDR_H20_RESEARCH_COHORT_20261007.md)、[H20自然batch](../06_qa/BALDR_H20_NATURAL_BATCH_20261007.md)、[BB第三條件與收藏](../06_qa/BALDR_BBANDS_RESEARCH_UI_20261007.md)：各lane固定scope收據，不取代Manual或Snapshot。

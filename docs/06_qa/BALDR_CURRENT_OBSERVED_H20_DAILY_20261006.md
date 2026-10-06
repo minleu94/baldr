@@ -123,3 +123,15 @@ request 明示 `cycle_id`、`cycle_terminal_path`、`cycle_terminal_sha256`、�
 未新增 Python，因此 focused pytest／JUnit、targeted mypy、py_compile／quant 變更檢查 **not_run**；不得報為通過。不重全倉測試。待中央擴鎖後才實作並產出 focused raw/JUnit、targeted mypy／compile／quant、完整 commit/blobs；自然成熟保持真實 pending，不以 synthetic 驗證替代每日真模型使用終點。
 
 Git worktree 初次因 sandbox Git ref 寫入權限失敗；相同 authorized `git worktree add` 經 `require_escalated` 成功。沒有 reviewer rejection，沒有修改 ACL，沒有 push、Task 註冊、真資料搬移、交易或清理。
+
+## 已授權正式私人根的真 daily effect
+
+revision1 enabled=true 已發布到 D:/Min/Python/Project/FA_Data/personal/recommendation_h20/activation.json；revision1原bytes歷史備份保留。使用原模型rec-cal-3f8b2c276ef316e28de3806d與原completed raw-cycle，真UTC clock保存10股／10pending，中央公開全scope驗核後發布產品指標。actual_private_h20_effect.json raw SHA256 b676835a7770a48bebe3cfc6ddc781a5635d73ccdf60827f830c23acb1440048；effective_model_run=true，manifest raw pin sha256:a2cad4b3ac8ff978f52ecb28d006da37573cd1313efcee28bfc1d5d632661e76。decision10/07/source10/06/features10/05，不借10/06entry回填，不取得自然credit。
+
+本次是同daily公開ingress的直接驗核，沒有啟動Task或fit；原Task principal/action/trigger/settings和before receipt逐欄相等，state Ready／trigger enabled，既有05:45 action會採已存在私人配置。下次實際scheduled執行與新同日cycle exact natural join仍須觀察，不把本次直接调用當Task已跑。原guard每次重驗4GB frozen source，效能有成本，UI用背景reader，未宣稱全部性能例外解除。
+
+immutable implementation19afc33dfcff5fa6dcc4c1c7bdb962ce32d612e7；固定commit六檔60passed/8.66s，Workbench85，validator25/0/4，fullrootsmypy845零錯；額外兩CLI mypy零錯／11changedPython compile／quant成功，MLboundary684/0。inventory7與bridge9是16個治理案例，與focused/UI分scope不累計成全倉通過。此前stage/UX有限closed與未知資格不變。
+
+產品新程序真readback已成功：actual_product_readback.json raw SHA256 23cc1ff12570ad267d798388c82107cf07d6f2fb5ee5bbcb433e8d4d489c37da。predictor factory明確禁止，原 public reader核1225 candidate／source／raw pins，實際readonly report as_of10/07，原 view label顯示+22.04%（2204bp）及三日期，私人JSON全集bytes與mtime不變。完整state目前15JSON（10prediction、1manifest、config/history與reference/history），成熟outcome尚0；10pending是run receipt及原capture待核狀態，沒有偽造10個自然outcome檔。
+
+原offscreen Qt缺字型，PNG文字方框，不稱視覺驗收。另QA-only msjh.ttc bytes注入重用已驗readback文字檢查layout，不修改product或字型系統設定；仍不是Native／真人證據。剩下新同日raw-cycle／entry exactjoin與自然二十session成熟、後續scheduled真正執行觀察；這些不否定本次模型實際啟用／daily入口／產品同值成功。parent full-universe BB v3 composition仍依另外exact ownership續作，沒有把有限上軌family或整體roadmap改done。

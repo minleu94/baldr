@@ -4,8 +4,8 @@
 
 R01 新增唯一 test 檔登錄為 service-oracle-research-backtest：原 Registry writer 合成保存→lookup/service same-bytes bounded reader→新程序、exact identity/DataFrame/source SHA/mtime oracle；所有 writer僅tmp fixture，無正式資料／Task／Native／fit。超容量／aggregate／取消／替換／消失／marked sidecar與lineage屬讀取服務驗證，不是direct UI bridge；舊1283分類、direct12、support/runner API不改。沿用64/256MiB caller budget，不降低20/200GiB reserve。原worker101 focused與73 adjacent/1skip按各自scope核raw，不累加為全App。中央入冊與 final union收據另存output/qa；歷史I156／P2節保留。
 
-Current filesystem Python files: `1290`
-Current registry entries: `1290`
+Current filesystem Python files: `1293`
+Current registry entries: `1293`
 Current collected test cases: not collected
 
 | Category | Count |
@@ -17,7 +17,7 @@ Current collected test cases: not collected
 | `manual-only` | 14 |
 | `service-oracle-data-market` | 193 |
 | `service-oracle-portfolio-decision-runtime` | 155 |
-| `service-oracle-recommendation` | 190 |
+| `service-oracle-recommendation` | 193 |
 | `service-oracle-research-backtest` | 134 |
 | `slow-e2e-or-environment` | 11 |
 | `ui-healthcheck-candidate-bridge` | 98 |

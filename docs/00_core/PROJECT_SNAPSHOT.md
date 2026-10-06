@@ -835,3 +835,5 @@ I20中央95d381a4：20exact entries，原20test/舊分類/direct12不變；metad
 ### 2026-10-07 Taipei 個人 H20 consumer 整合
 
 個人模型根明示 FA_Data/personal/recommendation_h20；精確配置CAS與原預測public reader、中央全cohort daily manifest pins／product reference、個股摘要背景readback已接線。三leaf current-observed tests分類service-oracle-recommendation，product evidence test為UI candidate；inventory1293／recommendation193／UIcandidate98／direct12。分類不授runtime credit。詳細操作／限制以 Manual9.9.1i與BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md為準。真clock跨日不可回填，原global資格與七有限closed／性能例外不變，pending自然結果不是工程gate。
+
+2026-10-07 Taipei 實際私人H20已enabled revision1，同daily public ingress完成10predictions/10pending，effective_model_run=true；原source/fit stat不變、Task原定義不变且未手動啟Task。全scope原pin manifest成功後發布產品指標；自然entry/outcome尚pending，Stage/UX與所有來源資格不升格。具體收據見BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。

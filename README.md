@@ -6,6 +6,10 @@ baldr 是台股資料整理、技術研究、選股比較與投資組合研究�
 
 ## 安裝與首次啟動
 
+取得本機可攜版後，保留整個 `baldr` 資料夾並雙擊 `baldr.exe`；不需 IDE 或全域 Python。`_internal` 是必要依賴，不能只複製 exe。首次空資料、外部 JSON 設定、既有私人模型選擇、子程序與排錯見 [Windows 可攜指南](docs/07_guides/PORTABLE_WINDOWS.md)。未簽章，Windows 信譽未知；不繞過系統警告。
+
+以下為 source 版安裝方式：
+
 使用 Windows x64、Python 3.11。在專案根目錄的同一個 PowerShell 執行：
 
 ```powershell
@@ -25,6 +29,8 @@ $env:OUTPUT_ROOT = Join-Path $env:LOCALAPPDATA "baldr\reports"
 - [快速開始](docs/07_guides/QUICK_START.md)
 - [完整操作手冊](docs/07_guides/APPLICATION_MANUAL.md)
 - [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)
+- [文檔索引與全清單](docs/00_core/DOCUMENTATION_INDEX.md)
+- 資料資產用途與恢復（dev 內部收據：docs/03_data/STORAGE_ASSET_REGISTER_20261006.md）
 - [示例資料說明](examples/README.md)
 
 ## 開發與限制
@@ -32,5 +38,3 @@ $env:OUTPUT_ROOT = Join-Path $env:LOCALAPPDATA "baldr\reports"
 需要測試及型態檢查時，另裝 `requirements-dev.txt`；`requirements.txt` 保留相容的完整開發安裝。constraints 是 Windows Python3.11 的直接依賴快照，不是跨平台完整鎖檔；安裝或來源失敗請保留錯誤型別，不抄用他人的本機 wheel 或憑證。
 
 此 repo 尚未提供新的開源授權；本機 main 整理不代表已公開發布或授予再散布權。歷史資料及來源也需各自授權。不要提交私人根目錄、token、模型權重或測試暫存。正式自然日常結果與品質成熟仍待實際排程及交易日驗收。
-
-保留必要測試與治理導航文件；工程歷史仍以 dev 為準。

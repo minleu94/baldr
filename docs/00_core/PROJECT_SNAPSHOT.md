@@ -1,13 +1,15 @@
-# PROJECT_SNAPSHOT（目前本機使用版）
+# PROJECT_SNAPSHOT（main 使用版）
 
-## 使用入口與狀態
+> 2026-10-06：保留 main 原父 a8c81bf534952cdf35d35a57d9e367c0fa10c817，受控同步 dev e6cee880 後的可攜交付與 D01；沒有 reset、push 或遠端分享。
 
-主UI為PySide6 `ui_qt/main.py`。以README與完整Manual安裝／首設，Windows x64／Python3.11基線，DATA_ROOT／OUTPUT_ROOT分別設定自己的可寫目錄。此使用版不內附行情庫、帳戶、模型artifact／active pointer或憑證。
+已實際交付 Windows 可攜版 dist/baldr/baldr.exe；必須保留整個資料夾。首次設定、SHA、安全限制、驗證範圍與回滾見 [可攜指南](../07_guides/PORTABLE_WINDOWS.md)，完整功能見 [Manual](../07_guides/APPLICATION_MANUAL.md)。正式程式／scheduler／模型／資料設定保留；新增 QA probe 與開發規劃留 dev。
 
-工程具有資料更新、選股研究、回測、投資組合研究與Evidence來源判讀。個人H20保存cohort研究名單可依整數gross排序、exact下鑽返回；日常自然結果只連接同cycle／decision／source／feature原pins，缺件仍pending。BBANDS30 close>upper是明示opt-in的第三研究條件，保存v3與收藏讀回核同SHA／日期／股票／條件；舊v2維持相容。這些工程功能不表示自然效果成熟或正式可交易。
+主要 UI 是 PySide6 九工作區，首頁四用途。合法 passed_with_warnings 保留警告、最後成功時間、來源日期及 freshness，Runtime guarded；failed／unknown／invalid／stale 不假成功。
 
-實際資料與模型使用由每個使用者自己的來源、權限及opt-in決定。機率head品質、gross／成本後績效、正式資格及自然交易日成熟分開判讀；unknown不當零、不用synthetic補自然資格。程式不因安裝而註冊Task或自動交易。
+H20 原啟用狀態沿原個人設定及可信 artifact；本包不帶私人模型、不重新 fit。原 10 pending／0 成熟，Brier 2730 對 null 2500 不能宣稱勝基準。9 Stage 1 done／8 partial，24 UX 2 done／22 partial；性能例外不改 benchmark pass。
 
-開發歷史與私人啟用驗收收據保存在dev；本機main精簡入口與歷史流水帳，必要程式、測試及規範仍保留。尚未遠端發布、公開分享或授予新的開源再散布權。
+下一原 Task 2026-10-07 12:45 UTC／05:45 PDT 仍待真正自然 run。本輪沒有改 Task／ACL／account 或手動 trigger。Native 真人、其他 Windows 機器、真模型與自然 Task 尚未由可攜包驗證。
 
-目前架構看 [system architecture](../01_architecture/system_architecture.md)，目標看 [target architecture](../01_architecture/target_system_architecture.md)，操作看 [Manual](../07_guides/APPLICATION_MANUAL.md)，首次設定看 [快速開始](../07_guides/QUICK_START.md)。
+main 保留既有全部可調度來源與必要安裝／設定／模型操作文件；內部工程收據及完整歷史以 dev 為準。只有 main／dev 兩分支與一個 worktree，原 C:/Projects/RepositoryBackups/technical_analysis_branch_recovery_20261007 不動。市場資料由 TWStockConfig／DATA_ROOT 控制，私人來源獨立，不搬資料、不清 cache。
+
+目前與目標架構、產品方向及長期成熟度依 [文檔索引](DOCUMENTATION_INDEX.md) 的 scoped SSOT；打包成功不新增產品／模型／自然證據資格。

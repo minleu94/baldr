@@ -1,5 +1,17 @@
 # baldr 完整操作手冊
 
+## Windows 可攜版入口
+
+保留整個 `baldr` 資料夾並雙擊 `baldr.exe`，不需 IDE 或全域 Python。首次無設定使用外部空根並提示設定，不借開發機資料；設定 JSON、私人模式／原可信模型、重開、CLI／scheduler、日誌與安全限制見 [可攜指南](PORTABLE_WINDOWS.md)。原九工作區與四用途步驟不變。未簽章，Native 真人與正式 Task 自然 run 不由 offscreen 測試代替。
+
+更新帶警告成功時，Timeline 顯示 partial 並保留成功時間、警告與來源日期；Runtime 顯示 guarded。只接受 producer 一致的合法 `passed_with_warnings`；失敗 step、errors、缺身份／日期、unknown／stale 或來源日期不一致仍按原 gate 拒絕或降級，不等於所有資料正常。
+
+## 現況判讀（2026-10-06 文檔整理）
+
+目前已接受 U1 有限 BBANDS30 上軌比較與 U2 H20 gross；個人 H20 已啟用，保存 10 股完整 cohort／gross 排序／exact 返回驗收過。gross 報酬 head 與 canonical 機率 head 分開，Brier 2730 對 null 2500 未勝；工程可讀不代表模型品質合格。自然 10 pending／0 成熟，下一原 Task 2026-10-07 12:45 UTC／05:45 PDT 待真正自動 run，Native 真人易用性仍未驗。後文日期化「U1/U2 等答覆／尚未啟用」只描述當時範圍，現況以 [Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與具名收據為準；不改原步驟、guard 或原失敗證據。
+
+資料 roots、冷封存／研究／備份用途與恢復界線見 資產登記（dev 內部收據：../03_data/STORAGE_ASSET_REGISTER_20261006.md）。本輪只有文檔整理，沒有改 Task、資料或模型；cleanup 只移 8 個空目錄、0 bytes。
+
 ## 發布使用者首次安裝補充
 
 新環境使用Windows x64／Python3.11與requirements-runtime；開發才裝requirements-dev。安裝前設PYTHONUTF8=1；在啟動的同一PowerShell分別設定DATA_ROOT與OUTPUT_ROOT，不依預設機器路徑。程式目前不自動load_dotenv，複製.env不等於生效。config／logging／更新／保存會寫入roots；首次缺庫／缺表／來源不可用保持unknown／missing，按官方来源與所需日期更新，不用他人的模型或人造fixture補資格。示例CSV只是形狀，不是可載入UI demo。
@@ -40,7 +52,7 @@ Personalization 的入口與操作步驟不變。自然成熟判讀仍需要原 
 
 觀察清單的 JSON／SQLite v1/v2 個人副本工程已支援合法深層 Windows Unicode 路徑，包含 DB 本身超過 260 字元及更長的 staging／備份／rollback 路徑。公開來源、目標與收據身份維持 canonical 路徑；內部長路徑格式只供檔案與 SQLite I/O。轉換、啟用、追加、跨程序重讀與回滾僅以合成資料驗證，正式 migration／activation 仍未批准。回滾保留個人 target 新 revision，核對原來源 pin，不刪除個人資料。
 
-新私人 store selector 只固定 trades／聲明／Paper trade ledger／明示 Portfolio ledger／Review／市場 Evidence 的路徑契約，沒有新增操作按鈕或自動啟用。PERSONAL 的讀來源與寫目標是同一私人 store，空庫不借舊資料；Evidence 只有市場 reader。Portfolio ledger 必須有 caller 核定的精確路徑與身份，未知即拒絕。Portfolio／Paper／DecisionQuality 的實際 caller 接線仍列 B09／B10。B08 路由契約（開發收據見dev）與首波整合收據（開發收據見dev）記錄範圍。
+新私人 store selector 只固定 trades／聲明／Paper trade ledger／明示 Portfolio ledger／Review／市場 Evidence 的路徑契約，沒有新增操作按鈕或自動啟用。PERSONAL 的讀來源與寫目標是同一私人 store，空庫不借舊資料；Evidence 只有市場 reader。Portfolio ledger 必須有 caller 核定的精確路徑與身份，未知即拒絕。Portfolio／Paper／DecisionQuality 的實際 caller 接線仍列 B09／B10。B08 路由契約（dev 內部收據：../06_qa/BALDR_B08_PERSONAL_ROUTES_20261006.md）與首波整合收據（dev 內部收據：../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md）記錄範圍。
 
 工程接線設定另以 `PERSONAL_STORE_ROOT`／`PERSONAL_STORE_MODE` 成對明示，或工具的 `--personal-store-root`／`--personal-store-mode`；模式只有 `personal` 與 `legacy_read_only`。兩者皆未設保留 legacy 相容；單設或未知模式拒絕。這個選擇獨立於 watchlist 來源／activation 與 notes 模式，不改全域 `OUTPUT_ROOT` 或市場 `db_file`，配置本身不建立私人 store。caller 接線尚在 B09／B10 驗證中，這不是正式切換操作；勿在正式環境套用。notes 仍沿原 `PERSONAL_JOURNAL_ROOT`／`PERSONAL_JOURNAL_MODE` 契約。
 
@@ -66,7 +78,7 @@ Personalization 的入口與操作步驟不變。自然成熟判讀仍需要原 
 
 成本沿原CostPolicy：version／formula_id及target／benchmark各entry_bp／exit_bp，整數bp，null表示未知；0僅表示使用者明示零成本，不把未知補成0。target_net減benchmark_net須同期間相容、兩邊成本齊全才有net excess；只有gross可算時保留gross，其他留空。保存會封存設定來源檔hash、original／effective runtime、basis／期間／availability／pins與成本版本；重讀不查較新DB，來源修訂另存，舊benchmark=null收據仍可讀。
 
-排錯：跨來源／revision pin失配不接受；target pin失配會blocked，benchmark缺日／basis失配／availability缺件會未知且不產生excess。核對來源診斷，更新自己的明示設定後重跑隔離版本；不要更改舊收據或從最新資料補舊版。取消／重試／返回及stale callback仍沿既有gate。完整label的actual-session／custody、歷史調整／時點、期間MFE／MAE／停牌、成本政策與ML consumer資格仍缺；不因此開重訓。整合與分開的公開資料QA（開發收據見dev）。
+排錯：跨來源／revision pin失配不接受；target pin失配會blocked，benchmark缺日／basis失配／availability缺件會未知且不產生excess。核對來源診斷，更新自己的明示設定後重跑隔離版本；不要更改舊收據或從最新資料補舊版。取消／重試／返回及stale callback仍沿既有gate。完整label的actual-session／custody、歷史調整／時點、期間MFE／MAE／停牌、成本政策與ML consumer資格仍缺；不因此開重訓。整合與分開的公開資料QA（dev 內部收據：../06_qa/UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md）。
 
 ## 2026-10-06 保存價格／MA20／MA60 的原版本圖表
 
@@ -76,7 +88,7 @@ Personalization 的入口與操作步驟不變。自然成熟判讀仍需要原 
 
 舊保存結果或尚無chart artifact的來源會顯示「資料不足」「不借今天資料」。按「另開最新研究」獨立查看現況；這不補寫舊結果、不恢復原缺件。目前新日研究parent與推薦execution writer均可保存版本化chart；既有推薦保存圖、viewport與精確表的操作見本手冊後文「UX08 推薦保存結果的同版價格／MA20／MA60」及「UX08 原生圖的縮放／平移／重設」。舊結果補建／遷移仍未完成。圖表身份／hash／cutoff不符時拒絕，不自動切換最新。
 
-排錯：原圖可用而方法／原排名仍未知，表示圖表artifact核驗與既有方法／排名revision核驗結果不同；不能用可重現圖表證明條件或排名有效。來源DB不存在／改版可能使後者未知，保存圖仍獨立同源。來源明細與缺件理由可查閱；若保存檔也遺失，保留缺件或另開最新研究，不從最新資料修補原版本。期間選擇、縮放平移、重設與hover已有有限工程；其他指標、交易markers及新範圍Native／真人仍待驗收。保存圖收據（開發收據見dev）與viewport整合收據（開發收據見dev）各自保留原接受範圍。
+排錯：原圖可用而方法／原排名仍未知，表示圖表artifact核驗與既有方法／排名revision核驗結果不同；不能用可重現圖表證明條件或排名有效。來源DB不存在／改版可能使後者未知，保存圖仍獨立同源。來源明細與缺件理由可查閱；若保存檔也遺失，保留缺件或另開最新研究，不從最新資料修補原版本。期間選擇、縮放平移、重設與hover已有有限工程；其他指標、交易markers及新範圍Native／真人仍待驗收。保存圖收據（dev 內部收據：../06_qa/UX08_SAVED_CHART_READBACK_20261006.md）與viewport整合收據（dev 內部收據：../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md）各自保留原接受範圍。
 
 ## 2026-10-06 第一版有限研究流程與驗證入口
 
@@ -92,7 +104,7 @@ Personalization 的入口與操作步驟不變。自然成熟判讀仍需要原 
 
 維護者在repo根執行 `.\.venv\Scripts\python.exe scripts/qa_validate_first_version_release.py`，產生新`output/qa/ux24_first_version_20261006/<id>/receipt.json`。需保留既有F4 raw案例；缺原收據／hash不符會停止。工具只唯讀原案例、在新隔離案例跑offscreen全App，拒絕FA_Data讀取及案例外寫入；不代表Native／真人、自然20日或正式容量接受。路由失敗先核對原context／來源；本版已修舊mapping未提供optional rank_context的相容性，不放寬明示錯誤來源。
 
-首版工程封存不等於全部UX完成。新圖表、更多方法／特徵、正式日主部署、benchmark／完整labels仍有工程；正式apply與政策需要明確決策，Native／3–5非開發者及官方時點／自然成熟另驗。詳見封存範圍與收據（開發收據見dev）。
+首版工程封存不等於全部UX完成。新圖表、更多方法／特徵、正式日主部署、benchmark／完整labels仍有工程；正式apply與政策需要明確決策，Native／3–5非開發者及官方時點／自然成熟另驗。詳見封存範圍與收據（dev 內部收據：../06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md）。
 
 先依下方章節完成安裝、工作區操作與排錯。進階研究、日期化操作補充和受控維運見[手冊附冊](APPLICATION_MANUAL_SUPPLEMENTS.md)；目前狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準。
 
@@ -202,7 +214,7 @@ python ui_qt/main.py
 
 顯示資料前先確認選取的工作區、子分頁、股票／結果身份與資料日期。空狀態、載入中、缺來源與零筆資料是不同狀態；捲動只會尋找已呈現的內容，不會補抓資料或把缺件轉成零。若無法找到預期內容，依序檢查所在分頁、頁面捲軸、表格／清單內部捲軸與水平欄位；仍有問題時記下主工作區、子分頁、視窗大小、系統縮放比例及可見狀態／錯誤文字，交由 UI 維護者重現。不要為了顯示資料改動正式來源檔案或 SQLite。
 
-本輪版面調整只改 widget 尺寸、排列、scroll viewport、表格欄位 tooltip 與初始視窗幾何；不改資料、金融計算、推薦／回測邏輯、持久化或寫入權限。跨工作區 MainWindow 六格 offscreen 幾何矩陣已通過；viewport、使用步驟及 OS 原生視窗驗收邊界見 UI Layout Audit 2026-09-29（開發收據見dev）。
+本輪版面調整只改 widget 尺寸、排列、scroll viewport、表格欄位 tooltip 與初始視窗幾何；不改資料、金融計算、推薦／回測邏輯、持久化或寫入權限。跨工作區 MainWindow 六格 offscreen 幾何矩陣已通過；viewport、使用步驟及 OS 原生視窗驗收邊界見 UI Layout Audit 2026-09-29（dev 內部收據：../06_qa/UI_LAYOUT_AUDIT_20260929.md）。
 
 ### 2.6 左側主導覽與決策工作台
 
@@ -438,7 +450,7 @@ P0 表格的長欄位採固定上限欄寬、儲存格換行與水平捲動；�
 
 由「產生 P0 candidate intake／Owner packet」工具輸出的 machine evidence 也會保留 route probe status；packet 內 route label 會附上 `observed`／`failed`／`not_attempted` 與 selected／fallback 標記。這只方便 Owner 逐路徑複核，不會把 route registry 或單次 probe 自動轉成 accepted／limited。
 
-若要讓 UI 使用最新 route status，請把明確產生的 audit 檔設定到 `P0_SOURCE_CONTROL_CENTER_AUDIT`（例如 `<USER_HOME>\AppData\Local\Temp\technical_analysis_p0_audit\p0_evidence_20260828_route_status_refresh.json`）後重新開啟或重新載入更新頁；UI 不會自行掃描 TEMP。這份 refresh 若未同時指定 MOPS 季報 artifact，季報列顯示 `artifact_missing` 是預期的 fail-closed 結果，不代表其他 12 個來源的 probe 失敗。
+若要讓 UI 使用最新 route status，請把明確產生的 audit 檔設定到 `P0_SOURCE_CONTROL_CENTER_AUDIT`（例如 `C:\Users\archi\AppData\Local\Temp\technical_analysis_p0_audit\p0_evidence_20260828_route_status_refresh.json`）後重新開啟或重新載入更新頁；UI 不會自行掃描 TEMP。這份 refresh 若未同時指定 MOPS 季報 artifact，季報列顯示 `artifact_missing` 是預期的 fail-closed 結果，不代表其他 12 個來源的 probe 失敗。
 
 快速更新排程會在 `latest_status.json` 旁以 append-only 方式保存 `data-update-status-history.v1` JSONL；每次真實執行會記錄 `running` 與 terminal status 的 run／時間／步驟摘要。預設 history 路徑為 `OUTPUT_ROOT/scheduled/data_update_quick/history.jsonl`，也可用 runner 的 `--history-path` 或 UI 的 `DATA_UPDATE_HISTORY_ARTIFACT` 指定。這個功能不會回放既有 latest status、不會把檔案 mtime 當成完成時間；既有環境的 history 缺檔會顯示「缺漏」，等下一次真實排程自然產生，不得手動複製舊結果補足。
 
@@ -448,7 +460,7 @@ P0 表格的長欄位採固定上限欄寬、儲存格換行與水平捲動；�
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\inspect_scheduled_task_registration.py `
-  --output <USER_HOME>\AppData\Local\Temp\scheduled_task_status.json
+  --output C:\Users\archi\AppData\Local\Temp\scheduled_task_status.json
 ```
 
 輸出會列出 21 個預期 task（20 個 daily、1 個 weekly）的 available／missing 計數、安全摘要，以及本地 wrapper
@@ -618,7 +630,7 @@ TWSE 補檔遇到平日休市（例如颱風停市）時，只有在至少一個
 
 若 TWSE 每日股價 batch 回報任何真正 `failed_dates`，該每日股價步驟會視為失敗並停止後續流程，避免 UI 顯示完成但實際缺個股日價；單一來源流程也不會再呼叫 TPEX、SQLite 同步或技術指標。只有 TWSE 的 `ALL` 與 `ALLBUT0999` 都精確回覆「很抱歉，沒有符合條件的資料！」時，日期才會列在 `no_data_skipped_dates`（同時保留於 `skipped_dates`），快速更新會顯示「TWSE 上游查無資料，已跳過日期：YYYY-MM-DD」警告並繼續 TPEX / SQLite / 技術指標流程；這種安全跳過不是成功下載，也不等同於資料完整。HTTP／timeout、JSON／欄位解析失敗、「查詢日期大於今日」或其他非完整的「查無資料」文案仍是 `failed_dates`，不會被當成休市日。若 TPEX endpoint timeout、Cloudflare/HTTP 阻擋或部分日期失敗，UI 會繼續已成功的 TWSE / SQLite / 技術指標流程，但最後會標示「未完整」並列出 `TPEX 每日股價缺少日期：YYYYMMDD`；這代表需要重測或補跑缺漏日期，不代表 TWSE 資料也失敗。區間結果同時保留 `failure_diagnostics`，逐項記錄 `requested_date`、`phase`（`requested`／`fallback`／`range`）、`result_requested_date`、`source_date`、來源 `diagnostic_count`、row／skipped counts、截斷至 512 字的 `message` 與 `message_truncated`；top-level `diagnostic_count` 是來源診斷數總和，項目數不等於 count。若在來源結果後取消，或後續日期拋出 exception，已收的 per-date diagnostics 仍會保留；這些是 bounded 區間結果／receipt context，不是原始 response bytes，也不能單獨追認 API 根因。今日 raw 缺漏應以 freshness 的明確 token 與原始 log 交叉判讀，不以 `failure_diagnostics` 猜測官方 coverage。若只有 TWSE 成功，`daily_prices` 當日可能只含上市股票，技術指標與全市場判讀應等 TPEX 缺口補齊後再視為完整。
 
-本輪 2026-09-18 的 raw 缺漏由 freshness 明示為 `tpex_daily_price_file_missing:20260918`；13:00:25–27Z 的獨立官方 probe 對 after-trading 與 OpenAPI 各發一次 GET，兩次都回 HTTP `403` 的 Cloudflare HTML，`parse_result.status=not_attempted_http_status`。這只證明 probe 時點的 HTTP 阻擋，不能追認早上排程的根因；今日或其他日期仍應以 freshness token 與原始 log 交叉判讀，不以 `failure_diagnostics` 猜測官方 coverage。完整 source-gap readback、probe raw 與修補限制見 TPEX source gap diagnostics QA（開發收據見dev）。
+本輪 2026-09-18 的 raw 缺漏由 freshness 明示為 `tpex_daily_price_file_missing:20260918`；13:00:25–27Z 的獨立官方 probe 對 after-trading 與 OpenAPI 各發一次 GET，兩次都回 HTTP `403` 的 Cloudflare HTML，`parse_result.status=not_attempted_http_status`。這只證明 probe 時點的 HTTP 阻擋，不能追認早上排程的根因；今日或其他日期仍應以 freshness token 與原始 log 交叉判讀，不以 `failure_diagnostics` 猜測官方 coverage。完整 source-gap readback、probe raw 與修補限制見 TPEX source gap diagnostics QA（dev 內部收據：../06_qa/TPEX_SOURCE_GAP_DIAGNOSTICS_2026_09_18.md）。
 
 若已由合法官方來源保存一份 afterTrading/otc raw response 與同源 capture metadata，可用既有 `scripts\backfill_tpex_daily_prices.py` 做單日受控補入。先以 dry-run 預覽：
 
@@ -699,10 +711,10 @@ backup 或 SQLite contention 已通過，後續需在 isolated staging 另做 wr
 若要在不碰正式資料的前提下量測 CSV serialization、既有 SQLite writer 與 single-writer contention，可使用：
 
 ```powershell
-New-Item -ItemType Directory -Path <USER_HOME>\AppData\Local\Temp\technical_analysis_write_probe_stage -Force
+New-Item -ItemType Directory -Path C:\Users\archi\AppData\Local\Temp\technical_analysis_write_probe_stage -Force
 .\.venv\Scripts\python.exe scripts\qa_technical_indicator_write_probe.py `
   --stock-data-file D:\Min\Python\Project\FA_Data\meta_data\stock_data_whole.csv `
-  --staging-root <USER_HOME>\AppData\Local\Temp\technical_analysis_write_probe_stage `
+  --staging-root C:\Users\archi\AppData\Local\Temp\technical_analysis_write_probe_stage `
   --protected-root D:\Min\Python\Project\FA_Data `
   --protected-root D:\Min\Python\Project\FA_Data\output `
   --confirm-write-probe --stocks 0050 2330 --min-rows 30 --max-rows-per-stock 120 `
@@ -722,10 +734,10 @@ acceptance 通過前，技術指標仍維持單一 worker。
 驗收，可使用：
 
 ```powershell
-New-Item -ItemType Directory -Path <USER_HOME>\AppData\Local\Temp\technical_analysis_process_pool_stage -Force
+New-Item -ItemType Directory -Path C:\Users\archi\AppData\Local\Temp\technical_analysis_process_pool_stage -Force
 .\.venv\Scripts\python.exe scripts\qa_technical_indicator_process_pool.py `
   --stock-data-file D:\Min\Python\Project\FA_Data\meta_data\stock_data_whole.csv `
-  --staging-root <USER_HOME>\AppData\Local\Temp\technical_analysis_process_pool_stage `
+  --staging-root C:\Users\archi\AppData\Local\Temp\technical_analysis_process_pool_stage `
   --protected-root D:\Min\Python\Project\FA_Data `
   --protected-root D:\Min\Python\Project\FA_Data\output `
   --confirm-process-pool-probe --stocks 0050 2330 --min-rows 30 `
@@ -744,10 +756,10 @@ calculator 的 staging process-pool 形狀通過；這份 probe 本身不涵蓋 
 與 partial-result discard，可使用：
 
 ```powershell
-New-Item -ItemType Directory -Path <USER_HOME>\AppData\Local\Temp\technical_analysis_worker_recovery_stage -Force
+New-Item -ItemType Directory -Path C:\Users\archi\AppData\Local\Temp\technical_analysis_worker_recovery_stage -Force
 .\.venv\Scripts\python.exe scripts\qa_technical_indicator_worker_recovery.py `
   --stock-data-file D:\Min\Python\Project\FA_Data\meta_data\all_stocks_data_top10.csv `
-  --staging-root <USER_HOME>\AppData\Local\Temp\technical_analysis_worker_recovery_stage `
+  --staging-root C:\Users\archi\AppData\Local\Temp\technical_analysis_worker_recovery_stage `
   --protected-root D:\Min\Python\Project\FA_Data `
   --protected-root D:\Min\Python\Project\FA_Data\output `
   --confirm-probe --stocks 2330 2308 --min-rows 30 --max-rows-per-stock 120 `
@@ -781,9 +793,9 @@ worker 例外或取消不會自動降級成另一套計算結果。
 single-writer 契約，可使用離線 transport probe：
 
 ```powershell
-New-Item -ItemType Directory -Path <USER_HOME>\AppData\Local\Temp\technical_analysis_broker_fetch_stage -Force
+New-Item -ItemType Directory -Path C:\Users\archi\AppData\Local\Temp\technical_analysis_broker_fetch_stage -Force
 .\.venv\Scripts\python.exe scripts\qa_broker_bounded_fetch_acceptance.py `
-  --staging-root <USER_HOME>\AppData\Local\Temp\technical_analysis_broker_fetch_stage `
+  --staging-root C:\Users\archi\AppData\Local\Temp\technical_analysis_broker_fetch_stage `
   --protected-root D:\Min\Python\Project\FA_Data `
   --protected-root D:\Min\Python\Project\FA_Data\output `
   --confirm-broker-fetch-probe --max-tasks 9 --workers 2 --max-in-flight 4 `
@@ -801,16 +813,16 @@ broker worker 仍需另行取得環境／owner 允許。
 若要只做一次真實來源連線驗證，可使用受控 canary：
 
 ```powershell
-New-Item -ItemType Directory -Path <USER_HOME>\AppData\Local\Temp\technical_analysis_performance -Force
+New-Item -ItemType Directory -Path C:\Users\archi\AppData\Local\Temp\technical_analysis_performance -Force
 .\.venv\Scripts\python.exe scripts\qa_broker_real_http_canary.py `
-  --staging-root <USER_HOME>\AppData\Local\Temp\technical_analysis_performance `
+  --staging-root C:\Users\archi\AppData\Local\Temp\technical_analysis_performance `
   --protected-root D:\Min\Python\Project\FA_Data `
   --protected-root D:\Min\Python\Project\FA_Data\output `
   --branch-system-key 1030_1030 --branch-broker-code 1030 --branch-code 1030 `
   --branch-display-name 土銀 --url-param-a 1030 --url-param-b 1030 `
   --date 2026-08-28 --metric lots --timeout 15 `
   --confirm-real-http-canary `
-  --baseline-json <USER_HOME>\AppData\Local\Temp\technical_analysis_performance\broker_bounded_fetch_20260828.json `
+  --baseline-json C:\Users\archi\AppData\Local\Temp\technical_analysis_performance\broker_bounded_fetch_20260828.json `
   --output-json <TEMP_OUTPUT>
 ```
 
@@ -830,7 +842,7 @@ production writer 已通過；後續仍需 owner review，broker pool 維持關�
   --protected-root D:\Min\Python\Project\FA_Data `
   --protected-root D:\Min\Python\Project\FA_Data\output `
   --stock-id 2330 --expected-latest-date 2026-08-28 `
-  --output-json <USER_HOME>\AppData\Local\Temp\technical_analysis_performance\technical_production_canary_20260828.json
+  --output-json C:\Users\archi\AppData\Local\Temp\technical_analysis_performance\technical_production_canary_20260828.json
 ```
 
 上述預設為唯讀預演，不建立 backup、不呼叫 `UpdateService`，且會先確認 production SQLite
@@ -1434,7 +1446,7 @@ Legacy 的固定 50 bp 假設與 Bank 依真實 T+1 買賣價格估算的費用�
 
 模型讀取或來源失敗時必須保留規則結果，不以 0 或錯誤機率替代未知值。已隔離的同源 V1／Derived V2 artifact 不得別名成 current-restated CORE19；Unicode 不合法、pointer 缺失、版本不相容或 manifest I/O 失敗時依既有 consumer／loader contract 回退到 rule-only 或 blocked，不切正式 pointer。ML preflight 的 `deployment_path_ready` 只代表部署路徑可讀，必須另看 `model_source_ready` 與具體 quarantine blocker；路徑存在不等於模型來源通過。
 
-2026-10-03 最終受控 ML receipt 為 `root_phase3_ml_acceptance_20261003T070413001284Z.json`，SHA `007d245a4228d9f260ef3e4fd39373ce3eb4c62dac8129e88e29f33f2f8afc9f`；最終 research model 位於 `output/ml_research/integration_20261002/current_restated_core19_phase3_20261003T064855260194Z/`，manifest SHA `f4f8b70f2da3515089007698c44497ca32fa7b56258cec8880e62e8aa6fe2e2b`。root 獨立核對 16 個 code pins、12 項實際 evidence 及 13 項語意檢查，包含兩個新 Python process、原 Legacy→Bank 研究 sidecar、四筆成熟歷史成本及 55 個 protected formal／V2 檔未變。current-restated 是 research-only／non-PIT；沒有 Formal 校準、teacher、promotion、交易權限或投資效果接受。同一版本的跨頁 51-test 已通過。c625 原生 UI 驗收 receipt `output/qa/integration_20261002/phase3_native/root_native_final_acceptance_20261003T105541987127Z.json`（SHA `483170b2c330b0121ce51435ff7a5966b073e2082c846289f56d33cade0597b6`）以 43 筆實際觀測 pins、兩個成功正常關閉 sessions 與具名檢查接受 baseline 及 125% 成本情境；不應把 43 筆觀測說成 43 項全數通過。取消、重試與保存沿用 7eb 版本中未變的 Recommendation 程式既有觀測；c625 本次新驗的是成本情境結果 `rec_3e78a92cdfc04edf9f18618747fa0c29` 重開與新程序讀回。該收據不代表 current-restated ML 取得 Formal、PIT、teacher、promotion 或交易資格；c625 的 1017×768 縮放嘗試未成功，先前 7eb 版本的窄視窗觀察不重標成 c625。整體範圍與限制見整合修復紀錄（開發收據見dev）。
+2026-10-03 最終受控 ML receipt 為 `root_phase3_ml_acceptance_20261003T070413001284Z.json`，SHA `007d245a4228d9f260ef3e4fd39373ce3eb4c62dac8129e88e29f33f2f8afc9f`；最終 research model 位於 `output/ml_research/integration_20261002/current_restated_core19_phase3_20261003T064855260194Z/`，manifest SHA `f4f8b70f2da3515089007698c44497ca32fa7b56258cec8880e62e8aa6fe2e2b`。root 獨立核對 16 個 code pins、12 項實際 evidence 及 13 項語意檢查，包含兩個新 Python process、原 Legacy→Bank 研究 sidecar、四筆成熟歷史成本及 55 個 protected formal／V2 檔未變。current-restated 是 research-only／non-PIT；沒有 Formal 校準、teacher、promotion、交易權限或投資效果接受。同一版本的跨頁 51-test 已通過。c625 原生 UI 驗收 receipt `output/qa/integration_20261002/phase3_native/root_native_final_acceptance_20261003T105541987127Z.json`（SHA `483170b2c330b0121ce51435ff7a5966b073e2082c846289f56d33cade0597b6`）以 43 筆實際觀測 pins、兩個成功正常關閉 sessions 與具名檢查接受 baseline 及 125% 成本情境；不應把 43 筆觀測說成 43 項全數通過。取消、重試與保存沿用 7eb 版本中未變的 Recommendation 程式既有觀測；c625 本次新驗的是成本情境結果 `rec_3e78a92cdfc04edf9f18618747fa0c29` 重開與新程序讀回。該收據不代表 current-restated ML 取得 Formal、PIT、teacher、promotion 或交易資格；c625 的 1017×768 縮放嘗試未成功，先前 7eb 版本的窄視窗觀察不重標成 c625。整體範圍與限制見整合修復紀錄（dev 內部收據：../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md）。
 
 ### 7.1 候選池操作
 
@@ -1523,7 +1535,7 @@ TDCC 既有手動重播使用 `scripts/capture_tdcc_shareholding_candidate.py --
 
 抓取的市場／來源資料與收藏、個人研究紀錄、筆記、記帳及持倉狀態必須使用獨立 root 與專用儲存；不同表或 `FA_Data/output` 下的另一個 DB 仍不足以防止整包帶出。未設定個人模式時，既有觀察清單與 COW 路徑仍在 `OUTPUT_ROOT/watchlist`。2026-10-06 新增明示個人模式，詳見本手冊末尾；正式來源尚未遷移，其他個人領域也未因本批自動分離。
 
-以下為先前未選位置時的歷史候選；最新選擇已是 `{DATA_ROOT}/personal`，本次模型使用其 `recommendation_h20` 子樹，並非再次等待選位置。舊候選為 `%LOCALAPPDATA%/baldr/personal`，此電腦的候選完整值為 `<USER_HOME>\AppData\Local\baldr\personal`；觀察清單專用 DB 候選為 `<USER_HOME>\AppData\Local\baldr\personal\watchlists\watchlists.v3.sqlite`。若需 D 槽，另一候選為 `D:\Min\Python\Project\baldr_PersonalData\watchlists\watchlists.v3.sqlite`，兩者都在 `FA_Data` 外。上述候選不採用；本次已建立模型專屬子樹，觀察清單／其他帳本未因此搬移或切 writer。
+以下為先前未選位置時的歷史候選；最新選擇已是 `{DATA_ROOT}/personal`，本次模型使用其 `recommendation_h20` 子樹，並非再次等待選位置。舊候選為 `%LOCALAPPDATA%/baldr/personal`，此電腦的候選完整值為 `C:\Users\archi\AppData\Local\baldr\personal`；觀察清單專用 DB 候選為 `C:\Users\archi\AppData\Local\baldr\personal\watchlists\watchlists.v3.sqlite`。若需 D 槽，另一候選為 `D:\Min\Python\Project\baldr_PersonalData\watchlists\watchlists.v3.sqlite`，兩者都在 `FA_Data` 外。上述候選不採用；本次已建立模型專屬子樹，觀察清單／其他帳本未因此搬移或切 writer。
 
 未來個人路徑設定須獨立於 `DATA_ROOT`／`OUTPUT_ROOT`，不能為搬收藏而改整個市場來源根。activation pointer、conversion receipt、rollback audit、SQLite sidecar 及內容備份全部留個人 root；新的 reader／writer／fresh-process discovery 必須同步認識該路徑，不能只把 target DB 移到 C 槽而繼續在市場包寫 marker。現有 Portfolio JSONL 仍沿原 owner 路徑，本批不遷移。
 
@@ -2311,7 +2323,7 @@ sample、personal delivery、human action 或 promotion。共用 annual cache re
 的 Enabled／LastRun／NextRun 因權限不足不能由本輪操作宣稱。B 的 compact／ISO 日期 SQL
 格式／長度限制、canonical bounded guard 與跨年等價 regression 已由核心合併 suite 驗證；不得
 改用 ISO fixture 繞過 compact source 的驗證。annual-64 refresh discovery regression 另以
-`12 passed`、compile／mypy clean 驗證，詳見 Maturity calendar refresh wiring QA（開發收據見dev）。
+`12 passed`、compile／mypy clean 驗證，詳見 Maturity calendar refresh wiring QA（dev 內部收據：../06_qa/MATURITY_CALENDAR_REFRESH_WIRING_2026_09_18.md）。
 
 ### 9.9.1c 個人推薦模型擷取與自然結果（2026-09-27）
 
@@ -2357,7 +2369,7 @@ Stage C 先以 canonical query 嚴格讀回 capture 對應的已保存 recommend
 
 操作入口在「推薦分析」頁的「個人推薦模式」區塊：
 
-1. 按「讀取候選清冊」，在已設定的 learning root 中選取 `<使用者自己的候選ID>`。UI 以 `RECOMMENDATION_LEARNING_OUTPUT_ROOT` 指定 learning 輸出根目錄；該環境變數須是絕對路徑，並指向**包含 `recommendation_learning` 子目錄的 output root**，不是該子目錄本身。未設定時，resolver 依 `DATA_ROOT` 使用同層的預設 `FA_Data_Shadow`。清冊只列可檢查的候選；缺少完整 lineage／來源證據的 `legacy_unproven` 項目不能藉由手動挑選或重雜湊升格。隔離 QA 候選只會出現在該 QA run 明確指定的 learning root；一般 UI 預設 root 沒有列出它時，先核對啟動設定，不要複製候選或改寫 pointer。
+1. 按「讀取候選清冊」，在已設定的 learning root 中選取 `rec-cal-3f8b2c276ef316e28de3806d`。UI 以 `RECOMMENDATION_LEARNING_OUTPUT_ROOT` 指定 learning 輸出根目錄；該環境變數須是絕對路徑，並指向**包含 `recommendation_learning` 子目錄的 output root**，不是該子目錄本身。未設定時，resolver 依 `DATA_ROOT` 使用同層的預設 `FA_Data_Shadow`。清冊只列可檢查的候選；缺少完整 lineage／來源證據的 `legacy_unproven` 項目不能藉由手動挑選或重雜湊升格。隔離 QA 候選只會出現在該 QA run 明確指定的 learning root；一般 UI 預設 root 沒有列出它時，先核對啟動設定，不要複製候選或改寫 pointer。
 2. 在「個人研究來源 SQLite（明確選擇）」輸入目前隔離 run 的 SQLite 絕對路徑，或按「選擇 DB…」。V2 來源綁定要與推薦服務本次實際使用的工作資料庫相同，並核對路徑、檔案身分及訓練切片；使用隔離 QA working copy 時，要綁該 working copy，而不是其父來源或其他 snapshot。正式 `D:` 只可作為建立隔離來源的唯讀原始來源，不要讓 UI 或本功能寫入正式庫。畫面不會從 `DATA_ROOT` 推定來源或代表使用者同意。按「檢查指定來源與候選」只執行唯讀來源檢查與有界 replay，不會寫入來源 SQLite 或保存信任。
 3. 檢查預覽所列資料庫絕對路徑、檔案身分、來源切片 SHA-256、資料集、決策日期、股票、樣本數與候選完整 pins。資料庫大小只供診斷；不能用它代替來源身分或切片驗證。來源切片綁定模型實際訓練窗內的資料列、可讀的 `available_at`、可重建的來源契約及成本等訓練輸入。本次僅在 `coverage.source_contract.technical`、`source_disclosures.source_contract.technical`、`source_disclosures.technical.source_contract` 三處 technical contract 投影中排除 `content_digest`、`content_row_count`、`coverage_end`、`evidence_hash` 四個全庫彙總欄；另不把 replay 結果最外層的 `dataset_id`、`dataset_hash`、`source_fingerprint` 三個由全庫 source fingerprints 衍生的識別欄納入此來源切片比對。上述例外以外，其他來源與欄位仍依原契約比較；候選已保存 manifest/pins 與逐筆樣本仍獨立核對。這不改原 replay manifest 或 global oracle。若 technical publication 或 corporate-action adjustment contract 缺失／未驗證，gate evidence 仍是 `unknown`／`false`；使用者信任指定資料庫不會把它升格為官方 PIT。來源日期只接受 `YYYY-MM-DD` 或 `YYYYMMDD`；完整 ISO 日期時間必須帶時區，並先換算為台北日期，再與決策日作日粒度比較。缺時區的 naive 日期時間及其他延伸日期格式會拒絕候選。此日期粒度不證明同日盤中可得時間；無效或晚於決策日的 `available_at` 會拒絕候選。若已知非單位公司行動落在 label window，候選也會被拒絕。`available_at` 不會改稱官方發布時間。
 4. 確認候選與指定資料庫確實是你要採信的來源後，選擇「個人校準機率（需選擇已驗證候選）」，勾選「我明確信任以上指定 SQLite 的資料時間來源，僅供個人研究，不代表官方歷史 PIT。」再按確認按鈕。按鈕會依所選模式顯示「信任此來源並保存個人研究模式」或規則模式的相應文字。V2 設定會用 CAS 保存並讀回 revision/hash；接著系統以同一明示資料庫重新檢查。只有重新檢查成功後，當前畫面才可在呼叫時要求 personal calibrated mode；consumer 仍會在載入模型前獨立重驗來源與候選。
@@ -2370,20 +2382,20 @@ Stage C 先以 canonical query 嚴格讀回 capture 對應的已保存 recommend
 
 | 狀態／症狀 | 判讀與處理 |
 |---|---|
-| 候選清冊沒有列出 `<使用者自己的候選ID>`，或只列 `legacy_unproven` | 核對隔離 run 的 learning root 是否正確；不要複製／修改候選或 lineage。舊 `legacy_unproven` 候選仍因缺訓練 lineage／來源時間契約而不可啟用，維持 `rule_only`。 |
+| 候選清冊沒有列出 `rec-cal-3f8b2c276ef316e28de3806d`，或只列 `legacy_unproven` | 核對隔離 run 的 learning root 是否正確；不要複製／修改候選或 lineage。舊 `legacy_unproven` 候選仍因缺訓練 lineage／來源時間契約而不可啟用，維持 `rule_only`。 |
 | 來源檢查按鈕／信任勾選框不可用 | 尚未明確選取候選與絕對 SQLite 路徑，或預覽已因路徑／候選改變而清除；重新選擇並檢查。 |
 | 顯示 V1 或未重新驗證的 V2 | 舊設定可讀，但不代表目前來源有效；同一候選與資料庫需重新檢查，並在需要時明確保存 V2。 |
 | CAS revision/hash 衝突或保存後讀回失敗 | 不要覆寫政策檔；重新載入目前設定、核對來源及候選後再操作。保存若已完成但畫面未確認，先讀回設定，不要猜測結果。 |
 | `source_time_binding_mismatch`、來源切片 SHA 或候選 pins 不符 | 檔案身分或實際訓練切片有差異；停止個人校準。回到原唯讀訓練來源，或依法重新產生候選，再做新的來源檢查與明示確認。 |
 | 顯示 `official_historical_pit_verified=false` | 這是預期狀態，表示使用者聲明不等於獨立官方 PIT；不得據此作 global promotion 或正式績效宣稱。 |
 
-受限的可見 Windows 原生操作曾驗證規則模式的推薦、保存／重新開啟讀回與個人選擇；它沒有驗證 V2 個人模型操作。後續隔離後端 E2E 使用候選 `<使用者自己的候選ID>` 和使用者指定正式資料建立的唯讀 QA snapshot：V2 revision 1 完成 fresh source recheck、consumer load、`RecommendationService` 真實呼叫、canonical result save/readback 與 capture v3 readback。結果 `pc-real-2026-09-28-1790588347` 的規則排序為 2454、2408、3037，三列 calibrated probability 均為 6000 bp；模型沒有重排推薦。After-cost probability 為 unavailable/null，不代表 0。該候選 16 筆 holdout Brier 2730 bp，較 50% null benchmark 的 2500 bp 差 230 bp；此效果訊號需揭露，但個人使用不因低績效自動封鎖。來源信任仍標 `research_only=true`、`official_historical_pit_verified=false`，未取得正式 promotion eligibility。
+受限的可見 Windows 原生操作曾驗證規則模式的推薦、保存／重新開啟讀回與個人選擇；它沒有驗證 V2 個人模型操作。後續隔離後端 E2E 使用候選 `rec-cal-3f8b2c276ef316e28de3806d` 和使用者指定正式資料建立的唯讀 QA snapshot：V2 revision 1 完成 fresh source recheck、consumer load、`RecommendationService` 真實呼叫、canonical result save/readback 與 capture v3 readback。結果 `pc-real-2026-09-28-1790588347` 的規則排序為 2454、2408、3037，三列 calibrated probability 均為 6000 bp；模型沒有重排推薦。After-cost probability 為 unavailable/null，不代表 0。該候選 16 筆 holdout Brier 2730 bp，較 50% null benchmark 的 2500 bp 差 230 bp；此效果訊號需揭露，但個人使用不因低績效自動封鎖。來源信任仍標 `research_only=true`、`official_historical_pit_verified=false`，未取得正式 promotion eligibility。
 
-此隔離候選使用 8 檔（2308、2317、2327、2330、2344、2408、2454、3037），history start 2024-10-24、replay end 2026-06-26；512 筆 replay samples 中採用 64 個決策日（2025-11-28 至 2026-05-28），label horizon 為 20 sessions。特徵只取決策前可得的前一交易日資料；來源 `available_at` 的訓練檢查是日粒度 user-declared 信任，不代表同日盤中可得或 official publication。候選以 50 bp fixed round-trip cost scenario訓練，`training_as_of=2026-05-25`、`training_cutoff=2026-06-26`；共 336 筆 cutoff-eligible rows，其中 OOF 校準 176 筆、未碰測試 holdout 16 筆，其餘屬訓練折。完整候選 root 與 candidate／freeze／manifest／artifact／dataset pins 見隔離 E2E 收據（開發收據見dev）。
+此隔離候選使用 8 檔（2308、2317、2327、2330、2344、2408、2454、3037），history start 2024-10-24、replay end 2026-06-26；512 筆 replay samples 中採用 64 個決策日（2025-11-28 至 2026-05-28），label horizon 為 20 sessions。特徵只取決策前可得的前一交易日資料；來源 `available_at` 的訓練檢查是日粒度 user-declared 信任，不代表同日盤中可得或 official publication。候選以 50 bp fixed round-trip cost scenario訓練，`training_as_of=2026-05-25`、`training_cutoff=2026-06-26`；共 336 筆 cutoff-eligible rows，其中 OOF 校準 176 筆、未碰測試 holdout 16 筆，其餘屬訓練折。完整候選 root 與 candidate／freeze／manifest／artifact／dataset pins 見[隔離 E2E 收據](../../output/qa/pc-e2e-v1/backend_e2e_acceptance_20260928.json)。
 
-較早 backend-only capture 的 3 列均 pending、成熟 0 列；其 resolver 指出缺 `2026-09-28` 的 TAIEX baseline observation，沒有建立 outcome、global natural evidence 或 promotion credit。這不是後續 m10 capture 的列數或狀態。m10 對其獨立 capture 的最新 Stage C 結果見下文：19 pending、0 matured。Annual calendar cache 的臨時休市 coverage 為 `not_covered`。較早個人政策曾依序啟用、停用為 rule-only、經新鮮 source recheck 回退候選，再以新 revision 設為最終 rule-only；global active pointer 未變。完整後端收據及各階段 hash 見個人模型隔離後端 E2E 收據（開發收據見dev）（SHA-256 `5da799f8994eed9623c28e938593b4075256c83e9505408469d3118b585ee080`），結果成熟度診斷見 `resolver_diagnostic_receipt.json`。
+較早 backend-only capture 的 3 列均 pending、成熟 0 列；其 resolver 指出缺 `2026-09-28` 的 TAIEX baseline observation，沒有建立 outcome、global natural evidence 或 promotion credit。這不是後續 m10 capture 的列數或狀態。m10 對其獨立 capture 的最新 Stage C 結果見下文：19 pending、0 matured。Annual calendar cache 的臨時休市 coverage 為 `not_covered`。較早個人政策曾依序啟用、停用為 rule-only、經新鮮 source recheck 回退候選，再以新 revision 設為最終 rule-only；global active pointer 未變。完整後端收據及各階段 hash 見[個人模型隔離後端 E2E 收據](../../output/qa/pc-e2e-v1/backend_e2e_acceptance_20260928.json)（SHA-256 `5da799f8994eed9623c28e938593b4075256c83e9505408469d3118b585ee080`），結果成熟度診斷見 `resolver_diagnostic_receipt.json`。
 
-2026-09-28 m10 已通過隔離 Qt widget journey：V2 candidate recheck、模型推薦、canonical result save/readback、capture v3 readback、cold restart、停用、fresh proposal revision rollback、final rule-only。精確 pins 見 m10 驗收報告（開發收據見dev）。畫面證據是 `QWidget.grab()` widget render，不是 OS foreground／desktop screenshot。預設仍為 `rule_only`；user-declared source time 只限個人研究，不是官方 historical PIT。Stage C 對 m10 capture 為 `completed_with_pending`、19 pending／0 matured、reason `personal_outcome_source_or_cost_incomplete`，outcome artifact null、published 0、global／promotion false。逐筆 CLI 仍依 9.9.1c 的 explicit capture path 與 `evaluation-at` 使用；它不會提前成熟 outcome 或替代官方來源／日曆檢查。
+2026-09-28 m10 已通過隔離 Qt widget journey：V2 candidate recheck、模型推薦、canonical result save/readback、capture v3 readback、cold restart、停用、fresh proposal revision rollback、final rule-only。精確 pins 見 m10 驗收報告（dev 內部收據：../06_qa/PERSONAL_MODEL_QT_WIDGET_ACCEPTANCE_M10_20260928.md）。畫面證據是 `QWidget.grab()` widget render，不是 OS foreground／desktop screenshot。預設仍為 `rule_only`；user-declared source time 只限個人研究，不是官方 historical PIT。Stage C 對 m10 capture 為 `completed_with_pending`、19 pending／0 matured、reason `personal_outcome_source_or_cost_incomplete`，outcome artifact null、published 0、global／promotion false。逐筆 CLI 仍依 9.9.1c 的 explicit capture path 與 `evaluation-at` 使用；它不會提前成熟 outcome 或替代官方來源／日曆檢查。
 
 正式資料根目錄預設為 `D:\Min\Python\Project\FA_Data`（可由 `DATA_ROOT` 覆寫），正式 SQLite 為 `D:\Min\Python\Project\FA_Data\sqlite\twstock.db`。該正式庫只可依授權作建立 snapshot 的唯讀來源；m10 UI 程序沒有開啟正式庫。實際 runtime/source trust 綁定的是隔離工作副本 `m10\data\_test\sqlite\twstock.db`，不是父 snapshot，也不是正式庫。
 
@@ -2430,7 +2442,7 @@ $policy = Join-Path $run 'app_config\personal_use_policy.json'
 
 需要重新產候選時先看 `scripts/scheduled/rebuild_personal_calibration_candidate.py --help`；來源 DB、data root、新 output、shared heavy-chain lock、symbols、history/replay期間、training cutoff、decision date、max dates、cost bp 與 scope 均須明示。預設 preview 只讀；0樣本／來源拒絕表示缺件，不能補成0預測或刪 revision marker。execute 不屬 preview，本次未執行；原 capacity 與 shared lock 仍保留，output 必須全新且與來源／App 分離。
 
-已核可信原候選 `<使用者自己的候選ID>`，真 artifact 對9月28日原保存請求重播三筆 H20 為1613／1963／1086bp，等於原保存值；holdout Brier2730比null2500差230bp，after-cost仍缺件。重播不算今日新自然預測。目前來源提案對原 frozen snapshot 可用，對 live DB 仍 training_source_time_training_rows_unbound；正式來源 revision guard 也阻擋 historical PIT replay。每日 current-restated 來源與 A03 CLI composition 尚在整合，不要使用9月24日 frozen snapshot冒稱最新行情。回退沿原 rule-only／policy CAS，不刪預測或來源收據。完整證據：中央整合 QA（開發收據見dev）。
+已核可信原候選 `rec-cal-3f8b2c276ef316e28de3806d`，真 artifact 對9月28日原保存請求重播三筆 H20 為1613／1963／1086bp，等於原保存值；holdout Brier2730比null2500差230bp，after-cost仍缺件。重播不算今日新自然預測。目前來源提案對原 frozen snapshot 可用，對 live DB 仍 training_source_time_training_rows_unbound；正式來源 revision guard 也阻擋 historical PIT replay。每日 current-restated 來源與 A03 CLI composition 尚在整合，不要使用9月24日 frozen snapshot冒稱最新行情。回退沿原 rule-only／policy CAS，不刪預測或來源收據。完整證據：中央整合 QA（dev 內部收據：../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md）。
 
 ### 9.9.1e 已保存推薦的個人決定與旅程回看（2026-09-28）
 
@@ -2454,7 +2466,7 @@ $policy = Join-Path $run 'app_config\personal_use_policy.json'
 
 成熟 outcome 的價格讀回目前要求穩定、已 checkpoint、沒有 `-wal`／`-shm` sidecar 的隔離 SQLite 副本。正式資料庫若仍有 WAL/SHM，請勿為了讓評估通過而手動 checkpoint 或改寫正式資料；請依核准的 SQLite backup 流程建立隔離副本，確認副本在評估期間不會被替換或寫入，再於來源選擇器明確指定。若來源帶 sidecar 或在讀取期間變動，系統會拒絕成熟讀回；這是來源無法安全重驗，不代表模型無效。m11 的 19 筆 pending 是該次 Stage C summary 記錄的來源／成本證據不完整，並非因 WAL/SHM 被拒。
 
-此評估只限個人研究來源，非官方歷史 PIT 可得時間證明；其 20 個交易日標籤是決策日到後續收盤的 close-to-close 觀察，不是成交損益、模擬成交或持倉報酬。固定 50% null baseline 只作明示比較基準，不把 `rule_score` 當機率。畫面不寫 Journal／Outcome、不回補歷史、不切換模型。更換結果、重跑推薦或更換任一來源檔時，先前的評估明細會清除；來源錯誤時請重新確認精確保存結果、capture 根目錄及 Stage C summary，而不要改名、重算或複製原摘要。實來源與 isolated UI 邊界的測試證據見[WP3 Journey choice 與 Stage C UI QA](../06_qa/WP3_WATCHLIST_QA_20260928.md#2026-09-28-personal-model-assessment-ui-follow-up)。
+此評估只限個人研究來源，非官方歷史 PIT 可得時間證明；其 20 個交易日標籤是決策日到後續收盤的 close-to-close 觀察，不是成交損益、模擬成交或持倉報酬。固定 50% null baseline 只作明示比較基準，不把 `rule_score` 當機率。畫面不寫 Journal／Outcome、不回補歷史、不切換模型。更換結果、重跑推薦或更換任一來源檔時，先前的評估明細會清除；來源錯誤時請重新確認精確保存結果、capture 根目錄及 Stage C summary，而不要改名、重算或複製原摘要。實來源與 isolated UI 邊界的測試證據見[WP3 Journey choice 與 Stage C UI QA](../06_qa/WP3_WATCHLIST_QA_20260928.md#2026-09-28-個人模型評估-ui-follow-up)。
 
 ### 9.9.2 Historical Evidence Replay（歷史排程重放）
 
@@ -2898,9 +2910,9 @@ V4.1 A 線的推薦機率校準研究可用 `scripts\inspect_recommendation_cali
 
 輸出目錄會以 create-only 方式保存 `historical_dataset_manifest.json`、`historical_calibration_report.json` 與 `frozen_candidate_artifact.json`；若任一同名檔案已存在，CLI 會拒絕覆寫。manifest 每列保留 `decision_date`、`available_at`（含 precision）、`label_maturity`／`label_end_date`、strategy config、universe policy／snapshot、return basis、benchmark、fixed／liquidity cost、event／outcome／source hash 與 `gap_codes`。缺 outcome 只標為 `missing_outcome`，未成熟 outcome 標為 `insufficient_future_data`，不以 fixture、replay 或 current snapshot 回補。
 
-正式資料若回 `observation_row_count=0`、`fold_count=0` 或 `status=not_evaluable`，只能判讀為目前沒有足夠成熟且可追溯的樣本；它不代表策略有效或失效。`frozen_candidate_artifact.json` 固定 `shadow_only=true`、`production_eligible=false`、`promotion_eligible=false`、`recommendation_weights_changed=false`、`scheduler_enabled=false`，只能交給 B 線做 hash 驗證與唯讀 shadow，不能改正式推薦或寫回 SQLite。完整 2026-09-12 結果見 V4.1 歷史研究與候選方法包 QA（開發收據見dev）。
+正式資料若回 `observation_row_count=0`、`fold_count=0` 或 `status=not_evaluable`，只能判讀為目前沒有足夠成熟且可追溯的樣本；它不代表策略有效或失效。`frozen_candidate_artifact.json` 固定 `shadow_only=true`、`production_eligible=false`、`promotion_eligible=false`、`recommendation_weights_changed=false`、`scheduler_enabled=false`，只能交給 B 線做 hash 驗證與唯讀 shadow，不能改正式推薦或寫回 SQLite。完整 2026-09-12 結果見 V4.1 歷史研究與候選方法包 QA（dev 內部收據：../06_qa/V4_1_HISTORICAL_METHOD_PACK_2026_09_12.md）。
 
-正式 evidence DB 若出現 `observation_count=0` 或 `fold_count=0`，只能解讀為成熟度／來源不足，不能解讀為策略有效或失效。完整契約、實際 2026-09-10 read-only 結果、測試與限制見 V4.1 推薦機率校準垂直切片（開發收據見dev）。
+正式 evidence DB 若出現 `observation_count=0` 或 `fold_count=0`，只能解讀為成熟度／來源不足，不能解讀為策略有效或失效。完整契約、實際 2026-09-10 read-only 結果、測試與限制見 V4.1 推薦機率校準垂直切片（dev 內部收據：../06_qa/V4_1_RECOMMENDATION_CALIBRATION_VERTICAL_SLICE_2026_09_10.md）。
 
 ### V4.2 每日推薦自動學習與受控校準調整
 
@@ -3077,7 +3089,7 @@ BankTaiwan 05:50 排程的 snapshot root 預設與 05:45 Legacy learning shadow 
 `completed` 並保存 normal live capture：正常 cohort 的 symbol source=
 `scheduled_recommendation_snapshot:scheduled_rec_20260914_042140.json:eligible`，只有
 `1528`；bounded historical bootstrap 後 training rows 為 255，candidate 為
-`<使用者自己的候選ID>`，沿用 experiment scope
+`rec-cal-29c1b6129396a3885a89d080`，沿用 experiment scope
 `scheduled-experiment-ff4d2ab937e2c8b32bf2df04`；single-class blocker 已處理，沒有使用三檔
 capture 代替正常 lane；natural sample 為 `0`，authority 仍 `retain_current`，原因為
 `natural_forward_evidence_receipt_missing`。
@@ -3090,7 +3102,7 @@ manifest 的 `initial_seen_start=2026-04-23`；bootstrap replay selected date wi
 這組結果只說明 bounded training lineage 的分層觀測，不能當作自然 forward evidence 或 formal PIT。
 
 本次正常 lane 的新 immutable capture scope 是 `scheduled-capture-5f4de77ffb404af2`，實體路徑為
-`D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\captures\2026-09-14\scheduled-capture-5f4de77ffb404af2\<使用者自己的候選ID>-850760d54413e019199be668.json`，
+`D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning\captures\2026-09-14\scheduled-capture-5f4de77ffb404af2\rec-cal-29c1b6129396a3885a89d080-850760d54413e019199be668.json`，
 hash 為 `sha256:8c974b82de0cb6f4a5dc01ab08183e8cd02049f97bd56d6ce74908360072b2c0`。
 decision 仍為 `retain_current`，原因是 `natural_forward_evidence_receipt_missing`，自然 sample 為
 `0`；不能把 candidate trained 或 pipeline warning 收尾當成自然 evidence、promotion 或收益證明。
@@ -3141,7 +3153,7 @@ Phase 2 起，Qt 主 UI 新增 `決策工作台` 分頁作為 read-only Unified 
 - Workbench >「研究證據」（Evidence / Research Console）：此子頁固定分成 Safety Boundary、Development Pipeline、Evidence / Source Gates 三區。Safety Boundary 必須顯示 `formal_oos_allowed=False`、`production_blend_alpha_bp=0`、Production ML disabled、正式 Recommendation / Portfolio 維持 Rule-only，以及 promotion / retrain / scheduler / trading disabled。頁面上方先給中文結論（例如 Rule 使用中、ML 未參與、缺正式輸入或投影已過期），技術識別碼與原始 blocker 預設收合，按「顯示技術診斷」才展開。Development Pipeline 只複製顯式 `RESEARCH_CONSOLE_PROJECTION` 指向的 sanitized `ResearchConsoleProjection.json`，顯示 Dataset V0、Rule Development Baseline、ML Development Challenger、E2E identity、row / feature count、label maturity、artifact citation 與 blockers；缺欄使用 `Missing / Unknown`，不補零。Evidence / Source Gates 固定保留 EV1–EV5、13 個 P0 source、獨立 Broker lane、P0 Data Source Control Center 與 Artifact Inspector；Control Center 逐列顯示 governance/machine/audit/decision status、row 數、blockers 與 `downstream_eligibility`，沒有 audit 時仍顯示 13 列 `contract_only`，不把 development、candidate、provisional、degraded、fixture 或 replay 冒充 formal accepted / forward evidence。頁面唯一控制是「重新載入唯讀 projection」，沒有 Apply、Promote、Retrain、Blend、Accept Source 或 Trade。
 - Workbench >「研究證據」（Evidence / Research Console）的「每日學習／機率校準（唯讀）」區塊置於安全邊界之後、大型開發／P0 來源表之前，預設選取 `banktaiwan_estimated_research`（`D:\Min\Python\Project\FA_Data_Shadow_BankTaiwan\recommendation_learning`），另可切換但不混用 `legacy_fixed_bp`（`D:\Min\Python\Project\FA_Data_Shadow\recommendation_learning`）。它只讀 `latest_status.json`、candidate／capture／receipt 與 active pointer，並透過 typed candidate／active natural-evidence verifier 與 prediction-capture verifier；不執行 producer、不重算、不寫 receipt／pointer、不 promotion、不下單。摘要先以繁中短句顯示目標決策日、學習資料決策日、臺銀費稅估算／成本 lane、該日預測是否已記錄、候選／目前路徑成熟樣本與決策日數、保留原因及下一步；沒有 capture 時明示「尚未建立該日預測紀錄」。長 candidate／model／dataset／scenario／receipt／source trace 與 raw reason 預設收在「驗證詳情」，不擠滿主摘要。明細表分開列 candidate natural、active model natural、capture recorded、各 horizon 的 recorded／matured sample 與 decision-date count、Brier／calibration gap；只有 verifier 通過的 natural comparison 才能進入 reliability bins。沒有已驗證自然樣本時不顯示機率可靠度或區間；80% 區間的 observed 欄位是成熟樣本的實際上漲比例，不是 ranking score 的準確率或交易保證。臺銀估算成本及其 after-cost 結果一律標 `research_only_estimated`；歷史 evaluation／untouched test 只作 historical replay，不能與 natural matured evidence 合併。
 - 每日學習區塊的判讀順序是 `cost lane` → requested／learning decision date → candidate／active identity → capture `recorded`／`pending`／`blocked_provenance` → horizon maturity → typed receipt／reliability bins。`stale`、`future_blocked`、capture 缺日期、改列／hash、歷史 origin、成本 scenario 不一致、receipt bytes 在驗證後被換檔或 source path 越界都必須保持 blocked／unknown；不得用另一 lane、舊 replay、controlled fixture 或缺 receipt 的 capture 補值。當前若顯示 `natural_forward_evidence_receipt_missing`、`retain_current` 或沒有 verified natural sample，代表等待真正後續交易日，不是安全、promotion 或正式機率通過。
-- BankTaiwan 排程若在 `scheduled/recommendation_learning_banktaiwan/latest_status.json` 顯示 `failed_dependency`、`child_exit_code:2` 與 `decision_reason=cost_scenario_root_conflict`，先保留該 attempt receipt、`recommendation_learning/challenger/current.json`、latest status、decision receipt、candidate、manifest 與 artifact，不刪 marker 或手改 JSON。舊 challenger pointer 一般必須具備完整 candidate identity、canonical manifest、實際 artifact bytes、candidate freeze、cost contract 與 label registry；僅已核驗的 legacy 05:45 marker 可以在只缺 top-level `candidate_freeze_hash` 時進入 read-only compatibility，而且必須有同 cohort 的完整 freeze challenger anchor，latest status 與 immutable receipt 的 candidate／root／manifest／artifact／dataset／`run_scope` exact match。缺 root、缺 cohort、swapped candidate／root／dataset、任何 hash／artifact／freeze 衝突或 receipt bytes 不一致一律 fail closed；不會補目前預設 50 bp，也不會寫回 marker、receipt、candidate 或 freeze。完整 2026-09-15 首次失敗、2026-09-16 cross-anchor 唯讀 root 回驗與隔離回歸見 BankTaiwan 首次排程失敗 QA（開發收據見dev）。
+- BankTaiwan 排程若在 `scheduled/recommendation_learning_banktaiwan/latest_status.json` 顯示 `failed_dependency`、`child_exit_code:2` 與 `decision_reason=cost_scenario_root_conflict`，先保留該 attempt receipt、`recommendation_learning/challenger/current.json`、latest status、decision receipt、candidate、manifest 與 artifact，不刪 marker 或手改 JSON。舊 challenger pointer 一般必須具備完整 candidate identity、canonical manifest、實際 artifact bytes、candidate freeze、cost contract 與 label registry；僅已核驗的 legacy 05:45 marker 可以在只缺 top-level `candidate_freeze_hash` 時進入 read-only compatibility，而且必須有同 cohort 的完整 freeze challenger anchor，latest status 與 immutable receipt 的 candidate／root／manifest／artifact／dataset／`run_scope` exact match。缺 root、缺 cohort、swapped candidate／root／dataset、任何 hash／artifact／freeze 衝突或 receipt bytes 不一致一律 fail closed；不會補目前預設 50 bp，也不會寫回 marker、receipt、candidate 或 freeze。完整 2026-09-15 首次失敗、2026-09-16 cross-anchor 唯讀 root 回驗與隔離回歸見 BankTaiwan 首次排程失敗 QA（dev 內部收據：../06_qa/BANKTAIWAN_FIRST_SCHEDULED_RUN_FAILURE_2026_09_15.md）。
 - Research Console 排錯：未設定 `RESEARCH_CONSOLE_PROJECTION`、檔案不存在、JSON/schema 不合法時，頁面仍可開啟並顯示 `Missing` 或 `degraded`；若 projection scope 不是 exact `historical_research_seen_development_data`，或宣稱 formal OOS、非零／非整數 alpha、promotion eligible、缺少 canonical apply flag、出現額外 flag、任一 flag 不是 literal `false`，service 會以 `projection_boundary_violation` fail-closed，不套用該內容。`lineage.generated_at` 必須是含時區的 ISO-8601；缺少、格式錯誤、超過未來 5 分鐘或距目前超過 7 天時，分別顯示 `projection_generated_at_missing`、`projection_generated_at_invalid`、`projection_generated_at_future` 或 `projection_stale`，保留 sanitized identity 供排錯但整體固定降級，不代表 formal elapsed day。E2E row 的 artifact hash 是實際 projection bytes 的 SHA-256；injected mapping 沒有實體檔時保持 Unknown。啟動與重新載入只讀 JSON，不掃描 development／正式資料目錄、不建立 SQLite 連線、table、directory 或 artifact。
 - 工程預演狀態 / Evidence Rehearsal：在「Evidence mode」下方查看注入的 `EvidenceRehearsalDashboard`。此唯讀區塊固定揭露「工程／Replay／Shadow；不是 forward evidence」、rehearsal tier、coverage、blockers、是否提供 Shadow comparison 與 `Forward handoff：pending`。coverage 會逐來源列出 observed、missing、degraded、future-blocked 與 immature-label 計數；`missing`、source outage 或 `insufficient_sample` 必須維持已阻擋／預演狀態，不得被畫成 clean、ready 或正式通過。這個區塊沒有 apply / promote 按鈕，不能寫入 DB、啟用 scheduler、改變 Advice 或把 replay / shadow 結果視為 forward evidence；要補齊問題時，只能依 blocker 回到既有人工、資料授權或真實時間流程處理。
 - Daily Checklist：以 status card 顯示 freshness、Evidence gate、multi-day dry-run、manual review 與 scheduler write-mode 等 gate，內容可換行，不再以寬表格呈現。未設定 approved projection 時 legacy DB 可能顯示 `0/3`；歷史 working-copy=`1/3`、UI projection=`3/3`、sidecar pending=`10`、multi-day=`3/3`，但 formal credit 仍未授予。現在要完成的是 10 期具名 review、formal credit、backup／rollback／recovery 與 scheduler approval；fixture、單次 smoke、手動改表或 replay 都不能補齊。
@@ -3252,7 +3264,7 @@ Evidence Review UI 完成後，正式 scheduler 前仍需要人工 closeout：
 
 `scripts/scheduled/` 提供 safe scheduled wrappers，用於每日自動產生「可人工檢查」的 freshness 與 evidence dry-run 輸出。PowerShell `.ps1` 註冊路徑曾被 local execution policy 擋住，因此目前採 CMD wrapper；aggregate 保留 Windows 內建 `schtasks.exe`，Paper 專用原地更新與完整唯讀查詢使用現有 Python／pywin32 Task Scheduler COM，不需要修改 execution policy。
 
-2026-10-02 已實際讀回 21 個 exact root tasks，所有 Exec WorkingDirectory 指向 repo。Paper／ML 盤前已改為具時區的台北 08:25（UTC 00:25；前一個 Pacific 日期 PDT 17:25／PST 16:25），並恢復 Enabled=true。Windows 可將 boundary 正規化為等值的 Pacific offset；核對 aware UTC instant 與每日排程語意，不以顯示字串相同作標準。timeout 保留實查值（Paper PT72H／ML PT2H），這不代表歷史 `0xC000013A` 的原因已查明。完整 before／after 與受控執行見整合修復紀錄（開發收據見dev）。
+2026-10-02 已實際讀回 21 個 exact root tasks，所有 Exec WorkingDirectory 指向 repo。Paper／ML 盤前已改為具時區的台北 08:25（UTC 00:25；前一個 Pacific 日期 PDT 17:25／PST 16:25），並恢復 Enabled=true。Windows 可將 boundary 正規化為等值的 Pacific offset；核對 aware UTC instant 與每日排程語意，不以顯示字串相同作標準。timeout 保留實查值（Paper PT72H／ML PT2H），這不代表歷史 `0xC000013A` 的原因已查明。完整 before／after 與受控執行見整合修復紀錄（dev 內部收據：../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md）。
 
 ```cmd
 scripts\scheduled\register_baldr_scheduled_tasks.cmd dryrun
@@ -3954,7 +3966,7 @@ Quick core 發布 `pending_after_core_publication` 後，MOPS child 有 90 秒 p
 
 ### 2026-09-30 排程執行與日期判讀
 
-本輪七項排程問題的實際 Task、receipt、人工／自然觸發區別與未解 blocker，見排程修復 QA（開發收據見dev）。Task 的 `LastResult=0` 只表示 wrapper 正常結束；仍要核對同次 status、source identity、artifact readback 與業務 `status`。本輪 Quick、Freshness、Recommendation 與 Evidence 的人工受控執行不會代替各自自然時鐘驗收。
+本輪七項排程問題的實際 Task、receipt、人工／自然觸發區別與未解 blocker，見排程修復 QA（dev 內部收據：../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md）。Task 的 `LastResult=0` 只表示 wrapper 正常結束；仍要核對同次 status、source identity、artifact readback 與業務 `status`。本輪 Quick、Freshness、Recommendation 與 Evidence 的人工受控執行不會代替各自自然時鐘驗收。
 
 正式 `baldr-recommendation-snapshot-daily` wrapper 在 `EXPORT_PAPER_FROZEN_SOURCE` 未設定時預設輸出 Paper frozen source；明確設為 `0` 才 opt-out。匯出只接受同次已完成且 indexed 的 canonical Recommendation，寫入 create-only `paper_frozen_<result_id>.json`，保留原 `result_id`、決策時間與來源雜湊；不改 selector／generic index、不補寫歷史日期。Python CLI 預設不匯出，Shadow learning 也不傳此旗標。此 artifact 是研究用的來源凍結，不會自行產生可執行 Paper session；它只能供下一個符合官方 session 的 consumer 驗證。
 
@@ -3980,11 +3992,11 @@ BankTaiwan wrapper 先等待原 05:45 calibration Task 的同日 terminal run id
 
 既有 `baldr-v2-2-weekly-collection` Task 繼續呼叫 `scripts/scheduled/run_v2_2_weekly_collection.cmd`，本輪沒有新增 Windows Task。Weekly wrapper 只在 core collection exit 0 後啟動兩個分開的研究 child：MOPS statement availability child 預設啟用，可設 `BALDR_ENABLE_MOPS_STATEMENT_CUSTODY=0` 關閉；季度 OpenAPI research child 預設啟用，可設 `BALDR_ENABLE_MOPS_QUARTERLY_OPENAPI_RESEARCH=0` 個別關閉。兩者互不跳過；child failure 由其 per-run status/terminal 與 wrapper process output 檢查，不覆寫 core collection exit 或 `pending_human_review` 語意。
 
-Statement availability child 使用最近完整台北 7 日窗口，輸出到 repo `output/research/mops_statement_availability/<run-id>/`；它保存公告研究事件，不是季度財報數值表，也不代表正式 availability mapping 已接受。季度 child 只以明確 `--capture` 執行，每次最多 2 個官方 catalog GET 加 24 個固定 TWSE／TPEx income/balance GET；每 URL 一次、0 retry，connect/read timeout 各 30 秒；60 秒/request 與 900 秒/run elapsed gates 都是在阻塞 read 返回後檢查，不宣稱硬牆鐘中止。Create-only candidate 放在 `output/mops_quarterly_openapi_research/<run-id>/`。成功 HTTP response 與 preview 仍是 current-observation research evidence，不能宣稱全市場 issuer coverage、一般金額單位、歷史 announcement available-at、PIT、Formal、訓練或 credit。實際 10/1 capture 有 8 列保留在 key/schema review；需看季度 OpenAPI QA（開發收據見dev）及來源與單位盤點（開發收據見dev）。程式與 mock route 已驗，但 live capture 尚未由下一次自然 weekly Task 讀回驗收。
+Statement availability child 使用最近完整台北 7 日窗口，輸出到 repo `output/research/mops_statement_availability/<run-id>/`；它保存公告研究事件，不是季度財報數值表，也不代表正式 availability mapping 已接受。季度 child 只以明確 `--capture` 執行，每次最多 2 個官方 catalog GET 加 24 個固定 TWSE／TPEx income/balance GET；每 URL 一次、0 retry，connect/read timeout 各 30 秒；60 秒/request 與 900 秒/run elapsed gates 都是在阻塞 read 返回後檢查，不宣稱硬牆鐘中止。Create-only candidate 放在 `output/mops_quarterly_openapi_research/<run-id>/`。成功 HTTP response 與 preview 仍是 current-observation research evidence，不能宣稱全市場 issuer coverage、一般金額單位、歷史 announcement available-at、PIT、Formal、訓練或 credit。實際 10/1 capture 有 8 列保留在 key/schema review；需看季度 OpenAPI QA（dev 內部收據：../06_qa/SCHEDULER_QUARTERLY_OPENAPI_RESEARCH_CAPTURE_20261001.md）及來源與單位盤點（dev 內部收據：../06_qa/FUNDAMENTAL_SOURCE_ACCEPTANCE_AND_QUARTERLY_CATALOG_20261001.md）。程式與 mock route 已驗，但 live capture 尚未由下一次自然 weekly Task 讀回驗收。
 
-Daily Quick wrapper 的月營收 research child 只有 core phases／technical publication 與 terminal history/status 全部完成後才執行；`.cmd` 預設開啟，`BALDR_CAPTURE_MONTHLY_REVENUE_RESEARCH_CANDIDATE=0` 可停用，Python caller 未帶參數仍維持舊 ABI。它把官方 TWSE／TPEx response 保存至 `output/fundamental_research_candidates/<run-id>/`，不寫正式 CSV、DB 或 availability map。檢視 run status、raw、receipt、candidate manifest 與 readback；目前候選是 2026-08、完整 1,978-key research scope，date-only availability 為 source capture 台北次日 2026-10-02，單位／source acceptance 與 Formal apply eligibility 仍 false。第一次 sandbox WinError 10013 failure receipt 需保留，不和後續成功 run 混成一次執行；完整實測與限制見基本面 bootstrap QA（開發收據見dev）。
+Daily Quick wrapper 的月營收 research child 只有 core phases／technical publication 與 terminal history/status 全部完成後才執行；`.cmd` 預設開啟，`BALDR_CAPTURE_MONTHLY_REVENUE_RESEARCH_CANDIDATE=0` 可停用，Python caller 未帶參數仍維持舊 ABI。它把官方 TWSE／TPEx response 保存至 `output/fundamental_research_candidates/<run-id>/`，不寫正式 CSV、DB 或 availability map。檢視 run status、raw、receipt、candidate manifest 與 readback；目前候選是 2026-08、完整 1,978-key research scope，date-only availability 為 source capture 台北次日 2026-10-02，單位／source acceptance 與 Formal apply eligibility 仍 false。第一次 sandbox WinError 10013 failure receipt 需保留，不和後續成功 run 混成一次執行；完整實測與限制見基本面 bootstrap QA（dev 內部收據：../06_qa/SCHEDULER_FUNDAMENTAL_BOOTSTRAP_20260930.md）。
 
-每日 ML source-row projection 已有獨立 no-write preflight 與 repo-local research candidate 實際 readback。runner／`.cmd` 預設同次執行 prospective daily-price capture 與 `--project-daily-source-rows`；`BALDR_ENABLE_ML_DAILY_SOURCE_ROW_PROJECTION=0` 可單獨停用 projection，`BALDR_ENABLE_ML_PROSPECTIVE_DAILY_CAPTURE=0` 會同時停用 capture 與下游 projection。runner 只在 core freshness proof 後、source-revision gate 前執行；只有同次 capture 回傳 `captured`／經驗證 `already_captured` 且 candidate readback/pins 通過才呼叫 projector。Capture 未 verified 時 child 不啟動；projection failure 只新增診斷，不覆寫 core／revision-hold／process exit。候選位於 `output/qa/ml_daily_source_row_research_projections/<source-date>/<projection-id>/`；wrapper 在同候選 create-only 寫入並讀回 bounded `runner_terminal_verification_receipt.json`，主 runner `output-root/scheduled/ml_raw_pit_refresh/latest_status.json` 另帶 `prospective_daily_source_row_projection` 的 terminal path/hash。只看 `completion_receipt.json` 的 `awaiting_terminal_revision_validation` 不代表成功。Hook/wrapper focused route 為 46 passed／1 skipped（Windows symlink privilege），py_compile 與 scoped mypy 通過；黑箱測試只呼叫短暫複製 wrapper 與 fake child，未執行正式 runner 或 natural Task，先前受控 CLI 結果不能當 hook 收據。下一個自然 05:05 Task 尚待同次 nested status 與 per-run terminal receipt 驗收。此 candidate 沒有 feature／label、unit claim、PIT、Direct/OOC 或 Formal credit。核對hook QA（開發收據見dev）及單日投影 QA（開發收據見dev）。
+每日 ML source-row projection 已有獨立 no-write preflight 與 repo-local research candidate 實際 readback。runner／`.cmd` 預設同次執行 prospective daily-price capture 與 `--project-daily-source-rows`；`BALDR_ENABLE_ML_DAILY_SOURCE_ROW_PROJECTION=0` 可單獨停用 projection，`BALDR_ENABLE_ML_PROSPECTIVE_DAILY_CAPTURE=0` 會同時停用 capture 與下游 projection。runner 只在 core freshness proof 後、source-revision gate 前執行；只有同次 capture 回傳 `captured`／經驗證 `already_captured` 且 candidate readback/pins 通過才呼叫 projector。Capture 未 verified 時 child 不啟動；projection failure 只新增診斷，不覆寫 core／revision-hold／process exit。候選位於 `output/qa/ml_daily_source_row_research_projections/<source-date>/<projection-id>/`；wrapper 在同候選 create-only 寫入並讀回 bounded `runner_terminal_verification_receipt.json`，主 runner `output-root/scheduled/ml_raw_pit_refresh/latest_status.json` 另帶 `prospective_daily_source_row_projection` 的 terminal path/hash。只看 `completion_receipt.json` 的 `awaiting_terminal_revision_validation` 不代表成功。Hook/wrapper focused route 為 46 passed／1 skipped（Windows symlink privilege），py_compile 與 scoped mypy 通過；黑箱測試只呼叫短暫複製 wrapper 與 fake child，未執行正式 runner 或 natural Task，先前受控 CLI 結果不能當 hook 收據。下一個自然 05:05 Task 尚待同次 nested status 與 per-run terminal receipt 驗收。此 candidate 沒有 feature／label、unit claim、PIT、Direct/OOC 或 Formal credit。核對hook QA（dev 內部收據：../06_qa/SCHEDULER_ML_DAILY_SOURCE_ROW_HOOK_20261001.md）及單日投影 QA（dev 內部收據：../06_qa/SCHEDULER_ML_DAILY_SOURCE_ROW_PROJECTION_20261001.md）。
 
 9/30 Pacific 16:15（10/1 Taipei 07:15）的 Paper Portfolio 與 ML forward Task 當次 terminal 尚未驗證：inventory `output/qa/scheduled_task_inventory_20261001T002916Z_940402272834.json`（52,144 bytes，SHA-256 `9bbe91e9c6b1cc723222e87cd92a9751e8ff9985de9f3d7f4f76c2946193e374`）於台北 08:29:16 檢查 21/21 exact root task paths、0 errors；兩個 Task 均 Ready、`LastTaskResult=3221225786`（`0xC000013A`），runtime `waiting_for_taipei_cutoff`／`terminal=false`、heartbeat stale，latest 仍是前一日。此清冊早於台北 08:30 cutoff 44 秒；Paper XML 未明列 ExecutionTimeLimit、ML forward 為 PT2H，兩者沒有 delay，operational logging disabled，但這些設定不能證明原因。原因尚未知；不以舊 latest 或 Paper execution EOD 06:00 no-work receipt 替代同次 terminal，待 same-run terminal／runtime receipt 可讀回後再判斷。
 
@@ -3998,7 +4010,7 @@ Daily Quick wrapper 的月營收 research child 只有 core phases／technical p
 
 只有明確加 `--write-candidate` 才建立 create-only research candidate；`--output-root` 限 repo 的 `output/qa/ml_daily_source_row_research_projections/` 子樹。Standalone CLI 完成時應保存最終 stdout JSON，並核對 `status=completed_research_only`、`verification_completed_at`、manifest／observations hashes 與 row count；wrapper 另需同候選 `runner_terminal_verification_receipt.json` readback 及主 runner nested status。中間 `awaiting_terminal_revision_validation` 不表示完成。拒絕／失敗時保留已寫候選，不可改 source hash 或 output root 以繞過驗證；每次手動執行的 stdout 和 native exit code 應存成唯一 QA receipt。
 
-9/30 05:15 Evidence 的 machine seed `1418` identity／thesis warning 不代表使用者欠真實成交或 thesis；`portfolio_alert_snapshot_quality_not_ready` 與 `risk_prompt_snapshot_quality_not_ready` 仍需獨立來源排查。9/30 05:25 已成功持久化 `eod_research`／`research_only` capture 且 `natural_authority=false`，證明低階研究 event 可以在 seed degraded 時保存；這沒有解決 Health transition、verified lane 或 Formal qualification。Freshness 受控 probe 另已核對 Quick run/status/history identity，但 Freshness 仍 degraded 並保留四項 fundamental warnings；這也不代替自然 Task 驗收。整體最新事實與 receipts 見排程修復 QA 後續 addendum（開發收據見dev）及[Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
+9/30 05:15 Evidence 的 machine seed `1418` identity／thesis warning 不代表使用者欠真實成交或 thesis；`portfolio_alert_snapshot_quality_not_ready` 與 `risk_prompt_snapshot_quality_not_ready` 仍需獨立來源排查。9/30 05:25 已成功持久化 `eod_research`／`research_only` capture 且 `natural_authority=false`，證明低階研究 event 可以在 seed degraded 時保存；這沒有解決 Health transition、verified lane 或 Formal qualification。Freshness 受控 probe 另已核對 Quick run/status/history identity，但 Freshness 仍 degraded 並保留四項 fundamental warnings；這也不代替自然 Task 驗收。整體最新事實與 receipts 見排程修復 QA 後續 addendum（dev 內部收據：../06_qa/SCHEDULED_OPERATIONS_REPAIR_20260930.md）及[Snapshot](../00_core/PROJECT_SNAPSHOT.md)。
 
 下列原章節已移至手冊附冊；入口、參數、步驟與限制保留，舊標題維持導向。
 
@@ -4117,7 +4129,7 @@ Daily Quick wrapper 的月營收 research child 只有 core phases／technical p
 
 ### 歷史：Revision-Aware 研究早期操作模板（2026-10-03）
 
-本節保留本輪早期修復時的模板與當時限制，後續真實訓練／保存／新程序推論及Legacy／Bank已完成受控研究驗證。現行操作與接受範圍以7.0.1及整合修復紀錄（開發收據見dev）為準；下方「仍待」只描述該早期檢查點，不能當目前狀態。
+本節保留本輪早期修復時的模板與當時限制，後續真實訓練／保存／新程序推論及Legacy／Bank已完成受控研究驗證。現行操作與接受範圍以7.0.1及整合修復紀錄（dev 內部收據：../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md）為準；下方「仍待」只描述該早期檢查點，不能當目前狀態。
 
 以下命令仍是參數模板，`<...>` 必須換成修後 CLI 及當次真實 readback；此刻不是全流程已通過宣告。固定使用 active research root 下的新輸出目錄與 aware 的真研究 freeze，不照抄 10/1 歷史截點。完整入口說明見 7.0.1；訓練、重新載入與 Legacy／Bank verified research context 的確切命令會在取得實跑證據後同步於此。
 
@@ -4154,11 +4166,11 @@ Daily Quick wrapper 的月營收 research child 只有 core phases／technical p
 
 **產物與判讀**：`<isolated-output-raw>/runs/<publication-id>/manifest.json` 明列實際發布的 dataset，current-restated 模式使用 `ml-current-restated-year-shards.v1`／`ml-current-restated-observation.v1`、int64 加十進位 exponent 與明確 masks。原公告／可得日未知則保持 null。raw 包含大盤／產業 context，row count 不能當股票訓練 sample count；有產業指數也不等於已有 verified 股票產業對應。必須再完成實際 Direct／模型消費驗收。
 
-UTC 10/3 第三次受控 raw 執行 exit0，四個 2023–2026 shards 已由 root 全文讀回：73,234 observations／281,699 values 的 hash、筆數、數值格式、masks 與時鐘相符；合法千分位 parser 與成交金額 TWD unit 已修，原全空價格保持缺值。首次 NameError／exit1 與舊版本限制保留。當前 Direct 已完成後續建置／讀回，CORE19／模型仍在修復，詳見 整合修復紀錄（開發收據見dev）。價格缺件或 quarantine 必須保存日期位置，不能補零或壓縮掉日期；遇到來源／receipt pin mismatch、naive clock、缺契約或不足空間時先修具體原因，以新輸出根重試，不改舊 immutable 產物或降低保護。
+UTC 10/3 第三次受控 raw 執行 exit0，四個 2023–2026 shards 已由 root 全文讀回：73,234 observations／281,699 values 的 hash、筆數、數值格式、masks 與時鐘相符；合法千分位 parser 與成交金額 TWD unit 已修，原全空價格保持缺值。首次 NameError／exit1 與舊版本限制保留。當前 Direct 已完成後續建置／讀回，CORE19／模型仍在修復，詳見 整合修復紀錄（dev 內部收據：../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md）。價格缺件或 quarantine 必須保存日期位置，不能補零或壓縮掉日期；遇到來源／receipt pin mismatch、naive clock、缺契約或不足空間時先修具體原因，以新輸出根重試，不改舊 immutable 產物或降低保護。
 
 ##### 步驟 A2：建置隔離研究 Direct Numeric Store
 
-當時的 outcome-only checkpoint：入口需要 A1 已實際發布的 manifest 及外部 actual bytes pins，明確列出研究股票，並使用全新隔離輸出。UTC 10/3 `03:21:47Z` 真建置完成，`03:23:16Z` public loader 與獨立原價重算接受1,796股票觀測／49來源特徵／8 folds／6,709 labels。此段記錄模型鏈完成前的歷史狀態；目前受控研究接受範圍與限制以本手冊 §7.0.1 及整合修復紀錄（開發收據見dev）為準。
+當時的 outcome-only checkpoint：入口需要 A1 已實際發布的 manifest 及外部 actual bytes pins，明確列出研究股票，並使用全新隔離輸出。UTC 10/3 `03:21:47Z` 真建置完成，`03:23:16Z` public loader 與獨立原價重算接受1,796股票觀測／49來源特徵／8 folds／6,709 labels。此段記錄模型鏈完成前的歷史狀態；目前受控研究接受範圍與限制以本手冊 §7.0.1 及整合修復紀錄（dev 內部收據：../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md）為準。
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\build_ml_current_restated_outcome_store.py `
@@ -4218,7 +4230,7 @@ UTC 10/3 第三次受控 raw 執行 exit0，四個 2023–2026 shards 已由 roo
 - `adapter_receipt.json`：包含來源候選 SHA-256、row count、market revision digest。
 - `consumption_receipt.json`：須綁實際已保存並經 loader 讀回的整數、尺度、missing mask、feature registry 與來源 bytes pins；自填未動 pointer 欄位不證隔離，也不證 train-ready。
 
-UTC 10/3 `01:15:57Z` 的生產 CLI 真來源驗收已讀回 1,962 筆／7,658 個值，全部通過來源分母尺度與新十進位 exponent 的獨立 Decimal 比對。此結果為 `verified_numeric_observations_ready`，仍是 `historical_pit_eligible=false`、`blocked_insufficient_context_or_mature_history`；沒有建立 fold 或訓練模型。當次命令與 receipt 見 整合修復紀錄（開發收據見dev）。
+UTC 10/3 `01:15:57Z` 的生產 CLI 真來源驗收已讀回 1,962 筆／7,658 個值，全部通過來源分母尺度與新十進位 exponent 的獨立 Decimal 比對。此結果為 `verified_numeric_observations_ready`，仍是 `historical_pit_eligible=false`、`blocked_insufficient_context_or_mature_history`；沒有建立 fold 或訓練模型。當次命令與 receipt 見 整合修復紀錄（dev 內部收據：../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md）。
 
 #### 4. 重型維護鏈研究模式穿透
 旗標須傳到每一層實際 consumer；研究續跑不得呼叫正式 release coordinator，不能只把 flag 傳到 Direct Store 就說訓練接通。缺 teacher／ledger／PIT provenance 時保留具體阻擋；有界 base outcomehead 研究與正式 allocation／promotion 資格分開，不能偽造 teacher allowed。
@@ -4232,11 +4244,11 @@ UTC 10/3 `01:15:57Z` 的生產 CLI 真來源驗收已讀回 1,962 筆／7,658 �
 
 HTTP 錯誤、partial read、超限或 schema 不符時，有限 raw body 與 `capture_attempt.json` 會在解析前保存，並將失敗診斷移到 status root 的失敗子目錄再清理 OS 暫存。Attempt receipt 揭露真實 request start／body completion、status、bytes／hash 與失敗型別；拒絕回應不能當有效 durable capture。無 body 的逾時仍保留失敗 receipt。最多三次嘗試，失敗請先看同次 attempt／status／log；修復來源後可用既有流程重試，不能覆寫原失敗證據或補公告時間。
 
-若較早嘗試的暫存清理失敗，即使後次已有合法 durable capture，整體仍 `blocked`／exit 2，另外明列 `capture_status=source_capture_durable`、cleanup blockers 與保留路徑。此時要處理揭露的暫存問題，不能把 capture 存在判成整體成功。Quote observation 繼續使用原三項 fail-closed fetch 契約：HTTP 200、固定 final URL、JSON media、非空 bytes／大小／encoding／完整讀取均驗證，才進入 quote parser；Paper 的失敗 raw custody 不會放寬 quote 使用條件。MIS 的成功碼只接受具名字串 `000`、`0`、`0000` 且 message 為 `OK`，其他型別或錯誤碼拒絕。詳見 [capture QA](../06_qa/PAPER_EVENT_SOURCE_CAPTURE_FAILURE_DIAGNOSTICS_QA_20261002.md)及本輪實際驗收（開發收據見dev）。
+若較早嘗試的暫存清理失敗，即使後次已有合法 durable capture，整體仍 `blocked`／exit 2，另外明列 `capture_status=source_capture_durable`、cleanup blockers 與保留路徑。此時要處理揭露的暫存問題，不能把 capture 存在判成整體成功。Quote observation 繼續使用原三項 fail-closed fetch 契約：HTTP 200、固定 final URL、JSON media、非空 bytes／大小／encoding／完整讀取均驗證，才進入 quote parser；Paper 的失敗 raw custody 不會放寬 quote 使用條件。MIS 的成功碼只接受具名字串 `000`、`0`、`0000` 且 message 為 `OK`，其他型別或錯誤碼拒絕。詳見 [capture QA](../06_qa/PAPER_EVENT_SOURCE_CAPTURE_FAILURE_DIAGNOSTICS_QA_20261002.md)及本輪實際驗收（dev 內部收據：../06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md）。
 
 ## 14. 更新記錄
 
-舊版逐次更新記錄已移至手冊更新歷史（開發收據見dev）。功能操作與安全限制仍由正文及附冊共同維護。
+舊版逐次更新記錄已移至手冊更新歷史（dev 內部收據：../09_archive/APPLICATION_MANUAL_CHANGELOG_2026_09_27.md）。功能操作與安全限制仍由正文及附冊共同維護。
 
 ## Phase3C 2026-09-11 candidate 法人修復
 
@@ -4264,11 +4276,11 @@ Health排程使用臺北決策日，行情日另存market_data_date；週末沿�
 
 報告需分別閱讀 engineering_action_required（程式、接線／來源故障）、source_qualification_required/gaps（具名歷史／正式來源資格缺件）、research_qualification_required（Paper 研究治理）、自然 Forward/Exit 樣本，以及 wrapper exit_code、pipeline_exit_code、summary errors/status 和 report 存在／stdout SHA。Risk 的 estimated 保留上游估計品質與附註；真正 degraded/missing 上游不會被清除。整體 degraded 不等於使用者必須補人工 thesis。
 
-目前 current 月營收/季報支援有來源覆蓋的當下個股研究；歷史 PIT、完整公司範圍、公告時點、季度未知 cash-flow basis 與正式 model/source revision 仍受原資格限制。遇到這些缺件，查看 source_id、actual/expected period 與 reason，不能全部解讀為週末等發布。實際收據與驗收見 完整補驗報告（開發收據見dev）。
+目前 current 月營收/季報支援有來源覆蓋的當下個股研究；歷史 PIT、完整公司範圍、公告時點、季度未知 cash-flow basis 與正式 model/source revision 仍受原資格限制。遇到這些缺件，查看 source_id、actual/expected period 與 reason，不能全部解讀為週末等發布。實際收據與驗收見 完整補驗報告（dev 內部收據：../06_qa/OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md）。
 
 ## 2026-10-04 保存來源、當下研究與持倉日期
 
-本節描述本輪介面及來源契約，實際版本接受範圍見 Astra 工程收尾（開發收據見dev）。驗收尚未完成時，不以本節當作全系統已通過證據。
+本節描述本輪介面及來源契約，實際版本接受範圍見 Astra 工程收尾（dev 內部收據：../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md）。驗收尚未完成時，不以本節當作全系統已通過證據。
 
 1. 從觀察清單或持倉開啟指定股票，在「Rule / ML / 歷史」選擇同股的保存來源，再按「載入選定來源」。候選同時核對股票、結果、決策日、行情日及來源快照識別；若清單載入後來源被改寫，必須重新取得清單，不能沿用舊選項。 保存來源的行情日不得晚於該來源本身的決策日或本次查詢日；非空但無法解析的日期也會被拒絕，不能藉較晚查詢日使用來源決策當時尚不存在的行情。
 2. 沒有來源時，前往指定股票分析並執行。若分析正常完成、該股未入選，但有完整封存的篩選理由，仍可保存並在報告明確選取；它代表該次排除結果。未完成、取消、失敗或沒有封存證據的空結果不能保存；未入選紀錄不開放加入候選、回測或個人推薦決定。
@@ -4406,9 +4418,9 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 ## 2026-10-05 受控效能診斷入口
 
-日常啟動與九工作區操作沿用本手冊既有步驟，本批沒有新增產品參數或改變推薦／研究來源。維護者需要重跑效能量測時，使用階段0效能基線（開發收據見dev）的固定QA入口；文件列出platform、run次數、列選取次數、label、輸入隔離、結果判讀與拒絕／排錯條件。它只接受既有QA資料，不能指向正式D根或覆寫舊量測目錄；Native窗口另需當次桌面授權。
+日常啟動與九工作區操作沿用本手冊既有步驟，本批沒有新增產品參數或改變推薦／研究來源。維護者需要重跑效能量測時，使用階段0效能基線（dev 內部收據：../06_qa/PRODUCT_STAGE01_PERFORMANCE_BASELINE_20261005.md）的固定QA入口；文件列出platform、run次數、列選取次數、label、輸入隔離、結果判讀與拒絕／排錯條件。它只接受既有QA資料，不能指向正式D根或覆寫舊量測目錄；Native窗口另需當次桌面授權。
 
-此次列選取p95只代表高亮與repaint，首次資料查詢／背景工作／關閉仍須分開判讀。階段0觀察到的耗時worker已另以階段1限定修正包驗證，詳見效能改善收據（開發收據見dev）；仍不能將單次高亮數據解讀為所有互動速度。來源完整性、可用時間與研究／正式資格不因量測或較快載入而改變。
+此次列選取p95只代表高亮與repaint，首次資料查詢／背景工作／關閉仍須分開判讀。階段0觀察到的耗時worker已另以階段1限定修正包驗證，詳見效能改善收據（dev 內部收據：../06_qa/PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md）；仍不能將單次高亮數據解讀為所有互動速度。來源完整性、可用時間與研究／正式資格不因量測或較快載入而改變。
 
 ## 2026-10-05 回測圖表首次開啟與盤勢關閉
 
@@ -4416,7 +4428,7 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 若單張圖表繪製失敗，頁面顯示錯誤提示，其他圖表仍可顯示；切離後再回到該頁可重試保留的資料。持續失敗時保留提示及該次結果，依既有排錯流程查看日誌，不能把缺圖解讀成沒有交易或績效為零。
 
-背景盤勢更新期間關閉視窗，程式會等待工作執行緒合作退出，再完成關閉；尚未完成的查詢不能顯示為完成。內建 Smart Money、Market Breadth／Relative Strength 的價格 SQL 與批次計算現在可合作檢查取消，進行中查詢取消亦不當成完成或資料降級。關閉當下若worker仍在執行，視窗保留並顯示收尾狀態，完成後自動退出；不需要再按一次關閉。其他區段及沒有取消介面的外部provider仍按原流程等待區段結束，不宣稱所有工作立即取消。重開程式依原流程重新讀取來源，不沿用前一輪盤勢快取；日期、來源缺件、PIT 與模型資格限制照常顯示。驗證範圍、重試與未完成項目見SQL取消收據（開發收據見dev）。
+背景盤勢更新期間關閉視窗，程式會等待工作執行緒合作退出，再完成關閉；尚未完成的查詢不能顯示為完成。內建 Smart Money、Market Breadth／Relative Strength 的價格 SQL 與批次計算現在可合作檢查取消，進行中查詢取消亦不當成完成或資料降級。關閉當下若worker仍在執行，視窗保留並顯示收尾狀態，完成後自動退出；不需要再按一次關閉。其他區段及沒有取消介面的外部provider仍按原流程等待區段結束，不宣稱所有工作立即取消。重開程式依原流程重新讀取來源，不沿用前一輪盤勢快取；日期、來源缺件、PIT 與模型資格限制照常顯示。驗證範圍、重試與未完成項目見SQL取消收據（dev 內部收據：../06_qa/PRODUCT_STAGE1_SQL_CANCELLATION_20261005.md）。
 
 
 ## 2026-10-05 UX02 共用狀態判讀（有限入口）
@@ -4434,7 +4446,7 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 | 執行錯誤／驗證未通過 | 依原始錯誤與驗證訊息排錯；驗證失敗與執行例外分開，不自動改成等待。 |
 | 未知／未識別原碼 | 保留原碼查來源，不把未知畫成正常、零值或安全。 |
 
-當期研究日、資料日、歷史事件日與所選保存決策日沿既有欄位分別標示；狀態翻譯不重綁日期／run／來源。不符合日期或來源身份仍拒絕。若畫面顯示「報告部分載入」，可以閱讀已提供區塊並查看缺件；若顯示真實錯誤，保留訊息後修復具名來源，不能以重新命名狀態授予資格。部分入口維持既有專用詞彙，這次沒有全頁全狀態改版。測試與真實唯讀離屏證據見 UX02 收據（開發收據見dev）。
+當期研究日、資料日、歷史事件日與所選保存決策日沿既有欄位分別標示；狀態翻譯不重綁日期／run／來源。不符合日期或來源身份仍拒絕。若畫面顯示「報告部分載入」，可以閱讀已提供區塊並查看缺件；若顯示真實錯誤，保留訊息後修復具名來源，不能以重新命名狀態授予資格。部分入口維持既有專用詞彙，這次沒有全頁全狀態改版。測試與真實唯讀離屏證據見 UX02 收據（dev 內部收據：../06_qa/UX02_SHARED_STATUS_VOCABULARY_20261005.md）。
 
 ## 2026-10-05 UX16 唯讀研究來源契約
 
@@ -4460,7 +4472,7 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 讀回JSON後，先看`status`與`blockers`，再看source的實際scoped rowset hash、scope分母／missing_symbols、每檔窗口、availability、features與benchmark。`observed`只表示研究來源已觀測；`partial`保留具名缺件／重複／晚到原因；`rejected`不可當穩定來源，CLI返回2。明示股票全數出現不代表每檔窗口齊全、全市場完整、暖機通過或正式資格。晚於cutoff或無有效時鐘的列不進cutoff-screened子集；無availability仍可讀當期研究，但PIT、正式訓練與published_snapshot保持false。
 
-遇`source_schema_read_failed`／`source_query_failed`，核對路徑、schema與執行環境權限，不自動下載或重建DB；`source_changed_during_read`表示來源／sidecar身份變動，保留收據並在來源穩定時另次讀取；錯日期／scope／rowset pin要回到原保存來源核對，不改pin繞過。JSON檔已存在時換新QA檔名；不清理原件。相關實作、定向測試與Native畫面來源見 UX16限定收據（開發收據見dev）。
+遇`source_schema_read_failed`／`source_query_failed`，核對路徑、schema與執行環境權限，不自動下載或重建DB；`source_changed_during_read`表示來源／sidecar身份變動，保留收據並在來源穩定時另次讀取；錯日期／scope／rowset pin要回到原保存來源核對，不改pin繞過。JSON檔已存在時換新QA檔名；不清理原件。相關實作、定向測試與Native畫面來源見 UX16限定收據（dev 內部收據：../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md）。
 
 ## 2026-10-05 UX18 共用日特徵與個股觀察
 
@@ -4472,7 +4484,7 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 進階稽核可從報告DTO的 `shared_daily_features` 查看contract版本、snapshot／input hash、股票scope、decision／market date、TWD/share單位、來源fingerprint、warmup_required_count／observed_count及conditions三態。cache僅此service最多4筆；相同輸入復用，來源內容／日期／scope／版本變化即重新投影，不沿用舊身份。舊DTO沒有該欄位時保持原呈現。
 
-`sufficient_observed_prefix`只證明有限SMA的必要觀測窗口，官方交易日曆與available-at仍unknown、historical_pit_eligible=false；不證明歷史PIT、producer公式等價、遞迴EMA暖機或正式模型／勝率。首屏只是研究技術觀察。若不足20／60筆，核對實際末段OHLC及缺口；若日期／品質不符，核對所選來源，不能補假時鐘或略過guard。投影讀取故障保留原錯誤且條件未知，正常取消不變成成功。工程驗證與仍待項目見QA新章（開發收據見dev）。
+`sufficient_observed_prefix`只證明有限SMA的必要觀測窗口，官方交易日曆與available-at仍unknown、historical_pit_eligible=false；不證明歷史PIT、producer公式等價、遞迴EMA暖機或正式模型／勝率。首屏只是研究技術觀察。若不足20／60筆，核對實際末段OHLC及缺口；若日期／品質不符，核對所選來源，不能補假時鐘或略過guard。投影讀取故障保留原錯誤且條件未知，正常取消不變成成功。工程驗證與仍待項目見QA新章（dev 內部收據：../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md#最新延伸ux18-既有日特徵的實際研究-consumer）。
 
 ## 2026-10-05 UX18 兩條固定研究方法契約
 
@@ -4482,7 +4494,7 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 方法／版本／參數／日期或雜湊不符時停止快照讀回，個股保留未知與具名錯誤，不轉用 live 值或保存推薦。舊版研究 manifest 缺少完整方法契約時拒絕讀取；在「每日研究條件」保留原股票母體與條件後，明確按更新，才能由既有來源在隔離研究區重新發布新契約。單純重讀／篩選不會升版或寫入，舊不可變產物保留；若來源、容量或新候選核驗失敗，原 latest 不被成功結果替代。
 
-原排名／強弱與市場共用快照入口尚未接入此契約；沒有原排名的研究結果不能推造分數。驗證與實際完成範圍見 UX18 方法綁定限定收據（開發收據見dev），Backtest 18.62%／20% 未達與歷史 PIT／真人驗收限制維持。
+原排名／強弱與市場共用快照入口尚未接入此契約；沒有原排名的研究結果不能推造分數。驗證與實際完成範圍見 UX18 方法綁定限定收據（dev 內部收據：../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md），Backtest 18.62%／20% 未達與歷史 PIT／真人驗收限制維持。
 
 已是 v2 卻出現錯方法／版本／參數／hash，更新仍會保護原件並拒絕，不能反覆重試或刪 store 當作修復。維運須先核對程式與來源，再以既有 CLI 在新的隔離研究 `--output-root` 明確重產；合法方法版本改版也不復用舊 v2，現包未提供 v2→v2 自動遷移。固定 window 改成21等不相容參數即使換新根也拒絕，不以 metadata 改寫 MA20／MA60 實際公式。
 
@@ -4510,7 +4522,7 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 錯date／stock／scope／schema／版本／hash，或當前來源修訂造成input不一致，都拒絕快照並保留錯誤／unknown；核對實際DB、cohort／日期與來源後在新run重建，不改pin或減reserve求通過。writer失敗或中斷時上個latest仍可核驗，按舊manifest date／hash明示查看，不能標成今日成功。保留失敗／未完成診斷，不執行永久清理。`complete_declared_cohort`不代表MA暖機全過；仍查看每股warmup及condition unknown理由。
 
-此為current-observed research-only；官方可得時間／calendar completeness保持unknown、historical_pit_eligible=false。不授benchmark、自然成熟、正式訓練或ML資格，沒有新增策略／公式／排名。版本、原子發布與實跑限制見既有QA收據UX19新章（開發收據見dev）。
+此為current-observed research-only；官方可得時間／calendar completeness保持unknown、historical_pit_eligible=false。不授benchmark、自然成熟、正式訓練或ML資格，沒有新增策略／公式／排名。版本、原子發布與實跑限制見既有QA收據UX19新章（dev 內部收據：../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md）。
 
 ## 2026-10-05 UX04／05 每日研究條件與同源個股
 
@@ -4527,7 +4539,7 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 排錯：無快照時明確更新；股數／格式／未來時間不合時修正輸入；來源修訂或schema／hash不一致時重讀會拒舊來源，返回研究名單確認DB及cohort後明確更新。資料不足時查看每條未知原因與必要20／60觀測暖機，不略過guard。失敗保留舊manifest/date可追溯，畫面不能將舊版本說成新發布成功。取消／關閉只合作停止本頁工作，等待worker退出，不終止使用者其他程式。
 
-本包仍research-only、available-at／calendar unknown、PIT=false；不授自然模型／勝率／正式推薦資格。限定驗證與完整待辦見日常研究flow QA（開發收據見dev）。
+本包仍research-only、available-at／calendar unknown、PIT=false；不授自然模型／勝率／正式推薦資格。限定驗證與完整待辦見日常研究flow QA（dev 內部收據：../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md#最新延伸ux0405-日常研究名單與同源個股）。
 ## 2026-10-05 UX13／18 具名研究母體盤勢與指標排序
 
 入口為「市場探索 → 研究母體盤勢」，並可按「開啟同來源研究名單／明確更新」進入「推薦分析 → 每日研究條件」。盤勢接收名單已驗證的同一發布快照，不另查一份不同日期的行情或重算方法；首次切入只讀既有 latest。先在名單設定具名 cohort、最多16檔股票、決策日與截止時刻，再明確更新，盤勢便同步相同 manifest／方法契約身分。
@@ -4538,7 +4550,7 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 由盤勢開啟名單，選股後開個股研究，切股、重載、返回均沿同一 manifest。重讀只核對既有快照；來源修訂、日期／hash 不符或舊 schema 拒絕時，盤勢與名單一起清空結果並保留未知／錯誤提示。只有明確更新成功、verified reader 讀回後才恢復兩頁；舊 immutable artifact 保留。v2 方法契約變更仍無自動遷移，處理方式沿下節方法契約維運限制。
 
-此入口限定具名小母體當期研究，不宣告全市場、歷史 PIT、官方 availability、正式推薦、alpha／ML資格或真人驗收；原大盤指數、原強弱頁的獨立來源未改成此母體。驗證與工程完成範圍見 共用投影收據（開發收據見dev）。
+此入口限定具名小母體當期研究，不宣告全市場、歷史 PIT、官方 availability、正式推薦、alpha／ML資格或真人驗收；原大盤指數、原強弱頁的獨立來源未改成此母體。驗證與工程完成範圍見 共用投影收據（dev 內部收據：../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md）。
 
 
 ## 2026-10-05 UX03／06／13 原研究收藏與返回
@@ -4551,7 +4563,7 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 移除前可取消；研究書籤採 exact ID 移除，其他同股列保留。「還原剛移除的研究書籤」用原 payload／位置恢復，不授新資格。還原 token 僅保存在目前程序，每次按鈕回復最後移除的一張書籤；JSON 與SQLite原儲存邊界沿用，不自動遷移真實清單。書籤是個人研究工作流，不改 evidence／策略生命週期，也不授投資分數、自然 ML、正式資料或歷史PIT資格。
 
-限定驗證與剩餘工程範圍見收藏原來源 QA（開發收據見dev）。
+限定驗證與剩餘工程範圍見收藏原來源 QA（dev 內部收據：../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md）。
 
 現有「升級觀察清單儲存」可處理已嚴格驗證、ID 不重複的同股研究書籤；一般列仍保留原重複保護。升級是明確操作，JSON 原件保留，書籤 extension 不另建第二份 ledger。本包只用隔離 fixture 驗證這條路徑，沒有升級使用者的真實清單。
 
@@ -4576,7 +4588,7 @@ ML 稽核展開後按鈕改為「收合資料稽核」，再次按下會收合�
 
 套用、手動篩選及排序只查目前已核驗快照，不重讀來源或啟動producer，不改snapshot／date／method／qualification；選中股票仍可見且身份相同時保留選取。收藏保存實際條件／ANDOR／filter／sort，原來源返回仍按exact identity。沒有快照時套用停用；先重讀，缺件核對來源，只有自己明確更新才沿既有小cohort producer，不能用預設繞過guard。
 
-本包僅背景tests及offscreen驗證，新增Native鍵鼠／縮放／跨頁互動仍待下一個使用者桌面時段；不能用offscreen替代真人驗收。research-only、available-at／calendar unknown、PIT=false與ML資格限制保留，工程待辦見既有QA收據（開發收據見dev）。
+本包僅背景tests及offscreen驗證，新增Native鍵鼠／縮放／跨頁互動仍待下一個使用者桌面時段；不能用offscreen替代真人驗收。research-only、available-at／calendar unknown、PIT=false與ML資格限制保留，工程待辦見既有QA收據（dev 內部收據：../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md）。
 
 
 ## 具名有界研究母體（UX16／18，2026-10-05）
@@ -4627,7 +4639,7 @@ CLI範例（僅發布已有 feature 來源的對應模式；需要四模式時�
 .\.venv\Scripts\python.exe scripts\publish_original_stock_ranking.py --snapshot-root "output/qa/my_research_batch" --ranking-root "output/qa/my_research_batch_ranking" --db-path "<TWStockConfig的db_file>" --cohort-id "my-research-batch" --decision-date "2026-10-05" --period day --direction strong
 ```
 
-`--ranking-root` 是獨立排名根目錄；consumer 須明示相同 `original_ranking_root`，未配置時只查 snapshot root 下的 `original_rankings`，不自動搜尋其他QA來源。`--period` 可用 day／week，`--direction` 可用 strong／weak；引擎參數固定保存，不接受任意改公式。舊標籤與缺少數值評分是來源限制，若要更正其口徑需另做原引擎方法版本決策。完整證據見原排名發布 QA（開發收據見dev）。
+`--ranking-root` 是獨立排名根目錄；consumer 須明示相同 `original_ranking_root`，未配置時只查 snapshot root 下的 `original_rankings`，不自動搜尋其他QA來源。`--period` 可用 day／week，`--direction` 可用 strong／weak；引擎參數固定保存，不接受任意改公式。舊標籤與缺少數值評分是來源限制，若要更正其口徑需另做原引擎方法版本決策。完整證據見原排名發布 QA（dev 內部收據：../06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md）。
 
 ## 原排名收藏與個股原來源回看（2026-10-05）
 
@@ -4666,7 +4678,7 @@ CLI範例（僅發布已有 feature 來源的對應模式；需要四模式時�
 
 排錯：缺根、hash／identity 不符、未知版本、symlink／Windows junction、writer lock／WAL／SHM／staging sidecar、未知清單子目錄或超預算時，查看具名 issues 並補正明示來源後重新診斷；不要移除舊快照或清單來取得 pass。容量不足先停 writer，再由使用者選擇儲存／政策方案，禁止診斷自動釋空間。
 
-發布中斷後可使用同一明示來源與方法重試；feature 與 ranking 使用 OS lock、不可變 objects／manifest 與原子 latest 指標。指標替換前故障保留舊完整版本，替換後完整新版本可讀；舊 pinned 收藏仍按既有 source guards 檢查，過期／錯來源仍拒絕，不藉重試授予資格。並行發布 busy 或 pointer_changed 需等待同根程序完成後重新讀取，不覆蓋指標。參見 本批驗證（開發收據見dev）。
+發布中斷後可使用同一明示來源與方法重試；feature 與 ranking 使用 OS lock、不可變 objects／manifest 與原子 latest 指標。指標替換前故障保留舊完整版本，替換後完整新版本可讀；舊 pinned 收藏仍按既有 source guards 檢查，過期／錯來源仍拒絕，不藉重試授予資格。並行發布 busy 或 pointer_changed 需等待同根程序完成後重新讀取，不覆蓋指標。參見 本批驗證（dev 內部收據：../06_qa/UX19_STORAGE_AND_PUBLICATION_RECOVERY_20261005.md）。
 
 可另執行 ` .\.venv\Scripts\python.exe scripts/qa_isolated_app_startup.py --output-root output/qa/<新的隔離目錄> ` 做空資料、真實 MainWindow 的 offscreen 最小啟動／關閉；只允許隔離配置，Python audit hook 不是 OS 級完整監控，也不代表 Native／正式資料／真人驗收。
 
@@ -4679,7 +4691,7 @@ CLI範例（僅發布已有 feature 來源的對應模式；需要四模式時�
 
 只有相同方法／版本／參數／窗口政策、具名母體與核驗交易節奏的完整相鄰觀測才可判變化。缺件、未知、漏交易日、取消、失敗、母體變更、改版、同日修訂與晚到回填不是退出；重新入選須可證命中→有效未命中→再次命中，不能跨未知邊界。歷史不足時保持明示，自此保存的合格快照才能增加可比證據。
 
-安全與排錯：歷程唯讀既有 artifacts 與已保存官方日曆，不寫正式 DB／registry、不隱性採集或補跑過去。日曆沿 config.official_calendar_cache_path，未指定則既有 output/paper_execution_eod_replay/calendar_cache；臨時停市來源沿 temporary_closure_path，沒有線上 fallback。日曆必須在固定 publication 時點已可取得且核驗；缺日曆、hash 不符或超出掃描預算時，摘要會顯示具體未知原因。取消歷程保留已核驗當期快照；明示重讀可重試。這是研究觀測比較，不授予 historical PIT、自然 ML、正式推薦或投資資格。限定驗證與回滾見 UX09 收據（開發收據見dev）。
+安全與排錯：歷程唯讀既有 artifacts 與已保存官方日曆，不寫正式 DB／registry、不隱性採集或補跑過去。日曆沿 config.official_calendar_cache_path，未指定則既有 output/paper_execution_eod_replay/calendar_cache；臨時停市來源沿 temporary_closure_path，沒有線上 fallback。日曆必須在固定 publication 時點已可取得且核驗；缺日曆、hash 不符或超出掃描預算時，摘要會顯示具體未知原因。取消歷程保留已核驗當期快照；明示重讀可重試。這是研究觀測比較，不授予 historical PIT、自然 ML、正式推薦或投資資格。限定驗證與回滾見 UX09 收據（dev 內部收據：../06_qa/UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md）。
 
 年度快取採 annual_planned_cache.v1，只核驗預期交易節奏。未設定額外停市 overlay 時沿用年度計畫；若明示設定的 overlay 缺失、毀損或尚未可得，保持未知。此計畫不證明當日實際開市，也不補上原始資料 available_at。掃描上限為 32 個歷史觀測、4096 個目錄項目、32 MiB JSON；長期歷史索引與分頁仍待工程實作。
 
@@ -4705,7 +4717,7 @@ CLI（只管理派生索引，沒有 producer）：
 
 `--snapshot-root` 必填；`--index-root` 未提供沿上述 sibling 預設；rollback 必須提供 generation ID，不接受任意還原路徑。completed／activated 只代表派生索引成功；not_completed具名 reason不改原資料。查看 receipts 的 generation ID／source fingerprint與 manifest count，再重新核對當期來源。舊 schema、hash／identity不符、source_changed、invalid_cursor、empty、cancelled及超預算皆有明示結果；不可刪除舊資料來換 pass。
 
-資源限制與量測、故障點及有限版本回滾見 UX09 長歷史收據（開發收據見dev）。保留所有generation的儲存會累積，按每次實體 index／staging與保留版本規劃容量；合成長歷史只驗工程，不是自然20日增長實證，永久刪除仍須逐次明確授權。
+資源限制與量測、故障點及有限版本回滾見 UX09 長歷史收據（dev 內部收據：../06_qa/UX09_HISTORY_INDEX_AND_RECOVERY_20261005.md）。保留所有generation的儲存會累積，按每次實體 index／staging與保留版本規劃容量；合成長歷史只驗工程，不是自然20日增長實證，永久刪除仍須逐次明確授權。
 
 索引每個 generation 上限 64 MiB；每頁以 1 MiB chunk 重核整個 index SHA，manifest／artifact 頁讀合計上限 32 MiB；最多 32 refs（當期 pin 驗證可能另讀 1 manifest），browse 輸出上限 32 MiB。這些是程式硬預算，不能把預算拒絕改稱自然資料未成熟。年度交易日快取改為最多 4096 個目錄 entries、單年度 32 MiB 累積檔案預算，逐份驗證只保留最新有效版本；臨時休市 overlay 仍最多 32 份，超限回報未知，不擅自猜交易日。
 
@@ -4721,7 +4733,7 @@ CLI（只管理派生索引，沒有 producer）：
 
 能力audit是可讀的detached保存來源資料；清除來源後失效，既有收藏schema與原method/snapshothash不改。正式全市場名冊(B)、新TopN／更改百分位版本、source/capacity owner子責任不在本包；部署與整條跨頁整合F4另驗。
 
-操作步驟：先在每日研究名單明示讀來源，再於強弱市場頁選「研究快照母體」及本日／本周；大盤頁查看併列的研究摘要，指數檢測仍為明示獨立操作。強弱頁以「載入數據／刷新」重核既存 pin；切來源或模式會合作取消前次讀取，等安全完成後啟新讀取。研究母體頁以「重讀同一研究來源」明示讀回。錯源／缺件依狀態原因核對原 manifest，不能自動採集補缺。能力入口先看五項矩陣（可水平捲動），再切逐股完整明細或查看 tooltip；來源清除後重新明示讀取。詳細證據見 F2／F3 QA（開發收據見dev）。
+操作步驟：先在每日研究名單明示讀來源，再於強弱市場頁選「研究快照母體」及本日／本周；大盤頁查看併列的研究摘要，指數檢測仍為明示獨立操作。強弱頁以「載入數據／刷新」重核既存 pin；切來源或模式會合作取消前次讀取，等安全完成後啟新讀取。研究母體頁以「重讀同一研究來源」明示讀回。錯源／缺件依狀態原因核對原 manifest，不能自動採集補缺。能力入口先看五項矩陣（可水平捲動），再切逐股完整明細或查看 tooltip；來源清除後重新明示讀取。詳細證據見 F2／F3 QA（dev 內部收據：../06_qa/F2_F3_SHARED_CONSUMERS_AND_CAPABILITIES_20261005.md）。
 
 
 ## 2026-10-05 明示研究來源配置與手動部署
@@ -4734,7 +4746,7 @@ CLI（只管理派生索引，沒有 producer）：
 
 發布前依既有治理工具作唯讀容量／引用診斷與 retention dry-run。實體、WAL、staging、索引及備份都須納預算；容量未知或引用盤點不完整不給 writer 授權。較長保留預估與自然成長分列，中央 reserve 以檢查當下 policy 為準。retention 候選不代表永久刪除授權。
 
-詳細配置、案例、資源數值與限制見 F4 QA（開發收據見dev）。
+詳細配置、案例、資源數值與限制見 F4 QA（dev 內部收據：../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md）。
 
 
 ### Watchlist 項目 revision 儲存（2026-10-05）
@@ -4747,7 +4759,7 @@ CLI（只管理派生索引，沒有 producer）：
 
 正式舊SQLite庫沒有apply／converter工具可用；本包的dry-run只是唯讀設計盤點。後續流程是固定舊庫hash/stat→新獨立副本→逐版IDs/metadata/bookmark/順序/完整payload hash核對→新舊庫/backup/暫存總容量驗證→父層審核→明確批准後才切activation/path，失敗回原path/marker、保留兩庫。不要把既有JSON copy工具當作SQLite v2 converter，也不要以新隔離250次通過批准正式遷移。
 
-實際受控20／120／250總留存781,365／3,887,695／7,912,388 B；新v3 actual三程序App讀回通過，正式deployment／Native／自然資格另驗。逐項數值、限制與回滾（開發收據見dev）。
+實際受控20／120／250總留存781,365／3,887,695／7,912,388 B；新v3 actual三程序App讀回通過，正式deployment／Native／自然資格另驗。逐項數值、限制與回滾（dev 內部收據：../06_qa/F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md）。
 
 
 ### SQLite v1/v2 COW 遷移與明示啟用（2026-10-05）
@@ -4773,7 +4785,7 @@ activation-preview 檢查收據及來源／副本身份；activate 才寫 `<sour
 
 rollback 回復原路徑／模式並保留兩庫、收據與審計。原 v1 回復後唯讀，原 v2 回復後可沿原格式正常保存。啟用期間 target 新增的 revision 保留在新庫，不會合併回舊庫；重新啟用已變動的 target 可能因原 prepared hash 不符而拒絕，需另行明示方案。active 期間允許正常 append，但原 baseline chain 必須一致。重複啟用／回復只接受已核驗狀態，未知指向拒絕；無效明示 marker 不回退 JSON writer 或建立空清單。
 
-容量未知／不足、disk full、取消、busy writer／sidecar、來源 hash/stat 改變、錯 schema、壞 JSON／hash／歷史、target 已存在與 audit/pointer 不一致都拒絕。保留 last-good 與錯誤收據，不刪原庫、target、stage 或歷史來繞過。4MiB payload／32MiB DB／64MiB scan／4096 rows 及中央 reserve 不變；新舊庫、保留 staging、收據／marker 與備份需求納入點時 capacity。詳見 COW QA（開發收據見dev）。
+容量未知／不足、disk full、取消、busy writer／sidecar、來源 hash/stat 改變、錯 schema、壞 JSON／hash／歷史、target 已存在與 audit/pointer 不一致都拒絕。保留 last-good 與錯誤收據，不刪原庫、target、stage 或歷史來繞過。4MiB payload／32MiB DB／64MiB scan／4096 rows 及中央 reserve 不變；新舊庫、保留 staging、收據／marker 與備份需求納入點時 capacity。詳見 COW QA（dev 內部收據：../06_qa/F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md）。
 
 
 ### 最終容量守衛收尾（2026-10-05）
@@ -4802,7 +4814,7 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 
 `<source>.cow-active.json` 綁定 JSON 來源與 target。成功啟用後以原來源設定開新程序，重核來源與收藏內容；保存沿 v3 revision。錯 marker／過期 writer 拒絕，不偷偷回 JSON。rollback 切回原 JSON，原 JSON 可按原模式繼續保存；target 期間新增內容、雙來源、conversion receipt 與 rollback audit 全保留，不自動合併或清理。具名拒絕時先核對 status、來源／收據身份和點時容量，保留 stage 與錯誤交 owner；不能刪檔／降 reserve 換成功。
 
-本批只驗合成隔離來源；正式 default.json 未遷移、缺失 watchlists.db 未初始化，Native／自然資格另驗。詳見 Legacy JSON COW QA（開發收據見dev）。
+本批只驗合成隔離來源；正式 default.json 未遷移、缺失 watchlists.db 未初始化，Native／自然資格另驗。詳見 Legacy JSON COW QA（dev 內部收據：../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md）。
 
 
 ## 個人觀察清單：明示選擇與獨立控制檔（2026-10-06）
@@ -4819,7 +4831,7 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 
 排錯：缺一個選擇欄位、來源不存在／歧義、root 重疊、reparse/link/hardlink、來源或 target 身份改變、容量未知／不足、marker 損壞／已回滾時保留資料與收據，修正明示選擇或交由審查，不刪 target／備份／lock 來重試。個人模式啟用失敗不會退回原 JSON writer。
 
-市場 CSV 已有明示 allowlist consumer／CLI；沿固定manifest與source／target handle identity核對，操作見後文市場 CSV 匯出章。JSON、SQLite、私人 output、重疊與 links/hardlinks仍拒絕；這不代表整包 FA_Data 可安全分享，也不授來源授權。Notes主UI已獨立接selector，Portfolio／ledger及DecisionQuality等剩餘私人caller仍待接線。詳見個人儲存 QA（開發收據見dev）與CSV整合 QA（開發收據見dev）。
+市場 CSV 已有明示 allowlist consumer／CLI；沿固定manifest與source／target handle identity核對，操作見後文市場 CSV 匯出章。JSON、SQLite、私人 output、重疊與 links/hardlinks仍拒絕；這不代表整包 FA_Data 可安全分享，也不授來源授權。Notes主UI已獨立接selector，Portfolio／ledger及DecisionQuality等剩餘私人caller仍待接線。詳見個人儲存 QA（dev 內部收據：../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md）與CSV整合 QA（dev 內部收據：../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md）。
 
 
 ## 每日名單：MA 方法與家族符合度（2026-10-06）
@@ -4830,7 +4842,7 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 
 缺第二個合格家族時，跨家族共同入選維持未知。缺 artifact／方法 metadata、partial cohort 或來源不可比也明示未知／無法投影；未知不當未入選、負樣本或退出。日期／來源／修訂／方法版本不符時，移除舊摘要而保留理由，不借 live 或另一日期補資料。清除快照同步清除摘要；篩選不改原完整分母。
 
-排錯時查看來源與方法資格 tooltip，重新選擇可核驗的固定快照；不要更新 producer 或修改來源以湊交集。本功能限定 current-observed research，歷史 PIT／官方可得時間未證明；真正跨家族結果、其他方法、生命週期聯動與 Native／真人驗收仍待後續。詳見 UX10 QA（開發收據見dev）。
+排錯時查看來源與方法資格 tooltip，重新選擇可核驗的固定快照；不要更新 producer 或修改來源以湊交集。本功能限定 current-observed research，歷史 PIT／官方可得時間未證明；真正跨家族結果、其他方法、生命週期聯動與 Native／真人驗收仍待後續。詳見 UX10 QA（dev 內部收據：../06_qa/UX10_MULTI_METHOD_LANE_20261006.md）。
 
 
 ## 個人 notes 明示選擇與舊來源唯讀（2026-10-06）
@@ -4843,7 +4855,7 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 4. 若要明示看舊 notes，使用相同 root 與 `PERSONAL_JOURNAL_MODE=legacy_read_only`。固定讀 `OUTPUT_ROOT/portfolio/journal_entries.jsonl`；不建來源目錄／lock，不 append。研究動作控制器會顯示唯讀原因並停用寫入；一般筆記或個人選擇／ACK 保存也會明確拒絕，不能把拒寫當保存成功。
 5. `P/backups/research_notes/`、`P/research_notes/audit/` 目前只是受守衛的預留路徑，沒有備份／migration producer；`config.create_backup` 不提供 personal root 的整體備份。不可只取消設定就把新內容視為已回滾或重新啟用舊 writer。真正搬移須另行批准來源、target、備份、停寫、驗證及回復方案。
 
-排錯：root／模式缺一、錯模式或 unsafe path 會在設定或操作時拒絕。已設定 notes 模式卻漏傳 selector 的 Journal／Workbench／journey caller 也會拒絕，不回退 legacy；尚未接線的工具不能用此模式寫入。未知 record type、來源變更、CAS 衝突或取消時保留原歷史，檢查模式與 exact identity，勿刪 lock／資料重試。Notes 與 Evidence DB、DecisionQuality、DeskSnapshot 的獨立路由仍是後續工程；本次不是市場 SQLite 的分享資格證明。詳見 Journal QA（開發收據見dev）。
+排錯：root／模式缺一、錯模式或 unsafe path 會在設定或操作時拒絕。已設定 notes 模式卻漏傳 selector 的 Journal／Workbench／journey caller 也會拒絕，不回退 legacy；尚未接線的工具不能用此模式寫入。未知 record type、來源變更、CAS 衝突或取消時保留原歷史，檢查模式與 exact identity，勿刪 lock／資料重試。Notes 與 Evidence DB、DecisionQuality、DeskSnapshot 的獨立路由仍是後續工程；本次不是市場 SQLite 的分享資格證明。詳見 Journal QA（dev 內部收據：../06_qa/PERSONAL_JOURNAL_LANE_20261006.md）。
 
 
 ## 2026-10-06 最新個人儲存位置決策
@@ -4876,7 +4888,7 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 
 單批僅1–16檔不同 included，含 excluded最多32；更大母體尚無parent manifest，明示拒絕。capture根只接受 repo output/qa 或系統Temp子目錄，與snapshot來源不能重疊；200GiB reserve、256KiB/包及8MiB/128包留存不放寬。若容量不足、來源／as_of晚於或早於合法範圍、busy、partial或receipt壞，CLI返回rejected；保留原證據，先核對來源及容量，不自動清理／補時鐘。未加正式配置或排程，頁面瀏覽不會保存。
 
-詳見 UX20限定QA（開發收據見dev）。個人儲存／Journal程式已整合，正式migration／啟用尚未進行。
+詳見 UX20限定QA（dev 內部收據：../06_qa/UX20_SAMPLE_CAPTURE_INTEGRATION_20261006.md）。個人儲存／Journal程式已整合，正式migration／啟用尚未進行。
 
 CLI capture階段失敗時返回碼2，但上游snapshot可能已發布；回傳保留producer的manifest/status，另列sample_capture_status=rejected。只有成功readiness才表示樣本讀回已驗，請勿把上游發布誤認為樣本成功。
 
@@ -4891,7 +4903,7 @@ CLI capture階段失敗時返回碼2，但上游snapshot可能已發布；回傳
 
 檢查 cohort status、captured/uncaptured分母與每批 production_status/sample_capture_status。producer可能已發布而sample拒絕；返回碼2不代表未寫任何來源。cancelled/incomplete parent envelope可完整保存，但不能稱母體完整。缺批成員列uncaptured，不當負樣本；available-at/calendar/outcome仍unknown，selected=0，不授PIT、訓練或正式资格。
 
-容量與單store守衛不放寬，另限各root64MiB/4096 entries。busy/partial/hash錯誤保留原件；先核對明示配置、容量與來源。child保存中斷留下partial時，舊store拒絕重試；經確認使用新的隔離capture root，保留舊root供審查，不刪lock/partial繞過。沒有正式排程／自動清理。每日MA頁仍為原單批純投影，未提供parent瀏覽動作。詳見 多批QA（開發收據見dev）。
+容量與單store守衛不放寬，另限各root64MiB/4096 entries。busy/partial/hash錯誤保留原件；先核對明示配置、容量與來源。child保存中斷留下partial時，舊store拒絕重試；經確認使用新的隔離capture root，保留舊root供審查，不刪lock/partial繞過。沒有正式排程／自動清理。每日MA頁仍為原單批純投影，未提供parent瀏覽動作。詳見 多批QA（dev 內部收據：../06_qa/UX20_PARENT_CAPTURE_INTEGRATION_20261006.md）。
 
 
 ## 2026-10-06 查看保存的多批研究母體
@@ -4900,7 +4912,7 @@ CLI capture階段失敗時返回碼2，但上游snapshot可能已發布；回傳
 
 「重讀／重試核對」唯讀相同包，不產生資料。若未完整，先查看各批結果，再依上節隔離CLI沿相同固定as_of及來源重試；來源／方法變更要新明示保存；partial store保留，使用新隔離位置而非刪lock／原件。返回或取消會停止套用結果，背景讀取安全返回後才可重讀，取消不代表曾保存內容消失。
 
-「展開來源與診斷」可看原配置、hash、receipt及逐批error，預設收合。保存包身份通過但readiness拒絕時，表格保留原記錄，母體完整資格未確認；envelope拒絕則清舊分母，核對選取來源後重試。缺批是未捕捉，未知不是負樣本，符合方法不等於正式入選；available-at／交易日曆／成熟結果仍未知，不授PIT、訓練或正式資格。頁面原單批樣本摘要仍明示未保存，不借parent包替另一單批來源核章。詳見 收據UI QA（開發收據見dev）。
+「展開來源與診斷」可看原配置、hash、receipt及逐批error，預設收合。保存包身份通過但readiness拒絕時，表格保留原記錄，母體完整資格未確認；envelope拒絕則清舊分母，核對選取來源後重試。缺批是未捕捉，未知不是負樣本，符合方法不等於正式入選；available-at／交易日曆／成熟結果仍未知，不授PIT、訓練或正式資格。頁面原單批樣本摘要仍明示未保存，不借parent包替另一單批來源核章。詳見 收據UI QA（dev 內部收據：../06_qa/UX20_PARENT_RECEIPT_UI_20261006.md）。
 
 
 ## 2026-10-06 固定觀測日研究收據接受（隔離 CLI）
@@ -4913,7 +4925,7 @@ CLI capture階段失敗時返回碼2，但上游snapshot可能已發布；回傳
 
 相同policy/exact parent輸入duplicate沿首次receipt。同日不同revision/as_of保舊新包，日報列所有pin，不自動挑winner；policy bytes／方法或模板改變須明示版本處理，舊記錄不混算。退出0不表示無漏日，需看missing_observation_dates與日狀態；未完整候選/日報拒絕返回2。
 
-失敗時核對receipt：acceptance_saved=true＋day_readiness_status=rejected表示接受包已寫、報表未核對；accept exception以unknown表示可能有殘件，不能當沒寫內容。容量不足且無partial可修正容量後原root重試；partial/busy保持fail closed，保留原件，經確認明示新的隔離root重試，不刪lock/partial繞過。沒有正式WindowsTask、自動清理或市場資料搬移。部署缺件與待決策見 固定觀測日QA（開發收據見dev）。
+失敗時核對receipt：acceptance_saved=true＋day_readiness_status=rejected表示接受包已寫、報表未核對；accept exception以unknown表示可能有殘件，不能當沒寫內容。容量不足且無partial可修正容量後原root重試；partial/busy保持fail closed，保留原件，經確認明示新的隔離root重試，不刪lock/partial繞過。沒有正式WindowsTask、自動清理或市場資料搬移。部署缺件與待決策見 固定觀測日QA（dev 內部收據：../06_qa/UX20_OBSERVATION_DAY_ACCEPTANCE_20261006.md）。
 
 
 ## 2026-10-06 執行隔離每日研究 owner
@@ -4926,7 +4938,7 @@ caller 須先核原 calendar／terminal bytes custody，再注入明示 identity
 
 每段使用獨立且不重疊的四類輸出 roots；所有段共用 coordination_root 的單 writer lock。先預檢，execute 前後重驗 runtime/policy 與 source pins；preflight 與 observed/already_observed 必須明示 int 非 bool 的零 subprocess exit，缺欄或非零不能當成功。成功還須讀回 exact immutable owner receipt。timeout_seconds 為 1–3600 秒，stdout 上限2MiB、stderr64KiB；取消／超時停止本次 child，保留 partial，busy 不清他人 lock。CLI 0可能只是 preflight／非交易日，不代表自然接受。
 
-容量沿原角色：snapshot 至少20GiB，parent/capture/observation/sample/status至少200GiB，owner另加工作／暫存預算。effective=max(原角色下限,明示接受override)，20–200GiB override 不降低 capture200GiB；低於20GiB拒絕，高override保持。未知容量拒寫，無自動清理。來源、舊segment、partial與收據保留，新revision另開明示segment，不選latest。深Unicode／emoji OS I/O使用內部renderer，公開identity/hash仍canonical；不改全域Windows設定。Task／account／ACL／正式根目錄與真來源啟用尚未准。B12完整契約與限定驗證（開發收據見dev）。
+容量沿原角色：snapshot 至少20GiB，parent/capture/observation/sample/status至少200GiB，owner另加工作／暫存預算。effective=max(原角色下限,明示接受override)，20–200GiB override 不降低 capture200GiB；低於20GiB拒絕，高override保持。未知容量拒寫，無自動清理。來源、舊segment、partial與收據保留，新revision另開明示segment，不選latest。深Unicode／emoji OS I/O使用內部renderer，公開identity/hash仍canonical；不改全域Windows設定。Task／account／ACL／正式根目錄與真來源啟用尚未准。B12完整契約與限定驗證（dev 內部收據：../06_qa/BALDR_B12_DAILY_RUNTIME_20261006.md）。
 
 
 
@@ -4938,7 +4950,7 @@ runtime JSON schema_version=rule-research-daily-owner-runtime.v1、mode=isolated
 
 結果observed表示隔離全鏈讀回完成；already_observed表示唯一exact source/policy/日期保存收據沿用，未重跑producer。每attempt各批快照產生與sample保存結果分列，已發布後sample拒絕不能當沒寫內容；parent/acceptance/owner receipt與day readiness分開。runtime/policy/revision途中改變blocked保留原件；owner status保存拒絕也保留前面實際結果。未完整資料日不算當日完成，方法符合仍非正式入選，official calendar/available-at/outcome未知，不授natural/PIT/formal/training。
 
-retry最多配置次數與有限合作式delay；busy保留別人lock，cancel等待安全返回。partial需明示fresh隔離root，不刪除繞過。返回2不代表沒有producer artifact，請查attempt及receipt；容量不足可能只輸出stdout，勿期待藉status寫入突破容量。正式日期來源/Task/account/ACL/留存/通知仍待部署；三項有推薦值的決策見 daily owner QA（開發收據見dev），現在未套用任何生產值。
+retry最多配置次數與有限合作式delay；busy保留別人lock，cancel等待安全返回。partial需明示fresh隔離root，不刪除繞過。返回2不代表沒有producer artifact，請查attempt及receipt；容量不足可能只輸出stdout，勿期待藉status寫入突破容量。正式日期來源/Task/account/ACL/留存/通知仍待部署；三項有推薦值的決策見 daily owner QA（dev 內部收據：../06_qa/UX20_DAILY_OWNER_ISOLATED_20261006.md），現在未套用任何生產值。
 
 
 ## 2026-10-06 UX21 保存母體 H5／H10／H20 研究結果
@@ -4959,7 +4971,7 @@ retry最多配置次數與有限合作式delay；busy保留別人lock，cancel�
 
 「重讀／重試核對」重新核對同收據及同輸入；「清除結果輸入」回到未評估，切換另一母體收據清除前一輸入。選檔取消保留原選擇。取消／返回／關窗等待背景安全返回，不強殺 thread；晚到成功／錯誤不套用，完成後可沿同收據重試。輸入錯parent、未來評估日、重複鍵、非Decimal字串、成本／基礎不合法或途中修訂時拒絕；結果表清除，原各批保存記錄保留，技術理由在「展開來源與診斷」。先核對精確版本與缺件，保留原檔，不更新 producer 或刪資料繞過。
 
-這是 endpoint-only research，沒有 MFE／MAE、期間停牌完整性、可成交性或真實交易績效；所有 PIT／formal／training／natural／execution flags 維持 false。工程接線已可用；官方 calendar／raw price custody、自然樣本、後續日期成熟與 Native／真人驗收分列未完成。不自動產生價格輸入、正式排程或 outcome store。詳見 UX21 QA（開發收據見dev）。
+這是 endpoint-only research，沒有 MFE／MAE、期間停牌完整性、可成交性或真實交易績效；所有 PIT／formal／training／natural／execution flags 維持 false。工程接線已可用；官方 calendar／raw price custody、自然樣本、後續日期成熟與 Native／真人驗收分列未完成。不自動產生價格輸入、正式排程或 outcome store。詳見 UX21 QA（dev 內部收據：../06_qa/UX21_FORWARD_OUTCOME_20261006.md）。
 
 
 ## 2026-10-06 UX21 實際來源與隔離結果保存／日報
@@ -4993,7 +5005,7 @@ retry最多配置次數與有限合作式delay；busy保留別人lock，cancel�
 
 5. 在每日研究→母體保存收據選原 parent，再於 H5/H10/H20 研究結果頁按「選擇結果輸入／保存收據」，選剛回傳的 `<outcome-root>/<identity>/receipt.json`。背景核對 exact parent、children 及結果 hash 後顯完整分母與各股方法／gross／net／excess、缺件或未成熟。首屏明示目前觀察價格／年度計畫限制，source/version/clock 診斷可展開。保存結果重讀不查較新 DB；不同 parent 收據、hash 損壞或失效 child 拒絕。取消／返回不套用晚到結果，可重試相同收據；CLI 若取消時已發布會回報 saved=true 與 receipt_path，保存歷史保留。
 
-source missing／expired calendar／原決策價 revision 時，先核對 exact 路徑、版本與截至日期；不要補 0、改日期、造 available-at 或用現價修舊保存。當日資料缺少仍列 incomplete observation；未成熟不能當失敗或負 label。endpoint-only，不提供 MFE/MAE／期間停牌／成交能力；研究毛報酬不作模型效果或個人投資收益證據。詳見 實際來源／保存／日報 QA（開發收據見dev）。
+source missing／expired calendar／原決策價 revision 時，先核對 exact 路徑、版本與截至日期；不要補 0、改日期、造 available-at 或用現價修舊保存。當日資料缺少仍列 incomplete observation；未成熟不能當失敗或負 label。endpoint-only，不提供 MFE/MAE／期間停牌／成交能力；研究毛報酬不作模型效果或個人投資收益證據。詳見 實際來源／保存／日報 QA（dev 內部收據：../06_qa/UX21_SOURCE_STORE_DAILY_20261006.md）。
 
 
 本批補正：保存收據首屏同時顯示已知價格缺件筆數與未成熟狀態，未成熟不隱藏原決策日缺價；明示未調整收盤價，非含息總報酬。完整source診斷仍可展開。
@@ -5027,7 +5039,7 @@ split格式：
 
 結果保留全母體、matched／notmatched對照及excluded／unknown／uncaptured分母；符合方法不是交易selected。研究label bp與時間合格候選分開看；baseline readiness列既有learner／same-sample比較器缺的feature registry與決策時可得證據、完整return/downside映射、champion／challenger prediction身份及k。缺輸入就是不可評估，不宣稱模型勝出，也不把downside填0。
 
-保存來源current-observed／年度計畫calendar的限制仍在；PIT、training、formal、natural authority及execution資格維持false。endpoint-only沒有MFE／MAE／期間停牌評估；本入口沒有fit、模型發布、Task／DB寫入。wrong parent／來源pin失配請重新選原exact配對；invalid policy／split請修正自己明示JSON；未成熟、成本或基準缺件需另有合法來源，不能靠改readiness旗標解決。詳QA（開發收據見dev）。
+保存來源current-observed／年度計畫calendar的限制仍在；PIT、training、formal、natural authority及execution資格維持false。endpoint-only沒有MFE／MAE／期間停牌評估；本入口沒有fit、模型發布、Task／DB寫入。wrong parent／來源pin失配請重新選原exact配對；invalid policy／split請修正自己明示JSON；未成熟、成本或基準缺件需另有合法來源，不能靠改readiness旗標解決。詳QA（dev 內部收據：../06_qa/UX22_LABEL_READINESS_20261006.md）。
 
 
 ## UX22 同源模型公平比較（2026-10-06，研究用 CLI）
@@ -5054,7 +5066,7 @@ bundle為版本化JSON匯出：CORE20完整feature slots、dataset／feature sch
 
 模型MAE指平均絕對預測誤差（bp），不是交易期間最大不利波動；precision是原計分器所定義的top-k正報酬比例。endpoint資料仍不能計算期間MFE／最大不利波動或停牌影響。
 
-政策輸入64KiB、bundle／報告2MiB、label行4096；重複JSON key、未知版本、浮點／bool預測、超限或身份失配拒絕，不截斷。錯配請核對原exact配對與原匯出，不重跑來源或用最新DB補舊預測。來源current-observed／calendar及availability限制仍在，training／PIT／formal／natural／execution皆false、selection unknown；不fit／部署／載入模型pickle／寫registry、Task或正式DB。受控fixture只能驗工程，不能證明真模型改善。詳QA（開發收據見dev）。
+政策輸入64KiB、bundle／報告2MiB、label行4096；重複JSON key、未知版本、浮點／bool預測、超限或身份失配拒絕，不截斷。錯配請核對原exact配對與原匯出，不重跑來源或用最新DB補舊預測。來源current-observed／calendar及availability限制仍在，training／PIT／formal／natural／execution皆false、selection unknown；不fit／部署／載入模型pickle／寫registry、Task或正式DB。受控fixture只能驗工程，不能證明真模型改善。詳QA（dev 內部收據：../06_qa/UX22_FAIR_COMPARISON_20261006.md）。
 
 
 ## UX23 隔離 shadow 工程狀態與收據（2026-10-06）
@@ -5079,7 +5091,7 @@ bundle為版本化JSON匯出：CORE20完整feature slots、dataset／feature sch
 
 排錯：模型／資料集／artifact 版本失配、非法事件鏈、缺 candidate 或比較拒絕都回退規則路徑，核對原匯出與 exact 收據後另預覽；不要補最新資料或覆寫舊版。容量不足、來源修訂、writer busy、殘件或 hash 失配拒絕發布；取消不發布完成版，重試仍重驗來源。partial 證據保留且後續 fail closed，需人工檢視，不能用本入口清除。政策及 lifecycle 匯出各64KiB、bundle最多2MiB、合併輸入context最多2MiB＋128KiB；超限拒絕不截斷。CLI 參數／檔案／保存錯誤 exit 2，研究缺件摘要仍是安全研究結果，不能據 exit 0 宣稱效果合格。
 
-UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監控、具名採用條件、真模型優於基準、正式回退／啟用及真人驗收仍缺；training／PIT／formal／natural／execution 與 shadow_enabled 全 false、alpha 0、selection unknown。驗證與限制見 UX23 QA（開發收據見dev）。
+UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監控、具名採用條件、真模型優於基準、正式回退／啟用及真人驗收仍缺；training／PIT／formal／natural／execution 與 shadow_enabled 全 false、alpha 0、selection unknown。驗證與限制見 UX23 QA（dev 內部收據：../06_qa/UX23_SHADOW_ACCEPTANCE_20261006.md）。
 
 
 ## UX08 推薦保存結果的同版價格／MA20／MA60（2026-10-06）
@@ -5090,14 +5102,14 @@ UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監�
 
 結果判讀與限制：可見圖表只代表同版資料可重讀，不代表官方來源、當時已可得、PIT、方法有效、交易選擇或模型資格。來源明細使用 recommendation.market_frame／indicators；unknown可得時間維持unknown。其他區塊的原排名、基本面與方法仍各自核驗。圖表與完整精確表目前尚無產品縮放／平移／期間按鈕。
 
-排錯：舊結果沒有artifact、原保存檔遺失、資料日／來源／版本失配或OHLC不完整時，原圖留缺件，不借今天資料。先確認選到正確保存結果／股票／決策日，可取消後重試；需要現況時明示按「另開最新研究」建立獨立來源，不修補原收據。不要手改保存artifact。保存圖有值而原方法／排名仍未知時，依各區塊缺件處理。Native／真人與舊結果補建尚未驗收。工程證據（開發收據見dev）。
+排錯：舊結果沒有artifact、原保存檔遺失、資料日／來源／版本失配或OHLC不完整時，原圖留缺件，不借今天資料。先確認選到正確保存結果／股票／決策日，可取消後重試；需要現況時明示按「另開最新研究」建立獨立來源，不修補原收據。不要手改保存artifact。保存圖有值而原方法／排名仍未知時，依各區塊缺件處理。Native／真人與舊結果補建尚未驗收。工程證據（dev 內部收據：../06_qa/UX08_RECOMMENDATION_SAVED_CHART_20261006.md）。
 
 
 ## UX08 原生圖的縮放／平移／重設（2026-10-06）
 
 原生圖支援鍵盤／十字線逐日期檢視；選取列與下方全量價格／MA 精確表同步，缺值顯示「未提供」，不補零。外部圖表只開啟已核對的五個來源 symbol（TWSE 2382、1477、00878、IX0001；TPEX 6488）；其他股票／未知來源停用，不能猜市場或沿舊回呼打開錯股。外連不授模型、PIT 或交易資格。
 
-保存紀錄 marker 的工程 API 已接到 view，但主程式來源 reader 注入仍待完成。只有原保存紀錄的獨立 custody hash pins、精確股票／來源／結果／日期／cutoff／帳戶、明示 account kind 與 aware 保存時鐘均核對通過，才畫推薦確認／已記錄買入／已記錄賣出。推薦確認沿 research 帳，不等於實際成交；Paper、缺欄、naive 時鐘、失配或晚到來源拒絕，不借 report.events 或今天資料。舊手動 writer 的未知保存時鐘不補填，診斷 saved_record_clock_unknown；目前未接 reader 的畫面缺 marker，應先核中央來源接線，勿改原紀錄或降低 guard。marker 與來源閉環證據（開發收據見dev）。
+保存紀錄 marker 的工程 API 已接到 view，但主程式來源 reader 注入仍待完成。只有原保存紀錄的獨立 custody hash pins、精確股票／來源／結果／日期／cutoff／帳戶、明示 account kind 與 aware 保存時鐘均核對通過，才畫推薦確認／已記錄買入／已記錄賣出。推薦確認沿 research 帳，不等於實際成交；Paper、缺欄、naive 時鐘、失配或晚到來源拒絕，不借 report.events 或今天資料。舊手動 writer 的未知保存時鐘不補填，診斷 saved_record_clock_unknown；目前未接 reader 的畫面缺 marker，應先核中央來源接線，勿改原紀錄或降低 guard。marker 與來源閉環證據（dev 內部收據：../06_qa/BALDR_B05_CHART_INCREMENT_20261006.md）。
 
 入口：在個股研究「價格／技術」頁，原生圖下方按「放大」「縮小」「往較早」「往較新」「重設全部」。放大將可見日期槽約減半、縮小約加倍；平移約目前槽數四分之一，最少一筆；日期均是已核對來源已有資料，不補休市日。範圍列顯示可見日期及可見／總筆數，完整來源日期另標示，下方價格和MA精確表保持全量。
 
@@ -5105,7 +5117,7 @@ UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監�
 
 重新載入與安全：只有完整同股／來源／版本／cutoff／context才保留可見日期交集，未知或改版自動全量重設。取消背景重讀保留原圖與範圍，重試同版本保留；返回保留來源，新開view從全量開始，不把viewport偏好寫到DB。缺保存圖仍不借live；需現況可另開最新研究。
 
-排錯：若重畫失敗，圖與控制停用，下方全量精確表仍可查看；可重讀該來源重試。可得時間／暖機未知仍未知，可縮放不代表PIT／模型或交易資格。Native／真人及更多指標markers尚未驗收。按鈕與來源驗證（開發收據見dev）。
+排錯：若重畫失敗，圖與控制停用，下方全量精確表仍可查看；可重讀該來源重試。可得時間／暖機未知仍未知，可縮放不代表PIT／模型或交易資格。Native／真人及更多指標markers尚未驗收。按鈕與來源驗證（dev 內部收據：../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md）。
 
 
 ## 明示市場CSV隔離預覽與執行CLI（2026-10-06）
@@ -5123,7 +5135,7 @@ UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監�
 
 結果：preview不是來源hash接受或完成包；execute只有canonical `market-csv-export.v1.json` 精確檔名、原handle identity及bytes hash核驗後回傳completed與檔數／體積。收據只含明列市場檔metadata，不包含私人root／檔內容，不上傳或分享。白名單與hash不能證明每欄都非私人或有來源授權，真來源需另核對。
 
-排錯與取消：Ctrl+C合作取消回傳130，blocked／IO回傳2；保留partial／pending，沒有本次canonical收據不能當完成。既有目標不覆寫，取消／失敗重試必須明示另一全新目標；來源pins不變可沿原接受preview，來源已改版需重新預覽核對。no-follow／sharing／來源版本不合或SQLite偽裝拒絕時依code處理，不降級copy、手改收據或清理原資料。長路徑canonical receipt錯名已修正並驗證；超Windows普通open限制的其他既有工具仍需短隔離fixture。此CLI不是personal migration／啟用／分享工具。限定驗證（開發收據見dev）。
+排錯與取消：Ctrl+C合作取消回傳130，blocked／IO回傳2；保留partial／pending，沒有本次canonical收據不能當完成。既有目標不覆寫，取消／失敗重試必須明示另一全新目標；來源pins不變可沿原接受preview，來源已改版需重新預覽核對。no-follow／sharing／來源版本不合或SQLite偽裝拒絕時依code處理，不降級copy、手改收據或清理原資料。長路徑canonical receipt錯名已修正並驗證；超Windows普通open限制的其他既有工具仍需短隔離fixture。此CLI不是personal migration／啟用／分享工具。限定驗證（dev 內部收據：../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md）。
 
 
 ## 私人覆盤與 notes 備份工程入口（2026-10-06）
@@ -5134,7 +5146,7 @@ notes 備份 adapter 為 `PersonalNotesBackupAdapter(journal_paths, store_identi
 
 還原先取得並獨立保存原 receipt 的 SHA256 pin，再明示另一個 target `PersonalJournalPaths`，呼叫 `restore_into(target, receipt_path, expected_receipt_sha256=...)` 預演；核對 schema、identity、原 source 引用、snapshot 路徑／size／hash 後，隔離 fixture 才可加 `confirmed=True`。target 只允許該 selector 的精確 notes JSONL，必須尚不存在，不能覆寫既有筆記或複製整份市場 DB。成功後以同一 target selector 在新程序讀回，確認身份與內容。
 
-排錯：pin／schema／identity／size／hash 失配先停下核對原收據；不可手改 hash、改用另一帳戶或借 latest。超 byte budget、超32KiB receipt、link／hardlink 或錯根目錄會拒絕。預演與操作前取消不建立輸出；開始建立後的取消或失敗會保留部分產物，不能稱完成，也不自動清理；再次操作需另選全新輸出。路徑根與父目錄須由 caller 控制，普通前後 fstat 不保證抵擋惡意競態。備份不授 PIT、模型、交易或正式啟用資格。覆盤證據（開發收據見dev）、備份證據（開發收據見dev）。
+排錯：pin／schema／identity／size／hash 失配先停下核對原收據；不可手改 hash、改用另一帳戶或借 latest。超 byte budget、超32KiB receipt、link／hardlink 或錯根目錄會拒絕。預演與操作前取消不建立輸出；開始建立後的取消或失敗會保留部分產物，不能稱完成，也不自動清理；再次操作需另選全新輸出。路徑根與父目錄須由 caller 控制，普通前後 fstat 不保證抵擋惡意競態。備份不授 PIT、模型、交易或正式啟用資格。覆盤證據（dev 內部收據：../06_qa/BALDR_B10_PRIVATE_REVIEW_20261006.md）、備份證據（dev 內部收據：../06_qa/BALDR_B10_NOTES_BACKUP_20261006.md）。
 
 ### UX23：明示 registry snapshot 的唯讀 metadata 核對（2026-10-06）
 
@@ -5145,22 +5157,22 @@ notes 備份 adapter 為 `PersonalNotesBackupAdapter(journal_paths, store_identi
 
 ### 2026-10-06 工程能力字典與模型輸入介面
 
-八族能力目錄供研究員查缺件：`list_rule_research_families()`／`get_rule_research_family(family_id)`（實際具名API以B11 QA與module為準）回唯讀能力、所需欄位、暖機、來源參照、成本與限制。未知id回unknown，不自選方法。現有MA20／60同屬一族；BBANDS30／2／2／SMA上軌有限比較仍是候選，三band保存與compression定義未具備，不能當第二family已開放或投資訊號。B11能力與限制（開發收據見dev）。
+八族能力目錄供研究員查缺件：`list_rule_research_families()`／`get_rule_research_family(family_id)`（實際具名API以B11 QA與module為準）回唯讀能力、所需欄位、暖機、來源參照、成本與限制。未知id回unknown，不自選方法。現有MA20／60同屬一族；BBANDS30／2／2／SMA上軌有限比較仍是候選，三band保存與compression定義未具備，不能當第二family已開放或投資訊號。B11能力與限制（dev 內部收據：../06_qa/BALDR_B11_FAMILY_CATALOG_20261006.md）。
 
-`prepare_model_input`／`run_prepared_model_input` 是隔離工程API，無新GUI訓練／模型啟用按鈕。caller明示政策、時間切分、實際sessions、六份原bytes pins、同母體方法分母與training preprocessing audit；缺U2或未支持政策waiting，hash／成熟／split等失配reject_fit，兩者均不呼runner。僅synthetic://offline且明示endpoint gross return契約可ready；ready也不准fit、不載模型、不取得正式PIT／自然成熟或模型效果資格。結果只讀有界原receipt bytes並核身份／hash，不信runner旁路欄位。B13精確參數與receipt schema（開發收據見dev）。
+`prepare_model_input`／`run_prepared_model_input` 是隔離工程API，無新GUI訓練／模型啟用按鈕。caller明示政策、時間切分、實際sessions、六份原bytes pins、同母體方法分母與training preprocessing audit；缺U2或未支持政策waiting，hash／成熟／split等失配reject_fit，兩者均不呼runner。僅synthetic://offline且明示endpoint gross return契約可ready；ready也不准fit、不載模型、不取得正式PIT／自然成熟或模型效果資格。結果只讀有界原receipt bytes並核身份／hash，不信runner旁路欄位。B13精確參數與receipt schema（dev 內部收據：../06_qa/BALDR_B13_MODEL_INPUT_20261006.md）。
 
-研究實驗室結果頁展開「研究歷史查找」，按「查找既有歷史」讀各來源，搜尋過濾已載入項目；選筆後重新核exact kind/run/hash/stock/context再開原結果。forward／unknown僅metadata，缺件不建庫／不補今天行情。每來源row上限200（介面可至1000），另有UI明示serialized讀取單檔64MiB／整輪256MiB預算，兩者用途不同；超限、來源變動、active SQLite sidecar需核原source後再查，入口不修來源。取消／切換／關閉父視窗拒晚到結果。原baseline fixed1.0／next_open執行保存規則可下鑽，但source-only／performance／PIT不升資格。B07操作與排錯（開發收據見dev）。
+研究實驗室結果頁展開「研究歷史查找」，按「查找既有歷史」讀各來源，搜尋過濾已載入項目；選筆後重新核exact kind/run/hash/stock/context再開原結果。forward／unknown僅metadata，缺件不建庫／不補今天行情。每來源row上限200（介面可至1000），另有UI明示serialized讀取單檔64MiB／整輪256MiB預算，兩者用途不同；超限、來源變動、active SQLite sidecar需核原source後再查，入口不修來源。取消／切換／關閉父視窗拒晚到結果。原baseline fixed1.0／next_open執行保存規則可下鑽，但source-only／performance／PIT不升資格。B07操作與排錯（dev 內部收據：../06_qa/BALDR_B07_RULE_HISTORY_20261006.md）。
 
 
 ### 2026-10-06 中央私人三帳與原紀錄圖表接線
 
-`personal_store_root`／`personal_store_mode`須成對明示；blank或缺一項在legacy建目錄前拒絕。主程式將選定route與paths一起注入實際交易、聲明持倉、Paper唯讀服務，沿既有default與paper-main身份；未設定仍走原相容模式，不代表私人store已正式啟用。Paper固定state／benchmark／cost／status／baseline路徑，未知／缺件不借legacy env；精確ledger需caller另明示路徑與namespace，本入口不自建。B09 API與custody（開發收據見dev）。
+`personal_store_root`／`personal_store_mode`須成對明示；blank或缺一項在legacy建目錄前拒絕。主程式將選定route與paths一起注入實際交易、聲明持倉、Paper唯讀服務，沿既有default與paper-main身份；未設定仍走原相容模式，不代表私人store已正式啟用。Paper固定state／benchmark／cost／status／baseline路徑，未知／缺件不借legacy env；精確ledger需caller另明示路徑與namespace，本入口不自建。B09 API與custody（dev 內部收據：../06_qa/BALDR_B09_PERSONAL_PORTFOLIO_20261006.md）。
 
 個股研究成功讀入後，原紀錄marker由背景工作載入，畫面context變動先清空並拒過期回傳。只用該次已核source／account／result／日期／snapshot及原保存rowpins；非同步不重跑推薦、不讀report.events當交易。原JSONL讀取限16MiB／5000列、每來源selected pins128，超限或來源變動明示diagnostic；只讀不建庫、lock或目錄。缺aware時鐘、source、actual帳戶宣告或exact lineage不畫標記；推薦確認與actual買賣分別呈現，Paper不冒actual。舊naive紀錄仍未知，新的手動交易保存aware觀測時間也不補來源或PIT資格。
 
-目前標準UI確認保存仍漏source_id，不能藉row猜source而畫標記；三檔最小修補擴鎖遭automatic approval review拒絕，父層已向人類直接確認。已具原source_id的保存紀錄reader與中央接線工程已驗，不能把其有限通過解讀成所有UI確認都可畫。中央整合與剩餘（開發收據見dev）。
+目前標準UI確認保存仍漏source_id，不能藉row猜source而畫標記；三檔最小修補擴鎖遭automatic approval review拒絕，父層已向人類直接確認。已具原source_id的保存紀錄reader與中央接線工程已驗，不能把其有限通過解讀成所有UI確認都可畫。中央整合與剩餘（dev 內部收據：../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md）。
 
-B14 `ShadowControlService.apply`預設預覽，execute需caller提供exact command／proof／原sourcepins／最後核准rule及獨立持久state custody；resume本包拒絕。只在新的synthetic namespace/root驗停止模型callback→exact rule route→freshprocess讀回，保存receipt不是正式模型控制核准。尾端receipt缺失／損壞、witness不符或CAS失配皆拒dispatch，不刪receipt假裝恢復。prediction成熟／漂移仍在獨立composition包，未知正式資格不提升。B14純port操作（開發收據見dev）。
+B14 `ShadowControlService.apply`預設預覽，execute需caller提供exact command／proof／原sourcepins／最後核准rule及獨立持久state custody；resume本包拒絕。只在新的synthetic namespace/root驗停止模型callback→exact rule route→freshprocess讀回，保存receipt不是正式模型控制核准。尾端receipt缺失／損壞、witness不符或CAS失配皆拒dispatch，不刪receipt假裝恢復。prediction成熟／漂移仍在獨立composition包，未知正式資格不提升。B14純port操作（dev 內部收據：../06_qa/BALDR_B14_SHADOW_CONTROL_20261006.md）。
 
 
 ### 2026-10-06 B14 隔離預測封存與監測 API
@@ -5173,7 +5185,7 @@ B14 `ShadowControlService.apply`預設預覽，execute需caller提供exact comma
 
 控制預設execute=False。只有完整重驗monitoring、原prediction pins、caller獨立proof與已核最後rule後，apply_monitoring_control才交原ControlPort；synthetic spy與新程序已驗stop後不再呼模型、同rulehash。resume未准；全部正式／PIT／自然／訓練／執行資格false。
 
-容量為隔離資源契約：128 receipts、每份16MiB、8192 label rows，原control pin容量另保留，不截斷大batch。取消／逾時在witness CAS前拒發布；CAS後完成發布與readback並回報真commit。若CAS後I/O發布失敗，witness領先receipt會使整namespace不可用、failclosed；保留殘件／獨立witness供排錯，不刪receipt假恢復、不自動清理或重用root。詳完整API與兩路收據（開發收據見dev）。
+容量為隔離資源契約：128 receipts、每份16MiB、8192 label rows，原control pin容量另保留，不截斷大batch。取消／逾時在witness CAS前拒發布；CAS後完成發布與readback並回報真commit。若CAS後I/O發布失敗，witness領先receipt會使整namespace不可用、failclosed；保留殘件／獨立witness供排錯，不刪receipt假恢復、不自動清理或重用root。詳完整API與兩路收據（dev 內部收據：../06_qa/BALDR_B14_SHADOW_EVIDENCE_COMPOSITION_20261006.md）。
 
 ## 2026-10-06 私人 Paper daily／benchmark 選取入口
 
@@ -5185,7 +5197,7 @@ benchmark使用 `scripts/build_paper_equal_weight_benchmark.py --portfolio-id <�
 
 selected時可省略既有path override；若提供 `--baseline`、`--state-db`、daily的 `--ledger-db` 或benchmark的 `--output-ledger`，必須exact selected path。`--output-root`仍為config的legacy output定位，不能另選private writer。無route的legacy benchmark仍要求原baseline/state/market/output四參數。不得以resolve先掩蓋alias，不能自動搬庫或退回legacy。
 
-daily passed只代表本次Paper snapshot流程結果，不等於真成交、投資有效性或來源正式資格；future／未知交易日不建state或提高資格。exit2先核root/mode成對、空值、帳戶／benchmark、精確override與main/sidecars/祖先aliases；selected失敗只回JSON，不補寫legacy status。不要以刪除可疑temporary、改ACL、migration或正式Task解決；原bytes/hash／未知diagnostic保留。P2具名QA（開發收據見dev）記錄工程驗收與限制。
+daily passed只代表本次Paper snapshot流程結果，不等於真成交、投資有效性或來源正式資格；future／未知交易日不建state或提高資格。exit2先核root/mode成對、空值、帳戶／benchmark、精確override與main/sidecars/祖先aliases；selected失敗只回JSON，不補寫legacy status。不要以刪除可疑temporary、改ACL、migration或正式Task解決；原bytes/hash／未知diagnostic保留。P2具名QA（dev 內部收據：../06_qa/BALDR_PERSONAL_PAPER_PRODUCERS_20261006.md）記錄工程驗收與限制。
 
 
 ### 9.9.1h H20 gross 每日收據與 BBANDS 上軌保存版別（2026-10-06）
@@ -5205,7 +5217,7 @@ request schema 為 `personal-model-daily-request.v1`，必須明示 canonical re
 
 ### 9.9.1i 個人 H20 每日研究預測、配置與回滾
 
-已選私人模型根為 `{DATA_ROOT}/personal/recommendation_h20`，本機 `D:/Min/Python/Project/FA_Data/personal/recommendation_h20`；市場 DB 與其他個人領域維持原路徑，不搬移。不得整包匯出 FA_Data 而包含 personal 子樹。配置使用 `activation.json`，以 immutable revision 歷史備份及 expected-revision CAS 發布。`scripts/prepare_personal_h20_activation.py` 預設預覽；明示 `--execute` 才寫配置。啟用須可信 fit receipt 原 bytes SHA、模型 contract、scope 與精確 root；停用不依賴模型可讀，寫新 disabled revision，保存預測與歷史不刪。精確命令見 中央整合 QA（開發收據見dev）。
+已選私人模型根為 `{DATA_ROOT}/personal/recommendation_h20`，本機 `D:/Min/Python/Project/FA_Data/personal/recommendation_h20`；市場 DB 與其他個人領域維持原路徑，不搬移。不得整包匯出 FA_Data 而包含 personal 子樹。配置使用 `activation.json`，以 immutable revision 歷史備份及 expected-revision CAS 發布。`scripts/prepare_personal_h20_activation.py` 預設預覽；明示 `--execute` 才寫配置。啟用須可信 fit receipt 原 bytes SHA、模型 contract、scope 與精確 root；停用不依賴模型可讀，寫新 disabled revision，保存預測與歷史不刪。精確命令見 中央整合 QA（dev 內部收據：../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md）。
 
 既有 Pacific 05:45 calibration-learning Task 的帳號、權限、trigger、action 與 settings 不變。cmd 在上述配置存在時傳 `--personal-h20-activation-config`，或採明示 `PERSONAL_H20_ACTIVATION_CONFIG`。disabled 不呼模型；enabled 只接同-run completed raw-cycle 原 pins，使用原 frozen H20 absolute/no-cost return head，不要求重新 fit 或 entry capture 已收盤。原 formal/global blocked 仍獨立揭露。
 
@@ -5219,7 +5231,7 @@ request schema 為 `personal-model-daily-request.v1`，必須明示 canonical re
 
 H20已真參與每日研究推論／原值保存，個股摘要讀其原預測；目前還沒有接入原推薦名單生成或排序。原推薦勝率／機率與ranking不變；H20 gross是未扣成本的20交易日毛報酬，不是勝率。日常H20 cohort研究列表／排序與exact下鑽返回、原entry/outcome自動pins接線仍需完成，不能用目前增量卡片宣稱模型選股已完成或全市場已預測。
 
-既有05:45 Task下一次為Pacific10/07 05:45（當日UTC−07），UTC12:45、台北20:45；未手動啟Task。下一run應核新Task/source cycle identity、原manifest與prediction raw pins，不以舊產品指標或Task returncode單獨判H20成功。原global/formal blocked和personal success可分開為真；詳見 下一run與工程差異QA（開發收據見dev）。自然成熟不作工程gate，來源資格unknown不補。
+既有05:45 Task下一次為Pacific10/07 05:45（當日UTC−07），UTC12:45、台北20:45；未手動啟Task。下一run應核新Task/source cycle identity、原manifest與prediction raw pins，不以舊產品指標或Task returncode單獨判H20成功。原global/formal blocked和personal success可分開為真；詳見 下一run與工程差異QA（dev 內部收據：../06_qa/BALDR_NEXT_RUN_AND_REMAINING_ENGINEERING_20261007.md）。自然成熟不作工程gate，來源資格unknown不補。
 
 ### 2026-10-07 日常有限 BB 上軌版號接線補充
 

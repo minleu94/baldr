@@ -179,3 +179,5 @@ qa/reports/
 pattern_profile_times.txt
 scratch_logs.txt
 scratch/
+
+/dist/

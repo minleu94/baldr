@@ -19,13 +19,67 @@ UPDATE_STATUS_TIMELINE_SCHEMA = "data-update-timeline.v1"
 DEFAULT_STALE_AFTER_SECONDS = 7 * 24 * 60 * 60
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024
 
-_SUCCESS_STATUSES = {"passed", "success", "succeeded", "done", "ok", "completed"}
+_SUCCESS_STATUSES = {
+    "passed",
+    "success",
+    "succeeded",
+    "done",
+    "ok",
+    "completed",
+}
 _FAILURE_STATUSES = {"failed", "failure", "error", "blocked"}
 _RUNNING_STATUSES = {"running", "in_progress", "started"}
 
 
 def _normalise_status(value: Any) -> str:
     return str(value or "unknown").strip().lower() or "unknown"
+
+
+def _has_valid_warning_success_evidence(payload: Mapping[str, Any]) -> bool:
+    """Accept the quick-update warning terminal only with producer-consistent evidence."""
+
+    if _normalise_status(payload.get("status")) != "passed_with_warnings":
+        return False
+    warnings = payload.get("warnings")
+    errors = payload.get("errors")
+    steps = payload.get("steps")
+    run_id = payload.get("run_id")
+    target_date = payload.get("end_date") or payload.get("target_date")
+    if not isinstance(warnings, list) or not any(
+        isinstance(item, str) and item.strip() for item in warnings
+    ):
+        return False
+    if not isinstance(errors, list) or errors:
+        return False
+    if not isinstance(run_id, str) or not run_id.strip() or _date_key(target_date) is None:
+        return False
+    if not isinstance(steps, list) or not steps:
+        return False
+
+    seen_names: set[str] = set()
+    broker_skips: set[str] = set()
+    for step in steps:
+        if not isinstance(step, Mapping):
+            return False
+        name = step.get("name")
+        if not isinstance(name, str) or not name.strip() or name in seen_names:
+            return False
+        seen_names.add(name)
+        step_status = _normalise_status(step.get("status"))
+        if step_status in {"passed", "warning"}:
+            continue
+        if step_status != "skipped" or not _is_valid_producer_skip(name, step):
+            return False
+        if name in {"update_broker_branch", "sync_broker_branch_to_sqlite"}:
+            broker_skips.add(name)
+
+    expected_broker_skips = {
+        "update_broker_branch",
+        "sync_broker_branch_to_sqlite",
+    }
+    if broker_skips and broker_skips != expected_broker_skips:
+        return False
+    return True
 
 
 def _bounded_text(value: Any, *, max_length: int = 128) -> str:
@@ -43,6 +97,52 @@ def _date_key(value: Any) -> str | None:
     if len(text) == 8 and text.isdigit():
         return text
     return None
+
+
+def _is_valid_producer_skip(name: str, step: Mapping[str, Any]) -> bool:
+    result = step.get("result")
+    if not isinstance(result, Mapping):
+        return False
+    if result.get("success") is not True or result.get("skipped") is not True:
+        return False
+
+    if name == "update_broker_branch":
+        return (
+            result.get("optional_source") is True
+            and result.get("reason") == "explicit_skip_broker_branch"
+        )
+    if name == "sync_broker_branch_to_sqlite":
+        return (
+            result.get("optional_source") is True
+            and result.get("reason") == "broker_branch_refresh_skipped"
+        )
+    if name == "update_phase3c_candidate_sources":
+        return (
+            result.get("candidate_only") is True
+            and result.get("reason")
+            in {
+                "operator_requested_candidate_update_skip",
+                "candidate_db_path_not_configured",
+            }
+        )
+    if name == "capture_tdcc_current_ownership":
+        return (
+            result.get("reason") == "phase3c_tdcc_result_not_verified"
+            and result.get("network_requested") is False
+            and result.get("writes_performed") is False
+            and _normalise_status(result.get("phase3c_step_status"))
+            in {"passed", "warning", "skipped"}
+        )
+    if name == "calculate_technical_indicators":
+        validation = result.get("technical_reuse_validation")
+        return (
+            result.get("skip_reason") == "technical_indicators_current"
+            and isinstance(result.get("technical_computation"), Mapping)
+            and isinstance(result.get("technical_computation_reuse"), Mapping)
+            and isinstance(validation, Mapping)
+            and validation.get("status") == "reused"
+        )
+    return False
 
 
 def _freshness_consistency_diagnostics(
@@ -218,7 +318,13 @@ def _artifact_projection(
         projected["failed_step_count"] = sum(
             1 for step in steps if _normalise_status(step.get("status")) in _FAILURE_STATUSES
         )
-        projected["warning_count"] = len(payload.get("warnings") or []) if isinstance(payload.get("warnings"), list) else 0
+        warning_values = payload.get("warnings")
+        projected["warning_count"] = len(warning_values) if isinstance(warning_values, list) else 0
+        projected["warnings"] = (
+            [_bounded_text(item, max_length=512) for item in warning_values[:8]]
+            if isinstance(warning_values, list)
+            else []
+        )
         projected["error_count"] = len(payload.get("errors") or []) if isinstance(payload.get("errors"), list) else 0
     else:
         projected["warnings"] = list(payload.get("warnings") or [])[:8]
@@ -275,6 +381,7 @@ def load_data_update_timeline(
     safe_stale_after = max(0, int(stale_after_seconds))
     artifacts: dict[str, dict[str, Any]] = {}
     diagnostics: list[str] = []
+    update_payload: Mapping[str, Any] | None = None
 
     for label, path in (
         ("update", update_status_path),
@@ -282,6 +389,8 @@ def load_data_update_timeline(
         ("tpex", tpex_status_path),
     ):
         payload, read_diagnostics = _read_artifact(path, label=label)
+        if label == "update":
+            update_payload = payload
         diagnostics.extend(read_diagnostics)
         projected, projection_diagnostics = _artifact_projection(
             payload,
@@ -315,7 +424,12 @@ def load_data_update_timeline(
         status = "failed"
     elif update_status in _RUNNING_STATUSES:
         status = "running"
-    elif update_status not in _SUCCESS_STATUSES:
+    elif update_status == "passed_with_warnings" and (
+        update_payload is None or not _has_valid_warning_success_evidence(update_payload)
+    ):
+        status = "invalid"
+        diagnostics.append("update:invalid_warning_success_evidence")
+    elif update_status not in _SUCCESS_STATUSES and update_status != "passed_with_warnings":
         status = "invalid"
         diagnostics.append(f"update:unsupported_status:{update_status}")
     elif update_age is None:
@@ -336,6 +450,8 @@ def load_data_update_timeline(
     elif freshness_consistency:
         status = "degraded"
     elif freshness.get("available") and _normalise_status(freshness.get("status")) not in _SUCCESS_STATUSES:
+        status = "partial"
+    elif update_status == "passed_with_warnings":
         status = "partial"
     else:
         status = "current"

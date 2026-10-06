@@ -2,6 +2,8 @@
 
 ## Windows 可攜 composition（2026-10-06）
 
+補完首波把Python script／`-m`／frozen入口統一經 `baldr_launcher`：`application_bootstrap`純解析設定，明確apply後注入 `MainWindow`；資源、runtime與ML registry根分開，不再替換全域project_root、registry constructor或視窗類別。`build_identity`從mutable Git讀HEAD／dirty，固定來源快照與frozen讀相同metadata／依賴鎖／資源雜湊。中央以Git archive固定commit、精確依賴鎖建立獨立candidate，現有交付保留。P05 `stock_research_product_summary`只投影原report/H20，不增加金融或推論owner；P01run/query合併模組尚在驗收。實際交付範圍與未驗事項見補完計畫和具名QA，不因架構接線宣稱全產品完成。
+
 `baldr_launcher.py` 在重型匯入前分流 frozen multiprocessing，再以原 `ui_qt.main` composition 啟動。原 `sys.executable + scripts/*.py`／`-m`／`-c` 子程序沿包內資源分流；不依 cwd。市場、私人與模型契約不改；外部 config 明示 roots，Runtime 使用 `OUTPUT_ROOT/application_state`，ML registry 獨立使用 LOCALAPPDATA/baldr/research_state，避免 OUTPUT_ROOT 位於市場根內時觸發原 ML 邊界；缺件仍 unknown，安全 guard 不變。PyInstaller onedir 收集 Qt plugins 與 scipy／sklearn／TA-Lib，正式資料、私人模型、QA／experiments 與 `.env` 不打包。操作見 [可攜指南](../07_guides/PORTABLE_WINDOWS.md)，建置成功與驗證範圍另看交付收據。
 
 > **2026-10-06 現況判讀入口**：現行啟用／收據與下一自然排程見 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)。本頁日期化 caller／工程段落保留各自 fixed-head 的架構證據；早期 U1/U2 pending／私人未啟用／舊邊界問題不能覆蓋後來具名接受。H20 gross consumer 與 canonical 機率 head 分域，自然 10 pending／0 成熟，Native 真人／下一 Task 未驗；目標分冊不自動代表 current。資料根與冷封存依 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)，不得從架構整理取得資料清理或模型 promotion 權限。

@@ -2,7 +2,11 @@
 
 ## Windows 可攜版入口
 
-Source `ui_qt/main.py` 未設環境時預設 FA_Data 及其 output；exe 優先環境、其次外部 config.json、最後 LOCALAPPDATA 空根，兩者未配置的 defaults 不同，且均不自動讀 `.env`。本機既有使用者已將外部 JSON 對齊 `D:/Min/Python/Project/FA_Data`／`D:/Min/Python/Project/FA_Data/output`，H20 沿原 DATA_ROOT 下的 activation hook；未重新 enable／fit。完整優先序、衍生 registry 差異與實際 root 檢查見可攜指南。
+補完新版Python使用 `python baldr_launcher.py`；直接 `python ui_qt/main.py` 或 `python -m ui_qt.main` 也進同一入口。共用優先序為環境 → 外部portable JSON → LOCALAPPDATA空根，不自動讀 `.env`。設定解析後才初始化TWStockConfig與服務；H20沿原DATA_ROOT的activation hook，不重新enable／fit。現有交付exe尚未包含本輪補完，新candidate另驗同版結果；完整設定、研究root與交付SHA見[可攜指南](PORTABLE_WINDOWS.md)。
+
+主視窗底部顯示版本／commit前綴與開發版或發布版，提示中列完整commit與各根路徑。含未提交變更的開發版不能視為exe已修復。以 `--launch-info`讀回設定與身分；必要時維護者用 `RESEARCH_STATE_ROOT` 指定既有研究registry根，不搬資料。錯誤JSON、相對路徑或研究／市場根重疊會在初始化前拒絕，先修原設定再重開，不重建DB。
+
+個股摘要先呈現結論、研究理由、主要風險、持倉關係與下一步。合法H20讀回即顯示20交易日毛報酬研究估計，資料完整度／時效、模型可用、來源日期、自然結果與用途分列；結果未成熟不隱藏預測，也不代表可生成權重或買賣指令。原ID／SHA／完整限制移至「進階：來源與各區塊日期」或資料稽核。切股清除舊估計；錯cohort明示不可用，不以別日或別來源代替。原同份H20名單保留順位與精確返回，個股DTO沒有順位時不冒用其他排行。
 
 保留整個 `baldr` 資料夾並雙擊 `baldr.exe`，不需 IDE 或全域 Python。首次無設定使用外部空根並提示設定，不借開發機資料；設定 JSON、私人模式／原可信模型、重開、CLI／scheduler、日誌與安全限制見 [可攜指南](PORTABLE_WINDOWS.md)。原九工作區與四用途步驟不變。未簽章，Native 真人與正式 Task 自然 run 不由 offscreen 測試代替。
 

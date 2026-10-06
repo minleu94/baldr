@@ -1,8 +1,20 @@
 # Baldr 產品補完接續計畫
 
 > 調查基準：2026-10-06，實際 Git 複核時間 22:36 UTC（台北 10/07 06:36）。
-> 狀態：**調查與規劃交付，等待使用者另行安排開發**。本文件沒有授權執行工作包、訓練、啟用模型、修改排程、交易或發布。
+> 狀態：**使用者已授權啟動開發與 Luna Max 分工；先保護工作區，再分包實作**。2026-10-06 本機 checkpoint 為 `bf9207fb72cd3acebac17f4b7816994efa601226`；第 14 節追加 exe／Python 一致性要求與首波分工。第 13 節保留上一輪「只調查與規劃」的歷史驗證，不代表當前工作狀態。正式資料、私人持倉、Task、模型訓練／啟用、交易、push 與發布仍不在授權範圍。
 > 唯一原始需求：[Danny Quant 原產品計畫](../../../output/plans/baldr_product_experience_plan_20261004.md)。本文件是它的差距對照、分工與驗收補件，不另建產品 Roadmap，不覆寫原文或原驗收收據。
+
+## 0. 一頁接續摘要（開發已開始）
+
+九個選股檔案已保存在 `bf9207fb`，不再是未提交工作；三位Luna Max在同一dev worktree分工。共同設定／版本葉片已提交 `92ed944e`（43案例），H20產品投影已提交 `cefef608`（12案例）；中央入口／UI／打包整合與P01母體run尚在驗收。
+
+**下一個可交付成果 M1**：2382首屏讀到保存H20 +6.84%研究估計、理由／風險／持倉／下一步，Python三入口共用設定，版本及commit可辨識；固定commit、固定依賴建一份獨立candidate，與同版Python做四用途比較。M1不代表完整選股器或每策略績效完成。先以此安排小規模Native真人試用；真人尚未實測就保留未驗證，不讓最後P13才開始發現體驗問題。
+
+**選股第一版 M2**：P01真正完整母體閉環加P02/P04首批既有MA交叉、KD、MACD、量能規則。有完整分母、全域篩選排序、比較／個股／收藏返回、新程序與candidate驗收，才稱可用選股第一版。其餘23條條件的B/C缺件明列，不把首波寫成14包完成。
+
+**後續 M3**：復用原金融引擎，做持倉情境與每策略獨立帳本／歷史比較。Paper先沿原500000研究本金、8檔最大持倉的有版本政策；8是帳本持倉政策，不是研究母體上限。需提高時由中央另提有版本政策、金融驗證與接受收據，這輪不自行放寬。
+
+目前無需額外決策才能完成M1。真正政策選擇仍只有§12的H20研究排序如何接配置情境；推薦沿使用者等權／明示目標情境，不能直接把毛報酬轉權重。正式資料、私人帳本、模型／Task、交易、push與發布保持原授權邊界。
 
 ## 1. 先回答：現在能做什麼，真正還缺什麼
 
@@ -12,7 +24,7 @@ Baldr 已有可用的研究零件及數條有限閉環，但尚未形成完整�
 |---|---|---|
 | 已有可用流程，但驗證有範圍 | 九個工作區、四用途捷徑；原保存推薦讀回；有限 MA／BB 規則快照；原研究收藏、同源圖表與返回；H20 十股名單排序、個股讀取與返回；手動持倉與日誌 | 保留既有入口、來源身分與驗收。新功能必須通過相同實際旅程，不能因重排畫面而破壞它們。 |
 | 已有底層，尚非完整產品 | 多種技術計算、籌碼／營收／產業因子；Advice、配置與再平衡政策；Paper 成交與帳本；Backtest／Registry；八家族 catalog | 接成可選條件、具名策略、獨立研究帳本與可比較結果。catalog、API、DTO、單元測試各自都不算產品完成。 |
-| 接線與體驗缺口 | 個股首屏工程資訊過多；H20 不參與五問摘要／下一步；來源切換與 root 注入不完整；daily view 仍以 child 為單位；比較／返回／重新開啟尚未覆盖完整母體與擴充查詢 | P00–P06、P09–P10 優先處理，不等待自然樣本成熟。 |
+| 接線與體驗缺口 | 個股首屏工程資訊過多；H20 不參與五問摘要／下一步；來源切換與 root 注入不完整；daily view 仍以 child 為單位；比較／返回／重新開啟尚未覆蓋完整母體與擴充查詢 | P00–P06、P09–P10 優先處理，不等待自然樣本成熟。 |
 | 資料或規則缺口 | 權證標的關係、完整注意／處置歷史、可驗證處置預警；完整 KDJ、VCP、形態確認、族群核心／新資金定義；部分基本面前期／可得日；H20→權重政策 | 每項有資料／規則交付包及失敗狀態，不偽造結果；詳見第 5 節與 P03／P07。 |
 | 需要自然時間 | 已合法保存預測的未來交易日結果、真正下一次自動 Task、前瞻 Paper 績效及效果驗證 | 保留 pending／waiting／unknown；由既有 producer 與 reader 累積，不以 replay 或手動測試頂替。P11／P12 補的是可讀狀態及證據接線。 |
 | 仍需人工實測 | 3–5 位非技術使用者能否理解與操作；全流程 Native／新 exe 是否等同來源版 | P13 真正驗收；本輪沒有冒稱完成真人或 exe 實測。 |
@@ -25,7 +37,7 @@ Baldr 已有可用的研究零件及數條有限閉環，但尚未形成完整�
 - 直接唯讀原 H20 reference、manifest 與十份 capture，manifest 及十份 capture 的 bytes hash 均相符。2382 的 `predicted_gross_return_bp=684`，即 **20 個交易日、未扣成本的報酬估計 +6.84%**。同份十股排序為第 **9／10**，不能顯示「全市場第九」。
 - 日期分別是判讀／預測適用日 **2026-10-07**、來源交易日 **10/06**、模型特徵截至日 **10/05**。capture 另有 observed_at；feature available date 也不是 feature as-of。畫面不得用一個「資料日期」覆蓋它們。
 - H5 的 **−100 bp** 是另一模型的成本後相對基準超額估計，表示落後基準 1.00 個百分點；不表示股價必跌 1%。H5 原成本情境 **80 bp＝買 25＋賣 55**，不是使用者實際成本，也不是 H20 的成本設定。H5 數值與成本依近期保存核對及現有 DTO／測試契約解讀，本輪未重新跑 H5 模型。
-- H20 已有名單、整數排序、同股 evidence、來源下鑽與返回。`ui_qt/main.py::_load_personal_h20_product` 最後只呼叫 view 的 `set_personal_h20_evidence` 更新獨立 label；現有 `_report_next_step` 仍先因缺保存 Advice 導向推薦來源，早於持倉分支。這是可修的產品接線問題。
+- 調查時 H20 已有名單、整數排序、同股 evidence、來源下鑽與返回，但 `set_personal_h20_evidence` 只更新獨立 label，缺 Advice 的下一步也擋住 H20 比較。首波已把合法 H20 接到五問摘要／狀態／下一步；原來源與 cutoff guards 保留，尚未通過 candidate 同版驗收前不算發布。
 - H20 capture 原狀態是 `pending_exact_entry_capture_and_twenty_sessions`。若未取得精確 entry、日曆或合法結果 producer，屬工程／來源缺件；取得後仍未滿交易期，才屬純時間等待。不能籠統說「只等二十天」。
 - H20 原 evidence 沒有逐特徵貢獻說明。可以並列價格、規則事實與反證，但不能編造「模型因為這三項理由估計 +6.84%」。canonical 機率 head 的 Brier 比較與此 gross head 的效果分開，不挪用結論。
 
@@ -43,14 +55,14 @@ Baldr 已有可用的研究零件及數條有限閉環，但尚未形成完整�
 
 ## 2. 調查基線、來源與保護範圍
 
-### 2.1 Git、檔案與實際設定
+### 2.1 Git、檔案與實際設定（歷史調查與開發更新分列）
 
 | 項目 | 本輪實際讀回 |
 |---|---|
-| 工作分支／dev | `dev`；`4f052bebb085eac2f702719d022e59e08353571a` |
+| 工作分支／dev | 調查起點 `4f052beb`；開發前checkpoint `bf9207fb72cd3acebac17f4b7816994efa601226`；已驗收葉片 `92ed944e`、`cefef608`，中央整合仍dirty。當前HEAD以git讀回／新收據為準。 |
 | main | `305635642ecdf5f1331a24a0c81566d07f36cb0d` |
 | 本機分支／worktree | 僅 dev、main；唯一 worktree 為本 repository。無須再做分支清理。 |
-| 未提交工作 | 第 10 節九檔，四 modified、五 untracked；均為刻意保留的選股工作。 |
+| 保留工作 | 第10節九檔已於`bf9207fb`提交。當前未提交的是首波中央整合與尚未驗收的P01施工；不得混成原九檔仍未提交。 |
 | 唯一原計畫 | 2,002 行，SHA256 `4f90d28051e91a2754466fd0ac4677eeb49a7c28e1de3cc419f78965716b9a55`；已完整讀取正文與追加收據。 |
 | 可用 exe | `dist/baldr/baldr.exe`；SHA256 `ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e`。整個資料夾保留；它未包含九檔未提交修改。 |
 | source 的 root | 本工具程序無 DATA_ROOT／OUTPUT_ROOT 覆寫；依 `TWStockConfig` 預設為 `D:/Min/Python/Project/FA_Data` 與其 `output`。不實例化會建立目錄的 config 來做唯讀核對。 |
@@ -59,7 +71,7 @@ Baldr 已有可用的研究零件及數條有限閉環，但尚未形成完整�
 
 重要差別：`DailyMarketResearchScreenerService` 預設規則根仍是 **套件根/output/research_snapshots/daily_market**，不是 `TWStockConfig.output_root`。一般 `MainWindow()` 未明示注入規則 root／cohort；新 selector 雖能額外查 OUTPUT_ROOT 的固定位置，仍不是完整主入口／parent／重開接線。根沒有 MA/BB 快照，不等於沒有保存推薦或 H20。
 
-本輪不讀私人持倉明細、不開正式 DB、不載模型、不跑 producer／Task／GUI；只讀設定、程式、文件及為本題必要的既有 JSON 證據。沒有修改九檔、原計畫、exe、正式資料、排程、分支或 worktree。
+上一輪調查只讀設定、程式、文件及必要的既有 JSON 證據，沒有開正式 DB、GUI 或 Task。當前授權開發的驗證改用隔離 fixture／GUI／未訓練 shadow artifact；仍不讀私人持倉明細，不修改原計畫、既有 exe、正式資料、排程或 main。
 
 ### 2.2 證據權重與來源登記
 
@@ -337,7 +349,8 @@ P07 必須交付可執行 StrategySpec／版本卡／因果測試及 selector �
 | 解除16／256限制、完整母體、全域查詢、取消重試 | §6；P01／P02／P04／P09 |
 | 每策略獨立資金追蹤與歷史回測 | §7.2；P07／P08 |
 | 頁面分工、日期一致、排程120秒問題保留 | §3–4、P10／P12、§11 |
-| 原計畫UX01–24完整承接、精確ownership與Sol/Luna分派 | §8–9；不是本輪開發授權 |
+| 原計畫UX01–24完整承接、精確ownership與Luna Max分派 | §8–9、§14；使用者後續已授權首波開發 |
+| 要求十：exe／Python 共用入口、版本、根路徑、固定來源及同版驗收 | §14；P14跨P00／P13，唯一writer為中央；M1候選及每次後續交付都需同版比較 |
 | 每包真保存→讀回→UI→操作→返回／新程序，異常分支 | §9每包出口、§11共用驗收矩陣 |
 | 少量決策、單一接續文件與索引 | §12–13 |
 
@@ -345,7 +358,7 @@ P07 必須交付可執行 StrategySpec／版本卡／因果測試及 selector �
 
 ### 9.1 分派方法
 
-使用者另行安排開發後，由 **Sol Medium Fast** 擔任唯一中央整合／產品與金融邊界 owner；**Luna Max** 實作已凍結契約的葉片包。這輪未啟動實作 agent，未開新 chat、branch 或 worktree。
+使用者已授權，由 **中央root** 擔任唯一整合／產品與金融邊界 owner；**Luna Max** 實作已凍結契約葉片。原Sol Medium Fast是規劃的角色建議，不覆寫目前chat模型。三個Luna已啟動；未開新chat、branch或worktree。§9.3與§14.2均以當前實體檔名與writer為準。
 
 - 保持dev/main、一個worktree。檔案是排他鎖的最小單位，不用「不同函式」當可共編理由。shared檔由中央收接口與測試後順序整合，不把各leaf整份覆蓋回來。
 - 中央先保存當時HEAD與九檔新hash，再發每包：可寫檔、只讀依賴、輸入輸出契約、fixture根、禁止事項、驗收node、需接哪個consumer。下表是初始白名單；額外檔案由中央更新此表才分派，不給leaf整個目錄寫權。
@@ -378,12 +391,12 @@ P07 必須交付可執行 StrategySpec／版本卡／因果測試及 selector �
 
 | 包 | 排他可寫production／UI檔 | 排他測試檔（未註新者為既有） |
 |---|---|---|
-| P00 | `ui_qt/main.py`；`baldr_launcher.py`；`data_module/config.py`；`app_module/research_session/session_dtos.py`；`app_module/stock_research_report_dtos.py`；`decision_module/strategies/contracts.py`；dirty `app_module/daily_research_source_selection.py`。跨包新增shared contract先放此owner，非任意動態dict平台 | `tests/test_baldr_launcher.py`；`tests/test_ui_qt_daily_market_research_main_routing.py`；`tests/test_ui_qt_personal_h20_cohort_integration.py`；新 `tests/test_baldr_completion_p00_routing.py` |
-| P01 | `app_module/rule_research_parent_capture.py`；dirty `ui_qt/widgets/daily_research_source_selector.py`；新 `app_module/daily_research_source_catalog.py`、`app_module/daily_research_universe_run.py`、`app_module/daily_research_query_index.py`。source_selection façade的接點由P00單寫 | `tests/test_rule_research_parent_capture.py`；dirty `tests/test_daily_research_source_selection.py`、`tests/test_ui_qt_daily_research_source_selector.py`；新 `tests/test_baldr_completion_p01_universe.py` |
+| P00 | 中央唯寫：`ui_qt/main.py`、`baldr_launcher.py`、`data_module/config.py`、`app_module/research_session/session_dtos.py`、`app_module/stock_research_report_dtos.py`、`decision_module/strategies/contracts.py`、基線已提交 `app_module/daily_research_source_selection.py`。入口由P00/P14共同驗收，只有root一個writer | `tests/test_baldr_launcher.py`、`tests/test_ui_qt_daily_market_research_main_routing.py`、`tests/test_ui_qt_personal_h20_cohort_integration.py`、`tests/test_baldr_common_entry.py`；未釋出部分維持待辦 |
+| P01 | Luna首波唯寫新 `app_module/daily_market_universe_run.py`（run／catalog／全域index合併於此；驗收前審查模組大小）。中央後續接點：`app_module/rule_research_parent_capture.py`、`ui_qt/widgets/daily_research_source_selector.py`、`app_module/daily_research_source_selection.py`；未釋出前Luna不可修改 | 新 `tests/test_daily_market_universe_run.py`；既有 `tests/test_rule_research_parent_capture.py`、`tests/test_daily_research_source_selection.py`、`tests/test_ui_qt_daily_research_source_selector.py`由中央接線後驗收。底層、UI與新程序分列，不冒稱全市場產品完成 |
 | P02 | `app_module/daily_market_feature_snapshot.py`；`app_module/daily_market_method_contract.py`；`app_module/daily_market_snapshot_source.py`；`app_module/daily_market_snapshot_producer.py`；`app_module/daily_market_snapshot_repository.py`；`app_module/daily_market_research_screener.py`；`app_module/daily_market_cohort_projection.py`；新 `decision_module/factors/selection_technical_rules.py` | `tests/test_daily_market_feature_snapshot.py`；`tests/test_daily_market_method_contract.py`；`tests/test_daily_market_research_screener.py`；新 `tests/test_baldr_completion_p02_methods.py` |
 | P03 | 新 `data_module/selection_fact_readers.py`、`data_module/selection_official_events.py`、`data_module/selection_warrant_relations.py`；新 `decision_module/factors/selection_fundamental_chip_rules.py`、`app_module/selection_data_update_service.py`、`scripts/update_selection_research_sources.py`；`decision_module/factors/fundamental_adapters.py`（只修連月／前史旗標之具名邊界）。資料取得沿既有data ports；新增受控更新service／CLI，正常UI更新按鈕由P00主入口接入，不改正式Task | 新 `tests/test_baldr_completion_p03_sources.py`、`tests/test_baldr_completion_p03_clock.py` |
 | P04 | dirty `ui_qt/shared_market_research_consumer.py`、`ui_qt/views/daily_market_research_view.py`、`ui_qt/views/strong_stocks_view.py`、`ui_qt/views/weak_stocks_view.py`；`app_module/daily_market_research_presets.py`；新 `ui_qt/widgets/research_candidate_compare.py`、`ui_qt/models/research_candidate_table_model.py` | dirty `tests/test_ui_qt_shared_market_method_query.py`；`tests/test_shared_market_research_consumers.py`；`tests/test_ux04_05_daily_market_research_view.py`；新 `tests/test_baldr_completion_p04_selection.py` |
-| P05 | `ui_qt/views/stock_research_report_view.py`；`ui_qt/views/stock_research_workspace.py`；`ui_qt/widgets/personal_h20_research_widget.py`；`app_module/stock_research_report_service.py`；新 `app_module/stock_research_summary_projection.py`、`app_module/stock_research_availability_projection.py`。P06/P09/P12對report接點提出小patch，由P05依序整合 | `tests/test_stock_research_readability.py`；`tests/test_stock_research_ml_scope_context.py`；`tests/test_stock_research_model_cost_presentation.py`；新 `tests/test_baldr_completion_p05_summary.py` |
+| P05 | Luna純投影唯寫新 `app_module/stock_research_product_summary.py`（五問與分域availability合併）。UI/service中央唯寫：`ui_qt/views/stock_research_report_view.py`、`ui_qt/views/stock_research_workspace.py`、`ui_qt/widgets/personal_h20_research_widget.py`、`app_module/stock_research_report_service.py`；P06/P09/P12接點由root順序整合 | 新 `tests/test_stock_research_product_summary.py`與中央 `tests/test_ui_qt_stock_research_product_summary.py`；既有readability、ml_scope_context、model_cost_presentation與stock_research_report回歸。Luna不可共編UI |
 | P06 | `ui_qt/views/portfolio_view.py`；新 `app_module/recommendation/personal_h20_portfolio_research_projection.py`、`app_module/portfolio_research_scenario_service.py`、`ui_qt/widgets/portfolio_research_scenario_widget.py`。AdvicePolicy／Composer／Allocation／Construction／Health各核心先唯讀；不讓Luna直接改權限 | 新 `tests/test_baldr_completion_p06_scenarios.py`、`tests/test_baldr_completion_p06_account_identity.py`；既有Advice／allocation／Health回歸唯讀執行 |
 | P07 | `app_module/rule_research_family_catalog.py`；`app_module/daily_market_research_capabilities.py`；`decision_module/strategies/registry.py`；新 `decision_module/strategies/baldr_bollinger_executor.py`、`decision_module/strategies/baldr_pattern_executor.py`、`decision_module/strategies/baldr_vcp_executor.py`、`decision_module/strategies/baldr_group_executor.py`、`decision_module/strategies/baldr_multifactor_executor.py`。共享strategy contract由P00單寫，先發revision再接executor | 新 `tests/test_baldr_completion_p07_strategy_specs.py`、`tests/test_baldr_completion_p07_prefix_invariance.py` |
 | P08 | Sol單寫：`data_module/paper_daily_execution_producer.py`、`app_module/paper_portfolio_daily_runner.py`、`app_module/paper_portfolio_snapshot_repository.py`、`app_module/paper_portfolio_weekly_evidence_service.py`、`app_module/paper_trade_ledger.py`、`scripts/run_paper_execution_daily.py`；Luna單寫：新 `app_module/strategy_performance_read_service.py`、`app_module/strategy_paper_account_service.py`、`ui_qt/widgets/strategy_performance_widget.py`，及 `ui_qt/views/backtest_view.py`、`ui_qt/views/backtest/result_panel.py`。原metrics／broker simulator／ResearchRunService／ComparisonService只讀 | 新 `tests/test_baldr_completion_p08_accounts.py`、`tests/test_baldr_completion_p08_performance.py`、`tests/test_baldr_completion_p08_saved_runs.py`；上述Sol／Luna子scope各自一writer，按契約先後整合 |
@@ -391,22 +404,27 @@ P07 必須交付可執行 StrategySpec／版本卡／因果測試及 selector �
 | P10 | `ui_qt/views/workbench_view.py`；`ui_qt/views/workbench_presenter.py`；`ui_qt/views/decision_desk_view.py`；`ui_qt/views/market_regime_view.py`；新 `ui_qt/research_date_presentation.py`。strong/weak檔屬P04，不能同時改 | 新 `tests/test_baldr_completion_p10_dates.py`、`tests/test_baldr_completion_p10_home.py` |
 | P11 | `app_module/recommendation_learning_evidence_projection_service.py`；新 `app_module/research_evidence_progress_projection.py`、`ui_qt/widgets/research_evidence_progress_widget.py`。原H20 hook、activation、forward writer／label／training／adoption只讀，缺caller以中央review小接點處理 | 新 `tests/test_baldr_completion_p11_evidence.py`、`tests/test_baldr_completion_p11_roundtrip.py` |
 | P12 | `app_module/decision_desk_service.py`；`app_module/decision_desk_snapshot_support.py`；`app_module/runtime_services/scheduled_operations_service.py`；`scripts/capture_decision_desk_snapshot.py`；`scripts/scheduled/data_freshness_probe.py`。不改Windows/Codex註冊或正式status；必要clock policy先具名定版 | 新 `tests/test_baldr_completion_p12_job_status.py`、`tests/test_baldr_completion_p12_freshness.py` |
-| P13 | 全部本次補完的正式文件更新由此單一owner：本計畫、`docs/00_core/DOCUMENTATION_INDEX.md`、`docs/00_core/PROJECT_SNAPSHOT.md`、`docs/00_core/DEVELOPMENT_ROADMAP.md`、`docs/00_core/ROADMAP_6M_ENGINEERING.md`、`docs/01_architecture/system_architecture.md`、`docs/07_guides/APPLICATION_MANUAL.md`、`docs/07_guides/PORTABLE_WINDOWS.md`、`docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md`、`docs/02_features/UI_FEATURES_DOCUMENTATION.md`、`docs/02_features/BACKTEST_LAB_FEATURES.md`、`docs/02_features/USER_GUIDE.md`、`PROJECT_NAVIGATION.md`、`PROJECT_INVENTORY.md`；必要打包接點 `packaging/portable_journey_probe.py`、`packaging/portable_configured_probe.py` | 新 `tests/test_baldr_completion_end_to_end.py`、`scripts/qa_baldr_product_completion.py`。既有Workbench／validator／mypy不為通過而刪檢查；新QA正式摘要一份，raw沿單一任務output根。 |
+| P13 | 中央文件／QA唯一writer：本計畫、`docs/00_core/DOCUMENTATION_INDEX.md`、`docs/00_core/PROJECT_SNAPSHOT.md`、`docs/00_core/DEVELOPMENT_ROADMAP.md`、`docs/00_core/ROADMAP_6M_ENGINEERING.md`、`docs/01_architecture/system_architecture.md`、`docs/07_guides/APPLICATION_MANUAL.md`、`docs/07_guides/PORTABLE_WINDOWS.md`、`docs/07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md`、`docs/02_features/UI_FEATURES_DOCUMENTATION.md`、`docs/02_features/BACKTEST_LAB_FEATURES.md`、`docs/02_features/USER_GUIDE.md`、`PROJECT_NAVIGATION.md`、`PROJECT_INVENTORY.md`；`packaging/portable_journey_probe.py`、`packaging/portable_configured_probe.py`由P14中央管理，P13負責整體QA驗收 | 新 `tests/test_baldr_completion_end_to_end.py`、`scripts/qa_baldr_product_completion.py`。既有Workbench／validator／mypy不為通過而刪檢查；新QA正式摘要一份，raw沿單一任務output根。 |
+| P14 | 中央唯寫 `baldr_launcher.py`、`ui_qt/main.py`、`app_module/packaging_provenance.py`、`analysis_module/technical_analysis/technical_indicators.py`（僅共用日誌位置）、`packaging/build_windows.py`、`packaging/baldr.spec`、`packaging/windows-dependencies.lock.json`、`packaging/portable_probe.py`、`packaging/portable_journey_probe.py`、`packaging/same_version_product_probe.py`、`packaging/verify_same_version.py`；Luna已提交啟動／版本葉片，整合修正由root接收 | `tests/test_application_bootstrap.py`、`tests/test_build_identity.py`、`tests/test_baldr_launcher.py`、`tests/test_baldr_common_entry.py`、`tests/test_packaging_provenance.py`；P13整體QA共用，不開另一writer |
 
 這張表不要求為無行為變更的檔案製造diff；它限制誰可以修改。現有測試檔若需修fixture且不在表內，先由Sol登記唯一owner。任何Financial核心新計算必須用Decimal／整數bp、股數或分；指標分析／圖表的浮點邊界維持明確隔離。
 
 ### 9.4 依賴波次與可平行範圍
 
+P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯驗收但只有root一個writer。P01/P05的合併模組是明示實作調整，不保留不存在的新檔名；未釋出的後續檔案只可唯讀。中央每驗收一葉片即在dev本機commit，候選打包只取固定commit，不取其他lane的dirty內容。
+
 | 波次 | 可同時進行 | 中央關卡／可交付增量 |
 |---|---|---|
-| A 契約與最短可用流程 | P00先凍結；P05、P01、P02可各一Luna。若P02尚未釋出，P01只用舊v3建立分段／查詢 | 2382摘要與source-aware下一步優先整合；不能等待全市場或自然成熟才交第一個可見改進。 |
-| B 條件與入口 | 空出的lane執行P03、P04、P10；P07先依已齊全方法定版，複雜策略逐家族封存 | 第一批既有MA5/20、KD、MACD、量能及完整母體可交。尚缺的B/C項保持具名工程待辦，不重命名為完成。 |
+| A 契約與最短可用流程 | P00先凍結；P14與P05首波整合。Luna分開啟動契約、H20純投影、P01有界run；P02尚未釋出 | M1先交共同入口／版本與2382可讀摘要的candidate及同版比較，安排小規模Native真人試用；P01未驗收時不列全市場完成 |
+| B 條件與入口 | P01 root接線及P02/P03/P04/P10；P07先依已齊全方法定版 | M2選股第一版：完整母體加第一批MA5/20、KD、MACD、量能，保持公式與版本。Native回饋納入P04，B/C缺件具名保留 |
 | C 研究到持倉與追蹤 | P06與P09不同檔；P11的純projection可平行。P08金融路由由Sol順序審核，Luna先做read model／UI | 原研究收藏跨程序閉環、情境保存、每策略獨立ledger。P08a多帳戶先於P08b績效卡，不並改producer。 |
-| D 全產品與維運 | P12原job診斷可早於C獨立做；P13每次整合後收旅程證據，最後做同版Native／真人／candidate exe | 四用途全鏈驗收；自然Task與樣本成熟保留獨立狀態，沒有證據就不宣稱關閉。 |
+| D 全產品與維運 | P12診斷可提前；P13每次整合收旅程，P14每個候選版本做固定commit同版比較 | 四用途全鏈／每策略保存返回。Native真人在M1先試、M2再試，最後回歸；自然Task與成熟樣本保持獨立未驗狀態 |
 
 沒有給固定日曆工期：P03資料取得與P07新規則需要先完成來源／規格實驗才能估工。Sol在A完成後，以每包實際檔案diff與測試成本給短週期排程；不得用未知工期把已可做的P05、P01、P02卡住。
 
-## 10. 九個未提交檔案的逐檔接續方案
+## 10. 九個保留檔案的逐檔接續方案（已於 checkpoint 提交）
+
+九檔已完整提交於 `bf9207fb`，下表是功能接續判定及原調查hash，不再表示未提交狀態。其後修改由中央按實際ownership與驗收逐包提交，不能reset回更早HEAD覆蓋成果。
 
 已逐檔讀新檔、三份tests及四檔diff，沒有改寫。使用者提供的19原回歸、5新案例與局部mypy為**交接證據**；本輪不重新宣稱全套通過。
 
@@ -536,7 +554,56 @@ P07 必須交付可執行 StrategySpec／版本卡／因果測試及 selector �
 
 交付核對：計畫與索引共67個本機連結均存在；UX01–24、F01–F23、P00–P13齊全，索引無重複登記。原計畫、九個保留檔案、現有exe共11個SHA256均與開工基線相同；Git仍僅dev/main、一worktree、原HEAD不變。新增計畫、索引登記與ignored交接紀錄以外，沒有本輪修改；沒有stage／commit／push。
 
-後續接手先讀本文件§2、§9、§10及原計畫，重核當時git與檔案hash；由Sol釋出P00及首波葉片。使用者審閱這份計畫前，到此停止，不把規劃默認成實作授權。
+上一輪於調查交付停止；後續接手先讀本文件§2、§9、§10、§14及原計畫，重核當時git與檔案hash。使用者後續已明確授權開發，依§14啟動首波；歷史驗證與當前實作分開記錄。
+
+## 14. 新增要求十：exe／Python 同版、同設定與同結果
+
+使用者要求同一發布版本、固定依賴、相同隔離設定與資料，在 Python 與 exe 中提供相同四用途。直接 `ui_qt/main.py` 必須進入共同 launcher；不能以相同日期版本號或開發版 Python 驗證冒稱現有 exe 已修復。
+
+### 14.1 開工保護與新發現
+
+- 原九個選股檔案、接續計畫與索引已逐檔提交為本機 checkpoint `bf9207fb72cd3acebac17f4b7816994efa601226`；五個新增定向案例通過，commit 後工作樹乾淨。`main` 保持 `305635642ecdf5f1331a24a0c81566d07f36cb0d`。僅 dev/main、一 worktree。
+- 目前 launcher 解析 portable JSON，但直接 Qt 入口不解析；launcher 以 monkeypatch 改寫 `project_root`、ML registry 與視窗類別。改為共用設定解析、啟動前初始化及明確參數注入。
+- 程式資源位置與可寫 runtime／研究紀錄位置分開；Python／exe 同時使用解析出的外部狀態位置。研究庫不得落入正式行情根目錄；舊來源記錄以可選原保存來源處理，不自動遷移或偽裝最新。
+- 現有交付 `dist/baldr/baldr.exe` SHA256 為 `ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e`，以 `output/packaging/active_delivery.json` 與實際檔案核對；修正 `PORTABLE_WINDOWS.md` 舊 SHA 與矛盾 registry 描述。現有整包保留，新 candidate 使用不同目錄。
+
+### 14.2 P14 與首波排他 ownership
+
+| owner | 排他檔案範圍 | 交付與中央依賴 |
+|---|---|---|
+| Luna Max／啟動契約 | 新增 `app_module/application_bootstrap.py`、`app_module/build_identity.py`、`tests/test_application_bootstrap.py`、`tests/test_build_identity.py` | 無 Qt 的共同設定解析與版本身分。環境變數優先於 JSON，兩種入口同外部預設；開發 dirty 與發布 metadata 可辨識。中央整合入口與 UI。 |
+| Luna Max／P05 白話投影 | 新增 `app_module/stock_research_product_summary.py`、`tests/test_stock_research_product_summary.py` | 使用現有 report／H20 型別輸出結論、理由、風險、持倉關係與下一步。缺件與自然結果等待分開；不生成 Advice、權重或金融計算。中央負責畫面。 |
+| Luna Max／P01 完整母體 | 新增 `app_module/daily_market_universe_run.py`、`tests/test_daily_market_universe_run.py` | 完整母體分段、來源身分、重複／排除／缺件計數、可取消保存與全域查詢；child／parent 原資源上限保持。中央接 writer、selector 與 UI，不以底層測試宣稱產品全閉環。 |
+| 中央 root | `baldr_launcher.py`、`ui_qt/main.py`、`ui_qt/views/stock_research_report_view.py`、`app_module/packaging_provenance.py`、`analysis_module/technical_analysis/technical_indicators.py`（僅日誌）、`packaging/build_windows.py`、`packaging/baldr.spec`、`packaging/windows-dependencies.lock.json`、`packaging/portable_probe.py`、`packaging/portable_journey_probe.py`、`packaging/same_version_product_probe.py`、`packaging/verify_same_version.py`、`tests/test_baldr_launcher.py`、`tests/test_baldr_common_entry.py`、`tests/test_packaging_provenance.py`、`tests/test_ui_qt_stock_research_product_summary.py`，及本計畫、Manual、portable guide、Snapshot／架構／索引與本輪 QA 摘要 | 共用入口與明確注入、版本可見、固定 commit 建置、依賴鎖核對、四用途整合與文件。葉片產物經審核後才接線。 |
+
+所有 agent 在同一 dev checkout 操作，不 stage／commit、不新增分支／worktree、不碰其他 owner 檔案。首波完成後依第 9 節釋出後續工作包；P02–P13 未完成項維持 open，不把首波視為整份計畫完成。
+
+### 14.3 同版建置與驗收
+
+1. Python 開發版從目前 checkout 讀取 commit 與 dirty 身分。發布 candidate 從已驗證固定 commit 的唯讀來源快照建置，保留 source commit、版本、依賴鎖 SHA 與資源 SHA；來源快照不新增 worktree，不混入當前未提交變更。
+2. exe 的內嵌發布身分與同 commit 的 Python 來源快照相同。畫面明示版本、commit、開發／發布、未提交狀態；沒有 Git 或 metadata 時顯示身分未核實，不能猜版本。
+3. 使用同一隔離 JSON、資料、研究保存與固定依賴，執行四用途、ML 讀回、保存／返回／新 PID、各類日期、錯源／缺件、取消與晚到結果。比對可觀察結果與根路徑，另核資源、子程序 CLI dispatch、工作目錄差異。差異若為平台必要，介面／指南明示。
+4. UI 修改後依序執行 workbench pytest、update-tab validator、repo 指定 mypy，再 py_compile；定向新測試補入口與狀態注入。任何未執行的 Native／真人／打包比較保持未驗證。
+5. `active_delivery.json` 只記實際現有交付；新 candidate 使用自己的 receipt。未通過比較或未替換現有包時，不能宣稱 `dist/baldr` 已包含本輪修正。
+
+### 14.4 回滾清單與驗證邊界
+
+| 類型／範圍 | 摘要 | 回滾方式 | 回滾風險 |
+|---|---|---|---|
+| 新增葉片模組與定向測試 | 共同契約、摘要與全母體 run | 先解除中央 import，再逐檔回復本輪新增內容；不移除保存資料 | 需同步解除依賴與畫面接線。 |
+| 入口／UI／build 修改 | 明確 settings 注入與同版 provenance | 依 checkpoint 比較後僅還原本輪 diff；保留其他工作者新變更 | 不可全樹 reset；舊入口差異會恢復。 |
+| 文件 | 當前行為與驗收狀態 | 逐段回復本輪增補，保留上一輪原計畫 | 不能將已實作行為留成錯誤操作說明。 |
+| ignored 隔離輸出／candidate | QA、固定 commit 快照、build receipt | 保留，另以 receipt 辨識；不清理現有交付 | 無正式資料回滾；避免誤發布 candidate。 |
+
+回滾前核對 Git ownership 與當前差異；回滾後重新跑受影響旅程及必跑 UI 檢查。正式資料、模型、Task 與私人帳本沒有本輪修改，不能用工程 receipt 代替自然績效或正式排程驗證。
+
+### 14.5 首波工程驗收進度（candidate 前）
+
+- 啟動／版本葉片43案例、H20純投影12案例通過後分別本機提交，沒有累積待提交葉片。中央共用入口、建置provenance、H20畫面與可讀性定向合跑34案例通過。
+- UI強制順序完成：Workbench 85 passed；update-tab 25 passed／0 failed／4 skipped；mypy 857檔0 error；本輪Python檔py_compile及精度／未來函數guard通過。兩則既有untyped notes與測試cache權限warning仍保留。
+- Python隔離四用途、同一shadow artifact讀回與新PID、spawn、九工作區、H20摘要／錯cohort／清除晚到預檢通過。預檢修正了Python日誌仍落cwd的實際差異，以及probe欠缺main guard造成Windows spawn重進的問題；沒有刪失敗raw log。
+- P01的257納入／300排除／2重複與取消續跑底層測試已交回，reader的Windows drive-relative路徑漏洞仍在覆核修正中；未接全母體UI。既有parent21案例在TEMP與basetemp對齊的短隔離目錄全通過；先前harness路徑拒絕／長路徑失敗保留，不放寬原guard。
+- candidate尚未建置／同版驗收；中央先提交已驗整合，再從固定commit建置。正式QA摘要將記錄實際SHA、兩形態比較結果與Native／正式Task等未驗限制，不能把上述Python預檢稱為exe通過。
 
 
 

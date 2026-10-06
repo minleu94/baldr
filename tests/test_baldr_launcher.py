@@ -8,7 +8,7 @@ from baldr_launcher import configure_portable
 
 
 def isolate(monkeypatch, tmp_path):
-    for key in ('BALDR_CONFIG','DATA_ROOT','OUTPUT_ROOT','MPLCONFIGDIR','PERSONAL_MODEL_POLICY_PATH'):
+    for key in ('BALDR_CONFIG','DATA_ROOT','OUTPUT_ROOT','RESEARCH_STATE_ROOT','MPLCONFIGDIR','PERSONAL_MODEL_POLICY_PATH'):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv('LOCALAPPDATA', str(tmp_path/'local'))
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
@@ -54,10 +54,11 @@ def test_frozen_data_cannot_write_into_package(monkeypatch,tmp_path):
     monkeypatch.setenv('DATA_ROOT',str(tmp_path/'package'/'market'))
     with pytest.raises(ValueError,match='程式包'):
         configure_portable()
-def test_frozen_indicator_log_stays_outside_bundle(tmp_path, monkeypatch):
+@pytest.mark.parametrize('frozen', [False, True])
+def test_indicator_log_stays_in_common_output(tmp_path, monkeypatch, frozen):
     from analysis_module.technical_analysis import technical_indicators as indicators
     import logging
-    monkeypatch.setattr(indicators.sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, 'frozen', frozen, raising=False)
     monkeypatch.setenv('OUTPUT_ROOT', str(tmp_path/'output'))
     monkeypatch.chdir(tmp_path)
     calculator = indicators.TechnicalIndicatorCalculator()
@@ -78,8 +79,13 @@ def test_gui_ml_registry_is_separate_from_nested_market_output(tmp_path, monkeyp
     monkeypatch.setattr(sys, 'argv', ['baldr.exe'])
     registry_type = qt_main.CurrentRestatedMLRunRegistry
     captured = []
-    def inspect_registry():
-        captured.append(qt_main.CurrentRestatedMLRunRegistry())
+    def inspect_registry(*, application_settings, build_identity, startup_controller):
+        captured.append(qt_main.CurrentRestatedMLRunRegistry(
+            repository_root=application_settings.ml_registry_repository_root,
+        ))
+        assert application_settings.runtime_state_root == tmp_path/'market/output/application_state'
+        assert build_identity is not None
+        assert startup_controller is not None
         return 0
     monkeypatch.setattr(qt_main, 'main', inspect_registry)
     monkeypatch.setattr(qt_main, 'install_crash_diagnostics', lambda: None)
@@ -88,3 +94,4 @@ def test_gui_ml_registry_is_separate_from_nested_market_output(tmp_path, monkeyp
     assert baldr_launcher.main() == 0
     assert captured[0].repository_root == tmp_path/'local/baldr/research_state'
     assert not captured[0].research_root.is_relative_to(tmp_path/'market')
+    assert qt_main.CurrentRestatedMLRunRegistry is registry_type

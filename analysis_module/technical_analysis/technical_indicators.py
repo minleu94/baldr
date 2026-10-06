@@ -5,7 +5,6 @@ import logging
 import traceback
 from pathlib import Path
 import os
-import sys
 from collections.abc import Callable, Mapping
 
 from analysis_module.technical_analysis.technical_column_support import (
@@ -274,13 +273,11 @@ class TechnicalIndicatorCalculator:
         logger.addHandler(console_handler)
 
         try:
-            log_path = Path('technical_calculation.log')
-            if getattr(sys, 'frozen', False):
-                output_root = os.environ.get('OUTPUT_ROOT')
-                if not output_root:
-                    output_root = str(Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'baldr' / 'output')
-                log_path = Path(output_root) / 'application_state' / 'logs' / 'technical_calculation.log'
-                log_path.parent.mkdir(parents=True, exist_ok=True)
+            output_root = os.environ.get('OUTPUT_ROOT')
+            if not output_root:
+                output_root = str(Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'baldr' / 'output')
+            log_path = Path(output_root) / 'application_state' / 'logs' / 'technical_calculation.log'
+            log_path.parent.mkdir(parents=True, exist_ok=True)
             file_handler = logging.FileHandler(
                 log_path,
                 encoding='utf-8',

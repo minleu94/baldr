@@ -8,6 +8,11 @@ packages = ['ui_qt', 'app_module', 'data_module', 'analysis_module', 'backtest_m
             'decision_module', 'portfolio_module', 'runtime', 'ml_module']
 hidden = []
 datas = []
+build_metadata = root / 'application_build.json'
+dependency_lock = root / 'packaging' / 'windows-dependencies.lock.json'
+if not build_metadata.is_file() or not dependency_lock.is_file():
+    raise ValueError('請透過 build_windows.py --commit 建置，需固定來源與依賴 metadata')
+datas += [(str(build_metadata), '.'), (str(dependency_lock), 'packaging')]
 for package in packages:
     for path in (root / package).rglob('*.py'):
         if '__pycache__' in path.parts or 'tests' in path.parts:

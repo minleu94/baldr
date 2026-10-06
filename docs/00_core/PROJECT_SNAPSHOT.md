@@ -1,6 +1,8 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
-> 整理日期：2026-10-06。程式基線：dev `07da90c164d762966302008c0be8efbb0d9b4cfe`；main `a8c81bf534952cdf35d35a57d9e367c0fa10c817`。本輪只有文檔整理，不新增產品完成資格。
+> 現況更新：2026-10-06。產品補完開工checkpoint `bf9207fb72cd3acebac17f4b7816994efa601226`；main `305635642ecdf5f1331a24a0c81566d07f36cb0d`。原文檔整理基線 dev `07da90c1`／main `a8c81bf5` 屬歷史。僅dev/main、一worktree；當前增量由dev本機commit與具名收據追溯，不將施工狀態寫成完成資格。
+
+補完首波已由使用者授權啟動Luna Max：共同設定／版本葉片 `92ed944e`（43定向案例），H20白話投影 `cefef608`（12定向案例）已提交；中央入口／UI／同版candidate與P01全母體run正在整合驗收。完整選股器、每策略績效、Native真人及正式Task自然run仍未因這些葉片取得完成資格。接續範圍與M1/M2里程碑見[單一補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。現有exe保留原交付，沒有自動替換。
 
 ## 目前可用範圍
 

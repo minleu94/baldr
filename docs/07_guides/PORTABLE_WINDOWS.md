@@ -4,7 +4,7 @@
 
 ## 首次啟動與既有使用者
 
-本機交付位置：`C:/Projects/PythonProjects/technical_analysis/dist/baldr/baldr.exe`。exe 大小 52,272,037 bytes；SHA256：`e3fa8075574a0fd62814def822ea82d948813ffbfe752fa5246a7532184fc401`。建置依賴 PyInstaller 6.16.0／Python 3.11.9／Qt 6.10；支援 Windows 10 1809 以上 x64／Windows 11，依 [Qt 平台文件](https://doc.qt.io/qt-6.10/supported-platforms.html)。依賴與整包校驗見交付目錄 `BUILD_INFO.json`／`SHA256SUMS.txt`。
+本機現有交付位置：`C:/Projects/PythonProjects/technical_analysis/dist/baldr/baldr.exe`。exe 大小 **52,301,884 bytes**；SHA256：`ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e`，與實際檔案及 `output/packaging/active_delivery.json` 相符。這是原日期／啟動畫面交付，尚未包含補完首波。建置依賴 PyInstaller 6.16.0／Python 3.11.9／Qt 6.10；支援 Windows 10 1809 以上 x64／Windows 11，依 [Qt 平台文件](https://doc.qt.io/qt-6.10/supported-platforms.html)。舊驗收不延伸為本輪candidate驗收。
 
 已驗隔離 offscreen 啟動、空資料設定提示、九工作區、Unicode／空格工作目錄、synthetic 模型安全載入與新程序重開、multiprocessing、保存重開、Worker 取消與重新執行，以及 CLI／scheduler 未配置 preflight。Native 真人操作、真實私人模型、正式 Task 自然 run、其他 Windows 機器尚未由本包驗證；不以 fixture 改寫原資格。
 
@@ -28,15 +28,21 @@
 5. 已接受個人模型填原 `PERSONAL_MODEL_POLICY_PATH`，指向原可信 policy；指定路徑不自動訓練／啟用。原 manifest、same-bytes、identity、source、cutoff 核驗仍適用。
 6. 在數據更新確認行情日期與缺件；看盤勢／持倉健康／選股研究／個股研究仍按 [完整手冊](APPLICATION_MANUAL.md) 操作。
 
-Runtime 狀態與預設研究 registry 放在 `OUTPUT_ROOT/application_state`，保留外部可寫狀態。這是新可攜使用者的空狀態；原保存研究必須從原已選定來源重開，不能把未知補成綠燈。原模型 artifact、真帳與 FA_Data 均不在程式包。
+Runtime 狀態位於 `OUTPUT_ROOT/application_state`；ML研究registry的repository root預設為 `%LOCALAPPDATA%/baldr/research_state`，依既有研究庫契約再解析其 `output/ml_research_storage.json`／`output/ml_research`。兩者是不同位置，研究根與市場根隔離。新使用者保持空研究狀態；原模型artifact、真帳與FA_Data均不在程式包。
+
+新版 Python 與 candidate 的技術分析日誌均寫入 `OUTPUT_ROOT/application_state/logs/technical_calculation.log`，不依工作目錄。資源位置仍有必要差異：Python 固定來源快照的 `ui_qt/`，exe 的 `_internal/ui_qt/`；主視窗版本提示列與 `--launch-info` 明示實體路徑。資料、runtime與研究保存根不因此改變。
+
+新版 Python 與 candidate 的技術分析日誌均寫入 `OUTPUT_ROOT/application_state/logs/technical_calculation.log`，不依工作目錄。資源位置仍有必要差異：Python 固定來源快照的 `ui_qt/`，exe 的 `_internal/ui_qt/`；主視窗版本提示列與 `--launch-info` 明示實體路徑。資料、runtime與研究保存根不因此改變。
 
 ## 子程序與排程
 
 ### exe 與 source 入口的資料優先序
 
-Source `ui_qt/main.py` 依 TWStockConfig：環境 DATA_ROOT／OUTPUT_ROOT 優先，未設定時分別為 `D:/Min/Python/Project/FA_Data`／`D:/Min/Python/Project/FA_Data/output`。exe 先讀環境，再讀 `BALDR_CONFIG` 或 LOCALAPPDATA 下的 `baldr/config.json`，最後才用自己的 LOCALAPPDATA 空 roots。兩個入口都不自動載入 `.env`；未配置的新使用者兩入口 defaults **不同**，不可把空資料提示當成原資料消失。
+補完新版Python入口為 `python baldr_launcher.py`；`python ui_qt/main.py` 與 `python -m ui_qt.main` 在服務／Qt匯入前轉入同一launcher。設定統一為同名環境變數 → `BALDR_CONFIG` 或 `%LOCALAPPDATA%/baldr/config.json` → LOCALAPPDATA空行情／輸出根；不自動讀 `.env`。解析完成才交由TWStockConfig與原服務初始化。這是新版原碼行為；上述原交付exe仍維持其已交付功能，新candidate另行驗收，不能以dirty Python冒稱它已修復。
 
-本機既有使用者已核官方 Task cmd／TWStockConfig 並建立外部 JSON，exe 和 source 的行情／輸出 roots 對齊上述 FA_Data 及其 output。若改環境變數，會覆蓋 JSON；操作前仍核資料狀態顯示的實際 roots。Runtime 可寫衍生狀態在 OUTPUT_ROOT/application_state，ML run registry 在 LOCALAPPDATA/baldr/research_state，與 source 的舊 project_root 衍生狀態有別，原保存來源需明示選定。
+既有使用者沿已建立的JSON與原資料根重開。新版主視窗底部顯示版本與開發／發布狀態；提示中列完整來源commit、設定、行情、輸出、runtime、研究與資源路徑。`--launch-info`可讀回同一解析值；日期相同但commit不同即不同建置。開發版含未提交變更會明示；無Git／無合法metadata顯示版本未核實。
+
+若需讀原已保存ML registry，維護者可在JSON／環境明示 `RESEARCH_STATE_ROOT` 為原registry的repository root（其中有原 `output/ml_research_storage.json`／`output/ml_research`），兩種入口使用同一值。此值須絕對路徑、與DATA_ROOT隔離且位於程式包外；不自動搬移、啟用或訓練模型。日常選來源仍使用既有來源選單，不要求輸入hash。獨立執行舊排程腳本仍沿其原TWStockConfig契約；正式Task不因GUI入口更新而換入口。
 
 H20 原 hook 使用 DATA_ROOT 下 `personal/recommendation_h20/activation.json`（或原 PERSONAL_H20_ACTIVATION_CONFIG 環境 override）。對齊 DATA_ROOT 會讀回原已選 activation，沒有重新 enable／fit；它與另一個 PERSONAL_MODEL_POLICY_PATH policy namespace 不相同。不要將某個 activation JSON 填成另一個 policy，也不要因換 exe 新建私人 store。
 
@@ -51,7 +57,11 @@ H20 原 hook 使用 DATA_ROOT 下 `personal/recommendation_h20/activation.json`�
 - 沒有 console 的日誌在 `%LOCALAPPDATA%/baldr/stdout.log`／`stderr.log`，主 App crash diagnostics 沿原資料根機制。資料根／來源拒絕時核對提示，不改 hash／no-follow／ACL。
 - 合法 `passed_with_warnings` 表示更新完成但有警告；最後成功時間、來源資料日期、新鮮度與警告分開判讀。failed／unknown／invalid／stale 不假成功。
 - 任意深層 OUTPUT_ROOT 的既有 Windows 長路徑限制仍適用；本輪測 Unicode／空格，未保證所有大於 260 字元的保存路徑。
-- 維護者先裝原 runtime 與 `packaging/requirements-build.txt`，再執行 `.\.venv\Scripts\python.exe packaging/build_windows.py`。建置器限定 venv／系統 PATH 與空 userbase，避免外部 Poppler ICU 遮蔽 Windows 系統 ICU；spec 統一已安裝 Qt wheel 附帶的 C++ runtime。只收正式程式、必要資源和依賴，不收 QA、experiments、FA_Data、私人模型或 `.env`。
+- 維護者在固定依賴環境執行 `.\.venv\Scripts\python.exe packaging/build_windows.py --commit <完整40字元已驗證commit>`。以 `packaging/windows-dependencies.lock.json` 精確核對Python、CPU與所有distribution；不符即拒絕，不自行安裝／升級。Git archive輸出固定commit快照，再從該快照spec建置；不混dirty工作樹，也不新增worktree。輸出到獨立 `dist/candidate_<commit>_<job>/baldr`，保存版本、commit、依賴鎖／資源SHA與候選receipt，狀態先為built_not_validated。現有 `dist/baldr` 與active_delivery不被自動替換。
+- 同版比較必須使用candidate receipt的source_directory、同一依賴鎖、同一隔離JSON與測試資料，分別跑Python與exe；四用途、模型讀回、保存／返回／新PID、日期、錯誤與取消、資源和子程序都需核對。通過工程比較仍不等於Native真人、真私人模型或正式Task自然run通過。
+- 執行 `.\.venv\Scripts\python.exe packaging/verify_same_version.py --receipt <candidate資料夾/BUILD_INFO.json>`，先核對exe／archive SHA、來源逐檔bytes與精確依賴，再用該固定來源的probe跑兩種形態。新收據與兩組raw log留在 `output/qa/baldr_same_version_<commit>_<job>`；失敗收據保留，不能直接覆寫成通過。推薦synthetic呈現和canonical讀回限制分列，H20呈現fixture不替代原capture資格。
+- 執行 `.\.venv\Scripts\python.exe packaging/verify_same_version.py --receipt <candidate資料夾/BUILD_INFO.json>`，先核對exe／archive SHA、來源逐檔bytes與精確依賴，再用該固定來源的probe跑兩種形態。新收據與兩組raw log留在 `output/qa/baldr_same_version_<commit>_<job>`；失敗收據保留，不能直接覆寫成通過。推薦synthetic呈現和canonical讀回限制分列，H20呈現fixture不替代原capture資格。
+- 建置器限定venv／系統PATH與空userbase，避免外部Poppler ICU遮蔽Windows系統ICU；spec統一已安裝Qt wheel附帶C++ runtime。只收正式程式、必要資源與依賴，不收QA、experiments、FA_Data、私人模型或 `.env`。
 
 替換版本前保留舊可攜資料夾；回滾時改用舊 exe＋整個舊資料夾。資料與設定不刪除，不清 cache、不重建 DB；程式回滾不代表資料 schema 遷移回滾。
 

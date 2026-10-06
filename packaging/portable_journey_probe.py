@@ -231,13 +231,14 @@ def _wait_for(app: QApplication, predicate, timeout_seconds: float = 15) -> None
     _require(bool(predicate()), "isolated workspace fixture timed out")
 
 
-def _run() -> dict[str, object]:
-    if not getattr(sys, "frozen", False) or not hasattr(sys, "_MEIPASS"):
+def _run(*, allow_python: bool = False) -> dict[str, object]:
+    is_frozen = bool(getattr(sys, "frozen", False))
+    if not allow_python and (not is_frozen or not hasattr(sys, "_MEIPASS")):
         raise RuntimeError("run this probe through the frozen baldr.exe")
     if len(sys.argv) != 2:
         raise RuntimeError("usage: baldr.exe -c <runner> packaging/portable_journey_probe.py <case-root>")
 
-    bundle_root = Path(sys._MEIPASS).resolve()
+    bundle_root = (Path(sys._MEIPASS) if is_frozen else Path(__file__).parents[1]).resolve()
     case_argument = Path(sys.argv[1]).expanduser()
     if not case_argument.is_absolute():
         raise RuntimeError("probe case root must be absolute")
@@ -455,8 +456,11 @@ def _run() -> dict[str, object]:
         "print(json.dumps({'revision':value[1],"
         "'stock_code':value[0]['items'][0]['stock_code']}))"
     )
+    command = [sys.executable]
+    if not is_frozen:
+        command.append(str(bundle_root / "baldr_launcher.py"))
     child = subprocess.run(
-        [sys.executable, "-c", readback_code, str(watchlist_path)],
+        [*command, "-c", readback_code, str(watchlist_path)],
         cwd=case_root,
         env=os.environ.copy(),
         capture_output=True,
@@ -517,7 +521,7 @@ def _run() -> dict[str, object]:
 
     report: dict[str, object] = {
         "status": "passed",
-        "frozen": True,
+        "frozen": is_frozen,
         "bundle_root": str(bundle_root),
         "case_root": str(case_root),
         "home_purposes": route_calls,

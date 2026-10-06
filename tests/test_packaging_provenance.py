@@ -1,0 +1,81 @@
+"""固定 commit archive 與依賴不符的實際阻擋。"""
+import hashlib
+import json
+from pathlib import Path
+import platform
+import subprocess
+import zipfile
+
+import pytest
+
+from app_module import packaging_provenance as provenance
+
+
+def test_locked_environment_is_exact_and_extra_dependency_fails(tmp_path, monkeypatch):
+    lock = tmp_path / "lock.json"
+    lock.write_text(json.dumps({"schema": provenance.LOCK_SCHEMA,
+                               "python": platform.python_version(), "machine": platform.machine(),
+                               "dependencies": {"example": "1.2.3"}}), encoding="utf-8")
+    monkeypatch.setattr(provenance, "installed_dependency_snapshot", lambda: {"example": "1.2.3"})
+    assert provenance.verify_dependency_lock(lock) == hashlib.sha256(lock.read_bytes()).hexdigest()
+    monkeypatch.setattr(provenance, "installed_dependency_snapshot",
+                        lambda: {"example": "1.2.3", "unexpected": "1"})
+    with pytest.raises(ValueError, match="unexpected"):
+        provenance.verify_dependency_lock(lock)
+
+
+def test_branch_and_short_commit_are_not_release_sources(tmp_path):
+    for value in ("dev", "main", "bf9207fb", "A" * 40, "0" * 39):
+        with pytest.raises(ValueError, match="完整"):
+            provenance.resolve_fixed_commit(tmp_path, value)
+
+
+@pytest.mark.parametrize("name", ["../outside.py", "C:/outside.py", "a/../../outside.py"])
+def test_archive_rejects_path_escape_before_creating_destination(tmp_path, name):
+    archive = tmp_path / "source.zip"
+    with zipfile.ZipFile(archive, "w") as stream:
+        stream.writestr(name, "unsafe")
+    with pytest.raises(ValueError, match="不安全"):
+        provenance.extract_source_archive(archive, tmp_path / "source")
+    assert not (tmp_path / "source").exists()
+
+
+def test_export_reads_exact_commit_and_preserves_other_builds(tmp_path):
+    repository = Path(__file__).resolve().parents[1]
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repository, text=True).strip()
+    expected = subprocess.check_output(["git", "show", f"{commit}:ui_qt/main.py"], cwd=repository)
+    source = provenance.export_fixed_source(repository, commit, tmp_path / "job")
+    # Git archive 依此 repo 的 Windows checkout 屬性轉為 CRLF。
+    assert (source / "ui_qt/main.py").read_bytes().replace(b"\r\n", b"\n") == expected
+    assert not (source / ".git").exists()
+    with pytest.raises(ValueError, match="已存在"):
+        provenance.export_fixed_source(repository, commit, tmp_path / "job")
+    assert (source / "ui_qt/main.py").read_bytes().replace(b"\r\n", b"\n") == expected
+
+
+def test_metadata_binds_source_dependency_and_resources(tmp_path):
+    resource = tmp_path / "ui_qt" / "app_icon.png"
+    resource.parent.mkdir()
+    resource.write_bytes(b"known-fixture")
+    value = provenance.create_build_metadata(tmp_path, "a" * 40, "b" * 64)
+    assert value["version"] == "2026.10.06+aaaaaaaaaaaa"
+    assert value["source_commit"] == "a" * 40
+    assert value["dependency_lock_sha256"] == "b" * 64
+    assert value["dirty"] is False
+    assert value["resource_sha256"] == {"ui_qt/app_icon.png": hashlib.sha256(b"known-fixture").hexdigest()}
+
+
+def test_modified_or_extra_python_source_cannot_pass_fixed_archive_verification(tmp_path):
+    archive = tmp_path / "source.zip"
+    with zipfile.ZipFile(archive, "w") as stream:
+        stream.writestr("main.py", "original\n")
+    source = tmp_path / "source"
+    provenance.extract_source_archive(archive, source)
+    provenance.verify_exported_source(archive, source)
+    (source / "main.py").write_bytes(b"changed\n")
+    with pytest.raises(ValueError, match="已變更"):
+        provenance.verify_exported_source(archive, source)
+    (source / "main.py").write_bytes(b"original\n")
+    (source / "extra.py").write_bytes(b"extra\n")
+    with pytest.raises(ValueError, match="程式"):
+        provenance.verify_exported_source(archive, source)

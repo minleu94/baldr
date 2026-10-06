@@ -10,6 +10,13 @@ from pathlib import Path
 # 添加項目根目錄到系統路徑
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+# 直接 script 與 -m 入口在任何服務／Qt 匯入前轉入共同 launcher。
+if __name__ == "__main__":
+    from baldr_launcher import main as launch_application
+    raise SystemExit(launch_application())
+
+from app_module.application_bootstrap import ApplicationSettings, resolve_application_settings
+from app_module.build_identity import BuildIdentity, detect_build_identity
 from data_module.phase3c_backfill_runner import configured_candidate_db_path
 
 from ui_qt.crash_diagnostics import (
@@ -565,6 +572,8 @@ class MainWindow(QMainWindow):
         daily_market_snapshot_root: str | Path | None = None,
         daily_market_snapshot_cohort_id: str | None = None,
         original_stock_ranking_root: str | Path | None = None,
+        application_settings: ApplicationSettings | None = None,
+        build_identity: BuildIdentity | None = None,
     ):
         if (daily_market_snapshot_root is None) != (
             daily_market_snapshot_cohort_id is None
@@ -584,7 +593,21 @@ class MainWindow(QMainWindow):
                 "original_stock_ranking_root 必須搭配明示每日研究快照 root／cohort"
             )
         super().__init__()
-        self.setWindowTitle("baldr")
+        self.application_settings = application_settings or resolve_application_settings()
+        self.build_identity = build_identity or detect_build_identity(repository_root=project_root)
+        self.setWindowTitle(f"baldr · {self.build_identity.display_text}")
+        self.build_identity_label = QLabel(self.build_identity.display_text)
+        self.build_identity_label.setObjectName("baldrBuildIdentity")
+        self.build_identity_label.setToolTip(
+            f"來源 commit：{self.build_identity.source_commit}\n"
+            f"設定：{self.application_settings.config_path}\n"
+            f"行情：{self.application_settings.environment['DATA_ROOT']}\n"
+            f"輸出：{self.application_settings.environment['OUTPUT_ROOT']}\n"
+            f"執行狀態：{self.application_settings.runtime_state_root}\n"
+            f"研究紀錄：{self.application_settings.ml_registry_repository_root}\n"
+            f"程式資源：{self.application_settings.resource_root}"
+        )
+        self.statusBar().addPermanentWidget(self.build_identity_label)
         primary_screen = QApplication.primaryScreen()
         available_geometry = (
             primary_screen.availableGeometry() if primary_screen is not None else None
@@ -681,7 +704,9 @@ class MainWindow(QMainWindow):
             # 個股研究報告只組合既有 read contract；MainWindow 注入已驗證的
             # current-restated ML registry，不重算推薦，也不把 owner 邏輯搬入 UI。
             _startup_step("正在連接研究資料")
-            self.stock_research_ml_registry = CurrentRestatedMLRunRegistry()
+            self.stock_research_ml_registry = CurrentRestatedMLRunRegistry(
+                repository_root=self.application_settings.ml_registry_repository_root,
+            )
             self.daily_market_snapshot_root = (
                 Path(daily_market_snapshot_root).expanduser().resolve()
                 if daily_market_snapshot_root is not None
@@ -1257,7 +1282,7 @@ class MainWindow(QMainWindow):
             try:
                 print("[MainWindow] 初始化 Runtime Observatory...")
                 runtime_composition = build_runtime_ui_composition(
-                    project_root=project_root,
+                    project_root=self.application_settings.runtime_state_root,
                     parent=self,
                     scheduled_output_root=Path(self.config.output_root) / "scheduled",
                     dependencies={
@@ -2197,9 +2222,19 @@ def _cleanup_startup(app, controller) -> None:
     _drain_qt_deferred_deletes(app, (window,))
 
 
-def main():
-    """主函數"""
+def main(*, application_settings: ApplicationSettings | None = None,
+         build_identity: BuildIdentity | None = None, startup_controller=None):
+    """由共同 launcher 注入設定、來源身分與啟動進度。"""
     import traceback
+    global _startup_controller, _crash_diagnostics_log_path
+    if application_settings is None:
+        from baldr_launcher import initialize_application
+        application_settings = initialize_application()
+    if build_identity is None:
+        build_identity = detect_build_identity(repository_root=application_settings.resource_root)
+    previous_startup = _startup_controller
+    _startup_controller = startup_controller
+    _crash_diagnostics_log_path = install_crash_diagnostics()
 
     _configure_console_streams()
     print("[Main] 開始啟動應用程序...")
@@ -2214,7 +2249,7 @@ def main():
         print("[Main] QApplication 創建成功")
 
         # 設置應用程序 icon（必須在創建窗口之前設置）
-        icon_path = Path(__file__).parent / "app_icon.png"
+        icon_path = application_settings.resource_root / "ui_qt" / "app_icon.png"
         if icon_path.exists():
             icon_path_abs = icon_path.resolve()  # 使用絕對路徑
             app.setWindowIcon(QIcon(str(icon_path_abs)))
@@ -2229,7 +2264,20 @@ def main():
         # 創建主窗口
         try:
             print("[Main] 正在創建主窗口...")
-            window = MainWindow()
+            window = MainWindow(application_settings=application_settings, build_identity=build_identity)
+            if not application_settings.configured:
+                from PySide6.QtCore import QTimer
+                def show_first_setup() -> None:
+                    box = QMessageBox(window)
+                    box.setWindowTitle("baldr 首次資料設定")
+                    box.setText(
+                        f"目前使用空資料根：{application_settings.environment['DATA_ROOT']}\n"
+                        f"請在 {application_settings.config_path} 明示 DATA_ROOT 與 OUTPUT_ROOT 後重開。\n"
+                        "私人資料與模型請沿原設定成對選定；未設定不會自動啟用。"
+                    )
+                    box.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+                    box.show()
+                QTimer.singleShot(250, show_first_setup)
             print("[Main] 主窗口創建成功")
 
             print("[Main] 正在顯示主窗口...")
@@ -2272,6 +2320,8 @@ def main():
         print(f"[Main] 錯誤訊息: {str(e)}")
         print(f"[Main] 詳細堆疊追蹤:\n{traceback.format_exc()}")
         return 1
+    finally:
+        _startup_controller = previous_startup
 
 
 if __name__ == "__main__":

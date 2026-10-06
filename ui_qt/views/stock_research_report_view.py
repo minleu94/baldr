@@ -46,6 +46,8 @@ from app_module.research_session import (
     ResearchStockContextDTO,
     format_research_workflow_path,
 )
+from app_module.recommendation.personal_h20_product_evidence import PersonalH20ProductEvidence
+from app_module.stock_research_product_summary import build_stock_research_product_summary
 from app_module.stock_research_report_dtos import (
     ReportSectionStatus,
     StockAdviceSnapshotDTO,
@@ -791,6 +793,7 @@ class StockResearchReportView(QWidget):
         self._create_page("decision", "Rule／ML／歷史")
 
         self._summary_values: dict[str, QLabel] = {}
+        self._personal_h20_evidence: PersonalH20ProductEvidence | None = None
         self._build_summary_shell()
         self._render_context_path()
         QWidget.setTabOrder(self.stock_search, self.load_button)
@@ -834,7 +837,6 @@ class StockResearchReportView(QWidget):
         self.personal_h20_label.setObjectName("stockResearchPersonalH20")
         self.personal_h20_label.setWordWrap(True)
         self.personal_h20_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        layout.addWidget(self.personal_h20_label)
 
         self.market_status_group = QGroupBox("當下上市／交易狀態（不作建議或排名）")
         self.market_status_group.setObjectName("stockResearchMarketStatusGroup")
@@ -850,7 +852,7 @@ class StockResearchReportView(QWidget):
         layout.addWidget(self.market_status_group)
 
         self.summary_limitations_panel = self._label_panel(
-            "資料缺口（先看）",
+            "資料、模型與等待狀態",
             "目前尚未載入。",
             "stockResearchLimitations",
         )
@@ -920,6 +922,8 @@ class StockResearchReportView(QWidget):
         )
         self.summary_source_trace_label.setAccessibleName("個股研究完整來源 trace")
         source_layout.addWidget(self.summary_source_trace_label)
+        source_layout.addWidget(self.personal_h20_label)
+        source_layout.addWidget(self.market_status_evidence_label)
         self.sources_table = QTableView()
         apply_financial_table_style(self.sources_table)
         self.sources_table.setAccessibleName("個股研究報告來源表")
@@ -1740,6 +1744,8 @@ class StockResearchReportView(QWidget):
     def _clear_loaded_report(self) -> None:
         """跨股票切換時清掉可見舊頁，避免新代碼下殘留舊 DTO。"""
 
+        self._personal_h20_evidence = None
+        self.personal_h20_label.setToolTip("")
         self.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
         self._chart_viewport = ChartViewportState()
         self._chart_widget = None
@@ -1747,6 +1753,11 @@ class StockResearchReportView(QWidget):
         self._loaded_context_identity = None
         self._loaded_request_context = None
         self._rendered_report_tabs = set()
+        self.summary_focus.set_summary(
+            conclusion="所選股票尚未有可讀報告。",
+            reasons=("正在切換來源；舊股票的模型估計已清除。",),
+            next_step="等待本股報告讀回，或重新載入。",
+        )
         self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
         self.market_status_label.setText("當下上市／交易狀態：尚未載入本股。")
         self.market_status_evidence_label.setText("尚未載入本股的狀態來源證據。")
@@ -1964,6 +1975,7 @@ class StockResearchReportView(QWidget):
 
     def _render_report(self, report: StockResearchReportDTO) -> None:
         self._loaded_report = report
+        self._personal_h20_evidence = None
         self.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
         self._rendered_report_tabs = {"summary"}
         context = self.context
@@ -2027,8 +2039,51 @@ class StockResearchReportView(QWidget):
             self.summary_limitations_detail_label.setText(limitations + "\n\n" + historical)
 
         self._render_sources(report)
+        self._render_product_summary(report)
         self._render_report_tab(self.tabs.currentIndex())
         self._set_navigation_state()
+
+    def _render_product_summary(self, report: StockResearchReportDTO) -> None:
+        """首屏同步來源可用性與操作；原始 pins 留於進階明細。"""
+        refusal = ""
+        try:
+            summary = build_stock_research_product_summary(report, self._personal_h20_evidence)
+        except (TypeError, ValueError) as exc:
+            self._personal_h20_evidence = None
+            refusal = str(exc)
+            summary = build_stock_research_product_summary(report)
+            self.personal_h20_label.setText("個人 H20 模型：與所選保存來源不一致，這份估計不可使用。")
+            self.personal_h20_label.setToolTip(refusal)
+        next_step = (
+            "返回原模型名單核對來源後重新載入；目前報告仍可研究。"
+            if refusal else summary.next_step
+        )
+        self._summary_values["next_step"].setText(next_step)
+        has_h20_estimate = (
+            self._personal_h20_evidence is not None
+            and self._personal_h20_evidence.status == "available"
+        )
+        self.summary_focus.set_summary(
+            conclusion=summary.conclusion if has_h20_estimate else _report_conclusion(report),
+            reasons=summary.reasons if has_h20_estimate else (_report_pending_text(report),),
+            next_step=next_step, evidence=summary.holding_relation,
+            change=_price_change_text(report.price_points),
+            risk=summary.risks if has_h20_estimate else _report_risk_text(report),
+            sufficiency="" if has_h20_estimate else _report_limitations_text(report),
+            reasons_title="研究理由" if has_h20_estimate else "待驗證條件",
+        )
+        self.summary_focus.evidence_label.setText("持倉關係：" + summary.holding_relation)
+        states = list(summary.status_lines)
+        if refusal:
+            states[2] = "模型可用性：H20 與所選保存來源不一致；這份估計不可使用。"
+        self._find_widget("stockResearchLimitations").setText("\n".join(states))
+        details = "\n".join(summary.advanced_notes)
+        if refusal:
+            details += "\nH20 來源拒絕診斷：" + refusal
+        historical = _historical_portfolio_alert_summary(report.events)
+        self.summary_limitations_detail_label.setText(
+            details + ("\n\n" + historical if historical else "")
+        )
 
     def set_personal_h20_evidence(self, evidence: object) -> None:
         from app_module.recommendation.personal_h20_product_evidence import (
@@ -2061,6 +2116,8 @@ class StockResearchReportView(QWidget):
             ):
                 return
         if evidence.status == "unavailable":
+            self._personal_h20_evidence = evidence
+            self._render_product_summary(self._loaded_report)
             self.personal_h20_label.setText(
                 "個人 H20 模型：模型資料暫時無法驗證；查看提示中的來源診斷，重新載入可重試。"
             )
@@ -2068,6 +2125,8 @@ class StockResearchReportView(QWidget):
             return
         self.personal_h20_label.setToolTip("")
         self.personal_h20_label.setText(personal_h20_product_text(evidence))
+        self._personal_h20_evidence = evidence
+        self._render_product_summary(self._loaded_report)
 
     def _on_report_tab_changed(self, index: int) -> None:
         """只在使用者進入分頁時繪製有限內容，不重讀 service。"""
@@ -4085,7 +4144,7 @@ def _report_limitations_text(report: StockResearchReportDTO) -> str:
     if ml.status not in {"available", "verified"}:
         diagnostics.append(f"ML 狀態：{_quality_label(ml.status)}；" + ("；".join(research_limitation_text(x) for x in ml.limitations[:1]) or "資格／降級原因未提供，不能當正式建議。"))
     diagnostics.extend(research_limitation_text(x) for x in report.limitations)
-    unique = list(dict.fromkeys((*section_limits, *errors, *diagnostics)))
+    unique = list(dict.fromkeys((*errors, *section_limits, *diagnostics)))
     text = "；".join(unique[:3]) if unique else _report_sufficiency_text(report)
     return text + ("；其餘限制保留於資料稽核。" if len(unique) > 3 else "")
 

@@ -4894,3 +4894,34 @@ source missing／expired calendar／原決策價 revision 時，先核對 exact 
 
 
 本批補正：保存收據首屏同時顯示已知價格缺件筆數與未成熟狀態，未成熟不隱藏原決策日缺價；明示未調整收盤價，非含息總報酬。完整source診斷仍可展開。
+
+
+## UX21 endpoint label → UX22 公平比較 readiness（2026-10-06，有界研究入口）
+
+入口為 `scripts/run_rule_research_label_readiness.py`。先選同一來源的原 parent 與保存 outcome `receipt.json`；準備自己的明示版本化 label policy 與 train/evaluation split JSON，再執行：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_rule_research_label_readiness.py --receipt <parent-receipt.json> <outcome-receipt.json> --label-policy <label-policy.json> --split-policy <split-policy.json>
+```
+
+多批研究可重複 `--receipt PARENT OUTCOME`，最多32對，不能把同收據重複計入分母。政策／split省略會列未設定缺件，不代選目標、成本或基準。stdout JSON可用 `Out-File -Encoding utf8 <明示研究報告.json>` 保存；同樣的收據與政策用新程序重跑，核對report identity與逐列來源／分母，而非讀較新DB更新舊結果。輸入JSON上限64KiB、label列4096／報告2MiB，重複key／未知版本／超限拒絕，不截斷分母。
+
+label policy範例只是格式，請按研究問題明示自己的值；不是使用者預設：
+
+```json
+{"schema_version":"rule-research-label-policy.v1","policy_id":"my-endpoint-target","version":"1","measure":"gross","horizons":[5,10,20]}
+```
+
+`measure`可為gross、net、gross_excess、net_excess；`horizons`是5／10／20非空唯一子集。gross取原毛報酬bp，net須有原封存成本政策，excess須有同endpoint可比基準；缺件保留null與原因，不當0。政策id／version及內容hash綁來源與樣本，不能混政策／方法分數。
+
+split格式：
+
+```json
+{"schema_version":"rule-research-label-split.v1","split_id":"my-fixed-window","version":"1","train_start":"2026-01-01","train_end":"2026-06-30","evaluation_start":"2026-07-01","evaluation_end":"2026-09-30","training_as_of":"2026-06-30"}
+```
+
+日期只是格式範例，需依封存研究期間明示；train不能與evaluation重疊，training_as_of必須早於評估起點。label期末不能跨入評估，availability須在training_as_of可得；評估行不回流訓練。單決策日、未成熟／缺價格／未知availability會有空分區與原因，不冒充walk-forward fold。
+
+結果保留全母體、matched／notmatched對照及excluded／unknown／uncaptured分母；符合方法不是交易selected。研究label bp與時間合格候選分開看；baseline readiness列既有learner／same-sample比較器缺的feature registry與決策時可得證據、完整return/downside映射、champion／challenger prediction身份及k。缺輸入就是不可評估，不宣稱模型勝出，也不把downside填0。
+
+保存來源current-observed／年度計畫calendar的限制仍在；PIT、training、formal、natural authority及execution資格維持false。endpoint-only沒有MFE／MAE／期間停牌評估；本入口沒有fit、模型發布、Task／DB寫入。wrong parent／來源pin失配請重新選原exact配對；invalid policy／split請修正自己明示JSON；未成熟、成本或基準缺件需另有合法來源，不能靠改readiness旗標解決。詳[QA](../06_qa/UX22_LABEL_READINESS_20261006.md)。

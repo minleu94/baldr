@@ -1,5 +1,12 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 UX21 label→UX22 readiness 有限入口
+
+沿已接受8104d0a，版本化明示endpoint label政策（gross/net/gross_excess/net_excess、H5/10/20子集）→exact sealed parent/outcome→全母體與逐方法對照ledger→固定訓練/評估界線→既有baseline所需輸入缺件readiness已接線。CLI只讀保存來源、輸出研究JSON；不查今天行情、不呼叫fit。成本／benchmark／availability未知不補0，沒有自選唯一目標；label值已知不等於歷史PIT或訓練合格。
+
+本包開始UX22的readiness工程，所以UX22由pending→partial、stage7由pending→partial；完整label/feature映射、同源baseline與候選prediction pins、實際公平比較與資格仍未完成，UX23保持pending。9stage=1done/8partial/0pending；24UX=2done/21partial/1pending，沒有新增done、正式Task／DB／模型／自然成熟授權。已接受七項首版工程與性能例外不重開。[本包QA與剩餘工程](../06_qa/UX22_LABEL_READINESS_20261006.md)。
+
+
 ## 2026-10-06 UX21 明示benchmark整合
 
 沿5b978df2，review10508947／focused35後cherry-pick57934c51，caller具名設定→actual query-only source→同期間Decimal core→版本化保存／重讀→readonly receipt UI已接線。runtime／saved v2保留v1 benchmark=null相容，成本與basis／availability／source／期間pins封存；未知與失配不補0，不提高PIT／ML／正式／交易資格。沒有UX21預設基準，CLI需明示JSON或未設定。

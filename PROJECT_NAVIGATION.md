@@ -680,3 +680,10 @@ python ui_qt/main.py
 - exact receipt＋明示JSON有界唯讀consumer：`app_module/rule_research_forward_outcome_reader.py`。
 - 原每日研究母體視窗與TaskWorker：`ui_qt/rule_research_parent_receipt_dialog.py`。
 - 邊界／新程序／取消與UI：`tests/test_rule_research_forward_outcome_reader.py`、`tests/test_ui_qt_forward_outcome_receipt.py`；[QA](docs/06_qa/UX21_FORWARD_OUTCOME_20261006.md)／[Manual](docs/07_guides/APPLICATION_MANUAL.md)。不作交易或ML target，原資料不寫。
+
+
+### UX21 endpoint label→UX22 readiness（2026-10-06）
+
+- 封存來源薄consumer：`app_module/rule_research_label_readiness.py`；重用HistoricalLabelSpec/Row，明示policy與固定時間窗，不fit。
+- 可測試唯讀入口：`scripts/run_rule_research_label_readiness.py`，repeat exact parent/outcome receipts，輸出有界來源/hash/分母/缺件JSON。
+- `tests/test_rule_research_label_readiness.py`／`tests/test_rule_research_label_readiness_cli.py`；[QA](docs/06_qa/UX22_LABEL_READINESS_20261006.md)／[Manual](docs/07_guides/APPLICATION_MANUAL.md)。既有learner／same-sample比較器缺完整特徵與prediction inputs時blocked；不造PIT/模型/Task。

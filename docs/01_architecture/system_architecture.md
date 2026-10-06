@@ -1401,3 +1401,8 @@ UX11後續：saved_strategy_rule_card只調既有ResearchRunService完整性read
 ### 2026-10-06 UX21 實際來源與 sealed outcome 日報
 
 exact parent/readiness→current-observed SQLite snapshot transaction（原決策 close 指紋核對、120列內 exact endpoints）＋明示 verified TWSE 年度計畫 cache→純 forward projection→BoundedForwardOutcomeWriter atomic 保存。runtime/source/schema/main/WAL/row/calendar/clock/cost/result identities 保存，不選 latest；完整 projection 有界壓縮，reader 解壓核 hash 與 core 語意，重讀不查 current DB。read_observation_days 可明示 outcome_root，按原 parent 列全部 revisions；daily isolated CLI 與 Qt parent dialog 只讀同收據。qualified benchmark、完整 labels／正式部署仍未接，年度計畫不作 actual-session/custody/PIT。[Manual](../07_guides/APPLICATION_MANUAL.md)、[QA](../06_qa/UX21_SOURCE_STORE_DAILY_20261006.md)。
+
+
+## 2026-10-06 sealed endpoint label readiness consumer
+
+`read_forward_receipt`→`rule_research_label_readiness`→`run_rule_research_label_readiness.py`只讀exact parent/outcome；明示版本policy綁source/hash、全母體method ledger、固定train/evaluation windows。重用HistoricalLabelSpec/Row的整數與成熟契約；依既有label-end purge原則報時間分區，沒有另建learner或自動fold參數。既有HistoricalTrainingService／MLChampionComparisonService僅列必要輸入readiness，不呼叫fit／compare，不補downside、成本、benchmark或PIT。JSON report可保存並同輸入新程序核對，沒有正式model/store/Task寫入。[QA](../06_qa/UX22_LABEL_READINESS_20261006.md)。

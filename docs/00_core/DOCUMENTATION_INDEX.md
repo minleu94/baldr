@@ -161,3 +161,6 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 
 - [實際來源、atomic outcome、日報與 partial 分類收據](../06_qa/UX21_SOURCE_STORE_DAILY_20261006.md)
 - [完整操作手冊](../07_guides/APPLICATION_MANUAL.md)：明示 runtime、preflight／保存、日報、Qt 重讀與研究界線。
+
+
+- [UX21 endpoint label→UX22 readiness QA](../06_qa/UX22_LABEL_READINESS_20261006.md)：明示policy、全母體對照分母、固定時序界線、封存來源重讀與既有baseline缺件；不fit／正式發布。

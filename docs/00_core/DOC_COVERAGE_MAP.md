@@ -1,5 +1,10 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-06 label readiness覆蓋
+
+新增[QA](../06_qa/UX22_LABEL_READINESS_20261006.md)；Manual同步明示policy／split、repeat exact receipts、JSON保存／重讀、缺件判讀與安全。Snapshot／現行架構／index／QA路由同步有限入口；只開始UX22 readiness，不宣稱fit、公平比較或完整labels已完成。
+
+
 ## 2026-10-06 明示benchmark覆蓋
 
 新增[benchmark來源／保存／唯讀UI QA](../06_qa/UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md)，Manual／Snapshot／architecture同步具名無預設、v1/null與v2保存、same-period basis gate、成本版本、query-only公開資料與fixture分報、取消stale與完整label最小缺口。UX21仍partial；正式／PIT／fit與Task未啟用。

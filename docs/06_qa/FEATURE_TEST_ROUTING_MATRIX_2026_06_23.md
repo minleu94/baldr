@@ -1,5 +1,10 @@
 # Feature-to-Test Routing Matrix (2026-06-23)
 
+## 2026-10-06 label readiness測試路由
+
+`tests/test_rule_research_label_readiness.py`與`tests/test_rule_research_label_readiness_cli.py`驗sealed source／全母體分母、版本政策、缺件／未成熟、固定時序界線、取消重試、跨method/source與新程序一致；連同既有forward/source/store/reader/benchmark及`test_ml_historical_contracts`／`test_ml_purged_walk_forward`回歸。深fixture用短user Temp；沒有UI變更、Native或fit驗收。fullmypy／changed compile／quant／diff與數字見[QA](UX22_LABEL_READINESS_20261006.md)。
+
+
 ## 2026-10-06 UX21 benchmark接線測試路由
 
 `test_rule_research_benchmark_adapter`＋`test_rule_research_benchmark_integration`驗typed設定、source／basis／period／availability／pins與成本保存；既有`test_rule_research_forward_outcome`／`test_rule_research_forward_isolated`／`test_rule_research_forward_outcome_reader`／`test_rule_research_daily_owner`驗core、null相容與日報；`test_ui_qt_forward_outcome_receipt`／`test_ui_qt_parent_receipt_dialog`驗readonly顯示、cancel／retry／return／stale。deep parent使用短user Temp避免Windows260路徑超限。UI仍強制Workbench／validator／fullmypy、changed compile／quant。[公開市場唯讀與fixture分報](UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md)。

@@ -20,6 +20,7 @@ from app_module.rule_research_parent_capture import (
 from app_module.rule_research_observation_acceptance import (
     _QUALIFICATION, _TAIPEI, _local_time, _parent, _universe_definition,
     load_observation_policy, preview_or_accept_observation, read_observation_days,
+    observation_feature_contract_version,
 )
 from app_module.rule_research_sample_capture import (
     MAX_CAPTURE_BYTES, SAFETY_RESERVE_BYTES, BoundedRuleResearchCaptureWriter,
@@ -31,7 +32,7 @@ _FIELDS = {"schema_version", "mode", "date_source", "policy_config", "source_db"
            "capture_root", "acceptance_root", "status_root", "per_root_quota_bytes",
            "max_attempts", "retry_delay_seconds", "parent_universe_configs"}
 _ROOTS = ("snapshot_root", "capture_root", "acceptance_root", "status_root")
-_OPTIONAL_FIELDS = {"safety_reserve_bytes", "expected_source_binding_sha256", "timeout_seconds"}
+_OPTIONAL_FIELDS = {"safety_reserve_bytes", "expected_source_binding_sha256", "timeout_seconds", "feature_contract_version"}
 
 
 def _now() -> datetime:
@@ -84,7 +85,10 @@ def load_daily_runtime(path: str | Path) -> dict[str, Any]:
     _require(isinstance(policy_fields,dict),"daily_runtime_unconfigured:policy")
     missing_policy = [k for k in required_policy_fields if not policy_fields.get(k)]
     _require(not missing_policy,"daily_runtime_unconfigured:policy."+",".join(missing_policy))
-    template = load_observation_policy(value["policy_config"])["universe_template"]["source_ref"]
+    policy = load_observation_policy(value["policy_config"])
+    _require(observation_feature_contract_version(value) == observation_feature_contract_version(policy["value"]),
+             "daily_feature_contract_policy_mismatch")
+    template = policy["universe_template"]["source_ref"]
     sources.append(Path(template))
     for p in sources:
         _safe_path(p)
@@ -251,9 +255,11 @@ def run_daily_owner(runtime_path: str | Path | None, target_date: date | None, *
                                        "sample_capture_status": "not_started", "acceptance_capture_status": "not_started"}
             result["attempts"].append(summary)
             try:
+                version_options = ({"contract_version": c["feature_contract_version"]}
+                                   if "feature_contract_version" in c else {})
                 produced = produce_parent_rule_samples(db_path=c["source_db"],snapshot_root=c["snapshot_root"],
                     capture_root=c["capture_root"],universe_path=universe_path,decision_cutoff=cutoff,
-                    as_of=fixed_as_of,cancel_callback=cancel)
+                    as_of=fixed_as_of,cancel_callback=cancel,**version_options)
                 summary.update(production_status=produced["status"], sample_capture_status=produced["sample_capture_status"],
                     batches=produced["production"], parent_capture=produced.get("parent_capture"), error_code=produced.get("error_code",""))
                 package = produced.get("parent_capture")

@@ -5214,3 +5214,7 @@ request schema 為 `personal-model-daily-request.v1`，必須明示 canonical re
 H20已真參與每日研究推論／原值保存，個股摘要讀其原預測；目前還沒有接入原推薦名單生成或排序。原推薦勝率／機率與ranking不變；H20 gross是未扣成本的20交易日毛報酬，不是勝率。日常H20 cohort研究列表／排序與exact下鑽返回、原entry/outcome自動pins接線仍需完成，不能用目前增量卡片宣稱模型選股已完成或全市場已預測。
 
 既有05:45 Task下一次為Pacific10/07 05:45（當日UTC−07），UTC12:45、台北20:45；未手動啟Task。下一run應核新Task/source cycle identity、原manifest與prediction raw pins，不以舊產品指標或Task returncode單獨判H20成功。原global/formal blocked和personal success可分開為真；詳見 [下一run與工程差異QA](../06_qa/BALDR_NEXT_RUN_AND_REMAINING_ENGINEERING_20261007.md)。自然成熟不作工程gate，來源資格unknown不補。
+
+### 2026-10-07 日常有限 BB 上軌版號接線補充
+
+隔離研究 runtime 與 observation policy 可明示相同 feature_contract_version=daily-market-feature-snapshot.v3.bbands30-upper；缺欄保持原 v2。先整合 parent 新版 API，再依原明示 universe/source pins 執行 preview，核完整 declared cohort、同版 method hash，通過後才 execute。runtime/policy、各 segment 或保存 parent 異版會拒絕；請核配置兩處版號與原保存來源，不改舊 artifact 修補。缺件、30 根暖機不足或可得性未核保持未知。有限上軌比較不代表 compression 完成、不授正式/PIT/訓練資格。本中央接線尚待 BBP01 真保存鏈整合驗證，未修改正式 Task、配額或 200GiB capture reserve。H20 cohort 列表／gross 排序、自然結果批次 caller 與第三條件 UI 由三個排他 lane 續作，現有個股 H20 卡片不代表完整模型選股流程完成。

@@ -216,6 +216,9 @@ def run_daily_runtime(request: DailyRuntimeRequest, *, execute: bool = False,
         for item in ordered:
             other = load_daily_runtime(item.runtime_path)
             require(other["source_sha256"] == item.runtime_sha256, "segment_runtime_pin_mismatch")
+            from app_module.rule_research_observation_acceptance import observation_feature_contract_version
+            require(observation_feature_contract_version(other["value"])
+                    == observation_feature_contract_version(config), "segment_feature_contract_mismatch")
             for role in ("snapshot_root", "capture_root", "acceptance_root", "status_root"):
                 root = Path(other["value"][role]).resolve()
                 require(all(not root.is_relative_to(p) and not p.is_relative_to(root) for p in paths), "segment_roots_overlap")

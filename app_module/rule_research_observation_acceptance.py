@@ -10,6 +10,9 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app_module.daily_market_method_contract import method_contracts_sha256
+from app_module.daily_market_feature_snapshot import (
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION, feature_contract_for_version,
+)
 from app_module.daily_market_research_universe import _object, _text
 from app_module.rule_research_parent_capture import (
     BoundedRuleResearchParentWriter, _sha, _validate_universe, load_parent_universe,
@@ -37,10 +40,11 @@ def _local_time(value: Any) -> time:
 
 
 def _validate_config(value: Any) -> None:
-    _require(isinstance(value, dict) and set(value) == {
+    _require(isinstance(value, dict) and set(value) - {"feature_contract_version"} == {
         "schema_version", "policy_id", "version", "timezone", "decision_cutoff_time",
         "observation_start_time", "observation_end_time", "expected_observation_dates",
         "universe_template_source", "research_only"}, "observation_policy_fields")
+    observation_feature_contract_version(value)
     _require(value["schema_version"] == OBSERVATION_POLICY_SCHEMA
              and value["timezone"] == "Asia/Taipei" and value["research_only"] is True,
              "observation_policy_scope")
@@ -56,11 +60,22 @@ def _validate_config(value: Any) -> None:
              and Path(value["universe_template_source"]).is_absolute(), "observation_template_absolute_required")
 
 
+def observation_feature_contract_version(value: dict[str, Any]) -> str:
+    """版號必須明示有效；舊 policy 缺欄維持原 v2。"""
+    version = value.get("feature_contract_version", DAILY_MARKET_FEATURE_CONTRACT_VERSION)
+    _require(isinstance(version, str), "observation_feature_contract_version_invalid")
+    feature_contract_for_version(version)
+    return version
+
+
 def _validate_policy(policy: Any) -> None:
     _require(isinstance(policy, dict) and set(policy) == {
         "value", "source_ref", "source_sha256", "universe_template", "method_contracts_sha256"},
         "observation_policy_binding_invalid")
     _validate_config(policy["value"])
+    _require(policy["method_contracts_sha256"] == feature_contract_for_version(
+        observation_feature_contract_version(policy["value"])).method_contracts_sha256,
+        "observation_method_contract_binding_invalid")
     _require(_sha(policy["source_sha256"]) and Path(policy["source_ref"]).is_absolute()
              and _sha(policy["method_contracts_sha256"]), "observation_policy_pin_invalid")
     template = policy["universe_template"]
@@ -79,7 +94,8 @@ def load_observation_policy(path: str | Path) -> dict[str, Any]:
     _validate_config(value)
     template = load_parent_universe(value["universe_template_source"])
     policy = {"value": value, "source_ref": str(raw_path.resolve()), "source_sha256": _digest(raw),
-              "universe_template": template, "method_contracts_sha256": method_contracts_sha256()}
+              "universe_template": template, "method_contracts_sha256": feature_contract_for_version(
+                  observation_feature_contract_version(value)).method_contracts_sha256}
     _validate_policy(policy)
     return policy
 
@@ -186,6 +202,8 @@ class BoundedRuleResearchObservationWriter(BoundedRuleResearchCaptureWriter):
 def build_observation_acceptance(policy_path: str | Path, parent_receipt: str | Path) -> RuleResearchObservationAcceptance:
     policy = load_observation_policy(policy_path)
     body, ready, pin = _parent(parent_receipt)
+    _require(body.get("feature_contract_version", DAILY_MARKET_FEATURE_CONTRACT_VERSION)
+             == observation_feature_contract_version(policy["value"]), "observation_feature_contract_mismatch")
     _require(_universe_definition(body["universe"]["value"]) == _universe_definition(policy["universe_template"]["value"]),
              "observation_universe_mismatch")
     _require(body["method_contracts_sha256"] == policy["method_contracts_sha256"], "observation_method_mismatch")

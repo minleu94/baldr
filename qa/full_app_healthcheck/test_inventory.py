@@ -6,6 +6,7 @@ from pathlib import Path
 # This registry serves as a guardrail to ensure that only allowed tests are bridged.
 
 TEST_INVENTORY: dict[str, str] = {
+    "tests/test_baldr_r01_registry_read_budget.py": "service-oracle-research-backtest",
     # 2026-10-06 I156: exact frozen156 + accepted P1 one; metadata only.
     "tests/forward_outcome_test_support.py": "general-unit-keep-in-pytest",
     "tests/ml_research_test_support.py": "general-unit-keep-in-pytest",

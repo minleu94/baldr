@@ -1,5 +1,14 @@
 # Baldr 當前工程與決策差異（2026-10-06）
 
+## 2026-10-06 R01 acceptance supersedes prior future scope
+
+R01 `2381b1ab→4e51f34a` 已有界審核採入。Registry／legacy lookup沿原64MiB每artifact、256MiB每輪caller預算；Registry load將equity／trades／portfolio-result／replay-lineage全部計入aggregate，64KiB分塊hash、stat/fstat來源核對、同份已核bytes decode與取消。writer／repository／DTO／schema／公式未改，無budget的原非lookup callers相容；lookup缺budget unavailable。原worker101 focused、73 adjacent／1 Windows symlink skip raw與blobs核對，不累加成完整App數量。
+
+新增tests/test_baldr_r01_registry_read_budget.py精確入冊service-oracle-research-backtest，1284／1284，direct12不變，旧1283分類/support/runner API保留。Notes backup GUI／週月與更多indicator不做，非本輪必修。U1第二家族與U2 H20 gross仍等使用者答覆，未採policy；正式Task／migration／Native／fit維持未准。
+
+本次將在已授提交與中央文件完成後固定HEAD，執行一次四用途／Registry／selected Paper／source_id／v2／boundary affected union，mandatory Workbench→Update validator→full-roots mypy。此段只記準備凍結，結果待raw/JUnit；先不宣稱final union通過。原Stage／UX、七finiteclosed、F1/Journey性能例外、未知資格與自然成熟界線保持。證據：output/qa/baldr_r01_read_budget_20261006/receipt.json，最終差異見BALDR_ENGINEERING_DECISION_DELTA_20261006.md。
+
+
 唯一路線仍是 `output/plans/baldr_product_experience_plan_20261004.md`（Danny Quant）。本表補正舊 closeout 的 source_id 待批准、176 未登錄、Paper producer 未路由、六 ML 違例等歷史描述，不另造 roadmap。
 
 ## 已關閉的點名工程缺口

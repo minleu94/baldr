@@ -1,5 +1,14 @@
 # baldr 完整操作手冊
 
+## 2026-10-06 歷史結果有界讀取與排錯
+
+從策略／回測的已保存結果選exact entry，Registry與legacy仍維持原類型、日期、來源與权限。UI沿原每artifact64MiB／每輪256MiB讀取預算；Registry equity/trades/portfolio-result/replay-lineage共同計費，圖表與表格decode同份已驗hash的bytes，取消在分塊／decode邊界生效。序列化bytes預算不等於解碼RAM上限，也不改正式writer20/200GiB reserve。
+
+超限顯示artifact_byte_budget_exceeded／aggregate_byte_budget_exceeded；來源消失或變動顯示artifact_source_unavailable／artifact_source_changed；取消為read_cancelled。先取消、縮小選取範圍或由caller明示調整讀取預算再重試，不刪原件、不改hash／schema／identity或偷偷降reserve。lookup未傳budget顯示registry_read_budget_required。原非lookup service caller可省略optional budget，保存／migration／writer流程不變。
+
+本輪沒有新增Notes backup GUI、週月圖或更多indicator；原日K／量／MA／保存標記／精確表照原入口。U1／U2未回覆，正式Task／migration／模型fit/control與Native前景未批准，不能以讀取工程完成代表已啟用。
+
+
 ## 2026-10-06 scheduled v2來源核驗與操作界線
 
 v2 current-observed composition/capture/outcome/receipt/fit必須明示source_binding_verifier，scheduled caller已注入原saved-result/index/stdout readonly custody reader。缺port或只回verified flag拒絕；排錯先核exact caller注入、原raw hash/schema/cohort/時鐘/可用日期，不繞過來源檢查或注入默認成功port。v1操作不變。

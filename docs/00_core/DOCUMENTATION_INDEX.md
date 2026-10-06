@@ -1,5 +1,10 @@
 # 文檔索引
 
+## 2026-10-06 R01 Registry bounded reader
+
+[R01 QA](../06_qa/BALDR_R01_REGISTRY_READ_BUDGET_20261006.md) / [Engineering-decision delta](../06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md).
+
+
 ## 2026-10-06 Baldr當前工程與決策差異
 
 [當前工程與決策差異](../06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md)：已關閉的點名工程、可自主後續與驗證覆蓋、U1/U2／正式啟用／真資料／Native真人分列；不替代Scoped SSOT或唯一原plan。

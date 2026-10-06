@@ -2,6 +2,31 @@
 
 ## 2026-10-06 machine refresh
 
+R01 新增唯一 test 檔登錄為 service-oracle-research-backtest：原 Registry writer 合成保存→lookup/service same-bytes bounded reader→新程序、exact identity/DataFrame/source SHA/mtime oracle；所有 writer僅tmp fixture，無正式資料／Task／Native／fit。超容量／aggregate／取消／替換／消失／marked sidecar與lineage屬讀取服務驗證，不是direct UI bridge；舊1283分類、direct12、support/runner API不改。沿用64/256MiB caller budget，不降低20/200GiB reserve。原worker101 focused與73 adjacent/1skip按各自scope核raw，不累加為全App。中央入冊與 final union收據另存output/qa；歷史I156／P2節保留。
+
+Current filesystem Python files: `1284`
+Current registry entries: `1284`
+Current collected test cases: not collected
+
+| Category | Count |
+|---|---:|
+| `general-unit-keep-in-pytest` | 169 |
+| `governance-doc-tooling` | 190 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 192 |
+| `service-oracle-portfolio-decision-runtime` | 155 |
+| `service-oracle-recommendation` | 187 |
+| `service-oracle-research-backtest` | 134 |
+| `slow-e2e-or-environment` | 11 |
+| `ui-healthcheck-candidate-bridge` | 97 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 91 |
+
+
+## 2026-10-06 P2 historical refresh
+
 P2具名增量：只新增 `tests/test_baldr_personal_paper_producers.py` 一項 `service-oracle-portfolio-decision-runtime`；原1282個分類值／12 direct橋接／support與runner API保持。新檔採原P1填單→daily state/status→benchmark→B09新程序reader合成oracle；fixture明示tmp roots，無正式資料／Task／Native／fit。市場main／sidecars／hardlink／junction、create-only staging及readonlylegacy負例是oracle證據，不是direct UI bridge。
 
 原I156凍結156＋P1具名1的收據不改，P2另列。P2原108 immutable與R1 delta26收據已核；中央R1關鍵18 pass及原hardlink拒絕，未重108或穩定UI union。metadata最後結果見 `output/qa/p2_inventory_final_20261006.json`，原13治理JUnit見 `output/qa/p2_governance_final_20261006.xml`；分類不等於全部runtime已過。ML六項仍等待各M包有限工程修補。

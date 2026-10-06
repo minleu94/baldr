@@ -11,7 +11,11 @@ from pathlib import Path
 import re
 import stat
 import tempfile
-from typing import Any, Sequence
+import subprocess
+import sys
+import time
+import uuid
+from typing import Any, Callable, Sequence
 
 from app_module.recommendation.persistence import RecommendationExecutionPersistence
 from app_module.recommendation.personal_prediction_capture import (
@@ -19,6 +23,8 @@ from app_module.recommendation.personal_prediction_capture import (
     PersonalPredictionCaptureError,
     _canonical_json_bytes as _capture_canonical_json_bytes,
     read_personal_prediction_capture,
+    capture_personal_daily_results,
+    project_personal_capture_h20_gross,
 )
 from app_module.recommendation.queries import RecommendationExecutionQueries
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
@@ -87,6 +93,7 @@ def run_personal_natural_outcome_daily(
     evaluation_at: datetime,
     isolated_output_root: str | Path,
     temporary_closure_cache_path: str | Path | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> PersonalNaturalOutcomeDailyReceiptV1:
     """逐一重驗明確選取的 capture，再發布完整成熟的個人 outcome。
 
@@ -153,6 +160,8 @@ def run_personal_natural_outcome_daily(
     output_base = isolated_root / "personal_natural_outcomes"
     prepared: list[_PreparedCapture] = []
     for capture_path in selected_paths:
+        if cancelled is not None and cancelled():
+            raise InterruptedError("personal_daily_cancelled")
         prepared.append(
             _prepare_capture(
                 capture_path,
@@ -198,6 +207,8 @@ def run_personal_natural_outcome_daily(
     published: list[tuple[Path, str, bool]] = []
     for item in outcome_items:
         assert item.outcome_path is not None and item.outcome_payload is not None
+        if cancelled is not None and cancelled():
+            raise InterruptedError("personal_daily_cancelled")
         payload_sha256, idempotent = _publish_create_only(
             item.outcome_path,
             item.outcome_payload,
@@ -917,6 +928,8 @@ def _publish_create_only(
     body = {key: value for key, value in payload.items() if key != "payload_sha256"}
     digest = _payload_hash(body)
     encoded = _canonical_bytes({**body, "payload_sha256": digest})
+    if len(encoded) > 64 * 1024 * 1024:
+        raise PersonalNaturalOutcomeDailyError("create-only payload 超過 64 MiB 上限")
     _ensure_plain_directory_tree(path.parent, output_root)
     existing = _read_plain_optional(path, output_root)
     if existing is not None:
@@ -1111,7 +1124,321 @@ def _safe_reason(value: object) -> str:
     return "personal_outcome_projection_pending"
 
 
+PERSONAL_MODEL_DAILY_REQUEST_V1 = "personal-model-daily-request.v1"
+PERSONAL_MODEL_DAILY_RECEIPT_V1 = "personal-model-daily-receipt.v1"
+
+
+def _daily_queries(canonical_root: Path) -> RecommendationExecutionQueries:
+    runs = canonical_root / "recommendation" / "runs"
+    _require_plain_file(runs / "recommendation_runs.db", "canonical recommendation index")
+    _require_plain_directory(runs / "execution_artifacts", "canonical recommendation artifacts")
+    return RecommendationExecutionQueries(RecommendationExecutionPersistence(ResultArtifactStore(
+        artifact_root=runs / "execution_artifacts", database_path=runs / "recommendation_runs.db",
+    )))
+
+
+def _daily_verify_pins(pins: list[dict[str, str]]) -> None:
+    for pin in pins:
+        path = _absolute_path(pin["path"], "source pin path")
+        _require_plain_file(path, "source pin")
+        if path.stat().st_nlink != 1:
+            raise PersonalNaturalOutcomeDailyError("source pin 不接受 hardlink 別名")
+        descriptor = _open_regular_file_no_follow(path)
+        with os.fdopen(descriptor, "rb") as handle:
+            before = os.fstat(handle.fileno())
+            digest = hashlib.sha256()
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+            after = os.fstat(handle.fileno())
+        named = path.lstat()
+        if (before.st_size, before.st_mtime_ns, before.st_dev, before.st_ino) != (after.st_size, after.st_mtime_ns, named.st_dev, named.st_ino) or after.st_nlink != 1 or _is_link_or_reparse(named):
+            raise PersonalNaturalOutcomeDailyError("source pin 讀取期間變更")
+        if "sha256:" + digest.hexdigest() != pin["sha256"]:
+            raise PersonalNaturalOutcomeDailyError("source pin bytes 已變更或缺失")
+
+
+def _daily_validate_request(request: dict[str, Any], root: Path) -> dict[str, Path]:
+    required = {"schema_version", "canonical_recommendation_output_root", "personal_capture_root",
+                "isolated_outcome_root", "market_source_db", "calendar_cache_path", "evaluation_at",
+                "result_ids", "capture_paths", "source_pins"}
+    optional = {"generation_argv", "timeout_seconds", "temporary_closure_cache_path", "gross_model_contract_hash"}
+    if type(request) is not dict or not required <= request.keys() or request.keys() - required - optional:
+        raise PersonalNaturalOutcomeDailyError("daily request 欄位不符合 schema")
+    if request["schema_version"] != PERSONAL_MODEL_DAILY_REQUEST_V1:
+        raise PersonalNaturalOutcomeDailyError("daily request schema 不支持")
+    gross_hash = request.get("gross_model_contract_hash")
+    if gross_hash is not None and (type(gross_hash) is not str or _SHA256_RE.fullmatch(gross_hash) is None):
+        raise PersonalNaturalOutcomeDailyError("gross_model_contract_hash 無效")
+    paths = {name: _absolute_path(request[name], name) for name in required if name.endswith("root") or name.endswith("path") or name == "market_source_db"}
+    if request.get("temporary_closure_cache_path") is not None:
+        paths["temporary_closure_cache_path"] = _absolute_path(request["temporary_closure_cache_path"], "closure cache")
+    _require_disjoint_output_root(root, list(paths.values()))
+    _require_disjoint_output_root(paths["isolated_outcome_root"], [value for name, value in paths.items() if name != "isolated_outcome_root"])
+    if _paths_overlap(paths["canonical_recommendation_output_root"], paths["personal_capture_root"]):
+        raise PersonalNaturalOutcomeDailyError("canonical 與 capture root 必須分離")
+    for name in ("result_ids", "capture_paths"):
+        values = request[name]
+        if (type(values) is not list or len(values) > MAX_CAPTURE_PATHS
+                or any(type(value) is not str or not value.strip() for value in values)
+                or len(set(values)) != len(values)):
+            raise PersonalNaturalOutcomeDailyError(f"{name} 必須是有界、不重複的明示序列")
+    if len(request["result_ids"]) + len(request["capture_paths"]) > MAX_CAPTURE_PATHS:
+        raise PersonalNaturalOutcomeDailyError("每日 result/capture 明列總數超過 500")
+    for value in request["capture_paths"]:
+        path = _absolute_path(value, "capture_path")
+        if path.parent != paths["personal_capture_root"] / "captures" or path.suffix != ".json":
+            raise PersonalNaturalOutcomeDailyError("capture_path 必須位於精確 capture root")
+    evaluation = datetime.fromisoformat(request["evaluation_at"].replace("Z", "+00:00"))
+    _aware_utc(evaluation)
+    if not request["result_ids"] and not request["capture_paths"]:
+        raise PersonalNaturalOutcomeDailyError("daily request 至少須明列一個 result 或 capture")
+    pins = request["source_pins"]
+    if type(pins) is not list or not 1 <= len(pins) <= 1000:
+        raise PersonalNaturalOutcomeDailyError("source_pins 必須明示且有界")
+    seen: set[str] = set()
+    for pin in pins:
+        if type(pin) is not dict or set(pin) != {"path", "sha256"} or type(pin["sha256"]) is not str or _SHA256_RE.fullmatch(pin["sha256"]) is None:
+            raise PersonalNaturalOutcomeDailyError("source pin schema/hash 無效")
+        path = _absolute_path(pin["path"], "pin path")
+        normalized = os.path.normcase(str(path))
+        if normalized in seen:
+            raise PersonalNaturalOutcomeDailyError("source pin 不可重複")
+        seen.add(normalized)
+        _require_disjoint_output_root(root, [path])
+        _require_disjoint_output_root(paths["isolated_outcome_root"], [path])
+    if os.path.normcase(str(paths["market_source_db"])) not in seen:
+        raise PersonalNaturalOutcomeDailyError("market_source_db 缺少 raw bytes pin")
+    for name in ("calendar_cache_path", "temporary_closure_cache_path"):
+        if name not in paths:
+            continue
+        cache = paths[name]
+        _validate_optional_source_path(cache, name)
+        # 缺官方年曆仍可收集每日預測；outcome 保持 unknown，不補平日。
+        if cache.is_file() and os.path.normcase(str(cache)) not in seen:
+            raise PersonalNaturalOutcomeDailyError("calendar cache 缺少 raw bytes pin")
+        if cache.is_dir():
+            for index, item in enumerate(cache.rglob("*")):
+                if index >= 1000:
+                    raise PersonalNaturalOutcomeDailyError("calendar cache inventory 超限")
+                _assert_existing_components_plain(item)
+                if item.is_file() and os.path.normcase(str(item)) not in seen:
+                    raise PersonalNaturalOutcomeDailyError("calendar cache inventory 未完整 pin")
+    timeout = request.get("timeout_seconds", 300)
+    if type(timeout) is not int or not 1 <= timeout <= 3600:
+        raise PersonalNaturalOutcomeDailyError("timeout_seconds 必須是 1–3600 整數")
+    argv = request.get("generation_argv", [])
+    if type(argv) is not list or len(argv) > 256 or any(type(value) is not str for value in argv):
+        raise PersonalNaturalOutcomeDailyError("generation_argv 無效")
+    if argv:
+        from scripts.run_personalization_recommendation import _parser
+        try:
+            args = _parser().parse_args(argv)
+        except SystemExit as exc:
+            raise PersonalNaturalOutcomeDailyError("generation_argv 不符合既有 producer API") from exc
+        if (args.historical_research or args.profile != "prod"
+                or args.result_id not in request["result_ids"]
+                or _absolute_path(args.output_root, "producer output") != paths["canonical_recommendation_output_root"]):
+            raise PersonalNaturalOutcomeDailyError("每日 producer 的 result/root/profile/replay 不相容")
+        config_path = _absolute_path(args.config_json, "config-json")
+        if os.path.normcase(str(config_path)) not in seen:
+            raise PersonalNaturalOutcomeDailyError("producer config 缺少 raw bytes pin")
+        if not args.journal_path:
+            raise PersonalNaturalOutcomeDailyError("producer journal_path 必須明示")
+        journal = _absolute_path(args.journal_path, "journal-path")
+        journal_protected = [value for name, value in paths.items() if name not in {"canonical_recommendation_output_root", "personal_capture_root"}]
+        journal_protected.extend([paths["personal_capture_root"] / "captures", root])
+        if journal.suffix.casefold() != ".jsonl" or any(_paths_overlap(journal, value) for value in journal_protected):
+            raise PersonalNaturalOutcomeDailyError("producer journal 必須是獨立 JSONL 路徑")
+        data_root = _absolute_path(args.data_root, "producer data root")
+        if paths["market_source_db"] != data_root / "sqlite" / "twstock.db":
+            raise PersonalNaturalOutcomeDailyError("producer data root 與 TWStockConfig 行情 DB 路由不符")
+        if args.current_fundamental_source_root is None:
+            raise PersonalNaturalOutcomeDailyError("producer current_fundamental_source_root 必須明示")
+        _absolute_path(args.current_fundamental_source_root, "producer fundamental source root")
+    _daily_verify_pins(pins)
+    return paths
+
+
+def _daily_produce(argv: list[str], timeout: int, cancelled: Callable[[], bool],
+                   process_receipt: dict[str, Any] | None = None) -> dict[str, Any]:
+    """只啟動原 producer；取消與逾時只終止本次 child，保留其 partial artifacts。"""
+    script = Path(__file__).resolve().parents[2] / "scripts" / "run_personalization_recommendation.py"
+    with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+        child_environment = dict(os.environ)
+        child_environment["PYTHONIOENCODING"] = "utf-8"
+        executable = sys.executable
+        if os.name == "nt":
+            # Windows venv launcher 另生 runtime；直接使用同一 base runtime，
+            # 保留原 pyvenv 身份，使 terminate/kill 對應真正執行的程序。
+            executable = getattr(sys, "_base_executable", "")
+            if not executable:
+                raise PersonalNaturalOutcomeDailyError("Windows Python runtime identity 不可用")
+            _require_plain_file(_absolute_path(executable, "Python base runtime"), "Python base runtime")
+            child_environment["__PYVENV_LAUNCHER__"] = sys.executable
+        child = subprocess.Popen([executable, "-m", "scripts.run_personalization_recommendation", *argv], stdout=stdout, stderr=stderr,
+                                 cwd=script.parents[1], env=child_environment)
+        if process_receipt is not None:
+            process_receipt.update(launcher_pid=child.pid, launched_at=_utc_text(datetime.now(timezone.utc)), status="started")
+        started = time.monotonic()
+        try:
+            while child.poll() is None:
+                if cancelled():
+                    raise InterruptedError("personal_daily_cancelled")
+                if time.monotonic() - started >= timeout:
+                    raise TimeoutError("personal_daily_producer_timeout")
+                if os.fstat(stdout.fileno()).st_size > 2 * 1024 * 1024 or os.fstat(stderr.fileno()).st_size > 64 * 1024:
+                    raise PersonalNaturalOutcomeDailyError("producer output 超限")
+                time.sleep(0.05)
+        except BaseException:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=5)
+            raise
+        finally:
+            if process_receipt is not None:
+                process_receipt.update(exit_code=child.poll(), status="exited")
+        stdout.seek(0)
+        raw = stdout.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024 or os.fstat(stderr.fileno()).st_size > 64 * 1024:
+            raise PersonalNaturalOutcomeDailyError("producer output 超限")
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeError, ValueError) as exc:
+            raise PersonalNaturalOutcomeDailyError("producer stdout 沒有唯一 JSON receipt") from exc
+        if child.returncode != 0 or not isinstance(payload, dict) or payload.get("ok") is not True:
+            raise PersonalNaturalOutcomeDailyError("原每日 producer 未完成；partial 原樣保留")
+        return {**(process_receipt or {}), "launcher_pid": child.pid, "exit_code": child.returncode, "receipt": payload}
+
+
+def _daily_artifact(path: Path) -> dict[str, str]:
+    raw = _read_plain_optional(path, path.parent)
+    if raw is None:
+        raise PersonalNaturalOutcomeDailyError("daily artifact 讀回缺失")
+    return {"path": str(path), "sha256": "sha256:" + hashlib.sha256(raw).hexdigest()}
+
+
+def run_personal_model_daily(
+    *, request: dict[str, Any], receipt_root: str | Path,
+    cancelled: Callable[[], bool] | None = None,
+    gross_contract: Any = None, lineage_reader: Callable[..., Any] | None = None,
+) -> dict[str, Any]:
+    """明示 pins 串原每日推論／immutable capture／H20 自然結果，沒有自動 fit。"""
+    root = _absolute_path(receipt_root, "receipt_root")
+    # 深拷貝 JSON 值，caller 在 child 執行期間不能變更本次 identity。
+    request = json.loads(_canonical_bytes(request))
+    if len(_canonical_bytes(request)) > 1024 * 1024:
+        raise PersonalNaturalOutcomeDailyError("daily request 超過 1 MiB 上限")
+    paths = _daily_validate_request(request, root)
+    if gross_contract is not None and request.get("gross_model_contract_hash") != getattr(gross_contract, "contract_hash", None):
+        raise PersonalNaturalOutcomeDailyError("daily request 與注入 gross contract hash 不符")
+    request_hash = _payload_hash(request)
+    terminal = root / "runs" / f"{request_hash[7:]}.json"
+    stop = cancelled if cancelled is not None else lambda: False
+    existing = _read_plain_optional(terminal, root)
+    if existing is not None:
+        prior = json.loads(existing)
+        if prior.get("request_sha256") != request_hash or prior.get("payload_sha256") != _payload_hash(prior):
+            raise PersonalNaturalOutcomeConflict("每日原收據 identity/hash 不符")
+        _daily_verify_pins(prior["artifacts"])
+        queries = _daily_queries(paths["canonical_recommendation_output_root"])
+        for item in prior["predictions"]:
+            read_personal_prediction_capture(item["path"], queries, paths["personal_capture_root"], expected_result_id=item["result_id"])
+        return {**prior, "receipt_path": str(terminal), "idempotent": True,
+                "readback_process_identity": {"pid": os.getpid(), "observed_at": _utc_text(datetime.now(timezone.utc))}}
+    _ensure_plain_directory_tree(root, root)
+    lock = root / ".personal-model-daily.lock"
+    _assert_existing_components_plain(lock)
+    try:
+        descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise PersonalNaturalOutcomeDailyError("personal daily busy；不移除另一 writer lock") from exc
+    identity = {"pid": os.getpid(), "started_at": _utc_text(datetime.now(timezone.utc)), "nonce": uuid.uuid4().hex}
+    body: dict[str, Any] = {
+        "schema_version": PERSONAL_MODEL_DAILY_RECEIPT_V1, "request_sha256": request_hash,
+        "process_identity": identity, "evaluation_at": request["evaluation_at"],
+        "predictions": [], "outcome": None, "producer": None, "artifacts": [],
+        "global_natural_evidence_created": False, "promotion_credit_created": False,
+        "auto_fit_performed": False, "formal_order_allowed": False,
+    }
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(_canonical_bytes(identity))
+            handle.flush()
+            os.fsync(handle.fileno())
+        # 第二個 writer 可能剛完成；鎖取得後再核 terminal，避免重跑 producer。
+        if terminal.exists():
+            raise PersonalNaturalOutcomeDailyError("daily receipt 已由另一 writer 完成；請重新讀回")
+        if stop():
+            raise InterruptedError("personal_daily_cancelled")
+        _daily_verify_pins(request["source_pins"])
+        if request.get("generation_argv"):
+            body["producer"] = {}
+            body["producer"] = _daily_produce(request["generation_argv"], request.get("timeout_seconds", 300), stop, body["producer"])
+        _daily_verify_pins(request["source_pins"])
+        if stop():
+            raise InterruptedError("personal_daily_cancelled")
+        queries = _daily_queries(paths["canonical_recommendation_output_root"])
+        receipts = (capture_personal_daily_results(tuple(request["result_ids"]), queries, paths["personal_capture_root"])
+                    if request["result_ids"] else ())
+        capture_paths = [Path(value) for value in request["capture_paths"]]
+        for receipt in receipts:
+            if receipt.path not in capture_paths:
+                capture_paths.append(receipt.path)
+        for path in capture_paths:
+            capture = read_personal_prediction_capture(path, queries, paths["personal_capture_root"])
+            gross_view = (project_personal_capture_h20_gross(path, queries, paths["personal_capture_root"],
+                          contract=gross_contract, lineage_reader=lineage_reader)
+                          if gross_contract is not None else {
+                              "status": "h20_gross_unavailable", "rows": [],
+                              "blockers": ["controlled_gross_contract_not_injected"],
+                          })
+            body["predictions"].append({
+                "path": str(path), "capture_id": capture["capture_id"], "result_id": capture["result_id"],
+                "receipt_binding": capture["receipt_binding"], "decision_at": capture["decision_at"],
+                "capture_sha256": _daily_artifact(path)["sha256"],
+                "gross_view": gross_view,
+            })
+            body["artifacts"].append(_daily_artifact(path))
+        if stop():
+            raise InterruptedError("personal_daily_cancelled")
+        outcome = run_personal_natural_outcome_daily(
+            canonical_recommendation_output_root=paths["canonical_recommendation_output_root"],
+            capture_paths=capture_paths, personal_capture_root=paths["personal_capture_root"],
+            market_source_db=paths["market_source_db"], calendar_cache_path=paths["calendar_cache_path"],
+            evaluation_at=datetime.fromisoformat(request["evaluation_at"].replace("Z", "+00:00")),
+            isolated_output_root=paths["isolated_outcome_root"],
+            temporary_closure_cache_path=paths.get("temporary_closure_cache_path"),
+            cancelled=stop,
+        )
+        body["outcome"] = {"summary_path": str(outcome.summary_path), "summary_sha256": outcome.summary_sha256,
+                           "capture_statuses": list(outcome.capture_statuses), "outcome_paths": [str(p) for p in outcome.outcome_paths]}
+        body["artifacts"].extend(_daily_artifact(path) for path in (outcome.summary_path, *outcome.outcome_paths))
+        _daily_verify_pins(request["source_pins"])
+        body["status"] = outcome.status
+        destination = terminal
+    except (InterruptedError, KeyboardInterrupt) as exc:
+        body.update(status="cancelled", error_type=type(exc).__name__, reason="personal_daily_cancelled")
+        destination = root / "attempts" / f"{request_hash[7:]}-{identity['nonce']}.json"
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        body.update(status="failed", error_type=type(exc).__name__, reason=str(exc)[:500])
+        destination = root / "attempts" / f"{request_hash[7:]}-{identity['nonce']}.json"
+    finally:
+        try:
+            if "destination" in locals():
+                digest, idempotent = _publish_create_only(destination, body, root)
+        finally:
+            # 只移除本程序以 EXCL 建立的協調 lock；不清原資料或其他 attempt。
+            if _read_plain_optional(lock, root) == _canonical_bytes(identity):
+                lock.unlink()
+    return {**body, "payload_sha256": digest, "receipt_path": str(destination), "idempotent": idempotent}
+
+
 __all__ = (
+    "run_personal_model_daily",
     "MAX_CAPTURE_PATHS",
     "PERSONAL_NATURAL_OUTCOME_DAILY_SCHEMA_V1",
     "PERSONAL_NATURAL_OUTCOME_SCHEMA_V1",

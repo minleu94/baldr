@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 import stat
 import tempfile
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
 from app_module.personalization_action_recorder import (
@@ -243,6 +243,180 @@ def read_personal_prediction_capture(
         payload["capture_written_at"],
     )
     return payload
+
+
+def capture_personal_daily_results(
+    result_ids: tuple[str, ...],
+    queries: RecommendationExecutionQueries,
+    personal_root: str | Path,
+) -> tuple[PersonalPredictionCaptureReceiptV1, ...]:
+    """每日 caller 明列 exact result IDs；保留原 capture schema 與模型語意。"""
+
+    if (
+        type(result_ids) is not tuple
+        or not 1 <= len(result_ids) <= MAX_PERSONAL_CAPTURE_PROJECTION_ROWS
+        or any(type(value) is not str or not value.strip() for value in result_ids)
+        or len(set(result_ids)) != len(result_ids)
+    ):
+        raise PersonalPredictionCaptureError("每日 result_ids 必須是有界、不重複的 exact IDs")
+    # 全部先核 canonical identity，已知缺件不能造成部分新增 capture。
+    for result_id in result_ids:
+        read_model = queries.get(result_id, max_receipt_bytes=MAX_PERSONAL_CAPTURE_RECEIPT_BYTES)
+        if read_model is None:
+            raise PersonalPredictionCaptureError("每日 canonical result 不存在")
+        _source_snapshot(read_model, expected_result_id=result_id)
+    receipts = tuple(
+        capture_personal_saved_result(result_id, queries, personal_root)
+        for result_id in result_ids
+    )
+    for receipt in receipts:
+        read_personal_prediction_capture(
+            receipt.path, queries, personal_root, expected_result_id=receipt.result_id
+        )
+    return receipts
+
+
+def project_personal_capture_h20_gross(
+    capture_path: str | Path,
+    queries: RecommendationExecutionQueries,
+    personal_root: str | Path,
+    *,
+    contract: Any,
+    lineage_reader: Callable[..., Any] | None,
+) -> dict[str, Any]:
+    """以 A02 exact contract 解讀原 return head；不重算、不修改舊捕獲。"""
+
+    capture = read_personal_prediction_capture(capture_path, queries, personal_root)
+    body: dict[str, Any] = {
+        "schema_version": "personal-capture-h20-gross-view.v1",
+        "capture_id": capture["capture_id"], "result_id": capture["result_id"],
+        "status": "h20_gross_unavailable", "rows": [], "blockers": [],
+        "target": "absolute_forward_stock_return_bp", "horizon_trading_days": 20,
+        "price_basis": "close_to_close_event_date", "cost_basis": "no_cost_gross",
+        "formal_eligible": False, "natural_evidence_eligible": False,
+        "production_action_allowed": False,
+    }
+    try:
+        if not callable(lineage_reader) or contract is None:
+            raise PersonalPredictionCaptureError("controlled_gross_contract_or_lineage_reader_missing")
+        if (contract.contract_version, contract.target, contract.horizon_trading_days,
+                contract.price_basis, contract.cost_basis, contract.adapter_version) != (
+                "personal-h20-gross.v1", body["target"], 20, body["price_basis"], body["cost_basis"],
+                "recommendation-calibration-return-head.v1") or type(contract.horizon_trading_days) is not int:
+            raise PersonalPredictionCaptureError("h20_gross_contract_mismatch")
+        if not _is_sha256(contract.contract_hash):
+            raise PersonalPredictionCaptureError("h20_gross_contract_hash_missing")
+        binding = capture["receipt_binding"]
+        identity = binding["candidate_identity"]
+        for field, expected in (
+            ("candidate_id", contract.candidate_id), ("candidate_manifest_hash", contract.manifest_hash),
+            ("candidate_artifact_hash", contract.artifact_hash), ("dataset_hash", contract.dataset_hash),
+        ):
+            if identity.get(field) != expected:
+                raise PersonalPredictionCaptureError(f"h20_gross_capture_pin_mismatch:{field}")
+        root = _absolute_path(contract.artifact_root, "gross artifact root")
+        if _normalized_path(identity["candidate_root"]) != _normalized_path(str(root)):
+            raise PersonalPredictionCaptureError("h20_gross_artifact_root_mismatch")
+        pin_paths = ((root / "manifest.json", contract.manifest_raw_sha256),
+                     (root / "candidate.json", contract.candidate_raw_sha256),
+                     (_absolute_path(contract.lineage_path, "gross lineage path"), contract.lineage_raw_sha256))
+        original: list[bytes] = []
+        for path, digest in pin_paths:
+            _assert_path_chain_plain(path, require_final_file=True)
+            raw = _read_regular_file_no_follow(path, path.parent, max_bytes=MAX_PERSONAL_CAPTURE_RECEIPT_BYTES)
+            if not _is_sha256(digest) or "sha256:" + hashlib.sha256(raw).hexdigest() != digest:
+                raise PersonalPredictionCaptureError("h20_gross_raw_pin_mismatch")
+            original.append(raw)
+        manifest = _json_mapping(json.loads(original[0]), "gross manifest")
+        candidate = _json_mapping(json.loads(original[1]), "gross candidate")
+        for field in ("model_id", "dataset_id", "model_family", "feature_registry_hash", "label_registry_hash",
+                      "manifest_hash", "artifact_hash", "training_as_of"):
+            if manifest.get(field) != getattr(contract, field):
+                raise PersonalPredictionCaptureError(f"h20_gross_manifest_mismatch:{field}")
+        for field in ("model_version", "candidate_id", "model_id", "dataset_id", "dataset_hash", "model_family",
+                      "feature_registry_hash", "label_registry_hash", "manifest_hash", "artifact_hash", "training_as_of"):
+            if candidate.get(field) != getattr(contract, field):
+                raise PersonalPredictionCaptureError(f"h20_gross_candidate_mismatch:{field}")
+        if (candidate.get("schema_version") != "recommendation-calibration-candidate.v1"
+                or type(candidate.get("horizon_trading_days")) is not int or candidate["horizon_trading_days"] != 20
+                or candidate.get("return_basis") != contract.price_basis
+                or candidate.get("target_definitions", {}).get("upside") != "absolute forward stock return over 20 trading days > 0 bp"
+                or candidate.get("label_contract_id") not in {"recommendation-absolute-labels-v1", "recommendation-absolute-labels-banktaiwan-estimated-v1"}):
+            raise PersonalPredictionCaptureError("h20_gross_original_head_semantics_unproven")
+        if (candidate.get("feature_schema") != [list(row) for row in contract.feature_schema]
+                or candidate.get("feature_names") != [row[0] for row in contract.feature_schema]
+                or candidate.get("shadow_only") is not True or candidate.get("production_eligible") is not False
+                or candidate.get("production_action_allowed") is not False):
+            raise PersonalPredictionCaptureError("h20_gross_candidate_schema_or_flags_mismatch")
+        created_at = _canonical_utc(manifest.get("created_at"), "gross manifest created_at")
+        if candidate.get("candidate_frozen_at") != manifest.get("created_at") or created_at > _canonical_utc(capture["decision_at"], "decision_at"):
+            raise PersonalPredictionCaptureError("h20_gross_model_created_after_decision")
+        if (tuple(tuple(row) for row in manifest.get("feature_schema", [])) != contract.feature_schema
+                or manifest.get("library_versions") != dict(contract.installed_library_versions)):
+            raise PersonalPredictionCaptureError("h20_gross_exact_schema_or_runtime_mismatch")
+        verified = lineage_reader(contract.lineage_path, expected_manifest_hash=contract.lineage_hash,
+                                  expected_dataset_hash=contract.dataset_hash, expected_candidate_id=contract.candidate_id)
+        if verified.manifest_hash != contract.lineage_hash:
+            raise PersonalPredictionCaptureError("h20_gross_lineage_hash_mismatch")
+        lineage = dict(verified.payload)
+        original_lineage = _json_mapping(json.loads(original[2]), "gross raw lineage")
+        original_lineage.pop("manifest_hash", None)
+        if original_lineage != lineage:
+            raise PersonalPredictionCaptureError("h20_gross_verified_lineage_bytes_mismatch")
+        for field, expected in (("training_source_hash", contract.training_source_hash),
+                                ("training_pit_hash", contract.training_pit_hash),
+                                ("training_as_of", contract.training_as_of),
+                                ("feature_registry_hash", contract.feature_registry_hash)):
+            if lineage.get(field) != expected:
+                raise PersonalPredictionCaptureError(f"h20_gross_lineage_mismatch:{field}")
+        if (lineage.get("feature_schema") != [list(row) for row in contract.feature_schema]
+                or lineage.get("return_basis") != contract.price_basis
+                or lineage.get("training_context", {}).get("semantics") != "decision_time"
+                or lineage.get("training_context", {}).get("decision_time_eligible") is not True):
+            raise PersonalPredictionCaptureError("h20_gross_lineage_feature_or_time_unproven")
+        receipt_path = Path(binding["path"])
+        receipt_raw = _read_regular_file_no_follow(receipt_path, Path(binding["learning_root"]), max_bytes=MAX_PERSONAL_CAPTURE_RECEIPT_BYTES)
+        receipt = _json_mapping(json.loads(receipt_raw), "gross original receipt")
+        training = _json_mapping(receipt.get("training_provenance"), "gross training provenance")
+        inference = _json_mapping(receipt.get("inference_provenance"), "gross inference provenance")
+        if training.get("status") != "verified":
+            raise PersonalPredictionCaptureError("h20_gross_training_lineage_unproven")
+        for field, expected in (("manifest_hash", contract.lineage_hash), ("training_source_hash", contract.training_source_hash),
+                                ("training_pit_hash", contract.training_pit_hash), ("dataset_id", contract.dataset_id),
+                                ("feature_registry_hash", contract.feature_registry_hash)):
+            if training.get(field) != expected:
+                raise PersonalPredictionCaptureError(f"h20_gross_training_receipt_mismatch:{field}")
+        transform = _json_mapping(inference.get("feature_transform_contract"), "gross feature transform")
+        if (tuple(tuple(row) for row in transform.get("canonical_schema", [])) != contract.feature_schema
+                or inference.get("feature_registry_hash") != contract.feature_registry_hash):
+            raise PersonalPredictionCaptureError("h20_gross_inference_schema_mismatch")
+        decision_date = date.fromisoformat(binding["decision_date"])
+        if date.fromisoformat(contract.training_as_of) > decision_date:
+            raise PersonalPredictionCaptureError("h20_gross_model_not_available_at_decision")
+        rows = []
+        for delivered in capture["delivered_rows"]:
+            row = delivered["projection"]
+            value = row.get("ranking_score_bp")
+            active = row.get("status") == "active_candidate"
+            if active and (row.get("model_version") != contract.candidate_id or type(value) is not int
+                           or not -2_147_483_648 <= value <= 2_147_483_647):
+                raise PersonalPredictionCaptureError("h20_gross_original_return_head_missing")
+            rows.append({"stock_code": delivered["stock_code"],
+                         "status": "h20_gross_available" if active else "h20_gross_unavailable",
+                         "predicted_gross_return_bp": value if active else None,
+                         "capture_model_version": row.get("model_version"),
+                         "blockers": [] if active else ["rule_only_fallback"]})
+        for (path, _), raw in zip(pin_paths, original):
+            if _read_regular_file_no_follow(path, path.parent, max_bytes=MAX_PERSONAL_CAPTURE_RECEIPT_BYTES) != raw:
+                raise PersonalPredictionCaptureError("h20_gross_sidecar_changed_during_projection")
+        read_personal_prediction_capture(capture_path, queries, personal_root, expected_result_id=capture["result_id"])
+        body.update(status="h20_gross_available", rows=rows, model_id=contract.model_id,
+                    model_version=contract.model_version, capture_model_version=contract.candidate_id,
+                    model_contract_hash=contract.contract_hash, artifact_hash=contract.artifact_hash,
+                    lineage_hash=contract.lineage_hash, feature_registry_hash=contract.feature_registry_hash)
+    except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+        body["blockers"] = [str(exc)[:240] or type(exc).__name__]
+    return body
 
 
 def _source_snapshot(

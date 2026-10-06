@@ -146,6 +146,43 @@ def test_explicit_policy_config_path_must_be_absolute(tmp_path: Path) -> None:
     assert _resolve_personal_policy_config_path(absolute_path) == absolute_path.resolve()
 
 
+def test_shared_config_policy_path_is_used_without_creating_policy(tmp_path: Path) -> None:
+    configured = tmp_path / "daily-and-ui" / "policy.json"
+    assert _resolve_personal_policy_config_path(None, configured_path=configured) == configured.resolve()
+    assert not configured.parent.exists()
+
+
+def test_explicit_policy_path_keeps_precedence_over_daily_config(tmp_path: Path) -> None:
+    explicit = tmp_path / "explicit.json"
+    configured = tmp_path / "daily.json"
+    assert _resolve_personal_policy_config_path(explicit, configured_path=configured) == explicit.resolve()
+    assert not explicit.exists() and not configured.exists()
+
+
+def test_relative_shared_policy_config_is_rejected() -> None:
+    with pytest.raises(ValueError, match="絕對路徑"):
+        _resolve_personal_policy_config_path(None, configured_path=Path("relative.json"))
+
+
+def test_relative_config_policy_rejected_before_data_directory_io(tmp_path: Path, monkeypatch) -> None:
+    from data_module.config import TWStockConfig
+
+    monkeypatch.setattr(TWStockConfig, "_resolve_paths", lambda self: pytest.fail("invalid policy before data IO"))
+    with pytest.raises(ValueError, match="絕對路徑"):
+        TWStockConfig(data_root=tmp_path / "market", personal_model_policy_path=Path("relative.json"))
+
+
+def test_shared_policy_environment_reaches_config_without_creating_policy(tmp_path: Path, monkeypatch) -> None:
+    from data_module.config import TWStockConfig
+
+    path = tmp_path / "shared.json"
+    monkeypatch.setenv("PERSONAL_MODEL_POLICY_PATH", str(path))
+    # 核原 dataclass 環境 factory，不初始化資料／日誌服務。
+    factory = TWStockConfig.__dataclass_fields__["personal_model_policy_path"].default_factory
+    assert factory() == path
+    assert not path.exists()
+
+
 def test_corrupt_policy_requires_explicit_one_shot_rule_fallback(
     qt_app: QApplication,
     tmp_path: Path,

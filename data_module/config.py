@@ -68,6 +68,12 @@ class TWStockConfig:
         kw_only=True,
     )
 
+    # UI 與每日個人推論共用已保存 policy；指定路徑不會建立或啟用模型。
+    personal_model_policy_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PERSONAL_MODEL_POLICY_PATH"),
+        kw_only=True,
+    )
+
     # PIT sector membership 是 opt-in 的唯讀輸入；未設定時不做目錄掃描。
     pit_sector_membership_path: Path | None = field(
         default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_PATH"),
@@ -132,6 +138,11 @@ class TWStockConfig:
     
     def __post_init__(self):
         """初始化衍生屬性"""
+        if self.personal_model_policy_path is not None:
+            requested_policy = Path(self.personal_model_policy_path).expanduser()
+            if not requested_policy.is_absolute():
+                raise ValueError("personal_model_policy_path 必須是明示絕對路徑")
+            self.personal_model_policy_path = requested_policy
         # 處理路徑覆蓋邏輯
         self._resolve_paths()
         self._validate_personal_storage_selection()

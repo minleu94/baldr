@@ -62,6 +62,8 @@
 
 ## 其他正式入口
 
+- 2026-10-06 個人 H20 真候選、可信 lineage／精確 contract 與每日來源剩餘：[中央整合 QA](../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md)、[A02 H20 gross](../06_qa/BALDR_A02_H20_GROSS_MODEL_20261006.md)、[只讀 activation preflight](../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_PREFLIGHT_20261006.md)。
+
 - UX08原生圖同源投影、截止日／精確表格／fallback及個人資料分離設計：[限定工程驗證](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md)。
 
 - 四用途既有功能的有限工程缺口、Luna Max 分工與當次驗收：[Astra 工程收尾](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md)。是否完成以該文件最後接受與 Snapshot 為準。

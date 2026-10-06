@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 個人 H20 真候選接線增量
+
+使用者已接受 U1 有限 BBANDS30 上軌比較與 U2 H20 gross、要求每日個人模型使用；早先「U1/U2 等答覆」為歷史狀態。A02 `7b5f055d→25530d9d` 已採，原 trainer 已有 H20 absolute/no-cost return head，不需新 trainer。中央可信原 fit 收據核 `rec-cal-3f8b2c276ef316e28de3806d`，真 same-bytes artifact 重播原9月28日三請求得到1613／1963／1086bp，等於原保存輸出；全部來源 bytes／mtime 不變。model final-fold 截點與 merged-lineage cutoff 分別綁定，中文 canonical hash 相容已補，中央68 focused passed、rebuild4 passed、mypy4 sources0 error。
+
+每日目前來源尚未接通：候選對原 frozen snapshot proposal_ready，對當前正式 DB training_source_time_training_rows_unbound；live historical preview 受原 revision guard 阻擋得到0樣本。保留 guard、未知 PIT 與 performance 揭露，不拿舊 snapshot 假稱每日目前行情。自然成熟不是個人使用工程 gate；原Stage／UX、七有限closed與性能例外不變。詳見[中央整合 QA](../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md)。
+
 ## 2026-10-06 final authorized validation / R01 accepted
 
 R01 worker `2381b1abbec87c0015dc8a581816db02e9b54bbb` 採入 `4e51f34a`；測試清冊與中央文件凍結為 **`c5eb5c80884a9b23ad50f40e28c481338a02855d`**。原64四用途精確nodes與整檔Registry／selected Paper／source_id／v2／boundary去重後，一次union收集522項、執行521項；真fit的real_runner明示deselected。

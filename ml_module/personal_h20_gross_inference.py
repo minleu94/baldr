@@ -103,6 +103,8 @@ class PersonalH20GrossInference:
             return self._result(request, blocker="exact_feature_schema_mismatch")
         if strict_date(contract.training_as_of) > strict_date(request.decision_date):
             return self._result(request, blocker="model_not_available_at_decision")
+        if strict_date(contract.lineage_training_as_of or contract.training_as_of) > strict_date(request.decision_date):
+            return self._result(request, blocker="training_lineage_after_decision")
         if not callable(self._lineage_reader) or self._artifact_loader is None:
             return self._result(request, blocker="controlled_loader_or_lineage_reader_missing")
         if getattr(self._artifact_loader, "contract_hash", None) != contract.contract_hash:
@@ -128,7 +130,8 @@ class PersonalH20GrossInference:
             lineage_body.pop("manifest_hash", None)
             if (verified.manifest_hash != contract.lineage_hash or
                 lineage.get("manifest_hash") != contract.lineage_hash or
-                payload_hash(lineage_body) != contract.lineage_hash or
+                sha256_bytes(json.dumps(lineage_body, ensure_ascii=False, sort_keys=True,
+                    separators=(",", ":")).encode("utf-8")) != contract.lineage_hash or
                 dict(verified.payload) != lineage_body):
                 raise ValueError("verified_lineage_bytes_mismatch")
             self._validate_lineage(lineage_body)
@@ -217,6 +220,8 @@ class PersonalH20GrossInference:
             raise ValueError("candidate_gross_target_unproven")
         if candidate.get("candidate_frozen_at") != manifest.created_at:
             raise ValueError("candidate_creation_clock_mismatch")
+        if c.lineage_training_as_of is not None and candidate.get("training_cutoff") != c.lineage_training_as_of:
+            raise ValueError("candidate_training_cutoff_mismatch")
         if (candidate.get("shadow_only") is not True or candidate.get("production_eligible") is not False or
             candidate.get("production_action_allowed") is not False):
             raise ValueError("candidate_qualification_flags_invalid")
@@ -227,7 +232,8 @@ class PersonalH20GrossInference:
             raise ValueError("training_lineage_missing")
         for field, expected in (("candidate_id", c.candidate_id), ("dataset_id", c.dataset_id),
             ("dataset_hash", c.dataset_hash), ("candidate_manifest_hash", c.manifest_hash),
-            ("candidate_artifact_hash", c.artifact_hash), ("training_as_of", c.training_as_of),
+            ("candidate_artifact_hash", c.artifact_hash),
+            ("training_as_of", c.lineage_training_as_of or c.training_as_of),
             ("training_source_hash", c.training_source_hash), ("training_pit_hash", c.training_pit_hash),
             ("feature_registry_hash", c.feature_registry_hash), ("return_basis", c.price_basis)):
             if lineage.get(field) != expected:

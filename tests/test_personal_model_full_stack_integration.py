@@ -1923,3 +1923,99 @@ def test_matured_assessment_readback_rechecks_contract_rows_and_prices(
     assert after_cost_readback.after_cost["model_brier_bp"] is None
     assert after_cost_readback.after_cost["sample_count"] is None
     assert _sqlite_source_storage_state(source_database) == storage_before
+
+
+def _central_rebuild_args(tmp_path: Path) -> list[str]:
+    from data_module.ml_storage_capacity import heavy_chain_lock_path
+
+    data = tmp_path / "data"
+    return [
+        "--data-root", str(data), "--source-db", str(data / "source.sqlite"),
+        "--output-root", str(tmp_path / "new-version"),
+        "--heavy-chain-lock", str(heavy_chain_lock_path(data / "output" / "release_v4")),
+        "--symbols", "1103,1259", "--history-start-date", "2014-01-01",
+        "--replay-start-date", "2024-09-14", "--replay-end-date", "2026-09-14",
+        "--training-as-of", "2026-09-14", "--decision-date", "2026-09-14",
+        "--max-decision-dates", "100", "--fixed-round-trip-cost-bp", "50",
+        "--run-scope", "isolated-central-test",
+    ]
+
+
+def test_central_rebuild_preview_never_fits_publishes_or_locks(tmp_path, monkeypatch, capsys):
+    from scripts.scheduled.rebuild_personal_calibration_candidate import main
+    from data_module import ml_storage_capacity as capacity
+    from data_module import ml_historical_snapshot_provider as provider
+    from ml_module import recommendation_historical_replay as replay
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("preview must not fit, persist, or acquire a writer lock")
+
+    monkeypatch.setattr(DailyRecommendationLearningRunner, "run", forbidden)
+    monkeypatch.setattr(capacity, "acquire_heavy_chain_reservation", forbidden)
+    monkeypatch.setattr(provider, "MLHistoricalSnapshotProvider", lambda path: object())
+    result = SimpleNamespace(
+        samples=(object(),), dataset_hash="sha256:" + "a" * 64,
+        source_fingerprint="sha256:" + "b" * 64,
+        coverage={"source_contract": {"status": "unverified"}},
+        source_disclosures={"publication_time": "unknown"},
+        lookahead_checks={}, candidate_blockers=("historical_pit_unknown",),
+        persist=forbidden,
+    )
+    monkeypatch.setattr(replay.RecommendationHistoricalReplayService, "build", lambda self, config: result)
+    assert main(_central_rebuild_args(tmp_path)) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["model_training_performed"] is False
+    assert payload["activation_performed"] is False
+    assert payload["historical_blockers"] == ["historical_pit_unknown"]
+    assert payload["source_disclosures"]["publication_time"] == "unknown"
+    assert not (tmp_path / "new-version").exists()
+    assert not (tmp_path / "data").exists()
+
+
+def test_central_rebuild_existing_output_rejected_before_source_or_fit(tmp_path, monkeypatch):
+    from scripts.scheduled.rebuild_personal_calibration_candidate import main
+
+    root = tmp_path / "new-version"
+    root.mkdir()
+    sentinel = root / "original.json"
+    sentinel.write_bytes(b"original-source")
+    monkeypatch.setattr(DailyRecommendationLearningRunner, "run", lambda *a, **k: pytest.fail("no fit"))
+    with pytest.raises(SystemExit):
+        main(_central_rebuild_args(tmp_path) + ["--execute"])
+    assert sentinel.read_bytes() == b"original-source"
+    assert list(root.iterdir()) == [sentinel]
+
+
+def test_central_rebuild_busy_shared_lock_never_reads_source_or_fits(tmp_path, monkeypatch, capsys):
+    from scripts.scheduled.rebuild_personal_calibration_candidate import main
+    from data_module import ml_storage_capacity as capacity
+    from data_module import ml_historical_snapshot_provider as provider
+
+    monkeypatch.setattr(capacity, "acquire_heavy_chain_reservation", lambda path: None)
+    monkeypatch.setattr(provider, "MLHistoricalSnapshotProvider", lambda *a: pytest.fail("busy before source read"))
+    monkeypatch.setattr(DailyRecommendationLearningRunner, "run", lambda *a, **k: pytest.fail("busy before fit"))
+    assert main(_central_rebuild_args(tmp_path) + ["--execute"]) == 2
+    assert json.loads(capsys.readouterr().out)["reason"] == "heavy_chain_busy"
+    assert not (tmp_path / "new-version").exists()
+
+
+def test_central_rebuild_scratch_failure_releases_reservation(tmp_path, monkeypatch):
+    from scripts.scheduled.rebuild_personal_calibration_candidate import main
+    from data_module import ml_storage_capacity as capacity
+
+    reservation = object()
+    released = []
+    monkeypatch.setattr(capacity, "acquire_heavy_chain_reservation", lambda path: reservation)
+    monkeypatch.setattr(capacity, "release_heavy_chain_reservation", released.append)
+    original_mkdir = Path.mkdir
+
+    def fail_scratch(path, *args, **kwargs):
+        if path.name == "temporary":
+            raise OSError("synthetic scratch unavailable")
+        return original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", fail_scratch)
+    with pytest.raises(OSError, match="synthetic scratch unavailable"):
+        main(_central_rebuild_args(tmp_path) + ["--execute"])
+    assert released == [reservation]
+    assert not (tmp_path / "new-version").exists()

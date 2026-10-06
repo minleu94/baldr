@@ -207,9 +207,13 @@ def _drain_qt_deferred_deletes(
 
 def _resolve_personal_policy_config_path(
     explicit_path: str | Path | None,
+    *,
+    configured_path: str | Path | None = None,
 ) -> Path | None:
-    """使用明示 QA 路徑，或 QApplication 的本機 AppConfigLocation。"""
+    """明示 caller 優先，其次共用 config，最後本機 AppConfigLocation。"""
 
+    if explicit_path is None:
+        explicit_path = configured_path
     if explicit_path is not None:
         requested_path = Path(explicit_path).expanduser()
         if not requested_path.is_absolute():
@@ -453,6 +457,10 @@ class MainWindow(QMainWindow):
         try:
             # 初始化配置和服務
             self.config = TWStockConfig()
+            self.personal_policy_config_path = _resolve_personal_policy_config_path(
+                policy_config_path,
+                configured_path=getattr(self.config, "personal_model_policy_path", None),
+            )
 
             decision_services = build_decision_service_composition(config=self.config)
             self.screening_service = decision_services.screening_service

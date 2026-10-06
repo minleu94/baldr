@@ -126,7 +126,8 @@ def _bundle(tmp_path: Path, *, model_changes: dict[str, Any] | None = None,
         candidate_artifact_hash=manifest.artifact_hash)
     lineage_body = dict(lineage.payload)
     lineage_body.update(lineage_changes or {})
-    lineage_hash = payload_hash(lineage_body)
+    lineage_hash = sha256_bytes(json.dumps(lineage_body, ensure_ascii=False,
+        sort_keys=True, separators=(",", ":")).encode("utf-8"))
     lineage_path = root / "lineage.json"
     lineage_raw = _write(lineage_path, {**lineage_body, "manifest_hash": lineage_hash})
     contract = H20GrossModelContract(artifact_root=str(root), lineage_path=str(lineage_path),
@@ -160,6 +161,45 @@ def test_real_same_bytes_chain_extracts_gross_without_natural_maturity_gate(tmp_
     assert result.formal_eligible is result.natural_evidence_eligible is result.production_action_allowed is False
     assert json.loads(json.dumps(result.to_dict()))["prediction_id"] == result.prediction_id
     assert before == {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in Path(c.artifact_root).iterdir()}
+
+
+def test_model_fold_cutoff_and_merged_lineage_cutoff_remain_distinct(tmp_path: Path) -> None:
+    c, request = _bundle(tmp_path, candidate_changes={"training_cutoff": "2026-10-02"},
+        lineage_changes={"training_as_of": "2026-10-02", "decision_date": "2026-10-02"})
+    c = replace(c, lineage_training_as_of="2026-10-02")
+    request = replace(request, model_contract_hash=c.contract_hash)
+    result = _service(c, tmp_path).predict(request)
+    assert c.training_as_of == "2026-09-30"
+    assert result.status == "h20_gross_available", result.blockers
+    assert result.predicted_gross_return_bp == 1234
+
+
+def test_original_lineage_canonical_unicode_is_not_ascii_escaped(tmp_path: Path) -> None:
+    c, request = _bundle(tmp_path, lineage_changes={"source_note": "原保存來源，不補造可得時間"})
+    result = _service(c, tmp_path).predict(request)
+    assert result.status == "h20_gross_available", result.blockers
+    assert result.predicted_gross_return_bp == 1234
+
+
+def test_lineage_cutoff_after_decision_never_deserializes(tmp_path: Path, monkeypatch: Any) -> None:
+    c, request = _bundle(tmp_path)
+    c = replace(c, lineage_training_as_of="2026-10-07")
+    request = replace(request, model_contract_hash=c.contract_hash)
+    monkeypatch.setattr("ml_module.model_artifact_loader._deserialize_verified_joblib_buffer",
+        lambda b: pytest.fail("future merged lineage must not decode"))
+    result = _service(c, tmp_path).predict(request)
+    assert result.blockers == ("training_lineage_after_decision",)
+
+
+def test_candidate_cannot_relabel_merged_lineage_cutoff(tmp_path: Path, monkeypatch: Any) -> None:
+    c, request = _bundle(tmp_path, candidate_changes={"training_cutoff": "2026-09-30"},
+        lineage_changes={"training_as_of": "2026-10-02", "decision_date": "2026-10-02"})
+    c = replace(c, lineage_training_as_of="2026-10-02")
+    request = replace(request, model_contract_hash=c.contract_hash)
+    monkeypatch.setattr("ml_module.model_artifact_loader._deserialize_verified_joblib_buffer",
+        lambda b: pytest.fail("wrong cutoff must not decode"))
+    result = _service(c, tmp_path).predict(request)
+    assert "candidate_training_cutoff_mismatch" in result.blockers[0]
 
 
 @pytest.mark.parametrize("field,value", [

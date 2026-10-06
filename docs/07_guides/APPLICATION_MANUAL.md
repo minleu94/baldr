@@ -2414,6 +2414,18 @@ $policy = Join-Path $run 'app_config\personal_use_policy.json'
 
 成功旅程會在「推薦分析」內逐步檢查明示 DB source、V2 trust、推薦、保存讀回、capture、冷啟、停用與 rollback；每一個 source proof 以該 run 真正的 `TWStockConfig.db_file` 為準。準備器複製已 pin 的 QA snapshot，learning root `output/qa/pc-fit-v7` 保持唯讀。若任何 phase 失敗或逾時，保留原 receipt 與 run tree、停止後續動作並改用新 run ID；不得清理或覆寫失敗 root。
 
+### 9.9.1g 個人 H20 原模型準備與 policy 路徑（2026-10-06）
+
+目前原 trainer 已有20交易日 absolute/no-cost 毛報酬 head，不需先新增 trainer。使用者已准有限上軌比較與 H20 gross、希望每天保存真模型預測；自然績效未成熟要顯示狀態，不作無限等待的個人使用 gate。正式交易與 PIT 資格仍須獨立證據。
+
+啟動 UI 前可在 config.personal_model_policy_path 或環境 `PERSONAL_MODEL_POLICY_PATH` 設**絕對 policy 檔路徑**；MainWindow explicit policy_config_path 優先，其次 config，最後原 AppConfigLocation 預設。設定路徑不自建檔案或啟用候選。操作仍在推薦頁原個人模型選擇／來源信任／保存流程；relative path 會在資料 I/O 前拒絕，應改為私人目錄的絕對檔名。不要放進 market DB 或 FA_Data。
+
+維運者可先執行 `scripts/qa_prepare_personal_h20_gross_contract.py --fit-receipt <原fit收據絕對路徑> --fit-receipt-sha256 <獨立核准rawSHA>`。結果列出原 lineage／artifact／runtime／schema pins、holdout 評估與 blockers；不 fit、deserialize、保存 policy 或改 Task。candidate 自述 verified 不足以替代原可信 fit 收據。
+
+需要重新產候選時先看 `scripts/scheduled/rebuild_personal_calibration_candidate.py --help`；來源 DB、data root、新 output、shared heavy-chain lock、symbols、history/replay期間、training cutoff、decision date、max dates、cost bp 與 scope 均須明示。預設 preview 只讀；0樣本／來源拒絕表示缺件，不能補成0預測或刪 revision marker。execute 不屬 preview，本次未執行；原 capacity 與 shared lock 仍保留，output 必須全新且與來源／App 分離。
+
+已核可信原候選 `rec-cal-3f8b2c276ef316e28de3806d`，真 artifact 對9月28日原保存請求重播三筆 H20 為1613／1963／1086bp，等於原保存值；holdout Brier2730比null2500差230bp，after-cost仍缺件。重播不算今日新自然預測。目前來源提案對原 frozen snapshot 可用，對 live DB 仍 training_source_time_training_rows_unbound；正式來源 revision guard 也阻擋 historical PIT replay。每日 current-restated 來源與 A03 CLI composition 尚在整合，不要使用9月24日 frozen snapshot冒稱最新行情。回退沿原 rule-only／policy CAS，不刪預測或來源收據。完整證據：[中央整合 QA](../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md)。
+
 ### 9.9.1e 已保存推薦的個人決定與旅程回看（2026-09-28）
 
 這段流程記錄使用者對已保存推薦的個人選擇，並在個股研究的「決策 → 結果」頁回看同一結果的 Journal 歷史。它不重跑推薦、不改寫推薦排序、不建立成交或持倉，也不代表模型成效。

@@ -82,6 +82,7 @@ class H20GrossModelContract:
     cost_basis: str = H20_GROSS_COST_BASIS
     adapter_version: str = H20_GROSS_ADAPTER
     contract_version: str = H20_GROSS_CONTRACT_VERSION
+    lineage_training_as_of: str | None = None
 
     def __post_init__(self) -> None:
         for field in ("artifact_root", "lineage_path", "model_id", "model_version", "dataset_id",
@@ -97,6 +98,9 @@ class H20GrossModelContract:
             require_hash(getattr(self, field), field)
         validate_schema(self.feature_schema)
         strict_date(self.training_as_of)
+        if self.lineage_training_as_of is not None:
+            if strict_date(self.lineage_training_as_of) < strict_date(self.training_as_of):
+                raise ValueError("lineage_cutoff_before_model_training")
         if self.target != H20_GROSS_TARGET or type(self.horizon_trading_days) is not int or self.horizon_trading_days != 20:
             raise ValueError("target_or_horizon_mismatch")
         if (self.price_basis, self.cost_basis) != (H20_GROSS_PRICE_BASIS, H20_GROSS_COST_BASIS):

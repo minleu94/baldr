@@ -6,6 +6,8 @@
 
 新私人 store selector 只固定 trades／聲明／Paper trade ledger／明示 Portfolio ledger／Review／市場 Evidence 的路徑契約，沒有新增操作按鈕或自動啟用。PERSONAL 的讀來源與寫目標是同一私人 store，空庫不借舊資料；Evidence 只有市場 reader。Portfolio ledger 必須有 caller 核定的精確路徑與身份，未知即拒絕。Portfolio／Paper／DecisionQuality 的實際 caller 接線仍列 B09／B10。[B08 路由契約](../06_qa/BALDR_B08_PERSONAL_ROUTES_20261006.md)與[首波整合收據](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)記錄範圍。
 
+工程接線設定另以 `PERSONAL_STORE_ROOT`／`PERSONAL_STORE_MODE` 成對明示，或工具的 `--personal-store-root`／`--personal-store-mode`；模式只有 `personal` 與 `legacy_read_only`。兩者皆未設保留 legacy 相容；單設或未知模式拒絕。這個選擇獨立於 watchlist 來源／activation 與 notes 模式，不改全域 `OUTPUT_ROOT` 或市場 `db_file`，配置本身不建立私人 store。caller 接線尚在 B09／B10 驗證中，這不是正式切換操作；勿在正式環境套用。notes 仍沿原 `PERSONAL_JOURNAL_ROOT`／`PERSONAL_JOURNAL_MODE` 契約。
+
 ## 首頁四個用途與股號搜尋（2026-10-06）
 
 「今日優先查看」可直接選「看盤勢／持倉健康／選股研究／個股研究」，沿原工作區查看完整內容。個股研究可輸入4–6位數字股號，按 Enter 或「開啟當下研究」；這是明示當下來源，沒有沿用首頁候選的決策日、結果或保存身份。要回看原保存候選，仍點原候選列；返回沿原來源工作區。無效股號顯示修正提示，來源可用性由個股頁核對；未接來源的按鈕停用。

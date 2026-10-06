@@ -8,6 +8,11 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
+from app_module.rule_research_family_catalog import (
+    RuleResearchFamilyCapability,
+    list_rule_research_families,
+)
+
 from app_module.daily_market_cohort_projection import (
     DailyMarketCohortProjectionError,
     _validate_snapshot,
@@ -231,6 +236,11 @@ DAILY_MARKET_RESEARCH_METHOD_CAPABILITIES = tuple(
 class DailyMarketResearchCapabilityCatalog:
     features: tuple[DailyMarketResearchCapabilityMetadata, ...]
     methods: tuple[DailyMarketResearchCapabilityMetadata, ...]
+
+    @property
+    def families(self) -> tuple[RuleResearchFamilyCapability, ...]:
+        """額外提供原八族唯讀入口，不改既有 feature／method 序列化。"""
+        return list_rule_research_families()
 
     def to_dict(self) -> dict[str, Any]:
         return {

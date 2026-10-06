@@ -1,5 +1,15 @@
 # BALDR 有界收尾狀態與移交（2026-10-06）
 
+## 2026-10-06 I156 中央最終驗收
+
+固定治理提交 `dd33d4efd23e5915fbc2c1d51fdd4b9f7ab396be`：原凍結156項＋已採P1具名1項一次入冊，共157項增量；filesystem／inventory＝1282／1282，missing＝0、stale＝0、documentation_count_drift＝0，metadata audit exit0／passed。執行時明示 skip-pytest-collection，沒有執行156項測試、fit或模型載入。原13項治理契約13 passed／10.07s；registry targeted mypy、compile及diff-check通過。原1125項分類值、support／runner API、direct bridge12與原治理assert保持不變，沒有新增bridge或豁免。
+
+G0／G1／G2／G3／G4完整靜態證據皆核exact paths、來源blob／working SHA與合法分類；G3固定ROOT QA寫入的F4案例裁為write-risk-dry-run-required，原候選推薦留在raw。G4尾段欄位錯位修正後才接受完整49項；G2額外helper偏差中止且未採用。靜態assert數與來源檢查不是runtime pass。完整固定head、四治理blob、來源證據hash與raw／JUnit索引見本機 `output/qa/i156_final_handoff_20261006.json`。
+
+source_id直接批准修補保留：7f56558c→fcef6580的專屬9例通過；384a46c2另以既有中央bounded composition＋原Journal保存／唯讀reader／新程序驗證正向1例通過（3.01s），是重疊增量，不累加為10項獨立案例。unknown source/account/clock仍拒；相鄰FlakyJournal缺legacy_read_only的原fixture1fail已在固定原基準重現，未放寬assert。
+
+剩餘工程阻塞：ML boundary仍676檔／6違例／exit1（H1–H5／H8），P2正式Paper producer接線尚未接受，不宣稱正式私人鏈完成。原9Stage＝1done／8partial／0pending、24UX＝2done／22partial／0pending、七有限closed UX03/04/05/06/09/15/17不變；F1 18.6219658%（門檻20%）與Journey8.109s（門檻8s）原性能例外保留。自然累積不作工程gate，未知來源／PIT／模型資格不造。完整UI union只沿用c9d57fc7已准範圍；本次沒有重跑或提升整Stage／UX。無push／mainmerge／真DBwrite／私人啟用或migration／正式Task／ACL／清理／交易／foregroundNative／訓練。
+
 本文件是本輪結果索引，不是另一份 roadmap。唯一原計畫／Danny Quant 仍為 output/plans/baldr_product_experience_plan_20261004.md，原文僅 append。最初 base a42b2cb9df44b2fd928104ae02992b0e557c2a39；本輪已准固定測試樹 c9d57fc704fd441a3b25af697065d4d26a8d48ec。原9stage＝1 done／8 partial／0 pending、24UX＝2 done／22 partial／0 pending不改；七有限closed（UX03/04/05/06/09/15/17）、F1 18.6219658%(<20%)及Journey8.109s(<8)原性能例外保留。
 
 ## 十五包逐包結果

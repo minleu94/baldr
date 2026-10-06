@@ -87,3 +87,13 @@ raw receipt：output/qa/b15_four_journey_union_receipt_20261006.json、b15_manda
 專屬9 cases／2.97s 通過：原 UI accepted→既有 Journal writer→有界 readonly 原列 custody→marker可見→全新 Qt process 相同 marker hash，unknown-source新紀錄拒畫；取消 reader、同候選換source清除retry、late committed不覆蓋新context、同步 nested context signal 舊來源不回寫、legacy空值與retry conflict。targeted mypy2／compile3／diffcheck成功；未重跑完整 UI union。相鄰 controller 全集為14pass/1fail，唯一 `FlakyJournal.legacy_read_only` 缺屬性在 ae5 固定 controller 副本同 node 重現1fail，是既有 fixture 不相容，未改外scope測試或弱化唯讀guard。pytest cache permission warning 與 assertions 分報。
 
 原8-case raw/XML、最後9-case raw/XML、相鄰失敗與基準重現原始收據／blobs 位於 `output/qa/source_id_approved_handoff_20261006.json`；讀碼／synthetic驗證不授真DB、私人啟用、Task、Native、交易、fit／Formal/PIT。I156四治理仍待四只讀組 evidence 一次合併，ML guard六既有違例仍 FAIL。
+
+## 2026-10-06 I156 中央最終驗收
+
+固定治理提交 `dd33d4efd23e5915fbc2c1d51fdd4b9f7ab396be`：原凍結156項＋已採P1具名1項一次入冊，共157項增量；filesystem／inventory＝1282／1282，missing＝0、stale＝0、documentation_count_drift＝0，metadata audit exit0／passed。執行時明示 skip-pytest-collection，沒有執行156項測試、fit或模型載入。原13項治理契約13 passed／10.07s；registry targeted mypy、compile及diff-check通過。原1125項分類值、support／runner API、direct bridge12與原治理assert保持不變，沒有新增bridge或豁免。
+
+G0／G1／G2／G3／G4完整靜態證據皆核exact paths、來源blob／working SHA與合法分類；G3固定ROOT QA寫入的F4案例裁為write-risk-dry-run-required，原候選推薦留在raw。G4尾段欄位錯位修正後才接受完整49項；G2額外helper偏差中止且未採用。靜態assert數與來源檢查不是runtime pass。完整固定head、四治理blob、來源證據hash與raw／JUnit索引見本機 `output/qa/i156_final_handoff_20261006.json`。
+
+source_id直接批准修補保留：7f56558c→fcef6580的專屬9例通過；384a46c2另以既有中央bounded composition＋原Journal保存／唯讀reader／新程序驗證正向1例通過（3.01s），是重疊增量，不累加為10項獨立案例。unknown source/account/clock仍拒；相鄰FlakyJournal缺legacy_read_only的原fixture1fail已在固定原基準重現，未放寬assert。
+
+剩餘工程阻塞：ML boundary仍676檔／6違例／exit1（H1–H5／H8），P2正式Paper producer接線尚未接受，不宣稱正式私人鏈完成。原9Stage＝1done／8partial／0pending、24UX＝2done／22partial／0pending、七有限closed UX03/04/05/06/09/15/17不變；F1 18.6219658%（門檻20%）與Journey8.109s（門檻8s）原性能例外保留。自然累積不作工程gate，未知來源／PIT／模型資格不造。完整UI union只沿用c9d57fc7已准範圍；本次沒有重跑或提升整Stage／UX。無push／mainmerge／真DBwrite／私人啟用或migration／正式Task／ACL／清理／交易／foregroundNative／訓練。

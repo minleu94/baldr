@@ -64,6 +64,53 @@ def _capacity_probe(free_bytes: int | None = None):
     return probe
 
 
+@pytest.mark.skipif(__import__("os").name != "nt", reason="Windows UTF16長路徑回歸")
+def test_b12_deep_unicode_producer_repository_new_process_preserves_source(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from app_module.daily_market_snapshot_source import SQLiteDailyMarketSnapshotSource
+    from app_module.personal_data_paths import to_internal_io_path
+    from tests.test_daily_market_snapshot_consumer import _seed
+    db, day = _seed(tmp_path)
+    before = (hashlib.sha256(db.read_bytes()).hexdigest(), db.stat().st_mtime_ns)
+    root = tmp_path / ("深層研究😀"*12) / ("唯讀快照來源"*12) / "explicit-segment-for-deep-io" / "snapshot"
+    assert len(str(root).encode("utf-16-le"))//2 > 260
+    cutoff = datetime.combine(day, datetime.min.time(), tzinfo=TAIPEI)
+    with SQLiteDailyMarketSnapshotSource(db, day) as source:
+        result = DailyMarketSnapshotProducer(root, capacity_probe=_capacity_probe()).produce(
+            cohort_id="synthetic-offline-deep", decision_cutoff=cutoff, stock_codes=("2382",),
+            source_loader=lambda code, requested: source.load_input(code), before_publish=source.validate_source_stable)
+    assert result.status == "published_complete", result.error_message
+    read = DailyMarketSnapshotRepository(root).load_manifest(result.manifest_sha256,
+        cohort_id="synthetic-offline-deep", decision_date=day)
+    identity = read.manifest["manifest_identity_sha256"]
+    assert not str(root).startswith("\\\\?\\")
+    raw_pins = {str(p): hashlib.sha256(open(to_internal_io_path(p), "rb").read()).hexdigest()
+                for p in [root/"latest.json", root/snapshot_manifest_relpath(result.manifest_sha256)]}
+    script = "import json,sys;from datetime import date;from app_module.daily_market_snapshot_repository import DailyMarketSnapshotRepository; r=DailyMarketSnapshotRepository(sys.argv[1]).load_manifest(sys.argv[2],cohort_id='synthetic-offline-deep',decision_date=date.fromisoformat(sys.argv[3])); print(json.dumps({'sha':r.manifest_sha256,'identity':r.manifest['manifest_identity_sha256'],'source':r.manifest['stocks'][0]['source_refs']['database']}))"
+    child = subprocess.run([sys.executable, "-X", "utf8", "-c", script, str(root), result.manifest_sha256, day.isoformat()],
+        capture_output=True, text=True, encoding="utf-8", timeout=20)
+    assert child.returncode == 0, child.stderr
+    saved = json.loads(child.stdout)
+    assert saved["sha"] == result.manifest_sha256 and saved["identity"] == identity
+    assert saved["source"] == str(db.resolve()) and "\\\\?\\" not in child.stdout
+    assert before == (hashlib.sha256(db.read_bytes()).hexdigest(), db.stat().st_mtime_ns)
+    assert raw_pins == {p: hashlib.sha256(open(to_internal_io_path(p), "rb").read()).hexdigest() for p in raw_pins}
+
+
+@pytest.mark.skipif(__import__("os").name != "nt", reason="Windows實體alias回歸")
+@pytest.mark.parametrize("suffix", ["alias.", "alias ", "alias:stream", "NUL"])
+def test_b12_producer_rejects_windows_physical_alias_before_write(tmp_path, suffix):
+    actual = tmp_path/"alias"
+    actual.mkdir()
+    sentinel = actual/"source-sentinel.json"
+    sentinel.write_bytes(b'{"synthetic_offline":true}')
+    with pytest.raises(ValueError, match="ambiguous_windows_path"):
+        DailyMarketSnapshotProducer(tmp_path/suffix, capacity_probe=_capacity_probe())
+    assert sentinel.read_bytes() == b'{"synthetic_offline":true}'
+
+
 def _price_points(stock_code: str, *, offset: int = 0) -> tuple[StockPricePointDTO, ...]:
     dates: list[date] = []
     cursor = DECISION_DATE

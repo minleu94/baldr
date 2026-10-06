@@ -1,6 +1,8 @@
 """不可變研究快照的有界唯讀驗證器。"""
 
 from __future__ import annotations
+from app_module.personal_data_paths import to_internal_io_path, _strip_windows_io_prefix
+import os
 
 from copy import deepcopy
 from dataclasses import dataclass
@@ -911,7 +913,7 @@ class DailyMarketSnapshotRepository:
     ) -> tuple[bytes, dict[str, Any]]:
         path = self._resolve_local_path(relative_path, missing_code)
         try:
-            with path.open("rb") as stream:
+            with open(to_internal_io_path(path.absolute()), "rb") as stream:
                 raw = stream.read(limit + 1)
         except OSError as exc:
             _fail(missing_code, f"無法讀取 snapshot 檔案：{exc}")
@@ -927,12 +929,15 @@ class DailyMarketSnapshotRepository:
 
     def _resolve_local_path(self, relative_path: Path, missing_code: str) -> Path:
         try:
-            root = self.output_root.resolve(strict=True)
-            path = (root / relative_path).resolve(strict=True)
+            # 先檢查字面alias；resolve後仍沿原containment守衛，不改canonical identity。
+            to_internal_io_path(self.output_root.absolute())
+            to_internal_io_path((self.output_root / relative_path).absolute())
+            root = Path(_strip_windows_io_prefix(os.path.realpath(to_internal_io_path(self.output_root.absolute()), strict=True)))
+            path = Path(_strip_windows_io_prefix(os.path.realpath(to_internal_io_path((root / relative_path).absolute()), strict=True)))
             path.relative_to(root)
         except (OSError, ValueError) as exc:
             _fail(missing_code, f"snapshot 檔案不存在或超出 output_root：{exc}")
-        if not path.is_file():
+        if not os.path.isfile(to_internal_io_path(path.absolute())):
             _fail(missing_code, "snapshot 路徑不是一般檔案")
         return path
 

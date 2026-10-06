@@ -44,6 +44,22 @@ SCHEMA_SHA = "a" * 64
 DATABASE = r"C:\research-data\current.sqlite"
 
 
+@pytest.mark.skipif(__import__("os").name != "nt", reason="Windows實體alias回歸")
+@pytest.mark.parametrize("suffix", ["alias.", "alias ", "alias:stream", "NUL"])
+def test_b12_repository_rejects_physical_alias_before_resolve(tmp_path, suffix):
+    # 不容許Windows正規化將不同字面路徑當成同一snapshot來源。
+    actual = tmp_path/"alias"
+    actual.mkdir()
+    sentinel = actual/"latest.json"
+    sentinel.write_bytes(b'{"synthetic_offline":"must not read via alias"}')
+    repository = DailyMarketSnapshotRepository(tmp_path/suffix)
+    with pytest.raises(DailyMarketSnapshotVerificationError) as caught:
+        repository.load_latest(cohort_id="synthetic-offline", decision_date=DECISION_DATE)
+    assert caught.value.code == "snapshot_pointer_missing"
+    assert "ambiguous_windows_path" in str(caught.value)
+    assert sentinel.read_bytes() == b'{"synthetic_offline":"must not read via alias"}'
+
+
 def _price_points(stock_code: str, variant: str = "base") -> tuple[StockPricePointDTO, ...]:
     dates: list[date] = []
     cursor = DECISION_DATE

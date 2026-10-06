@@ -8,6 +8,7 @@ import json
 import shutil
 import time
 from typing import Any, Callable
+from data_module.ml_storage_capacity import resolve_heavy_chain_safety_reserve
 
 from app_module.daily_market_research_universe import _object
 from app_module.daily_market_snapshot_source import SQLiteDailyMarketSnapshotSource
@@ -30,6 +31,7 @@ _FIELDS = {"schema_version", "mode", "date_source", "policy_config", "source_db"
            "capture_root", "acceptance_root", "status_root", "per_root_quota_bytes",
            "max_attempts", "retry_delay_seconds", "parent_universe_configs"}
 _ROOTS = ("snapshot_root", "capture_root", "acceptance_root", "status_root")
+_OPTIONAL_FIELDS = {"safety_reserve_bytes", "expected_source_binding_sha256", "timeout_seconds"}
 
 
 def _now() -> datetime:
@@ -50,9 +52,16 @@ def load_daily_runtime(path: str | Path) -> dict[str, Any]:
     _require(isinstance(value, dict), "daily_runtime_object_required")
     missing = sorted(_FIELDS - value.keys())
     _require(not missing, "daily_runtime_unconfigured:" + ",".join(missing))
-    _require(set(value) == _FIELDS and value["schema_version"] == RUNTIME_SCHEMA
+    _require(not (set(value) - _FIELDS - _OPTIONAL_FIELDS) and value["schema_version"] == RUNTIME_SCHEMA
              and value["mode"] == "isolated_research" and value["date_source"] == "explicit_policy_dates",
              "daily_runtime_scope_invalid")
+    if "safety_reserve_bytes" in value:
+        resolve_heavy_chain_safety_reserve(value["safety_reserve_bytes"])
+    if "expected_source_binding_sha256" in value:
+        pin = value["expected_source_binding_sha256"]
+        _require(isinstance(pin, str) and len(pin) == 64 and all(x in "0123456789abcdef" for x in pin), "daily_upstream_pin_invalid")
+    if "timeout_seconds" in value:
+        _require(type(value["timeout_seconds"]) is int and 1 <= value["timeout_seconds"] <= 3600, "daily_timeout_invalid")
     for key in (*_ROOTS, "policy_config", "source_db"):
         _require(isinstance(value[key], str) and Path(value[key]).is_absolute(), "daily_runtime_unconfigured:" + key)
         _safe_path(Path(value[key]))
@@ -87,7 +96,8 @@ def _capacity(config: dict[str, Any], batches: int) -> dict[str, Any]:
     quota = config["per_root_quota_bytes"]
     budgets = []
     # 保守地合計四根的最大新留存與工作空間，即使跨volume仍不放寬reserve。
-    required = SAFETY_RESERVE_BYTES + 2 * quota * len(_ROOTS)
+    effective = max(SAFETY_RESERVE_BYTES, resolve_heavy_chain_safety_reserve(config.get("safety_reserve_bytes")))
+    required = effective + 2 * quota * len(_ROOTS)
     projected = {"snapshot_root": batches * _MAX_NEW_BYTES_PER_RUN + (MAX_CAPTURE_BYTES if batches else 0),
                  "capture_root": (batches+1)*2*MAX_CAPTURE_BYTES if batches else 0,
                  "acceptance_root": 2*MAX_CAPTURE_BYTES if batches else 0,
@@ -100,10 +110,11 @@ def _capacity(config: dict[str, Any], batches: int) -> dict[str, Any]:
             retained = sum(p.stat().st_size for p in root.rglob("*") if p.is_file())
         _require(retained + projected[name] <= quota, "daily_quota_exhausted:" + name)
         free = _free_bytes(root)
+        _require(type(free) is int and free >= 0, "daily_capacity_unknown:" + name)
         _require(free >= required, "daily_capacity_reserve:" + name)
         budgets.append({"root_role": name, "free_bytes": free, "retained_bytes": retained, "quota_bytes": quota,
                         "projected_new_bytes": projected[name]})
-    return {"status": "passed", "required_free_bytes": required, "roots": budgets}
+    return {"status": "passed", "effective_reserve_bytes": effective, "required_free_bytes": required, "roots": budgets}
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +146,10 @@ class _OwnerStatusWriter(BoundedRuleResearchCaptureWriter):
 
 def run_daily_owner(runtime_path: str | Path | None, target_date: date | None, *, execute: bool = False,
                     cancel_callback: Callable[[], bool] | None = None) -> dict[str, Any]:
-    cancel = cancel_callback or (lambda: False)
+    user_cancel = cancel_callback or (lambda: False)
+    deadline: int | None = None
+    def cancel() -> bool:
+        return user_cancel() or (deadline is not None and time.monotonic_ns() >= deadline)
     result: dict[str, Any] = {"schema_version": "rule-research-daily-owner-status.v1", "status": "unconfigured",
         "target_date": target_date.isoformat() if target_date else None, "attempts": [], "qualification": dict(_QUALIFICATION),
         "observed_at": _now().isoformat(), "owner_status_capture_status": "not_written"}
@@ -148,6 +162,10 @@ def run_daily_owner(runtime_path: str | Path | None, target_date: date | None, *
     try:
         runtime = load_daily_runtime(runtime_path)
         c = runtime["value"]
+        if "timeout_seconds" in c:
+            deadline = time.monotonic_ns() + c["timeout_seconds"] * 1_000_000_000
+        from app_module.research_snapshot_storage_governance import daily_writer_effective_policy
+        result["effective_policy"] = daily_writer_effective_policy(c.get("safety_reserve_bytes"))
         result["runtime_source_sha256"] = runtime["source_sha256"]
         policy = load_observation_policy(c["policy_config"])
         config = policy["value"]
@@ -176,6 +194,7 @@ def run_daily_owner(runtime_path: str | Path | None, target_date: date | None, *
             binding = _source_binding(source)
             source.validate_source_stable()
         result["source_binding_sha256"] = _digest(_json(binding).encode("utf-8"))
+        _require(c.get("expected_source_binding_sha256", result["source_binding_sha256"]) == result["source_binding_sha256"], "daily_upstream_source_binding_mismatch")
         if not execute:
             result["status"] = "preflight_passed"
             return result
@@ -282,6 +301,8 @@ def run_daily_owner(runtime_path: str | Path | None, target_date: date | None, *
     finally:
         if owned_lock and lock is not None:
             lock.unlink()  # 僅本次持有的合作lock；不刪任何收據或partial。
+    if deadline is not None and time.monotonic_ns() >= deadline:
+        result.update(status="timeout", error_code="daily_owner_timeout", partial_artifacts_preserved=True)
     if execute and runtime is not None and result["status"] not in {"capacity_blocked","unconfigured","busy"}:
         try:
             c = runtime["value"]

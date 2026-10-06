@@ -46,6 +46,7 @@ from app_module.stock_research_report_dtos import (
     StockTechnicalHistoryRowDTO,
 )
 from app_module.saved_stock_technical_chart import build_saved_technical_chart
+from app_module.personal_data_paths import to_internal_io_path, _strip_windows_io_prefix
 from data_module.ml_storage_capacity import (
     MLStorageCapacityBudget,
     evaluate_capacity,
@@ -190,6 +191,7 @@ class DailyMarketSnapshotProducer:
     ) -> None:
         if root is None or not str(root).strip():
             raise ValueError("producer root is required")
+        to_internal_io_path(Path(root).expanduser().absolute())
         self.root = Path(root).expanduser().resolve()
         self.capacity_probe = capacity_probe
         self.reserve_bytes = resolve_heavy_chain_safety_reserve(reserve_bytes)
@@ -511,7 +513,7 @@ class DailyMarketSnapshotProducer:
             artifact_bytes = canonical_snapshot_json_bytes(payload)
             artifact_sha = str(records[stock_code]["artifact_sha256"])
             artifact_path = self.root / snapshot_artifact_relpath(artifact_sha)
-            if artifact_path.exists():
+            if os.path.exists(to_internal_io_path(artifact_path.absolute())):
                 existing = _read_bounded_file(artifact_path, DAILY_MARKET_SNAPSHOT_MAX_ARTIFACT_BYTES)
                 if hashlib.sha256(existing).hexdigest() != artifact_sha or existing != artifact_bytes:
                     return self._result(
@@ -562,7 +564,7 @@ class DailyMarketSnapshotProducer:
         manifest_bytes = canonical_snapshot_json_bytes(manifest)
         manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
         manifest_path = self.root / snapshot_manifest_relpath(manifest_sha)
-        if manifest_path.exists():
+        if os.path.exists(to_internal_io_path(manifest_path.absolute())):
             existing_manifest = _read_bounded_file(manifest_path, DAILY_MARKET_SNAPSHOT_MAX_MANIFEST_BYTES)
             if hashlib.sha256(existing_manifest).hexdigest() != manifest_sha or existing_manifest != manifest_bytes:
                 return self._result(
@@ -599,7 +601,7 @@ class DailyMarketSnapshotProducer:
                 error_message="latest pointer 超過 reader 的固定 byte 上限。",
             )
         object_total = sum(len(value) for key, value in artifact_writes.items() if "/objects/" in key)
-        manifest_total = 0 if manifest_path.exists() else len(manifest_bytes)
+        manifest_total = 0 if os.path.exists(to_internal_io_path(manifest_path.absolute())) else len(manifest_bytes)
         persistent_new_bytes = object_total + manifest_total
         temporary_peak_bytes = max(
             [len(pointer_bytes), *(len(value) for value in artifact_writes.values())]
@@ -1011,17 +1013,18 @@ class DailyMarketSnapshotProducer:
         entries_seen = 0
         for relative in ("objects", "manifests", ".staging"):
             root = self.root / relative
-            if root.is_symlink():
+            io_root = to_internal_io_path(root.absolute())
+            if os.path.islink(io_root):
                 raise OSError(f"producer retention path 不接受 symbolic link: {root}")
-            if not root.exists():
+            if not os.path.exists(io_root):
                 continue
-            if root.is_symlink() or not root.is_dir():
+            if os.path.islink(io_root) or not os.path.isdir(io_root):
                 raise OSError(f"producer retention path 不是一般目錄: {root}")
             pending = [root]
             while pending:
                 directory = pending.pop()
                 try:
-                    with os.scandir(directory) as iterator:
+                    with os.scandir(to_internal_io_path(directory.absolute())) as iterator:
                         for entry in iterator:
                             entries_seen += 1
                             if entries_seen + additional_entries > _MAX_RETENTION_ENTRIES:
@@ -1029,7 +1032,7 @@ class DailyMarketSnapshotProducer:
                             if entry.is_symlink():
                                 raise OSError(f"producer retention 不接受 symbolic link: {entry.path}")
                             if entry.is_dir(follow_symlinks=False):
-                                pending.append(Path(entry.path))
+                                pending.append(Path(_strip_windows_io_prefix(entry.path)))
                                 continue
                             if entry.is_file(follow_symlinks=False):
                                 try:
@@ -1063,7 +1066,7 @@ class DailyMarketSnapshotProducer:
             raise ValueError("immutable snapshot path 不在 objects 或 manifests")
         if len(payload) > maximum:
             raise ValueError("immutable snapshot 檔案超過 reader 固定 byte 上限")
-        if final_path.exists():
+        if os.path.exists(to_internal_io_path(final_path.absolute())):
             existing = _read_bounded_file(final_path, maximum)
             if existing != payload:
                 raise FileExistsError(f"immutable output already exists with different bytes: {final_path}")
@@ -1148,19 +1151,20 @@ def _validate_projected_snapshot(
 
 
 def _atomic_write_bytes(final_path: Path, payload: bytes, staging_dir: Path) -> None:
-    final_path.parent.mkdir(parents=True, exist_ok=True)
-    staging_dir.mkdir(parents=True, exist_ok=True)
+    os.makedirs(to_internal_io_path(final_path.parent.absolute()), exist_ok=True)
+    os.makedirs(to_internal_io_path(staging_dir.absolute()), exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(
         prefix="daily_market_snapshot_",
         suffix=".tmp",
-        dir=str(staging_dir),
+        dir=to_internal_io_path(staging_dir.absolute()),
     )
-    temporary_path = Path(temporary_name)
+    # extended prefix僅存在OS I/O；canonical暫存name不進入identity或收據。
+    temporary_path = Path(_strip_windows_io_prefix(temporary_name))
     with os.fdopen(fd, "wb") as stream:
         stream.write(payload)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(temporary_path, final_path)
+    os.replace(to_internal_io_path(temporary_path.absolute()), to_internal_io_path(final_path.absolute()))
     _fsync_directory(final_path.parent)
 
 
@@ -1168,7 +1172,7 @@ def _fsync_directory(path: Path) -> None:
     if os.name == "nt":
         return
     try:
-        fd = os.open(path, os.O_RDONLY)
+        fd = os.open(to_internal_io_path(path.absolute()), os.O_RDONLY)
     except OSError:
         return
     try:
@@ -1178,10 +1182,10 @@ def _fsync_directory(path: Path) -> None:
 
 
 def _read_bounded_file(path: Path, maximum_bytes: int) -> bytes:
-    stat_size = path.stat().st_size
+    stat_size = os.stat(to_internal_io_path(path.absolute())).st_size
     if stat_size > maximum_bytes:
         raise ValueError(f"file exceeds bounded read size: {path}")
-    with path.open("rb") as stream:
+    with open(to_internal_io_path(path.absolute()), "rb") as stream:
         payload = stream.read(maximum_bytes + 1)
     if len(payload) > maximum_bytes:
         raise ValueError(f"file exceeds bounded read size: {path}")

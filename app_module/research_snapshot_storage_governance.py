@@ -77,6 +77,26 @@ class StorageGovernanceError(ValueError):
         self.code = code
 
 
+def daily_writer_effective_policy(safety_reserve_bytes: int | None = None) -> dict[str, Any]:
+    """展示中央最低線與不可降低的capture線；不改writer或舊收據。"""
+    from data_module.ml_storage_capacity import (
+        CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES, resolve_heavy_chain_safety_reserve,
+    )
+    from app_module.rule_research_sample_capture import SAFETY_RESERVE_BYTES
+    requested = resolve_heavy_chain_safety_reserve(safety_reserve_bytes)
+    return {
+        "central_minimum_reserve_bytes": CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES,
+        "requested_reserve_bytes": requested,
+        "owner_effective_reserve_bytes": max(requested, SAFETY_RESERVE_BYTES),
+        "writers": {name: {"existing_reserve_bytes": CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES if name == "snapshot" else SAFETY_RESERVE_BYTES,
+                           "effective_reserve_bytes": max(requested, CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES if name == "snapshot" else SAFETY_RESERVE_BYTES),
+                           "policy_source": "ml_storage_capacity.resolve_heavy_chain_safety_reserve" if name == "snapshot" else "rule_research_sample_capture.SAFETY_RESERVE_BYTES"}
+                    for name in ("snapshot", "parent", "capture", "observation", "sample", "owner_status")},
+        "automatic_cleanup": False,
+        "formal_policy_changed": False,
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class StorageGrowthSample:
     """帶時區的歷史留存量樣本；bytes 使用整數。"""
@@ -966,4 +986,5 @@ __all__ = [
     "MAX_BATCH_NEW_BYTES", "MAX_RETAINED_BYTES", "MAX_RETAINED_ENTRIES", "MAX_TEMPORARY_PEAK_BYTES",
     "SCHEMA_VERSION", "StorageGovernanceError", "StorageGrowthSample",
     "diagnose_research_snapshot_storage", "preflight_research_snapshot_publication",
+    "daily_writer_effective_policy",
 ]

@@ -1,10 +1,54 @@
 # Feature-to-Test Routing Matrix (2026-06-23)
 
+## 2026-10-06 I156完整分類目前對照
+
+I156 一次完整補分類：凍結原156項（G0 8／G1 47／G2 33／G3 19／G4 49），另單列已採 P1 的1項新增測試；合計157個 exact paths。基準 source pins 以 ae5b080150043e71383952e4a3209d9d04b330e7／原 e185 scope 對照，source_id 的批准提交屬組外。每項依完整原碼、imports／fixture／真 assert／入口／讀寫副作用及隔離證據分類，沒有依檔名或僅 AST 代判。
+
+原1125個分類值、12條 direct bridge 精確集合、support API／runner／原13治理 assertions 保持。兩個 support helper 只補 general-unit metadata、依原規則仍 not-collected，沒有擴 PYTEST_SUPPORT_FILES；UI candidate／service oracle 不等於 direct runner executed coverage。
+
+G3 F4 release 的真 MainWindow 證據保留，但833–837及905–919固定 ROOT QA 與共用 receipt/failure 可覆寫，中央裁決 write-risk-dry-run-required；G4三組 env screenshot writer／repo-output probe 同樣分列寫入風險。G4尾15協作原欄位錯位未採，Sol按源碼修正並通過 allowed category 檢查。Windows Native／cmd／lock、child env、外部 freshness readonly 等條件只記錄未知，沒有新豁免、正式Task/DB/模型資格。
+
+收據：`output/qa/i156_owner_acceptance_20261006.json` 保存157個來源 pins、每項分類理由、五份完整 evidence SHA與中央裁決；最後一次 metadata audit 使用 skip-pytest-collection，原13治理測試分開核對。此分類沒有執行凍結156或P1新測試，沒有全庫 pytest collection。真實結果以 `output/qa/i156_inventory_final_20261006.json` 及 `output/qa/i156_governance_final_20261006.xml` 為準。ML boundary六既有違例仍 FAIL；9Stage／24UX／七有限closed與性能例外不變。
+
+Current filesystem Python files: `1282`
+Current registry entries: `1282`
+Current collected test cases: 未執行
+
+| 分類 | 數量 |
+|---|---:|
+| `general-unit-keep-in-pytest` | 169 |
+| `governance-doc-tooling` | 190 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 192 |
+| `service-oracle-portfolio-decision-runtime` | 154 |
+| `service-oracle-recommendation` | 187 |
+| `service-oracle-research-backtest` | 133 |
+| `slow-e2e-or-environment` | 11 |
+| `ui-healthcheck-candidate-bridge` | 97 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 91 |
+
+結構核對：filesystem1282／inventory1125→1282，原missing156＋已採P1新增1→0；stale0，direct12。Documentation counts 依同份 mapping 產生，最後 audit 結果另附原始收據。
+
+| exact group | 凍結數量 | 新增數量 |
+|---|---:|---:|
+| G0-owner-support-governance | 8 | 0 |
+| G1-ml-observed-restated | 47 | 0 |
+| G2-sources-pit-scheduled | 33 | 0 |
+| G3-personal-cow-portfolio | 19 | 0 |
+| G4-ui-stock-history-research | 49 | 0 |
+| 已採 P1 具名 supplement | 0 | 1 |
+
+157項 exact paths／分類理由與完整 source pins 以 [目前 machine refresh](TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md#2026-10-06-machine-refresh) 及中央原始收據為準。下方 I20及第二波是當時範圍，不覆蓋本次最新清冊。
+
+
 ## 2026-10-06 I20 有限清冊對照
 
 固定 base `917f6af0387a4d9944b261eddbc0c46e84cf34b2` 的有限 metadata 登錄：filesystem `1281` 不變，inventory `1105→1125`，missing `176→156`，stale `0`、documentation count drift `0`；skip-pytest-collection audit overall **failed**。獨立 worktree 另保留基準已有兩筆 ignored LUNA raw 檔的歷史 link 缺件。原 direct bridge 精確 12 paths 不變；既有完整 stable UI union 沿用，本包未重跑、不增加 UI／Native／Formal／training 資格。source_id 三檔仍等待直接批准。
 
-本包僅核 imports／fixtures／assert／實際入口與副作用後分類，未執行那20個測試；candidate/oracle 不是 executed coverage。原 missing176只消去這20，剩156仍需中央另鎖 scope，不擅自批量分類、刪測試或 xfail。精確逐檔分類、source pin 與理由見 [I20 machine refresh](TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md#2026-10-06-machine-refresh)。
+本包僅核 imports／fixtures／assert／實際入口與副作用後分類，未執行那20個測試；candidate/oracle 不是 executed coverage。原 missing176只消去這20，剩156仍需中央另鎖 scope，不擅自批量分類、刪測試或 xfail。精確逐檔分類、source pin 與理由見 [I20 machine refresh](TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md#2026-10-06-i20-machine-refresh-歷史)。
 
 | 用途 | 本包 exact subset | 既有分類／delta | 執行邊界 |
 |---|---|---|---|

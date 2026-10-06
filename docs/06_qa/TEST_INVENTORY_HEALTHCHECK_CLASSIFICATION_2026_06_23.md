@@ -2,6 +2,210 @@
 
 ## 2026-10-06 machine refresh
 
+I156 一次完整補分類：凍結原156項（G0 8／G1 47／G2 33／G3 19／G4 49），另單列已採 P1 的1項新增測試；合計157個 exact paths。基準 source pins 以 ae5b080150043e71383952e4a3209d9d04b330e7／原 e185 scope 對照，source_id 的批准提交屬組外。每項依完整原碼、imports／fixture／真 assert／入口／讀寫副作用及隔離證據分類，沒有依檔名或僅 AST 代判。
+
+原1125個分類值、12條 direct bridge 精確集合、support API／runner／原13治理 assertions 保持。兩個 support helper 只補 general-unit metadata、依原規則仍 not-collected，沒有擴 PYTEST_SUPPORT_FILES；UI candidate／service oracle 不等於 direct runner executed coverage。
+
+G3 F4 release 的真 MainWindow 證據保留，但833–837及905–919固定 ROOT QA 與共用 receipt/failure 可覆寫，中央裁決 write-risk-dry-run-required；G4三組 env screenshot writer／repo-output probe 同樣分列寫入風險。G4尾15協作原欄位錯位未採，Sol按源碼修正並通過 allowed category 檢查。Windows Native／cmd／lock、child env、外部 freshness readonly 等條件只記錄未知，沒有新豁免、正式Task/DB/模型資格。
+
+收據：`output/qa/i156_owner_acceptance_20261006.json` 保存157個來源 pins、每項分類理由、五份完整 evidence SHA與中央裁決；最後一次 metadata audit 使用 skip-pytest-collection，原13治理測試分開核對。此分類沒有執行凍結156或P1新測試，沒有全庫 pytest collection。真實結果以 `output/qa/i156_inventory_final_20261006.json` 及 `output/qa/i156_governance_final_20261006.xml` 為準。ML boundary六既有違例仍 FAIL；9Stage／24UX／七有限closed與性能例外不變。
+
+Current filesystem Python files: `1282`
+Current registry entries: `1282`
+Current collected test cases: 未執行
+
+| 分類 | 數量 |
+|---|---:|
+| `general-unit-keep-in-pytest` | 169 |
+| `governance-doc-tooling` | 190 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 192 |
+| `service-oracle-portfolio-decision-runtime` | 154 |
+| `service-oracle-recommendation` | 187 |
+| `service-oracle-research-backtest` | 133 |
+| `slow-e2e-or-environment` | 11 |
+| `ui-healthcheck-candidate-bridge` | 97 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 91 |
+
+結構核對：filesystem1282／inventory1125→1282，原missing156＋已採P1新增1→0；stale0，direct12。Documentation counts 依同份 mapping 產生，最後 audit 結果另附原始收據。
+
+| exact group | 凍結數量 | 新增數量 |
+|---|---:|---:|
+| G0-owner-support-governance | 8 | 0 |
+| G1-ml-observed-restated | 47 | 0 |
+| G2-sources-pit-scheduled | 33 | 0 |
+| G3-personal-cow-portfolio | 19 | 0 |
+| G4-ui-stock-history-research | 49 | 0 |
+| 已採 P1 具名 supplement | 0 | 1 |
+
+### 157項逐檔分類與中央覆核理由
+
+| exact path | 既有分類 | 用途／證據理由 |
+|---|---|---|
+| `tests/forward_outcome_test_support.py` | `general-unit-keep-in-pytest` | 共用合成calendar fixture helper，沒有test_入口；沿 caller root 建目錄／hash-bound annual cache，aware clock與allowed_root明示。按既有pit/natural-session helper類別登錄，維持derived not-collected，不擴support API。；共用合成calendar fixture helper，沒有test_入口；沿 caller root 建目錄／hash-bound annual cache，aware clock與allowed_root明示。按既有pit/natural-session helper類別登錄，維持derived not-collected，不擴support API。 |
+| `tests/ml_research_test_support.py` | `general-unit-keep-in-pytest` | 共用ML研究fixture helper，沒有test_入口；write_snapshot_context_receipt建立合成source/WAL/revision receipts與hash，install_test_revision_gate僅monkeypatch revision gate。formal_historical_PIT=False，不fit或load model。；共用ML研究fixture helper，沒有test_入口；write_snapshot_context_receipt建立合成source/WAL/revision receipts與hash，install_test_revision_gate僅monkeypatch revision gate。formal_historical_PIT=False，不fit或load model。 |
+| `tests/test_capture_evidence_events_cli_locking.py` | `governance-doc-tooling` | CLI writer reservation／dry-run／lease-release契約。_configs指定tmp canonical/artifact；_install_fake_capture替換repository/service/capture/query，confirm正例用lease spy，不開真DB；busy先拒與dry-run readonly assert。；CLI writer reservation／dry-run／lease-release契約。_configs指定tmp canonical/artifact；_install_fake_capture替換repository/service/capture/query，confirm正例用lease spy，不開真DB；busy先拒與dry-run readonly assert。 |
+| `tests/test_evidence_pipeline_cli_locking.py` | `governance-doc-tooling` | 原pipeline CLI lock-root與isolated database lease選取契約；_Runner.run是stub summary，TWStockConfig與acquire/release全部spy替代，assert exact canonical release root。；原pipeline CLI lock-root與isolated database lease選取契約；_Runner.run是stub summary，TWStockConfig與acquire/release全部spy替代，assert exact canonical release root。 |
+| `tests/test_heartbeat_chain_repairs.py` | `service-oracle-data-market` | 真子程序parent lease傳遞與consistent SQLite snapshot完整性回歸；tmp child將cli._run_capture/config/release-root替換為assert-only，source SQLite僅tmp。snapshot同內容mtime／emptyWAL可讀、內容改動拒且formal_credit false。；真子程序parent lease傳遞與consistent SQLite snapshot完整性回歸；tmp child將cli._run_capture/config/release-root替換為assert-only，source SQLite僅tmp。snapshot同內容mtime／emptyWAL可讀、內容改動拒且formal_credit false。 |
+| `tests/test_operational_quality_cadence.py` | `service-oracle-portfolio-decision-runtime` | DecisionDesk／position-health operational quality服務oracle；合成calendar/raw corporate-action custody、in-memory pandas與stub providers核actual session/cutoff、estimated/degraded、user/research thesis分流及capture-ready blockers。；DecisionDesk／position-health operational quality服務oracle；合成calendar/raw corporate-action custody、in-memory pandas與stub providers核actual session/cutoff、estimated/degraded、user/research thesis分流及capture-ready blockers。 |
+| `tests/test_query_baldr_scheduled_tasks_com.py` | `governance-doc-tooling` | 精確scheduler query/redaction/clock/allowlist CLI工具契約，所有query_tasks都注入_service_for的fakeCOM或error lambda。_task為synthetic XML，沒有讀真Task或更改ACL；不屬native/environment執行測試。；精確scheduler query/redaction/clock/allowlist CLI工具契約，所有query_tasks都注入_service_for的fakeCOM或error lambda。_task為synthetic XML，沒有讀真Task或更改ACL；不屬native/environment執行測試。 |
+| `tests/test_weekly_collection_controller.py` | `service-oracle-research-backtest` | Weekly research evidence controller／binding oracle；_publish_start、_prepare_sidecar與monthly/quarterly fixtures均tmp，run_controller注入fake_runner、clock/environ，驗locators/hash/run identity、timeout partial保留、unknown completion、typed terminal和false formal flags。與既有weekly collection research oracle一致。；Weekly research evidence controller／binding oracle；_publish_start、_prepare_sidecar與monthly/quarterly fixtures均tmp，run_controller注入fake_runner、clock/environ，驗locators/hash/run identity、timeout partial保留、unknown completion、typed terminal和false formal flags。與既有weekly collection research oracle一致。 |
+| `tests/test_bounded_restated_research_c.py` | `slow-e2e-or-environment` | 有界 restated 研究的合成 fit、候選 model 保存／載入、新程序 byte readback 與缺 pin 拒絕；足資料正向有真 classifier fit、serialization/deserialization、大型合成來源與 child process；採慢測／環境類別，不授 direct／正式訓練資格。 |
+| `tests/test_bounded_restated_research_output_boundary.py` | `service-oracle-research-backtest` | 研究輸出根選擇與不合格路徑拒絕；臨時根的研究輸出邊界 oracle；沒有真 fit 或 persistent write，沒有 UI。 |
+| `tests/test_build_ml_current_restated_outcome_store_cli.py` | `service-oracle-research-backtest` | current-restated outcome CLI 的參數與 builder 契約；production builder 已替換；主斷言為研究資料 CLI 契約，沒有真 outcome-store／DB 寫入。 |
+| `tests/test_calculate_forward_outcomes_cli.py` | `service-oracle-research-backtest` | forward-outcome CLI 的 writer／DB／lock 轉接契約；實際 writer、DB、lock 為替身；以合成輸入核研究服務契約，不是正式寫入或 direct bridge。 |
+| `tests/test_current_observed_capacity_eligibility.py` | `service-oracle-research-backtest` | current-observed capacity／reuse 政策與跨檔 fixture 依賴；臨時 capacity／terminal JSON 與 cycle artifacts 的研究政策 oracle；不授正式執行或訓練。 |
+| `tests/test_current_observed_capacity_replay.py` | `service-oracle-research-backtest` | 合成來源重播的 capacity 證據；臨時 SQLite 狀態的研究 capacity oracle，不接正式 DB。 |
+| `tests/test_current_observed_context_hash_format.py` | `service-oracle-research-backtest` | 研究 context hash 格式與跨 fixture capture 契約；context／capture 只保存於 pytest 臨時根；研究 hash oracle，沒有 fit。 |
+| `tests/test_current_observed_feature_batch_scheduler.py` | `service-oracle-research-backtest` | feature batch scheduler 的確定性與來源回傳；provider／builder 為替身，stdout／terminal／artifact 位於臨時根；研究 scheduler oracle，不啟用 Task。 |
+| `tests/test_current_observed_feature_snapshot_composer.py` | `service-oracle-research-backtest` | feature snapshot composition 與 provider 查詢邊界；provider query 已隔離，只有臨時 artifact；研究 snapshot oracle，沒有真 fit 或 active pointer。 |
+| `tests/test_current_observed_learning_capture.py` | `service-oracle-research-backtest` | learning capture 的來源／context／terminal 契約；合成 SQLite/WAL/context/capture/registry 檔案位於臨時根；具有真 test 入口，不是 support-only，也沒有模型 fit。 |
+| `tests/test_current_observed_market_ownership_reader.py` | `service-oracle-data-market` | current-observed ownership 來源與 capture 讀取；臨時 SQLite／CSV／JSON 的資料來源 oracle，不接遠端 TDCC 或正式 DB。 |
+| `tests/test_current_observed_natural_research_fit.py` | `slow-e2e-or-environment` | natural research fit 的足資料正向、候選 artifact 與未足資料拒絕；足資料正向會真 classifier.fit 並寫 joblib 候選 artifact；一列 pending／reject 不 fit。採慢測／環境類別，不升正式／自然／training 資格。 |
+| `tests/test_current_observed_normal_branch.py` | `service-oracle-research-backtest` | current-observed 正常分支的研究政策；production integration 已替換，只有臨時 fixture／假呼叫；研究分支 oracle，沒有真 fit 或正式 persistence。 |
+| `tests/test_current_observed_raw_cycle_dependency.py` | `slow-e2e-or-environment` | raw-cycle dependency 與暫存 OS reservation；混合 pipeline 有真 OS lock／wait，artifact 明示臨時根；採環境整合分類，不是正式 scheduler 或 direct bridge。 |
+| `tests/test_current_observed_source_contract.py` | `service-oracle-data-market` | current-observed 資料來源契約與 CLI 子程序讀回；真 child process 只讀合成臨時 SQLite；屬資料來源 oracle，不接正式 DB。 |
+| `tests/test_current_restated_calendar_qualification.py` | `general-unit-keep-in-pytest` | restated calendar qualification 的確定性契約；純記憶體資格函式，沒有外部 state／I/O／fit／子程序；維持一般 unit。 |
+| `tests/test_current_restated_raw_source_scan.py` | `service-oracle-data-market` | 逐列 raw gzip scan、TAIEX market history、完整內容/row count/pin與資源上限拒絕；主要oracle為市場raw來源完整性，fixture成本較高但無runtime計時，不能僅因行數歸slow |
+| `tests/test_current_restated_research_invocation_hash_pins.py` | `governance-doc-tooling` | 研究invocation hash格式canonicalize及sidecar model binding pins；主要hash/pin政策contract，model欄位不代表模型執行 |
+| `tests/test_current_restated_source_context.py` | `service-oracle-data-market` | current-restated snapshot/source/WAL/revision namespace完整性與穩定讀取；主要data source/context可信度oracle；不把合成snapshot聲明視為正式backup驗證 |
+| `tests/test_forward_outcome_context.py` | `service-oracle-data-market` | official maturity calendar cache factory優先序/時區與canonical writer root身份；主要calendar/data context oracle；writer root回傳Path不是writer執行 |
+| `tests/test_ml_allocation_forward_preflight.py` | `governance-doc-tooling` | ML forward preflight quarantine及release manifest byte pin阻擋；scheduled模組名稱不代表排程執行；真正驗證只讀preflight政策 |
+| `tests/test_ml_current_restated_outcome_store.py` | `service-oracle-research-backtest` | current-restated annual raw→outcome artifact、causal feature/折疊purge與80bp cost contract；主要research outcome/fold/label oracle；資料寫入隔離tmp，不能因annual或ML名稱誤作模型slow-e2e |
+| `tests/test_ml_daily_price_repair_pair.py` | `service-oracle-data-market` | daily-price repair pending/final sibling receipts完整證據與研究例外邊界；主要source revision receipt integrity oracle，applied字樣只是合成receipt狀態而非修復執行 |
+| `tests/test_ml_daily_source_row_research_adapter.py` | `service-oracle-data-market` | 單日adapter terminal pins/create-only研究資格；實際受驗為來源適配與收據完整性；隔離根和child替換具體，data oracle，非正式writer |
+| `tests/test_ml_daily_source_row_research_projection.py` | `service-oracle-data-market` | TWSE/TPEx token精確整數projection/custody/revision/rawrunner；數據投影/source integrity oracle，保存根明確；rawrunner helper不是Task或正式source接受 |
+| `tests/test_ml_direct_research_output_boundaries.py` | `governance-doc-tooling` | continuation/refresh/maintenance研究讀寫根policy；核心是根policy/早拒治理且副作用isolated/stub，不按CLI名批量write-risk |
+| `tests/test_ml_fix_a_guards.py` | `service-oracle-research-backtest` | OOC fold index purge與real training clock分離；research fold/lookahead契約oracle；index不是模型訓練，nonUI |
+| `tests/test_ml_prospective_daily_price_capture.py` | `service-oracle-data-market` | prospective daily-price candidate/custody/revision immutable retry；資料candidate integrity oracle，source是傳入fixture，非正式capture job；hardlink環境未運行確認 |
+| `tests/test_ml_quarantine_release_manifest_hash.py` | `governance-doc-tooling` | quarantine legacy release_manifest固定身份/hash契約；quarantine pin治理，不是模型或artifact可執行驗證 |
+| `tests/test_ml_research_direct_ooc_adapter.py` | `service-oracle-data-market` | revision-aware/projection到numeric store ABI與readback；主要numeric ABI/資料完整性oracle；Direct/OOC不是UI direct mapping，資格不升 |
+| `tests/test_ml_research_end_to_end_pipeline.py` | `service-oracle-research-backtest` | research shards→direct/OOC folds與adapter numeric store全鏈；bounded research input/fold oracle；E2E名稱不自動slow，真實耗時/容量未驗 |
+| `tests/test_ml_research_output_boundary.py` | `governance-doc-tooling` | storage legacy read/configured write/protected/reparse policy；路徑治理oracle，symlink有既存權限skip，本次不新增豁免；環境值依賴未執行核 |
+| `tests/test_ml_revision_aware_raw_candidate.py` | `service-oracle-data-market` | snapshot/context/custody合併raw candidate pins/availability；數據context/candidate builder oracle；synthetic gate不提供真PIT資格 |
+| `tests/test_recommendation_natural_outcomes_current_observed.py` | `service-oracle-recommendation` | current-observed outcome整數bp/maturity/immutable receipts；推薦outcome oracle；natural proof和clock是synthetic，不能授natural authority |
+| `tests/test_recommendation_natural_outcomes_current_observed_batches.py` | `service-oracle-recommendation` | v2 cohort exact16批與shard失敗/局部pending/receipt；推薦批次服務oracle；provider/calendar verification替換缺口明示，natural時間資格未知 |
+| `tests/test_recommendation_research_scope.py` | `service-oracle-recommendation` | request封存explicit universe及execute seam；雖ui_qt coordinator但無真Widget/MainWindow callback，推薦seam oracle，非candidate |
+| `tests/test_recommendation_restated_research.py` | `governance-doc-tooling` | legacy/pipeline/Bank research-only pins和terminal barrier；CLI路由/pinbarrier治理，不能因真實wrapper潛在能力推斷本測試真fit |
+| `tests/test_rule_research_label_readiness_cli.py` | `governance-doc-tooling` | 新process label-readiness CLI policy和只讀契約；CLI explicit只讀policy治理；準備階段有保存，不能稱整鏈noIO；child環境/cwd未執行核 |
+| `tests/test_rule_research_observation_acceptance.py` | `service-oracle-research-backtest` | parent→observation acceptance→day coverage/clock/partial；研究觀測完整性oracle，synthetic日期shift不是natural authority/官方日歷 |
+| `tests/test_rule_research_parent_capture.py` | `service-oracle-research-backtest` | parent多批capture/readiness/cancel/partial/retry；研究母體完整性oracle，真保存隔離；不授正式owner/job啟用 |
+| `tests/test_rule_research_registry_integration.py` | `service-oracle-research-backtest` | registry snapshot metadata→shadow acceptance保存/重驗；主要研究acceptance pin/readback oracle，非正式lifecycle writer；owner若沿portfolio registry分類請具名覆核，非自動轉write-risk |
+| `tests/test_rule_research_sample_capture.py` | `service-oracle-research-backtest` | rule sample完整分母/unknown/immutable writer failure；研究sample保存oracle，合成根及guard明確；symlink既存skip394-397/權限本次未知 |
+| `tests/test_rule_research_sample_integration.py` | `ui-healthcheck-candidate-bridge` | SQLite→producer/CLI保存與真DailyMarketResearchView呈現清空；真Widget和_accept_snapshot/_clear_current_snapshot callback，mixed按UI candidate；非direct；Qt/子import/native可運行資格未實測 |
+| `tests/test_rule_research_shadow_acceptance.py` | `service-oracle-research-backtest` | fair/labels/lifecycle DTO→acceptance三軸與保存；研究shadow oracle；工程status不賦予啟用/資格，不是UI或真實lifecycle操作 |
+| `tests/test_rule_research_shadow_acceptance_boundary.py` | `governance-doc-tooling` | shadow exact-import boundary guard；static治理工具，不把inspect當runtime或全repo boundary PASS |
+| `tests/test_rule_research_shadow_acceptance_cli.py` | `governance-doc-tooling` | shadow CLI explicit/read/save/config/newprocess；CLI policy/readback治理，有隔離source；子process環境/cwd未實測，不按CLI批量write-risk |
+| `tests/test_rule_research_shadow_acceptance_safety.py` | `service-oracle-research-backtest` | shadow error/capacity/partial保留安全；研究acceptance失敗/保存oracle，不授正式write或shadow activation |
+| `tests/test_apply_current_monthly_snapshot.py` | `write-risk-dry-run-required` | 月營收 CLI verified raw custody→preview/apply、collision 與不確定寫入結果。；main --apply 進真 current observation RW/backup；tests 133..185明示tmp DB，不能進非破壞runner。 |
+| `tests/test_capture_tdcc_current_ownership.py` | `service-oracle-data-market` | TDCC fresh current-only capture、raw replay、capture identity/hash與exclusive輸出。；真capture/artifact service之來源custody oracle；HTTP urlopen每成功路徑由_install_fake_http替換，非正式apply。 |
+| `tests/test_current_fundamentals_scheduled.py` | `governance-doc-tooling` | 排程現況更新 child failure/timeout、single writer與verified weekly parent先決。；測的是wrapper命令/非零terminal/locking guard；child subprocess全fake，不跑apply；不是依檔名判定。 |
+| `tests/test_current_market_status_observation.py` | `service-oracle-data-market` | 官方現況名錄／停復牌／終止上市解析、custody snapshot/pointer與retry bounded契約。；CurrentMarketStatusReader和capture來源service oracle；fetcher顯式fake、retry Session替换；沒有QWidget callback。 |
+| `tests/test_current_monthly_revenue_materialization.py` | `write-risk-dry-run-required` | 月營收verified raw→Decimal/current-only normalization、append idempotency與舊schema加欄版本保存。；真apply_current_revenue觸及備份/交易/insert_observations，且legacy schema演進；隔離證明存在但runner仍須dry-run/mock/tmp定向。 |
+| `tests/test_current_official_valuation.py` | `service-oracle-data-market` | TWSE/TPEx valuation parsers、freshness exact session／unknown、capture fallback custody與hash驗收。；資料capture/read-provider oracle，真writer仅output custody，假session每capture明示傳入，CLI成功capture也被fixture函數替換。 |
+| `tests/test_excluded_daily_price_dependency_capture.py` | `write-risk-dry-run-required` | 既有排除價量修訂的typed dependency captures逐依賴hash/stat/namespace與alias拒絕。；_applied_run實際呼叫repair.apply，內部備份/DELETE價格與指標；絕不能因收據capture名稱視為純讀unit。 |
+| `tests/test_export_market_csv_cli.py` | `slow-e2e-or-environment` | 市場CSV CLI preview/accepted pins execute、cancel/receipt publication與新程序源bytes核對。；全檔Windows限定，未mock CreateFileW/SetFileInformationByHandle；真新程序與file copy/publication均synthetic。環境依賴不能轉direct。 |
+| `tests/test_institutional_revision_read_model.py` | `service-oracle-data-market` | 法人observed revisions不覆舊值、availability截止、同clock三revision conflict與冪等。；真revision projector/readmodel服務SQL oracle；顯式:memory: connection排除formal path，值為整數，沒有CLI/GUI/network。 |
+| `tests/test_market_csv_export.py` | `slow-e2e-or-environment` | 市場CSV consumer exact whitelist copy、atomic receipts/cancel/alias競態與handle mutation防護。；真Win32 filesystem handles、junction/hardlink、新程序與publishing競態；全synthetic根隔離，但不屬pure unit或UI候選。 |
+| `tests/test_market_session_policy.py` | `general-unit-keep-in-pytest` | 共享每日市場session截止DST換算、cutoff前後及naive拒絕。；source helper純datetime/zoneinfo計算，不查官方calendar、不做I/O；既有cases只是截止政策。 |
+| `tests/test_membership_history_cli.py` | `service-oracle-recommendation` | 研究membership歷史index CLI rebuild/rollback與錯誤保留active/source。；真研究membership index服務保存generation/active，但原snapshot不變；純CLI/readmodel沒有UI callback，不依CLI一律write-risk。 |
+| `tests/test_monthly_revenue_research_candidate.py` | `service-oracle-data-market` | 月營收research-only capture完整來源candidate、numeric/availability/size/reserve、tamper/failure拒絕。；production harvest/candidate入口由explicit opener/disk_usage替換且REPO_ROOT改tmp，無DB apply；full scope/readback資料來源oracle。 |
+| `tests/test_mops_current_statement_html.py` | `service-oracle-data-market` | 解析合成 MOPS 當期 HTML 財報列，區分累計／期末／不明期間基礎並驗證 observation insert 的時間欄位。；測試觀察 MOPS 報表期間語義與資料可用性契約，非 UI runner flow；insert 測試用記憶體 DB。 |
+| `tests/test_mops_quarterly_openapi_research_capture.py` | `service-oracle-data-market` | 對固定季度 OpenAPI endpoint 集合執行觀察型研究 capture，驗證路由指紋、請求收據、raw custody、readback 與 eligibility 限制。；source acquisition/custody/readback 服務 oracle；不涉及 UI。 |
+| `tests/test_mops_success_response_custody.py` | `service-oracle-data-market` | MOPS 成功回應原始資料保存、讀回與 audit 旗標；資料來源 custody oracle；HTTP session 已替換、保存於臨時根，沒有 UI。 |
+| `tests/test_pit_inactive_security_termination_evidence.py` | `service-oracle-data-market` | 停止交易標的的官方證據解析與 PIT 來源範圍分類；合成 HTML／metadata 與記憶體分類；純來源 oracle，不是正式 UI 流程。 |
+| `tests/test_pit_same_day_reuse.py` | `service-oracle-data-market` | 同日 PIT 來源重用與候選狀態；archive／來源／denominator 入口有 mock、status 保存於臨時根；fixture 明示不具正式 readiness。 |
+| `tests/test_pit_taxonomy_source_config_proof.py` | `service-oracle-data-market` | 來源設定證明與 taxonomy artifact custody；合成候選及設定，以臨時根 create-only 保存與讀回；屬資料來源證據，沒有正式 DB 寫入。 |
+| `tests/test_pit_taxonomy_split_contract.py` | `service-oracle-data-market` | PIT taxonomy 來源範圍與拆分契約；使用合成 fixture，denominator verifier 的替身邊界另列；沒有 QWidget 或正式來源寫入。 |
+| `tests/test_recommendation_current_fundamental_provider.py` | `service-oracle-recommendation` | 推薦基本面 provider 的來源與 cutoff 契約；臨時 SQLite／MOPS raw／CSV 與假 HTTP session；主斷言是推薦輸入及可得性讀取 oracle。 |
+| `tests/test_recommendation_current_fundamental_source_root.py` | `service-oracle-recommendation` | 推薦服務來源根選擇與 composition；臨時根、假 provider/session/service；驗推薦來源契約，沒有 UI runner。 |
+| `tests/test_recommendation_current_market_status_preflight.py` | `service-oracle-recommendation` | 推薦的市場狀態輸入與可得性 preflight；以臨時 status/pointer 與合成 preparer 檢查推薦輸入，不是 UI 或正式資料採集。 |
+| `tests/test_scheduled_mops_statement_custody.py` | `slow-e2e-or-environment` | MOPS custody 排程 wrapper 與平台整合；部分路徑真呼 cmd.exe／shim 子程序，受 Windows 條件限制；靜態讀碼不能證明平台 runtime，採慢測／環境類別。 |
+| `tests/test_scheduled_official_market_status_bundle.py` | `service-oracle-data-market` | 官方市場狀態採集 orchestration 與 custody 讀回；child runner/fetcher 為替身，輸出於臨時根；資料來源 oracle，不代表真排程或網路通過。 |
+| `tests/test_scheduled_quick_current_ownership.py` | `service-oracle-data-market` | 快速 current ownership 採集 gate 與來源狀態；subprocess 被替換，receipt/output 在臨時根；驗資料 provenance，不發布正式資料。 |
+| `tests/test_scheduled_recommendation_date_roles.py` | `service-oracle-recommendation` | 推薦的決策日與 cutoff artifact 契約；臨時 data/output 根，execution/model/store 替身；主體為推薦日期契約，不是 UI。 |
+| `tests/test_scheduled_research_acquisition_audit.py` | `service-oracle-data-market` | 研究採集 custody/status 證據審計；合成臨時 receipt/status，weekly verifier 有替身；驗缺 provenance 拒絕，不改正式來源 DB。 |
+| `tests/test_scheduled_writer_reservation.py` | `slow-e2e-or-environment` | writer reservation 的 OS lock 與跨程序協調；大部分 API 為替身，平台分支有真 filesystem lock/spawn；靜態證據只支持環境整合分類。 |
+| `tests/test_shared_market_research_consumers.py` | `ui-healthcheck-candidate-bridge` | 共享市場研究資料的 Qt consumer 與背景回呼；真 QApplication／QWidget／view 與合成臨時來源，但不具完整 MainWindow healthcheck route，維持 UI candidate。 |
+| `tests/test_statement_report_basis_contract.py` | `general-unit-keep-in-pytest` | 報表 basis 字串與 mapping 契約；記憶體字串／dict 的確定性純函式，沒有 service／DB／網路整合，維持一般 unit。 |
+| `tests/test_twse_quote_observation_capture.py` | `service-oracle-data-market` | TWSE 報價來源保存、正規化與 custody；HTTP/fetcher 已替換、raw/receipt 位於臨時根；屬資料採集 oracle，不授正式執行。 |
+| `tests/test_update_current_mops_statements_http_custody.py` | `write-risk-dry-run-required` | current MOPS HTTP custody 與 apply 前失敗保護；生產入口包含確認後的 DB backup／transaction 寫入；測試刻意在 HTTP 失敗處退出，因此保留 write-risk，不推論安全 apply。 |
+| `tests/test_f4_item_revision_storage_recovery.py` | `service-oracle-portfolio-decision-runtime` | 驗 v1/v2 唯讀相容、v3 item-event 保存／刪除／指定歷史恢復、idempotency、雙 writer CAS、取消與 child crash 復原、容量拒絕及全 store 完整性。；真Watchlist repository/service persistence與CAS oracle；所有寫入源明示synthetic tmp，不能僅因child或SQLite寫入分類成formal write-risk；沒有QWidget。 |
+| `tests/test_f4_item_storage_governance.py` | `governance-doc-tooling` | 驗研究儲存治理唯讀掃描legacy／item-event inventory，unknown schema fail-closed且不暗遷移。；主assert是既有storage治理diagnostics／non-migration，對齊已登錄test_research_snapshot_storage_governance；fixture persistence不改治理用途。 |
+| `tests/test_f4_research_release_integration.py` | `write-risk-dry-run-required` | 真MainWindow三個新程序：受控daily/rank出版、report往返、v1/v2收藏與重讀、取消／過期callback／協作shutdown；保留無參數startup路徑。；真 MainWindow／callback 與 isolated child 證據保留；頂層固定 QA 可覆寫共用 receipt，不完全 fixture-bound，因此優先採寫入風險分類，非否定 UI 用途。 |
+| `tests/test_paper_event_source_capture_entry.py` | `governance-doc-tooling` | 根entry re-export canonical producer／CLI help異cwd與未授權live capture fail-closed。；真assert只針對entry/export與授權guard，沒有synthetic/live採集執行；不能因producer名字自動write-risk。 |
+| `tests/test_personal_data_paths.py` | `service-oracle-portfolio-decision-runtime` | 明示personal root與market export allowlist/alias防護；混合完整synthetic COW保存／啟用／回滾及深Unicode新程序重讀。；雖主體path unit，後半完整personal COW服務保存/回復是最保守適用portfolio oracle；明示隔離合成全鏈，無正式DB/activation。 |
+| `tests/test_personal_journal_app_integration.py` | `ui-healthcheck-candidate-bridge` | notes selector／config、writer/controller/reader同路徑、legacy readonly、missing selector fail-closed及真MainWindow新程序composition。；196-234真MainWindow與RecommendationView實例factory composition提供UI candidate證據；60-92的未綁定reader factory單獨只是service oracle。混合檔採candidate且保隔離缺口，不增direct。 |
+| `tests/test_personal_journal_storage.py` | `service-oracle-portfolio-decision-runtime` | personal/legacy notes分離、append-only/CAS/history/tombstone、corrupt/unknown拒寫、cancel、link重驗、雙程序OS lock及ACK idempotency。；真notes service/history/reader持久化oracle；有充分synthetic路徑，無QWidget／模型／正式啟用。 |
+| `tests/test_personal_watchlist_app_integration.py` | `ui-healthcheck-candidate-bridge` | App config成對選擇與無副作用拒絕、個人CLI完整conversion/activation/rollback、真WatchlistView確認取消與明示啟用。；最後test實例化WatchlistView並觸真upgrade callback與確認分支，符合candidate；前三段CLI/service assert本身不構成UI bridge。 |
+| `tests/test_personal_watchlist_cow_activation.py` | `service-oracle-portfolio-decision-runtime` | 集中個人控制平面：JSON/v1/v2合成轉換啟用、新程序保存重開、回滾保市場、marker/backup/alias/cancel拒絕。；個人Watchlist controlplane服務oracle，新程序真保存但全部合成tmp；沒有QWidget，沒有live routing。 |
+| `tests/test_personal_watchlist_cow_conversion.py` | `service-oracle-portfolio-decision-runtime` | 個人JSON/SQLite COW dry-run不建control、create-only exact source backup、root/receipt mismatch／legacy marker／雙來源／hardlink/reparse拒絕。；personal COW轉換及control path oracle，跨入口隔離證明具體；寫入限合成源/目標，沒有formal source/open配置。 |
+| `tests/test_personal_watchlist_service.py` | `service-oracle-portfolio-decision-runtime` | 驗 personal watchlist 未設定相容、唯讀 JSON／SQLite 起始、明示 COW 升級／回復、跨程序持久化與不安全路徑拒絕。；personal adapter 的持久化／相容 oracle，有真 service asserts；非 QWidget 或 directbridge。 |
+| `tests/test_portfolio_quote_freshness.py` | `service-oracle-portfolio-decision-runtime` | 驗 portfolio quote Decimal 值、來源日期／hash、market session freshness、非法資料拒絕與 SQLite 唯讀觀測。；portfolio 報價／時序 oracle；純 service、Decimal／來源 provenance asserts，無 UI。 |
+| `tests/test_watchlist_cow_activation.py` | `service-oracle-portfolio-decision-runtime` | 驗 SQLite COW preview／activate／rollback、source pin、stale service pointer、取消／容量不足／鎖拒絕。；COW service lifecycle oracle；非 UI；source／target 持久化 assertions 可供 owner 入冊。 |
+| `tests/test_watchlist_cow_storage_governance.py` | `governance-doc-tooling` | 驗 storage governance 對 COW source/target/marker 的 scan 引用完整性、tamper／scan race／hash mismatch fail-closed。；被測核心為儲存治理 scan／diagnose 與 fail-closed；採 governance-doc-tooling，非 runtime UI。 |
+| `tests/test_watchlist_empty_pool_presentation.py` | `service-oracle-portfolio-decision-runtime` | 驗空候選池呈現使用檢查日，非空使用證明資料日；空池不讀 ranking provider。；presentation 命名但無 QWidget；是 service/DTO/文字 oracle，非 UI candidate。 |
+| `tests/test_watchlist_json_cow.py` | `service-oracle-portfolio-decision-runtime` | 驗 JSON COW dry-run／轉換保留 opaque/history、限額與非法 payload 拒絕、Windows held source 鎖與 CLI 格式選擇。；COW converter 持久化 oracle；CLI/native 分支不等於 directbridge；沒有 UI。 |
+| `tests/test_watchlist_json_cow_activation.py` | `service-oracle-portfolio-decision-runtime` | 驗 legacy WatchlistService JSON COW 升級／opaque 保留、activation source pin、stale writer、rollback 回 JSON writer 與多來源歧義拒絕。；legacy service 的 COW lifecycle oracle；不可混稱 personal control／readonly rollback；非UI。 |
+| `tests/test_watchlist_sqlite_cow.py` | `service-oracle-portfolio-decision-runtime` | 驗 v1/v2 SQLite COW lineage/revision、raw JSON／tombstone、容量/取消/鎖/source變動拒絕、Unicode特殊路徑保留。；COW converter／repository 持久化 oracle；非 UI／direct bridge。 |
+| `tests/test_watchlist_sqlite_cow_cli.py` | `service-oracle-portfolio-decision-runtime` | 驗 CLI subprocess dry-run/convert/preview/activate/status/rollback 與SQLite readonly reader transaction快照。；CLI包裹的隔離service persistence oracle，有真assert；未建立registry directbridge映射。 |
+| `tests/test_chart_viewport_state.py` | `ui-healthcheck-candidate-bridge` | viewport 日期範圍、identity 重置、gap 與 renderer 切片一致；多數純 controller，但 L163 真 StockPriceChartWidget 使全檔採 UI candidate |
+| `tests/test_current_stock_research_cycle.py` | `write-risk-dry-run-required` | 研究 cycle 子程序收據、鎖、快照、source context、語意重用、registry publication；L148–184 直接在 cycle.REPOSITORY_ROOT/output 建probe並TemporaryDirectory清理，非全tmp隔離；L415 真Popen鎖測試，不能當一般UI/oracle安全bridge |
+| `tests/test_decision_desk_focus_source_date.py` | `ui-healthcheck-candidate-bridge` | DecisionDesk focus 點擊／呈現保留決策日與有效資料日；L69 DecisionDeskView＋L91真signal callback；不升direct |
+| `tests/test_f2_f3_main_consumer_bridge.py` | `ui-healthcheck-candidate-bridge` | MainWindow三consumer同parent、capability audit與shutdown及來源修訂拒絕；L18 MainWindow harness真QMainWindow、三actual QWidget callback；隔離DB writer不等於正式來源 |
+| `tests/test_multi_method_research_consensus.py` | `service-oracle-recommendation` | 同源多方法三態、去重、完整分母、revision／clock／契約拒絕；_sources用sealed tmp snapshot，build/read consensus純oracle；沒有QWidget |
+| `tests/test_pandas_table_model_decimal_display.py` | `general-unit-keep-in-pytest` | Decimal顯示四捨五入與tooltip、原值排序、超大整數、無效值未知；僅PandasTableModel/QAbstract model和presenter；未建QWidget或MainWindow |
+| `tests/test_pattern_analysis/test_triangle_degenerate_lines.py` | `service-oracle-research-backtest` | 三角形平行／nonfinite／零範圍退化安全與正常結果；PatternAnalyzer numeric oracle；fit為monkeypatch函式，非模型訓練 |
+| `tests/test_phase3_luna_ui_fixes.py` | `service-oracle-recommendation` | 方向符號、指標canonical aliases、計分unknown、empty state與歷史提醒／截止日；混合service/scoring與純UI helper；無QWidget，不能因ui_fixes檔名當candidate |
+| `tests/test_qa_cross_page_mainwindow_readback.py` | `governance-doc-tooling` | cross-page readback idle close協調器fail-closed與只關一次；僅_FakeWindow/_FakeDialog及running_task_workers mock；未執行main UI QA |
+| `tests/test_recommendation_saved_chart.py` | `service-oracle-recommendation` | 推薦保存圖表capture／reader精度、缺件、hash與同源aware cutoff；build/read capture使用memory DataFrame，無QWidget |
+| `tests/test_recommendation_saved_chart_integration.py` | `service-oracle-recommendation` | 同次推薦保存圖新程序reopen、source cutoff拒絕、scheduled date角色；execute/save tmp artifacts及report reader oracle；新程序只讀明示tmp資料 |
+| `tests/test_research_bookmark_main_bridge.py` | `ui-healthcheck-candidate-bridge` | MainWindow精確bookmark返回與切股重解析；Harness真QMainWindow、StockResearchReportView；callback停在reader前 |
+| `tests/test_research_membership_history_index.py` | `service-oracle-data-market` | membership歷史索引分頁、完整revision、generation/cursor/hash、cancel與rollback；derived index storage oracle，source/cache全明示tmp；沒有UI |
+| `tests/test_research_membership_lifecycle.py` | `service-oracle-recommendation` | membership生命週期預期交易日、重入/退出、unknown／revision／未來資料邊界；純MembershipObservation DTO與classify function，無UI/IO |
+| `tests/test_research_membership_lifecycle_read_model.py` | `service-oracle-recommendation` | membership readmodel同源歷史與offline calendar、partial/corrupt/byte budget；Repository＋read_membership_lifecycle oracle；無QWidget |
+| `tests/test_saved_stock_technical_chart.py` | `service-oracle-recommendation` | 同parent保存technical圖producer→report重讀與gap、exact pin、取消／新程序；服務與projection oracle，無QWidget；真publisher只寫明示tmp root |
+| `tests/test_saved_strategy_rule_card.py` | `service-oracle-research-backtest` | 保存strategy rule card來源／cost／identity與tamper拒絕；ResearchRunService save/load及rule readmodel；無QWidget；包含executed_case原backtest fixture |
+| `tests/test_stock_research_as_of_visible.py` | `ui-healthcheck-candidate-bridge` | 查詢as_of可見與entry decision unknown分離；StockResearchReportView真render/show且驗accessibility |
+| `tests/test_stock_research_chart_payload.py` | `service-oracle-recommendation` | StockChart payload精確列、hash/context domain、cutoff／future／unknown／gap；純DTO projector，無renderer或QWidget |
+| `tests/test_stock_research_current_observed_market_ownership.py` | `service-oracle-data-market` | current ownership來源註記、candidate-only與historical withholding；StockResearchReportReadService與fake ownership reader oracle；無QWidget |
+| `tests/test_stock_research_ml_scope_context.py` | `general-unit-keep-in-pytest` | ML scope切換保留原saved session identity與不同cutoff；ResearchSessionStore記憶體DTO及CaptureService；未建Qt widget/registry/model |
+| `tests/test_stock_research_readability.py` | `write-risk-dry-run-required` | 個股摘要可讀性、unknown風險、ML scope、折疊稽核；真StockResearchReportView，惟L140 env直接指定output root並L143–170 screenshot/JSON writer；全檔非封閉tmp隔離 |
+| `tests/test_stock_research_report_provider_contracts.py` | `service-oracle-recommendation` | 報告provider來源契約、ML registry pins／publisher、估值market status、portfolio quote/Exit unknown；多個service/readmodel contract混合，沒有QWidget；隔離registry/model_loader fake，無真訓練 |
+| `tests/test_stock_research_shared_feature_consumer.py` | `service-oracle-recommendation` | report消費shared feature cache並在source改變失效，暖機/日期/錯誤未知；StockResearchReportReadService→feature projector，無UI |
+| `tests/test_stock_research_source_recovery.py` | `ui-healthcheck-candidate-bridge` | source picker恢復、切股拒絕錯Advice、current/historical報告及UI基本面；含actual StockResearchReportView、QTest click與async reader；服務case不提升direct |
+| `tests/test_stock_research_technical_history.py` | `service-oracle-recommendation` | technical history Decimal/gap／列hash、saved scope不讀live及service cutoff；DTO projector與report service reader，無QWidget |
+| `tests/test_strategy_rule_card_readmodel.py` | `service-oracle-research-backtest` | 規則卡method/strategy/profile版本、來源、成本unknown與結果引用綁定；readmodel純DTO oracle；registry get_executor被拒，不執行策略 |
+| `tests/test_ui_qt_chart_viewport.py` | `ui-healthcheck-candidate-bridge` | 圖表zoom/pan/hover／keyboard、same-date markers、stale／cancel與精確表；actual StockPriceChartWidget/StockResearchReportView與QTest/信號；不升direct |
+| `tests/test_ui_qt_daily_market_research_main_routing.py` | `ui-healthcheck-candidate-bridge` | daily snapshot Main路由/session/exact返回保存身分；RouteHarness真QMainWindow callbacks與ResearchSessionStore；無actual service IO |
+| `tests/test_ui_qt_forward_outcome_receipt.py` | `write-risk-dry-run-required` | forward outcome receipt UI分母/horizon/cost/benchmark未知與cancel stale；actual QDialog，但L48–50 UX21_SCREENSHOT env原樣grab.save 未限定tmp；保守全檔write-risk |
+| `tests/test_ui_qt_monthly_revenue_diagnostics.py` | `general-unit-keep-in-pytest` | monthly revenue dry-run診斷可見文案與retry stale清除；_UpdateViewHarness不是QWidget；QMessageBox.warning/information均mock；只callback單元測試 |
+| `tests/test_ui_qt_multi_method_research_consensus.py` | `ui-healthcheck-candidate-bridge` | daily research pinned多方法摘要/tooltip/完整分母/partial與clear；DailyMarketResearchView真QWidget，使用verified tmp manifest；candidate而非direct |
+| `tests/test_ui_qt_page_help.py` | `ui-healthcheck-candidate-bridge` | 頁面InfoButton覆蓋與help sections selectable plain text；真InfoDialog QWidget render，混合read-only source AST check |
+| `tests/test_ui_qt_parent_receipt_dialog.py` | `write-risk-dry-run-required` | parent receipt背景讀／cancel/stale/retry與daily single dialog；真QDialog，但L97–99 UX20_RECEIPT_SCREENSHOT任意env寫入；混合新程序reader/producer fixture |
+| `tests/test_ui_qt_recommendation_saved_chart.py` | `ui-healthcheck-candidate-bridge` | 推薦保存圖表與精確表的載入、取消、重試、舊回呼拒絕及返回來源；真 StockResearchReportView 與 Qt 回呼；不是純 formatter，沒有既有 direct 映射 |
+| `tests/test_ui_qt_saved_stock_chart.py` | `ui-healthcheck-candidate-bridge` | 保存個股技術圖表與缺圖舊版報告的 UI 呈現、取消重試；真 StockResearchReportView／QWidget 回呼，保留 candidate |
+| `tests/test_ui_qt_saved_strategy_rule_card.py` | `ui-healthcheck-candidate-bridge` | 保存策略規則卡、歷史查詢與取消、舊結果、完整性拒絕；真 Qt 規則卡 dialog／history 回呼；混合 tmp persistence oracle，分類採 UI candidate |
+| `tests/test_ui_qt_stock_research_missing_copy.py` | `general-unit-keep-in-pytest` | 個股研究缺資料與 unknown 狀態的結論文案；只有 DTO→_report_conclusion 純 helper assert，沒有建 QWidget／回呼 |
+| `tests/test_ui_qt_stock_technical_history.py` | `ui-healthcheck-candidate-bridge` | 技術歷史圖缺價槽、精確表、snapshot-only 及 SQLite 讀回；真 chart/table QWidget 路徑；chart.grab 僅 pixmap 記憶體，不是 screenshot file writer |
+| `tests/test_ui_qt_strategy_rule_card.py` | `ui-healthcheck-candidate-bridge` | Backtest 規則卡、unknown 契約、registry mismatch 與選擇 guard；Harness L16 繼承 QWidget、真 StrategyRuleCardDialog 呈現；executor lookup L33–35 被 mock 拒絕 |
+| `tests/test_ux02_market_portfolio_status.py` | `ui-healthcheck-candidate-bridge` | Decision Desk 狀態區塊及持倉健康文案；真 DecisionDeskView 呈現，另有 PortfolioView 純 helper asserts；全檔採 candidate |
+| `tests/test_ux02_research_status_consumers.py` | `ui-healthcheck-candidate-bridge` | 推薦、個股報告與 console 的狀態語彙 consumer；大部分 helper，但 L125–136 真 QTableWidget/_set_rows 路徑，不能全檔當純 unit |
+| `tests/test_ux02_status_vocabulary.py` | `general-unit-keep-in-pytest` | 完成、等待、錯誤與 unknown 狀態字碼到 label/detail 的語意；純 status_vocabulary helper，沒有 widget 或 consumer 回呼 |
+| `tests/test_ux03_research_bookmark_ui.py` | `ui-healthcheck-candidate-bridge` | bookmark 確認、開啟、取消及 Watchlist 移除／還原；真 view／watchlist 回呼，writer/readers 替身不提供正式 persistence 證據 |
+| `tests/test_ux04_05_daily_market_research_view.py` | `ui-healthcheck-candidate-bridge` | 每日研究首次開啟、更新、保存報告與 tabs 狀態；真 DailyMarketResearchView Qt 回呼，backend 是 FakeScreener |
+| `tests/test_ux09_history_browse_view.py` | `ui-healthcheck-candidate-bridge` | 歷史 browse 分頁、取消、rebuild 與不覆蓋當下來源；真 DailyMarketResearchView 回呼，BrowseService→LifecycleService→FakeScreener 為記憶體替身 |
+| `tests/test_ux09_history_recovery_consumers.py` | `ui-healthcheck-candidate-bridge` | 歷史 index fallback/rebuild/recovery 與真 UI 背景 consumer；同檔含 service SQLite oracle 及 L345–456 真 QWidget/Qt TaskWorker；tmp writer roots 明示，分類採 candidate，沒有 direct promotion |
+| `tests/test_ux09_membership_lifecycle_view.py` | `ui-healthcheck-candidate-bridge` | membership lifecycle 背景讀取、stale/error 與合作取消；真 DailyMarketResearchView consumer，backend LifecycleService 記憶體替身 |
+| `tests/test_ux13_market_cohort_view.py` | `ui-healthcheck-candidate-bridge` | cohort partial/unknown、排序、reload 與未知 identity 拒絕；真 cohort view 回呼，projection fake 與 producer fail-fast |
+| `tests/test_baldr_personal_paper_ledgers.py` | `service-oracle-portfolio-decision-runtime` | 已採P1 ledger route/path/account/readonly／atomic rollback／source sentinel服務oracle；selection binds synthetic account＋tmp market/legacy/personal，原fills/benchmark Decimal保存→fresh-process reader。負例含missingpaths/identity/alias，正式writer資格不升。；已採P1 ledger route/path/account/readonly／atomic rollback／source sentinel服務oracle；selection binds synthetic account＋tmp market/legacy/personal，原fills/benchmark Decimal保存→fresh-process reader。負例含missingpaths/identity/alias，正式writer資格不升。 |
+
+
+## 2026-10-06 I20 machine refresh 歷史
+
 固定 base `917f6af0387a4d9944b261eddbc0c46e84cf34b2`，依中央 dispatch 僅補表列 20 個既存測試的 metadata；測試本體、production、runner、source_id 三檔與其他 owner 均未修改。原 dispatch 審查 base `5d9ddf9…`，其 manifest final_head 與本次固定 base 相同。基準→本包 filesystem `1281→1281`、inventory `1105→1125`、missing `176→156`，stale `0`、documentation count drift `0`；collection skipped，overall 仍為 **failed**。
 
 Current filesystem Python files: `1281`

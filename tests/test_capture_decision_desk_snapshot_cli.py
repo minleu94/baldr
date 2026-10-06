@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import sys
 
@@ -13,6 +14,11 @@ def _config(tmp_path):
     config = TWStockConfig(data_root=tmp_path / "data", output_root=tmp_path / "output")
     config.db_file = tmp_path / "evidence.db"
     config.db_file.parent.mkdir(parents=True, exist_ok=True)
+    # 固定空市場來源；不能讓第一次「DB 不存在」與第二次「來源 table 缺失」
+    # 產生不同品質／hash，再將此來源變化誤當 duplicate 行為。
+    with sqlite3.connect(config.db_file) as connection:
+        for table in ("daily_prices", "market_indices", "industry_indices"):
+            connection.execute(f'CREATE TABLE IF NOT EXISTS {table} ("日期" TEXT)')
     return config
 
 
@@ -52,6 +58,17 @@ def test_confirm_writes_snapshot_and_duplicate_is_skipped(tmp_path):
     assert first["saved"] is True
     assert second["skipped_duplicate"] is True
     assert len(DecisionDeskSnapshotRepository(config).list_snapshots()) == 1
+
+
+def test_stage_diagnostics_preserve_json_and_snapshot_hash(tmp_path):
+    fixed_clock = (
+        "--as-of", "2026-06-30", "--decision-at", "2026-06-30T20:25:00+08:00",
+        "--captured-at", "2026-06-30T20:25:00+08:00", "--capture-mode", "eod_research",
+        "--dry-run",
+    )
+    plain, _ = _run(tmp_path, *fixed_clock)
+    traced, _ = _run(tmp_path, *fixed_clock, "--stage-diagnostics")
+    assert traced == plain
 
 
 def test_explicit_capture_clock_is_persisted_without_preopen_authority(tmp_path):

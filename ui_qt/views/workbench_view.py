@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
 from typing import cast
 
 from PySide6.QtCore import QTimer, Qt
@@ -1059,23 +1059,21 @@ class UnifiedDecisionWorkbenchView(QWidget):
                 ),
             )
             warning_text = "警示尚未載入；請先查看資料狀態。"
-            self.guided_date_label.setText("判讀日期：尚未確認｜資料日期：尚未確認")
+            self.guided_date_label.setText(
+                "保存快照日：尚未確認｜行情截至：尚未確認｜台北評估日：尚未確認"
+            )
             self.guided_conclusion_label.setText("判讀結論：尚未確認。")
             self.guided_next_action_label.setText("主要下一步：重新整理目前狀態。")
         else:
             rows, warning_text = self._guided_rows_for_dashboard(dashboard)
-            daily = dashboard.daily_evidence
-            market_context = dashboard.market_context if isinstance(dashboard.market_context, dict) else {}
-            advice_date = getattr(dashboard.advice_dashboard, "data_as_of_date", None)
-            data_date = (
-                getattr(daily, "data_as_of_date", None)
-                or market_context.get("data_as_of_date")
-                or advice_date
-                or "尚未確認"
-            )
+            snapshot_date = _optional_date_text(dashboard.snapshot_date)
+            market_date = _optional_date_text(dashboard.market_data_as_of_date)
+            evaluation_date = _optional_date_text(dashboard.evaluation_date)
             freshness_note = "（請確認最新狀態）" if self._dashboard_stale else ""
             self.guided_date_label.setText(
-                f"判讀日期：{dashboard.as_of_date.isoformat()}｜資料日期：{data_date}{freshness_note}"
+                f"保存快照日：{snapshot_date}｜行情截至：{market_date}｜"
+                f"台北評估日：{evaluation_date}｜"
+                f"{_latest_capture_overview_text(dashboard)}{freshness_note}"
             )
             daily = dashboard.daily_evidence
             headline = _guided_compact(
@@ -1492,11 +1490,16 @@ class UnifiedDecisionWorkbenchView(QWidget):
         advice = dashboard.advice_dashboard
         if advice is not None:
             advice_data_date = str(getattr(advice, "data_as_of_date", "") or "").strip()
-        data_date = advice_data_date or "未知（Workbench DTO 未提供；請查看數據更新）"
+        advice_date = advice_data_date or "未知"
         return "\n".join(
             (
-                f"研究／決策基準日（as_of）：{dashboard.as_of_date.isoformat()}",
-                f"資料日期：{data_date}",
+                f"工作台 as_of：{dashboard.as_of_date.isoformat()}",
+                f"保存快照日：{_optional_date_text(dashboard.snapshot_date)}",
+                f"股票行情截至：{_optional_date_text(dashboard.market_data_as_of_date)}",
+                f"大盤指數截至（TAIEX）：{_optional_date_text(dashboard.market_index_as_of_date)}",
+                f"台北評估日：{_optional_date_text(dashboard.evaluation_date)}",
+                f"Advice 資料日期：{advice_date}",
+                f"最新保存快照擷取：{_latest_capture_status_text(dashboard)}",
                 f"來源狀態：{source_status}；來源模式：{display_workbench_value(dashboard.source_mode)}",
                 f"產生時間（既有 DTO）：{dashboard.generated_at.isoformat()}",
                 (
@@ -2570,12 +2573,17 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self.research_console_view.set_decision_date(dashboard.as_of_date.isoformat())
         self._render_today_action_center(dashboard)
         self.meta_label.setText(
-            f"決策日期={dashboard.as_of_date.isoformat()} | "
+            f"工作台 as_of={dashboard.as_of_date.isoformat()} | "
+            f"保存快照日={_optional_date_text(dashboard.snapshot_date)} | "
+            f"行情截至={_optional_date_text(dashboard.market_data_as_of_date)} | "
+            f"台北評估日={_optional_date_text(dashboard.evaluation_date)} | "
+            f"最新快照擷取={_latest_capture_status_text(dashboard)} | "
             f"產生時間={dashboard.generated_at.isoformat()} | "
             f"來源模式={display_workbench_value(dashboard.source_mode)} | "
             f"允許寫入={_yes_no(dashboard.access_boundary.writes_allowed)} | "
             f"正式排程器={_yes_no(dashboard.access_boundary.production_scheduler_allowed)}"
         )
+        self.meta_label.setToolTip(self._format_workbench_source_meta(dashboard))
         self.status_model.set_rows(dashboard.status_strip)
         self._render_advice(dashboard)
         self.review_model.set_rows(dashboard.review_items)
@@ -3949,6 +3957,51 @@ def _ratio_for_item(dashboard: WorkbenchDashboardDTO, item_id: str) -> str | Non
         match = re.search(r"\b\d+/\d+\b", f"{item.label} {item.summary}")
         return match.group(0) if match else None
     return None
+
+
+def _optional_date_text(value: date | None) -> str:
+    return value.isoformat() if type(value) is date else "未知"
+
+
+def _latest_capture_status_text(dashboard: WorkbenchDashboardDTO) -> str:
+    capture = dashboard.latest_capture_status
+    labels = {
+        "unknown": "未知",
+        "saved": "已有快照",
+        "failed": "擷取失敗",
+        "timeout": "擷取逾時",
+    }
+    parts = [labels.get(capture.status, "未知")]
+    if capture.decision_date is not None:
+        parts.append(f"決策日 {capture.decision_date.isoformat()}")
+    if capture.run_id:
+        parts.append(f"run {capture.run_id}")
+    if capture.failure_reason:
+        reason = capture.failure_reason
+        detail = {
+            "snapshot_cli_timeout": "快照產生逾時",
+            "snapshot_capture_failed": "快照未保存",
+        }.get(reason, reason)
+        parts.append(f"原因 {detail}（{reason}）")
+    if capture.status == "timeout" and capture.snapshot_saved is None:
+        parts.append("保存結果未知")
+    return "；".join(parts)
+
+
+def _latest_capture_overview_text(dashboard: WorkbenchDashboardDTO) -> str:
+    capture = dashboard.latest_capture_status
+    labels = {
+        "unknown": "未知",
+        "saved": "已保存",
+        "failed": "失敗",
+        "timeout": "逾時",
+    }
+    text = f"最近保存：{labels.get(capture.status, '未知')}"
+    if capture.decision_date is not None:
+        text += f"（{capture.decision_date.isoformat()}）"
+    if capture.status == "timeout" and capture.snapshot_saved is None:
+        text += "；保存結果未知"
+    return text
 
 
 def _yes_no(value: bool) -> str:

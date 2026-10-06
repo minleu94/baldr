@@ -44,9 +44,10 @@ from ui_qt.widgets.layout_helpers import set_scroll_content_constraints
 from ui_qt.widgets.info_button import InfoButton
 
 
-def _current_taipei_decision_date() -> date:
+def _current_taipei_decision_date(clock: Callable[[], datetime] | None = None) -> date:
     """Return the project decision date in Taipei, independent of host timezone."""
-    return resolve_project_market_session_boundary(datetime.now(timezone.utc)).taipei_date
+    observed_at = clock() if clock is not None else datetime.now(timezone.utc)
+    return resolve_project_market_session_boundary(observed_at).taipei_date
 
 
 def _market_regime_source_data_date(section: Any) -> str:
@@ -83,11 +84,20 @@ class DecisionDeskView(QWidget):
         navigate_to_smart_money_callback: Callable[[str], None] | None = None,
         parent=None,
         presentation_service: DecisionPresentationService | None = None,
+        clock: Callable[[], datetime] | None = None,
     ):
         super().__init__(parent)
         self.decision_desk_builder = decision_desk_builder or DecisionDeskSnapshotBuilder()
+        self._clock = clock
+        self._historical_date_pinned = as_of_date is not None
         self.as_of_date = (
-            as_of_date if as_of_date is not None else _current_taipei_decision_date()
+            as_of_date
+            if as_of_date is not None
+            else (
+                _current_taipei_decision_date()
+                if self._clock is None
+                else _current_taipei_decision_date(self._clock)
+            )
         )
         self.async_refresh = async_refresh
         self.navigate_to_smart_money_callback = navigate_to_smart_money_callback
@@ -386,6 +396,16 @@ class DecisionDeskView(QWidget):
     def refresh_snapshot(self):
         if self._closing:
             return
+        if not self._historical_date_pinned:
+            current_date = (
+                _current_taipei_decision_date()
+                if self._clock is None
+                else _current_taipei_decision_date(self._clock)
+            )
+            if current_date != self.as_of_date:
+                self.as_of_date = current_date
+                self._last_snapshot = None
+                self._display_pending_snapshot()
         self._refresh_generation += 1
         if self.async_refresh:
             self._start_refresh_worker()
@@ -395,7 +415,8 @@ class DecisionDeskView(QWidget):
     def _display_pending_snapshot(self) -> None:
         self.overall_status_label.setText("摘要尚未載入")
         self.generated_at_label.setText(
-            f"判讀日：{self.as_of_date.isoformat()}｜產生時間：N/A"
+            f"本次評估日（台北）：{self.as_of_date.isoformat()}｜"
+            f"快照判讀日：{self.as_of_date.isoformat()}｜產生時間：N/A"
         )
         self.overall_quality_badge.setText("尚未載入")
         self.overall_quality_badge.set_quality("missing")
@@ -554,7 +575,10 @@ class DecisionDeskView(QWidget):
         self._render_market_data_visibility(snapshot.market_data_visibility)
         self.overall_status_label.setText("摘要已載入")
         self.generated_at_label.setText(
-            f"判讀日：{snapshot.as_of_date.isoformat()}｜產生時間：{snapshot.generated_at.isoformat()}"
+            f"本次評估日（台北）：{self.as_of_date.isoformat()}｜"
+            f"快照判讀日：{snapshot.as_of_date.isoformat()}｜"
+            f"來源市場資料日：{_market_regime_source_data_date(snapshot.market_regime)}｜"
+            f"產生時間：{snapshot.generated_at.isoformat()}"
         )
         self.overall_quality_badge.setText(self._quality_label(snapshot.overall_quality))
         self.overall_quality_badge.set_quality(self._quality_token(snapshot.overall_quality))

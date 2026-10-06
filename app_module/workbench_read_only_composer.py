@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Callable
 
 from app_module.advice_dtos import AdviceDashboardDTO
 from app_module.decision_desk_dtos import DecisionDeskRiskPrompt, DecisionDeskSnapshot
@@ -32,6 +32,7 @@ from app_module.continuity_review_projection import (
     CONTINUITY_DUE_SCHEDULED,
     ContinuityReviewProjectionResult,
 )
+from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE
 from app_module.workbench_dtos import (
     WorkbenchAccessBoundary,
     WorkbenchActionItem,
@@ -39,6 +40,7 @@ from app_module.workbench_dtos import (
     WorkbenchDashboardDTO,
     WorkbenchEvidenceFeedItem,
     WorkbenchEvidenceSummary,
+    WorkbenchLatestCaptureStatus,
     WorkbenchOperatingLoopStep,
     WorkbenchReviewItem,
     WorkbenchStatusItem,
@@ -47,6 +49,9 @@ from app_module.workbench_dtos import (
 
 class WorkbenchReadOnlyComposer:
     """Compose the V2.0 Phase 1 workbench payload from read-only inputs."""
+
+    def __init__(self, clock: Callable[[], datetime] | None = None) -> None:
+        self._clock = clock or (lambda: datetime.now(TAIWAN_MARKET_TIMEZONE))
 
     def compose(
         self,
@@ -61,7 +66,13 @@ class WorkbenchReadOnlyComposer:
         advice_dashboard: AdviceDashboardDTO | None = None,
         recommendation_learning_status: dict[str, Any] | None = None,
         continuity_reviews: ContinuityReviewProjectionResult | None = None,
+        evaluation_at: datetime | None = None,
+        market_data_as_of_date: date | None = None,
+        market_index_as_of_date: date | None = None,
+        latest_capture_status: WorkbenchLatestCaptureStatus | None = None,
     ) -> WorkbenchDashboardDTO:
+        generated_at = _as_taipei_datetime(evaluation_at or self._clock())
+        evaluation_date = generated_at.date()
         warnings = self._warnings(
             readiness_report,
             agent_report_sample,
@@ -93,8 +104,8 @@ class WorkbenchReadOnlyComposer:
         )
         action_items = self._action_items(decision_snapshot, readiness_report, historical_replay_summary)
         return WorkbenchDashboardDTO(
-            as_of_date=decision_snapshot.as_of_date if decision_snapshot is not None else date.today(),
-            generated_at=datetime.utcnow().replace(microsecond=0),
+            as_of_date=decision_snapshot.as_of_date if decision_snapshot is not None else evaluation_date,
+            generated_at=generated_at,
             source_mode=str(source_mode),
             access_boundary=WorkbenchAccessBoundary(),
             status_strip=self._status_strip(decision_snapshot, readiness_report),
@@ -120,6 +131,11 @@ class WorkbenchReadOnlyComposer:
                 recommendation_learning_status=recommendation_learning_status,
             ),
             advice_dashboard=advice_dashboard,
+            snapshot_date=(decision_snapshot.as_of_date if decision_snapshot is not None else None),
+            market_data_as_of_date=market_data_as_of_date,
+            market_index_as_of_date=market_index_as_of_date,
+            evaluation_date=evaluation_date,
+            latest_capture_status=latest_capture_status or WorkbenchLatestCaptureStatus(),
         )
 
     def _status_strip(
@@ -1698,6 +1714,12 @@ def _severity(value: str) -> str:
     if value in {"critical", "warning", "info", "blocked", "ready", "observed", "degraded", "missing"}:
         return value
     return "info"
+
+
+def _as_taipei_datetime(value: datetime) -> datetime:
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("Workbench clock must return a timezone-aware datetime")
+    return value.astimezone(TAIWAN_MARKET_TIMEZONE).replace(microsecond=0)
 
 
 def _dedupe(values: list[str]) -> list[str]:

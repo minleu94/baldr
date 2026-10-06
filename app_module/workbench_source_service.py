@@ -7,7 +7,9 @@ from contextlib import closing
 from pathlib import Path
 import json
 import os
+import re
 import sqlite3
+import time
 from typing import Any, Callable
 
 from app_module.decision_desk_dtos import DecisionDeskSnapshot, DecisionDeskQuality, RecommendationDeskSummary
@@ -17,7 +19,10 @@ from app_module.pre_v2_readiness_service import (
     DEFAULT_MIN_WEEKLY_HISTORY_RECORDS,
     PreV2ReadinessService,
 )
-from app_module.workbench_dtos import WorkbenchDashboardDTO
+from app_module.workbench_dtos import (
+    WorkbenchDashboardDTO,
+    WorkbenchLatestCaptureStatus,
+)
 from app_module.personal_journal_paths import PersonalJournalPaths
 from app_module.continuity_review_projection import (
     ContinuityReviewProjectionService,
@@ -35,15 +40,23 @@ from app_module.recommendation_learning_evidence_projection_service import (
 from app_module.recommendation.queries import RecommendationExecutionReadSnapshot
 from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
-from app_module.paper_portfolio_time import taiwan_market_today
+from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE
 from app_module.position_health_transition_read_service import (
     PositionHealthTransitionReadService,
 )
 from app_module.sqlite_read_only import (
+    ReadOperationCancelled,
     check_read_cancelled,
     cooperative_read_cancellation,
     connect_read_only_sqlite,
 )
+
+
+_CAPTURE_STATUS_SCHEMA = "decision-evidence-capture.v1"
+_CAPTURE_STATUS_TASK = "baldr-decision-evidence-capture-daily"
+_CAPTURE_STATUS_MAX_BYTES = 1024 * 1024
+_CAPTURE_RUN_ID_RE = re.compile(r"[A-Za-z0-9._-]{1,128}\Z", re.ASCII)
+_MARKET_DATE_QUERY_MAX_SECONDS = 2.0
 
 
 class _WorkbenchRecommendationReadSession:
@@ -80,6 +93,7 @@ class WorkbenchSourceService:
         recommendation_queries: Any | None = None,
         journal_paths: PersonalJournalPaths | None = None,
         legacy_journal_read_only: bool = False,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if journal_paths is None and (
             getattr(config, "personal_journal_root", None) is not None
@@ -96,6 +110,7 @@ class WorkbenchSourceService:
             ) if journal_paths is not None else None
         )
         self.config = config
+        self._clock = clock or (lambda: datetime.now(TAIWAN_MARKET_TIMEZONE))
         self.recommendation_queries = (
             recommendation_queries
             if recommendation_queries is not None
@@ -112,7 +127,7 @@ class WorkbenchSourceService:
             approved_weekly_history_projection_path=os.environ.get("WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH"),
             recommendation_queries=self.recommendation_queries,
         )
-        self.composer = WorkbenchReadOnlyComposer()
+        self.composer = WorkbenchReadOnlyComposer(clock=self._clock)
         self.scheduled_status_service = ScheduledEvidenceStatusService(
             config,
             recommendation_queries=self.recommendation_queries,
@@ -178,10 +193,19 @@ class WorkbenchSourceService:
         recommendation_learning_status_json: str | Path | None = None,
         continuity_as_of: datetime | str | None = None,
     ) -> WorkbenchDashboardDTO:
+        evaluation_at = _as_taipei_datetime(self._clock())
+        evaluation_date = evaluation_at.date()
         recommendation_read_session = _WorkbenchRecommendationReadSession(
             self.recommendation_queries
         )
-        decision_snapshot, source_diagnostics = self._load_decision_snapshot(decision_date)
+        decision_snapshot, source_diagnostics = self._load_decision_snapshot(
+            decision_date,
+            today=evaluation_date,
+        )
+        market_data_as_of_date, market_index_as_of_date = self._load_market_data_as_of_dates(
+            evaluation_date
+        )
+        latest_capture_status = self._load_latest_capture_status(evaluation_date)
         check_read_cancelled()
         readiness_report = self.readiness_service.inspect(
             decision_date=decision_date,
@@ -224,6 +248,10 @@ class WorkbenchSourceService:
             source_diagnostics=tuple(source_diagnostics),
             recommendation_learning_status=recommendation_learning_status,
             continuity_reviews=continuity_reviews,
+            evaluation_at=evaluation_at,
+            market_data_as_of_date=market_data_as_of_date,
+            market_index_as_of_date=market_index_as_of_date,
+            latest_capture_status=latest_capture_status,
         )
         learning_projection = self.learning_evidence_projection_service.inspect(
             requested_date=dashboard.as_of_date.isoformat()
@@ -295,9 +323,14 @@ class WorkbenchSourceService:
             }, ["recommendation_learning_latest_status_not_object"]
         return payload, []
 
-    def _load_decision_snapshot(self, decision_date: str | None) -> tuple[DecisionDeskSnapshot | None, list[str]]:
+    def _load_decision_snapshot(
+        self,
+        decision_date: str | None,
+        *,
+        today: date | None = None,
+    ) -> tuple[DecisionDeskSnapshot | None, list[str]]:
         diagnostics: list[str] = []
-        today = taiwan_market_today()
+        today = today or _as_taipei_datetime(self._clock()).date()
         cutoff_date, requested_future_date = _bounded_decision_date(decision_date, today)
         try:
             with closing(_connect_read_only(self.evidence_db_path)) as conn:
@@ -375,6 +408,219 @@ class WorkbenchSourceService:
             diagnostics.append(f"decision_desk_snapshot_degraded:{exc}")
             return None, diagnostics
 
+    def _load_market_data_as_of_dates(
+        self,
+        evaluation_date: date,
+    ) -> tuple[date | None, date | None]:
+        """Read maximum canonical market dates without creating or upgrading a database."""
+
+        database_path = Path(self.config.db_file)
+        if not database_path.is_file():
+            return None, None
+        check_read_cancelled()
+        try:
+            with closing(_connect_read_only(database_path)) as conn:
+                stock_price_date = _latest_market_table_date(
+                    conn,
+                    table_name="daily_prices",
+                    evaluation_date=evaluation_date,
+                )
+                market_index_date = _latest_market_table_date(
+                    conn,
+                    table_name="market_indices",
+                    evaluation_date=evaluation_date,
+                    index_name="TAIEX",
+                )
+        except (OSError, sqlite3.Error):
+            check_read_cancelled()
+            return None, None
+        check_read_cancelled()
+        return stock_price_date, market_index_date
+
+    def _load_latest_capture_status(
+        self,
+        evaluation_date: date,
+    ) -> WorkbenchLatestCaptureStatus:
+        """Read a bounded allow-listed summary; never surface payloads or process output."""
+
+        path = (
+            Path(self.config.output_root)
+            / "scheduled"
+            / "decision_evidence_capture"
+            / "latest_status.json"
+        )
+        if not path.is_file():
+            return WorkbenchLatestCaptureStatus()
+        try:
+            if path.stat().st_size > _CAPTURE_STATUS_MAX_BYTES:
+                return WorkbenchLatestCaptureStatus()
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return WorkbenchLatestCaptureStatus()
+        if not isinstance(payload, dict):
+            return WorkbenchLatestCaptureStatus()
+        raw_status = payload.get("status")
+        if (
+            payload.get("schema_version") != _CAPTURE_STATUS_SCHEMA
+            or payload.get("task") != _CAPTURE_STATUS_TASK
+            or payload.get("finalized") is not True
+            or not isinstance(raw_status, str)
+            or raw_status not in {"passed", "failed", "degraded"}
+        ):
+            return WorkbenchLatestCaptureStatus()
+
+        raw_run_id = payload.get("run_id")
+        if not isinstance(raw_run_id, str) or not _CAPTURE_RUN_ID_RE.fullmatch(raw_run_id):
+            return WorkbenchLatestCaptureStatus()
+        decision_date = _canonical_iso_date(payload.get("decision_date"))
+        if decision_date is None or decision_date > evaluation_date:
+            return WorkbenchLatestCaptureStatus()
+
+        raw_saved = payload.get("snapshot_saved")
+        snapshot_saved = raw_saved if type(raw_saved) is bool else None
+        raw_duplicate = payload.get("snapshot_duplicate")
+        snapshot_duplicate = raw_duplicate if type(raw_duplicate) is bool else None
+        raw_failures = payload.get("failure_reasons")
+        failures = (
+            tuple(item for item in raw_failures if isinstance(item, str))
+            if isinstance(raw_failures, list)
+            else ()
+        )
+        snapshot_failures = tuple(
+            reason
+            for reason in failures
+            if reason.startswith(
+                (
+                    "snapshot_cli_",
+                    "snapshot_json_",
+                    "snapshot_not_saved",
+                    "snapshot_confirm_",
+                    "snapshot_persisted_",
+                )
+            )
+        )
+        if any("timeout" in reason.lower() for reason in snapshot_failures):
+            return WorkbenchLatestCaptureStatus(
+                status="timeout",
+                run_id=raw_run_id,
+                decision_date=decision_date,
+                failure_reason="snapshot_cli_timeout",
+                snapshot_saved=snapshot_saved,
+            )
+        if snapshot_saved is True or snapshot_duplicate is True:
+            return WorkbenchLatestCaptureStatus(
+                status="saved",
+                run_id=raw_run_id,
+                decision_date=decision_date,
+                snapshot_saved=snapshot_saved,
+            )
+        if snapshot_saved is False and snapshot_failures:
+            return WorkbenchLatestCaptureStatus(
+                status="failed",
+                run_id=raw_run_id,
+                decision_date=decision_date,
+                failure_reason="snapshot_capture_failed",
+                snapshot_saved=False,
+            )
+        return WorkbenchLatestCaptureStatus()
+
+
+def _as_taipei_datetime(value: datetime) -> datetime:
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("Workbench clock must return a timezone-aware datetime")
+    return value.astimezone(TAIWAN_MARKET_TIMEZONE).replace(microsecond=0)
+
+
+def _canonical_iso_date(raw: Any) -> date | None:
+    if not isinstance(raw, str) or raw != raw.strip():
+        return None
+    try:
+        parsed = date.fromisoformat(raw)
+    except ValueError:
+        return None
+    return parsed if parsed.isoformat() == raw else None
+
+
+def _latest_market_table_date(
+    conn: sqlite3.Connection,
+    *,
+    table_name: str,
+    evaluation_date: date,
+    index_name: str | None = None,
+) -> date | None:
+    if table_name not in {"daily_prices", "market_indices"}:
+        return None
+    if not _table_exists(conn, table_name) or not _table_has_column(conn, table_name, "日期"):
+        return None
+
+    where_parts: list[str] = []
+    parameters: list[Any] = []
+    if index_name is not None:
+        if not _table_has_column(conn, table_name, "指數名稱"):
+            return None
+        where_parts.append('"指數名稱" = ?')
+        parameters.append(index_name)
+
+    candidates: list[date] = []
+    deadline = time.monotonic() + _MARKET_DATE_QUERY_MAX_SECONDS
+
+    def abort_bounded_read() -> int:
+        try:
+            check_read_cancelled()
+        except ReadOperationCancelled:
+            return 1
+        return int(time.monotonic() >= deadline)
+
+    conn.set_progress_handler(abort_bounded_read, 1000)
+    try:
+        for length, pattern, cutoff, compact in (
+            (
+                10,
+                "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]",
+                evaluation_date.isoformat(),
+                False,
+            ),
+            (
+                8,
+                "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",
+                evaluation_date.strftime("%Y%m%d"),
+                True,
+            ),
+        ):
+            if time.monotonic() >= deadline:
+                # A partial MAX over only one supported date encoding is not a
+                # trustworthy latest date. Fail closed if both encodings did
+                # not complete within the shared budget.
+                return None
+            predicates = [*where_parts, '"日期" <= ?', 'LENGTH("日期") = ?', '"日期" GLOB ?']
+            query_parameters = [*parameters, cutoff, length, pattern]
+            row = conn.execute(
+                f'SELECT MAX("日期") AS latest_date FROM "{table_name}" '
+                f'WHERE {" AND ".join(predicates)}',
+                query_parameters,
+            ).fetchone()
+            if time.monotonic() >= deadline:
+                return None
+            raw_date = row["latest_date"] if row is not None else None
+            parsed = _canonical_market_date(raw_date, compact=compact)
+            if parsed is not None:
+                candidates.append(parsed)
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.set_progress_handler(None, 0)
+    return max(candidates) if candidates else None
+
+
+def _canonical_market_date(raw: Any, *, compact: bool) -> date | None:
+    if not isinstance(raw, str) or raw != raw.strip():
+        return None
+    if compact:
+        if len(raw) != 8 or not raw.isascii() or not raw.isdigit():
+            return None
+        raw = f"{raw[:4]}-{raw[4:6]}-{raw[6:]}"
+    return _canonical_iso_date(raw)
+
 
 def _connect_read_only(path: Path) -> sqlite3.Connection:
     if not path.exists():
@@ -390,6 +636,13 @@ def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
         (table_name,),
     ).fetchone()
     return row is not None
+
+
+def _table_has_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    if table_name not in {"daily_prices", "market_indices"}:
+        return False
+    rows = conn.execute(f'PRAGMA table_info("{table_name}")').fetchall()
+    return any(str(row["name"]) == column_name for row in rows)
 
 
 def _row_to_stored_snapshot(row: dict[str, Any]) -> StoredDecisionDeskSnapshot:

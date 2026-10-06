@@ -53,6 +53,52 @@ def _event(day, branch, code, net, quality="observed"):
     )
 
 
+def test_dashboard_single_event_read_matches_individual_oracle_and_refreshes():
+    decision = date(2026, 10, 6)
+    events = [_event(decision - timedelta(days=i), "A", code, 100 - i)
+              for code in ("2330", "2317") for i in range(65)]
+    events += [_event(decision + timedelta(days=1), "未來", "2330", -99999)]
+
+    class CountingProvider(FakeBrokerFlowService):
+        calls = 0
+        def get_events(self, force_reload=False):
+            self.calls += 1
+            return super().get_events(force_reload)
+
+    source = CountingProvider(events)
+    service = SmartMoneySemanticService(source, price_provider=FakePriceProvider({}))
+    oracle = SmartMoneySemanticService(FakeBrokerFlowService(events), price_provider=FakePriceProvider({}))
+    codes = ("2330", "2317", "2330")
+    expected = tuple(oracle.build_stock_semantics(code, decision) for code in codes)
+    captured = []
+    original = service._build_stock_semantics_cancellable
+    def observe(code, date_value, *, cancel_callback):
+        result = original(code, date_value, cancel_callback=cancel_callback)
+        captured.append(result)
+        return result
+    service._build_stock_semantics_cancellable = observe
+    service.build_dashboard_summary(decision, codes)
+    assert tuple(captured) == expected
+    assert source.calls == 1
+    source.events = [_event(decision, "新來源", "2330", -120)]
+    captured.clear()
+    service.build_dashboard_summary(decision, ("2330",))
+    assert source.calls == 2
+    assert captured[0].window_5.net_qty == -120
+
+
+def test_dashboard_cancel_does_not_leave_event_cache_for_next_call():
+    from app_module.smart_money_semantic_service import _DASHBOARD_EVENTS
+    decision = date(2026, 10, 6)
+    service = SmartMoneySemanticService(FakeBrokerFlowService([_event(decision, "A", "2330", 10)]))
+    def cancel_during_summary(*_args, **_kwargs):
+        raise BacktestCancelledError("取消")
+    service._build_stock_semantics_cancellable = cancel_during_summary
+    with pytest.raises(BacktestCancelledError):
+        service.build_dashboard_summary(decision, ("2330",))
+    assert _DASHBOARD_EVENTS.get() is None
+
+
 def test_semantic_service_classifies_initial_buy_without_future_events():
     decision = date(2026, 6, 20)
     events = [

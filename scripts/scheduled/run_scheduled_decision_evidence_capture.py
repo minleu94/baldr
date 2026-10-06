@@ -26,6 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from app_module.decision_snapshot_diagnostics import summarize_snapshot_diagnostics
 from data_module.official_trading_calendar import OfficialTradingCalendar
 from data_module.config import TWStockConfig
 from app_module.evidence_event_importer_dtos import (
@@ -637,6 +638,7 @@ def _snapshot_step(
                 "execution_status": result.execution_status,
                 "execution_error_type": result.execution_error_type,
                 "execution_error": result.execution_error,
+                "stage_diagnostics": summarize_snapshot_diagnostics(result.stderr),
             },
             failures,
         )
@@ -684,6 +686,7 @@ def _snapshot_step(
     )
     step = {
         "status": "passed" if not failures else "failed",
+        "stage_diagnostics": summarize_snapshot_diagnostics(result.stderr),
         "saved": saved,
         "duplicate": duplicate,
         "snapshot_id": payload.get("snapshot_id"),
@@ -1142,6 +1145,7 @@ def _run_once(
                     / "capture_decision_desk_snapshot.py"
                 ),
                 *common_args,
+                "--stage-diagnostics",
                 "--confirm",
             ],
             timeout_seconds=subprocess_timeout_seconds,

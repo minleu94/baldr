@@ -57,6 +57,7 @@ class FakeBuilder:
 
 def _snapshot(
     *,
+    as_of_date: date = date(2026, 6, 15),
     overall_quality: DecisionDeskQuality = DecisionDeskQuality.OBSERVED,
     market_regime_quality=DecisionDeskQuality.OBSERVED,
     market_breadth_quality=DecisionDeskQuality.OBSERVED,
@@ -75,7 +76,7 @@ def _snapshot(
     overall_warnings=(),
     market_data_visibility=None,
 ) -> DecisionDeskSnapshot:
-    as_of = date(2026, 6, 15)
+    as_of = as_of_date
     return DecisionDeskSnapshot(
         as_of_date=as_of,
         generated_at=datetime(2026, 6, 15, 9, 0, 0),
@@ -236,6 +237,48 @@ def test_decision_desk_preserves_explicit_historical_date_without_reading_clock(
     assert view.as_of_date == explicit_date
     assert view.decision_date_card.value_label.text() == explicit_date.isoformat()
     view.close()
+
+
+def test_default_decision_desk_refresh_recomputes_taipei_date_and_historical_date_stays_pinned():
+    app()
+    instants = iter(
+        (
+            datetime(2026, 10, 6, 15, 59, 59, tzinfo=timezone.utc),
+            datetime(2026, 10, 6, 16, 0, tzinfo=timezone.utc),
+        )
+    )
+    current_builder = FakeBuilder(_snapshot(as_of_date=date(2026, 10, 7)))
+    current_view = DecisionDeskView(
+        current_builder,
+        auto_refresh=False,
+        async_refresh=False,
+        clock=lambda: next(instants),
+    )
+
+    assert current_view.as_of_date == date(2026, 10, 6)
+    current_view.refresh_snapshot()
+    assert current_view.as_of_date == date(2026, 10, 7)
+    assert current_builder.calls == [date(2026, 10, 7)]
+    assert "本次評估日（台北）：2026-10-07" in current_view.generated_at_label.text()
+    assert "快照判讀日：2026-10-07" in current_view.generated_at_label.text()
+    current_view.close()
+
+    historical_calls = []
+    historical_date = date(2026, 6, 15)
+    historical_builder = FakeBuilder(_snapshot())
+    historical_view = DecisionDeskView(
+        historical_builder,
+        as_of_date=historical_date,
+        auto_refresh=False,
+        async_refresh=False,
+        clock=lambda: historical_calls.append("called"),
+    )
+    historical_view.refresh_snapshot()
+
+    assert historical_calls == []
+    assert historical_view.as_of_date == historical_date
+    assert historical_builder.calls == [historical_date]
+    historical_view.close()
 
 
 def test_decision_desk_view_auto_refreshes_when_first_shown():

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from app_module.advice_dtos import AdviceDashboardDTO
 from app_module.decision_presentation import PositionHealthReadModel
@@ -746,6 +746,43 @@ class WorkbenchDailyEvidence:
 
 
 @dataclass(frozen=True)
+class WorkbenchLatestCaptureStatus:
+    """Safe, read-only summary of the latest durable decision snapshot capture."""
+
+    status: Literal["unknown", "saved", "failed", "timeout"] = "unknown"
+    run_id: str | None = None
+    decision_date: date | None = None
+    failure_reason: Literal["snapshot_cli_timeout", "snapshot_capture_failed"] | None = None
+    snapshot_saved: bool | None = None
+
+    def __post_init__(self) -> None:
+        if self.status not in {"unknown", "saved", "failed", "timeout"}:
+            object.__setattr__(self, "status", "unknown")
+        run_id = str(self.run_id or "").strip()
+        if not run_id or len(run_id) > 128 or any(
+            not (character.isascii() and (character.isalnum() or character in "._-"))
+            for character in run_id
+        ):
+            run_id = ""
+        object.__setattr__(self, "run_id", run_id or None)
+        if type(self.decision_date) is not date:
+            object.__setattr__(self, "decision_date", None)
+        if self.failure_reason not in {None, "snapshot_cli_timeout", "snapshot_capture_failed"}:
+            object.__setattr__(self, "failure_reason", None)
+        if type(self.snapshot_saved) is not bool:
+            object.__setattr__(self, "snapshot_saved", None)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "run_id": self.run_id,
+            "decision_date": self.decision_date.isoformat() if self.decision_date else None,
+            "failure_reason": self.failure_reason,
+            "snapshot_saved": self.snapshot_saved,
+        }
+
+
+@dataclass(frozen=True)
 class WorkbenchDashboardDTO:
     as_of_date: date
     generated_at: datetime
@@ -764,6 +801,13 @@ class WorkbenchDashboardDTO:
     advice_dashboard: AdviceDashboardDTO | None = None
     daily_evidence: WorkbenchDailyEvidence | None = None
     position_health: PositionHealthReadModel | None = None
+    snapshot_date: date | None = None
+    market_data_as_of_date: date | None = None
+    market_index_as_of_date: date | None = None
+    evaluation_date: date | None = None
+    latest_capture_status: WorkbenchLatestCaptureStatus = field(
+        default_factory=WorkbenchLatestCaptureStatus
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status_strip", tuple(self.status_strip))
@@ -774,11 +818,35 @@ class WorkbenchDashboardDTO:
         object.__setattr__(self, "background_evidence_feed", tuple(self.background_evidence_feed))
         object.__setattr__(self, "action_items", tuple(self.action_items))
         object.__setattr__(self, "operating_loop_steps", tuple(self.operating_loop_steps))
+        for field_name in (
+            "snapshot_date",
+            "market_data_as_of_date",
+            "market_index_as_of_date",
+            "evaluation_date",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and type(value) is not date:
+                object.__setattr__(self, field_name, None)
+        if not isinstance(self.latest_capture_status, WorkbenchLatestCaptureStatus):
+            object.__setattr__(self, "latest_capture_status", WorkbenchLatestCaptureStatus())
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "as_of_date": self.as_of_date.isoformat(),
             "generated_at": self.generated_at.isoformat(),
+            "snapshot_date": self.snapshot_date.isoformat() if self.snapshot_date else None,
+            "market_data_as_of_date": (
+                self.market_data_as_of_date.isoformat()
+                if self.market_data_as_of_date
+                else None
+            ),
+            "market_index_as_of_date": (
+                self.market_index_as_of_date.isoformat()
+                if self.market_index_as_of_date
+                else None
+            ),
+            "evaluation_date": self.evaluation_date.isoformat() if self.evaluation_date else None,
+            "latest_capture_status": self.latest_capture_status.to_dict(),
             "source_mode": self.source_mode,
             "access_boundary": self.access_boundary.to_dict(),
             "status_strip": [item.to_dict() for item in self.status_strip],

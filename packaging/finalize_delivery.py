@@ -10,7 +10,7 @@ out = root / 'output/packaging'
 bundle = root / 'dist/baldr'
 sha = lambda raw: hashlib.sha256(raw).hexdigest()
 reports = {}
-for name in ('portable_probe', 'portable_journey_probe', 'portable_entry_probe', 'portable_cli_probe'):
+for name in ('portable_probe', 'portable_journey_probe', 'portable_entry_probe', 'portable_cli_probe', 'portable_configured_probe'):
     case = Path((out / f'{name}_case.txt').read_text(encoding='utf-8'))
     report_path = case / ('probe.json' if name == 'portable_probe' else f'{name}.json')
     report = json.loads(report_path.read_text(encoding='utf-8'))

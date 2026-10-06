@@ -68,3 +68,23 @@ def test_frozen_indicator_log_stays_outside_bundle(tmp_path, monkeypatch):
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
         handler.close()
+def test_gui_ml_registry_is_separate_from_nested_market_output(tmp_path, monkeypatch):
+    import baldr_launcher
+    from ui_qt import main as qt_main
+    isolate(monkeypatch, tmp_path)
+    monkeypatch.setenv('DATA_ROOT', str(tmp_path/'market'))
+    monkeypatch.setenv('OUTPUT_ROOT', str(tmp_path/'market/output'))
+    monkeypatch.setenv('QT_QPA_PLATFORM', 'offscreen')
+    monkeypatch.setattr(sys, 'argv', ['baldr.exe'])
+    registry_type = qt_main.CurrentRestatedMLRunRegistry
+    captured = []
+    def inspect_registry():
+        captured.append(qt_main.CurrentRestatedMLRunRegistry())
+        return 0
+    monkeypatch.setattr(qt_main, 'main', inspect_registry)
+    monkeypatch.setattr(qt_main, 'install_crash_diagnostics', lambda: None)
+    monkeypatch.setattr(qt_main, 'CurrentRestatedMLRunRegistry', registry_type)
+    monkeypatch.setattr(qt_main, 'MainWindow', qt_main.MainWindow)
+    assert baldr_launcher.main() == 0
+    assert captured[0].repository_root == tmp_path/'local/baldr/research_state'
+    assert not captured[0].research_root.is_relative_to(tmp_path/'market')

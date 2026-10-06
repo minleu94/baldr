@@ -93,7 +93,8 @@ def main() -> int:
     state_root = Path(os.environ["OUTPUT_ROOT"]) / "application_state"
     qt_main.project_root = state_root
     registry_type = qt_main.CurrentRestatedMLRunRegistry
-    qt_main.CurrentRestatedMLRunRegistry = lambda: registry_type(repository_root=state_root)
+    research_state_root = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "baldr" / "research_state"
+    qt_main.CurrentRestatedMLRunRegistry = lambda: registry_type(repository_root=research_state_root)
     window_type = qt_main.MainWindow
     class PortableWindow(window_type):
         def __init__(self, *args, **kwargs):
@@ -111,7 +112,13 @@ def main() -> int:
             box.show()
     qt_main.MainWindow = PortableWindow
     qt_main._crash_diagnostics_log_path = qt_main.install_crash_diagnostics()
-    return qt_main.main()
+    exit_code = qt_main.main()
+    if exit_code and os.environ.get('QT_QPA_PLATFORM') != 'offscreen':
+        error_app = QApplication.instance() or QApplication([])
+        home = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'baldr'
+        QMessageBox.critical(None, 'baldr 啟動失敗',
+            f'主視窗未能建立。請保留 {home}/stdout.log 與 stderr.log 供排錯；不要重建或搬移資料。')
+    return exit_code
 
 
 if __name__ == "__main__":

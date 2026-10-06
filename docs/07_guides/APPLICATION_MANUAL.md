@@ -5195,3 +5195,10 @@ daily passed只代表本次Paper snapshot流程結果，不等於真成交、投
 request schema 為 `personal-model-daily-request.v1`，必須明示 canonical recommendation root、個人 capture root、隔離 outcome root、原 market DB／calendar cache pins、aware evaluation_at 與 result_ids 或 capture_paths。欲讀 gross 加 `gross_model_contract_hash`，必須匹配由原 fit receipt 重建的契約；gross flags 不成對或身份不符會在每日 I/O 前拒絕。已有模型的 return head 以整數 bp 展示 H20 absolute/no-cost，不能從 probability 或 after-cost head 推導。自然 outcome 未達20交易日或官方 calendar 缺件時 pending／unknown，保留原資料，不補時間與結果。
 
 今日十檔 current-observed 真模型推論已保存 QA，但尚未接成此 canonical 每日 ingress，也未啟用正式 Task。請勿把 QA 預測檔當 RecommendationResult、把 frozen 舊來源當今日資料，或改 source marker/PIT 來通過。預覽／來源核驗與正式啟用須保留 exact model、source、帳戶與 private-root 身份；有錯誤先核 request raw pin、來源 receipt、contract hash、模型／lineage 兩個 cutoff 及 no-follow 權限，禁止放寬 guard。
+
+
+### 9.9.1i 個人 H20 啟用配置預覽與回滾
+
+`scripts/prepare_personal_h20_activation.py` 預設只預覽；--enable需原可信fit receipt/raw SHA、private root、scope與expected revision。只有明示--execute才發佈activation.json下一CAS revision，不修改Task。--disable讀當前配置，明示原scope/root及expected revision，可在模型／fit已不可讀時寫新disabled revision；保存歷史不刪。若遇revision conflict先唯讀readback，不用覆蓋／清理解決。來源／配置hash錯誤、root與FA_Data或應用repo重疊、links/hardlinks均拒絕。
+
+目前新private位置尚未選定、正式產品consumer／同-run每日hook尚未完成；preview／configuration_published不等於模型已實際啟用。具體預覽、啟用及回滾命令見QA BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。本功能使用既有H20 absolute/no-cost return head；holdout劣於null230bp與after-cost未證明會持續顯示，研究啟用不授交易或formal/PIT資格。

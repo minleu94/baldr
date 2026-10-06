@@ -234,3 +234,6 @@ UX23 registry readonly 整合：[QA](../06_qa/UX23_REGISTRY_INTEGRATION_20261006
 
 
 2026-10-06 中央 A01/A03 更新：v3 個股/capture 選版及 CLI 可信 gross contract/lineage reader 接線完成；今日原 public current-observed 真 H20 模型十檔 available 已有 QA receipt。canonical daily live source-time composition／正式 Task 尚未完成，原模型來源、PIT、自然成熟與 compression 資格不升。操作與限制見 APPLICATION_MANUAL.md 9.9.1h；完整收據見 docs/06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。
+
+
+2026-10-06/07 personal H20 activation 配置準備：app_module/recommendation/personal_h20_activation.py 為typed個人研究配置，不取代global probability policy。CLI預設preview、明示CAS發佈及新disabled revision回滾；原Task/principal/clock只讀核對。新private root尚未真寫；產品reader／同-run每日hook仍續接current-observed lane，不以enabled配置或QA預測冒稱模型日常正式啟用。原no-model capture public驗核已完成；日期跨Taipei午夜不得改觀測時鐘。詳見Manual9.9.1i與BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。

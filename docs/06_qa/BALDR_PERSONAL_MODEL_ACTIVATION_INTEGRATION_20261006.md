@@ -59,3 +59,30 @@ A03 CLI 新增成對 `--gross-fit-receipt`／`--gross-fit-receipt-sha256`，由�
 Windows sandbox 對 snapshot SHM 讀取造成 data_version 每次遞增；同一唯讀探針在允許環境保持不變，原 guard／ACL 未改。相鄰 A03 原 no-follow ancestor handles 同理，紅收據保留，隔離合成同版允許重驗 64 passed/1 skip。A01 composition 133 passed/1 skip；第三方法 scope 偽造 delta2 passed；Workbench85、validator25/4skip、full mypy841零錯誤。這些數量不相加宣稱全 App。
 
 剩餘精確 composition：把已成功的 current-observed public 路徑接成可重複每日保存與 outcome 的可信 caller，不能以舊 frozen training DB 偽裝今日來源；原 V2 canonical source-time policy 與目前 daily live DB 尚不相容，不移除 source marker／改時鐘來通過。日常 Task 真啟用、Private root/帳戶正式選擇未執行。parent-universe v3、compression、原 Stage/UX、七有限 closed／性能例外均未擅自升級。
+
+
+## 2026-10-06 實際 Task／啟用配置準備（未啟用）
+
+唯讀 Task 查核已確認 archi、Interactive、Limited、Pacific Standard Time；raw-pit-refresh-daily 為05:05、snapshot-daily05:10、calibration-learning-daily05:45，均原 repo 工作目錄／cmd action、IgnoreNew。原 calibration pipeline 有10500秒 current-observed 等候與 exact raw-run/terminal pin 接線，不應以05:10未完成來源直接推論。
+
+PERSONAL_* roots/policy env 未配置，AppConfigLocation=C:/Users/archi/AppData/Local/TechnicalAnalysis/TechnicalAnalysis，只有cache。建議新 personal root 為該目錄下 personal_h20；這是唯一待使用者選定的實際保存位置，不需要新帳號／時刻／權限。配置與預測 root 同域，activation.json 不放FA_Data。此建議尚未執行。
+
+新增 typed PersonalH20Activation、read_personal_h20_activation、publish_personal_h20_activation。預設 preview 不mkdir；明示 execute 才CAS寫下一revision。每I/O沿shared personal root／link／hardlink guard；原no-follow讀回、create-only history（revision+bodySHA）、atomic pointer及exact readback。失敗留下不可被當live配置的不可變history/staging，不清理來源。disabled是新revision，不刪模型／預測；回滾不依賴fit/artifact仍存在。預览與配置發佈均 effective_model_run=false，必須由產品consumer實際verified capture及Task閉環證明effect。
+
+已核真候選的具體preview：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/prepare_personal_h20_activation.py --market-root D:/Min/Python/Project/FA_Data --personal-root C:/Users/archi/AppData/Local/TechnicalAnalysis/TechnicalAnalysis/personal_h20 --scope-id personal.default --fit-receipt C:/Projects/PythonProjects/technical_analysis/output/qa/pc-fit-v7/fit-v7-fe4e918b1257.receipt.json --fit-receipt-sha256 f5ca4372ba71ac3c006181ab0dcd4e2a56fdc62ba6529083cb63bbc7987a35b1 --expected-revision 0 --enable
+```
+
+經root與實際consumer/同-run每日接線審核後，完全相同命令加 --execute 才寫配置。不是註冊或更新Task；原Task如採opt-in同-run hook，principal/trigger/action/settings不必改。真啟用不可用配置發佈成功代替閉環驗證。
+
+具體回滾（假設已發佈revision1）：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/prepare_personal_h20_activation.py --market-root D:/Min/Python/Project/FA_Data --personal-root C:/Users/archi/AppData/Local/TechnicalAnalysis/TechnicalAnalysis/personal_h20 --scope-id personal.default --expected-revision 1 --disable --execute
+```
+
+若revision已前進，先唯讀readback再明示expected-revision；不自猜、不覆蓋。publication失敗留下同revision不同body的history不阻擋安全disabled發佈，舊pointer保持原真值。配置不授global promotion／交易／after-cost/PIT；較差holdout2730 vs null2500與after-cost unproven繼續揭露，不作個人model啟用gate。
+
+今日原 public no-model capture已唯讀驗核：output/qa/baldr_real_model_intake_20261006/actual_today_input_capture_verified.json；來源10檔cohort與先前QA十檔不同，不混寫。Taipei 10/07後，10/06保存可讀回/replay/自然outcome，不能宣稱今日新觀測。Task/core reader接線仍待leaf exactAPI與中央composition，root尚未寫入，Task/ACL/憑證未動。

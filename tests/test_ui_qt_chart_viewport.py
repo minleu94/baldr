@@ -53,6 +53,7 @@ def test_saved_controls_full_table_hover_repeat_and_reset(app, tmp_path):
         assert visible(view)[-1].data_date in chart.toolTip()
         assert "100.125" in chart.toolTip() and "99.123456" in chart.toolTip()
         assert chart._technical_lines
+        assert table.currentIndex().data() == technical_table.currentIndex().data() == visible(view)[-1].data_date
         for _ in range(30): button(view,"ZoomIn").click()
         assert len(visible(view)) == 1 and not button(view,"ZoomIn").isEnabled()
         for _ in range(30): button(view,"PanOlder").click()
@@ -200,4 +201,100 @@ def test_interaction_renderer_failure_keeps_complete_exact_table(app,tmp_path,mo
         assert view._chart_widget is None and table.model().rowCount()==20
         assert "精確表仍完整" in view.findChildren(QLabel,"stockResearchChartViewportRange")[-1].text()
         assert not button(view,"ZoomIn").isEnabled()
+    finally:view.close()
+
+
+
+def test_b05_keyboard_crosshair_same_date_exact_table_and_focus(app):
+    from PySide6.QtTest import QTest
+    report = StockResearchReportDTO("2330", as_of="2026-05-20", price_points=tuple(
+        StockPricePointDTO(f"2026-05-{i:02d}", close_price=Decimal(f"{i}.123456789")) for i in range(1,6)))
+    view = StockResearchReportView(SimpleNamespace())
+    try:
+        render(view, report)
+        chart=view._chart_widget
+        table=view.findChild(QTableView,"stockResearchPriceHistoryTable")
+        assert chart.focusPolicy()==Qt.StrongFocus
+        QTest.keyClick(chart, Qt.Key_Home)
+        assert chart._hover_index==0 and table.currentIndex().data()=="2026-05-01"
+        assert "1.123456789" in chart.toolTip() and chart.accessibleDescription()==chart.toolTip()
+        QTest.keyClick(chart, Qt.Key_Right)
+        assert chart._hover_index==1 and table.currentIndex().data()=="2026-05-02"
+        assert not chart.grab().isNull()
+        QTest.keyClick(chart, Qt.Key_End)
+        assert table.currentIndex().data()=="2026-05-05"
+        for name in ("ZoomIn","ZoomOut","PanOlder","PanNewer","Reset"):
+            assert button(view,name).focusPolicy()==Qt.StrongFocus
+        QTest.keyClick(button(view,"ZoomIn"), Qt.Key_Space)
+        assert len(visible(view)) < 5 and table.model().rowCount()==5
+        QTest.keyClick(chart, Qt.Key_Home)
+        assert table.currentIndex().data()==visible(view)[0].data_date
+        QTest.keyClick(chart, Qt.Key_Escape)
+        assert chart._hover_index is None
+    finally: view.close()
+
+
+def test_b05_typed_markers_scope_stale_and_viewport(app):
+    from tests.test_baldr_b05_chart_markers import evidence
+    from tests.test_stock_research_chart_payload import _point, _report
+    marker,pin=evidence()
+    report=_report(_point("2026-10-07"),_point("2026-10-08"))
+    view=StockResearchReportView(SimpleNamespace())
+    try:
+        view.set_chart_marker_evidence((marker,),(pin,))
+        render(view,report)
+        chart=view._chart_widget
+        assert chart._markers==(marker,)
+        assert view.findChild(QTableView,"stockResearchChartMarkerTable").model().index(0,1).data()=="推薦確認（研究）"
+        assert not chart.grab().isNull()
+        changed=replace(report,research_context={**report.research_context,"result_id":"other"})
+        render(view,changed)
+        assert view._chart_widget._markers==()
+        chart._select_point(1)
+        tables=view.findChildren(QTableView,"stockResearchPriceHistoryTable")
+        assert not tables[-1].currentIndex().isValid()
+    finally:view.close()
+
+
+def test_b05_external_reference_known_unknown_and_stale_callback(app,monkeypatch):
+    from ui_qt.views import stock_research_report_view as module
+    calls=[]
+    monkeypatch.setattr(module.QDesktopServices,"openUrl",lambda url:calls.append(url.toString()) or True)
+    view=StockResearchReportView(SimpleNamespace())
+    try:
+        report=StockResearchReportDTO("2382",as_of="2026-05-20",price_points=(StockPricePointDTO("2026-05-20",close_price=Decimal("10")),))
+        render(view,report)
+        external=view.findChildren(QPushButton,"stockResearchExternalChart")[-1]
+        assert external.isEnabled()
+        external.click()
+        assert calls==["https://tw.tradingview.com/symbols/TWSE-2382/"]
+        assert "外部價格" in external.toolTip()
+        render(view,replace(report,stock_code="2330"))
+        assert not view.findChildren(QPushButton,"stockResearchExternalChart")[-1].isEnabled()
+        external.click()
+        assert len(calls)==1
+    finally:view.close()
+
+
+
+def test_b05_research_and_actual_markers_same_day_stay_distinct(app):
+    from app_module.stock_research_chart_markers import StockChartMarkerKind, stock_chart_marker_fingerprint
+    from tests.test_baldr_b05_chart_markers import evidence
+    from tests.test_stock_research_chart_payload import _point,_report
+    markers=[];pins=[]
+    for kind in StockChartMarkerKind:
+        marker,pin=evidence(kind)
+        marker=replace(marker,record_id=kind.value)
+        marker=replace(marker,content_sha256=stock_chart_marker_fingerprint(marker))
+        markers.append(marker);pins.append(replace(pin,record_id=kind.value))
+    view=StockResearchReportView(SimpleNamespace())
+    try:
+        view.set_chart_marker_evidence(markers,pins)
+        render(view,_report(_point("2026-10-08")))
+        chart=view._chart_widget
+        assert chart._markers==tuple(markers)
+        chart._select_point(0)
+        assert all(marker.label in chart.toolTip() for marker in markers)
+        assert not chart.grab().isNull()
+        assert view.findChild(QTableView,"stockResearchChartMarkerTable").model().rowCount()==3
     finally:view.close()

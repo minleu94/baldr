@@ -15,8 +15,8 @@ import hashlib
 import json
 from typing import Any
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, Signal, QUrl
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
     QAbstractItemView,
@@ -37,6 +37,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app_module.stock_research_chart_markers import StockChartMarkerDTO, StockChartMarkerIdentityDTO, StockChartMarkerKind
+from app_module.stock_research_external_chart import stock_external_chart_link
 from app_module.chart_viewport_state import ChartViewportIdentity, ChartViewportState
 from app_module.research_session import (
     ResearchStockContextDTO,
@@ -157,8 +159,12 @@ class StockReportTableModel(QAbstractTableModel):
 class StockPriceChartWidget(QWidget):
     """無第三方互動依賴的 bounded 價格圖，資料不足時明示收盤圖。"""
 
+    dateSelected = Signal(str)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._markers: tuple[StockChartMarkerDTO, ...] = ()
+        self.setFocusPolicy(Qt.StrongFocus)
         self._points: tuple[StockPricePointDTO, ...] = ()
         self._technical_lines: tuple[StockChartTechnicalLineDTO, ...] = ()
         self._mode = "close"
@@ -175,6 +181,7 @@ class StockPriceChartWidget(QWidget):
     def set_points(self, points: Sequence[StockPricePointDTO]) -> None:
         self._points = tuple(points)
         self._technical_lines = ()
+        self._markers = ()
         self._mode = self._resolve_mode(self._points)
         self._hover_index = None
         QToolTip.hideText()
@@ -207,6 +214,45 @@ class StockPriceChartWidget(QWidget):
         """只更新同源投影線；保留價格日期、模式、游標與 widget 幾何。"""
         self._technical_lines = tuple(lines)
         self.update()
+
+    def set_markers(self, markers: Sequence[StockChartMarkerDTO]) -> None:
+        """僅接純投影已驗證標記；viewport 外日期不畫。"""
+        dates = {point.data_date for point in self._points}
+        self._markers = tuple(marker for marker in markers if marker.event_date in dates)
+        self.update()
+
+    def _select_point(self, index: int) -> None:
+        if not self._points:
+            return
+        index = max(0, min(len(self._points) - 1, index))
+        self._hover_index = index
+        point = self._points[index]
+        text = self._point_tooltip(point)
+        technical_text = self._technical_tooltip(point.data_date)
+        if technical_text:
+            text += "\n" + technical_text
+        for marker in self._markers:
+            if marker.event_date == point.data_date:
+                text += f"\n{marker.label}；帳本：{marker.account_id}；來源：{marker.source_id}；列 SHA-256：{marker.source_row_hash}"
+        self.setToolTip(text)
+        self.setAccessibleDescription(text)
+        self.dateSelected.emit(point.data_date)
+        self.update()
+
+    def keyPressEvent(self, event: Any) -> None:  # noqa: N802
+        key = event.key()
+        if key == Qt.Key_Escape:
+            self._clear_hover()
+            event.accept()
+            return
+        if self._points and key in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End):
+            current = self._hover_index if self._hover_index is not None else len(self._points) - 1
+            index = (0 if key == Qt.Key_Home else len(self._points) - 1 if key == Qt.Key_End
+                     else current - 1 if key == Qt.Key_Left else current + 1)
+            self._select_point(index)
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _technical_segments(
         self, line: StockChartTechnicalLineDTO
@@ -286,25 +332,17 @@ class StockPriceChartWidget(QWidget):
     def _clear_hover(self) -> None:
         self._hover_index = None
         self.setToolTip(self._base_tooltip)
+        self.setAccessibleDescription(self._base_tooltip)
         QToolTip.hideText()
+        self.update()
 
     def mouseMoveEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         index = self._nearest_point_index(int(event.position().x()))
         if index is None:
             self._clear_hover()
         elif index != self._hover_index:
-            points = self._points
-            self._hover_index = index
-            text = self._point_tooltip(points[index])
-            technical_text = self._technical_tooltip(points[index].data_date)
-            if technical_text:
-                text += "\n" + technical_text
-            self.setToolTip(text)
-            QToolTip.showText(
-                self.mapToGlobal(event.position().toPoint()),
-                text,
-                self,
-            )
+            self._select_point(index)
+            QToolTip.showText(self.mapToGlobal(event.position().toPoint()), self.toolTip(), self)
         event.accept()
 
     def leaveEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
@@ -516,6 +554,32 @@ class StockPriceChartWidget(QWidget):
                         painter.drawLine(first, second)
                     if len(vertices) == 1:
                         painter.drawEllipse(vertices[0], 2, 2)
+            by_date = {point.data_date: i for i, point in enumerate(points)}
+            marker_kinds_by_date: dict[str, set[StockChartMarkerKind]] = {}
+            for marker in self._markers:
+                marker_kinds_by_date.setdefault(marker.event_date, set()).add(marker.kind)
+            for marker_date, kinds in marker_kinds_by_date.items():
+                index = by_date.get(marker_date)
+                if index is None:
+                    continue
+                x = left + int(Decimal(right - left) * Decimal(index) / Decimal(denominator))
+                painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_primary)))
+                token = "".join(text for kind, text in (
+                    (StockChartMarkerKind.RECOMMENDATION_CONFIRMED, "研"),
+                    (StockChartMarkerKind.RECORDED_BUY, "買"),
+                    (StockChartMarkerKind.RECORDED_SELL, "賣"),
+                ) if kind in kinds)
+                token_width = painter.fontMetrics().horizontalAdvance(token)
+                painter.drawText(max(left, min(right - token_width, x - token_width // 2)), top - 5, token)
+            if self._hover_index is not None and self._hover_index < len(points):
+                point = points[self._hover_index]
+                x = left + int(Decimal(right - left) * Decimal(self._hover_index) / Decimal(denominator))
+                pen = QPen(QColor(MIDNIGHT_ANALYST.text_secondary), 1, Qt.DashLine)
+                painter.setPen(pen)
+                painter.drawLine(x, top, x, bottom)
+                if point.close_price is not None:
+                    y = bottom - int(Decimal(bottom - top) * (point.close_price - low) / span)
+                    painter.drawLine(left, y, right, y)
         finally:
             if painter.isActive():
                 painter.end()
@@ -561,6 +625,9 @@ class StockResearchReportView(QWidget):
         self._loaded_request_context: ResearchStockContextDTO | None = None
         self._saved_decision_context: ResearchStockContextDTO | None = None
         self._rendered_report_tabs: set[str] = set()
+        self._chart_render_serial = 0
+        self._chart_marker_candidates: tuple[StockChartMarkerDTO, ...] = ()
+        self._chart_marker_identities: tuple[StockChartMarkerIdentityDTO, ...] = ()
         self._chart_viewport = ChartViewportState()
         self._chart_widget: StockPriceChartWidget | None = None
         self._setup_ui()
@@ -2046,6 +2113,36 @@ class StockResearchReportView(QWidget):
         self.sources_table.resizeColumnsToContents()
         ensure_visible_rows(self.sources_table, 5)
 
+    def set_chart_marker_evidence(
+        self, candidates: Sequence[StockChartMarkerDTO],
+        identities: Sequence[StockChartMarkerIdentityDTO],
+    ) -> None:
+        """中央 reader 可注入已核記錄 pins；不讀帳本、不從研究 event 猜成交。"""
+        self._chart_marker_candidates = tuple(candidates)
+        self._chart_marker_identities = tuple(identities)
+        if self._loaded_report is not None:
+            self._render_price(self._loaded_report)
+
+    def _sync_chart_date_to_tables(self, chart: StockPriceChartWidget, data_date: str) -> None:
+        if self._chart_widget is not chart or self._closing:
+            return
+        page = self._page_layouts["price"].parentWidget()
+        if page is None:
+            return
+        for name in ("stockResearchPriceHistoryTable", "stockResearchTechnicalHistoryTable"):
+            tables = page.findChildren(QTableView, name)
+            table = tables[-1] if tables else None
+            if table is None or table.model() is None:
+                continue
+            model = table.model()
+            for row in range(model.rowCount()):
+                index = model.index(row, 0)
+                if index.data() == data_date:
+                    table.setCurrentIndex(index)
+                    table.selectRow(row)
+                    table.scrollTo(index)
+                    break
+
     @staticmethod
     def _chart_viewport_identity(report: StockResearchReportDTO, payload: StockChartPayloadDTO) -> ChartViewportIdentity:
         """使用核驗後來源與完整列版本；未知身份不得跨載入保留範圍。"""
@@ -2095,6 +2192,7 @@ class StockResearchReportView(QWidget):
             try:
                 chart.set_points(self._chart_viewport.slice_points(payload.price_points))
                 chart.set_technical_lines(payload.technical_lines)
+                chart.set_markers(payload.verified_markers)
                 refresh()
             except (RuntimeError, ValueError) as exc:
                 chart.hide()
@@ -2107,6 +2205,7 @@ class StockResearchReportView(QWidget):
         for action, text in (("ZoomIn", "放大"), ("ZoomOut", "縮小"), ("PanOlder", "往較早"), ("PanNewer", "往較新"), ("Reset", "重設全部")):
             button = QPushButton(text)
             button.setObjectName("stockResearchChart" + action)
+            button.setFocusPolicy(Qt.StrongFocus)
             button.setAccessibleName("圖表" + text)
             button.setToolTip("只調整圖表可見日期槽；不查新行情、不改精確表。")
             button.clicked.connect(lambda checked=False, key=action: change(key))
@@ -2118,6 +2217,8 @@ class StockResearchReportView(QWidget):
         refresh()
 
     def _render_price(self, report: StockResearchReportDTO) -> None:
+        self._chart_render_serial += 1
+        render_serial = self._chart_render_serial
         self._chart_widget = None
         layout = self._reset_page("price")
         layout.addWidget(self._section_heading("價格與成交量", report, "price"))
@@ -2128,6 +2229,8 @@ class StockResearchReportView(QWidget):
             cutoff_date=cutoff_date,
             expected_stock_code=self._active_code or report.stock_code,
             expected_source_context=_stock_chart_expected_source_context(context),
+            marker_candidates=self._chart_marker_candidates,
+            marker_identities=self._chart_marker_identities,
         )
         payload = projection.payload
         if projection.status == "rejected" or payload is None:
@@ -2157,6 +2260,8 @@ class StockResearchReportView(QWidget):
             chart = StockPriceChartWidget()
             chart.set_points(self._chart_viewport.slice_points(payload.price_points))
             chart.set_technical_lines(payload.technical_lines)
+            chart.set_markers(payload.verified_markers)
+            chart.dateSelected.connect(lambda day, current=chart: self._sync_chart_date_to_tables(current, day))
             self._chart_widget = chart
             layout.addWidget(chart)
             self._add_chart_viewport_controls(layout, chart, payload)
@@ -2181,6 +2286,25 @@ class StockResearchReportView(QWidget):
             )
             layout.addWidget(fallback_label)
             chart_mode_text = "原生圖表無法呈現；價格明細仍可檢視。"
+
+        keyboard_label = self._wrapped_label("鍵盤：Tab 到圖表，左右鍵移動資料日，Home／End 到首末日，Esc 清除十字線；Tab 到日期範圍按鈕，以空白鍵操作。選取日同步下方同源精確表。")
+        keyboard_label.setObjectName("stockResearchChartKeyboardHelp")
+        layout.addWidget(keyboard_label)
+        link = stock_external_chart_link(payload.stock_code)
+        external_button = QPushButton("TradingView 外部參考")
+        external_button.setObjectName("stockResearchExternalChart")
+        external_button.setFocusPolicy(Qt.StrongFocus)
+        external_button.setEnabled(link is not None)
+        external_button.setToolTip("另開瀏覽器，需要連線；外部價格與本機保存來源獨立，無法鎖定原截止日，不回寫研究結果。" if link is not None else "此商品的交易所與 TradingView 代碼尚未核實，外部入口停用。")
+        if link is not None:
+            url = link.url
+            external_button.clicked.connect(lambda checked=False, serial=render_serial, code=payload.stock_code, target=url: QDesktopServices.openUrl(QUrl(target)) if self._chart_render_serial == serial and self._active_code == code and not self._closing else False)
+        layout.addWidget(external_button)
+        layout.addWidget(self._wrapped_label("原生圖為預設；外部圖只作獨立參考，不共用行情、截止日或歷史 PIT 資格。"))
+        if payload.verified_markers:
+            marker_rows = tuple((marker.event_date, marker.label, marker.account_id, marker.account_kind, marker.source_id, marker.source_row_hash) for marker in payload.verified_markers)
+            self._add_table(layout, ("記錄日", "標記類型", "帳本", "帳本種類", "來源", "記錄 SHA-256"), marker_rows, 180, object_name="stockResearchChartMarkerTable")
+        layout.addWidget(self._wrapped_label("研＝推薦確認（研究）；買／賣＝已核帳本的實際記錄；身份缺件不畫，沒有標記不代表沒有交易。"))
 
         chart_mode_label = QLabel(chart_mode_text)
         chart_mode_label.setObjectName("stockResearchPriceChartMode")

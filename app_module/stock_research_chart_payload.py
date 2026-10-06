@@ -14,6 +14,9 @@ from enum import Enum
 from zoneinfo import ZoneInfo
 import json
 from app_module.saved_stock_technical_chart import read_saved_technical_chart
+from app_module.stock_research_chart_markers import (
+    StockChartMarkerDTO, StockChartMarkerIdentityDTO, verified_stock_chart_markers,
+)
 
 from app_module.stock_research_report_dtos import (
     StockEvidenceEventDTO,
@@ -75,6 +78,7 @@ class StockChartPayloadDTO:
     limitations: tuple[str, ...] = ()
     technical_history_status: str = "unknown"
     technical_history_limitations: tuple[str, ...] = ()
+    verified_markers: tuple[StockChartMarkerDTO, ...] = ()
 
     @property
     def table_rows(self) -> tuple[StockPricePointDTO, ...]:
@@ -98,6 +102,8 @@ def project_stock_chart_payload(
     expected_source_context: Mapping[str, str] | None = None,
     expected_price_row_date: str | None = None,
     expected_price_row_hash: str | None = None,
+    marker_candidates: tuple[StockChartMarkerDTO, ...] = (),
+    marker_identities: tuple[StockChartMarkerIdentityDTO, ...] = (),
 ) -> StockChartProjectionResult:
     """把一份既有研究報告投影成同源圖表／數值表 payload。
 
@@ -357,7 +363,7 @@ def project_stock_chart_payload(
 
     limitations.extend(technical_history_limitations)
     events = tuple(getattr(report, "events", ()) or ())
-    marker_candidates, marker_status = _project_marker_candidates(
+    event_marker_candidates, marker_status = _project_marker_candidates(
         events,
         source_by_id,
         cutoff,
@@ -368,6 +374,14 @@ def project_stock_chart_payload(
         )
     else:
         limitations.append("報告沒有可驗證的事件 marker；PIT 未建立。")
+
+    typed_markers = verified_stock_chart_markers(
+        marker_candidates, marker_identities, stock_code=stock_code,
+        cutoff_date=cutoff.isoformat(), source_context=tuple(sorted(context.items())),
+        price_points=price_points,
+    )
+    if marker_candidates:
+        limitations.append("標記只代表同來源已核身份記錄；推薦確認是研究，實際交易另核帳本，不授 PIT。")
 
     payload = StockChartPayloadDTO(
         stock_code=stock_code,
@@ -387,8 +401,9 @@ def project_stock_chart_payload(
         technical_history_limitations=technical_history_limitations,
         # 事件缺列級身份，候選只供診斷；UI 不得把候選當 marker 繪製。
         evidence_markers=(),
-        unverified_marker_candidates=marker_candidates,
-        marker_status=marker_status,
+        unverified_marker_candidates=event_marker_candidates,
+        marker_status="verified" if typed_markers else marker_status,
+        verified_markers=typed_markers,
         historical_pit_eligible=False,
         limitations=tuple(limitations),
     )

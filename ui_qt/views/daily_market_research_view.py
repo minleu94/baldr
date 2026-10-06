@@ -36,6 +36,8 @@ from app_module.daily_market_cohort_projection import (
     sort_daily_market_cohort_members,
 )
 from app_module.daily_market_research_screener import DailyMarketResearchScreenRow
+from app_module.daily_research_source_selection import DailyResearchQuery
+from ui_qt.widgets.daily_research_source_selector import DailyResearchSourceSelector
 from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
     feature_contract_for_version,
@@ -111,6 +113,7 @@ class DailyMarketResearchView(QWidget):
     originalRankingAccepted = Signal(object)
     originalRankingCleared = Signal()
     bookmarkSaved = Signal(object)
+    researchQueryChanged = Signal(object)
 
     def __init__(
         self,
@@ -158,6 +161,9 @@ class DailyMarketResearchView(QWidget):
         self._initial_read_started = False
         self._shutting_down = False
         self._selected_stock_code = ""
+        self._return_query: tuple[str, DailyResearchQuery] | None = None
+        self._last_emitted_query: DailyResearchQuery | None = None
+        self.source_selector: DailyResearchSourceSelector | None = None
         self._build_ui()
         self._set_service_availability()
 
@@ -173,6 +179,12 @@ class DailyMarketResearchView(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
+        config = getattr(self.service, "config", None)
+        if config is not None:
+            self.source_selector = DailyResearchSourceSelector(config,
+                snapshot_root=getattr(self.service, "snapshot_root", None), parent=self)
+            self.source_selector.sourceLoaded.connect(self._accept_selected_source)
+            root.addWidget(self.source_selector)
 
         title_layout = QHBoxLayout()
         title = QLabel("每日研究條件")
@@ -1413,6 +1425,8 @@ class DailyMarketResearchView(QWidget):
 
     def _set_busy(self, busy: bool, kind: str = "") -> None:
         main_busy = busy and not kind.startswith("membership_history_")
+        if self.source_selector is not None:
+            self.source_selector.set_external_busy(busy)
         if busy:
             self.status_label.setText(
                 "正在明示更新有界研究快照；來源仍是研究用途。"
@@ -2381,6 +2395,70 @@ class DailyMarketResearchView(QWidget):
                     break
         self._sync_open_button()
         self._render_selected_summary()
+        query = self.current_research_query()
+        if query != self._last_emitted_query:
+            self._last_emitted_query = query
+            self.researchQueryChanged.emit(query)
+
+    def _accept_selected_source(self, value: object) -> None:
+        if self._shutting_down or self._worker is not None:
+            self.status_label.setText("原名單仍忙碌；未套用來源選擇。")
+            return
+        if not isinstance(value, tuple) or len(value) != 2 or not isinstance(value[1], VerifiedDailyMarketSnapshot):
+            self.status_label.setText("來源選擇未回傳 verified 規則快照；原名單保留。")
+            return
+        service, snapshot = value
+        self.service = service
+        self.cohort_id_input.setText(snapshot.cohort_id)
+        self._return_query = None
+        self._accept_snapshot(snapshot, sync_cutoff=True)
+
+    def current_research_query(self) -> DailyResearchQuery | None:
+        if self._snapshot is None or not self._selected_condition_keys():
+            return None
+        return DailyResearchQuery(self._manifest_sha256, self._manifest_identity_sha256,
+            self._selected_condition_keys(), str(self.combine_mode_combo.currentData() or "AND"),
+            str(self.filter_state_combo.currentData() or "all"),
+            str(self.sort_key_combo.currentData() or "stock_code"),
+            str(self.sort_direction_combo.currentData() or "asc") == "desc",
+            self.local_stock_filter.text().strip())
+
+    def restore_research_query(self, query: DailyResearchQuery) -> bool:
+        """同 pin 精確恢復條件與排序；來源切換時拒絕而非找 latest。"""
+        if not isinstance(self._snapshot, VerifiedDailyMarketSnapshot):
+            return False
+        try:
+            query.assert_snapshot(self._snapshot)
+        except ValueError:
+            return False
+        widgets = (self.ma20_checkbox, self.ma60_checkbox, self.bbands30_upper_checkbox,
+            self.combine_mode_combo, self.filter_state_combo, self.sort_key_combo,
+            self.sort_direction_combo, self.local_stock_filter)
+        blockers = [QSignalBlocker(widget) for widget in widgets]
+        for widget, key in ((self.ma20_checkbox, "close_above_ma20"),
+            (self.ma60_checkbox, "close_above_ma60"),
+            (self.bbands30_upper_checkbox, "close_above_bbands30_upper")):
+            widget.setChecked(key in query.condition_keys)
+        for widget, value in ((self.combine_mode_combo, query.combine_mode),
+            (self.filter_state_combo, query.filter_state), (self.sort_key_combo, query.sort_key),
+            (self.sort_direction_combo, "desc" if query.descending else "asc")):
+            index = widget.findData(value)
+            if index < 0:
+                return False
+            widget.setCurrentIndex(index)
+        self.local_stock_filter.setText(query.stock_filter)
+        del blockers
+        self._apply_filter_controls()
+        return True
+
+    def open_stock_from_shared_query(self, code: str, query: DailyResearchQuery) -> bool:
+        """市場共用頁沿原 daily context 路由下鑽，不另建研究來源。"""
+        if self._shutting_down or self._worker is not None:
+            return False
+        self._return_query = None
+        if not self.restore_research_query(query) or not self.restore_research_snapshot_stock(code, query.manifest_sha256):
+            return False
+        return self.open_selected_stock()
 
     def _render_selected_summary(self) -> None:
         selected = self.results_table.selectionModel().selectedRows()
@@ -3087,6 +3165,9 @@ class DailyMarketResearchView(QWidget):
             self.status_label.setText("下鑽 context 的 AND／OR 組合方式不一致；未開啟報告。")
             return False
         self._selected_stock_code = stock_code
+        query = self.current_research_query()
+        if query is not None and isinstance(self._snapshot, VerifiedDailyMarketSnapshot):
+            self._return_query = (stock_code, query)
         self.stockResearchRequested.emit(context)
         self.status_label.setText(
             f"已開啟 {stock_code} 的唯讀個股研究；來源仍釘選於目前 cohort／manifest。"
@@ -3122,6 +3203,11 @@ class DailyMarketResearchView(QWidget):
                 "原每日研究快照尚未載入或 manifest 已變；請返回每日研究條件重讀／更新快照。"
             )
             return False
+        if self._return_query is not None and self._return_query[0] == requested:
+            query = self._return_query[1]
+            if query.manifest_sha256 != expected_hash or not self.restore_research_query(query):
+                self.status_label.setText("原查詢來源已變更；未以最新名單替代原研究。")
+                return False
         if requested not in self.research_snapshot_stock_codes():
             self.status_label.setText(
                 f"{requested} 不在原 cohort 清單；請返回每日研究條件確認來源。"
@@ -3141,9 +3227,10 @@ class DailyMarketResearchView(QWidget):
     def begin_shutdown(self) -> bool:
         """凍結本頁回呼並合作取消自己的來源讀取／更新工作。"""
 
+        selector_done = self.source_selector is None or self.source_selector.begin_shutdown()
         if self._shutting_down:
             worker = self._worker
-            return worker is None or not worker.isRunning()
+            return selector_done and (worker is None or not worker.isRunning())
         self._shutting_down = True
         self._operation_generation += 1
         for widget in (
@@ -3171,7 +3258,7 @@ class DailyMarketResearchView(QWidget):
         if worker is not None and worker.isRunning():
             worker.cancel(cooperative=True, wait=False)
             return False
-        return True
+        return selector_done
 
     def _clear_current_snapshot(self) -> None:
         self._snapshot = None

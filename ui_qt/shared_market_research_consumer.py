@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 import pandas as pd
-from PySide6.QtCore import QObject, Signal, Slot
-from PySide6.QtWidgets import QComboBox, QLabel
+from PySide6.QtCore import QObject, Signal, Slot, QSignalBlocker
+from PySide6.QtWidgets import QComboBox, QLabel, QCheckBox, QPushButton
 
 from app_module.daily_market_cohort_projection import (
     DailyMarketCohortProjection,
     project_daily_market_cohort,
 )
 from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
+from app_module.daily_market_feature_snapshot import feature_contract_for_version
+from app_module.daily_research_source_selection import DailyResearchQuery
+from app_module.daily_market_cohort_projection import sort_daily_market_cohort_members, DailyMarketCohortSortKey
+from typing import cast
 from app_module.original_stock_ranking import VerifiedOriginalStockRanking
 from ui_qt.original_ranking_presentation import (
     ranking_matches_snapshot,
@@ -43,6 +47,8 @@ class SharedMarketResearchRead:
     period: OriginalPeriod | None
     direction: OriginalDirection | None
     ranking_error: str = ""
+    query: DailyResearchQuery | None = None
+    query_rows: tuple[object, ...] = ()
 
 
 SHARED_MARKET_COLUMNS = (
@@ -55,6 +61,8 @@ SHARED_MARKET_COLUMNS = (
     "收盤價",
     "MA20",
     "MA60",
+    "布林上軌（30）",
+    "條件結果",
     "原漲幅%",
     "原成交量變化率%",
     "原引擎理由",
@@ -149,6 +157,17 @@ def shared_market_research_frame(read: SharedMarketResearchRead) -> pd.DataFrame
             code for code in projection.declared_stock_codes if code not in rank_rows
         )
         ordered_codes = ranked_codes + excluded_codes
+    states = {str(getattr(row, "stock_code", "")): str(getattr(row, "combined_state", "unknown")) for row in read.query_rows}
+    if read.query is not None:
+        query = read.query
+        if query.sort_key != "original_strength_rank":
+            ordered_codes = tuple(member.stock_code for member in sort_daily_market_cohort_members(
+                projection.members, cast(DailyMarketCohortSortKey, query.sort_key), descending=query.descending))
+        elif query.descending:
+            ordered_codes = tuple(reversed(ordered_codes))
+        ordered_codes = tuple(code for code in ordered_codes
+            if (query.filter_state == "all" or states.get(code, "unknown") == query.filter_state)
+            and (not query.stock_filter or query.stock_filter.casefold() in code.casefold()))
     missing_snapshot = set(projection.missing_stock_codes)
     reasons = (
         read.ranking.metadata.get("missing_rank_reason", {})
@@ -200,6 +219,8 @@ def shared_market_research_frame(read: SharedMarketResearchRead) -> pd.DataFrame
                 "收盤價": _display_value(getattr(member, "close", None)),
                 "MA20": _display_value(getattr(member, "ma20", None)),
                 "MA60": _display_value(getattr(member, "ma60", None)),
+                "布林上軌（30）": _display_value(getattr(member, "bbands30_upper", None)),
+                "條件結果": {"match": "符合", "no_match": "不符合", "unknown": "未知"}.get(states.get(code, "unknown"), "未知"),
                 "原漲幅%": change,
                 "原成交量變化率%": volume_change,
                 "原引擎理由": native_reasons,
@@ -265,6 +286,9 @@ class SharedMarketResearchConsumer(QObject):
             return
         accepted.connect(self._on_snapshot_accepted)
         cleared.connect(self._on_snapshot_cleared)
+        changed = getattr(source_view, "researchQueryChanged", None)
+        if callable(getattr(changed, "connect", None)):
+            changed.connect(self._on_query_changed)
 
         current = getattr(source_view, "_snapshot", None)
         self._accept_snapshot(current)
@@ -296,6 +320,19 @@ class SharedMarketResearchConsumer(QObject):
         self._generation += 1
         generation = self._generation
         key = self._cache_key(snapshot, period, direction)
+        getter = getattr(self._source_view, "current_research_query", None)
+        query = getter() if callable(getter) else None
+        if callable(getter) and not isinstance(query, DailyResearchQuery):
+            self.cancel_active()
+            self.failed.emit("請先在每日研究名單選擇有效查詢；未沿用舊條件。")
+            return
+        if query is not None:
+            try:
+                query.assert_snapshot(snapshot)
+            except ValueError as exc:
+                self.failed.emit(str(exc))
+                return
+        self._requested_query = query
         self._pending = (generation, snapshot, period, direction, key)
         # 快取只留作同 mode 的核驗結果記錄；每次返回研究模式仍 strict 重讀，
         # 避免 pin 背後的來源 revision 已改變卻重播舊畫面。
@@ -336,6 +373,12 @@ class SharedMarketResearchConsumer(QObject):
         self._invalidate_source()
         self.sourceChanged.emit(None)
 
+    @Slot(object)
+    def _on_query_changed(self, _query: object) -> None:
+        # 撤銷舊回呼後通知現有頁；新查詢沿同一來源重新 strict 核對。
+        self.cancel_active()
+        self.sourceChanged.emit(self._snapshot)
+
     def _accept_snapshot(self, snapshot: object) -> None:
         self._invalidate_source()
         if isinstance(snapshot, VerifiedDailyMarketSnapshot):
@@ -356,6 +399,7 @@ class SharedMarketResearchConsumer(QObject):
         for signal_name, slot in (
             ("snapshotAccepted", self._on_snapshot_accepted),
             ("snapshotCleared", self._on_snapshot_cleared),
+            ("researchQueryChanged", self._on_query_changed),
         ):
             signal = getattr(source, signal_name, None)
             disconnect = getattr(signal, "disconnect", None)
@@ -399,6 +443,7 @@ class SharedMarketResearchConsumer(QObject):
         if pending is None or source_view is None or self._shutting_down:
             return
         generation, snapshot, period, direction, key = pending
+        query = getattr(self, "_requested_query", None)
         self._pending = None
         task = lambda cancel_callback=None: self._read_snapshot(
             source_view,
@@ -406,6 +451,7 @@ class SharedMarketResearchConsumer(QObject):
             period,
             direction,
             cancel_callback or (lambda: False),
+            query,
         )
         worker = TaskWorker(task)
         self._worker = worker
@@ -429,6 +475,7 @@ class SharedMarketResearchConsumer(QObject):
         period: OriginalPeriod | None,
         direction: OriginalDirection | None,
         cancel_callback: Callable[[], bool],
+        query: DailyResearchQuery | None = None,
     ) -> SharedMarketResearchRead | dict[str, bool]:
         if cancel_callback():
             return {"cancelled": True}
@@ -475,7 +522,7 @@ class SharedMarketResearchConsumer(QObject):
         full_rows = tuple(
             filter_rows(
                 verified_snapshot,
-                ("close_above_ma20", "close_above_ma60"),
+                feature_contract_for_version(str(verified_snapshot.manifest["feature_contract_version"])).condition_keys,
                 "AND",
             )
         )
@@ -521,6 +568,12 @@ class SharedMarketResearchConsumer(QObject):
             expected_snapshot_root=(str(snapshot_root) if snapshot_root is not None else None),
             original_ranking=ranking,
         )
+        query_rows: tuple[object, ...] = ()
+        if query is not None:
+            query.assert_snapshot(verified_snapshot)
+            query_rows = tuple(filter_rows(verified_snapshot, query.condition_keys, query.combine_mode))
+            if {str(getattr(row, "stock_code", "")) for row in query_rows} != set(verified_snapshot.stock_snapshots):
+                raise RuntimeError("query_rows_cohort_mismatch")
         if cancel_callback():
             return {"cancelled": True}
         if (
@@ -541,6 +594,8 @@ class SharedMarketResearchConsumer(QObject):
             period=period,
             direction=direction,
             ranking_error=ranking_error,
+            query=query,
+            query_rows=query_rows,
         )
 
     @Slot(int, tuple, object)
@@ -557,6 +612,9 @@ class SharedMarketResearchConsumer(QObject):
             return
         if not isinstance(result, SharedMarketResearchRead):
             self.failed.emit("共享研究 reader 回傳未知結果，已拒絕呈現。")
+            return
+        if result.query != getattr(self, "_requested_query", None):
+            self.failed.emit("讀取結果查詢與目前請求不符；未呈現舊條件。")
             return
         if self._snapshot is None or self._cache_key(
             self._snapshot, None, None
@@ -636,6 +694,25 @@ class SharedStockResearchMixin:
         selector.currentIndexChanged.connect(self._on_shared_research_mode_changed)
         layout.addWidget(selector)
         self.shared_research_mode_selector = selector
+        self.shared_method_checks = {}
+        for key, title in (("close_above_ma20", "MA20"), ("close_above_ma60", "MA60"),
+                ("close_above_bbands30_upper", "布林上軌（30）")):
+            checkbox = QCheckBox(title, self)
+            checkbox.setToolTip("只讀已保存條件；上軌比較不是壓縮突破。v2 未保存 BB 時為未知。")
+            checkbox.toggled.connect(self._apply_shared_query_controls)
+            self.shared_method_checks[key] = checkbox
+            layout.addWidget(checkbox)
+        self.shared_combine_combo = QComboBox(self)
+        self.shared_combine_combo.addItems(["AND", "OR"])
+        self.shared_state_combo = QComboBox(self)
+        for text, value in (("全部條件狀態", "all"), ("符合", "match"), ("不符合", "no_match"), ("未知", "unknown")):
+            self.shared_state_combo.addItem(text, value)
+        for combo in (self.shared_combine_combo, self.shared_state_combo):
+            combo.currentIndexChanged.connect(self._apply_shared_query_controls)
+            layout.addWidget(combo)
+        self.shared_open_button = QPushButton("研究所選股票", self)
+        self.shared_open_button.clicked.connect(self.open_shared_selected_stock)
+        layout.addWidget(self.shared_open_button)
         self.source_scope_label = QLabel(
             "原全市場篩選來源；研究名單母體與可比較性尚未核驗。", self
         )
@@ -650,6 +727,55 @@ class SharedStockResearchMixin:
         consumer.failed.connect(self._on_shared_research_failure)
         consumer.statusChanged.connect(self._on_shared_research_status)
         self.shared_research_consumer = consumer
+        self._shared_read = None
+        self._sync_shared_query_controls()
+
+    def _sync_shared_query_controls(self) -> None:
+        source = getattr(self.shared_research_consumer, "_source_view", None)
+        getter = getattr(source, "current_research_query", None)
+        query = getter() if callable(getter) else None
+        widgets = (*self.shared_method_checks.values(), self.shared_combine_combo, self.shared_state_combo)
+        blockers = [QSignalBlocker(widget) for widget in widgets]
+        enabled = self.is_shared_research_mode() and isinstance(query, DailyResearchQuery)
+        for key, checkbox in self.shared_method_checks.items():
+            checkbox.setEnabled(enabled)
+            checkbox.setChecked(isinstance(query, DailyResearchQuery) and key in query.condition_keys)
+        for widget in (self.shared_combine_combo, self.shared_state_combo, self.shared_open_button):
+            widget.setEnabled(enabled)
+        if isinstance(query, DailyResearchQuery):
+            self.shared_combine_combo.setCurrentText(query.combine_mode)
+            self.shared_state_combo.setCurrentIndex(self.shared_state_combo.findData(query.filter_state))
+        del blockers
+
+    def _apply_shared_query_controls(self, *_args: object) -> None:
+        if not hasattr(self, "shared_research_consumer") or not self.is_shared_research_mode():
+            return
+        source = self.shared_research_consumer._source_view
+        getter = getattr(source, "current_research_query", None)
+        restore = getattr(source, "restore_research_query", None)
+        query = getter() if callable(getter) else None
+        if not isinstance(query, DailyResearchQuery) or not callable(restore):
+            return
+        keys = tuple(key for key, checkbox in self.shared_method_checks.items() if checkbox.isChecked())
+        if not keys:
+            self._sync_shared_query_controls()
+            self._set_status_label(self.status_label, "請保留至少一項研究條件。", level="warning")
+            return
+        restore(replace(query, condition_keys=keys, combine_mode=self.shared_combine_combo.currentText(),
+            filter_state=str(self.shared_state_combo.currentData())))
+
+    def open_shared_selected_stock(self) -> bool:
+        read = getattr(self, "_shared_read", None)
+        if not self.is_shared_research_mode() or read is None or read.query is None:
+            return False
+        selection = self.stocks_table.selectionModel().selectedRows()
+        if len(selection) != 1:
+            return False
+        frame = self.stocks_model.getDataFrame()
+        code = str(frame.iloc[selection[0].row()]["證券代號"])
+        source = self.shared_research_consumer._source_view
+        opener = getattr(source, "open_stock_from_shared_query", None)
+        return bool(opener(code, read.query)) if callable(opener) else False
 
     def set_shared_research_source(self, source_view: object | None) -> None:
         self.shared_research_consumer.set_source(source_view)
@@ -669,6 +795,7 @@ class SharedStockResearchMixin:
 
     def _on_shared_research_mode_changed(self, _index: int) -> None:
         self.shared_research_consumer.cancel_active()
+        self._sync_shared_query_controls()
         if self.is_shared_research_mode():
             self.stocks_table.setSortingEnabled(False)
             self.add_to_watchlist_btn.setVisible(False)
@@ -691,6 +818,7 @@ class SharedStockResearchMixin:
         self.load_data_if_needed()
 
     def _on_shared_research_source_changed(self, snapshot: object) -> None:
+        self._sync_shared_query_controls()
         if not self.is_shared_research_mode():
             return
         self._clear_shared_research_table()
@@ -705,6 +833,7 @@ class SharedStockResearchMixin:
         if not self.is_shared_research_mode():
             return
         frame = shared_market_research_frame(read)
+        self._shared_read = read
         self.stocks_table.setSortingEnabled(False)
         self.stocks_model = PandasTableModel(frame)
         self.stocks_table.setModel(self.stocks_model)
@@ -712,6 +841,7 @@ class SharedStockResearchMixin:
         summary, audit = shared_market_research_summary(read)
         self.source_scope_label.setText(
             summary + "\n共用模式收藏請回每日研究名單，沿用原快照 pin。"
+            + (f"\n目前查詢 {read.query.combine_mode}／{read.query.filter_state}；顯示 {len(frame)} 檔。" if read.query is not None else "")
         )
         self.source_scope_label.setToolTip(audit)
         self.refresh_btn.setVisible(True)
@@ -744,6 +874,7 @@ class SharedStockResearchMixin:
             self._set_status_label(self.status_label, str(message), level="info")
 
     def _clear_shared_research_table(self) -> None:
+        self._shared_read = None
         self.stocks_table.setSortingEnabled(False)
         self.stocks_model = PandasTableModel(
             pd.DataFrame(columns=SHARED_MARKET_COLUMNS)

@@ -135,6 +135,7 @@ class StrongStocksView(SharedStockResearchMixin, QWidget):
         
         # 表格
         self.stocks_table = QTableView()
+        self.stocks_table.doubleClicked.connect(lambda _index: self.open_shared_selected_stock())
         apply_financial_table_style(self.stocks_table)
         self.stocks_table.setSelectionBehavior(QTableView.SelectRows)
         self.stocks_table.setSortingEnabled(True)

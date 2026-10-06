@@ -4713,3 +4713,8 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 5. `P/backups/research_notes/`、`P/research_notes/audit/` 目前只是受守衛的預留路徑，沒有備份／migration producer；`config.create_backup` 不提供 personal root 的整體備份。不可只取消設定就把新內容視為已回滾或重新啟用舊 writer。真正搬移須另行批准來源、target、備份、停寫、驗證及回復方案。
 
 排錯：root／模式缺一、錯模式或 unsafe path 會在設定或操作時拒絕。已設定 notes 模式卻漏傳 selector 的 Journal／Workbench／journey caller 也會拒絕，不回退 legacy；尚未接線的工具不能用此模式寫入。未知 record type、來源變更、CAS 衝突或取消時保留原歷史，檢查模式與 exact identity，勿刪 lock／資料重試。Notes 與 Evidence DB、DecisionQuality、DeskSnapshot 的獨立路由仍是後續工程；本次不是市場 SQLite 的分享資格證明。詳見 [Journal QA](../06_qa/PERSONAL_JOURNAL_LANE_20261006.md)。
+
+
+## 2026-10-06 最新個人儲存位置決策
+
+使用者已選擇 `D:/Min/Python/Project/FA_Data/personal` 獨立子目錄，取代先前 LOCALAPPDATA／FA_Data 外 root 提案。專用 SQLite 不與市場 `twstock.db` 共用。這次只批准位置，真實 migration／activation 仍未批准；尚未搬移／建立正式 personal store。既有 root guard 目前拒絕市場 root 子目錄，父層另派 personal lane 精確調整明示 `data_root/personal` 契約；主線整合前不可直接套用該設定或全面放寬重疊守衛。市場分享只能按 explicit allowlist 排除 personal、舊 watchlist JSON 與其他私人來源，不能宣稱整包 FA_Data 可直接分享。

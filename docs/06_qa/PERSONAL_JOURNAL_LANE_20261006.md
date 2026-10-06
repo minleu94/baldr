@@ -104,3 +104,8 @@ DecisionQuality／DeskSnapshot／EvidenceEvent 均有 config.db_file fallback，
 初始sandbox重驗的Recommendation no-follow讀取失敗，以完全相同canonical單例證明sandbox fail／escalated pass後，改在允許Win32 handles的隔離fixture重驗；production no-follow guard未修改。新增App16項涵蓋獨立設定、不改市場路徑、writer/controller/readback、全部RO來源、未知type與alias拒絕、漏selector fail-closed、compat writer、新程序JSONL重開，以及兩種模式的實際MainWindow offscreen composition。MainWindow fixture的正式ML registry被stub，不當真模型或Native資格。
 
 原plan保持192851B前文／SHA256 cc9a4b9719ce08786b4b5846f0776deae4f2319a18da5ac1766d6cb9acc2576d，僅append本次收據；plan及raw receipts依git exclusions留本地output，不stage。驗證raw路徑 `output/qa/personal_journal_app_integration_20261006/`，包含cherry七blob對照、verification與busy_close_receipt。正式personal位置、notes migration／真正備份／Native仍待批准；所有lane worktrees保留。UX11不混入本包。
+
+
+## 2026-10-06 最新個人儲存位置決策
+
+使用者已選擇 `D:/Min/Python/Project/FA_Data/personal` 獨立子目錄，取代先前 LOCALAPPDATA／FA_Data 外 root 提案。專用 SQLite 不與市場 `twstock.db` 共用。這次只批准位置，真實 migration／activation 仍未批准；尚未搬移／建立正式 personal store。既有 root guard 目前拒絕市場 root 子目錄，父層另派 personal lane 精確調整明示 `data_root/personal` 契約；主線整合前不可直接套用該設定或全面放寬重疊守衛。市場分享只能按 explicit allowlist 排除 personal、舊 watchlist JSON 與其他私人來源，不能宣稱整包 FA_Data 可直接分享。

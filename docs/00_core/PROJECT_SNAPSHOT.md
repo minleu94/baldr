@@ -603,3 +603,8 @@ UX07 官方資料與 repo 可行性調查已交付，修正上段「未啟動」
 Journal lane 的 guarded JSONL adapter 已接獨立 notes root／mode；MainWindow writer／controller、Workbench continuity、推薦 Personalization／ACK 與 outcome journey 共用選擇。personal 不混讀舊來源；legacy_read_only 無來源 lock／mkdir且拒寫。已設定模式漏 selector 會 fail-closed；未設定保留舊相容 writer，不宣稱全域禁寫。正式 personal location、真 notes migration／備份 producer／Native 尚待批准；Portfolio／Ledger／Paper 與 Evidence DB 路由未搬移。[QA](../06_qa/PERSONAL_JOURNAL_LANE_20261006.md)
 
 驗證邊界：App16（含2種實際MainWindow offscreen新程序）、COW指定案例及獨立busy-close driver通過；affected去重251pass／1fail／1skip。完整Workbench跨頁readback案例仍在8s前置時report worker running／loading／無error，根因待診斷，不能關閉工程gate或歸因自然成熟。Workbench85、validator25／4skip、mypy799及compile／quant通過。
+
+
+## 2026-10-06 最新個人儲存位置決策
+
+使用者已選擇 `D:/Min/Python/Project/FA_Data/personal` 獨立子目錄，取代先前 LOCALAPPDATA／FA_Data 外 root 提案。專用 SQLite 不與市場 `twstock.db` 共用。這次只批准位置，真實 migration／activation 仍未批准；尚未搬移／建立正式 personal store。既有 root guard 目前拒絕市場 root 子目錄，父層另派 personal lane 精確調整明示 `data_root/personal` 契約；主線整合前不可直接套用該設定或全面放寬重疊守衛。市場分享只能按 explicit allowlist 排除 personal、舊 watchlist JSON 與其他私人來源，不能宣稱整包 FA_Data 可直接分享。

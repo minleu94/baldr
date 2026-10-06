@@ -39,3 +39,32 @@ child 入口為 `build_rule_research_forward_outcome(...)`；parent 入口為 `b
 主整合 owner 後續提供 exact saved package、符合此 DTO 的明示日曆與價格、benchmark 和版本化成本政策；計算器沒有新的 reader、writer、scheduler 或默認來源。序列化 PricePoint 的 `price` 需由呼叫端明確還原為 Decimal；不要把輸出內聲明的 price points 當作已通過 PIT 篩選的資料。保存、consumer／UI、官方 calendar/custody、同日修訂接受規則與自然 outcome 累積仍未接線；ML target／dataset／split／fit 另屬 UX22。
 
 Coverage Pass：本文件保存 API、口徑、結果、限制與接線需求。Snapshot／Architecture／Index／Navigation 及日後 consumer 可見操作的 Manual 同步留主整合 owner 串行處理；本 lane 不越權修改。回滾須先核對 owner 與未提交變更，再由整合 owner `git revert <本包提交>`，重跑限定套件；目前無 consumer 依賴或資料副作用。交付本地 commit 後停止，UTC 2026-10-06 07:00 的全工程暫停約束保持，沒有另建 automation。
+
+
+## 2026-10-06 dev 主線採納與唯讀 consumer／最小畫面
+
+新整合 owner 由指定 `90d16858c3d0fbdbe06aaaab164ceab947e18cdb`、乾淨 dev 工作樹接手；舊 thread 停止，不重做 learner／Library／personal storage。`.agents/skills` 不存在；已讀根 AGENTS、docs/agents 的角色與 team／quant guard、Snapshot／roadmap入口／現有與目標架構／Manual／coverage。graphify 圖譜沒有 UX20/21 節點且日期較舊，查無關係後改查最新原碼，不更新圖譜或授新資格。全包由唯一 owner 完成，沒有新 subagent。
+
+1304行契約人工 review：exact parent／child count與身份、完整母體、calendar覆蓋／capture時鐘／available_date、Decimal成本／同期間benchmark、未知及排除／uncaptured與固定資格均保留；未來價格只供 outcome，不回填原 method 或 member。不因 core 長度做非必要重構；沿現有 maturity、保存包驗證及 private binding helpers，受影響套件提供相容性守衛。僅三檔 lane diff，無共享 owner 變更；lane worktree focused 78 passed／1 skipped（18.48s）後採納，dev cherry-pick=`25eec766`，原 commit=`9aeb2655854605b5fb3bd383e31d3634d9660ce1`／parent=`ae64afc0cc9fd6c970a86f3f350053cb7d851d82`。
+
+新增 `app_module/rule_research_forward_outcome_reader.py`：明示 receipt＋2MiB內輸入 JSON，驗 parent pin、原 readiness與全部exact captured child包，將Decimal文字還原後呼叫既有純計算器。讀前後核原 readiness、每個child、parent與輸入bytes；拒絕途中修訂，不掃latest、不開DB、不寫outcome、不取網。schema含calendar/prices/benchmark/cost/asof，未知可明示 null，但不造default；asof不能晚於當前UTC日。母體不完整仍保留uncaptured分母。
+
+原每日研究 parent receipt dialog 加結果tab與選檔／清除、方法／horizon下拉；首屏6組狀態與完整分母、成本版本／4項成本，逐股毛／net／gross excess／net excess bp。完整MA20 matched與MA60 notmatched皆可看研究值，selected未知；缺價、日曆不足、pending、成本缺件明示。詳細JSON/hash/source在收合診斷，無畫曲線／勝率／正式操作；generation＋sender guards與合作式取消沿原TaskWorker。結果拒絕保留各批producer/capture記錄，清舊outcome；換parent清輸入，同來源重試重新驗證。
+
+新增 consumer／UI 首輪28案例passed（22.95s）；初次 collection helper `_cost` 名稱誤植，修為現有 `_costs` 後通過，不改產品守衛。截圖 `output/qa/ux21_consumer_20261006/forward_controlled.png` 已實看中文／表格／成本與分母；修正舊next-step仍稱成熟未知的矛盾，pending列不誤稱已明示成本未知。第二輪再加入未完整parent全部uncaptured案例，最終數字見下段。
+
+驗收含17納入＋2排除兩批實際隔離包、逐stock/method完整分母、非零四成本、H5/10/20表切換、成本null保毛值、unknowncalendar／缺精確endpoint／pending、錯parent拒絕保批結果、JSON重複鍵／數字價格／float成本／future asof、child損壞與input途中revision、cancel/stale success/error／單worker重試、同收據新Python程序完整projection逐欄一致及來源bytes不變。既有return/close/newparent/picker守衛仍由原receipt UI套件覆蓋。
+
+Workbench85 passed；update validator25 passed／0failed／4既有skip（隔離Temp fixture DB，不是正式DB）；full mypy810 source files通過、2項既有untyped-body notes。六檔py_compile、quant precision/look-ahead guard通過；guard白名單不代替人工no-lookahead審查。只有pytest cache sandbox警告，非功能failure。所有UI QA offscreen，沒有前景Native、真人或自然來源驗收。未重開性能gate，已接受18.6219%例外邊界不變。
+
+Coverage：Manual（入口／JSON欄位／操作／公式／解讀／限制／排錯）、Snapshot、Current Architecture、Navigation、UI Features、Index／QA入口同步；產品／6M／target／long maturity方向及Gate未改。原plan只追加，output raw與shared_state不stage。rollback先確認owner／dirty tree，再revert本包接線提交；無資料需回復，若連lane一起revert先移除consumer依賴，重新跑focused／UI guards。UTC07:00停止規則保持，完成本地commit與readback即提前停止，不啟新scope。
+
+UX21從pending變partial：純計算器＋exact saved consumer＋最小畫面工程已完成；官方calendar/custody與自然outcome是證據依賴，輸入adapter／outcome持久化與正式daily owner consumer尚為工程，不混稱等待自然。UX22/23未開始。正式Task／data migration／ML fit／交易旗標沒有批准或啟用。
+
+### 最終同版驗證與readback
+
+- dev受影響七模組：107 passed／1既有symlink環境skip，39.85s；其中新consumer／UI及原receipt UI為29個不同案例。命令：`.venv/Scripts/python.exe -m pytest tests/test_rule_research_forward_outcome.py tests/test_rule_research_forward_outcome_reader.py tests/test_ui_qt_forward_outcome_receipt.py tests/test_ui_qt_parent_receipt_dialog.py tests/test_rule_research_sample_capture.py tests/test_rule_research_parent_capture.py tests/test_outcome_maturity_service.py -q -o addopts= --basetemp C:/Users/archi/AppData/Local/Temp/u21finalroot --junitxml output/qa/ux21_consumer_20261006/final_focused.xml`。
+- Workbench85、validator25／4skip、mypy810、六檔compile及quant guard通過；最後呈現修正後targeted mypy與diff check再核。初次helper collection錯誤原輸出保留，最終沒有產品fail。
+- 原plan追加前211,524 bytes／SHA256 `865687c9d8f57333682ea23f4efdb5acde52fe1ec9eea745e563c0f07eda4cf8`，追加後原前綴SHA一致；原文不覆寫。before／after pins與本包commit/blob對照在ignored `output/qa/ux21_consumer_20261006/plan_before.json`、`plan_after.json`、`commit_readback.json`；raw QA／plan／shared_state不stage。
+- 文字校正曾誤用text read/write正規化舊plan換行，前綴校驗發現後，以既有UX10 plan_before備份的相同內容前綴還原原換行；最終211,524bytes原前綴SHA完全一致。沒有刪改原計畫內容或放寬「只追加」。恢復方式與最終hash保留於plan_after.json。
+- 新程序readback、UI測試子程序都正常退出；沒有派出仍工作的subagent或Native程序。完成接線本地commit/readback後本owner停止交父層，不等截止才停，也不開UX22或部署。

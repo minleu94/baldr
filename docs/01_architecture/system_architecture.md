@@ -1379,3 +1379,8 @@ UX11後續：saved_strategy_rule_card只調既有ResearchRunService完整性read
 ### 2026-10-06 UX20 隔離daily owner可執行整合
 
 新增明示runtime/target日期的isolated daily runner，直接沿既有producer/parent/observation接受串全鏈，preflight為預設；capacity/quota先檢，有限retry/合作cancel/漏日與revision監控，exact receipt重用。source/日期/配置一致才完成，producer已發布與capture拒絕分列保留；未配置不選生產值。17不同案例＋最後source/config兩例重核、targeted mypy2/compile3/quant通過；UI未改。Stage5/UX20仍partial，正式date-owner/calendar/Task/ACL/留存治理待工程/決策；UX21三檔未整合。QA：docs/06_qa/UX20_DAILY_OWNER_ISOLATED_20261006.md；操作依Manual。
+
+
+### 2026-10-06 UX21 exact 保存母體結果 consumer
+
+`rule_research_forward_outcome.py` 接 immutable parent/child receipt及明示Calendar／PricePoint／BenchmarkSpec／CostPolicy，以Decimal投影endpoint-only H5/10/20。`rule_research_forward_outcome_reader.py` 是2MiB有界唯讀application入口：原parent readiness→exact children→DTO投影→原來源/輸入重核；不開市場DB或producer、不掃latest或保存outcome。Qt parent receipt dialog沿TaskWorker作背景讀取，GUI僅呈現分母、方法狀態／報酬與缺件，取消／stale保護保留。原來源資料流與其他owner不變；official calendar/custody及formal/training/交易資格未提供，未建正式每日adapter／outcome store。操作與驗證見[Manual](../07_guides/APPLICATION_MANUAL.md)、[UX21 QA](../06_qa/UX21_FORWARD_OUTCOME_20261006.md)。

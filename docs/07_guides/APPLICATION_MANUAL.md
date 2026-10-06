@@ -4796,3 +4796,24 @@ runtime JSON schema_version=rule-research-daily-owner-runtime.v1、mode=isolated
 結果observed表示隔離全鏈讀回完成；already_observed表示唯一exact source/policy/日期保存收據沿用，未重跑producer。每attempt各批快照產生與sample保存結果分列，已發布後sample拒絕不能當沒寫內容；parent/acceptance/owner receipt與day readiness分開。runtime/policy/revision途中改變blocked保留原件；owner status保存拒絕也保留前面實際結果。未完整資料日不算當日完成，方法符合仍非正式入選，official calendar/available-at/outcome未知，不授natural/PIT/formal/training。
 
 retry最多配置次數與有限合作式delay；busy保留別人lock，cancel等待安全返回。partial需明示fresh隔離root，不刪除繞過。返回2不代表沒有producer artifact，請查attempt及receipt；容量不足可能只輸出stdout，勿期待藉status寫入突破容量。正式日期來源/Task/account/ACL/留存/通知仍待部署；三項有推薦值的決策見 [daily owner QA](../06_qa/UX20_DAILY_OWNER_ISOLATED_20261006.md)，現在未套用任何生產值。
+
+
+## 2026-10-06 UX21 保存母體 H5／H10／H20 研究結果
+
+每日研究條件→「查看保存母體收據」→選擇原 `parents/<身份>/receipt.json`，切到「H5／H10／H20 研究結果」，按「選擇研究結果輸入」。此操作只讀所選 exact parent、全部已捕捉 children、原快照與母體配置；不開市場 DB、不產生快照、不保存新 outcome、不選 latest。未提供輸入會顯示資料不足，未借即時行情或預設成本。
+
+輸入為 UTF-8 JSON（最多 2MiB），頂層只能含 `schema_version=rule-research-forward-input.v1`、`parent_identity_sha256`（原收據資料夾身份）、`decision_date`（原母體資料日）、`as_of_date`（明示 ISO 評估日）、`calendar`、`prices`、`benchmark`、`cost_policy`。評估日不能晚於當前 UTC 日期，也不能早於已知保存／觀測時鐘的 UTC 日期；日期精度不是盤中可得性證明。
+
+`calendar` 填 `trading_dates`（排序、不重複 ISO 日期，最多260）、`known/complete`（布林）、`coverage_start/end`、`source_identity`、`available_date`。未知日曆必須 known=false、complete=false、dates=[]、coverage/source=null；available_date 未知用 null。已知完整日曆須含決策日與第5／10／20個後續交易日；只宣告研究覆蓋，不能冒稱官方日曆／custody。H5等依明示交易日計數，缺日不跳過，未涵蓋標資料不足，尚未到期標未成熟。
+
+`prices` 是逐 instrument/date 的點（每 instrument 最多21，母體最多512加一個基準）。每點填 `instrument_id`、`trade_date`、`state=available/missing/suspended/unknown`、`price`、`source_identity`、`currency`、`unit`、`price_basis`、`corporate_action_basis`、`available_date`；可另填 `content_identity_sha256`，有填就必須符合內容。available 的 price 必須為正有限 Decimal **字串**，例如 `"100.25"`，不是 JSON 數字；其餘 state 的 price 必須 null。只計算決策日與精確結束日，不用期間中間價代補；晚於評估日才可得的點不可用。來源可得日期未知時研究數值可算，但可得性仍未知，不能提升 PIT。
+
+`benchmark` 可明示 null（超額未知），否則填 `instrument_id/currency/unit/price_basis/corporate_action_basis/source_identity`，並在 prices 中提供同期間基準端點。基準不能與母體股號衝突，點的來源及基礎需匹配 spec；幣別、價格及公司行動基礎未知或不相容時不計超額。基準 unit 可不同（例如指數點與每股價格），各 instrument 內的單位／基礎必須一致。
+
+`cost_policy` 可為 null（成本未知），否則填 `version`、`formula_id=proportional_entry_add_exit_deduct.v1`、`target_entry_bp/target_exit_bp/benchmark_entry_bp/benchmark_exit_bp`；各成本須為0–10000的整數 bp 或明示 null。零成本也要明示，不補 default。毛報酬=end/entry−1；成本後=end×(1−出場bp/10000)/(entry×(1＋進場bp/10000))−1；超額為同期間 target−benchmark，成本兩邊完整才有成本後超額。畫面以 HALF_EVEN 整數 bp 顯示（100bp=1%）；精確 Decimal 與正負標籤在收合診斷，四捨五入0bp不代表精確報酬為零。
+
+首屏每方法／H5、H10、H20 顯示可看毛報酬、未成熟、資料不足、缺價／停牌、排除、未捕捉人數；每方法分母包含全部聲明成員。以方法與 horizon 下拉查看逐股方法判定、結束日、毛／成本後報酬、毛／成本後超額及缺件。符合方法／不符合都可有研究報酬，兩者都不是交易 selected；選樣未知，未捕捉不是負樣本。成本未知保留可計毛報酬，相關成本後欄位為「—」。表格不算勝率、排名或組合績效。
+
+「重讀／重試核對」重新核對同收據及同輸入；「清除結果輸入」回到未評估，切換另一母體收據清除前一輸入。選檔取消保留原選擇。取消／返回／關窗等待背景安全返回，不強殺 thread；晚到成功／錯誤不套用，完成後可沿同收據重試。輸入錯parent、未來評估日、重複鍵、非Decimal字串、成本／基礎不合法或途中修訂時拒絕；結果表清除，原各批保存記錄保留，技術理由在「展開來源與診斷」。先核對精確版本與缺件，保留原檔，不更新 producer 或刪資料繞過。
+
+這是 endpoint-only research，沒有 MFE／MAE、期間停牌完整性、可成交性或真實交易績效；所有 PIT／formal／training／natural／execution flags 維持 false。工程接線已可用；官方 calendar／raw price custody、自然樣本、後續日期成熟與 Native／真人驗收分列未完成。不自動產生價格輸入、正式排程或 outcome store。詳見 [UX21 QA](../06_qa/UX21_FORWARD_OUTCOME_20261006.md)。

@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 UX21 保存母體 forward outcome 有限整合
+
+由90d16858乾淨dev接手，review後採納lane9aeb2655為25eec766；exact parent＋children與明示calendar/prices/benchmark/cost/asof接唯讀consumer，現有母體收據視窗可看H5／H10／H20完整分母、每股毛／net／excess、資料不足與未成熟。成本不補零，方法判定不是交易selected；未捕捉／排除分母保留，PIT／formal／training／natural／execution false。107passed／1skip、Workbench85、validator25／4skip、mypy810與compile／quant guard通過；合作cancel/stale與同收據新程序重讀已驗。詳見[UX21限定收據](../06_qa/UX21_FORWARD_OUTCOME_20261006.md)、[Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-06-ux21-保存母體-h5h10h20-研究結果)。
+
+UX21目前partial，UX22/23 pending；九stage done1／partial7／pending1，24UX done2／partial20／pending2。官方calendar／price custody與自然outcome另列；輸入adapter／outcome store／正式daily owner consumer、Native／真人未完。不重做舊learner/Library/personal、不啟正式Task/DB/migration/fit、不重開已接受效能gate。完成包commit/readback後停交父層，UTC07:00安全暫停界線保持。
+
 ## 2026-10-06 UX08 原生歷史 MA20／MA60 有限接線
 
 沿d9a4a086，既存MA20／MA60有界唯讀歷史列接到純投影、原生覆蓋線與精確表；同股／來源／日期／hash／cutoff核對，缺列／None斷線，不重算或補末值。保存／daily／rank未具備同版本技術artifact歷史時明示缺件、禁止借live；暖機與availability未知不授PIT。116受影響案例、Workbench85、validator25／4skip、mypy795、6檔compile／quant guard通過，見[UX08最新章](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md)。整項／stage4仍partial，saved歷史、其他指標、markers、期間／縮放／平移、renderer故障與Native／真人未完。

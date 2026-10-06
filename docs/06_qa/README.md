@@ -125,3 +125,6 @@
 
 
 - 2026-10-05：[F4 Legacy JSON COW／原升級入口終驗](./F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)：單JSON至獨立v3、新程序讀回及rollback保留新內容；正式apply另行批准，F1例外尚未批准，UX07未啟動。
+
+
+- [UX21 Forward Outcome](UX21_FORWARD_OUTCOME_20261006.md)：lane採納、exact保存母體consumer／H5/10/20畫面、完整分母、成本／缺件／pending與cancel/stale/new-process限定驗收；整項partial，非自然或正式交易資格。

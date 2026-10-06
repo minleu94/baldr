@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -135,6 +135,7 @@ def _fixture_batch(
         *,
         expected_sha256: str | None = None,
         capture_path: str | Path | None = None,
+        source_binding_verifier=None,
     ) -> Mapping[str, Any]:
         payload = payloads[str(path)]
         if expected_sha256 is not None:
@@ -373,7 +374,7 @@ def _verify_v2_fixture_references(
     monkeypatch.setattr(
         composer,
         "verify_current_observed_feature_snapshot_v2",
-        lambda snapshot: snapshot,
+        lambda snapshot, **_kwargs: snapshot,
     )
     return research_fit._verify_receipt_references((reference,))
 
@@ -852,3 +853,78 @@ def test_semantic_fit_requires_capture_reverification(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="capture failed independent re-verification"):
         _fit(tmp_path=tmp_path, samples=(semantic,), references=references, evaluation_at=_evaluation_clock())
     assert not (tmp_path / "learning-root").exists()
+
+
+def test_fit_receipt_reverification_threads_explicit_custody_port(monkeypatch):
+    """純 receipt/參數路由 fixture；不建立 learner 或宣稱真來源資格。"""
+    from ml_module import recommendation_calibration_evidence as evidence
+    from ml_module import current_observed_feature_snapshot_composer as composer
+    capture, receipt, reference = _v2_fixture()
+    seen = []
+    def port(_binding, *, full_cohort):
+        raise AssertionError("route fixture must not invent external custody")
+    def receipt_reader(*args, source_binding_verifier=None, **kwargs):
+        assert source_binding_verifier is port
+        seen.append("receipt")
+        return receipt
+    def capture_reader(*args, source_binding_verifier=None, **kwargs):
+        assert source_binding_verifier is port
+        seen.append("capture")
+        return capture
+    def feature_reader(snapshot, *, source_binding_verifier=None):
+        assert source_binding_verifier is port
+        seen.append("composition")
+        return snapshot
+    monkeypatch.setattr(research_fit, "verify_current_observed_outcome_receipt", receipt_reader)
+    monkeypatch.setattr(evidence, "verify_current_observed_input_capture", capture_reader)
+    monkeypatch.setattr(composer, "verify_current_observed_feature_snapshot_v2", feature_reader)
+    refs, rows = research_fit._verify_receipt_references((reference,), source_binding_verifier=port)
+    assert seen == ["receipt", "capture", "composition"]
+    assert refs and rows
+
+
+def test_outcome_builder_and_readback_thread_custody_port(monkeypatch, tmp_path):
+    """原有 bounded market/session fixture；僅驗新的 port 傳遞與缺口拒絕。"""
+    from ml_module import recommendation_calibration_evidence as evidence
+    from ml_module import recommendation_natural_outcome_service as outcome
+    from tests.test_recommendation_natural_outcomes_current_observed_batches import (
+        _v2_capture, _write_capture, _run_loader, CAPTURE_DATE,
+    )
+    capture = _v2_capture(17)
+    capture_path = _write_capture(tmp_path, capture)
+    seen = []
+    def port(*_args, **_kwargs):
+        raise AssertionError("route fixture must not invent external custody")
+    def capture_reader(*args, source_binding_verifier=None, **kwargs):
+        if source_binding_verifier is None:
+            raise ValueError("scheduled snapshot source custody verifier port is required")
+        assert source_binding_verifier is port
+        seen.append("capture")
+        return dict(capture)
+    monkeypatch.setattr(evidence, "verify_current_observed_input_capture", capture_reader)
+    source, calls, values, contract = _run_loader(monkeypatch, tmp_path, capture)
+    service = outcome.RecommendationNaturalOutcomeService.__new__(outcome.RecommendationNaturalOutcomeService)
+    monkeypatch.setattr(outcome.RecommendationNaturalOutcomeService,
+                        "_load_current_observed_outcome_source", lambda self, **kwargs: source)
+    receipt_path = tmp_path / "recommendation_learning" / "current_observed_outcomes" / CAPTURE_DATE.isoformat() / "port-receipt.json"
+    original_bytes = values["database_path"].read_bytes()
+    receipt = service.build_current_observed_outcomes_for_capture(
+        capture_path, required_source_contract=contract, evaluation_at=datetime.now(timezone.utc),
+        output_path=receipt_path, source_binding_verifier=port)
+    assert receipt["status"] == "matured"
+    assert len(receipt["outcomes"]) == 17
+    verified = outcome.verify_current_observed_outcome_receipt(
+        receipt_path, expected_sha256=receipt["receipt_file_sha256"], capture_path=capture_path,
+        source_binding_verifier=port)
+    assert verified["verification_status"] == "verified"
+    assert verified["outcomes"] == receipt["outcomes"]
+    assert seen == ["capture", "capture"]
+    assert values["database_path"].read_bytes() == original_bytes
+    with pytest.raises(ValueError, match="verifier port is required"):
+        outcome.verify_current_observed_outcome_receipt(receipt_path, capture_path=capture_path)
+    blocked = service.build_current_observed_outcomes_for_capture(
+        capture_path, required_source_contract=contract, evaluation_at=datetime.now(timezone.utc),
+        output_path=receipt_path.with_name("missing-port.json"))
+    assert blocked["status"] == "blocked"
+    assert blocked["reason"] == "current_observed_input_capture_verification_failed"
+    assert blocked["outcomes"] == []

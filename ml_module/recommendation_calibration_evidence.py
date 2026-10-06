@@ -22,6 +22,8 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 
+from ml_module.current_observed_feature_snapshot_composer import ScheduledSnapshotSourceBindingVerifier
+
 from ml_module.model_artifact_loader import ArtifactCompatibilityExpectation, SafeShadowModelArtifactLoader
 from ml_module.model_artifact_manifest import FeatureSchema
 from ml_module.recommendation_calibration_authority import RecommendationPromotionPolicy
@@ -389,6 +391,7 @@ class ActiveModelPredictionCaptureService:
         cost_scenario: RecommendationCostScenario | Mapping[str, Any] | None = None,
         maximum_probability_change_bp: int = 1_000,
         source_contract_binding: Mapping[str, Any] | None = None,
+        source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
     ) -> ActiveModelPredictionCapture:
         capture_day = _date(decision_date).isoformat()
         if _date(captured_at) > _date(decision_date):
@@ -586,6 +589,7 @@ class ActiveModelPredictionCaptureService:
                 capture_day=_date(capture_day),
                 capture_rows=rows,
                 capture_at=captured_at,
+                source_binding_verifier=source_binding_verifier,
             )
             body["source_contract_binding"] = resolved_source_contract_binding
         if resolved_scenario.is_estimated:
@@ -707,6 +711,7 @@ class RecommendationPredictionCaptureService:
         champion_inference: FrozenRecommendationInference | None = None,
         capture_origin: str = "scheduled_live",
         source_contract_binding: Mapping[str, Any] | None = None,
+        source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
     ) -> RecommendationPredictionCapture:
         candidate_path = Path(candidate_root).resolve()
         if capture_origin not in {"scheduled_live", "live_forward"}:
@@ -716,6 +721,7 @@ class RecommendationPredictionCaptureService:
                 source_contract_binding,
                 require_ready=True,
                 capture_at=captured_at,
+                source_binding_verifier=source_binding_verifier,
             )
         if not 0 <= maximum_probability_change_bp <= 10_000:
             raise ValueError("maximum_probability_change_bp must be within 0..10000")
@@ -936,6 +942,7 @@ class RecommendationPredictionCaptureService:
                 capture_day=_date(capture_day),
                 capture_rows=rows,
                 capture_at=captured_at,
+                source_binding_verifier=source_binding_verifier,
             )
         schema_version = (
             "recommendation-prediction-capture.v3"
@@ -1066,6 +1073,7 @@ class NaturalForwardEvidenceBuilder:
         output_path: str | Path,
         evaluation_at: datetime | None = None,
         source_id: str = "scheduled_forward_outcomes",
+        source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
     ) -> NaturalEvidenceReceiptReference:
         if isinstance(capture, RecommendationPredictionCapture) and capture.capture_path is None:
             # A capture must become a durable first-stage artifact before a
@@ -1073,7 +1081,7 @@ class NaturalForwardEvidenceBuilder:
             # the helper safe for callers while preserving the two-stage audit.
             capture.persist(Path(output_path).resolve().with_suffix(".capture.json"))
         capture_payload = _capture_payload(capture)
-        _verify_capture_document(capture_payload)
+        _verify_capture_document(capture_payload, source_binding_verifier=source_binding_verifier)
         return self._build_from_payload(
             capture_payload=capture_payload,
             outcomes=outcomes,
@@ -1092,6 +1100,7 @@ class NaturalForwardEvidenceBuilder:
         output_path: str | Path,
         evaluation_at: datetime | None = None,
         source_id: str = "scheduled_forward_outcomes",
+        source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
     ) -> NaturalEvidenceReceiptReference:
         """Build one receipt from multiple immutable daily captures.
 
@@ -1108,14 +1117,14 @@ class NaturalForwardEvidenceBuilder:
         payloads: list[dict[str, Any]] = []
         for path in capture_paths:
             payload = _read_json(path)
-            _verify_capture_payload(payload)
+            _verify_capture_payload(payload, source_binding_verifier=source_binding_verifier)
             payload["capture_path"] = str(path)
             payloads.append(payload)
         bundle = _build_capture_bundle(payloads, capture_paths)
         bundle_path = Path(output_path).resolve().with_suffix(".capture-bundle.json")
         bundle["capture_path"] = str(bundle_path)
         _write_json_once(bundle_path, bundle)
-        _verify_capture_bundle_payload(bundle)
+        _verify_capture_bundle_payload(bundle, source_binding_verifier=source_binding_verifier)
         return self._build_from_payload(
             capture_payload=bundle,
             outcomes=outcomes,
@@ -1485,15 +1494,21 @@ def _capture_payload(capture: RecommendationPredictionCapture | str | Path) -> d
     return _read_json(Path(capture).resolve())
 
 
-def _verify_capture_document(payload: Mapping[str, Any]) -> None:
+def _verify_capture_document(
+    payload: Mapping[str, Any],
+    *,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
+) -> None:
     if payload.get("schema_version") == "recommendation-prediction-capture-bundle.v1":
-        _verify_capture_bundle_payload(payload)
+        _verify_capture_bundle_payload(payload, source_binding_verifier=source_binding_verifier)
         return
-    _verify_capture_payload(payload)
+    _verify_capture_payload(payload, source_binding_verifier=source_binding_verifier)
 
 
 def verify_prediction_capture_read_only(
     capture: Mapping[str, Any] | str | Path,
+    *,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
 ) -> RecommendationPredictionCaptureVerification:
     """Verify an immutable prediction capture without writing or maturing it.
 
@@ -1509,7 +1524,7 @@ def verify_prediction_capture_read_only(
         payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
         raise ValueError("prediction capture must be an object")
-    _verify_capture_document(payload)
+    _verify_capture_document(payload, source_binding_verifier=source_binding_verifier)
     try:
         scenario = cost_scenario_from_metadata(
             payload,
@@ -1654,7 +1669,11 @@ def _build_capture_bundle(
     return body
 
 
-def _verify_capture_bundle_payload(payload: Mapping[str, Any]) -> None:
+def _verify_capture_bundle_payload(
+    payload: Mapping[str, Any],
+    *,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
+) -> None:
     if payload.get("schema_version") != "recommendation-prediction-capture-bundle.v1":
         raise ValueError("capture bundle schema is unsupported")
     required = (
@@ -1717,7 +1736,7 @@ def _verify_capture_bundle_payload(payload: Mapping[str, Any]) -> None:
     for source_id, source_hash, source_path in zip(source_ids, source_hashes, source_paths):
         path = Path(str(source_path)).resolve()
         source = _read_json(path)
-        _verify_capture_payload(source)
+        _verify_capture_payload(source, source_binding_verifier=source_binding_verifier)
         if str(source.get("capture_id")) != str(source_id) or str(source.get("capture_hash")) != str(source_hash):
             raise ValueError("capture bundle source hash or identity mismatch")
         for field_name in common_fields:
@@ -1742,7 +1761,11 @@ def _verify_capture_bundle_payload(payload: Mapping[str, Any]) -> None:
         raise ValueError("capture bundle origin is invalid")
 
 
-def _verify_capture_payload(payload: Mapping[str, Any]) -> None:
+def _verify_capture_payload(
+    payload: Mapping[str, Any],
+    *,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
+) -> None:
     required = (
         "capture_id", "capture_as_of_date", "captured_at", "candidate_id",
         "candidate_freeze_hash", "candidate_frozen_at", "candidate_manifest_hash",
@@ -1821,6 +1844,7 @@ def _verify_capture_payload(payload: Mapping[str, Any]) -> None:
             payload["source_contract_binding"],
             require_ready=True,
             capture_at=str(payload["captured_at"]),
+            source_binding_verifier=source_binding_verifier,
         )
     lineage = payload.get("probability_lineage")
     if not isinstance(lineage, list) or not lineage:
@@ -1898,6 +1922,7 @@ def _verify_capture_payload(payload: Mapping[str, Any]) -> None:
             capture_day=capture_day,
             capture_rows=rows,
             capture_at=str(payload["captured_at"]),
+            source_binding_verifier=source_binding_verifier,
         )
 
 
@@ -1909,6 +1934,7 @@ def _verify_source_contract_binding(
     capture_day: date | None = None,
     capture_rows: Sequence[Mapping[str, Any]] | None = None,
     capture_at: str | None = None,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
 ) -> Mapping[str, Any]:
     """Verify a capture's immutable prospective-input source binding."""
 
@@ -1923,6 +1949,7 @@ def _verify_source_contract_binding(
             capture_day=capture_day,
             capture_rows=capture_rows,
             capture_at=capture_at,
+            source_binding_verifier=source_binding_verifier,
         )
     if not isinstance(binding, Mapping):
         raise ValueError("capture source contract binding is invalid")
@@ -2072,6 +2099,7 @@ def _verify_current_observed_source_contract_binding(
     capture_day: date | None,
     capture_rows: Sequence[Mapping[str, Any]] | None,
     capture_at: str | None,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
 ) -> Mapping[str, Any]:
     """Verify the separately-scoped current-observed research lane.
 
@@ -2142,7 +2170,7 @@ def _verify_current_observed_source_contract_binding(
         )
 
         try:
-            verify_current_observed_feature_snapshot_v2(snapshot)
+            verify_current_observed_feature_snapshot_v2(snapshot, source_binding_verifier=source_binding_verifier)
         except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
             raise ValueError(f"current-observed v2 feature composition failed verification: {exc}") from exc
     else:
@@ -2522,6 +2550,7 @@ def verify_current_observed_input_capture(
     source: Mapping[str, Any] | str | Path,
     *,
     expected_sha256: str | None = None,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
 ) -> Mapping[str, Any]:
     """Verify a no-model current-observed feature/entry capture.
 
@@ -2603,6 +2632,7 @@ def verify_current_observed_input_capture(
         capture_day=decision_day,
         capture_rows=rows,
         capture_at=str(payload.get("captured_at")),
+        source_binding_verifier=source_binding_verifier,
     )
     snapshot = binding.get("current_observed_feature_snapshot")
     if not isinstance(snapshot, Mapping):
@@ -3719,6 +3749,8 @@ def _normalized_sha256_hex(value: object) -> str | None:
 
 def verified_source_database_for_capture(
     payload: Mapping[str, Any],
+    *,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
 ) -> Path:
     """回傳已由 capture contract 驗證並錨定的來源資料庫。"""
 
@@ -3733,6 +3765,7 @@ def verified_source_database_for_capture(
         contract_payload = _verify_source_contract_binding(
             binding,
             require_ready=True,
+            source_binding_verifier=source_binding_verifier,
         )
         source_database = str(contract_payload.get("source_database") or "").strip()
         if not source_database:
@@ -3981,7 +4014,11 @@ def _verified_payload_hash(payload: Mapping[str, Any], field_name: str) -> bool:
     return _hash_payload(body) == declared
 
 
-def _verify_active_model_capture_payload(payload: Mapping[str, Any]) -> None:
+def _verify_active_model_capture_payload(
+    payload: Mapping[str, Any],
+    *,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
+) -> None:
     """Verify an immutable active-model monitor capture before outcome use."""
 
     required = (
@@ -4114,6 +4151,7 @@ def _verify_active_model_capture_payload(payload: Mapping[str, Any]) -> None:
             capture_day=capture_day,
             capture_rows=rows,
             capture_at=str(payload.get("captured_at") or ""),
+            source_binding_verifier=source_binding_verifier,
         )
 
 

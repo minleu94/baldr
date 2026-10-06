@@ -13,6 +13,8 @@ import stat
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+from ml_module.current_observed_feature_snapshot_composer import ScheduledSnapshotSourceBindingVerifier
+
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
 from ml_module.purged_walk_forward import MLTimeWindowRow, PurgedWalkForwardSplitter
 from ml_module.recommendation_calibration_learning_runner import (
@@ -77,6 +79,7 @@ def fit_current_observed_natural_research(
     outcome_receipts: Sequence[Mapping[str, str]],
     source_identity: Mapping[str, Any],
     data_root: Path | None = None,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
 ) -> Mapping[str, Any]:
     """以已驗證的 current-observed 自然結果訓練隔離研究候選。
 
@@ -138,7 +141,8 @@ def fit_current_observed_natural_research(
     if any(semantic_ids) and not all(semantic_ids):
         raise ValueError("mixed semantic and capture sample identities")
     verified_refs, receipt_rows = _verify_receipt_references(
-        outcome_receipts, semantic_row_ids=bool(semantic_ids) and all(semantic_ids)
+        outcome_receipts, semantic_row_ids=bool(semantic_ids) and all(semantic_ids),
+        source_binding_verifier=source_binding_verifier,
     )
     _verify_sample_receipt_binding(ordered_samples, verified_refs, receipt_rows)
     isolated_output_root = _isolated_output_root(
@@ -562,6 +566,7 @@ def _verify_receipt_references(
     references: Sequence[Mapping[str, str]],
     *,
     semantic_row_ids: bool = False,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
 ) -> tuple[tuple[dict[str, str], ...], dict[str, Mapping[str, Any]]]:
     if not references:
         raise ValueError("at least one independently verified outcome receipt reference is required")
@@ -599,6 +604,7 @@ def _verify_receipt_references(
                 reference["outcome_path"],
                 expected_sha256=reference["outcome_sha256"],
                 capture_path=reference["capture_path"],
+                source_binding_verifier=source_binding_verifier,
             )
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ValueError("current-observed outcome receipt failed re-verification") from exc
@@ -613,11 +619,12 @@ def _verify_receipt_references(
                 capture = verify_current_observed_input_capture(
                     reference["capture_path"],
                     expected_sha256=reference["capture_sha256"],
+                    source_binding_verifier=source_binding_verifier,
                 )
             except (OSError, RuntimeError, TypeError, ValueError) as exc:
                 raise ValueError("outcome capture failed independent re-verification") from exc
             if receipt_schema == _OUTCOME_RECEIPT_SCHEMA_V2:
-                _verify_v2_outcome_query_composition(payload, capture)
+                _verify_v2_outcome_query_composition(payload, capture, source_binding_verifier=source_binding_verifier)
         if (
             receipt_schema not in {_OUTCOME_RECEIPT_SCHEMA, _OUTCOME_RECEIPT_SCHEMA_V2}
             or payload.get("verification_status") not in _VERIFIED_OUTCOME_STATUSES
@@ -673,6 +680,8 @@ def _verify_receipt_references(
 def _verify_v2_outcome_query_composition(
     receipt: Mapping[str, Any],
     capture: Mapping[str, Any],
+    *,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
 ) -> None:
     """Bind a v2 receipt to a verified full-cohort v2 capture and query shards."""
 
@@ -712,7 +721,7 @@ def _verify_v2_outcome_query_composition(
     )
 
     try:
-        verify_current_observed_feature_snapshot_v2(feature_snapshot)
+        verify_current_observed_feature_snapshot_v2(feature_snapshot, source_binding_verifier=source_binding_verifier)
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         raise ValueError("v2 outcome feature composition failed re-verification") from exc
     feature_composition_sha256 = feature_snapshot.get("composition_sha256")

@@ -80,6 +80,9 @@ from data_module.recommendation_calibration_source_contract import (  # noqa: E4
     write_source_contract,
 )
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY  # noqa: E402
+from app_module.recommendation.scheduled_snapshot_source_custody import (  # noqa: E402
+    verify_scheduled_snapshot_source_binding_artifacts as verify_saved_scheduled_snapshot_source_binding,
+)
 from ml_module.current_observed_feature_snapshot_composer import (  # noqa: E402
     FEATURE_SNAPSHOT_V1 as CURRENT_OBSERVED_FEATURE_SNAPSHOT_V1,
     FEATURE_SNAPSHOT_V2 as CURRENT_OBSERVED_FEATURE_SNAPSHOT_V2,
@@ -2426,7 +2429,7 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
             bootstrap_replay_result = RecommendationHistoricalReplayService(provider).build(
-                bootstrap_config
+                bootstrap_config,
             )
             bootstrap_seen_decision_dates = tuple(
                 sorted({str(value)[:10] for value in bootstrap_replay_result.decision_dates})
@@ -3495,8 +3498,9 @@ def _current_observed_feature_snapshot_for_learning(
                 batch_snapshots=child_snapshots,
                 full_cohort=snapshot_cohort,
                 snapshot_source_binding=snapshot_source_binding,
+                source_binding_verifier=verify_saved_scheduled_snapshot_source_binding,
             )
-            verify_current_observed_feature_snapshot_v2(composed)
+            verify_current_observed_feature_snapshot_v2(composed, source_binding_verifier=verify_saved_scheduled_snapshot_source_binding)
         except (TypeError, ValueError) as exc:
             return pending(
                 "current_observed_feature_composition_verification_failed",
@@ -4192,7 +4196,7 @@ def _current_observed_capture_inputs(
         return ()
     if schema_version == CURRENT_OBSERVED_FEATURE_SNAPSHOT_V2:
         try:
-            verify_current_observed_feature_snapshot_v2(snapshot)
+            verify_current_observed_feature_snapshot_v2(snapshot, source_binding_verifier=verify_saved_scheduled_snapshot_source_binding)
         except (TypeError, ValueError):
             return ()
         composition = snapshot.get("batch_composition")
@@ -4296,7 +4300,7 @@ def _persist_current_observed_input_capture(
     feature_schema_version = feature_snapshot.get("schema_version")
     if feature_schema_version == CURRENT_OBSERVED_FEATURE_SNAPSHOT_V2:
         try:
-            verify_current_observed_feature_snapshot_v2(feature_snapshot)
+            verify_current_observed_feature_snapshot_v2(feature_snapshot, source_binding_verifier=verify_saved_scheduled_snapshot_source_binding)
         except (TypeError, ValueError) as exc:
             return {
                 "status": "blocked",
@@ -4462,7 +4466,7 @@ def _persist_current_observed_input_capture(
     )
     capture_body["content_sha256"] = content_sha256
     try:
-        verified = verify_current_observed_input_capture(capture_body)
+        verified = verify_current_observed_input_capture(capture_body, source_binding_verifier=verify_saved_scheduled_snapshot_source_binding)
         cycle_token = hashlib.sha256(str(capture_body["cycle_id"]).encode("utf-8")).hexdigest()[:20]
         capture_path = (
             Path(output_root).resolve()
@@ -4476,6 +4480,7 @@ def _persist_current_observed_input_capture(
         persisted = verify_current_observed_input_capture(
             capture_path,
             expected_sha256=_sha256_file(capture_path),
+            source_binding_verifier=verify_saved_scheduled_snapshot_source_binding,
         )
     except (OSError, RuntimeError, TypeError, ValueError, RecommendationCostScenarioError) as exc:
         return {
@@ -4895,6 +4900,7 @@ def _current_observed_natural_research_fit(
             capture = verify_current_observed_input_capture(
                 capture_path,
                 expected_sha256=capture_sha256,
+                source_binding_verifier=verify_saved_scheduled_snapshot_source_binding,
             )
             capture_date = str(capture.get("decision_date") or "")
             if capture_date != capture_path.parent.parent.name:
@@ -4925,6 +4931,7 @@ def _current_observed_natural_research_fit(
                 evaluation_at=evaluation_at,
                 output_path=receipt_path,
                 max_rows=1_000,
+                source_binding_verifier=verify_saved_scheduled_snapshot_source_binding,
             )
             outcome_file_sha = outcome_unverified.get("receipt_file_sha256")
             if type(outcome_file_sha) is not str or not _is_sha256_text(outcome_file_sha):
@@ -4933,6 +4940,7 @@ def _current_observed_natural_research_fit(
                 receipt_path,
                 expected_sha256=outcome_file_sha,
                 capture_path=capture_path,
+                source_binding_verifier=verify_saved_scheduled_snapshot_source_binding,
             )
             outcome_path = Path(str(outcome.get("receipt_path") or ""))
             if (
@@ -5107,6 +5115,7 @@ def _current_observed_natural_research_fit(
         outcome_receipts=outcome_refs,
         source_identity=source_identity,
         data_root=data_root,
+        source_binding_verifier=verify_saved_scheduled_snapshot_source_binding,
     )
     return {
         **base_status,
@@ -5533,7 +5542,7 @@ def _read_verified_candidate_capture(path: Path) -> tuple[dict[str, Any] | None,
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("capture is not an object")
-        _verify_capture_payload(payload)
+        _verify_capture_payload(payload, source_binding_verifier=verify_saved_scheduled_snapshot_source_binding)
         return payload, None
     except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
         return None, f"{type(exc).__name__}:{exc}"
@@ -5941,6 +5950,7 @@ def _capture_current_if_requested(
                     champion_inference=champion_inference,
                     capture_origin="scheduled_live",
                     source_contract_binding=source_contract_binding,
+                    source_binding_verifier=verify_saved_scheduled_snapshot_source_binding,
                 )
                 capture.persist(capture_path)
                 candidate_capture = {
@@ -6072,7 +6082,7 @@ def _capture_active_model_monitor(
             payload = json.loads(capture_path.read_text(encoding="utf-8"))
             if not isinstance(payload, Mapping):
                 raise ValueError("active model capture is not an object")
-            _verify_active_model_capture_payload(payload)
+            _verify_active_model_capture_payload(payload, source_binding_verifier=verify_saved_scheduled_snapshot_source_binding)
             if source_contract_binding is not None and _capture_source_identity(
                 payload.get("source_contract_binding")
             ) != _capture_source_identity(source_contract_binding):
@@ -6103,6 +6113,7 @@ def _capture_active_model_monitor(
             fixed_round_trip_cost_bp=fixed_round_trip_cost_bp,
             cost_scenario=cost_scenario,
             source_contract_binding=source_contract_binding,
+            source_binding_verifier=verify_saved_scheduled_snapshot_source_binding,
         )
         capture.persist(capture_path)
         return {
@@ -6947,7 +6958,7 @@ def _load_natural_training_samples(
                     capture_payload = json.loads(capture_path.read_text(encoding="utf-8"))
                     if not isinstance(capture_payload, Mapping):
                         continue
-                    _verify_capture_document(capture_payload)
+                    _verify_capture_document(capture_payload, source_binding_verifier=verify_saved_scheduled_snapshot_source_binding)
                     capture_rows = {
                         str(row.get("row_id")): row
                         for row in capture_payload.get("rows", [])

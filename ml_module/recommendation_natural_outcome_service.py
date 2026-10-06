@@ -23,6 +23,8 @@ from zoneinfo import ZoneInfo
 
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
 from data_module.natural_maturity_session_resolver import NaturalMaturitySessionResolver
+from ml_module.current_observed_feature_snapshot_composer import ScheduledSnapshotSourceBindingVerifier
+
 from ml_module.recommendation_calibration_evidence import (
     MaturedRecommendationOutcome,
     NaturalEvidenceReceiptReference,
@@ -583,6 +585,7 @@ class RecommendationNaturalOutcomeService:
         evaluation_at: datetime,
         output_path: str | Path,
         max_rows: int = 1_000,
+        source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
     ) -> Mapping[str, Any]:
         """建立 current-observed 研究結果；不經 historical evidence builder。
 
@@ -616,6 +619,7 @@ class RecommendationNaturalOutcomeService:
             capture_value = verify_current_observed_input_capture(
                 capture_file,
                 expected_sha256=capture_file_sha256,
+                source_binding_verifier=source_binding_verifier,
             )
             if not isinstance(capture_value, Mapping):
                 raise ValueError("current-observed input capture verifier returned no payload")
@@ -5003,6 +5007,7 @@ def verify_current_observed_outcome_receipt(
     *,
     expected_sha256: str | None = None,
     capture_path: str | Path | None = None,
+    source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
 ) -> Mapping[str, Any]:
     """Re-verify a current-only outcome receipt and return its frozen rows.
 
@@ -5074,6 +5079,7 @@ def verify_current_observed_outcome_receipt(
     capture_value = verify_current_observed_input_capture(
         capture_file,
         expected_sha256=capture_sha256,
+        source_binding_verifier=source_binding_verifier,
     )
     if not isinstance(capture_value, Mapping):
         raise ValueError("current-observed input capture verifier returned no payload")

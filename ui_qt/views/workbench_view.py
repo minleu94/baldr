@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -885,6 +886,46 @@ class UnifiedDecisionWorkbenchView(QWidget):
 
         panel, self.guided_home_section_title = self._panel_with_title("今日優先查看")
         self.guided_home_panel = panel
+        purpose_layout = QHBoxLayout()
+        self.home_purpose_buttons: dict[str, QPushButton] = {}
+        for key, label, target in (
+            ("market", "看盤勢", "market_explore"),
+            ("portfolio", "持倉健康", "portfolio"),
+            ("selection", "選股研究", "recommendation"),
+            ("stock", "個股研究", "stock_search"),
+        ):
+            button = QPushButton(label)
+            button.setProperty("variant", "secondary")
+            button.setAccessibleName(label)
+            button.setEnabled(
+                self.navigate_to_stock_research_callback is not None
+                if target == "stock_search" else self._today_action_available(target)
+            )
+            button.clicked.connect(
+                lambda checked=False, route=target: self._open_home_purpose(route)
+            )
+            purpose_layout.addWidget(button)
+            self.home_purpose_buttons[key] = button
+        panel.layout.addLayout(purpose_layout)
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("股票代號"))
+        self.home_stock_input = QLineEdit()
+        self.home_stock_input.setAccessibleName("個股研究股票代號")
+        self.home_stock_input.setPlaceholderText("輸入台股代號，開啟當下研究")
+        self.home_stock_input.returnPressed.connect(self._open_home_stock_search)
+        search_layout.addWidget(self.home_stock_input, 1)
+        self.home_stock_search_button = QPushButton("開啟當下研究")
+        self.home_stock_search_button.clicked.connect(self._open_home_stock_search)
+        search_layout.addWidget(self.home_stock_search_button)
+        search_available = self.navigate_to_stock_research_callback is not None
+        self.home_stock_input.setEnabled(search_available)
+        self.home_stock_search_button.setEnabled(search_available)
+        panel.layout.addLayout(search_layout)
+        self.home_stock_search_hint = QLabel(
+            "自行搜尋使用當下研究來源；原候選與保存結果仍由原列下鑽。"
+        )
+        self.home_stock_search_hint.setWordWrap(True)
+        panel.layout.addWidget(self.home_stock_search_hint)
         intro = QLabel(
             "先看持倉、候選、市場與資料影響；需要完整理由時展開完整工作台。"
         )
@@ -1038,17 +1079,19 @@ class UnifiedDecisionWorkbenchView(QWidget):
             )
             daily = dashboard.daily_evidence
             headline = _guided_compact(
-                getattr(daily, "headline", "") if daily else "",
+                _home_public_text(getattr(daily, "headline", "")) if daily else "",
                 "市場與資料重點請依下方四列確認。",
                 132,
             )
             next_action = _guided_compact(
-                _home_next_action(getattr(daily, "next_action", "") if daily else ""),
+                _home_public_text(_home_next_action(getattr(daily, "next_action", "") if daily else "")),
                 "先確認資料狀態，再查看主要重點。",
                 132,
             )
             self.guided_conclusion_label.setText(f"判讀結論：{headline}")
             self.guided_next_action_label.setText(f"主要下一步：{next_action}")
+            self.guided_conclusion_label.setToolTip(str(getattr(daily, "headline", "") or ""))
+            self.guided_next_action_label.setToolTip(str(getattr(daily, "next_action", "") or ""))
 
         self.guided_summary_model.set_rows(rows)
         self._guided_priority_row_indices = {
@@ -1304,8 +1347,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         badge = self.guided_priority_status_badges[row.key]
         badge.setText(_guided_status_text(row.status))
         badge.set_quality(_guided_status_tone(row.status))
-        self.guided_priority_conclusion_labels[row.key].setText(row.conclusion)
-        self.guided_priority_reason_labels[row.key].setText(row.reasons)
+        self.guided_priority_conclusion_labels[row.key].setText(_home_public_text(row.conclusion))
+        self.guided_priority_reason_labels[row.key].setText(_home_public_text(row.reasons))
+        self.guided_priority_conclusion_labels[row.key].setToolTip(row.conclusion)
+        self.guided_priority_reason_labels[row.key].setToolTip(row.reasons)
         button = self.guided_priority_action_buttons[row.key]
         button.setText(row.action_label)
         button.setEnabled(self._guided_target_available(row.target))
@@ -1321,6 +1366,10 @@ class UnifiedDecisionWorkbenchView(QWidget):
         row = self.guided_summary_model.row_at(index) if index is not None else None
         if row is None:
             return False
+        if key == "market" and self.navigate_to_market_explore_callback is not None:
+            return self.navigate_to_drilldown_target("market_explore")
+        if key == "portfolio" and self.navigate_to_portfolio_callback is not None:
+            return self.navigate_to_drilldown_target(row.target)
         if key == "data":
             self.advanced_workbench_panel.set_collapsed(False)
             self.warnings_collapsible.set_collapsed(False)
@@ -1365,6 +1414,29 @@ class UnifiedDecisionWorkbenchView(QWidget):
         if row.target in {"advanced", "warnings"}:
             return True
         return self.navigate_to_drilldown_target(row.target)
+
+    def _open_home_purpose(self, target: str) -> bool:
+        if target == "stock_search":
+            self.home_stock_input.setFocus()
+            return self._open_home_stock_search() if self.home_stock_input.text().strip() else True
+        return self.navigate_to_drilldown_target(target)
+
+    def _open_home_stock_search(self) -> bool:
+        callback = self.navigate_to_stock_research_callback
+        stock_code = self.home_stock_input.text().strip()
+        if callback is None or not re.fullmatch(r"[0-9]{4,6}", stock_code):
+            self.home_stock_search_hint.setText("請輸入 4–6 位台股代號；股號與來源可用性由個股研究頁核對。")
+            return False
+        callback(ResearchStockContextDTO(
+            stock_code=stock_code,
+            source_kind="explicit_latest_stock_research",
+            source_label="首頁明確搜尋的當下個股研究",
+            source_workspace="workbench",
+        ))
+        self.home_stock_search_hint.setText(
+            "已開啟當下研究；沒有沿用首頁候選的日期、結果或保存來源。"
+        )
+        return True
 
     def _select_guided_model_item(self, model, table: QTableView, predicate) -> bool:
         for index in range(model.rowCount()):
@@ -2130,6 +2202,8 @@ class UnifiedDecisionWorkbenchView(QWidget):
         self._primary_action_target = primary_target
 
     def _today_action_available(self, target: str) -> bool:
+        if target == "market_explore":
+            return self.navigate_to_market_explore_callback is not None
         if target == "refresh":
             return self.source_service is not None
         if target == "update":
@@ -2380,6 +2454,11 @@ class UnifiedDecisionWorkbenchView(QWidget):
             QTimer.singleShot(0, self.refresh_dashboard)
 
     def navigate_to_drilldown_target(self, target: str) -> bool:
+        if target == "market_explore":
+            if self.navigate_to_market_explore_callback is None:
+                return False
+            self.navigate_to_market_explore_callback()
+            return True
         if target == "update" and hasattr(self, "navigate_to_update_callback") and self.navigate_to_update_callback:
             self.navigate_to_update_callback()
             return True
@@ -3328,6 +3407,22 @@ def _guided_compact(value: object, fallback: str, limit: int = 104) -> str:
     if not text:
         return fallback
     return text if len(text) <= limit else text[: max(1, limit - 1)] + "…"
+
+
+def _home_public_text(value: object) -> str:
+    """首層翻譯技術詞；原文仍在完整來源與提示，限制不刪除。"""
+    text = _localize_workbench_text(str(value or ""))
+    for token, label in (
+        ("DecisionDeskSnapshot", "市場分析來源"),
+        ("EvidenceEvent table", "研究證據紀錄"),
+        ("Evidence table", "研究證據紀錄"),
+        ("scope receipt", "研究範圍收據"),
+        ("source_status", "來源狀態"),
+        ("current-observed", "目前觀測來源"),
+        ("PIT=false", "歷史時點資格未具備"),
+    ):
+        text = text.replace(token, label)
+    return re.sub(r"sha256:[0-9a-fA-F]{64}", "來源指紋（詳見完整來源）", text)
 
 
 def _home_next_action(value: object) -> str:

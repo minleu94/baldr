@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from typing import Optional, Dict, Any
+from html import escape
 
 from app_module.regime_service import RegimeService
 from app_module.dtos import RegimeResultDTO
@@ -228,6 +229,17 @@ class MarketRegimeView(QWidget):
         
         layer1_2_container.setLayout(layer1_2_layout)
         status_layout.addWidget(layer1_2_container)
+        self.market_risk_label = QLabel(
+            "風險與限制：尚未檢測；資料不足不能當成安全訊號。"
+        )
+        self.market_next_step_label = QLabel(
+            "下一步：檢測市場狀態，核對資料日與依據後再查看產業或個股。"
+        )
+        for label in (self.market_risk_label, self.market_next_step_label):
+            label.setWordWrap(True)
+            label.setTextFormat(Qt.PlainText)
+            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            status_layout.addWidget(label)
         
         # Layer 3: 技術細節層（Advanced / Research Layer）- 可折疊
         layer3_group = QGroupBox("技術細節（收合）")  # 初始狀態顯示「收合」
@@ -414,13 +426,26 @@ class MarketRegimeView(QWidget):
                 regime_result: RegimeResultDTO = dto_method().to_legacy()
             else:
                 regime_result = self.regime_service.detect_regime()
+            if regime_result.details.get("error"):
+                raise ValueError(str(regime_result.details["error"]))
             
             # 更新三層資訊
             self._update_layer1(regime_result)
             self._update_layer2(regime_result)
             self._update_layer3(regime_result)
-            self.layer3_group.setChecked(True)
             self._update_layer3_visibility()
+            self.market_risk_label.setText(
+                "風險與限制：規則匹配度不是勝率；此分類只描述原資料的規則狀態，"
+                "不代表個股安全、未來方向或交易資格。"
+            )
+            if not regime_result.details.get("date"):
+                self.market_risk_label.setText(
+                    self.market_risk_label.text() + " 資料日未知，請先核對來源。"
+                )
+            self.market_next_step_label.setText(
+                "下一步：核對上方資料日與判斷依據，再到產業或個股研究檢查同來源理由與反證；"
+                "需要原數值時展開技術細節。"
+            )
             
             # 顯示策略建議（使用 HTML 格式以支持標題高亮，深色主題）
             strategy_config = self.regime_service.get_strategy_config(regime_result.regime)
@@ -462,6 +487,8 @@ class MarketRegimeView(QWidget):
             self.layer2_label.setText("")
             self._clear_layer3()
             self.strategy_text.setPlainText("")
+            self.market_risk_label.setText("風險與限制：本次來源或檢測失敗，不能使用市場分類判讀。")
+            self.market_next_step_label.setText("下一步：核對資料來源與更新狀態後重試；不使用預設分類代替缺件。")
     
     def _update_layer1(self, regime_result: RegimeResultDTO):
         """更新 Layer 1：市場結論層（禁止技術指標名詞）
@@ -518,102 +545,47 @@ class MarketRegimeView(QWidget):
         self.layer1_description.setText(description)
     
     def _generate_layer1_description(self, regime_result: RegimeResultDTO) -> str:
-        """生成 Layer 1 的簡短描述（不使用技術指標名詞）"""
-        regime = regime_result.regime
-        confidence = regime_result.confidence
-        details = regime_result.details
-        
-        if regime == 'Trend':
-            if confidence >= 0.8:
-                return "市場呈現明確的趨勢方向，動能強勁，適合順勢操作。"
-            elif confidence >= 0.65:
-                return "市場具備趨勢結構，但動能尚未完全展開，需謹慎評估。"
-            else:
-                return "市場有趨勢跡象，但強度不足，建議等待更明確的信號。"
-        
-        elif regime == 'Breakout':
-            if confidence >= 0.7:
-                return "市場波動率壓縮，價格在區間內整理，可能醞釀突破。"
-            else:
-                return "市場處於整理階段，但突破條件尚未完全成熟。"
-        
-        elif regime == 'Reversion':
-            if confidence >= 0.7:
-                return "市場處於盤整狀態，價格偏離後可能回歸均值。"
-            else:
-                return "市場缺乏明確方向，呈現震盪整理格局。"
-        
-        else:
-            return "市場狀態不明確，建議保持觀望。"
-    
+        """只翻譯來源分類，不推定未來走勢或交易適合度。"""
+        return {
+            "Trend": "原資料符合趨勢類規則；方向與依據請看右側摘要。",
+            "Breakout": "原資料符合突破準備類規則；這不表示突破已發生。",
+            "Reversion": "原資料符合均值回歸類規則；這不表示價格必然回歸。",
+        }.get(regime_result.regime, "市場分類未知；請核對來源與技術細節。")
+
     def _update_layer2(self, regime_result: RegimeResultDTO):
-        """更新 Layer 2：判斷摘要層（人類可讀的語句，隱約對應指標）"""
-        summary_lines = []
-        regime = regime_result.regime
-        details = regime_result.details
-        
-        if regime == 'Trend':
-            # 價格結構
-            if details.get('close_above_ma60', False):
-                summary_lines.append("• 價格位於中長期均線之上 → 偏多結構")
+        """只呈現來源明示布林條件；缺件不能被翻成反證。"""
+        conditions = {
+            "Trend": (
+                ("close_above_ma60", "價格在中長期均線之上", "價格未在中長期均線之上"),
+                ("ma20_slope_positive", "短期均線上升", "短期均線未上升"),
+            ),
+            "Breakout": (
+                ("bandwidth_compressed", "波動率壓縮", "波動率未壓縮"),
+                ("price_in_range", "價格在區間內", "價格未在區間內"),
+                ("adx_low", "趨勢強度較低", "趨勢強度未符合低值條件"),
+            ),
+            "Reversion": (
+                ("price_in_range", "價格在均線區間內", "價格未在均線區間內"),
+                ("adx_low", "趨勢強度較低", "趨勢強度未符合低值條件"),
+                ("rsi_oversold", "動能符合超賣條件", "動能未符合超賣條件"),
+            ),
+        }.get(regime_result.regime, ())
+        lines = []
+        for key, positive, negative in conditions:
+            value = regime_result.details.get(key)
+            if value is True:
+                text = positive
+            elif value is False:
+                text = negative
             else:
-                summary_lines.append("• 價格位於中長期均線之下 → 偏空結構")
-            
-            # 趨勢方向
-            if details.get('ma20_slope_positive', False):
-                summary_lines.append("• 短期均線維持上升 → 趨勢方向成立")
-            else:
-                summary_lines.append("• 短期均線走平或下降 → 趨勢方向不明確")
-            
-            # 動能強弱
-            structure_score = details.get('structure_score', 0)
-            strength_score = details.get('strength_score', 0)
-            if structure_score >= 0.67 and strength_score >= 0.7:
-                summary_lines.append("• 動能強勁且結構完整 → 強趨勢")
-            elif structure_score >= 0.67:
-                summary_lines.append("• 結構完整但動能未顯著擴張 → 中等趨勢")
-            else:
-                summary_lines.append("• 動能存在但結構不完整 → 弱趨勢")
-        
-        elif regime == 'Breakout':
-            if details.get('bandwidth_compressed', False):
-                summary_lines.append("• 波動率明顯壓縮 → 醞釀突破")
-            else:
-                summary_lines.append("• 波動率未明顯壓縮 → 突破條件不足")
-            
-            if details.get('price_in_range', False):
-                summary_lines.append("• 價格在區間內整理 → 等待方向選擇")
-            else:
-                summary_lines.append("• 價格偏離區間 → 可能已開始突破")
-            
-            if details.get('adx_low', False):
-                summary_lines.append("• 趨勢強度較低 → 適合突破策略")
-            else:
-                summary_lines.append("• 趨勢強度較高 → 可能已形成趨勢")
-        
-        elif regime == 'Reversion':
-            if details.get('price_in_range', False):
-                summary_lines.append("• 價格在均線區間內 → 盤整結構")
-            else:
-                summary_lines.append("• 價格偏離均線區間 → 可能回歸")
-            
-            if details.get('adx_low', False):
-                summary_lines.append("• 趨勢強度較低 → 適合均值回歸策略")
-            else:
-                summary_lines.append("• 趨勢強度較高 → 回歸條件不足")
-            
-            if details.get('rsi_oversold', False) or details.get('rsi_overbought', False):
-                summary_lines.append("• 動能指標顯示極端值 → 可能回歸")
-            else:
-                summary_lines.append("• 動能指標未達極端 → 回歸動力不足")
-        
-        if not summary_lines:
-            summary_lines.append("• 判斷依據不足，建議參考技術細節")
-        
-        # 使用 QLabel 顯示（改用 HTML 格式以支持更好的排版）
-        summary_html = "<div style='line-height: 1.6;'>" + "<br/>".join(summary_lines) + "</div>"
-        self.layer2_label.setText(summary_html)
-    
+                text = positive + "：未知（來源未提供）"
+            lines.append("• " + escape(text))
+        self.layer2_label.setText(
+            "<div style='line-height: 1.6;'>"
+            + "<br/>".join(lines or ["• 判斷依據不足，請核對技術細節與來源"])
+            + "</div>"
+        )
+
     def _update_layer3(self, regime_result: RegimeResultDTO):
         """更新 Layer 3：技術細節層（所有指標與數值）"""
         # 清除舊內容

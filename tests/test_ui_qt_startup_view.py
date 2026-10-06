@@ -68,13 +68,26 @@ def test_cancel_background_import_drains_thread(app, monkeypatch):
     controller = StartupController(app, ASSETS)
     original = importlib.import_module
     seen = []
+    started = threading.Event()
+    release = threading.Event()
     def record(name):
         seen.append(threading.current_thread().name)
+        started.set()
+        assert release.wait(5), "主執行緒沒有回應取消"
         return original(name)
     monkeypatch.setattr(importlib, "import_module", record)
-    QTimer.singleShot(0, controller.view.close)
+    timer = QTimer()
+    timer.setInterval(1)
+    def cancel_when_loading():
+        if started.is_set():
+            controller.view.close()
+            release.set()
+            timer.stop()
+    timer.timeout.connect(cancel_when_loading)
+    timer.start()
     with pytest.raises(StartupCancelled):
         controller.preload()
+    timer.stop()
     assert seen and set(seen) == {"baldr-imports"}
     assert not any(t.name == "baldr-imports" for t in threading.enumerate())
     controller.dismiss()

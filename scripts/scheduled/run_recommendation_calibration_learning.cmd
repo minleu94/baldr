@@ -51,7 +51,7 @@ set "SYMBOL_ARGS="
 if not "%RECOMMENDATION_LEARNING_SYMBOLS%"=="" set "SYMBOL_ARGS=--symbols "%RECOMMENDATION_LEARNING_SYMBOLS%""
 rem Existing archi/Interactive/Limited Task and 05:45 trigger remain unchanged.
 rem Only an explicit, validated activation descriptor enables personal H20.
-if not defined PERSONAL_H20_ACTIVATION_CONFIG if defined LOCALAPPDATA set "PERSONAL_H20_ACTIVATION_CONFIG=%LOCALAPPDATA%\TechnicalAnalysis\TechnicalAnalysis\personal_h20\activation.json"
+if not defined PERSONAL_H20_ACTIVATION_CONFIG set "PERSONAL_H20_ACTIVATION_CONFIG=%DATA_ROOT%\personal\recommendation_h20\activation.json"
 set "PERSONAL_H20_ARGS="
 if defined PERSONAL_H20_ACTIVATION_CONFIG if exist "%PERSONAL_H20_ACTIVATION_CONFIG%" set "PERSONAL_H20_ARGS=--personal-h20-activation-config "%PERSONAL_H20_ACTIVATION_CONFIG%""
 "%PYTHON%" "scripts\scheduled\run_daily_recommendation_learning_pipeline.py" ^

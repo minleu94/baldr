@@ -174,3 +174,19 @@ print(json.dumps({'sample_id':p['sample_id'],'value':p['prediction']['predicted_
     process = subprocess.run([sys.executable, "-c", code, receipt["path"], str(bundle[0]), receipt["raw_sha256"]],
         capture_output=True, text=True, timeout=30, check=True)
     assert json.loads(process.stdout) == {"sample_id": receipt["sample_id"], "value": 120}
+
+
+def test_selected_market_personal_h20_subtree_and_other_domains(tmp_path):
+    bundle = make_bundle(tmp_path)
+    market = tmp_path / "data"
+    root = market / "personal" / "recommendation_h20"
+    root.mkdir(parents=True)
+    selected = (root, *bundle[1:])
+    first = save(selected)
+    assert read_personal_current_observed_h20_capture(first["path"], root=root,
+        expected_sha256=first["raw_sha256"], source_verifier=lambda v:v,
+        contract_verifier=lambda v:v)["prediction"]["predicted_gross_return_bp"] == 120
+    other = market / "personal" / "other"
+    other.mkdir()
+    with pytest.raises(H20CaptureError, match="disjoint"):
+        save((other, *bundle[1:]))

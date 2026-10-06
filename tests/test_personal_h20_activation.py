@@ -26,6 +26,29 @@ def test_preview_has_no_io_or_effective_model_claim(tmp_path):
     assert not Path(activation.personal_root).exists()
 
 
+def test_selected_market_personal_model_subtree_publishes_without_market_writes(tmp_path):
+    market = tmp_path / "market"
+    market.mkdir()
+    sentinel = market / "sqlite" / "source.sqlite"
+    sentinel.parent.mkdir()
+    sentinel.write_bytes(b"original-market-sentinel")
+    before = sentinel.stat()
+    activation = replace(_activation(tmp_path), personal_root=str(market / "personal" / "recommendation_h20"))
+    preview = publish_personal_h20_activation(activation, expected_revision=0)
+    assert preview["status"] == "preview"
+    assert not Path(activation.personal_root).exists()
+    publish_personal_h20_activation(activation, expected_revision=0, execute=True)
+    assert read_personal_h20_activation(activation.config_path) == activation
+    rollback = replace(activation, revision=2, enabled=False)
+    publish_personal_h20_activation(rollback, expected_revision=1, execute=True)
+    assert read_personal_h20_activation(activation.config_path) == rollback
+    assert sentinel.read_bytes() == b"original-market-sentinel"
+    assert sentinel.stat().st_mtime_ns == before.st_mtime_ns
+    for root in (market, market / "sqlite" / "recommendation_h20", market / "personal" / "other-domain"):
+        with pytest.raises(ValueError):
+            replace(activation, personal_root=str(root))
+
+
 def test_publication_cas_and_disable_preserve_original_revision(tmp_path):
     activation = _activation(tmp_path)
     publish_personal_h20_activation(activation, expected_revision=0, execute=True)

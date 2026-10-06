@@ -72,7 +72,7 @@ PERSONAL_* roots/policy env 未配置，AppConfigLocation=C:/Users/archi/AppData
 已核真候選的具體preview：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/prepare_personal_h20_activation.py --market-root D:/Min/Python/Project/FA_Data --personal-root C:/Users/archi/AppData/Local/TechnicalAnalysis/TechnicalAnalysis/personal_h20 --scope-id personal.default --fit-receipt C:/Projects/PythonProjects/technical_analysis/output/qa/pc-fit-v7/fit-v7-fe4e918b1257.receipt.json --fit-receipt-sha256 f5ca4372ba71ac3c006181ab0dcd4e2a56fdc62ba6529083cb63bbc7987a35b1 --expected-revision 0 --enable
+.\.venv\Scripts\python.exe scripts/prepare_personal_h20_activation.py --market-root D:/Min/Python/Project/FA_Data --personal-root D:/Min/Python/Project/FA_Data/personal/recommendation_h20 --scope-id personal.default --fit-receipt C:/Projects/PythonProjects/technical_analysis/output/qa/pc-fit-v7/fit-v7-fe4e918b1257.receipt.json --fit-receipt-sha256 f5ca4372ba71ac3c006181ab0dcd4e2a56fdc62ba6529083cb63bbc7987a35b1 --expected-revision 0 --enable
 ```
 
 經root與實際consumer/同-run每日接線審核後，完全相同命令加 --execute 才寫配置。不是註冊或更新Task；原Task如採opt-in同-run hook，principal/trigger/action/settings不必改。真啟用不可用配置發佈成功代替閉環驗證。
@@ -80,7 +80,7 @@ PERSONAL_* roots/policy env 未配置，AppConfigLocation=C:/Users/archi/AppData
 具體回滾（假設已發佈revision1）：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/prepare_personal_h20_activation.py --market-root D:/Min/Python/Project/FA_Data --personal-root C:/Users/archi/AppData/Local/TechnicalAnalysis/TechnicalAnalysis/personal_h20 --scope-id personal.default --expected-revision 1 --disable --execute
+.\.venv\Scripts\python.exe scripts/prepare_personal_h20_activation.py --market-root D:/Min/Python/Project/FA_Data --personal-root D:/Min/Python/Project/FA_Data/personal/recommendation_h20 --scope-id personal.default --expected-revision 1 --disable --execute
 ```
 
 若revision已前進，先唯讀readback再明示expected-revision；不自猜、不覆蓋。publication失敗留下同revision不同body的history不阻擋安全disabled發佈，舊pointer保持原真值。配置不授global promotion／交易／after-cost/PIT；較差holdout2730 vs null2500與after-cost unproven繼續揭露，不作個人model啟用gate。
@@ -96,3 +96,11 @@ run_daily_recommendation_learning_pipeline._learning_child_arguments 僅explicit
 測試為合成port，沒有真model/fit/Task：tests/test_personal_h20_daily_hook.py＋原tests/test_current_observed_learning_capture.py同版68 passed/3.55s，raw h20_hook_final.log/XML；同WindowsTemp範圍允許no-follow祖先唯讀handle重驗，guard與ACL沒改。首輪7pass/2fail保留h20_hook.log/XML（fixture漏symbols已修；另一fail為sandbox C:/Users/archi祖先handle）。3scripts targeted mypy --explicit-package-bases --follow-imports=silent 0 errors；5Python compile與quant guard成功。新test分類service-oracle-recommendation，1289inventory，direct仍12；原UI mandatory f15收據沿用，本包未改UI。
 
 剩餘是leaf公開store/readback/schema最終固定、中央productconsumer、使用者實際private root選擇與閉環effect核驗；目前沒有實際config/Task啟用，不能用此68或configuration_published冒稱daily complete。新root仍AppConfigLocation/personal_h20最小建議，原holdout較差230bp/after-cost未證明保持揭露。
+
+## 中央 current-observed 產品閉環（2026-10-07 Taipei）
+
+前段 LOCALAPPDATA 候選與尚待選根是歷史階段；最新明示選根為 FA_Data/personal/recommendation_h20，cmd／Qt 預設皆同步此精確根。不再次選位置，不搬移原資料。採入 leaf a6de8c6→07d32b5 為中央34a9b343→f00efc96；中央只允此模型子樹，其他市場／私人領域仍拒。新 public prediction/outcome readers 保留原 verifier，中央 daily manifest 僅保存原 capture pins，產品指標不複製預測。
+
+同版驗證：六檔 focused 59 passed；新增 completed hook 回歸10 passed（與前59重疊9，合計60不同案例）。Workbook85 passed；update validator25通過/0失敗/4跳過；八根 mypy845 source files零錯誤。test inventory1293、recommendation oracle193、UI candidate98、direct12；新三leaf tests是Temp保存／注入ports的 service oracle，不是正式來源或Task驗證。
+
+實際配置已CAS发布revision1 enabled=true，activation immutable history留原bytes；配置不等於日常推論完成。真 effect / source stat / public readback 結果另列本節後續原收據，失敗如實 blocked，不能由配置成功推定自然 credit。回滾命令沿本文件 `--expected-revision 1 --disable --execute`，不需要fit可讀。沒有改Task／ACL／憑證，沒有fit／市場DBwrite／交易。

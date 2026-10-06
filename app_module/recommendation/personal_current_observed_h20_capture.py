@@ -121,6 +121,29 @@ def publish(root: Path, directory: str, name: str, payload: Mapping[str, Any]) -
     return target
 
 
+def _assert_store_sources(root: Path, source: Mapping[str, Any], contract: Mapping[str, Any]) -> None:
+    """僅已選 FA_Data/personal/recommendation_h20 可位於市場根內。"""
+    from app_module.personal_data_paths import resolve_personal_data_paths
+    from app_module.personal_store_selection import assert_personal_store_path
+
+    market = Path(source["data_root"])
+    if not market.is_absolute() or ".." in market.parts:
+        raise H20CaptureError("absolute_source_path_required")
+    if root.is_relative_to(market):
+        if root != market / "personal" / "recommendation_h20":
+            raise H20CaptureError("personal_store_must_be_disjoint_from_sources")
+        paths = resolve_personal_data_paths(market, personal_root=market / "personal", environ={})
+        assert_personal_store_path(paths, root / "activation.json")
+    elif root == market or root in market.parents:
+        raise H20CaptureError("personal_store_must_be_disjoint_from_sources")
+    for candidate in (contract["fit_receipt_path"], contract["artifact_root"],
+                      source["pins"]["snapshot_database_path"]):
+        path = Path(candidate)
+        if (not path.is_absolute() or ".." in path.parts or root == path
+                or root in path.parents or path in root.parents):
+            raise H20CaptureError("personal_store_must_be_disjoint_from_sources")
+
+
 def _clock(text: str) -> datetime:
     value = datetime.fromisoformat(text.replace("Z", "+00:00"))
     if value.tzinfo is None or value.utcoffset() is None or value > datetime.now(timezone.utc):
@@ -208,12 +231,7 @@ def read_personal_current_observed_h20_capture(path: str | Path, *, root: str | 
     if file.parent != Path(root) / "h20_predictions" or file.suffix != ".json":
         raise H20CaptureError("capture_outside_personal_store")
     payload = read_pinned_json(file, expected_sha256)
-    for candidate in (payload["contract_binding"]["fit_receipt_path"], payload["contract_binding"]["artifact_root"],
-                      payload["source_binding"]["pins"]["snapshot_database_path"], payload["source_binding"]["data_root"]):
-        source_path = Path(candidate)
-        destination_root = Path(root)
-        if not source_path.is_absolute() or destination_root == source_path or destination_root in source_path.parents or source_path in destination_root.parents:
-            raise H20CaptureError("personal_store_must_be_disjoint_from_sources")
+    _assert_store_sources(Path(root), payload["source_binding"], payload["contract_binding"])
     _validate(payload, source_verifier, contract_verifier)
     if file.stem not in {payload["sample_id"].split(":", 1)[1], _retry_key(payload["identity"])}:
         raise H20CaptureError("filename_identity_mismatch")
@@ -228,13 +246,7 @@ def capture_personal_current_observed_h20_prediction(*, root: str | Path,
         raise H20CaptureError("verification_and_prediction_ports_required")
     destination_root = Path(root)
     plain(destination_root)
-    for candidate in (contract_binding["fit_receipt_path"], contract_binding["artifact_root"],
-                      source_binding["pins"]["snapshot_database_path"], source_binding["data_root"]):
-        input_path = Path(candidate)
-        if not input_path.is_absolute():
-            raise H20CaptureError("absolute_source_path_required")
-        if destination_root == input_path or destination_root in input_path.parents or input_path in destination_root.parents:
-            raise H20CaptureError("personal_store_must_be_disjoint_from_sources")
+    _assert_store_sources(destination_root, source_binding, contract_binding)
     # 同 cycle/model/day/symbol 先讀原保存值；不以新 clock 或新推論改寫自然樣本。
     identity = _binding(source_binding, contract_binding, symbol)
     sample_id = "h20-observed:" + digest(encoded(identity))[7:]

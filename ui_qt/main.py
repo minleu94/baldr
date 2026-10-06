@@ -365,6 +365,60 @@ class MainWindow(QMainWindow):
         worker.native_thread_finished.connect(worker.deleteLater)
         worker.start()
 
+    def _clear_personal_h20_product(self, _context: object = None) -> None:
+        self._personal_h20_generation = getattr(self, "_personal_h20_generation", 0) + 1
+        worker = getattr(self, "_personal_h20_worker", None)
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    worker.cancel(wait=False)
+            except RuntimeError:
+                pass
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is not None:
+            workspace.report_view.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
+
+    def _load_personal_h20_product(self, report: object) -> None:
+        from app_module.stock_research_report_dtos import StockResearchReportDTO
+        from app_module.recommendation.personal_h20_product_evidence import (
+            PersonalH20ProductEvidence, read_personal_h20_product_for_stock,
+        )
+        from ui_qt.workers.task_worker import TaskWorker
+        from scripts.scheduled.personal_h20_daily_hook import read_personal_h20_daily_receipt, read_personal_h20_prediction
+
+        self._clear_personal_h20_product()
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is None or not isinstance(report, StockResearchReportDTO):
+            return
+        view = workspace.report_view
+        context = view._loaded_request_context
+        if context is None or view._loaded_report is not report or context.stock_code != report.stock_code:
+            return
+        generation = self._personal_h20_generation
+        market_root = Path(self.config.data_root)
+        configured = os.environ.get("PERSONAL_H20_ACTIVATION_CONFIG")
+        config_path = Path(configured) if configured else market_root / "personal" / "recommendation_h20" / "activation.json"
+
+        worker = TaskWorker(read_personal_h20_product_for_stock, config_path,
+            stock_code=report.stock_code, market_root=market_root,
+            daily_reader=read_personal_h20_daily_receipt, prediction_reader=read_personal_h20_prediction)
+        self._personal_h20_worker = worker
+
+        def apply(result: object) -> None:
+            if (generation != self._personal_h20_generation or view._closing
+                    or getattr(self, "_shutdown_close_requested", False)
+                    or view._loaded_report is not report or view._loaded_request_context != context):
+                return
+            if isinstance(result, PersonalH20ProductEvidence):
+                view.set_personal_h20_evidence(result)
+
+        worker.finished.connect(apply)
+        worker.native_thread_finished.connect(
+            lambda: setattr(self, "_personal_h20_worker", None)
+            if getattr(self, "_personal_h20_worker", None) is worker else None)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
+
     def _configure_personal_portfolio_services(self) -> None:
         """Bind existing account contracts once; no ledger creation or identity guesses."""
         from app_module.portfolio_service import PortfolioService
@@ -1135,6 +1189,12 @@ class MainWindow(QMainWindow):
             )
             self.stock_research_workspace.report_view.reportLoaded.connect(
                 self._load_stock_chart_markers
+            )
+            self.stock_research_workspace.report_view.activeContextChanged.connect(
+                self._clear_personal_h20_product
+            )
+            self.stock_research_workspace.report_view.reportLoaded.connect(
+                self._load_personal_h20_product
             )
             workspace_instances = {
                 "workbench": workbench_view,

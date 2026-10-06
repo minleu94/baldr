@@ -130,3 +130,30 @@ def test_pipeline_forwards_opt_in_without_changing_original_cycle_arguments(tmp_
     assert enabled[index + 1] == str(args.personal_h20_activation_config)
     assert enabled[:index] + enabled[index + 2:] == original
     assert original[original.index("--current-observed-expected-raw-run-id") + 1] == "exact-run"
+
+
+def test_completed_hook_publishes_only_verified_full_scope_and_failure_preserves_pointer(tmp_path):
+    import json
+    from tests.test_personal_h20_product_evidence import _store
+    from app_module.recommendation.personal_h20_product_evidence import read_personal_h20_product_for_stock
+    activation, prediction, daily, reader = _store(tmp_path)
+    body = json.loads(daily.read_bytes())
+    binding = _binding()
+    binding["symbols"] = ["2330"]
+    binding["current_observed_feature_snapshot"]["symbols"] = ["2330"]
+    binding["cycle_id"] = "cycle"
+    result = hook.run_personal_h20_for_current_cycle(activation.config_path, binding,
+        market_root=Path(activation.market_root), expected_raw_run_id="raw-run",
+        contract_verifier=_contract, runner=lambda **k: body,
+        prediction_reader=reader, daily_reader=reader)
+    assert result["effective_model_run"] is True
+    assert read_personal_h20_product_for_stock(activation.config_path, stock_code="2330",
+        market_root=Path(activation.market_root), daily_reader=reader, prediction_reader=reader).gross_return_bp == 123
+    pointer = Path(activation.personal_root) / "h20_product_reference.json"
+    before = pointer.read_bytes(), pointer.stat().st_mtime_ns
+    failed = hook.run_personal_h20_for_current_cycle(activation.config_path, binding,
+        market_root=Path(activation.market_root), expected_raw_run_id="raw-run",
+        contract_verifier=_contract, runner=lambda **k: dict(body, captures=[]),
+        prediction_reader=reader, daily_reader=reader)
+    assert failed["effective_model_run"] is False
+    assert (pointer.read_bytes(), pointer.stat().st_mtime_ns) == before

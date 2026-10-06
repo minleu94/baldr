@@ -18,12 +18,32 @@ SOURCE_PIN_KEYS = (
 )
 
 
+def read_personal_h20_prediction(path: str | Path, *, root: Path, expected_sha256: str) -> Mapping[str, Any]:
+    """公開CLI composition接原App reader；App/Qt不用import ML。"""
+    module = importlib.import_module("scripts.scheduled.run_personal_current_observed_h20_daily")
+    ports = getattr(module, "personal_current_observed_h20_read_ports")()
+    capture_module = importlib.import_module("app_module.recommendation.personal_current_observed_h20_capture")
+    return getattr(capture_module, "read_personal_current_observed_h20_capture")(
+        path, root=root, expected_sha256=expected_sha256,
+        source_verifier=ports["source_verifier"], contract_verifier=ports["contract_verifier"])
+
+
+def read_personal_h20_daily_receipt(path: str | Path, *, root: Path, expected_sha256: str,
+                                   selected_stock: str | None = None) -> Mapping[str, Any]:
+    from app_module.recommendation.personal_h20_product_evidence import read_personal_h20_daily_manifest
+
+    return read_personal_h20_daily_manifest(path, root=root, expected_sha256=expected_sha256,
+        selected_stock=selected_stock, prediction_reader=read_personal_h20_prediction)
+
+
 def run_personal_h20_for_current_cycle(
     config_path: Path | None, source_binding: Mapping[str, Any] | None, *,
     market_root: Path,
     expected_raw_run_id: str | None,
     runner: Callable[..., Any] | None = None,
     contract_verifier: Callable[..., Any] | None = None,
+    daily_reader: Callable[..., Any] | None = None,
+    prediction_reader: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     """只在明示 enabled 時呼叫受驗 daily runner；它重驗原 terminal bytes。"""
     if config_path is None:
@@ -83,6 +103,25 @@ def run_personal_h20_for_current_cycle(
         if not isinstance(result, dict):
             raise ValueError("personal_h20_runner_receipt_required")
         result = dict(result)
+        if result.get("status") == "completed":
+            from app_module.recommendation.personal_h20_product_evidence import (
+                publish_personal_h20_product_reference, save_personal_h20_daily_manifest,
+            )
+
+            receipt_path, receipt_pin, daily = save_personal_h20_daily_manifest(activation, result,
+                expected_symbols=sorted(symbols), prediction_reader=prediction_reader or read_personal_h20_prediction)
+            if daily_reader is None:
+                daily_reader = read_personal_h20_daily_receipt
+            daily = daily_reader(receipt_path, root=Path(activation.personal_root), expected_sha256=receipt_pin)
+            if (daily["status"] != "completed" or daily["candidate_id"] != activation.candidate_id
+                    or daily["contract_hash"] != activation.model_contract_hash
+                    or daily["cycle_id"] != pins["cycle_id"]
+                    or sorted(pin["symbol"] for pin in daily["captures"]) != sorted(symbols)):
+                raise ValueError("personal_h20_completed_public_receipt_mismatch")
+            publish_personal_h20_product_reference(activation, receipt_path=str(receipt_path),
+                receipt_sha256=receipt_pin, decision_date=daily["decision_date"], cycle_id=daily["cycle_id"])
+            result.update(receipt_path=str(receipt_path), receipt_sha256=receipt_pin)
+            result["effective_model_run"] = True
         result.update(activation_revision=activation.revision, personal_scope_id=activation.scope_id,
                       expected_model_contract_hash=activation.model_contract_hash)
         return result

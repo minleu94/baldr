@@ -10,13 +10,25 @@ import re
 from typing import Any
 import uuid
 
-from app_module.personal_data_paths import resolve_personal_data_paths, to_internal_io_path
+from app_module.personal_data_paths import PersonalDataPaths, resolve_personal_data_paths, to_internal_io_path
 from app_module.personal_store_selection import assert_personal_store_path
 from app_module.recommendation.queries import _read_regular_file_no_follow
 
 SCHEMA = "personal-current-observed-h20-activation.v1"
 MAX_BYTES = 64 * 1024
 _SHA = re.compile(r"sha256:[0-9a-f]{64}\Z")
+
+
+def _activation_paths(market_root: str, model_root: str) -> PersonalDataPaths:
+    """沿已授權 FA_Data/personal；僅模型專屬子樹可位於市場包內。"""
+    market, private = Path(market_root), Path(model_root)
+    if private.is_relative_to(market):
+        if private != market / "personal" / "recommendation_h20":
+            raise ValueError("activation_market_subtree_not_personal_h20")
+        paths = resolve_personal_data_paths(market, personal_root=market / "personal", environ={})
+        assert_personal_store_path(paths, private / "activation.json")
+        return paths
+    return resolve_personal_data_paths(market, personal_root=private, environ={})
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,9 +66,9 @@ class PersonalH20Activation:
             if not path.is_absolute() or ".." in path.parts:
                 raise ValueError("activation_absolute_path_required")
         date.fromisoformat(self.history_start_date)
-        paths = resolve_personal_data_paths(self.market_root, personal_root=self.personal_root, environ={})
+        _activation_paths(self.market_root, self.personal_root)
         package = Path(__file__).resolve().parents[2]
-        private = paths.personal_root
+        private = Path(self.personal_root)
         if private.is_relative_to(package) or package.is_relative_to(private):
             raise ValueError("activation_root_overlaps_application")
 
@@ -82,7 +94,7 @@ def read_personal_h20_activation(path: Path, *, expected_sha256: str | None = No
     activation = PersonalH20Activation(**payload)
     if activation.config_path != path:
         raise ValueError("activation_private_root_mismatch")
-    paths = resolve_personal_data_paths(activation.market_root, personal_root=activation.personal_root, environ={})
+    paths = _activation_paths(activation.market_root, activation.personal_root)
     assert_personal_store_path(paths, path)
     return activation
 
@@ -98,7 +110,7 @@ def publish_personal_h20_activation(
     raw = json.dumps(activation.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     if len(raw) > MAX_BYTES:
         raise ValueError("activation_byte_limit")
-    paths = resolve_personal_data_paths(activation.market_root, personal_root=activation.personal_root, environ={})
+    paths = _activation_paths(activation.market_root, activation.personal_root)
     config = activation.config_path
     assert_personal_store_path(paths, config)
     def current_revision() -> int:
@@ -114,7 +126,7 @@ def publish_personal_h20_activation(
     if not execute:
         return result
     paths.validate()
-    Path(to_internal_io_path(paths.personal_root)).mkdir(parents=True, exist_ok=True)
+    Path(to_internal_io_path(activation.personal_root)).mkdir(parents=True, exist_ok=True)
     lock = config.with_suffix(".lock")
     assert_personal_store_path(paths, lock)
     fd = os.open(to_internal_io_path(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)

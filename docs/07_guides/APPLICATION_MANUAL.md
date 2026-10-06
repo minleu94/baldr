@@ -1513,11 +1513,11 @@ TDCC 既有手動重播使用 `scripts/capture_tdcc_shareholding_candidate.py --
 
 歷史 Portfolio Alert 會保留事件日期與來源。它描述的是當時保存的警示快照，不是目前持倉清單，也不能單憑歷史警示推定現在仍持有該股票；請回「持倉管理」確認目前帳本與價格。
 
-#### 市場資料與個人狀態分離（2026-10-05 最新要求；正式路徑待確認）
+#### 市場資料與個人狀態分離（2026-10-06 已選 FA_Data/personal）
 
 抓取的市場／來源資料與收藏、個人研究紀錄、筆記、記帳及持倉狀態必須使用獨立 root 與專用儲存；不同表或 `FA_Data/output` 下的另一個 DB 仍不足以防止整包帶出。未設定個人模式時，既有觀察清單與 COW 路徑仍在 `OUTPUT_ROOT/watchlist`。2026-10-06 新增明示個人模式，詳見本手冊末尾；正式來源尚未遷移，其他個人領域也未因本批自動分離。
 
-建議個人 root 為 `%LOCALAPPDATA%/baldr/personal`，此電腦的候選完整值為 `C:\Users\archi\AppData\Local\baldr\personal`；觀察清單專用 DB 候選為 `C:\Users\archi\AppData\Local\baldr\personal\watchlists\watchlists.v3.sqlite`。若需 D 槽，另一候選為 `D:\Min\Python\Project\baldr_PersonalData\watchlists\watchlists.v3.sqlite`，兩者都在 `FA_Data` 外。正式位置須由使用者看過確認；目前未建立目錄、搬移、切 writer 或修改其他 owner 帳本。
+以下為先前未選位置時的歷史候選；最新選擇已是 `{DATA_ROOT}/personal`，本次模型使用其 `recommendation_h20` 子樹，並非再次等待選位置。舊候選為 `%LOCALAPPDATA%/baldr/personal`，此電腦的候選完整值為 `C:\Users\archi\AppData\Local\baldr\personal`；觀察清單專用 DB 候選為 `C:\Users\archi\AppData\Local\baldr\personal\watchlists\watchlists.v3.sqlite`。若需 D 槽，另一候選為 `D:\Min\Python\Project\baldr_PersonalData\watchlists\watchlists.v3.sqlite`，兩者都在 `FA_Data` 外。上述候選不採用；本次已建立模型專屬子樹，觀察清單／其他帳本未因此搬移或切 writer。
 
 未來個人路徑設定須獨立於 `DATA_ROOT`／`OUTPUT_ROOT`，不能為搬收藏而改整個市場來源根。activation pointer、conversion receipt、rollback audit、SQLite sidecar 及內容備份全部留個人 root；新的 reader／writer／fresh-process discovery 必須同步認識該路徑，不能只把 target DB 移到 C 槽而繼續在市場包寫 marker。現有 Portfolio JSONL 仍沿原 owner 路徑，本批不遷移。
 
@@ -5197,10 +5197,14 @@ request schema 為 `personal-model-daily-request.v1`，必須明示 canonical re
 今日十檔 current-observed 真模型推論已保存 QA，但尚未接成此 canonical 每日 ingress，也未啟用正式 Task。請勿把 QA 預測檔當 RecommendationResult、把 frozen 舊來源當今日資料，或改 source marker/PIT 來通過。預覽／來源核驗與正式啟用須保留 exact model、source、帳戶與 private-root 身份；有錯誤先核 request raw pin、來源 receipt、contract hash、模型／lineage 兩個 cutoff 及 no-follow 權限，禁止放寬 guard。
 
 
-### 9.9.1i 個人 H20 啟用配置預覽與回滾
+### 9.9.1i 個人 H20 每日研究預測、配置與回滾
 
-`scripts/prepare_personal_h20_activation.py` 預設只預覽；--enable需原可信fit receipt/raw SHA、private root、scope與expected revision。只有明示--execute才發佈activation.json下一CAS revision，不修改Task。--disable讀當前配置，明示原scope/root及expected revision，可在模型／fit已不可讀時寫新disabled revision；保存歷史不刪。若遇revision conflict先唯讀readback，不用覆蓋／清理解決。來源／配置hash錯誤、root與FA_Data或應用repo重疊、links/hardlinks均拒絕。
+已選私人模型根為 `{DATA_ROOT}/personal/recommendation_h20`，本機 `D:/Min/Python/Project/FA_Data/personal/recommendation_h20`；市場 DB 與其他個人領域維持原路徑，不搬移。不得整包匯出 FA_Data 而包含 personal 子樹。配置使用 `activation.json`，以 immutable revision 歷史備份及 expected-revision CAS 發布。`scripts/prepare_personal_h20_activation.py` 預設預覽；明示 `--execute` 才寫配置。啟用須可信 fit receipt 原 bytes SHA、模型 contract、scope 與精確 root；停用不依賴模型可讀，寫新 disabled revision，保存預測與歷史不刪。精確命令見 [中央整合 QA](../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md)。
 
-目前新private位置尚未選定，產品consumer／每日公開store整合尚未完成；中央同-run hook 已接線與合成驗證，preview／configuration_published不等於模型已實際啟用。具體預覽、啟用及回滾命令見QA BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。本功能使用既有H20 absolute/no-cost return head；holdout劣於null230bp與after-cost未證明會持續顯示，研究啟用不授交易或formal/PIT資格。
+既有 Pacific 05:45 calibration-learning Task 的帳號、權限、trigger、action 與 settings 不變。cmd 在上述配置存在時傳 `--personal-h20-activation-config`，或採明示 `PERSONAL_H20_ACTIVATION_CONFIG`。disabled 不呼模型；enabled 只接同-run completed raw-cycle 原 pins，使用原 frozen H20 absolute/no-cost return head，不要求重新 fit 或 entry capture 已收盤。原 formal/global blocked 仍獨立揭露。
 
-既有 05:45 calibration-learning Task 保持原帳號、權限、時間及 action。cmd 僅在明示 `PERSONAL_H20_ACTIVATION_CONFIG` 存在，或原 LOCALAPPDATA/TechnicalAnalysis/TechnicalAnalysis/personal_h20/activation.json 存在時傳入 `--personal-h20-activation-config`；不存在沿原流程。disabled 配置不呼叫模型。enabled 配置需 exact 同-run completed-cycle pins 與可信 fit/contract，缺件明示 pending／blocked；在原 no-model entry capture／自然研究之前呼叫獨立每日 H20 port，不要求新 fit 或當日 entry 已收盤。原每日 formal/global 的 blocked 不因此變成成功。新 daily request 不接受 caller observed_at，由 producer 真時鐘保存觀測；次日讀回不能回填成前日推論。root、model、raw-run 或 hash 失配先核配置／原收據，不放寬來源 guard。
+開啟「個股研究」摘要可查看個人 H20 gross 預測、精確 bp、決策日、來源日、特徵日與觀測時鐘。公開 reader 核原模型／來源／保存 raw pins，背景讀取不重算；切股、切來源、關閉或失敗的晚到結果不覆寫畫面。完整 cohort 保存並公開讀回成功，才發布只含指標的 daily manifest／product reference；預測原 bytes 唯一保存在 `h20_predictions`。缺列、錯 hash、來源不可核或錯模型顯示等待／不可用，不借舊數字冒充本次成功。保存預測不等於值得買或交易授權。
+
+真時鐘跨午夜時，決策日可為 10/07、來源日 10/06、特徵日 10/05，三者分列，不回填前日。相同 cycle/model/symbol 重試讀第一次輸出，不造新自然樣本。自然結果需原 no-model entry/outcome 的 decision/cycle/source/features 精確一致及二十 session 成熟；缺 entry 如實 pending，不阻止日常推論。holdout Brier 2730 對 null 2500，劣於基線 230 bp，成本後效果未證明，持續揭露；未提升 formal/PIT/交易資格。
+
+排錯先檢查原 raw-cycle completion、配置 revision、fit/contract raw pin 與 cohort 全範圍，不放寬 guard。回滾只發布 disabled 新 revision；不刪 receipt、不改既存預測。此 UI 已以合成 offscreen 驗證，未宣稱前景 Native／真人驗收。

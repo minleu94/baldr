@@ -831,3 +831,7 @@ I20中央95d381a4：20exact entries，原20test/舊分類/direct12不變；metad
 2026-10-06/07 personal H20 activation 配置準備：app_module/recommendation/personal_h20_activation.py 為typed個人研究配置，不取代global probability policy。CLI預設preview、明示CAS發佈及新disabled revision回滾；原Task/principal/clock只讀核對。新private root尚未真寫；產品reader／同-run每日hook仍續接current-observed lane，不以enabled配置或QA預測冒稱模型日常正式啟用。原no-model capture public驗核已完成；日期跨Taipei午夜不得改觀測時鐘。詳見Manual9.9.1i與BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。
 
 2026-10-06/07 中央same-run hook已接原05:45 calibration Task的opt-in flag，principal/trigger/action不改；entry capture／自然fit前以exact raw-cycle pins呼獨立H20 port，disabled/未配置零模型。合成focused68、inventory13、3scripts mypy/compile/quant通過。leaf公開store/產品consumer尚未整合、新private root未發佈，正式日常effect未驗；不升formal/global/PIT/自然成熟/Stage/UX資格。操作及完整限制見Manual9.9.1i與BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。
+
+### 2026-10-07 Taipei 個人 H20 consumer 整合
+
+個人模型根明示 FA_Data/personal/recommendation_h20；精確配置CAS與原預測public reader、中央全cohort daily manifest pins／product reference、個股摘要背景readback已接線。三leaf current-observed tests分類service-oracle-recommendation，product evidence test為UI candidate；inventory1293／recommendation193／UIcandidate98／direct12。分類不授runtime credit。詳細操作／限制以 Manual9.9.1i與BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md為準。真clock跨日不可回填，原global資格與七有限closed／性能例外不變，pending自然結果不是工程gate。

@@ -838,6 +838,11 @@ class StockResearchReportView(QWidget):
             "摘要只整理報告 DTO 已提供的證據；完整來源、代碼與歷史請開啟進階內容。"
         )
         layout.addWidget(self.summary_focus)
+        self.personal_h20_label = QLabel("個人 H20 模型：等待受驗預測")
+        self.personal_h20_label.setObjectName("stockResearchPersonalH20")
+        self.personal_h20_label.setWordWrap(True)
+        self.personal_h20_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.personal_h20_label)
 
         self.market_status_group = QGroupBox("當下上市／交易狀態（不作建議或排名）")
         self.market_status_group.setObjectName("stockResearchMarketStatusGroup")
@@ -1743,6 +1748,7 @@ class StockResearchReportView(QWidget):
     def _clear_loaded_report(self) -> None:
         """跨股票切換時清掉可見舊頁，避免新代碼下殘留舊 DTO。"""
 
+        self.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
         self._chart_viewport = ChartViewportState()
         self._chart_widget = None
         self._loaded_report = None
@@ -1773,6 +1779,7 @@ class StockResearchReportView(QWidget):
         next_step: str,
     ) -> None:
         self.identity_label.setText(f"{code}｜尚無可用報告")
+        self.personal_h20_label.setText("個人 H20 模型：目前無法核驗本股")
         self.query_as_of_label.setText("本次研究查詢日（as_of）：未知")
         self.summary_focus.set_summary(
             conclusion=conclusion,
@@ -1791,6 +1798,7 @@ class StockResearchReportView(QWidget):
         next_step: str,
     ) -> None:
         data_date = _report_data_date(report)
+        self.personal_h20_label.setText("個人 H20 模型：報告讀取失敗，未以舊預測代替本次核驗")
         self.query_as_of_label.setText(f"上次可用報告查詢日（as_of）：{report.as_of or '未知'}")
         identity = (
             f"{report.stock_code} {report.stock_name or '未提供名稱'}｜{report.market}"
@@ -1964,6 +1972,7 @@ class StockResearchReportView(QWidget):
 
     def _render_report(self, report: StockResearchReportDTO) -> None:
         self._loaded_report = report
+        self.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
         self._rendered_report_tabs = {"summary"}
         context = self.context
         if context is not None and context.ml_scope_mode == "current_stock_research":
@@ -2028,6 +2037,18 @@ class StockResearchReportView(QWidget):
         self._render_sources(report)
         self._render_report_tab(self.tabs.currentIndex())
         self._set_navigation_state()
+
+    def set_personal_h20_evidence(self, evidence: object) -> None:
+        from app_module.recommendation.personal_h20_product_evidence import (
+            PersonalH20ProductEvidence, personal_h20_product_text,
+        )
+        if (not isinstance(evidence, PersonalH20ProductEvidence) or self._loaded_report is None
+                or evidence.stock_code != self._loaded_report.stock_code):
+            return
+        cutoff = _stock_chart_cutoff_date(self._loaded_report, self._loaded_request_context or self.context)
+        if evidence.decision_date and (not cutoff or evidence.decision_date > cutoff):
+            return
+        self.personal_h20_label.setText(personal_h20_product_text(evidence))
 
     def _on_report_tab_changed(self, index: int) -> None:
         """只在使用者進入分頁時繪製有限內容，不重讀 service。"""

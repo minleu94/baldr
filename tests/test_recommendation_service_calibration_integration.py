@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from copy import deepcopy
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
@@ -24,6 +25,58 @@ from app_module.recommendation_calibration_consumer import (
 from app_module.recommendation_service import RecommendationService
 from recommendation_test_support import build_recommendation_test_service, build_recommendation_test_preparer
 from ml_module.recommendation_inference_provenance import read_inference_projection_receipt
+
+
+def test_consumer_calibration_error_binding_is_neutral_not_training() -> None:
+    root = Path(__file__).resolve().parents[1]
+    tree = ast.parse((root / "app_module/recommendation_calibration_consumer.py").read_text(encoding="utf-8"))
+    bindings = [
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+        and any(alias.name == "InvalidCalibrationOutputError" for alias in node.names)
+    ]
+    assert bindings == ["artifact_contracts.recommendation_calibration_errors"]
+
+
+@pytest.mark.parametrize("error_api", ("neutral", "legacy", "value_error"))
+def test_consumer_preserves_calibration_error_identity_and_specific_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_api: str,
+) -> None:
+    import app_module.recommendation_calibration_consumer as consumer_module
+    from artifact_contracts.recommendation_calibration_errors import InvalidCalibrationOutputError
+    from ml_module.recommendation_calibration_training import InvalidCalibrationOutputError as LegacyError
+
+    assert consumer_module.InvalidCalibrationOutputError is LegacyError is InvalidCalibrationOutputError
+    error_type = {"neutral": InvalidCalibrationOutputError, "legacy": LegacyError, "value_error": ValueError}[error_api]
+    calls: list[object] = []
+
+    class InvalidOutputModel:
+        def predict(self, values):
+            calls.append(values)
+            raise error_type("synthetic invalid output")
+
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=tmp_path / "missing-pointer.json", feature_schema=(),
+        feature_registry_hash="sha256:" + "0" * 64, data_root=tmp_path / "formal-data",
+    )
+    consumer._model = InvalidOutputModel()
+    consumer._loaded_pointer = {}
+    consumer._loaded_decision_date = "2026-10-02"
+    consumer._pointer_stat = None
+    # 只隔離前段來源核驗，測原 project 的特定 except 分支；不載入模型。
+    monkeypatch.setattr(consumer, "_current_pointer_stat", lambda: None)
+    monkeypatch.setattr(consumer_module, "_verified_training_label_contract", lambda *_: ("hash", "label", "basis"))
+    monkeypatch.setattr(consumer_module, "_resolve_projection_provenance", lambda **_: ({}, {}, "verified", None))
+    projection = consumer.project(
+        stock_code="AAA", feature_values=(1000,), rule_probability_bp=5000,
+        ranking_percentile_bp=8100, decision_date="2026-10-02",
+    )
+    assert calls == [(1000,)]
+    assert projection.status == "rule_only"
+    expected = "feature_vector_schema_mismatch_fail_closed" if error_api == "value_error" else "model_probability_output_invalid_fail_closed"
+    assert projection.warnings == (expected,)
+    assert projection.calibrated_probability_bp is None
+    assert projection.after_cost_profit_probability_bp is None
+    assert projection.ranking_percentile_bp == 8100
 
 
 def test_non_utf8_active_pointer_falls_back_with_encoding_blocker(tmp_path: Path) -> None:

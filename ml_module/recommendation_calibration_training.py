@@ -32,6 +32,9 @@ from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from artifact_contracts.recommendation_calibration_errors import (
+    InvalidCalibrationOutputError as InvalidCalibrationOutputError,
+)
 from ml_module.model_artifact_manifest import FeatureSchema, ModelArtifactManifest
 from ml_module.probability_calibration import FittedShadowProbabilityCalibrator, ShadowProbabilityCalibrator
 from ml_module.purged_walk_forward import MLTimeWindowRow, PurgedWalkForwardFold, PurgedWalkForwardSplitter
@@ -67,10 +70,6 @@ RECOMMENDATION_LABEL_DEFINITIONS: Mapping[str, str] = {
     ),
 }
 RECOMMENDATION_HORIZON_TRADING_DAYS = 20
-
-
-class InvalidCalibrationOutputError(ValueError):
-    """校準器輸出不是有限的合法機率，不能轉成公開 basis points。"""
 
 
 def recommendation_label_contract_id(

@@ -31,6 +31,7 @@ from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from artifact_contracts.recommendation_calibration_errors import InvalidCalibrationOutputError
 from app_module.recommendation_learning_paths import (
     resolve_recommendation_learning_paths,
 )
@@ -56,7 +57,6 @@ from ml_module.model_artifact_loader import (
 from ml_module.model_artifact_manifest import FeatureSchema, ModelArtifactManifest
 from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
 from ml_module.recommendation_calibration_training import (
-    InvalidCalibrationOutputError,
     RECOMMENDATION_RETURN_BASIS,
     RunnableRecommendationCalibrationModel,
     RecommendationPrediction,

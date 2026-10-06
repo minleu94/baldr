@@ -4,6 +4,10 @@ from datetime import date, timedelta
 from dataclasses import replace
 import json
 from pathlib import Path
+import subprocess
+import sys
+
+import pytest
 
 from ml_module.model_artifact_loader import ArtifactCompatibilityExpectation, SafeShadowModelArtifactLoader
 from ml_module.recommendation_calibration_training import (
@@ -162,3 +166,99 @@ def test_after_cost_training_uses_independent_null_baseline_and_missing_cost_sta
     assert no_cost.after_cost_profit_label is None
     assert no_cost.rule_after_cost_probability_bp is None
     assert no_cost.rule_after_cost_baseline_id is None
+
+
+def test_calibration_error_reexport_preserves_class_identity_and_legacy_except() -> None:
+    from artifact_contracts.recommendation_calibration_errors import InvalidCalibrationOutputError
+    from ml_module.recommendation_calibration_training import InvalidCalibrationOutputError as LegacyError
+
+    assert LegacyError is InvalidCalibrationOutputError
+    assert InvalidCalibrationOutputError.__bases__ == (ValueError,)
+    with pytest.raises(LegacyError, match="invalid output"):
+        raise InvalidCalibrationOutputError("invalid output")
+    with pytest.raises(InvalidCalibrationOutputError, match="legacy output"):
+        raise LegacyError("legacy output")
+
+
+@pytest.mark.parametrize("output", ("nan", "inf", "-inf", "-0.01", "1.01"))
+def test_invalid_calibrated_output_raises_neutral_and_legacy_error(output: str) -> None:
+    from artifact_contracts.recommendation_calibration_errors import InvalidCalibrationOutputError
+    from ml_module.probability_calibration import FittedShadowProbabilityCalibrator
+    from ml_module.recommendation_calibration_training import _calibrated_bp
+
+    class OutputEstimator:
+        def predict(self, _values):
+            return [float(output)]
+
+    calibrator = FittedShadowProbabilityCalibrator(
+        calibration_id="synthetic", model_id="synthetic", estimator=OutputEstimator(),
+        sample_count=10, fold_count=2,
+    )
+    with pytest.raises(InvalidCalibrationOutputError, match="finite within 0..1"):
+        _calibrated_bp(calibrator, 0.5)
+
+
+@pytest.mark.parametrize("output,expected", (("0", 0), ("0.5", 5000), ("0.1234", 1234), ("1", 10000)))
+def test_valid_calibrated_output_preserves_integer_basis_points(output: str, expected: int) -> None:
+    from ml_module.probability_calibration import FittedShadowProbabilityCalibrator
+    from ml_module.recommendation_calibration_training import _calibrated_bp
+
+    class OutputEstimator:
+        def predict(self, _values):
+            return [float(output)]
+
+    calibrator = FittedShadowProbabilityCalibrator(
+        calibration_id="synthetic", model_id="synthetic", estimator=OutputEstimator(),
+        sample_count=10, fold_count=2,
+    )
+    result = _calibrated_bp(calibrator, 0.5)
+    assert type(result) is int
+    assert result == expected
+
+
+def test_neutral_calibration_error_cold_import_has_no_data_io_or_training() -> None:
+    code = r'''
+import importlib.abc
+import os
+import sys
+
+blocked = ("ml_module", "app_module", "joblib", "sklearn", "numpy")
+import_dirs = {os.getcwd(), os.path.join(os.getcwd(), "artifact_contracts")}
+class RejectTraining(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split(".")[0] in blocked:
+            raise RuntimeError("blocked training dependency:" + fullname)
+sys.meta_path.insert(0, RejectTraining())
+data_io = []
+def audit(event, args):
+    if event == "open":
+        path, mode, flags = args
+        if not isinstance(path, str) or not path.endswith((".py", ".pyc")) or flags & 3:
+            data_io.append(event)
+            raise AssertionError("data I/O during contract import")
+    elif event == "os.listdir" and os.path.abspath(args[0]) in import_dirs:
+        # Python 的來源模組尋找可列來源目錄，不允許列資料目錄。
+        return
+    elif event.startswith(("sqlite3.", "socket.", "subprocess.")) or event in ("os.mkdir", "os.remove", "os.rename", "os.listdir", "os.scandir"):
+        data_io.append(event)
+        raise AssertionError("data I/O during contract import")
+sys.addaudithook(audit)
+from artifact_contracts.recommendation_calibration_errors import InvalidCalibrationOutputError
+assert InvalidCalibrationOutputError.__bases__ == (ValueError,)
+assert str(InvalidCalibrationOutputError("synthetic")) == "synthetic"
+assert not data_io
+assert not any(name.split(".")[0] in blocked for name in sys.modules)
+try:
+    __import__("ml_module.recommendation_calibration_training")
+except RuntimeError as exc:
+    assert "blocked training dependency" in str(exc)
+else:
+    raise AssertionError("training import negative control did not reject")
+print("cold neutral import: zero data I/O; training negative control rejected")
+'''
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", code],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "zero data I/O" in result.stdout

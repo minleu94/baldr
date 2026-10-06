@@ -6,7 +6,7 @@
 
 新增 `app_module/rule_research_family_catalog.py`、`tests/test_baldr_b11_family_catalog.py` 及本文件；既有 `daily_market_research_capabilities.py` 只增加 import 與 `DailyMarketResearchCapabilityCatalog.families` 唯讀入口（10 行）。既有 `to_dict()` 的 features／methods、schema、投影、方法契約與 hash 全保持。新增入口沒有 UI、執行器、SQL、檔案／網路 I/O 或資料重算。
 
-`RuleResearchFamilyCapability(family_id, title, status, versioned_method_refs, required_fields, warmup, missing, availability, cost, source_refs, blockers)` 十二欄固定，frozen／slots，巢狀 mapping／sequence 亦凍結；不接受可變非 JSON 基本值。`to_dict()` 產出 detached JSON-ready 副本；小數參數以字串記錄。`list_rule_research_families()` 回 tuple；`get_rule_research_family(id)` 僅 exact 配對，未知保留 caller ID、status=unknown、空 methods／fields／source、unknown missing 與 blocker，不做中文名稱／大小寫／空白別名。
+`RuleResearchFamilyCapability(family_id, title, status, versioned_method_refs, required_fields, warmup, missing, availability, cost, source_refs, blockers)` 十一欄固定，frozen／slots，巢狀 mapping／sequence 亦凍結；不接受可變非 JSON 基本值。`to_dict()` 產出 detached JSON-ready 副本；小數參數以字串記錄。`list_rule_research_families()` 回 tuple；`get_rule_research_family(id)` 僅 exact 配對，未知保留 caller ID、status=unknown、空 methods／fields／source、unknown missing 與 blocker，不做中文名稱／大小寫／空白別名。
 
 `partial` 只表示有既存有限觀察來源，不能視為完整策略 supported；`unavailable` 表示該方向的方法與保存欄位尚未合格。本字典沒有交易勝率、回測效果或啟用權限。source_refs 是原碼候選入口，不是實際資料 pin；原來源日期、母體、時鐘、schema／hash 必須在原 artifact 核驗。所有家族 historical PIT／formal eligibility=false，official availability=unknown；缺值不補零或判為負樣本，cost 不填估計時間、記憶體、bytes 或交易成本。
 
@@ -50,7 +50,7 @@
 - Quant Guard：`scripts/quant_guard_linter.py`；本包通過；本包人工自查亦無新 float、訊號計算或未來資料讀取。
 - 無 UI 變更，未跑重 UI mandatory；中央穩定 union 另行驗收。
 
-新增案例覆蓋十二欄 API、八族順序、巢狀 immutable／constructor detach／JSON detach、未知 exact lookup／missing、兩方法同一家族、BBANDS 未保存且門檻空值、舊 capabilities parity、future family append 不污染舊內容／hash、future method append 不默默成為可用方法。既有 capability snapshot tests 仍核部分缺件／完整母體及嚴格 identity 拒絕；causal indicator regression 沿既有 prefix invariant。
+新增案例覆蓋十一欄 API、八族順序、巢狀 immutable／constructor detach／JSON detach、未知 exact lookup／missing、兩方法同一家族、BBANDS 未保存且門檻空值、舊 capabilities parity、future family append 不污染舊內容／hash、future method append 不默默成為可用方法。既有 capability snapshot tests 仍核部分缺件／完整母體及嚴格 identity 拒絕；causal indicator regression 沿既有 prefix invariant。
 
 固定方法契約 SHA-256：`029bcb5ada592619d9748d327eef509db0642a1c6904b652b31f186027025dc5`。舊三 feature／兩 method catalog 的 canonical JSON SHA-256：`eb93750012c5c7de223cc01ece2a017848d88812a751361883d9a66404ef880e`。測試把這兩值鎖定；`catalog.families` 是 additive property，不加入舊 catalog.to_dict()，未來新增家族亦不改舊 artifact bytes。
 

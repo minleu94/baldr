@@ -27,3 +27,14 @@ B07／B13仍lane進行中，B11／B14待定版派工；B09 per-I/O custody依賴
 ## 回滾
 
 本輪文件僅Manual/Snapshot/Architecture/Index/scheduledREADME/QA，回復具名localcommit前核他人dirty；B10程式回復05329f94，保留私人資料與歷史。B12回復740fd64c再024e0194並同步caller；任何原source／segment／partial／receipt均留存。不實際revert、不cleanup、不降低guard。正式DB／私人migration／Task／ACL／交易／foregroundNative／fit均未執行。
+
+
+## 2026-10-06 B07／B11／B13 後續接受
+
+B07 ce8c8fad→cf0634e0、cb3af436→fe267c1d：固定來源唯讀歷史與原 typed baseline 執行保存；review 補 legacy 單檔／整輪 bytes 預算、同份 raw hash/decode 及真正 parent shutdown。原154、followup54／11為 lane 報告；中央不冒稱已核未保存的 raw 收據。UI caller 明示64MiB單檔、256MiB每輪 serialized讀取預算，僅工程資源上限，不改正式保存容量、Registry共用reader或解壓後容量政策；超限與取消明示缺件。中央 caller 增量驗證另列。
+
+B11 ed37c1a3→c4c8e755：八族能力字典，31 focused pass；原三feature／兩MA method及catalog hashes保持。DTO實列十一欄（校正原QA十二欄誤計），沒有新增version欄。BBANDS30／2／2／SMA只是原analysis候選，保存三band與compression U1缺件保持；第二family未完成。
+
+B13 4f828f1f→9266e7e3：pure Protocol adapter，40 own pass、47未改入口固定base收據重用。production零MLimport／零IO／零fit，原OneDate runner＋memory registry＋stub predictor僅synthetic測試橋；一次一eval＋至少一train，六pins／實際session purge與embargo／label成熟／分母／preprocessing及runner bytes hash逐項核。unsupported／U2缺件waiting，formal/training/PIT/natural/execution/production資格全false。全repo ML boundary664files仍8舊違例exit1，不稱全倉PASS。B14控制port仍獨立lane進行，正式composition尚未授權。
+
+B07 central caller: parent-close/exact original result 5 passed in19.18s; mypy lookup/result_panel2source PASS. XML SHA256 10d2d1e0990186477a296228c69d24dea7a58160e7d5513e34d95827aad149d2; output/qa/b07_central_caller_20261006.xml.

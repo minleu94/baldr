@@ -5088,3 +5088,12 @@ notes 備份 adapter 為 `PersonalNotesBackupAdapter(journal_paths, store_identi
 在既有 `scripts/run_rule_research_shadow_acceptance.py` 的 receipt／case／policy／bundle 輸入後，加 `--registry-snapshot C:/absolute/consistent-registry.db`，只允許明示絕對路徑。與 `--lifecycle-export` 互斥；後者只是匯出聲明，CLI 明示未連庫核對。`--json` 的 `diagnostics.registry_readback` 區分來源、狀態、SHA256、缺件原因與未驗 metadata 欄位。成功只表示 stored metadata 符合完整 candidate pin；training_audit／target_contract 仍未驗，模型資格未知、所有 eligibility false、未啟用。
 
 缺件／鎖定／錯來源／schema 或 version 不符維持 rule-only fallback。WAL header 或 wal/shm/journal 殘件顯示需要受控一致 snapshot；不要藉本工具對真 DB checkpoint、改 journal mode 或移除 sidecar。工具不讀 artifact、不反序列化模型、不寫 registry、不 adopt／rollback。若需保存，沿用 `--save --store` 指定 output/qa 或 OS Temp 子目錄；保存前重讀變更則拒絕，新程序 `--store ... --identity <exact SHA>` 可讀同收據，不連庫或選 latest。取消可重試，不發布取消結果。此入口是 CLI 研究 consumer，非正式 shadow 啟用。驗收見 `docs/06_qa/UX23_REGISTRY_INTEGRATION_20261006.md`。
+
+
+### 2026-10-06 工程能力字典與模型輸入介面
+
+八族能力目錄供研究員查缺件：`list_rule_research_families()`／`get_rule_research_family(family_id)`（實際具名API以B11 QA與module為準）回唯讀能力、所需欄位、暖機、來源參照、成本與限制。未知id回unknown，不自選方法。現有MA20／60同屬一族；BBANDS30／2／2／SMA上軌有限比較仍是候選，三band保存與compression定義未具備，不能當第二family已開放或投資訊號。[B11能力與限制](../06_qa/BALDR_B11_FAMILY_CATALOG_20261006.md)。
+
+`prepare_model_input`／`run_prepared_model_input` 是隔離工程API，無新GUI訓練／模型啟用按鈕。caller明示政策、時間切分、實際sessions、六份原bytes pins、同母體方法分母與training preprocessing audit；缺U2或未支持政策waiting，hash／成熟／split等失配reject_fit，兩者均不呼runner。僅synthetic://offline且明示endpoint gross return契約可ready；ready也不准fit、不載模型、不取得正式PIT／自然成熟或模型效果資格。結果只讀有界原receipt bytes並核身份／hash，不信runner旁路欄位。[B13精確參數與receipt schema](../06_qa/BALDR_B13_MODEL_INPUT_20261006.md)。
+
+研究實驗室結果頁展開「研究歷史查找」，按「查找既有歷史」讀各來源，搜尋過濾已載入項目；選筆後重新核exact kind/run/hash/stock/context再開原結果。forward／unknown僅metadata，缺件不建庫／不補今天行情。每來源row上限200（介面可至1000），另有UI明示serialized讀取單檔64MiB／整輪256MiB預算，兩者用途不同；超限、來源變動、active SQLite sidecar需核原source後再查，入口不修來源。取消／切換／關閉父視窗拒晚到結果。原baseline fixed1.0／next_open執行保存規則可下鑽，但source-only／performance／PIT不升資格。[B07操作與排錯](../06_qa/BALDR_B07_RULE_HISTORY_20261006.md)。

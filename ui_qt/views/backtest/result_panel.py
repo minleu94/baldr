@@ -428,11 +428,14 @@ class BacktestResultPanel(QWidget):
         context_row.addWidget(self.mode_context_label)
         context_row.addWidget(self.result_purpose_label, stretch=1)
         layout.addLayout(context_row)
-        from app_module.research_history_lookup import ResearchHistoryLookup
+        from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryReadBudget
         legacy = getattr(self.parent_view, "run_repository", None)
         portfolio = getattr(self.parent_view, "portfolio_run_repository", None)
         lookup = ResearchHistoryLookup(registry=getattr(self.parent_view, "research_run_service", None),
-            legacy_backtest_db=getattr(legacy, "db_path", None), legacy_portfolio_db=getattr(portfolio, "db_path", None))
+            legacy_backtest_db=getattr(legacy, "db_path", None),
+            legacy_portfolio_db=getattr(portfolio, "db_path", None),
+            # UI serialized read budget; does not change saved artifact capacity policy.
+            read_budget=ResearchHistoryReadBudget(64 * 1024 * 1024, 256 * 1024 * 1024))
         history_group = QGroupBox("研究歷史查找（legacy／Registry／推薦回放）")
         history_group.setCheckable(True)
         history_group.setChecked(False)

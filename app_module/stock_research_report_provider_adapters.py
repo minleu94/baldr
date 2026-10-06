@@ -367,21 +367,6 @@ def _validate_prediction_payload(
     return bp, h5
 
 
-def _default_model_loader(
-    manifest_path: Path,
-    *,
-    expected_manifest_sha256: str,
-    expected_model_bundle_sha256: str,
-) -> object:
-    from ml_module.current_restated_research_bridge import load_current_restated_outcome_model
-
-    return load_current_restated_outcome_model(
-        manifest_path,
-        expected_manifest_sha256=expected_manifest_sha256,
-        expected_model_bundle_sha256=expected_model_bundle_sha256,
-    )
-
-
 @contextmanager
 def _exclusive_lock(path: Path) -> Iterator[None]:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -439,7 +424,7 @@ def _fsync_directory(path: Path) -> None:
 
 
 class CurrentRestatedMLRunRegistry:
-    """在隔離 ML research root 發布不可變 sidecar run，並以 append-only index 查詢。"""
+    """發布不可變 sidecar run；唯讀查詢不需要 loader，發布必須明示注入。"""
 
     def __init__(
         self,
@@ -475,7 +460,7 @@ class CurrentRestatedMLRunRegistry:
         )
         self.index_path = self.registry_root / "run_index.jsonl"
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
-        self._model_loader = model_loader or _default_model_loader
+        self._model_loader = model_loader
 
     def _assert_active_write_root(self) -> None:
         active_root = get_ml_research_root(repository_root=self.repository_root)
@@ -519,6 +504,10 @@ class CurrentRestatedMLRunRegistry:
         expected_current_price_rows_source_sha256: str | None = None,
     ) -> PublishedCurrentRestatedMLRun:
         """驗證已完成 current-restated sidecar 後，create-only 發布精確 run。"""
+
+        model_loader = self._model_loader
+        if not callable(model_loader):
+            raise CurrentRestatedMLRegistryError("model_loader is required for registry publication")
 
         now = _aware_datetime(self._now_provider(), field_name="actual clock")
         sidecar_path = resolve_ml_research_output_path(
@@ -728,7 +717,7 @@ class CurrentRestatedMLRunRegistry:
         if sha256(bundle_bytes).hexdigest() != expected_bundle_sha:
             raise CurrentRestatedMLRegistryError("model bundle actual-byte SHA mismatch")
         # 載入器會在反序列化前重新驗證 model manifest、runtime/code pins 與 bundle SHA。
-        self._model_loader(
+        model_loader(
             manifest_path,
             expected_manifest_sha256=expected_manifest_sha,
             expected_model_bundle_sha256=expected_bundle_sha,
@@ -1278,13 +1267,15 @@ def publish_current_restated_stock_research_run(
     current_price_rows_source_path: Path | str | None = None,
     expected_current_price_rows_source_sha256: str | None = None,
     now_provider: Callable[[], datetime] | None = None,
+    model_loader: Callable[..., object] | None = None,
 ) -> PublishedCurrentRestatedMLRun:
-    """Publisher function for the existing exact-hash current-restated sidecar."""
+    """以明示載入器發布既有 exact-hash current-restated sidecar。"""
 
     return CurrentRestatedMLRunRegistry(
         repository_root=repository_root,
         research_output_root=research_output_root,
         now_provider=now_provider,
+        model_loader=model_loader,
     ).publish_sidecar(
         sidecar_receipt_path=sidecar_receipt_path,
         expected_sidecar_receipt_sha256=expected_sidecar_receipt_sha256,

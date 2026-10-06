@@ -21,6 +21,7 @@ from app_module.stock_research_report_provider_adapters import (
     PortfolioExitReadProvider,
     _validate_prediction_payload,
     stock_price_row_fingerprint_sha256,
+    publish_current_restated_stock_research_run,
 )
 from app_module.stock_research_report_service import StockResearchReportReadService
 from ui_qt.views.stock_research_report_view import (
@@ -422,12 +423,14 @@ def test_registry_publish_and_current_lookup_pin_cycle_price_source_and_scope(tm
     projection_path.write_bytes(projection_bytes)
     projection_sha = hashlib.sha256(projection_bytes).hexdigest()
 
-    registry = CurrentRestatedMLRunRegistry(
+    loader_calls = []
+
+    def loader(path, **pins):
+        loader_calls.append((path, pins))
+
+    publication = dict(
         repository_root=tmp_path,
         now_provider=lambda: datetime(2026, 10, 4, 6, 0, tzinfo=timezone.utc),
-        model_loader=lambda *args, **kwargs: None,
-    )
-    published = registry.publish_sidecar(
         sidecar_receipt_path=sidecar_path,
         expected_sidecar_receipt_sha256=hashlib.sha256(sidecar_bytes).hexdigest(),
         model_manifest_path=manifest_path,
@@ -438,6 +441,64 @@ def test_registry_publish_and_current_lookup_pin_cycle_price_source_and_scope(tm
         current_price_rows_source_path=projection_path,
         expected_current_price_rows_source_sha256="sha256:" + projection_sha,
     )
+    registry = CurrentRestatedMLRunRegistry(
+        repository_root=tmp_path,
+        now_provider=lambda: datetime(2026, 10, 4, 6, 0, tzinfo=timezone.utc),
+    )
+    with pytest.raises(CurrentRestatedMLRegistryError, match="model_loader is required"):
+        publish_current_restated_stock_research_run(**publication)
+    assert not registry.registry_root.exists()
+    assert loader_calls == []
+
+    for field, error in (("expected_sidecar_receipt_sha256", "sidecar receipt actual-byte SHA mismatch"),
+                         ("expected_model_manifest_sha256", "sidecar binds a different model manifest"),
+                         ("expected_model_bundle_sha256", "sidecar binds a different model bundle")):
+        with pytest.raises(CurrentRestatedMLRegistryError, match=error):
+            publish_current_restated_stock_research_run(
+                **dict(publication, **{field: "9" * 64}), model_loader=loader
+            )
+        assert not registry.registry_root.exists()
+        assert loader_calls == []
+
+    with pytest.raises(CurrentRestatedMLRegistryError, match="sidecar clocks must satisfy inference <= generated <= actual clock"):
+        publish_current_restated_stock_research_run(
+            **dict(publication, now_provider=lambda: datetime(2026, 10, 4, 4, 0, tzinfo=timezone.utc)),
+            model_loader=loader,
+        )
+    assert not registry.registry_root.exists()
+    assert loader_calls == []
+
+    manifest_path.write_bytes(manifest_bytes + b" ")
+    with pytest.raises(CurrentRestatedMLRegistryError, match="model manifest actual-byte SHA mismatch"):
+        publish_current_restated_stock_research_run(**publication, model_loader=loader)
+    assert not registry.registry_root.exists()
+    assert loader_calls == []
+    manifest_path.write_bytes(manifest_bytes)
+
+    bundle_path = manifest_dir / "model.bundle"
+    bundle_path.write_bytes(bundle_bytes + b"invalid")
+    with pytest.raises(CurrentRestatedMLRegistryError, match="model bundle actual-byte SHA mismatch"):
+        publish_current_restated_stock_research_run(**publication, model_loader=loader)
+    assert not registry.registry_root.exists()
+    assert loader_calls == []
+    bundle_path.write_bytes(bundle_bytes)
+
+    cancelled = RuntimeError("fixture publication cancelled")
+
+    def cancelled_loader(*args, **kwargs):
+        raise cancelled
+
+    with pytest.raises(RuntimeError) as caught:
+        publish_current_restated_stock_research_run(**publication, model_loader=cancelled_loader)
+    assert caught.value is cancelled
+    assert not registry.registry_root.exists()
+    assert loader_calls == []
+
+    published = publish_current_restated_stock_research_run(**publication, model_loader=loader)
+    assert loader_calls == [(manifest_path, {
+        "expected_manifest_sha256": manifest_sha,
+        "expected_model_bundle_sha256": bundle_sha,
+    })]
     assert published.indexed is True
     assert Path(published.record_path).is_relative_to(research_root)
     current_context = {
@@ -449,6 +510,31 @@ def test_registry_publish_and_current_lookup_pin_cycle_price_source_and_scope(tm
     current = registry("1477", date(2026, 10, 4), current_context)
     assert current is not None
     assert current["cycle_id"] == "cycle-20261004"
+
+    import subprocess
+    import sys
+
+    cold_reader = subprocess.run(
+        [sys.executable, "-c", """
+import importlib.abc, json, sys
+from pathlib import Path
+from datetime import date, datetime, timezone
+class BlockModelImports(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'ml_module', 'joblib', 'pickle', 'sklearn'}:
+            raise AssertionError('forbidden model import: ' + fullname)
+sys.meta_path.insert(0, BlockModelImports())
+from app_module.stock_research_report_provider_adapters import CurrentRestatedMLRunRegistry
+registry = CurrentRestatedMLRunRegistry(repository_root=Path(sys.argv[1]),
+    now_provider=lambda: datetime(2026, 10, 4, 6, 0, tzinfo=timezone.utc))
+row = registry('1477', date(2026, 10, 4), json.loads(sys.argv[2]))
+assert row is not None and row['cycle_id'] == 'cycle-20261004'
+assert not any(k.split('.')[0] in {'ml_module', 'joblib', 'sklearn'} for k in sys.modules)
+""", str(tmp_path), json.dumps(current_context)],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=30,
+    )
+    assert cold_reader.returncode == 0, cold_reader.stderr
+    assert len(loader_calls) == 1
 
     active_index_bytes = registry.index_path.read_bytes()
     index_entry = json.loads(active_index_bytes.splitlines()[-1].decode("utf-8"))
@@ -1026,3 +1112,27 @@ def test_current_fundamental_blank_or_null_source_clock_remains_visible(
     assert current.period_basis == "unknown"
     assert current.aggregate_feature_eligible is False
     assert any(source.row_count == 1 for source in sources)
+
+
+def test_registry_missing_loader_fails_before_any_io(tmp_path, monkeypatch) -> None:
+    registry = CurrentRestatedMLRunRegistry(repository_root=tmp_path)
+    assert registry("1477", date(2026, 10, 4), {}) is None
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("缺 loader 不得讀檔、lock 或 mkdir")
+
+    monkeypatch.setattr(Path, "mkdir", forbidden)
+    monkeypatch.setattr(Path, "read_bytes", forbidden)
+    import app_module.stock_research_report_provider_adapters as adapters
+    monkeypatch.setattr(adapters, "_exclusive_lock", forbidden)
+    arguments = dict(
+        sidecar_receipt_path=tmp_path / "missing" / "receipt.json",
+        expected_sidecar_receipt_sha256="a" * 64,
+        model_manifest_path=tmp_path / "missing" / "manifest.json",
+        expected_model_manifest_sha256="b" * 64,
+        expected_model_bundle_sha256="c" * 64,
+    )
+    with pytest.raises(CurrentRestatedMLRegistryError, match="model_loader is required"):
+        registry.publish_sidecar(**arguments)
+    with pytest.raises(CurrentRestatedMLRegistryError, match="model_loader is required"):
+        publish_current_restated_stock_research_run(repository_root=tmp_path, **arguments)

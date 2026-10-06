@@ -3390,7 +3390,10 @@ def run_current_stock_research_cycle(
             publish_current_restated_stock_research_run,
         )
 
+        from ml_module.current_restated_research_bridge import load_current_restated_outcome_model
+
         published = publish_current_restated_stock_research_run(
+            model_loader=load_current_restated_outcome_model,
             repository_root=repo,
             research_output_root=research_root,
             sidecar_receipt_path=sidecar_path,

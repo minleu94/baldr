@@ -1276,3 +1276,24 @@ def test_real_registry_publisher_record_passes_cycle_and_public_reader_checks(
             current_price_rows_source_path=projection_path.resolve(strict=True),
             current_price_rows_source_sha256="sha256:" + projection_sha,
         )
+
+
+def test_cycle_publisher_injects_exact_existing_model_loader() -> None:
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(cycle.run_current_stock_research_cycle))
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Name)
+             and node.func.id == "publish_current_restated_stock_research_run"]
+    assert len(calls) == 1
+    loaders = [item.value for item in calls[0].keywords if item.arg == "model_loader"]
+    assert len(loaders) == 1
+    assert isinstance(loaders[0], ast.Name)
+    assert loaders[0].id == "load_current_restated_outcome_model"
+    bindings = [node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+                and node.module == "ml_module.current_restated_research_bridge"
+                and any(item.name == "load_current_restated_outcome_model" and item.asname is None
+                        for item in node.names)]
+    assert len(bindings) == 1
+    assert bindings[0].lineno < calls[0].lineno

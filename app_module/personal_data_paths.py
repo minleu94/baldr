@@ -6,7 +6,8 @@ import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Iterable, Mapping
+from typing import Iterable, Literal, Mapping
+from urllib.parse import quote
 
 
 class PersonalDataPathError(ValueError):
@@ -17,11 +18,68 @@ class PersonalDataPathError(ValueError):
         super().__init__(f"{code}: {path}")
 
 
+def _validate_absolute_syntax(path: str | Path) -> Path:
+    """驗證 canonical path 的字面形式，不做 I/O，也不接受 OS device alias。"""
+    value = Path(path).expanduser()
+    if not value.is_absolute() or ".." in value.parts:
+        raise PersonalDataPathError("absolute_path_required", value)
+    if os.name == "nt":
+        if str(value).startswith(("\\\\?\\", "\\\\.\\")):
+            raise PersonalDataPathError("ambiguous_windows_path", value)
+        # 拒絕 ADS、尾端正規化別名與 Windows 保留裝置名稱。
+        for part in value.parts[1:]:
+            if ":" in part or part.endswith((" ", ".")) or Path(part).is_reserved():
+                raise PersonalDataPathError("ambiguous_windows_path", value)
+    return value
+
+
+def _strip_windows_io_prefix(path: str) -> str:
+    if os.name != "nt":
+        return path
+    folded = path.casefold()
+    unc_prefix = "\\\\?\\unc\\"
+    if folded.startswith(unc_prefix):
+        return "\\\\" + path[len(unc_prefix):]
+    if folded.startswith("\\\\?\\"):
+        return path[4:]
+    return path
+
+
+def _windows_utf16_units(path: str) -> int:
+    return len(path.encode("utf-16-le")) // 2
+
+
+def _render_internal_io_path(canonical_path: str | Path) -> str:
+    """把已通過字面檢查的路徑轉成 OS 呼叫使用的形式。"""
+    value = _validate_absolute_syntax(canonical_path)
+    raw = str(value)
+    if os.name != "nt" or _windows_utf16_units(raw) < 248:
+        return raw
+    if raw.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + raw.lstrip("\\")
+    return "\\\\?\\" + raw
+
+
+def to_internal_io_path(path: str | Path) -> str:
+    """僅渲染 OS I/O 形式；caller 須先做路徑守衛並保留 canonical identity。"""
+    return _render_internal_io_path(path)
+
+
+def to_internal_sqlite_uri(
+    path: str | Path, mode: Literal["ro", "rw"]
+) -> str:
+    """輸出 SQLite URI；extended path 只存在 URI 內，不回傳作為 identity。"""
+    if mode not in {"ro", "rw"}:
+        raise PersonalDataPathError("unsupported_sqlite_mode", mode)
+    io_path = _render_internal_io_path(path)
+    return f"file:{quote(io_path, safe='/:')}?mode={mode}"
+
+
 def _reject_links(path: Path) -> None:
     # lstat 保留 link 身分；Windows reparse 包含 junction，不僅 symlink。
     for component in reversed((path, *path.parents)):
         try:
-            info = component.lstat()
+            info = os.lstat(_render_internal_io_path(component))
         except FileNotFoundError:
             continue
         except OSError as exc:
@@ -31,26 +89,19 @@ def _reject_links(path: Path) -> None:
 
 
 def _absolute(path: str | Path) -> Path:
-    value = Path(path).expanduser()
-    if not value.is_absolute() or ".." in value.parts:
-        raise PersonalDataPathError("absolute_path_required", value)
-    if os.name == "nt":
-        if str(value).startswith(("\\\\?\\", "\\\\.\\")):
-            raise PersonalDataPathError("ambiguous_windows_path", value)
-        # 禁止 ADS、尾端正規化別名與裝置名稱，避免白名單比對與 OS 實際開啟不同。
-        for part in value.parts[1:]:
-            if ":" in part or part.endswith((" ", ".")) or Path(part).is_reserved():
-                raise PersonalDataPathError("ambiguous_windows_path", value)
+    value = _validate_absolute_syntax(path)
     _reject_links(value)
     try:
-        return value.resolve(strict=False)
+        resolved = os.path.realpath(_render_internal_io_path(value))
+        return Path(_strip_windows_io_prefix(resolved))
     except (OSError, RuntimeError) as exc:
         raise PersonalDataPathError("path_unavailable", value) from exc
 
 
 def _directory(path: Path) -> Path:
     value = _absolute(path)
-    if value.exists() and not value.is_dir():
+    io_path = _render_internal_io_path(value)
+    if os.path.exists(io_path) and not os.path.isdir(io_path):
         raise PersonalDataPathError("directory_root_required", value)
     return value
 
@@ -115,7 +166,7 @@ class PersonalDataPaths:
             if not _absolute(child).is_relative_to(personal):
                 raise PersonalDataPathError("personal_path_escape", child)
             try:
-                info = child.lstat()
+                info = os.lstat(_render_internal_io_path(child))
             except FileNotFoundError:
                 continue
             except OSError as exc:
@@ -177,7 +228,7 @@ class MarketExportFile:
 def _file_identity(path: Path) -> tuple[int, int, int, int, int]:
     _reject_links(path)
     try:
-        info = path.stat()
+        info = os.stat(_render_internal_io_path(path))
     except OSError as exc:
         raise PersonalDataPathError("export_file_unavailable", path) from exc
     if not stat.S_ISREG(info.st_mode):
@@ -274,7 +325,7 @@ class WatchlistCowControlPaths:
         if not value.is_relative_to(self.personal_paths.personal_root):
             raise PersonalDataPathError("control_path_outside_personal", value)
         try:
-            info = value.lstat()
+            info = os.lstat(_render_internal_io_path(value))
         except FileNotFoundError:
             return value
         except OSError as exc:
@@ -298,9 +349,10 @@ class WatchlistCowControlPaths:
             raise PersonalDataPathError("source_outside_legacy_root", source_value)
         for suffix in (".active", ".cow-active.json"):
             legacy_marker = _absolute(source_value.with_name(source_value.name + suffix))
-            if legacy_marker.is_file() and legacy_marker.stat().st_nlink != 1:
+            marker_path = _render_internal_io_path(legacy_marker)
+            if os.path.isfile(marker_path) and os.stat(marker_path).st_nlink != 1:
                 raise PersonalDataPathError("source_path_alias", legacy_marker)
-        info = source_value.stat()
+        info = os.stat(_render_internal_io_path(source_value))
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise PersonalDataPathError("source_path_alias", source_value)
         if self.assert_personal(target) != self.personal_paths.watchlist_db:
@@ -316,5 +368,6 @@ class WatchlistCowControlPaths:
         self.validate(self.source_path, self.personal_paths.watchlist_db)
         for directory in (self.marker_path.parent, self.personal_paths.backup_root,
                           self.personal_paths.marker_backup_root):
-            self.assert_personal(directory).mkdir(parents=True, exist_ok=True)
+            canonical = self.assert_personal(directory)
+            Path(_render_internal_io_path(canonical)).mkdir(parents=True, exist_ok=True)
             self.assert_personal(directory)

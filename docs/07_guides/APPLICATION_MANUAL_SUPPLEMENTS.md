@@ -2541,3 +2541,8 @@ EOD writer 的 canonical ledger 是隔離 repository output 下的 `paper_trade_
 讀回的 summary、snapshots、holdings、contributions、diagnostics、hints、details 與 trades 來自保存 DTO／Parquet，不會依目前資料重跑。因 portfolio DTO 沒有 benchmark 時序，Registry 結果不回抓 benchmark overlay；畫面會標示該圖層不可用。舊「歷史推薦回測」下拉選單仍只列 legacy JSON repository，不收錄新 Registry run；Registry readback 是唯讀，不啟用 legacy 刪除、升級或再次保存。
 
 Registry artifact、R012 child artifact 與 SQLite 各自保存，沒有共同 transaction。若開啟顯示 integrity error，保留原檔並確認 Registry run ID、manifest 與 child reference；不要以重新整理或重新執行回測修補歷史。R012 child 失敗後可能留下 create-only artifact 的處理方式，依上方限制辦理。
+
+
+## 2026-10-06 固定觀測日接受的受控維運
+
+操作依APPLICATION_MANUAL「固定觀測日研究收據接受（隔離CLI）」章。先preview，明示--accept才沿既有atomic envelope寫研究接受記錄；日報readonly且不啟producer。R維持output/qa或Temp專用根，200GiB reserve／256KiB/包／8MiB/128包不放寬；partial與busy不可刪除繞過。CLI0非日覆蓋完整，應檢查missing_observation_dates、每筆saved_verified與acceptance_saved/day_readiness_status，不能因接受/報表拒絕說上游producer沒發布。正式owner/Task/留存未部署；QA與決策表：docs/06_qa/UX20_OBSERVATION_DAY_ACCEPTANCE_20261006.md。

@@ -4770,3 +4770,16 @@ CLI capture階段失敗時返回碼2，但上游snapshot可能已發布；回傳
 「重讀／重試核對」唯讀相同包，不產生資料。若未完整，先查看各批結果，再依上節隔離CLI沿相同固定as_of及來源重試；來源／方法變更要新明示保存；partial store保留，使用新隔離位置而非刪lock／原件。返回或取消會停止套用結果，背景讀取安全返回後才可重讀，取消不代表曾保存內容消失。
 
 「展開來源與診斷」可看原配置、hash、receipt及逐批error，預設收合。保存包身份通過但readiness拒絕時，表格保留原記錄，母體完整資格未確認；envelope拒絕則清舊分母，核對選取來源後重試。缺批是未捕捉，未知不是負樣本，符合方法不等於正式入選；available-at／交易日曆／成熟結果仍未知，不授PIT、訓練或正式資格。頁面原單批樣本摘要仍明示未保存，不借parent包替另一單批來源核章。詳見 [收據UI QA](../06_qa/UX20_PARENT_RECEIPT_UI_20261006.md)。
+
+
+## 2026-10-06 固定觀測日研究收據接受（隔離 CLI）
+
+這是parent保存後的明示接受步驟，不啟producer、排程或正式DB。先準備UTF-8 policy JSON：schema_version=rule-research-observation-policy.v1、policy_id/version、timezone=Asia/Taipei、decision_cutoff_time、observation_start_time/end_time（HH:MM:SS且cutoff≤start≤end，不跨日）、expected_observation_dates（1–31個排序不重複ISO日期）、universe_template_source（既有parent母體JSON絕對路徑）、research_only=true。日期是明示觀測日，未知calendar不能推官方交易日。模板除日期外的全部成員／排除／版本須與每筆parent相同。
+
+呼叫scripts/accept_rule_research_observation.py，傳--policy-config P --acceptance-root R --evaluated-at <含時區ISO時刻> --parent-receipt <parents/identity/receipt.json>；預設preview，不建接受目錄。核對candidate原cutoff/as_of、資料日、target_data_day_status與missing_target_data_members，明示再加--accept才寫研究接受或未完整記錄。R僅隔離output/qa或Temp子目錄，不能重疊producer/parent來源或包含配置來源；既有容量／留存守衛不放寬。
+
+省略parent-receipt只讀日覆蓋報表，不開DB。evaluated-at不能晚於現在，不借後來parent。expected日窗口未到為not_due，窗口內awaiting，窗口結束仍缺完整包列missing_complete_observation；不以最新日、較早資料日或unknown補齊。parent保存完整不保證每股資料日正確，缺目標日只存recorded_incomplete_observation，不能算當日完成；方法符合不是正式入選，calendar/available-at/Outcome未知，不授PIT、formal或training。
+
+相同policy/exact parent輸入duplicate沿首次receipt。同日不同revision/as_of保舊新包，日報列所有pin，不自動挑winner；policy bytes／方法或模板改變須明示版本處理，舊記錄不混算。退出0不表示無漏日，需看missing_observation_dates與日狀態；未完整候選/日報拒絕返回2。
+
+失敗時核對receipt：acceptance_saved=true＋day_readiness_status=rejected表示接受包已寫、報表未核對；accept exception以unknown表示可能有殘件，不能當沒寫內容。容量不足且無partial可修正容量後原root重試；partial/busy保持fail closed，保留原件，經確認明示新的隔離root重試，不刪lock/partial繞過。沒有正式WindowsTask、自動清理或市場資料搬移。部署缺件與待決策見 [固定觀測日QA](../06_qa/UX20_OBSERVATION_DAY_ACCEPTANCE_20261006.md)。

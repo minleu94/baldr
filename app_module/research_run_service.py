@@ -12,7 +12,7 @@ import re
 import stat
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
@@ -71,6 +71,81 @@ class ResearchRunData:
     trades: pd.DataFrame
     replay_lineage: ReplayLineageReadEnvelope | None = None
     portfolio_result_artifact: RecommendationPortfolioResultArtifactV1 | None = None
+
+
+class _ArtifactReadRound:
+    """每次 load 獨立計費，核對同份 bytes；預算不代表解碼 RAM 上限。"""
+
+    CHUNK_BYTES = 64 * 1024
+
+    def __init__(self, max_artifact_bytes: int | None, max_total_bytes: int | None,
+                 check_cancel: Callable[[], bool] | None):
+        for value in (max_artifact_bytes, max_total_bytes):
+            if value is not None and (type(value) is not int or value <= 0):
+                raise ValueError("artifact/aggregate byte budget 必須為正整數")
+        self.max_artifact_bytes = max_artifact_bytes
+        self.max_total_bytes = max_total_bytes
+        self.check_cancel = check_cancel
+        self.used_bytes = 0
+        self.sources: dict[Path, tuple[int, int, int, int]] = {}
+
+    @staticmethod
+    def stamp(value: os.stat_result) -> tuple[int, int, int, int]:
+        return value.st_size, value.st_mtime_ns, value.st_dev, value.st_ino
+
+    def cancelled(self) -> None:
+        if self.check_cancel is not None and self.check_cancel():
+            raise ResearchRunIntegrityError("read_cancelled")
+
+    def read(self, path: Path, expected_hash: str) -> bytes:
+        self.cancelled()
+        try:
+            before = self.stamp(path.stat())
+            if path in self.sources and self.sources[path] != before:
+                raise ResearchRunIntegrityError("artifact_source_changed:" + str(path))
+            if self.max_artifact_bytes is not None and before[0] > self.max_artifact_bytes:
+                raise ResearchRunIntegrityError("artifact_byte_budget_exceeded:" + str(path))
+            if self.max_total_bytes is not None and before[0] > self.max_total_bytes - self.used_bytes:
+                raise ResearchRunIntegrityError("aggregate_byte_budget_exceeded:" + str(path))
+            self.used_bytes += before[0]
+            digest = hashlib.sha256()
+            chunks: list[bytes] = []
+            count = 0
+            with path.open("rb") as handle:
+                if self.stamp(os.fstat(handle.fileno())) != before:
+                    raise ResearchRunIntegrityError("artifact_source_changed:" + str(path))
+                while True:
+                    self.cancelled()
+                    chunk = handle.read(min(self.CHUNK_BYTES, before[0] - count + 1))
+                    if not chunk:
+                        break
+                    count += len(chunk)
+                    if count > before[0]:
+                        raise ResearchRunIntegrityError("artifact_source_changed:" + str(path))
+                    digest.update(chunk)
+                    chunks.append(chunk)
+                if count != before[0] or self.stamp(os.fstat(handle.fileno())) != before:
+                    raise ResearchRunIntegrityError("artifact_source_changed:" + str(path))
+            self.cancelled()
+            if self.stamp(path.stat()) != before:
+                raise ResearchRunIntegrityError("artifact_source_changed:" + str(path))
+        except OSError as exc:
+            raise ResearchRunIntegrityError("artifact_source_unavailable:" + str(path)) from exc
+        if "sha256:" + digest.hexdigest() != expected_hash:
+            raise ResearchRunIntegrityError(f"payload hash 不一致: {path}")
+        self.sources[path] = before
+        return b"".join(chunks)
+
+    def verify_sources(self) -> None:
+        self.cancelled()
+        for path, before in self.sources.items():
+            self.cancelled()
+            try:
+                after = self.stamp(path.stat())
+            except OSError as exc:
+                raise ResearchRunIntegrityError("artifact_source_unavailable:" + str(path)) from exc
+            if after != before:
+                raise ResearchRunIntegrityError("artifact_source_changed:" + str(path))
 
 
 class ResearchRunService:
@@ -601,6 +676,7 @@ class ResearchRunService:
         path: Path,
         *,
         expected_path: Path,
+        reading: _ArtifactReadRound | None = None,
     ) -> RecommendationPortfolioResultArtifactV1:
         if path != expected_path:
             raise ResearchRunIntegrityError(
@@ -613,7 +689,10 @@ class ResearchRunService:
         paths = self._paths_for(metadata.run_id)
         descriptor = self._validate_portfolio_result_descriptor(metadata, paths)
         try:
-            raw_payload = path.read_bytes()
+            raw_payload = (path.read_bytes() if reading is None else
+                           reading.read(path, descriptor["raw_payload_sha256"]))
+            if reading is not None:
+                reading.cancelled()
             artifact = decode_portfolio_result_artifact(raw_payload)
         except (OSError, PortfolioResultArtifactCodecError, TypeError, ValueError) as exc:
             raise ResearchRunIntegrityError(
@@ -708,11 +787,14 @@ class ResearchRunService:
     def _hash_bytes(payload: bytes) -> str:
         return "sha256:" + hashlib.sha256(payload).hexdigest()
 
-    def _read_verified_bytes(self, path: Path, expected_hash: str) -> bytes:
+    def _read_verified_bytes(self, path: Path, expected_hash: str, *,
+                             reading: _ArtifactReadRound | None = None) -> bytes:
         if self._is_symlink_or_reparse_point(path):
             raise ResearchRunIntegrityError(
                 f"payload 檔案不可為 symlink 或 reparse point: {path}"
             )
+        if reading is not None:
+            return reading.read(path, expected_hash)
         try:
             payload = path.read_bytes()
         except OSError as exc:
@@ -723,13 +805,20 @@ class ResearchRunService:
 
     @staticmethod
     def _parse_portfolio_parquet_bytes(
-        equity_bytes: bytes, trades_bytes: bytes
+        equity_bytes: bytes, trades_bytes: bytes, *,
+        reading: _ArtifactReadRound | None = None,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """解析已驗 hash 的同次 Parquet bytes，避免再從路徑讀第二次。"""
 
         try:
+            if reading is not None:
+                reading.cancelled()
             equity = pd.read_parquet(BytesIO(equity_bytes))
+            if reading is not None:
+                reading.cancelled()
             trades = pd.read_parquet(BytesIO(trades_bytes))
+        except ResearchRunIntegrityError:
+            raise
         except Exception as exc:
             raise ResearchRunIntegrityError(
                 "portfolio Parquet bytes 無法解析"
@@ -840,17 +929,25 @@ class ResearchRunService:
         self,
         metadata: ResearchRunMetadataDTO,
         paths: dict[str, Path],
+        *,
+        reading: _ArtifactReadRound | None = None,
     ) -> tuple[bytes, bytes]:
         self._validate_portfolio_result_descriptor(metadata, paths)
         equity_bytes = self._read_verified_bytes(
-            paths["equity_final"], metadata.equity_parquet_hash
+            paths["equity_final"], metadata.equity_parquet_hash, reading=reading
         )
         trades_bytes = self._read_verified_bytes(
-            paths["trades_final"], metadata.trades_parquet_hash
+            paths["trades_final"], metadata.trades_parquet_hash, reading=reading
         )
         return equity_bytes, trades_bytes
 
-    def load_run_data(self, run_id: str) -> ResearchRunData:
+    def load_run_data(self, run_id: str, *,
+                      max_artifact_bytes: int | None = None,
+                      max_total_bytes: int | None = None,
+                      check_cancel: Callable[[], bool] | None = None) -> ResearchRunData:
+        """讀回同份已核 bytes；舊 caller 可省略預算，歷史入口須明示。"""
+        reading = _ArtifactReadRound(max_artifact_bytes, max_total_bytes, check_cancel)
+        reading.cancelled()
         raw = self.repository.get_raw_metadata_row(run_id)
         metadata = self.repository.get_metadata(run_id)
         if raw is None or metadata is None:
@@ -868,15 +965,17 @@ class ResearchRunService:
             # 對 marked run，驗 hash與解析都使用同次讀到的 bytes，避免驗證後路徑
             # 被替換造成 TOCTOU。Stage C 可直接接收這個已驗 sidecar envelope。
             equity_bytes, trades_bytes = self._verify_marked_parquet_final(
-                metadata, paths
+                metadata, paths, reading=reading
             )
             artifact = self._read_portfolio_result_file(
                 metadata,
                 paths["portfolio_result_final"],
                 expected_path=paths["portfolio_result_final"],
+                reading=reading,
             )
+            reading.cancelled()
             equity, trades = self._parse_portfolio_parquet_bytes(
-                equity_bytes, trades_bytes
+                equity_bytes, trades_bytes, reading=reading
             )
         else:
             if descriptor_present or (
@@ -888,12 +987,15 @@ class ResearchRunService:
                 raise ResearchRunIntegrityError(
                     "未宣告 portfolio result marker 的 run 出現 sidecar 或 orphan bytes"
                 )
-            self._verify_hash(Path(metadata.equity_path), metadata.equity_parquet_hash)
-            self._verify_hash(Path(metadata.trades_path), metadata.trades_parquet_hash)
-            equity = pd.read_parquet(metadata.equity_path)
-            trades = pd.read_parquet(metadata.trades_path)
+            equity_bytes = reading.read(Path(metadata.equity_path), metadata.equity_parquet_hash)
+            trades_bytes = reading.read(Path(metadata.trades_path), metadata.trades_parquet_hash)
+            reading.cancelled()
+            equity = pd.read_parquet(BytesIO(equity_bytes))
+            reading.cancelled()
+            trades = pd.read_parquet(BytesIO(trades_bytes))
             artifact = None
-        replay_lineage = self._load_replay_lineage(metadata)
+        reading.cancelled()
+        replay_lineage = self._load_replay_lineage(metadata, reading=reading)
         if (
             artifact is not None
             and replay_lineage is not None
@@ -903,6 +1005,7 @@ class ResearchRunService:
             raise ResearchRunIntegrityError(
                 "portfolio result 與 replay lineage parent identity 不一致"
             )
+        reading.verify_sources()
         return ResearchRunData(
             metadata=metadata,
             equity=equity,
@@ -1335,12 +1438,13 @@ class ResearchRunService:
         return value
 
     def _load_replay_lineage(
-        self, metadata: ResearchRunMetadataDTO
+        self, metadata: ResearchRunMetadataDTO, *,
+        reading: _ArtifactReadRound | None = None,
     ) -> ReplayLineageReadEnvelope | None:
         if self.REPLAY_LINEAGE_MANIFEST_KEY not in metadata.data_manifest:
             return None
         paths = self._paths_for(metadata.run_id)
-        return self._read_replay_lineage_file(metadata, paths["replay_lineage_final"])
+        return self._read_replay_lineage_file(metadata, paths["replay_lineage_final"], reading=reading)
 
     def _validate_replay_lineage_descriptor(
         self,
@@ -1389,6 +1493,8 @@ class ResearchRunService:
         self,
         metadata: ResearchRunMetadataDTO,
         path: Path,
+        *,
+        reading: _ArtifactReadRound | None = None,
     ) -> ReplayLineageReadEnvelope:
         paths = self._paths_for(metadata.run_id)
         descriptor = self._validate_replay_lineage_descriptor(metadata, paths)
@@ -1397,7 +1503,10 @@ class ResearchRunService:
         if self._is_symlink_or_reparse_point(path):
             raise ResearchRunIntegrityError("replay lineage file 不可為 symlink 或 reparse point")
         try:
-            raw_payload = path.read_bytes()
+            raw_payload = (path.read_bytes() if reading is None else
+                           reading.read(path, descriptor["raw_payload_sha256"]))
+            if reading is not None:
+                reading.cancelled()
             envelope = decode_replay_lineage_envelope(raw_payload)
         except (OSError, ReplayLineageCodecError, TypeError, ValueError) as exc:
             raise ResearchRunIntegrityError("replay lineage sidecar 無法驗證") from exc

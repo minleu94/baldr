@@ -29,7 +29,7 @@ class ResearchHistoryUnavailable(ValueError):
 
 @dataclass(frozen=True)
 class ResearchHistoryReadBudget:
-    """工程 caller 明示的 legacy 原始 bytes 預算；不是正式保存容量政策。"""
+    """caller 明示 Registry／legacy 序列化讀取預算；不代表解碼 RAM 上限。"""
 
     max_artifact_bytes: int
     max_total_bytes: int
@@ -319,7 +319,14 @@ class ResearchHistoryLookup:
                 raise ResearchHistoryUnavailable("selected_source_changed")
             if not expected.result_supported:
                 raise ResearchHistoryUnavailable(expected.unsupported_reason)
-            loaded = self.registry.load_run_data(expected.run_id)
+            if reading.budget is None:
+                raise ResearchHistoryUnavailable("registry_read_budget_required")
+            loaded = self.registry.load_run_data(
+                expected.run_id,
+                max_artifact_bytes=reading.budget.max_artifact_bytes,
+                max_total_bytes=reading.budget.max_total_bytes,
+                check_cancel=check_cancel,
+            )
             reading.cancelled()
             if self._registry_entry(loaded.metadata) != expected:
                 raise ResearchHistoryUnavailable("selected_source_changed")

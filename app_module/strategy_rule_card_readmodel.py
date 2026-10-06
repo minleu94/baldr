@@ -1,0 +1,334 @@
+"""版本化規則說明的唯讀投影；不執行策略、不授予績效或交易資格。"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+import hashlib
+import json
+import re
+from typing import Any
+
+from app_module.daily_market_method_contract import (
+    method_contracts_payload, method_contracts_sha256,
+)
+from app_module.daily_market_feature_snapshot import DailyMarketFeatureSnapshot
+from app_module.strategy_version_service import StrategyVersion
+from decision_module.strategies.contracts import StrategyMeta, StrategySpec
+from decision_module.strategies.registry import StrategyRegistry
+
+
+SCHEMA = "strategy-rule-card.v1"
+RESULT_KINDS = frozenset({"historical_backtest", "research_forward", "live"})
+FIELD_KEYS = (
+    "name", "description", "entry", "exit", "universe", "period",
+    "parameters", "parameter_schema", "cost", "required_features", "units",
+    "data_insufficiency", "execution_mode", "signal_time", "earliest_execution",
+    "holding_period", "stop_loss", "take_profit", "position_limits",
+    "gap_suspension_unfilled", "benchmark", "qualification", "source_trace",
+)
+
+
+def _json(value: Any) -> str:
+    # Decimal 只在 DTO 序列化邊界轉字串，不改金融數值。
+    return json.dumps(value, ensure_ascii=False, sort_keys=True,
+                      separators=(",", ":"), allow_nan=False,
+                      default=lambda item: str(item) if isinstance(item, Decimal)
+                      else _unsupported(item))
+
+
+def _unsupported(value: Any) -> Any:
+    raise TypeError(f"不支援的契約值：{type(value).__name__}")
+
+
+def _hash(value: Any) -> str:
+    try:
+        return hashlib.sha256(_json(value).encode("utf-8")).hexdigest()
+    except (TypeError, ValueError):
+        return ""
+
+
+def _valid_hash(value: str) -> bool:
+    return bool(re.fullmatch(r"[0-9a-f]{64}", value))
+
+
+@dataclass(frozen=True)
+class RuleField:
+    key: str
+    value_json: str
+    source: str | None
+    missing_reason: str | None = None
+
+    @property
+    def value(self) -> Any:
+        """每次回傳獨立副本，consumer 無法改寫舊卡。"""
+        return json.loads(self.value_json)
+
+
+@dataclass(frozen=True)
+class RuleCardIdentity:
+    rule_id: str
+    rule_version: str
+    source_ref: str
+    source_sha256: str
+    rule_sha256: str
+    result_kind: str
+    context_sha256: str = ""
+
+
+@dataclass(frozen=True)
+class StrategyRuleCard:
+    identity: RuleCardIdentity
+    fields: tuple[RuleField, ...]
+    missing: tuple[str, ...]
+    reasons: tuple[str, ...]
+    observation_qualification: str = "not_evaluable"
+    observation_json: str = "null"
+    schema: str = SCHEMA
+    rule_status: str = "not_evaluable"
+    performance_status: str = "not_evaluable"
+
+    def field(self, key: str) -> RuleField:
+        return next(item for item in self.fields if item.key == key)
+
+    def to_dict(self) -> dict[str, Any]:
+        from dataclasses import asdict
+        return {
+            "schema": self.schema, "identity": asdict(self.identity),
+            "fields": {item.key: {"value": item.value, "source": item.source,
+                                  "missing_reason": item.missing_reason}
+                       for item in self.fields},
+            "missing": list(self.missing), "reasons": list(self.reasons),
+            "rule_status": self.rule_status,
+            "observation_qualification": self.observation_qualification,
+            "observation": json.loads(self.observation_json),
+            "performance_status": self.performance_status,
+        }
+
+
+def _card(identity: RuleCardIdentity, values: Mapping[str, tuple[Any, str]],
+          reasons: tuple[str, ...] = (), *, observation: Any = None,
+          observation_qualification: str = "not_evaluable") -> StrategyRuleCard:
+    errors = list(reasons)
+    projected: list[RuleField] = []
+    for key in FIELD_KEYS:
+        if key not in values or values[key][0] is None or not values[key][1]:
+            projected.append(RuleField(key, "null", None, "source_contract_field_missing"))
+            continue
+        try:
+            projected.append(RuleField(key, _json(values[key][0]), values[key][1]))
+        except (TypeError, ValueError):
+            projected.append(RuleField(key, "null", values[key][1], "source_contract_value_invalid"))
+            errors.append("source_contract_value_invalid:" + key)
+    fields = tuple(projected)
+    if not identity.rule_id or not identity.rule_version or not identity.source_ref:
+        errors.append("rule_identity_missing")
+    if not _valid_hash(identity.source_sha256) or not _valid_hash(identity.rule_sha256):
+        errors.append("source_hash_missing_or_invalid")
+    if identity.result_kind not in RESULT_KINDS:
+        errors.append("result_kind_unknown")
+    return StrategyRuleCard(identity, fields,
+                            tuple(item.key for item in fields if item.missing_reason),
+                            tuple(dict.fromkeys(errors)),
+                            observation_qualification if not errors else "not_evaluable",
+                            _json(observation) if not errors else "null")
+
+
+def read_strategy_rule_card(spec: StrategySpec, *,
+                            version: StrategyVersion | None = None,
+                            result_kind: str = "historical_backtest") -> StrategyRuleCard:
+    """只讀公開 registry 與傳入 DTO；不建立 VersionService 或 executor。"""
+    raw = StrategyRegistry.get_strategy_meta(spec.strategy_id)
+    meta = raw.to_dict() if isinstance(raw, StrategyMeta) else raw
+    meta = meta if isinstance(meta, dict) else {}
+    source = "decision_module.strategies.registry.StrategyRegistry.get_strategy_meta"
+    errors: list[str] = []
+    if not meta:
+        errors.append("registry_metadata_missing")
+    if meta and (meta.get("strategy_id") != spec.strategy_id or
+                 meta.get("strategy_version", meta.get("version")) != spec.strategy_version):
+        errors.append("registry_version_mismatch")
+    if version and (version.strategy_id != spec.strategy_id or
+                    version.strategy_version != spec.strategy_version or
+                    version.config != spec.config):
+        errors.append("strategy_version_spec_mismatch")
+    if version and any(version.params.get(key) != value
+                       for key, value in spec.config.get("params", {}).items()):
+        errors.append("strategy_version_params_mismatch")
+    payload = {"spec": spec.to_dict(), "registry": meta,
+               "version": version.to_dict() if version else None}
+    identity = RuleCardIdentity(spec.strategy_id, spec.strategy_version, source,
+                                _hash(payload), _hash(spec.to_dict()), result_kind)
+    values: dict[str, tuple[Any, str]] = {
+        "name": (meta.get("name"), source + ".name"),
+        "description": (meta.get("description"), source + ".description"),
+        "parameters": (spec.config.get("params"), "StrategySpec.config.params"),
+        "parameter_schema": (meta.get("params", meta.get("default_params")),
+                             source + (".params" if "params" in meta else ".default_params")),
+        "universe": ({"target_type": spec.target_type, "regime": spec.regime,
+                      "membership": None}, "StrategySpec.target_type/regime"),
+        "qualification": ({"validation_status": version.validation_status,
+                           "source_run_id": version.source_run_id},
+                          "StrategyVersion.validation_status/source_run_id") if version
+                         else (None, ""),
+        "source_trace": ({"strategy_id": spec.strategy_id,
+                          "strategy_version": spec.strategy_version,
+                          "data_version": spec.data_version,
+                          "version_id": version.version_id if version else None,
+                          "source_run_id": version.source_run_id if version else None},
+                         "StrategySpec/StrategyVersion"),
+    }
+    # config 是原始設定，不把參數名／description 推論為完整出場或執行合約。
+    return _card(identity, values, tuple(errors))
+
+
+def read_profile_rule_card(profile: Any) -> StrategyRuleCard:
+    """Profile 只作選股設定投影；style 名稱與 validation_label 不授交易資格。"""
+    payload = {"profile_id": profile.profile_id, "version": profile.version,
+               "config": profile.config, "metadata": profile.metadata,
+               "source_version_id": profile.source_version_id}
+    source = "app_module.recommendation_profile_service.RecommendationProfile"
+    identity = RuleCardIdentity(profile.profile_id, profile.version, source,
+                                _hash(payload), _hash(payload), "live")
+    return _card(identity, {
+        "name": (profile.name, source + ".name"),
+        "description": (profile.description, source + ".description"),
+        "parameters": (profile.config, source + ".config"),
+        "universe": ({"regime": profile.applicable_regimes}, source + ".applicable_regimes"),
+    }, ("profile_execution_contract_unbound",))
+
+
+def read_daily_method_rule_card(key: str, *,
+                                snapshot: DailyMarketFeatureSnapshot | None = None,
+                                result_kind: str = "live") -> StrategyRuleCard:
+    """既有 MA 方法與已產生觀察的投影；沒有快照時只提供規則說明。"""
+    contracts = method_contracts_payload() if snapshot is None else snapshot.method_contracts
+    contract = contracts.get(key, {})
+    source = "app_module.daily_market_method_contract.method_contracts_payload"
+    source_hash = method_contracts_sha256(contracts)
+    identity = RuleCardIdentity(contract.get("method_id", ""), contract.get("version", ""),
+                                source, source_hash, _hash(contract), result_kind,
+                                _hash(snapshot.to_dict()) if snapshot else "")
+    values: dict[str, tuple[Any, str]] = {}
+    errors: list[str] = []
+    observed: Any = None
+    qualification = "not_evaluable"
+    if not contract:
+        errors.append("method_contract_missing")
+    else:
+        for dest, origin in [("entry", "parameters"), ("parameters", "parameters"),
+                             ("required_features", "required_fields")]:
+            values[dest] = (contract.get(origin), source + "." + key + "." + origin)
+    if snapshot:
+        trace = "DailyMarketFeatureSnapshot"
+        values.update({
+            "universe": ({"scope_identity": snapshot.scope_identity,
+                          "stock_code": snapshot.stock_code}, trace + ".scope_identity/stock_code"),
+            "period": ({"decision_date": snapshot.decision_date.isoformat(),
+                        "data_date": snapshot.market_date}, trace + ".decision_date/market_date"),
+            "execution_mode": (snapshot.usage, trace + ".usage"),
+            "qualification": ({"historical_pit_eligible": snapshot.historical_pit_eligible,
+                               "official_availability_state": snapshot.official_availability_state,
+                               "market_calendar_completeness": snapshot.market_calendar_completeness},
+                              trace + ".policy"),
+            "source_trace": ({"snapshot_identity_sha256": snapshot.snapshot_identity_sha256,
+                              "input_fingerprint_sha256": snapshot.input_fingerprint_sha256,
+                              "method_contracts_sha256": snapshot.method_contracts_sha256,
+                              "contract_version": snapshot.contract_version}, trace),
+            "units": ({item.key: item.unit for item in snapshot.features
+                       if item.key in contract.get("required_fields", [])}, trace + ".features.unit"),
+        })
+        if not _valid_hash(snapshot.snapshot_identity_sha256) or not _valid_hash(snapshot.input_fingerprint_sha256):
+            errors.append("snapshot_source_identity_missing")
+        if snapshot.method_contracts_sha256 != source_hash:
+            errors.append("snapshot_method_hash_mismatch")
+        if not snapshot.stock_code or not snapshot.scope_identity:
+            errors.append("snapshot_scope_missing")
+        for key_required in contract.get("required_fields", []):
+            features = [item for item in snapshot.features if item.key == key_required]
+            if len(features) != 1:
+                errors.append("required_feature_missing_or_duplicate:" + key_required)
+                continue
+            feature = features[0]
+            if (feature.state != "observed" or feature.value is None or
+                    not feature.value.is_finite() or feature.value <= Decimal("0") or
+                    feature.data_date != snapshot.market_date or not feature.source_id or
+                    not _valid_hash(feature.source_fingerprint_sha256)):
+                errors.append("required_feature_unknown:" + key_required)
+        try:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", snapshot.market_date or ""):
+                raise ValueError("資料日期需為 ISO 日")
+            if date.fromisoformat(snapshot.market_date or "") > snapshot.decision_date:
+                errors.append("future_data_date")
+        except ValueError:
+            errors.append("data_date_invalid")
+        if result_kind != "live" or snapshot.usage != "current_observed_research_only":
+            errors.append("snapshot_result_kind_mismatch")
+        matches = [item for item in snapshot.conditions if item.name == key]
+        if len(matches) != 1:
+            errors.append("condition_missing_or_duplicate")
+        else:
+            condition = matches[0]
+            observed = condition.to_dict()
+            if (condition.method_id != identity.rule_id or condition.version != identity.rule_version
+                    or dict(condition.parameters) != contract.get("parameters")
+                    or condition.family != contract.get("family")
+                    or condition.decision_date != snapshot.decision_date.isoformat()
+                    or condition.data_date != snapshot.market_date):
+                errors.append("condition_contract_mismatch")
+            expected = {"above": "match", "below": "no_match", "equal": "no_match"}
+            if condition.state != "unknown" and (expected.get(condition.relation) != condition.state
+                    or condition.eligibility != "eligible"):
+                errors.append("condition_state_invalid")
+            if condition.state != "unknown" and (
+                    condition.close_value is None or condition.reference_value is None or
+                    condition.close_value != next((item.value for item in snapshot.features
+                                                   if item.key == "close"), None) or
+                    condition.reference_value != next((item.value for item in snapshot.features
+                                                       if item.key != "close" and item.key in
+                                                       contract.get("required_fields", [])), None)):
+                errors.append("condition_feature_mismatch")
+            if condition.state != "unknown" and condition.close_value is not None and condition.reference_value is not None:
+                close, reference = condition.close_value, condition.reference_value
+                if not close.is_finite() or not reference.is_finite():
+                    errors.append("condition_values_invalid")
+                else:
+                    # 只核對上游既有關係，不產生或改寫訊號。
+                    relation = "above" if close > reference else "below" if close < reference else "equal"
+                    if relation != condition.relation:
+                        errors.append("condition_relation_mismatch")
+            if condition.state == "unknown":
+                values["data_insufficiency"] = (condition.unknown_reason or condition.reason,
+                                                trace + ".conditions.unknown_reason/reason")
+                errors.append("condition_unknown")
+            elif condition.state in {"match", "no_match"}:
+                qualification = "eligible_observation_only"
+            else:
+                errors.append("condition_state_invalid")
+    return _card(identity, values, tuple(errors), observation=observed,
+                 observation_qualification=qualification)
+
+
+@dataclass(frozen=True)
+class RuleCardResultReference:
+    """consumer 從已驗證結果來源組成的精確 pin；本模組只核對、不驗證績效。"""
+    identity: RuleCardIdentity
+    result_ref: str
+    result_sha256: str
+
+
+def bind_result_reference(card: StrategyRuleCard,
+                          result: RuleCardResultReference) -> dict[str, Any]:
+    """只提供同版同模式來源連結；沒有 metrics 或 verified-performance 升格。"""
+    reasons = list(card.reasons)
+    if card.identity != result.identity:
+        reasons.append("result_identity_mismatch")
+    if not result.result_ref or not _valid_hash(result.result_sha256):
+        reasons.append("result_source_missing")
+    return {"status": "not_evaluable" if reasons else "source_ref_only",
+            "performance_status": "not_evaluable", "reasons": list(dict.fromkeys(reasons)),
+            "result_kind": card.identity.result_kind,
+            "result_ref": result.result_ref if not reasons else None,
+            "result_sha256": result.result_sha256 if not reasons else None}

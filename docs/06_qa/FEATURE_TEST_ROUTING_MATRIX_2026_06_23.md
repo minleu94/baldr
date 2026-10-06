@@ -1,5 +1,11 @@
 # Feature-to-Test Routing Matrix (2026-06-23)
 
+## 2026-10-06 已採中央 caller 與後續契約路由
+
+新增七個具名分類：B07 research_history、B13 model_input_adapter 為 research/backtest oracle；B09 personal_portfolio、B14 shadow_control、central_personal_composition 為 portfolio/decision/runtime oracle；B11 family_catalog 為一般 unit；central_chart_composition 為 UI candidate。原 direct bridge 12 不變。B07 caller budget／父 view 關閉核中央5案例；B09 route+paths／Paper pair／Journey 分離與中央圖表原紀錄 bounded reader／stale worker／aware 新紀錄 clock 核同版19案例。lane 摘要與中央落地收據分報，不把 B07 無 raw log 的舊154/54/11報告升為可核收據。
+
+標準 UI 推薦確認仍缺可信 source_id 三檔接線，待直接批准；既有缺 source/account/clock 不補造。B14 evidence composition 尚在獨立 lane；最後穩定樹 mandatory union 待上述落定。以下第二波段落保留其當期範圍。
+
 ## 2026-10-06 第二波新增差異路由
 
 B03首頁／Update／Runtime：test_baldr_b03_market_home、test_baldr_b03_update_runtime及原market/runtime tests，核unknown日期／collapsed refresh／exact來源。B04兩個新test_baldr_b04_*核保存選擇及理由/查看狀態CAS／cancel／同源revision。B05新chart_markers／chart_marker_reader與原payload/viewport核原保存record→獨立pins→markers→newprocess、缺account/clock/stale拒。B06 portfolio_summary及原portfolio/declared/navigation核三帳/估值unknown/注入pair。

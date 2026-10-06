@@ -6,6 +6,14 @@ from pathlib import Path
 # This registry serves as a guardrail to ensure that only allowed tests are bridged.
 
 TEST_INVENTORY: dict[str, str] = {
+    # 2026-10-06 accepted owned increments; no new direct bridge.
+    'tests/test_baldr_b07_research_history.py': 'service-oracle-research-backtest',
+    'tests/test_baldr_b09_personal_portfolio.py': 'service-oracle-portfolio-decision-runtime',
+    'tests/test_baldr_b11_family_catalog.py': 'general-unit-keep-in-pytest',
+    'tests/test_baldr_b13_model_input_adapter.py': 'service-oracle-research-backtest',
+    'tests/test_baldr_b14_shadow_control.py': 'service-oracle-portfolio-decision-runtime',
+    'tests/test_baldr_central_chart_composition.py': 'ui-healthcheck-candidate-bridge',
+    'tests/test_baldr_central_personal_composition.py': 'service-oracle-portfolio-decision-runtime',
     # 2026-10-06 Baldr bounded closeout; candidate/oracle only, no new direct bridge.
     "tests/test_baldr_b03_market_home.py": "ui-healthcheck-candidate-bridge",
     "tests/test_baldr_b03_update_runtime.py": "ui-healthcheck-candidate-bridge",

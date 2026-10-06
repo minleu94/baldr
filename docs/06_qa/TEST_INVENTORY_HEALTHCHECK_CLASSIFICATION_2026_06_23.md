@@ -6,29 +6,32 @@
 
 本次僅補中央已採本輪14個具名新增 tests 的既有分類，不重分類他人、不新增 direct bridge。metadata audit 使用 --skip-pytest-collection，未完整收集 pytest，也未執行測試。7個UI相關新檔為 candidate，3個B10檔為 portfolio/decision/runtime oracle，1個B12檔為 research/backtest oracle，3個純契約檔為一般unit；candidate/oracle不代表healthcheck runner已接線。
 
-Current filesystem Python files: `1273`
-Current registry entries: `1097`
+Current filesystem Python files: `1280`
+Current registry entries: `1104`
 Current collected test cases: 未執行
 
 | 分類 | 數量 |
 |---|---:|
-| `general-unit-keep-in-pytest` | 158 |
+| `general-unit-keep-in-pytest` | 159 |
 | `governance-doc-tooling` | 171 |
 | `healthcheck-runner-owned` | 29 |
 | `legacy-or-low-priority` | 3 |
 | `manual-only` | 14 |
 | `service-oracle-data-market` | 159 |
-| `service-oracle-portfolio-decision-runtime` | 135 |
+| `service-oracle-portfolio-decision-runtime` | 138 |
 | `service-oracle-recommendation` | 161 |
-| `service-oracle-research-backtest` | 101 |
+| `service-oracle-research-backtest` | 103 |
 | `slow-e2e-or-environment` | 4 |
-| `ui-healthcheck-candidate-bridge` | 68 |
+| `ui-healthcheck-candidate-bridge` | 69 |
 | `ui-healthcheck-direct-bridge` | 12 |
 | `write-risk-dry-run-required` | 82 |
 
 audit 原結果 overall failed：仍有176個未登錄檔（本輪前190，僅補14），stale0、collection errors0但未collection；原doc count drift7由本節反映實際registry數量，不修改其餘176檔分類。raw output/qa/b15_inventory_metadata_20261006.json，完整mandatory UI union仍待穩定版；不以清冊數量提升原stage/UX完成。以下9/30為當期歷史，不代替本次metadata結果。
 
 Final metadata receipt: `output/qa/b15_inventory_metadata_final_20261006.json`, SHA256 `a6b845b3f5a1b2c1b0a0f48091178b6b0370504a77e64e1a0a351fbae58ae1b9`; documentation count drift=0, remaining blocker=`unregistered_test_files:176`, overall failed, collection skipped.
+
+
+中央 caller 增量：另補七個已採新增檔，合計本輪21檔；B07/B13兩個research oracle、B09/B14/central personal三個portfolio oracle、B11一般unit、central chart一個UI candidate。上列為目前數量；前一筆14檔metadata收據保留為歷史，不冒稱覆蓋此次增量。direct bridge仍12，未執行collection／測試；176個其他未登錄檔不越權重分類。本次 metadata 收據 output/qa/b15_inventory_caller_corrected_20261006.json，SHA256 1fcdf7c86b7b5d06b54043f4903c4db03f489568132477de149d5fad64d8010c；doc drift 0、stale 0、collection skipped，overall failed 唯一 machine blocker unregistered_test_files:176。
 
 ## 2026-09-30 machine refresh
 

@@ -1,5 +1,9 @@
 # Full App Healthcheck 逐列 Coverage Mapping 2026-06-24
 
+## 2026-10-06 中央 caller 增量覆蓋
+
+中央已採 B07/09/11/13 與 B14 純 control port，並接 Main 的 selected route+personal_paths、B06 注入、Journey exact 路徑與圖表 background bounded 原紀錄 reader。central personal/chart 同版19案例有 JUnit；B07中央 caller 5案例有 JUnit，其 lane 舊154/54/11僅報告而無 raw pytest 收據。新增七檔維持 candidate/oracle/unit 分類，沒有新 direct bridge。B14 純 port 不代表正式模型控制，B13 ready 僅 synthetic 工程；完整 maturity/drift composition 仍待 lane 交付。標準 UI 推薦確認 source_id 三檔待可信批准，unknown 舊紀錄不畫；完整 mandatory union 尚待最後穩定樹。原 stage/UX、七項有限 closed 及性能例外保持。
+
 ## 2026-10-06 第二波增量覆蓋補充
 
 本段是已有測試的對照，不是新bridge或全App pass。首頁四用途／保存與當下身份、Update/Runtime unknown日期與收合、候選池exact保存/CAS、圖表原紀錄marker/clock/account拒絕、三帳估值與注入guard由本輪B03/04/05/06 candidate tests覆蓋；Native/readability真人仍manual-only。B10私人覆盤/weekly/history/source分離及notes create-only是synthetic service oracle，正式資料寫入/migration仍write-risk-manual；B12隔離calendar/terminal/subprocess/長路徑/reserve是oracle，正式Task/account/ACL未啟用。

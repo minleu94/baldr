@@ -24,7 +24,11 @@ from app_module.daily_market_research_universe import (
 )
 from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_CONDITION_KEYS,
+    DAILY_MARKET_CONDITION_KEYS_BBANDS30_UPPER,
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
+    DAILY_MARKET_BBANDS30_UPPER_CONDITION_KEY,
     daily_market_feature_input_fingerprint,
+    feature_contract_for_version,
 )
 from app_module.daily_market_snapshot_repository import (
     DAILY_MARKET_SNAPSHOT_MAX_STOCKS,
@@ -54,7 +58,7 @@ DAILY_MARKET_RESEARCH_SOURCE_KIND = "daily_market_research_snapshot"
 DAILY_MARKET_RESEARCH_SOURCE_LABEL = "每日市場研究快照（研究 cohort）"
 DAILY_MARKET_RESEARCH_SOURCE_WORKSPACE = "recommendation"
 DAILY_MARKET_RESEARCH_SCOPE_LABEL = "明示研究 cohort；非全市場／非正式推薦"
-DAILY_MARKET_RESEARCH_MAX_CONDITIONS = 2
+DAILY_MARKET_RESEARCH_MAX_CONDITIONS = 3
 _TAIPEI = ZoneInfo("Asia/Taipei")
 _REASON_LABELS = {
     "insufficient_valid_ohlc_streak": "有效 OHLC 連續列不足以通過此均線暖機要求",
@@ -427,9 +431,12 @@ class DailyMarketResearchScreenerService:
         cohort_id: str,
         *,
         cancel_callback: Callable[[], bool] | None = None,
+        include_bbands30_upper: bool = False,
     ) -> DailyMarketSnapshotProductionResult:
         """只在呼叫端明確要求時讀取來源並啟動有界 producer。"""
 
+        if not isinstance(include_bbands30_upper, bool):
+            raise TypeError("include_bbands30_upper 必須是 bool")
         codes = _normalize_stock_codes(stock_codes)
         if not codes:
             raise ValueError("stock_codes 必須明示至少一檔股票")
@@ -478,6 +485,10 @@ class DailyMarketResearchScreenerService:
                     raise DailyMarketResearchCancelled("使用者已取消每日快照產生。")
                 if requested_date != cutoff.date():
                     raise ValueError("producer 要求的資料日與決策截止日不符")
+                if include_bbands30_upper:
+                    return source.load_input(
+                        stock_code, include_bbands30_upper=True
+                    )
                 return source.load_input(stock_code)
 
             def before_publish() -> None:
@@ -485,14 +496,26 @@ class DailyMarketResearchScreenerService:
                     raise DailyMarketResearchCancelled("使用者已取消每日快照產生。")
                 source.validate_source_stable()
 
-            result = DailyMarketSnapshotProducer(self.snapshot_root).produce(
-                cohort_id=logical_cohort,
-                decision_cutoff=cutoff,
-                stock_codes=codes,
-                source_loader=source_loader,
-                before_publish=before_publish,
-                research_universe=universe_spec,
-            )
+            producer = DailyMarketSnapshotProducer(self.snapshot_root)
+            if include_bbands30_upper:
+                result = producer.produce(
+                    cohort_id=logical_cohort,
+                    decision_cutoff=cutoff,
+                    stock_codes=codes,
+                    source_loader=source_loader,
+                    before_publish=before_publish,
+                    research_universe=universe_spec,
+                    contract_version=DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
+                )
+            else:
+                result = producer.produce(
+                    cohort_id=logical_cohort,
+                    decision_cutoff=cutoff,
+                    stock_codes=codes,
+                    source_loader=source_loader,
+                    before_publish=before_publish,
+                    research_universe=universe_spec,
+                )
         if cancel_seen:
             raise DailyMarketResearchCancelled("使用者已取消每日快照產生；未回報為完成。")
         return result
@@ -520,6 +543,13 @@ class DailyMarketResearchScreenerService:
             )
             if manifest_sha256
             else self.repository.load_latest(cohort, decision_date)
+        )
+        feature_contract = feature_contract_for_version(
+            str(initial.manifest.get("feature_contract_version"))
+        )
+        include_bbands30_upper = (
+            feature_contract.version
+            == DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER
         )
         if self.research_universe_spec is not None:
             binding = initial.manifest.get("research_universe")
@@ -580,14 +610,27 @@ class DailyMarketResearchScreenerService:
                 for code in artifact_codes:
                     if is_cancelled():
                         raise DailyMarketResearchCancelled("使用者已取消快照重讀。")
-                    price_points, technical, scope_identity, _source_refs = source.load(code)
-                    expected_hashes[code] = daily_market_feature_input_fingerprint(
-                        stock_code=code,
-                        decision_date=decision_date,
-                        scope_identity=scope_identity,
-                        price_points=price_points,
-                        technical=technical,
-                    )
+                    if include_bbands30_upper:
+                        price_points, technical, scope_identity, _source_refs = source.load(
+                            code, include_bbands30_upper=True
+                        )
+                        expected_hashes[code] = daily_market_feature_input_fingerprint(
+                            stock_code=code,
+                            decision_date=decision_date,
+                            scope_identity=scope_identity,
+                            price_points=price_points,
+                            technical=technical,
+                            contract_version=feature_contract.version,
+                        )
+                    else:
+                        price_points, technical, scope_identity, _source_refs = source.load(code)
+                        expected_hashes[code] = daily_market_feature_input_fingerprint(
+                            stock_code=code,
+                            decision_date=decision_date,
+                            scope_identity=scope_identity,
+                            price_points=price_points,
+                            technical=technical,
+                        )
                 source.validate_source_stable()
         except (DailyMarketResearchCancelled, ReadOperationCancelled):
             raise DailyMarketResearchCancelled("使用者已取消快照重讀；未回報為完成。")
@@ -806,7 +849,7 @@ def _normalize_condition_keys(
         if not isinstance(value, str):
             raise TypeError("condition_keys 必須全部是字串")
         key = value.strip()
-        if key not in DAILY_MARKET_CONDITION_KEYS:
+        if key not in DAILY_MARKET_CONDITION_KEYS_BBANDS30_UPPER:
             raise ValueError(f"不支援的既有研究條件：{key!r}")
         if key in seen:
             raise ValueError(f"condition_keys 不可重複：{key}")
@@ -836,7 +879,7 @@ def _condition_result(
         "no_match": {"below", "equal"},
         "unknown": "unknown",
     }
-    label = "MA20" if key.endswith("ma20") else "MA60"
+    label = _condition_label(key)
     if not isinstance(raw, Mapping):
         return DailyMarketResearchConditionResult(
             key=key,
@@ -916,10 +959,24 @@ def _read_condition_method_metadata(
         "eligibility",
         "unknown_reason",
     )
-    if not any(name in raw for name in metadata_keys):
-        return {}
+    has_method_metadata = any(name in raw for name in metadata_keys)
+    if not has_method_metadata:
+        if key != DAILY_MARKET_BBANDS30_UPPER_CONDITION_KEY:
+            return {}
+        return {
+            "method_id": None,
+            "family": None,
+            "version": None,
+            "parameters": None,
+            "decision_date": None,
+            "eligibility": "unknown",
+            "unknown_reason": "method_contract_invalid",
+        }
 
-    expected = method_contracts_payload().get(key)
+    if key == DAILY_MARKET_BBANDS30_UPPER_CONDITION_KEY:
+        expected = method_contracts_payload(include_bbands30_upper=True).get(key)
+    else:
+        expected = method_contracts_payload().get(key)
     raw_parameters = raw.get("parameters")
     parameters = (
         dict(raw_parameters)
@@ -1017,13 +1074,19 @@ def _join_unknown_reasons(*values: str) -> str:
 
 
 def _condition_explanation(item: DailyMarketResearchConditionResult) -> str:
-    label = "MA20" if item.key.endswith("ma20") else "MA60"
+    label = _condition_label(item.key)
     if item.state == "match":
         return f"收盤價高於 {label}。"
     if item.state == "no_match":
         return f"收盤價未高於 {label}（{item.relation}）。"
     detail = item.reason or "來源觀察不足。"
     return f"收盤價與 {label} 的關係未知：{detail}"
+
+
+def _condition_label(key: str) -> str:
+    if key == DAILY_MARKET_BBANDS30_UPPER_CONDITION_KEY:
+        return "BBANDS30 Upper"
+    return "MA20" if key.endswith("ma20") else "MA60"
 
 
 def _localized_reason(code_or_text: str) -> str:

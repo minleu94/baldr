@@ -18,11 +18,12 @@ import weakref
 from zoneinfo import ZoneInfo
 
 from app_module.daily_market_feature_snapshot import (
+    DailyMarketFeatureContract,
     DAILY_MARKET_FEATURE_CONTRACT_VERSION,
-    DAILY_MARKET_FEATURE_KEYS,
     DailyMarketFeatureSnapshot,
     DailyMarketFeatureSnapshotService,
     daily_market_feature_input_fingerprint,
+    feature_contract_for_version,
 )
 from app_module.daily_market_research_universe import ResearchUniverseSpec
 from app_module.daily_market_snapshot_repository import (
@@ -208,6 +209,7 @@ class DailyMarketSnapshotProducer:
         source_loader: SourceLoader,
         before_publish: Callable[[], None] | None = None,
         research_universe: ResearchUniverseSpec | None = None,
+        contract_version: str | None = None,
     ) -> DailyMarketSnapshotProductionResult:
         logical_cohort = str(cohort_id).strip()
         if not logical_cohort:
@@ -221,6 +223,14 @@ class DailyMarketSnapshotProducer:
             raise ValueError("stock_codes 必須明示至少一檔股票")
         if not callable(source_loader):
             raise TypeError("source_loader 必須可呼叫")
+        resolved_contract_version = (
+            DAILY_MARKET_FEATURE_CONTRACT_VERSION
+            if contract_version is None
+            else contract_version
+        )
+        if not isinstance(resolved_contract_version, str):
+            raise TypeError("contract_version 必須是支援的版本字串")
+        feature_contract = feature_contract_for_version(resolved_contract_version)
 
         universe_binding: dict[str, Any] | None = None
         if research_universe is not None:
@@ -273,6 +283,7 @@ class DailyMarketSnapshotProducer:
                 before_publish=validate_before_publish,
                 research_universe=research_universe,
                 universe_binding=universe_binding,
+                feature_contract=feature_contract,
             )
 
     def _produce_locked(
@@ -286,6 +297,7 @@ class DailyMarketSnapshotProducer:
         before_publish: Callable[[], None] | None,
         research_universe: ResearchUniverseSpec | None,
         universe_binding: Mapping[str, Any] | None,
+        feature_contract: DailyMarketFeatureContract,
     ) -> DailyMarketSnapshotProductionResult:
         previous, rebuild_reason, previous_error = self._load_previous(
             cohort_id=cohort_id,
@@ -323,8 +335,21 @@ class DailyMarketSnapshotProducer:
                 # in full; old per-stock artifacts are never reused across it.
                 previous = None
 
+        if (
+            previous is not None
+            and previous.manifest.get("feature_contract_version")
+            != feature_contract.version
+        ):
+            rebuild_reason = "feature_contract_version_changed"
+            previous = None
+
         try:
-            contracts, contracts_sha256 = current_method_contract_binding()
+            if feature_contract.version == DAILY_MARKET_FEATURE_CONTRACT_VERSION:
+                contracts, contracts_sha256 = current_method_contract_binding()
+            else:
+                contracts, contracts_sha256 = current_method_contract_binding(
+                    contract_version=feature_contract.version
+                )
         except DailyMarketSnapshotVerificationError as exc:
             return self._result(
                 "prior_snapshot_invalid",
@@ -356,13 +381,23 @@ class DailyMarketSnapshotProducer:
             try:
                 item = source_loader(stock_code, decision_date)
                 self._validate_input(item, stock_code)
-                input_hash = daily_market_feature_input_fingerprint(
-                    stock_code=item.stock_code,
-                    decision_date=decision_date,
-                    scope_identity=item.scope_identity,
-                    price_points=item.price_points,
-                    technical=item.technical,
-                )
+                if feature_contract.version == DAILY_MARKET_FEATURE_CONTRACT_VERSION:
+                    input_hash = daily_market_feature_input_fingerprint(
+                        stock_code=item.stock_code,
+                        decision_date=decision_date,
+                        scope_identity=item.scope_identity,
+                        price_points=item.price_points,
+                        technical=item.technical,
+                    )
+                else:
+                    input_hash = daily_market_feature_input_fingerprint(
+                        stock_code=item.stock_code,
+                        decision_date=decision_date,
+                        scope_identity=item.scope_identity,
+                        price_points=item.price_points,
+                        technical=item.technical,
+                        contract_version=feature_contract.version,
+                    )
                 if item.technical_history is not None:
                     saved_charts[stock_code] = build_saved_technical_chart(
                         stock_code=stock_code, decision_cutoff=cutoff,
@@ -406,13 +441,23 @@ class DailyMarketSnapshotProducer:
                 continue
 
             try:
-                snapshot = self.feature_service.project(
-                    stock_code=item.stock_code,
-                    decision_date=decision_date,
-                    scope_identity=item.scope_identity,
-                    price_points=item.price_points,
-                    technical=item.technical,
-                )
+                if feature_contract.version == DAILY_MARKET_FEATURE_CONTRACT_VERSION:
+                    snapshot = self.feature_service.project(
+                        stock_code=item.stock_code,
+                        decision_date=decision_date,
+                        scope_identity=item.scope_identity,
+                        price_points=item.price_points,
+                        technical=item.technical,
+                    )
+                else:
+                    snapshot = self.feature_service.project(
+                        stock_code=item.stock_code,
+                        decision_date=decision_date,
+                        scope_identity=item.scope_identity,
+                        price_points=item.price_points,
+                        technical=item.technical,
+                        contract_version=feature_contract.version,
+                    )
                 payload = snapshot.to_dict()
                 _validate_projected_snapshot(
                     snapshot,
@@ -423,6 +468,7 @@ class DailyMarketSnapshotProducer:
                     input_hash=input_hash,
                     method_contracts=contracts,
                     method_contracts_sha256=contracts_sha256,
+                    feature_contract=feature_contract,
                 )
                 if stock_code in saved_charts:
                     payload["saved_technical_chart"] = saved_charts[stock_code]
@@ -543,8 +589,8 @@ class DailyMarketSnapshotProducer:
             "decision_date": decision_date.isoformat(),
             "decision_cutoff": cutoff.isoformat(),
             "decision_timezone": "Asia/Taipei",
-            "feature_contract_version": DAILY_MARKET_FEATURE_CONTRACT_VERSION,
-            "feature_keys": list(DAILY_MARKET_FEATURE_KEYS),
+            "feature_contract_version": feature_contract.version,
+            "feature_keys": list(feature_contract.feature_keys),
             "method_contracts": contracts,
             "method_contracts_sha256": contracts_sha256,
             "stocks": ordered_records,
@@ -1130,6 +1176,7 @@ def _validate_projected_snapshot(
     input_hash: str,
     method_contracts: Mapping[str, Any],
     method_contracts_sha256: str,
+    feature_contract: DailyMarketFeatureContract,
 ) -> None:
     if (
         snapshot.stock_code != stock_code
@@ -1142,6 +1189,17 @@ def _validate_projected_snapshot(
         raise ValueError("daily market snapshot 不可宣稱 historical PIT eligible")
     if payload.get("features") is None or payload.get("conditions") is None:
         raise ValueError("projector payload 缺少 features 或 conditions")
+    if snapshot.contract_version != feature_contract.version:
+        raise ValueError("projector snapshot feature contract version mismatch")
+    features = payload.get("features")
+    conditions = payload.get("conditions")
+    if (
+        not isinstance(features, Mapping)
+        or set(features) != set(feature_contract.feature_keys)
+        or not isinstance(conditions, Mapping)
+        or set(conditions) != set(feature_contract.condition_keys)
+    ):
+        raise ValueError("projector snapshot feature/condition keys mismatch")
     if payload.get("method_contracts") != method_contracts:
         raise ValueError("projector snapshot method_contracts 與 producer registry 不一致")
     if payload.get("method_contracts_sha256") != method_contracts_sha256:

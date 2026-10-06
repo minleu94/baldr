@@ -22,8 +22,12 @@ from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_CONDITION_KEYS,
     DAILY_MARKET_FEATURE_CONTRACT_VERSION,
     DAILY_MARKET_FEATURE_KEYS,
+    DAILY_MARKET_BBANDS30_UPPER_FEATURE_KEY,
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
+    BBANDS30_UPPER_WARMUP_BASIS,
     PRICE_UNIT,
     WARMUP_BASIS,
+    feature_contract_for_version,
 )
 from app_module.daily_market_method_contract import (
     method_contracts_payload,
@@ -119,7 +123,10 @@ class DailyMarketResearchCapabilityMetadata:
         return result
 
 
-def _feature_capability(key: str) -> DailyMarketResearchCapabilityMetadata:
+def _feature_capability(
+    key: str,
+    contract_version: str = DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+) -> DailyMarketResearchCapabilityMetadata:
     warmup: dict[str, Any]
     if key == "close":
         warmup = {
@@ -135,14 +142,20 @@ def _feature_capability(key: str) -> DailyMarketResearchCapabilityMetadata:
             "source_id": "sqlite.daily_prices",
         }
     else:
-        window = 20 if key == "MA20" else 60
+        window = 30 if key == DAILY_MARKET_BBANDS30_UPPER_FEATURE_KEY else 20 if key == "MA20" else 60
         warmup = {
             "state_field": "warmup_state",
             "required_observation_count": window,
             "observed_count_field": "warmup_observed_count",
-            "basis": WARMUP_BASIS,
+            "basis": (
+                BBANDS30_UPPER_WARMUP_BASIS
+                if key == DAILY_MARKET_BBANDS30_UPPER_FEATURE_KEY
+                else WARMUP_BASIS
+            ),
             "formal_or_calendar_qualification": False,
         }
+        if key == DAILY_MARKET_BBANDS30_UPPER_FEATURE_KEY:
+            warmup["parameter_lineage_verified"] = False
         source = {
             "artifact_field": f"features.{key}",
             "source_ref_key": "technical",
@@ -163,7 +176,7 @@ def _feature_capability(key: str) -> DailyMarketResearchCapabilityMetadata:
             }
         ),
         availability_json=_AVAILABILITY_JSON,
-        version=DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+        version=contract_version,
         cost_json=_json_text(
             {
                 "known_operation": "project an already stored feature value",
@@ -175,23 +188,28 @@ def _feature_capability(key: str) -> DailyMarketResearchCapabilityMetadata:
     )
 
 
-def _method_capability(key: str) -> DailyMarketResearchCapabilityMetadata:
-    contract = _METHOD_CONTRACTS[key]
+def _method_capability(
+    key: str,
+    contract: Mapping[str, Any],
+    method_contracts_sha256_value: str,
+) -> DailyMarketResearchCapabilityMetadata:
     fields = tuple(str(value) for value in contract["required_fields"])
-    window = int(contract["parameters"]["window"])
-    average_key = "MA20" if window == 20 else "MA60"
+    is_bbands = key == "close_above_bbands30_upper"
+    basis = BBANDS30_UPPER_WARMUP_BASIS if is_bbands else WARMUP_BASIS
+    average_key = fields[1]
+    warmup = {
+        "inherited_feature_keys": list(fields),
+        "basis": basis,
+        "formal_or_calendar_qualification": False,
+    }
+    if is_bbands:
+        warmup["parameter_lineage_verified"] = False
     return DailyMarketResearchCapabilityMetadata(
         key=key,
         kind="method",
         field=fields,
         unit=PRICE_UNIT,
-        warmup_json=_json_text(
-            {
-                "inherited_feature_keys": list(fields),
-                "basis": WARMUP_BASIS,
-                "formal_or_calendar_qualification": False,
-            }
-        ),
+        warmup_json=_json_text(warmup),
         missing_json=_json_text(
             {
                 "unknown_is_preserved": True,
@@ -203,7 +221,11 @@ def _method_capability(key: str) -> DailyMarketResearchCapabilityMetadata:
         version=str(contract["version"]),
         cost_json=_json_text(
             {
-                "known_operation": "audit the saved close-versus-moving-average observation",
+                "known_operation": (
+                    "audit the saved close-versus-upper-band observation"
+                    if is_bbands
+                    else "audit the saved close-versus-moving-average observation"
+                ),
                 "database_or_network_io_during_projection": False,
                 "measured_runtime_memory_or_bytes": "unknown",
             }
@@ -219,7 +241,7 @@ def _method_capability(key: str) -> DailyMarketResearchCapabilityMetadata:
         method_id=str(contract["method_id"]),
         family=str(contract["family"]),
         parameters_json=_json_text(contract["parameters"]),
-        method_contracts_sha256=_METHOD_CONTRACTS_SHA256,
+        method_contracts_sha256=method_contracts_sha256_value,
     )
 
 
@@ -228,7 +250,8 @@ DAILY_MARKET_RESEARCH_FEATURE_CAPABILITIES = tuple(
     _feature_capability(key) for key in DAILY_MARKET_FEATURE_KEYS
 )
 DAILY_MARKET_RESEARCH_METHOD_CAPABILITIES = tuple(
-    _method_capability(key) for key in DAILY_MARKET_CONDITION_KEYS
+    _method_capability(key, _METHOD_CONTRACTS[key], _METHOD_CONTRACTS_SHA256)
+    for key in DAILY_MARKET_CONDITION_KEYS
 )
 
 
@@ -247,6 +270,29 @@ class DailyMarketResearchCapabilityCatalog:
             "features": [item.to_dict() for item in self.features],
             "methods": [item.to_dict() for item in self.methods],
         }
+
+
+def daily_market_research_capabilities_for_version(
+    version: str,
+) -> DailyMarketResearchCapabilityCatalog:
+    """回傳指定 snapshot 版本的研究能力目錄。"""
+
+    contract = feature_contract_for_version(version)
+    method_contracts = contract.method_contracts
+    return DailyMarketResearchCapabilityCatalog(
+        features=tuple(
+            _feature_capability(key, contract.version)
+            for key in contract.feature_keys
+        ),
+        methods=tuple(
+            _method_capability(
+                key,
+                method_contracts[key],
+                contract.method_contracts_sha256,
+            )
+            for key in contract.condition_keys
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -439,11 +485,9 @@ def project_daily_market_research_capabilities(
     """
 
     manifest, declared_codes, _contracts = _validate_snapshot(snapshot)
-    if manifest.get("feature_contract_version") != DAILY_MARKET_FEATURE_CONTRACT_VERSION:
-        raise DailyMarketCohortProjectionError(
-            "snapshot_contract_version_mismatch",
-            "能力目錄沒有此 feature contract version 的完整 metadata",
-        )
+    capability_catalog = daily_market_research_capabilities_for_version(
+        str(manifest["feature_contract_version"])
+    )
 
     effective_root = expected_snapshot_root
     projection_rows = rows
@@ -496,11 +540,11 @@ def project_daily_market_research_capabilities(
                     warmup_state="unknown",
                     warmup_basis=_warmup_basis(metadata),
                 )
-                for metadata in DAILY_MARKET_RESEARCH_FEATURE_CAPABILITIES
+                for metadata in capability_catalog.features
             )
             method_audits = tuple(
                 _missing_method_audit(metadata, snapshot.decision_date.isoformat(), source_sha)
-                for metadata in DAILY_MARKET_RESEARCH_METHOD_CAPABILITIES
+                for metadata in capability_catalog.methods
             )
             stock_audits.append(
                 DailyMarketResearchStockAudit(
@@ -522,7 +566,7 @@ def project_daily_market_research_capabilities(
             )
         feature_audits = tuple(
             _feature_audit(metadata, raw_features[metadata.key], source_refs)
-            for metadata in DAILY_MARKET_RESEARCH_FEATURE_CAPABILITIES
+            for metadata in capability_catalog.features
         )
         raw_conditions = payload["conditions"]
         if not isinstance(raw_conditions, Mapping):
@@ -536,7 +580,7 @@ def project_daily_market_research_capabilities(
                 snapshot.decision_date.isoformat(),
                 source_sha,
             )
-            for metadata in DAILY_MARKET_RESEARCH_METHOD_CAPABILITIES
+            for metadata in capability_catalog.methods
         )
         stock_audits.append(
             DailyMarketResearchStockAudit(
@@ -583,8 +627,8 @@ def project_daily_market_research_capabilities(
         snapshot=snapshot_audit,
         declared_cohort=declared_audit,
         catalog=DailyMarketResearchCapabilityCatalog(
-            features=DAILY_MARKET_RESEARCH_FEATURE_CAPABILITIES,
-            methods=DAILY_MARKET_RESEARCH_METHOD_CAPABILITIES,
+            features=capability_catalog.features,
+            methods=capability_catalog.methods,
         ),
         stocks=tuple(stock_audits),
     )
@@ -601,9 +645,12 @@ def _rows_from_saved_conditions(
         payload = snapshot.stock_snapshots[code]
         raw_conditions = payload.get("conditions")
         conditions = raw_conditions if isinstance(raw_conditions, Mapping) else {}
+        feature_contract = feature_contract_for_version(
+            str(snapshot.manifest["feature_contract_version"])
+        )
         evaluation = evaluate_daily_market_conditions(
             conditions,
-            DAILY_MARKET_CONDITION_KEYS,
+            feature_contract.condition_keys,
             "AND",
             expected_decision_date=snapshot.decision_date,
         )

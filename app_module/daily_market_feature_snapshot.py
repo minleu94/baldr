@@ -27,13 +27,31 @@ from app_module.stock_research_report_dtos import (
 
 
 DAILY_MARKET_FEATURE_CONTRACT_VERSION = "daily-market-feature-snapshot.v2"
+DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER = (
+    "daily-market-feature-snapshot.v3.bbands30-upper"
+)
 DAILY_MARKET_FEATURE_MAX_CACHE_ENTRIES = 4
 DAILY_MARKET_FEATURE_KEYS = ("close", "MA20", "MA60")
 DAILY_MARKET_CONDITION_KEYS = ("close_above_ma20", "close_above_ma60")
+DAILY_MARKET_BBANDS30_UPPER_FEATURE_KEY = "BB_Upper"
+DAILY_MARKET_BBANDS30_UPPER_CONDITION_KEY = "close_above_bbands30_upper"
+DAILY_MARKET_FEATURE_KEYS_BBANDS30_UPPER = (
+    *DAILY_MARKET_FEATURE_KEYS,
+    DAILY_MARKET_BBANDS30_UPPER_FEATURE_KEY,
+)
+DAILY_MARKET_CONDITION_KEYS_BBANDS30_UPPER = (
+    *DAILY_MARKET_CONDITION_KEYS,
+    DAILY_MARKET_BBANDS30_UPPER_CONDITION_KEY,
+)
 PRICE_UNIT = "TWD/share"
 WARMUP_BASIS = (
     "analysis_module.technical_analysis.technical_indicators.calculate_causal_indicators:"
     "TA-Lib SMA on the last contiguous valid OHLC segment"
+)
+BBANDS30_UPPER_WARMUP_BASIS = (
+    "analysis_module.technical_analysis.technical_indicators.calculate_causal_indicators:"
+    "TA-Lib BBANDS(timeperiod=30, nbdevup=2.0, nbdevdn=2.0, matype=SMA) "
+    "on the last contiguous valid OHLC segment; source parameter lineage is not verified"
 )
 
 FeatureState = Literal["observed", "unknown"]
@@ -191,6 +209,49 @@ class DailyMarketFeatureSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class DailyMarketFeatureContract:
+    """明確版本的快照欄位與方法綁定。"""
+
+    version: str
+    feature_keys: tuple[str, ...]
+    condition_keys: tuple[str, ...]
+    method_contracts_json: str
+    method_contracts_sha256: str
+
+    @property
+    def method_contracts(self) -> dict[str, Any]:
+        """回傳 detached 契約 payload，避免呼叫端改動 frozen contract。"""
+
+        payload = json.loads(self.method_contracts_json)
+        return payload if isinstance(payload, dict) else {}
+
+
+def feature_contract_for_version(version: str) -> DailyMarketFeatureContract:
+    """回傳嚴格版本化的 feature keys 與 canonical 方法契約。"""
+
+    feature_keys: tuple[str, ...]
+    condition_keys: tuple[str, ...]
+    if version == DAILY_MARKET_FEATURE_CONTRACT_VERSION:
+        feature_keys = DAILY_MARKET_FEATURE_KEYS
+        condition_keys = DAILY_MARKET_CONDITION_KEYS
+        contracts = method_contracts_payload()
+    elif version == DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER:
+        feature_keys = DAILY_MARKET_FEATURE_KEYS_BBANDS30_UPPER
+        condition_keys = DAILY_MARKET_CONDITION_KEYS_BBANDS30_UPPER
+        contracts = method_contracts_payload(include_bbands30_upper=True)
+    else:
+        raise ValueError(f"不支援的 daily market feature contract version: {version}")
+    contracts_json = method_contracts_canonical_json(contracts)
+    return DailyMarketFeatureContract(
+        version=version,
+        feature_keys=feature_keys,
+        condition_keys=condition_keys,
+        method_contracts_json=contracts_json,
+        method_contracts_sha256=method_contracts_sha256(contracts),
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class _PriceRow:
     point: StockPricePointDTO
     parsed_date: date
@@ -221,9 +282,18 @@ class DailyMarketFeatureSnapshotService:
         scope_identity: str,
         price_points: Sequence[StockPricePointDTO],
         technical: StockTechnicalSnapshotDTO | None,
+        *,
+        contract_version: str | None = None,
     ) -> DailyMarketFeatureSnapshot:
         """投影既有 close／MA 值；不讀取資料庫，也不重算技術指標。"""
 
+        resolved_contract_version = (
+            DAILY_MARKET_FEATURE_CONTRACT_VERSION
+            if contract_version is None
+            else contract_version
+        )
+        if not isinstance(resolved_contract_version, str):
+            raise TypeError("contract_version 必須是支援的版本字串")
         code = str(stock_code).strip()
         scope = str(scope_identity).strip()
         if not code:
@@ -240,16 +310,18 @@ class DailyMarketFeatureSnapshotService:
         if technical is not None and not isinstance(technical, StockTechnicalSnapshotDTO):
             raise TypeError("technical 僅接受 StockTechnicalSnapshotDTO 或 None")
 
-        version = DAILY_MARKET_FEATURE_CONTRACT_VERSION
-        contract_payload = method_contracts_payload()
-        contract_payload_json = method_contracts_canonical_json(contract_payload)
-        contract_sha256 = method_contracts_sha256(contract_payload)
+        contract = feature_contract_for_version(resolved_contract_version)
+        version = contract.version
+        contract_payload = contract.method_contracts
+        contract_payload_json = contract.method_contracts_json
+        contract_sha256 = contract.method_contracts_sha256
         input_fingerprint = _input_fingerprint(
             code,
             decision_date,
             scope,
             points,
             technical,
+            version,
             contract_payload,
             contract_sha256,
         )
@@ -285,6 +357,7 @@ class DailyMarketFeatureSnapshotService:
                 contract_payload,
                 contract_payload_json,
                 contract_sha256,
+                contract,
             )
             self._cache[snapshot_identity] = snapshot
             self._cache.move_to_end(snapshot_identity)
@@ -303,6 +376,8 @@ def daily_market_feature_input_fingerprint(
     scope_identity: str,
     price_points: Sequence[StockPricePointDTO],
     technical: StockTechnicalSnapshotDTO | None,
+    *,
+    contract_version: str | None = None,
 ) -> str:
     """回傳 project 使用的完整輸入摘要，不執行特徵投影。"""
 
@@ -321,14 +396,23 @@ def daily_market_feature_input_fingerprint(
         raise TypeError("price_points 僅接受 StockPricePointDTO")
     if technical is not None and not isinstance(technical, StockTechnicalSnapshotDTO):
         raise TypeError("technical 僅接受 StockTechnicalSnapshotDTO 或 None")
-    contract_payload = method_contracts_payload()
-    contract_sha256 = method_contracts_sha256(contract_payload)
+    resolved_contract_version = (
+        DAILY_MARKET_FEATURE_CONTRACT_VERSION
+        if contract_version is None
+        else contract_version
+    )
+    if not isinstance(resolved_contract_version, str):
+        raise TypeError("contract_version 必須是支援的版本字串")
+    contract = feature_contract_for_version(resolved_contract_version)
+    contract_payload = contract.method_contracts
+    contract_sha256 = contract.method_contracts_sha256
     return _input_fingerprint(
         code,
         decision_date,
         scope,
         points,
         technical,
+        contract.version,
         contract_payload,
         contract_sha256,
     )
@@ -346,6 +430,7 @@ def _project_snapshot(
     contract_payload: Mapping[str, Any],
     contract_payload_json: str,
     contract_sha256: str,
+    contract: DailyMarketFeatureContract,
 ) -> DailyMarketFeatureSnapshot:
     rows: list[_PriceRow] = []
     invalid_market_date = False
@@ -422,17 +507,33 @@ def _project_snapshot(
         reason=close_reason,
     )
 
-    warmup_counts: dict[int, int | None] = {20: None, 60: None}
-    warmup_reasons: dict[int, str | None] = {20: None, 60: None}
+    warmup_counts: dict[int, int | None] = {20: None, 30: None, 60: None}
+    warmup_reasons: dict[int, str | None] = {20: None, 30: None, 60: None}
     if invalid_market_date:
-        warmup_reasons = {20: "invalid_market_date", 60: "invalid_market_date"}
+        warmup_reasons = {
+            20: "invalid_market_date",
+            30: "invalid_market_date",
+            60: "invalid_market_date",
+        }
     elif future_market_date:
-        warmup_reasons = {20: "future_market_date", 60: "future_market_date"}
+        warmup_reasons = {
+            20: "future_market_date",
+            30: "future_market_date",
+            60: "future_market_date",
+        }
     elif duplicate_market_date:
-        warmup_reasons = {20: "duplicate_market_date", 60: "duplicate_market_date"}
+        warmup_reasons = {
+            20: "duplicate_market_date",
+            30: "duplicate_market_date",
+            60: "duplicate_market_date",
+        }
     elif latest_row is None:
-        warmup_counts = {20: 0, 60: 0}
-        warmup_reasons = {20: "no_price_rows", 60: "no_price_rows"}
+        warmup_counts = {20: 0, 30: 0, 60: 0}
+        warmup_reasons = {
+            20: "no_price_rows",
+            30: "no_price_rows",
+            60: "no_price_rows",
+        }
     else:
         streak = 0
         invalid_ohlc_at_tail = False
@@ -444,7 +545,7 @@ def _project_snapshot(
             else:
                 invalid_ohlc_at_tail = True
                 break
-        warmup_counts = {20: streak, 60: streak}
+        warmup_counts = {20: streak, 30: streak, 60: streak}
         warmup_reasons = {
             window: (
                 None
@@ -453,18 +554,23 @@ def _project_snapshot(
                 if invalid_ohlc_at_tail
                 else "insufficient_valid_ohlc_streak"
             )
-            for window in (20, 60)
+            for window in (20, 30, 60)
         }
 
     technical_date = _parse_market_date(technical.data_date) if technical is not None else None
-    metric_groups: dict[str, list[StockMetricDTO]] = {"MA20": [], "MA60": []}
+    metric_windows: tuple[tuple[str, int], ...] = (("MA20", 20), ("MA60", 60))
+    if contract.version == DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER:
+        metric_windows = (*metric_windows, (DAILY_MARKET_BBANDS30_UPPER_FEATURE_KEY, 30))
+    metric_groups: dict[str, list[StockMetricDTO]] = {
+        key: [] for key, _window in metric_windows
+    }
     if technical is not None:
         for indicator in technical.indicators:
             if indicator.key in metric_groups:
                 metric_groups[indicator.key].append(indicator)
 
-    ma_features: list[DailyMarketFeature] = []
-    for key, window in (("MA20", 20), ("MA60", 60)):
+    technical_features: list[DailyMarketFeature] = []
+    for key, window in metric_windows:
         metric_list = metric_groups[key]
         selected_metric = metric_list[0] if len(metric_list) == 1 else None
         raw_source_id = (
@@ -526,7 +632,7 @@ def _project_snapshot(
             value,
             warmup_rows=rows[-window:],
         )
-        ma_features.append(
+        technical_features.append(
             DailyMarketFeature(
                 key=key,
                 value=value if reason is None else None,
@@ -543,31 +649,39 @@ def _project_snapshot(
                     if warmup_reasons[window] is None
                     else "unknown"
                 ),
-                warmup_basis=WARMUP_BASIS,
+                warmup_basis=(
+                    BBANDS30_UPPER_WARMUP_BASIS
+                    if key == DAILY_MARKET_BBANDS30_UPPER_FEATURE_KEY
+                    else WARMUP_BASIS
+                ),
             )
         )
 
-    feature_map = {item.key: item for item in (close_feature, *ma_features)}
+    feature_map = {item.key: item for item in (close_feature, *technical_features)}
+    condition_features = {
+        "close_above_ma20": "MA20",
+        "close_above_ma60": "MA60",
+        DAILY_MARKET_BBANDS30_UPPER_CONDITION_KEY: (
+            DAILY_MARKET_BBANDS30_UPPER_FEATURE_KEY
+        ),
+    }
     conditions = tuple(
         _make_condition(
             name,
             close_feature,
-            feature_map[ma_key],
+            feature_map[condition_features[name]],
             market_date,
             decision_date,
             contract_payload[name],
         )
-        for name, ma_key in (
-            ("close_above_ma20", "MA20"),
-            ("close_above_ma60", "MA60"),
-        )
+        for name in contract.condition_keys
     )
     return DailyMarketFeatureSnapshot(
         stock_code=stock_code,
         decision_date=decision_date,
         scope_identity=scope_identity,
         market_date=market_date,
-        features=(close_feature, *ma_features),
+        features=(close_feature, *technical_features),
         conditions=conditions,
         contract_version=version,
         input_fingerprint_sha256=input_fingerprint,
@@ -690,6 +804,7 @@ def _input_fingerprint(
     scope_identity: str,
     points: tuple[StockPricePointDTO, ...],
     technical: StockTechnicalSnapshotDTO | None,
+    contract_version: str,
     contract_payload: Mapping[str, Any],
     contract_sha256: str,
 ) -> str:
@@ -697,7 +812,7 @@ def _input_fingerprint(
         "stock_code": stock_code,
         "decision_date": decision_date.isoformat(),
         "scope_identity": scope_identity,
-        "contract_version": DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+        "contract_version": contract_version,
         "method_contracts": contract_payload,
         "method_contracts_sha256": contract_sha256,
         "price_points": [_canonical_value(point) for point in points],

@@ -106,16 +106,29 @@ class SQLiteDailyMarketSnapshotSource:
         if _source_pin(self.db_path) != self._pin:
             raise ValueError("daily_market_source_changed_during_read")
 
-    def load(self, stock_code: str) -> tuple[tuple[StockPricePointDTO, ...], StockTechnicalSnapshotDTO | None, str, dict[str, str]]:
+    def load(
+        self, stock_code: str, *, include_bbands30_upper: bool = False
+    ) -> tuple[tuple[StockPricePointDTO, ...], StockTechnicalSnapshotDTO | None, str, dict[str, str]]:
         if self._reader is None:
             raise RuntimeError("daily_market_source_not_open")
+        if not isinstance(include_bbands30_upper, bool):
+            raise TypeError("include_bbands30_upper 必須是 bool")
         if not stock_code or not stock_code.isalnum() or len(stock_code) > 16:
             raise ValueError("daily_market_source_invalid_stock")
         self.validate_source_stable()
         with cooperative_read_cancellation(self.cancel_callback):
             configure_read_only_connection(self._connection)
             points, _price_source, _name = self._reader._read_prices(stock_code, self.decision_date)
-            technical, _technical_source = self._reader._read_technical(stock_code, self.decision_date)
+            if include_bbands30_upper:
+                technical, _technical_source = self._reader._read_technical(
+                    stock_code,
+                    self.decision_date,
+                    include_bbands30_upper=True,
+                )
+            else:
+                technical, _technical_source = self._reader._read_technical(
+                    stock_code, self.decision_date
+                )
         self.validate_source_stable()
         # Producer輸入型別由同包契約提供；此入口不觸發完整report／ML或其他providers。
         return points, technical, daily_snapshot_scope_identity(self.db_path, stock_code, self.schema_identity), {
@@ -125,11 +138,20 @@ class SQLiteDailyMarketSnapshotSource:
             "technical": f"{self.db_path}#technical_indicators",
         }
 
-    def load_input(self, stock_code: str) -> DailyMarketSnapshotInput:
+    def load_input(
+        self, stock_code: str, *, include_bbands30_upper: bool = False
+    ) -> DailyMarketSnapshotInput:
         """新producer保存同一transaction的價格與MA歷史，舊load四欄介面保留。"""
         from app_module.daily_market_snapshot_producer import DailyMarketSnapshotInput
 
-        points, technical, scope, refs = self.load(stock_code)
+        if not isinstance(include_bbands30_upper, bool):
+            raise TypeError("include_bbands30_upper 必須是 bool")
+        if include_bbands30_upper:
+            points, technical, scope, refs = self.load(
+                stock_code, include_bbands30_upper=True
+            )
+        else:
+            points, technical, scope, refs = self.load(stock_code)
         with cooperative_read_cancellation(self.cancel_callback):
             configure_read_only_connection(self._connection)
             history = self._reader._read_technical_history(stock_code, self.decision_date, points)

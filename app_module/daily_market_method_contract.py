@@ -26,11 +26,34 @@ _METHOD_CONTRACTS: dict[str, dict[str, Any]] = {
     },
 }
 
+_BBANDS30_UPPER_METHOD_CONTRACT: dict[str, Any] = {
+    "method_id": "daily_market.close_above_bbands30_upper",
+    "family": "close_vs_bollinger_upper",
+    "version": "1.0.0",
+    "parameters": {
+        "timeperiod": 30,
+        "nbdevup": "2.0",
+        "nbdevdn": "2.0",
+        "matype": "SMA",
+        "direction": "above",
+    },
+    "required_fields": ["close", "BB_Upper"],
+}
 
-def method_contracts_payload() -> dict[str, dict[str, Any]]:
-    """回傳兩條既有觀察的 detached canonical payload。"""
 
-    return deepcopy(_METHOD_CONTRACTS)
+def method_contracts_payload(
+    *, include_bbands30_upper: bool = False
+) -> dict[str, dict[str, Any]]:
+    """回傳所選研究版本的 detached canonical payload。"""
+
+    if not isinstance(include_bbands30_upper, bool):
+        raise TypeError("include_bbands30_upper 必須是 bool")
+    payload = deepcopy(_METHOD_CONTRACTS)
+    if include_bbands30_upper:
+        payload["close_above_bbands30_upper"] = deepcopy(
+            _BBANDS30_UPPER_METHOD_CONTRACT
+        )
+    return payload
 
 
 def method_contracts_canonical_json(

@@ -1174,7 +1174,11 @@ class StockResearchReportReadService:
         self,
         code: str,
         cutoff: date,
+        *,
+        include_bbands30_upper: bool = False,
     ) -> tuple[StockTechnicalSnapshotDTO | None, StockReportSourceDTO | None]:
+        if not isinstance(include_bbands30_upper, bool):
+            raise TypeError("include_bbands30_upper 必須是 bool")
         table = "technical_indicators"
         columns = self._columns(table)
         if not columns:
@@ -1197,6 +1201,15 @@ class StockResearchReportReadService:
         )
         select = [_select_column(columns, ("日期", "Date"), "data_date")]
         select.extend(_select_column(columns, (key,), key) for key, _label in indicator_columns)
+        bbands_upper_column = (
+            _pick(columns, "BB_Upper", "upperband")
+            if include_bbands30_upper
+            else None
+        )
+        if bbands_upper_column is not None:
+            select.append(
+                _select_column(columns, (bbands_upper_column,), "BB_Upper")
+            )
         sql = f"""
             SELECT {", ".join(select)}
             FROM {self._table(table)}
@@ -1231,6 +1244,19 @@ class StockResearchReportReadService:
             for key, label in indicator_columns
             if _decimal(row[key]) is not None
         )
+        if bbands_upper_column is not None and _decimal(row["BB_Upper"]) is not None:
+            indicators = (
+                *indicators,
+                StockMetricDTO(
+                    key="BB_Upper",
+                    label="BB_Upper",
+                    value=_decimal(row["BB_Upper"]),
+                    unit="TWD/share",
+                    data_as_of=data_date,
+                    source_id="sqlite.technical_indicators",
+                    quality=ReportQuality.OBSERVED.value,
+                ),
+            )
         technical = StockTechnicalSnapshotDTO(
             data_date=data_date,
             indicators=indicators,

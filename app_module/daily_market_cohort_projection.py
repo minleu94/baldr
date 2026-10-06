@@ -11,14 +11,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, NoReturn
 
-from app_module.daily_market_feature_snapshot import (
-    DAILY_MARKET_CONDITION_KEYS,
-    DAILY_MARKET_FEATURE_KEYS,
-)
-from app_module.daily_market_method_contract import (
-    method_contracts_payload,
-    method_contracts_sha256,
-)
+from app_module.daily_market_feature_snapshot import feature_contract_for_version
+from app_module.daily_market_method_contract import method_contracts_sha256
 from app_module.original_stock_ranking import VerifiedOriginalStockRanking
 from app_module.daily_market_research_screener import (
     DailyMarketResearchConditionResult,
@@ -36,10 +30,8 @@ from app_module.daily_market_snapshot_repository import (
 
 DailyMarketCohortConditionState = Literal["match", "no_match", "unknown"]
 DailyMarketCohortSortKey = Literal[
-    "stock_code", "data_date", "close", "ma20", "ma60"
+    "stock_code", "data_date", "close", "ma20", "ma60", "bbands30_upper"
 ]
-_EXPECTED_CONDITION_KEYS = tuple(DAILY_MARKET_CONDITION_KEYS)
-_FEATURE_KEYS = tuple(DAILY_MARKET_FEATURE_KEYS)
 
 
 class DailyMarketCohortProjectionError(ValueError):
@@ -77,6 +69,7 @@ class DailyMarketCohortMember:
     conditions: tuple[DailyMarketResearchConditionResult, ...]
     source_refs: tuple[tuple[str, str], ...]
     snapshot_missing: bool = False
+    bbands30_upper: Decimal | None = None
 
     def condition(self, key: str) -> DailyMarketResearchConditionResult:
         """依既有方法 key 取得這檔股票的條件結果。"""
@@ -124,6 +117,10 @@ def project_daily_market_cohort(
     """
 
     manifest, declared_codes, contracts = _validate_snapshot(snapshot)
+    feature_contract = feature_contract_for_version(
+        str(manifest["feature_contract_version"])
+    )
+    expected_condition_keys = feature_contract.condition_keys
     if original_ranking is not None:
         _validate_original_ranking(snapshot, original_ranking)
     payload_codes = tuple(sorted(snapshot.stock_snapshots))
@@ -132,6 +129,7 @@ def project_daily_market_cohort(
         rows,
         payload_codes,
         contracts,
+        expected_condition_keys,
         expected_snapshot_root=expected_snapshot_root,
     )
     records = _manifest_stock_records(manifest)
@@ -139,7 +137,7 @@ def project_daily_market_cohort(
     members: list[DailyMarketCohortMember] = []
     counts = {
         key: {"match": 0, "no_match": 0, "unknown": 0}
-        for key in _EXPECTED_CONDITION_KEYS
+        for key in expected_condition_keys
     }
 
     for code in declared_codes:
@@ -147,7 +145,7 @@ def project_daily_market_cohort(
         if payload is None:
             condition_results = tuple(
                 _missing_condition(key, contracts[key], snapshot.decision_date)
-                for key in _EXPECTED_CONDITION_KEYS
+                for key in expected_condition_keys
             )
             member = DailyMarketCohortMember(
                 stock_code=code,
@@ -161,7 +159,7 @@ def project_daily_market_cohort(
             )
         else:
             row = row_by_code[code]
-            feature_values = _feature_values(payload)
+            feature_values = _feature_values(payload, feature_contract.feature_keys)
             condition_results = tuple(
                 _validated_row_condition(
                     _row_condition(row, key),
@@ -169,7 +167,7 @@ def project_daily_market_cohort(
                     contracts[key],
                     snapshot.decision_date,
                 )
-                for key in _EXPECTED_CONDITION_KEYS
+                for key in expected_condition_keys
             )
             member = DailyMarketCohortMember(
                 stock_code=code,
@@ -179,6 +177,7 @@ def project_daily_market_cohort(
                 ma60=feature_values["MA60"],
                 conditions=condition_results,
                 source_refs=_source_refs(records[code]),
+                bbands30_upper=feature_values.get("BB_Upper"),
             )
 
         for condition in member.conditions:
@@ -188,7 +187,7 @@ def project_daily_market_cohort(
     denominator = len(declared_codes)
     method_counts = tuple(
         _method_count(key, contracts[key], counts[key], denominator)
-        for key in _EXPECTED_CONDITION_KEYS
+        for key in expected_condition_keys
     )
     # 根目錄用於確認 rows 的來源一致；readmodel 不讀取或回寫該路徑。
     del snapshot_root
@@ -247,7 +246,7 @@ def sort_daily_market_cohort_members(
 ) -> tuple[DailyMarketCohortMember, ...]:
     """回傳 client-side 排序副本，未知數值固定置尾且不改變輸入。"""
 
-    if key not in {"stock_code", "data_date", "close", "ma20", "ma60"}:
+    if key not in {"stock_code", "data_date", "close", "ma20", "ma60", "bbands30_upper"}:
         raise ValueError(f"不支援的 cohort 排序欄位：{key!r}")
     if not isinstance(descending, bool):
         raise TypeError("descending 必須是 bool")
@@ -305,21 +304,31 @@ def _validate_snapshot(
     if not payload_codes.issubset(set(declared_codes)):
         _fail("cohort_payload_scope_mismatch", "snapshot payload 包含未宣告的股票代碼")
 
+    try:
+        feature_contract = feature_contract_for_version(
+            str(manifest.get("feature_contract_version"))
+        )
+    except (TypeError, ValueError) as exc:
+        raise DailyMarketCohortProjectionError(
+            "snapshot_contract_version_mismatch", "feature contract version 不支援"
+        ) from exc
+    expected_condition_keys = feature_contract.condition_keys
     raw_contracts = manifest.get("method_contracts")
-    if not isinstance(raw_contracts, Mapping) or set(raw_contracts) != set(_EXPECTED_CONDITION_KEYS):
-        _fail("cohort_method_contracts_invalid", "manifest 方法與既有固定方法不符")
+    if not isinstance(raw_contracts, Mapping) or set(raw_contracts) != set(expected_condition_keys):
+        _fail("cohort_method_contracts_invalid", "manifest condition contract keys are invalid")
     raw_contract_hash = manifest.get("method_contracts_sha256")
     if (
         not isinstance(raw_contract_hash, str)
         or method_contracts_sha256(raw_contracts) != raw_contract_hash
-        or dict(raw_contracts) != method_contracts_payload()
+        or raw_contract_hash != feature_contract.method_contracts_sha256
+        or dict(raw_contracts) != feature_contract.method_contracts
     ):
-        _fail("cohort_method_contract_hash_mismatch", "方法契約雜湊無效")
+        _fail("cohort_method_contract_hash_mismatch", "method contract differs from fixed registry")
     contracts: dict[str, Mapping[str, Any]] = {}
-    for key in _EXPECTED_CONDITION_KEYS:
+    for key in expected_condition_keys:
         item = raw_contracts.get(key)
         if not isinstance(item, Mapping):
-            _fail("cohort_method_contracts_invalid", f"manifest 缺少方法契約：{key}")
+            _fail("cohort_method_contracts_invalid", f"manifest missing method contract: {key}")
         contracts[key] = item
 
     if "research_universe" in manifest:
@@ -355,6 +364,7 @@ def _validate_rows(
     rows: Sequence[DailyMarketResearchScreenRow],
     payload_codes: tuple[str, ...],
     contracts: Mapping[str, Mapping[str, Any]],
+    expected_condition_keys: Sequence[str],
     *,
     expected_snapshot_root: str | Path | None,
 ) -> tuple[dict[str, DailyMarketResearchScreenRow], str]:
@@ -401,17 +411,17 @@ def _validate_rows(
             _fail("cohort_row_source_mismatch", f"screen row 的來源或雜湊不符：{code}")
         if row.data_date != str(payload.get("market_date") or ""):
             _fail("cohort_row_date_mismatch", f"screen row 的市場資料日期不符：{code}")
-        if row.condition_keys != _EXPECTED_CONDITION_KEYS or row.combine_mode != "AND":
+        if row.condition_keys != expected_condition_keys or row.combine_mode != "AND":
             _fail("cohort_row_conditions_incomplete", "filter_rows 必須以 AND 傳入兩個固定方法")
         if not row.research_only or row.historical_pit_eligible:
             _fail("cohort_row_policy_mismatch", f"screen row 的研究用途政策不符：{code}")
         raw_conditions = tuple(row.conditions)
-        if len(raw_conditions) != len(_EXPECTED_CONDITION_KEYS):
+        if len(raw_conditions) != len(expected_condition_keys):
             _fail("cohort_row_conditions_incomplete", f"screen row 的方法結果不完整：{code}")
         keys = tuple(item.key for item in raw_conditions)
-        if set(keys) != set(_EXPECTED_CONDITION_KEYS) or len(set(keys)) != len(keys):
+        if set(keys) != set(expected_condition_keys) or len(set(keys)) != len(keys):
             _fail("cohort_row_conditions_incomplete", f"screen row 的方法結果重複或缺漏：{code}")
-        for key in _EXPECTED_CONDITION_KEYS:
+        for key in expected_condition_keys:
             _validated_row_condition(
                 _row_condition(row, key), key, contracts[key], snapshot.decision_date
             )
@@ -420,12 +430,12 @@ def _validate_rows(
             _fail("cohort_row_evaluation_mismatch", f"verified 條件 payload 格式錯誤：{code}")
         expected_evaluation = evaluate_daily_market_conditions(
             raw_snapshot_conditions,
-            _EXPECTED_CONDITION_KEYS,
+            expected_condition_keys,
             "AND",
             expected_decision_date=snapshot.decision_date,
         )
         actual_conditions = tuple(
-            _row_condition(row, key).to_dict() for key in _EXPECTED_CONDITION_KEYS
+            _row_condition(row, key).to_dict() for key in expected_condition_keys
         )
         expected_conditions = tuple(item.to_dict() for item in expected_evaluation.conditions)
         if (
@@ -471,12 +481,14 @@ def _row_condition(
     _fail("cohort_row_conditions_incomplete", f"screen row 缺少方法結果：{key}")
 
 
-def _feature_values(payload: Mapping[str, Any]) -> dict[str, Decimal | None]:
+def _feature_values(
+    payload: Mapping[str, Any], feature_keys: Sequence[str]
+) -> dict[str, Decimal | None]:
     features = payload.get("features")
-    if not isinstance(features, Mapping) or set(features) != set(_FEATURE_KEYS):
+    if not isinstance(features, Mapping) or set(features) != set(feature_keys):
         _fail("cohort_feature_schema_invalid", "snapshot feature 欄位格式錯誤")
     values: dict[str, Decimal | None] = {}
-    for key in _FEATURE_KEYS:
+    for key in feature_keys:
         feature = features.get(key)
         if not isinstance(feature, Mapping):
             _fail("cohort_feature_schema_invalid", f"snapshot feature 格式錯誤：{key}")

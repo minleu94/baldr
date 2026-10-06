@@ -17,7 +17,9 @@ from typing import Any, Mapping, NoReturn, Sequence
 from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_CONDITION_KEYS,
     DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
     DAILY_MARKET_FEATURE_KEYS,
+    feature_contract_for_version,
 )
 from app_module.daily_market_method_contract import (
     method_contracts_payload,
@@ -40,7 +42,7 @@ DAILY_MARKET_SNAPSHOT_MAX_POINTER_BYTES = 4 * 1024
 DAILY_MARKET_SNAPSHOT_MAX_MANIFEST_BYTES = 1024 * 1024
 DAILY_MARKET_SNAPSHOT_MAX_ARTIFACT_BYTES = 64 * 1024
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_FEATURE_WINDOWS = {"MA20": 20, "MA60": 60}
+_FEATURE_WINDOWS = {"MA20": 20, "MA60": 60, "BB_Upper": 30}
 _POLICY = {
     "usage": "current_observed_research_only",
     "official_availability_state": "unknown",
@@ -436,13 +438,19 @@ class DailyMarketSnapshotRepository:
         if expected_codes is not None and declared_codes != expected_codes:
             _fail("snapshot_stock_scope_mismatch", "manifest cohort 股票分母與呼叫端不同")
 
-        if manifest.get("feature_contract_version") != DAILY_MARKET_FEATURE_CONTRACT_VERSION:
-            _fail("snapshot_contract_version_mismatch", "feature contract version 不相容")
-        if manifest.get("feature_keys") != list(DAILY_MARKET_FEATURE_KEYS):
+        feature_contract_version = manifest.get("feature_contract_version")
+        if not isinstance(feature_contract_version, str):
+            _fail("snapshot_contract_version_mismatch", "feature contract version 不支援")
+        try:
+            feature_contract = feature_contract_for_version(feature_contract_version)
+        except (TypeError, ValueError):
+            _fail("snapshot_contract_version_mismatch", "feature contract version 不支援")
+        if manifest.get("feature_keys") != list(feature_contract.feature_keys):
             _fail("snapshot_feature_keys_mismatch", "manifest features 不符合 reader 契約")
         _validate_method_contract_binding(
             manifest.get("method_contracts"),
             manifest.get("method_contracts_sha256"),
+            contract_version=feature_contract.version,
         )
         manifest_policy = manifest.get("policy")
         if (
@@ -658,6 +666,7 @@ class DailyMarketSnapshotRepository:
         _validate_method_contract_binding(
             payload.get("method_contracts"),
             payload.get("method_contracts_sha256"),
+            contract_version=str(manifest.get("feature_contract_version") or ""),
         )
         if payload.get("input_fingerprint_sha256") != record["input_fingerprint_sha256"]:
             _fail("snapshot_input_hash_mismatch", f"{stock_code} artifact input hash 與 manifest 不符")
@@ -694,20 +703,26 @@ class DailyMarketSnapshotRepository:
                 _fail("snapshot_future_market_date", f"{stock_code} market_date 晚於 decision_date")
         features = payload.get("features")
         conditions = payload.get("conditions")
-        if not isinstance(features, dict) or set(features) != set(DAILY_MARKET_FEATURE_KEYS):
+        try:
+            feature_contract = feature_contract_for_version(
+                str(manifest.get("feature_contract_version") or "")
+            )
+        except ValueError:
+            _fail("snapshot_contract_version_mismatch", "feature contract version 不支援")
+        if not isinstance(features, dict) or set(features) != set(feature_contract.feature_keys):
             _fail("snapshot_feature_schema_mismatch", f"{stock_code} features 欄位無效")
-        if not isinstance(conditions, dict) or set(conditions) != set(DAILY_MARKET_CONDITION_KEYS):
+        if not isinstance(conditions, dict) or set(conditions) != set(feature_contract.condition_keys):
             _fail("snapshot_condition_schema_mismatch", f"{stock_code} conditions 欄位無效")
-        for key in DAILY_MARKET_FEATURE_KEYS:
+        for key in feature_contract.feature_keys:
             source_ref = (
                 record["source_refs"]["price"]
                 if key == "close"
                 else record["source_refs"]["technical"]
             )
             self._validate_feature(features[key], key, market_date, source_ref)
-        for condition_key, feature_key in zip(
-            DAILY_MARKET_CONDITION_KEYS, ("MA20", "MA60")
-        ):
+        for condition_key in feature_contract.condition_keys:
+            method_contract = feature_contract.method_contracts[condition_key]
+            feature_key = str(method_contract["required_fields"][1])
             self._validate_condition(
                 conditions[condition_key],
                 condition_key,
@@ -715,7 +730,7 @@ class DailyMarketSnapshotRepository:
                 features[feature_key],
                 market_date,
                 decision_date,
-                manifest["method_contracts"][condition_key],
+                method_contract,
             )
 
     def _validate_feature(
@@ -942,15 +957,26 @@ class DailyMarketSnapshotRepository:
         return path
 
 
-def _validate_method_contract_binding(payload: Any, claimed_sha256: Any) -> None:
+def _validate_method_contract_binding(
+    payload: Any,
+    claimed_sha256: Any,
+    *,
+    contract_version: str = DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+) -> None:
     """要求 manifest/artifact 綁定目前唯一 canonical 方法 registry。"""
 
     if not isinstance(payload, dict):
         _fail("snapshot_method_contracts_invalid", "method_contracts 必須是 object")
-    expected_payload = method_contracts_payload()
-    expected_sha256 = method_contracts_sha256()
+    try:
+        feature_contract = feature_contract_for_version(contract_version)
+    except ValueError:
+        _fail("snapshot_contract_version_mismatch", "feature contract version 不支援")
+    expected_payload = feature_contract.method_contracts
+    expected_sha256 = method_contracts_sha256(expected_payload)
     _require_sha256(expected_sha256, "canonical_method_contracts_sha256")
-    _validate_fixed_method_semantics(expected_payload)
+    _validate_fixed_method_semantics(
+        expected_payload, contract_version=feature_contract.version
+    )
     if canonical_snapshot_sha256(expected_payload) != expected_sha256:
         _fail("snapshot_method_contract_registry_invalid", "canonical method registry hash 不一致")
     if payload != expected_payload:
@@ -966,17 +992,64 @@ def _validate_method_contract_binding(payload: Any, claimed_sha256: Any) -> None
         )
 
 
-def current_method_contract_binding() -> tuple[dict[str, Any], str]:
+def current_method_contract_binding(
+    *, contract_version: str = DAILY_MARKET_FEATURE_CONTRACT_VERSION
+) -> tuple[dict[str, Any], str]:
     """回傳經固定 MA20/MA60 語義驗證的當前 canonical registry。"""
 
-    payload = method_contracts_payload()
+    feature_contract = feature_contract_for_version(contract_version)
+    payload = feature_contract.method_contracts
     claimed_sha256 = method_contracts_sha256(payload)
-    _validate_method_contract_binding(payload, claimed_sha256)
+    _validate_method_contract_binding(
+        payload, claimed_sha256, contract_version=feature_contract.version
+    )
     return payload, claimed_sha256
 
 
-def _validate_fixed_method_semantics(payload: Mapping[str, Any]) -> None:
+def _validate_fixed_method_semantics(
+    payload: Mapping[str, Any], *, contract_version: str
+) -> None:
     """固定既有 MA20/MA60 比較語義，避免 metadata 改寫實際公式。"""
+
+    if contract_version == DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER:
+        base_payload = {
+            key: payload[key]
+            for key in ("close_above_ma20", "close_above_ma60")
+            if key in payload
+        }
+        _validate_fixed_method_semantics(
+            base_payload,
+            contract_version=DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+        )
+        expected_bbands_contract = {
+            "method_id": "daily_market.close_above_bbands30_upper",
+            "family": "close_vs_bollinger_upper",
+            "version": "1.0.0",
+            "parameters": {
+                "timeperiod": 30,
+                "nbdevup": "2.0",
+                "nbdevdn": "2.0",
+                "matype": "SMA",
+                "direction": "above",
+            },
+            "required_fields": ["close", "BB_Upper"],
+        }
+        if (
+            set(payload)
+            != {
+                "close_above_ma20",
+                "close_above_ma60",
+                "close_above_bbands30_upper",
+            }
+            or payload.get("close_above_bbands30_upper") != expected_bbands_contract
+        ):
+            _fail(
+                "snapshot_method_contract_registry_invalid",
+                "BBANDS30 canonical method registry 不符版本",
+            )
+        return
+    if contract_version != DAILY_MARKET_FEATURE_CONTRACT_VERSION:
+        _fail("snapshot_contract_version_mismatch", "feature contract version 不支援")
 
     expected = {
         "close_above_ma20": (20, "MA20"),

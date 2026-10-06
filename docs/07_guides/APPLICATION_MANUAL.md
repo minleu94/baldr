@@ -5208,3 +5208,9 @@ request schema 為 `personal-model-daily-request.v1`，必須明示 canonical re
 真時鐘跨午夜時，決策日可為 10/07、來源日 10/06、特徵日 10/05，三者分列，不回填前日。相同 cycle/model/symbol 重試讀第一次輸出，不造新自然樣本。自然結果需原 no-model entry/outcome 的 decision/cycle/source/features 精確一致及二十 session 成熟；缺 entry 如實 pending，不阻止日常推論。holdout Brier 2730 對 null 2500，劣於基線 230 bp，成本後效果未證明，持續揭露；未提升 formal/PIT/交易資格。
 
 排錯先檢查原 raw-cycle completion、配置 revision、fit/contract raw pin 與 cohort 全範圍，不放寬 guard。回滾只發布 disabled 新 revision；不刪 receipt、不改既存預測。此 UI 已以合成 offscreen 驗證，未宣稱前景 Native／真人驗收。
+
+#### H20目前用途與下一次排程（2026-10-07）
+
+H20已真參與每日研究推論／原值保存，個股摘要讀其原預測；目前還沒有接入原推薦名單生成或排序。原推薦勝率／機率與ranking不變；H20 gross是未扣成本的20交易日毛報酬，不是勝率。日常H20 cohort研究列表／排序與exact下鑽返回、原entry/outcome自動pins接線仍需完成，不能用目前增量卡片宣稱模型選股已完成或全市場已預測。
+
+既有05:45 Task下一次為Pacific10/07 05:45（當日UTC−07），UTC12:45、台北20:45；未手動啟Task。下一run應核新Task/source cycle identity、原manifest與prediction raw pins，不以舊產品指標或Task returncode單獨判H20成功。原global/formal blocked和personal success可分開為真；詳見 [下一run與工程差異QA](../06_qa/BALDR_NEXT_RUN_AND_REMAINING_ENGINEERING_20261007.md)。自然成熟不作工程gate，來源資格unknown不補。

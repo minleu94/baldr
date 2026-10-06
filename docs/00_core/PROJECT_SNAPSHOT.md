@@ -837,3 +837,9 @@ I20中央95d381a4：20exact entries，原20test/舊分類/direct12不變；metad
 個人模型根明示 FA_Data/personal/recommendation_h20；精確配置CAS與原預測public reader、中央全cohort daily manifest pins／product reference、個股摘要背景readback已接線。三leaf current-observed tests分類service-oracle-recommendation，product evidence test為UI candidate；inventory1293／recommendation193／UIcandidate98／direct12。分類不授runtime credit。詳細操作／限制以 Manual9.9.1i與BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md為準。真clock跨日不可回填，原global資格與七有限closed／性能例外不變，pending自然結果不是工程gate。
 
 2026-10-07 Taipei 實際私人H20已enabled revision1，同daily public ingress完成10predictions/10pending，effective_model_run=true；原source/fit stat不變、Task原定義不变且未手動啟Task。全scope原pin manifest成功後發布產品指標；自然entry/outcome尚pending，Stage/UX與所有來源資格不升格。具體收據見BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。
+
+### 2026-10-07 H20用途／下次既有Task／BB完整母體必要增量
+
+H20實際每日研究推論及原值保存／個股readonly增量卡已啟用，但尚未進原推薦名單生成／排序；gross與原勝率／排名分域，不能把卡片稱模型選股已完成。必要后續為已驗完整H20cohort研究列表／gross排序／exact下鑽返回、原entry/outcome pins自動caller；成熟時間另列，不造資格。BBv3尚缺parent全具名母體／daily policy版號與third filter/正確labels，四檔BBP01 dispatch已交父層，中央不共編。
+
+下次原05:45 Task＝Pacific10/07 05:45−07／UTC12:45／Taipei20:45，trigger enabled／Ready、配置revision1enabled；NextRunTime及Process/User/Machine root overrides全None原收據已核，沒有手動啟Task或automation。原global/formal blocked與personal成功分別驗；下次须新cycle/immutable terminal/manifest原pins，不能拿舊marker當成功。詳情BALDR_NEXT_RUN_AND_REMAINING_ENGINEERING_20261007.md；原9Stage24UX与七有限closed／F1/Journey例外不升格。

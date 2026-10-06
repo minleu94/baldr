@@ -15,18 +15,30 @@ from app_module.decision_quality_dtos import (
     DecisionQualitySummary,
 )
 from app_module.research_run_dtos import canonical_json
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_io_path, to_internal_sqlite_uri
+from app_module.personal_store_selection import assert_personal_store_path
 
 
 class DecisionQualityRepository:
     """Append-only/idempotent storage for process review evidence."""
 
-    def __init__(self, config: Any, *, db_path: str | Path | None = None, read_only: bool = False) -> None:
+    def __init__(self, config: Any, *, db_path: str | Path | None = None, read_only: bool = False,
+                 personal_paths: PersonalDataPaths | None = None) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
         self.read_only = bool(read_only)
+        self.personal_paths = personal_paths
+        self._validate_personal_path()
         if not self.read_only:
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            Path(to_internal_io_path(self.db_path.parent.absolute())).mkdir(parents=True, exist_ok=True)
+            self._validate_personal_path()
             self.ensure_schema()
+
+    def _validate_personal_path(self) -> None:
+        if self.personal_paths is not None:
+            assert_personal_store_path(self.personal_paths, self.db_path)
+            for suffix in ("-journal", "-wal", "-shm"):
+                assert_personal_store_path(self.personal_paths, Path(str(self.db_path) + suffix))
 
     def ensure_schema(self) -> None:
         self._require_writable()
@@ -312,17 +324,18 @@ class DecisionQualityRepository:
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
+        self._validate_personal_path()
         if self.read_only:
-            if not self.db_path.is_file():
+            if not Path(to_internal_io_path(self.db_path.absolute())).is_file():
                 raise FileNotFoundError(f"找不到 SQLite 資料庫：{self.db_path}")
-            connection = sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
+            connection = sqlite3.connect(to_internal_sqlite_uri(self.db_path.absolute(), "ro"), uri=True)
             try:
                 connection.execute("PRAGMA query_only=ON")
                 yield connection
             finally:
                 connection.close()
             return
-        connection = sqlite3.connect(self.db_path)
+        connection = sqlite3.connect(to_internal_io_path(self.db_path.absolute()))
         try:
             yield connection
             connection.commit()

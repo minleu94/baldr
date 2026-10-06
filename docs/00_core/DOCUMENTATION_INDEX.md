@@ -253,3 +253,6 @@ UX23 registry readonly 整合：[QA](../06_qa/UX23_REGISTRY_INTEGRATION_20261006
 - [H20完整cohort與widget](../06_qa/BALDR_H20_RESEARCH_COHORT_20261007.md)、[H20自然batch](../06_qa/BALDR_H20_NATURAL_BATCH_20261007.md)、[BB第三條件與收藏](../06_qa/BALDR_BBANDS_RESEARCH_UI_20261007.md)：各lane固定scope收據，不取代Manual或Snapshot。
 
 - [dev/main release preparation](../06_qa/BALDR_DEV_MAIN_RELEASE_PREPARATION_20261007.md)
+
+- [本機main packaging](../06_qa/BALDR_LOCAL_MAIN_PACKAGING_20261007.md)：新使用者入口與精確tree驗收。
+- [唯一worktree／兩branch恢復](../06_qa/BALDR_TWO_BRANCH_RECOVERY_20261007.md)：durable保全與正常還原。

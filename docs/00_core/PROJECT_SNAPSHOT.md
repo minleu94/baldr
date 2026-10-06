@@ -1,5 +1,13 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-07 本機使用版與唯一worktree整理
+
+本機main最終a8c81bf534952cdf35d35a57d9e367c0fa10c817，保留原main parent1bedee9a；dev完整開發歷史保留。main受控tree3293檔／604排除內部收據、notebook saved outputs及機器TaskXML，必要runtime/tests/QA與治理導航保留，public docs去識別。全新runtime安裝／pipcheck、精確匯出空root offscreen啟動exit0、AST／入口檢查及治理13P完成；不宣稱Native、完整歷史公開或新開源授權。
+
+42其他checkout已普通git worktree remove；只保留主要technical_analysis checkout dev，refs/heads僅dev/main，remote refs不動。durable backup保全全部原refs/HEAD、非Git原檔與14synthetic junction metadata；原始FA_Data／私人資料／ACL／Task／交易／fit未動，無push。恢復位置與普通remove／空間量測見 [兩分支恢復QA](../06_qa/BALDR_TWO_BRANCH_RECOVERY_20261007.md)，發布／首紅與修復證據見 [本機main QA](../06_qa/BALDR_LOCAL_MAIN_PACKAGING_20261007.md)。以下42worktree／待批准／舊main段落均為歷史時點。
+
+工程／個人實際啟用／下一自然排程／品質成熟仍分域；真原保存10股排序已驗，自然10pending0成熟，原Task2026-10-07 12:45UTC仍待實際驗收，不因發布或cleanup升credit。
+
 ## 2026-10-07 四包整合最終增量
 
 BBP01 已獲直接真人批准並原樣採入 dev `5eefe331`，中央接線commit `930c5c59`。同版61P核 daily owner→v3 parent→acceptance→保存讀回、BB下鑽返回及收藏新程序；mandatory85P／validator25P4skip0F／mypy848零錯誤。inventory1303項／direct12。原三包區段等待批准為歷史，現已解除。

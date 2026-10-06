@@ -1,5 +1,15 @@
 # dev／main 分支整理與可恢復收據
 
+## 最終一個 worktree（先前42個原地保留區段為歷史時點）
+
+使用者直接要求全部完成後只留一worktree（Sentinel_154bb8a336948191b98de7817897aa3e）。本機main packaging驗收與持久新增備份完成後，**42個其他checkout均使用普通 `git worktree remove` 移除**，未用force／prune。最終list只有 `C:/Projects/PythonProjects/technical_analysis`、checkout dev；refs/heads只有dev／main，remote refs未刪未push。
+
+移除前逐exact Gitroot核HEAD／clean／每檔SHA及reparse boundary；ignored／untracked原檔以LiteralPath搬到持久 `loose_extras/worktree_XX`，原ZIP仍保留，再核無未備份extras才移除可由Git重建的tracked checkout。primary ignored／正式FA_Data／私人資料／ACL／Task均未動。
+
+market-csv-export遇14個synthetic parent junction，守衛即停。metadata證明全部targets在同worktree內；先以新Temp probe驗Native Move-Item只搬link物件／target不動，再保存metadata與原junction物件，未followtarget或刪外部資料。原ZIP裡透過alias投影的檔案列保留；實體檔另逐SHA保存。這14份link metadata補充原只檢file-lstat的manifest，不能以原links空陣列冒稱沒有parent reparse。還原時先重建實體內容，再按metadata核target後重建junction，不在備份中跟隨已移除原路徑的link。
+
+新main發布工作區604extras另存 `main_release_final_extras.zip`／manifest；原a7候選611extras與原all_refs bundle仍保留，最終main a8與dev809e另有final_main_refs.bundle。普通remove恢復段（最後10個）的卷可用空間觀測增加 **737,497,088 bytes（約703 MiB）**；這不是前32個加總或全程獨佔净值，沒有假報完整釋放量。收據：ignored `retirement_result.json`／`resume_space_before.json`／兩輪raw／reparse metadata。
+
 ## 結果
 
 本機 `refs/heads` 已只剩 **dev／main**。40個lane分支名稱已在逐一驗證持久備份、clean與exact HEAD後，以原地detached checkout及expected-old-SHA CAS ref移除完成。**42個worktree目錄全部保留**，無永久刪除、無force prune、無main reset、無push／公開分享／visibility變更。primary ignored／正式FA_Data私人資料未搬移、未刪除。

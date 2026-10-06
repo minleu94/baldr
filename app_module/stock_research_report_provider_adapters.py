@@ -423,6 +423,36 @@ def _fsync_directory(path: Path) -> None:
             os.close(descriptor)
 
 
+def _validated_target_costs(
+    target_metric: str, costs: Mapping[str, Any],
+) -> tuple[int | None, int | None, int | None]:
+    """驗原模型成本情境；未知／不符保留空值，不影響原預測。"""
+    total = costs.get("total_round_trip_cost_bp")
+    buy = costs.get("buy_side_cost_bp")
+    sell = costs.get("sell_side_cost_bp")
+    if target_metric != _TARGET_METRIC or type(total) is not int or type(buy) is not int or type(sell) is not int:
+        return None, None, None
+    if total < 0 or buy < 0 or sell < 0 or total != 80 or total != buy + sell:
+        return None, None, None
+    return total, buy, sell
+
+
+def _manifest_target_costs(
+    manifest: Mapping[str, Any], target_metric: str,
+) -> tuple[int | None, int | None, int | None]:
+    contract = manifest.get("target_contract")
+    if (not isinstance(contract, Mapping)
+            or contract.get("schema_version") != "current-restated-outcome-target.v1"
+            or contract.get("target_metric") != target_metric):
+        return None, None, None
+    costs = contract.get("cost_contract")
+    if (not isinstance(costs, Mapping)
+            or costs.get("schema_version") != "portfolio-ml-outcome-cost-contract.v1"
+            or costs.get("cost_unit") != "basis_points"):
+        return None, None, None
+    return _validated_target_costs(target_metric, costs)
+
+
 class CurrentRestatedMLRunRegistry:
     """發布不可變 sidecar run；唯讀查詢不需要 loader，發布必須明示注入。"""
 
@@ -1064,6 +1094,7 @@ class CurrentRestatedMLRunRegistry:
                 or sha256(bundle_bytes).hexdigest() != record.get("model_bundle_sha256")
             ):
                 continue
+            target_costs = _manifest_target_costs(manifest_payload, target_metric)
             h5 = row.get("h5")
             if not isinstance(h5, Mapping):
                 raise CurrentRestatedMLRegistryError("registry H5 result is missing")
@@ -1105,6 +1136,9 @@ class CurrentRestatedMLRunRegistry:
                 "context_identity": dict(source_identity),
                 "target_metric": target_metric,
                 "predicted_benchmark_excess_return_bp": dict(predicted_values),
+                "target_round_trip_cost_bp": target_costs[0],
+                "target_buy_side_cost_bp": target_costs[1],
+                "target_sell_side_cost_bp": target_costs[2],
                 "prediction_keys": tuple(model_keys),
                 "input_quality_summary": dict(row["input_quality_summary"]),
                 "core19_numeric_vector_sha256": row["core19_numeric_vector_sha256"],

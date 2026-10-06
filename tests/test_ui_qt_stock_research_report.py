@@ -47,6 +47,9 @@ from ui_qt.views.stock_research_report_view import (
     StockResearchReportDialog,
     StockResearchReportView,
     _price_change_text,
+    _report_pending_text,
+    _ml_estimate_summary,
+    _current_h20_observation_allows,
 )
 
 
@@ -55,6 +58,76 @@ def _app() -> QApplication:
     if instance is None:
         instance = QApplication(sys.argv)
     return instance
+
+
+@pytest.mark.parametrize("state", ["not_mature", "not_mature_as_of_cutoff"])
+def test_legal_h5_immaturity_preserves_forecast_and_qualification(state) -> None:
+    ml = StockMLSnapshotDTO(status="degraded", h5_status=state,
+        target_metric="benchmark_excess_after_standard_80bp_cost",
+        predicted_benchmark_excess_return_bp={"H5": -100}, research_only=True,
+        formal_qualified=False)
+    report = StockResearchReportDTO(stock_code="2382", ml=ml)
+    text = _report_pending_text(report)
+    assert "未識別" not in text
+    assert "結果尚未成熟" in text and "研究估計仍可查看" in text
+    assert "H5：-100 bp" in _ml_estimate_summary(ml)
+    assert ml.formal_qualified is False and ml.h5_gross_stock_return_bp is None
+
+
+def _current_h20_case():
+    from app_module.recommendation.personal_h20_product_evidence import PersonalH20ProductEvidence
+
+    report = StockResearchReportDTO(stock_code="2382", as_of="2026-10-06",
+        price_points=(StockPricePointDTO(data_date="2026-10-06", close_price=Decimal("330")),))
+    context = ResearchStockContextDTO(stock_code="2382", ml_scope_mode="current_stock_research")
+    evidence = PersonalH20ProductEvidence("2382", "available", "自然結果待核驗", 684,
+        "2026-10-07", "2026-10-06", "2026-10-05", "2026-10-06T16:42:07+00:00",
+        "model", "sample", "prediction")
+    now = datetime.fromisoformat("2026-10-06T21:45:00+00:00")
+    return report, context, evidence, now
+
+
+def test_current_h20_uses_observation_clock_instead_of_price_cutoff() -> None:
+    _app()
+    report, context, evidence, now = _current_h20_case()
+    assert _current_h20_observation_allows(evidence, report, context, now=now)
+    view = StockResearchReportView(SimpleNamespace())
+    try:
+        view.context = context
+        view._loaded_request_context = context
+        view._loaded_report = report
+        view.set_personal_h20_evidence(evidence)
+        assert "+6.84%（684 bp）" in view.personal_h20_label.text()
+        assert "自然結果待核驗" in view.personal_h20_label.text()
+        before = view.personal_h20_label.text()
+        view.context = replace(context, source_id="changed")
+        view.set_personal_h20_evidence(replace(evidence, gross_return_bp=999))
+        assert view.personal_h20_label.text() == before
+        view.context = context
+        unavailable = replace(evidence, status="unavailable", decision_date=None,
+            reason="historical SQLite source changed during snapshot load")
+        view.set_personal_h20_evidence(unavailable)
+        assert "模型資料暫時無法驗證" in view.personal_h20_label.text()
+        assert "+6.84%" not in view.personal_h20_label.text()
+        assert unavailable.reason == view.personal_h20_label.toolTip()
+    finally:
+        view.close()
+
+
+@pytest.mark.parametrize("change", ["future_clock", "wrong_stock", "wrong_source", "saved", "unknown_scope"])
+def test_current_h20_clock_exception_rejects_invalid_scope_and_provenance(change) -> None:
+    report, context, evidence, now = _current_h20_case()
+    if change == "future_clock":
+        evidence = replace(evidence, observed_at="2026-10-07T21:45:00+00:00")
+    elif change == "wrong_stock":
+        evidence = replace(evidence, stock_code="2330")
+    elif change == "wrong_source":
+        evidence = replace(evidence, source_date="2026-10-05")
+    elif change == "saved":
+        context = replace(context, ml_scope_mode="selected_saved_decision", decision_date="2026-10-06")
+    else:
+        context = replace(context, ml_scope_mode="")
+    assert not _current_h20_observation_allows(evidence, report, context, now=now)
 
 
 def _real_service(tmp_path: Path) -> StockResearchReportReadService:
@@ -427,9 +500,9 @@ def test_price_projection_drives_exact_table_and_native_chart_at_cutoff() -> Non
     tooltip = chart._point_tooltip(chart._points[-1])
     assert "11.123456789123456789" in tooltip
     assert "9,876,543,211" in tooltip
-    assert "來源：sqlite.daily_prices" in tooltip
-    assert "可得時間：未知（來源未提供）" in tooltip
-    assert "資料列 SHA-256：未知" in tooltip
+    assert "來源：" not in tooltip
+    assert "可得時間：" not in tooltip
+    assert "SHA-256" not in tooltip
 
     metadata = next(
         widget

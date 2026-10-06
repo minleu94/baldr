@@ -80,6 +80,7 @@ def test_runtime_scope_note_is_compact_and_content_starts_near_top():
     app()
     view = RuntimeView()
     try:
+        view.operations_details_button.setChecked(True)
         view.scope_label.setText("窄版長範圍說明；" * 16)
         view.resize(390, 420)
         view.show()
@@ -207,8 +208,10 @@ def test_runtime_view_renders_operation_status_without_claiming_scheduler_state(
     view.on_scheduled_operations_updated(dto)
 
     assert "核心工作已就緒 6/6" in view.operations_summary_label.text()
-    assert "每日資料更新｜正常｜passed" in view.operations_list.item(0).text()
-    assert "ML Shadow Co-pilot｜安全邊界中｜passed_rule_only" in view.operations_list.item(1).text()
+    assert "每日資料更新｜正常｜觀測時間：" in view.operations_list.item(0).text()
+    assert "ML Shadow Co-pilot｜安全邊界中｜觀測時間：" in view.operations_list.item(1).text()
+    assert "raw_status: passed" in view.operations_list.item(0).toolTip()
+    assert "raw_status: passed_rule_only" in view.operations_list.item(1).toolTip()
     assert "timestamp_source: checked_at" in view.operations_list.item(0).toolTip()
 
 

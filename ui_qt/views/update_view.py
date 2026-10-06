@@ -1099,6 +1099,17 @@ class UpdateView(QWidget):
         desc_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         all_layout.addWidget(desc_label)
 
+        self.update_impact_label = QLabel(
+            "資料影響：尚未檢查，不能判定資料是否可用。\n"
+            "最後成功完成：未知｜股價資料日：未知｜技術指標資料日：未知\n"
+            "下一步：先按「檢查數據狀態」，再依各來源卡片判讀。"
+        )
+        self.update_impact_label.setWordWrap(True)
+        self.update_impact_label.setTextFormat(Qt.PlainText)
+        self.update_impact_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        _set_update_status_tone(self.update_impact_label, "info")
+        all_layout.addWidget(self.update_impact_label)
+
         # 立即操作列固定在標題下方；狀態表與治理診斷再往下排列，避免
         # 使用者必須捲到頁尾才能檢查或啟動更新。
         action_group = QGroupBox("立即操作")
@@ -1209,7 +1220,7 @@ class UpdateView(QWidget):
             "只讀取明確指定的 data-update-status-history.v1 JSONL；不會改寫或回填歷史。"
         )
         timeline_layout.addWidget(self.data_update_timeline_history_table)
-        all_layout.addWidget(timeline_group)
+        self.timeline_details_button = self._add_update_details(all_layout, timeline_group, "更新時間軸與執行歷史")
 
         # 候選與決策資料域群組
         candidate_group = QGroupBox("候選與決策資料域（治理檢視 / 尚未啟用）")
@@ -1232,7 +1243,7 @@ class UpdateView(QWidget):
             card.setMinimumWidth(0)
             card.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self._reflow_grid(candidate_layout, self._candidate_cards, columns=3)
-        all_layout.addWidget(candidate_group)
+        self.candidate_details_button = self._add_update_details(all_layout, candidate_group, "候選資料（不代表正式可用）")
 
         # P0 官方來源證據面板：與核心 SQLite/CSV 狀態同頁呈現，但明確保留
         # candidate／shadow 邊界，避免使用者誤以為「抓得到」就等於已核准。
@@ -1302,7 +1313,7 @@ class UpdateView(QWidget):
             "P0 row 只代表候選觀測與治理缺口；downstream eligibility 永遠為 none。"
         )
         p0_layout.addWidget(self.p0_source_control_table)
-        all_layout.addWidget(p0_group)
+        self.p0_details_button = self._add_update_details(all_layout, p0_group, "官方來源候選與接受條件")
 
         # 整體 readiness 面板：只投影明確指定的 program-readiness artifact，
         # 讓使用者在同一頁看見各 lane 的真實 blocker 與下一步；不在 UI
@@ -1348,7 +1359,7 @@ class UpdateView(QWidget):
             "lane 狀態與 blocker 不會在 UI 被自動解除。"
         )
         readiness_layout.addWidget(self.program_readiness_table)
-        all_layout.addWidget(readiness_group)
+        self.readiness_details_button = self._add_update_details(all_layout, readiness_group, "使用資格與完整阻擋原因")
 
         # 一鍵更新與輔助按鈕；容器已在標題下方建立，這裡只填入按鈕。
         self.quick_update_all_btn = QPushButton("快速更新 (跳過大型合併)")
@@ -4012,10 +4023,60 @@ class UpdateView(QWidget):
         if card is not None:
             card.setPlainText(self._format_status_card_text(key, value))
 
+    @staticmethod
+    def _add_update_details(layout: QVBoxLayout, group: QGroupBox, title: str) -> QPushButton:
+        """只收合呈現；既有阻擋條件與操作 callback 保留。"""
+        button = QPushButton(f"展開／收合：{title}")
+        button.setCheckable(True)
+        button.setProperty("variant", "ghost")
+        button.toggled.connect(group.setVisible)
+        layout.addWidget(button)
+        layout.addWidget(group)
+        group.hide()
+        return button
+
+    def _render_update_impact(self, status: Dict[str, Any]) -> None:
+        """只翻譯當次回傳資料，不把成功收據或目標日期當作行情日期。"""
+        timeline = status.get("data_update_timeline")
+        timeline = timeline if isinstance(timeline, dict) else {}
+        raw = str(timeline.get("status") or "unknown").strip().lower()
+        if raw in {"current", "passed", "success", "completed", "done", "ok"}:
+            impact = "已讀取更新收據；各來源是否可用仍須核對卡片與明細。"
+            next_step = "核對資料日與來源狀態；有缺漏時再選擇個別更新。"
+        elif raw == "running":
+            impact = "資料更新仍在執行，尚不能視為本輪完成。"
+            next_step = "等待安全完成或使用既有取消操作，再重新檢查。"
+        elif raw in {"stale", "partial", "degraded", "failed", "failure", "error", "invalid", "blocked"}:
+            impact = "本輪更新過期、未完整完成或有異常，不能據此判定資料已齊全。"
+            next_step = "展開更新時間軸與阻擋明細，確認原因後再選擇更新。"
+        else:
+            impact = "更新來源未知或尚無可用收據，不能判定資料已齊全。"
+            next_step = "按「檢查數據狀態」；仍未知時展開明細確認來源。"
+        dates = []
+        for key, name in (("daily_data", "股價資料日"), ("technical_indicators", "技術指標資料日")):
+            value = status.get(key)
+            value = value if isinstance(value, dict) else {}
+            dates.append(f"{name}：{value.get('latest_date') or '未知'}")
+        self.update_impact_label.setText(
+            f"資料影響：{impact}\n"
+            f"最後成功完成：{timeline.get('last_success_at') or '未知'}｜" + "｜".join(dates)
+            + f"\n下一步：{next_step}"
+        )
+        _set_update_status_tone(self.update_impact_label, "info" if raw in {"current", "running"} else "warning")
+
     def _on_status_checked(self, status: Dict[str, Any]):
         """數據狀態檢查完成"""
         self.check_status_btn.setEnabled(True)
         self.check_status_btn.setText("檢查數據狀態")
+        selections = []
+        for table in (self.data_update_timeline_table, self.data_update_timeline_history_table,
+                      self.program_readiness_table, self.p0_source_control_table):
+            row = table.currentRow()
+            # 歷史以 Run 身分返回，其餘表以步驟／lane／來源返回，不能沿用列號。
+            column = 2 if table is self.data_update_timeline_history_table else 0
+            item = table.item(row, column) if row >= 0 else None
+            if item is not None:
+                selections.append((table, column, item.text()))
 
         card_map = {
             "daily_data": "daily_status_text",
@@ -4054,12 +4115,20 @@ class UpdateView(QWidget):
         self._render_data_update_timeline(status.get("data_update_timeline"))
         self._render_program_readiness(status.get("program_readiness"))
         self._render_p0_source_control_status(status.get("p0_source_control"))
+        self._render_update_impact(status)
+        for table, column, identity in selections:
+            for row in range(table.rowCount()):
+                item = table.item(row, column)
+                if item is not None and item.text() == identity:
+                    table.setCurrentCell(row, column)
+                    break
         self._log(f"數據狀態檢查完成")
 
     def _on_status_error(self, error_msg: str):
         """數據狀態檢查出錯"""
         self.check_status_btn.setEnabled(True)
         self.check_status_btn.setText("檢查數據狀態")
+        self._render_update_impact({"data_update_timeline": {"status": "error"}})
         for attr in (
             "daily_status_text",
             "market_status_text",

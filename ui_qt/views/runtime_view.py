@@ -1,10 +1,11 @@
 ﻿from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTextEdit, QLabel, QListWidget, QGroupBox, QListWidgetItem, QSizePolicy,
-    QScrollArea, QFrame
+    QScrollArea, QFrame, QPushButton
 )
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont
+from dataclasses import replace
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import (
     ensure_visible_rows,
@@ -89,6 +90,11 @@ class RuntimeView(QWidget):
     """
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._user_observations = {
+            "operations": "日常工作：未知，尚未讀取保存結果。",
+            "environment": "資料與保存位置：未知，尚未檢查。",
+            "governance": "治理任務：未知，尚未取得目前觀測。",
+        }
         self._setup_ui()
 
     def _setup_ui(self):
@@ -129,7 +135,7 @@ class RuntimeView(QWidget):
 
         # 標題列（標題 + InfoButton）
         title_layout = QHBoxLayout()
-        title = QLabel("Owner 營運與治理監控")
+        title = QLabel("運作狀態與下一步")
         title_font = QFont()
         title_font.setPointSize(14)
         title_font.setBold(True)
@@ -139,6 +145,15 @@ class RuntimeView(QWidget):
         info_btn = InfoButton("runtime_observatory", self)
         title_layout.addWidget(info_btn)
         main_layout.addLayout(title_layout)
+
+        self.impact_label = QLabel()
+        self.impact_label.setWordWrap(True)
+        self.impact_label.setTextFormat(Qt.PlainText)
+        self.impact_label.setMinimumWidth(0)
+        self.impact_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.impact_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        main_layout.addWidget(self.impact_label)
+        self._refresh_user_summary()
 
         self.scope_label = QLabel(
             "上方營運排程只讀取 OUTPUT_ROOT/scheduled 的已保存狀態；它不代表 Windows Task Scheduler 正在執行或已註冊。"
@@ -151,9 +166,8 @@ class RuntimeView(QWidget):
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
             f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 6px 8px;"
         )
-        main_layout.addWidget(self.scope_label)
 
-        self.environment_group = QGroupBox("正式路徑環境（唯讀診斷）")
+        self.environment_group = QGroupBox("資料與保存位置（唯讀診斷）")
         self.environment_group.setMinimumWidth(0)
         self.environment_group.setSizePolicy(
             QSizePolicy.Ignored, QSizePolicy.Preferred
@@ -180,11 +194,16 @@ class RuntimeView(QWidget):
         self.environment_list.setUniformItemSizes(False)
         ensure_visible_rows(self.environment_list, 5)
         environment_layout.addWidget(self.environment_summary_label)
-        environment_layout.addWidget(self.environment_detail_label)
-        environment_layout.addWidget(self.environment_list)
+        self.environment_details = QWidget()
+        environment_details_layout = QVBoxLayout(self.environment_details)
+        environment_details_layout.addWidget(self.environment_detail_label)
+        environment_details_layout.addWidget(self.environment_list)
+        self.environment_details_button = self._add_details(
+            environment_layout, self.environment_details, "路徑與讀寫診斷"
+        )
         main_layout.addWidget(self.environment_group)
 
-        self.operations_group = QGroupBox("營運排程（OUTPUT_ROOT／唯讀）")
+        self.operations_group = QGroupBox("營運排程（已保存結果）")
         self.operations_group.setMinimumWidth(0)
         self.operations_group.setSizePolicy(
             QSizePolicy.Ignored, QSizePolicy.Preferred
@@ -211,8 +230,17 @@ class RuntimeView(QWidget):
         self.operations_list.setUniformItemSizes(False)
         ensure_visible_rows(self.operations_list, 5)
         operations_layout.addWidget(self.operations_summary_label)
-        operations_layout.addWidget(self.operations_detail_label)
         operations_layout.addWidget(self.operations_list)
+        self.operations_details = QWidget()
+        operations_details_layout = QVBoxLayout(self.operations_details)
+        operations_details_layout.addWidget(self.scope_label)
+        operations_details_layout.addWidget(self.operations_detail_label)
+        self.operations_raw_text = QTextEdit()
+        self.operations_raw_text.setReadOnly(True)
+        operations_details_layout.addWidget(self.operations_raw_text)
+        self.operations_details_button = self._add_details(
+            operations_layout, self.operations_details, "排程來源與原始診斷"
+        )
         main_layout.addWidget(self.operations_group)
 
         splitter = QSplitter(Qt.Horizontal)
@@ -267,8 +295,8 @@ class RuntimeView(QWidget):
         self.health_group = QGroupBox("治理 Runtime（獨立於日常排程）")
         health_layout = QVBoxLayout(self.health_group)
         self.health_state_label = QLabel("整體治理狀態：未知")
-        self.rejection_rate_label = QLabel("驗證拒絕率：0.0%（穩定）｜連續失敗次數：0")
-        self.last_violation_label = QLabel("最近重大違規：無")
+        self.rejection_rate_label = QLabel("驗證拒絕率：未知｜連續失敗次數：未知")
+        self.last_violation_label = QLabel("最近重大違規：未知（尚未讀取）")
         for label in (
             self.health_state_label,
             self.rejection_rate_label,
@@ -316,7 +344,30 @@ class RuntimeView(QWidget):
         splitter.setStretchFactor(0, 4)
         splitter.setStretchFactor(1, 6)
 
-        main_layout.addWidget(splitter, 1)
+        self.governance_details_button = self._add_details(
+            main_layout, splitter, "治理任務、上下文與完整事件明細"
+        )
+
+    @staticmethod
+    def _add_details(layout: QVBoxLayout, content: QWidget, title: str) -> QPushButton:
+        """保留所有原始明細，只控制可見性。"""
+        button = QPushButton(f"展開／收合：{title}")
+        button.setCheckable(True)
+        button.setProperty("variant", "ghost")
+        button.toggled.connect(content.setVisible)
+        layout.addWidget(button)
+        layout.addWidget(content)
+        content.hide()
+        return button
+
+    def _refresh_user_summary(self) -> None:
+        self.impact_label.setText(
+            "對使用者的影響（唯讀觀測）\n"
+            + "\n".join(self._user_observations.values())
+            + "\n最後成功完成：未知（此頁來源未提供成功完成日期）｜行情資料日：未知"
+            + "\n下一步：先核對日常工作與資料日期；有未知或異常時展開明細。"
+            + "本頁不啟動更新或修復；需要更新時到「數據更新」檢查。"
+        )
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         """窄版把治理雙欄改成單欄，避免文字被切在 viewport 外。"""
@@ -337,7 +388,11 @@ class RuntimeView(QWidget):
         objective = dto.task_objective
         if not objective or objective == "No task assigned":
             objective = "尚未指派治理任務"
-        status = "未知（來源未確認）" if dto.task_status == "UNKNOWN" else STATE_LABELS.get(str(dto.task_status), str(dto.task_status))
+        status = (
+            STATE_LABELS[dto.task_status]
+            if dto.task_read_state == "observed" and dto.task_status in STATE_LABELS
+            else "未知（來源未確認）"
+        )
         self.objective_label.setText(f"目前治理目標：{objective}")
         self.status_label.setText(f"任務流程狀態：{status}")
         self.status_label.setToolTip(
@@ -351,12 +406,30 @@ class RuntimeView(QWidget):
             ctx_text += "\n上下文來源未確認，不能視為已載入。"
         self.context_text.setText(ctx_text)
         self.context_text.setToolTip("\n".join(dto.diagnostics))
+        self._user_observations["task"] = (
+            f"任務流程：{status}；不代表日常資料更新成功。"
+            if dto.task_read_state == "observed" and dto.task_status in STATE_LABELS
+            else "任務流程：未知，來源未確認；不能視為正常。"
+        )
+        self._refresh_user_summary()
 
     @Slot(RuntimeHealthSnapshotDTO)
     def on_health_updated(self, dto: RuntimeHealthSnapshotDTO) -> None:
         """Pure rendering slot for Health Analytics DTO"""
-        if dto.observation_scope != "current":
-            self._render_noncurrent_governance_health(dto)
+        if dto.observation_scope != "current" or dto.event_log_read_state != "observed":
+            self._user_observations["governance"] = "治理任務：目前狀態未知，歷史或無法讀取的事件不能證明目前健康。"
+        elif not dto.is_healthy or dto.current_state.value in {"ERROR", "HALTED"} or dto.consecutive_failures >= 3 or dto.rejection_rate >= 0.5:
+            self._user_observations["governance"] = "治理任務：需要處理；日常資料、推薦與持倉須分開檢查。"
+        else:
+            self._user_observations["governance"] = "治理任務：已取得目前觀測；不代表日常工作成功。"
+        self._refresh_user_summary()
+        if dto.observation_scope != "current" or dto.event_log_read_state != "observed":
+            effective_dto = dto
+            if dto.observation_scope == "current":
+                effective_dto = replace(dto, observation_scope=(
+                    "event_log_degraded" if dto.event_log_read_state == "degraded" else "event_log_unreadable"
+                ))
+            self._render_noncurrent_governance_health(effective_dto)
             return
 
         state_value = dto.current_state.value
@@ -391,25 +464,40 @@ class RuntimeView(QWidget):
     @Slot(ScheduledOperationsSnapshotDTO)
     def on_scheduled_operations_updated(self, dto: ScheduledOperationsSnapshotDTO) -> None:
         """純渲染已保存的日常營運狀態；不呼叫排程或資料更新。"""
-        overall_label = "正常" if dto.overall_state == "operational" else "需要注意"
+        overall_label = OPERATION_STATE_LABELS.get(dto.overall_state, "未知")
+        if any(operation.read_state != "observed" for operation in dto.operations):
+            overall_label = "來源未確認，不能判定正常"
+        elif not dto.operations or any(operation.state not in OPERATION_STATE_LABELS or operation.state == "unavailable" for operation in dto.operations):
+            overall_label = "部分工作狀態未知"
+        self._user_observations["operations"] = (
+            f"日常工作：{overall_label}（已保存結果）；不證明排程已啟動或今日資料已齊全。"
+        )
+        self._refresh_user_summary()
         self.operations_summary_label.setText(
             f"日常營運：{overall_label}｜核心工作已就緒 {dto.core_ready_count}/{dto.core_job_count}"
         )
+        selected = self.operations_list.currentItem()
+        selected_id = selected.data(Qt.UserRole) if selected is not None else None
         self.operations_list.clear()
         for operation in dto.operations:
-            state_label = OPERATION_STATE_LABELS.get(operation.state, operation.state)
+            state_label = (
+                OPERATION_STATE_LABELS.get(operation.state, "未知")
+                if operation.read_state == "observed" else "來源未確認"
+            )
             updated_text = (
                 operation.updated_at.astimezone().strftime("%Y-%m-%d %H:%M")
                 if operation.updated_at is not None
                 else "未知"
             )
             item = QListWidgetItem(
-                f"{operation.label}｜{state_label}｜{operation.raw_status}｜{updated_text}"
+                f"{operation.label}｜{state_label}｜觀測時間：{updated_text}"
             )
+            item.setData(Qt.UserRole, operation.job_id)
             item.setToolTip(
                 "\n".join(
                     (
                         f"job: {operation.job_id}",
+                        f"raw_status: {operation.raw_status}",
                         f"lane: {operation.lane}",
                         f"read_state: {operation.read_state}",
                         f"timestamp_source: {operation.observed_at_source}",
@@ -419,6 +507,15 @@ class RuntimeView(QWidget):
                 )
             )
             self.operations_list.addItem(item)
+            if operation.job_id == selected_id:
+                self.operations_list.setCurrentItem(item)
+        self.operations_raw_text.setPlainText("\n\n".join(
+            f"{operation.label}\njob: {operation.job_id}\nraw_status: {operation.raw_status}\n"
+            f"lane: {operation.lane}\nread_state: {operation.read_state}\n"
+            f"timestamp_source: {operation.observed_at_source}\nsource: {operation.source_path}\n"
+            f"diagnostic: {operation.diagnostic or 'none'}"
+            for operation in dto.operations
+        ))
 
     @Slot(EnvironmentReadinessSnapshotDTO)
     def on_environment_readiness_updated(
@@ -427,6 +524,12 @@ class RuntimeView(QWidget):
     ) -> None:
         """純渲染正式路徑能力；不在 UI 嘗試建立或修復任何路徑。"""
         state_label = ENVIRONMENT_STATE_LABELS.get(dto.overall_state, dto.overall_state)
+        self._user_observations["environment"] = (
+            f"資料與保存位置：{state_label}；可讀提示不保證更新或保存一定成功。"
+            if dto.overall_state in ENVIRONMENT_STATE_LABELS
+            else "資料與保存位置：未知，不能判定可讀或可寫。"
+        )
+        self._refresh_user_summary()
         ready_count = sum(item.status in {"ready", "ready_to_create"} for item in dto.paths)
         self.environment_summary_label.setText(
             f"路徑能力：{state_label}｜可用或待建立 {ready_count}/{len(dto.paths)}"
@@ -437,6 +540,8 @@ class RuntimeView(QWidget):
             + (f"\nWrite probe：{probe_text}。" if dto.write_probe else "")
             + (f"\n診斷：{'、'.join(dto.diagnostics)}" if dto.diagnostics else "")
         )
+        selected = self.environment_list.currentItem()
+        selected_key = selected.data(Qt.UserRole) if selected is not None else None
         self.environment_list.clear()
         for path_status in dto.paths:
             status_label = ENVIRONMENT_PATH_STATE_LABELS.get(
@@ -452,6 +557,7 @@ class RuntimeView(QWidget):
             item = QListWidgetItem(
                 f"{path_status.label}｜{status_label}｜讀 {readable}｜寫 {writable}"
             )
+            item.setData(Qt.UserRole, path_status.key)
             item.setToolTip(
                 "\n".join(
                     (
@@ -465,6 +571,8 @@ class RuntimeView(QWidget):
                 )
             )
             self.environment_list.addItem(item)
+            if path_status.key == selected_key:
+                self.environment_list.setCurrentItem(item)
 
     def _render_noncurrent_governance_health(
         self,

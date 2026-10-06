@@ -213,6 +213,7 @@ class DecisionContinuityController:
         note: str,
         next_review_at: str,
         actor: str,
+        source_id: str,
     ) -> bool:
         """比較同一 request id 的原始 command，不受後續 head 影響。"""
 
@@ -222,6 +223,7 @@ class DecisionContinuityController:
             and revision.note == note.strip()
             and revision.next_review_at == next_review_at.strip()
             and revision.actor == actor.strip()
+            and revision.payload.get('source_id', '') == source_id
         )
 
     def _revision_for_request_id(
@@ -366,12 +368,16 @@ class DecisionContinuityController:
         next_review_at: str = "",
         actor: str = "",
         request_id: str | None = None,
+        source_id: str = "",
     ) -> DecisionContinuityCommandResult:
         """追加一個研究 action；相同 request id 可安全重試。"""
 
         if action not in RESEARCH_ACTIONS:
             raise ValueError(f"unsupported research action: {action}")
         identity = DecisionIdentity.from_mapping(decision_identity)
+        if not isinstance(source_id, str):
+            raise TypeError('source_id must be an explicit string')
+        source_id = source_id.strip()
         resolved_request_id = str(request_id or uuid4().hex).strip()
         if not resolved_request_id:
             raise ValueError("research action request_id is required")
@@ -410,6 +416,7 @@ class DecisionContinuityController:
                 note=note,
                 next_review_at=normalized_next_review_at,
                 actor=actor,
+                source_id=source_id,
             ):
                 return DecisionContinuityCommandResult(
                     success=False,
@@ -477,6 +484,7 @@ class DecisionContinuityController:
                 linked_id=linked_id,
                 next_review_at=normalized_next_review_at,
                 actor=actor.strip(),
+                source_id=source_id,
                 revision_id=resolved_request_id,
                 continuity_event_id=resolved_request_id,
                 revision_of=revision_of,

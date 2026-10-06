@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -54,6 +55,8 @@ class DecisionContinuityControlsWidget(QWidget):
         self.identity: DecisionIdentity | None = None
         self.state: DecisionContinuityState | None = None
         self._pending_retry: dict[str, str] | None = None
+        self._source_id = ''
+        self._context_generation = 0
         self._setup_ui()
         self._render_blocked("需要帶有 exact result_id + stock_code 的研究上下文。")
 
@@ -207,6 +210,9 @@ class DecisionContinuityControlsWidget(QWidget):
     def set_context(self, context: object | None) -> None:
         """從研究 context 建立 typed identity 並重新讀回狀態。"""
 
+        self._context_generation += 1
+        self._source_id = ''
+        self._pending_retry = None
         try:
             identity = self.controller.identity_from_context(context)
         except (TypeError, ValueError) as exc:
@@ -216,6 +222,8 @@ class DecisionContinuityControlsWidget(QWidget):
             self._render_blocked(f"研究 identity 無法解析：{exc}")
             return
         self.set_identity(identity)
+        raw_source = context.get('source_id', '') if isinstance(context, Mapping) else getattr(context, 'source_id', '')
+        self._source_id = raw_source.strip() if isinstance(raw_source, str) else ''
 
     def set_blocked(
         self,
@@ -225,12 +233,16 @@ class DecisionContinuityControlsWidget(QWidget):
     ) -> None:
         """停用研究動作，直到呼叫端重新驗證 exact candidate。"""
 
+        self._context_generation += 1
+        self._source_id = ''
         self.identity = identity
         self.state = None
         self._pending_retry = None
         self._render_blocked(message, identity=identity)
 
     def set_identity(self, identity: DecisionIdentity | None) -> None:
+        self._context_generation += 1
+        self._source_id = ''
         self.identity = identity
         self._pending_retry = None
         if identity is None:
@@ -375,6 +387,7 @@ class DecisionContinuityControlsWidget(QWidget):
     ) -> None:
         if self.identity is None:
             return
+        generation = self._context_generation
         try:
             result = self.controller.apply(
                 action,
@@ -382,9 +395,15 @@ class DecisionContinuityControlsWidget(QWidget):
                 note=note,
                 next_review_at=next_review_at,
                 request_id=request_id,
+                source_id=self._source_id,
             )
         except Exception as exc:
-            self._render_blocked(f"研究動作未送出：{exc}")
+            if generation == self._context_generation:
+                self._render_blocked(f"研究動作未送出：{exc}")
+            return
+        if generation != self._context_generation:
+            # The old command may be committed; never project or retry it in a new context.
+            self.actionCompleted.emit(result)
             return
         self._handle_result(
             result,
@@ -414,6 +433,8 @@ class DecisionContinuityControlsWidget(QWidget):
                 "note": note,
                 "next_review_at": next_review_at,
                 "request_id": result.request_id,
+                "source_id": self._source_id,
+                "generation": str(self._context_generation),
             }
             self._render_blocked(result.message)
             self.retry_button.setVisible(True)
@@ -424,6 +445,8 @@ class DecisionContinuityControlsWidget(QWidget):
                 "note": note,
                 "next_review_at": next_review_at,
                 "request_id": result.request_id,
+                "source_id": self._source_id,
+                "generation": str(self._context_generation),
             }
             self._render_state(result.state)
             self.status_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.danger};")
@@ -439,6 +462,10 @@ class DecisionContinuityControlsWidget(QWidget):
     def _retry(self) -> None:
         pending = self._pending_retry
         if pending is None:
+            return
+        if pending['generation'] != str(self._context_generation) or pending['source_id'] != self._source_id:
+            self._pending_retry = None
+            self.retry_button.setVisible(False)
             return
         self._submit(
             pending["action"],

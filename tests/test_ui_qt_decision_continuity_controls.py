@@ -164,3 +164,128 @@ def test_personal_recommendation_choice_reflows_on_narrow_width() -> None:
         widget.close()
         widget.deleteLater()
         _app().processEvents()
+
+
+
+def test_approved_context_source_reaches_original_writer_and_marker(tmp_path, monkeypatch):
+    from tests.test_baldr_b05_chart_marker_reader import CONTEXT, POINTS, assert_visible
+    from app_module.decision_outcome_journey import JsonlJournalReadAdapter
+    from app_module.stock_research_chart_marker_reader import (
+        StockChartMarkerReadRequest, StockChartMarkerRecordSource,
+        StockResearchChartMarkerReader, stock_chart_saved_record_sha256,
+    )
+    service = JournalService(_config(tmp_path))
+    original = service.record_research_action
+    def save_at_original_clock(*args, **kwargs):
+        return original(*args, recorded_at="2026-10-08T15:00:00+08:00", **kwargs)
+    monkeypatch.setattr(service, "record_research_action", save_at_original_clock)
+    widget = DecisionContinuityControlsWidget(DecisionContinuityController(service))
+    widget.set_context(ResearchStockContextDTO(**CONTEXT, source_id="source-a"))
+    widget.accept_button.click()
+    assert widget.state is not None and widget.state.decision_status == "accepted"
+    callback = JsonlJournalReadAdapter(service.store.journal_file)._records
+    rows = callback()
+    assert rows[0]["payload"]["source_id"] == "source-a"
+    pins = tuple((row["revision_id"], stock_chart_saved_record_sha256(row)) for row in rows)
+    request = StockChartMarkerReadRequest(
+        StockChartMarkerRecordSource.RECOMMENDATION_CONFIRMATIONS, "2330", "2026-10-08",
+        "default", "source-a", CONTEXT["result_id"], CONTEXT["decision_date"],
+        CONTEXT["source_snapshot_id"], CONTEXT["source_snapshot_hash"],
+        tuple(sorted(CONTEXT.items())), pins)
+    reader = StockResearchChartMarkerReader(confirmation_records=callback)
+    before = service.store.journal_file.read_bytes()
+    result = reader.read(request, price_points=POINTS)
+    assert len(result.candidates) == 1 and result.diagnostics == ()
+    assert_visible(reader, request)
+    assert reader.read(request, price_points=POINTS, cancelled=lambda: True).candidates == ()
+    assert service.store.journal_file.read_bytes() == before
+    from dataclasses import asdict
+    import json
+    import subprocess
+    import sys
+    replay = '''
+import json, sys
+from PySide6.QtWidgets import QApplication
+from tests.test_baldr_b05_chart_marker_reader import *
+data=json.loads(sys.argv[1]); path=data.pop('path')
+data['record_source']=StockChartMarkerRecordSource(data['record_source'])
+data['source_context']=tuple(map(tuple,data['source_context']))
+data['expected_record_hashes']=tuple(map(tuple,data['expected_record_hashes']))
+request=StockChartMarkerReadRequest(**data)
+reader=StockResearchChartMarkerReader(confirmation_records=JsonlJournalReadAdapter(path)._records)
+app=QApplication([])
+assert_visible(reader,request)
+print(reader.read(request,price_points=POINTS).candidates[0].content_sha256)
+'''
+    completed = subprocess.run(
+        [sys.executable, '-c', replay, json.dumps({**asdict(request), 'path': str(service.store.journal_file)})],
+        capture_output=True, text=True, timeout=40, check=True)
+    assert completed.stdout.strip() == result.candidates[0].content_sha256
+    assert service.store.journal_file.read_bytes() == before
+    # A new unknown-source acceptance is saved as unknown, never borrowed from history.
+    from dataclasses import replace
+    widget.set_context(replace(ResearchStockContextDTO(**CONTEXT), source_id=''))
+    widget.accept_button.click()
+    rows = callback()
+    unknown = rows[-1]
+    assert unknown['source_id'] == '' and unknown['payload']['source_id'] == ''
+    rejected = reader.read(replace(request, expected_record_hashes=(
+        (unknown['revision_id'], stock_chart_saved_record_sha256(unknown)),)), price_points=POINTS)
+    assert rejected.candidates == ()
+    assert any('saved_source_mismatch' in reason for reason in rejected.diagnostics)
+    widget.close()
+
+
+def test_source_unknown_stays_empty_and_retry_requires_exact_source(tmp_path):
+    from app_module.dtos.decision_continuity_dtos import ACTION_ACCEPTED
+    service = JournalService(_config(tmp_path))
+    controller = DecisionContinuityController(service)
+    identity = controller.identity_from_context(_context())
+    first = controller.apply(ACTION_ACCEPTED, identity, request_id="legacy-source")
+    assert first.success and first.revision.payload["source_id"] == ""
+    assert controller.apply(ACTION_ACCEPTED, identity, request_id="legacy-source").success
+    conflict = controller.apply(ACTION_ACCEPTED, identity, request_id="legacy-source", source_id="new-source")
+    assert not conflict.success and conflict.error_code == "journal_revision_event_conflict"
+    assert len(service.list_decision_revisions()) == 1
+    assert service.list_decision_revisions()[0].payload["source_id"] == ""
+
+
+def test_context_change_cancels_old_retry_even_same_candidate(tmp_path, monkeypatch):
+    from dataclasses import replace
+    service = JournalService(_config(tmp_path))
+    original = service.record_research_action
+    widget = DecisionContinuityControlsWidget(DecisionContinuityController(service))
+    context = replace(_context(), source_id="source-a")
+    widget.set_context(context)
+    def fail(*args, **kwargs):
+        raise RuntimeError("cancelled synthetic write")
+    monkeypatch.setattr(service, "record_research_action", fail)
+    widget.accept_button.click()
+    assert widget._pending_retry and widget._pending_retry["source_id"] == "source-a"
+    widget.set_context(replace(context, source_id="source-b"))
+    assert widget._pending_retry is None
+    monkeypatch.setattr(service, "record_research_action", original)
+    widget._retry()
+    assert service.list_decision_revisions() == []
+    widget.close()
+
+
+def test_late_committed_result_does_not_replace_changed_context(tmp_path, monkeypatch):
+    from dataclasses import replace
+    service = JournalService(_config(tmp_path))
+    original = service.record_research_action
+    widget = DecisionContinuityControlsWidget(DecisionContinuityController(service))
+    first = replace(_context(), source_id="source-a")
+    widget.set_context(first)
+    def save_then_switch(*args, **kwargs):
+        revision = original(*args, **kwargs)
+        widget.set_context(replace(first, stock_code="2317", source_id="source-b"))
+        return revision
+    monkeypatch.setattr(service, "record_research_action", save_then_switch)
+    widget.accept_button.click()
+    assert widget.identity.stock_code == "2317"
+    assert widget.state.identity.stock_code == "2317"
+    assert widget._pending_retry is None
+    saved = service.list_decision_revisions()
+    assert len(saved) == 1 and saved[0].payload["source_id"] == "source-a"
+    widget.close()

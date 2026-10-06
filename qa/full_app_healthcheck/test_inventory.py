@@ -6,6 +6,7 @@ from pathlib import Path
 # This registry serves as a guardrail to ensure that only allowed tests are bridged.
 
 TEST_INVENTORY: dict[str, str] = {
+    "tests/test_baldr_parent_bbands30_upper.py": "service-oracle-portfolio-decision-runtime",
     "tests/test_baldr_daily_bbands30_upper.py": "service-oracle-portfolio-decision-runtime",
     "tests/test_personal_h20_research_cohort.py": "service-oracle-recommendation",
     "tests/test_ui_qt_personal_h20_research_widget.py": "ui-healthcheck-candidate-bridge",

@@ -5243,3 +5243,10 @@ H20 gross 是未扣成本的20交易日預測，不是獲利機率；高預測�
 表格分列 BB 比較三態與原保存上軌值；v2未保存、缺件、暖機不足或方法未核顯示未知，來源參數 lineage 仍另列未知。AND／OR沿原規則；MA presets 會清除 BB 勾選。來源 tooltip 可查原 feature／warmup／manifest SHA，點股票沿原 exact DTO 下鑽返回。
 
 BB 收藏沿原 Watchlist JSON 保留來源及查詢，重開核原保存 v3 manifest／完整股票母體／row／condition／方法 hash。v2 原收藏 body/hash 保持；缺來源、異版、錯 pin 不重算或讀 latest。可明示另查該 cohort 最新研究，但新版本不冒充原收藏。BBP01 parent-v3 完整日常保存鏈仍待直接使用者批准採入與中央增量驗證；本 UI 不代表該鏈已完成，compression／U1 未決不升格。所有 UI 驗證為 offscreen，未宣稱前景 Native。
+
+
+### 2026-10-07 BB全母體日常v3採入補充
+
+BBP01原parent producer／snapshot CLI已採入dev。隔離日常runtime與policy必須同時明示 `feature_contract_version=daily-market-feature-snapshot.v3.bbands30-upper`；CLI母體產製明示 `--parent-universe-config` 與 `--include-bbands30-upper`。未明示保持原v2，跨版policy不匹配時在產製前拒絕。保存後以原parent identity讀回三方法全母體分母；matched／notmatched／unknown／excluded／uncaptured分開，unknown不當0。UI BB預設不勾，明示更新後保存v3；收藏透過原Watchlist JSON重開，必須找到同SHA／日期／股票／條件，不以latest替代。
+
+工程同版61案例及mandatory已通過，正式全市場自然日常run仍待原排程；不需改Task或手动trigger。前節等待BBP01批准為歷史狀態，現已依直接真人批准解除。私人資料不納入main發布包。

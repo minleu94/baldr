@@ -1,5 +1,15 @@
 # 中央完整模型名單／自然 caller／BB UI 整合
 
+## 最終四包同版增量（2026-10-06 17:50 UTC 真人批准後）
+
+父層轉交直接真人 `Sentinel_e4836b4d8b048191b01a788ab618f8ce` 對 exact BBP01 本機 dev 採入答覆「當然，可以合併」。中央先保存 `930c5c59`，再原 cherry-pick 一次成功：`b7830889437365df7ec7d9bbb399cf1895686ab6` → `5eefe3317e01f92f8dca1ce343e2df46a070d396`。先前審核阻塞已解除，以下原三包時點的等待文字保留為歷史。
+
+同版 BB union **61 passed／37.95s**：新增真 daily owner→v3 parent→acceptance→exact replay 測試、完整17 included／2 excluded／2 batches三方法分母、缺件拒絕、cutoff、v2兼容、UI兩刷新／下鑽返回、收藏原JSON保存／新程序讀回。全部使用合成隔離SQLite／Temp，未執行正式Task。首輪60P／1F為新增測試普通Path讀取超260字元；修正fixture使用Windows extended path後同61全綠，不變更production守衛、不累加數字。raw `bb_final.log/xml` 與 `bb_final2.log/xml` 同時保留。
+
+採入後 mandatory 同版再次通過：Workbench **85P／3.20s**、update validator **25P／4skip／0F**、full roots mypy **848 sources／0 errors**；BBP targeted **2 sources／0 errors**。新增BBP inventory為 portfolio-decision-runtime oracle，當前文件／inventory目標 **1303／1303**，direct12不變。五檔compile、quant guard／diff check亦核對。
+
+工程四包鏈已採入，真10股保存名單consumer及排序已唯讀驗收；正式BB-v3全市場日常run仍待原排程，不把合成61P宣稱為正式全市場自然證據。自然H20仍10pending／0成熟，Brier及gross／成本後品質分域不變。分支整理只讀稽核及可恢復方案見 `BALDR_DEV_MAIN_RELEASE_PREPARATION_20261007.md`，尚未刪分支、移worktree或發布main。
+
 ## 接任與採入
 
 接任基準 `f344c0d7ed214a6bfc8318666d22c4feee708020`，tracked clean；原 handoff SHA-256 `db0f47fe4946378b530eb609f1088ebff18f4117b8a20e30e8d0ce24b77f2a81` 相符。三 lane 固定 base `d222ba0dbd3e87991ba5404fec29470646af2c68`，只在 immutable commit 交付後轉鎖。中央不重審／重跑已完成大 gate。

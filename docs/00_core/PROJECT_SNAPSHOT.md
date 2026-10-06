@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-07 四包整合最終增量
+
+BBP01 已獲直接真人批准並原樣採入 dev `5eefe331`，中央接線commit `930c5c59`。同版61P核 daily owner→v3 parent→acceptance→保存讀回、BB下鑽返回及收藏新程序；mandatory85P／validator25P4skip0F／mypy848零錯誤。inventory1303項／direct12。原三包區段等待批准為歷史，現已解除。
+
+真模型10股完整名單可讀／gross排序／exact返回已驗；自然10pending0成熟。下一原Task 2026-10-07 12:45UTC尚待實際驗收，未手動trigger；正式BB全母體v3日常run亦未冒稱完成。未動main／push。分支兩用途整理先完成唯讀盤點與可恢復方案，未刪任何worktree或唯一成果。
+
 ## 2026-10-07 中央三包與真保存模型名單整合
 
 H20C01 `0b6455dc→9e6b2246`、H20N01 `4b2a89a2→e61ae912`、BBUI01含收藏codec `1e5e9ced→30193df6` 已採。推薦工作區完整已保存cohort／gross整數排序／unknown列／exact下鑽返回接線完成，原canonical機率／ranking不改。日常原entry/outcome caller已接，create-only只登記pins指標，以原captureSHA定址舊manifest，不latest/glob；缺entry或錯日期保持pending。

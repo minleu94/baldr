@@ -227,3 +227,81 @@ def plan_market_only_export(
     plan = MarketOnlyExportPlan(paths, _absolute(destination_root), tuple(entries))
     plan.validate()
     return plan
+
+@dataclass(frozen=True)
+class WatchlistCowControlPaths:
+    """明示 COW 控制平面；舊來源僅為 root 外的相容唯讀輸入。"""
+
+    personal_paths: PersonalDataPaths
+    source_path: Path
+
+    @property
+    def marker_path(self) -> Path:
+        return self.personal_paths.activation_marker
+
+    @property
+    def receipt_path(self) -> Path:
+        return self.personal_paths.conversion_receipt
+
+    @property
+    def lock_path(self) -> Path:
+        return self.marker_path.with_name(self.marker_path.name + ".lock")
+
+    @property
+    def source_backup_path(self) -> Path:
+        import hashlib
+        identity = hashlib.sha256(str(_absolute(self.source_path)).encode("utf-8")).hexdigest()
+        return self.personal_paths.backup_root / f"source.{identity}.json"
+
+    def backup_marker_path(self, activation_id: str) -> Path:
+        if len(activation_id) != 32 or any(c not in "0123456789abcdef" for c in activation_id):
+            raise PersonalDataPathError("invalid_activation_id", activation_id)
+        return self.personal_paths.marker_backup_root / f"rollback.{activation_id}.json"
+
+    def assert_personal(self, path: str | Path) -> Path:
+        self.personal_paths.validate()
+        value = _absolute(path)
+        if not value.is_relative_to(self.personal_paths.personal_root):
+            raise PersonalDataPathError("control_path_outside_personal", value)
+        try:
+            info = value.lstat()
+        except FileNotFoundError:
+            return value
+        except OSError as exc:
+            raise PersonalDataPathError("path_unavailable", value) from exc
+        if stat.S_ISREG(info.st_mode) and info.st_nlink != 1:
+            raise PersonalDataPathError("hardlinked_control_file", value)
+        return value
+
+    def validate(self, source: str | Path, target: str | Path,
+                 receipt_path: str | Path | None = None) -> None:
+        self.personal_paths.validate()
+        source_value = _absolute(source)
+        expected_source = _absolute(self.source_path)
+        if source_value != expected_source:
+            raise PersonalDataPathError("control_source_mismatch", source_value)
+        if not any(source_value.is_relative_to(root) for root in
+                   (self.personal_paths.market_root, self.personal_paths.legacy_output_root)):
+            raise PersonalDataPathError("source_outside_legacy_root", source_value)
+        for suffix in (".active", ".cow-active.json"):
+            legacy_marker = _absolute(source_value.with_name(source_value.name + suffix))
+            if legacy_marker.is_file() and legacy_marker.stat().st_nlink != 1:
+                raise PersonalDataPathError("source_path_alias", legacy_marker)
+        info = source_value.stat()
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise PersonalDataPathError("source_path_alias", source_value)
+        if self.assert_personal(target) != self.personal_paths.watchlist_db:
+            raise PersonalDataPathError("control_target_mismatch", target)
+        receipt = self.receipt_path if receipt_path is None else receipt_path
+        if self.assert_personal(receipt) != self.receipt_path:
+            raise PersonalDataPathError("control_receipt_mismatch", receipt)
+        for path in (self.marker_path, self.lock_path, self.source_backup_path):
+            self.assert_personal(path)
+
+    def prepare_directories(self) -> None:
+        """只由已明示執行的 convert／activate 呼叫，讀取與 preview 不建立。"""
+        self.validate(self.source_path, self.personal_paths.watchlist_db)
+        for directory in (self.marker_path.parent, self.personal_paths.backup_root,
+                          self.personal_paths.marker_backup_root):
+            self.assert_personal(directory).mkdir(parents=True, exist_ok=True)
+            self.assert_personal(directory)

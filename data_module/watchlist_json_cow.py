@@ -11,7 +11,9 @@ import os
 from pathlib import Path
 import sqlite3
 from typing import Any, BinaryIO, Callable, Iterator, Mapping
+import uuid
 
+from app_module.personal_data_paths import WatchlistCowControlPaths
 from data_module import watchlist_item_storage as item_storage
 from data_module.watchlist_item_storage import WatchlistWriteCapacityRequest
 from data_module.watchlist_sqlite_cow import (
@@ -122,7 +124,8 @@ def _other_json_sources(source: Path, target: Path, receipt: Path) -> bool:
 
 
 def _normalize_paths(
-    source: Path | str, destination: Path | str,
+    source: Path | str, destination: Path | str, *,
+    control_paths: WatchlistCowControlPaths | None = None,
 ) -> tuple[Path, Path, Path]:
     source_input = Path(source).expanduser()
     target_input = Path(destination).expanduser()
@@ -131,13 +134,23 @@ def _normalize_paths(
             raise _Blocked("source_not_regular_file")
         if source_input.suffix.casefold() != ".json":
             raise _Blocked("source_not_json")
-        source_path = source_input.resolve(strict=True)
-        target_parent_input = target_input.parent
-        if target_parent_input.is_symlink():
-            raise _Blocked("target_parent_symlink_unsupported")
-        target_parent = target_parent_input.resolve(strict=True)
-        target_path = target_parent / target_input.name
-        receipt = _receipt_path(target_path)
+        if control_paths is None:
+            source_path = source_input.resolve(strict=True)
+            target_parent_input = target_input.parent
+            if target_parent_input.is_symlink():
+                raise _Blocked("target_parent_symlink_unsupported")
+            target_parent = target_parent_input.resolve(strict=True)
+            target_path = target_parent / target_input.name
+            receipt = _receipt_path(target_path)
+        else:
+            control_paths.validate(
+                source_input, target_input, _receipt_path(target_input),
+            )
+            source_path = source_input.resolve(strict=True)
+            target_path = control_paths.assert_personal(
+                control_paths.personal_paths.watchlist_db,
+            )
+            receipt = control_paths.assert_personal(control_paths.receipt_path)
         if not target_path.name or target_path.exists() or target_path.is_symlink():
             raise _Blocked("target_already_exists")
         if receipt.exists() or receipt.is_symlink():
@@ -151,6 +164,9 @@ def _normalize_paths(
             raise _Blocked("canonical_database_present")
         if source_path.stat(follow_symlinks=False).st_nlink != 1:
             raise _Blocked("source_hardlink_unsupported")
+        if control_paths is not None:
+            control_paths.assert_personal(target_path)
+            control_paths.assert_personal(receipt)
         if _other_json_sources(source_path, target_path, receipt):
             raise _Blocked("other_json_sources_present")
         for path, code in ((source_path, "source_sidecar_present"),
@@ -391,6 +407,8 @@ def _result(
     snapshot: _Snapshot, target: Path, receipt: Path, status: str,
     details: Mapping[str, Any], source_raw: str, payload: Mapping[str, Any], item_json: list[str],
     *, target_hash: str | None, target_size: int | None,
+    source_backup_path: str | None = None,
+    source_backup_sha256: str | None = None,
 ) -> dict[str, Any]:
     result = _base_result(
         snapshot, target, receipt, status, details,
@@ -401,6 +419,9 @@ def _result(
     result["comparison"] = _preservation_comparison(
         result["comparison"], source_raw, payload, item_json,
     )
+    if source_backup_path is not None and source_backup_sha256 is not None:
+        result["source_backup_path"] = source_backup_path
+        result["source_backup_sha256"] = source_backup_sha256
     result["migration_notes"] = [
         "legacy_json_v1 只按單檔 current payload 匯入；revision 1 明確標記為 synthetic baseline。",
         "未知欄位與 history-like 值保留為 opaque JSON payload，不推定或生成歷史 revision。",
@@ -413,6 +434,7 @@ def _result(
 def _capacity_preflight(
     target: Path, snapshot: _Snapshot, details: Mapping[str, Any], receipt_template: Mapping[str, Any],
     callback: Callable[[WatchlistWriteCapacityRequest], bool | None] | None,
+    *, source_backup_bytes: int = 0,
 ) -> None:
     database_bytes = int(details["database_bytes"])
     receipt_bytes = len(json.dumps(
@@ -424,7 +446,7 @@ def _capacity_preflight(
     if receipt_bytes > 1024 * 1024:
         raise _Blocked("receipt_limit_exceeded")
     # stage 與 final 使用同一個 hard link；容量預估取較保守的雙份上限。
-    required_peak_bytes = database_bytes * 2 + receipt_bytes * 2
+    required_peak_bytes = database_bytes * 2 + receipt_bytes * 2 + source_backup_bytes
     request = WatchlistWriteCapacityRequest(
         db_path=target,
         operation="watchlist-json-cow-convert",
@@ -432,7 +454,7 @@ def _capacity_preflight(
         rows_after=int(details["row_count"]),
         database_bytes_before=0,
         sidecar_bytes_before=0,
-        estimated_database_growth_bytes=database_bytes + receipt_bytes,
+        estimated_database_growth_bytes=database_bytes + receipt_bytes + source_backup_bytes,
         required_peak_bytes=required_peak_bytes,
     )
     if callback is not None:
@@ -451,13 +473,68 @@ def _capacity_preflight(
             usage=filesystem_usage(target),
             stage="watchlist-cow-conversion",
             persistent_existing_bytes=snapshot.source_size_bytes,
-            persistent_new_bytes_estimate=database_bytes + receipt_bytes,
+            persistent_new_bytes_estimate=database_bytes + receipt_bytes + source_backup_bytes,
             temporary_peak_bytes_observed=required_peak_bytes,
         )
     except Exception as exc:
         raise _Blocked("capacity_unknown") from exc
     if getattr(decision, "within_budget", None) is not True:
         raise _Blocked("capacity_insufficient")
+
+
+def _write_source_backup(
+    control_paths: WatchlistCowControlPaths, stream: BinaryIO, expected_sha256: str,
+) -> tuple[Path, str]:
+    backup = control_paths.assert_personal(control_paths.source_backup_path)
+    try:
+        stream.seek(0)
+        source_bytes = stream.read(item_storage.MAX_PAYLOAD_BYTES + 1)
+    except OSError as exc:
+        raise _Blocked("source_backup_read_failed") from exc
+    if len(source_bytes) > item_storage.MAX_PAYLOAD_BYTES:
+        raise _Blocked("payload_limit_exceeded")
+    backup_sha256 = _sha256_bytes(source_bytes)
+    if backup_sha256 != expected_sha256:
+        raise _Blocked("source_changed_before_backup")
+
+    if backup.exists() or backup.is_symlink():
+        control_paths.assert_personal(backup)
+        try:
+            if backup.read_bytes() != source_bytes:
+                raise _Blocked("source_backup_conflict")
+        except _Blocked:
+            raise
+        except OSError as exc:
+            raise _Blocked("source_backup_unavailable") from exc
+        return backup, backup_sha256
+
+    control_paths.assert_personal(backup)
+    try:
+        descriptor = os.open(backup, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(source_bytes)
+            output.flush()
+            os.fsync(output.fileno())
+    except FileExistsError:
+        control_paths.assert_personal(backup)
+        try:
+            if backup.read_bytes() != source_bytes:
+                raise _Blocked("source_backup_conflict")
+        except _Blocked:
+            raise
+        except OSError as exc:
+            raise _Blocked("source_backup_unavailable") from exc
+    except OSError as exc:
+        raise _Blocked("source_backup_write_failed") from exc
+    control_paths.assert_personal(backup)
+    try:
+        if backup.read_bytes() != source_bytes:
+            raise _Blocked("source_backup_verify_failed")
+    except _Blocked:
+        raise
+    except OSError as exc:
+        raise _Blocked("source_backup_verify_failed") from exc
+    return backup, backup_sha256
 
 
 def _verify_source_still_held(snapshot: _Snapshot, stream: BinaryIO) -> None:
@@ -483,13 +560,31 @@ def _convert(
     source: Path | str, destination: Path | str, *, dry_run: bool,
     capacity_preflight: Callable[[WatchlistWriteCapacityRequest], bool | None] | None,
     cancel_check: Callable[[], bool] | None,
+    control_paths: WatchlistCowControlPaths | None = None,
 ) -> dict[str, Any]:
     try:
-        source_path, target, receipt = _normalize_paths(source, destination)
+        if control_paths is not None:
+            target_input = Path(destination).expanduser()
+            expected_receipt = _receipt_path(target_input)
+            control_paths.validate(source, target_input, expected_receipt)
+            source_input = Path(source).expanduser()
+            if any(
+                Path(f"{source_input}{suffix}").exists()
+                or Path(f"{source_input}{suffix}").is_symlink()
+                for suffix in (".cow-active.json", ".cow-conversion.v1.json",
+                               ".cow-backup.v1.json")
+            ):
+                raise _Blocked("legacy_control_marker_requires_review")
+            if not dry_run:
+                control_paths.prepare_directories()
+        source_path, target, receipt = _normalize_paths(
+            source, destination, control_paths=control_paths,
+        )
         with held_json_source(source_path) as source_stream:
             return _convert_held(
                 source_path, target, receipt, source_stream, dry_run=dry_run,
                 capacity_preflight=capacity_preflight, cancel_check=cancel_check,
+                control_paths=control_paths,
             )
     except _Blocked as exc:
         return {
@@ -499,11 +594,15 @@ def _convert(
             "error_code": exc.code,
         }
     except (OSError, ValueError, TypeError) as exc:
+        error_code = (
+            str(getattr(exc, "code", type(exc).__name__))
+            if control_paths is not None else "source_read_lock_unavailable"
+        )
         return {
             "schema_version": _RECEIPT_SCHEMA,
             "source_format": _SOURCE_FORMAT,
             "status": "blocked",
-            "error_code": "source_read_lock_unavailable",
+            "error_code": error_code,
         }
 
 
@@ -512,6 +611,7 @@ def _convert_held(
     dry_run: bool,
     capacity_preflight: Callable[[WatchlistWriteCapacityRequest], bool | None] | None,
     cancel_check: Callable[[], bool] | None,
+    control_paths: WatchlistCowControlPaths | None = None,
 ) -> dict[str, Any]:
     stage: Path | None = None
     receipt_stage: Path | None = None
@@ -522,11 +622,20 @@ def _convert_held(
             raise _Blocked("cancelled")
         memory_conn, details = _build_database(snapshot)
         try:
+            backup_path = (
+                control_paths.assert_personal(control_paths.source_backup_path)
+                if control_paths is not None else None
+            )
             receipt_result = _result(
                 snapshot, target, receipt, "ready", details, source_raw, payload, item_json,
                 target_hash="0" * 64, target_size=int(details["database_bytes"]),
+                source_backup_path=str(backup_path) if backup_path is not None else None,
+                source_backup_sha256=snapshot.source_sha256 if backup_path is not None else None,
             )
-            _capacity_preflight(target, snapshot, details, receipt_result, capacity_preflight)
+            _capacity_preflight(
+                target, snapshot, details, receipt_result, capacity_preflight,
+                source_backup_bytes=(snapshot.source_size_bytes if backup_path is not None else 0),
+            )
             if cancel_check is not None and cancel_check():
                 raise _Blocked("cancelled")
             if dry_run:
@@ -535,26 +644,47 @@ def _convert_held(
                     snapshot, target, receipt, "dry_run", details, source_raw, payload, item_json,
                     target_hash=None, target_size=int(details["database_bytes"]),
                 )
-            stage = _create_stage(target, memory_conn)
-            target_hash, target_size = _validate_stage(stage, details)
+            backup_sha256: str | None = None
+            if control_paths is not None:
+                _verify_source_still_held(snapshot, source_stream)
+                backup_path, backup_sha256 = _write_source_backup(
+                    control_paths, source_stream, snapshot.source_sha256,
+                )
+                _verify_source_still_held(snapshot, source_stream)
+            stage = _create_stage(
+                target, memory_conn, control_paths=control_paths,
+            )
+            target_hash, target_size = _validate_stage(
+                stage, details, control_paths=control_paths,
+            )
             if target_size > item_storage.MAX_DATABASE_BYTES:
                 raise _Blocked("database_limit_exceeded")
             _verify_source_still_held(snapshot, source_stream)
             ready_receipt = _result(
                 snapshot, target, receipt, "ready", details, source_raw, payload, item_json,
                 target_hash=target_hash, target_size=target_size,
+                source_backup_path=str(backup_path) if control_paths is not None else None,
+                source_backup_sha256=backup_sha256,
             )
-            receipt_stage = _write_receipt_stage(receipt, ready_receipt)
+            receipt_stage = _write_receipt_stage(
+                receipt, ready_receipt, control_paths=control_paths,
+            )
             _verify_source_still_held(snapshot, source_stream)
-            _publish_noreplace(stage, target)
+            _publish_noreplace(stage, target, control_paths=control_paths)
+            if control_paths is not None:
+                stage = None
             # 收據發布前再核對來源；沒有匹配收據時 activation 不會信任 target。
             _verify_source_still_held(snapshot, source_stream)
             try:
+                if control_paths is not None:
+                    control_paths.assert_personal(receipt_stage)
+                    control_paths.assert_personal(receipt)
                 os.link(receipt_stage, receipt)
                 os.unlink(receipt_stage)
                 receipt_stage = None
-                os.unlink(stage)
-                stage = None
+                if stage is not None:
+                    os.unlink(stage)
+                    stage = None
             except Exception as exc:
                 raise _Blocked("receipt_publish_failed") from exc
             return ready_receipt
@@ -591,11 +721,13 @@ def dry_run_watchlist_json(
     destination: Path | str,
     *,
     capacity_preflight: Callable[[WatchlistWriteCapacityRequest], bool | None] | None = None,
+    control_paths: WatchlistCowControlPaths | None = None,
 ) -> dict[str, Any]:
     """唯讀驗證單一 legacy JSON，於記憶體建構副本，不建立目標或收據。"""
     return _convert(
         source, destination, dry_run=True,
         capacity_preflight=capacity_preflight, cancel_check=None,
+        control_paths=control_paths,
     )
 
 
@@ -605,9 +737,11 @@ def convert_watchlist_json(
     *,
     capacity_preflight: Callable[[WatchlistWriteCapacityRequest], bool | None] | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    control_paths: WatchlistCowControlPaths | None = None,
 ) -> dict[str, Any]:
     """建立獨立 SQLite v3 副本；原始 JSON 唯讀，驗證成功後才發布 target/receipt。"""
     return _convert(
         source, destination, dry_run=False,
         capacity_preflight=capacity_preflight, cancel_check=cancel_check,
+        control_paths=control_paths,
     )

@@ -87,3 +87,41 @@ C:/Projects/PythonProjects/technical_analysis/.venv/Scripts/python.exe -m py_com
 | 本 lane QA 文件 | 同提交 revert | 交接記錄須先保存 |
 
 回滾先確認分支與 dirty files ownership，再執行受控 revert，重跑相關測試。未執行回滾、worktree 清理、cherry-pick 或 push。此 lane 可單獨 cherry-pick，但只交父層／主整合 owner 審查，不能把此提交描述成正式資料已分離。
+## 2026-10-06 後續授權：個人 COW control plane
+
+本節更新第一包的「尚未接線」狀態。第一包為 `25c3b326c534c1c590173af8537dc36871334388`；後續提交必須在它之後整合。沒有改全域 config、既有 UI composition、CLI、Manual 或原計畫，也未操作真實資料。
+
+`WatchlistCowControlPaths(paths, source)` 集中綁定唯一 legacy source 與個人 target。converter、preview、activate、resolve、rollback、writer guard 接受 keyword-only `control_paths`，省略時保留既有 legacy API。來源 hash、stat 與 lineage 仍綁定原檔，JSON／SQLite 來源只讀。personal SQLite 來源只取唯讀交易，target 保留寫入鎖。已存在 source-side activation marker 或 SQLite sibling legacy JSON 必須人工檢視，不移動或自動採用。
+
+控制位置（相對已明示 personal root）：
+
+| 用途 | 路徑 |
+|---|---|
+| DB | `watchlists/watchlists.v3.sqlite` |
+| activation marker | `watchlists/watchlists.v3.sqlite.cow-active.json` |
+| lock | `watchlists/watchlists.v3.sqlite.cow-active.json.lock` |
+| receipt | `watchlists/watchlists.v3.sqlite.cow-conversion.v1.json` |
+| 原 JSON bytes 備份 | `backups/watchlists/source.<sha256-absolute-source-path>.json` |
+| rollback／original-state audit | `activation_backups/watchlists/rollback.<activation-id>.json` |
+
+原 JSON bytes 備份以本表為準，取代第一包的 `<conversion-id>/default.json` 提案。JSON receipt pin 備份位置與 bytes hash；冲突備份拒絕覆寫。stage、lock 與控制寫入均守衛 personal root、reparse point、hardlink 與重疊。dry-run 不建立 personal 目錄。尚無獨立全 DB 備份流程；rollback 保留 target DB 與新增 revision，停用 personal writer，不切回市場包內的 source writer。
+
+`PersonalWatchlistCowService` 提供明示個人模式的重開／load／save。舊 reader 直接看到新 personal marker schema 時 fail-closed；既有 source-side reader 不會發現 personal marker，所以主 owner 必須先完成 app composition 的 personal selector 與 discovery，再允許正式啟用。不能只修改 DB destination 就宣稱 UI 已改用個人庫。此包可在未設定時保持 legacy，但任何部署切換仍須主 owner 完成接線與使用者批准。
+
+### Synthetic 驗證
+
+- JSON、SQLite v1/v2：convert → preview → activate → 新 Python process 重開 → add/save → rollback，19 passed。來源 bytes/hash、mtime 與來源目錄清單不變，沒有新私人控制檔；target 新 revision 保留，rollback 後新舊 personal service 均拒絕寫入。
+- 既有 COW／activation／CLI／storage-governance 六個測試檔：71 passed。
+- 路徑契約／market-only metadata export：68 passed。
+- converter 專屬測試結果於本節下方補記；Windows junction 以隱藏背景程序建立，fixtures 全部位於專屬 Temp。
+- 四個 production 模組 mypy（`--follow-imports=skip`）通過；六個 Python 檔 py_compile 通過；git diff --check 通過。
+
+只驗證 synthetic 資料。沒有正式 DB 建立、migration、配置啟用、打包、上傳、分享、push 或 dev cherry-pick。市場 DB 分享仍未授權，本 lane 的 export 仍僅為 CSV 白名單 metadata plan。
+
+### 交接與回滾
+
+本包 ownership：`app_module/personal_data_paths.py`、`app_module/watchlist_cow_activation.py`、`data_module/watchlist_json_cow.py`、`data_module/watchlist_sqlite_cow.py`、兩個 `tests/test_personal_watchlist_cow_*.py`、本 lane QA 文件。其餘共用檔未改。整合順序為第一包、此包，再由主 owner 接 app config／service／CLI 與 Manual。整合前檢查主線 COW ownership 與差異，禁止覆蓋別人的未提交修改。
+
+回滾此包可在受控分支 revert 第二提交，保留第一包 path contract；未執行 revert。若日後已有正式啟用資料，先明確停用 writer 並審查 personal schema reader 相容性，不能以程式 revert 當成資料 rollback。
+
+converter 專屬測試：11 passed、2 skipped；JSON／SQLite hardlink 與 Windows junction 負例實際通過。兩個 skipped 僅為 Windows 無權建立一般 directory symlink，已由同類 junction 路徑逃逸負例覆蓋。

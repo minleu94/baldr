@@ -11,6 +11,7 @@ import sqlite3
 import uuid
 from typing import Any, Callable, Iterator, Mapping
 
+from app_module.personal_data_paths import WatchlistCowControlPaths
 from data_module import watchlist_item_storage as item_storage
 from data_module.watchlist_item_storage import (
     WatchlistStorageCapacityError,
@@ -118,26 +119,46 @@ def _assert_no_sidecars(path: Path, code: str) -> None:
         raise _Blocked(code)
 
 
-def _normalize_paths(source: Path | str, destination: Path | str) -> tuple[Path, Path, Path]:
+def _normalize_paths(
+    source: Path | str, destination: Path | str, *,
+    control_paths: WatchlistCowControlPaths | None = None,
+) -> tuple[Path, Path, Path]:
     src_input = Path(source).expanduser()
     dst_input = Path(destination).expanduser()
     try:
         if src_input.is_symlink() or not src_input.is_file():
             raise _Blocked("source_not_regular_file")
-        src = src_input.resolve(strict=True)
-        dst_parent = dst_input.parent.resolve(strict=True)
-        dst = dst_parent / dst_input.name
+        if control_paths is None:
+            src = src_input.resolve(strict=True)
+            dst_parent = dst_input.parent.resolve(strict=True)
+            dst = dst_parent / dst_input.name
+        else:
+            expected_receipt = dst_input.with_name(
+                dst_input.name + ".cow-conversion.v1.json",
+            )
+            control_paths.validate(src_input, dst_input, expected_receipt)
+            src = src_input.resolve(strict=True)
+            dst = control_paths.assert_personal(
+                control_paths.personal_paths.watchlist_db,
+            )
         if not dst.name or dst.exists() or dst.is_symlink():
             raise _Blocked("target_already_exists")
-        receipt = dst.with_name(dst.name + ".cow-conversion.v1.json")
+        receipt = (
+            dst.with_name(dst.name + ".cow-conversion.v1.json")
+            if control_paths is None else
+            control_paths.assert_personal(control_paths.receipt_path)
+        )
         if receipt.exists() or receipt.is_symlink():
             raise _Blocked("receipt_already_exists")
         if os.path.normcase(str(src)) == os.path.normcase(str(dst)):
             raise _Blocked("source_target_same_path")
         if src.stat(follow_symlinks=False).st_nlink != 1:
             raise _Blocked("source_hardlink_unsupported")
-        if any(parent.is_symlink() for parent in (dst_parent,)):
+        if control_paths is None and dst.parent.is_symlink():
             raise _Blocked("target_parent_symlink_unsupported")
+        if control_paths is not None:
+            control_paths.assert_personal(dst)
+            control_paths.assert_personal(receipt)
         _assert_no_sidecars(src, "source_sidecar_present")
         _assert_no_sidecars(dst, "target_sidecar_present")
         _assert_no_sidecars(receipt, "receipt_sidecar_present")
@@ -791,8 +812,15 @@ def _busy_probe_source(source: Path) -> None:
             conn.close()
 
 
-def _create_stage(destination: Path, memory_conn: sqlite3.Connection) -> Path:
+def _create_stage(
+    destination: Path, memory_conn: sqlite3.Connection, *,
+    control_paths: WatchlistCowControlPaths | None = None,
+) -> Path:
+    if control_paths is not None:
+        control_paths.assert_personal(destination)
     stage = destination.with_name(f"{destination.name}.cow-stage-{uuid.uuid4().hex}.sqlite")
+    if control_paths is not None:
+        control_paths.assert_personal(stage)
     try:
         descriptor = os.open(stage, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
         os.close(descriptor)
@@ -811,7 +839,12 @@ def _create_stage(destination: Path, memory_conn: sqlite3.Connection) -> Path:
         raise
 
 
-def _validate_stage(stage: Path, expected: Mapping[str, Any]) -> tuple[str, int]:
+def _validate_stage(
+    stage: Path, expected: Mapping[str, Any], *,
+    control_paths: WatchlistCowControlPaths | None = None,
+) -> tuple[str, int]:
+    if control_paths is not None:
+        control_paths.assert_personal(stage)
     _assert_no_sidecars(stage, "stage_sidecar_present")
     size = stage.stat().st_size
     if size > item_storage.MAX_DATABASE_BYTES:
@@ -832,7 +865,13 @@ def _validate_stage(stage: Path, expected: Mapping[str, Any]) -> tuple[str, int]
     return digest, size
 
 
-def _publish_noreplace(stage: Path, target: Path) -> os.stat_result:
+def _publish_noreplace(
+    stage: Path, target: Path, *,
+    control_paths: WatchlistCowControlPaths | None = None,
+) -> os.stat_result:
+    if control_paths is not None:
+        control_paths.assert_personal(stage)
+        control_paths.assert_personal(target)
     _assert_no_sidecars(target, "target_sidecar_present")
     try:
         os.link(stage, target)
@@ -840,11 +879,24 @@ def _publish_noreplace(stage: Path, target: Path) -> os.stat_result:
         raise _Blocked("target_already_exists") from exc
     except OSError as exc:
         raise _Blocked("target_publish_failed") from exc
+    if control_paths is not None:
+        # 個人檔案拒絕 hardlink；發布後立刻移除自有 staging link。
+        try:
+            os.unlink(stage)
+        except OSError as exc:
+            raise _Blocked("stage_publish_cleanup_failed") from exc
     return target.stat(follow_symlinks=False)
 
 
-def _write_receipt_stage(receipt_path: Path, payload: Mapping[str, Any]) -> Path:
+def _write_receipt_stage(
+    receipt_path: Path, payload: Mapping[str, Any], *,
+    control_paths: WatchlistCowControlPaths | None = None,
+) -> Path:
+    if control_paths is not None:
+        control_paths.assert_personal(receipt_path)
     stage = receipt_path.with_name(f"{receipt_path.name}.stage-{uuid.uuid4().hex}")
+    if control_paths is not None:
+        control_paths.assert_personal(stage)
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, allow_nan=False,
                          separators=(",", ":")).encode("utf-8")
     descriptor = os.open(stage, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -857,15 +909,48 @@ def _write_receipt_stage(receipt_path: Path, payload: Mapping[str, Any]) -> Path
 
 def _convert(source: Path | str, destination: Path | str, *, dry_run: bool,
              capacity_preflight: Callable[[WatchlistWriteCapacityRequest], bool | None] | None,
-             cancel_check: Callable[[], bool] | None) -> dict[str, Any]:
+             cancel_check: Callable[[], bool] | None,
+             control_paths: WatchlistCowControlPaths | None = None) -> dict[str, Any]:
     stage: Path | None = None
     receipt_stage: Path | None = None
     writer_lock: sqlite3.Connection | None = None
     try:
-        src, target, receipt_path = _normalize_paths(source, destination)
+        if control_paths is not None:
+            destination_input = Path(destination).expanduser()
+            expected_receipt = destination_input.with_name(
+                destination_input.name + ".cow-conversion.v1.json",
+            )
+            control_paths.validate(source, destination_input, expected_receipt)
+            source_input = Path(source).expanduser()
+            if any(
+                Path(f"{source_input}{suffix}").exists()
+                or Path(f"{source_input}{suffix}").is_symlink()
+                for suffix in (".cow-active.json", ".cow-conversion.v1.json",
+                               ".cow-backup.v1.json")
+            ):
+                raise _Blocked("legacy_control_marker_requires_review")
+            for index, entry in enumerate(source_input.parent.iterdir(), 1):
+                if index > item_storage.MAX_ROWS + 2:
+                    raise _Blocked("source_directory_scan_limit_exceeded")
+                if entry.suffix.casefold() != ".json":
+                    continue
+                lowered = entry.name.casefold()
+                if lowered.endswith((".cow-active.json", ".cow-conversion.v1.json",
+                                     ".cow-backup.v1.json")) or (
+                    ".cow-rollback." in lowered and lowered.endswith(".json")
+                ):
+                    continue
+                raise _Blocked("legacy_json_scope_requires_review")
+            if not dry_run:
+                control_paths.prepare_directories()
+        src, target, receipt_path = _normalize_paths(
+            source, destination, control_paths=control_paths,
+        )
         snapshot, source_conn = _read_snapshot(src)
         try:
-            if dry_run:
+            if control_paths is not None:
+                _verify_source_still_held(snapshot, source_conn)
+            elif dry_run:
                 _busy_probe_source(src)
             else:
                 writer_lock = _reserve_source_for_conversion(src)
@@ -886,22 +971,34 @@ def _convert(source: Path | str, destination: Path | str, *, dry_run: bool,
                     _verify_source_still_held(snapshot, source_conn)
                     return _base_result(snapshot, target, receipt_path, "dry_run", details,
                                         target_hash=None, target_size=int(details["database_bytes"]))
-                stage = _create_stage(target, memory_conn)
-                target_hash, target_size = _validate_stage(stage, details)
+                stage = _create_stage(
+                    target, memory_conn, control_paths=control_paths,
+                )
+                target_hash, target_size = _validate_stage(
+                    stage, details, control_paths=control_paths,
+                )
                 if target_size > item_storage.MAX_DATABASE_BYTES:
                     raise _Blocked("database_limit_exceeded")
                 _verify_source_still_held(snapshot, source_conn)
                 receipt_payload = _base_result(snapshot, target, receipt_path, "ready", details,
                                                target_hash=target_hash, target_size=target_size)
-                receipt_stage = _write_receipt_stage(receipt_path, receipt_payload)
+                receipt_stage = _write_receipt_stage(
+                    receipt_path, receipt_payload, control_paths=control_paths,
+                )
                 _verify_source_still_held(snapshot, source_conn)
-                _publish_noreplace(stage, target)
+                _publish_noreplace(stage, target, control_paths=control_paths)
+                if control_paths is not None:
+                    stage = None
                 try:
+                    if control_paths is not None:
+                        control_paths.assert_personal(receipt_stage)
+                        control_paths.assert_personal(receipt_path)
                     os.link(receipt_stage, receipt_path)
                     os.unlink(receipt_stage)
                     receipt_stage = None
-                    os.unlink(stage)
-                    stage = None
+                    if stage is not None:
+                        os.unlink(stage)
+                        stage = None
                 except Exception:
                     raise _Blocked("receipt_publish_failed")
                 return receipt_payload
@@ -942,10 +1039,12 @@ def dry_run_watchlist_sqlite(
     destination: Path | str,
     *,
     capacity_preflight: Callable[[WatchlistWriteCapacityRequest], bool | None] | None = None,
+    control_paths: WatchlistCowControlPaths | None = None,
 ) -> dict[str, Any]:
     """唯讀掃描 legacy DB 並於記憶體驗證 v3 副本，不建立目標或收據檔。"""
     return _convert(source, destination, dry_run=True,
-                    capacity_preflight=capacity_preflight, cancel_check=None)
+                    capacity_preflight=capacity_preflight, cancel_check=None,
+                    control_paths=control_paths)
 
 
 def convert_watchlist_sqlite(
@@ -954,7 +1053,9 @@ def convert_watchlist_sqlite(
     *,
     capacity_preflight: Callable[[WatchlistWriteCapacityRequest], bool | None] | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    control_paths: WatchlistCowControlPaths | None = None,
 ) -> dict[str, Any]:
     """建置新 SQLite v3 副本並在驗證與 capacity preflight 通過後以 no-replace 發布。"""
     return _convert(source, destination, dry_run=False,
-                    capacity_preflight=capacity_preflight, cancel_check=cancel_check)
+                    capacity_preflight=capacity_preflight, cancel_check=cancel_check,
+                    control_paths=control_paths)

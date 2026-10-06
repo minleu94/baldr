@@ -54,3 +54,10 @@ H20 原 hook 使用 DATA_ROOT 下 `personal/recommendation_h20/activation.json`�
 - 維護者先裝原 runtime 與 `packaging/requirements-build.txt`，再執行 `.\.venv\Scripts\python.exe packaging/build_windows.py`。建置器限定 venv／系統 PATH 與空 userbase，避免外部 Poppler ICU 遮蔽 Windows 系統 ICU；spec 統一已安裝 Qt wheel 附帶的 C++ runtime。只收正式程式、必要資源和依賴，不收 QA、experiments、FA_Data、私人模型或 `.env`。
 
 替換版本前保留舊可攜資料夾；回滾時改用舊 exe＋整個舊資料夾。資料與設定不刪除，不清 cache、不重建 DB；程式回滾不代表資料 schema 遷移回滾。
+
+
+## 啟動載入畫面與圖示
+
+雙擊 exe 後，在 Qt 可建立視窗時顯示原 loading_view.png 背景、目前工作與進度條。套件匯入使用不定進度；14 個實際初始化階段完成後推進，主視窗顯示後才完成。進度代表介面初始化，不代表市場資料新鮮度或排程成功。可按 Esc／Alt+F4 關閉載入窗；程式在安全階段邊界取消，等待既有 worker 合作式退出，不會顯示半成品主視窗。單一同步初始化呼叫期間仍須等該呼叫返回；不宣稱能強制中斷。缺圖時保留深色底與可讀進度。
+
+exe、應用程式與主視窗使用原 app_icon.png；Windows AppUserModelID 在建立視窗前設定為 Baldr.TechnicalAnalysis，不修改 registry。既有釘選或 Windows 圖示快取可能仍顯示舊圖，未自動更動使用者釘選。初始化失敗會關閉載入窗，顯示既有錯誤／log 位置；offscreen 測試不顯示阻塞對話框。

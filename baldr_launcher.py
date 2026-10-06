@@ -88,7 +88,26 @@ def main() -> int:
         raise ValueError("使用 baldr.exe、--version、-m 模組或 scripts/...py")
     from PySide6.QtCore import QTimer, Qt
     from PySide6.QtWidgets import QApplication, QMessageBox
-    from ui_qt import main as qt_main
+    from PySide6.QtGui import QIcon
+    from ui_qt.startup_view import StartupController, StartupCancelled, set_windows_app_identity
+    set_windows_app_identity()
+    app = QApplication.instance() or QApplication(sys.argv)
+    app.setWindowIcon(QIcon(str(root / 'ui_qt' / 'app_icon.png')))
+    startup = StartupController(app, root / 'ui_qt')
+    try:
+        startup.preload()
+        from ui_qt import main as qt_main
+        startup.check_cancel()
+    except StartupCancelled:
+        startup.dismiss()
+        return 0
+    except Exception:
+        startup.dismiss()
+        if os.environ.get('QT_QPA_PLATFORM') != 'offscreen':
+            home = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'baldr'
+            QMessageBox.critical(None, 'baldr 啟動失敗', f'請查看 {home}/stderr.log')
+        raise
+    qt_main._startup_controller = startup
     # 以既有 composition 的明示根定位可寫狀態，不改資料核驗器。
     state_root = Path(os.environ["OUTPUT_ROOT"]) / "application_state"
     qt_main.project_root = state_root
@@ -113,6 +132,7 @@ def main() -> int:
     qt_main.MainWindow = PortableWindow
     qt_main._crash_diagnostics_log_path = qt_main.install_crash_diagnostics()
     exit_code = qt_main.main()
+    qt_main._startup_controller = None
     if exit_code and os.environ.get('QT_QPA_PLATFORM') != 'offscreen':
         error_app = QApplication.instance() or QApplication([])
         home = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'baldr'

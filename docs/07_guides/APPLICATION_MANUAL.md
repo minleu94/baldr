@@ -5282,3 +5282,8 @@ BB 收藏沿原 Watchlist JSON 保留來源及查詢，重開核原保存 v3 man
 BBP01原parent producer／snapshot CLI已採入dev。隔離日常runtime與policy必須同時明示 `feature_contract_version=daily-market-feature-snapshot.v3.bbands30-upper`；CLI母體產製明示 `--parent-universe-config` 與 `--include-bbands30-upper`。未明示保持原v2，跨版policy不匹配時在產製前拒絕。保存後以原parent identity讀回三方法全母體分母；matched／notmatched／unknown／excluded／uncaptured分開，unknown不當0。UI BB預設不勾，明示更新後保存v3；收藏透過原Watchlist JSON重開，必須找到同SHA／日期／股票／條件，不以latest替代。
 
 工程同版61案例及mandatory已通過，正式全市場自然日常run仍待原排程；不需改Task或手动trigger。前節等待BBP01批准為歷史狀態，現已依直接真人批准解除。私人資料不納入main發布包。
+
+
+## Windows 可攜版啟動畫面
+
+雙擊 baldr.exe 後顯示原背景與目前初始化階段；匯入套件時為不定進度，主視窗顯示後才完成。Esc 或 Alt+F4 可在安全階段邊界取消，程式會等待合作式 worker 退出；同步初始化呼叫須等返回。此進度不代表市場資料新鮮度或排程成功。載入失敗請看錯誤對話框指定的 log；缺背景圖仍有可讀文字與進度。應用程式與 exe 使用原圖示，既有 Windows 釘選快取未自動修改。完整首次設定、整個資料夾保留要求、圖示與排錯請見 [Windows 可攜版指南](PORTABLE_WINDOWS.md#啟動載入畫面與圖示)。

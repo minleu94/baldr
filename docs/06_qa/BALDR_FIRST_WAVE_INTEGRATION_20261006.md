@@ -15,6 +15,8 @@
 | B01 `49da8bd9` | registry三個exact symbols審查／負例，V5日期/OHLCV與足缺fixture | `a4dfed1a145b30bb8514ceab923dad6d0fa39a72` |
 | B03 `00a0628a` | 首頁四用途／明示當下股號搜尋、技術詞分層、大盤刷新保收合及缺件三態 | `8ace306e`；lane QA見[B03](BALDR_B03_MARKET_HOME_20261006.md) |
 | B08共用IO helper | canonical path不變，Windows UTF16門檻／extended OS I/O、SQLite ro/rw URI | `8f580a68035bf2430af0c6ec42ab52a6c889e03b`；B02獨立lane可cherry此依賴，不重複採納 |
+| B02 `a90b8126` | JSON／SQLite v1/v2 合法深 Unicode 全鏈、canonical DB >260、長 suffix hardlink／junction 拒絕 | `772419ed`；只採六個 owned 檔，helper blob 同版 |
+| B08 typed routes | 私人同 store 讀寫、legacy readonly、Evidence 市場 reader、Ledger 精確路徑與身份拒絕 | `fdb3fc6282638f3e80a3cbfd82bb0c4f7dfe61bb`；[B08 QA](BALDR_B08_PERSONAL_ROUTES_20261006.md)，不含 B09／B10 callers |
 | 中央產品修補 | 個股focus summary漏change與ML遮蔽區塊sufficiency；市場舊indicator測試先明示展開 | 本次中央ownfiles；不改DTO、結論、資格或五問結構 |
 
 registry仍只接受owner提供的sidecar-free一致snapshot，拒live WAL／SHM／journal，不做正式checkpoint。stop receipt仍是隔離投影描述，不是實際modelcontrol。capture現行200GiB與中央20GiB政策差異已確認；本波不降reserve。
@@ -38,6 +40,7 @@ public helper是lexical OS renderer，不自行授writer或替caller檢查來源
 | 命令／scope | 真結果 |
 |---|---|
 | 原碼AST `scripts/check_ml_shadow_boundary.py` 接手 | 659files／11violations／exit1 |
+| 採納 B01 後 AST | 660files／8violations／exit1；舊8仍未解 |
 | 採B01後V5 summary missing/available＋hover三node | 3pass／1.19s；保change／基本面／ML未知assert |
 | `tests/test_ui_qt_market_regime_view.py tests/test_baldr_b03_market_home.py` | 17pass／2.02s；完整indicator與defaultcollapsed/expanded兩次refresh |
 | 強制 `tests/test_ui_qt_update_view_workbench.py` | 85pass／2.52s |
@@ -46,17 +49,23 @@ public helper是lexical OS renderer，不自行授writer或替caller檢查來源
 | `mypy app_module/personal_data_paths.py` | Success1檔 |
 | 強制 `mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime` | Success：823 source files；含當時 B08 selector 初版，不含尚未交付 B02 最終 converter |
 | helpercompile／diffcheck | pass |
+| B02 同 blob 11module COW／personal／F4 focused | 234pass／2既有 symlink WinError1314 skip／86.71s；無 ACL 改動，收據沿用 |
+| B08 selector | 21pass；targeted mypy1檔、compile2檔 pass |
+| 採納 B02 與 B08 後增量 mypy | routes＋activation＋jsoncow＋sqlitecow＋repository 共5來源 pass |
+| 中央 backend compile | paths／routes／activation／jsoncow／sqlitecow／repository 與3個受影響tests共9檔 pass |
 
 UI產品穩定後WorkBench／validator已按順序跑一次，完整 roots mypy 已通過。B02 最終 converter 採納後僅針對新增差異做型態／compile 檢查，不重跑不受影響的 UI。Native／真人未做，offscreen不代替；B03 lane環境CJK字型限制見原收據。
 
 ## 後續具名工程與未驗範圍
 
-B02須完成同版helper canonical DB本身>260、suffix、JSON/SQLite v1/v2 convert→activate→append→rollback→新程序、source pins不變與target新歷史保留、hardlink/reparse/capacity/race防護。父層已擴鎖activation.py及watchlist_repository.py，只限IO boundary不改schema/query/write語義。
+B02已完成同版helper canonical DB本身>260、suffix、JSON/SQLite v1/v2 convert→activate→append→active新程序→rollback→rolled_back新程序、source pins不變與target新歷史保留、hardlink/reparse/capacity/race防護。採納六檔的 blob 與 lane 一致，共用 paths blob `d0484aa5e2b1272312a8c4c2b0023b1bf9b2958b`；只限IO boundary不改schema/query/write語義。完整收據 `output/qa/b02_cow_deep_unicode_final_20261006.json`（SHA256 `e61760c3e07d41bc248bfcd99cc8395e8e555bc394d873e356cbc0d77cbcda92`）留本機，不提交 raw output。
 
 B08私人domain typed routes仍以契約交付；不等於B09/B10 caller已接。PERSONAL私人read/write同target，空庫不借legacy；市場Evidence reader獨立無私人writer；Review與Evidence/Gap/Decay source-writer分流及DecisionQuality notes漏selector留B10。Portfolio trades／聲明／Paper／ledger caller留B09。
 
 B03額外核對在未改base重現 `test_mainwindow_portfolio_return_requires_current_exact_result_identity` 失敗（result_id空而非result-r1）；具名列B06/B09修，不能baseline當pass，不由B03越權改。其餘B03 central nav/update/runtime等未完成工程仍保留B03/B15清單。
 
 原plan已append1133bytes，舊237637bytes逐byte完整保持，prefix SHA256 `b88864218e1856e954d559e6d91ced7b57ee21311a4df3b34092874da8be8ace`；新238770bytes SHA256 `9730be99e060ea467827a532abb24a2342db1a3ecc2e5f756d0a979ee2a28543`。本機review位於 `output/plans/baldr_completion_review_sol_20261006.md`，不stage ignored output。
+
+首波定版另追加1959bytes，前238770bytes再逐byte保持；目前原plan共240729bytes，SHA256 `c616080dd42bdaad0a6f151e47d4ef21b465502bfa393581baac065eacd90991`。次波 B04／B05／B06／B09 已由父層鎖定並開工，固定 base `ba4e9e59da7946aa66fd5eac3729e091dfe5cced`；B09只採B08獨立契約依賴，中央保留main/config/B10。這是進行中工程，沒有新的整項closed。
 
 無push/mainmerge／正式DBwrite／personal migration或activation／正式Task／ACL／交易／foregroundNative／真訓練。自然成熟、正式source資格與部署另列X/U；不把這些時間／批准條件當工程完成gate，也不把尚缺caller／控制port寫成工程closed。

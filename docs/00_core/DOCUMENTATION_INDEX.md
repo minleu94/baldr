@@ -1,5 +1,7 @@
 # 文檔索引
 
+私人路由純契約與 caller 尚未接線範圍：[B08 QA](../06_qa/BALDR_B08_PERSONAL_ROUTES_20261006.md)。深 Unicode COW 同版接受、首頁／摘要中央整合與剩餘工程：[首波 QA](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。操作仍以完整 Manual 為準。
+
 ## 2026-10-06 UX21 benchmark整合入口
 
 [明示source/store/readonly UI收據](../06_qa/UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md)承接adapter lane10508947（cherry57934c51）；[Manual](../07_guides/APPLICATION_MANUAL.md)列CLI明示選項、設定／成本／basis參數、保存版本相容與缺件排錯。fixture可比結果與公開D市場unknown路徑分報，完整label最小工程另列，不提升UX21全項或ML資格。

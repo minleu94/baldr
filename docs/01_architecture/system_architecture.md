@@ -2,6 +2,8 @@
 
 ## 2026-10-06 首頁接線與personal IO邊界
 
+`personal_store_routes.select_personal_store_route` 純選擇 trades／聲明／Paper trade ledger／Portfolio ledger／Review／Evidence 的 read source 與 write target，不開 store、不 mkdir。PERSONAL 固定同 store；legacy readonly 無 writer；Evidence 強制市場 readonly；Review 保留市場 Evidence refs 不搬整庫。Portfolio ledger 路徑與身份由 caller 明示，不猜 schema。B09／B10 接線仍是下一步，現有 Journal 主 UI selector 不重做。B02 六檔 COW／activation／repository 已沿同版 helper 完成 canonical DB >260 與 suffix 的隔離全鏈驗證；公開身份不變。
+
 首頁四用途沿既有callbacks到原工作區，股號搜尋建立明示當下`ResearchStockContextDTO`，原保存候選保留原exact context；沒有新dashboard／domain計算／全域狀態平台。大盤只翻譯原DTO分類與明示布林條件，缺件保持unknown，刷新不重置收合。個股focus summary沿原change／section status，與ML限制併列，不升模型資格。
 
 `personal_data_paths`保留canonical path給containment／equality／hash／receipt，只在Windows OS IO使用UTF16門檻extended renderer；SQLite URI只ro/rw，不授writer／migration。links/hardlinks與device namespace守衛保留。registry exact symbols僅DTO／transition policy，reader仍sidecar-free一致snapshot；舊8ML boundary未解，不稱架構全通過。[範圍與驗證](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。

@@ -1,5 +1,11 @@
 # baldr 完整操作手冊
 
+## 私人儲存與合法深層路徑（2026-10-06）
+
+觀察清單的 JSON／SQLite v1/v2 個人副本工程已支援合法深層 Windows Unicode 路徑，包含 DB 本身超過 260 字元及更長的 staging／備份／rollback 路徑。公開來源、目標與收據身份維持 canonical 路徑；內部長路徑格式只供檔案與 SQLite I/O。轉換、啟用、追加、跨程序重讀與回滾僅以合成資料驗證，正式 migration／activation 仍未批准。回滾保留個人 target 新 revision，核對原來源 pin，不刪除個人資料。
+
+新私人 store selector 只固定 trades／聲明／Paper trade ledger／明示 Portfolio ledger／Review／市場 Evidence 的路徑契約，沒有新增操作按鈕或自動啟用。PERSONAL 的讀來源與寫目標是同一私人 store，空庫不借舊資料；Evidence 只有市場 reader。Portfolio ledger 必須有 caller 核定的精確路徑與身份，未知即拒絕。Portfolio／Paper／DecisionQuality 的實際 caller 接線仍列 B09／B10。[B08 路由契約](../06_qa/BALDR_B08_PERSONAL_ROUTES_20261006.md)與[首波整合收據](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)記錄範圍。
+
 ## 首頁四個用途與股號搜尋（2026-10-06）
 
 「今日優先查看」可直接選「看盤勢／持倉健康／選股研究／個股研究」，沿原工作區查看完整內容。個股研究可輸入4–6位數字股號，按 Enter 或「開啟當下研究」；這是明示當下來源，沒有沿用首頁候選的決策日、結果或保存身份。要回看原保存候選，仍點原候選列；返回沿原來源工作區。無效股號顯示修正提示，來源可用性由個股頁核對；未接來源的按鈕停用。

@@ -1,5 +1,16 @@
 # Baldr 下一波精確 ownership 派工收據（2026-10-06）
 
+## 2026-10-06 M02／M04 接收與 M01 剩餘 ownership
+
+M02/H4 `0a6f7a32→48d2ae5f`、M04/H8 `3d00f624→a941c79c` 已完成有界審核並採入。M02 僅將原 20 official session proof 驗證移至 data adapter，signature、錯誤與原 resolver 語義不變；純 adapter 冷載入零 ML／data I/O。M03 後完整 personalization 冷載入仍觸及 consumer 其他既有 allowed training imports，負例如實保留，不宣稱整個 app 無 trainer。M04 publisher 必須明示注入原 model loader；缺 loader 在來源讀取／lock／mkdir 前拒絕，原 hash／clock／custody／exception 不變。readonly reader 不載模型；scheduled composition 只驗 AST 接線，未實跑完整 scheduled cycle。
+
+兩 lane 的 exact 四檔、固定 commit blobs、raw／JUnit SHA 均核對；沿用 M02 33、M04 56 focused receipts，中央整合關鍵子集 20 passed／5.33s（69 deselected，pytest cache write warning，不是產品失敗），4 source targeted mypy、8 files compile 通過。數量有重疊，不累加為新完整 suite。standalone ML guard 677 檔／3 違例／exit1，僅 H1–H3 留 M01；global FAIL，未變更 allowlist／global assert。1283 inventory／direct12 沿用固定 metadata 收據，無新 test 檔，未重跑 full UI／mypy union。
+
+9 Stage=1 done／8 partial／0 pending、24 UX=2 done／22 partial／0 pending、七項有限 closed UX03/04/05/06/09/15/17 不升格；F1 18.6219658%（20%門檻）、Journey8.109s（8s門檻）例外保留。自然累積不是工程 gate，unknown model／PIT／source／account／clock 資格不造。無 push／main merge／正式 DB write／migration／Task 啟用／ACL／Native／fit／清理。完整證據：`output/qa/m02_m04_central_acceptance_20261006.json`。
+
+M01 原鎖與已授 recommendation_natural_outcome_service 精確 verifier-port 傳遞範圍不變；本次不擴鎖、不另開 lane。M02／M04 已停止等待，剩 H1–H3 由原 M01 交付，中央再有界核驗。
+
+
 本文件是既有 Astra／Sol 審核與唯一原 plan 的派工補件，不是另一條 roadmap。固定基準 **5d9ddf9d611bd6e117d75d0b4fdbf8751ee2e5a0**；開始審查時 tracked clean。下列是待父層鎖定的 proposal，本文未派新 thread，也未修改 production、tests、inventory registry。原核准 union 收據沿用，不全面重測。
 
 ## 可立即平行

@@ -1,5 +1,12 @@
 # 系統架構
 
+## 2026-10-06 session proof 與 publisher loader 邊界
+
+原 natural maturity session proof verifier 經 data_module/recommendation_natural_maturity_proof.py → 原 NaturalMaturitySessionResolver；App personalization 不再直接 import ML evidence wrapper，20 session／cutoff／calendar／market custody 不變。完整 personalization 仍有其他既有 allowed training imports，不宣稱全面冷載入隔離。
+
+CurrentRestatedMLRunRegistry readonly 查詢無 loader；publish_current_restated_stock_research_run 新 keyword-only model_loader，缺件前置拒絕。原 scheduled current_stock_research_cycle 在 script composition 明示注入原 ML loader；不在 App 偷移 dynamic import。原 bundle／manifest／sidecar hash checks 與 source/account/PIT 資格不變。中央20 focused 通過，guard677/3仍 FAIL，剩 M01 H1–H3；原重型 union 不冒稱涵蓋新 head。
+
+
 ## 2026-10-06 第二波來源與私人審查邊界
 
 Watchlist 沿原 repository revisions，以 immutable item digest 排除私人 notes／review extension 後核來源；個人 service writer guard＋CAS 僅更新理由與查看狀態。UI 成功前讀回 exact identity/revision，兩個明示同源 revision 比較不借 live。Portfolio 三帳摘要只投影既有 DTO／同列 cache，root/mode 任一已配置即要求中央注入同帳服務；Paper pair 核 portfolio／benchmark 與 state/benchmark/cost DB 全同，不能缺件 fallback。

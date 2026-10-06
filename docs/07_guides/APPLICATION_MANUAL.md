@@ -1,5 +1,12 @@
 # baldr 完整操作手冊
 
+## 2026-10-06 自然成熟證明與研究 run 發布排錯
+
+Personalization 的入口與操作步驟不變。自然成熟判讀仍需要原 20 個官方交易 session、正確 capture／endpoint／evaluation cutoff 與原 calendar／market bytes proof；缺件維持 pending／unknown，不能因 adapter 改動提升為已成熟。
+
+研究 run 的 readonly 查詢照原入口操作，不需要 model loader。開發／scheduled composition 若呼叫 publish_current_restated_stock_research_run，必須以 keyword model_loader 明示注入既有已核載入器；未提供時顯示 `model_loader is required for registry publication` 並在讀來源／建立 lock／mkdir 前停止。排錯先核 caller 的明示注入；不得以取消 hash／clock／custody 檢查處理。既有 current_stock_research_cycle 接線已同步，這不是正式 Task 啟用或完整 scheduled cycle 執行證據。本次僅 synthetic bounded publisher／readonly fresh-process 與 AST 接線驗證；unknown 模型／PIT／account／source 不升資格，既有安全限制與有限 closed／性能例外均保留。
+
+
 ## 私人儲存與合法深層路徑（2026-10-06）
 
 觀察清單的 JSON／SQLite v1/v2 個人副本工程已支援合法深層 Windows Unicode 路徑，包含 DB 本身超過 260 字元及更長的 staging／備份／rollback 路徑。公開來源、目標與收據身份維持 canonical 路徑；內部長路徑格式只供檔案與 SQLite I/O。轉換、啟用、追加、跨程序重讀與回滾僅以合成資料驗證，正式 migration／activation 仍未批准。回滾保留個人 target 新 revision，核對原來源 pin，不刪除個人資料。

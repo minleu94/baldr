@@ -1,5 +1,14 @@
 # BALDR 有界收尾狀態與移交（2026-10-06）
 
+## 2026-10-06 M02／M04 最新 guard 狀態
+
+M02/H4 `0a6f7a32→48d2ae5f`、M04/H8 `3d00f624→a941c79c` 已完成有界審核並採入。M02 僅將原 20 official session proof 驗證移至 data adapter，signature、錯誤與原 resolver 語義不變；純 adapter 冷載入零 ML／data I/O。M03 後完整 personalization 冷載入仍觸及 consumer 其他既有 allowed training imports，負例如實保留，不宣稱整個 app 無 trainer。M04 publisher 必須明示注入原 model loader；缺 loader 在來源讀取／lock／mkdir 前拒絕，原 hash／clock／custody／exception 不變。readonly reader 不載模型；scheduled composition 只驗 AST 接線，未實跑完整 scheduled cycle。
+
+兩 lane 的 exact 四檔、固定 commit blobs、raw／JUnit SHA 均核對；沿用 M02 33、M04 56 focused receipts，中央整合關鍵子集 20 passed／5.33s（69 deselected，pytest cache write warning，不是產品失敗），4 source targeted mypy、8 files compile 通過。數量有重疊，不累加為新完整 suite。standalone ML guard 677 檔／3 違例／exit1，僅 H1–H3 留 M01；global FAIL，未變更 allowlist／global assert。1283 inventory／direct12 沿用固定 metadata 收據，無新 test 檔，未重跑 full UI／mypy union。
+
+9 Stage=1 done／8 partial／0 pending、24 UX=2 done／22 partial／0 pending、七項有限 closed UX03/04/05/06/09/15/17 不升格；F1 18.6219658%（20%門檻）、Journey8.109s（8s門檻）例外保留。自然累積不是工程 gate，unknown model／PIT／source／account／clock 資格不造。無 push／main merge／正式 DB write／migration／Task 啟用／ACL／Native／fit／清理。完整證據：`output/qa/m02_m04_central_acceptance_20261006.json`。
+
+
 ## 2026-10-06 P2／M03 目前有限接受
 
 P2 `f16e3ab6→e34e2ed2`、市場alias review補正 `b0ebaeff→0eca90cf` 已採；只關selected daily／benchmark兩producer與原P1接口。原阻擋P2-R1已由同一hardlink probe驗證拒絕：state/status未新增、私人source bytes/mtime不變；市場main/sidecars/祖先link每I/O核對、calendar錯誤不吞custody、exact generated staging／create-only benchmark／atomic status、readonlylegacy與legacy relative相容保留。原108與R1 delta26 immutable raw/JUnit已核，中央R1關鍵18 pass／19.65s，中央普通＋深Unicode/emoji source→P1填單→daily→benchmark→B09新程序readback兩例2 pass／11.30s，重疊數量不累加；沒有重108或全UI union。正式來源/私人啟用/migration/排程仍未授，不把此scope冒稱全Paper正式鏈完成。

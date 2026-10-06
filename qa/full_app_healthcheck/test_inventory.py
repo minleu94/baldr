@@ -6,6 +6,27 @@ from pathlib import Path
 # This registry serves as a guardrail to ensure that only allowed tests are bridged.
 
 TEST_INVENTORY: dict[str, str] = {
+    # 2026-10-06 I20：僅 metadata 分類；不新增 direct bridge。
+    "tests/test_daily_market_cohort_main_bridge.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_daily_market_cohort_projection.py": "service-oracle-recommendation",
+    "tests/test_daily_market_feature_snapshot.py": "service-oracle-recommendation",
+    "tests/test_daily_market_method_contract.py": "service-oracle-recommendation",
+    "tests/test_daily_market_research_bookmark.py": "service-oracle-recommendation",
+    "tests/test_daily_market_research_capabilities.py": "service-oracle-recommendation",
+    "tests/test_daily_market_research_screener.py": "service-oracle-recommendation",
+    "tests/test_daily_market_snapshot_consumer.py": "service-oracle-recommendation",
+    "tests/test_daily_market_snapshot_producer.py": "service-oracle-data-market",
+    "tests/test_daily_market_snapshot_repository.py": "service-oracle-data-market",
+    "tests/test_rule_research_benchmark_adapter.py": "service-oracle-data-market",
+    "tests/test_rule_research_benchmark_integration.py": "service-oracle-research-backtest",
+    "tests/test_rule_research_daily_owner.py": "service-oracle-research-backtest",
+    "tests/test_rule_research_fair_boundary.py": "governance-doc-tooling",
+    "tests/test_rule_research_fair_comparison.py": "service-oracle-research-backtest",
+    "tests/test_rule_research_fair_comparison_cli.py": "governance-doc-tooling",
+    "tests/test_rule_research_forward_isolated.py": "service-oracle-research-backtest",
+    "tests/test_rule_research_forward_outcome.py": "service-oracle-research-backtest",
+    "tests/test_rule_research_forward_outcome_reader.py": "service-oracle-research-backtest",
+    "tests/test_rule_research_label_readiness.py": "service-oracle-research-backtest",
     'tests/test_baldr_b14_shadow_evidence_composition.py': 'service-oracle-portfolio-decision-runtime',
     # 2026-10-06 accepted owned increments; no new direct bridge.
     'tests/test_baldr_b07_research_history.py': 'service-oracle-research-backtest',

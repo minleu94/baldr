@@ -1,5 +1,22 @@
 # Feature-to-Test Routing Matrix (2026-06-23)
 
+## 2026-10-06 I20 有限清冊對照
+
+固定 base `917f6af0387a4d9944b261eddbc0c46e84cf34b2` 的有限 metadata 登錄：filesystem `1281` 不變，inventory `1105→1125`，missing `176→156`，stale `0`、documentation count drift `0`；skip-pytest-collection audit overall **failed**。獨立 worktree 另保留基準已有兩筆 ignored LUNA raw 檔的歷史 link 缺件。原 direct bridge 精確 12 paths 不變；既有完整 stable UI union 沿用，本包未重跑、不增加 UI／Native／Formal／training 資格。source_id 三檔仍等待直接批准。
+
+本包僅核 imports／fixtures／assert／實際入口與副作用後分類，未執行那20個測試；candidate/oracle 不是 executed coverage。原 missing176只消去這20，剩156仍需中央另鎖 scope，不擅自批量分類、刪測試或 xfail。精確逐檔分類、source pin 與理由見 [I20 machine refresh](TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md#2026-10-06-machine-refresh)。
+
+| 用途 | 本包 exact subset | 既有分類／delta | 執行邊界 |
+|---|---|---|---|
+| 市場入口名單聯動 | `test_daily_market_cohort_main_bridge.py` | UI candidate +1 | 真 QWidget/harness＋隔離 fixture；不進 direct runner。 |
+| 研究 cohort／feature／method／收藏／capability／篩選與consumer | `test_daily_market_cohort_projection.py`、`test_daily_market_feature_snapshot.py`、`test_daily_market_method_contract.py`、`test_daily_market_research_bookmark.py`、`test_daily_market_research_capabilities.py`、`test_daily_market_research_screener.py`、`test_daily_market_snapshot_consumer.py` | recommendation oracle +7 | 合成 DTO／tmp source及persistence；未知與 research-only 原界線保留。 |
+| 市場快照出版／repository與明示基準來源 | `test_daily_market_snapshot_producer.py`、`test_daily_market_snapshot_repository.py`、`test_rule_research_benchmark_adapter.py` | data/market oracle +3 | 隔離資料 integrity/pin/readback，synthetic subprocess 不是正式來源接受。 |
+| 研究基準整合／daily owner／公平比較／forward／label | `test_rule_research_benchmark_integration.py`、`test_rule_research_daily_owner.py`、`test_rule_research_fair_comparison.py`、`test_rule_research_forward_isolated.py`、`test_rule_research_forward_outcome.py`、`test_rule_research_forward_outcome_reader.py`、`test_rule_research_label_readiness.py` | research/backtest oracle +7 | 合成 sealed receipts／Decimal或整數bp／明示policy；無Task、真train或Formal。 |
+| import boundary與公平比較CLI | `test_rule_research_fair_boundary.py`、`test_rule_research_fair_comparison_cli.py` | governance tooling +2 | tmp source與synthetic config；no fit／no registry writer。 |
+
+上述 basename 均在 `tests/`；全20 exact path 以 classification 表／TEST_INVENTORY 為準。本 lane raw manifest 保存 delta、分類理由、base/head blobs與hash，`output/qa/i20_inventory.json` 是metadata收據，collection skipped。
+
+
 ## 2026-10-06 已採中央 caller 與後續契約路由
 
 新增七個具名分類：B07 research_history、B13 model_input_adapter 為 research/backtest oracle；B09 personal_portfolio、B14 shadow_control、central_personal_composition 為 portfolio/decision/runtime oracle；B11 family_catalog 為一般 unit；central_chart_composition 為 UI candidate。原 direct bridge 12 不變。B07 caller budget／父 view 關閉核中央5案例；B09 route+paths／Paper pair／Journey 分離與中央圖表原紀錄 bounded reader／stale worker／aware 新紀錄 clock 核同版19案例。lane 摘要與中央落地收據分報，不把 B07 無 raw log 的舊154/54/11報告升為可核收據。

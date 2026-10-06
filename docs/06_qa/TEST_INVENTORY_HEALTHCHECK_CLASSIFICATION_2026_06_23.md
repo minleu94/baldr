@@ -1,8 +1,64 @@
 # 測試清冊與 Healthcheck 執行邊界
 
+## 2026-10-06 machine refresh
+
+固定 base `917f6af0387a4d9944b261eddbc0c46e84cf34b2`，依中央 dispatch 僅補表列 20 個既存測試的 metadata；測試本體、production、runner、source_id 三檔與其他 owner 均未修改。原 dispatch 審查 base `5d9ddf9…`，其 manifest final_head 與本次固定 base 相同。基準→本包 filesystem `1281→1281`、inventory `1105→1125`、missing `176→156`，stale `0`、documentation count drift `0`；collection skipped，overall 仍為 **failed**。
+
+Current filesystem Python files: `1281`
+Current registry entries: `1125`
+Current collected test cases: 未執行
+
+| 分類 | 數量 |
+|---|---:|
+| `general-unit-keep-in-pytest` | 159 |
+| `governance-doc-tooling` | 173 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 162 |
+| `service-oracle-portfolio-decision-runtime` | 139 |
+| `service-oracle-recommendation` | 168 |
+| `service-oracle-research-backtest` | 110 |
+| `slow-e2e-or-environment` | 4 |
+| `ui-healthcheck-candidate-bridge` | 70 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 82 |
+
+本次增量為 recommendation oracle 7、data/market oracle 3、research/backtest oracle 7、governance tooling 2、UI candidate 1；direct bridge 精確 12 paths、manual/legacy 舊值不變。AST test definitions 只是來源索引，不是 collected 或 executed cases；candidate/oracle 登錄不等於 runner 執行 coverage。自然時間／unknown／Formal／training 資格不由 metadata 補登取得。
+
+raw 收據位於本 lane 的 `output/qa/i20_inventory.json`／`i20_manifest.json`／`i20_verification.json`；包含 before/after audit、20 source pins、imports/fixture/assert 入口、I/O 索引、分類理由、變更 mapping 與 base/head blobs。獨立 worktree 未帶入 ignored `output/luna_B/pytest_full.log`、`repo_map.json`，基準已有兩筆歷史 markdown link errors；本包保留並分報，不造 raw evidence、不更改他人文件。machine blocker 仍有 `unregistered_test_files:156`，不是產品 bug 或全庫豁免。focused 驗證只核 inventory/governance contracts，未執行本表 20 tests 或全176。
+
+### I20 精確分類與副作用理由
+
+所有 `tmp_path`／`tempfile` 寫入都是 source 中既有合成 fixture 或隔離 persistence；以下只是讀碼判讀，未執行這些流程。UI candidate 未加入 direct allowlist；其餘皆 pytest-only。
+
+| # | 唯讀測試檔 | 分類 | 用途／來源／副作用位置 |
+|---|---|---|---|
+| 1 | `tests/test_daily_market_cohort_main_bridge.py` | `ui-healthcheck-candidate-bridge` | QApplication／RouteHarness(MainWindow) 連接真 view、按鈕與同一 verified snapshot；_seed_database／_produce 僅 tmp_path。assert 驗共享 hash／date／拒絕後清空；不是既有 runner direct allowlist。 |
+| 2 | `tests/test_daily_market_cohort_projection.py` | `service-oracle-recommendation` | _write_v2_snapshot／_fixture 在 tmp_path 寫合成 immutable JSON；project／sort 驗來源 pin、全分母、unknown、排序與 forged rows 拒絕，屬研究 cohort 服務投影。 |
+| 3 | `tests/test_daily_market_feature_snapshot.py` | `service-oracle-recommendation` | _prices／_technical 僅合成 Decimal DTO；project 驗觀測值、連續 warmup、future／重複日期、快取 identity 與 unknown，無檔案或 DB I/O。 |
+| 4 | `tests/test_daily_market_method_contract.py` | `service-oracle-recommendation` | method_contracts_payload＋evaluate_daily_market_conditions 驗方法 binding／決策日拒絕與 legacy 最小投影；純記憶體研究篩選契約。 |
+| 5 | `tests/test_daily_market_research_bookmark.py` | `service-oracle-recommendation` | _capture 沿 tmp_path snapshot，_config 明示 tmp output；WatchlistService／Repository 驗收藏去重、精確 remove／restore、JSON→SQLite upgrade 與 revision。全部 synthetic persistence；不是正式 migration 授權。 |
+| 6 | `tests/test_daily_market_research_capabilities.py` | `service-oracle-recommendation` | _fixture 在 tmp_path 寫合成 snapshot JSON，not-opened.sqlite 只作來源引用；project 驗五項 capability、method hash、完整宣告分母、unknown 與 schema/source 拒絕。 |
+| 7 | `tests/test_daily_market_research_screener.py` | `service-oracle-recommendation` | _seed_database(tmp_path) 建 SQLite，_service 明示 snapshot_root；produce/read/filter/context/report 真服務驗 Kleene、pin、source revision、cancel。正式 output sentinel 不被使用；屬研究名單服務 oracle。 |
+| 8 | `tests/test_daily_market_snapshot_consumer.py` | `service-oracle-recommendation` | _seed(tmp_path) 建合成行情 SQLite，_produce→StockResearchReportReadService 驗 verified publication 與 stale source 拒絕；CLI outside-isolation 先拒，無 live fallback；研究 consumer oracle。 |
+| 9 | `tests/test_daily_market_snapshot_producer.py` | `service-oracle-data-market` | _producer／_loader 合成 DTO／capacity probe，tmp root 真出版→repository；驗 immutable/noop、CAS、容量、future/cancel、deep Unicode 與 subprocess readback。重點為資料出版完整性；非正式 harvester。 |
+| 10 | `tests/test_daily_market_snapshot_repository.py` | `service-oracle-data-market` | _publish 在 tmp_path 寫合成 artifact／manifest／pointer；repository 驗 cohort/date/hash/method/warmup、tamper/alias、partial 分母。來源 DB 字串是引用，未開真 DB；資料 readback oracle。 |
+| 11 | `tests/test_rule_research_benchmark_adapter.py` | `service-oracle-data-market` | _seed_database(tmp_path) 建 market_indices fixture；load_explicit_market_benchmark 驗兩步 pin、schema/type/availability/basis、WAL revision/cancel、來源 hash/mtime。測試中的 UPDATE 僅合成 DB；資料來源 oracle。 |
+| 12 | `tests/test_rule_research_benchmark_integration.py` | `service-oracle-research-backtest` | _prepare(pipeline) 在 tempfile tree 建 explicit-index.sqlite 與 config；run_forward_isolated 真保存→subprocess exact receipt readback、成本/基準/修訂與取消。合成研究鏈；不取得正式 benchmark 資格。 |
+| 13 | `tests/test_rule_research_daily_owner.py` | `service-oracle-research-backtest` | ctx 由 observation_context 產生隔離 source/config/roots；run_daily_owner 真 chain／status/retry/lock/quota＋新程序 CLI resume；formal source 路徑僅負例先拒。未註冊 Task，屬研究 owner 服務 oracle。 |
+| 14 | `tests/test_rule_research_fair_boundary.py` | `governance-doc-tooling` | 在 tmp_path 複製唯讀 adapter source／寫惡意 import 字串，MLShadowBoundaryGuard.inspect 驗 exact import policy；不 fit、不開 registry；治理工具契約。 |
+| 15 | `tests/test_rule_research_fair_comparison.py` | `service-oracle-research-backtest` | _prepared／_bundle_for 僅 pipeline 合成 DB／sealed receipts 與 exported feature/prediction DTO；build_fair_comparison 驗共同 cohort、integer bp、policy/target/pin、缺模型、cancel。無 training／模型 artifact I/O。 |
+| 16 | `tests/test_rule_research_fair_comparison_cli.py` | `governance-doc-tooling` | main 與 subprocess CLI 讀 synthetic sealed receipts／tmp policy bundle；驗缺配置明示、JSON 重現、duplicate keys/byte bound 與缺 candidate，不訓練、不出版正式結果；CLI tooling。 |
+| 17 | `tests/test_rule_research_forward_isolated.py` | `service-oracle-research-backtest` | pipeline 使用 tempfile.mkdtemp 明示隔離 root、seed SQLite/cache/config；run_forward_isolated 真 atomic outcome→saved reader／UI reader helper／daily overlay／subprocess。helper 不是 GUI bridge；驗 hash/unknown/cancel/budget。 |
+| 18 | `tests/test_rule_research_forward_outcome.py` | `service-oracle-research-backtest` | _saved_child／parent_fixture 僅 tmp tree receipt，_market／_calendar 為 synthetic Decimal/日期；core 驗成本、報酬、全分母、pending、unknown、availability、極值與新程序 deterministic identity；研究計算 oracle。 |
+| 19 | `tests/test_rule_research_forward_outcome_reader.py` | `service-oracle-research-backtest` | forward_saved 從 tmp_path 合成 parent/JSON 輸入；read_saved_parent_forward_outcome 禁 DB 開啟、source bytes 不變、新程序一致、tamper/cancel/partial 拒絕。不是 GUI，也不是已執行 coverage。 |
+| 20 | `tests/test_rule_research_label_readiness.py` | `service-oracle-research-backtest` | _saved(pipeline) 準備合成 sealed outcome；label readiness 驗 label/split policy、availability、temporal partition、evaluation 不入 training、缺件不補零、bound/cancel。monkeypatch dates 只作 unit boundary，無真 train。 |
+
+
 > 本文件只維護目前分類摘要；逐檔清單以 `qa/full_app_healthcheck/test_inventory.py` 為準。歷史執行紀錄不可當作本次通過證據。
 
-## 2026-10-06 machine refresh
+## 2026-10-06 中央 machine refresh 歷史
 
 本次僅補中央已採本輪14個具名新增 tests 的既有分類，不重分類他人、不新增 direct bridge。metadata audit 使用 --skip-pytest-collection，未完整收集 pytest，也未執行測試。7個UI相關新檔為 candidate，3個B10檔為 portfolio/decision/runtime oracle，1個B12檔為 research/backtest oracle，3個純契約檔為一般unit；candidate/oracle不代表healthcheck runner已接線。
 

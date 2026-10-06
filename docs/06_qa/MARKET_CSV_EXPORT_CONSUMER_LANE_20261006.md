@@ -66,3 +66,45 @@ whitelist／hash／binary 守衛不能證明 CSV 每一欄是非私人內容，�
 | 本 QA | 新增 | 同上 | 無資料遺失 |
 
 整合前可保留此 branch／worktree 而不採納；沒有執行 revert／清理。回滾程式不撤銷任何 caller 日後實際建立的輸出包，不得因此刪除來源或其他 lane 資料。
+
+## 第二包：獨立 caller CLI（2026-10-06）
+
+父層接受第一包 `f0e1d8e62727a305ee7ff74c3b42e363fecce1db` 後，明示授權此包接續 CLI；仍在相同 branch／worktree。開工及提交前核對 dev／lane 均沒有 `scripts/export_market_csv.py` 或 `tests/test_export_market_csv_cli.py`，無新檔 ownership 衝突。只新增此二檔並追加本 QA；consumer、shared personal paths、config、UI、Manual、plan 皆不修改。
+
+此包補足前段「尚無 caller」的獨立 CLI 工程，但不代表有 UI／Task／正式市場來源接線或真資料分享驗收。原 consumer 的 Windows／隔離 root／來源授權限制維持。完整兩包須依序採納，第二包依賴第一包的 API 與 handle 守衛；唯一 dev owner 仍為 `01a10f1e-1fa7-7660-b46e-4e2107d52078`。
+
+### 操作與輸出契約
+
+本機入口：`python scripts/export_market_csv.py`。以下是 caller 使用示例，本 lane 沒有對任何真來源執行。
+
+```powershell
+# 預設唯讀 preview；stdout 為 JSON，caller 可核對後自行保存。
+python scripts/export_market_csv.py --market-root <absolute-market-root> --destination-root <absolute-new-target> --file daily_price/20261006.csv --file meta_data/market_index.csv
+
+# 只有 caller 已核對並保存上述 preview，才明示執行。
+python scripts/export_market_csv.py --market-root <absolute-market-root> --destination-root <absolute-new-target> --file daily_price/20261006.csv --file meta_data/market_index.csv --execute --accepted-preview <absolute-reviewed-preview.json>
+```
+
+必填來源／目標為 absolute，`--file` 可重複但必須明列 whitelist CSV，沒有 glob／recursive／whole-root 選項。`--personal-root` 未指定時只明示解析 market-root/personal，`--legacy-output-root` 未指定時 market-root/output；兩者皆排除且不建立。不讀全域 config、環境 root 或預設正式 D: 資料。市場 metadata plan 沿既有 producer，再加 consumer 同款 nested private／SQLite name 守衛；preview 的來源內容讀取也沿 Windows handle/hash/binary 守衛，不繞過真正執行時限制。
+
+preview stdout schema `market-csv-export-preview.v1`，status `preview`：明列 source_roots、destination_root、file_count、整數 total_size_bytes、逐檔 observed_source_pins 的 relative_path／source_identity／size／SHA-256，以及 personal／output／SQLite／未列檔案排除。`source_hashes_accepted=false`、`writes_performed=false`、uploaded/shared false。觀察 hash 不自動接受，preview 不寫任何檔案或建立目錄；接受 preview 的保存是 caller 的獨立明示操作，不由 script 默默代存。
+
+`--execute` 必須同時有 `--accepted-preview`，單給接受文件不能隱性執行。接受文件須在 market／personal／legacy output／destination 外的隔離路徑，拒絕 link／hardlink，限 1 MiB；只讀一次具名文件。接受 schema／status、三 root、精確明列檔案集合、沒有重複、原 identity／size 及合法 hash 都核對；不在下一程序把目前來源重新認成接受版本。檔案有任何來源 identity 修訂或 caller hash 失配即 blocked。目標可以另選新位置，來源 pins 不因此重新接受，允許取消後原接受來源的明示重試。
+
+execute 成功 status `completed`，返回 canonical receipt path／bytes SHA-256、檔數／整數體積、uploaded/shared false。來源與目標仍由 consumer handle guards 復核。既有目標（含完成或 partial）不覆寫，重試需另一全新目標；這不是正式 migration 或傳送資料。SIGINT／Ctrl+C 轉合作取消，恢復原 signal handler；取消回傳 130，blocked／IO／hash／路徑錯誤回傳 2，成功 preview／execute 回傳 0。錯誤列具名 code、error_type（blocked）、destination 與不發布完成／partial 保留規則。標準 argparse 使用錯誤仍輸出 usage，code 2。
+
+本版本 Windows 限制在 `--help`、preview 平台欄位與不支援平台的具名拒絕明示。沒有其他平台未鎖定 fallback。操作 stdout 固定 UTF-8，支援繁體中文 JSON／說明。`--accepted-preview` 是 caller 接受工程來源 pins，不是授權證明或 license／市場分享資格；內容私人與真來源授權仍需 caller 核對。
+
+### 第二包驗證與交接
+
+**182 passed，14.69s，0 skipped**：CLI 26、consumer 52、既有 personal paths 104，同套 synthetic 回歸。three-module mypy 正常 follow imports 通過；兩個新增 Python compile 通過。沒有真市場包、個人資料操作、永久刪除、上傳／分享、Task 或 Native。
+
+CLI 包涵蓋 default preview 不寫／來源 identity 不變、明列來源／體積／排除、明示 execute 與 accepted-preview 配對、新目標 receipt／hash／新程序一致、完成目標拒覆寫／另新目標重試、來源跨 preview 修訂／hash 失配、root／schema／檔案／重複 pins 篡改、整包／glob／personal／output／SQLite 與偽裝 CSV 拒絕、preview 取消、執行 partial 取消後無 canonical receipt、SIGINT 合作取消與 handler 回復、publication IO 故障無假完成、Windows help 限制。
+
+```powershell
+C:/Projects/PythonProjects/technical_analysis/.venv/Scripts/python.exe -m pytest tests/test_export_market_csv_cli.py tests/test_market_csv_export.py tests/test_personal_data_paths.py -q -o addopts= --basetemp=C:/Projects/PythonProjects/technical_analysis/.t/mcsv_cli_a --tb=short
+C:/Projects/PythonProjects/technical_analysis/.venv/Scripts/python.exe -m mypy scripts/export_market_csv.py app_module/market_csv_export.py app_module/personal_data_paths.py --cache-dir=output/qa/market_csv_cli_mypy
+C:/Projects/PythonProjects/technical_analysis/.venv/Scripts/python.exe -m py_compile scripts/export_market_csv.py tests/test_export_market_csv_cli.py
+```
+
+此包回滾 `git revert <CLI commit>`，只撤回新 script／tests 和本追加 QA，保留第一包 consumer；沒有資料遺失風險，也不得刪除 caller 日後真實輸出。下一安全接手點為主 owner review 兩包依賴後限定採納；本 lane 完成本機 commit／readback 後停，沒有 dev 整合或 push。真來源完整度、handle／檔數容量效能、分享授權、UI／Task／Manual 正式接線仍未驗收。

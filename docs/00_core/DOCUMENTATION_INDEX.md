@@ -212,3 +212,5 @@ UX23 registry readonly 整合：[QA](../06_qa/UX23_REGISTRY_INTEGRATION_20261006
 
 
 [2026-10-06 BALDR十五包／九階段／二十四UX有限移交](../06_qa/BALDR_CLOSEOUT_STATUS_20261006.md)：已准固定樹驗收、source_id批准block、8boundary／176inventory／Paperproducer可修工程、U1/U2與敏感啟用／自然證據分開，下一有限包精確ownership提案；不是新roadmap。
+
+2026-10-06：[P2 selected Paper daily／benchmark與市場alias有限接受](../06_qa/BALDR_PERSONAL_PAPER_PRODUCERS_20261006.md)，原P1 schema／formula／custody接口保留，操作見Manual；[中央P2／F01／M03收據](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)記具名metadata1283、H5移位與剩5違例，不授正式私人writer或Task。

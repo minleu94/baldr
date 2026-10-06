@@ -5126,3 +5126,15 @@ B14 `ShadowControlService.apply`預設預覽，execute需caller提供exact comma
 控制預設execute=False。只有完整重驗monitoring、原prediction pins、caller獨立proof與已核最後rule後，apply_monitoring_control才交原ControlPort；synthetic spy與新程序已驗stop後不再呼模型、同rulehash。resume未准；全部正式／PIT／自然／訓練／執行資格false。
 
 容量為隔離資源契約：128 receipts、每份16MiB、8192 label rows，原control pin容量另保留，不截斷大batch。取消／逾時在witness CAS前拒發布；CAS後完成發布與readback並回報真commit。若CAS後I/O發布失敗，witness領先receipt會使整namespace不可用、failclosed；保留殘件／獨立witness供排錯，不刪receipt假恢復、不自動清理或重用root。詳[完整API與兩路收據](../06_qa/BALDR_B14_SHADOW_EVIDENCE_COMPOSITION_20261006.md)。
+
+## 2026-10-06 私人 Paper daily／benchmark 選取入口
+
+本節對應P2已驗合成工程scope；正式私人writer啟用、migration與Task仍須既有明示授權。市場由TWStockConfig的DATA_ROOT/db_file或獨立 `--market-db` 唯讀來源提供，不從private或legacy output推導；市場main／journal/wal/shm及祖先不得為hardlink、symlink或junction，異常具名拒絕而不降級為可用。
+
+已解析私人設定須成對明示 `PERSONAL_STORE_ROOT` 與 `PERSONAL_STORE_MODE=personal`，市場 `DATA_ROOT`、legacy `OUTPUT_ROOT` 仍各自獨立。以既有可信portfolio identity使用 `scripts/run_paper_portfolio_daily.py --portfolio-id <已解析帳戶> --decision-at <帶時區時間>`；selected模式的baseline/state/cost/status固定由同一Paper route＋paths選取，不採 `PAPER_EXECUTION_LEDGER_DB` 借legacy。此腳本是writer入口，未授權正式操作時只使用隔離synthetic資料，不因本節自行執行。
+
+benchmark使用 `scripts/build_paper_equal_weight_benchmark.py --portfolio-id <同帳戶> --benchmark-id <已知benchmark身份>` 先preview；只有已授權caller明示 `--confirm-build-paper-benchmark` 才出版新ledger。benchmark身份獨立明示，不能由portfolio猜；既有output保留、競態目標不覆寫。preview/confirm=False/cancel不出版benchmark。legacy_read_only可讀preview但拒writer。
+
+selected時可省略既有path override；若提供 `--baseline`、`--state-db`、daily的 `--ledger-db` 或benchmark的 `--output-ledger`，必須exact selected path。`--output-root`仍為config的legacy output定位，不能另選private writer。無route的legacy benchmark仍要求原baseline/state/market/output四參數。不得以resolve先掩蓋alias，不能自動搬庫或退回legacy。
+
+daily passed只代表本次Paper snapshot流程結果，不等於真成交、投資有效性或來源正式資格；future／未知交易日不建state或提高資格。exit2先核root/mode成對、空值、帳戶／benchmark、精確override與main/sidecars/祖先aliases；selected失敗只回JSON，不補寫legacy status。不要以刪除可疑temporary、改ACL、migration或正式Task解決；原bytes/hash／未知diagnostic保留。[P2具名QA](../06_qa/BALDR_PERSONAL_PAPER_PRODUCERS_20261006.md)記錄工程驗收與限制。

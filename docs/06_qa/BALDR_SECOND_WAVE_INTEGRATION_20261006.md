@@ -107,3 +107,17 @@ source_id直接批准修補保留：7f56558c→fcef6580的專屬9例通過；384
 原P2 lane修補範圍維持五owned檔：市場existing main須regular／single-link，祖先symlink/reparse與lexical alias拒絕，SQLite sidecars同核；daily在calendar與每market connect前、builder每market connect前重驗。保留legacy relative呼叫相容、extended renderer與P1 exact allowlist，不吞錯／fallback／放行整個root。補市場hardlink指私人DB、外部ancestor junction負例與普通／deep readonly sourcehash正例；已有11正負與108收據重用，只驗delta。修補前不cherry-pick、不納入inventory新test、不稱producer complete。
 
 可核本機：`output/qa/p2_owner_bounded_review_handoff_20261006.json`（SHA256 `193e13815eacd8f3904c8182e1b33fbd3aa1d76607044adb787260100a45f810`），同名中央raw/XML及 `p2_owner_market_alias_probe_20261006.json`。前一次probe因fixture SQLite context未關閉造成Win32 sharing error，補gc釋放fixture handle後才重現；不以第一次setup error當產品finding。P2修補已回父層協調，中央production零改。
+
+## 2026-10-06 P2／M03 目前有限接受
+
+P2 `f16e3ab6→e34e2ed2`、市場alias review補正 `b0ebaeff→0eca90cf` 已採；只關selected daily／benchmark兩producer與原P1接口。原阻擋P2-R1已由同一hardlink probe驗證拒絕：state/status未新增、私人source bytes/mtime不變；市場main/sidecars/祖先link每I/O核對、calendar錯誤不吞custody、exact generated staging／create-only benchmark／atomic status、readonlylegacy與legacy relative相容保留。原108與R1 delta26 immutable raw/JUnit已核，中央R1關鍵18 pass／19.65s，中央普通＋深Unicode/emoji source→P1填單→daily→benchmark→B09新程序readback兩例2 pass／11.30s，重疊數量不累加；沒有重108或全UI union。正式來源/私人啟用/migration/排程仍未授，不把此scope冒稱全Paper正式鏈完成。
+
+P2只另登錄具名新test一項，治理固定 `21c3c226`：filesystem/inventory1283/1283，missing/stale/docdrift0、direct12不變；metadata audit passed/exit0且skip-pytest-collection；原13治理13 pass／14.59s，原1282分類與support/runner API不變。原I156靜態156＋P1具名1收據保留，不重算為runtime通過。
+
+F01 `042a2dac` 只補FlakyJournal唯讀delegate property，原controller7例在immutable提交7 pass／0.90s，原assert與production guard未改，舊baseline fail raw保留；此fixture blocker已解。M03/H5 `365e5fe3→700d1446` 採neutral InvalidCalibrationOutputError，同class identity／training原API reexport／consumer特定except保留；production除import/class移位以外AST相同。worker19 pass/mypy3/compile5/quant及Luna只讀review已核，中央15 class/非法／合法bp/coldimport/fallback pass／2.02s；採入中央root再驗同15例15 pass／1.68s（重疊不累加）。新neutral冷import不載trainer；consumer其餘既有allowed imports本包未重構。中央standalone guard實測677檔／5違例／exit1，僅H5消除，H1–H3／H4／H8仍待M01／M02／M04。原global assert與allowlist未改，不稱全倉PASS。
+
+唯一原plan只append；9Stage＝1done/8partial/0pending、24UX＝2done/22partial/0pending、七有限closed UX03/04/05/06/09/15/17保持，F1 18.6219658%（20%門檻）與Journey8.109s（8s門檻）性能例外保留。自然累積不是工程gate，U1/U2與未知PIT/model/account/source資格不造。可核本機 `output/qa/p2_m03_central_acceptance_20261006.json` 及同批raw/XML；完整操作看Manual，既有c9d57fc7 mandatory union只沿原測試範圍。無push/mainmerge/正式DBwrite/Task/ACL/Native/交易/真fit/清理。
+
+### 2026-10-06 本批提交前最終核對
+
+P2／M03 central production HEAD為700d1446d562e971454c42df729e54ba9a37fde8；P2具名metadata固定21c3c226通過。M03採入root同15例15 pass／1.68s，與owner固定lane15例重疊不累加；中央7source mypy／10files compile通過。收據 output/qa/p2_m03_central_acceptance_20261006.json SHA256 3ce3224d74e26f38c3cb73526ecc9ad7147f86a9eab916febb4b287d0d13fdf7；worker final M03含review的receipt SHA256 6e3a2a515157f3c9e21b223a417c4c22492a338d09f1b2ebe15815376995f338，取代早期未含review版本。中央ML guard677／5仍exit1；不提升原Stage／UX／正式source或模型資格。

@@ -33,7 +33,7 @@ def saved_fixture(tmp_path, kind):
     if kind == "trade":
         store.append_trade(TradeDTO("trade-a", "account-a", "2330", "synthetic", "buy", 1, 100,
             "2026-10-08", source_type="recommendation", source_id="source-a",
-            source_snapshot_hash=CONTEXT["source_snapshot_hash"], source_summary=CONTEXT,
+            source_snapshot_hash=CONTEXT["source_snapshot_hash"], source_summary={**CONTEXT,"account_kind":"actual"},
             created_at="2026-10-08T15:00:00+08:00").to_dict())
         callback = JsonlPortfolioTradeReadAdapter(store.trades_file).list_trades
         source = StockChartMarkerRecordSource.ACTUAL_TRADES
@@ -190,7 +190,7 @@ def test_view_stale_scope_clears_previously_visible_marker(app, tmp_path):
 @pytest.mark.parametrize("field,value,diagnostic", [
     ("stock_code", "2317", "saved_stock_mismatch"),
     ("source_snapshot_hash", "d"*64, "saved_source_mismatch"),
-    ("source_summary", {}, "saved_lineage_mismatch"),
+    ("source_summary", {"account_kind":"actual"}, "saved_lineage_mismatch"),
     ("source_summary", {**CONTEXT,"account_kind":"paper"}, "paper_or_declared_trade_rejected"),
     ("schema_version", "unknown", "unsupported_actual_trade"),
 ])
@@ -228,6 +228,15 @@ def test_reader_errors_bounds_and_cancellation_after_read(tmp_path):
         return len(calls) > 1
     assert StockResearchChartMarkerReader(trade_records=lambda:rows).read(request,
         price_points=POINTS, cancelled=cancelled).diagnostics == ("cancelled",)
+
+
+def test_missing_account_kind_rejected_despite_valid_clock_source_and_custody_hash(tmp_path):
+    _, request, _, rows = saved_fixture(tmp_path, "trade")
+    row = {**rows[0], "source_summary":dict(CONTEXT)}
+    request = replace(request, expected_record_hashes=((row["trade_id"],stock_chart_saved_record_sha256(row)),))
+    result = StockResearchChartMarkerReader(trade_records=lambda:(row,)).read(request, price_points=POINTS)
+    assert result.candidates == () and result.identities == ()
+    assert result.diagnostics == ("paper_or_declared_trade_rejected:trade-a",)
 
 
 def test_original_confirmation_clock_does_not_backdate_to_decision(tmp_path):

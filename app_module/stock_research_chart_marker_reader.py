@@ -188,7 +188,7 @@ class StockResearchChartMarkerReader:
             lineage = row.get("source_summary")
             if not isinstance(lineage, Mapping):
                 raise ValueError("trade_lineage_missing")
-            if lineage.get("account_kind", "actual") != "actual":
+            if lineage.get("account_kind") != "actual":
                 raise ValueError("paper_or_declared_trade_rejected")
             record_id = row["trade_id"]
             event_date = row.get("trade_date")

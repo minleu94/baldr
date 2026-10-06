@@ -114,3 +114,10 @@ exit 0
 兩個正例均由原 store/JournalService 合成保存 → 現有唯讀 adapter → 獨立原列 custody pin → 同源 payload → offscreen 可見 marker/table/tooltip → 全新 Python/Qt process 再讀原檔及畫圖；跨程序 content hash 相同，read 前後原檔 bytes、mtime 與檔案集合不變。負例覆蓋錯 source/hash/account/stock/lineage、缺 pin、naive/缺時鐘、after cutoff、早於事件、Paper、非 accepted、envelope/payload 衝突、重複 record、取消、來源錯誤、row 上限及 stale context。不重跑 viewport 全集或中央重型 gate。
 
 回滾只 revert 本次後續 commit 的 reader、新 test、view 注入 API 與此節；保留首次 B05 commit（中央 `491fb26b`）與 base change/sufficiency 修正。全部 save 與子程序均為 OS temp 合成資料，沒有正式 Task、真資料 migration、清理、交易或網路取價。
+## 中央 review 最小修正：缺少 account_kind 不升級 actual
+
+後續 commit 僅修改 owned reader、專屬測試與本 QA。實際交易明確要求原保存 `source_summary.account_kind == "actual"`；缺欄、Paper 或其他值都回傳空 candidates/identities 與 `paper_or_declared_trade_rejected`。原 trades callback 本身不作為可核 typed actual-account namespace，也不推定帳戶資格。此規則取代下文第二次交付中只拒絕顯式非 actual 的敘述。
+
+正例的合成原 TradeDTO 保存明確 `account_kind="actual"`，保留原 store → 唯讀 adapter → 圖表 → 新程序閉環。新增負例保留有效 aware clock、來源、lineage、帳戶 ID 與原列 custody hash，單獨移除 account_kind，仍不得畫 marker。未改任何 writer 或中央檔案；舊保存紀錄缺此 metadata 時持續拒絕，不 migration 或補造。
+
+聚焦執行：`python -m pytest tests/test_baldr_b05_chart_marker_reader.py -k "missing_account_kind or original_store_reader_visible_and_new_process or custody_verified_row_still_requires_saved_identity" -q -o addopts=`；`QT_QPA_PLATFORM=offscreen`。結果 **8 passed、20 deselected**；reader 單檔 mypy clean，reader/test 的 py_compile 與 git diff --check 均 exit 0。範圍只包含此 review 修正的正負例，不重跑原 viewport 或中央 union gate。

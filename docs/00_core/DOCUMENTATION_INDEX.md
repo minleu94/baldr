@@ -175,3 +175,8 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 ### 2026-10-06 UX08 推薦保存圖表入口與驗證
 
 [推薦writer→保存圖／精確表收據](../06_qa/UX08_RECOMMENDATION_SAVED_CHART_20261006.md)；Manual入口／步驟／參數／缺件／安全／排錯同步。新增pure helper15案例、writer／新程序／scheduled日期／來源失配及實際offscreen取消重試stale；既有execution、daily保存圖、read service／projection／技術歷史／shared consumer／研究畫面／scheduled日期，去重182相關案例。Workbench85／validator25+4skip／mypy819／compile／quant通過。UX08整項partial，viewport／CSV lanes未採納，不新增done。
+
+
+### 2026-10-06 UX08 可操作viewport
+
+[縮放／平移／重設與日期槽hover整合收據](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)：全量精確表／完整同身份保留、未知與source版本切換reset，115相關通過、V5兩項基線失敗另記；Manual／架構／Snapshot同步，UX08仍partial。

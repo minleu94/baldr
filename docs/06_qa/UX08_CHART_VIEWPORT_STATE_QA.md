@@ -68,3 +68,8 @@ def reset():
 ## 回滾與安全接手
 
 三檔均為新增。整合前先檢查工作樹，再 `git revert <本 lane commit>`；不覆寫其他工作。整合後需同時檢查 owner 接線依賴。shared state 依使用者三檔範圍不寫，本文件／final 作限定 handoff。只做 local commit；不 cherry-pick 到 dev，不 push，不清理工作樹。交付後停等唯一 owner 整合。
+
+
+## 2026-10-06 dev owner後續整合
+
+純controller以cd33ddd6採納，產品按鈕與來源identity接入；原「renderer過濾缺收盤槽」限制已由整合端改為保留原槽、paint/hover一致與斷線。詳見[整合QA](UX08_VIEWPORT_INTEGRATION_20261006.md)。Native／真人仍未完成。

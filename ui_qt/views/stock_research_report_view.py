@@ -11,6 +11,8 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
 import inspect
+import hashlib
+import json
 from typing import Any
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, Signal
@@ -35,6 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app_module.chart_viewport_state import ChartViewportIdentity, ChartViewportState
 from app_module.research_session import (
     ResearchStockContextDTO,
     format_research_workflow_path,
@@ -71,6 +74,7 @@ from app_module.research_result_presentation import (
 from app_module.stock_research_report_service import StockResearchReportReadService
 from app_module.stock_research_chart_payload import (
     StockChartTechnicalLineDTO,
+    StockChartPayloadDTO,
     project_stock_chart_payload,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
@@ -209,7 +213,7 @@ class StockPriceChartWidget(QWidget):
     ) -> tuple[tuple[tuple[int, Decimal], ...], ...]:
         """按價格日期對齊；空值或缺收盤日期斷線，不插值。"""
         by_date = {point.data_date: point.value for point in line.points}
-        drawable_indices = {point.data_date: i for i, point in enumerate(self._drawable_points())}
+        drawable_indices = {point.data_date: i for i, point in enumerate(self._points) if point.close_price is not None}
         segments: list[tuple[tuple[int, Decimal], ...]] = []
         current: list[tuple[int, Decimal]] = []
         for point in self._points:
@@ -246,7 +250,7 @@ class StockPriceChartWidget(QWidget):
         return left, max(left + 40, self.width() - 18)
 
     def _nearest_point_index(self, x: int) -> int | None:
-        points = self._drawable_points()
+        points = self._points
         if not points:
             return None
         left, right = self._plot_x_bounds()
@@ -289,7 +293,7 @@ class StockPriceChartWidget(QWidget):
         if index is None:
             self._clear_hover()
         elif index != self._hover_index:
-            points = self._drawable_points()
+            points = self._points
             self._hover_index = index
             text = self._point_tooltip(points[index])
             technical_text = self._technical_tooltip(points[index].data_date)
@@ -338,8 +342,8 @@ class StockPriceChartWidget(QWidget):
             painter.fillRect(
                 self.rect(), QBrush(QColor(MIDNIGHT_ANALYST.surface_1))
             )
-            points = self._drawable_points()
-            if not points:
+            points = self._points
+            if not any(point.close_price is not None for point in points):
                 painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.text_muted)))
                 painter.drawText(self.rect(), Qt.AlignCenter, "無價格資料")
                 return
@@ -476,24 +480,26 @@ class StockPriceChartWidget(QWidget):
                             QBrush(QColor(color)),
                         )
             else:
-                path_points: list[QPoint] = []
+                # 日期槽與 hover 相同；缺價格保留空槽並中斷收盤線。
+                segments: list[list[QPoint]] = [[]]
                 for index, point in enumerate(points):
-                    assert point.close_price is not None
-                    x = left + int(
-                        Decimal(right - left) * Decimal(index) / Decimal(denominator)
-                    )
-                    y = bottom - int(
-                        Decimal(bottom - top) * (point.close_price - low) / span
-                    )
-                    path_points.append(QPoint(x, y))
+                    if point.close_price is None:
+                        if segments[-1]:
+                            segments.append([])
+                        continue
+                    x = left + int(Decimal(right - left) * Decimal(index) / Decimal(denominator))
+                    y = bottom - int(Decimal(bottom - top) * (point.close_price - low) / span)
+                    segments[-1].append(QPoint(x, y))
                 line_pen = QPen(QColor(MIDNIGHT_ANALYST.accent))
                 line_pen.setWidth(2)
                 painter.setPen(line_pen)
-                for first, second in zip(path_points, path_points[1:]):
-                    painter.drawLine(first, second)
+                for segment in segments:
+                    for first, second in zip(segment, segment[1:]):
+                        painter.drawLine(first, second)
                 painter.setBrush(QBrush(QColor(MIDNIGHT_ANALYST.accent)))
-                painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.accent)))
-                painter.drawEllipse(path_points[-1], 3, 3)
+                for segment in segments:
+                    if segment:
+                        painter.drawEllipse(segment[-1], 3, 3)
             for line in self._technical_lines:
                 color = "#fbbf24" if line.key == "MA20" else "#60a5fa"
                 painter.setPen(QPen(QColor(color), 2))
@@ -555,6 +561,8 @@ class StockResearchReportView(QWidget):
         self._loaded_request_context: ResearchStockContextDTO | None = None
         self._saved_decision_context: ResearchStockContextDTO | None = None
         self._rendered_report_tabs: set[str] = set()
+        self._chart_viewport = ChartViewportState()
+        self._chart_widget: StockPriceChartWidget | None = None
         self._setup_ui()
         if context is not None and context.stock_code:
             self.set_context(context)
@@ -1664,6 +1672,8 @@ class StockResearchReportView(QWidget):
     def _clear_loaded_report(self) -> None:
         """跨股票切換時清掉可見舊頁，避免新代碼下殘留舊 DTO。"""
 
+        self._chart_viewport = ChartViewportState()
+        self._chart_widget = None
         self._loaded_report = None
         self._loaded_context_identity = None
         self._loaded_request_context = None
@@ -2035,7 +2045,79 @@ class StockResearchReportView(QWidget):
         self.sources_table.resizeColumnsToContents()
         ensure_visible_rows(self.sources_table, 5)
 
+    @staticmethod
+    def _chart_viewport_identity(report: StockResearchReportDTO, payload: StockChartPayloadDTO) -> ChartViewportIdentity:
+        """使用核驗後來源與完整列版本；未知身份不得跨載入保留範圍。"""
+        source_ids = tuple(sorted({point.source_id for point in payload.price_points}))
+        source_id = "|".join(source_ids) if source_ids and all(source_ids) else "unknown"
+        version = "unknown"
+        if report.saved_technical_chart_json:
+            version = str(json.loads(report.saved_technical_chart_json)["content_sha256"])
+        elif payload.price_points and payload.price_hash_status == "verified":
+            hashes = tuple(point.source_snapshot_hash for point in payload.price_points)
+            technical_hashes = tuple(point.source_row_hash for line in payload.technical_lines for point in line.points)
+            if all(hashes) and all(technical_hashes):
+                version = hashlib.sha256(json.dumps((hashes, technical_hashes), separators=(",", ":")).encode()).hexdigest()
+        return ChartViewportIdentity(payload.stock_code, source_id, version, payload.cutoff_date,
+                                     tuple((key, value) for key, value in payload.source_context if value.strip()))
+
+    def _add_chart_viewport_controls(self, layout: QVBoxLayout, chart: StockPriceChartWidget, payload: StockChartPayloadDTO) -> None:
+        """按鈕只切原 DTO；原全量價格／MA表不跟著縮放。"""
+        row = QHBoxLayout()
+        controls: dict[str, QPushButton] = {}
+        label = QLabel()
+        label.setObjectName("stockResearchChartViewportRange")
+        label.setWordWrap(True)
+
+        def refresh() -> None:
+            bounds = self._chart_viewport.range
+            label.setText(f"顯示 {bounds.first_date or '—'} ～ {bounds.last_date or '—'}（{bounds.count}/{bounds.total} 筆）；下方精確表仍為全量。")
+            enabled = self._chart_widget is chart and bounds.count > 0
+            controls["ZoomIn"].setEnabled(enabled and bounds.count > 1)
+            controls["ZoomOut"].setEnabled(enabled and not bounds.is_full)
+            controls["PanOlder"].setEnabled(enabled and bounds.start > 0)
+            controls["PanNewer"].setEnabled(enabled and bounds.stop < bounds.total)
+            controls["Reset"].setEnabled(enabled and not bounds.is_full)
+
+        def change(action: str) -> None:
+            if self._chart_widget is not chart or self._closing:
+                return
+            if action == "ZoomIn":
+                self._chart_viewport.zoom(1, 2)
+            elif action == "ZoomOut":
+                self._chart_viewport.zoom(2)
+            elif action == "Reset":
+                self._chart_viewport.reset()
+            else:
+                step = max(1, self._chart_viewport.range.count // 4)
+                self._chart_viewport.pan(-step if action == "PanOlder" else step)
+            try:
+                chart.set_points(self._chart_viewport.slice_points(payload.price_points))
+                chart.set_technical_lines(payload.technical_lines)
+                refresh()
+            except (RuntimeError, ValueError) as exc:
+                chart.hide()
+                self._chart_widget = None
+                for button in controls.values():
+                    button.setEnabled(False)
+                label.setText("圖表目前無法重畫；下方同源精確表仍完整。")
+                label.setToolTip(str(exc))
+
+        for action, text in (("ZoomIn", "放大"), ("ZoomOut", "縮小"), ("PanOlder", "往較早"), ("PanNewer", "往較新"), ("Reset", "重設全部")):
+            button = QPushButton(text)
+            button.setObjectName("stockResearchChart" + action)
+            button.setAccessibleName("圖表" + text)
+            button.setToolTip("只調整圖表可見日期槽；不查新行情、不改精確表。")
+            button.clicked.connect(lambda checked=False, key=action: change(key))
+            controls[action] = button
+            row.addWidget(button)
+        row.addStretch()
+        layout.addLayout(row)
+        layout.addWidget(label)
+        refresh()
+
     def _render_price(self, report: StockResearchReportDTO) -> None:
+        self._chart_widget = None
         layout = self._reset_page("price")
         layout.addWidget(self._section_heading("價格與成交量", report, "price"))
         context = self._loaded_request_context
@@ -2048,6 +2130,7 @@ class StockResearchReportView(QWidget):
         )
         payload = projection.payload
         if projection.status == "rejected" or payload is None:
+            self._chart_viewport = ChartViewportState()
             panel = self._missing_panel(
                 "股號、日期或來源核對失敗；已隱藏不一致資料。"
             )
@@ -2066,16 +2149,23 @@ class StockResearchReportView(QWidget):
 
         chart: StockPriceChartWidget | None = None
         try:
+            self._chart_viewport.load(
+                tuple(point.data_date for point in payload.price_points),
+                self._chart_viewport_identity(report, payload),
+            )
             chart = StockPriceChartWidget()
-            chart.set_points(payload.price_points)
+            chart.set_points(self._chart_viewport.slice_points(payload.price_points))
             chart.set_technical_lines(payload.technical_lines)
+            self._chart_widget = chart
             layout.addWidget(chart)
+            self._add_chart_viewport_controls(layout, chart, payload)
             chart_mode_text = {
                 "ohlc_volume": "原生圖表：OHLC K 線與成交量；下方表格保留來源精度。",
                 "ohlc": "原生圖表：OHLC K 線；成交量缺值會保留。",
                 "close": "原生圖表：收盤線；不完整 OHLC 不補值。",
             }[chart.display_mode]
         except Exception as exc:
+            self._chart_widget = None
             if chart is not None:
                 chart.hide()
                 chart.deleteLater()
@@ -2102,7 +2192,7 @@ class StockResearchReportView(QWidget):
                 report,
                 payload.price_points,
                 cutoff_date=payload.cutoff_date,
-            )
+            ).replace("圖表範圍：", "完整來源範圍：", 1)
         )
         chart_range_label.setObjectName("stockResearchPriceChartRange")
         chart_range_label.setProperty("role", "muted")

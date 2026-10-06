@@ -704,3 +704,8 @@ python ui_qt/main.py
 ### 2026-10-06 UX08 推薦保存圖表
 
 推薦執行→同次frame capture→immutable execution→exact保存來源研究圖／精確表；helper為`app_module/recommendation_saved_chart.py`，接線service／execute／report read service，既有Qt consumer。使用流程見完整Manual，[範圍／測試／下一包接線](docs/06_qa/UX08_RECOMMENDATION_SAVED_CHART_20261006.md)。UX08整項仍partial，viewport／CSV lane待父層安排。
+
+
+### 2026-10-06 UX08 viewport產品按鈕
+
+app_module/chart_viewport_state.py接StockResearchReportView價格頁按鈕；範圍控制只切原DTO，原生paint/hover日期槽一致，精確表全量。流程見Manual，[scope／失敗基線／限制](docs/06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)。

@@ -187,3 +187,8 @@ Focused 路由：`tests/test_rule_research_shadow_acceptance.py`、`tests/test_r
 ### 2026-10-06 UX08 推薦保存圖表入口與驗證
 
 [推薦writer→保存圖／精確表收據](UX08_RECOMMENDATION_SAVED_CHART_20261006.md)；Manual入口／步驟／參數／缺件／安全／排錯同步。新增pure helper15案例、writer／新程序／scheduled日期／來源失配及實際offscreen取消重試stale；既有execution、daily保存圖、read service／projection／技術歷史／shared consumer／研究畫面／scheduled日期，去重182相關案例。Workbench85／validator25+4skip／mypy819／compile／quant通過。UX08整項partial，viewport／CSV lanes未採納，不新增done。
+
+
+### 2026-10-06 UX08 viewport UI測試路由
+
+controller34及新增test_ui_qt_chart_viewport11案例，實際放大／平移／重設、缺價槽hover／None斷線、identity差異／unknown／empty／已淘汰控制、取消重試stale返回／保存新view全量／重畫fallback；既有研究UI／技術歷史／保存來源／投影／navigation，共115通過。擴充V5兩項以96ebcb33原UI重現基線失敗，不改無關summary。mandatoryWorkbench85→validator25/4skip→mypy820、compile／quant。[證據](UX08_VIEWPORT_INTEGRATION_20261006.md)。

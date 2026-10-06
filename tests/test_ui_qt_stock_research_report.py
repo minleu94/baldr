@@ -124,7 +124,7 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     assert "2026-09-08" in chart.toolTip()
     chart_range = view.findChild(QLabel, "stockResearchPriceChartRange")
     assert chart_range is not None
-    assert "圖表範圍：2026-09-08 至 2026-09-08" in chart_range.text()
+    assert "完整來源範圍：2026-09-08 至 2026-09-08" in chart_range.text()
     assert "最新涵蓋日：2026-09-08" in chart_range.text()
     price_table = view.findChild(QTableView, "stockResearchPriceHistoryTable")
     assert price_table is not None

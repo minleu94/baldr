@@ -79,7 +79,7 @@ class ChartViewportState:
     """只持有日期與身份，所有操作回傳 immutable range。
 
     同身份 reload 保留可見日期交集；無交集則全量重設。原本全量保持
-    全量。空資料清除範圍；不缓存其他股票的狀態。失敗 load 不改舊狀態。
+    全量。空資料清除範圍；不快取其他股票的狀態。失敗 load 不改舊狀態。
     """
 
     def __init__(self) -> None:

@@ -1421,3 +1421,8 @@ exact parent/readiness→current-observed SQLite snapshot transaction（原決�
 ### 2026-10-06 UX08 推薦同次frame保存圖表資料流
 
 RecommendationInputSession prepared frame→body publish（只封存入選股既有OHLC／MA20／60）→ExecutionEvent推薦圖表capture→既有codec／create-only SaveService→exact RecommendationExecutionQueries→StockResearchReportReadService→純projection→既有Qt圖／精確表。結果／同次provider與market指紋／入選完整分母／cutoff核驗；圖表來源明示recommendation.market_frame及indicators，不假稱SQLite。scheduled決策日與原行情截止日各驗；資料不足留缺件，不借live。codec/read不查最新行情或新算均線，unknown不授PIT。[範圍與容量](../06_qa/UX08_RECOMMENDATION_SAVED_CHART_20261006.md)。
+
+
+### 2026-10-06 UX08 viewport展示邊界
+
+核驗StockChartPayload→view持有ChartViewportState（stock/source/version/cutoff/context identity）→原DTO可見切片→既有Qt圖／同源MA；price及MA表維持原全量。完整同identity可保日期交集，未知或任一差異reset；不儲存偏好、不讀新行情。paint/hover共享原日期槽，None斷線；取消／stale由既有request guard及現chart身份防護。[UI與控制驗證](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)。

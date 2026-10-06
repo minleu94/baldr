@@ -586,3 +586,8 @@ MainWindow 啟動方可明示研究 snapshot root／cohort 與 original-rank roo
 ## 個人觀察清單明示啟用（2026-10-06）
 
 候選池在成對設定 personal root／既有來源時顯示「建立並啟用個人副本」。按鈕先預覽來源、個人 DB、marker、receipt、來源備份與 rollback audit；取消不建立副本，確認後才 convert／activate。未啟用來源只讀；啟用後固定 personal writer，回滾停止 writer 並保留新歷史，不切回市場來源寫入。未設定仍沿既有模式。正式 root／真實遷移／Native 尚未執行；操作與排錯見 [完整手冊](../07_guides/APPLICATION_MANUAL.md)，驗證見 [個人儲存 QA](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)。
+
+
+## UX10 方法與家族符合度（2026-10-06）
+
+每日研究名單在同一 accepted snapshot 顯示唯讀母體與選取股票摘要：方法三態分母、符合方法數／去重家族數、方法版本與理由。雙 MA 命中為2方法1家族；缺第二合格獨立家族則跨家族未知，排名不加入方法count、不增加分數。partial／不相容來源與清除不留舊摘要；不觸發新運算或producer。整項UX10維持partial。[Manual](../07_guides/APPLICATION_MANUAL.md)／[QA](../06_qa/UX10_MULTI_METHOD_LANE_20261006.md)

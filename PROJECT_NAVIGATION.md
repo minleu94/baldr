@@ -636,3 +636,6 @@ python ui_qt/main.py
 
 
 - 2026-10-06：[個人觀察清單整合](docs/06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)：`app_module/personal_watchlist_service.py` 選擇服務，`personal_data_paths.py` 私人控制路徑與 CSV export manifest，config／App／CLI／候選池明示啟用；正式遷移未執行。
+
+
+- 2026-10-06：[UX10 MA研究方法符合度](docs/06_qa/UX10_MULTI_METHOD_LANE_20261006.md)：`app_module/multi_method_research_consensus.py` 純readmodel／pinned adapter；每日研究名單沿同accepted快照呈現方法與家族counts，不增加排序分數或新方法。

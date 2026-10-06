@@ -1337,3 +1337,8 @@ F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚�
 ## 2026-10-06 個人觀察清單 App 邊界
 
 `TWStockConfig` 成對承接 personal_data_root／personal_watchlist_source；main 透過 `build_watchlist_service` 選擇既有服務或明示個人服務。未設定保留既有模式；個人模式 startup 不建立副本，原來源只讀，UI 路徑預覽確認後才 convert／activate。shared converter／activation 以可選 `WatchlistCowControlPaths` 固定 private marker／lock／receipt／JSON bytes backup／rollback audit；未指定仍維持 legacy 契約。personal rollback 停止 writer，保留 target 新歷史，不恢復來源 writer。設定不存在新的隱含檔案；Portfolio／ledger／notes 未接此 selector。正式 root／migration／Native 仍待核准驗收。市場 export 僅 CSV 白名單 metadata planner，尚無 copy consumer。[QA](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)
+
+
+## UX10 同來源多方法 readmodel（2026-10-06）
+
+`multi_method_research_consensus.py` 的 pinned repository adapter／Verified DTO adapter 重核manifest、artifact、cohort、date、captured contract與逐股hash；純投影以完整declared分母保留三態並去重method/stock/family。每日名單consumer沿已接受快照呈現母體與單股摘要，source清除／不相容不留舊投影；不接live、原排名predicate、producer或正式DB。當前只有close_vs_moving_average家族，2MA≠2獨立family，跨family維持unknown。current-observed research不賦PIT/Formal資格。整項UX10 partial。[QA](../06_qa/UX10_MULTI_METHOD_LANE_20261006.md)

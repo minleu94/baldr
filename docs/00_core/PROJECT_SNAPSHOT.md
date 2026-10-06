@@ -591,3 +591,8 @@ UX07 官方資料與 repo 可行性調查已交付，修正上段「未啟動」
 ## 2026-10-06 個人觀察清單 opt-in 整合
 
 獨立 personal lane 兩個 immutable commit 已順序納入 dev：25c3b326→c03bb4a7、5efb3f13→a205275d。App config／selector／CLI／候選池路徑確認接線，未設定沿原模式；個人模式來源只讀，明示啟用才建立個人 DB，private controls／JSON bytes backup／rollback audit 不留市場包。個人 rollback 僅停止 writer並保留 target 新歷史，不恢復來源 writer。其他個人領域未接線；正式 root、真實遷移與 Native 未執行。F1 18.621965821542936% 保留使用者已接受的效能例外，20% 目標未達，不改稱 pass。[操作](../07_guides/APPLICATION_MANUAL.md)／[QA](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)
+
+
+## UX10 MA 方法重合摘要限定接線（2026-10-06）
+
+獨立lane `340eac2f5729fade53190967d11d2d637a4c85bf` 已納入dev，沿同accepted快照接每日名單與候選摘要，股票／方法／family去重、完整分母三態與各自理由。MA20／60同family，2方法1family；沒有排名入選predicate或新family，跨familyunknown。來源不可比／partial明示，current-observed research不賦PIT或Formal。UX10維持partial：第二合格家族由父層另行提供，Native／真人另驗。[QA](../06_qa/UX10_MULTI_METHOD_LANE_20261006.md)

@@ -39,6 +39,11 @@ from app_module.daily_market_research_screener import DailyMarketResearchScreenR
 from app_module.original_stock_ranking import VerifiedOriginalStockRanking
 from app_module.original_stock_ranking import research_context_for_original_stock_ranking
 from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
+from app_module.multi_method_research_consensus import (
+    MultiMethodResearchConsensus,
+    adapt_daily_market_snapshot,
+    build_multi_method_consensus,
+)
 from app_module.daily_market_research_bookmark import (
     create_daily_market_research_bookmark,
 )
@@ -107,6 +112,9 @@ class DailyMarketResearchView(QWidget):
         self.watchlist_service = watchlist_service
         self.bookmark_confirmation_callback = bookmark_confirmation_callback
         self._snapshot: object | None = None
+        self._multi_method_consensus: MultiMethodResearchConsensus | None = None
+        self._multi_method_consensus_error = ""
+        self._multi_method_as_of = ""
         self._cohort_projection: object | None = None
         self._cohort_members_by_code: dict[str, object] = {}
         self._original_ranking: VerifiedOriginalStockRanking | None = None
@@ -1553,6 +1561,7 @@ class DailyMarketResearchView(QWidget):
         self._manifest_identity_sha256 = manifest_identity
         self._loaded_cohort_id = cohort_id
         self._loaded_decision_date = decision_date
+        self._project_multi_method_consensus(snapshot)
         self._selected_stock_code = ""
         self._history_page = None
         self._history_cursors = [None]
@@ -1592,6 +1601,167 @@ class DailyMarketResearchView(QWidget):
             self.original_ranking_label.setText(
                 "原始排名：未知；此 service 未提供不可變來源 reader。"
             )
+
+    def _project_multi_method_consensus(self, snapshot: object) -> None:
+        """只投影剛接受的 pinned snapshot；不相容時不沿用前次交集。"""
+
+        self._multi_method_consensus = None
+        self._multi_method_consensus_error = ""
+        observed_at = datetime.now(_TAIPEI)
+        self._multi_method_as_of = observed_at.isoformat()
+        try:
+            sources = adapt_daily_market_snapshot(
+                cast(VerifiedDailyMarketSnapshot, snapshot), as_of=observed_at
+            )
+            self._multi_method_consensus = build_multi_method_consensus(sources)
+        except Exception as exc:
+            code = str(getattr(exc, "code", "") or "").strip()
+            detail = f"{code}: " if code else ""
+            self._multi_method_consensus_error = (
+                f"{detail}{type(exc).__name__}: {exc}"
+            )
+
+    @staticmethod
+    def _multi_method_error_label(error: str) -> str:
+        code = error.split(":", 1)[0].strip()
+        descriptions = {
+            "snapshot_type_invalid": "舊版來源不符合 verified pinned snapshot 契約",
+            "captured_methods_missing_or_mixed": "快照未帶齊同版方法契約",
+            "source_after_as_of": "快照發布時間晚於接受時的本機觀測時鐘",
+            "method_version_or_contract_mismatch": "方法版本或方法契約不相容",
+            "incomparable_source_scope_or_revision": "方法來源日期、cohort 或版本不能比較",
+        }
+        description = descriptions.get(code, "來源相容性或身份核驗失敗")
+        return f"多方法交集未知／不適用：{description}（{code or error}）。每日研究結果仍可查看。"
+
+    def _multi_method_source_tooltip(self) -> str:
+        model = self._multi_method_consensus
+        if model is None:
+            return (
+                f"接受時觀測時間={self._multi_method_as_of or '未提供'}\n"
+                f"cohort={self._loaded_cohort_id}\n"
+                f"decision_date={self._loaded_decision_date}\n"
+                f"manifest_identity_sha256={self._manifest_identity_sha256}\n"
+                f"manifest_sha256={self._manifest_sha256}\n"
+                f"多方法錯誤={self._multi_method_consensus_error or '未提供'}"
+            )
+        lines = [
+            f"接受時觀測時間={self._multi_method_as_of}",
+            "資格=current-observed research only; historical_pit_eligible=false",
+        ]
+        for source in model.sources:
+            lines.extend((
+                f"方法={source.method_id}; method_key={source.method_key}; family={source.family}; version={source.version}",
+                f"manifest_identity_sha256={source.snapshot_id}; manifest_sha256={source.snapshot_sha256}",
+                f"cohort={source.cohort_id}; cohort_sha256={source.cohort_sha256}; decision_date={source.decision_date}",
+                f"decision_cutoff={source.decision_cutoff}; published_at={source.published_at}",
+                f"method_contracts_sha256={source.contracts_sha256}; parameters={source.parameters_json}",
+            ))
+        return "\n".join(lines)
+
+    def _multi_method_candidate_text(self) -> str:
+        model = self._multi_method_consensus
+        if model is None:
+            return (
+                self._multi_method_error_label(self._multi_method_consensus_error)
+                if self._multi_method_consensus_error
+                else ""
+            )
+        family_count = len({source.family for source in model.sources})
+        method_counts: list[str] = []
+        counts = {method_id: (selected, not_selected, unknown)
+                  for method_id, selected, not_selected, unknown in model.method_counts}
+        for source in model.sources:
+            selected, not_selected, unknown = counts.get(
+                source.method_id, (0, 0, model.denominator)
+            )
+            method_label = _CONDITION_LABELS.get(source.method_key, source.method_key)
+            method_counts.append(
+                f"{method_label} 符合{selected}／不符合{not_selected}／"
+                f"未知{unknown}／分母{model.denominator}"
+            )
+        counts_text = "；".join(method_counts)
+        return (
+            f"多方法交集（當期觀測）：{len(model.sources)} 方法／{family_count} 家族；"
+            f"{counts_text}；跨家族共同入選未知。"
+        )
+
+    def _append_multi_method_candidate_summary(self, detail_lines: list[str]) -> None:
+        text = self._multi_method_candidate_text()
+        if not text:
+            return
+        self.candidate_summary_label.setText(
+            self.candidate_summary_label.text() + "\n" + text
+        )
+        detail_lines.append(self._multi_method_source_tooltip())
+        model = self._multi_method_consensus
+        if model is not None:
+            counts = {method_id: (selected, not_selected, unknown)
+                      for method_id, selected, not_selected, unknown in model.method_counts}
+            for source in model.sources:
+                detail_lines.append(
+                    f"method_id={source.method_id}; method_key={source.method_key}; "
+                    f"family={source.family}; version={source.version}; "
+                    f"counts={counts.get(source.method_id)}; denominator={model.denominator}"
+                )
+                for row in model.rows:
+                    observation = dict(row.methods).get(source.method_id)
+                    if observation is None:
+                        continue
+                    detail_lines.append(
+                        f"stock={row.stock_code}; method_id={source.method_id}; "
+                        f"state={observation.state}; reason={observation.reason}; "
+                        f"unknown_reason={observation.unknown_reason}; "
+                        f"data_date={observation.data_date or '未知'}; "
+                        f"artifact_sha256={observation.artifact_sha256 or '未提供'}"
+                    )
+        self.candidate_summary_label.setToolTip("\n".join(detail_lines))
+
+    def _multi_method_selected_summary(self, stock_code: str) -> tuple[str, str]:
+        model = self._multi_method_consensus
+        if model is None:
+            text = (
+                self._multi_method_error_label(self._multi_method_consensus_error)
+                if self._multi_method_consensus_error
+                else ""
+            )
+            return text, self._multi_method_source_tooltip() if text else ""
+        row = next((item for item in model.rows if item.stock_code == stock_code), None)
+        if row is None:
+            return (
+                f"多方法摘要未知：{stock_code} 不在此 pinned manifest 的宣告分母內。",
+                self._multi_method_source_tooltip(),
+            )
+        state_labels = {"selected": "符合", "not_selected": "不符合", "unknown": "未知"}
+        visible = (
+            f"多方法：符合 {row.selected_method_count} 方法／"
+            f"{row.selected_family_count} 家族；跨家族共同入選"
+            f"{state_labels[row.multi_family_state]}。"
+        )
+        sources = {source.method_id: source for source in model.sources}
+        details = [
+            f"股票={stock_code}; selected_method_count={row.selected_method_count}; "
+            f"selected_family_count={row.selected_family_count}; "
+            f"multi_family_state={row.multi_family_state}; reason={row.multi_family_reason}"
+        ]
+        for method_id, observation in row.methods:
+            source = sources.get(method_id)
+            family_version = (
+                f"family={source.family}; version={source.version}"
+                if source is not None else "來源 metadata 未提供"
+            )
+            reason = observation.reason
+            if observation.unknown_reason:
+                reason += f"; unknown_reason={observation.unknown_reason}"
+            details.append(
+                f"method_id={method_id}; {family_version}; state={observation.state}; "
+                f"reason={reason or '未提供'}; data_date={observation.data_date or '未知'}; "
+                f"artifact_sha256={observation.artifact_sha256 or '未提供'}; "
+                f"stock_snapshot_sha256={observation.stock_snapshot_sha256 or '未提供'}; "
+                f"input_sha256={observation.input_sha256 or '未提供'}"
+            )
+        tooltip = self._multi_method_source_tooltip() + "\n" + "\n".join(details)
+        return visible, tooltip
 
     def _project_market_cohort(self, snapshot: object) -> None:
         self._cohort_projection = None
@@ -1919,6 +2089,7 @@ class DailyMarketResearchView(QWidget):
                 "候選母體分母與三態摘要尚未載入；不推估缺列或未知數。"
             )
             self.candidate_summary_label.setToolTip("")
+            self._append_multi_method_candidate_summary([])
             return
         try:
             summary = summarize_research_candidates(
@@ -1932,12 +2103,14 @@ class DailyMarketResearchView(QWidget):
                 "候選摘要未知：無法核驗完整 cohort 分母、發布列、缺列與三態數量。"
             )
             self.candidate_summary_label.setToolTip(detail)
+            self._append_multi_method_candidate_summary([detail])
             return
         if summary is None:
             self.candidate_summary_label.setText(
                 "候選摘要未知：來源未提供完整分母或狀態計數。"
             )
             self.candidate_summary_label.setToolTip(error)
+            self._append_multi_method_candidate_summary([error])
             return
 
         self.candidate_summary_label.setText(
@@ -2008,6 +2181,7 @@ class DailyMarketResearchView(QWidget):
         details.append(ranking_summary_text(self._original_ranking))
         details.append(original_rank_row_tooltip(self._original_ranking, None))
         self.candidate_summary_label.setToolTip("\n".join(details))
+        self._append_multi_method_candidate_summary(details)
 
     def _render_rows(self, *_args: object) -> None:
         selected_identity: tuple[str, str, str] | None = None
@@ -2199,6 +2373,14 @@ class DailyMarketResearchView(QWidget):
 
         self.selected_summary_label.setText(self.selected_summary_label.text() + "\n入選歷程：" + self._membership_text(code))
         self.selected_summary_label.setToolTip(self.selected_summary_label.toolTip() + "\n" + self._membership_tooltip(code))
+        multi_method_text, multi_method_tooltip = self._multi_method_selected_summary(code)
+        if multi_method_text:
+            self.selected_summary_label.setText(
+                self.selected_summary_label.text() + "\n" + multi_method_text
+            )
+            self.selected_summary_label.setToolTip(
+                self.selected_summary_label.toolTip() + "\n" + multi_method_tooltip
+            )
 
     def _current_filtered_rows(self) -> tuple[object, ...]:
         selected_filter = str(self.filter_state_combo.currentData() or "all")
@@ -2859,6 +3041,9 @@ class DailyMarketResearchView(QWidget):
 
     def _clear_current_snapshot(self) -> None:
         self._snapshot = None
+        self._multi_method_consensus = None
+        self._multi_method_consensus_error = ""
+        self._multi_method_as_of = ""
         self._lifecycle_result = None
         self._lifecycle_query_key = None
         self._lifecycle_pending = False

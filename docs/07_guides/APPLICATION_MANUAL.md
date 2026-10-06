@@ -4689,3 +4689,14 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 排錯：缺一個選擇欄位、來源不存在／歧義、root 重疊、reparse/link/hardlink、來源或 target 身份改變、容量未知／不足、marker 損壞／已回滾時保留資料與收據，修正明示選擇或交由審查，不刪 target／備份／lock 來重試。個人模式啟用失敗不會退回原 JSON writer。
 
 市場匯出 API 只產生固定 CSV 白名單的 metadata manifest；拒絕來源 JSON、SQLite、私人 output、重疊與 links/hardlinks。尚無打包 copy consumer，不能宣稱整包 FA_Data 可安全分享；TOCTOU、內容與來源權限審查仍待後續。Portfolio／ledger／notes 未在本批接線。詳見 [個人儲存 QA](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)。
+
+
+## 每日名單：MA 方法與家族符合度（2026-10-06）
+
+入口為每日研究名單／候選摘要；先明示讀取既有已發布快照。摘要沿同一已接受的 manifest、日期、cohort、方法版本與逐股來源 hash，不啟 producer 或重算 MA；原有篩選、排序與返回方式保留。
+
+母體摘要列出已提供方法、去重家族及每方法的符合／未符合／未知分母；選取股票後查看符合方法數、符合家族數，以及各方法狀態與理由。詳細方法 ID／版本／家族／來源身份在 tooltip 可查。MA20、MA60 同屬 `close_vs_moving_average`：兩個都符合是 **2 方法、1 家族**，不表示兩個獨立策略、勝率或提高投資分數；原排名沒有批准入選 predicate，不加入方法數。
+
+缺第二個合格家族時，跨家族共同入選維持未知。缺 artifact／方法 metadata、partial cohort 或來源不可比也明示未知／無法投影；未知不當未入選、負樣本或退出。日期／來源／修訂／方法版本不符時，移除舊摘要而保留理由，不借 live 或另一日期補資料。清除快照同步清除摘要；篩選不改原完整分母。
+
+排錯時查看來源與方法資格 tooltip，重新選擇可核驗的固定快照；不要更新 producer 或修改來源以湊交集。本功能限定 current-observed research，歷史 PIT／官方可得時間未證明；真正跨家族結果、其他方法、生命週期聯動與 Native／真人驗收仍待後續。詳見 [UX10 QA](../06_qa/UX10_MULTI_METHOD_LANE_20261006.md)。

@@ -106,3 +106,6 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 
 
 - 2026-10-06：[個人儲存 lane 與 App 整合](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)：opt-in 路徑、private COW 控制檔、原來源唯讀與回滾停止 writer；正式 root／遷移／Native 另列。
+
+
+- 2026-10-06：[UX10 多方法 readmodel 與 consumer](../06_qa/UX10_MULTI_METHOD_LANE_20261006.md)：同pin三態、股票與family去重；雙MA=2方法1家族，跨family未知，UX10 partial。

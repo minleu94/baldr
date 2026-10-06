@@ -104,3 +104,28 @@ partial 快照保留 source 原觀測與缺件原因，但所有 eligible 投影
 硬依賴缺件：目前沒有第二個不同家族且具完整 selected/not_selected/unknown predicate 的批准方法結果，所以 **真正跨家族共同入選仍 pending**。新方法不得由此 lane 補算法或捏造資格；須先補 UX16/18/19 的來源、固定方法契約、分母、snapshot 與接受證據。UI 列表／跨頁帶入、生命週期視圖連動、真人驗收與正式資料範圍亦仍 pending。整項 UX10 不標 full done。
 
 2026-10-06：完成有限 readmodel／fixture adapter 包，停止本 lane 的新增範圍，交主 owner 審查。
+
+
+## 2026-10-06 dev consumer 整合收據（最新，限定工程）
+
+immutable lane `340eac2f5729fade53190967d11d2d637a4c85bf` 基於 `a205275db9986f23253797b83363d20090e3db1b`；dev 核驗為 personal 整合 `1fbe83a5189390859c0ab69d73068995a1adb86c`、工作樹乾淨後，cherry-pick 為 `1ad0d53db71eef1ab69fef26b23be637c0e40e28`。三個 cherry 檔案的 disk Git blob、dev commit blob 與原 lane blob 全相同；根層完整審查 readmodel／adapter／契約及基線差異。
+
+每日 view 在唯一 _accept_snapshot 接受點，使用同一 VerifiedDailyMarketSnapshot 與 Asia/Taipei aware current-observed 時鐘，經 adapter 重核後投影一次；篩選／排序僅呈現，不啟producer、live DB 或新方法。候選首屏短行列2方法／1家族、MA20/60各三態分母；選取股票短行列符合方法／家族數與跨家族未知。各方法state／版本／family／原因、逐股data date／artifact／stock snapshot／input hash與manifest／cohort／contracts pins保留tooltip。2MA共同符合不當兩個獨立策略；原排名不計方法數、不調分數或勝率。
+
+partial 全部unknown保分母；舊DTO／captured contract缺件／新來源不相容時清前次model並具名理由，原每日研究結果可讀。clear同步清model／error／observed clock。只一個合格MA家族，所以跨家族共同入選全部unknown，缺第二合格家族仍pending。current-observed研究不賦歷史PIT／官方availability／Formal credit；整項UX10維持partial，其他family由父層另行安排，不在本批發明。
+
+| 根層驗證 | 結果 |
+|---|---|
+| readmodel＋feature／method contract／snapshot repository | 81 passed（45新＋36既有） |
+| 既有UX04/05每日view＋main routing | 8 passed |
+| 新增consumer focused UI | 6 passed，0.91s；含同家族／partial／legacy／錯契約去舊／clear／hash不變 |
+| 本批受影響案例合計 | 95 passed；重跑相同案例不累加 |
+| UI強制Workbench | 85 passed，另列 |
+| validator | 25 passed／4 skipped／0 failed |
+| mypy指定全部source roots | 798 source files clean |
+| compile | 4 Python檔通過 |
+| 精度／未來函數guard、diff check | pass |
+
+首輪新fixture只改MA60condition而未同步feature，repository以snapshot_condition_value_mismatch拒絕；已改用既有DailyMarketFeatureSnapshotService自合成價格／technical DTO完整投影，未放寬任何guard。consumer型別／literal newline替換已修，最終來源compile通過。正向合成pinned artifact UI前後SHA256全相同，不當自然資料／投資效果證據。
+
+raw收據：output/qa/ux10_consumer_integration_20261006（ignored）。原計畫只追加本批結果、stage5/6/7最小exclusive backend提案，以及父層轉交personal inventory／Journal排他界線，未覆蓋先前接受內容。Manual／UI docs／Snapshot／current architecture／index／navigation同步。新Native／真人、第二合格family、生命週期consumer跨頁聯動仍pending。沒有正式DB／personal配置寫入、遷移、訓練、清理或push；Journal與Portfolio相關排他檔未改。

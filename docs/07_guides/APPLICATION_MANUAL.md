@@ -1503,6 +1503,11 @@ TDCC 既有手動重播使用 `scripts/capture_tdcc_shareholding_candidate.py --
 
 當上下文同時帶有 exact `result_id` 與 `stock_code` 時，分頁下方會出現「研究動作（不採用 Advice／不下單）」：可按「納入研究」、「略過」、「記筆記」或用台北時間日期／時間選擇器「設定下次檢視」。目前研究狀態、筆記摘要與下次檢視會在重開報告後由同一份 append-only Journal 讀回；「已納入研究」或「已略過」意向不會被提醒動作覆蓋。缺少或衝突 identity 時，動作會停用並說明原因，不以同股同日或 `source_id` 猜測結果。儲存失敗會保留失敗狀態並提供相同 request id 重試；寫入成功但讀回失敗時只顯示「已寫入、讀回失敗」，不標成已驗證。完整 ID、revision 與歷史收在「顯示技術詳情」中；這些研究動作不採用 Advice、不建立 Portfolio trade，也不呼叫 broker。
 
+2026-10-06 來源保存補正：由已核報告 context 明示的 `source_id` 隨新研究動作保存到原 Journal；此參數只標記原來源，不替代 exact result／stock／snapshot 身份。操作方式仍是開啟已保存候選的個股研究，再按「納入研究」等動作。未提供 source_id 或直接以旧 DecisionIdentity 呼叫時保存空值，不補查、不回填舊資料，也不借前次來源畫 marker。圖表仍須原列 custody hash、來源／帳別／日期／aware clock 全部符合才畫推薦確認標記。
+
+排錯與重試：相同 request id 必須帶相同 source_id；來源改變時回報 command conflict，不新增修訂。切換報告、即使同候選但來源不同，都會清除原重試；同步 signal 或已完成舊 command 的晚到結果不能覆蓋新 context。取消讀取不產生 marker；寫入已完成則保留真實紀錄，不假稱取消回滾。舊 unknown 紀錄保持未知，研究動作仍不代表交易或正式模型資格。
+
+
 ## 8. 每日決策（Daily Decision Desk）
 
 ### 8.1 進入與刷新

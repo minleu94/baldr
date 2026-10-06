@@ -12,7 +12,7 @@
 | B02 Windows COW | JSON／SQLite v1/v2、canonicalDB與suffix深Unicode、convert→activate→append→rollback→新程序有限工程完成 | 同版234 pass／2 Win1314 skip；source bytes/metadata及原receipts不變，target新增revision保留。正式migration未做 |
 | B03 盤勢／主導覽／Update／Runtime | 四用途沿既有callbacks、當下搜尋不借保存身份、刷新收合、白話影響／unknown資料日、原source／selection保留，有限工程完成 | lane13新home與24新update-runtime；中央64用途增量／mandatory收據另列。沒有Native／真人證明 |
 | B04 選股／觀察 | 已保存exact chooser／cancel/stale、結果內filter保全分母、reason／confirmed／deferred在原ledger CAS與新程序，有限工程完成 | 原97收據與中央增量重驗source/revision/pins；沒有改分數／市場evidence或正式activate |
-| B05 圖表首批 | typed保存marker／全量價格MA精確表／鍵盤／十字線／finite外連、原row custody與Main background stale守衛完成 | 唯一明確產品接線缺口：標準UI確認丟source_id，三檔被approval block。原有已保存合格source可畫；缺source/account/clock仍拒，不migration |
+| B05 圖表首批 | typed保存marker／全量價格MA精確表／鍵盤／十字線／finite外連、原row custody與Main background stale守衛完成 | source_id三檔直接批准後已修（7f56558c→fcef6580），新context來源保存及exact retry/stale守衛專屬9pass；相鄰FlakyJournal既有fixture1fail分列。原有已保存合格source可畫；舊缺source/account/clock仍拒，不migration |
 | B06 三帳持倉摘要 | 人工／聲明／Paper exact分帳、估值unknown不冒總值／安全、原DTO摘要與cache、注入guard，有限工程完成 | 中央Main已route+paths注入；原navigation node同版通過。Paper producer私人writer路由屬B09剩餘，不偽裝此UI已替它完成 |
 | B07 規則／歷史 | 一條真typed fixed-v1／next_open執行→原保存artifact→新程序完整card；兩legacy＋Registry四類查找／exact返回、有界同raw讀／cancel-parent關閉，有限工程完成 | 舊154/54/11只有worker報告無raw，不作可核收據；中央5與本輪64含真保存／新程序有JUnit。Registry原shared讀取鏈未宣稱敵意raceproof |
 | B08 路徑／selector | canonical身份不變的Windows renderer／URI、nofollow/link拒絕、pure frozen域route與generic selector，有限helper工程完成 | 模式/root任一缺或blank beforeIO拒，無personal→legacy fallback。容量不是單一政策：snapshot20GiB，capture等200GiB有效max保留 |

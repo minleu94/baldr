@@ -78,3 +78,12 @@ raw receipt：output/qa/b15_four_journey_union_receipt_20261006.json、b15_manda
 ## 2026-10-06 H6/H7 exact label DTO裁決採入
 
 此前676/8是當時歷史收據；worker56ae8d82→中央4cea589d後676/6，guard仍exit1。只guard/CLI tests/QA，exact原caller兩DTO符號；冷import／DTO零data I/O、writer/trainer／其他caller拒絕、原unknown與globalassert／reader／contracts未變。63pass raw/JUnit與三blobs核對，中央affected subset／guard另錄，不重原mandatory union。現在狀態見[BALDR有限移交](BALDR_CLOSEOUT_STATUS_20261006.md)。
+
+
+## 2026-10-06 source_id 直接批准後最小修補
+
+使用者已直接回答「當然批准」三處 source_id 修補，單次批准重試成功；local commits `7f56558c46346be1b466e0c9e7b6e3047182cb59` → `fcef6580537ecfcaa724a2de894ead58960ccb30`。恰 controls／controller／既有 controls test 三檔；Journal、shared DTO、舊原紀錄與凍結 I156 tests 未改。新保存只傳 context 明示來源，同 request 精確核來源，直接 DecisionIdentity 舊 API default 空值；不猜來源、不 migration。
+
+專屬9 cases／2.97s 通過：原 UI accepted→既有 Journal writer→有界 readonly 原列 custody→marker可見→全新 Qt process 相同 marker hash，unknown-source新紀錄拒畫；取消 reader、同候選換source清除retry、late committed不覆蓋新context、同步 nested context signal 舊來源不回寫、legacy空值與retry conflict。targeted mypy2／compile3／diffcheck成功；未重跑完整 UI union。相鄰 controller 全集為14pass/1fail，唯一 `FlakyJournal.legacy_read_only` 缺屬性在 ae5 固定 controller 副本同 node 重現1fail，是既有 fixture 不相容，未改外scope測試或弱化唯讀guard。pytest cache permission warning 與 assertions 分報。
+
+原8-case raw/XML、最後9-case raw/XML、相鄰失敗與基準重現原始收據／blobs 位於 `output/qa/source_id_approved_handoff_20261006.json`；讀碼／synthetic驗證不授真DB、私人啟用、Task、Native、交易、fit／Formal/PIT。I156四治理仍待四只讀組 evidence 一次合併，ML guard六既有違例仍 FAIL。

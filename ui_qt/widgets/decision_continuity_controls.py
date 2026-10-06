@@ -221,9 +221,11 @@ class DecisionContinuityControlsWidget(QWidget):
             self._pending_retry = None
             self._render_blocked(f"研究 identity 無法解析：{exc}")
             return
+        generation = self._context_generation + 1
         self.set_identity(identity)
         raw_source = context.get('source_id', '') if isinstance(context, Mapping) else getattr(context, 'source_id', '')
-        self._source_id = raw_source.strip() if isinstance(raw_source, str) else ''
+        if generation == self._context_generation:
+            self._source_id = raw_source.strip() if isinstance(raw_source, str) else ''
 
     def set_blocked(
         self,

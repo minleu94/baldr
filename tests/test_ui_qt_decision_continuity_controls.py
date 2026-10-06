@@ -289,3 +289,21 @@ def test_late_committed_result_does_not_replace_changed_context(tmp_path, monkey
     saved = service.list_decision_revisions()
     assert len(saved) == 1 and saved[0].payload["source_id"] == "source-a"
     widget.close()
+
+
+def test_nested_context_change_does_not_restore_old_source(tmp_path):
+    from dataclasses import replace
+    widget = DecisionContinuityControlsWidget(DecisionContinuityController(JournalService(_config(tmp_path))))
+    first = replace(_context(), source_id="source-a")
+    switched = False
+    def change_context(_state):
+        nonlocal switched
+        if not switched:
+            switched = True
+            widget.set_context(replace(first, source_id="source-b"))
+    widget.stateChanged.connect(change_context)
+    widget.set_context(first)
+    assert widget._source_id == "source-b"
+    widget.accept_button.click()
+    assert widget.state.history[-1].payload["source_id"] == "source-b"
+    widget.close()

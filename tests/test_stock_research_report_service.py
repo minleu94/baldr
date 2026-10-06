@@ -255,13 +255,13 @@ def test_normal_readback_is_pit_bounded_and_uses_existing_advice(tmp_path: Path)
         context=ResearchStockContextDTO(stock_code="2330", result_id="run-1"),
     )
 
-    assert report.stock_name == "台積電"
-    assert report.price_points[-1].data_date == "2026-09-08"
-    assert report.price_points[-1].close_price == Decimal("100")
-    assert all(point.data_date <= "2026-09-08" for point in report.price_points)
-    assert len(report.price_points) <= 120
+    assert report.stock_name == ""  # context 未提供名稱；不借今日價格補舊結果。
+    # 舊保存推薦沒有圖表 artifact；既有 Advice 保留，價格／MA 明示缺件。
+    assert report.price_points == ()
+    assert report.technical_history == ()
+    assert report.saved_technical_chart_json == ""
     assert len(report.flows) <= 120
-    assert report.technical is not None
+    assert report.technical is None
     assert report.industry == "半導體業"
     assert report.events[0].outcomes[0].forward_return_bp == 180
     assert report.events[0].available_at == "2026-09-07"
@@ -271,11 +271,11 @@ def test_normal_readback_is_pit_bounded_and_uses_existing_advice(tmp_path: Path)
     assert report.advice.recommendation.advice_action.value in {"RESEARCH", "NO_NEW_POSITION"}
     assert report.advice.recommendation.data_quality == "DEGRADED"
     assert report.advice.saved_analysis is not None
-    assert "price" in report.available_modules
+    assert "price" not in report.available_modules
     assert "ml" not in report.available_modules
     assert report.ml.model_version == ""
     assert all(isinstance(source.source_id, str) for source in report.sources)
-    assert report.to_dict()["price_points"][-1]["close_price"] == "100"
+    assert report.to_dict()["price_points"] == []
 
     # 每一個 read connection 都已關閉；Windows 也能在 read-back 後移除測試庫。
     config.db_file.unlink()

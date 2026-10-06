@@ -43,7 +43,9 @@ from app_module.daily_market_snapshot_repository import (
 from app_module.stock_research_report_dtos import (
     StockPricePointDTO,
     StockTechnicalSnapshotDTO,
+    StockTechnicalHistoryRowDTO,
 )
+from app_module.saved_stock_technical_chart import build_saved_technical_chart
 from data_module.ml_storage_capacity import (
     MLStorageCapacityBudget,
     evaluate_capacity,
@@ -76,6 +78,7 @@ class DailyMarketSnapshotInput:
     price_points: Sequence[StockPricePointDTO]
     technical: StockTechnicalSnapshotDTO | None
     source_refs: Mapping[str, str]
+    technical_history: Sequence[StockTechnicalHistoryRowDTO] | None = None
 
     def __post_init__(self) -> None:
         stock_code = str(self.stock_code).strip()
@@ -109,6 +112,12 @@ class DailyMarketSnapshotInput:
         object.__setattr__(self, "scope_identity", scope_identity)
         object.__setattr__(self, "price_points", tuple(self.price_points))
         object.__setattr__(self, "source_refs", source_refs)
+        if self.technical_history is not None:
+            if len(self.technical_history) > _MAX_PRICE_POINTS_PER_STOCK or any(
+                not isinstance(row, StockTechnicalHistoryRowDTO) for row in self.technical_history
+            ):
+                raise ValueError("technical_history 必須是最多120列的既有DTO")
+            object.__setattr__(self, "technical_history", tuple(self.technical_history))
 
 
 @dataclass(frozen=True, slots=True)
@@ -339,6 +348,7 @@ class DailyMarketSnapshotProducer:
         missing_codes: list[str] = []
         snapshots: dict[str, dict[str, Any]] = {}
         records: dict[str, dict[str, Any]] = {}
+        saved_charts: dict[str, dict[str, Any]] = {}
 
         for stock_code in declared_codes:
             try:
@@ -351,6 +361,12 @@ class DailyMarketSnapshotProducer:
                     price_points=item.price_points,
                     technical=item.technical,
                 )
+                if item.technical_history is not None:
+                    saved_charts[stock_code] = build_saved_technical_chart(
+                        stock_code=stock_code, decision_cutoff=cutoff,
+                        scope_identity=item.scope_identity, input_fingerprint_sha256=input_hash,
+                        price_points=item.price_points, technical_history=item.technical_history,
+                    )
             except Exception as exc:
                 source_errors[stock_code] = f"{type(exc).__name__}: {exc}"
                 return self._result(
@@ -380,6 +396,7 @@ class DailyMarketSnapshotProducer:
                 and old_record.get("input_fingerprint_sha256") == input_hash
                 and old_record.get("source_identity") == item.scope_identity
                 and old_record.get("source_refs") == dict(item.source_refs)
+                and old_snapshot.get("saved_technical_chart") == saved_charts.get(stock_code)
             ):
                 snapshots[stock_code] = old_snapshot
                 records[stock_code] = dict(old_record)
@@ -405,6 +422,8 @@ class DailyMarketSnapshotProducer:
                     method_contracts=contracts,
                     method_contracts_sha256=contracts_sha256,
                 )
+                if stock_code in saved_charts:
+                    payload["saved_technical_chart"] = saved_charts[stock_code]
             except Exception as exc:
                 return self._result(
                     "projection_failed",

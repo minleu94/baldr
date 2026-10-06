@@ -110,8 +110,7 @@ def main(argv: list[str] | None = None) -> int:
             def load_inputs(code: str, day):
                 if day != cutoff.date():
                     raise ValueError("source_decision_date_mismatch")
-                points, technical, scope_identity, refs = source.load(code)
-                return DailyMarketSnapshotInput(code, scope_identity, points, technical, refs)
+                return source.load_input(code)
 
             def validate_sources_stable() -> None:
                 source.validate_source_stable()

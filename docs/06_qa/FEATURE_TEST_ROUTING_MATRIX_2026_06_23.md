@@ -1,5 +1,9 @@
 # Feature-to-Test Routing Matrix (2026-06-23)
 
+## 2026-10-06 UX08 同版保存圖表測試路由
+
+新增`test_saved_stock_technical_chart`／`test_ui_qt_saved_stock_chart`；改動service先跑`test_stock_research_report_service`／`test_stock_research_chart_payload`／`test_stock_research_technical_history`／`test_stock_research_shared_feature_consumer`／`test_ui_qt_stock_research_report`，producer／repository／screener及parent capture／daily owner／forward isolated驗相容；rank bookmark flow／source recovery／navigation驗最新研究與來源返回。深parent fixture用短authorized Temp避免Windows路徑超限。UI後強制Workbench／update validator／完整mypy與changed Python compile、quant。[251案例去重及raw收據](UX08_SAVED_CHART_READBACK_20261006.md)。
+
 ## 2026-10-06 第一版有限工程封存路由
 
 `scripts/qa_validate_first_version_release.py`重用F4 actual MainWindow隔離三程序，唯讀既有250次保存與當下容量；須保留原raw案例，不重跑producer／舊Native／已接受性能。context補驗使用`test_ui_qt_stock_research_navigation`／`test_stock_research_source_recovery`／`test_stock_research_ml_scope_context`／`test_research_bookmark_main_bridge`／`test_ui_qt_research_context_status`。MainWindow修改後仍強制Workbench／update validator／完整mypy；有限工程、完整UX與外部接受分界見[UX24收據](UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)。

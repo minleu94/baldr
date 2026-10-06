@@ -1,5 +1,11 @@
 # 系統架構
 
+## 2026-10-06 保存圖表資料流限定追加
+
+SQLiteDailyMarketSnapshotSource.load_input（既有唯讀transaction／source pin）→DailyMarketSnapshotProducer（nested saved_technical_chart v1；外層feature v2 optional欄位）→DailyMarketSnapshotRepository exact manifest/hash/cutoff核驗→StockResearchReportReadService frozen保存價格與MA20／60→純StockChartPayload→既有QPainter與精確表。codec只序列化／驗證Decimal字串／整數，不查SQL或計算指標。各120列、raw256KiB／envelope48KiB，外層容量／atomic publication不放寬。
+
+方法／原排名revision核驗仍獨立，圖表可重現不授予排名、PIT、ML或交易資格。舊無chart保存來源留空，可明示另開最新研究；只新日研究parent producer接線，推薦writer及舊結果補建尚無。[收據](../06_qa/UX08_SAVED_CHART_READBACK_20261006.md)。
+
 ## 2026-10-05 UX13 具名研究母體共用投影
 
 `DailyMarketResearchScreenerService` 唯讀讀回原 verified v2 快照；`daily_market_cohort_projection.py` 將完整發布 rows 與相同 manifest 投影為 immutable 母體 DTO，核對 scope／日期／hash／方法／實際條件結果，保留 declared／published／missing 分母。既有 Decimal 值排序不改發布資料或原方法；原強弱排名不存在時明示 unknown。

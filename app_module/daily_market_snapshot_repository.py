@@ -27,6 +27,7 @@ from app_module.daily_market_research_universe import (
     validate_research_universe_manifest_binding,
 )
 from app_module.research_run_dtos import canonical_json
+from app_module.saved_stock_technical_chart import read_saved_technical_chart
 
 
 DAILY_MARKET_SNAPSHOT_POINTER_SCHEMA = "daily-market-snapshot-pointer.v1"
@@ -619,7 +620,7 @@ class DailyMarketSnapshotRepository:
             "method_contracts_sha256",
             "policy",
         }
-        if set(payload) != required_fields:
+        if set(payload) not in (required_fields, required_fields | {"saved_technical_chart"}):
             _fail("snapshot_artifact_schema_mismatch", f"{stock_code} artifact 欄位不符合 feature DTO")
         if payload.get("contract_version") != manifest["feature_contract_version"]:
             _fail("snapshot_contract_version_mismatch", f"{stock_code} feature version 不符")
@@ -629,6 +630,17 @@ class DailyMarketSnapshotRepository:
             _fail("snapshot_decision_date_mismatch", f"{stock_code} artifact 日期不符")
         if payload.get("scope_identity") != record["source_identity"]:
             _fail("snapshot_scope_identity_mismatch", f"{stock_code} scope identity 不符")
+        if "saved_technical_chart" in payload:
+            try:
+                chart = read_saved_technical_chart(
+                    payload["saved_technical_chart"], stock_code=stock_code, decision_date=decision_date,
+                    scope_identity=str(payload["scope_identity"]),
+                    input_fingerprint_sha256=str(payload["input_fingerprint_sha256"]),
+                )
+                if chart.decision_cutoff != manifest["decision_cutoff"]:
+                    raise ValueError("chart_manifest_cutoff_mismatch")
+            except (ValueError, TypeError, KeyError) as exc:
+                _fail("snapshot_saved_chart_invalid", f"{stock_code} 保存圖表拒絕：{exc}")
         if payload.get("method_contracts") != manifest.get("method_contracts"):
             _fail(
                 "snapshot_method_contract_binding_mismatch",

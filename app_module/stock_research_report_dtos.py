@@ -298,6 +298,11 @@ def technical_history_saved_scope_limitation(
     # 不會把目前個股研究誤判成已保存決策；每日快照已在上方先行封鎖。
     if scope_mode == "current_stock_research":
         return None
+    if source_kind == "explicit_latest_stock_research" and not any(
+        str(context.get(key, "") or "").strip()
+        for key in ("result_id", "source_snapshot_id", "source_snapshot_hash")
+    ):
+        return None
     if scope_mode and scope_mode != "current_stock_research":
         return "目前選取的是已保存研究來源；沒有同來源 MA20/MA60 歷史列，因此不接目前 SQLite。"
     if source_kind:
@@ -529,6 +534,7 @@ class StockResearchReportDTO:
     schema_version: str = STOCK_RESEARCH_REPORT_SCHEMA_VERSION
     # 保留在欄位尾端以維持既有位置參數呼叫相容。
     technical_history: tuple[StockTechnicalHistoryRowDTO, ...] = ()
+    saved_technical_chart_json: str = ""
 
     def __post_init__(self) -> None:
         if not self.stock_code.strip():

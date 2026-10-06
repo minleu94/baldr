@@ -1,5 +1,9 @@
 # 文檔索引
 
+## 2026-10-06 UX08 保存圖表入口
+
+[保存價格／MA20／60收據](../06_qa/UX08_SAVED_CHART_READBACK_20261006.md)：新日研究parent producer→同版reader→原生圖／精確表、舊缺件／獨立最新研究，251案例與offscreen證據；UX08整項仍partial。[操作](../07_guides/APPLICATION_MANUAL.md)／[現行資料流](../01_architecture/system_architecture.md)同步。原七項首版有限終點不重開；benchmark lane只讀接線筆記附於收據，未整合。
+
 - 第一版stage1–3限定工程終點、跨頁舊context相容性與封存工具：[UX24第一版工程封存](../06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)；操作以[完整Manual](../07_guides/APPLICATION_MANUAL.md)為準。
 
 本索引只指向主題權威與目錄入口，不複製 QA 收據、測試數字或目前狀態。判讀衝突時使用下列 Scoped SSOT；日期化驗收內容保留於各自 receipt。

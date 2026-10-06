@@ -362,8 +362,7 @@ def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Pat
                         def load(code: str, day: date) -> DailyMarketSnapshotInput:
                             _require(day == cutoff.date(), "parent_date_mismatch")
                             check()
-                            points, technical, scope, refs = source.load(code)
-                            return DailyMarketSnapshotInput(code, scope, points, technical, refs)
+                            return source.load_input(code)
                         produced = DailyMarketSnapshotProducer(root / "batches" / plan / b["batch_id"]).produce(
                             cohort_id=b["cohort_id"], decision_cutoff=cutoff,
                             stock_codes=tuple(b["included_stock_codes"]), source_loader=load,

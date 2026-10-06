@@ -290,10 +290,60 @@ class StockResearchReportReadService:
         )
 
         price_points: tuple[StockPricePointDTO, ...] = ()
+        saved_chart = None
+        saved_chart_json = ""
+        saved_chart_scope = technical_history_saved_scope_limitation(context_map) is not None
+        if is_daily_research_snapshot or is_rank_research_context:
+            try:
+                self._check_cancel(cancel_callback)
+                if is_daily_research_snapshot:
+                    root = context_map.get("daily_snapshot_root", "")
+                    cohort = context_map.get("daily_snapshot_cohort_id", "")
+                    pin = context_map.get("source_snapshot_hash", "")
+                    identity = context_map.get("source_snapshot_id", "")
+                    if pinned_context_date_invalid or pinned_context_date_mismatch:
+                        raise ValueError("saved_chart_context_date_mismatch")
+                else:
+                    if rank_context is None or rank_context.selected_stock_code != code:
+                        raise ValueError("saved_chart_rank_context_mismatch")
+                    root, cohort = rank_context.snapshot_root, rank_context.parent_cohort_id
+                    pin, identity = rank_context.parent_snapshot_hash, rank_context.parent_snapshot_id
+                pinned = DailyMarketSnapshotRepository(Path(root)).load_manifest(pin, cohort, cutoff)
+                if pinned.manifest_identity_sha256 != identity:
+                    raise ValueError("saved_chart_manifest_identity_mismatch")
+                sealed_stock = pinned.stock_snapshots.get(code)
+                if (context_map.get("data_date") and isinstance(sealed_stock, Mapping)
+                        and context_map["data_date"] != sealed_stock.get("market_date")):
+                    raise ValueError("saved_chart_context_data_date_mismatch")
+                if isinstance(sealed_stock, Mapping) and "saved_technical_chart" in sealed_stock:
+                    from app_module.saved_stock_technical_chart import read_saved_technical_chart, canonical
+                    saved_chart = read_saved_technical_chart(
+                        sealed_stock["saved_technical_chart"], stock_code=code, decision_date=cutoff,
+                        scope_identity=str(sealed_stock["scope_identity"]),
+                        input_fingerprint_sha256=str(sealed_stock["input_fingerprint_sha256"]),
+                    )
+                    saved_chart_json = canonical(sealed_stock["saved_technical_chart"]).decode("utf-8")
+                    if saved_chart.price_points:
+                        context_map["data_date"] = saved_chart.price_points[-1].data_date
+            except StockResearchReportCancelled:
+                raise
+            except Exception as exc:
+                limitations.append("原保存圖表無法核驗，不以最新資料補圖：" + str(exc))
         price_source: StockReportSourceDTO | None = None
         try:
             self._check_cancel(cancel_callback)
-            price_points, price_source, discovered_name = self._read_prices(code, cutoff)
+            if saved_chart is not None:
+                price_points = saved_chart.price_points
+                price_source = StockReportSourceDTO(
+                    "sqlite.daily_prices", "同版保存價格", status="available" if price_points else "missing",
+                    data_as_of=price_points[-1].data_date if price_points else "", row_count=len(price_points),
+                    version="stock-research-saved-technical-chart.v1", historical_pit_eligible=False,
+                )
+                discovered_name = ""
+            elif saved_chart_scope:
+                discovered_name = ""
+            else:
+                price_points, price_source, discovered_name = self._read_prices(code, cutoff)
             name = name or discovered_name
         except StockResearchReportCancelled:
             raise
@@ -320,7 +370,21 @@ class StockResearchReportReadService:
         technical_source: StockReportSourceDTO | None = None
         try:
             self._check_cancel(cancel_callback)
-            technical, technical_source = self._read_technical(code, cutoff)
+            if saved_chart is not None:
+                technical_source = StockReportSourceDTO(
+                    "sqlite.technical_indicators", "同版保存MA20／MA60", status="available",
+                    data_as_of=saved_chart.technical_history[-1].data_date if saved_chart.technical_history else "",
+                    row_count=len(saved_chart.technical_history), historical_pit_eligible=False,
+                )
+                if saved_chart.technical_history:
+                    row = saved_chart.technical_history[-1]
+                    technical = StockTechnicalSnapshotDTO(
+                        data_date=row.data_date, source_id=row.source_id, available_at=row.available_at,
+                        indicators=tuple(StockMetricDTO(key=key, label=key, value=value, unit="TWD/share", data_as_of=row.data_date)
+                                         for key, value in (("MA20", row.ma20), ("MA60", row.ma60))),
+                    )
+            elif not saved_chart_scope:
+                technical, technical_source = self._read_technical(code, cutoff)
         except StockResearchReportCancelled:
             raise
         except Exception as exc:
@@ -342,7 +406,9 @@ class StockResearchReportReadService:
             )
 
         saved_history_limitation = technical_history_saved_scope_limitation(context_map)
-        if saved_history_limitation is not None:
+        if saved_chart is not None:
+            technical_history = saved_chart.technical_history
+        elif saved_history_limitation is not None:
             limitations.append(saved_history_limitation)
         else:
             try:
@@ -394,12 +460,13 @@ class StockResearchReportReadService:
                     self._columns("daily_prices"), self._columns("technical_indicators")
                 )
                 scope_identity = daily_snapshot_scope_identity(db_path, code, schema_identity)
-                expected_hash = daily_market_feature_input_fingerprint(code, cutoff, scope_identity, price_points, technical)
+                # feature契約仍獨立核對來源；只用於驗證，不交給保存圖表補洞。
+                legacy_points, _legacy_price_source, _legacy_name = self._read_prices(code, cutoff)
+                legacy_technical, _legacy_technical_source = self._read_technical(code, cutoff)
+                expected_hash = daily_market_feature_input_fingerprint(code, cutoff, scope_identity, legacy_points, legacy_technical)
                 pinned_repository = DailyMarketSnapshotRepository(Path(snapshot_root))
                 verified = pinned_repository.load_manifest(
-                    manifest_sha256,
-                    cohort_id=cohort_id,
-                    decision_date=cutoff,
+                    manifest_sha256, cohort_id=cohort_id, decision_date=cutoff,
                     expected_input_hashes={code: expected_hash},
                 )
                 if verified.manifest_identity_sha256 != manifest_identity:
@@ -939,6 +1006,7 @@ class StockResearchReportReadService:
             research_context=context_map,
             original_ranking=original_ranking,
             technical_history=technical_history,
+            saved_technical_chart_json=saved_chart_json,
         )
 
     def _read_prices(

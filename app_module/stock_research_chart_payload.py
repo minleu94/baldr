@@ -12,6 +12,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from zoneinfo import ZoneInfo
+import json
+from app_module.saved_stock_technical_chart import read_saved_technical_chart
 
 from app_module.stock_research_report_dtos import (
     StockEvidenceEventDTO,
@@ -125,6 +127,19 @@ def project_stock_chart_payload(
 
     report_context = getattr(report, "research_context", {})
     context = _string_context(report_context)
+    saved_chart_text = getattr(report, "saved_technical_chart_json", "")
+    if saved_chart_text:
+        try:
+            envelope = json.loads(saved_chart_text)
+            chart = read_saved_technical_chart(
+                envelope, stock_code=stock_code, decision_date=cutoff,
+                scope_identity=envelope["scope_identity"],
+                input_fingerprint_sha256=envelope["input_fingerprint_sha256"],
+            )
+            if chart.price_points != report.price_points or chart.technical_history != report.technical_history:
+                return _rejected("saved_chart_report_rows_mismatch")
+        except (ValueError, TypeError, KeyError) as exc:
+            return _rejected("saved_chart_invalid:" + str(exc))
     context_pin_status = "unknown"
     pinned_context = _nonempty_context(expected_source_context)
     if pinned_context:
@@ -518,8 +533,11 @@ def _project_technical_history(
     saved_scope_limitation = technical_history_saved_scope_limitation(
         getattr(report, "research_context", {})
     )
-    if saved_scope_limitation is not None:
-        return (), "unavailable", (saved_scope_limitation,), None
+    if saved_scope_limitation is not None and not getattr(report, "saved_technical_chart_json", ""):
+        return (), "unavailable", (
+            "這筆舊保存來源沒有同版價格／MA20／MA60圖表；不借目前資料補圖。可使用「另開最新研究」獨立查看現況。",
+            saved_scope_limitation,
+        ), None
     if not price_dates:
         return (), "unknown", ("沒有價格日期可供 MA20/MA60 對齊。",), None
 

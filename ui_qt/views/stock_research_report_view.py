@@ -52,6 +52,7 @@ from app_module.stock_research_report_dtos import (
     StockPricePointDTO,
     StockResearchReportDTO,
     StockTradingRestrictionDTO,
+    technical_history_saved_scope_limitation,
 )
 from app_module.decision_presentation import (
     DecisionPresentationService,
@@ -684,7 +685,7 @@ class StockResearchReportView(QWidget):
         )
         self.open_latest_rank_research_button.setAccessibleName("另開最新研究")
         self.open_latest_rank_research_button.setToolTip(
-            "以新 context 開啟當下個股研究；不變更或覆蓋這筆原排名來源。"
+            "以新 context 開啟當下個股研究；不變更或覆蓋原保存來源。"
         )
         self.open_latest_rank_research_button.clicked.connect(
             self.request_latest_research
@@ -1072,6 +1073,13 @@ class StockResearchReportView(QWidget):
     ) -> ResearchStockContextDTO:
         """只從同股、同 manifest 的已核驗 artifact 讀取資料日。"""
 
+        # 圖表獨立核驗 pinned artifact；方法投影失敗不清空圖表資料日。
+        if report.saved_technical_chart_json and context.stock_code == stock_code:
+            projection = project_stock_chart_payload(
+                report, expected_source_context=_stock_chart_expected_source_context(context)
+            )
+            if projection.payload is not None and report.price_points:
+                return replace(context, data_date=report.price_points[-1].data_date)
         if (
             str(context.stock_code or "").strip() != str(stock_code or "").strip()
             or str(report.stock_code or "").strip() != str(stock_code or "").strip()
@@ -1284,7 +1292,17 @@ class StockResearchReportView(QWidget):
         elif context is not None and context.source_kind == "daily_market_research_snapshot":
             # 每次重讀都要由該股票的 pinned artifact 回填資料日；來源核驗失敗時
             # 不把上次載入日期留在目前 context 上。
-            context = replace(context, data_date="")
+            pinned_chart = (
+                project_stock_chart_payload(
+                    self._loaded_report,
+                    expected_source_context=_stock_chart_expected_source_context(context),
+                )
+                if self._loaded_report is not None
+                and self._loaded_report.saved_technical_chart_json
+                else None
+            )
+            if pinned_chart is None or pinned_chart.payload is None:
+                context = replace(context, data_date="")
             self.context = context
             self._render_context_path()
         requested_identity = self._context_identity(context, code)
@@ -1768,9 +1786,18 @@ class StockResearchReportView(QWidget):
         """以獨立 host 路由另開最新研究，保留目前 pinned context。"""
 
         context = self.context
-        if context is None or context.rank_context is None:
+        if context is None:
             return False
-        self.latestResearchRequested.emit(context)
+        if context.rank_context is not None:
+            self.latestResearchRequested.emit(context)
+        elif self._loaded_report is not None and technical_history_saved_scope_limitation(self._loaded_report.research_context) is not None:
+            self.latestResearchRequested.emit(ResearchStockContextDTO(
+                stock_code=context.stock_code, stock_name=context.stock_name,
+                source_kind="explicit_latest_stock_research", source_workspace="stock_research",
+                source_label="使用者明確要求另開最新個股研究",
+            ))
+        else:
+            return False
         return True
 
     def _sync_original_rank_actions(self) -> None:
@@ -1778,9 +1805,11 @@ class StockResearchReportView(QWidget):
         is_rank_context = bool(context is not None and context.rank_context is not None)
         report = self._loaded_report
         ranking = report.original_ranking if report is not None else None
+        missing_saved_chart = bool(report is not None and not report.saved_technical_chart_json
+                                  and technical_history_saved_scope_limitation(report.research_context) is not None)
         self.original_ranking_label.setVisible(is_rank_context)
         self.favorite_original_ranking_button.setVisible(is_rank_context)
-        self.open_latest_rank_research_button.setVisible(is_rank_context)
+        self.open_latest_rank_research_button.setVisible(is_rank_context or missing_saved_chart)
         available = bool(
             is_rank_context
             and report is not None
@@ -1797,7 +1826,7 @@ class StockResearchReportView(QWidget):
             available and not self._closing
         )
         self.open_latest_rank_research_button.setEnabled(
-            is_rank_context and not self._closing
+            (is_rank_context or missing_saved_chart) and not self._closing
         )
         if not is_rank_context:
             self.original_ranking_label.clear()
@@ -2026,6 +2055,14 @@ class StockResearchReportView(QWidget):
             layout.addWidget(panel)
             layout.addStretch()
             return
+
+        if technical_history_saved_scope_limitation(report.research_context) is not None:
+            if report.saved_technical_chart_json:
+                layout.addWidget(self._wrapped_label("使用原保存版本的價格與MA20／MA60；不讀最新資料補圖。價格未校正，來源可得時間未知不代表PIT。"))
+            else:
+                panel = self._missing_panel("這筆保存結果沒有可核驗的同版價格／MA圖表；保留缺件，不借今天資料。可使用「另開最新研究」獨立查看現況。")
+                panel.setObjectName("stockResearchSavedChartMissing")
+                layout.addWidget(panel)
 
         chart: StockPriceChartWidget | None = None
         try:

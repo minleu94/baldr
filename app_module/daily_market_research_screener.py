@@ -478,16 +478,7 @@ class DailyMarketResearchScreenerService:
                     raise DailyMarketResearchCancelled("使用者已取消每日快照產生。")
                 if requested_date != cutoff.date():
                     raise ValueError("producer 要求的資料日與決策截止日不符")
-                price_points, technical, scope_identity, source_refs = source.load(
-                    stock_code
-                )
-                return DailyMarketSnapshotInput(
-                    stock_code=stock_code,
-                    scope_identity=scope_identity,
-                    price_points=price_points,
-                    technical=technical,
-                    source_refs=source_refs,
-                )
+                return source.load_input(stock_code)
 
             def before_publish() -> None:
                 if is_cancelled():

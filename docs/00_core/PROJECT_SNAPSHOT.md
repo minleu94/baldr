@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 UX08 保存圖表有限閉環
+
+沿3ee80ff8，新日研究／隔離parent producer把既存價格及MA20／60歷史以有界versioned chart封入原feature artifact；個股／原排名下鑽只讀exact parent，圖與精確表同源，不以今天補保存來源。原DB改值／不存在、新程序重讀、gap、取消重試返回／stale及舊保存缺件／獨立最新研究已驗。圖表可用不放寬原feature／rank核驗；未知availability／PIT仍false。
+
+251個不同相關案例、Workbench85、validator25／4略過、mypy813、compile／quant通過；actual offscreen圖／表與缺件畫面核對。UX08這個日研究parent有限工程終點done，整項及stage4仍partial：推薦execution writer／舊結果補建、更多指標、markers、縮放平移／期間、圖商選型、Native／真人未完成。原計畫原文raw bytes只追加；9stage 1done/7partial/1pending、24UX 2done/20partial/2pending不變。UX21 benchmark lane10508947僅只讀核對，未整合；source／runtime／store目前仍benchmark=None/null。[UX08收據](../06_qa/UX08_SAVED_CHART_READBACK_20261006.md)。
+
 ## 2026-10-06 UX24 第一版 stage 1–3 有限工程封存
 
 沿8a78eac及已接受F1–F4，具名母體close／MA20／MA60與兩固定方法、共享原排名、個股exact context／收藏／返回／歷史讀回的首版有限工程已封存。補驗找到並修正舊mapping缺rank_context被補空字串而遭DTO拒絕；明示錯誤仍拒絕，沒有新增產品功能。UX03／04／05／06／09／15／17限定工程終點完成，整項仍partial；9stage 1done/7partial/1pending、24UX 2done/20partial/2pending不變。

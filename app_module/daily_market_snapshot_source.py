@@ -7,7 +7,10 @@ import sqlite3
 from collections.abc import Callable, Sequence
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app_module.daily_market_snapshot_producer import DailyMarketSnapshotInput
 
 from app_module.research_run_dtos import canonical_json
 from app_module.stock_research_report_dtos import StockPricePointDTO, StockTechnicalSnapshotDTO
@@ -121,3 +124,14 @@ class SQLiteDailyMarketSnapshotSource:
             "price": f"{self.db_path}#daily_prices",
             "technical": f"{self.db_path}#technical_indicators",
         }
+
+    def load_input(self, stock_code: str) -> DailyMarketSnapshotInput:
+        """新producer保存同一transaction的價格與MA歷史，舊load四欄介面保留。"""
+        from app_module.daily_market_snapshot_producer import DailyMarketSnapshotInput
+
+        points, technical, scope, refs = self.load(stock_code)
+        with cooperative_read_cancellation(self.cancel_callback):
+            configure_read_only_connection(self._connection)
+            history = self._reader._read_technical_history(stock_code, self.decision_date, points)
+        self.validate_source_stable()
+        return DailyMarketSnapshotInput(stock_code, scope, points, technical, refs, history)

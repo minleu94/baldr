@@ -69,3 +69,11 @@ mypy限定6個source files通過，compile修改Python通過，quant precision�
 中央需同步Manual上述入口、操作、參數、結果、安全與排錯，Snapshot／Architecture／Index／scheduled README與唯一原plan append；本lane只改授權ownership。正式calendar/terminal custody adapter caller、Task/account/ACL、正式source/output roots與安全啟用仍需部署決策；本包不真DB抓取、不私人migration、不B09 files、不交易、不Native、不真train、不dev cherry、不push。
 
 回滾：先確認此lane未提交內容，`git revert <B12提交>`，再跑focused；保留所有原來源、segment與收據。新adapter caller由中央同時回復，無資料刪除。
+
+## 中央 review 補正：退出碼必須明示
+
+`preflight_passed` 即使JSON有效且source binding相符，仍須明示 `process_exit_code` 且 `type(value) is int`、值0；缺值／非零／bool／字串／浮點／null一律blocked，在取得lock或呼叫execute前停止。成功terminal的observed／already_observed亦採相同exact int zero，移除缺欄位預設0；exact保存receipt/source/資格核驗照舊。注入runner也須提供明示的實際退出碼，不能把unknown填成成功。
+
+最小focused驗證：B12 runtime `39 passed / 15.66s`（原31＋新8：0正例與7種非法preflight，全部負例execute零呼叫）；真隔離owner收據的observed／already_observed terminal各一case `2 passed / 6.84s`，逐一驗0成功與上述7種非法值拒絕，source bytes不變。raw收據 `output/qa/b12_preflight_exit_review_20261006.xml` 與 `output/qa/b12_terminal_exit_review_20261006.xml`。mypy adapter／compile adapter+test／diffcheck通過。不重跑原103整組、不改schema／qualification／capacity。
+
+提交順序：先 `f30b7cc9cf7db1cb61357ad3d41e9aae53041331` 的原B12，再此review補正commit。僅adapter／B12 test／本QA三檔。

@@ -229,6 +229,8 @@ def run_daily_runtime(request: DailyRuntimeRequest, *, execute: bool = False,
         if pre.get("status") != "preflight_passed":
             result["status"] = pre.get("status", "blocked")
             return result
+        require(type(pre.get("process_exit_code")) is int and pre["process_exit_code"] == 0,
+                "owner_preflight_process_exit_invalid")
         require(pre.get("source_binding_sha256") == binding, "owner_preflight_source_pin_mismatch")
         result["status"] = "preflight_passed"
         if not execute:
@@ -261,7 +263,8 @@ def run_daily_runtime(request: DailyRuntimeRequest, *, execute: bool = False,
             saved = _OwnerStatusWriter(config["status_root"]).read(identity)["capture"]
             require(saved.get("source_binding_sha256") == binding and saved.get("status") == child["status"]
                     and saved.get("qualification") == dict(_QUALIFICATION), "owner_saved_receipt_mismatch")
-            require(child.get("process_exit_code", 0) == 0, "owner_process_exit_mismatch")
+            require(type(child.get("process_exit_code")) is int and child["process_exit_code"] == 0,
+                    "owner_process_exit_mismatch")
         require(load_daily_runtime(segment.runtime_path) == runtime and load_observation_policy(config["policy_config"]) == policy, "runtime_changed_during_execute")
     except (ValueError, OSError, TypeError) as exc:
         result.update(status="blocked", error_code=str(exc))

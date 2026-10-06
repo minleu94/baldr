@@ -40,7 +40,7 @@ def request_fixture(ctx):
 
 
 def _local_runner(path, day, *, execute, timeout_seconds, cancel_callback):
-    return owner.run_daily_owner(path, day, execute=execute, cancel_callback=cancel_callback)
+    return {**owner.run_daily_owner(path, day, execute=execute, cancel_callback=cancel_callback), "process_exit_code": 0}
 
 
 def _run(fixture, **kwargs):
@@ -207,6 +207,7 @@ print(json.dumps(result))"""
             capture_output=True, text=True, encoding="utf-8", timeout=timeout_seconds)
         assert completed.returncode == 0, completed.stderr
         result = json.loads(completed.stdout)
+        result["process_exit_code"] = completed.returncode
         pids.append(result.pop("pid"))
         return result
     old_request = replace(req, target_date=yesterday, decision_cutoff=req.decision_cutoff-timedelta(days=1),
@@ -240,7 +241,7 @@ def test_adapter_rejects_fabricated_success_receipt(request_fixture):
     binding = req.terminals[0].source_binding_sha256
     def fake_owner(*a, execute, **kw):
         return {"status": "observed" if execute else "preflight_passed", "source_binding_sha256": binding,
-                "owner_status_capture_status": "published"}
+                "owner_status_capture_status": "published", "process_exit_code": 0}
     result = adapter.run_daily_runtime(req, execute=True, clock=lambda: now, process_runner=fake_owner)
     assert result["status"] == "blocked" and result["error_code"] == "owner_receipt_identity_missing"
 
@@ -251,7 +252,7 @@ def test_runtime_changed_after_preflight_stops_before_execute(request_fixture):
         assert not execute
         config["retry_delay_seconds"] = 1
         path.write_text(json.dumps(config), encoding="utf-8")
-        return {"status": "preflight_passed", "source_binding_sha256": req.terminals[0].source_binding_sha256}
+        return {"status": "preflight_passed", "source_binding_sha256": req.terminals[0].source_binding_sha256, "process_exit_code": 0}
     result = adapter.run_daily_runtime(req, execute=True, clock=lambda: now, process_runner=changes_config)
     assert result["status"] == "blocked" and result["error_code"] == "runtime_changed_before_execute"
     assert not req.coordination_root.exists()
@@ -263,7 +264,7 @@ def test_cancel_after_preflight_stops_before_lock(request_fixture):
     def preflight_only(*a, execute, **kw):
         assert not execute
         stopped[0] = True
-        return {"status": "preflight_passed", "source_binding_sha256": req.terminals[0].source_binding_sha256}
+        return {"status": "preflight_passed", "source_binding_sha256": req.terminals[0].source_binding_sha256, "process_exit_code": 0}
     result = adapter.run_daily_runtime(req, execute=True, clock=lambda: now, process_runner=preflight_only,
                                       cancel_callback=lambda: stopped[0])
     assert result["status"] == "cancelled"
@@ -284,3 +285,66 @@ def test_process_timeout_cancel_stdout_contract(tmp_path, monkeypatch):
     monkeypatch.setattr(adapter.time, "monotonic_ns", lambda: 0)
     result = adapter._owner_process(tmp_path/"runtime.json", datetime.now().date(), execute=True, timeout_seconds=1, cancel_callback=lambda: True)
     assert result["status"] == "cancelled"
+
+
+@pytest.mark.parametrize("exit_code", ["missing", 2, False, True, "0", 0.0, None],
+                         ids=["missing", "nonzero", "bool-false", "bool-true", "string", "float", "null"])
+def test_preflight_invalid_exit_never_calls_execute(request_fixture, exit_code):
+    req, now, _ = request_fixture
+    calls = []
+    def runner(*a, execute, **kw):
+        calls.append(execute)
+        assert not execute, "非法preflight退出碼不得啟動execute"
+        result = {"status": "preflight_passed", "source_binding_sha256": req.terminals[0].source_binding_sha256}
+        if exit_code != "missing":
+            result["process_exit_code"] = exit_code
+        return result
+    result = adapter.run_daily_runtime(req, execute=True, clock=lambda: now, process_runner=runner)
+    assert result["status"] == "blocked" and result["error_code"] == "owner_preflight_process_exit_invalid"
+    assert calls == [False]
+    assert not req.coordination_root.exists()
+
+
+def test_preflight_explicit_integer_zero_allows_execute(request_fixture):
+    req, now, _ = request_fixture
+    calls = []
+    def runner(*a, execute, **kw):
+        calls.append(execute)
+        return {"status": "cancelled" if execute else "preflight_passed",
+                "source_binding_sha256": req.terminals[0].source_binding_sha256, "process_exit_code": 0}
+    result = adapter.run_daily_runtime(req, execute=True, clock=lambda: now, process_runner=runner)
+    assert result["status"] == "cancelled" and calls == [False, True]
+    assert not (req.coordination_root/".daily-runtime.lock").exists()
+
+
+@pytest.mark.parametrize("status", ["observed", "already_observed"])
+def test_successful_terminal_requires_exact_integer_zero_with_real_receipt(request_fixture, status):
+    req, now, (_, _, _, args, _) = request_fixture
+    before = args["db_path"].read_bytes()
+    saved = _local_runner(req.segments[0].runtime_path, req.target_date, execute=True,
+                          timeout_seconds=30, cancel_callback=lambda: False)
+    if status == "already_observed":
+        saved = _local_runner(req.segments[0].runtime_path, req.target_date, execute=True,
+                              timeout_seconds=30, cancel_callback=lambda: False)
+    assert saved["status"] == status
+    for code in ("missing", 2, False, True, "0", 0.0, None, 0):
+        calls = []
+        def runner(*a, execute, **kw):
+            calls.append(execute)
+            if not execute:
+                return {"status": "preflight_passed", "source_binding_sha256": req.terminals[0].source_binding_sha256,
+                        "process_exit_code": 0}
+            result = dict(saved)
+            if code == "missing":
+                result.pop("process_exit_code")
+            else:
+                result["process_exit_code"] = code
+            return result
+        result = adapter.run_daily_runtime(req, execute=True, clock=lambda: now, process_runner=runner)
+        if type(code) is int and code == 0:
+            assert result["status"] == status, result
+        else:
+            assert result["status"] == "blocked" and result["error_code"] == "owner_process_exit_mismatch", result
+        assert calls == [False, True]
+        assert not (req.coordination_root/".daily-runtime.lock").exists()
+    assert args["db_path"].read_bytes() == before

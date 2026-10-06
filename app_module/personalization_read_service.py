@@ -76,7 +76,7 @@ from app_module.recommendation.personal_use_policy import (
 from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from app_module.recommendation.persistence import ExecutionArtifactIntegrityError
 from data_module.result_artifact_store import ResultArtifactStore
-from ml_module.recommendation_calibration_evidence import (
+from data_module.recommendation_natural_maturity_proof import (
     verify_natural_maturity_session_proof,
 )
 

@@ -51,6 +51,65 @@ LABEL_CONTRACT = "label_projection_v1"
 RETURN_BASIS = "close_to_close_event_date"
 
 
+def test_personalization_uses_data_session_adapter() -> None:
+    from app_module.personalization_read_service import verify_natural_maturity_session_proof
+    from data_module.recommendation_natural_maturity_proof import (
+        verify_natural_maturity_session_proof as verify_data_session_proof,
+    )
+
+    assert verify_natural_maturity_session_proof is verify_data_session_proof
+
+
+def test_data_session_adapter_cold_import_has_no_data_io_or_ml(tmp_path: Path) -> None:
+    import subprocess
+    import sys
+
+    code = r'''
+import importlib.abc
+import os
+from pathlib import Path
+import sys
+sys.dont_write_bytecode = True
+class NoML(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split('.')[0] in {'ml_module', 'sklearn', 'joblib'}:
+            raise AssertionError('ML import attempted: ' + fullname)
+def audit(event, args):
+    if event == 'open':
+        path, mode, flags = args
+        if flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
+            raise AssertionError('write attempted: ' + str(path))
+        if isinstance(path, (str, bytes)) and Path(os.fsdecode(path)).suffix.lower() in {
+            '.db', '.sqlite', '.sqlite3', '.json', '.jsonl', '.csv', '.parquet', '.joblib'
+        }:
+            raise AssertionError('data read attempted: ' + str(path))
+    if event in {'sqlite3.connect', 'os.mkdir', 'os.remove', 'os.rename', 'subprocess.Popen', 'socket.connect'}:
+        raise AssertionError('I/O attempted: ' + event)
+sys.meta_path.insert(0, NoML())
+sys.addaudithook(audit)
+from data_module.recommendation_natural_maturity_proof import verify_natural_maturity_session_proof
+try:
+    verify_natural_maturity_session_proof(
+        {'horizon_sessions': 20}, capture_date='2026-01-02', label_end_date='2026-01-30',
+        evaluation_at=None, expected_db_path='missing.db',
+    )
+except ValueError as exc:
+    assert str(exc) == 'session proof hash mismatch'
+else:
+    raise AssertionError('invalid proof accepted')
+assert not any(name.split('.')[0] in {'ml_module', 'joblib', 'sklearn'} for name in sys.modules)
+print('cold adapter import and malformed-proof rejection: zero data I/O, zero ML')
+'''
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", code],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "zero data I/O, zero ML" in result.stdout
+    assert list(tmp_path.iterdir()) == []
+
+
 class _TempConfig:
     def __init__(self, output_root: Path) -> None:
         self.output_root = output_root

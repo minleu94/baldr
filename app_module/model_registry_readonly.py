@@ -12,6 +12,7 @@ import sqlite3
 import stat
 from typing import Any, Mapping, NoReturn
 
+# 僅使用無 I/O 的 immutable DTO 與轉移表；不使用同模組 registry／初始化器。
 from ml_module.model_lifecycle_registry import ModelLifecycleEvent, _ALLOWED_TRANSITIONS
 from ml_module.model_prediction_registries import MLModelRecord
 

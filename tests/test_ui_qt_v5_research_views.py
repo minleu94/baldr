@@ -9,6 +9,8 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
@@ -210,17 +212,21 @@ def test_price_chart_hover_exposes_point_date_ohlc_volume_and_range() -> None:
         _send_chart_mouse_move(chart, QPoint(plot_left, 80))
         app.processEvents()
         first_tooltip = chart.toolTip()
-        assert "日期：2026-09-07" in first_tooltip
-        assert "開盤：99" in first_tooltip
-        assert "最高：103" in first_tooltip
-        assert "最低：98" in first_tooltip
-        assert "收盤：102" in first_tooltip
+        assert "資料日：2026-09-07" in first_tooltip
+        assert "開：99｜高：103｜低：98｜收：102" in first_tooltip
         assert "成交量：1,000" in first_tooltip
 
         _send_chart_mouse_move(chart, QPoint(middle_x, 80))
         app.processEvents()
-        assert "日期：2026-09-08" in chart.toolTip()
+        assert "資料日：2026-09-08" in chart.toolTip()
+        assert "開：102｜高：104｜低：101｜收：103" in chart.toolTip()
         assert "成交量：1,500" in chart.toolTip()
+        assert "圖表範圍：2026-09-07 至 2026-09-09" in chart.accessibleDescription()
+        _send_chart_mouse_move(chart, QPoint(last_x, 80))
+        app.processEvents()
+        assert "資料日：2026-09-09" in chart.toolTip()
+        assert "開：103｜高：105｜低：102｜收：104" in chart.toolTip()
+        assert "成交量：2,000" in chart.toolTip()
 
         chart.set_points(
             (
@@ -233,11 +239,10 @@ def test_price_chart_hover_exposes_point_date_ohlc_volume_and_range() -> None:
         _send_chart_mouse_move(chart, QPoint(plot_left, 80))
         app.processEvents()
         incomplete_tooltip = chart.toolTip()
-        assert "日期：2026-09-10" in incomplete_tooltip
-        assert "開盤：未提供" in incomplete_tooltip
-        assert "最高：未提供" in incomplete_tooltip
-        assert "最低：未提供" in incomplete_tooltip
-        assert "成交量：未提供" in incomplete_tooltip
+        assert "資料日：2026-09-10" in incomplete_tooltip
+        assert "開：—（未提供）｜高：—（未提供）｜低：—（未提供）｜收：105" in incomplete_tooltip
+        assert "成交量：—（未提供）" in incomplete_tooltip
+        assert "圖表範圍：2026-09-10 至 2026-09-10" in chart.accessibleDescription()
 
         chart.set_points(
             (
@@ -261,7 +266,7 @@ def test_price_chart_hover_exposes_point_date_ohlc_volume_and_range() -> None:
         )
         _send_chart_mouse_move(chart, QPoint(last_x, 80))
         app.processEvents()
-        assert "日期：2026-09-15" in chart.toolTip()
+        assert "資料日：2026-09-15" in chart.toolTip()
         assert "資料範圍：2026-09-11 至 2026-09-15" in chart.accessibleDescription()
         assert "圖上可繪製 2 點" in chart.accessibleDescription()
 
@@ -275,7 +280,10 @@ def test_price_chart_hover_exposes_point_date_ohlc_volume_and_range() -> None:
         app.processEvents()
 
 
-def test_report_summary_exposes_evidence_change_risk_sufficiency_and_next_step() -> None:
+@pytest.mark.parametrize("fundamental_available", [False, True], ids=["missing", "available"])
+def test_report_summary_exposes_evidence_change_risk_sufficiency_and_next_step(
+    fundamental_available: bool,
+) -> None:
     _app()
 
     class Service:
@@ -287,7 +295,7 @@ def test_report_summary_exposes_evidence_change_risk_sufficiency_and_next_step()
         stock_name="台積電",
         as_of="2026-09-08",
         attention_reasons=("已有保存研究理由",),
-        key_risks=("資料區塊仍有缺件",),
+        key_risks=("保存研究理由仍需驗證",),
         sections=(
             StockReportSectionDTO(
                 section_id="price",
@@ -298,7 +306,9 @@ def test_report_summary_exposes_evidence_change_risk_sufficiency_and_next_step()
             StockReportSectionDTO(
                 section_id="fundamental",
                 label="基本面",
-                status=ReportSectionStatus.MISSING.value,
+                status=(ReportSectionStatus.AVAILABLE.value if fundamental_available
+                        else ReportSectionStatus.MISSING.value),
+                data_as_of="2026-09-08" if fundamental_available else "",
             ),
         ),
         price_points=(
@@ -313,11 +323,18 @@ def test_report_summary_exposes_evidence_change_risk_sufficiency_and_next_step()
 
     view._render_report(report)
 
-    assert view.summary_focus.conclusion_label.text().startswith("結論：值得看：")
-    assert "價格 2026-09-08" in view.summary_focus.evidence_label.text()
+    # 關注理由不是當下規則證據；基本面足夠也不能升格為值得看。
+    assert view.summary_focus.conclusion_label.text() == "結論：需核對資料：已有保存研究理由"
+    assert "2026-09-08 收盤 100.00 TWD（漲跌 +1.00）" in view.summary_focus.evidence_label.text()
     assert "最新一日漲跌" in view.summary_focus.change_label.text()
     assert "主要風險／反證" in view.summary_focus.risk_label.text()
-    assert "基本面" in view.summary_focus.sufficiency_label.text()
+    if fundamental_available:
+        assert "目前主要區塊都有可讀狀態" in view._summary_values["sufficiency"].text()
+        assert "不足：基本面" not in view.summary_focus.sufficiency_label.text()
+    else:
+        assert "不足：基本面 缺資料或讀取失敗。" in view.summary_focus.sufficiency_label.text()
+        assert "不足：基本面 缺資料或讀取失敗。" in view._summary_values["sufficiency"].text()
+    assert "ML 狀態：" in view.summary_focus.sufficiency_label.text()
     assert "下一步：" in view.summary_focus.next_step_label.text()
     assert view.summary_source_group.isHidden()
     assert view.summary_detail_group.isHidden()

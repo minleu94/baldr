@@ -20,6 +20,14 @@ FORBIDDEN_ML_IMPORT_ROOTS = frozenset(PRODUCTION_ROOTS)
 ARTIFACT_CONTRACT_ROOT = "artifact_contracts"
 ARTIFACT_CONTRACT_ALLOWED_EXTERNAL_ROOTS = frozenset({"numpy"})
 ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = {
+    # B01 已核對 DTO 建構／to_dict 與 transition 表皆不呼叫 registry I/O。
+    # 只准這三個符號；同模組 writer、initializer 與 trainer 仍由 guard 拒絕。
+    "app_module/model_registry_readonly.py": {
+        "ml_module.model_lifecycle_registry": frozenset(
+            {"ModelLifecycleEvent", "_ALLOWED_TRANSITIONS"}
+        ),
+        "ml_module.model_prediction_registries": frozenset({"MLModelRecord"}),
+    },
     # UX23 consumes exported lifecycle DTOs/policy only; never opens a registry.
     "app_module/rule_research_shadow_acceptance.py": {
         "ml_module.model_lifecycle_registry": frozenset({"ModelLifecycleEvent", "_ALLOWED_TRANSITIONS"}),

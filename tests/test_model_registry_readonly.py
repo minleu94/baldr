@@ -4,6 +4,8 @@ from dataclasses import asdict
 import json
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 
 import pytest
 
@@ -19,6 +21,39 @@ from ml_module.model_prediction_registries import (
 from tests.test_rule_research_forward_isolated import pipeline
 
 OBSERVED = "2026-10-06T06:30:00+00:00"
+
+
+def test_reviewed_registry_modules_import_in_fresh_process_without_data_io():
+    """新程序載入實際 module，阻斷資料 I/O；stdlib bootstrap 與原碼載入除外。"""
+    probe = r'''
+import builtins, dataclasses, datetime, decimal, json, math, os, pathlib, sqlite3, sys, typing
+from unittest.mock import patch
+assert "ml_module.model_lifecycle_registry" not in sys.modules
+assert "ml_module.model_prediction_registries" not in sys.modules
+def forbidden(*args, **kwargs):
+    raise AssertionError("registry import performed data I/O")
+with patch.object(sqlite3, "connect", forbidden), \
+     patch.object(builtins, "open", forbidden), \
+     patch.object(os, "open", forbidden), \
+     patch.object(pathlib.Path, "open", forbidden), \
+     patch.object(pathlib.Path, "read_bytes", forbidden), \
+     patch.object(pathlib.Path, "mkdir", forbidden):
+    from ml_module.model_lifecycle_registry import ModelLifecycleEvent, _ALLOWED_TRANSITIONS
+    from ml_module.model_prediction_registries import MLModelRecord
+    model = MLModelRecord("synthetic", "dataset", "2026-10-05T00:00:00+00:00", "synthetic",
+                          ("feature",), "never-open.bin", "sha256:" + "a" * 64)
+    event = ModelLifecycleEvent("event", model.model_id, "activated_for_shadow",
+                                "2026-10-06T00:00:00+00:00", "synthetic")
+    assert event.event_type in _ALLOWED_TRANSITIONS[None]
+    assert event.to_dict()["model_id"] == model.model_id
+print("reviewed import and DTO paths: no data I/O")
+'''
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", probe], cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "no data I/O" in result.stdout
 
 
 @pytest.fixture
@@ -87,6 +122,32 @@ def test_empty_events_keep_candidate_without_activation(registry):
     assert result.current_status is None and result.events == ()
     assert result.model.lifecycle_status == "shadow_candidate"
     assert result.safety_flags["shadow_enabled"] is False
+
+
+def test_reviewed_dto_construction_and_transition_validation_have_no_indirect_io(registry, monkeypatch):
+    """直接阻斷 I/O，驗證新三符號的 DTO 路徑不呼叫 writer 或讀模型。"""
+    _, model, _ = registry
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("DTO／轉移表不應讀寫檔案、開 DB 或呼叫 registry")
+
+    with monkeypatch.context() as blocked:
+        blocked.setattr(sqlite3, "connect", forbidden)
+        blocked.setattr(Path, "open", forbidden)
+        blocked.setattr(Path, "read_bytes", forbidden)
+        blocked.setattr(MLModelRegistry, "append", forbidden)
+        blocked.setattr(ModelLifecycleRegistry, "append", forbidden)
+        constructed = reader_module.MLModelRecord(**asdict(model))
+        value = reader_module.ModelLifecycleEvent(
+            "synthetic-no-io", model.model_id, "activated_for_shadow", OBSERVED, "synthetic",
+        )
+        assert value.event_type in reader_module._ALLOWED_TRANSITIONS[None]
+        assert "disabled" in reader_module._ALLOWED_TRANSITIONS[value.event_type]
+        assert value.to_dict()["model_id"] == constructed.model_id
+        with pytest.raises(ValueError, match="unsupported lifecycle event"):
+            reader_module.ModelLifecycleEvent("bad", model.model_id, "unknown", OBSERVED, "synthetic")
+        with pytest.raises(ValueError, match="shadow-only"):
+            reader_module.MLModelRecord(**{**asdict(model), "production_eligible": True})
 
 
 @pytest.mark.parametrize("state", ["disabled", "superseded", "review_required", "rollback_requested"])

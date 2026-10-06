@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from app_module.stock_research_chart_markers import StockChartMarkerDTO, StockChartMarkerIdentityDTO, StockChartMarkerKind
+from app_module.stock_research_chart_marker_reader import StockResearchChartMarkerReader, StockChartMarkerReadRequest
 from app_module.stock_research_external_chart import stock_external_chart_link
 from app_module.chart_viewport_state import ChartViewportIdentity, ChartViewportState
 from app_module.research_session import (
@@ -628,6 +629,9 @@ class StockResearchReportView(QWidget):
         self._chart_render_serial = 0
         self._chart_marker_candidates: tuple[StockChartMarkerDTO, ...] = ()
         self._chart_marker_identities: tuple[StockChartMarkerIdentityDTO, ...] = ()
+        self._chart_marker_reader: StockResearchChartMarkerReader | None = None
+        self._chart_marker_read_request: StockChartMarkerReadRequest | None = None
+        self._chart_marker_diagnostics: tuple[str, ...] = ()
         self._chart_viewport = ChartViewportState()
         self._chart_widget: StockPriceChartWidget | None = None
         self._setup_ui()
@@ -2123,6 +2127,19 @@ class StockResearchReportView(QWidget):
         if self._loaded_report is not None:
             self._render_price(self._loaded_report)
 
+    def set_chart_marker_reader(
+        self, reader: StockResearchChartMarkerReader | None,
+        request: StockChartMarkerReadRequest | None,
+    ) -> None:
+        """注入既存唯讀來源與獨立 custody pins；每次畫圖重新核對 scope。"""
+        self._chart_marker_reader = reader
+        self._chart_marker_read_request = request
+        self._chart_marker_candidates = ()
+        self._chart_marker_identities = ()
+        self._chart_marker_diagnostics = ()
+        if self._loaded_report is not None:
+            self._render_price(self._loaded_report)
+
     def _sync_chart_date_to_tables(self, chart: StockPriceChartWidget, data_date: str) -> None:
         if self._chart_widget is not chart or self._closing:
             return
@@ -2224,6 +2241,20 @@ class StockResearchReportView(QWidget):
         layout.addWidget(self._section_heading("價格與成交量", report, "price"))
         context = self._loaded_request_context
         cutoff_date = _stock_chart_cutoff_date(report, context)
+        if self._chart_marker_reader is not None:
+            request = self._chart_marker_read_request
+            self._chart_marker_candidates = ()
+            self._chart_marker_identities = ()
+            if (request is not None and request.stock_code == (self._active_code or report.stock_code)
+                    and request.cutoff_date == cutoff_date
+                    and request.source_context == tuple(sorted(report.research_context.items()))):
+                result = self._chart_marker_reader.read(request, price_points=report.price_points,
+                    cancelled=lambda: self._closing or self._chart_render_serial != render_serial)
+                self._chart_marker_candidates = result.candidates
+                self._chart_marker_identities = result.identities
+                self._chart_marker_diagnostics = result.diagnostics
+            else:
+                self._chart_marker_diagnostics = ("marker_request_scope_stale",)
         projection = project_stock_chart_payload(
             report,
             cutoff_date=cutoff_date,

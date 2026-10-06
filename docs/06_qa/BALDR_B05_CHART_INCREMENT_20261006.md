@@ -72,3 +72,45 @@ Coverage：Manual／Snapshot／現行 Architecture／Index／QA routing 為中�
 回滾順序：先檢查該lane `git status --short`及整合owner變更；對三個既有檔執行 `git restore --source=ba4e9e59da7946aa66fd5eac3729e091dfe5cced -- <指定檔>`，再用 PowerShell `Remove-Item -LiteralPath <本lane精確新增檔>`逐檔處理；重新跑相同focus。整合後應由owner revert整個lanecommit，不覆寫別人變更。沒有正式資料遺失風險。
 
 本lane只有localcommit交付，不dev cherry-pick、不push／main merge、不清理worktree、不真migration／Task／ACL／資料清理／Native／訓練／交易。待中央整合，完整commit與blob由交接訊息列出。
+## B05 第二次交付：原始保存紀錄唯讀閉環（2026-10-06）
+
+此節取代下方首次交付的「尚無 chart record reader」限制；首次提交 `62b205672b4982a38c0591a9abf9fe770f0d18f1` 不重寫。新增 ownership 僅為 `app_module/stock_research_chart_marker_reader.py`、`tests/test_baldr_b05_chart_marker_reader.py`，並修改既有 owned view 與本 QA。
+
+### API 與身份契約
+
+`StockResearchChartMarkerReader(trade_records=..., confirmation_records=...)` 注入既存唯讀 callback；`read(StockChartMarkerReadRequest, price_points=..., cancelled=...)` 回傳 immutable candidates、independent identities、diagnostics，`historical_pit_eligible=False`。不建立 store，不呼叫會寫 lock 的 `PortfolioJsonlStore.load_*`。可使用現有 `JsonlPortfolioTradeReadAdapter.list_trades` 或由既存 journal read service 封裝 `JsonlJournalReadAdapter._records`；原 service、store、adapter 與 shared DTO 均未修改。
+
+Request 必須由已選取的來源／帳戶帶入 stock、cutoff、account、source ID、result ID、decision date、snapshot ID/hash、完整 chart context，以及獨立 `expected_record_hashes=((trade_id/revision_id, raw_row_sha256), ...)`。Custody pin 取自原保存列 canonical JSON；測試另核對其 SHA 與原 JSONL 每列 bytes SHA 相同。它不是 display candidate 的 content hash，也不得由 candidate 自簽取得。未知或缺少 pin 不画 marker；不新增 custody store。
+
+實際交易只讀原 Trade `4.1` 的 `trade_id/portfolio_id/stock_code/side/trade_date/source_id/source_snapshot_hash/source_summary/created_at`，以原 `source_summary` 核對研究 lineage。來源為實際 trades callback；Paper 來源或顯式非 actual account_kind 拒絕。確認只讀原 accepted decision revision：原 JournalService envelope 實際為 `4.1`，另支援原 continuity DTO 的 `decision-continuity.v1`；原 `decision_identity`、outer envelope、payload 的 identity/來源/帳戶/時鐘必須一致。確認 marker 日期為原 aware `created_at` 的臺北當日，不倒填到 decision_date。
+
+`view.set_chart_marker_reader(reader, request)` 可直接注入單一既存唯讀來源；每次 `_render_price` 核對 active stock、cutoff、完整 report context，再讀原 rows、驗 custody hash、投影原 typed marker。stale scope 清空舊 marker 並留下 `marker_request_scope_stale`。也可在中央既有 worker 中呼叫各來源 `read`，合併成功的 candidates/identities，再沿原 `set_chart_marker_evidence` 接入同一 projector；中央須保留既有 request serial／stock／context stale guard。callback 應為本機已選取、有限的唯讀來源；reader 至多接受 5000 rows、128 pins，支援取消。
+
+### 原 producer metadata 缺口與中央鎖定
+
+`app_module/portfolio_service.py::record_trade`（固定 base 約第 105 行）原本產生 naive `datetime.now().isoformat()`；這些舊紀錄 reader 回傳 `saved_record_clock_unknown`，不補現在、不宣稱 PIT。若中央要求該入口新交易可畫圖，最小 producer patch 是只將新保存 `created_at` 改為明確 aware UTC，保留既有紀錄原樣；writer 歸中央／Portfolio owner，本 lane 未改。`record_trades` 已可保存呼叫端原有 aware clock，原 TradeDTO/store 可用；JournalService.accept_decision 原本保存 aware canonical clock，已完成合成閉環。
+
+中央 main 最後接線：在已核 source selection/account/chart request 的位置建立上述 read request，從原始唯讀保存來源取得獨立 custody pins，向 `stock_research_workspace.report_view.set_chart_marker_reader` 注入；未取得原始 source metadata／aware clock／帳戶時停用並顯示診斷。不能從 report.events 造原交易、不能從 marker candidate 推 pins。切换来源须清空/更新 request；本 lane 沒改 main、Portfolio producer、Personalization、B09/B10、Manual、共享 DTO 或主 plan。
+
+Manual 精確待中央同步文字：原生圖表只顯示來源、帳戶、股票、日期、原始保存列雜湊與 aware 保存時間皆通過驗證的推薦確認／已記錄買賣。推薦確認是研究紀錄；實際交易紀錄由原 trades 保存來源讀取。未知身份、時鐘或保存列變動時不顯示 marker，診斷可供排錯；不是成交同步服務，不取得外部價格，不增加歷史 PIT 資格。舊 naive-clock 紀錄需保留原樣。
+
+### 聚焦驗證與回滾
+
+`QT_QPA_PLATFORM=offscreen`，根 repo `.venv` 執行：
+
+```text
+python -m pytest tests/test_baldr_b05_chart_marker_reader.py tests/test_baldr_b05_chart_markers.py tests/test_ui_qt_chart_viewport.py -k "reader or b05 or marker" -q -o addopts=
+74 passed, 11 deselected
+python -m mypy app_module/stock_research_chart_marker_reader.py ui_qt/views/stock_research_report_view.py
+Success: no issues found in 2 source files
+python -m py_compile app_module/stock_research_chart_marker_reader.py ui_qt/views/stock_research_report_view.py tests/test_baldr_b05_chart_marker_reader.py
+exit 0
+python scripts/quant_guard_linter.py
+exit 0：精度與未來函數檢查通過
+git diff --check
+exit 0
+```
+
+兩個正例均由原 store/JournalService 合成保存 → 現有唯讀 adapter → 獨立原列 custody pin → 同源 payload → offscreen 可見 marker/table/tooltip → 全新 Python/Qt process 再讀原檔及畫圖；跨程序 content hash 相同，read 前後原檔 bytes、mtime 與檔案集合不變。負例覆蓋錯 source/hash/account/stock/lineage、缺 pin、naive/缺時鐘、after cutoff、早於事件、Paper、非 accepted、envelope/payload 衝突、重複 record、取消、來源錯誤、row 上限及 stale context。不重跑 viewport 全集或中央重型 gate。
+
+回滾只 revert 本次後續 commit 的 reader、新 test、view 注入 API 與此節；保留首次 B05 commit（中央 `491fb26b`）與 base change/sufficiency 修正。全部 save 與子程序均為 OS temp 合成資料，沒有正式 Task、真資料 migration、清理、交易或網路取價。

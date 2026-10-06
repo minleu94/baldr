@@ -201,6 +201,10 @@ def test_write_success_with_readback_failure_is_explicit_and_retry_does_not_dupl
             self.delegate = delegate
             self.fail_reads = False
 
+        @property
+        def legacy_read_only(self) -> bool:
+            return self.delegate.legacy_read_only
+
         def record_research_action(self, *args, **kwargs):
             result = self.delegate.record_research_action(*args, **kwargs)
             self.fail_reads = True

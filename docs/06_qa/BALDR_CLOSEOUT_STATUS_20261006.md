@@ -8,7 +8,7 @@
 
 | 包 | 本輪裁決／實際交付 | 可核證據與尚缺 |
 |---|---|---|
-| B01 基線與boundary | 新3 exact readonly symbols／fresh import+DTO零data I/O與拒writer/trainer完成；summary變化／基本面缺件真修補完成 | 原11→8，不是全倉PASS。676檔最新AST仍8；歷史8是可修依賴方向工程，不是豁免，精確後續見下節 |
+| B01 基線與boundary | 新3 exact readonly symbols／fresh import+DTO零data I/O與拒writer/trainer完成；summary變化／基本面缺件真修補完成 | 原11→8→6；H6/H7 exact DTO裁決已採。676檔仍6且exit1，H1–H5/H8待工程修補，不是全倉PASS |
 | B02 Windows COW | JSON／SQLite v1/v2、canonicalDB與suffix深Unicode、convert→activate→append→rollback→新程序有限工程完成 | 同版234 pass／2 Win1314 skip；source bytes/metadata及原receipts不變，target新增revision保留。正式migration未做 |
 | B03 盤勢／主導覽／Update／Runtime | 四用途沿既有callbacks、當下搜尋不借保存身份、刷新收合、白話影響／unknown資料日、原source／selection保留，有限工程完成 | lane13新home與24新update-runtime；中央64用途增量／mandatory收據另列。沒有Native／真人證明 |
 | B04 選股／觀察 | 已保存exact chooser／cancel/stale、結果內filter保全分母、reason／confirmed／deferred在原ledger CAS與新程序，有限工程完成 | 原97收據與中央增量重驗source/revision/pins；沒有改分數／市場evidence或正式activate |
@@ -35,7 +35,7 @@
 | 4 圖表 | partial | B05 first batch同源表／markers／鍵盤已接；source_id三檔blocked，UX07原生取代原型需U1裁決 |
 | 5 自然樣本 | partial | B12/13 isolation工程已採；官方actual sessions/provenance及自然forward成熟另列，不作工程gate |
 | 6 規則／全頁 | partial | B07保存卡／歷史與B08–10consumer私人路由已採；Paper producer選定root工程仍缺，正式migration／Native另批 |
-| 7 ML／shadow | partial | B13/14 synthetic完整閉環；8boundary工程待修、U2真目標與合格來源待決，不fit/promotion |
+| 7 ML／shadow | partial | B13/14 synthetic完整閉環；6boundary工程待修、U2真目標與合格來源待決，不fit/promotion |
 | 8 整合交付 | partial | B15已准固定樹checkpoint；Native／3–5非開發者／正式運行／自然效果仍各自接受 |
 
 ## 原二十四UX對照
@@ -64,13 +64,13 @@
 | 20 自然收集 | partial | B12 typed calendar/terminal/offline；正式Task/account與真決策receipts未授 |
 | 21 成熟labels | partial | B13/14原path/clock/pins回驗；U2 target/cost/benchmark與自然成熟另列 |
 | 22 ML候選 | partial | B13 synthetic輸入／B14完整共同分母；真合格model／效果／fit未授 |
-| 23 shadow | partial | B14synthetic實際dispatcher停止，不是receipt假控制；8boundary仍工程待修，正式control未啟 |
+| 23 shadow | partial | B14synthetic實際dispatcher停止，不是receipt假控制；6boundary仍工程待修，正式control未啟 |
 | 24 整鏈 | partial | B15四用途delta checkpoint；七closed與來源不變保留，Native／真人／自然效果不混作工程完成 |
 
 ## 仍可修工程與精確後續scope
 
 1. **source_id三檔**：ui_qt/widgets/decision_continuity_controls.py、app_module/decision_continuity_controller.py、tests/test_ui_qt_decision_continuity_controls.py。只保存已驗context原source_id、exact retry command與原Journalwriter傳遞；既有DecisionIdentity或未知欄保持空，不修改Journal/shared DTO，不補舊record。自動審核因先前「先不修改」與擴鎖訊息衝突拒絕；父層直接人類確認pending，當前零修改／不繞過。批准後只跑UI accept→原writer→reader→marker及source/retry/context負例，不重整條mandatory。
-2. **八ML boundary不是豁免**：最新676檔guard仍8。三條ml_module/current_observed_feature_snapshot_composer.py反向import app recommendation.queries/saved_recommendation_queries；personalization_read_service.py跨verify_natural_maturity_session_proof；recommendation_calibration_consumer.py跨training InvalidCalibrationOutputError；rule_research_label_readiness.py跨HistoricalLabelRow/Spec兩條；stock_research_report_provider_adapters.py直接load_current_restated_outcome_model。前述屬可修port/contract依賴，需精確ownership及cold-import/identity/negative evidence；不放寬整module／不關guard。guard仍FAIL。
+2. **六ML boundary仍不是豁免**：B01-H6/H7 exact label契約已採，只准原caller的HistoricalLabelRow/Spec；fresh-process import／DTO零data I/O、namespace/writer/trainer/其他caller拒絕與原unknown資格均有收據。最新676檔guard剩H1–H5/H8六違例、exit1：三條ML反向app imports，personalization的natural proof verifier、calibration training exception、stock provider直接restated loader，仍需精確port/contract修補。未豁免整module或關guard。
 3. **176 inventory是可修治理工程**：不是176已知功能bug，也非自動排除。完整paths在 output/qa/b15_inventory_integrated_20261006.json::missing_inventory_paths；包含兩個support helper及UI/ML/CLI等不同類。後續鎖原四個B15檔＋具名subset，按實際imports/assert與write-risk逐檔分類，保direct12，不用全部歸unit/candidate取綠、不修改runner。可分每波≤20具名檔；一次metadata校正，必要collection只在正確環境另跑。當前全部176仍未登錄、audit failed。
 4. **Paper producer routing**：消費端ro/custody已完成，writer仍缺選定private root的工程。下一獨立slice可先鎖 app_module/paper_trade_ledger.py、app_module/paper_equal_weight_benchmark_ledger.py、app_module/paper_equal_weight_benchmark_builder.py、scripts/run_paper_portfolio_daily.py＋新增具名synthetic test與QA；沿personal_paper_store_paths/route+paths，before每mkdir/connect/write/sidecar exactguard、legacy readonly拒writer。若還需import/builder/baseline/其他CLI才擴鎖，不能把此四檔稱全producer覆蓋。不改金融公式、無真Task或migration；full syntheticdaily→原保存→readonly consumers新程序證明同account/root及source不變。
 
@@ -83,11 +83,11 @@
 | H3 | 同caller → app_module.saved_recommendation_queries.execution_result_config | config建構留caller，不造source或fallback |
 | H4 | app_module/personalization_read_service.py → ml_module.recommendation_calibration_evidence.verify_natural_maturity_session_proof | bounded verifier port／純契約移置裁決，原session proof/availability/hash exact，不能增natural authority |
 | H5 | app_module/recommendation_calibration_consumer.py → ml_module.recommendation_calibration_training.InvalidCalibrationOutputError | 純exception契約分離且保原class/serialization相容，不能白名單training module／fit |
-| H6 | app_module/rule_research_label_readiness.py → ml_module.historical_contracts.HistoricalLabelRow | 下一包exact純DTO裁決，零I/O與writer拒絕負例後才採 |
-| H7 | 同caller → ml_module.historical_contracts.HistoricalLabelSpec | 同H6；label政策／版本／target及unknown不變 |
+| H6 | app_module/rule_research_label_readiness.py → ml_module.historical_contracts.HistoricalLabelRow | exact純DTO裁決已採；cold import／建構零data I/O，writer／namespace／其他caller仍拒絕 |
+| H7 | 同caller → ml_module.historical_contracts.HistoricalLabelSpec | 同H6已採；原label政策／版本／target及unknown不變 |
 | H8 | app_module/stock_research_report_provider_adapters.py → ml_module.current_restated_research_bridge.load_current_restated_outcome_model | provider注入已核bounded artifact/source/target port，view/projection不載模型；不是整ML module allow |
 
-H1–H8目前均未本輪修補，guard report仍failed；H6/H7只是可立即分派的有限ownership提案，另六條不自動豁免或改成waiting-for-time。
+H6/H7 worker 56ae8d82 → 中央4cea589d已有限接受；H1–H5/H8仍六項真工程FAIL，不改成waiting-for-time。原global dependency assert／DTO／reader與source_id三檔逐blob未改。
 
 ## 下一個有限包：B01-H6/H7純label契約裁決
 
@@ -111,3 +111,7 @@ H1–H8目前均未本輪修補，guard report仍failed；H6/H7只是可立即�
 ### Paper ownership 實際 I/O 核對補正
 
 純 app_module/paper_portfolio_daily_runner.py 不做 I/O，保持唯讀；完整 selected writer／雙 CLI 最低五個 production：兩 ledger、benchmark builder、run_paper_portfolio_daily.py、build_paper_equal_weight_benchmark.py。可平行先派兩 ledger 與 inventory 首20，後派 builder＋雙CLI；精確 API、ownership、依賴、驗收與 prompts 見 [下一波派工收據](BALDR_NEXT_OWNERSHIP_DISPATCH_20261006.md)。這是待父層鎖定的派工 proposal，未把未接線 producer 宣稱完成。
+
+## B01-H6/H7 審核整合收據
+
+前節「下一個有限包」是派工時的歷史提案，現由[有限label裁決](BALDR_B01_HISTORICAL_LABEL_BOUNDARY_20261006.md)取代待辦狀態。三檔exact scope、全部raw hashes與63pass／0fail／0skip JUnit已核；中央只重CLI affected subset並另跑guard，未重四用途／mandatory union。中央raw見output/qa/b01_h6_h7_central.log／xml與b01_h6_h7_central_guard.log；最終結果在output/qa/baldr_b01_h6_h7_integration_20261006.json。原9stage／24UX仍1/8/0與2/22/0、七有限closed／性能例外保留，未升Stage／UX done。

@@ -6,7 +6,7 @@
 
 中央main私人三帳route＋paths、Paper固定query-only readers及Journey原source逐讀guard已接；B05從已驗report/requestcontext背景讀bounded原JSONL、原rowpins→reader→chart、新程序與過期回傳拒絕已驗19case／5.84s。新手動交易保存aware now_provider，naive beforeappend拒；不migration舊紀錄、不補source/account/PIT。[中央收據](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。
 
-剩餘：標準UI確認仍漏source_id，controls/controller/test三檔擴鎖遭automatic approval review拒絕；父層向人類直接確認中，中央未修改此三檔或繞過。B15已准固定樹c9d57fc7驗收：四用途64／Workbench85／validator25+4skip／fullmypy839／100 changed compile與quant guard通過；source_id三檔blocked單列，之後批准只重受影響子集。metadata1105/fs1281/docdrift0/stale0，direct bridge12維持；範圍外176未登錄與8boundary仍工程FAIL，不因原有豁免。B09先前dependency拒絕已依直接批准解除並接受owned scope，與本次source_id批准分開。Formal DB／私人啟用／migration／Task／ACL／Native／交易／fit仍未授。
+剩餘：標準UI確認仍漏source_id，controls/controller/test三檔擴鎖遭automatic approval review拒絕；父層向人類直接確認中，中央未修改此三檔或繞過。B15已准固定樹c9d57fc7驗收：四用途64／Workbench85／validator25+4skip／fullmypy839／100 changed compile與quant guard通過；source_id三檔blocked單列，之後批准只重受影響子集。metadata1105/fs1281/docdrift0/stale0，direct bridge12維持；範圍外176未登錄與6boundary仍工程FAIL（H6/H7 exact label DTO已有限裁決，原8→6，676檔guard仍exit1；原DTO／reader／global assert未改），不因原有豁免。B09先前dependency拒絕已依直接批准解除並接受owned scope，與本次source_id批准分開。Formal DB／私人啟用／migration／Task／ACL／Native／交易／fit仍未授。
 
 原9stage1done/8partial/0pending、24UX2done/22partial/0pending、七有限closed及F1/Journey性能例外不變，沒有新增整項done。首波85／25+4skip／mypy823只覆蓋首波樹，lane報告不能代替第二波union。自然成熟不當工程gate，unknown資格不造；下方日期化摘要是當時scope，最新caller狀態依本段。
 
@@ -743,3 +743,8 @@ f0e1d8e→8d0a6090精確review後以ac0cc19b→ffa6e537採納，consumer與獨�
 ### 2026-10-06 UX23 registry readonly 整合補記
 
 UX23 readonly metadata adapter 已整合至 shadow acceptance CLI；export declaration／registry snapshot read 分開。WAL／sidecar 拒絕，不改真 DB，所有資格仍 false；UX23 partial。
+
+
+### 2026-10-06 B01-H6/H7 有限裁決與下一波ownership
+
+worker56ae8d82採入中央4cea589d：僅guard exact caller兩label symbols、CLI tests與QA三檔。63pass immutable source/raw/JUnit收據核對，中央affected CLI與guard另落raw；namespace/writer/trainer/其他caller仍拒絕，unknown／qualifications原樣。H1–H5/H8剩六工程違例，global仍FAIL；不提升Stage/UX/正式來源資格。Paper实际writer最低五production，拆P1兩ledger／P2builder＋雙CLI，I20四治理檔只分類指定20，見[精確派工](../06_qa/BALDR_NEXT_OWNERSHIP_DISPATCH_20261006.md)。source_id三檔仍待直接批准，不繞過；本次沒有formal DB／Task／Native／fit。

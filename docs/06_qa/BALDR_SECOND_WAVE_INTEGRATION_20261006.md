@@ -73,3 +73,8 @@ B15穩定mandatory與四用途增量union尚待source_id三檔直接批准；該
 父層明示不讓未批准source_id三檔停住其餘驗收。固定c9d57fc704fd441a3b25af697065d4d26a8d48ec：四用途64pass34.77s（含B07真執行保存／新程序與private review讀回）、Workbench85pass2.63s、validator25pass/4skip/0fail、full roots mypy839source無錯15.78s、100 changed Python compile與quant guard成功。非Native／真人／全App／全repo boundary PASS；之後三檔批准只重受影響子集，避免重開已過整條gate。
 
 raw receipt：output/qa/b15_four_journey_union_receipt_20261006.json、b15_mandatory_workbench_receipt_20261006.json、b15_update_validator_receipt_20261006.json、b15_full_roots_mypy_receipt_20261006.json、b15_compile_quant_receipt_20261006.json。XML/log hashes與15WP／9Stage／24UX逐項狀態見[BALDR有限移交](BALDR_CLOSEOUT_STATUS_20261006.md)。ML AST676files仍8真違例，精確後續scope與176清冊缺口／Paperproducer路由工程均具名，不自動豁免或當自然等待。
+
+
+## 2026-10-06 H6/H7 exact label DTO裁決採入
+
+此前676/8是當時歷史收據；worker56ae8d82→中央4cea589d後676/6，guard仍exit1。只guard/CLI tests/QA，exact原caller兩DTO符號；冷import／DTO零data I/O、writer/trainer／其他caller拒絕、原unknown與globalassert／reader／contracts未變。63pass raw/JUnit與三blobs核對，中央affected subset／guard另錄，不重原mandatory union。現在狀態見[BALDR有限移交](BALDR_CLOSEOUT_STATUS_20261006.md)。

@@ -38,7 +38,7 @@ from app_module.paper_portfolio_snapshot_repository import (  # noqa: E402
     PaperPortfolioSnapshotRepository,
 )
 from app_module.paper_trade_ledger import PaperTradeFill  # noqa: E402
-from app_module.personal_data_paths import PersonalDataPaths, _absolute, to_internal_io_path
+from app_module.personal_data_paths import PersonalDataPaths, PersonalDataPathError, _absolute, to_internal_io_path
 from app_module.personal_paper_store_paths import PersonalPaperStorePaths, PersonalStoreCustody
 from app_module.personal_store_routes import PersonalStoreRoute, PersonalStoreMode, PersonalStoreDomain, StoreIdentity, PersonalStoreRouteError
 from app_module.personal_store_selection import resolve_personal_store_selection
@@ -176,8 +176,10 @@ def _latest_prices(
     *,
     symbols: Sequence[str],
     decision_date: str,
+    personal_paths: PersonalDataPaths | None = None,
 ) -> tuple[PaperPriceObservation, ...]:
-    if not Path(to_internal_io_path(database.absolute())).is_file():
+    database = require_market_separation(database, personal_paths)
+    if not Path(to_internal_io_path(database)).is_file():
         raise FileNotFoundError(database)
     observations: list[PaperPriceObservation] = []
     with PersonalStoreCustody(None, None).read_sqlite(_absolute(database.absolute())) as connection:
@@ -452,14 +454,20 @@ def run(
         _atomic_write_json(status_path, future_status, custody=custody)
         return future_status
 
+    require_market_separation(market_db, personal_paths)
     calendar_service = calendar or OfficialTradingCalendar(db_path=market_db)
+    # 守衛置於日曆錯誤降級的 except 外，不能把 custody 拒絕吞成 unknown。
+    require_market_separation(market_db, personal_paths)
     try:
         is_trading_day, calendar_reason = (
             calendar_service.is_official_trading_day(decision_at.date())
         )
+    except (PersonalDataPathError, PersonalStoreRouteError):
+        raise
     except Exception as exc:  # noqa: BLE001 - 排程必須持久化未知日曆狀態
         is_trading_day = None
         calendar_reason = f"calendar_exception:{type(exc).__name__}"
+    require_market_separation(market_db, personal_paths)
     if is_trading_day is not True:
         calendar_status: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
@@ -527,7 +535,7 @@ def run(
         observations = _latest_prices(
             market_db,
             symbols=tuple(row.stock_code for row in prior.positions),
-            decision_date=decision_date,
+            decision_date=decision_date, personal_paths=personal_paths,
         )
         result = PaperPortfolioDailyRunner().run(
             prior=prior,

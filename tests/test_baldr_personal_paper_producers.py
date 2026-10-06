@@ -68,6 +68,7 @@ def setup(tmp_path, *, deep=False):
         conn.execute('CREATE TABLE daily_prices ("證券代號" TEXT, "日期" TEXT, "收盤價" TEXT)')
         conn.execute('INSERT INTO daily_prices VALUES ("2330", "20260820", "105")')
         conn.execute('INSERT INTO daily_prices VALUES ("2330", "20260821", "99999")')
+    conn.close()
     return paths, route, pp, market, sentinel
 
 
@@ -453,3 +454,127 @@ def test_legacy_relative_status_api_remains_compatible(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     daily._atomic_write_json(Path("relative/status.json"), {"status": "synthetic"})
     assert json.loads((tmp_path / "relative/status.json").read_text(encoding="utf-8"))["status"] == "synthetic"
+
+
+@pytest.mark.parametrize("suffix", ["", "-journal", "-wal", "-shm"])
+@pytest.mark.parametrize("consumer", ["daily", "builder"])
+def test_market_custody_outside_hardlink_to_private_rejected_before_write(tmp_path, suffix, consumer):
+    paths, route, pp, market, sentinel = setup(tmp_path)
+    if consumer == "builder":
+        run(paths, route, pp, market)
+    hidden = paths.personal_root / "hidden-market.sqlite"
+    if suffix:
+        io(hidden).write_bytes(io(market).read_bytes())
+    else:
+        os.rename(io(market), io(hidden))
+    alias = market.with_name(market.name + suffix)
+    os.link(io(hidden), io(alias))
+    pins = pin(hidden), pin(sentinel)
+    assert io(alias).stat().st_nlink == 2
+    with pytest.raises(ValueError, match="paper_market_alias_or_type"):
+        if consumer == "daily":
+            run(paths, route, pp, market)
+        else:
+            preview(build(paths, route), pp, market)
+    assert pins == (pin(hidden), pin(sentinel))
+    assert not io(pp.benchmark_db).exists()
+    if consumer == "daily":
+        assert not io(pp.state_db).exists()
+        assert not io(pp.status).exists()
+
+
+@pytest.mark.parametrize("consumer", ["daily", "builder"])
+def test_market_custody_junction_ancestor_rejected_before_write(tmp_path, consumer):
+    paths, route, pp, market, sentinel = setup(tmp_path)
+    if consumer == "builder":
+        run(paths, route, pp, market)
+    original = market.parent
+    hidden = paths.personal_root / "hidden-market-tree"
+    os.rename(io(original), io(hidden))
+    if os.name == "nt":
+        result = subprocess.run(["cmd", "/c", "mklink", "/J", str(original), str(hidden)], capture_output=True)
+        if result.returncode:
+            pytest.skip("host cannot create synthetic junction")
+    else:
+        original.symlink_to(hidden, target_is_directory=True)
+    pins = pin(hidden / market.name), pin(sentinel)
+    with pytest.raises(ValueError, match="linked_path"):
+        if consumer == "daily":
+            run(paths, route, pp, market)
+        else:
+            preview(build(paths, route), pp, market)
+    assert pins == (pin(hidden / market.name), pin(sentinel))
+    assert not io(pp.benchmark_db).exists()
+    if consumer == "daily":
+        assert not io(pp.state_db).exists()
+        assert not io(pp.status).exists()
+
+
+def test_market_custody_calendar_constructor_swap_not_swallowed(tmp_path, monkeypatch):
+    paths, route, pp, market, sentinel = setup(tmp_path)
+    hidden = paths.personal_root / "hidden-market.sqlite"
+    class SwappingCalendar:
+        def __init__(self, **kwargs):
+            os.rename(io(market), io(hidden))
+            os.link(io(hidden), io(market))
+        def is_official_trading_day(self, day):
+            pytest.fail("custody must reject before calendar read")
+    monkeypatch.setattr(daily, "OfficialTradingCalendar", SwappingCalendar)
+    source = pin(market)
+    with pytest.raises(ValueError, match="paper_market_alias_or_type"):
+        run(paths, route, pp, market, calendar=None)
+    assert pin(hidden) == source
+    assert not io(pp.state_db).exists()
+    assert not io(pp.status).exists()
+
+
+def test_market_custody_calendar_read_swap_rejected_outside_degraded_handler(tmp_path):
+    paths, route, pp, market, sentinel = setup(tmp_path)
+    class SwappingCalendar:
+        def is_official_trading_day(self, day):
+            hidden = paths.personal_root / "hidden-market.sqlite"
+            os.rename(io(market), io(hidden))
+            os.link(io(hidden), io(market))
+            raise RuntimeError("synthetic calendar failure")
+    with pytest.raises(ValueError, match="paper_market_alias_or_type"):
+        run(paths, route, pp, market, calendar=SwappingCalendar())
+    assert not io(pp.state_db).exists()
+    assert not io(pp.status).exists()
+
+
+@pytest.mark.parametrize("consumer", ["daily", "builder"])
+def test_market_custody_guard_at_each_price_connect_after_swap(tmp_path, consumer):
+    paths, route, pp, market, sentinel = setup(tmp_path)
+    hidden = paths.personal_root / "hidden-market.sqlite"
+    os.rename(io(market), io(hidden))
+    os.link(io(hidden), io(market))
+    before = pin(hidden)
+    with pytest.raises(ValueError, match="paper_market_alias_or_type"):
+        if consumer == "daily":
+            daily._latest_prices(market, symbols=("2330",), decision_date="2026-08-21", personal_paths=paths)
+        else:
+            build(paths, route)._latest_price_observations(market, symbols=("2330",), decision_date="2026-08-21")
+    assert pin(hidden) == before
+    assert not io(pp.state_db).exists()
+
+
+def test_market_custody_legacy_relative_market_read_compatible(tmp_path, monkeypatch):
+    paths, route, pp, market, sentinel = setup(tmp_path)
+    monkeypatch.chdir(paths.market_root.parent)
+    before = pin(market)
+    rows = daily._latest_prices(Path("market/sqlite/twstock.db"), symbols=("2330",), decision_date="2026-08-21")
+    assert rows[0].close == Decimal("105")
+    assert producer.require_market_separation(Path("market/sqlite/twstock.db"), None) == market
+    assert pin(market) == before
+
+
+def test_market_custody_calendar_guard_error_is_never_degraded(tmp_path):
+    from app_module.personal_data_paths import PersonalDataPathError
+    paths, route, pp, market, sentinel = setup(tmp_path)
+    class RejectedCalendar:
+        def is_official_trading_day(self, day):
+            raise PersonalDataPathError("paper_market_alias_or_type", market)
+    with pytest.raises(ValueError, match="paper_market_alias_or_type"):
+        run(paths, route, pp, market, calendar=RejectedCalendar())
+    assert not io(pp.state_db).exists()
+    assert not io(pp.status).exists()

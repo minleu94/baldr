@@ -151,7 +151,7 @@ class PaperEqualWeightBenchmarkBuilder:
     ) -> PaperEqualWeightBenchmarkPreview:
         baseline = self._input(baseline_path, self.selected.baseline if self.selected else None)
         state_db = self._input(state_db_path, self.selected.state_db if self.selected else None, sqlite=True)
-        market_db = _absolute(market_db_path) if self.route is not None else _resolve_path(market_db_path)
+        market_db = require_market_separation(Path(market_db_path), self.personal_paths)
         output = self._input(output_ledger_path, self.selected.benchmark_db if self.selected else None, sqlite=True)
         require_market_separation(market_db, self.personal_paths)
         if output in {baseline, state_db, market_db}:
@@ -208,7 +208,7 @@ class PaperEqualWeightBenchmarkBuilder:
     ) -> tuple[EqualWeightBenchmarkEntry, ...]:
         baseline = self._input(baseline_path, self.selected.baseline if self.selected else None)
         state = self._input(state_db_path, self.selected.state_db if self.selected else None, sqlite=True)
-        market = _absolute(market_db_path) if self.route is not None else _resolve_path(market_db_path)
+        market = require_market_separation(Path(market_db_path), self.personal_paths)
         require_market_separation(market, self.personal_paths)
         baseline_payload = _read_object(Path(self.custody.io(baseline)))
         if self.route is not None and "portfolio_id" in baseline_payload and str(baseline_payload["portfolio_id"]) != self.portfolio_id:
@@ -329,9 +329,9 @@ class PaperEqualWeightBenchmarkBuilder:
         symbols: Sequence[str],
         decision_date: str,
     ) -> tuple[PaperPriceObservation, ...]:
+        market_db = require_market_separation(market_db, self.personal_paths)
         if not Path(to_internal_io_path(market_db)).is_file():
             raise FileNotFoundError(market_db)
-        require_market_separation(market_db, self.personal_paths)
         selected: dict[str, tuple[str, Decimal]] = {}
         with PersonalStoreCustody(None, None).read_sqlite(market_db) as conn:
             if not _table_exists(conn, "daily_prices"):
@@ -490,11 +490,28 @@ def require_paper_writer(route: PersonalStoreRoute | None) -> None:
         raise PersonalStoreRouteError("legacy_read_only_writer_forbidden")
 
 
-def require_market_separation(market: Path, paths: PersonalDataPaths | None) -> None:
-    if paths is not None:
-        canonical = _absolute(market)
-        if canonical.is_relative_to(paths.personal_root) or canonical.is_relative_to(paths.legacy_output_root):
-            raise PersonalStoreRouteError("paper_market_must_be_independent")
+def require_market_separation(market: Path, paths: PersonalDataPaths | None) -> Path:
+    """每次市場 I/O 核 main／sidecars 的實體身分，保留 legacy relative caller。"""
+    value = market.expanduser().absolute()
+    canonical = _absolute(value)
+    if canonical != value:
+        raise PersonalDataPathError("paper_market_path_alias", market)
+    if paths is not None and (
+        canonical.is_relative_to(paths.personal_root)
+        or canonical.is_relative_to(paths.legacy_output_root)
+    ):
+        raise PersonalStoreRouteError("paper_market_must_be_independent")
+    for candidate in (canonical, *(canonical.with_name(canonical.name + suffix)
+                                    for suffix in ("-journal", "-wal", "-shm"))):
+        if _absolute(candidate) != candidate:
+            raise PersonalDataPathError("paper_market_path_alias", candidate)
+        try:
+            info = os.stat(to_internal_io_path(candidate), follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise PersonalDataPathError("paper_market_alias_or_type", candidate)
+    return canonical
 
 
 class GeneratedPaperStaging:

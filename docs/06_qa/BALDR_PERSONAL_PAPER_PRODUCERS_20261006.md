@@ -70,3 +70,25 @@ targeted mypy使用 --explicit-package-bases --follow-imports=silent，三個cha
 | docs/06_qa/BALDR_PERSONAL_PAPER_PRODUCERS_20261006.md | 新增 | 交接與Manual素材 | 核owner後移除此新增檔 | 失去交接記錄 |
 
 先核lane dirty與其他owner變更，限上述五檔；三修改還原固定基準、兩新增移除，再重跑affected legacy subset。已提交整包可於隔離lane revert本包commit。不清理synthetic原證據/正式資料，不動中央dev/main。交主審查，尚無中央整合/正式升格資格。
+
+## 中央主審 follow-up：市場 hardlink custody 阻擋修正
+
+中央在 f16e3ab6 未 pick 前發現：lexical 路徑雖在 market/sqlite，main 實際可 hardlink 至 private/hidden-market.sqlite（nlink=2），原 daily 仍 passed／建立 state。中央 synthetic probe 為 output/qa/p2_owner_market_alias_probe_20261006.json；原中央11項關鍵 subset與raw p2_owner_bounded_review沿用，不重跑108。
+
+最小修正限本包 builder、daily、owned test／本QA四檔。require_market_separation 現回傳 canonical absolute path：先保留 relative caller轉absolute，再逐次核原字面／祖先無reparse或symlink；existing main及精確journal/wal/shm須regular且nlink=1。未存在main維持原missing／unknown處理，不能建立市場schema或當作私人fallback。legacy relative正向仍支援。
+
+Builder 的市場參數不先resolve掩蓋祖先alias；preview/build與每marketconnect前核守衛。daily在calendar建構前、calendar讀取前後及每price connect前核守衛，calendar守衛在降級except外；PersonalDataPathError／PersonalStoreRouteError明確往外傳，不吞成unknown或fallback。沒有擴P1 allowlist或sharedhelper，也沒有改金融公式/schema、正式DB、migration或Task。
+
+新增16項synthetic驗收覆蓋：
+
+- main及三sidecars：outside market hardlink到private，daily/builder皆拒絕；daily無state/status副作用。
+- market/sqlite祖先junction指向private，兩producer拒絕且source hash/mtime不變。
+- calendar建構／讀取期間置換市場main alias，與calendar直接custody拒絕，都不得降級寫status。
+- 兩producer直接price helper於connect前重新核main alias。
+- legacy relative market readonly正向且source hash/mtime不變。
+
+沿用本包normal/deep新程序readback與sourcehash、readonly、partial/alias/publication race/create-only/cancel/staging override／legacy相對status10項，共26項bounded驗收。owned fixture的market connection明確close，再做Windows rename/junction試驗，避免fixture自身handle鎖掩蓋真alias。
+
+正式follow-up commit、26項raw/JUnit/XML SHA256與mypy/compile/quant/source blobs，見local output/qa/p2_personal_paper_producers_market_custody_followup_20261006/receipt.json。原108收據保留為f16e3ab6歷史驗收，並非本修正的新claim；不stage output、不pick/push、不formal升格。
+
+回滾限本follow-up四檔，可在本獨立lane revert follow-up commit回到f16e3ab6；會恢復已知market alias缺口，因此中央不得採入舊包作完整market custody。主審安全接手點為follow-up immutable receipt與新增market_custody測試。

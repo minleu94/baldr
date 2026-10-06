@@ -633,3 +633,8 @@ MainWindow 啟動方可明示研究 snapshot root／cohort 與 original-rank roo
 ## 2026-10-06 保存母體研究結果
 
 每日研究條件→查看保存母體收據新增H5／H10／H20頁；選擇綁定原parent identity的明示研究輸入，背景唯讀核對exact children與原來源。逐方法完整分母及逐股毛／net／excess與資料不足／未成熟分列；清除／換收據清舊結果，取消／晚到callback不套用。成本／benchmark未知不補default，符合方法非交易入選，詳細診斷收合。JSON、公式、限制與排錯以[Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-06-ux21-保存母體-h5h10h20-研究結果)為準，驗收見[UX21 QA](../06_qa/UX21_FORWARD_OUTCOME_20261006.md)。
+
+
+### 2026-10-06 UX21 保存成效收據入口
+
+母體收據→研究結果 tab「選擇結果輸入／保存收據」可讀新隔離 outcome receipt；背景 original parent/children/hash 核對，完整 H5/10/20 分母、毛/net/excess、未知或未成熟分列。主文明示目前觀察／年度計畫，保存版本不查較新 DB；錯 parent／損壞／取消／stale 仍拒絕。入口與操作：[Manual](../07_guides/APPLICATION_MANUAL.md)，實際市場背景收據：[QA](../06_qa/UX21_SOURCE_STORE_DAILY_20261006.md)。

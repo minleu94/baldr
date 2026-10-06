@@ -4817,3 +4817,40 @@ retry最多配置次數與有限合作式delay；busy保留別人lock，cancel�
 「重讀／重試核對」重新核對同收據及同輸入；「清除結果輸入」回到未評估，切換另一母體收據清除前一輸入。選檔取消保留原選擇。取消／返回／關窗等待背景安全返回，不強殺 thread；晚到成功／錯誤不套用，完成後可沿同收據重試。輸入錯parent、未來評估日、重複鍵、非Decimal字串、成本／基礎不合法或途中修訂時拒絕；結果表清除，原各批保存記錄保留，技術理由在「展開來源與診斷」。先核對精確版本與缺件，保留原檔，不更新 producer 或刪資料繞過。
 
 這是 endpoint-only research，沒有 MFE／MAE、期間停牌完整性、可成交性或真實交易績效；所有 PIT／formal／training／natural／execution flags 維持 false。工程接線已可用；官方 calendar／raw price custody、自然樣本、後續日期成熟與 Native／真人驗收分列未完成。不自動產生價格輸入、正式排程或 outcome store。詳見 [UX21 QA](../06_qa/UX21_FORWARD_OUTCOME_20261006.md)。
+
+
+## 2026-10-06 UX21 實際來源與隔離結果保存／日報
+
+前章明示 JSON 輸入仍可用；本章補上實際來源 adapter 與保存收據入口，取代前章「尚未提供 outcome store」的限制。研究限定：目前觀察的價格與年度計畫日曆，臨時休市／歷史可用時間未知，所有 PIT／formal／training／natural／execution 資格為 false。
+
+1. 先用既有工具取得 exact parent receipt。新設定檔必須明示絕對路徑與評估截至日，不接受 latest 或未來日。以下欄位全部必填：
+
+```json
+{
+  "schema_version": "rule-research-forward-isolated-runtime.v1",
+  "parent_receipt": "C:/Projects/PythonProjects/technical_analysis/output/qa/<隔離capture>/parents/<identity>/receipt.json",
+  "source_db": "D:/Min/Python/Project/FA_Data/sqlite/twstock.db",
+  "calendar_cache": "C:/Projects/PythonProjects/technical_analysis/output/paper_execution_eod_replay/calendar_cache/<明示原檔>.json",
+  "as_of_date": "2026-10-06",
+  "cost_policy": null,
+  "benchmark": null,
+  "outcome_root": "C:/Projects/PythonProjects/technical_analysis/output/qa/<隔離outcome>"
+}
+```
+
+`source_db` 只讀既存 daily_prices／technical_indicators 的相容 schema；每股最多 120 筆價格，僅取原決策日與 5／10／20 年度計畫 session 終點。原始決策價指紋不符、找不到 exact endpoint、重複或無效價格會保留資料不足，不用最近價。超過既有 120 列範圍不向更久歷史補查。`calendar_cache` 是已存在、freshness／raw／hash／全年完整性核對成功的單一 TWSE 年度檔，不能傳資料夾；跨年度範圍不完整則未評估，臨時休市仍未知。完整的是年度計畫範圍，不是實際交易 custody。
+
+`cost_policy=null` 表示未知，不補 0。可明示物件：`version`、`formula_id="proportional_entry_add_exit_deduct.v1"`、`target_entry_bp/target_exit_bp/benchmark_entry_bp/benchmark_exit_bp`，每欄為 0–10000 整數 bp 或 null；0 必須是明示政策。已有 target entry/exit 成本才能顯 net。本 adapter 目前只接受 `benchmark=null`，不猜 market_indices 的品項或可比 basis，因此 excess 保持 null；原明示 JSON input 仍能提供已核定的同期間 benchmark。價格未調整，公司行動 basis 未知，不代表含息總報酬。
+
+2. 在 repo 執行 `./.venv/Scripts/python.exe scripts/scheduled/run_rule_research_forward_isolated.py --runtime-config <絕對設定路徑>`，預設只有 preflight；檢查 status／qualification／source_contract／issues。只有明示加上 `--execute-isolated` 才在指定 root 保存，沒有啟用 Task 或市場 DB writer。root 必須是 repo output/qa 或 Temp 的獨立子目錄，不能與 capture／snapshot／設定或來源重疊。
+
+3. 保存結果回傳 `receipt_path`、identity 與 published／duplicate。相同 runtime／parent／來源 revision／as-of／cost 重試是 duplicate；改來源、clock 或政策產生新版本，全部保留。不用 latest，也不覆蓋同日期舊結果。容量在建立目錄前檢查，沿 200 GiB reserve、256 KiB 保存 envelope、8 MiB／128 包界線；完整結果解壓最多 2 MiB，超限拒絕，不截斷母體。partial／busy／capacity 停止時保留原件，使用新隔離 root 重試或交 owner 處理，不自行刪歷史。
+
+4. 日報可於同一命令加 `--policy-config <既存policy>` 與 `--acceptance-root <既存日期接受root>`，兩者須同時提供。每筆日期接受紀錄新增 `forward_status` 與 `forward_outcomes`，列出同 parent 所有保存版本；沒有結果是 awaiting_source_or_outcome，保存損壞／busy 是 unavailable_or_unverified，不當作報酬 0 或負樣本。既有 daily owner CLI 也可加 `--outcome-root <明示root>` 唯讀附加同欄位；不會自動執行 outcome producer。歷史 current-observed capture 不能回填固定日接受；未配置正式 owner／Task／cadence 仍未部署。
+
+5. 在每日研究→母體保存收據選原 parent，再於 H5/H10/H20 研究結果頁按「選擇結果輸入／保存收據」，選剛回傳的 `<outcome-root>/<identity>/receipt.json`。背景核對 exact parent、children 及結果 hash 後顯完整分母與各股方法／gross／net／excess、缺件或未成熟。首屏明示目前觀察價格／年度計畫限制，source/version/clock 診斷可展開。保存結果重讀不查較新 DB；不同 parent 收據、hash 損壞或失效 child 拒絕。取消／返回不套用晚到結果，可重試相同收據；CLI 若取消時已發布會回報 saved=true 與 receipt_path，保存歷史保留。
+
+source missing／expired calendar／原決策價 revision 時，先核對 exact 路徑、版本與截至日期；不要補 0、改日期、造 available-at 或用現價修舊保存。當日資料缺少仍列 incomplete observation；未成熟不能當失敗或負 label。endpoint-only，不提供 MFE/MAE／期間停牌／成交能力；研究毛報酬不作模型效果或個人投資收益證據。詳見 [實際來源／保存／日報 QA](../06_qa/UX21_SOURCE_STORE_DAILY_20261006.md)。
+
+
+本批補正：保存收據首屏同時顯示已知價格缺件筆數與未成熟狀態，未成熟不隱藏原決策日缺價；明示未調整收盤價，非含息總報酬。完整source診斷仍可展開。

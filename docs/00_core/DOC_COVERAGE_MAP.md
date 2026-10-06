@@ -407,3 +407,8 @@
 [本輪查核](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 保存精確回滾與驗證。Current architecture 記錄共用分析流程及保留政策；tests_readme、manual README 與測試分類摘要同步移除失效路徑；PROJECT_INVENTORY／PROJECT_NAVIGATION／DOCUMENTATION_INDEX 指向同一報告與[LUNA 執行 companion](../09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md)（歷史歸檔）。
 
 本輪未變更 UI 或正式推薦行為；新增的是 research-only CLI 與 Manual 操作說明，核心金融結果只使用整數 bp／Decimal。A／B／C 後續使用者功能變更仍須由對應 owner 同步。不得以清理報告、sample 或 replay 取代 Snapshot 或正式 Gate。
+
+
+### 2026-10-06 UX21 source/store/daily coverage
+
+source adapter／sealed outcome 保存與只讀日報→system_architecture、APPLICATION_MANUAL、UX21_SOURCE_STORE_DAILY_20261006；Qt outcome receipt入口→UI_FEATURES_DOCUMENTATION；測試→FEATURE_TEST_ROUTING_MATRIX。全產品9stage/24UX仍1/7/1與2/20/2，有限工程、程式缺件與外驗分列QA，不升格done。

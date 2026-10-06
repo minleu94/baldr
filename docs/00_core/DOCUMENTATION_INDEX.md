@@ -145,3 +145,9 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 
 
 - UX21 保存母體H5／H10／H20純契約、exact唯讀consumer及最小畫面：[限定收據](../06_qa/UX21_FORWARD_OUTCOME_20261006.md)；操作JSON與結果判讀見[Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-06-ux21-保存母體-h5h10h20-研究結果)。
+
+
+### 2026-10-06 UX21 來源／保存／隔離日報
+
+- [實際來源、atomic outcome、日報與 partial 分類收據](../06_qa/UX21_SOURCE_STORE_DAILY_20261006.md)
+- [完整操作手冊](../07_guides/APPLICATION_MANUAL.md)：明示 runtime、preflight／保存、日報、Qt 重讀與研究界線。

@@ -1,7 +1,7 @@
 """明示runtime配置的UX20隔離daily owner；預設preflight，不註冊Task。"""
 from __future__ import annotations
 import argparse
-from datetime import date
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 import sys
@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 
 from app_module.rule_research_daily_owner import run_daily_owner
 from app_module.rule_research_observation_acceptance import _QUALIFICATION
+from app_module.rule_research_observation_acceptance import read_observation_days
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,13 +20,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runtime-config")
     parser.add_argument("--target-date")
     parser.add_argument("--execute-isolated",action="store_true")
+    parser.add_argument("--outcome-root", help="明示 UX21 隔離保存 root，唯讀列出同 parent 所有版本")
     args = parser.parse_args(argv)
     try:
         result = run_daily_owner(args.runtime_config,date.fromisoformat(args.target_date) if args.target_date else None,execute=args.execute_isolated)
+        if args.outcome_root and result["status"] in {"observed", "already_observed"}:
+            try:
+                runtime = json.loads(Path(args.runtime_config).read_text(encoding="utf-8"))
+                result["day_readiness"] = read_observation_days(runtime["policy_config"], runtime["acceptance_root"],
+                    evaluated_at=datetime.now(timezone.utc), outcome_root=args.outcome_root)
+                result["forward_day_readiness_status"] = "verified"
+            except Exception as exc:
+                result.update(forward_day_readiness_status="unavailable_or_unverified", forward_error=str(exc))
     except Exception as exc:
         result = {"status":"blocked","error_code":str(exc),"qualification":dict(_QUALIFICATION)}
     print(json.dumps(result,ensure_ascii=False,sort_keys=True))
-    return 0 if result["status"] in {"preflight_passed","observed","already_observed"} and result.get("owner_status_capture_status") != "rejected_or_unverified" else 2
+    return 0 if result["status"] in {"preflight_passed","observed","already_observed"} and result.get("owner_status_capture_status") != "rejected_or_unverified" and result.get("forward_day_readiness_status") != "unavailable_or_unverified" else 2
 
 
 if __name__ == "__main__":

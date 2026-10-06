@@ -51,6 +51,25 @@ def test_actual_ui_horizons_cost_denominator_and_no_data(qt_driver, forward_save
     assert "資料不足" in dialog.outcome_summary.text() and dialog.outcome_table.rowCount() == 0
 
 
+def test_saved_source_missing_is_visible_outside_diagnostics(qt_driver, forward_saved):
+    _, parent, source, value = forward_saved
+    value["prices"] = [p for p in value["prices"] if not (p["instrument_id"] == "1000" and p["trade_date"] == value["decision_date"])]
+    source.write_text(json.dumps(value), encoding="utf-8")
+    def reader(path, **kwargs):
+        result = read_parent_receipt_selection(path, **kwargs)
+        result["outcome"]["source_contract"] = {"issues": [{"stock_code": "1000", "reason": "exact_endpoint_missing"}]}
+        return result
+    dialog = RuleResearchParentReceiptDialog(reader=reader)
+    qt_driver.addWidget(dialog)
+    dialog._selected_path = str(parent)
+    dialog._outcome_input_path = str(source)
+    dialog.reload_receipt()
+    _wait(qt_driver, dialog)
+    assert "來源缺件" in dialog.outcome_summary.text() and "1 筆價格資料不足" in dialog.outcome_summary.text()
+    assert "非含息總報酬" in dialog.outcome_summary.text()
+    assert dialog.outcome_table.item(0, 4).text() in {"-", "—"} and not dialog.audit.isVisible()
+
+
 @pytest.mark.parametrize("mode", ["missing", "pending", "cost_unknown", "calendar_unknown", "wrong_parent"])
 def test_plain_language_missing_pending_and_reject(qt_driver, forward_saved, monkeypatch, mode):
     _, _, source, value = forward_saved

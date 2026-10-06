@@ -1384,3 +1384,8 @@ UX11後續：saved_strategy_rule_card只調既有ResearchRunService完整性read
 ### 2026-10-06 UX21 exact 保存母體結果 consumer
 
 `rule_research_forward_outcome.py` 接 immutable parent/child receipt及明示Calendar／PricePoint／BenchmarkSpec／CostPolicy，以Decimal投影endpoint-only H5/10/20。`rule_research_forward_outcome_reader.py` 是2MiB有界唯讀application入口：原parent readiness→exact children→DTO投影→原來源/輸入重核；不開市場DB或producer、不掃latest或保存outcome。Qt parent receipt dialog沿TaskWorker作背景讀取，GUI僅呈現分母、方法狀態／報酬與缺件，取消／stale保護保留。原來源資料流與其他owner不變；official calendar/custody及formal/training/交易資格未提供，未建正式每日adapter／outcome store。操作與驗證見[Manual](../07_guides/APPLICATION_MANUAL.md)、[UX21 QA](../06_qa/UX21_FORWARD_OUTCOME_20261006.md)。
+
+
+### 2026-10-06 UX21 實際來源與 sealed outcome 日報
+
+exact parent/readiness→current-observed SQLite snapshot transaction（原決策 close 指紋核對、120列內 exact endpoints）＋明示 verified TWSE 年度計畫 cache→純 forward projection→BoundedForwardOutcomeWriter atomic 保存。runtime/source/schema/main/WAL/row/calendar/clock/cost/result identities 保存，不選 latest；完整 projection 有界壓縮，reader 解壓核 hash 與 core 語意，重讀不查 current DB。read_observation_days 可明示 outcome_root，按原 parent 列全部 revisions；daily isolated CLI 與 Qt parent dialog 只讀同收據。qualified benchmark、完整 labels／正式部署仍未接，年度計畫不作 actual-session/custody/PIT。[Manual](../07_guides/APPLICATION_MANUAL.md)、[QA](../06_qa/UX21_SOURCE_STORE_DAILY_20261006.md)。

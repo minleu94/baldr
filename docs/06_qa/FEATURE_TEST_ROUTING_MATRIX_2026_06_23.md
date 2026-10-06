@@ -145,3 +145,13 @@ Testing / QA Agent 接收到功能驗證請求後，將其映射到系統的六�
 | Smart Money async UI | candidate UI bridge | 驗證 loading、stale-result、error recovery 與 UI responsiveness；真實大量 broker I/O 留在 Full。 |
 
 跨流失敗必須回到擁有該 contract 的 workstream 修正。整合 adapter／verifier 不得補缺值、把 `degraded` 改成 ready、放寬 source acceptance／ML promotion Gate，或用 fixture 折抵 forward evidence、real artifact 與人工／時間條件。
+
+
+### 2026-10-06 UX21 actual source/store/daily
+
+| 變更範圍 | 必跑 |
+|---|---|
+| current-observed source／atomic outcome／日報 | tests/test_rule_research_forward_isolated.py、test_rule_research_forward_outcome.py、test_rule_research_forward_outcome_reader.py、test_rule_research_observation_acceptance.py、test_rule_research_daily_owner.py |
+| parent outcome receipt UI | tests/test_ui_qt_parent_receipt_dialog.py、test_ui_qt_forward_outcome_receipt.py；既有 Workbench、qa_validate_update_tab、全 source roots mypy |
+
+實際來源及來源不可得驗證：[UX21收據](UX21_SOURCE_STORE_DAILY_20261006.md)。長Windows SHA路徑測試使用短Temp basetemp，原失敗保留。

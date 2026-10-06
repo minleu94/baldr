@@ -1,5 +1,12 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 UX21 實際來源→保存→隔離日報
+
+承接48feaf70：明示 query-only 市場價格＋既存verified TWSE年度計畫 cache→exact parent/children及原決策close指紋→有界endpoint研究成效→atomic sealed保存／hash重讀→同parent所有revision日報／背景Qt畫面已完成。實際D市場1477/2382的9/1事後研究毛報酬及10/6缺當日價格／未成熟兩路完成；duplicate／新程序相同、main/WAL pins不變，來源不存在blocked零發布。未知成本/benchmark保留null，年度計畫／current-observed不授PIT/訓練/正式或交易資格。
+
+UX21整項仍partial：qualified benchmark／完整labels／正式daily部署與官方actual-session/custody、自然成熟／效果、Native／真人仍缺；這些分別是工程／決策／外證。9stage 1done/7partial/1pending、24UX 2done/20partial/2pending不變，UX22/23不開工。逐項partial差距與驗證見[UX21來源保存日報收據](../06_qa/UX21_SOURCE_STORE_DAILY_20261006.md)及[Manual](../07_guides/APPLICATION_MANUAL.md)。既有效能例外不重開gate，沒有正式DB/Task/migration/fit/push/清理/前景Native；本地commit/readback後停，UTC07:00停止約束有效。
+
+
 ## 2026-10-06 UX21 保存母體 forward outcome 有限整合
 
 由90d16858乾淨dev接手，review後採納lane9aeb2655為25eec766；exact parent＋children與明示calendar/prices/benchmark/cost/asof接唯讀consumer，現有母體收據視窗可看H5／H10／H20完整分母、每股毛／net／excess、資料不足與未成熟。成本不補零，方法判定不是交易selected；未捕捉／排除分母保留，PIT／formal／training／natural／execution false。107passed／1skip、Workbench85、validator25／4skip、mypy810與compile／quant guard通過；合作cancel/stale與同收據新程序重讀已驗。詳見[UX21限定收據](../06_qa/UX21_FORWARD_OUTCOME_20261006.md)、[Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-06-ux21-保存母體-h5h10h20-研究結果)。

@@ -146,7 +146,7 @@ class RuleResearchParentReceiptDialog(QDialog):
         self.outcome_summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         outcome_layout.addWidget(self.outcome_summary)
         controls = QHBoxLayout()
-        self.outcome_input_button = QPushButton("選擇研究結果輸入")
+        self.outcome_input_button = QPushButton("選擇結果輸入／保存收據")
         self.outcome_input_button.clicked.connect(self.choose_outcome_input)
         controls.addWidget(self.outcome_input_button)
         self.outcome_clear_button = QPushButton("清除結果輸入")
@@ -226,7 +226,7 @@ class RuleResearchParentReceiptDialog(QDialog):
     def choose_outcome_input(self) -> None:
         if self._worker is not None or not self._selected_path:
             return
-        path, _ = QFileDialog.getOpenFileName(self, "選擇明示研究結果輸入", "", "研究輸入 (*.json)")
+        path, _ = QFileDialog.getOpenFileName(self, "選擇研究結果輸入或保存收據", "", "研究輸入 (*.json)")
         if path:
             self._outcome_input_path = path
             self.reload_receipt()
@@ -344,6 +344,11 @@ class RuleResearchParentReceiptDialog(QDialog):
         outcome = result.get("outcome")
         if outcome is not None:
             self._render_outcome(outcome["projection"], contracts)
+            if outcome.get("source_contract") is not None:
+                source = outcome["source_contract"]
+                self.outcome_summary.setText(self.outcome_summary.text() + "\n來源：目前觀察未調整收盤價／年度計畫日曆，非含息總報酬；臨時休市與歷史可用時間未知，僅供研究。保存版本不採用較新資料。")
+                if source.get("issues"):
+                    self.outcome_summary.setText(self.outcome_summary.text() + f"\n來源缺件：指定決策日或終點有 {len(source['issues'])} 筆價格資料不足；未成熟與缺件分開保留，詳情可展開來源診斷。")
             self.audit.setPlainText(self.audit.toPlainText() + "\n" + json.dumps({"forward_outcome": outcome}, ensure_ascii=False, indent=2))
             self.next_step.setText("母體保存與明示研究輸入已核對；H5／H10／H20 的可看報酬、資料不足與未成熟分列於結果頁。"
                                    "來源可得時間與官方日曆／custody 仍未證明；未捕捉不是負樣本，不授 PIT、訓練或交易資格。")

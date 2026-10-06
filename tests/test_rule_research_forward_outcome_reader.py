@@ -52,6 +52,13 @@ def test_actual_readonly_denominator_cost_and_new_process(forward_saved, monkeyp
     assert before == {p: p.read_bytes() for p in receipt.parents[2].parent.rglob("*") if p.is_file()}
 
 
+def test_explicit_input_named_receipt_remains_supported(forward_saved):
+    _, parent, source, _ = forward_saved
+    selected = source.with_name("receipt.json")
+    selected.write_bytes(source.read_bytes())
+    assert read_saved_parent_forward_outcome(str(parent), str(selected))["projection"] == read_saved_parent_forward_outcome(str(parent), str(source))["projection"]
+
+
 @pytest.mark.parametrize("change,error", [
     ("parent", "parent_mismatch"), ("price_number", "decimal_text"), ("cost_float", "target_entry_bp_invalid"),
     ("future", "as_of_in_future"), ("extra", "schema_invalid"), ("duplicate", "duplicate_key"),

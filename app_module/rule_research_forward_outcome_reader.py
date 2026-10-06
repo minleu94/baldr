@@ -56,6 +56,9 @@ def read_saved_parent_forward_outcome(
     source = Path(input_path).absolute()
     raw = _input_bytes(source)
     value = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs)
+    if isinstance(value, dict) and value.get("schema_version") == "rule-research-forward-receipt.v1":
+        from app_module.rule_research_forward_store import read_forward_receipt
+        return read_forward_receipt(receipt_path, input_path, cancel_callback=cancel)
     keys = {"schema_version", "parent_identity_sha256", "decision_date", "as_of_date",
             "calendar", "prices", "benchmark", "cost_policy"}
     if not isinstance(value, dict) or set(value) != keys or value["schema_version"] != INPUT_SCHEMA:

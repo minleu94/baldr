@@ -206,7 +206,8 @@ def build_observation_acceptance(policy_path: str | Path, parent_receipt: str | 
     return capture
 
 
-def read_observation_days(policy_path: str | Path, acceptance_root: str | Path, *, evaluated_at: datetime) -> dict[str, Any]:
+def read_observation_days(policy_path: str | Path, acceptance_root: str | Path, *, evaluated_at: datetime,
+        outcome_root: str | Path | None = None) -> dict[str, Any]:
     """顯式預期觀測日與exact保存包對照；每個revision都保留，不選latest。"""
     _clock(evaluated_at)
     _require(evaluated_at <= datetime.now(timezone.utc), "observation_future_evaluation")
@@ -250,7 +251,7 @@ def read_observation_days(policy_path: str | Path, acceptance_root: str | Path, 
                 "target_data_day_status": b["target_data_day_status"],
                 "missing_target_data_members": b["missing_target_data_members"],
                 "visible_at_evaluation": visible, "error_code": error})
-    days = []
+    days: list[dict[str, Any]] = []
     for day, records in rows.items():
         records.sort(key=lambda r: r["identity_sha256"])
         accepted = [r for r in records if r["saved_verified"] and r["visible_at_evaluation"]
@@ -264,6 +265,25 @@ def read_observation_days(policy_path: str | Path, acceptance_root: str | Path, 
                      "revision_pin_count": len(revisions), "records": records})
     _require(load_observation_policy(policy_path) == policy, "observation_policy_changed")
     _require(inventory_pin() == before_inventory, "observation_inventory_changed")
+    if outcome_root is not None:
+        from app_module.rule_research_forward_store import read_forward_revision_index
+        forward_index: dict[str, list[dict[str, Any]]] = {}
+        forward_error = ""
+        try:
+            forward_index = read_forward_revision_index(outcome_root, evaluated_at=evaluated_at)
+        except Exception as exc:
+            forward_error = str(exc)
+        for day_row in days:
+            for record in day_row["records"]:
+                try:
+                    _require(not forward_error, forward_error)
+                    _require(record["saved_verified"], "forward_parent_record_unverified")
+                    outcomes = forward_index.get(record["parent_identity_sha256"], [])
+                    _require(all(o["decision_date"] == day_row["decision_date"] for o in outcomes), "forward_day_binding_mismatch")
+                    record["forward_outcomes"] = outcomes
+                    record["forward_status"] = "saved_revisions" if any(o["visible_at_evaluation"] for o in outcomes) else "awaiting_source_or_outcome"
+                except Exception as exc:
+                    record.update(forward_outcomes=[], forward_status="unavailable_or_unverified", forward_error=str(exc))
     return {"status": "readonly", "policy_id": policy["value"]["policy_id"], "policy_sha256": policy_sha,
             "policy_version": policy["value"]["version"], "other_policy_record_count": other_policy_records,
             "evaluated_at": _clock(evaluated_at), "days": days,

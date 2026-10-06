@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -25,6 +26,13 @@ from app_module.paper_equal_weight_benchmark_builder import (  # noqa: E402
 )
 from app_module.paper_equal_weight_benchmark_ledger import EqualWeightBenchmarkEntry  # noqa: E402
 from app_module.paper_portfolio_time import paper_portfolio_today  # noqa: E402
+
+
+from data_module.config import TWStockConfig
+from app_module.personal_store_selection import resolve_personal_store_selection
+from app_module.personal_store_routes import PersonalStoreMode, PersonalStoreDomain, StoreIdentity, PersonalStoreRouteError
+from app_module.personal_paper_store_paths import PersonalPaperStorePaths
+from scripts.run_paper_portfolio_daily import validate_store_environment
 
 
 SCHEMA_VERSION = "paper-equal-weight-benchmark-build.v1"
@@ -82,16 +90,44 @@ def _write_new_ledger(path: Path, entries: tuple[EqualWeightBenchmarkEntry, ...]
 def main(argv: Sequence[str] | None = None) -> int:
     _configure_utf8_stdio()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--baseline", type=Path, required=True)
-    parser.add_argument("--state-db", type=Path, required=True)
-    parser.add_argument("--market-db", type=Path, required=True)
-    parser.add_argument("--output-ledger", type=Path, required=True)
+    parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--state-db", type=Path)
+    parser.add_argument("--market-db", type=Path)
+    parser.add_argument("--output-ledger", type=Path)
     parser.add_argument("--portfolio-id", default=PORTFOLIO_ID)
-    parser.add_argument("--benchmark-id", default=BENCHMARK_ID)
+    parser.add_argument("--benchmark-id")
+    parser.add_argument("--output-root", type=Path)
     parser.add_argument("--confirm-build-paper-benchmark", action="store_true")
     args = parser.parse_args(argv)
 
     try:
+        validate_store_environment()
+        config = TWStockConfig(output_root=args.output_root or Path(os.environ.get("OUTPUT_ROOT", "D:/Min/Python/Project/FA_Data/output")))
+        selection = resolve_personal_store_selection(config)
+        if selection.mode is not PersonalStoreMode.LEGACY_COMPAT:
+            if args.benchmark_id is None or not args.benchmark_id.strip():
+                raise PersonalStoreRouteError("paper_benchmark_identity_required")
+            route = selection.route(PersonalStoreDomain.PAPER, StoreIdentity(args.portfolio_id))
+            pp = PersonalPaperStorePaths.from_route(route, portfolio_id=args.portfolio_id)
+            builder = PaperEqualWeightBenchmarkBuilder(
+                portfolio_id=args.portfolio_id, benchmark_id=args.benchmark_id,
+                today_provider=paper_portfolio_today, route=route, personal_paths=selection.paths,
+            )
+            preview = builder.preview(
+                baseline_path=pp.require_selected(args.baseline, pp.baseline),
+                state_db_path=pp.require_selected(args.state_db, pp.state_db),
+                market_db_path=args.market_db or config.db_file,
+                output_ledger_path=pp.require_selected(args.output_ledger, pp.benchmark_db),
+            )
+            if args.confirm_build_paper_benchmark:
+                builder.commit(preview, confirm=True)
+            print(json.dumps(preview.to_dict(status="built" if args.confirm_build_paper_benchmark else "preview",
+                                            write_performed=args.confirm_build_paper_benchmark),
+                             ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if any(value is None for value in (args.baseline, args.state_db, args.market_db, args.output_ledger)):
+            raise ValueError("legacy benchmark requires --baseline/--state-db/--market-db/--output-ledger")
+        args.benchmark_id = args.benchmark_id or BENCHMARK_ID
         entries = _build_entries(
             baseline_path=args.baseline,
             state_db=args.state_db,

@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 import sqlite3
 import sys
+import tempfile
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
@@ -37,6 +38,11 @@ from app_module.paper_portfolio_snapshot_repository import (  # noqa: E402
     PaperPortfolioSnapshotRepository,
 )
 from app_module.paper_trade_ledger import PaperTradeFill  # noqa: E402
+from app_module.personal_data_paths import PersonalDataPaths, _absolute, to_internal_io_path
+from app_module.personal_paper_store_paths import PersonalPaperStorePaths, PersonalStoreCustody
+from app_module.personal_store_routes import PersonalStoreRoute, PersonalStoreMode, PersonalStoreDomain, StoreIdentity, PersonalStoreRouteError
+from app_module.personal_store_selection import resolve_personal_store_selection
+from app_module.paper_equal_weight_benchmark_builder import GeneratedPaperStaging, require_paper_writer, require_market_separation
 from data_module.config import TWStockConfig  # noqa: E402
 from data_module.official_trading_calendar import (  # noqa: E402
     OfficialTradingCalendar,
@@ -112,14 +118,14 @@ def _latest_reached_decision_at(
     return candidate
 
 
-def _load_mapping(path: Path) -> Mapping[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def _load_mapping(path: Path, *, custody: PersonalStoreCustody | None = None) -> Mapping[str, Any]:
+    payload = json.loads(Path(custody.io(path) if custody else path).read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
         raise ValueError("paper baseline must be a JSON object")
     return payload
 
 
-def _baseline_snapshot(payload: Mapping[str, Any]) -> PaperPortfolioSnapshot:
+def _baseline_snapshot(payload: Mapping[str, Any], *, portfolio_id: str = PORTFOLIO_ID) -> PaperPortfolioSnapshot:
     decision_date = str(payload["decision_date"])
     cash = Decimal(str(payload["residual_cash"]))
     raw_allocations = payload.get("allocations")
@@ -155,8 +161,8 @@ def _baseline_snapshot(payload: Mapping[str, Any]) -> PaperPortfolioSnapshot:
         for symbol, quantity, price, amount in raw_positions
     )
     return PaperPortfolioSnapshot(
-        snapshot_id=f"{PORTFOLIO_ID}-{decision_date.replace('-', '')}-baseline",
-        portfolio_id=PORTFOLIO_ID,
+        snapshot_id=f"{portfolio_id}-{decision_date.replace('-', '')}-baseline",
+        portfolio_id=portfolio_id,
         decision_date=decision_date,
         source_result_id=str(payload["source_result_id"]),
         cash=cash,
@@ -171,11 +177,10 @@ def _latest_prices(
     symbols: Sequence[str],
     decision_date: str,
 ) -> tuple[PaperPriceObservation, ...]:
-    if not database.is_file():
+    if not Path(to_internal_io_path(database.absolute())).is_file():
         raise FileNotFoundError(database)
-    uri = f"file:{database.resolve().as_posix()}?mode=ro"
     observations: list[PaperPriceObservation] = []
-    with sqlite3.connect(uri, uri=True) as connection:
+    with PersonalStoreCustody(None, None).read_sqlite(_absolute(database.absolute())) as connection:
         connection.execute("PRAGMA query_only=ON")
         for symbol in sorted(set(symbols)):
             row = connection.execute(
@@ -207,6 +212,7 @@ def _project_paper_ledger_transitions(
     *,
     ledger_db: Path | None,
     before_date: str,
+    custody: PersonalStoreCustody | None = None,
 ) -> tuple[PaperPortfolioSnapshot, tuple[str, ...]]:
     """把已驗證的 EOD Paper transition 投影到下一個 preopen 起始狀態。
 
@@ -217,13 +223,13 @@ def _project_paper_ledger_transitions(
 
     if ledger_db is None:
         return prior, ()
-    resolved = ledger_db.expanduser().resolve()
-    if not resolved.exists():
+    guard = custody or PersonalStoreCustody(None, None)
+    resolved = (guard.sqlite_guard(ledger_db) if guard.route is not None else ledger_db.expanduser().resolve())
+    if not os.path.exists(guard.io(resolved)):
         return prior, ()
-    if not resolved.is_file():
+    if not Path(guard.io(resolved)).is_file():
         raise ValueError("paper ledger transition path is not a file")
-    before_hash = _sha256_file(resolved)
-    uri = f"file:{resolved.as_posix()}?mode=ro"
+    before_hash = _sha256_file(resolved, custody=guard)
     required = {
         "schema_version",
         "fill_id",
@@ -250,7 +256,7 @@ def _project_paper_ledger_transitions(
         "auto_rebalance_allowed",
     }
     try:
-        with sqlite3.connect(uri, uri=True) as connection:
+        with guard.read_sqlite(resolved) as connection:
             connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA query_only=ON")
             columns = {
@@ -270,7 +276,7 @@ def _project_paper_ledger_transitions(
         raise ValueError(
             f"paper ledger transition read failed:{type(error).__name__}:{error}"
         ) from error
-    after_hash = _sha256_file(resolved)
+    after_hash = _sha256_file(resolved, custody=guard)
     if before_hash != after_hash:
         raise ValueError("paper ledger changed during read")
     if not fills:
@@ -367,9 +373,11 @@ def _paper_fill_from_row(row: sqlite3.Row) -> PaperTradeFill:
     )
 
 
-def _sha256_file(path: Path) -> str:
+def _sha256_file(path: Path, *, custody: PersonalStoreCustody | None = None) -> str:
+    if custody is not None:
+        custody.sqlite_guard(path)
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    with Path(custody.io(path) if custody else path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
@@ -385,7 +393,25 @@ def run(
     calendar: OfficialTradingCalendar | None = None,
     now: datetime | None = None,
     ledger_db: Path | None = None,
+    route: PersonalStoreRoute | None = None,
+    personal_paths: PersonalDataPaths | None = None,
 ) -> dict[str, Any]:
+    custody = PersonalStoreCustody(route, personal_paths)
+    portfolio_id = PORTFOLIO_ID if route is None else route.identity.key
+    status_path = output_root / "scheduled" / "paper_portfolio_daily" / "latest_status.json"
+    if route is not None:
+        selected = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id)
+        for override, target in ((baseline_path, selected.baseline), (state_db, selected.state_db),
+                                 (ledger_db, selected.cost_ledger_db), (status_path, selected.status)):
+            selected.require_selected(override, target)
+        ledger_db = selected.cost_ledger_db
+        require_paper_writer(route)
+        custody.guard(baseline_path)
+        custody.sqlite_guard(state_db)
+        custody.sqlite_guard(ledger_db)
+        custody.guard(status_path)
+        require_market_separation(market_db, personal_paths)
+
     if decision_at.tzinfo is None or decision_at.utcoffset() is None:
         raise ValueError("decision_at must include timezone")
     decision_at = decision_at.astimezone(TAIPEI)
@@ -397,12 +423,6 @@ def run(
         raise ValueError("now must include timezone")
     checked_at = checked_raw.astimezone(TAIPEI)
 
-    status_path = (
-        output_root
-        / "scheduled"
-        / "paper_portfolio_daily"
-        / "latest_status.json"
-    )
     if decision_at > checked_at:
         future_status: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
@@ -422,14 +442,14 @@ def run(
                 f"{decision_at.isoformat(timespec='seconds')}:"
                 f"checked_at={checked_at.isoformat(timespec='seconds')}"
             ],
-            "state_db": str(state_db.resolve()),
+            "state_db": str(state_db if route is not None else state_db.resolve()),
             "market_db_mode": "not_opened",
             "writes_market_db": False,
             "auto_rebalance_allowed": False,
             "changes_advice": False,
             "broker_execution": False,
         }
-        _atomic_write_json(status_path, future_status)
+        _atomic_write_json(status_path, future_status, custody=custody)
         return future_status
 
     calendar_service = calendar or OfficialTradingCalendar(db_path=market_db)
@@ -464,27 +484,31 @@ def run(
                     else f"trading_calendar_unknown:{calendar_reason}"
                 )
             ],
-            "state_db": str(state_db.resolve()),
+            "state_db": str(state_db if route is not None else state_db.resolve()),
             "market_db_mode": "not_opened",
             "writes_market_db": False,
             "auto_rebalance_allowed": False,
             "changes_advice": False,
             "broker_execution": False,
         }
-        _atomic_write_json(status_path, calendar_status)
+        _atomic_write_json(status_path, calendar_status, custody=custody)
         return calendar_status
 
-    repository = PaperPortfolioSnapshotRepository(state_db)
-    baseline = _baseline_snapshot(_load_mapping(baseline_path))
+    baseline_payload = _load_mapping(baseline_path, custody=custody)
+    if "portfolio_id" in baseline_payload and str(baseline_payload["portfolio_id"]) != portfolio_id:
+        raise PersonalStoreRouteError("paper_baseline_identity_mismatch")
+    baseline = _baseline_snapshot(baseline_payload, portfolio_id=portfolio_id)
+    repository = PaperPortfolioSnapshotRepository(state_db, route=route, personal_paths=personal_paths,
+                                                   portfolio_id=portfolio_id)
     if repository.get(baseline.snapshot_id) is None:
         repository.append(baseline)
 
-    existing = repository.list_for_portfolio(PORTFOLIO_ID)
+    existing = repository.list_for_portfolio(portfolio_id)
     if not existing:
         raise RuntimeError("paper portfolio baseline was not initialized")
     prior = existing[-1]
     decision_date = decision_at.date().isoformat()
-    snapshot_id = f"{PORTFOLIO_ID}-{decision_date.replace('-', '')}"
+    snapshot_id = f"{portfolio_id}-{decision_date.replace('-', '')}"
     duplicate = repository.get(snapshot_id)
     diagnostics: tuple[str, ...]
     ledger_diagnostics: tuple[str, ...] = ()
@@ -498,7 +522,7 @@ def run(
         prior, ledger_diagnostics = _project_paper_ledger_transitions(
             prior,
             ledger_db=ledger_db,
-            before_date=decision_date,
+            before_date=decision_date, custody=custody,
         )
         observations = _latest_prices(
             market_db,
@@ -537,7 +561,7 @@ def run(
             "schema_version": PAPER_STATE_WRITE_CONTRACT_SCHEMA_VERSION,
             "writer": "scripts.run_paper_portfolio_daily.run",
             "write_scope": "repository_paper_snapshot_append_only",
-            "state_db": str(state_db.resolve()),
+            "state_db": str(state_db if route is not None else state_db.resolve()),
             "snapshot_id": result_snapshot.snapshot_id,
             "decision_date": decision_date,
             "snapshot_appended": appended,
@@ -548,12 +572,12 @@ def run(
         },
         "diagnostics": list(diagnostics),
         "paper_ledger_db": (
-            None if ledger_db is None else str(ledger_db.expanduser().resolve())
+            None if ledger_db is None else str(ledger_db if route is not None else ledger_db.expanduser().resolve())
         ),
         "paper_ledger_transitions_applied": sum(
             item.startswith("paper_ledger_transition_applied:") for item in diagnostics
         ),
-        "state_db": str(state_db.resolve()),
+        "state_db": str(state_db if route is not None else state_db.resolve()),
         "market_db_mode": "ro/query_only",
         "writes_market_db": False,
         "auto_rebalance_allowed": False,
@@ -562,7 +586,7 @@ def run(
     }
     _atomic_write_json(
         status_path,
-        status,
+        status, custody=custody,
     )
     return status
 
@@ -580,21 +604,31 @@ def _non_negative_int(value: object, field_name: str) -> int:
     return value
 
 
-def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    rendered = json.dumps(
-        payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        indent=2,
-    ) + "\n"
+def _atomic_write_json(path: Path, payload: Mapping[str, Any], *, custody: PersonalStoreCustody | None = None) -> None:
+    guard = custody or PersonalStoreCustody(None, None)
+    if guard.route is None:
+        path = path.expanduser().absolute()
+    require_paper_writer(guard.route)
+    guard.prepare_parent(path)
+    fd, name = tempfile.mkstemp(prefix=f".{path.stem}.", suffix=".tmp",
+                               dir=str(Path(guard.io(path)).parent))
+    temporary = path.parent / Path(name).name
     try:
-        temporary.write_text(rendered, encoding="utf-8")
-        os.replace(temporary, path)
+        staging = GeneratedPaperStaging(guard, path, temporary, creation_identity=GeneratedPaperStaging._inode(os.fstat(fd)))
+        rendered = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            fd = -1
+            staging.guard(temporary)
+            stream.write(rendered)
+            stream.flush()
+            os.fsync(stream.fileno())
+        staging.guard(temporary)
+        os.replace(staging.io(), guard.io(path))
     finally:
-        if temporary.exists():
-            temporary.unlink()
+        if fd != -1:
+            os.close(fd)
+        if "staging" in locals():
+            staging.cleanup()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -612,30 +646,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="已 append-only Paper fill ledger；只讀投影至下一個 preopen snapshot",
     )
     parser.add_argument("--output-root", type=Path)
+    parser.add_argument("--portfolio-id", default=PORTFOLIO_ID)
     parser.add_argument("--decision-at")
     args = parser.parse_args(argv)
 
-    config = TWStockConfig(
-        output_root=args.output_root
-        or Path(os.environ.get("OUTPUT_ROOT", "D:/Min/Python/Project/FA_Data/output"))
-    )
-    output_root = config.output_root
-    baseline = args.baseline or output_root / "paper_portfolio" / "baseline_20260712.json"
-    state_db = args.state_db or output_root / "paper_portfolio" / "paper_portfolio.sqlite"
-    market_db = args.market_db or config.db_file
-    ledger_db = args.ledger_db or (
-        Path(os.environ["PAPER_EXECUTION_LEDGER_DB"])
-        if os.environ.get("PAPER_EXECUTION_LEDGER_DB")
-        else output_root / "paper_portfolio" / "paper_trade_ledger.sqlite"
-    )
+    config = None
+    route = None
     try:
+        validate_store_environment()
+        config = TWStockConfig(output_root=args.output_root or Path(os.environ.get("OUTPUT_ROOT", "D:/Min/Python/Project/FA_Data/output")))
+        selection = resolve_personal_store_selection(config)
+        output_root = config.output_root
+        baseline = args.baseline or output_root / "paper_portfolio" / "baseline_20260712.json"
+        state_db = args.state_db or output_root / "paper_portfolio" / "paper_portfolio.sqlite"
+        market_db = args.market_db or config.db_file
+        ledger_db = args.ledger_db or (Path(os.environ["PAPER_EXECUTION_LEDGER_DB"])
+                    if os.environ.get("PAPER_EXECUTION_LEDGER_DB") else output_root / "paper_portfolio" / "paper_trade_ledger.sqlite")
+        if selection.mode is not PersonalStoreMode.LEGACY_COMPAT:
+            route = selection.route(PersonalStoreDomain.PAPER, StoreIdentity(args.portfolio_id))
+            pp = PersonalPaperStorePaths.from_route(route, portfolio_id=args.portfolio_id)
+            baseline = pp.require_selected(args.baseline, pp.baseline)
+            state_db = pp.require_selected(args.state_db, pp.state_db)
+            ledger_db = pp.require_selected(args.ledger_db, pp.cost_ledger_db)
+            output_root = pp.status.parents[2]
         payload = run(
-            baseline_path=baseline,
-            state_db=state_db,
-            market_db=market_db,
-            output_root=output_root,
-            decision_at=_latest_reached_decision_at(args.decision_at),
-            ledger_db=ledger_db,
+            baseline_path=baseline, state_db=state_db, market_db=market_db,
+            output_root=output_root, decision_at=_latest_reached_decision_at(args.decision_at),
+            ledger_db=ledger_db, route=route, personal_paths=selection.paths,
         )
     except Exception as exc:
         failed = {
@@ -648,17 +685,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             "changes_advice": False,
             "broker_execution": False,
         }
-        _atomic_write_json(
-            output_root
-            / "scheduled"
-            / "paper_portfolio_daily"
-            / "latest_status.json",
-            failed,
-        )
+        # 明示選擇失敗或 selected writer 失敗只回報，不補寫 legacy。
+        if config is not None and route is None and not store_environment_configured():
+            _atomic_write_json(config.output_root / "scheduled" / "paper_portfolio_daily" / "latest_status.json", failed)
         print(json.dumps(failed, ensure_ascii=False, sort_keys=True, indent=2))
         return 2
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2))
     return 0 if payload["status"] in {"passed", "skipped_non_trading_day"} else 2
+
+
+def store_environment_configured() -> bool:
+    return any(key in os.environ for key in ("PERSONAL_STORE_ROOT", "PERSONAL_STORE_MODE"))
+
+
+def validate_store_environment() -> None:
+    # config 的空白正規化不能把明示空配置當成未配置 legacy。
+    for key in ("PERSONAL_STORE_ROOT", "PERSONAL_STORE_MODE"):
+        if key in os.environ and not os.environ[key].strip():
+            raise PersonalStoreRouteError("personal_store_selection_blank", key)
 
 
 if __name__ == "__main__":

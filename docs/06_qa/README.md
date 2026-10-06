@@ -1,5 +1,14 @@
 # QA 相關文檔目錄
 
+- [B03 Update／Runtime 呈現](BALDR_B03_UPDATE_RUNTIME_20261006.md)：原 DTO 白話影響、未知日期與收合；中央重型 union 尚待穩定版。
+- [B04 保存來源與私人收藏](BALDR_B04_SELECTION_WATCHLIST_20261006.md)：exact selection、CAS 理由／查看狀態及同源 revision。
+- [B05 原生圖／原紀錄 reader](BALDR_B05_CHART_INCREMENT_20261006.md)：marker 原來源 custody、aware clock 與 account kind；main 注入仍待。
+- [B06 三帳摘要](BALDR_B06_PORTFOLIO_SUMMARY_20261006.md)：日期／缺件／同帳服務注入防 fallback。
+- [B10 私人覆盤與週報 history](BALDR_B10_PRIVATE_REVIEW_20261006.md)、[notes 備份](BALDR_B10_NOTES_BACKUP_20261006.md)：私人寫入／市場只讀分離及隔離 create-only。
+- [B12 隔離 runtime](BALDR_B12_DAILY_RUNTIME_20261006.md)：原深路徑失敗／修正、103 unique 與 exit-code 增量分開；不授正式 Task／來源資格。
+
+目前狀態依 PROJECT_SNAPSHOT，操作依完整 Manual；lane focused 不能代替中央 mandatory UI union。
+
 - [UX16／UX18 固定方法與 UX13 共用母體盤勢收據](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：兩條既有觀察、方法／參數／日期／hash 拒絕、舊 schema 明確更新、具名母體盤勢／值排序與真實兩股閉環；整體 UX13／18／19 仍 partial。
 
 - [V3.3 Engineering Closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)：15 capability、lineage verifier、operations handoff 與 external-only 清單。

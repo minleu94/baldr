@@ -1,5 +1,15 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 第二波工程整合（最新摘要）
+
+目前中央 local HEAD 主體已採 B04 exact 保存來源選擇／私人 Watchlist 理由與查看狀態 CAS 保存、B05 原生圖 marker 契約／原保存紀錄 readonly reader 與缺 account_kind 拒絕、B06 三帳摘要與注入防 fallback、B03 Update／Runtime 白話影響／未知日期／明細收合。B10 私人覆盤／notes 備份及週報 composition/history 接線已驗，中央 commit 05329f94：週報私人 Review 與 query-only 市場 refs 分離，歷史不回落市場 writer，28 affected cases、targeted mypy／compile／quant 通過。原來源與未知資格保留。[B10 收據](../06_qa/BALDR_B10_PRIVATE_REVIEW_20261006.md)。
+
+B12 f30b7cc9 與 exit-code 修正 dce2f909 已採為中央 024e0194／740fd64c。typed calendar/terminal pins＋strict request codec→隔離 subprocess owner，default execute=false、缺來源拒絕；preflight／成功 terminal 要求明示 int 非 bool 的零 exit。103 個不同 synthetic 基礎案例與 39 runtime／2 terminal 增量收據分開保留，不累加重測。snapshot producer／repository 只 OS I/O renderer 修正深路徑，canonical identity/schema/SQL/hash/cutoff 不變；snapshot 20GiB／capture 200GiB 原政策下限保留，高 override 不降原值。未註冊正式 Task。[B12 收據](../06_qa/BALDR_B12_DAILY_RUNTIME_20261006.md)。
+
+剩餘工程：B05 主程式原紀錄 reader 注入、B09 per-I/O custody 與同帳服務 composition、B07 保存規則／四來源歷史、B11 八家族有限能力字典、B13 typed model-input 定版與 B14 真正 control port、B15 穩定 UI mandatory union／完整文件。B09 依賴採入曾遭 automatic approval review 拒絕；使用者已直接批准仍適用且不過時的修正合併，原 lane 正按父層逐字證據核對後對同完整依賴重試，結果未確認前仍不宣稱 custody 完成，未轉移 ownership／extract 或繞過。正式 migration／私人啟用／Task／ACL／真來源寫入／Native／fit 仍未授權。
+
+原計畫 9 stage＝1 done／8 partial／0 pending、24 UX＝2 done／22 partial／0 pending，原七項有限 closed 與 F1／Journey 性能例外保留，沒有新增整項 done。首波 Workbench 85／validator 25＋4 skipped／full mypy 823 僅覆蓋首波固定樹；第二波 UI mandatory union 尚未跑，不以 lane focused 數量代替。自然時間累積不當工程 gate，unknown PIT／帳戶／時鐘／模型資格不造。下列較早摘要是歷史接受範圍，不能代替本段目前狀態。
+
 ## 2026-10-06 原產品計畫首波整合（目前摘要）
 
 新唯一dev owner已有界接受Astra B01–B15，首波採B01 registry exact-import／V5語意及B03首頁四用途／明示當下搜尋／大盤收合與缺件三態；中央個股摘要補change及區塊sufficiency與ML限制併列。共用personal長路徑IO helper與B02深DB／防護已採納（234pass／2既有symlink權限skip）；B08私人routes契約21pass，不冒充B09/B10 caller接通。ML新3消除但舊8仍違例，不能稱repo boundary pass；capture200GiB政策不擅降20GiB。

@@ -324,7 +324,9 @@ Advice 不寫 DB、不啟用 scheduler、不建立 broker order、不改 Scoring
 
 窄視窗（小於 720px）會將左側資料來源導覽移到內容上方，核心狀態卡改為雙欄、候選資料卡改為單欄、快速／安全／狀態檢查按鈕改為直列；整個更新頁可垂直捲動。所有更新子頁沿用同一套 Midnight Analyst 深色面板、語意按鈕與狀態摘要樣式，不會因切換來源而變成淺色表單。這只是畫面排版，更新日期、worker、SQLite 同步與 fail-closed 規則不變。
 
-一般桌面寬度的「全部資料」頁會把「快速更新」、「安全更新」與「檢查數據狀態」固定放在標題下方的「立即操作」列，接著才是手動更新摘要、六張核心狀態卡、時間軸與 readiness／P0 診斷。核心卡在寬版採三欄、窄版採雙欄；按鈕不再被長篇狀態表推到頁面最下方。候選資料與月營收分頁也把檢查／抓取操作列放在治理說明與 CLI 範例之前，進入子分頁即可操作。
+「全部資料」頁先顯示資料影響與下一步，分開列出最後成功完成、股價資料日及技術指標資料日，再提供「立即操作」與本次手動更新摘要。最後成功完成來自已保存更新時間軸；資料日來自同次各來源狀態，不以目標日或成功操作代填。未知、過期、部分完成與檢查失敗不能解讀成資料齊全；本輪缺欄位時不沿用舊日期。按「檢查數據狀態」後先核對各來源卡片，再依原因選擇個別更新。核心卡寬版採三欄、窄版採雙欄；整頁可捲動。候選資料與月營收分頁仍保留檢查／抓取操作列。
+
+更新時間軸與執行歷史、候選資料、官方來源候選與接受條件、使用資格與完整阻擋原因預設收合，按對應「展開／收合」可查看原完整明細。候選有資料不表示正式來源已接受；收合不解除阻擋或改變寫入權限。刷新保留資料頁、展開選擇，以及仍存在的步驟／來源／lane／Run 選擇。檢查失敗時先展開明細核對錯誤與來源，再重新檢查；原快速／安全更新、取消、SQLite 同步及人工確認規則不變。
 
 狀態卡片包括：
 
@@ -1229,6 +1231,8 @@ receipt 或推薦列 provenance 的 identity 不一致，會拒絕保存並提�
 推薦／回測結果中的圖表若使用快速 Canvas renderer，可先聚焦圖表，再用方向鍵、Home、End 移動目前資料點；按「顯示數值」可展開同一份圖表 payload 的日期、數值或 histogram 區間筆數。Smart Money 主表與分點追蹤表可用方向鍵或 Tab 瀏覽，Badges 與近期趨勢圖形欄也提供可朗讀的文字數值替代。
 
 ## 7. 觀察清單與選股清單
+
+候選池「編輯收藏理由／已確認查看／稍後查看」在已啟用個人儲存且來源身份可核驗時，保存原個人 Watchlist revision；理由沿原備註、查看狀態沿私人 extension，重新開啟仍可讀回。只讀／未啟用模式不可保存。取消理由對話框或切換來源不保存；衝突須重讀並核對來源，不能覆寫晚到版本。理由上限 4096 字元，不能包含 NUL。「稍後查看」是保存的查看狀態，不會建立排程提醒。變化只比較兩份明示且相同股票／來源／帳戶的保存快照；資料不足維持未知，不使用今日行情補舊資料。此接線不自行核准正式個人儲存啟用。
 
 ### 候選股分析與跨頁下鑽（2026-09-06）
 
@@ -3316,6 +3320,10 @@ Registry 比較只使用已保存的 metadata、equity curve 與 benchmark_resul
 
 ## 10. 持倉管理
 
+在持倉頁「分帳查看」選手動登錄、聲明研究或 Paper。三帳各用自己的資料與總值；手動登錄未核券商成交，聲明成本只供研究，Paper 非實盤績效。切聲明／Paper 時不顯示手動帳金額卡，沿原分頁核對資料。手動帳成本／已實現損益為毛額，已記錄費稅另列；估值日依同列原報價，資料更新時鐘不等於估值日。缺價格、日期未知／異日／未來、或價格與同列來源失配，市值顯示未知；前值、滑價、換手率與集中度缺件不補零。
+
+選持倉後按「個股研究」沿同股原來源，未驗原結果維持未連結，不能借今天結果補舊身份。聲明列可看估值日，明細顯示評估日與聲明成本；過期、缺件或沒有精確健康資料時不能判安全。刷新取消／失敗保留上次資料並明示未確認最新。私人 root／mode 已配置但中央同帳服務尚未注入時，頁面拒絕初始化；檢查主程式 service composition，不回退舊資料，不做自動 migration。B09 最終 custody 接線仍待批准，此呈現接口不代表正式私人帳已可啟用。
+
 ### 10.0 使用者聲明持倉研究（user_declared）
 
 「持倉管理」右側的「聲明持倉研究」是獨立的 research-only lane，專門保存使用者
@@ -3655,6 +3663,8 @@ Watchlist 預設 writer 切換到 repository，也不對正式資料執行 migra
 
 ## 11. Runtime Observatory（Owner 營運與治理監控）
 
+此頁標題為「運作狀態與下一步」。先看日常工作、資料與保存位置、治理任務各自的影響，再依提示到「數據更新」檢查資料。當前來源沒有提供最後成功完成與行情資料日期，兩者明示「未知」；每個工作列的「觀測時間」不能當成成功完成、行情資料日或 Windows 排程執行證據。未讀取、未知、來源無法讀取及歷史治理事件均不能解讀成正常。
+
 這是唯讀觀測頁，不是選股工具；它並列呈現兩條**不得互相推論**的觀測平面：
 
 1. **營運排程**：只讀 `<OUTPUT_ROOT>/scheduled/*/latest_status.json` 已保存產物，顯示核心資料更新、資料新鮮度、推薦快照、證據 dry-run、決策證據與 Paper Portfolio，以及 ML／官方市場事件／ML Direct-OOC 維護等安全狀態。
@@ -3662,9 +3672,11 @@ Watchlist 預設 writer 切換到 repository，也不對正式資料執行 migra
 
 營運排程的每一列是「已保存檔案的讀取結果」，**不是** Windows Task Scheduler 的註冊、啟動中、成功結束或 `Last Result` 證明；某 task 被列出或未列出，都不能反推其 Windows task 狀態。若要確認 Scheduler，請使用本手冊「release_v4 工程排程（不代表 V4.0 closeout）」章節的 query 命令。
 
+「路徑與讀寫診斷」、「排程來源與原始診斷」、「治理任務、上下文與完整事件明細」預設收合；按「展開／收合」查看完整上下文、原始狀態、來源路徑及錯誤原因。刷新保留收合選擇與仍存在的工作／路徑選擇；不會啟動更新、訓練或修復。無法讀取／部分無法解析的事件檔即使標為目前觀測，也不能顯示為健康；先核對來源與診斷，再按既有排錯流程處理。
+
 ### 11.1 正式路徑環境診斷
 
-Runtime 頁面最上方的「正式路徑環境（唯讀診斷）」會立即顯示四個 App 依賴位置：`DATA_ROOT`、`OUTPUT_ROOT`、`DATA_ROOT/logs` 與 `OUTPUT_ROOT/research_runs/research_runs.db`。狀態意義如下：
+首層摘要下的「資料與保存位置（唯讀診斷）」會立即顯示四個 App 依賴位置；展開「路徑與讀寫診斷」可核對 `DATA_ROOT`、`OUTPUT_ROOT`、`DATA_ROOT/logs` 與 `OUTPUT_ROOT/research_runs/research_runs.db`。狀態意義如下：
 
 - **可用**：路徑／檔案已存在，程序目前可讀；需要寫入的既有 logger／Registry 檔案也能開啟寫入 handle（只開啟與關閉，不寫入內容）。
 - **待建立**：父路徑可見，但目標尚未建立；此頁只揭露缺口，不會自動建立目錄、probe 檔或 SQLite。
@@ -4853,6 +4865,18 @@ CLI capture階段失敗時返回碼2，但上游snapshot可能已發布；回傳
 
 ## 2026-10-06 執行隔離每日研究 owner
 
+### typed 日曆／上游 terminal 與多段執行
+
+另可使用 scripts/scheduled/run_rule_research_daily_isolated.py --runtime-request <request.json>：預設只 preflight；明示 --execute-isolated 才做隔離執行；--task-review 只輸出 disabled、task_registered=false 的可審查包，不能與 execute 同用。runtime-request 不可混 runtime-config／target-date／outcome-root。完整 request schema 為 rule-research-daily-runtime-request.v1；各欄必填，duplicate keys 拒絕。
+
+caller 須先核原 calendar／terminal bytes custody，再注入明示 identity/hash pins、coverage_start/end、完整且有序交易日、available_at、coverage_complete、target_date、decision_cutoff、expected_jobs、terminal complete/receipt/source-binding/completed_at、segments 的日期／runtime_path/hash，以及同一 coordination_root／timeout_seconds。未核日曆、coverage 未知、缺 terminal、錯目標日或 revision/hash 拒絕；非交易日不開 owner。synthetic 只供 offline_rehearsal=true 與 synthetic_offline 預演，不能用布林／自行填 hash 取得正式資格。所有 natural／PIT／formal／training 原 unknown/false 保留。
+
+每段使用獨立且不重疊的四類輸出 roots；所有段共用 coordination_root 的單 writer lock。先預檢，execute 前後重驗 runtime/policy 與 source pins；preflight 與 observed/already_observed 必須明示 int 非 bool 的零 subprocess exit，缺欄或非零不能當成功。成功還須讀回 exact immutable owner receipt。timeout_seconds 為 1–3600 秒，stdout 上限2MiB、stderr64KiB；取消／超時停止本次 child，保留 partial，busy 不清他人 lock。CLI 0可能只是 preflight／非交易日，不代表自然接受。
+
+容量沿原角色：snapshot 至少20GiB，parent/capture/observation/sample/status至少200GiB，owner另加工作／暫存預算。effective=max(原角色下限,明示接受override)，20–200GiB override 不降低 capture200GiB；低於20GiB拒絕，高override保持。未知容量拒寫，無自動清理。來源、舊segment、partial與收據保留，新revision另開明示segment，不選latest。深Unicode／emoji OS I/O使用內部renderer，公開identity/hash仍canonical；不改全域Windows設定。Task／account／ACL／正式根目錄與真來源啟用尚未准。[B12完整契約與限定驗證](../06_qa/BALDR_B12_DAILY_RUNTIME_20261006.md)。
+
+
+
 入口scripts/scheduled/run_rule_research_daily_isolated.py。--runtime-config R與--target-date YYYY-MM-DD必須明示；未設定回unconfigured，預設preflight只讀，--execute-isolated才執行。無DATA_ROOT/OUTPUT_ROOT、today/latest或正式Task預設。
 
 runtime JSON schema_version=rule-research-daily-owner-runtime.v1、mode=isolated_research、date_source=explicit_policy_dates；填絕對policy_config/source_db與snapshot_root/capture_root/acceptance_root/status_root、per_root_quota_bytes（正整數≤64MiB）、max_attempts（1–3）、retry_delay_seconds（整數0–5）及parent_universe_configs（目標日期→parent母體JSON絕對路徑，最多31）。policy是上節固定觀測日policy，沒有cutoff/window/expected dates即unconfigured。四根互不重疊，不含配置/來源檔，source也只能在output/qa或Temp，正式市場DB拒絕。本批沒有正式配置檔。
@@ -5017,6 +5041,10 @@ UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監�
 
 
 ## UX08 原生圖的縮放／平移／重設（2026-10-06）
+
+原生圖支援鍵盤／十字線逐日期檢視；選取列與下方全量價格／MA 精確表同步，缺值顯示「未提供」，不補零。外部圖表只開啟已核對的五個來源 symbol（TWSE 2382、1477、00878、IX0001；TPEX 6488）；其他股票／未知來源停用，不能猜市場或沿舊回呼打開錯股。外連不授模型、PIT 或交易資格。
+
+保存紀錄 marker 的工程 API 已接到 view，但主程式來源 reader 注入仍待完成。只有原保存紀錄的獨立 custody hash pins、精確股票／來源／結果／日期／cutoff／帳戶、明示 account kind 與 aware 保存時鐘均核對通過，才畫推薦確認／已記錄買入／已記錄賣出。推薦確認沿 research 帳，不等於實際成交；Paper、缺欄、naive 時鐘、失配或晚到來源拒絕，不借 report.events 或今天資料。舊手動 writer 的未知保存時鐘不補填，診斷 saved_record_clock_unknown；目前未接 reader 的畫面缺 marker，應先核中央來源接線，勿改原紀錄或降低 guard。[marker 與來源閉環證據](../06_qa/BALDR_B05_CHART_INCREMENT_20261006.md)。
 
 入口：在個股研究「價格／技術」頁，原生圖下方按「放大」「縮小」「往較早」「往較新」「重設全部」。放大將可見日期槽約減半、縮小約加倍；平移約目前槽數四分之一，最少一筆；日期均是已核對來源已有資料，不補休市日。範圍列顯示可見日期及可見／總筆數，完整來源日期另標示，下方價格和MA精確表保持全量。
 

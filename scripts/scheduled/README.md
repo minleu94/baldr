@@ -1,5 +1,9 @@
 # baldr Scheduled Operational Wrappers
 
+## 2026-10-06 隔離研究 runtime 入口
+
+run_rule_research_daily_isolated.py 可用 --runtime-request 讀 strict typed request，預設 preflight；--execute-isolated 僅明示隔離執行，--task-review 只輸出 disabled/unconfigured 的包，不註冊 Task。明示 calendar coverage／terminal pins／segment runtime hashes／同一 coordination_root，缺件 unknown 不造資格；preflight／成功 terminal 必須明示 exact int zero subprocess exit。timeout／cancel 保留 partial，原 snapshot20GiB／capture200GiB lower bound 與高 override 保留，不自動清理。正式 Task/account/ACL/source roots 仍未授權，詳細操作以 [Manual](../../docs/07_guides/APPLICATION_MANUAL.md) 與 [B12 QA](../../docs/06_qa/BALDR_B12_DAILY_RUNTIME_20261006.md) 為準。以下既有正式 wrappers 是各自歷史契約，不代表本新入口已啟用。
+
 這些 wrappers 使用 CMD 入口；aggregate 保留 Windows `schtasks.exe`，完整唯讀查詢與 Paper 原地更新使用現有 Python／pywin32 Task Scheduler COM。PowerShell `.ps1` 曾被本機 execution policy 阻擋，不修改或繞過 policy。只有專用 Decision/Evidence capture task 進入既有 append-only event capture；Forward task 依有界當日計算更新研究 outcome rows，EOD Paper 依自身契約追加獨立研究 ledger。所有 Gate 都由機器重驗，不建立等待人工批准的排程 task。
 
 2026-10-02 整合修復的最新設定／受控 producer／consumer 證據見[整合修復紀錄](../../docs/06_qa/INTEGRATION_REPAIR_ACCEPTANCE_20261002.md)。21 項 Exec WorkingDirectory 已原地設為 repo；Paper／ML 具時區 trigger 為台北 08:25，兩項暫停已恢復。以下 9/30、10/1 runtime 清冊是歷史，不能取代新設定讀回或新一次執行。

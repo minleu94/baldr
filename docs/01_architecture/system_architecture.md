@@ -1,5 +1,15 @@
 # 系統架構
 
+## 2026-10-06 第二波來源與私人審查邊界
+
+Watchlist 沿原 repository revisions，以 immutable item digest 排除私人 notes／review extension 後核來源；個人 service writer guard＋CAS 僅更新理由與查看狀態。UI 成功前讀回 exact identity/revision，兩個明示同源 revision 比較不借 live。Portfolio 三帳摘要只投影既有 DTO／同列 cache，root/mode 任一已配置即要求中央注入同帳服務；Paper pair 核 portfolio／benchmark 與 state/benchmark/cost DB 全同，不能缺件 fallback。
+
+圖表 marker reader 接原 Portfolio／Journal readonly adapters，以 caller 先核保存原列 custody SHA pins，分別驗來源、帳戶、aware clock、cutoff 與 report context，再投影至 chart；推薦確認與實際買賣分域，缺 account_kind 不推定 actual。主程式注入尚未完成，不從 report.events 造來源。Update／Runtime 只翻譯原 DTO，成功日／行情日期與觀測時間分離，明細收合不解除原 blocker。
+
+generic personal selection → exact Review route → DecisionQuality 私人 review reader／writer＋原 notes selector；Evidence/Gap/Decay 仍 query-only 市場 source。EvidenceOperationsService 的 readiness 用 config 副本，週報 lineage 保存原 ID/hash/路徑但 snapshot qualification unknown；HistoryRepository 沿相同私人 Review DB，每 connection 核 DB/sidecars custody，readonly list 不 mkdir/schema。CLI source --db-path 的 production-like guard 保留，私人輸出不 retarget 市場來源。B09 custody 完成尚未確認，使用者已批准仍適用修正合併並由原 lane 重試；backend／main 最終 composition 仍是獨立剩餘，不以這些葉節點代替。[接線與限定驗證](../06_qa/BALDR_B10_PRIVATE_REVIEW_20261006.md)。
+
+B12 typed calendar／terminal 來源 pins → strict request codec → subprocess preflight／execute → 原 owner acceptance／saved status；明示零 process exit，缺 clock／coverage／terminal 及 hash mismatch 拒絕，default 不 execute。共享 coordination lock 約束多 segment，timeout／cancel 保留 partial。producer/repository 使用共用 OS renderer，source identity 與所有外部 receipt 仍 canonical；既有 capture200GiB 下限不由較低 override 降級。此鏈只完成隔離工程，正式 Task／account／ACL／來源 qualification 未授。[B12 收據](../06_qa/BALDR_B12_DAILY_RUNTIME_20261006.md)。
+
 ## 2026-10-06 首頁接線與personal IO邊界
 
 `personal_store_routes.select_personal_store_route` 純選擇 trades／聲明／Paper trade ledger／Portfolio ledger／Review／Evidence 的 read source 與 write target，不開 store、不 mkdir。PERSONAL 固定同 store；legacy readonly 無 writer；Evidence 強制市場 readonly；Review 保留市場 Evidence refs 不搬整庫。Portfolio ledger 路徑與身份由 caller 明示，不猜 schema。B09／B10 接線仍是下一步，現有 Journal 主 UI selector 不重做。B02 六檔 COW／activation／repository 已沿同版 helper 完成 canonical DB >260 與 suffix 的隔離全鏈驗證；公開身份不變。

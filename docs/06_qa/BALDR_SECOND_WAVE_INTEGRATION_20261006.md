@@ -97,3 +97,13 @@ G0／G1／G2／G3／G4完整靜態證據皆核exact paths、來源blob／working
 source_id直接批准修補保留：7f56558c→fcef6580的專屬9例通過；384a46c2另以既有中央bounded composition＋原Journal保存／唯讀reader／新程序驗證正向1例通過（3.01s），是重疊增量，不累加為10項獨立案例。unknown source/account/clock仍拒；相鄰FlakyJournal缺legacy_read_only的原fixture1fail已在固定原基準重現，未放寬assert。
 
 剩餘工程阻塞：ML boundary仍676檔／6違例／exit1（H1–H5／H8），P2正式Paper producer接線尚未接受，不宣稱正式私人鏈完成。原9Stage＝1done／8partial／0pending、24UX＝2done／22partial／0pending、七有限closed UX03/04/05/06/09/15/17不變；F1 18.6219658%（門檻20%）與Journey8.109s（門檻8s）原性能例外保留。自然累積不作工程gate，未知來源／PIT／模型資格不造。完整UI union只沿用c9d57fc7已准範圍；本次沒有重跑或提升整Stage／UX。無push／mainmerge／真DBwrite／私人啟用或migration／正式Task／ACL／清理／交易／foregroundNative／訓練。
+
+## 2026-10-06 P2 有界中央審核：未接受
+
+審核固定 P2 `f16e3ab6e6e6604e72ce99815cbf50717e2bde89`，中央基準 `c888c5959a719f4a821189cd923d022cac3bcb56`。五owned blobs／乾淨lane／原108案例raw、JUnit及mypy/compile/quant hashes已核；P1兩ledger、pure daily runner、snapshot repository及原custody helper保持原blob。中央另跑關鍵11案例，11 passed／15.37s（29 deselected），不是再宣稱全108或重跑穩定UI union。
+
+**P2-R1，阻擋接受**：`app_module/paper_equal_weight_benchmark_builder.py:493–497` 的 `require_market_separation` 只核 lexical root；`daily.run` 在calendar／價格读取使用此檢查，但market以route=None開啟，沒有拒絕hardlink。固定lane synthetic實測：原fixture market移至personal_root/hidden-market.sqlite，再hardlink到market/sqlite/twstock.db；nlink＝2，daily仍status=passed、snapshot_appended=true且建立state。私人source bytes／mtime不變，仍違反market與personal分離契約；沒有操作真資料。
+
+原P2 lane修補範圍維持五owned檔：市場existing main須regular／single-link，祖先symlink/reparse與lexical alias拒絕，SQLite sidecars同核；daily在calendar與每market connect前、builder每market connect前重驗。保留legacy relative呼叫相容、extended renderer與P1 exact allowlist，不吞錯／fallback／放行整個root。補市場hardlink指私人DB、外部ancestor junction負例與普通／deep readonly sourcehash正例；已有11正負與108收據重用，只驗delta。修補前不cherry-pick、不納入inventory新test、不稱producer complete。
+
+可核本機：`output/qa/p2_owner_bounded_review_handoff_20261006.json`（SHA256 `193e13815eacd8f3904c8182e1b33fbd3aa1d76607044adb787260100a45f810`），同名中央raw/XML及 `p2_owner_market_alias_probe_20261006.json`。前一次probe因fixture SQLite context未關閉造成Win32 sharing error，補gc釋放fixture handle後才重現；不以第一次setup error當產品finding。P2修補已回父層協調，中央production零改。

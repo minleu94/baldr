@@ -26,7 +26,7 @@ def isolated_env(monkeypatch):
 
 def config(tmp_path, mode="personal"):
     return TWStockConfig(data_root=tmp_path / "market", output_root=tmp_path / "market/output",
-                         personal_journal_root=tmp_path / "personal", personal_journal_mode=mode,
+                         personal_journal_root=tmp_path / "market/personal", personal_journal_mode=mode,
                          profile="test")
 
 
@@ -37,7 +37,7 @@ def config(tmp_path, mode="personal"):
 ])
 def test_incomplete_selection_rejected_before_config_mkdir(tmp_path, kwargs, error):
     if "personal_journal_root" in kwargs:
-        kwargs["personal_journal_root"] = tmp_path / "personal"
+        kwargs["personal_journal_root"] = tmp_path / "market/personal"
     with pytest.raises(ValueError, match=error):
         TWStockConfig(data_root=tmp_path / "market", output_root=tmp_path / "output", **kwargs)
     assert list(tmp_path.iterdir()) == []
@@ -51,7 +51,7 @@ def test_notes_config_independent_watchlist_and_preserves_market_paths(tmp_path)
     assert not selected.personal_journal_root.exists()
     args, _ = TWStockConfig.from_args(["--data-root", str(tmp_path / "market"),
                                    "--output-root", str(tmp_path / "market/output"), "--profile", "test",
-                                   "--personal-journal-root", str(tmp_path / "personal"),
+                                   "--personal-journal-root", str(tmp_path / "market/personal"),
                                    "--personal-journal-mode", "legacy_read_only"])
     assert resolve_journal_storage_selection(args).legacy_read_only
     assert not args.personal_journal_root.exists()
@@ -184,10 +184,10 @@ if sys.argv[2]=='write': j.add_journal_entry('new process fixture',journal_id='o
 assert [n.journal_id for n in j.list_journal_entries()]==['one']
 assert not s.paths.legacy_source.exists()
 '''
-    env = dict(os.environ, PERSONAL_JOURNAL_ROOT=str(tmp_path / "personal"), PERSONAL_JOURNAL_MODE="personal")
+    env = dict(os.environ, PERSONAL_JOURNAL_ROOT=str(tmp_path / "market/personal"), PERSONAL_JOURNAL_MODE="personal")
     for mode in ("write", "read"):
         result = subprocess.run([sys.executable, "-c", script, str(tmp_path / "market"), mode],
-                                env=env, capture_output=True, text=True, timeout=30,
+                                env=env, capture_output=True, text=True, encoding="utf-8", timeout=30,
                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         assert result.returncode == 0, result.stderr
 
@@ -225,7 +225,7 @@ print('notes-composition-ok')
 '''
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", PROFILE="test",
                DATA_ROOT=str(tmp_path / "market"), OUTPUT_ROOT=str(tmp_path / "output"),
-               PERSONAL_JOURNAL_ROOT=str(tmp_path / "personal"), PERSONAL_JOURNAL_MODE=mode,
+               PERSONAL_JOURNAL_ROOT=str(tmp_path / "market/personal"), PERSONAL_JOURNAL_MODE=mode,
                PYTHONIOENCODING="utf-8")
     result = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True,
                             text=True, encoding="utf-8", timeout=45,

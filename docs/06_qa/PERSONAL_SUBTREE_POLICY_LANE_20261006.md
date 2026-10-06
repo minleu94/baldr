@@ -64,3 +64,12 @@ C:/Projects/PythonProjects/technical_analysis/.venv/Scripts/python.exe -m pytest
 personal_data_paths／personal_journal_paths targeted mypy（follow-imports=skip、專屬 Temp cache）通過；四個本包 Python 檔 py_compile、git diff --check 通過。本包未修改 UI，不聲稱 Journey／UI gate 或全部回歸已驗收；前 Journal 包記錄的兩個 baseline 跨域失敗不在本次 root-only scope 重新診斷。
 
 整合只採本限定提交，主 owner 同步預設候選位置、Manual 分享邊界與各 caller；本 lane 不 stage 主線。回滾此包會恢復外部-only root 契約，因此已正式使用內置 personal 之後，不能只 revert 程式就恢復 legacy writer；先停用寫入與保留個人資料，另做受控回復。未執行 revert 或任何正式資料操作。
+
+
+## 主線限定整合（2026-10-06）
+
+review後只採78151034為18224c33，五檔相對lane parent在dev無差異、無衝突，所有worktrees保留。config／UI原本已使用明示resolver，不存在LOCALAPPDATA自動候選或啟用；config註解與Manual候選同步data_root/personal，兩個App測試fixture改為內置root，涵蓋實際CLI convert／activate／rollback、UI預覽取消後合成明示啟用、Journal writer及全部reader、兩模式新process MainWindow composition。Production UI不用改路由，notes仍獨立watchlist。正式位置未建立，真migration／activation仍未准。
+
+主線focused驗證：App／Journal storage 49 passed（含兩模式實際MainWindow新process），新子樹守衛36 passed／68 deselected；没有skip。首次新process capture用Windows預設codec產生兩個readerthread警告，driver補明示UTF-8後只重驗該案例，1 passed且無warning（已包含49項，非新增計數）。targeted mypy2、compile7及diff check通過。沿用lane已完成的232pass／2generic symlink skip，不重跑全量。Journal原8秒gate仍fail，與本policy測試分開報告。
+
+使用者指定本案工程於2026-10-06 00:00 PDT（UTC07:00）暫停並等待新方向；診斷Luna已freeze，root本批結束不自動續開UX11。真實migration／activation、Native及SQLite市場分享契約仍未完成。

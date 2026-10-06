@@ -4717,4 +4717,4 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 
 ## 2026-10-06 最新個人儲存位置決策
 
-使用者已選擇 `D:/Min/Python/Project/FA_Data/personal` 獨立子目錄，取代先前 LOCALAPPDATA／FA_Data 外 root 提案。專用 SQLite 不與市場 `twstock.db` 共用。這次只批准位置，真實 migration／activation 仍未批准；尚未搬移／建立正式 personal store。既有 root guard 目前拒絕市場 root 子目錄，父層另派 personal lane 精確調整明示 `data_root/personal` 契約；主線整合前不可直接套用該設定或全面放寬重疊守衛。市場分享只能按 explicit allowlist 排除 personal、舊 watchlist JSON 與其他私人來源，不能宣稱整包 FA_Data 可直接分享。
+使用者已選擇 `D:/Min/Python/Project/FA_Data/personal` 獨立子目錄，取代先前 LOCALAPPDATA／FA_Data 外 root 提案。專用 SQLite 不與市場 `twstock.db` 共用。這次只批准位置，真實 migration／activation 仍未批准；尚未搬移／建立正式 personal store。精確 `data_root/personal` 契約已整合；其他市場子樹、ancestor、output 與 links/hardlinks 仍拒絕。必須明示設定 root／source 或獨立 notes root／mode，未設定不會自動啟用。市場分享只能按 explicit allowlist 排除 personal、舊 watchlist JSON 與其他私人來源，不能宣稱整包 FA_Data 可直接分享。

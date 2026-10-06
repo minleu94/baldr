@@ -1233,4 +1233,4 @@ A: 需要修改 `{meta_data_dir}/broker_branch_registry.csv` 檔案，添加新�
 
 ## 個人 notes 模式（2026-10-06）
 
-notes 的 root／mode 選擇獨立 watchlist activation；personal writer與全部 UI notes reader 共用單一來源，legacy_read_only 不寫來源。缺 personal 檔案不混讀舊 notes；未設定仍保留相容 writer。位置已選 FA_Data/personal；精確 root guard 尚待 lane 整合，migration／activation 未批准。參數、操作限制及排錯見 [完整 Manual](../07_guides/APPLICATION_MANUAL.md)。
+notes 的 root／mode 選擇獨立 watchlist activation；personal writer與全部 UI notes reader 共用單一來源，legacy_read_only 不寫來源。缺 personal 檔案不混讀舊 notes；未設定仍保留相容 writer。位置已選 FA_Data/personal；精確 root guard 已整合，必須明示設定；migration／activation 未批准。參數、操作限制及排錯見 [完整 Manual](../07_guides/APPLICATION_MANUAL.md)。

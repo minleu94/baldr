@@ -44,7 +44,7 @@ class TWStockConfig:
     research_run_staging_dir: Path = field(init=False)  # Research Run 暫存目錄
     use_sqlite: bool = True  # 是否使用 SQLite 儲存
 
-    # 個人儲存候選必須成對明示；不以 LOCALAPPDATA 偷偷建立或遷移。
+    # 個人儲存候選為 data_root / "personal"，仍須成對明示；不自動配置、建立或遷移。
     personal_data_root: Path | None = field(
         default_factory=lambda: _optional_env_path("PERSONAL_DATA_ROOT"), kw_only=True,
     )

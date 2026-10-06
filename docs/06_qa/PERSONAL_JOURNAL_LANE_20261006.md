@@ -109,3 +109,8 @@ DecisionQuality／DeskSnapshot／EvidenceEvent 均有 config.db_file fallback，
 ## 2026-10-06 最新個人儲存位置決策
 
 使用者已選擇 `D:/Min/Python/Project/FA_Data/personal` 獨立子目錄，取代先前 LOCALAPPDATA／FA_Data 外 root 提案。專用 SQLite 不與市場 `twstock.db` 共用。這次只批准位置，真實 migration／activation 仍未批准；尚未搬移／建立正式 personal store。既有 root guard 目前拒絕市場 root 子目錄，父層另派 personal lane 精確調整明示 `data_root/personal` 契約；主線整合前不可直接套用該設定或全面放寬重疊守衛。市場分享只能按 explicit allowlist 排除 personal、舊 watchlist JSON 與其他私人來源，不能宣稱整包 FA_Data 可直接分享。
+
+
+### 最新後續收據
+
+精確data_root/personal policy已review／整合為18224c33，主線App／notes reader與新process已使用合成內置root驗證；未設定仍不自動啟用。詳見[子樹政策QA](PERSONAL_SUBTREE_POLICY_LANE_20261006.md)。原8秒跨頁gate current/base皆fail，read_report為8.109／8.141秒且正常terminal，詳見[worker gate診斷](JOURNAL_JOURNEY_WORKER_GATE_20261006.md)；未放寬門檻。先前外部-only限制及等待位置批准均由最新決策取代，真migration／activation仍未批准。

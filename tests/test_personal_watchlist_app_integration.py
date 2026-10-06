@@ -15,7 +15,7 @@ def test_config_candidate_does_not_create_personal_root(tmp_path: Path, monkeypa
     monkeypatch.delenv("PERSONAL_DATA_ROOT", raising=False)
     monkeypatch.delenv("PERSONAL_WATCHLIST_SOURCE", raising=False)
     market = tmp_path / "market"
-    personal = tmp_path / "personal"
+    personal = market / "personal"
     source = market / "output" / "watchlist" / "default.json"
     config = TWStockConfig(data_root=market, output_root=market / "output",
                            personal_data_root=personal, personal_watchlist_source=source)
@@ -48,7 +48,7 @@ def test_personal_cli_new_process_convert_activate_rollback_preserves_source(tmp
     source.parent.mkdir(parents=True)
     original = json.dumps(_payload(), ensure_ascii=False).encode("utf-8")
     source.write_bytes(original)
-    personal = tmp_path / "personal"
+    personal = market / "personal"
     target = personal / "watchlists" / "watchlists.v3.sqlite"
     roots = ["--source", str(source), "--personal-root", str(personal),
              "--market-root", str(market), "--legacy-output-root", str(output)]
@@ -88,7 +88,7 @@ def test_personal_ui_preview_cancel_then_explicit_enable(tmp_path: Path, monkeyp
     source.parent.mkdir(parents=True)
     original = json.dumps(_payload(), ensure_ascii=False).encode("utf-8")
     source.write_bytes(original)
-    personal = tmp_path / "personal"
+    personal = market / "personal"
     config = SimpleNamespace(data_root=market, output_root=market / "output",
                              personal_data_root=personal, personal_watchlist_source=source)
     service = build_watchlist_service(config)

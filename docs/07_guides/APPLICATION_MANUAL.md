@@ -4761,3 +4761,12 @@ CLI capture階段失敗時返回碼2，但上游snapshot可能已發布；回傳
 檢查 cohort status、captured/uncaptured分母與每批 production_status/sample_capture_status。producer可能已發布而sample拒絕；返回碼2不代表未寫任何來源。cancelled/incomplete parent envelope可完整保存，但不能稱母體完整。缺批成員列uncaptured，不當負樣本；available-at/calendar/outcome仍unknown，selected=0，不授PIT、訓練或正式资格。
 
 容量與單store守衛不放寬，另限各root64MiB/4096 entries。busy/partial/hash錯誤保留原件；先核對明示配置、容量與來源。child保存中斷留下partial時，舊store拒絕重試；經確認使用新的隔離capture root，保留舊root供審查，不刪lock/partial繞過。沒有正式排程／自動清理。每日MA頁仍為原單批純投影，未提供parent瀏覽動作。詳見 [多批QA](../06_qa/UX20_PARENT_CAPTURE_INTEGRATION_20261006.md)。
+
+
+## 2026-10-06 查看保存的多批研究母體
+
+每日研究條件→「查看保存母體收據」→「選擇保存收據」，選取原隔離保存位置的 parents/<身份>/receipt.json。背景核對完成後，先看母體／版本／保存資料日、截止與觀測時刻、完整或缺批、已捕捉／未捕捉分母及MA方法計數。逐批快照產生結果與樣本保存結果分開：producer已發布不等於capture成功；顯示的是保存收據記錄，同identity沿用首次收據，重讀不推定最近一次CLI結果。
+
+「重讀／重試核對」唯讀相同包，不產生資料。若未完整，先查看各批結果，再依上節隔離CLI沿相同固定as_of及來源重試；來源／方法變更要新明示保存；partial store保留，使用新隔離位置而非刪lock／原件。返回或取消會停止套用結果，背景讀取安全返回後才可重讀，取消不代表曾保存內容消失。
+
+「展開來源與診斷」可看原配置、hash、receipt及逐批error，預設收合。保存包身份通過但readiness拒絕時，表格保留原記錄，母體完整資格未確認；envelope拒絕則清舊分母，核對選取來源後重試。缺批是未捕捉，未知不是負樣本，符合方法不等於正式入選；available-at／交易日曆／成熟結果仍未知，不授PIT、訓練或正式資格。頁面原單批樣本摘要仍明示未保存，不借parent包替另一單批來源核章。詳見 [收據UI QA](../06_qa/UX20_PARENT_RECEIPT_UI_20261006.md)。

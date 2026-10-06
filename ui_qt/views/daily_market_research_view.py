@@ -127,6 +127,7 @@ class DailyMarketResearchView(QWidget):
         self._lifecycle_pending = False
         self._lifecycle_error = "歷史不足／尚未核對"
         self._history_dialog: QDialog | None = None
+        self._parent_receipt_dialog: QDialog | None = None
         self._history_page: object | None = None
         self._history_cursors: list[str | None] = [None]
         self._history_position = 0
@@ -148,6 +149,14 @@ class DailyMarketResearchView(QWidget):
         self._selected_stock_code = ""
         self._build_ui()
         self._set_service_availability()
+
+    def open_parent_receipt(self) -> None:
+        if self._shutting_down:
+            return
+        from ui_qt.rule_research_parent_receipt_dialog import RuleResearchParentReceiptDialog
+        if self._parent_receipt_dialog is None:
+            self._parent_receipt_dialog = RuleResearchParentReceiptDialog(self)
+        self._parent_receipt_dialog.show()
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -185,6 +194,11 @@ class DailyMarketResearchView(QWidget):
         self.sample_readiness_label.setTextFormat(Qt.TextFormat.PlainText)
         self.sample_readiness_label.setWordWrap(True)
         root.addWidget(self.sample_readiness_label)
+        self.parent_receipt_button = QPushButton("查看保存母體收據")
+        self.parent_receipt_button.setObjectName("dailyMarketParentReceipt")
+        self.parent_receipt_button.setToolTip("唯讀核對明示保存的多批母體；不更新快照或保存新樣本。")
+        self.parent_receipt_button.clicked.connect(self.open_parent_receipt)
+        root.addWidget(self.parent_receipt_button)
 
         inputs = QGroupBox("研究範圍與條件")
         inputs.setObjectName("dailyMarketResearchInputs")

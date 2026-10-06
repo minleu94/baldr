@@ -1,5 +1,10 @@
 # 文檔索引
 
+## 2026-10-06 Final authorized validation
+
+[Final authorized union QA](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md) / [Engineering-decision delta](../06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md).
+
+
 ## 2026-10-06 R01 Registry bounded reader
 
 [R01 QA](../06_qa/BALDR_R01_REGISTRY_READ_BUDGET_20261006.md) / [Engineering-decision delta](../06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md).

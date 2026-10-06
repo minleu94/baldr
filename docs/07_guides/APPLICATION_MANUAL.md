@@ -1,5 +1,12 @@
 # baldr 完整操作手冊
 
+## 2026-10-06 收尾可用範圍與驗證
+
+找股票／個股研究／保存與返回、日K量MA與合格原記錄標記／精確表、觀察CAS、三帳分離、私人覆盤、有界歷史查找與來源重開，已按本輪受影響scope驗證。歷史結果超量／取消／來源改變照原錯誤恢復，不降低guard；明細見 ../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md。
+
+最後affected coverage519P/2S由原512P及同HEAD七個package外fixture重驗組成；原七紅收據保留，非單次全綠。mandatory Workbench85P、validator25P/4S、fullmypy841source通過。U1/U2仍pending，不自行啟新策略／研究policy；正式Task／migration／Native／fit/control未授。自然成熟與真來源資格unknown保持，原性能例外不變；Notes新backupGUI、週月／更多指標本輪不做。
+
+
 ## 2026-10-06 歷史結果有界讀取與排錯
 
 從策略／回測的已保存結果選exact entry，Registry與legacy仍維持原類型、日期、來源與权限。UI沿原每artifact64MiB／每輪256MiB讀取預算；Registry equity/trades/portfolio-result/replay-lineage共同計費，圖表與表格decode同份已驗hash的bytes，取消在分塊／decode邊界生效。序列化bytes預算不等於解碼RAM上限，也不改正式writer20/200GiB reserve。

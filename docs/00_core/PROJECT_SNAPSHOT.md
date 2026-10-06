@@ -2,7 +2,7 @@
 
 > 現況更新：2026-10-06。產品補完開工checkpoint `bf9207fb72cd3acebac17f4b7816994efa601226`；main `305635642ecdf5f1331a24a0c81566d07f36cb0d`。原文檔整理基線 dev `07da90c1`／main `a8c81bf5` 屬歷史。僅dev/main、一worktree；當前增量由dev本機commit與具名收據追溯，不將施工狀態寫成完成資格。
 
-補完首波已由使用者授權啟動Luna Max：共同設定／版本葉片 `92ed944e`（43定向案例），H20白話投影 `cefef608`（12定向案例）已提交；中央入口／UI／同版candidate與P01全母體run正在整合驗收。完整選股器、每策略績效、Native真人及正式Task自然run仍未因這些葉片取得完成資格。接續範圍與M1/M2里程碑見[單一補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。現有exe保留原交付，沒有自動替換。
+補完首波已按使用者授權完成 Luna Max 葉片分工並逐包本機提交。共用設定／版本（43案例）、H20白話投影（12案例）、中央入口／UI（34整合案例）與P01底層（6案例）通過；P01全母體UI仍未接線。固定來源 `4b40788bea9e74b5d5207d3d81b1e1c80394b7d6` 建置候選 `2026.10.06+4b40788bea9e`，Python／exe同設定隔離比較通過，已校正Matplotlib hook造成的快取路徑差異。詳見[首波QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)及[單一計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。現有exe／active_delivery保留；完整選股器、策略績效、Native真人與正式Task自然run均未因此完成。
 
 ## 目前可用範圍
 

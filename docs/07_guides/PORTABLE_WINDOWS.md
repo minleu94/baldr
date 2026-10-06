@@ -1,10 +1,12 @@
 # baldr Windows 可攜版
 
-可攜版包含 `baldr.exe` 與 `_internal`。**必須保存整個 baldr 資料夾**，不可只複製 exe。Windows x64 不需 IDE、全域 Python 或虛擬環境；雙擊 `baldr.exe` 開啟既有九工作區。建置版號為 `2026.10.06`，不是產品成熟度版號。
+可攜版包含 `baldr.exe` 與 `_internal`。**必須保存整個 baldr 資料夾**，不可只複製 exe。Windows x64 不需 IDE、全域 Python 或虛擬環境；雙擊 `baldr.exe` 開啟既有九工作區。舊交付日期版號為 `2026.10.06`；首波候選是 `2026.10.06+4b40788bea9e`，以完整來源commit區分，不是產品成熟度版號。
 
 ## 首次啟動與既有使用者
 
 本機現有交付位置：`C:/Projects/PythonProjects/technical_analysis/dist/baldr/baldr.exe`。exe 大小 **52,301,884 bytes**；SHA256：`ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e`，與實際檔案及 `output/packaging/active_delivery.json` 相符。這是原日期／啟動畫面交付，尚未包含補完首波。建置依賴 PyInstaller 6.16.0／Python 3.11.9／Qt 6.10；支援 Windows 10 1809 以上 x64／Windows 11，依 [Qt 平台文件](https://doc.qt.io/qt-6.10/supported-platforms.html)。舊驗收不延伸為本輪candidate驗收。
+
+首波候選另放 `dist/candidate_4b40788bea9e_dd7335f7/baldr/baldr.exe`；固定來源 `4b40788bea9e74b5d5207d3d81b1e1c80394b7d6`，52,413,416 bytes，SHA256 `6015311ff93286fa045ff04ed2a82284f812ed009cd48db79db435a2ef344410`。Python比較使用 `output/packaging/build_4b40788bea9e_dd7335f7/source` 的同commit快照，不使用當前dev。精確依賴及同一隔離JSON下的四用途、shadow模型／新PID、收藏保存／重開、H20呈現、日期／異常／取消／spawn比對通過；詳見[首波QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)。`BUILD_INFO.json`保留建置事實，`VALIDATION_INFO.json`連結獨立驗證收據；固定發布身分不等於已替換現有交付或Native接受。以下原交付歷史驗收與新candidate的具名結果分開判讀。
 
 已驗隔離 offscreen 啟動、空資料設定提示、九工作區、Unicode／空格工作目錄、synthetic 模型安全載入與新程序重開、multiprocessing、保存重開、Worker 取消與重新執行，以及 CLI／scheduler 未配置 preflight。Native 真人操作、真實私人模型、正式 Task 自然 run、其他 Windows 機器尚未由本包驗證；不以 fixture 改寫原資格。
 

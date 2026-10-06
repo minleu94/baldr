@@ -6,9 +6,9 @@
 
 ## 0. 一頁接續摘要（開發已開始）
 
-九個選股檔案已保存在 `bf9207fb`，不再是未提交工作；三位Luna Max在同一dev worktree分工。共同設定／版本葉片已提交 `92ed944e`（43案例），H20產品投影已提交 `cefef608`（12案例）；中央入口／UI／打包整合與P01母體run尚在驗收。
+九個選股檔案已先保存於 `bf9207fb`，三位 Luna Max 葉片均已交回並逐包提交：啟動／版本 `92ed944e`（43案例）、H20投影 `cefef608`（12案例）、P01底層 `9330f7fb`（6案例）。中央整合與建置修正保存至 `4b40788b`；固定來源 M1 candidate 已通過 Python／exe 同版隔離比較。全母體 UI 與其餘工作包仍未完成。
 
-**下一個可交付成果 M1**：2382首屏讀到保存H20 +6.84%研究估計、理由／風險／持倉／下一步，Python三入口共用設定，版本及commit可辨識；固定commit、固定依賴建一份獨立candidate，與同版Python做四用途比較。M1不代表完整選股器或每策略績效完成。先以此安排小規模Native真人試用；真人尚未實測就保留未驗證，不讓最後P13才開始發現體驗問題。
+**首波 M1 已交候選**：H20接首屏摘要／狀態／下一步，Python三入口共用設定，版本與commit可辨識；固定 `4b40788b`／195項依賴建置獨立candidate，與同commit來源快照的Python做四用途／模型／收藏／日期／錯誤／取消／子程序比較通過。[QA收據](../../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)明列synthetic與canonical限制。下一驗收點先做小規模Native真人試用；M1不代表完整選股器、每策略績效或原模型品質完成。
 
 **選股第一版 M2**：P01真正完整母體閉環加P02/P04首批既有MA交叉、KD、MACD、量能規則。有完整分母、全域篩選排序、比較／個股／收藏返回、新程序與candidate驗收，才稱可用選股第一版。其餘23條條件的B/C缺件明列，不把首波寫成14包完成。
 
@@ -59,10 +59,10 @@ Baldr 已有可用的研究零件及數條有限閉環，但尚未形成完整�
 
 | 項目 | 本輪實際讀回 |
 |---|---|
-| 工作分支／dev | 調查起點 `4f052beb`；開發前checkpoint `bf9207fb72cd3acebac17f4b7816994efa601226`；已驗收葉片 `92ed944e`、`cefef608`，中央整合仍dirty。當前HEAD以git讀回／新收據為準。 |
+| 工作分支／dev | 調查起點 `4f052beb`；開工checkpoint `bf9207fb`；葉片 `92ed944e`／`cefef608`／`9330f7fb`，整合與候選固定來源 `4b40788b`。其後為驗收文件增量，當前HEAD以git讀回為準；同版驗收使用4b固定archive，不使用當前dev冒充它。 |
 | main | `305635642ecdf5f1331a24a0c81566d07f36cb0d` |
 | 本機分支／worktree | 僅 dev、main；唯一 worktree 為本 repository。無須再做分支清理。 |
-| 保留工作 | 第10節九檔已於`bf9207fb`提交。當前未提交的是首波中央整合與尚未驗收的P01施工；不得混成原九檔仍未提交。 |
+| 保留工作 | 第10節九檔已於`bf9207fb`提交；首波整合與三個葉片也已分包提交。候選及所有失敗輸出保留；文件收據另提交，不與原九檔未提交狀態混淆。 |
 | 唯一原計畫 | 2,002 行，SHA256 `4f90d28051e91a2754466fd0ac4677eeb49a7c28e1de3cc419f78965716b9a55`；已完整讀取正文與追加收據。 |
 | 可用 exe | `dist/baldr/baldr.exe`；SHA256 `ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e`。整個資料夾保留；它未包含九檔未提交修改。 |
 | source 的 root | 本工具程序無 DATA_ROOT／OUTPUT_ROOT 覆寫；依 `TWStockConfig` 預設為 `D:/Min/Python/Project/FA_Data` 與其 `output`。不實例化會建立目錄的 config 來做唯讀核對。 |
@@ -574,7 +574,7 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 | Luna Max／啟動契約 | 新增 `app_module/application_bootstrap.py`、`app_module/build_identity.py`、`tests/test_application_bootstrap.py`、`tests/test_build_identity.py` | 無 Qt 的共同設定解析與版本身分。環境變數優先於 JSON，兩種入口同外部預設；開發 dirty 與發布 metadata 可辨識。中央整合入口與 UI。 |
 | Luna Max／P05 白話投影 | 新增 `app_module/stock_research_product_summary.py`、`tests/test_stock_research_product_summary.py` | 使用現有 report／H20 型別輸出結論、理由、風險、持倉關係與下一步。缺件與自然結果等待分開；不生成 Advice、權重或金融計算。中央負責畫面。 |
 | Luna Max／P01 完整母體 | 新增 `app_module/daily_market_universe_run.py`、`tests/test_daily_market_universe_run.py` | 完整母體分段、來源身分、重複／排除／缺件計數、可取消保存與全域查詢；child／parent 原資源上限保持。中央接 writer、selector 與 UI，不以底層測試宣稱產品全閉環。 |
-| 中央 root | `baldr_launcher.py`、`ui_qt/main.py`、`ui_qt/views/stock_research_report_view.py`、`app_module/packaging_provenance.py`、`analysis_module/technical_analysis/technical_indicators.py`（僅日誌）、`packaging/build_windows.py`、`packaging/baldr.spec`、`packaging/windows-dependencies.lock.json`、`packaging/portable_probe.py`、`packaging/portable_journey_probe.py`、`packaging/same_version_product_probe.py`、`packaging/verify_same_version.py`、`tests/test_baldr_launcher.py`、`tests/test_baldr_common_entry.py`、`tests/test_packaging_provenance.py`、`tests/test_ui_qt_stock_research_product_summary.py`，及本計畫、Manual、portable guide、Snapshot／架構／索引與本輪 QA 摘要 | 共用入口與明確注入、版本可見、固定 commit 建置、依賴鎖核對、四用途整合與文件。葉片產物經審核後才接線。 |
+| 中央 root | `baldr_launcher.py`、`ui_qt/main.py`、`ui_qt/views/stock_research_report_view.py`、`app_module/packaging_provenance.py`、`analysis_module/technical_analysis/technical_indicators.py`（僅日誌）、`packaging/build_windows.py`、`packaging/baldr.spec`、`packaging/windows-dependencies.lock.json`、`packaging/portable_probe.py`、`packaging/portable_journey_probe.py`、`packaging/same_version_product_probe.py`、`packaging/verify_same_version.py`、`tests/test_baldr_launcher.py`、`tests/test_baldr_common_entry.py`、`tests/test_packaging_provenance.py`、`tests/test_ui_qt_stock_research_product_summary.py`，及本計畫、Manual、portable guide、Snapshot／架構／索引與 `docs/06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md` | 共用入口與明確注入、版本可見、固定 commit 建置、依賴鎖核對、四用途整合與文件。葉片產物經審核後才接線。 |
 
 所有 agent 在同一 dev checkout 操作，不 stage／commit、不新增分支／worktree、不碰其他 owner 檔案。首波完成後依第 9 節釋出後續工作包；P02–P13 未完成項維持 open，不把首波視為整份計畫完成。
 
@@ -597,13 +597,13 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 
 回滾前核對 Git ownership 與當前差異；回滾後重新跑受影響旅程及必跑 UI 檢查。正式資料、模型、Task 與私人帳本沒有本輪修改，不能用工程 receipt 代替自然績效或正式排程驗證。
 
-### 14.5 首波工程驗收進度（candidate 前）
+### 14.5 首波工程驗收結果（M1 candidate／P01底層分列）
 
 - 啟動／版本葉片43案例、H20純投影12案例通過後分別本機提交，沒有累積待提交葉片。中央共用入口、建置provenance、H20畫面與可讀性定向合跑34案例通過。
 - UI強制順序完成：Workbench 85 passed；update-tab 25 passed／0 failed／4 skipped；mypy 857檔0 error；本輪Python檔py_compile及精度／未來函數guard通過。兩則既有untyped notes與測試cache權限warning仍保留。
 - Python隔離四用途、同一shadow artifact讀回與新PID、spawn、九工作區、H20摘要／錯cohort／清除晚到預檢通過。預檢修正了Python日誌仍落cwd的實際差異，以及probe欠缺main guard造成Windows spawn重進的問題；沒有刪失敗raw log。
-- P01的257納入／300排除／2重複與取消續跑底層測試已交回，reader的Windows drive-relative路徑漏洞仍在覆核修正中；未接全母體UI。既有parent21案例在TEMP與basetemp對齊的短隔離目錄全通過；先前harness路徑拒絕／長路徑失敗保留，不放寬原guard。
-- candidate尚未建置／同版驗收；中央先提交已驗整合，再從固定commit建置。正式QA摘要將記錄實際SHA、兩形態比較結果與Native／正式Task等未驗限制，不能把上述Python預檢稱為exe通過。
+- P01的257納入／300排除／2重複清冊、取消續跑、Decimal跨段排序與fresh reader已驗；Windows路徑與publication cancel gate修正後6案例／mypy0，保存 `9330f7fb`。其底層包含於新candidate，但未接全母體UI。既有parent21案例在TEMP與basetemp對齊的短隔離根全通過；原harness拒絕與失敗保留，不放寬guard。
+- 固定 `4b40788bea9e74b5d5207d3d81b1e1c80394b7d6` candidate `2026.10.06+4b40788bea9e` 已建置，兩形態逐值比較為 `passed_isolated_fixture`；exe SHA `6015311ff93286fa045ff04ed2a82284f812ed009cd48db79db435a2ef344410`。初次96ec比較發現MPLCONFIGDIR不一致而拒絕，修正後新候選通過，失敗包／收據保留。實際範圍及原始連結見[正式QA](../../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)；Native／正式Task／自然成熟／canonical推薦讀回仍未驗或保留原blocker。
 
 
 

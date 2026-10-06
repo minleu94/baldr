@@ -2,7 +2,7 @@
 
 ## Windows 可攜版入口
 
-補完新版Python使用 `python baldr_launcher.py`；直接 `python ui_qt/main.py` 或 `python -m ui_qt.main` 也進同一入口。共用優先序為環境 → 外部portable JSON → LOCALAPPDATA空根，不自動讀 `.env`。設定解析後才初始化TWStockConfig與服務；H20沿原DATA_ROOT的activation hook，不重新enable／fit。現有交付exe尚未包含本輪補完，新candidate另驗同版結果；完整設定、研究root與交付SHA見[可攜指南](PORTABLE_WINDOWS.md)。
+補完新版Python使用 `python baldr_launcher.py`；直接 `python ui_qt/main.py` 或 `python -m ui_qt.main` 也進同一入口。共用優先序為環境 → 外部portable JSON → LOCALAPPDATA空根，不自動讀 `.env`。設定解析後才初始化TWStockConfig與服務；H20沿原DATA_ROOT的activation hook，不重新enable／fit。現有交付exe尚未包含本輪補完；候選 `2026.10.06+4b40788bea9e` 已與同commit來源快照通過同版隔離比較，Native真人仍未驗。完整設定、研究root、候選位置與兩份exe SHA見[可攜指南](PORTABLE_WINDOWS.md)及[首波QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)。
 
 主視窗底部顯示版本／commit前綴與開發版或發布版，提示中列完整commit與各根路徑。含未提交變更的開發版不能視為exe已修復。以 `--launch-info`讀回設定與身分；必要時維護者用 `RESEARCH_STATE_ROOT` 指定既有研究registry根，不搬資料。錯誤JSON、相對路徑或研究／市場根重疊會在初始化前拒絕，先修原設定再重開，不重建DB。
 
@@ -16,7 +16,7 @@
 
 目前已接受 U1 有限 BBANDS30 上軌比較與 U2 H20 gross；個人 H20 已啟用，保存 10 股完整 cohort／gross 排序／exact 返回驗收過。gross 報酬 head 與 canonical 機率 head 分開，Brier 2730 對 null 2500 未勝；工程可讀不代表模型品質合格。自然 10 pending／0 成熟，下一原 Task 2026-10-07 12:45 UTC／05:45 PDT 待真正自動 run，Native 真人易用性仍未驗。後文日期化「U1/U2 等答覆／尚未啟用」只描述當時範圍，現況以 [Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與具名收據為準；不改原步驟、guard 或原失敗證據。
 
-資料 roots、冷封存／研究／備份用途與恢復界線見 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)。本輪只有文檔整理，沒有改 Task、資料或模型；cleanup 只移 8 個空目錄、0 bytes。
+資料 roots、冷封存／研究／備份用途與恢復界線見 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)。此段是首波開工前的文檔整理歷史，當時沒有改 Task、資料或模型；cleanup 只移 8 個空目錄、0 bytes。後續首波程式與candidate驗收以頁首及具名QA為準。
 
 ## 發布使用者首次安裝補充
 

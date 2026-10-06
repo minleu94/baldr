@@ -31,7 +31,7 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 ## 產品補完接續計畫
 
-[Baldr 產品補完接續計畫（2026-10-06）](../superpowers/plans/baldr_product_completion_plan_20261006.md)：對照唯一原始 Danny Quant 計畫、當前原碼與九個保留檔案，整理四用途、完整選股母體、ML／持倉研究、策略績效、排他分工及端到端驗收。使用者後續已授權 Luna Max 開發；工作區先提交為 `bf9207fb`，第 14 節追加 exe／Python 共用入口、設定與同版建置驗收。首波進行中，未代表全部功能完成；原計畫及既有 QA 證據均保留。
+[Baldr 產品補完接續計畫（2026-10-06）](../superpowers/plans/baldr_product_completion_plan_20261006.md)：對照唯一原始 Danny Quant 計畫、當前原碼與九個保留檔案，整理四用途、完整選股母體、ML／持倉研究、策略績效、排他分工及端到端驗收。使用者後續已授權 Luna Max 開發；工作區先提交為 `bf9207fb`，第 14 節追加 exe／Python 共用入口、設定與同版建置驗收。首波M1已交固定commit candidate並通過同版隔離比較，P01底層已驗但UI未接線；[首波QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)明列版本、失敗保留與未驗項，不代表全部功能完成；原計畫及既有 QA 證據均保留。
 
 ## 歷史與原始證據
 

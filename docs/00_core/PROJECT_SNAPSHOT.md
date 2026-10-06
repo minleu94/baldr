@@ -586,3 +586,8 @@ F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚�
 UX07 官方資料與 repo 可行性調查已交付，修正上段「未啟動」狀態；選型、離線原型與 UX08 整合尚未完成，原整份計畫完成數不因研究交付自動增加。首版建議保留原生個股圖與同源表，stage4 主圖候選為 Lightweight Charts＋本機資料；外部連結可選，Hosted Widgets 的逐台股商品／元件覆蓋與桌面散布條件仍待確認。現有 fast chart 是回測用 inline Canvas，並非個股 OHLC 契約；本地沒有 LWC bundle，本批沒有安裝／下載或原型效能量測。下一批先固定 DTO、來源及 cutoff 契約，再由父層決定鎖版資產與隔離 renderer 原型。
 
 正式 JSON 未套用、F1 例外未批准；無 Native、producer／ML、清理或 push。[UX07 比較、來源入口、待驗項目與遷移路徑](../06_qa/UX07_CHART_FEASIBILITY_20261005.md)。
+
+
+## 2026-10-06 個人觀察清單 opt-in 整合
+
+獨立 personal lane 兩個 immutable commit 已順序納入 dev：25c3b326→c03bb4a7、5efb3f13→a205275d。App config／selector／CLI／候選池路徑確認接線，未設定沿原模式；個人模式來源只讀，明示啟用才建立個人 DB，private controls／JSON bytes backup／rollback audit 不留市場包。個人 rollback 僅停止 writer並保留 target 新歷史，不恢復來源 writer。其他個人領域未接線；正式 root、真實遷移與 Native 未執行。F1 18.621965821542936% 保留使用者已接受的效能例外，20% 目標未達，不改稱 pass。[操作](../07_guides/APPLICATION_MANUAL.md)／[QA](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)

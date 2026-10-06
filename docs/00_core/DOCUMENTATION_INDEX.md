@@ -103,3 +103,6 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 - 2026-10-05：[F4 Legacy JSON COW／原升級入口終驗](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)：單JSON至獨立v3、新程序讀回及rollback保留新內容；正式apply另行批准，F1例外尚未批准，UX07未啟動。
 
 - 2026-10-05：[UX07 圖表可行性調查](../06_qa/UX07_CHART_FEASIBILITY_20261005.md)：官方授權／台股覆蓋、外部連結／Widgets／LWC／原生基線比較與 repo 入口；調查已交付，選型／原型／UX08 整合未完成，正式 JSON 套用及 F1 例外仍另列。
+
+
+- 2026-10-06：[個人儲存 lane 與 App 整合](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)：opt-in 路徑、private COW 控制檔、原來源唯讀與回滾停止 writer；正式 root／遷移／Native 另列。

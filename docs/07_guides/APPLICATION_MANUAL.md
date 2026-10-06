@@ -1423,7 +1423,7 @@ TDCC 既有手動重播使用 `scripts/capture_tdcc_shareholding_candidate.py --
 
 #### 市場資料與個人狀態分離（2026-10-05 最新要求；正式路徑待確認）
 
-抓取的市場／來源資料與收藏、個人研究紀錄、筆記、記帳及持倉狀態必須使用獨立 root 與專用儲存；不同表或 `FA_Data/output` 下的另一個 DB 仍不足以防止整包帶出。現在的觀察清單目錄、COW 新 DB 候選及 marker 在 `OUTPUT_ROOT/watchlist`，預設仍位於市場包內；這是既有工程路徑，不是已符合分離要求的正式部署。
+抓取的市場／來源資料與收藏、個人研究紀錄、筆記、記帳及持倉狀態必須使用獨立 root 與專用儲存；不同表或 `FA_Data/output` 下的另一個 DB 仍不足以防止整包帶出。未設定個人模式時，既有觀察清單與 COW 路徑仍在 `OUTPUT_ROOT/watchlist`。2026-10-06 新增明示個人模式，詳見本手冊末尾；正式來源尚未遷移，其他個人領域也未因本批自動分離。
 
 建議個人 root 為 `%LOCALAPPDATA%/baldr/personal`，此電腦的候選完整值為 `C:\Users\archi\AppData\Local\baldr\personal`；觀察清單專用 DB 候選為 `C:\Users\archi\AppData\Local\baldr\personal\watchlists\watchlists.v3.sqlite`。若需 D 槽，另一候選為 `D:\Min\Python\Project\baldr_PersonalData\watchlists\watchlists.v3.sqlite`，兩者都在 `FA_Data` 外。正式位置須由使用者看過確認；目前未建立目錄、搬移、切 writer 或修改其他 owner 帳本。
 
@@ -4672,3 +4672,20 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 `<source>.cow-active.json` 綁定 JSON 來源與 target。成功啟用後以原來源設定開新程序，重核來源與收藏內容；保存沿 v3 revision。錯 marker／過期 writer 拒絕，不偷偷回 JSON。rollback 切回原 JSON，原 JSON 可按原模式繼續保存；target 期間新增內容、雙來源、conversion receipt 與 rollback audit 全保留，不自動合併或清理。具名拒絕時先核對 status、來源／收據身份和點時容量，保留 stage 與錯誤交 owner；不能刪檔／降 reserve 換成功。
 
 本批只驗合成隔離來源；正式 default.json 未遷移、缺失 watchlists.db 未初始化，Native／自然資格另驗。詳見 [Legacy JSON COW QA](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)。
+
+
+## 個人觀察清單：明示選擇與獨立控制檔（2026-10-06）
+
+正式路徑仍待使用者確認。本批未修改正式環境、未遷移既有 JSON、未建立正式個人 DB。候選是 `%LOCALAPPDATA%/baldr/personal`；程式不自動套用此路徑。
+
+1. 在準備使用的啟動環境成對指定 `PERSONAL_DATA_ROOT` 與 `PERSONAL_WATCHLIST_SOURCE`（既有 JSON 或 SQLite 的絕對路徑）。`TWStockConfig.from_args` 亦接受 `--personal-data-root`／`--personal-watchlist-source`。兩者皆未設定時維持既有模式；只設一個會拒絕，不能藉此默默回到原來源 writer。個人 root 不得重疊市場 root、舊 output 或程式套件。
+2. 開啟候選池頁，未啟用時只讀原來源；按「建立並啟用個人副本」查看來源、目標、標記、收據、來源備份及回滾紀錄路徑。取消不建立副本；明確選「Yes」才轉換、核對並啟用。來源內容與未知巢狀欄位保留。
+3. 啟用後保存寫入 `PERSONAL_DATA_ROOT/watchlists/watchlists.v3.sqlite`。新程序沿個人 marker 重新核對 writer；錯來源、收據、hash、schema 或 marker 會拒寫，不能改寫來源來繞過。
+4. CLI 每個動作可加 `--personal-root <絕對路徑> --market-root <絕對路徑> --legacy-output-root <絕對路徑>`，三者須齊全；`--source` 必須匹配選定來源。dry-run／convert／activation-preview／activate 的 `--destination` 必須是上述個人 DB；JSON 轉換另加 `--source-format legacy-json`。先 dry-run，再 convert、activation-preview，最後明示 activate；status 可查狀態。
+5. 個人模式 CLI rollback 使用相同 source 與三個 root。回滾停止個人 writer，保留個人 DB 的新 revision／歷史及來源；不恢復市場來源 writer、不自動合併、不刪除。取消配置後重新使用舊模式也不是回滾步驟，須另行審查。
+
+控制檔皆在個人 root：DB 同目錄的 `watchlists.v3.sqlite.cow-active.json`、其 `.lock`、`watchlists.v3.sqlite.cow-conversion.v1.json`；原 JSON bytes 備份為 `backups/watchlists/source.<來源絕對路徑的SHA256>.json`，備份內容 SHA256 另由 receipt 核對；rollback audit 為 `activation_backups/watchlists/rollback.<activation_id>.json`。設定目前由 runtime 欄位／環境提供，沒有新建設定檔。
+
+排錯：缺一個選擇欄位、來源不存在／歧義、root 重疊、reparse/link/hardlink、來源或 target 身份改變、容量未知／不足、marker 損壞／已回滾時保留資料與收據，修正明示選擇或交由審查，不刪 target／備份／lock 來重試。個人模式啟用失敗不會退回原 JSON writer。
+
+市場匯出 API 只產生固定 CSV 白名單的 metadata manifest；拒絕來源 JSON、SQLite、私人 output、重疊與 links/hardlinks。尚無打包 copy consumer，不能宣稱整包 FA_Data 可安全分享；TOCTOU、內容與來源權限審查仍待後續。Portfolio／ledger／notes 未在本批接線。詳見 [個人儲存 QA](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)。

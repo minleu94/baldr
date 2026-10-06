@@ -1332,3 +1332,8 @@ COW converter位於data_module/watchlist_sqlite_cow.py，import-only lexical cod
 F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚未批准；F2／F3 A/A不重開。UX07未啟動，新Native／真人／自然資格另列。原整份計畫階段done1／partial5／pending3、UX done2／partial14／pending8保持，有限工程完成不等於整份產品計畫完成。沒有清理、producer／ML重跑、Native或push；其他對話檔案保留排除。
 
 [JSON路徑逐項驗證與正式批准邊界](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)
+
+
+## 2026-10-06 個人觀察清單 App 邊界
+
+`TWStockConfig` 成對承接 personal_data_root／personal_watchlist_source；main 透過 `build_watchlist_service` 選擇既有服務或明示個人服務。未設定保留既有模式；個人模式 startup 不建立副本，原來源只讀，UI 路徑預覽確認後才 convert／activate。shared converter／activation 以可選 `WatchlistCowControlPaths` 固定 private marker／lock／receipt／JSON bytes backup／rollback audit；未指定仍維持 legacy 契約。personal rollback 停止 writer，保留 target 新歷史，不恢復來源 writer。設定不存在新的隱含檔案；Portfolio／ledger／notes 未接此 selector。正式 root／migration／Native 仍待核准驗收。市場 export 僅 CSV 白名單 metadata planner，尚無 copy consumer。[QA](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)

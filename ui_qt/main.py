@@ -362,15 +362,9 @@ class MainWindow(QMainWindow):
 
             # 觀察清單服務初始化（可能失敗，需要特別處理）
             try:
-                (
-                    watchlist_repository,
-                    self.watchlist_storage_status,
-                ) = WatchlistService.discover_repository(self.config)
-                self.watchlist_service = WatchlistService(
-                    self.config,
-                    repository=watchlist_repository,
-                    storage_status=self.watchlist_storage_status,
-                )
+                from app_module.personal_watchlist_service import build_watchlist_service
+                self.watchlist_service = build_watchlist_service(self.config)
+                self.watchlist_storage_status = self.watchlist_service.get_storage_status()
             except Exception as e:
                 logger.error(f"初始化觀察清單服務失敗: {e}")
                 # 創建一個空的服務實例，避免後續錯誤

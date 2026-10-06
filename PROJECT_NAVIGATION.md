@@ -633,3 +633,6 @@ python ui_qt/main.py
 
 
 - 2026-10-05：[F4 Legacy JSON COW／原升級入口終驗](docs/06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)：單JSON至獨立v3、新程序讀回及rollback保留新內容；正式apply另行批准，F1例外尚未批准，UX07未啟動。
+
+
+- 2026-10-06：[個人觀察清單整合](docs/06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)：`app_module/personal_watchlist_service.py` 選擇服務，`personal_data_paths.py` 私人控制路徑與 CSV export manifest，config／App／CLI／候選池明示啟用；正式遷移未執行。

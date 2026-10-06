@@ -744,12 +744,14 @@ class WatchlistView(QWidget):
         self.upgrade_storage_btn.setVisible(
             status.upgrade_available and not status.is_repository
         )
+        if callable(getattr(self.watchlist_service, "personal_storage_preview", None)):
+            self.upgrade_storage_btn.setText("建立並啟用個人副本")
         self.upgrade_storage_btn.setEnabled(
             status.upgrade_available and not status.is_repository
         )
 
     def _upgrade_watchlist_storage(self) -> None:
-        """執行一次明確的 JSON→SQLite 升級，失敗時保留 JSON writer。"""
+        """明示升級；個人模式先預覽路徑且失敗時禁止來源寫入。"""
 
         upgrade = getattr(self.watchlist_service, "upgrade_to_repository", None)
         if not callable(upgrade):
@@ -757,24 +759,53 @@ class WatchlistView(QWidget):
             return
         self.upgrade_storage_btn.setEnabled(False)
         try:
+            preview = getattr(self.watchlist_service, "personal_storage_preview", None)
+            if callable(preview):
+                paths = preview()
+                labels = (
+                    ("source", "唯讀來源"), ("target", "個人資料庫"),
+                    ("marker", "啟用標記"), ("receipt", "轉換收據"),
+                    ("backup", "來源備份"), ("rollback_audit_root", "回滾紀錄"),
+                )
+                details = "\n".join(f"{label}：{paths.get(key, '未提供')}" for key, label in labels)
+                answer = QMessageBox.question(
+                    self, "啟用個人觀察清單", details +
+                    "\n\n保留原來源，之後只寫入個人副本。回滾會停止寫入並保留個人歷史。",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if answer != QMessageBox.StandardButton.Yes:
+                    self._refresh_storage_status()
+                    return
             status = upgrade()
         except Exception as exc:
             self._refresh_storage_status()
             self._set_status_label(
-                f"儲存升級失敗，仍使用原 JSON：{str(exc).splitlines()[0]}",
+                ("個人儲存啟用失敗，未切回原來源寫入："
+                 if callable(getattr(self.watchlist_service, "personal_storage_preview", None))
+                 else "儲存升級失敗，仍使用原 JSON：") + str(exc).splitlines()[0],
                 level="error",
             )
             return
         self._refresh_storage_status()
         if isinstance(status, WatchlistStorageStatus) and status.is_repository:
-            self._set_status_label("儲存升級成功，後續保存使用 SQLite 觀察清單；原 JSON 保留。", level="success")
+            self._set_status_label(
+                "個人儲存已啟用，後續保存使用個人 SQLite；原來源唯讀保留。"
+                if callable(getattr(self.watchlist_service, "personal_storage_preview", None))
+                else "儲存升級成功，後續保存使用 SQLite 觀察清單；原 JSON 保留。",
+                level="success",
+            )
             QMessageBox.information(self, "觀察清單儲存升級", status.message)
             self._load_watchlist()
             return
         message = (
             status.message
             if isinstance(status, WatchlistStorageStatus)
-            else "升級未完成；目前仍使用原 JSON。"
+            else (
+                "個人儲存未啟用；來源寫入已封鎖。"
+                if callable(getattr(self.watchlist_service, "personal_storage_preview", None))
+                else "升級未完成；目前仍使用原 JSON。"
+            )
         )
         self._set_status_label(message, level="warning")
         QMessageBox.warning(self, "觀察清單儲存升級未完成", message)

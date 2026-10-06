@@ -125,3 +125,25 @@ C:/Projects/PythonProjects/technical_analysis/.venv/Scripts/python.exe -m py_com
 回滾此包可在受控分支 revert 第二提交，保留第一包 path contract；未執行 revert。若日後已有正式啟用資料，先明確停用 writer 並審查 personal schema reader 相容性，不能以程式 revert 當成資料 rollback。
 
 converter 專屬測試：11 passed、2 skipped；JSON／SQLite hardlink 與 Windows junction 負例實際通過。兩個 skipped 僅為 Windows 無權建立一般 directory symlink，已由同類 junction 路徑逃逸負例覆蓋。
+
+
+## 2026-10-06 主線 App 整合終驗（取代「consumer 尚未接線」狀態）
+
+順序 cherry-pick：原 `25c3b326c534c1c590173af8537dc36871334388` → dev `c03bb4a7ad8ed6fd138c72ceaa1a644e7d82c966`；原 `5efb3f13a989667c97ddac619cf51c58cd212b18` → dev `a205275db9986f23253797b83363d20090e3db1b`。只讀 immutable commit 後納入，沒有讀取未凍結 lane 工作樹作為交付依據。
+
+App 以 config 的 personal_data_root／personal_watchlist_source 成對選擇，未配置時原樣 discover canonical repository，再建既有 WatchlistService；個人 adapter 避開會建市場 output／空 JSON 的 legacy initializer。未啟用 JSON／SQLite 只讀；UI 路徑預覽取消不建立，Yes 才 dry-run→convert→preview→activate→fresh discovery。private writer 沿 activation marker hash／source／target pin 與 lock；來源 path 每次唯讀載入前重核 alias／links／hardlinks。無效 marker、回滾或沒有 marker 的 target／receipt 不能退回市場 writer，也不建立空 personal DB。public adapter 同樣拒絕 root 與程式套件重疊。
+
+個人 root 目前仍是候選 `C:/Users/archi/AppData/Local/baldr/personal`，未正式配置或啟用：
+- DB：`watchlists/watchlists.v3.sqlite`。
+- marker／lock／receipt：`watchlists/watchlists.v3.sqlite.cow-active.json`、其 `.lock`、`watchlists/watchlists.v3.sqlite.cow-conversion.v1.json`。
+- JSON bytes backup：`backups/watchlists/source.26a300d8d7c5676f849575ed70ca0ec6c49d513594b7eff6c1c86ae5fd5e2905.json`（這個檔名 hash 綁 `D:/Min/Python/Project/FA_Data/output/watchlist/default.json` 的 Windows 絕對路徑，內容 hash 另在 receipt；不是內容 hash）。
+- rollback audit：`activation_backups/watchlists/rollback.<activation_id>.json`。
+- 設定目前由 runtime／env 欄位提供，沒有 `personal_storage.json` 實作或新建聲明。
+
+主線 foundational scoped tests **169 passed／2 skipped**，兩 skip 為一般 symlink OS 權限；junction／hardlink／device namespace 負向案例有實際測試。WB **85 passed**、validator **25 passed／4 skipped／0 failed**。最後 selector／App／UI／CLI 聚焦測試與型別／compile／blob結果列於本批最終收據。先前 selector 首跑一項 fixture 自建 output 的錯誤 assertion 已修正成 before／after baseline，比對不代表功能缺陷。
+
+正式 default.json 只讀 metadata，**1948 bytes／mtime_ns=1782189963018265100** 沿前批不變，未讀內容。全部操作資料皆合成 TEMP，沒有正式環境／DB／registry、producer、ML、Native 前景操作、清理或 push。rollback 保留 target 新 revision，只停止 private writer，合法來源仍只讀；不恢復舊 writer、不自動合併。
+
+本批只接觀察清單；Portfolio／notes／ledger 未接 selector。市場 export 仍是固定 CSV 白名單 metadata manifest，來源 JSON、SQLite、私人 output 不放行；沒有打包 copy consumer，TOCTOU／內容／來源權限審查仍待後續。正式 root 選擇、真實 migration／配置啟用／新程式 Native 重開與使用者驗收另行批准。F1 18.621965821542936% 保留已接受效能例外，20% 目標未達。
+
+最終整合：selector 8＋App/config/CLI/UI 6＋既有 UI 1＋既有 CLI 4＝**19 passed（13.94s）**；與 foundational 169 為不同檔案共 **188 passed／2 skipped**。Workbench 85 另列、不重複相加；validator 25／4skip／0fail。全域 source roots＋CLI mypy **798 source files** 通過；本批 7 Python 檔 compile、量化精度／未來函數 guard、diff check 通過。原計畫只追加本批結果，raw 收據置 output/qa/personal_storage_app_integration_20261006（ignored）。提交後工作檔 Git blob 與 commit blob 核對另於最終交付回報。

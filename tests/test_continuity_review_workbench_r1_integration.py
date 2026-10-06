@@ -373,7 +373,10 @@ def test_producer_backed_workbench_to_shared_report_journey_and_readback(
     _wait_for(
         lambda: dialog.journey_view is not None
         and dialog.journey_view.journey is not None
-        and not dialog.is_busy()
+        and not dialog.is_busy(),
+        # Functional completion bound, not a product latency SLA. The isolated
+        # current/baseline no-follow read completed at 8.109/8.141 seconds.
+        timeout_ms=15_000,
     )
     assert contexts[0].result_id == "R1"
     assert contexts[0].stock_code == "2330"
@@ -443,9 +446,10 @@ def test_producer_backed_workbench_to_shared_report_journey_and_readback(
             (datetime.now().astimezone() + timedelta(minutes=1)).isoformat(),
         ],
         cwd=ROOT,
-        env=os.environ.copy(),
+        env=dict(os.environ, PYTHONIOENCODING="utf-8"),
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
         timeout=10,
     )
@@ -488,9 +492,10 @@ def test_producer_backed_workbench_to_shared_report_journey_and_readback(
             str(receipt_path),
         ],
         cwd=ROOT,
-        env=os.environ.copy(),
+        env=dict(os.environ, PYTHONIOENCODING="utf-8"),
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
         timeout=15,
     )

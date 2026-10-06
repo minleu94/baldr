@@ -1,5 +1,7 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+2026-10-06 UX24第一版有限工程封存：同步Snapshot／Manual／Index／QA routing及原計畫追加；只修既有mapping optional context，不改架構、資料流、產品方向或roadmap gate，故不擴改architecture／6M／version。限定七項工程完成不取代整體UX狀態；見[封存收據](../06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)。
+
 > **給 Documentation Agent 用來判斷 coverage 的規則文件**
 
 ## 一、文件權威邊界（Scoped SSOT）

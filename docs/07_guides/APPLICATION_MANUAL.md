@@ -1,5 +1,21 @@
 # baldr 完整操作手冊
 
+## 2026-10-06 第一版有限研究流程與驗證入口
+
+首版可使用具名研究母體的收盤價、MA20／MA60及兩條close-above-MA方法，以AND／OR查看符合、未符合與資料不足；原日／周強弱排名保留原引擎標籤及比較窗。完整只相對所選母體，不表示官方全市場、交易入選或勝率。當下個股、原保存推薦、清單與聲明持倉仍各自保留原用途與日期。
+
+1. 在每日研究名單選擇已配置母體與保存來源，先核對決策日期、資料日期、完整分母及缺件。
+2. 選擇既有MA20／MA60條件與AND／OR，查看理由；資料不足不當作未符合。市場同源模式與原強弱比較保留獨立身份。
+3. 點股票開個股研究，查看摘要、原來源與風險；自行搜尋是當下研究，不改寫原保存推薦。
+4. 保存研究收藏後使用「返回來源」；只有來源、股碼、結果／manifest／hash一致才精確定位。無法定位時保留診斷，不借同股最新結果。
+5. 重開程式從收藏／歷史讀原保存來源；歷史索引分頁保持有限讀取，錯schema／缺件明示；取消或過期回應不取代已完成結果。
+
+公開來源配置仍使用 `MainWindow(daily_market_snapshot_root=..., daily_market_snapshot_cohort_id=..., original_stock_ranking_root=...)`；snapshot root與cohort成對且非空，rank不能單獨配置。這是整合入口，日常仍沿既有來源選擇介面。未配置時回預設模式，不自動遷移正式個人庫、發布來源或啟用Task。未知availability／成本／benchmark維持未知，不把研究報酬當交易績效。
+
+維護者在repo根執行 `.\.venv\Scripts\python.exe scripts/qa_validate_first_version_release.py`，產生新`output/qa/ux24_first_version_20261006/<id>/receipt.json`。需保留既有F4 raw案例；缺原收據／hash不符會停止。工具只唯讀原案例、在新隔離案例跑offscreen全App，拒絕FA_Data讀取及案例外寫入；不代表Native／真人、自然20日或正式容量接受。路由失敗先核對原context／來源；本版已修舊mapping未提供optional rank_context的相容性，不放寬明示錯誤來源。
+
+首版工程封存不等於全部UX完成。新圖表、更多方法／特徵、正式日主部署、benchmark／完整labels仍有工程；正式apply與政策需要明確決策，Native／3–5非開發者及官方時點／自然成熟另驗。詳見[封存範圍與收據](../06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)。
+
 先依下方章節完成安裝、工作區操作與排錯。進階研究、日期化操作補充和受控維運見[手冊附冊](APPLICATION_MANUAL_SUPPLEMENTS.md)；目前狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準。
 
 ## 1. 系統能做什麼

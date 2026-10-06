@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 UX24 第一版 stage 1–3 有限工程封存
+
+沿8a78eac及已接受F1–F4，具名母體close／MA20／MA60與兩固定方法、共享原排名、個股exact context／收藏／返回／歷史讀回的首版有限工程已封存。補驗找到並修正舊mapping缺rank_context被補空字串而遭DTO拒絕；明示錯誤仍拒絕，沒有新增產品功能。UX03／04／05／06／09／15／17限定工程終點完成，整項仍partial；9stage 1done/7partial/1pending、24UX 2done/20partial/2pending不變。
+
+目前版本隔離全App三程序與原250歷史唯讀重播、來源不變、當下容量與取消/stale通過；不重做F1性能例外、F2/F3、舊1477 Native、learner／Library／個人migration。首版manual/on-demand A/A沒有新發現未修工程缺陷；正式apply、Native／3–5真人、自然增長／PIT另列，其他原產品工程未升done。可用範圍與真實限制見[UX24封存收據](../06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)及[Manual](../07_guides/APPLICATION_MANUAL.md)。本地commit/readback後停，UTC07:00停止界線有效。
+
 ## 2026-10-06 UX21 實際來源→保存→隔離日報
 
 承接48feaf70：明示 query-only 市場價格＋既存verified TWSE年度計畫 cache→exact parent/children及原決策close指紋→有界endpoint研究成效→atomic sealed保存／hash重讀→同parent所有revision日報／背景Qt畫面已完成。實際D市場1477/2382的9/1事後研究毛報酬及10/6缺當日價格／未成熟兩路完成；duplicate／新程序相同、main/WAL pins不變，來源不存在blocked零發布。未知成本/benchmark保留null，年度計畫／current-observed不授PIT/訓練/正式或交易資格。

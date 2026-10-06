@@ -1168,6 +1168,8 @@ class MainWindow(QMainWindow):
                 "rank_context",
             }
             payload = {key: value.get(key, "") for key in fields}
+            # 舊頁面未提供排名來源時，保留 optional DTO 的 None；明示錯誤仍由 DTO 拒絕。
+            payload["rank_context"] = value.get("rank_context")
             if not str(payload.get("stock_code") or "").strip():
                 return None
             return ResearchStockContextDTO(**payload)

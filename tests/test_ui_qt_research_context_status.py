@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QToolButton
@@ -331,6 +332,16 @@ def test_main_routes_context_to_store_and_smart_money_without_recompute() -> Non
 
     assert visited == ["2330"]
     assert window.research_session_store.get_snapshot().stock_context.stock_code == "2330"
+    assert window.research_session_store.get_snapshot().stock_context.rank_context is None
+
+
+def test_mapping_context_rejects_explicit_malformed_rank_without_replacing_session() -> None:
+    window = MainWindow.__new__(MainWindow)
+    window.research_session_store = ResearchSessionStore()
+    before = window.research_session_store.get_snapshot()
+    with pytest.raises(ValueError, match="rank_context"):
+        window._open_stock_research_context({"stock_code": "2330", "rank_context": ""})
+    assert window.research_session_store.get_snapshot() == before
 
 
 def test_research_console_defaults_to_chinese_conclusion_and_collapsed_diagnostics() -> None:

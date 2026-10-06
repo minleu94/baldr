@@ -1,5 +1,7 @@
 # 文檔索引
 
+- 第一版stage1–3限定工程終點、跨頁舊context相容性與封存工具：[UX24第一版工程封存](../06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)；操作以[完整Manual](../07_guides/APPLICATION_MANUAL.md)為準。
+
 本索引只指向主題權威與目錄入口，不複製 QA 收據、測試數字或目前狀態。判讀衝突時使用下列 Scoped SSOT；日期化驗收內容保留於各自 receipt。
 
 - UX16研究來源preflight／UX18既有日特徵與固定方法綁定／UX13共用母體盤勢與指標排序／UX19隔離發布閉環／UX04與UX05日常同源flow／UX02中文Native代表畫面：[來源契約與限定驗證](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。

@@ -69,3 +69,41 @@ C:/Projects/PythonProjects/technical_analysis/.venv/Scripts/python.exe -m pytest
 依委派，重 UI union 只由中央在整合結果執行一次：`tests/test_ui_qt_update_view_workbench.py`、`scripts/qa_validate_update_tab.py` 與 `mypy ui_qt app_module data_module analysis_module backtest_module decision_module portfolio_module runtime`。本 lane 的 focused 結果不取代這三項整合門檻。
 
 Rollback：中央如需撤回，對本 lane 的單一提交執行 `git revert <B07 commit>`；只撤回這十個程式／測試／QA 檔的功能，不刪除已保存研究 artifact 或原資料。本 lane 保留 worktree，等待中央整合，不自行 dev cherry-pick。
+
+## 中央 review 最小 followup（ce8c8fad 之後）
+
+本次閉合兩個精確 finding：legacy artifact 的無界 `read_bytes`／hash 後再次開路徑 decode，以及 parent shutdown 查錯 child 屬性。僅修改 owned lookup、backtest_view、兩個 owned 測試與本文件；原共享 service／repository／金融 core 不改。
+
+新增 `ResearchHistoryReadBudget(max_artifact_bytes=..., max_total_bytes=...)`：兩欄必須由工程 caller 明示正整數 serialized byte 上限。原 legacy 保存入口與 ResearchRunService 沒有可直接沿用的單檔／aggregate 保存容量上限，因此本 lane 不制定新的正式容量政策。constructor 可注入 `read_budget`；`list_entries`／`resolve` 可用同名 optional keyword 覆蓋，並有向後相容的 `check_cancel: Callable[[], bool] | None = None`。沒有 budget 時 legacy 查找回 diagnostic、resolve 回 unavailable：`legacy_read_budget_required`，不能聲稱預設 legacy 路徑完整可用。Registry metadata／原 reader 契約維持原樣；本 budget 僅覆蓋 owned legacy artifact I/O。
+
+中央 caller 最小接線素材（數值由中央依實際工程情境評估，以下不設正式 threshold）：
+
+```python
+from app_module.research_history_lookup import ResearchHistoryReadBudget
+
+budget = ResearchHistoryReadBudget(
+    max_artifact_bytes=caller_artifact_bytes,
+    max_total_bytes=caller_round_bytes,
+)
+# 注入 result_panel 建立 ResearchHistoryLookup 的 read_budget=budget，
+# 或工程 caller 直接呼叫：
+page = lookup.list_entries(read_budget=budget, check_cancel=check_cancel)
+result = lookup.resolve(selected, read_budget=budget, check_cancel=check_cancel)
+```
+
+每次 list／resolve 另起一輪 aggregate；跨 row、跨兩個 legacy source 共用，不以 200／1000 筆 row limit 冒充 bytes limit。讀前 stat 超單檔或剩餘 aggregate 就拒絕且不開 artifact；每次 read 最多 64 KiB，分塊檢查取消。list 只保留 digest；resolve 留住同份 raw bytes，算 SHA 重建 entry/context 並核對 selected pin 後才 decode，不 hash 一份、再從路徑讀另一份放行。stat／fstat 的 size、mtime_ns、dev、inode 在開啟前、讀中／後與 decode 後核對；來源變動回 `artifact_source_changed`，超限回 `artifact_byte_budget_exceeded`／`aggregate_byte_budget_exceeded`，取消回 `read_cancelled`。
+
+這是 serialized bytes 與一般來源變動檢查，不是解壓後記憶體容量政策，也不宣稱能防惡意 race、timestamp 偽造或 ABA。Registry 共享 reader 的既有 decode／sidecar 行為不在本次最小 legacy 補件的保證範圍。source-only／rule／performance／PIT 資格均未提升。
+
+`BacktestView.request_cooperative_shutdown` 現沿 `self.result_panel.research_history_lookup` 設 `_closed`、`cancel_pending`，將 child worker 納入等待判定。真正 parent `closeEvent` 的晚到 worker 測試驗證不開結果，沒有只測 widget 自己 close。
+
+新增 stat 超限不 open、兩 artifact／跨 source aggregate、分塊大小／cancel、同 raw pin 後 decode、同 size／mtime inode source swap、讀後來源消失，以及實際 parent close 負例。只跑 related subset，不重跑前次 154 或中央重 UI union。
+
+Followup 驗證：`test_baldr_b07_research_history.py`＋`test_ui_qt_saved_strategy_rule_card.py`：**54 passed in 50.22s**（`.tmp_b07_followup2`）；最後補上 unavailable wrapper／來源消失後，重跑新增 budget／chunk／swap／missing 負例：**11 passed, 28 deselected in 1.90s**（`.tmp_b07_followup3`）。兩個修改 production 檔 targeted mypy、四個修改 Python 檔 compile、quant guard 與 diff check 均通過。測試初次失敗為 stat guard 攔到測試自己的 inventory 與真實 collapsed group 尚未啟用；已修測試接線並重跑，不清理輸出。
+
+```powershell
+python -m pytest tests/test_baldr_b07_research_history.py tests/test_ui_qt_saved_strategy_rule_card.py -q -o addopts= --basetemp=.tmp_b07_followup2
+python -m pytest tests/test_baldr_b07_research_history.py -k 'legacy_budget or legacy_one_round or legacy_aggregate or legacy_read_chunks or legacy_selected_same or legacy_source_swap or legacy_source_missing' -q -o addopts= --basetemp=.tmp_b07_followup3
+```
+
+執行 interpreter 仍為原 workspace `.venv/Scripts/python.exe`。新增提交只包含上述五個 owned 檔案；中央整合需保留前次 ce8c8fad 並接續此 followup，caller budget 接線、完整 Manual 與一次重 UI union 尚由中央處理。

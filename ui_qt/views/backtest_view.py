@@ -5186,7 +5186,7 @@ class BacktestView(QWidget):
 
     def request_cooperative_shutdown(self) -> bool:
         workers = [self.worker, *self._report_export_workers]
-        history = getattr(self, "research_history_lookup", None)
+        history = getattr(getattr(self, "result_panel", None), "research_history_lookup", None)
         if history is not None:
             history._closed = True
             history.cancel_pending()

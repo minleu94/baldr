@@ -7,9 +7,10 @@ from copy import copy
 import hashlib
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 import sqlite3
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 import pandas as pd
 
@@ -24,6 +25,94 @@ REGISTRY_RESULT_TYPES = REGISTRY_BACKTEST_TYPES | {"recommendation_portfolio"}
 
 class ResearchHistoryUnavailable(ValueError):
     """來源缺件、已修訂或種類不支援；不能換成另一份結果。"""
+
+
+@dataclass(frozen=True)
+class ResearchHistoryReadBudget:
+    """工程 caller 明示的 legacy 原始 bytes 預算；不是正式保存容量政策。"""
+
+    max_artifact_bytes: int
+    max_total_bytes: int
+
+    def __post_init__(self) -> None:
+        if any(type(value) is not int or value <= 0
+               for value in (self.max_artifact_bytes, self.max_total_bytes)):
+            raise ValueError("artifact／aggregate byte budget 必須為正整數")
+
+
+def _source_stamp(value: os.stat_result) -> tuple[int, int, int, int]:
+    return value.st_size, value.st_mtime_ns, value.st_dev, value.st_ino
+
+
+class _ReadRound:
+    """一輪 legacy artifact I/O；每 64 KiB 檢查取消，hash／decode 使用同次 bytes。"""
+
+    CHUNK_BYTES = 64 * 1024
+
+    def __init__(self, budget: ResearchHistoryReadBudget | None,
+                 check_cancel: Callable[[], bool] | None):
+        self.budget = budget
+        self.check_cancel = check_cancel
+        self.used_bytes = 0
+        self.sources: dict[Path, tuple[int, int, int, int]] = {}
+
+    def cancelled(self) -> None:
+        if self.check_cancel is not None and self.check_cancel():
+            raise ResearchHistoryUnavailable("read_cancelled")
+
+    def read(self, path: Path, *, keep: bool = False) -> tuple[str, bytes]:
+        try:
+            return self._read(path, keep=keep)
+        except OSError as exc:
+            raise ResearchHistoryUnavailable("artifact_source_unavailable:" + str(path)) from exc
+
+    def _read(self, path: Path, *, keep: bool) -> tuple[str, bytes]:
+        self.cancelled()
+        if self.budget is None:
+            raise ResearchHistoryUnavailable("legacy_read_budget_required")
+        before = _source_stamp(path.stat())
+        if path in self.sources and self.sources[path] != before:
+            raise ResearchHistoryUnavailable("artifact_source_changed:" + str(path))
+        if before[0] > self.budget.max_artifact_bytes:
+            raise ResearchHistoryUnavailable("artifact_byte_budget_exceeded:" + str(path))
+        if before[0] > self.budget.max_total_bytes - self.used_bytes:
+            raise ResearchHistoryUnavailable("aggregate_byte_budget_exceeded:" + str(path))
+        # stat 超限時不 open；已讀／嘗試的 bytes 不因某一列失敗而重置 aggregate。
+        self.used_bytes += before[0]
+        digest = hashlib.sha256()
+        chunks: list[bytes] = []
+        count = 0
+        with path.open("rb") as handle:
+            if _source_stamp(os.fstat(handle.fileno())) != before:
+                raise ResearchHistoryUnavailable("artifact_source_changed:" + str(path))
+            while True:
+                self.cancelled()
+                chunk = handle.read(min(self.CHUNK_BYTES, before[0] - count + 1))
+                if not chunk:
+                    break
+                count += len(chunk)
+                if count > before[0]:
+                    raise ResearchHistoryUnavailable("artifact_source_changed:" + str(path))
+                digest.update(chunk)
+                if keep:
+                    chunks.append(chunk)
+            if count != before[0] or _source_stamp(os.fstat(handle.fileno())) != before:
+                raise ResearchHistoryUnavailable("artifact_source_changed:" + str(path))
+        self.cancelled()
+        if _source_stamp(path.stat()) != before:
+            raise ResearchHistoryUnavailable("artifact_source_changed:" + str(path))
+        self.sources[path] = before
+        return digest.hexdigest(), b"".join(chunks)
+
+    def verify_sources(self) -> None:
+        self.cancelled()
+        for path, before in self.sources.items():
+            try:
+                after = _source_stamp(path.stat())
+            except OSError as exc:
+                raise ResearchHistoryUnavailable("artifact_source_unavailable:" + str(path)) from exc
+            if after != before:
+                raise ResearchHistoryUnavailable("artifact_source_changed:" + str(path))
 
 
 def _immutable_connection(path: Path) -> sqlite3.Connection:
@@ -102,7 +191,9 @@ class ResearchHistoryLookup:
 
     def __init__(self, *, registry: ResearchRunService | None = None,
                  legacy_backtest_db: Path | None = None,
-                 legacy_portfolio_db: Path | None = None):
+                 legacy_portfolio_db: Path | None = None,
+                 read_budget: ResearchHistoryReadBudget | None = None):
+        self.read_budget = read_budget
         self.registry = copy(registry) if registry is not None else None
         if self.registry is not None:
             self.registry.repository = _HistoryRegistryReadRepository(self.registry.config)
@@ -135,13 +226,8 @@ class ResearchHistoryLookup:
                     row[key] = json.loads(row[key])
         return result
 
-    def _legacy_entry(self, kind: str, row: dict[str, Any]) -> ResearchHistoryEntry:
-        artifacts = {}
-        for key in ("equity_curve_path", "trade_list_path", "data_path"):
-            value = row.get(key)
-            if value:
-                path = Path(value)
-                artifacts[key] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+    def _legacy_entry(self, kind: str, row: dict[str, Any], *,
+                      artifacts: dict[str, str | None]) -> ResearchHistoryEntry:
         meta_hash = _hash(row)
         stock = str(row.get("stock_code") or "")
         source_path = self.legacy_paths[kind]
@@ -171,16 +257,41 @@ class ResearchHistoryLookup:
                    "result_context": result_context_sha256(metadata), "metadata_sha256": metadata_sha256(metadata)}),
             canonical_json(snapshot), supported, reason)
 
-    def list_entries(self, *, limit: int = 200) -> ResearchHistoryPage:
+    def list_entries(self, *, limit: int = 200,
+                     read_budget: ResearchHistoryReadBudget | None = None,
+                     check_cancel: Callable[[], bool] | None = None) -> ResearchHistoryPage:
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise ValueError("每個來源的查找上限需為 1–1000")
         entries: list[ResearchHistoryEntry] = []
         diagnostics: list[str] = []
+        reading = _ReadRound(read_budget or self.read_budget, check_cancel)
         for kind in self.legacy_paths:
             try:
-                entries.extend(self._legacy_entry(kind, row) for row in self._legacy_rows(kind, limit=limit))
+                reading.cancelled()
+                if reading.budget is None:
+                    raise ResearchHistoryUnavailable(f"{kind}:legacy_read_budget_required")
+                for row in self._legacy_rows(kind, limit=limit):
+                    reading.cancelled()
+                    try:
+                        artifacts = {}
+                        for key in ("equity_curve_path", "trade_list_path", "data_path"):
+                            if row.get(key):
+                                path = Path(row[key])
+                                artifacts[key] = reading.read(path)[0] if path.is_file() else None
+                        entries.append(self._legacy_entry(kind, row, artifacts=artifacts))
+                    except (OSError, ValueError) as exc:
+                        diagnostics.append(f"{kind}/{row.get('run_id')}:{exc}")
+                        reading.cancelled()
             except (OSError, sqlite3.Error, ValueError) as exc:
                 diagnostics.append(str(exc))
+        try:
+            reading.verify_sources()
+        except (OSError, ValueError) as exc:
+            # 不保留本輪來源已變動的 legacy pins；Registry metadata 可獨立查找。
+            entries.clear()
+            diagnostics.append(str(exc))
+        if check_cancel is not None and check_cancel():
+            return ResearchHistoryPage((), tuple(diagnostics), limit)
         if self.registry is None:
             diagnostics.append("registry:source_missing")
         else:
@@ -194,8 +305,12 @@ class ResearchHistoryLookup:
         return ResearchHistoryPage(tuple(sorted(entries, key=lambda e: (e.created_at, e.source_kind, e.run_id), reverse=True)),
                                    tuple(diagnostics), limit)
 
-    def resolve(self, expected: ResearchHistoryEntry) -> ResearchHistoryResult:
+    def resolve(self, expected: ResearchHistoryEntry, *,
+                read_budget: ResearchHistoryReadBudget | None = None,
+                check_cancel: Callable[[], bool] | None = None) -> ResearchHistoryResult:
         """重新核對 exact kind/run/hash/stock/context，回傳原結果，不做比較判定。"""
+        reading = _ReadRound(read_budget or self.read_budget, check_cancel)
+        reading.cancelled()
         if expected.source_kind == "registry":
             if self.registry is None:
                 raise ResearchHistoryUnavailable("registry:source_missing")
@@ -205,15 +320,30 @@ class ResearchHistoryLookup:
             if not expected.result_supported:
                 raise ResearchHistoryUnavailable(expected.unsupported_reason)
             loaded = self.registry.load_run_data(expected.run_id)
+            reading.cancelled()
             if self._registry_entry(loaded.metadata) != expected:
                 raise ResearchHistoryUnavailable("selected_source_changed")
             return ResearchHistoryResult(expected, loaded)
         if expected.source_kind not in self.legacy_paths:
             raise ResearchHistoryUnavailable("source_kind_unknown")
+        if reading.budget is None:
+            raise ResearchHistoryUnavailable("legacy_read_budget_required")
         rows = self._legacy_rows(expected.source_kind, run_id=expected.run_id)
-        if len(rows) != 1 or self._legacy_entry(expected.source_kind, rows[0]) != expected:
+        if len(rows) != 1:
             raise ResearchHistoryUnavailable("selected_source_changed")
         row = rows[0]
+        artifacts: dict[str, str | None] = {}
+        raw_artifacts: dict[str, bytes] = {}
+        for key in ("equity_curve_path", "trade_list_path", "data_path"):
+            if row.get(key):
+                path = Path(row[key])
+                if not path.is_file():
+                    raise ResearchHistoryUnavailable("legacy_artifact_missing:" + key)
+                artifacts[key], raw_artifacts[key] = reading.read(path, keep=True)
+        # 同份待 decode bytes 算 SHA，重建與清單完全相同的 entry/context pin。
+        if self._legacy_entry(expected.source_kind, row, artifacts=artifacts) != expected:
+            raise ResearchHistoryUnavailable("selected_source_changed")
+        reading.verify_sources()
         if expected.source_kind == "legacy_backtest":
             payload = dict(row)
             for key, destination in (("equity_curve_path", "equity_curve"), ("trade_list_path", "trade_list")):
@@ -221,7 +351,8 @@ class ResearchHistoryLookup:
                     path = Path(row[key])
                     if not path.is_file():
                         raise ResearchHistoryUnavailable("legacy_artifact_missing:" + key)
-                    raw = path.read_bytes()
+                    raw = raw_artifacts[key]
+                    reading.cancelled()
                     payload[destination] = (pd.read_parquet(BytesIO(raw)) if path.suffix == ".parquet"
                         else pd.read_csv(BytesIO(raw), **({"index_col": 0, "parse_dates": True} if destination == "equity_curve" else {})))
         else:
@@ -229,12 +360,14 @@ class ResearchHistoryLookup:
             path = Path(row.get("data_path") or "")
             if not path.is_file():
                 raise ResearchHistoryUnavailable("legacy_artifact_missing:data_path")
-            payload = json.loads(path.read_bytes())
+            reading.cancelled()
+            payload = json.loads(raw_artifacts["data_path"])
             if payload.get("run_id") != expected.run_id:
                 raise ResearchHistoryUnavailable("legacy_artifact_run_mismatch")
             payload["result_dto"] = RecommendationPortfolioBacktestResultDTO.from_dict(payload.get("result", {}))
-        # legacy payload 沒有既有 immutable reader；開啟後再次核對來源及所有檔案 hash。
+        # decode 後只核對 metadata 與來源 stat，不從路徑第二次讀取不同 bytes。
         rows_after = self._legacy_rows(expected.source_kind, run_id=expected.run_id)
-        if len(rows_after) != 1 or self._legacy_entry(expected.source_kind, rows_after[0]) != expected:
+        reading.verify_sources()
+        if len(rows_after) != 1 or self._legacy_entry(expected.source_kind, rows_after[0], artifacts=artifacts) != expected:
             raise ResearchHistoryUnavailable("selected_source_changed")
         return ResearchHistoryResult(expected, payload)

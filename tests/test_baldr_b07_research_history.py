@@ -17,7 +17,7 @@ from app_module.backtest_service import BacktestService
 from app_module.backtest_repository import BacktestRunRepository
 from app_module.recommendation_portfolio_run_repository import RecommendationPortfolioRunRepository
 from app_module.recommendation_portfolio_dtos import RecommendationPortfolioBacktestResultDTO
-from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryUnavailable
+from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryUnavailable, ResearchHistoryReadBudget
 from app_module.research_run_dtos import ResearchRunMetadataDTO
 from app_module.research_run_service import ResearchRunService, ResearchRunIntegrityError
 from app_module.saved_strategy_rule_card import load_saved_strategy_rule_card
@@ -130,7 +130,8 @@ def fixed_sources(tmp_path):
         metadata = ResearchRunMetadataDTO(run_id=kind, run_name=kind, run_type=kind, universe=["2330"],
             start_date="2026-01-02", end_date="2026-01-05", created_at="2026-10-06")
         registry.save_run(metadata, pd.DataFrame({"equity": [1]}), pd.DataFrame())
-    lookup = ResearchHistoryLookup(registry=registry, legacy_backtest_db=backtest.db_path, legacy_portfolio_db=portfolio.db_path)
+    lookup = ResearchHistoryLookup(registry=registry, legacy_backtest_db=backtest.db_path, legacy_portfolio_db=portfolio.db_path,
+        read_budget=ResearchHistoryReadBudget(max_artifact_bytes=1024 * 1024, max_total_bytes=4 * 1024 * 1024))
     return config, lookup, backtest, portfolio, registry
 
 
@@ -173,7 +174,8 @@ def test_exact_kind_run_hash_stock_context_refused(tmp_path, change, kind):
 
 def test_missing_sources_no_mkdir_or_empty_database(tmp_path, monkeypatch):
     paths = [tmp_path / "absent" / "backtest.db", tmp_path / "absent" / "portfolio.db"]
-    lookup = ResearchHistoryLookup(legacy_backtest_db=paths[0], legacy_portfolio_db=paths[1])
+    lookup = ResearchHistoryLookup(legacy_backtest_db=paths[0], legacy_portfolio_db=paths[1],
+        read_budget=ResearchHistoryReadBudget(max_artifact_bytes=1024, max_total_bytes=4096))
     monkeypatch.setattr(Path, "mkdir", lambda *_a, **_k: pytest.fail("lookup mkdir"))
     before = inventory(tmp_path)
     page = lookup.list_entries()
@@ -237,11 +239,11 @@ def test_lookup_newprocess_exact_reopen_no_source_write(tmp_path):
     code = '''import json,sys
 from pathlib import Path
 from types import SimpleNamespace
-from app_module.research_history_lookup import ResearchHistoryLookup,ResearchHistoryEntry
+from app_module.research_history_lookup import ResearchHistoryLookup,ResearchHistoryEntry,ResearchHistoryReadBudget
 from app_module.research_run_service import ResearchRunService
 paths=json.loads(sys.argv[1]); expected=ResearchHistoryEntry(**json.loads(sys.argv[2]))
 registry=ResearchRunService(SimpleNamespace(**paths["registry"]))
-lookup=ResearchHistoryLookup(registry=registry,legacy_backtest_db=Path(paths["backtest"]),legacy_portfolio_db=Path(paths["portfolio"]))
+lookup=ResearchHistoryLookup(registry=registry,legacy_backtest_db=Path(paths["backtest"]),legacy_portfolio_db=Path(paths["portfolio"]),read_budget=ResearchHistoryReadBudget(max_artifact_bytes=1024*1024,max_total_bytes=4*1024*1024))
 page=lookup.list_entries(); resolved=lookup.resolve(expected)
 print(json.dumps({"types":sorted(e.run_type for e in page.entries),"identity":resolved.entry.context_sha256,"stock":resolved.result["stock_code"]}))
 '''
@@ -271,3 +273,159 @@ def test_single_backtest_existing_ui_save_entry(tmp_path, monkeypatch):
     assert result.rule_card.missing == ()
     view.close()
     app.processEvents()
+
+
+def test_legacy_budget_required_and_stat_overflow_never_opens_artifact(tmp_path, monkeypatch):
+    _, lookup, backtest, *_ = fixed_sources(tmp_path)
+    selected = next(e for e in lookup.list_entries().entries if e.run_type == "legacy_backtest")
+    no_budget = ResearchHistoryLookup(legacy_backtest_db=backtest.db_path)
+    assert any("legacy_read_budget_required" in item for item in no_budget.list_entries().diagnostics)
+    with pytest.raises(ResearchHistoryUnavailable, match="legacy_read_budget_required"):
+        no_budget.resolve(selected)
+    artifact = tmp_path / "legacy.parquet"
+    budget = ResearchHistoryReadBudget(max_artifact_bytes=artifact.stat().st_size - 1, max_total_bytes=100000)
+    before = inventory(tmp_path)
+    original_open = Path.open
+    def no_artifact_open(path, *args, **kwargs):
+        if path == artifact:
+            pytest.fail("stat 超限仍開啟 artifact")
+        return original_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", no_artifact_open)
+    assert any("artifact_byte_budget_exceeded" in item for item in lookup.list_entries(read_budget=budget).diagnostics)
+    with pytest.raises(ResearchHistoryUnavailable, match="artifact_byte_budget_exceeded"):
+        lookup.resolve(selected, read_budget=budget)
+    monkeypatch.setattr(Path, "open", original_open)
+    assert inventory(tmp_path) == before
+
+
+def test_legacy_one_round_aggregate_budget_covers_both_artifacts(tmp_path):
+    _, _, backtest, *_ = fixed_sources(tmp_path)
+    equity = tmp_path / "legacy.parquet"
+    trades = tmp_path / "trades.parquet"
+    trades.write_bytes(equity.read_bytes())
+    with sqlite3.connect(backtest.db_path) as connection:
+        connection.execute("UPDATE runs SET trade_list_path = ?", (str(trades),))
+    size = equity.stat().st_size
+    lookup = ResearchHistoryLookup(legacy_backtest_db=backtest.db_path,
+        read_budget=ResearchHistoryReadBudget(max_artifact_bytes=size, max_total_bytes=size * 2))
+    selected = lookup.list_entries().entries[0]
+    budget = ResearchHistoryReadBudget(max_artifact_bytes=size, max_total_bytes=size * 2 - 1)
+    before = inventory(tmp_path)
+    page = lookup.list_entries(read_budget=budget)
+    assert not page.entries and any("aggregate_byte_budget_exceeded" in item for item in page.diagnostics)
+    with pytest.raises(ResearchHistoryUnavailable, match="aggregate_byte_budget_exceeded"):
+        lookup.resolve(selected, read_budget=budget)
+    # 每次呼叫另起一輪，不借用上一輪剩餘容量；兩檔僅各讀一次。
+    assert lookup.resolve(selected).entry == selected
+    assert inventory(tmp_path) == before
+
+
+def test_legacy_aggregate_budget_is_shared_across_sources(tmp_path):
+    _, lookup, *_ = fixed_sources(tmp_path)
+    size = (tmp_path / "legacy.parquet").stat().st_size
+    before = inventory(tmp_path)
+    page = lookup.list_entries(read_budget=ResearchHistoryReadBudget(max_artifact_bytes=100000, max_total_bytes=size))
+    assert {e.source_kind for e in page.entries} == {"legacy_backtest", "registry"}
+    assert any("aggregate_byte_budget_exceeded" in item for item in page.diagnostics)
+    assert inventory(tmp_path) == before
+
+
+def test_legacy_read_chunks_are_bounded_and_cancel_is_optional(tmp_path, monkeypatch):
+    from app_module.research_history_lookup import _ReadRound
+    _, lookup, *_ = fixed_sources(tmp_path)
+    path = tmp_path / "legacy.parquet"
+    path.write_bytes(b"x" * (_ReadRound.CHUNK_BYTES * 3))
+    requested = []
+    original_open = Path.open
+    class TrackedFile:
+        def __init__(self, handle):
+            self.handle = handle
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            self.handle.close()
+        def fileno(self):
+            return self.handle.fileno()
+        def read(self, size):
+            requested.append(size)
+            return self.handle.read(size)
+    def tracked_open(source, *args, **kwargs):
+        handle = original_open(source, *args, **kwargs)
+        return TrackedFile(handle) if source == path else handle
+    monkeypatch.setattr(Path, "open", tracked_open)
+    calls = 0
+    def cancel():
+        nonlocal calls
+        calls += 1
+        return bool(requested)
+    page = lookup.list_entries(check_cancel=cancel)
+    assert not page.entries and any("read_cancelled" in item for item in page.diagnostics)
+    assert calls and requested == [_ReadRound.CHUNK_BYTES]
+    requested.clear()
+    selected = next(e for e in lookup.list_entries().entries if e.run_type == "legacy_backtest")
+    assert max(requested) <= _ReadRound.CHUNK_BYTES
+    requested.clear()
+    with pytest.raises(ResearchHistoryUnavailable, match="read_cancelled"):
+        lookup.resolve(selected, check_cancel=cancel)
+    assert requested == [_ReadRound.CHUNK_BYTES]
+
+
+def test_legacy_selected_same_raw_bytes_are_pinned_before_decode(tmp_path, monkeypatch):
+    _, lookup, *_ = fixed_sources(tmp_path)
+    selected = next(e for e in lookup.list_entries().entries if e.run_type == "legacy_backtest")
+    path = tmp_path / "legacy.parquet"
+    original_raw = path.read_bytes()
+    decoded = []
+    original_decoder = pd.read_parquet
+    def decode(raw, *args, **kwargs):
+        assert isinstance(raw, __import__("io").BytesIO)
+        decoded.append(raw.getvalue())
+        path.write_bytes(b"source changed during decode")
+        return original_decoder(raw, *args, **kwargs)
+    monkeypatch.setattr(pd, "read_parquet", decode)
+    with pytest.raises(ResearchHistoryUnavailable, match="artifact_source_changed"):
+        lookup.resolve(selected)
+    assert decoded == [original_raw]
+
+
+def test_legacy_source_swap_after_read_refused_even_same_size_and_mtime(tmp_path, monkeypatch):
+    from app_module.research_history_lookup import _ReadRound
+    _, lookup, *_ = fixed_sources(tmp_path)
+    selected = next(e for e in lookup.list_entries().entries if e.run_type == "legacy_backtest")
+    path = tmp_path / "legacy.parquet"
+    stamp = path.stat()
+    replacement = tmp_path / "replacement.parquet"
+    replacement.write_bytes(path.read_bytes())
+    os.utime(replacement, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    original_read = _ReadRound.read
+    def swapped(self, source, **kwargs):
+        result = original_read(self, source, **kwargs)
+        if source == path:
+            replacement.replace(path)
+        return result
+    monkeypatch.setattr(_ReadRound, "read", swapped)
+    monkeypatch.setattr(pd, "read_parquet", lambda *_: pytest.fail("來源已替換仍 decode"))
+    with pytest.raises(ResearchHistoryUnavailable, match="artifact_source_changed"):
+        lookup.resolve(selected)
+
+
+def test_legacy_source_missing_after_read_returns_unavailable(tmp_path, monkeypatch):
+    from app_module.research_history_lookup import _ReadRound
+    _, lookup, *_ = fixed_sources(tmp_path)
+    selected = next(e for e in lookup.list_entries().entries if e.run_type == "legacy_backtest")
+    path = tmp_path / "legacy.parquet"
+    original_read = _ReadRound.read
+    def moved(self, source, **kwargs):
+        result = original_read(self, source, **kwargs)
+        if source == path:
+            path.rename(tmp_path / "preserved-source.parquet")
+        return result
+    monkeypatch.setattr(_ReadRound, "read", moved)
+    with pytest.raises(ResearchHistoryUnavailable, match="artifact_source_unavailable"):
+        lookup.resolve(selected)
+
+
+@pytest.mark.parametrize("artifact,total", [(0, 1), (1, 0), (True, 1), (1, "100")])
+def test_legacy_budget_requires_explicit_positive_integer_bytes(artifact, total):
+    with pytest.raises(ValueError):
+        ResearchHistoryReadBudget(max_artifact_bytes=artifact, max_total_bytes=total)

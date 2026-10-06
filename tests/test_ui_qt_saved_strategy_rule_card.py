@@ -242,3 +242,37 @@ def test_b07_execution_generation_change_does_not_open_old_history(tmp_path, mon
     wait(lambda: widget._worker is None)
     assert opened == [] and "新執行" in widget.status.text()
     widget.close()
+
+
+def test_b07_real_parent_close_cancels_panel_child_and_never_opens_late_result(tmp_path, monkeypatch):
+    qapp = app()
+    from tests.test_baldr_b07_research_history import fixed_sources
+    from ui_qt.views.backtest_view import BacktestView
+    _, lookup, *_ = fixed_sources(tmp_path)
+    view = BacktestView(backtest_service=None, config=None)
+    widget = view.result_panel.research_history_lookup
+    widget.lookup = lookup
+    widget.parentWidget().setChecked(True)  # 沿真正折疊 group 啟用 child controls。
+    opened = []
+    widget.on_open = opened.append
+    widget.refresh_entries()
+    wait(lambda: widget._worker is None)
+    widget.search.setText("legacy_backtest")
+    widget.entries.setCurrentRow(0)
+    entered, release = Event(), Event()
+    original = lookup.resolve
+    def blocked(expected, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return original(expected, **kwargs)
+    monkeypatch.setattr(lookup, "resolve", blocked)
+    before = inventory(tmp_path)
+    widget.open_result.click()
+    wait(entered.is_set)
+    view.close()  # 真正 parent closeEvent；worker 尚在跑，先 cooperative cancel 並忽略關閉。
+    assert widget._closed is True and widget._worker is not None
+    release.set()
+    wait(lambda: widget._worker is None)
+    assert opened == [] and inventory(tmp_path) == before
+    assert view.current_report is None
+    view.close()

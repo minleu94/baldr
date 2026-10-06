@@ -1,6 +1,69 @@
-# 個人 Current-observed H20 每日入口：擴鎖交接
+# 個人 Current-observed H20 每日入口：受驗保存與自然接線
 
 日期：2026-10-06。固定 base：`f15ce80425e4bba2e12446da00547a7cc4618679`。
+
+## 目前交付
+
+中央已明示授予四檔擴鎖；原三檔加四檔共七檔由本 lane 排他持有。已實作每日 CLI、原 H20 prediction create-only 保存／public reader、原 no-model capture／natural outcome 的 exact join／public reader。App adapters 只接注入 ports，沒有新增 App→ML 匯入；原 ML／provider／guard／main／config／Task／Manual 均未修改。UI／產品 consumer、正式私人 root／policy、原 Task 接線及測試清冊由中央持有，尚未宣稱啟用完成。
+
+**真模型已保存十筆，成熟自然樣本仍為 0。** 並非 synthetic-only 終點；但也不是自然效果或正式日常 Task 驗收。新程序以原 source／contract ports 重讀十筆、禁止推論的重試全部 idempotent，原預測 bytes／mtime 不變。
+
+真 aware clock 已跨臺北午夜：本輪 decision 是 **2026-10-07**，cycle source 是 **2026-10-06**，feature-as-of 是 **2026-10-05**。三者分域保存，不回填 10/06 decision、不自稱 10/07 最新行情、不把 10/06 no-model entry 轉成 10/07 樣本。未提供相符的 entry capture／20-session receipt 時，public outcome view 明示 pending；錯日期／來源／cycle／symbol／feature values 必須拒絕。這批跨日來源不能取得舊 10/06 capture 的自然 credit；新同日 cycle 的日常接線仍須中央驗證。
+
+| 股票 | 原 H20 預測毛報酬（bp） |
+|---|---:|
+| 1225 | 2204 |
+| 1256 | 365 |
+| 1465 | 1673 |
+| 1477 | 2557 |
+| 1560 | 2135 |
+| 1714 | 1931 |
+| 1721 | 2093 |
+| 2382 | 684 |
+| 3207 | 835 |
+| 9935 | 1314 |
+
+模型是可信原候選 `rec-cal-3f8b2c276ef316e28de3806d`，沿原 frozen fit／lineage；inference source 獨立沿原 completed current-stock snapshot。沒有 fit、live DB 替換訓練來源、canonical RecommendationResult ID、交易或資格升格。原 holdout Brier 2730 bp 比 null 2500 bp 差 230 bp；這是既有機率頭的效果揭露，不能當 H20 毛報酬自然驗證。After-cost 缺件仍保留；低績效不作個人研究保存 gate。
+
+## 實際 CLI／API 與中央最小接線
+
+CLI 五個 required 參數：`--request-json`、`--request-sha256`、`--receipt-root`、`--gross-fit-receipt`、`--gross-fit-receipt-sha256`。全部路徑須絕對、root 現存且在 package／FA_Data／原 fit／snapshot 範圍之外。沒有自動選「最新」、沒有自建 policy／Task。
+
+request schema 為 `personal-current-observed-h20-daily-request.v1`，欄位為 `data_root`、`source_pins`、排序且不重複的 exact `symbols`（1–50）、`history_start_date`、`expected_feature_as_of_date`；optional `natural_outcome` 明列 `input_capture_path`／`input_capture_sha256`／`outcome_path`／`outcome_sha256`。`source_pins` 必須是原 completed terminal 同 run pins 加 `cycle_id`、`raw_run_id`、`cycle_source_date`、`cycle_terminal_path`／SHA；不得填 `observed_at`、`decision_date`、預測值或 result ID。CLI 使用真 UTC aware clock，臺北日期用於 request；source cycle 不可晚於觀測日，全部股票須等於 terminal cohort。`data_root` 核對 `TWStockConfig`，不鬆綁原 artifact guard。
+
+公開 API：
+
+- `run_personal_current_observed_h20_daily(*, request, receipt_root, gross_fit_receipt, expected_fit_receipt_sha256, cancelled=None)`，位於新 scheduled script。
+- `capture_personal_current_observed_h20_prediction(*, root, source_binding, contract_binding, symbol, source_verifier, contract_verifier, predictor, cancelled=None)`。
+- `read_personal_current_observed_h20_capture(path, *, root, source_verifier, contract_verifier, expected_sha256=None)`。
+- `project_personal_current_observed_h20_outcome(*, prediction_path, prediction_sha256, root, source_verifier, contract_verifier, input_capture_path=None, input_capture_sha256=None, input_capture_verifier=None, outcome_path=None, outcome_sha256=None, outcome_verifier=None, persist=True)`。
+- `read_personal_current_observed_h20_outcome(path, *, root, source_verifier, contract_verifier, input_capture_verifier, outcome_verifier, expected_sha256=None)` 是純讀回；重建驗證時 `persist=False`，不新建 join。
+- scheduled composition 的 `personal_current_observed_h20_read_ports()` 回原 source／fit／input capture／outcome verifier ports，供中央注入 App readers。
+
+中央最小接線為：原 raw Task **同 run terminal completed** 後組 exact request／raw pin，指定既有可信 fit receipt raw pin `sha256:f5ca4372ba71ac3c006181ab0dcd4e2a56fdc62ba6529083cb63bbc7987a35b1`、私人根，再呼叫 CLI。產品 consumer 從該 receipt 的原 path／SHA 呼叫 public reader，顯示 symbol、decision／source／feature 日期、原 predicted gross bp、candidate／contract／lineage 與 pending。若已有 canonical result，中央只能使用真正已保存 ID 作外部引用；本 store 不複製 canonical payload、不冒充 result ID。自然部分沿原 builder 產生相符 input／outcome，再以 exact pins 注入 adapter。
+
+## 保存、重試與自然 identity
+
+新 schema `personal-current-observed-h20-prediction.v1` 保存原 A02 `prediction_id`、完整 request／輸出、原 fit raw pin、contract／artifact／lineage、source pins／source fingerprint／feature row hash與真 capture clock。`sample_id` 綁 cycle、terminal、source pin logical hash、candidate、contract、fit pin、symbol、原 decision；模型 target 保持 20-session absolute close-to-close no-cost gross。所有 formal／PIT／promotion／production action flags 為 false。
+
+原始檔 create-only、finite JSON、16 MiB 上限；拒絕 link／reparse／多 hardlink／來源根重疊，核讀取前後 fd／path／祖先 stat，atomic hardlink publication 後讀回。新檔名稱使用不含 decision 日期的 cycle/model/symbol 重試 key：即使隔日重試仍先讀原輸出，保留第一次 clock／prediction；不重算成新自然樣本。相容本輪先前完整 sample-id 檔名只新增原 path／raw pin 的 create-only 引用，不複製或修改原預測。cancel／failure 回傳已保存部分，下一輪仍沿原 identity。
+
+自然 join 另 pin 原 no-model input capture、原 natural outcome receipt及原 prediction raw bytes；三個來源各由原 public ports 核實。必須同 cycle／snapshot／decision／symbol／feature values與原 row ID；取原 `stock_return_bp` 作已實現 gross，整數誤差為原預測減該原值。別列 return 不會移給 pending 股票。已成熟 join 的多份 evaluation receipts 不能當成多個獨立樣本，產品以 `sample_id` 管理原預測身分。原模型輸出的 false natural／formal flags 不被改寫，join 是受驗的個人研究結果，不是 global promotion evidence。
+
+## 驗證證據與限制
+
+raw 根：本 worktree 的 `output/qa/h20-current-daily/`，全部 excluded，不 stage。真預測私人 QA 根：`C:/Users/archi/AppData/Local/Temp/h20-private-current-observed-20261006`；它是本輪隔離接受根，不替中央決定正式私人 root。
+
+- 真 daily receipt：`real-authorized-read.stdout.json`，completed、10 captures／10 pending，file SHA256 `e134f9ac100185678b46345ea220251d26b27a1e0177a2e4b03e9b2bd67b21b6`。
+- 新程序：`fresh_real_readback.py` → `fresh-readback.stdout.json`，10 idempotent，predictor forbidden，原 bytes／mtime 不變，file SHA256 `ce9336c6baeae0fb129dda997cf2e35ccc0cc27dc8e616b264a63cbb52e509ad`。重試命名增量另由 `final-real-reference.stdout.json` 核一筆原真輸出；最新 focused／mypy／compile／quant 收據以交付 manifest 為準。
+- 初次純 worktree loader 拒 approved-root 外的原 cycle；保留 `real-daily.*`。QA 直接載原主 checkout **同 bytes** public verifier，維持原受准 root，其餘 provider／service 沿固定 base；沒有 patch guard、retarget config或搬來源。
+- sandbox 原 provider `data_version` guard 拒絕；`real-original-verifier.*`／`real-retry.*`／`real-source-trace.*` 保留。source.sqlite size `4054339584`、mtime `1791288882203027900` 前後不變。相同原 API／pins 經授權唯讀 `require_escalated` 成功；沒有 reviewer rejection、ACL 變更或來源重建。主 checkout 正常組合不需要 QA origin launcher。
+- 最新 focused 為 **33 passed／1.36s**（`final.txt`／`final.xml`）；含跨午夜不重算、舊檔名原 pin 引用、部分取消／失敗後重試、錯來源／日期／symbol／資格與 pending 列不借別列結果。**3 source mypy、0 errors；6 Python compile exit0；quant precision／look-ahead exit0；ML dependency guard 682 sources／0 violations**。以上沒有 full-repo／UI credit。最後一筆真引用相容驗證 exit0，原 prediction bytes／mtime 不變，沒有模型推論。
+- 不重全倉／UI suites；三個新 test 檔的 test inventory／Manual／shared state 更新由中央承接。IO 逐列重驗原大型 snapshot，這次十列約數分鐘，不宣稱性能優化或正式 Task 體感驗收。
+
+回滾為對本 lane 提交執行 `git revert <完整提交雜湊>`，只撤新增入口／adapters／tests／QA 文件；**不刪已保存真預測、原來源與自然收據**。剩餘由中央完成產品 consumer／正式私人設定／原 Task action 接線；跨日 source／entry 差異不能以放寬原 same-source join 解除。
+
+## 初次 blocked-scope 交接（實作前歷史，以下不是目前狀態）
 
 狀態：**blocked_scope；未實作每日入口，未新增自然樣本**。本收據不是 synthetic-only 驗收終點。使用者要求模型真正參與日常選股研究；自然成熟用來改善效果，不是等待模型個人使用的工程 gate。
 

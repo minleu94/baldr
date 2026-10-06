@@ -121,3 +121,28 @@ def test_parquet_tamper_rejected_by_existing_verified_reader(tmp_path):
     path.write_bytes(path.read_bytes() + b"fixture tamper")
     with pytest.raises(ResearchRunIntegrityError):
         load_saved_strategy_rule_card(service, meta)
+
+
+@pytest.mark.parametrize("section,key,value,reason", [
+    ("executor", "buy_score", 1, "saved_rule_pin_mismatch"),
+    ("broker_config", "fee_bps", "0", "saved_rule_pin_mismatch"),
+    ("", "stock_code", "2382", "execution_rule_result_context_mismatch"),
+    ("", "end_date", "2027-01-01", "execution_rule_result_context_mismatch"),
+    ("", "execution_contract", "unversioned", "execution_rule_contract_mismatch"),
+    ("", "source_hashes", {}, "execution_rule_source_hash_missing"),
+    ("", "registry_metadata", {}, "execution_rule_contract_mismatch"),
+])
+def test_actual_typed_saved_rule_source_tamper_never_gets_link(tmp_path, monkeypatch, section, key, value, reason):
+    from tests.test_baldr_b07_research_history import executed_case
+    _, service, metadata, *_ = executed_case(tmp_path, monkeypatch)
+    changed = copy.deepcopy(metadata)
+    execution = changed.data_manifest["single_backtest_rule_execution"]
+    (execution[section] if section else execution)[key] = value
+    class ChangedReader:
+        def load_run_data(self, run_id):
+            return replace(service.load_run_data(run_id), metadata=changed)
+    before = inventory(tmp_path)
+    result = load_saved_strategy_rule_card(ChangedReader(), changed)
+    assert result.source_status == "not_evaluable" and result.result_ref is None
+    assert result.performance_status == "not_evaluable" and reason in result.reasons
+    assert inventory(tmp_path) == before

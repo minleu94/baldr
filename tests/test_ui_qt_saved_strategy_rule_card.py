@@ -5,6 +5,7 @@ import time
 from threading import Event
 from pathlib import Path
 from PySide6.QtTest import QTest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 import pytest
 from tests.test_saved_strategy_rule_card import saved_case, inventory
@@ -112,4 +113,132 @@ def test_integrity_error_is_visible_and_not_infinite_loading(tmp_path, monkeypat
     assert "核對失敗" in widget.rule_result_status.text()
     assert widget.rule_result_button.isEnabled()
     assert "核對失敗" in widget.rule_result_button.toolTip()
+    widget.close()
+
+
+def history_widget(tmp_path):
+    from tests.test_baldr_b07_research_history import fixed_sources
+    from ui_qt.views.backtest.result_panel import ResearchHistoryLookupWidget
+    _, lookup, *_ = fixed_sources(tmp_path)
+    opened = []
+    widget = ResearchHistoryLookupWidget(lookup, opened.append)
+    widget.refresh_entries()
+    wait(lambda: widget._worker is None)
+    return widget, opened
+
+
+def test_b07_single_lookup_filter_metadata_and_exact_original_result(tmp_path):
+    qapp = app()
+    widget, opened = history_widget(tmp_path)
+    before = inventory(tmp_path)
+    assert widget.entries.count() == 8
+    widget.search.setText("legacy_backtest")
+    assert widget.entries.count() == 1
+    widget.entries.setCurrentRow(0)
+    widget.open_result.click()
+    wait(lambda: widget._worker is None)
+    assert len(opened) == 1 and opened[0].entry.run_type == "legacy_backtest"
+    assert opened[0].result["stock_code"] == "2330"
+    widget.search.setText("research_forward")
+    widget.entries.setCurrentRow(0)
+    assert not widget.open_result.isEnabled() and not widget.open_rule.isEnabled()
+    assert "research_forward_metadata_only" in widget.status.text()
+    assert '"run_type":"research_forward"' in widget.status.toolTip()
+    assert widget.metadata_button.isEnabled()
+    assert inventory(tmp_path) == before
+    widget.close()
+
+
+@pytest.mark.parametrize("action", ["selection", "cancel", "close"])
+def test_b07_lookup_stale_cancel_close_refuses_callback(tmp_path, monkeypatch, action):
+    qapp = app()
+    widget, opened = history_widget(tmp_path)
+    widget.search.setText("legacy_backtest")
+    widget.entries.setCurrentRow(0)
+    entered, release = Event(), Event()
+    original = widget.lookup.resolve
+    def blocked(selected):
+        entered.set()
+        assert release.wait(5)
+        return original(selected)
+    monkeypatch.setattr(widget.lookup, "resolve", blocked)
+    before = inventory(tmp_path)
+    widget.open_result.click()
+    wait(entered.is_set)
+    if action == "selection":
+        widget.search.setText("research_forward")
+    elif action == "cancel":
+        widget.cancel.click()
+    else:
+        widget.close()
+    release.set()
+    wait(lambda: widget._worker is None)
+    assert opened == []
+    assert inventory(tmp_path) == before
+    widget.close()
+
+
+def test_b07_lookup_revision_failure_never_opens_partial_result(tmp_path):
+    qapp = app()
+    widget, opened = history_widget(tmp_path)
+    widget.search.setText("legacy_backtest")
+    widget.entries.setCurrentRow(0)
+    (tmp_path / "legacy.parquet").write_bytes(b"revision")
+    before = inventory(tmp_path)
+    widget.open_result.click()
+    wait(lambda: widget._worker is None)
+    assert opened == []
+    assert "selected_source_changed" in widget.status.text()
+    assert inventory(tmp_path) == before
+    widget.close()
+
+
+@pytest.mark.parametrize("kind", ["legacy_backtest", "single_backtest", "batch_backtest_stock", "fixed_basket_stock"])
+def test_b07_exact_result_returns_to_original_backtest_summary(tmp_path, kind):
+    qapp = app()
+    from tests.test_baldr_b07_research_history import fixed_sources
+    from ui_qt.views.backtest_view import BacktestView
+    from ui_qt.views.backtest.result_panel import ResearchHistoryLookupWidget
+    _, lookup, *_ = fixed_sources(tmp_path)
+    view = BacktestView(backtest_service=None, config=None)
+    widget = ResearchHistoryLookupWidget(lookup, view._open_research_history_result, view)
+    widget.refresh_entries()
+    wait(lambda: widget._worker is None)
+    # registry type 字串也是其他名稱的子字串；直接依 exact kind 選取。
+    row = next(index for index in range(widget.entries.count())
+               if widget.entries.item(index).data(Qt.ItemDataRole.UserRole).run_type == kind)
+    widget.entries.setCurrentRow(row)
+    before = inventory(tmp_path)
+    widget.open_result.click()
+    wait(lambda: widget._worker is None)
+    assert f"／{kind}" in view.summary_text.toPlainText(), widget.status.text()
+    assert "股票代號: 2330" in view.summary_text.toPlainText()
+    assert "總報酬率: 未知" in view.summary_text.toPlainText()
+    assert all(button is None or not button.isEnabled() for button in (view.save_result_btn, view.promote_btn))
+    assert view.current_report is None
+    assert inventory(tmp_path) == before
+    widget.close()
+    view.close()
+
+
+def test_b07_execution_generation_change_does_not_open_old_history(tmp_path, monkeypatch):
+    qapp = app()
+    from types import SimpleNamespace
+    widget, opened = history_widget(tmp_path)
+    widget._owner = SimpleNamespace(_execution_generation=1)
+    widget.search.setText("legacy_backtest")
+    widget.entries.setCurrentRow(0)
+    entered, release = Event(), Event()
+    original = widget.lookup.resolve
+    def blocked(selected):
+        entered.set()
+        assert release.wait(5)
+        return original(selected)
+    monkeypatch.setattr(widget.lookup, "resolve", blocked)
+    widget.open_result.click()
+    wait(entered.is_set)
+    widget._owner._execution_generation = 2
+    release.set()
+    wait(lambda: widget._worker is None)
+    assert opened == [] and "新執行" in widget.status.text()
     widget.close()

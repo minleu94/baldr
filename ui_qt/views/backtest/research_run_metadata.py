@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 from datetime import datetime
+from dataclasses import asdict, replace
+from copy import deepcopy
 from decimal import Decimal, ROUND_HALF_UP
 import hashlib
+from io import BytesIO
+import inspect
+from pathlib import Path
 from typing import Any
 import uuid
 
 import pandas as pd
 
 from app_module.research_run_dtos import ResearchRunMetadataDTO, canonical_json
+from app_module.saved_strategy_rule_card import result_context_sha256
+from app_module.strategy_rule_card_readmodel import read_single_backtest_execution_rule_card
+from decision_module.strategies.contracts import StrategySpec
 
 
 def factor_save_kwargs(details: dict[str, Any]) -> dict[str, Any]:
@@ -97,6 +105,82 @@ def ratio_to_bp(value: Any) -> int | None:
     return int((Decimal(str(value)) * Decimal("10000")).to_integral_value(rounding=ROUND_HALF_UP))
 
 
+def execute_single_backtest_with_rule_source(request: Any, service: Any, *, check_cancel: Any = None) -> Any:
+    """沿既有 request 執行；同次載入資料／typed executor 的契約在 producer 封存。
+
+    訊號與撮合仍由原 service 執行，輸入只載入一次。只支援既有 baseline fixed v1／next-open；
+    其他模式仍走原 execution，沒有替缺件推論規則。此 hash 只代表本次資料 bytes，不授 PIT。
+    """
+    if (type(request.strategy_spec) is not StrategySpec
+            or request.strategy_spec.strategy_id != "baseline_score_threshold"
+            or request.strategy_spec.strategy_version != "1.0"
+            or request.strategy_spec.config.get("params", {}).get("threshold_mode", "fixed") != "fixed"
+            or request.execution_price != "next_open"):
+        return request.execute(service, check_cancel=check_cancel)
+
+    class BoundExecution:
+        def run_backtest(self, **kwargs: Any) -> Any:
+            from decision_module.strategies.baseline_score_executor import BaselineScoreExecutor
+            from decision_module.strategies.registry import StrategyRegistry
+            from backtest_module.broker_simulator import BrokerConfig, BrokerSimulator, NEXT_OPEN_CONTRACT
+            if check_cancel is not None and check_cancel():
+                raise InterruptedError("回測已取消")
+            frame, actual_start, actual_end = service._load_stock_data(
+                kwargs["stock_code"], kwargs["start_date"], kwargs["end_date"])
+            if frame is None or frame.empty:
+                return service.run_backtest(**kwargs)
+            if (not isinstance(frame.index, pd.DatetimeIndex) or frame.index.hasnans
+                    or frame.index.max() > pd.Timestamp(kwargs["end_date"])
+                    or frame.index.min() < pd.Timestamp(kwargs["start_date"])):
+                raise ValueError("single_backtest 保存來源不在本次決策期間內")
+            raw = BytesIO()
+            frame.to_parquet(raw, index=True)
+            fingerprint = "sha256:" + hashlib.sha256(raw.getvalue()).hexdigest()
+            spec = deepcopy(kwargs["strategy_spec"])
+            if spec.data_version is not None and spec.data_version != fingerprint:
+                raise ValueError("StrategySpec 的宣告資料版本與本次輸入不同")
+            spec.data_version = fingerprint
+            executor = StrategyRegistry.get_executor(spec)
+            if type(executor) is not BaselineScoreExecutor:
+                raise ValueError("baseline typed executor 不一致")
+            kwargs.update(strategy_spec=spec, strategy_executor=executor, preloaded_data=frame,
+                          actual_start_date=actual_start, actual_end_date=actual_end)
+            report = service.run_backtest(**kwargs)
+            details = dict(report.details or {})
+            if details.get("execution_contract") != NEXT_OPEN_CONTRACT:
+                return report
+            broker_kwargs = {key: kwargs[key] for key in inspect.signature(BrokerConfig).parameters if key in kwargs}
+            broker_config = BrokerConfig(**broker_kwargs)
+            sources = {}
+            for source in (BaselineScoreExecutor, BrokerSimulator, type(executor.threshold_policy), type(service)):
+                filename = inspect.getsourcefile(source)
+                if filename is None:
+                    raise ValueError("執行契約缺程式來源")
+                sources[source.__module__ + "." + source.__name__] = hashlib.sha256(Path(filename).read_bytes()).hexdigest()
+            execution = json_safe({
+                "schema": "single-backtest-rule-execution.v1", "strategy_spec": spec.to_dict(),
+                "registry_metadata": StrategyRegistry.get_strategy_meta(spec.strategy_id),
+                "source_hashes": sources, "input_fingerprint": fingerprint,
+                "executor": {"buy_score": executor.buy_score, "sell_score": executor.sell_score,
+                             "buy_confirm_days": executor.buy_confirm_days, "sell_confirm_days": executor.sell_confirm_days,
+                             "cooldown_days": executor.cooldown_days, "threshold_mode": "fixed"},
+                "broker_config": asdict(broker_config), "execution_contract": NEXT_OPEN_CONTRACT,
+                "stock_code": kwargs["stock_code"], "start_date": actual_start, "end_date": actual_end,
+                "required_features": list(frame.columns), "benchmark": details.get("benchmark_results") or None,
+                "qualification": {"validation_status": getattr(report.validation_status, "value", "unknown"),
+                                  "historical_pit_eligible": False, "performance_evaluable": False},
+            })
+            details.update(strategy_version=spec.strategy_version, parameter_contract_version="baseline-score-fixed.v1",
+                           data_version=fingerprint, data_as_of_date=actual_end)
+            manifest = dict(details.get("data_manifest") or {})
+            manifest.update(strategy_spec=json_safe(spec.to_dict()), single_backtest_rule_execution=execution)
+            details["data_manifest"] = manifest
+            report.details = details
+            return report
+
+    return request.execute(BoundExecution(), check_cancel=check_cancel)
+
+
 def build_single_backtest_metadata(
     *,
     run_id: str,
@@ -120,7 +204,7 @@ def build_single_backtest_metadata(
     if any(key in manifest for key in ("execution_contract", "run_status", "execution_assumptions")):
         payload["data_manifest"] = manifest
     payload_hash = research_payload_hash(payload)
-    return ResearchRunMetadataDTO(
+    metadata = ResearchRunMetadataDTO(
         run_id=run_id,
         run_name=run_name,
         run_type="single_backtest",
@@ -152,6 +236,15 @@ def build_single_backtest_metadata(
         payload_hash=payload_hash,
         created_at=created_at,
     )
+    execution = manifest.get("single_backtest_rule_execution")
+    if isinstance(execution, dict):
+        spec = StrategySpec.from_dict(manifest["strategy_spec"])
+        card = read_single_backtest_execution_rule_card(spec, execution)
+        if card.reasons:
+            raise ValueError("single_backtest 規則執行來源核對失敗：" + ",".join(card.reasons))
+        metadata.data_manifest["rule_card_identity"] = asdict(replace(
+            card.identity, context_sha256=result_context_sha256(metadata)))
+    return metadata
 
 
 def build_recommendation_portfolio_metadata(

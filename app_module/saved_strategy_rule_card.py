@@ -9,7 +9,7 @@ import re
 from typing import Any
 from app_module.research_run_dtos import ResearchRunMetadataDTO, canonical_json, normalize_research_run_json_value
 from app_module.research_run_service import ResearchRunService
-from app_module.strategy_rule_card_readmodel import (RuleCardIdentity, RuleCardResultReference, StrategyRuleCard, bind_result_reference, read_strategy_rule_card)
+from app_module.strategy_rule_card_readmodel import (RuleCardIdentity, RuleCardResultReference, StrategyRuleCard, bind_result_reference, read_strategy_rule_card, read_single_backtest_execution_rule_card)
 from decision_module.strategies.contracts import StrategySpec
 
 _KINDS = {"single_backtest": "historical_backtest", "batch_backtest_stock": "historical_backtest", "fixed_basket_stock": "historical_backtest", "research_forward": "research_forward"}
@@ -124,7 +124,17 @@ def load_saved_strategy_rule_card(service: ResearchRunService, expected: Researc
     costs, cost_error = _costs(metadata)
     if cost_error:
         errors.append(cost_error)
-    card = read_strategy_rule_card(spec, result_kind=kind)
+    execution = metadata.data_manifest.get("single_backtest_rule_execution")
+    card = (read_single_backtest_execution_rule_card(spec, execution)
+            if isinstance(execution, dict) and metadata.run_type == "single_backtest"
+            else read_strategy_rule_card(spec, result_kind=kind))
+    if isinstance(execution, dict):
+        if (metadata.run_type != "single_backtest" or execution.get("stock_code") not in metadata.universe
+                or not isinstance(execution.get("start_date"), str) or not isinstance(execution.get("end_date"), str)
+                or str(execution.get("start_date")) < metadata.start_date or str(execution.get("end_date")) > metadata.end_date
+                or execution.get("execution_contract") != metadata.execution_contract
+                or execution.get("benchmark") != (metadata.benchmark_results or None)):
+            errors.append("execution_rule_result_context_mismatch")
     card = replace(card, identity=replace(card.identity, context_sha256=result_context_sha256(metadata)))
     pin = metadata.data_manifest.get("rule_card_identity")
     saved_identity = None

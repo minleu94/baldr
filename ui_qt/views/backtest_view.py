@@ -976,7 +976,8 @@ class BacktestView(QWidget):
             self.current_run_params = request.run_params()
 
             def backtest_task(cancel_callback=None):
-                return request.execute(self.backtest_service, check_cancel=cancel_callback)
+                return research_run_metadata.execute_single_backtest_with_rule_source(
+                    request, self.backtest_service, check_cancel=cancel_callback)
 
             self.worker = TaskWorker(backtest_task)
             self.worker.finished.connect(self._on_backtest_finished)
@@ -2557,7 +2558,14 @@ class BacktestView(QWidget):
                 self.research_run_service,
                 composition.persistence,
             )
+            from app_module.saved_strategy_rule_card import metadata_sha256
+            before = self.research_run_service.repository.get_metadata(run_id)
+            if before is None or metadata_sha256(before) != metadata_sha256(metadata):
+                raise ValueError("選取的 Registry 推薦回放來源已修訂")
             result = reader.read(run_id)
+            after = self.research_run_service.repository.get_metadata(run_id)
+            if after is None or metadata_sha256(after) != metadata_sha256(metadata):
+                raise ValueError("Registry 推薦回放讀取期間來源已修訂")
         except Exception as exc:
             if (
                 request_id == self._registry_portfolio_open_request_id
@@ -2891,16 +2899,17 @@ class BacktestView(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, run.get('run_id'))
             self.history_list.addItem(item)
 
-    def _load_history_run(self, item: QListWidgetItem):
+    def _load_history_run(self, item: QListWidgetItem, *, run_data: dict[str, Any] | None = None):
         """載入歷史回測結果"""
-        if not self.run_repository:
+        if not self.run_repository and run_data is None:
             return
 
         run_id = item.data(Qt.ItemDataRole.UserRole)
         if not run_id:
             return
 
-        run_data = self.run_repository.load_run_data(run_id)
+        if run_data is None:
+            run_data = self.run_repository.load_run_data(run_id)
         if not run_data:
             QMessageBox.warning(self, "錯誤", "載入失敗")
             return
@@ -2926,6 +2935,17 @@ class BacktestView(QWidget):
             result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(run_data=run_data))
 
         # 顯示摘要
+        def saved_number(key: str, *, percent: bool = False) -> str:
+            value = run_data.get(key)
+            if value is None:
+                return "未知"
+            try:
+                number = Decimal(str(value))
+                if not number.is_finite():
+                    return "未知"
+                return f"{number * Decimal('100'):.2f}%" if percent else f"{number:.2f}"
+            except (ValueError, ArithmeticError):
+                return "未知"
         summary_lines = [
             f"執行名稱: {run_data.get('run_name', '')}",
             f"股票代號: {run_data.get('stock_code', '')}",
@@ -2933,12 +2953,12 @@ class BacktestView(QWidget):
             f"策略: {run_data.get('strategy_id', '')}",
             "",
             "=== 績效摘要 ===",
-            f"總報酬率: {run_data.get('total_return', 0) * 100:.2f}%",
-            f"年化報酬率: {run_data.get('annual_return', 0) * 100:.2f}%",
-            f"夏普比率: {run_data.get('sharpe_ratio', 0):.2f}",
-            f"最大回撤: {run_data.get('max_drawdown', 0) * 100:.2f}%",
-            f"勝率: {run_data.get('win_rate', 0) * 100:.2f}%",
-            f"總交易次數: {run_data.get('total_trades', 0)}",
+            f"總報酬率: {saved_number('total_return', percent=True)}",
+            f"年化報酬率: {saved_number('annual_return', percent=True)}",
+            f"夏普比率: {saved_number('sharpe_ratio')}",
+            f"最大回撤: {saved_number('max_drawdown', percent=True)}",
+            f"勝率: {saved_number('win_rate', percent=True)}",
+            f"總交易次數: {run_data.get('total_trades') if run_data.get('total_trades') is not None else '未知'}",
         ]
 
         self.summary_text.setPlainText("\n".join(summary_lines))
@@ -2959,6 +2979,51 @@ class BacktestView(QWidget):
             mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
             result_panel.set_research_mode(mode, reveal_single_detail=True)
             result_panel.focus_result_tab("summary")
+
+    def _open_research_history_result(self, selected: Any) -> None:
+        """lookup 已核對 exact 來源；回到既有結果呈現，不重跑或借另一份結果。"""
+        from app_module.research_history_lookup import REGISTRY_BACKTEST_TYPES
+        entry, loaded = selected.entry, selected.result
+        if entry.source_kind == "registry" and entry.run_type == "recommendation_portfolio":
+            self._open_recommendation_registry_run(loaded.metadata)
+            return
+        if entry.source_kind == "legacy_recommendation_portfolio":
+            self.current_portfolio_run_id = entry.run_id
+            self.current_recommendation_registry_run_id = None
+            self._recommendation_portfolio_result_generation = None
+            self.current_recommendation_portfolio_run_params = dict(loaded.get("config") or {})
+            self.current_recommendation_portfolio_config = dict(loaded.get("config") or {})
+            self._show_recommendation_portfolio_result(loaded["result_dto"], result_source="legacy_history")
+            self.portfolio_summary_text.append("\n舊推薦回放來源；未知規則、成本與資格不補成 Registry typed 結果。")
+            self.save_portfolio_result_btn.setEnabled(False)
+            self.delete_portfolio_result_btn.setEnabled(False)
+            self.promote_portfolio_result_btn.setEnabled(False)
+            self.result_panel.focus_result_tab("recommendation")
+            return
+        if entry.source_kind == "legacy_backtest":
+            payload = loaded
+        elif entry.source_kind == "registry" and entry.run_type in REGISTRY_BACKTEST_TYPES:
+            metadata = loaded.metadata
+            payload = {**metadata.metrics, "run_id": metadata.run_id, "run_name": metadata.run_name,
+                "stock_code": entry.stock_code, "start_date": metadata.start_date, "end_date": metadata.end_date,
+                "strategy_id": metadata.strategy_id, "strategy_params": metadata.normalized_params,
+                "capital": Decimal(metadata.capital_cents) / Decimal("100"),
+                "fee_bps": Decimal(metadata.fee_bp_x100) / Decimal("100"),
+                "slippage_bps": Decimal(metadata.slippage_bp_x100) / Decimal("100"),
+                "equity_curve": loaded.equity, "trade_list": loaded.trades,
+                "data_manifest": metadata.data_manifest, "data_version": metadata.data_fingerprint,
+                "strategy_version": metadata.strategy_version, "execution_contract": metadata.execution_contract}
+        else:
+            raise ValueError("此種類只支援保存 metadata")
+        item = QListWidgetItem(entry.run_name)
+        item.setData(Qt.ItemDataRole.UserRole, entry.run_id)
+        self._load_history_run(item, run_data=payload)
+        self._single_backtest_result_generation = None
+        for button in (self.save_result_btn, self.promote_btn):
+            if button is not None:
+                button.setEnabled(False)
+        self.summary_text.append(f"\n原來源：{entry.source_kind}／{entry.run_type}；保存績效不代表可評／正式資格。\n"
+                                 f"run：{entry.run_id}\nmetadata hash：{entry.metadata_sha256}\ncontext hash：{entry.context_sha256}")
 
     def _delete_history_runs(self):
         """刪除選中的回測結果"""
@@ -5121,6 +5186,11 @@ class BacktestView(QWidget):
 
     def request_cooperative_shutdown(self) -> bool:
         workers = [self.worker, *self._report_export_workers]
+        history = getattr(self, "research_history_lookup", None)
+        if history is not None:
+            history._closed = True
+            history.cancel_pending()
+            workers.append(history._worker)
         for worker in workers:
             if worker is not None and worker.isRunning():
                 worker.cancel(cooperative=True, wait=False)

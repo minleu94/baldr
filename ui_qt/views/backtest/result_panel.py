@@ -9,7 +9,7 @@ from copy import deepcopy
 from PySide6.QtWidgets import (
     QAbstractItemView, QListView, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QGroupBox, QTableView, QTextEdit, QComboBox, 
-    QHeaderView, QListWidget, QTabWidget, QPushButton
+    QHeaderView, QListWidget, QListWidgetItem, QTabWidget, QPushButton, QLineEdit
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -28,6 +28,177 @@ from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 
 logger = logging.getLogger(__name__)
+
+
+class ResearchHistoryLookupWidget(QWidget):
+    """三個既有 store 的共同查找入口；選取失效或取消不套舊 callback。"""
+
+    def __init__(self, lookup, on_open, parent=None):
+        super().__init__(parent)
+        self.lookup = lookup
+        self.on_open = on_open
+        self._owner = getattr(on_open, "__self__", None)
+        self._worker = None
+        self._request_id = 0
+        self._closed = False
+        self._entries = ()
+        layout = QVBoxLayout(self)
+        controls = QHBoxLayout()
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("查找名稱、股票、run ID 或結果種類")
+        self.search.setAccessibleName("研究歷史查找文字")
+        self.refresh = QPushButton("查找既有歷史")
+        self.refresh.clicked.connect(self.refresh_entries)
+        self.cancel = QPushButton("取消查找")
+        self.cancel.clicked.connect(self.cancel_pending)
+        controls.addWidget(self.search, 1)
+        controls.addWidget(self.refresh)
+        controls.addWidget(self.cancel)
+        layout.addLayout(controls)
+        self.entries = QListWidget()
+        self.entries.setAccessibleName("legacy 與 Registry 研究歷史")
+        self.entries.setMaximumHeight(160)
+        self.entries.currentItemChanged.connect(self._selection_changed)
+        self.search.textChanged.connect(self._filter)
+        layout.addWidget(self.entries)
+        self.status = QLabel("按查找讀取既有來源；不會建立資料庫或執行回測。每來源最多 200 筆。")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        actions = QHBoxLayout()
+        self.open_result = QPushButton("開啟原結果")
+        self.open_result.setEnabled(False)
+        self.open_result.clicked.connect(self.open_selected)
+        self.open_rule = QPushButton("查看保存規則")
+        self.open_rule.setEnabled(False)
+        self.open_rule.clicked.connect(lambda: self.open_selected(rule=True))
+        self.metadata_button = QPushButton("查看保存 metadata 與原因")
+        self.metadata_button.clicked.connect(self.show_metadata)
+        actions.addWidget(self.open_result)
+        actions.addWidget(self.open_rule)
+        actions.addWidget(self.metadata_button)
+        layout.addLayout(actions)
+
+    def show_metadata(self):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox
+        item = self.entries.currentItem()
+        if item is None:
+            return
+        entry = item.data(Qt.ItemDataRole.UserRole)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("原保存 metadata／支援界線")
+        dialog.resize(680, 480)
+        layout = QVBoxLayout(dialog)
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText(f"{entry.source_kind}／{entry.run_type}\n{entry.unsupported_reason}\n"
+                          f"metadata hash：{entry.metadata_sha256}\ncontext hash：{entry.context_sha256}\n{entry.metadata_json}")
+        layout.addWidget(text)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def _selection_changed(self, *_):
+        self.cancel_pending()
+        item = self.entries.currentItem()
+        entry = item.data(Qt.ItemDataRole.UserRole) if item else None
+        self.open_result.setEnabled(bool(entry and entry.result_supported))
+        self.open_rule.setEnabled(bool(entry and entry.source_kind == "registry" and entry.run_type in
+                                      {"single_backtest", "batch_backtest_stock", "fixed_basket_stock"}))
+        if entry:
+            self.status.setText(f"{entry.source_kind}／{entry.run_type}｜{entry.start_date}～{entry.end_date}｜"
+                                + (entry.unsupported_reason or "按開啟核對原結果；比較資格仍由原比較入口決定。"))
+            self.status.setToolTip(entry.metadata_json)
+
+    def cancel_pending(self):
+        self._request_id += 1
+        if self._worker is not None:
+            self._worker.cancel(cooperative=True, wait=False)
+        self.status.setText("查找／開啟已取消；原結果保持。")
+
+    def _filter(self, *_):
+        self.entries.clear()
+        needle = self.search.text().strip().casefold()
+        for entry in self._entries:
+            label = f"{entry.run_name}｜{entry.stock_code or '組合／未提供股票'}｜{entry.source_kind}／{entry.run_type}｜{entry.created_at}"
+            if needle and needle not in (label + entry.run_id).casefold():
+                continue
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, entry)
+            item.setToolTip(entry.run_id + "\n" + entry.unsupported_reason)
+            self.entries.addItem(item)
+
+    def _start(self, task, apply):
+        from ui_qt.workers.task_worker import TaskWorker
+        if self._worker is not None:
+            return
+        self._request_id += 1
+        token = self._request_id
+        worker = TaskWorker(task)
+        self._worker = worker
+        self.refresh.setEnabled(False)
+        def finished(value):
+            if not self._closed and token == self._request_id:
+                try:
+                    apply(value)
+                except Exception as exc:
+                    self.status.setText("原結果呈現失敗：" + str(exc))
+        def error(message):
+            if not self._closed and token == self._request_id:
+                self.status.setText("來源讀取失敗；沒有套用部分結果：" + message)
+        def cleanup():
+            self._worker = None
+            self.refresh.setEnabled(True)
+            worker.deleteLater()
+        worker.finished.connect(finished)
+        worker.error.connect(error)
+        worker.native_thread_finished.connect(cleanup)
+        worker.start()
+
+    def refresh_entries(self):
+        self.status.setText("查找既有來源中…")
+        def apply(page):
+            self._entries = page.entries
+            self._filter()
+            self.status.setText(f"讀取 {len(page.entries)} 筆；每來源上限 {page.per_source_limit}。"
+                                + ("缺件／無法讀取：" + "；".join(page.diagnostics) if page.diagnostics else ""))
+        self._start(self.lookup.list_entries, apply)
+
+    def open_selected(self, *, rule=False):
+        item = self.entries.currentItem()
+        if item is None or self._worker is not None:
+            return
+        expected = item.data(Qt.ItemDataRole.UserRole)
+        if not expected.result_supported:
+            self.status.setText(expected.unsupported_reason + "\n" + expected.metadata_json)
+            return
+        generation = getattr(self._owner, "_execution_generation", None)
+        def task():
+            result = self.lookup.resolve(expected)
+            if rule:
+                from app_module.saved_strategy_rule_card import load_saved_strategy_rule_card
+                return load_saved_strategy_rule_card(self.lookup.registry, result.result.metadata)
+            return result
+        def apply(result):
+            if generation != getattr(self._owner, "_execution_generation", None):
+                self.status.setText("研究已換成新執行；原開啟請求已忽略。")
+                return
+            if rule:
+                from ui_qt.widgets.strategy_rule_card_dialog import StrategyRuleCardDialog
+                dialog = StrategyRuleCardDialog(result.rule_card, result=result, parent=self)
+                if result.rule_card.rule_status == "execution_contract_bound" and result.source_status == "source_ref_only":
+                    dialog.qualification.setText("原執行的規則、成本與來源已核對；績效與正式資格仍不可評，不代表投資有效。")
+                dialog.exec()
+            else:
+                self.on_open(result)
+            self.status.setText("已核對原保存來源；沒有重跑或改寫來源。")
+        self.status.setText("核對 exact kind／run／hash／股票／context 中…")
+        self._start(task, apply)
+
+    def closeEvent(self, event):
+        self._closed = True
+        self.cancel_pending()
+        super().closeEvent(event)
 
 
 class BacktestResultPanel(QWidget):
@@ -257,6 +428,20 @@ class BacktestResultPanel(QWidget):
         context_row.addWidget(self.mode_context_label)
         context_row.addWidget(self.result_purpose_label, stretch=1)
         layout.addLayout(context_row)
+        from app_module.research_history_lookup import ResearchHistoryLookup
+        legacy = getattr(self.parent_view, "run_repository", None)
+        portfolio = getattr(self.parent_view, "portfolio_run_repository", None)
+        lookup = ResearchHistoryLookup(registry=getattr(self.parent_view, "research_run_service", None),
+            legacy_backtest_db=getattr(legacy, "db_path", None), legacy_portfolio_db=getattr(portfolio, "db_path", None))
+        history_group = QGroupBox("研究歷史查找（legacy／Registry／推薦回放）")
+        history_group.setCheckable(True)
+        history_group.setChecked(False)
+        history_layout = QVBoxLayout(history_group)
+        self.research_history_lookup = ResearchHistoryLookupWidget(lookup, self.parent_view._open_research_history_result, self.parent_view)
+        history_layout.addWidget(self.research_history_lookup)
+        self.research_history_lookup.setVisible(False)
+        history_group.toggled.connect(self.research_history_lookup.setVisible)
+        layout.addWidget(history_group)
         
         self.result_tabs = QTabWidget()
         self.result_tabs.setAccessibleName("回測結果工作區")

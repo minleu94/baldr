@@ -184,6 +184,79 @@ def read_strategy_rule_card(spec: StrategySpec, *,
     return _card(identity, values, tuple(errors))
 
 
+def read_single_backtest_execution_rule_card(spec: StrategySpec, execution: Mapping[str, Any]) -> StrategyRuleCard:
+    """只投影 producer 已封存的 baseline fixed 契約，不借現在 registry 或重跑 executor。"""
+    source = "single-backtest-rule-execution.v1"
+    errors: list[str] = []
+    required = {"schema", "strategy_spec", "registry_metadata", "source_hashes", "input_fingerprint",
+                "executor", "broker_config", "execution_contract", "stock_code", "start_date", "end_date",
+                "required_features", "benchmark", "qualification"}
+    if set(execution) != required or execution.get("schema") != source:
+        errors.append("execution_rule_schema_invalid")
+    if (spec.strategy_id != "baseline_score_threshold" or spec.strategy_version != "1.0"
+            or spec.config.get("params", {}).get("threshold_mode", "fixed") != "fixed"
+            or _json(execution.get("strategy_spec")) != _json(spec.to_dict())
+            or execution.get("input_fingerprint") != spec.data_version):
+        errors.append("execution_rule_spec_mismatch")
+    meta = execution.get("registry_metadata", {})
+    executor = execution.get("executor", {})
+    broker = execution.get("broker_config", {})
+    hashes = execution.get("source_hashes", {})
+    if not all(isinstance(item, dict) for item in (meta, executor, broker, hashes)):
+        return _card(RuleCardIdentity(spec.strategy_id, spec.strategy_version, source, "", "", "historical_backtest"), {},
+                     ("execution_rule_fields_invalid",))
+    if (meta.get("strategy_id") != spec.strategy_id or meta.get("version") != spec.strategy_version
+            or executor.get("threshold_mode") != "fixed"
+            or execution.get("execution_contract") != "next-session-open.v2"
+            or broker.get("execution_price") != "next_open"):
+        errors.append("execution_rule_contract_mismatch")
+    expected_sources = {"decision_module.strategies.baseline_score_executor.BaselineScoreExecutor",
+                        "backtest_module.broker_simulator.BrokerSimulator",
+                        "decision_module.score_threshold_policy.ScoreThresholdPolicy",
+                        "app_module.backtest_service.BacktestService"}
+    if set(hashes) != expected_sources or any(not isinstance(value, str) or not _valid_hash(value) for value in hashes.values()):
+        errors.append("execution_rule_source_hash_missing")
+    if any(key not in executor for key in ("buy_score", "sell_score", "buy_confirm_days", "sell_confirm_days", "cooldown_days")):
+        errors.append("execution_rule_threshold_missing")
+    if not execution.get("stock_code") or not execution.get("required_features"):
+        errors.append("execution_rule_input_missing")
+    # 已執行的原公式只作說明，沒有在 reader 算分／評績效／授予 PIT。
+    values: dict[str, tuple[Any, str]] = {
+        "name": (meta.get("name"), source + ".registry_metadata.name"),
+        "description": (meta.get("description"), source + ".registry_metadata.description"),
+        "entry": ({"relation": "score >= buy_score", "threshold": executor.get("buy_score"),
+                   "confirm_sessions": executor.get("buy_confirm_days"), "cooldown_calendar_days": executor.get("cooldown_days")}, source + ".executor"),
+        "exit": ({"relation": "score <= sell_score", "threshold": executor.get("sell_score"),
+                  "confirm_sessions": executor.get("sell_confirm_days"), "cooldown_calendar_days": executor.get("cooldown_days"),
+                  "risk_exits": "收盤確認停損停利，下一有效開盤執行"}, source + ".executor/broker_config"),
+        "universe": ({"stock_code": execution.get("stock_code"), "membership": "explicit_single_stock"}, source + ".stock_code"),
+        "period": ({"start_date": execution.get("start_date"), "end_date": execution.get("end_date")}, source + ".start_date/end_date"),
+        "parameters": (spec.config, source + ".strategy_spec.config"),
+        "parameter_schema": (meta.get("params"), source + ".registry_metadata.params"),
+        "cost": ({"fee_bps": broker.get("fee_bps"), "slippage_bps": broker.get("slippage_bps"),
+                  "sell_tax_bps": "30", "minimum_fee_currency": "20", "tax_policy": "原 BrokerSimulator next-open 的賣出稅與最低手續費"}, source + ".broker_config/source_hashes"),
+        "required_features": (execution.get("required_features"), source + ".required_features"),
+        "units": ({"score": "0–100 分", "fees": "bp", "price": "元", "quantity": "股", "confirmation": "交易列", "cooldown": "曆日"}, source),
+        "data_insufficiency": ({"historical_availability": "unknown", "policy": "缺來源不補最新；暖機與交易樣本依原報告"}, source + ".qualification"),
+        "execution_mode": (execution.get("execution_contract"), source + ".execution_contract"),
+        "signal_time": ("當列收盤確認；rolling 確認只含截至當列資料", source + ".source_hashes"),
+        "earliest_execution": ("下一有效可交易 session 開盤；缺開盤／停牌不補收盤", source + ".execution_contract"),
+        "holding_period": ({"fixed_days": None, "policy": "依原策略出場與風控；期末未平倉只估值"}, source + ".broker_config"),
+        "stop_loss": ({"ratio": broker.get("stop_loss_pct"), "atr_multiplier": broker.get("stop_loss_atr_mult"), "atr_period": broker.get("atr_period")}, source + ".broker_config"),
+        "take_profit": ({"ratio": broker.get("take_profit_pct"), "atr_multiplier": broker.get("take_profit_atr_mult")}, source + ".broker_config"),
+        "position_limits": ({key: broker.get(key) for key in ("sizing_mode", "fixed_amount", "risk_pct", "max_positions", "position_sizing", "allow_pyramid", "allow_reentry", "reentry_cooldown_days")}, source + ".broker_config"),
+        "gap_suspension_unfilled": ({key: broker.get(key) for key in ("enable_limit_up_down", "enable_volume_constraint", "max_participation_rate")}, source + ".broker_config"),
+        "benchmark": (execution.get("benchmark"), source + ".benchmark"),
+        "qualification": (execution.get("qualification"), source + ".qualification"),
+        "source_trace": ({"input_fingerprint": execution.get("input_fingerprint"), "source_hashes": hashes}, source + ".source_hashes/input_fingerprint"),
+    }
+    identity = RuleCardIdentity(spec.strategy_id, spec.strategy_version, source, _hash(dict(execution)),
+                                _hash(spec.to_dict()), "historical_backtest")
+    card = _card(identity, values, tuple(errors))
+    from dataclasses import replace
+    return replace(card, rule_status="execution_contract_bound" if not card.reasons else "not_evaluable")
+
+
 def read_profile_rule_card(profile: Any) -> StrategyRuleCard:
     """Profile 只作選股設定投影；style 名稱與 validation_label 不授交易資格。"""
     payload = {"profile_id": profile.profile_id, "version": profile.version,

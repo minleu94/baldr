@@ -164,6 +164,7 @@ TEST_INVENTORY: dict[str, str] = {
     "tests/test_ux09_membership_lifecycle_view.py": "ui-healthcheck-candidate-bridge",
     "tests/test_ux13_market_cohort_view.py": "ui-healthcheck-candidate-bridge",
     "tests/test_baldr_personal_paper_ledgers.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_baldr_personal_paper_producers.py": "service-oracle-portfolio-decision-runtime",
     # 2026-10-06 I20：僅 metadata 分類；不新增 direct bridge。
     "tests/test_daily_market_cohort_main_bridge.py": "ui-healthcheck-candidate-bridge",
     "tests/test_daily_market_cohort_projection.py": "service-oracle-recommendation",

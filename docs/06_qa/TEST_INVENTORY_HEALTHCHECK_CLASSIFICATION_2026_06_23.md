@@ -2,6 +2,32 @@
 
 ## 2026-10-06 machine refresh
 
+P2具名增量：只新增 `tests/test_baldr_personal_paper_producers.py` 一項 `service-oracle-portfolio-decision-runtime`；原1282個分類值／12 direct橋接／support與runner API保持。新檔採原P1填單→daily state/status→benchmark→B09新程序reader合成oracle；fixture明示tmp roots，無正式資料／Task／Native／fit。市場main／sidecars／hardlink／junction、create-only staging及readonlylegacy負例是oracle證據，不是direct UI bridge。
+
+原I156凍結156＋P1具名1的收據不改，P2另列。P2原108 immutable與R1 delta26收據已核；中央R1關鍵18 pass及原hardlink拒絕，未重108或穩定UI union。metadata最後結果見 `output/qa/p2_inventory_final_20261006.json`，原13治理JUnit見 `output/qa/p2_governance_final_20261006.xml`；分類不等於全部runtime已過。ML六項仍等待各M包有限工程修補。
+
+Current filesystem Python files: `1283`
+Current registry entries: `1283`
+Current collected test cases: 未執行
+
+| 分類 | 數量 |
+|---|---:|
+| `general-unit-keep-in-pytest` | 169 |
+| `governance-doc-tooling` | 190 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 192 |
+| `service-oracle-portfolio-decision-runtime` | 155 |
+| `service-oracle-recommendation` | 187 |
+| `service-oracle-research-backtest` | 133 |
+| `slow-e2e-or-environment` | 11 |
+| `ui-healthcheck-candidate-bridge` | 97 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 91 |
+
+## 2026-10-06 I156完整分類歷史快照
+
 I156 一次完整補分類：凍結原156項（G0 8／G1 47／G2 33／G3 19／G4 49），另單列已採 P1 的1項新增測試；合計157個 exact paths。基準 source pins 以 ae5b080150043e71383952e4a3209d9d04b330e7／原 e185 scope 對照，source_id 的批准提交屬組外。每項依完整原碼、imports／fixture／真 assert／入口／讀寫副作用及隔離證據分類，沒有依檔名或僅 AST 代判。
 
 原1125個分類值、12條 direct bridge 精確集合、support API／runner／原13治理 assertions 保持。兩個 support helper 只補 general-unit metadata、依原規則仍 not-collected，沒有擴 PYTEST_SUPPORT_FILES；UI candidate／service oracle 不等於 direct runner executed coverage。

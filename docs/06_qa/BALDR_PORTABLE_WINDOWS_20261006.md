@@ -13,3 +13,5 @@ Workbench＋初版 affected tests 106 passed；最終 D01＋launcher 30 passed�
 未簽章／SmartScreen 信譽未知。Native 真人、其他 Windows 機器、真實私人模型與正式 Task 自然 run 未由本輪驗證。明日原 Task 2026-10-07 12:45 UTC／05:45 PDT 保留。既有個人模型沿原設定及可信 artifact；首次空資料不借 development 絕對 path。操作與回滾見 PORTABLE_WINDOWS；替換整個包，保留外部資料／設定，不清 cache、不重建 DB。
 
 四用途增強 probe：市場／個股／持倉畫面以合成 DTO 與缺報價安全 N/A 驗證；選股用合成 sealed execution 展示。推薦 legacy SQLite runs canonical readback 被原 no-follow root／ancestor guard 阻擋，保留失敗 raw，不列 pass、不換路放寬來源資格。Watchlist 保存跨程序讀回與推薦保存是不同契約。
+
+最後在同一隔離設定／空資料根再連續啟動、關閉兩個 frozen launcher 程序，兩次 exit0，收據 `output/packaging/repeated_entry.json`。四組原報告與 process receipt 已複製到 repo ignored `output/packaging/reports/`，BUILD_INFO 指向 durable 副本，不只依賴 Temp。

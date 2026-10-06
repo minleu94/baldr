@@ -15,7 +15,11 @@ for name in ('portable_probe', 'portable_journey_probe', 'portable_entry_probe',
     report_path = case / ('probe.json' if name == 'portable_probe' else f'{name}.json')
     report = json.loads(report_path.read_text(encoding='utf-8'))
     assert report['status'] == 'passed', report
-    reports[name] = dict(case=str(case), report=str(report_path), sha256=sha(report_path.read_bytes()))
+    durable = out / 'reports' / report_path.name
+    durable.parent.mkdir(parents=True, exist_ok=True)
+    durable.write_bytes(report_path.read_bytes())
+    (durable.parent / f'{name}_process.json').write_bytes((case/'process.json').read_bytes())
+    reports[name] = dict(case=str(case), report=str(durable), sha256=sha(durable.read_bytes()))
 guide = (root / 'docs/07_guides/PORTABLE_WINDOWS.md').read_text(encoding='utf-8')
 guide = guide.replace('[完整手冊](APPLICATION_MANUAL.md)', '原 repository 的 docs/07_guides/APPLICATION_MANUAL.md 完整手冊')
 (bundle / 'README.md').write_text(guide, encoding='utf-8')

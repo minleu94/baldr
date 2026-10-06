@@ -196,6 +196,19 @@ def test_approved_context_source_reaches_original_writer_and_marker(tmp_path, mo
     before = service.store.journal_file.read_bytes()
     result = reader.read(request, price_points=POINTS)
     assert len(result.candidates) == 1 and result.diagnostics == ()
+    from app_module.stock_research_chart_marker_composition import ChartMarkerSource, compose_saved_chart_markers
+    from tests.test_stock_research_chart_payload import _report
+    guarded_paths = []
+    def exact_source_guard(path):
+        assert path == service.store.journal_file
+        guarded_paths.append(path)
+        return path
+    bounded = compose_saved_chart_markers(
+        _report(*POINTS, context=CONTEXT), cutoff_date=request.cutoff_date,
+        account_id="default", expected_source_id="source-a",
+        sources=(ChartMarkerSource(service.store.journal_file, request.record_source, exact_source_guard),))
+    assert bounded.candidates == result.candidates and bounded.diagnostics == ()
+    assert len(guarded_paths) >= 4
     assert_visible(reader, request)
     assert reader.read(request, price_points=POINTS, cancelled=lambda: True).candidates == ()
     assert service.store.journal_file.read_bytes() == before
@@ -215,6 +228,12 @@ request=StockChartMarkerReadRequest(**data)
 reader=StockResearchChartMarkerReader(confirmation_records=JsonlJournalReadAdapter(path)._records)
 app=QApplication([])
 assert_visible(reader,request)
+from app_module.stock_research_chart_marker_composition import ChartMarkerSource, compose_saved_chart_markers
+from tests.test_stock_research_chart_payload import _report
+bounded=compose_saved_chart_markers(_report(*POINTS,context=CONTEXT),cutoff_date=request.cutoff_date,
+ account_id=request.account_id,expected_source_id=request.source_id,
+ sources=(ChartMarkerSource(Path(path),request.record_source),))
+assert bounded.candidates==reader.read(request,price_points=POINTS).candidates
 print(reader.read(request,price_points=POINTS).candidates[0].content_sha256)
 '''
     completed = subprocess.run(

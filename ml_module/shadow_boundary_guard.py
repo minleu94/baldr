@@ -32,6 +32,13 @@ ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = 
     "app_module/rule_research_shadow_acceptance.py": {
         "ml_module.model_lifecycle_registry": frozenset({"ModelLifecycleEvent", "_ALLOWED_TRANSITIONS"}),
     },
+    # B01-H6/H7：冷 import 與 DTO 建構已核零資料 I/O；receipt 讀取仍由 app 負責。
+    # 僅准此 caller 的兩個純 label 契約，不授權整模組、writer 或 trainer。
+    "app_module/rule_research_label_readiness.py": {
+        "ml_module.historical_contracts": frozenset(
+            {"HistoricalLabelRow", "HistoricalLabelSpec"}
+        ),
+    },
     # Sealed research exports only: no training runners or registry I/O.
     "app_module/rule_research_fair_comparison.py": {
         "ml_module.historical_contracts": frozenset({"HistoricalFeatureRow"}),

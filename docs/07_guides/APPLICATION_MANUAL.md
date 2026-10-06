@@ -3167,6 +3167,14 @@ directory 必須先存在；此流程不寫 sidecar、正式 Evidence DB、Regis
 
 Report evidence boundary 固定為：This report is research evidence only. Close-to-close forward return is not executable live performance. No trading recommendation is produced.
 
+#### 私人 Review 週報與歷史保存（2026-10-06）
+
+已明示 `--personal-store-root <private-root> --personal-store-mode personal` 時，週報讀取此 root 下 `reviews/decision_quality.sqlite` 的審查紀錄，市場 Evidence/Gap/Decay 仍從 `--db-path <approved-working-copy-db>` 唯讀取得。私人庫不存在或尚無審查 table 時，顯示 `selected_review_store_missing`；不借用市場庫的舊 review。缺市場 decay 顯示 `market_decay_source_missing`，不能解讀成健康或完整。
+
+預覽沿用上述日期與 `--json-output`，不加寫入旗標。要保存人工已核對的週報，須另外明示 `--save-history` 與隔離 working-copy 的 `--db-path`；歷史 payload、原來源 ID/hash、選取 store 路徑與週報 hash 保存於私人 Review DB。`--db-path` 此時仍是行情證據來源，不是私人輸出位置。保存後用相同私人 root/mode 加 `--list-history --json-output` 讀回並核對 `review_hash`。list 缺庫/table 僅回 diagnostics，不建目錄、不初始化 schema，也不回退 legacy。
+
+JSON 的 `source_lineage` 保留原 review/decay ID/hash 與來源路徑；`source_snapshot_qualification=unknown`，不宣稱跨來源原子快照或歷史 PIT 資格。只配置 root 或 mode、空 root、路徑衝突、link/hardlink/sidecar 不合規均拒絕；請修正配置與來源，勿改 ACL 或關閉 guard。`legacy_read_only` 只能讀取原歷史；未配置這兩欄時沿原 legacy working-copy 流程。私人週報 reader 不會自動變成 action-item writer，`--confirm-action-items` 仍需獨立核准與已綁定 writer；這項接線不代表正式私人啟用、migration、scheduler 或自然週數完成。
+
 ### 9.9.2 V2.2 Weekly Review Runbook
 
 V2.2 的固定三週人工覆盤格式與 working-copy 操作順序見 `docs/07_guides/V2_2_WEEKLY_REVIEW_RUNBOOK.md`。每週必填週期日期、資料 freshness、dry-run 狀態、warnings、reviewed / dismissed / follow-up、owner、working-copy DB path、`--save-history` 結果與下一步；少任何一項都不能計入三週 Gate。先以既有 copy/guard 建立隔離副本，再產生唯讀週報；取得明確人工核准後，在同一次 working-copy 操作使用 `--confirm-action-items --save-history --action-owner`，最後以 `--list-history` 唯讀核對。不要對正式 DB 保存 history；production-like DB 強制拒絕，沒有 `--allow-production-like-db` 可用。

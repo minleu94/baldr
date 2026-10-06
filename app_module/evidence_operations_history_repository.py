@@ -9,6 +9,9 @@ from typing import Any, Mapping
 from app_module.evidence_operations_dtos import EvidenceOperationsWeeklyReview
 from app_module.evidence_operations_history_dtos import EvidenceOperationsHistoryRecord
 from app_module.research_run_dtos import canonical_json
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_io_path, to_internal_sqlite_uri
+from app_module.personal_store_selection import resolve_personal_store_selection, assert_personal_store_path
+from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreMode, PersonalStoreRoute, StoreIdentity
 
 
 class EvidenceOperationsHistoryReadOnlyError(RuntimeError):
@@ -16,16 +19,45 @@ class EvidenceOperationsHistoryReadOnlyError(RuntimeError):
 
 
 class EvidenceOperationsHistoryRepository:
-    def __init__(self, config: Any, *, db_path: str | Path | None = None, read_only: bool = False) -> None:
+    def __init__(self, config: Any, *, db_path: str | Path | None = None, read_only: bool = False,
+                 review_route: PersonalStoreRoute | None = None,
+                 personal_paths: PersonalDataPaths | None = None) -> None:
         self.config = config
-        self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
-        self.read_only = bool(read_only)
+        selection = resolve_personal_store_selection(config) if config is not None else None
+        if selection is not None and selection.mode is not PersonalStoreMode.LEGACY_COMPAT:
+            selected = selection.route(PersonalStoreDomain.REVIEW, StoreIdentity("decision-quality-reviews"))
+            if review_route is not None and review_route != selected:
+                raise ValueError("evidence_history_review_route_conflict")
+            review_route = selected
+            if personal_paths is not None and personal_paths != selection.paths:
+                raise ValueError("evidence_history_personal_paths_conflict")
+            personal_paths = selection.paths
+        if review_route is not None:
+            if review_route.domain is not PersonalStoreDomain.REVIEW:
+                raise ValueError("evidence_history_review_route_required")
+            if db_path is not None and Path(db_path) != review_route.read_source:
+                raise ValueError("evidence_history_db_path_conflict")
+            if review_route.mode is PersonalStoreMode.PERSONAL and personal_paths is None:
+                raise ValueError("evidence_history_personal_paths_required")
+        self.review_route = review_route
+        self.personal_paths = personal_paths if review_route is not None and review_route.mode is PersonalStoreMode.PERSONAL else None
+        self.db_path = (review_route.read_source if review_route is not None else
+                        Path(db_path) if db_path is not None else Path(config.db_file))
+        self.read_only = bool(read_only or (review_route is not None and review_route.write_target is None))
+        self._guard_path()
         if not self.read_only:
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            Path(to_internal_io_path(self.db_path.parent.absolute())).mkdir(parents=True, exist_ok=True)
             self.ensure_schema()
 
+    def _guard_path(self) -> None:
+        if self.personal_paths is not None:
+            for path in (self.db_path, *(Path(str(self.db_path) + suffix) for suffix in ("-journal", "-wal", "-shm"))):
+                assert_personal_store_path(self.personal_paths, path)
+
     def ensure_schema(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        if self.read_only:
+            raise EvidenceOperationsHistoryReadOnlyError("evidence_operations_history_readonly")
+        with self._connect() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS evidence_operations_weekly_reviews (
@@ -151,11 +183,14 @@ class EvidenceOperationsHistoryRepository:
         return row
 
     def _connect(self) -> sqlite3.Connection:
+        self._guard_path()
         if not self.read_only:
-            return sqlite3.connect(self.db_path)
-        if not self.db_path.exists():
+            return sqlite3.connect(to_internal_io_path(self.db_path.absolute()))
+        if not Path(to_internal_io_path(self.db_path.absolute())).is_file():
             raise EvidenceOperationsHistoryReadOnlyError("evidence_operations_history_db_missing")
-        return sqlite3.connect(f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True)
+        connection = sqlite3.connect(to_internal_sqlite_uri(self.db_path.absolute(), "ro"), uri=True)
+        connection.execute("PRAGMA query_only=ON")
+        return connection
 
     def _row_to_record(self, row: dict[str, Any]) -> EvidenceOperationsHistoryRecord:
         return EvidenceOperationsHistoryRecord(

@@ -11,8 +11,20 @@
 | DecisionQuality service/repository | 明示 source reader／private writer 與既有 notes selector | 僅在確認無其他 dirty 後 revert 本包 local commit | 已保存私人覆盤留存，不搬回市場庫 |
 | 新 selection／backup adapter／tests | opt-in 路由及隔離驗證 | revert 本包 local commit，保留所有合成與正式資料 | 後續 B09/main 依賴需同步回復 |
 | config/main／Manual／Snapshot | 明示選擇與操作 | 中央具名 commit 回復，不 revert 他人 lane | 禁止以全域 OUTPUT_ROOT 或 db_file 改值替代分流 |
+| evidence_operations_service／B10 composition test | 原週報的私人覆盤 reader 與市場 decay reader 分離 | revert 具名中央 local commit，保留 synthetic 原資料 | 不改 B09 backend 或接管其 custody 鎖 |
+| evidence_operations_history_repository／週報 CLI／CLI tests | 原週報 history 選 Review store，保存混合來源 refs | revert 具名中央 local commit，私人 history 留存 | readonly list 不建目錄，禁止回落市場 writer |
 
 目前尚未宣稱完成 caller 接線或正式資料啟用；備份／還原由獨立三檔續包驗證，完成後補精確命令與接受範圍。
+
+## 週報 composition 與歷史路由增量（2026-10-06）
+
+中央排他檔：`evidence_operations_service.py`、`evidence_operations_history_repository.py`、既有週報 CLI/CLI tests、新 B10 composition test。設定 generic personal selector 後，DecisionQuality 讀取 exact 私人 Review route；Evidence/Gap/Decay 來源 query-only。readiness evaluator 使用 config 副本，不能重指共用 `db_file`。缺私人 review DB/table 不借市場舊 review，缺市場 decay 明示 unknown；完整原來源 refs 留在 detached `source_lineage`，不提升 snapshot/PIT 資格。
+
+歷史 repository 於初始化及每次 connection 驗 DB/sidecars canonical、containment、links、regular-file/hardlink，I/O 使用既有 renderer；readonly 使用 `mode=ro` 與 `query_only`，不 mkdir/schema。CLI 保存至選取私人 Review DB，市場 working-copy 作證據來源；production-like/source guard 保留。list 在純配置解析下完成，空/單欄位配置不得 fallback。
+
+新增驗證包含私人空庫不借市場、私人 review＋市場 decay、config 不變、missing source、同私人 DB 只有 weekly table 的缺 review、原 schema 新程序 hash/lineage 讀回、readonly query-only、constructor 後 hardlink sidecar 拒絕、CLI save→list 原市場/private bytes 不變，以及 list 空庫不建目錄、明示空 root 不借 env。B09 custody 批准仍未完成，本增量不轉移其 ownership 或代替 main 最終注入。
+
+最終 affected union：`.venv/Scripts/python.exe -X utf8 -B -m pytest tests/test_baldr_b10_evidence_composition.py tests/test_evidence_operations_service.py tests/test_evidence_operations_history_repository.py tests/test_evidence_operations_history_dashboard_service.py tests/test_evidence_operations_cli.py -q -o addopts= -p no:cacheprovider --junitxml=output/qa/b10_evidence_history_union_20261006.xml`，28 passed／36.41s。XML SHA256 `7c4aed19534a795bed556dca11faf0c0479fb385bf0af6a3fc4bebec3737cb4a`。三 production 檔 targeted mypy、五 Python 檔 py_compile、quant guard、diff-check 均通過；未重跑 UI mandatory union，沒有真來源／正式私人寫入／Task／ACL／migration／清理。
 
 ## 私人覆盤核心接受範圍（2026-10-06）
 

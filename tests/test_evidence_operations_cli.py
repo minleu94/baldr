@@ -369,3 +369,49 @@ def test_data_root_override_cannot_bypass_configured_production_db_guard(tmp_pat
     assert completed.returncode == 2
     assert "production-like DB" in completed.stderr
     assert not production_like_db.exists()
+
+
+def test_personal_weekly_history_cli_saves_and_lists_selected_store(tmp_path: Path) -> None:
+    working_copy = tmp_path / "approved-synthetic-working.sqlite"
+    with sqlite3.connect(working_copy) as conn:
+        conn.execute("CREATE TABLE synthetic_source(value TEXT)")
+        conn.execute("INSERT INTO synthetic_source VALUES ('unchanged')")
+    before = working_copy.read_bytes()
+    private = tmp_path / "private"
+    args = [sys.executable, "-B", "scripts/build_evidence_operations_weekly_review.py",
+        "--start-date", "2026-07-06", "--end-date", "2026-07-12", "--db-path", str(working_copy),
+        "--data-root", str(tmp_path / "data"), "--output-root", str(tmp_path / "output"),
+        "--personal-store-root", str(private), "--personal-store-mode", "personal", "--json-output"]
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    for field in ("PERSONAL_STORE_ROOT", "PERSONAL_STORE_MODE", "DATA_ROOT", "OUTPUT_ROOT"):
+        env.pop(field, None)
+    saved = subprocess.run([*args, "--save-history"], capture_output=True, text=True, encoding="utf-8", env=env)
+    assert saved.returncode == 0, saved.stderr
+    payload = json.loads(saved.stdout)
+    assert payload["source_lineage"]["review_store_path"] == str(private / "reviews" / "decision_quality.sqlite")
+    assert payload["source_lineage"]["market_source_db"] == str(working_copy)
+    assert payload["source_lineage"]["source_snapshot_qualification"] == "unknown"
+    private_before = (private / "reviews" / "decision_quality.sqlite").read_bytes()
+    listed = subprocess.run([*args, "--list-history"], capture_output=True, text=True, encoding="utf-8", env=env)
+    assert listed.returncode == 0, listed.stderr
+    records = json.loads(listed.stdout)["history_records"]
+    assert len(records) == 1 and records[0]["review_hash"] == payload["history_record"]["review_hash"]
+    assert records[0]["payload_json"]["source_lineage"] == payload["source_lineage"]
+    assert working_copy.read_bytes() == before
+    assert (private / "reviews" / "decision_quality.sqlite").read_bytes() == private_before
+
+
+def test_personal_list_history_empty_is_side_effect_free_and_blank_root_rejected(tmp_path: Path) -> None:
+    private = tmp_path / "private"
+    args = [sys.executable, "-B", "scripts/build_evidence_operations_weekly_review.py",
+        "--start-date", "2026-07-06", "--end-date", "2026-07-12", "--db-path", str(tmp_path / "source.sqlite"),
+        "--data-root", str(tmp_path / "data"), "--personal-store-mode", "personal", "--list-history", "--json-output"]
+    env = {**os.environ, "PERSONAL_STORE_ROOT": str(private), "PYTHONIOENCODING": "utf-8"}
+    empty = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", env=env)
+    assert empty.returncode == 0, empty.stderr
+    payload = json.loads(empty.stdout)
+    assert payload["history_records"] == [] and not payload["write_performed"]
+    assert not private.exists() and not (tmp_path / "data").exists()
+    blank = subprocess.run([*args, "--personal-store-root", ""], capture_output=True, text=True, encoding="utf-8", env=env)
+    assert blank.returncode != 0
+    assert not private.exists() and not (tmp_path / "data").exists()

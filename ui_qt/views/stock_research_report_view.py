@@ -1936,6 +1936,7 @@ class StockResearchReportView(QWidget):
             reasons=(_report_pending_text(report),),
             next_step=next_step,
             evidence=_report_evidence_text(report),
+            change=_price_change_text(report.price_points),
             risk=_report_risk_text(report),
             sufficiency=_report_limitations_text(report),
             reasons_title="待驗證條件",
@@ -3839,6 +3840,7 @@ def _report_risk_text(report: StockResearchReportDTO) -> str:
 
 
 def _report_limitations_text(report: StockResearchReportDTO) -> str:
+    section_limits = [_report_sufficiency_text(report)]
     errors = [f"{section.label}讀取失敗；詳見資料稽核。" for section in report.sections if section.status == "error"]
     health = report.position.health_reasons if report.position is not None else ()
     diagnostics = [research_limitation_text(reason) for reason in health if is_research_data_limitation(reason)]
@@ -3846,7 +3848,7 @@ def _report_limitations_text(report: StockResearchReportDTO) -> str:
     if ml.status not in {"available", "verified"}:
         diagnostics.append(f"ML 狀態：{_quality_label(ml.status)}；" + ("；".join(research_limitation_text(x) for x in ml.limitations[:1]) or "資格／降級原因未提供，不能當正式建議。"))
     diagnostics.extend(research_limitation_text(x) for x in report.limitations)
-    unique = list(dict.fromkeys((*errors, *diagnostics)))
+    unique = list(dict.fromkeys((*section_limits, *errors, *diagnostics)))
     text = "；".join(unique[:3]) if unique else _report_sufficiency_text(report)
     return text + ("；其餘限制保留於資料稽核。" if len(unique) > 3 else "")
 

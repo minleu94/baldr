@@ -1,5 +1,15 @@
 # baldr 完整操作手冊
 
+## 首頁四個用途與股號搜尋（2026-10-06）
+
+「今日優先查看」可直接選「看盤勢／持倉健康／選股研究／個股研究」，沿原工作區查看完整內容。個股研究可輸入4–6位數字股號，按 Enter 或「開啟當下研究」；這是明示當下來源，沒有沿用首頁候選的決策日、結果或保存身份。要回看原保存候選，仍點原候選列；返回沿原來源工作區。無效股號顯示修正提示，來源可用性由個股頁核對；未接來源的按鈕停用。
+
+大盤檢測／刷新保留你對技術細節的收合或展開選擇，預設收合。來源沒有提供的條件顯示未知，不當作反證；讀取失敗不展示預設市場分類。分類與匹配度描述原資料的規則狀態，沒有承諾勝率、安全或未來走勢。原數值、來源與診斷仍可展開。
+
+## 個股摘要的變化與資料限制（2026-10-06）
+
+個股研究「摘要」的「較前變化」顯示原 DTO 已提供的最新一日漲跌與資料日；未提供時明示無法比較，不補查最新行情。資料／模型限制同時保留區塊可讀狀態、基本面等缺件／日期品質與 ML 未驗限制。區塊可讀不代表模型合格，保存關注理由也不自動成為「值得看」結論；完整限制仍可展開資料稽核。
+
 ## 2026-10-06 明示市場基準的研究成效
 
 入口仍是每日研究的母體保存收據→「研究結果」→選擇同parent的outcome receipt。畫面唯讀：顯示基準名稱／設定版本、比較可用或資料不足、成本版本、H5／10／20完整分母與毛／淨／超額；basis／來源／availability及hash在「展開來源與診斷」。沒有可比行或沒有設定就保留未知與空值。這不授PIT／ML／正式／交易資格；符合方法不等於交易selected。
@@ -20,9 +30,9 @@
 
 操作：正常保存圖可直接重開／重新載入，原DB改值或缺失仍顯示同版圖表；合作取消保留上一份完成圖，重試與返回來源維持原pins／資料日，晚到舊callback不覆蓋目前頁。缺列或None會斷線、不補末值；MA20金色、MA60藍色，精確表保留Decimal原精度，缺值顯示「未提供」。未知可得時間不表示原決策可得，價格未校正，圖表不提供PIT／交易／ML資格。
 
-舊保存結果或尚無chart artifact的來源會顯示「資料不足」「不借今天資料」。按「另開最新研究」獨立查看現況；這不補寫舊結果、不恢復原缺件。推薦execution writer、舊結果補建／遷移未納入此包；新日研究parent才產生版本化chart。圖表身份／hash／cutoff不符時拒絕，不自動切換最新。
+舊保存結果或尚無chart artifact的來源會顯示「資料不足」「不借今天資料」。按「另開最新研究」獨立查看現況；這不補寫舊結果、不恢復原缺件。目前新日研究parent與推薦execution writer均可保存版本化chart；既有推薦保存圖、viewport與精確表的操作見本手冊後文「UX08 推薦保存結果的同版價格／MA20／MA60」及「UX08 原生圖的縮放／平移／重設」。舊結果補建／遷移仍未完成。圖表身份／hash／cutoff不符時拒絕，不自動切換最新。
 
-排錯：原圖可用而方法／原排名仍未知，表示圖表artifact核驗與既有方法／排名revision核驗結果不同；不能用可重現圖表證明條件或排名有效。來源DB不存在／改版可能使後者未知，保存圖仍獨立同源。來源明細與缺件理由可查閱；若保存檔也遺失，保留缺件或另開最新研究，不從最新資料修補原版本。其他指標、交易markers、縮放平移／期間互動及Native／真人仍未完成。[限定驗證收據](../06_qa/UX08_SAVED_CHART_READBACK_20261006.md)。
+排錯：原圖可用而方法／原排名仍未知，表示圖表artifact核驗與既有方法／排名revision核驗結果不同；不能用可重現圖表證明條件或排名有效。來源DB不存在／改版可能使後者未知，保存圖仍獨立同源。來源明細與缺件理由可查閱；若保存檔也遺失，保留缺件或另開最新研究，不從最新資料修補原版本。期間選擇、縮放平移、重設與hover已有有限工程；其他指標、交易markers及新範圍Native／真人仍待驗收。[保存圖收據](../06_qa/UX08_SAVED_CHART_READBACK_20261006.md)與[viewport整合收據](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)各自保留原接受範圍。
 
 ## 2026-10-06 第一版有限研究流程與驗證入口
 
@@ -4716,9 +4726,9 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 
 ## 個人觀察清單：明示選擇與獨立控制檔（2026-10-06）
 
-正式路徑仍待使用者確認。本批未修改正式環境、未遷移既有 JSON、未建立正式個人 DB。候選是 `%LOCALAPPDATA%/baldr/personal`；程式不自動套用此路徑。
+使用者已批准 `DATA_ROOT/personal`（預設 `D:/Min/Python/Project/FA_Data/personal`），取代先前 `%LOCALAPPDATA%/baldr/personal` 候選。這只批准位置；真實 migration／activation 仍未批准，未遷移既有 JSON、未建立正式個人 DB，程式不自動啟用。
 
-1. 在準備使用的啟動環境成對指定 `PERSONAL_DATA_ROOT` 與 `PERSONAL_WATCHLIST_SOURCE`（既有 JSON 或 SQLite 的絕對路徑）。`TWStockConfig.from_args` 亦接受 `--personal-data-root`／`--personal-watchlist-source`。兩者皆未設定時維持既有模式；只設一個會拒絕，不能藉此默默回到原來源 writer。個人 root 不得重疊市場 root、舊 output 或程式套件。
+1. 在準備使用的啟動環境成對指定 `PERSONAL_DATA_ROOT` 與 `PERSONAL_WATCHLIST_SOURCE`（既有 JSON 或 SQLite 的絕對路徑）。`TWStockConfig.from_args` 亦接受 `--personal-data-root`／`--personal-watchlist-source`。兩者皆未設定時維持既有模式；只設一個會拒絕，不能藉此默默回到原來源 writer。市場包內只允許精確 `DATA_ROOT/personal`；其他市場子樹、ancestor、舊 output、程式套件與 link／hardlink 別名仍拒絕。
 2. 開啟候選池頁，未啟用時只讀原來源；按「建立並啟用個人副本」查看來源、目標、標記、收據、來源備份及回滾紀錄路徑。取消不建立副本；明確選「Yes」才轉換、核對並啟用。來源內容與未知巢狀欄位保留。
 3. 啟用後保存寫入 `PERSONAL_DATA_ROOT/watchlists/watchlists.v3.sqlite`。新程序沿個人 marker 重新核對 writer；錯來源、收據、hash、schema 或 marker 會拒寫，不能改寫來源來繞過。
 4. CLI 每個動作可加 `--personal-root <絕對路徑> --market-root <絕對路徑> --legacy-output-root <絕對路徑>`，三者須齊全；`--source` 必須匹配選定來源。dry-run／convert／activation-preview／activate 的 `--destination` 必須是上述個人 DB；JSON 轉換另加 `--source-format legacy-json`。先 dry-run，再 convert、activation-preview，最後明示 activate；status 可查狀態。
@@ -4728,7 +4738,7 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 
 排錯：缺一個選擇欄位、來源不存在／歧義、root 重疊、reparse/link/hardlink、來源或 target 身份改變、容量未知／不足、marker 損壞／已回滾時保留資料與收據，修正明示選擇或交由審查，不刪 target／備份／lock 來重試。個人模式啟用失敗不會退回原 JSON writer。
 
-市場匯出 API 只產生固定 CSV 白名單的 metadata manifest；拒絕來源 JSON、SQLite、私人 output、重疊與 links/hardlinks。尚無打包 copy consumer，不能宣稱整包 FA_Data 可安全分享；TOCTOU、內容與來源權限審查仍待後續。Portfolio／ledger／notes 未在本批接線。詳見 [個人儲存 QA](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)。
+市場 CSV 已有明示 allowlist consumer／CLI；沿固定manifest與source／target handle identity核對，操作見後文市場 CSV 匯出章。JSON、SQLite、私人 output、重疊與 links/hardlinks仍拒絕；這不代表整包 FA_Data 可安全分享，也不授來源授權。Notes主UI已獨立接selector，Portfolio／ledger及DecisionQuality等剩餘私人caller仍待接線。詳見[個人儲存 QA](../06_qa/PERSONAL_STORAGE_SEPARATION_LANE_20261005.md)與[CSV整合 QA](../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。
 
 
 ## 每日名單：MA 方法與家族符合度（2026-10-06）
@@ -4744,7 +4754,7 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 
 ## 個人 notes 明示選擇與舊來源唯讀（2026-10-06）
 
-本功能接到既有研究筆記／個股研究動作、決策工作台、推薦個人選擇／delivery ACK 與 outcome journey。notes 選擇獨立於觀察清單轉換／啟用；不全域改市場 `db_file` 或 `OUTPUT_ROOT`，Portfolio trades／ledger 的位置保留。正式個人位置與 notes migration 尚待使用者批准；以下只說明已完成的程式契約，沒有套用真實 notes。
+本功能接到既有研究筆記／個股研究動作、決策工作台、推薦個人選擇／delivery ACK 與 outcome journey。notes 選擇獨立於觀察清單轉換／啟用；不全域改市場 `db_file` 或 `OUTPUT_ROOT`，Portfolio trades／ledger 的位置保留。正式個人位置已批准為 `DATA_ROOT/personal`，notes migration／切換仍未批准；以下只說明已完成的程式契約，沒有套用真實 notes。
 
 1. 未設定 `PERSONAL_JOURNAL_ROOT` 與 `PERSONAL_JOURNAL_MODE` 時，保留既有相容設定：notes 在 `OUTPUT_ROOT/portfolio/journal_entries.jsonl`，包含既有 writer；這不是全域禁寫。
 2. 經批准選定位置後才成對設定絕對 `PERSONAL_JOURNAL_ROOT=P` 與 `PERSONAL_JOURNAL_MODE=personal`。Qt 主程式透過環境載入；使用 `TWStockConfig.from_args` 的工具可傳 `--personal-journal-root P --personal-journal-mode personal`。root 不能與市場／legacy output／程式目錄重疊，也不能經 junction、symlink 或 hardlink 別名。設定本身不建立 notes、watchlist 或搬移檔案。

@@ -18,6 +18,11 @@
 - 原產品計畫階段 1 限定修正：[啟動、盤勢價格批次與首次圖表驗證](../06_qa/PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)。
 - 階段1接續：[早期SQL取消、凍結門檻與下一共用語言包](../06_qa/PRODUCT_STAGE1_SQL_CANCELLATION_20261005.md)。
 
+## 2026-10-06 原計畫首波整合
+
+- [首波整合QA](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)：Astra有界review／原plan繼承、ML新3與舊8、COW/私人路由交界、中央驗證與未完工程；不取代產品roadmap。
+- [B03有限QA](../06_qa/BALDR_B03_MARKET_HOME_20261006.md)：首頁四用途／股號當下搜尋、保收合／unknown、lane與中央驗收分界。
+
 ## 權威入口
 
 | 主題                     | 權威                                                                                                          |

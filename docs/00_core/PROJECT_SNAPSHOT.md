@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 原產品計畫首波整合（目前摘要）
+
+新唯一dev owner已有界接受Astra B01–B15，首波採B01 registry exact-import／V5語意及B03首頁四用途／明示當下搜尋／大盤收合與缺件三態；中央個股摘要補change及區塊sufficiency與ML限制併列。共用personal長路徑IO helper已提交，B02同版深DB／防護及B08私人routes仍在收尾；契約不冒充B09/B10 caller接通。ML新3消除但舊8仍違例，不能稱repo boundary pass；capture200GiB政策不擅降20GiB。
+
+原9stage仍1done/8partial/0pending、24UX仍2done/22partial/0pending，七有限closed與性能例外保留。下方日期化收據按原scope讀，不把舊「最新」或舊counts當本波狀態；本波驗證／缺口見[首波QA](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。自然成熟、模型資格、正式source與啟用另列，不阻止可隔離驗證的工程；沒有新增UX整項done／正式migration／Task／fit／Native／push。
+
 ## 2026-10-06 UX23 隔離 shadow 最小工程狀態（最新）
 
 沿59a09f9b，existing fair comparison＋registry lifecycle DTO 匯出→模型／來源／比較收據 pins→規則回退／隔離投影停止→atomic 保存／exact 新程序重讀。白話三軸「工程可執行／資料或效果未合格／未啟用」，不開 registry RW、不載模型／fit、不改正式控制或 Task。未知 availability／0合格樣本及所有資格 false 保留，alpha 0、selection unknown。

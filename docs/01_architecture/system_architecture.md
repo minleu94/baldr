@@ -1,5 +1,11 @@
 # 系統架構
 
+## 2026-10-06 首頁接線與personal IO邊界
+
+首頁四用途沿既有callbacks到原工作區，股號搜尋建立明示當下`ResearchStockContextDTO`，原保存候選保留原exact context；沒有新dashboard／domain計算／全域狀態平台。大盤只翻譯原DTO分類與明示布林條件，缺件保持unknown，刷新不重置收合。個股focus summary沿原change／section status，與ML限制併列，不升模型資格。
+
+`personal_data_paths`保留canonical path給containment／equality／hash／receipt，只在Windows OS IO使用UTF16門檻extended renderer；SQLite URI只ro/rw，不授writer／migration。links/hardlinks與device namespace守衛保留。registry exact symbols僅DTO／transition policy，reader仍sidecar-free一致snapshot；舊8ML boundary未解，不稱架構全通過。[範圍與驗證](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。
+
 ## 2026-10-06 UX21 明示基準的有限資料流
 
 原exact parent／children＋明示runtime v2 benchmark settings→source同calendar decision/H5/H10/H20/asof→query-only市場adapter＋target revision pin→原Decimal core→saved.v2 immutable envelope（設定／basis／availability／期間／source／cost version核驗）→舊receipt reader→readonly Qt。unconfigured沿v1/null；可選CLI設定檔raw pin連同原／effective runtime保存，不自動接受observed hash。新leaf只管設定／保存驗證，不引入政策選擇或ML訓練。

@@ -1,5 +1,9 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-06 原計畫首波coverage
+
+Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁四用途／當下搜尋／大盤刷新／個股摘要操作與限制；Snapshot目前摘要、現行Architecture、Index與QA routing對應[首波QA](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。原plan只append、prefix保持；沒有方向／maturity／6M gate變更，相關roadmap不擴改。B08/B02工程與B09/B10 caller未完成不寫done；後續依真交付更新來源／步驟／排錯。歷史QA收據保留原policy／失敗，不回寫為成功。
+
 ## 2026-10-06 label readiness覆蓋
 
 新增[QA](../06_qa/UX22_LABEL_READINESS_20261006.md)；Manual同步明示policy／split、repeat exact receipts、JSON保存／重讀、缺件判讀與安全。Snapshot／現行架構／index／QA路由同步有限入口；只開始UX22 readiness，不宣稱fit、公平比較或完整labels已完成。

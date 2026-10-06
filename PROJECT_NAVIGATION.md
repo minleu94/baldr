@@ -1,5 +1,9 @@
 # 專案導航文件
 
+## 2026-10-06 首頁四用途與個股摘要
+
+`ui_qt/views/workbench_view.py`沿既有callbacks開盤勢／持倉／選股／個股；股號明示當下搜尋不借保存身份。`market_regime_view.py`保收合／展開與來源unknown；`stock_research_report_view.py`focus summary使用原change與section sufficiency並保留ML限制。入口與排錯依[Manual](docs/07_guides/APPLICATION_MANUAL.md)，中央與lane驗收依[首波QA](docs/06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。personal長路徑canonical／OS IO契約在`app_module/personal_data_paths.py`，不授真migration或writer。
+
 ## 2026-10-05 具名母體盤勢與指標排序
 
 市場探索的研究母體盤勢 → 推薦分析每日研究條件 → pinned 個股研究，共用同一 verified 日快照。投影與數值排序入口為 `app_module/daily_market_cohort_projection.py`，呈現為 `ui_qt/views/daily_market_cohort_view.py`／`daily_market_research_view.py`，Main 只接訊號與導覽。方法 registry／manifest／producer 保持原版本；原排名未提供保持 unknown。完整操作見 [Manual](docs/07_guides/APPLICATION_MANUAL.md#2026-10-05-ux1318-具名研究母體盤勢與指標排序)。

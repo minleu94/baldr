@@ -1,5 +1,9 @@
 # Feature-to-Test Routing Matrix (2026-06-23)
 
+## 2026-10-06 原計畫首波增量路由
+
+B01：`test_ml_shadow_boundary_cli`／`test_model_registry_readonly`核exact symbols與拒writer、import/DTO無data IO；repo舊8仍guard fail。V5 summary足／缺＋hover核日期/OHLCV/變化/基本面與ML未知。B03：`test_baldr_b03_market_home`與`test_ui_qt_market_regime_view`核四用途、當下／保存身份分流、defaultcollapsed／expanded兩次refresh、完整indicators／unknown/error。中央穩定版依序Workbench85、update validator、全roots mypy與changed compile；不把targeted替全gate。B08 helper沿personal path guard，B02同版deep canonicalDB/suffix/newprocess/hardlink另驗，不用短根替代。真結果與未驗邊界見[首波QA](BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。
+
 ## 2026-10-06 label readiness測試路由
 
 `tests/test_rule_research_label_readiness.py`與`tests/test_rule_research_label_readiness_cli.py`驗sealed source／全母體分母、版本政策、缺件／未成熟、固定時序界線、取消重試、跨method/source與新程序一致；連同既有forward/source/store/reader/benchmark及`test_ml_historical_contracts`／`test_ml_purged_walk_forward`回歸。深fixture用短user Temp；沒有UI變更、Native或fit驗收。fullmypy／changed compile／quant／diff與數字見[QA](UX22_LABEL_READINESS_20261006.md)。

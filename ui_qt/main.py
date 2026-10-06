@@ -273,6 +273,125 @@ class MainWindow(QMainWindow):
             )
         return composition.builder
 
+    def _bind_selected_journey_readers(self) -> None:
+        from app_module.stock_research_chart_marker_composition import (
+            ChartMarkerSource, SelectedPortfolioTradeReadAdapter, SelectedJournalReadAdapter,
+        )
+        from app_module.stock_research_chart_marker_reader import StockChartMarkerRecordSource
+        store = self.portfolio_service.store
+        route = getattr(store, "route", None)
+        if route is not None:
+            self.decision_outcome_journey_service.portfolio_trade_reader = SelectedPortfolioTradeReadAdapter(
+                ChartMarkerSource(store.trades_file, StockChartMarkerRecordSource.ACTUAL_TRADES,
+                                  store._io_custody.guard), account_id=route.identity.key)
+        paths = self.journal_storage_selection.paths
+        if paths is not None:
+            legacy = self.journal_storage_selection.legacy_read_only
+            def guard(path: Path) -> Path:
+                paths.assert_selected(path, legacy_read_only=legacy)
+                return path
+            self.decision_outcome_journey_service.journal_reader = SelectedJournalReadAdapter(
+                ChartMarkerSource(self.journal_service.store.journal_file,
+                                  StockChartMarkerRecordSource.RECOMMENDATION_CONFIRMATIONS, guard),
+                journal_paths=paths, legacy_read_only=legacy)
+
+    def _clear_stock_chart_markers(self, _context: object = None) -> None:
+        self._chart_marker_generation = getattr(self, "_chart_marker_generation", 0) + 1
+        worker = getattr(self, "_chart_marker_worker", None)
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    worker.cancel(wait=False)
+            except RuntimeError:
+                pass
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is not None:
+            workspace.report_view.set_chart_marker_reader(None, None)
+
+    def _load_stock_chart_markers(self, report: object) -> None:
+        from app_module.stock_research_chart_marker_composition import ChartMarkerSource, compose_saved_chart_markers
+        from app_module.stock_research_chart_marker_reader import StockChartMarkerRecordSource, StockChartMarkerReadResult
+        from app_module.stock_research_report_dtos import StockResearchReportDTO
+        from ui_qt.views.stock_research_report_view import _stock_chart_cutoff_date
+        from ui_qt.workers.task_worker import TaskWorker
+
+        self._clear_stock_chart_markers()
+        workspace = self.stock_research_workspace
+        if workspace is None or not isinstance(report, StockResearchReportDTO):
+            return
+        view = workspace.report_view
+        context = view._loaded_request_context
+        if context is None or view._loaded_report is not report or not context.source_id:
+            return
+        cutoff = _stock_chart_cutoff_date(report, context)
+        if not cutoff or context.stock_code != report.stock_code:
+            return
+        generation = self._chart_marker_generation
+        store = self.portfolio_service.store
+        route = getattr(store, "route", None)
+        account_id = route.identity.key if route is not None else "default"
+        journal_paths = self.journal_storage_selection.paths
+        legacy_journal = self.journal_storage_selection.legacy_read_only
+        def journal_guard(path: Path) -> Path:
+            if journal_paths is not None:
+                journal_paths.assert_selected(path, legacy_read_only=legacy_journal)
+            return path
+        sources = (
+            ChartMarkerSource(store.trades_file, StockChartMarkerRecordSource.ACTUAL_TRADES,
+                              store._io_custody.guard),
+            ChartMarkerSource(self.journal_service.store.journal_file,
+                              StockChartMarkerRecordSource.RECOMMENDATION_CONFIRMATIONS, journal_guard),
+        )
+        worker = TaskWorker(compose_saved_chart_markers, report, cutoff_date=cutoff,
+                            account_id=account_id, expected_source_id=context.source_id, sources=sources)
+        self._chart_marker_worker = worker
+        def apply(result: object) -> None:
+            if (generation != self._chart_marker_generation or view._closing
+                    or getattr(self, "_shutdown_close_requested", False)
+                    or view._loaded_report is not report or view._loaded_request_context != context):
+                return
+            if isinstance(result, StockChartMarkerReadResult):
+                view._chart_marker_diagnostics = result.diagnostics
+                view.set_chart_marker_evidence(result.candidates, result.identities)
+        worker.finished.connect(apply)
+        worker.native_thread_finished.connect(
+            lambda: setattr(self, "_chart_marker_worker", None)
+            if getattr(self, "_chart_marker_worker", None) is worker else None
+        )
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _configure_personal_portfolio_services(self) -> None:
+        """Bind existing account contracts once; no ledger creation or identity guesses."""
+        from app_module.portfolio_service import PortfolioService
+        from app_module.personal_store_selection import resolve_personal_store_selection
+        from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreMode, StoreIdentity
+        from app_module.user_declared_holding_research import UserDeclaredHoldingResearchStore
+        from app_module.paper_portfolio_readiness_service import (
+            PaperPortfolioReadinessService, DEFAULT_PORTFOLIO_ID, DEFAULT_BENCHMARK_ID,
+        )
+        from app_module.paper_portfolio_weekly_evidence_service import PaperPortfolioWeeklyEvidenceService
+
+        selection = resolve_personal_store_selection(self.config)
+        self.personal_store_selection = selection
+        self._personal_portfolio_view_kwargs: dict[str, Any] = {}
+        if selection.mode is PersonalStoreMode.LEGACY_COMPAT:
+            self.portfolio_service = PortfolioService(self.config)
+            return
+        # These are the existing single-account UI and Paper service contracts.
+        actual = selection.route(PersonalStoreDomain.TRADES, StoreIdentity("default"))
+        declared = selection.route(PersonalStoreDomain.DECLARED_HOLDINGS, StoreIdentity("default"))
+        paper = selection.route(PersonalStoreDomain.PAPER, StoreIdentity(DEFAULT_PORTFOLIO_ID))
+        self.portfolio_service = PortfolioService(self.config, route=actual, personal_paths=selection.paths)
+        shared = dict(output_root=self.config.output_root, route=paper, personal_paths=selection.paths,
+                      config=self.config, portfolio_id=paper.identity.key, benchmark_id=DEFAULT_BENCHMARK_ID)
+        self._personal_portfolio_view_kwargs = {
+            "user_declared_store": UserDeclaredHoldingResearchStore.from_route(declared, personal_paths=selection.paths),
+            "user_declared_portfolio_id": declared.identity.key,
+            "paper_readiness_service": PaperPortfolioReadinessService(**shared),
+            "paper_weekly_evidence_service": PaperPortfolioWeeklyEvidenceService(**shared),
+        }
+
     def __init__(
         self,
         *,
@@ -355,7 +474,7 @@ class MainWindow(QMainWindow):
             from app_module.journal_service import JournalService
             from app_module.personal_journal_paths import resolve_journal_storage_selection
 
-            self.portfolio_service = PortfolioService(self.config)
+            self._configure_personal_portfolio_services()
             self.journal_storage_selection = resolve_journal_storage_selection(self.config)
             self.journal_service = JournalService(
                 self.config, journal_paths=self.journal_storage_selection.paths,
@@ -424,11 +543,10 @@ class MainWindow(QMainWindow):
                                   if self.journal_storage_selection.paths is None else None),
                     journal_paths=self.journal_storage_selection.paths,
                     legacy_journal_read_only=self.journal_storage_selection.legacy_read_only,
-                    portfolio_trades_path=Path(self.config.output_root)
-                    / "portfolio"
-                    / "trades.jsonl",
+                    portfolio_trades_path=self.portfolio_service.store.trades_file,
                 )
             )
+            self._bind_selected_journey_readers()
             self.stock_research_workspace: StockResearchWorkspace | None = None
 
             # 設置 UI
@@ -927,6 +1045,7 @@ class MainWindow(QMainWindow):
                     broker_flow_service=self.broker_flow_service,
                     async_refresh=True,
                     parent=self,
+                    **self._personal_portfolio_view_kwargs,
                 )
                 self.portfolio_view = portfolio_view
                 if hasattr(portfolio_view, "stockResearchRequested"):
@@ -1002,6 +1121,12 @@ class MainWindow(QMainWindow):
                 lambda context: self.research_session_store.set_stock_context(
                     context, source="stock_research"
                 )
+            )
+            self.stock_research_workspace.report_view.activeContextChanged.connect(
+                self._clear_stock_chart_markers
+            )
+            self.stock_research_workspace.report_view.reportLoaded.connect(
+                self._load_stock_chart_markers
             )
             workspace_instances = {
                 "workbench": workbench_view,

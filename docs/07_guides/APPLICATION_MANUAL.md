@@ -5097,3 +5097,14 @@ notes 備份 adapter 為 `PersonalNotesBackupAdapter(journal_paths, store_identi
 `prepare_model_input`／`run_prepared_model_input` 是隔離工程API，無新GUI訓練／模型啟用按鈕。caller明示政策、時間切分、實際sessions、六份原bytes pins、同母體方法分母與training preprocessing audit；缺U2或未支持政策waiting，hash／成熟／split等失配reject_fit，兩者均不呼runner。僅synthetic://offline且明示endpoint gross return契約可ready；ready也不准fit、不載模型、不取得正式PIT／自然成熟或模型效果資格。結果只讀有界原receipt bytes並核身份／hash，不信runner旁路欄位。[B13精確參數與receipt schema](../06_qa/BALDR_B13_MODEL_INPUT_20261006.md)。
 
 研究實驗室結果頁展開「研究歷史查找」，按「查找既有歷史」讀各來源，搜尋過濾已載入項目；選筆後重新核exact kind/run/hash/stock/context再開原結果。forward／unknown僅metadata，缺件不建庫／不補今天行情。每來源row上限200（介面可至1000），另有UI明示serialized讀取單檔64MiB／整輪256MiB預算，兩者用途不同；超限、來源變動、active SQLite sidecar需核原source後再查，入口不修來源。取消／切換／關閉父視窗拒晚到結果。原baseline fixed1.0／next_open執行保存規則可下鑽，但source-only／performance／PIT不升資格。[B07操作與排錯](../06_qa/BALDR_B07_RULE_HISTORY_20261006.md)。
+
+
+### 2026-10-06 中央私人三帳與原紀錄圖表接線
+
+`personal_store_root`／`personal_store_mode`須成對明示；blank或缺一項在legacy建目錄前拒絕。主程式將選定route與paths一起注入實際交易、聲明持倉、Paper唯讀服務，沿既有default與paper-main身份；未設定仍走原相容模式，不代表私人store已正式啟用。Paper固定state／benchmark／cost／status／baseline路徑，未知／缺件不借legacy env；精確ledger需caller另明示路徑與namespace，本入口不自建。[B09 API與custody](../06_qa/BALDR_B09_PERSONAL_PORTFOLIO_20261006.md)。
+
+個股研究成功讀入後，原紀錄marker由背景工作載入，畫面context變動先清空並拒過期回傳。只用該次已核source／account／result／日期／snapshot及原保存rowpins；非同步不重跑推薦、不讀report.events當交易。原JSONL讀取限16MiB／5000列、每來源selected pins128，超限或來源變動明示diagnostic；只讀不建庫、lock或目錄。缺aware時鐘、source、actual帳戶宣告或exact lineage不畫標記；推薦確認與actual買賣分別呈現，Paper不冒actual。舊naive紀錄仍未知，新的手動交易保存aware觀測時間也不補來源或PIT資格。
+
+目前標準UI確認保存仍漏source_id，不能藉row猜source而畫標記；三檔最小修補擴鎖遭automatic approval review拒絕，父層已向人類直接確認。已具原source_id的保存紀錄reader與中央接線工程已驗，不能把其有限通過解讀成所有UI確認都可畫。[中央整合與剩餘](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。
+
+B14 `ShadowControlService.apply`預設預覽，execute需caller提供exact command／proof／原sourcepins／最後核准rule及獨立持久state custody；resume本包拒絕。只在新的synthetic namespace/root驗停止模型callback→exact rule route→freshprocess讀回，保存receipt不是正式模型控制核准。尾端receipt缺失／損壞、witness不符或CAS失配皆拒dispatch，不刪receipt假裝恢復。prediction成熟／漂移仍在獨立composition包，未知正式資格不提升。[B14純port操作](../06_qa/BALDR_B14_SHADOW_CONTROL_20261006.md)。

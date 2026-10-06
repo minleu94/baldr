@@ -135,7 +135,10 @@ class PortfolioService:
         trade_id: Optional[str] = None,
     ) -> TradeDTO:
         """Append a manual trade record after domain validation."""
-        created_at = datetime.now().isoformat()
+        observed = self._now_provider()
+        if not isinstance(observed, datetime) or observed.tzinfo is None or observed.utcoffset() is None:
+            raise PortfolioValidationError("trade observation clock requires timezone")
+        created_at = observed.isoformat()
         dto = TradeDTO(
             trade_id=trade_id or f"trade_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}",
             portfolio_id=portfolio_id,

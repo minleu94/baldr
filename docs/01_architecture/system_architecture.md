@@ -1454,3 +1454,10 @@ RecommendationInputSession prepared frame→body publish（只封存入選股既
 ### 2026-10-06 UX23 registry readonly 整合補記
 
 UX23 CLI → shadow acceptance → explicit ModelRegistryReadonly snapshot；只讀 metadata/events，source SHA seals receipt。training_audit/target_contract 保留未驗 caller 聲明，不進 model loader/writer。
+
+
+## 2026-10-06 中央 caller 增量邊界
+
+MainWindow選定generic store後把route與paths共同注入PortfolioService／Declared store／Paper兩query-only readers；既有default、paper-main身份保留，Ledger仍明示獨立caller配置。Journey routed trades／已選Journal經中央bounded readonly wrapper，沿原projection/as-of port，不改market Evidence。Chart composition與原writer分離：驗證reportLoaded→背景原JSONL custody／同raw rowpins→原marker reader→主執行緒再次核report/context/generation→原chart projector。source/account從已選context與route取得，不由row推定；缺件／超限不補資格。標準UI confirmation source_id漏接修補仍待可信批准。
+
+B11純能力字典不改原features/methods/hashes；B13純Protocol model-input不import ML，原result_payload bytes重核而非旁路DTO；B14 controlport僅synthetic dispatcher/CAS＋caller獨立witness，正式lifecycle/Task/fit無接線。B14 freeze/maturity/drift後續包仍進行。原plan／七有限closed／性能例外與正式來源權威不變。

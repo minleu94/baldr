@@ -50,7 +50,7 @@ witness reservation 與 receipt publication 跨兩個 caller 資源，不宣稱�
 
 正向 `test_actual_dispatch_stop_rule_and_fresh_process`：caller 已核隔離 rule bytes → revision0 呼模型 spy 一次 → service stop/CAS → revision1 呼指定 rule spy → fresh interpreter 注入原獨立 custody，模型 callback 設為 AssertionError，dispatcher 仍只走同 rule hash。原來源 rule／prediction bytes 與 mtime 不變；receipt0 bytes 不變。
 
-負向覆蓋：預覽／缺 port、不符 proof／自算核准／延長過期核准、resume、錯 model ID／revision、未知 last rule／hash、stale CAS／duplicate、future／late／expired clock、cancel／timeout（包括 verifier 或 fsync 延遲）、假控制及七項 readback binding 失配、inflight、損壞／gap／unknown／合法尾端截斷、撤銷 custody、reservation 後發布失敗仍拒模型、提交後取消正確讀回、hardlink、nested pins 防禦複製、新 root／namespace／aware clock 限制。
+負向覆蓋：預覽／缺 port、不符 proof／自算核准／延長過期核准、resume、錯 model ID／revision、未知 last rule／hash、stale CAS／duplicate、future／late／expired clock、cancel／timeout（包括 verifier 或 fsync 延遲）、假控制及七項 readback binding 失配、inflight、損壞／gap／unknown／尾端 receipt 缺失／損壞、撤銷 custody、reservation 後發布失敗仍拒模型、提交後取消正確讀回、hardlink、nested pins 防禦複製、新 root／namespace／aware clock 限制。
 
 程序入口為上述 Python API，沒有本包 CLI／UI。caller 操作順序：先持有 exact rule artifact／source pins／獨立核准 → 構造 command／proof → 明示新隔離 root／namespace 建 synthetic port → default preview → 明示 execute → exact readback → dispatcher 使用同一 port → 新程序重新注入同 custody／root／namespace 讀回。參數錯誤保留 blocker，不自行選規則或補 proof。
 
@@ -71,7 +71,7 @@ git diff --check
 
 本包新增 focused：47 passed。相鄰 shadow acceptance：13 passed（先前同一 union 52 passed=39本包+13既有；其後本包新增8案，去重後60不同案例，不累加重跑）。targeted mypy：3 source files，0 errors。compile／quant guard 通過；最後固定樹核對見交接 full commit／blob hashes。
 
-一次 Luna Max 唯讀 review 已完成，三項實質問題（提交後取消回報、完整 proof clock、尾端截斷）均已修正並加入負控；review 不重跑測試。最後指出的 bootstrap mkdir 後取消會留下空 root，屬已明示的 fail-closed 部分初始化限制：新增測試核空目錄不可 constructor 讀回、無 receipt、witness不變；不清理或覆蓋該root，同路徑不得重試。
+一次 Luna Max 唯讀 review 已完成，三項實質問題（提交後取消回報、完整 proof clock、尾端 receipt 缺失／損壞）均已修正並加入負控；review 不重跑測試。最後指出的 bootstrap mkdir 後取消會留下空 root，屬已明示的 fail-closed 部分初始化限制：新增測試核空目錄不可 constructor 讀回、無 receipt、witness不變；不清理或覆蓋該root，同路徑不得重試。
 
 無裸 float／金融公式／資料標準化／訊號／labels／benchmark／價格或績效計算；本包只控制 opaque 原 bytes route，沒有引入未來資料。Quant guard 為既有白名單靜態檢查，不作為完整金融正確性證明。
 

@@ -1,4 +1,4 @@
-# B03–B12 第二波中央整合收據（2026-10-06）
+# B03–B14 第二波中央整合收據（2026-10-06）
 
 本文件只保存整合證據；唯一路線仍是 output/plans/baldr_product_experience_plan_20261004.md（Danny Quant），目前狀態依 PROJECT_SNAPSHOT，操作依完整 Manual。固定最初基準 a42b2cb9；第二波 lane base ba4e9e59，B03 Update／B12 base175d9c50。中央 B10 commit05329f94，B12原024e0194／review修740fd64c。所有交付只local，未push/mainmerge。
 
@@ -38,3 +38,20 @@ B11 ed37c1a3→c4c8e755：八族能力字典，31 focused pass；原三feature�
 B13 4f828f1f→9266e7e3：pure Protocol adapter，40 own pass、47未改入口固定base收據重用。production零MLimport／零IO／零fit，原OneDate runner＋memory registry＋stub predictor僅synthetic測試橋；一次一eval＋至少一train，六pins／實際session purge與embargo／label成熟／分母／preprocessing及runner bytes hash逐項核。unsupported／U2缺件waiting，formal/training/PIT/natural/execution/production資格全false。全repo ML boundary664files仍8舊違例exit1，不稱全倉PASS。B14控制port仍獨立lane進行，正式composition尚未授權。
 
 B07 central caller: parent-close/exact original result 5 passed in19.18s; mypy lookup/result_panel2source PASS. XML SHA256 10d2d1e0990186477a296228c69d24dea7a58160e7d5513e34d95827aad149d2; output/qa/b07_central_caller_20261006.xml.
+
+
+## 2026-10-06 中央 B09／B05 caller 與 B14 port 接受
+
+B09 d11f187a→537ae1bd、0c149aae→6ca9b54a，只採owned提交，不重採fdb3／5441依賴。獨立review逐I/O與domain allowlist、config任一非None／blank拒絕、Paper固定siblings／query-only、Ledger callbacks及Journal subclass相容未找到阻塞；原146pass14.51s raw hash b21058024245d11dfd81fdda4ac63c8a3f20574b8a5ab181241af06d5a8dc91e已核。不重146。先前auto-review依賴採入阻塞已由可信直接批准解除；本次另一個UI確認source_id三檔擴鎖仍被automatic approval review拒絕，父層等人類直接確認，兩件分開記錄。
+
+中央main只在generic store成對明示配置時注入route＋selection.paths：actual／declared沿既有default契約，Paper沿既有paper-main／paper-main-equal常數。未配置保留legacy原constructor；未自造ledger路徑、帳戶或namespace。Paper兩reader exact paths一致，不讀override env；constructor不connect、不建立私人目錄。Journey routed trades與已選notes改guarded readonly wrapper，保留原journal投影／as-of語義，原generic未配置adapter不改。
+
+B05新中央composition從已驗reportLoaded與原request context取source_id／cutoff／全report context；account只取已選route。背景TaskWorker有界讀原JSONL（16MiB／5000列／64KiB chunks，128個selected pins），每次canonical／links／regular單link／selected-domain守衛、stat/fstat前後驗；原bytes先產rowpins，再以同份raw projection呼原marker reader，沒有candidate自己造pin／第二次file讀回替換。完成再核generation／report物件／context／close；activeContextChanged先清空取消。原保存→custody→reader→圖／freshprocess及source bytes不變已驗，wrong source/account/context／取消／超限／post-constructor hardlink拒。
+
+新manual trade只保存既有now_provider的aware原觀測時間；naive override在任何append／load前拒絕。舊records不migration、不補clock或source／account／PIT。標準UI確認source_id目前仍空，該类confirmation不能畫，三檔修補等待可信批准，不借result_id當source ID。這是剩餘工程，未放寬reader。
+
+中央最終19不同caller cases通過5.84s；XML output/qa/central_personal_chart_composition_final19_20261006.xml，hash見交接manifest。targeted mypy3source、compile5與quant guard pass；pytest cache寫入權限warning不影響案例。最早repository內personal fixture被application-package overlap拒絕，改真OS Temp隔離後pass，未放寬guard。最早圖fixture漏source_id、journal roots重疊及錯exception import已修fixture；紅收據保留。
+
+B14 671b9a97→367b4e7f，四新增pure controlport有界review接受。defaultoff／resume拒／獨立caller state witness＋CAS／readback／發布失敗failclosed／提交後cancel返實際state僅synthetic scope；production_action_allowed固定false。47新＋13既有為lane報告，不累加重跑。QA的tail_truncated實測是尾端receipt缺失／corrupt，不是有效JSON bytes尾截短；不宣稱該byte場景已有收據。prediction freeze／maturity／drift composition下一同lane新包進行，正式modelcontrol／Task仍未啟用。
+
+19-case XML SHA256 77be611553e16345982ebea46de75dfd2b454a0694e9dd9118b1d0249806e3c0

@@ -1,5 +1,15 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 中央 caller 增量（目前最新）
+
+已採B07原保存歷史／同raw有界讀取／parent關閉取消、B09逐I/O custody（537ae1bd／6ca9b54a）、B11八族唯讀能力字典（c4c8e755）、B13pureProtocol模型輸入（9266e7e3）、B14pure controlport（367b4e7f）。原method/catalog hashes保留，第二family未完成；B13ready限synthetic offline，U2未決waiting，所有正式資格false。B14僅synthetic dispatcher／獨立witness/CAS／exactrule，新freeze/maturity/drift composition進行中。
+
+中央main私人三帳route＋paths、Paper固定query-only readers及Journey原source逐讀guard已接；B05從已驗report/requestcontext背景讀bounded原JSONL、原rowpins→reader→chart、新程序與過期回傳拒絕已驗19case／5.84s。新手動交易保存aware now_provider，naive beforeappend拒；不migration舊紀錄、不補source/account/PIT。[中央收據](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。
+
+剩餘：標準UI確認仍漏source_id，controls/controller/test三檔擴鎖遭automatic approval review拒絕；父層向人類直接確認中，中央未修改此三檔或繞過。B14後續composition與B15穩定UI mandatory union／metadata inventory final尚待完成。B09先前dependency拒絕已依直接批准解除並接受owned scope，與本次source_id批准分開。Formal DB／私人啟用／migration／Task／ACL／Native／交易／fit仍未授。
+
+原9stage1done/8partial/0pending、24UX2done/22partial/0pending、七有限closed及F1/Journey性能例外不變，沒有新增整項done。首波85／25+4skip／mypy823只覆蓋首波樹，lane報告不能代替第二波union。自然成熟不當工程gate，unknown資格不造；下方日期化摘要是當時scope，最新caller狀態依本段。
+
 ## 2026-10-06 第二波工程整合（最新摘要）
 
 目前中央 local HEAD 主體已採 B04 exact 保存來源選擇／私人 Watchlist 理由與查看狀態 CAS 保存、B05 原生圖 marker 契約／原保存紀錄 readonly reader 與缺 account_kind 拒絕、B06 三帳摘要與注入防 fallback、B03 Update／Runtime 白話影響／未知日期／明細收合。B10 私人覆盤／notes 備份及週報 composition/history 接線已驗，中央 commit 05329f94：週報私人 Review 與 query-only 市場 refs 分離，歷史不回落市場 writer，28 affected cases、targeted mypy／compile／quant 通過。原來源與未知資格保留。[B10 收據](../06_qa/BALDR_B10_PRIVATE_REVIEW_20261006.md)。

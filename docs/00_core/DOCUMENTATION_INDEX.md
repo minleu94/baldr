@@ -201,3 +201,8 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 ### 2026-10-06 UX23 registry readonly 整合補記
 
 UX23 registry readonly 整合：[QA](../06_qa/UX23_REGISTRY_INTEGRATION_20261006.md)，操作見完整 Manual。
+
+
+## 2026-10-06 中央 caller 與純契約入口
+
+[B07原保存歷史](../06_qa/BALDR_B07_RULE_HISTORY_20261006.md)、[B09逐次custody](../06_qa/BALDR_B09_PERSONAL_PORTFOLIO_20261006.md)、[B11八族字典](../06_qa/BALDR_B11_FAMILY_CATALOG_20261006.md)、[B13模型輸入](../06_qa/BALDR_B13_MODEL_INPUT_20261006.md)、[B14 control port](../06_qa/BALDR_B14_SHADOW_CONTROL_20261006.md)及[中央caller收據](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。目前／剩餘依Snapshot，使用參數與限制依完整Manual；索引不提升任何整項done或正式資格。

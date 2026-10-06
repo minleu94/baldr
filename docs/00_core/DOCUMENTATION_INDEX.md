@@ -206,3 +206,6 @@ UX23 registry readonly 整合：[QA](../06_qa/UX23_REGISTRY_INTEGRATION_20261006
 ## 2026-10-06 中央 caller 與純契約入口
 
 [B07原保存歷史](../06_qa/BALDR_B07_RULE_HISTORY_20261006.md)、[B09逐次custody](../06_qa/BALDR_B09_PERSONAL_PORTFOLIO_20261006.md)、[B11八族字典](../06_qa/BALDR_B11_FAMILY_CATALOG_20261006.md)、[B13模型輸入](../06_qa/BALDR_B13_MODEL_INPUT_20261006.md)、[B14 control port](../06_qa/BALDR_B14_SHADOW_CONTROL_20261006.md)及[中央caller收據](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。目前／剩餘依Snapshot，使用參數與限制依完整Manual；索引不提升任何整項done或正式資格。
+
+
+2026-10-06：[B14 evidence composition／原wrapper waiting與synthetic控制閉環](../06_qa/BALDR_B14_SHADOW_EVIDENCE_COMPOSITION_20261006.md)，含公開B13 replay、新程序seal、原報告pins、明示監測policy、CAS/I/O failclosed限制；正式模型／Task未接。

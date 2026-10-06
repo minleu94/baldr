@@ -6,8 +6,8 @@
 
 本次僅補中央已採本輪14個具名新增 tests 的既有分類，不重分類他人、不新增 direct bridge。metadata audit 使用 --skip-pytest-collection，未完整收集 pytest，也未執行測試。7個UI相關新檔為 candidate，3個B10檔為 portfolio/decision/runtime oracle，1個B12檔為 research/backtest oracle，3個純契約檔為一般unit；candidate/oracle不代表healthcheck runner已接線。
 
-Current filesystem Python files: `1280`
-Current registry entries: `1104`
+Current filesystem Python files: `1281`
+Current registry entries: `1105`
 Current collected test cases: 未執行
 
 | 分類 | 數量 |
@@ -18,7 +18,7 @@ Current collected test cases: 未執行
 | `legacy-or-low-priority` | 3 |
 | `manual-only` | 14 |
 | `service-oracle-data-market` | 159 |
-| `service-oracle-portfolio-decision-runtime` | 138 |
+| `service-oracle-portfolio-decision-runtime` | 139 |
 | `service-oracle-recommendation` | 161 |
 | `service-oracle-research-backtest` | 103 |
 | `slow-e2e-or-environment` | 4 |
@@ -31,7 +31,10 @@ audit 原結果 overall failed：仍有176個未登錄檔（本輪前190，僅�
 Final metadata receipt: `output/qa/b15_inventory_metadata_final_20261006.json`, SHA256 `a6b845b3f5a1b2c1b0a0f48091178b6b0370504a77e64e1a0a351fbae58ae1b9`; documentation count drift=0, remaining blocker=`unregistered_test_files:176`, overall failed, collection skipped.
 
 
-中央 caller 增量：另補七個已採新增檔，合計本輪21檔；B07/B13兩個research oracle、B09/B14/central personal三個portfolio oracle、B11一般unit、central chart一個UI candidate。上列為目前數量；前一筆14檔metadata收據保留為歷史，不冒稱覆蓋此次增量。direct bridge仍12，未執行collection／測試；176個其他未登錄檔不越權重分類。本次 metadata 收據 output/qa/b15_inventory_caller_corrected_20261006.json，SHA256 1fcdf7c86b7b5d06b54043f4903c4db03f489568132477de149d5fad64d8010c；doc drift 0、stale 0、collection skipped，overall failed 唯一 machine blocker unregistered_test_files:176。
+中央 caller 增量：另補七個已採新增檔，合計本輪22檔；B07/B13兩個research oracle、B09/B14/central personal三個portfolio oracle、B11一般unit、central chart一個UI candidate。上列為目前數量；前一筆14檔metadata收據保留為歷史，不冒稱覆蓋此次增量。direct bridge仍12，未執行collection／測試；176個其他未登錄檔不越權重分類。本次 metadata 收據 output/qa/b15_inventory_caller_corrected_20261006.json，SHA256 1fcdf7c86b7b5d06b54043f4903c4db03f489568132477de149d5fad64d8010c；doc drift 0、stale 0、collection skipped，overall failed 唯一 machine blocker unregistered_test_files:176。
+
+
+B14 evidence composition新增1個portfolio/decision/runtime oracle，四新增檔已採7c23b7c5；metadata目前上列1105。前一筆1104收據為歷史，此增量audit output/qa/b15_inventory_integrated_20261006.json，SHA2564022cbb43d82785647d2cffbc379f29cadd02b45370cebde766bee639aacc2e5，docdrift0、stale0、collection skipped、唯一machineblocker unregistered_test_files:176；原53案例兩路分報，不提升正式來源資格。
 
 ## 2026-09-30 machine refresh
 

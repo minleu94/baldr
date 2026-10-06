@@ -6,6 +6,7 @@ from pathlib import Path
 # This registry serves as a guardrail to ensure that only allowed tests are bridged.
 
 TEST_INVENTORY: dict[str, str] = {
+    'tests/test_baldr_b14_shadow_evidence_composition.py': 'service-oracle-portfolio-decision-runtime',
     # 2026-10-06 accepted owned increments; no new direct bridge.
     'tests/test_baldr_b07_research_history.py': 'service-oracle-research-backtest',
     'tests/test_baldr_b09_personal_portfolio.py': 'service-oracle-portfolio-decision-runtime',

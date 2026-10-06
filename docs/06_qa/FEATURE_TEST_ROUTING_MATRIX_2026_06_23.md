@@ -215,3 +215,6 @@ controller34及新增test_ui_qt_chart_viewport11案例，實際放大／平移�
 ### 2026-10-06 市場CSV consumer／CLI路由
 
 test_market_csv_export62／test_export_market_csv_cli26／test_personal_data_paths104，共192通過；長UTF16／surrogate／no-op或錯名publish guard新10，深root CSV／CLI88再驗不增案例。包含preview不寫、來源pins接受／修訂拒絕、publication race／取消partial、來源bytes/stat不變。完整mypy821／CLI targeted3與compile4；不改UI不重跑其gate，不修3個普通open COW長路徑問題，使用新短fixture全套過。[收據](MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。
+
+
+2026-10-06 B14 composition已採：test_baldr_b14_shadow_evidence_composition 為portfolio/decision/runtime oracle，53案例raw/JUnit與兩路原報告／synthetic控制收據核對，不重跑原port47。父層明示先驗已准固定樹：四用途增量→Workbench→update validator→full roots mypy；source_id三檔仍blocked，後續若批准僅重受影響子集。176未登錄是其他工程分類缺口，並非全倉豁免；具名有限後續scope交父層裁定。

@@ -269,3 +269,6 @@
 3. `write-risk-manual` 項目只能走 tmp path / mock / explicit dry-run，且不得自動 confirm。
 4. 對 `manual-only` 且涉及畫面可讀性的項目，下一步應是受控 D-2 / D-3 設計，而不是直接接入 quick/full runner。
 5. `FULL_APP_HEALTHCHECK_2026_06_16.md` 的 pass/fail 狀態仍以人工重驗為準；本文件只描述目前自動化與證據覆蓋程度。
+
+
+2026-10-06 B14 composition已採：test_baldr_b14_shadow_evidence_composition 為portfolio/decision/runtime oracle，53案例raw/JUnit與兩路原報告／synthetic控制收據核對，不重跑原port47。父層明示先驗已准固定樹：四用途增量→Workbench→update validator→full roots mypy；source_id三檔仍blocked，後續若批准僅重受影響子集。176未登錄是其他工程分類缺口，並非全倉豁免；具名有限後續scope交父層裁定。

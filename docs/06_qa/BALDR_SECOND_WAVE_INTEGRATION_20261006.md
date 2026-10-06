@@ -55,3 +55,14 @@ B05新中央composition從已驗reportLoaded與原request context取source_id／
 B14 671b9a97→367b4e7f，四新增pure controlport有界review接受。defaultoff／resume拒／獨立caller state witness＋CAS／readback／發布失敗failclosed／提交後cancel返實際state僅synthetic scope；production_action_allowed固定false。47新＋13既有為lane報告，不累加重跑。QA的tail_truncated實測是尾端receipt缺失／corrupt，不是有效JSON bytes尾截短；不宣稱該byte場景已有收據。prediction freeze／maturity／drift composition下一同lane新包進行，正式modelcontrol／Task仍未啟用。
 
 19-case XML SHA256 77be611553e16345982ebea46de75dfd2b454a0694e9dd9118b1d0249806e3c0
+
+
+## B14 evidence composition 有界接受
+
+bfe356114e3e6a61ecb35f8fb28ff9d12d2990a7→7c23b7c5，只採四新增owned檔；B13/control三dependency blobs與root逐一相等，不重pick依賴。有界獨立review未發現成熟或控制放行缺陷；witness CAS後link失敗會使store不可用而failclosed，QA/Manual明示、不是可自動恢復。
+
+53 focused passed4.88s，JUnit53/0failure/0error/0skip與raw hashes已核；raw05eca617c6a744afdb299193b1de44350e15dcc0f153aa48191f0f857b55c92c、XMLb2448fef5ab4275e3e56242f6dcd11ad23fc1d300eb1ded4ce5f1c2f20330d6b。lane output/qa/baldr-b14-evidence-final/handoff.json含fullHEAD/blobs與原source byte hashes；不重53或舊47/B13 suite求數量。mypy3/compile3/quant/零float與directMLimport收據沿用具名QA。
+
+原sealedsource→真label/fair wrappers positive research_only/comparison(common2)→原unknown availability→waiting/mature0/完整分母，來源receipt bytes與mtime不變。另明示known-clock synthetic→原B13 public replay→freeze持久新程序prepare/newseal→maturity/monitor review_required→原control defaultpreview→真stop/dispatcher spy→freshprocess同rulehash且model未呼，原payload/pins保留。這兩路資格不互換；所有formal/training/PIT/natural/execution false，沒有正式Task、模型或registry寫入。
+
+B15穩定mandatory與四用途增量union尚待source_id三檔直接批准；該三檔仍未修改。metadata清冊只補本輪具名新增檔，範圍外176缺登錄保持failed，directbridge12不變。

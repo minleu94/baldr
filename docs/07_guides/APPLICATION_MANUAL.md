@@ -5108,3 +5108,16 @@ notes 備份 adapter 為 `PersonalNotesBackupAdapter(journal_paths, store_identi
 目前標準UI確認保存仍漏source_id，不能藉row猜source而畫標記；三檔最小修補擴鎖遭automatic approval review拒絕，父層已向人類直接確認。已具原source_id的保存紀錄reader與中央接線工程已驗，不能把其有限通過解讀成所有UI確認都可畫。[中央整合與剩餘](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。
 
 B14 `ShadowControlService.apply`預設預覽，execute需caller提供exact command／proof／原sourcepins／最後核准rule及獨立持久state custody；resume本包拒絕。只在新的synthetic namespace/root驗停止模型callback→exact rule route→freshprocess讀回，保存receipt不是正式模型控制核准。尾端receipt缺失／損壞、witness不符或CAS失配皆拒dispatch，不刪receipt假裝恢復。prediction成熟／漂移仍在獨立composition包，未知正式資格不提升。[B14純port操作](../06_qa/BALDR_B14_SHADOW_CONTROL_20261006.md)。
+
+
+### 2026-10-06 B14 隔離預測封存與監測 API
+
+入口為 rule_research_shadow_evidence_composition／store 的注入式 API；目前沒有新增 UI 按鈕或 CLI，也未接正式模型／Task。先沿 B13 公開 prepare/run 取得 synthetic offline 原結果，caller 明示 exact model revision、method、aware prediction availability／decision cutoff／timezone，再呼 freeze_shadow_evidence。原 result payload、六種 pins 及 metadata 不重造；來源 clock／資格不足不得補值。
+
+操作順序：caller 獨立核 frozen binding 與持久 witness → ShadowEvidenceStore.create 明示全新 Temp／lane output absolute root 和 synthetic:// namespace → append(expected_revision=..., execute=False) 預覽；只有隔離工程確認後 execute=True 才發布 receipt → read_all 逐版本原bytes回驗。新程序使用公開 prepare 重建seal再run replay，不保存私有seal。預覽可能使用暫時exclusive lock，並非完全零I/O；不發布receipt。
+
+監測參數必須明示 policy id/version、target/label/split hashes、完整method ids、exact監控model、最少成熟樣本與最大MAE整數bp。ReadonlyResearchPort回傳原label/fair reports bytes與原pins／available_at；evaluate_shadow_monitoring在cutoff核成熟、同股同日去重、完整分母及原candidate identity。未知來源availability／不足樣本／缺政策回waiting，不以0冒充成熟；超caller門檻為review_required。原wrapper目前unknown→waiting；另有synthetic known-clock工程閉環，不能互換資格。
+
+控制預設execute=False。只有完整重驗monitoring、原prediction pins、caller獨立proof與已核最後rule後，apply_monitoring_control才交原ControlPort；synthetic spy與新程序已驗stop後不再呼模型、同rulehash。resume未准；全部正式／PIT／自然／訓練／執行資格false。
+
+容量為隔離資源契約：128 receipts、每份16MiB、8192 label rows，原control pin容量另保留，不截斷大batch。取消／逾時在witness CAS前拒發布；CAS後完成發布與readback並回報真commit。若CAS後I/O發布失敗，witness領先receipt會使整namespace不可用、failclosed；保留殘件／獨立witness供排錯，不刪receipt假恢復、不自動清理或重用root。詳[完整API與兩路收據](../06_qa/BALDR_B14_SHADOW_EVIDENCE_COMPOSITION_20261006.md)。

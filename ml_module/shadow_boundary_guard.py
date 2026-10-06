@@ -20,6 +20,15 @@ FORBIDDEN_ML_IMPORT_ROOTS = frozenset(PRODUCTION_ROOTS)
 ARTIFACT_CONTRACT_ROOT = "artifact_contracts"
 ARTIFACT_CONTRACT_ALLOWED_EXTERNAL_ROOTS = frozenset({"numpy"})
 ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = {
+    # Sealed research exports only: no training runners or registry I/O.
+    "app_module/rule_research_fair_comparison.py": {
+        "ml_module.historical_contracts": frozenset({"HistoricalFeatureRow"}),
+        "ml_module.historical_feature_builder": frozenset({"HistoricalFeatureBuilder"}),
+        "ml_module.feature_registry": frozenset({"CORE_LONG_HISTORY_FEATURE_REGISTRY"}),
+        "ml_module.model_prediction_registries": frozenset({"MLModelRecord", "MLShadowPredictionRecord"}),
+        "ml_module.inference_contracts": frozenset({"ShadowInferenceRequest", "ShadowPredictionIdentity", "prediction_id_for"}),
+        "ml_module.historical_evaluation": frozenset({"evaluate_return_predictions", "evaluate_historical_predictions"}),
+    },
     "app_module/ml_allocation_inference_service.py": {
         "ml_module.allocation_contracts": frozenset(
             {"PITFeatureValue", "PortfolioMLDatasetRow"}

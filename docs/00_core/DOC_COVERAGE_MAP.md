@@ -427,3 +427,8 @@
 ### 2026-10-06 UX21 source/store/daily coverage
 
 source adapter／sealed outcome 保存與只讀日報→system_architecture、APPLICATION_MANUAL、UX21_SOURCE_STORE_DAILY_20261006；Qt outcome receipt入口→UI_FEATURES_DOCUMENTATION；測試→FEATURE_TEST_ROUTING_MATRIX。全產品9stage/24UX仍1/7/1與2/20/2，有限工程、程式缺件與外驗分列QA，不升格done。
+
+
+### 2026-10-06 UX22 公平比較 coverage
+
+Must已同步：Manual入口／步驟／policy與bundle／結果／安全限制／排錯；Snapshot實際狀態；current architecture exact讀取與ML邊界；Navigation／Index新入口；QA routing與tracked QA。原plan僅追加，raw proof在output/qa/ux22_fair_comparison_20261006，不stage。產品／6M／長期／target無方向或部署改變，UX22仍partial，既有gate不重開。

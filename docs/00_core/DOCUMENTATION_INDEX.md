@@ -164,3 +164,6 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 
 
 - [UX21 endpoint label→UX22 readiness QA](../06_qa/UX22_LABEL_READINESS_20261006.md)：明示policy、全母體對照分母、固定時序界線、封存來源重讀與既有baseline缺件；不fit／正式發布。
+
+
+- 2026-10-06 [UX22 同源公平比較 QA](../06_qa/UX22_FAIR_COMPARISON_20261006.md)：sealed來源／CORE20／既有shadow DTO共同分母、明示target與流失、CLI新程序重讀；隔離工程驗證，不宣稱模型效果或訓練資格。

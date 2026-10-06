@@ -1406,3 +1406,8 @@ exact parent/readiness→current-observed SQLite snapshot transaction（原決�
 ## 2026-10-06 sealed endpoint label readiness consumer
 
 `read_forward_receipt`→`rule_research_label_readiness`→`run_rule_research_label_readiness.py`只讀exact parent/outcome；明示版本policy綁source/hash、全母體method ledger、固定train/evaluation windows。重用HistoricalLabelSpec/Row的整數與成熟契約；依既有label-end purge原則報時間分區，沒有另建learner或自動fold參數。既有HistoricalTrainingService／MLChampionComparisonService僅列必要輸入readiness，不呼叫fit／compare，不補downside、成本、benchmark或PIT。JSON report可保存並同輸入新程序核對，沒有正式model/store/Task寫入。[QA](../06_qa/UX22_LABEL_READINESS_20261006.md)。
+
+
+### UX22 sealed 同源比較（2026-10-06）
+
+`rule_research_fair_comparison`重用label readiness sealed reader、CORE20 HistoricalFeatureBuilder、MLModelRecord／MLShadowPredictionRecord與既有integer historical evaluator；只接受匯出DTO，不呼叫registry／fit。兩模型共用exact sample IDs、原decision feature source pins及target contract，事後label envelope另綁；固定來源／split／成本／基準不相容不pool。CLI預設白話摘要，JSON含完整母體與逐行流失／共同分母、身份及research-only false資格旗標。精確ML read-only symbols獨立allowlist，不放寬training/service匯入；QA見UX22_FAIR_COMPARISON_20261006。

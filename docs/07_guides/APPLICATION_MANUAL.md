@@ -4925,3 +4925,30 @@ split格式：
 結果保留全母體、matched／notmatched對照及excluded／unknown／uncaptured分母；符合方法不是交易selected。研究label bp與時間合格候選分開看；baseline readiness列既有learner／same-sample比較器缺的feature registry與決策時可得證據、完整return/downside映射、champion／challenger prediction身份及k。缺輸入就是不可評估，不宣稱模型勝出，也不把downside填0。
 
 保存來源current-observed／年度計畫calendar的限制仍在；PIT、training、formal、natural authority及execution資格維持false。endpoint-only沒有MFE／MAE／期間停牌評估；本入口沒有fit、模型發布、Task／DB寫入。wrong parent／來源pin失配請重新選原exact配對；invalid policy／split請修正自己明示JSON；未成熟、成本或基準缺件需另有合法來源，不能靠改readiness旗標解決。詳[QA](../06_qa/UX22_LABEL_READINESS_20261006.md)。
+
+
+## UX22 同源模型公平比較（2026-10-06，研究用 CLI）
+
+先保存 exact parent／outcome 收據，準備上一節的 label／split JSON，再明示 comparison policy 與既有特徵／預測匯出 bundle：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_rule_research_fair_comparison.py --receipt <parent.json> <outcome.json> --label-policy <label.json> --split-policy <split.json> --comparison-policy <comparison.json> --inputs-bundle <inputs.json>
+```
+
+預設白話摘要說明 ML 是否有可比較證據、共同樣本與流失；加 `--json` 輸出完整有界診斷／report identity，可另存研究報告並在新程序以相同輸入重讀。多批可重複 `--receipt`，最多32對；不得重複算母體。未提供政策／特徵／baseline／candidate，就是缺件／不可評估；不自動選模型或用空結果宣稱通過。
+
+comparison JSON 格式如下；所有值必須由研究者明示，範例不是系統預設：
+
+```json
+{"schema_version":"rule-research-fair-comparison-policy.v1","policy_id":"my-common-target","version":"1","method_id":"daily_market.close_above_ma20","horizon":5,"metrics":"return_only","top_k":1,"downside_threshold_bp":null}
+```
+
+一次選定一個原方法與H5／10／20，必須包含於label政策。return_only只計報酬／排序；return_and_downside須明示整數bp門檻，endpoint報酬小於等於門檻才為downside，並非期間最大回撤。top_k須介於1與共同樣本數；不足時不可評估，不縮小k。排名指所選固定評估窗的共同樣本，不代表每日交易選股。
+
+bundle為版本化JSON匯出：CORE20完整feature slots、dataset／feature schema與registry hash、逐樣本原來源hash、既有MLModelRecord及整數版MLShadowPredictionRecord、兩角色training audit／target_contract。模型的target_contract須對齊label政策／schema／measure／horizon／downside門檻／成本／benchmark；不把未標目標的模型自動當成相同目標。沿既有shadow request契約，特徵最大日期與available_date都須早於決策日；預測available_date可等於決策日。未知／缺槽保留缺件，不補0。兩模型必須使用同一feature snapshot和原決策來源hash。bundle的binding_sha256是事後標籤對齊封套，不能回寫為原始預測來源。
+
+完整母體／方法行／所選目標／共同可評估樣本分母分開列；逐樣本保留缺label、feature、baseline／candidate prediction或不相容原因，兩角色只對同序共同sample IDs計分。同源、日期、split、成本、基準及標籤版本不相容時拒絕混算；報表的共同樣本coverage不代表全母體100%。MAE／Brier越小較好，precision／NDCG／bucket monotonicity越大較好，差異只描述研究樣本；沒有共同樣本就沒有優劣。
+
+模型MAE指平均絕對預測誤差（bp），不是交易期間最大不利波動；precision是原計分器所定義的top-k正報酬比例。endpoint資料仍不能計算期間MFE／最大不利波動或停牌影響。
+
+政策輸入64KiB、bundle／報告2MiB、label行4096；重複JSON key、未知版本、浮點／bool預測、超限或身份失配拒絕，不截斷。錯配請核對原exact配對與原匯出，不重跑來源或用最新DB補舊預測。來源current-observed／calendar及availability限制仍在，training／PIT／formal／natural／execution皆false、selection unknown；不fit／部署／載入模型pickle／寫registry、Task或正式DB。受控fixture只能驗工程，不能證明真模型改善。詳[QA](../06_qa/UX22_FAIR_COMPARISON_20261006.md)。

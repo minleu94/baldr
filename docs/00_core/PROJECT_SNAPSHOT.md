@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 UX22 同源公平比較工程（最新）
+
+沿ae90ba2c，exact sealed labels→既有CORE20特徵loader／整數shadow prediction DTO→同序共同樣本計分→白話CLI／JSON新程序重讀已接線。明示方法、horizon、label／split／cost／benchmark及兩模型target契約，完整母體、方法行、所選目標與流失分母分列；缺baseline／candidate或目標映射不計分。原sealed fixture仍18 labels／12數值、18 availability unknown、0 temporal training candidates；合成日期及模型輸出只驗工程，PIT／training／formal／natural／execution皆false。
+
+UX22／Stage7仍partial，合格真來源／模型lineage／效果證據待補；9stage=1done/8partial/0pending、24UX=2done/21partial/1pending，沒有新增done。ML boundary base八條違例保留、本包新增0，只限定新consumer exact-symbol read-only邊界；不稱全repo通過、不修其他owner。無UI或正式Task／DB／模型發布變更，既有效能gate不重開。[本包驗證與剩餘缺口](../06_qa/UX22_FAIR_COMPARISON_20261006.md)；操作依Manual最新章。
+
 ## 2026-10-06 UX21 label→UX22 readiness 有限入口
 
 沿已接受8104d0a，版本化明示endpoint label政策（gross/net/gross_excess/net_excess、H5/10/20子集）→exact sealed parent/outcome→全母體與逐方法對照ledger→固定訓練/評估界線→既有baseline所需輸入缺件readiness已接線。CLI只讀保存來源、輸出研究JSON；不查今天行情、不呼叫fit。成本／benchmark／availability未知不補0，沒有自選唯一目標；label值已知不等於歷史PIT或訓練合格。
@@ -680,3 +686,8 @@ UX11 readmodel c7a9ea37整合為a3b63070；回測策略設定新增按需版本�
 ### 2026-10-06 UX20 隔離daily owner可執行整合
 
 新增明示runtime/target日期的isolated daily runner，直接沿既有producer/parent/observation接受串全鏈，preflight為預設；capacity/quota先檢，有限retry/合作cancel/漏日與revision監控，exact receipt重用。source/日期/配置一致才完成，producer已發布與capture拒絕分列保留；未配置不選生產值。17不同案例＋最後source/config兩例重核、targeted mypy2/compile3/quant通過；UI未改。Stage5/UX20仍partial，正式date-owner/calendar/Task/ACL/留存治理待工程/決策；UX21三檔未整合。QA：docs/06_qa/UX20_DAILY_OWNER_ISOLATED_20261006.md；操作依Manual。
+
+
+### 2026-10-06 UX22 同源公平比較工程
+
+新增sealed receipt→既有CORE20 feature／整數shadow prediction DTO→共同樣本計分→白話CLI／JSON重讀。明示method/horizon/label/split/cost/benchmark/target contract，流失及不可比較分母不消失；未配置或無candidate不造結果。唯讀匯出、隔離fixture驗工程，不fit或提升PIT／training／formal／natural／execution資格。UX22／Stage7仍partial；9stage=1done/8partial/0pending、24UX=2done/21partial/1pending，真來源／合格模型及效果證據待補。操作依Manual；QA：`docs/06_qa/UX22_FAIR_COMPARISON_20261006.md`。

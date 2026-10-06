@@ -226,3 +226,21 @@ def test_conversion_holds_reserved_lock_and_preserves_failed_stage_on_source_cha
     assert not changed_target.exists()
     stage = Path(str(blocked["failed_stage_path"]))
     assert stage.is_file()
+
+
+@pytest.mark.parametrize("schema", [1, 2])
+def test_cow_sqlite_uri_preserves_unicode_and_reserved_characters(tmp_path, schema):
+    source = tmp_path / "合法來源 # 100%.sqlite"
+    target = tmp_path / "合法目標 # 100%.sqlite"
+    payload = _payload([_item("2330", "manual", "synthetic-uri")])
+    if schema == 1:
+        _create_legacy_v1(source, payload, with_source_hash=True)
+    else:
+        _create_legacy_v2(source, payload)
+    before = source.read_bytes(), source.stat().st_mtime_ns
+    result = convert_watchlist_sqlite(source, target, capacity_preflight=_allow_capacity)
+    assert result["status"] == "ready", result
+    assert result["source_path"] == str(source)
+    assert result["target_path"] == str(target)
+    assert WatchlistRepository(target).load("default") == (payload, 7)
+    assert (source.read_bytes(), source.stat().st_mtime_ns) == before

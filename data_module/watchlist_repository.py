@@ -21,6 +21,7 @@ from app_module.dtos.decision_continuity_dtos import (
     DecisionIdentity,
 )
 from data_module import watchlist_item_storage as item_storage
+from data_module.watchlist_sqlite_cow import _io_path, _sqlite_uri, _canonical_path
 from data_module.watchlist_item_storage import (
     WatchlistStorageCapacityError,
     WatchlistStorageIntegrityError,
@@ -40,7 +41,7 @@ class WatchlistRepository:
         initialize: bool = False,
         capacity_preflight: Callable[[WatchlistWriteCapacityRequest], bool | None] | None = None,
     ):
-        self.db_path = Path(db_path).resolve()
+        self.db_path = _canonical_path(Path(db_path))
         self._capacity_preflight = capacity_preflight
         if initialize:
             self._initialize_schema()
@@ -61,8 +62,8 @@ class WatchlistRepository:
             estimated_database_growth_bytes=16384, required_peak_bytes=32768,
         )
         self._assert_capacity(request)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with closing(sqlite3.connect(self.db_path)) as conn:
+        _io_path(self.db_path.parent).mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(_io_path(self.db_path))) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 if item_storage.table_names(conn):
@@ -82,7 +83,7 @@ class WatchlistRepository:
         sidecar_bytes = 0
         for suffix in ("-journal", "-wal", "-shm"):
             try:
-                sidecar_bytes += Path(f"{self.db_path}{suffix}").stat().st_size
+                sidecar_bytes += _io_path(Path(f"{self.db_path}{suffix}")).stat().st_size
             except FileNotFoundError:
                 pass
         growth = max(growth_bytes, 4096)
@@ -208,7 +209,7 @@ class WatchlistRepository:
 
     def detect_storage_format(self) -> dict[str, Any]:
         """唯讀辨識資料格式，不初始化、不升級，也不修改任何位元組。"""
-        if not self.db_path.is_file():
+        if not _io_path(self.db_path).is_file():
             return {"schema_version": None, "storage_format": "uninitialized",
                     "requires_copy_on_write": False, "ready": False}
         try:
@@ -347,7 +348,7 @@ class WatchlistRepository:
         return IDENTITY_STATUS_UNKNOWN
 
     def _open_read_only(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(f"{self.db_path.as_uri()}?mode=ro", uri=True)
+        conn = sqlite3.connect(_sqlite_uri(self.db_path, "ro"), uri=True)
         try:
             conn.execute("PRAGMA query_only=ON")
             # Inventory spans several queries; one read transaction prevents mixed revisions.
@@ -587,7 +588,7 @@ class WatchlistRepository:
                     raise RuntimeError("watchlist_revision_event_conflict")
                 return int(duplicate[7])
             self._preflight_v3_save(**kwargs)
-            with closing(sqlite3.connect(f"{self.db_path.as_uri()}?mode=rw", uri=True)) as conn:
+            with closing(sqlite3.connect(_sqlite_uri(self.db_path, "rw"), uri=True)) as conn:
                 conn.execute("BEGIN IMMEDIATE")
                 try:
                     revision, _, _ = item_storage.save_v3(
@@ -610,7 +611,7 @@ class WatchlistRepository:
         elif storage["schema_version"] is None:
             raise RuntimeError("watchlist_schema_requires_copy_on_write")
 
-        with closing(sqlite3.connect(f"{self.db_path.as_uri()}?mode=rw", uri=True)) as conn:
+        with closing(sqlite3.connect(_sqlite_uri(self.db_path, "rw"), uri=True)) as conn:
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 stored = self._existing_revision(conn, revision_id)
@@ -723,7 +724,7 @@ class WatchlistRepository:
                         raise RuntimeError("watchlist_revision_event_conflict")
                     return True
             self._preflight_v3_delete(operation)
-            with closing(sqlite3.connect(f"{self.db_path.as_uri()}?mode=rw", uri=True)) as conn:
+            with closing(sqlite3.connect(_sqlite_uri(self.db_path, "rw"), uri=True)) as conn:
                 conn.execute("BEGIN IMMEDIATE")
                 try:
                     result = item_storage.delete_v3(
@@ -753,7 +754,7 @@ class WatchlistRepository:
             self._preflight_legacy_save(legacy_raw, operation, watchlist_id, replace_current=False)
         elif storage["schema_version"] is None:
             raise RuntimeError("watchlist_schema_requires_copy_on_write")
-        with closing(sqlite3.connect(f"{self.db_path.as_uri()}?mode=rw", uri=True)) as conn:
+        with closing(sqlite3.connect(_sqlite_uri(self.db_path, "rw"), uri=True)) as conn:
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 stored = self._existing_revision(conn, revision_id)

@@ -11,7 +11,10 @@ import sqlite3
 import uuid
 from typing import Any, Callable, Iterator, Mapping
 
-from app_module.personal_data_paths import WatchlistCowControlPaths
+from app_module.personal_data_paths import (
+    WatchlistCowControlPaths, to_internal_io_path,
+    to_internal_sqlite_uri as _sqlite_uri,
+)
 from data_module import watchlist_item_storage as item_storage
 from data_module.watchlist_item_storage import (
     WatchlistStorageCapacityError,
@@ -83,6 +86,22 @@ class _Snapshot:
     source_database_bytes: int
 
 
+def _io_path(path: Path) -> Path:
+    """使用共用 renderer；僅為 pathlib I/O 包裝，不改 canonical identity。"""
+    return Path(to_internal_io_path(path))
+
+
+def _canonical_path(path: Path, *, strict: bool = False) -> Path:
+    """深路徑解析完成後移除內部 renderer 前綴，保留公開路徑身分。"""
+    resolved = _io_path(path.absolute()).resolve(strict=strict)
+    spelling = str(resolved)
+    if os.name == "nt" and spelling.startswith("\\\\?\\UNC\\"):
+        return Path("\\\\" + spelling[8:])
+    if os.name == "nt" and spelling.startswith("\\\\?\\"):
+        return Path(spelling[4:])
+    return resolved
+
+
 def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
@@ -90,7 +109,7 @@ def _sha256_bytes(value: bytes) -> str:
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     total = 0
-    with path.open("rb") as stream:
+    with _io_path(path).open("rb") as stream:
         while True:
             block = stream.read(1024 * 1024)
             if not block:
@@ -103,7 +122,7 @@ def _file_sha256(path: Path) -> str:
 
 
 def _stat_record(path: Path) -> dict[str, int]:
-    value = path.stat(follow_symlinks=False)
+    value = _io_path(path).stat(follow_symlinks=False)
     return {
         "size": int(value.st_size), "mtime_ns": int(value.st_mtime_ns),
         "inode": int(value.st_ino), "device": int(value.st_dev),
@@ -115,7 +134,7 @@ def _sidecars(path: Path) -> list[Path]:
 
 
 def _assert_no_sidecars(path: Path, code: str) -> None:
-    if any(candidate.exists() for candidate in _sidecars(path)):
+    if any(_io_path(candidate).exists() for candidate in _sidecars(path)):
         raise _Blocked(code)
 
 
@@ -123,38 +142,38 @@ def _normalize_paths(
     source: Path | str, destination: Path | str, *,
     control_paths: WatchlistCowControlPaths | None = None,
 ) -> tuple[Path, Path, Path]:
-    src_input = Path(source).expanduser()
-    dst_input = Path(destination).expanduser()
+    src_input = Path(source).expanduser().absolute()
+    dst_input = Path(destination).expanduser().absolute()
     try:
-        if src_input.is_symlink() or not src_input.is_file():
+        if _io_path(src_input).is_symlink() or not _io_path(src_input).is_file():
             raise _Blocked("source_not_regular_file")
         if control_paths is None:
-            src = src_input.resolve(strict=True)
-            dst_parent = dst_input.parent.resolve(strict=True)
+            src = _canonical_path(src_input, strict=True)
+            dst_parent = _canonical_path(dst_input.parent, strict=True)
             dst = dst_parent / dst_input.name
         else:
             expected_receipt = dst_input.with_name(
                 dst_input.name + ".cow-conversion.v1.json",
             )
             control_paths.validate(src_input, dst_input, expected_receipt)
-            src = src_input.resolve(strict=True)
+            src = _canonical_path(src_input, strict=True)
             dst = control_paths.assert_personal(
                 control_paths.personal_paths.watchlist_db,
             )
-        if not dst.name or dst.exists() or dst.is_symlink():
+        if not dst.name or _io_path(dst).exists() or _io_path(dst).is_symlink():
             raise _Blocked("target_already_exists")
         receipt = (
             dst.with_name(dst.name + ".cow-conversion.v1.json")
             if control_paths is None else
             control_paths.assert_personal(control_paths.receipt_path)
         )
-        if receipt.exists() or receipt.is_symlink():
+        if _io_path(receipt).exists() or _io_path(receipt).is_symlink():
             raise _Blocked("receipt_already_exists")
         if os.path.normcase(str(src)) == os.path.normcase(str(dst)):
             raise _Blocked("source_target_same_path")
-        if src.stat(follow_symlinks=False).st_nlink != 1:
+        if _io_path(src).stat(follow_symlinks=False).st_nlink != 1:
             raise _Blocked("source_hardlink_unsupported")
-        if control_paths is None and dst.parent.is_symlink():
+        if control_paths is None and _io_path(dst.parent).is_symlink():
             raise _Blocked("target_parent_symlink_unsupported")
         if control_paths is not None:
             control_paths.assert_personal(dst)
@@ -315,7 +334,7 @@ def _current_row(row: tuple[Any, ...], schema: int) -> _Current:
 def _source_open(path: Path) -> sqlite3.Connection:
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=5.0)
+        conn = sqlite3.connect(_sqlite_uri(path, "ro"), uri=True, timeout=5.0)
         conn.execute("PRAGMA query_only=ON")
         conn.execute("BEGIN")
         conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchall()
@@ -784,7 +803,7 @@ def _verify_source_still_held(snapshot: _Snapshot, conn: sqlite3.Connection) -> 
 def _reserve_source_for_conversion(source: Path) -> sqlite3.Connection:
     """只取 SQLite reserved writer lock，query_only 下直到發布都不執行資料寫入。"""
     try:
-        conn = sqlite3.connect(f"{source.as_uri()}?mode=rw", uri=True, timeout=0.1)
+        conn = sqlite3.connect(_sqlite_uri(source, "rw"), uri=True, timeout=0.1)
         conn.execute("PRAGMA busy_timeout=100")
         conn.execute("BEGIN IMMEDIATE")
         conn.execute("PRAGMA query_only=ON")
@@ -800,7 +819,7 @@ def _reserve_source_for_conversion(source: Path) -> sqlite3.Connection:
 def _busy_probe_source(source: Path) -> None:
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(f"{source.as_uri()}?mode=rw", uri=True, timeout=0.1)
+        conn = sqlite3.connect(_sqlite_uri(source, "rw"), uri=True, timeout=0.1)
         conn.execute("PRAGMA busy_timeout=100")
         conn.execute("BEGIN IMMEDIATE")
         conn.execute("PRAGMA query_only=ON")
@@ -822,16 +841,16 @@ def _create_stage(
     if control_paths is not None:
         control_paths.assert_personal(stage)
     try:
-        descriptor = os.open(stage, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+        descriptor = os.open(_io_path(stage), os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
         os.close(descriptor)
-        disk_conn = sqlite3.connect(stage)
+        disk_conn = sqlite3.connect(_io_path(stage))
         try:
             memory_conn.backup(disk_conn)
             disk_conn.execute("PRAGMA journal_mode=DELETE")
             disk_conn.commit()
         finally:
             disk_conn.close()
-        with stage.open("r+b") as stream:
+        with _io_path(stage).open("r+b") as stream:
             os.fsync(stream.fileno())
         return stage
     except Exception:
@@ -846,12 +865,12 @@ def _validate_stage(
     if control_paths is not None:
         control_paths.assert_personal(stage)
     _assert_no_sidecars(stage, "stage_sidecar_present")
-    size = stage.stat().st_size
+    size = _io_path(stage).stat().st_size
     if size > item_storage.MAX_DATABASE_BYTES:
         raise _Blocked("database_limit_exceeded")
     digest = _file_sha256(stage)
     try:
-        conn = sqlite3.connect(f"{stage.as_uri()}?mode=ro", uri=True)
+        conn = sqlite3.connect(_sqlite_uri(stage, "ro"), uri=True)
         conn.execute("PRAGMA query_only=ON")
         conn.execute("BEGIN")
         inventory = item_storage.inventory(conn)
@@ -874,7 +893,7 @@ def _publish_noreplace(
         control_paths.assert_personal(target)
     _assert_no_sidecars(target, "target_sidecar_present")
     try:
-        os.link(stage, target)
+        os.link(_io_path(stage), _io_path(target))
     except FileExistsError as exc:
         raise _Blocked("target_already_exists") from exc
     except OSError as exc:
@@ -882,10 +901,10 @@ def _publish_noreplace(
     if control_paths is not None:
         # 個人檔案拒絕 hardlink；發布後立刻移除自有 staging link。
         try:
-            os.unlink(stage)
+            os.unlink(_io_path(stage))
         except OSError as exc:
             raise _Blocked("stage_publish_cleanup_failed") from exc
-    return target.stat(follow_symlinks=False)
+    return _io_path(target).stat(follow_symlinks=False)
 
 
 def _write_receipt_stage(
@@ -899,7 +918,7 @@ def _write_receipt_stage(
         control_paths.assert_personal(stage)
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, allow_nan=False,
                          separators=(",", ":")).encode("utf-8")
-    descriptor = os.open(stage, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    descriptor = os.open(_io_path(stage), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(descriptor, "wb") as stream:
         stream.write(encoded)
         stream.flush()
@@ -923,13 +942,13 @@ def _convert(source: Path | str, destination: Path | str, *, dry_run: bool,
             control_paths.validate(source, destination_input, expected_receipt)
             source_input = Path(source).expanduser()
             if any(
-                Path(f"{source_input}{suffix}").exists()
-                or Path(f"{source_input}{suffix}").is_symlink()
+                _io_path(Path(f"{source_input}{suffix}")).exists()
+                or _io_path(Path(f"{source_input}{suffix}")).is_symlink()
                 for suffix in (".cow-active.json", ".cow-conversion.v1.json",
                                ".cow-backup.v1.json")
             ):
                 raise _Blocked("legacy_control_marker_requires_review")
-            for index, entry in enumerate(source_input.parent.iterdir(), 1):
+            for index, entry in enumerate(_io_path(source_input.parent).iterdir(), 1):
                 if index > item_storage.MAX_ROWS + 2:
                     raise _Blocked("source_directory_scan_limit_exceeded")
                 if entry.suffix.casefold() != ".json":
@@ -993,11 +1012,11 @@ def _convert(source: Path | str, destination: Path | str, *, dry_run: bool,
                     if control_paths is not None:
                         control_paths.assert_personal(receipt_stage)
                         control_paths.assert_personal(receipt_path)
-                    os.link(receipt_stage, receipt_path)
-                    os.unlink(receipt_stage)
+                    os.link(_io_path(receipt_stage), _io_path(receipt_path))
+                    os.unlink(_io_path(receipt_stage))
                     receipt_stage = None
                     if stage is not None:
-                        os.unlink(stage)
+                        os.unlink(_io_path(stage))
                         stage = None
                 except Exception:
                     raise _Blocked("receipt_publish_failed")
@@ -1007,26 +1026,26 @@ def _convert(source: Path | str, destination: Path | str, *, dry_run: bool,
                     memory_conn.close()
     except _Blocked as exc:
         result: dict[str, Any] = {"schema_version": _RECEIPT_SCHEMA, "status": "blocked", "error_code": exc.code}
-        if stage is not None and stage.exists():
+        if stage is not None and _io_path(stage).exists():
             result["failed_stage_path"] = str(stage)
-        if receipt_stage is not None and receipt_stage.exists():
+        if receipt_stage is not None and _io_path(receipt_stage).exists():
             result["failed_receipt_stage_path"] = str(receipt_stage)
         return result
     except (sqlite3.Error, OSError, ValueError, TypeError, WatchlistStorageIntegrityError,
             WatchlistStorageCapacityError) as exc:
         result = {"schema_version": _RECEIPT_SCHEMA, "status": "blocked",
                   "error_code": str(getattr(exc, "code", type(exc).__name__))}
-        if stage is not None and stage.exists():
+        if stage is not None and _io_path(stage).exists():
             result["failed_stage_path"] = str(stage)
-        if receipt_stage is not None and receipt_stage.exists():
+        if receipt_stage is not None and _io_path(receipt_stage).exists():
             result["failed_receipt_stage_path"] = str(receipt_stage)
         return result
     except Exception as exc:
         result = {"schema_version": _RECEIPT_SCHEMA, "status": "blocked",
                   "error_code": str(getattr(exc, "code", type(exc).__name__))}
-        if stage is not None and stage.exists():
+        if stage is not None and _io_path(stage).exists():
             result["failed_stage_path"] = str(stage)
-        if receipt_stage is not None and receipt_stage.exists():
+        if receipt_stage is not None and _io_path(receipt_stage).exists():
             result["failed_receipt_stage_path"] = str(receipt_stage)
         return result
     finally:

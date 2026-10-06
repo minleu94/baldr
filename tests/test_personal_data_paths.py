@@ -2,6 +2,8 @@
 
 import os
 import subprocess
+import sys
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -410,27 +412,49 @@ def test_internal_cow_controls_and_legacy_source_boundary(tmp_path):
 
 @pytest.mark.parametrize("kind", ["json", "1", "2"])
 def test_cow_synthetic_pipeline_with_new_internal_root(tmp_path, kind):
+    _cow_synthetic_pipeline(tmp_path, kind)
+
+
+@pytest.mark.parametrize("kind", ["json", "1", "2"])
+@pytest.mark.parametrize("levels", [4, 7], ids=["long_control_suffix", "long_canonical_db"])
+def test_cow_synthetic_pipeline_deep_unicode_new_process(tmp_path, kind, levels):
+    root = tmp_path.joinpath(*(["合法深層資料夾" * 3] * levels))
+    if os.name == "nt" and levels == 7:
+        assert len(str(internal_layout(root).watchlist_db)) > 260
+    _cow_synthetic_pipeline(root, kind, new_process=True)
+
+
+def _cow_synthetic_pipeline(tmp_path, kind, *, new_process=False):
     import json
     from app_module.personal_data_paths import WatchlistCowControlPaths
     from app_module.watchlist_cow_activation import activate_watchlist_sqlite, rollback_watchlist_sqlite, PersonalWatchlistCowService
     from data_module.watchlist_json_cow import convert_watchlist_json
-    from data_module.watchlist_sqlite_cow import convert_watchlist_sqlite
+    from data_module.watchlist_sqlite_cow import convert_watchlist_sqlite, _io_path, _stat_record
     from test_watchlist_cow_activation import _build_source
     paths = internal_layout(tmp_path)
     source = paths.legacy_output_root / "watchlist" / ("default.json" if kind == "json" else "watchlists.db")
-    source.parent.mkdir(parents=True)
+    _io_path(source.parent).mkdir(parents=True)
     if kind == "json":
-        source.write_text(json.dumps({"version": 1, "name": "fixture", "items": [{
+        _io_path(source).write_text(json.dumps({"version": 1, "name": "fixture", "items": [{
             "stock_code": "2330", "stock_name": "fixture", "added_at": "2026-10-01T09:00:00",
             "source": "manual", "notes": "synthetic", "tags": [],
         }], "created_at": "2026-10-01T09:00:00", "updated_at": "2026-10-01T09:00:00"}), encoding="utf-8")
     else:
-        _build_source(source, int(kind))
-    before = source.read_bytes(), source.stat().st_mtime_ns
+        _build_source(_io_path(source), int(kind))
+    before = _io_path(source).read_bytes(), _io_path(source).stat().st_mtime_ns
+    source_pin = _stat_record(source)
     controls = WatchlistCowControlPaths(paths, source)
     converter = convert_watchlist_json if kind == "json" else convert_watchlist_sqlite
     result = converter(source, paths.watchlist_db, control_paths=controls)
     assert result["status"] == "ready", result
+    assert result["source_path"] == str(source)
+    assert result["source_stat"] == source_pin
+    assert result["source_sha256"] == hashlib.sha256(before[0]).hexdigest()
+    receipt_bytes = _io_path(controls.receipt_path).read_bytes()
+    assert result["target_path"] == str(paths.watchlist_db)
+    if new_process and os.name == "nt":
+        assert len(str(controls.source_backup_path)) > 260
+        assert len(str(paths.watchlist_db)) > 200
     assert activate_watchlist_sqlite(source, paths.watchlist_db, control_paths=controls)["status"] == "activated"
     service = PersonalWatchlistCowService(controls)
     loaded = service.load("default")
@@ -439,13 +463,98 @@ def test_cow_synthetic_pipeline_with_new_internal_root(tmp_path, kind):
     payload["items"].append({"stock_code": "9999", "stock_name": "synthetic", "source": "manual",
                              "added_at": "2026-10-01T09:00:00", "tags": [], "notes": "fixture"})
     assert service.save("default", payload, expected_revision=revision) == revision + 1
-    target_bytes = paths.watchlist_db.read_bytes()
+    target_bytes = _io_path(paths.watchlist_db).read_bytes()
+    assert hashlib.sha256(target_bytes).hexdigest() != result["target_sha256"]
+    if new_process:
+        _assert_cow_new_process(paths.market_root, source, revision + 1, "active", before)
     assert rollback_watchlist_sqlite(source, control_paths=controls)["status"] == "rolled_back"
-    assert paths.watchlist_db.read_bytes() == target_bytes
-    assert (source.read_bytes(), source.stat().st_mtime_ns) == before
-    assert not source.with_name(source.name+".cow-active.json").exists()
-    assert not paths.market_root.joinpath("sqlite/twstock.db").exists()
-    assert controls.marker_path.exists() and controls.receipt_path.exists()
+    assert _io_path(paths.watchlist_db).read_bytes() == target_bytes
+    assert (_io_path(source).read_bytes(), _io_path(source).stat().st_mtime_ns) == before
+    assert _stat_record(source) == source_pin
+    assert _io_path(controls.receipt_path).read_bytes() == receipt_bytes
+    assert not _io_path(source.with_name(source.name+".cow-active.json")).exists()
+    assert not _io_path(paths.market_root.joinpath("sqlite/twstock.db")).exists()
+    assert _io_path(controls.marker_path).exists() and _io_path(controls.receipt_path).exists()
+    if new_process:
+        _assert_cow_new_process(paths.market_root, source, revision + 1, "rolled_back", before)
+
+
+def _assert_cow_new_process(market_root, source, revision, status, before):
+    script = """
+import hashlib, sys
+from pathlib import Path
+from app_module.personal_data_paths import resolve_personal_data_paths, WatchlistCowControlPaths
+from app_module.watchlist_cow_activation import resolve_watchlist_sqlite_activation, PersonalWatchlistCowService
+from data_module.watchlist_repository import WatchlistRepository
+from data_module.watchlist_sqlite_cow import _io_path
+market, source = Path(sys.argv[1]), Path(sys.argv[2])
+paths = resolve_personal_data_paths(market, personal_root=market / 'personal', environ={})
+controls = WatchlistCowControlPaths(paths, source)
+assert resolve_watchlist_sqlite_activation(source, control_paths=controls)['status'] == sys.argv[4]
+loaded = WatchlistRepository(paths.watchlist_db).load('default')
+assert loaded is not None and loaded[1] == int(sys.argv[3])
+assert loaded[0]['items'][-1]['stock_code'] == '9999'
+if sys.argv[4] == 'active':
+    assert PersonalWatchlistCowService(controls).load('default') == loaded
+assert hashlib.sha256(_io_path(source).read_bytes()).hexdigest() == sys.argv[5]
+assert _io_path(source).stat().st_mtime_ns == int(sys.argv[6])
+"""
+    completed = subprocess.run(
+        [sys.executable, "-X", "utf8", "-B", "-c", script, str(market_root), str(source),
+         str(revision), status, hashlib.sha256(before[0]).hexdigest(), str(before[1])],
+        capture_output=True, text=True, timeout=30,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows 深路徑 I/O 防禦")
+@pytest.mark.parametrize("which", ["source_backup", "rollback", "receipt_stage"])
+def test_deep_unicode_control_hardlinks_rejected(tmp_path, which):
+    from app_module.personal_data_paths import WatchlistCowControlPaths
+    from data_module.watchlist_sqlite_cow import _io_path
+    root = tmp_path.joinpath(*(["合法深層資料夾" * 3] * 4))
+    paths = internal_layout(root)
+    source = paths.legacy_output_root / "watchlist/default.json"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"synthetic source")
+    controls = WatchlistCowControlPaths(paths, source)
+    controls.prepare_directories()
+    target = {"source_backup": controls.source_backup_path,
+              "rollback": controls.backup_marker_path("a" * 32),
+              "receipt_stage": controls.receipt_path.with_name(
+                  controls.receipt_path.name + ".stage-" + "a" * 32)}[which]
+    assert len(str(target)) > 260
+    os.link(_io_path(source), _io_path(target))
+    with pytest.raises(PersonalDataPathError, match="hardlinked"):
+        controls.assert_personal(target)
+    assert source.read_bytes() == b"synthetic source"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows 深路徑 reparse 防禦")
+def test_deep_unicode_control_directory_junction_rejected(tmp_path):
+    from app_module.personal_data_paths import WatchlistCowControlPaths
+    from data_module.watchlist_sqlite_cow import _io_path
+    root = tmp_path.joinpath(*(["合法深層資料夾" * 3] * 4))
+    paths = internal_layout(root)
+    source = paths.legacy_output_root / "watchlist/default.json"
+    _io_path(source.parent).mkdir(parents=True)
+    _io_path(source).write_bytes(b"synthetic source")
+    controls = WatchlistCowControlPaths(paths, source)
+    controls.prepare_directories()
+    outside = tmp_path / "synthetic_outside"
+    outside.mkdir()
+    link = paths.personal_root / ("linked_directory_" + "x" * 70)
+    assert len(str(link)) > 260
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(_io_path(link)), str(outside)],
+        capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    assert result.returncode == 0, result.stderr
+    with pytest.raises(PersonalDataPathError, match="linked_path"):
+        controls.assert_personal(link / "guard.json")
+    assert list(outside.iterdir()) == []
+    assert _io_path(source).read_bytes() == b"synthetic source"
 
 
 @pytest.mark.parametrize("which", ["db", "marker", "receipt", "lock", "source_backup", "rollback"])

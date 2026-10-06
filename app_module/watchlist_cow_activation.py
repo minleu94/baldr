@@ -20,6 +20,7 @@ from typing import Any, Callable, Iterator, Mapping
 from uuid import uuid4
 
 from data_module.watchlist_repository import WatchlistRepository
+from data_module.watchlist_sqlite_cow import _io_path, _sqlite_uri, _canonical_path
 from app_module.personal_data_paths import PersonalDataPathError, WatchlistCowControlPaths
 
 
@@ -76,7 +77,7 @@ def _check_controls(source: str | Path, target: str | Path, receipt: str | Path 
         # 舊指向不自動搬移；明示新控制平面時避免兩套writer身分。
         if Path(source).suffix.lower() != ".json" and _legacy_json_sources(Path(source)):
             raise WatchlistCowActivationError("legacy_json_scope_requires_review")
-        if Path(source).with_name(Path(source).name + ".cow-active.json").exists():
+        if _io_path(Path(source).with_name(Path(source).name + ".cow-active.json")).exists():
             raise WatchlistCowActivationError("legacy_control_marker_requires_review")
     except WatchlistCowActivationError:
         raise
@@ -106,11 +107,11 @@ def watchlist_cow_activation_source_candidates(
     if control_paths is not None:
         _check_controls(control_paths.source_path, canonical_repository_path, None, control_paths)
         return ((control_paths.source_path, _control_output(control_paths.marker_path, control_paths)),)
-    canonical = Path(canonical_repository_path).expanduser().resolve(strict=False)
+    canonical = _resolved(canonical_repository_path, must_exist=False)
     candidates: dict[Path, Path] = {canonical: cow_activation_marker_path(canonical, **_control_kwargs(control_paths))}
     suffix = ".cow-active.json"
     try:
-        markers = canonical.parent.glob(f"*{suffix}")
+        markers = (canonical.parent / path.name for path in _io_path(canonical.parent).glob(f"*{suffix}"))
         for marker in markers:
             if marker == candidates[canonical]:
                 continue
@@ -118,7 +119,7 @@ def watchlist_cow_activation_source_candidates(
                 continue
             source = marker.with_name(marker.name[: -len(suffix)])
             if source.suffix.lower() == ".json":
-                resolved_source = source.resolve(strict=False)
+                resolved_source = _resolved(source, must_exist=False)
                 candidates[resolved_source] = marker
     except OSError:
         pass
@@ -138,7 +139,7 @@ def cow_conversion_receipt_path(target_path: str | Path, *, control_paths: Watch
 def _resolved(path: str | Path, *, must_exist: bool = True) -> Path:
     value = Path(path).expanduser()
     try:
-        return value.resolve(strict=must_exist)
+        return _canonical_path(value, strict=must_exist)
     except (OSError, RuntimeError) as exc:
         raise WatchlistCowActivationError("path_unavailable", str(value)) from exc
 
@@ -146,7 +147,7 @@ def _resolved(path: str | Path, *, must_exist: bool = True) -> Path:
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     try:
-        with path.open("rb") as handle:
+        with _io_path(path).open("rb") as handle:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(chunk)
     except OSError as exc:
@@ -179,7 +180,7 @@ def _loads_strict_json(raw: bytes) -> Any:
 
 def _read_json(path: Path, code: str) -> tuple[dict[str, Any], bytes]:
     try:
-        with path.open("rb") as handle:
+        with _io_path(path).open("rb") as handle:
             raw = handle.read(1024 * 1024 + 1)
         payload = _loads_strict_json(raw)
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
@@ -212,14 +213,14 @@ def _sidecars(path: Path) -> tuple[Path, ...]:
 
 
 def _assert_no_sidecars(path: Path) -> None:
-    present = [str(sidecar) for sidecar in _sidecars(path) if sidecar.exists()]
+    present = [str(sidecar) for sidecar in _sidecars(path) if _io_path(sidecar).exists()]
     if present:
         raise WatchlistCowActivationError("sqlite_sidecar_present", ", ".join(present))
 
 
 def _assert_writable_directory(path: Path) -> None:
     parent = path.parent
-    if not parent.is_dir() or not os.access(parent, os.W_OK):
+    if not _io_path(parent).is_dir() or not os.access(_io_path(parent), os.W_OK):
         raise WatchlistCowActivationError("readonly_config", str(parent))
 
 
@@ -229,7 +230,7 @@ def _assert_metadata_capacity(source: Path, target: Path, *payloads: bytes, cont
         from data_module.ml_storage_capacity import (
             evaluate_capacity, filesystem_usage, heavy_chain_capacity_budget,
         )
-        persistent = source.stat().st_size + target.stat().st_size
+        persistent = _io_path(source).stat().st_size + _io_path(target).stat().st_size
         added = sum(len(raw) for raw in payloads)
         decision = evaluate_capacity(
             budget=heavy_chain_capacity_budget(), usage=filesystem_usage(target.parent if control_paths is not None else source.parent),
@@ -246,7 +247,7 @@ def _assert_metadata_capacity(source: Path, target: Path, *payloads: bytes, cont
 def _sqlite_writer_locks(*paths: Path, control_paths: WatchlistCowControlPaths | None = None) -> Iterator[None]:
     """Keep reserved SQLite locks until the explicit marker is published."""
 
-    unique = sorted({path.resolve() for path in paths}, key=lambda path: str(path).casefold())
+    unique = sorted({_resolved(path) for path in paths}, key=lambda path: str(path).casefold())
     connections: list[sqlite3.Connection] = []
     try:
         for path in unique:
@@ -254,7 +255,7 @@ def _sqlite_writer_locks(*paths: Path, control_paths: WatchlistCowControlPaths |
             readonly_source = control_paths is not None and path == control_paths.source_path
             if control_paths is not None and not readonly_source:
                 _control_output(path, control_paths)
-            uri = f"{path.as_uri()}?mode={'ro' if readonly_source else 'rw'}"
+            uri = _sqlite_uri(path, "ro" if readonly_source else "rw")
             connection = sqlite3.connect(uri, uri=True, timeout=0, isolation_level=None)
             connections.append(connection)
             connection.execute("BEGIN" if readonly_source else "BEGIN IMMEDIATE")
@@ -304,7 +305,7 @@ def _source_stat_matches(receipt: Mapping[str, Any], source: Path) -> bool:
     if not isinstance(expected, Mapping):
         return False
     try:
-        actual_stat = source.stat()
+        actual_stat = _io_path(source).stat()
     except OSError:
         return False
     aliases: dict[str, int] = {
@@ -338,29 +339,29 @@ def _validate_receipt(
     control_paths: WatchlistCowControlPaths | None = None,
 ) -> tuple[dict[str, Any], Path, str]:
     _check_controls(source_path, target_path, receipt_path, control_paths)
-    source_input = Path(source_path).expanduser()
-    target_input = Path(target_path).expanduser()
-    if not source_input.exists():
+    source_input = Path(source_path).expanduser().absolute()
+    target_input = Path(target_path).expanduser().absolute()
+    if not _io_path(source_input).exists():
         raise WatchlistCowActivationError("source_missing", str(source_input))
-    if not target_input.exists():
+    if not _io_path(target_input).exists():
         raise WatchlistCowActivationError("missing_target", str(target_input))
-    if source_input.is_symlink() or target_input.is_symlink():
+    if _io_path(source_input).is_symlink() or _io_path(target_input).is_symlink():
         raise WatchlistCowActivationError("path_alias", "source/target 不可為 symbolic link")
     source = _resolved(source_path)
     target = _resolved(target_path)
-    receipt_input = Path(receipt_path).expanduser() if receipt_path is not None else cow_conversion_receipt_path(target, **_control_kwargs(control_paths))
-    if not receipt_input.is_file():
+    receipt_input = Path(receipt_path).expanduser().absolute() if receipt_path is not None else cow_conversion_receipt_path(target, **_control_kwargs(control_paths))
+    if not _io_path(receipt_input).is_file():
         raise WatchlistCowActivationError("missing_receipt", str(receipt_input))
     receipt = _resolved(receipt_input, must_exist=True)
     if source == target:
         raise WatchlistCowActivationError("target_not_independent", str(target))
-    if not source.is_file():
+    if not _io_path(source).is_file():
         raise WatchlistCowActivationError("source_unavailable", str(source))
-    if not target.is_file():
+    if not _io_path(target).is_file():
         raise WatchlistCowActivationError("missing_target", str(target))
     for path in (source, target):
         try:
-            file_stat = path.stat()
+            file_stat = _io_path(path).stat()
         except OSError as exc:
             raise WatchlistCowActivationError("path_unavailable", str(path)) from exc
         if getattr(file_stat, "st_nlink", 1) > 1:
@@ -397,9 +398,9 @@ def _validate_receipt(
         if source_format is None:
             _assert_no_writer(source, **_control_kwargs(control_paths))
         _assert_no_writer(target, **_control_kwargs(control_paths))
-    if source_format == JSON_SOURCE_FORMAT and source.stat().st_size != source_size:
+    if source_format == JSON_SOURCE_FORMAT and _io_path(source).stat().st_size != source_size:
         raise WatchlistCowActivationError("source_changed", str(source))
-    if source.stat().st_size != source_size or target.stat().st_size != target_size:
+    if _io_path(source).stat().st_size != source_size or _io_path(target).stat().st_size != target_size:
         raise WatchlistCowActivationError("stale_hash", "source／target size 與 receipt 不同")
     source_hash = _sha256(source)
     target_hash = _sha256(target)
@@ -506,8 +507,8 @@ def _legacy_marker_path(source: Path) -> Path:
 def _legacy_json_sources(source: Path) -> tuple[Path, ...]:
     excluded = (".cow-conversion.v1.json", ".cow-active.json")
     return tuple(sorted(
-        path.resolve()
-        for path in source.parent.glob("*.json")
+        _resolved(source.parent / path.name)
+        for path in _io_path(source.parent).glob("*.json")
         if not path.name.endswith(excluded) and ".cow-rollback." not in path.name
     ))
 
@@ -516,11 +517,11 @@ def _assert_json_source_scope(source: Path, target: Path) -> None:
     """Refuse one-file COW when service discovery would omit JSON siblings."""
 
     canonical = source.parent / "watchlists.db"
-    if canonical.exists():
+    if _io_path(canonical).exists():
         raise WatchlistCowActivationError("canonical_repository_exists", str(canonical))
-    if target.resolve(strict=False) == canonical.resolve(strict=False):
+    if _resolved(target, must_exist=False) == _resolved(canonical, must_exist=False):
         raise WatchlistCowActivationError("canonical_target_refused", str(target))
-    if _legacy_json_sources(source) != (source.resolve(strict=True),):
+    if _legacy_json_sources(source) != (_resolved(source),):
         raise WatchlistCowActivationError(
             "source_scope_ambiguous",
             "JSON COW 僅支援目錄內唯一的 watchlist JSON；目前來源範圍不完整",
@@ -551,7 +552,7 @@ def _original_state(
     *, control_paths: WatchlistCowControlPaths | None = None,
 ) -> dict[str, Any]:
     marker_path = _legacy_marker_path(source)
-    marker_raw = marker_path.read_bytes() if marker_path.is_file() else None
+    marker_raw = _io_path(marker_path).read_bytes() if _io_path(marker_path).is_file() else None
     json_sources = _legacy_json_sources(source)
     json_hashes = {str(path): _sha256(path) for path in json_sources}
     if source_format == JSON_SOURCE_FORMAT:
@@ -591,7 +592,7 @@ def _marker_lock(canonical: Path, *, control_paths: WatchlistCowControlPaths | N
     lock = _lock_path(canonical, **_control_kwargs(control_paths))
     token = uuid4().hex.encode("ascii")
     try:
-        descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        descriptor = os.open(_io_path(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     except FileExistsError as exc:
         raise WatchlistCowActivationError("active_writer", "activation marker lock 已存在") from exc
     except OSError as exc:
@@ -603,8 +604,8 @@ def _marker_lock(canonical: Path, *, control_paths: WatchlistCowControlPaths | N
     finally:
         os.close(descriptor)
         try:
-            if lock.read_bytes() == token:
-                lock.unlink()
+            if _io_path(lock).read_bytes() == token:
+                _io_path(lock).unlink()
         except OSError:
             pass
 
@@ -637,13 +638,13 @@ def watchlist_service_writer_guard(
     with _marker_lock(owner, **_control_kwargs(control_paths)):
         present_markers = [
             marker for _, marker in watchlist_cow_activation_source_candidates(canonical, **_control_kwargs(control_paths))
-            if marker.exists()
+            if _io_path(marker).exists()
         ]
         if len(present_markers) > 1:
             raise WatchlistCowActivationError("invalid_explicit_marker", "multiple COW markers found")
         if present_markers and present_markers[0] != marker_path:
             raise WatchlistCowActivationError("stale_service_pointer", str(present_markers[0]))
-        if marker_path.exists():
+        if _io_path(marker_path).exists():
             current, raw = _marker_payload(marker_path)
             source_format = current.get("source_format")
             if source_format not in (None, JSON_SOURCE_FORMAT):
@@ -724,7 +725,7 @@ def _verify_held_json_source(
         "device": int(getattr(actual_stat, "st_dev", 0)),
     }
     try:
-        path_stat = source_path.stat()
+        path_stat = _io_path(source_path).stat()
     except OSError as exc:
         raise WatchlistCowActivationError("source_changed", str(source_path)) from exc
     path_identity = {
@@ -750,18 +751,18 @@ def _atomic_create(path: Path, raw: bytes, *, control_paths: WatchlistCowControl
     temporary = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
     _control_output(temporary, control_paths)
     try:
-        with temporary.open("xb") as handle:
+        with _io_path(temporary).open("xb") as handle:
             handle.write(raw)
             handle.flush()
             os.fsync(handle.fileno())
-        os.link(temporary, path)
+        os.link(_io_path(temporary), _io_path(path))
     except FileExistsError as exc:
         raise WatchlistCowActivationError("marker_changed", str(path)) from exc
     except OSError as exc:
         raise WatchlistCowActivationError("marker_publish_failed", str(path)) from exc
     finally:
         try:
-            temporary.unlink()
+            _io_path(temporary).unlink()
         except FileNotFoundError:
             pass
 
@@ -773,16 +774,16 @@ def _atomic_replace(path: Path, raw: bytes, *, control_paths: WatchlistCowContro
     temporary = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
     _control_output(temporary, control_paths)
     try:
-        with temporary.open("xb") as handle:
+        with _io_path(temporary).open("xb") as handle:
             handle.write(raw)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
+        os.replace(_io_path(temporary), _io_path(path))
     except OSError as exc:
         raise WatchlistCowActivationError("marker_publish_failed", str(path)) from exc
     finally:
         try:
-            temporary.unlink()
+            _io_path(temporary).unlink()
         except FileNotFoundError:
             pass
 
@@ -814,7 +815,7 @@ def _validate_active_marker(canonical: Path, marker: Mapping[str, Any], *, contr
         raise WatchlistCowActivationError("invalid_explicit_marker", "source 必須是 canonical repository path")
     backup_path = _resolved(str(marker.get("backup_marker_path", "")))
     backup, _ = _read_json(backup_path, "rollback_marker_invalid")
-    backup_raw = backup_path.read_bytes()
+    backup_raw = _io_path(backup_path).read_bytes()
     if hashlib.sha256(backup_raw).hexdigest() != marker.get("backup_marker_sha256"):
         raise WatchlistCowActivationError("rollback_marker_invalid", "rollback marker hash 不符")
     if backup.get("schema_version") != BACKUP_SCHEMA or backup.get("activation_id") != marker.get("activation_id"):
@@ -862,7 +863,7 @@ def _validate_active_marker(canonical: Path, marker: Mapping[str, Any], *, contr
     # active期間 source 必須逐 byte 不變；rollback 後 v2 已重新成為
     # 正常 writer，之後的合法 append 不會令 COW pointer 失效。
     if source_format == JSON_SOURCE_FORMAT:
-        if (source.parent / "watchlists.db").exists():
+        if _io_path(source.parent / "watchlists.db").exists():
             raise WatchlistCowActivationError(
                 "canonical_repository_exists", str(source.parent / "watchlists.db")
             )
@@ -921,7 +922,7 @@ def resolve_watchlist_sqlite_activation(canonical_repository_path: str | Path, *
             _check_controls(canonical_repository_path, control_paths.personal_paths.watchlist_db, None, control_paths)
         canonical = _resolved(canonical_repository_path, must_exist=False)
         marker_path = cow_activation_marker_path(canonical, **_control_kwargs(control_paths))
-        if not marker_path.exists():
+        if not _io_path(marker_path).exists():
             return {"status": "inactive", "canonical_path": str(canonical), "marker_path": str(marker_path)}
         marker, raw = _marker_payload(marker_path)
         resolved = _validate_active_marker(canonical, marker, **_control_kwargs(control_paths))
@@ -1024,7 +1025,7 @@ def _revalidate_json_activation_under_lock(
         raise WatchlistCowActivationError("invalid_receipt", "JSON source identity mismatch")
     if receipt.get("source_sha256") != preview.get("source_sha256") or receipt.get("target_sha256") != preview.get("prepared_target_sha256"):
         raise WatchlistCowActivationError("invalid_receipt", "source/target hash pin changed")
-    if target.stat().st_size != _required_int(preview, "target_size_bytes") or _sha256(target) != preview.get("prepared_target_sha256"):
+    if _io_path(target).stat().st_size != _required_int(preview, "target_size_bytes") or _sha256(target) != preview.get("prepared_target_sha256"):
         raise WatchlistCowActivationError("stale_hash", str(target))
     _assert_json_source_scope(source, target)
     _detect(target, expected={3})
@@ -1127,7 +1128,7 @@ def activate_watchlist_sqlite(
     _cancel_if_requested(cancel_check)
     with _marker_lock(canonical, **_control_kwargs(control_paths)):
         _cancel_if_requested(cancel_check)
-        if marker_path.exists():
+        if _io_path(marker_path).exists():
             current = resolve_watchlist_sqlite_activation(canonical, **_control_kwargs(control_paths))
             if current.get("status") == "active" and current.get("target_path") == str(target_path_resolved):
                 return {**current, "status": "already_active"}
@@ -1230,7 +1231,7 @@ def _verify_original_state(
     mode = str(state.get("mode", ""))
     marker_path = _resolved(str(state.get("legacy_marker_path", source.with_name(source.name + ".active"))), must_exist=False)
     expected_marker = state.get("legacy_marker_raw_b64")
-    current_marker = marker_path.read_bytes() if marker_path.is_file() else None
+    current_marker = _io_path(marker_path).read_bytes() if _io_path(marker_path).is_file() else None
     if expected_marker is None:
         if current_marker is not None:
             raise WatchlistCowActivationError("original_marker_changed", str(marker_path))
@@ -1330,7 +1331,7 @@ def rollback_watchlist_sqlite(
         _check_controls(source, control_paths.personal_paths.watchlist_db, None, control_paths)
     canonical = _resolved(source)
     marker_path = cow_activation_marker_path(canonical, **_control_kwargs(control_paths))
-    if not marker_path.is_file():
+    if not _io_path(marker_path).is_file():
         return {"status": "already_rolled_back", "canonical_path": str(canonical)}
     resolved = resolve_watchlist_sqlite_activation(canonical, **_control_kwargs(control_paths))
     if resolved.get("status") == "blocked":

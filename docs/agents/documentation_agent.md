@@ -29,7 +29,7 @@
 - **`docs/00_core/DOCUMENTATION_INDEX.md`** - 文檔索引（文檔位置的 scoped authority）
 - **`docs/01_architecture/system_architecture.md`** - 系統架構（架構與模組邊界的 scoped authority）
 - **`docs/01_architecture/target_system_architecture.md`** - 理想目標架構；不得作為目前完成狀態依據
-- **`docs/07_guides/APPLICATION_MANUAL.md`** - 目前 8 個工作區與跨工作區操作的使用者權威
+- **`docs/07_guides/APPLICATION_MANUAL.md`** - 目前 9 個工作區與跨工作區操作的使用者權威
 - **`PROJECT_NAVIGATION.md`** - 專案導航（開發者功能導航）
 
 ### 容易被忽略但必須更新的文件

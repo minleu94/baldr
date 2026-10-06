@@ -25,6 +25,8 @@ $env:OUTPUT_ROOT = Join-Path $env:LOCALAPPDATA "baldr\reports"
 - [快速開始](docs/07_guides/QUICK_START.md)
 - [完整操作手冊](docs/07_guides/APPLICATION_MANUAL.md)
 - [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)
+- [文檔索引與全清單](docs/00_core/DOCUMENTATION_INDEX.md)
+- [資料資產用途與恢復](docs/03_data/STORAGE_ASSET_REGISTER_20261006.md)
 - [示例資料說明](examples/README.md)
 
 ## 開發與限制

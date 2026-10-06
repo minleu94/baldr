@@ -94,7 +94,7 @@ contracts可獨立建構且深凍結；無DataFrame/logger/callback/live handle�
 
 # 最終架構不變條件
 
-> 設計定案，尚未實作。唯一決策來源：[FINAL_TARGET_ARCHITECTURE](FINAL_TARGET_ARCHITECTURE.md)。以下 18 條是目標系統與後續實作 prompt 的強制規則；現況尚未全部符合。過渡違規只能以 [遷移退休帳](FINAL_MIGRATION_SEQUENCE.md) 的具名 owner／退出條件列管，不允許整包永久豁免。
+> 設計定案，尚未實作。唯一決策來源：[FINAL_TARGET_ARCHITECTURE](../FINAL_TARGET_ARCHITECTURE.md)。以下 18 條是目標系統與後續實作 prompt 的強制規則；現況尚未全部符合。過渡違規只能以 [遷移退休帳](../FINAL_MIGRATION_SEQUENCE.md) 的具名 owner／退出條件列管，不允許整包永久豁免。
 
 | ID | 必須遵守 | 驗證方式 |
 |---|---|---|
@@ -112,7 +112,7 @@ contracts可獨立建構且深凍結；無DataFrame/logger/callback/live handle�
 | INV-12 | 新保存採 create-only；同 ID/hash 冪等、異 hash 拒絕；metadata 不進 execution hash；SQLite index 可重建。 | 並行保存、中斷後補索引、改名不改 payload hash。 |
 | INV-13 | 歷史顯示只讀原結果；歷史重算建立新 result_id 並保留 parent/版本；兩模式 policy 差異不得被共用 engine 偷改。 | 無 live lookup readback、日期/母體/策略差異 fixtures。 |
 | INV-14 | ML prepare 明示固定資料／模型版本；build/infer 不暗讀 live source。初輪 frozen reads 僅依列管例外維持，不能假稱已隔離。 | 來源更新 barrier、exact candidate/date/cost/receipt 驗證。 |
-| INV-15 | 舊 ML ordered schema、dtype、scale、mask、row/fold refs、transform、source identity、class path 與 safety gate 不自動演進。 | [ML 契約](FINAL_ML_COMPATIBILITY_CONTRACT.md) 的相容正反例；新 feature 明示 opt-in 新版本。 |
+| INV-15 | 舊 ML ordered schema、dtype、scale、mask、row/fold refs、transform、source identity、class path 與 safety gate 不自動演進。 | [ML 契約](../FINAL_ML_COMPATIBILITY_CONTRACT.md) 的相容正反例；新 feature 明示 opt-in 新版本。 |
 | INV-16 | composition 建立並管理資源；runtime 只排程／治理；UI/CLI 呼叫相同用例。 | 單一實例／生命週期、取消與重試、入口測試。 |
 | INV-17 | 過渡 runtime 機制必有 ID、owner、caller、刪除條件；新舊不留雙引擎。永久歷史 decoder／artifact ABI 支援分帳。 | 全 caller inventory、動態/serialized 依賴、退休帳逐項驗收。 |
 | INV-18 | 設計完成、測試通過、工程完成與 formal/promoted/production 權限分開；不可用重構通過替代產品 Gate。 | 驗收記錄、權限拒絕測試、Scoped SSOT 核對。 |

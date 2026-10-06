@@ -1,5 +1,11 @@
 # baldr 完整操作手冊
 
+## 現況判讀（2026-10-06 文檔整理）
+
+目前已接受 U1 有限 BBANDS30 上軌比較與 U2 H20 gross；個人 H20 已啟用，保存 10 股完整 cohort／gross 排序／exact 返回驗收過。gross 報酬 head 與 canonical 機率 head 分開，Brier 2730 對 null 2500 未勝；工程可讀不代表模型品質合格。自然 10 pending／0 成熟，下一原 Task 2026-10-07 12:45 UTC／05:45 PDT 待真正自動 run，Native 真人易用性仍未驗。後文日期化「U1/U2 等答覆／尚未啟用」只描述當時範圍，現況以 [Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與具名收據為準；不改原步驟、guard 或原失敗證據。
+
+資料 roots、冷封存／研究／備份用途與恢復界線見 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)。本輪只有文檔整理，沒有改 Task、資料或模型；cleanup 只移 8 個空目錄、0 bytes。
+
 ## 發布使用者首次安裝補充
 
 新環境使用Windows x64／Python3.11與requirements-runtime；開發才裝requirements-dev。安裝前設PYTHONUTF8=1；在啟動的同一PowerShell分別設定DATA_ROOT與OUTPUT_ROOT，不依預設機器路徑。程式目前不自動load_dotenv，複製.env不等於生效。config／logging／更新／保存會寫入roots；首次缺庫／缺表／來源不可用保持unknown／missing，按官方来源與所需日期更新，不用他人的模型或人造fixture補資格。示例CSV只是形狀，不是可載入UI demo。
@@ -2454,7 +2460,7 @@ $policy = Join-Path $run 'app_config\personal_use_policy.json'
 
 成熟 outcome 的價格讀回目前要求穩定、已 checkpoint、沒有 `-wal`／`-shm` sidecar 的隔離 SQLite 副本。正式資料庫若仍有 WAL/SHM，請勿為了讓評估通過而手動 checkpoint 或改寫正式資料；請依核准的 SQLite backup 流程建立隔離副本，確認副本在評估期間不會被替換或寫入，再於來源選擇器明確指定。若來源帶 sidecar 或在讀取期間變動，系統會拒絕成熟讀回；這是來源無法安全重驗，不代表模型無效。m11 的 19 筆 pending 是該次 Stage C summary 記錄的來源／成本證據不完整，並非因 WAL/SHM 被拒。
 
-此評估只限個人研究來源，非官方歷史 PIT 可得時間證明；其 20 個交易日標籤是決策日到後續收盤的 close-to-close 觀察，不是成交損益、模擬成交或持倉報酬。固定 50% null baseline 只作明示比較基準，不把 `rule_score` 當機率。畫面不寫 Journal／Outcome、不回補歷史、不切換模型。更換結果、重跑推薦或更換任一來源檔時，先前的評估明細會清除；來源錯誤時請重新確認精確保存結果、capture 根目錄及 Stage C summary，而不要改名、重算或複製原摘要。實來源與 isolated UI 邊界的測試證據見[WP3 Journey choice 與 Stage C UI QA](../06_qa/WP3_WATCHLIST_QA_20260928.md#2026-09-28-personal-model-assessment-ui-follow-up)。
+此評估只限個人研究來源，非官方歷史 PIT 可得時間證明；其 20 個交易日標籤是決策日到後續收盤的 close-to-close 觀察，不是成交損益、模擬成交或持倉報酬。固定 50% null baseline 只作明示比較基準，不把 `rule_score` 當機率。畫面不寫 Journal／Outcome、不回補歷史、不切換模型。更換結果、重跑推薦或更換任一來源檔時，先前的評估明細會清除；來源錯誤時請重新確認精確保存結果、capture 根目錄及 Stage C summary，而不要改名、重算或複製原摘要。實來源與 isolated UI 邊界的測試證據見[WP3 Journey choice 與 Stage C UI QA](../06_qa/WP3_WATCHLIST_QA_20260928.md#2026-09-28-個人模型評估-ui-follow-up)。
 
 ### 9.9.2 Historical Evidence Replay（歷史排程重放）
 

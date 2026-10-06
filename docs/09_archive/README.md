@@ -1,7 +1,7 @@
 # 歸檔文檔目錄
 
 > **歷史記錄和總結文檔（歸檔）**
-> **最後整理**：2026-07-12
+> **最後整理**：2026-10-06
 
 本目錄包含歷史記錄、總結報告等歸檔文檔。這些文檔主要用於記錄歷史，不影響日常使用。
 歸檔文件中的狀態、下一步、Phase 或完成度描述，若與 Snapshot、6M Roadmap、版本 Roadmap 或 Architecture 衝突，一律以 active authority 為準。
@@ -84,6 +84,19 @@
 
 - **`LUNA_B_ENVIRONMENT_2026_09_07.md`**
   - 2026-09-07 Luna B 開發環境與依賴基線記錄快照；現行環境指引以 `docs/07_guides/INSTALL_GUIDE.md` 與 requirements 檔為準。
+
+## 開發計畫與規格追溯
+
+`docs/superpowers/plans/`、`specs/` 與 `prompts/` 中既有文件已統一標記為歷史追溯資料。它們的原 bytes 和舊路徑保留，避免打斷既有 QA 收據、phase 文件與其他 plan/spec 內的交叉引用；位置與日期、狀態判讀、現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。這項整理不代表各計畫均已完成；結果仍以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
+
+## 2026-10-06 治理入口整理原文快照
+
+下列全文快照保存此次入口與狀態文案整理前的原始 tracked bytes；改寫後的目前入口仍以各自現行文件為準：
+
+- [整理前 PROJECT_SNAPSHOT](PROJECT_SNAPSHOT_HISTORY_20261006.md)
+- [整理前 DOCUMENTATION_INDEX](DOCUMENTATION_INDEX_HISTORY_20261006.md)
+- [整理前 docs README 與索引前言](DOCUMENTATION_ENTRY_HISTORY_20261006.md)
+- [文件重新整理 mapping 與處置清冊](DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)
 
 ## ⚠️ 注意
 

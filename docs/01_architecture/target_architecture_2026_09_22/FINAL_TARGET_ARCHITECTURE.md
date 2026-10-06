@@ -243,7 +243,7 @@ artifact 是結果真值，SQLite 是可重建查詢索引；兩者不是同一�
 | 已存在的程式／symbol | 證據對最終契約的影響 |
 |---|---|
 | [RecommendationService.run_recommendation](../../../app_module/recommendation_service.py) | 大型 app orchestration 仍有 list/latest-state 相容輸出；rule DecisionBatch/assessment/item/rule-context facts 不再由其 `last_*`／matrix 重建（R019 REC-01 窄 bridge CLOSED），完整 execution 是必要邊界。私有 source-orchestration body 與 invocation capture 仍保留；clock/error/progress 屬 app execution telemetry，ML availability/projection receipt capture 由 TMP-ML-01／R026 列管。 |
-| [RecommendationSaveRequest.build_result／_regime_snapshot](../../../app_module/recommendation_save_coordinator.py) | save 仍讀 service state 並重新 detect regime；必須改為保存執行時快照 |
+| `RecommendationSaveRequest.build_result／_regime_snapshot`（歷史 `app_module/recommendation_save_coordinator.py`，見[恢復 mapping](../../09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md#壞鏈處理)） | save 仍讀 service state 並重新 detect regime；必須改為保存執行時快照 |
 | [RecommendationDTO／RecommendationResultDTO](../../../app_module/dtos/__init__.py) | 業務列、ML projection、wire mapping 混合；不能直接整包搬入 decision |
 | [RecommendationRepository.save_result／save_result_create_only](../../../app_module/recommendation_repository.py) | 普通路徑可 replace；新 API 明確指定 create-only，不能混稱現況已不可變 |
 | [RecommendationDataFrameProvider.__call__](../../../app_module/recommendation_dataframe_provider.py) | 內部 DataFrame row-dict engine／bridge 與獨立 policy；遷移後退役這條內部計算路徑並保留原 replay policy。外層 `RecommendationSnapshotDTO.recommendations` v1 list 是 live compatibility projection，現存 portfolio 與 factor-manifest consumers 須保持可用。 |

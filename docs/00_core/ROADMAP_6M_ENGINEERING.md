@@ -1,5 +1,7 @@
 # baldr 未來六個月工程 Roadmap
 
+> **2026-10-06 文檔判讀補充**：下文 2026-09-17 等 bounded status 為歷史時點，不覆蓋後來已接受的 U1/U2／H20 使用狀態。當前啟用與剩餘驗收看 [Snapshot](PROJECT_SNAPSHOT.md)；工程 Roadmap Gate／自然資格／長期 maturity 不因文檔整理升級。必要操作／調度指引仍保留於 [文檔索引](DOCUMENTATION_INDEX.md#必要調度與維運)。
+
 > **2026-07-12 engineering package update**：Gate 2–7 的純工程 deliverables 已依獨立 slices 落地並由 `scripts/verify_gate_2_to_7_closeout.py` 驗證；external human/time/license/evidence/ML gates 尚未因此完成。後續執行重心轉為 [Gate 2–7 External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)，不得重做工程模擬來折抵真實時間或人工決議。
 
 > **2026-07-14 evidence rehearsal update**：replay / P0 source shadow / ML shadow / lineage 的唯讀工程預演底座狀態為 `engineering_rehearsal_complete`；coverage、quality、missingness 與 blocker 可重跑，但不折抵任何 Gate 2–7 external human/time/license/evidence/ML 需求。詳見 [Evidence Rehearsal Engineering Closeout](../06_qa/EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md)。

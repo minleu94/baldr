@@ -1,5 +1,7 @@
 # 系統架構
 
+> **2026-10-06 現況判讀入口**：現行啟用／收據與下一自然排程見 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)。本頁日期化 caller／工程段落保留各自 fixed-head 的架構證據；早期 U1/U2 pending／私人未啟用／舊邊界問題不能覆蓋後來具名接受。H20 gross consumer 與 canonical 機率 head 分域，自然 10 pending／0 成熟，Native 真人／下一 Task 未驗；目標分冊不自動代表 current。資料根與冷封存依 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)，不得從架構整理取得資料清理或模型 promotion 權限。
+
 ## 2026-10-06 個人 H20 原模型讀取增量
 
 `H20GrossModelContract` 與 `PersonalH20GrossInference` 沿原 artifact loader 的 captured-manifest／same-bytes decode。受控 composition 注入原 `read_recommendation_training_lineage`，模型 final-fold training_as_of 與 merged-lineage cutoff 分域；candidate.training_cutoff 精確綁後者，兩者不得晚於決策日。原中文 lineage canonical bytes 語義保持。中央 preflight 只讀可信 fit receipt 的 raw pin→原 sidecars→原 verifier→typed contract，不重造 lineage、不載 artifact或啟 Task。

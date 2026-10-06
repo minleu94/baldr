@@ -655,6 +655,7 @@ class RecommendationNaturalOutcomeService:
                 required_source_contract=required_source_contract,
                 capture=capture,
                 evaluation_at=evaluation_clock,
+                source_binding_verifier=source_binding_verifier,
             )
         except _CurrentObservedOutcomePending as exc:
             body = _current_observed_outcome_receipt_body(
@@ -982,6 +983,7 @@ class RecommendationNaturalOutcomeService:
         capture: Mapping[str, Any],
         evaluation_at: datetime,
         expected_session_proof: Mapping[str, Any] | None = None,
+        source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
     ) -> "_CurrentObservedOutcomeSource":
         source_gate = _source_contract_gate(required_source_contract)
         if source_gate is not None and source_gate[0] is not True:
@@ -1039,6 +1041,7 @@ class RecommendationNaturalOutcomeService:
                 if isinstance(row, Mapping)
             ),
             capture_at=str(snapshot.get("observed_at") or ""),
+            source_binding_verifier=source_binding_verifier,
         )
         from ml_module.recommendation_calibration_evidence import (
             load_current_observed_context_from_pinned_snapshot,
@@ -5193,6 +5196,7 @@ def verify_current_observed_outcome_receipt(
         capture=capture,
         evaluation_at=evaluation_at,
         expected_session_proof=resolver_proof,
+        source_binding_verifier=source_binding_verifier,
     )
     if _hash_payload(source.to_receipt_dict()) != _hash_payload(dict(current_snapshot)):
         raise ValueError("current-observed outcome source snapshot proof changed")

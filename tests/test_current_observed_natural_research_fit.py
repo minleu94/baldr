@@ -904,8 +904,19 @@ def test_outcome_builder_and_readback_thread_custody_port(monkeypatch, tmp_path)
     monkeypatch.setattr(evidence, "verify_current_observed_input_capture", capture_reader)
     source, calls, values, contract = _run_loader(monkeypatch, tmp_path, capture)
     service = outcome.RecommendationNaturalOutcomeService.__new__(outcome.RecommendationNaturalOutcomeService)
+    original_loader = outcome.RecommendationNaturalOutcomeService._load_current_observed_outcome_source
+    def binding_reader(*args, source_binding_verifier=None, **kwargs):
+        assert source_binding_verifier is port
+        seen.append("source_binding")
+    monkeypatch.setattr(outcome, "_verify_source_contract_binding", binding_reader)
+    def source_reader(self, *, source_binding_verifier=None, **kwargs):
+        assert source_binding_verifier is port
+        original_loader(self, source_binding_verifier=source_binding_verifier,
+                        expected_session_proof=values["proof"],
+                        **{key: value for key, value in kwargs.items() if key != "expected_session_proof"})
+        return source
     monkeypatch.setattr(outcome.RecommendationNaturalOutcomeService,
-                        "_load_current_observed_outcome_source", lambda self, **kwargs: source)
+                        "_load_current_observed_outcome_source", source_reader)
     receipt_path = tmp_path / "recommendation_learning" / "current_observed_outcomes" / CAPTURE_DATE.isoformat() / "port-receipt.json"
     original_bytes = values["database_path"].read_bytes()
     receipt = service.build_current_observed_outcomes_for_capture(
@@ -918,7 +929,7 @@ def test_outcome_builder_and_readback_thread_custody_port(monkeypatch, tmp_path)
         source_binding_verifier=port)
     assert verified["verification_status"] == "verified"
     assert verified["outcomes"] == receipt["outcomes"]
-    assert seen == ["capture", "capture"]
+    assert seen == ["capture", "source_binding", "capture", "source_binding"]
     assert values["database_path"].read_bytes() == original_bytes
     with pytest.raises(ValueError, match="verifier port is required"):
         outcome.verify_current_observed_outcome_receipt(receipt_path, capture_path=capture_path)

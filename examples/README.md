@@ -1,19 +1,7 @@
-# 示例程式
+# 示例資料
 
-此目錄包含舊版的示例程式，僅供參考。
+本repo不內附市場SQLite、私人持倉、模型、憑證或交易日曆。舊main_example.py不存在，不作啟動入口。
 
-## 文件說明
+`synthetic_price_shape.csv` 是人造資料形狀示例，symbol為DEMO，不是實際股票，price單位為字串Decimal、volume為整數；兩列不足以產生MA／BB或策略訊號。它不是可載入的UI demo，不具PIT、自然結果、訓練、正式或交易資格，不得匯入正式資料庫使缺件變綠。
 
-- `main_example.py` - 舊版主程式示例（使用 yfinance 下載數據）
-- `system_config.py` - 舊版系統配置
-
-## 注意
-
-這些文件已經被新的系統取代：
-- 目前主程式：`ui_qt/main.py`（PySide6 圖形界面）
-- 新的配置系統：`data_module/config.py`
-
-如需使用新系統，請參考：
-- `ui_qt/README.md` - UI 模組說明
-- `docs/07_guides/APPLICATION_MANUAL.md` - 完整操作手冊
-
+主入口為 [快速開始](../docs/07_guides/QUICK_START.md)，需要可用行情時依自己的資料來源與使用權取得；不把QA私人物件或有saved outputs的notebook當demo。

@@ -1,5 +1,11 @@
 # baldr 完整操作手冊
 
+## 發布使用者首次安裝補充
+
+新環境使用Windows x64／Python3.11與requirements-runtime；開發才裝requirements-dev。安裝前設PYTHONUTF8=1；在啟動的同一PowerShell分別設定DATA_ROOT與OUTPUT_ROOT，不依預設機器路徑。程式目前不自動load_dotenv，複製.env不等於生效。config／logging／更新／保存會寫入roots；首次缺庫／缺表／來源不可用保持unknown／missing，按官方来源與所需日期更新，不用他人的模型或人造fixture補資格。示例CSV只是形狀，不是可載入UI demo。
+
+[安裝](INSTALL_GUIDE.md)與[快速開始](QUICK_START.md)為目前首次使用入口，後續原有操作／安全規範仍適用。
+
 ## 2026-10-06 收尾可用範圍與驗證
 
 找股票／個股研究／保存與返回、日K量MA與合格原記錄標記／精確表、觀察CAS、三帳分離、私人覆盤、有界歷史查找與來源重開，已按本輪受影響scope驗證。歷史結果超量／取消／來源改變照原錯誤恢復，不降低guard；明細見 ../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md。

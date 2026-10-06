@@ -66,3 +66,10 @@ bfe356114e3e6a61ecb35f8fb28ff9d12d2990a7→7c23b7c5，只採四新增owned檔；
 原sealedsource→真label/fair wrappers positive research_only/comparison(common2)→原unknown availability→waiting/mature0/完整分母，來源receipt bytes與mtime不變。另明示known-clock synthetic→原B13 public replay→freeze持久新程序prepare/newseal→maturity/monitor review_required→原control defaultpreview→真stop/dispatcher spy→freshprocess同rulehash且model未呼，原payload/pins保留。這兩路資格不互換；所有formal/training/PIT/natural/execution false，沒有正式Task、模型或registry寫入。
 
 B15穩定mandatory與四用途增量union尚待source_id三檔直接批准；該三檔仍未修改。metadata清冊只補本輪具名新增檔，範圍外176缺登錄保持failed，directbridge12不變。
+
+
+## B15 已准固定樹驗收
+
+父層明示不讓未批准source_id三檔停住其餘驗收。固定c9d57fc704fd441a3b25af697065d4d26a8d48ec：四用途64pass34.77s（含B07真執行保存／新程序與private review讀回）、Workbench85pass2.63s、validator25pass/4skip/0fail、full roots mypy839source無錯15.78s、100 changed Python compile與quant guard成功。非Native／真人／全App／全repo boundary PASS；之後三檔批准只重受影響子集，避免重開已過整條gate。
+
+raw receipt：output/qa/b15_four_journey_union_receipt_20261006.json、b15_mandatory_workbench_receipt_20261006.json、b15_update_validator_receipt_20261006.json、b15_full_roots_mypy_receipt_20261006.json、b15_compile_quant_receipt_20261006.json。XML/log hashes與15WP／9Stage／24UX逐項狀態見[BALDR有限移交](BALDR_CLOSEOUT_STATUS_20261006.md)。ML AST676files仍8真違例，精確後續scope與176清冊缺口／Paperproducer路由工程均具名，不自動豁免或當自然等待。

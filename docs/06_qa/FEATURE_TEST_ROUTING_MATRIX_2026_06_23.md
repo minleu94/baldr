@@ -218,3 +218,6 @@ test_market_csv_export62／test_export_market_csv_cli26／test_personal_data_pat
 
 
 2026-10-06 B14 composition已採：test_baldr_b14_shadow_evidence_composition 為portfolio/decision/runtime oracle，53案例raw/JUnit與兩路原報告／synthetic控制收據核對，不重跑原port47。父層明示先驗已准固定樹：四用途增量→Workbench→update validator→full roots mypy；source_id三檔仍blocked，後續若批准僅重受影響子集。176未登錄是其他工程分類缺口，並非全倉豁免；具名有限後續scope交父層裁定。
+
+
+同版c9d57fc7已准樹結果：四用途delta64、Workbench85、validator25/4skip、full roots mypy839、100 changed compile／quant通過。原固定樹lane收據各有scope，不累加案例； source_id三檔blocked不計通過。next有限工程scope及原9/24對照見[BALDR移交](BALDR_CLOSEOUT_STATUS_20261006.md)。

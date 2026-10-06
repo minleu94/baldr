@@ -272,3 +272,6 @@
 
 
 2026-10-06 B14 composition已採：test_baldr_b14_shadow_evidence_composition 為portfolio/decision/runtime oracle，53案例raw/JUnit與兩路原報告／synthetic控制收據核對，不重跑原port47。父層明示先驗已准固定樹：四用途增量→Workbench→update validator→full roots mypy；source_id三檔仍blocked，後續若批准僅重受影響子集。176未登錄是其他工程分類缺口，並非全倉豁免；具名有限後續scope交父層裁定。
+
+
+B15已准樹c9d57fc7工程checkpoint：四用途增量64與mandatory85／validator25+4skip／fullmypy839同版通過，無新增directbridge、無全App或Native資格。原source_id缺口仍blocked，8boundary/176未登錄/私人Paperproducerrouting是具名工程待辦，並非自動排除；完整scope見[BALDR移交](BALDR_CLOSEOUT_STATUS_20261006.md)。

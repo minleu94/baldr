@@ -209,3 +209,6 @@ UX23 registry readonly 整合：[QA](../06_qa/UX23_REGISTRY_INTEGRATION_20261006
 
 
 2026-10-06：[B14 evidence composition／原wrapper waiting與synthetic控制閉環](../06_qa/BALDR_B14_SHADOW_EVIDENCE_COMPOSITION_20261006.md)，含公開B13 replay、新程序seal、原報告pins、明示監測policy、CAS/I/O failclosed限制；正式模型／Task未接。
+
+
+[2026-10-06 BALDR十五包／九階段／二十四UX有限移交](../06_qa/BALDR_CLOSEOUT_STATUS_20261006.md)：已准固定樹驗收、source_id批准block、8boundary／176inventory／Paperproducer可修工程、U1/U2與敏感啟用／自然證據分開，下一有限包精確ownership提案；不是新roadmap。

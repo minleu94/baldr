@@ -600,6 +600,8 @@ class PatternAnalyzer:
         
         # 計算價格範圍用於後續比較
         price_range = np.max(prices) - np.min(prices)
+        if not np.isfinite(price_range) or price_range <= 0:
+            return []
         
         # 初始化結果列表
         triangles = []
@@ -656,16 +658,32 @@ class PatternAnalyzer:
                 except:
                     # 如果擬合失敗，則跳過
                     continue
+
+                fit_values = (
+                    upper_slope,
+                    upper_intercept,
+                    upper_r_squared,
+                    lower_slope,
+                    lower_intercept,
+                    lower_r_squared,
+                )
+                if not all(np.isfinite(value) for value in fit_values):
+                    continue
                 
                 # 檢查R方值是否達到最低要求
                 if upper_r_squared < min_r_squared or lower_r_squared < min_r_squared:
                     continue
                 
                 # 檢查趨勢線的交點是否在合理範圍內
-                try:
-                    intersection_x = (lower_intercept - upper_intercept) / (upper_slope - lower_slope)
-                except:
-                    # 如果趨勢線平行，則不是三角形
+                slope_delta = upper_slope - lower_slope
+                if not np.isfinite(slope_delta) or slope_delta == 0:
+                    continue
+                with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                    intersection_x = np.divide(
+                        lower_intercept - upper_intercept,
+                        slope_delta,
+                    )
+                if not np.isfinite(intersection_x):
                     continue
                 
                 # 檢查交點是否在窗口內或窗口後不遠處
@@ -677,11 +695,23 @@ class PatternAnalyzer:
                 # 計算三角形起點 and 終點的高度（上下趨勢線之間的距離）
                 start_height = abs((upper_slope * actual_start_idx + upper_intercept) - (lower_slope * actual_start_idx + lower_intercept))
                 end_height = abs((upper_slope * actual_end_idx + upper_intercept) - (lower_slope * actual_end_idx + lower_intercept))
-                
-                # 檢查三角形是否足夠收斂（終點高度應顯著小於起點高度）
-                if end_height > start_height or end_height / start_height > max_height_converge:
+                if (
+                    not np.isfinite(start_height)
+                    or not np.isfinite(end_height)
+                    or start_height <= 0
+                ):
                     continue
-                
+
+                with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                    convergence_ratio = np.divide(end_height, start_height)
+                    height_ratio = np.divide(start_height, price_range)
+                if not np.isfinite(convergence_ratio) or not np.isfinite(height_ratio):
+                    continue
+
+                # 檢查三角形是否足夠收斂（終點高度應顯著小於起點高度）
+                if end_height > start_height or convergence_ratio > max_height_converge:
+                    continue
+
                 # 檢查三角形高度是否足夠明顯
                 if start_height < min_height_ratio * price_range:
                     continue
@@ -777,8 +807,8 @@ class PatternAnalyzer:
                     'intersection_x': intersection_x,
                     'start_height': start_height,
                     'end_height': end_height,
-                    'height_ratio': start_height / price_range,
-                    'convergence_ratio': end_height / start_height,
+                    'height_ratio': height_ratio,
+                    'convergence_ratio': convergence_ratio,
                     'upper_touches': upper_touches,
                     'lower_touches': lower_touches,
                     'volume_pattern': volume_pattern,

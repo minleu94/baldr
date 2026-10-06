@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, ROUND_HALF_EVEN
 import dis
+import errno
 import gzip
 import hashlib
 import json
@@ -39,6 +40,9 @@ from data_module.ml_storage_capacity import (
     directory_size_bytes as capacity_directory_size_bytes,
     preflight_capacity,
 )
+from data_module.ml_research_output_boundary import (
+    resolve_ml_research_output_path,
+)
 from data_module.ml_pit_shared_block_resolver import resolve_pit_shard_record
 from data_module.ml_direct_shared_block_resolver import (
     DIRECT_NUMERIC_ARTIFACT_IDS,
@@ -62,6 +66,15 @@ DIRECT_CHECKPOINT_SCHEMA_VERSION = "portfolio-ml-direct-checkpoint.v2"
 DIRECT_HEARTBEAT_SCHEMA_VERSION = "portfolio-ml-direct-heartbeat.v1"
 DIRECT_COMPUTATION_DEPENDENCY_SCHEMA_VERSION = (
     "portfolio-ml-direct-computation-dependencies.v1"
+)
+DIRECT_COMPUTATION_IDENTITY_SCHEMA_VERSION = (
+    "portfolio-ml-direct-computation-identity.v1"
+)
+DIRECT_CHECKPOINT_PROVENANCE_RECOVERY_SCHEMA_VERSION = (
+    "portfolio-ml-direct-checkpoint-provenance-recovery.v1"
+)
+DIRECT_LOCK_CUSTODY_INSPECTION_SCHEMA_VERSION = (
+    "portfolio-ml-direct-lock-custody-inspection.v1"
 )
 DIRECT_DISCOVERY_CACHE_SCHEMA_VERSION = (
     "portfolio-ml-direct-discovery-cache.v1"
@@ -95,6 +108,14 @@ _DISCOVERY_PROGRESS_CHECK_INTERVAL = 4_096
 _DISCOVERY_PROGRESS_MAX_SILENCE_NS = 30 * 1_000_000_000
 _VOLUME_WINDOW_SIZE = 20
 _CARRY_METADATA_KEY = "__carry_schema_version__"
+
+
+class DirectCheckpointProvenanceError(ValueError):
+    """Direct checkpoint provenance 不足或不相容。"""
+
+    def __init__(self, message: str, *, classification: str) -> None:
+        super().__init__(message)
+        self.classification = classification
 
 # A Direct checkpoint is only resumable with the same source code that
 # produced its completed annual artifacts.  Keep this list explicit: hashing
@@ -146,6 +167,7 @@ class PortfolioMLDirectNumericRequest:
     safety_reserve_bytes: int | None = None
     shared_block_store_root: Path | None = None
     shared_numeric_store_root: Path | None = None
+    allow_research: bool = False
 
     def __post_init__(self) -> None:
         legacy.PortfolioMLDatasetAssemblyRequest(
@@ -222,6 +244,8 @@ class PortfolioMLDirectNumericRequest:
                 raise ValueError("safety_reserve_bytes must be positive")
         if not isinstance(self.resume, bool):
             raise TypeError("resume must be bool")
+        if self.allow_research:
+            resolve_ml_research_output_path(self.output_root, access="write")
 
 
 @dataclass(frozen=True)
@@ -338,6 +362,10 @@ class PortfolioMLDirectNumericStoreBuilder:
         computation_dependency_hash = _sha256_json(
             computation_dependencies
         )
+        computation_identity = _stable_direct_computation_identity_payload(
+            computation_dependencies
+        )
+        computation_identity_hash = _sha256_json(computation_identity)
         _assert_direct_computation_dependencies_unchanged(
             expected_payload=computation_dependencies,
             expected_hash=computation_dependency_hash,
@@ -354,7 +382,20 @@ class PortfolioMLDirectNumericStoreBuilder:
         memory_guard = _MemoryBudgetGuard.create(request.memory_budget_mb)
         raw_path = request.raw_manifest_path.resolve()
         raw_manifest = legacy._read_json(raw_path)
-        legacy._validate_raw_dataset_manifest(raw_manifest)
+        legacy._validate_raw_dataset_manifest(
+            raw_manifest, allow_research=request.allow_research
+        )
+        is_research = (
+            request.allow_research
+            or (not raw_manifest.get("safety", {}).get("formal_dataset", True))
+            or raw_manifest.get("schema_version") == "ml-research-adapted-raw-manifest.v1"
+        )
+        if is_research:
+            resolve_ml_research_output_path(request.output_root, access="write")
+            if request.shared_block_store_root is not None:
+                resolve_ml_research_output_path(request.shared_block_store_root, access="write")
+            if request.shared_numeric_store_root is not None:
+                resolve_ml_research_output_path(request.shared_numeric_store_root, access="write")
         shared_contract = legacy._validate_shared_block_dataset_manifest(
             raw_manifest
         )
@@ -394,6 +435,10 @@ class PortfolioMLDirectNumericStoreBuilder:
             "purge_trading_days": request.purge_trading_days,
             "embargo_trading_days": request.embargo_trading_days,
             "capacity_budget": capacity_budget.as_dict(),
+            "computation_identity_schema_version": (
+                DIRECT_COMPUTATION_IDENTITY_SCHEMA_VERSION
+            ),
+            "computation_identity_hash": computation_identity_hash,
             # carry schema/policy 屬於 run identity；舊年度若沒有跨年
             # volume seed，不得用相同 request 靜默重用舊產物。
             "volume_history_carry_schema_version": (
@@ -402,7 +447,14 @@ class PortfolioMLDirectNumericStoreBuilder:
             "volume_history_carry_policy_version": (
                 DIRECT_REPLAY_VOLUME_POLICY_VERSION
             ),
+            "research_only": is_research,
+            "formal_dataset": not is_research,
         }
+        if is_research:
+            direct_identity["research_fold_qualification"] = {
+                "policy": "post_purge_distinct_train_dates.v1",
+                "minimum_train_dates": request.minimum_train_dates,
+            }
         if shared_contract is not None:
             direct_identity["shared_block_store_mode"] = "content_addressed"
         if request.shared_numeric_store_root is not None:
@@ -488,6 +540,7 @@ class PortfolioMLDirectNumericStoreBuilder:
             embargo_trading_days=request.embargo_trading_days,
             shared_block_store_root=request.shared_block_store_root,
             shared_contract=shared_contract,
+            allow_research=request.allow_research,
         )
         if discovery is None:
             discovery = _discover(
@@ -502,6 +555,7 @@ class PortfolioMLDirectNumericStoreBuilder:
                 shared_block_store_root=request.shared_block_store_root,
                 shared_contract=shared_contract,
                 progress_callback=report_discovery,
+                allow_research=request.allow_research,
             )
             _write_discovery_cache(
                 path=discovery_cache_path,
@@ -568,6 +622,7 @@ class PortfolioMLDirectNumericStoreBuilder:
         dataset_identity_hash = _sha256_json(
             {
                 "direct_identity": direct_identity,
+                "computation_identity_hash": computation_identity_hash,
                 "computation_dependency_hash": computation_dependency_hash,
                 "source_content_hash": discovery.source_content_hash,
                 "feature_registry_hash": feature_registry_hash,
@@ -597,6 +652,8 @@ class PortfolioMLDirectNumericStoreBuilder:
             "schema_version": store_module.STORE_SCHEMA_VERSION,
             "direct_builder_schema_version": DIRECT_SCHEMA_VERSION,
             "direct_identity": direct_identity,
+            "computation_identity_hash": computation_identity_hash,
+            "computation_identity": computation_identity,
             "computation_dependency_hash": computation_dependency_hash,
             "computation_dependencies": computation_dependencies,
             "dataset_identity_hash": dataset_identity_hash,
@@ -607,7 +664,7 @@ class PortfolioMLDirectNumericStoreBuilder:
             "folds": [
                 asdict(window) for window in discovery.fold_windows
             ],
-            "lane": "formal",
+            "lane": "research" if request.allow_research else "formal",
         }
         if manifest_path.is_file():
             existing_manifest = _read_json(manifest_path)
@@ -1209,6 +1266,11 @@ class PortfolioMLDirectNumericStoreBuilder:
                 year_manifests=year_manifests,
                 batch_size=request.batch_size,
                 year_rows_paths=shared_year_rows_paths,
+                minimum_train_dates_after_purge=(
+                    request.minimum_train_dates
+                    if request.allow_research
+                    else None
+                ),
             )
         )
         capacity_checkpoint("fold_indexes_complete")
@@ -1261,7 +1323,9 @@ class PortfolioMLDirectNumericStoreBuilder:
                 == set(years)
             ),
             "nonempty_numeric_rows": row_count > 0,
-            "minimum_four_outer_folds": len(fold_manifests) >= 4,
+            "minimum_four_outer_folds": (
+                len(fold_manifests) >= 4
+            ),
             "pit_sector_membership_present": sector_count > 0,
             "official_corporate_action_custody_present": (
                 corporate_custody.manifest_present
@@ -1302,6 +1366,8 @@ class PortfolioMLDirectNumericStoreBuilder:
                 f"{dataset_identity_hash[7:19]}"
             ),
             "dataset_identity_hash": dataset_identity_hash,
+            "computation_identity_hash": computation_identity_hash,
+            "computation_identity": computation_identity,
             "computation_dependency_hash": computation_dependency_hash,
             "computation_dependencies": computation_dependencies,
             "dataset_manifest_file_hash": raw_file_hash,
@@ -1312,9 +1378,15 @@ class PortfolioMLDirectNumericStoreBuilder:
                 list(item) for item in source_manifest_hashes
             ],
             "training_as_of": cutoff.isoformat(),
-            "formal_source_only": True,
+            "minimum_train_dates": request.minimum_train_dates,
+            "formal_source_only": not request.allow_research,
             "research_shadow_included": False,
-            "research_only": False,
+            "research_only": request.allow_research,
+            "fold_qualification_policy": (
+                "post_purge_distinct_train_dates.v1"
+                if request.allow_research
+                else None
+            ),
             "promotion_eligible": False,
             "feature_packs": discovery.feature_packs,
             "feature_family_coverage": (
@@ -1470,6 +1542,8 @@ class PortfolioMLDirectNumericStoreBuilder:
                 "schema_version": DIRECT_CHECKPOINT_SCHEMA_VERSION,
                 "run_id": run_id,
                 "raw_manifest_hash": raw_manifest["manifest_hash"],
+                "computation_identity_hash": computation_identity_hash,
+                "computation_identity": computation_identity,
                 "computation_dependency_hash": computation_dependency_hash,
                 "computation_dependencies": computation_dependencies,
                 "completed_years": [
@@ -2520,6 +2594,7 @@ def _load_discovery_cache(
     embargo_trading_days: int,
     shared_block_store_root: Path | None = None,
     shared_contract: tuple[str, str, str] | None = None,
+    allow_research: bool = False,
 ) -> _Discovery | None:
     if not path.is_file():
         return None
@@ -2624,7 +2699,9 @@ def _load_discovery_cache(
         if not source_content_hash.startswith(_SHA256_PREFIX):
             raise ValueError("discovery cache source hash is invalid")
         if len(fold_windows) < 4:
-            raise ValueError("discovery cache requires at least four folds")
+            raise store_module.InsufficientMatureHistoryError(
+                "discovery cache requires at least four mature folds"
+            )
         return _Discovery(
             definitions=definitions,
             feature_packs=feature_packs,
@@ -2758,6 +2835,7 @@ def _discover(
     shared_block_store_root: Path | None = None,
     shared_contract: tuple[str, str, str] | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    allow_research: bool = False,
 ) -> _Discovery:
     base_definitions = legacy._base_feature_definitions(raw_manifest)
     runtime = dict(base_definitions)
@@ -2906,8 +2984,16 @@ def _discover(
         purge_trading_days=purge_trading_days,
         embargo_trading_days=embargo_trading_days,
     )
+    if allow_research and (
+        purge_trading_days < 60 or embargo_trading_days < 5
+    ):
+        raise ValueError(
+            "research fold policy requires purge>=60 and embargo>=5"
+        )
     if len(folds) < 4:
-        raise ValueError("direct numeric store requires at least four folds")
+        raise store_module.InsufficientMatureHistoryError(
+            "direct numeric store requires at least four mature folds"
+        )
     return _Discovery(
         definitions=definitions,
         feature_packs=feature_packs,
@@ -3822,11 +3908,17 @@ def _load_checkpoint(
     computation_dependency_hash: str,
     computation_dependencies: Mapping[str, Any],
 ) -> dict[str, Any]:
+    computation_identity = _stable_direct_computation_identity_payload(
+        computation_dependencies
+    )
+    computation_identity_hash = _sha256_json(computation_identity)
     if not path.is_file():
         return {
             "schema_version": DIRECT_CHECKPOINT_SCHEMA_VERSION,
             "run_id": run_id,
             "raw_manifest_hash": raw_manifest_hash,
+            "computation_identity_hash": computation_identity_hash,
+            "computation_identity": computation_identity,
             "computation_dependency_hash": computation_dependency_hash,
             "completed_years": [],
             "peak_temporary_bytes": 0,
@@ -3840,8 +3932,38 @@ def _load_checkpoint(
         or payload.get("raw_manifest_hash") != raw_manifest_hash
     ):
         raise ValueError("direct checkpoint identity mismatch")
+    stored_identity_hash = payload.get("computation_identity_hash")
+    stored_identity = payload.get("computation_identity")
     stored_dependency_hash = payload.get("computation_dependency_hash")
     stored_dependencies = payload.get("computation_dependencies")
+    if (
+        stored_identity_hash is None
+        and stored_identity is None
+        and stored_dependency_hash is None
+        and stored_dependencies is None
+    ):
+        raise DirectCheckpointProvenanceError(
+            "direct checkpoint computation provenance is legacy and missing; "
+            "preserve it as audit-only and start a new run identity",
+            classification="legacy_missing_computation_provenance",
+        )
+    if not isinstance(stored_identity_hash, str) or not isinstance(
+        stored_identity, dict
+    ):
+        raise DirectCheckpointProvenanceError(
+            "direct checkpoint stable computation identity is missing",
+            classification="legacy_missing_stable_computation_identity",
+        )
+    if _sha256_json(stored_identity) != stored_identity_hash:
+        raise DirectCheckpointProvenanceError(
+            "direct checkpoint stable computation identity hash mismatch",
+            classification="computation_identity_provenance_corrupt",
+        )
+    if stored_identity_hash != computation_identity_hash:
+        raise DirectCheckpointProvenanceError(
+            "direct checkpoint computation identity drift detected",
+            classification="computation_identity_drift",
+        )
     if (
         not isinstance(stored_dependency_hash, str)
         or not isinstance(stored_dependencies, dict)
@@ -3850,12 +3972,23 @@ def _load_checkpoint(
         or stored_dependencies.get("source_hash_semantics")
         != "disk_bytes_snapshot_at_build_start;loaded_code_fingerprint_is_checked_separately"
     ):
-        raise ValueError(
-            "direct checkpoint computation dependency snapshot is missing"
+        raise DirectCheckpointProvenanceError(
+            "direct checkpoint computation dependency snapshot is missing",
+            classification="checkpoint_dependency_snapshot_missing",
         )
     if _sha256_json(stored_dependencies) != stored_dependency_hash:
-        raise ValueError(
-            "direct checkpoint computation dependency snapshot hash mismatch"
+        raise DirectCheckpointProvenanceError(
+            "direct checkpoint computation dependency snapshot hash mismatch",
+            classification="checkpoint_dependency_snapshot_corrupt",
+        )
+    if (
+        _stable_direct_computation_identity_hash(stored_dependencies)
+        != stored_identity_hash
+    ):
+        raise DirectCheckpointProvenanceError(
+            "direct checkpoint computation identity does not match "
+            "dependency snapshot",
+            classification="computation_identity_provenance_mismatch",
         )
     if _sha256_json(computation_dependencies) != computation_dependency_hash:
         raise ValueError(
@@ -3865,8 +3998,776 @@ def _load_checkpoint(
         stored_dependencies,
         computation_dependencies,
     ):
-        raise ValueError("direct checkpoint computation dependency mismatch")
+        raise DirectCheckpointProvenanceError(
+            "direct checkpoint computation dependency mismatch",
+            classification="runtime_dependency_custody_mismatch",
+        )
     return payload
+
+
+def inspect_direct_checkpoint_provenance(
+    store_root: Path,
+    *,
+    current_computation_dependencies: Mapping[str, Any] | None = None,
+    maintenance_output_dir: Path | None = None,
+) -> dict[str, Any]:
+    """只讀分類 Direct checkpoints 並產生安全復原計畫。
+
+    Legacy checkpoint 的缺件不能由目前 process 重新計算後回填；這個
+    inspector 只保存檔案 hash 與分類，讓 owner 決定是否另開新的 run identity。
+    """
+
+    root = Path(store_root).expanduser().resolve()
+    dependencies = (
+        _direct_computation_dependency_payload()
+        if current_computation_dependencies is None
+        else dict(current_computation_dependencies)
+    )
+    current_identity = _stable_direct_computation_identity_payload(
+        dependencies
+    )
+    current_identity_hash = _sha256_json(current_identity)
+    lock_custody = inspect_direct_heavy_chain_custody(
+        root,
+        maintenance_output_dir=maintenance_output_dir,
+    )
+    runs_root = root / "runs"
+    records: list[dict[str, Any]] = []
+    if runs_root.is_dir():
+        run_directories = sorted(
+            (
+                path
+                for path in runs_root.iterdir()
+                if path.is_dir() and not path.is_symlink()
+            ),
+            key=lambda path: path.name,
+        )
+    else:
+        run_directories = []
+
+    for run_directory in run_directories:
+        checkpoint_path = run_directory / "checkpoint.json"
+        record: dict[str, Any] = {
+            "run_id": run_directory.name,
+            "checkpoint_path": str(checkpoint_path),
+            "checkpoint_file_hash": None,
+            "checkpoint_complete": None,
+            "completed_year_count": None,
+            "manifest_path": str(run_directory / "manifest.json"),
+            "manifest_present": False,
+            "manifest_file_hash": None,
+            "manifest_status": None,
+            "manifest_hash_valid": None,
+            "manifest_custody_valid": None,
+            "manifest_computation_identity_hash": None,
+            "checkpoint_provenance_valid": False,
+            "checkpoint_resume_allowed": False,
+            "resume_allowed": False,
+            "full_resume_classification": "checkpoint_not_verified",
+            "provenance_classification": "checkpoint_missing",
+            "recovery_disposition": (
+                "preserve_run_and_do_not_infer_checkpoint_provenance"
+            ),
+        }
+        if not checkpoint_path.is_file():
+            records.append(record)
+            continue
+        try:
+            record["checkpoint_file_hash"] = _file_sha256(checkpoint_path)
+            payload = _read_json(checkpoint_path)
+        except (
+            OSError,
+            UnicodeError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
+            record["provenance_classification"] = "checkpoint_unreadable"
+            record["recovery_disposition"] = (
+                "preserve_bytes_and_require_owner_review"
+            )
+            record["diagnostic"] = type(exc).__name__
+            records.append(record)
+            continue
+
+        record["checkpoint_complete"] = payload.get("complete") is True
+        completed_years = payload.get("completed_years")
+        if isinstance(completed_years, list):
+            record["completed_year_count"] = len(completed_years)
+        manifest_path = run_directory / "manifest.json"
+        if manifest_path.is_file():
+            record["manifest_present"] = True
+            try:
+                record["manifest_file_hash"] = _file_sha256(manifest_path)
+            except (OSError, UnicodeError) as exc:
+                record["manifest_hash_valid"] = False
+                record["manifest_custody_valid"] = False
+                record["manifest_diagnostic"] = type(exc).__name__
+            else:
+                try:
+                    manifest = _read_json(manifest_path)
+                except (
+                    OSError,
+                    UnicodeError,
+                    TypeError,
+                    ValueError,
+                    json.JSONDecodeError,
+                ) as exc:
+                    record["manifest_hash_valid"] = False
+                    record["manifest_custody_valid"] = False
+                    record["manifest_diagnostic"] = type(exc).__name__
+                else:
+                    manifest_hash = manifest.get("manifest_hash")
+                    manifest_hash_valid = False
+                    if isinstance(manifest_hash, str):
+                        manifest_body = dict(manifest)
+                        manifest_body.pop("manifest_hash", None)
+                        manifest_hash_valid = (
+                            _sha256_json(manifest_body) == manifest_hash
+                        )
+                    record["manifest_hash_valid"] = manifest_hash_valid
+                    record["manifest_status"] = manifest.get("status")
+                    store_identity = manifest.get("store_identity")
+                    if isinstance(store_identity, Mapping):
+                        manifest_identity = store_identity.get(
+                            "computation_identity_hash"
+                        )
+                        if isinstance(manifest_identity, str):
+                            record["manifest_computation_identity_hash"] = (
+                                manifest_identity
+                            )
+                    checkpoint_identity = payload.get(
+                        "computation_identity_hash"
+                    )
+                    manifest_custody_valid = bool(
+                        manifest_hash_valid
+                        and manifest.get("schema_version")
+                        == store_module.STORE_SCHEMA_VERSION
+                        and manifest.get("status") == "complete"
+                        and manifest.get("run_id") == run_directory.name
+                        and isinstance(store_identity, Mapping)
+                        and store_identity.get("computation_identity_hash")
+                        == checkpoint_identity
+                    )
+                    if payload.get("complete") is True:
+                        manifest_custody_valid = bool(
+                            manifest_custody_valid
+                            and manifest_hash == payload.get("manifest_hash")
+                            and record["manifest_file_hash"]
+                            == payload.get("manifest_file_hash")
+                        )
+                    record["manifest_custody_valid"] = (
+                        manifest_custody_valid
+                    )
+
+        classification, resume_allowed, disposition = (
+            _classify_direct_checkpoint_provenance(
+                payload,
+                run_id=run_directory.name,
+                current_identity_hash=current_identity_hash,
+                current_computation_dependencies=dependencies,
+            )
+        )
+        record["checkpoint_provenance_classification"] = classification
+        record["checkpoint_provenance_valid"] = resume_allowed
+        record["checkpoint_resume_allowed"] = resume_allowed
+        full_resume_allowed = bool(resume_allowed)
+        full_resume_classification = "eligible_for_owner_reviewed_resume"
+        if full_resume_allowed:
+            if record["manifest_present"]:
+                full_resume_allowed = (
+                    record["manifest_custody_valid"] is True
+                )
+                if not full_resume_allowed:
+                    full_resume_classification = "manifest_custody_invalid"
+            elif payload.get("complete") is True:
+                full_resume_allowed = False
+                full_resume_classification = "completed_manifest_missing"
+        else:
+            full_resume_classification = "checkpoint_provenance_invalid"
+        record["resume_allowed"] = full_resume_allowed
+        record["full_resume_classification"] = full_resume_classification
+        if not full_resume_allowed and resume_allowed:
+            record["provenance_classification"] = (
+                "manifest_custody_invalid"
+            )
+            record["recovery_disposition"] = (
+                "preserve_checkpoint_and_manifest_bytes_and_require_owner_review"
+            )
+        else:
+            record["provenance_classification"] = classification
+            record["recovery_disposition"] = disposition
+        records.append(record)
+
+    counts: dict[str, int] = {}
+    for record in records:
+        classification = str(record["provenance_classification"])
+        counts[classification] = counts.get(classification, 0) + 1
+    if not records:
+        status = "no_checkpoint_found"
+    elif counts.get("legacy_missing_computation_provenance", 0):
+        status = "blocked_legacy_provenance"
+    elif counts.get("computation_identity_drift", 0):
+        status = "blocked_computation_identity_drift"
+    elif any(not bool(record["resume_allowed"]) for record in records):
+        status = "blocked_checkpoint_provenance"
+    else:
+        status = "ready_for_root_review"
+
+    body: dict[str, Any] = {
+        "schema_version": (
+            DIRECT_CHECKPOINT_PROVENANCE_RECOVERY_SCHEMA_VERSION
+        ),
+        "status": status,
+        "read_only": True,
+        "automatic_recovery_allowed": False,
+        "store_root": str(root),
+        "current_computation_identity_hash": current_identity_hash,
+        "current_computation_identity": current_identity,
+        "lock_custody": lock_custody,
+        "run_count": len(records),
+        "classification_counts": dict(sorted(counts.items())),
+        "runs": records,
+        "recovery_policy": {
+            "legacy_missing_computation_provenance": (
+                "retain exact checkpoint and any complete manifest as audit-only; "
+                "never attach the current hash"
+            ),
+            "computation_identity_drift": (
+                "stop and review the source change; never resume or replace the "
+                "stored identity with the current one"
+            ),
+            "resumable_current_identity": (
+                "only a checkpoint with self-consistent stable identity and "
+                "dependency custody may be considered after owner review"
+            ),
+            "new_run": (
+                "for legacy or drifted artifacts, run a fresh bounded Direct "
+                "build with the current stable identity after capacity and "
+                "process-custody review"
+            ),
+        },
+        "owner_review_requirements": [
+            "verify this plan and every checkpoint/manifest file hash",
+            "confirm no matching Direct/OOC/release process and no active heavy-chain owner",
+            "run a fresh current-contract Direct build in a new run identity",
+            "validate the new manifest and checkpoint stable identity before downstream OOC",
+            "keep formal_oos_allowed=false, production_alpha_bp=0, and broker_order_allowed=false",
+        ],
+    }
+    return {**body, "plan_hash": _sha256_json(body)}
+
+
+def inspect_direct_heavy_chain_custody(
+    store_root: Path,
+    *,
+    maintenance_output_dir: Path | None = None,
+) -> dict[str, Any]:
+    """唯讀檢查 heavy-chain lock，保留 probe stage 與 OS error 詳情。
+
+    ``_probe_locked_file`` 適合 execution-time fail-closed 判斷，但單一 bool
+    無法保留「真的取得 advisory lock 失敗」與「檔案讀取被拒」的證據。
+    Recovery plan 因此使用不建立或寫入檔案的 rb → advisory-lock probe，並將
+    ``errno``／``winerror`` 原樣保留；read-open denied 只分類為
+    ``inspection_permission_unknown``，不推論有 holder。
+    """
+
+    root = Path(store_root).expanduser().resolve()
+    release_root = next(
+        (
+            candidate
+            for candidate in (root, *root.parents)
+            if candidate.name.casefold() == "release_v4"
+        ),
+        None,
+    )
+    if release_root is None:
+        return {
+            "schema_version": DIRECT_LOCK_CUSTODY_INSPECTION_SCHEMA_VERSION,
+            "read_only": True,
+            "status": "inspection_permission_unknown",
+            "reason": "release_v4_root_unresolved",
+            "probe_mode": "rb_then_advisory_lock",
+            "canonical_lock": None,
+            "owner_metadata": None,
+            "maintenance_lock": None,
+            "handoff_gates": [],
+            "process_scan": _inspect_direct_process_custody(),
+        }
+
+    canonical_lock = release_root / ".ml_heavy_chain.lock"
+    if maintenance_output_dir is None:
+        maintenance_root = (
+            release_root / "portfolio_ml_direct_ooc_training_production_v4_v5"
+        )
+    else:
+        maintenance_root = Path(maintenance_output_dir).expanduser().resolve()
+    maintenance_lock = maintenance_root / ".ml_direct_chain_maintenance.lock"
+    gate_discovery_error: dict[str, Any] | None = None
+    try:
+        gate_paths = tuple(
+            sorted(
+                canonical_lock.parent.glob(
+                    f"{canonical_lock.name}.handoff.*.lock"
+                )
+            )
+        )
+    except OSError as exc:
+        gate_paths = ()
+        gate_discovery_error = _os_error_details(exc)
+    owner_metadata_path = Path(f"{canonical_lock}.owner.json")
+    owner_metadata = _inspect_direct_owner_metadata(
+        owner_metadata_path,
+        lock_path=canonical_lock,
+    )
+    process_scan = _inspect_direct_process_custody()
+    canonical_probe = _probe_direct_lock_file(canonical_lock)
+    maintenance_probe = _probe_direct_lock_file(maintenance_lock)
+    handoff_probes = [
+        _probe_direct_lock_file(path) for path in gate_paths
+    ]
+    all_probes = [canonical_probe, maintenance_probe, *handoff_probes]
+    statuses = {str(probe.get("status")) for probe in all_probes}
+    if "probe_file_changed" in statuses:
+        status = "probe_file_changed"
+    elif gate_discovery_error is not None:
+        status = "handoff_gate_enumeration_incomplete"
+    elif "lock_violation_observed" in statuses:
+        status = "active_lock_observed"
+    elif (
+        process_scan.get("status") == "matching_process_observed"
+        and owner_metadata.get("status") == "owner_process_verified"
+    ):
+        status = "owner_process_verified"
+    elif (
+        "inspection_permission_unknown" in statuses
+        or process_scan.get("status") == "inspection_permission_unknown"
+        or owner_metadata.get("status") == "inspection_permission_unknown"
+    ):
+        status = "inspection_permission_unknown"
+    elif canonical_probe.get("status") == "not_present":
+        status = "canonical_lock_not_present"
+    else:
+        status = "no_active_lock_observed"
+    return {
+        "schema_version": DIRECT_LOCK_CUSTODY_INSPECTION_SCHEMA_VERSION,
+        "read_only": True,
+        "status": status,
+        "probe_mode": "rb_then_advisory_lock",
+        "canonical_lock": canonical_probe,
+        "owner_metadata": owner_metadata,
+        "maintenance_lock": maintenance_probe,
+        "handoff_gate_count": len(handoff_probes),
+        "handoff_gates": handoff_probes,
+        "handoff_gate_discovery": {
+            "status": (
+                "incomplete"
+                if gate_discovery_error is not None
+                else "complete"
+            ),
+            "pattern": f"{canonical_lock.name}.handoff.*.lock",
+            "error": gate_discovery_error,
+        },
+        "process_scan": process_scan,
+    }
+
+
+def _os_error_details(exc: OSError) -> dict[str, Any]:
+    return {
+        "type": type(exc).__name__,
+        "errno": exc.errno,
+        "winerror": getattr(exc, "winerror", None),
+        "strerror": exc.strerror,
+    }
+
+
+def _probe_direct_lock_file(path: Path) -> dict[str, Any]:
+    """Probe an existing lock file without creating or mutating it."""
+
+    result: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.is_file(),
+        "probe_stage": "existence",
+        "status": "not_present",
+        "file_hash_before": None,
+        "file_hash_after": None,
+        "bytes_unchanged": None,
+        "read_open": None,
+        "lock_acquired": None,
+        "errno": None,
+        "winerror": None,
+    }
+    if not result["exists"]:
+        return result
+    try:
+        result["file_hash_before"] = _file_sha256(path)
+    except OSError as exc:
+        details = _os_error_details(exc)
+        result.update(
+            {
+                "probe_stage": "hash_before",
+                "status": "inspection_permission_unknown",
+                "hash_before_error": details,
+                "errno": details["errno"],
+                "winerror": details["winerror"],
+            }
+        )
+        return result
+    try:
+        # Keep the descriptor read-only.  Windows msvcrt.locking accepts this
+        # for the one-byte advisory probe and it avoids turning a read-only
+        # diagnostics command into a write-permission test.
+        handle = path.open("rb")
+    except OSError as exc:
+        details = _os_error_details(exc)
+        result.update(
+            {
+                "probe_stage": "read_open",
+                "status": "inspection_permission_unknown",
+                "read_open": False,
+                "read_error": details,
+                "errno": details["errno"],
+                "winerror": details["winerror"],
+            }
+        )
+        return result
+    result["read_open"] = True
+    acquired = False
+    try:
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            flock = getattr(fcntl, "flock", None)
+            lock_ex = getattr(fcntl, "LOCK_EX", None)
+            lock_nb = getattr(fcntl, "LOCK_NB", None)
+            if (
+                not callable(flock)
+                or not isinstance(lock_ex, int)
+                or not isinstance(lock_nb, int)
+            ):
+                raise OSError("fcntl advisory locking is unavailable")
+            flock(handle.fileno(), lock_ex | lock_nb)
+        acquired = True
+        result.update(
+            {
+                "probe_stage": "advisory_lock",
+                "status": "free_observed",
+                "lock_acquired": True,
+            }
+        )
+    except OSError as exc:
+        details = _os_error_details(exc)
+        result.update(
+            {
+                "probe_stage": "advisory_lock",
+                "status": (
+                    "lock_violation_observed"
+                    if _is_direct_lock_violation(exc)
+                    else "inspection_permission_unknown"
+                ),
+                "lock_acquired": False,
+                "lock_error": details,
+                "errno": details["errno"],
+                "winerror": details["winerror"],
+            }
+        )
+    finally:
+        if acquired:
+            try:
+                handle.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    flock = getattr(fcntl, "flock", None)
+                    lock_un = getattr(fcntl, "LOCK_UN", None)
+                    if callable(flock) and isinstance(lock_un, int):
+                        flock(handle.fileno(), lock_un)
+                    else:
+                        raise OSError(
+                            "fcntl advisory unlocking is unavailable"
+                        )
+            except OSError as exc:
+                details = _os_error_details(exc)
+                result["unlock_error"] = details
+                result["errno"] = details["errno"]
+                result["winerror"] = details["winerror"]
+                result["status"] = "inspection_permission_unknown"
+            try:
+                handle.close()
+            except OSError as exc:
+                details = _os_error_details(exc)
+                result["close_error"] = details
+                result["errno"] = details["errno"]
+                result["winerror"] = details["winerror"]
+                result["status"] = "inspection_permission_unknown"
+        else:
+            try:
+                handle.close()
+            except OSError as exc:
+                details = _os_error_details(exc)
+                result["close_error"] = details
+                result["errno"] = details["errno"]
+                result["winerror"] = details["winerror"]
+                result["status"] = "inspection_permission_unknown"
+    try:
+        result["file_hash_after"] = _file_sha256(path)
+        result["bytes_unchanged"] = (
+            result["file_hash_before"] == result["file_hash_after"]
+        )
+        if result["bytes_unchanged"] is not True:
+            result["status"] = "probe_file_changed"
+    except OSError as exc:
+        details = _os_error_details(exc)
+        result["status"] = "inspection_permission_unknown"
+        result["hash_after_error"] = details
+        result["errno"] = details["errno"]
+        result["winerror"] = details["winerror"]
+    return result
+
+
+def _is_direct_lock_violation(exc: OSError) -> bool:
+    winerror = getattr(exc, "winerror", None)
+    if winerror in {32, 33}:
+        return True
+    if isinstance(exc, BlockingIOError):
+        return True
+    return os.name != "nt" and exc.errno in {
+        errno.EACCES,
+        errno.EAGAIN,
+        errno.EWOULDBLOCK,
+    }
+
+
+def _inspect_direct_owner_metadata(
+    path: Path,
+    *,
+    lock_path: Path,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "path": str(path),
+        "exists": path.is_file(),
+        "status": "owner_metadata_missing",
+        "file_hash": None,
+        "owner_pid": None,
+    }
+    if not result["exists"]:
+        return result
+    try:
+        result["file_hash"] = _file_sha256(path)
+        payload = _read_json(path)
+    except (OSError, UnicodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        result["status"] = "inspection_permission_unknown"
+        result["diagnostic"] = type(exc).__name__
+        return result
+    result["schema_version"] = payload.get("schema_version")
+    result["owner_pid"] = payload.get("owner_pid")
+    if (
+        payload.get("schema_version") != "ml-heavy-chain-reservation-owner.v1"
+        or payload.get("lock_path") != os.path.normcase(str(lock_path.resolve()))
+    ):
+        result["status"] = "owner_metadata_invalid"
+        return result
+    owner_pid = payload.get("owner_pid")
+    if isinstance(owner_pid, bool) or not isinstance(owner_pid, int) or owner_pid <= 0:
+        result["status"] = "owner_metadata_invalid"
+        return result
+    try:
+        import psutil
+    except ImportError:
+        result["status"] = "inspection_permission_unknown"
+        result["owner_process_diagnostic"] = "process_unverifiable"
+        return result
+    try:
+        process = psutil.Process(owner_pid)
+        command_line = " ".join(process.cmdline())
+    except (
+        psutil.AccessDenied,
+        psutil.NoSuchProcess,
+        psutil.ZombieProcess,
+        OSError,
+    ):
+        result["status"] = "inspection_permission_unknown"
+        result["owner_process_diagnostic"] = "process_unverifiable"
+        return result
+    result["owner_process_command"] = command_line
+    if any(
+        fragment in command_line.casefold()
+        for fragment in (
+            "maintain_ml_direct_v3_refresh_chain.py",
+            "run_ml_direct_chain_maintenance.py",
+        )
+    ):
+        result["status"] = "owner_process_verified"
+    else:
+        result["status"] = "owner_process_mismatched"
+    return result
+
+
+def _inspect_direct_process_custody() -> dict[str, Any]:
+    expected_fragments = (
+        "build_portfolio_ml_direct_numeric_store.py",
+        "continue_ml_direct_ooc_after_store.py",
+        "continue_ml_release_after_ooc.py",
+        "maintain_ml_direct_v3_refresh_chain.py",
+        "run_ml_direct_chain_maintenance.py",
+    )
+    try:
+        import psutil
+    except ImportError:
+        return {
+            "status": "inspection_permission_unknown",
+            "diagnostic": "psutil_unavailable",
+            "matching_processes": [],
+            "access_denied_pids": [],
+        }
+    matching: list[dict[str, Any]] = []
+    access_denied_pids: list[int] = []
+    current_pid = os.getpid()
+    for process in psutil.process_iter(["pid", "ppid", "name", "cmdline"]):
+        if process.info.get("pid") == current_pid:
+            continue
+        try:
+            command_line = " ".join(process.info.get("cmdline") or [])
+        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+            pid = process.info.get("pid")
+            if isinstance(pid, int):
+                access_denied_pids.append(pid)
+            continue
+        if any(
+            fragment.casefold() in command_line.casefold()
+            for fragment in expected_fragments
+        ):
+            matching.append(
+                {
+                    "pid": process.info.get("pid"),
+                    "ppid": process.info.get("ppid"),
+                    "name": process.info.get("name"),
+                    "command_line": command_line,
+                }
+            )
+    status = (
+        "matching_process_observed"
+        if matching
+        else (
+            "inspection_permission_unknown"
+            if access_denied_pids
+            else "no_matching_process_observed"
+        )
+    )
+    return {
+        "status": status,
+        "matching_processes": matching,
+        "access_denied_pids": access_denied_pids,
+        "expected_command_fragments": list(expected_fragments),
+    }
+
+
+def _classify_direct_checkpoint_provenance(
+    payload: Mapping[str, Any],
+    *,
+    run_id: str,
+    current_identity_hash: str,
+    current_computation_dependencies: Mapping[str, Any],
+) -> tuple[str, bool, str]:
+    """分類單一 checkpoint，不寫入或修正任何檔案。"""
+
+    if (
+        payload.get("schema_version") != DIRECT_CHECKPOINT_SCHEMA_VERSION
+        or payload.get("run_id") != run_id
+    ):
+        return (
+            "checkpoint_identity_mismatch",
+            False,
+            "preserve_checkpoint_and_require_owner_review",
+        )
+    stored_identity_hash = payload.get("computation_identity_hash")
+    stored_identity = payload.get("computation_identity")
+    stored_dependency_hash = payload.get("computation_dependency_hash")
+    stored_dependencies = payload.get("computation_dependencies")
+    if (
+        stored_identity_hash is None
+        and stored_identity is None
+        and stored_dependency_hash is None
+        and stored_dependencies is None
+    ):
+        return (
+            "legacy_missing_computation_provenance",
+            False,
+            "retain_exact_bytes_as_audit_only_and_start_new_run_identity",
+        )
+    if not isinstance(stored_identity_hash, str) or not isinstance(
+        stored_identity, dict
+    ):
+        return (
+            "legacy_missing_stable_computation_identity",
+            False,
+            "retain_exact_bytes_as_audit_only_and_start_new_run_identity",
+        )
+    try:
+        if _sha256_json(stored_identity) != stored_identity_hash:
+            return (
+                "computation_identity_provenance_corrupt",
+                False,
+                "preserve_bytes_and_require_owner_review",
+            )
+        if stored_identity_hash != current_identity_hash:
+            return (
+                "computation_identity_drift",
+                False,
+                "stop_and_review_source_change_before_any_resume",
+            )
+        if not isinstance(stored_dependency_hash, str) or not isinstance(
+            stored_dependencies, dict
+        ):
+            return (
+                "checkpoint_dependency_snapshot_missing",
+                False,
+                "preserve_bytes_and_require_owner_review",
+            )
+        if _sha256_json(stored_dependencies) != stored_dependency_hash:
+            return (
+                "checkpoint_dependency_snapshot_corrupt",
+                False,
+                "preserve_bytes_and_require_owner_review",
+            )
+        if (
+            _stable_direct_computation_identity_hash(stored_dependencies)
+            != stored_identity_hash
+        ):
+            return (
+                "computation_identity_provenance_mismatch",
+                False,
+                "preserve_bytes_and_require_owner_review",
+            )
+        if not _dependency_payloads_compatible(
+            stored_dependencies,
+            current_computation_dependencies,
+        ):
+            return (
+                "runtime_dependency_custody_mismatch",
+                False,
+                "preserve_bytes_and_require_owner_review",
+            )
+    except (TypeError, ValueError, KeyError):
+        return (
+            "checkpoint_dependency_snapshot_invalid",
+            False,
+            "preserve_bytes_and_require_owner_review",
+        )
+    return (
+        "resumable_under_current_computation_identity",
+        True,
+        "eligible_for_owner_reviewed_resume_only",
+    )
 
 
 def _checkpointed_year_is_valid(
@@ -4149,10 +5050,15 @@ def _write_incomplete_checkpoint(
         raise ValueError(
             "direct checkpoint computation dependency snapshot hash mismatch"
         )
+    computation_identity = _stable_direct_computation_identity_payload(
+        computation_dependencies
+    )
     payload: dict[str, Any] = {
         "schema_version": DIRECT_CHECKPOINT_SCHEMA_VERSION,
         "run_id": run_id,
         "raw_manifest_hash": raw_manifest_hash,
+        "computation_identity_hash": _sha256_json(computation_identity),
+        "computation_identity": computation_identity,
         "computation_dependency_hash": computation_dependency_hash,
         "computation_dependencies": dict(computation_dependencies),
         "completed_years": [
@@ -4528,6 +5434,60 @@ def _direct_computation_dependency_payload() -> dict[str, Any]:
         ),
         "files": files,
     }
+
+
+def _stable_direct_computation_identity_payload(
+    computation_dependencies: Mapping[str, Any],
+) -> dict[str, Any]:
+    """建立不含 process/runtime state 的 Direct computation identity。"""
+
+    raw_files = computation_dependencies.get("files")
+    if not isinstance(raw_files, list):
+        raise ValueError("direct computation dependency files are missing")
+    files: list[dict[str, str]] = []
+    for raw_file in raw_files:
+        if not isinstance(raw_file, Mapping):
+            raise ValueError(
+                "direct computation dependency file identity is invalid"
+            )
+        relative = raw_file.get("path")
+        source_hash = raw_file.get("sha256")
+        source_code_fingerprint = raw_file.get("source_code_fingerprint")
+        if (
+            not isinstance(relative, str)
+            or not relative.strip()
+            or not isinstance(source_hash, str)
+            or not source_hash.strip()
+            or not isinstance(source_code_fingerprint, str)
+            or not source_code_fingerprint.strip()
+        ):
+            raise ValueError(
+                "direct computation dependency stable identity is incomplete"
+            )
+        files.append(
+            {
+                "path": relative,
+                "sha256": source_hash,
+                "source_code_fingerprint": source_code_fingerprint,
+            }
+        )
+    files.sort(key=lambda item: item["path"])
+    return {
+        "schema_version": DIRECT_COMPUTATION_IDENTITY_SCHEMA_VERSION,
+        "identity_semantics": (
+            "ordered_dependency_source_bytes_and_compiled_source_code;"
+            "loaded_module_and_runtime_constants_excluded"
+        ),
+        "files": files,
+    }
+
+
+def _stable_direct_computation_identity_hash(
+    computation_dependencies: Mapping[str, Any],
+) -> str:
+    return _sha256_json(
+        _stable_direct_computation_identity_payload(computation_dependencies)
+    )
 
 
 def _direct_dependency_file_identity(

@@ -23,7 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from data_module.current_fundamental_snapshots import COLUMNS, insert_observations
+from data_module.current_fundamental_snapshots import (
+    COLUMNS,
+    insert_observations,
+    normalize_current_observation,
+)
 
 
 def load_candidate(path: Path) -> list[dict[str, str]]:
@@ -31,7 +35,12 @@ def load_candidate(path: Path) -> list[dict[str, str]]:
         reader = csv.DictReader(stream)
         if tuple(reader.fieldnames or ()) != COLUMNS:
             raise ValueError("candidate columns do not match fundamental_current_observations")
-        rows = [{column: str(row.get(column) or "") for column in COLUMNS} for row in reader]
+        rows = [
+            normalize_current_observation(
+                {column: str(row.get(column) or "") for column in COLUMNS}
+            )
+            for row in reader
+        ]
     if not rows:
         raise ValueError("candidate has no observations")
     _validate_rows(rows)
@@ -104,7 +113,9 @@ def _validate_rows(rows: list[dict[str, str]]) -> None:
     for row in rows:
         if row["kind"] != "statement_item":
             raise ValueError("candidate kind must be statement_item")
-        if not row["item_code"].startswith(("income_statement:", "balance_sheet:")):
+        if not row["item_code"].startswith(
+            ("income_statement:", "balance_sheet:", "cash_flows_statement:")
+        ):
             raise ValueError("item_code must include statement type")
         if row["market"] not in {"twse", "tpex"}:
             raise ValueError("unknown market")

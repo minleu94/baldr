@@ -34,9 +34,9 @@ GOVERNANCE_MARKDOWN_PATHS = (
     "PROJECT_NAVIGATION.md",
     "PROJECT_INVENTORY.md",
     "docs/00_core/DOCUMENTATION_INDEX.md",
-    "docs/07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md",
-    "docs/07_guides/LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md",
-    "docs/07_guides/LUNA_B_ENVIRONMENT_2026_09_07.md",
+    "docs/09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md",
+    "docs/09_archive/LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md",
+    "docs/09_archive/LUNA_B_ENVIRONMENT_2026_09_07.md",
     "docs/06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md",
     "docs/06_qa/LUNA_B_HANDOFF_2026_09_07.md",
 )
@@ -346,9 +346,21 @@ def _read_documented_current_counts() -> dict[str, int]:
     next_section = re.search(r"^## ", remaining, flags=re.MULTILINE)
     section = remaining[:next_section.start()] if next_section is not None else remaining
     counts: dict[str, int] = {}
-    total_match = re.search(r"Current filesystem Python files:\s*`(\d+)`", section)
-    if total_match:
-        counts["total"] = int(total_match.group(1))
+    registry_total_match = re.search(
+        r"Current registry entries:\s*`(\d+)`",
+        section,
+    )
+    if registry_total_match:
+        counts["total"] = int(registry_total_match.group(1))
+    else:
+        # Backward-compatible fallback for historical summaries that only
+        # recorded the filesystem count (when no residual files existed).
+        total_match = re.search(
+            r"Current filesystem Python files:\s*`(\d+)`",
+            section,
+        )
+        if total_match:
+            counts["total"] = int(total_match.group(1))
     for category, value in re.findall(r"\| `([^`]+)` \| (\d+) \|", section):
         counts[category] = int(value)
     return counts

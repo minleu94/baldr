@@ -1,13 +1,112 @@
 # UI 功能文件（Qt）
 
-> **最後整理**：2026-09-06
+## 2026-10-06 首頁直達與個股限制
+
+首頁「今日優先查看」四用途重用原工作區；4–6位股號搜尋與Enter是明示當下研究，原保存候選仍由原列下鑽並精確返回。大盤刷新保技術細節收合／展開，明示bool來源缺件為unknown、error不當預設Trend；匹配度不轉勝率。個股focus summary呈現原DTO最新一日漲跌／資料日與區塊可讀／缺件、ML限制；保存關注理由不授投資結論。更多來源／指標及六個子頁仍可下鑽。[操作手冊](../07_guides/APPLICATION_MANUAL.md)與有限QA（開發收據見dev）分報Native／真人與工程。
+
+## UX13／18 具名母體盤勢與指標排序（2026-10-05）
+
+市場探索新增研究母體盤勢，接收每日名單相同 verified snapshot，顯示明示≤16檔母體／行情日／source與方法身分，以及每固定方法三態分母。partial 缺件計未知且不偽造可開啟股票列；篩選不改盤勢分母。原排名未提供明示未知，名單按原 close／MA20／MA60 等值以 Decimal 排序，缺值固定尾端，不是投資分數。摘要短列日期、母體與方法 counts，完整來源／方法審計保留提示。操作見 [Manual共用投影](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux1318-具名研究母體盤勢與指標排序)。
+
+
+### UX04／05 每日研究條件（2026-10-05）
+
+Recommendation內切換每日研究條件與既有推薦研究來源。明示≤16股；close／MA20／MA60兩條既有條件AND／OR，符合／不符合／未知及原因分列；明確更新與read-only重讀分開。選股→個股沿同manifest與as-of，切股／返回保原清單，來源修訂顯未知與更新引導，不升格正式推薦。操作與排錯見[Manual日常研究flow](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux0405-每日研究條件與同源個股)。
+
+### UX19 隔離研究快照來源（2026-10-05）
+
+個股研究 service 可明示 snapshot root／cohort，經 verified reader 讀已發布 close／MA 研究快照，來源不符保留 unknown 與具名錯誤。CLI 支援同一路徑的實際 `read_report()` 讀回；桌面 UI 預設仍用 live 有限投影，本包未新增 UI 操作。來源身分／資格與操作見 [Manual UX19](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux19-隔離研究快照生產與讀回)。
+
+## 2026-10-05 個股日特徵共用三態
+
+正常個股研究載入後，首屏與研究理由共用既有close／MA20／MA60 snapshot的三態。暖機末段有效OHLC不足20／60筆、來源品質或日期未確認時顯示「尚無法判讀」，不再由首屏另行直比；一項未知保留另一項已確認觀察。沒有新按鈕、參數、公式或排名。舊DTO空mapping保留原呈現；必要observed-prefix不代表正式PIT／EMA／模型資格。操作與排錯見[Manual UX18](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux18-共用日特徵與個股觀察)，實際驗證見既有QA收據新章（開發收據見dev）。
+
+## 2026-10-04 個股來源與目前研究
+
+觀察清單、持倉共用的個股報告在綁定前重驗同股／run／日期／來源快照；完整封存但未入選的分析可保存其排除理由，未完成或失敗的空結果不能保存。切股及改來源會立即隱藏舊內容，再由 Qt 延後釋放，避免新表格與上一份提示重疊。「查看當下獨立 ML 研究（保留保存 Advice）」讓目前研究輸出與原保存 Advice 分別可讀，並可返回原來源；基點預測、H5 自然成熟、模型資格各自列示，不把研究輸出顯示成正式勝率。
+
+報告另列持倉觀測日及行情資料日，Exit 使用現有持倉條件唯讀結果；歷史查詢不借今天持倉。基本面保留來源單位／期間基礎，官方目前估值與上市／交易狀態顯示來源時間及 partial／unknown 診斷。操作、參數與排錯見 [Manual 的本輪補充](../07_guides/APPLICATION_MANUAL.md#2026-10-04-保存來源當下研究與持倉日期)，實際驗收範圍見 Astra 工程收尾（開發收據見dev）。
+
+未連結持倉的研究頁首沿用同部位、同股行情快照的資料日，不再回退最後交易日；已保存來源的日期與身份保留。市場總覽另分列判斷日與實際指數行情日，缺少得分或訊號強度時顯示未知，真實零值仍為 0。
+
+### 2026-09-22 個股研究主頁整合
+
+左側日常導覽新增「個股研究」。既有下鑽在主程式內更新單一 `StockResearchWorkspace`，包含報告與「決策 → 結果」；返回來源只切頁並定位目前股票，保留來源篩選及報告內容。來源識別仍沿用 `ResearchStockContextDTO`，不以同股票替代 exact result identity。主程式關閉會同時取消報告與 Journey 的背景讀取。
+
+推薦分析的個人採用、拒絕與推翻理由沿用唯一 typed Journal writer；「決策 → 結果」以唯讀、按時間排列的 append-only 歷史呈現已核驗的同結果／股票／日期／來源 snapshot 選擇。重複紀錄保留為歷史，不表示同時有效；identity 或 artifact 衝突時 fail closed，且不取代獨立的 Evidence／Outcome 狀態。操作步驟與限制見 [APPLICATION_MANUAL.md §9.9.1e](../07_guides/APPLICATION_MANUAL.md#991e-已保存推薦的個人決定與旅程回看2026-09-28)。
+
+推薦分析另有個人模型評估唯讀區，要求使用者明確選擇目前已核驗結果的 personal capture 與 Stage C summary JSON；因目前沒有可信 result→summary 索引，UI 不掃描資料夾或猜 latest。服務重新驗證 canonical result、capture、政策、summary hash 與來源；pending／unknown、缺件及 null metrics 依 DTO 顯示，失配則拒絕並清除舊內容。這不執行 Stage C、不寫入資料、不代表自然績效，且非官方 PIT 或成交損益。操作與限制見 [APPLICATION_MANUAL.md §9.9.1f](../07_guides/APPLICATION_MANUAL.md#991f-個人模型評估摘要讀回唯讀)。
+
+籌碼頁分列分點、法人、信用、集保持股分布與事件；級距 JSON 轉成持股範圍、人數、股數與比例，差異數調整／合計明確標示。事件顯示白話標籤，原始識別與可得時間可追溯，缺資料仍顯示缺資料，不轉成零值或評分。
+
+
+> **最後整理**：2026-09-30
 > **適用範圍**：`ui_qt/` 目前主要使用者介面。
+
+### 頁面內操作說明（2026-10-05）
+
+各頁標題的「i」開啟可捲動、可選取文字的分區說明，內容對照目前控制項與結果欄位，涵蓋操作流程、欄位單位、表格／圖表判讀及載入狀態。說明採共用 `TAB_INFO.sections` 配置，開啟或關閉保留原頁設定與結果；回測明列進階策略門檻及最佳化參數入口。完整操作見 Manual「頁面的 i 說明按鈕」。
 > **狀態判讀**：目前狀態以 `docs/00_core/PROJECT_SNAPSHOT.md` 為準；未來 6 個月工程方向以 `docs/00_core/ROADMAP_6M_ENGINEERING.md` 為準；本文件只描述 UI 功能與操作入口。
 > **完整操作**：安裝、逐步操作、參數、結果判讀與排錯見 [APPLICATION_MANUAL.md](../07_guides/APPLICATION_MANUAL.md)。
 
 ---
 
+## 2026-09-21 V5 日常操作與可讀性工程
+
+本輪把既有 read-only DTO 重新安排成「先結論、再原因、最後進階細節」的日常路徑，版本名稱為「V5日常操作與可讀性工程」。首頁 guided summary、候選／報告／持倉摘要、分層導覽、回測／推薦進階切換與個股報告 lazy tabs 均屬呈現與導引工程；正式 V4／V5 gate、自然 learning maturity 與 V6 user-level personalization 仍依 scoped roadmap 保持 pending。
+
+### 2026-09-21 個股研究來源日期與 candidate 邊界
+
+個股研究報告的來源表逐列呈現 `來源`、`來源狀態`、`品質`、`資料日`、`資料可得時間`、`更新狀態`、`版本`、`筆數`、`更新週期` 與 `預期資料期`；區塊標題也保留該區塊的資料日／可得時間。價格、技術、broker、institutional、credit、TDCC 與 fundamental 不能共用單一「今天」日期。這讓 9/21 price／technical 與較早的籌碼或個別 broker coverage 可以同時被正確揭露。
+
+freshness receipt 的 `candidate_only=true` 會維持 candidate／research-only 語意，不會被 UI 或 read service 視為 formal SQLite 的 current／fresh evidence。來源缺件、PIT stale、unknown、partial 或 broker coverage gap 會顯示為品質／狀態診斷；UI 不以 0 補值、不自行跨來源補日期、不將缺件改成正常或交易訊號。1418 Paper 的 blocked 狀態若缺 source lineage，仍保留 lineage／candidate 診斷；formal 9/21 price row 可獨立呈現。
+
+本輪 bounded formal row counts、target stock evidence、source coverage 與 focused regression 見 2026-09-21 個股研究資料鏈 Incident QA（開發收據見dev）。本節描述 UI 顯示契約，不宣稱所有正式資料在同一交易日 fresh，也不代表 V5／V6 formal closeout。
+
+全市場價格跨日稽核另見 2026-09-21 全市場跨日價格稽核（開發收據見dev）：`漲跌價差` 的方向必須合併來源 sign 欄，報告 service 現在以 signed value 或 unknown fail-closed 呈現；UI 不從 close 跳幅自行判定價格合理，也不把 merged stale aggregate 當成 target-date evidence。
+
+### 預設入口與分層
+
+- 左側導覽分成「日常使用」（決策工作台、市場探索、推薦分析、觀察清單、個股研究、持倉管理）、「進階研究」（策略回測）與「系統維護」（數據更新、系統狀態）。保留既有 workspace key／Runtime alias；deep link 會展開所屬群組。
+- 決策工作台預設先顯示「今日優先查看」與日期／資料日期／結論／下一步；「顯示進階工作台」才展開完整 workflow、來源、技術與研究證據。市場探索的 Daily Decision Desk 仍只有既有唯一實例。
+- 候選池與持倉先顯示狀態、原因、來源可追溯性與下一步；完整研究、歷史、Journal、模擬／Paper／Stress 仍由進階入口進入。「選擇原推薦來源」保留在候選池的日常下一步，用來核對對應當次推薦來源後開啟原理由。
+
+### 個股報告與結果閱讀
+
+個股研究報告的「摘要」先列結論、證據、變化、風險、資料是否足夠與下一步；逐項證據與來源／各區塊日期由兩個進階切換控制。深層分頁進入時才建立內容；完整 OHLC 使用價格／成交量圖，缺少任一 OHLC 時使用 close chart fallback。圖表只使用 service 已提供的 DTO，不重新評分或補造資料。
+
+UX08 原生圖安全切片：價格圖與 OHLC／量數值表共用 application 核對後投影，明示來源、截止日與實際資料範圍，保留 Decimal／整數及缺值。錯股 DTO、已知來源／日期／行指紋失配拒絕；未來與明示晚發布資料排除，缺可得時間仍未知。圖表初始化／填值失敗保留同源數值表。技術資料只有單日快照，不補歷史指標線或未核實交易標記；原生圖仍是 default，未整合 LWC／Hosted Widgets。
+
+後續限定切片加入既存 MA20／MA60 歷史覆蓋線與同序列精確表：缺列／缺值處斷線，不補末值；保存來源缺合法歷史時明示缺件，不向 live 借值。單日技術快照仍獨立，歷史值未授予暖機／PIT資格；沒有新增縮放、平移、外部 bundle 或個人交易 markers。
+
+推薦與回測的 guided summary 只翻譯現有參數與輸入母體。推薦保存仍保留 `result_id`、repository create-only、delivery ACK、Journal／readback 與 context binding；回測的研究模式、日期、策略、資金、費用、滑價、執行價格及停損停利值不因折疊進階而改變。結果頁的摘要、診斷、圖表、最佳化與 Walk-forward evidence 仍是原功能。
+
+### 可讀性與安全契約
+
+所有摘要均標出決策日／資料日／來源品質；缺件、來源不一致、身份衝突、讀取失敗與 last good data 以白話原因及恢復入口呈現。UI 僅讀取既有來源，沒有新增 collector、scheduler、正式 DB、Journal 或 learning writer；缺 cutoff 或 identity 時維持拒絕寫入與 fail-closed。完整 R1–R10 與 frozen QA evidence 見 V5 readability acceptance（開發收據見dev）。
+
+### 本輪 UI 整合修正
+
+- 左側導覽的群組標題與 workspace 項目共用左側內容起點；展開／收合 marker、keyboard focus 與 tooltip 保留，窄版不以置中標題壓縮內容。
+- 個股報告換股時會先清除上一檔報告，避免在新股票載入失敗或進階分頁開啟時殘留 A 股內容；同一檔重新載入失敗或取消時保留明示的 last-good data，並把本次失敗原因與重新載入步驟放入 Journey。來源脈絡在日常摘要維持精簡，完整 identity／mapping／snapshot trace 仍在來源進階與 tooltip。
+- 持倉頁把日常摘要、進階正文、Paper health、持倉明細與模擬／歷史資料分開呈現；整頁可垂直捲動，更新狀態顯示可讀日期並保留原始 timestamp tooltip，寬／窄版 splitter 不會把操作欄位壓成不可讀細條。
+- 決策工作台首頁把 machine token 轉為白話下一步與市場缺件說明；頁面說明按鈕提供可存取名稱與操作限制提示。這些是呈現／導引修正，不改資料、評分、交易或 writer 邊界。
+
+### 2026-09-29 跨工作區版面與內容可達性
+
+主視窗初始位置依螢幕可用範圍置中限制；長頁面、結果面板與動態內容可透過垂直捲動繼續閱讀。可列資料的表格／清單以至少五筆可見資料列作為初始 viewport 目標；表格的水平捲動、欄寬與儲存格 tooltip 協助查看較寬或較長的欄位。窄版的控制列會改為直向排列，避免長標籤與按鈕被擠成細欄；部分控制列與技術細節面板（例如 SQLite Inspector 篩選、Market Regime layer3）亦可水平捲動。這些調整只改 UI 呈現，維持 workspace 對外 widget identity、資料來源及核心計算行為。
+
+跨頁面主視窗尺寸、巢狀分頁、表格／清單與合成長內容已完成日期化 geometry audit；六格 offscreen MainWindow 矩陣全數通過。測試範圍、合成資料覆蓋及 OS 原生視窗限制見 UI Layout Audit 2026-09-29（開發收據見dev）。
+
+### 2026-09-30 讀取期間的介面回應與安全關閉
+
+Workbench 與首次開啟的 Research Console 唯讀來源載入改由受管背景 worker 執行，主視窗可先完成顯示與處理關閉事件；研究證據分頁採首次切入時才載入。SQLite progress handler 與 artifact 階段檢查合作式取消；關閉時仍會等讀取自然安全收尾，沒有強制中止 thread。關閉等待期間狀態列每數秒更新進度，完成後自動關閉；crash diagnostics 增加不含路徑／參數的生命週期階段記錄。這項修正只調整 Qt I/O 執行位置及退出協調，不改資料、績效或金融計算。
+
+關閉回歸使用 production `main()` 與 MainWindow、隔離資料／輸出／個人政策路徑，以及各 500ms 的合成 Workbench／Research Console 慢讀。兩案例都確認讀取在背景執行緒（`Dummy-2`）、heartbeat 最大間隔 63ms、關閉事件延遲分別為 6ms／22ms、`close()` 耗時 16ms／15ms、`app.exec()` 與 OS 子程序自然退出碼皆為 0，且關閉時沒有剩餘受管 worker。此為 Qt offscreen 自動驗證，不等同於正式大資料量或 Windows 前景視窗手動驗收；可用 `scripts/qa_validate_ui_natural_shutdown.py` 重跑隔離情境。
+
 ## 一、UI 定位
+
+2026-09-21 候選池判讀呈現更新：首頁與每日決策的候選觸發提醒改列股票代號、指標變化原因、資料日期／品質及查看步驟；缺前次分數明示無法確認新轉強。首頁一般觸發提醒可直接前往候選池；獨立風險提示仍保留其原判讀入口。候選表以「推薦來源」的已連結／未連結／來源不一致狀態取代原始 `decision_identity` 字典，完整資料保留供原推薦與結果追溯，不改觸發規則或來源綁定。操作與排錯見完整手冊第 7.1 節。
 
 Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察、策略研究、推薦、持倉檢查、Agent runtime 觀測」串成可回溯的投資決策工作台。
 
@@ -35,7 +134,26 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - 候選池名稱由 App 查詢，JSON 損毀保留原檔並顯示錯誤；候選 SQLite／精確帳本只供明確注入與副本驗證，正式 JSON／JSONL 預設未切換。Daily Desk 區分有效空池與未知，舊日期回呼不覆蓋新請求；08-B 已接上保存推薦 provider、推薦加入候選的 current_result_id 及 Workbench 新來源欄位重載；未保存結果不捏造來源 ID。
 - Runtime 顯示 UNKNOWN／read state／diagnostics，關閉 observer 解除訂閱；受限事件 ID 去重不是 durable queue，重啟不執行 task。Evidence review proposal 是 App 接點，沒有新增 UI 核准按鈕。
 
-完整操作、參數與排錯以 [Application Manual](C:/Projects/PythonProjects/technical_analysis/docs/07_guides/APPLICATION_MANUAL.md) 為準；實作與整合證據見 [TASK-08](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md)。本輪不改 `action_required`／V4 Evidence Accumulation，不授予 Formal credit、來源 acceptance、scheduler、broker 或正式 writer 權限。
+完整操作、參數與排錯以 Application Manual（本機／開發參考） 為準；實作與整合證據見 TASK-08（本機／開發參考）。本輪不改 `action_required`／V4 Evidence Accumulation，不授予 Formal credit、來源 acceptance、scheduler、broker 或正式 writer 權限。
+
+## 2026-10-03 資料更新 freshness、Formal／Candidate 與合作式取消
+
+資料更新狀態卡將正式 SQLite 與隔離 Candidate DB 分成不同資料 lane。服務回傳的 `FORMAL_AVAILABLE`／`CANDIDATE_AVAILABLE` 是機器狀態 token，代表來源可讀性與所屬資料根；畫面分別顯示正式資料與候選資料的日期／筆數，candidate 不會因此進入正式評分、推薦或交易。Freshness receipt 只有在目前 `DATA_ROOT`、SQLite／Candidate DB 路徑、台北市場日、04:30 cutoff 與 receipt 的實際期別相符時才投影為來源狀態；跨過 cutoff 或 live period 已變動時顯示未知／需重新驗證，重新執行唯讀 freshness probe 後再判讀。
+
+寫入型更新的「取消目前工作」採合作式取消，worker 會在安全單位邊界停止，不強制終止 QThread；已完成的安全提交可能保留，並應再做唯讀狀態檢查。錯誤仍以失敗顯示，不因取消而清除。MOPS 月營收候選抓取取消時可留下完整 raw HTML 作診斷，但不發布未完成的 candidate CSV；訊息所列「已解析資料」筆數不能當成已可用候選。
+
+操作步驟及排錯見 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 第 4 節；狀態、取消及 TDCC checkpoint 邊界的當前證據見整合修復紀錄（開發收據見dev）。本段說明 UI contract，不表示 native Windows 前景操作驗收已完成。
+
+## 2026-10-03 推薦、研究與 Portfolio 顯示判讀
+
+- Market Breadth 的多方／空方方向要求來源變動值與方向欄位相符；缺方向、未知或衝突欄位會保留未知，不用正負號代猜。
+- 技術評分只使用父層與子指標均啟用的項目。所需行情 bars 隨啟用指標週期增加，至少 60 個有效交易 bars；缺少啟用指標資料屬不可計分，不等於零分或被門檻篩除。
+- 推薦空結果分成「沒有可評估候選」、「候選不可計分／來源缺件」與「已評分但未通過目前篩選／排名條件」。只有最後一種是門檻篩選後為空；不要以降低門檻處理前兩種。
+- 歷史 Portfolio Alert 顯示原事件日期與來源，是保存的歷史快照，不代表目前持倉；請回持倉管理確認現況。
+- 個股研究報告沿用已保存上下文的 `decision_date` 作行情 cutoff。缺漏或不合法時阻擋歷史查詢，不以今天日期替代。
+- Portfolio 目前投入、已實現與未實現金額以毛額呈現，未扣費稅。費稅僅彙整已記錄資料，依原幣別列出已記錄及缺值筆數；缺件不補零，不冒充完整淨損益。
+
+Workbench 85 項測試與資料更新頁 validator 25 項通過、4 項需真下載／合併的測試略過；另有 138 項 focused tests、750 個來源檔案的 scoped mypy 與 20 個 Python 檔案 compile 通過。完整結果見 `output/qa/integration_20261002/phase3_luna_implementation_20261003/ui/REPORT.md`。Native Windows 可見操作仍待 root 驗收。完整操作與限制以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準。
 
 ## 二、頂層 Tab
 
@@ -50,7 +168,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 
 - 每日股價、大盤、產業、券商分點與技術指標更新；每日股價一鍵更新包含 TWSE + TPEX，TPEX timeout 以 warning 呈現且不阻斷其他資料同步。
 - TWSE 每日股價若明確回報失敗，單一來源流程會在 TPEX／SQLite／技術指標之前 fail-closed；只有已驗證的官方無交易日（`no_data_skipped_dates`）才允許後續流程繼續。
-- 快速更新（僅 SQLite）與安全更新（CSV + SQLite）分流；兩者預設補齊結束日前最近 10 個工作日，快速更新跳過大型合併，安全更新保留完整 CSV 合併與 SQLite 同步。
+- 快速更新（跳過大型合併）與安全更新（CSV + SQLite）分流；兩者預設補齊結束日前最近 10 個工作日，快速更新跳過大型合併，安全更新保留完整 CSV 合併與 SQLite 同步。
 - SQLite 狀態檢查、資料表檢視、唯讀 SQL preview，以及具有日期預設（單日今天、區間本月）、完整日期欄寬、穩定排序、重複顯示欄名防護、分頁控制與 stale-result 防護的檢視器分頁。
 - 更新狀態卡只在 service 回傳明確的 `ok`／`success`／`current`／`normal` 時顯示綠色「最新」；`error`、`missing`、`empty`、`unavailable` 與部分狀態查詢失敗會顯示異常，不會因描述文字含「最新」而假綠。inline 摘要也會把 `success`／`current`／`normal` 統一顯示為中文「正常」。狀態 payload 缺少資料源時會清除上一輪卡片與 inline 摘要，避免殘留數字或「0 筆」被誤讀；全域檢查也會同步刷新六個核心與三個候選來源頁面的 inline 摘要；個別來源詳情查詢失敗時只標記該來源，不污染其他卡片；全域檢查失敗時九個來源摘要會同步清除舊內容並保留共同錯誤原因。尚未執行檢查的 placeholder 不會被解析成狀態，燈號維持「未檢查」。候選來源仍標示為 research-only，不會因此進入正式評分或交易流程。
 - 更新頁所有「今日」日期控件都以台灣市場日期為基準，不受桌面作業系統時區跨日影響；localized `不可用` 會落到異常燈號，避免被誤讀為單純待更新。
@@ -105,6 +223,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - 券商 week／month／股票明細採背景查詢並具 stale-result guard；loading 與單一來源錯誤不凍結主 UI，錯誤以 fail-soft warning 呈現。
 - 可把觀察標的送入候選池 / Watchlist。
 - 候選池在載入中、成功、空清單與失敗時都顯示可見狀態；空清單／失敗使用真正的空模型，不插入 `-` 佔位列，避免把狀態提示誤讀為候選標的。
+- V4.2 C 線的市場焦點卡接到共用 `DecisionPresentationDTO`，顯示研究動作、證據品質、理由、風險、資料日與來源追溯；市場焦點仍是研究輸入，不直接產生正式 Advice 或買賣指令。
 
 文件同步重點：
 
@@ -127,6 +246,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - Runtime 窄版（小於 720px）會把治理左右面板改為上下排列，並以內嵌垂直捲動保留完整診斷內容；Session context status strip 會依可用寬度截斷文字。主視窗明確窄版下限為 320px，避免 Runtime 的長路徑提示把視窗鎖在桌面尺寸。
 - 第一版已從中文 read-only shell 推進到 background evidence feed / read-only Action Items 人工佇列體驗，並完成 Phase 2 read-only Operating Loop closeout：呈現 status strip、今日待判讀、背景證據流、依 severity / queue group / source 排序的只讀 Action Items、操作節奏、Evidence mode / data quality、Daily Checklist、warnings / degraded source。
 - 只透過 `WorkbenchSourceService` 取得 `WorkbenchDashboardDTO`，或直接呈現呼叫端提供的 DTO；UI 不直接讀 SQLite、不讀 replay DB、不寫 DB、不啟用 scheduler。
+- 主程式開啟後，Workbench 首次讀取與重新整理由受管 `TaskWorker` 在背景取得唯讀 DTO，不會在建構主視窗時同步讀資料；Research Console 只在第一次切入「研究證據」分頁時載入。SQL／artifact 讀取支援合作式取消；主視窗關閉會取消這兩項讀取並等待安全結束，舊日期／成本情境結果不會覆蓋最新請求。狀態與關閉診斷只記錄階段、耗時與 worker 數，不改 DTO、財務計算、正式資料 writer 或交易邊界。
 - Workbench 的 current Decision Desk／Pre-V2／Evidence projection 以台灣市場今日為日期上限；正式來源若含 future snapshot，畫面保留 raw future date 的 warning／source gap，但不把它當成 current evidence 或完成 gate。
 - 背景證據流只彙整既有 DTO / service payload：Daily Decision snapshot、Evidence Review readiness、Portfolio alerts 與可選 replay summary diagnostics；不在 UI 端重算任何 source gap、portfolio、scoring、backtest 或 lifecycle。
 - 只讀 Action Items 只列人工待處理事項；每列必須帶 `severity`、`queue_group`、`source_label`、`source_trace`、`degraded_reason`、`sort_rank` 與 `drilldown_target`，且 `write_intent=false`。Qt model 只顯示 DTO payload，drill-down target 必須對齊舊頁導向（Daily Decision、Evidence Review、Portfolio），Workbench 不建立 action item repository、不 append DB、不自動標記完成。
@@ -134,6 +254,11 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - 若週期紀錄位於隔離 working-copy DB，Workbench 只會讀取 owner 明確提供的 `approved-weekly-history-projection.v1` 路徑，絕不掃描暫存目錄或合併 DB；projection 固定 `formal_credit_authorized=false`，僅顯示已具名核准的 weekly Gate 計數，不構成 formal clock credit、scheduler、交易或任何下游資格。
 - Evidence Feed、Action Items 與 Operating Loop 空狀態必須說明「目前沒有 DTO rows」不等於 gate passed 或 actionable 建議；degraded 狀態只提醒人工覆盤資料不完整，不補值、不觸發 replay / scheduler / lifecycle。
 - Advice 區以 `WAITING_FOR_ADVICE_DTO`、`NO_ELIGIBLE_ADVICE`、`ADVICE_DTO_ERROR` 分別呈現尚未載入、已載入但無合格建議、與 DTO 損毀／安全拒絕；來源降級但仍有有效 recommendation 時仍渲染表格與 warning，不得誤標為 DTO error。
+- V4.2 C 線把決策工作台、Daily Decision／市場總覽、產業探索、觀察清單與持倉覆盤標成單一路徑：`市場總覽 → 產業／市場探索 → 關鍵股研究 → 觀察清單 → 持倉覆盤`。Workbench 提供市場、產業、觀察清單與持倉導覽；關鍵股研究則由市場焦點、觀察清單或持倉列選取個股後，透過 `ResearchStockContextDTO` 開啟個股研究報告。
+- 市場焦點、觀察清單分析、Advice、持倉詳情與個股報告共用 `DecisionPresentationService`／`DecisionPresentationDTO` adapter；所有畫面分開呈現排名分數、校準機率、成本後獲利機率、動作適合度、證據狀態／信心、樣本數、適用期間、理由、風險、失效條件、權重差距、決策日、資料日與來源追溯。排名只作排序，不能推導任何機率；缺值固定顯示未知／研究中並 fail-closed。
+- 觀察清單以研究／等待與買進候選的既有來源理由、風險、失效條件為主；持倉則將既有 condition monitor 的 valid／warning／invalid 映射為持有／減碼候選／退出候選，並揭露 target／current／gap 權重與成本基準。這些都是唯讀判讀與候選分類，不是自動下單、調倉或平倉。
+- 相關決策頁面均補上 status、decision/data-as-of date、source trace 與可返回來源的 context；研究報告沒有來源時隱藏返回控制，避免製造虛假導覽。表格採單列選取、禁止編輯、StrongFocus、Tab 導覽、交替列色與窄版捲動；完整證據移至可選列的詳情區，避免主表塞入低價值長文。
+- 共用 adapter 對不支援的 Advice DTO 或非法 bp／機率欄位拒絕適配，不把 ranking score 轉成 probability，也不由 UI 補算權重差距或核心金融數值；契約測試涵蓋欄位分離、字串 bp 正規化與缺值狀態。
 - Optional Historical Replay JSON summary 只作 simulated evidence input；若 DTO 帶 replay summary，data quality 區塊必須揭露 `simulated_scheduler`、source gap、payload gap、outcome maturity、benchmark coverage、missing industry benchmark 與 pending future-data。
 - Workbench `Evidence` 子頁已由 placeholder 替換為唯讀 `ResearchConsoleView`：三區依序顯示固定 fail-closed Safety Boundary、Development Dataset V0 / Rule baseline / ML challenger / E2E frozen projection，以及 EV1–EV5、P0-13、獨立 Broker lane、P0 Data Source Control Center 與 Artifact Inspector。Control Center 固定保留 13 個 P0 source，顯示 contract、machine/audit、人工 decision、blockers 與 downstream eligibility；沒有 audit artifact 時明示 `contract_only`／`Not supplied`，不把缺資料誤顯示為 ready。資料只來自 `ResearchConsoleSourceService` 的 injected mapping 或顯式 sanitized JSON path；缺 artifact / 欄位顯示 Missing / Unknown，不補零、不讀 DB、不重算 domain logic。
 - Research Console 不提供 Apply、Promote、Retrain、Blend、Accept Source 或 Trade；development / candidate / provisional / degraded / fixture / replay 以文字狀態與顏色共同區分，不能解讀為 formal OOS、forward evidence、source accepted 或 production ready。
@@ -169,7 +294,7 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - Strategy registry / preset / promotion 整合。
 - Walk-forward、baseline comparison、overfitting risk、validation status。
 - Fixed / quantile threshold mode UI 控制與無交易診斷。
-- 結果保存已接入 Research Run Registry；Research Lab 內新增 Registry 比較子頁，可篩選、分頁、多選 2 至 5 個 run，顯示 comparability、參數差異、normalized equity、metrics、Regime 與保存 benchmark。Registry-based Promote Gate 已接入 service 層，且 Month 6 起需通過 lifecycle gate；策略版本 JSON 與 Registry 回填具補償與 reconciliation 防線。
+- 結果保存已接入 Research Run Registry；Research Lab 內新增 Registry 比較子頁，可篩選、分頁、多選 2 至 5 個 run，顯示 comparability、參數差異、normalized equity、metrics、Regime 與保存 benchmark。推薦回放另要求完整 DTO 才能新存為 marked Registry run；單選推薦回放可走 strict reader 開啟保存的 DTO 與已驗證 child，不重新執行，也不進 legacy portfolio history dropdown。舊 markerless Registry run 明示完整 DTO unavailable；marked DTO 沒有 canonical child 時，若保存 snapshots 有推薦列則保留並標明 child 不可用；snapshots 為空則顯示沒有推薦 snapshots、canonical child 不可用。損毀或錯誤 hash 不顯示 partial 結果。Registry-based Promote Gate 已接入 service 層，且 Month 6 起需通過 lifecycle gate；策略版本 JSON 與 Registry 回填具補償與 reconciliation 防線。
 - 規格化 Excel 報告匯出：單股、批次及組合回放結果的背景原子匯出，缺值自動標記 N/A。
 - Fast chart renderer：權益曲線、回撤曲線、報酬分佈、持有天數。
 - 策略回測日期欄與 Research Lab 證據覆盤日期篩選採受控日曆 popup；回測日期開啟時定位今天，未設定的 evidence 日期篩選也定位今天，不落到 sentinel 年份。
@@ -231,6 +356,8 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - 從 Market Watch、Recommendation、Backtest 取得候選標的。
 - 支援後續送入 Backtest / Research workflow。
 - 觀察清單單股下鑽會只讀保存結果 metadata 取得來源 ID／資料日／Profile，無保存結果時保留明確缺漏，不重新計算推薦或猜測來源。
+- 選取標的時以共用呈現契約顯示既有保存的排名分數、排名百分位／方法、樣本數與理由；校準機率沒有合格來源時固定顯示研究中／不可用，不補值。
+- `saved` 只代表有保存的研究結果，動作適合度仍為研究；`not_in_result` 不解讀為看空，也不轉成 0 分。
 
 文件同步重點：
 
@@ -271,6 +398,9 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 - 生命週期回顧：顯示 thesis 狀態、來源追溯、執行落差、訊號 / 市場 / 資料品質 attribution 與摘要 tokens。
 - 籌碼監控：主力淨買賣、集中度、連續流向天數與風險級別。
 - 從 Portfolio 下鑽至 Market Watch 的主力流向並定位個股。
+- 持倉表整合共用呈現契約的動作適合度、目標／目前／差距權重（整數 bp）與失效條件；既有 Condition Monitor 的 `valid`／`warning`／`invalid` 只映射為持有／減碼候選／退出候選的唯讀分類。
+- 權重差距只接受既有 Portfolio Advice 或持倉來源摘要明確提供的欄位；缺欄位顯示未知並保留警告，UI 不由目標減目前自行推導。
+- 持倉條件監控的目前 Regime／分數只讀持倉來源摘要已提供的 current snapshot；缺資料時顯示待更新，不在 UI 掃描全市場或重建推薦分數。
 
 持倉防線：
 
@@ -372,4 +502,143 @@ Qt UI 不是單純顯示股票名單，而是把「資料更新、候選觀察�
 
 ## 更新記錄
 
+- 2026-10-05：內建Breadth／Relative Strength的共用與獨立SQLite讀取接入合作取消，視窗等native worker結束才退出；Native查詢中關閉及取消→正常重試通過，取消不冒充完成。四檔backend改動，UI main／view未改；原速度目標與Backtest未達項保留，見 SQL取消收據（開發收據見dev）。
+
+- 2026-10-05：回測四張圖與推薦組合兩張圖延至首次結果頁使用建立；待顯示資料採快照且以最新結果取代，切回重用 widget。單張繪圖失敗保留資料、顯示提示並可再次進頁重試。盤勢關閉等待 native worker 結束；取消粒度與 Native 首次使用／效能驗證見 階段1限定收據（開發收據見dev），操作與排錯見 Manual。
+
+- 2026-10-05：個股研究 ML 稽核按鈕依狀態切換展開／收合；current／saved／未知 scope 標題與日期分開，不把保存來源標成當前。歷史回顧呈現已讀回的所選日期；ML 品質降級保留具體原因，未提供時明示。操作與限制見 Manual；本輪 offscreen 與 consumer 測試不替代待驗 Native 流程。
+
+- 2026-09-30：完成九個主工作區的長頁捲動、表格／清單五列 viewport 與主視窗幾何整合驗收；完整矩陣與 OS 原生驗收邊界見 UI Layout Audit。
 - 2026-09-06：補上八卡 UI／App 契約、08-B 來源接線與正式來源／權限限制，操作細節指向完整 Manual。
+
+
+## UX02 共用狀態詞彙有限切片（2026-10-05）
+
+盤勢、持倉系統健康、選股與個股研究沿用既有DTO，透過 ui_qt/status_vocabulary.py 翻譯明確原碼；資料缺件、品質降級、載入、時間等待／休市、研究完成、研究資格與真實錯誤分開。專用詞彙保留fallback，未知碼保留，股票／持倉風險不由系統缺件推論；來源、日期及原始診斷沿既有詳情保留。Workbench與回測使用同一呈現邊界。操作、限制及排錯見APPLICATION_MANUAL的UX02段，驗證見 docs/06_qa/UX02_SHARED_STATUS_VOCABULARY_20261005.md；非全頁／全狀態重構。
+
+
+## 2026-10-05 原研究收藏
+
+「推薦分析 → 每日研究條件」選列後按「收藏此研究」，確認保存至既有觀察清單。書籤固定原來源／方法／日期／條件及排序偏好；重複相同收藏不寫，另一來源同股獨立保存。從觀察清單開個股、同查詢切股與返回都用exact書籤；無效來源不改成手動或latest。「以最新來源另開研究」只讀新研究，原書籤不變；精確移除可取消並在本程序還原。
+
+完整參數、步驟、安全限制與排錯見[Manual](../07_guides/APPLICATION_MANUAL.md)，限定測試／Native／Library證據見QA（開發收據見dev）。本包不改推薦／持倉／自然ML資格，不宣告全計畫完成。
+
+
+## 2026-10-05 UX04／05 固定方法預設與候選摘要
+
+每日研究條件新增五個固定 MA20／60 查詢預設，選取後須明確套用；只篩選已核驗快照。手動條件／原來源回訪不自動覆蓋，切換預設或Decimal指標排序不改來源／日期／方法／研究資格。完整 declared 分母、已發布／缺件、組合三態、顯示／因篩選隱藏與具名原因可見；缺少 artifact 不造可開列，未知不當反證。原強弱排名未提供，選項停用；不造分數或勝率。選取摘要立即刷新，原方法identity保留詳情。
+
+本包 final 43 affected passed、Workbench85、validator25／4skip／0fail、mypy779、compile／quant guard通過；已發布真D2382／1477 readonly offscreen及preset→收藏payload roundtrip→同源開啟／返回身份核對通過。未啟動正式／全量producer，沒有真實清單寫入／遷移、正式DBwrite、訓練、前景Native或鍵鼠；本包新增Native互動仍待下一使用者桌面時段。完整stage1–3未宣告完成，Backtest18.62%／20%未達及PIT／availability／自然ML／真人證據限制保留。詳見既有UX16 QA（開發收據見dev）與[Manual](../07_guides/APPLICATION_MANUAL.md)。
+
+
+### UX16／18 有界母體來源契約延伸（2026-10-05，基線7e11f5a8）
+
+明示母體設定是隔離研究批次來源：ID／版本／截至日／原檔hash、納入／排除與理由、已知或未知設定分母。可選manifest extension納入原不可變identity，讀取與consumer重新核對來源revision／刪除／成員／date；舊無設定cohort保留來源與原始分母未知。清單、母體盤勢及候選摘要共享同一契約，設定不授予PIT或推薦資格，不計算新分數。CLI明示讀included，禁止無設定手動更新默默降格已綁來源。
+
+原排名來源audit：原計畫指StockScreener本日／本週價量強弱排序（原公式不改）。ScreeningResultDTO有period／method／version／eligible count，但即時結果未有不可變run／完整成員排除／hash發布；strong_stocks_view僅記憶體快取。saved recommendation屬另一rank kind不能代用。有限currentDB schema唯讀未找到rank／screen tables，不推論全球不存在。原排名未知且停用；需原引擎不可變結果發布工程，不稱等待自然成熟。
+
+本包無Native前景或使用者視窗操作，無訓練、全市場producer、正式DB／registry或真實書籤寫入；永久清理仍未執行。驗證與commit結果見同章最終收據補記。
+
+最終驗證：104相關tests、WB85、validator25/4skip/0fail、mypy781、compile13及guard通過；真D三股隔離發布／2382讀回／offscreen同源通過。詳見UX16 QA最新最終驗證章；原排名publisher與Native仍pending，未push。
+
+
+## 2026-10-05 原排名研究模式
+
+每日研究條件可唯讀選擇日／週比較與強／弱模式，來源存在且核驗相容時啟用原排名排序。研究母體盤勢共用同一來源；MA條件與原名次分開，缺排名未知，不重編篩選後名次。舊Top／Bottom百分比不可當一般前幾％或勝率；來源只授有界研究。原排名收藏已另存 v2，舊非排名研究收藏沿原 v1 契約；詳見本文最新版本化章。隔離CLI發布與參數、解讀／排錯見[完整Manual](../07_guides/APPLICATION_MANUAL.md)，QA（開發收據見dev）另列Native及剩餘工程。
+
+- 2026-10-05 更新：同步原排名入口、來源限制與收藏相容性。
+
+## 2026-10-05 原排名收藏與個股來源版本化（最新限定收尾）
+
+已完成原排名選股→個股原排名／原 feature→版本化收藏→新程序 pinned 讀回→精確返回原收藏。v2 保存四模式、實際比較窗、原母體／方法／hash／排序／所選股；舊非 rank v1 內容與 bookmark/query/payload 雜湊不變，沒有真實清單遷移。缺件／錯版本／日期／股號／hash／來源修訂顯示原因，可明確另開最新個股研究，保留原證據。完整 Top/Bottom 字串照原 publisher 顯示，3–5 筆週 fallback 明示實際日期與非完整週，不反推 score／勝率。 完整入口、步驟、參數、限制與排錯見[Manual](../07_guides/APPLICATION_MANUAL.md)，限定 QA（開發收據見dev）。
+
+其他原大盤／強弱 consumer 融合、完整 feature/method dictionary、正式合格母體／排程部署、長期 storage/growth 及其他 lifecycle crash 驗收仍是第一版工程。Backtest 18.62%／20% 未達保留。正式母體權威、official availability／歷史 membership／PIT，以及舊 Top/Bottom 口徑與 numeric score 暴露屬來源／方法版本決策。Native 鍵鼠／縮放／跨頁、完整 App startup 與 3–5 位真人驗收另待桌面時段；不把工程缺件稱為自然成熟。
+
+
+### 2026-10-05 UX09 研究名單入選歷程
+
+每日研究清單新增入選歷程欄；候選與選中個股摘要保留狀態、前次日期及理由。MA 查詢的背景唯讀比較與排序／顯示篩選分離，來源不足／修訂／改版保持未知；原排名不是新的入選 predicate。操作見完整 Manual 的 UX09 小節；限定 QA（開發收據見dev）。
+
+
+## 2026-10-05 UX09 歷史索引／分頁與有限版本復原（最新）
+
+長期保存的研究manifest以可重建SQLite派生索引查詢，32 refs／頁、固定來源／query／generation游標、64頁滑動導航窗口且可持續向更早頁讀取。背景history／explicit rebuild保持當期個股與篩選主線可用；schema／來源／hash／cancel／故障不偽造完整，原immutable來源／舊收藏不遷移。索引最多64MiB，每頁串流重核全index SHA及頁內原manifest/artifact，年度calendar以4096entries／32MiB逐份驗證，不再32份正常累積即整批未知。
+
+限定受影響79個不重複案例、Workbench85、validator25／4skip、mypy788、11變更Python編譯與精度／未來函數guard通過。真實已保存三股來源隔離offscreen回放：晚發布仍unknown、17來源hash與正式DBsize/mtime不變、worker0；沒有讀正式DB去重核current identity。130日×2修訂合成metadata全260refs走9頁，index159744 bytes、最大page JSON13814 bytes／tracemalloc1226583 bytes；不當自然樣本或正式長期總容量證明。
+
+本包關閉UX09索引／分頁／索引程式內版本復原；第一版工程剩餘固定F1–F4，詳細終點與owner見收據。Backtest18.62%／20%仍差1.38百分點，不重測湊數或放寬。舊1477 Native已在6691ec78通過，較早「仍待1477」文字由此更正；新分頁／跨頁Native及3–5位真人另驗。1000×835 outer／125%已接受，不新增1000×800硬門檻。具名full-cohort與原完整Top/Bottom標籤沿現況，官方全市場／新百分位方法只有擴充時才要明確決定，不阻塞目前研究限定工程。
+
+完整操作與排錯見 APPLICATION_MANUAL 的歷史索引小節；詳細驗證、來源選項與F1–F4凍結清單（開發收據見dev）。
+
+
+## 2026-10-05 F2／F3 原市場頁共享來源與已開能力矩陣（最新）
+
+F2／F3 在已接受的 A／A 研究限定範圍完成：原大盤指數併列具名摘要，強勢個股、弱勢個股可明示切換至每日研究名單同一 immutable 來源；日／周 × 強／弱四模式保留原完整 eligible、Top／Bottom 標籤、實際比較窗及兩種排除。榜外與研究資料缺件分欄，來源變更／清除／過期回應拒絕，切返嚴格唯讀不啟 producer。既有全市場／產業來源、母體與可比較性仍獨立，沒有用三股取代全市場統計。
+
+能力矩陣只登記 close／MA20／MA60、close_above_ma20／close_above_ma60，完整 field／unit／warmup／missing／availability／version／cost／source 與逐股 audit 可查；官方時點及未量測成本維持 unknown。完整只相對 named declared cohort；既有 feature v2／method hash／原引擎與收藏版本不變，沒有新增正式 B 母體或方法版本。
+
+本批驗證：43 個不重複受影響案例有通過證據（根層首9＋相容29＋實際橋接新增1＋F2 focused4；最後11頁面相容重驗為既有案例不加總）、Workbench85、validator25／4skip／0fail、mypy790、12檔編譯及精度／未來函數 guard 通過。受控小型來源驗實際背景 consumer；真實既有三股保存來源驗能力投影與 offscreen 畫面，17 來源 hash 與正式 DB size／mtime 不變、worker 0；後者沒有開正式 DB 重核 current identity，不能宣稱自然跨日證據或 PIT。詳細來源、失敗保留及回滾見本批 QA 收據。
+
+第一版工程剩 F1（18.62%／20%，差 1.38pp；不重測微調）及 F4（整條跨頁整合、部署、長期總容量）。新 Native／3–5 位真人另驗；舊1477 Native已在6691ec78完成，不重列待辦。1000×835 outer／125%沿已接受，不加1000×800硬門檻。工程缺陷不稱等自然成熟；source/capacity／Evidence 屬另一 owner，保留其變更並排除本批提交。沒有清理、正式資料寫入、訓練、前景視窗操作或 push。
+
+本批詳細收據（開發收據見dev）
+
+
+## 2026-10-05 明示 research source 啟動配置
+
+MainWindow 啟動方可明示研究 snapshot root／cohort 與 original-rank root；快照 root/cohort 成對、非空，原排名 root 不能單獨配置。研究名單初始 cohort 同步明示值，啟動仍不自動讀取／採集；無參數沿原 defaults。操作依 [完整 Manual](../07_guides/APPLICATION_MANUAL.md) 的明示研究來源配置小節；雙來源跨頁與資源終驗依 F4 QA（開發收據見dev），不以 offscreen 取代 Native／真人。
+## 個人觀察清單明示啟用（2026-10-06）
+
+候選池在成對設定 personal root／既有來源時顯示「建立並啟用個人副本」。按鈕先預覽來源、個人 DB、marker、receipt、來源備份與 rollback audit；取消不建立副本，確認後才 convert／activate。未啟用來源只讀；啟用後固定 personal writer，回滾停止 writer 並保留新歷史，不切回市場來源寫入。未設定仍沿既有模式。正式 root／真實遷移／Native 尚未執行；操作與排錯見 [完整手冊](../07_guides/APPLICATION_MANUAL.md)，驗證見 個人儲存 QA（開發收據見dev）。
+
+
+## UX10 方法與家族符合度（2026-10-06）
+
+每日研究名單在同一 accepted snapshot 顯示唯讀母體與選取股票摘要：方法三態分母、符合方法數／去重家族數、方法版本與理由。雙 MA 命中為2方法1家族；缺第二合格獨立家族則跨家族未知，排名不加入方法count、不增加分數。partial／不相容來源與清除不留舊摘要；不觸發新運算或producer。整項UX10維持partial。[Manual](../07_guides/APPLICATION_MANUAL.md)／QA（開發收據見dev）
+
+
+## 個人 notes 與唯讀研究動作（2026-10-06）
+
+研究筆記／個股研究動作、決策工作台 continuity、推薦個人選擇／ACK、outcome journey 使用同一獨立 notes selector。personal 使用個人 JSONL；legacy_read_only 顯示舊 notes，但控制器禁止保存研究動作，其他寫入也具名拒絕。缺 personal notes 不 fallback，不要求啟用 watchlist。未設定保留原 writer；正式 root／migration／Native 仍待批准。[Manual](../07_guides/APPLICATION_MANUAL.md)／QA（開發收據見dev）
+
+
+## 版本化規則說明卡（2026-10-06）
+
+回測策略設定增加「查看版本化規則說明」按鈕；按需唯讀投影目前StrategySpec，顯示版本／此次參數／未知交易契約。來源與hash放收合核對區，開卡不初始化VersionService或executor，不用目前identity替舊run補章。操作及不可评估限制見完整Manual。
+
+
+2026-10-06：研究Registry「查看單筆結果與規則」以背景讀取保存來源，結果類型／期間／成本／來源資格可讀，詳細ref及hash收合；錯身份拒絕連結、未知保留，換選取／取消不套舊回呼，不提供新績效算法。
+
+### 2026-10-06 UX20 單批 MA 樣本限定整合
+
+既有隔離 MA CLI 明示保存完整 matched/notmatched/unknown/excluded 單批capture＋receipt，再按原pin唯讀核對readiness；既有MA頁只呈現當期完整控制組投影並明示尚未保存。included≤16、超限拒絕；未知availability/calendar/outcomes不補PIT或訓練資格。Stage5／UX20 partial，多批parent／排程與Outcome接線仍是工程待辦。QA：`docs/06_qa/UX20_SAMPLE_CAPTURE_INTEGRATION_20261006.md`；操作以Manual同日章節為準。個人儲存／Journal程式已整合，只有正式migration／activation未做。
+
+
+### 2026-10-06 UX20 多批母體有限整合
+
+具名parent manifest已沿既有query-only source／producer／capture／readiness完成多批保存、新程序讀回、取消／失敗／安全重試；每批included≤16，完整母體最多16批，缺批與途中來源／方法改變不能complete。producer發布狀態與sample捕捉狀態分開，uncaptured另列。UI未改；Stage5／UX20仍partial，固定時鐘／排程留存、Outcome H5/10/20與母體UI瀏覽仍待工程；官方available-at／日曆及自然成熟另待證據。操作依APPLICATION_MANUAL最新多批章；收據：docs/06_qa/UX20_PARENT_CAPTURE_INTEGRATION_20261006.md。
+
+
+### 2026-10-06 UX20 保存母體收據瀏覽
+
+每日研究條件新增明示選取parent receipt的背景唯讀視窗，沿原writer/readiness核對；首屏列母體／資料日／方法、完整／uncaptured與每批producer/capture結果，技術身份折疊。重複點擊／取消／返回／stale回應不重跑producer或套舊資料；readiness拒絕時保留已驗envelope的發布記錄，母體資格未確認。15 offscreen測試、Workbench85、validator25/4skip、mypy806+final targeted2通過。Stage5／UX20保持partial；固定觀測日policy、漏日／修訂接受與owner容量部署仍待工程，UX21獨立lane未接受。QA：docs/06_qa/UX20_PARENT_RECEIPT_UI_20261006.md；操作依Manual最新章。
+
+
+### 2026-10-06 UX20 固定觀測日接受限定完成
+
+既有parent receipt→原readiness→child exact資料日→固定cutoff/窗口/expected dates接受policy→共用atomic writer→新程序唯讀日報已接線；隔離CLI預設preview，--accept明示保存。缺目標資料日不能借latest或前日補完整，同日不同revision保舊、相同policy/parent冪等、failure/partial安全重試。23不同案例、targeted mypy2/compile3/quant/diffcheck通過；UI未改不重跑前批gates。Stage5／UX20仍partial；正式daily owner/Task/cadence監控／容量留存部署與官方來源治理仍待工程/決策，UX21三檔獨占未接受。操作依Manual最新章與Supplements，QA：docs/06_qa/UX20_OBSERVATION_DAY_ACCEPTANCE_20261006.md。
+
+
+### 2026-10-06 UX20 隔離daily owner可執行整合
+
+新增明示runtime/target日期的isolated daily runner，直接沿既有producer/parent/observation接受串全鏈，preflight為預設；capacity/quota先檢，有限retry/合作cancel/漏日與revision監控，exact receipt重用。source/日期/配置一致才完成，producer已發布與capture拒絕分列保留；未配置不選生產值。17不同案例＋最後source/config兩例重核、targeted mypy2/compile3/quant通過；UI未改。Stage5/UX20仍partial，正式date-owner/calendar/Task/ACL/留存治理待工程/決策；UX21三檔未整合。QA：docs/06_qa/UX20_DAILY_OWNER_ISOLATED_20261006.md；操作依Manual。
+
+
+## 2026-10-06 保存母體研究結果
+
+每日研究條件→查看保存母體收據新增H5／H10／H20頁；選擇綁定原parent identity的明示研究輸入，背景唯讀核對exact children與原來源。逐方法完整分母及逐股毛／net／excess與資料不足／未成熟分列；清除／換收據清舊結果，取消／晚到callback不套用。成本／benchmark未知不補default，符合方法非交易入選，詳細診斷收合。JSON、公式、限制與排錯以[Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-06-ux21-保存母體-h5h10h20-研究結果)為準，驗收見UX21 QA（開發收據見dev）。
+
+
+### 2026-10-06 UX21 保存成效收據入口
+
+母體收據→研究結果 tab「選擇結果輸入／保存收據」可讀新隔離 outcome receipt；背景 original parent/children/hash 核對，完整 H5/10/20 分母、毛/net/excess、未知或未成熟分列。主文明示目前觀察／年度計畫，保存版本不查較新 DB；錯 parent／損壞／取消／stale 仍拒絕。入口與操作：[Manual](../07_guides/APPLICATION_MANUAL.md)，實際市場背景收據：QA（開發收據見dev）。

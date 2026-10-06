@@ -29,6 +29,7 @@ from app_module.decision_desk_dtos import (
     PortfolioAlertAttribution,
     PortfolioAlertSummary,
 )
+from app_module.paper_daily_status_contract import paper_daily_status_schema_supported
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 
 
@@ -194,6 +195,7 @@ class PaperDecisionDeskEvidenceSource:
         warnings: list[str] = []
         metadata: dict[str, Any] = {
             "source_type": "paper_portfolio_snapshot_and_position_health",
+            "source_scope": "paper_research",
             "as_of_date_requested": as_of_date.isoformat(),
             "state_db_path": str(self.state_db_path),
             "health_baseline_path": str(self.health_baseline_path),
@@ -391,6 +393,14 @@ class PaperDecisionDeskEvidenceSource:
         elif baseline_warnings is not None:
             blockers.append("paper_health_warnings_invalid")
 
+        baseline_diagnostics = health_payload.get("diagnostics")
+        if isinstance(baseline_diagnostics, list):
+            metadata["paper_health_diagnostics"] = [
+                str(item) for item in baseline_diagnostics if str(item).strip()
+            ]
+        elif baseline_diagnostics is not None:
+            blockers.append("paper_health_diagnostics_invalid")
+
         metadata.update(
             {
                 "paper_snapshot_id": snapshot.snapshot_id,
@@ -435,6 +445,7 @@ class PaperDecisionDeskEvidenceSource:
             attributions=tuple(
                 sorted(known_attributions, key=lambda item: (-item.severity, item.stock_code))
             ),
+            population_status=("has_positions" if snapshot.positions else "no_positions"),
         )
         status: PaperEvidenceStatus = "degraded" if quality != DecisionDeskQuality.OBSERVED else "ready"
         if unique_blockers:
@@ -442,6 +453,7 @@ class PaperDecisionDeskEvidenceSource:
         metadata.update(
             {
                 "source_status": status,
+                "population_status": summary.population_status,
                 "blockers": list(unique_blockers),
                 "warnings": list(unique_warnings),
                 "paper_evidence_as_of_date": snapshot.decision_date.isoformat(),
@@ -479,7 +491,7 @@ class PaperDecisionDeskEvidenceSource:
         blockers: list[str],
         warnings: list[str],
     ) -> None:
-        if payload.get("schema_version") != "paper-portfolio-daily-status.v1":
+        if not paper_daily_status_schema_supported(payload):
             blockers.append("paper_daily_status_schema_mismatch")
         status = str(payload.get("status") or "unknown")
         if status not in {"passed", "skipped_non_trading_day"}:
@@ -553,21 +565,22 @@ class PaperDecisionDeskEvidenceSource:
                 (snapshot_id,),
             ).fetchall()
             positions: list[dict[str, Any]] = []
+            raw_positions: list[dict[str, Any]] = []
             for position in positions_rows:
                 code = str(position["stock_code"] or "").strip()
                 if not code:
                     raise ValueError("paper position stock_code missing")
-                positions.append(
-                    {
-                        "stock_code": code,
-                        "quantity": _parse_non_negative_int(position["quantity"], "paper position quantity"),
-                        "mark_price": str(_parse_decimal(position["mark_price"], "paper position mark_price")),
-                        "market_value": str(_parse_decimal(position["market_value"], "paper position market_value")),
-                        "weight_bp": _parse_non_negative_int(position["weight_bp"], "paper position weight_bp"),
-                    }
-                )
-            if not positions:
-                raise ValueError("paper snapshot positions missing")
+                quantity = _parse_non_negative_int(position["quantity"], "paper position quantity")
+                raw_position = {
+                    "stock_code": code,
+                    "quantity": quantity,
+                    "mark_price": str(_parse_decimal(position["mark_price"], "paper position mark_price")),
+                    "market_value": str(_parse_decimal(position["market_value"], "paper position market_value")),
+                    "weight_bp": _parse_non_negative_int(position["weight_bp"], "paper position weight_bp"),
+                }
+                raw_positions.append(raw_position)
+                if quantity > 0:
+                    positions.append(raw_position)
             canonical = {
                 "snapshot": {
                     "snapshot_id": snapshot_id,
@@ -576,7 +589,7 @@ class PaperDecisionDeskEvidenceSource:
                     "cash": str(_parse_decimal(row["cash"], "paper snapshot cash")),
                     "total_value": str(_parse_decimal(row["total_value"], "paper snapshot total_value")),
                 },
-                "positions": positions,
+                "positions": raw_positions,
             }
             data_version = int(connection.execute("PRAGMA data_version").fetchone()[0])
             return (

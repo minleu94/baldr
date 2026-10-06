@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     DecisionDeskRiskPrompt,
     DecisionDeskRiskPromptSummary,
+    IndustryRepresentativeStock,
+    IndustryStrengthRow,
+    IndustryStrengthSummary,
     MarketBreadthSummary,
     MarketRegimeSummary,
     PortfolioAlertAttribution,
@@ -15,7 +19,10 @@ from app_module.decision_desk_dtos import (
     WatchlistTriggerSummary,
 )
 from app_module.decision_desk_snapshot_repository import DecisionDeskSnapshotRepository
-from app_module.decision_desk_snapshot_storage_dtos import build_stored_decision_desk_snapshot
+from app_module.decision_desk_snapshot_storage_dtos import (
+    _portfolio_alert,
+    build_stored_decision_desk_snapshot,
+)
 from data_module.config import TWStockConfig
 
 
@@ -118,6 +125,44 @@ def test_same_snapshot_is_idempotent_and_hash_is_deterministic(tmp_path):
     assert len(repository.list_snapshots()) == 1
 
 
+def test_population_status_roundtrips_without_changing_legacy_snapshot_hash():
+    legacy_alert_payload = {
+        "as_of_date": "2026-06-30",
+        "quality": "observed",
+        "warnings": [],
+        "alert_count": 0,
+        "alert_codes": [],
+        "alert_level": "low",
+        "attributions": [],
+    }
+    restored_alert = _portfolio_alert(legacy_alert_payload)
+    assert restored_alert.population_status == "unknown"
+    assert restored_alert.to_dict() == legacy_alert_payload
+
+    legacy_snapshot = replace(_snapshot(), portfolio_alerts=restored_alert)
+    stored = build_stored_decision_desk_snapshot(legacy_snapshot)
+    assert "population_status" not in stored.portfolio_alert_json
+    restored_snapshot = stored.to_decision_desk_snapshot()
+    rebuilt = build_stored_decision_desk_snapshot(
+        restored_snapshot,
+        decision_date=stored.decision_date,
+        source_version=stored.source_version,
+        builder_version=stored.builder_version,
+        metadata=stored.metadata_json,
+    )
+    assert rebuilt.snapshot_hash == stored.snapshot_hash
+
+    empty = PortfolioAlertSummary(
+        date(2026, 6, 30),
+        DecisionDeskQuality.OBSERVED,
+        (),
+        alert_count=0,
+        alert_level="low",
+        population_status="no_positions",
+    )
+    assert _portfolio_alert(empty.to_dict()).population_status == "no_positions"
+
+
 def test_different_hash_keeps_new_version_and_supersedes_prior_active(tmp_path):
     repository = DecisionDeskSnapshotRepository(_config(tmp_path))
     first = repository.save_snapshot(build_stored_decision_desk_snapshot(_snapshot(warning="first")))
@@ -152,3 +197,74 @@ def test_read_only_repository_never_creates_missing_db_or_schema(tmp_path):
     assert repository.list_snapshots() == []
     assert repository.latest_before_or_on(date(2026, 7, 1)) is None
     assert not missing_db.exists()
+
+
+def test_industry_strength_payload_roundtrips_through_stored_snapshot():
+    snapshot = _snapshot()
+    row = IndustryStrengthRow(
+        industry_name="半導體業",
+        index_name="半導體類指數",
+        industry_level="leaf",
+        market_scope="twse",
+        index_close="100",
+        return_5d_bp=120,
+        return_20d_bp=450,
+        market_return_5d_bp=80,
+        market_return_20d_bp=100,
+        excess_5d_bp=40,
+        excess_20d_bp=350,
+        rank_5d=1,
+        rank_20d=1,
+        constituent_count=2,
+        eligible_stock_count_5d=2,
+        eligible_stock_count_20d=1,
+        coverage_5d_bp=10000,
+        coverage_20d_bp=5000,
+        quality=DecisionDeskQuality.DEGRADED,
+        warnings=("industry_stock_coverage_partial:20d:1/2",),
+        representative_stocks=(
+            IndustryRepresentativeStock(
+                stock_code="2330",
+                stock_name="台積電",
+                industry_name="半導體業",
+                return_5d_bp=200,
+                return_20d_bp=600,
+                excess_5d_bp=120,
+                excess_20d_bp=500,
+                quality=DecisionDeskQuality.OBSERVED,
+            ),
+        ),
+    )
+    strength = IndustryStrengthSummary(
+        as_of_date=date(2026, 6, 30),
+        quality=DecisionDeskQuality.DEGRADED,
+        warnings=("industry_mapping_current_research_only",),
+        mapping_observed_date=date(2026, 6, 29),
+        mapping_available_at="2026-06-29T08:00:00+08:00",
+        mapping_effective_from=date(2026, 6, 29),
+        rows=(row,),
+        unmapped_industry_categories=("存託憑證",),
+        coverage={"coverage_denominator": "current_unambiguous_company_registry"},
+    )
+    snapshot = replace(
+        snapshot,
+        sector_rotation=SectorRotationSummary(
+            as_of_date=date(2026, 6, 30),
+            quality=DecisionDeskQuality.DEGRADED,
+            warnings=("industry_mapping_current_research_only",),
+            leading_sector="半導體業",
+            trailing_sector=None,
+            rotation_intensity_bp=None,
+            industry_strength=strength,
+        ),
+    )
+
+    stored = build_stored_decision_desk_snapshot(snapshot)
+    restored = stored.to_decision_desk_snapshot()
+
+    assert stored.sector_rotation_json["industry_strength"]["mapping_version"] == "tw-industry-explicit-map.v1"
+    restored_strength = restored.sector_rotation.industry_strength
+    assert restored_strength is not None
+    assert restored_strength.rows[0].representative_stocks[0].stock_code == "2330"
+    assert restored_strength.rows[0].coverage_20d_bp == 5000
+    assert restored_strength.unmapped_industry_categories == ("存託憑證",)

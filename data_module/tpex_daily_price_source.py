@@ -3,18 +3,43 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
 from pathlib import Path
 import time
 from typing import Callable, Mapping, Any
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import pandas as pd
 import requests
 
 from data_module.tpex_daily_price_backfill import normalize_tpex_daily_price_rows
+from data_module.official_daily_price_custody import (
+    OfficialDailyPriceCustodyError,
+    persist_official_daily_price_response,
+)
 
 
 TPEX_DAILY_CLOSE_URL = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
 TPEX_AFTER_TRADING_OTC_URL = "https://www.tpex.org.tw/www/zh-tw/afterTrading/otc"
+
+
+class _UrlLibResponse:
+    """Small response adapter used only when requests' TLS stack fails."""
+
+    def __init__(self, *, url: str, status_code: int, headers: Mapping[str, object], content: bytes) -> None:
+        self.url = url
+        self.status_code = status_code
+        self.headers = headers
+        self.content = content
+
+    def raise_for_status(self) -> None:
+        if self.status_code < 200 or self.status_code >= 400:
+            raise RuntimeError(f"TPEx urllib response status={self.status_code}")
+
+    def json(self) -> object:
+        return json.loads(self.content.decode("utf-8"))
 
 
 @dataclass(frozen=True)
@@ -27,6 +52,7 @@ class TpexDailyPriceUpdateResult:
     skipped_count: int
     diagnostic_count: int
     output_file: Path | None = None
+    source_custody: Mapping[str, object] | None = None
 
 
 class TpexDailyPriceSource:
@@ -36,9 +62,14 @@ class TpexDailyPriceSource:
         self,
         output_dir: Path,
         fetch_rows: Callable[..., list[Mapping[str, Any]]] | None = None,
+        source_custody_root: Path | None = None,
     ) -> None:
         self.output_dir = Path(output_dir)
         self.fetch_rows = fetch_rows or self._fetch_official_rows
+        self.source_custody_root = (
+            None if source_custody_root is None else Path(source_custody_root)
+        )
+        self._last_response_custody: dict[str, object] | None = None
 
     def update_for_date(self, date_value: str) -> TpexDailyPriceUpdateResult:
         requested_date = _date_key(date_value)
@@ -80,7 +111,14 @@ class TpexDailyPriceSource:
                 row_count=0,
                 skipped_count=skipped_count,
                 diagnostic_count=len(normalized.diagnostics),
+                source_custody=self._last_response_custody,
             )
+
+        source_custody = self._persist_response_custody(
+            source_date=source_date or requested_date,
+            row_count=len(rows_for_date),
+            source_columns=tuple(rows_for_date[0].keys()) if rows_for_date else (),
+        )
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         output_file = self.output_dir / f"{requested_date}.csv"
@@ -97,7 +135,60 @@ class TpexDailyPriceSource:
             skipped_count=skipped_count,
             diagnostic_count=len(normalized.diagnostics),
             output_file=output_file,
+            source_custody=source_custody,
         )
+
+    def _persist_response_custody(
+        self,
+        *,
+        source_date: str,
+        row_count: int,
+        source_columns: tuple[str, ...],
+    ) -> dict[str, object] | None:
+        if self.source_custody_root is None or self._last_response_custody is None:
+            return None
+        details = self._last_response_custody
+        try:
+            request_parameters = details.get("request_parameters")
+            if not isinstance(request_parameters, Mapping):
+                request_parameters = None
+            response_headers = details.get("response_headers")
+            if not isinstance(response_headers, Mapping):
+                response_headers = None
+            raw_response = details.get("raw_response")
+            if not isinstance(raw_response, bytes):
+                raise TypeError("TPEx response body was not captured as bytes")
+            captured_at = details.get("captured_at")
+            if not isinstance(captured_at, datetime):
+                raise TypeError("TPEx response completion time is missing")
+            http_status = details.get("http_status")
+            if not isinstance(http_status, (int, str, bytes, bytearray)):
+                raise TypeError("TPEx response status is missing")
+            receipt = persist_official_daily_price_response(
+                output_root=self.source_custody_root,
+                venue="tpex",
+                source_id="tpex.daily_close_quotes",
+                source_date=source_date,
+                requested_url=str(details["requested_url"]),
+                final_url=(
+                    str(details["final_url"])
+                    if details.get("final_url") is not None
+                    else None
+                ),
+                request_parameters=request_parameters,
+                http_status=int(http_status),
+                response_headers=response_headers,
+                raw_response=raw_response,
+                captured_at=captured_at,
+                row_count=row_count,
+                source_columns=source_columns,
+                parser_id="tpex.daily_close_quotes.v1",
+                historical_backfill_claimed=False,
+            )
+        except (KeyError, TypeError, ValueError, OfficialDailyPriceCustodyError):
+            raise
+        self._last_response_custody = receipt
+        return receipt
 
     def _fetch_official_rows(self, date_value: str | None = None) -> list[Mapping[str, Any]]:
         last_exc: Exception | None = None
@@ -112,6 +203,7 @@ class TpexDailyPriceSource:
                 "response": "json",
             }
 
+        response_payload: object | None = None
         for attempt in range(1, 4):
             try:
                 response = requests.get(
@@ -123,6 +215,49 @@ class TpexDailyPriceSource:
                     },
                     timeout=(10, 90),
                 )
+                response.raise_for_status()
+                response_payload = None
+                raw_response = getattr(response, "content", None)
+                if not isinstance(raw_response, bytes) or not raw_response:
+                    # Keep lightweight test doubles and alternate clients
+                    # compatible while production requests retain the exact
+                    # wire body in ``response.content``.
+                    response_payload = response.json()
+                    raw_response = json.dumps(
+                        response_payload,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                response_completed_at = datetime.now(timezone.utc)
+                break
+            except requests.exceptions.SSLError:
+                # Keep certificate verification enabled, but use the host's
+                # verified urllib stack when the bundled requests CA store is
+                # unavailable.  This is the same official HTTPS URL/params,
+                # never a third-party fallback.
+                request_url = url
+                if params:
+                    request_url += "?" + urlencode(params)
+                request = Request(
+                    request_url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0",
+                        "Referer": "https://www.tpex.org.tw/zh-tw/mainboard/trading/info/mi-pricing.html",
+                        "Accept": "application/json",
+                    },
+                    method="GET",
+                )
+                with urlopen(request, timeout=90) as urllib_response:
+                    raw_response = urllib_response.read(64 * 1024 * 1024 + 1)
+                    response_completed_at = datetime.now(timezone.utc)
+                    response = _UrlLibResponse(
+                        url=urllib_response.geturl(),
+                        status_code=int(getattr(urllib_response, "status", 200)),
+                        headers=dict(urllib_response.headers.items()),
+                        content=raw_response,
+                    )
+                    response_payload = None
                 response.raise_for_status()
                 break
             except (
@@ -146,7 +281,18 @@ class TpexDailyPriceSource:
         else:
             raise RuntimeError(f"TPEX daily close request failed: {last_exc}")
 
-        data = response.json()
+        data = response_payload if response_payload is not None else response.json()
+        response_url = getattr(response, "url", None) or url
+        response_headers = getattr(response, "headers", None) or {}
+        self._last_response_custody = {
+            "requested_url": response_url,
+            "final_url": response_url,
+            "request_parameters": params or {},
+            "http_status": int(getattr(response, "status_code", 200)),
+            "response_headers": dict(response_headers),
+            "raw_response": raw_response,
+            "captured_at": response_completed_at,
+        }
         if date_key and isinstance(data, dict):
             return _rows_from_after_trading_response(data, fallback_date=date_key)
         if not isinstance(data, list):

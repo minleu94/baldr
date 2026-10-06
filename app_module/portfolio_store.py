@@ -1,15 +1,42 @@
 """Append-only JSONL storage for the Phase 4.1 Portfolio MVP."""
 
+from contextlib import contextmanager
+import hashlib
 import json
+import os
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+import time
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Sequence, Callable
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_io_path
+from app_module.personal_paper_store_paths import PersonalStoreCustody
+from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreRoute, PersonalStoreRouteError
+
+from app_module.dtos.decision_continuity_dtos import (
+    ACTION_ADDED,
+    ACTION_NOTE,
+    ACTION_REMOVED,
+    ACTION_UPDATED,
+    DECISION_CONTINUITY_RECORD_TYPE,
+    DECISION_CONTINUITY_TOMBSTONE_ACTIONS,
+    DecisionContinuityRevision,
+)
+
+
+if os.name == "nt":
+    import msvcrt
+    _fcntl: Any = None
+else:  # pragma: no cover - exercised on POSIX CI only
+    import fcntl
+    _fcntl = fcntl
 
 
 def _json_safe(value: Any) -> Any:
     if isinstance(value, Decimal):
         return format(value, "f")
     if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, Mapping):
         return {str(key): _json_safe(item) for key, item in value.items()}
     if isinstance(value, list):
         return [_json_safe(item) for item in value]
@@ -18,61 +45,442 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+@contextmanager
+def _interprocess_lock(path: Path, *, timeout_seconds: float = 10.0, path_validator: Callable[[Path], Path] | None = None) -> Iterator[None]:
+    """Lock a sibling file using OS file locking, without PID guesses."""
+
+    lock_path = path.with_name(f".{path.name}.lock")
+    if path_validator is not None:
+        path_validator(path)
+        path_validator(lock_path)
+    io_lock = to_internal_io_path(lock_path) if path_validator is not None else str(lock_path)
+    Path(io_lock).parent.mkdir(parents=True, exist_ok=True)
+    if path_validator is not None:
+        path_validator(path)
+        path_validator(lock_path)
+    handle = open(io_lock, "a+b")
+    try:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"0")
+            handle.flush()
+        handle.seek(0)
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            try:
+                if os.name == "nt":
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:  # pragma: no cover - exercised on POSIX CI only
+                    _fcntl.flock(handle.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                break
+            except (BlockingIOError, OSError):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"JSONL lock timeout: {path}")
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            try:
+                if os.name == "nt":
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:  # pragma: no cover - exercised on POSIX CI only
+                    _fcntl.flock(handle.fileno(), _fcntl.LOCK_UN)
+            finally:
+                handle.close()
+    except Exception:
+        handle.close()
+        raise
+
+
+def _canonical_record(record: Mapping[str, Any]) -> str:
+    return json.dumps(_json_safe(dict(record)), ensure_ascii=False, sort_keys=True, allow_nan=False)
+
+
+def _journal_history_token(records: Sequence[Mapping[str, Any]]) -> str:
+    raw = "\n".join(_canonical_record(record) for record in records)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _is_revision_record(record: Mapping[str, Any]) -> bool:
+    return str(record.get("record_type", "")) == DECISION_CONTINUITY_RECORD_TYPE
+
+
+def _materialize_journal_revision(
+    raw: Mapping[str, Any], revision: DecisionContinuityRevision
+) -> dict[str, Any]:
+    payload = dict(revision.payload)
+    # JournalService writes both payload and top-level fields. Keeping this
+    # allow-list makes a partial/corrupt record unable to inject projection keys.
+    journal_fields = (
+        "journal_id",
+        "portfolio_id",
+        "body",
+        "title",
+        "stock_code",
+        "linked_type",
+        "linked_id",
+        "tags",
+        "source_type",
+        "source_id",
+        "source_snapshot_id",
+        "source_snapshot_hash",
+        "created_at",
+        "updated_at",
+        "schema_version",
+    )
+    for key in journal_fields:
+        if key in raw:
+            payload[key] = raw[key]
+    payload["journal_id"] = revision.entity_id
+    payload["record_type"] = "journal_entry"
+    payload["revision_id"] = revision.revision_id
+    payload["continuity_event_id"] = revision.continuity_event_id
+    payload["revision_of"] = revision.revision_of
+    payload["action"] = revision.action
+    payload["next_review_at"] = revision.next_review_at
+    payload["actor"] = revision.actor
+    identity = revision.decision_identity.to_dict()
+    payload["decision_identity"] = identity
+    payload["result_id"] = identity["result_id"]
+    payload["stock_code"] = identity["stock_code"] or payload.get("stock_code", "")
+    payload["source_snapshot_id"] = identity["source_snapshot_id"] or payload.get(
+        "source_snapshot_id", ""
+    )
+    payload["source_snapshot_hash"] = identity["source_snapshot_hash"] or payload.get(
+        "source_snapshot_hash", ""
+    )
+    payload["decision_date"] = identity["decision_date"]
+    payload["identity_status"] = identity["identity_status"]
+    return _json_safe(payload)
+
+
+def project_journal_records(
+    records: Sequence[Mapping[str, Any]], *, include_history: bool = False
+) -> list[dict[str, Any]]:
+    """Build active journal projection while retaining history elsewhere.
+
+    Legacy rows remain valid active entries. Continuity revisions with decision
+    entity types are history-only research actions; only journal notes and
+    journal tombstones affect the active note projection.
+    """
+
+    if include_history:
+        return [dict(record) for record in records]
+
+    active: dict[tuple[str, str], dict[str, Any]] = {}
+    anonymous: list[dict[str, Any]] = []
+    heads: dict[tuple[str, str], str] = {}
+    seen_revision_ids: dict[str, str] = {}
+
+    for index, raw in enumerate(records):
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"journal record {index} must be an object")
+        if not _is_revision_record(raw):
+            journal_id = str(raw.get("journal_id", "") or "")
+            if journal_id:
+                active[("journal", journal_id)] = dict(raw)
+            else:
+                anonymous.append(dict(raw))
+            continue
+
+        try:
+            revision = DecisionContinuityRevision.from_mapping(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid journal continuity revision at {index}") from exc
+        revision_id = revision.revision_id
+        canonical = _canonical_record(raw)
+        previous = seen_revision_ids.get(revision_id)
+        if previous is not None:
+            if previous != canonical:
+                raise RuntimeError("journal_revision_event_conflict")
+            continue
+        seen_revision_ids[revision_id] = canonical
+        key = (revision.entity_type, revision.entity_id)
+        current_head = heads.get(key, "")
+        if current_head:
+            if revision.revision_of != current_head:
+                raise ValueError("journal_revision_chain_conflict")
+        elif revision.revision_of:
+            raise ValueError("journal_revision_chain_conflict")
+        heads[key] = revision_id
+
+        if revision.entity_type != "journal":
+            continue
+        if revision.action in DECISION_CONTINUITY_TOMBSTONE_ACTIONS:
+            active.pop(key, None)
+        elif revision.action in {ACTION_NOTE, ACTION_ADDED, ACTION_UPDATED}:
+            active[key] = _materialize_journal_revision(raw, revision)
+
+    return anonymous + list(active.values())
+
+
 class PortfolioJsonlStore:
     """Small storage adapter kept behind app_module services."""
 
-    def __init__(self, output_root: Path):
+    # Journal adapters intentionally omit this constructor; preserve their overrides.
+    route: PersonalStoreRoute | None = None
+
+    @property
+    def _io_custody(self) -> PersonalStoreCustody:
+        return getattr(self, "custody", None) or PersonalStoreCustody(None, None)
+
+    def _read_selected_unlocked(self, path: Path) -> list[dict[str, Any]]:
+        if self.route is None:
+            return self._read_jsonl_unlocked(path)
+        return PortfolioJsonlStore._read_jsonl_unlocked(path, custody=self._io_custody)
+
+    def _separate_selected_unlocked(self, path: Path) -> None:
+        if self.route is None:
+            self._ensure_line_separator_unlocked(path)
+        else:
+            PortfolioJsonlStore._ensure_line_separator_unlocked(path, custody=self._io_custody)
+
+    def __init__(self, output_root: Path, *, journal_file: Path | None = None,
+                 route: PersonalStoreRoute | None = None, personal_paths: PersonalDataPaths | None = None):
+        self.route = route
+        self.custody = PersonalStoreCustody(route, personal_paths)
+        if route is not None:
+            if route.domain is not PersonalStoreDomain.TRADES:
+                raise PersonalStoreRouteError("trades_domain_required")
+            if not route.identity.key.strip():
+                raise PersonalStoreRouteError("trades_identity_unknown")
+            if journal_file is not None:
+                raise PersonalStoreRouteError("trades_route_journal_forbidden")
+            self.portfolio_dir = route.read_source.parent
+            self.trades_file = route.read_source
+            self.journal_file = self.portfolio_dir / "journal_entries.jsonl"
+            return
         self.portfolio_dir = Path(output_root) / "portfolio"
-        self.portfolio_dir.mkdir(parents=True, exist_ok=True)
+        if journal_file is None:
+            self.portfolio_dir.mkdir(parents=True, exist_ok=True)
         self.trades_file = self.portfolio_dir / "trades.jsonl"
-        self.journal_file = self.portfolio_dir / "journal_entries.jsonl"
+        self.journal_file = (
+            Path(journal_file).expanduser().resolve()
+            if journal_file is not None
+            else self.portfolio_dir / "journal_entries.jsonl"
+        )
+        if journal_file is not None:
+            self.journal_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def _lock(self, path: Path) -> Any:
+        return _interprocess_lock(path, path_validator=self._io_custody.guard if self.route is not None else None)
 
     def append_trade(self, trade: Dict[str, Any]) -> None:
         self._append_jsonl(self.trades_file, trade)
 
     def load_trades(self) -> List[Dict[str, Any]]:
-        return list(self._read_jsonl(self.trades_file))
+        if self.route is not None:
+            if self.route.write_target is None or not self._io_custody.exists(self.trades_file):
+                records = list(self._read_selected_unlocked(self.trades_file))
+            else:
+                with self._lock(self.trades_file):
+                    records = list(self._read_selected_unlocked(self.trades_file))
+            self._validate_trade_identity(records)
+            return records
+        with self._lock(self.trades_file):
+            return list(self._read_selected_unlocked(self.trades_file))
+
+    def require_portfolio_identity(self, portfolio_id: str) -> None:
+        if self.route is not None and portfolio_id != self.route.identity.key:
+            raise PersonalStoreRouteError("trades_identity_mismatch")
+
+    def _validate_trade_identity(self, records: Iterable[Mapping[str, Any]]) -> None:
+        if self.route is not None:
+            for item in records:
+                self.require_portfolio_identity(str(item.get("portfolio_id", "")))
+
+    def _require_writer(self, path: Path) -> None:
+        if self.route is not None:
+            if path != self.trades_file:
+                raise PersonalStoreRouteError("trades_route_journal_forbidden")
+            if self.route.write_target is None:
+                raise PermissionError("portfolio trades route is read-only")
 
     def append_journal_entry(self, entry: Dict[str, Any]) -> None:
         self._append_jsonl(self.journal_file, entry)
 
+    def append_journal_revision(
+        self,
+        revision: Mapping[str, Any],
+        *,
+        expected_history_token: str | None = None,
+    ) -> None:
+        self.append_journal_revisions(
+            [revision], expected_history_token=expected_history_token
+        )
+
+    def append_journal_revisions(
+        self,
+        revisions: Iterable[Mapping[str, Any]],
+        *,
+        expected_history_token: str | None = None,
+    ) -> None:
+        items = [dict(item) for item in revisions]
+        self._require_writer(self.journal_file)
+        if not items:
+            return
+        for item in items:
+            if not _is_revision_record(item):
+                raise ValueError("journal revision record_type is required")
+            DecisionContinuityRevision.from_mapping(item)
+            _canonical_record(item)
+
+        with self._lock(self.journal_file):
+            existing = self._read_jsonl_unlocked(self.journal_file)
+            if (
+                expected_history_token is not None
+                and _journal_history_token(existing) != expected_history_token
+            ):
+                raise RuntimeError("journal_revision_stream_conflict")
+            # Validate the complete current stream before deciding whether any
+            # new bytes may be appended.
+            project_journal_records(existing)
+            by_id = {
+                str(item.get("revision_id")): _canonical_record(item)
+                for item in existing
+                if _is_revision_record(item) and item.get("revision_id")
+            }
+            lines: list[str] = []
+            pending: dict[str, str] = {}
+            for item in items:
+                revision_id = str(item.get("revision_id", ""))
+                canonical = _canonical_record(item)
+                prior = by_id.get(revision_id) or pending.get(revision_id)
+                if prior is not None:
+                    if prior != canonical:
+                        raise RuntimeError("journal_revision_event_conflict")
+                    continue
+                pending[revision_id] = canonical
+                lines.append(canonical)
+            if not lines:
+                return
+            # Validate the resulting chain before writing any bytes. This keeps
+            # a stale revision or malformed batch from partially advancing the
+            # append-only stream.
+            project_journal_records(existing + [dict(item) for item in items])
+            self.journal_file.parent.mkdir(parents=True, exist_ok=True)
+            self._ensure_line_separator_unlocked(self.journal_file)
+            with open(self.journal_file, "a", encoding="utf-8") as handle:
+                handle.write("\n".join(lines))
+                handle.write("\n")
+
     def load_journal_entries(self) -> List[Dict[str, Any]]:
-        return list(self._read_jsonl(self.journal_file))
+        if self.route is not None:
+            raise PersonalStoreRouteError("trades_route_journal_forbidden")
+        with self._lock(self.journal_file):
+            records = self._read_jsonl_unlocked(self.journal_file)
+        return project_journal_records(records)
+
+    def load_journal_history(self) -> List[Dict[str, Any]]:
+        """Return raw parsed records, including legacy rows and tombstones."""
+
+        if self.route is not None:
+            raise PersonalStoreRouteError("trades_route_journal_forbidden")
+        with self._lock(self.journal_file):
+            return list(self._read_jsonl_unlocked(self.journal_file))
+
+    def load_journal_snapshot(self) -> tuple[List[Dict[str, Any]], str]:
+        """Read history and a compare-and-append token under one lock."""
+
+        if self.route is not None:
+            raise PersonalStoreRouteError("trades_route_journal_forbidden")
+        with self._lock(self.journal_file):
+            records = list(self._read_jsonl_unlocked(self.journal_file))
+            return records, _journal_history_token(records)
+
+    def load_decision_revisions(self) -> List[DecisionContinuityRevision]:
+        records = self.load_journal_history()
+        result: list[DecisionContinuityRevision] = []
+        for index, record in enumerate(records):
+            if not _is_revision_record(record):
+                continue
+            try:
+                result.append(DecisionContinuityRevision.from_mapping(record))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"invalid journal continuity revision at {index}") from exc
+        return result
 
     def overwrite_trades(self, trades: List[Dict[str, Any]]) -> None:
-        """重寫所有交易紀錄"""
-        self.trades_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.trades_file, "w", encoding="utf-8") as handle:
-            for item in trades:
-                handle.write(json.dumps(_json_safe(item), ensure_ascii=False, sort_keys=True))
-                handle.write("\n")
+        """重寫所有交易紀錄（legacy API；continuity writer 不使用）。"""
+
+        self._overwrite_jsonl(self.trades_file, trades)
 
     def overwrite_journal_entries(self, entries: List[Dict[str, Any]]) -> None:
-        """重寫所有日記紀錄"""
-        self.journal_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.journal_file, "w", encoding="utf-8") as handle:
-            for item in entries:
-                handle.write(json.dumps(_json_safe(item), ensure_ascii=False, sort_keys=True))
-                handle.write("\n")
+        """重寫所有日記紀錄（legacy API；JournalService 不使用）。"""
+
+        self._overwrite_jsonl(self.journal_file, entries)
+
+    def _overwrite_jsonl(self, path: Path, entries: Iterable[Mapping[str, Any]]) -> None:
+        self._require_writer(path)
+        entries = list(entries)
+        if path == getattr(self, "trades_file", None):
+            self._validate_trade_identity(entries)
+            if self.route is not None:
+                self.load_trades()
+        lines = [_canonical_record(item) for item in entries]
+        self._io_custody.prepare_parent(path)
+        with self._lock(path):
+            with open(self._io_custody.io(path), "w", encoding="utf-8") as handle:
+                if lines:
+                    handle.write("\n".join(lines))
+                    handle.write("\n")
 
     def _append_jsonl(self, path: Path, item: Dict[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(_json_safe(item), ensure_ascii=False, sort_keys=True))
-            handle.write("\n")
+        self._require_writer(path)
+        if path == getattr(self, "trades_file", None):
+            self._validate_trade_identity((item,))
+        line = _canonical_record(item)
+        self._io_custody.prepare_parent(path)
+        with self._lock(path):
+            # Never append behind a partial/corrupt stream; importantly, this
+            # read does not rewrite any pre-existing bytes.
+            existing = self._read_selected_unlocked(path)
+            if path == getattr(self, "trades_file", None):
+                self._validate_trade_identity(existing)
+            self._separate_selected_unlocked(path)
+            with open(self._io_custody.io(path), "a", encoding="utf-8") as handle:
+                handle.write(line)
+                handle.write("\n")
+
+    @staticmethod
+    def _ensure_line_separator_unlocked(path: Path, *, custody: PersonalStoreCustody | None = None) -> None:
+        """Separate a valid final line that lacks its trailing newline."""
+
+        canonical_path = path
+        path = Path(custody.io(path)) if custody is not None else path
+        exists = custody.exists(canonical_path) if custody is not None else path.exists()
+        if not exists or Path(custody.io(canonical_path) if custody is not None else path).stat().st_size == 0:
+            return
+        with open(custody.io(canonical_path) if custody is not None else path, "rb") as handle:
+            handle.seek(-1, os.SEEK_END)
+            last = handle.read(1)
+        if last != b"\n":
+            with open(custody.io(canonical_path) if custody is not None else path, "ab") as handle:
+                handle.write(b"\n")
 
     def _read_jsonl(self, path: Path) -> Iterable[Dict[str, Any]]:
-        if not path.exists():
+        with self._lock(path):
+            return self._read_selected_unlocked(path)
+
+    @staticmethod
+    def _read_jsonl_unlocked(path: Path, *, custody: PersonalStoreCustody | None = None) -> list[dict[str, Any]]:
+        canonical_path = path
+        path = Path(custody.io(path)) if custody is not None else path
+        if not (custody.exists(canonical_path) if custody is not None else path.exists()):
             return []
 
-        records = []
-        with open(path, "r", encoding="utf-8") as handle:
+        records: list[dict[str, Any]] = []
+        with open(custody.io(canonical_path) if custody is not None else path, "r", encoding="utf-8") as handle:
             for line_number, line in enumerate(handle, start=1):
                 stripped = line.strip()
                 if not stripped:
                     continue
                 try:
-                    records.append(json.loads(stripped))
+                    item = json.loads(stripped)
                 except json.JSONDecodeError as exc:
                     raise ValueError(f"Invalid JSONL at {path}:{line_number}") from exc
+                if not isinstance(item, dict):
+                    raise ValueError(f"Invalid JSONL object at {path}:{line_number}")
+                records.append(item)
         return records

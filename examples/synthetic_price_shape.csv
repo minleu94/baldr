@@ -1,0 +1,3 @@
+symbol,date,close_decimal,volume_shares,synthetic,formal_credit
+DEMO,2000-01-03,100.00,1000,true,false
+DEMO,2000-01-04,101.25,1200,true,false

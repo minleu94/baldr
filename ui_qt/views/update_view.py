@@ -24,6 +24,10 @@ import sys
 import inspect
 
 from ui_qt.workers.task_worker import TaskWorker, ProgressTaskWorker
+from ui_qt.widgets.layout_helpers import (
+    ensure_visible_rows,
+    set_scroll_content_constraints,
+)
 from app_module.update_service import UpdateService
 from app_module.paper_portfolio_time import taiwan_market_today
 from app_module.p0_source_control_center import (
@@ -43,6 +47,7 @@ from data_module.monthly_revenue_snapshot_selection import (
 )
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.text_sanitizer import strip_leading_symbol_icon
+from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.views.update.update_formatters import (
     format_data_freshness_preview,
     format_freshness_gap,
@@ -65,13 +70,6 @@ from ui_qt.views.update.update_all_coordinator import run_update_all
 from ui_qt.views.update.source_update_coordinator import SourceUpdateRequest
 
 
-def _taiwan_market_qdate() -> QDate:
-    """將資料更新 UI 的「今日」統一對齊台灣市場日期。"""
-
-    today = taiwan_market_today()
-    return QDate(today.year, today.month, today.day)
-
-
 def _safe_nonnegative_int(value: Any) -> int:
     """把服務層計數安全投影到 UI；malformed 值不可中止整個狀態畫面。"""
 
@@ -79,6 +77,30 @@ def _safe_nonnegative_int(value: Any) -> int:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _refresh_qss_property(widget: QWidget, name: str, value: str) -> None:
+    """設定語意化 QSS property，並立即刷新已顯示的元件。"""
+
+    widget.setProperty(name, value)
+    style = widget.style()
+    if style is not None:
+        style.unpolish(widget)
+        style.polish(widget)
+    widget.update()
+
+
+def _set_update_group_tone(group: QGroupBox, tone: str = "default") -> None:
+    """讓更新頁群組沿用全域主題，只以 tone 表達狀態差異。"""
+
+    _refresh_qss_property(group, "sectionTone", tone)
+
+
+def _set_update_status_tone(label: QLabel, tone: str = "info") -> None:
+    """讓摘要／狀態標籤使用共用深色 status surface。"""
+
+    _refresh_qss_property(label, "role", "status")
+    _refresh_qss_property(label, "statusTone", tone)
 
 
 
@@ -93,26 +115,6 @@ class StatusCard(QFrame):
         self._raw_text = ""
 
         self.setObjectName("CardFrame")
-        # 設置現代暗色玻璃擬態樣式
-        self.setStyleSheet("""
-            QFrame#CardFrame {
-                background-color: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(30, 41, 59, 0.65),
-                    stop:1 rgba(15, 23, 42, 0.8)
-                );
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 10px;
-            }
-            QFrame#CardFrame:hover {
-                background-color: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(51, 65, 85, 0.75),
-                    stop:1 rgba(30, 41, 59, 0.85)
-                );
-                border: 1px solid rgba(255, 255, 255, 0.18);
-            }
-        """)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -123,7 +125,10 @@ class StatusCard(QFrame):
         header_layout.setSpacing(6)
 
         title_prefix = f"{self.icon_str} " if self.icon_str else ""
-        self.title_label = QLabel(f"<span style='font-size:12px; font-weight:bold; color:#cbd5e1;'>{title_prefix}{title}</span>")
+        self.title_label = QLabel(
+            f"<span style='font-size:12px; font-weight:bold; "
+            f"color:{MIDNIGHT_ANALYST.text_primary};'>{title_prefix}{title}</span>"
+        )
         self.indicator_label = QLabel("<span style='font-size:11px; color:#94a3b8;'>未檢查</span>")
 
         header_layout.addWidget(self.title_label)
@@ -132,18 +137,26 @@ class StatusCard(QFrame):
         layout.addLayout(header_layout)
 
         # 中間最新日期
-        self.date_label = QLabel("<span style='color:#94a3b8;'>最新日期：</span><b style='color:#f8fafc;'>--</b>")
+        self.date_label = QLabel(
+            f"<span style='color:{MIDNIGHT_ANALYST.text_secondary};'>最新日期：</span>"
+            f"<b style='color:{MIDNIGHT_ANALYST.text_primary};'>--</b>"
+        )
         self.date_label.setStyleSheet("font-size: 11px;")
         layout.addWidget(self.date_label)
 
         # 總筆數
-        self.records_label = QLabel("<span style='color:#94a3b8;'>總記錄數：</span><b style='color:#f8fafc;'>--</b>")
+        self.records_label = QLabel(
+            f"<span style='color:{MIDNIGHT_ANALYST.text_secondary};'>總記錄數：</span>"
+            f"<b style='color:{MIDNIGHT_ANALYST.text_primary};'>--</b>"
+        )
         self.records_label.setStyleSheet("font-size: 11px;")
         layout.addWidget(self.records_label)
 
         # 額外資訊（例如技術指標數量）
         self.extra_label = QLabel("")
-        self.extra_label.setStyleSheet("color:#94a3b8; font-size: 11px;")
+        self.extra_label.setStyleSheet(
+            f"color:{MIDNIGHT_ANALYST.text_secondary}; font-size: 11px;"
+        )
         self.extra_label.setVisible(False)
         layout.addWidget(self.extra_label)
 
@@ -187,12 +200,21 @@ class StatusCard(QFrame):
             elif "讀取模式" in line or "提醒" in line:
                 extra_info_lines.append(line.strip())
 
-        self.date_label.setText(f"<span style='color:#94a3b8;'>{date_label}：</span><b style='color:#f8fafc;'>{latest_date}</b>")
-        self.records_label.setText(f"<span style='color:#94a3b8;'>總記錄數：</span><b style='color:#f8fafc;'>{total_records}</b>")
+        self.date_label.setText(
+            f"<span style='color:{MIDNIGHT_ANALYST.text_secondary};'>{date_label}：</span>"
+            f"<b style='color:{MIDNIGHT_ANALYST.text_primary};'>{latest_date}</b>"
+        )
+        self.records_label.setText(
+            f"<span style='color:{MIDNIGHT_ANALYST.text_secondary};'>總記錄數：</span>"
+            f"<b style='color:{MIDNIGHT_ANALYST.text_primary};'>{total_records}</b>"
+        )
 
         if extra_info_lines:
             extra_info = "<br>".join(extra_info_lines)
-            self.extra_label.setText(f"<span style='color:#94a3b8;'>{extra_info}</span>")
+            self.extra_label.setText(
+                f"<span style='color:{MIDNIGHT_ANALYST.text_secondary};'>"
+                f"{extra_info}</span>"
+            )
             self.extra_label.setVisible(True)
         else:
             self.extra_label.setVisible(False)
@@ -386,6 +408,12 @@ class UpdateView(QWidget):
         """
         super().__init__(parent)
         self.update_service = update_service
+        try:
+            self._market_date_at_start: date | None = taiwan_market_today()
+            self._market_date_error: str | None = None
+        except Exception as exc:
+            self._market_date_at_start = None
+            self._market_date_error = str(exc).strip() or type(exc).__name__
         self.p0_source_audit_path = (
             Path(p0_source_audit_path).expanduser().resolve()
             if p0_source_audit_path is not None
@@ -457,11 +485,24 @@ class UpdateView(QWidget):
         self._active_update_end_date: str | None = None
         self.tpex_refresh_state_file = Path(meta_data_dir) / "tpex_full_refresh_status.json"
         self._tpex_background_process: Optional[subprocess.Popen] = None
+        self._tpex_cancel_file = self.tpex_refresh_state_file.with_name(
+            self.tpex_refresh_state_file.name + ".cancel"
+        )
+        self._tpex_cancel_requested = False
+        self._tpex_process_exit_code: int | None = None
+        self._shutdown_requested = False
 
         self._setup_ui()
 
     def _start_worker(self, worker: TaskWorker, *, operation_kind: str = "read") -> TaskWorker:
         """保留背景 worker 生命週期，並阻擋寫入型工作彼此重疊。"""
+        if self._shutdown_requested:
+            # 關閉請求後，queued UI callback 仍可能抵達；預先標記 worker
+            # 取消，讓呼叫端既有的 ``worker.start()`` 只完成一個短生命週期，
+            # 不會在收尾期間重新啟動資料／網路／SQLite 工作。
+            cancel = getattr(worker, "cancel", None)
+            if callable(cancel):
+                cancel(cooperative=True, wait=False)
         self.worker = self._worker_coordinator.start(
             worker,
             kind=operation_kind,
@@ -587,6 +628,11 @@ class UpdateView(QWidget):
 
     def _reject_busy_write(self, operation_name: str) -> bool:
         """拒絕重疊寫入／匯出工作；唯讀狀態查詢仍可並行。"""
+        if self._shutdown_requested:
+            message = f"視窗正在安全關閉，略過「{operation_name}」的新工作。"
+            if hasattr(self, "log_text"):
+                self._log(message)
+            return True
         if not self._has_active_write_worker() and not self.has_running_background_process():
             return False
         message = f"已有背景工作進行中，無法同時執行「{operation_name}」。請等待目前工作完成。"
@@ -631,33 +677,18 @@ class UpdateView(QWidget):
         )
         label.setText(text)
         normalized = str(status or "unknown").strip().lower()
-        color = {
-            "success": "#166534",
-            "passed": "#166534",
-            "completed": "#166534",
-            "running": "#1d4ed8",
-            "in_progress": "#1d4ed8",
-            "cancelled": "#92400e",
-            "failed": "#b91c1c",
-            "failure": "#b91c1c",
-            "error": "#b91c1c",
-        }.get(normalized, "#92400e" if normalized in {"warning", "partial"} else "#475569")
-        border = {
-            "#166534": "#86efac",
-            "#1d4ed8": "#93c5fd",
-            "#92400e": "#fbbf24",
-            "#b91c1c": "#fca5a5",
-        }.get(color, "#cbd5e1")
-        label.setStyleSheet(
-            "QLabel {"
-            " background-color: #f8fafc;"
-            f" color: {color};"
-            f" border: 1px solid {border};"
-            " border-radius: 6px;"
-            " padding: 6px 10px;"
-            " font-size: 11px;"
-            "}"
-        )
+        tone = {
+            "success": "success",
+            "passed": "success",
+            "completed": "success",
+            "running": "info",
+            "in_progress": "info",
+            "cancelled": "warning",
+            "failed": "error",
+            "failure": "error",
+            "error": "error",
+        }.get(normalized, "warning" if normalized in {"warning", "partial"} else "info")
+        _set_update_status_tone(label, tone)
 
     def _set_progress(self, message: str, percentage: int) -> int:
         """更新共用進度列，保證單一工作生命週期內不倒退。"""
@@ -696,24 +727,19 @@ class UpdateView(QWidget):
         message = str(payload.get("message") or "").strip()
         if payload.get("cancelled"):
             state = "已取消"
-            color = "#92400e"
-            border = "#fbbf24"
+            tone = "warning"
         elif payload.get("status") in {"running", "in_progress"}:
             state = "執行中"
-            color = "#1d4ed8"
-            border = "#93c5fd"
+            tone = "info"
         elif payload.get("success") is True:
             state = "完成"
-            color = "#166534"
-            border = "#86efac"
+            tone = "success"
         elif payload:
             state = "失敗"
-            color = "#b91c1c"
-            border = "#fca5a5"
+            tone = "error"
         else:
             state = "尚未執行"
-            color = "#475569"
-            border = "#cbd5e1"
+            tone = "info"
 
         details = [f"SQLite 同步：{state}"]
         if source and state != "尚未執行":
@@ -727,16 +753,7 @@ class UpdateView(QWidget):
         display = "｜".join(details)
         if label is not None:
             label.setText(display)
-            label.setStyleSheet(
-                "QLabel {"
-                " background-color: #f8fafc;"
-                f" color: {color};"
-                f" border: 1px solid {border};"
-                " border-radius: 6px;"
-                " padding: 6px 10px;"
-                " font-size: 11px;"
-                "}"
-            )
+            _set_update_status_tone(label, tone)
         return display
 
     def _collect_sqlite_sync_results(self, result: Any) -> list[dict[str, Any]]:
@@ -782,19 +799,179 @@ class UpdateView(QWidget):
         """寫入型工作完成後，強制下一次進入來源頁重新查詢。"""
         self._loaded_detail_sources.clear()
 
+    def _read_tpex_background_state(self) -> Dict[str, Any]:
+        """讀取目前 TPEX 狀態；狀態損壞時回傳空 payload 但不阻塞 UI。"""
+
+        try:
+            raw = json.loads(self.tpex_refresh_state_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return raw if isinstance(raw, dict) else {}
+
+    def _restore_tpex_background_controls(self) -> None:
+        button = getattr(self, "tpex_background_btn", None)
+        if button is None:
+            return
+        button.setEnabled(True)
+        button.setText("背景補齊 TPEX + 技術指標")
+
+    def _observe_tpex_background_process(self) -> bool:
+        """回收已結束的 TPEX process，並把異常退出寫回明確狀態。"""
+
+        process = self._tpex_background_process
+        if process is None:
+            return False
+        try:
+            exit_code = process.poll()
+        except Exception as exc:  # pragma: no cover - OS handle failure path
+            # Popen 的 process handle 不應在 view 壽命內失效；若 OS 回報
+            # 例外，保留 process reference 並持續阻擋關閉，避免把未知的
+            # 外部 writer 留在背景而造成資料／lock 風險。
+            self._log(f"TPEX 背景程序狀態查詢失敗，暫緩關閉：{exc}")
+            return True
+        if exit_code is None:
+            return True
+
+        self._tpex_background_process = None
+        try:
+            self._tpex_process_exit_code = int(exit_code)
+        except (TypeError, ValueError):
+            self._tpex_process_exit_code = None
+
+        state = self._read_tpex_background_state()
+        status = str(state.get("status") or "").strip().lower()
+        cancelled_completed = status == "cancelled" and bool(
+            state.get("cancel_completed")
+        )
+        terminal_statuses = {"done", "done_with_warning", "failed"}
+        # A non-zero child exit always wins over a stale success/cancellation
+        # receipt.  The process has ended, so the UI may release the close
+        # blocker, but the durable diagnostic must remain ``failed`` with the
+        # observed exit code rather than claiming a safe cancellation.
+        nonzero_exit_conflict = (
+            self._tpex_process_exit_code is not None
+            and self._tpex_process_exit_code != 0
+            and (status in {"done", "done_with_warning"} or cancelled_completed)
+        )
+        if nonzero_exit_conflict:
+            cancel_requested = bool(state.get("cancel_requested")) or self._tpex_cancel_file.exists()
+            state.update(
+                {
+                    "status": "failed",
+                    "cancel_requested": cancel_requested,
+                    "cancel_completed": False,
+                    "message": (
+                        "TPEX 背景程序退出碼非零，覆寫舊的完成／取消收據，"
+                        f"退出碼={exit_code}"
+                    ),
+                    "process_exit_code": self._tpex_process_exit_code,
+                }
+            )
+            self._write_tpex_background_status(state)
+        elif status not in terminal_statuses and not cancelled_completed:
+            cancel_requested = bool(state.get("cancel_requested")) or self._tpex_cancel_file.exists()
+            state.update(
+                {
+                    # A marker is only a request.  The child must write
+                    # cancel_completed=True before the UI may call this a
+                    # safe cancellation; a crash or partial state is failed.
+                    "status": "failed",
+                    "cancel_requested": cancel_requested,
+                    "cancel_completed": False,
+                    "message": f"TPEX 背景程序已結束但未完成安全收尾，退出碼={exit_code}",
+                    "process_exit_code": self._tpex_process_exit_code,
+                }
+            )
+            self._write_tpex_background_status(state)
+        self._restore_tpex_background_controls()
+        self._log(
+            "TPEX 背景程序已結束："
+            f"exit_code={self._tpex_process_exit_code}，狀態={state.get('status', status or 'unknown')}"
+        )
+        return False
+
+    def _request_tpex_background_cancel(self) -> bool:
+        """以 cancel marker 通知獨立流程在安全邊界停止。"""
+
+        process = self._tpex_background_process
+        if process is None or not self._observe_tpex_background_process():
+            return False
+        if self._tpex_cancel_requested:
+            return True
+        try:
+            self._tpex_cancel_file.parent.mkdir(parents=True, exist_ok=True)
+            self._tpex_cancel_file.write_text(
+                datetime.now().isoformat(timespec="seconds"),
+                encoding="ascii",
+            )
+            # The child owns the execution state JSON while it is alive.  Do
+            # not read-then-write ``status=cancelling`` here: the child could
+            # publish a terminal done/cancelled receipt between those two
+            # operations and the UI would overwrite it.  The marker is the
+            # sole cancellation request; the visible label is UI-local.
+            self._tpex_cancel_requested = True
+            self._set_tpex_background_status_label(
+                "cancelling",
+                message="已送出合作式取消，等待安全收尾…",
+                level="warning",
+            )
+            self._log(
+                f"已通知 TPEX 背景程序合作式取消：PID={getattr(process, 'pid', '-') }；"
+                "不強制終止外部 writer。"
+            )
+            return True
+        except Exception as exc:  # pragma: no cover - filesystem failure path
+            self._log(f"TPEX 合作式取消通知失敗：{exc}")
+            return False
+
+    def _running_update_workers(self) -> list[TaskWorker]:
+        """取得仍在跑的 local worker，丟棄已刪除／已結束 wrapper。"""
+
+        running: list[TaskWorker] = []
+        for worker in list(self._active_workers):
+            try:
+                is_running = bool(worker.isRunning())
+            except RuntimeError:
+                self._release_worker(worker)
+                continue
+            if is_running:
+                running.append(worker)
+            else:
+                # native QThread 已停止但 queued result/cleanup 尚未抵達；
+                # 不再把它當作關閉阻塞，且仍由 TaskWorker native finished
+                # lifecycle 負責 QObject deferred deletion。
+                self._release_worker(worker)
+        return running
+
+    def begin_shutdown(self) -> bool:
+        """鎖住新工作並送出一次冪等的合作式關閉請求。"""
+
+        self._shutdown_requested = True
+        return self.request_cooperative_shutdown()
+
     def has_running_background_process(self) -> bool:
         """TPEX 獨立程序未結束時，主視窗不得假裝可安全關閉。"""
-        process = self._tpex_background_process
-        return process is not None and process.poll() is None
+
+        return self._observe_tpex_background_process()
 
     def request_cooperative_shutdown(self) -> bool:
-        """送出取消但不強制終止；回傳是否已能安全釋放本 view。"""
-        for worker in list(self._active_workers):
-            if worker.isRunning() and hasattr(worker, "cancel"):
-                worker.cancel(cooperative=True, wait=False)
-        return not any(
-            worker.isRunning() for worker in self._active_workers
-        ) and not self.has_running_background_process()
+        """停止新工作、通知既有 worker／TPEX，回傳是否已安全完成。"""
+
+        self._shutdown_requested = True
+        for worker in self._running_update_workers():
+            try:
+                cancel = getattr(worker, "cancel", None)
+            except RuntimeError:
+                self._release_worker(worker)
+                continue
+            if not callable(cancel):
+                continue
+            try:
+                cancel(cooperative=True, wait=False)
+            except RuntimeError:
+                self._release_worker(worker)
+        self._request_tpex_background_cancel()
+        return not self._running_update_workers() and not self.has_running_background_process()
 
     def _setup_ui(self):
         """設置 UI"""
@@ -823,6 +1000,7 @@ class UpdateView(QWidget):
         main_layout = QVBoxLayout(content_widget)
         main_layout.setSpacing(12)
         main_layout.setContentsMargins(15, 15, 15, 15)
+        set_scroll_content_constraints(content_widget)
 
         # 1. 隱藏的 Radio Buttons（保留底層代碼的屬性相容性，使之不受改動影響）
         self.hidden_widget = QWidget()
@@ -846,7 +1024,7 @@ class UpdateView(QWidget):
 
         # 2. 隱藏的全域日期變數（使底層一鍵更新/單項更新抓取 UI 輸入的邏輯直接生效）
         self.end_date = QDateEdit()
-        self.end_date.setDate(_taiwan_market_qdate())
+        self.end_date.setDate(self._default_taiwan_market_qdate(self.end_date))
         self._configure_date_edit(self.end_date)
         self.lookback_days = QSpinBox()
         self.lookback_days.setRange(1, 365)
@@ -859,32 +1037,12 @@ class UpdateView(QWidget):
 
         # 左側導覽列
         self.nav_list = QListWidget()
+        self.nav_list.setWordWrap(True)
+        self.nav_list.setUniformItemSizes(False)
+        ensure_visible_rows(self.nav_list, 5)
+        self.nav_list.setObjectName("updateNavigation")
         self.nav_list.setFixedWidth(160)
         self.nav_list.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        self.nav_list.setStyleSheet("""
-            QListWidget {
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                background-color: rgba(15, 23, 42, 0.5);
-                padding: 5px;
-            }
-            QListWidget::item {
-                height: 38px;
-                border-radius: 6px;
-                padding-left: 10px;
-                margin-bottom: 2px;
-                color: #cbd5e1;
-            }
-            QListWidget::item:hover {
-                background-color: rgba(51, 65, 85, 0.5);
-                color: #ffffff;
-            }
-            QListWidget::item:selected {
-                background-color: #3b82f6;
-                color: white;
-                font-weight: bold;
-            }
-        """)
 
         self._nav_items = [
             ("all", "全部資料"),
@@ -902,6 +1060,7 @@ class UpdateView(QWidget):
         ]
         for _, label in self._nav_items:
             self.nav_list.addItem(label)
+        self._nav_visible_rows_height = ensure_visible_rows(self.nav_list, 5)
 
         # 右側堆疊視窗
         self.content_stack = QStackedWidget()
@@ -924,7 +1083,7 @@ class UpdateView(QWidget):
         title_font.setPointSize(14)
         title_font.setBold(True)
         title.setFont(title_font)
-        title.setStyleSheet("color: #f8fafc;")
+        title.setProperty("role", "pageTitle")
         title_layout.addWidget(title)
         title_layout.addStretch()
         info_btn = InfoButton("update", self)
@@ -933,27 +1092,29 @@ class UpdateView(QWidget):
 
         # 看板說明
         desc_label = QLabel("此處提供整個系統的資料狀態概覽。您可以點選下方一鍵安全更新來同步最新資料，或點選左側進行個別資料維護。")
-        desc_label.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        desc_label.setProperty("role", "muted")
+        desc_label.setStyleSheet("font-size: 12px;")
         desc_label.setWordWrap(True)
         desc_label.setMinimumWidth(0)
         desc_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         all_layout.addWidget(desc_label)
 
+        self.update_impact_label = QLabel(
+            "資料影響：尚未檢查，不能判定資料是否可用。\n"
+            "最後成功完成：未知｜股價資料日：未知｜技術指標資料日：未知\n"
+            "下一步：先按「檢查數據狀態」，再依各來源卡片判讀。"
+        )
+        self.update_impact_label.setWordWrap(True)
+        self.update_impact_label.setTextFormat(Qt.PlainText)
+        self.update_impact_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        _set_update_status_tone(self.update_impact_label, "info")
+        all_layout.addWidget(self.update_impact_label)
+
         # 立即操作列固定在標題下方；狀態表與治理診斷再往下排列，避免
         # 使用者必須捲到頁尾才能檢查或啟動更新。
         action_group = QGroupBox("立即操作")
         action_group.setObjectName("updateImmediateActions")
-        action_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #bfdbfe;
-                border-radius: 8px;
-                margin-top: 8px;
-                padding-top: 10px;
-                color: #1e3a8a;
-                font-weight: bold;
-                background-color: #eff6ff;
-            }
-        """)
+        _set_update_group_tone(action_group, "info")
         actions_layout = QHBoxLayout(action_group)
         actions_layout.setContentsMargins(10, 8, 10, 8)
         actions_layout.setSpacing(10)
@@ -968,16 +1129,8 @@ class UpdateView(QWidget):
         self.data_update_action_summary_label.setTextInteractionFlags(
             Qt.TextSelectableByMouse
         )
-        self.data_update_action_summary_label.setStyleSheet(
-            "QLabel {"
-            " background-color: #f8fafc;"
-            " color: #475569;"
-            " border: 1px solid #cbd5e1;"
-            " border-radius: 6px;"
-            " padding: 6px 10px;"
-            " font-size: 11px;"
-            "}"
-        )
+        self.data_update_action_summary_label.setStyleSheet("font-size: 11px;")
+        _set_update_status_tone(self.data_update_action_summary_label, "info")
         all_layout.addWidget(self.data_update_action_summary_label)
 
         # 數據狀態卡片網格（精美 StatusCard 呈現，取代原先 status_group 內多個 TextEdit）
@@ -1010,15 +1163,7 @@ class UpdateView(QWidget):
         # 更新流程時間軸：只投影明確指定的 latest_status artifact，避免卡片
         # 有數字、卻看不出那是何時完成或是否仍是舊結果。
         timeline_group = QGroupBox("資料更新時間軸（唯讀）")
-        timeline_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                margin-top: 10px;
-                font-weight: bold;
-                color: #94a3b8;
-            }
-        """)
+        _set_update_group_tone(timeline_group)
         timeline_layout = QVBoxLayout(timeline_group)
         timeline_layout.setSpacing(8)
         timeline_layout.setContentsMargins(12, 12, 12, 12)
@@ -1029,9 +1174,8 @@ class UpdateView(QWidget):
         self.data_update_timeline_summary_label.setTextInteractionFlags(
             Qt.TextSelectableByMouse
         )
-        self.data_update_timeline_summary_label.setStyleSheet(
-            "color: #cbd5e1; font-size: 11px;"
-        )
+        self.data_update_timeline_summary_label.setProperty("role", "muted")
+        self.data_update_timeline_summary_label.setStyleSheet("font-size: 11px;")
         timeline_layout.addWidget(self.data_update_timeline_summary_label)
         self.data_update_timeline_table = QTableWidget(0, 3)
         self.data_update_timeline_table.setHorizontalHeaderLabels(("步驟", "結果", "訊息"))
@@ -1045,12 +1189,14 @@ class UpdateView(QWidget):
         )
         self.data_update_timeline_table.horizontalHeader().setStretchLastSection(True)
         self.data_update_timeline_table.setMinimumHeight(72)
+        ensure_visible_rows(self.data_update_timeline_table, 5)
         self.data_update_timeline_table.setToolTip(
             "只顯示明確指定的更新 status artifact；缺失、失敗或過期不會被舊資料掩蓋。"
         )
         timeline_layout.addWidget(self.data_update_timeline_table)
         history_label = QLabel("最近執行歷史（append-only／唯讀）")
-        history_label.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        history_label.setProperty("role", "muted")
+        history_label.setStyleSheet("font-size: 11px;")
         timeline_layout.addWidget(history_label)
         self.data_update_timeline_history_table = QTableWidget(0, 4)
         self.data_update_timeline_history_table.setHorizontalHeaderLabels(
@@ -1065,24 +1211,20 @@ class UpdateView(QWidget):
             QHeaderView.ResizeToContents
         )
         self.data_update_timeline_history_table.horizontalHeader().setStretchLastSection(True)
-        self.data_update_timeline_history_table.setMaximumHeight(180)
+        self.data_update_timeline_history_table.setWordWrap(True)
+        self.data_update_timeline_history_table.setVerticalScrollMode(
+            QAbstractItemView.ScrollPerPixel
+        )
+        ensure_visible_rows(self.data_update_timeline_history_table, 5)
         self.data_update_timeline_history_table.setToolTip(
             "只讀取明確指定的 data-update-status-history.v1 JSONL；不會改寫或回填歷史。"
         )
         timeline_layout.addWidget(self.data_update_timeline_history_table)
-        all_layout.addWidget(timeline_group)
+        self.timeline_details_button = self._add_update_details(all_layout, timeline_group, "更新時間軸與執行歷史")
 
         # 候選與決策資料域群組
         candidate_group = QGroupBox("候選與決策資料域（治理檢視 / 尚未啟用）")
-        candidate_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                margin-top: 10px;
-                font-weight: bold;
-                color: #94a3b8;
-            }
-        """)
+        _set_update_group_tone(candidate_group)
         candidate_layout = QGridLayout(candidate_group)
         candidate_layout.setSpacing(10)
         candidate_layout.setContentsMargins(12, 12, 12, 12)
@@ -1101,20 +1243,12 @@ class UpdateView(QWidget):
             card.setMinimumWidth(0)
             card.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self._reflow_grid(candidate_layout, self._candidate_cards, columns=3)
-        all_layout.addWidget(candidate_group)
+        self.candidate_details_button = self._add_update_details(all_layout, candidate_group, "候選資料（不代表正式可用）")
 
         # P0 官方來源證據面板：與核心 SQLite/CSV 狀態同頁呈現，但明確保留
         # candidate／shadow 邊界，避免使用者誤以為「抓得到」就等於已核准。
         p0_group = QGroupBox("P0 官方來源證據（候選／唯讀，不參與評分）")
-        p0_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                margin-top: 10px;
-                font-weight: bold;
-                color: #94a3b8;
-            }
-        """)
+        _set_update_group_tone(p0_group)
         p0_layout = QVBoxLayout(p0_group)
         p0_layout.setSpacing(8)
         p0_layout.setContentsMargins(12, 12, 12, 12)
@@ -1123,9 +1257,8 @@ class UpdateView(QWidget):
         )
         self.p0_source_control_summary_label.setWordWrap(True)
         self.p0_source_control_summary_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.p0_source_control_summary_label.setStyleSheet(
-            "color: #cbd5e1; font-size: 11px;"
-        )
+        self.p0_source_control_summary_label.setProperty("role", "muted")
+        self.p0_source_control_summary_label.setStyleSheet("font-size: 11px;")
         p0_layout.addWidget(self.p0_source_control_summary_label)
 
         self.p0_source_control_table = QTableWidget(0, 9)
@@ -1175,26 +1308,18 @@ class UpdateView(QWidget):
             QHeaderView.ResizeToContents
         )
         self.p0_source_control_table.setMinimumHeight(180)
-        self.p0_source_control_table.setMaximumHeight(520)
+        ensure_visible_rows(self.p0_source_control_table, 5)
         self.p0_source_control_table.setToolTip(
             "P0 row 只代表候選觀測與治理缺口；downstream eligibility 永遠為 none。"
         )
         p0_layout.addWidget(self.p0_source_control_table)
-        all_layout.addWidget(p0_group)
+        self.p0_details_button = self._add_update_details(all_layout, p0_group, "官方來源候選與接受條件")
 
         # 整體 readiness 面板：只投影明確指定的 program-readiness artifact，
         # 讓使用者在同一頁看見各 lane 的真實 blocker 與下一步；不在 UI
         # 重新計算 readiness，也不因顯示結果授予任何正式權限。
         readiness_group = QGroupBox("整體程式 readiness（唯讀）")
-        readiness_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                border-radius: 8px;
-                margin-top: 10px;
-                font-weight: bold;
-                color: #94a3b8;
-            }
-        """)
+        _set_update_group_tone(readiness_group)
         readiness_layout = QVBoxLayout(readiness_group)
         readiness_layout.setSpacing(8)
         readiness_layout.setContentsMargins(12, 12, 12, 12)
@@ -1206,9 +1331,8 @@ class UpdateView(QWidget):
         self.program_readiness_summary_label.setTextInteractionFlags(
             Qt.TextSelectableByMouse
         )
-        self.program_readiness_summary_label.setStyleSheet(
-            "color: #cbd5e1; font-size: 11px;"
-        )
+        self.program_readiness_summary_label.setProperty("role", "muted")
+        self.program_readiness_summary_label.setStyleSheet("font-size: 11px;")
         readiness_layout.addWidget(self.program_readiness_summary_label)
         self.program_readiness_table = QTableWidget(0, 4)
         self.program_readiness_table.setHorizontalHeaderLabels(
@@ -1228,46 +1352,25 @@ class UpdateView(QWidget):
         readiness_header.setSectionResizeMode(3, QHeaderView.Stretch)
         self.program_readiness_table.horizontalHeader().setStretchLastSection(True)
         self.program_readiness_table.setMinimumHeight(120)
-        self.program_readiness_table.setMaximumHeight(360)
+        ensure_visible_rows(self.program_readiness_table, 5)
         self.program_readiness_table.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.program_readiness_table.setToolTip(
             "固定顯示七個 readiness lane；缺少的 lane 會標示未提供。只讀取明確 readiness artifact；"
             "lane 狀態與 blocker 不會在 UI 被自動解除。"
         )
         readiness_layout.addWidget(self.program_readiness_table)
-        all_layout.addWidget(readiness_group)
+        self.readiness_details_button = self._add_update_details(all_layout, readiness_group, "使用資格與完整阻擋原因")
 
         # 一鍵更新與輔助按鈕；容器已在標題下方建立，這裡只填入按鈕。
         self.quick_update_all_btn = QPushButton("快速更新 (跳過大型合併)")
         self.quick_update_all_btn.setMinimumHeight(45)
-        self.quick_update_all_btn.setProperty("variant", "primary")
+        self.quick_update_all_btn.setProperty("variant", "secondary")
         self.quick_update_all_btn.setToolTip(
             "【快速更新 (跳過大型合併)】\n"
             "速度優先。TWSE 每日股價、TPEX 每日股價與券商分點都更新結束日前最近 10 個工作日。\n"
             "TPEX 使用官方歷史查詢 endpoint，會先跳過本機已有 CSV，只補缺少日期。\n"
             "資料會直接增量同步 SQLite，但跳過 stock_data_whole 與分點 merged.csv 的大型合併重寫。"
         )
-        self.quick_update_all_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #8b5cf6, stop:1 #6d28d9);
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 10px 20px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #a78bfa, stop:1 #7c3aed);
-            }
-            QPushButton:pressed {
-                background: #5b21b6;
-            }
-            QPushButton:disabled {
-                background-color: #cbd5e1;
-                color: #94a3b8;
-            }
-        """)
         self.quick_update_all_btn.clicked.connect(self._execute_quick_update_all)
 
         self.safe_update_all_btn = QPushButton("安全更新 (完整 CSV + SQLite)")
@@ -1280,27 +1383,6 @@ class UpdateView(QWidget):
             "完成下載後會重建每日股價大表與分點 merged.csv，再同步寫入 SQLite。\n"
             "此流程耗時較長，但能保證 CSV 歷史資料庫的完整備份。"
         )
-        self.safe_update_all_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #3b82f6, stop:1 #2563eb);
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 10px 20px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #60a5fa, stop:1 #3b82f6);
-            }
-            QPushButton:pressed {
-                background: #1d4ed8;
-            }
-            QPushButton:disabled {
-                background-color: #cbd5e1;
-                color: #94a3b8;
-            }
-        """)
         self.safe_update_all_btn.clicked.connect(self._execute_safe_update_all)
 
         self.check_status_btn = QPushButton("檢查數據狀態")
@@ -1312,27 +1394,6 @@ class UpdateView(QWidget):
             "並更新上方 6 張狀態卡片的狀態文字（最新 / 待更新 / 異常 / 未檢查）。\n"
             "檢查結果會同步呈現在頂部卡片與下方日誌主控台中。"
         )
-        self.check_status_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f1f5f9;
-                color: #334155;
-                border: 1px solid #cbd5e1;
-                border-radius: 8px;
-                font-size: 13px;
-                font-weight: bold;
-                padding: 10px 20px;
-            }
-            QPushButton:hover {
-                background-color: #e2e8f0;
-            }
-            QPushButton:pressed {
-                background-color: #cbd5e1;
-            }
-            QPushButton:disabled {
-                background-color: #f8fafc;
-                color: #cbd5e1;
-            }
-        """)
         self.check_status_btn.clicked.connect(self._check_data_status)
 
         self._action_buttons = [
@@ -1393,9 +1454,10 @@ class UpdateView(QWidget):
             sub_title_font.setPointSize(13)
             sub_title_font.setBold(True)
             sub_title.setFont(sub_title_font)
-            sub_title.setStyleSheet("color: #1e293b;")
+            sub_title.setProperty("role", "pageTitle")
             sub_title_layout.addWidget(sub_title)
             sub_title_layout.addStretch()
+            sub_title_layout.addWidget(InfoButton("update", self))
             page_layout.addLayout(sub_title_layout)
 
             self._add_source_tab_content(page_layout, key)
@@ -1410,7 +1472,8 @@ class UpdateView(QWidget):
         # 4. 底部全域共享的進度條與日誌 console
         # 進度文字與進度條
         self.progress_label = QLabel("")
-        self.progress_label.setStyleSheet("color: #475569; font-size: 12px;")
+        self.progress_label.setProperty("role", "muted")
+        self.progress_label.setStyleSheet("font-size: 12px;")
         self.progress_label.setVisible(False)
         main_layout.addWidget(self.progress_label)
 
@@ -1418,96 +1481,37 @@ class UpdateView(QWidget):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(False)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                text-align: center;
-                background-color: #f1f5f9;
-                height: 18px;
-            }
-            QProgressBar::chunk {
-                background-color: #3b82f6;
-                border-radius: 5px;
-            }
-        """)
         main_layout.addWidget(self.progress_bar)
 
         self.cancel_update_btn = QPushButton("取消目前工作", self)
         self.cancel_update_btn.setObjectName("cancel_update_btn")
         self.cancel_update_btn.setVisible(False)
         self.cancel_update_btn.setEnabled(False)
+        self.cancel_update_btn.setProperty("variant", "warning")
         self.cancel_update_btn.setToolTip(
             "送出合作式取消。系統會在目前 API 請求、日期或檔案寫入安全收尾後停止，"
             "不會強制終止正在使用 SQLite／檔案資源的執行緒。"
         )
-        self.cancel_update_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #fff7ed;
-                color: #9a3412;
-                border: 1px solid #fdba74;
-                border-radius: 6px;
-                padding: 6px 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #ffedd5;
-            }
-            QPushButton:disabled {
-                background-color: #f8fafc;
-                color: #94a3b8;
-                border-color: #cbd5e1;
-            }
-        """)
         self.cancel_update_btn.clicked.connect(self._request_current_worker_cancel)
         main_layout.addWidget(self.cancel_update_btn)
 
         self.sqlite_sync_status_label = QLabel("SQLite 同步：尚未執行", self)
         self.sqlite_sync_status_label.setWordWrap(True)
-        self.sqlite_sync_status_label.setStyleSheet(
-            "QLabel {"
-            " background-color: #f8fafc;"
-            " color: #475569;"
-            " border: 1px solid #cbd5e1;"
-            " border-radius: 6px;"
-            " padding: 6px 10px;"
-            " font-size: 11px;"
-            "}"
-        )
+        self.sqlite_sync_status_label.setStyleSheet("font-size: 11px;")
+        _set_update_status_tone(self.sqlite_sync_status_label, "info")
         main_layout.addWidget(self.sqlite_sync_status_label)
 
         # 日誌 Console
         log_group = QGroupBox("日誌主控台")
-        log_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #cbd5e1;
-                border-radius: 8px;
-                margin-top: 8px;
-                font-weight: bold;
-                color: #475569;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-            }
-        """)
+        _set_update_group_tone(log_group)
         log_layout = QVBoxLayout(log_group)
         log_layout.setContentsMargins(10, 2, 10, 6)
         log_layout.setSpacing(4)
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #0f172a;
-                color: #cbd5e1;
-                font-family: 'Consolas', 'Fira Code', 'Courier New', monospace;
-                font-size: 11px;
-                border: 1px solid #1e293b;
-                border-radius: 6px;
-            }
-        """)
+        self.log_text.setObjectName("updateLogText")
+        self.log_text.setProperty("role", "code")
         log_layout.addWidget(self.log_text)
 
         # 日誌輔助工具列放在底部，避免標題下方出現整條空白列
@@ -1516,25 +1520,18 @@ class UpdateView(QWidget):
         log_toolbar.setSpacing(0)
         log_toolbar.addStretch()
         clear_log_btn = QPushButton("清除日誌")
-        clear_log_btn.setFixedHeight(16)
-        clear_log_btn.setStyleSheet("""
-            QPushButton {
-                min-height: 0px;
-                padding: 0px 4px;
-                background-color: transparent;
-                color: #64748b;
-                border: none;
-                font-size: 10px;
-            }
-            QPushButton:hover {
-                color: #ef4444;
-            }
-        """)
+        clear_log_btn.setObjectName("clearUpdateLog")
+        clear_log_btn.setMinimumHeight(clear_log_btn.sizeHint().height())
+        clear_log_btn.setProperty("variant", "ghost")
         clear_log_btn.clicked.connect(lambda: self.log_text.clear())
         log_toolbar.addWidget(clear_log_btn)
         log_layout.addLayout(log_toolbar)
 
-        log_group.setMaximumHeight(118)  # 緊湊主控台高度，保留更多空間給上方表格
+        # 保持緊湊日誌區，但不可讓父視窗把工具列按鈕壓縮到只剩數像素。
+        # 若目前平台字體／主題的自然最小高度較大，讓整頁 scroll 承接差額。
+        log_group_minimum = log_group.minimumSizeHint().height()
+        log_group.setMinimumHeight(log_group_minimum)
+        log_group.setMaximumHeight(max(118, log_group_minimum))
         main_layout.addWidget(log_group)
 
         # 初始化各資料區塊的顯示 (卡片)
@@ -1584,7 +1581,7 @@ class UpdateView(QWidget):
             self.workbench_layout.setDirection(QBoxLayout.TopToBottom)
             self.nav_list.setMinimumWidth(0)
             self.nav_list.setMaximumWidth(16777215)
-            self.nav_list.setMaximumHeight(190)
+            self.nav_list.setMaximumHeight(self._nav_visible_rows_height)
             self.nav_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             self.content_stack.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
             self._reflow_grid(self._cards_layout, self._status_cards, columns=2)
@@ -1605,17 +1602,8 @@ class UpdateView(QWidget):
         """在來源分頁放置可見的唯讀狀態摘要。"""
         detail_status = QLabel("尚未檢查此資料源狀態", parent)
         detail_status.setWordWrap(True)
-        detail_status.setStyleSheet("""
-            QLabel {
-                background-color: #f8fafc;
-                color: #334155;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 8px 10px;
-                font-size: 12px;
-                line-height: 1.4;
-            }
-        """)
+        detail_status.setStyleSheet("font-size: 12px;")
+        _set_update_status_tone(detail_status, "info")
         setattr(parent, f"{key}_detail_status_label", detail_status)
         layout.addWidget(detail_status)
 
@@ -1634,8 +1622,11 @@ class UpdateView(QWidget):
 
         status_text = {
             "running": "執行中",
+            "cancelling": "取消收尾中",
             "done": "完成",
+            "done_with_warning": "完成（有警告）",
             "failed": "失敗",
+            "cancelled": "已取消",
             "unknown": "未知",
             "not_started": "尚未啟動",
         }.get(status, status or "未知")
@@ -1644,43 +1635,13 @@ class UpdateView(QWidget):
             detail = f"{detail}｜{message}"
         label.setText(f"TPEX 背景任務：{status_text}{detail}")
 
-        color = {
-            "info": "#334155",
-            "success": "#166534",
-            "warning": "#92400e",
-            "error": "#b91c1c",
-        }.get(level, "#334155")
-        border = {
-            "info": "#cbd5e1",
-            "success": "#86efac",
-            "warning": "#fbbf24",
-            "error": "#fca5a5",
-        }.get(level, "#cbd5e1")
-        label.setStyleSheet(
-            "QLabel {"
-            " background-color: #f8fafc;"
-            f" color: {color};"
-            f" border: 1px solid {border};"
-            " border-radius: 6px;"
-            " padding: 8px 10px;"
-            " font-size: 12px;"
-            "}"
-        )
+        _set_update_status_tone(label, level if level in {"info", "success", "warning", "error"} else "info")
 
     def _add_source_tab_content(self, layout: QVBoxLayout, key: str):
         """為個別資料源維護分頁建立專屬操作與手動配置界面"""
         if key in {"institutional_flow", "credit_transaction", "tdcc_shareholding", "scheduler_status"}:
             info_group = QGroupBox("資料域狀態與治理說明")
-            info_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(info_group)
             info_layout = QVBoxLayout(info_group)
             info_layout.setSpacing(10)
 
@@ -1699,7 +1660,8 @@ class UpdateView(QWidget):
 
             text_label = QLabel(status_desc.get(key, ""))
             text_label.setWordWrap(True)
-            text_label.setStyleSheet("color: #475569; font-size: 12px; line-height: 140%;")
+            text_label.setProperty("role", "muted")
+            text_label.setStyleSheet("font-size: 12px;")
             info_layout.addWidget(text_label)
 
             if key in {"institutional_flow", "credit_transaction", "tdcc_shareholding"}:
@@ -1732,7 +1694,7 @@ class UpdateView(QWidget):
                         "  --confirm apply-phase3c-candidate-ingestion"
                     )
                 cli_box.setPlainText(cmd_str)
-                cli_box.setStyleSheet("background-color: #0f172a; color: #38bdf8; font-family: monospace; font-size: 11px;")
+                cli_box.setProperty("role", "code")
                 info_layout.addWidget(QLabel("可複製的安全受控 CLI 回補命令 (寫入隔離 Candidate DB)："))
                 info_layout.addWidget(cli_box)
 
@@ -1741,7 +1703,7 @@ class UpdateView(QWidget):
                 self.scheduler_status_log_box = log_box
                 log_box.setReadOnly(True)
                 log_box.setPlaceholderText("背景排程尚未啟動，目前無執行日誌。")
-                log_box.setStyleSheet("background-color: #0f172a; color: #cbd5e1; font-family: monospace; font-size: 11px;")
+                log_box.setProperty("role", "code")
                 status_path = self.data_freshness_status_path
                 if status_path is not None and status_path.exists():
                     try:
@@ -1764,31 +1726,11 @@ class UpdateView(QWidget):
                 info_layout.addWidget(log_box)
 
             op_group = QGroupBox("數據操作")
-            op_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(op_group)
             button_layout = QHBoxLayout(op_group)
             check_btn = QPushButton("檢查此資料源狀態")
             check_btn.setMinimumHeight(35)
-            check_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #f8fafc;
-                    color: #475569;
-                    border: 1px solid #cbd5e1;
-                    border-radius: 6px;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #f1f5f9;
-                }
-            """)
+            check_btn.setProperty("variant", "ghost")
             check_btn.clicked.connect(lambda _checked=False, source=key: self._check_source_detail(source, force=True))
             button_layout.addWidget(check_btn)
 
@@ -1807,18 +1749,6 @@ class UpdateView(QWidget):
                     "只寫入 PHASE3C_CANDIDATE_DB_PATH 指定的隔離 Candidate DB；"
                     "不會寫入正式 twstock.db，也不會接入評分／推薦／交易。"
                 )
-                update_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #2563eb;
-                        color: white;
-                        border: none;
-                        border-radius: 6px;
-                        padding: 6px 12px;
-                        font-weight: bold;
-                    }
-                    QPushButton:hover { background-color: #1d4ed8; }
-                    QPushButton:disabled { background-color: #cbd5e1; color: #64748b; }
-                """)
                 update_btn.clicked.connect(
                     lambda _checked=False, source=key: self._execute_phase3c_candidate_update(source)
                 )
@@ -1853,22 +1783,14 @@ class UpdateView(QWidget):
         }
 
         desc_label = QLabel(descriptions.get(key, "檢查此資料來源的更新狀態。"))
-        desc_label.setStyleSheet("color: #64748b; font-size: 12px;")
+        desc_label.setProperty("role", "muted")
+        desc_label.setStyleSheet("font-size: 12px;")
         desc_label.setWordWrap(True)
         layout.addWidget(desc_label)
 
         if key == "monthly_revenue":
             config_group = QGroupBox("MOPS 月營收回填設定")
-            config_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(config_group)
             form_layout = QFormLayout(config_group)
             form_layout.setSpacing(8)
 
@@ -1919,29 +1841,27 @@ class UpdateView(QWidget):
             form_layout.addRow("本次寫入版本名稱：", self.monthly_revenue_source_version_input)
             layout.addWidget(config_group)
 
-            expected_period = self._latest_expected_monthly_revenue_period()
-            self.monthly_revenue_candidate_hint_label = QLabel(
-                f"預期檢查期別：{expected_period}（依目前日期與公告節奏）；"
-                "下方抓取只建立候選快照，不會直接寫入正式資料庫。"
-            )
+            try:
+                if self._market_date_error is not None:
+                    raise RuntimeError(self._market_date_error)
+                expected_period = self._latest_expected_monthly_revenue_period()
+            except RuntimeError:
+                expected_hint = (
+                    "目前無法取得台灣市場日期，暫不推算預期月營收期別；"
+                    "請確認系統時間服務後重試。"
+                )
+            else:
+                expected_hint = (
+                    f"預期檢查期別：{expected_period}（依台灣日期與公告節奏）；"
+                    "下方抓取只建立候選快照，不會直接寫入正式資料庫。"
+                )
+            self.monthly_revenue_candidate_hint_label = QLabel(expected_hint)
             self.monthly_revenue_candidate_hint_label.setWordWrap(True)
-            self.monthly_revenue_candidate_hint_label.setStyleSheet(
-                "color: #92400e; background-color: #fffbeb; "
-                "border: 1px solid #fbbf24; border-radius: 6px; padding: 6px 10px;"
-            )
+            self.monthly_revenue_candidate_hint_label.setProperty("role", "hint")
             layout.addWidget(self.monthly_revenue_candidate_hint_label)
 
             op_group = QGroupBox("月營收資料操作")
-            op_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(op_group)
             button_layout = QHBoxLayout(op_group)
             button_layout.setSpacing(10)
 
@@ -1953,18 +1873,7 @@ class UpdateView(QWidget):
                 "只寫入 output/monthly_revenue_mops_snapshots 候選檔與 raw HTML；"
                 "不寫入 SQLite，也不自動修改 availability mapping。"
             )
-            self.monthly_revenue_fetch_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #d97706;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover { background-color: #b45309; }
-                QPushButton:disabled { background-color: #cbd5e1; color: #64748b; }
-            """)
+            self.monthly_revenue_fetch_btn.setProperty("variant", "warning")
             self.monthly_revenue_fetch_btn.clicked.connect(
                 self._execute_monthly_revenue_candidate_fetch
             )
@@ -1973,6 +1882,7 @@ class UpdateView(QWidget):
             self.monthly_revenue_dry_run_btn = QPushButton("先檢查，不寫入")
             self.monthly_revenue_dry_run_btn.setObjectName("monthly_revenue_dry_run_btn")
             self.monthly_revenue_dry_run_btn.setMinimumHeight(35)
+            self.monthly_revenue_dry_run_btn.setProperty("variant", "ghost")
             self.monthly_revenue_dry_run_btn.setToolTip("只檢查可回填筆數與診斷結果，不寫入正式資料庫。")
             self.monthly_revenue_dry_run_btn.clicked.connect(
                 lambda _checked=False: self._execute_monthly_revenue_backfill(apply=False)
@@ -1983,23 +1893,22 @@ class UpdateView(QWidget):
             self.monthly_revenue_apply_btn.setObjectName("monthly_revenue_apply_btn")
             self.monthly_revenue_apply_btn.setMinimumHeight(35)
             self.monthly_revenue_apply_btn.setToolTip("跳出確認視窗後，使用正式可得日對照檔把 MOPS 月營收寫入正式月營收資料表。")
-            self.monthly_revenue_apply_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #10b981;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #059669;
-                }
-            """)
+            self.monthly_revenue_apply_btn.setProperty("variant", "success")
             self.monthly_revenue_apply_btn.clicked.connect(
                 lambda _checked=False: self._execute_monthly_revenue_backfill(apply=True)
             )
             button_layout.addWidget(self.monthly_revenue_apply_btn)
+            self.monthly_revenue_current_btn = QPushButton("更新現況研究資料")
+            self.monthly_revenue_current_btn.setObjectName("monthly_revenue_current_btn")
+            self.monthly_revenue_current_btn.setMinimumHeight(35)
+            self.monthly_revenue_current_btn.setToolTip(
+                "重驗兩市場raw HTML、來源hash與千元單位，轉成TWD後保留版本供現況研究。"
+                "不回填公告時間，也不修改正式歷史PIT月營收。"
+            )
+            self.monthly_revenue_current_btn.clicked.connect(
+                lambda _checked=False: self._execute_monthly_revenue_backfill(apply=True, current_only=True)
+            )
+            button_layout.addWidget(self.monthly_revenue_current_btn)
             button_layout.addStretch()
             layout.addWidget(op_group)
             self._add_source_detail_status(layout, key, self)
@@ -2009,21 +1918,14 @@ class UpdateView(QWidget):
         # 針對需要日期設定的分頁（daily, market, industry, broker_branch）
         if key in {"daily", "market", "industry", "broker_branch"}:
             date_group = QGroupBox("手動下載日期範圍")
-            date_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(date_group)
             date_layout = QFormLayout(date_group)
             date_layout.setSpacing(8)
 
             end_date_edit = QDateEdit()
-            end_date_edit.setDate(_taiwan_market_qdate())
+            end_date_edit.setDate(
+                self._default_taiwan_market_qdate(end_date_edit)
+            )
             self._configure_date_edit(end_date_edit)
             end_date_edit.setToolTip(
                 "【結束日期】\n"
@@ -2067,16 +1969,7 @@ class UpdateView(QWidget):
         # 針對技術指標計算分頁
         if key == "technical":
             tech_group = QGroupBox("技術指標計算配置")
-            tech_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 6px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    color: #475569;
-                    font-weight: bold;
-                }
-            """)
+            _set_update_group_tone(tech_group)
             tech_layout = QVBoxLayout(tech_group)
             tech_layout.setSpacing(8)
 
@@ -2117,16 +2010,7 @@ class UpdateView(QWidget):
 
         # 操作按鈕面板
         op_group = QGroupBox("數據操作")
-        op_group.setStyleSheet("""
-            QGroupBox {
-                border: 1px solid #e2e8f0;
-                border-radius: 6px;
-                margin-top: 10px;
-                padding-top: 10px;
-                color: #475569;
-                font-weight: bold;
-            }
-        """)
+        _set_update_group_tone(op_group)
         button_layout = QHBoxLayout(op_group)
         button_layout.setSpacing(10)
 
@@ -2137,18 +2021,7 @@ class UpdateView(QWidget):
             "單獨檢查此項資料來源在本地原始檔案目錄以及 SQLite 資料庫中的最新狀態（最新日期、總記錄數），\n"
             "並更新頂部的對應數據卡片與下方日誌主控台。"
         )
-        check_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f8fafc;
-                color: #475569;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 6px 12px;
-            }
-            QPushButton:hover {
-                background-color: #f1f5f9;
-            }
-        """)
+        check_btn.setProperty("variant", "ghost")
         check_btn.clicked.connect(lambda _checked=False, source=key: self._check_source_detail(source, force=True))
         button_layout.addWidget(check_btn)
 
@@ -2162,19 +2035,7 @@ class UpdateView(QWidget):
                 f"每日股價手動下載會跑 TWSE 日期範圍，TPEX 則改為區間流程嘗試抓取每個交易日；若 API 只回傳最近交易日，會自動以回應日覆蓋對應檔案。\n"
                 f"提交後會自動同步 daily_price / daily_price_tpex 到 SQLite，並進行增量技術指標計算。"
             )
-            update_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3b82f6;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #2563eb;
-                }
-            """)
+            update_btn.setProperty("variant", "primary")
             update_btn.clicked.connect(lambda _checked=False, k=key: self._dispatch_update(k))
             button_layout.addWidget(update_btn)
             if key == "daily":
@@ -2185,19 +2046,7 @@ class UpdateView(QWidget):
                     "將以背景方式執行 TPEX 區間抓取（含 fallback / 重複日短路）、同步日價到 SQLite，並立即進行技術指標增量更新。\n"
                     "任務會寫入背景狀態檔，可用「檢查背景任務狀態」隨時查看最新進度。"
                 )
-                self.tpex_background_btn.setStyleSheet("""
-                    QPushButton {
-                        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f59e0b, stop:1 #d97706);
-                        color: white;
-                        border: none;
-                        border-radius: 6px;
-                        font-weight: bold;
-                        padding: 6px 12px;
-                    }
-                    QPushButton:hover {
-                        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #fbbf24, stop:1 #f59e0b);
-                    }
-                """)
+                self.tpex_background_btn.setProperty("variant", "warning")
                 self.tpex_background_btn.clicked.connect(self._execute_background_tpex_refresh)
                 button_layout.addWidget(self.tpex_background_btn)
 
@@ -2207,115 +2056,55 @@ class UpdateView(QWidget):
                     "【檢查背景任務狀態】\n"
                     "讀取背景任務的 JSON 狀態檔，確認目前是 running / done / failed，以及 TPEX、SQLite、技術指標三個步驟結果。"
                 )
-                self.tpex_background_status_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #f8fafc;
-                        color: #334155;
-                        border: 1px solid #cbd5e1;
-                        border-radius: 6px;
-                        font-weight: bold;
-                        padding: 6px 12px;
-                    }
-                    QPushButton:hover {
-                        background-color: #e2e8f0;
-                    }
-                """)
+                self.tpex_background_status_btn.setProperty("variant", "ghost")
                 self.tpex_background_status_btn.clicked.connect(self._show_tpex_background_status)
                 button_layout.addWidget(self.tpex_background_status_btn)
 
         if key == "daily":
             self.merge_btn = QPushButton("合併每日股價")
             self.merge_btn.setMinimumHeight(35)
+            self.merge_btn.setProperty("variant", "success")
             self.merge_btn.setToolTip(
                 "【合併每日股價】\n"
                 "將本地 daily_price/ 與 daily_price_tpex/ 目錄下下載好的單日股價 CSV 檔案，\n"
                 "增量同步寫入至 SQLite 資料庫的 daily_prices 表中，\n"
                 "以便大盤檢測、策略推薦與回測引擎能夠讀取到最新數據。"
             )
-            self.merge_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #10b981;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #059669;
-                }
-            """)
             self.merge_btn.clicked.connect(self._execute_merge)
             button_layout.addWidget(self.merge_btn)
         elif key == "broker_branch":
             self.merge_broker_branch_btn = QPushButton("合併券商分點")
             self.merge_broker_branch_btn.setMinimumHeight(35)
+            self.merge_broker_branch_btn.setProperty("variant", "success")
             self.merge_broker_branch_btn.setToolTip(
                 "【合併券商分點】\n"
                 "將本地 broker_flow/ 內目前啟用的追蹤分點買賣超 CSV 數據進行增量合併，\n"
                 "並同步寫入至 SQLite 資料庫的 broker_flows 表中，供主力流向分析使用。"
             )
-            self.merge_broker_branch_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #10b981;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #059669;
-                }
-            """)
             self.merge_broker_branch_btn.clicked.connect(self._execute_merge_broker_branch)
             button_layout.addWidget(self.merge_broker_branch_btn)
         elif key == "technical":
             self.calculate_tech_btn = QPushButton("計算技術指標")
             self.calculate_tech_btn.setMinimumHeight(35)
+            self.calculate_tech_btn.setProperty("variant", "success")
             self.calculate_tech_btn.setToolTip(
                 "【計算技術指標】\n"
                 "依據上方的指標配置，計算個股的 KD, MACD, RSI, ADX 與均線等技術指標，\n"
                 "並將計算結果高速儲存至 SQLite 資料庫中。推薦與回測引擎非常依賴此指標，\n"
                 "因此手動合併完股價後，務必要點擊此處計算技術指標，系統功能才能正常運作。"
             )
-            self.calculate_tech_btn.setStyleSheet("""
-                QPushButton {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #10b981, stop:1 #059669);
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 16px;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #34d399, stop:1 #10b981);
-                }
-            """)
             self.calculate_tech_btn.clicked.connect(self._execute_calculate_technical_indicators)
             button_layout.addWidget(self.calculate_tech_btn)
 
         export_btn = QPushButton("匯出 CSV 備案")
         export_btn.setMinimumHeight(35)
+        export_btn.setProperty("variant", "secondary")
         export_btn.setToolTip(
             "【匯出 CSV 備案】\n"
             "將 SQLite 資料庫中此資料來源所屬的資料表，匯出為 Excel 可直接開啟的\n"
             "UTF-8 with BOM 編碼的 CSV 檔案。您可以選擇匯出「最近範圍」或「全部歷史」。\n"
             "這屬於離線備份與人工調研的輔助備案功能，日常更新不需要使用。"
         )
-        export_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #ffffff;
-                color: #475569;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 6px 12px;
-            }
-            QPushButton:hover {
-                background-color: #f1f5f9;
-                border-color: #94a3b8;
-            }
-        """)
         export_btn.clicked.connect(lambda _checked=False, source=key: self._execute_export_csv(source))
         button_layout.addWidget(export_btn)
         button_layout.addStretch()
@@ -2335,52 +2124,24 @@ class UpdateView(QWidget):
 
         if key == "daily":
             danger_group = QGroupBox("高風險操作區 (Danger Zone)")
-            danger_group.setStyleSheet("""
-                QGroupBox {
-                    border: 1px solid #ef4444;
-                    border-radius: 8px;
-                    margin-top: 15px;
-                    padding-top: 10px;
-                    font-weight: bold;
-                    color: #ef4444;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 3px 0 3px;
-                }
-            """)
+            _set_update_group_tone(danger_group, "danger")
             danger_layout = QVBoxLayout(danger_group)
             danger_layout.setSpacing(6)
 
             danger_desc = QLabel("注意：強制重新合併將完全忽略現有合併結果，並重新讀取 daily_price/ 底下的所有 CSV 檔案寫入資料庫。\n此操作耗時較長，通常僅在資料庫損毀或修復資料時使用。")
-            danger_desc.setStyleSheet("color: #64748b; font-size: 11px;")
+            danger_desc.setProperty("role", "muted")
+            danger_desc.setStyleSheet("font-size: 11px;")
             danger_desc.setWordWrap(True)
 
             self.force_merge_btn = QPushButton("強制重新合併所有每日股價")
             self.force_merge_btn.setMinimumHeight(35)
+            self.force_merge_btn.setProperty("variant", "danger")
             self.force_merge_btn.setToolTip(
                 "【強制重新合併所有每日股價】\n"
                 "高風險操作！忽略資料庫中已有的合併狀態，全量掃描並重新將\n"
                 "raw/daily_price/ 底下的所有歷史股價 CSV 檔案重新寫入資料庫的 daily_prices 表。\n"
                 "可能需要非常長的時間，通常僅在資料庫損毀或需要完全修復重整數據時使用。"
             )
-            self.force_merge_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #ef4444;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    font-weight: bold;
-                    padding: 6px 12px;
-                }
-                QPushButton:hover {
-                    background-color: #dc2626;
-                }
-                QPushButton:pressed {
-                    background-color: #991b1b;
-                }
-            """)
             self.force_merge_btn.clicked.connect(self._execute_force_merge)
 
             danger_layout.addWidget(danger_desc)
@@ -2410,26 +2171,50 @@ class UpdateView(QWidget):
             "monthly_revenue_fetch_btn",
             "monthly_revenue_dry_run_btn",
             "monthly_revenue_apply_btn",
+            "monthly_revenue_current_btn",
         ):
             button = getattr(self, attr, None)
             if button:
                 button.setEnabled(enabled)
 
+    def _default_taiwan_market_qdate(self, date_edit: QDateEdit) -> QDate:
+        """用頁面啟動時的台灣日期設定欄位；日期未知時不借用主機日期。"""
+
+        market_date = self._market_date_at_start
+        if market_date is None:
+            date_edit.setEnabled(False)
+            date_edit.setToolTip(
+                "無法取得台灣市場日期，日期欄位已停用；確認時間服務後請重新開啟此頁。"
+            )
+            return QDate()
+        return QDate(market_date.year, market_date.month, market_date.day)
+
+    def _reject_if_startup_market_date_unknown(self) -> bool:
+        if self._market_date_at_start is not None:
+            return False
+        QMessageBox.warning(
+            self,
+            "台灣市場日期不可用",
+            "頁面啟動時無法取得台灣市場日期，未啟動資料更新。"
+            "請確認時間服務後重新開啟此頁。",
+        )
+        return True
+
     @staticmethod
     def _safe_update_end_date() -> date:
-        """回傳不晚於 host 今日的台灣市場日期，避免查詢未來日期。"""
-
+        """回傳台灣市場日期；未知時拒絕推算查詢區間。"""
         try:
-            market_date = taiwan_market_today()
-        except Exception:
-            market_date = date.today()
-        return min(market_date, date.today())
+            return taiwan_market_today()
+        except Exception as exc:
+            raise RuntimeError("無法取得台灣市場日期，未推算或啟動資料更新。") from exc
 
     @classmethod
-    def _latest_expected_monthly_revenue_period(cls) -> str:
+    def _latest_expected_monthly_revenue_period(
+        cls, *, current: date | None = None
+    ) -> str:
         """依月初／月中公告節奏提示本次應抓的月營收期別。"""
 
-        current = cls._safe_update_end_date()
+        current = current if current is not None else cls._safe_update_end_date()
         months_back = 2 if current.day < 10 else 1
         month_index = current.year * 12 + (current.month - 1) - months_back
         year, month_zero = divmod(month_index, 12)
@@ -2445,7 +2230,9 @@ class UpdateView(QWidget):
         start_date = end_date - timedelta(days=30)
         try:
             source_status = self.update_service.check_decision_data_status().get(source, {})
-            latest = self._parse_status_date(source_status.get("latest_date"))
+            # 增量依隔離候選資料的日期計算；正式資料可能領先或落後，
+            # 不得把正式日期當成候選已完成的 checkpoint。
+            latest = self._parse_status_date(source_status.get("candidate_latest_date"))
             if latest is not None:
                 start_date = latest.date() + timedelta(days=1)
         except Exception:
@@ -2479,12 +2266,18 @@ class UpdateView(QWidget):
         }.get(source)
         if source_token is None:
             return
-        start_date, end_date = self._candidate_update_window(source)
         source_label = {
             "institutional_flow": "三大法人",
             "credit_transaction": "信用交易",
             "tdcc_shareholding": "集保股權",
         }[source]
+        try:
+            start_date, end_date = self._candidate_update_window(source)
+        except RuntimeError as exc:
+            message = f"{exc}未啟動{source_label}候選更新。"
+            self._log(message)
+            QMessageBox.warning(self, "台灣市場日期不可用", message)
+            return
         try:
             decision_status = self.update_service.check_decision_data_status()
         except Exception as exc:
@@ -2545,7 +2338,7 @@ class UpdateView(QWidget):
             "只寫入隔離 Candidate DB"
         )
 
-        def task(progress_callback=None):
+        def task(progress_callback=None, cancel_callback=None):
             return update_method(
                 start_date=start_date,
                 end_date=end_date,
@@ -2553,6 +2346,7 @@ class UpdateView(QWidget):
                 include_latest_tdcc_snapshot=source_token == "tdcc",
                 allow_online_calendar_probe=True,
                 progress_callback=progress_callback,
+                cancel_callback=cancel_callback,
             )
 
         worker = self._start_worker(
@@ -2599,14 +2393,18 @@ class UpdateView(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         message = str(result.get("message") or "候選更新完成")
+        cancelled = result.get("cancelled") is True
         self._render_manual_update_summary(
-            "success" if result.get("success") is True else "failed",
+            "cancelled" if cancelled else "success" if result.get("success") is True else "failed",
             result=result,
         )
         self._log(message)
+        # 後續日期取消或失敗時，先前完整交易仍可能已提交；重讀以呈現部分結果。
+        self._check_source_detail(source, force=True)
         if result.get("success") is True:
             QMessageBox.information(self, "候選資料更新完成", message)
-            self._check_source_detail(source, force=True)
+        elif cancelled:
+            QMessageBox.warning(self, "候選更新已安全取消", message)
         else:
             QMessageBox.warning(self, "候選資料更新未完成", message)
 
@@ -2642,8 +2440,19 @@ class UpdateView(QWidget):
             )
             return
 
-        target_period = self._latest_expected_monthly_revenue_period()
-        fetch_date = self._safe_update_end_date().isoformat()
+        try:
+            fetch_market_date = self._safe_update_end_date()
+            target_period = self._latest_expected_monthly_revenue_period(
+                current=fetch_market_date
+            )
+        except RuntimeError as exc:
+            QMessageBox.warning(
+                self,
+                "台灣市場日期不可用",
+                f"{exc}月營收候選抓取未啟動。",
+            )
+            return
+        fetch_date = fetch_market_date.isoformat()
         output_dir = Path(self.update_service.config.output_root) / "monthly_revenue_mops_snapshots"
         reply = QMessageBox.question(
             self,
@@ -2678,7 +2487,7 @@ class UpdateView(QWidget):
             "只寫入候選 snapshot／raw HTML"
         )
 
-        def task(progress_callback=None):
+        def task(progress_callback=None, cancel_callback=None):
             return fetch_method(
                 start_period=target_period,
                 end_period=target_period,
@@ -2686,6 +2495,7 @@ class UpdateView(QWidget):
                 fetch_date=fetch_date,
                 sleep_seconds=0.5,
                 progress_callback=progress_callback,
+                cancel_callback=cancel_callback,
             )
 
         worker = self._start_worker(
@@ -2719,8 +2529,9 @@ class UpdateView(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         message = str(result.get("message") or "月營收候選抓取完成")
+        cancelled = result.get("cancelled") is True
         self._render_manual_update_summary(
-            "success" if result.get("success") is True else "failed",
+            "cancelled" if cancelled else "success" if result.get("success") is True else "failed",
             result=result,
         )
         output_csv = str(result.get("output_csv") or "").strip()
@@ -2736,6 +2547,8 @@ class UpdateView(QWidget):
         if result.get("success") is True:
             QMessageBox.information(self, "月營收候選抓取完成", message)
             self._check_source_detail("monthly_revenue", force=True)
+        elif cancelled:
+            QMessageBox.warning(self, "月營收候選已安全取消", message)
         else:
             QMessageBox.warning(self, "月營收候選抓取未完成", message)
 
@@ -2748,14 +2561,17 @@ class UpdateView(QWidget):
         self._log(f"月營收候選抓取失敗：{error_msg}")
         QMessageBox.critical(self, "月營收候選抓取失敗", error_msg)
 
-    def _execute_monthly_revenue_backfill(self, apply: bool = False):
+    def _execute_monthly_revenue_backfill(self, apply: bool = False, *, current_only: bool = False):
         """Run MOPS monthly revenue dry-run or controlled SQLite apply."""
         if self._reject_busy_write("月營收處理"):
             return
         if apply:
             reply = QMessageBox.question(
                 self,
-                "確認寫入月營收",
+                "確認更新現況研究資料" if current_only else "確認寫入月營收",
+                ("重驗官方原件及金額單位、備份SQLite後，追加現況研究觀測。\n\n"
+                 "以現在的觀測時間提供現況研究，不回填歷史公告時間或正式PIT資格。")
+                if current_only else
                 "確定要正式寫入 fundamental_monthly_revenues 嗎？\n\n"
                 "系統會先建立 SQLite 備份，再用 MOPS snapshot 與正式 availability mapping 回填月營收。",
                 QMessageBox.Yes | QMessageBox.No,
@@ -2775,20 +2591,34 @@ class UpdateView(QWidget):
         self.progress_label.setVisible(True)
         self.progress_label.setText("正在處理 MOPS 月營收...")
         self.log_text.clear()
-        mode_text = "正式寫入" if apply else "dry-run"
+        mode_text = "現況研究更新" if current_only else "正式寫入" if apply else "dry-run"
         self._log(f"開始 MOPS 月營收 {mode_text}")
         self._log(f"MOPS snapshot: {snapshot_text}")
         self._log(f"Availability mapping: {availability_text}")
 
-        def task():
+        def task(cancel_callback=None):
+            if cancel_callback is not None and cancel_callback():
+                return {"success": False, "cancelled": True, "message": "月營收處理已在開始前取消"}
             kwargs = {
                 "snapshot_file": Path(snapshot_text) if snapshot_text else None,
                 "availability_file": Path(availability_text) if availability_text else None,
                 "source_version": source_version or None,
+                "cancel_callback": cancel_callback,
             }
-            if apply:
-                return self.update_service.apply_mops_monthly_revenue_backfill(**kwargs)
-            return self.update_service.dry_run_mops_monthly_revenue_backfill(**kwargs)
+            if current_only:
+                result = self.update_service.materialize_current_monthly_revenue(
+                    snapshot_file=kwargs['snapshot_file'], apply=apply, cancel_callback=cancel_callback,
+                )
+            elif apply:
+                result = self.update_service.apply_mops_monthly_revenue_backfill(**kwargs)
+            else:
+                result = self.update_service.dry_run_mops_monthly_revenue_backfill(**kwargs)
+            # SQLite 回填是完整交易；交易期間按取消只在提交後回報，不切斷寫入。
+            if isinstance(result, dict):
+                result.setdefault("cancelled", False)
+                if cancel_callback is not None and cancel_callback():
+                    result["cancel_requested_after_commit"] = True
+            return result
 
         worker = self._start_worker(TaskWorker(task), operation_kind="write")
         worker.finished.connect(lambda result, apply_mode=apply: self._on_monthly_revenue_finished(result, apply_mode))
@@ -2803,6 +2633,14 @@ class UpdateView(QWidget):
         self.progress_label.setVisible(False)
 
         message = result.get("message", "月營收處理完成")
+        diagnostic_blocks = self._monthly_revenue_diagnostic_display(result)
+        for block in diagnostic_blocks:
+            self._log(block.replace("\n", " | "))
+        if diagnostic_blocks:
+            message = f"{message}\n\n" + "\n\n".join(diagnostic_blocks)
+        cancelled = result.get("cancelled") is True
+        if result.get("cancel_requested_after_commit") is True:
+            message = f"{message}（取消要求於交易提交後收到，完整交易已保留）"
         self._log(message)
         self._log(f"raw rows: {result.get('raw_row_count', 0):,}")
         self._log(f"normalized records: {result.get('normalized_record_count', result.get('inserted_count', 0)):,}")
@@ -2811,12 +2649,75 @@ class UpdateView(QWidget):
         if backup_file:
             self._log(f"SQLite backup: {backup_file}")
 
-        if result.get("success", False):
+        if cancelled:
+            self._render_manual_update_summary("cancelled", message=message, result=result)
+            QMessageBox.warning(self, "月營收處理已安全取消", message)
+        elif result.get("success", False):
+            self._render_manual_update_summary("success", message=message, result=result)
             QMessageBox.information(self, "月營收處理完成", message)
             if apply:
                 self._check_source_detail("monthly_revenue", force=True)
         else:
+            self._render_manual_update_summary("failed", message=message, result=result)
             QMessageBox.warning(self, "月營收處理失敗", message)
+
+    @staticmethod
+    def _monthly_revenue_diagnostic_display(result: Any) -> List[str]:
+        """將月營收 dry-run 診斷轉成可操作的繁中說明，不改變服務判定。"""
+        if not isinstance(result, dict):
+            return []
+        diagnostics = result.get("diagnostics")
+        if not isinstance(diagnostics, (list, tuple)):
+            return []
+
+        blocks: List[str] = []
+        display_limit = 5
+        for raw_diagnostic in diagnostics[:display_limit]:
+            if not isinstance(raw_diagnostic, dict):
+                blocks.append(
+                    "診斷格式：無法辨識的診斷資料。\n"
+                    "說明：目前無法安全判讀這筆診斷，也不代表檢查通過。\n"
+                    "下一步：保留失敗狀態，查看原始 dry-run 結果並交維護者確認。"
+                )
+                continue
+
+            raw_code = raw_diagnostic.get("code")
+            code = raw_code.strip() if isinstance(raw_code, str) and raw_code.strip() else "（診斷代碼缺失）"
+            raw_message = raw_diagnostic.get("message")
+            detail = raw_message.strip() if isinstance(raw_message, str) and raw_message.strip() else "（沒有文字訊息）"
+            if len(detail) > 800:
+                detail = f"{detail[:800]}…（訊息已截斷，完整內容請查看原始結果）"
+
+            explanation = "目前介面沒有這個診斷代碼的已知解讀；不會推定資料可用。"
+            next_action = "保留檢查失敗，核對原始診斷後再處理；不要以此結果執行正式回填。"
+            if code == "fundamental_availability.snapshot_mapping_incomplete":
+                explanation = "候選月營收列缺少正式治理的可得日 mapping，因此無法確認何時可供使用。"
+                next_action = (
+                    "補齊並核准對應期間的正式可得日 mapping，再重新執行 dry-run。"
+                    "不得以抓取日代替可得日；mapping 未完整前不可正式回填。"
+                )
+            elif code == "monthly_revenue.dry_run_error":
+                lowered_detail = detail.casefold()
+                if "snapshot 不存在" in lowered_detail or "snapshot file not found" in lowered_detail:
+                    explanation = "指定的月營收候選快照檔不存在。"
+                    next_action = (
+                        "先使用「抓取最新候選快照」建立候選檔，再重新執行 dry-run；"
+                        "抓取只建立候選，不會替代正式可得日 mapping。"
+                    )
+
+            blocks.append(
+                f"診斷代碼：{code}\n"
+                f"原始訊息：{detail}\n"
+                f"說明：{explanation}\n"
+                f"下一步：{next_action}"
+            )
+
+        omitted = len(diagnostics) - len(blocks)
+        if omitted > 0:
+            blocks.append(
+                f"另有 {omitted} 筆診斷未在視窗中展開；請查看原始 dry-run 結果。"
+            )
+        return blocks
 
     def _on_monthly_revenue_error(self, error_msg: str):
         self._invalidate_detail_cache()
@@ -2831,34 +2732,12 @@ class UpdateView(QWidget):
         date_edit.setDisplayFormat("yyyy-MM-dd")
         date_edit.setMinimumWidth(132)
         date_edit.setMaximumWidth(150)
-        date_edit.setStyleSheet("""
-            QDateEdit {
-                padding-right: 7px;
-            }
-        """)
 
     def _create_calendar_button(self, date_edit: QDateEdit) -> QPushButton:
         button = QPushButton("日曆")
         button.setMaximumWidth(52)
+        button.setProperty("variant", "ghost")
         button.setToolTip("開啟日曆選擇日期")
-        button.setStyleSheet("""
-            QPushButton {
-                background-color: #f8fafc;
-                color: #334155;
-                border: 1px solid #94a3b8;
-                border-radius: 5px;
-                padding: 3px 6px;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            QPushButton:hover {
-                background-color: #e0f2fe;
-                border-color: #0284c7;
-            }
-            QPushButton:pressed {
-                background-color: #bae6fd;
-            }
-        """)
         button.clicked.connect(lambda _checked=False, edit=date_edit, anchor=button: self._show_calendar_popup(edit, anchor))
         return button
 
@@ -2873,18 +2752,23 @@ class UpdateView(QWidget):
         calendar.setMinimumSize(340, 280)
         calendar.setCurrentPage(selected_date.year(), selected_date.month())
         calendar.setSelectedDate(selected_date)
-        calendar.setStyleSheet("""
+        calendar.setStyleSheet(f"""
             QCalendarWidget QToolButton {
                 min-width: 44px;
                 min-height: 24px;
                 padding: 2px 6px;
+                background: {MIDNIGHT_ANALYST.surface_2};
+                color: {MIDNIGHT_ANALYST.text_primary};
+                border: 1px solid {MIDNIGHT_ANALYST.border};
             }
             QCalendarWidget QAbstractItemView {
                 font-size: 12px;
                 min-width: 300px;
                 min-height: 210px;
-                selection-background-color: #2563eb;
-                selection-color: white;
+                background: {MIDNIGHT_ANALYST.surface_1};
+                color: {MIDNIGHT_ANALYST.text_primary};
+                selection-background-color: {MIDNIGHT_ANALYST.table_selected};
+                selection-color: {MIDNIGHT_ANALYST.text_primary};
             }
         """)
         calendar.clicked.connect(lambda selected, edit=date_edit, frame=popup: self._apply_calendar_date(edit, selected, frame))
@@ -2900,7 +2784,15 @@ class UpdateView(QWidget):
     def _set_shared_end_date_today(self, source_name: str):
         end_date_widget = getattr(self, f"{source_name}_end_date", None)
         if end_date_widget:
-            end_date_widget.setDate(_taiwan_market_qdate())
+            try:
+                market_date = self._safe_update_end_date()
+            except RuntimeError as exc:
+                QMessageBox.warning(self, "台灣市場日期不可用", str(exc))
+                return
+            end_date_widget.setEnabled(True)
+            end_date_widget.setDate(
+                QDate(market_date.year, market_date.month, market_date.day)
+            )
             self._sync_dates(source_name)
 
     def _sync_dates(self, source_name: str):
@@ -3991,9 +3883,13 @@ class UpdateView(QWidget):
 
     @staticmethod
     def _format_candidate_status_card(value: Dict[str, Any]) -> str:
-        record_count = _safe_nonnegative_int(value.get("total_records"))
-        earliest = value.get("earliest_date") or "無"
-        latest = value.get("latest_date") or "無"
+        record_count = _safe_nonnegative_int(
+            value.get("candidate_records", value.get("total_records"))
+        )
+        earliest = value.get("candidate_earliest_date", value.get("earliest_date")) or "無"
+        latest = value.get("candidate_latest_date", value.get("latest_date")) or "無"
+        formal_count = _safe_nonnegative_int(value.get("formal_records"))
+        formal_latest = value.get("formal_latest_date") or "無"
         coverage = value.get("coverage_pct") or "0.0%"
         freshness_status = str(value.get("freshness_status") or "").strip().lower()
         status = format_status_token(
@@ -4007,6 +3903,8 @@ class UpdateView(QWidget):
                 f"狀態：{status}\n"
                 f"區間：{earliest} ~ {latest}\n"
                 f"覆蓋率：{coverage}\n"
+                f"正式資料：{formal_count:,} 筆，最新 {formal_latest}；狀態 {value.get('formal_status') or '未知'}\n"
+                f"候選資料：{record_count:,} 筆，最新 {latest}；狀態 {value.get('candidate_status') or '未知'}\n"
                 f"[{disclaimer}]"
             ]
             reference = value.get("freshness_reference_date")
@@ -4016,6 +3914,8 @@ class UpdateView(QWidget):
         return (
             f"最新日期：{latest}\n"
             f"總記錄數：{record_count:,}\n"
+            f"正式資料：{formal_count:,} 筆，最新 {formal_latest}；狀態 {value.get('formal_status') or '未知'}\n"
+            f"候選狀態：{value.get('candidate_status') or '未確認'}，候選最新 {latest}\n"
             f"狀態：{status} / 尚未匯入\n"
             f"[{disclaimer}]"
         )
@@ -4123,10 +4023,60 @@ class UpdateView(QWidget):
         if card is not None:
             card.setPlainText(self._format_status_card_text(key, value))
 
+    @staticmethod
+    def _add_update_details(layout: QVBoxLayout, group: QGroupBox, title: str) -> QPushButton:
+        """只收合呈現；既有阻擋條件與操作 callback 保留。"""
+        button = QPushButton(f"展開／收合：{title}")
+        button.setCheckable(True)
+        button.setProperty("variant", "ghost")
+        button.toggled.connect(group.setVisible)
+        layout.addWidget(button)
+        layout.addWidget(group)
+        group.hide()
+        return button
+
+    def _render_update_impact(self, status: Dict[str, Any]) -> None:
+        """只翻譯當次回傳資料，不把成功收據或目標日期當作行情日期。"""
+        timeline = status.get("data_update_timeline")
+        timeline = timeline if isinstance(timeline, dict) else {}
+        raw = str(timeline.get("status") or "unknown").strip().lower()
+        if raw in {"current", "passed", "success", "completed", "done", "ok"}:
+            impact = "已讀取更新收據；各來源是否可用仍須核對卡片與明細。"
+            next_step = "核對資料日與來源狀態；有缺漏時再選擇個別更新。"
+        elif raw == "running":
+            impact = "資料更新仍在執行，尚不能視為本輪完成。"
+            next_step = "等待安全完成或使用既有取消操作，再重新檢查。"
+        elif raw in {"stale", "partial", "degraded", "failed", "failure", "error", "invalid", "blocked"}:
+            impact = "本輪更新過期、未完整完成或有異常，不能據此判定資料已齊全。"
+            next_step = "展開更新時間軸與阻擋明細，確認原因後再選擇更新。"
+        else:
+            impact = "更新來源未知或尚無可用收據，不能判定資料已齊全。"
+            next_step = "按「檢查數據狀態」；仍未知時展開明細確認來源。"
+        dates = []
+        for key, name in (("daily_data", "股價資料日"), ("technical_indicators", "技術指標資料日")):
+            value = status.get(key)
+            value = value if isinstance(value, dict) else {}
+            dates.append(f"{name}：{value.get('latest_date') or '未知'}")
+        self.update_impact_label.setText(
+            f"資料影響：{impact}\n"
+            f"最後成功完成：{timeline.get('last_success_at') or '未知'}｜" + "｜".join(dates)
+            + f"\n下一步：{next_step}"
+        )
+        _set_update_status_tone(self.update_impact_label, "info" if raw in {"current", "running"} else "warning")
+
     def _on_status_checked(self, status: Dict[str, Any]):
         """數據狀態檢查完成"""
         self.check_status_btn.setEnabled(True)
         self.check_status_btn.setText("檢查數據狀態")
+        selections = []
+        for table in (self.data_update_timeline_table, self.data_update_timeline_history_table,
+                      self.program_readiness_table, self.p0_source_control_table):
+            row = table.currentRow()
+            # 歷史以 Run 身分返回，其餘表以步驟／lane／來源返回，不能沿用列號。
+            column = 2 if table is self.data_update_timeline_history_table else 0
+            item = table.item(row, column) if row >= 0 else None
+            if item is not None:
+                selections.append((table, column, item.text()))
 
         card_map = {
             "daily_data": "daily_status_text",
@@ -4165,12 +4115,20 @@ class UpdateView(QWidget):
         self._render_data_update_timeline(status.get("data_update_timeline"))
         self._render_program_readiness(status.get("program_readiness"))
         self._render_p0_source_control_status(status.get("p0_source_control"))
+        self._render_update_impact(status)
+        for table, column, identity in selections:
+            for row in range(table.rowCount()):
+                item = table.item(row, column)
+                if item is not None and item.text() == identity:
+                    table.setCurrentCell(row, column)
+                    break
         self._log(f"數據狀態檢查完成")
 
     def _on_status_error(self, error_msg: str):
         """數據狀態檢查出錯"""
         self.check_status_btn.setEnabled(True)
         self.check_status_btn.setText("檢查數據狀態")
+        self._render_update_impact({"data_update_timeline": {"status": "error"}})
         for attr in (
             "daily_status_text",
             "market_status_text",
@@ -4345,7 +4303,7 @@ class UpdateView(QWidget):
         """以獨立進程背景執行 TPEX + TWSE + 技術指標完整流程。"""
         if self._reject_busy_write("TPEX 背景補齊"):
             return
-        if self._tpex_background_process is not None and self._tpex_background_process.poll() is None:
+        if self.has_running_background_process():
             QMessageBox.information(
                 self,
                 "背景任務進行中",
@@ -4359,6 +4317,14 @@ class UpdateView(QWidget):
             QMessageBox.critical(self, "背景任務啟動失敗", f"找不到背景腳本：{script_path}")
             return
 
+        # 測試／嵌入頁可注入不同 status path；cancel marker 必須跟著同一
+        # 次 process state 走，不能沿用 constructor 的舊資料根目錄。
+        self._tpex_cancel_file = self.tpex_refresh_state_file.with_name(
+            self.tpex_refresh_state_file.name + ".cancel"
+        )
+        self._tpex_cancel_requested = False
+        self._tpex_process_exit_code = None
+
         self.tpex_background_btn.setEnabled(False)
         self.tpex_background_btn.setText("背景補齊中...")
 
@@ -4368,8 +4334,23 @@ class UpdateView(QWidget):
             "mode": "tpex_full_refresh_and_technical",
             "start_date": start_date,
             "end_date": end_date,
+            "cancel_file": str(self._tpex_cancel_file),
             "steps": {},
         }
+        try:
+            # 這是本 view 自己建立的 control marker；每次新 run 先清除
+            # 上一次的取消請求，避免 stale marker 讓新工作一啟動就退出。
+            self._tpex_cancel_file.unlink(missing_ok=True)
+        except OSError as exc:
+            self.tpex_background_btn.setEnabled(True)
+            self.tpex_background_btn.setText("背景補齊 TPEX + 技術指標")
+            self._log(f"無法清除上一輪 TPEX 取消 marker：{exc}")
+            QMessageBox.critical(
+                self,
+                "背景任務啟動失敗",
+                f"無法準備合作式取消控制檔：{self._tpex_cancel_file}\n{exc}",
+            )
+            return
         if not self._write_tpex_background_status(initial_status):
             self.tpex_background_btn.setEnabled(True)
             self.tpex_background_btn.setText("背景補齊 TPEX + 技術指標")
@@ -4394,6 +4375,8 @@ class UpdateView(QWidget):
             end_date,
             "--state-file",
             str(self.tpex_refresh_state_file),
+            "--cancel-file",
+            str(self._tpex_cancel_file),
             "--delay-seconds",
             "1.0",
             "--sync-sqlite",
@@ -4423,6 +4406,7 @@ class UpdateView(QWidget):
 
     def _show_tpex_background_status(self):
         """讀取並顯示背景任務 JSON 狀態。"""
+        self._observe_tpex_background_process()
         if not self.tpex_refresh_state_file.exists():
             self._set_tpex_background_status_label("not_started", level="warning")
             QMessageBox.information(self, "背景任務狀態", "目前尚未啟動 TPEX 背景補齊任務。")
@@ -4460,7 +4444,15 @@ class UpdateView(QWidget):
                 lines.append(f"錯誤訊息：{raw.get('message', '-')}")
 
             status = str(raw.get("status", "unknown"))
-            level = "success" if status == "done" else "error" if status == "failed" else "warning" if status == "unknown" else "info"
+            level = (
+                "success"
+                if status in {"done", "done_with_warning"}
+                else "error"
+                if status == "failed"
+                else "warning"
+                if status in {"unknown", "cancelling", "cancelled"}
+                else "info"
+            )
             self._set_tpex_background_status_label(
                 status,
                 message=str(raw.get("message", "") or ""),
@@ -4474,7 +4466,7 @@ class UpdateView(QWidget):
             self._log("\n".join(lines))
             QMessageBox.information(self, "背景任務狀態", "\n".join(lines))
 
-            if raw.get("status") in {"done", "failed"}:
+            if raw.get("status") in {"done", "done_with_warning", "failed", "cancelled"}:
                 self._invalidate_detail_cache()
                 self.tpex_background_btn.setEnabled(True)
                 self.tpex_background_btn.setText("背景補齊 TPEX + 技術指標")
@@ -4634,6 +4626,8 @@ class UpdateView(QWidget):
         """以背景工作執行更新所有數據"""
         if self._reject_busy_write("全部資料更新"):
             return
+        if self._reject_if_startup_market_date_unknown():
+            return
         self._current_update_mode = mode
         self._active_update_operation = "快速更新" if mode == "quick" else "安全更新"
         self._active_update_start_date, self._active_update_end_date = (
@@ -4765,6 +4759,8 @@ class UpdateView(QWidget):
     def _execute_update(self):
         """執行數據更新"""
         if self._reject_busy_write("單一資料來源更新"):
+            return
+        if self._reject_if_startup_market_date_unknown():
             return
         # 獲取更新類型
         update_type = None

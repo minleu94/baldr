@@ -39,13 +39,14 @@ from ml_module.allocation_validation import (
     file_content_hash,
     load_allocation_promotion_evidence,
 )
+from ml_module.promotion_authority_family import AUTHORITY_FAMILY
 from runtime.promotion_authority_secret_store import (
     PromotionAuthoritySecretStore,
 )
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
-TASK_NAME = "baldr-ml-promotion-authority-daily"
+TASK_NAME = AUTHORITY_FAMILY
 STATUS_SCHEMA_VERSION = "baldr-ml-promotion-authority-status.v1"
 POINTER_SCHEMA_VERSION = "allocation-promotion-evidence-pointer.v1"
 AUTHORITY_POINTER_SCHEMA_VERSION = "baldr-promotion-authorization-pointer.v1"

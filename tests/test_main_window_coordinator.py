@@ -17,7 +17,8 @@ def test_workspace_definitions_lock_navigation_order_and_icons() -> None:
         ("recommendation", "推薦分析", "spark-list"),
         ("backtest", "策略回測", "replay"),
         ("watchlist", "觀察清單", "bookmark"),
+        ("stock_research", "個股研究", "spark-list"),
         ("portfolio", "持倉管理", "briefcase"),
         ("update", "數據更新", "database-sync"),
-        ("runtime", "Runtime", "pulse"),
+        ("runtime", "系統狀態", "pulse"),
     ]

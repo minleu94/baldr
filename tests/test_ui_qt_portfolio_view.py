@@ -4,15 +4,20 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from decimal import Decimal
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from zoneinfo import ZoneInfo
+import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QBoxLayout,
     QFileDialog,
@@ -24,14 +29,33 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtTest import QTest
 
-from app_module.dtos.portfolio_dtos import PortfolioDTO, PositionDTO, TradeDTO
+from app_module.dtos.portfolio_dtos import (
+    PortfolioDTO,
+    PositionDTO,
+    RecordedTradeCostSummaryDTO,
+    TradeDTO,
+)
+from app_module.recommendation.legacy_dtos import (
+    RecommendationDTO,
+    RecommendationResultDTO,
+)
+from app_module.portfolio_source_adapter import build_recommendation_trade_source
+from app_module.decision_presentation import (
+    PositionHealthPresentationDTO,
+    PositionHealthReadModel,
+)
 from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioPositionSnapshot,
     PaperPortfolioSnapshot,
     PaperPortfolioSnapshotRepository,
 )
 from app_module.paper_trade_ledger import PaperTradeLedgerRepository
-from ui_qt.views.portfolio_view import AddTradeDialog, PortfolioView
+from ui_qt.views.portfolio_view import (
+    AddTradeDialog,
+    PortfolioView,
+    _format_recorded_trade_costs,
+)
+import ui_qt.views.portfolio_view as portfolio_view_module
 from ui_qt.workers.task_worker import TaskWorker, running_task_workers
 
 
@@ -227,6 +251,15 @@ class FakeConditionMonitor:
         return FakeConditionResult()
 
 
+class FakePositionHealthReadService:
+    def __init__(self, model: PositionHealthReadModel):
+        self.model = model
+
+    def read_latest(self, *, max_age_days: int):
+        assert max_age_days == 1
+        return self.model
+
+
 class FakeChipService:
     def get_stock_chip_summary(self, _stock_code: str, period_days: int = 5):
         return {
@@ -240,17 +273,87 @@ class FakeChipService:
         }
 
 
-def make_portfolio_view(tmp_path, parent=None):
+def make_portfolio_view(
+    tmp_path,
+    parent=None,
+    position_health_read_service=None,
+    portfolio_service=None,
+):
     app()
     view = PortfolioView(
-        portfolio_service=FakePortfolioService(FakeConfig(tmp_path)),
+        portfolio_service=portfolio_service or FakePortfolioService(FakeConfig(tmp_path)),
         journal_service=FakeJournalService(),
         condition_monitor=FakeConditionMonitor(),
+        position_health_read_service=position_health_read_service,
         parent=parent,
     )
     view._update_lifecycle_review = lambda *_args, **_kwargs: None
     view.chip_service = FakeChipService()
     return view
+
+
+def _make_health_row(stock_code: str = "1418") -> PositionHealthPresentationDTO:
+    return PositionHealthPresentationDTO(
+        position_id=f"paper:{stock_code}",
+        stock_code=stock_code,
+        decision_date="2026-09-21",
+        available_at="2026-09-21T20:55:48.508928",
+        availability_by_source=(("market", "2026-09-21T20:55:48.508928"),),
+        source_status="blocked",
+        quality="blocked",
+        source_snapshot_id="snapshot-1418",
+        cohort_key="paper-main",
+        previous_state="UNKNOWN",
+        proposed_state="WATCH",
+        raw_proposed_state="WATCH",
+        action_suitability="WATCH",
+        condition_status="unknown",
+        thesis_status="missing",
+        metrics_status="blocked",
+        entry_lineage_status="unverified",
+        required_human_fields=("entry_lineage",),
+        reasons=("source receipt 已封鎖",),
+        why="來源 receipt 已封鎖；暫不可判讀。",
+        why_not=("source receipt 已封鎖",),
+        proposal_event_id=None,
+        input_hash=None,
+        policy_hash="policy-1418",
+        source_trace=("receipt:paper-health-1418", "reason:source-blocked"),
+        source_hashes=(("receipt", "sha256:1418"),),
+        review_required=True,
+        research_only=True,
+        auto_action_allowed=False,
+        warnings=("人工確認來源",),
+        blockers=("position_health_evaluator_blocked",),
+    )
+
+
+def _make_blocked_health_model() -> PositionHealthReadModel:
+    return PositionHealthReadModel(
+        schema_version="position-health-presentation.v1",
+        status="blocked",
+        decision_date="2026-09-21",
+        observed_at="2026-09-21T20:55:48.508928",
+        available_at="2026-09-21T20:55:48.508928",
+        source_status="blocked",
+        quality="blocked",
+        portfolio_id="paper-main",
+        source_snapshot_id="snapshot-1418",
+        source_snapshot_rows_sha256="sha256:rows",
+        cohort_key="paper-main",
+        receipt_path="receipt.json",
+        result_path="result.json",
+        result_sha256="sha256:result",
+        receipt_sha256="sha256:receipt",
+        warnings=("source receipt 已封鎖",),
+        blockers=("position_health_evaluator_blocked",),
+        research_only=True,
+        apply_transition=False,
+        auto_action_allowed=False,
+        broker_execution=False,
+        formal_credit=False,
+        positions=(_make_health_row(),),
+    )
 
 
 def _wait_until(predicate, timeout_seconds: float = 5.0) -> bool:
@@ -272,8 +375,72 @@ def test_portfolio_active_summary_lists_position_count_and_top_symbols(tmp_path)
     assert "活躍持倉：2 檔" in view.active_positions_summary_label.text()
     assert "2330 台積電" in view.active_positions_summary_label.text()
     assert view.card_net_val.title_label.text() == "持倉市值（未含現金）"
-    assert view.card_net_val.value_label.text() == "TWD 261,000.00"
+    assert view.card_net_val.value_label.text() == "未知（估值日期缺件或不一致）"
     assert "已標記市值 2/2 檔" in view.active_positions_summary_label.text()
+
+
+def test_portfolio_selected_position_shows_shared_decision_presentation(tmp_path):
+    view = make_portfolio_view(tmp_path)
+
+    view.refresh_all()
+    assert view.select_stock("2317") is True
+
+    detail_text = view.position_presentation_label.text()
+    assert "研究路徑：市場總覽 → 產業／市場探索 → 關鍵股研究 → 觀察清單 → 持倉覆盤" in detail_text
+    assert "動作適合度：持有" in detail_text
+    assert "排名分數：未知（僅作排序，不等於機率）" in detail_text
+    assert "校準機率：不可用（研究中）" in detail_text
+    assert "成本基準：TWD 150.00" in detail_text
+    assert "來源追溯：recommendation_result；rec-1" in detail_text
+
+
+def test_portfolio_return_uses_position_id_after_table_sort_and_keeps_trade_filter(tmp_path):
+    recommendation = RecommendationDTO(
+        stock_code="2317",
+        stock_name="鴻海",
+        close_price=Decimal("151.0"),
+        price_change=0.01,
+        total_score=75.0,
+        indicator_score=70.0,
+        pattern_score=72.0,
+        volume_score=68.0,
+        recommendation_reasons="合成測試推薦",
+        industry="電子零組件",
+        regime_match=True,
+    )
+    saved_result = RecommendationResultDTO(
+        result_id="rec-1",
+        result_name="合成保存結果",
+        config={"profile_id": "balanced"},
+        recommendations=[recommendation],
+        created_at="2026-06-20T09:00:00+08:00",
+    )
+    trade_source = build_recommendation_trade_source(saved_result, recommendation)
+    result_path = tmp_path / "recommendation" / "runs" / "rec-1.json"
+    result_path.parent.mkdir(parents=True)
+    result_path.write_text(
+        json.dumps(saved_result.to_dict(), default=str), encoding="utf-8"
+    )
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    linked_position = service.positions[1]
+    linked_position.source_summary = trade_source.source_summary
+    linked_position.source_snapshot_hash = trade_source.source_snapshot_hash
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+
+    assert view.positions_model is not None
+    stock_column = view.positions_model.getVisibleColumns().index("證券代號")
+    view.positions_model.sort(stock_column, Qt.AscendingOrder)
+    assert tuple(view.positions_model.getDataFrame()["證券代號"]) == ("2317", "2330")
+
+    # The sorted first row is still resolved to the 2317 PositionDTO through
+    # hidden position_id, so the saved recommendation identity remains exact.
+    assert view.select_stock("2317", "rec-1") is True
+    assert view.selected_stock_code == "2317"
+    assert "目前只顯示：2317" in view.trade_filter_status_label.text()
+
+    # 完整 legacy writer identity 通過；任一來源 hash 不一致仍 fail closed。
+    linked_position.source_snapshot_hash = "sha256:mismatched-fixture"
+    assert view.select_stock("2317", "rec-1") is False
 
 
 def test_portfolio_page_hydrates_summary_and_table_from_one_portfolio_dto(tmp_path):
@@ -302,6 +469,28 @@ def test_portfolio_page_hydrates_summary_and_table_from_one_portfolio_dto(tmp_pa
     assert view.card_invested.value_label.text() == (
         f"TWD {dto.total_invested_amount:,.2f}"
     )
+    assert "毛額，未扣費稅" in view.card_invested.title_label.text()
+    assert "毛額，未扣費稅" in view.card_pnl.title_label.text()
+
+
+def test_portfolio_ui_exposes_recorded_fees_and_taxes_without_netting() -> None:
+    summary = RecordedTradeCostSummaryDTO(
+        trade_count=3,
+        fees_recorded_count=2,
+        fees_missing_count=1,
+        taxes_recorded_count=3,
+        taxes_missing_count=0,
+        fees_by_currency={"TWD": Decimal("12.35")},
+        taxes_by_currency={"TWD": Decimal("5.67")},
+    )
+
+    text = _format_recorded_trade_costs(summary)
+
+    assert "手續費 TWD 12.35" in text
+    assert "交易稅 TWD 5.67" in text
+    assert "已記錄 2/3 筆" in text
+    assert "1 筆缺值或格式無效" in text
+    assert "已記錄 3/3 筆" in text
 
 
 def test_portfolio_view_reflows_positions_and_existing_evidence_tabs_on_narrow_width(tmp_path):
@@ -317,16 +506,129 @@ def test_portfolio_view_reflows_positions_and_existing_evidence_tabs_on_narrow_w
     app().processEvents()
     assert view.main_splitter.orientation() == Qt.Horizontal
     assert view.position_action_layout.direction() == QBoxLayout.LeftToRight
+    assert view.positions_table.horizontalScrollBarPolicy() == Qt.ScrollBarAsNeeded
 
     host.resize(390, 844)
     app().processEvents()
     assert view.main_splitter.orientation() == Qt.Vertical
     assert view.position_action_layout.direction() == QBoxLayout.TopToBottom
     assert view.history_filter_layout.direction() == QBoxLayout.TopToBottom
-    assert view.portfolio_detail_tabs.minimumWidth() == 0
+    assert view.portfolio_detail_tabs.minimumWidth() == 240
     assert "研究建議／待成交佇列／已記錄成交分開判讀" in (
         view.portfolio_refresh_status_label.toolTip()
     )
+
+
+def test_portfolio_blocked_health_summary_keeps_rows_and_raw_timestamp(tmp_path):
+    view = make_portfolio_view(
+        tmp_path,
+        position_health_read_service=FakePositionHealthReadService(
+            _make_blocked_health_model()
+        ),
+    )
+
+    view.refresh_all()
+
+    summary = view.position_health_summary_label.text()
+    assert "有 1 筆評估紀錄，其中 1 筆因來源問題暫不可判讀" in summary
+    assert "2026-09-21 20:55" in summary
+    assert "2026-09-21T20:55:48.508928" not in summary
+    assert "尚無持倉健康評估資料" not in summary
+    compact = view.portfolio_compact_context_label.text()
+    assert "目前持倉（手動登錄）" in compact
+    assert "模擬持倉評估資料" in compact
+    assert "2026-09-21T20:55:48.508928" not in compact
+    assert "2026-09-21T20:55:48.508928" in view.position_health_summary_label.toolTip()
+    assert "position_health_evaluator_blocked" in (
+        view.position_health_detail_label.text()
+    )
+    assert "原始 timestamp：2026-09-21T20:55:48.508928" in (
+        view.position_health_detail_label.text()
+    )
+
+
+def test_portfolio_expanded_workspace_scrolls_and_keeps_each_tab_reachable(tmp_path):
+    view = make_portfolio_view(
+        tmp_path,
+        position_health_read_service=FakePositionHealthReadService(
+            _make_blocked_health_model()
+        ),
+    )
+    shell = QWidget()
+    shell_layout = QBoxLayout(QBoxLayout.LeftToRight, shell)
+    navigation = QWidget()
+    navigation.setFixedWidth(184)
+    shell_layout.addWidget(navigation)
+    shell_layout.addWidget(view, 1)
+    window = QMainWindow()
+    window.setCentralWidget(shell)
+    window.statusBar().showMessage("就緒")
+    window.resize(1280, 800)
+    window.show()
+    app().processEvents()
+
+    requested = window.size()
+    view.toggle_advanced_portfolio_btn.click()
+    app().processEvents()
+
+    actual = window.size()
+    assert actual.width() <= requested.width()
+    assert actual.height() <= requested.height()
+    assert view.paper_health_group.isVisible()
+    assert view.position_health_table.isVisible()
+    assert view.portfolio_detail_tabs.isVisible()
+    assert view.position_action_layout.direction() == QBoxLayout.TopToBottom
+    for button in (
+        view.btn_record_trade,
+        view.btn_stock_research,
+        view.btn_import_trades,
+        view.btn_add_journal,
+        view.btn_refresh,
+        view.btn_clear_all,
+    ):
+        assert button.width() >= button.sizeHint().width()
+    assert view.portfolio_advanced_scroll.verticalScrollBar().maximum() > 0
+    assert view.positions_table.height() >= (
+        view.positions_table.horizontalHeader().height()
+        + view.positions_table.verticalHeader().defaultSectionSize() * 2
+    )
+    assert view.position_health_table.height() >= (
+        view.position_health_table.horizontalHeader().height()
+        + view.position_health_table.verticalHeader().defaultSectionSize()
+    )
+
+    for index in range(view.portfolio_detail_tabs.count()):
+        view.portfolio_detail_tabs.setCurrentIndex(index)
+        app().processEvents()
+        current = view.portfolio_detail_tabs.currentWidget()
+        assert current is not None
+        assert current.isVisible()
+        assert current.height() >= 120
+
+    view.portfolio_detail_tabs.setCurrentIndex(0)
+    view.position_health_table.selectRow(0)
+    view._show_position_health_row(view.position_health_model.index(0, 0))
+    app().processEvents()
+    assert view.position_health_detail_label.isVisible()
+    assert view.position_health_detail_label.height() >= 3 * view.fontMetrics().height()
+
+    positions_model = view.positions_table.model()
+    assert positions_model is not None
+    last_column = positions_model.columnCount() - 1
+    assert last_column >= 0
+    view.positions_table.resizeColumnsToContents()
+    view.positions_table.scrollTo(
+        positions_model.index(0, last_column),
+        QAbstractItemView.PositionAtCenter,
+    )
+    app().processEvents()
+    last_cell = view.positions_table.visualRect(positions_model.index(0, last_column))
+    assert last_cell.isValid()
+    assert view.positions_table.viewport().rect().contains(last_cell.center())
+
+    window.close()
+    view.deleteLater()
+    shell.deleteLater()
 
 
 def test_portfolio_async_refresh_cancels_older_generation_and_uses_one_dto(tmp_path):
@@ -349,7 +651,7 @@ def test_portfolio_async_refresh_cancels_older_generation_and_uses_one_dto(tmp_p
     assert view._last_portfolio_dto is not None
     assert view.positions_model is not None
     assert view.positions_model.rowCount() == len(view._last_portfolio_dto.positions)
-    assert "同一份 DTO" in view.portfolio_refresh_status_label.text()
+    assert "同一份資料" in view.portfolio_refresh_status_label.text()
     assert view.btn_refresh.isEnabled()
 
 
@@ -513,7 +815,7 @@ def test_paper_portfolio_readiness_tab_discloses_snapshot_and_missing_benchmark(
     assert "raw 累積 1 筆" in view.paper_readiness_summary_label.text()
     assert "TWD 1,000.00" in view.paper_readiness_summary_label.text()
     assert "Equal Weight：尚無" in view.paper_readiness_summary_label.text()
-    assert "成本帳：缺漏（missing）（0 筆）" in view.paper_readiness_summary_label.text()
+    assert "成本帳：資料缺件（missing）（0 筆）" in view.paper_readiness_summary_label.text()
     assert "equal_weight_benchmark_db_missing" in view.paper_readiness_detail_label.text()
     assert view.paper_snapshot_table.model().rowCount() == 1
 
@@ -726,20 +1028,162 @@ def test_portfolio_trade_delete_button_keeps_data_when_confirmation_is_cancelled
     assert [trade.trade_id for trade in service.trades] == ["t1", "t2"]
 
 
-def test_portfolio_monitoring_shows_price_as_of_manual_source_and_chinese_chip_risk(tmp_path):
+def test_portfolio_monitoring_does_not_treat_source_summary_date_as_quote_proof(tmp_path):
     view = make_portfolio_view(tmp_path)
     view.selected_stock_code = "2330"
 
     view._update_monitoring_tab()
 
-    assert "價格日期：2026-06-22" in view.lbl_mon_current_price.text()
+    assert "行情資料日未知" in view.lbl_mon_current_price.text()
+    assert "2026-06-22" not in view.lbl_mon_current_price.text()
     assert "手動建立，無推薦 / 回測來源" in view.lbl_strat_id.text()
     assert "偏空" in view.lbl_chip_risk_level.text()
     assert "bearish" in view.lbl_chip_risk_level.toolTip()
     assert "observed: 3" in view.lbl_chip_concentration.toolTip()
 
 
+def _manual_2382_service(tmp_path, quote_date):
+    service = FakePortfolioService(FakeConfig(tmp_path))
+    position = service.positions[0]
+    position.position_id = "manual:2382"
+    position.stock_code = "2382"
+    position.stock_name = "Tai Wei"
+    position.last_trade_date = "2026-07-31"
+    position.source_summary = {}
+    service.positions = [position]
+    service.trades = []
+    calls: list[str] = []
+
+    def get_current_price_observation(stock_code: str):
+        calls.append(stock_code)
+        return SimpleNamespace(
+            stock_code=stock_code,
+            price=Decimal("332.0"),
+            data_date=quote_date,
+            source_id="sqlite.daily_prices",
+            source_snapshot_hash="a" * 64,
+            freshness_status="current",
+            expected_date=quote_date if isinstance(quote_date, date) else None,
+        )
+
+    service.get_current_price_observation = get_current_price_observation
+    return service, calls
+
+
+def _fixed_taipei_market_today() -> date:
+    fixed_now = datetime(2026, 10, 5, 12, tzinfo=ZoneInfo("Asia/Taipei"))
+    return fixed_now.date()
+
+
+def test_manual_position_research_uses_same_row_quote_date_without_requery(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        portfolio_view_module, "taiwan_market_today", _fixed_taipei_market_today
+    )
+    service, quote_calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    contexts = []
+    view.stockResearchRequested.connect(contexts.append)
+
+    assert view.select_stock("2382")
+    calls_before_open = len(quote_calls)
+    view._open_selected_stock_research()
+
+    assert len(quote_calls) == calls_before_open
+    assert len(contexts) == 1
+    context = contexts[0]
+    assert context.stock_code == "2382"
+    assert context.data_date == "2026-10-02"
+    assert context.decision_date == ""
+    assert context.result_id == ""
+    assert context.identity_status == "unlinked"
+    assert context.data_date != "2026-07-31"
+    view.close()
+
+
+@pytest.mark.parametrize(
+    "quote_date",
+    [None, datetime(2026, 10, 2, 16), date(2026, 10, 6)],
+    ids=["missing", "datetime-is-not-a-date", "future"],
+)
+def test_manual_position_research_keeps_missing_invalid_or_future_quote_date_unknown(
+    tmp_path, monkeypatch, quote_date
+):
+    monkeypatch.setattr(
+        portfolio_view_module, "taiwan_market_today", _fixed_taipei_market_today
+    )
+    service, _quote_calls = _manual_2382_service(tmp_path, quote_date)
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    contexts = []
+    view.stockResearchRequested.connect(contexts.append)
+
+    assert view.select_stock("2382")
+    view._open_selected_stock_research()
+
+    assert len(contexts) == 1
+    assert contexts[0].data_date == ""
+    assert contexts[0].result_id == ""
+    assert contexts[0].identity_status == "unlinked"
+    view.close()
+
+
+def test_manual_position_research_does_not_use_another_symbols_cached_quote(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        portfolio_view_module, "taiwan_market_today", _fixed_taipei_market_today
+    )
+    service, _quote_calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    cached = view._position_current_snapshots["manual:2382"][1]
+    view._position_current_snapshots["manual:2382"] = ("2317", cached)
+    contexts = []
+    view.stockResearchRequested.connect(contexts.append)
+
+    assert view.select_stock("2382")
+    view._open_selected_stock_research()
+
+    assert len(contexts) == 1
+    assert contexts[0].data_date == ""
+    view.close()
+
+
+def test_linked_position_research_keeps_canonical_saved_dates(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        portfolio_view_module, "taiwan_market_today", _fixed_taipei_market_today
+    )
+    service, _quote_calls = _manual_2382_service(tmp_path, date(2026, 10, 2))
+    position = service.positions[0]
+    position.source_type = "recommendation_result"
+    position.source_id = "saved-2382"
+    position.source_summary = {
+        "decision_date": "2026-10-02",
+        "current_price_date": "2026-10-01",
+    }
+    view = make_portfolio_view(tmp_path, portfolio_service=service)
+    monkeypatch.setattr(
+        view,
+        "_validated_recommendation_result_id",
+        lambda _position, _code: "saved-2382",
+    )
+    contexts = []
+    view.stockResearchRequested.connect(contexts.append)
+
+    assert view.select_stock("2382")
+    view._open_selected_stock_research()
+
+    assert len(contexts) == 1
+    assert contexts[0].decision_date == "2026-10-02"
+    assert contexts[0].data_date == "2026-10-01"
+    assert contexts[0].result_id == "saved-2382"
+    assert contexts[0].identity_status == "linked"
+    view.close()
+
+
 def test_portfolio_drill_down_passes_selected_stock_to_parent(tmp_path):
+    app()
+
     class Parent(QWidget):
         def __init__(self):
             super().__init__()
@@ -755,3 +1199,49 @@ def test_portfolio_drill_down_passes_selected_stock_to_parent(tmp_path):
     view._on_drill_down_chip_clicked()
 
     assert parent.received == "2330"
+
+
+def test_deferred_splitter_restore_runs_while_portfolio_view_is_alive(
+    tmp_path, monkeypatch
+):
+    app()
+    calls = []
+    monkeypatch.setattr(
+        PortfolioView,
+        "_restore_portfolio_splitter_default_sizes",
+        lambda self: calls.append(self),
+    )
+    parent = QWidget()
+    parent.resize(1000, 800)
+    view = make_portfolio_view(tmp_path, parent=parent)
+    view.resize(1000, 700)
+    app().processEvents()
+
+    calls.clear()
+    view._portfolio_splitter_user_resized = False
+    view._apply_portfolio_advanced_visibility()
+    app().processEvents()
+    assert calls == [view]
+
+
+def test_deferred_splitter_restore_is_canceled_when_portfolio_view_is_destroyed(
+    tmp_path, monkeypatch
+):
+    app()
+    calls = []
+    monkeypatch.setattr(
+        PortfolioView,
+        "_restore_portfolio_splitter_default_sizes",
+        lambda self: calls.append(self),
+    )
+    parent = QWidget()
+    parent.resize(1000, 800)
+    view = make_portfolio_view(tmp_path, parent=parent)
+    view.resize(1000, 700)
+    view._portfolio_splitter_user_resized = False
+    view._apply_portfolio_advanced_visibility()
+    parent.deleteLater()
+    QCoreApplication.sendPostedEvents(parent, QEvent.DeferredDelete)
+    app().processEvents()
+
+    assert calls == []

@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Any, Dict, List, Optional
 
 from app_module.dtos.portfolio_dtos import PositionDTO
@@ -19,7 +21,12 @@ class PortfolioCurrentSnapshot:
 
     current_regime: str = ""
     current_total_score: Optional[Any] = None
-    current_price: Optional[float] = None
+    current_price: Optional[Decimal | float] = None
+    quote_data_date: date | None = None
+    quote_source_id: str = ""
+    quote_source_snapshot_hash: str = ""
+    quote_freshness_status: str = "unverified"
+    quote_expected_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -116,11 +123,17 @@ class PortfolioConditionMonitor:
                     f"未超過 {self._format_points(self.score_warning_points)} 分門檻"
                 )
 
-        # 價格與停損停利對照
-        # 優先使用 snapshot.current_price，其次是 position.current_price
-        current_price = snapshot.current_price if snapshot.current_price is not None else position.current_price
-        price_dec = self._to_decimal(current_price)
-        cost_dec = self._to_decimal(position.average_cost)
+        # position.current_price 可以保留作損益觀察，但它沒有行情日期與新鮮度，
+        # 不能單獨觸發停損／停利，也不能讓價格 thesis 顯示仍符合。
+        quote_price_dec = self._positive_price(self._to_decimal(snapshot.current_price))
+        price_dec = (
+            quote_price_dec
+            if quote_price_dec is not None
+            else self._positive_price(self._to_decimal(position.current_price))
+        )
+        quote_is_current = self._has_current_quote_evidence(snapshot)
+        rule_price_dec = quote_price_dec if quote_is_current else None
+        cost_dec = self._positive_price(self._to_decimal(position.average_cost))
         
         stop_loss_val = self._to_decimal(source_summary.get("stop_loss_pct"))
         take_profit_val = self._to_decimal(source_summary.get("take_profit_pct"))
@@ -144,38 +157,99 @@ class PortfolioConditionMonitor:
         details["take_profit_pct"] = float(take_profit_val) if take_profit_val is not None else None  # numeric-boundary: dto
         details["current_price"] = float(price_dec) if price_dec is not None else None  # numeric-boundary: dto
         details["average_cost"] = float(cost_dec) if cost_dec is not None else None  # numeric-boundary: dto
+        details["quote_data_date"] = (
+            snapshot.quote_data_date.isoformat()
+            if isinstance(snapshot.quote_data_date, date)
+            and not isinstance(snapshot.quote_data_date, datetime)
+            else ""
+        )
+        details["quote_expected_date"] = (
+            snapshot.quote_expected_date.isoformat()
+            if isinstance(snapshot.quote_expected_date, date)
+            and not isinstance(snapshot.quote_expected_date, datetime)
+            else ""
+        )
+        details["quote_source_id"] = str(snapshot.quote_source_id or "")
+        details["quote_source_snapshot_hash"] = str(snapshot.quote_source_snapshot_hash or "")
+        details["quote_freshness_status"] = str(snapshot.quote_freshness_status or "unverified")
+        details["quote_is_current"] = quote_is_current
         details["stop_loss_triggered"] = False
         details["take_profit_triggered"] = False
         
         if price_dec is not None and cost_dec is not None and cost_dec > 0:
             return_pct_val = (price_dec - cost_dec) / cost_dec
             details["return_pct"] = float(return_pct_val)  # numeric-boundary: dto
-            
-            if stop_loss_val is not None:
-                if return_pct_val <= -stop_loss_val:
-                    stop_loss_triggered = True
-                    details["stop_loss_triggered"] = True
-                    reasons.append(
-                        f"已觸發停損點 (目前報酬 {float(return_pct_val * 100):.2f}% <= 停損點 -{float(stop_loss_val * 100):.1f}%)"  # numeric-boundary: dto
-                    )
-            if take_profit_val is not None:
-                if return_pct_val >= take_profit_val:
-                    take_profit_triggered = True
-                    details["take_profit_triggered"] = True
-                    reasons.append(
-                        f"已觸發停利點 (目前報酬 {float(return_pct_val * 100):.2f}% >= 停利點 {float(take_profit_val * 100):.1f}%)"  # numeric-boundary: dto
-                    )
-                    
-            if not stop_loss_triggered and stop_loss_val is not None:
-                reasons.append(f"未觸發停損點 (-{float(stop_loss_val * 100):.1f}%)")  # numeric-boundary: dto
-            if not take_profit_triggered and take_profit_val is not None:
-                reasons.append(f"未觸發停利點 ({float(take_profit_val * 100):.1f}%)")  # numeric-boundary: dto
 
-        # 如果無任何可用資訊進行判讀
-        has_regime_or_score = (entry_regime and current_regime) or (entry_score is not None and current_score is not None)
+            if rule_price_dec is not None:
+                rule_return_pct = (rule_price_dec - cost_dec) / cost_dec
+                if stop_loss_val is not None:
+                    if rule_return_pct <= -stop_loss_val:
+                        stop_loss_triggered = True
+                        details["stop_loss_triggered"] = True
+                        reasons.append(
+                            f"已觸發停損點 (目前報酬 {float(rule_return_pct * 100):.2f}% <= 停損點 -{float(stop_loss_val * 100):.1f}%)"  # numeric-boundary: dto
+                        )
+                if take_profit_val is not None:
+                    if rule_return_pct >= take_profit_val:
+                        take_profit_triggered = True
+                        details["take_profit_triggered"] = True
+                        reasons.append(
+                            f"已觸發停利點 (目前報酬 {float(rule_return_pct * 100):.2f}% >= 停利點 {float(take_profit_val * 100):.1f}%)"  # numeric-boundary: dto
+                        )
+
+                if not stop_loss_triggered and stop_loss_val is not None:
+                    reasons.append(f"未觸發停損點 (-{float(stop_loss_val * 100):.1f}%)")  # numeric-boundary: dto
+                if not take_profit_triggered and take_profit_val is not None:
+                    reasons.append(f"未觸發停利點 ({float(take_profit_val * 100):.1f}%)")  # numeric-boundary: dto
+
+        has_configured_price_rule = stop_loss_val is not None or take_profit_val is not None
+        if has_configured_price_rule and not quote_is_current:
+            reasons.append(
+                "行情日期或 freshness 未通過官方市場節奏核對；價格僅供損益觀察，暫不判定停損／停利"
+            )
+
+        # 價格與成本能計算損益，但只有來源實際記錄的 thesis 條件可判定
+        # 「仍符合」；沒有可比 Regime／評分或可套用到目前價格的停損停利規則時，
+        # 價格只作觀察資訊。
+        has_regime_evaluation = bool(entry_regime and current_regime)
+        has_score_evaluation = entry_score is not None and current_score is not None
         has_price_evaluation = (price_dec is not None and cost_dec is not None and cost_dec > 0)
-        
-        if not has_regime_or_score and not has_price_evaluation:
+        has_current_price_evaluation = (
+            quote_is_current
+            and rule_price_dec is not None
+            and cost_dec is not None
+            and cost_dec > 0
+        )
+        has_structured_price_rule = has_current_price_evaluation and (
+            has_configured_price_rule
+        )
+        has_thesis_evaluation = (
+            has_regime_evaluation
+            or has_score_evaluation
+            or has_structured_price_rule
+        )
+        details["has_price_evaluation"] = bool(has_price_evaluation)
+        details["has_current_price_evaluation"] = bool(has_current_price_evaluation)
+        details["has_configured_price_rule"] = bool(has_configured_price_rule)
+        details["has_structured_price_rule"] = bool(has_structured_price_rule)
+        details["price_rule_blocked_by_quote_freshness"] = bool(
+            has_configured_price_rule and not quote_is_current
+        )
+        details["thesis_evaluable"] = bool(has_thesis_evaluation)
+
+        if not has_thesis_evaluation:
+            if has_price_evaluation:
+                reason = (
+                    "目前價格/成本僅供損益觀察；缺少可評估的進場 Regime、評分或停損停利條件，"
+                    "無法判定假設是否仍符合"
+                )
+            elif has_configured_price_rule and not quote_is_current:
+                reason = "已有停損停利條件，但行情日期或 freshness 尚未確認；保留損益觀察並等待更新行情"
+            elif has_configured_price_rule:
+                reason = "已有停損停利條件，但目前價格或成本不足，無法進行條件對照"
+            else:
+                reason = "尚無可對照的目前 Regime、評分或停損停利條件，無法判定進場假設"
+            reasons.append(reason)
             return PortfolioConditionResult(
                 stock_code=position.stock_code,
                 status="warning",
@@ -185,7 +259,7 @@ class PortfolioConditionMonitor:
                 current_regime=current_regime,
                 entry_total_score=self._format_decimal(entry_score),
                 current_total_score=self._format_decimal(current_score),
-                reasons=["尚無目前 Regime、評分快照或最新價格，請更新後再判讀"],
+                reasons=reasons,
                 details=details,
             )
 
@@ -196,7 +270,7 @@ class PortfolioConditionMonitor:
         )
         is_warning = (
             (details.get("regime_changed", False) or details.get("score_degraded", False)) and not is_invalid
-        )
+        ) or bool(details["price_rule_blocked_by_quote_freshness"])
 
         if is_invalid:
             status = "invalid"
@@ -232,13 +306,46 @@ class PortfolioConditionMonitor:
             return position.source_type
         return "手動"
 
+    def _has_current_quote_evidence(self, snapshot: PortfolioCurrentSnapshot) -> bool:
+        quote_date = snapshot.quote_data_date
+        expected_date = snapshot.quote_expected_date
+        source_id = str(snapshot.quote_source_id or "").strip()
+        source_hash = str(snapshot.quote_source_snapshot_hash or "").strip().lower()
+        if source_hash.startswith("sha256:"):
+            source_hash = source_hash[7:]
+        known_source = (
+            source_id in {"sqlite.daily_prices", "csv.daily_prices"}
+            or bool(re.fullmatch(r"daily_price_file:\d{4}-?\d{2}-?\d{2}\.csv", source_id))
+        )
+        quote_price = self._positive_price(self._to_decimal(snapshot.current_price))
+        return bool(
+            quote_price is not None
+            and isinstance(quote_date, date)
+            and not isinstance(quote_date, datetime)
+            and isinstance(expected_date, date)
+            and not isinstance(expected_date, datetime)
+            and quote_date == expected_date
+            and str(snapshot.quote_freshness_status or "").strip().lower() == "current"
+            and known_source
+            and re.fullmatch(r"[0-9a-f]{64}", source_hash) is not None
+        )
+
+    def has_current_quote_evidence(self, snapshot: PortfolioCurrentSnapshot) -> bool:
+        """公開目前報價證據檢查，供同版 UI 標示價格觀察範圍。"""
+        return self._has_current_quote_evidence(snapshot)
+
     def _to_decimal(self, value: Any) -> Optional[Decimal]:
-        if value is None or value == "":
+        if value is None or isinstance(value, bool) or value == "":
             return None
         try:
-            return Decimal(str(value))
+            parsed = Decimal(str(value))
         except (InvalidOperation, ValueError):
             return None
+        return parsed if parsed.is_finite() else None
+
+    @staticmethod
+    def _positive_price(value: Optional[Decimal]) -> Optional[Decimal]:
+        return value if value is not None and value > 0 else None
 
     def _format_decimal(self, value: Optional[Decimal]) -> str:
         if value is None:

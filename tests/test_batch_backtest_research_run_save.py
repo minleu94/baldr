@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from app_module.batch_backtest_service import BatchBacktestService
+from app_module.batch_backtest_service import BatchBacktestService, BatchBacktestResultDTO, StockBacktestResult
 from app_module.dtos import BacktestReportDTO, ValidationStatus
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 from decision_module.factors.factor_adapters import build_technical_total_score_factor
 
 
@@ -139,3 +139,75 @@ def test_fixed_basket_save_marks_run_type_and_forwards_factor_records():
     assert list(trades["stock_code"]) == ["2330"]
     assert kwargs["factor_records"] == [factor_record]
     assert kwargs["factor_decision_date"] == date(2026, 1, 7)
+
+
+def test_batch_leaderboard_mdd_sort_prefers_smaller_absolute_drawdown():
+    service = BatchBacktestService(_FakeBacktestService(_report_with_factor_records(None)))
+    result = BatchBacktestResultDTO(
+        batch_id="batch-test",
+        batch_name="MDD sort",
+        stock_results=[
+            StockBacktestResult(
+                stock_code="2330",
+                run_id=None,
+                success=True,
+                cagr=0.10,
+                sharpe=1.0,
+                mdd=-0.50,
+                total_trades=20,
+            ),
+            StockBacktestResult(
+                stock_code="2317",
+                run_id=None,
+                success=True,
+                cagr=0.08,
+                sharpe=1.0,
+                mdd=-0.10,
+                total_trades=20,
+            ),
+        ],
+        overall_stats={},
+        created_at="2026-06-14T12:00:00",
+    )
+
+    frame = service.create_leaderboard_dataframe(result, sort_by="mdd")
+
+    assert list(frame["股票代號"]) == ["2317", "2330"]
+
+
+def test_batch_overall_stats_expose_valid_coverage_and_explicit_no_trade_count():
+    service = BatchBacktestService(_FakeBacktestService(_report_with_factor_records(None)))
+    stats = service._calculate_overall_stats(
+        [
+            StockBacktestResult(
+                stock_code="2330",
+                run_id=None,
+                success=True,
+                cagr=0.10,
+                mdd=-0.20,
+                total_trades=12,
+            ),
+            StockBacktestResult(
+                stock_code="2317",
+                run_id=None,
+                success=False,
+                error_reason="無交易信號",
+                total_trades=0,
+            ),
+            StockBacktestResult(
+                stock_code="2454",
+                run_id=None,
+                success=False,
+                error_reason="資料不足",
+                total_trades=0,
+            ),
+        ]
+    )
+
+    assert stats["total_stocks"] == 3
+    assert stats["successful_stocks"] == 1
+    assert stats["failed_stocks"] == 2
+    assert stats["no_trade_stocks"] == 1
+    assert stats["coverage_bp"] == 3333
+    assert stats["cagr_sample_count"] == 1
+    assert stats["mdd_sample_count"] == 1

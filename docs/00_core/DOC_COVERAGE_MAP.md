@@ -1,5 +1,24 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-06 原計畫首波coverage
+
+Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁四用途／當下搜尋／大盤刷新／個股摘要操作與限制；Snapshot目前摘要、現行Architecture、Index與QA routing對應首波QA（開發收據見dev）。原plan只append、prefix保持；沒有方向／maturity／6M gate變更，相關roadmap不擴改。B08/B02工程與B09/B10 caller未完成不寫done；後續依真交付更新來源／步驟／排錯。歷史QA收據保留原policy／失敗，不回寫為成功。
+
+## 2026-10-06 label readiness覆蓋
+
+新增QA（開發收據見dev）；Manual同步明示policy／split、repeat exact receipts、JSON保存／重讀、缺件判讀與安全。Snapshot／現行架構／index／QA路由同步有限入口；只開始UX22 readiness，不宣稱fit、公平比較或完整labels已完成。
+
+
+## 2026-10-06 明示benchmark覆蓋
+
+新增benchmark來源／保存／唯讀UI QA（開發收據見dev），Manual／Snapshot／architecture同步具名無預設、v1/null與v2保存、same-period basis gate、成本版本、query-only公開資料與fixture分報、取消stale與完整label最小缺口。UX21仍partial；正式／PIT／fit與Task未啟用。
+
+## 2026-10-06 UX08 保存圖表覆蓋
+
+新增QA收據（開發收據見dev）對應versioned nested artifact／producer／exact parent讀回、原精度及MA缺列、舊保存缺件與最新研究分離、合作取消返回與stale。Manual同步入口、步驟、cutoff／120列參數、資格限制及排錯；Snapshot與現行架構同步有限範圍。251案例不等於Native／真人、推薦writer／舊補建或全部UX08驗收。
+
+2026-10-06 UX24第一版有限工程封存：同步Snapshot／Manual／Index／QA routing及原計畫追加；只修既有mapping optional context，不改架構、資料流、產品方向或roadmap gate，故不擴改architecture／6M／version。限定七項工程完成不取代整體UX狀態；見封存收據（開發收據見dev）。
+
 > **給 Documentation Agent 用來判斷 coverage 的規則文件**
 
 ## 一、文件權威邊界（Scoped SSOT）
@@ -18,7 +37,7 @@
 | 系統架構、模組邊界、資料流 | `docs/01_architecture/system_architecture.md` | 架構描述衝突時，以系統架構文件為準。 |
 | 理想目標架構與 Current → Target 演進 | `docs/01_architecture/target_system_architecture.md` | Target capability 不代表目前已實作；現況仍回到 system architecture。 |
 | North Star、Bounded Advice、Evidence、Success Levels、Non-goals | `docs/01_architecture/system_vision_specification.md` | 不保存詳細 implementation checklist 或完成流水帳。 |
-| 目前使用者完整操作流程 | `docs/07_guides/APPLICATION_MANUAL.md` | 8 個頂層工作區、跨工作區流程、安全限制與排錯以本手冊為準。 |
+| 目前使用者完整操作流程 | `docs/07_guides/APPLICATION_MANUAL.md` | 8 個頂層工作區、跨工作區流程、安全限制與排錯以本手冊為準；較長的操作補充與受控維運保存在同屬手冊的 `APPLICATION_MANUAL_SUPPLEMENTS.md`，涉及該入口時同步檢查附冊。 |
 | 文檔位置與分類 | `docs/00_core/DOCUMENTATION_INDEX.md` | 只作導航，不取代狀態或架構權威。 |
 | 文檔生命週期與歸檔規則 | `docs/00_core/DOCUMENTATION_STRUCTURE.md` | 刪除、搬移、歸檔 Markdown 前必須參考。 |
 | 歷史 Phase、舊 Done、舊 Roadmap current section | `docs/09_archive/DEVELOPMENT_ROADMAP_LEGACY_2026_06.md` | 只作追溯，不作目前狀態依據。 |
@@ -389,11 +408,14 @@
 
 ---
 
-**最後更新**：2026-08-30
+**最後更新**：2026-09-30
 
 ## 更新記錄
 
 - 2026-08-30：補入 P0／Evidence／Paper／Formal／Runtime／Performance／Data Update refresh 文件，並把 UI 舊 readiness artifact marker、週末 freshness 語意與最新測試 inventory 納入 coverage。
+- 2026-09-10：補入 V4.1 A 線推薦機率校準的 QA handoff、Snapshot、Current architecture、Manual 與 Index；確認 20／5 outcome contract、walk-forward split、整數 bp calibration、read-only DB boundary 與自然 forward evidence 尚未成熟的 not-evaluable 狀態。chip／funding、industry、PIT theme 保持 deferred，沒有回填歷史 event。
+- 2026-09-12：補入 V4.1 A 線第二輪歷史研究與候選方法包的 QA handoff、Snapshot、Current architecture、Navigation、Manual、Runbook 與 Index；新增逐列 manifest、gap／candidate coverage、自然時間分類與 create-only frozen artifact，確認正式 DB 僅 query-only 讀取且沒有 promotion／formal writer 變更。
+- 2026-09-30：新增七項排程修復當日 QA，並將 Paper EOD no-work、queue historical diagnostic proof、Evidence #3 engineering readback／business degraded、Bank #1 failure／#2 Quick barrier、Formal denominator QA、fundamental dry-run、PIT 1,932／1,988 taxonomy mismatch 與 ML forward 9/30 child blocker 同步至 Snapshot、Current architecture、Application Manual、QA README、scheduled README。DOCUMENTATION_INDEX 已有 QA 入口；QA 同時保留 02:12 初始 inventory 及 04:23:28 PDT 最新 21-task native matrix，沒有宣稱自然 Quick 已 terminal 或全鏈通過。
 - 2026-08-29：新增容量／retention／immutable artifact 清理的文件 coverage、custody、pointer／dependency、tombstone 與安全檢查要求。
 - 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 的 scoped authority 邊界，定位為 V2.0 之後長期版本階梯 companion。
 - 2026-07-11：新增 Post-Refactor Product Roadmap、Target Architecture 與新版 Vision scoped authority；補充 Product / Engineering、Current / Target 一致性 Gate。
@@ -401,6 +423,41 @@
 
 ## 2026-09-07 專案整併覆蓋
 
-[本輪查核](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 保存精確回滾與驗證。Current architecture 記錄共用分析流程及保留政策；tests_readme、manual README 與測試分類摘要同步移除失效路徑；PROJECT_INVENTORY／PROJECT_NAVIGATION／DOCUMENTATION_INDEX 指向同一報告與[LUNA 執行 companion](../07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md)。
+本輪查核（開發收據見dev） 保存精確回滾與驗證。Current architecture 記錄共用分析流程及保留政策；tests_readme、manual README 與測試分類摘要同步移除失效路徑；PROJECT_INVENTORY／PROJECT_NAVIGATION／DOCUMENTATION_INDEX 指向同一報告與LUNA 執行 companion（開發收據見dev）（歷史歸檔）。
 
-本輪未變更 UI、使用者參數或金融算法，Manual 操作步驟不變；A／B／C 後續使用者功能變更仍須由對應 owner 同步。不得以清理報告取代 Snapshot 或正式 Gate。
+本輪未變更 UI 或正式推薦行為；新增的是 research-only CLI 與 Manual 操作說明，核心金融結果只使用整數 bp／Decimal。A／B／C 後續使用者功能變更仍須由對應 owner 同步。不得以清理報告、sample 或 replay 取代 Snapshot 或正式 Gate。
+
+
+### 2026-10-06 UX21 source/store/daily coverage
+
+source adapter／sealed outcome 保存與只讀日報→system_architecture、APPLICATION_MANUAL、UX21_SOURCE_STORE_DAILY_20261006；Qt outcome receipt入口→UI_FEATURES_DOCUMENTATION；測試→FEATURE_TEST_ROUTING_MATRIX。全產品9stage/24UX仍1/7/1與2/20/2，有限工程、程式缺件與外驗分列QA，不升格done。
+
+
+### 2026-10-06 UX22 公平比較 coverage
+
+Must已同步：Manual入口／步驟／policy與bundle／結果／安全限制／排錯；Snapshot實際狀態；current architecture exact讀取與ML邊界；Navigation／Index新入口；QA routing與tracked QA。原plan僅追加，raw proof在output/qa/ux22_fair_comparison_20261006，不stage。產品／6M／長期／target無方向或部署改變，UX22仍partial，既有gate不重開。
+
+
+### 2026-10-06 UX23 隔離工程狀態
+
+Manual 已覆蓋 preview／明示 save／exact read／stop、參數與 DTO 匯出、三軸判讀、版本失配／缺件／容量／殘件與安全限制；Snapshot 與 QA 區分工程 partial、自然成熟／漂移／採用／效果缺口。architecture／navigation／index／測試路由同步，不更動產品方向或正式部署契約。
+
+
+### 2026-10-06 UX08 推薦保存圖表入口與驗證
+
+推薦writer→保存圖／精確表收據（開發收據見dev）；Manual入口／步驟／參數／缺件／安全／排錯同步。新增pure helper15案例、writer／新程序／scheduled日期／來源失配及實際offscreen取消重試stale；既有execution、daily保存圖、read service／projection／技術歷史／shared consumer／研究畫面／scheduled日期，去重182相關案例。Workbench85／validator25+4skip／mypy819／compile／quant通過。UX08整項partial，viewport／CSV lanes未採納，不新增done。
+
+
+### 2026-10-06 UX08 可操作viewport
+
+縮放／平移／重設與日期槽hover整合收據（開發收據見dev）：全量精確表／完整同身份保留、未知與source版本切換reset，115相關通過、V5兩項基線失敗另記；Manual／架構／Snapshot同步，UX08仍partial。
+
+
+### 2026-10-06 明示市場CSV consumer／CLI
+
+隔離preview→明示接受→execute與canonical收據整合（開發收據見dev）：192synthetic、深路徑88重複驗、修正錯名／假完成；完整Manual步驟／參數／判讀／排錯／Windows與真分享限制同步，無正式啟用，不增加done。
+
+
+### 2026-10-06 UX23 registry readonly 整合補記
+
+UX23 registry integration：Manual 操作／限制、QA UX23_REGISTRY_INTEGRATION_20261006、Snapshot／目前架構同步；無 UI 與方向變動。

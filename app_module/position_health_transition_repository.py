@@ -10,6 +10,9 @@ import sqlite3
 from app_module.position_health_service import PositionHealthState
 
 
+POSITION_HEALTH_TRANSITION_DB_FILENAME = "position_health_transitions_v2.sqlite"
+
+
 @dataclass(frozen=True)
 class PositionHealthTransitionRecord:
     event_id: str
@@ -180,6 +183,46 @@ class PositionHealthTransitionRepository:
             except sqlite3.IntegrityError as exc:
                 raise ValueError(f"transition event already exists: {record.event_id}") from exc
         return "written"
+
+    def find_proposal(
+        self,
+        *,
+        position_id: str,
+        decision_date: str,
+    ) -> PositionHealthTransitionRecord | None:
+        """讀取一筆既有 proposal，不初始化 schema 或修改資料庫。"""
+
+        uri = f"{self._path.resolve().as_uri()}?mode=ro"
+        with sqlite3.connect(uri, uri=True, timeout=5.0) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA query_only=ON")
+            row = conn.execute(
+                """
+                SELECT event_id, position_id, decision_date, previous_state,
+                       proposed_state, recorded_state, decision_kind, reasons_json,
+                       reviewer, auto_action_allowed
+                FROM position_health_transitions
+                WHERE position_id = ? AND decision_date = ?
+                ORDER BY event_id
+                LIMIT 2
+                """,
+                (position_id, decision_date),
+            ).fetchall()
+        if len(row) != 1 or str(row[0]["decision_kind"]) != "proposal":
+            return None
+        record = row[0]
+        return PositionHealthTransitionRecord(
+            event_id=str(record["event_id"]),
+            position_id=str(record["position_id"]),
+            decision_date=str(record["decision_date"]),
+            previous_state=PositionHealthState(str(record["previous_state"])),
+            proposed_state=PositionHealthState(str(record["proposed_state"])),
+            recorded_state=PositionHealthState(str(record["recorded_state"])),
+            decision_kind=str(record["decision_kind"]),
+            reasons=tuple(json.loads(str(record["reasons_json"]))),
+            reviewer=(None if record["reviewer"] is None else str(record["reviewer"])),
+            auto_action_allowed=bool(record["auto_action_allowed"]),
+        )
 
     def list_for_position(self, position_id: str) -> tuple[PositionHealthTransitionRecord, ...]:
         with sqlite3.connect(self._path) as conn:

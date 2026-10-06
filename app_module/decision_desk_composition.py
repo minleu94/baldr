@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
+from pathlib import Path
+from app_module.official_quote_exclusion_diagnostics import OfficialQuoteExclusionDiagnostics
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import DecisionDeskQuality, MarketRegimeSummary
+from data_module.pit_sector_membership_reader import PITSectorMembershipReader
 
 
 class DecisionDeskMarketRegimeProvider:
@@ -135,12 +139,15 @@ def build_decision_desk_composition(
     broker_flow_service: Any = None,
     smart_money_service: Any = None,
     market_frame_loader: Any = None,
+    industry_strength_service: Any = None,
+    pit_membership_reader: PITSectorMembershipReader | None = None,
     dependencies: dict[str, Any],
     report_error: Callable[[str], None] = print,
 ) -> DecisionDeskComposition:
     """組裝可降級的 Decision Desk service graph。"""
 
     provider = DecisionDeskMarketRegimeProvider(regime_service)
+    cadence = MarketSessionCadence.for_config(config)
     if market_frame_loader is None:
         try:
             market_frame_loader = dependencies["DecisionMarketFrameLoader"](config.db_file)
@@ -158,16 +165,40 @@ def build_decision_desk_composition(
         "MarketBreadthService",
         lambda: dependencies["MarketBreadthService"](
             dependencies["SQLiteDailyPriceMarketBreadthProvider"](
-                config.db_file, market_frame_loader=market_frame_loader
-            )
+                config.db_file, market_frame_loader=market_frame_loader,
+                quote_diagnostics=OfficialQuoteExclusionDiagnostics(Path(config.db_file).parent.parent / "output/scheduled/daily_price_source_custody", clock=cadence.clock),
+            ),
+            cadence=cadence,
         ),
     )
-    sector_rotation_service = optional_service(
-        "SectorRotationService",
-        lambda: dependencies["SectorRotationService"](
-            dependencies["SQLiteIndustryIndexSectorRotationProvider"](config.db_file)
-        ),
-    )
+    if industry_strength_service is None and "IndustryStrengthService" in dependencies:
+        active_pit_reader = pit_membership_reader or _configured_pit_reader(config)
+        industry_strength_service = optional_service(
+            "IndustryStrengthService",
+            lambda: dependencies["IndustryStrengthService"](
+                config,
+                **(
+                    {
+                        "pit_membership_reader": active_pit_reader,
+                        **(
+                            {"pit_market_scope": getattr(config, "pit_market_scope")}
+                            if getattr(config, "pit_market_scope", None)
+                            else {}
+                        ),
+                    }
+                    if active_pit_reader is not None
+                    else {}
+                ),
+            ),
+        )
+    sector_rotation_service = industry_strength_service
+    if sector_rotation_service is None:
+        sector_rotation_service = optional_service(
+            "SectorRotationService",
+            lambda: dependencies["SectorRotationService"](
+                dependencies["SQLiteIndustryIndexSectorRotationProvider"](config.db_file), cadence=cadence
+            ),
+        )
 
     def build_portfolio_alert_service() -> Any:
         chip_summary_provider = optional_service(
@@ -192,6 +223,7 @@ def build_decision_desk_composition(
                 watchlist_service
             ),
             ranking_provider=dependencies["SQLiteRankingProvider"](config.db_file),
+            cadence=cadence,
         ),
     )
     relative_strength_liquidity_service = optional_service(
@@ -199,7 +231,8 @@ def build_decision_desk_composition(
         lambda: dependencies["RelativeStrengthLiquidityService"](
             provider=dependencies["SQLiteDailyPriceRelativeStrengthLiquidityProvider"](
                 config.db_file, market_frame_loader=market_frame_loader
-            )
+            ),
+            cadence=cadence,
         ),
     )
     market_data_visibility_service = optional_service(
@@ -208,6 +241,7 @@ def build_decision_desk_composition(
     )
     builder = dependencies["DecisionDeskSnapshotBuilder"](
         provider=provider,
+        cadence=cadence,
         market_breadth_service=market_breadth_service,
         sector_rotation_service=sector_rotation_service,
         relative_strength_liquidity_service=relative_strength_liquidity_service,
@@ -218,3 +252,14 @@ def build_decision_desk_composition(
         market_data_visibility_service=market_data_visibility_service,
     )
     return DecisionDeskComposition(builder=builder, market_frame_loader=market_frame_loader)
+
+
+def _configured_pit_reader(config: Any) -> PITSectorMembershipReader | None:
+    """只在 config 明確指定 artifact path 時組合 PIT reader。"""
+
+    configured = getattr(config, "pit_sector_membership_paths", None)
+    if configured is None:
+        configured = getattr(config, "pit_sector_membership_path", None)
+    if not configured:
+        return None
+    return PITSectorMembershipReader.from_config(config)

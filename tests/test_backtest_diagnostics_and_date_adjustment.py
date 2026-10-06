@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
 from app_module.backtest_service import BacktestService
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 from app_module.dtos import ValidationStatus
 
 class MockConfig:
@@ -81,7 +81,7 @@ def test_score_diagnostics_calculation():
     
     with patch.object(service, '_load_price_data', return_value=mock_df), \
          patch.object(service, '_load_indicator_data', return_value=None), \
-         patch("app_module.strategy_registry.StrategyRegistry.get_executor", return_value=mock_executor):
+         patch("decision_module.strategies.registry.StrategyRegistry.get_executor", return_value=mock_executor):
          
         report = service.run_backtest(
             stock_code="2330",
@@ -158,7 +158,7 @@ def test_backtest_diagnostics_quantile():
     
     with patch.object(service, '_load_price_data', return_value=mock_df), \
          patch.object(service, '_load_indicator_data', return_value=None), \
-         patch("app_module.strategy_registry.StrategyRegistry.get_executor", return_value=mock_executor):
+         patch("decision_module.strategies.registry.StrategyRegistry.get_executor", return_value=mock_executor):
          
         report = service.run_backtest(
             stock_code="2330",
@@ -177,6 +177,62 @@ def test_backtest_diagnostics_quantile():
         assert diag['warmup_ready_days'] == 5
         assert diag['buy_hit_days'] == 3
         assert diag['sell_hit_days'] == 0
+
+
+def test_backtest_service_persists_trade_cost_and_notional_metadata():
+    """raw Trade 成交後，diagnostics metadata 必須保留可追溯的整數分來源。"""
+    config = MockConfig()
+    service = BacktestService(config)
+    dates = pd.date_range("2026-07-01", periods=4)
+    market = pd.DataFrame(
+        {
+            "開盤價": [100.0] * 4,
+            "最高價": [101.0] * 4,
+            "最低價": [99.0] * 4,
+            "收盤價": [100.0] * 4,
+            "成交股數": [1000000.0] * 4,
+        },
+        index=dates,
+    )
+    signal_frame = market.copy()
+    signal_frame["signal"] = [0, 1, 0, -1]
+    signal_frame["score"] = [50.0, 75.0, 50.0, 30.0]
+    signal_frame["reason_tags"] = "fixture"
+    strategy_spec = StrategySpec(
+        strategy_id="trade_cost_contract_fixture",
+        strategy_version="1.0",
+        config={"params": {"buy_score": 60.0, "sell_score": 40.0}},
+    )
+    executor = MagicMock()
+    executor.generate_signals.return_value = signal_frame
+
+    with patch("decision_module.strategies.registry.StrategyRegistry.get_executor", return_value=executor):
+        report = service.run_backtest(
+            stock_code="2330",
+            start_date="2026-07-01",
+            end_date="2026-07-04",
+            strategy_spec=strategy_spec,
+            preloaded_data=market,
+            execution_price="close",
+            capital=1_000_000.0,
+            fee_bps=10.0,
+            slippage_bps=5.0,
+            enable_limit_up_down=False,
+            enable_volume_constraint=False,
+        )
+
+    costs = report.details["transaction_costs"]
+    execution = report.details["execution_summary"]
+    # PerformanceAnalyzer 的 total_trades 是完成的 round-trip；execution_summary
+    # 則保留 raw Trade 的買／賣成交筆數。
+    assert report.total_trades == 1
+    assert costs["fee_cents"] == 449865
+    assert costs["slippage_cents"] == 90000
+    assert costs["total_cents"] == 539865
+    assert execution["trade_count"] == 2
+    assert execution["gross_notional_cents"] == 180000000
+    assert execution["buy_notional_cents"] == 90045000
+    assert execution["sell_notional_cents"] == 89955000
 
 def test_strategy_regression_trades():
     """驗證三種策略配置（baseline、暴衝、穩健）在分數達到門檻時，是否順利生成訊號與至少 1 筆交易"""
@@ -207,9 +263,9 @@ def test_strategy_regression_trades():
         res['RegimeMatch'] = pd.Series(True, index=df_arg.index)
         return res
         
-    from app_module.strategies.baseline_score_executor import BaselineScoreExecutor
-    from app_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
-    from app_module.strategies.stable_conservative_executor import StableConservativeExecutor
+    from decision_module.strategies.baseline_score_executor import BaselineScoreExecutor
+    from decision_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
+    from decision_module.strategies.stable_conservative_executor import StableConservativeExecutor
     
     strategies_to_test = [
         ("baseline", BaselineScoreExecutor, 60.0, 40.0),
@@ -429,7 +485,7 @@ def test_total_score_projects_confirmed_pattern_summary_without_guessing():
 def test_reason_engine_consumes_confirmed_pattern_evidence_only():
     """ReasonEngine 顯示具體型態，沒有名稱時不從分數臆測型態。"""
     from decision_module.reason_engine import ReasonEngine
-    from app_module.reason_tags import ReasonTagGenerator
+    from decision_module.reason_tags import ReasonTagGenerator
 
     config = {'patterns': {'selected': ['W底', '雙頂']}}
     engine = ReasonEngine()

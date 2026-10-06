@@ -12,11 +12,11 @@ from scripts import qa_technical_indicator_process_pool as probe
 def _write_stock_data(path: Path) -> str:
     rows: list[dict[str, object]] = []
     for stock_id, base_price in (("0050", 100), ("2330", 900)):
-        for day in range(35):
+        for day, session in enumerate(pd.bdate_range("2026-07-01", periods=35)):
             close = base_price + day
             rows.append(
                 {
-                    "日期": f"2026-07-{day + 1:02d}",
+                    "日期": session.strftime("%Y-%m-%d"),
                     "證券代號": stock_id,
                     "開盤價": close - 1,
                     "最高價": close + 1,

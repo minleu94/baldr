@@ -3,14 +3,18 @@ import sys
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
+from threading import Event, current_thread
+import time
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QThread, Qt
 from PySide6.QtGui import QBrush, QColor
-from PySide6.QtWidgets import QApplication, QBoxLayout, QWidget
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QAbstractItemView, QBoxLayout, QWidget
+import shiboken6
 
 from app_module.workbench_dtos import (
     WorkbenchAccessBoundary,
@@ -283,9 +287,11 @@ class _FakeWorkbenchSourceService:
     def __init__(self, dashboard: WorkbenchDashboardDTO) -> None:
         self.dashboard = dashboard
         self.calls: list[dict[str, object]] = []
+        self.thread_names: list[str] = []
 
     def inspect(self, **kwargs):
         self.calls.append(kwargs)
+        self.thread_names.append(current_thread().name)
         return self.dashboard
 
 
@@ -304,6 +310,119 @@ class _FlakyWorkbenchSourceService:
 class _AlwaysFailWorkbenchSourceService:
     def inspect(self, **kwargs):
         raise RuntimeError()
+
+
+class _RetryableWorkbenchSourceService:
+    def __init__(self, dashboard: WorkbenchDashboardDTO) -> None:
+        self.dashboard = dashboard
+        self.calls = 0
+
+    def inspect(self, **kwargs):
+        self.calls += 1
+        if self.calls == 2:
+            raise RuntimeError("temporary fixture failure")
+        return self.dashboard
+
+
+class _LatestDateWorkbenchSourceService:
+    def __init__(self, dashboard: WorkbenchDashboardDTO) -> None:
+        self.dashboard = dashboard
+        self.requested_dates: list[str | None] = []
+        self.first_call_started = Event()
+        self.release_first_call = Event()
+
+    def inspect(self, **kwargs):
+        requested_date = kwargs.get("decision_date")
+        self.requested_dates.append(requested_date)
+        if len(self.requested_dates) == 1:
+            self.first_call_started.set()
+            if not self.release_first_call.wait(timeout=2.0):
+                raise TimeoutError("first Workbench date fixture was not released")
+        if requested_date is None:
+            return self.dashboard
+        return replace(self.dashboard, as_of_date=date.fromisoformat(requested_date))
+
+
+class _BlockingWorkbenchSourceService:
+    def __init__(self, dashboard: WorkbenchDashboardDTO) -> None:
+        self.dashboard = dashboard
+        self.calls = 0
+        self.started = Event()
+        self.release = Event()
+
+    def inspect(self, **kwargs):
+        self.calls += 1
+        self.started.set()
+        if not self.release.wait(timeout=2.0):
+            raise TimeoutError("blocked Workbench inspect fixture was not released")
+        return self.dashboard
+
+
+def _wait_until(
+    predicate,
+    timeout_ms: int = 2_000,
+    message: str = "condition timed out",
+) -> None:
+    deadline = time.monotonic() + timeout_ms / 1_000
+    while time.monotonic() < deadline:
+        app().processEvents()
+        if predicate():
+            app().processEvents()
+            return
+        QTest.qWait(10)
+    pytest.fail(message)
+
+
+def _wait_for_workbench_calls(
+    view: UnifiedDecisionWorkbenchView,
+    service: object,
+    expected_calls: int,
+    timeout_ms: int = 2_000,
+) -> None:
+    def call_count() -> int:
+        value = getattr(service, "requested_dates", None)
+        if value is None:
+            value = getattr(service, "calls", [])
+        return len(value) if hasattr(value, "__len__") else int(value)
+
+    _wait_until(
+        lambda: view._refresh_worker is None
+        and not view._refresh_pending
+        and call_count() >= expected_calls,
+        timeout_ms=timeout_ms,
+        message="Workbench refresh/call queue did not settle",
+    )
+
+
+def _observe_view_callbacks_on_gui_thread(
+    view,
+    names: tuple[str, ...],
+    observations: dict[str, list[bool]],
+) -> None:
+    for name in names:
+        original = getattr(view, name)
+
+        def record(*args, _original=original, _name=name, **kwargs):
+            observations[_name].append(QThread.currentThread() == view.thread())
+            return _original(*args, **kwargs)
+
+        setattr(view, name, record)
+
+
+def _drain_deferred_deletes() -> None:
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app().processEvents()
+
+
+def _dispose_workbench_view(view: UnifiedDecisionWorkbenchView) -> None:
+    view.begin_shutdown()
+    deadline = time.monotonic() + 3.0
+    while view._refresh_worker is not None and time.monotonic() < deadline:
+        app().processEvents()
+        QTest.qWait(10)
+    view.close()
+    view.deleteLater()
+    _drain_deferred_deletes()
 
 
 def test_workbench_evidence_table_model_has_no_diagnostics_column() -> None:
@@ -349,6 +468,233 @@ def test_workbench_initial_refresh_failure_is_unknown_and_does_not_claim_human_r
     assert "狀態未知" in view.boundary_banner.text()
     assert "不能推定需要人工" in view.action_item_state_label.text()
     assert view.review_model.rowCount() == 0
+
+
+def test_async_workbench_reads_off_gui_thread_and_renders_on_gui_thread() -> None:
+    app()
+    dashboard = _dashboard_with_replay()
+    service = _FakeWorkbenchSourceService(dashboard)
+    view = UnifiedDecisionWorkbenchView(
+        source_service=service,
+        decision_date="2026-07-06",
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    worker = None
+    callback_threads: dict[str, list[bool]] = {
+        "_on_async_dashboard_finished": [],
+        "_on_async_dashboard_thread_finished": [],
+    }
+    _observe_view_callbacks_on_gui_thread(
+        view,
+        tuple(callback_threads),
+        callback_threads,
+    )
+    rendered_on_gui_thread: list[bool] = []
+    original_render = view.render_dashboard
+
+    def record_render(rendered_dashboard: WorkbenchDashboardDTO) -> None:
+        rendered_on_gui_thread.append(QThread.currentThread() == view.thread())
+        original_render(rendered_dashboard)
+
+    view.render_dashboard = record_render
+    try:
+        view.refresh_dashboard()
+        worker = view._refresh_worker
+        _wait_for_workbench_calls(view, service, expected_calls=1)
+        _drain_deferred_deletes()
+
+        assert service.thread_names and all(
+            name != "MainThread" for name in service.thread_names
+        )
+        assert callback_threads["_on_async_dashboard_finished"] == [True]
+        assert callback_threads["_on_async_dashboard_thread_finished"] == [True]
+        assert rendered_on_gui_thread == [True]
+        assert view._dashboard is dashboard
+        assert worker is not None and not shiboken6.isValid(worker)
+    finally:
+        _dispose_workbench_view(view)
+
+
+def test_async_workbench_keeps_last_good_data_stale_on_error_and_can_retry() -> None:
+    app()
+    dashboard = _dashboard_with_replay()
+    service = _RetryableWorkbenchSourceService(dashboard)
+    view = UnifiedDecisionWorkbenchView(
+        source_service=service,
+        dashboard=dashboard,
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    callback_threads: dict[str, list[bool]] = {
+        "_on_async_dashboard_error": [],
+        "_on_async_dashboard_thread_finished": [],
+    }
+    _observe_view_callbacks_on_gui_thread(
+        view,
+        tuple(callback_threads),
+        callback_threads,
+    )
+
+    try:
+        view.refresh_dashboard()
+        _wait_for_workbench_calls(view, service, expected_calls=1)
+        view.refresh_dashboard()
+        _wait_for_workbench_calls(view, service, expected_calls=2)
+
+        assert view._dashboard is dashboard
+        assert "stale" in view.priority_banner.text()
+        assert "最後成功載入" in view.priority_banner.text()
+        assert callback_threads["_on_async_dashboard_error"] == [True]
+        assert all(callback_threads["_on_async_dashboard_thread_finished"])
+
+        view.refresh_dashboard()
+        _wait_for_workbench_calls(view, service, expected_calls=3)
+
+        assert view._dashboard is dashboard
+        assert view._dashboard_stale is False
+        assert "workbench_source_stale" not in view.warning_list.toPlainText()
+        assert all(callback_threads["_on_async_dashboard_thread_finished"])
+    finally:
+        _dispose_workbench_view(view)
+
+
+def test_async_workbench_date_switch_coalesces_to_latest_request() -> None:
+    app()
+    service = _LatestDateWorkbenchSourceService(_dashboard_with_replay())
+    view = UnifiedDecisionWorkbenchView(
+        source_service=service,
+        decision_date="2026-07-06",
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    callback_threads: dict[str, list[bool]] = {
+        "_on_async_dashboard_cancelled": [],
+        "_on_async_dashboard_finished": [],
+        "_on_async_dashboard_thread_finished": [],
+    }
+    _observe_view_callbacks_on_gui_thread(
+        view,
+        tuple(callback_threads),
+        callback_threads,
+    )
+    rendered_dates: list[date] = []
+    original_render = view.render_dashboard
+
+    def record_render(rendered_dashboard: WorkbenchDashboardDTO) -> None:
+        rendered_dates.append(rendered_dashboard.as_of_date)
+        original_render(rendered_dashboard)
+
+    view.render_dashboard = record_render
+    worker = None
+    try:
+        view.refresh_dashboard()
+        worker = view._refresh_worker
+        assert service.first_call_started.wait(timeout=1.0)
+        view.decision_date = "2026-07-07"
+        view.refresh_dashboard()
+        service.release_first_call.set()
+        _wait_for_workbench_calls(view, service, expected_calls=2)
+        _drain_deferred_deletes()
+
+        assert service.requested_dates == ["2026-07-06", "2026-07-07"]
+        assert rendered_dates == [date(2026, 7, 7)]
+        assert view._dashboard is not None
+        assert view._dashboard.as_of_date == date(2026, 7, 7)
+        assert callback_threads["_on_async_dashboard_cancelled"] == [True]
+        assert callback_threads["_on_async_dashboard_finished"] == [True]
+        assert all(callback_threads["_on_async_dashboard_thread_finished"])
+        assert worker is not None and not shiboken6.isValid(worker)
+    finally:
+        service.release_first_call.set()
+        _dispose_workbench_view(view)
+
+
+def test_async_workbench_shutdown_drops_pending_refresh_without_restart() -> None:
+    app()
+    dashboard = _dashboard_with_replay()
+    service = _BlockingWorkbenchSourceService(dashboard)
+    view = UnifiedDecisionWorkbenchView(
+        source_service=service,
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    cancelled_on_gui_thread: list[bool] = []
+    original_cancelled = view._on_async_dashboard_cancelled
+
+    def record_cancelled(generation: int) -> None:
+        cancelled_on_gui_thread.append(QThread.currentThread() == view.thread())
+        original_cancelled(generation)
+
+    view._on_async_dashboard_cancelled = record_cancelled
+    try:
+        view.refresh_dashboard()
+        assert service.started.wait(timeout=1.0)
+        view.refresh_dashboard()
+        assert view._refresh_pending is True
+        view.begin_shutdown()
+        service.release.set()
+        _wait_for_workbench_calls(view, service, expected_calls=1)
+        _drain_deferred_deletes()
+
+        assert service.calls == 1
+        assert view._refresh_pending is False
+        assert view._refresh_worker is None
+        assert cancelled_on_gui_thread == [True]
+        assert view._dashboard is None
+    finally:
+        service.release.set()
+        _dispose_workbench_view(view)
+
+
+def test_async_workbench_ignores_result_queued_before_shutdown() -> None:
+    app()
+    dashboard = _dashboard_with_replay()
+    service = _BlockingWorkbenchSourceService(dashboard)
+    view = UnifiedDecisionWorkbenchView(
+        source_service=service,
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    worker = None
+    rendered: list[WorkbenchDashboardDTO] = []
+    original_render = view.render_dashboard
+
+    def record_render(rendered_dashboard: WorkbenchDashboardDTO) -> None:
+        rendered.append(rendered_dashboard)
+        original_render(rendered_dashboard)
+
+    view.render_dashboard = record_render
+    callback_threads: dict[str, list[bool]] = {
+        "_on_async_dashboard_finished": [],
+        "_on_async_dashboard_thread_finished": [],
+    }
+    _observe_view_callbacks_on_gui_thread(
+        view,
+        tuple(callback_threads),
+        callback_threads,
+    )
+    try:
+        view.refresh_dashboard()
+        worker = view._refresh_worker
+        assert service.started.wait(timeout=1.0)
+        service.release.set()
+        deadline = time.monotonic() + 1.0
+        while worker is not None and worker.isRunning() and time.monotonic() < deadline:
+            time.sleep(0.001)
+        assert worker is not None and not worker.isRunning()
+        view.begin_shutdown()
+        _wait_for_workbench_calls(view, service, expected_calls=1)
+        _drain_deferred_deletes()
+
+        assert callback_threads["_on_async_dashboard_finished"] == [True]
+        assert callback_threads["_on_async_dashboard_thread_finished"] == [True]
+        assert rendered == []
+        assert view._dashboard is None
+        assert worker is not None and not shiboken6.isValid(worker)
+    finally:
+        service.release.set()
+        _dispose_workbench_view(view)
 
 
 
@@ -451,7 +797,7 @@ def test_unified_workbench_view_renders_read_only_mvp_shell_and_replay_limits() 
     assert [view.subtabs.tabText(i) for i in range(view.subtabs.count())] == [
         "總覽",
         "決策來源",
-        "Evidence",
+        "研究證據",
         "持倉追蹤",
         "操作節奏",
     ]
@@ -678,6 +1024,83 @@ def test_unified_workbench_view_renders_injected_advice_without_source_refresh()
     assert view.advice_recommendation_model.rowCount() == 1
 
 
+def test_unified_workbench_advice_detail_keeps_probability_and_confidence_unknown() -> None:
+    app()
+    advice = AdviceDashboardDTO(
+        decision_date="2026-07-06",
+        data_as_of_date="2026-07-06",
+        mode=AdviceMode.GUIDED,
+        policy=AdvicePolicyConfig(),
+        recommendations=(
+            RecommendationAdviceDTO(
+                stock_code="2330",
+                advice_action=AdviceAction.ADD_CANDIDATE,
+                why_reasons=("research_gate_passed",),
+                risk_reasons=("position_limit_review",),
+                confidence_tier="medium",
+                evidence_tier="partial",
+                data_quality="PARTIAL",
+                holding_horizon="swing",
+                entry_thesis="先確認產業與個股證據",
+                invalidation_conditions=("證據失效",),
+                decision_date="2026-07-06",
+                data_as_of_date="2026-07-06",
+                execution_feasibility="FEASIBLE",
+                source_trace=("fixture:advice",),
+            ),
+        ),
+    )
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(_dashboard_with_replay(), advice_dashboard=advice),
+        auto_refresh=False,
+    )
+
+    view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+    detail_text = view.advice_presentation_detail.text()
+
+    assert "排名分數：未知（僅作排序，不等於機率）" in detail_text
+    assert "校準機率：不可用（研究中）" in detail_text
+    assert "成本後獲利機率：不可用（研究中）" in detail_text
+    assert "證據信心：未提供" in detail_text
+    assert view.advice_lineage_button.isEnabled() is True
+    assert "機率依據詳情（唯讀）" not in detail_text
+
+    view.advice_lineage_button.click()
+    expanded_text = view.advice_presentation_detail.text()
+    assert "機率依據詳情（唯讀）" in expanded_text
+    assert "模型版本：未提供" in expanded_text
+    assert "自然 evidence status：unknown" in expanded_text
+    assert "自然 authority receipt：未提供" in expanded_text
+
+    view.advice_lineage_button.click()
+    assert "機率依據詳情（唯讀）" not in view.advice_presentation_detail.text()
+    assert "適用期間：swing" in detail_text
+    assert "資料日：2026-07-06" in detail_text
+    assert "來源追溯：fixture:advice" in detail_text
+
+
+def test_unified_workbench_exposes_single_research_workflow_and_keyboard_tables() -> None:
+    app()
+    clicked: list[str] = []
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=_dashboard_with_replay(),
+        auto_refresh=False,
+        navigate_to_daily_decision_callback=lambda: clicked.append("market"),
+        navigate_to_market_explore_callback=lambda: clicked.append("industry"),
+        navigate_to_watchlist_callback=lambda: clicked.append("watchlist"),
+        navigate_to_portfolio_callback=lambda: clicked.append("portfolio"),
+    )
+
+    assert "市場總覽 → 產業／市場探索 → 關鍵股研究 → 觀察清單 → 持倉覆盤" in view.workflow_path_label.text()
+    assert set(view.workflow_path_buttons) == {"market", "industry", "watchlist", "portfolio"}
+    assert view.advice_recommendation_table.editTriggers() == QAbstractItemView.EditTrigger.NoEditTriggers
+    assert view.advice_recommendation_table.focusPolicy() == Qt.FocusPolicy.StrongFocus
+
+    for key in ("market", "industry", "watchlist", "portfolio"):
+        view.workflow_path_buttons[key].click()
+    assert clicked == ["market", "industry", "watchlist", "portfolio"]
+
+
 def test_unified_workbench_overview_uses_detail_inspector_and_collapsible_sections() -> None:
     app()
     clicked: list[str] = []
@@ -775,8 +1198,8 @@ def test_unified_workbench_view_displays_empty_and_degraded_queue_state_copy() -
     assert "沒有人工待處理事項" in empty_view.action_item_state_label.text()
     assert "不是買賣建議" in empty_view.action_item_state_label.text()
     assert "不寫 DB" in empty_view.action_item_state_label.text()
-    assert "今日所有風險已確認" in empty_view.review_empty_state.title_label.text()
-    assert "市場探索" in empty_view.review_empty_state.body_label.text()
+    assert "目前沒有明確人工判讀項目" in empty_view.review_empty_state.title_label.text()
+    assert "空佇列不代表風險已確認" in empty_view.review_empty_state.body_label.text()
     assert empty_view.review_empty_state.isHidden() is False
     assert empty_view.review_table.isHidden() is True
 
@@ -790,6 +1213,35 @@ def test_unified_workbench_view_displays_empty_and_degraded_queue_state_copy() -
     assert "降級" in degraded_view.action_item_state_label.text()
     assert "只供人工覆盤排序" in degraded_view.action_item_state_label.text()
     assert "不是買賣建議" in degraded_view.action_item_state_label.text()
+
+
+def test_unified_workbench_view_keeps_market_batch_outside_human_queue() -> None:
+    app()
+    machine_only = replace(
+        _empty_dashboard(),
+        background_evidence_feed=(
+            WorkbenchEvidenceFeedItem(
+                item_id="risk_prompt_liquidity_batch",
+                label="低流動性市場提示",
+                status="warning",
+                summary="Decision Desk 已標記 1121 筆低流動性市場提示。",
+                source_trace="DecisionDeskSnapshot.risk_prompts.category=liquidity",
+                degraded_reason="market_screening_batch:liquidity",
+                drilldown_target="daily_decision",
+                diagnostics=("prompt_count:1121",),
+                status_classification="machine_degraded",
+            ),
+        ),
+    )
+
+    view = UnifiedDecisionWorkbenchView(dashboard=machine_only, auto_refresh=False)
+
+    assert view.review_model.rowCount() == 0
+    assert "機器狀態待處理" in view.review_empty_state.title_label.text()
+    assert "市場批次提示" in view.review_empty_state.body_label.text()
+    assert "背景提示 1 批" in view.priority_banner.text()
+    assert "#f59e0b" in view.priority_banner.styleSheet()
+    assert "空佇列不代表風險已確認" not in view.review_empty_state.body_label.text()
 
 
 def test_unified_workbench_view_does_not_call_machine_only_gaps_confirmed() -> None:
@@ -935,10 +1387,38 @@ def test_workbench_view_does_not_import_db_scheduler_or_domain_calculation_modul
         "portfolio_module",
         "backtest_module",
         "runtime_scheduler",
-        "QTimer",
     ]
 
     assert "app_module.workbench_dtos" in view_source
     assert "app_module.workbench_source_service" in view_source
     for pattern in blocked_patterns:
         assert pattern not in combined
+
+
+def test_candidate_trigger_detail_opens_watchlist_and_keeps_reason_visible() -> None:
+    from app_module.decision_desk_dtos import DecisionDeskQuality, WatchlistTriggerSummary
+    from app_module.watchlist_trigger_presentation import format_watchlist_trigger_review
+
+    app()
+    summary = format_watchlist_trigger_review(WatchlistTriggerSummary(
+        date(2026, 9, 21), DecisionDeskQuality.OBSERVED, (),
+        trigger_count=2, triggered_codes=("2330", "2603"),
+        top_signal="up=2330;down=2603",
+    ))
+    item = WorkbenchReviewItem(
+        item_id="watchlist_trigger", title="候選股指標變化", severity="info",
+        source="watchlist_trigger", summary=summary, drilldown_target="watchlist",
+    )
+    clicked: list[str] = []
+    view = UnifiedDecisionWorkbenchView(
+        dashboard=replace(_dashboard_with_replay(), review_items=(item,)),
+        auto_refresh=False,
+        navigate_to_watchlist_callback=lambda: clicked.append("watchlist"),
+    )
+    view.review_table.clicked.emit(view.review_model.index(0, 0))
+    assert "2330：分數較前次上升" in view.detail_summary_box.text()
+    assert "2603：分數較前次下降" in view.detail_summary_box.text()
+    assert "查看選中個股研究報告" in view.detail_summary_box.text()
+    view.detail_drilldown_button.click()
+    assert clicked == ["watchlist"]
+    view.close()

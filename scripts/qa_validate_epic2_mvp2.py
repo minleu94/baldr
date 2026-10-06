@@ -22,14 +22,14 @@ sys.path.insert(0, str(project_root))
 from data_module.config import TWStockConfig
 from app_module.backtest_service import BacktestService
 from app_module.walkforward_service import WalkForwardService, WalkForwardResult
-from app_module.strategy_registry import StrategyRegistry
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.registry import StrategyRegistry
+from decision_module.strategies.contracts import StrategySpec
 from app_module.dtos import BacktestReportDTO
 from backtest_module.performance_metrics import PerformanceAnalyzer
 import dataclasses
 
 # 確保策略已註冊
-import app_module.strategies  # 這會觸發策略註冊
+import decision_module.strategies  # 這會觸發策略註冊
 
 # 設置日誌
 log_dir = project_root / 'output' / 'qa' / 'epic2_mvp2_validation'

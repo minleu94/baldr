@@ -5,6 +5,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     DecisionDeskRiskPrompt,
@@ -28,6 +30,9 @@ from app_module.evidence_event_dtos import (
 )
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.workbench_source_service import WorkbenchSourceService
+from app_module.saved_recommendation_queries import build_recommendation_execution_queries
+from app_module.recommendation_learning_paths import resolve_recommendation_learning_paths
+from app_module.sqlite_read_only import ReadOperationCancelled
 from data_module.config import TWStockConfig
 
 
@@ -230,6 +235,72 @@ def _seed_recommendation(config: TWStockConfig) -> None:
         )
 
 
+def _append_legacy_recommendation(
+    config: TWStockConfig,
+    *,
+    result_id: str,
+    created_at: str,
+    as_of_date: str | None = None,
+) -> Path:
+    runs_dir = Path(config.output_root) / "recommendation" / "runs"
+    data_path = runs_dir / f"{result_id}.json"
+    data_path.write_text(
+        json.dumps(
+            {
+                "result_id": result_id,
+                "why_not_payload_json": [{"stock_code": "1101", "reason_codes": ["weak_rs"]}],
+                "liquidity_gate_payload_json": [
+                    {"stock_code": "2201", "reason_codes": ["low_liquidity"]}
+                ],
+                "screening_matrix_json": [
+                    {"stock_code": "2330", "status": "pass", "quality": "observed"}
+                ],
+                **(
+                    {"run_context": {"as_of_date": as_of_date}}
+                    if as_of_date is not None
+                    else {}
+                ),
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    with sqlite3.connect(runs_dir / "recommendation_runs.db") as conn:
+        conn.execute(
+            """
+            INSERT INTO runs (
+                result_id,
+                result_name,
+                regime,
+                stock_count,
+                config,
+                notes,
+                created_at,
+                data_path
+            )
+            VALUES (?, ?, 'trend', 1, '{}', '', ?, ?)
+            """,
+            (result_id, result_id, created_at, str(data_path)),
+        )
+    return data_path
+
+
+class _CountingRecommendationQueries:
+    def __init__(self, queries) -> None:
+        self._queries = queries
+        self.list_calls = 0
+        self.read_snapshots = []
+
+    def list(self):
+        self.list_calls += 1
+        result = self._queries.list()
+        self.read_snapshots.append(result)
+        return result
+
+    def __getattr__(self, name: str):
+        return getattr(self._queries, name)
+
+
 def _multi_day_record(path: Path, rows: int) -> None:
     lines = [
         "| Date | Data update status | Source coverage status | Dry-run pipeline status | Working-copy confirm smoke status | Events seen | Events inserted in working copy | Outcomes created in working copy | Summary groups | Warnings count | Blocking gaps | Dashboard review completed | Human reviewer notes | Decision |",
@@ -302,7 +373,15 @@ def _scheduled_outputs(config: TWStockConfig) -> None:
     runs_dir = output_root / "recommendation" / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
     for day in ("20260706", "20260707"):
-        (runs_dir / f"scheduled_rec_{day}_051001.json").write_text("{}", encoding="utf-8")
+        result_id = f"scheduled_rec_{day}_051001"
+        _append_legacy_recommendation(
+            config,
+            result_id=result_id,
+            created_at=(
+                f"{day[:4]}-{day[4:6]}-{day[6:]}T05:10:01"
+            ),
+            as_of_date=f"{day[:4]}-{day[4:6]}-{day[6:]}",
+        )
         (evidence_report_dir / f"{day}_evidence_pipeline_dry_run.md").write_text("report", encoding="utf-8")
 
 
@@ -324,7 +403,45 @@ def test_workbench_source_service_reads_real_read_only_sources(tmp_path: Path) -
     assert status_items["scheduler"]["value"] == "off"
     assert payload["access_boundary"]["writes_allowed"] is False
     assert payload["access_boundary"]["production_scheduler_allowed"] is False
-    assert any(item["source"] == "risk_prompt" for item in payload["review_items"])
+    portfolio_review_items = [
+        item
+        for item in payload["review_items"]
+        if item["code"] == "2330"
+    ]
+    assert len(portfolio_review_items) == 1
+    portfolio_review = portfolio_review_items[0]
+    assert portfolio_review["source"] == "portfolio_alert"
+    assert portfolio_review["severity"] == "warning"
+    assert portfolio_review["summary"] == "持倉警示需要人工覆盤。"
+    assert portfolio_review["source_trace"] == (
+        "DecisionDeskSnapshot.risk_prompts[1].portfolio_alert"
+    )
+    assert portfolio_review["drilldown_target"] == "portfolio_review"
+
+    portfolio_feed = next(
+        item
+        for item in payload["background_evidence_feed"]
+        if item["item_id"] == "portfolio_alerts"
+    )
+    assert portfolio_feed["status"] == "observed"
+    assert portfolio_feed["source_trace"] == "DecisionDeskSnapshot.portfolio_alerts"
+    assert "1 alert rows" in portfolio_feed["summary"]
+
+    portfolio_actions = [
+        item
+        for item in payload["action_items"]
+        if item["code"] == "2330"
+    ]
+    assert len(portfolio_actions) == 1
+    portfolio_action = portfolio_actions[0]
+    assert portfolio_action["source_type"] == "portfolio_alert"
+    assert portfolio_action["summary"] == "檢查 journal 與風險來源。"
+    assert portfolio_action["source_trace"] == (
+        "DecisionDeskSnapshot.risk_prompts[1].portfolio_alert"
+    )
+    assert portfolio_action["drilldown_target"] == "portfolio_review"
+    assert portfolio_action["degraded_reason"] == "持倉警示需要人工覆盤。"
+    assert portfolio_action["write_intent"] is False
     assert {item["item_id"] for item in payload["background_evidence_feed"]} == {
         "daily_decision_snapshot",
         "evidence_review_readiness",
@@ -477,3 +594,147 @@ def test_workbench_source_service_surfaces_replay_quality_disclosures_without_re
     assert "pending_future_data:91488" in replay_diagnostics
     assert "replay_direction_assessment" in replay_diagnostics
     assert "phase0_gate_not_satisfied" in replay_diagnostics
+
+
+def test_workbench_source_service_reads_daily_learning_latest_status_as_read_only_evidence(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    record_path = tmp_path / "multi-day.md"
+    _multi_day_record(record_path, rows=0)
+    learning_path = resolve_recommendation_learning_paths(data_root=config.data_root).latest_status_path
+    learning_path.parent.mkdir(parents=True, exist_ok=True)
+    learning_path.write_text(
+        json.dumps(
+            {
+                "status": "skipped_no_data",
+                "decision": "retain_current",
+                "decision_reason": "no_new_matured_or_historical_rows",
+                "natural_matured_sample_count": 0,
+                "next_step": "等待新的成熟自然 forward outcomes。",
+                "decision_receipt": {"pointer_version": 0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = WorkbenchSourceService(config, evidence_db_path=tmp_path / "missing.db").inspect(
+        decision_date="2026-07-06",
+        multi_day_record_path=record_path,
+    ).to_dict()
+
+    feed = {item["item_id"]: item for item in payload["background_evidence_feed"]}
+    assert feed["recommendation_learning"]["status"] == "missing"
+    assert "matured_samples=0" in feed["recommendation_learning"]["summary"]
+    assert "no_new_matured_or_historical_rows" in feed["recommendation_learning"]["summary"]
+    assert any(
+        item["step_id"] == "daily_recommendation_learning"
+        for item in payload["operating_loop_steps"]
+    )
+
+
+def test_workbench_shares_recommendation_snapshot_only_within_each_inspect(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = _config(tmp_path)
+    record_path = tmp_path / "multi-day.md"
+    _seed_ready_sources(config, record_path)
+    queries = _CountingRecommendationQueries(
+        build_recommendation_execution_queries(config)
+    )
+    service = WorkbenchSourceService(
+        config,
+        evidence_db_path=config.db_file,
+        recommendation_queries=queries,
+    )
+    readiness_sessions = []
+    scheduled_sessions = []
+    readiness_reports = []
+    scheduled_reports = []
+    original_readiness_inspect = service.readiness_service.inspect
+    original_scheduled_load = service.scheduled_status_service.load_latest
+
+    def capture_readiness(**kwargs):
+        readiness_sessions.append(kwargs["recommendation_queries"])
+        report = original_readiness_inspect(**kwargs)
+        readiness_reports.append(report)
+        return report
+
+    def capture_scheduled(**kwargs):
+        scheduled_sessions.append(kwargs["recommendation_queries"])
+        report = original_scheduled_load(**kwargs)
+        scheduled_reports.append(report)
+        return report
+
+    monkeypatch.setattr(service.readiness_service, "inspect", capture_readiness)
+    monkeypatch.setattr(service.scheduled_status_service, "load_latest", capture_scheduled)
+
+    service.inspect(
+        decision_date="2026-07-06",
+        multi_day_record_path=record_path,
+    )
+
+    assert queries.list_calls == 1
+    assert readiness_sessions[0] is scheduled_sessions[0]
+    first_session = readiness_sessions[0]
+    assert first_session.list() is queries.read_snapshots[0]
+    assert tuple(item.result_id for item in queries.read_snapshots[0]) == ("rec-ready",)
+
+    _append_legacy_recommendation(
+        config,
+        result_id="rec-new",
+        created_at="2026-07-06T13:00:00",
+    )
+    service.inspect(
+        decision_date="2026-07-06",
+        multi_day_record_path=record_path,
+    )
+
+    assert queries.list_calls == 2
+    assert readiness_sessions[1] is scheduled_sessions[1]
+    assert readiness_sessions[1] is not first_session
+    assert tuple(item.result_id for item in queries.read_snapshots[1]) == (
+        "rec-new",
+        "rec-ready",
+    )
+
+    (Path(config.output_root) / "recommendation" / "runs" / "rec-new.json").write_text(
+        '{"result_id":"rec-new",',
+        encoding="utf-8",
+    )
+    service.inspect(
+        decision_date="2026-07-06",
+        multi_day_record_path=record_path,
+    )
+
+    assert queries.list_calls == 3
+    assert readiness_sessions[2] is scheduled_sessions[2]
+    source_gap = next(item for item in readiness_reports[2].items if item.item_id == "source_gaps")
+    assert source_gap.status == "action_required"
+    assert "recommendation_query_failure:ExecutionArtifactIntegrityError" in source_gap.diagnostics
+    assert any(
+        "recommendation_query_failure:ExecutionArtifactIntegrityError" in diagnostic
+        for diagnostic in scheduled_reports[2].diagnostics
+    )
+
+
+def test_workbench_recommendation_snapshot_cancellation_remains_fail_closed(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+
+    class _CancelAfterListQueries:
+        cancelled = False
+        list_calls = 0
+
+        def list(self):
+            self.list_calls += 1
+            self.cancelled = True
+            return ()
+
+    queries = _CancelAfterListQueries()
+    service = WorkbenchSourceService(config, recommendation_queries=queries)
+
+    with pytest.raises(ReadOperationCancelled):
+        service.inspect(cancel_callback=lambda: queries.cancelled)
+
+    assert queries.list_calls == 1

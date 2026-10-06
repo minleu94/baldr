@@ -127,8 +127,8 @@
 
 本機註冊位置：
 
-- Codex：`C:\Users\archi\.codex\config.toml`
-- Antigravity：`C:\Users\archi\.gemini\config\mcp_config.json`
+- Codex：`<USER_HOME>\.codex\config.toml`
+- Antigravity：`<USER_HOME>\.gemini\config\mcp_config.json`
 
 ## 8. 更新記錄
 

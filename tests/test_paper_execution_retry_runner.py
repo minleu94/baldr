@@ -11,10 +11,32 @@ import pytest
 from data_module import formal_runtime_config
 from data_module import formal_runtime_roll_forward as roll
 
+from scripts.scheduled import paper_execution_retry_runner
 from scripts.scheduled.paper_execution_retry_runner import run_scheduled
 
 
 OBSERVED = datetime(2026, 9, 8, 13, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_exit_code"),
+    [
+        ("skipped_no_pending_recommendation", 0),
+        ("blocked", 2),
+    ],
+)
+def test_retry_runner_exit_code_preserves_skip_and_blocked_statuses(
+    status: str,
+    expected_exit_code: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        paper_execution_retry_runner,
+        "run_scheduled",
+        lambda **_kwargs: {"status": status, "blockers": []},
+    )
+
+    assert paper_execution_retry_runner.main([]) == expected_exit_code
 
 
 def _write_cross_day_calendar(path: Path) -> tuple[Path, str]:
@@ -289,6 +311,31 @@ def test_retry_runner_triggers_runtime_roll_forward_after_paper_window(
     assert runtime["status"] == "runtime_config_created"
     assert runtime["candidate_only"] is True
     assert runtime["formal_oos_allowed"] is False
+
+
+def test_retry_runner_calls_adapter_for_ready_with_warnings_gate(tmp_path: Path) -> None:
+    adapter_calls: list[str] = []
+
+    def adapter() -> dict[str, object]:
+        adapter_calls.append("called")
+        return {"status": "machine_verified_candidate", "blockers": []}
+
+    result = run_scheduled(
+        max_attempts=1,
+        gate_output_root=tmp_path / "gate",
+        gate_fn=lambda: {
+            "status": "ready_with_warnings",
+            "ready": True,
+            "warnings": ["paper_eod_ignored_non_eod_freshness:source"],
+            "blockers": [],
+        },
+        adapter_fn=adapter,
+        sleep_fn=lambda _: None,
+        now_fn=lambda: OBSERVED,
+    )
+
+    assert adapter_calls == ["called"]
+    assert result["status"] == "machine_verified_candidate"
 
 
 def test_retry_runner_uses_explicit_source_pins_for_runtime_roll_forward(
@@ -618,6 +665,49 @@ def test_retry_runner_turns_weekend_gate_into_noop_before_adapter(
     assert adapter_called is False
     assert roll_forward_called is True
     assert result["runtime_roll_forward"]["status"] == "runtime_config_created"
+
+
+def test_retry_runner_turns_verified_weekday_holiday_gate_into_noop_before_adapter(
+    tmp_path: Path,
+) -> None:
+    adapter_called = False
+
+    def adapter() -> dict[str, object]:
+        nonlocal adapter_called
+        adapter_called = True
+        return {"status": "machine_verified_candidate"}
+
+    def roll_forward() -> dict[str, object]:
+        return {
+            "status": "runtime_config_created",
+            "exit_code": 0,
+            "candidate_only": True,
+        }
+
+    result = run_scheduled(
+        max_attempts=3,
+        gate_output_root=tmp_path / "gate",
+        gate_fn=lambda: {
+            "status": "not_trading_day",
+            "ready": True,
+            "reason": "twse_holiday_schedule_cache_closed",
+            "adapter_noop": True,
+            "calendar_evidence": {
+                "target_date": "2026-09-25",
+                "is_trading_day": False,
+                "mode": "hash_bound_official_calendar_cache",
+            },
+        },
+        adapter_fn=adapter,
+        sleep_fn=lambda _: (_ for _ in ()).throw(AssertionError("no sleep expected")),
+        now_fn=lambda: datetime(2026, 9, 25, 13, 0, tzinfo=timezone.utc),
+        roll_forward_fn=roll_forward,
+    )
+
+    assert result["status"] == "skipped_non_trading_day"
+    assert result["non_trading_day"] is True
+    assert result["adapter_called"] is False
+    assert adapter_called is False
 
 
 def test_retry_runner_retries_transient_adapter_source_blocker(tmp_path: Path) -> None:

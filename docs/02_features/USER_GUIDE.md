@@ -1,5 +1,10 @@
 ﻿# 使用者指南
 
+## 2026-10-05 具名母體研究判讀
+
+由市場探索的研究母體盤勢開啟同來源每日名單，確認母體、決策日與個別行情日後，以 AND／OR 和三態篩選，再開同 manifest 個股。close／均線排序只排列已保存數值；原強弱排名缺件明示未知，不能把列序或符合數當作投資分數。完整 declared 分母不隨篩選縮小，partial 缺件保留未知；來源與方法完整身分在提示可查。實際操作與安全排錯以 [完整Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux1318-具名研究母體盤勢與指標排序) 為準。
+
+
 > 本文件保留推薦、回測與資料治理的深入教學。
 > 需要從安裝開始，依 8 個頂層工作區逐步操作時，請先閱讀 [完整操作手冊](../07_guides/APPLICATION_MANUAL.md)。
 
@@ -11,7 +16,7 @@
 
 市場／決策區塊保留實際資料日與降級；來源未知不等於零風險，日資料 Trigger 不是即時突破證明。觀察清單仍預設 JSON、手動持倉仍預設 JSONL，候選 SQLite／append-only 帳本只在隔離副本與明確注入下驗證；沒有把回測成交轉成真實 Paper fills。Runtime UNKNOWN 表示來源未確認，不是閒置。
 
-當前入口、費率與結果排錯以 [完整操作手冊](C:/Projects/PythonProjects/technical_analysis/docs/07_guides/APPLICATION_MANUAL.md) 為準；工程證據見 [TASK-08](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md)。V4 Evidence Accumulation／`action_required` 維持；自然前瞻時間、具名覆盤、來源 acceptance 與正式成交成本不能由 fixture 或 replay 折抵。
+當前入口、費率與結果排錯以 完整操作手冊（本機／開發參考） 為準；工程證據見 TASK-08（本機／開發參考）。V4 Evidence Accumulation／`action_required` 維持；自然前瞻時間、具名覆盤、來源 acceptance 與正式成交成本不能由 fixture 或 replay 折抵。
 
 ## 📋 目錄
 
@@ -47,7 +52,7 @@ ML 的 `continue_shadow` 只表示可繼續離線診斷；`formal_oos_allowed=fa
 ## 數據更新 - 維運工作台
 
 ### 功能說明
-「數據更新」Tab 已整理為維運工作台，保留原本所有資料更新、合併、狀態檢查與進階維護功能，但改用左側導覽分組，讓日常操作與高風險操作分開。
+「數據更新」工作區 已整理為維運工作台，保留原本所有資料更新、合併、狀態檢查與進階維護功能，但改用左側導覽分組，讓日常操作與高風險操作分開。
 
 ### 主要區域
 - **狀態摘要**：顯示每日股價、大盤指數、產業指數、券商分點與技術指標狀態
@@ -57,43 +62,9 @@ ML 的 `continue_shadow` 只表示可繼續離線診斷；`formal_oos_allowed=fa
 
 ### 日常更新模式
 
-日常速度優先：
+逐步操作、模式選擇、失敗重試與安全限制統一維護於 [完整手冊 4.2](../07_guides/APPLICATION_MANUAL.md#42-快速更新與安全更新)，避免本指南再保存第二份流程。
 
-1. 打開「數據更新」Tab
-2. 點擊「檢查數據狀態」
-3. 點擊「快速更新（僅 SQLite）」
-4. 等待流程完成，並查看底部日誌
-
-需要完整 CSV 備份或資料修復後：
-
-1. 打開「數據更新」Tab
-2. 設定查找範圍或日期範圍
-3. 點擊「安全更新（完整 CSV + SQLite）」
-4. 等待流程完成，並查看底部日誌
-
-快速更新會直接同步近期資料到 SQLite，避免重寫大型歷史 CSV。安全更新會依序執行完整原始檔、合併檔與 SQLite 同步：
-- 檢查目前資料狀態
-- 更新每日股價
-- 將每日股價 CSV 同步到 SQLite
-- 更新大盤指數
-- 將大盤指數同步到 SQLite
-- 更新產業指數
-- 將產業指數同步到 SQLite
-- 更新券商分點
-- 合併每日資料
-- 將合併後每日資料同步到 SQLite
-- 合併券商分點資料
-- 將合併後券商分點資料同步到 SQLite
-- 以智慧增量模式計算技術指標
-
-若其中任一步驟失敗，流程會停止並指出失敗步驟；此時可切換到對應左側頁面單獨重試。
-
-安全更新的資料防護原則：
-- 狀態檢查必須是唯讀；券商分點 registry 不會因狀態檢查自動修復或寫回。
-- SQLite 同步只從本次已產生或已合併的 CSV 結果寫入資料庫，不會反向覆蓋 CSV；每日股價同步採日期範圍替換，避免清空未碰到的歷史資料。
-- 備份檔只保留在 `meta_data/backup/`，同一來源同一天只留最新一份，且最多保留最新 5 個日期版本，降低大型 CSV 備份對硬碟的壓力。
-- 大盤指數若 TWSE API 失敗而使用 yfinance 備援，只接受目標日或目標日前最近交易日資料；不使用目標日之後的資料補寫。
-- 技術指標計算一律使用 `TWStockConfig` 解析的資料路徑，不使用硬編碼正式資料根目錄。
+「快速更新（跳過大型合併）」仍更新必要的每日 CSV 並增量同步 SQLite，只跳過大型歷史合併檔重寫；「安全更新（完整 CSV + SQLite）」另執行完整合併與同步。快速更新不等於「只寫 SQLite」。來源狀態檢查維持唯讀；資料更新與修復須遵守手冊中的確認及失敗保護。
 
 ### 狀態檢查來源
 「全部資料」頁使用輕量 Overview，只讀取檔案存在狀態、尾端日期、檔案大小、修改時間與最近詳細檢查快取，不會一次全量掃描所有大型檔案。切換到單一資料來源頁或按該頁的「檢查狀態」時，才執行較完整的 Detail 檢查。
@@ -131,7 +102,7 @@ ML 的 `continue_shadow` 只表示可繼續離線診斷；`formal_oos_allowed=fa
 已修復：系統會自動從 `IndustryMapper` 載入所有產業類別。
 
 ### 使用方法
-1. 打開「推薦分析」Tab
+1. 打開「推薦分析」工作區
 2. 在「篩選條件」區塊中找到「產業」下拉選單
 3. 點擊下拉選單，應該會看到：
    - 「全部」（預設，不篩選產業）
@@ -228,7 +199,7 @@ ML 的 `continue_shadow` 只表示可繼續離線診斷；`formal_oos_allowed=fa
 ### 使用方法
 
 #### 切換模式
-1. 打開「推薦分析」Tab
+1. 打開「推薦分析」工作區
 2. 在「策略配置」面板右上角找到「切換至進階模式」或「切換至新手模式」按鈕
 3. 點擊按鈕即可切換模式
 
@@ -414,7 +385,7 @@ Explain 面板提供推薦分數的詳細拆解，幫助使用者理解每檔股
 ### 使用方法
 
 #### 步驟 1：執行推薦分析
-1. 在「推薦分析」Tab 中選擇 Profile 或配置策略
+1. 在「推薦分析」工作區 中選擇 Profile 或配置策略
 2. 點擊「執行推薦分析」
 3. 等待推薦結果顯示
 
@@ -429,7 +400,7 @@ Explain 面板提供推薦分數的詳細拆解，幫助使用者理解每檔股
 #### 步驟 3：一鍵送回測
 1. 點擊推薦結果上方的「一鍵送回測」按鈕
 2. 系統會自動：
-   - 切換到「策略回測」Tab
+   - 切換到「策略回測」工作區
    - 創建選股清單並載入股票
    - 根據 Profile 風險等級自動設置執行價格
    - 設置日期範圍（預設最近 6 個月）
@@ -469,6 +440,8 @@ Explain 面板提供推薦分數的詳細拆解，幫助使用者理解每檔股
 ### Research Run Registry 保存
 - 單股回測與推薦組合回放完成後，新的「保存結果」入口會寫入 Research Run Registry。
 - Registry 會保存執行參數、資料 fingerprint、成本與成交假設、績效摘要、equity curve 與 trades；明細使用 Parquet，metadata 使用 SQLite。
+- 推薦組合的新 Registry run 需以該次執行的完整結果保存；保存後可在「研究 Registry」分頁篩選推薦回放、單選一筆並按「開啟推薦回放」讀回。這個入口不會重跑推薦或回測，也不會把 Registry run 加入舊「歷史推薦回測」下拉選單。只有完整性驗證成功才會更新畫面；舊 markerless run 的完整 DTO 顯示為不可用，損毀資料不套用部分結果。新 run 若 snapshots 有推薦列但無 canonical child，仍保留推薦列並明示 child 不可用；若 snapshots 為空，則明示沒有推薦 snapshots、canonical child 不可用。這兩種 marked DTO 狀態都不同於舊 markerless run 沒有完整 DTO。
+- Registry 讀回不會依目前行情重新抓 benchmark overlay；該圖層會標示不可用。Registry 讀回結果為唯讀，不能用 legacy 刪除、升級或再次保存操作。
 - 開始新一輪回測後，上一輪尚未保存的結果會視為 stale，系統不允許再保存。
 - 舊 Backtest / Recommendation Portfolio 保存庫仍可作歷史查詢與受控 backfill 來源；Cross-run Comparison 與 Registry-based Promote service Gate 已存在。保存不等於升級，仍需完整性、版本可比性、lifecycle 與人工 Gate；本輪沒有執行正式 promotion。
 
@@ -480,8 +453,8 @@ Explain 面板提供推薦分數的詳細拆解，幫助使用者理解每檔股
 
 ### 推薦組合回測設定步驟
 
-1. 在「推薦分析」Tab 選擇 Profile，執行推薦分析。
-2. 點擊「送推薦組合回測」，系統會切到「策略回測」Tab。
+1. 在「推薦分析」工作區 選擇 Profile，執行推薦分析。
+2. 點擊「送推薦組合回測」，系統會切到「策略回測」工作區。
 3. 在左側確認「推薦組合回測」區有顯示 Profile 名稱。
 4. 設定回測頁既有的開始日期、結束日期與初始資金。
 5. 第一次測試建議設定：每次推薦檔數 10、每期候選上限 20、持有天數 5、重播頻率「每週重播」、資金配置「等權配置」。
@@ -510,7 +483,7 @@ Explain 面板提供推薦分數的詳細拆解，幫助使用者理解每檔股
 - 選擇策略（例如：Baseline Score Threshold）
 
 #### 2. 進入參數最佳化 Tab
-- 在「策略回測」Tab 中，找到「結果」區域
+- 在「策略回測」工作區 中，找到「結果」區域
 - 點擊「參數最佳化」子 Tab
 
 #### 3. 設定參數範圍
@@ -793,7 +766,7 @@ Promote 機制可以將通過驗證的回測結果升級為策略版本，並在
 ### 使用方法
 
 #### 步驟 1：執行回測並查看結果
-1. 在「策略回測」Tab 中執行回測
+1. 在「策略回測」工作區 中執行回測
 2. 查看回測結果，確認表現良好
 3. 建議先執行 Walk-Forward 驗證，確保策略穩定性
 
@@ -810,7 +783,7 @@ Promote 機制可以將通過驗證的回測結果升級為策略版本，並在
 3. 點擊「確認」完成升級
 
 #### 步驟 4：在推薦分析中使用
-1. 回到「推薦分析」Tab
+1. 回到「推薦分析」工作區
 2. 在策略配置中，可以選擇已 Promote 的策略版本
 3. 系統會自動載入該版本的參數配置
 
@@ -1098,7 +1071,7 @@ Why Not 功能提供反向解釋，說明為什麼股票未被推薦或分數較
 ### 使用方法
 
 #### 步驟 1：更新每日資料
-1. 打開「數據更新」Tab
+1. 打開「數據更新」工作區
 2. 從左側選擇「券商分點」
 3. 設定結束日期與最近範圍
 4. 點擊「手動下載此資料源」
@@ -1218,3 +1191,78 @@ A: 需要修改 `{meta_data_dir}/broker_branch_registry.csv` 檔案，添加新�
 ## 更新記錄
 
 - 2026-09-06：補上推薦指紋、未知因子、T+1／Registry 判讀及候選來源邊界；更新舊 Promote 與強制平倉說法。
+
+
+## 2026-10-05 原研究收藏
+
+「推薦分析 → 每日研究條件」選列後按「收藏此研究」，確認保存至既有觀察清單。書籤固定原來源／方法／日期／條件及排序偏好；重複相同收藏不寫，另一來源同股獨立保存。從觀察清單開個股、同查詢切股與返回都用exact書籤；無效來源不改成手動或latest。「以最新來源另開研究」只讀新研究，原書籤不變；精確移除可取消並在本程序還原。
+
+完整參數、步驟、安全限制與排錯見[Manual](../07_guides/APPLICATION_MANUAL.md)，限定測試／Native／Library證據見QA（開發收據見dev）。本包不改推薦／持倉／自然ML資格，不宣告全計畫完成。
+
+
+## 2026-10-05 UX04／05 固定方法預設與候選摘要
+
+每日研究條件新增五個固定 MA20／60 查詢預設，選取後須明確套用；只篩選已核驗快照。手動條件／原來源回訪不自動覆蓋，切換預設或Decimal指標排序不改來源／日期／方法／研究資格。完整 declared 分母、已發布／缺件、組合三態、顯示／因篩選隱藏與具名原因可見；缺少 artifact 不造可開列，未知不當反證。原強弱排名未提供，選項停用；不造分數或勝率。選取摘要立即刷新，原方法identity保留詳情。
+
+本包 final 43 affected passed、Workbench85、validator25／4skip／0fail、mypy779、compile／quant guard通過；已發布真D2382／1477 readonly offscreen及preset→收藏payload roundtrip→同源開啟／返回身份核對通過。未啟動正式／全量producer，沒有真實清單寫入／遷移、正式DBwrite、訓練、前景Native或鍵鼠；本包新增Native互動仍待下一使用者桌面時段。完整stage1–3未宣告完成，Backtest18.62%／20%未達及PIT／availability／自然ML／真人證據限制保留。詳見既有UX16 QA（開發收據見dev）與[Manual](../07_guides/APPLICATION_MANUAL.md)。
+
+
+### UX16／18 有界母體來源契約延伸（2026-10-05，基線7e11f5a8）
+
+明示母體設定是隔離研究批次來源：ID／版本／截至日／原檔hash、納入／排除與理由、已知或未知設定分母。可選manifest extension納入原不可變identity，讀取與consumer重新核對來源revision／刪除／成員／date；舊無設定cohort保留來源與原始分母未知。清單、母體盤勢及候選摘要共享同一契約，設定不授予PIT或推薦資格，不計算新分數。CLI明示讀included，禁止無設定手動更新默默降格已綁來源。
+
+原排名來源audit：原計畫指StockScreener本日／本週價量強弱排序（原公式不改）。ScreeningResultDTO有period／method／version／eligible count，但即時結果未有不可變run／完整成員排除／hash發布；strong_stocks_view僅記憶體快取。saved recommendation屬另一rank kind不能代用。有限currentDB schema唯讀未找到rank／screen tables，不推論全球不存在。原排名未知且停用；需原引擎不可變結果發布工程，不稱等待自然成熟。
+
+本包無Native前景或使用者視窗操作，無訓練、全市場producer、正式DB／registry或真實書籤寫入；永久清理仍未執行。驗證與commit結果見同章最終收據補記。
+
+最終驗證：104相關tests、WB85、validator25/4skip/0fail、mypy781、compile13及guard通過；真D三股隔離發布／2382讀回／offscreen同源通過。詳見UX16 QA最新最終驗證章；原排名publisher與Native仍pending，未push。
+
+
+## 2026-10-05 原排名研究模式
+
+每日研究條件可唯讀選擇日／週比較與強／弱模式，來源存在且核驗相容時啟用原排名排序。研究母體盤勢共用同一來源；MA條件與原名次分開，缺排名未知，不重編篩選後名次。舊Top／Bottom百分比不可當一般前幾％或勝率；來源只授有界研究。原排名收藏已另存 v2，舊非排名研究收藏沿原 v1 契約；詳見本文最新版本化章。隔離CLI發布與參數、解讀／排錯見[完整Manual](../07_guides/APPLICATION_MANUAL.md)，QA（開發收據見dev）另列Native及剩餘工程。
+
+- 2026-10-05 更新：同步原排名入口、來源限制與收藏相容性。
+
+## 2026-10-05 原排名收藏與個股來源版本化（最新限定收尾）
+
+已完成原排名選股→個股原排名／原 feature→版本化收藏→新程序 pinned 讀回→精確返回原收藏。v2 保存四模式、實際比較窗、原母體／方法／hash／排序／所選股；舊非 rank v1 內容與 bookmark/query/payload 雜湊不變，沒有真實清單遷移。缺件／錯版本／日期／股號／hash／來源修訂顯示原因，可明確另開最新個股研究，保留原證據。完整 Top/Bottom 字串照原 publisher 顯示，3–5 筆週 fallback 明示實際日期與非完整週，不反推 score／勝率。 完整入口、步驟、參數、限制與排錯見[Manual](../07_guides/APPLICATION_MANUAL.md)，限定 QA（開發收據見dev）。
+
+其他原大盤／強弱 consumer 融合、完整 feature/method dictionary、正式合格母體／排程部署、長期 storage/growth 及其他 lifecycle crash 驗收仍是第一版工程。Backtest 18.62%／20% 未達保留。正式母體權威、official availability／歷史 membership／PIT，以及舊 Top/Bottom 口徑與 numeric score 暴露屬來源／方法版本決策。Native 鍵鼠／縮放／跨頁、完整 App startup 與 3–5 位真人驗收另待桌面時段；不把工程缺件稱為自然成熟。
+
+
+## 個人 notes 模式（2026-10-06）
+
+notes 的 root／mode 選擇獨立 watchlist activation；personal writer與全部 UI notes reader 共用單一來源，legacy_read_only 不寫來源。缺 personal 檔案不混讀舊 notes；未設定仍保留相容 writer。位置已選 FA_Data/personal；精確 root guard 已整合，必須明示設定；migration／activation 未批准。參數、操作限制及排錯見 [完整 Manual](../07_guides/APPLICATION_MANUAL.md)。
+
+
+## 查看策略的規則來源
+
+回測策略設定按「查看版本化規則說明」，可核對此次版本與參數。來源未提供的交易條件會顯示未知，卡片尚未連結執行結果，不能當獲利或可交易證明；來源核對區可展開。操作詳見[完整Manual](../07_guides/APPLICATION_MANUAL.md)。
+
+
+保存研究結果可在研究Registry選單筆按「查看單筆結果與規則」，核對保存版本、期間及費率；身份吻合不代表正式資格。若缺來源或成本則不可評估，不自動改保存結果；操作與排錯見完整Manual。
+
+### 2026-10-06 UX20 單批 MA 樣本限定整合
+
+既有隔離 MA CLI 明示保存完整 matched/notmatched/unknown/excluded 單批capture＋receipt，再按原pin唯讀核對readiness；既有MA頁只呈現當期完整控制組投影並明示尚未保存。included≤16、超限拒絕；未知availability/calendar/outcomes不補PIT或訓練資格。Stage5／UX20 partial，多批parent／排程與Outcome接線仍是工程待辦。QA：`docs/06_qa/UX20_SAMPLE_CAPTURE_INTEGRATION_20261006.md`；操作以Manual同日章節為準。個人儲存／Journal程式已整合，只有正式migration／activation未做。
+
+
+### 2026-10-06 UX20 多批母體有限整合
+
+具名parent manifest已沿既有query-only source／producer／capture／readiness完成多批保存、新程序讀回、取消／失敗／安全重試；每批included≤16，完整母體最多16批，缺批與途中來源／方法改變不能complete。producer發布狀態與sample捕捉狀態分開，uncaptured另列。UI未改；Stage5／UX20仍partial，固定時鐘／排程留存、Outcome H5/10/20與母體UI瀏覽仍待工程；官方available-at／日曆及自然成熟另待證據。操作依APPLICATION_MANUAL最新多批章；收據：docs/06_qa/UX20_PARENT_CAPTURE_INTEGRATION_20261006.md。
+
+
+### 2026-10-06 UX20 保存母體收據瀏覽
+
+每日研究條件新增明示選取parent receipt的背景唯讀視窗，沿原writer/readiness核對；首屏列母體／資料日／方法、完整／uncaptured與每批producer/capture結果，技術身份折疊。重複點擊／取消／返回／stale回應不重跑producer或套舊資料；readiness拒絕時保留已驗envelope的發布記錄，母體資格未確認。15 offscreen測試、Workbench85、validator25/4skip、mypy806+final targeted2通過。Stage5／UX20保持partial；固定觀測日policy、漏日／修訂接受與owner容量部署仍待工程，UX21獨立lane未接受。QA：docs/06_qa/UX20_PARENT_RECEIPT_UI_20261006.md；操作依Manual最新章。
+
+
+### 2026-10-06 UX20 固定觀測日接受限定完成
+
+既有parent receipt→原readiness→child exact資料日→固定cutoff/窗口/expected dates接受policy→共用atomic writer→新程序唯讀日報已接線；隔離CLI預設preview，--accept明示保存。缺目標資料日不能借latest或前日補完整，同日不同revision保舊、相同policy/parent冪等、failure/partial安全重試。23不同案例、targeted mypy2/compile3/quant/diffcheck通過；UI未改不重跑前批gates。Stage5／UX20仍partial；正式daily owner/Task/cadence監控／容量留存部署與官方來源治理仍待工程/決策，UX21三檔獨占未接受。操作依Manual最新章與Supplements，QA：docs/06_qa/UX20_OBSERVATION_DAY_ACCEPTANCE_20261006.md。
+
+
+### 2026-10-06 UX20 隔離daily owner可執行整合
+
+新增明示runtime/target日期的isolated daily runner，直接沿既有producer/parent/observation接受串全鏈，preflight為預設；capacity/quota先檢，有限retry/合作cancel/漏日與revision監控，exact receipt重用。source/日期/配置一致才完成，producer已發布與capture拒絕分列保留；未配置不選生產值。17不同案例＋最後source/config兩例重核、targeted mypy2/compile3/quant通過；UI未改。Stage5/UX20仍partial，正式date-owner/calendar/Task/ACL/留存治理待工程/決策；UX21三檔未整合。QA：docs/06_qa/UX20_DAILY_OWNER_ISOLATED_20261006.md；操作依Manual。

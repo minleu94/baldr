@@ -13,6 +13,7 @@ import json
 import traceback
 import logging
 import argparse
+import tempfile
 from typing import List, Dict, Any, Optional
 
 # 添加專案根目錄到路徑
@@ -21,8 +22,16 @@ sys.path.insert(0, str(project_root))
 
 from data_module.config import TWStockConfig
 from app_module.screening_service import ScreeningService
+from app_module.decision_service_composition import build_industry_mapper
 from app_module.regime_service import RegimeService
 from app_module.recommendation_service import RecommendationService
+from app_module.recommendation.input_preparation import (
+    build_default_recommendation_input_preparer,
+)
+from scripts.recommendation_execution_qa_support import (
+    execute_and_readback,
+    require_isolated_test_environment,
+)
 from app_module.update_service import UpdateService
 from app_module.backtest_service import BacktestService
 from app_module.walkforward_service import WalkForwardService
@@ -32,19 +41,19 @@ from app_module.backtest_repository import BacktestRunRepository
 from app_module.strategy_version_service import StrategyVersionService
 from app_module.preset_service import PresetService
 from app_module.broker_branch_update_service import BrokerBranchUpdateService
-from decision_module.industry_mapper import IndustryMapper
 
 # 確保策略已註冊
-import app_module.strategies
+import decision_module.strategies
 
 # 設置日誌
-qa_root = (project_root / 'output' / 'master_goal' / 'TASK-LOOP-04').resolve()
+qa_root = Path(tempfile.gettempdir()).resolve()
 for root_name in ('DATA_ROOT', 'OUTPUT_ROOT'):
     root_value = os.environ.get(root_name)
     if not root_value or not Path(root_value).resolve().is_relative_to(qa_root):
-        raise SystemExit(f'{root_name} 必須明確指向 TASK-LOOP-04 隔離目錄')
+        raise SystemExit(f'{root_name} 必須明確指向 TEMP 隔離目錄')
 if os.environ.get('PROFILE') != 'test':
     raise SystemExit('QA 必須使用 PROFILE=test')
+require_isolated_test_environment()
 log_dir = Path(os.environ['OUTPUT_ROOT']) / '_test' / 'qa' / 'phase3_3b_validation'
 log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -98,10 +107,15 @@ class Phase33BValidator:
         self.results: List[ValidationResult] = []
         
         # 初始化服務
-        shared_industry_mapper = IndustryMapper(self.config)
+        shared_industry_mapper = build_industry_mapper(self.config)
         self.screening_service = ScreeningService(self.config, industry_mapper=shared_industry_mapper)
         self.regime_service = RegimeService(self.config)
-        self.recommendation_service = RecommendationService(self.config, industry_mapper=shared_industry_mapper)
+        self.recommendation_service = RecommendationService(
+            self.config,
+            industry_mapper=shared_industry_mapper,
+            input_preparer=build_default_recommendation_input_preparer(self.config),
+            regime_service=self.regime_service,
+        )
         self.update_service = UpdateService(self.config)
         self.backtest_service = BacktestService(self.config)
         self.walkforward_service = WalkForwardService(self.config)
@@ -369,11 +383,15 @@ class Phase33BValidator:
                 'filters': {'price_change_min': 0.0, 'volume_ratio_min': 1.0}
             }
             
-            recommendations = self.recommendation_service.run_recommendation(
-                config=default_config,
+            execution, readback, receipt = execute_and_readback(
+                self.recommendation_service,
+                default_config,
                 max_stocks=50,
                 top_n=10
             )
+            saved_execution = readback.execution
+            assert saved_execution is not None and saved_execution.decision is not None
+            recommendations = saved_execution.decision.items
             
             if not recommendations or len(recommendations) == 0:
                 result.passed = False
@@ -384,13 +402,13 @@ class Phase33BValidator:
             # 檢查推薦結果
             rec = recommendations[0]
             
-            # 檢查推薦理由（RecommendationDTO 使用 recommendation_reasons 欄位）
-            if not rec.recommendation_reasons or not rec.recommendation_reasons.strip():
+            # 檢查 query readback 中的 typed reason_text
+            if not rec.reason_text or not rec.reason_text.strip():
                 result.warning = True
-                result.warning_message = "推薦結果缺少推薦理由（recommendation_reasons 為空）"
+                result.warning_message = "推薦結果缺少理由文字（reason_text 為空）"
             else:
                 # 檢查理由是否包含技術指標、圖形訊號
-                why_text = rec.recommendation_reasons.lower()
+                why_text = rec.reason_text.lower()
                 has_technical = any(keyword in why_text for keyword in ['指標', 'rsi', 'macd', '均線', 'adx', '技術'])
                 has_pattern = any(keyword in why_text for keyword in ['圖形', 'w底', '頭肩', '雙底', '突破', '模式'])
                 
@@ -403,9 +421,11 @@ class Phase33BValidator:
             
             result.passed = True
             result.details['stock_code'] = rec.stock_code
-            result.details['total_score'] = rec.total_score
-            result.details['has_recommendation_reasons'] = bool(rec.recommendation_reasons and rec.recommendation_reasons.strip())
-            result.details['recommendation_reasons_preview'] = rec.recommendation_reasons[:100] if rec.recommendation_reasons else None
+            result.details['total_score'] = rec.rule_score
+            result.details['has_recommendation_reasons'] = bool(rec.reason_text and rec.reason_text.strip())
+            result.details['recommendation_reasons_preview'] = rec.reason_text[:100] if rec.reason_text else None
+            result.details['execution_result_id'] = receipt.result_id
+            result.details['verified_payload_hash'] = readback.payload_hash
             
         except Exception as e:
             result.passed = False
@@ -433,11 +453,15 @@ class Phase33BValidator:
                 'filters': {'price_change_min': 0.0, 'volume_ratio_min': 1.0}
             }
             
-            recommendations = self.recommendation_service.run_recommendation(
-                config=default_config,
+            _execution, readback, _receipt = execute_and_readback(
+                self.recommendation_service,
+                default_config,
                 max_stocks=50,
                 top_n=10
             )
+            saved_execution = readback.execution
+            assert saved_execution is not None and saved_execution.decision is not None
+            recommendations = saved_execution.decision.items
             
             if not recommendations or len(recommendations) == 0:
                 result.passed = False
@@ -524,11 +548,15 @@ class Phase33BValidator:
             }
             
             # 執行推薦以獲取配置
-            recommendations = self.recommendation_service.run_recommendation(
-                config=default_config,
+            _execution, readback, receipt = execute_and_readback(
+                self.recommendation_service,
+                default_config,
                 max_stocks=50,
                 top_n=10
             )
+            saved_execution = readback.execution
+            assert saved_execution is not None and saved_execution.decision is not None
+            recommendations = saved_execution.decision.items
             
             if not recommendations:
                 result.passed = False
@@ -577,6 +605,8 @@ class Phase33BValidator:
             result.details['strategy_id'] = backtest_config['strategy_id']
             result.details['has_strategy_params'] = bool(backtest_config['strategy_params'])
             result.details['has_risk_control'] = 'risk_control' in backtest_config
+            result.details['recommendation_result_id'] = receipt.result_id
+            result.details['recommendation_payload_hash'] = readback.payload_hash
             
         except Exception as e:
             result.passed = False
@@ -595,8 +625,8 @@ class Phase33BValidator:
             
             # 執行一個簡單的回測
             # 需要創建 StrategySpec
-            from app_module.strategy_spec import StrategySpec
-            from app_module.strategy_registry import StrategyRegistry
+            from decision_module.strategies.contracts import StrategySpec
+            from decision_module.strategies.registry import StrategyRegistry
             
             strategy_spec = StrategySpec(
                 strategy_id='baseline_score_threshold',
@@ -678,7 +708,7 @@ class Phase33BValidator:
             logger.info("執行測試 3.3：視覺驗證（K 線圖標記買賣點）")
             
             # 執行回測以獲取交易記錄
-            from app_module.strategy_spec import StrategySpec
+            from decision_module.strategies.contracts import StrategySpec
             
             strategy_spec = StrategySpec(
                 strategy_id='baseline_score_threshold',
@@ -753,7 +783,7 @@ class Phase33BValidator:
             logger.info("執行測試 4.1：Promote 機制（回測結果 → 策略版本）")
             
             # 執行回測
-            from app_module.strategy_spec import StrategySpec
+            from decision_module.strategies.contracts import StrategySpec
             
             strategy_spec = StrategySpec(
                 strategy_id='baseline_score_threshold',

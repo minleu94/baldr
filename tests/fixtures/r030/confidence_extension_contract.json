@@ -1,0 +1,26 @@
+{
+  "fixture_only": true,
+  "wire_record_id": "decision.recommendation-item.v1",
+  "schema_revision": 3,
+  "supported_schema_revisions": [1, 2, 3],
+  "fields": [
+    {
+      "name": "confidence_score_bp",
+      "annotation": "int | null",
+      "default": null
+    },
+    {
+      "name": "confidence_method_version",
+      "annotation": "str | null",
+      "default": null
+    },
+    {
+      "name": "confidence_status",
+      "annotation": "str",
+      "default": "not_computed"
+    }
+  ],
+  "valid_scores": [null, 0, 10000],
+  "invalid_scores": [-1, 10001],
+  "production_contract_changed": false
+}

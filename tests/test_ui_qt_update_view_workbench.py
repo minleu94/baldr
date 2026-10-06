@@ -4,6 +4,8 @@ import json
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QDate, Qt
@@ -148,6 +150,7 @@ class FakeUpdateService:
         snapshot_file=None,
         availability_file=None,
         source_version=None,
+        cancel_callback=None,
     ):
         self.calls.append((
             "dry_run_mops_monthly_revenue_backfill",
@@ -169,6 +172,7 @@ class FakeUpdateService:
         snapshot_file=None,
         availability_file=None,
         source_version=None,
+        cancel_callback=None,
     ):
         self.calls.append((
             "apply_mops_monthly_revenue_backfill",
@@ -970,7 +974,16 @@ def test_update_view_reflows_for_narrow_viewport_without_changing_navigation():
 
     assert view.workbench_layout.direction().name == "TopToBottom"
     assert view.nav_list.width() >= view.content_stack.width() - 2
-    assert view.nav_list.maximumHeight() == 190
+    assert view.nav_list.maximumHeight() >= view.nav_list.minimumHeight()
+    view.nav_list.verticalScrollBar().setValue(0)
+    app().processEvents()
+    assert view.nav_list.count() == 12
+    assert view.nav_list.visualItemRect(view.nav_list.item(0)).top() >= 0
+    assert (
+        view.nav_list.visualItemRect(view.nav_list.item(4)).bottom()
+        < view.nav_list.viewport().height()
+    )
+    assert view.nav_list.verticalScrollBar().maximum() > 0
     assert view._actions_layout.direction().name == "TopToBottom"
     assert view._cards_layout.getItemPosition(0)[:2] == (0, 0)
     assert view._cards_layout.getItemPosition(1)[:2] == (0, 1)
@@ -1779,7 +1792,7 @@ def test_update_view_with_config_instantiates_inspector_widget(tmp_path):
     assert isinstance(last_widget, SqliteInspectorWidget)
 
 
-def test_background_tpex_refresh_does_not_force_technical_all(monkeypatch):
+def test_background_tpex_refresh_does_not_force_technical_all(monkeypatch, tmp_path):
     from ui_qt.views import update_view
 
     captured = {}
@@ -1797,6 +1810,7 @@ def test_background_tpex_refresh_does_not_force_technical_all(monkeypatch):
     monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.Ok)
 
     view = make_view()
+    view.tpex_refresh_state_file = tmp_path / "tpex_full_refresh_status.json"
     view._execute_background_tpex_refresh()
 
     assert "--sync-sqlite" in captured["cmd"]
@@ -1827,6 +1841,90 @@ def test_background_tpex_status_is_visible_and_write_failure_is_fail_closed(monk
 
     assert started["value"] is False
     assert view.tpex_background_btn.isEnabled()
+
+
+def test_tpex_cancel_marker_does_not_overwrite_child_terminal_receipt(tmp_path):
+    """UI marker request must not race with the child-owned status writer."""
+
+    view = make_view()
+    view.tpex_refresh_state_file = tmp_path / "state.json"
+    view._tpex_cancel_file = tmp_path / "state.json.cancel"
+    view._write_tpex_background_status({"status": "running", "message": "fetching"})
+
+    class TerminalAfterMarkerProcess:
+        pid = 54321
+
+        def __init__(self):
+            self.poll_count = 0
+
+        def poll(self):
+            self.poll_count += 1
+            return None if self.poll_count == 1 else 0
+
+    class InterleavingCancelPath:
+        def __init__(self, path: Path, state_path: Path):
+            self.path = path
+            self.state_path = state_path
+            self.parent = path.parent
+
+        def exists(self):
+            return self.path.exists()
+
+        def write_text(self, *args, **kwargs):
+            result = self.path.write_text(*args, **kwargs)
+            self.state_path.write_text(
+                '{"status": "done", "cancel_requested": true}',
+                encoding="utf-8",
+            )
+            writes.append("marker")
+            return result
+
+    process = TerminalAfterMarkerProcess()
+    view._tpex_background_process = process
+    writes = []
+    # The child may publish its terminal receipt immediately after the marker
+    # write.  Simulate that interleaving before the next observer poll.
+    view._tpex_cancel_file = InterleavingCancelPath(
+        tmp_path / "state.json.cancel",
+        view.tpex_refresh_state_file,
+    )
+    assert view._request_tpex_background_cancel() is True
+    assert json.loads(view.tpex_refresh_state_file.read_text(encoding="utf-8"))["status"] == "done"
+    assert writes == ["marker"]
+
+
+@pytest.mark.parametrize(
+    "terminal_state",
+    [
+        {"status": "done"},
+        {"status": "cancelled", "cancel_requested": True, "cancel_completed": True},
+    ],
+)
+def test_tpex_nonzero_exit_overrides_stale_terminal_receipt(tmp_path, terminal_state):
+    view = make_view()
+    view.tpex_refresh_state_file = tmp_path / "state.json"
+    view._tpex_cancel_file = tmp_path / "state.json.cancel"
+    view.tpex_refresh_state_file.write_text(
+        json.dumps(terminal_state),
+        encoding="utf-8",
+    )
+
+    class FailedProcess:
+        pid = 54322
+
+        def poll(self):
+            return 7
+
+    view._tpex_background_process = FailedProcess()
+    assert view._observe_tpex_background_process() is False
+
+    state = json.loads(view.tpex_refresh_state_file.read_text(encoding="utf-8"))
+    assert state["status"] == "failed"
+    assert state["cancel_completed"] is False
+    assert state["process_exit_code"] == 7
+    assert "退出碼=7" in state["message"]
+    assert view._tpex_process_exit_code == 7
+    assert view._tpex_background_process is None
 
 
 def test_monthly_revenue_tab_runs_mops_dry_run(monkeypatch):
@@ -2269,12 +2367,36 @@ def test_sqlite_inspector_header_sort_requests_server_order(monkeypatch):
 
 def test_pandas_table_model_handles_duplicate_display_columns_without_series_error():
     from ui_qt.models.pandas_table_model import PandasTableModel
+    from PySide6.QtCore import Qt
 
     df = pd.DataFrame([[1, 2]], columns=["漲跌", "漲跌"])
     model = PandasTableModel(df)
 
     assert model.data(model.index(0, 0)) == "1"
     assert model.data(model.index(0, 1)) == "2"
+    assert model.data(model.index(0, 0), Qt.ToolTipRole) == "1"
+    assert model.data(model.index(0, 1), Qt.ToolTipRole) == "2"
+    assert model.headerData(0, Qt.Horizontal, Qt.ToolTipRole) == "漲跌"
+    assert model.headerData(1, Qt.Horizontal, Qt.ToolTipRole) == "漲跌"
+
+
+def test_pandas_table_model_tooltips_preserve_long_strings_and_list_values():
+    from PySide6.QtCore import Qt
+    from ui_qt.models.pandas_table_model import PandasTableModel
+
+    long_text = "來源狀態與資料限制：" + "完整內容需要可以由提示讀取。" * 8
+    df = pd.DataFrame(
+        {
+            "完整來源與治理說明": [long_text],
+            "標籤": [["正式觀測", "唯讀", "人工覆核"]],
+        }
+    )
+    model = PandasTableModel(df)
+
+    assert model.data(model.index(0, 0), Qt.DisplayRole) == long_text
+    assert model.data(model.index(0, 0), Qt.ToolTipRole) == long_text
+    assert model.data(model.index(0, 1), Qt.ToolTipRole) == "正式觀測, 唯讀, 人工覆核"
+    assert model.headerData(0, Qt.Horizontal, Qt.ToolTipRole) == "完整來源與治理說明"
 
 
 def test_stale_worker_result_is_ignored():

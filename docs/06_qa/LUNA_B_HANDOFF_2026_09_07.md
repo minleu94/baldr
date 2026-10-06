@@ -1,6 +1,6 @@
 # LUNA B：架構、冗餘與測試治理 handoff
 
-> 整合補註（2026-09-08）：以下保留本線交付當時的數字與 Git 狀態；整合修補、全域測試及 main／dev 收尾以 [三線整合驗收](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md) 為準。
+> 整合補註（2026-09-08）：以下保留本線交付當時的數字與 Git 狀態；整合修補、全域測試及 main／dev 收尾以 三線整合驗收（開發收據見dev） 為準。
 
 > 文件標籤：2026-09-07；最後驗證：2026-09-08。這份 handoff 是 B 線交付摘要，不是新的 Snapshot、Roadmap 或產品狀態來源。
 
@@ -36,7 +36,7 @@ B 線已完成可獨立驗收的架構／測試治理包：
 | other | 27 | 27 | 其餘 visible path |
 | dirty status lines | 0（baseline review） | 67 | final `git status --short --untracked-files=all`；含 A／C 與既有並行變更 |
 
-Final repo map：[`output/luna_B/repo_map.json`](../../output/luna_B/repo_map.json)。tracked、untracked、ignored 的完整／sidecar 清單在同一個 `output/luna_B/` 目錄；這些是機器證據，不是永久文件清冊。
+Final repo map：`output/luna_B/repo_map.json`（開發收據見dev）。tracked、untracked、ignored 的完整／sidecar 清單在同一個 `output/luna_B/` 目錄；這些是機器證據，不是永久文件清冊。
 
 ### 2.2 測試清冊與收集數量
 
@@ -105,7 +105,7 @@ B 的 synthetic fixture 只在明確測試 scope 中 patch `filesystem_usage`，
 
 已驗證環境：Windows x64、Python `3.11.9`、`.venv\Scripts\python.exe`；pandas `2.3.3`、numpy `2.3.5`、scikit-learn `1.8.0`、TA-Lib `0.6.8`、fallback `ta 0.5.25`、PySide6 `6.10.1`、pyarrow `22.0.0`、pytest `9.0.2`、mypy `2.1.0`。本 venv 缺 `pytest-qt`，所以 Qt plugin 不是 B 的已驗證安裝結果；C 的 UI handoff 有其自身 offscreen／healthcheck evidence。
 
-重建計畫與平台邊界詳見 [`LUNA_B_ENVIRONMENT_2026_09_07.md`](../07_guides/LUNA_B_ENVIRONMENT_2026_09_07.md)。B 沒有下載套件、沒有共用 venv install／upgrade，也沒有把 private `fubon_neo` wheel 或 Codex tooling 放入正式 runtime manifest。
+重建計畫與平台邊界詳見 [`LUNA_B_ENVIRONMENT_2026_09_07.md`](../09_archive/LUNA_B_ENVIRONMENT_2026_09_07.md)。B 沒有下載套件、沒有共用 venv install／upgrade，也沒有把 private `fubon_neo` wheel 或 Codex tooling 放入正式 runtime manifest。
 
 ## 7. QA 命令、exit code 與結果
 
@@ -126,7 +126,7 @@ B 的 synthetic fixture 只在明確測試 scope 中 patch `filesystem_usage`，
 | B mypy | `python -m mypy --explicit-package-bases --cache-dir output/luna_B/mypy_all_cache ...`（B 變更／support／audit Python 清單） | exit 0；28 source files，Success: no issues found |
 | full pytest，隔離 DATA／OUTPUT／TEMP | `DATA_ROOT=output/luna_B/runtime_data OUTPUT_ROOT=output/luna_B/runtime_output TEMP=output/luna_B/temp TMP=output/luna_B/temp python -m pytest -q -o addopts=` | exit 1；4,561 passed、65 failed、25 errors、3 skipped、29 warnings，487.58 秒 |
 
-完整 suite 的 log 在 [`output/luna_B/pytest_full.log`](../../output/luna_B/pytest_full.log)。該 suite 是在同一組 C UI dirty changes 已存在、但 C commit 尚未成為 HEAD 的 shared working tree 中執行；C 的 3 個新增測項已另外以 collection 驗證，未把它們回算成 B focused 結果。失敗不是被 B focused regression 證明：同一 B OOC／ML／capacity 集合在未覆寫 `TEMP` 的正常 pytest 暫存策略下已通過；full suite 的代表性錯誤包含 Windows `os.replace` file lock、其他 A-owned mature／replay 路徑仍遵守 200 GiB reserve 而被隔離 C 槽擋下，以及正式資料／外部環境 fixture 假設。沒有用 xfail、刪 assertion 或放寬 production guard 來換綠燈。完整 suite 仍應標為 fail-closed，不能宣稱整 repo passed。
+完整 suite 的 log 在 `output/luna_B/pytest_full.log`（開發收據見dev）。該 suite 是在同一組 C UI dirty changes 已存在、但 C commit 尚未成為 HEAD 的 shared working tree 中執行；C 的 3 個新增測項已另外以 collection 驗證，未把它們回算成 B focused 結果。失敗不是被 B focused regression 證明：同一 B OOC／ML／capacity 集合在未覆寫 `TEMP` 的正常 pytest 暫存策略下已通過；full suite 的代表性錯誤包含 Windows `os.replace` file lock、其他 A-owned mature／replay 路徑仍遵守 200 GiB reserve 而被隔離 C 槽擋下，以及正式資料／外部環境 fixture 假設。沒有用 xfail、刪 assertion 或放寬 production guard 來換綠燈。完整 suite 仍應標為 fail-closed，不能宣稱整 repo passed。
 
 Inventory audit 的 JSON 目前有 27 筆既有 nonportable absolute Markdown link warning（主要在 `PROJECT_NAVIGATION.md` 與歷史 `DOCUMENTATION_INDEX.md`）；它們不是 missing link blocker。B 將其保留為 residual debt，避免在共享導航文件中做與本線無關的大範圍重寫。
 
@@ -154,7 +154,7 @@ Inventory audit 的 JSON 目前有 27 筆既有 nonportable absolute Markdown li
 
 ## 9. A／C 整合狀態與可執行步驟
 
-已閱讀：[`LUNA_A_HANDOFF_2026_09_07.md`](LUNA_A_HANDOFF_2026_09_07.md) 與 [`LUNA_C_HANDOFF_2026_09_07.md`](LUNA_C_HANDOFF_2026_09_07.md)。
+已閱讀：`LUNA_A_HANDOFF_2026_09_07.md`（開發收據見dev） 與 `LUNA_C_HANDOFF_2026_09_07.md`（開發收據見dev）。
 
 - A：`incomplete / fail-closed`；沒有正式資料寫入、fit、promotion 或 broker 啟用。仍缺 formal causal non-cash ledger、同日 Rule Champion history、PIT sector membership 與符合 reserve 的新 OOC fit。
 - C：UI／UX、Workbench source projection、Manual、offscreen 兩 viewport 與 mandatory Update QA 已由 C handoff 報告；其程式與 handoff 已在目前 HEAD 的 C commit 中。C 也明示 native Windows DPI／字型、真實 populated result 與 live source 不在其隔離驗收範圍。

@@ -16,28 +16,7 @@
 
 ## 📚 必讀文件清單（每次任務必須先讀）
 
-**任何任務開始前，必須依序閱讀（見 docs/agents/README.md 的「強制流程」）：**
-
-**全 Agent 必讀（固定順序）：**
-1. `docs/agents/README.md` - Agent 總覽
-2. `docs/agents/shared_context.md` - 共用上下文（不可違背前提）
-3. `docs/00_core/PROJECT_SNAPSHOT.md` - 專案快照（當前狀態）
-4. `docs/agents/documentation_agent.md` - 本文件
-
-**Documentation Agent 補充必讀：**
-5. `docs/00_core/DOC_COVERAGE_MAP.md` - 文檔覆蓋矩陣（判斷 coverage 的規則文件）⭐ **必須讀取**
-6. `docs/00_core/DOCUMENTATION_INDEX.md` - 文檔索引（了解文檔結構）
-7. `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub
-8. `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` - 重構完成後產品方向
-9. `docs/00_core/ROADMAP_6M_ENGINEERING.md` - 6 個月工程路線
-10. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期成熟度階梯（涉及 V2.1+ 版號或 V3/V4 規劃時必讀）
-11. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交矩陣
-12. `docs/01_architecture/system_architecture.md` - 現有系統架構
-13. `docs/01_architecture/target_system_architecture.md` - 目標系統架構（涉及未來架構時）
-14. `docs/07_guides/APPLICATION_MANUAL.md` - 完整操作手冊（涉及 UI / 使用流程時必讀）
-15. 本次變更涉及的檔案（由使用者提供，或由 Agent 提出需求）
-
-**未完成上述閱讀，不得執行任何任務。**
+依 [Agent 總覽的強制流程](README.md) 執行固定順序及本角色的補充必讀，再讀本文件與任務涉及的文件。未完成閱讀不得執行任務；本頁不另維護第二份清單，以免漏掉 Git 排除或新加入的權威入口。
 
 ### 重要入口文件（必須特別關注）
 
@@ -120,23 +99,7 @@
 ```
 你是本專案的文檔覆蓋完整性 Agent。
 
-**請先閱讀（見 docs/agents/README.md 的「強制流程」）：**
-
-**全 Agent 必讀：**
-1. docs/agents/README.md
-2. docs/agents/shared_context.md
-3. docs/00_core/PROJECT_SNAPSHOT.md
-4. docs/agents/documentation_agent.md
-
-**Documentation Agent 補充必讀：**
-5. docs/00_core/DOC_COVERAGE_MAP.md ⭐ **必須讀取，用於判斷 coverage**
-6. docs/00_core/DOCUMENTATION_INDEX.md
-7. docs/00_core/DEVELOPMENT_ROADMAP.md（Roadmap Hub）
-8. docs/00_core/ROADMAP_6M_ENGINEERING.md（6 個月工程路線）
-9. docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
-10. docs/00_core/LEGACY_ROADMAP_CARRYOVER.md（舊 Roadmap 移交矩陣）
-11. docs/01_architecture/system_architecture.md（系統架構）
-12. docs/07_guides/APPLICATION_MANUAL.md（涉及 UI / 使用流程時必讀）
+先依 docs/agents/README.md 的「強制流程」完成固定順序及 Documentation Agent 補充必讀；必須讀 DOC_COVERAGE_MAP 判斷 coverage。再讀本文件與本次涉及文件。未完成不得執行，不使用本 Prompt 的舊副本清單替代現行規則。
 
 **你的角色定位：**
 - 你不是功能設計者，也不是工程師

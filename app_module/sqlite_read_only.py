@@ -9,11 +9,90 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Any, Iterator, List
+from typing import Any, Callable, Iterator, List
 from urllib.parse import quote
 
 import pandas as pd
+
+
+class ReadOperationCancelled(RuntimeError):
+    """唯讀服務操作收到合作式取消要求。"""
+
+
+_READ_CANCEL_CALLBACK: ContextVar[Callable[[], bool] | None] = ContextVar(
+    "read_only_sqlite_cancel_callback", default=None
+)
+
+
+@contextmanager
+def cooperative_read_cancellation(
+    cancel_callback: Callable[[], bool] | None,
+) -> Iterator[None]:
+    """將取消回呼限制在目前唯讀服務呼叫與執行緒範圍內。
+
+    只有透過下方唯讀 helper 建立的連線會中斷 SQLite 查詢；寫入連線與無關連線不受影響。
+    """
+
+    effective_callback = (
+        cancel_callback if cancel_callback is not None else _READ_CANCEL_CALLBACK.get()
+    )
+    token = _READ_CANCEL_CALLBACK.set(effective_callback)
+    try:
+        check_read_cancelled()
+        yield
+        check_read_cancelled()
+    finally:
+        _READ_CANCEL_CALLBACK.reset(token)
+
+
+def check_read_cancelled() -> None:
+    callback = _READ_CANCEL_CALLBACK.get()
+    if callback is not None and callback():
+        raise ReadOperationCancelled("read-only operation cancelled")
+
+
+def configure_read_only_connection(conn: sqlite3.Connection) -> sqlite3.Connection:
+    """強制 query-only 模式，並安裝此範圍的取消處理器。"""
+
+    check_read_cancelled()
+    conn.execute("PRAGMA query_only=ON")
+    callback = _READ_CANCEL_CALLBACK.get()
+    if callback is not None:
+        def progress_handler() -> int:
+            try:
+                return int(bool(callback()))
+            except Exception:
+                # SQLite C callback 不可直接拋出 Python 例外；先中斷查詢，
+                # 外層錯誤處理再檢查回呼並轉成一般 Python 取消例外。
+                return 1
+
+        conn.set_progress_handler(progress_handler, 1000)
+    return conn
+
+
+def connect_read_only_sqlite(
+    db_path: str | Path,
+    *,
+    immutable: bool = False,
+    timeout: float = 5.0,
+    require_existing: bool = True,
+) -> sqlite3.Connection:
+    """以唯讀模式開啟既有 SQLite 檔案，並套用目前範圍的取消設定。"""
+
+    path = Path(db_path)
+    if require_existing and not path.is_file():
+        raise FileNotFoundError(f"找不到 SQLite 資料庫：{path}")
+    suffix = "mode=ro&immutable=1" if immutable else "mode=ro"
+    uri = f"{path.resolve().as_uri()}?{suffix}"
+    conn = sqlite3.connect(uri, uri=True, timeout=timeout)
+    try:
+        configure_read_only_connection(conn)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
 
 
 class ReadOnlySQLiteManager:
@@ -35,9 +114,14 @@ class ReadOnlySQLiteManager:
         conn = sqlite3.connect(self._uri(immutable=immutable), uri=True)
         conn.row_factory = sqlite3.Row
         try:
-            conn.execute("PRAGMA query_only=ON")
+            configure_read_only_connection(conn)
             yield conn
         finally:
+            # 查詢結束後清除閒置連線上的取消回呼。
+            try:
+                conn.set_progress_handler(None, 0)
+            except sqlite3.Error:
+                pass
             conn.close()
 
     @staticmethod

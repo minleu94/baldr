@@ -31,6 +31,8 @@ statsmodels==0.14.6
 ta==0.5.25
 TA-Lib==0.6.8
 tqdm==4.67.1
+# 2026-10-04：官方來源擷取直接使用 Retry；沿用已驗證環境，未升級套件。
+urllib3==2.6.2
 webdriver-manager==4.0.2
 yfinance==1.4.1
 pywin32==311; sys_platform == "win32"

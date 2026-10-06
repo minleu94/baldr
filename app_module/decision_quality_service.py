@@ -28,6 +28,9 @@ from app_module.decision_quality_repository import DecisionQualityRepository
 from app_module.evidence_event_dtos import EvidenceOutcomeStatus
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.journal_service import JournalService
+from app_module.personal_journal_paths import resolve_journal_storage_selection
+from app_module.personal_store_selection import resolve_personal_store_selection, assert_personal_store_path
+from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreMode, PersonalStoreRoute, StoreIdentity
 from app_module.live_research_gap_repository import LiveResearchGapRepository
 from app_module.portfolio_service import PortfolioService
 from app_module.research_run_dtos import canonical_json
@@ -51,15 +54,69 @@ SOURCE_TRACE_TYPES = {
 class DecisionQualityService:
     """Read-only process review service over saved portfolio and evidence records."""
 
-    def __init__(self, config: TWStockConfig, *, db_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        config: TWStockConfig,
+        *,
+        db_path: str | Path | None = None,
+        read_only: bool = False,
+        review_route: PersonalStoreRoute | None = None,
+        source_db_path: str | Path | None = None,
+        portfolio_service: PortfolioService | None = None,
+    ) -> None:
         self.config = config
-        self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
-        self.repository = DecisionQualityRepository(config, db_path=self.db_path)
-        self.evidence_repository = EvidenceEventRepository(config, db_path=self.db_path)
-        self.live_gap_repository = LiveResearchGapRepository(config, db_path=self.db_path)
-        self.signal_decay_repository = SignalDecayRepository(config, db_path=self.db_path)
-        self.portfolio_service = PortfolioService(config)
-        self.journal_service = JournalService(config)
+        selection = resolve_personal_store_selection(config)
+        if review_route is None and selection.mode is not PersonalStoreMode.LEGACY_COMPAT:
+            review_route = selection.route(PersonalStoreDomain.REVIEW, StoreIdentity("decision-quality-reviews"))
+        if review_route is not None and review_route.domain is not PersonalStoreDomain.REVIEW:
+            raise ValueError("decision_quality_review_route_required")
+        if review_route is not None and db_path is not None and Path(db_path) != review_route.read_source:
+            raise ValueError("decision_quality_route_db_conflict")
+        self.review_route = review_route
+        self.read_only = bool(read_only or (review_route is not None and review_route.write_target is None))
+        self.db_path = (review_route.read_source if review_route is not None else
+                        Path(db_path) if db_path is not None else Path(config.db_file))
+        self.source_db_path = (Path(source_db_path) if source_db_path is not None else
+                               Path(config.db_file) if review_route is not None else self.db_path)
+        private = review_route is not None and review_route.mode is PersonalStoreMode.PERSONAL
+        if private:
+            if selection.paths is None:
+                raise ValueError("decision_quality_personal_paths_required")
+            assert_personal_store_path(selection.paths, self.db_path)
+            if self.source_db_path == self.db_path:
+                raise ValueError("decision_quality_source_writer_overlap")
+            if not self.read_only and portfolio_service is None:
+                raise ValueError("decision_quality_personal_portfolio_selection_required")
+            if not self.read_only:
+                trade_route = getattr(getattr(portfolio_service, "store", None), "route", None)
+                if (not isinstance(trade_route, PersonalStoreRoute)
+                        or trade_route.domain is not PersonalStoreDomain.TRADES
+                        or trade_route != selection.route(PersonalStoreDomain.TRADES, trade_route.identity)):
+                    raise ValueError("decision_quality_personal_portfolio_route_mismatch")
+        journal_selection = resolve_journal_storage_selection(config)
+        if private and not self.read_only and (
+            journal_selection.paths is None or journal_selection.legacy_read_only
+        ):
+            raise ValueError("decision_quality_personal_journal_selection_required")
+        if (private and not self.read_only and journal_selection.paths is not None
+                and selection.paths is not None
+                and journal_selection.paths.personal_paths.personal_root != selection.paths.personal_root):
+            raise ValueError("decision_quality_personal_journal_root_mismatch")
+        self.repository = DecisionQualityRepository(
+            config, db_path=self.db_path, read_only=self.read_only,
+            personal_paths=selection.paths if private else None,
+        )
+        source_read_only = bool(self.read_only or private)
+        self.evidence_repository = EvidenceEventRepository(
+            config, db_path=self.source_db_path, read_only=source_read_only
+        )
+        self.live_gap_repository = LiveResearchGapRepository(config, db_path=self.source_db_path, read_only=source_read_only)
+        self.signal_decay_repository = SignalDecayRepository(config, db_path=self.source_db_path, read_only=source_read_only)
+        self.portfolio_service = None if self.read_only else portfolio_service if portfolio_service is not None else PortfolioService(config)
+        self.journal_service = None if self.read_only else JournalService(
+            config, journal_paths=journal_selection.paths,
+            legacy_read_only=journal_selection.legacy_read_only,
+        )
 
     def build_review(
         self,
@@ -71,19 +128,27 @@ class DecisionQualityService:
         symbol: str | None = None,
         min_sample_size: int = 10,
     ) -> tuple[DecisionQualityReview, list[DecisionQualityItem]]:
+        if self.read_only or self.portfolio_service is None or self.journal_service is None:
+            raise RuntimeError("dashboard decision-quality service is read-only")
+        portfolio_service = self.portfolio_service
+        journal_service = self.journal_service
+        if self.review_route is not None and self.review_route.mode is PersonalStoreMode.PERSONAL:
+            trade_route = getattr(getattr(portfolio_service, "store", None), "route", None)
+            if not isinstance(trade_route, PersonalStoreRoute) or portfolio_id != trade_route.identity.key:
+                raise ValueError("decision_quality_portfolio_identity_mismatch")
         trades = [
             trade
-            for trade in self.portfolio_service.list_trades(portfolio_id)
+            for trade in portfolio_service.list_trades(portfolio_id)
             if self._in_period(trade.trade_date, start_date, end_date) and self._matches_symbol(trade.stock_code, symbol)
         ]
         positions = [
             position
-            for position in self.portfolio_service.list_positions(portfolio_id)
+            for position in portfolio_service.list_positions(portfolio_id)
             if self._matches_symbol(position.stock_code, symbol)
         ]
         journals = [
             entry
-            for entry in self.journal_service.list_journal_entries(portfolio_id=portfolio_id)
+            for entry in journal_service.list_journal_entries(portfolio_id=portfolio_id)
             if self._matches_symbol(entry.stock_code, symbol)
         ]
         events = [
@@ -160,6 +225,27 @@ class DecisionQualityService:
             "counts": dict(sorted(item_counts.items())),
             "warnings": sorted(set(warnings)),
         }
+        source_refs: dict[str, Any] = {}
+        if self.review_route is not None:
+            source_refs = {
+                "evidence_source_refs": sorted(
+                    [{"source_db": str(self.source_db_path), "event_id": event.event_id,
+                      "event_hash": event.event_hash} for event in events], key=lambda ref: ref["event_id"]),
+                "gap_source_refs": sorted(
+                    [{"source_db": str(self.source_db_path), "gap_id": gap.gap_id,
+                      "gap_hash": gap.gap_hash} for gap in live_gaps], key=lambda ref: ref["gap_id"]),
+                "decay_source_refs": sorted(
+                    [{"source_db": str(self.source_db_path), "decay_id": row.decay_id,
+                      "decay_hash": row.decay_hash} for row in decay_rows], key=lambda ref: ref["decay_id"]),
+            }
+            if self.review_route.mode is PersonalStoreMode.PERSONAL:
+                # Bind exact saved inputs; equal counts cannot substitute different records.
+                review_payload["saved_input_lineage"] = {
+                    **source_refs,
+                    "trades": [trade.to_dict() for trade in trades],
+                    "positions": [position.to_dict() for position in positions],
+                    "journals": [entry.to_dict() for entry in journals],
+                }
         review_hash = f"sha256:{hashlib.sha256(canonical_json(review_payload).encode('utf-8')).hexdigest()}"
         review = DecisionQualityReview(
             review_id=review_id,
@@ -191,6 +277,12 @@ class DecisionQualityService:
                 "symbol": symbol or "",
                 "score_basis": "process_quality_bp",
                 "review_scope": "evidence_and_journal_linkage_only",
+                **({
+                    "review_store_identity": self.review_route.identity.key,
+                    "review_store_source_kind": self.review_route.source_kind.value,
+                    "market_source_db": str(self.source_db_path),
+                    **source_refs,
+                } if self.review_route is not None else {}),
             },
         )
         return review, [replace(item, review_id=review.review_id) for item in items]

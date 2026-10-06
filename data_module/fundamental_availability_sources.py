@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Mapping
@@ -17,7 +17,7 @@ from data_module.fundamental_availability import (
     parse_formal_official_provenance,
     resolve_fundamental_availability,
 )
-from decision_module.factors.factor_dtos import FactorDiagnostic, FactorQuality
+from data_module.contracts.fundamental import SourceDiagnostic
 
 
 AvailabilityKey = tuple[str, str]
@@ -87,7 +87,6 @@ class FundamentalAvailabilityOverride:
     as_of_date: date
     announced_date: date | None
     available_date: date
-    quality: FactorQuality
     source: str
     source_version: str
     evidence_class: str = ""
@@ -100,7 +99,7 @@ class FundamentalAvailabilityOverride:
 @dataclass(frozen=True)
 class FundamentalAvailabilityOverrideLoadResult:
     overrides: dict[AvailabilityKey, FundamentalAvailabilityOverride]
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[SourceDiagnostic, ...] = ()
     revision_history: Mapping[
         AvailabilityKey,
         tuple[FundamentalAvailabilityOverride, ...],
@@ -130,25 +129,26 @@ def load_monthly_revenue_availability_overrides(
         tuple[FundamentalAvailabilityOverride, ...],
     ] = {}
     formal_candidates: dict[AvailabilityKey, list[FundamentalAvailabilityOverride]] = {}
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
 
     for row in rows:
         stock_code = row.get("stock_code", "").strip()
         period = row.get("period", "").strip()
         source = row.get("source", "").strip()
         source_version = row.get("source_version", "").strip()
-        factor_name = "fundamental.availability"
-
         if source == "financial_data.monthly_revenue_csv":
             diagnostics.append(
-                FactorDiagnostic(
-                    code="fundamental_availability.raw_csv_not_available_source",
-                    factor_name=factor_name,
-                    stock_code=stock_code,
-                    message=(
-                        "raw monthly revenue CSV date is not an announcement or "
-                        f"available_date source; period={period}"
+                _diagnostic_with_row_context(
+                    SourceDiagnostic(
+                        code="fundamental_availability.raw_csv_not_available_source",
+                        stock_code=stock_code,
+                        message=(
+                            "raw monthly revenue CSV date is not an announcement or "
+                            f"available_date source; period={period}"
+                        ),
+                        period=period,
                     ),
+                    row,
                 )
             )
             continue
@@ -160,30 +160,49 @@ def load_monthly_revenue_availability_overrides(
             stock_code=stock_code,
             period=period,
         )
-        diagnostics.extend(provenance_diagnostics)
+        diagnostics.extend(
+            _diagnostic_with_row_context(item, row, provenance_mode=provenance_mode)
+            for item in provenance_diagnostics
+        )
         if provenance_mode is None:
             continue
 
         try:
             as_of_date = _parse_required_date(row.get("as_of_date", ""))
         except ValueError:
-            diagnostics.append(_invalid_date_diagnostic(stock_code, period, "as_of_date"))
+            diagnostics.append(
+                _diagnostic_with_row_context(
+                    _invalid_date_diagnostic(stock_code, period, "as_of_date"),
+                    row,
+                    provenance_mode=provenance_mode,
+                )
+            )
             continue
 
         try:
             announced_date = _parse_optional_date(row.get("announced_date", ""))
             available_date = _parse_optional_date(row.get("available_date", ""))
         except ValueError as exc:
-            diagnostics.append(_invalid_date_diagnostic(stock_code, period, str(exc)))
+            diagnostics.append(
+                _diagnostic_with_row_context(
+                    _invalid_date_diagnostic(stock_code, period, str(exc)),
+                    row,
+                    provenance_mode=provenance_mode,
+                )
+            )
             continue
 
         if provenance_mode != "retroactive_baseline" and announced_date is None:
             diagnostics.append(
-                _provenance_diagnostic(
-                    "official_announcement_missing",
-                    stock_code,
-                    period,
-                    "formal availability mapping requires an explicit official announcement date",
+                _diagnostic_with_row_context(
+                    _provenance_diagnostic(
+                        "official_announcement_missing",
+                        stock_code,
+                        period,
+                        "formal availability mapping requires an explicit official announcement date",
+                    ),
+                    row,
+                    provenance_mode=provenance_mode,
                 )
             )
             continue
@@ -198,7 +217,10 @@ def load_monthly_revenue_availability_overrides(
                 source=source,
             )
         )
-        diagnostics.extend(resolution.diagnostics)
+        diagnostics.extend(
+            _diagnostic_with_row_context(item, row, provenance_mode=provenance_mode)
+            for item in resolution.diagnostics
+        )
         if resolution.available_date is None:
             continue
 
@@ -225,7 +247,6 @@ def load_monthly_revenue_availability_overrides(
             as_of_date=as_of_date,
             announced_date=resolution.announced_date,
             available_date=resolution.available_date,
-            quality=resolution.quality,
             source=source,
             source_version=source_version,
             evidence_class=evidence_class,
@@ -268,9 +289,8 @@ def load_monthly_revenue_availability_overrides_csv(
         return FundamentalAvailabilityOverrideLoadResult(
             overrides={},
             diagnostics=(
-                FactorDiagnostic(
+                SourceDiagnostic(
                     code="fundamental_availability.mapping_file_missing",
-                    factor_name="fundamental.availability",
                     stock_code="",
                     message=f"monthly revenue availability mapping file missing; path={path}",
                 ),
@@ -287,9 +307,8 @@ def load_monthly_revenue_availability_overrides_csv(
             return FundamentalAvailabilityOverrideLoadResult(
                 overrides={},
                 diagnostics=(
-                    FactorDiagnostic(
+                    SourceDiagnostic(
                         code="fundamental_availability.mapping_missing_columns",
-                        factor_name="fundamental.availability",
                         stock_code="",
                         message=(
                             "monthly revenue availability mapping missing required columns; "
@@ -312,7 +331,7 @@ def _resolve_provenance(
 ) -> tuple[
     FormalAvailabilityProvenance | None,
     str | None,
-    tuple[FactorDiagnostic, ...],
+    tuple[SourceDiagnostic, ...],
 ]:
     evidence_class = (row.get("evidence_class") or "").strip()
     contract_version = (row.get("availability_contract_version") or "").strip()
@@ -487,12 +506,12 @@ def _parse_optional_date(value: str | None) -> date | None:
         raise ValueError("invalid_date") from exc
 
 
-def _invalid_date_diagnostic(stock_code: str, period: str, field_name: str) -> FactorDiagnostic:
-    return FactorDiagnostic(
+def _invalid_date_diagnostic(stock_code: str, period: str, field_name: str) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code=f"fundamental_availability.invalid_{field_name}",
-        factor_name="fundamental.availability",
         stock_code=stock_code,
         message=f"availability mapping has invalid date field; period={period}; field={field_name}",
+        period=period,
     )
 
 
@@ -501,10 +520,50 @@ def _provenance_diagnostic(
     stock_code: str,
     period: str,
     message: str,
-) -> FactorDiagnostic:
-    return FactorDiagnostic(
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code=f"fundamental_availability.{code}",
-        factor_name="fundamental.availability",
         stock_code=stock_code,
         message=f"{message}; period={period}",
+        period=period,
     )
+
+
+def _diagnostic_with_row_context(
+    diagnostic: SourceDiagnostic,
+    row: Mapping[str, str],
+    *,
+    provenance_mode: str | None = None,
+) -> SourceDiagnostic:
+    """保留單一 mapping row 的來源與 revision facts。"""
+
+    available_date = diagnostic.available_date
+    if available_date is None:
+        try:
+            available_date = _parse_optional_date(row.get("available_date", ""))
+        except ValueError:
+            available_date = None
+    return replace(
+        diagnostic,
+        source_id=diagnostic.source_id or _optional_text(row.get("source")),
+        source_version=diagnostic.source_version
+        or _optional_text(row.get("source_version")),
+        source_hash=diagnostic.source_hash or _optional_text(row.get("source_hash")),
+        evidence_class=diagnostic.evidence_class
+        or _optional_text(row.get("evidence_class")),
+        provenance_mode=diagnostic.provenance_mode or provenance_mode,
+        available_date=available_date,
+        revision=diagnostic.revision
+        if diagnostic.revision is not None
+        else _optional_text(row.get("revision")),
+        parent_revision=diagnostic.parent_revision
+        if diagnostic.parent_revision is not None
+        else _optional_text(row.get("parent_revision")),
+    )
+
+
+def _optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    return text or None

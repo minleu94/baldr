@@ -17,6 +17,8 @@ from app_module.evidence_metric_applicability import EvidenceMetricApplicability
 
 
 SCORE_BUCKETS = ("0-40", "40-50", "50-60", "60-70", "70-80", "80-100")
+BLOCKED_TIME_CONTRACT_WARNING = "blocked_time_contract_requires_review"
+MATURITY_CALENDAR_BLOCKED_WARNING = "maturity_calendar_comparison_blocked"
 SCORE_BUCKET_LIMITS: tuple[tuple[str, Decimal, Decimal, bool], ...] = (
     ("0-40", Decimal("0"), Decimal("40"), False),
     ("40-50", Decimal("40"), Decimal("50"), False),
@@ -127,12 +129,24 @@ class ScoreEffectivenessReadModel:
         min_sample_size: int,
     ) -> ScoreBucketAuditRow:
         outcomes = accumulator.outcomes
-        ready = [outcome for outcome in outcomes if normalize_outcome_status(outcome.outcome_status) == EvidenceOutcomeStatus.READY]
+        blocked_time_contract = [
+            outcome
+            for outcome in outcomes
+            if outcome.metadata.get("maturity_calendar_comparison") == "blocked_mismatch"
+        ]
+        blocked_outcome_ids = {outcome.outcome_id for outcome in blocked_time_contract}
+        ready = [
+            outcome
+            for outcome in outcomes
+            if normalize_outcome_status(outcome.outcome_status) == EvidenceOutcomeStatus.READY
+            and outcome.outcome_id not in blocked_outcome_ids
+        ]
         pending = [
             outcome
             for outcome in outcomes
             if normalize_outcome_status(outcome.outcome_status)
             in (EvidenceOutcomeStatus.PENDING, EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA)
+            or outcome.outcome_id in blocked_outcome_ids
         ]
         missing = [
             outcome
@@ -160,6 +174,9 @@ class ScoreEffectivenessReadModel:
             warnings.append("invalid_liquidity_cost")
         if pending:
             warnings.append("pending_forward_outcome")
+        if blocked_time_contract:
+            warnings.append(BLOCKED_TIME_CONTRACT_WARNING)
+            warnings.append(MATURITY_CALENDAR_BLOCKED_WARNING)
         if missing:
             warnings.append("missing_forward_outcome")
         if ready and not any(

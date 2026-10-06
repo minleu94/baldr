@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 
+from data_module.contracts.fundamental import SourceDiagnostic
 from data_module.fundamental_availability import (
     AvailabilityCoverageDiagnostics,
     AvailabilityEvidenceRecord,
@@ -31,7 +32,6 @@ from data_module.monthly_revenue_availability_builder import (
     RawRevenuePeriod,
     _official_row_source_hash,
 )
-from decision_module.factors.factor_dtos import FactorDiagnostic
 
 
 TWSE_HISTORY_SOURCE = "twse.monthly_revenue_announcement"
@@ -187,7 +187,7 @@ class MonthlyRevenueAvailabilityHistoryResult:
     matched_raw_monthly_revenue_rows: int
     missing_availability_count: int
     duplicate_mapping_rows: int
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[SourceDiagnostic, ...] = ()
     diagnostics_by_source: dict[str, int] | None = None
 
     def __post_init__(self) -> None:
@@ -267,7 +267,7 @@ def build_historical_monthly_revenue_availability(
         else None
     )
     rows: list[MonthlyRevenueAvailabilityRow] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     diagnostics_by_source: dict[str, int] = {}
     seen_keys: set[RawRevenuePeriod] = set()
     duplicate_mapping_rows = 0
@@ -410,9 +410,9 @@ def load_official_rows_for_markets(
     mops_static: bool = False,
     start_period: str | None = None,
     end_period: str | None = None,
-) -> tuple[dict[str, list[dict[str, str]]], tuple[FactorDiagnostic, ...]]:
+) -> tuple[dict[str, list[dict[str, str]]], tuple[SourceDiagnostic, ...]]:
     rows_by_market: dict[str, list[dict[str, str]]] = {}
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     for market in markets:
         try:
             if mops_html_dir is not None:
@@ -454,7 +454,7 @@ def parse_mops_monthly_revenue_html(
     *,
     market: str,
     period: str,
-) -> tuple[list[dict[str, str]], tuple[FactorDiagnostic, ...]]:
+) -> tuple[list[dict[str, str]], tuple[SourceDiagnostic, ...]]:
     soup = BeautifulSoup(html, "html.parser")
     page_text = soup.get_text(" ", strip=True)
     announced_date_text = _find_mops_announcement_date(page_text)
@@ -499,7 +499,7 @@ def parse_mops_monthly_revenue_html(
                 }
             )
 
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     if not rows:
         diagnostics.append(
             _diagnostic(
@@ -517,7 +517,7 @@ def load_pit_announcement_rows(
     *,
     source: str,
     source_version: str,
-) -> tuple[list[dict[str, str]], tuple[FactorDiagnostic, ...]]:
+) -> tuple[list[dict[str, str]], tuple[SourceDiagnostic, ...]]:
     if not source_version.strip():
         return [], (
             _diagnostic(
@@ -540,7 +540,7 @@ def load_pit_announcement_rows(
         )
 
     rows: list[dict[str, str]] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         fieldnames = tuple(reader.fieldnames or ())
@@ -641,10 +641,10 @@ def _load_mops_html_rows(
     market: str,
     start_period: str | None,
     end_period: str | None,
-) -> tuple[list[dict[str, str]], tuple[FactorDiagnostic, ...]]:
+) -> tuple[list[dict[str, str]], tuple[SourceDiagnostic, ...]]:
     periods = tuple(_iter_periods(start_period, end_period)) if start_period and end_period else ()
     rows: list[dict[str, str]] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     for period in periods:
         path = directory / f"{market}_{period}.html"
         if not path.exists():
@@ -675,10 +675,10 @@ def _load_mops_static_rows(
     market: str,
     start_period: str | None,
     end_period: str | None,
-) -> tuple[list[dict[str, str]], tuple[FactorDiagnostic, ...]]:
+) -> tuple[list[dict[str, str]], tuple[SourceDiagnostic, ...]]:
     periods = tuple(_iter_periods(start_period, end_period)) if start_period and end_period else ()
     rows: list[dict[str, str]] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     for period in periods:
         try:
             html = _fetch_mops_static_monthly_revenue_html(market=market, period=period)
@@ -931,10 +931,10 @@ def _date_from_parts(year: int, month: int, day: int) -> date:
         raise ValueError("invalid announcement date") from exc
 
 
-def _diagnostic(code: str, market: str, stock_code: str, message: str) -> FactorDiagnostic:
-    return FactorDiagnostic(
+def _diagnostic(code: str, market: str, stock_code: str, message: str) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code=code,
-        factor_name=f"fundamental.availability.{market}",
         stock_code=stock_code,
         message=message,
+        market=market,
     )

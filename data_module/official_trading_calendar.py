@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from contextlib import closing
 import logging
 from pathlib import Path
 import re
@@ -28,6 +29,11 @@ from data_module.official_trading_calendar_cache import (
     load_verified_twse_calendar_cache,
     load_verified_twse_temporary_closure_cache,
     parse_twse_annual_schedule,
+)
+from app_module.sqlite_read_only import (
+    ReadOperationCancelled,
+    check_read_cancelled,
+    connect_read_only_sqlite,
 )
 
 logger = logging.getLogger(__name__)
@@ -381,9 +387,7 @@ class OfficialTradingCalendar:
         if not self.db_path.exists():
             return False
         try:
-            uri = f"file:{self.db_path.resolve().as_posix()}?mode=ro"
-            with sqlite3.connect(uri, uri=True) as conn:
-                conn.execute("PRAGMA query_only=ON")
+            with closing(connect_read_only_sqlite(self.db_path)) as conn:
                 columns = {
                     str(row[1])
                     for row in conn.execute("PRAGMA table_info(market_indices)")
@@ -402,8 +406,12 @@ class OfficialTradingCalendar:
                     f'SELECT COUNT(*) FROM market_indices WHERE "{date_column}" = ?',
                     (date_yyyymmdd,),
                 ).fetchone()[0]
+                check_read_cancelled()
                 return bool(count > 0)
+        except ReadOperationCancelled:
+            raise
         except Exception as exc:  # noqa: BLE001 - 本地證據失效時保持未知
+            check_read_cancelled()
             logger.warning("讀取 DB 交易日證據失敗 (%s): %s", target_date, exc)
             return False
 
@@ -559,6 +567,7 @@ class OfficialTradingCalendar:
         current = reference_date
         scanned = 0
         while scanned <= max_lookback_days and len(selected) < count:
+            check_read_cancelled()
             is_trading, reason = self.is_official_trading_day(
                 current,
                 allow_online_probe=allow_online_probe,

@@ -1,0 +1,2070 @@
+from __future__ import annotations
+
+import ast
+from copy import deepcopy
+from dataclasses import replace
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+import json
+import os
+from pathlib import Path
+import sqlite3
+import sys
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import MagicMock
+
+import pandas as pd
+import pytest
+
+from app_module.dtos import RecommendationDTO, RecommendationResultDTO
+from app_module.recommendation_calibration_consumer import (
+    RecommendationCalibrationConsumer,
+    RecommendationCalibrationProjection,
+)
+from app_module.recommendation_service import RecommendationService
+from recommendation_test_support import build_recommendation_test_service, build_recommendation_test_preparer
+from ml_module.recommendation_inference_provenance import read_inference_projection_receipt
+
+
+def test_consumer_calibration_error_binding_is_neutral_not_training() -> None:
+    root = Path(__file__).resolve().parents[1]
+    tree = ast.parse((root / "app_module/recommendation_calibration_consumer.py").read_text(encoding="utf-8"))
+    bindings = [
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+        and any(alias.name == "InvalidCalibrationOutputError" for alias in node.names)
+    ]
+    assert bindings == ["artifact_contracts.recommendation_calibration_errors"]
+
+
+@pytest.mark.parametrize("error_api", ("neutral", "legacy", "value_error"))
+def test_consumer_preserves_calibration_error_identity_and_specific_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error_api: str,
+) -> None:
+    import app_module.recommendation_calibration_consumer as consumer_module
+    from artifact_contracts.recommendation_calibration_errors import InvalidCalibrationOutputError
+    from ml_module.recommendation_calibration_training import InvalidCalibrationOutputError as LegacyError
+
+    assert consumer_module.InvalidCalibrationOutputError is LegacyError is InvalidCalibrationOutputError
+    error_type = {"neutral": InvalidCalibrationOutputError, "legacy": LegacyError, "value_error": ValueError}[error_api]
+    calls: list[object] = []
+
+    class InvalidOutputModel:
+        def predict(self, values):
+            calls.append(values)
+            raise error_type("synthetic invalid output")
+
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=tmp_path / "missing-pointer.json", feature_schema=(),
+        feature_registry_hash="sha256:" + "0" * 64, data_root=tmp_path / "formal-data",
+    )
+    consumer._model = InvalidOutputModel()
+    consumer._loaded_pointer = {}
+    consumer._loaded_decision_date = "2026-10-02"
+    consumer._pointer_stat = None
+    # 只隔離前段來源核驗，測原 project 的特定 except 分支；不載入模型。
+    monkeypatch.setattr(consumer, "_current_pointer_stat", lambda: None)
+    monkeypatch.setattr(consumer_module, "_verified_training_label_contract", lambda *_: ("hash", "label", "basis"))
+    monkeypatch.setattr(consumer_module, "_resolve_projection_provenance", lambda **_: ({}, {}, "verified", None))
+    projection = consumer.project(
+        stock_code="AAA", feature_values=(1000,), rule_probability_bp=5000,
+        ranking_percentile_bp=8100, decision_date="2026-10-02",
+    )
+    assert calls == [(1000,)]
+    assert projection.status == "rule_only"
+    expected = "feature_vector_schema_mismatch_fail_closed" if error_api == "value_error" else "model_probability_output_invalid_fail_closed"
+    assert projection.warnings == (expected,)
+    assert projection.calibrated_probability_bp is None
+    assert projection.after_cost_profit_probability_bp is None
+    assert projection.ranking_percentile_bp == 8100
+
+
+def test_non_utf8_active_pointer_falls_back_with_encoding_blocker(tmp_path: Path) -> None:
+    pointer = tmp_path / "authority" / "active-pointer.json"
+    pointer.parent.mkdir()
+    pointer.write_bytes(b"\xff")
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=pointer,
+        feature_schema=(),
+        feature_registry_hash="sha256:" + "0" * 64,
+        data_root=tmp_path / "formal-data",
+    )
+
+    assert consumer.reload(decision_date="2026-10-02") == "rule_only"
+    assert consumer._blocker == "active_pointer_invalid_encoding"
+    assert consumer._model is None
+
+
+def _make_database(path: Path, *, days: int = 90, start: date = date(2014, 1, 1)) -> None:
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE daily_prices (
+            日期 TEXT NOT NULL,
+            證券代號 TEXT NOT NULL,
+            成交股數 INTEGER,
+            成交金額 INTEGER,
+            開盤價 TEXT,
+            最高價 TEXT,
+            最低價 TEXT,
+            收盤價 TEXT
+        );
+        CREATE TABLE technical_indicators (
+            日期 TEXT NOT NULL,
+            證券代號 TEXT NOT NULL,
+            RSI TEXT,
+            MACD TEXT,
+            ADX TEXT
+        );
+        CREATE TABLE market_indices (
+            日期 TEXT NOT NULL,
+            收盤指數 TEXT,
+            收盤價 TEXT
+        );
+        CREATE TABLE industry_indices (
+            日期 TEXT NOT NULL,
+            指數名稱 TEXT,
+            收盤指數 TEXT
+        );
+        """
+    )
+    for offset in range(days):
+        current = (start + timedelta(days=offset)).strftime("%Y%m%d")
+        connection.execute(
+            "INSERT INTO market_indices VALUES (?, ?, ?)",
+            (current, str(10_000 + offset), str(10_000 + offset)),
+        )
+        close = 100 + offset
+        connection.execute(
+            "INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (current, "AAA", 1000 + offset, close * 100, close, close + 1, close - 1, close),
+        )
+        connection.execute(
+            "INSERT INTO technical_indicators VALUES (?, ?, ?, ?, ?)",
+            (current, "AAA", "55", "1.5", "20"),
+        )
+    connection.commit()
+    connection.close()
+
+
+class _RecordingConsumer:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def active_after_cost_baseline(self, *, decision_date: str):
+        assert decision_date == "2014-03-31"
+        return "after_cost_null_benchmark_50pct_v1", 5_000
+
+    def project_many(self, **kwargs):
+        self.calls.append(kwargs)
+        assert kwargs["decision_date"] == "2014-03-31"
+        feature_values = kwargs["feature_values_by_symbol"]["AAA"]
+        assert len(feature_values) == 20
+        return {
+            "AAA": RecommendationCalibrationProjection(
+                stock_code="AAA",
+                ranking_score_bp=7_200,
+                ranking_percentile_bp=8_100,
+                ranking_method="absolute_return_shadow_candidate",
+                calibrated_probability_bp=5_800,
+                calibrated_probability_status="shadow_candidate",
+                after_cost_profit_probability_bp=5_700,
+                after_cost_profit_probability_status="shadow_candidate",
+                confidence_tier="research_candidate",
+                evidence_confidence="shadow_candidate",
+                sample_size=120,
+                horizon="20 trading days",
+                cost_basis="fixed_round_trip_bp=50; observed liquidity",
+                cost_basis_bp=50,
+                model_version="candidate-model-1",
+                dataset_version="dataset-1",
+                source_trace=(
+                    "candidate:candidate-model-1",
+                    "dataset:dataset-1",
+                    "after_cost_baseline:after_cost_null_benchmark_50pct_v1",
+                    "after_cost_baseline_contract:independent_null_benchmark_v1",
+                ),
+                warnings=("shadow-only",),
+                status="active_candidate",
+            )
+        }
+
+
+def _recommendation() -> RecommendationDTO:
+    return RecommendationDTO(
+        stock_code="AAA",
+        stock_name="測試股票",
+        close_price=Decimal("100"),
+        price_change=0.0,
+        total_score=80.0,
+        indicator_score=80.0,
+        pattern_score=80.0,
+        volume_score=80.0,
+        recommendation_reasons="量價結構",
+        industry="",
+        regime_match=True,
+    )
+
+
+def _verified_candidate(
+    tmp_path: Path,
+    *,
+    candidate_day: str,
+    training_as_of: str,
+    samples: tuple[Any, ...] | None = None,
+    feature_names: tuple[str, ...] | None = None,
+    feature_schema: tuple[tuple[str, str, str], ...] | None = None,
+    feature_registry_hash: str | None = None,
+    dataset_id: str = "dataset-verified-integration",
+) -> tuple[object, Path, dict[str, object]]:
+    """Build a real candidate package carrying the P1 training lineage."""
+
+    from ml_module.recommendation_calibration_training import (
+        RecommendationCalibrationTrainingConfig,
+        RecommendationCalibrationTrainingService,
+    )
+    from ml_module.recommendation_cost_scenario import build_legacy_cost_scenario
+    from ml_module.recommendation_training_lineage import (
+        build_recommendation_training_lineage,
+        persist_recommendation_training_lineage,
+        recommendation_training_dataset_hash,
+    )
+    from test_daily_recommendation_learning_loop import (
+        FEATURE_NAMES,
+        FEATURE_REGISTRY_HASH,
+        FEATURE_SCHEMA,
+        _samples,
+    )
+
+    resolved_samples = samples if samples is not None else _samples(0)
+    resolved_feature_names = feature_names if feature_names is not None else FEATURE_NAMES
+    resolved_feature_schema = feature_schema if feature_schema is not None else FEATURE_SCHEMA
+    resolved_registry_hash = (
+        feature_registry_hash
+        if feature_registry_hash is not None
+        else FEATURE_REGISTRY_HASH
+    )
+    dataset_hash = recommendation_training_dataset_hash(resolved_samples)
+    result = RecommendationCalibrationTrainingService().fit(
+        dataset_id=dataset_id,
+        dataset_hash=dataset_hash,
+        samples=resolved_samples,
+        feature_names=resolved_feature_names,
+        feature_schema=resolved_feature_schema,
+        feature_registry_hash=resolved_registry_hash,
+        training_as_of=training_as_of,
+        fixed_round_trip_cost_bp=50,
+        dataset_quality={"formal_candidate_eligible": True},
+        created_at=f"{candidate_day}T00:00:00+00:00",
+        config=RecommendationCalibrationTrainingConfig(
+            minimum_calibration_samples=10,
+            minimum_train_dates=30,
+            test_date_count=5,
+            purge_trading_days=20,
+        ),
+    )
+    candidate_root = tmp_path / "candidate-verified"
+    result.persist(candidate_root)
+    candidate_metadata = json.loads(
+        (candidate_root / "candidate.json").read_text(encoding="utf-8")
+    )
+    lineage = build_recommendation_training_lineage(
+        learning_root=tmp_path / "learning",
+        run_id=f"daily-recommendation-learning:{candidate_day}:verified",
+        run_scope="integration",
+        decision_date=candidate_day,
+        training_as_of=training_as_of,
+        dataset_id=dataset_id,
+        dataset_hash=dataset_hash,
+        samples=resolved_samples,
+        feature_schema=resolved_feature_schema,
+        feature_registry_hash=resolved_registry_hash,
+        fixed_round_trip_cost_bp=50,
+        cost_scenario=build_legacy_cost_scenario(50),
+        dataset_quality={"formal_candidate_eligible": True},
+        training_result=result,
+        training_config=RecommendationCalibrationTrainingConfig(
+            minimum_calibration_samples=10,
+            minimum_train_dates=30,
+            test_date_count=5,
+            purge_trading_days=20,
+        ),
+        candidate_id=result.candidate_id,
+        candidate_manifest_hash=result.manifest.manifest_hash,
+        candidate_artifact_hash=result.artifact_hash,
+        source_groups={"replay": resolved_samples},
+    )
+    lineage_path = persist_recommendation_training_lineage(tmp_path / "learning", lineage)
+    candidate_metadata.update(
+        {
+            "training_lineage_manifest_hash": lineage.manifest_hash,
+            "training_lineage_manifest_path": str(lineage_path),
+            "training_source_hash": lineage.payload["training_source_hash"],
+            "training_pit_hash": lineage.payload["training_pit_hash"],
+            "feature_transform_contract": lineage.payload["feature_transform_contract"],
+            "feature_transform_contract_hash": lineage.payload[
+                "feature_transform_contract"
+            ]["contract_hash"],
+        }
+    )
+    (candidate_root / "candidate.json").write_text(
+        json.dumps(candidate_metadata, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return result, candidate_root, candidate_metadata
+
+
+def _core_feature_samples() -> tuple[Any, ...]:
+    from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
+    from test_daily_recommendation_learning_loop import _samples
+
+    feature_count = len(CORE_LONG_HISTORY_FEATURE_REGISTRY.canonical_schema)
+    return tuple(
+        replace(
+            row,
+            feature_values=(
+                tuple(row.feature_values[:2])
+                + tuple(
+                    (row_index + 1) * (feature_index + 1)
+                    for feature_index in range(2, feature_count)
+                )
+            ),
+        )
+        for row_index, row in enumerate(_samples(0))
+    )
+
+
+def test_normal_recommendation_service_consumes_injected_projection_adapter(tmp_path: Path) -> None:
+    database = tmp_path / "source.db"
+    _make_database(database)
+    consumer = _RecordingConsumer()
+    config = SimpleNamespace(
+        db_file=database,
+        default_start_date="2014-01-01",
+        output_root=tmp_path / "output",
+        data_root=tmp_path / "formal-data",
+    )
+    service = build_recommendation_test_service(
+        config,
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    recommendation = _recommendation()
+
+    service._apply_recommendation_calibration([recommendation], decision_date="2014-03-31")
+
+    assert len(consumer.calls) == 1
+    assert consumer.calls[0]["after_cost_rule_probability_by_symbol"] == {"AAA": 5_000}
+    assert consumer.calls[0]["after_cost_rule_baseline_id_by_symbol"] == {
+        "AAA": "after_cost_null_benchmark_50pct_v1"
+    }
+    assert recommendation.calibrated_probability_bp == 5_800
+    assert recommendation.after_cost_profit_probability_bp == 5_700
+    assert recommendation.sample_size == 120
+    assert recommendation.calibration_model_version == "candidate-model-1"
+    assert recommendation.calibration_dataset_version == "dataset-1"
+    assert recommendation.calibration_status == "active_candidate"
+    assert recommendation.calibration_source_trace == [
+        "candidate:candidate-model-1",
+        "dataset:dataset-1",
+        "after_cost_baseline:after_cost_null_benchmark_50pct_v1",
+        "after_cost_baseline_contract:independent_null_benchmark_v1",
+    ]
+    assert service.last_run_context["calibration_projection_status"] == "active_candidate"
+    assert (
+        service.last_run_context["calibration_after_cost_baseline_id"]
+        == "after_cost_null_benchmark_50pct_v1"
+    )
+
+
+@pytest.mark.parametrize("failure", (PermissionError("receipt directory denied"), ValueError("immutable receipt conflict")))
+def test_active_projection_receipt_build_failure_withdraws_model_fields_but_keeps_rule_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    from app_module.recommendation.ml_postcalibration_handoff import (
+        CalibrationProjectionStatusV1,
+        RecommendationPostCalibrationHandoffSinkV1,
+    )
+    import app_module.recommendation_service as service_module
+
+    database = tmp_path / "source.db"
+    _make_database(database)
+    consumer = _RecordingConsumer()
+    consumer.pointer_path = tmp_path / "active-pointer.json"
+    consumer.active_identity = lambda *, decision_date: {
+        "candidate_id": "candidate-model-1",
+        "training_provenance": {
+            "status": "verified",
+            "label_registry_hash": "label-registry-hash",
+            "label_contract_id": "label-contract-v1",
+            "return_basis": "close_to_close",
+        },
+    }
+    service = build_recommendation_test_service(
+        SimpleNamespace(
+            db_file=database,
+            default_start_date="2014-01-01",
+            output_root=tmp_path / "output",
+            data_root=tmp_path / "formal-data",
+        ),
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    handoff_sink = RecommendationPostCalibrationHandoffSinkV1(
+        consumer_configured=True
+    )
+    service._r026_post_calibration_handoff_sink = handoff_sink
+    monkeypatch.setattr(
+        service_module,
+        "build_inference_projection_receipt",
+        lambda **_: (_ for _ in ()).throw(failure),
+    )
+    recommendation = _recommendation()
+    original_total_score = recommendation.total_score
+
+    service._apply_recommendation_calibration([recommendation], decision_date="2014-03-31")
+
+    assert recommendation.total_score == original_total_score
+    assert recommendation.calibrated_probability_bp is None
+    assert recommendation.after_cost_profit_probability_bp is None
+    assert recommendation.ranking_score_bp is None
+    assert recommendation.calibration_status == "rule_only"
+    assert recommendation.calibration_provenance["provenance_status"] == "unavailable"
+    assert recommendation.calibration_provenance["projection_receipt_status"] == "not_persisted"
+    assert service.last_run_context["calibration_projection_status"] == "unavailable"
+    assert service.last_run_context["calibration_projection_receipt_status"] == "unavailable"
+    handoff = handoff_sink.snapshot()
+    assert handoff.attempted is True
+    assert handoff.projection_status is CalibrationProjectionStatusV1.UNAVAILABLE
+    assert handoff.receipt_error_detail == str(failure)
+    assert handoff.receipt_event is not None
+    assert handoff.receipt_event.attempted is False
+    assert handoff.receipt_event.payload_present is False
+    assert handoff.receipt_event.error == f"{type(failure).__name__}: {failure}"
+    assert any(
+        warning.startswith("calibration_projection_receipt_unavailable:")
+        for warning in service.last_run_context["warnings"]
+    )
+
+
+def test_active_projection_receipt_candidate_race_fails_closed(tmp_path: Path) -> None:
+    database = tmp_path / "source.db"
+    _make_database(database)
+    consumer = _RecordingConsumer()
+    consumer.pointer_path = tmp_path / "active-pointer.json"
+    identities = iter(
+        (
+            {"candidate_id": "candidate-model-1"},
+            {"candidate_id": "candidate-model-2"},
+        )
+    )
+    consumer.active_identity = lambda *, decision_date: next(identities)
+    service = build_recommendation_test_service(
+        SimpleNamespace(
+            db_file=database,
+            default_start_date="2014-01-01",
+            output_root=tmp_path / "output",
+            data_root=tmp_path / "formal-data",
+        ),
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    recommendation = _recommendation()
+    original_total_score = recommendation.total_score
+
+    service._apply_recommendation_calibration([recommendation], decision_date="2014-03-31")
+
+    assert recommendation.total_score == original_total_score
+    assert recommendation.calibrated_probability_bp is None
+    assert recommendation.after_cost_profit_probability_bp is None
+    assert recommendation.calibration_status == "rule_only"
+    assert recommendation.calibration_provenance["provenance_status"] == "unavailable"
+    assert "candidate/model race" in service.last_run_context[
+        "calibration_projection_receipt_error_detail"
+    ]
+
+
+def test_isolated_producer_consumer_advice_workbench_ui_path(tmp_path: Path) -> None:
+    """Verify the RecommendationService adapter reaches the existing UI contract.
+
+    The consumer seam is injected with a typed projection so this test isolates
+    producer→Advice→UI wiring; the following test exercises the real consumer.
+    """
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import pytest
+
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+
+    from app_module.advice_composer import AdviceComposer
+    from app_module.advice_dtos import AdviceMode
+    from app_module.advice_policy import AdvicePolicy
+    from app_module.workbench_dtos import WorkbenchAccessBoundary, WorkbenchDashboardDTO
+    from ui_qt.views.workbench_view import UnifiedDecisionWorkbenchView
+
+    instance = QApplication.instance()
+    if instance is None:
+        instance = QApplication(sys.argv)
+
+    database = tmp_path / "source.db"
+    _make_database(database)
+    consumer = _RecordingConsumer()
+    config = SimpleNamespace(
+        db_file=database,
+        default_start_date="2014-01-01",
+        output_root=tmp_path / "output",
+        data_root=tmp_path / "formal-data",
+    )
+    recommendation_service = build_recommendation_test_service(
+        config,
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    recommendation = _recommendation()
+    recommendation_service._apply_recommendation_calibration(
+        [recommendation],
+        decision_date="2014-03-31",
+    )
+    assert recommendation_service.last_calibration_projections["AAA"].status == "active_candidate"
+
+    result = RecommendationResultDTO(
+        result_id="rec-isolated-20140331",
+        result_name="isolated recommendation",
+        config={
+            "strategy_status": "promoted",
+            "parameters_locked": True,
+            "disclosure_complete": True,
+            "execution_feasible": True,
+            "risk_budget_available": True,
+        },
+        recommendations=[recommendation],
+    )
+    advice_dashboard = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=result,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date="2014-03-31",
+        data_as_of_date="2014-03-30",
+        mode=AdviceMode.GUIDED,
+    )
+    advice = advice_dashboard.recommendations[0]
+    assert advice.calibrated_probability_bp == 5_800
+    assert advice.after_cost_profit_probability_bp == 5_700
+    assert advice.ranking_score_bp == 7_200
+    assert advice.sample_size == 120
+
+    dashboard = WorkbenchDashboardDTO(
+        as_of_date=date(2014, 3, 31),
+        generated_at=datetime(2014, 3, 31, 12, 0, 0),
+        source_mode="isolated_producer_consumer",
+        access_boundary=WorkbenchAccessBoundary(),
+        status_strip=(),
+        review_items=(),
+        evidence_summary=(),
+        market_context={},
+        portfolio_watchlist_summary={},
+        daily_checklist=(),
+        advice_dashboard=advice_dashboard,
+    )
+    view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
+    view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+    rendered = view.advice_presentation_detail.text()
+
+    assert "排名分數：7200（僅作排序，不等於機率）" in rendered
+    assert "校準機率：58.00%（研究中／shadow）" in rendered
+    assert "成本後獲利機率：57.00%（研究中／shadow）" in rendered
+    assert "模型：candidate-model-1" in rendered
+    assert "資料集：dataset-1" in rendered
+    assert "適用期間：20 trading days" in rendered
+    assert "樣本：120" in rendered
+    assert "自然前瞻驗證" not in rendered
+    view.close()
+
+
+def test_real_consumer_producer_advice_workbench_ui_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Exercise real consumer/receipt to DTO/Advice/UI wiring in isolation.
+
+    The feature builder is intentionally replaced and the result DTO is
+    assembled in this test; the public-service, real-builder, and repository
+    readback boundary is covered separately below.
+    """
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import pytest
+
+    pytest.importorskip("PySide6")
+    from PySide6.QtWidgets import QApplication
+
+    from app_module.advice_composer import AdviceComposer
+    from app_module.advice_dtos import AdviceMode
+    from app_module.advice_policy import AdvicePolicy
+    from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
+    from app_module.workbench_dtos import WorkbenchAccessBoundary, WorkbenchDashboardDTO
+    from ml_module.historical_feature_builder import HistoricalFeatureBuilder
+    from ml_module.recommendation_calibration_authority import RecommendationCalibrationPromotionAuthority
+    from test_daily_recommendation_learning_loop import (
+        FEATURE_REGISTRY_HASH,
+        FEATURE_SCHEMA,
+        _natural_receipt,
+    )
+    from ui_qt.views.workbench_view import UnifiedDecisionWorkbenchView
+
+    instance = QApplication.instance()
+    if instance is None:
+        instance = QApplication(sys.argv)
+
+    trained_result, candidate_root, candidate_metadata = _verified_candidate(
+        tmp_path,
+        candidate_day="2026-06-01",
+        training_as_of="2026-05-31",
+    )
+    natural_evidence = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-07-27",
+    )
+    authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-07-27",
+        candidate_id=trained_result.candidate_id,
+        candidate_root=candidate_root,
+        candidate_metadata=candidate_metadata,
+        natural_evidence=natural_evidence,
+        data_status="ready",
+        drift_status="clean",
+    )
+    assert decision.decision == "adopt"
+
+    real_consumer = RecommendationCalibrationConsumer(
+        pointer_path=tmp_path / "authority" / "recommendation-calibration-active-pointer.json",
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        data_root=tmp_path / "formal-data",
+    )
+    assert real_consumer.reload(decision_date="2026-07-27") == "active"
+
+    database = tmp_path / "source.db"
+    _make_database(database, start=date(2026, 1, 1))
+    # Adapter/UI wiring is the isolated boundary here: the builder is replaced
+    # with a two-feature row.  The public-service test below keeps the real
+    # HistoricalFeatureBuilder and repository path intact.
+    monkeypatch.setattr(
+        HistoricalFeatureBuilder,
+        "compute",
+        lambda _self, _snapshot, *, industry_index_name_by_symbol: (
+            SimpleNamespace(
+                symbol="AAA",
+                values=(("momentum_bp", 1000), ("volume_ratio_bp", 2000)),
+            ),
+        ),
+    )
+    config = SimpleNamespace(
+        db_file=database,
+        default_start_date="2026-01-01",
+        output_root=tmp_path / "output",
+        data_root=tmp_path / "formal-data",
+    )
+    recommendation_service = build_recommendation_test_service(
+        config,
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=real_consumer,
+    )
+    recommendation_service.last_run_context["result_id"] = "rec-real-consumer-20260622"
+    recommendation = _recommendation()
+    recommendation_service._apply_recommendation_calibration(
+        [recommendation],
+        decision_date="2026-07-27",
+    )
+    projection = recommendation_service.last_calibration_projections["AAA"]
+    assert projection.status == "active_candidate", (
+        projection.warnings,
+        recommendation_service.last_run_context.get("calibration_projection_receipt_error"),
+        recommendation_service.last_run_context.get(
+            "calibration_projection_receipt_error_detail"
+        ),
+    )
+    assert projection.calibrated_probability_bp is not None
+    # This fixture's training rows use a declared after-cost baseline without
+    # a persisted numeric rule value; the production service must keep it
+    # unknown instead of reusing 5,000 bp.
+    assert projection.after_cost_profit_probability_bp is None
+    assert projection.horizon == "20 trading days"
+    assert any(item.startswith("candidate:") for item in projection.source_trace)
+    assert any(item.startswith("cost_scenario:") for item in projection.source_trace)
+    receipt_metadata = recommendation_service.last_run_context["calibration_projection_receipt"]
+    receipt = read_inference_projection_receipt(
+        receipt_metadata["path"],
+        expected_decision_date="2026-07-27",
+        expected_candidate_id=trained_result.candidate_id,
+        expected_result_id="rec-real-consumer-20260622",
+        expected_stock_code="AAA",
+    )
+    assert receipt.receipt_hash == receipt_metadata["receipt_hash"]
+    assert receipt.payload["training_provenance"]["status"] == "verified"
+    assert receipt.payload["training_provenance"]["label_registry_hash"] == (
+        candidate_metadata["label_registry_hash"]
+    )
+    assert receipt.payload["training_provenance"]["label_contract_id"] == (
+        "recommendation-absolute-labels-v1"
+    )
+    assert receipt.payload["training_provenance"]["return_basis"] == (
+        "close_to_close_event_date"
+    )
+    assert receipt.payload["projections"][0]["label_registry_hash"] == (
+        candidate_metadata["label_registry_hash"]
+    )
+    assert receipt.payload["projections"][0]["label_contract_id"] == (
+        "recommendation-absolute-labels-v1"
+    )
+    assert receipt.payload["projections"][0]["return_basis"] == (
+        "close_to_close_event_date"
+    )
+    assert receipt.payload["training_provenance"]["status"] == "verified"
+    assert receipt.payload["provenance_compatibility"]["status"] == "verified"
+    assert receipt.payload["training_provenance"]["training_source_hash"] != receipt.payload[
+        "inference_provenance"
+    ]["inference_source_hash"]
+    assert receipt.payload["training_provenance"]["training_pit_hash"] != receipt.payload[
+        "inference_provenance"
+    ]["inference_pit_hash"]
+    assert recommendation.calibration_provenance["provenance_status"] == "verified"
+    assert recommendation.calibration_provenance["projection_receipt_hash"] == receipt.receipt_hash
+    result_round_trip = RecommendationResultDTO.from_dict(
+        RecommendationResultDTO(
+            result_id="rec-real-consumer-20260622",
+            result_name="round-trip",
+            config={},
+            recommendations=[recommendation],
+        ).to_dict()
+    )
+    assert result_round_trip.recommendations[0].calibration_provenance["projection_receipt_hash"] == receipt.receipt_hash
+    assert "after_cost_baseline:unavailable" in projection.source_trace
+    assert "after_cost_baseline_contract:declared_or_unavailable" in projection.source_trace
+    mismatched_after_cost = real_consumer.project(
+        stock_code="AAA",
+        feature_values=(1000, 2000),
+        rule_probability_bp=5_000,
+        after_cost_rule_probability_bp=5_000,
+        after_cost_rule_baseline_id="null_benchmark_50pct_v1",
+        decision_date="2026-07-27",
+    )
+    assert mismatched_after_cost.status == "rule_only"
+    assert mismatched_after_cost.warnings == (
+        "after_cost_probability_baseline_mismatch_fail_closed",
+    )
+
+    advice_result = RecommendationResultDTO(
+        result_id="rec-real-consumer-20260622",
+        result_name="real consumer isolated recommendation",
+        config={
+            "strategy_status": "promoted",
+            "parameters_locked": True,
+            "disclosure_complete": True,
+            "execution_feasible": True,
+            "risk_budget_available": True,
+        },
+        recommendations=[recommendation],
+    )
+    advice_dashboard = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=advice_result,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date="2026-07-27",
+        data_as_of_date="2026-07-26",
+        mode=AdviceMode.GUIDED,
+    )
+    advice = advice_dashboard.recommendations[0]
+    assert advice.calibrated_probability_bp == projection.calibrated_probability_bp
+    assert advice.after_cost_profit_probability_bp is None
+    assert advice.sample_size == projection.sample_size
+    assert advice.calibration_provenance["projection_receipt_hash"] == receipt.receipt_hash
+
+    dashboard = WorkbenchDashboardDTO(
+        as_of_date=date(2026, 7, 27),
+        generated_at=datetime(2026, 7, 27, 12, 0, 0),
+        source_mode="isolated_real_consumer",
+        access_boundary=WorkbenchAccessBoundary(),
+        status_strip=(),
+        review_items=(),
+        evidence_summary=(),
+        market_context={},
+        portfolio_watchlist_summary={},
+        daily_checklist=(),
+        advice_dashboard=advice_dashboard,
+    )
+    view = UnifiedDecisionWorkbenchView(dashboard=dashboard, auto_refresh=False)
+    view._show_advice_row_presentation(view.advice_recommendation_model, 0)
+    rendered = view.advice_presentation_detail.text()
+
+    assert "研究中／shadow" in rendered
+    assert "適用期間：20 trading days" in rendered
+    assert f"樣本：{projection.sample_size:,}" in rendered
+    assert "cost_scenario:" in rendered
+    assert "projection_receipt_path:" in rendered
+    assert "自然前瞻驗證" not in rendered
+    view.close()
+
+
+def test_public_service_real_builder_saves_result_and_reverse_reads_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise public service, real builder, repository, and exact receipt lookup."""
+
+    from app_module.recommendation_repository import RecommendationRepository
+    from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
+    from app_module.evidence_event_dtos import (
+        EvidenceDataQuality,
+        EvidenceEvent,
+        EvidenceEventType,
+        EvidenceOutcome,
+        EvidenceOutcomeStatus,
+    )
+    from app_module.evidence_event_repository import EvidenceEventRepository
+    from app_module.journal_service import JournalService
+    from app_module.personalization_action_recorder import PersonalizationDecisionRecorder
+    from app_module.personalization_read_service import PersonalizationReadService
+    from app_module.personalization_save_adapter import (
+        PersonalizationRecommendationSaveAdapter,
+    )
+    from ml_module.feature_registry import CORE_LONG_HISTORY_FEATURE_REGISTRY
+    from ml_module.recommendation_calibration_training import (
+        RECOMMENDATION_LABEL_CONTRACT_ID,
+    )
+    from ml_module.recommendation_calibration_authority import RecommendationCalibrationPromotionAuthority
+    from test_daily_recommendation_learning_loop import _natural_receipt
+    from ml_module.recommendation_inference_provenance import (
+        find_inference_projection_receipts,
+        read_inference_projection_receipt,
+    )
+
+    class _RepositoryConfig(SimpleNamespace):
+        def resolve_output_path(self, relative_path: str) -> Path:
+            return Path(self.output_root) / relative_path
+
+    feature_registry = CORE_LONG_HISTORY_FEATURE_REGISTRY
+    feature_schema = feature_registry.canonical_schema
+    feature_names = feature_registry.canonical_ids
+    trained_result, candidate_root, candidate_metadata = _verified_candidate(
+        tmp_path,
+        candidate_day="2026-06-01",
+        training_as_of="2026-05-31",
+        samples=_core_feature_samples(),
+        feature_names=feature_names,
+        feature_schema=feature_schema,
+        feature_registry_hash=feature_registry.registry_hash,
+        dataset_id="dataset-public-service-integration",
+    )
+    natural_evidence = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-07-27",
+        feature_schema=feature_schema,
+        feature_registry_hash=feature_registry.registry_hash,
+    )
+    authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-07-27",
+        candidate_id=trained_result.candidate_id,
+        candidate_root=candidate_root,
+        candidate_metadata=candidate_metadata,
+        natural_evidence=natural_evidence,
+        data_status="ready",
+        drift_status="clean",
+    )
+    assert decision.decision == "adopt"
+
+    database = tmp_path / "source.db"
+    _make_database(
+        database,
+        days=(date(2026, 7, 27) - date(2026, 1, 1)).days + 1,
+        start=date(2026, 1, 1),
+    )
+    market_frame = pd.DataFrame(
+        [
+            {
+                "日期": date(2026, 1, 1) + timedelta(days=offset),
+                "證券代號": "AAA",
+                "證券名稱": "測試股票",
+                "收盤價": 100 + offset,
+                "成交股數": 1_000 + offset,
+            }
+            for offset in range((date(2026, 7, 27) - date(2026, 1, 1)).days + 1)
+        ]
+    )
+    config = _RepositoryConfig(
+        db_file=database,
+        default_start_date="2026-01-01",
+        output_root=tmp_path / "output",
+        data_root=tmp_path / "formal-data",
+        use_sqlite=False,
+    )
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=tmp_path / "authority" / "recommendation-calibration-active-pointer.json",
+        feature_schema=feature_schema,
+        feature_registry_hash=feature_registry.registry_hash,
+        data_root=config.data_root,
+    )
+    service = build_recommendation_test_service(
+        config,
+        industry_mapper=MagicMock(),
+        market_data_provider=lambda: market_frame.copy(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    # Only the rule scorer is deterministic here.  The public service still
+    # runs its real SQLite snapshot provider and HistoricalFeatureBuilder.
+    service.strategy_configurator.generate_recommendations = lambda _stock_df, _config: pd.DataFrame(
+        {
+            "TotalScore": [80],
+            "FinalScore": [80],
+            "收盤價": [Decimal("100")],
+            "成交股數": [1_000],
+        }
+    )
+
+    # Freeze the producer clock at 00:50 Taipei on the next market date;
+    # the daily market frame still ends on the prior completed session.
+    import app_module.recommendation_service as recommendation_service_module
+    import app_module.recommendation.execute as recommendation_execute_module
+
+    class _FrozenRecommendationDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[no-untyped-def]
+            current = datetime(2026, 7, 27, 16, 50, tzinfo=timezone.utc)
+            return current.astimezone(tz) if tz is not None else current.replace(tzinfo=None)
+
+    monkeypatch.setattr(
+        recommendation_service_module,
+        "datetime",
+        _FrozenRecommendationDatetime,
+    )
+    monkeypatch.setattr(
+        recommendation_execute_module,
+        "_utc_now",
+        lambda: datetime(2026, 7, 27, 16, 50, tzinfo=timezone.utc),
+    )
+    recommendations = service.run_recommendation(
+        {"recommendation_ranking": {"threshold_mode": "fixed"}},
+        max_stocks=1,
+        top_n=1,
+        as_of_date=None,
+        universe=["AAA"],
+        historical_research=False,
+        select_latest_available_cutoff=True,
+    )
+    assert len(recommendations) == 1
+    result_id = str(service.last_run_context["result_id"])
+    assert result_id.startswith("rec_")
+    assert len(result_id) > len("rec_") + 16
+    assert service.last_run_context["calibration_projection_receipt_status"] == "persisted", (
+        service.last_run_context.get("warnings"),
+        service.last_run_context.get("calibration_projection_receipt_error_detail"),
+    )
+    assert service.last_run_context["calibration_projection_receipt"]["result_id"] == result_id
+    assert service.last_run_context["as_of_date"] == "2026-07-27"
+    assert service.last_run_context["data_date"] == "2026-07-27"
+    assert service.last_run_context["temporal_contract"] == (
+        "recommendation-producer-clock.v1"
+    )
+    assert service.last_run_context["temporal_mode"] == "natural_producer_clock"
+    assert service.last_run_context["cutoff_selection"] == (
+        "producer_selected_latest_available_cutoff"
+    )
+    assert service.last_run_context["cutoff_policy"] == "source_latest_available_exact"
+    assert service.last_run_context["prediction_decision_anchor"] == (
+        "actual_producer_decision_at"
+    )
+    assert service.last_run_context["horizon_anchor"] == "immutable_projection_receipt"
+    assert service.last_run_context["market_calendar_timezone"] == "Asia/Taipei"
+    assert service.last_run_context["decision_at"] == (
+        "2026-07-27T16:50:00.000000+00:00"
+    )
+    assert service.last_run_context["personalization_scope"]["decision_date"] == (
+        "2026-07-28"
+    )
+    personalization_scope = service.last_run_context["personalization_scope"]
+    assert personalization_scope["scope_id"] == "local_research_scope_v1"
+    assert personalization_scope["scope_type"] == "local"
+    assert personalization_scope["temporal_status"] == "verified"
+    inference = recommendations[0].calibration_provenance
+    assert len(inference["feature_rows"][0]["feature_ids"]) == len(feature_schema)
+    assert inference["feature_builder_schema_hash"]
+    assert inference["projection_receipt_result_id"] == result_id
+
+    result = RecommendationResultDTO(
+        result_id=result_id,
+        result_name="public service provenance integration",
+        config={},
+        recommendations=[deepcopy(item) for item in recommendations],
+        regime=None,
+        created_at="2026-07-27T16:50:00+00:00",
+        notes="Profile: 進階模式, Regime: 未知",
+        excluded_candidates_json=list(service.last_excluded_candidates_json),
+        screening_matrix_json=list(service.last_screening_matrix),
+        why_not_payload_json=list(service.last_why_not_payload_json),
+        liquidity_gate_payload_json=list(service.last_liquidity_gate_payload_json),
+        exclusion_quality=str(service.last_exclusion_quality),
+        exclusion_warnings_json=list(service.last_exclusion_warnings_json),
+        run_context=deepcopy(service.last_run_context),
+    )
+    adapter = PersonalizationRecommendationSaveAdapter()
+    result, generated_captures = adapter.bind_result(result)
+    # The compatibility fixture binds the receipt's producer identity before
+    # legacy JSON persistence, without invoking the retired save coordinator.
+    assert result.result_id == result_id
+    assert len(generated_captures) == 1
+    assert generated_captures[0].result_id == result_id
+    repository = RecommendationRepository(config)
+    loaded = adapter.save_and_readback(
+        recommendation_repository=repository,
+        result=result,
+        captures=generated_captures,
+    )
+    save_persisted_at = "2026-07-27T16:50:00.000000+00:00"
+    persisted_capture = adapter.capture_service.mark_persisted(
+        generated_captures[0],
+        persisted_at=save_persisted_at,
+    )
+    assert loaded is not None
+    assert loaded.result_id == result_id
+    assert loaded.run_context["as_of_date"] == "2026-07-27"
+    assert loaded.run_context["data_date"] == "2026-07-27"
+    assert loaded.run_context["personalization_scope"]["decision_date"] == "2026-07-28"
+    receipt_metadata = loaded.run_context["calibration_projection_receipt"]
+    persisted_provenance = loaded.recommendations[0].calibration_provenance
+    assert persisted_provenance["projection_receipt_hash"] == receipt_metadata["receipt_hash"]
+
+    matches = find_inference_projection_receipts(
+        tmp_path / "authority",
+        decision_date="2026-07-27",
+        candidate_id=trained_result.candidate_id,
+        result_id=loaded.result_id,
+        stock_code="AAA",
+    )
+    assert len(matches) == 1
+    receipt_path = matches[0].receipt_path
+    assert receipt_path is not None
+    receipt = read_inference_projection_receipt(
+        receipt_path,
+        expected_decision_date="2026-07-27",
+        expected_candidate_id=trained_result.candidate_id,
+        expected_result_id=loaded.result_id,
+        expected_stock_code="AAA",
+    )
+    assert receipt.receipt_hash == receipt_metadata["receipt_hash"]
+
+    # Continue through the real shared save/ACK/read path with a cross-day
+    # scope.  The producer's source cutoff is 7/27, while its actual Taipei
+    # decision market date is 7/28; the forward label must join to that
+    # declared event date, not to the source cutoff date.
+    saved_capture = adapter.captures_from_result(loaded)[0]
+    assert saved_capture.scope.decision_date == "2026-07-28"
+    assert saved_capture.capture_hash == generated_captures[0].capture_hash
+    assert persisted_capture.status == "persisted"
+    assert persisted_capture.capture_hash != saved_capture.capture_hash
+    persisted_clock = datetime.fromisoformat(save_persisted_at)
+    delivered_at = (persisted_clock + timedelta(seconds=1)).isoformat(
+        timespec="microseconds"
+    )
+    ack_recorded_at = (persisted_clock + timedelta(seconds=2)).isoformat(
+        timespec="microseconds"
+    )
+    journal = JournalService(config)
+    ack = adapter.acknowledge_delivery(
+        recommendation_repository=repository,
+        journal_service=journal,
+        result_id=result_id,
+        scope_id=saved_capture.scope.scope_id,
+        delivery_id=saved_capture.delivery_id,
+        persisted_at=save_persisted_at,
+        expected_capture_hashes={"AAA": saved_capture.capture_hash},
+        delivered_at=delivered_at,
+        recorded_at=ack_recorded_at,
+    )
+    assert ack.status == "delivered"
+
+    evidence_db = tmp_path / "personalization-evidence.sqlite"
+    read_service = PersonalizationReadService.from_paths(
+        output_root=config.output_root,
+        evidence_db_path=evidence_db,
+    )
+    linked = read_service.projection_service.build_for_candidate(
+        result_id=result_id,
+        stock_code="AAA",
+        personalization_scope_id=saved_capture.scope.scope_id,
+        result=loaded,
+        evaluated_as_of="2026-09-18",
+        evaluation_cutoff_at=ack_recorded_at,
+    )
+    assert linked.status == "linked_prediction"
+    assert linked.delivery_status == "delivered"
+    assert linked.decision_date == "2026-07-28"
+    assert linked.prediction["data_as_of_date"] == "2026-07-27"
+    assert linked.outcome_status == "not_applicable"
+    assert linked.late_delivery is False
+    assert linked.prediction_decision_at == saved_capture.scope.decision_at
+    assert linked.delivery_at == delivered_at
+    assert linked.human_decision_at is None
+
+    recorded = PersonalizationDecisionRecorder(
+        journal,
+        now=lambda: (persisted_clock + timedelta(seconds=3)).isoformat(
+            timespec="microseconds"
+        ),
+    ).record(
+        projection=linked,
+        action="accepted",
+        decision_kind="recommendation_response",
+        request_id="request_public_service_cross_day",
+        action_at=delivered_at,
+        recorded_at=(persisted_clock + timedelta(seconds=3)).isoformat(
+            timespec="microseconds"
+        ),
+        actor="user:integration",
+        note="cross-day producer integration",
+    )
+    assert recorded.envelope.prediction_id == saved_capture.prediction_id
+
+    identity = {
+        "result_id": result_id,
+        "stock_code": "AAA",
+        "personalization_scope_id": saved_capture.scope.scope_id,
+        "prediction_id": saved_capture.prediction_id,
+        "prediction_receipt_hash": saved_capture.projection_receipt_hash,
+        "horizon_days": 20,
+        "cost_scenario_hash": saved_capture.cost_scenario_hash,
+        "label_contract_id": RECOMMENDATION_LABEL_CONTRACT_ID,
+        "return_basis": "close_to_close_event_date",
+    }
+    evidence = EvidenceEventRepository(object(), db_path=evidence_db)
+    event = EvidenceEvent(
+        event_id="event_public_service_cross_day",
+        event_hash="sha256:" + ("a" * 64),
+        event_date="2026-07-28",
+        decision_date="2026-07-28",
+        symbol="AAA",
+        event_type=EvidenceEventType.RECOMMENDATION_INCLUDED,
+        event_family="recommendation",
+        source_type="recommendation_service",
+        source_id="public-service-cross-day-fixture",
+        available_date="2026-07-28",
+        data_quality=EvidenceDataQuality.OBSERVED,
+        metadata=dict(identity),
+        created_at=saved_capture.scope.decision_at,
+    )
+    evidence.insert_event(event)
+    outcome_metadata = {
+        **identity,
+        "event_price_date": "2026-07-28",
+        "outcome_price_date": "2026-08-25",
+        "label_available_date": "2026-08-25",
+        "label_available_at": "2026-08-25T08:00:00+00:00",
+        "outcome_recorded_at": "2026-08-25T08:00:00+00:00",
+        "label": 1,
+        "outcome_tier": "natural_forward",
+    }
+    evidence.upsert_outcome(
+        EvidenceOutcome(
+            outcome_id="outcome_public_service_cross_day",
+            event_id=event.event_id,
+            window_days=20,
+            return_basis="close_to_close_event_date",
+            event_price_date="2026-07-28",
+            outcome_price_date="2026-08-25",
+            forward_return_bp=800,
+            outcome_status=EvidenceOutcomeStatus.READY,
+            data_quality=EvidenceDataQuality.OBSERVED,
+            calculated_at="2026-08-25T08:00:00+00:00",
+            data_as_of_date="2026-08-25",
+            metadata=outcome_metadata,
+        )
+    )
+    report = read_service.inspect_scope(
+        scope_id=saved_capture.scope.scope_id,
+        evaluated_as_of="2026-09-18",
+        evaluation_cutoff_at="2026-09-18T00:00:00+00:00",
+        result_id=result_id,
+        stock_code="AAA",
+    )
+    assert report.source_consistency_status == "verified"
+    assert report.source_completeness_status == "verified"
+    assert report.denominators["prediction_available_count"] == 1
+    assert report.denominators["action_recorded_count"] == 1
+    assert report.denominators["outcome_ready_count"] == 1, report.diagnostics
+    assert report.denominators["natural_forward_count"] == 1
+    assert report.denominators["action_utility_count"] == 0
+    assert report.denominators["evaluation_row_count"] == 1
+    assert report.cohort["included_evaluation_row_count"] == 1
+    assert report.cohort["excluded_reason_counts"] == {}
+    evaluation_row = report.evaluation_rows[0]
+    assert evaluation_row["decision_date"] == "2026-07-28"
+    assert evaluation_row["label_available_date"] == "2026-08-25"
+    assert evaluation_row["window_days"] == 20
+    assert evaluation_row["late_delivery"] is False
+    assert evaluation_row["prediction_decision_at"] == saved_capture.scope.decision_at
+    assert evaluation_row["delivery_at"] == delivered_at
+    assert evaluation_row["human_decision_at"] == delivered_at
+
+    # The same real producer can run an older cutoff only in the explicit
+    # historical tier.  This keeps an old caller-selected cutoff from being
+    # relabeled natural merely because runtime clocks are current.
+    historical_service = build_recommendation_test_service(
+        config,
+        industry_mapper=MagicMock(),
+        market_data_provider=lambda: market_frame.copy(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    setattr(
+        historical_service.strategy_configurator,
+        "generate_recommendations",
+        service.strategy_configurator.generate_recommendations,
+    )
+    historical_recommendations = historical_service.run_recommendation(
+        {"recommendation_ranking": {"threshold_mode": "fixed"}},
+        max_stocks=1,
+        top_n=1,
+        as_of_date="2026-06-20",
+        universe=["AAA"],
+        historical_research=True,
+        select_latest_available_cutoff=False,
+    )
+    assert len(historical_recommendations) == 1
+    assert historical_service.last_run_context["as_of_date"] == "2026-06-20"
+    assert historical_service.last_run_context["temporal_mode"] == (
+        "historical_research_not_as_if_available"
+    )
+    assert historical_service.last_run_context["cutoff_selection"] == (
+        "explicit_historical_cutoff"
+    )
+    assert historical_service.last_run_context["cutoff_policy"] == (
+        "explicit_historical_research"
+    )
+
+
+def test_active_training_label_contract_missing_or_mismatched_fails_closed(
+    tmp_path: Path,
+) -> None:
+    from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
+    from ml_module.recommendation_calibration_authority import RecommendationCalibrationPromotionAuthority
+    from test_daily_recommendation_learning_loop import (
+        FEATURE_REGISTRY_HASH,
+        FEATURE_SCHEMA,
+        _natural_receipt,
+    )
+
+    trained_result, candidate_root, candidate_metadata = _verified_candidate(
+        tmp_path,
+        candidate_day="2026-06-01",
+        training_as_of="2026-05-31",
+    )
+    natural_evidence = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-07-27",
+    )
+    authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-07-27",
+        candidate_id=trained_result.candidate_id,
+        candidate_root=candidate_root,
+        candidate_metadata=candidate_metadata,
+        natural_evidence=natural_evidence,
+        data_status="ready",
+        drift_status="clean",
+    )
+    assert decision.decision == "adopt"
+
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=authority.pointer_path,
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        data_root=tmp_path / "formal-data",
+    )
+    assert consumer.reload(decision_date="2026-07-27") == "active"
+    original_training_provenance = dict(consumer._training_provenance)
+    for field_name, bad_value in (
+        ("label_registry_hash", "sha256:" + "0" * 64),
+        ("label_contract_id", "tampered-label-contract"),
+        ("return_basis", "tampered-return-basis"),
+    ):
+        consumer._training_provenance = {
+            **original_training_provenance,
+            field_name: bad_value,
+        }
+        projection = consumer.project(
+            stock_code="AAA",
+            feature_values=(1000, 2000),
+            rule_probability_bp=5_000,
+            decision_date="2026-07-27",
+        )
+        assert projection.status == "rule_only"
+        assert projection.warnings == (
+            "active_training_label_contract_unavailable_fail_closed",
+        )
+
+
+def test_active_training_label_contract_missing_from_provenance_fails_closed(
+    tmp_path: Path,
+) -> None:
+    from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
+    from ml_module.recommendation_calibration_authority import RecommendationCalibrationPromotionAuthority
+    from test_daily_recommendation_learning_loop import (
+        FEATURE_REGISTRY_HASH,
+        FEATURE_SCHEMA,
+        _natural_receipt,
+    )
+
+    trained_result, candidate_root, candidate_metadata = _verified_candidate(
+        tmp_path,
+        candidate_day="2026-06-01",
+        training_as_of="2026-05-31",
+    )
+    natural_evidence = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-07-27",
+    )
+    authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-07-27",
+        candidate_id=trained_result.candidate_id,
+        candidate_root=candidate_root,
+        candidate_metadata=candidate_metadata,
+        natural_evidence=natural_evidence,
+        data_status="ready",
+        drift_status="clean",
+    )
+    assert decision.decision == "adopt"
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=authority.pointer_path,
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        data_root=tmp_path / "formal-data",
+    )
+    assert consumer.reload(decision_date="2026-07-27") == "active"
+    consumer._training_provenance = {
+        key: value
+        for key, value in consumer._training_provenance.items()
+        if key != "return_basis"
+    }
+    projection = consumer.project(
+        stock_code="AAA",
+        feature_values=(1000, 2000),
+        rule_probability_bp=5_000,
+        decision_date="2026-07-27",
+    )
+    assert projection.status == "rule_only"
+    assert projection.warnings == (
+        "active_training_label_contract_unavailable_fail_closed",
+    )
+
+
+def test_real_consumer_rejects_future_research_candidate_context(
+    tmp_path: Path,
+) -> None:
+    """A valid active candidate becomes rule-only when its context is future research."""
+
+    from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
+    from ml_module.recommendation_calibration_authority import RecommendationCalibrationPromotionAuthority
+    from test_daily_recommendation_learning_loop import (
+        FEATURE_REGISTRY_HASH,
+        FEATURE_SCHEMA,
+        _candidate,
+        _natural_receipt,
+    )
+
+    trained_result, candidate_root, _candidate_metadata = _candidate(
+        tmp_path,
+        shift=0,
+        candidate_day="2026-06-01",
+    )
+    natural_evidence = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-07-27",
+    )
+    authority = RecommendationCalibrationPromotionAuthority(tmp_path / "authority")
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-07-27",
+        candidate_id=trained_result.candidate_id,
+        candidate_root=candidate_root,
+        candidate_metadata=json.loads(
+            (candidate_root / "candidate.json").read_text(encoding="utf-8")
+        ),
+        natural_evidence=natural_evidence,
+        data_status="ready",
+        drift_status="clean",
+    )
+    assert decision.decision == "adopt"
+
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=tmp_path / "authority" / "recommendation-calibration-active-pointer.json",
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        data_root=tmp_path / "formal-data",
+    )
+    assert consumer.reload(decision_date="2026-07-27") == "active"
+
+    candidate_path = candidate_root / "candidate.json"
+    candidate_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate_payload.update(
+        {
+            "training_cutoff": "2026-12-31",
+            "training_semantics": "historical_research_only",
+            "decision_time_eligible": False,
+            "research_only": True,
+        }
+    )
+    candidate_path.write_text(
+        json.dumps(candidate_payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    assert consumer.reload(decision_date="2026-07-27") == "rule_only"
+    projection = consumer.project(
+        stock_code="AAA",
+        feature_values=(100, 200),
+        rule_probability_bp=5_000,
+        decision_date="2026-07-27",
+    )
+    assert projection.status == "rule_only"
+    assert projection.warnings == ("candidate_training_cutoff_after_decision",)
+
+
+def test_real_consumer_independent_after_cost_baseline_reaches_advice_presentation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Use a real trained artifact to prove the independent after-cost lane."""
+
+    from app_module.advice_composer import AdviceComposer
+    from app_module.advice_dtos import AdviceMode
+    from app_module.advice_policy import AdvicePolicy
+    from app_module.decision_presentation import (
+        DecisionPresentationService,
+        format_decision_lineage_detail,
+    )
+    from app_module.recommendation_calibration_consumer import RecommendationCalibrationConsumer
+    from ml_module.historical_feature_builder import HistoricalFeatureBuilder
+    from ml_module.recommendation_calibration_authority import RecommendationCalibrationPromotionAuthority
+    from ml_module.recommendation_calibration_training import (
+        RecommendationCalibrationTrainingConfig,
+        RecommendationCalibrationTrainingService,
+    )
+    from ml_module.recommendation_cost_scenario import build_legacy_cost_scenario
+    from ml_module.recommendation_probability_transform import (
+        AFTER_COST_NULL_BENCHMARK_BASELINE_ID,
+        AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP,
+    )
+    from ml_module.recommendation_training_lineage import (
+        build_recommendation_training_lineage,
+        persist_recommendation_training_lineage,
+        recommendation_training_dataset_hash,
+    )
+    from test_daily_recommendation_learning_loop import (
+        FEATURE_REGISTRY_HASH,
+        FEATURE_SCHEMA,
+        _natural_receipt,
+        _samples,
+    )
+
+    # The source rows are real training-service inputs; clearing the explicit
+    # rule value makes RecommendationCalibrationSample apply its existing
+    # independent-null contract instead of the declared-baseline compatibility
+    # path.  Everything remains under tmp_path and read-only to formal data.
+    samples = tuple(
+        replace(
+            sample,
+            rule_after_cost_probability_bp=None,
+            rule_after_cost_baseline_id=None,
+        )
+        for sample in _samples(0)
+    )
+    dataset_hash = recommendation_training_dataset_hash(samples)
+    trained_result = RecommendationCalibrationTrainingService().fit(
+        dataset_id="dataset-independent-after-cost",
+        dataset_hash=dataset_hash,
+        samples=samples,
+        feature_names=("momentum_bp", "volume_ratio_bp"),
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        training_as_of="2026-05-31",
+        fixed_round_trip_cost_bp=50,
+        dataset_quality={"formal_candidate_eligible": True},
+        created_at="2026-06-01T00:00:00+00:00",
+        config=RecommendationCalibrationTrainingConfig(
+            minimum_calibration_samples=10,
+            minimum_train_dates=30,
+            test_date_count=5,
+            purge_trading_days=20,
+        ),
+    )
+    candidate_root = tmp_path / "candidate-independent-after-cost"
+    trained_result.persist(candidate_root)
+    candidate_metadata = json.loads((candidate_root / "candidate.json").read_text(encoding="utf-8"))
+    assert candidate_metadata["after_cost_baseline_id"] == AFTER_COST_NULL_BENCHMARK_BASELINE_ID
+    assert candidate_metadata["after_cost_baseline_probability_bp"] == AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP
+    training_config = RecommendationCalibrationTrainingConfig(
+        minimum_calibration_samples=10,
+        minimum_train_dates=30,
+        test_date_count=5,
+        purge_trading_days=20,
+    )
+    lineage = build_recommendation_training_lineage(
+        learning_root=tmp_path / "learning",
+        run_id="daily-recommendation-learning:independent-after-cost:verified",
+        run_scope="integration",
+        decision_date="2026-06-01",
+        training_as_of="2026-05-31",
+        dataset_id="dataset-independent-after-cost",
+        dataset_hash=dataset_hash,
+        samples=samples,
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        fixed_round_trip_cost_bp=50,
+        cost_scenario=build_legacy_cost_scenario(50),
+        dataset_quality={"formal_candidate_eligible": True},
+        training_result=trained_result,
+        training_config=training_config,
+        candidate_id=trained_result.candidate_id,
+        candidate_manifest_hash=trained_result.manifest.manifest_hash,
+        candidate_artifact_hash=trained_result.artifact_hash,
+        source_groups={"replay": samples},
+    )
+    lineage_path = persist_recommendation_training_lineage(tmp_path / "learning", lineage)
+    candidate_metadata.update(
+        {
+            "training_lineage_manifest_hash": lineage.manifest_hash,
+            "training_lineage_manifest_path": str(lineage_path),
+            "training_source_hash": lineage.payload["training_source_hash"],
+            "training_pit_hash": lineage.payload["training_pit_hash"],
+            "feature_transform_contract": lineage.payload["feature_transform_contract"],
+            "feature_transform_contract_hash": lineage.payload["feature_transform_contract"][
+                "contract_hash"
+            ],
+        }
+    )
+    (candidate_root / "candidate.json").write_text(
+        json.dumps(candidate_metadata, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    natural_evidence = _natural_receipt(
+        tmp_path,
+        root=candidate_root,
+        candidate_day="2026-06-01",
+        evaluation_day="2026-07-27",
+    )
+    authority = RecommendationCalibrationPromotionAuthority(tmp_path / "independent-authority")
+    decision = authority.evaluate_and_apply(
+        decision_date="2026-07-27",
+        candidate_id=trained_result.candidate_id,
+        candidate_root=candidate_root,
+        candidate_metadata=candidate_metadata,
+        natural_evidence=natural_evidence,
+        data_status="ready",
+        drift_status="clean",
+    )
+    assert decision.decision == "adopt"
+
+    consumer = RecommendationCalibrationConsumer(
+        pointer_path=tmp_path / "independent-authority" / "recommendation-calibration-active-pointer.json",
+        feature_schema=FEATURE_SCHEMA,
+        feature_registry_hash=FEATURE_REGISTRY_HASH,
+        data_root=tmp_path / "formal-data",
+    )
+    assert consumer.active_after_cost_baseline(decision_date="2026-07-27") == (
+        AFTER_COST_NULL_BENCHMARK_BASELINE_ID,
+        AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP,
+    )
+
+    database = tmp_path / "source.db"
+    _make_database(database, start=date(2026, 1, 1))
+    monkeypatch.setattr(
+        HistoricalFeatureBuilder,
+        "compute",
+        lambda _self, _snapshot, *, industry_index_name_by_symbol: (
+            SimpleNamespace(
+                symbol="AAA",
+                values=(("momentum_bp", 1000), ("volume_ratio_bp", 2000)),
+            ),
+        ),
+    )
+    service = build_recommendation_test_service(
+        SimpleNamespace(
+            db_file=database,
+            default_start_date="2026-01-01",
+            output_root=tmp_path / "output",
+            data_root=tmp_path / "formal-data",
+        ),
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    recommendation = _recommendation()
+    result_id = "rec-independent-after-cost-20260622"
+    service.last_run_context["result_id"] = result_id
+    service._apply_recommendation_calibration([recommendation], decision_date="2026-07-27")
+    projection = service.last_calibration_projections["AAA"]
+    assert projection.status == "active_candidate", (
+        projection.warnings,
+        service.last_run_context.get("calibration_projection_receipt_error_detail"),
+    )
+    assert service.last_run_context["calibration_projection_receipt_status"] == "persisted"
+    receipt_metadata = service.last_run_context["calibration_projection_receipt"]
+    assert receipt_metadata["result_id"] == result_id
+    receipt = read_inference_projection_receipt(
+        receipt_metadata["path"],
+        expected_receipt_hash=receipt_metadata["receipt_hash"],
+        expected_decision_date="2026-07-27",
+        expected_result_id=result_id,
+    )
+    assert receipt.payload["result_id"] == result_id
+    assert projection.after_cost_profit_probability_bp is not None
+    model_prediction = consumer._model.predict((1000, 2000))
+    assert projection.raw_after_cost_profit_probability_bp == (
+        model_prediction.after_cost_profit_probability_bp
+    )
+    assert projection.after_cost_profit_probability_bp != AFTER_COST_NULL_BENCHMARK_PROBABILITY_BP
+    assert "after_cost_baseline:after_cost_null_benchmark_50pct_v1" in projection.source_trace
+    assert "after_cost_baseline_contract:independent_null_benchmark_v1" in projection.source_trace
+    assert service.last_run_context["calibration_after_cost_baseline_id"] == (
+        AFTER_COST_NULL_BENCHMARK_BASELINE_ID
+    )
+
+    invalid_null_value = consumer.project(
+        stock_code="AAA",
+        feature_values=(1000, 2000),
+        rule_probability_bp=5_000,
+        after_cost_rule_probability_bp=5_001,
+        after_cost_rule_baseline_id=AFTER_COST_NULL_BENCHMARK_BASELINE_ID,
+        decision_date="2026-07-27",
+    )
+    assert invalid_null_value.status == "rule_only"
+    assert invalid_null_value.warnings == (
+        "after_cost_null_benchmark_probability_invalid_fail_closed",
+    )
+
+    advice_result = RecommendationResultDTO(
+        result_id=result_id,
+        result_name="independent after-cost recommendation",
+        config={
+            "strategy_status": "promoted",
+            "parameters_locked": True,
+            "disclosure_complete": True,
+            "execution_feasible": True,
+            "risk_budget_available": True,
+        },
+        recommendations=[recommendation],
+    )
+    advice_dashboard = AdviceComposer(AdvicePolicy()).compose(
+        recommendations=advice_result,
+        portfolio_result=None,
+        evidence_quality="OBSERVED",
+        decision_date="2026-07-27",
+        data_as_of_date="2026-07-26",
+        mode=AdviceMode.GUIDED,
+    )
+    advice = advice_dashboard.recommendations[0]
+    assert advice.after_cost_profit_probability_bp == projection.after_cost_profit_probability_bp
+    presentation = DecisionPresentationService().from_recommendation_advice(advice)
+    assert presentation.after_cost_profit_probability_bp == projection.after_cost_profit_probability_bp
+    lineage_detail = format_decision_lineage_detail(presentation)
+    assert "after_cost_baseline:after_cost_null_benchmark_50pct_v1" in lineage_detail
+    assert "after_cost_baseline_probability_bp:5000" in lineage_detail
+
+
+def test_default_recommendation_service_has_read_only_consumer_from_dedicated_shadow_pointer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("RECOMMENDATION_LEARNING_OUTPUT_ROOT", raising=False)
+    config = SimpleNamespace(
+        output_root=tmp_path / "output",
+        data_root=tmp_path / "formal-data",
+    )
+    service = build_recommendation_test_service(
+        config,
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+    )
+
+    assert service.calibration_consumer is not None
+    assert service.calibration_consumer.pointer_path == (
+        (tmp_path / "FA_Data_Shadow" / "recommendation_learning" / "recommendation-calibration-active-pointer.json").resolve()
+    )
+
+
+def _r026_source_evidence(
+    *,
+    scope_id: str,
+    cutoff_date: date,
+    changed: bool = False,
+):
+    from data_module.contracts.source_revision import (
+        SOURCE_EVIDENCE_NAMESPACE_ORDER_V1,
+        SOURCE_REVISION_EVIDENCE_SCHEMA_V1,
+        SourceEvidenceNamespaceV1,
+        SourceEvidencePresenceV1,
+        ValidatedEvidenceFileV1,
+        ValidatedNamespaceEvidenceV1,
+        ValidatedSourceEvidenceV1,
+    )
+
+    namespaces = []
+    for namespace in SOURCE_EVIDENCE_NAMESPACE_ORDER_V1:
+        if changed and namespace is SourceEvidenceNamespaceV1.MARKET_REVISION:
+            namespaces.append(
+                ValidatedNamespaceEvidenceV1(
+                    namespace=namespace,
+                    presence=SourceEvidencePresenceV1.PRESENT,
+                    files=(ValidatedEvidenceFileV1("synthetic/marker", "b" * 64),),
+                )
+            )
+        else:
+            namespaces.append(
+                ValidatedNamespaceEvidenceV1(
+                    namespace=namespace,
+                    presence=SourceEvidencePresenceV1.EMPTY,
+                    files=(),
+                )
+            )
+    return ValidatedSourceEvidenceV1(
+        schema_version=SOURCE_REVISION_EVIDENCE_SCHEMA_V1,
+        scope_id=scope_id,
+        cutoff_date=cutoff_date,
+        namespaces=tuple(namespaces),
+    )
+
+
+def test_live_calibration_brackets_one_provider_snapshot_with_matching_source_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import re
+
+    from data_module import source_revision_evidence_collector
+    from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotReadLease
+    from ml_module.historical_feature_builder import HistoricalFeatureBuilder
+
+    database = tmp_path / "source.db"
+    _make_database(database)
+    consumer = _RecordingConsumer()
+    service = build_recommendation_test_service(
+        SimpleNamespace(
+            db_file=database,
+            default_start_date="2014-01-01",
+            output_root=tmp_path / "output",
+            data_root=tmp_path / "formal-data",
+        ),
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    events: list[str] = []
+    aggregate_calls: list[dict[str, object]] = []
+    original_enter = MLHistoricalSnapshotReadLease.__enter__
+    original_load = MLHistoricalSnapshotReadLease.load
+    original_assert_unchanged = MLHistoricalSnapshotReadLease.assert_unchanged
+    original_exit = MLHistoricalSnapshotReadLease.__exit__
+    original_compute = HistoricalFeatureBuilder.compute
+
+    def collect(**kwargs: object):
+        aggregate_calls.append(dict(kwargs))
+        events.append("source_evidence")
+        return _r026_source_evidence(
+            scope_id=str(kwargs["scope_id"]),
+            cutoff_date=kwargs["cutoff_date"],  # type: ignore[arg-type]
+        )
+
+    def recording_enter(self: MLHistoricalSnapshotReadLease):
+        lease = original_enter(self)
+        events.append("lease.open")
+        return lease
+
+    def recording_load(self: MLHistoricalSnapshotReadLease, **kwargs: object):
+        events.append("provider.load")
+        return original_load(self, **kwargs)
+
+    def recording_assert_unchanged(self: MLHistoricalSnapshotReadLease) -> None:
+        events.append("lease.assert_unchanged")
+        original_assert_unchanged(self)
+
+    def recording_exit(
+        self: MLHistoricalSnapshotReadLease,
+        exc_type: object,
+        exc: object,
+        traceback: object,
+    ) -> None:
+        original_exit(self, exc_type, exc, traceback)
+        events.append("lease.close")
+
+    def recording_compute(
+        self: HistoricalFeatureBuilder, snapshot: object, **kwargs: object
+    ):
+        events.append("feature_builder.compute")
+        return original_compute(self, snapshot, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        source_revision_evidence_collector,
+        "collect_source_revision_evidence_v1",
+        collect,
+    )
+    monkeypatch.setattr(MLHistoricalSnapshotReadLease, "__enter__", recording_enter)
+    monkeypatch.setattr(MLHistoricalSnapshotReadLease, "load", recording_load)
+    monkeypatch.setattr(
+        MLHistoricalSnapshotReadLease, "assert_unchanged", recording_assert_unchanged
+    )
+    monkeypatch.setattr(MLHistoricalSnapshotReadLease, "__exit__", recording_exit)
+    monkeypatch.setattr(HistoricalFeatureBuilder, "compute", recording_compute)
+
+    recommendation = _recommendation()
+    service._apply_recommendation_calibration(
+        [recommendation], decision_date="2014-03-31"
+    )
+    service._apply_recommendation_calibration(
+        [_recommendation()], decision_date="2014-03-31"
+    )
+
+    assert events == [
+        "lease.open",
+        "source_evidence",
+        "provider.load",
+        "feature_builder.compute",
+        "source_evidence",
+        "source_evidence",
+        "lease.assert_unchanged",
+        "lease.close",
+        "lease.open",
+        "source_evidence",
+        "provider.load",
+        "feature_builder.compute",
+        "source_evidence",
+        "source_evidence",
+        "lease.assert_unchanged",
+        "lease.close",
+    ]
+    assert len(aggregate_calls) == 6
+    assert aggregate_calls[0] == aggregate_calls[1] == aggregate_calls[2]
+    assert aggregate_calls[3] == aggregate_calls[4] == aggregate_calls[5]
+    first_scope_id = str(aggregate_calls[0]["scope_id"])
+    second_scope_id = str(aggregate_calls[3]["scope_id"])
+    assert first_scope_id != second_scope_id
+    assert re.fullmatch(r"recommendation-live-[A-Za-z0-9]{32}", first_scope_id)
+    assert re.fullmatch(r"recommendation-live-[A-Za-z0-9]{32}", second_scope_id)
+    assert aggregate_calls[0]["database_path"] == database.resolve()
+    assert aggregate_calls[0]["cutoff_date"] == date(2014, 3, 31)
+    assert aggregate_calls[0]["symbols"] == ("AAA",)
+    assert aggregate_calls[0]["explicit_path"] is None
+    assert len(consumer.calls) == 2
+    assert recommendation.total_score == 80.0
+    assert service.last_run_context["calibration_projection_status"] == "active_candidate"
+    assert "source_revision" not in service.last_run_context
+    assert "source_revision_evidence" not in consumer.calls[0]["inference_provenance"]
+    assert first_scope_id not in repr(consumer.calls[0]["inference_provenance"])
+    assert second_scope_id not in repr(consumer.calls[1]["inference_provenance"])
+
+
+@pytest.mark.parametrize("failure_point", ("before", "after"))
+def test_live_calibration_source_evidence_failure_keeps_rule_result_and_skips_ml(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+) -> None:
+    from data_module import source_revision_evidence_collector
+    from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotReadLease
+
+    database = tmp_path / "source.db"
+    _make_database(database)
+    consumer = _RecordingConsumer()
+    active_identity_calls: list[str] = []
+    consumer.active_identity = lambda *, decision_date: active_identity_calls.append(
+        decision_date
+    )
+    service = build_recommendation_test_service(
+        SimpleNamespace(
+            db_file=database,
+            default_start_date="2014-01-01",
+            output_root=tmp_path / "output",
+            data_root=tmp_path / "formal-data",
+        ),
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    aggregate_calls = 0
+    provider_load_calls = 0
+    receipt_attempts: list[dict[str, object]] = []
+    original_load = MLHistoricalSnapshotReadLease.load
+    original_exit = MLHistoricalSnapshotReadLease.__exit__
+    lease_close_calls = 0
+
+    def recording_load(self: MLHistoricalSnapshotReadLease, **kwargs: object):
+        nonlocal provider_load_calls
+        provider_load_calls += 1
+        return original_load(self, **kwargs)
+
+    def recording_exit(
+        self: MLHistoricalSnapshotReadLease,
+        exc_type: object,
+        exc: object,
+        traceback: object,
+    ) -> None:
+        nonlocal lease_close_calls
+        lease_close_calls += 1
+        original_exit(self, exc_type, exc, traceback)
+
+    def collect(**kwargs: object):
+        nonlocal aggregate_calls
+        aggregate_calls += 1
+        if aggregate_calls == (1 if failure_point == "before" else 2):
+            raise RuntimeError("synthetic source evidence unavailable")
+        return _r026_source_evidence(
+            scope_id=str(kwargs["scope_id"]),
+            cutoff_date=kwargs["cutoff_date"],  # type: ignore[arg-type]
+        )
+
+    def record_receipt_attempt(**kwargs: object) -> None:
+        receipt_attempts.append(dict(kwargs))
+
+    monkeypatch.setattr(
+        source_revision_evidence_collector,
+        "collect_source_revision_evidence_v1",
+        collect,
+    )
+    monkeypatch.setattr(
+        RecommendationService,
+        "_persist_calibration_projection_receipt",
+        staticmethod(record_receipt_attempt),
+    )
+    monkeypatch.setattr(MLHistoricalSnapshotReadLease, "load", recording_load)
+    monkeypatch.setattr(MLHistoricalSnapshotReadLease, "__exit__", recording_exit)
+    recommendation = _recommendation()
+    original_total_score = recommendation.total_score
+
+    service._apply_recommendation_calibration(
+        [recommendation], decision_date="2014-03-31"
+    )
+
+    assert aggregate_calls == (1 if failure_point == "before" else 2)
+    assert provider_load_calls == (0 if failure_point == "before" else 1)
+    assert lease_close_calls == 1
+    assert active_identity_calls == []
+    assert consumer.calls == []
+    assert receipt_attempts == []
+    assert recommendation.total_score == original_total_score
+    assert recommendation.calibration_status == "unavailable"
+    assert recommendation.calibrated_probability_bp is None
+    assert service.last_run_context["calibration_projection_status"] == "unavailable"
+    assert service.last_run_context["warnings"][-1].startswith(
+        "calibration_feature_source_unavailable:RuntimeError"
+    )
+
+
+@pytest.mark.parametrize("mismatch_kind", ("digest", "identity"))
+def test_live_calibration_revision_mismatch_fails_closed_and_scope_is_call_local(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mismatch_kind: str,
+) -> None:
+    from data_module import source_revision_evidence_collector
+
+    database = tmp_path / "source.db"
+    _make_database(database)
+    consumer = _RecordingConsumer()
+    active_identity_calls: list[str] = []
+    consumer.active_identity = lambda *, decision_date: active_identity_calls.append(
+        decision_date
+    )
+    service = build_recommendation_test_service(
+        SimpleNamespace(
+            db_file=database,
+            default_start_date="2014-01-01",
+            output_root=tmp_path / "output",
+            data_root=tmp_path / "formal-data",
+        ),
+        industry_mapper=MagicMock(),
+        market_data_provider=MagicMock(),
+        regime_detector=MagicMock(),
+        calibration_consumer=consumer,
+    )
+    aggregate_calls: list[dict[str, object]] = []
+    receipt_attempts: list[dict[str, object]] = []
+
+    def collect(**kwargs: object):
+        aggregate_calls.append(dict(kwargs))
+        return _r026_source_evidence(
+            scope_id=(
+                "recommendation-live-mismatched-scope"
+                if mismatch_kind == "identity" and len(aggregate_calls) == 2
+                else str(kwargs["scope_id"])
+            ),
+            cutoff_date=kwargs["cutoff_date"],  # type: ignore[arg-type]
+            changed=mismatch_kind == "digest" and len(aggregate_calls) == 2,
+        )
+
+    def record_receipt_attempt(**kwargs: object) -> None:
+        receipt_attempts.append(dict(kwargs))
+
+    monkeypatch.setattr(
+        source_revision_evidence_collector,
+        "collect_source_revision_evidence_v1",
+        collect,
+    )
+    monkeypatch.setattr(
+        RecommendationService,
+        "_persist_calibration_projection_receipt",
+        staticmethod(record_receipt_attempt),
+    )
+    recommendation = _recommendation()
+    original_total_score = recommendation.total_score
+
+    service._apply_recommendation_calibration(
+        [recommendation], decision_date="2014-03-31"
+    )
+
+    assert len(aggregate_calls) == 2
+    assert aggregate_calls[0]["scope_id"] == aggregate_calls[1]["scope_id"]
+    assert aggregate_calls[0]["cutoff_date"] == aggregate_calls[1]["cutoff_date"]
+    assert aggregate_calls[0]["database_path"] == aggregate_calls[1]["database_path"]
+    assert aggregate_calls[0]["symbols"] == aggregate_calls[1]["symbols"]
+    assert active_identity_calls == []
+    assert consumer.calls == []
+    assert receipt_attempts == []
+    assert recommendation.total_score == original_total_score
+    assert recommendation.calibration_status == "unavailable"
+    assert recommendation.calibrated_probability_bp is None
+    assert service.last_run_context["calibration_projection_status"] == "unavailable"
+    expected_warning = (
+        "calibration_source_revision_identity_changed_fail_closed"
+        if mismatch_kind == "identity"
+        else "calibration_source_revision_changed_fail_closed"
+    )
+    assert expected_warning in service.last_run_context["warnings"]

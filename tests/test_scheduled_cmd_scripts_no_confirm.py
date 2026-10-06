@@ -40,6 +40,14 @@ def test_daily_recommendation_snapshot_wrapper_does_not_confirm_or_trade() -> No
     assert "writes_evidence_db" in text
     assert "auto_trading" in text
     assert "lifecycle_action" in text
+    assert 'if not defined export_paper_frozen_source set "export_paper_frozen_source=1"' in cmd_text
+    assert 'if "%export_paper_frozen_source%"=="1"' in cmd_text
+    assert 'set "export_paper_frozen_source=0"' not in cmd_text
+    assert "--export-paper-frozen-source" in cmd_text
+    shadow_text = (
+        SCHEDULED_DIR / "run_daily_recommendation_learning_pipeline.py"
+    ).read_text(encoding="utf-8").lower()
+    assert "--export-paper-frozen-source" not in shadow_text
 
 
 def test_daily_data_update_wrapper_does_not_confirm_or_trade() -> None:
@@ -51,6 +59,17 @@ def test_daily_data_update_wrapper_does_not_confirm_or_trade() -> None:
     assert "--confirm" not in text
     assert "--allow-production-db-confirm" not in text
     assert "production evidence" not in text
+    assert 'set "window_weekdays=10"' in cmd_text
+    assert "--reverify-unknown-legacy-industry-dates" in cmd_text
+    assert (
+        'set "monthly_revenue_research_args=--capture-monthly-revenue-research-candidate"'
+        in cmd_text
+    )
+    assert (
+        'if /i "%baldr_capture_monthly_revenue_research_candidate%"=="0" '
+        'set "monthly_revenue_research_args="'
+    ) in cmd_text
+    assert "--capture-monthly-revenue-research-candidate" in py_text
 
 
 def test_official_market_event_wrapper_has_no_prompt_or_broker() -> None:
@@ -80,6 +99,15 @@ def test_ml_raw_pit_refresh_wrapper_is_noninteractive_and_read_only() -> None:
     assert "writes_source_database" in py_text
     assert "--confirm" not in text
     assert "input(" not in text
+
+
+def test_ml_raw_cmd_enables_prospective_candidate_capture_unless_explicitly_disabled() -> None:
+    cmd_text = (SCHEDULED_DIR / "run_ml_raw_pit_refresh.cmd").read_text(encoding="utf-8").lower()
+    py_text = (SCHEDULED_DIR / "run_ml_raw_pit_refresh.py").read_text(encoding="utf-8").lower()
+
+    assert "prospective_capture_args=--capture-prospective-daily-price-candidate" in cmd_text
+    assert 'if "%baldr_enable_ml_prospective_daily_capture%"=="0"' in cmd_text
+    assert "--capture-prospective-daily-price-candidate" in py_text
 
 
 def test_ml_direct_chain_maintenance_wrapper_is_noninteractive_and_fail_closed() -> None:
@@ -152,6 +180,26 @@ def test_decision_evidence_wrapper_is_the_dedicated_confirm_boundary() -> None:
     assert '"--confirm"' in py_text
     assert "changes_portfolio_state" in py_text
     assert "broker_execution" in py_text
+
+
+def test_forward_outcome_wrapper_is_the_only_outcome_table_writer() -> None:
+    cmd_text = (SCHEDULED_DIR / "run_forward_outcomes_daily.cmd").read_text(encoding="utf-8").lower()
+    py_text = (SCHEDULED_DIR / "run_scheduled_forward_outcomes.py").read_text(encoding="utf-8").lower()
+    service_text = (ROOT / "app_module" / "scheduled_forward_outcome_service.py").read_text(
+        encoding="utf-8"
+    ).lower()
+    text = cmd_text + "\n" + py_text + "\n" + service_text
+
+    assert "run_scheduled_forward_outcomes.py" in cmd_text
+    assert "--confirm" in cmd_text
+    assert "--allow-production-db-confirm" in cmd_text
+    assert "--require-cohort-identity" in cmd_text
+    assert "recommendation_included" in cmd_text
+    assert "evidence_outcomes" in text
+    assert "research_only" in text
+    assert "auto_trading" in text
+    assert "broker_order_allowed" in text
+    assert "daily_prices" in text
 
 
 def test_readme_limits_confirm_to_the_dedicated_capture_task() -> None:

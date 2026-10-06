@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterable
@@ -12,7 +12,11 @@ from app_module.evidence_rehearsal_source_reader import EvidenceRehearsalSourceR
 from app_module.evidence_pipeline_runner import EvidencePipelineRunner
 from app_module.evidence_pipeline_runner_dtos import EvidencePipelineRunRequest
 from app_module.forward_performance_service import ForwardPerformanceService
-from app_module.recommendation_repository import RecommendationRepository
+from app_module.forward_outcome_context import build_official_maturity_calendar
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    select_latest_saved_recommendation,
+)
 from data_module.config import TWStockConfig
 
 if TYPE_CHECKING:
@@ -151,6 +155,11 @@ class HistoricalEvidenceReplayService:
         if request.working_copy_mutator is not None:
             request.working_copy_mutator(replay_db)
         replay_config = self._replay_config(replay_db)
+        invocation_at = datetime.now(timezone.utc)
+        maturity_calendar = build_official_maturity_calendar(
+            config=self.config,
+            observed_at=invocation_at,
+        )
         trading_dates = self.discover_trading_dates(
             source_db_path=replay_db,
             start_date=request.start_date,
@@ -160,13 +169,19 @@ class HistoricalEvidenceReplayService:
         dry_run = not request.confirm
         days: list[HistoricalEvidenceReplayDay] = []
         event_repository = EvidenceEventRepository(replay_config, db_path=replay_db)
-        outcome_service = ForwardPerformanceService(replay_config, event_repository)
+        outcome_service = ForwardPerformanceService(
+            replay_config,
+            event_repository,
+            maturity_calendar=maturity_calendar,
+        )
         for decision_date in trading_dates:
-            selected_result_id = self._select_recommendation_result_id(
+            selected_result_id, selection_diagnostic = self._select_recommendation_result_for_day(
                 decision_date,
                 replay_config,
             )
             sources, diagnostics = self._sources_for_day(request.sources, selected_result_id)
+            if selection_diagnostic:
+                diagnostics = (*diagnostics, selection_diagnostic)
             runner_summary = EvidencePipelineRunner(replay_config, db_path=replay_db).run(
                 EvidencePipelineRunRequest(
                     decision_date=decision_date,
@@ -184,6 +199,7 @@ class HistoricalEvidenceReplayService:
                     confirm=request.confirm,
                     skip_outcomes=True,
                     replay_context={
+                        "evidence_tier": "replay",
                         "replay_mode": request.replay_mode,
                         "source_label": request.source_label,
                         "replay_run_id": request.replay_run_id,
@@ -200,6 +216,7 @@ class HistoricalEvidenceReplayService:
                     end_date=decision_date,
                     limit=request.limit,
                     data_as_of_date=decision_date,
+                    invocation_at=invocation_at,
                 )
                 if outcome_mode == OUTCOME_MODE_DAILY
                 else None
@@ -239,6 +256,7 @@ class HistoricalEvidenceReplayService:
                 end_date=trading_dates[-1],
                 limit=request.limit,
                 data_as_of_date=trading_dates[-1],
+                invocation_at=invocation_at,
             ).to_dict()
 
         return HistoricalEvidenceReplayReport(
@@ -297,6 +315,8 @@ class HistoricalEvidenceReplayService:
     def _validate_paths(self, source_db: Path, replay_db: Path) -> None:
         if source_db.resolve() == replay_db.resolve():
             raise ValueError("replay DB must be separate from source DB")
+        if replay_db.resolve() == Path(self.config.db_file).resolve():
+            raise ValueError("replay DB must not overwrite the configured evidence DB")
         if not source_db.exists():
             raise FileNotFoundError(str(source_db))
 
@@ -309,8 +329,19 @@ class HistoricalEvidenceReplayService:
 
     def _replay_config(self, replay_db: Path) -> TWStockConfig:
         replay_config = TWStockConfig(data_root=self.config.data_root, output_root=self.config.output_root)
+        # Constructor test-profile suffixing must not move saved recommendation
+        # lookup away from the already-resolved source output root.
+        replay_config.data_root = self.config.data_root
+        replay_config.output_root = self.config.output_root
         replay_config.db_file = replay_db
         replay_config.sqlite_dir = replay_db.parent
+        for attribute_name in (
+            "official_calendar_cache_path",
+            "temporary_closure_path",
+        ):
+            value = getattr(self.config, attribute_name, None)
+            if value is not None:
+                setattr(replay_config, attribute_name, value)
         return replay_config
 
     def _select_recommendation_result_id(
@@ -318,18 +349,36 @@ class HistoricalEvidenceReplayService:
         decision_date: str,
         replay_config: TWStockConfig,
     ) -> str | None:
+        result_id, _diagnostic = self._select_recommendation_result_for_day(
+            decision_date,
+            replay_config,
+        )
+        return result_id
+
+    def _select_recommendation_result_for_day(
+        self,
+        decision_date: str,
+        replay_config: TWStockConfig,
+    ) -> tuple[str | None, str | None]:
         decision_key = _date_key(decision_date)
-        repository = RecommendationRepository(replay_config)
-        eligible: list[dict[str, Any]] = []
-        for row in repository.list_results():
-            created_at = str(row.get("created_at") or "")
+        queries = build_recommendation_execution_queries(replay_config)
+        eligible = []
+        for row in queries.list():
+            if row.legacy_result is not None:
+                created_at = str(row.legacy_result.created_at or "")
+            elif row.execution is not None and row.execution.context.created_at is not None:
+                created_at = row.execution.context.created_at.isoformat()
+            else:
+                created_at = ""
             created_key = _date_key(created_at[:10])
             if created_key and created_key <= decision_key:
                 eligible.append(row)
         if not eligible:
-            return None
-        latest = sorted(eligible, key=lambda row: str(row.get("created_at") or ""), reverse=True)[0]
-        return str(latest.get("result_id") or "") or None
+            return None, None
+        latest, diagnostic = select_latest_saved_recommendation(tuple(eligible))
+        if diagnostic:
+            return None, diagnostic
+        return (latest.result_id, None) if latest is not None else (None, None)
 
     def _sources_for_day(
         self,

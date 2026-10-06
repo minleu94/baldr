@@ -36,14 +36,251 @@ FORMAL_PIT_SECTOR_RECEIPT_SCHEMA_VERSION = "formal-pit-sector-receipt.v1"
 FORMAL_PIT_SECTOR_PUBLISHER_VERSION = "machine-pit-handoff-publisher.v1"
 FORMAL_PIT_SECTOR_CONSUMER_VERSION = "assembler-sector-membership-consumer.v1"
 FORMAL_PIT_SECTOR_PUBLISHER_ID = "machine:formal-pit-sector-publisher"
+DAILY_PIT_TAXONOMY_PUBLISHER_VERSION = "daily-pit-taxonomy-publisher.v1"
 SIDECAR_SCHEMA_VERSION = "pit-sector-membership-sidecar-v1"
 MANIFEST_SCHEMA_VERSION = "pit-sector-membership-manifest-v1"
+SPLIT_SIDECAR_SCHEMA_VERSION = "pit-sector-membership-sidecar-v2"
+SPLIT_MANIFEST_SCHEMA_VERSION = "pit-sector-membership-manifest-v2"
 TAIPEI = ZoneInfo("Asia/Taipei")
 _SHA256_RE = __import__("re").compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class FormalPITSectorPublisherError(ValueError):
     """正式 PIT sector sidecar 不符合 machine publication 契約。"""
+
+
+def publish_daily_pit_taxonomy_sidecar(
+    *,
+    bundle_manifest_path: Path,
+    publication_root: Path,
+    decision_at: datetime,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """在 cutoff 後只讀 preopen taxonomy bundle，完成 reader readback。
+
+    這條路徑與既有 handoff／Portfolio assembler publisher 分離：它只發布
+    taxonomy component 已通過的 sidecar，且只有 reader 同時確認 full
+    denominator、classification/security raw custody 與 license policy 後，
+    才會回傳 ``industry_filter_usable=True``。任何缺件都只寫 bounded
+    diagnostic receipt，不會 refetch 或升格 OOS／promotion／下單。
+    """
+
+    decision = _aware_datetime(decision_at, "decision_at")
+    observed = _aware_datetime(
+        now if now is not None else datetime.now(timezone.utc), "now"
+    )
+    if decision > observed:
+        raise FormalPITSectorPublisherError("decision_at cannot be after now")
+    try:
+        from data_module.pit_taxonomy_source_producer import (
+            read_daily_pit_taxonomy_bundle,
+            validate_daily_pit_taxonomy_bundle,
+        )
+
+        validation = validate_daily_pit_taxonomy_bundle(
+            bundle_manifest_path,
+            decision_at=decision,
+            now=observed,
+        )
+        bundle = read_daily_pit_taxonomy_bundle(bundle_manifest_path)
+        split_contract = (
+            validation.get("schema_version")
+            == "pit-industry-taxonomy-daily-bundle.v2"
+        )
+        capture_date = date.fromisoformat(str(validation["capture_date"]))
+        source_root = Path(bundle_manifest_path).expanduser().resolve().parent
+        output_root = publication_root.expanduser().resolve()
+        _require_output_root(output_root)
+        if split_contract:
+            expected_root = output_root / "pit_taxonomy_preopen_split_v2" / capture_date.isoformat()
+            if source_root != expected_root:
+                raise FormalPITSectorPublisherError(
+                    "split-scope publication must stay inside its separate v2 candidate root"
+                )
+            target_root = source_root
+        else:
+            target_root = output_root / "pit_sector_membership_formal" / capture_date.isoformat()
+            _copy_taxonomy_bundle_create_only(source_root, target_root)
+
+        rows = bundle.get("rows")
+        sources = bundle.get("source_registry")
+        if not isinstance(rows, list) or any(not isinstance(row, Mapping) for row in rows):
+            raise FormalPITSectorPublisherError("taxonomy bundle rows are invalid")
+        if not isinstance(sources, list) or any(not isinstance(item, Mapping) for item in sources):
+            raise FormalPITSectorPublisherError("taxonomy bundle source registry is invalid")
+        normalized_rows = [dict(row) for row in rows]
+        sidecar_schema_version = (
+            SPLIT_SIDECAR_SCHEMA_VERSION if split_contract else SIDECAR_SCHEMA_VERSION
+        )
+        manifest_schema_version = (
+            SPLIT_MANIFEST_SCHEMA_VERSION if split_contract else MANIFEST_SCHEMA_VERSION
+        )
+        manifest_body: dict[str, object] = {
+            "schema_version": manifest_schema_version,
+            "status": "formal_source_publication",
+            "formal_source_only": True,
+            "research_only": split_contract,
+            "formal_consumer_compatible": not split_contract
+            and validation.get("rule_scope_compatible", True) is True,
+            "promotion_eligible": False,
+            "scope": "prospective_pit_sector_membership",
+            "historical_backfill_claimed": False,
+            "clock_id": bundle.get("clock_id"),
+            "clock_manifest_hash": bundle.get("clock_manifest_hash"),
+            "coverage_start": capture_date.isoformat(),
+            "coverage_end": capture_date.isoformat(),
+            "universe_hash": bundle.get("universe_hash"),
+            "row_count": len(normalized_rows),
+            "rows_hash": _payload_hash(normalized_rows),
+            "source_registry": [dict(item) for item in sources],
+            "taxonomy_identity_path": "../metadata/taxonomy_identity.json",
+            "taxonomy_source_path": "../metadata/taxonomy_source.json",
+            "taxonomy_raw_manifest_path": "../metadata/raw_manifest.json",
+            "taxonomy_bundle_manifest_path": "../bundle_manifest.json",
+            "taxonomy_bundle_hash": bundle.get("bundle_hash"),
+            "taxonomy_license_scope": bundle.get("license_scope"),
+            "publisher": "data_module.formal_pit_sector_publisher",
+            "publisher_version": DAILY_PIT_TAXONOMY_PUBLISHER_VERSION,
+            "decision_at": decision.isoformat(),
+            "availability_policy": "all_taxonomy_components_must_be_captured_before_taipei_0830",
+            "post_cutoff_refetch_forbidden": True,
+            "formal_oos_allowed": False,
+            "production_action_allowed": False,
+            "broker_order_allowed": False,
+        }
+        if split_contract:
+            for field_name in (
+                "scope_binding_schema_version",
+                "denominator_binding",
+                "rule_candidate_binding",
+                "scope_diff",
+                "taxonomy_coverage_complete",
+                "rule_scope_compatible",
+            ):
+                manifest_body[field_name] = bundle.get(field_name)
+            manifest_body["status"] = "complete"
+            manifest_body["candidate_only"] = True
+            manifest_body["taxonomy_coverage_verified"] = (
+                validation.get("taxonomy_coverage_complete") is True
+            )
+        sidecar = {
+            "schema_version": sidecar_schema_version,
+            "manifest": {
+                **manifest_body,
+                "canonical_hash": _payload_hash(
+                    {
+                        "sidecar_schema_version": sidecar_schema_version,
+                        "manifest": manifest_body,
+                    }
+                ),
+            },
+            "rows": normalized_rows,
+        }
+        sidecar_path = target_root / "pit_sector_membership" / "sidecar.json"
+        _write_create_only_json(sidecar_path, sidecar)
+
+        from data_module.pit_sector_membership_reader import PITSectorMembershipReader
+
+        reader = PITSectorMembershipReader(
+            [sidecar_path],
+            raw_roots=[target_root],
+            universe_symbols_paths=[target_root / "metadata" / "universe_symbols.json"],
+            universe_identity_paths=[target_root / "metadata" / "universe_identity.json"],
+            clock_manifest_paths=[target_root / "clock" / "manifest.json"],
+            taxonomy_identity_paths=[target_root / "metadata" / "taxonomy_identity.json"],
+        )
+        readback = reader.read(
+            as_of_date=capture_date,
+            decision_at=decision,
+        )
+        industry_filter_usable = readback.industry_filter_usable
+        blockers = list(readback.warnings) if readback.status != "accepted" else []
+        if not industry_filter_usable:
+            blockers.extend(
+                warning
+                for warning in readback.warnings
+                if warning not in blockers
+            )
+        status = (
+            "formal_source_publication"
+            if industry_filter_usable
+            else (
+                "candidate_only_rule_scope_incompatible"
+                if split_contract
+                and validation.get("taxonomy_coverage_complete") is True
+                and validation.get("rule_scope_compatible") is False
+                else "blocked"
+            )
+        )
+        receipt_body: dict[str, object] = {
+            "schema_version": "daily-pit-taxonomy-publisher-receipt.v1",
+            "status": status,
+            "publisher": "data_module.formal_pit_sector_publisher",
+            "publisher_version": DAILY_PIT_TAXONOMY_PUBLISHER_VERSION,
+            "bundle_manifest_path": str(Path(bundle_manifest_path).expanduser().resolve()),
+            "sidecar_path": str(sidecar_path.resolve()),
+            "decision_at": decision.isoformat(),
+            "sidecar_file_hash": _file_sha256(sidecar_path),
+            "row_count": len(readback.rows),
+            "full_symbol_count": validation.get("full_symbol_count"),
+            "eligible_symbol_count": validation.get("eligible_symbol_count"),
+            "excluded_symbol_count": validation.get("excluded_symbol_count"),
+            "unknown_symbol_count": validation.get("unknown_symbol_count"),
+            "security_type_counts": bundle.get("security_type_counts", {}),
+            "market_scope_counts": bundle.get("market_scope_counts", {}),
+            "reader_status": readback.status,
+            "reader_quality": readback.quality,
+            "industry_filter_usable": industry_filter_usable,
+            "lineage": dict(readback.lineage),
+            "warnings": list(readback.warnings),
+            "blockers": sorted(set(blockers)),
+            "formal_ready": industry_filter_usable,
+            "formal_consumer_compatible": industry_filter_usable,
+            "candidate_only": not industry_filter_usable,
+            "formal_oos_allowed": False,
+            "promotion_eligible": False,
+            "production_action_allowed": False,
+            "broker_order_allowed": False,
+            "post_cutoff_refetch_forbidden": True,
+        }
+        if split_contract:
+            receipt_body["taxonomy_coverage_complete"] = (
+                validation.get("taxonomy_coverage_complete") is True
+            )
+            receipt_body["rule_scope_compatible"] = validation.get(
+                "rule_scope_compatible"
+            )
+        receipt_path = target_root / "taxonomy_receipt.json"
+        _write_create_only_json(
+            receipt_path,
+            {**receipt_body, "receipt_hash": _payload_hash(receipt_body)},
+        )
+        return {
+            **receipt_body,
+            "receipt_path": str(receipt_path.resolve()),
+            "taxonomy_identity_path": str((target_root / "metadata" / "taxonomy_identity.json").resolve()),
+            "taxonomy_source_path": str((target_root / "metadata" / "taxonomy_source.json").resolve()),
+            "raw_manifest_path": str((target_root / "metadata" / "raw_manifest.json").resolve()),
+        }
+    except Exception as error:  # noqa: BLE001 - scheduled boundary is fail closed
+        return {
+            "status": "blocked",
+            "publisher": "data_module.formal_pit_sector_publisher",
+            "publisher_version": DAILY_PIT_TAXONOMY_PUBLISHER_VERSION,
+            "industry_filter_usable": False,
+            "formal_ready": False,
+            "formal_consumer_compatible": False,
+            "candidate_only": True,
+            "formal_oos_allowed": False,
+            "promotion_eligible": False,
+            "production_action_allowed": False,
+            "broker_order_allowed": False,
+            "post_cutoff_refetch_forbidden": True,
+            "blockers": [
+                "pit_taxonomy_publication_failed:"
+                + _safe_error(error)
+            ],
+        }
 
 
 def publish_formal_pit_sector_sidecar(
@@ -741,6 +978,37 @@ def _write_create_only_json(path: Path, payload: Mapping[str, object]) -> None:
             raise FormalPITSectorPublisherError("immutable formal PIT publication differs on retry")
 
 
+def _copy_taxonomy_bundle_create_only(source_root: Path, target_root: Path) -> None:
+    """把已驗證 bundle bytes 搬到正式日期目錄，維持相對路徑與 create-only。"""
+
+    source = source_root.expanduser().resolve()
+    target = target_root.expanduser().resolve()
+    if not source.is_dir():
+        raise FormalPITSectorPublisherError("taxonomy bundle root is missing")
+    target.mkdir(parents=True, exist_ok=True)
+    for item in sorted(source.rglob("*")):
+        if not item.is_file():
+            continue
+        relative = item.relative_to(source)
+        destination = target / relative
+        try:
+            destination.resolve().relative_to(target)
+        except ValueError as error:
+            raise FormalPITSectorPublisherError("taxonomy bundle path escapes target") from error
+        _write_create_only_bytes(destination, item.read_bytes())
+
+
+def _write_create_only_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+    except FileExistsError:
+        if path.read_bytes() != payload:
+            raise FormalPITSectorPublisherError("immutable taxonomy bundle byte differs on retry")
+
+
 def _require_output_root(path: Path) -> None:
     repository_output = Path(__file__).resolve().parents[1] / "output"
     temp_root = Path(tempfile.gettempdir()).resolve()
@@ -828,8 +1096,10 @@ __all__ = [
     "FORMAL_PIT_SECTOR_PUBLISHER_VERSION",
     "FORMAL_PIT_SECTOR_RECEIPT_SCHEMA_VERSION",
     "FORMAL_PIT_SECTOR_SIDECAR_SCHEMA_VERSION",
+    "DAILY_PIT_TAXONOMY_PUBLISHER_VERSION",
     "FormalPITSectorPublisherError",
     "consume_formal_pit_sector_sidecar",
+    "publish_daily_pit_taxonomy_sidecar",
     "publish_formal_pit_sector_sidecar",
     "read_formal_pit_sector_receipt",
 ]

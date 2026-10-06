@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sqlite3
 
@@ -43,6 +44,36 @@ def _database(path: Path) -> None:
     )
     connection.commit()
     connection.close()
+
+
+def _write_pending_repair_receipt(
+    database: Path,
+    *,
+    source_date: str = "20240102",
+) -> None:
+    data_root = database.parent.parent if database.parent.name == "sqlite" else database.parent
+    receipt_dir = (
+        data_root
+        / "output"
+        / "scheduled"
+        / "daily_price_repair_receipts"
+        / "20260520"
+        / "historical_price_spike_20260921"
+    )
+    receipt_dir.mkdir(parents=True)
+    (receipt_dir / "pending.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "historical-price-spike-repair-20260921.v1",
+                "receipt_kind": "historical_price_spike_repair_pending",
+                "status": "pending",
+                "source_date": source_date,
+                "created_at": "2024-02-01T00:00:00+00:00",
+                "allowlist_count": 868,
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_provider_loads_only_whitelisted_sources_with_t_minus_one_cutoff(tmp_path: Path) -> None:
@@ -89,6 +120,39 @@ def test_appending_future_rows_does_not_change_same_decision_snapshot(tmp_path: 
 
     assert after.prices == before.prices
     assert after.feature_as_of_date == before.feature_as_of_date
+
+
+def test_pending_price_repair_blocks_direct_historical_snapshot_load(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "sqlite" / "history.db"
+    database.parent.mkdir()
+    _database(database)
+    _write_pending_repair_receipt(database)
+
+    with pytest.raises(ValueError, match="revision-aware research or formal process"):
+        MLHistoricalSnapshotProvider(database).load(
+            decision_date="2024-01-04",
+            history_start_date="2024-01-01",
+            symbols=("2330",),
+            industry_index_names=(),
+        )
+
+
+def test_forward_window_crossing_repair_date_is_blocked_for_labels(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "sqlite" / "history.db"
+    database.parent.mkdir()
+    _database(database)
+    _write_pending_repair_receipt(database, source_date="20260520")
+
+    with pytest.raises(ValueError, match="revision-aware research or formal process"):
+        MLHistoricalSnapshotProvider(database).load_forward_price_window(
+            start_date="2026-05-19",
+            end_date="2026-05-21",
+            symbols=("2330",),
+        )
 
 
 def test_provider_fails_closed_for_missing_database_or_schema(tmp_path: Path) -> None:

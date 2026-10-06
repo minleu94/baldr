@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 from app_module.decision_desk_dtos import DecisionDeskQuality, PortfolioAlertAttribution, PortfolioAlertSummary
+from app_module.portfolio_condition_monitor import PortfolioCurrentSnapshot
 
 
 class PortfolioPositionProvider(Protocol):
@@ -38,6 +39,8 @@ class _AlertItem:
     chip_observed_event_count: int = 0
     chip_estimated_event_count: int = 0
     chip_unavailable_event_count: int = 0
+    required_human_fields: tuple[str, ...] = ()
+    user_position_verified: bool = False
 
 
 
@@ -88,14 +91,19 @@ class PortfolioAlertService:
         if not positions:
             return PortfolioAlertSummary(
                 as_of_date=as_of_date,
-                quality=DecisionDeskQuality.MISSING,
-                warnings=("portfolio_alerts_no_active_position",),
+                quality=DecisionDeskQuality.OBSERVED,
+                warnings=(),
                 alert_count=0,
                 alert_codes=(),
                 alert_level="low",
+                population_status="no_positions",
             )
 
-        attribution_items, hard_failures = self._collect_alerts(positions, warnings_for_quality)
+        attribution_items, hard_failures = self._collect_alerts(
+            positions,
+            warnings_for_quality,
+            as_of_date,
+        )
         alert_items = [item for item in attribution_items if item.severity > 0]
         source_summary = self._build_source_summary(alert_items)
         if source_summary:
@@ -118,6 +126,7 @@ class PortfolioAlertService:
                 alert_codes=(),
                 alert_level="low",
                 attributions=attributions,
+                population_status="has_positions",
             )
 
         return PortfolioAlertSummary(
@@ -132,6 +141,7 @@ class PortfolioAlertService:
             alert_codes=self._top_alert_codes(alert_items),
             alert_level=self._infer_alert_level(alert_items),
             attributions=attributions,
+            population_status="has_positions",
         )
 
     def _build_attributions(self, alerts: list[_AlertItem]) -> tuple[PortfolioAlertAttribution, ...]:
@@ -148,6 +158,8 @@ class PortfolioAlertService:
                 chip_observed_event_count=item.chip_observed_event_count,
                 chip_estimated_event_count=item.chip_estimated_event_count,
                 chip_unavailable_event_count=item.chip_unavailable_event_count,
+                required_human_fields=item.required_human_fields,
+                user_position_verified=item.user_position_verified,
             )
             for item in sorted_alerts
         )
@@ -157,15 +169,62 @@ class PortfolioAlertService:
         self,
         positions: Iterable[Any],
         warnings: list[str],
+        as_of_date: date,
     ) -> tuple[list[_AlertItem], int]:
         items: list[_AlertItem] = []
         hard_failures = 0
         for index, position in enumerate(positions):
             stock_code = self._read_stock_code(position, index)
             source_label = self._read_position_source_label(position)
+            source = getattr(position, "source_summary", {})
+            user_verified = (isinstance(source, Mapping) and source.get("source_scope") == "user_portfolio"
+                and source.get("user_position_verified") is True)
+            # An unknown thesis on a machine/legacy record cannot create a user obligation.
+            required_fields = tuple(field for field in (
+                "entry_thesis", "invalidation", "holding_horizon", "review_date")
+                if user_verified and isinstance(source.get("required_human_fields"), (list, tuple))
+                and field in source["required_human_fields"])
 
             try:
-                condition_result = self.condition_monitor.evaluate(position)
+                observation_reader = getattr(
+                    self.portfolio_service, "get_current_price_observation", None
+                )
+                observation = (
+                    observation_reader(stock_code)
+                    if callable(observation_reader)
+                    else None
+                )
+                quote_data_date = getattr(observation, "data_date", None)
+                quote_freshness_status = str(
+                    getattr(observation, "freshness_status", "unverified") or "unverified"
+                )
+                if (
+                    isinstance(quote_data_date, date)
+                    and not isinstance(quote_data_date, datetime)
+                    and quote_data_date > as_of_date
+                ):
+                    # 保留實際觀測供追溯；晚於指定截日的行情不能判定歷史持倉假設。
+                    quote_freshness_status = "unverified"
+                    warnings.append(
+                        f"持倉健康／風險提醒：{stock_code} 行情資料日 "
+                        f"{quote_data_date.isoformat()} 晚於截日 {as_of_date.isoformat()}；"
+                        "價格僅供損益觀察，不觸發停損／停利，且不具歷史 PIT 資格。"
+                    )
+                current_snapshot = (
+                    PortfolioCurrentSnapshot(
+                        current_price=getattr(observation, "price", None),
+                        quote_data_date=quote_data_date,
+                        quote_source_id=str(getattr(observation, "source_id", "") or ""),
+                        quote_source_snapshot_hash=str(
+                            getattr(observation, "source_snapshot_hash", "") or ""
+                        ),
+                        quote_freshness_status=quote_freshness_status,
+                        quote_expected_date=getattr(observation, "expected_date", None),
+                    )
+                    if observation is not None
+                    else None
+                )
+                condition_result = self.condition_monitor.evaluate(position, current_snapshot)
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"portfolio_alerts_condition_monitor_error:{stock_code}:{exc}")
                 hard_failures += 1
@@ -208,6 +267,8 @@ class PortfolioAlertService:
                         chip_observed_event_count=chip_result.observed_event_count,
                         chip_estimated_event_count=chip_result.estimated_event_count,
                         chip_unavailable_event_count=chip_result.unavailable_event_count,
+                        required_human_fields=required_fields,
+                        user_position_verified=bool(user_verified),
                     )
                 )
 

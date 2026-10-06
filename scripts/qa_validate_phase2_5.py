@@ -5,10 +5,12 @@ Phase 2.5 功能驗證腳本
 
 import sys
 import os
+import tempfile
 from pathlib import Path
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from decimal import Decimal
 import json
 import traceback
 import logging
@@ -19,21 +21,32 @@ sys.path.insert(0, str(project_root))
 
 from data_module.config import TWStockConfig
 from app_module.screening_service import ScreeningService
+from app_module.decision_service_composition import build_industry_mapper
 from app_module.regime_service import RegimeService
 from app_module.recommendation_service import RecommendationService
+from app_module.recommendation.input_preparation import (
+    build_default_recommendation_input_preparer,
+)
+from scripts.recommendation_execution_qa_support import (
+    execute_and_readback,
+    require_isolated_test_environment,
+)
 from app_module.watchlist_service import WatchlistService
 from app_module.backtest_service import BacktestService
 from app_module.preset_service import PresetService
-from app_module.strategy_registry import StrategyRegistry
-from app_module.dtos import RecommendationResultDTO, BacktestReportDTO
+from decision_module.strategies.registry import StrategyRegistry
+from app_module.dtos import BacktestReportDTO
 # from ui_app.industry_mapper import IndustryMapper
-from decision_module.industry_mapper import IndustryMapper
 
 # 確保策略已註冊
-import app_module.strategies  # 這會觸發策略註冊
+import decision_module.strategies  # 這會觸發策略註冊
 
 # 設置日誌
-log_dir = project_root / 'output' / 'qa' / 'phase2_5_validation'
+qa_temp_root = Path(tempfile.gettempdir()).resolve()
+configured_output_root = Path(os.environ.get("OUTPUT_ROOT", qa_temp_root / "phase2_5_qa")).expanduser().resolve()
+if not configured_output_root.is_relative_to(qa_temp_root):
+    configured_output_root = qa_temp_root / "phase2_5_qa"
+log_dir = configured_output_root / '_test' / 'qa' / 'phase2_5_validation'
 log_dir.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
@@ -85,7 +98,7 @@ def validate_market_watch(config, result: ValidationResult):
     logger.info("=" * 80)
     
     try:
-        industry_mapper = IndustryMapper(config)
+        industry_mapper = build_industry_mapper(config)
         screening_service = ScreeningService(config, industry_mapper)
         
         # A1: 強勢個股（本日）
@@ -241,9 +254,18 @@ def validate_recommendation(config, result: ValidationResult):
     logger.info("=" * 80)
     
     try:
-        industry_mapper = IndustryMapper(config)
-        recommendation_service = RecommendationService(config, industry_mapper)
+        industry_mapper = build_industry_mapper(config)
         regime_service = RegimeService(config)
+        recommendation_service = RecommendationService(
+            config,
+            industry_mapper,
+            input_preparer=build_default_recommendation_input_preparer(config),
+            regime_service=regime_service,
+        )
+        recommendation_execution = None
+        recommendation_readback = None
+        recommendation_receipt = None
+        recommendations = ()
         
         # 獲取當前 Regime
         regime_result = regime_service.detect_regime()
@@ -287,30 +309,34 @@ def validate_recommendation(config, result: ValidationResult):
                 'regime': current_regime
             }
             
-            recommendations = recommendation_service.run_recommendation(
-                config=config_dict,
+            recommendation_execution, recommendation_readback, recommendation_receipt = execute_and_readback(
+                recommendation_service,
+                config_dict,
                 max_stocks=50,
-                top_n=10
+                top_n=10,
             )
-            
+            saved_execution = recommendation_readback.execution
+            assert saved_execution is not None and saved_execution.decision is not None
+            recommendations = saved_execution.decision.items
+
             logger.info(f"  找到 {len(recommendations)} 個推薦")
             if len(recommendations) > 0:
-                # 檢查 DTO 結構
+                # 檢查 query readback 的 typed RecommendationItem 結構
                 rec = recommendations[0]
-                logger.info(f"  DTO 欄位: {rec.__dict__.keys()}")
-                logger.info(f"  範例: {rec.stock_code}, 總分={rec.total_score:.2f}")
+                logger.info(f"  Typed fields: {tuple(rec.__dataclass_fields__)}")
+                logger.info(f"  範例: {rec.stock_code}, 總分={rec.rule_score}")
                 
                 # 驗證分數範圍
                 for rec in recommendations[:5]:
-                    assert 0 <= rec.indicator_score <= 100, f"IndicatorScore 超出範圍: {rec.indicator_score}"
-                    assert 0 <= rec.pattern_score <= 100, f"PatternScore 超出範圍: {rec.pattern_score}"
-                    assert 0 <= rec.volume_score <= 100, f"VolumeScore 超出範圍: {rec.volume_score}"
+                    for score_name in ("rule_score", "indicator_score", "pattern_score", "volume_score"):
+                        score_value = getattr(rec, score_name)
+                        assert score_value is not None and Decimal("0") <= Decimal(str(score_value)) <= Decimal("100"), f"{score_name} 超出範圍: {score_value}"
                 
                 result.add_pass('Recommendation (basic)', {
                     'count': len(recommendations),
                     'sample': {
                         'stock_code': recommendations[0].stock_code,
-                        'total_score': recommendations[0].total_score,
+                        'total_score': str(recommendations[0].rule_score),
                         'indicator_score': recommendations[0].indicator_score,
                         'pattern_score': recommendations[0].pattern_score,
                         'volume_score': recommendations[0].volume_score
@@ -332,33 +358,20 @@ def validate_recommendation(config, result: ValidationResult):
         except Exception as e:
             result.add_fail('Recommendation (basic)', str(e), traceback.format_exc())
         
-        # B2: 推薦結果保存
-        logger.info("\n[B2] 測試推薦結果保存")
+        # B2: 推薦 execution create-only 保存與 verified query readback
+        logger.info("\n[B2] 測試推薦 execution 保存與 verified readback")
         try:
-            from app_module.recommendation_repository import RecommendationRepository
-            repo = RecommendationRepository(config)
-            
-            if len(recommendations) > 0:
-                result_dto = RecommendationResultDTO(
-                    run_id=f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                    timestamp=datetime.now(),
-                    strategy_config=config_dict,
-                    market_regime=current_regime,
-                    recommendations=recommendations[:5]
-                )
-                
-                run_id = repo.save_recommendation_run(result_dto)
-                logger.info(f"  保存成功，run_id: {run_id}")
-                
-                # 驗證可讀回
-                loaded = repo.load_recommendation_run(run_id)
-                assert loaded is not None, "無法讀回保存的結果"
-                assert len(loaded.recommendations) == 5, f"讀回的推薦數量不符: {len(loaded.recommendations)}"
-                
+            if recommendation_execution is not None and recommendation_readback is not None and recommendation_receipt is not None:
+                loaded = recommendation_readback.execution
+                assert loaded is not None, "無法 verified readback 推薦 execution"
+                assert loaded == recommendation_execution
+                assert recommendation_receipt.result_id == loaded.result_id
+                assert recommendation_readback.payload_hash == recommendation_receipt.payload_hash
                 result.add_pass('Recommendation (save/load)', {
-                    'run_id': run_id,
-                    'saved_count': len(result_dto.recommendations),
-                    'loaded_count': len(loaded.recommendations)
+                    'result_id': recommendation_receipt.result_id,
+                    'saved_count': len(recommendation_execution.decision.items if recommendation_execution.decision else ()),
+                    'loaded_count': len(loaded.decision.items if loaded.decision else ()),
+                    'payload_hash': recommendation_receipt.payload_hash,
                 })
         except Exception as e:
             result.add_fail('Recommendation (save/load)', str(e), traceback.format_exc())
@@ -371,11 +384,15 @@ def validate_recommendation(config, result: ValidationResult):
                 config_regime = config_dict.copy()
                 config_regime['regime'] = regime
                 
-                recs = recommendation_service.run_recommendation(
-                    config=config_regime,
+                regime_execution, regime_readback, _regime_receipt = execute_and_readback(
+                    recommendation_service,
+                    config_regime,
                     max_stocks=20,
-                    top_n=5
+                    top_n=5,
                 )
+                regime_saved = regime_readback.execution
+                assert regime_saved is not None and regime_saved.decision is not None
+                recs = regime_saved.decision.items
                 if len(recs) > 0:
                     logger.info(f"  {regime} Regime: 找到 {len(recs)} 個推薦")
                     result.add_pass(f'Regime Weight ({regime})', {'count': len(recs)})
@@ -465,8 +482,8 @@ def validate_backtest(config, result: ValidationResult):
     logger.info("=" * 80)
     
     try:
-        from app_module.strategy_spec import StrategySpec
-        from app_module.strategy_registry import StrategyRegistry
+        from decision_module.strategies.contracts import StrategySpec
+        from decision_module.strategies.registry import StrategyRegistry
         
         backtest_service = BacktestService(config)
         
@@ -676,9 +693,9 @@ def generate_report(result: ValidationResult, config):
                 f.write(f"#### ✅ {feature}\n\n")
                 if feature in result.evidence:
                     evidence = result.evidence[feature]
-                    f.write(f"- **Entry point**: `RecommendationService.run_recommendation()`\n")
+                    f.write(f"- **Entry point**: sealed RecommendationExecution, create-only save, verified query readback\n")
                     f.write(f"- **Data sources**: `{config.stock_data_file}`, `{config.meta_data_dir}/companies.csv`\n")
-                    f.write(f"- **Expected output**: List[RecommendationDTO] with scores 0~100\n")
+                    f.write(f"- **Expected output**: RecommendationExecution.decision.items with typed scores 0~100\n")
                     evidence_clean = convert_numpy_types(evidence)
                     f.write(f"- **Actual run evidence**: {json.dumps(evidence_clean, ensure_ascii=False, indent=2)}\n")
                     f.write(f"- **Pass/Fail**: ✅ Pass\n\n")
@@ -786,6 +803,7 @@ def generate_report(result: ValidationResult, config):
 
 def main():
     """主函數"""
+    require_isolated_test_environment()
     logger.info("開始 Phase 2.5 功能驗證")
     logger.info(f"專案根目錄: {project_root}")
     logger.info(f"輸出目錄: {log_dir}")

@@ -4,13 +4,19 @@ PySide6 主應用程式
 
 import os
 import sys
+import time
 from pathlib import Path
 
 # 添加項目根目錄到系統路徑
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+from data_module.phase3c_backfill_runner import configured_candidate_db_path
 
-from ui_qt.crash_diagnostics import install_crash_diagnostics, record_exception
+from ui_qt.crash_diagnostics import (
+    install_crash_diagnostics,
+    record_diagnostic,
+    record_exception,
+)
 
 
 def _configure_console_streams() -> None:
@@ -47,10 +53,12 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QLabel,
     QWidget,
+    QPushButton,
+    QVBoxLayout,
 )
 from typing import Dict, Any
 from collections.abc import Mapping
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QStandardPaths, Qt
 from PySide6.QtGui import QFont, QIcon
 
 from data_module.config import TWStockConfig
@@ -62,6 +70,7 @@ from app_module.sector_rotation_service import (
     SectorRotationService,
     SQLiteIndustryIndexSectorRotationProvider,
 )
+from app_module.industry_strength_service import IndustryStrengthService
 from app_module.watchlist_trigger_service import (
     WatchlistTriggerService,
     WatchlistServiceWatchlistProvider,
@@ -84,10 +93,15 @@ from app_module.research_session import (
     ResearchSessionSnapshotDTO,
     ResearchStockContextDTO,
 )
+from app_module.decision_continuity_controller import DecisionContinuityController
+from app_module.decision_outcome_journey import DecisionOutcomeJourneyService
 from app_module.stock_research_report_service import StockResearchReportReadService
+from app_module.daily_market_research_screener import DailyMarketResearchScreenerService
+from ui_qt.views.daily_market_cohort_view import DailyMarketCohortView
+from app_module.stock_research_report_provider_adapters import CurrentRestatedMLRunRegistry
 
 # 導入策略模組以觸發註冊
-import app_module.strategies
+import decision_module.strategies
 from ui_qt.views.strong_stocks_view import StrongStocksView
 from ui_qt.views.weak_stocks_view import WeakStocksView
 from ui_qt.views.market_regime_view import MarketRegimeView
@@ -97,7 +111,7 @@ from ui_qt.views.recommendation_view import RecommendationView
 from ui_qt.views.update_view import UpdateView
 from ui_qt.views.backtest_view import BacktestView
 from ui_qt.views.watchlist_view import WatchlistView
-from ui_qt.views.stock_research_report_view import StockResearchReportDialog
+from ui_qt.views.stock_research_workspace import StockResearchWorkspace
 from ui_qt.widgets.session_context_strip import SessionContextStrip
 from ui_qt.views.smart_money.smart_money_flow_view import SmartMoneyFlowView
 from app_module.broker_flow_service import BrokerFlowService
@@ -106,10 +120,16 @@ from app_module.smart_money_semantic_service import (
     SQLiteSmartMoneyPriceProvider,
 )
 from app_module.decision_market_frame import DecisionMarketFrameLoader
-from app_module.decision_desk_service import DecisionDeskSnapshotBuilder, SavedRecommendationDeskProvider
+from app_module.decision_desk_service import (
+    DecisionDeskSnapshotBuilder,
+    SavedRecommendationDeskProvider,
+)
 from app_module.market_data_visibility_service import MarketDataVisibilityService
 from ui_qt.views.decision_desk_view import DecisionDeskView
 from app_module.workbench_source_service import WorkbenchSourceService
+from app_module.recommendation_learning_evidence_projection_service import (
+    RecommendationLearningEvidenceProjectionService,
+)
 from app_module.research_console_source_service import ResearchConsoleSourceService
 from app_module.engineering_closure_dashboard_service import (
     EngineeringClosureDashboardService,
@@ -123,11 +143,13 @@ from ui_qt.theme.fonts import (
 )
 from ui_qt.widgets.left_navigation import LeftNavigationWidget, NavigationItem
 from ui_qt.widgets.adaptive_workspace_stack import AdaptiveWorkspaceStack
+from ui_qt.widgets.layout_helpers import bounded_initial_window_geometry
 from ui_qt.widgets.text_sanitizer import sanitize_button_texts
 from ui_qt.main_window_coordinator import WORKSPACE_DEFINITIONS, resolve_workspace_key
 from ui_qt.runtime_composition import build_runtime_ui_composition
 from ui_qt.workers.task_worker import (
     request_cooperative_task_worker_shutdown,
+    running_task_workers,
 )
 from app_module.decision_desk_composition import (
     DecisionDeskMarketRegimeProvider,
@@ -156,6 +178,59 @@ def apply_app_theme(app: QApplication) -> None:
     app.setStyleSheet(build_global_stylesheet())
 
 
+def _drain_qt_deferred_deletes(
+    app: QApplication,
+    windows: tuple[Any, ...],
+) -> None:
+    """在 QApplication 有效期間釋放已關閉的 GUI QObject。"""
+
+    record_diagnostic("qt_deferred_delete_drain_started")
+
+    for window in windows:
+        try:
+            delete_later = getattr(window, "deleteLater", None)
+        except RuntimeError:
+            continue
+        if not callable(delete_later):
+            continue
+        try:
+            delete_later()
+        except RuntimeError:
+            # 其他關閉路徑可能已先釋放 wrapper；不要再次觸碰失效 C++ object。
+            continue
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    app.processEvents()
+    # processEvents 可能才配送 QThread.finished 的 queued cleanup；若該回呼
+    # 在視窗釋放後呼叫 worker.deleteLater，第二次有限 flush 會在 Qt 尚有效時
+    # 一併排空新建立的 DeferredDelete。
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    record_diagnostic("qt_deferred_delete_drain_finished")
+
+
+def _resolve_personal_policy_config_path(
+    explicit_path: str | Path | None,
+    *,
+    configured_path: str | Path | None = None,
+) -> Path | None:
+    """明示 caller 優先，其次共用 config，最後本機 AppConfigLocation。"""
+
+    if explicit_path is None:
+        explicit_path = configured_path
+    if explicit_path is not None:
+        requested_path = Path(explicit_path).expanduser()
+        if not requested_path.is_absolute():
+            raise ValueError("policy_config_path 必須是明示的絕對路徑")
+        return requested_path.resolve()
+    if QCoreApplication.instance() is None:
+        return None
+    location = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.AppConfigLocation
+    )
+    if not location:
+        return None
+    return (Path(location) / "personal_use_policy.json").resolve()
+
+
 class MainWindow(QMainWindow):
     """主窗口"""
 
@@ -177,12 +252,14 @@ class MainWindow(QMainWindow):
             broker_flow_service=getattr(self, "broker_flow_service", None),
             smart_money_service=getattr(self, "smart_money_semantic_service", None),
             market_frame_loader=getattr(self, "decision_market_frame_loader", None),
+            industry_strength_service=getattr(self, "industry_strength_service", None),
             dependencies={
                 "DecisionMarketFrameLoader": DecisionMarketFrameLoader,
                 "MarketBreadthService": MarketBreadthService,
                 "SQLiteDailyPriceMarketBreadthProvider": SQLiteDailyPriceMarketBreadthProvider,
                 "SectorRotationService": SectorRotationService,
                 "SQLiteIndustryIndexSectorRotationProvider": SQLiteIndustryIndexSectorRotationProvider,
+                "IndustryStrengthService": IndustryStrengthService,
                 "PortfolioConditionMonitor": PortfolioConditionMonitor,
                 "PortfolioChipService": PortfolioChipService,
                 "PortfolioAlertService": PortfolioAlertService,
@@ -197,14 +274,337 @@ class MainWindow(QMainWindow):
         )
         self.decision_market_frame_loader = composition.market_frame_loader
         if getattr(self.config, "output_root", None) is not None:
-            composition.builder.recommendation_provider = SavedRecommendationDeskProvider(self.config)
+            composition.builder.recommendation_provider = (
+                SavedRecommendationDeskProvider(self.config)
+            )
         return composition.builder
 
-    def __init__(self):
+    def _bind_selected_journey_readers(self) -> None:
+        from app_module.stock_research_chart_marker_composition import (
+            ChartMarkerSource, SelectedPortfolioTradeReadAdapter, SelectedJournalReadAdapter,
+        )
+        from app_module.stock_research_chart_marker_reader import StockChartMarkerRecordSource
+        store = self.portfolio_service.store
+        route = getattr(store, "route", None)
+        if route is not None:
+            self.decision_outcome_journey_service.portfolio_trade_reader = SelectedPortfolioTradeReadAdapter(
+                ChartMarkerSource(store.trades_file, StockChartMarkerRecordSource.ACTUAL_TRADES,
+                                  store._io_custody.guard), account_id=route.identity.key)
+        paths = self.journal_storage_selection.paths
+        if paths is not None:
+            legacy = self.journal_storage_selection.legacy_read_only
+            def guard(path: Path) -> Path:
+                paths.assert_selected(path, legacy_read_only=legacy)
+                return path
+            self.decision_outcome_journey_service.journal_reader = SelectedJournalReadAdapter(
+                ChartMarkerSource(self.journal_service.store.journal_file,
+                                  StockChartMarkerRecordSource.RECOMMENDATION_CONFIRMATIONS, guard),
+                journal_paths=paths, legacy_read_only=legacy)
+
+    def _clear_stock_chart_markers(self, _context: object = None) -> None:
+        self._chart_marker_generation = getattr(self, "_chart_marker_generation", 0) + 1
+        worker = getattr(self, "_chart_marker_worker", None)
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    worker.cancel(wait=False)
+            except RuntimeError:
+                pass
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is not None:
+            workspace.report_view.set_chart_marker_reader(None, None)
+
+    def _load_stock_chart_markers(self, report: object) -> None:
+        from app_module.stock_research_chart_marker_composition import ChartMarkerSource, compose_saved_chart_markers
+        from app_module.stock_research_chart_marker_reader import StockChartMarkerRecordSource, StockChartMarkerReadResult
+        from app_module.stock_research_report_dtos import StockResearchReportDTO
+        from ui_qt.views.stock_research_report_view import _stock_chart_cutoff_date
+        from ui_qt.workers.task_worker import TaskWorker
+
+        self._clear_stock_chart_markers()
+        workspace = self.stock_research_workspace
+        if workspace is None or not isinstance(report, StockResearchReportDTO):
+            return
+        view = workspace.report_view
+        context = view._loaded_request_context
+        if context is None or view._loaded_report is not report or not context.source_id:
+            return
+        cutoff = _stock_chart_cutoff_date(report, context)
+        if not cutoff or context.stock_code != report.stock_code:
+            return
+        generation = self._chart_marker_generation
+        store = self.portfolio_service.store
+        route = getattr(store, "route", None)
+        account_id = route.identity.key if route is not None else "default"
+        journal_paths = self.journal_storage_selection.paths
+        legacy_journal = self.journal_storage_selection.legacy_read_only
+        def journal_guard(path: Path) -> Path:
+            if journal_paths is not None:
+                journal_paths.assert_selected(path, legacy_read_only=legacy_journal)
+            return path
+        sources = (
+            ChartMarkerSource(store.trades_file, StockChartMarkerRecordSource.ACTUAL_TRADES,
+                              store._io_custody.guard),
+            ChartMarkerSource(self.journal_service.store.journal_file,
+                              StockChartMarkerRecordSource.RECOMMENDATION_CONFIRMATIONS, journal_guard),
+        )
+        worker = TaskWorker(compose_saved_chart_markers, report, cutoff_date=cutoff,
+                            account_id=account_id, expected_source_id=context.source_id, sources=sources)
+        self._chart_marker_worker = worker
+        def apply(result: object) -> None:
+            if (generation != self._chart_marker_generation or view._closing
+                    or getattr(self, "_shutdown_close_requested", False)
+                    or view._loaded_report is not report or view._loaded_request_context != context):
+                return
+            if isinstance(result, StockChartMarkerReadResult):
+                view._chart_marker_diagnostics = result.diagnostics
+                view.set_chart_marker_evidence(result.candidates, result.identities)
+        worker.finished.connect(apply)
+        worker.native_thread_finished.connect(
+            lambda: setattr(self, "_chart_marker_worker", None)
+            if getattr(self, "_chart_marker_worker", None) is worker else None
+        )
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _clear_personal_h20_product(self, _context: object = None) -> None:
+        self._personal_h20_generation = getattr(self, "_personal_h20_generation", 0) + 1
+        worker = getattr(self, "_personal_h20_worker", None)
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    worker.cancel(wait=False)
+            except RuntimeError:
+                pass
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is not None:
+            workspace.report_view.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
+
+    def _load_personal_h20_product(self, report: object) -> None:
+        from app_module.stock_research_report_dtos import StockResearchReportDTO
+        from app_module.recommendation.personal_h20_product_evidence import (
+            PersonalH20ProductEvidence, read_personal_h20_product_for_stock,
+        )
+        from ui_qt.workers.task_worker import TaskWorker
+        from scripts.scheduled.personal_h20_daily_hook import read_personal_h20_daily_receipt, read_personal_h20_prediction
+
+        self._clear_personal_h20_product()
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is None or not isinstance(report, StockResearchReportDTO):
+            return
+        view = workspace.report_view
+        context = view._loaded_request_context
+        if context is None or view._loaded_report is not report or context.stock_code != report.stock_code:
+            return
+        generation = self._personal_h20_generation
+        market_root = Path(self.config.data_root)
+        configured = os.environ.get("PERSONAL_H20_ACTIVATION_CONFIG")
+        config_path = Path(configured) if configured else market_root / "personal" / "recommendation_h20" / "activation.json"
+        expected_reference = None
+        if context.source_kind == "personal_h20_saved_cohort":
+            origin = getattr(self, "_personal_h20_research_origin", None)
+            if origin is None or origin[0] != context:
+                return
+            expected_reference = origin[2]
+        worker = TaskWorker(read_personal_h20_product_for_stock, config_path,
+            stock_code=report.stock_code, market_root=market_root,
+            daily_reader=read_personal_h20_daily_receipt, prediction_reader=read_personal_h20_prediction,
+            expected_reference=expected_reference)
+        self._personal_h20_worker = worker
+
+        def apply(result: object) -> None:
+            if (generation != self._personal_h20_generation or view._closing
+                    or getattr(self, "_shutdown_close_requested", False)
+                    or view._loaded_report is not report or view._loaded_request_context != context):
+                return
+            if isinstance(result, PersonalH20ProductEvidence):
+                view.set_personal_h20_evidence(result)
+
+        worker.finished.connect(apply)
+        worker.native_thread_finished.connect(
+            lambda: setattr(self, "_personal_h20_worker", None)
+            if getattr(self, "_personal_h20_worker", None) is worker else None)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _personal_h20_configuration(self) -> tuple[Path, Path]:
+        market_root = Path(self.config.data_root)
+        configured = os.environ.get("PERSONAL_H20_ACTIVATION_CONFIG")
+        return market_root, (Path(configured) if configured else
+            market_root / "personal" / "recommendation_h20" / "activation.json")
+
+    def _mount_personal_h20_research(self, recommendation: Any) -> None:
+        """既有推薦工作區掛入保存母體；選頁才唯讀載入。"""
+        from ui_qt.widgets.personal_h20_research_widget import PersonalH20ResearchWidget
+
+        panel = QWidget(recommendation)
+        layout = QVBoxLayout(panel)
+        refresh = QPushButton("讀取每日已保存模型名單", panel)
+        widget = PersonalH20ResearchWidget(panel)
+        layout.addWidget(refresh)
+        layout.addWidget(widget)
+        self.personal_h20_research_widget = widget
+        self.personal_h20_research_panel = panel
+        self._personal_h20_cohort_generation = 0
+        self._personal_h20_cohort_reference = None
+        self._personal_h20_research_origin = None
+        refresh.clicked.connect(lambda: self._refresh_personal_h20_cohort())
+        widget.researchRequested.connect(self._request_personal_h20_research)
+        tabs = recommendation.result_source_tabs
+        tabs.addTab(panel, "個人模型選股研究（H20毛報酬）")
+        tabs.currentChanged.connect(lambda _index:
+            self._refresh_personal_h20_cohort() if tabs.currentWidget() is panel else None)
+
+    def _request_personal_h20_research(self, selection: object) -> None:
+        from app_module.recommendation.personal_h20_research_cohort import PersonalH20ResearchSelection
+        widget = getattr(self, "personal_h20_research_widget", None)
+        if (isinstance(selection, PersonalH20ResearchSelection) and widget is not None
+                and widget.isEnabled() and widget.restore_selection(selection)):
+            self._refresh_personal_h20_cohort(selection, open_research=True)
+
+    def _refresh_personal_h20_cohort(self, selection: object = None, *, open_research: bool = False) -> None:
+        from app_module.recommendation.personal_h20_research_cohort import (
+            PersonalH20ResearchCohort, PersonalH20ResearchSelection,
+        )
+        from scripts.scheduled.personal_h20_daily_hook import read_personal_h20_product_cohort
+        from ui_qt.workers.task_worker import TaskWorker
+
+        widget = getattr(self, "personal_h20_research_widget", None)
+        if widget is None or widget._closing or getattr(self, "_shutdown_close_requested", False):
+            return
+        self._personal_h20_cohort_generation += 1
+        generation = self._personal_h20_cohort_generation
+        previous = getattr(self, "_personal_h20_cohort_worker", None)
+        if previous is not None and previous.isRunning():
+            previous.cancel(wait=False)
+        market_root, config_path = self._personal_h20_configuration()
+        widget.setEnabled(False)
+        widget._cohort = None
+        widget.table.setRowCount(0)
+        widget.summary_label.setText("正在唯讀核驗原完整模型名單、預測與來源 pins…")
+        worker = TaskWorker(read_personal_h20_product_cohort, config_path, market_root=market_root)
+        self._personal_h20_cohort_worker = worker
+        def current() -> bool:
+            return (generation == self._personal_h20_cohort_generation and not widget._closing
+                and not getattr(self, "_shutdown_close_requested", False)
+                and self._personal_h20_configuration() == (market_root, config_path))
+        def apply(result: object) -> None:
+            if not current() or not isinstance(result, tuple) or len(result) != 2:
+                return
+            reference, cohort = result
+            if not isinstance(cohort, PersonalH20ResearchCohort):
+                return
+            self._personal_h20_cohort_reference = reference
+            widget.set_cohort(cohort)
+            widget.setEnabled(True)
+            if selection is None:
+                return
+            if not isinstance(selection, PersonalH20ResearchSelection) or not widget.restore_selection(selection):
+                self.statusBar().showMessage("原模型／母體／日期／預測 pins 已變動或缺件；無法精確返回或下鑽。")
+                return
+            if not open_research:
+                return
+            row = next(row for row in cohort.rows if row.symbol == selection.symbol)
+            context = ResearchStockContextDTO(stock_code=row.symbol, decision_date=row.decision_date,
+                data_date=row.source_date or "", result_id="", identity_status="personal_research_only",
+                source_snapshot_id=cohort.cycle_id, source_snapshot_hash=cohort.manifest_sha256,
+                profile_id=cohort.candidate_id, source_id=row.prediction_id,
+                source_version=cohort.contract_hash, source_kind="personal_h20_saved_cohort",
+                source_label="已保存個人 H20 毛報酬模型研究；效果未成熟",
+                source_workspace="recommendation")
+            self._personal_h20_research_origin = (context, selection, reference)
+            self._open_stock_research_context(context)
+        def failed(message: str) -> None:
+            if current():
+                self._personal_h20_cohort_reference = None
+                widget.summary_label.setText("模型名單待核驗／目前不可用：" + str(message)[:300])
+                self.statusBar().showMessage("原保存模型名單無法核驗；不以其他日期或QA樣本代替。")
+        worker.finished.connect(apply)
+        worker.error.connect(failed)
+        worker.native_thread_finished.connect(lambda:
+            setattr(self, "_personal_h20_cohort_worker", None)
+            if getattr(self, "_personal_h20_cohort_worker", None) is worker else None)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _configure_personal_portfolio_services(self) -> None:
+        """Bind existing account contracts once; no ledger creation or identity guesses."""
+        from app_module.portfolio_service import PortfolioService
+        from app_module.personal_store_selection import resolve_personal_store_selection
+        from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreMode, StoreIdentity
+        from app_module.user_declared_holding_research import UserDeclaredHoldingResearchStore
+        from app_module.paper_portfolio_readiness_service import (
+            PaperPortfolioReadinessService, DEFAULT_PORTFOLIO_ID, DEFAULT_BENCHMARK_ID,
+        )
+        from app_module.paper_portfolio_weekly_evidence_service import PaperPortfolioWeeklyEvidenceService
+
+        selection = resolve_personal_store_selection(self.config)
+        self.personal_store_selection = selection
+        self._personal_portfolio_view_kwargs: dict[str, Any] = {}
+        if selection.mode is PersonalStoreMode.LEGACY_COMPAT:
+            self.portfolio_service = PortfolioService(self.config)
+            return
+        # These are the existing single-account UI and Paper service contracts.
+        actual = selection.route(PersonalStoreDomain.TRADES, StoreIdentity("default"))
+        declared = selection.route(PersonalStoreDomain.DECLARED_HOLDINGS, StoreIdentity("default"))
+        paper = selection.route(PersonalStoreDomain.PAPER, StoreIdentity(DEFAULT_PORTFOLIO_ID))
+        self.portfolio_service = PortfolioService(self.config, route=actual, personal_paths=selection.paths)
+        shared = dict(output_root=self.config.output_root, route=paper, personal_paths=selection.paths,
+                      config=self.config, portfolio_id=paper.identity.key, benchmark_id=DEFAULT_BENCHMARK_ID)
+        self._personal_portfolio_view_kwargs = {
+            "user_declared_store": UserDeclaredHoldingResearchStore.from_route(declared, personal_paths=selection.paths),
+            "user_declared_portfolio_id": declared.identity.key,
+            "paper_readiness_service": PaperPortfolioReadinessService(**shared),
+            "paper_weekly_evidence_service": PaperPortfolioWeeklyEvidenceService(**shared),
+        }
+
+    def __init__(
+        self,
+        *,
+        policy_config_path: str | Path | None = None,
+        daily_market_snapshot_root: str | Path | None = None,
+        daily_market_snapshot_cohort_id: str | None = None,
+        original_stock_ranking_root: str | Path | None = None,
+    ):
+        if (daily_market_snapshot_root is None) != (
+            daily_market_snapshot_cohort_id is None
+        ):
+            raise ValueError(
+                "daily_market_snapshot_root 與 daily_market_snapshot_cohort_id 必須一起明示"
+            )
+        for name, value in (
+            ("daily_market_snapshot_root", daily_market_snapshot_root),
+            ("daily_market_snapshot_cohort_id", daily_market_snapshot_cohort_id),
+            ("original_stock_ranking_root", original_stock_ranking_root),
+        ):
+            if value is not None and not str(value).strip():
+                raise ValueError(f"{name} 不可為空")
+        if original_stock_ranking_root is not None and daily_market_snapshot_root is None:
+            raise ValueError(
+                "original_stock_ranking_root 必須搭配明示每日研究快照 root／cohort"
+            )
         super().__init__()
         self.setWindowTitle("baldr")
-        self.setGeometry(100, 100, 1400, 800)
+        primary_screen = QApplication.primaryScreen()
+        available_geometry = (
+            primary_screen.availableGeometry() if primary_screen is not None else None
+        )
+        self._initial_window_geometry = bounded_initial_window_geometry(
+            available_geometry
+        )
+        self.setGeometry(self._initial_window_geometry)
         self._navigation_collapsed_by_window = False
+        self._shutdown_close_requested = False
+        self._shutdown_close_finalizing = False
+        self._shutdown_close_started_monotonic: float | None = None
+        self._shutdown_close_last_blockers: tuple[str, ...] = ()
+        self._shutdown_close_last_diagnostic_monotonic: float | None = None
+        self._shutdown_close_timer = QTimer(self)
+        self._shutdown_close_timer.setInterval(100)
+        self._shutdown_close_timer.timeout.connect(self._poll_shutdown_close)
+        self.personal_policy_config_path = _resolve_personal_policy_config_path(
+            policy_config_path
+        )
 
         # 設置窗口 icon
         icon_path = Path(__file__).parent / "app_icon.png"
@@ -219,9 +619,14 @@ class MainWindow(QMainWindow):
         try:
             # 初始化配置和服務
             self.config = TWStockConfig()
+            self.personal_policy_config_path = _resolve_personal_policy_config_path(
+                policy_config_path,
+                configured_path=getattr(self.config, "personal_model_policy_path", None),
+            )
 
             decision_services = build_decision_service_composition(config=self.config)
             self.screening_service = decision_services.screening_service
+            self.industry_strength_service = decision_services.industry_strength_service
             self.regime_service = decision_services.regime_service
             self.recommendation_service = decision_services.recommendation_service
             self.update_service = UpdateService(
@@ -237,13 +642,23 @@ class MainWindow(QMainWindow):
             # 初始化持倉與日記服務
             from app_module.portfolio_service import PortfolioService
             from app_module.journal_service import JournalService
+            from app_module.personal_journal_paths import resolve_journal_storage_selection
 
-            self.portfolio_service = PortfolioService(self.config)
-            self.journal_service = JournalService(self.config)
+            self._configure_personal_portfolio_services()
+            self.journal_storage_selection = resolve_journal_storage_selection(self.config)
+            self.journal_service = JournalService(
+                self.config, journal_paths=self.journal_storage_selection.paths,
+                legacy_read_only=self.journal_storage_selection.legacy_read_only,
+            )
+            self.decision_continuity_controller = DecisionContinuityController(
+                self.journal_service
+            )
 
             # 觀察清單服務初始化（可能失敗，需要特別處理）
             try:
-                self.watchlist_service = WatchlistService(self.config)
+                from app_module.personal_watchlist_service import build_watchlist_service
+                self.watchlist_service = build_watchlist_service(self.config)
+                self.watchlist_storage_status = self.watchlist_service.get_storage_status()
             except Exception as e:
                 logger.error(f"初始化觀察清單服務失敗: {e}")
                 # 創建一個空的服務實例，避免後續錯誤
@@ -258,19 +673,63 @@ class MainWindow(QMainWindow):
                 self.universe_service = None
                 print(f"警告：選股清單服務初始化失敗: {e}")
 
-            # 個股研究報告只組合既有 read contract；不在 MainWindow
-            # 重算推薦，也不把 Health／Exit／ML owner 實作搬進 UI。
+            # 個股研究報告只組合既有 read contract；MainWindow 注入已驗證的
+            # current-restated ML registry，不重算推薦，也不把 owner 邏輯搬入 UI。
+            self.stock_research_ml_registry = CurrentRestatedMLRunRegistry()
+            self.daily_market_snapshot_root = (
+                Path(daily_market_snapshot_root).expanduser().resolve()
+                if daily_market_snapshot_root is not None
+                else None
+            )
+            self.daily_market_snapshot_cohort_id = (
+                str(daily_market_snapshot_cohort_id).strip()
+                if daily_market_snapshot_cohort_id is not None
+                else None
+            )
+            self.original_stock_ranking_root = (
+                Path(original_stock_ranking_root).expanduser().resolve()
+                if original_stock_ranking_root is not None
+                else None
+            )
+            self.daily_market_research_screener_service = DailyMarketResearchScreenerService(
+                self.config,
+                snapshot_root=self.daily_market_snapshot_root,
+                original_ranking_root=self.original_stock_ranking_root,
+            )
             self.stock_research_report_service = StockResearchReportReadService(
                 self.config,
                 portfolio_service=self.portfolio_service,
                 condition_monitor=PortfolioConditionMonitor(),
+                ml_provider=self.stock_research_ml_registry,
                 freshness_status_path=self._data_freshness_status_path(),
+                candidate_db_file=configured_candidate_db_path() if self.config.profile != 'test' else None,
+                daily_market_snapshot_root=self.daily_market_snapshot_root,
+                daily_market_snapshot_cohort_id=self.daily_market_snapshot_cohort_id,
             )
-            self._stock_research_report_dialog: StockResearchReportDialog | None = None
+            self.decision_outcome_journey_service = (
+                DecisionOutcomeJourneyService.from_config(
+                    self.config,
+                    journal_path=(self.journal_service.store.journal_file
+                                  if self.journal_storage_selection.paths is None else None),
+                    journal_paths=self.journal_storage_selection.paths,
+                    legacy_journal_read_only=self.journal_storage_selection.legacy_read_only,
+                    portfolio_trades_path=self.portfolio_service.store.trades_file,
+                )
+            )
+            self._bind_selected_journey_readers()
+            self.stock_research_workspace: StockResearchWorkspace | None = None
 
             # 設置 UI
             self._setup_ui()
-            self.setMinimumWidth(self.RESPONSIVE_MIN_WIDTH)
+            if self.daily_market_snapshot_cohort_id is not None:
+                # Keep the reader field aligned with the explicitly configured
+                # source while leaving snapshot loading as a user action.
+                self.recommendation_view.daily_market_research_view.cohort_id_input.setText(
+                    self.daily_market_snapshot_cohort_id
+                )
+            self.setMinimumWidth(
+                min(self.RESPONSIVE_MIN_WIDTH, self._initial_window_geometry.width())
+            )
         except Exception as e:
             logger.error(f"初始化主窗口失敗: {e}")
             import traceback
@@ -331,10 +790,7 @@ class MainWindow(QMainWindow):
         if output_root is None:
             return None
         return (
-            Path(output_root)
-            / "scheduled"
-            / "data_update_quick"
-            / "latest_status.json"
+            Path(output_root) / "scheduled" / "data_update_quick" / "latest_status.json"
         ).resolve()
 
     def _data_freshness_status_path(self) -> Path | None:
@@ -346,10 +802,7 @@ class MainWindow(QMainWindow):
         if output_root is None:
             return None
         return (
-            Path(output_root)
-            / "scheduled"
-            / "data_freshness"
-            / "latest_status.json"
+            Path(output_root) / "scheduled" / "data_freshness" / "latest_status.json"
         ).resolve()
 
     def _data_update_history_path(self) -> Path | None:
@@ -361,10 +814,7 @@ class MainWindow(QMainWindow):
         if output_root is None:
             return None
         return (
-            Path(output_root)
-            / "scheduled"
-            / "data_update_quick"
-            / "history.jsonl"
+            Path(output_root) / "scheduled" / "data_update_quick" / "history.jsonl"
         ).resolve()
 
     def _tpex_status_path(self) -> Path | None:
@@ -524,6 +974,10 @@ class MainWindow(QMainWindow):
             strong_industries = StrongIndustriesView(
                 screening_service=self.screening_service, parent=self
             )
+            if hasattr(strong_industries, "stockResearchRequested"):
+                strong_industries.stockResearchRequested.connect(
+                    self._open_stock_research_context
+                )
             market_tabs.addTab(strong_industries, "強勢產業")
             print("[MainWindow] 強勢產業視圖創建成功")
 
@@ -532,6 +986,10 @@ class MainWindow(QMainWindow):
             weak_industries = WeakIndustriesView(
                 screening_service=self.screening_service, parent=self
             )
+            if hasattr(weak_industries, "stockResearchRequested"):
+                weak_industries.stockResearchRequested.connect(
+                    self._open_stock_research_context
+                )
             market_tabs.addTab(weak_industries, "弱勢產業")
             print("[MainWindow] 弱勢產業視圖創建成功")
 
@@ -547,7 +1005,9 @@ class MainWindow(QMainWindow):
                     "SmartMoneySemanticService": SmartMoneySemanticService,
                 },
             )
-            self.decision_market_frame_loader = smart_money_composition.market_frame_loader
+            self.decision_market_frame_loader = (
+                smart_money_composition.market_frame_loader
+            )
             self.smart_money_semantic_service = smart_money_composition.service
             smart_money_flow = SmartMoneyFlowView(
                 broker_flow_service=self.broker_flow_service,
@@ -562,7 +1022,9 @@ class MainWindow(QMainWindow):
             def on_market_tab_changed(index):
                 """當市場觀察 tab 被點擊時，檢查是否需要載入數據"""
                 current_widget = market_tabs.widget(index)
-                if current_widget is strong_stocks:
+                if current_widget is market_regime:
+                    market_regime.load_data_if_needed()
+                elif current_widget is strong_stocks:
                     strong_stocks.load_data_if_needed()
                 elif current_widget is weak_stocks:
                     weak_stocks.load_data_if_needed()
@@ -587,6 +1049,10 @@ class MainWindow(QMainWindow):
                     parent=self,
                 )
                 self.decision_desk_view = decision_desk_view
+                if hasattr(decision_desk_view, "stockResearchRequested"):
+                    decision_desk_view.stockResearchRequested.connect(
+                        self._open_stock_research_context
+                    )
                 print("[MainWindow] 每日決策來源建立成功")
             except Exception as e:
                 print(f"[MainWindow] 警告：每日決策來源初始化失敗：{e}")
@@ -600,7 +1066,24 @@ class MainWindow(QMainWindow):
             # Phase 2 Unified Decision Workbench shell（唯讀 DTO/service 邊界）
             print("[MainWindow] 開始建立決策工作台...")
             try:
-                self.workbench_source_service = WorkbenchSourceService(self.config)
+                self.learning_projection_service = (
+                    RecommendationLearningEvidenceProjectionService(
+                        self.config,
+                        cost_lane="banktaiwan_estimated_research",
+                    )
+                )
+                self.legacy_learning_projection_service = (
+                    RecommendationLearningEvidenceProjectionService(
+                        self.config,
+                        cost_lane="legacy_fixed_bp",
+                    )
+                )
+                self.workbench_source_service = WorkbenchSourceService(
+                    self.config,
+                    learning_evidence_projection_service=self.learning_projection_service,
+                    journal_paths=self.journal_storage_selection.paths,
+                    legacy_journal_read_only=self.journal_storage_selection.legacy_read_only,
+                )
                 self.research_console_source_service = ResearchConsoleSourceService(
                     projection_path=self._research_console_projection_path(),
                     p0_audit_path=self._p0_source_audit_path(),
@@ -610,15 +1093,26 @@ class MainWindow(QMainWindow):
                 workbench_view = UnifiedDecisionWorkbenchView(
                     source_service=self.workbench_source_service,
                     research_console_source_service=self.research_console_source_service,
+                    learning_projection_service=self.learning_projection_service,
+                    legacy_learning_projection_service=self.legacy_learning_projection_service,
                     replay_summary_json=self._default_workbench_replay_summary_path(),
                     evidence_rehearsal_dashboard=self._controlled_rehearsal_dashboard(),
                     navigate_to_daily_decision_callback=self._open_workbench_daily_decision,
                     navigate_to_market_explore_callback=self._open_workbench_market_explore,
                     navigate_to_evidence_review_callback=self._open_workbench_evidence_review,
                     navigate_to_portfolio_callback=self._open_workbench_portfolio,
-                    navigate_to_update_callback=lambda: self._select_main_workspace("update"),
-                    navigate_to_recommendation_callback=lambda: self._select_main_workspace("recommendation"),
+                    navigate_to_watchlist_callback=lambda: self._select_main_workspace(
+                        "watchlist"
+                    ),
+                    navigate_to_stock_research_callback=self._open_stock_research_context,
+                    navigate_to_update_callback=lambda: self._select_main_workspace(
+                        "update"
+                    ),
+                    navigate_to_recommendation_callback=lambda: self._select_main_workspace(
+                        "recommendation"
+                    ),
                     auto_refresh=True,
+                    async_refresh=True,
                     parent=self,
                 )
                 self.workbench_view = workbench_view
@@ -644,10 +1138,13 @@ class MainWindow(QMainWindow):
             print("[MainWindow] 創建推薦分析視圖...")
             recommendation = RecommendationView(
                 recommendation_service=self.recommendation_service,
+                daily_market_research_service=self.daily_market_research_screener_service,
                 regime_service=self.regime_service,
                 watchlist_service=self.watchlist_service,
                 config=self.config,
                 universe_service=self.universe_service,
+                journal_service=self.journal_service,
+                personal_policy_path=self.personal_policy_config_path,
                 parent=self,
             )
             # 連接一鍵送回測信號（Phase 3.3）
@@ -659,6 +1156,8 @@ class MainWindow(QMainWindow):
                     self._open_stock_research_context
                 )
             self.recommendation_view = recommendation
+            self._mount_personal_h20_research(recommendation)
+            self._connect_daily_market_cohort_view(recommendation, market_tabs)
             print("[MainWindow] 推薦分析視圖創建成功")
 
             # 觀察清單標籤（作為獨立 Tab，方便管理）
@@ -674,15 +1173,20 @@ class MainWindow(QMainWindow):
                     )
                     if hasattr(watchlist, "sendToBacktestRequested"):
                         watchlist.sendToBacktestRequested.connect(
-                            lambda config: self._handle_send_to_backtest(backtest, config)
+                            lambda config: self._handle_send_to_backtest(
+                                backtest, config
+                            )
                         )
                     self.watchlist_view = watchlist
+                    self._connect_research_bookmark_routes(recommendation, watchlist)
                     if hasattr(watchlist, "stockResearchRequested"):
                         watchlist.stockResearchRequested.connect(
                             self._open_stock_research_context
                         )
                     elif hasattr(watchlist, "stockAnalysisRequested"):
-                        watchlist.stockAnalysisRequested.connect(self.show_smart_money_flow_for_stock)
+                        watchlist.stockAnalysisRequested.connect(
+                            self.show_smart_money_flow_for_stock
+                        )
                     watchlist_widget = watchlist
                     print("[MainWindow] 觀察清單視圖創建成功")
                 except Exception as e:
@@ -712,6 +1216,7 @@ class MainWindow(QMainWindow):
                     broker_flow_service=self.broker_flow_service,
                     async_refresh=True,
                     parent=self,
+                    **self._personal_portfolio_view_kwargs,
                 )
                 self.portfolio_view = portfolio_view
                 if hasattr(portfolio_view, "stockResearchRequested"):
@@ -743,7 +1248,7 @@ class MainWindow(QMainWindow):
                     dependencies={
                         "RuntimeController": RuntimeController,
                         "QtRuntimeBridge": QtRuntimeBridge,
-                    "RuntimeView": RuntimeView,
+                        "RuntimeView": RuntimeView,
                         "EnvironmentReadinessService": EnvironmentReadinessService,
                         "QTimer": QTimer,
                     },
@@ -764,12 +1269,49 @@ class MainWindow(QMainWindow):
                 runtime_widget.setWordWrap(True)
             # --------------------------------------------
 
+            self.stock_research_workspace = StockResearchWorkspace(
+                self.stock_research_report_service,
+                journey_service=self.decision_outcome_journey_service,
+                continuity_controller=self.decision_continuity_controller,
+                parent=self,
+            )
+            self.stock_research_workspace.returnRequested.connect(
+                self._return_from_stock_research_report
+            )
+            self.stock_research_workspace.report_view.createAnalysisRequested.connect(self._prepare_stock_research_analysis)
+            self.stock_research_workspace.report_view.research_bookmark_context_resolver = (
+                self._resolve_research_bookmark_stock
+            )
+            self.stock_research_workspace.report_view.rankBookmarkRequested.connect(
+                self._save_original_ranking_bookmark
+            )
+            self.stock_research_workspace.report_view.latestResearchRequested.connect(
+                self._open_latest_bookmark_research
+            )
+            self.stock_research_workspace.report_view.activeContextChanged.connect(
+                lambda context: self.research_session_store.set_stock_context(
+                    context, source="stock_research"
+                )
+            )
+            self.stock_research_workspace.report_view.activeContextChanged.connect(
+                self._clear_stock_chart_markers
+            )
+            self.stock_research_workspace.report_view.reportLoaded.connect(
+                self._load_stock_chart_markers
+            )
+            self.stock_research_workspace.report_view.activeContextChanged.connect(
+                self._clear_personal_h20_product
+            )
+            self.stock_research_workspace.report_view.reportLoaded.connect(
+                self._load_personal_h20_product
+            )
             workspace_instances = {
                 "workbench": workbench_view,
                 "market_explore": market_tabs,
                 "recommendation": recommendation,
                 "backtest": backtest,
                 "watchlist": watchlist_widget,
+                "stock_research": self.stock_research_workspace,
                 "portfolio": portfolio_widget,
                 "update": update_view,
                 "runtime": runtime_widget,
@@ -907,18 +1449,43 @@ class MainWindow(QMainWindow):
                 "decision_date",
                 "data_date",
                 "result_id",
+                "identity_status",
+                "source_snapshot_id",
+                "source_snapshot_hash",
                 "profile_id",
                 "profile_version",
                 "source_id",
+                "source_version",
+                "mapping_source_id",
+                "mapping_version",
+                "mapping_observed_date",
                 "source_kind",
                 "source_label",
                 "source_workspace",
+                "ml_scope_mode",
+                "daily_snapshot_root",
+                "daily_snapshot_cohort_id",
+                "daily_snapshot_condition_keys",
+                "daily_snapshot_combine_mode",
+                "rank_context",
             }
             payload = {key: value.get(key, "") for key in fields}
+            # 舊頁面未提供排名來源時，保留 optional DTO 的 None；明示錯誤仍由 DTO 拒絕。
+            payload["rank_context"] = value.get("rank_context")
             if not str(payload.get("stock_code") or "").strip():
                 return None
             return ResearchStockContextDTO(**payload)
         return None
+
+    def _prepare_stock_research_analysis(self, code: str) -> None:
+        view = self.workspace_widgets.get("recommendation")
+        scope = getattr(view, "research_scope_input", None)
+        if scope is None:
+            self.statusBar().showMessage("推薦分析入口未就緒，請檢查模組狀態。")
+            return
+        scope.setText(code)
+        self._select_main_workspace("recommendation")
+        self.statusBar().showMessage(f"已指定研究股票 {code}；檢查策略後執行並保存，再返回個股研究明確選取來源。")
 
     def _open_stock_research_context(self, value: object) -> None:
         """接收保存結果／觀察清單的下鑽 context 並開啟單股研究頁。"""
@@ -939,17 +1506,27 @@ class MainWindow(QMainWindow):
                 if callable(dispatch):
                     dispatch(
                         StockResearchContextChanged(
+                            context=context,
                             stock_code=context.stock_code,
                             stock_name=context.stock_name,
                             decision_date=context.decision_date,
                             data_date=context.data_date,
                             result_id=context.result_id,
+                            identity_status=context.identity_status,
+                            source_snapshot_id=context.source_snapshot_id,
+                            source_snapshot_hash=context.source_snapshot_hash,
                             profile_id=context.profile_id,
                             profile_version=context.profile_version,
                             source_id=context.source_id,
+                            source_version=context.source_version,
+                            mapping_source_id=context.mapping_source_id,
+                            mapping_version=context.mapping_version,
+                            mapping_observed_date=context.mapping_observed_date,
                             source_kind=context.source_kind,
                             source_label=context.source_label,
                             source_workspace=context.source_workspace,
+                            ml_scope_mode=context.ml_scope_mode,
+                            rank_context=context.rank_context,
                             source="stock_drilldown",
                         )
                     )
@@ -961,42 +1538,224 @@ class MainWindow(QMainWindow):
                 legacy_route(context.stock_code)
             return
 
-        dialog = getattr(self, "_stock_research_report_dialog", None)
-        if isinstance(dialog, StockResearchReportDialog):
-            try:
-                dialog.set_context(
-                    context,
-                    stock_codes=self._stock_codes_for_research_context(context),
-                )
-            except RuntimeError:
-                # Qt 已開始銷毀舊視窗時，交由下面的建立路徑重建。
-                dialog = None
-                self._stock_research_report_dialog = None
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is None:
+            return
+        workspace.set_context(
+            context,
+            stock_codes=self._stock_codes_for_research_context(context),
+        )
+        self._select_main_workspace("stock_research")
 
-        if dialog is None:
-            dialog = StockResearchReportDialog(
-                report_service,
+    def _connect_daily_market_cohort_view(self, recommendation, market_tabs) -> None:
+        """盤勢讀名單的同一 verified snapshot，不另啟日期不同的計算。"""
+
+        daily = recommendation.daily_market_research_view
+
+        def open_list() -> None:
+            self._select_main_workspace("recommendation")
+            recommendation.result_source_tabs.setCurrentWidget(daily)
+
+        # 原大盤／強弱頁保留自己的全市場來源；研究模式只接同一個
+        # verified source view，不在切頁時呼叫 producer 或另建母體。
+        shared_consumers = []
+        for index in range(market_tabs.count()):
+            consumer = market_tabs.widget(index)
+            bind_source = getattr(consumer, "set_shared_research_source", None)
+            if callable(bind_source):
+                bind_source(daily)
+                shared_consumers.append(consumer)
+        self.shared_market_consumers = tuple(shared_consumers)
+
+        cohort_view = DailyMarketCohortView(daily, open_list, parent=self)
+        self.daily_market_cohort_view = cohort_view
+        market_tabs.addTab(cohort_view, "研究母體盤勢")
+        market_tabs.currentChanged.connect(
+            lambda index: cohort_view.on_first_open()
+            if market_tabs.widget(index) is cohort_view else None
+        )
+
+    def _connect_research_bookmark_routes(self, recommendation, watchlist) -> None:
+        """收藏通知只刷新觀察清單；最新研究必須由使用者另行要求。"""
+
+        daily = recommendation.daily_market_research_view
+        daily.bookmarkSaved.connect(lambda *_args: watchlist._load_watchlist())
+        watchlist.latestResearchRequested.connect(self._open_latest_bookmark_research)
+
+    def _save_original_ranking_bookmark(self, value: object) -> None:
+        """經使用者確認後，收藏報告目前 context 指向的原排名版本。"""
+
+        context = self._coerce_stock_research_context(value)
+        if context is None or context.rank_context is None:
+            self.statusBar().showMessage("原排名收藏 context 不完整；未保存。")
+            return
+        rank = context.rank_context
+        if rank.selected_stock_code != context.stock_code:
+            self.statusBar().showMessage("原排名收藏股票身份不一致；已拒絕保存。")
+            return
+        service = getattr(self, "watchlist_service", None)
+        add_bookmark = getattr(service, "add_rank_research_bookmark", None)
+        if not callable(add_bookmark):
+            self.statusBar().showMessage("觀察清單服務不支援版本化原排名收藏；未保存。")
+            return
+        config = getattr(self, "config", None)
+        db_path = getattr(config, "db_file", None) or getattr(
+            config, "sqlite_db_file", None
+        )
+        if not db_path:
+            self.statusBar().showMessage("未配置原排名核驗資料庫；未保存。")
+            return
+        try:
+            from app_module.daily_market_research_bookmark import (
+                create_original_stock_ranking_bookmark_from_context,
+            )
+
+            bookmark = create_original_stock_ranking_bookmark_from_context(
                 context,
-                stock_codes=self._stock_codes_for_research_context(context),
-                parent=self,
+                db_path=db_path,
+                sort_key=rank.sort_key,
+                descending=rank.descending,
+                filter_state=rank.filter_state,
             )
-            self._stock_research_report_dialog = dialog
-            dialog.report_view.returnRequested.connect(
-                self._return_from_stock_research_report
+        except Exception as exc:
+            code = str(getattr(exc, "code", "") or "").strip()
+            reason = f"{code}: {exc}" if code else f"{type(exc).__name__}: {exc}"
+            self.statusBar().showMessage(
+                f"原排名來源已拒絕或版本不符；未收藏。原因：{reason}"
             )
-            dialog.finished.connect(
-                lambda _result, current=dialog: self._clear_stock_research_dialog(current)
+            return
+        detail = self._original_ranking_bookmark_confirmation_text(context)
+        if (
+            QMessageBox.question(
+                self,
+                "確認收藏此原排名研究",
+                f"將目前報告所指向的原始排名版本加入觀察清單？\n\n{detail}",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
+            != QMessageBox.StandardButton.Yes
+        ):
+            self.statusBar().showMessage("已取消原排名收藏；觀察清單未變更。")
+            return
+        try:
+            result = add_bookmark(bookmark)
+        except Exception as exc:
+            self.statusBar().showMessage(
+                f"原排名收藏保存失敗：{type(exc).__name__}: {exc}。"
+            )
+            return
+        status = str(getattr(result, "status", "") or "")
+        if status == "conflict":
+            message = str(getattr(result, "message", "") or "收藏身份衝突")
+            self.statusBar().showMessage(f"{message}；未覆寫既有收藏。")
+            return
+        if status not in {"added", "already_present"}:
+            self.statusBar().showMessage(
+                str(getattr(result, "message", "原排名收藏未能保存。"))
+            )
+            return
+        watchlist_view = getattr(self, "watchlist_view", None)
+        refresh = getattr(watchlist_view, "_load_watchlist", None)
+        if callable(refresh):
+            refresh()
+        bookmark_id = str(
+            getattr(result, "source_id", "")
+            or getattr(result, "bookmark_id", "")
+            or getattr(bookmark, "bookmark_id", "")
+        )
+        self.statusBar().showMessage(
+            f"{'已收藏' if status == 'added' else '此原排名已收藏'} {context.stock_code}；"
+            f"來源 ID：{bookmark_id or '已核驗'}。"
+        )
+
+    def _original_ranking_bookmark_confirmation_text(
+        self, context: ResearchStockContextDTO
+    ) -> str:
+        rank = context.rank_context
+        report_view = getattr(
+            getattr(self, "stock_research_workspace", None), "report_view", None
+        )
+        report = getattr(report_view, "_loaded_report", None)
+        ranking = getattr(report, "original_ranking", None)
+        label = str(getattr(ranking, "native_score_label", "") or "")
+        rank_number = getattr(ranking, "rank", None)
+        window = "、".join(rank.comparison_window_dates)
+        return (
+            f"股票：{context.stock_code}｜模式：{'週' if rank.period == 'week' else '日'}／"
+            f"{'強勢 Top' if rank.direction == 'strong' else '弱勢 Bottom'}｜"
+            f"原名次：{rank_number if rank_number is not None else rank.selected_rank}｜"
+            f"publisher 標籤：{label or '原標籤待報告核對'}\n"
+            f"決策日：{rank.decision_date}｜實際比較日：{rank.comparison_date} → {rank.latest_date}\n"
+            f"比較窗口：{window}｜規則：{rank.comparison_window_rule}\n"
+            f"研究母體 SHA-256：{rank.research_universe_sha256}\n"
+            f"方法／版本：{rank.method_name} {rank.method_version}｜"
+            f"契約 SHA-256：{rank.method_contract_sha256}\n"
+            f"排名 manifest identity／SHA-256：{rank.rank_snapshot_id}／{rank.source_hash}\n"
+            f"父快照 identity／SHA-256：{rank.parent_snapshot_id}／{rank.parent_snapshot_hash}"
+        )
+
+    def _open_latest_bookmark_research(self, value: object) -> None:
+        context = self._coerce_stock_research_context(value)
+        if context is not None and (
+            context.rank_context is not None
+            or context.source_kind == "explicit_latest_stock_research"
+        ):
+            latest_context = ResearchStockContextDTO(
+                stock_code=context.stock_code,
+                stock_name=context.stock_name,
+                source_kind="explicit_latest_stock_research",
+                source_label="使用者明確要求另開最新個股研究",
+                source_workspace="stock_research",
+            )
+            self._open_stock_research_context(latest_context)
+            self._select_main_workspace("stock_research")
+            return
+        recommendation = getattr(self, "recommendation_view", None)
+        daily = getattr(recommendation, "daily_market_research_view", None)
+        opener = getattr(daily, "open_latest_research", None)
+        if context is None or not callable(opener):
+            return
+        opener(context)
+        self._select_main_workspace("recommendation")
+        recommendation.result_source_tabs.setCurrentWidget(daily)
+
+    def _resolve_research_bookmark_stock(
+        self, context: ResearchStockContextDTO, stock_code: str,
+    ) -> ResearchStockContextDTO | None:
+        view = getattr(self, "watchlist_view", None)
+        resolver = getattr(view, "research_bookmark_context_for_stock", None)
+        return resolver(context, stock_code) if callable(resolver) else None
 
     def _stock_codes_for_research_context(
         self,
         context: ResearchStockContextDTO,
     ) -> tuple[str, ...]:
-        """只從來源頁現有 model 取代碼，供報告視窗上一檔／下一檔。"""
+        """只從來源頁現有 model 取代碼，供研究頁上一檔／下一檔。"""
 
+        if (
+            context.source_workspace == "recommendation"
+            and context.source_kind == "original_stock_ranking"
+            and context.rank_context is not None
+        ):
+            return context.rank_context.eligible_stock_codes
+        if (
+            context.source_workspace == "recommendation"
+            and context.source_kind == "daily_market_research_snapshot"
+        ):
+            view = getattr(self, "recommendation_view", None)
+            getter = getattr(view, "research_snapshot_stock_codes", None)
+            return tuple(getter()) if callable(getter) else ()
+        if (
+            context.source_workspace == "watchlist"
+            and context.source_kind
+            in {
+                "daily_market_research_snapshot",
+                "original_stock_ranking_bookmark",
+            }
+        ):
+            view = getattr(self, "watchlist_view", None)
+            getter = getattr(view, "research_bookmark_stock_codes", None)
+            return tuple(getter(context)) if callable(getter) else ()
         if context.source_workspace == "watchlist":
             view = getattr(self, "watchlist_view", None)
             model = getattr(view, "stocks_model", None)
@@ -1021,11 +1780,12 @@ class MainWindow(QMainWindow):
         except Exception:
             return ()
 
-    def _clear_stock_research_dialog(self, dialog: StockResearchReportDialog) -> None:
-        if getattr(self, "_stock_research_report_dialog", None) is dialog:
-            self._stock_research_report_dialog = None
-
     def _return_from_stock_research_report(self) -> None:
+        workspace = getattr(self, "stock_research_workspace", None)
+        context = getattr(getattr(workspace, "report_view", None), "context", None)
+        if context is not None:
+            self._return_to_research_source(context)
+            return
         store = getattr(self, "research_session_store", None)
         snapshot = getattr(store, "get_snapshot", lambda: None)()
         if snapshot is not None:
@@ -1041,6 +1801,15 @@ class MainWindow(QMainWindow):
             context = self._coerce_stock_research_context(value)
         if context is None or not context.source_workspace:
             return
+        if context.source_kind == "personal_h20_saved_cohort":
+            origin = getattr(self, "_personal_h20_research_origin", None)
+            if origin is None or origin[0] != context:
+                self.statusBar().showMessage("原模型選取身份不可用；不以股票字串返回其他名單。")
+                return
+            self._select_main_workspace("recommendation")
+            self.recommendation_view.result_source_tabs.setCurrentWidget(self.personal_h20_research_panel)
+            self._refresh_personal_h20_cohort(origin[1])
+            return
         self._select_main_workspace(context.source_workspace)
         if context.source_workspace == "recommendation":
             view = getattr(self, "recommendation_view", None)
@@ -1048,48 +1817,340 @@ class MainWindow(QMainWindow):
             view = getattr(self, "watchlist_view", None)
         elif context.source_workspace == "portfolio":
             view = getattr(self, "portfolio_view", None)
+        elif context.source_workspace == "market_explore":
+            self._open_workbench_market_explore()
+            view = None
         else:
             view = None
+        if (
+            context.rank_context is not None
+            and context.source_workspace == "watchlist"
+        ):
+            restore = getattr(view, "restore_research_bookmark_stock", None)
+            selected = bool(restore(context)) if callable(restore) else False
+            if not selected:
+                self.statusBar().showMessage(
+                    "原排名收藏來源 ID 或 hash 無法精確返回；未用同股其他收藏替代。"
+                )
+            return
+        if (
+            context.rank_context is not None
+            and context.source_workspace == "recommendation"
+        ):
+            restore = getattr(view, "restore_research_snapshot_stock", None)
+            selected = (
+                bool(
+                    restore(
+                        context.stock_code,
+                        manifest_sha256=context.rank_context.parent_snapshot_hash,
+                    )
+                )
+                if callable(restore)
+                else False
+            )
+            if not selected:
+                self.statusBar().showMessage(
+                    "原排名父快照已變動或目前來源無法定位；未切換到其他模式或最新結果。"
+                )
+            return
+        if context.source_kind == "daily_market_research_snapshot":
+            if context.source_workspace == "watchlist":
+                restore = getattr(view, "restore_research_bookmark_stock", None)
+                selected = bool(restore(context)) if callable(restore) else False
+            else:
+                restore = getattr(view, "restore_research_snapshot_stock", None)
+                selected = (
+                    bool(restore(context.stock_code, manifest_sha256=context.source_snapshot_hash))
+                    if callable(restore) else False
+                )
+            if not selected:
+                self.statusBar().showMessage(
+                    "原每日研究快照已變動或股票不在目前清單；請核對來源，不能用同股替代原結果。"
+                )
+            return
         selector = getattr(view, "select_stock", None)
         if callable(selector):
-            selector(context.stock_code, context.result_id or None)
+            selected = bool(selector(context.stock_code, context.result_id or None))
+            if (
+                not selected
+                and context.source_workspace == "portfolio"
+                and context.result_id
+            ):
+                self._show_research_return_failure(context)
+
+    def _show_research_return_failure(self, context: ResearchStockContextDTO) -> None:
+        """呈現 Portfolio exact identity 失配，避免使用者誤以為已返回。"""
+
+        message = (
+            f"持倉研究返回未精確定位：{context.stock_code} 的目前持倉來源不是 "
+            f"{context.result_id}。為避免同股替代選取，這次未變更持倉列；"
+            "請回推薦分析重新開啟正確結果。"
+        )
+        try:
+            self.statusBar().showMessage(message)
+        except (AttributeError, RuntimeError):
+            # 關閉流程或最小測試 host 可能沒有可用 status bar；不讓提示
+            # 失敗反過來破壞原本的 fail-closed return guard。
+            return
+
+    def _request_shutdown_dependencies(
+        self,
+        *,
+        send_cancel: bool,
+    ) -> tuple[tuple[Any, ...], bool]:
+        """送出冪等取消並回報仍未完成的背景依賴。"""
+
+        update_view = getattr(self, "update_view", None)
+        if send_cancel:
+            update_shutdown = getattr(update_view, "begin_shutdown", None)
+            if not callable(update_shutdown):
+                update_shutdown = getattr(
+                    update_view, "request_cooperative_shutdown", None
+                )
+            if callable(update_shutdown):
+                try:
+                    # UpdateView 會建立本次 TPEX cancel marker，並阻止 queued
+                    # callback 在收尾期間重新啟動 worker。
+                    update_shutdown()
+                except Exception as exc:  # pragma: no cover - defensive UI path
+                    self._record_shutdown_message(f"UpdateView 關閉協調失敗：{exc}")
+
+        if send_cancel:
+            try:
+                remaining_workers = request_cooperative_task_worker_shutdown()
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self._record_shutdown_message(f"背景 worker 關閉協調失敗：{exc}")
+                remaining_workers = (exc,)
+        else:
+            try:
+                remaining_workers = running_task_workers()
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self._record_shutdown_message(f"背景 worker 狀態查詢失敗：{exc}")
+                remaining_workers = (exc,)
+
+        try:
+            background_process_running = bool(
+                update_view is not None
+                and getattr(
+                    update_view,
+                    "has_running_background_process",
+                    lambda: False,
+                )()
+            )
+        except Exception as exc:  # pragma: no cover - defensive UI path
+            self._record_shutdown_message(f"TPEX 背景程序狀態未知：{exc}")
+            background_process_running = True
+        return tuple(remaining_workers), background_process_running
+
+    def _record_shutdown_message(self, message: str) -> None:
+        """把關閉生命週期寫入既有 logger，避免只靠使用者重按 X。"""
+
+        import logging
+
+        logging.getLogger(__name__).info(message)
+
+    def _record_shutdown_diagnostic(
+        self,
+        event: str,
+        *,
+        elapsed_seconds: float | None = None,
+        worker_count: int | None = None,
+        background_process_running: bool | None = None,
+    ) -> None:
+        """保存不含路徑或工作參數的關閉階段摘要。"""
+
+        record_diagnostic(
+            f"ui_shutdown_{event}",
+            elapsed_seconds=elapsed_seconds,
+            worker_count=worker_count,
+            background_process_running=background_process_running,
+        )
+
+    def _freeze_child_refresh_sources(self) -> None:
+        """凍結有 pending generation 的子頁，避免取消後又補起新 worker。"""
+
+        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view"):
+            view = getattr(self, attribute, None)
+            begin_shutdown = getattr(view, "begin_shutdown", None)
+            if not callable(begin_shutdown):
+                continue
+            try:
+                begin_shutdown()
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                self._record_shutdown_message(f"{attribute} 關閉 gate 設定失敗：{exc}")
+
+        for view in getattr(self, "shared_market_consumers", ()):
+            begin_shutdown = getattr(view, "begin_shutdown", None)
+            if callable(begin_shutdown):
+                try:
+                    begin_shutdown()
+                except Exception as exc:  # pragma: no cover - defensive UI path
+                    self._record_shutdown_message(f"研究盤勢 consumer 關閉 gate 設定失敗：{exc}")
+
+    def _set_shutdown_ui(self) -> None:
+        """鎖住內容操作但保留事件迴圈與狀態列可更新。"""
+
+        central_widget = getattr(self, "centralWidget", None)
+        central = central_widget() if callable(central_widget) else None
+        if central is not None:
+            central.setEnabled(False)
+
+    def _poll_shutdown_close(self) -> None:
+        """在 worker／外部 process 安全完成後自動完成原本的 close。"""
+
+        if not self._shutdown_close_requested or self._shutdown_close_finalizing:
+            return
+        remaining_workers, background_process_running = (
+            MainWindow._request_shutdown_dependencies(self, send_cancel=False)
+        )
+        blockers: list[str] = []
+        if remaining_workers:
+            blockers.append(f"{len(remaining_workers)} 個合作式取消中的背景工作")
+        if background_process_running:
+            blockers.append("TPEX 背景更新程序（等待 cancel-completed）")
+        blocker_tuple = tuple(blockers)
+        if blocker_tuple:
+            now = time.monotonic()
+            if blocker_tuple != self._shutdown_close_last_blockers:
+                self._shutdown_close_last_blockers = blocker_tuple
+                self._shutdown_close_last_diagnostic_monotonic = now
+                started = self._shutdown_close_started_monotonic
+                elapsed = now - started if started is not None else 0.0
+                MainWindow._record_shutdown_diagnostic(
+                    self,
+                    "waiting",
+                    elapsed_seconds=elapsed,
+                    worker_count=len(remaining_workers),
+                    background_process_running=background_process_running,
+                )
+                MainWindow._record_shutdown_message(
+                    self, "主視窗關閉仍在等待：" + "、".join(blocker_tuple)
+                )
+                self.statusBar().showMessage(
+                    "已暫停關閉：" + "、".join(blocker_tuple)
+                    + "；目前仍在安全收尾，完成後會自動關閉。"
+                )
+            elif (
+                self._shutdown_close_last_diagnostic_monotonic is None
+                or now - self._shutdown_close_last_diagnostic_monotonic >= 5.0
+            ):
+                self._shutdown_close_last_diagnostic_monotonic = now
+                started = self._shutdown_close_started_monotonic
+                elapsed = now - started if started is not None else 0.0
+                MainWindow._record_shutdown_diagnostic(
+                    self,
+                    "still_waiting",
+                    elapsed_seconds=elapsed,
+                    worker_count=len(remaining_workers),
+                    background_process_running=background_process_running,
+                )
+                MainWindow._record_shutdown_message(
+                    self,
+                    "主視窗關閉仍在等待（UI event loop 持續運作）："
+                    f"elapsed={elapsed:.1f}s，原因=" + "、".join(blocker_tuple),
+                )
+                self.statusBar().showMessage(
+                    f"已暫停關閉 {elapsed:.0f} 秒：" + "、".join(blocker_tuple)
+                    + "；介面仍在等待安全收尾，完成後會自動關閉。"
+                )
+            return
+
+        timer = getattr(self, "_shutdown_close_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._shutdown_close_finalizing = True
+        started = self._shutdown_close_started_monotonic
+        elapsed = time.monotonic() - started if started is not None else 0.0
+        MainWindow._record_shutdown_message(
+            self,
+            f"主視窗背景工作已安全收尾，關閉耗時 {elapsed:.3f} 秒；自動完成 close。",
+        )
+        MainWindow._record_shutdown_diagnostic(
+            self,
+            "workers_finished",
+            elapsed_seconds=elapsed,
+            worker_count=0,
+            background_process_running=False,
+        )
+        self.statusBar().showMessage("背景工作已安全收尾，正在關閉…", 3_000)
+        QTimer.singleShot(0, self.close)
 
     def closeEvent(self, event):
-        """只在所有受管背景工作安全結束後才允許關閉。"""
-        report_dialog = getattr(self, "_stock_research_report_dialog", None)
-        report_view = getattr(report_dialog, "report_view", None)
-        request_report_close = getattr(report_view, "request_close", None)
-        if callable(request_report_close):
-            request_report_close()
-        # MainWindow 的 closeEvent 不會可靠地逐一傳遞到子 QWidget。Portfolio
-        # 頁有自己的 pending generation；先撤銷它，避免全域 worker coordinator
-        # 取消目前一輪後，子頁又把排隊中的下一輪重新啟動。
-        portfolio_view = getattr(self, "portfolio_view", None)
-        cancel_portfolio_refresh = getattr(portfolio_view, "cancel_refresh", None)
-        if callable(cancel_portfolio_refresh):
-            cancel_portfolio_refresh()
-        remaining_workers = request_cooperative_task_worker_shutdown()
-        update_view = getattr(self, "update_view", None)
-        background_process_running = bool(
-            update_view is not None
-            and getattr(
-                update_view,
-                "has_running_background_process",
-                lambda: False,
-            )()
+        """一次 X 請求合作式取消，完成後自動關閉，不要求再次按 X。"""
+
+        if getattr(self, "_shutdown_close_finalizing", False):
+            timer = getattr(self, "_shutdown_close_timer", None)
+            if timer is not None:
+                timer.stop()
+            event.accept()
+            return
+
+        first_request = not getattr(self, "_shutdown_close_requested", False)
+        if first_request:
+            self._shutdown_close_requested = True
+            self._shutdown_close_started_monotonic = time.monotonic()
+            self._shutdown_close_last_blockers = ()
+            self._shutdown_close_last_diagnostic_monotonic = None
+            MainWindow._record_shutdown_diagnostic(self, "requested")
+            MainWindow._freeze_child_refresh_sources(self)
+
+            research_workspace = getattr(self, "stock_research_workspace", None)
+            request_report_close = getattr(research_workspace, "request_close", None)
+            if callable(request_report_close):
+                request_report_close()
+            # MainWindow 的 closeEvent 不會可靠地逐一傳遞到子 QWidget；
+            # _freeze_child_refresh_sources 已撤銷 Portfolio／每日決策頁的
+            # pending generation，避免全域取消目前一輪後又補起下一輪。
+
+        remaining_workers, background_process_running = (
+            MainWindow._request_shutdown_dependencies(self, send_cancel=first_request)
         )
+        if first_request:
+            MainWindow._record_shutdown_diagnostic(
+                self,
+                "cancel_requested",
+                elapsed_seconds=0.0,
+                worker_count=len(remaining_workers),
+                background_process_running=background_process_running,
+            )
         if remaining_workers or background_process_running:
+            MainWindow._set_shutdown_ui(self)
             parts: list[str] = []
             if remaining_workers:
                 parts.append(f"{len(remaining_workers)} 個合作式取消中的背景工作")
             if background_process_running:
-                parts.append("TPEX 背景更新程序")
+                parts.append("TPEX 背景更新程序（等待安全收尾）")
+            blocker_tuple = tuple(parts)
+            self._shutdown_close_last_blockers = blocker_tuple
             self.statusBar().showMessage(
-                "已暫停關閉：" + "、".join(parts) + "。工作安全結束後請再次關閉。",
+                "已暫停關閉：" + "、".join(parts) + "；完成後將自動關閉。",
                 10_000,
             )
+            MainWindow._record_shutdown_message(
+                self, "主視窗收到 close request，已進入合作式收尾：" + "、".join(parts)
+            )
+            timer = getattr(self, "_shutdown_close_timer", None)
+            if timer is not None:
+                timer.start()
             event.ignore()
             return
+
+        self._shutdown_close_finalizing = True
+        timer = getattr(self, "_shutdown_close_timer", None)
+        if timer is not None:
+            timer.stop()
+        started = self._shutdown_close_started_monotonic
+        elapsed = time.monotonic() - started if started is not None else 0.0
+        MainWindow._record_shutdown_message(
+            self, f"主視窗閒置關閉耗時 {elapsed:.3f} 秒；沒有背景依賴。"
+        )
+        MainWindow._record_shutdown_diagnostic(
+            self,
+            "accepted_idle_close",
+            elapsed_seconds=elapsed,
+            worker_count=0,
+            background_process_running=False,
+        )
         event.accept()
 
 
@@ -1105,6 +2166,8 @@ def main():
     try:
         print("[Main] 正在創建 QApplication...")
         app = QApplication(sys.argv)
+        app.setOrganizationName("TechnicalAnalysis")
+        app.setApplicationName("TechnicalAnalysis")
         print("[Main] QApplication 創建成功")
 
         # 設置應用程序 icon（必須在創建窗口之前設置）
@@ -1140,9 +2203,14 @@ def main():
             return 1
 
         # 運行應用程序
+        record_diagnostic("qapplication_exec_started")
         print("[Main] 開始運行應用程序事件循環...")
         exit_code = app.exec()
+        record_diagnostic("qapplication_exec_returned", exit_code=exit_code)
         print(f"[Main] 應用程序退出，退出碼: {exit_code}")
+        # closeEvent 只會隱藏／接受主視窗；若把 QObject 留到 Python
+        # interpreter shutdown，PySide6／Qt6 可能在 native teardown 卡住。
+        _drain_qt_deferred_deletes(app, (window,))
         return int(exit_code)
     except Exception as e:
         record_exception("application_startup", e)

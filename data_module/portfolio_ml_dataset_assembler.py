@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_EVEN
 import gzip
 import hashlib
@@ -67,6 +67,9 @@ from data_module.ml_price_availability_contract import (
     PRICE_AVAILABILITY_CONTRACT_VERSION,
     validate_price_unavailable_research_contract,
 )
+from data_module.ml_daily_price_revision_gate import (
+    CurrentRestatedContractNotConnectedError,
+)
 
 
 TRAINING_JSONL_SCHEMA_VERSION = "allocation-training-jsonl-v2"
@@ -77,6 +80,13 @@ SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION = (
 SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION = (
     "pit-sector-membership-manifest-v1"
 )
+SPLIT_SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION = (
+    "pit-sector-membership-sidecar-v2"
+)
+SPLIT_SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION = (
+    "pit-sector-membership-manifest-v2"
+)
+SPLIT_SCOPE_BINDING_SCHEMA_VERSION = "pit-industry-taxonomy-scope-binding.v1"
 SUPPORTED_HORIZONS = (5, 10, 20, 60)
 _TAIPEI = ZoneInfo("Asia/Taipei")
 _DECISION_TIME = time(8, 30)
@@ -109,6 +119,8 @@ _PORTFOLIO_STATE_REPLAY_SCHEMA_VERSION = "causal-portfolio-state-replay-v1"
 _RAW_SPOOL_PROGRESS_INTERVAL = 100_000
 _RAW_SPOOL_PROGRESS_CHECK_INTERVAL = 4_096
 _RAW_SPOOL_PROGRESS_MAX_SILENCE_NS = 30 * 1_000_000_000
+_RAW_SCALE_MAXIMUM = 1_000_000
+_RESEARCH_SCALE_EXPONENT_MAXIMUM = 18
 _ASSEMBLY_PROGRESS_INTERVAL = 100_000
 _ASSEMBLY_PROGRESS_CHECK_INTERVAL = 4_096
 _ASSEMBLY_PROGRESS_MAX_SILENCE_NS = _RAW_SPOOL_PROGRESS_MAX_SILENCE_NS
@@ -1175,13 +1187,10 @@ class PortfolioMLDatasetAssembler:
                             or not isinstance(value_int, int)
                         ):
                             raise TypeError("raw value_int must be integer or null")
-                        scale = value.get("scale")
-                        if (
-                            isinstance(scale, bool)
-                            or not isinstance(scale, int)
-                            or scale <= 0
-                        ):
-                            raise TypeError("raw scale must be positive integer")
+                        scale = _validated_raw_scale(
+                            value.get("scale"),
+                            schema=manifest.get("schema_version"),
+                        )
                         if scale != runtime_definition.scale:
                             raise ValueError(
                                 "blocker:manifest_observation_scale_mismatch:"
@@ -1830,9 +1839,11 @@ def _base_feature_definitions(
     manifest: Mapping[str, Any],
 ) -> dict[str, _FeatureDefinition]:
     result: dict[str, _FeatureDefinition] = {}
+    schema = manifest.get("schema_version")
     for payload in _mapping_sequence(
         manifest.get("features"), field_name="features"
     ):
+        _validated_raw_scale(payload.get("scale"), schema=schema)
         base_feature_id = str(payload["feature_id"])
         table_name = str(payload["table_name"])
         definition = _definition_from_manifest(
@@ -1863,6 +1874,21 @@ def _definition_from_manifest(
         scope=_scope_for_table(table_name),
         dimension_values=(),
     )
+
+
+def _validated_raw_scale(value: object, *, schema: object) -> int:
+    """依來源 schema 驗證原始整數尺度或研究指數。"""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError("raw scale must be an integer")
+    if schema == "ml-research-adapted-raw-manifest.v1":
+        if not 0 <= value <= _RESEARCH_SCALE_EXPONENT_MAXIMUM:
+            raise ValueError(
+                "research raw scale exponent must be from 0 through 18"
+            )
+        return value
+    if not 1 <= value <= _RAW_SCALE_MAXIMUM:
+        raise ValueError("raw scale factor must be from 1 through 1000000")
+    return value
 
 
 def _runtime_definition(
@@ -2396,7 +2422,10 @@ def _load_sector_membership_sidecar(
         envelope.get("schema_version"),
         field_name="sector membership schema_version",
     )
-    if schema_version != SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION:
+    if schema_version not in {
+        SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION,
+        SPLIT_SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION,
+    }:
         raise ValueError(
             "unsupported sector membership sidecar schema"
         )
@@ -2421,10 +2450,98 @@ def _load_sector_membership_sidecar(
         manifest.get("schema_version"),
         field_name="sector membership manifest schema_version",
     )
-    if manifest_schema != SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION:
+    split_contract = schema_version == SPLIT_SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION
+    expected_manifest_schema = (
+        SPLIT_SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION
+        if split_contract
+        else SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION
+    )
+    if manifest_schema != expected_manifest_schema:
         raise ValueError(
             "unsupported sector membership manifest schema"
         )
+    if split_contract:
+        expected_split_canonical_hash = _sha256_json(
+            {
+                "sidecar_schema_version": schema_version,
+                "manifest": manifest,
+            }
+        )
+        if canonical_hash != expected_split_canonical_hash:
+            raise ValueError("split taxonomy sidecar canonical hash mismatch")
+        required_scope_fields = {
+            "scope_binding_schema_version",
+            "denominator_binding",
+            "rule_candidate_binding",
+            "scope_diff",
+            "taxonomy_coverage_complete",
+            "rule_scope_compatible",
+        }
+        if required_scope_fields - set(manifest):
+            raise ValueError("split sector membership source binding is incomplete")
+        if manifest.get("scope_binding_schema_version") != SPLIT_SCOPE_BINDING_SCHEMA_VERSION:
+            raise ValueError("split sector membership scope-binding schema is unsupported")
+        if manifest.get("taxonomy_coverage_complete") is not True:
+            raise ValueError("split sector taxonomy coverage is not complete")
+        diff = manifest.get("scope_diff")
+        if not isinstance(diff, Mapping):
+            raise ValueError("split sector membership scope diff is invalid")
+        rule_only = diff.get("rule_only_symbols")
+        if not isinstance(rule_only, list) or any(not isinstance(item, str) for item in rule_only):
+            raise ValueError("split sector membership Rule-only set is invalid")
+        if rule_only or manifest.get("rule_scope_compatible") is not True:
+            raise ValueError("Rule candidate set is outside the official denominator")
+        if manifest.get("formal_consumer_compatible") is not True:
+            raise ValueError("split taxonomy candidate has no formal consumer acceptance")
+        if not isinstance(manifest.get("denominator_binding"), Mapping) or not isinstance(
+            manifest.get("rule_candidate_binding"), Mapping
+        ):
+            raise ValueError("split sector membership source binding is invalid")
+        bundle_relative = manifest.get("taxonomy_bundle_manifest_path")
+        if bundle_relative != "../bundle_manifest.json":
+            raise ValueError("split taxonomy bundle binding path is not canonical")
+        decision_value = manifest.get("decision_at")
+        if not isinstance(decision_value, str):
+            raise ValueError("split taxonomy decision timestamp is missing")
+        try:
+            decision_at = datetime.fromisoformat(decision_value)
+        except ValueError as error:
+            raise ValueError("split taxonomy decision timestamp is invalid") from error
+        if decision_at.tzinfo is None or decision_at.utcoffset() is None:
+            raise ValueError("split taxonomy decision timestamp must be timezone-aware")
+        bundle_manifest_path = (path.parent / bundle_relative).resolve()
+        try:
+            bundle = _as_mapping(
+                json.loads(bundle_manifest_path.read_text(encoding="utf-8")),
+                field_name="split taxonomy bundle manifest",
+            )
+            for field_name in required_scope_fields:
+                if bundle.get(field_name) != manifest.get(field_name):
+                    raise ValueError(
+                        f"split taxonomy sidecar {field_name} differs from bundle"
+                    )
+            from data_module.pit_taxonomy_source_producer import (
+                validate_daily_pit_taxonomy_bundle,
+            )
+
+            validation = validate_daily_pit_taxonomy_bundle(
+                bundle_manifest_path,
+                decision_at=decision_at,
+                now=datetime.now(timezone.utc),
+            )
+        except Exception as error:  # noqa: BLE001 - bad source binding stays unusable
+            raise ValueError("split taxonomy source binding failed revalidation") from error
+        if (
+            validation.get("taxonomy_coverage_complete") is not True
+            or validation.get("rule_scope_compatible") is not True
+            or validation.get("bundle_hash") != manifest.get("taxonomy_bundle_hash")
+            or validation.get("scope_diff") != manifest.get("scope_diff")
+        ):
+            raise ValueError("split taxonomy bundle binding does not match the sidecar")
+        # v2 is deliberately an opt-in research preview.  It has no owner
+        # acceptance field or Formal consumer contract, so self-asserting the
+        # two compatibility flags cannot promote it into training input.
+        raise ValueError("split taxonomy v2 remains preview-only without an accepted contract")
     row_count = manifest.get("row_count")
     if (
         isinstance(row_count, bool)
@@ -2645,6 +2762,7 @@ def _load_corporate_action_custody(
                 datetime,
                 datetime | None,
                 int,
+                int,
                 str,
                 str | None,
                 bool,
@@ -2816,8 +2934,19 @@ def _load_corporate_action_custody(
                 else _required_positive_int(
                     ordinal_raw,
                     field_name="corporate action source_row_ordinal",
+                    )
                 )
-            )
+            revision_sequence_raw = event.get("revision_sequence", 0)
+            if (
+                isinstance(revision_sequence_raw, bool)
+                or not isinstance(revision_sequence_raw, int)
+                or revision_sequence_raw < 0
+            ):
+                raise TypeError(
+                    "corporate action revision_sequence must be "
+                    "a non-negative integer"
+                )
+            revision_sequence = revision_sequence_raw
             supersedes_raw = event.get("supersedes_revision_id")
             supersedes_revision_id = (
                 None
@@ -2848,6 +2977,7 @@ def _load_corporate_action_custody(
                     available,
                     announced,
                     source_row_ordinal,
+                    revision_sequence,
                     revision_id,
                     supersedes_revision_id,
                     ambiguity,
@@ -2926,6 +3056,9 @@ def _load_corporate_action_custody(
                 field_name="corporate action symbol",
             )
             effective_date = effective.date().isoformat()
+            # Display-only revision vintages retain the same economic event
+            # and effective date; the set is the consumer boundary that keeps
+            # them from becoming duplicate label/exclusion dates.
             eligible_effective_dates.setdefault(symbol, set()).add(
                 effective_date
             )
@@ -2981,6 +3114,7 @@ def _validate_corporate_action_revision_chains(
                 datetime,
                 datetime | None,
                 int,
+                int,
                 str,
                 str | None,
                 bool,
@@ -3002,22 +3136,23 @@ def _validate_corporate_action_revision_chains(
                 revision[1] or minimum_announced,
                 revision[2],
                 revision[3],
+                revision[4],
             ),
         )
         previous_revision_id: str | None = None
         for revision in ordered:
-            if revision[4] != previous_revision_id:
+            if revision[5] != previous_revision_id:
                 raise ValueError(
                     "corporate action revision chain is unlinked: "
                     f"{natural_key}"
                 )
             expected_ambiguity = availability_counts[revision[0]] > 1
-            if revision[5] != expected_ambiguity:
+            if revision[6] != expected_ambiguity:
                 raise ValueError(
                     "corporate action revision ambiguity diagnostic "
                     f"mismatch: {natural_key}"
                 )
-            previous_revision_id = revision[3]
+            previous_revision_id = revision[4]
 
 
 def _is_current_company_snapshot_source(source_id: str) -> bool:
@@ -4363,11 +4498,29 @@ class _TrainingShardWriterRegistry:
         ]
 
 
-def _validate_raw_dataset_manifest(manifest: Mapping[str, Any]) -> None:
-    if manifest.get("schema_version") != "ml-pit-year-shard-dataset.v1":
+def _validate_raw_dataset_manifest(
+    manifest: Mapping[str, Any],
+    *,
+    allow_research: bool = False,
+) -> None:
+    schema = manifest.get("schema_version")
+    if allow_research and schema in (
+        "ml-pit-year-shard-dataset.v1",
+        "ml-research-adapted-raw-manifest.v1",
+    ):
+        pass
+    elif schema != "ml-pit-year-shard-dataset.v1":
         raise ValueError("unsupported raw dataset manifest schema")
-    if manifest.get("stage") != "raw_pit_observations":
+
+    stage = manifest.get("stage")
+    if allow_research and stage in (
+        "raw_pit_observations",
+        "research_adapted_raw_observations",
+    ):
+        pass
+    elif stage != "raw_pit_observations":
         raise ValueError("input manifest is not a raw PIT observation dataset")
+
     if manifest.get("format") != "gzip_jsonl":
         raise ValueError("raw dataset must use gzip_jsonl")
     expected = str(manifest.get("manifest_hash", ""))
@@ -4375,37 +4528,56 @@ def _validate_raw_dataset_manifest(manifest: Mapping[str, Any]) -> None:
     payload.pop("manifest_hash", None)
     if expected != _sha256_json(payload):
         raise ValueError("raw dataset manifest hash mismatch")
+    if manifest.get("data_temporality") == "current_restated_research":
+        raise CurrentRestatedContractNotConnectedError(
+            "current-restated raw data cannot enter PIT row assembly"
+        )
     safety = _as_mapping(manifest.get("safety"), field_name="safety")
-    if not _required_json_bool(
-        safety.get("formal_dataset"), field_name="safety.formal_dataset"
-    ):
-        raise ValueError("raw dataset is not formal")
-    if _required_json_bool(
-        safety.get("unreviewed_included"),
-        field_name="safety.unreviewed_included",
-    ):
-        raise ValueError("raw dataset includes unreviewed features")
-    if _required_json_bool(
-        safety.get("excluded_leakage_included"),
-        field_name="safety.excluded_leakage_included",
-    ):
-        raise ValueError("raw dataset includes leakage features")
-    if not _required_json_bool(
-        safety.get("research_shadow_isolated"),
-        field_name="safety.research_shadow_isolated",
-    ):
-        raise ValueError("raw dataset does not isolate research shadow")
     if _required_json_bool(
         safety.get("raw_float_persistence_allowed"),
         field_name="safety.raw_float_persistence_allowed",
     ):
         raise ValueError("raw dataset allows float persistence")
-    if manifest.get("source_quality") is not None:
-        _validated_raw_source_quality(manifest["source_quality"])
+
+    formal_dataset = _required_json_bool(
+        safety.get("formal_dataset"), field_name="safety.formal_dataset"
+    )
+    unreviewed_included = _required_json_bool(
+        safety.get("unreviewed_included"),
+        field_name="safety.unreviewed_included",
+    )
+    excluded_leakage_included = _required_json_bool(
+        safety.get("excluded_leakage_included"),
+        field_name="safety.excluded_leakage_included",
+    )
+    research_shadow_isolated = _required_json_bool(
+        safety.get("research_shadow_isolated"),
+        field_name="safety.research_shadow_isolated",
+    )
+    if unreviewed_included:
+        raise ValueError("raw dataset includes unreviewed features")
+    if excluded_leakage_included:
+        raise ValueError("raw dataset includes leakage features")
+    if not research_shadow_isolated:
+        raise ValueError("raw dataset does not isolate research shadow")
+
+    if not allow_research:
+        if not formal_dataset:
+            raise ValueError("raw dataset is not formal")
+        if manifest.get("source_quality") is not None:
+            _validated_raw_source_quality(manifest["source_quality"])
+    else:
+        if manifest.get("source_quality") is not None:
+            _validated_raw_source_quality(manifest["source_quality"], allow_research=True)
+
     _mapping_sequence(manifest.get("features"), field_name="features")
 
 
-def _validated_raw_source_quality(value: Any) -> dict[str, Any]:
+def _validated_raw_source_quality(
+    value: Any,
+    *,
+    allow_research: bool = False,
+) -> dict[str, Any]:
     payload = dict(
         _as_mapping(value, field_name="source_quality")
     )
@@ -4417,7 +4589,7 @@ def _validated_raw_source_quality(value: Any) -> dict[str, Any]:
         payload.get("formal_training_allowed"),
         field_name="source_quality.formal_training_allowed",
     )
-    if research_only or not formal_training_allowed:
+    if not allow_research and (research_only or not formal_training_allowed):
         raise ValueError(
             "raw dataset source quality is research-only and cannot become "
             "formal training input"

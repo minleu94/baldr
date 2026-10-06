@@ -1,9 +1,14 @@
-from datetime import date, timedelta
+import logging
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
 import pandas as pd
+from app_module.decision_data_providers import (
+    industry_screen_fallback_provider,
+    stock_screen_fallback_provider,
+)
 from decision_module.stock_screener import StockScreener
 
 
@@ -140,10 +145,14 @@ def test_empty_injected_frames_mean_successful_read_with_empty_screen_and_no_fal
     monkeypatch.setattr(db_manager_module, "DBManager", db_manager)
     stock_provider = MagicMock(return_value=pd.DataFrame())
     industry_provider = MagicMock(return_value=pd.DataFrame())
+    stock_fallback = MagicMock(side_effect=AssertionError("empty provider must not fall back"))
+    industry_fallback = MagicMock(side_effect=AssertionError("empty provider must not fall back"))
     screener = StockScreener(
         config,
         recent_stock_provider=stock_provider,
         recent_industry_provider=industry_provider,
+        stock_fallback_provider=stock_fallback,
+        industry_fallback_provider=industry_fallback,
     )
 
     strong_stocks, strong_universe = screener.get_strong_stocks()
@@ -157,10 +166,12 @@ def test_empty_injected_frames_mean_successful_read_with_empty_screen_and_no_fal
     assert weak_industries.empty
     assert stock_provider.call_count == 2
     assert industry_provider.call_count == 2
+    stock_fallback.assert_not_called()
+    industry_fallback.assert_not_called()
     db_manager.assert_not_called()
 
 
-def test_none_provider_result_uses_csv_self_loading_fallback(tmp_path: Path) -> None:
+def test_none_provider_result_uses_explicit_csv_fallback_provider(tmp_path: Path) -> None:
     config = _config(tmp_path)
     stock_frame = _stock_frame()
     for code, frame in stock_frame.groupby("證券代號"):
@@ -174,6 +185,8 @@ def test_none_provider_result_uses_csv_self_loading_fallback(tmp_path: Path) -> 
         min_price=0,
         recent_stock_provider=stock_provider,
         recent_industry_provider=industry_provider,
+        stock_fallback_provider=stock_screen_fallback_provider(config),
+        industry_fallback_provider=industry_screen_fallback_provider(config),
     )
 
     strong, strong_universe = screener.get_strong_stocks(period="day", top_n=2)
@@ -190,3 +203,36 @@ def test_none_provider_result_uses_csv_self_loading_fallback(tmp_path: Path) -> 
     assert list(weak_industries.columns) == INDUSTRY_COLUMNS
     assert strong_industries.iloc[0]["指數名稱"] == "半導體"
     assert weak_industries.iloc[0]["指數名稱"] == "金融保險"
+
+
+def test_stock_fallback_error_log_names_source_without_dumping_frame(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    source_frame = _stock_frame().query("證券代號 == '2330'").copy()
+    source_frame["diagnostic_sentinel"] = "DATAFRAME_DUMP_SENTINEL"
+    fallback = SimpleNamespace(
+        frames=(("2330", source_frame),),
+        start_date=datetime.combine(TODAY - timedelta(days=30), datetime.min.time()),
+        days_back=30,
+        source_count=1,
+        source="csv",
+        missing_source=False,
+    )
+    screener = StockScreener(
+        _config(tmp_path),
+        min_price=0,
+        recent_stock_provider=lambda _period, _volume_lookback: None,
+        stock_fallback_provider=lambda *_args: fallback,
+    )
+    monkeypatch.setattr(
+        screener,
+        "_generate_strong_stock_reasons",
+        MagicMock(side_effect=RuntimeError("synthetic reason failure")),
+    )
+    caplog.set_level(logging.DEBUG, logger="decision_module.stock_screener")
+
+    screener.get_strong_stocks(period="day")
+
+    assert "csv:2330" in caplog.text
+    assert "synthetic reason failure" in caplog.text
+    assert "DATAFRAME_DUMP_SENTINEL" not in caplog.text

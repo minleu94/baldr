@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import inspect
 from datetime import date, datetime
 from typing import Any, Callable, Protocol, TypeVar
 from dataclasses import replace
 from copy import deepcopy
-from contextlib import closing
 from pathlib import Path
-import sqlite3
-import json
 
+from app_module.exceptions import BacktestCancelledError
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     DecisionDeskSnapshot,
@@ -21,7 +21,15 @@ from app_module.decision_desk_dtos import (
     DecisionDeskRiskPromptSummary,
     RecommendationDeskSummary,
 )
-from app_module.dtos import RecommendationResultDTO
+from app_module.recommendation.legacy_dtos import RecommendationResultDTO
+from app_module.recommendation.contracts import QualityStatus, RecommendationExecution
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    execution_result_config,
+    recommendation_runs_dir,
+    select_latest_saved_recommendation,
+)
 from app_module.decision_desk_snapshot_support import compute_overall_quality, collect_snapshot_warnings, collect_smart_money_candidate_codes
 from app_module.decision_desk_dashboard_service import DecisionDeskDashboardComposer
 from app_module.decision_desk_risk_prompt_service import DecisionDeskRiskPromptService
@@ -69,6 +77,36 @@ class SmartMoneyDashboardService(Protocol):
     def build_dashboard_summary(self, decision_date: date, stock_codes: tuple[str, ...] = ()): ...
 
 
+def _raise_if_cancelled(cancel_callback: Callable[[], bool] | None) -> None:
+    if cancel_callback is not None and cancel_callback():
+        raise BacktestCancelledError("決策台摘要載入已取消。")
+
+
+def _call_with_optional_cancel_callback(method, *args, cancel_callback, **kwargs):
+    if cancel_callback is None:
+        return method(*args, **kwargs)
+
+    supports_callback = False
+    try:
+        parameters = inspect.signature(method).parameters.values()
+        supports_callback = any(
+            parameter.name == "cancel_callback"
+            and parameter.kind is not inspect.Parameter.POSITIONAL_ONLY
+            for parameter in parameters
+        ) or any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters)
+    except (TypeError, ValueError):
+        pass
+
+    _raise_if_cancelled(cancel_callback)
+    if supports_callback:
+        result = method(*args, **kwargs, cancel_callback=cancel_callback)
+        _raise_if_cancelled(cancel_callback)
+        return result
+    result = method(*args, **kwargs)
+    _raise_if_cancelled(cancel_callback)
+    return result
+
+
 class DecisionMarketFrameResetter(Protocol):
     def reset(self, as_of_date: date) -> None: ...
 
@@ -80,28 +118,110 @@ class MarketDataVisibilitySectionService(Protocol):
 class SavedRecommendationDeskProvider:
     """讀取已保存推薦，不初始化 writer，不重新評分。"""
 
-    def __init__(self, config: Any):
-        self.runs_dir = Path(config.output_root) / "recommendation" / "runs"
+    def __init__(self, config: Any, *, queries: Any | None = None):
+        self.runs_dir = recommendation_runs_dir(config)
+        self.queries = queries or build_recommendation_execution_queries(config)
 
-    def fetch(self, as_of_date: date) -> RecommendationResultDTO | None:
-        db_path = self.runs_dir / "recommendation_runs.db"
-        if not db_path.is_file():
+    def fetch(self, as_of_date: date):
+        candidates: list[
+            tuple[str, RecommendationExecutionReadModel, RecommendationDeskSummary]
+        ] = []
+        for read_model in self.queries.list():
+            summary = self._summary(read_model, as_of_date)
+            if summary is not None and summary.as_of_date is not None:
+                candidates.append(
+                    (
+                        summary.as_of_date.isoformat(),
+                        read_model,
+                        summary,
+                    )
+                )
+        if not candidates:
             return None
-        with closing(sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)) as conn:
-            conn.execute("PRAGMA query_only=ON")
-            rows = conn.execute("SELECT data_path FROM runs ORDER BY created_at DESC, result_id").fetchall()
-        candidates = []
-        for (raw_path,) in rows:
-            path = Path(raw_path).resolve()
-            if not path.is_relative_to(self.runs_dir.resolve()):
-                raise ValueError("推薦來源路徑不在 runs 根目錄")
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            result = RecommendationResultDTO.from_dict(payload)
-            cutoff = result.run_context.get("as_of_date")
-            if cutoff and date.fromisoformat(str(cutoff)) <= as_of_date:
-                candidates.append(result)
-        return max(candidates, key=lambda item: (str(item.run_context["as_of_date"]), item.created_at or "", item.result_id)) if candidates else None
+        latest_as_of_date = max(item[0] for item in candidates)
+        same_day = tuple(item for item in candidates if item[0] == latest_as_of_date)
+        latest, diagnostic = select_latest_saved_recommendation(
+            tuple(item[1] for item in same_day)
+        )
+        if diagnostic or latest is None:
+            return None
+        return next(summary for _day, model, summary in same_day if model is latest)
 
+    def _summary(
+        self,
+        read_model: RecommendationExecutionReadModel,
+        requested_date: date,
+    ) -> RecommendationDeskSummary | None:
+        legacy = read_model.legacy_result
+        if legacy is not None:
+            context = deepcopy(legacy.run_context)
+            cutoff_text = str(context.get("as_of_date") or "")
+            if not cutoff_text:
+                return None
+            cutoff = date.fromisoformat(cutoff_text)
+            if cutoff > requested_date:
+                return None
+            warnings = tuple(str(item) for item in context.get("warnings", [])) + tuple(
+                legacy.exclusion_warnings_json
+            )
+            quality = DecisionDeskQuality.OBSERVED
+            if cutoff < requested_date:
+                warnings += (f"recommendation_as_of_fallback:{cutoff.isoformat()}",)
+                quality = DecisionDeskQuality.DEGRADED
+            if legacy.exclusion_quality in {"missing", "degraded"}:
+                quality = DecisionDeskQuality.DEGRADED
+            return RecommendationDeskSummary(
+                cutoff,
+                quality,
+                warnings,
+                legacy.result_id,
+                tuple(item.stock_code for item in legacy.recommendations),
+                str(context.get("profile_id") or legacy.config.get("profile_id") or ""),
+                context,
+            )
+
+        execution = read_model.execution
+        if execution is None or execution.decision is None:
+            return None
+        canonical_cutoff = execution.context.as_of_date
+        if canonical_cutoff is None or canonical_cutoff > requested_date:
+            return None
+        config = execution_result_config(execution)
+        profile_id = str(
+            config.get("profile_id")
+            or (
+                execution.context.profile_ref.reference_id
+                if execution.context.profile_ref is not None
+                else ""
+            )
+        )
+        warnings = tuple(execution.context.warnings) + tuple(execution.quality.warnings)
+        quality = {
+            QualityStatus.COMPLETE: DecisionDeskQuality.OBSERVED,
+            QualityStatus.DEGRADED: DecisionDeskQuality.DEGRADED,
+            QualityStatus.UNKNOWN: DecisionDeskQuality.MISSING,
+            QualityStatus.UNAVAILABLE: DecisionDeskQuality.MISSING,
+        }[execution.quality.status]
+        canonical_context: dict[str, Any] = {
+            "as_of_date": canonical_cutoff.isoformat(),
+            "warnings": list(warnings),
+        }
+        if profile_id:
+            canonical_context["profile_id"] = profile_id
+        if execution.context.created_at is not None:
+            canonical_context["created_at"] = execution.context.created_at.isoformat()
+        source_ids = tuple(dict.fromkeys(item.source_id for item in execution.context.source_refs))
+        if len(source_ids) == 1:
+            canonical_context["source_id"] = source_ids[0]
+        return RecommendationDeskSummary(
+            canonical_cutoff,
+            quality,
+            warnings,
+            execution.result_id,
+            tuple(item.stock_code for item in execution.decision.items),
+            profile_id,
+            canonical_context,
+        )
 
 class PortfolioLedgerDeskProvider:
     """消費已注入的候選 ledger App 服務；不初始化 repository 或計算風控。"""
@@ -131,6 +251,7 @@ class DecisionDeskSnapshotBuilder:
         provider: DailyDecisionDeskProvider | None = None,
         *,
         schema_version: int = 2,
+        cadence: MarketSessionCadence | None = None,
         clock: Callable[[], datetime] | None = None,
         market_breadth_service: MarketBreadthSectionService | None = None,
         sector_rotation_service: SectorRotationSectionService | None = None,
@@ -146,6 +267,7 @@ class DecisionDeskSnapshotBuilder:
         portfolio_ledger_provider: Any | None = None,
     ):
         self.provider = provider
+        self.cadence = cadence
         self.schema_version = schema_version
         self.clock = clock or datetime.now
         self.market_breadth_service = market_breadth_service
@@ -161,15 +283,33 @@ class DecisionDeskSnapshotBuilder:
         self.recommendation_provider = recommendation_provider
         self.portfolio_ledger_provider = portfolio_ledger_provider
 
-    def build_snapshot(self, as_of_date: date) -> DecisionDeskSnapshot:
+    def build_snapshot(
+        self,
+        as_of_date: date,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DecisionDeskSnapshot:
+        _raise_if_cancelled(cancel_callback)
         if self.market_frame_loader is not None:
             self.market_frame_loader.reset(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         market_regime = self._build_market_regime(as_of_date)
-        market_breadth = self._build_market_breadth(as_of_date)
+        _raise_if_cancelled(cancel_callback)
+        market_breadth = self._build_market_breadth(
+            as_of_date,
+            cancel_callback=cancel_callback,
+        )
+        _raise_if_cancelled(cancel_callback)
         sector_rotation = self._build_sector_rotation(as_of_date)
-        relative_strength_liquidity = self._build_relative_strength_liquidity(as_of_date)
+        _raise_if_cancelled(cancel_callback)
+        relative_strength_liquidity = self._build_relative_strength_liquidity(
+            as_of_date,
+            cancel_callback=cancel_callback,
+        )
+        _raise_if_cancelled(cancel_callback)
         watchlist_triggers = self._build_watchlist_triggers(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         portfolio_alerts = self._build_portfolio_alerts(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         market_regime = self._dated_section(market_regime, as_of_date, "market_regime")
         market_breadth = self._dated_section(market_breadth, as_of_date, "market_breadth")
         sector_rotation = self._dated_section(sector_rotation, as_of_date, "sector_rotation")
@@ -177,6 +317,7 @@ class DecisionDeskSnapshotBuilder:
         watchlist_triggers = self._dated_section(watchlist_triggers, as_of_date, "watchlist_triggers")
         portfolio_alerts = self._dated_section(portfolio_alerts, as_of_date, "portfolio_alerts")
         ledger_lineage = self._build_ledger_lineage(as_of_date) if self.portfolio_ledger_provider is not None else None
+        _raise_if_cancelled(cancel_callback)
         if ledger_lineage is not None and ledger_lineage.get("quality") != "complete":
             blocked = ledger_lineage.get("quality") == "blocked"
             portfolio_alerts = replace(
@@ -190,7 +331,9 @@ class DecisionDeskSnapshotBuilder:
                 attributions=() if blocked else portfolio_alerts.attributions,
             )
         recommendations = self._build_recommendations(as_of_date) if self.recommendation_provider is not None else None
+        _raise_if_cancelled(cancel_callback)
         market_data_visibility = self._build_market_data_visibility(as_of_date)
+        _raise_if_cancelled(cancel_callback)
         risk_prompts = self.risk_prompt_service.build_summary(
             as_of_date=as_of_date,
             market_regime=market_regime,
@@ -228,21 +371,27 @@ class DecisionDeskSnapshotBuilder:
         smart_money_summary = None
         if self.smart_money_service is not None:
             try:
-                smart_money_summary = self.smart_money_service.build_dashboard_summary(
+                smart_money_summary = _call_with_optional_cancel_callback(
+                    self.smart_money_service.build_dashboard_summary,
                     as_of_date,
+                    cancel_callback=cancel_callback,
                     stock_codes=self._collect_smart_money_candidate_codes(
                         relative_strength_liquidity,
                         watchlist_triggers,
                         portfolio_alerts,
                     ),
                 )
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 warnings = tuple(warnings) + (f"smart_money_dashboard_error:{exc}",)
                 overall_quality = DecisionDeskQuality.DEGRADED
+        _raise_if_cancelled(cancel_callback)
         action_summary = None
         sector_focus = None
         stock_focus = None
         try:
+            _raise_if_cancelled(cancel_callback)
             dashboard = self.dashboard_composer.compose(
                 market_regime=market_regime,
                 market_breadth=market_breadth,
@@ -255,6 +404,9 @@ class DecisionDeskSnapshotBuilder:
             action_summary = dashboard.action_summary
             sector_focus = dashboard.sector_focus
             stock_focus = dashboard.stock_focus
+            _raise_if_cancelled(cancel_callback)
+        except BacktestCancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             warnings = tuple(warnings) + (f"dashboard_composer_error:{exc}",)
             overall_quality = DecisionDeskQuality.DEGRADED
@@ -294,16 +446,21 @@ class DecisionDeskSnapshotBuilder:
                 payload["quality"] = "degraded" if payload["quality"] != "blocked" else "blocked"
                 payload["warnings"] = list(payload.get("warnings", ())) + ["portfolio_ledger_date_fallback"]
             return deepcopy(payload)
+        except BacktestCancelledError:
+            raise
         except Exception as exc:
             return {"as_of_date": None, "quality": "blocked", "missing_inputs": ["ledger_read_model"],
                     "warnings": [f"portfolio_ledger_error:{type(exc).__name__}:{exc}"], "candidate_only": True}
 
-    @staticmethod
-    def _dated_section(section: Section, as_of_date: date, name: str) -> Section:
+    def _dated_section(self, section: Section, as_of_date: date, name: str) -> Section:
         if section.as_of_date is None or section.as_of_date > as_of_date:
             return type(section)(as_of_date=None, quality=DecisionDeskQuality.MISSING,
                                  warnings=tuple(section.warnings) + (f"{name}_date_unavailable_or_future",))
         if section.as_of_date < as_of_date:
+            if (self.cadence is not None and name in {
+                    "market_breadth", "sector_rotation", "relative_strength_liquidity", "watchlist_triggers"}
+                    and self.cadence.assess(as_of_date, section.as_of_date).current):
+                return section
             quality = DecisionDeskQuality.MISSING if section.quality == DecisionDeskQuality.MISSING else DecisionDeskQuality.DEGRADED
             return replace(section, quality=quality, warnings=tuple(section.warnings) + (f"{name}_as_of_fallback:{section.as_of_date.isoformat()}",))
         return section
@@ -315,6 +472,8 @@ class DecisionDeskSnapshotBuilder:
             result = self.recommendation_provider.fetch(as_of_date)
             if result is None:
                 return RecommendationDeskSummary(None, DecisionDeskQuality.MISSING, ("recommendation_snapshot_missing",))
+            if isinstance(result, RecommendationDeskSummary):
+                return result
             context = deepcopy(result.run_context)
             cutoff = date.fromisoformat(str(context["as_of_date"]))
             if cutoff > as_of_date:
@@ -329,6 +488,8 @@ class DecisionDeskSnapshotBuilder:
             return RecommendationDeskSummary(cutoff, quality, warnings, result.result_id,
                                              tuple(item.stock_code for item in result.recommendations),
                                              str(context.get("profile_id") or result.config.get("profile_id") or ""), context)
+        except BacktestCancelledError:
+            raise
         except Exception as exc:
             return RecommendationDeskSummary(None, DecisionDeskQuality.MISSING, (f"recommendation_snapshot_error:{exc}",))
 
@@ -339,6 +500,8 @@ class DecisionDeskSnapshotBuilder:
             return None
         try:
             return self.market_data_visibility_service.build_summary(as_of_date=as_of_date)
+        except BacktestCancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             warning = f"market_data_visibility_error:{exc}"
             source_names = (
@@ -410,6 +573,8 @@ class DecisionDeskSnapshotBuilder:
                                            regime_confidence=dto.match_score_bp,
                                            meta={**dict(dto.details or {}), "source_id": dto.source_id, "source_version": dto.source_version})
             snapshot = self.provider.fetch_market_regime(as_of_date)
+        except BacktestCancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
             return MarketRegimeSummary(
                 as_of_date=as_of_date,
@@ -426,11 +591,22 @@ class DecisionDeskSnapshotBuilder:
             )
         return snapshot
 
-    def _build_market_breadth(self, as_of_date: date) -> MarketBreadthSummary:
+    def _build_market_breadth(
+        self,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> MarketBreadthSummary:
         snapshot: MarketBreadthSummary | None
         if self.market_breadth_service is not None:
             try:
-                snapshot = self.market_breadth_service.build_snapshot(as_of_date)
+                snapshot = _call_with_optional_cancel_callback(
+                    self.market_breadth_service.build_snapshot,
+                    as_of_date,
+                    cancel_callback=cancel_callback,
+                )
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return MarketBreadthSummary(
                     as_of_date=as_of_date,
@@ -439,7 +615,13 @@ class DecisionDeskSnapshotBuilder:
                 )
         elif self.provider is not None:
             try:
-                snapshot = self.provider.fetch_market_breadth(as_of_date)
+                snapshot = _call_with_optional_cancel_callback(
+                    self.provider.fetch_market_breadth,
+                    as_of_date,
+                    cancel_callback=cancel_callback,
+                )
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return MarketBreadthSummary(
                     as_of_date=as_of_date,
@@ -466,6 +648,8 @@ class DecisionDeskSnapshotBuilder:
         if self.sector_rotation_service is not None:
             try:
                 snapshot = self.sector_rotation_service.build_snapshot(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return SectorRotationSummary(
                     as_of_date=as_of_date,
@@ -475,6 +659,8 @@ class DecisionDeskSnapshotBuilder:
         elif self.provider is not None:
             try:
                 snapshot = self.provider.fetch_sector_rotation(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return SectorRotationSummary(
                     as_of_date=as_of_date,
@@ -496,10 +682,21 @@ class DecisionDeskSnapshotBuilder:
             )
         return snapshot
 
-    def _build_relative_strength_liquidity(self, as_of_date: date) -> RelativeStrengthLiquiditySummary:
+    def _build_relative_strength_liquidity(
+        self,
+        as_of_date: date,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> RelativeStrengthLiquiditySummary:
         if self.relative_strength_liquidity_service is not None:
             try:
-                snapshot = self.relative_strength_liquidity_service.build_snapshot(as_of_date)
+                snapshot = _call_with_optional_cancel_callback(
+                    self.relative_strength_liquidity_service.build_snapshot,
+                    as_of_date,
+                    cancel_callback=cancel_callback,
+                )
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return RelativeStrengthLiquiditySummary(
                     as_of_date=as_of_date,
@@ -520,6 +717,8 @@ class DecisionDeskSnapshotBuilder:
         if self.watchlist_trigger_service is not None:
             try:
                 snapshot = self.watchlist_trigger_service.build_snapshot(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return WatchlistTriggerSummary(
                     as_of_date=as_of_date,
@@ -531,6 +730,8 @@ class DecisionDeskSnapshotBuilder:
         elif self.provider is not None:
             try:
                 snapshot = self.provider.fetch_watchlist_triggers(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return WatchlistTriggerSummary(
                     as_of_date=as_of_date,
@@ -563,6 +764,8 @@ class DecisionDeskSnapshotBuilder:
         if self.portfolio_alert_service is not None:
             try:
                 snapshot = self.portfolio_alert_service.build_snapshot(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return PortfolioAlertSummary(
                     as_of_date=as_of_date,
@@ -575,6 +778,8 @@ class DecisionDeskSnapshotBuilder:
         elif self.provider is not None:
             try:
                 snapshot = self.provider.fetch_portfolio_alerts(as_of_date)
+            except BacktestCancelledError:
+                raise
             except Exception as exc:  # noqa: BLE001
                 return PortfolioAlertSummary(
                     as_of_date=as_of_date,

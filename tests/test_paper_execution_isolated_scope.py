@@ -62,6 +62,154 @@ def _make_directory_junction(link: Path, target: Path) -> None:
     pytest.fail(f"directory junction command failed: {output.strip()}")
 
 
+def _patch_scope_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[Path, Path]:
+    """將 Paper scope writer 全部導向 temp repository，避免碰正式 output。"""
+
+    repo = tmp_path / "repo"
+    operation_root = repo / "output" / "paper_execution_eod_replay"
+    data_root = tmp_path / "source"
+    state_root = operation_root / "paper_portfolio"
+    constants = {
+        "ROOT": repo,
+        "DEFAULT_DATA_ROOT": data_root,
+        "OPERATIONAL_ROOT": operation_root,
+        "CANDIDATE_ROOT": operation_root / "candidates",
+        "RECEIPT_ROOT": operation_root / "receipts",
+        "LEDGER_DB": operation_root / "paper_trade_ledger.sqlite",
+        "SOURCE_STATE_DB": data_root
+        / "output"
+        / "paper_portfolio"
+        / "paper_portfolio.sqlite",
+        "PAPER_STATE_ROOT": state_root,
+        "STATE_DB": state_root / "paper_portfolio.sqlite",
+        "STATE_SEED_MANIFEST": state_root / "state_seed_manifest.json",
+        "MARKET_DB": data_root / "sqlite" / "twstock.db",
+        "RECOMMENDATION_ROOT": data_root / "output" / "recommendation" / "runs",
+        "EVENT_CAPTURE_ROOT": operation_root / "event_captures",
+        "SCOPE_MANIFEST": operation_root / "scope_manifest_v3.json",
+    }
+    for name, value in constants.items():
+        monkeypatch.setattr(isolated, name, value)
+    operation_root.mkdir(parents=True)
+    (repo / "output").mkdir(parents=True, exist_ok=True)
+    return repo, operation_root
+
+
+def _write_scope_payload(path: Path, body: dict[str, object]) -> bytes:
+    payload = {**body, "content_sha256": isolated._payload_hash(body)}
+    raw = (isolated._canonical_json(payload) + "\n").encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(raw)
+    return raw
+
+
+@pytest.mark.parametrize("include_event_capture_root", (False, True))
+def test_scope_manifest_migrates_only_exact_v2_and_preserves_source_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    include_event_capture_root: bool,
+) -> None:
+    _repo, operation_root = _patch_scope_paths(monkeypatch, tmp_path)
+    legacy_path = isolated._legacy_scope_manifest_path()
+    legacy_raw = _write_scope_payload(
+        legacy_path,
+        isolated._expected_legacy_scope(
+            include_event_capture_root=include_event_capture_root
+        ),
+    )
+
+    target_path, target_hash = isolated._write_or_verify_scope_manifest()
+
+    assert target_path == operation_root / "scope_manifest_v3.json"
+    assert target_hash == isolated._file_hash(target_path)
+    assert legacy_path.read_bytes() == legacy_raw
+    assert json.loads(target_path.read_text(encoding="utf-8"))["schema_version"] == (
+        "paper-execution-isolated-scope.v3"
+    )
+    migration_receipt = isolated._scope_migration_receipt_path()
+    receipt = json.loads(migration_receipt.read_text(encoding="utf-8"))
+    assert receipt["source_file_sha256"] == isolated._bytes_hash(legacy_raw)
+    assert receipt["target_file_sha256"] == target_hash
+    assert receipt["source_bytes_preserved"] is True
+    assert receipt["planned_diff"]["append_only"] is True
+    expected_changed_fields = {
+        "schema_version",
+        "writable.scope_manifest",
+    }
+    if not include_event_capture_root:
+        expected_changed_fields.add("writable.event_capture_root")
+    assert set(receipt["planned_diff"]["changed_fields"]) == expected_changed_fields
+    assert isinstance(receipt["recorded_at"], str)
+
+    target_raw = target_path.read_bytes()
+    receipt_raw = migration_receipt.read_bytes()
+    recorded_at = receipt["recorded_at"]
+    isolated._write_or_verify_scope_manifest()
+    assert target_path.read_bytes() == target_raw
+    assert migration_receipt.read_bytes() == receipt_raw
+    assert legacy_path.read_bytes() == legacy_raw
+    assert json.loads(migration_receipt.read_text(encoding="utf-8"))["recorded_at"] == (
+        recorded_at
+    )
+
+
+def test_scope_manifest_v2_root_drift_is_rejected_without_new_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, operation_root = _patch_scope_paths(monkeypatch, tmp_path)
+    legacy_path = isolated._legacy_scope_manifest_path()
+    legacy_body = isolated._expected_legacy_scope(include_event_capture_root=False)
+    source = legacy_body["source"]
+    assert isinstance(source, dict)
+    source["market_db"] = str(tmp_path / "outside" / "market.sqlite")
+    legacy_raw = _write_scope_payload(legacy_path, legacy_body)
+
+    with pytest.raises(RuntimeError, match="scope manifest changed"):
+        isolated._write_or_verify_scope_manifest()
+
+    assert legacy_path.read_bytes() == legacy_raw
+    assert not (operation_root / "scope_manifest_v3.json").exists()
+    assert not isolated._scope_migration_receipt_path().exists()
+
+
+def test_scope_validation_exception_writes_only_safe_terminal_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, operation_root = _patch_scope_paths(monkeypatch, tmp_path)
+    legacy_path = isolated._legacy_scope_manifest_path()
+    legacy_body = isolated._expected_legacy_scope(include_event_capture_root=False)
+    source = legacy_body["source"]
+    assert isinstance(source, dict)
+    source["market_db"] = str(tmp_path / "outside" / "market.sqlite")
+    _write_scope_payload(legacy_path, legacy_body)
+    monkeypatch.setattr(isolated, "load_optional_formal_runtime_config", lambda **_: None)
+
+    result = isolated.run_isolated(
+        now=datetime(2026, 9, 21, 13, 0, 3, tzinfo=timezone.utc)
+    )
+
+    assert result["status"] == "failed"
+    assert result["terminal"] is True
+    assert result["scope_validation_failed"] is True
+    receipt_path = Path(str(result["terminal_failure_receipt_path"]))
+    assert receipt_path.is_file()
+    assert receipt_path.parent == (
+        repo / "output" / "paper_execution_eod_replay" / "scope_validation_failures"
+    ).resolve()
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["scope_writer_targets_verified"] is False
+    assert receipt["status"] == "failed"
+    assert not (operation_root / "scope_manifest_v3.json").exists()
+    assert not (operation_root / "scope_manifest_v3_migration_receipt.json").exists()
+    assert not (operation_root / "receipts").exists()
+    assert not (operation_root / "candidates").exists()
+
+
 def test_paper_output_requires_explicit_controlled_root_for_non_temp_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -164,9 +312,14 @@ def test_pit_sector_manifest_resolver_freezes_exact_hash_and_available_at(
     assert projection["available_at"] == "2026-09-08T00:31:00+00:00"
 
 
-def test_isolated_adapter_ignores_path_environment_and_keeps_ledger_empty_until_writer(
+@pytest.mark.parametrize(
+    "runner_status",
+    ("waiting_for_execution_session", "no_trade_required_candidate"),
+)
+def test_isolated_adapter_initializes_ledger_before_queue_or_no_fill_return(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    runner_status: str,
 ) -> None:
     data_root = tmp_path / "source"
     source_state_db = data_root / "output" / "paper_portfolio" / "paper_portfolio.sqlite"
@@ -269,10 +422,25 @@ def test_isolated_adapter_ignores_path_environment_and_keeps_ledger_empty_until_
     observed: dict[str, object] = {}
 
     def fake_runner(paths: object, **kwargs: object) -> dict[str, object]:
+        assert isinstance(paths, isolated.PaperExecutionPaths)
+        with sqlite3.connect(
+            paths.ledger_db.as_uri() + "?mode=ro", uri=True
+        ) as connection:
+            connection.execute("PRAGMA query_only=ON")
+            tables = {
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+        assert tables == {
+            "paper_trade_ledger",
+            "paper_trade_transitions",
+        }
         observed["paths"] = paths
         observed.update(kwargs)
         return {
-            "status": "waiting_for_execution_session",
+            "status": runner_status,
             "formal_credit": False,
         }
 
@@ -296,7 +464,7 @@ def test_isolated_adapter_ignores_path_environment_and_keeps_ledger_empty_until_
     assert calendar.calendar_cache_path == operation_root / "calendar_cache"
     assert calendar.temporary_closure_path == operation_root / "calendar_cache"
     assert observed["confirm_append"] is True
-    assert result["status"] == "waiting_for_execution_session"
+    assert result["status"] == runner_status
     scope = result["isolated_scope"]
     assert isinstance(scope, dict)
     assert scope["append_target"] == str(ledger_db.resolve())
@@ -314,10 +482,57 @@ def test_isolated_adapter_ignores_path_environment_and_keeps_ledger_empty_until_
     refresh_receipt = source_observation["calendar_refresh_receipt"]  # type: ignore[index]
     assert isinstance(refresh_receipt, dict)
     assert Path(str(refresh_receipt["path"])).is_file()
-    assert ledger_db.exists() is False
+    assert ledger_db.exists() is True
+    ledger_schema = source_observation["paper_ledger_schema"]
+    assert isinstance(ledger_schema, dict)
+    assert ledger_schema["readback_verified"] is True
+    assert ledger_schema["row_counts"] == {
+        "paper_trade_ledger": 0,
+        "paper_trade_transitions": 0,
+    }
+    assert ledger_schema["historical_transition_evidence_inferred"] is False
     manifest = json.loads(scope_manifest.read_text(encoding="utf-8"))
     assert manifest["safety"]["formal_credit"] is False
     assert manifest["writable"]["ledger_db"] == str(ledger_db.resolve())
+
+
+def test_isolated_eod_rejects_ledger_target_outside_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    operation_root = repo / "output" / "paper_execution_eod_replay"
+    monkeypatch.setattr(isolated, "ROOT", repo)
+    monkeypatch.setattr(isolated, "OPERATIONAL_ROOT", operation_root)
+    monkeypatch.setattr(isolated, "CANDIDATE_ROOT", operation_root / "candidates")
+    monkeypatch.setattr(isolated, "RECEIPT_ROOT", operation_root / "receipts")
+    state_root = operation_root / "paper_portfolio"
+    monkeypatch.setattr(isolated, "PAPER_STATE_ROOT", state_root)
+    monkeypatch.setattr(isolated, "STATE_DB", state_root / "paper_portfolio.sqlite")
+    monkeypatch.setattr(
+        isolated,
+        "STATE_SEED_MANIFEST",
+        state_root / "state_seed_manifest.json",
+    )
+    monkeypatch.setattr(
+        isolated,
+        "SCOPE_MANIFEST",
+        operation_root / "scope_manifest.json",
+    )
+    monkeypatch.setattr(
+        isolated,
+        "EVENT_CAPTURE_ROOT",
+        operation_root / "event_captures",
+    )
+    monkeypatch.setattr(
+        isolated,
+        "LEDGER_DB",
+        tmp_path / "outside" / "paper_trade_ledger.sqlite",
+    )
+
+    with pytest.raises(RuntimeError, match="ledger_db"):
+        isolated._validate_write_scope()
+    assert not (tmp_path / "outside" / "paper_trade_ledger.sqlite").exists()
 
 
 def test_calendar_refresh_uses_taipei_year_and_operation_root(

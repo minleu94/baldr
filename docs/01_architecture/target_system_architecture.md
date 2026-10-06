@@ -1,7 +1,12 @@
 # baldr 理想目標系統架構
 
+> **2026-09-22 最終架構權威入口**：[FINAL_TARGET_ARCHITECTURE](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) 已逐項裁決紅隊審查，是後續實作唯一目標架構 SSOT；其五份 FINAL 分冊細化資料流、擴充、ML 相容、不變條件與遷移。先前六份草案已被取代，只保留審查歷史。[現況評估](target_architecture_2026_09_22/SYSTEM_ARCHITECTURE_ASSESSMENT.md) 保留為來源證據。
+>
+> **權威範圍**：本文件保留產品領域背景與導覽；下文的概念邊界、候選 package 或舊過渡建議不再獨立授權實作。package、契約、依賴、資料表示與遷移順序一律以 FINAL 主文為準。設計尚未實作，不改 Roadmap、正式資料、ML promotion 或產品 Gate。
+
 > **建立日期**：2026-07-11
 > **定位**：本文件描述 baldr 的 Transitional / Target Architecture（過渡／目標架構），不代表目前皆已實作。
+> **實作判讀**：原 Scoped SSOT 的本入口現導向 FINAL 主文；不得從本文件與舊草案各挑一套設計並行實作。
 > **目前架構權威**：真實存在的 package、service、DTO、資料流與依賴以 [system_architecture.md](system_architecture.md) 為準。
 > **產品方向**：能力優先序與產品 Gate 以 [PRODUCT_ROADMAP_POST_REFACTOR.md](../00_core/PRODUCT_ROADMAP_POST_REFACTOR.md) 為準。
 > **禁止推論**：`market_module`／`advice_module` 仍是 target-only 候選邊界，不授權立即建立 package。`ml_module` 已有工程實作，其 current 能力與 shadow／Formal 限制以目前架構為準；不得把下列目標職責當成正式模型權限。
@@ -52,7 +57,7 @@
 | Position Health & Exit | `CURRENT_ENGINEERING`：thesis contract、state machine、append-only transition、Exit read model | 累積真實 thesis、人工 transition 與 exit outcome | domain reposition候選；不自動平倉 |
 | Data Source Governance | `data_module` registry / policy / candidate readiness | Source Registry、Control Center、quarantine、eligibility port | 所有來源具 PIT、quality、license、missing 與 downstream eligibility；未接受來源無法進 formal layer |
 | Execution Realism | Backtest broker simulator、sandbox trace | 統一 execution assumption / feasibility / rejected taxonomy | 研究撮合與 broker execution port 分離；正式系統仍不提供 broker command |
-| ML Shadow Layer | 已存在 `ml_module` 的工程實作；current 能力依目前架構，正式權限仍受 Gate 限制 | Feature / Label / Dataset / Model Registry 與 shadow store 的受治理整合 | Challenger 只透過 Promotion Review 影響 formal Advice；不是本輪八卡啟用項目 |
+| ML Shadow Layer | `RecommendationService` 在 exact consumer、明列 NP1／NP2 profile 與同次 capability 成立時預設使用 `PreparedMLRuntimeInputV1`；其餘 caller 保留 `project_many()` 相容路徑。此 bounded R026 runtime migration 已獲 C2 接受，`TMP-ML-01` 對此支援集合已關閉；C3 新 exact imports 已限縮為 source/symbol allowlist，584-file guard 回報 11 個既有 occurrences，具名 owners 追蹤；C4 union 為 2,446P／2F／5S／35W，root 接受 `ACCEPTED_WITH_NAMED_BOUNDARY_BASELINE`，兩項既有 shadow-boundary aggregate assertion failure 與 11-occurrence baseline 仍列管。Rule／ML snapshot identity 分離，typed projector 不做 I/O；formal 權限仍受 Gate 限制 | Feature / Label / Dataset / Model Registry 與 shadow store 的受治理整合；完成所有合法 runtime profile/model graph adapter 與 parity gate | Challenger 只透過 Promotion Review 影響 formal Advice；不是本輪八卡啟用項目 |
 | AI Research Copilot | read-only evidence access / MCP | governed retrieval + citation / permission boundary | 只能摘要、比較、提問與找 evidence gap；不成為計算或 action owner |
 | Runtime / Scheduling / Operations | `runtime/`、Windows tasks、dry-run wrappers | 依 job type 區隔 market data write、evidence dry-run、approved evidence write | Scheduler 只執行已核准 application command；不交易、不自動 lifecycle |
 | Storage & Artifact Registry | SQLite、Parquet、JSON、Research Run / Evidence repositories | 統一 artifact identity、hash、status、lineage、backup / rollback | 每個 decision / advice / model / policy / outcome 可重建與稽核 |
@@ -60,7 +65,7 @@
 
 ### 2026-09-06 八卡工程後的剩餘差距
 
-本節校正上表與八卡直接相關的 Current／Transitional 能力，依 [目前架構](C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/system_architecture.md) 與 [TASK-08 整合證據](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md) 判讀；不是 V4 closeout，整體仍 `action_required`／V4 Evidence Accumulation。
+本節校正上表與八卡直接相關的 Current／Transitional 能力，依 目前架構（本機／開發參考） 與 TASK-08 整合證據（本機／開發參考） 判讀；不是 V4 closeout，整體仍 `action_required`／V4 Evidence Accumulation。
 
 | 邊界 | 本輪已落地的工程能力 | 尚需完成的 Target／外部條件 |
 |---|---|---|
@@ -247,8 +252,13 @@ flowchart LR
 - **Dependencies**：Application façade。
 - **Persistent artifacts**：UI 本身不持久化；由 application command 保存 review / journal。
 - **Failure / degraded**：顯示 MISSING / DEGRADED、保留 `NO_NEW_POSITION`，不補值。
-- **Current status**：`CURRENT`，Workbench 以 read-only 能力為主。
-- **Target status**：Guided / Professional 任務導向入口。
+- **Current status**：`CURRENT`，Workbench 以 read-only 能力為主；2026-09-14 已有機率／rank
+  分離與可展開 lineage 詳情。下一個 content-first 增量可與 V4 formal evidence accumulation
+  並行，不必等待 formal closeout。
+- **Target status**：Guided / Professional 任務導向入口，先呈現每日結論、候選／持倉與研究
+  fallback，再展開 technical detail；decision continuity 應重用既有 Journal／Evidence／
+  Portfolio ledger identity，不建立平行 decision database。V6 再於此邊界上增加 user-level
+  evidence-driven personalization。
 - **修改正式決策**：否。
 
 ### 10.2 Application Orchestration
@@ -307,6 +317,9 @@ flowchart LR
 - **Dependencies**：Backtest engine、storage ports、data governance。
 - **Persistent artifacts**：registry metadata、Parquet、events/outcomes、review records。
 - **Failure / degraded**：樣本不足只回 directional / insufficient，不產生有效性結論。
+- **Cross-day identity contract**：政策 `universe_policy_id/hash` 與每日
+  `universe_snapshot_id/hash` 分層保存；`strategy_config_id`、horizon、cost、benchmark、
+  return basis 與 evidence tier 共同定義可比較 cohort。舊事件缺件只診斷，不由目前政策回填。
 - **Current status**：`CURRENT`，多個工程底座已存在。
 - **Target status**：Experiment Manager + Evidence operating loop。
 - **修改正式決策**：只透過 Promotion / Lifecycle human review。
@@ -367,9 +380,11 @@ flowchart LR
 - **Dependencies**：Research / Evidence、model registry。
 - **Persistent artifacts**：model、dataset、prediction、calibration、drift、rollback metadata。
 - **Failure / degraded**：停止 shadow / rollback，不 fallback 成無版本輸出。
-- **Current status**：`CANDIDATE`，readiness scaffold only。
+- **Current status**：`CANDIDATE`；已具備 shadow-only 的每日 bounded replay／training、frozen challenger、Asia/Taipei trading-day capture、自然 maturity、active monitor、authority receipt 與 fail-closed rollback／consumer lineage reload。既有 daily policy 內的 candidate adoption／rollback 可自動執行；正式 DB／Advice 仍不受影響。正式 production source contract、可追溯 liquidity cost 與足量成熟 forward evidence 尚未滿足。
 - **Target status**：Champion / Challenger governed layer。
 - **修改正式決策**：Gate 前否；Gate 後只能經 versioned adapter。
+
+目前實作的 scheduler 順序是 05:40 forward outcome 後接 05:45 learning runner。Historical replay 僅是 training data，不能取得 natural forward evidence credit；live candidate／active capture 綁定 feature availability、freeze、artifact／manifest／policy／probability-transform lineage。自然 outcome 需用 capture 的 immutable row 與之後可得的 market close source 重新計算，且以 distinct matured decision dates 去重。`recommendation_source_contract` 會重算實際來源內容 digest、coverage 與 symbol 範圍，驗證 technical `available_at` 及 corporate action window；未調整 corporate action 只保守排除 label rows，不視為已通過。after-cost 沒有觀測成本時維持 missing；採用 active model 的成熟 post-adoption rows 只有在 label availability cutoff 前通過 identity／receipt 驗證後，才可進下一 training cycle。routine shadow adoption／rollback 仍受既有 policy、identity、receipt 與 safety flag 約束；超出既有正式影響範圍才需另立 promotion review。這些能力仍是研究／shadow custody，不是 Target 的正式 Advice promotion、broker execution 或自動改權重授權。
 
 ### 10.12 AI Research Copilot
 
@@ -507,6 +522,15 @@ portfolio_advice_eligible
 
 ## 更新記錄
 
+- 2026-09-25：同步 R026 bounded NP1／NP2 runtime migration 與 C2 acceptance；C3 exact-import edges 已修復，但 11 個既有 shadow-boundary diagnostics 仍由 owners 列管。C4 union 為 2,446P／2F／5S／35W，root 接受 named boundary baseline；R031 工程範圍完成，target 仍要求其餘合法 profile/model graph adapters 與 parity evidence。
+
+- 2026-09-22：導向完成紅隊裁決的六份 FINAL 文件；本入口保留背景與權限導覽，工程目標決策統一由 FINAL_TARGET_ARCHITECTURE 管理。
+
+- 2026-09-22：加入七份工程架構設計分冊入口；補足執行契約、局部擴充與保守 ML 遷移設計，不代表 production code 已變更。
+
+- 2026-09-14：補上 content-first Workbench 可與 V4 formal evidence 並行的目標邊界、既有
+  Journal／Evidence／Portfolio ledger identity 重用原則，以及既有 daily shadow policy 的
+  自動採用／回退；V6 個人化保留為後續 target capability。
 - 2026-09-06：校正八卡已落地工程與 Current → Target 差距，保留 PIT、真實 fills、自然時間、具名 review、正式 migration／writer 等獨立 Gate。
 
 - 2026-07-11：初版建立 Current → Transitional → Target 架構；定義 15 個產品／領域邊界、6 張核心流程圖、degraded behavior、正式決策權限與不自動交易政策。

@@ -105,3 +105,8 @@ Testing / QA Agent 與協作者對話時，可參考並使用以下 Prompt 模�
 2. 識別是否存在手動測試缺口（manual gap），並簡述其風險。
 3. 以結構化繁體中文產出測試通過與合規性之驗收報告。
 ```
+
+
+### 2026-10-06 UX23 registry readonly 整合補記
+
+UX23 registry readonly 接線 QA 路由：tests/test_model_registry_readonly.py + tests/test_rule_research_shadow_acceptance*.py + tests/test_rule_research_registry_integration.py；保存測試使用 OS Temp/output/qa，.t 不在 capture writer 允許根。

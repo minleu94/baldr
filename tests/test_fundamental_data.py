@@ -2,8 +2,10 @@ from datetime import date
 from decimal import Decimal
 
 from data_module.fundamental_availability_sources import FundamentalAvailabilityOverride
-from data_module.fundamental_data import parse_monthly_revenue_rows
-from decision_module.factors.factor_dtos import FactorQuality
+from data_module.fundamental_data import (
+    legacy_monthly_revenue_quality_value,
+    parse_monthly_revenue_rows,
+)
 
 
 def test_parse_monthly_revenue_rows_requires_explicit_available_date():
@@ -59,7 +61,9 @@ def test_parse_monthly_revenue_rows_builds_normalized_record_with_available_date
     assert record.revenue == Decimal("1000000000")
     assert record.source == "financial_data.monthly_revenue_csv"
     assert record.source_version == "financial-data-csv-preflight-v1"
-    assert record.quality == FactorQuality.DEGRADED
+    assert record.availability_provenance is None
+    assert record.legacy_quality_wire_value is None
+    assert legacy_monthly_revenue_quality_value(record) == "degraded"
     assert result.diagnostics[0].code == "fundamental_availability.missing_announced_date"
 
 
@@ -84,9 +88,13 @@ def test_parse_monthly_revenue_rows_uses_governed_availability_override():
                 as_of_date=date(2026, 5, 31),
                 announced_date=date(2026, 6, 10),
                 available_date=date(2026, 6, 11),
-                quality=FactorQuality.OBSERVED,
                 source="manual.twse_monthly_revenue_announcement_log",
                 source_version="announcement-log-2026-06-16",
+                evidence_class="official_announcement",
+                source_hash=f"sha256:{'a' * 64}",
+                revision=2,
+                parent_revision=1,
+                provenance_mode="formal_v2",
             )
         },
         source_version="financial-data-csv-preflight-v1",
@@ -97,7 +105,16 @@ def test_parse_monthly_revenue_rows_uses_governed_availability_override():
     record = result.records[0]
     assert record.announced_date == date(2026, 6, 10)
     assert record.available_date == date(2026, 6, 11)
-    assert record.quality == FactorQuality.OBSERVED
+    assert record.availability_provenance is not None
+    assert record.availability_provenance.source_id == (
+        "manual.twse_monthly_revenue_announcement_log"
+    )
+    assert record.availability_provenance.source_version == "announcement-log-2026-06-16"
+    assert record.availability_provenance.source_hash == f"sha256:{'a' * 64}"
+    assert record.availability_provenance.revision == 2
+    assert record.availability_provenance.parent_revision == 1
+    assert legacy_monthly_revenue_quality_value(record) == "observed"
+    assert result.diagnostics == ()
 
 
 def test_parse_monthly_revenue_rows_reports_invalid_decimal_without_record():

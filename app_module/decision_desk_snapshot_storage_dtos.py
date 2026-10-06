@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 from dataclasses import dataclass, field
 from datetime import date, datetime
 import hashlib
@@ -7,9 +9,13 @@ from typing import Any
 
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
+    _as_dict,
     DecisionDeskRiskPrompt,
     DecisionDeskRiskPromptSummary,
     DecisionDeskSnapshot,
+    IndustryRepresentativeStock,
+    IndustryStrengthRow,
+    IndustryStrengthSummary,
     MarketBreadthSummary,
     MarketRegimeSummary,
     PortfolioAlertAttribution,
@@ -18,6 +24,7 @@ from app_module.decision_desk_dtos import (
     SectorRotationSummary,
     WatchlistTriggerSummary,
 )
+from app_module.evidence_event_importer_dtos import capture_context_identity
 from app_module.research_run_dtos import canonical_json
 
 
@@ -75,6 +82,18 @@ def _warnings(value: Any) -> tuple[str, ...]:
 
 def _section_quality(payload: SnapshotJson) -> str:
     return str(payload.get("quality") or DecisionDeskQuality.MISSING.value)
+
+
+def _snapshot_hash_metadata(metadata_json: SnapshotJson) -> SnapshotJson:
+    """Return metadata that defines snapshot identity, excluding retry custody."""
+
+    hash_metadata_json = {
+        key: value for key, value in metadata_json.items() if key != "generated_at"
+    }
+    context = hash_metadata_json.get("capture_context")
+    if isinstance(context, dict):
+        hash_metadata_json["capture_context"] = capture_context_identity(context)
+    return hash_metadata_json
 
 
 def _snapshot_hash_payload(
@@ -152,7 +171,7 @@ class StoredDecisionDeskSnapshot:
             portfolio_alert_json=dict(self.portfolio_alert_json),
             risk_prompt_json=dict(self.risk_prompt_json),
             fundamental_diagnostics_json=dict(self.fundamental_diagnostics_json),
-            metadata_json=dict(self.metadata_json),
+            metadata_json=_snapshot_hash_metadata(dict(self.metadata_json)),
         )
 
     def to_decision_desk_snapshot(self) -> DecisionDeskSnapshot:
@@ -170,6 +189,7 @@ class StoredDecisionDeskSnapshot:
             portfolio_alerts=_portfolio_alert(self.portfolio_alert_json),
             risk_prompts=_risk_prompt(self.risk_prompt_json),
             warnings=_warnings(self.warnings_json),
+            source_lineage=deepcopy(self.metadata_json.get("source_lineage") or {}),
         )
 
 
@@ -190,7 +210,12 @@ def build_stored_decision_desk_snapshot(
             "schema_version": snapshot.schema_version,
         }
     )
-    hash_metadata_json = {key: value for key, value in metadata_json.items() if key != "generated_at"}
+    if snapshot.source_lineage:
+        metadata_json["source_lineage"] = _as_dict(snapshot.source_lineage)
+    # Capture clock metadata is custody, not snapshot content identity.  A
+    # retry at another minute must resolve to the same snapshot hash, while
+    # decision/as-of and authority flags remain identity-bound.
+    hash_metadata_json = _snapshot_hash_metadata(metadata_json)
     payload = _snapshot_hash_payload(
         decision_date=decision_date_text,
         as_of_date=as_of_date_text,
@@ -265,6 +290,88 @@ def _sector_rotation(payload: SnapshotJson) -> SectorRotationSummary:
         trailing_sector=payload.get("trailing_sector"),
         rotation_intensity_bp=payload.get("rotation_intensity_bp"),
         meta=payload.get("meta"),
+        industry_strength=_industry_strength(payload.get("industry_strength")),
+    )
+
+
+def _industry_strength(payload: Any) -> IndustryStrengthSummary | None:
+    if not isinstance(payload, dict):
+        return None
+    rows: list[IndustryStrengthRow] = []
+    for raw_row in _list(payload.get("rows")):
+        if not isinstance(raw_row, dict):
+            continue
+        representatives = tuple(
+            IndustryRepresentativeStock(
+                stock_code=str(item.get("stock_code") or ""),
+                stock_name=str(item.get("stock_name") or ""),
+                industry_name=str(item.get("industry_name") or raw_row.get("industry_name") or ""),
+                return_5d_bp=item.get("return_5d_bp"),
+                return_20d_bp=item.get("return_20d_bp"),
+                excess_5d_bp=item.get("excess_5d_bp"),
+                excess_20d_bp=item.get("excess_20d_bp"),
+                quality=_quality(item.get("quality")),
+                warnings=_warnings(item.get("warnings")),
+            )
+            for item in _list(raw_row.get("representative_stocks"))
+            if isinstance(item, dict)
+        )
+        rows.append(
+            IndustryStrengthRow(
+                industry_name=str(raw_row.get("industry_name") or ""),
+                index_name=str(raw_row.get("index_name") or ""),
+                industry_level=str(raw_row.get("industry_level") or "leaf"),
+                market_scope=str(raw_row.get("market_scope") or "twse"),
+                index_close=raw_row.get("index_close"),
+                return_5d_bp=raw_row.get("return_5d_bp"),
+                return_20d_bp=raw_row.get("return_20d_bp"),
+                market_return_5d_bp=raw_row.get("market_return_5d_bp"),
+                market_return_20d_bp=raw_row.get("market_return_20d_bp"),
+                excess_5d_bp=raw_row.get("excess_5d_bp"),
+                excess_20d_bp=raw_row.get("excess_20d_bp"),
+                rank_5d=raw_row.get("rank_5d"),
+                rank_20d=raw_row.get("rank_20d"),
+                constituent_count=raw_row.get("constituent_count") or 0,
+                eligible_stock_count_5d=raw_row.get("eligible_stock_count_5d") or 0,
+                eligible_stock_count_20d=raw_row.get("eligible_stock_count_20d") or 0,
+                coverage_5d_bp=raw_row.get("coverage_5d_bp"),
+                coverage_20d_bp=raw_row.get("coverage_20d_bp"),
+                quality=_quality(raw_row.get("quality")),
+                warnings=_warnings(raw_row.get("warnings")),
+                representative_stocks=representatives,
+            )
+        )
+    return IndustryStrengthSummary(
+        as_of_date=_parse_date(payload.get("as_of_date")),
+        quality=_quality(payload.get("quality")),
+        warnings=_warnings(payload.get("warnings")),
+        windows=tuple(int(item) for item in _list(payload.get("windows")) if str(item).strip()),
+        source_id=str(payload.get("source_id") or "industry_strength_service"),
+        source_version=str(payload.get("source_version") or "industry-strength.current-research.v1"),
+        mapping_source_id=str(payload.get("mapping_source_id") or "meta_data.companies.csv"),
+        mapping_version=str(payload.get("mapping_version") or "tw-industry-explicit-map.v1"),
+        mapping_observed_date=_parse_date(payload.get("mapping_observed_date")),
+        mapping_available_at=payload.get("mapping_available_at"),
+        mapping_effective_from=_parse_date(payload.get("mapping_effective_from")),
+        historical_pit_eligible=bool(payload.get("historical_pit_eligible", False)),
+        benchmark_name=payload.get("benchmark_name"),
+        benchmark_source_id=str(payload.get("benchmark_source_id") or "sqlite.market_indices"),
+        benchmark_observed_date=_parse_date(payload.get("benchmark_observed_date")),
+        benchmark_available_at=payload.get("benchmark_available_at"),
+        rows=tuple(rows),
+        unmapped_industry_categories=tuple(
+            str(item) for item in _list(payload.get("unmapped_industry_categories"))
+        ),
+        unmapped_index_names=tuple(
+            str(item) for item in _list(payload.get("unmapped_index_names"))
+        ),
+        duplicate_membership_codes=tuple(
+            str(item) for item in _list(payload.get("duplicate_membership_codes"))
+        ),
+        ambiguous_membership_codes=tuple(
+            str(item) for item in _list(payload.get("ambiguous_membership_codes"))
+        ),
+        coverage=dict(payload.get("coverage") or {}),
     )
 
 
@@ -288,6 +395,7 @@ def _watchlist_trigger(payload: SnapshotJson) -> WatchlistTriggerSummary:
         trigger_count=payload.get("trigger_count"),
         triggered_codes=tuple(str(item) for item in _list(payload.get("triggered_codes"))),
         top_signal=payload.get("top_signal"),
+        meta=deepcopy(payload.get("meta")) if isinstance(payload.get("meta"), dict) else None,
     )
 
 
@@ -304,6 +412,8 @@ def _portfolio_alert(payload: SnapshotJson) -> PortfolioAlertSummary:
             chip_observed_event_count=int(item.get("chip_observed_event_count") or 0),
             chip_estimated_event_count=int(item.get("chip_estimated_event_count") or 0),
             chip_unavailable_event_count=int(item.get("chip_unavailable_event_count") or 0),
+            required_human_fields=tuple(str(field) for field in _list(item.get("required_human_fields"))),
+            user_position_verified=item.get("user_position_verified") is True,
         )
         for item in _list(payload.get("attributions"))
         if isinstance(item, dict)
@@ -316,6 +426,12 @@ def _portfolio_alert(payload: SnapshotJson) -> PortfolioAlertSummary:
         alert_codes=tuple(str(item) for item in _list(payload.get("alert_codes"))),
         alert_level=payload.get("alert_level"),
         attributions=attributions,
+        population_status=(
+            str(payload.get("population_status") or "unknown")
+            if str(payload.get("population_status") or "unknown")
+            in {"unknown", "has_positions", "no_positions"}
+            else "unknown"
+        ),
     )
 
 

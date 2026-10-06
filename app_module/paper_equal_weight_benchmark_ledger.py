@@ -12,6 +12,14 @@ import sqlite3
 from typing import Iterable, Mapping
 
 from app_module.paper_portfolio_daily_runner import PaperPriceObservation
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_sqlite_uri
+from app_module.personal_paper_store_paths import (
+    PersonalPaperStorePaths, PersonalStoreCustody,
+)
+from app_module.personal_store_routes import (
+    PersonalStoreMode, PersonalStoreRoute, PersonalStoreRouteError,
+)
+from app_module.sqlite_read_only import configure_read_only_connection
 
 
 @dataclass(frozen=True)
@@ -80,10 +88,33 @@ class EqualWeightBenchmarkService:
 
 
 class EqualWeightBenchmarkLedger:
-    def __init__(self, db_path: str | Path) -> None:
+    """原 append-only schema；routed 帳戶與 benchmark 身份由 caller 分別明示。"""
+    def __init__(
+        self, db_path: str | Path, *,
+        route: PersonalStoreRoute | None = None,
+        personal_paths: PersonalDataPaths | None = None,
+        portfolio_id: str | None = None,
+        benchmark_id: str | None = None,
+        read_only: bool = False,
+    ) -> None:
         self._path = Path(db_path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        with closing(sqlite3.connect(self._path)) as conn:
+        self._route = route
+        self._portfolio_id = portfolio_id
+        self._benchmark_id = benchmark_id
+        self._read_only = read_only
+        if route is not None:
+            selected = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id or "")
+            PersonalPaperStorePaths.require_selected(self._path, selected.benchmark_db)
+            if benchmark_id is None or not benchmark_id.strip():
+                raise PersonalStoreRouteError("paper_benchmark_identity_required")
+            if not read_only and route.mode is PersonalStoreMode.LEGACY_READ_ONLY:
+                raise PersonalStoreRouteError("legacy_read_only_writer_forbidden")
+        self._custody = PersonalStoreCustody(route, personal_paths)
+        self._custody.sqlite_guard(self._path)
+        if read_only:
+            return
+        self._custody.prepare_parent(self._path)
+        with closing(self._connect()) as conn:
             with conn:
                 conn.execute(
                     """CREATE TABLE IF NOT EXISTS paper_equal_weight_benchmark (
@@ -96,9 +127,37 @@ class EqualWeightBenchmarkLedger:
                     )"""
                 )
 
+    def _require_identity(self, benchmark_id: str) -> None:
+        if self._route is not None and benchmark_id != self._benchmark_id:
+            raise PersonalStoreRouteError("paper_benchmark_identity_mismatch")
+
+    def _connect(self, *, read_only: bool = False) -> sqlite3.Connection:
+        if not read_only and (self._read_only or (
+            self._route is not None and self._route.mode is PersonalStoreMode.LEGACY_READ_ONLY
+        )):
+            raise PersonalStoreRouteError("paper_read_only_writer_forbidden")
+        if self._route is not None:
+            selected = PersonalPaperStorePaths.from_route(
+                self._route, portfolio_id=self._portfolio_id or ""
+            )
+            PersonalPaperStorePaths.require_selected(self._path, selected.benchmark_db)
+        canonical = self._custody.sqlite_guard(self._path)
+        if read_only and (self._route is not None or self._read_only):
+            if self._route is None:
+                canonical = canonical.expanduser().absolute()
+            conn = sqlite3.connect(to_internal_sqlite_uri(canonical, "ro"), uri=True)
+            try:
+                configure_read_only_connection(conn)
+            except Exception:
+                conn.close()
+                raise
+            return conn
+        return sqlite3.connect(self._custody.io(self._path))
+
     def append(self, entry: EqualWeightBenchmarkEntry) -> None:
+        self._require_identity(entry.benchmark_id)
         try:
-            with closing(sqlite3.connect(self._path)) as conn:
+            with closing(self._connect()) as conn:
                 with conn:
                     conn.execute(
                         "INSERT INTO paper_equal_weight_benchmark VALUES (?, ?, ?, ?, ?)",
@@ -114,7 +173,8 @@ class EqualWeightBenchmarkLedger:
             raise ValueError("benchmark entry already exists") from exc
 
     def list(self, benchmark_id: str) -> tuple[EqualWeightBenchmarkEntry, ...]:
-        with closing(sqlite3.connect(self._path)) as conn:
+        self._require_identity(benchmark_id)
+        with closing(self._connect(read_only=True)) as conn:
             rows = conn.execute(
                 "SELECT * FROM paper_equal_weight_benchmark WHERE benchmark_id = ? ORDER BY decision_date",
                 (benchmark_id,),

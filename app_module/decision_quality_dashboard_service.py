@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+import sqlite3
 from typing import Any
 
 from app_module.decision_quality_dashboard_dtos import (
@@ -27,14 +28,29 @@ class DecisionQualityDashboardService:
         self.backend = backend
 
     def load_dashboard(self, request: DecisionQualityDashboardRequest) -> DecisionQualityDashboardResult:
-        reviews = tuple(
-            self.backend.list_reviews(
-                start_date=_blank_to_none(request.start_date),
-                end_date=_blank_to_none(request.end_date),
-                review_type=_blank_to_none(request.review_type),
+        try:
+            reviews = tuple(
+                self.backend.list_reviews(
+                    start_date=_blank_to_none(request.start_date),
+                    end_date=_blank_to_none(request.end_date),
+                    review_type=_blank_to_none(request.review_type),
+                )
             )
-        )
-        items = tuple(self.backend.list_items(status=_blank_to_none(request.status)))
+            items = tuple(self.backend.list_items(status=_blank_to_none(request.status)))
+        except (FileNotFoundError, sqlite3.OperationalError) as exc:
+            diagnostic = _readonly_source_diagnostic(exc)
+            if diagnostic is None:
+                raise
+            return DecisionQualityDashboardResult(
+                request=request,
+                cards=_cards_from_reviews_and_rows((), ()),
+                rows=(),
+                empty_state_message=(
+                    "SQLite 證據資料庫或資料表目前不可用；本頁以唯讀方式檢查，不會建立資料庫或初始化 schema。"
+                ),
+                limitations=PROCESS_REVIEW_LIMITATIONS,
+                diagnostics=(diagnostic,),
+            )
         rows = tuple(_row_from_item(item) for item in items if _item_matches(item, request))
         if request.min_score is not None and reviews and _latest_review(reviews).decision_quality_score_bp < int(request.min_score):
             rows = ()
@@ -54,7 +70,17 @@ def create_decision_quality_dashboard_service(
     *,
     db_path: str | Path | None = None,
 ) -> DecisionQualityDashboardService:
-    return DecisionQualityDashboardService(DecisionQualityService(config, db_path=db_path))
+    return DecisionQualityDashboardService(
+        DecisionQualityService(config, db_path=db_path, read_only=True)
+    )
+
+
+def _readonly_source_diagnostic(error: BaseException) -> str | None:
+    if isinstance(error, FileNotFoundError):
+        return "sqlite_database_missing"
+    if isinstance(error, sqlite3.OperationalError) and "no such table" in str(error).casefold():
+        return "sqlite_evidence_table_missing"
+    return None
 
 
 def _row_from_item(item: Any) -> DecisionQualityDashboardRow:

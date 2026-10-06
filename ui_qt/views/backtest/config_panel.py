@@ -7,13 +7,14 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QGroupBox, QProgressBar,
     QLineEdit, QDoubleSpinBox, QComboBox,
-    QFormLayout, QSpinBox, QCheckBox, QSizePolicy
+    QFormLayout, QSpinBox, QCheckBox, QSizePolicy, QToolButton
 )
 from PySide6.QtCore import Qt, QDate, QTimer
 from PySide6.QtGui import QFont
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.date_filter_edit import TodayAnchoredDateEdit
 from ui_qt.views.backtest.helpers import RESEARCH_LAB_MODES
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 RESEARCH_LAB_MODE_HINTS = {
@@ -26,12 +27,12 @@ RESEARCH_LAB_MODE_HINTS = {
         "input_source": "候選池或選股清單、策略參數、日期區間",
     },
     "fixed_basket": {
-        "use_case": "重播固定股票組合在指定期間內的整體表現",
+        "use_case": "逐檔研究固定股票清單在指定期間內的表現（不是共享現金組合）",
         "input_source": "固定股票清單、配置與風控參數、日期區間",
     },
     "recommendation_replay": {
-        "use_case": "把推薦結果送入 Research Lab，驗證推薦邏輯的歷史表現",
-        "input_source": "推薦 Profile、推薦結果與回放設定",
+        "use_case": "把推薦結果送入 Research Lab，驗證推薦邏輯的歷史表現；成交固定 next-session-open.v2",
+        "input_source": "推薦 Profile、推薦結果與回放設定；停損停利固定為百分比模式",
     },
     "strategy_research": {
         "use_case": "比較策略模板、參數最佳化與 Walk-forward 驗證結果，整理可追溯的升級證據",
@@ -57,6 +58,13 @@ class BacktestConfigPanel(QWidget):
         # 先行注入以避免 _setup_ui 中 callback 呼叫 parent_view 導致的時序問題
         parent_view.config_panel = self
         self.parameter_descriptions = getattr(parent_view, "parameter_descriptions", {})
+        self._replay_mode_active = False
+        self._replay_execution_price_index: int | None = None
+        self._replay_stop_profit_mode_index: int | None = None
+        self._replay_execution_price_tooltip: str | None = None
+        self._replay_stop_profit_mode_tooltip: str | None = None
+        # 這是純呈現狀態；切換時只改 widget visibility，不呼叫模式切換或套用方法。
+        self._guided_details_visible = False
 
         self._setup_ui()
 
@@ -83,9 +91,33 @@ class BacktestConfigPanel(QWidget):
         self._stabilize_combo_width(self.research_lab_mode_combo)
         self.research_lab_mode_hint = QLabel(self._research_lab_mode_hint_text(0))
         self.research_lab_mode_hint.setWordWrap(True)
-        self.research_lab_mode_hint.setStyleSheet("color: #666;")
+        self.research_lab_mode_hint.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+        )
+        self.config_guided_summary_label = QLabel(
+            "先填必填項：標的／清單、日期、策略。資金與成本假設會保留在畫面上；"
+            "進階風控、參數、最佳化與驗證可按下方展開。"
+        )
+        self.config_guided_summary_label.setWordWrap(True)
+        self.config_guided_summary_label.setAccessibleName("回測設定白話摘要")
+        self.config_guided_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            "border-radius: 5px; padding: 6px; font-size: 12px;"
+        )
+        self.guided_readability_toggle = QToolButton()
+        self.guided_readability_toggle.setText("顯示進階研究設定")
+        self.guided_readability_toggle.setCheckable(True)
+        self.guided_readability_toggle.setAccessibleName("顯示進階研究設定")
+        self.guided_readability_toggle.setToolTip(
+            "只展開或收合進階欄位，不會切換研究模式、套用策略或重設任何參數。"
+        )
+        self.guided_readability_toggle.toggled.connect(self._toggle_guided_details)
         mode_layout.addWidget(self.research_lab_mode_combo)
         mode_layout.addWidget(self.research_lab_mode_hint)
+        mode_layout.addWidget(self.config_guided_summary_label)
+        mode_layout.addWidget(self.guided_readability_toggle)
         mode_group.setLayout(mode_layout)
         config_layout.addWidget(mode_group)
         self.research_lab_mode_combo.currentIndexChanged.connect(self._on_research_lab_mode_changed)
@@ -317,7 +349,48 @@ class BacktestConfigPanel(QWidget):
             self.take_profit_atr_input.setToolTip(tooltip_text)
         risk_form.addRow("停利 (ATR):", self.take_profit_atr_input)
 
-        self.risk_cost_group.setLayout(risk_form)
+        self.risk_assumption_summary = QLabel()
+        self.risk_assumption_summary.setWordWrap(True)
+        self.risk_assumption_summary.setAccessibleName("資金與成本假設摘要")
+        self.risk_assumption_summary.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            "border-radius: 5px; padding: 6px; font-size: 12px;"
+        )
+        self._risk_details_visible = False
+        self.risk_details_toggle = QToolButton()
+        self.risk_details_toggle.setText("修改資金與風控設定")
+        self.risk_details_toggle.setCheckable(True)
+        self.risk_details_toggle.setAccessibleName("修改資金與風控設定")
+        self.risk_details_toggle.setToolTip(
+            "只展開資金、成本、成交與停損停利欄位；不會重設目前值。"
+        )
+        self.risk_details_toggle.toggled.connect(self._toggle_risk_details)
+        self.risk_advanced_widget = QWidget()
+        self.risk_advanced_widget.setLayout(risk_form)
+        self.risk_advanced_widget.setVisible(False)
+        risk_layout = QVBoxLayout()
+        risk_layout.addWidget(self.risk_assumption_summary)
+        risk_layout.addWidget(self.risk_details_toggle)
+        risk_layout.addWidget(self.risk_advanced_widget)
+        self.risk_cost_group.setLayout(risk_layout)
+        for control in (
+            self.capital_input,
+            self.fee_bps_input,
+            self.slippage_bps_input,
+            self.execution_price_combo,
+            self.stop_profit_mode_combo,
+            self.stop_loss_input,
+            self.take_profit_input,
+            self.stop_loss_atr_input,
+            self.take_profit_atr_input,
+        ):
+            if hasattr(control, "valueChanged"):
+                control.valueChanged.connect(self._update_risk_assumption_summary)
+            elif hasattr(control, "currentTextChanged"):
+                control.currentTextChanged.connect(self._update_risk_assumption_summary)
+        self._update_risk_assumption_summary()
         config_layout.addWidget(self.risk_cost_group)
 
         # ========== 部位 Sizing 配置 ==========
@@ -447,16 +520,38 @@ class BacktestConfigPanel(QWidget):
         self._stabilize_combo_width(self.strategy_combo)
         strategy_layout.addWidget(self.strategy_combo)
 
+        self.strategy_guided_summary_label = QLabel(
+            "選擇要檢查的策略；詳細參數與技術說明可按「顯示進階研究設定」。"
+        )
+        self.strategy_guided_summary_label.setWordWrap(True)
+        self.strategy_guided_summary_label.setAccessibleName("策略選擇白話摘要")
+        self.strategy_guided_summary_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+        )
+        strategy_layout.addWidget(self.strategy_guided_summary_label)
+
         self.params_widget = QWidget()
         self.params_layout = QFormLayout(self.params_widget)
         strategy_layout.addWidget(self.params_widget)
 
         self.strategy_desc = QLabel()
-        self.strategy_desc.setStyleSheet("color: #888; font-size: 10px;")
+        self.strategy_desc.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+        )
         self.strategy_desc.setWordWrap(True)
         strategy_layout.addWidget(self.strategy_desc)
+        self.rule_card_button = QPushButton("查看版本化規則說明")
+        self.rule_card_button.setAccessibleName("查看目前回測設定的版本化規則說明")
+        self.rule_card_button.clicked.connect(self.parent_view._show_strategy_rule_card)
+        strategy_layout.addWidget(self.rule_card_button)
 
         self.strategy_combo.currentTextChanged.connect(lambda: self.parent_view._on_strategy_changed())
+        self.strategy_combo.currentTextChanged.connect(
+            lambda _text: self._update_strategy_guided_summary()
+        )
+        self.strategy_combo.currentTextChanged.connect(
+            lambda _text: self._apply_readability_visibility()
+        )
 
         self.strategy_config_group.setLayout(strategy_layout)
         config_layout.addWidget(self.strategy_config_group)
@@ -464,6 +559,7 @@ class BacktestConfigPanel(QWidget):
         # 填滿策略 (由 parent_view 的方法執行)
         self.parent_view._populate_strategy_combo()
         self.parent_view._on_strategy_changed()
+        self._update_strategy_guided_summary()
 
         # ========== 參數最佳化區塊 ==========
         if self.parent_view.optimizer_service:
@@ -502,7 +598,9 @@ class BacktestConfigPanel(QWidget):
                 "目前使用 ThreadPool，不是 ProcessPool；大型範圍執行前會先顯示組合數與取消提示。"
             )
             self.optimizer_runtime_hint.setWordWrap(True)
-            self.optimizer_runtime_hint.setStyleSheet("color: #666; font-size: 10px;")
+            self.optimizer_runtime_hint.setStyleSheet(
+                f"color: {MIDNIGHT_ANALYST.text_secondary}; font-size: 12px;"
+            )
             optimization_layout.addWidget(self.optimizer_runtime_hint)
 
             self.optimization_params_widget = QWidget()
@@ -513,11 +611,18 @@ class BacktestConfigPanel(QWidget):
             self.strategy_combo.currentTextChanged.connect(lambda: self.parent_view._update_optimization_params_form())
 
             # 使用 QTimer 延遲更新，確保 UI 初始化完成後再繪製
-            QTimer.singleShot(100, lambda: self.parent_view._update_optimization_params_form())
+            QTimer.singleShot(
+                100,
+                self,
+                lambda: self.parent_view._update_optimization_params_form(),
+            )
 
             self.optimize_btn = QPushButton("執行參數掃描")
             self.optimize_btn.setStyleSheet("background-color: #2196F3; color: white;")
             self.optimize_btn.clicked.connect(lambda: self.parent_view._execute_optimization())
+            self.optimize_btn.setAccessibleName("參數最佳化相容執行按鈕")
+            self.optimize_btn.setToolTip("目前由下方唯一主要執行按鈕依模式觸發；此相容按鈕不在畫面顯示")
+            self.optimize_btn.setVisible(False)
             optimization_layout.addWidget(self.optimize_btn)
 
             self.optimization_group.setLayout(optimization_layout)
@@ -594,6 +699,9 @@ class BacktestConfigPanel(QWidget):
             self.wf_execute_btn = QPushButton("執行驗證")
             self.wf_execute_btn.setStyleSheet("background-color: #FF9800; color: white;")
             self.wf_execute_btn.clicked.connect(lambda: self.parent_view._execute_walkforward())
+            self.wf_execute_btn.setAccessibleName("Walk-forward 相容執行按鈕")
+            self.wf_execute_btn.setToolTip("目前由下方唯一主要執行按鈕依模式觸發；此相容按鈕不在畫面顯示")
+            self.wf_execute_btn.setVisible(False)
             wf_layout.addWidget(self.wf_execute_btn)
 
             self.wf_group.setLayout(wf_layout)
@@ -662,6 +770,9 @@ class BacktestConfigPanel(QWidget):
         self.execute_recommendation_portfolio_btn = QPushButton("執行推薦回放")
         self.execute_recommendation_portfolio_btn.setStyleSheet("background-color: #607D8B; color: white; font-weight: bold;")
         self.execute_recommendation_portfolio_btn.clicked.connect(lambda: self.parent_view._execute_recommendation_portfolio_backtest())
+        self.execute_recommendation_portfolio_btn.setAccessibleName("推薦回放相容執行按鈕")
+        self.execute_recommendation_portfolio_btn.setToolTip("目前由下方唯一主要執行按鈕觸發；此相容按鈕不在畫面顯示")
+        self.execute_recommendation_portfolio_btn.setVisible(False)
         recommendation_portfolio_layout.addWidget(self.execute_recommendation_portfolio_btn)
 
         # 推薦組合回測保存與歷史管理
@@ -704,6 +815,8 @@ class BacktestConfigPanel(QWidget):
         self.execute_btn = QPushButton("執行實驗")
         self.execute_btn.setMinimumHeight(40)
         self.execute_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+        self.execute_btn.setAccessibleName("主要執行回測")
+        self.execute_btn.setToolTip("依目前研究模式與最佳化／Walk-forward 選擇執行唯一主要動作")
         self.execute_btn.clicked.connect(lambda: self.parent_view._execute_backtest())
         execute_row.addWidget(self.execute_btn)
 
@@ -761,14 +874,162 @@ class BacktestConfigPanel(QWidget):
         execution_group = QGroupBox("執行與下一步")
         execution_layout = QVBoxLayout()
         execution_layout.addWidget(self.parallel_checkbox)
+        self.execution_intent_label = QLabel()
+        self.execution_intent_label.setWordWrap(True)
+        self.execution_intent_label.setAccessibleName("本次執行意圖")
+        self.execution_intent_label.setToolTip("說明主要執行按鈕目前會執行的工作與輸入母體")
+        self.execution_intent_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_primary}; "
+            f"background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            "border-radius: 5px; padding: 6px; font-size: 12px;"
+        )
+        execution_layout.addWidget(self.execution_intent_label)
         execution_layout.addLayout(execute_row)
         execution_layout.addWidget(progress_widget)
         execution_group.setLayout(execution_layout)
         config_layout.addWidget(execution_group)
 
         config_layout.addStretch()
+        self._apply_readability_visibility()
 
     # ========== UI 內部事件處理 ==========
+
+    def _toggle_guided_details(self, checked: bool) -> None:
+        """展開／收合進階設定；絕不重跑模式切換或重設控制項。"""
+
+        self._guided_details_visible = bool(checked)
+        self._apply_readability_visibility()
+        self.guided_readability_toggle.setText(
+            "隱藏進階研究設定" if checked else "顯示進階研究設定"
+        )
+
+    def _toggle_risk_details(self, checked: bool) -> None:
+        """只展開資金／風控控制項，不修改任何控制項值。"""
+
+        self._risk_details_visible = bool(checked)
+        details_widget = getattr(self, "risk_advanced_widget", None)
+        if details_widget is not None:
+            details_widget.setVisible(bool(checked))
+        toggle = getattr(self, "risk_details_toggle", None)
+        if toggle is not None:
+            toggle.setText(
+                "隱藏資金與風控設定" if checked else "修改資金與風控設定"
+            )
+
+    @staticmethod
+    def _set_visibility_if_widget(widget: object, visible: bool) -> None:
+        """只對真正 Qt widget 套用純呈現 visibility，保留舊 mock contract。"""
+
+        if isinstance(widget, QWidget):
+            widget.setVisible(bool(visible))
+
+    def _apply_readability_visibility(self, mode_id: str | None = None) -> None:
+        """依目前模式和純呈現開關調整可見性。"""
+
+        advanced = bool(self._guided_details_visible)
+        mode_id = str(
+            mode_id or self.research_lab_mode_combo.currentData() or "single_stock"
+        )
+        is_replay = mode_id == "recommendation_replay"
+        supports_advanced_research = mode_id in {
+            "single_stock",
+            "batch_stock",
+            "fixed_basket",
+            "strategy_research",
+        }
+
+        strategy_preset_group = getattr(self, "strategy_preset_group", None)
+        if strategy_preset_group is not None:
+            # 預設載入／保存是既有日常入口，保留其可見性；更深的驗證仍由開關控制。
+            strategy_preset_group.setVisible(supports_advanced_research)
+        if self.input_source_group is not None:
+            self.input_source_group.setVisible(True)
+        if self.risk_cost_group is not None:
+            # 資金、手續費、滑價和回放固定契約是每日判讀需要的假設。
+            self.risk_cost_group.setVisible(True)
+        risk_advanced_widget = getattr(self, "risk_advanced_widget", None)
+        if risk_advanced_widget is not None:
+            self._set_visibility_if_widget(
+                risk_advanced_widget, bool(getattr(self, "_risk_details_visible", False))
+            )
+        if self.sizing_group is not None:
+            self._set_visibility_if_widget(self.sizing_group, advanced and not is_replay)
+        if self.position_mgmt_group is not None:
+            self._set_visibility_if_widget(
+                self.position_mgmt_group, advanced and not is_replay
+            )
+        if self.market_constraints_group is not None:
+            self._set_visibility_if_widget(
+                self.market_constraints_group, advanced and not is_replay
+            )
+        if self.strategy_config_group is not None:
+            self._set_visibility_if_widget(self.strategy_config_group, not is_replay)
+        if hasattr(self, "params_widget") and self.params_widget is not None:
+            optimization_group = getattr(self, "optimization_group", None)
+            optimization_checked = bool(
+                optimization_group is not None
+                and optimization_group.isChecked()
+            )
+            self._set_visibility_if_widget(
+                self.params_widget,
+                advanced and not optimization_checked and not is_replay,
+            )
+        if hasattr(self, "strategy_desc") and self.strategy_desc is not None:
+            self._set_visibility_if_widget(
+                self.strategy_desc, advanced and not is_replay
+            )
+        optimization_group = getattr(self, "optimization_group", None)
+        if optimization_group is not None:
+            self._set_visibility_if_widget(
+                optimization_group,
+                advanced and mode_id in {"single_stock", "strategy_research"}
+            )
+        wf_group = getattr(self, "wf_group", None)
+        if wf_group is not None:
+            self._set_visibility_if_widget(
+                wf_group,
+                advanced and mode_id in {"single_stock", "strategy_research"}
+            )
+        recommendation_group = getattr(self, "recommendation_portfolio_group", None)
+        if recommendation_group is not None:
+            self._set_visibility_if_widget(recommendation_group, is_replay)
+
+    def _update_risk_assumption_summary(self, *_args) -> None:
+        """以目前控制項值更新白話成本／資金摘要；只做呈現格式化。"""
+
+        label = getattr(self, "risk_assumption_summary", None)
+        if label is None:
+            return
+        capital = self.capital_input.value()
+        fee_bps = self.fee_bps_input.value()
+        slippage_bps = self.slippage_bps_input.value()
+        execution = self.execution_price_combo.currentText()
+        stop_mode = self.stop_profit_mode_combo.currentText()
+        if stop_mode == "百分比模式":
+            stop_loss = self.stop_loss_input.text()
+            take_profit = self.take_profit_input.text()
+        else:
+            stop_loss = self.stop_loss_atr_input.text()
+            take_profit = self.take_profit_atr_input.text()
+        label.setText(
+            f"假設：資金 ${capital:,.0f}｜手續費 {fee_bps:g} bps｜"
+            f"滑價 {slippage_bps:g} bps｜成交「{execution}」｜"
+            f"停損停利「{stop_mode}」：停損 {stop_loss}、停利 {take_profit}。"
+        )
+
+    def _update_strategy_guided_summary(self) -> None:
+        """更新策略選擇的白話提示，不改策略配置。"""
+
+        label = getattr(self, "strategy_guided_summary_label", None)
+        combo = getattr(self, "strategy_combo", None)
+        if label is None or combo is None:
+            return
+        strategy_name = combo.currentText().strip() or "尚未選擇"
+        label.setText(
+            f"目前策略：{strategy_name}。先用目前設定執行回測；"
+            "詳細參數與技術說明可按「顯示進階研究設定」。"
+        )
 
     def _research_lab_mode_hint_text(self, index: int) -> str:
         """建立 Research Lab 模式提示文字。"""
@@ -786,6 +1047,9 @@ class BacktestConfigPanel(QWidget):
         if index >= 0 and index < len(RESEARCH_LAB_MODES):
             mode = RESEARCH_LAB_MODES[index]
             self._update_ui_state_by_mode(mode["id"])
+            sync = getattr(self.parent_view, "_on_research_lab_mode_changed", None)
+            if callable(sync):
+                sync(mode["id"])
 
     def _update_ui_state_by_mode(self, mode_id: str):
         """根據 Research Lab 模式調整左側配置面板的顯示狀態。"""
@@ -817,7 +1081,9 @@ class BacktestConfigPanel(QWidget):
 
         # 3. 策略與風控群組
         if self.risk_cost_group:
-            self.risk_cost_group.setVisible(not is_replay)
+            # 推薦回放仍會讀取資金、費用、滑價與停損停利；不能因隱藏群組
+            # 讓使用者看不到實際假設。
+            self.risk_cost_group.setVisible(True)
         if self.sizing_group:
             self.sizing_group.setVisible(not is_replay)
         if self.position_mgmt_group:
@@ -832,26 +1098,91 @@ class BacktestConfigPanel(QWidget):
             self.recommendation_portfolio_group.setVisible(is_replay)
             if is_replay:
                 self.recommendation_portfolio_group.setChecked(True)
+        self._apply_recommendation_replay_contract(is_replay)
 
         # 5. 進階參數最佳化群組
         if self.optimization_group:
             self.optimization_group.setVisible(is_single or is_research)
-            if is_research:
-                self.optimization_group.setChecked(True)
-            else:
-                self.optimization_group.setChecked(False)
+            # 策略研究由使用者明確選擇一次操作；不可同時預設最佳化與 WF。
+            self.optimization_group.setChecked(False)
 
         # 6. 進階 Walk-forward 驗證群組
         if self.wf_group:
             self.wf_group.setVisible(is_single or is_research)
-            if is_research:
-                self.wf_group.setChecked(True)
-            else:
-                self.wf_group.setChecked(False)
+            self.wf_group.setChecked(False)
 
         # 7. 並行開關 (防呆：僅在批次選股模式下顯示)
         if hasattr(self, 'parallel_checkbox') and self.parallel_checkbox:
             self.parallel_checkbox.setVisible(is_batch)
+
+        self._update_execute_button_text()
+        self._apply_readability_visibility(mode_id)
+
+    def update_execution_intent(self, mode_id: str | None = None) -> None:
+        """在唯一主要 CTA 附近說明本次執行意圖與輸入母體。"""
+        mode = mode_id or str(self.research_lab_mode_combo.currentData() or "single_stock")
+        if self.optimization_group and self.optimization_group.isChecked():
+            intent = "本次將執行參數最佳化：以目前單一標的與日期區間掃描保留的參數範圍。"
+        elif self.wf_group and self.wf_group.isChecked():
+            intent = "本次將執行 Walk-forward 驗證：以目前單一標的與日期區間切出訓練／測試期。"
+        else:
+            intent_map = {
+                "single_stock": "本次將執行單股回測：以股票代號、策略參數與日期區間為輸入。",
+                "batch_stock": "本次將執行批次回測：以候選池／選股清單逐檔比較，非共享現金組合。",
+                "fixed_basket": "本次將執行固定清單逐檔回測：以固定股票清單逐檔跑，非共享現金組合。",
+                "recommendation_replay": "本次將執行推薦回放：以已載入推薦 Profile／結果與 replay 設定為輸入。",
+                "strategy_research": "本次將執行策略研究回測：依目前單股／清單與策略研究設定執行。",
+            }
+            intent = intent_map.get(mode, "本次將依目前研究模式執行回測。")
+        if hasattr(self, "execution_intent_label"):
+            self.execution_intent_label.setText(intent)
+
+    def _apply_recommendation_replay_contract(self, is_replay: bool) -> None:
+        """顯示並鎖定推薦回放實際使用的執行契約。"""
+        if not hasattr(self, "execution_price_combo"):
+            return
+
+        if is_replay:
+            if not self._replay_mode_active:
+                self._replay_execution_price_index = self.execution_price_combo.currentIndex()
+                self._replay_stop_profit_mode_index = self.stop_profit_mode_combo.currentIndex()
+                self._replay_execution_price_tooltip = self.execution_price_combo.toolTip()
+                self._replay_stop_profit_mode_tooltip = self.stop_profit_mode_combo.toolTip()
+            self._replay_mode_active = True
+            next_open_index = self.execution_price_combo.findText("下一根K開盤價 (next_open)")
+            if next_open_index >= 0:
+                self.execution_price_combo.setCurrentIndex(next_open_index)
+            self.execution_price_combo.setEnabled(False)
+            self.execution_price_combo.setToolTip(
+                "推薦回放固定使用 next-session-open.v2：訊號於下一個可交易 session 開盤成交。"
+            )
+
+            percent_index = self.stop_profit_mode_combo.findText("百分比模式")
+            if percent_index >= 0:
+                self.stop_profit_mode_combo.setCurrentIndex(percent_index)
+            self.stop_profit_mode_combo.setEnabled(False)
+            self.stop_profit_mode_combo.setToolTip(
+                "推薦回放固定使用百分比停損／停利；ATR 倍數模式不適用於此回放契約。"
+            )
+            self.risk_cost_group.setTitle(
+                "策略與風控：資金成本 / 執行（推薦回放固定 next-session-open.v2）"
+            )
+            return
+
+        if not self._replay_mode_active:
+            return
+        if self._replay_execution_price_index is not None:
+            self.execution_price_combo.setCurrentIndex(self._replay_execution_price_index)
+        if self._replay_stop_profit_mode_index is not None:
+            self.stop_profit_mode_combo.setCurrentIndex(self._replay_stop_profit_mode_index)
+        self.execution_price_combo.setEnabled(True)
+        self.stop_profit_mode_combo.setEnabled(True)
+        self.execution_price_combo.setToolTip(self._replay_execution_price_tooltip or "")
+        self.stop_profit_mode_combo.setToolTip(self._replay_stop_profit_mode_tooltip or "")
+        self.risk_cost_group.setTitle("策略與風控：資金成本 / 執行")
+        self._replay_mode_active = False
+        self._replay_execution_price_tooltip = None
+        self._replay_stop_profit_mode_tooltip = None
 
     def _on_stock_mode_changed(self, mode: str):
         """股票模式切換"""
@@ -895,29 +1226,51 @@ class BacktestConfigPanel(QWidget):
         """根據進階選項更新執行按鈕文字"""
         opt_checked = self.optimization_group.isChecked() if self.optimization_group else False
         wf_checked = self.wf_group.isChecked() if self.wf_group else False
+        mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
 
         if opt_checked:
             self.execute_btn.setText("執行參數最佳化")
         elif wf_checked:
             self.execute_btn.setText("執行 Walk-forward 驗證")
+        elif mode == "single_stock":
+            self.execute_btn.setText("執行單股回測")
+        elif mode == "batch_stock":
+            self.execute_btn.setText("執行批次回測")
+        elif mode == "fixed_basket":
+            self.execute_btn.setText("執行固定清單逐檔回測")
+        elif mode == "recommendation_replay":
+            self.execute_btn.setText("執行推薦回放")
+        elif mode == "strategy_research":
+            self.execute_btn.setText("執行策略研究回測")
         else:
             self.execute_btn.setText("執行實驗")
+        self.update_execution_intent(mode)
 
     def _on_wf_group_toggled(self, checked: bool):
         """Walk-forward 驗證區塊勾選狀態變更"""
+        if checked and self.optimization_group and self.optimization_group.isChecked():
+            # 讓 optimization 的 False signal 正常流過，恢復 params_widget
+            # 並清理暫存的最佳化欄位；blockSignals 會讓原本表單卡在隱藏狀態。
+            self.optimization_group.setChecked(False)
         self._update_execute_button_text()
 
     def _on_optimization_toggled(self, checked: bool):
         """參數最佳化區塊勾選狀態變更"""
+        if checked and self.wf_group and self.wf_group.isChecked():
+            self.wf_group.setChecked(False)
         self._update_execute_button_text()
         if checked:
             self.params_widget.setVisible(False)
             self.parent_view._update_optimization_params_form()
         else:
-            self.params_widget.setVisible(True)
-            if self.optimization_params_layout:
-                while self.optimization_params_layout.count():
-                    child = self.optimization_params_layout.takeAt(0)
-                    widget = child.widget()
-                    if widget:
-                        widget.deleteLater()
+            self._restore_standard_params_form()
+
+    def _restore_standard_params_form(self) -> None:
+        """退出最佳化模式時恢復一般策略參數表單。"""
+        self.params_widget.setVisible(True)
+        if self.optimization_params_layout:
+            while self.optimization_params_layout.count():
+                child = self.optimization_params_layout.takeAt(0)
+                widget = child.widget()
+                if widget:
+                    widget.deleteLater()

@@ -64,6 +64,7 @@ def _outcome(
     industry_excess_bp: int | None = None,
     max_adverse_excursion_bp: int | None = None,
     liquidity_cost_bp: int | None = None,
+    metadata: dict[str, object] | None = None,
 ) -> EvidenceOutcome:
     return EvidenceOutcome(
         outcome_id=f"out-{event_id}-{window_days}",
@@ -76,6 +77,7 @@ def _outcome(
         liquidity_cost_bp=liquidity_cost_bp,
         outcome_status=status,
         data_quality=EvidenceDataQuality.OBSERVED,
+        metadata=metadata or {},
     )
 
 
@@ -144,6 +146,40 @@ def test_report_keeps_empty_buckets_and_read_only_disclosure() -> None:
     assert high["ready_outcome_count"] == 0
     assert high["pending_outcome_count"] == 1
     assert high["missing_outcome_count"] == 1
+
+
+def test_legacy_ready_calendar_mismatch_is_not_a_score_effectiveness_sample() -> None:
+    report = ScoreEffectivenessReadModel(
+        events=(_event("evt-blocked", 8200), _event("evt-valid", 8200)),
+        outcomes=(
+            _outcome(
+                "evt-blocked",
+                5,
+                EvidenceOutcomeStatus.READY,
+                forward_return_bp=9000,
+                benchmark_excess_bp=8000,
+                industry_excess_bp=7000,
+                metadata={"maturity_calendar_comparison": "blocked_mismatch"},
+            ),
+            _outcome(
+                "evt-valid",
+                5,
+                EvidenceOutcomeStatus.READY,
+                forward_return_bp=100,
+                benchmark_excess_bp=50,
+                industry_excess_bp=25,
+            ),
+        ),
+    ).build_report()
+
+    high = next(row for row in report.buckets if row.bucket == "80-100")
+    assert high.sample_count == 2
+    assert high.ready_outcome_count == 1
+    assert high.pending_outcome_count == 1
+    assert high.forward_return_bp_by_horizon == {"5": 100}
+    assert high.benchmark_excess_bp_by_horizon == {"5": 50}
+    assert "blocked_time_contract_requires_review" in high.warnings
+    assert "maturity_calendar_comparison_blocked" in high.warnings
 
 
 def test_report_does_not_diagnose_missing_score_when_metric_is_not_applicable() -> None:

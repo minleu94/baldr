@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timezone
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QGridLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
@@ -52,8 +52,8 @@ class ScheduledEvidenceStatusView(QWidget):
         root.addWidget(title)
 
         self.boundary_label = QLabel(
-            "此頁只讀取 Windows Task Scheduler 產出的 latest_status.json 與 dry-run report；"
-            "不重跑 pipeline、不寫 evidence DB、不計入正式 multi-day record。"
+            "此頁只讀取 Windows Task Scheduler 產出的 latest_status.json 與 report；"
+            "不重跑 producer / pipeline、不寫 evidence DB、不自動追加 multi-day record。"
         )
         self.boundary_label.setWordWrap(True)
         self.boundary_label.setStyleSheet(
@@ -65,14 +65,17 @@ class ScheduledEvidenceStatusView(QWidget):
         cards = QGridLayout()
         self.freshness_label = self._make_card("Data freshness", "尚未載入")
         self.recommendation_label = self._make_card("Recommendation snapshot", "尚未載入")
+        self.recommendation_label.setMinimumHeight(112)
         self.evidence_label = self._make_card("Evidence dry-run", "尚未載入")
+        self.forward_outcome_label = self._make_card("Forward outcomes", "尚未載入")
         self.safety_label = self._make_card("安全邊界", "尚未載入")
         self.report_label = self._make_card("Report", "尚未載入")
         cards.addWidget(self.freshness_label, 0, 0)
         cards.addWidget(self.recommendation_label, 0, 1)
         cards.addWidget(self.evidence_label, 1, 0)
-        cards.addWidget(self.safety_label, 1, 1)
-        cards.addWidget(self.report_label, 2, 0, 1, 2)
+        cards.addWidget(self.forward_outcome_label, 1, 1)
+        cards.addWidget(self.safety_label, 2, 0)
+        cards.addWidget(self.report_label, 2, 1)
         root.addLayout(cards)
 
         self.refresh_button = QPushButton("重新整理排程狀態")
@@ -96,8 +99,8 @@ class ScheduledEvidenceStatusView(QWidget):
             self._worker = worker
             worker.finished.connect(self._on_status_loaded)
             worker.error.connect(self._on_status_error)
-            worker.finished.connect(lambda _result: self._release_worker())
-            worker.error.connect(lambda _message: self._release_worker())
+            worker.finished.connect(self._release_worker_after_finished)
+            worker.error.connect(self._release_worker_after_error)
             worker.start()
             return
         try:
@@ -127,6 +130,7 @@ class ScheduledEvidenceStatusView(QWidget):
             "recommendation_snapshot", "unknown"
         )
         evidence_class = dict(status.machine_status_classifications).get("evidence_pipeline", "unknown")
+        forward_class = dict(status.machine_status_classifications).get("forward_outcomes", "unknown")
         load_label = _load_state_label(status)
         stale_suffix = (
             "\n資料狀態：stale（沿用最後可信內容）"
@@ -134,8 +138,8 @@ class ScheduledEvidenceStatusView(QWidget):
             else ""
         )
         self.boundary_label.setText(
-            "此頁只讀取 Windows Task Scheduler 產出的 latest_status.json 與 dry-run report；"
-            "不重跑 pipeline、不寫 evidence DB、不計入正式 multi-day record。\n"
+            "此頁只讀取 Windows Task Scheduler 產出的 latest_status.json 與 report；"
+            "不重跑 producer / pipeline、不寫 evidence DB、不自動追加 multi-day record。\n"
             f"讀取狀態：{load_label}；"
             f"最後可信載入：{status.last_good_loaded_at or '未知'}。"
         )
@@ -149,6 +153,15 @@ class ScheduledEvidenceStatusView(QWidget):
             f"{status.evidence_status} / 決策日 {decision_date}\n"
             f"分類：{format_machine_status_classification(evidence_class)}{stale_suffix}"
         )
+        self.forward_outcome_label.setText(
+            "Forward outcomes\n"
+            f"{status.forward_outcome_status} / 掃描 {_count_text(status.forward_outcome_events_scanned)} / "
+            f"寫入 {_count_text(status.forward_outcome_outcomes_written)}\n"
+            f"待成熟 {_count_text(status.forward_outcome_pending)}；"
+            f"健康：{status.forward_health_classification or '未知'}\n"
+            f"進度：{_progress_card_text(status)}\n"
+            f"分類：{format_machine_status_classification(forward_class)}{stale_suffix}"
+        )
         recommendation_id = status.recommendation_result_id or "未知"
         recommendation_count = (
             str(status.recommendations_count) if status.recommendations_count is not None else "未知"
@@ -157,6 +170,7 @@ class ScheduledEvidenceStatusView(QWidget):
             "Recommendation snapshot\n"
             f"{status.recommendation_status} / {status.recommendation_source} / "
             f"{recommendation_id} / {recommendation_count} 筆\n"
+            f"{_recommendation_cohort_classification_text(status)}\n"
             f"分類：{format_machine_status_classification(recommendation_class)}{stale_suffix}"
         )
         self.safety_label.setText(
@@ -204,6 +218,7 @@ class ScheduledEvidenceStatusView(QWidget):
         self.freshness_label.setText(f"Data freshness\n分類：{unknown_label}")
         self.recommendation_label.setText(f"Recommendation snapshot\n分類：{unknown_label}")
         self.evidence_label.setText(f"Evidence dry-run\n分類：{unknown_label}")
+        self.forward_outcome_label.setText(f"Forward outcomes\n分類：{unknown_label}")
         self.safety_label.setText("安全邊界\n狀態未知；不能推定可寫入或可交易")
         self.report_label.setText("Report\n狀態未知；尚無可信 report")
         self.detail_panel.setPlainText(
@@ -211,6 +226,14 @@ class ScheduledEvidenceStatusView(QWidget):
             "請聚焦 Retry；尚無 last-known-good 可保留。"
         )
         self.refresh_button.setFocus(Qt.OtherFocusReason)
+
+    @Slot(object)
+    def _release_worker_after_finished(self, _result: object) -> None:
+        self._release_worker()
+
+    @Slot(str)
+    def _release_worker_after_error(self, _message: str) -> None:
+        self._release_worker()
 
     def _release_worker(self) -> None:
         self.refresh_button.setEnabled(True)
@@ -253,7 +276,52 @@ def _format_details(status: ScheduledEvidenceStatus) -> str:
             f"{recommendation_id} / {recommendation_count} 筆"
         ),
         f"- recommendation note: {recommendation_note}",
+        (
+            "- 推薦工程執行結果："
+            f"{status.recommendation_status} / source={status.recommendation_source} / "
+            f"result_id={recommendation_id} / decision_date={status.decision_date or '未知'}"
+        ),
+        (
+            "- snapshot cohort："
+            f"integrity_basis={status.recommendation_cohort_integrity_basis or '未確認'} / "
+            f"payload_hash={status.recommendation_canonical_payload_hash or '未確認'} / "
+            f"cohort_hash={status.recommendation_cohort_hash or '未確認'} / "
+            f"requested={_count_text(status.recommendation_cohort_requested_count)}"
+        ),
+        (
+            "- 保存的 cohort quality 原始統計（未改寫）："
+            f"degraded={_count_text(status.recommendation_cohort_quality_degraded_count)} / "
+            f"missing={_count_text(status.recommendation_cohort_quality_missing_count)}"
+        ),
+        f"- {_recommendation_cohort_classification_text(status)}",
+        "- 分類用途：研究用途；本次 snapshot 覆蓋與策略篩選分類不代表勝率或策略績效，也不改原始 cohort quality 或 Advice。",
         f"- evidence dry-run: {status.evidence_status} / 決策日 {status.decision_date or '未知'}",
+        (
+            "- forward outcomes: "
+            f"{status.forward_outcome_status} / 掃描 {_count_text(status.forward_outcome_events_scanned)} / "
+            f"寫入 {_count_text(status.forward_outcome_outcomes_written)} / "
+            f"待成熟 {_count_text(status.forward_outcome_pending)} / "
+            f"warnings {_count_text(status.forward_outcome_warnings_count)}"
+        ),
+        f"- forward outcome run: {status.forward_outcome_run_id or '未知'}",
+        f"- forward outcome blockers: {_join(status.forward_outcome_blockers)}",
+        f"- forward outcome warnings: {_join(status.forward_outcome_warnings)}",
+        f"- forward health classification: {status.forward_health_classification or '未知'}",
+        f"- latest qualifying event date: {status.forward_health_latest_qualifying_event_date or '未知'}",
+        f"- qualifying events / cohorts: {_count_text(status.forward_health_qualifying_event_count)} / {_count_text(status.forward_health_cohort_count)}",
+        f"- horizon ready/pending/missing: {_horizon_summary(status.forward_health_horizons)}",
+        f"- latest capture / outcome update / evaluation: {status.forward_health_latest_capture_at or '未知'} / {status.forward_health_latest_outcome_updated_at or '未知'} / {status.forward_health_last_evaluation_at or '未知'}",
+        f"- next maturity date: {status.forward_health_next_maturity_date or '無法推算'}",
+        f"- forward health blocking reason: {status.forward_health_blocking_reason or '無'}",
+        f"- forward health next action: {status.forward_health_next_action or '無'}",
+        f"- forward health recovery verification: {_recovery_summary(status.forward_health_recovery_verification)}",
+        f"- forward health blockers: {_join(status.forward_health_blockers)}",
+        f"- forward health warnings: {_join(status.forward_health_warnings)}",
+        f"- evidence progress: {_progress_detail(status)}",
+        f"- evidence progress blockers: {_join(status.evidence_progress_blockers)}",
+        f"- evidence progress warnings: {_join(status.evidence_progress_warnings)}",
+        f"- evidence progress next action: {status.evidence_progress_next_action or '無'}",
+        f"- evidence progress receipt: {status.evidence_progress_status_path or '未提供'}",
         f"- blocking gaps: {_join(status.pipeline_blocking_gaps)}",
         f"- evidence/trading boundary: {'ok' if boundary_ok else 'needs review'}",
         (
@@ -287,6 +355,7 @@ def _format_details(status: ScheduledEvidenceStatus) -> str:
         f"- confirm: {_bool_text(status.confirm)}",
         f"- writes_recommendation_result: {_bool_text(status.writes_recommendation_result)}",
         f"- writes_evidence_db: {_bool_text(status.writes_evidence_db)}",
+        f"- forward_outcome_writes_evidence_db: {_bool_text(status.forward_outcome_writes_evidence_db)}",
         f"- auto_trading: {_bool_text(status.auto_trading)}",
         f"- lifecycle_action: {_bool_text(status.lifecycle_action)}",
         f"- production evidence/trading write risk: {_bool_text(status.has_production_write_risk)}",
@@ -295,6 +364,7 @@ def _format_details(status: ScheduledEvidenceStatus) -> str:
         f"- data freshness: {status.freshness_status}",
         f"- recommendation snapshot: {status.recommendation_status}",
         f"- evidence dry-run: {status.evidence_status}",
+        f"- forward outcomes: {status.forward_outcome_status}",
         f"- pipeline_overall_status: {status.pipeline_overall_status or '未知'}",
         f"- evidence_checked_at: {status.evidence_checked_at or '未知'}",
         f"- freshness warnings: {_join(status.freshness_warnings)}",
@@ -306,6 +376,7 @@ def _format_details(status: ScheduledEvidenceStatus) -> str:
         f"- exit_code: {status.exit_code if status.exit_code is not None else '未知'}",
         f"- pipeline_diagnostic_codes: {_join(status.pipeline_diagnostic_codes)}",
         f"- log_path: {status.log_path or '未提供'}",
+        f"- forward_outcome_status_path: {status.forward_outcome_status_path or '未提供'}",
     ]
     if status.report_preview:
         lines.extend(["", "Report preview（trimmed）", _trim_report_preview(status.report_preview)])
@@ -320,6 +391,73 @@ def _recommendation_note(status: ScheduledEvidenceStatus) -> str:
     if status.recommendation_status == "missing":
         return "recommendation snapshot missing"
     return "review recommendation status"
+
+
+def _recommendation_cohort_classification_text(status: ScheduledEvidenceStatus) -> str:
+    expected_labels = (
+        "可用候選",
+        "策略排除",
+        "缺資料",
+        "來源品質問題",
+        "其他未判定",
+    )
+    if (
+        status.recommendation_cohort_integrity_basis
+        != "canonical_payload_and_index_verified"
+        or not status.recommendation_canonical_payload_hash
+        or not status.recommendation_cohort_hash
+        or status.recommendation_cohort_requested_count is None
+        or type(status.recommendation_cohort_quality_missing_count) is not int
+        or type(status.recommendation_cohort_quality_degraded_count) is not int
+        or status.recommendation_cohort_quality_missing_count < 0
+        or status.recommendation_cohort_quality_degraded_count < 0
+    ):
+        return "snapshot cohort 派生分類：未確認（缺少匹配且已驗證的 canonical cohort）"
+    classifications = status.recommendation_cohort_classifications
+    if (
+        tuple(label for label, _ in classifications) != expected_labels
+        or any(type(count) is not int or count < 0 for _, count in classifications)
+        or sum(count for _, count in classifications)
+        != status.recommendation_cohort_requested_count
+    ):
+        return "snapshot cohort 派生分類：未確認（分類計數不完整）"
+    counts_text = " / ".join(f"{label} {count}" for label, count in classifications)
+    return f"snapshot cohort 派生分類（研究用途）：{counts_text}"
+
+
+def _progress_card_text(status: ScheduledEvidenceStatus) -> str:
+    alert = status.evidence_progress_no_new_data_alert or {}
+    consecutive = alert.get("consecutive_no_new_data_days")
+    alert_text = "告警" if alert.get("alert") else "正常"
+    return (
+        f"{status.evidence_progress_status} / 無新增 {consecutive if consecutive is not None else '未知'} 天 / "
+        f"{alert_text}"
+    )
+
+
+def _progress_detail(status: ScheduledEvidenceStatus) -> str:
+    daily = status.evidence_progress_daily or {}
+    weekly = status.evidence_progress_weekly or {}
+    captures = daily.get("captures") if isinstance(daily.get("captures"), dict) else {}
+    maturity = daily.get("maturity") if isinstance(daily.get("maturity"), dict) else {}
+    calendar = (
+        daily.get("calendar_observation")
+        if isinstance(daily.get("calendar_observation"), dict)
+        else {}
+    )
+    alert = status.evidence_progress_no_new_data_alert or {}
+    return (
+        f"status={status.evidence_progress_status} / "
+        f"calendar expected={daily.get('data_expected', '未知')}"
+        f"({calendar.get('reason_code', daily.get('data_expected_reason', '未知'))}) / "
+        f"daily captures={captures.get('decision_day_count', '未知')} decision days, "
+        f"new events={captures.get('new_event_count', '未知')} / "
+        f"maturity ready/pending/missing={maturity.get('ready', '未知')}/"
+        f"{maturity.get('pending', '未知')}/{maturity.get('missing', '未知')} / "
+        f"weekly decision days={weekly.get('capture_decision_day_count', '未知')} / "
+        f"no-new={alert.get('consecutive_no_new_data_days', '未知')} days, "
+        f"alert={'true' if alert.get('alert') else 'false'}"
+    )
 
 
 def _trim_report_preview(preview: str, *, max_lines: int = 24) -> str:
@@ -361,6 +499,34 @@ def _join_warning_top_counts(values: tuple[tuple[str, int], ...]) -> str:
 
 def _join(values: tuple[str, ...]) -> str:
     return ", ".join(values) if values else "無"
+
+
+def _count_text(value: int | None) -> str:
+    return str(value) if value is not None else "未知"
+
+
+def _horizon_summary(value: object) -> str:
+    if not isinstance(value, dict) or not value:
+        return "未知"
+    parts: list[str] = []
+    for horizon in sorted(value, key=str):
+        item = value.get(horizon)
+        if not isinstance(item, dict):
+            continue
+        parts.append(
+            f"{horizon}:R{item.get('ready', 0)}/P{item.get('pending', 0)}/M{item.get('missing', 0)}"
+        )
+    return "; ".join(parts) if parts else "未知"
+
+
+def _recovery_summary(value: object) -> str:
+    if not isinstance(value, dict):
+        return "未知"
+    status = str(value.get("status") or "未知")
+    checks = value.get("checks")
+    if isinstance(checks, (list, tuple)) and checks:
+        return f"{status} / " + ", ".join(str(item) for item in checks)
+    return status
 
 
 def _bool_text(value: bool | None) -> str:

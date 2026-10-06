@@ -18,6 +18,14 @@ from data_module.config import TWStockConfig
 from data_module.db_manager import DBManager
 from decision_module.strategy_configurator import StrategyConfigurator
 from app_module.recommendation_service import RecommendationService
+from app_module.regime_service import RegimeService
+from app_module.recommendation.input_preparation import (
+    build_default_recommendation_input_preparer,
+)
+from scripts.recommendation_execution_qa_support import (
+    execute_and_readback,
+    require_isolated_test_environment,
+)
 import analysis_module.pattern_analysis.pattern_analyzer as pa
 
 def original_safe_polyfit(x, y, deg):
@@ -97,6 +105,7 @@ def original_find_peaks_and_troughs(self, df, price_col=None, window=5, prominen
     return peaks_troughs
 
 def main():
+    require_isolated_test_environment()
     config = TWStockConfig()
     db = DBManager(config)
     
@@ -266,7 +275,11 @@ def main():
         
     # 5. 測試批量推薦分析的排序名次與決策名單
     log_print("\n[測試 3] 批量推薦分析全流程效能與決策一致性驗證...")
-    service = RecommendationService(config)
+    service = RecommendationService(
+        config,
+        input_preparer=build_default_recommendation_input_preparer(config),
+        regime_service=RegimeService(config),
+    )
     
     # 5.1 測試優化前
     orig_identify_pattern_fn = pa.PatternAnalyzer.identify_pattern
@@ -283,7 +296,13 @@ def main():
     pa.PatternAnalyzer.find_peaks_and_troughs = original_find_peaks_and_troughs
     
     start_t = time.time()
-    recs_orig = service.run_recommendation(pattern_config, max_stocks=50, top_n=20)
+    execution_orig, readback_orig, _receipt_orig = execute_and_readback(
+        service,
+        pattern_config,
+        max_stocks=50,
+        top_n=20,
+    )
+    recs_orig = readback_orig.execution.decision.items
     time_orig = time.time() - start_t
     
     # 5.2 測試優化後
@@ -292,7 +311,13 @@ def main():
     pa.PatternAnalyzer.find_peaks_and_troughs = orig_find_peaks_troughs_fn
     
     start_t = time.time()
-    recs_opt = service.run_recommendation(pattern_config, max_stocks=50, top_n=20)
+    execution_opt, readback_opt, _receipt_opt = execute_and_readback(
+        service,
+        pattern_config,
+        max_stocks=50,
+        top_n=20,
+    )
+    recs_opt = readback_opt.execution.decision.items
     time_opt = time.time() - start_t
     
     log_print(f"  優化前批量推薦總耗時 (含 DB 載入): {time_orig:.4f} 秒")
@@ -305,8 +330,13 @@ def main():
         for idx in range(len(recs_orig)):
             code_orig = recs_orig[idx].stock_code
             code_opt = recs_opt[idx].stock_code
-            score_orig = recs_orig[idx].total_score
-            score_opt = recs_opt[idx].total_score
+            score_orig = recs_orig[idx].rule_score
+            score_opt = recs_opt[idx].rule_score
+
+            if score_orig is None or score_opt is None:
+                list_match = False
+                log_print(f"❌ 分數缺失：第 {idx+1} 名 {code_orig}")
+                break
             
             if code_orig != code_opt:
                 list_match = False
@@ -318,14 +348,17 @@ def main():
                 break
                 
     log_print(f"  推薦決策與排序完全一致: {list_match}")
+    log_print(
+        "  Execution/readback identities: "
+        f"{execution_orig.result_id} / {execution_opt.result_id}"
+    )
     
     log_print("\n==================================================")
     log_print("全流程等價性與效能驗證完成。")
     log_print("==================================================")
     
     # 6. 自動寫入報告
-    report_dir = Path(project_root) / "output" / "qa"
-    report_dir.mkdir(parents=True, exist_ok=True)
+    report_dir = config.resolve_output_path("qa")
     report_path = report_dir / "pattern_opt_report.md"
     
     # 估算 DB 載入時間 (Test 3 時間減去 Test 1 的計算時間)

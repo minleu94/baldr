@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 import json
 import logging
+import math
 import os
+import subprocess
 import sys
-from datetime import date, datetime, timedelta
+from collections.abc import Mapping
+from dataclasses import asdict, is_dataclass
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
+from uuid import uuid4
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -20,6 +28,17 @@ from data_module.official_trading_calendar import (
     OfficialTradingCalendar,
     OfficialTradingCalendarError,
 )
+from data_module.ml_storage_capacity import (
+    BYTES_PER_GIB,
+    HEAVY_CHAIN_LOCK_FILENAME,
+    StorageCapacityError,
+    acquire_heavy_chain_reservation,
+    heavy_chain_capacity_budget,
+    preflight_capacity,
+    release_heavy_chain_reservation,
+)
+from data_module.phase3c_backfill_runner import configured_candidate_db_path
+from data_module.tdcc_shareholding_candidate import TDCC_SOURCE_VERSION, TDCC_URL
 from scripts.scheduled.scheduled_clock import scheduled_now
 
 
@@ -43,6 +62,7 @@ def _calendar_records_for_window(
     days: int,
     *,
     calendar: OfficialTradingCalendar | None = None,
+    allow_online_probe: bool = True,
 ) -> list[dict[str, Any]]:
     resolver = calendar or OfficialTradingCalendar(
         calendar_cache_path=_default_calendar_cache_path(),
@@ -51,7 +71,7 @@ def _calendar_records_for_window(
         reference_date,
         max(1, int(days)),
         include_reference=True,
-        allow_online_probe=True,
+        allow_online_probe=allow_online_probe,
     )
 
 
@@ -92,16 +112,216 @@ def _default_calendar_cache_path() -> Path | None:
     return path if path.is_dir() else None
 
 
+def _calendar_for_run(
+    args: argparse.Namespace,
+    *,
+    db_path: Path,
+    reference_date: date,
+) -> tuple[OfficialTradingCalendar, bool]:
+    """Resolve calendar inputs; explicit paths disable implicit fallbacks."""
+
+    cache_argument = getattr(args, "calendar_cache_path", None)
+    closure_argument = getattr(args, "temporary_closure_path", None)
+    explicit_override = cache_argument is not None or closure_argument is not None
+    if not explicit_override:
+        return (
+            OfficialTradingCalendar(
+                db_path=db_path,
+                calendar_cache_path=_default_calendar_cache_path(),
+            ),
+            True,
+        )
+
+    def resolve_existing_path(value: Path | None, label: str) -> Path | None:
+        if value is None:
+            return None
+        try:
+            path = Path(value).expanduser().resolve()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise OfficialTradingCalendarError(
+                f"explicit {label} path cannot be resolved"
+            ) from exc
+        if not path.exists():
+            raise OfficialTradingCalendarError(
+                f"explicit {label} path does not exist: {path}"
+            )
+        return path
+
+    calendar_cache_path = resolve_existing_path(
+        Path(cache_argument) if cache_argument is not None else None,
+        "calendar cache",
+    )
+    temporary_closure_path = resolve_existing_path(
+        Path(closure_argument) if closure_argument is not None else None,
+        "temporary closure cache",
+    )
+    if calendar_cache_path is None:
+        raise OfficialTradingCalendarError(
+            "an explicit temporary-closure path requires an explicit annual calendar cache"
+        )
+
+    calendar = OfficialTradingCalendar(
+        db_path=db_path,
+        calendar_cache_path=calendar_cache_path,
+        temporary_closure_path=temporary_closure_path,
+    )
+
+    # Validate every year this run may inspect. This ensures a missing QA cache
+    # cannot silently fall through to a live request while evidence is attached.
+    if getattr(args, "start_date", None) and getattr(args, "end_date", None):
+        start_date = date.fromisoformat(str(args.start_date))
+        end_date = date.fromisoformat(str(args.end_date))
+        first_year = min(start_date.year, end_date.year)
+        last_year = max(start_date.year, end_date.year)
+    else:
+        first_year = (reference_date - timedelta(days=92)).year
+        last_year = reference_date.year
+    required_years = range(first_year, last_year + 1)
+    for calendar_year in required_years:
+        verified = calendar._load_cached_year_schedule(calendar_year)
+        if verified is None:
+            observed, reason = calendar.is_official_trading_day(
+                reference_date,
+                allow_online_probe=False,
+            )
+            detail = reason if observed is None else "explicit annual cache unavailable"
+            raise OfficialTradingCalendarError(
+                f"explicit annual calendar cache unavailable for {calendar_year}: {detail}"
+            )
+    return calendar, False
+
+
+def _reject_invalid_temporary_closure_evidence(
+    records: list[dict[str, Any]],
+) -> None:
+    """Require positive sidecar evidence for open sessions in explicit mode."""
+
+    for record in records:
+        is_open_session = record.get("is_trading_day") is True
+        evidence = record.get("evidence")
+        if not isinstance(evidence, Mapping):
+            if is_open_session:
+                date_str = record.get("date_str", "unknown")
+                raise OfficialTradingCalendarError(
+                    "explicit temporary-closure evidence is missing for open "
+                    f"session {date_str}"
+                )
+            continue
+        scope = evidence.get("temporary_closure_scope")
+        status = scope.get("status") if isinstance(scope, Mapping) else None
+        date_str = record.get("date_str", "unknown")
+        if status == "invalid":
+            raise OfficialTradingCalendarError(
+                f"explicit temporary-closure evidence is invalid for {date_str}"
+            )
+        if is_open_session and status != "verified":
+            raise OfficialTradingCalendarError(
+                "explicit temporary-closure evidence does not positively resolve "
+                f"open session {date_str}: status={status or 'missing'}"
+            )
+
+
+def _json_safe(value: Any, *, _seen: set[int] | None = None) -> Any:
+    """Convert service results into a bounded JSON-compatible status value.
+
+    Scheduled service results are allowed to carry dataclasses (for example the
+    Phase 3C ``BackfillSummary``), ``Path`` instances, dates, or scalar wrapper
+    types.  Those values are useful in a status payload but must not be able to
+    prevent publication of the terminal run status.  Unknown values are kept as
+    a diagnostic representation instead of raising from the status writer.
+    """
+
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, Enum):
+        return _json_safe(value.value, _seen=_seen)
+    if isinstance(value, Path):
+        return str(value)
+
+    seen = _seen if _seen is not None else set()
+    object_id = id(value)
+    if object_id in seen:
+        return f"<circular:{type(value).__name__}>"
+    seen.add(object_id)
+    try:
+        if is_dataclass(value) and not isinstance(value, type):
+            try:
+                return _json_safe(asdict(value), _seen=seen)
+            except Exception:  # noqa: BLE001
+                pass
+        if isinstance(value, Mapping):
+            return {
+                str(key): _json_safe(child, _seen=seen)
+                for key, child in value.items()
+            }
+        if isinstance(value, (list, tuple, set, frozenset)):
+            return [_json_safe(child, _seen=seen) for child in value]
+        for method_name in ("as_dict", "to_dict"):
+            method = getattr(value, method_name, None)
+            if callable(method):
+                try:
+                    converted = method()
+                except Exception:  # noqa: BLE001
+                    continue
+                if converted is not value:
+                    return _json_safe(converted, _seen=seen)
+        item = getattr(value, "item", None)
+        if callable(item):
+            try:
+                converted = item()
+            except Exception:  # noqa: BLE001
+                converted = value
+            if converted is not value:
+                return _json_safe(converted, _seen=seen)
+        return repr(value)
+    finally:
+        seen.discard(object_id)
+
+
+def _json_safe_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    converted = _json_safe(payload)
+    if not isinstance(converted, dict):
+        raise TypeError("scheduled status payload must serialize to an object")
+    return converted
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    safe_payload = _json_safe_payload(payload)
+    path.write_text(
+        json.dumps(safe_payload, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_json_create_only(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    safe_payload = _json_safe_payload(payload)
+    with path.open("x", encoding="utf-8", newline="\n") as handle:
+        handle.write(
+            json.dumps(
+                safe_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+                allow_nan=False,
+            )
+            + "\n"
+        )
 
 
 def _append_history_safely(path: Path, payload: dict[str, Any]) -> dict[str, Any]:
     """保存 append-only history；history 寫入失敗不掩蓋主要更新結果。"""
 
     try:
-        return append_update_status_history(path, payload)
+        return append_update_status_history(path, _json_safe_payload(payload))
     except Exception as exc:  # noqa: BLE001
         logging.warning("Unable to append data update history: %s", exc)
         return {
@@ -156,6 +376,133 @@ def _twse_skip_warning_messages(result: dict[str, Any]) -> list[str]:
     return [f"TWSE 官方無交易資料日（休市／颱風等），已略過日期：{', '.join(skipped_dates)}"]
 
 
+def _update_market_with_capture(
+    service: Any, start_date: str, end_date: str, capture_manifests: list[Path],
+) -> dict[str, Any]:
+    """支援舊 service double，同時傳遞本次 TWSE capture sink。"""
+    import inspect
+
+    update_market = service.update_market
+    parameters = inspect.signature(update_market).parameters
+    if "capture_manifests" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    ):
+        return update_market(
+            start_date,
+            end_date,
+            capture_manifests=capture_manifests,
+        )
+    return update_market(start_date, end_date)
+
+
+def _update_industry_with_policy(
+    service: Any,
+    start_date: str,
+    end_date: str,
+    *,
+    reverify_unknown_legacy_dates: bool,
+) -> dict[str, Any]:
+    """只有明確啟用重新驗證時才擴充既有 service 呼叫參數。"""
+
+    if reverify_unknown_legacy_dates:
+        return service.update_industry(
+            start_date,
+            end_date,
+            reverify_unknown_legacy_dates=True,
+        )
+    return service.update_industry(start_date, end_date)
+
+
+def _sync_market_index_for_run(
+    service: Any,
+    *,
+    capture_manifests: list[Path],
+    market_update_result: Any,
+) -> dict[str, Any]:
+    """實際服務走 TAIEX 複合鍵發布；舊 service double 保留原同步介面。"""
+    publisher = getattr(service, "publish_taiex_market_index", None)
+    if callable(publisher):
+        return publisher(
+            capture_manifests=capture_manifests,
+            market_update_result=(
+                market_update_result
+                if isinstance(market_update_result, dict)
+                else {"success": False}
+            ),
+        )
+    return service.sync_source_to_sqlite("market_index")
+
+
+def _sync_partial_industry_captures(
+    service: Any,
+    update_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Sync only this failed batch's verified capture dates.
+
+    The service method owns receipt, CSV, SQLite readback, and compensation
+    checks. This runner must never replace that bounded path with the legacy
+    whole-CSV synchronizer when an update batch is partial.
+    """
+
+    raw_manifests = update_result.get("capture_manifests")
+    if not isinstance(raw_manifests, (list, tuple)) or not raw_manifests:
+        return {
+            "success": False,
+            "message": "partial industry update has no capture manifests to sync",
+            "reason": "partial_industry_capture_manifest_missing",
+        }
+
+    manifests: list[str | Path] = []
+    for value in raw_manifests:
+        if isinstance(value, Path):
+            manifest = value
+        elif isinstance(value, str) and value.strip():
+            manifest = Path(value)
+        else:
+            return {
+                "success": False,
+                "message": "partial industry update has an invalid capture manifest path",
+                "reason": "partial_industry_capture_manifest_invalid",
+            }
+        manifests.append(manifest)
+
+    scoped_sync = getattr(service, "sync_industry_index_captures_to_sqlite", None)
+    if not callable(scoped_sync):
+        return {
+            "success": False,
+            "message": "service does not provide verified date-scoped industry capture sync",
+            "reason": "partial_industry_scoped_sync_unavailable",
+        }
+
+    failed_dates = update_result.get("failed_dates", [])
+    if not isinstance(failed_dates, (list, tuple)) or not all(
+        isinstance(value, str) and value.strip() for value in failed_dates
+    ):
+        return {
+            "success": False,
+            "message": "partial industry update has invalid failed-date metadata",
+            "reason": "partial_industry_failed_dates_invalid",
+        }
+
+    unknown_legacy_dates = update_result.get("unverified_legacy_dates", [])
+    if not isinstance(unknown_legacy_dates, (list, tuple)) or not all(
+        isinstance(value, str) and value.strip() for value in unknown_legacy_dates
+    ):
+        return {
+            "success": False,
+            "message": "partial industry update has invalid legacy-date metadata",
+            "reason": "partial_industry_legacy_dates_invalid",
+        }
+
+    return scoped_sync(
+        manifests,
+        batch_partial=True,
+        failed_dates=list(failed_dates),
+        unknown_legacy_dates=list(unknown_legacy_dates),
+    )
+
+
 def _run_step(
     *,
     steps: list[dict[str, Any]],
@@ -164,7 +511,16 @@ def _run_step(
     warning_only: bool = False,
 ) -> dict[str, Any] | None:
     logging.info("Starting step: %s", name)
-    result = action()
+    try:
+        result = action()
+    except Exception as exc:  # noqa: BLE001
+        # Scheduled execution must publish a terminal status and release its
+        # shared capacity reservation even when a service raises unexpectedly.
+        result = {
+            "success": False,
+            "error_type": type(exc).__name__,
+            "message": f"{type(exc).__name__}: {exc}",
+        }
     ok = bool(result.get("success", True))
     if not ok and warning_only:
         logging.warning("Step completed with warning: %s: %s", name, result.get("message", ""))
@@ -176,6 +532,35 @@ def _run_step(
         return result
     logging.info("Step passed: %s", name)
     return None
+
+
+def _sync_daily_price_files_with_twse_evidence(
+    service: Any,
+    *,
+    steps: list[dict[str, Any]],
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    """只把本次 TWSE subprocess 明確回報的 projection 傳給 SQLite publisher。"""
+
+    twse_result: dict[str, Any] = {}
+    for step in steps:
+        result = step.get("result")
+        if step.get("name") == "update_twse_daily_prices" and isinstance(result, dict):
+            twse_result = result
+            break
+    diagnostics = twse_result.get("source_diagnostics", [])
+    if not isinstance(diagnostics, list):
+        diagnostics = []
+    trusted_diagnostics = [
+        item for item in diagnostics if isinstance(item, dict)
+    ]
+    return service.sync_source_to_sqlite(
+        "daily_price_files",
+        start_date,
+        end_date,
+        row_evidence_source_diagnostics=trusted_diagnostics,
+    )
 
 
 def _technical_is_current(
@@ -195,22 +580,139 @@ def _technical_is_current(
     return False, ""
 
 
+def _annotate_currentity_recompute_outcome(
+    calculation: dict[str, Any],
+) -> dict[str, Any]:
+    """保留部分成功數量，並用可區分的代碼描述 currentity 重算結果。"""
+
+    success_count = int(calculation.get("success_count") or 0)
+    updated_stocks = calculation.get("updated_stocks")
+    updated = (
+        [str(item) for item in updated_stocks if str(item).strip()]
+        if isinstance(updated_stocks, list)
+        else []
+    )
+    failed_stocks_value = calculation.get("failed_stocks")
+    failed_stocks = (
+        [str(item) for item in failed_stocks_value if str(item).strip()]
+        if isinstance(failed_stocks_value, list)
+        else []
+    )
+    fail_count = max(
+        int(calculation.get("fail_count") or 0),
+        len(set(failed_stocks)),
+    )
+
+    if calculation.get("cancelled") is True:
+        error_code = "technical_currentity_recompute_cancelled"
+    elif success_count > 0 and updated and (fail_count > 0 or failed_stocks):
+        error_code = "technical_currentity_recompute_partial_failure"
+    elif success_count > 0 and updated and calculation.get("sqlite_write_failed") is True:
+        error_code = "technical_currentity_recompute_sqlite_write_failed"
+    elif success_count <= 0 or not updated:
+        error_code = "technical_currentity_recompute_produced_no_updates"
+    elif calculation.get("success") is not True:
+        error_code = "technical_currentity_recompute_failed"
+    else:
+        return calculation
+
+    calculation["success"] = False
+    calculation["technical_computation_error"] = error_code
+    details = [f"updated={success_count}"]
+    if fail_count:
+        details.append(f"failed={fail_count}")
+    if failed_stocks:
+        details.append(f"failed_stocks={','.join(failed_stocks)}")
+    message = str(calculation.get("message") or "").strip()
+    diagnostic = f"{error_code} ({', '.join(details)})"
+    calculation["message"] = f"{message}; {diagnostic}" if message else diagnostic
+    return calculation
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run scheduled baldr quick data update.")
     parser.add_argument("--data-root", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument(
+        "--formal-output-root",
+        help=(
+            "explicit formal output root whose existing verified technical "
+            "receipts may be reused; defaults to <data-root>/output"
+        ),
+    )
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
+    parser.add_argument(
+        "--calendar-cache-path",
+        type=Path,
+        help="annual TWSE calendar cache; explicit paths disable implicit/live fallbacks",
+    )
+    parser.add_argument(
+        "--temporary-closure-path",
+        type=Path,
+        help="official temporary-closure cache file or directory",
+    )
     parser.add_argument("--window-weekdays", type=int, default=10)
     parser.add_argument("--daily-delay-seconds", type=float, default=0.5)
     parser.add_argument("--tpex-delay-seconds", type=float, default=0.5)
     parser.add_argument("--broker-delay-seconds", type=float, default=0.5)
+    parser.add_argument(
+        "--skip-broker-branch",
+        action="store_true",
+        help=(
+            "skip the optional MoneyDJ broker-branch refresh so the bounded "
+            "official price/index/technical source path can complete"
+        ),
+    )
+    parser.add_argument(
+        "--skip-candidate-update",
+        action="store_true",
+        help=(
+            "skip the optional Phase 3C candidate database update without "
+            "resolving its configured path"
+        ),
+    )
+    parser.add_argument(
+        "--capture-monthly-revenue-research-candidate",
+        action="store_true",
+        help=(
+            "after all daily data and Phase 3C steps complete, run the bounded "
+            "official TWSE/TPEx monthly revenue research capture; nested status "
+            "does not change the core data-update result"
+        ),
+    )
+    parser.add_argument(
+        "--reverify-unknown-legacy-industry-dates",
+        action="store_true",
+        help=(
+            "僅重新擷取本次官方交易日窗口內未知的 legacy 產業列；預設仍採 fail-closed"
+        ),
+    )
     parser.add_argument("--status-path")
     parser.add_argument(
         "--history-path",
         help="append-only JSONL history path; defaults beside --status-path",
     )
     parser.add_argument("--log-path")
+    parser.add_argument(
+        "--capacity-persistent-new-gib",
+        type=int,
+        default=1,
+        help="本次更新允許的持久新增 GiB 上限；仍保留中央 200 GiB 安全底線",
+    )
+    parser.add_argument(
+        "--capacity-temporary-peak-gib",
+        type=int,
+        default=1,
+        help="本次更新允許的暫存峰值 GiB 上限；仍保留中央 200 GiB 安全底線",
+    )
+    parser.add_argument(
+        "--capacity-lock-path",
+        help=(
+            "跨每日更新與 Raw/Direct/OOC heavy chain 共用的 reservation lock；"
+            "省略時使用 output-root/release_v4/.ml_heavy_chain.lock"
+        ),
+    )
     parser.add_argument(
         "--enable-technical-process-pool",
         action="store_true",
@@ -225,9 +727,351 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_monthly_revenue_research_capture() -> dict[str, Any]:
+    script = REPO_ROOT / "scripts" / "capture_monthly_revenue_research_candidate.py"
+    command = [sys.executable, str(script)]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "status": "failed",
+            "reason": "research_capture_timeout",
+            "timeout_seconds": 90,
+            "command": command,
+            "stdout_tail": _bounded_process_text(exc.stdout),
+            "stderr_tail": _bounded_process_text(exc.stderr),
+        }
+    except OSError as exc:
+        return {
+            "status": "failed",
+            "reason": f"research_capture_process_start_failed:{type(exc).__name__}",
+            "error": str(exc)[:1000],
+            "command": command,
+        }
+    try:
+        child_result = json.loads(completed.stdout or "")
+    except (TypeError, json.JSONDecodeError):
+        child_result = None
+    if not isinstance(child_result, dict):
+        return {
+            "status": "failed",
+            "reason": "research_capture_child_output_invalid",
+            "return_code": completed.returncode,
+            "command": command,
+            "stdout_tail": _bounded_process_text(completed.stdout),
+            "stderr_tail": _bounded_process_text(completed.stderr),
+        }
+    child_status = str(child_result.get("status") or "unknown")
+    if completed.returncode != 0 or child_status != "captured":
+        return {
+            "status": "failed",
+            "reason": "research_capture_child_not_captured",
+            "child_status": child_status,
+            "return_code": completed.returncode,
+            "command": command,
+            "result": child_result,
+            "stderr_tail": _bounded_process_text(completed.stderr),
+        }
+    return {
+        "status": "captured",
+        "return_code": completed.returncode,
+        "command": command,
+        "result": child_result,
+    }
+
+
+def _bounded_process_text(value: object, limit: int = 2000) -> str:
+    if isinstance(value, bytes):
+        text = value.decode("utf-8", errors="replace")
+    else:
+        text = str(value or "")
+    return text[-limit:]
+
+
+def _first_json_object(value: object) -> dict[str, Any] | None:
+    text = _bounded_process_text(value, limit=8 * 1024 * 1024).lstrip()
+    try:
+        decoded, _end = json.JSONDecoder().raw_decode(text)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def _aware_utc_clock(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _run_tdcc_current_ownership_capture(
+    *,
+    output_root: Path,
+    run_id: str,
+    capture_id: str,
+    timeout_seconds: int = 150,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Save an independent Monday TDCC raw observation under canonical output."""
+
+    script = REPO_ROOT / "scripts" / "capture_tdcc_shareholding_candidate.py"
+    resolved_root = output_root.expanduser().resolve()
+    capture_dir = resolved_root / "current_observed_market_ownership" / "tdcc" / capture_id
+    command = [
+        sys.executable,
+        str(script),
+        "--output-root",
+        str(resolved_root),
+        "--capture-id",
+        capture_id,
+        "--scheduled-run-id",
+        run_id,
+        "--timeout",
+        "120",
+    ]
+    if dry_run:
+        return {
+            "success": True,
+            "status": "planned",
+            "run_id": run_id,
+            "capture_id": capture_id,
+            "output_directory": str(capture_dir),
+            "command": [*command, "--dry-run"],
+            "network_requested": False,
+            "writes_performed": False,
+        }
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "success": False,
+            "status": "failed",
+            "reason": "tdcc_current_ownership_capture_timeout",
+            "message": "TDCC current ownership capture timed out",
+            "run_id": run_id,
+            "capture_id": capture_id,
+            "output_directory": str(capture_dir),
+            "timeout_seconds": timeout_seconds,
+            "command": command,
+            "stdout_tail": _bounded_process_text(exc.stdout),
+            "stderr_tail": _bounded_process_text(exc.stderr),
+        }
+    except OSError as exc:
+        return {
+            "success": False,
+            "status": "failed",
+            "reason": f"tdcc_current_ownership_capture_start_failed:{type(exc).__name__}",
+            "message": f"TDCC current ownership child could not start: {type(exc).__name__}",
+            "run_id": run_id,
+            "capture_id": capture_id,
+            "output_directory": str(capture_dir),
+            "command": command,
+            "error": str(exc)[:1000],
+        }
+    manifest = _first_json_object(completed.stdout)
+    base_result: dict[str, Any] = {
+        "run_id": run_id,
+        "capture_id": capture_id,
+        "output_directory": str(capture_dir),
+        "command": command,
+        "return_code": completed.returncode,
+        "stdout_tail": _bounded_process_text(completed.stdout),
+        "stderr_tail": _bounded_process_text(completed.stderr),
+    }
+    if completed.returncode != 0 or manifest is None:
+        reason = "tdcc_current_ownership_child_not_captured"
+        return {
+            **base_result,
+            "success": False,
+            "status": "failed",
+            "reason": reason,
+            "message": reason,
+            "child_manifest": manifest,
+        }
+    if manifest.get("schema_version") != "tdcc-current-ownership-capture.v1":
+        reason = "tdcc_capture_schema_mismatch"
+        return {**base_result, "success": False, "status": "failed", "reason": reason, "message": reason}
+    if (
+        manifest.get("capture_id") != capture_id
+        or manifest.get("scheduled_run_id") != run_id
+        or manifest.get("source_id") != "tdcc_shareholding"
+        or manifest.get("source_version") != TDCC_SOURCE_VERSION
+        or manifest.get("endpoint") != TDCC_URL
+    ):
+        reason = "tdcc_capture_identity_mismatch"
+        return {**base_result, "success": False, "status": "failed", "reason": reason, "message": reason}
+    report_date = manifest.get("report_date")
+    if not isinstance(report_date, str) or len(report_date) != 10 or report_date[4:5] != "-":
+        reason = "tdcc_capture_report_date_invalid"
+        return {**base_result, "success": False, "status": "failed", "reason": reason, "message": reason}
+    manifest_path = capture_dir / f"tdcc_1-5_{report_date.replace('-', '')}_manifest.json"
+    try:
+        manifest_bytes = manifest_path.read_bytes()
+        if len(manifest_bytes) > 1024 * 1024:
+            raise ValueError("manifest exceeds bounded readback size")
+        saved_manifest = json.loads(manifest_bytes.decode("utf-8"))
+        if saved_manifest != manifest:
+            raise ValueError("child stdout manifest differs from the immutable saved manifest")
+        raw_path = Path(str(saved_manifest["raw_file"])).resolve(strict=True)
+        if not raw_path.name.startswith("tdcc_1-5_raw_"):
+            raise ValueError("raw artifact name is outside the TDCC reader contract")
+        if raw_path.parent != capture_dir.resolve():
+            raise ValueError("raw artifact is outside its create-only capture directory")
+        raw_bytes = raw_path.read_bytes()
+        if len(raw_bytes) > 32 * 1024 * 1024:
+            raise ValueError("raw artifact exceeds bounded readback size")
+        metadata_path = raw_path.with_name(raw_path.name + ".meta.json")
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if not isinstance(metadata, dict):
+            raise ValueError("raw sidecar metadata is not an object")
+        tier_name = str(saved_manifest["full_tier_file"])
+        expected_stem = f"tdcc_1-5_{report_date.replace('-', '')}"
+        if tier_name != f"{expected_stem}_tiers.csv":
+            raise ValueError("tier artifact name does not match the source report date")
+        tier_path = (capture_dir / tier_name).resolve(strict=True)
+        if tier_path.parent != capture_dir.resolve():
+            raise ValueError("tier artifact is outside its create-only capture directory")
+        tier_bytes = tier_path.read_bytes()
+        if len(tier_bytes) > 64 * 1024 * 1024:
+            raise ValueError("tier artifact exceeds bounded readback size")
+        aggregate_name = str(saved_manifest["aggregate_file"])
+        if aggregate_name != f"{expected_stem}_aggregate.csv":
+            raise ValueError("aggregate artifact name does not match the source report date")
+        aggregate_path = (capture_dir / aggregate_name).resolve(strict=True)
+        if aggregate_path.parent != capture_dir.resolve():
+            raise ValueError("aggregate artifact is outside its create-only capture directory")
+        if aggregate_path.stat().st_size > 64 * 1024 * 1024:
+            raise ValueError("aggregate artifact exceeds bounded readback size")
+        aggregate_bytes = aggregate_path.read_bytes()
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        return {
+            **base_result,
+            "success": False,
+            "status": "failed",
+            "reason": f"tdcc_capture_readback_failed:{type(exc).__name__}",
+            "message": f"TDCC capture readback failed: {type(exc).__name__}",
+            "error": str(exc)[:1000],
+        }
+    raw_sha = sha256(raw_bytes).hexdigest()
+    body_completed = saved_manifest.get("body_completed_at_utc")
+    request_started = saved_manifest.get("request_started_at_utc")
+    request_started_dt = _aware_utc_clock(request_started)
+    body_completed_dt = _aware_utc_clock(body_completed)
+    capture_metadata = saved_manifest.get("capture_metadata")
+    artifact_hashes = saved_manifest.get("artifact_hashes")
+    if (
+        raw_path.parent != capture_dir.resolve()
+        or not isinstance(capture_metadata, dict)
+        or not isinstance(artifact_hashes, dict)
+        or request_started_dt is None
+        or body_completed_dt is None
+        or body_completed_dt < request_started_dt
+        or body_completed_dt > datetime.now(timezone.utc)
+        or metadata.get("metadataclock_semantics") != "body_read_completed"
+        or saved_manifest.get("metadataclock_semantics") != "body_read_completed"
+        or metadata.get("capture_id") != capture_id
+        or metadata.get("scheduled_run_id") != run_id
+        or metadata.get("sha256") != raw_sha
+        or metadata.get("content_length") != len(raw_bytes)
+        or metadata.get("request_started_at_utc") != request_started
+        or metadata.get("body_completed_at_utc") != body_completed
+        or metadata.get("captured_at_utc") != body_completed
+        or saved_manifest.get("source_payload_sha256") != raw_sha
+        or capture_metadata.get("sha256") != raw_sha
+        or capture_metadata.get("content_length") != len(raw_bytes)
+        or capture_metadata.get("captured_at_utc") != body_completed
+        or capture_metadata.get("body_completed_at_utc") != body_completed
+        or capture_metadata.get("request_started_at_utc") != request_started
+        or saved_manifest.get("observed_at") != body_completed
+        or metadata.get("url") != TDCC_URL
+        or metadata.get("raw_file") != raw_path.name
+        or tier_path.resolve().parent != capture_dir.resolve()
+        or str(saved_manifest.get("aggregate_file")) != f"{expected_stem}_aggregate.csv"
+        or artifact_hashes.get(aggregate_name) != sha256(aggregate_bytes).hexdigest()
+        or artifact_hashes.get(tier_name) != sha256(tier_bytes).hexdigest()
+        or int(capture_metadata.get("http_status", 0)) != 200
+    ):
+        reason = "tdcc_capture_hash_or_clock_binding_mismatch"
+        return {**base_result, "success": False, "status": "failed", "reason": reason, "message": reason}
+    return {
+        **base_result,
+        "success": True,
+        "status": "captured",
+        "source_date": report_date,
+        "manifest_path": str(manifest_path.resolve()),
+        "manifest_sha256": sha256(manifest_bytes).hexdigest(),
+        "raw_path": str(raw_path),
+        "raw_sha256": raw_sha,
+        "raw_bytes": len(raw_bytes),
+        "body_completed_at_utc": body_completed,
+        "request_started_at_utc": request_started,
+        "publication_at": None,
+        "available_at": None,
+        "current_only": True,
+        "candidate_only": True,
+        "formal_db_written": False,
+    }
+
+
+def _candidate_tdcc_capture_ready(steps: list[dict[str, Any]]) -> bool:
+    candidate_step = next(
+        (item for item in steps if item.get("name") == "update_phase3c_candidate_sources"),
+        None,
+    )
+    if not isinstance(candidate_step, dict) or candidate_step.get("status") != "passed":
+        return False
+    result = candidate_step.get("result")
+    if not isinstance(result, Mapping) or result.get("success") is not True or result.get("skipped") is True:
+        return False
+    summary = result.get("summary")
+    if is_dataclass(summary) and not isinstance(summary, type):
+        summary = asdict(summary)
+    if not isinstance(summary, Mapping):
+        return False
+    sources = summary.get("sources")
+    if not isinstance(sources, (list, tuple)) or "tdcc" not in sources:
+        return False
+    daily_results = summary.get("daily_results")
+    if not isinstance(daily_results, (list, tuple)):
+        return False
+    return any(
+        isinstance(item, Mapping)
+        and str(item.get("source", "")).casefold() == "tdcc"
+        and str(item.get("status", "")).upper() in {"SUCCESS", "SKIPPED_ALREADY_EXISTS"}
+        for item in daily_results
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    output_root = Path(args.output_root)
+    output_root = Path(args.output_root).expanduser().resolve()
+    formal_output_root = (
+        Path(args.formal_output_root).expanduser().resolve()
+        if args.formal_output_root
+        else (Path(args.data_root).expanduser().resolve() / "output")
+    )
+    authorized_technical_output_roots = tuple(
+        dict.fromkeys((output_root, formal_output_root))
+    )
     run_root = output_root / "scheduled" / "data_update_quick"
     run_now = scheduled_now()
     run_date = run_now.date()
@@ -241,6 +1085,107 @@ def main(argv: list[str] | None = None) -> int:
     log_path = Path(args.log_path) if args.log_path else run_root / f"{today_key}_data_update_quick.log"
     _setup_logging(log_path)
 
+    capacity_preflight: dict[str, Any] | None = None
+    candidate_db_path = (
+        None
+        if args.skip_candidate_update
+        else configured_candidate_db_path()
+    )
+    capacity_lock_path = Path(args.capacity_lock_path) if args.capacity_lock_path else (
+        output_root / "release_v4" / HEAVY_CHAIN_LOCK_FILENAME
+    )
+    capacity_reservation = None
+    try:
+        # 先取得與 Raw／Direct／OOC 相同的 OS reservation，再量測容量。
+        # 只做 free-space check 而不持有 reservation，兩個同時啟動的
+        # caller 可能各自通過而共同耗盡 D 槽 headroom。
+        capacity_reservation = acquire_heavy_chain_reservation(capacity_lock_path)
+        if capacity_reservation is None:
+            raise StorageCapacityError(
+                "shared capacity reservation is already held by another process",
+                preflight={
+                    "stage": "scheduled_daily_update_reservation",
+                    "lock_path": str(capacity_lock_path),
+                    "blocker": "shared_capacity_reservation_unavailable",
+                },
+            )
+        capacity_budget = heavy_chain_capacity_budget(
+            persistent_new_bytes_budget=(
+                int(args.capacity_persistent_new_gib) * BYTES_PER_GIB
+            ),
+            temporary_peak_bytes_budget=(
+                int(args.capacity_temporary_peak_gib) * BYTES_PER_GIB
+            ),
+        )
+        persistent_root_candidates = (
+            Path(args.data_root),
+            output_root,
+            candidate_db_path.parent if candidate_db_path is not None else None,
+            capacity_lock_path.parent,
+        )
+        persistent_roots = tuple(
+            dict.fromkeys(
+                path for path in persistent_root_candidates if path is not None
+            )
+        )
+        capacity_result = preflight_capacity(
+            probe_path=Path(args.data_root),
+            budget=capacity_budget,
+            stage="scheduled_daily_update_preflight",
+            persistent_roots=persistent_roots,
+            persistent_new_bytes_estimate=capacity_budget.persistent_new_bytes_budget,
+            # The scheduled data root is the protected production volume.  A
+            # caller that places temporary files on another volume can pass
+            # that root to the shared preflight service directly; this runner
+            # avoids probing a packaged-app temp extraction path that may be
+            # unreadable on Windows.
+            temporary_roots=(),
+            temporary_peak_bytes_observed=capacity_budget.temporary_peak_bytes_budget,
+        )
+        capacity_preflight = capacity_result.as_dict()
+    except Exception as exc:  # noqa: BLE001
+        # Capacity is a fail-closed gate.  Do not start a network download or
+        # SQLite writer if the filesystem cannot prove the required reserve.
+        completed_at = scheduled_now()
+        failure_message = f"capacity_preflight_failed:{type(exc).__name__}:{exc}"
+        failure_payload = {
+            "task": "baldr-data-update-quick-daily",
+            "status": "failed",
+            "run_id": f"{today_key}-{os.getpid()}",
+            "started_at": run_now.isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "checked_at": completed_at.isoformat(),
+            "process_id": os.getpid(),
+            "data_root": str(args.data_root),
+            "output_root": str(output_root),
+            "formal_output_root": str(formal_output_root),
+            "authorized_technical_output_roots": [
+                str(path) for path in authorized_technical_output_roots
+            ],
+            "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+            "industry_legacy_reverification_enabled": bool(
+                args.reverify_unknown_legacy_industry_dates
+            ),
+            "capacity_lock_path": str(capacity_lock_path),
+            "capacity_reservation_acquired": False,
+            "calendar_resolution": [],
+            "steps": [],
+            "warnings": [],
+            "errors": [failure_message],
+            "capacity_preflight": getattr(exc, "preflight", None),
+            "writes_market_data_db": False,
+            "writes_evidence_db": False,
+            "auto_trading": False,
+            "auto_lifecycle_action": False,
+            "history_path": str(history_path),
+        }
+        failure_payload["history"] = _append_history_safely(history_path, failure_payload)
+        _write_json(status_path, failure_payload)
+        logging.error(failure_message)
+        release_heavy_chain_reservation(capacity_reservation)
+        capacity_reservation = None
+        return 2
+
     config = TWStockConfig(
         data_root=Path(args.data_root),
         output_root=output_root,
@@ -253,46 +1198,64 @@ def main(argv: list[str] | None = None) -> int:
     if args.technical_process_pool_max_retries is not None:
         config.technical_process_pool_max_retries = args.technical_process_pool_max_retries
 
-    calendar = OfficialTradingCalendar(
-        db_path=config.db_file,
-        calendar_cache_path=_default_calendar_cache_path(),
-    )
     calendar_records: list[dict[str, Any]] = []
     try:
+        calendar, allow_calendar_online_probe = _calendar_for_run(
+            args,
+            db_path=config.db_file,
+            reference_date=run_date,
+        )
         if args.start_date and args.end_date:
             start_date = args.start_date
             end_date = args.end_date
             calendar_records = calendar.require_trading_days_in_range(
                 date.fromisoformat(start_date),
                 date.fromisoformat(end_date),
-                allow_online_probe=True,
+                allow_online_probe=allow_calendar_online_probe,
             )
+            if args.temporary_closure_path is not None:
+                _reject_invalid_temporary_closure_evidence(calendar_records)
         else:
             calendar_records = _calendar_records_for_window(
                 run_date,
                 max(1, args.window_weekdays),
                 calendar=calendar,
+                allow_online_probe=allow_calendar_online_probe,
             )
+            if args.temporary_closure_path is not None:
+                _reject_invalid_temporary_closure_evidence(calendar_records)
             start_date = str(calendar_records[0]["date_str"])
             end_date = str(calendar_records[-1]["date_str"])
     except (OfficialTradingCalendarError, ValueError) as exc:
         completed_at = scheduled_now()
+        failure_message = f"official_trading_calendar_unavailable:{type(exc).__name__}:{exc}"
         failure_payload = {
             "task": "baldr-data-update-quick-daily",
             "status": "failed",
             "run_id": f"{today_key}-{os.getpid()}",
-            "started_at": run_now.isoformat(timespec="seconds"),
-            "completed_at": completed_at.isoformat(timespec="seconds"),
-            "checked_at": completed_at.isoformat(timespec="seconds"),
+            "started_at": run_now.isoformat(),
+            "completed_at": completed_at.isoformat(),
+            "checked_at": completed_at.isoformat(),
             "process_id": os.getpid(),
             "data_root": str(config.data_root),
             "output_root": str(config.output_root),
+            "formal_output_root": str(formal_output_root),
+            "authorized_technical_output_roots": [
+                str(path) for path in authorized_technical_output_roots
+            ],
+            "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+            "industry_legacy_reverification_enabled": bool(
+                args.reverify_unknown_legacy_industry_dates
+            ),
             "start_date": args.start_date,
             "end_date": args.end_date,
+            "capacity_lock_path": str(capacity_lock_path),
+            "capacity_reservation_acquired": False,
             "calendar_resolution": [],
             "steps": [],
             "warnings": [],
-            "errors": [f"official_trading_calendar_unavailable:{type(exc).__name__}:{exc}"],
+            "errors": [failure_message],
+            "capacity_preflight": capacity_preflight,
             "writes_market_data_db": False,
             "writes_evidence_db": False,
             "auto_trading": False,
@@ -301,13 +1264,17 @@ def main(argv: list[str] | None = None) -> int:
         }
         failure_payload["history"] = _append_history_safely(history_path, failure_payload)
         _write_json(status_path, failure_payload)
-        logging.error(failure_payload["errors"][0])
+        logging.error(failure_message)
+        release_heavy_chain_reservation(capacity_reservation)
+        capacity_reservation = None
         return 1
 
+    capacity_reservation_acquired_for_run = capacity_reservation is not None
     service = UpdateService(config)
     steps: list[dict[str, Any]] = []
     warnings: list[str] = []
     failed: dict[str, Any] | None = None
+    market_capture_manifests: list[Path] = []
 
     logging.info("Scheduled quick data update window: %s to %s", start_date, end_date)
 
@@ -316,10 +1283,20 @@ def main(argv: list[str] | None = None) -> int:
         "task": "baldr-data-update-quick-daily",
         "status": "running",
         "run_id": run_id,
-        "started_at": run_now.isoformat(timespec="seconds"),
+        "started_at": run_now.isoformat(),
         "process_id": os.getpid(),
         "data_root": str(config.data_root),
         "output_root": str(config.output_root),
+        "formal_output_root": str(formal_output_root),
+        "authorized_technical_output_roots": [
+            str(path) for path in authorized_technical_output_roots
+        ],
+        "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+        "industry_legacy_reverification_enabled": bool(
+            args.reverify_unknown_legacy_industry_dates
+        ),
+        "capacity_lock_path": str(capacity_lock_path),
+        "capacity_reservation_acquired": capacity_reservation is not None,
         "start_date": start_date,
         "end_date": end_date,
         "calendar_resolution": _serializable_calendar_records(calendar_records),
@@ -336,6 +1313,10 @@ def main(argv: list[str] | None = None) -> int:
         "technical_process_pool_workers": config.technical_process_pool_workers,
         "technical_process_pool_max_in_flight": config.technical_process_pool_max_in_flight,
         "technical_process_pool_max_retries": config.technical_process_pool_max_retries,
+        "capacity_preflight": capacity_preflight,
+        "optional_source_policy": {
+            "skip_broker_branch": bool(args.skip_broker_branch),
+        },
     }
     _write_json(status_path, running_payload)
     running_payload["history"] = _append_history_safely(history_path, running_payload)
@@ -367,57 +1348,374 @@ def main(argv: list[str] | None = None) -> int:
         failed = _run_step(
             steps=steps,
             name="sync_daily_prices_to_sqlite",
-            action=lambda: service.sync_source_to_sqlite("daily_price_files", start_date, end_date),
+            action=lambda: _sync_daily_price_files_with_twse_evidence(
+                service,
+                steps=steps,
+                start_date=start_date,
+                end_date=end_date,
+            ),
         )
     if failed is None:
-        failed = _run_step(steps=steps, name="update_market_index", action=lambda: service.update_market(start_date, end_date))
+        failed = _run_step(
+            steps=steps,
+            name="update_market_index",
+            action=lambda: _update_market_with_capture(
+                service,
+                start_date,
+                end_date,
+                market_capture_manifests,
+            ),
+        )
     if failed is None:
-        failed = _run_step(steps=steps, name="sync_market_index_to_sqlite", action=lambda: service.sync_source_to_sqlite("market_index"))
+        market_update_result: Any = next(
+            (
+                step.get("result")
+                for step in steps
+                if step.get("name") == "update_market_index"
+            ),
+            {},
+        )
+        failed = _run_step(
+            steps=steps,
+            name="sync_market_index_to_sqlite",
+            action=lambda: _sync_market_index_for_run(
+                service,
+                capture_manifests=market_capture_manifests,
+                market_update_result=market_update_result,
+            ),
+        )
     if failed is None:
-        failed = _run_step(steps=steps, name="update_industry_index", action=lambda: service.update_industry(start_date, end_date))
+        failed = _run_step(
+            steps=steps,
+            name="update_industry_index",
+            action=lambda: _update_industry_with_policy(
+                service,
+                start_date,
+                end_date,
+                reverify_unknown_legacy_dates=bool(
+                    args.reverify_unknown_legacy_industry_dates
+                ),
+            ),
+        )
+        if failed is not None and failed.get("partial") is True:
+            industry_failure = failed
+            capture_manifests = industry_failure.get("capture_manifests")
+            if isinstance(capture_manifests, (list, tuple)) and capture_manifests:
+                sync_failed = _run_step(
+                    steps=steps,
+                    name="sync_industry_index_partial_captures_to_sqlite",
+                    action=lambda: _sync_partial_industry_captures(
+                        service, industry_failure
+                    ),
+                )
+                if sync_failed is not None:
+                    failed = dict(failed)
+                    sync_message = str(
+                        sync_failed.get("message") or "date-scoped industry sync failed"
+                    )
+                    original_message = str(
+                        failed.get("message") or "industry update batch failed"
+                    )
+                    failed["partial_capture_sync_failure"] = sync_failed
+                    failed["message"] = (
+                        f"{original_message}; partial capture date-scoped sync failed: "
+                        f"{sync_message}"
+                    )
     if failed is None:
         failed = _run_step(steps=steps, name="sync_industry_index_to_sqlite", action=lambda: service.sync_source_to_sqlite("industry_index"))
-    if failed is None:
+    if failed is None and args.skip_broker_branch:
+        steps.extend(
+            [
+                {
+                    "name": "update_broker_branch",
+                    "status": "skipped",
+                    "message": "optional broker-branch source skipped by explicit bounded-run policy",
+                    "result": {
+                        "success": True,
+                        "skipped": True,
+                        "optional_source": True,
+                        "reason": "explicit_skip_broker_branch",
+                    },
+                },
+                {
+                    "name": "sync_broker_branch_to_sqlite",
+                    "status": "skipped",
+                    "message": "broker-branch sync skipped because its optional source refresh was skipped",
+                    "result": {
+                        "success": True,
+                        "skipped": True,
+                        "optional_source": True,
+                        "reason": "broker_branch_refresh_skipped",
+                    },
+                },
+            ]
+        )
+    if failed is None and not args.skip_broker_branch:
         failed = _run_step(
             steps=steps,
             name="update_broker_branch",
             action=lambda: service.update_broker_branch(start_date, end_date, delay_seconds=args.broker_delay_seconds),
         )
-    if failed is None:
+    if failed is None and not args.skip_broker_branch:
         failed = _run_step(
             steps=steps,
             name="sync_broker_branch_to_sqlite",
             action=lambda: service.sync_source_to_sqlite("broker_branch_files", start_date, end_date),
         )
+    if args.skip_candidate_update:
+        steps.append(
+            {
+                "name": "update_phase3c_candidate_sources",
+                "status": "skipped",
+                "message": "依明確選項略過 Phase 3C candidate 更新；未解析候選資料庫路徑",
+                "result": {
+                    "success": True,
+                    "skipped": True,
+                    "candidate_only": True,
+                    "reason": "operator_requested_candidate_update_skip",
+                },
+            }
+        )
+    elif failed is None:
+        candidate_updater = getattr(service, "update_phase3c_candidate_range", None)
+        if candidate_db_path is None or not callable(candidate_updater):
+            steps.append(
+                {
+                    "name": "update_phase3c_candidate_sources",
+                    "status": "skipped",
+                    "message": "未設定候選資料庫路徑；保留正式資料更新，未猜測候選寫入位置",
+                    "result": {
+                        "success": True,
+                        "skipped": True,
+                        "candidate_only": True,
+                        "reason": "candidate_db_path_not_configured",
+                    },
+                }
+            )
+        else:
+            failed = _run_step(
+                steps=steps,
+                name="update_phase3c_candidate_sources",
+                action=lambda: candidate_updater(
+                    start_date=start_date,
+                    end_date=end_date,
+                    sources=(
+                        ("institutional", "credit", "tdcc")
+                        if run_date.weekday() == 0
+                        else ("institutional", "credit")
+                    ),
+                    include_latest_tdcc_snapshot=run_date.weekday() == 0,
+                    allow_online_calendar_probe=allow_calendar_online_probe,
+                    calendar=calendar,
+                    progress_callback=None,
+                ),
+                warning_only=True,
+            )
+    if run_date.weekday() == 0:
+        if _candidate_tdcc_capture_ready(steps):
+            capture_started_at = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            tdcc_capture_id = f"{capture_started_at}-quick-{run_id}-{uuid4().hex}"
+            failed = _run_step(
+                steps=steps,
+                name="capture_tdcc_current_ownership",
+                action=lambda: _run_tdcc_current_ownership_capture(
+                    output_root=config.output_root,
+                    run_id=run_id,
+                    capture_id=tdcc_capture_id,
+                ),
+                warning_only=True,
+            )
+        else:
+            candidate_step = next(
+                (
+                    item
+                    for item in steps
+                    if item.get("name") == "update_phase3c_candidate_sources"
+                ),
+                None,
+            )
+            candidate_status = (
+                str(candidate_step.get("status"))
+                if isinstance(candidate_step, dict)
+                else "not_run"
+            )
+            steps.append(
+                {
+                    "name": "capture_tdcc_current_ownership",
+                    "status": "skipped",
+                    "message": "raw TDCC capture waits for a successful same-run Phase 3C TDCC result",
+                    "result": {
+                        "success": True,
+                        "skipped": True,
+                        "reason": "phase3c_tdcc_result_not_verified",
+                        "phase3c_step_status": candidate_status,
+                        "network_requested": False,
+                        "writes_performed": False,
+                    },
+                }
+            )
     if failed is None:
         status = service.check_data_overview()
         coverage = service.check_technical_indicator_latest_coverage()
         current, message = _technical_is_current(status, coverage)
-        if current:
-            steps.append(
-                {
-                    "name": "calculate_technical_indicators",
-                    "status": "skipped",
-                    "message": message,
-                    "result": {"success": True, "skipped": True, "skip_reason": "technical_indicators_current"},
-                }
+        def _calculate_technical_with_evidence(
+            *,
+            recompute_currentity: bool = False,
+        ) -> dict[str, Any]:
+            """Run the real calculator and attach a pre/post hash witness."""
+
+            from data_module.recommendation_calibration_source_contract import (
+                build_technical_computation_evidence,
+                capture_technical_input_snapshot,
+                daily_price_receipt_source_dates,
+                discover_daily_price_receipt_paths,
+                technical_custody_source_window,
             )
-            logging.info(message)
+            started_at = datetime.now(timezone.utc)
+            input_snapshot = capture_technical_input_snapshot(
+                config.db_file,
+            )
+            calculation = service.calculate_technical_indicators(
+                target_stock=None,
+                force_all=False,
+                start_date=None,
+                progress_callback=None,
+                incremental_lookback_days=120,
+                recompute_currentity=recompute_currentity,
+                technical_process_pool=config.technical_process_pool_enabled,
+                technical_process_pool_workers=config.technical_process_pool_workers,
+                technical_process_pool_max_in_flight=config.technical_process_pool_max_in_flight,
+                technical_process_pool_max_retries=config.technical_process_pool_max_retries,
+            )
+            completed_at = datetime.now(timezone.utc)
+            calculation = dict(calculation)
+            custody_start, custody_end = technical_custody_source_window(
+                calculation,
+                default_start=start_date,
+                default_end=end_date,
+            )
+            receipt_path_set: set[Path] = set()
+            for receipt_root in authorized_technical_output_roots:
+                receipt_path_set.update(
+                    discover_daily_price_receipt_paths(
+                        receipt_root,
+                        values=steps,
+                        source_date_start=custody_start,
+                        source_date_end=custody_end,
+                    )
+                )
+            receipt_paths = sorted(receipt_path_set)
+            receipt_dates = daily_price_receipt_source_dates(receipt_paths)
+            evidence_start = receipt_dates[0] if receipt_dates else custody_start
+            evidence_end = receipt_dates[-1] if receipt_dates else custody_end
+            calculation["source_receipts"] = [
+                {"receipt_path": str(path)} for path in receipt_paths
+            ]
+            if recompute_currentity:
+                calculation["technical_recomputation_mode"] = (
+                    "bounded_currentity_recompute"
+                )
+                calculation["technical_recomputation_lookback_days"] = 120
+                calculation = _annotate_currentity_recompute_outcome(calculation)
+            if calculation.get("success") is True:
+                if input_snapshot.get("verified") is True:
+                    if evidence_start is None or evidence_end is None:
+                        calculation["technical_computation_error"] = (
+                            "technical_custody_source_window_missing"
+                        )
+                        calculation["success"] = False
+                    else:
+                        try:
+                            calculation["technical_computation"] = (
+                                build_technical_computation_evidence(
+                                    source_db=config.db_file,
+                                    calculation_result=calculation,
+                                    source_date_start=evidence_start,
+                                    source_date_end=evidence_end,
+                                    started_at=started_at,
+                                    completed_at=completed_at,
+                                    input_snapshot=input_snapshot,
+                                )
+                            )
+                        except Exception as exc:  # noqa: BLE001
+                            calculation["technical_computation_error"] = (
+                                f"{type(exc).__name__}:{exc}"
+                            )
+                            calculation["success"] = False
+                else:
+                    calculation["technical_computation_error"] = str(
+                        input_snapshot.get("reason") or "technical_input_snapshot_unverified"
+                    )
+                    calculation["success"] = False
+            return calculation
+
+        if current:
+            from data_module.recommendation_calibration_source_contract import (
+                reuse_verified_technical_computation_receipt,
+            )
+
+            reuse = reuse_verified_technical_computation_receipt(
+                authorized_output_roots=authorized_technical_output_roots,
+                source_db=config.db_file,
+                source_date_start=start_date,
+                source_date_end=end_date,
+                availability_cutoff_at=run_now,
+            )
+            if reuse.get("status") == "reused":
+                technical_computation = reuse.get("technical_computation")
+                source_publication_receipt = reuse.get("source_publication_receipt")
+                if not isinstance(technical_computation, Mapping) or not isinstance(
+                    source_publication_receipt, Mapping
+                ):
+                    reuse["status"] = "not_found"
+                    reuse["reason"] = "technical_reuse_result_shape_invalid"
+                else:
+                    steps.append(
+                        {
+                            "name": "calculate_technical_indicators",
+                            "status": "skipped",
+                            "message": (
+                                f"{message}; reused verified technical computation witness"
+                            ),
+                            "result": {
+                                "success": True,
+                                "skipped": True,
+                                "skip_reason": "technical_indicators_current",
+                                "technical_computation": dict(technical_computation),
+                                "technical_computation_reuse": dict(
+                                    source_publication_receipt
+                                ),
+                                "technical_reuse_validation": {
+                                    "status": "reused",
+                                    "source_date_start": reuse.get("source_date_start"),
+                                    "source_date_end": reuse.get("source_date_end"),
+                                },
+                            },
+                        }
+                    )
+                    logging.info(
+                        "%s; reused verified technical computation witness from %s",
+                        message,
+                        source_publication_receipt.get("path"),
+                    )
+            if not steps or steps[-1].get("name") != "calculate_technical_indicators":
+                logging.info(
+                    "%s; no reusable verified witness (%s), running bounded recomputation",
+                    message,
+                    reuse.get("reason") or "unknown",
+                )
+                failed = _run_step(
+                    steps=steps,
+                    name="calculate_technical_indicators",
+                    action=lambda: _calculate_technical_with_evidence(
+                        recompute_currentity=True
+                    ),
+                )
         else:
             failed = _run_step(
                 steps=steps,
                 name="calculate_technical_indicators",
-                action=lambda: service.calculate_technical_indicators(
-                    target_stock=None,
-                    force_all=False,
-                    start_date=None,
-                    progress_callback=None,
-                    incremental_lookback_days=120,
-                    technical_process_pool=config.technical_process_pool_enabled,
-                    technical_process_pool_workers=config.technical_process_pool_workers,
-                    technical_process_pool_max_in_flight=config.technical_process_pool_max_in_flight,
-                    technical_process_pool_max_retries=config.technical_process_pool_max_retries,
-                ),
+                action=_calculate_technical_with_evidence,
             )
     if failed is None:
         failed = _run_step(steps=steps, name="check_overview_after", action=service.check_data_overview)
@@ -435,17 +1733,48 @@ def main(argv: list[str] | None = None) -> int:
                 warnings.extend(_tpex_warning_messages(result))
     warnings = list(dict.fromkeys(warnings))
     final_status = "failed" if failed is not None else "passed_with_warnings" if warnings else "passed"
+    research_capture_receipt_path = (
+        status_path.parent
+        / "research_capture_receipts"
+        / f"{run_id}-{uuid4().hex}.json"
+        if args.capture_monthly_revenue_research_candidate and failed is None
+        else None
+    )
+    research_capture: dict[str, Any] = (
+        {
+            "status": "pending_after_core_publication",
+            "result_receipt_path": str(research_capture_receipt_path),
+        }
+        if research_capture_receipt_path is not None
+        else {"status": "skipped_core_failure"}
+        if args.capture_monthly_revenue_research_candidate
+        else {"status": "not_requested"}
+    )
+    capacity_reservation_released_before_research_capture = False
     completed_at = scheduled_now()
     payload = {
         "task": "baldr-data-update-quick-daily",
         "status": final_status,
         "run_id": run_id,
-        "started_at": run_now.isoformat(timespec="seconds"),
-        "completed_at": completed_at.isoformat(timespec="seconds"),
+        "started_at": run_now.isoformat(),
+        "completed_at": completed_at.isoformat(),
         "process_id": os.getpid(),
-        "checked_at": completed_at.isoformat(timespec="seconds"),
+        "checked_at": completed_at.isoformat(),
         "data_root": str(config.data_root),
         "output_root": str(config.output_root),
+        "formal_output_root": str(formal_output_root),
+        "authorized_technical_output_roots": [
+            str(path) for path in authorized_technical_output_roots
+        ],
+        "candidate_db_path": str(candidate_db_path) if candidate_db_path else None,
+        "industry_legacy_reverification_enabled": bool(
+            args.reverify_unknown_legacy_industry_dates
+        ),
+        "capacity_lock_path": str(capacity_lock_path),
+        "capacity_reservation_acquired": capacity_reservation_acquired_for_run,
+        "capacity_reservation_released_before_research_capture": (
+            capacity_reservation_released_before_research_capture
+        ),
         "start_date": start_date,
         "end_date": end_date,
         "calendar_resolution": _serializable_calendar_records(calendar_records),
@@ -462,10 +1791,75 @@ def main(argv: list[str] | None = None) -> int:
         "technical_process_pool_workers": config.technical_process_pool_workers,
         "technical_process_pool_max_in_flight": config.technical_process_pool_max_in_flight,
         "technical_process_pool_max_retries": config.technical_process_pool_max_retries,
+        "capacity_preflight": capacity_preflight,
+        "optional_source_policy": {
+            "skip_broker_branch": bool(args.skip_broker_branch),
+        },
+        "monthly_revenue_research_capture": research_capture,
     }
+    try:
+        from data_module.recommendation_calibration_source_contract import (
+            publish_technical_indicator_receipt,
+        )
+
+        payload["technical_publication_receipt"] = publish_technical_indicator_receipt(
+            output_root=config.output_root,
+            update_status=payload,
+            source_db=config.db_file,
+            authorized_output_roots=authorized_technical_output_roots,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # The source-contract receipt is a shadow/audit artifact.  A custody
+        # failure must remain visible without changing the data-update result.
+        payload["technical_publication_receipt"] = {
+            "status": "blocked",
+            "reason": f"technical_publication_receipt_failed:{type(exc).__name__}",
+            "error": str(exc),
+        }
     payload["history"] = _append_history_safely(history_path, payload)
     _write_json(status_path, payload)
+
+    # Keep the shared heavy-chain reservation until all core witnesses and
+    # terminal history/status have been published. The candidate collector is
+    # a separate, lower-priority research child and must not race the technical
+    # publication that describes this same data-update run.
+    if research_capture_receipt_path is not None:
+        try:
+            release_heavy_chain_reservation(capacity_reservation)
+            capacity_reservation = None
+            capacity_reservation_released_before_research_capture = True
+        except Exception as exc:  # noqa: BLE001 - preserve core result
+            research_capture = {
+                "status": "failed",
+                "reason": "capacity_reservation_release_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:1000],
+            }
+        else:
+            research_capture = _run_monthly_revenue_research_capture()
+        try:
+            _write_json_create_only(
+                research_capture_receipt_path,
+                {
+                    "schema_version": "scheduled-monthly-revenue-research-capture.v1",
+                    "run_id": run_id,
+                    "core_status": final_status,
+                    "core_status_path": str(status_path),
+                    "captured_at": scheduled_now().isoformat(),
+                    "capacity_reservation_released_before_capture": (
+                        capacity_reservation_released_before_research_capture
+                    ),
+                    "research_capture": research_capture,
+                    "core_status_unchanged": True,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 - child receipt is nonfatal
+            logging.warning(
+                "Unable to write monthly revenue research child receipt: %s", exc
+            )
+
     logging.info("Scheduled quick data update finished with status=%s", final_status)
+    release_heavy_chain_reservation(capacity_reservation)
     return 1 if failed is not None else 0
 
 

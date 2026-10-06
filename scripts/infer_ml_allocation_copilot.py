@@ -34,7 +34,22 @@ from app_module.ml_allocation_inference_service import (  # noqa: E402
 from app_module.allocation_release_adapter import (  # noqa: E402
     AllocationReleaseAdapter,
 )
-from ml_module.allocation_contracts import (  # noqa: E402
+from ml_module.allocation_repaired_input_contract import (  # noqa: E402
+    LEGACY_INPUT_SCHEMA_VERSION as INPUT_SCHEMA_VERSION,
+    _FEATURE_FIELDS,
+    _mapping,
+    _mapping_sequence,
+    _pair_tuple,
+    _reject_unknown,
+    _ROW_FIELDS,
+    _STATE_FIELDS,
+    _text,
+    _text_tuple,
+    _TOP_LEVEL_FIELDS,
+    _WEIGHT_FIELDS,
+    parse_inference_row_v2,
+)
+from ml_module.allocation_contracts import (  # noqa: E402,F401 - 保留舊 script namespace
     AllocationWeightContract,
     CausalPortfolioState,
     PITFeatureValue,
@@ -42,48 +57,7 @@ from ml_module.allocation_contracts import (  # noqa: E402
 )
 
 
-INPUT_SCHEMA_VERSION = "allocation-inference-input-v2"
 PROPOSAL_SCHEMA_VERSION = "ml-allocation-proposal-output-v3"
-_TOP_LEVEL_FIELDS = frozenset({"schema_version", "rows"})
-_ROW_FIELDS = frozenset(
-    {
-        "row_id",
-        "decision_at",
-        "symbol",
-        "features",
-        "missing_family_ids",
-        "portfolio_state",
-        "dataset_identity_hash",
-        "feature_registry_hash",
-        "source_manifest_hashes",
-        "targets",
-    }
-)
-_FEATURE_FIELDS = frozenset(
-    {
-        "feature_id",
-        "family_id",
-        "source_id",
-        "value_int",
-        "scale",
-        "event_at",
-        "available_at",
-        "revision_id",
-        "quality",
-        "content_hash",
-        "observed",
-        "event_time_semantics",
-    }
-)
-_STATE_FIELDS = frozenset(
-    {
-        "as_of_date",
-        "weights",
-        "weekly_turnover_used_bp",
-        "state_hash",
-    }
-)
-_WEIGHT_FIELDS = frozenset({"positions_bp", "cash_bp"})
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -358,73 +332,7 @@ def _load_rows(path: Path) -> tuple[PortfolioMLDatasetRow, ...]:
 
 
 def _parse_row(payload: Mapping[str, Any]) -> PortfolioMLDatasetRow:
-    _reject_unknown(payload, allowed=_ROW_FIELDS, field_name="row")
-    if payload.get("targets") is not None:
-        raise ValueError("inference row targets must be absent or null")
-
-    feature_payloads = _mapping_sequence(
-        payload.get("features"),
-        field_name="features",
-    )
-    features: list[PITFeatureValue] = []
-    for feature_payload in feature_payloads:
-        _reject_unknown(
-            feature_payload,
-            allowed=_FEATURE_FIELDS,
-            field_name="feature",
-        )
-        features.append(PITFeatureValue(**dict(feature_payload)))
-
-    state_payload = _mapping(
-        payload.get("portfolio_state"),
-        field_name="portfolio_state",
-    )
-    _reject_unknown(
-        state_payload,
-        allowed=_STATE_FIELDS,
-        field_name="portfolio_state",
-    )
-    weights_payload = _mapping(
-        state_payload.get("weights"),
-        field_name="portfolio_state.weights",
-    )
-    _reject_unknown(
-        weights_payload,
-        allowed=_WEIGHT_FIELDS,
-        field_name="portfolio_state.weights",
-    )
-    portfolio_state = CausalPortfolioState(
-        as_of_date=state_payload["as_of_date"],
-        weights=AllocationWeightContract(
-            positions_bp=_pair_tuple(
-                weights_payload.get("positions_bp"),
-                field_name="positions_bp",
-            ),
-            cash_bp=weights_payload["cash_bp"],
-        ),
-        weekly_turnover_used_bp=state_payload["weekly_turnover_used_bp"],
-        state_hash=state_payload["state_hash"],
-    )
-    return PortfolioMLDatasetRow(
-        row_id=payload["row_id"],
-        decision_at=payload["decision_at"],
-        symbol=payload["symbol"],
-        features=tuple(features),
-        missing_family_ids=_text_tuple(
-            payload.get("missing_family_ids", ()),
-            field_name="missing_family_ids",
-            allow_empty=True,
-        ),
-        portfolio_state=portfolio_state,
-        dataset_identity_hash=payload["dataset_identity_hash"],
-        feature_registry_hash=payload["feature_registry_hash"],
-        source_manifest_hashes=_pair_tuple(
-            payload.get("source_manifest_hashes"),
-            field_name="source_manifest_hashes",
-            text_values=True,
-        ),
-        targets=None,
-    )
+    return parse_inference_row_v2(payload)
 
 
 def _validate_distinct_paths(
@@ -478,79 +386,6 @@ def _atomic_commit_outputs(
     finally:
         for temporary, _ in staged:
             temporary.unlink(missing_ok=True)
-
-
-def _pair_tuple(
-    value: Any,
-    *,
-    field_name: str,
-    text_values: bool = False,
-) -> tuple[tuple[str, Any], ...]:
-    if not isinstance(value, (list, tuple)):
-        raise TypeError(f"{field_name} must be an array")
-    result: list[tuple[str, Any]] = []
-    for item in value:
-        if not isinstance(item, (list, tuple)) or len(item) != 2:
-            raise TypeError(f"{field_name} entries must be two-item arrays")
-        key = _text(item[0], field_name=f"{field_name}.key")
-        second = (
-            _text(item[1], field_name=f"{field_name}.value")
-            if text_values
-            else item[1]
-        )
-        result.append((key, second))
-    return tuple(result)
-
-
-def _mapping_sequence(
-    value: Any,
-    *,
-    field_name: str,
-) -> tuple[Mapping[str, Any], ...]:
-    if not isinstance(value, (list, tuple)):
-        raise TypeError(f"{field_name} must be an array")
-    return tuple(
-        _mapping(item, field_name=f"{field_name}[]") for item in value
-    )
-
-
-def _mapping(value: Any, *, field_name: str) -> Mapping[str, Any]:
-    if not isinstance(value, dict):
-        raise TypeError(f"{field_name} must be an object")
-    return value
-
-
-def _text(value: Any, *, field_name: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise TypeError(f"{field_name} must be a non-empty string")
-    return value
-
-
-def _text_tuple(
-    value: Any,
-    *,
-    field_name: str,
-    allow_empty: bool = False,
-) -> tuple[str, ...]:
-    if not isinstance(value, (list, tuple)):
-        raise TypeError(f"{field_name} must be an array")
-    result = tuple(_text(item, field_name=field_name) for item in value)
-    if not allow_empty and not result:
-        raise ValueError(f"{field_name} must not be empty")
-    return result
-
-
-def _reject_unknown(
-    payload: Mapping[str, Any],
-    *,
-    allowed: frozenset[str],
-    field_name: str,
-) -> None:
-    unknown = set(payload) - allowed
-    if unknown:
-        raise ValueError(
-            f"unsupported {field_name} field: {sorted(unknown)[0]}"
-        )
 
 
 if __name__ == "__main__":

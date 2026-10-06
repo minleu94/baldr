@@ -1,3 +1,5 @@
+import hashlib
+import sqlite3
 from types import SimpleNamespace
 import pandas as pd
 from app_module.broker_flow_service import BrokerFlowService
@@ -133,7 +135,7 @@ def test_flow_signal_engine_estimated_discount():
     assert "金額估算" in signal.signal_tags
 
 
-def test_broker_flow_service_no_price_remains_none(tmp_path):
+def test_broker_flow_service_no_price_remains_none(tmp_path, monkeypatch):
     branch_dir = tmp_path / "broker_flow" / "8450_845B" / "meta"
     branch_dir.mkdir(parents=True)
 
@@ -154,31 +156,29 @@ def test_broker_flow_service_no_price_remains_none(tmp_path):
         use_sqlite=True
     )
 
-    class MockDBManager:
-        def __init__(self, cfg):
-            pass
+    class MockReadOnlySQLiteManager:
+        def __init__(self, db_path):
+            self.last_read_mode = "normal"
+
         def execute_query(self, *args, **kwargs):
             return pd.DataFrame()
 
-    import data_module.db_manager
-    original_db_manager = data_module.db_manager.DBManager
-    data_module.db_manager.DBManager = MockDBManager
+    monkeypatch.setattr(
+        "app_module.broker_flow_service.ReadOnlySQLiteManager",
+        MockReadOnlySQLiteManager,
+    )
+    service = BrokerFlowService(config)
+    events = service._load_data(force_reload=True)
 
-    try:
-        service = BrokerFlowService(config)
-        events = service._load_data(force_reload=True)
-
-        assert len(events) == 1
-        assert events[0].buy_qty is None
-        assert events[0].lots_available is False
-        assert events[0].has_estimated_lots is False
-        assert events[0].lots_quality == "unavailable"
-        assert events[0].amount_quality == "observed"
-    finally:
-        data_module.db_manager.DBManager = original_db_manager
+    assert len(events) == 1
+    assert events[0].buy_qty is None
+    assert events[0].lots_available is False
+    assert events[0].has_estimated_lots is False
+    assert events[0].lots_quality == "unavailable"
+    assert events[0].amount_quality == "observed"
 
 
-def test_broker_flow_service_estimates_lots_with_price(tmp_path):
+def test_broker_flow_service_estimates_lots_with_price(tmp_path, monkeypatch):
     branch_dir = tmp_path / "broker_flow" / "8450_845B" / "meta"
     branch_dir.mkdir(parents=True)
 
@@ -205,29 +205,214 @@ def test_broker_flow_service_estimates_lots_with_price(tmp_path):
         "收盤價": 33.3
     }])
 
-    class MockDBManager:
-        def __init__(self, cfg):
-            pass
+    class MockReadOnlySQLiteManager:
+        def __init__(self, db_path):
+            self.last_read_mode = "normal"
+
         def execute_query(self, *args, **kwargs):
             return price_df
 
-    import data_module.db_manager
-    original_db_manager = data_module.db_manager.DBManager
-    data_module.db_manager.DBManager = MockDBManager
+    monkeypatch.setattr(
+        "app_module.broker_flow_service.ReadOnlySQLiteManager",
+        MockReadOnlySQLiteManager,
+    )
+    service = BrokerFlowService(config)
+    events = service._load_data(force_reload=True)
 
+    assert len(events) == 1
+    # 5000 / 33.3 = 150.15015 -> ROUND_HALF_UP to 150 lots
+    assert events[0].buy_qty == 150
+    assert events[0].lots_available is True
+    assert events[0].has_estimated_lots is True
+    assert events[0].lots_quality == "estimated"
+    assert events[0].amount_quality == "observed"
+
+
+def test_broker_flow_service_immutable_price_read_does_not_estimate_lots(tmp_path, monkeypatch, caplog):
+    branch_dir = tmp_path / "broker_flow" / "8450_845B" / "meta"
+    branch_dir.mkdir(parents=True)
+    pd.DataFrame([{
+        "date": "2026-06-11",
+        "branch_system_key": "8450_845B",
+        "branch_display_name": "康和-永和",
+        "counterparty_broker_code": "00631L",
+        "counterparty_broker_name": "元大台灣50正2",
+        "buy_amount_k_twd": 5000,
+        "sell_amount_k_twd": 0,
+        "net_amount_k_twd": 5000,
+    }]).to_csv(branch_dir / "merged.csv", index=False, encoding="utf-8-sig")
+    config = SimpleNamespace(
+        broker_flow_dir=tmp_path / "broker_flow",
+        data_dir=tmp_path,
+        db_file=tmp_path / "sqlite" / "twstock.db",
+        use_sqlite=True,
+    )
+
+    class ImmutablePriceReader:
+        def __init__(self, db_path):
+            self.last_read_mode = "immutable_fallback"
+
+        def execute_query(self, *args, **kwargs):
+            return pd.DataFrame([{
+                "日期": "20260611",
+                "證券代號": "00631L",
+                "收盤價": "33.3",
+            }])
+
+    monkeypatch.setattr(
+        "app_module.broker_flow_service.ReadOnlySQLiteManager",
+        ImmutablePriceReader,
+    )
+
+    events = BrokerFlowService(config)._load_data(force_reload=True)
+
+    assert len(events) == 1
+    assert events[0].buy_qty is None
+    assert events[0].lots_available is False
+    assert events[0].has_estimated_lots is False
+    assert events[0].lots_quality == "unavailable"
+    assert "immutable 快照" in caplog.text
+
+
+def test_broker_flow_service_missing_database_does_not_create_it(tmp_path):
+    branch_dir = tmp_path / "broker_flow" / "8450_845B" / "meta"
+    branch_dir.mkdir(parents=True)
+    pd.DataFrame([{
+        "date": "2026-06-11",
+        "branch_system_key": "8450_845B",
+        "branch_display_name": "康和-永和",
+        "counterparty_broker_code": "00631L",
+        "counterparty_broker_name": "元大台灣50正2",
+        "buy_amount_k_twd": 5000,
+        "sell_amount_k_twd": 0,
+        "net_amount_k_twd": 5000,
+    }]).to_csv(branch_dir / "merged.csv", index=False, encoding="utf-8-sig")
+    db_path = tmp_path / "missing" / "sqlite" / "twstock.db"
+    config = SimpleNamespace(
+        broker_flow_dir=tmp_path / "broker_flow",
+        data_dir=tmp_path,
+        db_file=db_path,
+        use_sqlite=True,
+    )
+
+    events = BrokerFlowService(config)._load_data(force_reload=True)
+
+    assert len(events) == 1
+    assert events[0].lots_quality == "unavailable"
+    assert events[0].buy_qty is None
+    assert not db_path.exists()
+    assert not db_path.parent.exists()
+
+
+def test_broker_flow_service_missing_daily_price_table_leaves_lots_unavailable(tmp_path):
+    branch_dir = tmp_path / "broker_flow" / "8450_845B" / "meta"
+    branch_dir.mkdir(parents=True)
+    pd.DataFrame([{
+        "date": "2026-06-11",
+        "branch_system_key": "8450_845B",
+        "branch_display_name": "康和-永和",
+        "counterparty_broker_code": "00631L",
+        "counterparty_broker_name": "元大台灣50正2",
+        "buy_amount_k_twd": 5000,
+        "sell_amount_k_twd": 0,
+        "net_amount_k_twd": 5000,
+    }]).to_csv(branch_dir / "merged.csv", index=False, encoding="utf-8-sig")
+    db_path = tmp_path / "sqlite" / "twstock.db"
+    db_path.parent.mkdir(parents=True)
+    connection = sqlite3.connect(db_path)
     try:
-        service = BrokerFlowService(config)
-        events = service._load_data(force_reload=True)
-
-        assert len(events) == 1
-        # 5000 / 33.3 = 150.15015 -> ROUND_HALF_UP to 150 lots
-        assert events[0].buy_qty == 150
-        assert events[0].lots_available is True
-        assert events[0].has_estimated_lots is True
-        assert events[0].lots_quality == "estimated"
-        assert events[0].amount_quality == "observed"
+        connection.execute("CREATE TABLE unrelated (value TEXT)")
+        connection.commit()
     finally:
-        data_module.db_manager.DBManager = original_db_manager
+        connection.close()
+    before = _sqlite_file_state(db_path)
+    config = SimpleNamespace(
+        broker_flow_dir=tmp_path / "broker_flow",
+        data_dir=tmp_path,
+        db_file=db_path,
+        use_sqlite=True,
+    )
+
+    events = BrokerFlowService(config)._load_data(force_reload=True)
+
+    assert len(events) == 1
+    assert events[0].lots_quality == "unavailable"
+    assert events[0].buy_qty is None
+    assert _sqlite_file_state(db_path) == before
+
+
+def test_broker_flow_service_reads_price_without_changing_database(tmp_path):
+    branch_dir = tmp_path / "broker_flow" / "8450_845B" / "meta"
+    branch_dir.mkdir(parents=True)
+    pd.DataFrame([{
+        "date": "2026-06-11",
+        "branch_system_key": "8450_845B",
+        "branch_display_name": "康和-永和",
+        "counterparty_broker_code": "00631L",
+        "counterparty_broker_name": "元大台灣50正2",
+        "buy_amount_k_twd": 5000,
+        "sell_amount_k_twd": 0,
+        "net_amount_k_twd": 5000,
+    }]).to_csv(branch_dir / "merged.csv", index=False, encoding="utf-8-sig")
+    db_path = tmp_path / "sqlite" / "twstock.db"
+    db_path.parent.mkdir(parents=True)
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute(
+            "CREATE TABLE daily_prices (日期 TEXT, 證券代號 TEXT, 收盤價 TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO daily_prices VALUES (?, ?, ?)",
+            ("20260611", "00631L", "33.3"),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    before = _sqlite_file_state(db_path)
+    config = SimpleNamespace(
+        broker_flow_dir=tmp_path / "broker_flow",
+        data_dir=tmp_path,
+        db_file=db_path,
+        use_sqlite=True,
+    )
+
+    events = BrokerFlowService(config)._load_data(force_reload=True)
+
+    assert len(events) == 1
+    assert events[0].buy_qty == 150
+    assert events[0].has_estimated_lots is True
+    assert events[0].lots_quality == "estimated"
+    assert _sqlite_file_state(db_path) == before
+
+
+def _sqlite_file_state(db_path):
+    files = {}
+    for name, path in (
+        ("main", db_path),
+        ("wal", tmp_path_from_suffix(db_path, "-wal")),
+        ("shm", tmp_path_from_suffix(db_path, "-shm")),
+    ):
+        if path.is_file():
+            data = path.read_bytes()
+            files[name] = {
+                "exists": True,
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "size": len(data),
+                "mtime_ns": path.stat().st_mtime_ns,
+                "header": data[:16].hex(),
+            }
+        else:
+            files[name] = {"exists": False}
+    connection = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
+    try:
+        journal_mode = str(connection.execute("PRAGMA journal_mode").fetchone()[0])
+    finally:
+        connection.close()
+    return {"files": files, "journal_mode": journal_mode}
+
+
+def tmp_path_from_suffix(db_path, suffix):
+    return db_path.with_name(db_path.name + suffix)
 
 
 def test_broker_flow_service_preserves_ranked_metric_metadata(tmp_path):

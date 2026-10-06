@@ -1,17 +1,21 @@
 {
   "schema_version": "ml-forward-task-registration-plan.v1",
   "prepared_at": "2026-09-08T11:40:00Z",
-  "status": "registered_verified",
+  "status": "prepared_timezone_aware_update_not_applied",
   "task_name": "baldr-ml-allocation-forward-daily",
   "host_timezone": "Pacific Standard Time",
   "schedule": {
     "type": "daily",
-    "pacific_local_time": "16:15",
+    "decision_timezone": "Asia/Taipei",
+    "decision_local_time": "08:25",
+    "start_boundary": "2026-10-03T08:25:00+08:00",
+    "utc_time": "00:25",
     "taipei_mapping": {
-      "PDT": "07:15 next day",
-      "PST": "08:15 next day"
+      "PDT": "17:25 previous Pacific calendar date",
+      "PST": "16:25 previous Pacific calendar date"
     },
-    "wrapper_waits_for": "Asia/Taipei 08:30 natural decision clock",
+    "wrapper_calendar_refresh": "runs before the 08:30 decision clock; one 30-second capture per required calendar year, at most two years during the New Year lookback",
+    "wrapper_waits_for": "Asia/Taipei 08:30 natural decision clock; five minutes from an on-time 08:25 trigger",
     "late_start_policy": "blocked after Asia/Taipei 08:35; no catch-up credit"
   },
   "action": {
@@ -28,13 +32,14 @@
   },
   "settings": {
     "multiple_instances": "IgnoreNew",
+    "random_delay": "PT0S",
     "execution_time_limit": "PT2H",
     "disallow_start_if_on_batteries": true,
     "stop_if_going_on_batteries": true,
     "start_when_available": false,
     "wake_to_run": false,
     "network_required": false,
-    "reason": "The wrapper may wait up to 75 minutes from the Pacific wake to Taipei 08:30 and gives the child until 08:35; PT2H leaves bounded overhead without enabling catch-up."
+    "reason": "The timezone-aware trigger leaves five minutes until Taipei 08:30. Preserve the already configured PT2H outer limit without guessing a shorter duration; the wrapper still enforces the 08:35 ML deadline."
   },
   "forward_environment": {
     "ML_FORWARD_CONFIG_ROOT": "C:\\Projects\\PythonProjects\\technical_analysis\\output\\v4_ml_forward_scheduler",
@@ -51,19 +56,19 @@
     "The daily producer has an offline verified official calendar cache and one-session freshness policy; unknown calendar or stale archive fails closed.",
     "The V2 release root and manifest hash above pass a fresh readback; replacement blocks before child start.",
     "The existing baldr-ml-allocation-copilot-daily 05:20 catch-up task remains unchanged.",
-    "Deployment is performed only after a dry-run query proves the task is absent or the exact requested task is being added; query errors do not permit create/replace."
+    "Update only the exact existing root task after a successful readback; query errors or a missing task fail closed and do not permit creation or replacement."
   ],
   "deployment_sequence": [
-    "Query host timezone and existing Paper Portfolio principal/settings; save before XML.",
+    "Query the exact existing root task and save its before XML, enabled state, principal and settings before editing.",
     "Run run_ml_allocation_forward_daily.cmd preflight and verify V2 release hash, repo output paths, calendar cache and wrapper parser tests; this mode never waits or runs the producer/child.",
-    "Import ml_forward_task_registration.xml or create the exact task with schtasks; apply only the settings in this plan.",
-    "Query the new task /V and export after XML; verify 16:15 Pacific, action, InteractiveToken principal, IgnoreNew, PT2H, battery restrictions, StartWhenAvailable=false and WakeToRun=false.",
+    "Update the existing task definition in place from ml_forward_task_registration.xml; do not create a new task or replace its principal/ACL.",
+    "Query the exact root task and export after XML; verify the aware 08:25 +08:00 trigger, zero RandomDelay, exact action/repository working directory, preserved enabled state, InteractiveToken principal, IgnoreNew, PT2H, battery restrictions, StartWhenAvailable=false and WakeToRun=false.",
     "Do not invoke the wrapper as a production forward run during registration; do not register if the archive/config/frozen release gate is not ready."
   ],
-  "registration_evidence": {
+  "prior_registration_evidence": {
     "task_name": "baldr-ml-allocation-forward-daily",
     "registered_at_utc": "2026-09-08T11:43:54.3798658Z",
-    "status": "Ready",
+    "status": "historical_readback_superseded_by_pending_trigger_update",
     "enabled": true,
     "next_run_pacific": "2026/9/8 16:15:00",
     "last_run_pacific": "1999/11/30 00:00:00",
@@ -74,15 +79,16 @@
     "after_query": "output/v4_next_ops/ml_forward_task_after_20260908.txt",
     "after_xml": "output/v4_next_ops/ml_forward_task_after_20260908.xml",
     "settings_compare": "output/v4_next_ops/ml_forward_task_settings_after_20260908.json",
-    "verification": "Exact action, repository working directory, SID 1001 InteractiveToken principal, daily 16:15 Pacific trigger, IgnoreNew, PT2H, battery restrictions, StartWhenAvailable=false and WakeToRun=false were read back after registration. The task has never run; no forward child was launched during registration."
+    "verification": "Historical readback for the prior 16:15 Pacific trigger; it does not verify the prepared 08:25 +08:00 update. The task had never run at that readback and no forward child was launched during that registration."
   },
   "rollback": {
-    "task_delete": "schtasks.exe /Delete /TN baldr-ml-allocation-forward-daily /F",
-    "condition": "Only remove this newly added task after an after-query confirms the task name; never use aggregate unregister for other BALDR tasks.",
-    "evidence": "Save delete result and post-delete query before declaring rollback complete."
+    "method": "Re-register the saved before XML at the same exact root task path, then read back its original trigger/settings and enabled state.",
+    "condition": "This operation updates an existing task; do not delete the task as rollback.",
+    "evidence": "Save rollback registration result and post-rollback XML/query before declaring rollback complete."
   },
   "safety": {
     "registered": true,
+    "timezone_aware_update_applied": false,
     "broker_order_allowed": false,
     "production_action_allowed": false,
     "forward_credit_granted": false,

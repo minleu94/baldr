@@ -69,14 +69,14 @@ import sys
 
 ## Codex MCP 設定建議
 
-`C:/Users/archi/.codex/config.toml` 的 `yahoo-finance` MCP 建議使用隔離 cwd 與環境變數：
+`<USER_HOME>/.codex/config.toml` 的 `yahoo-finance` MCP 建議使用隔離 cwd 與環境變數：
 
 ```toml
 [mcp_servers.yahoo-finance]
 enabled = true
 command = 'C:\Projects\PythonProjects\technical_analysis\.venv\Scripts\python.exe'
 args = ["-m", "mcp_server_yfinance"]
-cwd = 'C:\Users\archi\.codex\tmp'
+cwd = '<USER_HOME>\.codex\tmp'
 startup_timeout_sec = 120
 
 [mcp_servers.yahoo-finance.env]

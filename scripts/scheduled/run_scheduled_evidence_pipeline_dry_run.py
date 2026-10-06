@@ -1,19 +1,27 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
+import hashlib
 import json
 from json import JSONDecodeError
+import os
+import re
 import subprocess
 import sys
 from typing import Any
 from pathlib import Path
+from types import SimpleNamespace
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.scheduled.scheduled_clock import scheduled_now
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    canonical_scheduled_decision_date,
+)
 from app_module.position_health_daily_refresh_service import PositionHealthDailyRefreshService
 from app_module.forward_position_thesis_candidate_producer import (
     bind_available_candidates,
@@ -23,12 +31,69 @@ from app_module.position_health_market_source_producer import (
     PositionHealthMarketSourceProducer,
 )
 from app_module.position_health_transition_evaluator import evaluate_baseline_file
+from app_module.position_health_transition_repository import (
+    POSITION_HEALTH_TRANSITION_DB_FILENAME,
+)
 from app_module.exit_effectiveness_read_model import (
     DEFAULT_EXIT_HORIZON_TRADING_DAYS,
 )
+from app_module.recommendation.queries import _read_regular_file_no_follow
 
 
-EXIT_EFFECTIVENESS_TIMEOUT_SECONDS = 120
+EXIT_EFFECTIVENESS_TIMEOUT_SECONDS = 300
+EXIT_EFFECTIVENESS_ARTIFACT_MAX_BYTES = 32 * 1024 * 1024
+EXIT_EFFECTIVENESS_SCHEMA_VERSION = "exit-effectiveness-evidence.v1"
+EXIT_EFFECTIVENESS_POLICY_ID = "exit-effectiveness-research-policy.v1"
+_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_EXIT_EFFECTIVENESS_SUFFIX_RE = re.compile(r"(?P<date>\d{8})_(?P<digest>[0-9a-f]{16})\.json\Z")
+TAIPEI = timezone(timedelta(hours=8))
+PIPELINE_TIMEOUT_SECONDS = 600
+
+
+def _scheduled_recommendation_binding(
+    output_root: Path, *, decision_date: str, observed_at: datetime,
+) -> dict[str, Any]:
+    """只讀驗證當日排程快照的精確 canonical 身份，不猜 mixed 最新結果。"""
+    path = output_root / "scheduled" / "recommendation_snapshot" / "latest_status.json"
+    raw = path.read_bytes()
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("scheduled_recommendation_status_not_object")
+    if (
+        payload.get("task") != "baldr-recommendation-snapshot-daily"
+        or payload.get("status") != "passed"
+        or payload.get("decision_date") != decision_date
+        or payload.get("writes_recommendation_result") is not True
+        or payload.get("writes_evidence_db") is not False
+        or Path(str(payload.get("output_root", ""))).resolve() != output_root.resolve()
+    ):
+        raise ValueError("scheduled_recommendation_status_identity_mismatch")
+    checked = datetime.fromisoformat(str(payload.get("checked_at", "")).replace("Z", "+00:00"))
+    if checked.tzinfo is None or checked.utcoffset() is None or checked > observed_at:
+        raise ValueError("scheduled_recommendation_clock_invalid")
+    if checked.astimezone(TAIPEI).date().isoformat() != decision_date:
+        raise ValueError("scheduled_recommendation_clock_date_mismatch")
+    result_id = payload.get("result_id")
+    if not isinstance(result_id, str) or not result_id.strip():
+        raise ValueError("scheduled_recommendation_result_id_missing")
+    queries = build_recommendation_execution_queries(SimpleNamespace(output_root=output_root))
+    read_model = queries.get(result_id)
+    if read_model is None or canonical_scheduled_decision_date(read_model) != decision_date:
+        raise ValueError("scheduled_recommendation_canonical_identity_mismatch")
+    persisted_at = read_model.persisted_at
+    if (
+        persisted_at is None or persisted_at.tzinfo is None
+        or persisted_at.utcoffset() is None or persisted_at > observed_at
+    ):
+        raise ValueError("scheduled_recommendation_persisted_clock_invalid")
+    return {
+        "result_id": result_id,
+        "decision_date": decision_date,
+        "status_path": str(path.resolve()),
+        "status_sha256": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "artifact_payload_hash": read_model.payload_hash,
+        "verified_at": observed_at.astimezone(timezone.utc).isoformat(),
+    }
 
 
 def _read_status(path: Path) -> str:
@@ -57,6 +122,47 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _freshness_action_classification(path: Path, status: str) -> dict[str, Any]:
+    """Separate named fundamental qualification gaps from operational faults.
+
+    This does not change aggregate freshness, scheduler eligibility, or PIT gates.
+    Unknown sources, unexpected warnings, malformed receipts, and transport/data
+    errors still require engineering investigation.
+    """
+    qualification_ids = {
+        "fundamental.monthly_revenues", "fundamental.quarterly_statements",
+        "fundamental.current_monthly_observations", "fundamental.current_statement_observations",
+        "fundamental.statement_availability_map",
+    }
+    allowed_warnings = {
+        "monthly_revenue_expected_period_not_available", "quarterly_statement_expected_period_not_available",
+        "source_freshness_degraded:fundamental.current_monthly_observations",
+        "source_freshness_degraded:fundamental.current_statement_observations",
+    }
+    try:
+        if path.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError("freshness_receipt_too_large")
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        rows = payload.get("source_statuses", [])
+        if not isinstance(rows, list) or not all(isinstance(item, dict) for item in rows):
+            raise ValueError("freshness_source_statuses_invalid")
+        gaps = [dict(item) for item in rows
+            if item.get("freshness_status") not in {"current", "not_applicable", "expected_wait"}]
+        engineering = bool(status not in {"passed", "degraded"} or payload.get("errors")
+            or any(str(warning) not in allowed_warnings for warning in payload.get("warnings", []))
+            or any(item.get("source_id") not in qualification_ids for item in gaps))
+        qualifications = [item for item in gaps if item.get("source_id") in qualification_ids]
+        # A degraded receipt must carry the specific qualification evidence.
+        if status == "degraded" and not qualifications:
+            engineering = True
+        return {"freshness_engineering_action_required": engineering,
+            "source_qualification_required": bool(qualifications), "source_qualification_gaps": qualifications}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {"freshness_engineering_action_required": True,
+            "source_qualification_required": False, "source_qualification_gaps": [],
+            "classification_error": "freshness_receipt_unverified"}
+
+
 def _pipeline_status_fields(summary: dict[str, Any] | None) -> dict[str, Any]:
     if not summary:
         return {"pipeline_summary_available": False}
@@ -68,7 +174,7 @@ def _pipeline_status_fields(summary: dict[str, Any] | None) -> dict[str, Any]:
     natural_maturity_warning_counts = {
         token: count
         for token, count in warning_counts.items()
-        if token == "insufficient_future_data"
+        if token in {"insufficient_future_data", "forward_summary_status:INSUFFICIENT_SAMPLE"}
     }
     actionable_warning_counts = {
         token: count
@@ -178,6 +284,180 @@ def _process_output_text(value: Any) -> str:
     return str(value)
 
 
+def _persist_log(log_path: Path, text: str, *, failure_token: str) -> str | None:
+    """Persist output without letting an audit-log collision crash the wrapper."""
+
+    try:
+        log_path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        return f"{failure_token}:{type(exc).__name__}"
+    return None
+
+
+def _utc_now() -> datetime:
+    """Return the current aware UTC clock for child/artifact binding."""
+
+    return datetime.now(timezone.utc)
+
+
+def _sha256_text(value: bytes) -> str:
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+def _canonical_exit_effectiveness_json(payload: dict[str, Any]) -> bytes:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _verify_exit_effectiveness_artifact(
+    *,
+    receipt: dict[str, Any],
+    requested_output_path: Path,
+    child_started_at: datetime,
+    child_completed_at: datetime,
+) -> tuple[Path, str]:
+    """Verify the exact create-only artifact returned by the producer."""
+
+    requested_path = Path(os.path.abspath(requested_output_path))
+    artifact_root = requested_path.parent
+    expected_date_key = requested_path.stem
+    if (
+        requested_path.suffix != ".json"
+        or not re.fullmatch(r"\d{8}", expected_date_key)
+        or artifact_root.name != "exit_effectiveness"
+    ):
+        raise ValueError("exit_effectiveness_requested_path_shape_invalid")
+
+    as_of_date = receipt.get("as_of_date")
+    try:
+        expected_business_date = child_started_at.astimezone(TAIPEI).date()
+        parsed_as_of_date = datetime.strptime(str(as_of_date), "%Y-%m-%d").date()
+    except (TypeError, ValueError) as exc:
+        raise ValueError("exit_effectiveness_as_of_date_invalid") from exc
+    if (
+        parsed_as_of_date.isoformat() != as_of_date
+        or parsed_as_of_date != expected_business_date
+        or parsed_as_of_date.strftime("%Y%m%d") != expected_date_key
+    ):
+        raise ValueError("exit_effectiveness_as_of_date_mismatch")
+
+    generated_at_value = receipt.get("generated_at")
+    if not isinstance(generated_at_value, str) or not generated_at_value.strip():
+        raise ValueError("exit_effectiveness_generated_at_missing")
+    try:
+        generated_at = datetime.fromisoformat(
+            generated_at_value.replace("Z", "+00:00")
+        )
+    except ValueError as exc:
+        raise ValueError("exit_effectiveness_generated_at_invalid") from exc
+    if generated_at.tzinfo is None or generated_at.utcoffset() is None:
+        raise ValueError("exit_effectiveness_generated_at_naive")
+    generated_at_utc = generated_at.astimezone(timezone.utc)
+    if generated_at.utcoffset() != timedelta(0):
+        raise ValueError("exit_effectiveness_generated_at_not_utc")
+    if (
+        generated_at_utc < child_started_at - timedelta(seconds=2)
+        or generated_at_utc > child_completed_at + timedelta(seconds=2)
+    ):
+        raise ValueError("exit_effectiveness_generated_at_outside_child_run")
+
+    if receipt.get("schema_version") != EXIT_EFFECTIVENESS_SCHEMA_VERSION:
+        raise ValueError("exit_effectiveness_schema_version_invalid")
+    if receipt.get("policy_id") != EXIT_EFFECTIVENESS_POLICY_ID:
+        raise ValueError("exit_effectiveness_policy_id_invalid")
+    for field_name in (
+        "policy_hash",
+        "transition_policy_hash",
+        "evidence_hash",
+        "artifact_file_sha256",
+    ):
+        value = receipt.get(field_name)
+        if not isinstance(value, str) or not _SHA256_RE.fullmatch(value):
+            raise ValueError(f"exit_effectiveness_{field_name}_invalid")
+    if receipt.get("artifact_write_status") not in {"inserted", "reused"}:
+        raise ValueError("exit_effectiveness_artifact_write_status_invalid")
+    horizon = receipt.get("horizon_trading_days")
+    if (
+        isinstance(horizon, bool)
+        or not isinstance(horizon, int)
+        or horizon != DEFAULT_EXIT_HORIZON_TRADING_DAYS
+    ):
+        raise ValueError("exit_effectiveness_horizon_invalid")
+    for field_name, expected in (
+        ("research_only", True),
+        ("formal_credit", False),
+        ("investment_effectiveness_claim", False),
+        ("auto_exit_allowed", False),
+        ("broker_order_allowed", False),
+        ("historical_backfill", False),
+    ):
+        if receipt.get(field_name) is not expected:
+            raise ValueError(f"exit_effectiveness_{field_name}_invalid")
+
+    status_value = receipt.get("status")
+    if status_value not in {"passed", "degraded", "blocked"}:
+        raise ValueError("exit_effectiveness_status_invalid")
+    observations = receipt.get("observations")
+    report = receipt.get("report")
+    if not isinstance(observations, list) or not isinstance(report, dict):
+        raise ValueError("exit_effectiveness_body_shape_invalid")
+
+    artifact_path_value = receipt.get("artifact_path")
+    if not isinstance(artifact_path_value, str) or not artifact_path_value.strip():
+        raise ValueError("exit_effectiveness_artifact_path_missing")
+    artifact_path = Path(artifact_path_value)
+    if (
+        not artifact_path.is_absolute()
+        or any(part in {".", ".."} for part in artifact_path.parts)
+        or os.path.normcase(str(artifact_path.parent))
+        != os.path.normcase(str(artifact_root))
+    ):
+        raise ValueError("exit_effectiveness_artifact_path_outside_root")
+    if artifact_path.name != requested_path.name:
+        suffix_match = _EXIT_EFFECTIVENESS_SUFFIX_RE.fullmatch(artifact_path.name)
+        if suffix_match is None or suffix_match.group("date") != expected_date_key:
+            raise ValueError("exit_effectiveness_artifact_filename_invalid")
+        if suffix_match.group("digest") != receipt["artifact_file_sha256"][7:23]:
+            raise ValueError("exit_effectiveness_artifact_suffix_mismatch")
+
+    artifact_bytes = _read_regular_file_no_follow(
+        artifact_path,
+        artifact_root,
+        max_bytes=EXIT_EFFECTIVENESS_ARTIFACT_MAX_BYTES,
+    )
+    if _sha256_text(artifact_bytes) != receipt["artifact_file_sha256"]:
+        raise ValueError("exit_effectiveness_artifact_file_sha256_mismatch")
+    try:
+        artifact_payload = json.loads(artifact_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("exit_effectiveness_artifact_json_invalid") from exc
+    if not isinstance(artifact_payload, dict):
+        raise ValueError("exit_effectiveness_artifact_not_object")
+
+    stdout_body = dict(receipt)
+    for stdout_only_field in (
+        "artifact_path",
+        "artifact_write_status",
+        "artifact_file_sha256",
+    ):
+        stdout_body.pop(stdout_only_field, None)
+    expected_artifact_bytes = _canonical_exit_effectiveness_json(stdout_body) + b"\n"
+    if artifact_payload != stdout_body or artifact_bytes != expected_artifact_bytes:
+        raise ValueError("exit_effectiveness_artifact_body_stdout_mismatch")
+
+    body_for_hash = dict(artifact_payload)
+    body_for_hash.pop("evidence_hash", None)
+    if _sha256_text(_canonical_exit_effectiveness_json(body_for_hash)) != receipt[
+        "evidence_hash"
+    ]:
+        raise ValueError("exit_effectiveness_evidence_hash_mismatch")
+    return artifact_path, receipt["artifact_file_sha256"]
+
+
 def _exit_effectiveness_blocked_receipt(
     *,
     command: list[str],
@@ -185,8 +465,9 @@ def _exit_effectiveness_blocked_receipt(
     log_path: Path,
     reason: str,
     return_code: int | None,
+    log_write_error: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    receipt = {
         "status": "blocked",
         "blocked": True,
         "blockers": [reason],
@@ -195,12 +476,19 @@ def _exit_effectiveness_blocked_receipt(
         "auto_exit_allowed": False,
         "broker_order_allowed": False,
         "historical_backfill": False,
-        "artifact_path": str(output_path),
+        "artifact_path": None,
+        "requested_artifact_path": str(output_path),
+        "actual_artifact_path": None,
+        "artifact_identity_status": "unverified",
+        "artifact_file_sha256": None,
         "log_path": str(log_path),
         "command": command,
         "child_return_code": return_code,
         "timeout_seconds": EXIT_EFFECTIVENESS_TIMEOUT_SECONDS,
     }
+    if log_write_error is not None:
+        receipt["log_write_error"] = log_write_error
+    return receipt
 
 
 def _run_exit_effectiveness_child(
@@ -240,6 +528,7 @@ def _run_exit_effectiveness_child(
         command.extend(("--temporary-closure-cache", str(temporary_closure_cache)))
 
     completed_stdout = ""
+    child_started_at = _utc_now()
     try:
         completed = subprocess.run(
             command,
@@ -252,27 +541,51 @@ def _run_exit_effectiveness_child(
         )
     except subprocess.TimeoutExpired as exc:
         completed_stdout = _process_output_text(getattr(exc, "stdout", None))
-        log_path.write_text(completed_stdout, encoding="utf-8")
+        log_write_error = _persist_log(
+            log_path,
+            completed_stdout,
+            failure_token="exit_effectiveness_log_write_failed",
+        )
         return _exit_effectiveness_blocked_receipt(
             command=command,
             output_path=output_path,
             log_path=log_path,
             reason="exit_effectiveness_child_timeout",
             return_code=None,
+            log_write_error=log_write_error,
         )
     except OSError as exc:
         completed_stdout = _process_output_text(getattr(exc, "stdout", None))
-        log_path.write_text(completed_stdout, encoding="utf-8")
+        log_write_error = _persist_log(
+            log_path,
+            completed_stdout,
+            failure_token="exit_effectiveness_log_write_failed",
+        )
         return _exit_effectiveness_blocked_receipt(
             command=command,
             output_path=output_path,
             log_path=log_path,
             reason=f"exit_effectiveness_child_oserror:{type(exc).__name__}",
             return_code=None,
+            log_write_error=log_write_error,
         )
 
     completed_stdout = _process_output_text(getattr(completed, "stdout", None))
-    log_path.write_text(completed_stdout, encoding="utf-8")
+    child_completed_at = _utc_now()
+    log_write_error = _persist_log(
+        log_path,
+        completed_stdout,
+        failure_token="exit_effectiveness_log_write_failed",
+    )
+    if log_write_error is not None:
+        return _exit_effectiveness_blocked_receipt(
+            command=command,
+            output_path=output_path,
+            log_path=log_path,
+            reason=log_write_error,
+            return_code=int(completed.returncode),
+            log_write_error=log_write_error,
+        )
     receipt = _extract_json_object(completed_stdout)
     if receipt is None:
         return _exit_effectiveness_blocked_receipt(
@@ -296,18 +609,61 @@ def _run_exit_effectiveness_child(
         blockers.append(f"exit_effectiveness_child_returncode:{child_return_code}")
     if child_status not in {"passed", "degraded"} and not blockers:
         blockers.append(f"exit_effectiveness_child_status:{child_status}")
+    verified_artifact_path: Path | None = None
+    verified_artifact_hash: str | None = None
+    artifact_identity_status = "unknown_legacy"
+    try:
+        verified_artifact_path, verified_artifact_hash = (
+            _verify_exit_effectiveness_artifact(
+                receipt=receipt,
+                requested_output_path=output_path,
+                child_started_at=child_started_at,
+                child_completed_at=child_completed_at,
+            )
+        )
+        artifact_identity_status = "verified"
+    except Exception as exc:  # noqa: BLE001 - child success needs exact artifact proof
+        artifact_identity_status = (
+            "unknown_legacy"
+            if "schema_version" not in receipt
+            and "artifact_path" not in receipt
+            and "artifact_file_sha256" not in receipt
+            else "invalid"
+        )
+        artifact_blocker = (
+            f"exit_effectiveness_artifact_unverified:{type(exc).__name__}:{exc}"
+        )
+        if artifact_blocker not in blockers:
+            blockers.append(artifact_blocker)
+        blocked = True
     return {
         "status": "blocked" if blocked else child_status,
         "blocked": blocked,
         "blockers": blockers,
         "research_only": bool(receipt.get("research_only", True)),
         "historical_backfill": bool(receipt.get("historical_backfill", False)),
-        "artifact_path": str(output_path),
+        "artifact_path": (
+            None if verified_artifact_path is None else str(verified_artifact_path)
+        ),
+        "requested_artifact_path": str(output_path),
+        "actual_artifact_path": (
+            None if verified_artifact_path is None else str(verified_artifact_path)
+        ),
+        "artifact_identity_status": artifact_identity_status,
+        "artifact_file_sha256": verified_artifact_hash,
         "log_path": str(log_path),
         "command": command,
         "child_return_code": child_return_code,
         "timeout_seconds": EXIT_EFFECTIVENESS_TIMEOUT_SECONDS,
-        "receipt": receipt,
+        "receipt": {
+            **receipt,
+            "artifact_path": (
+                None if verified_artifact_path is None else str(verified_artifact_path)
+            ),
+            "artifact_file_sha256": verified_artifact_hash,
+            "artifact_identity_status": artifact_identity_status,
+        },
+        "producer_receipt": receipt,
     }
 
 
@@ -346,6 +702,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", required=True)
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--sources", default="all")
+    parser.add_argument("--validation-decision-date", help="Controlled read-only replay of an existing bound scheduled result; never changes its clocks")
+    parser.add_argument("--status-path", type=Path, help="Controlled validation status path; production defaults unchanged")
+    parser.add_argument(
+        "--bind-scheduled-recommendation", action="store_true",
+        help="require the same-day saved canonical scheduled snapshot and pass its exact result ID",
+    )
     parser.add_argument(
         "--paper-evidence-operation-root",
         help="isolated repository output root containing Paper snapshot state",
@@ -471,12 +833,45 @@ def main(argv: list[str] | None = None) -> int:
     report_root.mkdir(parents=True, exist_ok=True)
 
     run_now = scheduled_now()
-    decision_date = run_now.date().isoformat()
+    decision_date = run_now.astimezone(TAIPEI).date().isoformat()
+    if args.validation_decision_date:
+        replay_date = date.fromisoformat(args.validation_decision_date)
+        if not args.bind_scheduled_recommendation or args.status_path is None or replay_date > run_now.astimezone(TAIPEI).date():
+            raise ValueError("controlled replay requires exact binding, separate status and nonfuture date")
+        decision_date = replay_date.isoformat()
     today_key = decision_date.replace("-", "")
-    status_path = run_root / "latest_status.json"
-    log_path = run_root / f"{today_key}_evidence_pipeline_dry_run.log"
-    report_path = report_root / f"{today_key}_evidence_pipeline_dry_run.md"
+    run_stamp = run_now.strftime("%Y%m%d_%H%M%S_%f")
+    status_path = args.status_path or (run_root / "latest_status.json")
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path = run_root / f"{run_stamp}_evidence_pipeline_dry_run.log"
+    artifact_output_root = (
+        status_path.parent / "controlled_runs" / run_stamp
+        if args.validation_decision_date else output_root
+    )
+    if args.status_path is not None:
+        report_root = status_path.parent / "reports"
+        report_root.mkdir(parents=True, exist_ok=True)
+    report_path = report_root / f"{today_key}_{run_stamp}_evidence_pipeline_dry_run.md"
     freshness_status_path = output_root / "scheduled" / "data_freshness" / "latest_status.json"
+    recommendation_binding = None
+    if args.bind_scheduled_recommendation:
+        try:
+            recommendation_binding = _scheduled_recommendation_binding(
+                output_root, decision_date=decision_date, observed_at=run_now,
+            )
+        except Exception as error:  # noqa: BLE001 - 不退回猜測 latest 或舊快照
+            payload = {
+                "task": "baldr-evidence-pipeline-dry-run-daily", "status": "failed",
+                "decision_date": decision_date, "checked_at": run_now.isoformat(),
+                "dry_run": True, "confirm": False, "writes_evidence_db": False,
+                "production_scheduler_allowed": False, "manual_action_required": False, "engineering_action_required": True,
+                "exit_code": 2, "pipeline_summary_available": False,
+                "pipeline_execution_started": False,
+                "recommendation_binding_error": f"{type(error).__name__}:{error}",
+            }
+            status_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
+            return 2
     paper_operation_root = Path(
         args.paper_evidence_operation_root
         or (REPO_ROOT / "output" / "paper_execution_eod_replay")
@@ -492,7 +887,7 @@ def main(argv: list[str] | None = None) -> int:
     paper_status_path = (
         Path(args.paper_evidence_status_path)
         if args.paper_evidence_status_path
-        else paper_operation_root / "scheduled" / "paper_portfolio_daily" / "latest_status.json"
+        else paper_operation_root / "scheduled" / "paper_portfolio_isolated" / "latest_status.json"
     )
     paper_ledger_path = Path(
         args.paper_evidence_ledger_db
@@ -525,8 +920,13 @@ def main(argv: list[str] | None = None) -> int:
 
     paper_health_refresh: dict[str, Any] | None = None
     if args.refresh_paper_health:
-        health_output_dir = paper_health_baseline.parent
-        previous_baseline = paper_health_baseline if paper_health_baseline.is_file() else health_output_dir / "latest.json"
+        previous_baseline = paper_health_baseline
+        health_output_dir = (
+            artifact_output_root / "position_health"
+            if args.validation_decision_date else paper_health_baseline.parent
+        )
+        if not previous_baseline.is_file():
+            previous_baseline = health_output_dir / "latest.json"
         try:
             paper_health_refresh = PositionHealthDailyRefreshService(
                 state_db_path=paper_operation_root / "paper_portfolio" / "paper_portfolio.sqlite",
@@ -539,7 +939,7 @@ def main(argv: list[str] | None = None) -> int:
                     coverage_status_path=paper_health_status_path,
                 ),
             ).refresh(
-                as_of_date=run_now.date(),
+                as_of_date=date.fromisoformat(decision_date),
                 output_dir=health_output_dir,
                 previous_baseline_path=previous_baseline,
                 observed_at=run_now,
@@ -592,7 +992,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.produce_position_health_sources:
         source_output = Path(
             args.paper_health_source_output
-            or output_root / "position_health_sources"
+            or artifact_output_root / "position_health_sources"
         )
         quick_status_path = Path(
             args.paper_health_quick_status_path
@@ -607,6 +1007,8 @@ def main(argv: list[str] | None = None) -> int:
                 market_db_path=args.db_path,
                 quick_status_path=quick_status_path,
                 freshness_status_path=source_freshness_path,
+                calendar_cache_path=(args.paper_health_calendar_cache or paper_operation_root / "calendar_cache"),
+                temporary_closure_path=args.paper_health_temporary_closure_cache,
             ).produce(
                 baseline_path=paper_health_baseline,
                 output_dir=source_output,
@@ -661,7 +1063,7 @@ def main(argv: list[str] | None = None) -> int:
     position_health_transition: dict[str, Any] | None = None
     position_health_transition_output: Path | None = None
     if args.evaluate_position_health_transition:
-        position_health_transition_output = output_root / "position_health_transition"
+        position_health_transition_output = artifact_output_root / "position_health_transition"
         try:
             position_health_transition = evaluate_baseline_file(
                 baseline_path=paper_health_baseline,
@@ -670,7 +1072,7 @@ def main(argv: list[str] | None = None) -> int:
                 decision_date=decision_date,
                 transition_repository_path=(
                     position_health_transition_output
-                    / "position_health_transitions.sqlite"
+                    / POSITION_HEALTH_TRANSITION_DB_FILENAME
                 ),
                 thesis_registry_path=args.paper_health_thesis_registry,
                 forward_binding_path=effective_forward_binding_path,
@@ -697,15 +1099,25 @@ def main(argv: list[str] | None = None) -> int:
     exit_effectiveness: dict[str, Any] | None = None
     exit_effectiveness_output: Path | None = None
     exit_effectiveness_log: Path | None = None
+    exit_effectiveness_requested_as_of_date: str | None = None
     if args.run_exit_effectiveness:
         effective_transition_output = (
             position_health_transition_output
-            or output_root / "position_health_transition"
+            or artifact_output_root / "position_health_transition"
+        )
+        exit_effectiveness_requested_as_of_date = (
+            _utc_now()
+            .astimezone(timezone.utc)
+            .astimezone(TAIPEI)
+            .date()
+            .isoformat()
         )
         exit_effectiveness_output = (
-            output_root / "exit_effectiveness" / f"{today_key}.json"
+            artifact_output_root
+            / "exit_effectiveness"
+            / f"{exit_effectiveness_requested_as_of_date.replace('-', '')}.json"
         )
-        exit_effectiveness_log = run_root / f"{today_key}_exit_effectiveness.log"
+        exit_effectiveness_log = run_root / f"{run_stamp}_exit_effectiveness.log"
         exit_calendar_cache = Path(
             args.paper_health_calendar_cache
             or paper_operation_root / "calendar_cache"
@@ -717,7 +1129,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         exit_effectiveness = _run_exit_effectiveness_child(
             transition_db=(
-                effective_transition_output / "position_health_transitions.sqlite"
+                effective_transition_output / POSITION_HEALTH_TRANSITION_DB_FILENAME
             ),
             paper_ledger_db=paper_ledger_path,
             market_db=Path(args.db_path),
@@ -727,9 +1139,30 @@ def main(argv: list[str] | None = None) -> int:
             log_path=exit_effectiveness_log,
         )
 
+    exit_effectiveness_producer_receipt = (
+        exit_effectiveness.get("producer_receipt")
+        if isinstance(exit_effectiveness, dict)
+        else None
+    )
+    exit_effectiveness_as_of_date = (
+        exit_effectiveness_producer_receipt.get("as_of_date")
+        if isinstance(exit_effectiveness_producer_receipt, dict)
+        and isinstance(exit_effectiveness_producer_receipt.get("as_of_date"), str)
+        else None
+    )
+    exit_effectiveness_date_role = (
+        "not_requested"
+        if exit_effectiveness is None
+        else "unavailable"
+        if exit_effectiveness_as_of_date is None
+        else "same_analysis_day"
+        if exit_effectiveness_as_of_date == decision_date
+        else "current_outcome_sidecar"
+    )
+
     command = [
         sys.executable,
-        "scripts/run_evidence_pipeline.py",
+        str(REPO_ROOT / "scripts/run_evidence_pipeline.py"),
         "--decision-date",
         decision_date,
         "--dry-run",
@@ -751,15 +1184,37 @@ def main(argv: list[str] | None = None) -> int:
         "--paper-evidence-status-path",
         str(paper_status_path),
     ]
-    completed = subprocess.run(
-        command,
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+    if recommendation_binding is not None:
+        command.extend(("--result-id", recommendation_binding["result_id"]))
+    pipeline_execution_error = None
+    child_stdout_path = log_path.with_suffix(".child-stdout.log")
+    try:
+        with child_stdout_path.open("xb") as stream:
+            completed = subprocess.run(
+                command, check=False, text=True, stdout=stream,
+                stderr=subprocess.STDOUT, timeout=PIPELINE_TIMEOUT_SECONDS, cwd=REPO_ROOT,
+            )
+    except subprocess.TimeoutExpired as error:
+        pipeline_execution_error = "evidence_pipeline_child_timeout"
+        completed = subprocess.CompletedProcess(command, 2, stdout=_process_output_text(error.stdout))
+    except OSError as error:
+        pipeline_execution_error = f"evidence_pipeline_child_launch_failed:{type(error).__name__}"
+        completed = subprocess.CompletedProcess(command, 2, stdout=str(error))
+    pipeline_output = _process_output_text(completed.stdout)
+    if not pipeline_output and child_stdout_path.is_file():
+        try:
+            captured_bytes = _read_regular_file_no_follow(child_stdout_path.resolve(), run_root.resolve(), max_bytes=16 * 1024 * 1024)
+            pipeline_output = captured_bytes.decode("utf8")
+        except (OSError, ValueError, UnicodeError) as error:
+            pipeline_execution_error = f"evidence_pipeline_stdout_readback_failed:{type(error).__name__}"
+            if completed.returncode == 0:
+                completed = subprocess.CompletedProcess(command, 2, stdout="")
+    pipeline_log_write_error = _persist_log(
+        log_path,
+        pipeline_output,
+        failure_token="evidence_pipeline_log_write_failed",
     )
-    log_path.write_text(completed.stdout, encoding="utf-8")
-    pipeline_summary = _extract_json_object(completed.stdout)
+    pipeline_summary = _extract_json_object(pipeline_output)
 
     freshness_status = _read_status(freshness_status_path)
     paper_health_refresh_blocked = bool(
@@ -778,6 +1233,19 @@ def main(argv: list[str] | None = None) -> int:
     # diagnosis, but propagate a non-zero scheduler result so a stale
     # baseline cannot look like a successful morning run.
     wrapper_exit_code = completed.returncode
+    if pipeline_summary is None and wrapper_exit_code == 0:
+        wrapper_exit_code = 2
+        pipeline_execution_error = "evidence_pipeline_terminal_summary_missing"
+    if pipeline_summary is not None and wrapper_exit_code == 0 and (
+        pipeline_summary.get("overall_status") == "failed"
+        or not isinstance(pipeline_summary.get("errors_count", 0), int)
+        or isinstance(pipeline_summary.get("errors_count", 0), bool)
+        or pipeline_summary.get("errors_count", 0) != 0
+    ):
+        wrapper_exit_code = 2
+        pipeline_execution_error = "evidence_pipeline_terminal_summary_failed"
+    if pipeline_log_write_error is not None and wrapper_exit_code == 0:
+        wrapper_exit_code = 2
     if paper_health_refresh_blocked and wrapper_exit_code == 0:
         wrapper_exit_code = 2
     if paper_health_source_blocked and wrapper_exit_code == 0:
@@ -821,7 +1289,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     pipeline_errors_count = int(pipeline_fields.get("pipeline_errors_count") or 0)
     pipeline_blocking_gaps = list(pipeline_fields.get("pipeline_blocking_gaps") or [])
-    manual_action_required = bool(
+    validation_attention_required = bool(
         wrapper_exit_code != 0
         or freshness_status != "passed"
         or pipeline_summary is None
@@ -837,6 +1305,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         or exit_effectiveness_blocked
     )
+    freshness_actions = _freshness_action_classification(freshness_status_path, freshness_status)
+    coverage = (pipeline_summary or {}).get("source_coverage") or {}
+    user_actions = list(coverage.get("user_actions") or [])
+    manual_action_required = bool(coverage.get("user_action_required") is True or (
+        position_health_transition is not None and position_health_transition.get("manual_action_required") is True))
+    engineering_action_required = bool(wrapper_exit_code != 0 or freshness_actions["freshness_engineering_action_required"]
+        or pipeline_summary is None or pipeline_errors_count or pipeline_blocking_gaps
+        or pipeline_actionable_warning_count or paper_health_refresh_blocked or paper_health_source_blocked
+        or forward_binding_blocked or exit_effectiveness_blocked)
     payload = {
         "task": "baldr-evidence-pipeline-dry-run-daily",
         "status": status,
@@ -850,11 +1327,30 @@ def main(argv: list[str] | None = None) -> int:
         "freshness_status_path": str(freshness_status_path),
         "report_path": str(report_path),
         "log_path": str(log_path),
+        "pipeline_log_write_error": pipeline_log_write_error,
+        "pipeline_execution_error": pipeline_execution_error,
+        "pipeline_execution_started": not str(pipeline_execution_error or "").startswith("evidence_pipeline_child_launch_failed:"),
+        "pipeline_child_stdout_path": str(child_stdout_path),
+        "pipeline_command": command,
+        "pipeline_stdout_bytes": len(pipeline_output.encode("utf8")),
+        "pipeline_stdout_sha256": "sha256:" + hashlib.sha256(pipeline_output.encode("utf8")).hexdigest(),
+        "pipeline_report_exists": report_path.is_file(),
+        "pipeline_timeout_seconds": PIPELINE_TIMEOUT_SECONDS,
+        "recommendation_binding": recommendation_binding,
+        "controlled_validation": args.validation_decision_date is not None,
+        "decision_timezone": "Asia/Taipei",
         "exit_code": wrapper_exit_code,
         "checked_at": run_now.isoformat(timespec="seconds"),
         "manual_action_required": manual_action_required,
+        "user_actions": user_actions,
+        "engineering_action_required": engineering_action_required,
+        **freshness_actions,
+        "validation_attention_required": validation_attention_required,
+        "paper_research": coverage.get("paper_research"),
+        "research_qualification_required": bool(position_health_transition is not None
+            and position_health_transition.get("research_qualification_required") is True),
         "natural_maturity_only": bool(
-            pipeline_natural_maturity_warning_count > 0 and not manual_action_required
+            pipeline_natural_maturity_warning_count > 0 and not validation_attention_required
         ),
         "paper_health_refresh_status": (
             "not_requested"
@@ -911,10 +1407,30 @@ def main(argv: list[str] | None = None) -> int:
             else exit_effectiveness.get("status", "unknown")
         ),
         "exit_effectiveness_blocked": exit_effectiveness_blocked,
+        "exit_effectiveness_requested_as_of_date": (
+            exit_effectiveness_requested_as_of_date
+        ),
+        "exit_effectiveness_as_of_date": exit_effectiveness_as_of_date,
+        "exit_effectiveness_date_role": exit_effectiveness_date_role,
         "exit_effectiveness_output": (
             None
             if exit_effectiveness_output is None
             else str(exit_effectiveness_output)
+        ),
+        "exit_effectiveness_requested_output": (
+            None
+            if exit_effectiveness_output is None
+            else str(exit_effectiveness_output)
+        ),
+        "exit_effectiveness_artifact_path": (
+            None
+            if exit_effectiveness is None
+            else exit_effectiveness.get("actual_artifact_path")
+        ),
+        "exit_effectiveness_artifact_identity_status": (
+            "not_requested"
+            if exit_effectiveness is None
+            else exit_effectiveness.get("artifact_identity_status", "unknown")
         ),
         "exit_effectiveness_log": (
             None

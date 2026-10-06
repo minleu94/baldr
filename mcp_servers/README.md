@@ -13,8 +13,8 @@
 
 已使用絕對 Python / script 路徑註冊於：
 
-- Codex：`C:\Users\archi\.codex\config.toml`
-- Antigravity：`C:\Users\archi\.gemini\config\mcp_config.json`
+- Codex：`<USER_HOME>\.codex\config.toml`
+- Antigravity：`<USER_HOME>\.gemini\config\mcp_config.json`
 
 設定異動後必須重啟對應應用。舊 session 不會熱載入新增 MCP 工具。
 

@@ -32,7 +32,7 @@ def _item(
         value=Decimal(value),
         source=f"financial_data.{statement_type}_csv",
         source_version="financial-data-statements-2026-06-17",
-        quality=FactorQuality.DEGRADED,
+        legacy_quality_wire_value=FactorQuality.DEGRADED.value,
         report_basis=report_basis,
     )
 

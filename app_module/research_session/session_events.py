@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Optional, Union
 
-from .session_dtos import ResearchStockContextDTO
+from .session_dtos import ResearchRankContextDTO, ResearchStockContextDTO
 
 
 @dataclass(frozen=True)
@@ -45,15 +45,28 @@ class StockResearchContextChanged:
     decision_date: Optional[str] = None
     data_date: Optional[str] = None
     result_id: Optional[str] = None
+    identity_status: Optional[str] = None
+    source_snapshot_id: Optional[str] = None
+    source_snapshot_hash: Optional[str] = None
     profile_id: Optional[str] = None
     profile_version: Optional[str] = None
     source_id: Optional[str] = None
+    source_version: Optional[str] = None
+    mapping_source_id: Optional[str] = None
+    mapping_version: Optional[str] = None
+    mapping_observed_date: Optional[str] = None
     source_kind: Optional[str] = None
     source_label: Optional[str] = None
     source_workspace: Optional[str] = None
     source: str = "unknown"
     # 允許 host 直接傳入 immutable DTO；展開欄位仍保留以相容舊呼叫端。
     context: Optional[ResearchStockContextDTO] = None
+    ml_scope_mode: Optional[str] = None
+    daily_snapshot_root: Optional[str] = None
+    daily_snapshot_cohort_id: Optional[str] = None
+    daily_snapshot_condition_keys: Optional[str] = None
+    daily_snapshot_combine_mode: Optional[str] = None
+    rank_context: Optional[ResearchRankContextDTO] = None
 
 
 # 讓呼叫端可用較泛化的名稱，並保持單一事件契約。

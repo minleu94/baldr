@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from typing import Protocol, Sequence
+from ui_qt.status_vocabulary import status_detail
 
 
 class ReviewItemLike(Protocol):
@@ -23,8 +24,8 @@ def review_queue_state_text(
     count = len(dashboard.review_items)
     if count == 0:
         return (
-            "今日待判讀佇列為空；這只代表目前 DTO 沒有待判讀項目，"
-            "不代表 Phase gate 已完成，也不是買賣建議。"
+            "今日待判讀佇列為空；這只代表目前沒有明確人工項目，"
+            "背景機器提示、來源狀態與 Phase gate 仍須查看，不代表風險已確認，也不是買賣建議。"
         )
     active_ids = {str(item.item_id) for item in dashboard.review_items}
     viewed_count = len(set(viewed_review_item_ids) & active_ids)
@@ -37,15 +38,15 @@ def review_queue_state_text(
 def _is_degraded_status(status: object) -> bool:
     return str(status) in {
         "critical",
+        "failed",
+        "error",
         "warning",
         "degraded",
         "missing",
         "blocked",
         "action_required",
-        "waiting_for_time",
         "source_missing",
         "invalid_evidence",
-        "machine_candidate",
         "machine_degraded",
         "stale",
         "unknown",
@@ -64,8 +65,20 @@ def evidence_feed_state_text(dashboard) -> str:
             "目前沒有背景證據列；這只代表 WorkbenchDashboardDTO payload 為空。"
             "Workbench 不讀 DB、不執行 replay、不補資料，也不代表 gate 已通過。"
         )
+    state_summary = "；".join(dict.fromkeys(
+        status_detail(item.status, dimension="event")
+        for item in dashboard.background_evidence_feed
+    ))
+    neutral_events = {"waiting_for_time", "not_due", "market_closed", "skipped_market_closed", "skipped_non_trading_day", "machine_candidate"}
     degraded = any(
-        _is_degraded_status(item.status) or _has_degraded_reason(item.degraded_reason)
+        _is_degraded_status(item.status) or (
+            _has_degraded_reason(item.degraded_reason) and (
+                str(item.status) not in neutral_events or any(
+                    token in str(item.degraded_reason).lower()
+                    for token in ("missing", "error", "failed", "mismatch", "invalid", "blocked")
+                )
+            )
+        )
         for item in dashboard.background_evidence_feed
     )
     human_count = sum(
@@ -76,22 +89,36 @@ def evidence_feed_state_text(dashboard) -> str:
     )
     if degraded and human_count:
         return (
-            f"背景證據流降級：{count} 筆來源中包含 missing / degraded / warning。"
+            f"背景證據流降級：{count} 筆來源。各項狀態：{state_summary}。"
             "請依來源追蹤與診斷訊號人工檢查；Workbench 不補值、不重跑 pipeline、不讀 replay DB。"
         )
     if degraded:
         return (
-            f"背景證據流含 {count} 筆機器狀態：來源缺件、自然等待或降級。"
+            f"背景證據流含 {count} 筆機器狀態：{state_summary}。"
             "請依來源追蹤與診斷訊號等待或修復來源；不需人工簽核，Workbench 不補值、不重跑 pipeline、不讀 replay DB。"
         )
     return (
-        f"背景證據流已載入 {count} 筆唯讀來源。"
+        f"背景證據流已載入 {count} 筆唯讀來源。各項狀態：{state_summary}。"
         "這是既有 DTO / service payload 的彙整，不是交易建議。"
     )
 
 
 def action_item_state_text(dashboard) -> str:
     count = len(dashboard.action_items)
+    background_machine_count = sum(
+        1
+        for item in getattr(dashboard, "background_evidence_feed", ())
+        if str(getattr(item, "status_classification", "")).strip()
+        in {
+            "invalid_evidence",
+            "machine_candidate",
+            "machine_degraded",
+            "source_missing",
+            "stale",
+            "unknown",
+            "waiting_for_time",
+        }
+    )
     human_count = sum(
         1
         for item in dashboard.action_items
@@ -100,8 +127,14 @@ def action_item_state_text(dashboard) -> str:
     )
     machine_count = count - human_count
     if count == 0:
+        background_text = (
+            f"另有背景機器提示 {background_machine_count} 批，請查看背景證據流。"
+            if background_machine_count
+            else ""
+        )
         return (
             "目前沒有人工待處理事項；這不代表可以交易或 Phase gate 已通過。"
+            f"{background_text}"
             "Workbench 不寫 DB、不標記完成、不套用 lifecycle，也不是買賣建議。"
         )
     degraded = any(
@@ -113,6 +146,8 @@ def action_item_state_text(dashboard) -> str:
             handling = f"人工待處理 {human_count} 筆；機器狀態 {machine_count} 筆，不需人工簽核。"
         else:
             handling = f"人工待處理 0 筆；機器狀態 {machine_count} 筆，不需人工簽核。"
+        if background_machine_count:
+            handling += f"背景機器提示 {background_machine_count} 批。"
         return (
             f"Action Items 降級：{handling}佇列包含資料缺口、警示或等待真實時間累積項目。"
             "只有明確 human_review 項目只供人工覆盤排序；機器狀態不需人工簽核；"

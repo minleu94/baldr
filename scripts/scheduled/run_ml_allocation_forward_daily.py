@@ -1,7 +1,8 @@
 """Prepare one bounded, natural-date ML forward shadow run.
 
-This is an unregistered scheduler preparation wrapper.  It wakes from the
-Pacific 16:15 hook, waits for the real Asia/Taipei 08:30 decision clock, and
+This is an unregistered scheduler preparation wrapper. It wakes from the
+timezone-aware Asia/Taipei 08:25 hook, refreshes the bounded official calendar
+cache before the decision boundary, waits for the real 08:30 clock, and
 then invokes the derived shadow CLI with one explicitly frozen PIT source.
 The operational publication and durable archive branches are mutually
 exclusive.  A late start, missing config, source hash change, child failure,
@@ -24,17 +25,23 @@ import sys
 import time as time_module
 from typing import Callable, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
+from uuid import uuid4
 
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from data_module.official_trading_calendar import OfficialTradingCalendar  # noqa: E402
+from data_module.ml_daily_price_revision_gate import (  # noqa: E402
+    DailyPriceSourceRevisionError,
+    assert_model_artifact_source_revision_safe,
+)
 from scripts import run_daily_ml_allocation_orchestration as daily_orchestration  # noqa: E402
 TAIPEI = ZoneInfo("Asia/Taipei")
 TAIPEI_CUTOFF = time(8, 30)
 FORWARD_DEADLINE = time(8, 35)
-SCHEDULED_WAKE_LOCAL_TIME = "16:15"
+SCHEDULED_WAKE_LOCAL_TIME = "08:25"
+SCHEDULED_WAKE_TIMEZONE = "Asia/Taipei"
 TASK_NAME = "baldr-ml-allocation-forward-daily"
 SCHEMA_VERSION = "ml-forward-scheduled-status.v1"
 CONFIG_SCHEMA_VERSION = "ml-forward-scheduled-config.v1"
@@ -65,6 +72,7 @@ class ForwardScheduleConfig:
     run_date: date
     database: Path
     paper_state_db: Path
+    paper_trade_ledger_db: Path
     output_root: Path
     release_root: Path
     release_manifest_file_hash: str
@@ -158,9 +166,11 @@ def load_schedule_config(
         "decision_timezone",
         "decision_time",
         "scheduled_wake_local",
+        "scheduled_wake_timezone",
         "run_date",
         "database",
         "paper_state_db",
+        "paper_trade_ledger_db",
         "output_root",
         "release_root",
         "release_manifest_file_hash",
@@ -178,7 +188,11 @@ def load_schedule_config(
         raise ForwardScheduleConfigError("config.decision_time must be 08:30")
     if decoded.get("scheduled_wake_local") != SCHEDULED_WAKE_LOCAL_TIME:
         raise ForwardScheduleConfigError(
-            "config.scheduled_wake_local must be 16:15"
+            "config.scheduled_wake_local must be 08:25"
+        )
+    if decoded.get("scheduled_wake_timezone") != SCHEDULED_WAKE_TIMEZONE:
+        raise ForwardScheduleConfigError(
+            "config.scheduled_wake_timezone must be Asia/Taipei"
         )
     run_date_text = _required_text(decoded, "run_date")
     try:
@@ -246,6 +260,7 @@ def load_schedule_config(
         run_date=run_date,
         database=_required_path(decoded, "database"),
         paper_state_db=_required_path(decoded, "paper_state_db"),
+        paper_trade_ledger_db=_required_path(decoded, "paper_trade_ledger_db"),
         output_root=_required_path(decoded, "output_root"),
         release_root=_required_path(decoded, "release_root"),
         release_manifest_file_hash=_required_sha256(
@@ -266,6 +281,7 @@ def _wait_until_taipei_cutoff(
     *,
     now_fn: Callable[[], datetime] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
+    on_observation: Callable[[datetime, datetime], None] | None = None,
 ) -> datetime:
     """Wait on the real Taipei clock; test clocks are accepted only by tests."""
 
@@ -277,6 +293,8 @@ def _wait_until_taipei_cutoff(
             raise ValueError("scheduled Taipei clock must include timezone")
         current = current_raw.astimezone(TAIPEI)
         cutoff = _taipei_cutoff_for(current)
+        if on_observation is not None:
+            on_observation(current, cutoff)
         if current >= cutoff:
             return current
         remaining = (cutoff - current).total_seconds()
@@ -328,6 +346,8 @@ def build_child_command(
         str(config.database),
         "--paper-state-db",
         str(config.paper_state_db),
+        "--paper-trade-ledger-db",
+        str(config.paper_trade_ledger_db),
         "--output-root",
         str(config.output_root),
         "--release-root",
@@ -390,6 +410,7 @@ def _base_payload(
         "decision_at": decision_at.astimezone(TAIPEI).isoformat(),
         "natural_forward_deadline_at": deadline_at.astimezone(TAIPEI).isoformat(),
         "scheduled_wake_local": SCHEDULED_WAKE_LOCAL_TIME,
+        "scheduled_wake_timezone": SCHEDULED_WAKE_TIMEZONE,
         "config_path": str(config_path.expanduser().resolve()),
         "status": status,
         "blockers": list(blockers),
@@ -469,6 +490,7 @@ def run_preflight(
         default_database,
         default_output_root,
         default_paper_state_db,
+        default_paper_trade_ledger_db,
         default_release_manifest_file_hash,
         default_release_root,
         default_temporary_closure_path,
@@ -493,6 +515,11 @@ def run_preflight(
     check_path("derived_script", derived_script, kind="file")
     check_path("market_database", default_database(), kind="file")
     check_path("paper_state_database", default_paper_state_db(), kind="file")
+    check_path(
+        "paper_trade_ledger_database",
+        default_paper_trade_ledger_db(),
+        kind="file",
+    )
     check_path("shadow_output_root", default_output_root(), kind="directory")
     check_path("archive_root", default_archive_root(), kind="directory")
     check_path("calendar_cache_root", default_calendar_cache_root(), kind="directory")
@@ -506,13 +533,59 @@ def run_preflight(
 
     observed_release_hash: str | None = None
     release_error: str | None = None
+    model_source_error: str | None = None
+    model_source_quarantined = False
+    max_release_manifest_bytes = 1_048_576
     if release_manifest.is_file():
         try:
-            observed_release_hash = _canonical_file_hash(release_manifest)
+            with release_manifest.open("rb") as stream:
+                release_manifest_bytes = stream.read(max_release_manifest_bytes + 1)
         except OSError as error:
             release_error = f"{type(error).__name__}:{error}"
-    if observed_release_hash != expected_release_hash:
-        release_error = release_error or "release manifest file hash mismatch"
+            model_source_error = "release_manifest_read_failed"
+        else:
+            if len(release_manifest_bytes) > max_release_manifest_bytes:
+                release_error = "release manifest exceeds preflight JSON size limit"
+                model_source_error = "release_manifest_size_limit_exceeded"
+            else:
+                observed_release_hash = "sha256:" + hashlib.sha256(
+                    release_manifest_bytes
+                ).hexdigest()
+                if observed_release_hash != expected_release_hash:
+                    release_error = "release manifest file hash mismatch"
+                    model_source_error = "release_pin_unverified"
+                else:
+                    try:
+                        release_payload = json.loads(
+                            release_manifest_bytes.decode("utf-8")
+                        )
+                    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                        model_source_error = (
+                            f"release_manifest_invalid:{type(error).__name__}"
+                        )
+                    else:
+                        artifact_hash = (
+                            release_payload.get("artifact_hash")
+                            if isinstance(release_payload, Mapping)
+                            else None
+                        )
+                        if (
+                            not isinstance(artifact_hash, str)
+                            or SHA256_RE.fullmatch(artifact_hash) is None
+                        ):
+                            model_source_error = "release_artifact_hash_invalid"
+                        else:
+                            try:
+                                assert_model_artifact_source_revision_safe(
+                                    artifact_hash
+                                )
+                            except DailyPriceSourceRevisionError:
+                                model_source_quarantined = True
+                                model_source_error = "known_source_revision_quarantine"
+    else:
+        model_source_error = "release_manifest_missing"
+    if observed_release_hash != expected_release_hash and release_error is None:
+        release_error = "release manifest file hash mismatch"
 
     blockers = [
         f"missing:{item['name']}"
@@ -521,6 +594,13 @@ def run_preflight(
     ]
     if release_error is not None:
         blockers.append(f"release_pin:{release_error}")
+    if model_source_error is not None:
+        blockers.append(f"model_source:{model_source_error}")
+    deployment_path_ready = (
+        all(item["exists"] is True for item in checks)
+        and release_error is None
+    )
+    model_source_ready = model_source_error is None
     payload: dict[str, object] = {
         "schema_version": "ml-forward-preflight.v1",
         "task": TASK_NAME,
@@ -529,6 +609,10 @@ def run_preflight(
         "release_root": str(release_root.expanduser().resolve()),
         "release_manifest_file_hash": expected_release_hash,
         "release_manifest_file_hash_observed": observed_release_hash,
+        "deployment_path_ready": deployment_path_ready,
+        "model_source_ready": model_source_ready,
+        "model_source_quarantined": model_source_quarantined,
+        "model_source_blocker": model_source_error,
         "blockers": blockers,
         "wait_started": False,
         "config_producer_called": False,
@@ -804,6 +888,157 @@ def _post_deadline_maturity(
     }
 
 
+def _child_integrity_readback(
+    child_payload: Mapping[str, object] | None,
+    *,
+    post_deadline_maturity: Mapping[str, object] | None,
+) -> dict[str, object] | None:
+    """把 child 既有 integrity evidence 投影到 bounded scheduler receipt。
+
+    child immutable ``source`` 已保存完整比較；scheduler 只保留固定欄位與
+    record identity，避免把整份 source/required-files 複製進 parent receipt。
+    此函式不重算 guard，也不改變 fail-closed 結果。
+    """
+
+    if child_payload is None:
+        return None
+    source_value = child_payload.get("source")
+    source = source_value if isinstance(source_value, Mapping) else None
+    record_identity = {
+        key: child_payload[key]
+        for key in ("record_path", "record_hash", "record_file_hash")
+        if isinstance(child_payload.get(key), str)
+    }
+    if source is None and not record_identity:
+        return None
+
+    def _fixed_fields(
+        value: Mapping[str, object],
+        fields: tuple[str, ...],
+    ) -> dict[str, object]:
+        return {key: value[key] for key in fields if key in value}
+
+    component_readback: dict[str, object] = {}
+    if source is not None:
+        for name in ("database", "paper_state_db", "paper_trade_ledger_db"):
+            value = source.get(name)
+            if isinstance(value, Mapping):
+                component = _fixed_fields(
+                    value,
+                    (
+                        "path",
+                        "exists",
+                        "size_bytes",
+                        "mtime_ns",
+                        "after",
+                        "unchanged",
+                        "changed_fields",
+                        "integrity_verified",
+                        "change_class",
+                    ),
+                )
+                coordination = value.get("coordination")
+                if isinstance(coordination, Mapping):
+                    component["coordination"] = _fixed_fields(
+                        coordination,
+                        (
+                            "status",
+                            "authorized",
+                            "reason",
+                            "outer_stat_unchanged",
+                            "contract_checks",
+                        ),
+                    )
+                component_readback[name] = component
+        release_value = source.get("release_manifest")
+        if isinstance(release_value, Mapping):
+            release_component = _fixed_fields(
+                release_value,
+                (
+                    "before",
+                    "path",
+                    "exists",
+                    "size_bytes",
+                    "mtime_ns",
+                    "after",
+                    "unchanged",
+                    "required_files_unchanged",
+                    "changed_fields",
+                ),
+            )
+            release_integrity = release_value.get("required_file_integrity")
+            if isinstance(release_integrity, Mapping):
+                release_component["required_file_integrity"] = _fixed_fields(
+                    release_integrity,
+                    (
+                        "status",
+                        "unchanged",
+                        "hashes_before",
+                        "hashes_after",
+                        "which_changed",
+                    ),
+                )
+            component_readback["release_manifest"] = release_component
+        for name in (
+            "database_read_only_required",
+            "paper_state_writer_coordination_required",
+            "release_read_only_required",
+        ):
+            if name in source:
+                component_readback[name] = source[name]
+
+    readback: dict[str, object] = {
+        "schema_version": "ml-forward-child-integrity-readback.v1",
+        "child_status": child_payload.get("status"),
+        "record": record_identity,
+        "components": component_readback,
+    }
+
+    release_value = child_payload.get("release")
+    if isinstance(release_value, Mapping):
+        required_files = release_value.get("required_files")
+        if isinstance(required_files, list):
+            hashes_before = {
+                str(item.get("path")): item.get("sha256")
+                for item in required_files
+                if isinstance(item, Mapping)
+                and isinstance(item.get("path"), str)
+                and isinstance(item.get("sha256"), str)
+            }
+            readback["release_observation"] = {
+                "observation_receipt_path": release_value.get(
+                    "observation_receipt_path"
+                ),
+                "required_file_hashes_before": hashes_before,
+            }
+
+    if post_deadline_maturity is not None:
+        sidecar_fields = (
+            "sidecar_database_path",
+            "sidecar_file_hash_before",
+            "sidecar_file_hash_after",
+            "writes_shadow_sidecar",
+            "outcome_records_before",
+            "outcome_records_after",
+            "outcome_records_appended",
+            "status",
+            "evidence_status",
+        )
+        sidecar = {
+            key: post_deadline_maturity[key]
+            for key in sidecar_fields
+            if key in post_deadline_maturity
+        }
+        if sidecar:
+            # 這是 parent post-deadline research sidecar 操作，明確置於
+            # child formal read-only guards 之外。
+            sidecar["classification"] = "parent_post_deadline_shadow_sidecar"
+            sidecar["formal_integrity_guard"] = False
+            readback["post_deadline_sidecar"] = sidecar
+
+    return readback
+
+
 def _attach_post_deadline_maturity(
     *,
     payload: dict[str, object],
@@ -833,6 +1068,12 @@ def _attach_post_deadline_maturity(
             "writes_market_database": False,
         }
     payload["post_deadline_maturity"] = result
+    child_integrity = _child_integrity_readback(
+        child_payload,
+        post_deadline_maturity=result,
+    )
+    if child_integrity is not None:
+        payload["child_read_only_integrity"] = child_integrity
     result_status = result.get("status")
     is_blocked = isinstance(result_status, str) and result_status.startswith(
         "blocked"
@@ -908,6 +1149,7 @@ def run_once(
                 default_database,
                 default_output_root,
                 default_paper_state_db,
+                default_paper_trade_ledger_db,
                 default_release_root,
                 default_temporary_closure_path,
                 prepare_daily_config,
@@ -921,6 +1163,7 @@ def run_once(
                 now=local_now,
                 database=default_database(),
                 paper_state_db=default_paper_state_db(),
+                paper_trade_ledger_db=default_paper_trade_ledger_db(),
                 output_root=default_output_root(),
                 release_root=default_release_root(),
                 calendar_cache_path=default_calendar_cache_root(),
@@ -1238,14 +1481,59 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload, code = run_preflight(derived_script=args.derived_script)
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
         return code
-    reached = _wait_until_taipei_cutoff()
-    payload, code = run_once(
-        config_path=args.config,
-        config_root=args.config_root,
-        observed=reached,
-        derived_script=args.derived_script,
-        status_root_override=args.status_root,
-    )
+    # 等候本身也是排程執行：每次觀察留 heartbeat，不把前次成功誤當本次。
+    # 這份 operational custody 不給 forward credit，也不能識別外部 terminator。
+    state_root = (args.status_root or DEFAULT_STATUS_ROOT).expanduser().resolve()
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid4().hex[:12]
+    state_path = state_root / "run_state" / run_id / "state.json"
+    state: dict[str, object] = {
+        "schema_version": "ml-forward-runtime-state.v1", "task": TASK_NAME,
+        "run_id": run_id, "process_id": os.getpid(), "terminal": False,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "phase": "starting", "forward_credit_granted": False,
+        "broker_order_allowed": False, "terminator": "unknown",
+        "state_path": str(state_path),
+    }
+
+    def persist_state() -> None:
+        _atomic_write_json(state_path, state)
+        _atomic_write_json(state_root / "runtime_state.json", state)
+
+    def observe_wait(current: datetime, cutoff: datetime) -> None:
+        state.update({
+            "last_heartbeat_at": current.astimezone(timezone.utc).isoformat(),
+            "decision_at": cutoff.isoformat(),
+            "phase": "waiting_for_taipei_cutoff" if current < cutoff else "cutoff_reached",
+        })
+        persist_state()
+
+    persist_state()
+    try:
+        reached = _wait_until_taipei_cutoff(on_observation=observe_wait)
+        state["phase"] = "running_after_cutoff"
+        persist_state()
+        payload, code = run_once(
+            config_path=args.config,
+            config_root=args.config_root,
+            observed=reached,
+            derived_script=args.derived_script,
+            status_root_override=args.status_root,
+        )
+    except KeyboardInterrupt:
+        state.update({"phase": "interrupted", "exit_code": 130, "terminal": True,
+                      "finished_at": datetime.now(timezone.utc).isoformat()})
+        persist_state()
+        return 130
+    except Exception as error:  # noqa: BLE001 - 留下失敗 custody，不回填歷史
+        state.update({"phase": "failed", "exit_code": 1, "terminal": True,
+                      "error": f"{type(error).__name__}:{error}",
+                      "finished_at": datetime.now(timezone.utc).isoformat()})
+        persist_state()
+        raise
+    state.update({"phase": "terminal", "exit_code": code, "terminal": True,
+                  "result_status": payload.get("status"),
+                  "finished_at": datetime.now(timezone.utc).isoformat()})
+    persist_state()
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     return code
 

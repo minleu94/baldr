@@ -35,7 +35,11 @@ from ml_module.allocation_release_contract import (
     payload_hash,
 )
 from ml_module.allocation_contracts import PortfolioMLDatasetRow
+from artifact_contracts.restated_research_contract import RestatedResearchInputBinding
 from ml_module.allocation_release_loader import register_release_loader
+from data_module.ml_daily_price_revision_gate import (
+    assert_model_artifact_source_revision_safe,
+)
 
 
 @dataclass(frozen=True)
@@ -168,6 +172,7 @@ class LoadedAllocationRelease:
         policy_id: str | None = None,
         policy_hash: str,
         expected_universe_hash: str | None = None,
+        research_input_binding: RestatedResearchInputBinding | None = None,
     ) -> MLAllocationInferenceResult:
         """以明確的 post-freeze research clock 驗證 target-free rows。
 
@@ -196,6 +201,7 @@ class LoadedAllocationRelease:
             policy_hash=policy_hash,
             expected_universe_hash=expected_universe_hash,
             allow_research_shadow=True,
+            research_input_binding=research_input_binding,
         )
 
     def compare_frozen_rows(
@@ -302,6 +308,10 @@ class AllocationReleaseAdapter:
             if manifest.release_identity_hash != expected_release_identity_hash:
                 raise ValueError("release identity hash mismatch")
 
+        # 在 joblib 反序列化前檢查事故隔離；舊 release 保留供稽核，
+        # shadow wrapper 不得繼續使用來源已修訂的模型。
+        assert_model_artifact_source_revision_safe(manifest.artifact_hash)
+
         artifact_path = _controlled_path(
             root,
             manifest.artifact_file,
@@ -355,7 +365,10 @@ def load_allocation_release(
 
 
 # 由 application boundary 提供實作，ML producer 只看中立 loader contract。
-register_release_loader(load_allocation_release)
+register_release_loader(
+    load_allocation_release,
+    output_type=LoadedAllocationRelease,
+)
 
 
 def _validate_artifact_lineage(

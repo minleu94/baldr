@@ -1,6 +1,9 @@
 import os
-from datetime import date, datetime
+import threading
+import time
+from datetime import date, datetime, timezone
 from dataclasses import replace
+from zoneinfo import ZoneInfo
 
 import sys
 
@@ -25,8 +28,12 @@ from app_module.decision_desk_dtos import (
     DecisionDeskSectorFocus,
     DecisionDeskStockCard,
     DecisionDeskStockFocus,
+    IndustryRepresentativeStock,
+    IndustryStrengthRow,
+    IndustryStrengthSummary,
 )
 from app_module.decision_desk_service import DecisionDeskSnapshotBuilder
+from app_module.exceptions import BacktestCancelledError
 from app_module.market_data_visibility_dtos import (
     InstitutionalFlowMarketSummary,
     MarketDataVisibilitySummary,
@@ -34,6 +41,7 @@ from app_module.market_data_visibility_dtos import (
     SourceVisibilityStatus,
 )
 from ui_qt.theme import MIDNIGHT_ANALYST
+import ui_qt.views.decision_desk_view as decision_desk_view_module
 from ui_qt.views.decision_desk_view import DecisionDeskView
 
 
@@ -178,6 +186,58 @@ def test_decision_desk_view_initialization_does_not_call_builder():
     assert "尚未載入" in view.overall_status_label.text()
 
 
+def test_decision_desk_default_date_uses_taipei_across_host_midnight(monkeypatch):
+    app()
+    taipei_date = date(2026, 10, 5)
+    pacific_date = date(2026, 10, 4)
+    pacific = ZoneInfo("America/Los_Angeles")
+
+    # Both instants fall on October 4 in Los Angeles while already on October
+    # 5 in Taipei, including times on either side of UTC midnight.
+    for instant_utc in (
+        datetime(2026, 10, 4, 16, 30, tzinfo=timezone.utc),
+        datetime(2026, 10, 5, 6, 30, tzinfo=timezone.utc),
+    ):
+        assert instant_utc.astimezone(pacific).date() == pacific_date
+
+        class FrozenDateTime:
+            @classmethod
+            def now(cls, tz=None):
+                assert tz is timezone.utc
+                return instant_utc.astimezone(tz)
+
+        monkeypatch.setattr(decision_desk_view_module, "datetime", FrozenDateTime)
+        view = DecisionDeskView(
+            FakeBuilder(_snapshot()),
+            auto_refresh=False,
+            async_refresh=False,
+        )
+        assert view.as_of_date == taipei_date
+        assert view.decision_date_card.value_label.text() == taipei_date.isoformat()
+        view.close()
+
+
+def test_decision_desk_preserves_explicit_historical_date_without_reading_clock(monkeypatch):
+    app()
+
+    class ForbiddenClock:
+        @classmethod
+        def now(cls, tz=None):
+            raise AssertionError("explicit as_of_date must not consult the default clock")
+
+    monkeypatch.setattr(decision_desk_view_module, "datetime", ForbiddenClock)
+    explicit_date = date(2026, 6, 15)
+    view = DecisionDeskView(
+        FakeBuilder(_snapshot()),
+        as_of_date=explicit_date,
+        auto_refresh=False,
+        async_refresh=False,
+    )
+    assert view.as_of_date == explicit_date
+    assert view.decision_date_card.value_label.text() == explicit_date.isoformat()
+    view.close()
+
+
 def test_decision_desk_view_auto_refreshes_when_first_shown():
     app_instance = app()
     builder = FakeBuilder(_snapshot())
@@ -196,6 +256,61 @@ def test_decision_desk_view_auto_refreshes_when_first_shown():
     view.close()
 
 
+def test_closing_decision_desk_cancels_worker_and_closes_after_native_thread_finishes():
+    app_instance = app()
+    started = threading.Event()
+    cancellation_seen = threading.Event()
+    native_thread_finished = threading.Event()
+
+    class CancellableBuilder:
+        def build_snapshot(self, as_of_date: date, cancel_callback=None):
+            started.set()
+            while True:
+                if cancel_callback():
+                    cancellation_seen.set()
+                    break
+                time.sleep(0.005)
+            raise BacktestCancelledError("載入已取消")
+
+    view = DecisionDeskView(
+        CancellableBuilder(),
+        as_of_date=date(2026, 6, 15),
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    view.show()
+    view.refresh_snapshot()
+
+    deadline = time.monotonic() + 2
+    while not started.is_set() and time.monotonic() < deadline:
+        app_instance.processEvents()
+        time.sleep(0.005)
+    assert started.is_set()
+
+    worker = view._refresh_worker
+    assert worker is not None
+    worker.native_thread_finished.connect(native_thread_finished.set)
+    view.close()
+    assert view._closing
+
+    deadline = time.monotonic() + 3
+    while not (
+        native_thread_finished.is_set()
+        and view._refresh_worker is None
+        and not view.isVisible()
+    ):
+        app_instance.processEvents()
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.005)
+
+    assert cancellation_seen.is_set()
+    assert native_thread_finished.is_set()
+    assert view._refresh_worker is None
+    assert not view.isVisible()
+    assert view._last_snapshot is None
+
+
 def test_decision_desk_view_refresh_calls_builder_and_renders_snapshot():
     app()
     s = _snapshot()
@@ -204,8 +319,27 @@ def test_decision_desk_view_refresh_calls_builder_and_renders_snapshot():
     view = rendered_view(builder, as_of_date=target_date)
 
     assert builder.calls == [target_date]
-    assert "整體品質" in view.overall_status_label.text()
-    assert "觀察到" in view.overall_status_label.text()
+    assert view.overall_status_label.text() == "摘要已載入"
+    assert "2026-06-15" in view.generated_at_label.text()
+
+
+def test_decision_desk_explains_watchlist_changes_and_missing_previous_score():
+    app()
+    snapshot = _snapshot()
+    snapshot = replace(snapshot, watchlist_triggers=replace(
+        snapshot.watchlist_triggers,
+        trigger_count=2,
+        triggered_codes=("2330", "2603"),
+        top_signal="new=2330;down=2603",
+        warnings=("watchlist_trigger_previous_unknown:2330",),
+    ))
+    view = rendered_view(FakeBuilder(snapshot))
+    text = view.watchlist_triggers_value.text()
+    assert "2330：目前分數達觀察門檻，但缺前次分數" in text
+    assert "2603：分數較前次下降" in text
+    assert "資料日：2026-06-15" in text
+    assert "查看選中個股研究報告" in text
+    view.close()
 
 
 def test_decision_desk_view_renders_answer_first_dashboard():
@@ -237,6 +371,99 @@ def test_decision_desk_view_stock_focus_buttons_drill_down_to_smart_money():
     assert any(button.text() == "2330" for button in view.stock_focus_buttons)
 
 
+def test_decision_desk_view_focus_opens_shared_stock_research_context():
+    app()
+    contexts: list[object] = []
+    view = DecisionDeskView(
+        FakeBuilder(_snapshot()),
+        auto_refresh=False,
+        async_refresh=False,
+    )
+    view.stockResearchRequested.connect(contexts.append)
+    view.refresh_snapshot()
+
+    assert view.stock_focus_research_button.isEnabled()
+    assert view.stock_focus_research_button.text() == "開啟 2330 研究報告"
+    view.stock_focus_research_button.click()
+
+    assert len(contexts) == 1
+    context = contexts[0]
+    assert context.stock_code == "2330"
+    assert context.source_workspace == "market_explore"
+    assert context.source_kind == "decision_desk"
+    assert context.decision_date == "2026-06-15"
+
+
+def test_decision_desk_view_renders_comparable_industry_card_and_drills_to_representative_stock():
+    app()
+    base = _snapshot()
+    strength = IndustryStrengthSummary(
+        as_of_date=date(2026, 6, 15),
+        quality=DecisionDeskQuality.DEGRADED,
+        warnings=("industry_mapping_current_research_only",),
+        source_version="industry-strength.current-research.v1",
+        mapping_source_id="meta_data.companies.csv",
+        mapping_version="tw-industry-explicit-map.v1",
+        mapping_observed_date=date(2026, 6, 14),
+        mapping_available_at="2026-06-14T08:00:00+08:00",
+        rows=(
+            IndustryStrengthRow(
+                industry_name="半導體",
+                index_name="半導體類指數",
+                industry_level="leaf",
+                market_scope="twse",
+                return_5d_bp=200,
+                return_20d_bp=500,
+                excess_5d_bp=100,
+                excess_20d_bp=300,
+                coverage_5d_bp=10000,
+                coverage_20d_bp=10000,
+                constituent_count=1,
+                eligible_stock_count_5d=1,
+                eligible_stock_count_20d=1,
+                representative_stocks=(
+                    IndustryRepresentativeStock(
+                        stock_code="2330",
+                        stock_name="台積電",
+                        industry_name="半導體",
+                    ),
+                ),
+            ),
+        ),
+    )
+    snapshot = replace(
+        base,
+        sector_rotation=SectorRotationSummary(
+            as_of_date=date(2026, 6, 15),
+            quality=DecisionDeskQuality.DEGRADED,
+            warnings=("industry_mapping_current_research_only",),
+            leading_sector="半導體",
+            industry_strength=strength,
+        ),
+    )
+    contexts: list[object] = []
+    view = DecisionDeskView(FakeBuilder(snapshot), auto_refresh=False, async_refresh=False)
+    view.stockResearchRequested.connect(contexts.append)
+    view.refresh_snapshot()
+
+    assert "可比產業" in view.sector_rotation_value.text()
+    assert "current research only" in view.sector_rotation_value.text()
+    assert view.industry_focus_buttons
+    view.industry_focus_buttons[0].click()
+
+    assert len(contexts) == 1
+    context = contexts[0]
+    assert context.stock_code == "2330"
+    assert context.source_kind == "industry_strength"
+    assert context.source_label == "市場總覽／半導體代表股"
+    assert context.data_date == "2026-06-15"
+    assert context.source_version == "industry-strength.current-research.v1"
+    assert context.mapping_source_id == "meta_data.companies.csv"
+    assert context.mapping_version == "tw-industry-explicit-map.v1"
+    assert context.mapping_observed_date == "2026-06-14"
+    assert context.has_source is True
+
+
 def test_decision_desk_view_shows_degraded_status():
     app()
     s = _snapshot(
@@ -246,7 +473,7 @@ def test_decision_desk_view_shows_degraded_status():
     )
     view = rendered_view(FakeBuilder(s))
 
-    assert "降級" in view.overall_status_label.text()
+    assert view.overall_status_label.text() == "摘要已載入"
     assert "降級" in view.market_breadth_status.text()
     assert "降級" in view._status_badges[view.market_breadth_status].text()
 
@@ -260,9 +487,10 @@ def test_decision_desk_view_shows_missing_status():
     )
     view = rendered_view(FakeBuilder(s))
 
-    assert "缺漏" in view.overall_status_label.text()
-    assert "缺漏" in view.market_regime_status.text()
-    assert "缺漏" in view._status_badges[view.market_regime_status].text()
+    assert view.overall_status_label.text() == "摘要已載入"
+    assert "資料缺件" in view.market_regime_status.text()
+    assert "資料缺件" in view._status_badges[view.market_regime_status].text()
+    assert "資料可見性：缺漏" in view.overall_warn_label.toPlainText()
 
 
 def test_decision_desk_view_aggregates_warning_lines_and_refresh_button():
@@ -316,7 +544,7 @@ def test_decision_desk_view_fallback_to_degraded_if_builder_exception():
     app()
     view = rendered_view(FailingBuilder())
 
-    assert "降級" in view.overall_status_label.text()
+    assert "載入失敗" in view.overall_status_label.text()
     assert "snapshot_error" in view.overall_warn_label.toPlainText()
 
 
@@ -581,4 +809,58 @@ def test_decision_desk_view_renders_visibility_quality_missing_state_and_action_
     assert "降級" in view.visibility_quality_badge.text()
     assert "僅供研究可見性" in view.visibility_action_hint.text()
     assert "三大法人" in view.visibility_sources_label.text()
-    assert "缺漏" in view.visibility_sources_label.text()
+    assert "資料缺件" in view.visibility_sources_label.text()
+
+
+def test_decision_desk_displays_valid_regime_source_date_separately_from_decision_date():
+    app()
+    base = _snapshot()
+    summary = replace(base.market_regime, meta={"source_data_date": "2026-06-13"})
+    snapshot = replace(base, market_regime=summary)
+    view = rendered_view(FakeBuilder(snapshot))
+
+    text = view.market_regime_value.text()
+    assert "行情日：2026-06-13" in text
+    assert "判斷日：2026-06-15" in text
+    view.close()
+
+    for source_data_date in ("2026-6-13", "2026-06-16", None):
+        summary = replace(
+            base.market_regime,
+            meta={"source_data_date": source_data_date},
+        )
+        view = rendered_view(FakeBuilder(replace(base, market_regime=summary)))
+        text = view.market_regime_value.text()
+        assert "行情日：未知" in text
+        assert "判斷日：2026-06-15" in text
+        view.close()
+
+
+def test_decision_desk_shows_unknown_regime_metrics_and_preserves_real_zero():
+    app()
+    base = _snapshot()
+    missing_score = replace(
+        base.market_regime,
+        regime_score=None,
+        regime_confidence=9109,
+    )
+    view = rendered_view(
+        FakeBuilder(replace(base, market_regime=missing_score))
+    )
+    text = view.market_regime_value.text()
+    assert "得分：未知" in text
+    assert "訊號強度：9109" in text
+    assert "行情日：未知" in text
+    assert "判斷日：2026-06-15" in text
+    view.close()
+
+    real_zero = replace(
+        base.market_regime,
+        regime_score=0,
+        regime_confidence=0,
+    )
+    view = rendered_view(FakeBuilder(replace(base, market_regime=real_zero)))
+    text = view.market_regime_value.text()
+    assert "得分：0" in text
+    assert "訊號強度：0" in text
+    view.close()

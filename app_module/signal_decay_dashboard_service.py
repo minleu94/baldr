@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+import sqlite3
 from typing import Any
 
 from app_module.signal_decay_dashboard_dtos import (
@@ -11,6 +12,9 @@ from app_module.signal_decay_dashboard_dtos import (
     SignalDecayDashboardRow,
 )
 from app_module.signal_decay_service import SignalDecayService
+from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.live_research_gap_repository import LiveResearchGapRepository
+from app_module.signal_decay_repository import SignalDecayRepository
 
 
 SIGNAL_DECAY_LIMITATIONS = (
@@ -27,15 +31,30 @@ class SignalDecayDashboardService:
         self.backend = backend
 
     def load_dashboard(self, request: SignalDecayDashboardRequest) -> SignalDecayDashboardResult:
-        rows = tuple(
-            _row_from_observation(row)
-            for row in self.backend.list_decay_observations(
-                observation_date=_blank_to_none(request.observation_date),
-                signal_scope_type=_blank_to_none(request.scope_type),
-                signal_scope_id=_blank_to_none(request.scope_id),
+        try:
+            rows = tuple(
+                _row_from_observation(row)
+                for row in self.backend.list_decay_observations(
+                    observation_date=_blank_to_none(request.observation_date),
+                    signal_scope_type=_blank_to_none(request.scope_type),
+                    signal_scope_id=_blank_to_none(request.scope_id),
+                )
+                if _observation_matches(row, request)
             )
-            if _observation_matches(row, request)
-        )
+        except (FileNotFoundError, sqlite3.OperationalError) as exc:
+            diagnostic = _readonly_source_diagnostic(exc)
+            if diagnostic is None:
+                raise
+            return SignalDecayDashboardResult(
+                request=request,
+                cards=_build_cards(()),
+                rows=(),
+                empty_state_message=(
+                    "SQLite 證據資料庫或資料表目前不可用；本頁以唯讀方式檢查，不會建立資料庫或初始化 schema。"
+                ),
+                limitations=SIGNAL_DECAY_LIMITATIONS,
+                diagnostics=(diagnostic,),
+            )
         return SignalDecayDashboardResult(
             request=request,
             cards=_build_cards(rows),
@@ -52,7 +71,23 @@ def create_signal_decay_dashboard_service(
     *,
     db_path: str | Path | None = None,
 ) -> SignalDecayDashboardService:
-    return SignalDecayDashboardService(SignalDecayService(config, db_path=db_path))
+    source_path = Path(db_path) if db_path is not None else Path(config.db_file)
+    backend = SignalDecayService(
+        config,
+        db_path=source_path,
+        evidence_repository=EvidenceEventRepository(config, db_path=source_path, read_only=True),
+        gap_repository=LiveResearchGapRepository(config, db_path=source_path, read_only=True),
+        decay_repository=SignalDecayRepository(config, db_path=source_path, read_only=True),
+    )
+    return SignalDecayDashboardService(backend)
+
+
+def _readonly_source_diagnostic(error: BaseException) -> str | None:
+    if isinstance(error, FileNotFoundError):
+        return "sqlite_database_missing"
+    if isinstance(error, sqlite3.OperationalError) and "no such table" in str(error).casefold():
+        return "sqlite_evidence_table_missing"
+    return None
 
 
 def _row_from_observation(row: Any) -> SignalDecayDashboardRow:

@@ -3,6 +3,8 @@ Pandas DataFrame 的 Qt Model
 提供排序、欄位隱藏、filter/search 等功能
 """
 
+from collections.abc import Mapping
+from decimal import Decimal
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex, Signal
 from PySide6.QtGui import QColor
 import pandas as pd
@@ -16,7 +18,13 @@ class PandasTableModel(QAbstractTableModel):
     # 自定義信號
     dataChanged = Signal(QModelIndex, QModelIndex)  # 數據改變信號
     
-    def __init__(self, dataframe: pd.DataFrame, parent=None, red_positive_columns: Optional[set[str]] = None):
+    def __init__(
+        self,
+        dataframe: pd.DataFrame,
+        parent=None,
+        red_positive_columns: Optional[set[str]] = None,
+        decimal_places_by_column: Optional[Mapping[str, int]] = None,
+    ):
         """初始化 Model
         
         Args:
@@ -31,6 +39,51 @@ class PandasTableModel(QAbstractTableModel):
         self._sort_order = Qt.AscendingOrder
         self._visible_columns = list(dataframe.columns)  # 可見欄位列表
         self._red_positive_columns = set(red_positive_columns or ())
+        self._decimal_places_by_column = self._validated_decimal_places(
+            dataframe,
+            decimal_places_by_column,
+        )
+
+    @staticmethod
+    def _validated_decimal_places(
+        dataframe: pd.DataFrame,
+        options: Optional[Mapping[str, int]],
+    ) -> dict[str, int]:
+        """驗證 opt-in 顯示精度；不接受 bool 精度或過長格式。"""
+
+        if options is None:
+            return {}
+        if not isinstance(options, Mapping):
+            raise TypeError("decimal_places_by_column 必須是欄名到精度的 mapping")
+
+        validated: dict[str, int] = {}
+        for column, places in options.items():
+            if type(column) is not str or not column:
+                raise TypeError("Decimal 顯示欄名必須是非空字串")
+            if column not in dataframe.columns:
+                raise ValueError(f"Decimal 顯示欄位不存在：{column}")
+            if type(places) is not int:
+                raise TypeError("Decimal 顯示精度必須是 int，且不可為 bool")
+            if not 0 <= places <= 8:
+                raise ValueError("Decimal 顯示精度必須介於 0 到 8")
+            validated[column] = places
+        return validated
+
+    @staticmethod
+    def _format_configured_decimal(value: object, places: int) -> str:
+        """只將合法有限 Decimal／整數轉為顯示文字，不改變底層數值。"""
+
+        if type(value) is Decimal:
+            if not value.is_finite():
+                return "未知"
+            return format(value, f".{places}f")
+        if type(value) is bool or isinstance(value, np.bool_):
+            return "未知"
+        if type(value) is int:
+            return format(Decimal(value), f".{places}f")
+        if isinstance(value, np.integer):
+            return format(Decimal(int(value)), f".{places}f")
+        return "未知"
     
     def rowCount(self, parent=QModelIndex()) -> int:
         """返回行數"""
@@ -61,9 +114,30 @@ class PandasTableModel(QAbstractTableModel):
             if col_name not in self._dataframe.columns:
                 return None
             
-            value = self._dataframe.iloc[row, col]
+            # 可見欄位可能只是原始 DataFrame 的子集；必須依欄名取值，
+            # 不能把可見欄位位置誤當成原始欄位位置，否則表頭與內容會錯位。
+            # 同名欄位則依 visible occurrence 對應回原始 occurrence，避免
+            # pandas get_loc 回傳 slice／Series。
+            source_positions = [
+                position
+                for position, name in enumerate(self._dataframe.columns)
+                if name == col_name
+            ]
+            visible_occurrence = sum(
+                1 for name in self._visible_columns[:col] if name == col_name
+            )
+            source_column = source_positions[
+                min(visible_occurrence, len(source_positions) - 1)
+            ]
+            value = self._dataframe.iloc[row, source_column]
             
-            if role == Qt.DisplayRole:
+            if role in (Qt.DisplayRole, Qt.ToolTipRole):
+                decimal_places = self._decimal_places_by_column.get(col_name)
+                if decimal_places is not None:
+                    if role == Qt.ToolTipRole:
+                        return "" if value is None else str(value)
+                    return self._format_configured_decimal(value, decimal_places)
+
                 # 處理列表/數組類型（如 tags）
                 if isinstance(value, (list, tuple, np.ndarray)):
                     if len(value) == 0:
@@ -129,12 +203,12 @@ class PandasTableModel(QAbstractTableModel):
     
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole) -> Any:
         """返回表頭數據"""
-        if role == Qt.DisplayRole:
+        if role in (Qt.DisplayRole, Qt.ToolTipRole):
             if orientation == Qt.Horizontal:
-                # 返回欄位名稱
-                if section < len(self._visible_columns):
+                # 表頭懸停也回傳同一個可見欄名，包含被截斷的長欄名。
+                if 0 <= section < len(self._visible_columns):
                     return self._visible_columns[section]
-            else:
+            elif section >= 0:
                 # 返回行號（從1開始）
                 return str(section + 1)
         

@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 from unittest.mock import patch
 
-from app_module.strategy_spec import StrategySpec
-from app_module.strategies.baseline_score_executor import BaselineScoreExecutor
-from app_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
-from app_module.strategies.stable_conservative_executor import StableConservativeExecutor
+from decision_module.strategies.contracts import StrategySpec
+from decision_module.strategies.baseline_score_executor import BaselineScoreExecutor
+from decision_module.strategies.momentum_aggressive_executor import MomentumAggressiveExecutor
+from decision_module.strategies.stable_conservative_executor import StableConservativeExecutor
 
 def make_dummy_data(days=100) -> pd.DataFrame:
     dates = pd.date_range("2026-01-01", periods=days)

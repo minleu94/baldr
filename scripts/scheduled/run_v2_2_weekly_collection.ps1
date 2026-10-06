@@ -34,7 +34,7 @@ if (-not (Test-Path $Python)) {
 }
 
 $Args = @(
-    (Join-Path $RepoRoot "scripts\collect_v2_2_weekly_evidence.py"),
+    (Join-Path $RepoRoot "scripts\scheduled\weekly_collection_controller.py"),
     "--source-db-path", $SourceDbPath,
     "--sidecar-db-path", $SidecarDbPath,
     "--output-root", $OutputRoot
@@ -44,4 +44,8 @@ $Output = & $Python @Args 2>&1
 $ExitCode = $LASTEXITCODE
 $Output | Out-File -FilePath $LogPath -Encoding utf8
 $Output
-exit $ExitCode
+if ($ExitCode -ne 0) { exit $ExitCode }
+if ($env:BALDR_ENABLE_CURRENT_FUNDAMENTAL_UPDATE -eq "0") { exit 0 }
+# 與 native Task 的 cmd 入口使用同一受控現況 writer，保留真正失敗碼。
+& $Python (Join-Path $RepoRoot "scripts\scheduled\run_current_fundamentals_scheduled.py") --output-root $OutputRoot --db-path $SourceDbPath
+exit $LASTEXITCODE

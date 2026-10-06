@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from app_module.backtest_service import BacktestService
 from app_module.backtest_repository import BacktestRunRepository
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 from app_module.dtos import BacktestReportDTO
 from app_module.exceptions import BacktestCancelledError
 from app_module.research_run_dtos import ResearchRunMetadataDTO, canonical_json
@@ -53,7 +53,7 @@ def _run_batch_backtest_worker(
 ) -> BacktestReportDTO:
     """在子進程中執行單檔回測的 Worker 函數 (Windows spawn 相容)"""
 
-    import app_module.strategies  # 確保子進程載入並註冊所有內建策略
+    import decision_module.strategies  # 確保子進程載入並註冊所有內建策略
     from app_module.backtest_service import BacktestService
     # 為防止多行程連線衝突，每個子行程重新實例化
     service = BacktestService(config)
@@ -648,23 +648,46 @@ class BatchBacktestService:
         Returns:
             整體統計字典
         """
-        # 過濾成功的結果
+        # 只有成功完成的結果才進入績效母體；失敗／無交易不可混入獲利比例。
         successful_results = [r for r in stock_results if r.success]
+        failed_results = [r for r in stock_results if not r.success]
+        no_trade_results = [
+            r for r in failed_results
+            if str(r.error_reason or "").strip() in {"無交易信號", "無交易訊號"}
+        ]
+        total_stocks = len(stock_results)
+        failed_stocks = len(failed_results)
+        coverage_bp = (
+            int(
+                (
+                    Decimal(len(successful_results)) * Decimal("10000")
+                    / Decimal(total_stocks)
+                ).to_integral_value(rounding=ROUND_HALF_UP)
+            )
+            if total_stocks
+            else 0
+        )
 
         if not successful_results:
             return {
-                'total_stocks': len(stock_results),
+                'total_stocks': total_stocks,
                 'successful_stocks': 0,
+                'failed_stocks': failed_stocks,
+                'no_trade_stocks': len(no_trade_results),
+                'coverage_bp': coverage_bp,
                 'profitable_stocks': 0,
                 'win_rate': 0.0,
+                'profitable_rate_bp': 0,
                 'cagr_median': 0.0,
-                'mdd_median': 0.0
+                'mdd_median': 0.0,
+                'cagr_sample_count': 0,
+                'mdd_sample_count': 0,
             }
 
         # 計算賺錢的股票數（CAGR > 0）
         profitable_stocks = sum(1 for r in successful_results if r.cagr and r.cagr > 0)
 
-        # 計算股票層級勝率
+        # 保留舊欄位名稱供相容讀取；語意是標的層級獲利比例，不是交易筆勝率。
         win_rate = profitable_stocks / len(successful_results) if successful_results else 0.0
 
         # 提取 CAGR 和 MDD
@@ -675,13 +698,27 @@ class BatchBacktestService:
         cagr_median = np.median(cagr_values) if cagr_values else 0.0
         mdd_median = np.median(mdd_values) if mdd_values else 0.0
 
+        profitable_rate_bp = int(
+            (
+                Decimal(profitable_stocks) * Decimal("10000")
+                / Decimal(len(successful_results))
+            ).to_integral_value(rounding=ROUND_HALF_UP)
+        )
+
         return {
-            'total_stocks': len(stock_results),
+            'total_stocks': total_stocks,
             'successful_stocks': len(successful_results),
+            'failed_stocks': failed_stocks,
+            'no_trade_stocks': len(no_trade_results),
+            'coverage_bp': coverage_bp,
             'profitable_stocks': profitable_stocks,
+            # 保留舊欄位供相容讀取；UI 會以 profitable_rate 顯示正確母體語義。
             'win_rate': win_rate,
+            'profitable_rate_bp': profitable_rate_bp,
             'cagr_median': cagr_median,
-            'mdd_median': mdd_median
+            'mdd_median': mdd_median,
+            'cagr_sample_count': len(cagr_values),
+            'mdd_sample_count': len(mdd_values),
         }
 
     def create_leaderboard_dataframe(
@@ -724,7 +761,12 @@ class BatchBacktestService:
         elif sort_by == "sharpe":
             df = df.sort_values('Sharpe', ascending=False, na_position='last')
         elif sort_by == "mdd":
-            df = df.sort_values('MDD%', ascending=True, na_position='last')  # MDD 越小越好
+            # MDD 通常是負值；以絕對回撤幅度排序，-10% 應優於 -50%。
+            df = (
+                df.assign(_MDDAbs=df['MDD%'].abs())
+                .sort_values(['_MDDAbs', '股票代號'], ascending=[True, True], na_position='last')
+                .drop(columns=['_MDDAbs'])
+            )
         elif sort_by == "cagr_mdd":
             # CAGR - MDD 權衡（CAGR 越高越好，MDD 越小越好）
             df['Score'] = df.apply(

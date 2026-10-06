@@ -4,21 +4,26 @@ from __future__ import annotations
 
 import csv
 from collections import Counter
-import shutil
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Callable, Iterable, Mapping
 
-from data_module.backup_retention import create_retained_backup
+from data_module.backup_retention import (
+    create_sqlite_retained_backup,
+    restore_sqlite_backup,
+)
+from data_module.contracts.statement import StatementItemRecord
 from data_module.fundamental_statement_availability_sources import (
     load_statement_availability_overrides_csv_files,
 )
 from data_module.fundamental_statement_data import (
-    StatementItemRecord,
     parse_statement_rows,
 )
-from decision_module.factors.factor_dtos import FactorDiagnostic
+from data_module.contracts.fundamental import (
+    SourceDiagnostic,
+    parse_legacy_quality_wire_value,
+)
 
 
 STATEMENT_FILE_SUFFIXES = {
@@ -33,18 +38,16 @@ _MISSING_AVAILABILITY_CODE = "fundamental_availability.missing_available_date"
 @dataclass(frozen=True)
 class StatementItemsBackfillPlan:
     records: tuple[StatementItemRecord, ...]
-    diagnostics: tuple[FactorDiagnostic, ...]
+    diagnostics: tuple[SourceDiagnostic, ...]
     raw_row_count: int
     diagnostic_count: int = 0
     diagnostic_counts: tuple[tuple[str, int], ...] = ()
     missing_availability_count: int = 0
-    quality_counts: tuple[tuple[str, int], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "records", tuple(self.records))
         object.__setattr__(self, "diagnostics", tuple(self.diagnostics))
         object.__setattr__(self, "diagnostic_counts", tuple(self.diagnostic_counts))
-        object.__setattr__(self, "quality_counts", tuple(self.quality_counts))
         if self.diagnostic_count < len(self.diagnostics):
             object.__setattr__(self, "diagnostic_count", len(self.diagnostics))
         if self.diagnostic_count < 0 or self.missing_availability_count < 0:
@@ -62,11 +65,11 @@ class StatementItemsBackfillPlan:
     def diagnostic_summary(self) -> Mapping[str, int]:
         return dict(self.diagnostic_counts)
 
-    @property
-    def quality_summary(self) -> Mapping[str, int]:
-        return dict(self.quality_counts)
-
-    def to_markdown(self) -> str:
+    def to_markdown(
+        self,
+        *,
+        quality_counts: Mapping[str, int] | None = None,
+    ) -> str:
         lines = [
             "# Statement Items Backfill Plan",
             "",
@@ -81,10 +84,13 @@ class StatementItemsBackfillPlan:
                 "- diagnostic_counts: "
                 + ", ".join(f"{code}={count}" for code, count in self.diagnostic_counts)
             )
-        if self.quality_counts:
+        if quality_counts:
             lines.append(
                 "- quality_counts: "
-                + ", ".join(f"{quality}={count}" for quality, count in self.quality_counts)
+                + ", ".join(
+                    f"{quality}={count}"
+                    for quality, count in sorted(quality_counts.items())
+                )
             )
         if len(self.diagnostics) < self.diagnostic_count:
             lines.append(f"- diagnostics_shown: {len(self.diagnostics)} (bounded)")
@@ -127,7 +133,7 @@ def plan_statement_items_backfill(
         )
 
     records: list[StatementItemRecord] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     diagnostic_counts: Counter[str] = Counter()
     diagnostic_count = 0
     missing_availability_count = 0
@@ -157,9 +163,6 @@ def plan_statement_items_backfill(
         diagnostic_count=diagnostic_count,
         diagnostic_counts=tuple(sorted(diagnostic_counts.items())),
         missing_availability_count=missing_availability_count,
-        quality_counts=tuple(
-            sorted(Counter(record.quality.value for record in records).items())
-        ),
     )
 
 
@@ -171,6 +174,7 @@ def apply_statement_items_backfill(
     availability_file: Path | str | Iterable[Path | str],
     source_version: str,
     statement_types: tuple[str, ...],
+    quality_projector: Callable[[StatementItemRecord], str],
 ) -> StatementItemsBackfillApplyResult:
     plan = plan_statement_items_backfill(
         raw_dir=raw_dir,
@@ -186,8 +190,13 @@ def apply_statement_items_backfill(
             plan=plan,
         )
 
+    quality_wire_values = tuple(
+        parse_legacy_quality_wire_value(quality_projector(record))
+        for record in plan.records
+    )
+
     db_file = Path(db_file)
-    backup_file = create_retained_backup(
+    backup_file = create_sqlite_retained_backup(
         db_file,
         Path(backup_dir),
         label="statement_items_backfill",
@@ -197,12 +206,16 @@ def apply_statement_items_backfill(
 
     conn = sqlite3.connect(db_file)
     try:
-        inserted_count = _insert_statement_item_records(conn, plan.records)
+        inserted_count = _insert_statement_item_records(
+            conn,
+            plan.records,
+            quality_wire_values,
+        )
         conn.commit()
     except Exception:
         conn.rollback()
         conn.close()
-        shutil.copy2(backup_file, db_file)
+        restore_sqlite_backup(backup_file, db_file)
         raise
     finally:
         try:
@@ -237,7 +250,10 @@ def _iter_statement_rows(raw_dir: Path, *, statement_type: str) -> Iterable[dict
 def _insert_statement_item_records(
     conn: sqlite3.Connection,
     records: tuple[StatementItemRecord, ...],
+    quality_wire_values: tuple[str, ...],
 ) -> int:
+    if len(records) != len(quality_wire_values):
+        raise ValueError("statement quality projection count does not match records")
     conn.executemany(
         """
         INSERT OR REPLACE INTO fundamental_statement_items(
@@ -259,9 +275,9 @@ def _insert_statement_item_records(
                 str(record.value),
                 record.source,
                 record.source_version,
-                record.quality.value,
+                quality_wire_value,
             )
-            for record in records
+            for record, quality_wire_value in zip(records, quality_wire_values)
         ],
     )
     return len(records)

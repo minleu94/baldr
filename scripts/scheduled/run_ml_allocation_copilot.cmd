@@ -11,6 +11,7 @@ if "%DATA_ROOT%"=="" set "DATA_ROOT=D:\Min\Python\Project\FA_Data"
 rem ML Co-pilot 的 sidecar／forward output 仍沿用既有 D 槽來源；只有 Paper
 rem state 指向 Formal 共用的 repository canonical DB。保留明確環境覆寫供受控測試。
 if "%OUTPUT_ROOT%"=="" set "OUTPUT_ROOT=%DATA_ROOT%\output"
+if "%ML_FORWARD_OUTPUT_ROOT%"=="" set "ML_FORWARD_OUTPUT_ROOT=%REPO_ROOT%\output\v4_ml_daily_derived_shadow_real_v2"
 if "%ML_ALLOCATION_PAPER_STATE_DB%"=="" set "ML_ALLOCATION_PAPER_STATE_DB=%REPO_ROOT%\output\paper_execution_eod_replay\paper_portfolio\paper_portfolio.sqlite"
 
 set "DECISION_AT_ARG="

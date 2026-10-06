@@ -58,6 +58,56 @@ def test_duplicate_transition_event_cannot_overwrite(tmp_path: Path) -> None:
         repository.append(record)
 
 
+def test_find_proposal_fails_closed_for_same_date_duplicate_or_human_record(
+    tmp_path: Path,
+) -> None:
+    repository = PositionHealthTransitionRepository(tmp_path / "health.sqlite")
+    proposal = PositionHealthTransitionRecord.proposal(
+        event_id="evt-proposal",
+        position_id="paper-main:2330",
+        decision_date="2026-07-12",
+        previous_state=PositionHealthState.WATCH,
+        proposed_state=PositionHealthState.WATCH,
+        reasons=("same_snapshot",),
+    )
+    repository.append(proposal)
+    assert repository.find_proposal(
+        position_id=proposal.position_id,
+        decision_date=proposal.decision_date,
+    ) == proposal
+
+    repository.append(
+        PositionHealthTransitionRecord.proposal(
+            event_id="evt-proposal-duplicate",
+            position_id=proposal.position_id,
+            decision_date=proposal.decision_date,
+            previous_state=PositionHealthState.WATCH,
+            proposed_state=PositionHealthState.WATCH,
+            reasons=("same_snapshot",),
+        )
+    )
+    assert repository.find_proposal(
+        position_id=proposal.position_id,
+        decision_date=proposal.decision_date,
+    ) is None
+
+    repository.append(
+        PositionHealthTransitionRecord.human_approved(
+            event_id="evt-human",
+            position_id=proposal.position_id,
+            decision_date=proposal.decision_date,
+            previous_state=PositionHealthState.WATCH,
+            approved_state=PositionHealthState.HEALTHY,
+            reasons=("reviewed",),
+            reviewer="owner",
+        )
+    )
+    assert repository.find_proposal(
+        position_id=proposal.position_id,
+        decision_date=proposal.decision_date,
+    ) is None
+
+
 def test_human_approved_event_rejects_missing_reviewer() -> None:
     with pytest.raises(ValueError, match="reviewer"):
         PositionHealthTransitionRecord.human_approved(

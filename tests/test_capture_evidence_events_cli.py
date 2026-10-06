@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.evidence_event_importer_dtos import capture_context_is_valid
 from app_module.recommendation_repository import RecommendationRepository
 from data_module.config import TWStockConfig
 
@@ -124,3 +125,39 @@ def test_capture_evidence_events_cli_confirm_writes_and_source_all_reports_missi
     assert inspected.returncode == 0, inspected.stderr
     inspected_payload = json.loads(inspected.stdout)
     assert inspected_payload["events_count"] == 1
+
+
+def test_capture_evidence_events_cli_persists_explicit_runtime_context(tmp_path):
+    config = _config(tmp_path)
+    result_id = _seed_recommendation(config)
+
+    result = _run_capture(
+        config,
+        "--source",
+        "recommendation",
+        "--result-id",
+        result_id,
+        "--decision-date",
+        "2026-07-02",
+        "--as-of",
+        "2026-07-02",
+        "--decision-at",
+        "2026-07-02T20:10:00+08:00",
+        "--captured-at",
+        "2026-07-02T20:25:00+08:00",
+        "--capture-mode",
+        "eod_research",
+        "--confirm",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    event = EvidenceEventRepository(config).list_events()[0]
+    context = event.metadata["capture_context"]
+    assert payload["temporal_status"] == "verified"
+    assert payload["capture_mode"] == "eod_research"
+    assert payload["preopen_authority"] is False
+    assert context["captured_at"] == "2026-07-02T20:25:00+08:00"
+    assert capture_context_is_valid(context)
+    assert event.metadata["source_availability"]["source_timestamp"] == "2026-07-02T09:00:00"
+    assert event.metadata["source_availability"]["capture_at_overrides_source_timestamp"] is False

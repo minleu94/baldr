@@ -244,12 +244,16 @@ def test_preflight_is_read_only_and_rejects_output_escape(
 
 
 def test_next_cutoff_handles_both_pacific_dst_offsets_without_fixed_date() -> None:
-    # These are the two Taiwan local launch times produced by a 16:15 Pacific
-    # task.  Both must protect that same day's 08:30 boundary.
-    pdt_launch = datetime(2026, 9, 8, 7, 15, tzinfo=TAIPEI)
-    pst_launch = datetime(2026, 12, 8, 8, 15, tzinfo=TAIPEI)
-    assert refresh.next_forward_cutoff(pdt_launch).date().isoformat() == "2026-09-08"
-    assert refresh.next_forward_cutoff(pst_launch).date().isoformat() == "2026-12-08"
+    # The new trigger is independent of Pacific DST: both seasons use Taipei
+    # 08:25 and refresh only the same-day 08:30 decision horizon.
+    october_launch = datetime(2026, 10, 3, 8, 25, tzinfo=TAIPEI)
+    december_launch = datetime(2026, 12, 8, 8, 25, tzinfo=TAIPEI)
+    assert refresh.next_forward_cutoff(october_launch) == datetime(
+        2026, 10, 3, 8, 30, tzinfo=TAIPEI
+    )
+    assert refresh.next_forward_cutoff(december_launch) == datetime(
+        2026, 12, 8, 8, 30, tzinfo=TAIPEI
+    )
 
 
 def test_new_year_horizon_requires_predecessor_calendar_cache(tmp_path: Path) -> None:

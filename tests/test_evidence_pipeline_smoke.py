@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.evidence_event_repository import EvidenceEventRepository
+from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE
 from app_module.recommendation_repository import RecommendationRepository
 from data_module.config import TWStockConfig
+from scripts.smoke_evidence_pipeline import build_parser, run_smoke
+from tests.forward_outcome_test_support import write_verified_test_calendar_cache
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +28,14 @@ def _config(tmp_path: Path) -> TWStockConfig:
     return config
 
 
-def _seed_market_db(config: TWStockConfig, *, days: int = 8, with_benchmark: bool = True) -> None:
+def _seed_market_db(
+    config: TWStockConfig,
+    *,
+    days: int = 8,
+    with_benchmark: bool = True,
+    start_date: str = "20260701",
+) -> None:
+    start_day = datetime.strptime(start_date, "%Y%m%d").date()
     with sqlite3.connect(config.db_file) as conn:
         conn.executescript(
             """
@@ -47,14 +60,19 @@ def _seed_market_db(config: TWStockConfig, *, days: int = 8, with_benchmark: boo
             """
         )
         for offset in range(days):
-            day = f"202607{offset + 1:02d}"
+            day = (start_day + timedelta(days=offset)).strftime("%Y%m%d")
             conn.execute("INSERT OR REPLACE INTO daily_prices VALUES (?, ?, ?)", (day, "2330", 100 + offset))
             if with_benchmark:
                 conn.execute("INSERT OR REPLACE INTO market_indices VALUES (?, ?, ?)", (day, "TAIEX", 10000 + offset))
             conn.execute("INSERT OR REPLACE INTO industry_indices VALUES (?, ?, ?)", (day, "半導體", 1000 + offset))
 
 
-def _seed_recommendation(config: TWStockConfig, result_id: str = "rec-smoke-001") -> str:
+def _seed_recommendation(
+    config: TWStockConfig,
+    result_id: str = "rec-smoke-001",
+    *,
+    created_at: str = "2026-07-01T16:00:00",
+) -> str:
     result = RecommendationResultDTO(
         result_id=result_id,
         result_name="Evidence Pipeline Smoke Fixture",
@@ -76,7 +94,7 @@ def _seed_recommendation(config: TWStockConfig, result_id: str = "rec-smoke-001"
             )
         ],
         regime="Trend",
-        created_at="2026-07-01T09:00:00",
+        created_at=created_at,
     )
     RecommendationRepository(config).save_result(result)
     return result.result_id
@@ -102,6 +120,34 @@ def _run_smoke(config: TWStockConfig, *args: str) -> subprocess.CompletedProcess
     )
 
 
+def _run_confirm(
+    config: TWStockConfig,
+    invocation_at: datetime,
+    *args: str,
+) -> dict[str, object]:
+    parsed = build_parser().parse_args(
+        [
+            "--db-path",
+            str(config.db_file),
+            "--data-root",
+            str(config.data_root),
+            "--output-root",
+            str(config.output_root),
+            *args,
+        ]
+    )
+    calendar_cache = write_verified_test_calendar_cache(
+        config.output_root / f"isolated_official_calendar_{uuid4().hex}",
+        observed_at=invocation_at.astimezone(timezone.utc),
+        year=invocation_at.year,
+    )
+    return run_smoke(
+        parsed,
+        _calendar_cache_path=calendar_cache,
+        _now_provider=lambda: invocation_at,
+    )
+
+
 def test_evidence_pipeline_smoke_dry_run_does_not_write_events_or_outcomes(tmp_path):
     config = _config(tmp_path)
     _seed_market_db(config)
@@ -124,15 +170,22 @@ def test_evidence_pipeline_smoke_dry_run_does_not_write_events_or_outcomes(tmp_p
     assert payload["events_inserted"] == 0
     assert payload["outcomes_created"] == 0
     assert EvidenceEventRepository(config).list_events() == []
+    with sqlite3.connect(config.db_file.resolve().as_uri() + "?mode=ro", uri=True) as conn:
+        evidence_tables = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN (?, ?)",
+            ("evidence_events", "evidence_outcomes"),
+        ).fetchall()
+    assert evidence_tables == []
 
 
 def test_evidence_pipeline_smoke_confirm_writes_event_and_ready_outcome(tmp_path):
     config = _config(tmp_path)
-    _seed_market_db(config)
+    _seed_market_db(config, days=12)
     result_id = _seed_recommendation(config)
 
-    result = _run_smoke(
+    payload = _run_confirm(
         config,
+        datetime(2026, 7, 20, 16, 0, tzinfo=TAIWAN_MARKET_TIMEZONE),
         "--recommendation-result-id",
         result_id,
         "--decision-date",
@@ -142,8 +195,6 @@ def test_evidence_pipeline_smoke_confirm_writes_event_and_ready_outcome(tmp_path
         "--confirm",
     )
 
-    assert result.returncode == 0, result.stderr
-    payload = json.loads(result.stdout)
     assert payload["dry_run"] is False
     assert payload["events_inserted"] == 1
     assert payload["outcomes_created"] == 1
@@ -154,7 +205,7 @@ def test_evidence_pipeline_smoke_confirm_writes_event_and_ready_outcome(tmp_path
 
 def test_evidence_pipeline_smoke_confirm_is_idempotent_for_duplicate_event(tmp_path):
     config = _config(tmp_path)
-    _seed_market_db(config)
+    _seed_market_db(config, days=12)
     result_id = _seed_recommendation(config)
     args = (
         "--recommendation-result-id",
@@ -166,12 +217,11 @@ def test_evidence_pipeline_smoke_confirm_is_idempotent_for_duplicate_event(tmp_p
         "--confirm",
     )
 
-    first = _run_smoke(config, *args)
-    second = _run_smoke(config, *args)
+    invocation_at = datetime(2026, 7, 20, 16, 0, tzinfo=TAIWAN_MARKET_TIMEZONE)
+    first = _run_confirm(config, invocation_at, *args)
+    second = _run_confirm(config, invocation_at, *args)
 
-    assert first.returncode == 0, first.stderr
-    assert second.returncode == 0, second.stderr
-    payload = json.loads(second.stdout)
+    payload = second
     assert payload["events_inserted"] == 0
     assert payload["events_skipped_duplicate"] == 1
     assert len(EvidenceEventRepository(config).list_events()) == 1
@@ -179,33 +229,69 @@ def test_evidence_pipeline_smoke_confirm_is_idempotent_for_duplicate_event(tmp_p
 
 def test_evidence_pipeline_smoke_marks_future_data_insufficient_as_pending(tmp_path):
     config = _config(tmp_path)
-    _seed_market_db(config, days=3)
-    result_id = _seed_recommendation(config)
-
-    result = _run_smoke(
+    event_date = "2026-07-10"
+    _seed_market_db(config, days=1, start_date="20260710")
+    result_id = _seed_recommendation(
         config,
+        created_at=f"{event_date}T16:00:00",
+    )
+
+    payload = _run_confirm(
+        config,
+        datetime(2026, 7, 10, 16, 0, tzinfo=TAIWAN_MARKET_TIMEZONE),
         "--recommendation-result-id",
         result_id,
         "--decision-date",
-        "2026-07-01",
+        event_date,
         "--windows",
         "5",
         "--confirm",
     )
 
-    assert result.returncode == 0, result.stderr
-    payload = json.loads(result.stdout)
     assert payload["outcomes_pending"] == 1
     assert payload["outcome_status_counts"] == {"insufficient_future_data": 1}
 
 
+def test_evidence_pipeline_smoke_refuses_configured_canonical_database(tmp_path):
+    canonical_root = tmp_path / "canonical-data"
+    isolated_root = tmp_path / "isolated-data"
+    env = dict(os.environ)
+    env["DATA_ROOT"] = str(canonical_root)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "smoke_evidence_pipeline.py"),
+            "--db-path",
+            str(canonical_root / "sqlite" / "twstock.db"),
+            "--data-root",
+            str(isolated_root),
+            "--output-root",
+            str(tmp_path / "output"),
+            "--recommendation-result-id",
+            "rec-smoke-canonical-denied",
+            "--decision-date",
+            "2026-07-01",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "refuses the configured canonical database" in result.stderr
+    assert not (canonical_root / "sqlite" / "twstock.db").exists()
+
+
 def test_evidence_pipeline_smoke_missing_benchmark_does_not_stop_outcome(tmp_path):
     config = _config(tmp_path)
-    _seed_market_db(config, with_benchmark=False)
+    _seed_market_db(config, days=12, with_benchmark=False)
     result_id = _seed_recommendation(config)
 
-    result = _run_smoke(
+    payload = _run_confirm(
         config,
+        datetime(2026, 7, 20, 16, 0, tzinfo=TAIWAN_MARKET_TIMEZONE),
         "--recommendation-result-id",
         result_id,
         "--decision-date",
@@ -215,8 +301,6 @@ def test_evidence_pipeline_smoke_missing_benchmark_does_not_stop_outcome(tmp_pat
         "--confirm",
     )
 
-    assert result.returncode == 0, result.stderr
-    payload = json.loads(result.stdout)
     assert payload["outcomes_created"] == 1
     assert payload["missing_benchmark"] == 1
     assert payload["outcome_status_counts"] == {"ready": 1}

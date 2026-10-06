@@ -3,6 +3,11 @@ from pathlib import Path
 from types import SimpleNamespace
 import sqlite3
 
+from app_module.decision_data_providers import (
+    industry_screen_fallback_provider,
+    stock_screen_fallback_provider,
+)
+from app_module.decision_service_composition import build_stock_screener
 from decision_module.stock_screener import StockScreener
 
 
@@ -94,12 +99,15 @@ def _build_sqlite_db(db_file: Path):
     with sqlite3.connect(db_file) as conn:
         _insert_daily_prices(conn, date(2026, 5, 1))
         _insert_industry_indices(conn, date(2026, 5, 1))
+        conn.execute(
+            "CREATE TABLE technical_indicators (日期 TEXT, 證券代號 TEXT, MA5 REAL)"
+        )
 
 
 def test_stock_screener_uses_sqlite_for_strong_and_weak_stocks_without_indicator_csv(tmp_path):
     config = _make_config(tmp_path)
     _build_sqlite_db(config.db_file)
-    screener = StockScreener(config, min_price=0)
+    screener = build_stock_screener(config)
 
     strong, strong_universe = screener.get_strong_stocks(period="day", top_n=2)
     weak, weak_universe = screener.get_weak_stocks(period="day", top_n=2)
@@ -115,7 +123,7 @@ def test_stock_screener_uses_sqlite_for_strong_and_weak_stocks_without_indicator
 def test_stock_screener_uses_sqlite_for_strong_and_weak_industries_without_csv(tmp_path):
     config = _make_config(tmp_path)
     _build_sqlite_db(config.db_file)
-    screener = StockScreener(config, min_price=0)
+    screener = build_stock_screener(config)
 
     strong = screener.get_strong_industries(period="day", top_n=2)
     weak = screener.get_weak_industries(period="day", top_n=2)
@@ -124,3 +132,26 @@ def test_stock_screener_uses_sqlite_for_strong_and_weak_industries_without_csv(t
     assert weak.iloc[0]["指數名稱"] == "金融保險"
     assert list(strong.columns) == ["排名", "指數名稱", "收盤指數", "漲幅%"]
     assert list(weak.columns) == ["排名", "指數名稱", "收盤指數", "漲幅%"]
+
+
+def test_none_recent_providers_use_sqlite_legacy_fallbacks_without_csv(tmp_path):
+    config = _make_config(tmp_path)
+    _build_sqlite_db(config.db_file)
+    screener = StockScreener(
+        config,
+        recent_stock_provider=lambda _period, _volume_lookback: None,
+        recent_industry_provider=lambda _period: None,
+        stock_fallback_provider=stock_screen_fallback_provider(config),
+        industry_fallback_provider=industry_screen_fallback_provider(config),
+    )
+
+    strong_stocks, strong_universe = screener.get_strong_stocks(period="day", top_n=2)
+    weak_stocks, weak_universe = screener.get_weak_stocks(period="day", top_n=2)
+    strong_industries = screener.get_strong_industries(period="day", top_n=2)
+    weak_industries = screener.get_weak_industries(period="day", top_n=2)
+
+    assert strong_universe == weak_universe == 3
+    assert strong_stocks.iloc[0]["證券代號"] == "2330"
+    assert weak_stocks.iloc[0]["證券代號"] == "2317"
+    assert strong_industries.iloc[0]["指數名稱"] == "半導體"
+    assert weak_industries.iloc[0]["指數名稱"] == "金融保險"

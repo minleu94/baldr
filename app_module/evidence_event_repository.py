@@ -5,7 +5,7 @@ from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any
+from typing import Any, Iterable
 from uuid import uuid4
 
 from app_module.evidence_event_dtos import (
@@ -17,30 +17,42 @@ from app_module.evidence_event_dtos import (
     normalize_outcome_status,
 )
 from app_module.research_run_dtos import canonical_json
+from app_module.sqlite_read_only import connect_read_only_sqlite
 from data_module.evidence_event_migration import apply_evidence_event_schema
+from app_module.v4_evidence_identity import DEFAULT_RETURN_BASIS
+
+
+_SQLITE_READ_BIND_CHUNK_SIZE = 900
 
 
 class EvidenceEventRepository:
     """SQLite repository for append-only evidence events and forward outcomes."""
 
-    def __init__(self, config: Any, *, db_path: str | Path | None = None) -> None:
+    def __init__(self, config: Any, *, db_path: str | Path | None = None, read_only: bool = False) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
+        self.read_only = bool(read_only)
+        self._schema_ready = False
 
     def _read_rows(self, table: str, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
         if not self.db_path.exists():
             return []
-        with closing(sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
-            conn.execute("PRAGMA query_only = ON")
+        with closing(connect_read_only_sqlite(self.db_path)) as conn:
             if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is None:
                 return []
             conn.row_factory = sqlite3.Row
             return [dict(row) for row in conn.execute(sql, params).fetchall()]
 
     def ensure_schema(self) -> None:
+        if self.read_only:
+            raise RuntimeError("dashboard evidence repository is read-only")
+        if self._schema_ready:
+            return
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 30000")
             apply_evidence_event_schema(conn)
+        self._schema_ready = True
 
     def insert_event(self, event: EvidenceEvent) -> EvidenceEvent:
         self.ensure_schema()
@@ -55,7 +67,8 @@ class EvidenceEventRepository:
         columns = list(row.keys())
         placeholders = ", ".join("?" for _ in columns)
         column_sql = ", ".join(columns)
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 30000")
             conn.execute(
                 f"INSERT INTO evidence_events ({column_sql}) VALUES ({placeholders})",
                 tuple(row[column] for column in columns),
@@ -80,6 +93,9 @@ class EvidenceEventRepository:
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int | None = None,
+        incomplete_outcomes_first: bool = False,
+        outcome_windows: Iterable[int] | None = None,
+        complete_cohort_identity_only: bool = False,
     ) -> list[EvidenceEvent]:
         where: list[str] = []
         params: list[Any] = []
@@ -98,15 +114,79 @@ class EvidenceEventRepository:
         if end_date is not None:
             where.append("decision_date <= ?")
             params.append(end_date)
-        sql = "SELECT * FROM evidence_events"
+        sql = "SELECT e.* FROM evidence_events AS e"
+        if complete_cohort_identity_only:
+            # Keep the query bounded while preventing malformed/legacy rows
+            # from consuming the producer's event budget.  The JSON fields
+            # are only accepted when the event explicitly carries a complete
+            # policy+snapshot pair, or the schema-less legacy universe alias.
+            metadata_json = (
+                "CASE WHEN json_valid(e.metadata_json) "
+                "THEN e.metadata_json ELSE '{}' END"
+            )
+            where.append(
+                "COALESCE(NULLIF(TRIM(e.strategy_version_id), ''), '') <> ''"
+            )
+            where.append("COALESCE(NULLIF(TRIM(e.cost_model_id), ''), '') <> ''")
+            where.append("COALESCE(NULLIF(TRIM(e.benchmark_id), ''), '') <> ''")
+            where.append(
+                f"COALESCE(CAST(json_extract({metadata_json}, '$.horizon_days') AS INTEGER), "
+                f"CAST(json_extract({metadata_json}, '$.expected_horizon_days') AS INTEGER), 0) > 0"
+            )
+            where.append(
+                "("
+                f"(COALESCE(json_extract({metadata_json}, '$.universe_policy_id'), '') <> '' "
+                f"AND COALESCE(json_extract({metadata_json}, '$.universe_policy_hash'), '') <> '' "
+                f"AND COALESCE(json_extract({metadata_json}, '$.universe_snapshot_id'), '') <> '' "
+                f"AND COALESCE(json_extract({metadata_json}, '$.universe_snapshot_hash'), '') <> '' "
+                f"AND (COALESCE(json_extract({metadata_json}, '$.strategy_config_schema'), '') = '' "
+                f"OR COALESCE(json_extract({metadata_json}, '$.strategy_config_id'), '') <> ''))"
+                " OR "
+                f"(COALESCE(json_extract({metadata_json}, '$.universe_policy_id'), '') = '' "
+                f"AND COALESCE(json_extract({metadata_json}, '$.universe_id'), '') <> '' "
+                f"AND COALESCE(json_extract({metadata_json}, '$.universe_identity_schema'), '') NOT IN "
+                "('recommendation-universe.v1', 'recommendation-universe-snapshot.v1'))"
+                ")"
+            )
         if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY decision_date ASC, event_id ASC"
+            sql += " WHERE " + " AND ".join(
+                item.replace("decision_date", "e.decision_date") for item in where
+            )
+        order_params: list[Any] = []
+        normalized_window_values: set[int] = set()
+        for value in outcome_windows or ():
+            if isinstance(value, bool):
+                continue
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                continue
+            if parsed > 0:
+                normalized_window_values.add(parsed)
+        normalized_windows = tuple(sorted(normalized_window_values))
+        if incomplete_outcomes_first and normalized_windows:
+            placeholders = ", ".join("?" for _ in normalized_windows)
+            sql += (
+                " ORDER BY CASE WHEN ("
+                "SELECT COUNT(DISTINCT o.window_days) FROM evidence_outcomes AS o "
+                "WHERE o.event_id = e.event_id "
+                f"AND o.window_days IN ({placeholders}) "
+                "AND o.return_basis = ? AND o.outcome_status = 'ready'"
+                f") < {len(normalized_windows)} THEN 0 ELSE 1 END, "
+                "e.decision_date ASC, e.event_id ASC"
+            )
+            order_params.extend(normalized_windows)
+            order_params.append(DEFAULT_RETURN_BASIS)
+        else:
+            sql += " ORDER BY e.decision_date ASC, e.event_id ASC"
         if limit is not None:
             sql += " LIMIT ?"
-            params.append(int(limit))
+            order_params.append(int(limit))
 
-        return [self._row_to_event(row) for row in self._read_rows("evidence_events", sql, tuple(params))]
+        return [
+            self._row_to_event(row)
+            for row in self._read_rows("evidence_events", sql, tuple(params + order_params))
+        ]
 
     def list_events_for_run(self, run_id: str) -> list[EvidenceEvent]:
         rows = self._read_rows("evidence_events",
@@ -114,14 +194,34 @@ class EvidenceEventRepository:
         return [self._row_to_event(row) for row in rows]
 
     def upsert_outcome(self, outcome: EvidenceOutcome) -> EvidenceOutcome:
+        self.upsert_outcomes((outcome,))
+        saved = self.get_outcome(outcome.event_id, outcome.window_days, outcome.return_basis)
+        if saved is None:
+            raise RuntimeError(f"evidence outcome not found after upsert: {outcome.event_id}")
+        return saved
+
+    def upsert_outcomes(self, outcomes: Iterable[EvidenceOutcome]) -> None:
+        """Atomically upsert a batch of outcomes under one SQLite transaction."""
+
+        rows = [self._outcome_to_row(outcome) for outcome in outcomes]
+        if not rows:
+            return
         self.ensure_schema()
-        row = self._outcome_to_row(outcome)
-        columns = list(row.keys())
+        columns = list(rows[0].keys())
         placeholders = ", ".join("?" for _ in columns)
         column_sql = ", ".join(columns)
-        updates = ", ".join(f"{column} = excluded.{column}" for column in columns if column != "calculated_at")
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
+        # The tuple below is the outcome's natural identity.  A recalculation
+        # may refresh prices, status, warnings, or hashes, but it must not
+        # replace the primary key that downstream evidence references.
+        immutable_identity = {"outcome_id", "event_id", "window_days", "return_basis"}
+        updates = ", ".join(
+            f"{column} = excluded.{column}"
+            for column in columns
+            if column not in {"calculated_at", *immutable_identity}
+        )
+        with sqlite3.connect(self.db_path, timeout=30.0) as conn:
+            conn.execute("PRAGMA busy_timeout = 30000")
+            conn.executemany(
                 f"""
                 INSERT INTO evidence_outcomes ({column_sql})
                 VALUES ({placeholders})
@@ -129,12 +229,8 @@ class EvidenceEventRepository:
                     {updates},
                     calculated_at = CURRENT_TIMESTAMP
                 """,
-                tuple(row[column] for column in columns),
+                [tuple(row[column] for column in columns) for row in rows],
             )
-        saved = self.get_outcome(outcome.event_id, outcome.window_days, outcome.return_basis)
-        if saved is None:
-            raise RuntimeError(f"evidence outcome not found after upsert: {outcome.event_id}")
-        return saved
 
     def get_outcome(
         self,
@@ -169,6 +265,48 @@ class EvidenceEventRepository:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY event_id ASC, window_days ASC"
         return [self._row_to_outcome(row) for row in self._read_rows("evidence_outcomes", sql, tuple(params))]
+
+    def list_outcomes_for_event_ids(
+        self,
+        event_ids: Iterable[str],
+    ) -> list[EvidenceOutcome]:
+        """Read outcomes for exact event ids with one read-only connection.
+
+        The event ids remain the only join key.  Queries are chunked below the
+        SQLite bind limit so a large, bounded evidence read does not fall back
+        to one connection per event.
+        """
+
+        normalized_ids = tuple(dict.fromkeys(event_ids))
+        if not normalized_ids or not self.db_path.exists():
+            return []
+        with closing(connect_read_only_sqlite(self.db_path)) as conn:
+            conn.execute("BEGIN")
+            conn.row_factory = sqlite3.Row
+            if (
+                conn.execute(
+                    "SELECT 1 FROM sqlite_master "
+                    "WHERE type='table' AND name=?",
+                    ("evidence_outcomes",),
+                ).fetchone()
+                is None
+            ):
+                return []
+            rows: list[dict[str, Any]] = []
+            for start in range(0, len(normalized_ids), _SQLITE_READ_BIND_CHUNK_SIZE):
+                chunk = normalized_ids[start : start + _SQLITE_READ_BIND_CHUNK_SIZE]
+                placeholders = ", ".join("?" for _ in chunk)
+                rows.extend(
+                    dict(row)
+                    for row in conn.execute(
+                        "SELECT * FROM evidence_outcomes "
+                        f"WHERE event_id IN ({placeholders}) "
+                        "ORDER BY event_id ASC, window_days ASC",
+                        chunk,
+                    ).fetchall()
+                )
+        rows.sort(key=lambda row: (str(row["event_id"]), int(row["window_days"])))
+        return [self._row_to_outcome(row) for row in rows]
 
     def _fetch_event(self, where: str, params: tuple[Any, ...]) -> EvidenceEvent | None:
         rows = self._read_rows("evidence_events", f"SELECT * FROM evidence_events WHERE {where}", params)

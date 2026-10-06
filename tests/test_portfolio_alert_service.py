@@ -1,8 +1,13 @@
 from datetime import date
+from decimal import Decimal
+from types import SimpleNamespace
+
+import pytest
 
 from app_module.decision_desk_dtos import DecisionDeskQuality, PortfolioAlertAttribution, PortfolioAlertSummary
 from app_module.dtos.portfolio_dtos import PositionDTO
 from app_module.portfolio_alert_service import PortfolioAlertService
+from app_module.portfolio_condition_monitor import PortfolioConditionMonitor
 
 
 
@@ -15,13 +20,25 @@ class FakePortfolioService:
         return self.positions
 
 
+class QuotePortfolioService(FakePortfolioService):
+    def __init__(self, positions, observation):
+        super().__init__(positions)
+        self.observation = observation
+
+    def get_current_price_observation(self, stock_code: str):
+        del stock_code
+        return self.observation
+
+
 class FakeConditionMonitor:
     def __init__(self, status_by_code):
         self.status_by_code = status_by_code
         self.calls = []
+        self.snapshots = []
 
-    def evaluate(self, position):
+    def evaluate(self, position, current_snapshot=None):
         self.calls.append(position.stock_code)
+        self.snapshots.append(current_snapshot)
         status = self.status_by_code[position.stock_code]
         if isinstance(status, Exception):
             raise status
@@ -111,6 +128,147 @@ def test_portfolio_alert_service_returns_low_quality_when_no_alert():
     assert snapshot.alert_codes == ()
     assert snapshot.alert_level == "low"
     assert snapshot.warnings == ()
+
+
+def test_portfolio_alert_service_passes_verified_quote_proof_to_condition_monitor():
+    from datetime import date
+    from types import SimpleNamespace
+
+    position = make_position("2330", "recommendation_result", "rec_001")
+    monitor = FakeConditionMonitor({"2330": "valid"})
+    service = PortfolioAlertService(
+        QuotePortfolioService(
+            [position],
+            SimpleNamespace(
+                price=Decimal("55"),
+                data_date=date(2026, 10, 2),
+                source_id="sqlite.daily_prices",
+                source_snapshot_hash="a" * 64,
+                freshness_status="current",
+                expected_date=date(2026, 10, 2),
+            ),
+        ),
+        monitor,
+    )
+
+    snapshot = service.build_snapshot(date(2026, 10, 4))
+
+    quote = monitor.snapshots[0]
+    assert quote is not None
+    assert quote.quote_data_date == date(2026, 10, 2)
+    assert quote.quote_expected_date == date(2026, 10, 2)
+    assert quote.quote_freshness_status == "current"
+    assert quote.quote_source_snapshot_hash == "a" * 64
+    assert snapshot.alert_count == 0
+    assert snapshot.alert_codes == ()
+    assert snapshot.alert_level == "low"
+    assert snapshot.warnings == ()
+
+
+@pytest.mark.parametrize(
+    ("as_of_date", "expected_status", "expected_stop_loss_triggered"),
+    (
+        (date(2026, 10, 1), "warning", False),
+        (date(2026, 10, 2), "invalid", True),
+        (date(2026, 10, 4), "invalid", True),
+    ),
+)
+def test_portfolio_alert_service_blocks_quote_after_cutoff_from_price_thesis(
+    as_of_date: date,
+    expected_status: str,
+    expected_stop_loss_triggered: bool,
+) -> None:
+    class RecordingConditionMonitor:
+        def __init__(self) -> None:
+            self.results = []
+            self.snapshots = []
+            self.monitor = PortfolioConditionMonitor()
+
+        def evaluate(self, position, current_snapshot=None):
+            self.snapshots.append(current_snapshot)
+            result = self.monitor.evaluate(position, current_snapshot)
+            self.results.append(result)
+            return result
+
+    position = make_position("2330", "recommendation_result", "rec_001")
+    position.source_summary = {"stop_loss_pct": Decimal("0.10")}
+    monitor = RecordingConditionMonitor()
+    service = PortfolioAlertService(
+        QuotePortfolioService(
+            [position],
+            SimpleNamespace(
+                price=Decimal("80"),
+                data_date=date(2026, 10, 2),
+                source_id="sqlite.daily_prices",
+                source_snapshot_hash="a" * 64,
+                freshness_status="current",
+                expected_date=date(2026, 10, 2),
+            ),
+        ),
+        monitor,
+    )
+
+    snapshot = service.build_snapshot(as_of_date)
+
+    result = monitor.results[0]
+    quote = monitor.snapshots[0]
+    assert result.status == expected_status
+    assert result.details["stop_loss_triggered"] is expected_stop_loss_triggered
+    assert result.details["quote_data_date"] == "2026-10-02"
+    assert result.details["quote_expected_date"] == "2026-10-02"
+    assert result.details["quote_source_id"] == "sqlite.daily_prices"
+    assert result.details["quote_source_snapshot_hash"] == "a" * 64
+    assert snapshot.as_of_date == as_of_date
+
+    if as_of_date < date(2026, 10, 2):
+        assert quote.quote_freshness_status == "unverified"
+        assert result.details["quote_is_current"] is False
+        assert snapshot.quality == DecisionDeskQuality.ESTIMATED
+        assert any(
+            "行情資料日 2026-10-02 晚於截日 2026-10-01" in warning
+            and "不觸發停損／停利" in warning
+            and "不具歷史 PIT 資格" in warning
+            for warning in snapshot.warnings
+        )
+        assert any("僅供損益觀察" in reason for reason in result.reasons)
+    else:
+        assert quote.quote_freshness_status == "current"
+        assert result.details["quote_is_current"] is True
+        assert result.details["stop_loss_triggered"] is True
+        assert not any("晚於截日" in warning for warning in snapshot.warnings)
+
+
+def test_empty_successful_portfolio_is_observed_no_positions():
+    service = PortfolioAlertService(
+        FakePortfolioService([]),
+        FakeConditionMonitor({}),
+    )
+
+    snapshot = service.build_snapshot(date(2026, 6, 15))
+
+    assert snapshot.quality == DecisionDeskQuality.OBSERVED
+    assert snapshot.population_status == "no_positions"
+    assert snapshot.alert_count == 0
+    assert snapshot.alert_codes == ()
+    assert snapshot.alert_level == "low"
+    assert snapshot.warnings == ()
+
+
+def test_portfolio_provider_error_does_not_become_an_empty_population():
+    class BrokenPortfolioService:
+        def list_positions(self, portfolio_id: str = "default"):
+            del portfolio_id
+            raise RuntimeError("portfolio unavailable")
+
+    snapshot = PortfolioAlertService(
+        BrokenPortfolioService(),
+        FakeConditionMonitor({}),
+    ).build_snapshot(date(2026, 6, 15))
+
+    assert snapshot.quality == DecisionDeskQuality.DEGRADED
+    assert snapshot.population_status == "unknown"
+    assert snapshot.alert_count == 0
+    assert any(item.startswith("portfolio_alerts_portfolio_service_error:") for item in snapshot.warnings)
 
 
 def test_portfolio_alert_service_marks_estimated_when_chip_summary_missing_for_positions():
@@ -306,5 +464,3 @@ def test_portfolio_alert_service_builds_condition_and_chip_attributions():
     assert "condition:invalid" in by_code["2603"].reasons
     assert "chip_data_missing" in by_code["2603"].data_quality_flags
     assert "chip_unavailable_events" in by_code["2603"].data_quality_flags
-
-

@@ -8,7 +8,7 @@ pytest 契約，也不保證可直接執行。
 2026-09-07 移除 `legacy_diagnostics/` 的七份一次性腳本及重複 README：
 四份硬編碼 CSV 欄位列印、兩份外部 API／正式目錄診斷，以及引用已不存在
 `test_data_module` 的 runner。它們不是自動化測試，也沒有產品呼叫者。
-精確清單、備份與驗證見[專案整併查核](../../docs/06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)。
+精確清單、備份與驗證見專案整併查核（開發收據見dev）。
 原內容仍可由查核基線 Git commit 還原；不要恢復為預設 pytest 測試。
 技術指標與欄位行為請使用 `tests/test_analysis/` 與
 `tests/test_pattern_analysis/` 的合成資料測試；真實來源診斷須使用目前服務及

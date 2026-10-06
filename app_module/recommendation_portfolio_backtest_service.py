@@ -1,7 +1,8 @@
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, cast
+from uuid import uuid4
 
 import pandas as pd
 
@@ -22,6 +23,10 @@ from app_module.recommendation_replay_service import RecommendationReplayService
 from data_module.microstructure_source_preflight import build_microstructure_source_preflight
 from decision_module.factors.factor_adapters import build_technical_total_score_factor
 from decision_module.factors.factor_dtos import FactorQuality, FactorRecord, MissingPolicy
+from financial_module.banktaiwan_cost_policy import (
+    BankTaiwanElectronicCostPolicy,
+    BankTaiwanOrder,
+)
 from financial_module.units import bps_to_rate, calculate_fee, quantize_money, to_decimal
 from backtest_module.broker_simulator import (
     NEXT_OPEN_CONTRACT, LEGACY_CLOSE_CONTRACT, executable_open, exact_execution_costs,
@@ -79,6 +84,7 @@ def _row_observes_limit_lock(row: Any) -> bool:
 class RecommendationPortfolioBacktestService:
     def __init__(self, provider: Callable[[pd.DataFrame, Dict[str, Any], int], List[Dict[str, Any]]]):
         self.replay_service = RecommendationReplayService(provider=provider)
+        self._banktaiwan_cost_policy = BankTaiwanElectronicCostPolicy()
 
     def run_portfolio_backtest(
         self,
@@ -101,6 +107,9 @@ class RecommendationPortfolioBacktestService:
         lot_size: int | None = None,
         execution_contract: str = NEXT_OPEN_CONTRACT,
         check_cancel: Callable[[], bool] | None = None,
+        cost_policy_id: str | None = None,
+        cost_policy_instrument_type: str | None = None,
+        cost_policy_lot_type: str | None = None,
     ) -> RecommendationPortfolioBacktestResultDTO:
         """
         執行推薦組合回測。
@@ -108,6 +117,18 @@ class RecommendationPortfolioBacktestService:
         注意：目前本服務進場點（PeriodHoldingDTO.entry_price）採用 rebalance_ts（訊號日）當天的收盤價。
         此模式隱含「同日收盤訊號同日收盤成交」之理想化研究假設，在實盤操作中可能存在時間差而無法以該價格買入。
         """
+        replay_parent_id = f"replay-parent-{uuid4().hex}"
+        if cost_policy_id is not None:
+            if cost_policy_id != self._banktaiwan_cost_policy.policy_id:
+                raise ValueError(f"不支援的 cost_policy_id：{cost_policy_id}")
+            if execution_contract != NEXT_OPEN_CONTRACT:
+                raise ValueError("臺銀證券電子下單 policy 僅支援 NEXT_OPEN_CONTRACT")
+            if cost_policy_lot_type is None:
+                raise ValueError("使用臺銀證券電子下單 policy 時必須指定 cost_policy_lot_type")
+            if any(value is not None for value in (fee_bps, slippage_bps, tax_bps)):
+                raise ValueError("臺銀證券電子下單 policy 不可與 fee/slippage/tax bps 混用")
+        elif cost_policy_lot_type is not None or cost_policy_instrument_type is not None:
+            raise ValueError("cost_policy_lot_type/instrument_type 需要 cost_policy_id")
         if execution_contract == NEXT_OPEN_CONTRACT:
             return self._run_next_open_portfolio(
                 start_date=start_date, end_date=end_date, profile_id=profile_id,
@@ -117,7 +138,11 @@ class RecommendationPortfolioBacktestService:
                 stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct,
                 max_participation_rate=max_participation_rate, fee_bps=fee_bps,
                 slippage_bps=slippage_bps, tax_bps=tax_bps,
-                lot_size=lot_size or 1, check_cancel=check_cancel,
+                lot_size=lot_size, check_cancel=check_cancel,
+                cost_policy_id=cost_policy_id,
+                cost_policy_instrument_type=cost_policy_instrument_type,
+                cost_policy_lot_type=cost_policy_lot_type,
+                parent_result_id=replay_parent_id,
             )
         if execution_contract != LEGACY_CLOSE_CONTRACT:
             raise ValueError("不支援的 execution_contract")
@@ -176,6 +201,7 @@ class RecommendationPortfolioBacktestService:
                 history=data,
                 universe=None,
                 top_n=top_n,
+                parent_result_id=replay_parent_id,
             )
             snapshots.append(snapshot)
             recommendations = snapshot.recommendations
@@ -323,6 +349,7 @@ class RecommendationPortfolioBacktestService:
                     history=data,
                     universe=None,
                     top_n=top_n,
+                    parent_result_id=replay_parent_id,
                 )
             )
 
@@ -350,7 +377,7 @@ class RecommendationPortfolioBacktestService:
                 "microstructure_preflight": microstructure_preflight,
                 "relative_attribution": relative_attribution,
             }
-            return RecommendationPortfolioBacktestResultDTO(
+            result = RecommendationPortfolioBacktestResultDTO(
                 summary={
                     "total_return": 0.0,
                     "max_drawdown": 0.0,
@@ -379,6 +406,8 @@ class RecommendationPortfolioBacktestService:
                 ),
                 details=details,
             )
+            result.attach_replay_parent_id(replay_parent_id)
+            return result
 
         final_equity = initial_capital + sum(holding.pnl() for holding in period_holdings)
         equity_curve = self._build_equity_curve(initial_capital, period_holdings, start_ts, end_ts, data)
@@ -437,7 +466,7 @@ class RecommendationPortfolioBacktestService:
             "relative_attribution": relative_attribution,
         }
 
-        return RecommendationPortfolioBacktestResultDTO(
+        result = RecommendationPortfolioBacktestResultDTO(
             summary=summary,
             equity_curve=equity_curve,
             trades=pd.DataFrame(trade_rows),
@@ -452,26 +481,124 @@ class RecommendationPortfolioBacktestService:
             improvement_hints=improvement_hints,
             details=details,
         )
+        result.attach_replay_parent_id(replay_parent_id)
+        return result
+
+    def _next_open_execution_costs(
+        self,
+        *,
+        price: Decimal,
+        shares: int,
+        session: pd.Timestamp,
+        side: str,
+        order_id: str,
+        cost_policy: BankTaiwanElectronicCostPolicy | None,
+        cost_policy_lot_type: str | None,
+        cost_policy_instrument_type: str | None,
+        fee_bps: Any,
+        slippage_bps: Any,
+        tax_bps: Any,
+    ) -> dict[str, Any]:
+        """用同一成本契約完成可負擔性檢查與實際 fill 扣款。"""
+
+        gross = quantize_money(price * shares)
+        if cost_policy is None:
+            return exact_execution_costs(
+                gross,
+                side=side,
+                fee_bps=fee_bps,
+                slippage_bps=slippage_bps,
+                tax_bps=tax_bps,
+            )
+        if shares <= 0 or cost_policy_lot_type is None:
+            raise ValueError("臺銀證券電子下單 policy 需要正數成交股數與 lot type")
+        estimate = cost_policy.estimate(
+            BankTaiwanOrder(
+                order_id=order_id,
+                trade_date=session.date(),
+                side=side,
+                price=price,
+                quantity_shares=shares,
+                lot_type=cost_policy_lot_type,
+                instrument_type=cost_policy_instrument_type,
+            )
+        )
+        return {
+            "fee": estimate.commission,
+            "tax": estimate.sell_tax,
+            "slippage": estimate.slippage,
+            "total": estimate.total_cost,
+            "policy_estimate": estimate,
+        }
 
     def _run_next_open_portfolio(
         self, *, start_date: str, end_date: str, profile_id: str,
         config: Dict[str, Any], history: pd.DataFrame, initial_capital: Any,
         rebalance_frequency: str, top_n: int, allocation_method: str, holding_days: int,
         stop_loss_pct: Any, take_profit_pct: Any, max_participation_rate: Any,
-        fee_bps: Any, slippage_bps: Any, tax_bps: Any, lot_size: int,
-        check_cancel: Callable[[], bool] | None,
-        include_benchmark: bool = True,
+         fee_bps: Any, slippage_bps: Any, tax_bps: Any, lot_size: int | None,
+         check_cancel: Callable[[], bool] | None,
+         cost_policy_id: str | None = None,
+         cost_policy_instrument_type: str | None = None,
+         cost_policy_lot_type: str | None = None,
+         include_benchmark: bool = True,
+         parent_result_id: str | None = None,
     ) -> RecommendationPortfolioBacktestResultDTO:
         """日序事件撮合；精確帳務直到 DTO 產出才轉展示型別。"""
+        if parent_result_id is None:
+            parent_result_id = f"replay-parent-{uuid4().hex}"
         capital = quantize_money(to_decimal(initial_capital))
-        if not capital.is_finite() or capital <= 0 or top_n < 1 or holding_days < 1 or lot_size < 1:
+        cost_policy = None
+        normalized_policy_lot_type = None
+        normalized_policy_instrument_type = None
+        if cost_policy_id is not None:
+            if cost_policy_id != self._banktaiwan_cost_policy.policy_id:
+                raise ValueError(f"不支援的 cost_policy_id：{cost_policy_id}")
+            if cost_policy_lot_type is None:
+                raise ValueError("臺銀證券電子下單 policy 必須指定 lot type")
+            cost_policy = self._banktaiwan_cost_policy
+            normalized_policy_lot_type = cost_policy.normalize_lot_type(cost_policy_lot_type)
+            normalized_policy_instrument_type = cost_policy.normalize_instrument_type(
+                cost_policy_instrument_type
+            )
+            assert normalized_policy_lot_type is not None
+            if normalized_policy_instrument_type == "unknown":
+                raise ValueError(
+                    "臺銀證券成本 policy 必須指定 ordinary_stock 或 equity_etf；"
+                    "未知商品不得產生淨績效"
+                )
+            required_lot_size = cost_policy.lot_size_for(normalized_policy_lot_type)
+            if lot_size is not None and lot_size != required_lot_size:
+                raise ValueError(
+                    "lot_size 與臺銀 policy 的 lot_type 不一致："
+                    f"需要 {required_lot_size}"
+                )
+            effective_lot_size = required_lot_size
+        else:
+            if lot_size is not None and lot_size <= 0:
+                raise ValueError("lot_size must be positive when provided")
+            effective_lot_size = lot_size or 1
+        if (
+            not capital.is_finite()
+            or capital <= 0
+            or top_n < 1
+            or holding_days < 1
+            or effective_lot_size < 1
+        ):
             raise ValueError("資金、top_n、holding_days 與 lot_size 必須為正數")
         if rebalance_frequency not in {"once", "weekly"} or allocation_method not in {"equal_weight", "score_weight"}:
             raise ValueError("不支援的再平衡或配置方式")
         for threshold in (stop_loss_pct, take_profit_pct, max_participation_rate):
             if threshold is not None and (not to_decimal(threshold).is_finite() or to_decimal(threshold) <= 0):
                 raise ValueError("風控與成交量比例必須為有限正數")
-        exact_execution_costs(Decimal("0"), side="sell", fee_bps=fee_bps, slippage_bps=slippage_bps, tax_bps=tax_bps)
+        if cost_policy is None:
+            exact_execution_costs(
+                Decimal("0"),
+                side="sell",
+                fee_bps=fee_bps,
+                slippage_bps=slippage_bps,
+                tax_bps=tax_bps,
+            )
         data = history.copy()
         if not {"日期", "證券代號", "收盤價"}.issubset(data.columns):
             raise ValueError("歷史資料缺少日期、證券代號或收盤價")
@@ -496,12 +623,14 @@ class RecommendationPortfolioBacktestService:
         cash_ledger: list[dict[str, Any]] = []
         curve_rows: list[dict[str, Any]] = []
         unfilled: list[dict[str, Any]] = []
+        unallocated_allocations: list[dict[str, Any]] = []
+        unallocated_cash = Decimal("0")
         diagnostics: list[str] = []
         cancelled = False
         peak, max_drawdown = capital, Decimal("0")
         final_equity = capital
         fill_policy = ConservativeFillPolicy(
-            lot_size=lot_size,
+            lot_size=effective_lot_size,
             max_participation_rate=max_participation_rate,
             enable_limit_up_down=True,
             limit_up_down_pct=Decimal("0.10"),
@@ -525,17 +654,44 @@ class RecommendationPortfolioBacktestService:
                 side = order["side"]
                 if side == "buy":
                     budget = min(order["budget"], cash)
-                    buy_rate = (to_decimal(fee_bps or 0) + to_decimal(slippage_bps or 0)) / Decimal("10000")
-                    shares = int(budget / (price * (Decimal("1") + buy_rate))) // lot_size * lot_size
+                    if cost_policy is None:
+                        buy_rate = (to_decimal(fee_bps or 0) + to_decimal(slippage_bps or 0)) / Decimal("10000")
+                        shares = int(budget / (price * (Decimal("1") + buy_rate))) // effective_lot_size * effective_lot_size
+                    else:
+                        # 先用毛成交金額求候選股數，再由下方 policy 成本迴圈
+                        # 驗證最低手續費；決策日只讀到當時的現金與 next-open。
+                        raw_shares = int(budget / price)
+                        max_order_shares = cost_policy.max_order_shares_for(
+                            cast(str, normalized_policy_lot_type)
+                        )
+                        if max_order_shares is not None and raw_shares > max_order_shares:
+                            order["policy_order_cap_applied"] = True
+                            order["policy_raw_requested_shares"] = raw_shares
+                            shares = max_order_shares
+                        else:
+                            shares = raw_shares
+                        shares = shares // effective_lot_size * effective_lot_size
                 else:
                     budget = cash
                     shares = positions[code]["shares"]
                 while shares > 0:
                     gross = quantize_money(price * shares)
-                    costs = exact_execution_costs(gross, side=side, fee_bps=fee_bps, slippage_bps=slippage_bps, tax_bps=tax_bps)
+                    costs = self._next_open_execution_costs(
+                        price=price,
+                        shares=shares,
+                        session=session,
+                        side=side,
+                        order_id=order["order_id"],
+                        cost_policy=cost_policy,
+                        cost_policy_lot_type=normalized_policy_lot_type,
+                        cost_policy_instrument_type=normalized_policy_instrument_type,
+                        fee_bps=fee_bps,
+                        slippage_bps=slippage_bps,
+                        tax_bps=tax_bps,
+                    )
                     if side == "sell" or gross + costs["total"] <= budget:
                         break
-                    shares -= lot_size
+                    shares -= effective_lot_size
                 decision = fill_policy.decide(
                     side=side,
                     requested_shares=shares,
@@ -561,7 +717,19 @@ class RecommendationPortfolioBacktestService:
                     del pending[code]
                     continue
                 gross = quantize_money(price * shares)
-                costs = exact_execution_costs(gross, side=side, fee_bps=fee_bps, slippage_bps=slippage_bps, tax_bps=tax_bps)
+                costs = self._next_open_execution_costs(
+                    price=price,
+                    shares=shares,
+                    session=session,
+                    side=side,
+                    order_id=order["order_id"],
+                    cost_policy=cost_policy,
+                    cost_policy_lot_type=normalized_policy_lot_type,
+                    cost_policy_instrument_type=normalized_policy_instrument_type,
+                    fee_bps=fee_bps,
+                    slippage_bps=slippage_bps,
+                    tax_bps=tax_bps,
+                )
                 cost_total += costs["total"]
                 if side == "buy":
                     cash = quantize_money(cash - gross - costs["total"])
@@ -571,20 +739,52 @@ class RecommendationPortfolioBacktestService:
                                 "exit_signal_date": "", "exit_date": None, "exit_price": Decimal("0"), "exit_cost": Decimal("0")}
                     positions[code] = position
                     all_positions.append(position)
+                    if cost_policy is not None and order.get("policy_order_cap_applied"):
+                        allocation_spent = gross + costs["total"]
+                        remaining_allocation = max(budget - allocation_spent, Decimal("0"))
+                        unallocated_cash += remaining_allocation
+                        unallocated_allocations.append({
+                            "stock_code": code,
+                            "order_id": order["order_id"],
+                            "reason": "odd_lot_order_cap_999",
+                            "requested_shares_before_cap": order["policy_raw_requested_shares"],
+                            "filled_shares": shares,
+                            "allocation_budget": str(budget),
+                            "allocated_amount": str(allocation_spent),
+                            "unallocated_amount": str(remaining_allocation),
+                        })
                 else:
                     cash = quantize_money(cash + gross - costs["total"])
                     position = positions.pop(code)
                     position.update(status="closed", exit_date=session, exit_price=price,
                                     exit_cost=costs["total"], exit_signal_date=order["signal_date"], exit_reason=order["reason"])
-                trade_rows.append({"date": session.strftime("%Y-%m-%d"), "signal_date": order["signal_date"],
-                                   "stock_code": code, "stock_name": order["stock_name"], "side": side,
-                                   "price": float(price), "shares": shares, "amount": float(gross),  # numeric-boundary: dto
-                                   "fee": float(costs["fee"]), "tax": float(costs["tax"]), "slippage": float(costs["slippage"]),  # numeric-boundary: dto
-                                   "requested_shares": decision.requested_shares, "unfilled_shares": decision.unfilled_shares,
-                                   "fill_status": decision.status, "fill_reason": decision.reason,
-                                   "execution_contract": NEXT_OPEN_CONTRACT})
-                cash_ledger.append({"date": session.strftime("%Y-%m-%d"), "stock_code": code, "side": side,
-                                    "amount": float(gross), "total_cost": float(costs["total"]), "cash_balance": float(cash)})  # numeric-boundary: dto
+                trade_row = {"date": session.strftime("%Y-%m-%d"), "signal_date": order["signal_date"],
+                             "stock_code": code, "stock_name": order["stock_name"], "side": side,
+                             "price": float(price), "shares": shares, "amount": float(gross),  # numeric-boundary: dto
+                             "fee": float(costs["fee"]), "tax": float(costs["tax"]), "slippage": float(costs["slippage"]),  # numeric-boundary: dto
+                             "requested_shares": decision.requested_shares, "unfilled_shares": decision.unfilled_shares,
+                             "fill_status": decision.status, "fill_reason": decision.reason,
+                             "execution_contract": NEXT_OPEN_CONTRACT}
+                if cost_policy is not None:
+                    estimate = costs["policy_estimate"]
+                    trade_row.update({
+                        "cost_policy_id": estimate.policy_id,
+                        "cost_policy_version": estimate.policy_version,
+                        "cost_basis": "estimated_research_only",
+                        "broker_fill_status": "not_observed",
+                        "slippage_model": "not_modeled",
+                        "cost_estimate": estimate.to_dict(),
+                    })
+                trade_rows.append(trade_row)
+                ledger_row = {"date": session.strftime("%Y-%m-%d"), "stock_code": code, "side": side,
+                              "amount": float(gross), "total_cost": float(costs["total"]), "cash_balance": float(cash)}  # numeric-boundary: dto
+                if cost_policy is not None:
+                    ledger_row.update({
+                        "cost_policy_id": costs["policy_estimate"].policy_id,
+                        "cost_policy_version": costs["policy_estimate"].policy_version,
+                        "cost_basis": "estimated_research_only",
+                    })
+                cash_ledger.append(ledger_row)
                 del pending[code]
 
             for code, position in positions.items():
@@ -604,7 +804,7 @@ class RecommendationPortfolioBacktestService:
                 elif session >= position["entry_date"] + pd.Timedelta(days=holding_days):
                     reason = "holding_period_close_confirmed"
                 if reason:
-                    pending[code] = {**position, "side": "sell", "signal_date": session.strftime("%Y-%m-%d"), "reason": reason}
+                    pending[code] = {**position, "side": "sell", "order_id": f"sell:{code}:{session.strftime('%Y-%m-%d')}", "signal_date": session.strftime("%Y-%m-%d"), "reason": reason}
 
             value = sum((position["mark"] * position["shares"] for position in positions.values()), Decimal("0"))
             final_equity = quantize_money(cash + value)
@@ -613,7 +813,8 @@ class RecommendationPortfolioBacktestService:
             curve_rows.append({"date": session.strftime("%Y-%m-%d"), "equity": float(final_equity), "cash": float(cash), "position_value": float(quantize_money(value))})  # numeric-boundary: dto
             if session in rebalance_dates:
                 snapshot = self.replay_service.run_snapshot(as_of_date=session.strftime("%Y-%m-%d"), profile_id=profile_id,
-                    config=dict(config), history=data, universe=None, top_n=top_n)
+                    config=dict(config), history=data, universe=None, top_n=top_n,
+                    parent_result_id=parent_result_id)
                 snapshots.append(snapshot)
                 recs = snapshot.recommendations
                 scores = [max(to_decimal(rec.get("total_score", 0)), Decimal("0")) for rec in recs]
@@ -625,7 +826,7 @@ class RecommendationPortfolioBacktestService:
                     weight = scores[rank - 1] / total_score if allocation_method == "score_weight" and total_score > 0 else Decimal("1") / len(recs)
                     source_row = day.get(code)
                     volume = next((to_decimal(source_row[c]) for c in ("成交股數", "成交量", "Volume", "volume") if source_row is not None and c in source_row and pd.notna(source_row[c])), None)
-                    pending[code] = {"side": "buy", "signal_date": session.strftime("%Y-%m-%d"), "stock_name": str(rec.get("stock_name", "")),
+                    pending[code] = {"side": "buy", "order_id": f"buy:{code}:{session.strftime('%Y-%m-%d')}", "signal_date": session.strftime("%Y-%m-%d"), "stock_name": str(rec.get("stock_name", "")),
                         "rank": rank, "weight": weight, "budget": quantize_money(capital * weight), "score": rec.get("total_score", 0),
                         "factor_scores": dict(rec.get("factor_scores", {})), "volume": volume,
                         "signal_close": to_decimal(source_row["收盤價"]) if source_row is not None and pd.notna(source_row["收盤價"]) else None}
@@ -680,7 +881,11 @@ class RecommendationPortfolioBacktestService:
                     profile_id=profile_id, config=config, history=data, initial_capital=initial_capital,
                     rebalance_frequency=rebalance_frequency, top_n=top_n, allocation_method="equal_weight", holding_days=holding_days,
                     stop_loss_pct=stop_loss_pct, take_profit_pct=take_profit_pct, max_participation_rate=max_participation_rate,
-                    fee_bps=fee_bps, slippage_bps=slippage_bps, tax_bps=tax_bps, lot_size=lot_size, check_cancel=None, include_benchmark=False)
+                    fee_bps=fee_bps, slippage_bps=slippage_bps, tax_bps=tax_bps, lot_size=lot_size,
+                    cost_policy_id=cost_policy_id,
+                    cost_policy_instrument_type=normalized_policy_instrument_type,
+                    cost_policy_lot_type=normalized_policy_lot_type,
+                    check_cancel=None, include_benchmark=False)
                 baseline_equity = to_decimal(baseline_result.summary["ending_equity_cents"]) / 100
                 baseline_curve = baseline_result.equity_curve.to_dict("records")
             baseline_return = baseline_equity / capital - Decimal("1")
@@ -690,14 +895,36 @@ class RecommendationPortfolioBacktestService:
                 "benchmarks": {"benchmark": {"status": "observed", "return_bp": int((baseline_return * Decimal("10000")).to_integral_value(rounding=ROUND_HALF_UP)), "excess_return_bp": benchmark_excess_bp}},
                 "equity_curve": baseline_curve}
         warnings = ["close_confirmed_exit_only", "price_limit_order_book_not_modeled"]
-        if any(value is None for value in (fee_bps, slippage_bps, tax_bps)):
+        if cost_policy is not None:
+            warnings.extend(["banktaiwan_cost_estimate", "broker_fill_not_observed", "slippage_not_modeled"])
+            execution_cost_metadata = cost_policy.metadata(
+                lot_type=normalized_policy_lot_type,
+                instrument_type=normalized_policy_instrument_type,
+            )
+        else:
+            execution_cost_metadata = {
+                "fee_bps": str(fee_bps or 0),
+                "slippage_bps": str(slippage_bps or 0),
+                "tax_bps": str(tax_bps or 0),
+            }
+        if cost_policy is None and any(value is None for value in (fee_bps, slippage_bps, tax_bps)):
             warnings.append("unspecified_cost_assumptions")
         credibility = {"schema_version": 2, "status": "limited", "execution_assumption": "next_session_open", "execution_contract": NEXT_OPEN_CONTRACT,
             "warnings": warnings, "terminal_policy": "mark_open_positions_without_synthetic_liquidation", "exit_policy": "close_confirmed_next_open",
-            "liquidity_policy": "signal_session_known_volume", "share_sizing": {"lot_size": lot_size},
-            "execution_costs": {"fee_bps": str(fee_bps or 0), "slippage_bps": str(slippage_bps or 0), "tax_bps": str(tax_bps or 0)}}
+            "liquidity_policy": "signal_session_known_volume", "share_sizing": {"lot_size": effective_lot_size},
+            "execution_costs": execution_cost_metadata}
+        if cost_policy is not None:
+            credibility.update({
+                "cost_policy_id": cost_policy.policy_id,
+                "cost_policy_version": cost_policy.policy_version,
+                "cost_basis": "estimated_research_only",
+                "broker_fill_observed": False,
+                "slippage_model": "not_modeled",
+            })
         manifest = self._build_factor_manifest(snapshots)
         manifest["execution_contract"] = NEXT_OPEN_CONTRACT
+        if cost_policy is not None:
+            manifest["execution_cost_policy"] = execution_cost_metadata
         rolling_risk = calculate_rolling_risk_metrics(equity_curve=equity_curve, period_holdings=holdings)
         microstructure = self._build_microstructure_preflight(snapshots, data)
         gap_records = []
@@ -717,16 +944,32 @@ class RecommendationPortfolioBacktestService:
             "ending_cash": float(cash), "ending_equity": float(final_equity), "total_transaction_cost": float(cost_total), "realized_pnl": float(realized),  # numeric-boundary: dto
             "unrealized_pnl": float(final_equity - capital - realized),  # numeric-boundary: dto
             "ending_equity_cents": int(final_equity * 100), "ending_cash_cents": int(cash * 100),
-            "open_position_count": len(positions), "unfilled_order_count": len(unfilled), "status": "cancelled" if cancelled else "completed",
-            "rolling_risk_status": rolling_risk["status"], "microstructure_risk_count": microstructure["risk_count"],
-            "credibility_status": "limited", "credibility_warning_count": len(warnings), "benchmark_excess_return_bp": benchmark_excess_bp, "relative_attribution_status": benchmark["status"]}
+             "open_position_count": len(positions), "unfilled_order_count": len(unfilled), "status": "cancelled" if cancelled else "completed",
+             "rolling_risk_status": rolling_risk["status"], "microstructure_risk_count": microstructure["risk_count"],
+             "credibility_status": "limited", "credibility_warning_count": len(warnings), "benchmark_excess_return_bp": benchmark_excess_bp, "relative_attribution_status": benchmark["status"]}
+        if cost_policy is not None:
+            summary.update({
+                "cost_policy_id": cost_policy.policy_id,
+                "cost_policy_version": cost_policy.policy_version,
+                "cost_basis": "estimated_research_only",
+                "broker_fill_observed": False,
+                "slippage_model": "not_modeled",
+            })
         summary.update(calculate_robustness_metrics(equity_curve=equity_curve, trade_returns=[h.return_pct for h in holdings if h.position_status == "closed"]))
-        return RecommendationPortfolioBacktestResultDTO(summary=summary, equity_curve=equity_curve, trades=pd.DataFrame(trade_rows), snapshots=snapshots,
+        details = {"data_manifest": manifest, "execution_contract": NEXT_OPEN_CONTRACT, "portfolio_credibility": credibility,
+                   "cash_ledger": cash_ledger, "unfilled_orders": unfilled, "relative_attribution": benchmark, "benchmark_results": benchmark,
+                   "weight_exposure": self._build_weight_exposure(period_holdings=holdings, unfilled_orders=unfilled),
+                   "gap_risk": gap_risk, "rolling_risk_metrics": rolling_risk, "microstructure_preflight": microstructure}
+        if cost_policy is not None:
+            details["execution_cost_policy"] = execution_cost_metadata
+            details["unallocated_allocations"] = unallocated_allocations
+            summary["unallocated_cash"] = float(unallocated_cash)  # numeric-boundary: dto
+            summary["unallocated_allocation_count"] = len(unallocated_allocations)
+        result = RecommendationPortfolioBacktestResultDTO(summary=summary, equity_curve=equity_curve, trades=pd.DataFrame(trade_rows), snapshots=snapshots,
             period_holdings=holdings, stock_contribution=contributions, selection_diagnostics=diagnostics + [str(o["reason"]) for o in unfilled],
-            details={"data_manifest": manifest, "execution_contract": NEXT_OPEN_CONTRACT, "portfolio_credibility": credibility,
-                     "cash_ledger": cash_ledger, "unfilled_orders": unfilled, "relative_attribution": benchmark, "benchmark_results": benchmark,
-                     "weight_exposure": self._build_weight_exposure(period_holdings=holdings, unfilled_orders=unfilled),
-                     "gap_risk": gap_risk, "rolling_risk_metrics": rolling_risk, "microstructure_preflight": microstructure})
+            details=details)
+        result.attach_replay_parent_id(parent_result_id)
+        return result
 
     def _get_rebalance_dates(
         self,

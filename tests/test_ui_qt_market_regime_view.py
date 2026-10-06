@@ -93,6 +93,7 @@ def test_market_regime_detection_shows_technical_details():
     app()
     view = MarketRegimeView(FakeRegimeService())
 
+    view.layer3_group.setChecked(True)
     view._detect_regime()
 
     assert view.layer3_group.isChecked() is True

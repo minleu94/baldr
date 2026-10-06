@@ -6,17 +6,31 @@ import json
 import os
 import sqlite3
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QToolButton
 
-from app_module.dtos import RecommendationDTO
+from app_module.recommendation.contracts import (
+    Context,
+    DecisionBatch,
+    ExecutionStatus,
+    IndexStatus,
+    RecommendationExecution,
+    Request,
+    SaveReceipt,
+    ReferenceKind,
+    VersionReference,
+)
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from decision_module.recommendation.contracts import RecommendationItem
+from ui_qt.views.recommendation.execution_coordinator import RecommendationExecutionRequest
 from app_module.research_console_dtos import (
     ResearchConsoleBoundaryDTO,
     ResearchConsoleDTO,
@@ -53,6 +67,10 @@ def test_store_keeps_full_stock_context_and_can_clear() -> None:
         profile_id="momentum",
         profile_version="2.1",
         source_id="provider-1",
+        source_version="provider-v2",
+        mapping_source_id="mapping.csv",
+        mapping_version="mapping-v1",
+        mapping_observed_date="2026-09-04",
         source_kind="recommendation",
         source_label="已保存推薦結果",
         source_workspace="recommendation",
@@ -67,6 +85,10 @@ def test_store_keeps_full_stock_context_and_can_clear() -> None:
     assert snapshot.result_id == "result-1"
     assert snapshot.profile_id == "momentum"
     assert snapshot.source_id == "provider-1"
+    assert snapshot.source_version == "provider-v2"
+    assert snapshot.mapping_source_id == "mapping.csv"
+    assert snapshot.mapping_version == "mapping-v1"
+    assert snapshot.mapping_observed_date == "2026-09-04"
     assert store.clear_stock_context().stock_context is None
 
 
@@ -102,6 +124,7 @@ def test_context_strip_shows_dates_and_returns_snapshot() -> None:
     assert "2330 台積電" in strip._full_context_text
     assert "決策日：2026-09-05" in strip._full_context_text
     assert "資料日：2026-09-04" in strip._full_context_text
+    assert "映射版本：未標示" in strip._full_context_text
     assert strip.return_button.isVisible()
     strip.return_button.click()
     assert returned and returned[0].stock_context.result_id == "result-1"
@@ -119,32 +142,68 @@ def _recommendation_view() -> RecommendationView:
         get_strategy_config=lambda _regime: {},
     )
     view = RecommendationView(MagicMock(), regime_service)
-    view.current_config = {"as_of_date": "2026-09-05"}
-    view.current_profile = "momentum"
-    view.current_result_id = "result-1"
-    view.recommendation_service.last_run_context = {
+    config = {
+        "patterns": {"selected": ["W底"]},
+        "signals": {"technical_indicators": ["trend"]},
         "as_of_date": "2026-09-05",
-        "data_date": "2026-09-04",
         "profile_id": "momentum",
-        "profile_version": "2.1",
-        "source_id": "provider-1",
     }
-    recommendation = RecommendationDTO(
+    snapshot = RecommendationExecutionRequest(config).config_snapshot
+    request = Request(
+        config_snapshot=snapshot,
+        profile_ref=VersionReference(ReferenceKind.PROFILE, "momentum", "2.1"),
+        max_stocks=200,
+        top_n=50,
+    )
+    recommendation = RecommendationItem(
         stock_code="2330",
         stock_name="台積電",
         close_price=100,
         price_change=1,
-        total_score=80,
+        rule_score=80,
         indicator_score=80,
         pattern_score=80,
         volume_score=80,
-        recommendation_reasons="均線向上",
+        reason_text="均線向上",
         industry="半導體",
         regime_match=True,
+        eligible_universe_date=date(2026, 9, 4),
     )
-    view.current_recommendations = [recommendation]
+    execution = RecommendationExecution(
+        result_id="result-1",
+        request=request,
+        context=Context(
+            as_of_date=date(2026, 9, 5),
+            created_at=datetime(2026, 9, 5, tzinfo=timezone.utc),
+        ),
+        status=ExecutionStatus.COMPLETED,
+        decision=DecisionBatch(items=(recommendation,), regime="Trend"),
+    )
+    view.current_execution = execution
+    view.current_config = view._execution_config(execution)
+    view.current_profile = "momentum"
+    view.current_result_id = "result-1"
+    persisted_at = datetime(2026, 9, 5, 1, tzinfo=timezone.utc)
+    payload_hash = "sha256:" + "a" * 64
+    artifact = "C:/temp/result-1.json"
+    view.current_read_model = RecommendationExecutionReadModel(
+        execution=execution,
+        label="saved result",
+        notes="",
+        persisted_at=persisted_at,
+        payload_hash=payload_hash,
+        artifact_location=artifact,
+        integrity_basis="canonical_payload_and_index_verified",
+    )
+    view.current_save_receipt = SaveReceipt(
+        result_id="result-1",
+        payload_hash=payload_hash,
+        artifact_location=artifact,
+        persisted_at=persisted_at,
+        index_status=IndexStatus.INDEXED,
+    )
     view.recommendations_model = PandasTableModel(
-        pd.DataFrame([recommendation.to_dict()])
+        pd.DataFrame([view._current_table_rows()[0]])
     )
     view.results_table.setModel(view.recommendations_model)
     return view
@@ -162,10 +221,10 @@ def test_recommendation_drilldown_emits_saved_context_without_recompute() -> Non
     context = emitted[0]
     assert context.stock_code == "2330"
     assert context.decision_date == "2026-09-05"
-    assert context.data_date == "2026-09-04"
+    assert context.data_date == ""
     assert context.result_id == "result-1"
     assert context.profile_id == "momentum"
-    assert context.source_id == "provider-1"
+    assert context.source_id == "result-1"
     view.close()
 
 
@@ -206,10 +265,32 @@ def test_watchlist_drilldown_reads_saved_metadata_and_keeps_source_id(tmp_path: 
         encoding="utf-8",
     )
     with sqlite3.connect(runs / "recommendation_runs.db") as conn:
-        conn.execute("CREATE TABLE runs (result_id TEXT, data_path TEXT, created_at TEXT)")
         conn.execute(
-            "INSERT INTO runs VALUES (?, ?, ?)",
-            ("result-1", str(artifact), "2026-09-05"),
+            """
+            CREATE TABLE runs (
+                result_id TEXT PRIMARY KEY,
+                result_name TEXT NOT NULL,
+                regime TEXT,
+                stock_count INTEGER,
+                config TEXT,
+                notes TEXT,
+                created_at TEXT,
+                data_path TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "result-1",
+                "策略甲",
+                None,
+                0,
+                json.dumps({"profile_id": "momentum", "profile_version": "2.1"}),
+                "",
+                "2026-09-05",
+                str(artifact),
+            ),
         )
 
     app()
@@ -251,6 +332,16 @@ def test_main_routes_context_to_store_and_smart_money_without_recompute() -> Non
 
     assert visited == ["2330"]
     assert window.research_session_store.get_snapshot().stock_context.stock_code == "2330"
+    assert window.research_session_store.get_snapshot().stock_context.rank_context is None
+
+
+def test_mapping_context_rejects_explicit_malformed_rank_without_replacing_session() -> None:
+    window = MainWindow.__new__(MainWindow)
+    window.research_session_store = ResearchSessionStore()
+    before = window.research_session_store.get_snapshot()
+    with pytest.raises(ValueError, match="rank_context"):
+        window._open_stock_research_context({"stock_code": "2330", "rank_context": ""})
+    assert window.research_session_store.get_snapshot() == before
 
 
 def test_research_console_defaults_to_chinese_conclusion_and_collapsed_diagnostics() -> None:

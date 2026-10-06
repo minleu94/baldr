@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 import sqlite3
 
@@ -236,7 +237,33 @@ def _database(path: Path) -> None:
                 1,
                 3,
             ),
-        )
+            )
+
+
+def _write_pending_repair_receipt(database: Path) -> None:
+    data_root = database.parent.parent if database.parent.name == "sqlite" else database.parent
+    receipt_dir = (
+        data_root
+        / "output"
+        / "scheduled"
+        / "daily_price_repair_receipts"
+        / "20260520"
+        / "historical_price_spike_20260921"
+    )
+    receipt_dir.mkdir(parents=True)
+    (receipt_dir / "pending.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "historical-price-spike-repair-20260921.v1",
+                "receipt_kind": "historical_price_spike_repair_pending",
+                "status": "pending",
+                "source_date": "20240102",
+                "created_at": "2024-02-01T00:00:00+00:00",
+                "allowlist_count": 868,
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def _sha256(path: Path) -> str:
@@ -411,6 +438,22 @@ def test_provider_uses_union_masks_and_does_not_truncate_core_history(
     assert snapshot.query_only is True
     assert snapshot.shadow_only is True
     assert snapshot.production_action_allowed is False
+
+
+def test_pending_price_repair_blocks_direct_all_field_snapshot_load(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "sqlite" / "all-fields.db"
+    database.parent.mkdir()
+    _database(database)
+    _write_pending_repair_receipt(database)
+
+    with pytest.raises(ValueError, match="revision-aware research or formal process"):
+        MLAllFieldSnapshotProvider(database).load(
+            decision_at="2024-01-04T08:30:00+08:00",
+            history_start_date="2023-11-01",
+            symbols=("2330",),
+        )
 
 
 def test_unaccepted_source_and_future_availability_are_fail_closed(

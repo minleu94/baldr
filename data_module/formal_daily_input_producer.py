@@ -621,6 +621,19 @@ def run_daily_formal_input_producer(
         paper_execution_receipt_verified=paper_execution_receipt_verified,
     )
     result_inputs.update(formal_results)
+    resolved_preflight_blockers: list[dict[str, object]] = []
+    rule_history_resolution = _resolve_same_run_rule_history_missing_blocker(
+        configured_paths=paths,
+        preflight=preflight,
+        rule_candidate=result_inputs.get("rule_candidate"),
+        formal_rule_readback=formal_results.get(
+            "formal_rule_champion_snapshot_history"
+        ),
+    )
+    if rule_history_resolution is not None:
+        resolved_preflight_blockers.append(rule_history_resolution)
+        resolved_reason = str(rule_history_resolution["reason"])
+        blockers = [item for item in blockers if item != resolved_reason]
     blockers.extend(formal_blockers)
 
     formal_ready_count = sum(
@@ -695,6 +708,7 @@ def run_daily_formal_input_producer(
         "observed_at": observed_utc.isoformat(),
         "decision_at": observed_utc.isoformat(),
         "preflight": preflight,
+        "resolved_preflight_blockers": resolved_preflight_blockers,
         "inputs": result_inputs,
         "blockers": sorted(set(blockers)),
         "formal_ready_input_count": formal_ready_count,
@@ -5497,9 +5511,11 @@ def _parse_twse_mis_raw_rows(
         return [], "market_source_capture_raw_response_json_invalid"
     if not isinstance(payload_value, Mapping):
         return [], "market_source_capture_raw_response_not_object"
-    if payload_value.get("rtcode") not in {"000", "0"}:
+    rtcode = payload_value.get("rtcode")
+    if type(rtcode) is not str or rtcode not in {"000", "0", "0000"}:
         return [], "market_source_capture_raw_response_status_invalid"
-    if payload_value.get("rtmessage") != "OK":
+    rtmessage = payload_value.get("rtmessage")
+    if type(rtmessage) is not str or rtmessage != "OK":
         return [], "market_source_capture_raw_response_message_invalid"
     messages = payload_value.get("msgArray")
     if not isinstance(messages, list) or not messages:
@@ -6112,6 +6128,98 @@ def _bind_same_run_formal_sources(
             "formal_rule_history_path", paths.formal_rule_history_path
         ),
     )
+
+
+def _resolve_same_run_rule_history_missing_blocker(
+    *,
+    configured_paths: DailyFormalInputPaths,
+    preflight: Mapping[str, object],
+    rule_candidate: object,
+    formal_rule_readback: object,
+) -> dict[str, object] | None:
+    """只解除同一路徑同輪 Rule manifest 已通過 consumer readback 的舊缺檔提示。"""
+
+    reason = "formal_rule_history_source_file_missing"
+    raw_blockers = preflight.get("blockers")
+    if not isinstance(raw_blockers, (list, tuple)) or reason not in {
+        str(item) for item in raw_blockers
+    }:
+        return None
+    if configured_paths.formal_rule_history_path is None:
+        return None
+    try:
+        configured_path = configured_paths.formal_rule_history_path.expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+    formal_sources = preflight.get("formal_sources")
+    if not isinstance(formal_sources, Mapping):
+        return None
+    preflight_source = formal_sources.get("formal_rule_champion_snapshot_history")
+    if not isinstance(preflight_source, Mapping):
+        return None
+    if (
+        preflight_source.get("state") != "missing"
+        or preflight_source.get("reason") != reason
+        or preflight_source.get("file_hash") is not None
+        or not isinstance(preflight_source.get("path"), str)
+    ):
+        return None
+    try:
+        preflight_path = Path(str(preflight_source["path"])).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+    if os.path.normcase(str(preflight_path)) != os.path.normcase(str(configured_path)):
+        return None
+    if not isinstance(rule_candidate, Mapping):
+        return None
+    if (
+        rule_candidate.get("status") != "machine_verified_candidate"
+        or rule_candidate.get("formal_consumer_verified") is not True
+        or not isinstance(rule_candidate.get("formal_manifest_path"), str)
+        or not isinstance(rule_candidate.get("formal_manifest_hash"), str)
+        or not isinstance(rule_candidate.get("formal_manifest_file_hash"), str)
+    ):
+        return None
+    try:
+        candidate_path = Path(
+            str(rule_candidate["formal_manifest_path"])
+        ).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+    if os.path.normcase(str(candidate_path)) != os.path.normcase(str(configured_path)):
+        return None
+    candidate_manifest_hash = rule_candidate["formal_manifest_hash"]
+    candidate_file_hash = rule_candidate["formal_manifest_file_hash"]
+    if not _is_sha256(candidate_manifest_hash) or not _is_sha256(candidate_file_hash):
+        return None
+    if not isinstance(formal_rule_readback, Mapping):
+        return None
+    if (
+        formal_rule_readback.get("input") != "formal_rule_champion_snapshot_history"
+        or formal_rule_readback.get("state") != "ready"
+        or formal_rule_readback.get("formal_ready") is not True
+        or formal_rule_readback.get("formal_consumer_compatible") is not True
+        or formal_rule_readback.get("consumer_verified") is not True
+        or not isinstance(formal_rule_readback.get("path"), str)
+        or formal_rule_readback.get("manifest_hash") != candidate_manifest_hash
+        or formal_rule_readback.get("file_hash") != candidate_file_hash
+    ):
+        return None
+    try:
+        readback_path = Path(str(formal_rule_readback["path"])).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+    if os.path.normcase(str(readback_path)) != os.path.normcase(str(configured_path)):
+        return None
+    return {
+        "reason": reason,
+        "input": "formal_rule_champion_snapshot_history",
+        "resolution": "same_run_exact_manifest_verified_by_formal_consumer",
+        "path": str(configured_path),
+        "manifest_hash": candidate_manifest_hash,
+        "file_hash": candidate_file_hash,
+        "consumer_verified": True,
+    }
 
 
 def _produce_common_identity_candidate(

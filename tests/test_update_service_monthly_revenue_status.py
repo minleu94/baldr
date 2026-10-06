@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import sqlite3
+from hashlib import sha256
+from types import SimpleNamespace
 from pathlib import Path
 
 from data_module.fundamental_availability_sources import (
@@ -10,6 +12,12 @@ from data_module.fundamental_availability_sources import (
 from data_module.monthly_revenue_snapshot_harvester import (
     MopsMonthlyRevenueSnapshotResult,
 )
+from data_module import monthly_revenue_snapshot_harvester as monthly_harvester
+from data_module.current_monthly_revenue_materialization import plan_current_revenue
+from data_module.monthly_revenue_snapshot_selection import (
+    select_latest_monthly_revenue_snapshot,
+)
+from data_module.contracts.fundamental import SourceDiagnostic, SourceDiagnosticKind
 
 from app_module.update_service import UpdateService
 
@@ -18,50 +26,145 @@ def test_fetch_mops_monthly_revenue_snapshot_candidate_is_candidate_only(
     test_config,
     monkeypatch,
 ) -> None:
-    rows = [
-        {
-            "market": "twse",
-            "period": "2026-07",
-            "stock_code": "2330",
-            "company_name": "台積電",
-            "current_month_revenue": "100",
-            "previous_month_revenue": "90",
-            "previous_year_month_revenue": "80",
-            "mom_pct": "11.1",
-            "yoy_pct": "25.0",
-            "cumulative_revenue": "100",
-            "previous_year_cumulative_revenue": "80",
-            "cumulative_yoy_pct": "25.0",
-            "note": "",
-            "fetched_at": "2026-09-04T00:00:00Z",
-            "source": "mops.monthly_revenue_static_snapshot",
-            "source_version": "mops-static-2026-09-04",
-        }
-    ]
+    def html_for(market: str) -> str:
+        market_title = "\u4e0a\u5e02" if market == "twse" else "\u4e0a\u6ac3"
+        stock_code = "2330" if market == "twse" else "6488"
+        return (
+            "<html><body>"
+            f"<h1>{market_title}\u516c\u53f8115\u5e747\u6708\u4efd</h1>"
+            "<p>\u55ae\u4f4d\uff1a\u5343\u5143</p>"
+            "<table><tr>"
+            "<th>\u516c\u53f8\u4ee3\u865f</th><th>\u516c\u53f8\u540d\u7a31</th>"
+            "<th>\u7576\u6708\u71df\u6536</th><th>\u4e0a\u6708\u71df\u6536</th>"
+            "<th>\u53bb\u5e74\u7576\u6708\u71df\u6536</th>"
+            "<th>\u4e0a\u6708\u6bd4\u8f03\u589e\u6e1b(%)</th>"
+            "<th>\u53bb\u5e74\u540c\u6708\u589e\u6e1b(%)</th>"
+            "<th>\u7576\u6708\u7d2f\u8a08\u71df\u6536</th>"
+            "<th>\u53bb\u5e74\u7d2f\u8a08\u71df\u6536</th>"
+            "<th>\u524d\u671f\u6bd4\u8f03\u589e\u6e1b(%)</th><th>\u5099\u8a3b</th>"
+            f"</tr><tr><td>{stock_code}</td><td>\u53f0\u7a4d\u96fb</td><td>100</td><td>90</td>"
+            "<td>80</td><td>11.1</td><td>25.0</td><td>100</td><td>80</td><td>25.0</td><td></td>"
+            "</tr></table></body></html>"
+        )
+
+    original_builder = monthly_harvester.build_mops_monthly_revenue_snapshot
+
+    def build_with_fixture(**kwargs):
+        return original_builder(
+            **kwargs,
+            fetch_html=lambda *, market, period: html_for(market),
+        )
+
+    monkeypatch.setattr(
+        monthly_harvester,
+        "build_mops_monthly_revenue_snapshot",
+        build_with_fixture,
+    )
+
+    service = UpdateService(test_config)
+    first = service.fetch_mops_monthly_revenue_snapshot_candidate(
+        start_period="2026-07", end_period="2026-07", fetch_date="2026-09-04", sleep_seconds=0,
+    )
+    first_csv = Path(first["output_csv"])
+    first_csv_bytes = first_csv.read_bytes()
+    first_raw_paths = tuple(sorted(Path(first["raw_html_dir"]).glob("*.html")))
+    first_raw_bytes = {path.name: path.read_bytes() for path in first_raw_paths}
+
+    second = service.fetch_mops_monthly_revenue_snapshot_candidate(
+        start_period="2026-07", end_period="2026-07", fetch_date="2026-09-04", sleep_seconds=0,
+    )
+    second_csv = Path(second["output_csv"])
+    second_raw_paths = tuple(sorted(Path(second["raw_html_dir"]).glob("*.html")))
+
+    assert first["success"] is True and second["success"] is True
+    assert first["candidate_only"] is True and second["candidate_only"] is True
+    assert first_csv != second_csv
+    assert first_csv.parent != second_csv.parent
+    assert first_csv.read_bytes() == first_csv_bytes
+    assert {path.name: path.read_bytes() for path in first_raw_paths} == first_raw_bytes
+    assert {path.name: path.read_bytes() for path in second_raw_paths} == first_raw_bytes
+    expected_hashes = {
+        name.split("_", 1)[0]: sha256(raw).hexdigest()
+        for name, raw in first_raw_bytes.items()
+    }
+    for snapshot_path in (first_csv, second_csv):
+        plan = plan_current_revenue(snapshot_path)
+        assert plan.custody["snapshot_sha256"]
+        assert {pin["market"]: pin["sha256"] for pin in plan.custody["raw_artifacts"]} == expected_hashes
+        assert all(record["unit"] == "TWD" for record in plan.records)
+        assert all(record["period_basis"] == "monthly_flow" for record in plan.records)
+        assert plan.custody["formal_pit_eligible"] is False
+    assert select_latest_monthly_revenue_snapshot(
+        test_config.output_root / "monthly_revenue_mops_snapshots"
+    ) == second_csv
+    assert not test_config.db_file.exists()
+
+
+def test_monthly_candidate_service_passes_cooperative_cancel_to_harvester(
+    test_config, monkeypatch
+) -> None:
+    observed = {}
+
+    def build_snapshot(**kwargs):
+        observed.update(kwargs)
+        return MopsMonthlyRevenueSnapshotResult(
+            rows=[], requested_periods=("2026-07",), fetched_periods=(),
+            diagnostics=(), cancelled=True,
+        )
 
     monkeypatch.setattr(
         "data_module.monthly_revenue_snapshot_harvester.build_mops_monthly_revenue_snapshot",
-        lambda **kwargs: MopsMonthlyRevenueSnapshotResult(
-            rows=rows,
-            requested_periods=("2026-07",),
-            fetched_periods=("2026-07",),
-            diagnostics=(),
+        build_snapshot,
+    )
+    result = UpdateService(test_config).fetch_mops_monthly_revenue_snapshot_candidate(
+        start_period="2026-07", end_period="2026-07", fetch_date="2026-09-04",
+        sleep_seconds=0, cancel_callback=lambda: False,
+    )
+
+    assert result["cancelled"] is True
+    assert result["success"] is False
+    assert observed["cancel_callback"]() is False
+
+
+def test_monthly_revenue_dry_run_preserves_legacy_diagnostic_wire_payload(
+    test_config,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    snapshot = tmp_path / "snapshot.csv"
+    snapshot.write_text("market,period,stock_code\n", encoding="utf-8")
+    availability = tmp_path / "availability.csv"
+    expected_diagnostic = SourceDiagnostic(
+        code="fundamental_revenue.snapshot_invalid_row",
+        stock_code="2330",
+        message="snapshot row invalid",
+        kind=SourceDiagnosticKind.MONTHLY_REVENUE,
+        period="2026-07",
+    )
+    monkeypatch.setattr(
+        "data_module.monthly_revenue_backfill.plan_mops_snapshot_monthly_revenue_backfill",
+        lambda **kwargs: SimpleNamespace(
+            ready_for_apply=False,
+            raw_row_count=1,
+            records=(),
+            diagnostics=(expected_diagnostic,),
         ),
     )
 
-    result = UpdateService(test_config).fetch_mops_monthly_revenue_snapshot_candidate(
-        start_period="2026-07",
-        end_period="2026-07",
-        fetch_date="2026-09-04",
-        sleep_seconds=0,
+    result = UpdateService(test_config).dry_run_mops_monthly_revenue_backfill(
+        snapshot_file=snapshot,
+        availability_file=availability,
+        source_version="snapshot-v1",
     )
 
-    output_csv = Path(result["output_csv"])
-    assert result["success"] is True
-    assert result["candidate_only"] is True
-    assert output_csv.exists()
-    assert "2026-07" in output_csv.name
-    assert not test_config.db_file.exists()
+    assert result["diagnostics"] == [
+        {
+            "code": "fundamental_revenue.snapshot_invalid_row",
+            "factor_name": "fundamental.revenue",
+            "stock_code": "2330",
+            "message": "snapshot row invalid",
+        }
+    ]
 
 
 def test_update_phase3c_candidate_range_requires_explicit_candidate_path(

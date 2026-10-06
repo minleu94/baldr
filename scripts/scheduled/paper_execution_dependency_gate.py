@@ -2,8 +2,9 @@
 
 這個 gate 只觀察固定 D 槽來源，不呼叫 API、不寫入來源檔或 SQLite。Paper
 EOD 只有在 quick update、freshness、daily_prices 交易日與來源檔 hash 同屬
-當日且可重驗時才會進入既有 isolated adapter。週末或 quick update 明確記錄
-官方無資料日則交給 adapter 依官方交易日曆判斷，避免把休市誤判成資料故障。
+當日且可重驗時才會進入既有 isolated adapter。週末或 hash-bound 官方年度
+休市 cache 明確關閉 exact target date 時直接回傳 no-op；quick update 的真實
+錯誤仍由其自身 receipt 保留，不被休市分類改寫。
 """
 
 from __future__ import annotations
@@ -16,17 +17,130 @@ from io import StringIO
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import sqlite3
 import sys
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from data_module.official_trading_calendar_cache import (
+    OfficialCalendarCacheError,
+    VerifiedOfficialCalendarCache,
+    load_verified_twse_calendar_cache,
+)
+
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 DEFAULT_DATA_ROOT = Path(r"D:\Min\Python\Project\FA_Data")
 DEFAULT_OUTPUT_ROOT = DEFAULT_DATA_ROOT / "output"
 DEFAULT_DB_PATH = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"
+DEFAULT_CALENDAR_CACHE_ROOT = (
+    REPOSITORY_ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache"
+)
+
+# Paper EOD 只消費下列三個 freshness 市場來源；其他來源由各自 lane
+# 另行判定，不能因跨 lane 的降級狀態直接阻擋 Paper。
+PAPER_EOD_REQUIRED_FRESHNESS_SOURCE_IDS = frozenset(
+    {
+        "twse.daily_prices.raw",
+        "tpex.daily_prices.raw",
+        "sqlite.daily_prices",
+    }
+)
+PAPER_EOD_NON_REQUIRED_FRESHNESS_SOURCE_IDS = frozenset(
+    {
+        "sqlite.market_indices",
+        "sqlite.industry_indices",
+        "sqlite.broker_flows",
+        "sqlite.technical_indicators",
+        "fundamental.monthly_revenues",
+        "fundamental.quarterly_statements",
+        "fundamental.current_monthly_observations",
+        "fundamental.current_statement_observations",
+        "fundamental.statement_availability_map",
+        "institutional_flows",
+        "credit_transactions",
+        "tdcc_shareholding",
+    }
+)
+PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES = frozenset({"stale", "partial"})
+PAPER_EOD_FRESHNESS_SOURCE_STATUS_VALUES = frozenset(
+    {"current", "expected_wait", "stale", "failed", "partial", "not_applicable", "unknown"}
+)
+PAPER_EOD_EXACT_NON_REQUIRED_WARNINGS = {
+    "monthly_revenue_expected_period_not_available": "fundamental.monthly_revenues",
+    "quarterly_statement_expected_period_not_available": "fundamental.quarterly_statements",
+    "technical_indicators_latest_coverage_partial": "sqlite.technical_indicators",
+}
+# 這兩個來源的 unknown 只代表其各自 consumer 尚未完成證據，不是 Paper
+# EOD 的輸入。例外必須逐一列出；不把其他 unknown 轉成可接受狀態。
+PAPER_EOD_NON_REQUIRED_UNKNOWN_POLICIES: dict[str, dict[str, str]] = {
+    "tdcc_shareholding": {
+        "reason_code": "weekly_candidate_completeness_not_proven",
+        "consumer_boundary": "tdcc_p0_candidate_shadow",
+        "consumer_basis": "P0 週資料候選；無 Paper EOD downstream 或 production ingestion",
+    },
+    "fundamental.statement_availability_map": {
+        "reason_code": "fundamental_pit_mapping_missing",
+        "consumer_boundary": "fundamental_pit_availability",
+        "consumer_basis": "MOPS Fundamental/PIT availability mapping；不在 Paper EOD input",
+    },
+}
+# candidate-only source 若要從 Paper EOD freshness lane 隔離，必須逐一列入
+# policy，並精確符合 data_freshness_probe 的 source row contract；不能因
+# candidate_only=True 就概括放行所有來源。
+PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES: dict[str, dict[str, object]] = {
+    "credit_transactions": {
+        "policy_version": "paper-eod-candidate-non-required.v1",
+        "reason_code": "p0_candidate_source_not_paper_eod_input",
+        "consumer_boundary": "p0_candidate_shadow",
+        "consumer_basis": (
+            "P0 candidate source; candidate research only; "
+            "no Paper EOD downstream or production ingestion"
+        ),
+        "expected_frequency": "daily candidate source",
+        "expected_downstream": ("candidate research only",),
+        "expected_update_entry": "UpdateService.update_phase3c_candidate_range",
+    },
+    "tdcc_shareholding": {
+        "policy_version": "paper-eod-candidate-non-required.v1",
+        "reason_code": "tdcc_weekly_candidate_not_paper_eod_input",
+        "consumer_boundary": "tdcc_p0_candidate_shadow",
+        "consumer_basis": (
+            "TDCC weekly candidate source; candidate research only; "
+            "no Paper EOD downstream or production ingestion"
+        ),
+        "expected_frequency": "weekly candidate source",
+        "expected_downstream": ("candidate research only",),
+        "expected_update_entry": "UpdateService.update_phase3c_candidate_range",
+        "allowed_freshness_statuses": ("stale", "partial", "expected_wait"),
+        "expected_coverage": {
+            "weekly_calendar_policy": "last official session of the latest completed trading week",
+            "official_data_period_basis": (
+                "TDCC weekly snapshot data period is the last business day of the week; "
+                "no official publication deadline is stated"
+            ),
+            "official_publication_deadline": None,
+            "publication_grace_policy": "internal_conservative_two_subsequent_official_sessions",
+            "publication_grace_is_official_deadline": False,
+            "publication_grace_sessions": 2,
+            "issuer_or_scope_completeness_verified": False,
+            "expected_source_versions": [
+                "tdcc-official-od-1-5",
+                "tdcc-openapi-1-5.v1",
+            ],
+            "expected_source_version_groups": [[
+                "tdcc-official-od-1-5",
+                "tdcc-openapi-1-5.v1",
+            ]],
+        },
+    },
+}
 
 
 def _parse_date(value: object) -> date | None:
@@ -59,6 +173,56 @@ def _parse_aware_timestamp(value: object) -> tuple[datetime | None, str | None]:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         return None, "naive"
     return parsed.astimezone(timezone.utc), None
+
+
+def _parse_tdcc_compact_period(value: object) -> date | None:
+    """Parse only the compact date form emitted by the weekly TDCC probe."""
+
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]{8}", value) is None:
+        return None
+    try:
+        parsed = datetime.strptime(value, "%Y%m%d").date()
+    except ValueError:
+        return None
+    return parsed if parsed.strftime("%Y%m%d") == value else None
+
+
+def _parse_tdcc_grace_date(value: object) -> date | None:
+    """Parse only the canonical ISO date used for the grace boundary."""
+
+    if (
+        not isinstance(value, str)
+        or len(value) != 10
+        or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None
+    ):
+        return None
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.isoformat() == value else None
+
+
+def _same_typed_json_value(actual: object, expected: object) -> bool:
+    """Compare JSON-shaped policy evidence without bool/int equality aliases."""
+
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict) or actual.keys() != expected.keys():
+            return False
+        return all(
+            _same_typed_json_value(actual[key], value)
+            for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            return False
+        return all(
+            _same_typed_json_value(actual_item, expected_item)
+            for actual_item, expected_item in zip(actual, expected, strict=True)
+        )
+    return actual == expected
 
 
 def _canonical_json(value: object) -> str:
@@ -335,14 +499,473 @@ def _step_passed(payload: Mapping[str, object] | None, name: str) -> bool:
     return isinstance(step, Mapping) and step.get("status") == "passed"
 
 
+def _calendar_cache_candidates(
+    cache_path: str | Path,
+    *,
+    calendar_year: int,
+) -> tuple[Path, ...]:
+    """列出指定年度 cache candidates，並拒絕 reparse 後逃離 root 的檔案。"""
+
+    root = Path(cache_path).expanduser().resolve()
+    if root.exists() and root.is_file():
+        return (root,)
+    if root.suffix.casefold() == ".json":
+        return (root,)
+    if not root.is_dir():
+        return ()
+    candidates = list(root.glob(f"twse_holiday_schedule_{calendar_year}_*.json"))
+    exact = root / f"twse_holiday_schedule_{calendar_year}.json"
+    if exact.exists():
+        candidates.append(exact)
+    resolved: list[Path] = []
+    for candidate in sorted(set(candidates)):
+        candidate_resolved = candidate.resolve()
+        try:
+            candidate_resolved.relative_to(root)
+        except ValueError:
+            continue
+        resolved.append(candidate_resolved)
+    return tuple(resolved)
+
+
+def _verified_closed_calendar_evidence(
+    *,
+    target: date,
+    observed: datetime,
+    cache_path: str | Path,
+) -> dict[str, object] | None:
+    """只把 exact target 的 hash-bound 官方 annual closed row 當作 no-op。
+
+    loader 會以同一個 gate observed clock 驗證 raw/content hash、完整年度、
+    available/captured 時間鏈與 freshness；open、缺失、過期或任何驗證失敗
+    都回傳 ``None``，讓既有 required-source gate 繼續 fail closed。
+    """
+
+    verified: list[VerifiedOfficialCalendarCache] = []
+    for candidate in _calendar_cache_candidates(
+        cache_path,
+        calendar_year=target.year,
+    ):
+        try:
+            verified.append(
+                load_verified_twse_calendar_cache(
+                    candidate,
+                    calendar_year=target.year,
+                    observed_at=observed,
+                )
+            )
+        except (OfficialCalendarCacheError, OSError):
+            continue
+    if not verified:
+        return None
+
+    selected = max(
+        verified,
+        key=lambda item: str(item.evidence.get("captured_at", "")),
+    )
+    if selected.schedule.get(target) is not False:
+        return None
+    evidence = dict(selected.evidence)
+    evidence.update(
+        {
+            "target_date": target.isoformat(),
+            "is_trading_day": False,
+            "reason_code": "twse_holiday_schedule_cache_closed",
+        }
+    )
+    return evidence
+
+
+def _candidate_non_eod_policy(
+    *,
+    source_id: str,
+    source_status: str,
+    source: Mapping[str, object],
+    target: date,
+) -> dict[str, object] | None:
+    """只接受具名、candidate-only 且完整符合來源契約的非 EOD source。"""
+
+    policy = PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES.get(source_id)
+    if policy is None or source.get("candidate_only") is not True:
+        return None
+    configured_statuses = policy.get("allowed_freshness_statuses")
+    allowed_statuses = (
+        configured_statuses
+        if isinstance(configured_statuses, tuple)
+        else tuple(PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES)
+    )
+    if source_status not in allowed_statuses:
+        return None
+    if source.get("frequency") != policy.get("expected_frequency"):
+        return None
+    downstream = source.get("downstream")
+    expected_downstream = policy.get("expected_downstream")
+    if (
+        not isinstance(downstream, list)
+        or not isinstance(expected_downstream, tuple)
+        or downstream != list(expected_downstream)
+    ):
+        return None
+    if source.get("update_entry") != policy.get("expected_update_entry"):
+        return None
+    reason = source.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        return None
+    if source_id == "tdcc_shareholding":
+        coverage = source.get("coverage")
+        required_coverage = policy.get("expected_coverage")
+        if not isinstance(coverage, Mapping) or not isinstance(required_coverage, Mapping):
+            return None
+        if any(
+            not _same_typed_json_value(coverage.get(key), value)
+            for key, value in required_coverage.items()
+        ):
+            return None
+        if not _valid_tdcc_candidate_periods(
+            source=source,
+            coverage=coverage,
+            source_status=source_status,
+            target=target,
+            reason=reason,
+        ):
+            return None
+    return {
+        "policy_version": policy["policy_version"],
+        "reason_code": policy["reason_code"],
+        "consumer_boundary": policy["consumer_boundary"],
+        "consumer_basis": policy["consumer_basis"],
+    }
+
+
+def _valid_tdcc_candidate_periods(
+    *,
+    source: Mapping[str, object],
+    coverage: Mapping[str, object],
+    source_status: str,
+    target: date,
+    reason: str,
+) -> bool:
+    """Validate TDCC's exact period/grace row contract before Paper exclusion."""
+
+    expected_text = source.get("expected_period")
+    actual_text = source.get("actual_period")
+    expected_period = _parse_tdcc_compact_period(expected_text)
+    previous_period = _parse_tdcc_compact_period(
+        coverage.get("previous_week_expected_period")
+    )
+    grace_through = _parse_tdcc_grace_date(
+        coverage.get("publication_grace_through")
+    )
+    actual_period = (
+        None
+        if actual_text is None
+        else _parse_tdcc_compact_period(actual_text)
+    )
+    if (
+        expected_period is None
+        or previous_period is None
+        or grace_through is None
+        or expected_period <= previous_period
+        or expected_period > target
+        or grace_through < expected_period
+        or (actual_text is not None and actual_period is None)
+        or (actual_period is not None and actual_period > target)
+    ):
+        return False
+
+    candidate_db_exists = coverage.get("candidate_db_exists")
+    table_exists = coverage.get("table_exists")
+    row_count = coverage.get("db_row_count")
+    latest_row_count = coverage.get("latest_session_row_count")
+    version_complete = coverage.get("source_version_coverage_complete")
+    observed_versions = coverage.get("observed_source_versions")
+    if (
+        candidate_db_exists is not True
+        or table_exists is not True
+        or type(row_count) is not int
+        or row_count < 0
+        or type(latest_row_count) is not int
+        or latest_row_count < 0
+        or type(version_complete) is not bool
+        or not isinstance(observed_versions, list)
+        or any(not isinstance(item, str) or not item for item in observed_versions)
+    ):
+        return False
+
+    missing_periods = source.get("missing_periods")
+    if not isinstance(missing_periods, list):
+        return False
+    parsed_missing = [_parse_tdcc_compact_period(item) for item in missing_periods]
+    if any(item is None for item in parsed_missing):
+        return False
+
+    if source_status == "stale":
+        return (
+            (actual_period is None or actual_period < expected_period)
+            and parsed_missing == [expected_period]
+        )
+    if source_status == "partial":
+        if (
+            actual_period is None
+            or actual_period < expected_period
+            or parsed_missing
+        ):
+            return False
+        duplicate_count = source.get("duplicate_key_count")
+        if duplicate_count is not None and (
+            type(duplicate_count) is not int or duplicate_count < 0
+        ):
+            return False
+        if (
+            actual_period == expected_period
+            and version_complete is True
+            and duplicate_count in (None, 0)
+        ):
+            return False
+        return True
+    if source_status == "expected_wait":
+        return (
+            target <= grace_through
+            and not parsed_missing
+            and (actual_period is None or actual_period == previous_period)
+            and "waiting through the second subsequent official session" in reason.lower()
+        )
+    return False
+
+
+def _paper_eod_freshness_projection(
+    payload: Mapping[str, object],
+    *,
+    target: date,
+) -> tuple[dict[str, object], list[str], list[str]]:
+    """將 freshness aggregate 投影為 Paper EOD 可審的 lane 結果。
+
+    只有 probe 明確回報 degraded、errors 為空、每個 warning 都能對應到
+    已登記的非 EOD source，且三個 Paper 市場 source 同日 current 時，才
+    允許後續 gate 以 warning 繼續。此函式不改寫 aggregate status，也不移除
+    日期、時間、raw/DB readback 等 gate blocker。
+    """
+
+    aggregate_status = str(payload.get("status") or "").strip().lower()
+    projection: dict[str, object] = {
+        "schema_version": "paper-eod-freshness-lane.v1",
+        "lane": "paper_eod",
+        "target_date": target.isoformat(),
+        "aggregate_status": aggregate_status,
+        "required_source_ids": sorted(PAPER_EOD_REQUIRED_FRESHNESS_SOURCE_IDS),
+        "allowed_non_eod_source_ids": sorted(PAPER_EOD_NON_REQUIRED_FRESHNESS_SOURCE_IDS),
+    }
+    if aggregate_status != "degraded":
+        projection["status"] = "not_applicable"
+        return projection, [], []
+
+    blockers: list[str] = []
+    ignored_warnings: list[str] = []
+    raw_errors = payload.get("errors")
+    raw_warnings = payload.get("warnings")
+    raw_source_statuses = payload.get("source_statuses")
+    projection["aggregate_errors"] = raw_errors
+    projection["aggregate_warnings"] = raw_warnings
+
+    if not isinstance(raw_errors, list) or any(not isinstance(item, str) for item in raw_errors):
+        blockers.append("freshness_lane_errors_malformed")
+    elif raw_errors:
+        blockers.append("freshness_lane_errors_present")
+    if not isinstance(raw_warnings, list) or any(
+        not isinstance(item, str) or not item.strip() for item in raw_warnings
+    ):
+        blockers.append("freshness_lane_warnings_malformed")
+    elif not raw_warnings:
+        blockers.append("freshness_lane_warnings_empty")
+    if not isinstance(raw_source_statuses, list):
+        blockers.append("freshness_lane_source_statuses_malformed")
+
+    source_by_id: dict[str, Mapping[str, object]] = {}
+    if isinstance(raw_source_statuses, list):
+        source_status_by_id: dict[str, str] = {}
+        for index, item in enumerate(raw_source_statuses):
+            if not isinstance(item, Mapping):
+                blockers.append(f"freshness_lane_source_status_malformed:{index}")
+                continue
+            raw_source_id = item.get("source_id")
+            if not isinstance(raw_source_id, str) or not raw_source_id.strip():
+                blockers.append(f"freshness_lane_source_id_malformed:{index}")
+                continue
+            source_id = raw_source_id.strip()
+            if source_id in source_by_id:
+                blockers.append(f"freshness_lane_source_id_duplicate:{source_id}")
+                continue
+            source_by_id[source_id] = item
+            raw_source_status = item.get("freshness_status")
+            if not isinstance(raw_source_status, str) or not raw_source_status.strip():
+                blockers.append(f"freshness_lane_source_status_malformed:{source_id}")
+                source_status_by_id[source_id] = ""
+                continue
+            source_status = raw_source_status.strip().lower()
+            source_status_by_id[source_id] = source_status
+            if source_status not in PAPER_EOD_FRESHNESS_SOURCE_STATUS_VALUES:
+                blockers.append(f"freshness_lane_source_status_unknown:{source_id}:{source_status}")
+    else:
+        source_status_by_id = {}
+
+    required_projection: dict[str, object] = {}
+    for source_id in sorted(PAPER_EOD_REQUIRED_FRESHNESS_SOURCE_IDS):
+        source = source_by_id.get(source_id)
+        if source is None:
+            blockers.append(f"freshness_required_source_missing:{source_id}")
+            continue
+        source_status = source_status_by_id.get(source_id, "")
+        actual_period = _parse_date(source.get("actual_period"))
+        expected_period = _parse_date(source.get("expected_period"))
+        required_projection[source_id] = {
+            "freshness_status": source_status,
+            "actual_period": actual_period.isoformat() if actual_period else None,
+            "expected_period": expected_period.isoformat() if expected_period else None,
+        }
+        if source_status != "current":
+            blockers.append(f"freshness_required_source_not_current:{source_id}:{source_status or 'missing'}")
+        if actual_period != target:
+            blockers.append(f"freshness_required_source_date_not_target:{source_id}:actual")
+        if expected_period != target:
+            blockers.append(f"freshness_required_source_date_not_target:{source_id}:expected")
+    projection["required_sources"] = required_projection
+
+    warning_sources: dict[str, list[str]] = {}
+    if isinstance(raw_warnings, list):
+        for raw_warning in raw_warnings:
+            warning = raw_warning.strip() if isinstance(raw_warning, str) else ""
+            warning_source_id: str | None = PAPER_EOD_EXACT_NON_REQUIRED_WARNINGS.get(warning)
+            if warning_source_id is None and warning.startswith("source_freshness_degraded:"):
+                warning_source_id = warning.split(":", 1)[1].strip()
+            if (
+                warning_source_id is None
+                or warning_source_id not in PAPER_EOD_NON_REQUIRED_FRESHNESS_SOURCE_IDS
+            ):
+                blockers.append(f"freshness_lane_warning_unclassified:{warning or 'missing'}")
+                continue
+            source = source_by_id.get(warning_source_id)
+            if source is None:
+                blockers.append(f"freshness_non_eod_source_missing:{warning_source_id}")
+                continue
+            source_status = source_status_by_id.get(warning_source_id, "")
+            if source_status not in PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES:
+                candidate_policy = _candidate_non_eod_policy(
+                    source_id=warning_source_id,
+                    source_status=source_status,
+                    source=source,
+                    target=target,
+                )
+                if candidate_policy is None:
+                    blockers.append(
+                        "freshness_non_eod_source_status_not_degraded:"
+                        f"{warning_source_id}:{source_status or 'missing'}"
+                    )
+                    continue
+            warning_sources.setdefault(warning_source_id, []).append(warning)
+            ignored_warnings.append(warning)
+
+    projection["ignored_non_eod_sources"] = {
+        source_id: {
+            "freshness_status": source_status_by_id.get(source_id, ""),
+            "warnings": warning_list,
+            "candidate_only": bool(source_by_id[source_id].get("candidate_only", False)),
+        }
+        for source_id, warning_list in sorted(warning_sources.items())
+    }
+    projection["ignored_non_eod_source_ids"] = sorted(warning_sources)
+    projection["ignored_non_eod_warnings"] = ignored_warnings
+    non_current_sources: list[dict[str, str]] = []
+    not_required_for_paper_eod: dict[str, dict[str, object]] = {}
+    for source_id, source_status in sorted(source_status_by_id.items()):
+        if source_status in {"", "current", "not_applicable"}:
+            continue
+        non_current_sources.append({"source_id": source_id, "freshness_status": source_status})
+        if source_id in PAPER_EOD_REQUIRED_FRESHNESS_SOURCE_IDS:
+            continue
+        if source_status == "unknown":
+            policy = PAPER_EOD_NON_REQUIRED_UNKNOWN_POLICIES.get(source_id)
+            source = source_by_id[source_id]
+            if policy is not None:
+                # 保存完整原始 row，讓 TDCC／Fundamental 自己的 consumer 仍能
+                # 看到 unknown、reason、availability 與 coverage 診斷。
+                not_required_for_paper_eod[source_id] = {
+                    **policy,
+                    "source_id": source_id,
+                    "freshness_status": source_status,
+                    "not_required_for_paper_eod": True,
+                    "source_diagnostic": dict(source),
+                }
+                continue
+            blockers.append(f"freshness_lane_source_status_unknown:{source_id}")
+        elif source_status not in PAPER_EOD_ALLOWED_DEGRADED_SOURCE_STATUSES:
+            candidate_policy = _candidate_non_eod_policy(
+                source_id=source_id,
+                source_status=source_status,
+                source=source_by_id[source_id],
+                target=target,
+            )
+            if candidate_policy is not None:
+                not_required_for_paper_eod[source_id] = {
+                    **candidate_policy,
+                    "source_id": source_id,
+                    "freshness_status": source_status,
+                    "candidate_only": True,
+                    "reason": source_by_id[source_id].get("reason"),
+                    "not_required_for_paper_eod": True,
+                    "source_diagnostic": dict(source_by_id[source_id]),
+                }
+                continue
+            blockers.append(f"freshness_lane_noncurrent_source_blocked:{source_id}:{source_status}")
+        else:
+            source = source_by_id[source_id]
+            candidate_policy = _candidate_non_eod_policy(
+                source_id=source_id,
+                source_status=source_status,
+                source=source,
+                target=target,
+            )
+            if candidate_policy is not None:
+                not_required_for_paper_eod[source_id] = {
+                    **candidate_policy,
+                    "source_id": source_id,
+                    "freshness_status": source_status,
+                    "candidate_only": True,
+                    "reason": source.get("reason"),
+                    "not_required_for_paper_eod": True,
+                    "source_diagnostic": dict(source),
+                }
+                continue
+            # 已登記的 candidate source 必須先通過具名 policy；即使 aggregate
+            # 帶有同名 warning，也不能退回一般 warning allowlist。
+            if source_id in PAPER_EOD_NON_REQUIRED_CANDIDATE_POLICIES:
+                blockers.append(
+                    f"freshness_lane_noncurrent_source_unattributed:{source_id}:{source_status}"
+                )
+                continue
+            if source_id in warning_sources:
+                continue
+            blockers.append(f"freshness_lane_noncurrent_source_unattributed:{source_id}:{source_status}")
+    projection["non_current_sources"] = non_current_sources
+    projection["not_required_for_paper_eod"] = not_required_for_paper_eod
+    projection["lane_blockers"] = list(blockers)
+    projection["status"] = "degraded_non_eod_only" if not blockers else "blocked"
+    return projection, blockers, ignored_warnings
+
+
 def inspect_dependency(
     *,
     data_root: str | Path = DEFAULT_DATA_ROOT,
     output_root: str | Path = DEFAULT_OUTPUT_ROOT,
     db_path: str | Path = DEFAULT_DB_PATH,
+    calendar_cache_path: str | Path = DEFAULT_CALENDAR_CACHE_ROOT,
     observed_at: datetime | None = None,
 ) -> dict[str, object]:
-    """回傳可重驗的 gate 結果；所有輸入皆固定為 read-only observation。"""
+    """回傳可重驗的 gate 結果；所有輸入皆固定為 read-only observation。
+
+    只有 exact target date 的 hash-bound 官方 annual cache 明確標示休市時，
+    才會在讀取 quick/freshness/market source 前回傳 Paper no-op。開市、cache
+    缺失、過期或驗證失敗都保留既有 required-source gate。
+    """
 
     observed = (observed_at or datetime.now(timezone.utc)).astimezone(timezone.utc)
     taipei_now = observed.astimezone(TAIPEI)
@@ -354,6 +977,8 @@ def inspect_dependency(
     freshness_path = output_root_path / "scheduled" / "data_freshness" / "latest_status.json"
     blockers: list[str] = []
     warnings: list[str] = []
+    freshness_lane_projection: dict[str, object] | None = None
+    freshness_lane_ignored_warnings: list[str] = []
 
     result: dict[str, object] = {
         "schema_version": "paper-execution-dependency-gate.v1",
@@ -376,10 +1001,40 @@ def inspect_dependency(
         return result
 
     quick, quick_hash, quick_error = _read_json(quick_path)
-    freshness, freshness_hash, freshness_error = _read_json(freshness_path)
     result["quick_update_status_path"] = str(quick_path)
-    result["freshness_status_path"] = str(freshness_path)
     result["quick_update_status_hash"] = quick_hash
+    if quick_error:
+        result["quick_update_status"] = "unavailable"
+        result["quick_update_receipt_error"] = quick_error
+    elif quick is not None:
+        result["quick_update_status"] = str(quick.get("status") or "").lower()
+        raw_quick_errors = quick.get("errors")
+        result["quick_update_error_count"] = (
+            len(raw_quick_errors) if isinstance(raw_quick_errors, list) else 0
+        )
+
+    calendar_evidence = _verified_closed_calendar_evidence(
+        target=target,
+        observed=observed,
+        cache_path=calendar_cache_path,
+    )
+    if calendar_evidence is not None:
+        result.update(
+            {
+                "status": "not_trading_day",
+                "ready": True,
+                "reason": "twse_holiday_schedule_cache_closed",
+                "adapter_noop": True,
+                "calendar_evidence": calendar_evidence,
+                "upstream_quick_update_status_preserved": True,
+                "blockers": [],
+                "warnings": [],
+            }
+        )
+        return result
+
+    freshness, freshness_hash, freshness_error = _read_json(freshness_path)
+    result["freshness_status_path"] = str(freshness_path)
     result["freshness_status_hash"] = freshness_hash
     if quick_error:
         blockers.append(f"quick_update_receipt_unavailable:{quick_error}")
@@ -450,6 +1105,13 @@ def inspect_dependency(
         result["freshness_daily_prices_date"] = (
             freshness_target.isoformat() if freshness_target else None
         )
+        (
+            freshness_lane_projection,
+            freshness_lane_blockers,
+            freshness_lane_ignored_warnings,
+        ) = _paper_eod_freshness_projection(freshness, target=target)
+        result["freshness_lane"] = freshness_lane_projection
+        blockers.extend(freshness_lane_blockers)
         if freshness_status != "passed":
             blockers.append(f"freshness_status_not_passed:{freshness_status or 'missing'}")
         if freshness_target is None or freshness_target != target:
@@ -558,8 +1220,40 @@ def inspect_dependency(
             result["blockers"] = blockers
             return result
 
+    freshness_lane_ready_with_warnings = (
+        freshness_lane_projection is not None
+        and freshness_lane_projection.get("status") == "degraded_non_eod_only"
+        and not quick_no_data
+    )
+    if freshness_lane_ready_with_warnings:
+        blockers = [
+            blocker
+            for blocker in blockers
+            if blocker != "freshness_status_not_passed:degraded"
+        ]
+        warnings.extend(
+            f"paper_eod_ignored_non_eod_freshness:{warning}"
+            for warning in freshness_lane_ignored_warnings
+        )
+
     if blockers:
+        if freshness_lane_projection is not None and freshness_lane_ready_with_warnings:
+            freshness_lane_projection["gate_eligible"] = False
+            freshness_lane_projection["status"] = "eligible_but_other_blockers"
+            freshness_lane_projection["gate_blockers"] = list(blockers)
         result.update({"status": "blocked", "ready": False})
+    elif freshness_lane_ready_with_warnings:
+        if freshness_lane_projection is not None:
+            freshness_lane_projection["gate_eligible"] = True
+            freshness_lane_projection["status"] = "ready_with_warnings"
+            freshness_lane_projection["gate_blockers"] = []
+        result.update(
+            {
+                "status": "ready_with_warnings",
+                "ready": True,
+                "reason": "same_date_update_freshness_db_and_source_hash_with_non_eod_warnings",
+            }
+        )
     else:
         result.update({"status": "ready", "ready": True, "reason": "same_date_update_freshness_db_and_source_hash"})
     result["warnings"] = warnings

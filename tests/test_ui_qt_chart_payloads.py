@@ -134,19 +134,38 @@ def test_build_histogram_chart_payload_bins_values_and_summary_lines():
     ]
 
 
-def test_build_trade_return_histogram_payload_uses_symmetric_zero_centered_bins():
+def test_build_trade_return_payload_uses_individual_bars_for_small_samples():
     payload = build_trade_return_histogram_payload(
         [-12.0, -4.0, 1.0, 3.0, 10.0],
         {"mean": -0.4, "median": 1.0, "var_95": -10.4},
     )
 
-    assert payload["title"] == "交易報酬分布"
-    assert payload["subtitle"] == "零軸左側為虧損，右側為獲利"
+    assert payload["kind"] == "tradeBars"
+    assert payload["title"] == "交易報酬（逐筆）"
+    assert "不宜解讀為分布或 95% VaR" in payload["subtitle"]
     assert payload["zeroLine"] == 0.0
-    assert payload["bins"][0]["start"] == -12.0
-    assert payload["bins"][-1]["end"] == 12.0
+    assert [item["value"] for item in payload["items"]] == [-12.0, -4.0, 1.0, 3.0, 10.0]
+    assert not any(item["label"] == "95% VaR" for item in payload["markers"])
     assert any(item["label"] == "虧損" and item["color"] == "#ef4444" for item in payload["legend"])
     assert any(item["label"] == "獲利" and item["color"] == "#22c55e" for item in payload["legend"])
+
+
+def test_build_trade_return_payload_uses_histogram_and_hides_var_until_sample_is_large():
+    small = build_trade_return_histogram_payload(
+        list(range(-9, 10)),
+        {"mean": 0.0, "median": 0.0, "var_95": -8.0},
+    )
+    assert small["kind"] == "histogram"
+    assert small["sampleCount"] == 19
+    assert not any(item["label"] == "95% VaR" for item in small["markers"])
+    assert "95% VaR 需至少 20 筆" in small["subtitle"]
+
+    large = build_trade_return_histogram_payload(
+        list(range(-10, 10)) + [10],
+        {"mean": 0.0, "median": 0.0, "var_95": -9.0},
+    )
+    assert large["kind"] == "histogram"
+    assert any(item["label"] == "95% VaR" for item in large["markers"])
 
 
 def test_build_holding_days_histogram_payload_groups_days_into_readable_buckets():

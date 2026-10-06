@@ -28,6 +28,71 @@ from scripts.scheduled import run_pit_sector_membership_preopen_capture as captu
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 
+def test_natural_capture_taxonomy_validation_uses_post_capture_clock_and_nonzero_failure(tmp_path, monkeypatch):
+    started = datetime(2026, 9, 30, 7, 0, tzinfo=TAIPEI)
+    finished = started + timedelta(seconds=20)
+
+    class Clock(datetime):
+        values = iter((started, finished))
+
+        @classmethod
+        def now(cls, tz=None):
+            return next(cls.values).astimezone(tz)
+
+    monkeypatch.setattr(capture_runner, "datetime", Clock)
+    monkeypatch.setattr(capture_runner, "formal_schedule_day_state", lambda **k: (True, "official_open"))
+    monkeypatch.setattr(capture_runner, "load_optional_formal_runtime_config", lambda **k: None)
+    monkeypatch.setattr(capture_runner, "reuse_pit_candidate_archive_before_cutoff", lambda **k: {
+        "durable_archive": {"archive_manifest_path": "archive.json"}, "durable_archive_verified": True,
+    })
+    monkeypatch.setattr(capture_runner, "_refresh_pit_denominator", lambda **k: {"status": "captured_verified"})
+
+    def taxonomy(**kwargs):
+        assert kwargs["observed"] == finished
+        assert kwargs["observed"] > started
+        return {"status": "blocked", "blockers": ["exact_source_blocker"]}
+
+    monkeypatch.setattr(capture_runner, "_capture_taxonomy_for_run", taxonomy)
+    payload, code = capture_runner.run_capture(publication_root=tmp_path, status_root=tmp_path / "status")
+    assert code == 2
+    assert payload["status"] == "degraded"
+    assert payload["archive_readback_verified"] is True
+    assert payload["blockers"] == ["exact_source_blocker"]
+    assert datetime.fromisoformat(payload["taxonomy_observed_at"]) == finished
+
+
+def test_postcutoff_history_calendar_cannot_probe_network(tmp_path, monkeypatch):
+    calls = []
+
+    def classify(self, target_date, allow_online_probe=True):
+        calls.append(allow_online_probe)
+        return None, "missing_official_cache"
+
+    monkeypatch.setattr(sidecar_runner.OfficialTradingCalendar, "is_official_trading_day", classify)
+    calendar = sidecar_runner._OfflinePITHistoryCalendar(db_path=tmp_path / "market.db")
+    assert calendar.is_official_trading_day(date(2026, 9, 29)) == (None, "missing_official_cache")
+    assert calls == [False]
+
+
+def test_scheduled_taxonomy_config_is_live_bounded_and_never_formally_self_accepted():
+    from data_module.pit_taxonomy_source_producer import load_pit_taxonomy_source_config
+
+    root = Path(__file__).resolve().parents[1] / "scripts" / "scheduled"
+    config = load_pit_taxonomy_source_config(root / "pit_taxonomy_source_config.json")
+    assert config["license_scope"]["formal_acceptance_granted"] is False
+    assert config["license_scope"]["redistribution_allowed"] is False
+    assert config["security"]["all"]["url"] == "https://isin.twse.com.tw/isin/e_single_main.jsp"
+    for market in config["classification"].values():
+        assert "mapping" not in market
+        specs = market.get("components", {"primary": market})
+        for source in specs.values():
+            assert source["url"].startswith("https://")
+            assert "path" not in source and "http" not in source
+    cmd = (root / "run_pit_sector_membership_preopen_capture.cmd").read_text(encoding="utf-8")
+    assert 'if not defined PIT_TAXONOMY_SOURCE_CONFIG' in cmd
+    assert 'pit_taxonomy_source_config.json' in cmd
+
+
 class _FrozenDateTime(datetime):
     frozen_utc = datetime(2026, 8, 17, 0, 20, tzinfo=timezone.utc)
 
@@ -410,6 +475,298 @@ def test_preopen_scheduled_status_records_archive_and_fail_closed_flags(
     assert payload["status"] == "machine_verified_candidate"
     assert payload["archive_readback_verified"] is True
     assert payload["post_cutoff_refetch_forbidden"] is True
+
+
+def test_split_preopen_status_keeps_stable_latest_path_for_default_caller(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed = datetime(2026, 8, 17, 0, 10, tzinfo=TAIPEI)
+    monkeypatch.setattr(
+        capture_runner,
+        "formal_schedule_day_state",
+        lambda **_kwargs: (True, "official_open"),
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "load_optional_formal_runtime_config",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "reuse_pit_candidate_archive_before_cutoff",
+        lambda **_kwargs: {
+            "status": "machine_verified_candidate",
+            "durable_archive": {"archive_manifest_path": str(tmp_path / "archive.json")},
+            "durable_archive_verified": True,
+        },
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "_refresh_pit_denominator",
+        lambda **_kwargs: {"status": "existing_verified", "network_attempted": False},
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "_capture_taxonomy_for_run",
+        lambda **_kwargs: {"status": "preopen_captured", "blockers": []},
+    )
+    status_root = tmp_path / "operational-status"
+
+    payload, exit_code = capture_runner.run_capture(
+        publication_root=tmp_path / "publication",
+        status_root=status_root,
+        now=observed,
+        split_denominator_contract=True,
+    )
+
+    expected_status_path = status_root / "latest_status.json"
+    assert exit_code == 0
+    assert payload["capture_attempt_id"]
+    assert payload["status_path"] == str(expected_status_path)
+    assert expected_status_path.is_file()
+    persisted = json.loads(expected_status_path.read_text(encoding="utf-8"))
+    assert persisted["capture_attempt_id"] == payload["capture_attempt_id"]
+
+
+def test_existing_split_candidate_reuse_blocks_before_any_acquisition_when_not_verified(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed = datetime(2026, 8, 17, 7, 10, tzinfo=TAIPEI)
+    publication_root = tmp_path / "publication"
+    (publication_root / "pit_taxonomy_preopen_split_v2" / observed.date().isoformat()).mkdir(
+        parents=True
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "formal_schedule_day_state",
+        lambda **_kwargs: (True, "official_open"),
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "load_optional_formal_runtime_config",
+        lambda **_kwargs: None,
+    )
+    acquisition_calls: list[str] = []
+    monkeypatch.setattr(
+        capture_runner,
+        "reuse_pit_candidate_archive_before_cutoff",
+        lambda **_kwargs: acquisition_calls.append("archive") or pytest.fail(
+            "existing split candidate must be validated before archive acquisition"
+        ),
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "_refresh_pit_denominator",
+        lambda **_kwargs: acquisition_calls.append("denominator") or pytest.fail(
+            "existing split candidate must not refresh the denominator"
+        ),
+    )
+    monkeypatch.setattr(
+        capture_runner,
+        "_reuse_existing_split_taxonomy_candidate",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            capture_runner.PITTaxonomySourceError("late source config proof is missing")
+        ),
+    )
+
+    payload, exit_code = capture_runner.run_capture(
+        publication_root=publication_root,
+        status_root=publication_root / "isolated-status",
+        now=observed,
+        split_denominator_contract=True,
+    )
+
+    assert exit_code == 2
+    assert payload["status"] == "blocked"
+    assert payload["capture_mode"] == "reused_existing_split_candidate_blocked"
+    assert payload["network_attempted"] is False
+    assert payload["new_attempt_created"] is False
+    assert "capture_attempt_id" not in payload
+    assert acquisition_calls == []
+    assert (publication_root / "isolated-status" / "latest_status.json").is_file()
+
+
+def _make_split_scope_binding_inputs(tmp_path: Path) -> tuple[
+    Path,
+    Path,
+    dict[str, object],
+    dict[str, object],
+]:
+    publication_root = tmp_path / "publication"
+    rule_root = publication_root / "rule_source" / "clock-20260817-fixture"
+    identity_path = rule_root / "metadata" / "universe_identity.json"
+    symbols_path = rule_root / "metadata" / "universe_symbols.json"
+    clock_path = rule_root / "clock" / "manifest.json"
+    source_window_path = rule_root / "source" / "daily_price_window.json"
+    denominator_path = (
+        publication_root
+        / "pit_denominator"
+        / "2026-08-17-run-fixture"
+        / "denominator.json"
+    )
+    for path in (identity_path, symbols_path, clock_path, source_window_path, denominator_path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+    source_window_payload = {
+        "schema_version": "manual-rule-only-daily-price-window.v1",
+        "source_id": "daily_prices",
+        "decision_session": "2026-08-17",
+    }
+    source_window_hash = capture_runner._sha256_json(source_window_payload)
+    source_window = {
+        "schema_version": "formal-rule-source-window.v1",
+        "source_window_hash": source_window_hash,
+        "source_payload": source_window_payload,
+    }
+    source_window_raw = capture_runner.canonical_json(source_window).encode("utf-8")
+    identity: dict[str, object] = {
+        "source_window_hash": source_window_hash,
+        "source_window_file_hash": capture_runner._sha256_bytes(source_window_raw),
+    }
+    clock = {"clock_id": "clock:fixture", "manifest_hash": "sha256:fixture-clock"}
+    symbols = ["1101"]
+    denominator: dict[str, object] = {
+        "symbols": symbols,
+        "content_sha256": "sha256:fixture-denominator-content",
+        "symbols_hash": capture_runner._sha256_json(symbols),
+        "scope": "prospective_pit_sector_membership",
+        "coverage_start": "2026-08-17",
+        "observed_at": "2026-08-16T23:20:00+00:00",
+    }
+    for path, payload in (
+        (identity_path, identity),
+        (symbols_path, symbols),
+        (clock_path, clock),
+        (source_window_path, source_window),
+        (denominator_path, denominator),
+    ):
+        path.write_bytes(capture_runner.canonical_json(payload).encode("utf-8"))
+
+    parent: dict[str, object] = {
+        "bundle_root": str(rule_root),
+        "identity_path": str(identity_path),
+        "symbols_path": str(symbols_path),
+        "clock_path": str(clock_path),
+        "identity": identity,
+        "symbols_payload": symbols,
+        "clock": clock,
+        "expected_symbols": ("1101",),
+        "universe_hash_symbols": ("1101",),
+        "scores_bp": (9000,),
+        "rank_order": ("1101",),
+        "rank_order_source": "parent.universe_hash_symbols",
+        "universe_hash": "sha256:fixture-universe",
+        "clock_id": "clock:fixture",
+        "clock_manifest_hash": "sha256:fixture-clock",
+    }
+    return publication_root, denominator_path, denominator, parent
+
+
+def test_split_scope_binding_uses_bounded_confined_source_bytes_once(tmp_path: Path) -> None:
+    publication_root, denominator_path, denominator, parent = _make_split_scope_binding_inputs(tmp_path)
+
+    binding = capture_runner._build_split_scope_binding(
+        publication_root=publication_root,
+        denominator_path=denominator_path,
+        denominator_payload=denominator,
+        parent=parent,  # type: ignore[arg-type]
+        capture_date=date(2026, 8, 17),
+        decision_at=datetime(2026, 8, 17, 8, 30, tzinfo=TAIPEI),
+        denominator_symbols=("1101",),
+    )
+
+    assert binding["taxonomy_coverage_complete"] is True
+    assert binding["rule_scope_compatible"] is True
+    denom_binding = binding["denominator_binding"]
+    rule_binding = binding["rule_candidate_binding"]
+    assert isinstance(denom_binding, dict)
+    assert denom_binding["file_sha256"] == capture_runner._sha256_bytes(
+        denominator_path.read_bytes()
+    )
+    assert isinstance(rule_binding, dict)
+    assert set(rule_binding["file_hashes"]) == {
+        "identity",
+        "symbols",
+        "clock",
+        "source_window",
+    }
+
+
+def test_split_scope_binding_rejects_oversized_source_before_hashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    publication_root, denominator_path, denominator, parent = _make_split_scope_binding_inputs(tmp_path)
+    monkeypatch.setattr(capture_runner, "SPLIT_RULE_METADATA_PROOF_MAX_BYTES", 8)
+
+    with pytest.raises(capture_runner.PITTaxonomySourceError, match="proof file custody failed"):
+        capture_runner._build_split_scope_binding(
+            publication_root=publication_root,
+            denominator_path=denominator_path,
+            denominator_payload=denominator,
+            parent=parent,  # type: ignore[arg-type]
+            capture_date=date(2026, 8, 17),
+            decision_at=datetime(2026, 8, 17, 8, 30, tzinfo=TAIPEI),
+            denominator_symbols=("1101",),
+        )
+
+
+def test_split_scope_binding_rejects_linked_proof_path(tmp_path: Path) -> None:
+    publication_root, denominator_path, denominator, parent = _make_split_scope_binding_inputs(tmp_path)
+    identity_path = Path(str(parent["identity_path"]))
+    identity_path.unlink()
+    outside = tmp_path / "outside_identity.json"
+    outside.write_text("{}", encoding="utf-8")
+    try:
+        identity_path.symlink_to(outside)
+    except OSError as error:
+        pytest.skip(f"Windows symlink privilege unavailable: {error}")
+
+    with pytest.raises(capture_runner.PITTaxonomySourceError, match="contains a link"):
+        capture_runner._build_split_scope_binding(
+            publication_root=publication_root,
+            denominator_path=denominator_path,
+            denominator_payload=denominator,
+            parent=parent,  # type: ignore[arg-type]
+            capture_date=date(2026, 8, 17),
+            decision_at=datetime(2026, 8, 17, 8, 30, tzinfo=TAIPEI),
+            denominator_symbols=("1101",),
+        )
+
+
+def test_split_scope_binding_rejects_parent_fingerprint_mutation(tmp_path: Path) -> None:
+    publication_root, denominator_path, denominator, parent = _make_split_scope_binding_inputs(tmp_path)
+    symbols_path = Path(str(parent["symbols_path"]))
+    symbols_path.write_text('["2330"]', encoding="utf-8")
+
+    with pytest.raises(capture_runner.PITTaxonomySourceError, match="symbols bytes changed"):
+        capture_runner._build_split_scope_binding(
+            publication_root=publication_root,
+            denominator_path=denominator_path,
+            denominator_payload=denominator,
+            parent=parent,  # type: ignore[arg-type]
+            capture_date=date(2026, 8, 17),
+            decision_at=datetime(2026, 8, 17, 8, 30, tzinfo=TAIPEI),
+            denominator_symbols=("1101",),
+        )
+
+
+def test_split_scope_binding_rejects_denominator_fingerprint_mutation(tmp_path: Path) -> None:
+    publication_root, denominator_path, denominator, parent = _make_split_scope_binding_inputs(tmp_path)
+    denominator_path.write_text('{"symbols": ["2330"]}', encoding="utf-8")
+
+    with pytest.raises(capture_runner.PITTaxonomySourceError, match="denominator bytes differ"):
+        capture_runner._build_split_scope_binding(
+            publication_root=publication_root,
+            denominator_path=denominator_path,
+            denominator_payload=denominator,
+            parent=parent,  # type: ignore[arg-type]
+            capture_date=date(2026, 8, 17),
+            decision_at=datetime(2026, 8, 17, 8, 30, tzinfo=TAIPEI),
+            denominator_symbols=("1101",),
+        )
 
 
 def test_preopen_refresh_reuses_verified_same_day_denominator_without_network(

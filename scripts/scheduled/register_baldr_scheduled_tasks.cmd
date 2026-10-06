@@ -20,6 +20,8 @@ set "ML_PROMOTION_EVIDENCE_TASK=baldr-ml-promotion-evidence-daily"
 set "ML_COPILOT_TASK=baldr-ml-allocation-copilot-daily"
 set "ML_PROMOTION_AUTHORITY_TASK=baldr-ml-promotion-authority-daily"
 set "DECISION_EVIDENCE_TASK=baldr-decision-evidence-capture-daily"
+set "FORWARD_OUTCOME_TASK=baldr-forward-outcomes-daily"
+set "RECOMMENDATION_CALIBRATION_LEARNING_TASK=baldr-recommendation-calibration-learning-daily"
 set "PAPER_PORTFOLIO_TASK=baldr-paper-portfolio-daily"
 set "PAPER_EXECUTION_TASK=baldr-paper-execution-eod-replay-daily"
 set "PIT_PREOPEN_TASK=baldr-pit-sector-membership-preopen-capture-daily"
@@ -40,6 +42,8 @@ set "ML_PROMOTION_EVIDENCE_SCRIPT=%REPO_ROOT%\scripts\scheduled\run_ml_promotion
 set "ML_COPILOT_SCRIPT=%REPO_ROOT%\scripts\scheduled\run_ml_allocation_copilot.cmd"
 set "ML_PROMOTION_AUTHORITY_SCRIPT=%REPO_ROOT%\scripts\scheduled\run_ml_promotion_authority.cmd"
 set "DECISION_EVIDENCE_SCRIPT=%REPO_ROOT%\scripts\scheduled\run_decision_evidence_capture.cmd"
+set "FORWARD_OUTCOME_SCRIPT=%REPO_ROOT%\scripts\scheduled\run_forward_outcomes_daily.cmd"
+set "RECOMMENDATION_CALIBRATION_LEARNING_SCRIPT=%REPO_ROOT%\scripts\scheduled\run_recommendation_calibration_learning.cmd"
 set "PAPER_PORTFOLIO_SCRIPT=%REPO_ROOT%\scripts\scheduled\run_paper_portfolio_daily.cmd"
 set "PAPER_EXECUTION_SCRIPT=%REPO_ROOT%\scripts\scheduled\run_paper_execution_daily_isolated.cmd"
 set "PIT_PREOPEN_SCRIPT=%REPO_ROOT%\scripts\scheduled\run_pit_sector_membership_preopen_capture.cmd"
@@ -56,6 +60,8 @@ set "ML_PROMOTION_EVIDENCE_ACTION=cmd.exe /c ""%ML_PROMOTION_EVIDENCE_SCRIPT%"""
 set "ML_COPILOT_ACTION=cmd.exe /c ""%ML_COPILOT_SCRIPT%"""
 set "ML_PROMOTION_AUTHORITY_ACTION=cmd.exe /c ""%ML_PROMOTION_AUTHORITY_SCRIPT%"""
 set "DECISION_EVIDENCE_ACTION=cmd.exe /c ""%DECISION_EVIDENCE_SCRIPT%"""
+set "FORWARD_OUTCOME_ACTION=cmd.exe /c ""%FORWARD_OUTCOME_SCRIPT%"""
+set "RECOMMENDATION_CALIBRATION_LEARNING_ACTION=cmd.exe /c ""%RECOMMENDATION_CALIBRATION_LEARNING_SCRIPT%"""
 set "PAPER_PORTFOLIO_ACTION=cmd.exe /c ""%PAPER_PORTFOLIO_SCRIPT%"""
 set "PAPER_EXECUTION_ACTION=cmd.exe /c ""%PAPER_EXECUTION_SCRIPT%"""
 set "PIT_PREOPEN_ACTION=cmd.exe /c ""%PIT_PREOPEN_SCRIPT%"""
@@ -99,6 +105,12 @@ echo   Action: %ML_COPILOT_ACTION%
 echo Task: %DECISION_EVIDENCE_TASK%
 echo   Schedule: DAILY 05:25
 echo   Action: %DECISION_EVIDENCE_ACTION%
+echo Task: %FORWARD_OUTCOME_TASK%
+echo   Schedule: DAILY 05:40
+echo   Action: %FORWARD_OUTCOME_ACTION%
+echo Task: %RECOMMENDATION_CALIBRATION_LEARNING_TASK%
+echo   Schedule: DAILY 05:45
+echo   Action: %RECOMMENDATION_CALIBRATION_LEARNING_ACTION%
 echo Task: %ML_DIRECT_CHAIN_MAINTAINER_TASK%
 echo   Schedule: DAILY 05:30
 echo   Action: %ML_DIRECT_CHAIN_MAINTAINER_ACTION%
@@ -111,8 +123,8 @@ echo   Schedule: DAILY 16:00 Pacific local time
 echo   Taipei mapping: 07:00 PDT / 08:00 PST; both before 08:30
 echo   Action: %PIT_PREOPEN_ACTION%
 echo Task: %PAPER_PORTFOLIO_TASK%
-echo   Schedule: DAILY 16:15 Pacific local time
-echo   Taipei mapping: 07:15 PDT / 08:15 PST; adapter waits for Taipei 08:30
+echo   Schedule: DAILY Asia/Taipei 08:25 (+08:00), equivalent to 00:25 UTC
+echo   Pacific mapping: 17:25 PDT / 16:25 PST on the previous date; waits to 08:30
 echo   Action: %PAPER_PORTFOLIO_ACTION%
 echo Task: %FORMAL_PIT_SIDECAR_TASK%
 echo   Schedule: DAILY 18:00 Pacific local time
@@ -122,7 +134,8 @@ echo Task: %FORMAL_INPUT_TASK%
 echo   Schedule: DAILY 21:25
 echo   Action: %FORMAL_INPUT_ACTION%
 echo Task: baldr-ml-allocation-forward-daily
-echo   Schedule: DAILY 16:15 Pacific (dedicated XML registration; aggregate leaves it unchanged)
+echo   Schedule: DAILY Asia/Taipei 08:25 (+08:00), equivalent to 00:25 UTC
+echo   Pacific mapping: 17:25 PDT / 16:25 PST on the previous date (dedicated XML; aggregate leaves it unchanged)
 echo   Action: cmd.exe /c "scripts\scheduled\run_ml_allocation_forward_daily.cmd"
 if /I "%MODE%"=="dryrun" (
   echo Task: %WEEKLY_TASK%
@@ -154,6 +167,8 @@ call :check_wrapper "%ML_PROMOTION_EVIDENCE_SCRIPT%"
 call :check_wrapper "%ML_PROMOTION_AUTHORITY_SCRIPT%"
 call :check_wrapper "%ML_COPILOT_SCRIPT%"
 call :check_wrapper "%DECISION_EVIDENCE_SCRIPT%"
+call :check_wrapper "%FORWARD_OUTCOME_SCRIPT%"
+call :check_wrapper "%RECOMMENDATION_CALIBRATION_LEARNING_SCRIPT%"
 call :check_wrapper "%PAPER_PORTFOLIO_SCRIPT%"
 call :check_wrapper "%PAPER_EXECUTION_SCRIPT%"
 call :check_wrapper "%PIT_PREOPEN_SCRIPT%"
@@ -203,8 +218,14 @@ if errorlevel 1 exit /b %ERRORLEVEL%
 schtasks.exe /Create /TN "%DECISION_EVIDENCE_TASK%" /SC DAILY /ST 05:25 /TR "%DECISION_EVIDENCE_ACTION%" /F
 if errorlevel 1 exit /b %ERRORLEVEL%
 
-rem Paper Portfolio 既有 task 只允許 dedicated wrapper 用 /Change 保留其餘
-rem principal/settings；不存在時才由它建立，不在 aggregate 路徑用 /F 覆蓋。
+schtasks.exe /Create /TN "%FORWARD_OUTCOME_TASK%" /SC DAILY /ST 05:40 /TR "%FORWARD_OUTCOME_ACTION%" /F
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+schtasks.exe /Create /TN "%RECOMMENDATION_CALIBRATION_LEARNING_TASK%" /SC DAILY /ST 05:45 /TR "%RECOMMENDATION_CALIBRATION_LEARNING_ACTION%" /F
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+rem Paper Portfolio 僅更新 exact existing task；dedicated COM updater preserves
+rem principal/settings and fails closed when the task is missing or unreadable.
 call "%SCRIPT_DIR%register_paper_portfolio_task.cmd" register
 if errorlevel 1 exit /b %ERRORLEVEL%
 
@@ -249,6 +270,10 @@ if errorlevel 1 exit /b %ERRORLEVEL%
 schtasks.exe /Query /TN "%ML_COPILOT_TASK%" /V /FO LIST
 if errorlevel 1 exit /b %ERRORLEVEL%
 schtasks.exe /Query /TN "%DECISION_EVIDENCE_TASK%" /V /FO LIST
+if errorlevel 1 exit /b %ERRORLEVEL%
+schtasks.exe /Query /TN "%FORWARD_OUTCOME_TASK%" /V /FO LIST
+if errorlevel 1 exit /b %ERRORLEVEL%
+schtasks.exe /Query /TN "%RECOMMENDATION_CALIBRATION_LEARNING_TASK%" /V /FO LIST
 if errorlevel 1 exit /b %ERRORLEVEL%
 schtasks.exe /Query /TN "%PAPER_PORTFOLIO_TASK%" /V /FO LIST
 if errorlevel 1 exit /b %ERRORLEVEL%

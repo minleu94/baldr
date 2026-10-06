@@ -16,9 +16,9 @@ from app_module.recommendation_portfolio_dates import parse_stock_dates
 
 logger = logging.getLogger(__name__)
 
-from app_module.strategy_spec import StrategySpec, StrategyExecutor
-from app_module.strategy_registry import StrategyRegistry
-from app_module.daily_signal import DailySignalFrame
+from decision_module.strategies.contracts import StrategySpec, StrategyExecutor
+from decision_module.strategies.registry import StrategyRegistry
+from decision_module.strategies.contracts import DailySignalFrame
 from app_module.dtos import BacktestReportDTO, ValidationStatus
 from app_module.sop_validator import SOPValidator
 from backtest_module.broker_simulator import BrokerSimulator, BrokerConfig, NEXT_OPEN_CONTRACT, LEGACY_CLOSE_CONTRACT
@@ -215,6 +215,41 @@ class BacktestService:
             raise BacktestCancelledError(str(error)) from error
         except Exception as e:
             return self._create_empty_report(f"撮合模擬失敗: {str(e)}")
+
+        # 只把撮合器已產生的 Trade 成本整理成 backward-compatible metadata。
+        # 金融數值在此 boundary 以 Decimal／整數分保存；不改變訊號、撮合或收益計算。
+        fee_cents = 0
+        slippage_cents = 0
+        total_cents = 0
+        gross_notional_cents = 0
+        buy_notional_cents = 0
+        sell_notional_cents = 0
+        for trade in trades:
+            value_cents = int((Decimal(str(trade.value)) * Decimal("100")).quantize(Decimal("1")))
+            trade_fee_cents = int((Decimal(str(trade.fee)) * Decimal("100")).quantize(Decimal("1")))
+            trade_slippage_cents = int((Decimal(str(trade.slippage)) * Decimal("100")).quantize(Decimal("1")))
+            gross_notional_cents += value_cents
+            fee_cents += trade_fee_cents
+            slippage_cents += trade_slippage_cents
+            total_cents += trade_fee_cents + trade_slippage_cents
+            if str(trade.type).lower() == "buy":
+                buy_notional_cents += value_cents
+            elif str(trade.type).lower() == "sell":
+                sell_notional_cents += value_cents
+        transaction_costs = {
+            "fee_cents": fee_cents,
+            "slippage_cents": slippage_cents,
+            "total_cents": total_cents,
+            "fee_definition": "Trade.fee（賣出含證交稅）",
+            "denominator": "initial_capital",
+        }
+        execution_summary = {
+            "trade_count": len(trades),
+            "gross_notional_cents": gross_notional_cents,
+            "buy_notional_cents": buy_notional_cents,
+            "sell_notional_cents": sell_notional_cents,
+            "turnover_definition": "買賣成交金額總和 / 權益曲線平均權益",
+        }
         
         # 4. 使用 PerformanceAnalyzer 計算績效
         analyzer = PerformanceAnalyzer(risk_free_rate=0.0)
@@ -374,6 +409,8 @@ class BacktestService:
                 'largest_loss': metrics.largest_loss,
                 'equity_curve': equity_curve,
                 'trade_list': trade_list,
+                'transaction_costs': transaction_costs,
+                'execution_summary': execution_summary,
                 'factor_records': factor_records,
                 'factor_decision_date': factor_decision_date,
                 'can_promote': validation_result['can_promote'],  # 記錄是否可以 Promote

@@ -26,8 +26,8 @@ def _as_dict(value: Any) -> Any:
         return value.isoformat()
     if value.__class__.__module__.startswith("numpy") and hasattr(value, "item"):
         return _as_dict(value.item())
-    if isinstance(value, tuple):
-        return [item for item in value]
+    if isinstance(value, (tuple, list)):
+        return [_as_dict(item) for item in value]
     if isinstance(value, dict):
         return {key: _as_dict(item) for key, item in value.items()}
     return value
@@ -105,6 +105,198 @@ class MarketBreadthSummary:
 
 
 @dataclass(frozen=True)
+class IndustryRepresentativeStock:
+    """產業強弱摘要中的代表股；只攜帶可追溯的觀測結果。"""
+
+    stock_code: str
+    stock_name: str
+    industry_name: str
+    return_5d_bp: int | None = None
+    return_20d_bp: int | None = None
+    excess_5d_bp: int | None = None
+    excess_20d_bp: int | None = None
+    quality: DecisionDeskQuality = DecisionDeskQuality.OBSERVED
+    warnings: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        for field_name in ("stock_code", "stock_name", "industry_name"):
+            object.__setattr__(self, field_name, str(getattr(self, field_name) or "").strip())
+        for field_name in ("return_5d_bp", "return_20d_bp", "excess_5d_bp", "excess_20d_bp"):
+            raw = getattr(self, field_name)
+            object.__setattr__(self, field_name, None if raw is None else int(raw))
+        if self.quality is None:
+            raise ValueError("quality must not be None")
+        object.__setattr__(self, "warnings", _normalize_warnings(self.warnings))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stock_code": self.stock_code,
+            "stock_name": self.stock_name,
+            "industry_name": self.industry_name,
+            "return_5d_bp": self.return_5d_bp,
+            "return_20d_bp": self.return_20d_bp,
+            "excess_5d_bp": self.excess_5d_bp,
+            "excess_20d_bp": self.excess_20d_bp,
+            "quality": self.quality.value,
+            "warnings": list(self.warnings),
+        }
+
+
+@dataclass(frozen=True)
+class IndustryStrengthRow:
+    """同層級產業的可比強弱列。"""
+
+    industry_name: str
+    index_name: str
+    industry_level: str
+    market_scope: str = "twse"
+    index_close: str | None = None
+    return_5d_bp: int | None = None
+    return_20d_bp: int | None = None
+    market_return_5d_bp: int | None = None
+    market_return_20d_bp: int | None = None
+    excess_5d_bp: int | None = None
+    excess_20d_bp: int | None = None
+    rank_5d: int | None = None
+    rank_20d: int | None = None
+    constituent_count: int = 0
+    eligible_stock_count_5d: int = 0
+    eligible_stock_count_20d: int = 0
+    coverage_5d_bp: int | None = None
+    coverage_20d_bp: int | None = None
+    quality: DecisionDeskQuality = DecisionDeskQuality.OBSERVED
+    warnings: tuple[str, ...] = ()
+    representative_stocks: tuple[IndustryRepresentativeStock, ...] = ()
+
+    def __post_init__(self) -> None:
+        for field_name in ("industry_name", "index_name", "industry_level", "market_scope"):
+            object.__setattr__(self, field_name, str(getattr(self, field_name) or "").strip())
+        for field_name in (
+            "return_5d_bp",
+            "return_20d_bp",
+            "market_return_5d_bp",
+            "market_return_20d_bp",
+            "excess_5d_bp",
+            "excess_20d_bp",
+            "rank_5d",
+            "rank_20d",
+            "coverage_5d_bp",
+            "coverage_20d_bp",
+        ):
+            raw = getattr(self, field_name)
+            object.__setattr__(self, field_name, None if raw is None else int(raw))
+        for field_name in (
+            "constituent_count",
+            "eligible_stock_count_5d",
+            "eligible_stock_count_20d",
+        ):
+            object.__setattr__(self, field_name, max(0, int(getattr(self, field_name))))
+        if self.quality is None:
+            raise ValueError("quality must not be None")
+        object.__setattr__(self, "warnings", _normalize_warnings(self.warnings))
+        object.__setattr__(self, "representative_stocks", tuple(self.representative_stocks))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "industry_name": self.industry_name,
+            "index_name": self.index_name,
+            "industry_level": self.industry_level,
+            "market_scope": self.market_scope,
+            "index_close": self.index_close,
+            "return_5d_bp": self.return_5d_bp,
+            "return_20d_bp": self.return_20d_bp,
+            "market_return_5d_bp": self.market_return_5d_bp,
+            "market_return_20d_bp": self.market_return_20d_bp,
+            "excess_5d_bp": self.excess_5d_bp,
+            "excess_20d_bp": self.excess_20d_bp,
+            "rank_5d": self.rank_5d,
+            "rank_20d": self.rank_20d,
+            "constituent_count": self.constituent_count,
+            "eligible_stock_count_5d": self.eligible_stock_count_5d,
+            "eligible_stock_count_20d": self.eligible_stock_count_20d,
+            "coverage_5d_bp": self.coverage_5d_bp,
+            "coverage_20d_bp": self.coverage_20d_bp,
+            "quality": self.quality.value,
+            "warnings": list(self.warnings),
+            "representative_stocks": [item.to_dict() for item in self.representative_stocks],
+        }
+
+
+@dataclass(frozen=True)
+class IndustryStrengthSummary:
+    """可比產業強弱的完整來源、日期、映射與覆蓋率摘要。"""
+
+    as_of_date: date | None
+    quality: DecisionDeskQuality
+    warnings: tuple[str, ...]
+    windows: tuple[int, ...] = (5, 20)
+    source_id: str = "industry_strength_service"
+    source_version: str = "industry-strength.current-research.v1"
+    mapping_source_id: str = "meta_data.companies.csv"
+    mapping_version: str = "tw-industry-explicit-map.v1"
+    mapping_observed_date: date | None = None
+    mapping_available_at: str | None = None
+    mapping_effective_from: date | None = None
+    historical_pit_eligible: bool = False
+    benchmark_name: str | None = "TAIEX"
+    benchmark_source_id: str = "sqlite.market_indices"
+    benchmark_observed_date: date | None = None
+    benchmark_available_at: str | None = None
+    rows: tuple[IndustryStrengthRow, ...] = ()
+    unmapped_industry_categories: tuple[str, ...] = ()
+    unmapped_index_names: tuple[str, ...] = ()
+    duplicate_membership_codes: tuple[str, ...] = ()
+    ambiguous_membership_codes: tuple[str, ...] = ()
+    coverage: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.quality is None:
+            raise ValueError("quality must not be None")
+        object.__setattr__(self, "warnings", _normalize_warnings(self.warnings))
+        object.__setattr__(self, "windows", tuple(int(item) for item in self.windows))
+        object.__setattr__(self, "source_id", str(self.source_id))
+        object.__setattr__(self, "source_version", str(self.source_version))
+        object.__setattr__(self, "mapping_source_id", str(self.mapping_source_id))
+        object.__setattr__(self, "mapping_version", str(self.mapping_version))
+        object.__setattr__(self, "historical_pit_eligible", bool(self.historical_pit_eligible))
+        object.__setattr__(self, "rows", tuple(self.rows))
+        for field_name in (
+            "unmapped_industry_categories",
+            "unmapped_index_names",
+            "duplicate_membership_codes",
+            "ambiguous_membership_codes",
+        ):
+            object.__setattr__(self, field_name, tuple(str(item) for item in getattr(self, field_name)))
+        object.__setattr__(self, "coverage", dict(self.coverage))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "as_of_date": self.as_of_date.isoformat() if self.as_of_date else None,
+            "quality": self.quality.value,
+            "warnings": list(self.warnings),
+            "windows": list(self.windows),
+            "source_id": self.source_id,
+            "source_version": self.source_version,
+            "mapping_source_id": self.mapping_source_id,
+            "mapping_version": self.mapping_version,
+            "mapping_observed_date": self.mapping_observed_date.isoformat() if self.mapping_observed_date else None,
+            "mapping_available_at": self.mapping_available_at,
+            "mapping_effective_from": self.mapping_effective_from.isoformat() if self.mapping_effective_from else None,
+            "historical_pit_eligible": self.historical_pit_eligible,
+            "benchmark_name": self.benchmark_name,
+            "benchmark_source_id": self.benchmark_source_id,
+            "benchmark_observed_date": self.benchmark_observed_date.isoformat() if self.benchmark_observed_date else None,
+            "benchmark_available_at": self.benchmark_available_at,
+            "rows": [item.to_dict() for item in self.rows],
+            "unmapped_industry_categories": list(self.unmapped_industry_categories),
+            "unmapped_index_names": list(self.unmapped_index_names),
+            "duplicate_membership_codes": list(self.duplicate_membership_codes),
+            "ambiguous_membership_codes": list(self.ambiguous_membership_codes),
+            "coverage": _as_dict(self.coverage),
+        }
+
+
+@dataclass(frozen=True)
 class SectorRotationSummary:
     as_of_date: date | None
     quality: DecisionDeskQuality
@@ -113,6 +305,7 @@ class SectorRotationSummary:
     trailing_sector: str | None = None
     rotation_intensity_bp: int | None = None
     meta: dict[str, Any] | None = None
+    industry_strength: IndustryStrengthSummary | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "warnings", _normalize_warnings(self.warnings))
@@ -126,6 +319,7 @@ class SectorRotationSummary:
             "trailing_sector": self.trailing_sector,
             "rotation_intensity_bp": self.rotation_intensity_bp,
             "meta": _as_dict(self.meta) if self.meta is not None else None,
+            "industry_strength": self.industry_strength.to_dict() if self.industry_strength is not None else None,
         }
 
 
@@ -165,6 +359,7 @@ class WatchlistTriggerSummary:
     trigger_count: int | None = None
     triggered_codes: tuple[str, ...] = ()
     top_signal: str | None = None
+    meta: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "warnings", _normalize_warnings(self.warnings))
@@ -178,6 +373,7 @@ class WatchlistTriggerSummary:
             "trigger_count": self.trigger_count,
             "triggered_codes": list(self.triggered_codes),
             "top_signal": self.top_signal,
+            **({"meta": _as_dict(self.meta)} if self.meta is not None else {}),
         }
 
 
@@ -193,6 +389,8 @@ class PortfolioAlertAttribution:
     chip_observed_event_count: int = 0
     chip_estimated_event_count: int = 0
     chip_unavailable_event_count: int = 0
+    required_human_fields: tuple[str, ...] = ()
+    user_position_verified: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "stock_code", str(self.stock_code))
@@ -214,6 +412,8 @@ class PortfolioAlertAttribution:
             "chip_risk_level": self.chip_risk_level,
             "severity": self.severity,
             "reasons": list(self.reasons),
+            **({"required_human_fields": list(self.required_human_fields), "user_position_verified": True}
+               if self.user_position_verified else {}),
             "data_quality_flags": list(self.data_quality_flags),
             "chip_observed_event_count": self.chip_observed_event_count,
             "chip_estimated_event_count": self.chip_estimated_event_count,
@@ -230,14 +430,19 @@ class PortfolioAlertSummary:
     alert_codes: tuple[str, ...] = ()
     alert_level: str | None = None
     attributions: tuple[PortfolioAlertAttribution, ...] = ()
+    population_status: str = "unknown"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "warnings", _normalize_warnings(self.warnings))
         object.__setattr__(self, "alert_codes", tuple(str(code) for code in self.alert_codes))
         object.__setattr__(self, "attributions", tuple(self.attributions))
+        population_status = str(self.population_status or "unknown").strip().lower()
+        if population_status not in {"unknown", "has_positions", "no_positions"}:
+            population_status = "unknown"
+        object.__setattr__(self, "population_status", population_status)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "as_of_date": self.as_of_date.isoformat() if self.as_of_date else None,
             "quality": self.quality.value,
             "warnings": list(self.warnings),
@@ -246,6 +451,11 @@ class PortfolioAlertSummary:
             "alert_level": self.alert_level,
             "attributions": [item.to_dict() for item in self.attributions],
         }
+        # Preserve legacy snapshot payloads: an absent population marker stays
+        # unknown and is never inferred from a zero alert count.
+        if self.population_status != "unknown":
+            payload["population_status"] = self.population_status
+        return payload
 
 
 @dataclass(frozen=True)
@@ -511,5 +721,5 @@ class DecisionDeskSnapshot:
                 else None
             ),
             "recommendations": self.recommendations.to_dict() if self.recommendations else None,
-            "source_lineage": deepcopy(self.source_lineage),
+            "source_lineage": _as_dict(self.source_lineage),
         }

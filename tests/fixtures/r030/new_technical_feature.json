@@ -1,0 +1,14 @@
+{
+  "fixture_only": true,
+  "base_registry_id": "core-long-history-features-v1",
+  "new_registry_id": "core-long-history-features-r030-v2",
+  "added_feature": {
+    "feature_id": "r030.synthetic_technical_signal_bp",
+    "family": "technical",
+    "dtype": "int",
+    "unit": "bp",
+    "missing_policy": "missing_is_not_zero",
+    "availability_policy": "feature_as_of_before_decision"
+  },
+  "old_registry_must_remain_unchanged": true
+}

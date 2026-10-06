@@ -9,6 +9,10 @@
 - `.superpowers/`：Superpowers plugin 的本機工作狀態。
 - `/meta_data/`：repo 根目錄下的背景任務狀態與 runtime log；正式資料根目錄 `{DATA_ROOT}/meta_data/` 不在 repo 內，不受此規則影響。
 - `**/.tmp.driveupload/`：文件或工具在任意工作目錄建立的雲端上傳暫存目錄。
+- `/.tmp_*/`：repo 根目錄下以 `.tmp_` 開頭的隔離測試／pytest `--basetemp` 輸出；只排除根目錄此命名模式，不涵蓋其他目錄中的同名資料。
+- `/.tf_*/`、`/.tc1/`、`/.tc2/`：2026-09-27 R031 QA runner 產生的根目錄短 TEMP／C1 隔離輸出；這些精確前綴與目錄只供該次 QA 暫存，不涵蓋其他根目錄來源或一般新建 source files。
+- `/.t/`：repo 根目錄下的本機 QA 暫存（例如 capture、full-stack、OS temp 與 replay diagnostics）。只忽略此根目錄，不要刪除或提交其內容；來源不明時先保留並查明 owner。
+- `/.obsidian/`、`/Untitled.canvas`：本機 Obsidian 設定與目前這份根目錄草稿白板；不使用全域 `*.canvas` 規則，以免排除其他可能屬於專案的白板。
 - `docs/agents/shared_state/active_task.yaml`：Agent 本機任務交接狀態；各工作階段可自行更新，不應提交。
 - `docs/agents/shared_state/handoff_log.md`：本機跨 Agent 交接紀錄；可能包含進行中工作資訊，不應提交。
 - `.pytest_cache/`、`.coverage`、`htmlcov/`、`.tox/`、`.cache/`：測試與 coverage 輸出。
@@ -17,6 +21,7 @@
 - `.env*`：本機環境變數與密鑰設定；`.env.example` 例外，可提交。
 - `*.db`、`*.sqlite*`：本機資料庫輸出。
 - `output/`：QA、驗證、報告匯出與本機執行輸出；2026-06-30 起不應再追蹤於乾淨 `main`。
+- `/qa-cache*/`：隔離 QA runner 的本機 cache（例如 SQLite WAL、XML、JSON receipt）；只保留本機，不應 stage 或提交。
 - `**/graphify-out/`：Graphify 產生的本機知識圖譜、HTML、JSON、報告與快取；可由原始碼重新建立，不應 stage 或提交。
 - `/test.parquet`：根目錄臨時資料樣本 / 測試產物，不應提交。
 - `downloads/`、`temp_downloads/`、`tmp/`、`temp/`：下載與暫存檔。

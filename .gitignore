@@ -30,6 +30,18 @@ coverage.xml
 .superpowers/
 **/.tmp.driveupload/
 
+# 根目錄隔離測試的 pytest --basetemp 輸出。
+/.tmp_*/
+
+# 2026-09-27 R031 QA runner 的短 TEMP 隔離輸出（精確辨識，不擴及其他名稱）。
+/.tf_*/
+/.tc1/
+/.tc2/
+
+# 本機 Obsidian 工作區狀態與這份單次草稿白板。
+/.obsidian/
+/Untitled.canvas
+
 # Agent 本機任務狀態（不提交）
 docs/agents/shared_state/active_task.yaml
 docs/agents/shared_state/handoff_log.md
@@ -67,6 +79,9 @@ Thumbs.db
 *.temp
 temp/
 tmp/
+
+# Repo-root local QA scratch from isolated capture/full-stack/replay probes.
+/.t/
 
 # Demo 目錄（測試用，不提交）
 demo_*/
@@ -113,6 +128,8 @@ backup/
 *.token
 *.secret
 !ui_qt/theme/tokens.py
+!runtime/promotion_authority_secret_store.py
+!tests/test_promotion_authority_secret_store.py
 
 # 包含硬編碼 token 的檔案（請移除 token 後再提交）
 # 01_stock_data_collector_enhanced.py  # 包含 FinMind token，請移除後再提交
@@ -146,6 +163,7 @@ temp_downloads/
 
 # QA Outputs
 output/
+/qa-cache*/
 
 # Local QA report exports; share conclusions through docs/06_qa/ instead.
 qa/reports/

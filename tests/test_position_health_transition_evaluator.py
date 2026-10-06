@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import copy
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+import hashlib
+import json
 from pathlib import Path
+import shutil
+import uuid
 from zoneinfo import ZoneInfo
+
+import pytest
 
 from app_module.portfolio_condition_monitor import (
     PortfolioConditionResult,
@@ -17,9 +24,17 @@ from app_module.position_health_transition_evaluator import (
     DailyPositionHealthTransitionEvaluator,
     DailyPositionHealthTransitionRequest,
     PITConditionObservation,
+    _captured_daily_source_suffix_matches,
+    _is_captured_daily_source_path,
+    _read_hashed_legacy_file,
+    _reread_legacy_artifacts,
+    _same_snapshot_history_rollover,
+    _verify_legacy_same_snapshot_reuse,
     evaluate_baseline_file,
 )
+from app_module.recommendation.persistence import ExecutionArtifactIntegrityError
 from app_module.position_health_transition_repository import (
+    PositionHealthTransitionRecord,
     PositionHealthTransitionRepository,
 )
 from app_module.position_thesis_contract import (
@@ -30,6 +45,19 @@ from app_module.strategy_lifecycle_service import GateStatus
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
+
+
+@pytest.fixture
+def workspace_qa_tmp(request: pytest.FixtureRequest) -> Path:
+    workspace = Path(__file__).resolve().parents[1]
+    qa_root = workspace / ".tmp_scheduler_all_repair_20260930" / "qa_evidence"
+    qa_root.mkdir(parents=True, exist_ok=True)
+    target = qa_root / f"pytest_health_{uuid.uuid4().hex}"
+    target.mkdir()
+    if target.resolve().parent != qa_root.resolve():
+        raise AssertionError("temporary Health test directory escaped QA root")
+    request.addfinalizer(lambda: shutil.rmtree(target))
+    return target
 
 
 def _observed() -> datetime:
@@ -158,6 +186,58 @@ def test_complete_inputs_write_proposal_and_are_idempotent(tmp_path: Path) -> No
     assert len(repository.list_for_position("position-2330")) == 1
 
 
+def test_same_semantic_inputs_are_idempotent_across_receipt_recapture(tmp_path: Path) -> None:
+    repository = PositionHealthTransitionRepository(tmp_path / "transitions.sqlite")
+    first_observed = datetime(2026, 9, 8, 13, 5, tzinfo=timezone.utc)
+    evaluator, first_request = _complete_request(
+        observed=first_observed,
+        repository=repository,
+    )
+    first_request = replace(
+        first_request,
+        provenance={
+            **dict(first_request.provenance),
+            "condition": {
+                "source_id": "condition-20260908",
+                "source_snapshot_hash": "sha256:condition",
+                "available_at": first_observed.isoformat(),
+                "path": "first-condition.json",
+                "file_sha256": "sha256:first-file",
+            },
+        },
+    )
+    first = evaluator.evaluate(first_request)
+
+    second_observed = first_observed + timedelta(minutes=1)
+    second_request = replace(
+        first_request,
+        observed_at=second_observed,
+        conditions_by_position={
+            "position-2330": _condition(second_observed, status="valid")
+        },
+        provenance={
+            **dict(first_request.provenance),
+            "baseline_sha256": "sha256:recaptured-baseline",
+            "condition": {
+                "source_id": "condition-20260908",
+                "source_snapshot_hash": "sha256:condition",
+                "available_at": second_observed.isoformat(),
+                "path": "recaptured-condition.json",
+                "file_sha256": "sha256:recaptured-file",
+            },
+        },
+    )
+    second = evaluator.evaluate(second_request)
+
+    assert first["status"] == "passed"
+    assert second["status"] == "passed"
+    assert second["positions"][0]["transition_event"]["persistence"] == "idempotent"
+    assert (
+        second["positions"][0]["transition_event"]["event_id"]
+        == first["positions"][0]["transition_event"]["event_id"]
+    )
+
+
 def test_machine_policy_thesis_is_traceable_but_remains_proposal_only() -> None:
     evaluator, request = _complete_request()
     machine = replace(
@@ -193,6 +273,310 @@ def test_same_identity_different_input_is_rejected(tmp_path: Path) -> None:
     assert "transition_proposal_persistence_blocked:ValueError" in result["blockers"]
     assert result["positions"][0]["transition_event"]["persistence"] == "blocked"
     assert len(repository.list_for_position("position-2330")) == 1
+
+
+def _same_snapshot_rollover_fixtures() -> tuple[
+    dict[str, object], dict[str, object], dict[str, object], dict[str, object]
+]:
+    position_id = "paper:paper-main:2330:entry-fixture"
+    prior_id = "paper-main-20260922"
+    current_id = "paper-main-20260930"
+    old_position: dict[str, object] = {
+        "position_id": position_id,
+        "stock_code": "2330",
+        "paper_shares": 1000,
+        "state": "WATCH",
+        "historical_prior_source_snapshot_id": prior_id,
+        "entry_thesis": "human thesis fixture",
+    }
+    current_position = copy.deepcopy(old_position)
+    current_position["historical_prior_source_snapshot_id"] = current_id
+    old_source_position = copy.deepcopy(old_position)
+    current_source_position = copy.deepcopy(current_position)
+    empty_hash = "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    old_provenance: dict[str, object] = {
+        "source_snapshot_id": current_id,
+        "source_snapshot_date": "2026-09-30",
+        "source_snapshot_rows_sha256": "sha256:snapshot-rows",
+        "source_data_version": 1,
+        "previous_source_snapshot_id": prior_id,
+        "previous_source_snapshot_date": "2026-09-22",
+        "positions": [old_source_position],
+        "entry_lineage_source": {
+            "status": "ready",
+            "row_count": 0,
+            "event_count": 0,
+            "rows_sha256": empty_hash,
+            "file_sha256": "sha256:ledger-file",
+            "window_start_exclusive": "2026-09-22",
+            "window_end_inclusive": "2026-09-30",
+        },
+        "entry_lineage_verified_codes": ["2330"],
+        "warnings": ["position_health_daily_refresh_does_not_evaluate_transition", "paper_position_entry_lineage_not_verified"],
+        "position_identity_source": {
+            "status": "degraded",
+            "state": {"selected_snapshot_rows_sha256": "sha256:snapshot-rows"},
+            "ledger": {
+                "rows_sha256": empty_hash,
+                "file_sha256": "sha256:ledger-file",
+            },
+        },
+        "official_calendar": {"years": {"2026": {"source_hash": "sha256:calendar-source"}}},
+    }
+    current_provenance = copy.deepcopy(old_provenance)
+    current_provenance["previous_source_snapshot_id"] = current_id
+    current_provenance["previous_source_snapshot_date"] = "2026-09-30"
+    current_provenance["positions"] = [current_source_position]
+    current_provenance["entry_lineage_source"] = {"status": "not_needed"}
+    current_provenance["entry_lineage_verified_codes"] = []
+    current_provenance["warnings"] = [
+        item for item in old_provenance["warnings"] if item != "paper_position_entry_lineage_not_verified"
+    ]
+    old_payload: dict[str, object] = {
+        "position": old_position,
+        "previous": {"state": "WATCH"},
+        "thesis": {"entry_thesis": "human thesis fixture"},
+        "condition": {"status": "valid", "source_snapshot_hash": "sha256:condition"},
+        "feedback_status": None,
+        "metrics": [{"metric_id": "drawdown_bp", "value": "100"}],
+        "forward_position_thesis_binding": None,
+        "trading_dates": ["2026-09-30"],
+        "provenance": old_provenance,
+        "decision_date": "2026-09-30",
+        "policy_hash": "sha256:policy",
+    }
+    current_payload = copy.deepcopy(old_payload)
+    current_payload["position"] = current_position
+    current_payload["provenance"] = current_provenance
+    return old_payload, current_payload, old_provenance, current_provenance
+
+
+def test_same_snapshot_history_rollover_is_narrow_and_decision_equivalent() -> None:
+    old, current, old_provenance, current_provenance = _same_snapshot_rollover_fixtures()
+    assert _same_snapshot_history_rollover(
+        old_input_payload=old,
+        current_input_payload=current,
+        old_provenance=old_provenance,
+        current_provenance=current_provenance,
+        position_id="paper:paper-main:2330:entry-fixture",
+        decision_date="2026-09-30",
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda payload: payload["position"].update(paper_shares=2000),
+        lambda payload: payload["position"].update(position_id="paper:paper-main:other"),
+        lambda payload: payload["previous"].update(state="EXIT_CANDIDATE"),
+        lambda payload: payload["thesis"].update(entry_thesis="changed human thesis"),
+        lambda payload: payload["condition"].update(source_snapshot_hash="sha256:changed-condition"),
+        lambda payload: payload["metrics"][0].update(value="200"),
+        lambda payload: payload.update(policy_hash="sha256:changed-policy"),
+        lambda payload: payload.update(trading_dates=["2026-09-29", "2026-09-30"]),
+        lambda payload: payload["provenance"]["position_identity_source"]["ledger"].update(rows_sha256="sha256:changed-ledger"),
+    ],
+    ids=("quantity", "position-id", "prior-state", "human-thesis", "condition", "metric", "policy", "calendar", "ledger"),
+)
+def test_same_snapshot_history_rollover_rejects_decision_bearing_changes(mutation) -> None:
+    old, current, old_provenance, _current_provenance = _same_snapshot_rollover_fixtures()
+    mutation(current)
+    assert not _same_snapshot_history_rollover(
+        old_input_payload=old,
+        current_input_payload=current,
+        old_provenance=old_provenance,
+        current_provenance=current["provenance"],
+        position_id="paper:paper-main:2330:entry-fixture",
+        decision_date="2026-09-30",
+    )
+
+
+@pytest.mark.parametrize("corruption", ["missing", "tampered", "future", "schema"])
+def test_legacy_reuse_requires_a_valid_bounded_original_result(
+    workspace_qa_tmp: Path,
+    corruption: str,
+) -> None:
+    output_dir = workspace_qa_tmp / "formal" / "position_health_transition"
+    output_dir.mkdir(parents=True)
+    result_path = output_dir / "transition_20260930.json"
+    observed = datetime.now(timezone.utc).replace(microsecond=0)
+    if corruption != "missing":
+        result: dict[str, object] = {
+            "schema_version": "position-health-transition-evaluation.v1",
+            "status": "degraded",
+            "decision_date": "2026-09-30",
+            "observed_at": observed.isoformat(),
+            "research_only": True,
+            "apply_transition": False,
+            "auto_action_allowed": False,
+            "broker_execution": False,
+            "formal_credit": False,
+            "provenance": {},
+            "positions": [],
+        }
+        if corruption == "future":
+            result["observed_at"] = (observed + timedelta(days=1)).isoformat()
+        elif corruption == "schema":
+            result["schema_version"] = "position-health-transition-evaluation.v999"
+        encoded = json.dumps(result).encode("utf-8")
+        result_path.write_bytes(b"{broken" if corruption == "tampered" else encoded)
+
+    record = PositionHealthTransitionRecord.proposal(
+        event_id="stored-event",
+        position_id="position-2330",
+        decision_date="2026-09-30",
+        previous_state=PositionHealthState.WATCH,
+        proposed_state=PositionHealthState.WATCH,
+        reasons=("fixture",),
+    )
+    current_payload: dict[str, object] = {
+        "position": _position(),
+        "provenance": {"observed_at": observed.isoformat()},
+    }
+    assert _verify_legacy_same_snapshot_reuse(
+        output_dir=output_dir,
+        current_input_payload=current_payload,
+        current_input_hash="sha256:" + "0" * 64,
+        current_observed=observed,
+        current_record=record,
+        existing_record=record,
+    ) is None
+
+
+def test_legacy_source_hash_and_no_follow_are_required(workspace_qa_tmp: Path) -> None:
+    root = workspace_qa_tmp / "source"
+    root.mkdir()
+    path = root / "condition.json"
+    path.write_text("{\"status\":\"valid\"}", encoding="utf-8")
+    raw_hash = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    assert _read_hashed_legacy_file(
+        role="condition",
+        path=path,
+        root=root,
+        expected_hash=raw_hash,
+        max_bytes=1024,
+        proofs=[],
+    ) == path.read_bytes()
+    with pytest.raises(ValueError, match="source hash changed"):
+        _read_hashed_legacy_file(
+            role="condition",
+            path=path,
+            root=root,
+            expected_hash="sha256:" + "0" * 64,
+            max_bytes=1024,
+            proofs=[],
+        )
+
+
+def test_legacy_source_caps_reject_oversized_and_symlinked_files(
+    workspace_qa_tmp: Path,
+) -> None:
+    root = workspace_qa_tmp / "source_caps"
+    root.mkdir()
+    oversized = root / "oversized.json"
+    oversized.write_bytes(b"0123456789")
+    with pytest.raises(ExecutionArtifactIntegrityError, match="大小上限"):
+        _read_hashed_legacy_file(
+            role="condition",
+            path=oversized,
+            root=root,
+            expected_hash="sha256:" + hashlib.sha256(oversized.read_bytes()).hexdigest(),
+            max_bytes=4,
+            proofs=[],
+        )
+
+    outside = workspace_qa_tmp / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    with pytest.raises(ExecutionArtifactIntegrityError):
+        _read_hashed_legacy_file(
+            role="condition",
+            path=outside,
+            root=root,
+            expected_hash="sha256:" + hashlib.sha256(outside.read_bytes()).hexdigest(),
+            max_bytes=1024,
+            proofs=[],
+        )
+    linked = root / "linked.json"
+    try:
+        linked.symlink_to(outside)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"此 Windows 環境無法建立測試 symlink：{type(exc).__name__}")
+    with pytest.raises(ExecutionArtifactIntegrityError):
+        _read_hashed_legacy_file(
+            role="condition",
+            path=linked,
+            root=root,
+            expected_hash="sha256:" + hashlib.sha256(outside.read_bytes()).hexdigest(),
+            max_bytes=1024,
+            proofs=[],
+        )
+
+
+def test_captured_daily_source_requires_exact_date_and_suffix_hash(
+    workspace_qa_tmp: Path,
+) -> None:
+    root = workspace_qa_tmp / "daily_sources"
+    root.mkdir()
+    raw = b'{"captured":"immutable"}'
+    suffix = hashlib.sha256(raw).hexdigest()[:16]
+    captured = root / f"condition_20260930_{suffix}.json"
+    captured.write_bytes(raw)
+
+    assert _is_captured_daily_source_path(
+        captured,
+        root=root,
+        stem="condition",
+        date_key="20260930",
+    )
+    assert _captured_daily_source_suffix_matches(
+        captured,
+        raw,
+        stem="condition",
+        date_key="20260930",
+    )
+    assert not _captured_daily_source_suffix_matches(
+        captured.with_name("condition_20260930_0000000000000000.json"),
+        raw,
+        stem="condition",
+        date_key="20260930",
+    )
+    assert not _is_captured_daily_source_path(
+        captured,
+        root=root,
+        stem="condition",
+        date_key="20260929",
+    )
+    assert _captured_daily_source_suffix_matches(
+        root / "condition_20260930.json",
+        raw,
+        stem="condition",
+        date_key="20260930",
+    )
+
+
+def test_legacy_source_reread_rejects_change_after_reconstruction(
+    workspace_qa_tmp: Path,
+) -> None:
+    root = workspace_qa_tmp / "source_recheck"
+    root.mkdir()
+    path = root / "metrics.json"
+    initial = b'{"value":"same"}'
+    path.write_bytes(initial)
+    expected = "sha256:" + hashlib.sha256(initial).hexdigest()
+    _read_hashed_legacy_file(
+        role="metrics_current_capture",
+        path=path,
+        root=root,
+        expected_hash=expected,
+        max_bytes=1024,
+        proofs=[],
+    )
+    path.write_bytes(b'{"value":"changed"}')
+
+    with pytest.raises(ValueError, match="source hash changed"):
+        _reread_legacy_artifacts(
+            [("metrics_current_capture", path, root, expected, 1024)]
+        )
 
 
 def test_feedback_status_changes_input_hash_and_event_id(tmp_path: Path) -> None:

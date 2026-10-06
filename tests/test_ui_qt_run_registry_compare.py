@@ -88,7 +88,7 @@ def test_backtest_view_mounts_registry_compare_subtab(qt_app):
 
     labels = [view.result_tabs.tabText(index) for index in range(view.result_tabs.count())]
 
-    assert "Registry 比較" in labels
+    assert "研究 Registry" in labels
     assert widget is view.run_registry_compare_widget
 
 
@@ -126,11 +126,81 @@ def test_registry_compare_widget_filters_paginates_and_limits_selection(qt_app):
     widget.refresh_runs()
     assert widget.run_list.count() == 2
     assert all("單股回測" in widget.run_list.item(i).text() for i in range(2))
-    assert widget.run_list.minimumHeight() >= 180
+    assert widget.run_list.minimumHeight() >= 240
+    assert widget.run_list.item(0).sizeHint().height() >= 60
     assert "類型：單股回測" in widget.run_list.item(0).text()
 
     widget.run_list.selectAll()
     assert widget.selected_run_ids() == ["run-a", "run-b"]
+
+
+def test_registry_compare_selection_persists_across_pages_and_can_be_cleared(qt_app):
+    widget = RunRegistryCompareWidget(FakeResearchRunService(), page_size=2)
+    widget.refresh_runs()
+
+    widget.run_list.item(0).setSelected(True)
+    widget.next_page()
+    widget.run_list.item(0).setSelected(True)
+
+    assert widget.selected_run_ids() == ["run-a", "run-c"]
+    widget.previous_page()
+    assert widget.run_list.item(0).isSelected()
+    assert widget.selection_hint_label.text().startswith("已選 2 / 5")
+
+    widget.clear_selection()
+    assert widget.selected_run_ids() == []
+    assert widget.compare_button.isEnabled() is False
+
+
+def test_registry_open_button_only_accepts_one_recommendation_run(qt_app):
+    opened: list[str] = []
+
+    def record_open(metadata: ResearchRunMetadataDTO) -> None:
+        opened.append(metadata.run_id)
+
+    widget = RunRegistryCompareWidget(
+        FakeResearchRunService(),
+        on_open_recommendation_run=record_open,
+        page_size=10,
+    )
+    widget.refresh_runs()
+
+    assert widget.open_recommendation_button.isEnabled() is False
+    widget.run_list.item(0).setSelected(True)
+    assert widget.open_recommendation_button.isEnabled() is False
+
+    widget.clear_selection()
+    widget.run_list.item(2).setSelected(True)
+    assert widget.open_recommendation_button.isEnabled() is True
+    widget.open_recommendation_button.click()
+    assert opened == ["run-c"]
+
+    widget.run_list.item(0).setSelected(True)
+    assert widget.open_recommendation_button.isEnabled() is False
+    widget.clear_selection()
+    widget.run_type_filter.setCurrentIndex(
+        widget.run_type_filter.findData("single_backtest")
+    )
+    widget.refresh_runs()
+    widget.run_list.item(0).setSelected(True)
+    assert widget.open_recommendation_button.isEnabled() is False
+
+
+def test_registry_compare_maps_batch_and_fixed_basket_run_types(qt_app):
+    service = FakeResearchRunService()
+    service.runs.extend(
+        [
+            _metadata("run-batch", run_type="batch_backtest_stock"),
+            _metadata("run-fixed", run_type="fixed_basket_stock"),
+        ]
+    )
+    widget = RunRegistryCompareWidget(service, page_size=10)
+    widget.refresh_runs()
+
+    assert widget.run_type_filter.findData("batch_backtest_stock") >= 0
+    assert widget.run_type_filter.findData("fixed_basket_stock") >= 0
+    assert "批次股票回測" in widget.run_list.item(3).text()
+    assert "固定組合（逐檔）" in widget.run_list.item(4).text()
 
 
 def test_registry_compare_widget_renders_badge_diff_metrics_and_saved_benchmark(qt_app):

@@ -4,7 +4,7 @@ from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.evidence_event_dtos import EvidenceEventType
 from app_module.evidence_event_importer_dtos import EvidenceCaptureRequest
 from app_module.evidence_event_importers import RecommendationEvidenceImporter
-from tests.test_recommendation_evidence_importer import FakeRecommendationRepository
+from tests.test_recommendation_evidence_importer import FakeRecommendationQueries
 
 
 def _base_result(**kwargs) -> RecommendationResultDTO:
@@ -80,7 +80,7 @@ def test_exclusion_payload_creates_why_not_and_liquidity_events():
         exclusion_quality="observed",
         exclusion_warnings_json=["payload_persisted"],
     )
-    importer = RecommendationEvidenceImporter(FakeRecommendationRepository(result))
+    importer = RecommendationEvidenceImporter(FakeRecommendationQueries(result))
 
     collected = importer.collect(EvidenceCaptureRequest(source="recommendation", result_id="rec-exclusion"))
     event_types = [event["event_type"] for event in collected.event_payloads]
@@ -95,7 +95,7 @@ def test_exclusion_payload_creates_why_not_and_liquidity_events():
 
 
 def test_missing_exclusion_payload_only_reports_diagnostic():
-    importer = RecommendationEvidenceImporter(FakeRecommendationRepository(_base_result()))
+    importer = RecommendationEvidenceImporter(FakeRecommendationQueries(_base_result()))
 
     collected = importer.collect(EvidenceCaptureRequest(source="recommendation", result_id="rec-exclusion"))
 

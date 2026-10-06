@@ -281,6 +281,27 @@ def test_proposal_maturity_is_counterfactual_only(tmp_path: Path) -> None:
     assert slice_row["counterfactual_avoided_loss_count"] == 1
 
 
+def test_no_exit_candidate_rows_remain_degraded_without_observations(tmp_path: Path) -> None:
+    _, ledger, market, _ = _make_sources(tmp_path)
+    transition = tmp_path / "empty_position_health_transitions.sqlite"
+    PositionHealthTransitionRepository(transition)
+
+    result = produce_exit_effectiveness(
+        transition_db=transition,
+        paper_ledger_db=ledger,
+        market_db=market,
+        output=tmp_path / "no-exit-transition.json",
+        now=NOW,
+        calendar=_StaticOfficialCalendar(),
+    )
+
+    assert result["status"] == "degraded"
+    assert result["transition_count"] == 0
+    assert result["observations"] == []
+    assert "no_exit_transition_rows" in result["warnings"]
+    assert result["blockers"] == []
+
+
 def test_partial_sell_never_becomes_closed(tmp_path: Path) -> None:
     transition, ledger, market, _ = _make_sources(
         tmp_path,

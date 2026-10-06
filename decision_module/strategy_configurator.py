@@ -3,6 +3,10 @@
 整合所有分析功能，提供靈活的策略配置
 """
 
+import logging
+from collections.abc import Mapping
+from typing import Any
+
 import pandas as pd
 import numpy as np
 from analysis_module import (
@@ -23,6 +27,109 @@ from decision_module.strategy_screening_support import (
 )
 from decision_module.indicator_reuse import prepare_indicator_reuse
 from decision_module.weight_contract import InvalidWeightError, WeightMigrationError
+
+
+def normalize_recommendation_filter_aliases(
+    filters: Mapping[str, Any],
+) -> dict[str, Any]:
+    """將推薦設定的篩選別名轉成 scorer 後置篩選格式。
+
+    保留既有別名優先順序、量能比率邊界與原生數值型別；本函式只搬移
+    `generate_recommendations` 原有的映射，不執行 eligibility 判斷。
+    """
+    screen_filters: dict[str, Any] = {}
+
+    # `price_change_min` 明確鍵稍後複製，與舊路徑相同地覆寫 alias。
+    if 'min_return_pct' in filters:
+        screen_filters['price_change_min'] = filters['min_return_pct']
+
+    # `min_volume_ratio` 優先；運算刻意保留原表達式與原數值型別。
+    if 'min_volume_ratio' in filters:
+        min_volume_ratio = filters['min_volume_ratio']
+        screen_filters['volume_ratio_min'] = (min_volume_ratio - 1) * 100
+    elif 'volume_ratio_min' in filters:
+        volume_ratio = filters['volume_ratio_min']
+        if -50 <= volume_ratio <= 10:
+            screen_filters['volume_ratio_min'] = (volume_ratio - 1) * 100
+        else:
+            screen_filters['volume_ratio_min'] = volume_ratio
+
+    # 其他篩選條件直接傳遞。
+    for key in (
+        'price_change_min',
+        'price_change_max',
+        'rsi_min',
+        'rsi_max',
+        'market_cap_min',
+        'market_cap_max',
+    ):
+        if key in filters:
+            screen_filters[key] = filters[key]
+
+    return screen_filters
+
+
+def observe_screening_diagnostics(
+    frame: pd.DataFrame,
+    filters: Mapping[str, Any],
+    *,
+    logger: logging.Logger,
+    counter_owner: Any,
+) -> None:
+    """重播 screen_stocks 的價格／成交量診斷副作用，不回傳 eligibility。
+
+    診斷副本與原篩選次序維持一致；實際篩選結果仍由呼叫端對原始 frame
+    執行唯一的 filter_completed_frame。
+    """
+    diagnostic_frame = frame.copy()
+    if "price_change_min" in filters or "price_change_max" in filters:
+        if "漲幅%" in diagnostic_frame.columns:
+            before = len(diagnostic_frame)
+            price_filters = {
+                key: value
+                for key, value in filters.items()
+                if key in {"price_change_min", "price_change_max"}
+            }
+            diagnostic_frame = filter_completed_frame(diagnostic_frame, price_filters)
+            after = len(diagnostic_frame)
+            logger.debug(
+                f"[screen_stocks] 漲幅篩選: {before} -> {after} "
+                f"(條件: {filters.get('price_change_min', 'N/A')} ~ {filters.get('price_change_max', 'N/A')})"
+            )
+            if before > 0 and after == 0:
+                sample_value = frame.iloc[0]["漲幅%"]
+                price_log_count = getattr(counter_owner, "_price_filter_log_count", 0) + 1
+                setattr(counter_owner, "_price_filter_log_count", price_log_count)
+                if price_log_count <= 3:
+                    logger.warning(
+                        f"[漲幅篩選] 要求 >= {filters['price_change_min']}%, "
+                        f"但樣本值={sample_value:.2f}%"
+                    )
+        else:
+            logger.debug("漲幅%欄位不存在，跳過漲幅篩選")
+    if "volume_ratio_min" in filters:
+        if "成交量變化率%" in diagnostic_frame.columns:
+            before = len(diagnostic_frame)
+            diagnostic_frame = filter_completed_frame(
+                diagnostic_frame, {"volume_ratio_min": filters["volume_ratio_min"]}
+            )
+            after = len(diagnostic_frame)
+            logger.debug(
+                f"[screen_stocks] 成交量篩選: {before} -> {after} "
+                f"(條件: >= {filters['volume_ratio_min']:.2f}%)"
+            )
+            if before > 0 and after == 0:
+                sample_value = frame.iloc[0]["成交量變化率%"]
+                volume_log_count = getattr(counter_owner, "_volume_filter_log_count", 0) + 1
+                setattr(counter_owner, "_volume_filter_log_count", volume_log_count)
+                if volume_log_count <= 3:
+                    logger.warning(
+                        f"[成交量篩選] 要求 >= {filters['volume_ratio_min']:.2f}%, "
+                        f"但樣本值={sample_value:.2f}%"
+                    )
+        else:
+            logger.debug("成交量變化率%欄位不存在，跳過成交量篩選")
+
 
 class StrategyConfigurator:
     """策略配置器，整合所有分析功能"""
@@ -198,56 +305,12 @@ class StrategyConfigurator:
             f"篩選條件={filters}"
         )
         
-        diagnostic_frame = df.copy()
-        if "price_change_min" in filters or "price_change_max" in filters:
-            if "漲幅%" in diagnostic_frame.columns:
-                before = len(diagnostic_frame)
-                price_filters = {
-                    key: value
-                    for key, value in filters.items()
-                    if key in {"price_change_min", "price_change_max"}
-                }
-                diagnostic_frame = filter_completed_frame(diagnostic_frame, price_filters)
-                after = len(diagnostic_frame)
-                logger.debug(
-                    f"[screen_stocks] 漲幅篩選: {before} -> {after} "
-                    f"(條件: {filters.get('price_change_min', 'N/A')} ~ {filters.get('price_change_max', 'N/A')})"
-                )
-                if before > 0 and after == 0:
-                    sample_value = df.iloc[0]["漲幅%"]
-                    StrategyConfigurator._price_filter_log_count = getattr(
-                        StrategyConfigurator, "_price_filter_log_count", 0
-                    ) + 1
-                    if StrategyConfigurator._price_filter_log_count <= 3:
-                        logger.warning(
-                            f"[漲幅篩選] 要求 >= {filters['price_change_min']}%, "
-                            f"但樣本值={sample_value:.2f}%"
-                        )
-            else:
-                logger.debug("漲幅%欄位不存在，跳過漲幅篩選")
-        if "volume_ratio_min" in filters:
-            if "成交量變化率%" in diagnostic_frame.columns:
-                before = len(diagnostic_frame)
-                diagnostic_frame = filter_completed_frame(
-                    diagnostic_frame, {"volume_ratio_min": filters["volume_ratio_min"]}
-                )
-                after = len(diagnostic_frame)
-                logger.debug(
-                    f"[screen_stocks] 成交量篩選: {before} -> {after} "
-                    f"(條件: >= {filters['volume_ratio_min']:.2f}%)"
-                )
-                if before > 0 and after == 0:
-                    sample_value = df.iloc[0]["成交量變化率%"]
-                    StrategyConfigurator._volume_filter_log_count = getattr(
-                        StrategyConfigurator, "_volume_filter_log_count", 0
-                    ) + 1
-                    if StrategyConfigurator._volume_filter_log_count <= 3:
-                        logger.warning(
-                            f"[成交量篩選] 要求 >= {filters['volume_ratio_min']:.2f}%, "
-                            f"但樣本值={sample_value:.2f}%"
-                        )
-            else:
-                logger.debug("成交量變化率%欄位不存在，跳過成交量篩選")
+        observe_screening_diagnostics(
+            df,
+            filters,
+            logger=logger,
+            counter_owner=StrategyConfigurator,
+        )
 
         df_result = filter_completed_frame(df, filters)
         
@@ -348,36 +411,7 @@ class StrategyConfigurator:
         if 'filters' in config:
             # 轉換篩選參數格式（從 RecommendationService 格式轉為 screen_stocks 格式）
             filters = config['filters'].copy()
-            screen_filters = {}
-            
-            # 轉換 min_return_pct -> price_change_min
-            if 'min_return_pct' in filters:
-                screen_filters['price_change_min'] = filters['min_return_pct']
-            
-            # 轉換 min_volume_ratio -> volume_ratio_min
-            # 注意：volume_ratio_min 是比率（如 1.0 = 100%），需要轉換為百分比變化
-            if 'min_volume_ratio' in filters:
-                # min_volume_ratio = 1.0 表示成交量 >= 100%，即變化率 >= 0%
-                # min_volume_ratio = 0.5 表示成交量 >= 50%，即變化率 >= -50%
-                min_volume_ratio = filters['min_volume_ratio']
-                screen_filters['volume_ratio_min'] = (min_volume_ratio - 1) * 100  # 轉換為百分比變化
-            elif 'volume_ratio_min' in filters:
-                # 如果直接傳遞 volume_ratio_min（來自 UI），也需要轉換
-                # UI 傳遞的是比率（1.0 = 100%），需要轉換為百分比變化（0%）
-                volume_ratio = filters['volume_ratio_min']
-                # 判斷是否已經是百分比變化（通常 > 10 或 < -50 表示是百分比變化）
-                # 否則假設是比率，需要轉換
-                if -50 <= volume_ratio <= 10:
-                    # 可能是比率，轉換為百分比變化
-                    screen_filters['volume_ratio_min'] = (volume_ratio - 1) * 100
-                else:
-                    # 已經是百分比變化，直接使用
-                    screen_filters['volume_ratio_min'] = volume_ratio
-            
-            # 其他篩選條件直接傳遞
-            for key in ['price_change_min', 'price_change_max', 'rsi_min', 'rsi_max', 'market_cap_min', 'market_cap_max']:
-                if key in filters:
-                    screen_filters[key] = filters[key]
+            screen_filters = normalize_recommendation_filter_aliases(filters)
             
             if screen_filters:
                 # 記錄篩選前的狀態（用於診斷）

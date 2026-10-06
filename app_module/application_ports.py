@@ -5,7 +5,7 @@ from typing import Protocol
 
 import pandas as pd
 
-from app_module.dtos import RecommendationResultDTO
+from app_module.recommendation.legacy_dtos import RecommendationResultDTO
 
 
 class MarketFrameProvider(Protocol):
@@ -13,6 +13,7 @@ class MarketFrameProvider(Protocol):
 
 
 class RecommendationEvidencePort(Protocol):
+    last_run_context: dict[str, object]
     last_excluded_candidates_json: list[dict[str, object]]
     last_screening_matrix: list[dict[str, object]]
     last_why_not_payload_json: list[dict[str, object]]
@@ -34,6 +35,10 @@ class RegimeServicePort(Protocol):
 
 class RecommendationRepositoryPort(Protocol):
     def save_result(self, result: RecommendationResultDTO) -> str: ...
+
+    def load_result(self, result_id: str) -> RecommendationResultDTO | None: ...
+
+    def save_result_create_only(self, result: RecommendationResultDTO) -> str: ...
 
 
 class UniverseWatchlistPort(Protocol):

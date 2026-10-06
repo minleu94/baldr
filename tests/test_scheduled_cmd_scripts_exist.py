@@ -23,6 +23,9 @@ REQUIRED_CMD_FILES = (
     "run_recommendation_snapshot.cmd",
     "run_scheduled_recommendation_snapshot.py",
     "run_evidence_pipeline_dry_run.cmd",
+    "run_forward_outcomes_daily.cmd",
+    "run_scheduled_forward_outcomes.py",
+    "run_recommendation_calibration_learning.cmd",
     "run_ml_promotion_evidence.cmd",
     "run_ml_allocation_copilot.cmd",
     "run_ml_promotion_authority.cmd",
@@ -87,3 +90,18 @@ def test_evidence_dry_run_cmd_enables_bounded_exit_effectiveness_child() -> None
 
     assert "run_scheduled_evidence_pipeline_dry_run.py" in text
     assert "--run-exit-effectiveness" in text
+
+
+def test_recommendation_learning_cmd_requires_governed_python_interpreter() -> None:
+    text = (SCHEDULED_DIR / "run_recommendation_calibration_learning.cmd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "BALDR_PYTHON" in text
+    assert 'if not defined PYTHON if exist "%REPO_ROOT%\\.venv\\Scripts\\python.exe"' in text
+    assert "No governed Python interpreter found" in text
+    assert 'set "PYTHON=python"' not in text
+    assert "RECOMMENDATION_LEARNING_OUTPUT_ROOT" in text
+    assert "FA_Data_Shadow" in text
+    assert '--output-root "%RECOMMENDATION_LEARNING_OUTPUT_ROOT%"' in text
+    assert 'set "OUTPUT_ROOT=%DATA_ROOT%\\output"' not in text

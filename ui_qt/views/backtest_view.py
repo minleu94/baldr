@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QDateEdit, QComboBox, QMessageBox, QSplitter, QFormLayout, QSpinBox,
     QTabWidget, QCheckBox, QListWidget, QListWidgetItem, QDialog,
     QDialogButtonBox, QTextEdit as QTextEditDialog, QScrollArea,
-    QMenu
+    QMenu, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer
 from PySide6.QtGui import QFont
@@ -32,10 +32,13 @@ _QWIDGET_DIR = set(dir(QWidget))
 
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.widgets.info_button import InfoButton
+from ui_qt.widgets.layout_helpers import ensure_visible_rows
 from ui_qt.workers.task_worker import TaskWorker
 from app_module.backtest_service import BacktestService
-from app_module.strategy_spec import StrategySpec
-from app_module.strategy_registry import StrategyRegistry
+from app_module.backtest_analyst_diagnostics import build_backtest_analyst_diagnostics
+from app_module.backtest_optimization_stability import build_optimization_stability_summary
+from decision_module.strategies.contracts import StrategySpec
+from decision_module.strategies.registry import StrategyRegistry
 from app_module.dtos import BacktestReportDTO
 from app_module.preset_service import PresetService
 from app_module.universe_service import UniverseService
@@ -50,19 +53,15 @@ from app_module.walkforward_service import WalkForwardService
 from app_module.optimizer_service import OptimizerService
 from app_module.recommendation_dataframe_provider import RecommendationDataFrameProvider
 from app_module.recommendation_portfolio_backtest_service import RecommendationPortfolioBacktestService
+from app_module.recommendation_portfolio_dtos import RecommendationPortfolioBacktestResultDTO
 from app_module.recommendation_portfolio_dates import parse_stock_dates
+from app_module.research_run_dtos import ResearchRunMetadataDTO
 from app_module.research_result_presentation import (
     build_recommendation_replay_sections,
     build_train_test_reliability_notice,
     build_walkforward_reliability_notice,
 )
 from app_module.portfolio_source_adapter import build_backtest_trade_source
-from ui_qt.widgets.fast_chart_widget import (
-    create_drawdown_curve_widget,
-    create_equity_curve_widget,
-    create_holding_days_histogram_widget,
-    create_trade_return_histogram_widget,
-)
 
 # 引入重構提取的常數與 Helper 函數
 from ui_qt.views.backtest.helpers import (
@@ -91,6 +90,9 @@ from ui_qt.views.backtest.walkforward_coordinator import WalkForwardExecutionReq
 
 class BacktestView(QWidget):
     """回測視圖"""
+
+    # 1366px 桌面仍可左右並列；1024px 需要上下流，避免設定欄被壓成不可操作的窄欄。
+    RESPONSIVE_BREAKPOINT = 1200
 
     preset_service: Optional[PresetService]
     universe_service: Optional[UniverseService]
@@ -220,6 +222,9 @@ class BacktestView(QWidget):
         self._execution_generation = 0
         self._single_backtest_result_generation: Optional[int] = None
         self._recommendation_portfolio_result_generation: Optional[int] = None
+        self._recommendation_portfolio_result_source: str | None = None
+        self._registry_portfolio_open_request_id = 0
+        self.current_recommendation_registry_run_id: str | None = None
 
         # 初始化說明資料結構（集中管理）
         self._init_parameter_descriptions()
@@ -639,7 +644,9 @@ class BacktestView(QWidget):
         config_scroll = QScrollArea()
         config_scroll.setWidgetResizable(True)
         config_scroll.setMinimumWidth(0)
-        config_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # 設定面板有最低可讀寬度；在 390px 等窄視窗中保留水平捲動，
+        # 避免右側控制欄遭裁切且使用者無從到達。
+        config_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         config_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         config_container = QWidget()
@@ -659,6 +666,10 @@ class BacktestView(QWidget):
         # 右側：結果面板
         self.result_panel = BacktestResultPanel(self)
         self.result_panel.setMinimumWidth(0)
+        # 結果工作區的內容 tab（尤其圖表／表格）sizeHint 很高；窄版改成上下
+        # 流時若仍採 Preferred，QSplitter 會把可捲動的設定區壓到幾十像素。
+        # 垂直方向交由 splitter 分配，避免 child sizeHint 霸佔 viewport。
+        self._result_panel_vertical_policy = self.result_panel.sizePolicy().verticalPolicy()
         splitter.addWidget(self.result_panel)
 
         # 設置 Splitter 比例：左側預設吃下完整設定表單，額外空間優先給結果區。
@@ -672,8 +683,19 @@ class BacktestView(QWidget):
 
         main_layout.addWidget(splitter)
 
-        # 初始根據選中的實驗模式更新 UI 狀態
-        self._update_ui_state_by_mode(self.research_lab_mode_combo.currentData() or "single_stock")
+        # 初始根據選中的實驗模式更新 UI 狀態與結果工作區
+        initial_mode = self.research_lab_mode_combo.currentData() or "single_stock"
+        self._update_ui_state_by_mode(initial_mode)
+        self._on_research_lab_mode_changed(initial_mode)
+
+    def _on_research_lab_mode_changed(self, mode_id: str) -> None:
+        """同步左側研究模式與右側 semantic result workspace。"""
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "set_research_mode"):
+            result_panel.set_research_mode(str(mode_id or "single_stock"))
+        config_panel = self.__dict__.get("config_panel")
+        if config_panel is not None and hasattr(config_panel, "update_execution_intent"):
+            config_panel.update_execution_intent(str(mode_id or "single_stock"))
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
@@ -683,8 +705,13 @@ class BacktestView(QWidget):
         """窄版將設定與結果改為上下流，維持 Research Lab context 可見。"""
         if not hasattr(self, "backtest_splitter"):
             return
-        narrow = self.width() < 900
+        narrow = self.width() < self.RESPONSIVE_BREAKPOINT
         if not force and narrow == self._backtest_narrow:
+            # 同一寬度下父視窗仍可能改變高度（例如 QMainWindow fixed-size
+            # 或 docking resize）；窄版要重新按當前可用高度分配，不能只靠
+            # 第一次 resize 的 splitter sizes。
+            if narrow and not self._config_panel_collapsed:
+                self._set_narrow_splitter_sizes()
             return
         self._backtest_narrow = narrow
         self.backtest_splitter.setOrientation(
@@ -692,12 +719,38 @@ class BacktestView(QWidget):
         )
         self.config_scroll.setMinimumWidth(0)
         self.result_panel.setMinimumWidth(0)
+        result_policy = self.result_panel.sizePolicy()
+        result_policy.setVerticalPolicy(
+            QSizePolicy.Policy.Ignored if narrow else self._result_panel_vertical_policy
+        )
+        self.result_panel.setSizePolicy(result_policy)
         if self._config_panel_collapsed:
             self.backtest_splitter.setSizes([0, max(self.backtest_splitter.width(), 1)])
         elif narrow:
-            self.backtest_splitter.setSizes([500, 700])
+            self._set_narrow_splitter_sizes()
         else:
             self.backtest_splitter.setSizes([560, 780])
+
+    def _set_narrow_splitter_sizes(self) -> None:
+        """依目前 viewport 高度分配窄版上下區，保留兩邊可操作的最低空間。"""
+        if not hasattr(self, "backtest_splitter") or self._config_panel_collapsed:
+            return
+        available = max(self.backtest_splitter.height(), 1)
+        handle = max(self.backtest_splitter.handleWidth(), 1)
+        usable = max(available - handle, 1)
+        config_floor = 220
+        result_floor = 350
+        if usable >= config_floor + result_floor:
+            # 設定區可滾動，結果區略多留空間；兩個 floor 讓 fixed
+            # 1024x768 仍同時能操作設定與閱讀結果。
+            config_size = max(config_floor, int(usable * 0.42))
+            config_size = min(config_size, usable - result_floor)
+            result_size = usable - config_size
+        else:
+            # 更矮的視窗無法同時滿足兩個 floor，仍保持設定區不被壓成零。
+            config_size = max(1, min(int(usable * 0.42), usable - 1))
+            result_size = max(1, usable - config_size)
+        self.backtest_splitter.setSizes([config_size, result_size])
 
     def _toggle_config_panel_collapsed(self) -> None:
         self._set_config_panel_collapsed(not self._config_panel_collapsed)
@@ -708,21 +761,38 @@ class BacktestView(QWidget):
         self.config_panel_expand_btn.setVisible(self._config_panel_collapsed)
         if self._config_panel_collapsed:
             self.backtest_splitter.setSizes([0, max(self.backtest_splitter.width(), 1)])
+        elif self.width() < self.RESPONSIVE_BREAKPOINT:
+            result_policy = self.result_panel.sizePolicy()
+            result_policy.setVerticalPolicy(QSizePolicy.Policy.Ignored)
+            self.result_panel.setSizePolicy(result_policy)
+            self._set_narrow_splitter_sizes()
         else:
             self.backtest_splitter.setSizes([560, max(self.backtest_splitter.width() - 560, 780)])
 
     def _mark_research_execution_started(self) -> None:
         """標記新一輪研究執行已開始，用於阻擋舊結果保存。"""
         self._execution_generation += 1
+        self._registry_portfolio_open_request_id += 1
         self.current_report = None
         self.current_run_id = None
         self.current_recommendation_portfolio_result = None
         self.current_portfolio_run_id = None
+        self.current_recommendation_registry_run_id = None
+        self._recommendation_portfolio_result_source = None
         self._single_backtest_result_generation = None
         self._recommendation_portfolio_result_generation = None
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "clear_analyst_diagnostics"):
+            result_panel.clear_analyst_diagnostics()
 
     def _execute_backtest(self):
         """執行回測（支援單檔和批次模式）"""
+        research_mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
+        if research_mode == "recommendation_replay":
+            # 推薦回放不需要股票代號；由其已載入的 profile／history 決定輸入母體。
+            self._execute_recommendation_portfolio_backtest()
+            return
+
         # 委派參數最佳化與 Walk-forward 驗證
         if hasattr(self, 'optimization_group') and self.optimization_group.isChecked():
             self._execute_optimization()
@@ -906,7 +976,8 @@ class BacktestView(QWidget):
             self.current_run_params = request.run_params()
 
             def backtest_task(cancel_callback=None):
-                return request.execute(self.backtest_service, check_cancel=cancel_callback)
+                return research_run_metadata.execute_single_backtest_with_rule_source(
+                    request, self.backtest_service, check_cancel=cancel_callback)
 
             self.worker = TaskWorker(backtest_task)
             self.worker.finished.connect(self._on_backtest_finished)
@@ -933,6 +1004,9 @@ class BacktestView(QWidget):
         # 保存當前結果（用於後續保存）
         self.current_report = report
         self._single_backtest_result_generation = self._execution_generation
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
+            result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(report))
 
         # 更新圖表 run 列表（如果有）
         if hasattr(self, 'chart_run_combo'):
@@ -976,7 +1050,7 @@ class BacktestView(QWidget):
                     f"命中次數：在已暖機交易日中，動態買進門檻命中 {buy_hit_days} 天，動態賣出門檻命中 {sell_hit_days} 天。\n"
                 )
                 no_trade_msg += (
-                    "建議操作：\n"
+                    "建議操作（僅作研究假設，不代表績效改善；任何門檻調整都必須用未參與調整的 OOS / Walk-forward 再驗證）：\n"
                     "  1. 降低「buy_quantile_bp」買入分位數基點，讓更多高分日能觸發進場（例如從 8000 降至 7000）。\n"
                     "  2. 確保回測時間夠長（如超過 60 個交易日暖機期），否則暖機不足將不會產生任何交易。\n"
                     "  3. 縮短「buy_confirm_days」連續確認天數。\n"
@@ -988,7 +1062,7 @@ class BacktestView(QWidget):
                 else:
                     no_trade_msg += f"具體原因：雖然最高分 ({max_score:.1f}) 有達到門檻 ({buy_score:.1f})，但因連續確認天數不足或處於交易冷卻期 (Cooldown)，或在回測結束前尚未形成完整進出場交易對。\n"
                 no_trade_msg += (
-                    "建議操作：\n"
+                    "建議操作（僅作研究假設，不代表績效改善；任何門檻調整都必須用未參與調整的 OOS / Walk-forward 再驗證）：\n"
                     "  1. 降低「buy_score」買入門檻，讓指標能順利觸發進場。\n"
                     "  2. 縮短「buy_confirm_days」連續確認天數。\n"
                     "  3. 擴大回測日期範圍，以涵蓋更多市場週期與價格波動。"
@@ -1003,7 +1077,7 @@ class BacktestView(QWidget):
                 f"提示：\n"
                 f"  - 您仍可透過右鍵點擊下方交易明細，將個別交易「記錄到持倉管理」中。\n"
                 f"  - 但因為交易樣本不足，此版本無法進行正式版晉升 (Promote 按鈕已禁用)。\n"
-                f"建議操作：\n"
+                f"建議操作（僅作研究假設，不代表績效改善；任何門檻調整都必須用未參與調整的 OOS / Walk-forward 再驗證）：\n"
                 f"  1. 擴大回測時間範圍 (例如拉長至 2~3 年以上) 以增加交易次數。\n"
                 f"  2. 適度放寬進場門檻以獲得更多交易樣本。"
             )
@@ -1015,7 +1089,7 @@ class BacktestView(QWidget):
                 "\n💡 === 診斷建議：Walk-forward 驗證未執行 ===\n"
                 "提示：此策略版本目前尚未通過 Walk-forward 滾動驗證，可能存在過擬合風險。\n"
                 "建議操作：\n"
-                "  - 勾選右側「進階驗證：Walk-forward 驗證」並執行，以確認策略在測試集(Out-of-Sample)的真實表現與魯棒性。"
+                "  - 勾選左側「進階驗證：Walk-forward 驗證」並執行，以確認策略在測試集(Out-of-Sample)的真實表現與魯棒性。"
             )
             guides.append(wf_not_run_msg)
 
@@ -1091,9 +1165,15 @@ class BacktestView(QWidget):
         if hasattr(self, 'export_report_btn'):
             self.export_report_btn.setEnabled(True)
 
-    def _show_recommendation_portfolio_result(self, result):
+    def _show_recommendation_portfolio_result(
+        self,
+        result,
+        *,
+        result_source: str = "execution",
+    ):
         """顯示推薦組合回測結果。"""
         self.current_recommendation_portfolio_result = result
+        self._recommendation_portfolio_result_source = result_source
         if hasattr(self, "portfolio_period_table"):
             self.portfolio_period_model = PandasTableModel(result.period_holdings_dataframe())
             self.portfolio_period_table.setModel(self.portfolio_period_model)
@@ -1111,11 +1191,40 @@ class BacktestView(QWidget):
                 "\n".join(build_recommendation_replay_sections(result))
             )
 
-        self._plot_recommendation_portfolio_charts(result)
+        self._plot_recommendation_portfolio_charts(
+            result,
+            allow_current_benchmark=result_source != "registry",
+        )
+        if result_source == "registry" and hasattr(self, "portfolio_summary_text"):
+            snapshots = tuple(getattr(result, "snapshots", ()) or ())
+            if not snapshots:
+                child_status = (
+                    "本次沒有 recommendation snapshots；canonical child 不可用。"
+                )
+            elif all(
+                getattr(snapshot, "canonical_execution", None) is not None
+                for snapshot in snapshots
+            ):
+                child_status = "已讀回並驗證所有 canonical child。"
+            else:
+                child_status = "推薦列仍保留，但 canonical child 不可用。"
+            self.portfolio_summary_text.append(
+                "\n【Registry 讀回】\n"
+                f"Registry run ID：{self.current_recommendation_registry_run_id or 'unknown'}\n"
+                f"Replay parent ID：{getattr(result, 'replay_parent_id', None) or 'unknown'}\n"
+                f"{child_status}\n"
+                "Benchmark 圖層不可用；讀回未重新抓取目前基準資料。"
+            )
 
-    def _plot_recommendation_portfolio_charts(self, result):
+    def _plot_recommendation_portfolio_charts(
+        self,
+        result,
+        *,
+        allow_current_benchmark: bool = True,
+    ):
         """Plot recommendation portfolio value and drawdown charts."""
-        if not hasattr(self, "portfolio_equity_chart"):
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is None:
             return
 
         equity_series = build_recommendation_portfolio_equity_series(result.equity_curve)
@@ -1123,7 +1232,7 @@ class BacktestView(QWidget):
             return
 
         benchmark_series = None
-        if self.chart_data_service:
+        if allow_current_benchmark and self.chart_data_service:
             try:
                 benchmark_series = self.chart_data_service.get_benchmark_series(
                     equity_series.index.min().strftime("%Y-%m-%d"),
@@ -1132,11 +1241,18 @@ class BacktestView(QWidget):
             except Exception as exc:
                 logger.info("[BacktestView] Recommendation benchmark load failed: {exc}")
 
-        self.portfolio_equity_chart.plot(equity_series, benchmark_series, None, result.trades)
+        result_panel.queue_portfolio_chart_plot(
+            "portfolio_equity_chart",
+            equity_series,
+            benchmark_series,
+            None,
+            result.trades,
+        )
 
-        if hasattr(self, "portfolio_drawdown_chart"):
-            drawdown_series, max_dd_info = build_recommendation_portfolio_drawdown(equity_series)
-            self.portfolio_drawdown_chart.plot(drawdown_series, max_dd_info)
+        drawdown_series, max_dd_info = build_recommendation_portfolio_drawdown(equity_series)
+        result_panel.queue_portfolio_chart_plot(
+            "portfolio_drawdown_chart", drawdown_series, max_dd_info
+        )
 
     def _on_backtest_error(self, error_msg: str):
         """回測錯誤"""
@@ -1162,7 +1278,7 @@ class BacktestView(QWidget):
             QMessageBox.warning(self, "錯誤", "資料設定尚未初始化，無法載入歷史資料")
             return
 
-        self.execute_recommendation_portfolio_btn.setEnabled(False)
+        self.execute_btn.setEnabled(False)
         if hasattr(self, 'export_portfolio_report_btn'):
             self.export_portfolio_report_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
@@ -1228,6 +1344,7 @@ class BacktestView(QWidget):
         self.worker = TaskWorker(backtest_task)
         self.worker.finished.connect(self._on_recommendation_portfolio_finished)
         self.worker.error.connect(self._on_recommendation_portfolio_error)
+        self.worker.cancelled.connect(lambda: self._on_recommendation_portfolio_error("推薦回放已取消"))
         self.worker.start()
 
     def _load_recommendation_portfolio_history(self, start_date=None, end_date=None):
@@ -1240,12 +1357,12 @@ class BacktestView(QWidget):
         return "score_weight" if self.recommendation_portfolio_allocation.currentText() == "分數加權" else "equal_weight"
 
     def _on_recommendation_portfolio_finished(self, result):
-        self.execute_recommendation_portfolio_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         self._recommendation_portfolio_result_generation = self._execution_generation
-        self._show_recommendation_portfolio_result(result)
+        self._show_recommendation_portfolio_result(result, result_source="execution")
 
         if hasattr(self, "save_portfolio_result_btn"):
             self.save_portfolio_result_btn.setEnabled(True)
@@ -1258,11 +1375,13 @@ class BacktestView(QWidget):
         if hasattr(self, "export_portfolio_report_btn"):
             self.export_portfolio_report_btn.setEnabled(True)
         self.current_portfolio_run_id = None
+        self.current_recommendation_registry_run_id = None
+        self._recommendation_portfolio_result_source = "execution"
 
         QMessageBox.information(self, "完成", "推薦組合回測完成，請查看右側「推薦組合」結果頁。")
 
     def _on_recommendation_portfolio_error(self, error_msg: str):
-        self.execute_recommendation_portfolio_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
@@ -1305,6 +1424,13 @@ class BacktestView(QWidget):
         if not result or not config or not self.research_run_service:
             QMessageBox.warning(self, "錯誤", "沒有可保存的推薦回測結果")
             return
+        if type(result) is not RecommendationPortfolioBacktestResultDTO:
+            QMessageBox.warning(
+                self,
+                "無法保存",
+                "Registry 推薦回放保存需要完整的 RecommendationPortfolioBacktestResultDTO。",
+            )
+            return
 
         profile_id = config.get("profile_id") or "advanced"
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -1312,6 +1438,7 @@ class BacktestView(QWidget):
 
         dialog = QDialog(self)
         dialog.setWindowTitle("保存推薦回測結果")
+        dialog.setMinimumWidth(520)
         dialog_layout = QVBoxLayout(dialog)
 
         dialog_layout.addWidget(QLabel("執行名稱:"))
@@ -1354,22 +1481,15 @@ class BacktestView(QWidget):
                     f"Run 名稱: {run_name}\n"
                     f"Profile: {config.get('profile_name') or config.get('profile_id') or '進階模式'}\n"
                     f"股票檔數: {len(getattr(result, 'stock_results', []) or [])}\n\n"
-                    "下一步可在歷史推薦回測下拉選單載入、匯出報告，或進行後續策略升級檢查。"
+                    "可於 Research Run Registry 查看這筆紀錄；「歷史推薦回測」下拉選單目前僅顯示舊格式紀錄。"
                 )
 
                 self._on_research_run_saved(run_id)
 
-                # 選中剛保存的結果
-                index = self.portfolio_history_combo.findData(run_id)
-                if index >= 0:
-                    self.portfolio_history_combo.blockSignals(True)
-                    self.portfolio_history_combo.setCurrentIndex(index)
-                    self.portfolio_history_combo.blockSignals(False)
-
-                # 啟用刪除按鈕
-                self.delete_portfolio_result_btn.setEnabled(True)
+                # Registry ID 不屬於 legacy portfolio repository 的歷史清單。
+                self.delete_portfolio_result_btn.setEnabled(False)
                 self.promote_portfolio_result_btn.setEnabled(False)
-                self.promote_portfolio_result_btn.setToolTip("已保存；如需升級，請從歷史推薦回測載入該 run 後執行升級流程。")
+                self.promote_portfolio_result_btn.setToolTip("Research Run Registry 紀錄目前不支援此處的 legacy 策略升級流程。")
             except Exception as e:
                 QMessageBox.critical(self, "錯誤", f"保存失敗: {str(e)}")
 
@@ -1432,10 +1552,16 @@ class BacktestView(QWidget):
                 return
 
             self.current_portfolio_run_id = run_id
+            self.current_recommendation_registry_run_id = None
+            self._recommendation_portfolio_result_source = "legacy_history"
+            self._recommendation_portfolio_result_generation = None
             result_dto = loaded_data["result_dto"]
 
             # 渲染歷史結果
-            self._show_recommendation_portfolio_result(result_dto)
+            self._show_recommendation_portfolio_result(
+                result_dto,
+                result_source="legacy_history",
+            )
 
             # 追加顯示 Metadata / 備註
             notes = loaded_data.get("notes", "")
@@ -1537,7 +1663,7 @@ class BacktestView(QWidget):
         """填充策略下拉選單"""
         try:
             # 確保策略模組已導入（觸發註冊）
-            import app_module.strategies
+            import decision_module.strategies
 
             strategies = StrategyRegistry.list_strategies()
             logger.info(f"[BacktestView] 已註冊的策略: {list(strategies.keys())}")
@@ -1561,6 +1687,24 @@ class BacktestView(QWidget):
             logger.error(f"[BacktestView] 載入策略列表失敗: {e}")
             logger.error(traceback.format_exc())
             self.strategy_combo.addItem("載入策略失敗", None)
+
+    def _show_strategy_rule_card(self):
+        """只投影此次回測設定；不替既有 run 補來源身份。"""
+        from app_module.strategy_rule_card_readmodel import read_strategy_rule_card
+        from ui_qt.widgets.strategy_rule_card_dialog import StrategyRuleCardDialog
+        strategy_id = self.strategy_combo.currentData()
+        if not strategy_id:
+            QMessageBox.warning(self, "規則說明", "請先選擇策略。")
+            return
+        # 與本頁既有回測 StrategySpec 使用相同版本及設定；不借 registry 新版。
+        spec = StrategySpec(
+            strategy_id=strategy_id, strategy_version="1.0",
+            name=self.strategy_combo.currentText(), description=self.strategy_desc.text(),
+            regime=[], risk_level="medium", target_type="stock",
+            config={**self._get_default_strategy_config(), 'params': self._get_strategy_params()},
+        )
+        card = read_strategy_rule_card(spec, result_kind="historical_backtest")
+        StrategyRuleCardDialog(card, self).exec()
 
     def _on_strategy_changed(self):
         """策略選擇改變"""
@@ -1598,9 +1742,8 @@ class BacktestView(QWidget):
 
             # 如果 params 為空，嘗試從策略的 get_meta 獲取
             if not params:
-                executor_cls = StrategyRegistry._registry.get(strategy_id)
-                if executor_cls and hasattr(executor_cls, 'get_meta'):
-                    meta = executor_cls.get_meta()
+                meta = StrategyRegistry.get_strategy_meta(strategy_id)
+                if meta is not None:
                     if isinstance(meta, dict):
                         params = meta.get('params', meta.get('default_params', {}))
                     else:
@@ -1946,7 +2089,7 @@ class BacktestView(QWidget):
         # 創建管理對話框
         dialog = QDialog(self)
         dialog.setWindowTitle("管理選股清單")
-        dialog.setMinimumSize(500, 400)
+        dialog.setMinimumSize(520, 460)
         dialog_layout = QVBoxLayout(dialog)
 
         # 清單列表
@@ -1954,6 +2097,7 @@ class BacktestView(QWidget):
         list_layout = QVBoxLayout()
 
         self.watchlist_manage_list = QListWidget()
+        ensure_visible_rows(self.watchlist_manage_list, rows=5)
         self._refresh_watchlist_manage_list()
         list_layout.addWidget(self.watchlist_manage_list)
 
@@ -2008,6 +2152,7 @@ class BacktestView(QWidget):
         """創建新清單"""
         dialog = QDialog(parent_dialog)
         dialog.setWindowTitle("新增選股清單")
+        dialog.setMinimumSize(520, 440)
         dialog_layout = QVBoxLayout(dialog)
 
         dialog_layout.addWidget(QLabel("清單名稱:"))
@@ -2069,6 +2214,7 @@ class BacktestView(QWidget):
 
         dialog = QDialog(parent_dialog)
         dialog.setWindowTitle("編輯選股清單")
+        dialog.setMinimumSize(520, 440)
         dialog_layout = QVBoxLayout(dialog)
 
         dialog_layout.addWidget(QLabel("清單名稱:"))
@@ -2284,6 +2430,8 @@ class BacktestView(QWidget):
             or not getattr(self, "current_recommendation_portfolio_run_params", None)
         ):
             raise ValueError("沒有可保存的推薦回測結果")
+        if getattr(self, "_recommendation_portfolio_result_source", "execution") != "execution":
+            raise ValueError("Registry 或歷史讀回結果不可重新保存；請執行新的推薦回放")
         if self._recommendation_portfolio_result_generation != self._execution_generation:
             raise ValueError("stale recommendation portfolio result cannot be saved")
 
@@ -2316,10 +2464,45 @@ class BacktestView(QWidget):
     def _save_recommendation_portfolio_to_research_registry(self, run_name: str, notes: str) -> str:
         self._ensure_current_recommendation_portfolio_is_saveable()
         result = self.current_recommendation_portfolio_result
+        if type(result) is not RecommendationPortfolioBacktestResultDTO:
+            raise TypeError(
+                "Registry 推薦回放保存需要 RecommendationPortfolioBacktestResultDTO"
+            )
         config = dict(getattr(self, "current_recommendation_portfolio_config", {}) or {})
         run_params = dict(getattr(self, "current_recommendation_portfolio_run_params", {}) or {})
         details = dict(getattr(result, "details", {}) or {})
         metrics = dict(getattr(result, "summary", {}) or {})
+        parent_result_id = result.replay_parent_id
+        if (
+            type(parent_result_id) is not str
+            or not parent_result_id.strip()
+            or parent_result_id != parent_result_id.strip()
+        ):
+            raise ValueError("推薦回放 Registry 保存需要明確 replay parent ID")
+        replay_lineage_sidecar = None
+        if result.snapshots:
+            from app_module.recommendation.composition import (
+                build_recommendation_composition,
+            )
+            from app_module.recommendation.replay_lineage_service import (
+                persist_replay_lineage_children,
+            )
+
+            composition = build_recommendation_composition(self.config)
+            replay_lineage_sidecar = persist_replay_lineage_children(
+                result, composition.persistence
+            )
+        manifest = dict(details.get("data_manifest", {}) or {})
+        if replay_lineage_sidecar is None:
+            manifest["replay_lineage_status"] = {
+                "schema_version": 1,
+                "status": "unavailable",
+                "parent_result_id": parent_result_id,
+                "reason": "canonical_child_unavailable",
+            }
+        else:
+            manifest.pop("replay_lineage_status", None)
+        details["data_manifest"] = manifest
         metadata = research_run_metadata.build_recommendation_portfolio_metadata(
             run_id=self._next_research_run_id("recommendation_portfolio"),
             run_name=run_name,
@@ -2332,9 +2515,111 @@ class BacktestView(QWidget):
         )
         equity = result.equity_curve if isinstance(result.equity_curve, pd.DataFrame) else pd.DataFrame()
         trades = result.trades if isinstance(result.trades, pd.DataFrame) else pd.DataFrame()
-        self.research_run_service.save_run(metadata, equity, trades)
-        self.current_portfolio_run_id = metadata.run_id
+        save_kwargs: dict[str, Any] = (
+            {"replay_lineage_sidecar": replay_lineage_sidecar}
+            if replay_lineage_sidecar is not None
+            else {}
+        )
+        save_kwargs["portfolio_result"] = result
+        self.research_run_service.save_run(metadata, equity, trades, **save_kwargs)
+        self.current_portfolio_run_id = None
+        self.current_recommendation_registry_run_id = metadata.run_id
         return metadata.run_id
+
+    def _open_recommendation_registry_run(
+        self,
+        metadata: ResearchRunMetadataDTO,
+    ) -> None:
+        """透過 strict reader 開啟已保存 portfolio DTO，不重新執行回放。"""
+
+        if not self.research_run_service:
+            QMessageBox.warning(self, "無法開啟", "Research Run Registry 尚未設定。")
+            return
+        if metadata.run_type != "recommendation_portfolio":
+            QMessageBox.warning(self, "無法開啟", "只支援開啟 Registry 推薦回放。")
+            return
+        run_id = metadata.run_id
+        self._registry_portfolio_open_request_id += 1
+        request_id = self._registry_portfolio_open_request_id
+        execution_generation = self._execution_generation
+        from app_module.recommendation.portfolio_result_reader import (
+            PortfolioResultReadbackUnavailable,
+            RecommendationPortfolioResultReadbackError,
+            RecommendationPortfolioResultReader,
+        )
+
+        try:
+            if self.config is None:
+                raise RuntimeError("缺少讀取 R012 child 所需的應用程式設定")
+            from app_module.recommendation.composition import build_recommendation_composition
+
+            composition = build_recommendation_composition(self.config)
+            reader = RecommendationPortfolioResultReader(
+                self.research_run_service,
+                composition.persistence,
+            )
+            from app_module.saved_strategy_rule_card import metadata_sha256
+            before = self.research_run_service.repository.get_metadata(run_id)
+            if before is None or metadata_sha256(before) != metadata_sha256(metadata):
+                raise ValueError("選取的 Registry 推薦回放來源已修訂")
+            result = reader.read(run_id)
+            after = self.research_run_service.repository.get_metadata(run_id)
+            if after is None or metadata_sha256(after) != metadata_sha256(metadata):
+                raise ValueError("Registry 推薦回放讀取期間來源已修訂")
+        except Exception as exc:
+            if (
+                request_id == self._registry_portfolio_open_request_id
+                and execution_generation == self._execution_generation
+            ):
+                message = (
+                    str(exc)
+                    if isinstance(exc, RecommendationPortfolioResultReadbackError)
+                    else "Registry portfolio 完整性讀取失敗；沒有套用部分結果。"
+                )
+                QMessageBox.critical(self, "推薦回放讀回失敗", message)
+            return
+
+        if (
+            request_id != self._registry_portfolio_open_request_id
+            or execution_generation != self._execution_generation
+        ):
+            return
+        if isinstance(result, PortfolioResultReadbackUnavailable):
+            QMessageBox.information(
+                self,
+                "完整結果不可用",
+                "此舊 Registry run 沒有完整推薦回放 DTO。既有 metadata／equity／trades 比較仍可使用；"
+                "不會從摘要重建推薦列或重新執行回測。原畫面結果保持不變。",
+            )
+            return
+        if type(result) is not RecommendationPortfolioBacktestResultDTO:
+            QMessageBox.critical(
+                self,
+                "推薦回放讀回失敗",
+                "Strict reader 回傳未支援的 portfolio DTO 型別；沒有套用部分結果。",
+            )
+            return
+
+        self.current_portfolio_run_id = None
+        self.current_recommendation_registry_run_id = run_id
+        self._recommendation_portfolio_result_generation = None
+        self.current_recommendation_portfolio_run_params = dict(
+            metadata.normalized_params
+        )
+        config_snapshot = metadata.original_input.get("config", {})
+        self.current_recommendation_portfolio_config = (
+            dict(config_snapshot) if isinstance(config_snapshot, dict) else {}
+        )
+        self._show_recommendation_portfolio_result(result, result_source="registry")
+        self.save_portfolio_result_btn.setEnabled(False)
+        self.delete_portfolio_result_btn.setEnabled(False)
+        self.promote_portfolio_result_btn.setEnabled(False)
+        self.promote_portfolio_result_btn.setToolTip(
+            "Registry 讀回結果為唯讀；legacy 刪除與升級操作不可用。"
+        )
+        self.export_portfolio_report_btn.setEnabled(True)
+        if hasattr(self, "result_panel"):
+            self.result_panel.focus_result_tab("recommendation")
 
     def _refresh_research_registry(self) -> None:
         """刷新 Research Run 相關列表、圖表選單與比較面板。"""
@@ -2353,18 +2638,22 @@ class BacktestView(QWidget):
         if index < 0 or not hasattr(self, "result_tabs"):
             return
 
-        tab_text = self.result_tabs.tabText(index)
-        if "歷史" in tab_text:
+        result_panel = self.__dict__.get("result_panel")
+        tab_key = result_panel.result_tab_key(index) if result_panel is not None else None
+        if tab_key == "legacy":
             if "history" not in self._result_tab_first_load_done:
                 self._result_tab_first_load_done.add("history")
                 if getattr(self, "run_repository", None):
                     self._refresh_history()
-        elif "圖表" in tab_text:
+        elif tab_key == "charts":
+            result_panel.ensure_chart_widgets()
             if "charts" not in self._result_tab_first_load_done:
                 self._result_tab_first_load_done.add("charts")
                 if hasattr(self, "chart_run_combo") and getattr(self, "chart_data_service", None):
                     self._update_chart_run_combo()
-        elif "Registry" in tab_text:
+        elif tab_key == "recommendation":
+            result_panel.ensure_portfolio_chart_widgets()
+        elif tab_key == "registry":
             if "registry_compare" not in self._result_tab_first_load_done:
                 self._result_tab_first_load_done.add("registry_compare")
                 compare_widget = getattr(self, "run_registry_compare_widget", None)
@@ -2433,6 +2722,7 @@ class BacktestView(QWidget):
         # 彈出對話框輸入名稱和備註
         dialog = QDialog(self)
         dialog.setWindowTitle("保存回測結果")
+        dialog.setMinimumWidth(520)
         dialog_layout = QVBoxLayout(dialog)
 
         dialog_layout.addWidget(QLabel("執行名稱:"))
@@ -2482,6 +2772,12 @@ class BacktestView(QWidget):
                         self.promote_btn.setToolTip("驗證狀態為 FAIL，需先修正樣本或資料問題後才能升級。")
                     logger.info("[BacktestView] Registry run 已保存: %s, promote_enabled=%s", run_id, can_promote)
             except Exception as e:
+                run_params = self.current_run_params or {}
+                logger.exception(
+                    "[BacktestView] Research Run 保存失敗 stock_code=%s strategy_id=%s",
+                    run_params.get("stock_code"),
+                    run_params.get("strategy_id"),
+                )
                 QMessageBox.critical(self, "錯誤", f"保存失敗: {str(e)}")
 
     def _promote_backtest_result(self):
@@ -2510,12 +2806,14 @@ class BacktestView(QWidget):
         # 顯示檢查結果對話框
         dialog = QDialog(self)
         dialog.setWindowTitle("升級條件檢查")
+        dialog.setMinimumSize(620, 460)
         dialog_layout = QVBoxLayout(dialog)
 
         dialog_layout.addWidget(QLabel("升級條件檢查結果:"))
         result_text = QTextEditDialog()
         result_text.setReadOnly(True)
-        result_text.setMaximumHeight(200)
+        result_text.setMinimumHeight(200)
+        result_text.setMaximumHeight(320)
 
         if criteria.passed:
             result_text.setPlainText("✓ 通過升級條件\n\n" + "\n".join(criteria.reasons))
@@ -2601,16 +2899,17 @@ class BacktestView(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, run.get('run_id'))
             self.history_list.addItem(item)
 
-    def _load_history_run(self, item: QListWidgetItem):
+    def _load_history_run(self, item: QListWidgetItem, *, run_data: dict[str, Any] | None = None):
         """載入歷史回測結果"""
-        if not self.run_repository:
+        if not self.run_repository and run_data is None:
             return
 
         run_id = item.data(Qt.ItemDataRole.UserRole)
         if not run_id:
             return
 
-        run_data = self.run_repository.load_run_data(run_id)
+        if run_data is None:
+            run_data = self.run_repository.load_run_data(run_id)
         if not run_data:
             QMessageBox.warning(self, "錯誤", "載入失敗")
             return
@@ -2630,8 +2929,23 @@ class BacktestView(QWidget):
             "run_name": run_data.get("run_name", ""),
         }
         self.current_report = None
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
+            # Legacy payload 只讀；缺欄位由 builder 顯示 unknown，不回抓或重算。
+            result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(run_data=run_data))
 
         # 顯示摘要
+        def saved_number(key: str, *, percent: bool = False) -> str:
+            value = run_data.get(key)
+            if value is None:
+                return "未知"
+            try:
+                number = Decimal(str(value))
+                if not number.is_finite():
+                    return "未知"
+                return f"{number * Decimal('100'):.2f}%" if percent else f"{number:.2f}"
+            except (ValueError, ArithmeticError):
+                return "未知"
         summary_lines = [
             f"執行名稱: {run_data.get('run_name', '')}",
             f"股票代號: {run_data.get('stock_code', '')}",
@@ -2639,12 +2953,12 @@ class BacktestView(QWidget):
             f"策略: {run_data.get('strategy_id', '')}",
             "",
             "=== 績效摘要 ===",
-            f"總報酬率: {run_data.get('total_return', 0) * 100:.2f}%",
-            f"年化報酬率: {run_data.get('annual_return', 0) * 100:.2f}%",
-            f"夏普比率: {run_data.get('sharpe_ratio', 0):.2f}",
-            f"最大回撤: {run_data.get('max_drawdown', 0) * 100:.2f}%",
-            f"勝率: {run_data.get('win_rate', 0) * 100:.2f}%",
-            f"總交易次數: {run_data.get('total_trades', 0)}",
+            f"總報酬率: {saved_number('total_return', percent=True)}",
+            f"年化報酬率: {saved_number('annual_return', percent=True)}",
+            f"夏普比率: {saved_number('sharpe_ratio')}",
+            f"最大回撤: {saved_number('max_drawdown', percent=True)}",
+            f"勝率: {saved_number('win_rate', percent=True)}",
+            f"總交易次數: {run_data.get('total_trades') if run_data.get('total_trades') is not None else '未知'}",
         ]
 
         self.summary_text.setPlainText("\n".join(summary_lines))
@@ -2660,6 +2974,56 @@ class BacktestView(QWidget):
                 self.trades_table.setModel(None)
         else:
             self.trades_table.setModel(None)
+
+        if result_panel is not None and hasattr(result_panel, "set_research_mode"):
+            mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
+            result_panel.set_research_mode(mode, reveal_single_detail=True)
+            result_panel.focus_result_tab("summary")
+
+    def _open_research_history_result(self, selected: Any) -> None:
+        """lookup 已核對 exact 來源；回到既有結果呈現，不重跑或借另一份結果。"""
+        from app_module.research_history_lookup import REGISTRY_BACKTEST_TYPES
+        entry, loaded = selected.entry, selected.result
+        if entry.source_kind == "registry" and entry.run_type == "recommendation_portfolio":
+            self._open_recommendation_registry_run(loaded.metadata)
+            return
+        if entry.source_kind == "legacy_recommendation_portfolio":
+            self.current_portfolio_run_id = entry.run_id
+            self.current_recommendation_registry_run_id = None
+            self._recommendation_portfolio_result_generation = None
+            self.current_recommendation_portfolio_run_params = dict(loaded.get("config") or {})
+            self.current_recommendation_portfolio_config = dict(loaded.get("config") or {})
+            self._show_recommendation_portfolio_result(loaded["result_dto"], result_source="legacy_history")
+            self.portfolio_summary_text.append("\n舊推薦回放來源；未知規則、成本與資格不補成 Registry typed 結果。")
+            self.save_portfolio_result_btn.setEnabled(False)
+            self.delete_portfolio_result_btn.setEnabled(False)
+            self.promote_portfolio_result_btn.setEnabled(False)
+            self.result_panel.focus_result_tab("recommendation")
+            return
+        if entry.source_kind == "legacy_backtest":
+            payload = loaded
+        elif entry.source_kind == "registry" and entry.run_type in REGISTRY_BACKTEST_TYPES:
+            metadata = loaded.metadata
+            payload = {**metadata.metrics, "run_id": metadata.run_id, "run_name": metadata.run_name,
+                "stock_code": entry.stock_code, "start_date": metadata.start_date, "end_date": metadata.end_date,
+                "strategy_id": metadata.strategy_id, "strategy_params": metadata.normalized_params,
+                "capital": Decimal(metadata.capital_cents) / Decimal("100"),
+                "fee_bps": Decimal(metadata.fee_bp_x100) / Decimal("100"),
+                "slippage_bps": Decimal(metadata.slippage_bp_x100) / Decimal("100"),
+                "equity_curve": loaded.equity, "trade_list": loaded.trades,
+                "data_manifest": metadata.data_manifest, "data_version": metadata.data_fingerprint,
+                "strategy_version": metadata.strategy_version, "execution_contract": metadata.execution_contract}
+        else:
+            raise ValueError("此種類只支援保存 metadata")
+        item = QListWidgetItem(entry.run_name)
+        item.setData(Qt.ItemDataRole.UserRole, entry.run_id)
+        self._load_history_run(item, run_data=payload)
+        self._single_backtest_result_generation = None
+        for button in (self.save_result_btn, self.promote_btn):
+            if button is not None:
+                button.setEnabled(False)
+        self.summary_text.append(f"\n原來源：{entry.source_kind}／{entry.run_type}；保存績效不代表可評／正式資格。\n"
+                                 f"run：{entry.run_id}\nmetadata hash：{entry.metadata_sha256}\ncontext hash：{entry.context_sha256}")
 
     def _delete_history_runs(self):
         """刪除選中的回測結果"""
@@ -2880,9 +3244,8 @@ class BacktestView(QWidget):
 
             # 如果 params 為空，嘗試從策略的 get_meta 獲取（直接從執行器類別獲取）
             if not params:
-                executor_cls = StrategyRegistry._registry.get(strategy_id)
-                if executor_cls and hasattr(executor_cls, 'get_meta'):
-                    meta = executor_cls.get_meta()
+                meta = StrategyRegistry.get_strategy_meta(strategy_id)
+                if meta is not None:
                     if isinstance(meta, dict):
                         # baseline 策略格式：params 在 'params' 鍵下
                         params = meta.get('params', {})
@@ -2906,17 +3269,15 @@ class BacktestView(QWidget):
                     logger.info("[BacktestView] info['params']: {info.get('params', 'NOT FOUND')}")
                     logger.info("[BacktestView] info['default_params']: {info.get('default_params', 'NOT FOUND')}")
                 # 嘗試直接從執行器獲取
-                executor_cls = StrategyRegistry._registry.get(strategy_id)
-                if executor_cls:
+                meta = StrategyRegistry.get_strategy_meta(strategy_id)
+                if meta is not None:
                     logger.info("[BacktestView] 嘗試直接從執行器獲取...")
-                    if hasattr(executor_cls, 'get_meta'):
-                        meta = executor_cls.get_meta()
-                        logger.info("[BacktestView] get_meta() 返回類型: {type(meta)}")
-                        if isinstance(meta, dict):
-                            logger.info("[BacktestView] meta keys: {list(meta.keys())}")
-                            logger.info("[BacktestView] meta['params']: {meta.get('params', 'NOT FOUND')}")
-                        elif hasattr(meta, 'default_params'):
-                            logger.info("[BacktestView] meta.default_params: {meta.default_params}")
+                    logger.info("[BacktestView] get_meta() 返回類型: {type(meta)}")
+                    if isinstance(meta, dict):
+                        logger.info("[BacktestView] meta keys: {list(meta.keys())}")
+                        logger.info("[BacktestView] meta['params']: {meta.get('params', 'NOT FOUND')}")
+                    elif hasattr(meta, 'default_params'):
+                        logger.info("[BacktestView] meta.default_params: {meta.default_params}")
 
             # 調試：確保參數被正確讀取
             if params:
@@ -3299,7 +3660,8 @@ class BacktestView(QWidget):
         take_profit_pct = self.take_profit_input.value() / 100.0 if self.take_profit_input.value() > 0 else None
 
         # 禁用按鈕
-        self.optimize_btn.setEnabled(False)
+        self._mark_research_execution_started()
+        self.execute_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
         self.progress_label.setVisible(True)
@@ -3314,6 +3676,11 @@ class BacktestView(QWidget):
         # 清空結果
         if hasattr(self, 'optimization_table'):
             self.optimization_table.setModel(None)
+        if hasattr(self, 'optimization_stability_label'):
+            self.optimization_stability_label.setText(
+                "Top-N 穩定性（探索性）：insufficient（尚未完成本輪最佳化）。"
+                " 僅在結果保留後摘要，請另跑 Walk-forward／OOS 驗證。"
+            )
 
         request = OptimizationExecutionRequest(
             stock_code=stock_code,
@@ -3354,7 +3721,7 @@ class BacktestView(QWidget):
 
     def _on_optimization_finished(self, results):
         """參數掃描完成"""
-        self.optimize_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         if hasattr(self.config_panel, 'cancel_btn') and self.config_panel.cancel_btn:
@@ -3366,6 +3733,17 @@ class BacktestView(QWidget):
 
         # 保存結果供後續使用
         self.current_optimization_results = results
+
+        objective_label = self.objective_combo.currentText()
+        self.optimization_stability_summary = build_optimization_stability_summary(
+            results,
+            # OptimizerResult 對外保留的排序值統一在 metrics[score]；
+            # 不猜測或重算 report 欄位，UI 另顯示使用者選的 objective 名稱。
+            objective_key="score",
+            objective_label=objective_label,
+        )
+        if hasattr(self, "optimization_stability_label"):
+            self.optimization_stability_label.setText(self.optimization_stability_summary.to_text())
 
         # 創建摘要表格
         summary_df = self.optimizer_service.create_optimization_summary(results)
@@ -3383,7 +3761,7 @@ class BacktestView(QWidget):
 
     def _on_optimization_error(self, error_msg: str):
         """參數掃描錯誤"""
-        self.optimize_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         if hasattr(self.config_panel, 'cancel_btn') and self.config_panel.cancel_btn:
@@ -3393,7 +3771,7 @@ class BacktestView(QWidget):
 
     def _on_optimization_cancelled(self):
         """參數最佳化被取消"""
-        self.optimize_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         if hasattr(self.config_panel, 'cancel_btn') and self.config_panel.cancel_btn:
@@ -3505,7 +3883,8 @@ class BacktestView(QWidget):
         take_profit_pct = self.take_profit_input.value() / 100.0 if self.take_profit_input.value() > 0 else None
 
         # 禁用按鈕
-        self.wf_execute_btn.setEnabled(False)
+        self._mark_research_execution_started()
+        self.execute_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
         self.progress_label.setVisible(True)
@@ -3538,7 +3917,7 @@ class BacktestView(QWidget):
 
     def _on_walkforward_finished(self, result_data):
         """Walk-forward 驗證完成"""
-        self.wf_execute_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
 
@@ -3638,7 +4017,7 @@ class BacktestView(QWidget):
 
     def _on_walkforward_error(self, error_msg: str):
         """Walk-forward 驗證錯誤"""
-        self.wf_execute_btn.setEnabled(True)
+        self.execute_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
 
@@ -3676,7 +4055,8 @@ class BacktestView(QWidget):
 
     def _plot_charts_from_report(self, report: BacktestReportDTO):
         """直接從 BacktestReportDTO 繪製圖表（不需要保存）"""
-        if not hasattr(self, 'equity_chart'):
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is None or not result_panel.charts_available:
             return
 
         import numpy as np
@@ -3715,7 +4095,13 @@ class BacktestView(QWidget):
                 # 獲取交易明細（用於顯示買賣點）
                 trade_list = details.get('trade_list')
 
-                self.equity_chart.plot(equity_series, benchmark_series, report.annual_return, trade_list)
+                result_panel.queue_chart_plot(
+                    "equity_chart",
+                    equity_series,
+                    benchmark_series,
+                    report.annual_return,
+                    trade_list,
+                )
 
         # 2. 回撤曲線
         if equity_series is not None and len(equity_series) > 0:
@@ -3746,7 +4132,9 @@ class BacktestView(QWidget):
                     'peak_value': peak_value
                 }
 
-                self.drawdown_chart.plot(drawdown_series, max_dd_info)
+                result_panel.queue_chart_plot(
+                    "drawdown_chart", drawdown_series, max_dd_info
+                )
             except Exception as e:
                 logger.info("[BacktestView] 繪製回撤曲線失敗: {e}")
                 import traceback
@@ -3769,14 +4157,18 @@ class BacktestView(QWidget):
                     returns = returns[np.isfinite(returns)]
 
                     if len(returns) > 0:
-                        # 計算統計（包含 95% VaR）
+                        # 圖表邊界統計；少於 20 筆不提供不穩定的 95% VaR。
                         stats = {
                             'mean': float(np.mean(returns)),
                             'median': float(np.median(returns)),
                             'std': float(np.std(returns)) if len(returns) > 1 else 0.0,
-                            'var_95': float(np.percentile(returns, 5))  # 95% VaR（5% 分位數）
+                            'var_95': (
+                                float(np.percentile(returns, 5))
+                                if len(returns) >= 20
+                                else None
+                            ),
                         }
-                        self.return_hist.plot(returns, stats)
+                        result_panel.queue_chart_plot("return_hist", returns, stats)
             except Exception as e:
                 logger.info("[BacktestView] 繪製報酬分佈失敗: {e}")
                 import traceback
@@ -3799,7 +4191,7 @@ class BacktestView(QWidget):
                     holding_days = holding_days.astype(int)
 
                     if len(holding_days) > 0:
-                        self.holding_hist.plot(holding_days)
+                        result_panel.queue_chart_plot("holding_hist", holding_days)
             except Exception as e:
                 logger.info("[BacktestView] 繪製持有天數分佈失敗: {e}")
                 import traceback
@@ -3988,18 +4380,9 @@ class BacktestView(QWidget):
             self._update_chart_run_combo()
 
         # 切換到批次結果 Tab
-        if hasattr(self, 'batch_leaderboard_table'):
-            # 找到結果 TabWidget（右側的 result_tabs）
-            result_tabs = None
-            for widget in self.findChildren(QTabWidget):
-                # 檢查是否包含「批次結果」Tab
-                for i in range(widget.count()):
-                    if widget.tabText(i) == "批次結果":
-                        result_tabs = widget
-                        widget.setCurrentIndex(i)
-                        break
-                if result_tabs:
-                    break
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "focus_result_tab"):
+            result_panel.focus_result_tab("batch")
 
         if hasattr(self, 'export_batch_report_btn'):
             self.export_batch_report_btn.setEnabled(True)
@@ -4062,7 +4445,8 @@ class BacktestView(QWidget):
             "CAGR-MDD": "cagr_mdd",
             "CAGR": "cagr",
             "Sharpe": "sharpe",
-            "MDD": "mdd"
+            "MDD": "mdd",
+            "MDD（回撤幅度）": "mdd",
         }
         sort_by = sort_by_map.get(self.batch_sort_combo.currentText(), "cagr_mdd")
 
@@ -4098,13 +4482,42 @@ class BacktestView(QWidget):
 
         stats = batch_result.overall_stats
 
+        total_stocks = int(stats.get('total_stocks', 0) or 0)
+        successful_stocks = int(stats.get('successful_stocks', 0) or 0)
+        failed_stocks = int(
+            stats.get('failed_stocks', max(total_stocks - successful_stocks, 0)) or 0
+        )
+        no_trade_stocks = int(stats.get('no_trade_stocks', 0) or 0)
+        profitable_stocks = int(stats.get('profitable_stocks', 0) or 0)
+        coverage = float(stats.get('coverage_bp', 0) or 0) / 10000.0
+        if not coverage and total_stocks:
+            coverage = successful_stocks / total_stocks
+        profitable_rate = float(stats.get('profitable_rate_bp', 0) or 0) / 10000.0
+        if not profitable_rate and successful_stocks:
+            profitable_rate = profitable_stocks / successful_stocks
+        stock_results = getattr(batch_result, "stock_results", None) or []
+        cagr_sample_count = int(
+            stats.get(
+                'cagr_sample_count',
+                sum(1 for result in stock_results if result.success and result.cagr is not None),
+            )
+            or 0
+        )
+        mdd_sample_count = int(
+            stats.get(
+                'mdd_sample_count',
+                sum(1 for result in stock_results if result.success and result.mdd is not None),
+            )
+            or 0
+        )
         stats_lines = [
-            f"總股票數: {stats.get('total_stocks', 0)} 檔",
-            f"成功回測: {stats.get('successful_stocks', 0)} 檔",
-            f"賺錢股票: {stats.get('profitable_stocks', 0)} 檔",
-            f"股票層級勝率: {stats.get('win_rate', 0) * 100:.1f}%",
-            f"CAGR 中位數: {stats.get('cagr_median', 0) * 100:.2f}%",
-            f"MDD 中位數: {stats.get('mdd_median', 0) * 100:.2f}%"
+            f"總標的數: {total_stocks} 檔",
+            f"有效回測: {successful_stocks} 檔",
+            f"Coverage（有效回測 / 總標的）: {coverage * 100:.1f}%",
+            f"失敗／無交易: {failed_stocks} 檔（其中無交易 {no_trade_stocks} 檔）",
+            f"獲利標的 / 有效回測: {profitable_stocks} / {successful_stocks}（{profitable_rate * 100:.1f}%；不是交易筆勝率）",
+            f"CAGR 中位數（有效且有 CAGR，n={cagr_sample_count}）: {stats.get('cagr_median', 0) * 100:.2f}%",
+            f"MDD 中位數（有效且有 MDD，n={mdd_sample_count}）: {stats.get('mdd_median', 0) * 100:.2f}%",
         ]
 
         self.batch_stats_text.setPlainText("\n".join(stats_lines))
@@ -4177,6 +4590,10 @@ class BacktestView(QWidget):
             "run_name": run_data.get("run_name", ""),
         }
         self.current_report = None
+        result_panel = self.__dict__.get("result_panel")
+        if result_panel is not None and hasattr(result_panel, "update_analyst_diagnostics"):
+            # Legacy payload 只讀；缺欄位由 builder 顯示 unknown，不回抓或重算。
+            result_panel.update_analyst_diagnostics(build_backtest_analyst_diagnostics(run_data=run_data))
 
         # 顯示摘要
         summary_lines = [
@@ -4215,11 +4632,10 @@ class BacktestView(QWidget):
             if index >= 0:
                 self.chart_run_combo.setCurrentIndex(index)
 
-        for widget in self.findChildren(QTabWidget):
-            for i in range(widget.count()):
-                if widget.tabText(i) == "實驗摘要":
-                    widget.setCurrentIndex(i)
-                    break
+        if result_panel is not None and hasattr(result_panel, "set_research_mode"):
+            mode = str(self.research_lab_mode_combo.currentData() or "single_stock")
+            result_panel.set_research_mode(mode, reveal_single_detail=True)
+            result_panel.focus_result_tab("summary")
 
     def _show_trades_table_context_menu(self, pos):
         """顯示交易明細表格的右鍵選單"""
@@ -4770,6 +5186,11 @@ class BacktestView(QWidget):
 
     def request_cooperative_shutdown(self) -> bool:
         workers = [self.worker, *self._report_export_workers]
+        history = getattr(getattr(self, "result_panel", None), "research_history_lookup", None)
+        if history is not None:
+            history._closed = True
+            history.cancel_pending()
+            workers.append(history._worker)
         for worker in workers:
             if worker is not None and worker.isRunning():
                 worker.cancel(cooperative=True, wait=False)

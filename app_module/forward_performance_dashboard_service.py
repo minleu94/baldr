@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import closing
 from pathlib import Path
 import sqlite3
-from typing import Any
+from typing import Any, Iterable
 
 from app_module.evidence_event_dtos import EvidenceEvent, EvidenceOutcome, normalize_event_type
 from app_module.evidence_event_repository import EvidenceEventRepository
@@ -22,6 +23,10 @@ from app_module.forward_performance_read_model import (
     SUMMARY_STATUS_MISSING_BENCHMARK,
     SUMMARY_STATUS_MISSING_INDUSTRY,
     SUMMARY_STATUS_READY,
+)
+from app_module.sqlite_read_only import (
+    check_read_cancelled,
+    connect_read_only_sqlite,
 )
 
 
@@ -60,6 +65,7 @@ class ForwardPerformanceDashboardService:
             )
             diagnostics: tuple[str, ...] = ()
         except (FileNotFoundError, sqlite3.Error) as exc:
+            check_read_cancelled()
             summaries = []
             diagnostics = (f"evidence_store_unavailable:{exc}",)
 
@@ -98,7 +104,11 @@ class ReadOnlyEvidenceEventRepository(EvidenceEventRepository):
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int | None = None,
+        incomplete_outcomes_first: bool = False,
+        outcome_windows: Iterable[int] | None = None,
+        complete_cohort_identity_only: bool = False,
     ) -> list[EvidenceEvent]:
+        del incomplete_outcomes_first, outcome_windows, complete_cohort_identity_only
         where: list[str] = []
         params: list[Any] = []
         if symbol is not None:
@@ -124,7 +134,7 @@ class ReadOnlyEvidenceEventRepository(EvidenceEventRepository):
             sql += " LIMIT ?"
             params.append(int(limit))
 
-        with self._connect_read_only() as conn:
+        with closing(self._connect_read_only()) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, tuple(params)).fetchall()
         return [self._row_to_event(dict(row)) for row in rows]
@@ -147,7 +157,7 @@ class ReadOnlyEvidenceEventRepository(EvidenceEventRepository):
         if where:
             sql += " WHERE " + " AND ".join(where)
         sql += " ORDER BY event_id ASC, window_days ASC"
-        with self._connect_read_only() as conn:
+        with closing(self._connect_read_only()) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, tuple(params)).fetchall()
         return [self._row_to_outcome(dict(row)) for row in rows]
@@ -155,8 +165,7 @@ class ReadOnlyEvidenceEventRepository(EvidenceEventRepository):
     def _connect_read_only(self) -> sqlite3.Connection:
         if not self.db_path.exists():
             raise FileNotFoundError(str(self.db_path))
-        uri_path = self.db_path.resolve().as_posix()
-        return sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True)
+        return connect_read_only_sqlite(self.db_path)
 
 
 def _row_from_summary(summary: ForwardPerformanceGroupSummary) -> ForwardPerformanceDashboardRow:

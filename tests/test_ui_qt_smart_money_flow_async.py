@@ -12,6 +12,7 @@ from app_module.broker_flow_dashboard_dtos import (
     BrokerFlowStockDetailSnapshot,
 )
 from decision_module.flow_contracts import FlowSignalDTO, SmartMoneySummaryDTO, StockFlowAggregation
+import ui_qt.views.smart_money.smart_money_flow_view as smart_money_view_module
 from ui_qt.views.smart_money.smart_money_flow_view import SmartMoneyFlowView
 
 
@@ -64,6 +65,15 @@ class AsyncService:
         raise AssertionError("manual worker should not run in GUI thread")
 
 
+class CapturingDashboardService(AsyncService):
+    def __init__(self):
+        self.queries = []
+
+    def load_dashboard_snapshot(self, query):
+        self.queries.append(query)
+        return _snapshot("2330")
+
+
 def _app():
     return QApplication.instance() or QApplication(sys.argv)
 
@@ -111,10 +121,50 @@ def test_dashboard_refresh_cancels_cooperatively_and_discards_stale_result():
     assert view.refresh_btn.isEnabled()
 
 
+def test_dashboard_request_uses_taiwan_market_date(monkeypatch):
+    _app()
+    factory = WorkerFactory()
+    service = CapturingDashboardService()
+    monkeypatch.setattr(
+        smart_money_view_module,
+        "taiwan_market_today",
+        lambda: date(2026, 10, 5),
+    )
+    view = SmartMoneyFlowView(service, task_worker_factory=factory)
+
+    view._refresh_data()
+    factory.workers[-1].task()
+
+    assert service.queries[0].requested_as_of_date == date(2026, 10, 5)
+
+
+def test_unknown_taiwan_market_date_starts_no_dashboard_or_detail_request(monkeypatch):
+    _app()
+    factory = WorkerFactory()
+
+    def unavailable_date():
+        raise OSError("Taiwan clock unavailable")
+
+    monkeypatch.setattr(
+        smart_money_view_module, "taiwan_market_today", unavailable_date
+    )
+    view = SmartMoneyFlowView(AsyncService(), task_worker_factory=factory)
+
+    view._refresh_data()
+    view.select_stock("2330")
+
+    assert factory.workers == []
+    assert "日期無法取得" in view.load_status_label.text()
+    assert view.refresh_btn.isEnabled()
+    assert view.period_combo.isEnabled()
+    assert view.scope_combo.isEnabled()
+
+
 def test_stock_detail_uses_worker_and_discards_previous_selection_result():
     _app()
     factory = WorkerFactory()
     view = SmartMoneyFlowView(AsyncService(), task_worker_factory=factory)
+    view._dashboard_as_of_date = date(2026, 7, 10)
     view._apply_scanner_signals([_signal("2330")], semantics_by_code={})
     view.scanner_table.selectRow(0)
     view._on_scanner_selection_changed()

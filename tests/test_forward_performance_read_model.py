@@ -142,6 +142,40 @@ def test_insufficient_sample_and_pending_not_in_mean(tmp_path: Path) -> None:
     assert summary.summary_status == SUMMARY_STATUS_INSUFFICIENT_SAMPLE
 
 
+def test_legacy_ready_calendar_mismatch_is_excluded_and_reported_as_blocked(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    repo.insert_event(_event("evt-blocked"))
+    repo.insert_event(_event("evt-valid"))
+    repo.upsert_outcome(
+        _outcome(
+            "evt-blocked",
+            forward_return_bp=9000,
+            benchmark_excess_bp=8000,
+            industry_excess_bp=7000,
+            metadata={"maturity_calendar_comparison": "blocked_mismatch"},
+        )
+    )
+    repo.upsert_outcome(
+        _outcome(
+            "evt-valid",
+            forward_return_bp=100,
+            benchmark_excess_bp=50,
+            industry_excess_bp=25,
+        )
+    )
+
+    summary = ForwardPerformanceReadModel(repo).summarize(group_by="event_type")[0]
+
+    assert summary.sample_size == 1
+    assert summary.pending_count == 1
+    assert summary.mean_forward_return_bp == 100
+    assert summary.mean_benchmark_excess_bp == 50
+    assert summary.warning_counts["blocked_time_contract_requires_review"] == 1
+    assert summary.warning_counts["maturity_calendar_comparison_blocked"] == 1
+
+
 def test_pending_summary_exposes_next_expected_maturity_date(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     repo.insert_event(_event("evt-1"))

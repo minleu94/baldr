@@ -36,17 +36,17 @@ except ImportError:  # pragma: no cover - 僅 Windows 提供
 
 BYTES_PER_GIB = 1024**3
 
-# 所有會建立長時間 ML 產物的入口都必須在同一磁碟保留至少 200 GiB。
+# 所有會建立長時間 ML 產物的入口都必須在同一磁碟保留至少 20 GiB。
 # 這是執行後仍要存在的 safety reserve，不等同本次作業的 persistent/temp
 # 新增上限；小型 fake filesystem 測試仍可直接使用 MLStorageCapacityBudget。
-CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES = 200 * BYTES_PER_GIB
+CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES = 20 * BYTES_PER_GIB
 DEFAULT_HEAVY_PERSISTENT_NEW_BYTES_BUDGET = BYTES_PER_GIB
 DEFAULT_HEAVY_TEMPORARY_PEAK_BYTES_BUDGET = BYTES_PER_GIB
 DEFAULT_SAFETY_RESERVE_BYTES = CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES
 
 # Scheduled raw 與 Direct/OOC chain 共用這組有界政策。scheduled wrapper
 # 仍可使用較大的單次 persistent/temp 預算，但 safety reserve 不得降到
-# 200 GiB 以下，避免舊的 125 GiB 參數形成安全漏洞。
+# 20 GiB 以下，工作用量仍另計，不以保留量代替工作預算。
 SCHEDULED_SAFETY_RESERVE_BYTES = CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES
 SCHEDULED_PERSISTENT_NEW_BYTES_BUDGET = 35 * BYTES_PER_GIB
 SCHEDULED_TEMPORARY_PEAK_BYTES_BUDGET = 40 * BYTES_PER_GIB
@@ -1514,8 +1514,8 @@ def resolve_heavy_chain_safety_reserve(
 ) -> int:
     """解析 heavy chain safety reserve，拒絕低於中央政策的值。
 
-    ``None`` 只代表採用中央 200 GiB 政策；它不再代表可以沿用舊的
-    20/125 GiB wrapper 預設。一般容量純計算測試仍可直接建立較小的
+    ``None`` 只代表採用中央 20 GiB 政策；它不再代表可以沿用舊的
+    缺少工作用量的 wrapper 預設。一般容量純計算測試仍可直接建立較小的
     ``MLStorageCapacityBudget``，但正式 heavy caller 必須經過本入口。
     """
 
@@ -1544,7 +1544,7 @@ def heavy_chain_capacity_budget(
     """建立所有正式 heavy caller 共用的 bounded 容量預算。
 
     未提供的 persistent/temp 上限各採 1 GiB；safety reserve 採中央
-    200 GiB 並拒絕更小的顯式值。這個解析層與可接受小數值的純計算
+    20 GiB 並拒絕更小的顯式值。這個解析層與可接受小數值的純計算
     ``MLStorageCapacityBudget`` 分離，保留測試和舊 read-only API 相容性。
     """
 

@@ -42,9 +42,13 @@ class _DummyView(QWidget):
 
 
 class _DummyRecommendationView(_DummyView):
+    instances = []
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.kwargs = kwargs
         self.sendToBacktestRequested = _DummySignal()
+        type(self).instances.append(self)
 
 
 class _RecordedDecisionDeskView(_DummyView):
@@ -205,6 +209,7 @@ def _build_main_window(*, regime_service=None, portfolio_service=None, config=No
 
     QMainWindow.__init__(main_window)
     main_window.config = config or object()
+    main_window.personal_policy_config_path = None
     main_window.screening_service = object()
     main_window.regime_service = regime_service or object()
     main_window.recommendation_service = object()
@@ -214,6 +219,9 @@ def _build_main_window(*, regime_service=None, portfolio_service=None, config=No
     main_window.watchlist_service = object()
     main_window.universe_service = object()
     main_window.research_session_store = object()
+    main_window.stock_research_report_service = object()
+    main_window.decision_outcome_journey_service = object()
+    main_window.decision_continuity_controller = object()
     main_window.portfolio_service = portfolio_service or object()
     main_window.journal_service = object()
     main_window.broker_flow_service = object()
@@ -231,11 +239,13 @@ def test_main_window_owns_one_decision_desk_as_market_overview_index_zero(monkey
     app()
     _TrackingDecisionDeskBuilder.instances = []
     _RecordedDecisionDeskView.instances = []
+    _DummyRecommendationView.instances = []
     _install_fake_dependencies(monkeypatch, _TrackingDecisionDeskBuilder)
 
     target_window = _build_main_window()
     target_window._setup_ui()
 
+    assert _DummyRecommendationView.instances[-1].kwargs["personal_policy_path"] is None
     assert "每日決策" not in _get_nav_labels(target_window)
     assert isinstance(target_window.decision_desk_view, _RecordedDecisionDeskView)
     assert (
@@ -245,6 +255,7 @@ def test_main_window_owns_one_decision_desk_as_market_overview_index_zero(monkey
     assert len(_RecordedDecisionDeskView.instances) == 1
     assert target_window.market_tabs.tabText(0) == "市場總覽"
     assert target_window.market_tabs.widget(0) is target_window.decision_desk_view
+    assert target_window.recommendation_view.kwargs["journal_service"] is target_window.journal_service
     assert "decision_source_widget" not in target_window.workbench_view.kwargs
     assert _TrackingDecisionDeskBuilder.instances
     builder = _TrackingDecisionDeskBuilder.instances[-1]
@@ -308,6 +319,7 @@ def test_main_window_adds_unified_decision_workbench_tab(monkeypatch, tmp_path):
         "推薦分析",
         "策略回測",
         "觀察清單",
+        "個股研究",
         "持倉管理",
         "數據更新",
         "Runtime",
@@ -318,6 +330,7 @@ def test_main_window_adds_unified_decision_workbench_tab(monkeypatch, tmp_path):
     assert _TrackingWorkbenchSourceService.instances
     assert workbench_tab.source_service is _TrackingWorkbenchSourceService.instances[-1]
     assert workbench_tab.auto_refresh is True
+    assert workbench_tab.kwargs["async_refresh"] is True
     assert workbench_tab.kwargs["replay_summary_json"] == replay_summary_path
     assert isinstance(
         workbench_tab.kwargs["research_console_source_service"],

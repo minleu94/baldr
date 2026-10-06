@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from data_module.valuation_source_policy import inspect_valuation_source_policy
+from decision_module.factors.valuation_source_policy import inspect_valuation_source_policy
 
 
 def test_valuation_source_policy_marks_pe_pb_ps_ready_with_guarded_sources():

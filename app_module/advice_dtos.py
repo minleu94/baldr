@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 
 class AdviceAction(str, Enum):
@@ -105,6 +105,27 @@ class RecommendationAdviceDTO:
     execution_feasibility: str = ""
     source_trace: tuple[str, ...] = ()
     refusal_reasons: tuple[str, ...] = ()
+    ranking_score_bp: int | None = None
+    ranking_percentile_bp: int | None = None
+    ranking_method: str = ""
+    calibrated_probability_bp: int | None = None
+    calibrated_probability_status: str = "research"
+    after_cost_profit_probability_bp: int | None = None
+    after_cost_profit_probability_status: str = "research"
+    evidence_confidence: str = ""
+    sample_size: int | None = None
+    cost_basis_bp: int | None = None
+    calibration_model_version: str = ""
+    calibration_dataset_version: str = ""
+    calibration_source: str = ""
+    calibration_probability_transform_id: str = ""
+    calibration_probability_baseline_id: str = ""
+    calibration_probability_baseline_kind: str = ""
+    calibration_probability_baseline_probability_bp: int | None = None
+    calibration_raw_probability_bp: int | None = None
+    calibration_raw_after_cost_probability_bp: int | None = None
+    # P1 immutable projection receipt/provenance; presentation never recomputes it.
+    calibration_provenance: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if (
@@ -112,6 +133,23 @@ class RecommendationAdviceDTO:
             and self.advice_action is not AdviceAction.RESEARCH
         ):
             raise ValueError("professional candidates must remain RESEARCH only")
+        _validate_optional_bp("ranking_percentile_bp", self.ranking_percentile_bp)
+        _validate_optional_bp("calibrated_probability_bp", self.calibrated_probability_bp)
+        _validate_optional_bp("after_cost_profit_probability_bp", self.after_cost_profit_probability_bp)
+        _validate_optional_bp("cost_basis_bp", self.cost_basis_bp)
+        _validate_optional_bp(
+            "calibration_probability_baseline_probability_bp",
+            self.calibration_probability_baseline_probability_bp,
+        )
+        _validate_optional_bp("calibration_raw_probability_bp", self.calibration_raw_probability_bp)
+        _validate_optional_bp(
+            "calibration_raw_after_cost_probability_bp",
+            self.calibration_raw_after_cost_probability_bp,
+        )
+        if self.ranking_score_bp is not None and isinstance(self.ranking_score_bp, bool):
+            raise ValueError("ranking_score_bp must be an integer basis-point value")
+        if self.sample_size is not None and (isinstance(self.sample_size, bool) or self.sample_size < 0):
+            raise ValueError("sample_size must be a non-negative integer")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -136,6 +174,26 @@ class RecommendationAdviceDTO:
             "execution_feasibility": self.execution_feasibility,
             "source_trace": list(self.source_trace),
             "refusal_reasons": list(self.refusal_reasons),
+            "ranking_score_bp": self.ranking_score_bp,
+            "ranking_percentile_bp": self.ranking_percentile_bp,
+            "ranking_method": self.ranking_method,
+            "calibrated_probability_bp": self.calibrated_probability_bp,
+            "calibrated_probability_status": self.calibrated_probability_status,
+            "after_cost_profit_probability_bp": self.after_cost_profit_probability_bp,
+            "after_cost_profit_probability_status": self.after_cost_profit_probability_status,
+            "evidence_confidence": self.evidence_confidence,
+            "sample_size": self.sample_size,
+            "cost_basis_bp": self.cost_basis_bp,
+            "calibration_model_version": self.calibration_model_version,
+            "calibration_dataset_version": self.calibration_dataset_version,
+            "calibration_source": self.calibration_source,
+            "calibration_probability_transform_id": self.calibration_probability_transform_id,
+            "calibration_probability_baseline_id": self.calibration_probability_baseline_id,
+            "calibration_probability_baseline_kind": self.calibration_probability_baseline_kind,
+            "calibration_probability_baseline_probability_bp": self.calibration_probability_baseline_probability_bp,
+            "calibration_raw_probability_bp": self.calibration_raw_probability_bp,
+            "calibration_raw_after_cost_probability_bp": self.calibration_raw_after_cost_probability_bp,
+            "calibration_provenance": dict(self.calibration_provenance),
         }
 
     @classmethod
@@ -165,6 +223,32 @@ class RecommendationAdviceDTO:
             execution_feasibility=payload.get("execution_feasibility", ""),
             source_trace=_string_tuple(payload.get("source_trace")),
             refusal_reasons=_string_tuple(payload.get("refusal_reasons")),
+            ranking_score_bp=payload.get("ranking_score_bp"),
+            ranking_percentile_bp=payload.get("ranking_percentile_bp"),
+            ranking_method=payload.get("ranking_method", ""),
+            calibrated_probability_bp=payload.get("calibrated_probability_bp"),
+            calibrated_probability_status=payload.get("calibrated_probability_status", "research"),
+            after_cost_profit_probability_bp=payload.get("after_cost_profit_probability_bp"),
+            after_cost_profit_probability_status=payload.get("after_cost_profit_probability_status", "research"),
+            evidence_confidence=payload.get("evidence_confidence", ""),
+            sample_size=payload.get("sample_size"),
+            cost_basis_bp=payload.get("cost_basis_bp"),
+            calibration_model_version=payload.get("calibration_model_version", ""),
+            calibration_dataset_version=payload.get("calibration_dataset_version", ""),
+            calibration_source=payload.get("calibration_source", ""),
+            calibration_probability_transform_id=payload.get("calibration_probability_transform_id", ""),
+            calibration_probability_baseline_id=payload.get("calibration_probability_baseline_id", ""),
+            calibration_probability_baseline_kind=payload.get("calibration_probability_baseline_kind", ""),
+            calibration_probability_baseline_probability_bp=payload.get(
+                "calibration_probability_baseline_probability_bp"
+            ),
+            calibration_raw_probability_bp=payload.get("calibration_raw_probability_bp"),
+            calibration_raw_after_cost_probability_bp=payload.get("calibration_raw_after_cost_probability_bp"),
+            calibration_provenance=(
+                dict(cast(Mapping[str, Any], payload.get("calibration_provenance")))
+                if isinstance(payload.get("calibration_provenance"), Mapping)
+                else {}
+            ),
         )
 
 
@@ -192,6 +276,28 @@ class PortfolioAdviceDTO:
     source_trace: tuple[str, ...] = ()
     review_date: str = ""
     diagnostics: tuple[str, ...] = ()
+    ranking_score_bp: int | None = None
+    ranking_percentile_bp: int | None = None
+    ranking_method: str = ""
+    calibrated_probability_bp: int | None = None
+    calibrated_probability_status: str = "research"
+    after_cost_profit_probability_bp: int | None = None
+    after_cost_profit_probability_status: str = "research"
+    evidence_confidence: str = ""
+    sample_size: int | None = None
+    cost_basis_bp: int | None = None
+    calibration_model_version: str = ""
+    calibration_dataset_version: str = ""
+    calibration_source: str = ""
+    calibration_probability_transform_id: str = ""
+    calibration_probability_baseline_id: str = ""
+    calibration_probability_baseline_kind: str = ""
+    calibration_probability_baseline_probability_bp: int | None = None
+    calibration_raw_probability_bp: int | None = None
+    calibration_raw_after_cost_probability_bp: int | None = None
+    # Same read-only provenance shape for portfolio advice sourced from a
+    # recommendation projection; absent means legacy/other portfolio data.
+    calibration_provenance: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         _validate_bp("target_weight_bp", self.target_weight_bp, minimum=0, maximum=10000)
@@ -206,6 +312,23 @@ class PortfolioAdviceDTO:
                 minimum=0,
                 maximum=10000,
             )
+        _validate_optional_bp("ranking_percentile_bp", self.ranking_percentile_bp)
+        _validate_optional_bp("calibrated_probability_bp", self.calibrated_probability_bp)
+        _validate_optional_bp("after_cost_profit_probability_bp", self.after_cost_profit_probability_bp)
+        _validate_optional_bp("cost_basis_bp", self.cost_basis_bp)
+        _validate_optional_bp(
+            "calibration_probability_baseline_probability_bp",
+            self.calibration_probability_baseline_probability_bp,
+        )
+        _validate_optional_bp("calibration_raw_probability_bp", self.calibration_raw_probability_bp)
+        _validate_optional_bp(
+            "calibration_raw_after_cost_probability_bp",
+            self.calibration_raw_after_cost_probability_bp,
+        )
+        if self.ranking_score_bp is not None and isinstance(self.ranking_score_bp, bool):
+            raise ValueError("ranking_score_bp must be an integer basis-point value")
+        if self.sample_size is not None and (isinstance(self.sample_size, bool) or self.sample_size < 0):
+            raise ValueError("sample_size must be a non-negative integer")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -231,6 +354,26 @@ class PortfolioAdviceDTO:
             "source_trace": list(self.source_trace),
             "review_date": self.review_date,
             "diagnostics": list(self.diagnostics),
+            "ranking_score_bp": self.ranking_score_bp,
+            "ranking_percentile_bp": self.ranking_percentile_bp,
+            "ranking_method": self.ranking_method,
+            "calibrated_probability_bp": self.calibrated_probability_bp,
+            "calibrated_probability_status": self.calibrated_probability_status,
+            "after_cost_profit_probability_bp": self.after_cost_profit_probability_bp,
+            "after_cost_profit_probability_status": self.after_cost_profit_probability_status,
+            "evidence_confidence": self.evidence_confidence,
+            "sample_size": self.sample_size,
+            "cost_basis_bp": self.cost_basis_bp,
+            "calibration_model_version": self.calibration_model_version,
+            "calibration_dataset_version": self.calibration_dataset_version,
+            "calibration_source": self.calibration_source,
+            "calibration_probability_transform_id": self.calibration_probability_transform_id,
+            "calibration_probability_baseline_id": self.calibration_probability_baseline_id,
+            "calibration_probability_baseline_kind": self.calibration_probability_baseline_kind,
+            "calibration_probability_baseline_probability_bp": self.calibration_probability_baseline_probability_bp,
+            "calibration_raw_probability_bp": self.calibration_raw_probability_bp,
+            "calibration_raw_after_cost_probability_bp": self.calibration_raw_after_cost_probability_bp,
+            "calibration_provenance": dict(self.calibration_provenance),
         }
 
     @classmethod
@@ -259,6 +402,32 @@ class PortfolioAdviceDTO:
             source_trace=_string_tuple(payload.get("source_trace")),
             review_date=payload.get("review_date", ""),
             diagnostics=_string_tuple(payload.get("diagnostics")),
+            ranking_score_bp=payload.get("ranking_score_bp"),
+            ranking_percentile_bp=payload.get("ranking_percentile_bp"),
+            ranking_method=payload.get("ranking_method", ""),
+            calibrated_probability_bp=payload.get("calibrated_probability_bp"),
+            calibrated_probability_status=payload.get("calibrated_probability_status", "research"),
+            after_cost_profit_probability_bp=payload.get("after_cost_profit_probability_bp"),
+            after_cost_profit_probability_status=payload.get("after_cost_profit_probability_status", "research"),
+            evidence_confidence=payload.get("evidence_confidence", ""),
+            sample_size=payload.get("sample_size"),
+            cost_basis_bp=payload.get("cost_basis_bp"),
+            calibration_model_version=payload.get("calibration_model_version", ""),
+            calibration_dataset_version=payload.get("calibration_dataset_version", ""),
+            calibration_source=payload.get("calibration_source", ""),
+            calibration_probability_transform_id=payload.get("calibration_probability_transform_id", ""),
+            calibration_probability_baseline_id=payload.get("calibration_probability_baseline_id", ""),
+            calibration_probability_baseline_kind=payload.get("calibration_probability_baseline_kind", ""),
+            calibration_probability_baseline_probability_bp=payload.get(
+                "calibration_probability_baseline_probability_bp"
+            ),
+            calibration_raw_probability_bp=payload.get("calibration_raw_probability_bp"),
+            calibration_raw_after_cost_probability_bp=payload.get("calibration_raw_after_cost_probability_bp"),
+            calibration_provenance=(
+                dict(cast(Mapping[str, Any], payload.get("calibration_provenance")))
+                if isinstance(payload.get("calibration_provenance"), Mapping)
+                else {}
+            ),
         )
 
 
@@ -304,3 +473,9 @@ class AdviceDashboardDTO:
             diagnostics=_string_tuple(payload.get("diagnostics")),
             warnings=_string_tuple(payload.get("warnings")),
         )
+
+
+def _validate_optional_bp(field_name: str, value: Any) -> None:
+    if value is None:
+        return
+    _validate_bp(field_name, value, minimum=0, maximum=10_000)

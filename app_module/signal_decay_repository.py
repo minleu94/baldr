@@ -4,7 +4,8 @@ from collections import Counter
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 from app_module.research_run_dtos import canonical_json
 from app_module.signal_decay_dtos import SignalDecayObservation, SignalDecaySummary
@@ -13,14 +14,17 @@ from app_module.signal_decay_dtos import SignalDecayObservation, SignalDecaySumm
 class SignalDecayRepository:
     """Append-only/idempotent SQLite repository for signal decay observations."""
 
-    def __init__(self, config: Any, *, db_path: str | Path | None = None) -> None:
+    def __init__(self, config: Any, *, db_path: str | Path | None = None, read_only: bool = False) -> None:
         self.config = config
         self.db_path = Path(db_path) if db_path is not None else Path(config.db_file)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.ensure_schema()
+        self.read_only = bool(read_only)
+        if not self.read_only:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self.ensure_schema()
 
     def ensure_schema(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        self._require_writable()
+        with self._connection() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS signal_decay_observations (
@@ -68,13 +72,14 @@ class SignalDecayRepository:
             )
 
     def save_observation(self, observation: SignalDecayObservation) -> SignalDecayObservation:
+        self._require_writable()
         existing = self.get_by_hash(observation.decay_hash)
         if existing is not None:
             return existing
         row = self._observation_to_row(observation)
         columns = list(row.keys())
         placeholders = ", ".join("?" for _ in columns)
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.execute(
                 f"INSERT INTO signal_decay_observations ({', '.join(columns)}) VALUES ({placeholders})",
                 tuple(row[column] for column in columns),
@@ -139,10 +144,36 @@ class SignalDecayRepository:
         return rows[0] if rows else None
 
     def _fetch_many(self, sql: str, params: tuple[Any, ...]) -> list[SignalDecayObservation]:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connection() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, params).fetchall()
         return [self._row_to_observation(dict(row)) for row in rows]
+
+    def _require_writable(self) -> None:
+        if self.read_only:
+            raise RuntimeError("dashboard repository is read-only")
+
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        if self.read_only:
+            if not self.db_path.is_file():
+                raise FileNotFoundError(f"找不到 SQLite 資料庫：{self.db_path}")
+            connection = sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
+            try:
+                connection.execute("PRAGMA query_only=ON")
+                yield connection
+            finally:
+                connection.close()
+            return
+        connection = sqlite3.connect(self.db_path)
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _observation_to_row(self, observation: SignalDecayObservation) -> dict[str, Any]:
         row = observation.to_dict()

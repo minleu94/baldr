@@ -781,6 +781,24 @@ def test_runtime_candidate_retry_is_byte_idempotent_and_mutation_rejected(
         roll.write_immutable_rolling_runtime_config(config_path, changed)
 
 
+def test_existing_next_session_config_is_validated_and_reused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, config_path = _build_fixture(tmp_path, monkeypatch)
+    roll.write_immutable_rolling_runtime_config(config_path, config)
+    _bind_config_environment(monkeypatch, config)
+
+    reused, file_hash = roll._load_reusable_runtime_config(
+        config_path,
+        activation_day=date(2026, 9, 9),
+        observed=datetime(2026, 9, 8, 15, 0, tzinfo=timezone.utc),
+    )
+
+    assert reused == config
+    assert file_hash == roll._bytes_hash(config_path.read_bytes())
+
+
 def test_runtime_roll_forward_requires_pinned_sources_and_rejects_arguments(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

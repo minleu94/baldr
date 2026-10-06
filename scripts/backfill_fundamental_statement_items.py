@@ -14,6 +14,10 @@ from data_module.fundamental_statement_backfill import (
     apply_statement_items_backfill,
     plan_statement_items_backfill,
 )
+from decision_module.factors.statement_factor_adapters import (
+    statement_item_quality_wire_value,
+    statement_quality_counts,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,8 +89,13 @@ def main(argv: list[str] | None = None) -> int:
             availability_file=availability_file,
             source_version=args.source_version,
             statement_types=statement_types,
+            quality_projector=statement_item_quality_wire_value,
         )
-        print(result.plan.to_markdown())
+        print(
+            result.plan.to_markdown(
+                quality_counts=statement_quality_counts(result.plan.records)
+            )
+        )
         print(f"- availability_file_count: {len(availability_file)}")
         print(f"- applied: {str(result.applied).lower()}")
         print(f"- inserted_count: {result.inserted_count}")
@@ -102,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         statement_types=statement_types,
         diagnostic_limit=20,
     )
-    print(plan.to_markdown())
+    print(plan.to_markdown(quality_counts=statement_quality_counts(plan.records)))
     print(f"- availability_file_count: {len(availability_file)}")
     for diagnostic in plan.diagnostics:
         print(f"- {diagnostic.code}: {diagnostic.message}")

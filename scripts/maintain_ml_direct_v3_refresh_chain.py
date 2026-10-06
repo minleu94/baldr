@@ -39,6 +39,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from data_module.ml_research_output_boundary import (
+    resolve_ml_research_output_path,
+)
+
 import scripts.continue_ml_direct_ooc_after_store as ooc_continuation
 from data_module.rule_champion_snapshot_service import (
     load_verified_rule_champion_snapshot_history,
@@ -170,6 +174,11 @@ def _parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="0 means retry without an artificial cap; positive values cap retries",
+    )
+    parser.add_argument(
+        "--allow-research",
+        action="store_true",
+        help="allow research raw candidates and output to isolated roots",
     )
     return parser
 
@@ -361,7 +370,10 @@ def _validated_latest_raw_dataset(
         if dataset_path is None:
             return None
         dataset_manifest = ooc_continuation._read_json(dataset_path)
-        dataset_assembler._validate_raw_dataset_manifest(dataset_manifest)
+        dataset_assembler._validate_raw_dataset_manifest(
+            dataset_manifest,
+            allow_research=getattr(args, "allow_research", False),
+        )
         dataset_hash = ooc_continuation._required_sha256_text(
             dataset_manifest.get("manifest_hash"),
             "raw PIT dataset manifest_hash",
@@ -1068,6 +1080,8 @@ def _continuation_command(
                     else str(value),
                 ]
             )
+    if getattr(args, "allow_research", False):
+        command.append("--allow-research")
     return command
 
 
@@ -1244,11 +1258,38 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError("poll/retry intervals must be non-negative and poll > 0")
     if args.max_restarts < 0:
         raise ValueError("max-restarts must be non-negative")
-    training_output_dir = args.training_output_dir.resolve()
-    log_path = training_output_dir / "logs" / "ml_direct_chain_maintenance.log"
     restart_count = 0
     last_prospective_guard: tuple[str, ...] | None = None
-    output_root = _required_path_argument(args, "output_root")
+    if getattr(args, "allow_research", False):
+        args.store_output_dir = resolve_ml_research_output_path(
+            args.store_output_dir,
+            repository_root=ROOT,
+            access="write",
+        )
+        training_output_dir = resolve_ml_research_output_path(
+            args.training_output_dir,
+            repository_root=ROOT,
+            access="write",
+        )
+        args.training_output_dir = training_output_dir
+        raw_output_root = getattr(args, "output_root", None)
+        if not isinstance(raw_output_root, (str, os.PathLike)):
+            raise TypeError("output_root must be a path")
+        output_root = resolve_ml_research_output_path(
+            raw_output_root,
+            repository_root=ROOT,
+            access="write",
+        )
+        args.output_root = output_root
+        log_path = resolve_ml_research_output_path(
+            training_output_dir / "logs" / "ml_direct_chain_maintenance.log",
+            repository_root=ROOT,
+            access="write",
+        )
+    else:
+        training_output_dir = args.training_output_dir.resolve()
+        log_path = training_output_dir / "logs" / "ml_direct_chain_maintenance.log"
+        output_root = _required_path_argument(args, "output_root")
     heavy_lock_path = resolve_heavy_chain_lock_path(output_root)
     if heavy_lock_path is None:
         # Isolated fixtures do not carry a release_v4 ancestor, but the

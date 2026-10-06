@@ -1,12 +1,18 @@
 """Thin orchestration service for the Phase 4.1 Portfolio MVP."""
 
 import logging
-from dataclasses import replace
-from datetime import datetime
-from decimal import Decimal
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timezone
+from decimal import Decimal, DecimalException, InvalidOperation
+from hashlib import sha256
+import io
+import json
+import re
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 import pandas as pd
+
+from app_module.market_session_cadence import MarketSessionCadence, TAIPEI
 
 from app_module.dtos.portfolio_dtos import (
     LedgerEventDTO,
@@ -15,9 +21,13 @@ from app_module.dtos.portfolio_dtos import (
     PortfolioDTO,
     PortfolioLedgerReadModelDTO,
     PositionDTO,
+    RecordedTradeCostSummaryDTO,
     TradeDTO,
 )
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_sqlite_uri
+from app_module.personal_paper_store_paths import PersonalStoreCustody
 from app_module.portfolio_store import PortfolioJsonlStore
+from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreRoute, PersonalStoreRouteError
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 from data_module.config import TWStockConfig
 from data_module.portfolio_ledger_repository import (
@@ -35,6 +45,20 @@ from portfolio_module.core import (
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class PortfolioQuoteObservation:
+    """唯讀行情列及其資料日、來源指紋和官方市場節奏評估。"""
+
+    stock_code: str
+    price: Decimal | None
+    data_date: date | None
+    source_id: str
+    source_snapshot_hash: str
+    freshness_status: str
+    expected_date: date | None
+    freshness_reason: str = ""
+
+
 class PortfolioService:
     """Coordinates trade storage and derived position views.
 
@@ -46,13 +70,50 @@ class PortfolioService:
         config: TWStockConfig,
         position_service: object = None,
         ledger_repository: Optional[PortfolioLedgerRepository] = None,
+        *,
+        personal_paths: PersonalDataPaths | None = None,
+        route: PersonalStoreRoute | None = None,
+        ledger_route: PersonalStoreRoute | None = None,
+        ledger_source_namespace: str | None = None,
+        market_session_cadence: MarketSessionCadence | None = None,
+        now_provider: Any | None = None,
     ):
+        if route is None and (
+            getattr(config, "personal_store_root", None) is not None or getattr(config, "personal_store_mode", None) is not None
+        ):
+            raise PersonalStoreRouteError("personal_store_selector_required")
         self.config = config
         self.position_service = position_service
-        self.store = PortfolioJsonlStore(config.output_root)
+        if ledger_route is not None and route is None:
+            raise PersonalStoreRouteError("explicit_trades_route_required")
+        self.store = PortfolioJsonlStore(config.output_root, route=route, personal_paths=personal_paths)
+        if ledger_route is not None:
+            if ledger_route.domain is not PersonalStoreDomain.PORTFOLIO_LEDGER:
+                raise PersonalStoreRouteError("portfolio_ledger_domain_required")
+            if ledger_repository is not None:
+                raise PersonalStoreRouteError("ledger_route_repository_conflict")
+            if not ledger_route.identity.key.strip() or not ledger_source_namespace:
+                raise PersonalStoreRouteError("portfolio_ledger_identity_unknown")
+            if route is None or route.identity != ledger_route.identity:
+                raise PersonalStoreRouteError("portfolio_ledger_identity_mismatch")
+            if route.mode is not ledger_route.mode or route.source_kind is not ledger_route.source_kind:
+                raise PersonalStoreRouteError("portfolio_ledger_mode_mismatch")
+            ledger_custody = PersonalStoreCustody(ledger_route, personal_paths)
+            ledger_repository = PortfolioLedgerRepository(
+                ledger_route.read_source, read_only=ledger_route.write_target is None,
+                portfolio_id=ledger_route.identity.key, source_namespace=ledger_source_namespace,
+                path_validator=ledger_custody.sqlite_guard, io_renderer=ledger_custody.io,
+                readonly_uri_renderer=lambda path: to_internal_sqlite_uri(ledger_custody.sqlite_guard(path), "ro"),
+            )
+        elif route is not None and ledger_repository is not None:
+            raise PersonalStoreRouteError("explicit_ledger_route_required")
         # 只有呼叫者明確注入隔離 repository 才會啟用精確帳本；既有 JSONL
         # 相容路徑仍由既有測試與 UI 使用，避免偷偷切換正式 writer。
         self.ledger_repository = ledger_repository
+        self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
+        self.market_session_cadence = market_session_cadence or MarketSessionCadence.for_config(
+            config, clock=self._now_provider
+        )
 
     def record_trade(
         self,
@@ -74,7 +135,10 @@ class PortfolioService:
         trade_id: Optional[str] = None,
     ) -> TradeDTO:
         """Append a manual trade record after domain validation."""
-        created_at = datetime.now().isoformat()
+        observed = self._now_provider()
+        if not isinstance(observed, datetime) or observed.tzinfo is None or observed.utcoffset() is None:
+            raise PortfolioValidationError("trade observation clock requires timezone")
+        created_at = observed.isoformat()
         dto = TradeDTO(
             trade_id=trade_id or f"trade_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}",
             portfolio_id=portfolio_id,
@@ -125,6 +189,7 @@ class PortfolioService:
         normalized: list[TradeDTO] = []
         for incoming in trades:
             dto = TradeDTO.from_dict(incoming.to_dict())
+            self.store.require_portfolio_identity(dto.portfolio_id)
             if not dto.created_at:
                 dto.created_at = datetime.now().isoformat()
             if not dto.trade_id:
@@ -145,6 +210,7 @@ class PortfolioService:
         return normalized
 
     def list_trades(self, portfolio_id: str = "default") -> List[TradeDTO]:
+        self.store.require_portfolio_identity(portfolio_id)
         trades = [TradeDTO.from_dict(item) for item in self.store.load_trades()]
         return [trade for trade in trades if trade.portfolio_id == portfolio_id]
 
@@ -163,7 +229,21 @@ class PortfolioService:
         return None
 
     def get_portfolio(self, portfolio_id: str = "default") -> PortfolioDTO:
-        positions = self.list_positions(portfolio_id=portfolio_id)
+        self.store.require_portfolio_identity(portfolio_id)
+        # 由同一次 JSONL 讀取建立持倉與已記錄費稅摘要，避免兩個投影讀到
+        # 不同版本；此路徑只讀取，沒有改寫或補算交易成本。
+        raw_trades = self.store.load_trades()
+        selected_trades = [
+            item
+            for item in raw_trades
+            if str(item.get("portfolio_id", "default")) == portfolio_id
+        ]
+        positions = [
+            self._position_to_dto(position)
+            for position in rebuild_positions(
+                [Trade.from_mapping(item) for item in selected_trades]
+            )
+        ]
         return PortfolioDTO(
             portfolio_id=portfolio_id,
             portfolio_name="Default Portfolio",
@@ -173,6 +253,60 @@ class PortfolioService:
             total_invested_amount=self._sum_money(position.invested_amount for position in positions),
             total_realized_pnl=self._sum_money(position.realized_pnl for position in positions),
             updated_at=datetime.now().isoformat(),
+            recorded_trade_costs=self._summarize_recorded_trade_costs(
+                selected_trades
+            ),
+        )
+
+    @staticmethod
+    def _summarize_recorded_trade_costs(
+        trades: List[Dict[str, Any]],
+    ) -> RecordedTradeCostSummaryDTO:
+        fees_by_currency: Dict[str, Decimal] = {}
+        taxes_by_currency: Dict[str, Decimal] = {}
+        fees_recorded_count = 0
+        taxes_recorded_count = 0
+        fees_missing_count = 0
+        taxes_missing_count = 0
+
+        for trade in trades:
+            currency = str(trade.get("currency", "TWD") or "").strip().upper()
+            currency = currency or "未知幣別"
+            for key, totals in (
+                ("fees", fees_by_currency),
+                ("taxes", taxes_by_currency),
+            ):
+                raw_value = trade.get(key)
+                if isinstance(raw_value, bool) or raw_value is None:
+                    if key == "fees":
+                        fees_missing_count += 1
+                    else:
+                        taxes_missing_count += 1
+                    continue
+                try:
+                    amount = Decimal(str(raw_value))
+                    if not amount.is_finite():
+                        raise ValueError("non-finite recorded trade cost")
+                    totals[currency] = totals.get(currency, Decimal("0")) + amount
+                except (DecimalException, TypeError, ValueError):
+                    if key == "fees":
+                        fees_missing_count += 1
+                    else:
+                        taxes_missing_count += 1
+                    continue
+                if key == "fees":
+                    fees_recorded_count += 1
+                else:
+                    taxes_recorded_count += 1
+
+        return RecordedTradeCostSummaryDTO(
+            trade_count=len(trades),
+            fees_recorded_count=fees_recorded_count,
+            fees_missing_count=fees_missing_count,
+            taxes_recorded_count=taxes_recorded_count,
+            taxes_missing_count=taxes_missing_count,
+            fees_by_currency=fees_by_currency,
+            taxes_by_currency=taxes_by_currency,
         )
 
     def update_portfolio(self) -> PortfolioDTO:
@@ -228,6 +362,8 @@ class PortfolioService:
         logger.info("[PortfolioService] cleared all trades data")
 
     def _load_domain_trades(self, portfolio_id: Optional[str] = None) -> List[Trade]:
+        if portfolio_id is not None:
+            self.store.require_portfolio_identity(portfolio_id)
         trades = [Trade.from_mapping(item) for item in self.store.load_trades()]
         if portfolio_id is not None:
             trades = [trade for trade in trades if trade.portfolio_id == portfolio_id]
@@ -273,6 +409,192 @@ class PortfolioService:
         except Exception as e:
             logger.warning("從 CSV 獲取 %s 最新收盤價失敗: %s", stock_code, e)
         return None
+
+    def get_current_price_observation(self, stock_code: str) -> PortfolioQuoteObservation:
+        """讀取目前價格與精確資料日；只有官方日曆確認的最新已完成交易日才標 current。
+
+        ``source_snapshot_hash`` 是所選正規化 SQLite 行的值指紋，或 CSV 原始位元組
+        的 SHA-256。此觀測不宣稱原始公告可用時間，也不提供歷史 PIT 資格。
+        """
+        raw_code = str(stock_code or "").strip()
+        if not raw_code:
+            return self._unverified_quote("", reason="stock_code_missing")
+        if re.fullmatch(r"[0-9]{1,6}", raw_code) is None:
+            return self._unverified_quote(raw_code, reason="stock_code_invalid")
+        code = raw_code.zfill(4)
+
+        if getattr(self.config, "use_sqlite", False):
+            try:
+                db = ReadOnlySQLiteManager(self.config.db_file)
+                frame = db.execute_query(
+                    "SELECT 日期, 證券代號, 開盤價, 最高價, 最低價, 收盤價, 成交股數, 成交金額 "
+                    "FROM daily_prices WHERE 證券代號 = ? ORDER BY 日期 DESC LIMIT 1;",
+                    (code,),
+                )
+                if not frame.empty:
+                    row = frame.iloc[0]
+                    row_code = str(row.get("證券代號") or code).strip().zfill(4)
+                    if row_code == code:
+                        return self._make_quote_observation(
+                            stock_code=code,
+                            price=row.get("收盤價"),
+                            data_date=self._parse_quote_date(row.get("日期")),
+                            source_id="sqlite.daily_prices",
+                            source_snapshot_hash=self._sqlite_quote_row_hash(code, row),
+                        )
+            except FileNotFoundError:
+                logger.debug("SQLite price database is unavailable: %s", self.config.db_file)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("從 SQLite 取得 %s 行情觀測失敗: %s", code, exc)
+
+        try:
+            daily_price_dir = self.config.daily_price_dir
+            if daily_price_dir.exists():
+                files = sorted(daily_price_dir.glob("*.csv"), reverse=True)
+                for path in files[:3]:
+                    raw = path.read_bytes()
+                    try:
+                        frame = pd.read_csv(io.BytesIO(raw), encoding="utf-8-sig")
+                    except UnicodeDecodeError:
+                        frame = pd.read_csv(io.BytesIO(raw), encoding="cp950")
+                    if "證券代號" not in frame.columns or "收盤價" not in frame.columns:
+                        continue
+                    frame["證券代號"] = frame["證券代號"].astype(str).str.replace(
+                        r"\.0$", "", regex=True
+                    ).str.zfill(4)
+                    matches = frame[frame["證券代號"] == code]
+                    if len(matches.index) != 1:
+                        continue
+                    return self._make_quote_observation(
+                        stock_code=code,
+                        price=matches.iloc[0]["收盤價"],
+                        data_date=self._parse_quote_date(path.stem),
+                        source_id="csv.daily_prices",
+                        source_snapshot_hash=sha256(raw).hexdigest(),
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("從 CSV 取得 %s 行情觀測失敗: %s", code, exc)
+        return self._unverified_quote(code, reason="quote_row_unavailable")
+
+    def _make_quote_observation(
+        self,
+        *,
+        stock_code: str,
+        price: Any,
+        data_date: date | None,
+        source_id: str,
+        source_snapshot_hash: str,
+    ) -> PortfolioQuoteObservation:
+        parsed_price = self._quote_decimal(price)
+        digest = str(source_snapshot_hash or "").strip().lower()
+        if digest.startswith("sha256:"):
+            digest = digest[7:]
+        if parsed_price is None or data_date is None or len(digest) != 64:
+            return PortfolioQuoteObservation(
+                stock_code=stock_code,
+                price=parsed_price,
+                data_date=data_date,
+                source_id=source_id,
+                source_snapshot_hash=digest,
+                freshness_status="unverified",
+                expected_date=None,
+                freshness_reason="quote_date_or_fingerprint_missing",
+            )
+        try:
+            now = self._now_provider()
+            if now.tzinfo is None or now.utcoffset() is None:
+                return PortfolioQuoteObservation(
+                    stock_code, parsed_price, data_date, source_id, digest,
+                    "unverified", None, "portfolio_clock_timezone_missing",
+                )
+            assessment = self.market_session_cadence.assess(
+                now.astimezone(TAIPEI).date(), data_date
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("評估 %s 行情日期 freshness 失敗: %s", stock_code, exc)
+            return PortfolioQuoteObservation(
+                stock_code, parsed_price, data_date, source_id, digest,
+                "unverified", None, "market_session_assessment_failed",
+            )
+        blockers = assessment.metadata.get("blockers", ())
+        return PortfolioQuoteObservation(
+            stock_code=stock_code,
+            price=parsed_price,
+            data_date=data_date,
+            source_id=source_id,
+            source_snapshot_hash=digest,
+            freshness_status=assessment.status,
+            expected_date=assessment.expected_date,
+            freshness_reason=";".join(str(item) for item in blockers),
+        )
+
+    @staticmethod
+    def _parse_quote_date(value: Any) -> date | None:
+        if isinstance(value, datetime):
+            return None
+        if isinstance(value, date):
+            return value
+        text = str(value or "").strip()
+        for fmt in ("%Y%m%d", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(text, fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _quote_decimal(value: Any) -> Decimal | None:
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            parsed = Decimal(str(value).replace(",", "").strip())
+        except (InvalidOperation, ValueError):
+            return None
+        if not parsed.is_finite() or parsed <= 0:
+            return None
+        return parsed
+
+    @classmethod
+    def _sqlite_quote_row_hash(cls, stock_code: str, row: Any) -> str:
+        def decimal_text(key: str) -> str | None:
+            raw = row.get(key)
+            if raw is None or str(raw).strip() == "":
+                return None
+            try:
+                parsed = Decimal(str(raw))
+            except (InvalidOperation, ValueError):
+                return None
+            return format(parsed.normalize(), "f") if parsed.is_finite() else None
+
+        data_date = cls._parse_quote_date(row.get("日期"))
+        payload = {
+            "schema_version": "portfolio-sqlite-daily-price-row.v1",
+            "stock_code": stock_code,
+            "data_date": data_date.isoformat() if data_date else str(row.get("日期") or ""),
+            "open_price": decimal_text("開盤價"),
+            "high_price": decimal_text("最高價"),
+            "low_price": decimal_text("最低價"),
+            "close_price": decimal_text("收盤價"),
+            "volume": str(row.get("成交股數")) if row.get("成交股數") is not None else None,
+            "turnover": decimal_text("成交金額"),
+        }
+        canonical = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+        return sha256(canonical).hexdigest()
+
+    @staticmethod
+    def _unverified_quote(stock_code: str, *, reason: str) -> PortfolioQuoteObservation:
+        return PortfolioQuoteObservation(
+            stock_code=stock_code,
+            price=None,
+            data_date=None,
+            source_id="",
+            source_snapshot_hash="",
+            freshness_status="unverified",
+            expected_date=None,
+            freshness_reason=reason,
+        )
 
     def _position_to_dto(self, position) -> PositionDTO:
         data = position.to_dict()

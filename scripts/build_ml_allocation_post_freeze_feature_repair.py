@@ -43,6 +43,19 @@ from ml_module.allocation_feature_contract import (  # noqa: E402
     build_market_repair_contract,
     derived_source_manifest_hash,
 )
+from ml_module.allocation_repaired_input_contract import (  # noqa: E402
+    LEGACY_INPUT_SCHEMA_VERSION,
+    REPAIRED_INPUT_SCHEMA_VERSION,
+    _EFFECTIVE_QUALITY_SCHEMA_VERSION,
+    _EFFECTIVE_QUALITY_SOURCE_ID,
+    _QUALITY_METRICS,
+    _REPAIRED_INPUT_TOP_LEVEL_FIELDS,
+    _effective_quality_manifest_hash,
+    _effective_quality_stats,
+    _recompute_data_quality_features,
+    load_repaired_input as _load_repaired_input,
+    parse_inference_row_v2 as _parse_legacy_row,
+)
 from data_module.official_trading_calendar import (  # noqa: E402
     OfficialTradingCalendar,
 )
@@ -64,42 +77,20 @@ from scripts.build_ml_allocation_post_freeze_shadow_input import (  # noqa: E402
     _validate_raw_dataset_manifest,
 )
 from scripts.infer_ml_allocation_copilot import (  # noqa: E402
-    INPUT_SCHEMA_VERSION as LEGACY_INPUT_SCHEMA_VERSION,
     _load_rows as _load_legacy_rows,
-    _parse_row as _parse_legacy_row,
 )
 from scripts.build_ml_allocation_matured_replay_input import (  # noqa: E402
     _atomic_commit_outputs,
 )
 
 
-INPUT_SCHEMA_VERSION = "allocation-inference-input-v3"
+INPUT_SCHEMA_VERSION = REPAIRED_INPUT_SCHEMA_VERSION
 AUDIT_SCHEMA_VERSION = "allocation-inference-post-freeze-feature-repair-audit-v1"
-_TOP_LEVEL_FIELDS = frozenset(
-    {
-        "schema_version",
-        "feature_contract",
-        "feature_contract_hash",
-        "parent_input_schema_version",
-        "parent_input_compressed_hash",
-        "rows",
-    }
-)
+_TOP_LEVEL_FIELDS = _REPAIRED_INPUT_TOP_LEVEL_FIELDS
 _MARKET_SOURCE_TABLE = "market_indices"
 _MARKET_SOURCE_ID = "sqlite.market_indices"
 _MARKET_FAMILY_ID = "market_sector_cross_section"
 _TAIPEI_TZ = ZoneInfo("Asia/Taipei")
-_EFFECTIVE_QUALITY_SOURCE_ID = (
-    "derived:feature_quality.effective_contract.v1"
-)
-_EFFECTIVE_QUALITY_SCHEMA_VERSION = "allocation-effective-quality-projection.v1"
-_QUALITY_METRICS = (
-    "coverage_bp",
-    "missing_count",
-    "stale_count",
-    "quality_blocked_count",
-    "max_available_lag_days",
-)
 
 
 @dataclass(frozen=True)
@@ -1212,184 +1203,6 @@ def _derive_market_values(
     return result
 
 
-def _effective_quality_manifest_hash(
-    *,
-    contract: AllocationFeatureContract,
-    parent_input_hash: str,
-) -> str:
-    _require_sha256(parent_input_hash, field_name="parent_input_hash")
-    return _sha256_json(
-        {
-            "schema_version": _EFFECTIVE_QUALITY_SCHEMA_VERSION,
-            "source_id": _EFFECTIVE_QUALITY_SOURCE_ID,
-            "parent_input_compressed_hash": parent_input_hash,
-            "feature_contract_hash": contract.contract_hash,
-            "included_feature_ids": list(contract.included_feature_ids),
-            "excluded_feature_ids": list(contract.excluded_feature_ids),
-            "method": "recompute_from_effective_pit_feature_set.v1",
-        }
-    )
-
-
-def _effective_quality_stats(
-    *,
-    features: Sequence[PITFeatureValue],
-    decision_at: datetime,
-) -> dict[str, dict[str, int]]:
-    """從有效列重建 DQ；無法區分的 stale／blocked 狀態一律阻擋。"""
-
-    stats: dict[str, dict[str, int]] = {}
-    base_features = [
-        feature for feature in features if feature.family_id != "data_quality"
-    ]
-    if not base_features:
-        raise ValueError("effective quality projection has no base features")
-    for feature in base_features:
-        available = _available_datetime(
-            feature.available_at,
-            field_name=f"{feature.feature_id}.available_at",
-        )
-        if available > decision_at:
-            raise ValueError(
-                "effective feature available_at is after decision_at: "
-                + feature.feature_id
-            )
-        lag_days = max(0, (decision_at.date() - available.date()).days)
-        family_stats = stats.setdefault(
-            feature.family_id,
-            {
-                "total": 0,
-                "observed": 0,
-                "missing": 0,
-                "stale": 0,
-                "quality_blocked": 0,
-                "max_available_lag_days": 0,
-            },
-        )
-        family_stats["total"] += 1
-        family_stats["observed"] += int(feature.observed)
-        family_stats["missing"] += int(not feature.observed)
-        family_stats["max_available_lag_days"] = max(
-            family_stats["max_available_lag_days"],
-            lag_days,
-        )
-        if feature.observed:
-            if feature.revision_id.startswith("missing:"):
-                raise ValueError(
-                    "observed effective feature has missing revision: "
-                    + feature.feature_id
-                )
-            continue
-        revision = feature.revision_id.casefold()
-        stale = "stale" in revision
-        quality_blocked = "quality_blocked" in revision
-        if not stale and not quality_blocked:
-            raise ValueError(
-                "effective quality cannot classify unobserved feature: "
-                + feature.feature_id
-            )
-        family_stats["stale"] += int(stale)
-        family_stats["quality_blocked"] += int(quality_blocked)
-    return stats
-
-
-def _recompute_data_quality_features(
-    *,
-    features: Sequence[PITFeatureValue],
-    decision_at: datetime,
-    quality_manifest_hash: str,
-) -> tuple[tuple[PITFeatureValue, ...], dict[str, dict[str, int]]]:
-    """以 effective feature set 產生新的 DQ lineage 與完整 metrics。"""
-
-    _require_sha256(
-        quality_manifest_hash,
-        field_name="quality_manifest_hash",
-    )
-    quality_features = [
-        feature for feature in features if feature.family_id == "data_quality"
-    ]
-    if not quality_features:
-        return tuple(sorted(features, key=lambda item: item.feature_id)), {}
-    stats = _effective_quality_stats(features=features, decision_at=decision_at)
-    for feature in quality_features:
-        if not feature.feature_id.startswith("data_quality."):
-            raise ValueError("data quality feature id is invalid")
-        parts = feature.feature_id.split(".", 2)
-        if len(parts) != 3 or parts[2] not in _QUALITY_METRICS:
-            raise ValueError("data quality feature metric is unsupported")
-        if feature.scale != 1:
-            raise ValueError("data quality feature scale must remain 1")
-
-    base_features = [
-        feature for feature in features if feature.family_id != "data_quality"
-    ]
-    base_feature_hashes = {
-        feature.feature_id: feature.content_hash
-        for feature in base_features
-    }
-    rebuilt_quality: list[PITFeatureValue] = []
-    for feature in sorted(quality_features, key=lambda item: item.feature_id):
-        _, family_id, metric_name = feature.feature_id.split(".", 2)
-        family_stats = stats.get(family_id)
-        if family_stats is None:
-            raise ValueError(
-                "data quality feature has no effective base family: "
-                + feature.feature_id
-            )
-        total = family_stats["total"]
-        metric_values = {
-            "coverage_bp": (
-                0 if total == 0 else family_stats["observed"] * 10_000 // total
-            ),
-            "missing_count": family_stats["missing"],
-            "stale_count": family_stats["stale"],
-            "quality_blocked_count": family_stats["quality_blocked"],
-            "max_available_lag_days": family_stats[
-                "max_available_lag_days"
-            ],
-        }
-        value_int = metric_values[metric_name]
-        content_payload = {
-            "schema_version": _EFFECTIVE_QUALITY_SCHEMA_VERSION,
-            "source_id": _EFFECTIVE_QUALITY_SOURCE_ID,
-            "quality_manifest_hash": quality_manifest_hash,
-            "feature_id": feature.feature_id,
-            "family_id": family_id,
-            "metric": metric_name,
-            "decision_at": decision_at.isoformat(),
-            "base_feature_ids": sorted(base_feature_hashes),
-            "base_feature_content_hashes": {
-                key: base_feature_hashes[key]
-                for key in sorted(base_feature_hashes)
-            },
-            "stats": dict(family_stats),
-            "value_int": value_int,
-        }
-        content_hash = _sha256_json(content_payload)
-        rebuilt_quality.append(
-            PITFeatureValue(
-                feature_id=feature.feature_id,
-                family_id="data_quality",
-                source_id=_EFFECTIVE_QUALITY_SOURCE_ID,
-                value_int=value_int,
-                scale=1,
-                event_at=decision_at.isoformat(),
-                available_at=decision_at.isoformat(),
-                revision_id="derived:data-quality-effective-v1:" + content_hash[7:],
-                quality="observed",
-                content_hash=content_hash,
-                observed=True,
-            )
-        )
-    rebuilt = tuple(
-        sorted(
-            [*base_features, *rebuilt_quality],
-            key=lambda item: item.feature_id,
-        )
-    )
-    return rebuilt, stats
-
-
 def _repair_rows(
     *,
     parent_rows: Sequence[PortfolioMLDatasetRow],
@@ -1505,122 +1318,12 @@ def load_repaired_input(
     *,
     expected_contract_hash: str,
 ) -> tuple[PortfolioMLDatasetRow, ...]:
-    """v3 dedicated consumer；舊 v2 inference parser 不會讀取此 schema。"""
+    """維持舊 script callable，實際驗證由 ML-owned contract 執行。"""
 
-    _require_sha256(expected_contract_hash, field_name="expected_contract_hash")
-    raw_bytes = path.resolve().read_bytes()
-    if not path.name.lower().endswith(".gz"):
-        raise ValueError("repaired input must be gzip compressed")
-    try:
-        payload = json.loads(gzip.decompress(raw_bytes).decode("utf-8"))
-    except (OSError, EOFError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError("invalid repaired input") from exc
-    mapping = _mapping(payload, field_name="repaired input")
-    if set(mapping) != _TOP_LEVEL_FIELDS:
-        raise ValueError("repaired input top-level fields are invalid")
-    if mapping.get("schema_version") != INPUT_SCHEMA_VERSION:
-        raise ValueError("repaired input schema_version mismatch")
-    if mapping.get("parent_input_schema_version") != LEGACY_INPUT_SCHEMA_VERSION:
-        raise ValueError("repaired input parent schema mismatch")
-    parent_hash = _text(
-        mapping.get("parent_input_compressed_hash"),
-        field_name="parent_input_compressed_hash",
+    return _load_repaired_input(
+        path,
+        expected_contract_hash=expected_contract_hash,
     )
-    _require_sha256(parent_hash, field_name="parent_input_compressed_hash")
-    contract_payload = _mapping(
-        mapping.get("feature_contract"),
-        field_name="feature_contract",
-    )
-    parent_registry_hash = _text(
-        contract_payload.get("parent_feature_registry_hash"),
-        field_name="feature_contract.parent_feature_registry_hash",
-    )
-    feature_ids = contract_payload.get("included_feature_ids")
-    if not isinstance(feature_ids, list):
-        raise TypeError("feature_contract.included_feature_ids must be an array")
-    contract = build_market_repair_contract(
-        parent_feature_registry_hash=parent_registry_hash,
-        feature_ids=tuple(str(value) for value in feature_ids)
-        + tuple(
-            str(value)
-            for value in contract_payload.get("excluded_feature_ids", [])
-        ),
-    )
-    if contract_payload != contract.payload():
-        raise ValueError("feature contract payload mismatch")
-    declared_hash = _text(
-        mapping.get("feature_contract_hash"),
-        field_name="feature_contract_hash",
-    )
-    _require_sha256(declared_hash, field_name="feature_contract_hash")
-    if declared_hash != contract.contract_hash or declared_hash != expected_contract_hash:
-        raise ValueError("feature contract hash mismatch")
-    row_payloads = _mapping_sequence(mapping.get("rows"), field_name="rows")
-    if not row_payloads:
-        raise ValueError("repaired input rows must not be empty")
-    with post_freeze_shadow_decision_scope():
-        rows = tuple(_parse_legacy_row(row) for row in row_payloads)
-    expected_ids = set(contract.included_feature_ids)
-    for row in rows:
-        if row.feature_registry_hash != declared_hash:
-            raise ValueError("repaired row feature registry hash mismatch")
-        ids = {feature.feature_id for feature in row.features}
-        if ids != expected_ids:
-            raise ValueError("repaired row feature set differs from contract")
-        if any(
-            feature.feature_id in contract.excluded_feature_ids
-            for feature in row.features
-        ):
-            raise ValueError("excluded classification feature remains in row")
-        derived = {
-            feature.feature_id: feature
-            for feature in row.features
-            if feature.feature_id in contract.derived_feature_ids
-        }
-        if set(derived) != set(contract.derived_feature_ids) or any(
-            feature.source_id != contract.derived_source_id
-            or not feature.observed
-            for feature in derived.values()
-        ):
-            raise ValueError("derived market features are not observed/custodied")
-        quality_source_hash = dict(row.source_manifest_hashes).get(
-            _EFFECTIVE_QUALITY_SOURCE_ID
-        )
-        if quality_source_hash is not None:
-            expected_quality_hash = _effective_quality_manifest_hash(
-                contract=contract,
-                parent_input_hash=parent_hash,
-            )
-            if quality_source_hash != expected_quality_hash:
-                raise ValueError("effective quality manifest hash mismatch")
-            expected_features, _ = _recompute_data_quality_features(
-                features=row.features,
-                decision_at=_available_datetime(
-                    row.decision_at,
-                    field_name="row.decision_at",
-                ),
-                quality_manifest_hash=expected_quality_hash,
-            )
-            expected_quality = {
-                feature.feature_id: feature
-                for feature in expected_features
-                if feature.family_id == "data_quality"
-            }
-            actual_quality = {
-                feature.feature_id: feature
-                for feature in row.features
-                if feature.family_id == "data_quality"
-            }
-            if expected_quality != actual_quality:
-                raise ValueError("effective data quality feature mismatch")
-        elif any(
-            feature.source_id == _EFFECTIVE_QUALITY_SOURCE_ID
-            for feature in row.features
-            if feature.family_id == "data_quality"
-        ):
-            raise ValueError("effective quality source manifest is missing")
-    return rows
-
 
 def _feature_counts(
     rows: Sequence[PortfolioMLDatasetRow],

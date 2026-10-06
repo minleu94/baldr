@@ -14,7 +14,7 @@
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\build_mops_quarterly_pit_artifact.py `
-  --listing-html 'C:\Users\archi\Downloads\電子資料查詢作業.html' `
+  --listing-html '<USER_HOME>\Downloads\電子資料查詢作業.html' `
   --primary-pdf $env:TEMP\202601_2330_AI1.pdf `
   --captured-at '2026-07-19T18:22:14-07:00' `
   --output-json $env:TEMP\mops_2330_2026q1_pit_research.json

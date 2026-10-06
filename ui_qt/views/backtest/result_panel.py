@@ -3,20 +3,18 @@
 包含所有實驗摘要、圖表、最佳化結果、比較與批次/推薦結果呈現分頁
 """
 
+import logging
+from copy import deepcopy
+
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QAbstractItemView, QListView, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QGroupBox, QTableView, QTextEdit, QComboBox, 
-    QHeaderView, QListWidget, QTabWidget, QPushButton
+    QHeaderView, QListWidget, QListWidgetItem, QTabWidget, QPushButton, QLineEdit
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from ui_qt.widgets.fast_chart_widget import (
-    create_drawdown_curve_widget,
-    create_equity_curve_widget,
-    create_holding_days_histogram_widget,
-    create_trade_return_histogram_widget,
-)
 from ui_qt.views.research_lab.run_registry_compare_widget import RunRegistryCompareWidget
+from ui_qt.views.backtest.analyst_diagnostics_widget import AnalystDiagnosticsWidget
 from app_module.decision_quality_dashboard_service import create_decision_quality_dashboard_service
 from app_module.evidence_operations_history_dashboard_service import create_evidence_operations_history_dashboard_service
 from app_module.forward_performance_dashboard_service import create_forward_performance_dashboard_service
@@ -25,7 +23,182 @@ from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
 from app_module.signal_decay_dashboard_service import create_signal_decay_dashboard_service
 from ui_qt.views.evidence_review_view import EvidenceReviewView
 from ui_qt.views.forward_performance_view import ForwardPerformanceView
+from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
+
+logger = logging.getLogger(__name__)
+
+
+class ResearchHistoryLookupWidget(QWidget):
+    """三個既有 store 的共同查找入口；選取失效或取消不套舊 callback。"""
+
+    def __init__(self, lookup, on_open, parent=None):
+        super().__init__(parent)
+        self.lookup = lookup
+        self.on_open = on_open
+        self._owner = getattr(on_open, "__self__", None)
+        self._worker = None
+        self._request_id = 0
+        self._closed = False
+        self._entries = ()
+        layout = QVBoxLayout(self)
+        controls = QHBoxLayout()
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("查找名稱、股票、run ID 或結果種類")
+        self.search.setAccessibleName("研究歷史查找文字")
+        self.refresh = QPushButton("查找既有歷史")
+        self.refresh.clicked.connect(self.refresh_entries)
+        self.cancel = QPushButton("取消查找")
+        self.cancel.clicked.connect(self.cancel_pending)
+        controls.addWidget(self.search, 1)
+        controls.addWidget(self.refresh)
+        controls.addWidget(self.cancel)
+        layout.addLayout(controls)
+        self.entries = QListWidget()
+        self.entries.setAccessibleName("legacy 與 Registry 研究歷史")
+        self.entries.setMaximumHeight(160)
+        self.entries.currentItemChanged.connect(self._selection_changed)
+        self.search.textChanged.connect(self._filter)
+        layout.addWidget(self.entries)
+        self.status = QLabel("按查找讀取既有來源；不會建立資料庫或執行回測。每來源最多 200 筆。")
+        self.status.setWordWrap(True)
+        layout.addWidget(self.status)
+        actions = QHBoxLayout()
+        self.open_result = QPushButton("開啟原結果")
+        self.open_result.setEnabled(False)
+        self.open_result.clicked.connect(self.open_selected)
+        self.open_rule = QPushButton("查看保存規則")
+        self.open_rule.setEnabled(False)
+        self.open_rule.clicked.connect(lambda: self.open_selected(rule=True))
+        self.metadata_button = QPushButton("查看保存 metadata 與原因")
+        self.metadata_button.clicked.connect(self.show_metadata)
+        actions.addWidget(self.open_result)
+        actions.addWidget(self.open_rule)
+        actions.addWidget(self.metadata_button)
+        layout.addLayout(actions)
+
+    def show_metadata(self):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox
+        item = self.entries.currentItem()
+        if item is None:
+            return
+        entry = item.data(Qt.ItemDataRole.UserRole)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("原保存 metadata／支援界線")
+        dialog.resize(680, 480)
+        layout = QVBoxLayout(dialog)
+        text = QTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText(f"{entry.source_kind}／{entry.run_type}\n{entry.unsupported_reason}\n"
+                          f"metadata hash：{entry.metadata_sha256}\ncontext hash：{entry.context_sha256}\n{entry.metadata_json}")
+        layout.addWidget(text)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def _selection_changed(self, *_):
+        self.cancel_pending()
+        item = self.entries.currentItem()
+        entry = item.data(Qt.ItemDataRole.UserRole) if item else None
+        self.open_result.setEnabled(bool(entry and entry.result_supported))
+        self.open_rule.setEnabled(bool(entry and entry.source_kind == "registry" and entry.run_type in
+                                      {"single_backtest", "batch_backtest_stock", "fixed_basket_stock"}))
+        if entry:
+            self.status.setText(f"{entry.source_kind}／{entry.run_type}｜{entry.start_date}～{entry.end_date}｜"
+                                + (entry.unsupported_reason or "按開啟核對原結果；比較資格仍由原比較入口決定。"))
+            self.status.setToolTip(entry.metadata_json)
+
+    def cancel_pending(self):
+        self._request_id += 1
+        if self._worker is not None:
+            self._worker.cancel(cooperative=True, wait=False)
+        self.status.setText("查找／開啟已取消；原結果保持。")
+
+    def _filter(self, *_):
+        self.entries.clear()
+        needle = self.search.text().strip().casefold()
+        for entry in self._entries:
+            label = f"{entry.run_name}｜{entry.stock_code or '組合／未提供股票'}｜{entry.source_kind}／{entry.run_type}｜{entry.created_at}"
+            if needle and needle not in (label + entry.run_id).casefold():
+                continue
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, entry)
+            item.setToolTip(entry.run_id + "\n" + entry.unsupported_reason)
+            self.entries.addItem(item)
+
+    def _start(self, task, apply):
+        from ui_qt.workers.task_worker import TaskWorker
+        if self._worker is not None:
+            return
+        self._request_id += 1
+        token = self._request_id
+        worker = TaskWorker(task)
+        self._worker = worker
+        self.refresh.setEnabled(False)
+        def finished(value):
+            if not self._closed and token == self._request_id:
+                try:
+                    apply(value)
+                except Exception as exc:
+                    self.status.setText("原結果呈現失敗：" + str(exc))
+        def error(message):
+            if not self._closed and token == self._request_id:
+                self.status.setText("來源讀取失敗；沒有套用部分結果：" + message)
+        def cleanup():
+            self._worker = None
+            self.refresh.setEnabled(True)
+            worker.deleteLater()
+        worker.finished.connect(finished)
+        worker.error.connect(error)
+        worker.native_thread_finished.connect(cleanup)
+        worker.start()
+
+    def refresh_entries(self):
+        self.status.setText("查找既有來源中…")
+        def apply(page):
+            self._entries = page.entries
+            self._filter()
+            self.status.setText(f"讀取 {len(page.entries)} 筆；每來源上限 {page.per_source_limit}。"
+                                + ("缺件／無法讀取：" + "；".join(page.diagnostics) if page.diagnostics else ""))
+        self._start(self.lookup.list_entries, apply)
+
+    def open_selected(self, *, rule=False):
+        item = self.entries.currentItem()
+        if item is None or self._worker is not None:
+            return
+        expected = item.data(Qt.ItemDataRole.UserRole)
+        if not expected.result_supported:
+            self.status.setText(expected.unsupported_reason + "\n" + expected.metadata_json)
+            return
+        generation = getattr(self._owner, "_execution_generation", None)
+        def task():
+            result = self.lookup.resolve(expected)
+            if rule:
+                from app_module.saved_strategy_rule_card import load_saved_strategy_rule_card
+                return load_saved_strategy_rule_card(self.lookup.registry, result.result.metadata)
+            return result
+        def apply(result):
+            if generation != getattr(self._owner, "_execution_generation", None):
+                self.status.setText("研究已換成新執行；原開啟請求已忽略。")
+                return
+            if rule:
+                from ui_qt.widgets.strategy_rule_card_dialog import StrategyRuleCardDialog
+                dialog = StrategyRuleCardDialog(result.rule_card, result=result, parent=self)
+                if result.rule_card.rule_status == "execution_contract_bound" and result.source_status == "source_ref_only":
+                    dialog.qualification.setText("原執行的規則、成本與來源已核對；績效與正式資格仍不可評，不代表投資有效。")
+                dialog.exec()
+            else:
+                self.on_open(result)
+            self.status.setText("已核對原保存來源；沒有重跑或改寫來源。")
+        self.status.setText("核對 exact kind／run／hash／股票／context 中…")
+        self._start(task, apply)
+
+    def closeEvent(self, event):
+        self._closed = True
+        self.cancel_pending()
+        super().closeEvent(event)
 
 
 class BacktestResultPanel(QWidget):
@@ -43,6 +216,19 @@ class BacktestResultPanel(QWidget):
         
         # 預留的 trades_model 內部變數
         self._trades_model = None
+        self._charts_available = False
+        self._chart_widgets_initialized = False
+        self._chart_widgets = {}
+        self._chart_content_layouts = {}
+        self._chart_placeholders = {}
+        self._chart_error_labels = {}
+        self._pending_chart_plots = {}
+        self._portfolio_chart_widgets_initialized = False
+        self._portfolio_chart_widgets = {}
+        self._portfolio_chart_content_layouts = {}
+        self._portfolio_chart_placeholders = {}
+        self._portfolio_chart_error_labels = {}
+        self._pending_portfolio_chart_plots = {}
         
         self._setup_ui()
         
@@ -54,17 +240,231 @@ class BacktestResultPanel(QWidget):
     def trades_model(self, value):
         self._trades_model = value
 
+    @property
+    def charts_available(self) -> bool:
+        return self._charts_available
+
+    @property
+    def chart_widgets_initialized(self) -> bool:
+        return self._chart_widgets_initialized
+
+    @property
+    def portfolio_chart_widgets_initialized(self) -> bool:
+        return self._portfolio_chart_widgets_initialized
+
+    def _chart_widget(self, name: str):
+        if name not in {"equity_chart", "drawdown_chart", "return_hist", "holding_hist"}:
+            raise AttributeError(name)
+        if not self.ensure_chart_widgets():
+            raise AttributeError(name)
+        return self._chart_widgets[name]
+
+    @property
+    def equity_chart(self):
+        return self._chart_widget("equity_chart")
+
+    @property
+    def drawdown_chart(self):
+        return self._chart_widget("drawdown_chart")
+
+    @property
+    def return_hist(self):
+        return self._chart_widget("return_hist")
+
+    @property
+    def holding_hist(self):
+        return self._chart_widget("holding_hist")
+
+    def ensure_chart_widgets(self) -> bool:
+        """在使用者首次開啟圖表頁時建立真實圖表元件並回放待繪結果。"""
+        if not self._charts_available:
+            return False
+        if self._chart_widgets_initialized:
+            self._replay_pending_chart_plots()
+            return True
+
+        # 延後載入 QtWebEngine／圖表工廠，避免摘要頁建立圖表 canvas。
+        from ui_qt.widgets.fast_chart_widget import (
+            create_drawdown_curve_widget,
+            create_equity_curve_widget,
+            create_holding_days_histogram_widget,
+            create_trade_return_histogram_widget,
+        )
+
+        factories = {
+            "equity_chart": create_equity_curve_widget,
+            "drawdown_chart": create_drawdown_curve_widget,
+            "return_hist": create_trade_return_histogram_widget,
+            "holding_hist": create_holding_days_histogram_widget,
+        }
+        created = {name: factory() for name, factory in factories.items()}
+        for name, widget in created.items():
+            placeholder = self._chart_placeholders.pop(name)
+            self._chart_content_layouts[name].removeWidget(placeholder)
+            placeholder.deleteLater()
+            self._chart_content_layouts[name].addWidget(widget)
+        self._chart_widgets.update(created)
+        self._chart_widgets_initialized = True
+        self._replay_pending_chart_plots()
+        return True
+
+    def _replay_pending_chart_plots(self) -> None:
+        for name, (args, kwargs) in tuple(self._pending_chart_plots.items()):
+            try:
+                self._chart_widgets[name].plot(*args, **kwargs)
+            except Exception:
+                logger.exception(
+                    "Could not render %s chart; retaining pending plot for retry.",
+                    name,
+                )
+                error_label = self._chart_error_labels[name]
+                error_label.setText("此圖表未能繪製；重新切換分頁可重試。")
+                error_label.setVisible(True)
+                continue
+            self._pending_chart_plots.pop(name, None)
+            error_label = self._chart_error_labels[name]
+            error_label.clear()
+            error_label.setVisible(False)
+
+    def queue_chart_plot(self, name: str, *args, **kwargs) -> None:
+        """保留尚未顯示的回測圖表結果，首次開頁時再交給真圖表。"""
+        if name not in {"equity_chart", "drawdown_chart", "return_hist", "holding_hist"}:
+            raise KeyError(name)
+        if self._chart_widgets_initialized:
+            self._chart_widgets[name].plot(*args, **kwargs)
+            return
+        self._pending_chart_plots[name] = deepcopy((args, kwargs))
+
+    def _portfolio_chart_widget(self, name: str):
+        if name not in {"portfolio_equity_chart", "portfolio_drawdown_chart"}:
+            raise AttributeError(name)
+        if not self.ensure_portfolio_chart_widgets():
+            raise AttributeError(name)
+        return self._portfolio_chart_widgets[name]
+
+    @property
+    def portfolio_equity_chart(self):
+        return self._portfolio_chart_widget("portfolio_equity_chart")
+
+    @property
+    def portfolio_drawdown_chart(self):
+        return self._portfolio_chart_widget("portfolio_drawdown_chart")
+
+    def ensure_portfolio_chart_widgets(self) -> bool:
+        """在首次進入推薦回放結果頁時建立組合圖表。"""
+        if self._portfolio_chart_widgets_initialized:
+            self._replay_pending_portfolio_chart_plots()
+            return True
+
+        from ui_qt.widgets.fast_chart_widget import (
+            create_drawdown_curve_widget,
+            create_equity_curve_widget,
+        )
+
+        created = {
+            "portfolio_equity_chart": create_equity_curve_widget(),
+            "portfolio_drawdown_chart": create_drawdown_curve_widget(),
+        }
+        for name, widget in created.items():
+            placeholder = self._portfolio_chart_placeholders.pop(name)
+            self._portfolio_chart_content_layouts[name].removeWidget(placeholder)
+            placeholder.deleteLater()
+            self._portfolio_chart_content_layouts[name].addWidget(widget)
+        self._portfolio_chart_widgets.update(created)
+        self._portfolio_chart_widgets_initialized = True
+        self._replay_pending_portfolio_chart_plots()
+        return True
+
+    def _replay_pending_portfolio_chart_plots(self) -> None:
+        for name, (args, kwargs) in tuple(self._pending_portfolio_chart_plots.items()):
+            try:
+                self._portfolio_chart_widgets[name].plot(*args, **kwargs)
+            except Exception:
+                logger.exception(
+                    "Could not render %s chart; retaining pending plot for retry.",
+                    name,
+                )
+                error_label = self._portfolio_chart_error_labels[name]
+                error_label.setText("此圖表未能繪製；重新切換分頁可重試。")
+                error_label.setVisible(True)
+                continue
+            self._pending_portfolio_chart_plots.pop(name, None)
+            error_label = self._portfolio_chart_error_labels[name]
+            error_label.clear()
+            error_label.setVisible(False)
+
+    def queue_portfolio_chart_plot(self, name: str, *args, **kwargs) -> None:
+        if name not in {"portfolio_equity_chart", "portfolio_drawdown_chart"}:
+            raise KeyError(name)
+        if self._portfolio_chart_widgets_initialized:
+            self._portfolio_chart_widgets[name].plot(*args, **kwargs)
+            return
+        self._pending_portfolio_chart_plots[name] = deepcopy((args, kwargs))
+
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+
+        self._result_tab_widgets: dict[str, QWidget] = {}
+        self._result_tab_content_widgets: dict[str, QWidget] = {}
+        self._result_tab_titles: dict[str, str] = {}
+        self._research_mode_id = "single_stock"
+
+        context_row = QHBoxLayout()
+        self.mode_context_label = QLabel()
+        self.mode_context_label.setAccessibleName("目前研究模式")
+        self.mode_context_label.setToolTip("結果頁會依研究模式只保留相關工作區；不代表資料被刪除")
+        self.mode_context_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; padding: 5px 8px; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_badge}px;"
+        )
+        self.result_purpose_label = QLabel("結果目的：先看模式主結果，再用分析診斷與證據頁複核。")
+        self.result_purpose_label.setAccessibleName("結果工作區目的")
+        self.result_purpose_label.setToolTip("提示目前結果工作區的閱讀順序")
+        self.result_purpose_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_muted}; font-size: 12px;"
+        )
+        context_row.addWidget(self.mode_context_label)
+        context_row.addWidget(self.result_purpose_label, stretch=1)
+        layout.addLayout(context_row)
+        from app_module.research_history_lookup import ResearchHistoryLookup, ResearchHistoryReadBudget
+        legacy = getattr(self.parent_view, "run_repository", None)
+        portfolio = getattr(self.parent_view, "portfolio_run_repository", None)
+        lookup = ResearchHistoryLookup(registry=getattr(self.parent_view, "research_run_service", None),
+            legacy_backtest_db=getattr(legacy, "db_path", None),
+            legacy_portfolio_db=getattr(portfolio, "db_path", None),
+            # UI serialized read budget; does not change saved artifact capacity policy.
+            read_budget=ResearchHistoryReadBudget(64 * 1024 * 1024, 256 * 1024 * 1024))
+        history_group = QGroupBox("研究歷史查找（legacy／Registry／推薦回放）")
+        history_group.setCheckable(True)
+        history_group.setChecked(False)
+        history_layout = QVBoxLayout(history_group)
+        self.research_history_lookup = ResearchHistoryLookupWidget(lookup, self.parent_view._open_research_history_result, self.parent_view)
+        history_layout.addWidget(self.research_history_lookup)
+        self.research_history_lookup.setVisible(False)
+        history_group.toggled.connect(self.research_history_lookup.setVisible)
+        layout.addWidget(history_group)
         
         self.result_tabs = QTabWidget()
-        
+        self.result_tabs.setAccessibleName("回測結果工作區")
+
         # Tab 1: 結果
         result_tab = QWidget()
         result_layout = QVBoxLayout(result_tab)
         result_layout.setSpacing(10)
         result_layout.setContentsMargins(5, 5, 5, 5)
+
+        self.result_interpretation_label = QLabel(
+            "閱讀順序：淨報酬 → 最大回撤 → 交易筆數 → 成本與資料限制；"
+            "歷史結果只供比較，請搭配診斷與證據複核。"
+        )
+        self.result_interpretation_label.setWordWrap(True)
+        self.result_interpretation_label.setAccessibleName("回測結果判讀限制")
+        self.result_interpretation_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 3px 0; font-size: 12px;"
+        )
+        result_layout.addWidget(self.result_interpretation_label)
         
         # 績效摘要
         summary_group = QGroupBox("實驗摘要")
@@ -110,10 +510,15 @@ class BacktestResultPanel(QWidget):
         trades_group.setLayout(trades_layout)
         result_layout.addWidget(trades_group, stretch=35)
         
-        self.result_tabs.addTab(result_tab, "實驗摘要")
+        self._register_result_tab("summary", result_tab, "實驗摘要")
+
+        # 分析師診斷：由 application boundary DTO 提供，不在 UI 內重算回測。
+        self.analyst_diagnostics_widget = AnalystDiagnosticsWidget()
+        self._register_result_tab("diagnostics", self.analyst_diagnostics_widget, "分析診斷")
         
         # Tab 2: 圖表
         if self.parent_view.chart_data_service:
+            self._charts_available = True
             chart_tab = QWidget()
             chart_layout = QVBoxLayout(chart_tab)
             
@@ -127,21 +532,31 @@ class BacktestResultPanel(QWidget):
             chart_layout.addLayout(run_select_row)
             
             chart_tabs = QTabWidget()
-            
-            self.equity_chart = create_equity_curve_widget()
-            chart_tabs.addTab(self.equity_chart, "權益曲線")
-            
-            self.drawdown_chart = create_drawdown_curve_widget()
-            chart_tabs.addTab(self.drawdown_chart, "回撤曲線")
-            
-            self.return_hist = create_trade_return_histogram_widget()
-            chart_tabs.addTab(self.return_hist, "報酬分佈")
-            
-            self.holding_hist = create_holding_days_histogram_widget()
-            chart_tabs.addTab(self.holding_hist, "持有天數")
+
+            chart_specs = (
+                ("equity_chart", "權益曲線"),
+                ("drawdown_chart", "回撤曲線"),
+                ("return_hist", "交易報酬"),
+                ("holding_hist", "持有天數"),
+            )
+            for name, title in chart_specs:
+                chart_page = QWidget()
+                chart_page_layout = QVBoxLayout(chart_page)
+                placeholder = QLabel("圖表將於首次開啟此頁時載入。")
+                placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                error_label = QLabel()
+                error_label.setWordWrap(True)
+                error_label.setStyleSheet("color: #b00020; padding: 4px;")
+                error_label.setVisible(False)
+                chart_page_layout.addWidget(placeholder)
+                chart_page_layout.addWidget(error_label)
+                self._chart_content_layouts[name] = chart_page_layout
+                self._chart_placeholders[name] = placeholder
+                self._chart_error_labels[name] = error_label
+                chart_tabs.addTab(chart_page, title)
             
             chart_layout.addWidget(chart_tabs)
-            self.result_tabs.addTab(chart_tab, "圖表")
+            self._register_result_tab("charts", chart_tab, "圖表")
         
         # Tab 3: 最佳化結果
         if self.parent_view.optimizer_service:
@@ -150,6 +565,18 @@ class BacktestResultPanel(QWidget):
             
             optimization_result_group = QGroupBox("最佳化結果")
             optimization_result_layout_inner = QVBoxLayout()
+
+            self.optimization_stability_label = QLabel()
+            self.optimization_stability_label.setWordWrap(True)
+            self.optimization_stability_label.setAccessibleName("最佳化 Top-N 穩定性摘要")
+            self.optimization_stability_label.setToolTip(
+                "只描述目前保留的 Top-N 探索性樣本，不是完整參數面、信賴區間或 OOS 證明。"
+            )
+            self.optimization_stability_label.setStyleSheet(
+                f"padding: 7px; color: {MIDNIGHT_ANALYST.text_secondary}; "
+                f"background: {MIDNIGHT_ANALYST.surface_2}; border: 1px solid {MIDNIGHT_ANALYST.border};"
+            )
+            optimization_result_layout_inner.addWidget(self.optimization_stability_label)
             
             self.optimization_table = QTableView()
             apply_financial_table_style(self.optimization_table)
@@ -169,12 +596,25 @@ class BacktestResultPanel(QWidget):
             optimization_result_group.setLayout(optimization_result_layout_inner)
             optimization_result_layout.addWidget(optimization_result_group)
             
-            self.result_tabs.addTab(optimization_result_tab, "最佳化 / 驗證")
+            self._register_result_tab("optimization", optimization_result_tab, "最佳化 / 驗證")
             
         # Tab 4: 比較
         if self.parent_view.run_repository:
             compare_tab = QWidget()
             compare_layout = QVBoxLayout(compare_tab)
+
+            legacy_banner = QLabel(
+                "Legacy 歷史：只讀相容舊 BacktestRunRepository 的歷史與比較；"
+                "不是統一 Research evidence SSOT，不自動遷移，也不重算歷史。"
+            )
+            legacy_banner.setWordWrap(True)
+            legacy_banner.setAccessibleName("Legacy 歷史說明")
+            legacy_banner.setToolTip("Legacy repository compatibility boundary")
+            legacy_banner.setStyleSheet(
+                f"padding: 8px; color: {MIDNIGHT_ANALYST.text_secondary}; background: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-left: 4px solid {MIDNIGHT_ANALYST.warning};"
+            )
+            compare_layout.addWidget(legacy_banner)
             
             history_group = QGroupBox("回測歷史")
             history_layout = QVBoxLayout()
@@ -218,7 +658,7 @@ class BacktestResultPanel(QWidget):
             compare_result_group.setLayout(compare_result_layout)
             compare_layout.addWidget(compare_result_group)
             
-            self.result_tabs.addTab(compare_tab, "歷史與比較")
+            self._register_result_tab("legacy", compare_tab, "Legacy 歷史")
             
         # Tab 5: 批次結果
         if self.parent_view.batch_backtest_service:
@@ -229,19 +669,25 @@ class BacktestResultPanel(QWidget):
 
             self.batch_interpretation_label = QLabel(
                 "比較目的：排行榜用來快速找出同一批次內相對值得複核的股票；"
-                "整體統計用來觀察樣本分布與成功率。此頁只整理已完成的批次回測結果，"
+                "整體統計用來觀察樣本分布與有效回測 coverage；獲利標的比例以有效回測為母體，"
+                "不是交易筆勝率；排行榜的 WinRate% 只有在單檔交易明細有值時才代表交易筆勝率。"
+                "此頁只整理已完成的批次回測結果，"
                 "不代表正式策略判斷、交易建議或持倉調整。"
             )
             self.batch_interpretation_label.setWordWrap(True)
             self.batch_interpretation_label.setStyleSheet(
-                "padding: 6px; background: #F6F8FA; border: 1px solid #D0D7DE;"
+                f"padding: 8px 10px; color: {MIDNIGHT_ANALYST.text_secondary}; "
+                f"background: {MIDNIGHT_ANALYST.surface_2}; "
+                f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+                f"border-left: 4px solid {MIDNIGHT_ANALYST.info}; "
+                f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px;"
             )
             batch_result_layout.addWidget(self.batch_interpretation_label)
             
             sort_row = QHBoxLayout()
             sort_row.addWidget(QLabel("排序方式:"))
             self.batch_sort_combo = QComboBox()
-            self.batch_sort_combo.addItems(["CAGR-MDD", "CAGR", "Sharpe", "MDD"])
+            self.batch_sort_combo.addItems(["CAGR-MDD", "CAGR", "Sharpe", "MDD（回撤幅度）"])
             self.batch_sort_combo.currentTextChanged.connect(self.parent_view._on_batch_sort_changed)
             sort_row.addWidget(self.batch_sort_combo)
             sort_row.addStretch()
@@ -275,20 +721,33 @@ class BacktestResultPanel(QWidget):
             
             self.batch_stats_text = QTextEdit()
             self.batch_stats_text.setReadOnly(True)
-            self.batch_stats_text.setMaximumHeight(100)
+            # 摘要現在明確拆出 coverage、失敗／無交易與各中位數母體，
+            # 保留足夠高度避免第 6/7 行被捲軸或容器裁切。
+            self.batch_stats_text.setMaximumHeight(150)
             self.batch_stats_text.setFont(QFont("Consolas", 10))
             batch_stats_layout.addWidget(self.batch_stats_text)
             
             batch_stats_group.setLayout(batch_stats_layout)
             batch_result_layout.addWidget(batch_stats_group, stretch=1)
             
-            self.result_tabs.addTab(batch_result_tab, "批次結果")
+            self._register_result_tab("batch", batch_result_tab, "批次結果")
             
         # Tab 6: 推薦回放
         recommendation_portfolio_tab = QWidget()
         recommendation_portfolio_layout = QVBoxLayout(recommendation_portfolio_tab)
         recommendation_portfolio_layout.setSpacing(8)
         recommendation_portfolio_layout.setContentsMargins(5, 5, 5, 5)
+
+        self.portfolio_interpretation_label = QLabel(
+            "閱讀順序：組合淨值／回撤 → 交易筆數與持有期 → 成本與重播限制；"
+            "回放結果只供歷史檢查。"
+        )
+        self.portfolio_interpretation_label.setWordWrap(True)
+        self.portfolio_interpretation_label.setAccessibleName("推薦回放判讀限制")
+        self.portfolio_interpretation_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; padding: 3px 0; font-size: 12px;"
+        )
+        recommendation_portfolio_layout.addWidget(self.portfolio_interpretation_label)
         
         self.portfolio_summary_text = QTextEdit()
         self.portfolio_summary_text.setReadOnly(True)
@@ -312,10 +771,24 @@ class BacktestResultPanel(QWidget):
         chart_layout = QVBoxLayout(chart_container)
         chart_layout.setContentsMargins(0, 0, 0, 0)
         self.portfolio_chart_tabs = QTabWidget()
-        self.portfolio_equity_chart = create_equity_curve_widget()
-        self.portfolio_drawdown_chart = create_drawdown_curve_widget()
-        self.portfolio_chart_tabs.addTab(self.portfolio_equity_chart, "組合價值")
-        self.portfolio_chart_tabs.addTab(self.portfolio_drawdown_chart, "回撤")
+        for name, title in (
+            ("portfolio_equity_chart", "組合價值"),
+            ("portfolio_drawdown_chart", "回撤"),
+        ):
+            chart_page = QWidget()
+            chart_page_layout = QVBoxLayout(chart_page)
+            placeholder = QLabel("圖表將於首次開啟此頁時載入。")
+            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            error_label = QLabel()
+            error_label.setWordWrap(True)
+            error_label.setStyleSheet("color: #b00020; padding: 4px;")
+            error_label.setVisible(False)
+            self._portfolio_chart_content_layouts[name] = chart_page_layout
+            self._portfolio_chart_placeholders[name] = placeholder
+            self._portfolio_chart_error_labels[name] = error_label
+            self.portfolio_chart_tabs.addTab(chart_page, title)
+            chart_page_layout.addWidget(placeholder)
+            chart_page_layout.addWidget(error_label)
         chart_layout.addWidget(self.portfolio_chart_tabs)
         self.portfolio_detail_tabs.addTab(chart_container, "圖表")
         
@@ -355,7 +828,7 @@ class BacktestResultPanel(QWidget):
 
         recommendation_portfolio_layout.addWidget(self.portfolio_detail_tabs, stretch=5)
         
-        self.result_tabs.addTab(recommendation_portfolio_tab, "推薦回放")
+        self._register_result_tab("recommendation", recommendation_portfolio_tab, "推薦回放")
         
         layout.addWidget(self.result_tabs)
 
@@ -363,6 +836,117 @@ class BacktestResultPanel(QWidget):
             self.add_forward_performance_tab()
         if getattr(self.parent_view, "research_run_service", None):
             self.add_registry_compare_tab()
+
+        self.set_research_mode("single_stock")
+
+    def _register_result_tab(self, key: str, widget: QWidget, title: str) -> None:
+        """以 semantic key 註冊可捲動結果頁，保留原始頁面供內容查找。"""
+        self._result_tab_content_widgets[key] = widget
+        for view in widget.findChildren(QAbstractItemView):
+            if isinstance(view, QHeaderView) or not isinstance(view, (QTableView, QListView)):
+                continue
+            ensure_visible_rows(view, rows=5)
+
+        scroll_area = create_scroll_area(
+            widget,
+            object_name=f"backtestResultScrollArea_{key}",
+            # 診斷 KPI 以三欄呈現且每欄保留可讀寬度；超窄結果面板需能
+            # 橫向查看完整 KPI 與表格欄位。
+            horizontal_scroll=key == "diagnostics",
+        )
+        scroll_area.setAccessibleName(f"{title}內容捲動區")
+        self._result_tab_widgets[key] = scroll_area
+        self._result_tab_titles[key] = title
+        self.result_tabs.addTab(scroll_area, title)
+
+    def result_tab_content_widget(self, key: str) -> QWidget | None:
+        """依 semantic key 取得結果頁內層內容 widget。"""
+        return self._result_tab_content_widgets.get(key)
+
+    def result_tab_key(self, index: int) -> str | None:
+        for key, widget in self._result_tab_widgets.items():
+            if self.result_tabs.indexOf(widget) == index:
+                return key
+        return None
+
+    def focus_result_tab(self, key: str) -> bool:
+        widget = self._result_tab_widgets.get(key)
+        if widget is None:
+            return False
+        index = self.result_tabs.indexOf(widget)
+        if index < 0:
+            return False
+        self.result_tabs.setCurrentIndex(index)
+        return True
+
+    def _set_result_tab_visible(self, key: str, visible: bool) -> None:
+        widget = self._result_tab_widgets.get(key)
+        if widget is None:
+            return
+        index = self.result_tabs.indexOf(widget)
+        if index < 0:
+            return
+        set_tab_visible = getattr(self.result_tabs, "setTabVisible", None)
+        if callable(set_tab_visible):
+            set_tab_visible(index, visible)
+        else:
+            # PySide6 舊版沒有 setTabVisible 時，至少停用而不讓使用者進入錯誤頁。
+            self.result_tabs.setTabEnabled(index, visible)
+
+    def set_research_mode(self, mode_id: str, *, reveal_single_detail: bool = False) -> None:
+        """依研究目的篩選結果頁，並保證 primary tab 可見。"""
+        mode = mode_id or "single_stock"
+        mode_tabs = {
+            "single_stock": {"summary", "diagnostics", "charts", "optimization", "legacy", "registry", "evidence"},
+            "batch_stock": {"batch", "summary", "diagnostics", "charts", "registry", "evidence"},
+            "fixed_basket": {"batch", "summary", "diagnostics", "charts", "registry", "evidence"},
+            "recommendation_replay": {"recommendation", "registry", "evidence"},
+            "strategy_research": {"optimization", "summary", "diagnostics", "charts", "legacy", "registry", "evidence"},
+        }
+        primary = {
+            "single_stock": "summary",
+            "batch_stock": "batch",
+            "fixed_basket": "batch",
+            "recommendation_replay": "recommendation",
+            "strategy_research": "optimization",
+        }.get(mode, "summary")
+        allowed = mode_tabs.get(mode, mode_tabs["single_stock"])
+        self._research_mode_id = mode
+        for key in self._result_tab_widgets:
+            self._set_result_tab_visible(key, key in allowed)
+
+        current_key = self.result_tab_key(self.result_tabs.currentIndex())
+        target = "summary" if reveal_single_detail else primary
+        if current_key not in allowed or reveal_single_detail:
+            if target in self._result_tab_widgets and target in allowed:
+                self.focus_result_tab(target)
+            else:
+                for key in self._result_tab_widgets:
+                    if key in allowed:
+                        self.focus_result_tab(key)
+                        break
+
+        mode_labels = {
+            "single_stock": "單股回測：摘要／診斷／圖表",
+            "batch_stock": "批次回測：批次結果，可雙擊 drill-down",
+            "fixed_basket": "固定清單逐檔回測：批次結果，不是共享現金組合",
+            "recommendation_replay": "推薦回放：回放結果與證據",
+            "strategy_research": "策略研究：最佳化／驗證與證據",
+        }
+        self.mode_context_label.setText(f"目前模式：{mode_labels.get(mode, mode)}")
+        self.result_purpose_label.setText(
+            "結果目的：雙擊批次單檔後可回到摘要與診斷；Registry 比較不等於可 promote。"
+            if mode in {"batch_stock", "fixed_basket"}
+            else "結果目的：先看模式主結果，再用分析診斷與證據頁複核。"
+        )
+
+    def update_analyst_diagnostics(self, diagnostics: object) -> None:
+        if hasattr(self, "analyst_diagnostics_widget"):
+            self.analyst_diagnostics_widget.set_diagnostics(diagnostics)
+
+    def clear_analyst_diagnostics(self) -> None:
+        if hasattr(self, "analyst_diagnostics_widget"):
+            self.analyst_diagnostics_widget.clear()
 
     def add_registry_compare_tab(self):
         """將 Research Run Registry 比較頁掛入既有 Research Lab 結果分頁。"""
@@ -374,8 +958,29 @@ class BacktestResultPanel(QWidget):
         if service is None:
             return None
 
-        self.run_registry_compare_widget = RunRegistryCompareWidget(service)
-        self.result_tabs.addTab(self.run_registry_compare_widget, "Registry 比較")
+        self.run_registry_compare_widget = RunRegistryCompareWidget(
+            service,
+            on_open_recommendation_run=(
+                self.parent_view._open_recommendation_registry_run
+            ),
+        )
+        registry_banner = QLabel(
+            "研究 Registry：正式研究 run 比較與 promotion evidence 入口；"
+            "比較不等於可 promote，仍需通過既有驗證與升級條件。"
+        )
+        registry_banner.setWordWrap(True)
+        registry_banner.setAccessibleName("研究 Registry 說明")
+        registry_banner.setToolTip("Research Registry comparison and promotion evidence boundary")
+        registry_banner.setStyleSheet(
+            f"padding: 8px; color: {MIDNIGHT_ANALYST.text_secondary}; background: {MIDNIGHT_ANALYST.surface_2}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; border-left: 4px solid {MIDNIGHT_ANALYST.info};"
+        )
+        registry_container = QWidget()
+        registry_layout = QVBoxLayout(registry_container)
+        registry_layout.addWidget(registry_banner)
+        registry_layout.addWidget(self.run_registry_compare_widget)
+        self._register_result_tab("registry", registry_container, "研究 Registry")
+        self.set_research_mode(self._research_mode_id)
         return self.run_registry_compare_widget
 
     def add_forward_performance_tab(self):
@@ -399,5 +1004,6 @@ class BacktestResultPanel(QWidget):
             scheduled_status_service=ScheduledEvidenceStatusService(config),
             evidence_db_path=str(getattr(config, "db_file", "")),
         )
-        self.result_tabs.addTab(self.evidence_review_widget, "證據覆盤")
+        self._register_result_tab("evidence", self.evidence_review_widget, "證據覆盤")
+        self.set_research_mode(self._research_mode_id)
         return self.forward_performance_widget

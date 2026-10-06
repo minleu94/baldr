@@ -7,6 +7,7 @@ from data_module.fundamental_statement_availability_sources import (
     StatementAvailabilityOverride,
 )
 from data_module.fundamental_statement_data import parse_statement_rows
+from decision_module.factors.statement_factor_adapters import statement_item_quality
 from decision_module.factors.factor_dtos import FactorQuality
 
 
@@ -50,7 +51,6 @@ def test_parse_statement_rows_builds_normalized_item_with_available_date():
                 as_of_date=date(2024, 3, 31),
                 announced_date=date(2024, 5, 10),
                 available_date=date(2024, 5, 11),
-                quality=FactorQuality.OBSERVED,
                 source="manual.statement_available_date_mapping",
                 source_version="statement-availability-2026-06-17",
             )
@@ -72,7 +72,7 @@ def test_parse_statement_rows_builds_normalized_item_with_available_date():
     assert record.value == Decimal("2.30")
     assert record.source == "financial_data.income_statement_csv"
     assert record.source_version == "financial-data-income-statement-v1"
-    assert record.quality == FactorQuality.OBSERVED
+    assert statement_item_quality(record) == FactorQuality.OBSERVED
 
 
 def test_parse_statement_rows_reports_invalid_decimal():

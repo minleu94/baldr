@@ -7,18 +7,35 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 import re
-import shutil
 import sqlite3
 from typing import Mapping
 
-from data_module.backup_retention import create_retained_backup
-from decision_module.factors.factor_dtos import FactorDiagnostic
+from data_module.backup_retention import (
+    create_sqlite_retained_backup,
+    restore_sqlite_backup,
+)
+
+
+@dataclass(frozen=True)
+class TpexDailyPriceDiagnostic:
+    code: str
+    factor_name: str
+    stock_code: str
+    message: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "code": self.code,
+            "factor_name": self.factor_name,
+            "stock_code": self.stock_code,
+            "message": self.message,
+        }
 
 
 @dataclass(frozen=True)
 class TpexDailyPriceNormalizeResult:
     rows: tuple[dict[str, object], ...]
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[TpexDailyPriceDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "rows", tuple(self.rows))
@@ -28,7 +45,7 @@ class TpexDailyPriceNormalizeResult:
 @dataclass(frozen=True)
 class TpexDailyPriceBackfillPlan:
     rows: tuple[dict[str, object], ...]
-    diagnostics: tuple[FactorDiagnostic, ...]
+    diagnostics: tuple[TpexDailyPriceDiagnostic, ...]
     existing_count: int
     insert_count: int
     db_file: Path
@@ -72,7 +89,7 @@ def normalize_tpex_daily_price_rows(
     strict: bool = True,
 ) -> TpexDailyPriceNormalizeResult:
     rows: list[dict[str, object]] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[TpexDailyPriceDiagnostic] = []
     for source_row in source_rows:
         stock_code = _first(source_row, "SecuritiesCompanyCode", "Code")
         stock_name = _first(source_row, "CompanyName", "CompanyAbbreviation", "Name")
@@ -82,7 +99,7 @@ def normalize_tpex_daily_price_rows(
         if not re.fullmatch(r"\d{4}", stock_code):
             if strict:
                 diagnostics.append(
-                    FactorDiagnostic(
+                    TpexDailyPriceDiagnostic(
                         code="tpex_daily_price.invalid_stock_code",
                         factor_name="market_data.tpex_daily_price",
                         stock_code=stock_code,
@@ -93,7 +110,7 @@ def normalize_tpex_daily_price_rows(
         if close is None or Decimal(close) <= 0:
             if strict:
                 diagnostics.append(
-                    FactorDiagnostic(
+                    TpexDailyPriceDiagnostic(
                         code="tpex_daily_price.invalid_price",
                         factor_name="market_data.tpex_daily_price",
                         stock_code=stock_code,
@@ -111,9 +128,9 @@ def normalize_tpex_daily_price_rows(
                 "成交股數": _int_value(_first(source_row, "TradingShares", "Volume")),
                 "成交筆數": _int_value(_first(source_row, "TransactionNumber", "Trades")),
                 "成交金額": _int_value(_first(source_row, "TransactionAmount", "Amount")),
-                "開盤價": _decimal_text(_first(source_row, "Open", "OpenPrice")) or close,
-                "最高價": _decimal_text(_first(source_row, "High", "HighPrice")) or close,
-                "最低價": _decimal_text(_first(source_row, "Low", "LowPrice")) or close,
+                "開盤價": _decimal_text(_first(source_row, "Open", "OpenPrice")),
+                "最高價": _decimal_text(_first(source_row, "High", "HighPrice")),
+                "最低價": _decimal_text(_first(source_row, "Low", "LowPrice")),
                 "收盤價": close,
                 "漲跌": change_sign,
                 "漲跌價差": change_value,
@@ -180,6 +197,7 @@ def apply_tpex_daily_price_backfill(
     source_rows: list[Mapping[str, object]],
     fallback_date: str,
     strict: bool = True,
+    insert_only: bool = False,
 ) -> TpexDailyPriceBackfillApplyResult:
     db_file = Path(db_file)
     plan = build_tpex_daily_price_plan(
@@ -198,9 +216,13 @@ def apply_tpex_daily_price_backfill(
 
     backup_file = _backup_db(db_file, Path(backup_dir))
     try:
-        inserted_count = _insert_daily_price_rows(db_file, plan.rows)
+        inserted_count = _insert_daily_price_rows(
+            db_file,
+            plan.rows,
+            insert_only=insert_only,
+        )
     except Exception:
-        shutil.copy2(backup_file, db_file)
+        restore_sqlite_backup(backup_file, db_file)
         raise
     return TpexDailyPriceBackfillApplyResult(
         applied=True,
@@ -269,7 +291,7 @@ def _split_change(value: str) -> tuple[str | None, str | None]:
 
 
 def _backup_db(db_file: Path, backup_dir: Path) -> Path:
-    backup_file = create_retained_backup(
+    backup_file = create_sqlite_retained_backup(
         db_file,
         backup_dir,
         label="tpex_daily_price_backfill",
@@ -279,7 +301,12 @@ def _backup_db(db_file: Path, backup_dir: Path) -> Path:
     return backup_file
 
 
-def _insert_daily_price_rows(db_file: Path, rows: tuple[dict[str, object], ...]) -> int:
+def _insert_daily_price_rows(
+    db_file: Path,
+    rows: tuple[dict[str, object], ...],
+    *,
+    insert_only: bool = False,
+) -> int:
     if not rows:
         return 0
     with sqlite3.connect(db_file) as conn:
@@ -295,14 +322,16 @@ def _insert_daily_price_rows(db_file: Path, rows: tuple[dict[str, object], ...])
         placeholders = ", ".join("?" for _ in columns)
         update_columns = tuple(column for column in columns if column not in required_columns)
         conflict_clause = 'ON CONFLICT("證券代號", "日期") DO NOTHING'
-        if update_columns:
+        if not insert_only and update_columns:
             update_clause = ", ".join(f'"{column}" = excluded."{column}"' for column in update_columns)
             conflict_clause = f'ON CONFLICT("證券代號", "日期") DO UPDATE SET {update_clause}'
         sql = f"INSERT INTO daily_prices ({quoted_columns}) VALUES ({placeholders}) {conflict_clause}"
         values = [tuple(row.get(column) for column in columns) for row in prepared_rows]
+        before_changes = conn.total_changes
         conn.executemany(sql, values)
+        inserted_count = conn.total_changes - before_changes
         conn.commit()
-    return len(rows)
+    return inserted_count
 
 
 def _prepare_row_for_table(row: dict[str, object], available_columns: set[str]) -> dict[str, object]:

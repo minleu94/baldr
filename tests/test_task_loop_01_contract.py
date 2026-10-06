@@ -182,6 +182,15 @@ def test_technical_indicator_incremental_path_uses_parent_single_writer(
         def __init__(self, logger=None):
             self.logger = logger
 
+        def calculate_all_indicators(
+            self,
+            frame: pd.DataFrame,
+            stock_id: str,
+        ) -> pd.DataFrame:
+            result = frame.copy()
+            result["RSI"] = range(len(result))
+            return result
+
         def calculate_and_store_indicators(
             self,
             frame: pd.DataFrame,

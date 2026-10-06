@@ -6,11 +6,43 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from enum import Enum
+from typing import Mapping
 
 from decision_module.factors.factor_dtos import FactorDiagnostic, FactorQuality
 
 
 VALUATION_PRESENTATION_POLICY_VERSION = "valuation_presentation_policy_v1"
+
+
+def calculate_industry_percentiles_bp(
+    rows: list[Mapping[str, object]],
+) -> dict[tuple[str, str], int | None]:
+    """依同產業 Decimal 樣本計算 1-based 整數基點百分位。"""
+
+    by_industry: dict[str, list[tuple[str, Decimal]]] = {}
+    for row in rows:
+        stock_code = str(row["stock_code"])
+        industry = str(row["industry"])
+        value = row["metric_value"]
+        metric_value = value if isinstance(value, Decimal) else Decimal(str(value))
+        by_industry.setdefault(industry, []).append((stock_code, metric_value))
+
+    result: dict[tuple[str, str], int | None] = {}
+    for industry, items in by_industry.items():
+        if len(items) < 2:
+            for stock_code, _ in items:
+                result[(stock_code, industry)] = None
+            continue
+        ranked = sorted(items, key=lambda item: (item[1], item[0]))
+        denominator = len(ranked)
+        for index, (stock_code, _) in enumerate(ranked, start=1):
+            result[(stock_code, industry)] = _rounded_bp(index, denominator)
+    return result
+
+
+def _rounded_bp(index: int, denominator: int) -> int:
+    numerator = index * 10000
+    return (numerator + denominator // 2) // denominator
 
 
 class ValuationBand(str, Enum):

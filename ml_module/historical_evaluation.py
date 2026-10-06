@@ -24,13 +24,38 @@ def evaluate_historical_predictions(
         raise ValueError("evaluation inputs must have equal non-zero lengths")
     if top_k <= 0 or top_k > count:
         raise ValueError("top_k is outside evaluation coverage")
-    order = sorted(range(count), key=lambda index: (-ranking_scores[index], index))
-    top = order[:top_k]
-    mae = _mean_int(abs(return_targets_bp[i] - return_predictions_bp[i]) for i in range(count))
+    metrics = evaluate_return_predictions(
+        return_targets_bp=return_targets_bp,
+        return_predictions_bp=return_predictions_bp,
+        ranking_scores=ranking_scores,
+        top_k=top_k,
+    )
     brier = _mean_int(
         (downside_probabilities_bp[i] - downside_targets[i] * 10_000) ** 2
         for i in range(count)
     ) // 10_000
+    return {key: brier if key == "brier_bp" else metrics[key] for key in (
+        "coverage_bp", "mae_bp", "brier_bp", "precision_at_k_bp",
+        "ndcg_bp", "bucket_monotonicity_bp",
+    )}
+
+
+def evaluate_return_predictions(
+    *,
+    return_targets_bp: Sequence[int],
+    return_predictions_bp: Sequence[int],
+    ranking_scores: Sequence[int],
+    top_k: int,
+) -> dict[str, int]:
+    """沿用報酬評估公式；未選 downside policy 時不建立虛構的分類目標。"""
+    count = len(return_targets_bp)
+    if not count or len(return_predictions_bp) != count or len(ranking_scores) != count:
+        raise ValueError("evaluation inputs must have equal non-zero lengths")
+    if top_k <= 0 or top_k > count:
+        raise ValueError("top_k is outside evaluation coverage")
+    order = sorted(range(count), key=lambda index: (-ranking_scores[index], index))
+    top = order[:top_k]
+    mae = _mean_int(abs(return_targets_bp[i] - return_predictions_bp[i]) for i in range(count))
     precision = _ratio_bp(sum(return_targets_bp[i] > 0 for i in top), top_k)
     relevance = [max(0, return_targets_bp[i]) for i in order]
     ideal = sorted((max(0, value) for value in return_targets_bp), reverse=True)
@@ -39,7 +64,6 @@ def evaluate_historical_predictions(
     return {
         "coverage_bp": 10_000,
         "mae_bp": mae,
-        "brier_bp": brier,
         "precision_at_k_bp": precision,
         "ndcg_bp": ndcg,
         "bucket_monotonicity_bp": monotonic,

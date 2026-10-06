@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from dataclasses import replace
 from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
@@ -30,6 +30,10 @@ from app_module.position_health_transition_evaluator import (
 from app_module.position_thesis_contract import (
     PositionInvalidationRule,
     PositionThesisContract,
+)
+from data_module.official_trading_calendar_cache import (
+    build_twse_calendar_cache,
+    write_twse_calendar_cache,
 )
 
 
@@ -77,6 +81,41 @@ def _canonical_hash(payload: object) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _write_isolated_calendar_cache(tmp_path: Path) -> Path:
+    """在 tmp_path 建立固定時間、hash-bound 的官方年度日曆 fixture。"""
+
+    captured_at = datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc)
+    raw_response = json.dumps(
+        [
+            {
+                "Name": "測試年度休市",
+                "Date": "1150101",
+                "Weekday": "四",
+                "Description": "依規定放假1日。",
+            }
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    cache = build_twse_calendar_cache(
+        calendar_year=2026,
+        raw_response=raw_response,
+        requested_at=captured_at - timedelta(seconds=1),
+        captured_at=captured_at,
+        response_status=200,
+        response_headers={"Content-Type": "application/json"},
+        max_age=timedelta(days=31),
+    )
+    cache_path = (
+        tmp_path
+        / "isolated-calendar-cache"
+        / "twse_holiday_schedule_2026_fixture.json"
+    )
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    write_twse_calendar_cache(cache_path, cache, allowed_root=tmp_path)
+    return cache_path.parent
 
 
 def _write_frozen_rule_status(tmp_path: Path) -> Path:
@@ -541,9 +580,12 @@ def test_source_providers_reject_future_or_float_metric_inputs(tmp_path: Path) -
     assert malformed.blockers and "value_must_be_decimal_text" in malformed.blockers[0]
 
 
-def test_official_calendar_provider_reads_verified_cache_without_network() -> None:
+def test_official_calendar_provider_reads_verified_cache_without_network(
+    tmp_path: Path,
+) -> None:
+    calendar_cache_path = _write_isolated_calendar_cache(tmp_path)
     result = OfficialCalendarSourceProvider(
-        calendar_cache_path=Path("output/paper_execution_eod_replay/calendar_cache")
+        calendar_cache_path=calendar_cache_path
     ).read_range(
         start_date="2026-09-07",
         end_date="2026-09-08",
@@ -555,13 +597,16 @@ def test_official_calendar_provider_reads_verified_cache_without_network() -> No
     assert result.provenance["years"][2026]["cache_file_sha256"].startswith("sha256:")
 
 
-def test_bundle_reports_missing_human_sources_but_keeps_real_calendar() -> None:
+def test_bundle_reports_missing_human_sources_but_keeps_real_calendar(
+    tmp_path: Path,
+) -> None:
+    calendar_cache_path = _write_isolated_calendar_cache(tmp_path)
     bundle = build_position_health_source_bundle(
         positions=_positions(),
         decision_date="2026-09-08",
         decision_at=DECISION_AT,
         observed_at=DECISION_AT,
-        calendar_cache_path=Path("output/paper_execution_eod_replay/calendar_cache"),
+        calendar_cache_path=calendar_cache_path,
     )
     assert bundle.blockers == ()
     assert bundle.trading_dates == ("2026-09-08",)
@@ -655,7 +700,7 @@ def test_evaluator_end_to_end_consumes_verified_sources_and_persists_proposal(
         thesis_registry_path=registry,
         condition_source_path=condition,
         metrics_source_path=metrics,
-        calendar_cache_path=Path("output/paper_execution_eod_replay/calendar_cache"),
+        calendar_cache_path=_write_isolated_calendar_cache(tmp_path),
     )
     assert result["status"] == "passed"
     assert result["positions"][0]["proposed_state"] == "HEALTHY"
@@ -720,6 +765,17 @@ def test_frozen_rule_policy_provider_verifies_machine_policy_without_thesis(
     assert result.provenance["position_thesis_policy_status"] == "missing"
     assert "frozen_rule_policy_machine_only" in result.warnings
     assert "position_thesis_policy_not_supplied_by_formal_rule" in result.warnings
+
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    status["status"] = "rule_source_bundle_created"
+    status_path.write_text(json.dumps(status, sort_keys=True), encoding="utf-8")
+    created = FrozenRulePolicySourceProvider(status_path).read(
+        decision_date="2026-09-08",
+        decision_at=DECISION_AT,
+        observed_at=DECISION_AT,
+    )
+    assert created.blockers == ()
+    assert created.provenance["status"] == "verified"
 
 
 def test_frozen_rule_policy_provider_rejects_future_status_receipt(
@@ -789,3 +845,34 @@ def test_evaluator_keeps_health_policy_hash_when_rule_source_is_present(
     assert result["policy_hash"] == DEFAULT_POLICY_HASH
     assert result["provenance"]["policy"]["policy_hash"] == "sha256:" + "a" * 64
     assert result["status"] == "degraded"
+
+
+@pytest.mark.parametrize("tamper", [None, "calendar", "boundary", "future"])
+def test_frozen_rule_non_trading_receipt_preserves_no_work(tmp_path, tamper):
+    from app_module.position_health_source_providers import FROZEN_RULE_POLICY_STATUS_SCHEMA_VERSION
+    payload = {
+        "schema_version": FROZEN_RULE_POLICY_STATUS_SCHEMA_VERSION,
+        "status": "skipped_non_trading_day", "taipei_date": "2026-09-06",
+        "observed_at": "2026-09-06T00:00:00+00:00", "exit_code": 0,
+        "reason": "weekend_closed",
+        "calendar": {"date": "2026-09-06", "is_official_trading_day": False,
+                     "reason": "weekend_closed"},
+        "candidate_only": True, "formal_oos_allowed": False,
+        "promotion_eligible": False, "broker_order_allowed": False,
+        "writes_formal_controlled_paths": False, "writes_market_database": False,
+    }
+    if tamper == "calendar": payload["calendar"]["is_official_trading_day"] = True
+    if tamper == "boundary": payload["formal_oos_allowed"] = True
+    if tamper == "future": payload["observed_at"] = "2026-09-09T00:00:00+00:00"
+    path = tmp_path / "rule.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    result = FrozenRulePolicySourceProvider(path).read(
+        decision_date="2026-09-08", decision_at=DECISION_AT, observed_at=DECISION_AT,
+    )
+    assert result.values == {}
+    assert result.missing == ("policy",)
+    if tamper is None:
+        assert not result.blockers
+        assert result.provenance["status"] == "not_published_non_trading_day"
+    else:
+        assert result.blockers

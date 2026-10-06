@@ -9,18 +9,21 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Mapping, cast
 
+from data_module.contracts.fundamental import (
+    parse_legacy_quality_wire_value,
+    parse_legacy_monthly_revenue_quality_value,
+)
 from data_module.data_quality_firewall import DataQualityFirewall
 from data_module.fundamental_availability_sources import (
     FundamentalAvailabilityOverride,
     load_monthly_revenue_availability_overrides_csv,
 )
 from data_module.fundamental_data import MonthlyRevenueRecord
-from data_module.fundamental_statement_data import StatementItemRecord
+from data_module.contracts.statement import StatementItemRecord
 from data_module.valuation_data import (
     ValuationObservationBuildResult,
     build_valuation_observations,
 )
-from decision_module.factors.factor_dtos import FactorQuality
 
 
 class FundamentalSQLiteProvider:
@@ -287,7 +290,9 @@ def _monthly_revenue_record(row: sqlite3.Row) -> MonthlyRevenueRecord:
         revenue=Decimal(row["revenue"]),
         source=row["source"],
         source_version=row["source_version"],
-        quality=FactorQuality(row["quality"]),
+        legacy_quality_wire_value=parse_legacy_monthly_revenue_quality_value(
+            row["quality"]
+        ),
     )
 
 
@@ -369,7 +374,7 @@ def _statement_item_record(row: sqlite3.Row) -> StatementItemRecord:
         value=Decimal(row["value"]),
         source=row["source"],
         source_version=row["source_version"],
-        quality=FactorQuality(row["quality"]),
+        legacy_quality_wire_value=parse_legacy_quality_wire_value(row["quality"]),
         report_basis=str(row["report_basis"] or ""),
         raw_item_code=_optional_text(row["raw_item_code"]),
         item_code_source=_optional_text(row["item_code_source"]),

@@ -17,6 +17,9 @@ def test_registry_contains_v1_5_p0_sources():
     assert registry.require("microstructure.disposition_stock").available_date_policy
     assert registry.require("recommendation.exclusion.why_not_payload").status == "partial"
     assert registry.require("decision_desk.snapshot.watchlist_trigger").status == "ready"
+    cashflow = registry.require("finmind.cashflow_candidate")
+    assert cashflow.status == "partial"
+    assert cashflow.missing_policy == "fail_closed_for_pit_and_ml"
 
 
 def test_registry_serializes_fields_and_warnings():
@@ -30,6 +33,10 @@ def test_registry_serializes_fields_and_warnings():
     )
     assert ex_dividend["fields"][0]["field_name"] == "event_date"
     assert "source_not_ingested" in ex_dividend["warnings"]
+    cashflow = next(
+        item for item in payload["sources"] if item["source_id"] == "finmind.cashflow_candidate"
+    )
+    assert "available_date_not_provided" in cashflow["warnings"]
     assert payload["status_counts"]["partial"] >= 1
     assert payload["production_data_writes"] is False
 

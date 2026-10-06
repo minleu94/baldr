@@ -9,7 +9,8 @@ from app_module.evidence_event_dtos import EvidenceEventType
 from app_module.evidence_event_importer_dtos import EvidenceCaptureRequest
 from app_module.evidence_event_importers import RecommendationEvidenceImporter
 from app_module.recommendation_service import RecommendationService
-from tests.test_recommendation_evidence_importer import FakeRecommendationRepository
+from tests.test_recommendation_evidence_importer import FakeRecommendationQueries
+from recommendation_test_support import build_recommendation_test_preparer
 
 
 def _stock_frame() -> pd.DataFrame:
@@ -68,7 +69,11 @@ def test_recommendation_service_records_full_screening_matrix_statuses(mock_read
     config.stock_data_file.stat.return_value.st_size = 1024
     config.all_stocks_data_file.exists.return_value = False
     mock_read_csv.return_value = _stock_frame()
-    service = RecommendationService(config, industry_mapper=MagicMock())
+    service = RecommendationService(
+        config,
+        industry_mapper=MagicMock(),
+        input_preparer=build_recommendation_test_preparer(config),
+    )
 
     def side_effect(stock_df: pd.DataFrame, _config: dict[str, object]) -> pd.DataFrame:
         stock_code = str(stock_df["證券代號"].iloc[0])
@@ -122,7 +127,11 @@ def test_recommendation_service_marks_empty_result_from_volume_filter_as_liquidi
     config.stock_data_file.stat.return_value.st_size = 1024
     config.all_stocks_data_file.exists.return_value = False
     mock_read_csv.return_value = _stock_frame()
-    service = RecommendationService(config, industry_mapper=MagicMock())
+    service = RecommendationService(
+        config,
+        industry_mapper=MagicMock(),
+        input_preparer=build_recommendation_test_preparer(config),
+    )
 
     def side_effect(stock_df: pd.DataFrame, _config: dict[str, object]) -> pd.DataFrame:
         stock_code = str(stock_df["證券代號"].iloc[0])
@@ -191,7 +200,7 @@ def test_recommendation_importer_maps_screening_matrix_events() -> None:
             {"stock_code": "MISSING", "status": "missing", "reason_codes": ["insufficient_history"], "quality": "missing"},
         ],
     )
-    importer = RecommendationEvidenceImporter(FakeRecommendationRepository(result))
+    importer = RecommendationEvidenceImporter(FakeRecommendationQueries(result))
 
     collected = importer.collect(EvidenceCaptureRequest(source="recommendation", result_id="rec-v17"))
 

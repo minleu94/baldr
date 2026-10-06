@@ -1,0 +1,26 @@
+{
+  "entries": [
+    {
+      "byte_length": 5033,
+      "file": "schema_rev1.json",
+      "fixture_id": "c1_cross_boundary_schema_rev1",
+      "payload_hash": "sha256:db61aabb2b388609d49c9daae77ee54ae389a51c9f12acd59f329a7f1cf265b5",
+      "result_id": "rev1:baseline/0007 ",
+      "schema_revision": 1,
+      "schema_version": "recommendation-execution.v1",
+      "sha256": "sha256:dbd3c2194ef53c2fee3e41e772187d2453c52237328aa179833282e0cc76a52b",
+      "trust_note": "synthetic fixture pin only; not a production legacy trust authority"
+    },
+    {
+      "byte_length": 1480,
+      "file": "ab_interleave_scenarios.json",
+      "fixture_id": "c1_cross_boundary_ab_interleave_v1",
+      "schema_revision": null,
+      "schema_version": null,
+      "sha256": "sha256:5112d36aafb67e323bb14759e7cfbda6b5d448cc8a008fd764d2ae63a7d500e3",
+      "trust_note": "人工合成 A/B config、row、clock、source update 與 receipt projection 值"
+    }
+  ],
+  "manifest_kind": "c1_cross_boundary_synthetic_fixtures",
+  "manifest_version": 1
+}

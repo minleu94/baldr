@@ -50,6 +50,14 @@ def _invoke_task_with_optional_cancel(
     return task_function(*args, **call_kwargs)
 
 
+def _has_explicit_cancel_outcome(result: Any) -> bool:
+    """確認任務結果是否明確交代取消與已完成工作量。"""
+    if isinstance(result, dict):
+        return isinstance(result.get("cancelled"), bool)
+    value = getattr(result, "cancelled", None)
+    return isinstance(value, bool)
+
+
 class _ManagedTaskThread(QThread):
     """Keep QThread lifetime separate from the task-result signal lifecycle.
 
@@ -70,23 +78,42 @@ class _ManagedTaskThread(QThread):
         self.native_thread_finished.connect(self._on_native_thread_finished)
 
     def start(self, priority: Any = QThread.InheritPriority) -> None:
+        # QThread 在 native run 完成後可以再次 start；finished cleanup 會
+        # 將 wrapper 從 managed registry 移除，因此每次真正啟動前都要恢復
+        # 登記，讓 shutdown probe 不會漏掉重用中的 worker。
+        _MANAGED_TASK_WORKERS.add(self)
         _LIVE_TASK_WORKERS.add(self)
         try:
             super().start(priority)
         except BaseException:
             _LIVE_TASK_WORKERS.discard(self)
+            _MANAGED_TASK_WORKERS.discard(self)
             raise
 
     def deleteLater(self) -> None:
         """Defer QObject deletion until the native QThread has stopped."""
 
-        if self.isRunning():
+        try:
+            is_running = self.isRunning()
+        except RuntimeError:
+            # QObject 已由 Qt teardown 刪除時，Python wrapper 仍可能被
+            # queued cleanup 暫時持有；從兩個 registry 移除即可，不能再
+            # 呼叫任何 Qt method。
+            _LIVE_TASK_WORKERS.discard(self)
+            _MANAGED_TASK_WORKERS.discard(self)
+            return
+        if is_running:
             self._delete_later_requested = True
             return
         _LIVE_TASK_WORKERS.discard(self)
+        _MANAGED_TASK_WORKERS.discard(self)
         super().deleteLater()
 
     def _on_native_thread_finished(self) -> None:
+        # Native finished 代表 wrapper 不應再被全域 shutdown probe 查詢；
+        # 留在 weak set 會讓稍後的 closeEvent 對已結束的 PySide QThread
+        # 再次呼叫 isRunning()，部分 offscreen teardown 會因此卡住。
+        _MANAGED_TASK_WORKERS.discard(self)
         if self._delete_later_requested:
             self._delete_later_requested = False
             super().deleteLater()
@@ -96,11 +123,20 @@ class _ManagedTaskThread(QThread):
 def running_task_workers() -> tuple[QThread, ...]:
     """傳回仍在執行的受管背景工作，供根視窗安全關閉協調。"""
 
-    return tuple(
-        worker
-        for worker in tuple(_MANAGED_TASK_WORKERS)
-        if worker.isRunning()
-    )
+    running: list[QThread] = []
+    for worker in tuple(_MANAGED_TASK_WORKERS):
+        try:
+            is_running = worker.isRunning()
+        except RuntimeError:
+            # PySide wrapper 可能在 native QObject 已刪除後仍短暫存於
+            # WeakSet；shutdown probe 必須丟棄它，而不是讓 closeEvent
+            # 因 ``Internal C++ object ... already deleted`` 中止。
+            _MANAGED_TASK_WORKERS.discard(worker)
+            _LIVE_TASK_WORKERS.discard(worker)
+            continue
+        if is_running:
+            running.append(worker)
+    return tuple(running)
 
 
 def request_cooperative_task_worker_shutdown() -> tuple[QThread, ...]:
@@ -112,9 +148,20 @@ def request_cooperative_task_worker_shutdown() -> tuple[QThread, ...]:
     """
 
     for worker in running_task_workers():
-        cancel = getattr(worker, "cancel", None)
+        try:
+            cancel = getattr(worker, "cancel", None)
+        except RuntimeError:
+            _MANAGED_TASK_WORKERS.discard(worker)
+            _LIVE_TASK_WORKERS.discard(worker)
+            continue
         if callable(cancel):
-            cancel(cooperative=True, wait=False)
+            try:
+                cancel(cooperative=True, wait=False)
+            except RuntimeError:
+                # Native QObject 可能剛在 queued callback 中被刪除；不要讓
+                # 關閉協調器因 stale wrapper 中止，也不要再把它留在 registry。
+                _MANAGED_TASK_WORKERS.discard(worker)
+                _LIVE_TASK_WORKERS.discard(worker)
     return running_task_workers()
 
 
@@ -180,7 +227,7 @@ class TaskWorker(_ManagedTaskThread):
             )
 
             # ✅ 再次檢查是否已取消（任務執行期間可能被取消）
-            if self.is_cancel_requested():
+            if self.is_cancel_requested() and not _has_explicit_cancel_outcome(result):
                 self.cancelled.emit()
             else:
                 self.finished.emit(result)
@@ -188,12 +235,10 @@ class TaskWorker(_ManagedTaskThread):
         except BacktestCancelledError:
             self.cancelled.emit()
         except Exception as e:
-            # ✅ 確保錯誤信號被發送，除非線程被取消
-            if not self.is_cancel_requested():
-                error_msg = f"{str(e)}\n{traceback.format_exc()}"
-                self.error.emit(error_msg)
-            else:
-                self.cancelled.emit()
+            # 取消旗標不能掩蓋真實例外；只有任務明確回報安全取消或
+            # BacktestCancelledError 才送出 cancelled signal。
+            error_msg = f"{str(e)}\n{traceback.format_exc()}"
+            self.error.emit(error_msg)
 
     def cancel(self, cooperative: bool = True, wait: bool = False):
         """取消任務
@@ -280,7 +325,7 @@ class ProgressTaskWorker(_ManagedTaskThread):
                 self.is_cancel_requested,
             )
 
-            if self.is_cancel_requested():
+            if self.is_cancel_requested() and not _has_explicit_cancel_outcome(result):
                 self.cancelled.emit()
             else:
                 self.finished.emit(result)
@@ -288,11 +333,8 @@ class ProgressTaskWorker(_ManagedTaskThread):
         except BacktestCancelledError:
             self.cancelled.emit()
         except Exception as e:
-            if not self.is_cancel_requested():
-                error_msg = f"{str(e)}\n{traceback.format_exc()}"
-                self.error.emit(error_msg)
-            else:
-                self.cancelled.emit()
+            error_msg = f"{str(e)}\n{traceback.format_exc()}"
+            self.error.emit(error_msg)
 
     def cancel(self, cooperative: bool = True, wait: bool = False):
         """取消任務

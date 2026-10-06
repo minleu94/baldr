@@ -1,6 +1,10 @@
 from datetime import date, datetime
+from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
+from app_module.exceptions import BacktestCancelledError
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     MarketBreadthSummary,
@@ -184,7 +188,7 @@ def test_decision_desk_builder_uses_fake_provider_to_build_complete_snapshot():
 
     assert snapshot.schema_version == 2
     assert snapshot.as_of_date == as_of_date
-    assert snapshot.overall_quality == DecisionDeskQuality.DEGRADED
+    assert snapshot.overall_quality == DecisionDeskQuality.ESTIMATED
     assert snapshot.market_regime.to_dict()["quality"] == DecisionDeskQuality.OBSERVED.value
     assert snapshot.market_breadth.to_dict()["quality"] == DecisionDeskQuality.ESTIMATED.value
     assert snapshot.watchlist_triggers.to_dict()["warnings"] == []
@@ -369,7 +373,7 @@ def test_decision_desk_builder_uses_injected_section_services():
     assert snapshot.sector_rotation.quality == DecisionDeskQuality.ESTIMATED
     assert snapshot.watchlist_triggers.quality == DecisionDeskQuality.OBSERVED
     assert snapshot.portfolio_alerts.quality == DecisionDeskQuality.OBSERVED
-    assert snapshot.overall_quality == DecisionDeskQuality.DEGRADED
+    assert snapshot.overall_quality == DecisionDeskQuality.ESTIMATED
 
 
 def test_decision_desk_builder_injects_smart_money_dashboard_summary_into_focus_cards():
@@ -396,6 +400,31 @@ def test_decision_desk_builder_injects_smart_money_dashboard_summary_into_focus_
     assert snapshot.stock_focus is not None
     assert any(card.stock_code == "9999" and card.source == "smart_money" for card in snapshot.stock_focus.priority_stocks)
     assert any(card.stock_code == "8888" and card.source == "smart_money" for card in snapshot.stock_focus.risk_stocks)
+
+
+def test_smart_money_cancellation_is_not_downgraded_to_a_degraded_snapshot():
+    as_of_date = date(2026, 6, 15)
+
+    class CancelledSmartMoneyService:
+        def build_dashboard_summary(self, decision_date: date, stock_codes: tuple[str, ...] = ()):
+            raise BacktestCancelledError("摘要取消")
+
+    builder = DecisionDeskSnapshotBuilder(
+        AllObservedDecisionDeskProvider(),
+        relative_strength_liquidity_service=FakeSectionService(
+            "relative_strength_liquidity",
+            RelativeStrengthLiquiditySummary(
+                as_of_date=as_of_date,
+                quality=DecisionDeskQuality.OBSERVED,
+                warnings=(),
+                top_strength_codes=("2330",),
+            ),
+        ),
+        smart_money_service=CancelledSmartMoneyService(),
+    )
+
+    with pytest.raises(BacktestCancelledError, match="摘要取消"):
+        builder.build_snapshot(as_of_date, cancel_callback=lambda: False)
 
 
 def test_decision_desk_builder_degrades_only_failed_section():
@@ -840,3 +869,66 @@ def test_visibility_failure_is_typed_degraded_and_does_not_fail_snapshot() -> No
         snapshot.market_data_visibility.warnings
     )
     assert snapshot.action_summary is not None
+
+
+def test_market_regime_source_data_date_survives_desk_lineage() -> None:
+    decision_date = date(2026, 10, 5)
+    source_data_date = date(2026, 10, 2)
+    provider = AllObservedDecisionDeskProvider()
+    provider.regime_service = SimpleNamespace(
+        detect_regime_dto=lambda **_kwargs: SimpleNamespace(
+            decision_date=decision_date,
+            effective_date=decision_date,
+            regime="Trend",
+            regime_name_cn="Trend",
+            match_score_bp=9100,
+            quality="observed",
+            warnings=(),
+            details={
+                "date": decision_date.isoformat(),
+                "source_data_date": source_data_date.isoformat(),
+            },
+            source_id="market_regime_detector",
+            source_version="test",
+        )
+    )
+
+    snapshot = DecisionDeskSnapshotBuilder(provider).build_snapshot(decision_date)
+
+    assert snapshot.market_regime.as_of_date == decision_date
+    assert snapshot.market_regime.meta is not None
+    assert snapshot.market_regime.meta["date"] == decision_date.isoformat()
+    assert snapshot.market_regime.meta["source_data_date"] == source_data_date.isoformat()
+    assert snapshot.source_lineage["market_regime"]["as_of_date"] == decision_date.isoformat()
+    assert (
+        snapshot.source_lineage["market_regime"]["metadata"]["source_data_date"]
+        == source_data_date.isoformat()
+    )
+
+
+def test_decision_desk_forwards_cancel_callback_to_market_services() -> None:
+    as_of_date = date(2026, 6, 15)
+    callback = lambda: False
+
+    class CallbackBreadthService:
+        def build_snapshot(self, received_date: date, *, cancel_callback=None):
+            assert received_date == as_of_date
+            assert cancel_callback is callback
+            raise BacktestCancelledError("breadth cancelled")
+
+    class CallbackRelativeStrengthService:
+        def build_snapshot(self, received_date: date, *, cancel_callback=None):
+            assert received_date == as_of_date
+            assert cancel_callback is callback
+            raise BacktestCancelledError("relative strength cancelled")
+
+    builder = DecisionDeskSnapshotBuilder(
+        AllObservedDecisionDeskProvider(),
+        market_breadth_service=CallbackBreadthService(),
+        relative_strength_liquidity_service=CallbackRelativeStrengthService(),
+    )
+
+    with pytest.raises(BacktestCancelledError, match="breadth cancelled"):
+        builder._build_market_breadth(as_of_date, cancel_callback=callback)
+    with pytest.raises(BacktestCancelledError, match="relative strength cancelled"):
+        builder._build_relative_strength_liquidity(as_of_date, cancel_callback=callback)

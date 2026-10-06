@@ -29,6 +29,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from data_module.official_trading_calendar import OfficialTradingCalendar
+from data_module.formal_schedule_gate import formal_schedule_day_state
 from data_module.formal_runtime_config import (
     FORMAL_RUNTIME_CONFIG_ENV,
     FormalRuntimeConfigError,
@@ -599,7 +600,7 @@ def _read_current_rule_window(
     target_day: date,
     observed_utc: datetime,
     symbols: Sequence[str],
-) -> tuple[Any, str]:
+) -> tuple[Any, str, tuple[str, ...], tuple[int, ...]]:
     """讀取當日 T-1 視窗並重新計算完整 frozen universe hash。"""
 
     resolved = market_db.expanduser().resolve()
@@ -632,7 +633,18 @@ def _read_current_rule_window(
     universe_hash = _universe_hash(candidates)
     if not _is_sha256(universe_hash):
         raise FormalRuleSourceProducerError("rule_universe_hash_invalid")
-    return window, universe_hash
+    score_values: list[int] = []
+    for candidate in candidates:
+        score = getattr(candidate, "score_bp", None)
+        if type(score) is not int:
+            raise FormalRuleSourceProducerError("rule_candidate_score_missing")
+        score_values.append(score)
+    return (
+        window,
+        universe_hash,
+        tuple(str(candidate.symbol) for candidate in candidates),
+        tuple(score_values),
+    )
 
 
 def _build_machine_acceptance(
@@ -1614,6 +1626,7 @@ def _persist_bundle(
 def produce_current_rule_source_bundle(
     *,
     output_root: str | Path,
+    expected_output_root: str | Path | None = None,
     market_db: str | Path,
     baseline_root: str | Path,
     calendar_cache_root: str | Path,
@@ -1627,8 +1640,21 @@ def produce_current_rule_source_bundle(
     只可重驗已存在的 bundle，讓 daily Rule producer 使用相同的 source
     identity。任何 cutoff 後的新建嘗試都保持 blocked，避免用事後時間
     冒充 pre-open clock。
+
+    ``expected_output_root`` 是 research caller 的 optional route preflight。
+    提供時會在任何 baseline／market read 或 bundle write 前比較兩個
+    resolved paths；不相同即拒絕。正式 scheduler 不提供此 override，
+    因而維持既有 date-scoped runtime binding 與 repository output guard。
     """
 
+    output_path = Path(output_root).expanduser().resolve()
+    if expected_output_root is not None:
+        expected_path = Path(expected_output_root).expanduser().resolve()
+        if output_path != expected_path:
+            raise FormalRuleSourceProducerError(
+                "rule_source_expected_output_root_mismatch:"
+                f"resolved={output_path};expected={expected_path}"
+            )
     observed_utc, observed_taipei = _normalise_observed(now)
     target_day = observed_taipei.date()
     rule_local_time = observed_taipei.timetz().replace(tzinfo=None)
@@ -1643,7 +1669,6 @@ def produce_current_rule_source_bundle(
 
     market_path = Path(market_db).expanduser().resolve()
     cache_root = Path(calendar_cache_root).expanduser().resolve()
-    output_path = Path(output_root).expanduser().resolve()
     (
         parent_clock_path,
         parent_owner_path,
@@ -1661,7 +1686,12 @@ def produce_current_rule_source_bundle(
         calendar_cache_root=cache_root,
         target_day=target_day,
     )
-    window, universe_hash = _read_current_rule_window(
+    (
+        window,
+        universe_hash,
+        universe_hash_symbols,
+        universe_scores_bp,
+    ) = _read_current_rule_window(
         market_path,
         target_day=target_day,
         observed_utc=observed_utc,
@@ -1777,6 +1807,8 @@ def produce_current_rule_source_bundle(
         "promotion_eligible": False,
         "broker_order_allowed": False,
     }
+    identity_without_hash["scores_bp"] = list(universe_scores_bp)
+    identity_without_hash["universe_hash_symbols"] = list(universe_hash_symbols)
 
 
     if source_window is not None:
@@ -1891,13 +1923,6 @@ def run_from_environment() -> tuple[dict[str, object], int]:
     observed_utc, observed_taipei = _normalise_observed(None)
     runtime_config: dict[str, object] | None = None
     runtime_config_error: str | None = None
-    try:
-        runtime_config = load_optional_formal_runtime_config(
-            role="rule_source_wrapper",
-            observed=observed_utc,
-        )
-    except FormalRuntimeConfigError as error:
-        runtime_config_error = str(error)
     output_root = Path(
         os.environ.get(
             "FORMAL_DAILY_RULE_SOURCE_ROOT",
@@ -1922,6 +1947,19 @@ def run_from_environment() -> tuple[dict[str, object], int]:
             str(repo_root / "output" / "paper_execution_eod_replay" / "calendar_cache"),
         )
     )
+    calendar_state, calendar_reason = formal_schedule_day_state(
+        observed=observed_utc,
+        market_db=market_db,
+        calendar_cache_root=calendar_root,
+    )
+    if calendar_state is True:
+        try:
+            runtime_config = load_optional_formal_runtime_config(
+                role="rule_source_wrapper",
+                observed=observed_utc,
+            )
+        except FormalRuntimeConfigError as error:
+            runtime_config_error = str(error)
     status_path = _status_path(output_root.expanduser().resolve())
     base: dict[str, object] = {
         "schema_version": MACHINE_RULE_SOURCE_PRODUCER_SCHEMA_VERSION,
@@ -1944,6 +1982,11 @@ def run_from_environment() -> tuple[dict[str, object], int]:
         "writes_market_database": False,
         "writes_formal_controlled_paths": False,
         "historical_backfill_claimed": False,
+        "calendar": {
+            "date": observed_taipei.date().isoformat(),
+            "is_official_trading_day": calendar_state,
+            "reason": calendar_reason,
+        },
         "runtime_config": runtime_config
         if runtime_config is not None
         else {
@@ -1952,6 +1995,23 @@ def run_from_environment() -> tuple[dict[str, object], int]:
             "error": runtime_config_error,
         },
     }
+    if calendar_state is not True:
+        exit_code = 0 if calendar_state is False else 2
+        status = {
+            **base,
+            "status": "skipped_non_trading_day"
+            if calendar_state is False
+            else "blocked",
+            "reason": calendar_reason,
+            "blockers": []
+            if calendar_state is False
+            else [f"official_calendar_unresolved:{calendar_reason}"],
+            "exit_code": exit_code,
+            "status_path": str(status_path),
+        }
+        _write_status(status_path, status)
+        print(canonical_json(status))
+        return status, exit_code
     try:
         if runtime_config_error is not None:
             raise FormalRuntimeConfigError(runtime_config_error)

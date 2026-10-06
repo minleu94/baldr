@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from collections import Counter
+from datetime import datetime
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -16,8 +19,10 @@ from app_module.evidence_event_importer_dtos import EvidenceCaptureRequest
 from app_module.evidence_event_importers import RecommendationEvidenceImporter
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_event_service import EvidenceEventService
+from app_module.forward_outcome_context import build_official_maturity_calendar
 from app_module.forward_performance_service import ForwardPerformanceService
-from app_module.recommendation_repository import RecommendationRepository
+from app_module.paper_portfolio_time import TAIWAN_MARKET_TIMEZONE
+from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from data_module.config import TWStockConfig
 
 
@@ -56,10 +61,34 @@ def _config_from_args(args: argparse.Namespace) -> TWStockConfig:
         kwargs["data_root"] = args.data_root
     if args.output_root is not None:
         kwargs["output_root"] = args.output_root
+    canonical_config = TWStockConfig()
     config = TWStockConfig(**kwargs)
-    config.db_file = Path(args.db_path)
+    selected_db = Path(args.db_path).expanduser()
+    if _same_database_path(selected_db, Path(canonical_config.db_file)):
+        raise ValueError(
+            "smoke evidence pipeline refuses the configured canonical database; "
+            "provide an isolated --db-path"
+        )
+    config.db_file = selected_db
     config.db_file.parent.mkdir(parents=True, exist_ok=True)
     return config
+
+
+def _same_database_path(candidate: Path, canonical: Path) -> bool:
+    try:
+        candidate_resolved = candidate.resolve(strict=False)
+        canonical_resolved = canonical.resolve(strict=False)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("database path cannot be resolved safely") from exc
+    if os.path.normcase(str(candidate_resolved)) == os.path.normcase(str(canonical_resolved)):
+        return True
+    try:
+        return candidate_resolved.exists() and canonical_resolved.exists() and os.path.samefile(
+            candidate_resolved,
+            canonical_resolved,
+        )
+    except OSError:
+        return False
 
 
 def _sample_events(repository: EvidenceEventRepository, *, limit: int = 5) -> tuple[dict[str, Any], ...]:
@@ -98,15 +127,23 @@ def _quality_counts(repository: EvidenceEventRepository) -> dict[str, int]:
     return dict(sorted(combined.items()))
 
 
-def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
+def run_smoke(
+    args: argparse.Namespace,
+    *,
+    _calendar_cache_path: str | Path | None = None,
+    _temporary_closure_path: str | Path | None = None,
+    _now_provider: Callable[[], datetime] | None = None,
+) -> dict[str, Any]:
     config = _config_from_args(args)
     windows = _parse_windows(args.windows)
     dry_run = bool(args.dry_run or not args.confirm)
-    repository = EvidenceEventRepository(config)
+    repository = EvidenceEventRepository(config, read_only=dry_run)
     capture_service = EvidenceCaptureService(
         EvidenceEventService(repository),
         {
-            "recommendation": RecommendationEvidenceImporter(RecommendationRepository(config)),
+            "recommendation": RecommendationEvidenceImporter(
+                build_recommendation_execution_queries(config)
+            ),
         },
     )
     capture = capture_service.capture(
@@ -124,7 +161,22 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
 
     outcome_summary = None
     if not dry_run:
-        outcome_summary = ForwardPerformanceService(config, repository).calculate(
+        invocation_at = (
+            _now_provider()
+            if _now_provider is not None
+            else datetime.now(TAIWAN_MARKET_TIMEZONE)
+        )
+        maturity_calendar = build_official_maturity_calendar(
+            config=config,
+            observed_at=invocation_at,
+            calendar_cache_path=_calendar_cache_path,
+            temporary_closure_path=_temporary_closure_path,
+        )
+        outcome_summary = ForwardPerformanceService(
+            config,
+            repository,
+            maturity_calendar=maturity_calendar,
+        ).calculate(
             windows=windows,
             dry_run=False,
             decision_date=args.decision_date,
@@ -132,6 +184,7 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
             end_date=args.end_date,
             event_type="recommendation_included",
             limit=args.limit,
+            data_as_of_date=invocation_at.date().isoformat(),
         )
 
     outcomes = repository.list_outcomes()
@@ -159,6 +212,9 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
         "missing_outcome_price": 0 if outcome_summary is None else outcome_summary.missing_outcome_price,
         "missing_benchmark": 0 if outcome_summary is None else outcome_summary.missing_benchmark,
         "missing_industry_benchmark": 0 if outcome_summary is None else outcome_summary.missing_industry_benchmark,
+        "outcomes_blocked_time_contract": (
+            0 if outcome_summary is None else outcome_summary.blocked_time_contract_count
+        ),
         "warnings_count": capture.warnings_count + (0 if outcome_summary is None else outcome_summary.warnings_count),
         "event_type_counts": dict(sorted(event_type_counts.items())),
         "outcome_status_counts": outcome_status_counts,
@@ -171,8 +227,13 @@ def run_smoke(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    print(json.dumps(run_smoke(args), ensure_ascii=False, sort_keys=True, indent=2))
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        summary = run_smoke(args)
+    except ValueError as exc:
+        parser.error(str(exc))
+    print(json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2))
     return 0
 
 

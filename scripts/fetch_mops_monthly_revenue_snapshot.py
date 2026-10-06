@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
 from data_module.config import TWStockConfig
 from data_module.monthly_revenue_snapshot_harvester import (
     build_mops_monthly_revenue_snapshot,
+    create_monthly_revenue_snapshot_capture_directory,
     fetch_mops_static_monthly_revenue_html,
     write_mops_snapshot_csv,
 )
@@ -35,7 +36,10 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = args.output_dir or TWStockConfig().resolve_output_path(
         "monthly_revenue_mops_snapshots"
     )
-    html_dir = None if args.no_save_html else output_dir / "raw_html"
+    capture_dir = create_monthly_revenue_snapshot_capture_directory(
+        output_dir, fetch_date=fetch_date
+    )
+    html_dir = None if args.no_save_html else capture_dir / "raw_html"
     result = build_mops_monthly_revenue_snapshot(
         start_period=args.start_period,
         end_period=args.end_period,
@@ -46,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         sleep_seconds=args.sleep_seconds,
     )
 
-    output_csv = output_dir / (
+    output_csv = capture_dir / (
         f"mops_monthly_revenue_snapshot_{args.start_period}_{args.end_period}_"
         f"{fetch_date.isoformat()}.csv"
     )
@@ -54,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         write_mops_snapshot_csv(output_csv, result.rows)
 
     _safe_print(result.to_markdown())
+    _safe_print(f"- capture_dir: {capture_dir}")
     if result.rows:
         _safe_print(f"- output_csv: {output_csv}")
     if html_dir is not None:

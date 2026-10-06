@@ -229,8 +229,7 @@ def main():
     db = DBManager(config)
     
     # 定位 Artifacts 目錄或專案根目錄下
-    # Antigravity artifacts 目錄在腦區: C:\Users\archi\.gemini\antigravity-ide\brain\<conversation_id>\
-    artifact_dir = Path("C:/Users/archi/.gemini/antigravity-ide/brain/e44c3c34-8379-4c97-a45f-1ca8f9d93b84")
+    artifact_dir = Path(config.output_root) / "database_audit"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     output_path = artifact_dir / "database_audit_report.md"
     

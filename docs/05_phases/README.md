@@ -31,7 +31,7 @@
 
 已歸檔的相關文件：
 
-- [PHASE_3_3B_IMPLEMENTATION_PLAN.md](../09_archive/PHASE_3_3B_IMPLEMENTATION_PLAN.md)：Phase 3.3b 實施規劃，已移至歸檔目錄並只作歷史追溯。
+- PHASE_3_3B_IMPLEMENTATION_PLAN.md（開發收據見dev）：Phase 3.3b 實施規劃，已移至歸檔目錄並只作歷史追溯。
 
 ## 📁 子目錄
 

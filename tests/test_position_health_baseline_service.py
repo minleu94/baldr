@@ -36,7 +36,9 @@ def test_missing_thesis_fields_fail_closed_to_watch(tmp_path: Path) -> None:
     assert payload["positions"][0]["state"] == "WATCH"
     assert payload["positions"][0]["entry_thesis"] is None
     assert payload["positions"][0]["invalidation"] is None
-    assert set(payload["positions"][0]["required_human_fields"]) == {
+    assert payload["positions"][0]["required_human_fields"] == []
+    assert payload["positions"][0]["user_action_required"] is False
+    assert set(payload["positions"][0]["required_governance_fields"]) == {
         "entry_thesis",
         "invalidation",
         "holding_horizon",
@@ -64,4 +66,8 @@ def test_zero_share_allocation_is_not_treated_as_active_position(tmp_path: Path)
     payload = PositionHealthBaselineService().build(source)
 
     assert payload["positions"] == []
-    assert payload["diagnostics"] == ["no_active_paper_positions"]
+    assert payload["diagnostics"] == [
+        "no_active_paper_positions",
+        "position_health_baseline_is_not_an_exit_instruction",
+    ]
+    assert payload["warnings"] == []

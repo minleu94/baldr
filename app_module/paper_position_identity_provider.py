@@ -31,6 +31,7 @@ import sqlite3
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from app_module.paper_daily_status_contract import paper_daily_status_schema_supported
 from app_module.paper_trade_ledger import PaperTradeFill
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 
@@ -333,27 +334,17 @@ class PaperPositionIdentityProvider:
         payload = json.loads(raw.decode("utf-8-sig"))
         if not isinstance(payload, Mapping):
             raise ValueError("paper_position_identity_coverage_must_be_object")
-        if payload.get("schema_version") != "paper-portfolio-daily-status.v1":
+        if not paper_daily_status_schema_supported(payload):
             raise ValueError("paper_position_identity_coverage_schema_invalid")
-        if payload.get("status") != "passed":
+        status = str(payload.get("status") or "")
+        if status not in {"passed", "skipped_non_trading_day"}:
             raise ValueError("paper_position_identity_coverage_not_passed")
         if payload.get("producer") != "scripts.scheduled.run_paper_portfolio_daily_isolated":
             raise ValueError("paper_position_identity_coverage_producer_invalid")
-        if payload.get("portfolio_id") != self.portfolio_id:
-            raise ValueError("paper_position_identity_coverage_portfolio_invalid")
-        if payload.get("snapshot_id") != snapshot_id:
-            raise ValueError("paper_position_identity_coverage_snapshot_mismatch")
         receipt_date = _parse_date(payload.get("decision_date"), "coverage decision_date")
-        if receipt_date != snapshot_date:
-            raise ValueError("paper_position_identity_coverage_date_mismatch")
-        if payload.get("snapshot_appended") is not True:
-            raise ValueError("paper_position_identity_coverage_snapshot_not_appended")
         state_path = _resolved_text(payload.get("state_db"))
-        ledger_path = _resolved_text(payload.get("paper_ledger_db"))
         if state_path != self.state_db_path:
             raise ValueError("paper_position_identity_coverage_state_path_mismatch")
-        if ledger_path != self.ledger_db_path:
-            raise ValueError("paper_position_identity_coverage_ledger_path_mismatch")
         if payload.get("trading_calendar_validated") is not True:
             raise ValueError("paper_position_identity_coverage_calendar_not_validated")
         for field in ("writes_market_db", "auto_rebalance_allowed", "changes_advice", "broker_execution"):
@@ -362,18 +353,68 @@ class PaperPositionIdentityProvider:
         decision_at = _aware(payload.get("decision_at"), "coverage decision_at")
         if decision_at > observed_at:
             raise ValueError("paper_position_identity_coverage_decision_at_future")
-        if decision_at.astimezone(TAIPEI).date() != snapshot_date:
+        if decision_at.astimezone(TAIPEI).date() != receipt_date:
             raise ValueError("paper_position_identity_coverage_decision_at_date_mismatch")
-        transition_count = _non_negative_int(
-            payload.get("paper_ledger_transitions_applied"),
-            "paper_ledger_transitions_applied",
-        )
+        warnings: list[str] = []
+        if status == "passed":
+            if payload.get("portfolio_id") != self.portfolio_id:
+                raise ValueError("paper_position_identity_coverage_portfolio_invalid")
+            if payload.get("snapshot_id") != snapshot_id:
+                raise ValueError("paper_position_identity_coverage_snapshot_mismatch")
+            if receipt_date != snapshot_date:
+                raise ValueError("paper_position_identity_coverage_date_mismatch")
+            if payload.get("snapshot_appended") is not True:
+                raise ValueError("paper_position_identity_coverage_snapshot_not_appended")
+            ledger_path = _resolved_text(payload.get("paper_ledger_db"))
+            if ledger_path != self.ledger_db_path:
+                raise ValueError("paper_position_identity_coverage_ledger_path_mismatch")
+            transition_count = _non_negative_int(
+                payload.get("paper_ledger_transitions_applied"),
+                "paper_ledger_transitions_applied",
+            )
+            coverage_status = "ready"
+        else:
+            if payload.get("snapshot_appended") is not False:
+                raise ValueError(
+                    "paper_position_identity_non_trading_snapshot_appended"
+                )
+            if payload.get("trading_calendar_is_open") is not False:
+                raise ValueError(
+                    "paper_position_identity_non_trading_calendar_invalid"
+                )
+            if receipt_date < snapshot_date:
+                raise ValueError(
+                    "paper_position_identity_non_trading_coverage_stale"
+                )
+            isolated_scope = payload.get("isolated_scope")
+            if not isinstance(isolated_scope, Mapping):
+                raise ValueError(
+                    "paper_position_identity_non_trading_scope_missing"
+                )
+            ledger_path = _resolved_text(isolated_scope.get("ledger_db"))
+            if ledger_path != self.ledger_db_path:
+                raise ValueError("paper_position_identity_coverage_ledger_path_mismatch")
+            state_head = isolated_scope.get("state_head")
+            if not isinstance(state_head, Mapping):
+                raise ValueError(
+                    "paper_position_identity_non_trading_state_head_missing"
+                )
+            current_state_hash = _sha256_file(self.state_db_path)
+            if state_head.get("target_file_sha256") != current_state_hash:
+                raise ValueError(
+                    "paper_position_identity_non_trading_state_hash_mismatch"
+                )
+            transition_count = 0
+            coverage_status = "reused_non_trading_day"
+            warnings.append(
+                "paper_position_identity_coverage_reused_non_trading_day"
+            )
         after = _sha256(self.coverage_status_path.read_bytes())
         if after != digest:
             raise ValueError("paper_position_identity_coverage_changed_during_read")
         return (
             {
-                "status": "ready",
+                "status": coverage_status,
                 "path": str(self.coverage_status_path),
                 "file_sha256": digest,
                 "snapshot_id": snapshot_id,
@@ -382,7 +423,7 @@ class PaperPositionIdentityProvider:
                 "ledger_transitions_applied": transition_count,
             },
             digest,
-            [],
+            warnings,
         )
 
     def _read_snapshots(

@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
+
+import pandas as pd
 
 from app_module.decision_data_providers import (
+    industry_companies_provider,
+    industry_screen_fallback_provider,
     industry_index_frame_provider,
+    legacy_industry_index_provider,
     market_index_frame_provider,
     recent_industry_screen_provider,
     recent_stock_screen_provider,
+    stock_screen_fallback_provider,
 )
 from app_module.application_ports import MarketFrameProvider
+from data_module.pit_sector_membership_reader import PITSectorMembershipReader
 
 
 @dataclass(frozen=True)
@@ -21,23 +28,76 @@ class DecisionServiceComposition:
     screening_service: Any
     regime_service: Any
     recommendation_service: Any
+    industry_strength_service: Any = None
+
+
+def build_stock_screener(
+    config: Any,
+    industry_mapper: Any = None,
+    *,
+    constructor: Any = None,
+) -> Any:
+    """在 application composition 建立並注入 concrete data providers。"""
+    if constructor is None:
+        from decision_module.stock_screener import StockScreener
+
+        constructor = StockScreener
+    return constructor(
+        config,
+        industry_mapper,
+        recent_stock_provider=recent_stock_screen_provider(config),
+        recent_industry_provider=recent_industry_screen_provider(config),
+        stock_fallback_provider=stock_screen_fallback_provider(config),
+        industry_fallback_provider=industry_screen_fallback_provider(config),
+    )
+
+
+def build_industry_mapper(
+    config: Any,
+    *,
+    companies_provider: Callable[[], pd.DataFrame | None] | None = None,
+    industry_index_provider: Callable[[], pd.DataFrame | None] | None = None,
+    constructor: Any = None,
+) -> Any:
+    """建立舊 app fallback 所需 mapper，並明確注入 data-owned readers。
+
+    未指定 index provider 時保留 IndustryMapper 原本獨立 fallback 的
+    SQLite／CSV 優先順序、None、空表與錯誤處理語意。
+    """
+    if constructor is None:
+        from decision_module.industry_mapper import IndustryMapper
+
+        constructor = IndustryMapper
+    return constructor(
+        config,
+        industry_index_provider=(
+            industry_index_provider
+            if industry_index_provider is not None
+            else legacy_industry_index_provider(config)
+        ),
+        companies_provider=(
+            companies_provider
+            if companies_provider is not None
+            else industry_companies_provider(config)
+        ),
+    )
 
 
 def _default_dependencies() -> dict[str, Any]:
     from app_module.recommendation_service import RecommendationService
     from app_module.regime_service import RegimeService
     from app_module.screening_service import ScreeningService
+    from app_module.industry_strength_service import IndustryStrengthService
     from decision_module.industry_mapper import IndustryMapper
     from decision_module.market_regime_detector import MarketRegimeDetector
-    from decision_module.stock_screener import StockScreener
 
     return {
         "IndustryMapper": IndustryMapper,
         "ScreeningService": ScreeningService,
+        "IndustryStrengthService": IndustryStrengthService,
         "MarketRegimeDetector": MarketRegimeDetector,
         "RegimeService": RegimeService,
         "RecommendationService": RecommendationService,
-        "StockScreener": StockScreener,
     }
 
 
@@ -45,15 +105,22 @@ def build_decision_service_composition(
     *,
     config: Any,
     dependencies: Mapping[str, Any] | None = None,
+    companies_provider: Callable[[], pd.DataFrame | None] | None = None,
     industry_index_provider: MarketFrameProvider | None = None,
     market_index_provider: MarketFrameProvider | None = None,
+    pit_membership_reader: PITSectorMembershipReader | None = None,
 ) -> DecisionServiceComposition:
-    """建立共享 mapper 與各自獨立的 regime detector。"""
+    """建立共享 mapper、app-side regime provider 與各領域服務。"""
     constructors = dict(dependencies or _default_dependencies())
     industry_provider = (
         industry_index_provider
         if industry_index_provider is not None
         else industry_index_frame_provider(config)
+    )
+    companies_data_provider = (
+        companies_provider
+        if companies_provider is not None
+        else industry_companies_provider(config)
     )
     market_provider = (
         market_index_provider
@@ -61,30 +128,75 @@ def build_decision_service_composition(
         else market_index_frame_provider(config)
     )
     mapper = constructors["IndustryMapper"](
-        config, industry_index_provider=industry_provider
+        config,
+        industry_index_provider=industry_provider,
+        companies_provider=companies_data_provider,
     )
-    stock_screener = constructors["StockScreener"](
+    active_pit_reader = pit_membership_reader or _configured_pit_reader(config)
+    stock_screener = build_stock_screener(
         config,
         mapper,
-        recent_stock_provider=recent_stock_screen_provider(config),
-        recent_industry_provider=recent_industry_screen_provider(config),
+        constructor=constructors.get("StockScreener"),
     )
-    screening_service = constructors["ScreeningService"](
-        config, industry_mapper=mapper, stock_screener=stock_screener
-    )
-    regime_detector = constructors["MarketRegimeDetector"](
-        config, market_frame_provider=market_provider
-    )
-    recommendation_detector = constructors["MarketRegimeDetector"](
-        config, market_frame_provider=market_provider
-    )
+    screening_kwargs: dict[str, Any] = {
+        "industry_mapper": mapper,
+        "stock_screener": stock_screener,
+    }
+    industry_strength_service = None
+    if "IndustryStrengthService" in constructors:
+        try:
+            industry_strength_kwargs: dict[str, Any] = {}
+            if active_pit_reader is not None:
+                industry_strength_kwargs["pit_membership_reader"] = active_pit_reader
+                configured_market_scope = getattr(config, "pit_market_scope", None)
+                if configured_market_scope:
+                    industry_strength_kwargs["pit_market_scope"] = configured_market_scope
+            industry_strength_service = constructors["IndustryStrengthService"](
+                config,
+                **industry_strength_kwargs,
+            )
+            screening_kwargs["industry_strength_service"] = industry_strength_service
+        except Exception:
+            # 產業強弱是可降級的研究 read model；保留既有篩選服務契約。
+            pass
+    screening_service = constructors["ScreeningService"](config, **screening_kwargs)
+    regime_detector = constructors["MarketRegimeDetector"]()
     regime_service = constructors["RegimeService"](
-        config, regime_detector=regime_detector
+        config,
+        regime_detector=regime_detector,
+        use_persistent_history=True,
+        market_frame_provider=market_provider,
     )
+    recommendation_kwargs: dict[str, Any] = {
+        "industry_mapper": mapper,
+        "regime_service": regime_service,
+    }
+    from app_module.recommendation.input_preparation import (
+        build_default_recommendation_input_preparer,
+    )
+
+    recommendation_kwargs["input_preparer"] = (
+        build_default_recommendation_input_preparer(
+            config,
+            pit_membership_reader=active_pit_reader,
+        )
+    )
+    if active_pit_reader is not None:
+        recommendation_kwargs["pit_membership_reader"] = active_pit_reader
+    # The normal application composition explicitly injects the read-only
+    # calibration consumer.  Test/custom service constructors keep the legacy
+    # dependency contract and may opt in themselves.
+    if dependencies is None:
+        from app_module.recommendation_calibration_consumer import (
+            build_default_recommendation_calibration_consumer,
+        )
+
+        calibration_consumer = build_default_recommendation_calibration_consumer(config)
+        if calibration_consumer is not None:
+            recommendation_kwargs["calibration_consumer"] = calibration_consumer
     recommendation_service = constructors["RecommendationService"](
         config,
-        industry_mapper=mapper,
-        regime_detector=recommendation_detector,
+        **recommendation_kwargs,
     )
     return DecisionServiceComposition(
         config=config,
@@ -92,4 +204,16 @@ def build_decision_service_composition(
         screening_service=screening_service,
         regime_service=regime_service,
         recommendation_service=recommendation_service,
+        industry_strength_service=industry_strength_service,
     )
+
+
+def _configured_pit_reader(config: Any) -> PITSectorMembershipReader | None:
+    """只在 config 明確指定 artifact path 時組合 PIT reader。"""
+
+    configured = getattr(config, "pit_sector_membership_paths", None)
+    if configured is None:
+        configured = getattr(config, "pit_sector_membership_path", None)
+    if not configured:
+        return None
+    return PITSectorMembershipReader.from_config(config)

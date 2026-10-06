@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
 import subprocess
 import time as time_module
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -55,10 +56,12 @@ def _write_config(
         "task_name": "baldr-ml-allocation-forward-daily",
         "decision_timezone": "Asia/Taipei",
         "decision_time": "08:30",
-        "scheduled_wake_local": "16:15",
+        "scheduled_wake_local": "08:25",
+        "scheduled_wake_timezone": "Asia/Taipei",
         "run_date": run_date,
         "database": str(tmp_path / "twstock.db"),
         "paper_state_db": str(tmp_path / "paper.sqlite"),
+        "paper_trade_ledger_db": str(tmp_path / "paper_trade_ledger.sqlite"),
         "output_root": str(tmp_path / "output"),
         "release_root": str(release_root),
         "release_manifest_file_hash": _sha256(release_manifest),
@@ -117,6 +120,84 @@ def _completed_child_payload(
         {
             "status": "completed",
             "daily_orchestration": orchestration,
+        }
+    )
+
+
+def _failed_child_payload_with_integrity(
+    tmp_path: Path,
+) -> str:
+    source = {
+        "database": {
+            "path": str(tmp_path / "twstock.db"),
+            "exists": True,
+            "size_bytes": 100,
+            "mtime_ns": 10,
+            "after": {
+                "path": str(tmp_path / "twstock.db"),
+                "exists": True,
+                "size_bytes": 100,
+                "mtime_ns": 10,
+            },
+            "unchanged": True,
+            "changed_fields": [],
+        },
+        "paper_state_db": {
+            "path": str(tmp_path / "paper.sqlite"),
+            "exists": True,
+            "size_bytes": 200,
+            "mtime_ns": 20,
+            "after": {
+                "path": str(tmp_path / "paper.sqlite"),
+                "exists": True,
+                "size_bytes": 200,
+                "mtime_ns": 30,
+            },
+            "unchanged": False,
+            "changed_fields": ["mtime_ns"],
+            "integrity_verified": False,
+            "change_class": "unaccounted_change",
+            "coordination": {
+                "status": "unaccounted_change",
+                "authorized": False,
+                "contract_checks": {
+                    "state_read_view_stable": False,
+                    "trade_ledger_read_view_stable": False,
+                    "preopen_receipt_valid": False,
+                    "paper_state_write_scope_valid": False,
+                },
+            },
+        },
+        "paper_trade_ledger_db": {
+            "unchanged": True,
+            "changed_fields": [],
+        },
+        "release_manifest": {
+            "unchanged": True,
+            "required_files_unchanged": True,
+            "required_file_integrity": {
+                "unchanged": True,
+                "hashes_before": {
+                    str(tmp_path / "release_manifest.json"): "sha256:" + "a" * 64
+                },
+                "hashes_after": {
+                    str(tmp_path / "release_manifest.json"): "sha256:" + "a" * 64
+                },
+                "which_changed": [],
+            },
+        },
+    }
+    return json.dumps(
+        {
+            "status": "failed_read_only_integrity",
+            "record_path": str(tmp_path / "child-record.json"),
+            "record_hash": "sha256:" + "b" * 64,
+            "record_file_hash": "sha256:" + "c" * 64,
+            "source": source,
+            "daily_orchestration": {
+                "natural_shadow_maturity_cutoff_date": "2026-09-07",
+                "natural_shadow_maturity_cutoff_reason": "fixture_open",
+            },
         }
     )
 
@@ -182,15 +263,70 @@ def test_wait_uses_real_taipei_clock_and_never_sleeps_more_than_one_minute() -> 
         ]
     )
     sleeps: list[float] = []
+    observations: list[tuple[datetime, datetime]] = []
 
     reached = wrapper._wait_until_taipei_cutoff(
         now_fn=lambda: next(clock_values),
         sleep_fn=sleeps.append,
+        on_observation=lambda current, cutoff: observations.append((current, cutoff)),
     )
 
     assert reached == DECISION_AT
     assert sleeps == [pytest.approx(30.0)]
     assert all(value <= 60.0 for value in sleeps)
+    assert [item[0] for item in observations] == [DECISION_AT - timedelta(seconds=30), DECISION_AT]
+    assert all(item[1] == DECISION_AT for item in observations)
+
+
+def test_main_records_interruption_while_waiting_without_child(tmp_path, monkeypatch):
+    def wait(**kwargs):
+        kwargs["on_observation"](DECISION_AT - timedelta(minutes=15), DECISION_AT)
+        state = json.loads((tmp_path / "runtime_state.json").read_text(encoding="utf-8"))
+        assert state["phase"] == "waiting_for_taipei_cutoff"
+        assert state["terminal"] is False
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(wrapper, "_wait_until_taipei_cutoff", wait)
+    monkeypatch.setattr(wrapper, "run_once", lambda **k: pytest.fail("interruption must not run child"))
+    assert wrapper.main(["--status-root", str(tmp_path)]) == 130
+    state = json.loads((tmp_path / "runtime_state.json").read_text(encoding="utf-8"))
+    assert state["phase"] == "interrupted"
+    assert state["terminal"] is True
+    assert state["forward_credit_granted"] is False
+    assert state["terminator"] == "unknown"
+    assert json.loads(Path(state["state_path"]).read_text(encoding="utf-8")) == state
+
+
+def test_main_preserves_prior_run_custody_and_terminal_result(tmp_path, monkeypatch):
+    def wait(**kwargs):
+        kwargs["on_observation"](DECISION_AT, DECISION_AT)
+        return DECISION_AT
+
+    monkeypatch.setattr(wrapper, "_wait_until_taipei_cutoff", wait)
+    monkeypatch.setattr(wrapper, "run_once", lambda **k: ({"status": "blocked_invalid_config"}, 2))
+    assert wrapper.main(["--status-root", str(tmp_path)]) == 2
+    prior = json.loads((tmp_path / "runtime_state.json").read_text(encoding="utf-8"))
+    prior_path = Path(prior["state_path"])
+    prior_bytes = prior_path.read_bytes()
+    assert prior["terminal"] is True and prior["exit_code"] == 2
+    assert wrapper.main(["--status-root", str(tmp_path)]) == 2
+    assert prior_path.read_bytes() == prior_bytes
+    assert len(tuple((tmp_path / "run_state").glob("*/state.json"))) == 2
+
+
+def test_main_records_unhandled_failure_without_granting_forward_credit(tmp_path, monkeypatch):
+    monkeypatch.setattr(wrapper, "_wait_until_taipei_cutoff", lambda **k: DECISION_AT)
+
+    def fail(**kwargs):
+        raise RuntimeError("child contract unavailable")
+
+    monkeypatch.setattr(wrapper, "run_once", fail)
+    with pytest.raises(RuntimeError, match="child contract unavailable"):
+        wrapper.main(["--status-root", str(tmp_path)])
+    state = json.loads((tmp_path / "runtime_state.json").read_text(encoding="utf-8"))
+    assert state["phase"] == "failed"
+    assert state["terminal"] is True and state["exit_code"] == 1
+    assert state["forward_credit_granted"] is False
 
 
 def test_run_once_before_cutoff_is_blocked_without_reading_config_or_child(
@@ -271,6 +407,84 @@ def test_run_once_passes_frozen_archive_and_requires_child_completion_gate(
         (tmp_path / "status" / "latest_status.json").read_text(encoding="utf-8")
     )
     assert persisted["receipt_path"]
+
+
+def test_failed_child_readback_preserves_component_guards_and_sidecar_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = _write_config(tmp_path, source=_operational_source(tmp_path))
+
+    def child_runner(
+        command: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        del kwargs
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout=_failed_child_payload_with_integrity(tmp_path),
+            stderr="",
+        )
+
+    def maturity(**_: object) -> dict[str, object]:
+        return {
+            "status": "completed",
+            "sidecar_database_path": str(tmp_path / "shadow_evidence.sqlite"),
+            "sidecar_file_hash_before": "sha256:" + "d" * 64,
+            "sidecar_file_hash_after": "sha256:" + "e" * 64,
+            "writes_shadow_sidecar": True,
+            "outcome_records_before": 2,
+            "outcome_records_after": 3,
+            "outcome_records_appended": 1,
+            "natural_day_credit_granted": False,
+        }
+
+    monkeypatch.setattr(
+        wrapper.daily_orchestration,
+        "run_shadow_maturity_refresh",
+        maturity,
+    )
+    payload, code = wrapper.run_once(
+        config_path=config_path,
+        observed=DECISION_AT,
+        status_root_override=tmp_path / "status",
+        child_runner=child_runner,
+        now_fn=lambda: DECISION_AT,
+        maturity_calendar=_CalendarFixture({date(2026, 9, 7), RUN_DATE}),
+    )
+
+    assert code == 2
+    assert payload["status"] == "blocked_child_exit"
+    assert payload["blockers"] == ["forward_child_returncode_nonzero"]
+    assert payload["forward_credit_granted"] is False
+    readback = payload["child_read_only_integrity"]
+    assert isinstance(readback, dict)
+    assert readback["record"]["record_hash"] == "sha256:" + "b" * 64
+    components = readback["components"]
+    assert isinstance(components, dict)
+    assert components["database"]["unchanged"] is True
+    assert components["paper_state_db"]["integrity_verified"] is False
+    assert components["paper_state_db"]["change_class"] == (
+        "unaccounted_change"
+    )
+    assert components["paper_trade_ledger_db"]["unchanged"] is True
+    release = components["release_manifest"]
+    assert release["required_files_unchanged"] is True
+    assert release["required_file_integrity"]["which_changed"] == []
+    sidecar = readback["post_deadline_sidecar"]
+    assert sidecar["classification"] == "parent_post_deadline_shadow_sidecar"
+    assert sidecar["formal_integrity_guard"] is False
+    assert sidecar["writes_shadow_sidecar"] is True
+
+    persisted = json.loads(
+        (tmp_path / "status" / "latest_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert persisted["child_read_only_integrity"]["components"][
+        "paper_state_db"
+    ]["change_class"] == "unaccounted_change"
 
 
 def test_successful_child_missing_maturity_contract_is_blocked(
@@ -828,28 +1042,76 @@ def test_daily_config_producer_skips_non_trading_and_fails_unknown_calendar(
         )
 
 
-def test_forward_calendar_uses_verified_cache_without_network() -> None:
+def test_forward_calendar_uses_verified_cache_without_network(
+    tmp_path: Path,
+) -> None:
     from data_module.official_trading_calendar import OfficialTradingCalendar
+    from data_module.official_trading_calendar_cache import (
+        build_twse_calendar_cache,
+        write_twse_calendar_cache,
+    )
 
-    cache = Path(
-        "output/paper_execution_eod_replay/calendar_cache/"
-        "twse_holiday_schedule_2026_20260907_capture1.json"
+    observed = datetime(2026, 9, 8, 0, 0, tzinfo=timezone.utc)
+    captured = observed - timedelta(minutes=1)
+    raw = json.dumps(
+        [
+            {
+                "Name": "中華民國開國紀念日",
+                "Date": "1150101",
+                "Weekday": "四",
+                "Description": "依規定放假1日。",
+            }
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    cache_payload = build_twse_calendar_cache(
+        calendar_year=2026,
+        raw_response=raw,
+        requested_at=captured - timedelta(seconds=1),
+        captured_at=captured,
+        response_status=200,
+        response_headers={"Content-Type": "application/json"},
     )
-    closure = cache.parent / "twse_temporary_closure_20260710_af23f921a3376a5a.json"
-    calendar = OfficialTradingCalendar(
-        db_path=Path("this-database-does-not-exist.sqlite"),
-        calendar_cache_path=cache,
-        temporary_closure_path=closure,
+    cache_path = tmp_path / "calendar-cache" / "twse_holiday_schedule_2026.json"
+    cache_path.parent.mkdir()
+    write_twse_calendar_cache(
+        cache_path,
+        cache_payload,
+        allowed_root=tmp_path,
     )
-    assert calendar.is_official_trading_day(
-        date(2026, 9, 9), allow_online_probe=False
-    ) == (True, "twse_holiday_schedule_cache_open")
-    assert calendar.is_official_trading_day(
-        date(2026, 9, 8), allow_online_probe=False
-    ) == (True, "twse_holiday_schedule_cache_open")
-    assert calendar.is_official_trading_day(
-        date(2026, 9, 7), allow_online_probe=False
-    ) == (True, "twse_holiday_schedule_cache_open")
-    assert calendar.is_official_trading_day(
-        date(2026, 9, 6), allow_online_probe=False
-    ) == (False, "weekend_closed")
+
+    with (
+        patch("data_module.official_trading_calendar.datetime") as clock,
+        patch(
+            "data_module.official_trading_calendar.safe_request",
+            side_effect=AssertionError("valid cache must be consumed before network"),
+        ),
+    ):
+        clock.now.return_value = observed
+        calendar = OfficialTradingCalendar(
+            db_path=tmp_path / "this-database-does-not-exist.sqlite",
+            calendar_cache_path=cache_path,
+        )
+        assert calendar.is_official_trading_day(date(2026, 9, 9)) == (
+            True,
+            "twse_holiday_schedule_cache_open",
+        )
+        assert calendar.is_official_trading_day(date(2026, 9, 8)) == (
+            True,
+            "twse_holiday_schedule_cache_open",
+        )
+        assert calendar.is_official_trading_day(date(2026, 9, 7)) == (
+            True,
+            "twse_holiday_schedule_cache_open",
+        )
+        assert calendar.is_official_trading_day(date(2026, 9, 6)) == (
+            False,
+            "weekend_closed",
+        )
+
+    evidence = calendar.evidence_for(date(2026, 9, 9))
+    assert evidence["mode"] == "hash_bound_official_calendar_cache"
+    source = cache_payload["source"]
+    assert isinstance(source, dict)
+    assert evidence["source_hash"] == source["response_sha256"]

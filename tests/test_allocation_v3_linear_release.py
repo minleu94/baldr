@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import sqlite3
 import json
-from typing import Any
+import os
+import subprocess
+import sys
+from typing import Any, Mapping, Sequence, cast
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -11,7 +14,9 @@ import pytest
 
 from app_module.ml_allocation_inference_service import _parse_artifact
 from ml_module.allocation_out_of_core_training_service import TARGET_FIELDS
+from ml_module.allocation_contracts import PortfolioMLDatasetRow
 from ml_module import allocation_release_loader
+from ml_module.allocation_release_contract import AllocationReleaseManifest
 import ml_module.allocation_v3_linear_release as v3_release_module
 from ml_module.allocation_training_service import (
     CLASSIFICATION_EXPERT_HEADS,
@@ -50,10 +55,173 @@ def test_release_readback_loader_is_neutral_and_fail_closed(
         v3_release_module.load_allocation_release
         is allocation_release_loader.load_allocation_release
     )
-
     monkeypatch.setattr(allocation_release_loader, "_registered_loader", None)
+    monkeypatch.setattr(allocation_release_loader, "_registered_output_type", None)
     with pytest.raises(RuntimeError, match="not registered"):
         allocation_release_loader.load_allocation_release(Path("C:/missing-release"))
+
+
+def test_v3_cli_explicitly_bootstraps_verified_loader_before_help() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "build_ml_allocation_v3_linear_release.py"
+    probe = f"""
+import runpy
+import sys
+from ml_module import allocation_release_loader as loader
+script = {str(script)!r}
+sys.argv = [script, "--help"]
+try:
+    runpy.run_path(script, run_name="__main__")
+except SystemExit as exc:
+    assert exc.code == 0
+from app_module import allocation_release_adapter as adapter
+assert loader._registered_loader is adapter.load_allocation_release
+assert loader._registered_output_type is adapter.LoadedAllocationRelease
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=False,
+        env={**os.environ, "PYTHONUTF8": "1"},
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_verified_release_loader_checks_exact_registered_output_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class InferenceResult:
+        formal_oos_allowed = False
+        production_action_allowed = False
+        production_blend_alpha_bp = 0
+
+        def audit_payload(self) -> Mapping[str, Any]:
+            return {}
+
+    class VerifiedRelease:
+        manifest: AllocationReleaseManifest
+        release_id = "release-test"
+
+        def infer_research_shadow(
+            self,
+            *,
+            rows: Sequence[PortfolioMLDatasetRow],
+            universe_id: str,
+            policy_id: str,
+            policy_hash: str,
+        ) -> InferenceResult:
+            del rows, universe_id, policy_id, policy_hash
+            return InferenceResult()
+
+    class LookalikeRelease(VerifiedRelease):
+        pass
+
+    loaded: dict[str, object] = {"value": VerifiedRelease()}
+
+    def loader(*_args: Any, **_kwargs: Any) -> object:
+        return loaded["value"]
+
+    monkeypatch.setattr(allocation_release_loader, "_registered_loader", None)
+    monkeypatch.setattr(allocation_release_loader, "_registered_output_type", None)
+    with pytest.raises(TypeError, match="output_type must be a class"):
+        allocation_release_loader.register_release_loader(
+            loader,
+            output_type=cast(Any, "not-a-class"),
+        )
+    allocation_release_loader.register_release_loader(
+        loader,
+        output_type=VerifiedRelease,
+    )
+    verified = allocation_release_loader.load_verified_allocation_release(
+        Path("release")
+    )
+    assert type(verified) is VerifiedRelease
+
+    loaded["value"] = LookalikeRelease()
+    with pytest.raises(TypeError, match="unregistered output type"):
+        allocation_release_loader.load_verified_allocation_release(Path("release"))
+
+
+def test_general_release_loader_remains_compatible_without_output_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = object()
+
+    def loader(*_args: Any, **_kwargs: Any) -> object:
+        return result
+
+    monkeypatch.setattr(allocation_release_loader, "_registered_loader", None)
+    monkeypatch.setattr(allocation_release_loader, "_registered_output_type", None)
+    allocation_release_loader.register_release_loader(loader)
+
+    assert allocation_release_loader.load_allocation_release(Path("release")) is result
+    with pytest.raises(RuntimeError, match="output type is not registered"):
+        allocation_release_loader.load_verified_allocation_release(Path("release"))
+
+
+def test_release_loader_registration_cannot_replace_or_downgrade_verified_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class InferenceResult:
+        formal_oos_allowed = False
+        production_action_allowed = False
+        production_blend_alpha_bp = 0
+
+        def audit_payload(self) -> Mapping[str, Any]:
+            return {}
+
+    class VerifiedRelease:
+        manifest: AllocationReleaseManifest
+        release_id = "release-test"
+
+        def infer_research_shadow(
+            self,
+            *,
+            rows: Sequence[PortfolioMLDatasetRow],
+            universe_id: str,
+            policy_id: str,
+            policy_hash: str,
+        ) -> InferenceResult:
+            del rows, universe_id, policy_id, policy_hash
+            return InferenceResult()
+
+    class OtherRelease(VerifiedRelease):
+        pass
+
+    def loader(*_args: Any, **_kwargs: Any) -> object:
+        return VerifiedRelease()
+
+    def other_loader(*_args: Any, **_kwargs: Any) -> object:
+        return VerifiedRelease()
+
+    monkeypatch.setattr(allocation_release_loader, "_registered_loader", None)
+    monkeypatch.setattr(allocation_release_loader, "_registered_output_type", None)
+    allocation_release_loader.register_release_loader(
+        loader,
+        output_type=VerifiedRelease,
+    )
+    assert allocation_release_loader._registered_output_type is VerifiedRelease
+    allocation_release_loader.register_release_loader(loader)
+    allocation_release_loader.register_release_loader(
+        loader,
+        output_type=VerifiedRelease,
+    )
+
+    with pytest.raises(RuntimeError, match="output type is already registered"):
+        allocation_release_loader.register_release_loader(
+            loader,
+            output_type=OtherRelease,
+        )
+    with pytest.raises(RuntimeError, match="already registered"):
+        allocation_release_loader.register_release_loader(
+            other_loader,
+            output_type=VerifiedRelease,
+        )
 
 
 def test_v3_scope_is_separated_and_bounded() -> None:
@@ -567,3 +735,15 @@ def test_v3_input_rejects_missing_or_legacy_feature_contract() -> None:
             (row,),
             {"feature_contract_hash": "sha256:" + "a" * 64},
         )
+
+
+def test_v3_release_reexports_the_shared_legacy_constant_model_objects() -> None:
+    from artifact_contracts.allocation_model_types import (
+        _ConstantProbabilityModel as SharedProbabilityModel,
+        _ConstantRegressionModel as SharedRegressionModel,
+    )
+
+    assert v3_release_module._ConstantProbabilityModel is SharedProbabilityModel
+    assert v3_release_module._ConstantRegressionModel is SharedRegressionModel
+    assert SharedProbabilityModel.__module__ == "ml_module.allocation_v3_linear_release"
+    assert SharedRegressionModel.__module__ == "ml_module.allocation_v3_linear_release"

@@ -9,6 +9,12 @@ from data_module.fundamental_statement_availability_sources import (
     load_statement_availability_overrides_csv,
     load_statement_availability_overrides_csv_files,
 )
+from decision_module.factors.fundamental_adapters import (
+    source_diagnostics_to_factor_diagnostics,
+)
+from decision_module.factors.statement_factor_adapters import (
+    statement_availability_quality,
+)
 from decision_module.factors.factor_dtos import FactorQuality
 
 
@@ -46,7 +52,7 @@ def test_load_statement_availability_overrides_preserves_formal_announcement_con
     assert override.as_of_date == date(2024, 3, 31)
     assert override.announced_date == date(2024, 5, 10)
     assert override.available_date == date(2024, 5, 11)
-    assert override.quality == FactorQuality.OBSERVED
+    assert statement_availability_quality(override) == FactorQuality.OBSERVED
     assert override.evidence_class == "official_announcement"
     assert override.source_hash == f"sha256:{_HASH}"
     assert override.revision == 1
@@ -74,9 +80,35 @@ def test_load_statement_availability_overrides_degrades_retroactive_baseline():
 
     assert override.announced_date is None
     assert override.available_date == date(2026, 6, 17)
-    assert override.quality == FactorQuality.DEGRADED
+    assert statement_availability_quality(override) == FactorQuality.DEGRADED
     assert override.provenance_mode == "retroactive_baseline"
     assert result.diagnostics == ()
+
+
+def test_statement_availability_uses_factor_adapter_for_shared_source_diagnostics():
+    result = load_statement_availability_overrides(
+        [
+            {
+                "stock_code": "2330",
+                "statement_type": "income_statement",
+                "period": "2024-Q1",
+                "as_of_date": "2024-03-31",
+                "announced_date": "",
+                "available_date": "",
+                "source": "manual.retroactive_statement_baseline_mapping",
+                "source_version": "statement-retroactive-baseline-2026-06-17",
+            }
+        ]
+    )
+
+    assert result.overrides == {}
+    assert len(result.diagnostics) == 1
+    diagnostic = result.diagnostics[0]
+    assert diagnostic.code == "fundamental_availability.missing_available_date"
+    projected = source_diagnostics_to_factor_diagnostics(result.diagnostics)
+    assert projected[0].factor_name == "fundamental.availability"
+    assert projected[0].message == diagnostic.message
+    assert diagnostic.stock_code == "2330"
 
 
 def test_load_statement_availability_overrides_rejects_local_first_seen_evidence():

@@ -48,7 +48,7 @@ class _FakeRegimeService:
 
 
 class _FakeMarketBreadthService:
-    def __init__(self, provider: object) -> None:
+    def __init__(self, provider: object, *, cadence=None) -> None:
         self.provider = provider
 
     def build_snapshot(self, as_of_date: date) -> MarketBreadthSummary:
@@ -64,7 +64,7 @@ class _FakeMarketBreadthService:
 
 
 class _FakeSectorRotationService:
-    def __init__(self, provider: object) -> None:
+    def __init__(self, provider: object, *, cadence=None) -> None:
         self.provider = provider
 
     def build_snapshot(self, as_of_date: date) -> SectorRotationSummary:
@@ -79,7 +79,7 @@ class _FakeSectorRotationService:
 
 
 class _FakeRelativeStrengthLiquidityService:
-    def __init__(self, provider: object) -> None:
+    def __init__(self, provider: object, *, cadence=None) -> None:
         self.provider = provider
 
     def build_snapshot(self, as_of_date: date) -> RelativeStrengthLiquiditySummary:
@@ -98,7 +98,7 @@ class _FakeWatchlistService:
 
 
 class _FakeWatchlistTriggerService:
-    def __init__(self, watchlist_provider: object, ranking_provider: object) -> None:
+    def __init__(self, watchlist_provider: object, ranking_provider: object, *, cadence=None) -> None:
         self.watchlist_provider = watchlist_provider
         self.ranking_provider = ranking_provider
 

@@ -14,6 +14,10 @@
 ## 概述
 本文檔描述 baldr 的數據收集架構，包括數據來源、更新流程、配置說明和錯誤處理機制。數據收集是系統的基礎，確保了分析和回測功能的可靠性。系統目前已實現完整的數據收集、處理和備份功能，並支持增量更新、自動修復和數據質量監控。
 
+## 2026-10-03 更新／freshness 消費邊界
+
+目前 Quick／安全更新、唯讀 freshness probe 與隔離 Phase3C Candidate DB 是不同 writer／consumer lane。Status consumer 以資料根、正式／候選 DB 路徑、官方來源期別、台北市場日與 04:30 cutoff 驗證 receipt；跨過 cutoff 時只要求重新 probe，不將舊 `expected_wait` 轉成 current／stale。更新頁分開呈現 `FORMAL_AVAILABLE` 與 `CANDIDATE_AVAILABLE`，不把 candidate count 混進正式筆數。寫入 worker 的取消採合作式安全邊界；TDCC row snapshot 與 checkpoint 原子保存、同 natural key 冪等重試；MOPS 取消只保留完整 raw HTML 作 evidence，不發布半成品候選 CSV。當前操作與限制以[Application Manual](../07_guides/APPLICATION_MANUAL.md)及整合驗收紀錄（開發收據見dev）為準；這段現況補充不改下方歷史流程說明。
+
 ## 數據來源
 
 ### 1. 市場指數數據 (TAIEX)

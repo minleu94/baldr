@@ -8,6 +8,12 @@ import argparse
 import sys
 import re
 
+
+def _optional_env_path(name: str) -> Path | None:
+    value = os.environ.get(name, "").strip()
+    return Path(value) if value else None
+
+
 @dataclass
 class TWStockConfig:
     """台股數據分析核心配置"""
@@ -37,6 +43,70 @@ class TWStockConfig:
     research_run_parquet_dir: Path = field(init=False)  # Research Run 詳細資料目錄
     research_run_staging_dir: Path = field(init=False)  # Research Run 暫存目錄
     use_sqlite: bool = True  # 是否使用 SQLite 儲存
+
+    # 個人儲存候選為 data_root / "personal"，仍須成對明示；不自動配置、建立或遷移。
+    personal_data_root: Path | None = field(
+        default_factory=lambda: _optional_env_path("PERSONAL_DATA_ROOT"), kw_only=True,
+    )
+    personal_watchlist_source: Path | None = field(
+        default_factory=lambda: _optional_env_path("PERSONAL_WATCHLIST_SOURCE"), kw_only=True,
+    )
+    # notes 選擇獨立於 watchlist；root 與模式須成對明示，沒有自動 migration。
+    personal_journal_root: Path | None = field(
+        default_factory=lambda: _optional_env_path("PERSONAL_JOURNAL_ROOT"), kw_only=True,
+    )
+    personal_journal_mode: str | None = field(
+        default_factory=lambda: os.environ.get("PERSONAL_JOURNAL_MODE", "").strip() or None,
+        kw_only=True,
+    )
+    # Portfolio／Review 的獨立 opt-in，不依 watchlist activation 或 notes 切換。
+    personal_store_root: Path | None = field(
+        default_factory=lambda: _optional_env_path("PERSONAL_STORE_ROOT"), kw_only=True,
+    )
+    personal_store_mode: str | None = field(
+        default_factory=lambda: os.environ.get("PERSONAL_STORE_MODE", "").strip() or None,
+        kw_only=True,
+    )
+
+    # UI 與每日個人推論共用已保存 policy；指定路徑不會建立或啟用模型。
+    personal_model_policy_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PERSONAL_MODEL_POLICY_PATH"),
+        kw_only=True,
+    )
+
+    # PIT sector membership 是 opt-in 的唯讀輸入；未設定時不做目錄掃描。
+    pit_sector_membership_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_PATH"),
+        kw_only=True,
+    )
+    pit_sector_membership_raw_root: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_RAW_ROOT"),
+        kw_only=True,
+    )
+    pit_sector_membership_clock_manifest_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_CLOCK_MANIFEST_PATH"),
+        kw_only=True,
+    )
+    pit_sector_membership_universe_symbols_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_UNIVERSE_SYMBOLS_PATH"),
+        kw_only=True,
+    )
+    pit_sector_membership_universe_identity_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_UNIVERSE_IDENTITY_PATH"),
+        kw_only=True,
+    )
+    pit_sector_membership_taxonomy_identity_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("PIT_SECTOR_MEMBERSHIP_TAXONOMY_IDENTITY_PATH"),
+        kw_only=True,
+    )
+    pit_membership_expected_classification_version: str | None = field(
+        default_factory=lambda: os.environ.get("PIT_MEMBERSHIP_EXPECTED_CLASSIFICATION_VERSION") or None,
+        kw_only=True,
+    )
+    pit_market_scope: str | None = field(
+        default_factory=lambda: os.environ.get("PIT_MARKET_SCOPE") or None,
+        kw_only=True,
+    )
 
     # 技術指標 process-pool（預設關閉；只有受控 caller 明確開啟才會使用）
     # worker 僅回傳計算結果，CSV／SQLite 一律由父程序單一寫入者處理。
@@ -68,8 +138,18 @@ class TWStockConfig:
     
     def __post_init__(self):
         """初始化衍生屬性"""
+        if self.personal_model_policy_path is not None:
+            requested_policy = Path(self.personal_model_policy_path).expanduser()
+            if not requested_policy.is_absolute():
+                raise ValueError("personal_model_policy_path 必須是明示絕對路徑")
+            self.personal_model_policy_path = requested_policy
         # 處理路徑覆蓋邏輯
         self._resolve_paths()
+        self._validate_personal_storage_selection()
+        from app_module.personal_journal_paths import resolve_journal_storage_selection
+        notes = resolve_journal_storage_selection(self)
+        if notes.paths is not None:
+            self.personal_journal_root = notes.paths.personal_paths.personal_root
         
         # 設定數據目錄
         self.data_dir = self.data_root
@@ -80,6 +160,10 @@ class TWStockConfig:
         self.log_dir = self.data_dir / 'logs'
         self.sqlite_dir = self.data_dir / 'sqlite'
         self.db_file = self.sqlite_dir / 'twstock.db'
+        from app_module.personal_store_selection import resolve_personal_store_selection
+        stores = resolve_personal_store_selection(self)
+        if stores.paths is not None:
+            self.personal_store_root = stores.paths.personal_root
         research_run_dir = self.output_root / 'research_runs'
         self.research_run_db_file = research_run_dir / 'research_runs.db'
         self.research_run_parquet_dir = research_run_dir / 'parquet'
@@ -109,6 +193,25 @@ class TWStockConfig:
         self.logger.info(f"輸出根目錄: {self.output_root}")
         self.logger.info(f"配置檔案: {self.profile}")
     
+    def _validate_personal_storage_selection(self) -> None:
+        if self.personal_data_root is None and self.personal_watchlist_source is None:
+            return
+        if self.personal_data_root is None or self.personal_watchlist_source is None:
+            raise ValueError("personal_storage_selection_incomplete")
+        from app_module.personal_data_paths import resolve_personal_data_paths
+        paths = resolve_personal_data_paths(
+            self.data_root, personal_root=self.personal_data_root,
+            legacy_output_root=self.output_root, environ={},
+        )
+        package_root = Path(__file__).resolve().parents[1]
+        if paths.personal_root == package_root or paths.personal_root.is_relative_to(package_root) or package_root.is_relative_to(paths.personal_root):
+            raise ValueError("personal_root_overlaps_application_package")
+        self.personal_data_root = paths.personal_root
+        source = Path(self.personal_watchlist_source).expanduser()
+        if not source.is_absolute():
+            raise ValueError("personal_watchlist_source_absolute_required")
+        self.personal_watchlist_source = source
+
     def _resolve_paths(self):
         """解析路徑覆蓋邏輯"""
         # 確保路徑是Path對象
@@ -337,6 +440,14 @@ class TWStockConfig:
         parser = argparse.ArgumentParser(description='baldr 配置')
         parser.add_argument("--data-root", type=str, help="覆蓋數據根目錄路徑")
         parser.add_argument("--output-root", type=str, help="覆蓋輸出根目錄路徑")
+        parser.add_argument("--personal-data-root", type=Path, help="個人儲存候選root；須與來源成對，不自動啟用")
+        parser.add_argument("--personal-watchlist-source", type=Path, help="明示既有JSON／SQLite來源；只讀保留")
+        parser.add_argument("--personal-journal-root", type=Path, help="明示 notes 個人root；須搭配模式")
+        parser.add_argument("--personal-journal-mode", choices=["personal", "legacy_read_only"],
+                            help="notes 個人寫入或固定舊來源唯讀；不搬移資料")
+        parser.add_argument("--personal-store-root", type=Path, help="明示 Portfolio／Review 私人root；須搭配模式")
+        parser.add_argument("--personal-store-mode", choices=["personal", "legacy_read_only"],
+                            help="私人 store 或固定舊來源唯讀；不搬移、不啟用 watchlist")
         parser.add_argument("--profile", type=str, default="prod", 
                            choices=["prod", "staging", "test"], help="配置檔案")
         parser.add_argument("--dry-run", action="store_true", help="乾運行模式，不實際寫入檔案")
@@ -349,6 +460,18 @@ class TWStockConfig:
             config_kwargs['data_root'] = Path(parsed_args.data_root)
         if parsed_args.output_root:
             config_kwargs['output_root'] = Path(parsed_args.output_root)
+        if parsed_args.personal_data_root is not None:
+            config_kwargs['personal_data_root'] = parsed_args.personal_data_root
+        if parsed_args.personal_watchlist_source is not None:
+            config_kwargs['personal_watchlist_source'] = parsed_args.personal_watchlist_source
+        if parsed_args.personal_journal_root is not None:
+            config_kwargs['personal_journal_root'] = parsed_args.personal_journal_root
+        if parsed_args.personal_journal_mode is not None:
+            config_kwargs['personal_journal_mode'] = parsed_args.personal_journal_mode
+        if parsed_args.personal_store_root is not None:
+            config_kwargs['personal_store_root'] = parsed_args.personal_store_root
+        if parsed_args.personal_store_mode is not None:
+            config_kwargs['personal_store_mode'] = parsed_args.personal_store_mode
         if parsed_args.profile:
             config_kwargs['profile'] = parsed_args.profile
             

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 
@@ -21,7 +22,12 @@ from app_module.pre_v2_readiness_service import (
     STATUS_READY,
     STATUS_WAITING_FOR_TIME,
 )
-from app_module.machine_status_classification import MACHINE_STATUS_HUMAN_REVIEW
+from app_module.machine_status_classification import (
+    MACHINE_STATUS_HUMAN_REVIEW,
+    MACHINE_STATUS_MACHINE_DEGRADED,
+    MACHINE_STATUS_MACHINE_CANDIDATE,
+    MACHINE_STATUS_UNKNOWN,
+)
 from app_module.workbench_dtos import (
     WORKBENCH_LEGACY_DRILLDOWN_TARGETS,
     WorkbenchAccessBoundary,
@@ -245,8 +251,15 @@ def test_composer_builds_today_review_items_from_watchlist_portfolio_and_risk() 
     payload = dashboard.to_dict()
     review_sources = {item["source"] for item in payload["review_items"]}
 
-    assert {"watchlist_trigger", "portfolio_alert", "risk_prompt"}.issubset(review_sources)
-    assert any(item["drilldown_target"] == "evidence_mode" for item in payload["review_items"])
+    assert {"watchlist_trigger", "portfolio_alert"}.issubset(review_sources)
+    assert "risk_prompt" not in review_sources
+    watchlist_review = next(item for item in dashboard.review_items if item.source == "watchlist_trigger")
+    assert watchlist_review.drilldown_target == "watchlist"
+    assert "2603" in watchlist_review.summary
+    assert "查看選中個股研究報告" in watchlist_review.summary
+    watchlist_action = next(item for item in dashboard.action_items if item.item_id == "watchlist_trigger_manual_review")
+    assert watchlist_action.summary == watchlist_review.summary
+    assert watchlist_action.drilldown_target == "watchlist"
 
 
 def test_composer_builds_background_evidence_feed_from_existing_payloads_only() -> None:
@@ -303,6 +316,184 @@ def test_composer_builds_background_evidence_feed_from_existing_payloads_only() 
     assert "共同觀測 2 天" in feed["scheduled_morning_pipeline"].summary
     assert "source=scheduled_latest_status" in feed["scheduled_morning_pipeline"].summary
     assert "simulated_scheduler" in " ".join(feed["replay_summary_diagnostics"].diagnostics)
+
+
+def test_composer_routes_market_prompts_to_background_batches_and_keeps_unknown_diagnostics() -> None:
+    market_prompts = tuple(
+        DecisionDeskRiskPrompt(
+            category="liquidity",
+            severity="warning",
+            source="relative_strength_liquidity",
+            code=f"L{i:04d}",
+            title="低流動性",
+            reason=f"L{i:04d} 被市場篩選標記。",
+            action_hint="研究或下單前檢查估算平均每日成交金額。",
+        )
+        for i in range(1121)
+    ) + tuple(
+        DecisionDeskRiskPrompt(
+            category="weakness",
+            severity="info",
+            source="relative_strength_liquidity",
+            code=f"W{i:04d}",
+            title="相對弱勢",
+            reason=f"W{i:04d} 位於相對弱勢清單。",
+            action_hint="先確認反轉條件。",
+        )
+        for i in range(2)
+    ) + (
+        DecisionDeskRiskPrompt(
+            category="new_unknown_lane",
+            severity="warning",
+            source="future_source",
+            code="U001",
+            title="未知提示",
+            reason="未知來源契約仍需診斷。",
+            action_hint="先確認來源契約。",
+        ),
+        DecisionDeskRiskPrompt(
+            category="portfolio_alert",
+            severity="critical",
+            source="portfolio_alerts",
+            code="2330",
+            title="持倉警示",
+            reason="2330 condition=warning。",
+            action_hint="檢查持倉風險。",
+        ),
+    )
+    snapshot = replace(
+        _decision_snapshot(),
+        risk_prompts=DecisionDeskRiskPromptSummary(
+            as_of_date=date(2026, 7, 6),
+            quality=DecisionDeskQuality.DEGRADED,
+            warnings=(),
+            prompts=market_prompts,
+        ),
+    )
+
+    dashboard = WorkbenchReadOnlyComposer().compose(
+        decision_snapshot=snapshot,
+        readiness_report=PreV2ReadinessReport(
+            generated_at="2026-07-06T12:00:00Z",
+            overall_status=STATUS_READY,
+            production_scheduler_allowed=False,
+            items=(),
+            limitations=(),
+        ),
+    )
+
+    feed = {item.item_id: item for item in dashboard.background_evidence_feed}
+    assert len(dashboard.review_items) == 2
+    assert {item.source for item in dashboard.review_items} == {"watchlist_trigger", "portfolio_alert"}
+    assert feed["risk_prompt_liquidity_batch"].status_classification == MACHINE_STATUS_MACHINE_DEGRADED
+    assert "1121 筆" in feed["risk_prompt_liquidity_batch"].summary
+    assert feed["risk_prompt_liquidity_batch"].drilldown_target == "daily_decision"
+    assert feed["risk_prompt_weakness_batch"].status_classification == MACHINE_STATUS_MACHINE_CANDIDATE
+    assert feed["risk_prompt_unclassified"].status_classification == MACHINE_STATUS_UNKNOWN
+    assert "category=new_unknown_lane" in feed["risk_prompt_unclassified"].diagnostics[0]
+    assert "未知來源契約" in feed["risk_prompt_unclassified"].diagnostics[0]
+    assert any(item.item_id == "risk_prompt_unclassified" for item in dashboard.action_items)
+    assert not any(item.source_type == "risk_prompt" and item.code == "L0000" for item in dashboard.action_items)
+
+
+def test_composer_keeps_uncovered_watchlist_codes_when_prompt_is_partial() -> None:
+    snapshot = replace(
+        _decision_snapshot(),
+        watchlist_triggers=replace(
+            _decision_snapshot().watchlist_triggers,
+            trigger_count=2,
+            triggered_codes=("2603", "2303"),
+        ),
+        risk_prompts=replace(
+            _decision_snapshot().risk_prompts,
+            prompts=(
+                DecisionDeskRiskPrompt(
+                    category="watchlist_risk",
+                    severity="warning",
+                    source="watchlist_triggers",
+                    code="2603",
+                    title="觀察清單風險觸發",
+                    reason="2603 觸發 Watchlist risk_alert。",
+                    action_hint="查看近期量價變化。",
+                ),
+                _decision_snapshot().risk_prompts.prompts[0],
+            ),
+        ),
+    )
+
+    dashboard = WorkbenchReadOnlyComposer().compose(
+        decision_snapshot=snapshot,
+        readiness_report=PreV2ReadinessReport(
+            generated_at="2026-07-06T12:00:00Z",
+            overall_status=STATUS_READY,
+            production_scheduler_allowed=False,
+            items=(),
+            limitations=(),
+        ),
+    )
+
+    remaining_review = next(
+        item for item in dashboard.review_items if item.item_id == "watchlist_trigger_remaining"
+    )
+    remaining_action = next(
+        item
+        for item in dashboard.action_items
+        if item.item_id == "watchlist_trigger_remaining_manual_review"
+    )
+    assert remaining_review.code == "2303"
+    assert "1 筆" in remaining_review.summary
+    assert remaining_action.code == "2303"
+    assert remaining_action.summary == remaining_review.summary
+    assert "2303：" in remaining_review.summary
+    assert "2603：" not in remaining_review.summary
+    assert remaining_action.drilldown_target == remaining_review.drilldown_target == "watchlist"
+    assert "risk_prompt_coverage_partial" in remaining_review.diagnostics
+
+
+def test_composer_keeps_known_market_and_fundamental_prompts_visible() -> None:
+    snapshot = replace(
+        _decision_snapshot(),
+        risk_prompts=replace(
+            _decision_snapshot().risk_prompts,
+            prompts=(
+                DecisionDeskRiskPrompt(
+                    category="market_context",
+                    severity="warning",
+                    source="market_regime",
+                    code=None,
+                    title="市場風險偏高",
+                    reason="Market Regime 顯示 risk-off。",
+                    action_hint="先檢查大盤與產業是否同步支持。",
+                ),
+                DecisionDeskRiskPrompt(
+                    category="fundamental_diagnostic",
+                    severity="warning",
+                    source="fundamental",
+                    code="2330",
+                    title="基本面異常提示",
+                    reason="2330: 公告資料需複核。",
+                    action_hint="檢查公告日與資料品質。",
+                ),
+            ),
+        ),
+    )
+
+    dashboard = WorkbenchReadOnlyComposer().compose(
+        decision_snapshot=snapshot,
+        readiness_report=PreV2ReadinessReport(
+            generated_at="2026-07-06T12:00:00Z",
+            overall_status=STATUS_READY,
+            production_scheduler_allowed=False,
+            items=(),
+            limitations=(),
+        ),
+    )
+
+    known_review = [item for item in dashboard.review_items if item.source == "risk_prompt"]
+    known_action = [item for item in dashboard.action_items if item.source_type == "risk_prompt"]
+    assert {item.title for item in known_review} == {"市場風險偏高", "基本面異常提示"}
+    assert {item.status_classification for item in known_action} == {MACHINE_STATUS_HUMAN_REVIEW}
+    assert not any(item.item_id == "risk_prompt_unclassified" for item in dashboard.action_items)
 
 
 def test_composer_surfaces_manual_recommendation_observation_without_marking_scheduled_passed() -> None:
@@ -434,20 +625,18 @@ def test_composer_sorts_and_groups_action_items_for_manual_queue_scan() -> None:
     payload_items = dashboard.to_dict()["action_items"]
 
     assert [item.item_id for item in items[:2]] == [
-        "portfolio_alert_manual_review",
-        "risk_prompt_manual_review_1",
+        "portfolio_alert_manual_review_1",
+        "watchlist_trigger_manual_review",
     ]
-    assert [item.severity for item in items[:2]] == ["warning", "warning"]
+    assert [item.severity for item in items[:2]] == ["warning", "info"]
     assert [item.queue_group for item in items] == [
         "portfolio_review",
-        "daily_review",
         "daily_review",
         "evidence_gate",
         "evidence_gate",
     ]
     assert [item.source_label for item in items] == [
         "持倉警示",
-        "風險提示",
         "觀察清單觸發",
         "Pre-V2 準備度",
         "Pre-V2 準備度",
@@ -498,7 +687,7 @@ def test_composer_builds_read_only_operating_loop_steps_for_phase2c() -> None:
         "blocked",
     ]
     assert steps[0].source_trace == "WorkbenchDashboardDTO.review_items"
-    assert "portfolio_alert_manual_review" in steps[1].linked_item_ids
+    assert "portfolio_alert_manual_review_1" in steps[1].linked_item_ids
     assert steps[2].source_trace == "PreV2ReadinessReport.items.weekly_history"
     assert steps[3].source_trace == "PreV2ReadinessReport.items.multi_day_dry_run"
     assert steps[4].source_trace == "WorkbenchDashboardDTO.daily_checklist.manual_review_note"
@@ -601,3 +790,42 @@ def test_workbench_payload_does_not_present_buy_sell_recommendations() -> None:
     assert "買進" not in rendered
     assert "賣出" not in rendered
     assert "不是交易建議" in rendered
+
+
+def test_composer_surfaces_daily_recommendation_learning_receipt_without_promoting_it_to_formal_advice() -> None:
+    dashboard = WorkbenchReadOnlyComposer().compose(
+        decision_snapshot=_decision_snapshot(),
+        readiness_report=_readiness_report(),
+        recommendation_learning_status={
+            "status": "completed",
+            "decision": "retain_current",
+            "decision_reason": "natural_forward_evidence_insufficient",
+            "candidate_id": "candidate-20260912",
+            "training_row_count": 96,
+            "calibration_sample_count": 20,
+            "natural_matured_sample_count": 0,
+            "calibration_gap_bp": 320,
+            "next_step": "等待新的成熟自然 forward outcomes。",
+            "decision_receipt": {
+                "pointer_version": 4,
+                "old_brier_bp": 2100,
+                "new_brier_bp": 1900,
+                "brier_improvement_bp": 200,
+                "calibration_gap_bp": 320,
+                "candidate_id": "candidate-20260912",
+            },
+        },
+    )
+
+    feed = {item.item_id: item for item in dashboard.background_evidence_feed}
+    evidence = {item.item_id: item for item in dashboard.evidence_summary}
+    learning_feed = feed["recommendation_learning"]
+    assert learning_feed.status == "waiting_for_time"
+    assert "matured_samples=0" in learning_feed.summary
+    assert "old_brier=2100 → new_brier=1900" in learning_feed.summary
+    assert "decision=retain_current" in learning_feed.summary
+    assert "current_version=candidate-20260912" in learning_feed.summary
+    assert evidence["recommendation_learning"].status == "waiting_for_time"
+    step = next(item for item in dashboard.operating_loop_steps if item.step_id == "daily_recommendation_learning")
+    assert step.linked_item_ids == ("recommendation_learning",)
+    assert "等待新的成熟" in step.guidance

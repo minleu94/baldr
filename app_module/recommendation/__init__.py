@@ -1,0 +1,41 @@
+"""推薦 application contracts。"""
+
+from .contracts import (
+    EXECUTION_SCHEMA_REVISION,
+    ExecutionEvent,
+    ExecutionStatus,
+    IndexStatus,
+    MLAvailability,
+    MLAvailabilityReason,
+    MLAvailabilityStatus,
+    MLReceiptBinding,
+    QualityReport,
+    QualityStatus,
+    RecommendationExecution,
+    ReferenceKind,
+    Request,
+    SaveReceipt,
+    VersionReference,
+    Context,
+    schema_version,
+)
+
+__all__ = (
+    "EXECUTION_SCHEMA_REVISION",
+    "Context",
+    "ExecutionEvent",
+    "ExecutionStatus",
+    "IndexStatus",
+    "MLAvailability",
+    "MLAvailabilityReason",
+    "MLAvailabilityStatus",
+    "MLReceiptBinding",
+    "QualityReport",
+    "QualityStatus",
+    "RecommendationExecution",
+    "ReferenceKind",
+    "Request",
+    "SaveReceipt",
+    "VersionReference",
+    "schema_version",
+)

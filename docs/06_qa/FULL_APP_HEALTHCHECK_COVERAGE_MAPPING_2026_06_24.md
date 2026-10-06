@@ -1,5 +1,127 @@
 # Full App Healthcheck 逐列 Coverage Mapping 2026-06-24
 
+## 2026-10-06 machine refresh
+
+R01 新增唯一 test 檔登錄為 service-oracle-research-backtest：原 Registry writer 合成保存→lookup/service same-bytes bounded reader→新程序、exact identity/DataFrame/source SHA/mtime oracle；所有 writer僅tmp fixture，無正式資料／Task／Native／fit。超容量／aggregate／取消／替換／消失／marked sidecar與lineage屬讀取服務驗證，不是direct UI bridge；舊1283分類、direct12、support/runner API不改。沿用64/256MiB caller budget，不降低20/200GiB reserve。原worker101 focused與73 adjacent/1skip按各自scope核raw，不累加為全App。中央入冊與 final union收據另存output/qa；歷史I156／P2節保留。
+
+Current filesystem Python files: `1284`
+Current registry entries: `1284`
+Current collected test cases: not collected
+
+| Category | Count |
+|---|---:|
+| `general-unit-keep-in-pytest` | 169 |
+| `governance-doc-tooling` | 190 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 192 |
+| `service-oracle-portfolio-decision-runtime` | 155 |
+| `service-oracle-recommendation` | 187 |
+| `service-oracle-research-backtest` | 134 |
+| `slow-e2e-or-environment` | 11 |
+| `ui-healthcheck-candidate-bridge` | 97 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 91 |
+
+
+## 2026-10-06 P2具名測試目前對照
+
+P2具名增量：只新增 `tests/test_baldr_personal_paper_producers.py` 一項 `service-oracle-portfolio-decision-runtime`；原1282個分類值／12 direct橋接／support與runner API保持。新檔採原P1填單→daily state/status→benchmark→B09新程序reader合成oracle；fixture明示tmp roots，無正式資料／Task／Native／fit。市場main／sidecars／hardlink／junction、create-only staging及readonlylegacy負例是oracle證據，不是direct UI bridge。
+
+原I156凍結156＋P1具名1的收據不改，P2另列。P2原108 immutable與R1 delta26收據已核；中央R1關鍵18 pass及原hardlink拒絕，未重108或穩定UI union。metadata最後結果見 `output/qa/p2_inventory_final_20261006.json`，原13治理JUnit見 `output/qa/p2_governance_final_20261006.xml`；分類不等於全部runtime已過。ML六項仍等待各M包有限工程修補。
+
+Current filesystem Python files: `1283`
+Current registry entries: `1283`
+Current collected test cases: 未執行
+
+| 分類 | 數量 |
+|---|---:|
+| `general-unit-keep-in-pytest` | 169 |
+| `governance-doc-tooling` | 190 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 192 |
+| `service-oracle-portfolio-decision-runtime` | 155 |
+| `service-oracle-recommendation` | 187 |
+| `service-oracle-research-backtest` | 133 |
+| `slow-e2e-or-environment` | 11 |
+| `ui-healthcheck-candidate-bridge` | 97 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 91 |
+
+## 2026-10-06 I156完整分類歷史對照
+
+I156 一次完整補分類：凍結原156項（G0 8／G1 47／G2 33／G3 19／G4 49），另單列已採 P1 的1項新增測試；合計157個 exact paths。基準 source pins 以 ae5b080150043e71383952e4a3209d9d04b330e7／原 e185 scope 對照，source_id 的批准提交屬組外。每項依完整原碼、imports／fixture／真 assert／入口／讀寫副作用及隔離證據分類，沒有依檔名或僅 AST 代判。
+
+原1125個分類值、12條 direct bridge 精確集合、support API／runner／原13治理 assertions 保持。兩個 support helper 只補 general-unit metadata、依原規則仍 not-collected，沒有擴 PYTEST_SUPPORT_FILES；UI candidate／service oracle 不等於 direct runner executed coverage。
+
+G3 F4 release 的真 MainWindow 證據保留，但833–837及905–919固定 ROOT QA 與共用 receipt/failure 可覆寫，中央裁決 write-risk-dry-run-required；G4三組 env screenshot writer／repo-output probe 同樣分列寫入風險。G4尾15協作原欄位錯位未採，Sol按源碼修正並通過 allowed category 檢查。Windows Native／cmd／lock、child env、外部 freshness readonly 等條件只記錄未知，沒有新豁免、正式Task/DB/模型資格。
+
+收據：`output/qa/i156_owner_acceptance_20261006.json` 保存157個來源 pins、每項分類理由、五份完整 evidence SHA與中央裁決；最後一次 metadata audit 使用 skip-pytest-collection，原13治理測試分開核對。此分類沒有執行凍結156或P1新測試，沒有全庫 pytest collection。真實結果以 `output/qa/i156_inventory_final_20261006.json` 及 `output/qa/i156_governance_final_20261006.xml` 為準。ML boundary六既有違例仍 FAIL；9Stage／24UX／七有限closed與性能例外不變。
+
+Current filesystem Python files: `1282`
+Current registry entries: `1282`
+Current collected test cases: 未執行
+
+| 分類 | 數量 |
+|---|---:|
+| `general-unit-keep-in-pytest` | 169 |
+| `governance-doc-tooling` | 190 |
+| `healthcheck-runner-owned` | 29 |
+| `legacy-or-low-priority` | 3 |
+| `manual-only` | 14 |
+| `service-oracle-data-market` | 192 |
+| `service-oracle-portfolio-decision-runtime` | 154 |
+| `service-oracle-recommendation` | 187 |
+| `service-oracle-research-backtest` | 133 |
+| `slow-e2e-or-environment` | 11 |
+| `ui-healthcheck-candidate-bridge` | 97 |
+| `ui-healthcheck-direct-bridge` | 12 |
+| `write-risk-dry-run-required` | 91 |
+
+結構核對：filesystem1282／inventory1125→1282，原missing156＋已採P1新增1→0；stale0，direct12。Documentation counts 依同份 mapping 產生，最後 audit 結果另附原始收據。
+
+| exact group | 凍結數量 | 新增數量 |
+|---|---:|---:|
+| G0-owner-support-governance | 8 | 0 |
+| G1-ml-observed-restated | 47 | 0 |
+| G2-sources-pit-scheduled | 33 | 0 |
+| G3-personal-cow-portfolio | 19 | 0 |
+| G4-ui-stock-history-research | 49 | 0 |
+| 已採 P1 具名 supplement | 0 | 1 |
+
+157項 exact paths／分類理由與完整 source pins 以 [目前 machine refresh](TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md#2026-10-06-machine-refresh) 及中央原始收據為準。下方 I20及第二波是當時範圍，不覆蓋本次最新清冊。
+
+
+## 2026-10-06 I20 有限清冊對照
+
+固定 base `917f6af0387a4d9944b261eddbc0c46e84cf34b2` 的有限 metadata 登錄：filesystem `1281` 不變，inventory `1105→1125`，missing `176→156`，stale `0`、documentation count drift `0`；skip-pytest-collection audit overall **failed**。獨立 worktree 另保留基準已有兩筆 ignored LUNA raw 檔的歷史 link 缺件。原 direct bridge 精確 12 paths 不變；既有完整 stable UI union 沿用，本包未重跑、不增加 UI／Native／Formal／training 資格。source_id 三檔仍等待直接批准。
+
+本包僅核 imports／fixtures／assert／實際入口與副作用後分類，未執行那20個測試；candidate/oracle 不是 executed coverage。原 missing176只消去這20，剩156仍需中央另鎖 scope，不擅自批量分類、刪測試或 xfail。精確逐檔分類、source pin 與理由見 [I20 machine refresh](TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md#2026-10-06-i20-machine-refresh-歷史)。
+
+| 用途 | 本包 exact subset | 既有分類／delta | 執行邊界 |
+|---|---|---|---|
+| 市場入口名單聯動 | `test_daily_market_cohort_main_bridge.py` | UI candidate +1 | 真 QWidget/harness＋隔離 fixture；不進 direct runner。 |
+| 研究 cohort／feature／method／收藏／capability／篩選與consumer | `test_daily_market_cohort_projection.py`、`test_daily_market_feature_snapshot.py`、`test_daily_market_method_contract.py`、`test_daily_market_research_bookmark.py`、`test_daily_market_research_capabilities.py`、`test_daily_market_research_screener.py`、`test_daily_market_snapshot_consumer.py` | recommendation oracle +7 | 合成 DTO／tmp source及persistence；未知與 research-only 原界線保留。 |
+| 市場快照出版／repository與明示基準來源 | `test_daily_market_snapshot_producer.py`、`test_daily_market_snapshot_repository.py`、`test_rule_research_benchmark_adapter.py` | data/market oracle +3 | 隔離資料 integrity/pin/readback，synthetic subprocess 不是正式來源接受。 |
+| 研究基準整合／daily owner／公平比較／forward／label | `test_rule_research_benchmark_integration.py`、`test_rule_research_daily_owner.py`、`test_rule_research_fair_comparison.py`、`test_rule_research_forward_isolated.py`、`test_rule_research_forward_outcome.py`、`test_rule_research_forward_outcome_reader.py`、`test_rule_research_label_readiness.py` | research/backtest oracle +7 | 合成 sealed receipts／Decimal或整數bp／明示policy；無Task、真train或Formal。 |
+| import boundary與公平比較CLI | `test_rule_research_fair_boundary.py`、`test_rule_research_fair_comparison_cli.py` | governance tooling +2 | tmp source與synthetic config；no fit／no registry writer。 |
+
+上述 basename 均在 `tests/`；全20 exact path 以 classification 表／TEST_INVENTORY 為準。本 lane raw manifest 保存 delta、分類理由、base/head blobs與hash，`output/qa/i20_inventory.json` 是metadata收據，collection skipped。
+
+
+## 2026-10-06 中央 caller 增量覆蓋
+
+中央已採 B07/09/11/13 與 B14 純 control port，並接 Main 的 selected route+personal_paths、B06 注入、Journey exact 路徑與圖表 background bounded 原紀錄 reader。central personal/chart 同版19案例有 JUnit；B07中央 caller 5案例有 JUnit，其 lane 舊154/54/11僅報告而無 raw pytest 收據。新增七檔維持 candidate/oracle/unit 分類，沒有新 direct bridge。B14 純 port 不代表正式模型控制，B13 ready 僅 synthetic 工程；完整 maturity/drift composition 仍待 lane 交付。標準 UI 推薦確認 source_id 三檔待可信批准，unknown 舊紀錄不畫；完整 mandatory union 尚待最後穩定樹。原 stage/UX、七項有限 closed 及性能例外保持。
+
+## 2026-10-06 第二波增量覆蓋補充
+
+本段是已有測試的對照，不是新bridge或全App pass。首頁四用途／保存與當下身份、Update/Runtime unknown日期與收合、候選池exact保存/CAS、圖表原紀錄marker/clock/account拒絕、三帳估值與注入guard由本輪B03/04/05/06 candidate tests覆蓋；Native/readability真人仍manual-only。B10私人覆盤/weekly/history/source分離及notes create-only是synthetic service oracle，正式資料寫入/migration仍write-risk-manual；B12隔離calendar/terminal/subprocess/長路徑/reserve是oracle，正式Task/account/ACL未啟用。
+
+新14個具名tests分類只補inventory，7candidate/4serviceoracle/3generalunit，directbridge原12不變。B05main來源reader／B09完整composition與新四旅程union尚未完成，不能只因view/reader各自focused通過而標coverage閉環。完整執行結果與原stage/UX界線見第二波整合收據（開發收據見dev）。
+
 > 來源母檔：[`FULL_APP_HEALTHCHECK_2026_06_16.md`](FULL_APP_HEALTHCHECK_2026_06_16.md)。
 > 目的：把人工 healthcheck 每一列對照到目前非破壞式 super healthcheck runner、direct bridge、candidate bridge、service oracle evidence 或 manual-only 狀態。
 
@@ -259,3 +381,28 @@
 3. `write-risk-manual` 項目只能走 tmp path / mock / explicit dry-run，且不得自動 confirm。
 4. 對 `manual-only` 且涉及畫面可讀性的項目，下一步應是受控 D-2 / D-3 設計，而不是直接接入 quick/full runner。
 5. `FULL_APP_HEALTHCHECK_2026_06_16.md` 的 pass/fail 狀態仍以人工重驗為準；本文件只描述目前自動化與證據覆蓋程度。
+
+
+2026-10-06 B14 composition已採：test_baldr_b14_shadow_evidence_composition 為portfolio/decision/runtime oracle，53案例raw/JUnit與兩路原報告／synthetic控制收據核對，不重跑原port47。父層明示先驗已准固定樹：四用途增量→Workbench→update validator→full roots mypy；source_id三檔仍blocked，後續若批准僅重受影響子集。176未登錄是其他工程分類缺口，並非全倉豁免；具名有限後續scope交父層裁定。
+
+
+B15已准樹c9d57fc7工程checkpoint：四用途增量64與mandatory85／validator25+4skip／fullmypy839同版通過，無新增directbridge、無全App或Native資格。原source_id缺口仍blocked，8boundary/176未登錄/私人Paperproducerrouting是具名工程待辦，並非自動排除；完整scope見BALDR移交（開發收據見dev）。
+
+
+## 2026-10-06 A01/A02/A03 中央接線分類
+
+- `tests/test_baldr_a01_bbands_upper.py`：`service-oracle-data-market`。
+- `tests/test_baldr_a03_personal_model_daily.py`：`write-risk-dry-run-required`。
+- `tests/test_baldr_a02_h20_gross_model.py`：`service-oracle-recommendation`。
+
+A01 是隔離 SQLite→版別 snapshot→個股讀回／capture oracle；A02 是 pinned H20 gross 契約與受控 loader oracle；A03 含固定 repo QA 收據、合成 child process 與排程 CLI，需明示隔離／dry-run 路由。三者均不新增 direct bridge、不豁免 pytest，也不表示 Native、正式 Task、自然成熟或全 App 通過。中央原始收據見 `output/qa/baldr_real_model_intake_20261006/`；分類不替代 runtime 驗證。
+
+
+2026-10-06/07 tests/test_personal_h20_activation.py：service-oracle-recommendation；隔離Temp的配置preview/CAS/revision conflict/alias/publication fault與disabled rollback，未操作Task或真model。無direct新增；首輪sandbox ancestor讀回紅收據保留，同guard允許環境重驗。來源/配置單元驗證不代表產品consumer或每日閉環已完成。
+
+
+2026-10-06/07 中央 H20 Task hook：tests/test_personal_h20_daily_hook.py 登錄 service-oracle-recommendation；原 current-observed CLI 增 opt-in/pending-entry 接線回歸。68 focused passed/3.55s，無 direct bridge 新增，未呼真 fit/model/Task。新 hook port 測試與原 capture tests 不代替 leaf 公開 store、產品 UI 或正式啟用驗證。
+
+### 2026-10-07 Taipei 個人 H20 consumer 整合
+
+個人模型根明示 FA_Data/personal/recommendation_h20；精確配置CAS與原預測public reader、中央全cohort daily manifest pins／product reference、個股摘要背景readback已接線。三leaf current-observed tests分類service-oracle-recommendation，product evidence test為UI candidate；inventory1293／recommendation193／UIcandidate98／direct12。分類不授runtime credit。詳細操作／限制以 Manual9.9.1i與BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md為準。真clock跨日不可回填，原global資格與七有限closed／性能例外不變，pending自然結果不是工程gate。

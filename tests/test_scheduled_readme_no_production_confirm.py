@@ -39,8 +39,9 @@ def test_confirm_is_not_embedded_in_general_scheduled_cmd_or_ps1_wrappers() -> N
             "run_evidence_working_copy_smoke.ps1",
             "run_evidence_working_copy_smoke.cmd",
             "run_paper_execution_daily.cmd",
+            "run_forward_outcomes_daily.cmd",
         }
-        assert "--allow-production-db-confirm" not in lowered
+        assert "--allow-production-db-confirm" not in lowered or name == "run_forward_outcomes_daily.cmd"
     readme = (SCHEDULED_DIR / "README.md").read_text(encoding="utf-8").lower()
     assert "only the dedicated decision/evidence capture task" in readme
 

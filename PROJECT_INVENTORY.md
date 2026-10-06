@@ -1,4 +1,4 @@
-﻿# 專案盤點報告
+# 專案盤點報告
 
 > **最後整理**：2026-09-08
 > **用途**：提供根目錄層級的目前結構盤點。細節文件以 `docs/00_core/DOCUMENTATION_INDEX.md` 為準。
@@ -12,12 +12,12 @@
 
 ## 本輪結構整併入口
 
-- [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)與[本輪驗收](docs/06_qa/V4_LUNA_REVIEW_AND_WORKSPACE_CLOSEOUT_2026_09_08.md)。
-- [工作區檔案分類](docs/07_guides/WORKSPACE_FILES_AND_CLEANUP.md)與[實際清理結果](docs/06_qa/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)：區分原始碼、虛擬環境、Git變更與執行產物。
+- [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)與本輪驗收（開發收據見dev）。
+- 工作區檔案分類（開發收據見dev）與實際清理結果（開發收據見dev）：區分原始碼、虛擬環境、Git變更與執行產物。
 
 - [整理結果與架構判斷](docs/06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)：全 tracked tree 清查、精確移除／回滾、保留邊界與本次驗證限制。
-- [LUNA 三線計畫](docs/07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md)：資料／ML、架構／QA、UI／UX 各自的所有權與可貼用 Prompt。
-- [LUNA B 環境基線](docs/07_guides/LUNA_B_ENVIRONMENT_2026_09_07.md)：runtime／dev requirements、Windows／Python／TA-Lib／PySide6 驗證邊界。
+- [LUNA 三線計畫](docs/09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md)：資料／ML、架構／QA、UI／UX 各自的所有權與可貼用 Prompt（歷史歸檔）。
+- [LUNA B 環境基線](docs/09_archive/LUNA_B_ENVIRONMENT_2026_09_07.md)：runtime／dev requirements、Windows／Python／TA-Lib／PySide6 驗證邊界（歷史歸檔）。
 - `scripts/audit_luna_b_repo_map.py`：只讀 repo map；輸出 Git 分類清單、AST／引用證據與候選 keep／merge／remove／defer 判斷到 `output/luna_B/`。
 - `analysis_module/signal_combiner_support.py` 共用訊號流程；兩條歷史入口的可靠性／回測契約保留。
 - 七份固定路徑／失效 runner 的 manual diagnostics 與重複 README 已移除；雙入口欄位測試已參數化整併。其餘歷史／相容入口不因年代而刪除。

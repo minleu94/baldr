@@ -131,7 +131,7 @@ class FastDrawdownCurveWidget(_FastCanvasChartWidget):
 
 
 class FastTradeReturnHistogramWidget(_FastCanvasChartWidget):
-    """HTML canvas trade return distribution chart."""
+    """HTML canvas trade-return chart with adaptive small-sample presentation."""
 
     def empty_payload(self) -> dict:
         return build_trade_return_histogram_payload([], None)
@@ -239,11 +239,31 @@ def _numeric_alternative_text(payload: dict, max_rows: int = 200) -> str:
 
     title = str(payload.get("title") or "圖表")
     lines = [f"{title}｜文字數值替代"]
+    subtitle = str(payload.get("subtitle") or "").strip()
+    if subtitle:
+        lines.append(f"說明：{subtitle}")
+    sample_warning = str(payload.get("sampleWarning") or "").strip()
+    if sample_warning and sample_warning not in subtitle:
+        lines.append(f"提示：{sample_warning}")
     limit = max(1, int(max_rows))
     rendered_rows = 0
 
     bins = payload.get("bins") or []
-    if bins:
+    items = payload.get("items") or []
+    if items:
+        lines.append(
+            f"樣本數：{len(items)}；逐筆報酬率（小樣本不宜解讀為分布或 95% VaR）"
+        )
+        lines.append("交易｜報酬率 (%)")
+        for item in items[:limit]:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or f"交易 {item.get('index', '')}")
+            lines.append(f"{label}｜{_format_chart_value(item.get('value'))}%")
+            rendered_rows += 1
+        if len(items) > rendered_rows:
+            lines.append(f"（其餘 {len(items) - rendered_rows} 筆交易略）")
+    elif bins:
         lines.append(f"區間數：{len(bins)}；格式：區間｜筆數")
         for item in bins[:limit]:
             if not isinstance(item, dict):
@@ -626,9 +646,15 @@ def _build_html(payload: dict) -> str:
       ctx.fillStyle = colors.text;
       ctx.font = '12px Segoe UI, Arial';
       ctx.textAlign = 'right';
-      for (let i = 0; i <= 4; i++) {{
-        const y = area.top + (area.bottom - area.top) * i / 4;
-        const value = Math.round(maxCount - maxCount * i / 4);
+      const tickValues = [...new Set([
+        maxCount,
+        Math.round(maxCount * 0.75),
+        Math.round(maxCount * 0.5),
+        Math.round(maxCount * 0.25),
+        0
+      ])];
+      for (const value of tickValues) {{
+        const y = area.bottom - (value / maxCount) * (area.bottom - area.top);
         ctx.beginPath();
         ctx.moveTo(area.left, y);
         ctx.lineTo(area.right, y);
@@ -670,10 +696,10 @@ def _build_html(payload: dict) -> str:
         ctx.textAlign = 'center';
         ctx.fillText('0%', zeroX, area.bottom + 18);
       }}
-      for (const marker of payload.markers || []) {{
-        if (categorical) continue;
+      (payload.markers || []).forEach((marker, markerIndex) => {{
+        if (categorical) return;
         const x = area.left + ((marker.value - minX) / (maxX - minX)) * width;
-        if (x < area.left || x > area.right) continue;
+        if (x < area.left || x > area.right) return;
         ctx.strokeStyle = marker.color;
         ctx.lineWidth = 2;
         ctx.setLineDash([4, 4]);
@@ -684,11 +710,64 @@ def _build_html(payload: dict) -> str:
         ctx.setLineDash([]);
         ctx.fillStyle = marker.color;
         ctx.textAlign = 'left';
-        ctx.fillText(marker.label, x + 4, area.top + 12);
-      }}
+        ctx.fillText(marker.label, x + 4, area.top + 12 + markerIndex * 14);
+      }});
       ctx.fillStyle = colors.text;
       ctx.textAlign = 'center';
       ctx.fillText(payload.xLabel || '', (area.left + area.right) / 2, canvas.clientHeight - (payload.legend && payload.legend.length ? 42 : 12));
+      drawLegend(area);
+    }}
+
+    function drawTradeBars() {{
+      const items = (payload.items || []).filter(item => Number.isFinite(item.value));
+      if (!items.length) {{
+        drawEmpty();
+        return;
+      }}
+      const area = plotArea();
+      const maxAbs = Math.max(...items.map(item => Math.abs(item.value)), 1);
+      const minX = -maxAbs * 1.12;
+      const maxX = maxAbs * 1.12;
+      const width = area.right - area.left;
+      const height = area.bottom - area.top;
+      const zeroX = area.left + ((0 - minX) / (maxX - minX)) * width;
+
+      ctx.strokeStyle = colors.grid;
+      ctx.lineWidth = 1;
+      ctx.font = '12px Segoe UI, Arial';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = colors.axis;
+      [-maxAbs, 0, maxAbs].forEach(value => {{
+        const x = area.left + ((value - minX) / (maxX - minX)) * width;
+        ctx.beginPath();
+        ctx.moveTo(x, area.top);
+        ctx.lineTo(x, area.bottom);
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillText(`${{value.toFixed(1)}}%`, x, area.bottom + 18);
+      }});
+
+      const rowHeight = height / items.length;
+      items.forEach((item, index) => {{
+        const value = item.value;
+        const y = area.top + rowHeight * index + rowHeight / 2;
+        const valueX = area.left + ((value - minX) / (maxX - minX)) * width;
+        const barLeft = Math.min(zeroX, valueX);
+        const barWidth = Math.abs(valueX - zeroX);
+        ctx.fillStyle = item.color || (value < 0 ? '#ef4444' : '#22c55e');
+        ctx.fillRect(barLeft, y - Math.min(12, rowHeight * 0.28), Math.max(2, barWidth), Math.min(24, rowHeight * 0.56));
+        ctx.beginPath();
+        ctx.arc(valueX, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = colors.text;
+        ctx.textAlign = 'right';
+        ctx.fillText(item.label || `交易 ${{index + 1}}`, area.left - 8, y);
+        ctx.textAlign = value < 0 ? 'right' : 'left';
+        ctx.fillText(`${{value >= 0 ? '+' : ''}}${{value.toFixed(2)}}%`, valueX + (value < 0 ? -8 : 8), y);
+      }});
+      ctx.fillStyle = colors.text;
+      ctx.textAlign = 'center';
+      ctx.fillText(payload.xLabel || '報酬率 (%)', (area.left + area.right) / 2, canvas.clientHeight - (payload.legend && payload.legend.length ? 42 : 12));
       drawLegend(area);
     }}
 
@@ -704,6 +783,10 @@ def _build_html(payload: dict) -> str:
       drawTitle();
       if (payload.kind === 'histogram') {{
         drawHistogram();
+        return;
+      }}
+      if (payload.kind === 'tradeBars') {{
+        drawTradeBars();
         return;
       }}
       if (payload.kind === 'lineArea') {{

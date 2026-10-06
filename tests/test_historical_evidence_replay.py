@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import shutil
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,14 +12,17 @@ from app_module.dtos import RecommendationDTO, RecommendationResultDTO
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_event_service import EvidenceEventService
 from app_module.forward_performance_service import ForwardPerformanceService
+from app_module.forward_outcome_context import build_official_maturity_calendar
 from app_module.historical_evidence_replay import (
     HistoricalEvidenceReplayDay,
     HistoricalEvidenceReplayRequest,
     HistoricalEvidenceReplayReport,
     HistoricalEvidenceReplayService,
 )
+from app_module.recommendation.queries import RecommendationExecutionReadModel
 from app_module.recommendation_repository import RecommendationRepository
 from data_module.config import TWStockConfig
+from tests.forward_outcome_test_support import write_verified_test_calendar_cache
 from tests.test_evidence_pipeline_smoke import _seed_market_db
 
 
@@ -25,6 +30,9 @@ def _config(tmp_path: Path) -> TWStockConfig:
     config = TWStockConfig(data_root=tmp_path / "data", output_root=tmp_path / "output")
     config.db_file = tmp_path / "data" / "sqlite" / "twstock.db"
     config.db_file.parent.mkdir(parents=True, exist_ok=True)
+    config.official_calendar_cache_path = write_verified_test_calendar_cache(
+        tmp_path / "calendar"
+    ).parent
     return config
 
 
@@ -58,6 +66,85 @@ def _seed_result(config: TWStockConfig, *, result_id: str, created_at: str) -> s
         liquidity_gate_payload_json=[],
     )
     return RecommendationRepository(config).save_result(result)
+
+
+def _canonical_clock_model(result_id: str, created_at: datetime, persisted_at: datetime):
+    return RecommendationExecutionReadModel(
+        execution=SimpleNamespace(
+            result_id=result_id,
+            context=SimpleNamespace(created_at=created_at),
+        ),
+        label=result_id,
+        notes="",
+        persisted_at=persisted_at,
+        payload_hash=None,
+        artifact_location=result_id,
+    )
+
+
+def _legacy_clock_model(result_id: str, created_at: str, persisted_at: datetime | None):
+    return RecommendationExecutionReadModel(
+        execution=None,
+        legacy_result=SimpleNamespace(result_id=result_id, created_at=created_at),  # type: ignore[arg-type]
+        label=result_id,
+        notes="",
+        persisted_at=persisted_at,
+        payload_hash=None,
+        artifact_location=result_id,
+    )
+
+
+def test_replay_mixed_latest_uses_utc_and_fails_closed_on_unknown_clock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(tmp_path)
+    canonical = _canonical_clock_model(
+        "canonical-later-lexically",
+        datetime(2026, 9, 8, 1, 30, tzinfo=timezone(timedelta(hours=2))),
+        datetime(2026, 9, 8, 1, 30, tzinfo=timezone(timedelta(hours=2))),
+    )
+    legacy = _legacy_clock_model(
+        "legacy-later-instant",
+        "2026-09-08T00:30:00+00:00",
+        datetime(2026, 9, 8, 0, 30, tzinfo=timezone.utc),
+    )
+
+    class QueryStub:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def list(self):
+            return self.rows
+
+    monkeypatch.setattr(
+        "app_module.historical_evidence_replay.build_recommendation_execution_queries",
+        lambda _config: QueryStub((canonical, legacy)),
+    )
+    service = HistoricalEvidenceReplayService(config)
+
+    selected, diagnostic = service._select_recommendation_result_for_day("2026-09-08", config)
+
+    assert selected == "legacy-later-instant"
+    assert diagnostic is None
+
+    unknown_legacy = _legacy_clock_model(
+        "legacy-unknown-clock",
+        "2026-09-08T00:40:00",
+        None,
+    )
+    monkeypatch.setattr(
+        "app_module.historical_evidence_replay.build_recommendation_execution_queries",
+        lambda _config: QueryStub((canonical, unknown_legacy)),
+    )
+
+    selected_unknown, ambiguous = service._select_recommendation_result_for_day(
+        "2026-09-08",
+        config,
+    )
+
+    assert selected_unknown is None
+    assert ambiguous == "recommendation_latest_selection_ambiguous_clock"
 
 
 def test_replay_rejects_same_source_and_replay_db(tmp_path: Path) -> None:
@@ -188,13 +275,25 @@ def test_forward_outcome_respects_data_as_of_date(tmp_path: Path) -> None:
         metadata={"fixture": True},
     )
 
-    early = ForwardPerformanceService(config, repository).calculate(
+    maturity_calendar = build_official_maturity_calendar(
+        config=config,
+        observed_at=datetime.now(timezone.utc),
+    )
+    early = ForwardPerformanceService(
+        config,
+        repository,
+        maturity_calendar=maturity_calendar,
+    ).calculate(
         windows=(2,),
         decision_date="2026-07-01",
         data_as_of_date="2026-07-02",
         dry_run=True,
     )
-    late = ForwardPerformanceService(config, repository).calculate(
+    late = ForwardPerformanceService(
+        config,
+        repository,
+        maturity_calendar=maturity_calendar,
+    ).calculate(
         windows=(2,),
         decision_date="2026-07-01",
         data_as_of_date="2026-07-03",

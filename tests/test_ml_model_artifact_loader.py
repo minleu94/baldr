@@ -156,3 +156,35 @@ def test_data_root_artifact_path_is_rejected_before_read(tmp_path: Path) -> None
 
     assert result.status == "rule_only_fallback"
     assert result.blockers == ("artifact_root_not_shadow_safe",)
+
+
+def test_manifest_oserror_falls_back_without_deserialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "shadow-model"
+    _write_fixture(root)
+    manifest_path = (root / "manifest.json").resolve()
+    original_read_text = Path.read_text
+
+    def deny_manifest_read(
+        path: Path,
+        *args: object,
+        **kwargs: object,
+    ) -> str:
+        if path.resolve() == manifest_path:
+            raise PermissionError("manifest read denied")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", deny_manifest_read)
+    loader = SafeShadowModelArtifactLoader(
+        data_root=tmp_path / "formal-data",
+        deserializer=lambda _path: pytest.fail("manifest read failure reached deserializer"),
+    )
+
+    result = loader.load(root, expectation=_expectation())
+
+    assert result.status == "rule_only_fallback"
+    assert result.manifest is None
+    assert result.model is None
+    assert result.blockers == ("manifest_read_failed",)

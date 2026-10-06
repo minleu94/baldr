@@ -105,6 +105,10 @@ def test_formal_and_research_overlay_are_fail_closed(
     research_manifest["research_only"] = True
     research_manifest["promotion_eligible"] = False
     research_manifest["formal_consumer_compatible"] = False
+    research_manifest["minimum_train_dates"] = 65
+    research_manifest["fold_qualification_policy"] = (
+        "post_purge_distinct_train_dates.v1"
+    )
     research_manifest["manifest_hash"] = _logical_hash(research_manifest)
     research_manifest_path = (
         bounded_e2e.training_manifest_path.parent
@@ -143,6 +147,10 @@ def test_formal_and_research_overlay_are_fail_closed(
     assert research_store_manifest["formal_source_only"] is False
     assert research_store_manifest["research_only"] is True
     assert research_store_manifest["promotion_eligible"] is False
+    assert research_store_manifest["minimum_train_dates_after_purge"] == 65
+    assert research_store_manifest["fold_qualification_policy"] == (
+        "post_purge_distinct_train_dates.v1"
+    )
     with pytest.raises(ValueError, match="formal source only"):
         AllocationOutOfCoreTrainingService().train(
             AllocationOutOfCoreTrainingRequest(

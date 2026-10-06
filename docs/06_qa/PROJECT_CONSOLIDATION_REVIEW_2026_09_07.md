@@ -1,6 +1,6 @@
 # 專案整併、架構判斷與後續交付（2026-09-07）
 
-> 歷史查核補註（2026-09-08）：以下保留三線開工前的查核、數量與失敗紀錄；後續修補及最終全域驗證請看 [LUNA 三線整合驗收](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)，不要將下列舊失敗數直接當成目前狀態。
+> 歷史查核補註（2026-09-08）：以下保留三線開工前的查核、數量與失敗紀錄；後續修補及最終全域驗證請看 LUNA 三線整合驗收（開發收據見dev），不要將下列舊失敗數直接當成目前狀態。
 
 本輪已完成全 tracked tree 的結構／重複掃描，並實際整併可證明冗餘；**不建議整套重寫，但需要優先修資料／ML 方法、依賴邊界與測試隔離。** 清理相關驗證通過，不代表整個專案健康：全量 pytest 仍有41失敗與31初始化錯誤，詳見下方分類。
 
@@ -84,7 +84,7 @@ D本輪剩餘333659123712 bytes，約 **310.744GiB**。現行central reserve是2
 
 採已有OOC／shared immutable block、小型線性release與有界base comparison；先修teacher／特徵／split，按同卷承諾量及實際暫存峰值做reserve檢查。standalone仍使用既有1GiB持久／1GiB暫存預設，不為此報告提高配額。C也不足200GiB，不能用搬去C來繞過保護。
 
-時間切分與train-only preprocessing的外部方法核對，以及可重現ML發展階段，統一放在[三線計畫](../07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md#建議的-ml-發展順序)。模型本身小不代表整條資料鏈占用小；沒有執行期容量探針／reservation不能保證未來空間。
+時間切分與train-only preprocessing的外部方法核對，以及可重現ML發展階段，統一放在[三線計畫](../09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md#建議的-ml-發展順序)（歷史歸檔）。模型本身小不代表整條資料鏈占用小；沒有執行期容量探針／reservation不能保證未來空間。
 
 ## 3. 可以直接開新對話的完整規劃
 
@@ -92,13 +92,13 @@ D本輪剩餘333659123712 bytes，約 **310.744GiB**。現行central reserve是2
 
 | 工作線 | Prompt | 最先處理的問題 |
 |---|---|---|
-| A：資料與ML | [完整Prompt A](../07_guides/LUNA_PROMPT_A_DATA_ML_2026_09_07.md) | 三條依賴衝突、現有資料／teacher／freeze驗收、小型真實研究閉環 |
-| B：架構與QA | [完整Prompt B](../07_guides/LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md) | 容量／路徑fixture隔離、重複治理、可重現依賴與清冊／文件整合 |
-| C：UI／UX | [完整Prompt C](../07_guides/LUNA_PROMPT_C_UX_2026_09_07.md) | Workbench三項失敗與三條研究流程、真實UI測試、Manual同步 |
+| A：資料與ML | 完整Prompt A（開發收據見dev） | 三條依賴衝突、現有資料／teacher／freeze驗收、小型真實研究閉環 |
+| B：架構與QA | [完整Prompt B](../09_archive/LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md) | 容量／路徑fixture隔離、重複治理、可重現依賴與清冊／文件整合 |
+| C：UI／UX | 完整Prompt C（開發收據見dev） | Workbench三項失敗與三條研究流程、真實UI測試、Manual同步 |
 
 每份是約10–12小時的工作容量，不是保證模型連續執行的時數。Prompt含所有權、真實初始問題、里程碑、時間預算、不可讀OOS／正式寫入界線、驗收與checkpoint。只跑兩線時先A+B，C後接；跑三線時A為唯一資料密集worker，完整QA分時執行。
 
-共同啟動／契約／容量／整合規則見[總計畫](../07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md)。完成後帶回三份handoff、branch／commit、test summary及manifest，再做獨立審查；不只看agent自己的完成宣告。
+共同啟動／契約／容量／整合規則見[總計畫](../09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md)（歷史歸檔）。完成後帶回三份handoff、branch／commit、test summary及manifest，再做獨立審查；不只看agent自己的完成宣告。
 
 ## 清理前標準回滾清單
 
@@ -131,10 +131,10 @@ D本輪剩餘333659123712 bytes，約 **310.744GiB**。現行central reserve是2
 | `docs/01_architecture/system_architecture.md` | 修改 | 共用完全相同的分析流程、補正測試納管、收斂文件權威與導航 | `Copy-Item -LiteralPath 'output/qa/project_consolidation_20260907/backup/docs/01_architecture/system_architecture.md' -Destination 'docs/01_architecture/system_architecture.md' -Force` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
 | `analysis_module/signal_combiner_support.py` | 新增 | 共用實作與本輪查核／三線交付計畫 | `Remove-Item -LiteralPath 'analysis_module/signal_combiner_support.py'` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
 | `docs/06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md` | 新增 | 共用實作與本輪查核／三線交付計畫 | `Remove-Item -LiteralPath 'docs/06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md'` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
-| `docs/07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md` | 新增 | 共用實作與本輪查核／三線交付計畫 | `Remove-Item -LiteralPath 'docs/07_guides/LUNA_PARALLEL_PLAN_2026_09_07.md'` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
-| `docs/07_guides/LUNA_PROMPT_A_DATA_ML_2026_09_07.md` | 新增 | 共用實作與本輪查核／三線交付計畫 | `Remove-Item -LiteralPath 'docs/07_guides/LUNA_PROMPT_A_DATA_ML_2026_09_07.md'` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
-| `docs/07_guides/LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md` | 新增 | 共用實作與本輪查核／三線交付計畫 | `Remove-Item -LiteralPath 'docs/07_guides/LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md'` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
-| `docs/07_guides/LUNA_PROMPT_C_UX_2026_09_07.md` | 新增 | 共用實作與本輪查核／三線交付計畫 | `Remove-Item -LiteralPath 'docs/07_guides/LUNA_PROMPT_C_UX_2026_09_07.md'` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
+| `docs/09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md` | 新增（已歸檔） | 共用實作與本輪查核／三線交付計畫 | `Remove-Item -LiteralPath 'docs/09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md'` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
+| `docs/09_archive/LUNA_PROMPT_A_DATA_ML_2026_09_07.md` | 新增（已歸檔） | 共用實作與本輪查核／三線交付計畫 | `Remove-Item -LiteralPath 'docs/09_archive/LUNA_PROMPT_A_DATA_ML_2026_09_07.md'` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
+| `docs/09_archive/LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md` | 新增（已歸檔） | 共用實作與本輪查核／三線交付計畫 | `Remove-Item -LiteralPath 'docs/09_archive/LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md'` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
+| `docs/09_archive/LUNA_PROMPT_C_UX_2026_09_07.md` | 新增（已歸檔） | 共用實作與本輪查核／三線交付計畫 | `Remove-Item -LiteralPath 'docs/09_archive/LUNA_PROMPT_C_UX_2026_09_07.md'` | 須整組還原；先比對後續修改，避免覆寫其他工作。 |
 
 ## 文件覆蓋計畫
 

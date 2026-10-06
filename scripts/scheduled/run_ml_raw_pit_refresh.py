@@ -2,8 +2,10 @@
 
 這個 runner 只在 data-update quick 已經證明 daily／technical core date 就緒時，
 以 SQLite ``mode=ro/query_only`` 呼叫既有 PIT shard exporter。它不寫正式 SQLite、
-不建立 promotion evidence，也不放寬任何 ML formal gate；publication 完成後由
-Direct/OOC maintenance watcher 依 hash-bound pointer 自動接續。
+不建立 promotion evidence，也不放寬任何 ML formal gate。排程可 opt-in 將已存在的
+TWSE／TPEx custody bytes 複製到 repo-local、research-only prospective candidate；
+這不改變 historical PIT revision guard。publication 完成後由 Direct/OOC maintenance
+watcher 依 hash-bound pointer 自動接續。
 """
 
 from __future__ import annotations
@@ -15,11 +17,14 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 from typing import Any, Mapping, Sequence
+import uuid
 from zoneinfo import ZoneInfo
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +32,29 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from data_module import portfolio_ml_dataset_assembler as dataset_assembler
+from data_module import ml_daily_price_source_quality as source_quality
+from data_module.formal_market_revision import RECEIPT_DIR as FORMAL_MARKET_RECEIPT_DIR
+from data_module.ml_prospective_daily_price_capture import (
+    MAX_RECEIPT_BYTES as MAX_DAILY_PRICE_CAPTURE_RECEIPT_BYTES,
+    capture_prospective_daily_price_candidate,
+)
+from data_module.ml_daily_source_row_research_projection import (
+    MAX_PROJECTION_BYTES as MAX_DAILY_SOURCE_ROW_PROJECTION_BYTES,
+    MAX_PROJECTION_MANIFEST_BYTES as MAX_DAILY_SOURCE_ROW_MANIFEST_BYTES,
+    PROJECTION_OUTPUT_ROOT as DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT,
+    project_daily_source_rows,
+)
+from data_module.ml_research_output_boundary import (
+    get_ml_research_root,
+    resolve_ml_research_output_path,
+)
+from scripts.scheduled.ml_daily_source_row_research_adapter import (
+    run_daily_source_row_research_adapter,
+)
+from data_module.ml_daily_price_revision_gate import (
+    DailyPriceSourceRevisionError,
+    check_daily_price_source_revision,
+)
 from data_module.ml_storage_capacity import (
     BYTES_PER_GIB,
     build_heavy_chain_reservation_handoff_environment,
@@ -66,6 +94,12 @@ _DEFAULT_RAW_TEMPORARY_STORAGE_BUDGET_BYTES = (
 _DIRECT_TRAINING_OUTPUT_DIR_NAME = (
     "portfolio_ml_direct_ooc_training_production_v4_v5"
 )
+_DEFAULT_SOURCE_QUALITY_CANDIDATE_SAMPLE_LIMIT = 64
+_DAILY_SOURCE_ROW_TERMINAL_RECEIPT_SCHEMA = (
+    "ml-daily-source-row-runner-terminal-receipt.v1"
+)
+_DAILY_SOURCE_ROW_TERMINAL_RECEIPT_MAX_BYTES = 2 * 1024 * 1024
+_DAILY_SOURCE_ROW_CAPTURE_MANIFEST_MAX_BYTES = 4 * 1024 * 1024
 _ALLOWED_DATA_UPDATE_STATUSES = frozenset(
     {"passed", "passed_with_warnings"}
 )
@@ -99,6 +133,39 @@ def _extract_source_quality_summary(
         if isinstance(summary, Mapping):
             return dict(summary)
     return None
+
+
+def _new_source_quality_evidence_identity(
+    *,
+    run_root: Path,
+    started_at: datetime,
+) -> tuple[str, Path]:
+    """Allocate a unique per-run evidence path without touching source data."""
+
+    started_utc = started_at.astimezone(timezone.utc)
+    run_id = (
+        "raw-pit-"
+        + started_utc.strftime("%Y%m%dT%H%M%S%fZ")
+        + "-"
+        + str(os.getpid())
+        + "-"
+        + uuid.uuid4().hex
+    )
+    report_path = (
+        run_root.resolve() / "source_quality" / f"{run_id}.json"
+    ).resolve()
+    candidate_evidence_path = _source_quality_candidate_evidence_path(report_path)
+    if report_path.exists() or candidate_evidence_path.exists():
+        raise FileExistsError(
+            f"source-quality evidence path collision: {report_path}"
+        )
+    return run_id, report_path
+
+
+def _source_quality_candidate_evidence_path(report_path: Path) -> Path:
+    """Return the sidecar path paired with one report path."""
+
+    return report_path.resolve().with_suffix(".candidates.jsonl")
 
 
 @dataclass(frozen=True)
@@ -161,8 +228,42 @@ def _parser() -> argparse.ArgumentParser:
         type=int,
         help="publication 完成後必須保留的 filesystem bytes",
     )
+    parser.add_argument(
+        "--source-quality-candidate-sample-limit",
+        type=int,
+        default=_DEFAULT_SOURCE_QUALITY_CANDIDATE_SAMPLE_LIMIT,
+        help=(
+            "bounded source-quality candidate evidence rows retained per run; "
+            "full candidate_count/digest remain in the report metadata and "
+            "truncation is explicit"
+        ),
+    )
     parser.add_argument("--status-path", type=Path)
     parser.add_argument("--log-path", type=Path)
+    parser.add_argument(
+        "--capture-prospective-daily-price-candidate",
+        action="store_true",
+        help=(
+            "copy already-captured TWSE/TPEx custody into a repository-local "
+            "research-only candidate before raw revision/skip decisions"
+        ),
+    )
+    parser.add_argument(
+        "--project-daily-source-rows",
+        action="store_true",
+        help=(
+            "project a verified prospective TWSE/TPEx candidate into a separate "
+            "candidate under the configured isolated ML research root"
+        ),
+    )
+    parser.add_argument(
+        "--research-output-root",
+        type=Path,
+        help=(
+            "isolated root for downstream research artifacts; must equal the "
+            "configured active ML research root"
+        ),
+    )
     return parser
 
 
@@ -304,6 +405,1414 @@ def _required_sha256(value: object, *, field_name: str) -> str:
     return value
 
 
+def _sha256_bytes(payload: bytes) -> str:
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+def _canonical_json_bytes(payload: object) -> bytes:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _strict_json_object(payload: bytes, *, label: str) -> dict[str, Any]:
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"{label} contains duplicate JSON keys")
+            value[key] = item
+        return value
+
+    def reject_non_finite(value: str) -> None:
+        raise ValueError(f"{label} contains non-finite JSON number: {value}")
+
+    try:
+        value = json.loads(
+            payload.decode("utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_non_finite,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(f"{label} is not bounded strict JSON") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} JSON root must be an object")
+    return value
+
+
+def _verify_content_sha256(value: Mapping[str, Any], *, label: str) -> None:
+    claimed = value.get("content_sha256")
+    body = dict(value)
+    body.pop("content_sha256", None)
+    if claimed != _canonical_sha256(body):
+        raise ValueError(f"{label} content hash mismatch")
+
+
+def _is_link_or_reparse(path: Path, info: os.stat_result) -> bool:
+    reparse_point = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    attributes = getattr(info, "st_file_attributes", 0)
+    is_junction = getattr(path, "is_junction", None)
+    return (
+        stat.S_ISLNK(info.st_mode)
+        or bool(attributes & reparse_point)
+        or (callable(is_junction) and bool(is_junction()))
+    )
+
+
+def _assert_unlinked_path(
+    path: Path,
+    *,
+    root: Path,
+    label: str,
+    allow_missing_leaf: bool = False,
+) -> Path:
+    """Require a path below root with no symlink, junction, or reparse component."""
+
+    root_abs = Path(os.path.abspath(str(root.expanduser())))
+    path_abs = Path(os.path.abspath(str(path.expanduser())))
+    try:
+        relative = path_abs.relative_to(root_abs)
+    except ValueError as exc:
+        raise ValueError(f"{label} escapes its allowed root") from exc
+    repository_root = Path(os.path.abspath(str(REPO_ROOT)))
+    if root_abs != repository_root:
+        try:
+            root_abs.relative_to(repository_root)
+        except ValueError:
+            # External storage is valid only when the central boundary
+            # identifies it as the configured active research write root.
+            resolve_ml_research_output_path(
+                root_abs,
+                repository_root=repository_root,
+                access="write",
+            )
+        else:
+            _assert_unlinked_path(
+                root_abs,
+                root=repository_root,
+                label=f"{label} allowed root",
+            )
+    try:
+        root_info = os.lstat(root_abs)
+    except OSError as exc:
+        raise ValueError(f"{label} root is unavailable") from exc
+    if _is_link_or_reparse(root_abs, root_info) or not stat.S_ISDIR(root_info.st_mode):
+        raise ValueError(f"{label} root is not an unlinked directory")
+
+    current = root_abs
+    parts = relative.parts
+    for index, part in enumerate(parts):
+        current = current / part
+        try:
+            info = os.lstat(current)
+        except FileNotFoundError as exc:
+            if allow_missing_leaf and index == len(parts) - 1:
+                return path_abs
+            raise ValueError(f"{label} path is incomplete") from exc
+        except OSError as exc:
+            raise ValueError(f"{label} path cannot be inspected") from exc
+        if _is_link_or_reparse(current, info):
+            raise ValueError(f"{label} contains a linked path component")
+        if index < len(parts) - 1 and not stat.S_ISDIR(info.st_mode):
+            raise ValueError(f"{label} parent is not a directory")
+    return path_abs
+
+
+def _stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int, int, int]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _read_unlinked_bounded_file(
+    path: Path,
+    *,
+    root: Path,
+    max_bytes: int,
+    label: str,
+) -> bytes:
+    path_abs = _assert_unlinked_path(path, root=root, label=label)
+    try:
+        before_path = os.lstat(path_abs)
+    except OSError as exc:
+        raise ValueError(f"{label} cannot be statted") from exc
+    if (
+        not stat.S_ISREG(before_path.st_mode)
+        or before_path.st_nlink != 1
+        or before_path.st_size <= 0
+        or before_path.st_size > max_bytes
+    ):
+        raise ValueError(f"{label} is not a bounded single-link regular file")
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path_abs, flags)
+    except OSError as exc:
+        raise ValueError(f"{label} cannot be opened safely") from exc
+    try:
+        with os.fdopen(descriptor, "rb") as stream:
+            before_fd = os.fstat(stream.fileno())
+            if _stat_identity(before_fd) != _stat_identity(before_path):
+                raise ValueError(f"{label} changed before bounded read")
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = stream.read(min(1024 * 1024, max_bytes + 1 - total))
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValueError(f"{label} exceeds its byte limit")
+                chunks.append(chunk)
+            after_fd = os.fstat(stream.fileno())
+        after_path = os.lstat(path_abs)
+    except Exception:
+        # fdopen owns and closes the descriptor after it succeeds.
+        raise
+    if (
+        _stat_identity(after_fd) != _stat_identity(before_path)
+        or _stat_identity(after_path) != _stat_identity(before_path)
+        or _is_link_or_reparse(path_abs, after_path)
+        or total != before_path.st_size
+    ):
+        raise ValueError(f"{label} changed during bounded read")
+    return b"".join(chunks)
+
+
+def _stream_unlinked_file_sha256(
+    path: Path,
+    *,
+    root: Path,
+    max_bytes: int,
+    label: str,
+) -> tuple[str, int, int]:
+    path_abs = _assert_unlinked_path(path, root=root, label=label)
+    try:
+        before_path = os.lstat(path_abs)
+    except OSError as exc:
+        raise ValueError(f"{label} cannot be statted") from exc
+    if (
+        not stat.S_ISREG(before_path.st_mode)
+        or before_path.st_nlink != 1
+        or before_path.st_size <= 0
+        or before_path.st_size > max_bytes
+    ):
+        raise ValueError(f"{label} is not a bounded single-link regular file")
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path_abs, flags)
+    except OSError as exc:
+        raise ValueError(f"{label} cannot be opened safely") from exc
+    digest = hashlib.sha256()
+    total = 0
+    line_count = 0
+    last_byte = b""
+    try:
+        with os.fdopen(descriptor, "rb") as stream:
+            before_fd = os.fstat(stream.fileno())
+            if _stat_identity(before_fd) != _stat_identity(before_path):
+                raise ValueError(f"{label} changed before streaming read")
+            while True:
+                chunk = stream.read(min(1024 * 1024, max_bytes + 1 - total))
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValueError(f"{label} exceeds its byte limit")
+                digest.update(chunk)
+                line_count += chunk.count(b"\n")
+                last_byte = chunk[-1:]
+            after_fd = os.fstat(stream.fileno())
+        after_path = os.lstat(path_abs)
+    except Exception:
+        raise
+    if (
+        _stat_identity(after_fd) != _stat_identity(before_path)
+        or _stat_identity(after_path) != _stat_identity(before_path)
+        or _is_link_or_reparse(path_abs, after_path)
+        or total != before_path.st_size
+    ):
+        raise ValueError(f"{label} changed during streaming read")
+    if not last_byte.endswith(b"\n") or line_count == 0:
+        raise ValueError(f"{label} must contain newline-terminated JSONL rows")
+    return "sha256:" + digest.hexdigest(), total, line_count
+
+
+def _write_projection_terminal_receipt(
+    path: Path,
+    payload: Mapping[str, Any],
+    *,
+    root: Path,
+) -> tuple[str, bytes]:
+    content = _canonical_json_bytes(payload) + b"\n"
+    if not content or len(content) > _DAILY_SOURCE_ROW_TERMINAL_RECEIPT_MAX_BYTES:
+        raise ValueError("projection terminal receipt exceeds its metadata byte cap")
+    path_abs = _assert_unlinked_path(
+        path,
+        root=root,
+        label="projection terminal receipt",
+        allow_missing_leaf=True,
+    )
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(path_abs, flags, 0o600)
+    except OSError as exc:
+        raise ValueError("projection terminal receipt create-only path is occupied") from exc
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except Exception:
+        raise
+    readback = _read_unlinked_bounded_file(
+        path_abs,
+        root=root,
+        max_bytes=_DAILY_SOURCE_ROW_TERMINAL_RECEIPT_MAX_BYTES,
+        label="projection terminal receipt readback",
+    )
+    if readback != content:
+        raise ValueError("projection terminal receipt readback differs")
+    decoded = _strict_json_object(readback, label="projection terminal receipt")
+    _verify_content_sha256(decoded, label="projection terminal receipt")
+    return _sha256_bytes(readback), readback
+
+
+def _validate_daily_price_capture_for_projection(
+    capture: Mapping[str, Any], *, source_date: str
+) -> dict[str, Any]:
+    if capture.get("status") not in {"captured", "already_captured"}:
+        raise ValueError("daily price capture did not complete")
+    if capture.get("source_date") != source_date:
+        raise ValueError("daily price capture source date differs from core proof")
+    if capture.get("candidate_readback_verified") is not True:
+        raise ValueError("daily price capture readback is not verified")
+    for field in (
+        "historical_pit_eligible",
+        "formal_source_contract_eligible",
+        "formal_oos_allowed",
+        "formal_credit",
+        "features_included",
+        "labels_included",
+        "model_use_claimed",
+    ):
+        if capture.get(field) is not False:
+            raise ValueError(f"daily price capture has unsafe eligibility field: {field}")
+    if capture.get("decision_cutoff_comparison") != "not_declared":
+        raise ValueError("daily price capture cutoff comparison is not supported")
+
+    candidate_id = capture.get("candidate_id")
+    if not isinstance(candidate_id, str) or re.fullmatch(r"[0-9a-f]{64}", candidate_id) is None:
+        raise ValueError("daily price capture candidate id is invalid")
+    candidate_root = REPO_ROOT / "output" / "ml_prospective_daily_price_candidates"
+    manifest_path_value = capture.get("candidate_path")
+    receipt_path_value = capture.get("candidate_capture_receipt_path")
+    directory_value = capture.get("candidate_directory")
+    if not all(isinstance(value, str) and value.strip() for value in (manifest_path_value, receipt_path_value, directory_value)):
+        raise ValueError("daily price capture paths are incomplete")
+    manifest_path = Path(str(manifest_path_value))
+    candidate_dir = candidate_root / source_date / candidate_id
+    expected_manifest_path = candidate_dir / "manifest.json"
+    expected_receipt_path = candidate_dir / "capture_receipt.json"
+    expected_manifest_abs = Path(os.path.abspath(str(expected_manifest_path)))
+    expected_receipt_abs = Path(os.path.abspath(str(expected_receipt_path)))
+    expected_candidate_dir_abs = Path(os.path.abspath(str(candidate_dir)))
+    if Path(os.path.abspath(str(manifest_path))) != expected_manifest_abs:
+        raise ValueError("daily price capture manifest path drifted")
+    if Path(os.path.abspath(str(Path(str(receipt_path_value))))) != expected_receipt_abs:
+        raise ValueError("daily price capture receipt path drifted")
+    if Path(os.path.abspath(str(Path(str(directory_value))))) != expected_candidate_dir_abs:
+        raise ValueError("daily price capture candidate directory drifted")
+
+    manifest_bytes = _read_unlinked_bounded_file(
+        manifest_path,
+        root=candidate_root,
+        max_bytes=_DAILY_SOURCE_ROW_CAPTURE_MANIFEST_MAX_BYTES,
+        label="daily price capture manifest",
+    )
+    manifest_sha = _sha256_bytes(manifest_bytes)
+    if manifest_sha != _required_sha256(
+        capture.get("candidate_manifest_sha256"),
+        field_name="candidate_manifest_sha256",
+    ):
+        raise ValueError("daily price capture manifest hash differs")
+    manifest = _strict_json_object(manifest_bytes, label="daily price capture manifest")
+    _verify_content_sha256(manifest, label="daily price capture manifest")
+    if (
+        manifest.get("schema_version") != "ml-prospective-daily-price-candidate.v1"
+        or manifest.get("candidate_id") != candidate_id
+        or manifest.get("source_date") != source_date
+    ):
+        raise ValueError("daily price capture manifest identity differs")
+    for field in (
+        "historical_pit_eligible",
+        "formal_source_contract_eligible",
+        "formal_oos_allowed",
+        "formal_credit",
+        "features_included",
+        "labels_included",
+        "model_use_claimed",
+    ):
+        if manifest.get(field) is not False:
+            raise ValueError(f"daily price capture manifest has unsafe field: {field}")
+    if manifest.get("decision_cutoff_comparison") != "not_declared":
+        raise ValueError("daily price capture manifest declares an unsupported cutoff")
+
+    receipt_bytes = _read_unlinked_bounded_file(
+        Path(str(receipt_path_value)),
+        root=candidate_root,
+        max_bytes=MAX_DAILY_PRICE_CAPTURE_RECEIPT_BYTES,
+        label="daily price capture receipt",
+    )
+    receipt_sha = _sha256_bytes(receipt_bytes)
+    if receipt_sha != _required_sha256(
+        capture.get("candidate_capture_receipt_sha256"),
+        field_name="candidate_capture_receipt_sha256",
+    ):
+        raise ValueError("daily price capture receipt hash differs")
+    receipt = _strict_json_object(receipt_bytes, label="daily price capture receipt")
+    _verify_content_sha256(receipt, label="daily price capture receipt")
+    if (
+        receipt.get("schema_version") != "ml-prospective-daily-price-capture-receipt.v1"
+        or receipt.get("candidate_id") != candidate_id
+        or receipt.get("manifest_path") != "manifest.json"
+        or receipt.get("manifest_sha256") != manifest_sha
+        or receipt.get("candidate_available_at") != capture.get("candidate_available_at")
+        or receipt.get("candidate_observed_at") != capture.get("candidate_observed_at")
+        or receipt.get("availability_basis") != "candidate_manifest_and_source_readback_completed_at"
+    ):
+        raise ValueError("daily price capture receipt binding differs")
+    observed_at = _parse_datetime(
+        capture.get("candidate_observed_at"),
+        field_name="daily_price_capture.candidate_observed_at",
+    )
+    available_at = _parse_datetime(
+        capture.get("candidate_available_at"),
+        field_name="daily_price_capture.candidate_available_at",
+    )
+    if available_at < observed_at:
+        raise ValueError("daily price capture availability precedes observation")
+    if any(
+        receipt.get(field) is not False
+        for field in (
+            "historical_pit_eligible",
+            "formal_oos_allowed",
+            "formal_credit",
+            "features_included",
+            "labels_included",
+            "model_use_claimed",
+        )
+    ) or receipt.get("decision_cutoff_comparison") != "not_declared":
+        raise ValueError("daily price capture receipt has unsafe eligibility fields")
+
+    sources = manifest.get("candidate_sources")
+    status_sources = capture.get("candidate_files")
+    if not isinstance(sources, list) or len(sources) != 2 or not isinstance(status_sources, list) or len(status_sources) != 2:
+        raise ValueError("daily price capture source pins are incomplete")
+    source_pins: list[dict[str, str]] = []
+    for expected_venue, source, status_source in zip(
+        ("twse", "tpex"), sources, status_sources
+    ):
+        if not isinstance(source, Mapping) or not isinstance(status_source, Mapping):
+            raise ValueError("daily price capture source pin is invalid")
+        if (
+            source.get("venue") != expected_venue
+            or status_source.get("venue") != expected_venue
+            or source.get("candidate_raw_response_path") != f"sources/{expected_venue}/raw_response.bin"
+            or source.get("candidate_receipt_path") != f"sources/{expected_venue}/source_receipt.json"
+            or status_source.get("raw_response_path") != source.get("candidate_raw_response_path")
+            or status_source.get("receipt_path") != source.get("candidate_receipt_path")
+            or status_source.get("raw_response_sha256") != source.get("raw_response_sha256")
+            or status_source.get("receipt_file_sha256") != source.get("receipt_file_sha256")
+        ):
+            raise ValueError(f"daily price capture {expected_venue} source pin differs")
+        source_pins.append(
+            {
+                "venue": expected_venue,
+                "raw_response_path": str(source["candidate_raw_response_path"]),
+                "raw_response_sha256": _required_sha256(
+                    source.get("raw_response_sha256"),
+                    field_name=f"{expected_venue}.raw_response_sha256",
+                ),
+                "receipt_path": str(source["candidate_receipt_path"]),
+                "receipt_file_sha256": _required_sha256(
+                    source.get("receipt_file_sha256"),
+                    field_name=f"{expected_venue}.receipt_file_sha256",
+                ),
+            }
+        )
+    receipt_source_hashes = receipt.get("source_hashes")
+    expected_receipt_hashes = [
+        {
+            "venue": item["venue"],
+            "raw_response_sha256": item["raw_response_sha256"],
+            "receipt_file_sha256": item["receipt_file_sha256"],
+        }
+        for item in source_pins
+    ]
+    if receipt_source_hashes != expected_receipt_hashes:
+        raise ValueError("daily price capture receipt source hashes differ")
+
+    market_revision = manifest.get("market_revision")
+    if not isinstance(market_revision, Mapping) or market_revision.get("cutoff_policy_evaluated") is not False:
+        raise ValueError("daily price capture market revision is invalid")
+    return {
+        "candidate_id": candidate_id,
+        "source_date": source_date,
+        "manifest_path": str(manifest_path.resolve(strict=True)),
+        "manifest_relative_path": manifest_path.resolve(strict=True).relative_to(REPO_ROOT).as_posix(),
+        "manifest_sha256": manifest_sha,
+        "capture_receipt_path": str(Path(str(receipt_path_value)).resolve(strict=True)),
+        "capture_receipt_sha256": receipt_sha,
+        "candidate_available_at": str(capture.get("candidate_available_at")),
+        "source_pins": source_pins,
+        "market_revision": dict(market_revision),
+    }
+
+
+def _project_daily_source_rows_from_capture(
+    capture: Mapping[str, Any],
+    *,
+    source_date: str,
+    research_output_root: Path | None = None,
+) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "research_only": True,
+        "candidate_only": True,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "formal_credit": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+    }
+    if capture.get("status") not in {"captured", "already_captured"}:
+        return {
+            **base,
+            "status": "not_run_capture_not_verified",
+            "capture_status": str(capture.get("status") or "missing"),
+        }
+    try:
+        pinned_research_root = (
+            get_ml_research_root(repository_root=REPO_ROOT)
+            if research_output_root is None
+            else resolve_ml_research_output_path(
+                research_output_root,
+                repository_root=REPO_ROOT,
+                access="write",
+            )
+        )
+        input_pins = _validate_daily_price_capture_for_projection(
+            capture, source_date=source_date
+        )
+        projection = project_daily_source_rows(
+            candidate_manifest_path=Path(input_pins["manifest_path"]),
+            expected_manifest_sha256=input_pins["manifest_sha256"],
+            repository_root=REPO_ROOT,
+            output_root=pinned_research_root / DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT,
+            preview_only=False,
+        )
+        terminal = _validate_and_write_projection_terminal_receipt(
+            projection,
+            input_pins=input_pins,
+            research_output_root=pinned_research_root,
+        )
+        return {**base, **terminal}
+    except Exception as exc:  # noqa: BLE001 - research hook must not alter core/hold result
+        return {
+            **base,
+            "status": "rejected",
+            "source_date": source_date,
+            "candidate_id": capture.get("candidate_id"),
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+        }
+
+
+def _validate_and_write_projection_terminal_receipt(
+    result: Mapping[str, Any],
+    *,
+    input_pins: Mapping[str, Any],
+    research_output_root: Path | None = None,
+) -> dict[str, Any]:
+    if result.get("status") != "completed_research_only":
+        raise ValueError("daily source row projection has no terminal completion")
+    if result.get("research_only") is not True or result.get("formal_credit") is not False:
+        raise ValueError("daily source row projection returned unsafe eligibility")
+    projection_id = result.get("projection_id")
+    if not isinstance(projection_id, str) or re.fullmatch(r"[0-9a-f]{64}", projection_id) is None:
+        raise ValueError("daily source row projection id is invalid")
+    source_date = str(input_pins["source_date"])
+    pinned_research_root = resolve_ml_research_output_path(
+        get_ml_research_root(repository_root=REPO_ROOT)
+        if research_output_root is None
+        else research_output_root,
+        repository_root=REPO_ROOT,
+        access="write",
+    )
+    projection_root = resolve_ml_research_output_path(
+        pinned_research_root / DAILY_SOURCE_ROW_PROJECTION_OUTPUT_ROOT,
+        repository_root=REPO_ROOT,
+        access="write",
+    )
+    candidate_root = projection_root / source_date / projection_id
+    candidate_root_value = result.get("candidate_root")
+    if not isinstance(candidate_root_value, str) or Path(os.path.abspath(candidate_root_value)) != candidate_root:
+        raise ValueError("daily source row projection candidate root drifted")
+    _assert_unlinked_path(candidate_root, root=projection_root, label="projection candidate root")
+
+    manifest_path = candidate_root / "manifest.json"
+    completion_path = candidate_root / "completion_receipt.json"
+    if result.get("manifest_path") != str(manifest_path) or result.get("completion_receipt_path") != str(completion_path):
+        raise ValueError("daily source row projection receipt paths drifted")
+    manifest_bytes = _read_unlinked_bounded_file(
+        manifest_path,
+        root=projection_root,
+        max_bytes=MAX_DAILY_SOURCE_ROW_MANIFEST_BYTES,
+        label="daily source row projection manifest",
+    )
+    completion_bytes = _read_unlinked_bounded_file(
+        completion_path,
+        root=projection_root,
+        max_bytes=MAX_DAILY_SOURCE_ROW_MANIFEST_BYTES,
+        label="daily source row projection intermediate completion receipt",
+    )
+    manifest_sha = _sha256_bytes(manifest_bytes)
+    completion_sha = _sha256_bytes(completion_bytes)
+    if manifest_sha != _required_sha256(result.get("manifest_sha256"), field_name="projection.manifest_sha256"):
+        raise ValueError("daily source row projection manifest hash differs")
+    if completion_sha != _required_sha256(
+        result.get("completion_receipt_sha256"),
+        field_name="projection.completion_receipt_sha256",
+    ):
+        raise ValueError("daily source row projection intermediate receipt hash differs")
+    manifest = _strict_json_object(manifest_bytes, label="daily source row projection manifest")
+    completion = _strict_json_object(completion_bytes, label="daily source row projection intermediate completion")
+    _verify_content_sha256(manifest, label="daily source row projection manifest")
+    _verify_content_sha256(completion, label="daily source row projection intermediate completion")
+    if (
+        manifest.get("schema_version") != "ml-daily-source-row-research-projection.v1"
+        or manifest.get("projection_id") != projection_id
+        or manifest.get("source_date") != source_date
+        or manifest.get("candidate_only") is not True
+        or manifest.get("research_only") is not True
+        or manifest.get("historical_pit_eligible") is not False
+        or manifest.get("formal_source_contract_eligible") is not False
+        or manifest.get("formal_oos_allowed") is not False
+        or manifest.get("formal_credit") is not False
+        or manifest.get("features_included") is not False
+        or manifest.get("labels_included") is not False
+        or manifest.get("model_use_claimed") is not False
+        or manifest.get("direct_ooc_compatible") is not False
+        or manifest.get("decision_cutoff_comparison") != "not_declared"
+        or manifest.get("market_revision_cutoff_policy_evaluated") is not False
+    ):
+        raise ValueError("daily source row projection manifest schema or safety flags differ")
+    if (
+        completion.get("schema_version") != "ml-daily-source-row-research-completion.v1"
+        or completion.get("projection_id") != projection_id
+        or completion.get("manifest_sha256") != manifest_sha
+        or completion.get("completion_status") != "awaiting_terminal_revision_validation"
+        or completion.get("research_only") is not True
+        or completion.get("candidate_only") is not True
+        or completion.get("formal_credit") is not False
+    ):
+        raise ValueError("daily source row projection intermediate receipt is invalid")
+    candidate_available_at = _parse_datetime(
+        input_pins.get("candidate_available_at"),
+        field_name="input_candidate.candidate_available_at",
+    ).astimezone(timezone.utc)
+    projection_started_at = _parse_datetime(
+        manifest.get("projection_started_at"),
+        field_name="projection_manifest.projection_started_at",
+    ).astimezone(timezone.utc)
+    completion_started_at = _parse_datetime(
+        completion.get("completion_started_at"),
+        field_name="projection_completion.completion_started_at",
+    ).astimezone(timezone.utc)
+    if (
+        projection_started_at < candidate_available_at
+        or completion_started_at < projection_started_at
+    ):
+        raise ValueError("daily source row projection materialization clock moved backwards")
+
+    input_candidate = manifest.get("input_candidate")
+    if not isinstance(input_candidate, Mapping):
+        raise ValueError("daily source row projection input candidate pin is missing")
+    if (
+        input_candidate.get("candidate_id") != input_pins.get("candidate_id")
+        or input_candidate.get("manifest_path") != input_pins.get("manifest_relative_path")
+        or input_candidate.get("manifest_sha256") != input_pins.get("manifest_sha256")
+        or input_candidate.get("capture_receipt_sha256") != input_pins.get("capture_receipt_sha256")
+        or input_candidate.get("capture_receipt_available_at") != input_pins.get("candidate_available_at")
+    ):
+        raise ValueError("daily source row projection input candidate binding differs")
+
+    market_revision = manifest.get("market_revision")
+    revision_digest = result.get("market_revision_digest_sha256")
+    if (
+        not isinstance(market_revision, Mapping)
+        or market_revision.get("digest_sha256") != revision_digest
+        or input_pins.get("market_revision", {}).get("digest_sha256") != revision_digest
+    ):
+        raise ValueError("daily source row projection market revision pin differs")
+
+    expected_input_files: dict[str, str] = {
+        "inputs/candidate_manifest.json": str(input_pins["manifest_sha256"]),
+        "inputs/capture_receipt.json": str(input_pins["capture_receipt_sha256"]),
+    }
+    for source in input_pins["source_pins"]:
+        venue = str(source["venue"])
+        expected_input_files[f"inputs/sources/{venue}/raw_response.bin"] = str(
+            source["raw_response_sha256"]
+        )
+        expected_input_files[f"inputs/sources/{venue}/source_receipt.json"] = str(
+            source["receipt_file_sha256"]
+        )
+    input_files = manifest.get("input_files")
+    if not isinstance(input_files, Mapping) or set(input_files) != set(expected_input_files):
+        raise ValueError("daily source row projection copied-input manifest is incomplete")
+    for relative, expected_sha in expected_input_files.items():
+        entry = input_files.get(relative)
+        if not isinstance(entry, Mapping) or entry.get("sha256") != expected_sha:
+            raise ValueError(f"daily source row projection copied input pin differs: {relative}")
+
+    source_scope = manifest.get("source_scope")
+    if not isinstance(source_scope, list) or len(source_scope) != 2:
+        raise ValueError("daily source row projection source scope is incomplete")
+    for expected_source, projected_source in zip(input_pins["source_pins"], source_scope):
+        if (
+            not isinstance(projected_source, Mapping)
+            or projected_source.get("venue") != expected_source["venue"]
+            or projected_source.get("source_raw_response_sha256") != expected_source["raw_response_sha256"]
+            or projected_source.get("source_receipt_sha256") != expected_source["receipt_file_sha256"]
+        ):
+            raise ValueError("daily source row projection source scope hashes differ")
+
+    observations = manifest.get("observations_file")
+    if not isinstance(observations, Mapping) or observations.get("path") != "observations.jsonl" or observations.get("format") != "jsonl":
+        raise ValueError("daily source row projection observations metadata is invalid")
+    observations_path = candidate_root / "observations.jsonl"
+    observations_sha, observations_bytes, observations_rows = _stream_unlinked_file_sha256(
+        observations_path,
+        root=projection_root,
+        max_bytes=MAX_DAILY_SOURCE_ROW_PROJECTION_BYTES,
+        label="daily source row projection observations",
+    )
+    result_rows_sha = _required_sha256(
+        result.get("projected_rows_sha256"), field_name="projection.projected_rows_sha256"
+    )
+    manifest_rows_sha = _required_sha256(
+        observations.get("sha256"), field_name="projection.observations.sha256"
+    )
+    completion_rows_sha = _required_sha256(
+        completion.get("observations_sha256"), field_name="completion.observations_sha256"
+    )
+    row_count = observations.get("row_count")
+    byte_count = observations.get("bytes")
+    if (
+        observations_sha != result_rows_sha
+        or observations_sha != manifest_rows_sha
+        or observations_sha != completion_rows_sha
+        or isinstance(byte_count, bool)
+        or not isinstance(byte_count, int)
+        or byte_count <= 0
+        or observations_bytes != byte_count
+        or isinstance(row_count, bool)
+        or not isinstance(row_count, int)
+        or row_count <= 0
+        or observations_rows != row_count
+        or isinstance(result.get("projected_row_count"), bool)
+        or not isinstance(result.get("projected_row_count"), int)
+        or observations_rows != result.get("projected_row_count")
+    ):
+        raise ValueError("daily source row projection observations bytes/hash/count differ")
+
+    verification_completed_at = result.get("verification_completed_at")
+    verification_time = _parse_datetime(
+        verification_completed_at,
+        field_name="projection.verification_completed_at",
+    )
+    if (
+        result.get("candidate_available_at") != verification_completed_at
+        or verification_time.astimezone(timezone.utc) < completion_started_at
+    ):
+        raise ValueError("daily source row projection availability time differs")
+    receipt_started_at = datetime.now(timezone.utc)
+    if receipt_started_at < verification_time.astimezone(timezone.utc):
+        raise ValueError("daily source row projection terminal verification is future-dated")
+
+    terminal_body: dict[str, Any] = {
+        "schema_version": _DAILY_SOURCE_ROW_TERMINAL_RECEIPT_SCHEMA,
+        "terminal_status": "completed_research_only",
+        "source_date": source_date,
+        "research_output_root": str(pinned_research_root),
+        "input_candidate": {
+            "candidate_id": input_pins["candidate_id"],
+            "manifest_path": input_pins["manifest_relative_path"],
+            "manifest_sha256": input_pins["manifest_sha256"],
+            "capture_receipt_path": str(
+                Path(input_pins["capture_receipt_path"]).relative_to(REPO_ROOT).as_posix()
+            ),
+            "capture_receipt_sha256": input_pins["capture_receipt_sha256"],
+            "candidate_available_at": input_pins["candidate_available_at"],
+            "source_pins": input_pins["source_pins"],
+        },
+        "projection": {
+            "projection_id": projection_id,
+            "candidate_root": candidate_root.relative_to(pinned_research_root).as_posix(),
+            "manifest_path": manifest_path.relative_to(pinned_research_root).as_posix(),
+            "manifest_sha256": manifest_sha,
+            "intermediate_completion_receipt_path": completion_path.relative_to(
+                pinned_research_root
+            ).as_posix(),
+            "intermediate_completion_receipt_sha256": completion_sha,
+            "intermediate_completion_status": completion["completion_status"],
+            "projection_started_at": projection_started_at.isoformat(),
+            "intermediate_completion_started_at": completion_started_at.isoformat(),
+            "observations_path": observations_path.relative_to(pinned_research_root).as_posix(),
+            "observations_sha256": observations_sha,
+            "observations_bytes": observations_bytes,
+            "projected_row_count": observations_rows,
+            "market_revision_digest_sha256": revision_digest,
+            "verification_completed_at": verification_time.astimezone(timezone.utc).isoformat(),
+        },
+        "terminal_receipt_materialization_started_at": receipt_started_at.isoformat(),
+        "input_files": dict(input_files),
+        "no_new_http": True,
+        "no_source_database_write": True,
+        "research_only": True,
+        "candidate_only": True,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "formal_credit": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+        "direct_ooc_compatible": False,
+        "decision_cutoff_comparison": "not_declared",
+    }
+    terminal_payload = {
+        **terminal_body,
+        "content_sha256": _canonical_sha256(terminal_body),
+    }
+    terminal_path = candidate_root / "runner_terminal_verification_receipt.json"
+    receipt_sha, _receipt_bytes = _write_projection_terminal_receipt(
+        terminal_path,
+        terminal_payload,
+        root=projection_root,
+    )
+    receipt_completed_at = datetime.now(timezone.utc)
+    if receipt_completed_at < receipt_started_at:
+        raise ValueError("daily source row terminal receipt clock moved backwards")
+    return {
+        "status": "projected_research_only",
+        "schema_version": _DAILY_SOURCE_ROW_TERMINAL_RECEIPT_SCHEMA,
+        "source_date": source_date,
+        "candidate_id": input_pins["candidate_id"],
+        "candidate_manifest_path": input_pins["manifest_path"],
+        "candidate_manifest_sha256": input_pins["manifest_sha256"],
+        "candidate_capture_receipt_path": input_pins["capture_receipt_path"],
+        "candidate_capture_receipt_sha256": input_pins["capture_receipt_sha256"],
+        "projection_id": projection_id,
+        "projection_candidate_root": str(candidate_root),
+        "projection_manifest_path": str(manifest_path),
+        "projection_manifest_sha256": manifest_sha,
+        "projection_intermediate_completion_receipt_path": str(completion_path),
+        "projection_intermediate_completion_receipt_sha256": completion_sha,
+        "projection_observations_path": str(observations_path),
+        "projection_observations_sha256": observations_sha,
+        "projection_observations_bytes": observations_bytes,
+        "projected_row_count": observations_rows,
+        "market_revision_digest_sha256": revision_digest,
+        "verification_completed_at": verification_time.astimezone(timezone.utc).isoformat(),
+        "terminal_receipt_path": str(terminal_path),
+        "terminal_receipt_sha256": receipt_sha,
+        "terminal_receipt_readback_verified": True,
+        "terminal_receipt_readback_completed_at": receipt_completed_at.isoformat(),
+        "research_only": True,
+        "candidate_only": True,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "formal_credit": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+        "direct_ooc_compatible": False,
+        "decision_cutoff_comparison": "not_declared",
+    }
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return "sha256:" + digest.hexdigest()
+
+
+def _source_quality_evidence_not_run(
+    path: Path,
+    *,
+    candidate_sample_limit: int,
+    reason: str,
+) -> dict[str, Any]:
+    """Describe a planned report that the builder has not written."""
+
+    candidate_evidence_path = _source_quality_candidate_evidence_path(path)
+    return {
+        "path": str(path.resolve()),
+        "candidate_evidence_path": str(candidate_evidence_path),
+        "readback_status": "not_run",
+        "report_readable": False,
+        "report_hash_verified": False,
+        "candidate_evidence_status": "not_run",
+        "candidate_evidence_readable": False,
+        "candidate_evidence_hash_verified": False,
+        "candidate_evidence_complete": False,
+        "candidate_count": None,
+        "candidate_sample_count": None,
+        "candidate_sample_limit": candidate_sample_limit,
+        "candidate_samples_truncated": None,
+        "candidate_rows_complete": False,
+        "candidate_sample_key_count": None,
+        "candidate_sample_unique_key_count": None,
+        "candidate_full_unique_key_count": None,
+        "candidate_full_unique_key_count_verified": False,
+        "candidate_unique_key_scope": "bounded_samples_only",
+        "candidate_count_scope": "full_source_guard_scan",
+        "candidate_digest_scope": "full_source_guard_scan",
+        "candidate_sample_scope": "bounded_report_samples",
+        "candidate_digest": None,
+        "candidate_key_digest": None,
+        "reason": reason,
+    }
+
+
+def _source_quality_evidence_pending(
+    path: Path,
+    *,
+    candidate_sample_limit: int,
+) -> dict[str, Any]:
+    evidence = _source_quality_evidence_not_run(
+        path,
+        candidate_sample_limit=candidate_sample_limit,
+        reason="builder_report_pending",
+    )
+    evidence["readback_status"] = "pending"
+    evidence["candidate_evidence_status"] = "pending"
+    return evidence
+
+
+def _read_candidate_evidence_sidecar(
+    path: Path,
+    *,
+    expected_candidate_count: int,
+    expected_candidate_digest: str,
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Independently verify every row in the complete candidate JSONL sidecar."""
+
+    result: dict[str, Any] = {
+        "candidate_evidence_path": str(path.resolve()),
+        "candidate_evidence_status": "missing",
+        "candidate_evidence_readable": False,
+        "candidate_evidence_hash_verified": False,
+        "candidate_evidence_complete": False,
+        "candidate_evidence_file_sha256": None,
+        "candidate_evidence_row_count": None,
+        "candidate_full_unique_key_count": None,
+        "candidate_full_unique_key_count_verified": False,
+        "candidate_key_digest": None,
+    }
+    if not path.is_file():
+        result["reason"] = "source_quality_candidate_evidence_missing"
+        return result
+
+    try:
+        expected_schema = (
+            "portfolio-ml-daily-price-source-quality-candidates.v1"
+        )
+        if manifest.get("schema_version") != expected_schema:
+            raise ValueError("candidate evidence schema version is invalid")
+        if manifest.get("format") != "jsonl":
+            raise ValueError("candidate evidence format is invalid")
+        if manifest.get("path") != str(path.resolve()):
+            raise ValueError("candidate evidence path does not match scheduled path")
+        if manifest.get("key_fields") != ["date", "symbol"]:
+            raise ValueError("candidate evidence key fields are invalid")
+        if manifest.get("key_order") != "date_symbol_ascending":
+            raise ValueError("candidate evidence key order is invalid")
+        if manifest.get("complete") is not True:
+            raise ValueError("candidate evidence is marked incomplete")
+
+        def _non_negative_int(value: object, *, field_name: str) -> int:
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+            return value
+
+        manifest_row_count = _non_negative_int(
+            manifest.get("row_count"),
+            field_name="candidate_evidence.row_count",
+        )
+        manifest_unique_key_count = _non_negative_int(
+            manifest.get("unique_key_count"),
+            field_name="candidate_evidence.unique_key_count",
+        )
+        manifest_duplicate_count = _non_negative_int(
+            manifest.get("duplicate_key_count"),
+            field_name="candidate_evidence.duplicate_key_count",
+        )
+        manifest_out_of_order_count = _non_negative_int(
+            manifest.get("out_of_order_key_count"),
+            field_name="candidate_evidence.out_of_order_key_count",
+        )
+        manifest_candidate_digest = _required_sha256(
+            manifest.get("candidate_digest"),
+            field_name="candidate_evidence.candidate_digest",
+        )
+        manifest_key_digest = _required_sha256(
+            manifest.get("key_digest"),
+            field_name="candidate_evidence.key_digest",
+        )
+        manifest_file_sha256 = _required_sha256(
+            manifest.get("file_sha256"),
+            field_name="candidate_evidence.file_sha256",
+        )
+        if manifest_row_count != expected_candidate_count:
+            raise ValueError("candidate evidence row count does not match report")
+        if manifest_duplicate_count != 0 or manifest_out_of_order_count != 0:
+            raise ValueError("candidate evidence keys are not unique and ordered")
+        if manifest_candidate_digest != expected_candidate_digest:
+            raise ValueError("candidate evidence digest does not match report")
+
+        file_digest = hashlib.sha256()
+        row_digest = hashlib.sha256()
+        key_digest = hashlib.sha256()
+        row_count = 0
+        unique_key_count = 0
+        duplicate_key_count = 0
+        out_of_order_key_count = 0
+        previous_key: tuple[str, str] | None = None
+        with path.open("rb") as stream:
+            for raw_line in stream:
+                file_digest.update(raw_line)
+                if not raw_line.endswith(b"\n"):
+                    raise ValueError("candidate evidence JSONL line is not terminated")
+                candidate = json.loads(raw_line[:-1].decode("utf-8"))
+                if not isinstance(candidate, Mapping):
+                    raise ValueError("candidate evidence row must be an object")
+                candidate_date = candidate.get("date")
+                candidate_symbol = candidate.get("symbol")
+                if not isinstance(candidate_date, str) or not isinstance(
+                    candidate_symbol, str
+                ):
+                    raise ValueError("candidate evidence row key is invalid")
+                source_quality._update_candidate_digest(row_digest, candidate)
+                source_quality._update_candidate_key_digest(
+                    key_digest,
+                    candidate_date,
+                    candidate_symbol,
+                )
+                key = (candidate_date, candidate_symbol)
+                if previous_key is None or key > previous_key:
+                    unique_key_count += 1
+                elif key == previous_key:
+                    duplicate_key_count += 1
+                else:
+                    out_of_order_key_count += 1
+                previous_key = key
+                row_count += 1
+
+        actual_file_sha256 = "sha256:" + file_digest.hexdigest()
+        actual_candidate_digest = "sha256:" + row_digest.hexdigest()
+        actual_key_digest = "sha256:" + key_digest.hexdigest()
+        if actual_file_sha256 != manifest_file_sha256:
+            raise ValueError("candidate evidence file hash mismatch")
+        if row_count != manifest_row_count or row_count != expected_candidate_count:
+            raise ValueError("candidate evidence row count readback mismatch")
+        if unique_key_count != manifest_unique_key_count:
+            raise ValueError("candidate evidence unique key count mismatch")
+        if duplicate_key_count != manifest_duplicate_count:
+            raise ValueError("candidate evidence duplicate count mismatch")
+        if out_of_order_key_count != manifest_out_of_order_count:
+            raise ValueError("candidate evidence order count mismatch")
+        if actual_candidate_digest != manifest_candidate_digest:
+            raise ValueError("candidate evidence row digest mismatch")
+        if actual_key_digest != manifest_key_digest:
+            raise ValueError("candidate evidence key digest mismatch")
+    except (OSError, UnicodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        result.update(
+            {
+                "candidate_evidence_status": "invalid",
+                "reason": "source_quality_candidate_evidence_invalid",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+        return result
+
+    result.update(
+        {
+            "candidate_evidence_status": "verified",
+            "candidate_evidence_readable": True,
+            "candidate_evidence_hash_verified": True,
+            "candidate_evidence_complete": True,
+            "candidate_evidence_file_sha256": actual_file_sha256,
+            "candidate_evidence_row_count": row_count,
+            "candidate_full_unique_key_count": unique_key_count,
+            "candidate_full_unique_key_count_verified": True,
+            "candidate_key_digest": actual_key_digest,
+        }
+    )
+    return result
+
+
+def _source_quality_evidence_readback(
+    path: Path,
+    *,
+    expected_candidate_sample_limit: int,
+    expected_candidate_evidence_path: Path | None = None,
+) -> dict[str, Any]:
+    """Read and independently verify the builder's persisted quality report.
+
+    ``candidate_count`` and ``candidate_digest`` cover the complete source
+    guard scan.  The report's candidate list is intentionally bounded by the
+    explicit sample limit, while the paired JSONL sidecar is independently
+    read back row by row so ``candidate_rows_complete`` refers to the full
+    sidecar rather than the bounded summary sample.
+    """
+
+    resolved = path.resolve()
+    expected_evidence_path = (
+        _source_quality_candidate_evidence_path(resolved)
+        if expected_candidate_evidence_path is None
+        else expected_candidate_evidence_path.resolve()
+    )
+    base: dict[str, Any] = {
+        "path": str(resolved),
+        "candidate_evidence_path": str(expected_evidence_path),
+        "readback_status": "missing",
+        "report_readable": False,
+        "report_hash_verified": False,
+        "candidate_evidence_status": "not_checked",
+        "candidate_evidence_readable": False,
+        "candidate_evidence_hash_verified": False,
+        "candidate_evidence_complete": False,
+        "candidate_count": None,
+        "candidate_sample_count": None,
+        "candidate_sample_limit": expected_candidate_sample_limit,
+        "candidate_samples_truncated": None,
+        "candidate_rows_complete": False,
+        "candidate_sample_key_count": None,
+        "candidate_sample_unique_key_count": None,
+        "candidate_full_unique_key_count": None,
+        "candidate_full_unique_key_count_verified": False,
+        "candidate_unique_key_scope": "bounded_samples_only",
+        "candidate_count_scope": "full_source_guard_scan",
+        "candidate_digest_scope": "full_source_guard_scan",
+        "candidate_sample_scope": "bounded_report_samples",
+        "candidate_digest": None,
+        "candidate_key_digest": None,
+    }
+    if not resolved.is_file():
+        base["reason"] = "source_quality_report_missing"
+        return base
+    try:
+        report = _read_object(resolved)
+    except (OSError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        base.update(
+            {
+                "readback_status": "unreadable",
+                "reason": "source_quality_report_unreadable",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+        return base
+
+    try:
+        base["file_sha256"] = _file_sha256(resolved)
+    except (OSError, UnicodeError) as exc:
+        base.update(
+            {
+                "readback_status": "unreadable",
+                "reason": "source_quality_report_unreadable",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+        return base
+    supplied_report_hash = report.get("report_hash")
+    if not isinstance(supplied_report_hash, str):
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_hash_missing",
+            }
+        )
+        return base
+    try:
+        _required_sha256(
+            supplied_report_hash,
+            field_name="source_quality.report_hash",
+        )
+    except (TypeError, ValueError) as exc:
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_hash_invalid",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+        )
+        return base
+    logical_report = dict(report)
+    logical_report.pop("report_hash", None)
+    expected_report_hash = _canonical_sha256(logical_report)
+    if supplied_report_hash != expected_report_hash:
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_hash_mismatch",
+                "report_hash": supplied_report_hash,
+                "expected_report_hash": expected_report_hash,
+            }
+        )
+        return base
+
+    if report.get("read_only") is not True or report.get("repair_performed") is not False:
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_safety_flags_invalid",
+                "report_hash": supplied_report_hash,
+            }
+        )
+        return base
+    source = report.get("source")
+    if (
+        not isinstance(source, Mapping)
+        or source.get("sqlite_mode") != "ro"
+        or source.get("sqlite_query_only") is not True
+    ):
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_source_flags_invalid",
+                "report_hash": supplied_report_hash,
+            }
+        )
+        return base
+
+    def _non_negative_int(value: object, *, field_name: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{field_name} must be a non-negative integer")
+        return value
+
+    try:
+        candidate_count = _non_negative_int(
+            report.get("candidate_count"),
+            field_name="source_quality.candidate_count",
+        )
+        sample_count = _non_negative_int(
+            report.get("candidate_sample_count"),
+            field_name="source_quality.candidate_sample_count",
+        )
+        sample_limit = report.get("candidate_sample_limit")
+        if (
+            isinstance(sample_limit, bool)
+            or not isinstance(sample_limit, int)
+            or sample_limit < 0
+            or sample_limit != expected_candidate_sample_limit
+        ):
+            raise ValueError(
+                "source_quality.candidate_sample_limit does not match the scheduled bound"
+            )
+        truncated = report.get("candidate_samples_truncated")
+        if not isinstance(truncated, bool):
+            raise ValueError(
+                "source_quality.candidate_samples_truncated must be boolean"
+            )
+        candidates = report.get("candidates")
+        if not isinstance(candidates, list) or len(candidates) != sample_count:
+            raise ValueError(
+                "source_quality.candidates does not match candidate_sample_count"
+            )
+        sample_keys: list[tuple[str, str]] = []
+        for position, candidate in enumerate(candidates):
+            if not isinstance(candidate, Mapping):
+                raise ValueError(
+                    f"source_quality.candidates[{position}] must be an object"
+                )
+            candidate_date = candidate.get("date")
+            candidate_symbol = candidate.get("symbol")
+            if not isinstance(candidate_date, str) or not isinstance(
+                candidate_symbol, str
+            ):
+                raise ValueError(
+                    "source_quality candidate sample must include date and symbol"
+                )
+            sample_keys.append((candidate_date, candidate_symbol))
+        if len(set(sample_keys)) != sample_count:
+            raise ValueError(
+                "source_quality candidate sample contains duplicate keys"
+            )
+        if sample_count > candidate_count:
+            raise ValueError(
+                "source_quality candidate sample count exceeds candidate count"
+            )
+        if sample_count > sample_limit:
+            raise ValueError("source_quality candidate sample exceeds scheduled bound")
+        if truncated != (candidate_count > sample_count):
+            raise ValueError(
+                "source_quality candidate truncation flag does not match counts"
+            )
+        candidate_digest = _required_sha256(
+            report.get("candidate_digest"),
+            field_name="source_quality.candidate_digest",
+        )
+        if "research_price_unavailable_count" in report:
+            _non_negative_int(
+                report.get("research_price_unavailable_count"),
+                field_name="source_quality.research_price_unavailable_count",
+            )
+        if "research_price_invalid_count" in report:
+            _non_negative_int(
+                report.get("research_price_invalid_count"),
+                field_name="source_quality.research_price_invalid_count",
+            )
+    except (TypeError, ValueError) as exc:
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_report_metadata_invalid",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "report_hash": supplied_report_hash,
+            }
+        )
+        return base
+
+    base.update(
+        {
+            "report_hash": supplied_report_hash,
+            "report_status": report.get("status"),
+            "candidate_count": candidate_count,
+            "candidate_sample_count": sample_count,
+            "candidate_sample_limit": sample_limit,
+            "candidate_samples_truncated": truncated,
+            "candidate_sample_key_count": sample_count,
+            "candidate_sample_unique_key_count": len(set(sample_keys)),
+            "candidate_digest": candidate_digest,
+            "formal_training_allowed": report.get("formal_training_allowed"),
+            "quality_timing": report.get("quality_timing"),
+        }
+    )
+    candidate_evidence = report.get("candidate_evidence")
+    if not isinstance(candidate_evidence, Mapping):
+        base.update(
+            {
+                "readback_status": "invalid",
+                "reason": "source_quality_candidate_evidence_missing",
+                "report_hash": supplied_report_hash,
+            }
+        )
+        return base
+    sidecar_readback = _read_candidate_evidence_sidecar(
+        expected_evidence_path,
+        expected_candidate_count=candidate_count,
+        expected_candidate_digest=candidate_digest,
+        manifest=candidate_evidence,
+    )
+    if sidecar_readback["candidate_evidence_status"] != "verified":
+        base.update(sidecar_readback)
+        base.update(
+            {
+                "readback_status": "invalid",
+                "report_hash": supplied_report_hash,
+            }
+        )
+        return base
+
+    base.update(
+        {
+            "readback_status": "verified",
+            "report_readable": True,
+            "report_hash_verified": True,
+            "report_hash": supplied_report_hash,
+            "report_status": report.get("status"),
+            "candidate_count": candidate_count,
+            "candidate_sample_count": sample_count,
+            "candidate_sample_limit": sample_limit,
+            "candidate_samples_truncated": truncated,
+            "candidate_rows_complete": bool(
+                sidecar_readback["candidate_evidence_complete"]
+            ),
+            "candidate_sample_key_count": sample_count,
+            "candidate_sample_unique_key_count": len(set(sample_keys)),
+            "candidate_unique_key_scope": "full_candidate_evidence",
+            "candidate_full_unique_key_count": sidecar_readback[
+                "candidate_full_unique_key_count"
+            ],
+            "candidate_full_unique_key_count_verified": sidecar_readback[
+                "candidate_full_unique_key_count_verified"
+            ],
+            "candidate_count_scope": "full_source_guard_scan",
+            "candidate_digest_scope": "full_source_guard_scan",
+            "candidate_sample_scope": "bounded_report_samples",
+            "candidate_digest": candidate_digest,
+            "candidate_key_digest": sidecar_readback["candidate_key_digest"],
+            "formal_training_allowed": report.get("formal_training_allowed"),
+            "quality_timing": report.get("quality_timing"),
+        }
+    )
+    base.update(sidecar_readback)
+    base["candidate_unique_key_scope"] = "full_candidate_evidence"
+    base["readback_status"] = "verified"
+    base["report_hash"] = supplied_report_hash
+    return base
+
+
+def _compare_source_quality_summary(
+    summary: Mapping[str, object],
+    evidence: Mapping[str, Any],
+) -> tuple[bool, list[str]]:
+    """Cross-check builder stdout against the persisted report metadata."""
+
+    mismatches: list[str] = []
+    for field in (
+        "candidate_count",
+        "candidate_digest",
+        "report_hash",
+        "candidate_sample_count",
+        "candidate_sample_limit",
+        "candidate_samples_truncated",
+    ):
+        if field in summary and summary.get(field) != evidence.get(field):
+            mismatches.append(field)
+    return not mismatches, mismatches
+
+
 def _capacity_budget_from_args(args: argparse.Namespace) -> MLStorageCapacityBudget:
     """將舊 headroom threshold 映射到全鏈容量政策。"""
 
@@ -420,6 +1929,84 @@ def _refresh_needed(
     return current.manifest_mtime < proof.completed_at.astimezone(timezone.utc)
 
 
+def _source_revision_blocker(
+    database_path: Path,
+    decision_at: str,
+) -> dict[str, object] | None:
+    """Return a bounded, auditable blocker from the builder's revision guard.
+
+    The exporter runs the same guard, but its CLI reports exit code 2. Run it
+    here before spawning that child so an expected source-revision hold is
+    represented as a blocked scheduled run rather than a generic builder
+    failure. Unexpected exceptions deliberately propagate and remain
+    fail-closed in ``main``. The receipt reference is only a lookup aid; the
+    existing guard owns chain validation, and this wrapper does not claim a
+    receipt hash or immutable evidence it did not receive from that guard.
+    """
+
+    try:
+        check_daily_price_source_revision(
+            database_path=database_path,
+            decision_date=decision_at,
+        )
+    except DailyPriceSourceRevisionError as exc:
+        message = str(exc)
+        source_date_match = re.search(
+            r"(?:historical PIT from\s+|source_date=)(\d{4}-\d{2}-\d{2})",
+            message,
+            flags=re.IGNORECASE,
+        )
+        receipt_path_match = re.search(
+            r"(?P<path>(?:[A-Za-z]:[\\/]|/)[^\r\n,]+?\.json)(?::|\s|$)",
+            message,
+            flags=re.IGNORECASE,
+        )
+        receipt_reference: dict[str, str] | None = None
+        if receipt_path_match is not None:
+            receipt_reference = {
+                "kind": "diagnostic_lookup_only",
+                "path": receipt_path_match.group("path"),
+            }
+        elif "formal market source revision" in message.casefold():
+            database_root = database_path.resolve().parent
+            if database_root.name.casefold() == "sqlite":
+                database_root = database_root.parent
+            receipt_reference = {
+                "kind": "diagnostic_lookup_only",
+                "root": str((database_root / FORMAL_MARKET_RECEIPT_DIR).resolve())
+            }
+        return {
+            "status": "blocked",
+            "guard": "data_module.ml_daily_price_revision_gate.check_daily_price_source_revision",
+            "blocker_kind": _source_revision_blocker_kind(message),
+            "database": str(database_path.resolve()),
+            "decision_at": decision_at,
+            "source_date": (
+                None if source_date_match is None else source_date_match.group(1)
+            ),
+            "receipt_reference": receipt_reference,
+            "receipt_reference_is_immutable_evidence": False,
+            "error_type": type(exc).__name__,
+            "error": message,
+        }
+    return None
+
+
+def _source_revision_blocker_kind(message: str) -> str:
+    normalized = message.casefold()
+    if any(
+        marker in normalized
+        for marker in (
+            "blocks historical pit",
+            "historical price repair receipt blocks this pit prefix",
+        )
+    ):
+        return "temporal_source_revision"
+    if "無法驗證" in message or "historical price repair receipt requires" in normalized:
+        return "receipt_validation_failure"
+    return "generic_guard_rejection"
+
+
 def _acquire_lock(lock_path: Path) -> MLStorageChainReservation | None:
     """保留舊 private caller 名稱，實際使用 raw/Direct 共用 reservation。"""
 
@@ -519,7 +2106,20 @@ def _builder_command(
     safety_reserve_bytes: int | None = None,
     daily_price_source_dir: Path | None = None,
     daily_price_source_dirs: Sequence[Path] | None = None,
+    source_quality_report_path: Path | None = None,
+    source_quality_candidate_evidence_path: Path | None = None,
+    source_quality_candidate_sample_limit: int = (
+        _DEFAULT_SOURCE_QUALITY_CANDIDATE_SAMPLE_LIMIT
+    ),
 ) -> list[str]:
+    if (
+        isinstance(source_quality_candidate_sample_limit, bool)
+        or not isinstance(source_quality_candidate_sample_limit, int)
+        or source_quality_candidate_sample_limit < 0
+    ):
+        raise ValueError(
+            "source-quality-candidate-sample-limit must be a non-negative integer"
+        )
     command = [
         sys.executable,
         str(REPO_ROOT / "scripts" / "build_ml_pit_year_shards.py"),
@@ -567,6 +2167,22 @@ def _builder_command(
         command.extend(
             ["--daily-price-source-dir", str(resolved_source_dir)]
         )
+    if source_quality_report_path is not None:
+        candidate_evidence_path = (
+            _source_quality_candidate_evidence_path(source_quality_report_path)
+            if source_quality_candidate_evidence_path is None
+            else source_quality_candidate_evidence_path.resolve()
+        )
+        command.extend(
+            [
+                "--source-quality-report",
+                str(source_quality_report_path.resolve()),
+                "--source-quality-candidate-evidence",
+                str(candidate_evidence_path),
+                "--source-quality-candidate-sample-limit",
+                str(source_quality_candidate_sample_limit),
+            ]
+        )
     return command
 
 
@@ -605,12 +2221,36 @@ def _base_status(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.project_daily_source_rows and not args.capture_prospective_daily_price_candidate:
+        parser.error("--project-daily-source-rows requires --capture-prospective-daily-price-candidate")
     if args.batch_size <= 0 or args.batch_size > 100_000:
         raise ValueError("batch-size must be within 1..100000")
     if args.minimum_free_space_bytes <= 0:
         raise ValueError("minimum-free-space-bytes must be positive")
+    if (
+        isinstance(args.source_quality_candidate_sample_limit, bool)
+        or not isinstance(args.source_quality_candidate_sample_limit, int)
+        or args.source_quality_candidate_sample_limit < 0
+    ):
+        raise ValueError(
+            "source-quality-candidate-sample-limit must be non-negative"
+        )
     output_root = args.output_root.resolve()
+    active_research_root = get_ml_research_root(repository_root=REPO_ROOT)
+    requested_research_root = (
+        active_research_root
+        if args.research_output_root is None
+        else args.research_output_root.expanduser()
+    )
+    research_output_root = resolve_ml_research_output_path(
+        requested_research_root,
+        repository_root=REPO_ROOT,
+        access="write",
+    )
+    if research_output_root != active_research_root:
+        raise ValueError("research-output-root must equal the configured active ML research root")
     release_root = (
         args.release_root.resolve()
         if args.release_root is not None
@@ -643,12 +2283,152 @@ def main(argv: Sequence[str] | None = None) -> int:
     # 消耗同一 filesystem 的預算；raw private lock 名稱不再另開一把鎖。
     lock_path = heavy_chain_lock_path(release_root)
     started_at = scheduled_now()
+    run_id, source_quality_report_path = _new_source_quality_evidence_identity(
+        run_root=run_root,
+        started_at=started_at,
+    )
+    source_quality_candidate_evidence_path = (
+        _source_quality_candidate_evidence_path(source_quality_report_path)
+    )
+    source_quality_evidence = _source_quality_evidence_not_run(
+        source_quality_report_path,
+        candidate_sample_limit=args.source_quality_candidate_sample_limit,
+        reason="builder_not_started",
+    )
     lock: MLStorageChainReservation | None = None
     builder_returncode: int | None = None
     builder_source_quality_summary: dict[str, object] | None = None
+    builder_started = False
+    prospective_capture_status: dict[str, object] = {
+        "status": "not_run_core_freshness_proof_pending"
+    }
+    prospective_projection_status: dict[str, object] = {
+        "status": "not_run_core_freshness_proof_pending",
+        "research_only": True,
+        "candidate_only": True,
+        "formal_credit": False,
+        "historical_pit_eligible": False,
+        "formal_source_contract_eligible": False,
+        "formal_oos_allowed": False,
+        "features_included": False,
+        "labels_included": False,
+        "model_use_claimed": False,
+    }
+    prospective_adapter_status: dict[str, object] = {
+        "status": "not_run_projection_pending",
+        "research_only": True,
+        "formal_credit": False,
+        "historical_pit_eligible": False,
+        "formal_oos_allowed": False,
+        "model_use_claimed": False,
+        "production_alpha_bp": 0,
+    }
+    prospective_cycle_status: dict[str, object] = {
+        "status": "not_run_daily_source_row_b_adapter_pending",
+        "research_only": True,
+        "formal_credit": False,
+        "historical_pit_eligible": False,
+        "formal_oos_allowed": False,
+        "production_action_allowed": False,
+    }
     inherited_env_value = os.environ.get(HEAVY_CHAIN_RESERVATION_HELD_ENV)
-    _write_json(
-        status_path,
+
+    def _write_status(payload: Mapping[str, Any]) -> None:
+        enriched = dict(payload)
+        enriched.update(
+            {
+                "run_id": run_id,
+                "source_quality_report_path": str(source_quality_report_path),
+                "source_quality_candidate_evidence_path": str(
+                    source_quality_candidate_evidence_path
+                ),
+                "source_quality_candidate_sample_limit": (
+                    args.source_quality_candidate_sample_limit
+                ),
+                "source_quality_evidence": dict(source_quality_evidence),
+            }
+        )
+        if args.capture_prospective_daily_price_candidate:
+            enriched["prospective_daily_price_capture"] = dict(
+                prospective_capture_status
+            )
+        if args.project_daily_source_rows:
+            enriched["prospective_daily_source_row_projection"] = dict(
+                prospective_projection_status
+            )
+            enriched["prospective_daily_source_row_b_adapter"] = dict(
+                prospective_adapter_status
+            )
+            enriched["current_stock_research_cycle"] = dict(prospective_cycle_status)
+        _write_json(status_path, enriched)
+
+    def _write_current_stock_cycle_status(
+        payload: Mapping[str, object],
+    ) -> None:
+        nonlocal prospective_cycle_status
+        prospective_cycle_status = dict(payload)
+        # Preserve the independent raw-run state while making the cycle's exact
+        # stage, pins, next action, and terminal status visible to operations.
+        _write_status(
+            _base_status(
+                status="running",
+                output_root=output_root,
+                raw_root=raw_root,
+                database=database,
+                status_path=status_path,
+                log_path=log_path,
+                # Keep the true raw-run start clock; a cycle progress callback
+                # must not reset the G9 decision-day identity.
+                started_at=started_at.isoformat(timespec="seconds"),
+                source_date=proof.latest_core_date.isoformat(),
+                latest_core_date=proof.latest_core_date.isoformat(),
+                decision_at=proof.decision_at,
+                data_update_status=proof.data_update_status,
+                data_update_status_path=str(data_update_status_path),
+                daily_price_source_dirs=[str(path) for path in daily_price_source_dirs],
+                current_stock_research_cycle=dict(prospective_cycle_status),
+            )
+        )
+
+    def _write_source_revision_blocked(
+        proof: _CoreFreshnessProof,
+        current: _RawPublication | None,
+    ) -> bool:
+        if not database.is_file():
+            raise RuntimeError(f"database_missing:{database}")
+        blocker = _source_revision_blocker(database, proof.decision_at)
+        if blocker is None:
+            return False
+        payload = _base_status(
+            status="blocked_source_revision",
+            output_root=output_root,
+            raw_root=raw_root,
+            database=database,
+            status_path=status_path,
+            log_path=log_path,
+            started_at=started_at.isoformat(timespec="seconds"),
+            completed_at=scheduled_now().isoformat(timespec="seconds"),
+            latest_core_date=proof.latest_core_date.isoformat(),
+            decision_at=proof.decision_at,
+            data_update_status=proof.data_update_status,
+            current_publication_id=(
+                None if current is None else current.publication_id
+            ),
+            source_revision_gate=blocker,
+            error_type=blocker["error_type"],
+            error=blocker["error"],
+        )
+        _write_status(payload)
+        _append_log(
+            log_path,
+            json.dumps(
+                {"event": "source_revision_gate_blocked", **blocker},
+                ensure_ascii=False,
+            ),
+        )
+        return True
+
+    _write_status(
         _base_status(
             status="running",
             output_root=output_root,
@@ -664,8 +2444,178 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         try:
             proof = _core_freshness_proof(data_update_status_path)
+            if args.capture_prospective_daily_price_candidate:
+                candidate_root = (
+                    REPO_ROOT / "output" / "ml_prospective_daily_price_candidates"
+                )
+                try:
+                    prospective_capture_status = (
+                        capture_prospective_daily_price_candidate(
+                            source_output_root=output_root,
+                            database_path=database,
+                            source_date=proof.latest_core_date.isoformat(),
+                            candidate_root=candidate_root,
+                        )
+                    )
+                    prospective_capture_status.setdefault(
+                        "trigger", "raw_runner_core_freshness_proof"
+                    )
+                except Exception as exc:
+                    prospective_capture_status = {
+                        "status": "rejected",
+                        "trigger": "raw_runner_core_freshness_proof",
+                        "source_date": proof.latest_core_date.isoformat(),
+                        "candidate_root": str(candidate_root),
+                        "historical_pit_eligible": False,
+                        "formal_oos_allowed": False,
+                        "formal_credit": False,
+                        "features_included": False,
+                        "labels_included": False,
+                        "model_use_claimed": False,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                _append_log(
+                    log_path,
+                    json.dumps(
+                        {
+                            "event": "prospective_daily_price_capture",
+                            **prospective_capture_status,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+                if args.project_daily_source_rows:
+                    prospective_projection_status = (
+                        _project_daily_source_rows_from_capture(
+                            prospective_capture_status,
+                            source_date=proof.latest_core_date.isoformat(),
+                            research_output_root=research_output_root,
+                        )
+                    )
+                    _append_log(
+                        log_path,
+                        json.dumps(
+                            {
+                                "event": "prospective_daily_source_row_projection",
+                                **prospective_projection_status,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
+                    if (
+                        prospective_projection_status.get("status")
+                        == "projected_research_only"
+                        and prospective_projection_status.get(
+                            "terminal_receipt_readback_verified"
+                        )
+                        is True
+                    ):
+                        try:
+                            prospective_adapter_status = (
+                                run_daily_source_row_research_adapter(
+                                    raw_run_id=run_id,
+                                    source_date=proof.latest_core_date.isoformat(),
+                                    projection_status=prospective_projection_status,
+                                    repository_root=REPO_ROOT,
+                                    research_output_root=research_output_root,
+                                )
+                            )
+                        except Exception as exc:  # noqa: BLE001 - independent research child
+                            prospective_adapter_status = {
+                                "status": "failed_closed",
+                                "schema_version": "ml-daily-source-row-b-adapter-run.v1",
+                                "raw_run_id": run_id,
+                                "source_date": proof.latest_core_date.isoformat(),
+                                "error_type": type(exc).__name__,
+                                "error": str(exc),
+                                "research_only": True,
+                                "formal_credit": False,
+                                "historical_pit_eligible": False,
+                                "formal_oos_allowed": False,
+                                "model_use_claimed": False,
+                                "production_alpha_bp": 0,
+                            }
+                    else:
+                        prospective_adapter_status = {
+                            "status": "not_run_projection_not_terminal_verified",
+                            "raw_run_id": run_id,
+                            "source_date": proof.latest_core_date.isoformat(),
+                            "research_only": True,
+                            "formal_credit": False,
+                            "historical_pit_eligible": False,
+                            "formal_oos_allowed": False,
+                            "model_use_claimed": False,
+                            "production_alpha_bp": 0,
+                        }
+                    if prospective_adapter_status.get("status") == "completed_research_only":
+                        try:
+                            from scripts.scheduled.current_stock_research_cycle import (
+                                run_current_stock_research_cycle,
+                            )
+
+                            prospective_cycle_status = run_current_stock_research_cycle(
+                                raw_run_id=run_id,
+                                source_date=proof.latest_core_date.isoformat(),
+                                b_adapter_terminal_path=(
+                                    str(prospective_adapter_status.get("terminal_receipt_path") or "")
+                                ),
+                                b_adapter_terminal_sha256=(
+                                    str(prospective_adapter_status.get("terminal_receipt_sha256") or "")
+                                ),
+                                data_root=args.data_root.resolve(),
+                                canonical_output_root=output_root,
+                                release_root=release_root,
+                                repository_root=REPO_ROOT,
+                                research_output_root=research_output_root,
+                                status_callback=_write_current_stock_cycle_status,
+                                reservation=lock,
+                            )
+                        except Exception as exc:  # noqa: BLE001 - cycle is independent of formal raw status
+                            prospective_cycle_status = {
+                                "status": "failed",
+                                "raw_run_id": run_id,
+                                "source_date": proof.latest_core_date.isoformat(),
+                                "error_type": type(exc).__name__,
+                                "error": str(exc),
+                                "next_action": "inspect_current_stock_research_cycle_and_retry_with_a_new_raw_run_id",
+                                "research_only": True,
+                                "formal_credit": False,
+                                "historical_pit_eligible": False,
+                                "formal_oos_allowed": False,
+                                "production_action_allowed": False,
+                            }
+                            _write_current_stock_cycle_status(prospective_cycle_status)
+                    else:
+                        prospective_cycle_status = {
+                            "status": "not_run_b_adapter_not_completed",
+                            "raw_run_id": run_id,
+                            "source_date": proof.latest_core_date.isoformat(),
+                            "b_adapter_status": prospective_adapter_status.get("status"),
+                            "research_only": True,
+                            "formal_credit": False,
+                            "historical_pit_eligible": False,
+                            "formal_oos_allowed": False,
+                            "production_action_allowed": False,
+                        }
+                    _append_log(
+                        log_path,
+                        json.dumps(
+                            {
+                                "event": "prospective_daily_source_row_b_adapter",
+                                **prospective_adapter_status,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
             current = _latest_raw_publication(raw_root)
             if not _refresh_needed(current, proof):
+                # Validate the source revision before trusting a
+                # manifest/cutoff as current. The publication pointer proves
+                # only its own content; it does not establish that today's
+                # source revision is PIT-safe.
+                if _write_source_revision_blocked(proof, current):
+                    return 0
                 payload = _base_status(
                     status="skipped_current",
                     output_root=output_root,
@@ -686,7 +2636,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     ),
                     reason="raw_pit_publication_current",
                 )
-                _write_json(status_path, payload)
+                _write_status(payload)
                 return 0
             storage_preflight = _storage_preflight(
                 raw_root,
@@ -728,11 +2678,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "configured capacity policy"
                     ),
                 )
-                _write_json(status_path, payload)
+                _write_status(payload)
                 return 0
             if _direct_chain_instance_lock_present(release_root):
-                _write_json(
-                    status_path,
+                _write_status(
                     _base_status(
                         status="skipped_locked",
                         output_root=output_root,
@@ -761,8 +2710,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 0
             lock = _acquire_lock(lock_path)
             if lock is None:
-                _write_json(
-                    status_path,
+                _write_status(
                     _base_status(
                         status="skipped_locked",
                         output_root=output_root,
@@ -790,8 +2738,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     ),
                 )
                 return 0
-            _write_json(
-                status_path,
+            _write_status(
                 _base_status(
                     status="running",
                     output_root=output_root,
@@ -850,10 +2797,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "the heavy-chain reservation"
                     ),
                 )
-                _write_json(status_path, payload)
+                _write_status(payload)
                 return 0
-            if not database.is_file():
-                raise RuntimeError(f"database_missing:{database}")
+            if _write_source_revision_blocked(proof, current):
+                return 0
             command = _builder_command(
                 database=database,
                 raw_root=raw_root,
@@ -869,6 +2816,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 safety_reserve_bytes=capacity_budget.safety_reserve_bytes,
                 daily_price_source_dirs=daily_price_source_dirs,
+                source_quality_report_path=source_quality_report_path,
+                source_quality_candidate_evidence_path=(
+                    source_quality_candidate_evidence_path
+                ),
+                source_quality_candidate_sample_limit=(
+                    args.source_quality_candidate_sample_limit
+                ),
             )
             # raw runner 已持有 canonical reservation；builder CLI 仍會執行
             # 自己的容量 preflight，但只接受綁定 owner sidecar、canonical
@@ -882,6 +2836,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     parent_pid=os.getpid(),
                 )
             )
+            source_quality_evidence = _source_quality_evidence_pending(
+                source_quality_report_path,
+                candidate_sample_limit=args.source_quality_candidate_sample_limit,
+            )
             _append_log(log_path, json.dumps({"event": "builder_start", "command": command}, ensure_ascii=False))
             builder_process = subprocess.Popen(
                 command,
@@ -893,6 +2851,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 encoding="utf-8",
                 errors="replace",
             )
+            builder_started = True
             try:
                 lock.authorize_child(builder_process.pid)
             except Exception:
@@ -910,6 +2869,37 @@ def main(argv: Sequence[str] | None = None) -> int:
             builder_source_quality_summary = _extract_source_quality_summary(
                 builder_stdout
             )
+            source_quality_evidence = _source_quality_evidence_readback(
+                source_quality_report_path,
+                expected_candidate_sample_limit=(
+                    args.source_quality_candidate_sample_limit
+                ),
+                expected_candidate_evidence_path=(
+                    source_quality_candidate_evidence_path
+                ),
+            )
+            if (
+                builder_source_quality_summary is not None
+                and source_quality_evidence["readback_status"] == "verified"
+            ):
+                summary_matches, summary_mismatches = (
+                    _compare_source_quality_summary(
+                        builder_source_quality_summary,
+                        source_quality_evidence,
+                    )
+                )
+                source_quality_evidence["builder_summary_readback"] = {
+                    "status": "matched" if summary_matches else "mismatch",
+                    "mismatched_fields": summary_mismatches,
+                }
+                if not summary_matches:
+                    source_quality_evidence.update(
+                        {
+                            "readback_status": "invalid",
+                            "candidate_rows_complete": False,
+                            "reason": "builder_summary_readback_mismatch",
+                        }
+                    )
             if builder_stdout:
                 _append_log(log_path, builder_stdout)
             if builder_stderr:
@@ -918,6 +2908,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise RuntimeError(
                     f"raw_pit_builder_failed:{builder_returncode}"
                 )
+            if source_quality_evidence["readback_status"] != "verified":
+                raise RuntimeError("source_quality_evidence_readback_failed")
             published = _latest_raw_publication(raw_root)
             if published is None:
                 raise RuntimeError("raw_pit_pointer_validation_failed")
@@ -947,7 +2939,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     str(path) for path in daily_price_source_dirs
                 ],
             )
-            _write_json(status_path, payload)
+            _write_status(payload)
             return 0
         except _UpstreamNotReady as exc:
             payload = _base_status(
@@ -961,9 +2953,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 completed_at=scheduled_now().isoformat(timespec="seconds"),
                 reason=str(exc),
             )
-            _write_json(status_path, payload)
+            _write_status(payload)
             return 0
         except Exception as exc:  # noqa: BLE001 - preserve machine-readable failure
+            if (
+                builder_started
+                and source_quality_evidence.get("readback_status") == "pending"
+            ):
+                source_quality_evidence = _source_quality_evidence_readback(
+                    source_quality_report_path,
+                    expected_candidate_sample_limit=(
+                        args.source_quality_candidate_sample_limit
+                    ),
+                    expected_candidate_evidence_path=(
+                        source_quality_candidate_evidence_path
+                    ),
+                )
             failure_fields: dict[str, object] = {
                 "error_type": type(exc).__name__,
                 "error": str(exc),
@@ -985,7 +2990,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 completed_at=scheduled_now().isoformat(timespec="seconds"),
                 **failure_fields,
             )
-            _write_json(status_path, payload)
+            _write_status(payload)
             _append_log(log_path, f"failure: {type(exc).__name__}: {exc}")
             return 1
     finally:

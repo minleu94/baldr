@@ -8,6 +8,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable, Mapping
 
+from data_module.contracts.fundamental import SourceDiagnostic, SourceDiagnosticKind
+from data_module.contracts.statement import StatementAvailabilityOverride
 from data_module.fundamental_availability import (
     FIRST_OBSERVED_EVIDENCE_CLASSES,
     FORMAL_AVAILABILITY_CONTRACT_VERSION,
@@ -17,7 +19,6 @@ from data_module.fundamental_availability import (
     parse_formal_official_provenance,
     resolve_fundamental_availability,
 )
-from decision_module.factors.factor_dtos import FactorDiagnostic, FactorQuality
 
 
 StatementAvailabilityKey = tuple[str, str, str]
@@ -68,27 +69,9 @@ RAW_STATEMENT_SOURCES = frozenset(
 
 
 @dataclass(frozen=True)
-class StatementAvailabilityOverride:
-    stock_code: str
-    statement_type: str
-    period: str
-    as_of_date: date
-    announced_date: date | None
-    available_date: date
-    quality: FactorQuality
-    source: str
-    source_version: str
-    evidence_class: str = ""
-    source_hash: str = ""
-    revision: int = 0
-    parent_revision: int | None = None
-    provenance_mode: str = ""
-
-
-@dataclass(frozen=True)
 class StatementAvailabilityOverrideLoadResult:
     overrides: dict[StatementAvailabilityKey, StatementAvailabilityOverride]
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[SourceDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "overrides", dict(self.overrides))
@@ -105,7 +88,7 @@ def load_statement_availability_overrides(
         StatementAvailabilityKey,
         list[StatementAvailabilityOverride],
     ] = {}
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
 
     for row in rows:
         stock_code = row.get("stock_code", "").strip()
@@ -116,9 +99,8 @@ def load_statement_availability_overrides(
 
         if source in RAW_STATEMENT_SOURCES:
             diagnostics.append(
-                FactorDiagnostic(
+                SourceDiagnostic(
                     code="fundamental_statement_availability.raw_csv_not_available_source",
-                    factor_name="fundamental.statement_availability",
                     stock_code=stock_code,
                     message=(
                         "raw statement CSV date is not an announcement or "
@@ -191,7 +173,6 @@ def load_statement_availability_overrides(
             as_of_date=as_of_date,
             announced_date=resolution.announced_date,
             available_date=resolution.available_date,
-            quality=resolution.quality,
             source=source,
             source_version=source_version,
             evidence_class=(
@@ -241,16 +222,15 @@ def load_statement_availability_overrides_csv_files(
     """
 
     rows: list[Mapping[str, str]] = []
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
     seen_rows: set[tuple[tuple[str, str], ...]] = set()
     normalized_paths = tuple(Path(path) for path in paths)
     if not normalized_paths:
         return StatementAvailabilityOverrideLoadResult(
             overrides={},
             diagnostics=(
-                FactorDiagnostic(
+                SourceDiagnostic(
                     code="fundamental_statement_availability.mapping_file_missing",
-                    factor_name="fundamental.statement_availability",
                     stock_code="",
                     message="statement availability mapping file list is empty",
                 ),
@@ -281,13 +261,12 @@ def load_statement_availability_overrides_csv_files(
 
 def _read_statement_availability_csv(
     path: Path,
-) -> tuple[list[Mapping[str, str]], tuple[FactorDiagnostic, ...]]:
+) -> tuple[list[Mapping[str, str]], tuple[SourceDiagnostic, ...]]:
     path = Path(path)
     if not path.exists():
         return [], (
-            FactorDiagnostic(
+            SourceDiagnostic(
                 code="fundamental_statement_availability.mapping_file_missing",
-                factor_name="fundamental.statement_availability",
                 stock_code="",
                 message=f"statement availability mapping file missing; path={path}",
             ),
@@ -301,9 +280,8 @@ def _read_statement_availability_csv(
         ]
         if missing_columns:
             return [], (
-                FactorDiagnostic(
+                SourceDiagnostic(
                     code="fundamental_statement_availability.mapping_missing_columns",
-                    factor_name="fundamental.statement_availability",
                     stock_code="",
                     message=(
                         "statement availability mapping missing required columns; "
@@ -325,7 +303,7 @@ def _resolve_provenance(
 ) -> tuple[
     FormalAvailabilityProvenance | None,
     str | None,
-    tuple[FactorDiagnostic, ...],
+    tuple[SourceDiagnostic, ...],
 ]:
     evidence_class = (row.get("evidence_class") or "").strip()
     contract_version = (row.get("availability_contract_version") or "").strip()
@@ -502,15 +480,16 @@ def _invalid_date_diagnostic(
     statement_type: str,
     period: str,
     field_name: str,
-) -> FactorDiagnostic:
-    return FactorDiagnostic(
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code=f"fundamental_statement_availability.invalid_{field_name}",
-        factor_name="fundamental.statement_availability",
         stock_code=stock_code,
         message=(
             "statement availability mapping has invalid date field; "
             f"statement_type={statement_type}; period={period}; field={field_name}"
         ),
+        kind=SourceDiagnosticKind.STATEMENT_AVAILABILITY,
+        period=period,
     )
 
 
@@ -520,10 +499,11 @@ def _provenance_diagnostic(
     statement_type: str,
     period: str,
     message: str,
-) -> FactorDiagnostic:
-    return FactorDiagnostic(
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code=f"fundamental_statement_availability.{code}",
-        factor_name="fundamental.statement_availability",
         stock_code=stock_code,
         message=f"{message}; statement_type={statement_type}; period={period}",
+        kind=SourceDiagnosticKind.STATEMENT_AVAILABILITY,
+        period=period,
     )

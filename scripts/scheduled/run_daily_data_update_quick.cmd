@@ -15,6 +15,8 @@ if /I "%BALDR_ENABLE_TECHNICAL_PROCESS_POOL%"=="1" set "TECHNICAL_POOL_ARGS=--en
 if not "%BALDR_TECHNICAL_PROCESS_POOL_WORKERS%"=="" set "TECHNICAL_POOL_ARGS=%TECHNICAL_POOL_ARGS% --technical-process-pool-workers %BALDR_TECHNICAL_PROCESS_POOL_WORKERS%"
 if not "%BALDR_TECHNICAL_PROCESS_POOL_MAX_IN_FLIGHT%"=="" set "TECHNICAL_POOL_ARGS=%TECHNICAL_POOL_ARGS% --technical-process-pool-max-in-flight %BALDR_TECHNICAL_PROCESS_POOL_MAX_IN_FLIGHT%"
 if not "%BALDR_TECHNICAL_PROCESS_POOL_MAX_RETRIES%"=="" set "TECHNICAL_POOL_ARGS=%TECHNICAL_POOL_ARGS% --technical-process-pool-max-retries %BALDR_TECHNICAL_PROCESS_POOL_MAX_RETRIES%"
+set "MONTHLY_REVENUE_RESEARCH_ARGS=--capture-monthly-revenue-research-candidate"
+if /I "%BALDR_CAPTURE_MONTHLY_REVENUE_RESEARCH_CANDIDATE%"=="0" set "MONTHLY_REVENUE_RESEARCH_ARGS="
 
-"%PYTHON%" "scripts\scheduled\run_daily_data_update_quick.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --window-weekdays "%WINDOW_WEEKDAYS%" %TECHNICAL_POOL_ARGS%
+"%PYTHON%" "scripts\scheduled\run_daily_data_update_quick.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --window-weekdays "%WINDOW_WEEKDAYS%" --reverify-unknown-legacy-industry-dates %TECHNICAL_POOL_ARGS% %MONTHLY_REVENUE_RESEARCH_ARGS%
 exit /b %ERRORLEVEL%

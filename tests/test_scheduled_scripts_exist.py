@@ -16,6 +16,9 @@ REQUIRED_FILES = (
     "run_ml_direct_chain_maintenance.py",
     "run_daily_data_freshness_check.ps1",
     "run_evidence_pipeline_dry_run.ps1",
+    "run_forward_outcomes_daily.cmd",
+    "run_scheduled_forward_outcomes.py",
+    "run_recommendation_calibration_learning.cmd",
     "run_evidence_working_copy_smoke.ps1",
     "paper_execution_dependency_gate.py",
     "paper_execution_retry_runner.py",
@@ -51,6 +54,7 @@ def test_register_and_unregister_support_dry_run_modes() -> None:
     assert "baldr-ml-promotion-authority-daily" in register_text
     assert "baldr-ml-allocation-copilot-daily" in register_text
     assert "baldr-decision-evidence-capture-daily" in register_text
+    assert "baldr-forward-outcomes-daily" in register_text
     assert "baldr-paper-portfolio-daily" in register_text
     assert "baldr-paper-execution-eod-replay-daily" in register_text
     assert "baldr-pit-sector-membership-preopen-capture-daily" in register_text
@@ -75,3 +79,21 @@ def test_freshness_powershell_wrapper_delegates_to_canonical_probe() -> None:
     assert "--log-path" in text
     assert "FreshnessProbe = @'" not in text
     assert "status=failed" not in text.lower()
+
+
+def test_evidence_powershell_wrapper_delegates_to_canonical_scheduled_orchestrator() -> None:
+    text = (SCHEDULED_DIR / "run_evidence_pipeline_dry_run.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "run_scheduled_evidence_pipeline_dry_run.py" in text
+    assert "scripts\\run_evidence_pipeline.py" not in text
+    for flag in (
+        "--refresh-paper-health",
+        "--bind-forward-thesis",
+        "--produce-position-health-sources",
+        "--evaluate-position-health-transition",
+        "--run-exit-effectiveness",
+    ):
+        assert flag in text
+    assert "paper_portfolio_isolated\\latest_status.json" in text

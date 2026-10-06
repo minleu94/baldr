@@ -1,0 +1,72 @@
+{
+  "schema_version": "pit-industry-taxonomy-source-config.v1",
+  "research_only": true,
+  "classification": {
+    "twse_listed": {
+      "source_kind": "official_twse_b1212_composite_rederived",
+      "source_url": "https://dsp.twse.com.tw/brokerManual/list",
+      "source_id": "official:twse:broker-manual:O-126-A10",
+      "source_version": "B.12.12-rederived-from-official-B12.00-and-2023-patch",
+      "classification_version": "twse-industry-definition.v1",
+      "effective_from": "2026-05-01",
+      "effective_date_basis": "official_manual_implementation_record",
+      "effective_date_evidence": {
+        "scope": "official_manual_revision_implementation",
+        "source_id": "official:twse:broker-manual:O-126-A10",
+        "source_version": "B.12.12-rederived-from-official-B12.00-and-2023-patch",
+        "effective_from": "2026-05-01",
+        "evidence_url": "https://dsp.twse.com.tw/brokerManual/list"
+      },
+      "components": {
+        "base_definition": {
+          "url": "https://wwwc.twse.com.tw/staticFiles/product/broker/ff80808166388ea1016676ac941001e0.pdf"
+        },
+        "change_notice": {
+          "url": "https://eshop.twse.com.tw/zh/news/detail/0000000087e9b84901886b8d96940024"
+        },
+        "revision_history": {
+          "url": "https://dsp.twse.com.tw/public/static/downloads/computerPlanningOperationsDepartment/TWSE%E9%9B%86%E4%B8%AD%E5%B8%82%E5%A0%B4%E5%8D%B3%E6%99%82%E4%BA%A4%E6%98%93%E8%B3%87%E8%A8%8A%E5%82%B3%E8%BC%B8%E8%A6%8F%E6%A0%BC%E6%9B%B8(B.12.13)(202612)_20260911094449.pdf"
+        },
+        "current_regulation": {
+          "url": "https://twse-regulation.twse.com.tw/tw/law/DOC01_print.aspx?FLCODE=FL007104&FLNO=2"
+        }
+      }
+    },
+    "tpex_otc": {
+      "url": "https://dsp.tpex.org.tw/storage/regular_system/%E4%B8%8A%E6%AB%83%E8%82%A1%E7%A5%A8IP%E8%A1%8C%E6%83%85%E7%B6%B2%E8%B7%AF%E8%A6%8F%E6%A0%BC%E6%9B%B8%28V.12.18_TCPIP%29.pdf",
+      "source_id": "official:tpex:ip-spec:V.12.18",
+      "source_version": "V.12.18-TCPIP",
+      "classification_version": "tpex-industry-definition.v1",
+      "effective_from": "2026-05-18",
+      "effective_date_basis": "official_manual_implementation_record",
+      "effective_date_evidence": {
+        "scope": "official_manual_revision_implementation",
+        "source_id": "official:tpex:ip-spec:V.12.18",
+        "source_version": "V.12.18-TCPIP",
+        "effective_from": "2026-05-18",
+        "evidence_url": "https://dsp.tpex.org.tw/storage/regular_system/%E4%B8%8A%E6%AB%83%E8%82%A1%E7%A5%A8IP%E8%A1%8C%E6%83%85%E7%B6%B2%E8%B7%AF%E8%A6%8F%E6%A0%BC%E6%9B%B8%28V.12.18_TCPIP%29.pdf"
+      }
+    }
+  },
+  "security": {
+    "all": {"url": "https://isin.twse.com.tw/isin/e_single_main.jsp"}
+  },
+  "inactive_security": {
+    "tpex_8183_termination": {
+      "source_version": "tpex-termination-notice-2026-09-03.v1",
+      "source_url": "https://www.tpex.org.tw/storage/eb_data/11509/11500054131.html",
+      "symbol": "8183",
+      "issuer_name": "台灣精星科技股份有限公司",
+      "market_scope": "tpex_otc",
+      "published_on": "2026-09-03",
+      "suspension_effective_on": "2026-09-23",
+      "termination_effective_on": "2026-10-01"
+    }
+  },
+  "license_scope": {
+    "status": "research_only_unaccepted",
+    "formal_acceptance_granted": false,
+    "allowed_use_cases": ["research_shadow", "diagnostics", "parser_readback"],
+    "redistribution_allowed": false
+  }
+}

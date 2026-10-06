@@ -1,1 +1,14 @@
 *.cmd text eol=crlf
+tests/fixtures/c1_cross_boundary/ab_interleave_scenarios.json -text
+tests/fixtures/c1_consumer_readiness/r014_saved_execution.json -text
+tests/fixtures/c1_consumer_readiness/r016_legacy_run_zh.json -text
+tests/fixtures/c1_consumer_readiness/ml_abi_manifest.json -text
+tests/fixtures/c1_replay_bridge/r017_stored_annotation_snapshot.json -text
+scripts/experiments/r028/frozen_baseline/app_module/update_service.py -text
+app_module/__init__.py -text
+scripts/experiments/r027/logical_publication_phase_port.py -text
+scripts/experiments/r027/observation_clock.py -text
+scripts/experiments/r028/frozen_baseline/manifest.json -text
+app_module/update_service.py -text
+app_module/technical_indicator_job.py -text
+scripts/experiments/r027/run_experiment.py -text

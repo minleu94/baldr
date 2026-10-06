@@ -12,5 +12,5 @@ if "%OUTPUT_ROOT%"=="" set "OUTPUT_ROOT=%DATA_ROOT%\output"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 
-"%PYTHON%" "scripts\scheduled\run_official_market_event_backfill.py" --output-root "%OUTPUT_ROOT%"
+"%PYTHON%" "scripts\scheduled\run_official_market_status_bundle.py" --output-root "%OUTPUT_ROOT%"
 exit /b %ERRORLEVEL%

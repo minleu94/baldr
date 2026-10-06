@@ -9,7 +9,10 @@ param(
     [string]$PaperEvidenceLedgerDb = "",
     [string]$PaperEvidenceHealthStatusPath = "",
     [string]$PaperEvidenceHealthBaseline = "",
-    [string]$PaperEvidenceStatusPath = ""
+    [string]$PaperEvidenceStatusPath = "",
+    [string]$PaperHealthSourceOutput = "",
+    [string]$PaperHealthForwardBinding = "",
+    [string]$PaperHealthPolicySource = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,78 +39,52 @@ if ([string]::IsNullOrWhiteSpace($PaperEvidenceHealthStatusPath)) {
     $PaperEvidenceHealthStatusPath = Join-Path $PaperEvidenceOperationRoot "scheduled\paper_portfolio_isolated\latest_status.json"
 }
 if ([string]::IsNullOrWhiteSpace($PaperEvidenceStatusPath)) {
-    $PaperEvidenceStatusPath = Join-Path $PaperEvidenceOperationRoot "scheduled\paper_portfolio_daily\latest_status.json"
+    $PaperEvidenceStatusPath = Join-Path $PaperEvidenceOperationRoot "scheduled\paper_portfolio_isolated\latest_status.json"
+}
+if ([string]::IsNullOrWhiteSpace($PaperHealthSourceOutput)) {
+    $PaperHealthSourceOutput = Join-Path $OutputRoot "position_health_sources"
+}
+if ([string]::IsNullOrWhiteSpace($PaperHealthForwardBinding)) {
+    $PaperHealthForwardBinding = Join-Path $RepoRoot "output\forward_position_thesis\bindings"
+}
+if ([string]::IsNullOrWhiteSpace($PaperHealthPolicySource)) {
+    $PaperHealthPolicySource = Join-Path $RepoRoot "output\formal_daily_publications\rule_source\scheduler\rule_source_latest_status.json"
 }
 
-$RunRoot = Join-Path $OutputRoot "scheduled\evidence_pipeline_dry_run"
-$LogRoot = Join-Path $RunRoot "logs"
-$ReportRoot = Join-Path $RunRoot "reports"
-New-Item -ItemType Directory -Force -Path $RunRoot, $LogRoot, $ReportRoot | Out-Null
+$Today = Get-Date -Format "yyyy-MM-dd"
+if ($DecisionDate -ne $Today) {
+    throw "Scheduled evidence wrapper only accepts today's natural decision date ($Today); received $DecisionDate."
+}
 
-$Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$FreshnessPath = Join-Path $OutputRoot "scheduled\data_freshness\latest_status.json"
-$StatusPath = Join-Path $RunRoot "latest_status.json"
-$LogPath = Join-Path $LogRoot "evidence_pipeline_dry_run_$Timestamp.log"
-$ReportPath = Join-Path $ReportRoot "evidence_pipeline_dry_run_$DecisionDate`_$Timestamp.md"
 $Python = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $Python)) {
     $Python = "python"
 }
 
-$FreshnessStatus = "missing"
-if (Test-Path $FreshnessPath) {
-    try {
-        $Freshness = Get-Content -Raw -Path $FreshnessPath | ConvertFrom-Json
-        $FreshnessStatus = [string]$Freshness.status
-    } catch {
-        $FreshnessStatus = "unreadable"
-    }
-}
-
-$Args = @(
-    (Join-Path $RepoRoot "scripts\run_evidence_pipeline.py"),
-    "--decision-date", $DecisionDate,
+$PythonArgs = @(
+    (Join-Path $RepoRoot "scripts\scheduled\run_scheduled_evidence_pipeline_dry_run.py"),
     "--dry-run",
+    "--bind-scheduled-recommendation",
+    "--refresh-paper-health",
+    "--bind-forward-thesis",
+    "--produce-position-health-sources",
+    "--evaluate-position-health-transition",
+    "--run-exit-effectiveness",
     "--db-path", $DbPath,
     "--data-root", $DataRoot,
     "--output-root", $OutputRoot,
     "--sources", $Sources,
-    "--report-output", $ReportPath,
-    "--json-output",
-    "--refresh-paper-health",
     "--paper-evidence-operation-root", $PaperEvidenceOperationRoot,
     "--paper-evidence-ledger-db", $PaperEvidenceLedgerDb,
     "--paper-evidence-health-status-path", $PaperEvidenceHealthStatusPath,
     "--paper-evidence-health-baseline", $PaperEvidenceHealthBaseline,
-    "--paper-evidence-status-path", $PaperEvidenceStatusPath
+    "--paper-evidence-status-path", $PaperEvidenceStatusPath,
+    "--paper-health-source-output", $PaperHealthSourceOutput,
+    "--paper-health-forward-binding", $PaperHealthForwardBinding,
+    "--paper-health-policy-source", $PaperHealthPolicySource
 )
 
-$Output = & $Python @Args 2>&1
+$Output = & $Python @PythonArgs 2>&1
 $ExitCode = $LASTEXITCODE
-$Output | Out-File -FilePath $LogPath -Encoding utf8
-
-$PipelineStatus = if ($ExitCode -eq 0) { "passed" } else { "failed" }
-if ($PipelineStatus -eq "passed" -and $FreshnessStatus -ne "passed") {
-    $PipelineStatus = "degraded"
-}
-
-$Status = [ordered]@{
-    task = "baldr-evidence-pipeline-dry-run-daily"
-    status = $PipelineStatus
-    dry_run = $true
-    confirm = $false
-    writes_evidence_db = $false
-    production_scheduler_allowed = $false
-    decision_date = $DecisionDate
-    db_path = $DbPath
-    freshness_status = $FreshnessStatus
-    freshness_status_path = $FreshnessPath
-    report_path = $ReportPath
-    log_path = $LogPath
-    exit_code = $ExitCode
-    checked_at = (Get-Date).ToString("s")
-}
-
-$Status | ConvertTo-Json -Depth 8 | Out-File -FilePath $StatusPath -Encoding utf8
-$Status | ConvertTo-Json -Depth 8
+$Output | Write-Output
 exit $ExitCode

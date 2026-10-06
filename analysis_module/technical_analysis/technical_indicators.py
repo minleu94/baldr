@@ -5,6 +5,7 @@ import logging
 import traceback
 from pathlib import Path
 import os
+from collections.abc import Callable, Mapping
 
 from analysis_module.technical_analysis.technical_column_support import (
     resolve_technical_column,
@@ -13,6 +14,218 @@ from analysis_module.technical_analysis.technical_date_support import (
     safe_convert_technical_dates,
 )
 from analysis_module.technical_analysis.indicator_kernels import clean_price_values
+
+
+CAUSAL_INDICATOR_COLUMNS = (
+    "SMA30",
+    "DEMA30",
+    "EMA30",
+    "MA5",
+    "MA10",
+    "MA20",
+    "MA60",
+    "RSI",
+    "MACD",
+    "MACD_signal",
+    "MACD_hist",
+    "slowk",
+    "slowd",
+    "middleband",
+    "upperband",
+    "lowerband",
+    "SAR",
+    "TSF",
+    "ATR",
+    "ADX",
+)
+
+_CAUSAL_OHLC_COLUMNS = {
+    "Open": ("開盤價", "Open", "open"),
+    "High": ("最高價", "High", "high"),
+    "Low": ("最低價", "Low", "low"),
+    "Close": ("收盤價", "Close", "close"),
+}
+
+_CAUSAL_DATE_COLUMNS = ("日期", "Date", "date", "trade_date", "trading_date")
+_CAUSAL_STOCK_COLUMNS = ("證券代號", "股票代號", "stock_id", "stock_code", "symbol")
+
+
+def _segmented_calculation(
+    inputs: Mapping[str, np.ndarray],
+    calculate: Callable[[Mapping[str, np.ndarray]], Mapping[str, np.ndarray]],
+) -> dict[str, np.ndarray]:
+    """讓一般 indicator API 在每段連續有效輸入上重算暖機期。"""
+    length = len(next(iter(inputs.values()))) if inputs else 0
+    output: dict[str, np.ndarray] = {}
+    if not inputs:
+        return output
+    valid = np.logical_and.reduce([np.isfinite(values) for values in inputs.values()])
+    index = 0
+    while index < length:
+        if not valid[index]:
+            index += 1
+            continue
+        end = index + 1
+        while end < length and valid[end]:
+            end += 1
+        segment_inputs = {
+            name: np.ascontiguousarray(values[index:end], dtype=np.float64)
+            for name, values in inputs.items()
+        }
+        segment_output = calculate(segment_inputs)
+        for name, values in segment_output.items():
+            values = np.asarray(values, dtype=np.float64)
+            if values.shape != (end - index,):
+                raise ValueError(f"指標 {name} 回傳長度與輸入不符")
+            if name not in output:
+                output[name] = np.full(length, np.nan, dtype=np.float64)
+            output[name][index:end] = values
+        index = end
+    return output
+
+
+def calculate_causal_indicators(frame: pd.DataFrame) -> pd.DataFrame:
+    """依完整、按日期排序的 OHLC prefix 計算既有 20 個技術指標。
+
+    函式只複製輸入並在記憶體計算；它不建立設定、logger 或檔案，也不
+    填補原始 OHLC。任一 OHLC 欄缺值或非有限值時，該列指標保留 NaN，
+    後續連續有效區段重新暖機。呼叫端必須先提供完整歷史 prefix，並在
+    計算完成後才裁切要發布的日期範圍。
+    """
+    if not isinstance(frame, pd.DataFrame):
+        raise TypeError("frame 必須是 pandas DataFrame")
+
+    source_columns = {
+        canonical: next(
+            (candidate for candidate in candidates if candidate in frame.columns),
+            None,
+        )
+        for canonical, candidates in _CAUSAL_OHLC_COLUMNS.items()
+    }
+    missing_columns = [name for name, source in source_columns.items() if source is None]
+    if missing_columns:
+        raise ValueError(f"缺少 OHLC 欄位：{', '.join(missing_columns)}")
+
+    for stock_column in _CAUSAL_STOCK_COLUMNS:
+        if stock_column in frame.columns and frame[stock_column].nunique(dropna=True) > 1:
+            raise ValueError("技術指標計算 frame 只能包含單一股票")
+
+    date_column = next(
+        (candidate for candidate in _CAUSAL_DATE_COLUMNS if candidate in frame.columns),
+        None,
+    )
+    if date_column is not None:
+        normalized_dates = safe_convert_technical_dates(frame[date_column])
+        if normalized_dates.isna().any():
+            raise ValueError("技術指標計算 frame 含無效日期")
+        date_values = normalized_dates.to_list()
+        if date_values != sorted(date_values):
+            raise ValueError("技術指標計算 frame 必須依日期遞增排序")
+        if len(set(date_values)) != len(date_values):
+            raise ValueError("技術指標計算 frame 不得含重複日期")
+
+    result = frame.copy()
+    numeric = {}
+    for canonical, source in source_columns.items():
+        if source is None:
+            continue
+        numeric[canonical] = clean_price_values(frame[source])
+    for values in numeric.values():
+        values[~np.isfinite(values)] = np.nan
+
+    complete_rows = np.logical_and.reduce(
+        [np.isfinite(numeric[name]) for name in ("Open", "High", "Low", "Close")]
+    )
+    if complete_rows.any():
+        prices = np.column_stack(
+            [numeric[name][complete_rows] for name in ("Open", "High", "Low", "Close")]
+        )
+        open_values, high_values, low_values, close_values = prices.T
+        invalid_prices = (
+            (prices <= 0).any(axis=1)
+            | (low_values > np.minimum(open_values, close_values))
+            | (high_values < np.maximum(open_values, close_values))
+        )
+        if invalid_prices.any():
+            raise ValueError("OHLC 含非正價格或高低價區間不包含開收盤價")
+
+    length = len(frame)
+    output = {
+        column: np.full(length, np.nan, dtype=np.float64)
+        for column in CAUSAL_INDICATOR_COLUMNS
+    }
+    valid_ohlc = complete_rows
+
+    def compute_segment(start: int, end: int) -> None:
+        """只把連續有效 OHLC 區段交給 TA-Lib，並保留原始暖機 NaN。"""
+        close = np.ascontiguousarray(numeric["Close"][start:end], dtype=np.float64)
+        high = np.ascontiguousarray(numeric["High"][start:end], dtype=np.float64)
+        low = np.ascontiguousarray(numeric["Low"][start:end], dtype=np.float64)
+        segment_values: dict[str, np.ndarray] = {
+            "SMA30": talib.SMA(close, timeperiod=30),
+            "DEMA30": talib.DEMA(close, timeperiod=30),
+            "EMA30": talib.EMA(close, timeperiod=30),
+            "MA5": talib.SMA(close, timeperiod=5),
+            "MA10": talib.SMA(close, timeperiod=10),
+            "MA20": talib.SMA(close, timeperiod=20),
+            "MA60": talib.SMA(close, timeperiod=60),
+            "RSI": talib.RSI(close, timeperiod=14),
+            "MACD": np.asarray([], dtype=np.float64),
+            "MACD_signal": np.asarray([], dtype=np.float64),
+            "MACD_hist": np.asarray([], dtype=np.float64),
+            "slowk": np.asarray([], dtype=np.float64),
+            "slowd": np.asarray([], dtype=np.float64),
+            "middleband": np.asarray([], dtype=np.float64),
+            "upperband": np.asarray([], dtype=np.float64),
+            "lowerband": np.asarray([], dtype=np.float64),
+            "SAR": talib.SAR(high, low, acceleration=0.02, maximum=0.2),
+            "TSF": talib.TSF(close, timeperiod=14),
+            "ATR": talib.ATR(high, low, close, timeperiod=14),
+            "ADX": talib.ADX(high, low, close, timeperiod=14),
+        }
+        macd, macd_signal, macd_hist = talib.MACD(
+            close, fastperiod=12, slowperiod=26, signalperiod=9
+        )
+        segment_values["MACD"] = macd
+        segment_values["MACD_signal"] = macd_signal
+        segment_values["MACD_hist"] = macd_hist
+        slowk, slowd = talib.STOCH(
+            high,
+            low,
+            close,
+            fastk_period=5,
+            slowk_period=3,
+            slowk_matype=talib.MA_Type.SMA,
+            slowd_period=3,
+            slowd_matype=talib.MA_Type.SMA,
+        )
+        segment_values["slowk"] = slowk
+        segment_values["slowd"] = slowd
+        upper, middle, lower = talib.BBANDS(
+            close, timeperiod=30, nbdevup=2.0, nbdevdn=2.0, matype=talib.MA_Type.SMA
+        )
+        segment_values["middleband"] = middle
+        segment_values["upperband"] = upper
+        segment_values["lowerband"] = lower
+        for column in ("RSI", "slowk", "slowd"):
+            segment_values[column] = np.clip(segment_values[column], 0.0, 100.0)
+        for column, values in segment_values.items():
+            output[column][start:end] = values
+
+    index = 0
+    while index < length:
+        if not valid_ohlc[index]:
+            index += 1
+            continue
+        end = index + 1
+        while end < length and valid_ohlc[end]:
+            end += 1
+        compute_segment(index, end)
+        index = end
+
+    for column in CAUSAL_INDICATOR_COLUMNS:
+        result[column] = output[column]
+    return result
 
 class TechnicalIndicatorCalculator:
     """技術指標計算類別，基於02_technical_calculator.md中的功能"""
@@ -151,12 +364,15 @@ class TechnicalIndicatorCalculator:
         """
         try:
             df = df.copy()
-            
+
             # 1. 基本資料處理
             if '證券代號' in df.columns:
                 df['證券代號'] = df['證券代號'].astype(str)
+                if df['證券代號'].nunique(dropna=True) > 1:
+                    raise ValueError("單次指標計算只能包含一支股票")
             if '日期' in df.columns:
-                df = df.sort_values('日期').reset_index(drop=True)
+                df['日期'] = self._safe_convert_date(df['日期'])
+                df = df.sort_values('日期', kind='stable').reset_index(drop=True)
             
             # 2. 處理價格欄位
             price_columns = ['開盤價', '最高價', '最低價', '收盤價']
@@ -171,20 +387,10 @@ class TechnicalIndicatorCalculator:
                     df[col] = pd.to_numeric(df[col].replace('--', 0), errors='coerce')
                     df[col] = df[col].fillna(0)
             
-            # 4. 處理暫停交易日(volume = 0)
-            if '成交股數' in df.columns:
-                mask = df['成交股數'] == 0
-                for col in price_columns:
-                    if col in df.columns and mask.any():
-                        df.loc[mask, col] = df[col].ffill()
-            
-            # 5. 驗證數據完整性
+            # 4. 驗證數據完整性；缺價保留原值，由 causal kernel 切段暖機。
             if any(col in df.columns for col in price_columns):
                 if df[list(col for col in price_columns if col in df.columns)].isnull().any().any():
                     self.logger.debug(f"股票 {stock_id} 存在缺失值")
-                    for col in price_columns:
-                        if col in df.columns:
-                            df[col] = df[col].ffill()
                     
             return df
             
@@ -209,21 +415,35 @@ class TechnicalIndicatorCalculator:
             close_col = self._get_column_name(df, 'Close')
             
             if close_col:
-                close_prices = np.ascontiguousarray(df[close_col].values, dtype=np.float64)
-                
-                # 預設計算 SMA30, DEMA30, EMA30 用於相容
-                df_result['SMA30'] = talib.SMA(close_prices, timeperiod=30)
-                df_result['DEMA30'] = talib.DEMA(close_prices, timeperiod=30)
-                df_result['EMA30'] = talib.EMA(close_prices, timeperiod=30)
-                
                 # 若 params 不為 None，計算自訂 windows 均線
                 if params is not None:
                     ma_clean = {k: v for k, v in params.items() if k != 'enabled'}
                     ma_sanitized = IndicatorParameterRegistry.validate_and_sanitize('ma', ma_clean, full_config)
                     windows = ma_sanitized['windows']
-                    for w in windows:
-                        df_result[f'MA{w}'] = talib.SMA(close_prices, timeperiod=w)
-                
+                else:
+                    windows = []
+
+                close_prices = clean_price_values(df[close_col])
+
+                def calculate_segment(values):
+                    close = values['Close']
+                    output = {
+                        'SMA30': talib.SMA(close, timeperiod=30),
+                        'DEMA30': talib.DEMA(close, timeperiod=30),
+                        'EMA30': talib.EMA(close, timeperiod=30),
+                    }
+                    output.update({
+                        f'MA{window}': talib.SMA(close, timeperiod=window)
+                        for window in windows
+                    })
+                    return output
+
+                calculated = _segmented_calculation(
+                    {'Close': close_prices}, calculate_segment
+                )
+                for column, values in calculated.items():
+                    df_result[column] = values
+
             return df_result
             
         except InvalidParameterError as e:
@@ -255,30 +475,37 @@ class TechnicalIndicatorCalculator:
             
             if close_col:
                 close_prices = clean_price_values(df[close_col])
-                
-                # 驗證 RSI 參數並計算
+                sanitized_rsi = None
                 if rsi_params is not None:
                     rsi_clean = {k: v for k, v in rsi_params.items() if k != 'enabled'}
-                    rsi_sanitized = IndicatorParameterRegistry.validate_and_sanitize('rsi', rsi_clean, full_config)
-                    rsi_period = rsi_sanitized['timeperiod']
-                    rsi = talib.RSI(close_prices, timeperiod=rsi_period)
-                    result['RSI'] = np.clip(np.nan_to_num(rsi, nan=50.0), 0, 100)
-                
-                # 驗證 MACD 參數並計算
+                    sanitized_rsi = IndicatorParameterRegistry.validate_and_sanitize('rsi', rsi_clean, full_config)
+                sanitized_macd = None
                 if macd_params is not None:
                     macd_clean = {k: v for k, v in macd_params.items() if k != 'enabled'}
-                    macd_sanitized = IndicatorParameterRegistry.validate_and_sanitize('macd', macd_clean, full_config)
-                    fast = macd_sanitized['fastperiod']
-                    slow = macd_sanitized['slowperiod']
-                    signal_period = macd_sanitized['signalperiod']
-                    macd, signal, hist = talib.MACD(close_prices, 
-                                               fastperiod=fast, 
-                                               slowperiod=slow, 
-                                               signalperiod=signal_period)
-                    result['MACD'] = macd
-                    result['MACD_signal'] = signal
-                    result['MACD_hist'] = hist
-                
+                    sanitized_macd = IndicatorParameterRegistry.validate_and_sanitize('macd', macd_clean, full_config)
+
+                def calculate_segment(values):
+                    close = values['Close']
+                    output = {}
+                    if sanitized_rsi is not None:
+                        rsi = talib.RSI(close, timeperiod=sanitized_rsi['timeperiod'])
+                        output['RSI'] = np.clip(rsi, 0, 100)
+                    if sanitized_macd is not None:
+                        macd, signal, hist = talib.MACD(
+                            close,
+                            fastperiod=sanitized_macd['fastperiod'],
+                            slowperiod=sanitized_macd['slowperiod'],
+                            signalperiod=sanitized_macd['signalperiod'],
+                        )
+                        output['MACD'] = macd
+                        output['MACD_signal'] = signal
+                        output['MACD_hist'] = hist
+                    return output
+
+                result = _segmented_calculation(
+                    {'Close': close_prices}, calculate_segment
+                )
+
             return result
             
         except InvalidParameterError as e:
@@ -314,34 +541,34 @@ class TechnicalIndicatorCalculator:
                 sanitized = IndicatorParameterRegistry.validate_and_sanitize('kd', kd_clean, full_config)
                 
                 # 清理價格序列（處理 '--' 和其他無效值）
-                def clean_price_series(series):
-                    """清理價格序列"""
-                    if series.dtype == 'object':
-                        series = series.replace(['--', '', 'nan', 'NaN', 'None'], np.nan)
-                        series = pd.to_numeric(series, errors='coerce')
-                    # 轉換為 numpy array
-                    prices = np.ascontiguousarray(series.values, dtype=np.float64)
-                    # 填充 NaN
-                    mask = np.isnan(prices)
-                    if mask.any():
-                        prices = pd.Series(prices).ffill().bfill().fillna(0.0).values
-                    return prices
+                high_prices = clean_price_values(df[high_col])
+                low_prices = clean_price_values(df[low_col])
+                close_prices = clean_price_values(df[close_col])
                 
-                high_prices = clean_price_series(df[high_col])
-                low_prices = clean_price_series(df[low_col])
-                close_prices = clean_price_series(df[close_col])
-                
-                slowk, slowd = talib.STOCH(high_prices, 
-                                      low_prices, 
-                                      close_prices,
-                                      fastk_period=sanitized['fastk_period'], 
-                                      slowk_period=sanitized['slowk_period'], 
-                                      slowk_matype=sanitized['slowk_matype'],
-                                      slowd_period=sanitized['slowd_period'], 
-                                      slowd_matype=sanitized['slowd_matype'])
-                                     
-                result['slowk'] = np.clip(np.nan_to_num(slowk, nan=50.0), 0, 100)
-                result['slowd'] = np.clip(np.nan_to_num(slowd, nan=50.0), 0, 100)
+                def calculate_segment(values):
+                    slowk, slowd = talib.STOCH(
+                        values['High'],
+                        values['Low'],
+                        values['Close'],
+                        fastk_period=sanitized['fastk_period'],
+                        slowk_period=sanitized['slowk_period'],
+                        slowk_matype=sanitized['slowk_matype'],
+                        slowd_period=sanitized['slowd_period'],
+                        slowd_matype=sanitized['slowd_matype'],
+                    )
+                    return {
+                        'slowk': np.clip(slowk, 0, 100),
+                        'slowd': np.clip(slowd, 0, 100),
+                    }
+
+                result = _segmented_calculation(
+                    {
+                        'High': high_prices,
+                        'Low': low_prices,
+                        'Close': close_prices,
+                    },
+                    calculate_segment,
+                )
                 
             return result
             
@@ -369,49 +596,66 @@ class TechnicalIndicatorCalculator:
             if bollinger_params is None and sar_params is None:
                 bollinger_params = {}
                 sar_params = {}
-                
+
             high_col = self._get_column_name(df, 'High')
             low_col = self._get_column_name(df, 'Low')
             close_col = self._get_column_name(df, 'Close')
-            
+
             if close_col and bollinger_params is not None:
-                close_prices = np.ascontiguousarray(df[close_col].values, dtype=np.float64)
-                
-                # 驗證布林通道參數並計算
                 boll_clean = {k: v for k, v in bollinger_params.items() if k != 'enabled'}
-                boll_sanitized = IndicatorParameterRegistry.validate_and_sanitize('bollinger', boll_clean, full_config)
-                upper, middle, lower = talib.BBANDS(close_prices, 
-                                              timeperiod=boll_sanitized['timeperiod'],
-                                              nbdevup=boll_sanitized['nbdevup'],
-                                              nbdevdn=boll_sanitized['nbdevdn'],
-                                              matype=boll_sanitized['matype'])
-                result['middleband'] = middle
-                result['upperband'] = upper
-                result['lowerband'] = lower
-                
+                boll_sanitized = IndicatorParameterRegistry.validate_and_sanitize(
+                    'bollinger', boll_clean, full_config
+                )
+
+                def calculate_bollinger(values):
+                    upper, middle, lower = talib.BBANDS(
+                        values['Close'],
+                        timeperiod=boll_sanitized['timeperiod'],
+                        nbdevup=boll_sanitized['nbdevup'],
+                        nbdevdn=boll_sanitized['nbdevdn'],
+                        matype=boll_sanitized['matype'],
+                    )
+                    return {
+                        'middleband': middle,
+                        'upperband': upper,
+                        'lowerband': lower,
+                    }
+
+                result.update(
+                    _segmented_calculation(
+                        {'Close': clean_price_values(df[close_col])},
+                        calculate_bollinger,
+                    )
+                )
+
             if high_col and low_col and sar_params is not None:
-                high_prices = np.ascontiguousarray(df[high_col].values, dtype=np.float64)
-                low_prices = np.ascontiguousarray(df[low_col].values, dtype=np.float64)
-                
-                # 驗證 SAR 參數並計算
                 sar_clean = {k: v for k, v in sar_params.items() if k != 'enabled'}
-                sar_sanitized = IndicatorParameterRegistry.validate_and_sanitize('sar', sar_clean, full_config)
-                sar = talib.SAR(high_prices,
-                           low_prices,
-                           acceleration=sar_sanitized['acceleration'],
-                           maximum=sar_sanitized['maximum'])
-                
-                if close_col:
-                    # 處理SAR的極端值
-                    max_price = df[high_col].max() * 1.5
-                    min_price = df[low_col].min() * 0.5
-                    sar = np.nan_to_num(sar, nan=df[close_col].mean())
-                    sar = np.clip(sar, min_price, max_price)
-                    
-                result['SAR'] = sar
-                
+                sar_sanitized = IndicatorParameterRegistry.validate_and_sanitize(
+                    'sar', sar_clean, full_config
+                )
+
+                def calculate_sar(values):
+                    return {
+                        'SAR': talib.SAR(
+                            values['High'],
+                            values['Low'],
+                            acceleration=sar_sanitized['acceleration'],
+                            maximum=sar_sanitized['maximum'],
+                        )
+                    }
+
+                result.update(
+                    _segmented_calculation(
+                        {
+                            'High': clean_price_values(df[high_col]),
+                            'Low': clean_price_values(df[low_col]),
+                        },
+                        calculate_sar,
+                    )
+                )
+
             return result
-            
+
         except InvalidParameterError as e:
             raise e
         except Exception as e:
@@ -438,26 +682,17 @@ class TechnicalIndicatorCalculator:
             close_col = self._get_column_name(df, 'Close')
             
             if close_col:
-                # 清理數據：將 '--' 和其他無效值轉換為 NaN
-                close_series = df[close_col].copy()
-                if close_series.dtype == 'object':
-                    # 替換 '--' 和其他無效字符串
-                    close_series = close_series.replace(['--', '', 'nan', 'NaN', 'None'], np.nan)
-                    # 嘗試轉換為數值
-                    close_series = pd.to_numeric(close_series, errors='coerce')
-                
-                # 轉換為 numpy array，處理 NaN
-                close_prices = np.ascontiguousarray(close_series.values, dtype=np.float64)
-                
-                # 填充 NaN 值（使用前向填充和後向填充）
-                mask = np.isnan(close_prices)
-                if mask.any():
-                    close_prices = pd.Series(close_prices).ffill().bfill().fillna(0.0).values
-                
-                # 驗證 TSF 參數並計算
                 tsf_clean = {k: v for k, v in tsf_params.items() if k != 'enabled'}
                 tsf_sanitized = IndicatorParameterRegistry.validate_and_sanitize('tsf', tsf_clean, full_config)
-                result['TSF'] = talib.TSF(close_prices, timeperiod=tsf_sanitized['timeperiod'])
+                result = _segmented_calculation(
+                    {'Close': clean_price_values(df[close_col])},
+                    lambda values: {
+                        'TSF': talib.TSF(
+                            values['Close'],
+                            timeperiod=tsf_sanitized['timeperiod'],
+                        )
+                    },
+                )
                 
             return result
             
@@ -492,24 +727,21 @@ class TechnicalIndicatorCalculator:
                 # 驗證 ATR 參數
                 atr_clean = {k: v for k, v in params.items() if k != 'enabled'}
                 sanitized = IndicatorParameterRegistry.validate_and_sanitize('atr', atr_clean, full_config)
-                timeperiod = sanitized['timeperiod']
-                
-                def clean_price_series(series):
-                    if series.dtype == 'object':
-                        series = series.replace(['--', '', 'nan', 'NaN', 'None'], np.nan)
-                        series = pd.to_numeric(series, errors='coerce')
-                    prices = np.ascontiguousarray(series.values, dtype=np.float64)
-                    mask = np.isnan(prices)
-                    if mask.any():
-                        prices = pd.Series(prices).ffill().bfill().fillna(0.0).values
-                    return prices
-                
-                high_prices = clean_price_series(df[high_col])
-                low_prices = clean_price_series(df[low_col])
-                close_prices = clean_price_series(df[close_col])
-                
-                atr = talib.ATR(high_prices, low_prices, close_prices, timeperiod=timeperiod)
-                result['ATR'] = np.nan_to_num(atr, nan=0.0)
+                result = _segmented_calculation(
+                    {
+                        'High': clean_price_values(df[high_col]),
+                        'Low': clean_price_values(df[low_col]),
+                        'Close': clean_price_values(df[close_col]),
+                    },
+                    lambda values: {
+                        'ATR': talib.ATR(
+                            values['High'],
+                            values['Low'],
+                            values['Close'],
+                            timeperiod=sanitized['timeperiod'],
+                        )
+                    },
+                )
                 
             return result
             
@@ -544,24 +776,21 @@ class TechnicalIndicatorCalculator:
                 # 驗證 ADX 參數
                 adx_clean = {k: v for k, v in params.items() if k != 'enabled'}
                 sanitized = IndicatorParameterRegistry.validate_and_sanitize('adx', adx_clean, full_config)
-                timeperiod = sanitized['timeperiod']
-                
-                def clean_price_series(series):
-                    if series.dtype == 'object':
-                        series = series.replace(['--', '', 'nan', 'NaN', 'None'], np.nan)
-                        series = pd.to_numeric(series, errors='coerce')
-                    prices = np.ascontiguousarray(series.values, dtype=np.float64)
-                    mask = np.isnan(prices)
-                    if mask.any():
-                        prices = pd.Series(prices).ffill().bfill().fillna(0.0).values
-                    return prices
-                
-                high_prices = clean_price_series(df[high_col])
-                low_prices = clean_price_series(df[low_col])
-                close_prices = clean_price_series(df[close_col])
-                
-                adx = talib.ADX(high_prices, low_prices, close_prices, timeperiod=timeperiod)
-                result['ADX'] = np.nan_to_num(adx, nan=0.0)
+                result = _segmented_calculation(
+                    {
+                        'High': clean_price_values(df[high_col]),
+                        'Low': clean_price_values(df[low_col]),
+                        'Close': clean_price_values(df[close_col]),
+                    },
+                    lambda values: {
+                        'ADX': talib.ADX(
+                            values['High'],
+                            values['Low'],
+                            values['Close'],
+                            timeperiod=sanitized['timeperiod'],
+                        )
+                    },
+                )
                 
             return result
             
@@ -592,9 +821,6 @@ class TechnicalIndicatorCalculator:
             # 處理無限值
             df_result = df_result.replace([np.inf, -np.inf], np.nan)
             
-            # 填充NaN值
-            df_result = df_result.ffill().bfill()
-            
             return df_result
             
         except Exception as e:
@@ -612,46 +838,10 @@ class TechnicalIndicatorCalculator:
             DataFrame: 添加所有技術指標後的DataFrame
         """
         try:
-            # 1. 資料預處理
-            df_result = self.preprocess_stock_data(df, stock_id)
-            if df_result is None:
+            normalized = self.preprocess_stock_data(df, stock_id)
+            if normalized is None:
                 return None
-                
-            # 2. 計算各類指標
-            # 計算移動平均線
-            ma_result = self.calculate_ma_series(df_result, params={})
-            if not isinstance(ma_result, pd.DataFrame):
-                return None
-            df_result = ma_result
-            
-            # 計算動量指標
-            momentum_indicators = self.calculate_momentum_indicators(df_result, rsi_params={}, macd_params={})
-            if momentum_indicators:
-                for key, value in momentum_indicators.items():
-                    df_result[key] = value
-            
-            # 計算KD指標
-            kd_indicators = self.calculate_kd_indicator(df_result, params={})
-            if kd_indicators:
-                for key, value in kd_indicators.items():
-                    df_result[key] = value
-            
-            # 計算波動指標
-            volatility_indicators = self.calculate_volatility_indicators(df_result, bollinger_params={}, sar_params={})
-            if volatility_indicators:
-                for key, value in volatility_indicators.items():
-                    df_result[key] = value
-            
-            # 計算趨勢指標
-            trend_indicators = self.calculate_trend_indicators(df_result, tsf_params={})
-            if trend_indicators:
-                for key, value in trend_indicators.items():
-                    df_result[key] = value
-            
-            # 3. 驗證結果
-            df_result = self.validate_indicator_results(df_result)
-            
-            return df_result
+            return calculate_causal_indicators(normalized)
             
         except Exception as e:
             self.logger.error(f"計算股票 {stock_id} 的技術指標時發生錯誤: {str(e)}")

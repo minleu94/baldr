@@ -13,6 +13,9 @@ from data_module.config import TWStockConfig
 from data_module.valuation_metrics_backfill import (
     apply_valuation_metrics_backfill,
     load_industry_by_stock_from_companies,
+    read_valuation_metrics_backfill_source,
+)
+from decision_module.factors.valuation_backfill_adapters import (
     plan_valuation_metrics_backfill,
 )
 
@@ -41,35 +44,37 @@ def main(argv: list[str] | None = None) -> int:
     else:
         backup_dir = config.backup_dir
     industry_by_stock = load_industry_by_stock_from_companies(companies_file)
-
-    if args.apply:
-        if args.confirm != "apply-valuation-metrics-backfill":
-            print(
-                "Applying valuation metrics backfill requires "
-                "--confirm apply-valuation-metrics-backfill"
-            )
-            return 2
-        result = apply_valuation_metrics_backfill(
-            db_file=db_file,
-            backup_dir=backup_dir,
-            as_of_date=args.as_of_date,
-            industry_by_stock=industry_by_stock,
-            source_version=args.source_version,
+    if args.apply and args.confirm != "apply-valuation-metrics-backfill":
+        print(
+            "Applying valuation metrics backfill requires "
+            "--confirm apply-valuation-metrics-backfill"
         )
-        print(result.plan.to_markdown())
-        print(f"- applied: {str(result.applied).lower()}")
-        print(f"- inserted_count: {result.inserted_count}")
-        print(f"- backup_file: {result.backup_file or 'none'}")
-        for diagnostic in result.plan.diagnostics:
-            print(f"- {diagnostic.code}: {diagnostic.stock_code} {diagnostic.message}".rstrip())
-        return 0 if result.applied else 1
+        return 2
 
-    plan = plan_valuation_metrics_backfill(
+    source_plan = read_valuation_metrics_backfill_source(
         db_file=db_file,
         as_of_date=args.as_of_date,
+    )
+    plan = plan_valuation_metrics_backfill(
+        source_plan=source_plan,
         industry_by_stock=industry_by_stock,
         source_version=args.source_version,
     )
+
+    if args.apply:
+        result = apply_valuation_metrics_backfill(
+            db_file=db_file,
+            backup_dir=backup_dir,
+            records=plan.records,
+        )
+        print(plan.to_markdown())
+        print(f"- applied: {str(result.applied).lower()}")
+        print(f"- inserted_count: {result.inserted_count}")
+        print(f"- backup_file: {result.backup_file or 'none'}")
+        for diagnostic in plan.diagnostics:
+            print(f"- {diagnostic.code}: {diagnostic.stock_code} {diagnostic.message}".rstrip())
+        return 0 if result.applied else 1
+
     print(plan.to_markdown())
     for diagnostic in plan.diagnostics:
         print(f"- {diagnostic.code}: {diagnostic.stock_code} {diagnostic.message}".rstrip())

@@ -34,6 +34,11 @@ from app_module.allocation_release_adapter import (  # noqa: E402
     LoadedAllocationRelease,
     AllocationReleaseAdapter,
 )
+from app_module.paper_daily_status_contract import (  # noqa: E402
+    PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION,
+    PAPER_DAILY_STATUS_SCHEMA_VERSION,
+    paper_daily_status_schema_supported,
+)
 from data_module.ml_storage_capacity import (  # noqa: E402
     CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES,
     MLStorageCapacityBudget,
@@ -53,6 +58,8 @@ from scripts import run_daily_ml_allocation_orchestration as daily  # noqa: E402
 TAIPEI = ZoneInfo("Asia/Taipei")
 DECISION_TIME = time(hour=8, minute=30)
 SCHEMA_VERSION = "ml-allocation-natural-date-shadow.v1"
+PAPER_STATE_COORDINATION_SCHEMA_VERSION = "paper-state-coordination.v1"
+PAPER_PORTFOLIO_ID = "paper-main"
 RESEARCH_MODE = "research_latest_asof"
 FORWARD_MODE = "forward_natural_date"
 MAX_PERSISTENT_NEW_BYTES = 256 * 1024**2
@@ -75,6 +82,9 @@ DEFAULT_DATA_ROOT = Path(
 DEFAULT_DATABASE = DEFAULT_DATA_ROOT / "sqlite" / "twstock.db"
 DEFAULT_PAPER_STATE_DB = (
     DEFAULT_DATA_ROOT / "output" / "paper_portfolio" / "paper_portfolio.sqlite"
+)
+DEFAULT_PAPER_TRADE_LEDGER_DB = (
+    REPO_ROOT / "output" / "paper_execution_eod_replay" / "paper_trade_ledger.sqlite"
 )
 
 
@@ -227,6 +237,369 @@ def _stat_unchanged(before: Mapping[str, object], path: Path) -> bool:
         and before.get("size_bytes") == after.get("size_bytes")
         and before.get("mtime_ns") == after.get("mtime_ns")
     )
+
+
+def _stat_evidence_unchanged(
+    before: Mapping[str, object],
+    after: Mapping[str, object],
+) -> bool:
+    """Compare two already captured file-stat snapshots."""
+
+    return (
+        before.get("exists") is True
+        and after.get("exists") is True
+        and before.get("path") == after.get("path")
+        and before.get("size_bytes") == after.get("size_bytes")
+        and before.get("mtime_ns") == after.get("mtime_ns")
+    )
+
+
+def _stat_changed_fields(
+    before: Mapping[str, object],
+    after: Mapping[str, object],
+) -> list[str]:
+    """回報既有 stat guard 中不同的欄位。
+
+    唯讀 guard 仍維持 exists/size/mtime 原合約；本 helper 只輸出已擷取的
+    比較結果供 immutable 診斷，不新增 source read 或 gate。
+    """
+
+    return [
+        field
+        for field in ("path", "exists", "size_bytes", "mtime_ns")
+        if before.get(field) != after.get(field)
+    ]
+
+
+def _paper_state_coordination_evidence(
+    *,
+    paper_before: Mapping[str, object],
+    paper_after: Mapping[str, object],
+    paper_state_db_path: Path,
+    paper_trade_ledger_db_path: Path | None,
+    daily_status: Mapping[str, object],
+) -> dict[str, object]:
+    """Classify a repository Paper writer overlap using an explicit receipt.
+
+    The Paper state database is a repository-owned append-only output and may
+    be updated by the legal 08:30 preopen producer while this wrapper is
+    running.  A changed outer stat is therefore acceptable only when the
+    inner consumer proves a stable SQLite read view, a stable transaction
+    ledger, and a separately hash-bound preopen coverage receipt.  A bare file
+    change without that contract remains an integrity failure.
+    """
+
+    resolved_state = paper_state_db_path.resolve()
+    outer_unchanged = _stat_evidence_unchanged(paper_before, paper_after)
+    evidence: dict[str, object] = {
+        "schema_version": PAPER_STATE_COORDINATION_SCHEMA_VERSION,
+        "state_db": str(resolved_state),
+        "outer_stat_unchanged": outer_unchanged,
+        "status": "stable" if outer_unchanged else "unaccounted_change",
+        "authorized": outer_unchanged,
+        "reason": (
+            "paper_state_db_stat_unchanged"
+            if outer_unchanged
+            else "paper_state_db_changed_without_validated_preopen_contract"
+        ),
+        "inner_read_consistency": None,
+        "preopen_coverage_receipt": None,
+        "contract_checks": {
+            "state_read_view_stable": False,
+            "trade_ledger_read_view_stable": False,
+            "preopen_receipt_valid": False,
+            "paper_state_write_scope_valid": False,
+        },
+    }
+    if outer_unchanged:
+        return evidence
+
+    consistency_value = daily_status.get("paper_read_consistency")
+    if not isinstance(consistency_value, Mapping):
+        return evidence
+    consistency = {str(key): value for key, value in consistency_value.items()}
+    evidence["inner_read_consistency"] = consistency
+    checks = cast(dict[str, object], evidence["contract_checks"])
+    state_value = consistency.get("state_db")
+    if isinstance(state_value, Mapping):
+        state = {str(key): value for key, value in state_value.items()}
+        state_path = state.get("path")
+        state_hash_before = state.get("hash_before")
+        state_hash_after = state.get("hash_after")
+        checks["state_read_view_stable"] = (
+            isinstance(state_path, str)
+            and Path(state_path).expanduser().resolve() == resolved_state
+            and state.get("mode") == "ro/query_only"
+            and state.get("unchanged") is True
+            and isinstance(state_hash_before, str)
+            and state_hash_before == state_hash_after
+        )
+
+    ledger_value = consistency.get("trade_ledger_db")
+    if paper_trade_ledger_db_path is not None and isinstance(
+        ledger_value,
+        Mapping,
+    ):
+        ledger = {str(key): value for key, value in ledger_value.items()}
+        ledger_path = ledger.get("path")
+        ledger_hash_before = ledger.get("hash_before")
+        ledger_hash_after = ledger.get("hash_after")
+        checks["trade_ledger_read_view_stable"] = (
+            isinstance(ledger_path, str)
+            and Path(ledger_path).expanduser().resolve()
+            == paper_trade_ledger_db_path.resolve()
+            and ledger.get("mode") == "ro/query_only"
+            and ledger.get("unchanged") is True
+            and isinstance(ledger_hash_before, str)
+            and ledger_hash_before == ledger_hash_after
+        )
+
+    receipt_value = consistency.get("preopen_coverage_receipt")
+    receipt: dict[str, object] | None = None
+    if isinstance(receipt_value, Mapping):
+        receipt = {str(key): value for key, value in receipt_value.items()}
+        evidence["preopen_coverage_receipt"] = receipt
+        receipt_path = receipt.get("path")
+        receipt_file_hash = receipt.get("file_hash")
+        receipt_file_is_bound = False
+        receipt_document: dict[str, object] | None = None
+        if isinstance(receipt_path, str) and isinstance(receipt_file_hash, str):
+            try:
+                resolved_receipt_path = Path(receipt_path).expanduser().resolve()
+                if resolved_receipt_path.is_file():
+                    receipt_hash_before = _file_hash(resolved_receipt_path)
+                    receipt_bytes = resolved_receipt_path.read_bytes()
+                    receipt_hash_after = _file_hash(resolved_receipt_path)
+                    receipt_file_is_bound = (
+                        receipt_hash_before
+                        == receipt_file_hash
+                        == receipt_hash_after
+                    )
+                else:
+                    receipt_bytes = b""
+                if receipt_file_is_bound:
+                    document_value = json.loads(
+                        receipt_bytes.decode("utf-8")
+                    )
+                    if isinstance(document_value, Mapping):
+                        receipt_document = {
+                            str(key): value
+                            for key, value in document_value.items()
+                        }
+            except OSError:
+                receipt_file_is_bound = False
+            except (UnicodeError, json.JSONDecodeError):
+                receipt_document = None
+        coverage_value = receipt.get("preopen_coverage")
+        write_contract_value = receipt.get("paper_state_write_contract")
+        coverage_valid = False
+        actual_coverage_valid = False
+        actual_write_contract_valid = False
+        actual_scope_valid = False
+        actual_schema_valid = False
+        state_head_current_hash_bound = False
+        if isinstance(coverage_value, Mapping):
+            coverage = {str(key): value for key, value in coverage_value.items()}
+            coverage_valid = (
+                coverage.get("schema_version") == "paper-preopen-coverage.v1"
+                and coverage.get("status") == "passed"
+                and isinstance(coverage.get("state_db"), str)
+                and Path(str(coverage["state_db"])).expanduser().resolve()
+                == resolved_state
+                and isinstance(coverage.get("ledger_db"), str)
+                and paper_trade_ledger_db_path is not None
+                and Path(str(coverage["ledger_db"])).expanduser().resolve()
+                == paper_trade_ledger_db_path.resolve()
+                and coverage.get("trading_calendar_validated") is True
+                and coverage.get("trading_calendar_is_open") is True
+            )
+        caller_decision_date: str | None = None
+        caller_decision_at = daily_status.get("decision_at")
+        if isinstance(caller_decision_at, str):
+            try:
+                caller_decision_date = _parse_aware_timestamp(
+                    caller_decision_at,
+                    field_name="daily_status.decision_at",
+                ).date().isoformat()
+            except ValueError:
+                caller_decision_date = None
+        if receipt_document is not None:
+            receipt_root_schema = receipt_document.get("schema_version")
+            receipt_scope_schema = receipt_document.get(
+                "isolated_scope_schema_version"
+            )
+            if receipt_root_schema == PAPER_DAILY_STATUS_SCHEMA_VERSION:
+                actual_schema_valid = (
+                    receipt_scope_schema
+                    == PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+                )
+            elif (
+                receipt_root_schema
+                == PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+            ):
+                actual_schema_valid = (
+                    receipt_scope_schema is None
+                    and paper_daily_status_schema_supported(receipt_document)
+                )
+            actual_coverage_value = receipt_document.get("preopen_coverage")
+            actual_write_contract_value = receipt_document.get(
+                "paper_state_write_contract"
+            )
+            actual_scope_value = receipt_document.get("isolated_scope")
+            actual_coverage_valid = (
+                isinstance(actual_coverage_value, Mapping)
+                and isinstance(coverage_value, Mapping)
+                and dict(actual_coverage_value) == dict(coverage_value)
+                and actual_schema_valid
+                and receipt_document.get("schema_version")
+                == receipt.get("schema_version")
+                and receipt_document.get("isolated_scope_schema_version")
+                == receipt.get("isolated_scope_schema_version")
+                and receipt_document.get("status") == receipt.get("status")
+                and receipt_document.get("snapshot_id")
+                == receipt.get("snapshot_id")
+                and receipt_document.get("decision_date")
+                == receipt.get("decision_date")
+                and receipt_document.get("snapshot_id")
+                == coverage_value.get("snapshot_id")
+                and receipt_document.get("decision_date")
+                == coverage_value.get("decision_date")
+                and receipt_document.get("portfolio_id")
+                == coverage_value.get("portfolio_id")
+                and coverage_value.get("portfolio_id") == PAPER_PORTFOLIO_ID
+                and receipt_document.get("decision_date")
+                == caller_decision_date
+                and isinstance(receipt_document.get("state_db"), str)
+                and Path(str(receipt_document["state_db"])).expanduser().resolve()
+                == resolved_state
+                and isinstance(receipt_document.get("paper_ledger_db"), str)
+                and paper_trade_ledger_db_path is not None
+                and Path(
+                    str(receipt_document["paper_ledger_db"])
+                ).expanduser().resolve()
+                == paper_trade_ledger_db_path.resolve()
+                and receipt_document.get("snapshot_relation")
+                == receipt.get("snapshot_relation")
+                and coverage_value.get("snapshot_relation")
+                == receipt.get("snapshot_relation")
+                and receipt_document.get("writes_D_source") is False
+                and receipt_document.get("writes_market_database") is False
+                and receipt_document.get("formal_credit") is False
+                and receipt_document.get("broker_execution") is False
+            )
+            actual_write_contract_valid = (
+                isinstance(actual_write_contract_value, Mapping)
+                and isinstance(write_contract_value, Mapping)
+                and dict(actual_write_contract_value)
+                == dict(write_contract_value)
+            )
+            if isinstance(actual_scope_value, Mapping):
+                actual_scope = {
+                    str(key): value for key, value in actual_scope_value.items()
+                }
+                scope_state = actual_scope.get("repository_state_db")
+                scope_ledger = actual_scope.get("ledger_db")
+                state_head = actual_scope.get("state_head")
+                actual_scope_valid = (
+                    isinstance(scope_state, str)
+                    and Path(scope_state).expanduser().resolve() == resolved_state
+                    and isinstance(scope_ledger, str)
+                    and paper_trade_ledger_db_path is not None
+                    and Path(scope_ledger).expanduser().resolve()
+                    == paper_trade_ledger_db_path.resolve()
+                    and actual_scope.get("repository_state_scope")
+                    == "repository_output_only"
+                    and actual_scope.get("source_state_read_mode")
+                    == "sqlite_uri_mode_ro_and_query_only"
+                    and actual_scope.get("writes_D_source") is False
+                    and actual_scope.get("writes_market_database") is False
+                    and actual_scope.get("formal_credit") is False
+                    and actual_scope.get("broker_execution") is False
+                )
+                if isinstance(state_head, Mapping):
+                    target_hash = state_head.get("target_file_sha256")
+                    try:
+                        state_head_current_hash_bound = (
+                            isinstance(target_hash, str)
+                            and _file_hash(resolved_state) == target_hash
+                        )
+                    except OSError:
+                        state_head_current_hash_bound = False
+        checks["receipt_content_matches_inline"] = (
+            receipt_document is not None
+            and actual_coverage_valid
+            and actual_write_contract_valid
+        )
+        checks["receipt_scope_and_current_state_bound"] = (
+            actual_scope_valid and state_head_current_hash_bound
+        )
+        checks["preopen_receipt_valid"] = (
+            (
+                receipt.get("schema_version")
+                == PAPER_DAILY_STATUS_SCHEMA_VERSION
+                and receipt.get("isolated_scope_schema_version")
+                == PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+                and receipt.get("schema_compatibility") == "canonical"
+            )
+            or (
+                receipt.get("schema_version")
+                == PAPER_DAILY_ISOLATED_SCOPE_SCHEMA_VERSION
+                and receipt.get("isolated_scope_schema_version") is None
+                and receipt.get("schema_compatibility") == "bounded_legacy"
+            )
+        ) and (
+            receipt.get("status") == "passed"
+            and receipt.get("snapshot_relation")
+            in {
+                "strict_t_minus_one",
+                "current_decision_date_producer_receipt",
+            }
+            and coverage_valid
+            and receipt_file_is_bound
+        )
+        if isinstance(write_contract_value, Mapping):
+            write_contract = {
+                str(key): value for key, value in write_contract_value.items()
+            }
+            checks["paper_state_write_scope_valid"] = (
+                write_contract.get("schema_version")
+                == "paper-state-write-contract.v1"
+                and write_contract.get("writer")
+                == "scripts.run_paper_portfolio_daily.run"
+                and write_contract.get("write_scope")
+                == "repository_paper_snapshot_append_only"
+                and isinstance(write_contract.get("state_db"), str)
+                and Path(str(write_contract["state_db"])).expanduser().resolve()
+                == resolved_state
+                and write_contract.get("append_only") is True
+                and write_contract.get("research_only") is True
+                and write_contract.get("formal_credit") is False
+                and write_contract.get("broker_execution") is False
+            )
+
+    all_checks_passed = all(
+        checks.get(name) is True
+        for name in (
+            "state_read_view_stable",
+            "trade_ledger_read_view_stable",
+            "preopen_receipt_valid",
+            "paper_state_write_scope_valid",
+            "receipt_content_matches_inline",
+            "receipt_scope_and_current_state_bound",
+        )
+    )
+    if all_checks_passed:
+        evidence.update(
+            {
+                "status": "expected_preopen_producer_overlap",
+                "authorized": True,
+                "reason": (
+                    "paper_state_db_changed_but_inner_read_view_and_append_only"
+                    "_preopen_receipt_are_validated"
+                ),
+            }
+        )
+    return evidence
 
 
 def _release_evidence(
@@ -520,33 +893,108 @@ def _forward_clock_evidence(
     }
 
 
+def _release_files_integrity(required_files: object) -> dict[str, object]:
+    """只保存既有 frozen-file stat/hash guard 的比較證據。
+
+    ``unchanged`` 必須維持舊 guard 的判定式；其餘欄位只供 immutable
+    診斷使用，不新增 predicate，也不探查 SQLite。
+    """
+
+    if not isinstance(required_files, list):
+        return {
+            "status": "invalid_contract",
+            "unchanged": False,
+            "required_files": [],
+            "hashes_before": {},
+            "hashes_after": {},
+            "which_changed": [],
+        }
+
+    evidence: list[dict[str, object]] = []
+    hashes_before: dict[str, object] = {}
+    hashes_after: dict[str, object] = {}
+    changed_paths: list[str] = []
+    contract_valid = True
+    for expected_value in required_files:
+        if not isinstance(expected_value, Mapping):
+            contract_valid = False
+            evidence.append(
+                {
+                    "before": expected_value,
+                    "after": None,
+                    "unchanged": False,
+                    "changed_fields": ["contract"],
+                }
+            )
+            continue
+        expected = {str(key): value for key, value in expected_value.items()}
+        path_value = expected.get("path")
+        expected_hash = expected.get("sha256")
+        if not isinstance(path_value, str) or not isinstance(expected_hash, str):
+            contract_valid = False
+            evidence.append(
+                {
+                    "before": expected,
+                    "after": None,
+                    "unchanged": False,
+                    "changed_fields": ["contract"],
+                }
+            )
+            continue
+
+        path = Path(path_value)
+        actual = _stat_evidence(path)
+        if actual.get("exists") is True:
+            actual["sha256"] = _file_hash(path)
+        changed_fields = [
+            field
+            for field in ("exists", "size_bytes", "mtime_ns")
+            if expected.get(field) != actual.get(field)
+        ]
+        if expected.get("sha256") != actual.get("sha256"):
+            changed_fields.append("sha256")
+        # 保留舊有判定：缺少 expected.exists 或 path 表示法不同，均不因
+        # 新增診斷欄位而增加新的 pass/fail gate；path 仍由原契約要求。
+        unchanged = (
+            actual.get("exists") is True
+            and actual.get("size_bytes") == expected.get("size_bytes")
+            and actual.get("mtime_ns") == expected.get("mtime_ns")
+            and actual.get("sha256") == expected_hash
+        )
+        resolved_path = str(path.resolve())
+        hashes_before[resolved_path] = expected.get("sha256")
+        hashes_after[resolved_path] = actual.get("sha256")
+        if not unchanged:
+            changed_paths.append(resolved_path)
+        evidence.append(
+            {
+                "path": resolved_path,
+                "before": expected,
+                "after": actual,
+                "unchanged": unchanged,
+                "changed_fields": changed_fields,
+            }
+        )
+
+    unchanged = contract_valid and not changed_paths and all(
+        item.get("unchanged") is True for item in evidence
+    )
+    return {
+        "status": "passed" if unchanged else "changed_or_invalid",
+        "unchanged": unchanged,
+        "required_files": evidence,
+        "hashes_before": hashes_before,
+        "hashes_after": hashes_after,
+        "which_changed": changed_paths,
+    }
+
+
 def _release_files_unchanged(
     required_files: object,
 ) -> bool:
     """比對 release 每個 frozen 檔案的 stat 與 hash。"""
 
-    if not isinstance(required_files, list):
-        return False
-    for expected in required_files:
-        if not isinstance(expected, dict):
-            return False
-        path_value = expected.get("path")
-        expected_hash = expected.get("sha256")
-        if not isinstance(path_value, str) or not isinstance(
-            expected_hash, str
-        ):
-            return False
-        path = Path(path_value)
-        actual = _stat_evidence(path)
-        if (
-            actual.get("exists") is not True
-            or actual.get("size_bytes") != expected.get("size_bytes")
-            or actual.get("mtime_ns") != expected.get("mtime_ns")
-        ):
-            return False
-        if _file_hash(path) != expected_hash:
-            return False
-    return True
+    return _release_files_integrity(required_files).get("unchanged") is True
 
 
 def _load_observation_lanes(status: Mapping[str, object]) -> dict[str, object]:
@@ -691,6 +1139,7 @@ def _base_record(
     release_evidence: Mapping[str, object] | None,
     database_evidence: Mapping[str, object],
     paper_state_evidence: Mapping[str, object],
+    paper_trade_ledger_evidence: Mapping[str, object] | None,
     missing_inputs: list[str],
     capacity: Mapping[str, object],
 ) -> dict[str, object]:
@@ -704,6 +1153,11 @@ def _base_record(
         "source": {
             "database": dict(database_evidence),
             "paper_state_db": dict(paper_state_evidence),
+            "paper_trade_ledger_db": (
+                dict(paper_trade_ledger_evidence)
+                if paper_trade_ledger_evidence is not None
+                else None
+            ),
             "database_read_only_required": True,
             "release_read_only_required": True,
         },
@@ -732,6 +1186,7 @@ def _run_unlocked(
     output_root: Path,
     release_root: Path,
     paper_state_db_path: Path,
+    paper_trade_ledger_db_path: Path | None = None,
     mode: str = RESEARCH_MODE,
     decision_at: str | None = None,
     now: datetime | None = None,
@@ -754,6 +1209,8 @@ def _run_unlocked(
     database_path = database_path.resolve()
     release_root = release_root.resolve()
     paper_state_db_path = paper_state_db_path.resolve()
+    if paper_trade_ledger_db_path is not None:
+        paper_trade_ledger_db_path = paper_trade_ledger_db_path.resolve()
     if pit_machine_operational_path is not None:
         pit_machine_operational_path = (
             pit_machine_operational_path.expanduser().resolve()
@@ -818,11 +1275,21 @@ def _run_unlocked(
 
     source_before = _stat_evidence(database_path)
     paper_before = _stat_evidence(paper_state_db_path)
+    paper_trade_ledger_before = (
+        _stat_evidence(paper_trade_ledger_db_path)
+        if paper_trade_ledger_db_path is not None
+        else None
+    )
     missing_inputs = [
         label
         for label, evidence in (
             ("database", source_before),
             ("paper_state_db", paper_before),
+            *(
+                [("paper_trade_ledger_db", paper_trade_ledger_before)]
+                if paper_trade_ledger_before is not None
+                else []
+            ),
         )
         if evidence.get("exists") is not True
     ]
@@ -892,6 +1359,7 @@ def _run_unlocked(
         release_evidence=release_evidence,
         database_evidence=source_before,
         paper_state_evidence=paper_before,
+        paper_trade_ledger_evidence=paper_trade_ledger_before,
         missing_inputs=missing_inputs,
         capacity=capacity_payload,
     )
@@ -1017,6 +1485,7 @@ def _run_unlocked(
         output_root=output_root,
         release_root=release_root,
         paper_state_db_path=paper_state_db_path,
+        paper_trade_ledger_db_path=paper_trade_ledger_db_path,
         decision_at=daily._parse_decision_at(selected_decision_at),
         decision_selection_mode=str(selection.get("selection_mode", mode)),
         requested_decision_at=daily._parse_decision_at(selected_decision_at),
@@ -1060,16 +1529,38 @@ def _run_unlocked(
     )
     source_after = _stat_evidence(database_path)
     paper_after = _stat_evidence(paper_state_db_path)
+    paper_trade_ledger_after = (
+        _stat_evidence(paper_trade_ledger_db_path)
+        if paper_trade_ledger_db_path is not None
+        else None
+    )
     release_manifest_after = _stat_evidence(release.manifest_path)
     source_unchanged = _stat_unchanged(source_before, database_path)
     paper_unchanged = _stat_unchanged(paper_before, paper_state_db_path)
+    paper_trade_ledger_unchanged = (
+        _stat_unchanged(paper_trade_ledger_before, paper_trade_ledger_db_path)
+        if paper_trade_ledger_before is not None
+        and paper_trade_ledger_db_path is not None
+        else True
+    )
+    release_files_integrity = _release_files_integrity(
+        release_evidence.get("required_files")
+        if release_evidence is not None
+        else None
+    )
     release_unchanged = (
         _stat_unchanged(release_manifest_before, release.manifest_path)
-        and _release_files_unchanged(
-            release_evidence.get("required_files")
-            if release_evidence is not None
-            else None
-        )
+        and release_files_integrity.get("unchanged") is True
+    )
+    paper_state_coordination = _paper_state_coordination_evidence(
+        paper_before=paper_before,
+        paper_after=paper_after,
+        paper_state_db_path=paper_state_db_path,
+        paper_trade_ledger_db_path=paper_trade_ledger_db_path,
+        daily_status=daily_status,
+    )
+    paper_state_authorized = (
+        paper_state_coordination.get("authorized") is True
     )
     actual_new_bytes = max(0, directory_size_bytes(output_root) - baseline_bytes)
     # 先保存不含本筆 immutable record 的 delta；最後的固定點會把
@@ -1142,23 +1633,55 @@ def _run_unlocked(
                     **source_before,
                     "after": source_after,
                     "unchanged": source_unchanged,
+                    "changed_fields": _stat_changed_fields(
+                        source_before,
+                        source_after,
+                    ),
                 },
                 "paper_state_db": {
                     **paper_before,
                     "after": paper_after,
                     "unchanged": paper_unchanged,
+                    "changed_fields": _stat_changed_fields(
+                        paper_before,
+                        paper_after,
+                    ),
+                    "integrity_verified": paper_state_authorized,
+                    "change_class": paper_state_coordination["status"],
+                    "coordination": paper_state_coordination,
                 },
+                "paper_trade_ledger_db": (
+                    {
+                        **paper_trade_ledger_before,
+                        "after": paper_trade_ledger_after,
+                        "unchanged": paper_trade_ledger_unchanged,
+                        "changed_fields": _stat_changed_fields(
+                            paper_trade_ledger_before,
+                            paper_trade_ledger_after,
+                        ),
+                    }
+                    if paper_trade_ledger_before is not None
+                    and paper_trade_ledger_after is not None
+                    else None
+                ),
                 "release_manifest": {
                     "before": release_manifest_before,
                     **release_manifest_after,
+                    "changed_fields": _stat_changed_fields(
+                        release_manifest_before,
+                        release_manifest_after,
+                    ),
                     "unchanged": release_unchanged,
                     "required_files_unchanged": release_unchanged,
+                    "required_file_integrity": release_files_integrity,
                 },
                 "database_read_only_required": True,
+                "paper_state_writer_coordination_required": True,
                 "release_read_only_required": True,
             },
         }
     )
+    record["paper_state_coordination"] = paper_state_coordination
     completion_clock = daily_status.get("natural_forward_completion_clock")
     if isinstance(completion_clock, Mapping):
         record["natural_forward_completion_clock"] = dict(completion_clock)
@@ -1171,7 +1694,12 @@ def _run_unlocked(
             else None
         ),
     )
-    if not (source_unchanged and paper_unchanged and release_unchanged):
+    if not (
+        source_unchanged
+        and paper_state_authorized
+        and paper_trade_ledger_unchanged
+        and release_unchanged
+    ):
         record["status"] = "failed_read_only_integrity"
         boundaries_value = record.get("production_boundaries")
         boundaries = (
@@ -1249,7 +1777,12 @@ def _run_unlocked(
                 capacity_adjusted_daily_status = True
         else:
             candidate_status = wrapper_status
-        if not (source_unchanged and paper_unchanged and release_unchanged):
+        if not (
+            source_unchanged
+            and paper_state_authorized
+            and paper_trade_ledger_unchanged
+            and release_unchanged
+        ):
             candidate_status = "failed_read_only_integrity"
         record["status"] = candidate_status
         record["capacity"] = dict(capacity_payload)
@@ -1282,6 +1815,7 @@ def run(
     output_root: Path,
     release_root: Path,
     paper_state_db_path: Path,
+    paper_trade_ledger_db_path: Path | None = None,
     mode: str = RESEARCH_MODE,
     decision_at: str | None = None,
     now: datetime | None = None,
@@ -1361,6 +1895,7 @@ def run(
             output_root=output_root,
             release_root=release_root,
             paper_state_db_path=paper_state_db_path,
+            paper_trade_ledger_db_path=paper_trade_ledger_db_path,
             mode=mode,
             decision_at=decision_at,
             now=now,
@@ -1388,6 +1923,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, default=DEFAULT_DATABASE)
     parser.add_argument("--paper-state-db", type=Path, default=DEFAULT_PAPER_STATE_DB)
+    parser.add_argument(
+        "--paper-trade-ledger-db",
+        type=Path,
+        default=DEFAULT_PAPER_TRADE_LEDGER_DB,
+        help=(
+            "隔離 append-only Paper transaction ledger；以 query-only 讀取"
+            "實際 turnover_bp，不由 snapshot 漂移反推。"
+        ),
+    )
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--release-root", type=Path, default=DEFAULT_RELEASE_ROOT)
     parser.add_argument(
@@ -1455,6 +1999,7 @@ def main(argv: list[str] | None = None) -> int:
             output_root=args.output_root,
             release_root=args.release_root,
             paper_state_db_path=args.paper_state_db,
+            paper_trade_ledger_db_path=args.paper_trade_ledger_db,
             mode=args.mode,
             decision_at=args.decision_at,
             lock_path=args.lock_path,

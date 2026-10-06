@@ -135,6 +135,13 @@ def test_inventory_exposes_pytest_collection_statuses():
             "tests/ml_teacher_fixture.py",
             "tests/fixtures/ml_allocation_training_support.py",
             "tests/fixtures/portfolio_ml_ooc_support.py",
+            "tests/pit_test_support.py",
+            "tests/fixtures/r030/business_last_state.py",
+            "tests/fixtures/r030/decision_imports_app.py",
+            "tests/fixtures/r030/duplicate_row_map.py",
+            "tests/fixtures/r030/registry_bypass.py",
+            "tests/natural_session_source_fixture.py",
+            "tests/recommendation_test_support.py",
         }
     )
     assert PYTEST_NOT_COLLECTED_FILES == (

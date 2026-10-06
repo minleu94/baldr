@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any, Optional, Dict, List, Union
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 import numpy as np
 import requests
@@ -24,6 +24,11 @@ from .market_date_utils import (
     recent_date_range,
     year_to_date_start,
 )
+from .official_daily_price_custody import (
+    persist_official_daily_price_response,
+)
+from .official_market_daily import fetch_official_market_daily, update_market_index_csv
+from .daily_price_source_revision_overlay import load_daily_price_source_revisions
 
 
 def _is_explicit_twse_no_data_status(status: object) -> bool:
@@ -472,6 +477,15 @@ class DataLoader:
                     api_statuses.append("")
                     continue
 
+                # ``requests.Response.content`` reads the complete HTTP body.
+                # Keep the completion timestamp immediately after that read so
+                # the source receipt can prove when this process actually had
+                # the official bytes.  Test doubles that only expose ``json``
+                # receive a deterministic serialized fallback; production
+                # requests always use the wire bytes.
+                response_body = getattr(response, "content", None)
+                response_completed_at = datetime.now(timezone.utc)
+
                 # 解析 JSON 響應
                 try:
                     candidate = response.json()
@@ -494,6 +508,17 @@ class DataLoader:
                         parse_error,
                     )
                     continue
+                if not isinstance(response_body, bytes) or not response_body:
+                    response_body = json.dumps(
+                        candidate,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                    response_completed_at = datetime.now(timezone.utc)
+                if not isinstance(response_body, bytes):
+                    raise TypeError("TWSE response body was not captured as bytes")
+                captured_raw_response: bytes = response_body
                 api_status = str(candidate.get('stat') or "")
                 api_statuses.append(api_status)
                 request_attempts.append({
@@ -598,6 +623,24 @@ class DataLoader:
                     lambda x: '+' if 'color:red' in str(x) else 
                              '-' if 'color:green' in str(x) else ''
                 )
+
+            source_custody = persist_official_daily_price_response(
+                output_root=self.config.output_root,
+                venue="twse",
+                source_id="twse.mi_index.daily_price",
+                source_date=formatted_date,
+                requested_url=url,
+                final_url=getattr(response, "url", None) or url,
+                request_parameters=params,
+                http_status=int(response.status_code),
+                response_headers=getattr(response, "headers", None),
+                raw_response=captured_raw_response,
+                captured_at=response_completed_at,
+                row_count=len(df),
+                source_columns=stock_data.get("fields", []),
+                parser_id="twse.mi_index.v1",
+                historical_backfill_claimed=False,
+            )
             
             # 創建備份
             daily_price_file = self.config.get_daily_price_file(date)
@@ -609,12 +652,36 @@ class DataLoader:
             # 保存每日價格數據
             df.to_csv(daily_price_file, index=False, encoding='utf-8-sig')
             self.logger.info(f"成功保存 {date} 的個股交易資料，共 {len(df)} 筆記錄")
+            try:
+                from data_module.twse_daily_price_publication import (
+                    create_download_projection_manifest,
+                )
+
+                row_projection_manifest = create_download_projection_manifest(
+                    output_root=self.config.output_root,
+                    data_root=self.config.data_root,
+                    csv_path=daily_price_file,
+                    source_date=formatted_date,
+                    source_custody=source_custody,
+                    source_payload=data,
+                    parsed_frame=df,
+                )
+            except Exception as evidence_error:
+                # CSV 是既有主輸出；新證據失敗只代表無法作嚴格 attestation，
+                # 不回滾既有下載或讓舊消費者失敗。
+                row_projection_manifest = {
+                    "status": "unknown",
+                    "reason_code": "projection_manifest_failed",
+                    "error_type": type(evidence_error).__name__,
+                }
             self.last_daily_download_outcome = "success"
             self.last_daily_download_diagnostics = {
                 "date": date,
                 "outcome": "success",
                 "reason_code": "twse_data_available",
                 "request_attempts": request_attempts,
+                "source_custody": source_custody,
+                "row_projection_manifest": row_projection_manifest,
             }
             
             return df
@@ -718,37 +785,55 @@ class DataLoader:
     
     def merge_daily_data(self) -> Optional[pd.DataFrame]:
         """合併每日交易數據"""
+        backup_file: Optional[Path] = None
         try:
             daily_price_dir = self.config.daily_price_dir
-            if not daily_price_dir.exists():
+            configured_database_path = getattr(self.config, 'db_file', None)
+            database_path = (
+                Path(configured_database_path)
+                if configured_database_path is not None
+                else Path(daily_price_dir).parent / 'sqlite' / 'twstock.db'
+            )
+            # 在建立備份或輸出前驗證 receipt／plan，避免錯誤證據發布 derived CSV。
+            source_revisions = load_daily_price_source_revisions(database_path)
+            revision_changes = 0
+            excluded_rows_removed = 0
+            if not daily_price_dir.exists() and not self.config.all_stocks_data_file.exists():
                 self.logger.error(f"找不到目錄：{daily_price_dir}")
                 return None
             
             # 檢查現有的合併文件
             last_date = None
             if self.config.all_stocks_data_file.exists():
-                # 創建備份
-                backup_file = self.config.backup_dir / f'stock_data_whole_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
-                self.config.create_backup(self.config.all_stocks_data_file, backup_file)
-                self.logger.info(f"已創建備份文件: {backup_file}")
-                
                 # 讀取現有數據
                 existing_df = pd.read_csv(self.config.all_stocks_data_file, encoding='utf-8-sig', low_memory=False)
                 last_date = str(existing_df['日期'].max())
                 self.logger.info(f"已讀取現有數據，最後更新日期為: {last_date}")
             
             # 獲取所有CSV文件
-            all_csv_files = list(daily_price_dir.glob("*.csv"))
+            all_csv_files = list(daily_price_dir.glob("*.csv")) if daily_price_dir.exists() else []
             if not all_csv_files:
-                self.logger.error(f"在 {daily_price_dir} 中找不到CSV文件")
-                return None
+                if not last_date:
+                    self.logger.error(f"在 {daily_price_dir} 中找不到CSV文件")
+                    return None
             
             # 如果有最後更新日期，只處理新的文件
             if last_date:
                 csv_files = [f for f in all_csv_files if str(f.stem) > last_date]
                 if not csv_files:
-                    self.logger.info("沒有新的數據需要更新")
-                    return existing_df
+                    if source_revisions.has_revision_evidence:
+                        existing_df, changed_cells, removed_rows = source_revisions.apply(existing_df)
+                        revision_changes += changed_cells
+                        excluded_rows_removed += removed_rows
+                        if changed_cells or removed_rows:
+                            self.logger.info(
+                                "沒有新 raw 檔，已套用核驗來源修訂至既有整合檔（欄位值 %s、排除列 %s）",
+                                changed_cells,
+                                removed_rows,
+                            )
+                    if revision_changes == 0 and excluded_rows_removed == 0:
+                        self.logger.info("沒有新的數據需要更新")
+                        return existing_df
                 self.logger.info(f"找到 {len(csv_files)} 個需要處理的新CSV文件")
             else:
                 csv_files = all_csv_files
@@ -785,6 +870,7 @@ class DataLoader:
             
             # 合併所有數據
             merged_data = pd.concat(all_data, ignore_index=True)
+            merged_data['日期'] = merged_data['日期'].astype(str)
             
             # 重新排序列，把日期放在前面
             columns = ['日期', '證券代號', '證券名稱', '成交股數', '成交筆數', '成交金額', 
@@ -797,8 +883,22 @@ class DataLoader:
             
             # 移除重複數據
             merged_data = merged_data.drop_duplicates(subset=['日期', '證券代號'], keep='last')
+            merged_data, changed_cells, removed_rows = source_revisions.apply(merged_data)
+            revision_changes += changed_cells
+            excluded_rows_removed += removed_rows
+            if changed_cells or removed_rows:
+                self.logger.info(
+                    "已套用核驗來源修訂至每日整合檔（欄位值 %s、排除列 %s）",
+                    changed_cells,
+                    removed_rows,
+                )
+            merged_data = merged_data.sort_values(['日期', '證券代號'])
             
             # 保存合併後的數據
+            if self.config.all_stocks_data_file.exists():
+                backup_file = self.config.backup_dir / f'stock_data_whole_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+                self.config.create_backup(self.config.all_stocks_data_file, backup_file)
+                self.logger.info(f"已創建備份文件: {backup_file}")
             merged_data.to_csv(self.config.all_stocks_data_file, index=False, encoding='utf-8-sig')
             self.logger.info(f"成功保存合併後的數據到 {self.config.all_stocks_data_file}")
             
@@ -810,379 +910,167 @@ class DataLoader:
             return merged_data
             
         except Exception as e:
-            self.logger.error(f"合併每日交易數據時發生錯誤: {str(e)}")
+            self.logger.error(f"合併每日交易數據時發生錯誤: {str(e)}", exc_info=True)
             # 如果有備份，嘗試恢復
-            if 'backup_file' in locals() and backup_file.exists():
+            if backup_file is not None and backup_file.exists():
                 self.config.restore_backup(backup_file, self.config.all_stocks_data_file)
                 self.logger.info("已恢復備份文件")
             return None
 
-    def update_industry_index(self, date: str, skip_backup: bool = False) -> bool:
-        """更新產業指數資料
-        
-        Args:
-            date: 日期字串，格式為 YYYY-MM-DD
-            skip_backup: 是否跳過備份（批量更新時設為 True）
-        Returns:
-            bool: 更新是否成功
-        """
+    def update_industry_index(
+        self,
+        date: str,
+        skip_backup: bool = False,
+        *,
+        capture_manifests: Optional[List[Path]] = None,
+    ) -> bool:
+        """Capture and atomically project one TWSE industry-index response."""
+        from .twse_industry_index_capture import (
+            TwseIndustryIndexCaptureError,
+            assess_industry_name_completeness,
+            atomic_write_csv_projection,
+            parse_twse_industry_rows,
+            persist_twse_industry_capture,
+        )
+
         try:
-            self.logger.info(f"正在更新 {date} 的產業指數資料")
-            
-            # 轉換日期格式
-            date_obj = datetime.strptime(date, '%Y-%m-%d')
-            formatted_date = date_obj.strftime('%Y%m%d')
-            
-            # 從證交所API獲取數據
+            self.logger.info("正在更新 %s 的 TWSE 產業指數資料", date)
+            requested_date = datetime.strptime(date, "%Y-%m-%d").date()
+            normalized_date = requested_date.isoformat()
+            formatted_date = requested_date.strftime("%Y%m%d")
             url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
-            params = {
-                "date": formatted_date,
-                "type": "IND",
-                "response": "json"
-            }
-            
+            params = {"date": formatted_date, "type": "IND", "response": "json"}
             response = self._make_request(url, params)
             if response is None:
-                self.logger.error(f"無法獲取 {date} 的產業指數數據")
+                self.logger.error("無法取得 %s 的 TWSE 產業指數 response", normalized_date)
                 return False
-                
-            # 解析JSON響應
+
+            # Accessing .content completes the body read before this local UTC clock is captured.
+            raw_response = response.content
+            captured_at = datetime.now(timezone.utc)
+            if not isinstance(raw_response, bytes) or not raw_response:
+                self.logger.error("TWSE response body 為空或不是 bytes：%s", normalized_date)
+                return False
+
+            status_code = int(getattr(response, "status_code", 200))
+            rows: list[dict[str, str | None]] = []
+            parse_status = "accepted"
+            parse_reason: str | None = None
+            response_date_status = "verified"
+            completeness_status = "degraded"
+            completeness_reason: str | None = "parse_not_completed"
+            selected_titles: list[str] = []
             try:
-                data = response.json()
-            except Exception as e:
-                self.logger.error(f"解析JSON響應時發生錯誤: {str(e)}")
-                return False
-                
-            # 檢查響應狀態
-            if data.get("stat") != "OK" or "tables" not in data or not data["tables"]:
-                self.logger.warning(f"API返回無效數據: {data.get('stat', '未知狀態')}")
-                return False
-                
-            # 處理數據
-            try:
-                index_data = []
-                
-                # 尋找包含產業類指數的表格（參考 fix_industry_index.py 的邏輯）
-                for table in data["tables"]:
-                    table_title = table.get('title', '')
-                    # 使用 rows 而不是 data（參考 fix_industry_index.py）
-                    rows = table.get('rows', table.get('data', []))
-                    
-                    if '價格指數' in table_title or '報酬指數' in table_title or '類股指數' in table_title:
-                        for row in rows:
-                            if len(row) < 5:  # 確保至少有5個欄位
-                                continue
-                                
-                            try:
-                                # 處理指數名稱
-                                name = str(row[0]).strip()
-                                # 只處理包含「類」的指數
-                                if '類' not in name:
-                                    continue
-                                
-                                # 處理數值（參考 fix_industry_index.py 的邏輯）
-                                try:
-                                    close_price = float(str(row[1]).replace(',', '')) if row[1] != '--' else None
-                                except:
-                                    close_price = None
-                                
-                                # 處理漲跌符號（可能包含 HTML）
-                                change = str(row[2]) if len(row) > 2 else '+'
-                                change = change.replace('<p style =\'color:red\'>+</p>', '+')
-                                change = change.replace('<p style =\'color:green\'>-</p>', '-')
-                                change = change.replace('+', '+').replace('-', '-')
-                                # 提取符號
-                                if '+' in change or (isinstance(change, str) and change.strip() == '+'):
-                                    change_direction = '+'
-                                elif '-' in change or (isinstance(change, str) and change.strip() == '-'):
-                                    change_direction = '-'
-                                else:
-                                    change_direction = '+'  # 預設
-                                
-                                # 處理漲跌點數
-                                try:
-                                    change_price = float(str(row[3]).replace(',', '')) if len(row) > 3 and row[3] != '--' else 0.0
-                                except:
-                                    change_price = 0.0
-                                
-                                # 處理漲跌百分比
-                                try:
-                                    change_percent = float(str(row[4]).replace(',', '')) if len(row) > 4 and row[4] != '--' else None
-                                except:
-                                    change_percent = None
-                                
-                                # 創建字典（匹配現有文件格式）
-                                # 現有文件欄位：['指數名稱', '收盤指數', '漲跌', '漲跌點數', '漲跌百分比', '日期']
-                                data_dict = {
-                                    '指數名稱': name,
-                                    '收盤指數': close_price,
-                                    '漲跌': change_direction,
-                                    '漲跌點數': abs(change_price) if change_price else 0.0,
-                                    '漲跌百分比': change_percent,
-                                    '日期': date
-                                }
-                                
-                                index_data.append(data_dict)
-                            except Exception as e:
-                                self.logger.warning(f"處理產業指數行時發生錯誤: {str(e)}, Row: {row}")
-                                continue
-                
-                if not index_data:
-                    self.logger.warning(f"未找到 {date} 的有效產業指數數據")
-                    return False
-                
-                # 創建DataFrame
-                result_df = pd.DataFrame(index_data)
-                
-                # 檢查現有數據
-                if self.config.industry_index_file.exists():
-                    existing_df = pd.read_csv(self.config.industry_index_file, encoding='utf-8-sig')
-                    
-                    # 只用請求日前最近一個有效交易日的指數集合比對。
-                    # 全歷史集合會把已停用或改名的舊指數誤判成今日缺漏，
-                    # 造成每日固定的 false-positive warning。
-                    new_indices = {
-                        str(value).strip()
-                        for value in result_df['指數名稱'].dropna().unique()
-                        if str(value).strip()
-                    }
-                    existing_dates = pd.to_datetime(existing_df['日期'], errors='coerce')
-                    requested_date = pd.to_datetime(date, errors='coerce')
-                    reference_dates = existing_dates[existing_dates <= requested_date]
-                    reference_date = reference_dates.max() if not reference_dates.empty else existing_dates.max()
-                    existing_indices = {
-                        str(value).strip()
-                        for value in existing_df.loc[
-                            existing_dates == reference_date,
-                            '指數名稱',
-                        ].dropna().unique()
-                        if str(value).strip()
-                    }
-                    
-                    # 如果新數據缺少某些指數，記錄警告但不刪除（保留舊數據）
-                    missing_indices = existing_indices - new_indices
-                    if missing_indices:
-                        self.logger.warning(f"新數據缺少 {len(missing_indices)} 個指數的數據，將保留這些指數的舊數據")
-                        # 保留缺失指數的當天數據
-                        existing_date_keys = existing_dates.dt.strftime('%Y-%m-%d')
-                        missing_data = existing_df[
-                            (existing_date_keys == date)
-                            & (existing_df['指數名稱'].isin(missing_indices))
-                        ]
-                        if len(missing_data) > 0:
-                            result_df = pd.concat([result_df, missing_data], ignore_index=True)
-                    
-                    # 創建備份
-                    if not skip_backup:
-                        self.config.create_backup(self.config.industry_index_file)
-                    
-                    # 從現有數據中刪除當天的數據（只刪除新數據中存在的指數）
-                    indices_to_update = set(result_df['指數名稱'].unique())
-                    existing_df = existing_df[
-                        ~((existing_df['日期'] == date) & (existing_df['指數名稱'].isin(indices_to_update)))
-                    ]
-                    
-                    # 合併數據
-                    result_df = pd.concat([existing_df, result_df], ignore_index=True)
+                payload = json.loads(raw_response.decode("utf-8-sig"))
+                if status_code != 200:
+                    raise TwseIndustryIndexCaptureError(f"HTTP status {status_code}")
+                rows = parse_twse_industry_rows(payload, normalized_date)
+                if isinstance(payload, dict) and isinstance(payload.get("tables"), list):
+                    selected_titles = sorted({
+                        str(table.get("title", ""))
+                        for table in payload["tables"]
+                        if isinstance(table, dict)
+                        and any(
+                            token in str(table.get("title", ""))
+                            for token in ("價格指數", "報酬指數", "類股指數")
+                        )
+                    })
+                completeness_status, completeness_reason = assess_industry_name_completeness(
+                    self.config.industry_index_file,
+                    normalized_date,
+                    rows,
+                )
+            except (UnicodeError, json.JSONDecodeError, TwseIndustryIndexCaptureError) as exc:
+                parse_status = "rejected"
+                parse_reason = str(exc)
+                if "日期證據" in parse_reason:
+                    response_date_status = "date_unverified"
+                elif "日期與請求日期不一致" in parse_reason:
+                    response_date_status = "mismatch"
                 else:
-                    # 如果文件不存在，直接保存新數據
-                    result_df.to_csv(self.config.industry_index_file, index=False, encoding='utf-8-sig')
-                    self.logger.info(f"成功創建產業指數數據文件，日期: {date}，共 {len(result_df)} 筆記錄")
-                    return True
-                
-                # 保存數據
-                result_df.to_csv(self.config.industry_index_file, index=False, encoding='utf-8-sig')
-                self.logger.info(f"成功更新產業指數數據，日期: {date}，共 {len(result_df)} 筆記錄")
-                return True
-                
-            except Exception as e:
-                self.logger.error(f"處理產業指數數據時發生錯誤: {str(e)}")
+                    response_date_status = "not_checked"
+
+            capture = persist_twse_industry_capture(
+                output_root=self.config.output_root,
+                source_date=normalized_date,
+                requested_url=url,
+                final_url=getattr(response, "url", None),
+                request_parameters=params,
+                http_status=status_code,
+                response_headers=getattr(response, "headers", None),
+                raw_response=raw_response,
+                captured_at=captured_at,
+                parse_status=parse_status,
+                parse_reason=parse_reason,
+                response_date_status=response_date_status,
+                completeness_status=completeness_status,
+                completeness_reason=completeness_reason,
+                selected_table_titles=selected_titles,
+                rows=rows,
+            )
+            if parse_status != "accepted":
+                self.logger.error("TWSE 產業 response 已留存，但解析失敗：%s", parse_reason)
                 return False
-                
-        except Exception as e:
-            self.logger.error(f"更新產業指數數據時發生未處理的錯誤: {str(e)}")
+            if completeness_status != "accepted":
+                self.logger.warning(
+                    "TWSE 產業 response 已留存為 degraded，等待人工確認：%s (%s)",
+                    normalized_date,
+                    completeness_reason,
+                )
+                return False
+
+            _, csv_digest = atomic_write_csv_projection(
+                self.config.industry_index_file,
+                normalized_date,
+                rows,
+                skip_backup=skip_backup,
+                config=self.config,
+            )
+            if capture_manifests is not None:
+                capture_manifests.append(Path(str(capture["path"])))
+            self.logger.info(
+                "已原子更新 %s TWSE 產業六欄投影（rows=%s, csv_sha256=%s）",
+                normalized_date,
+                len(rows),
+                csv_digest,
+            )
+            return True
+        except Exception as exc:
+            self.logger.error("更新 TWSE 產業指數失敗並保留可還原狀態：%s", exc, exc_info=True)
             return False
 
-    def update_market_index(self, date: str, skip_backup: bool = False) -> bool:
-        """更新特定日期的市場指數數據
-        
-        Args:
-            date: 日期字符串（YYYY-MM-DD格式）
-            skip_backup: 是否跳過備份（批量更新時設為 True）
-            
-        Returns:
-            是否成功更新
-        """
+    def update_market_index(
+        self,
+        date: str,
+        skip_backup: bool = False,
+        *,
+        capture_manifests: Optional[List[Path]] = None,
+    ) -> bool:
+        """以 TWSE 月報更新指定日大盤資料；任一來源缺件即拒絕發布。"""
         try:
-            self.logger.info(f"開始更新 {date} 的市場指數數據")
-            
-            # 檢查是否已有最新數據
-            latest_date = self.get_latest_date(self.config.market_index_file)
-            if latest_date and latest_date >= date:
-                self.logger.info(f"已有 {date} 的市場指數數據，最新日期為 {latest_date}")
-                return True
-                
-            # 將日期轉換為證交所API需要的格式
-            date_obj = datetime.strptime(date, '%Y-%m-%d')
-            formatted_date = date_obj.strftime('%Y%m%d')
-            
-            # 從證交所API獲取數據
-            url = "https://www.twse.com.tw/rwd/zh/afterTrading/FMTQIK"
-            params = {
-                "date": formatted_date,
-                "response": "json"
-            }
-            
-            response = self._make_request(url, params)
-            
-            # 初始化標記，若 API 失敗則使用 yfinance 備援
-            use_yfinance_fallback = False
-            
-            if response is None:
-                self.logger.warning(f"無法從 TWSE API 獲取 {date} 的市場指數數據，準備使用 yfinance 備援...")
-                use_yfinance_fallback = True
-            else:
-                try:
-                    data = response.json()
-                    if data.get("stat") != "OK" or "data" not in data or not data["data"]:
-                        self.logger.warning(f"TWSE API 返回無效數據: {data.get('stat')}, 準備使用 yfinance 備援...")
-                        use_yfinance_fallback = True
-                except Exception as e:
-                    self.logger.warning(f"解析 TWSE API JSON 響應失敗: {e}, 準備使用 yfinance 備援...")
-                    use_yfinance_fallback = True
-            
-            result_df = None
-            
-            if use_yfinance_fallback:
-                try:
-                    self.logger.info(f"正在從 yfinance 下載大盤指數 (^TWII) 作為備援，日期: {date}")
-                    start_dt = (date_obj - timedelta(days=2)).strftime('%Y-%m-%d')
-                    end_dt = (date_obj + timedelta(days=2)).strftime('%Y-%m-%d')
-                    
-                    import yfinance as yf
-                    yf_df = yf.download("^TWII", start=start_dt, end=end_dt, progress=False)
-                    
-                    if yf_df.empty:
-                        self.logger.error("yfinance 下載返回空數據，無法完成更新")
-                        return False
-                        
-                    yf_df = yf_df.reset_index()
-                    yf_df['Date_Str'] = yf_df['Date'].dt.strftime('%Y-%m-%d')
-                    
-                    target_row = yf_df[yf_df['Date_Str'] == date]
-                    if target_row.empty:
-                        historical_rows = yf_df[yf_df['Date_Str'] <= date]
-                        if historical_rows.empty:
-                            self.logger.error(
-                                f"yfinance 備援沒有 {date} 或更早的可用資料，拒絕使用未來日期資料"
-                            )
-                            return False
-                        self.logger.warning(
-                            f"yfinance 數據中未找到日期為 {date} 的記錄，"
-                            "將使用目標日前最近一筆交易日資料"
-                        )
-                        target_row = historical_rows.tail(1)
-                    
-                    def get_col_val(df_row, name):
-                        if name in df_row.columns:
-                            val = df_row[name].values[0]
-                            if hasattr(val, 'item'):
-                                return float(val.item())
-                            return float(val)
-                        for col in df_row.columns:
-                            if isinstance(col, tuple) and name in col:
-                                val = df_row[col].values[0]
-                                if hasattr(val, 'item'):
-                                    return float(val.item())
-                                return float(val)
-                        return 0.0
-
-                    close_p = get_col_val(target_row, 'Close')
-                    open_p = get_col_val(target_row, 'Open')
-                    high_p = get_col_val(target_row, 'High')
-                    low_p = get_col_val(target_row, 'Low')
-                    vol = get_col_val(target_row, 'Volume')
-                    if close_p <= 0:
-                        self.logger.error("yfinance 備援資料收盤價無效，拒絕寫入")
-                        return False
-                    
-                    actual_date = target_row['Date_Str'].values[0]
-                    
-                    result_df = pd.DataFrame({
-                        '日期': [actual_date],
-                        '收盤價': [close_p],
-                        '開盤價': [open_p if open_p > 0 else close_p],
-                        '最高價': [high_p if high_p > 0 else close_p],
-                        '最低價': [low_p if low_p > 0 else close_p],
-                        '成交量': [vol]
-                    })
-                    
-                    self.logger.info(f"yfinance 備援獲取大盤數據成功: 日期={actual_date}, 收盤={close_p}, 成交量={vol}")
-                    
-                except Exception as yf_err:
-                    self.logger.error(f"從 yfinance 下載大盤備援數據時發生致命錯誤: {yf_err}")
-                    return False
-            else:
-                # 處理從 TWSE 獲取的正常數據
-                try:
-                    # 創建DataFrame
-                    df = pd.DataFrame(data["data"], columns=data["fields"])
-                    
-                    # 轉換數值欄位
-                    numeric_columns = ['成交股數', '成交金額', '成交筆數', '發行量加權股價指數', '漲跌點數']
-                    for col in numeric_columns:
-                        df[col] = pd.to_numeric(df[col].str.replace(',', ''), errors='coerce')
-                    
-                    # 轉換日期格式（從民國年到西元年）
-                    df['日期'] = df['日期'].apply(self._convert_roc_date)
-                    
-                    # 重新組織數據格式
-                    result_df = pd.DataFrame({
-                        '日期': pd.to_datetime(df['日期']).dt.strftime('%Y-%m-%d'),
-                        '收盤價': df['發行量加權股價指數'],
-                        '開盤價': df['發行量加權股價指數'],  # API只提供收盤價
-                        '最高價': df['發行量加權股價指數'],  # API只提供收盤價
-                        '最低價': df['發行量加權股價指數'],  # API只提供收盤價
-                        '成交量': df['成交股數']
-                    })
-                except Exception as e:
-                    self.logger.error(f"處理 TWSE 市場指數數據時發生錯誤: {str(e)}")
-                    return False
-
-            # 保存與合併邏輯 (兩者共享)
-            if result_df is not None:
-                try:
-                    # 檢查現有數據
-                    if self.config.market_index_file.exists():
-                        existing_df = pd.read_csv(self.config.market_index_file, encoding='utf-8-sig')
-                        
-                        # 創建備份
-                        if not skip_backup:
-                            self.config.create_backup(self.config.market_index_file)
-                        
-                        # 合併數據
-                        existing_df['日期'] = pd.to_datetime(existing_df['日期'], format='mixed').dt.strftime('%Y-%m-%d')
-                        result_df = pd.concat([existing_df, result_df], ignore_index=True)
-                        
-                        # 刪除重複的日期，保留最新的數據
-                        result_df = result_df.drop_duplicates(subset=['日期'], keep='last')
-                        
-                        # 按日期排序
-                        result_df = result_df.sort_values('日期')
-                    
-                    # 保存數據
-                    result_df.to_csv(self.config.market_index_file, index=False, encoding='utf-8-sig')
-                    self.logger.info(f"成功更新市場指數數據，共 {len(result_df)} 筆記錄")
-                    return True
-                except Exception as e:
-                    self.logger.error(f"儲存市場指數數據時發生錯誤: {str(e)}")
-                    return False
-            else:
-                self.logger.error("大盤數據更新失敗，無有效數據生成")
+            requested_date = datetime.strptime(date, "%Y-%m-%d").date()
+            pending_captures: list[Path] = []
+            rows = fetch_official_market_daily(
+                requested_date,
+                requested_date,
+                requester=lambda url, params: self._make_request(url, dict(params)),
+                source_dir=self.config.meta_data_dir,
+                capture_manifests=pending_captures,
+            )
+            if len(rows) != 1 or rows[0]["日期"] != requested_date.isoformat():
+                self.logger.error("TWSE 官方月報沒有指定交易日 %s，拒絕更新", date)
                 return False
-                
-        except Exception as e:
-            self.logger.error(f"更新市場指數數據時發生未處理的錯誤: {str(e)}")
+            if not update_market_index_csv(
+                self.config, rows, skip_backup=skip_backup,
+            ):
+                self.logger.error("大盤 CSV 更新未完成（鎖定、備份或原子寫入失敗）")
+                return False
+            if capture_manifests is not None:
+                capture_manifests.extend(pending_captures)
+            self.logger.info("已使用 TWSE 官方來源更新 %s 大盤資料", date)
+            return True
+        except Exception as exc:
+            self.logger.error("官方大盤資料更新失敗：%s", exc)
             return False
 
     def _make_request(self, url: str, params: Dict = None, retries: int = None) -> Optional[requests.Response]:

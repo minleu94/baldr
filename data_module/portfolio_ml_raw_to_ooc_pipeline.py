@@ -21,7 +21,7 @@ from pathlib import Path
 import shutil
 import sqlite3
 import tempfile
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from data_module import portfolio_ml_dataset_assembler as legacy
 from data_module.ml_research_shadow_union import (
@@ -29,6 +29,7 @@ from data_module.ml_research_shadow_union import (
     ResearchShadowUnionRequest,
 )
 from data_module.portfolio_ml_out_of_core_store import (
+    InsufficientMatureHistoryError,
     PortfolioMLOutOfCoreStoreBuilder,
     PortfolioMLOutOfCoreStorePublication,
     PortfolioMLOutOfCoreStoreRequest,
@@ -37,6 +38,9 @@ from data_module.ml_storage_capacity import (
     heavy_chain_capacity_budget,
     MLStorageCapacityBudget,
     preflight_capacity,
+)
+from data_module.ml_research_output_boundary import (
+    resolve_ml_research_output_path,
 )
 
 
@@ -72,6 +76,7 @@ class PortfolioMLRawToOOCRequest:
     persistent_storage_budget_bytes: int | None = None
     persistent_new_bytes_budget: int | None = None
     safety_reserve_bytes: int | None = None
+    allow_research: bool = False
 
     def __post_init__(self) -> None:
         legacy.PortfolioMLDatasetAssemblyRequest(
@@ -160,6 +165,8 @@ class PortfolioMLRawToOOCRequest:
                 "research_symbols",
                 normalized_symbols,
             )
+        if self.allow_research:
+            resolve_ml_research_output_path(self.output_root, access="write")
 
 
 @dataclass(frozen=True)
@@ -200,7 +207,16 @@ class PortfolioMLRawToOOCBuilder:
         temporary_budget_bytes = capacity_budget.temporary_peak_bytes_budget
         raw_manifest_path = request.raw_manifest_path.resolve()
         raw_manifest = legacy._read_json(raw_manifest_path)
-        legacy._validate_raw_dataset_manifest(raw_manifest)
+        legacy._validate_raw_dataset_manifest(
+            raw_manifest, allow_research=request.allow_research
+        )
+        is_research = (
+            request.allow_research
+            or (not raw_manifest.get("safety", {}).get("formal_dataset", True))
+            or raw_manifest.get("schema_version") == "ml-research-adapted-raw-manifest.v1"
+        )
+        if is_research:
+            resolve_ml_research_output_path(request.output_root, access="write")
         raw_manifest_file_hash = _file_sha256(raw_manifest_path)
         identity = {
             "schema_version": PIPELINE_SCHEMA_VERSION,
@@ -208,6 +224,8 @@ class PortfolioMLRawToOOCBuilder:
             "raw_manifest_file_hash": raw_manifest_file_hash,
             "training_as_of": request.training_as_of,
             "benchmark_entity_id": request.benchmark_entity_id,
+            "research_only": is_research,
+            "formal_dataset": not is_research,
             "sector_membership_file_hash": (
                 None
                 if request.sector_membership_path is None
@@ -233,6 +251,11 @@ class PortfolioMLRawToOOCBuilder:
             ),
             "safety_reserve_bytes": capacity_budget.safety_reserve_bytes,
         }
+        if is_research:
+            identity["research_fold_qualification"] = {
+                "policy": "post_purge_distinct_train_dates.v1",
+                "minimum_train_dates": request.minimum_train_dates,
+            }
         if request.formal_portfolio_ledger_path is not None:
             identity["formal_portfolio_ledger_file_hash"] = _file_sha256(
                 request.formal_portfolio_ledger_path.resolve()
@@ -498,6 +521,9 @@ class PortfolioMLRawToOOCBuilder:
         ).replace("\\", "/")
         _atomic_write_json(checkpoint_path, checkpoint)
         store_output = run_directory / "store"
+        store_lane: Literal["formal", "research_shadow"] = (
+            "research_shadow" if request.allow_research else "formal"
+        )
         store_publication = PortfolioMLOutOfCoreStoreBuilder().build(
             PortfolioMLOutOfCoreStoreRequest(
                 training_manifest_path=training_manifest_path,
@@ -506,6 +532,7 @@ class PortfolioMLRawToOOCBuilder:
                 workers=request.workers,
                 memory_budget_mb=request.memory_budget_mb,
                 resume=request.resume,
+                lane=store_lane,
             )
         )
         checkpoint["store_manifest_path"] = os.path.relpath(
@@ -780,9 +807,16 @@ class PortfolioMLRawToOOCBuilder:
                 purge_trading_days=request.purge_trading_days,
                 embargo_trading_days=request.embargo_trading_days,
             )
-            if len(fold_windows) < 4:
+            if request.allow_research and (
+                request.purge_trading_days < 60
+                or request.embargo_trading_days < 5
+            ):
                 raise ValueError(
-                    "raw-to-ooc pipeline requires at least four folds"
+                    "research fold policy requires purge>=60 and embargo>=5"
+                )
+            if len(fold_windows) < 4:
+                raise InsufficientMatureHistoryError(
+                    "raw-to-ooc pipeline requires at least four mature folds"
                 )
             formal_rule_champion_custody = (
                 legacy._load_formal_rule_champion_history(
@@ -965,6 +999,7 @@ class PortfolioMLRawToOOCBuilder:
                     list(item) for item in source_manifest_hashes
                 ],
                 "training_as_of": cutoff.isoformat(),
+                "minimum_train_dates": request.minimum_train_dates,
                 "benchmark_entity_id": request.benchmark_entity_id,
                 "raw_dataset_manifest": {
                     "path": str(raw_manifest_path),
@@ -983,6 +1018,7 @@ class PortfolioMLRawToOOCBuilder:
                 "horizons": list(legacy.SUPPORTED_HORIZONS),
                 "folds": [asdict(window) for window in fold_windows],
                 "fold_count": len(fold_windows),
+                "fold_count_semantics": "candidate_windows_before_ooc_materialization",
                 "sample_count": sample_count,
                 "teacher_incomplete_decision_count": (
                     teacher_incomplete_count
@@ -1000,11 +1036,16 @@ class PortfolioMLRawToOOCBuilder:
                 "portfolio_state_policy": portfolio_state_policy,
                 "assembly_blockers": sorted(assembly_blockers),
                 "formal_oos_allowed": False,
-                "research_only": False,
-                "formal_consumer_compatible": True,
+                "research_only": request.allow_research,
+                "fold_qualification_policy": (
+                    "post_purge_distinct_train_dates.v1"
+                    if request.allow_research
+                    else None
+                ),
+                "formal_consumer_compatible": not request.allow_research,
                 "promotion_eligible": False,
                 "research_shadow_included": False,
-                "formal_source_only": True,
+                "formal_source_only": not request.allow_research,
                 "production_alpha_bp": 0,
                 "production_action_allowed": False,
                 "safety": {

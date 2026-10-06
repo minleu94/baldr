@@ -14,7 +14,7 @@
 - 2026-08-29 補充：`output/release_v4` 的 PIT／Direct／OOC immutable publications
   不屬於本文件的一般 DB／CSV backup rotation。使用者另行授權的一次性 ML cleanup、
   current pointer、retained dependency closure 與 tombstone，獨立記錄於
-  [ML Release v4 Storage Retention Cleanup](../06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)。
+  ML Release v4 Storage Retention Cleanup（開發收據見dev）。
 
 ## Retention 規則
 
@@ -90,7 +90,7 @@ Prefix 例子：
 | `tmp/pre_v2_source_gap_smoke/` | 刪除 | 已完成 Pre-V2 closeout；正式 DB 未寫入。需要時可依 QA 文件命令從 formal DB 重建 working copy |
 | `tmp/evidence_ops_continue_20260703/` | 刪除 | 已被後續 Pre-V2 all-source closeout 取代；需要時可依 2026-07-03 QA 文件重跑 |
 | `output/qa/statement_items_backfill/` | 刪除 | 正式 `fundamental_statement_items` 已在 `D:/Min/Python/Project/FA_Data/sqlite/twstock.db`；repo 內只是 QA raw DB / backup |
-| `C:/Users/archi/AppData/Local/Temp/technical_analysis_v1_main_20260630_164819`、`...164434` | 刪除 | 6/30 clean-clone / inspect 暫存 clone；需要時重新跑 clean-clone 驗證 |
+| `<USER_HOME>/AppData/Local/Temp/technical_analysis_v1_main_20260630_164819`、`...164434` | 刪除 | 6/30 clean-clone / inspect 暫存 clone；需要時重新跑 clean-clone 驗證 |
 
 尚未處理的既有大型備份仍需個別確認，不得因本次 cleanup 而自動刪除：
 

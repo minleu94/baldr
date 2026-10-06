@@ -10,9 +10,9 @@ from unittest.mock import MagicMock
 # 確保 Qt offscreen 運行
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-import app_module.strategies  # 確保測試行程 (主行程) 載入並註冊所有內建策略
+import decision_module.strategies  # 確保測試行程 (主行程) 載入並註冊所有內建策略
 from data_module.config import TWStockConfig
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 from app_module.backtest_service import BacktestService
 from app_module.batch_backtest_service import BatchBacktestService
 from app_module.backtest_repository import BacktestRunRepository

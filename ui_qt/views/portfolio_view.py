@@ -4,10 +4,12 @@
 """
 
 import logging
-from datetime import datetime
+from collections.abc import Mapping, Sequence
+from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import json
 import pandas as pd
 from uuid import uuid4
 
@@ -16,31 +18,74 @@ from PySide6.QtWidgets import (
     QTableView, QMessageBox, QDialog, QDialogButtonBox, QLineEdit,
     QTextEdit, QListWidget, QListWidgetItem, QHeaderView, QMenu,
     QAbstractItemView, QGroupBox, QSplitter, QComboBox, QDateEdit,
-    QDoubleSpinBox, QSpinBox, QFormLayout, QTabWidget, QFrame, QFileDialog,
+    QDoubleSpinBox, QSpinBox, QFormLayout, QTabWidget, QFrame, QScrollArea, QFileDialog,
     QSizePolicy
 )
-from PySide6.QtCore import Qt, Signal, QSize, QDate
+from PySide6.QtCore import Qt, Signal, QSize, QDate, QTimer
 from PySide6.QtGui import QFont, QColor, QPalette, QBrush
 
 from ui_qt.models.pandas_table_model import PandasTableModel
+from ui_qt.widgets.layout_helpers import (
+    create_scroll_area,
+    ensure_visible_rows,
+    set_scroll_content_constraints,
+)
 from app_module.portfolio_service import PortfolioService
 from app_module.dtos.portfolio_dtos import PortfolioDTO
+from app_module.recommendation.legacy_dtos import RecommendationResultDTO
+from app_module.portfolio_source_adapter import (
+    build_recommendation_execution_trade_source,
+    build_recommendation_trade_source,
+    stable_snapshot_hash,
+)
 from app_module.journal_service import JournalService
 from app_module.recommendation_service import RecommendationService
+from app_module.recommendation.contracts import (
+    ExecutionStatus,
+    IndexStatus,
+    RecommendationExecution,
+    SaveReceipt,
+)
+from app_module.recommendation.queries import RecommendationExecutionReadModel
+from app_module.saved_recommendation_queries import (
+    build_recommendation_execution_queries,
+    execution_result_config,
+)
 from app_module.broker_flow_service import BrokerFlowService
 from app_module.portfolio_condition_monitor import (
     PortfolioConditionMonitor,
     PortfolioCurrentSnapshot,
 )
+from app_module.paper_portfolio_time import taiwan_market_today
 from portfolio_module import PortfolioValidationError
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.v5_research_summary import V5ResearchSummary
 from ui_qt.workers.task_worker import TaskWorker
 from app_module.strategy_version_service import StrategyVersionService
 from app_module.portfolio_chip_service import PortfolioChipService
 from app_module.portfolio_feedback_service import PortfolioFeedbackService
-from app_module.research_session import ResearchStockContextDTO
+from app_module.decision_presentation import (
+    DecisionPresentationService,
+    decision_action_label,
+    format_decision_presentation,
+    format_position_health_presentation,
+    position_health_blocker_label,
+    position_health_action_label,
+)
+from app_module.position_health_transition_read_service import (
+    PositionHealthTransitionReadService,
+)
+from app_module.decision_presentation import (
+    PositionHealthPresentationDTO,
+    PositionHealthReadModel,
+)
+from app_module.research_session import (
+    ResearchStockContextDTO,
+    format_research_workflow_path,
+)
 from app_module.portfolio_stress_lab_service import (
     PortfolioStressLabService,
 )
@@ -61,8 +106,59 @@ from app_module.paper_equal_weight_benchmark_builder import (
 )
 from app_module.paper_trade_import_service import PaperTradeImportService
 from app_module.trade_import_service import TradeImportService
+from app_module.user_declared_holding_research import (
+    UserDeclaredHoldingResearchService,
+    UserDeclaredHoldingResearchStore,
+)
+from ui_qt.models.workbench_table_models import PositionHealthTableModel
+from ui_qt.widgets.user_declared_holding_research_widget import (
+    UserDeclaredHoldingResearchWidget,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _format_recorded_trade_costs(summary: Any) -> str:
+    """呈現 JSONL 明確保存的費稅；缺值不補成零或淨損益。"""
+
+    if summary is None:
+        return "已記錄交易費稅：來源未提供彙總"
+    trade_count = int(getattr(summary, "trade_count", 0) or 0)
+    if trade_count == 0:
+        return "已記錄交易費稅：目前沒有已記錄交易"
+
+    def format_group(label: str, value_key: str, count_key: str, missing_key: str) -> str:
+        amounts = getattr(summary, value_key, {}) or {}
+        rendered: list[str] = []
+        if isinstance(amounts, Mapping):
+            for currency, amount in sorted(amounts.items(), key=lambda item: str(item[0])):
+                if not isinstance(amount, Decimal) or not amount.is_finite():
+                    continue
+                rendered.append(f"{currency} {format(amount, ',f')}")
+        amount_text = "、".join(rendered) if rendered else "未提供有效金額"
+        recorded = int(getattr(summary, count_key, 0) or 0)
+        missing = int(getattr(summary, missing_key, 0) or 0)
+        coverage = f"已記錄 {recorded}/{trade_count} 筆"
+        if missing:
+            coverage += f"；{missing} 筆缺值或格式無效"
+        return f"{label} {amount_text}（{coverage}）"
+
+    return "已記錄費稅：" + "；".join(
+        (
+            format_group(
+                "手續費",
+                "fees_by_currency",
+                "fees_recorded_count",
+                "fees_missing_count",
+            ),
+            format_group(
+                "交易稅",
+                "taxes_by_currency",
+                "taxes_recorded_count",
+                "taxes_missing_count",
+            ),
+        )
+    )
 
 
 def _first_error_line(message: object) -> str:
@@ -74,10 +170,508 @@ def _first_error_line(message: object) -> str:
     return "未提供錯誤訊息"
 
 
+def _saved_recommendation_stock_aliases(row: Mapping[str, Any]) -> tuple[str, str]:
+    """回傳正規化後的英文／中文股票代號別名。"""
+
+    english_code = str(row.get("stock_code") or "").strip()
+    chinese_code = str(row.get("證券代號") or "").strip()
+    return english_code, chinese_code
+
+
+def _saved_recommendation_stock_code(row: Mapping[str, Any]) -> str | None:
+    """解析雙語別名；同列矛盾時不猜測。"""
+
+    english_code, chinese_code = _saved_recommendation_stock_aliases(row)
+    if english_code and chinese_code and english_code != chinese_code:
+        return None
+    return english_code or chinese_code
+
+
+def _saved_recommendation_alias_conflicts_for_code(
+    row: Mapping[str, Any],
+    stock_code: str,
+) -> bool:
+    """判斷矛盾別名列是否宣稱目前要求的股票代號。
+
+    與目前要求無關的股票矛盾列不影響結果；只要矛盾涉及目前要求的
+    代號，即使另有有效列，也必須視為候選身份不明確。
+    """
+
+    english_code, chinese_code = _saved_recommendation_stock_aliases(row)
+    return bool(
+        english_code
+        and chinese_code
+        and english_code != chinese_code
+        and stock_code in {english_code, chinese_code}
+    )
+
+
+def _payload_rows(value: object) -> tuple[Mapping[str, Any], ...]:
+    """讀取舊 payload 的 list 或唯讀 tuple；忽略非 row 值以維持舊語意。"""
+
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return ()
+    return tuple(item for item in value if isinstance(item, Mapping))
+
+
+def _fact_text(value: object) -> str | None:
+    if type(value) is date:
+        return value.isoformat()
+    if type(value) is str:
+        return value.strip()
+    if value is None:
+        return ""
+    return None
+
+
+def _consistent_fact(values: Sequence[object]) -> str | None:
+    normalized: set[str] = set()
+    for value in values:
+        fact = _fact_text(value)
+        if fact is None:
+            return None
+        if fact:
+            normalized.add(fact)
+    if len(normalized) > 1:
+        return None
+    return next(iter(normalized), "")
+
+
+def _canonical_recommendation_identity_facts(
+    execution: RecommendationExecution,
+    stock_code: str,
+) -> dict[str, str] | None:
+    """從已驗證 execution 讀取保存設定與 typed context 身份。"""
+
+    try:
+        result_config = execution_result_config(execution)
+        request = execution.request
+        request_snapshot = request.config_snapshot
+        if request_snapshot is None:
+            request_config: dict[str, object] = {}
+        else:
+            decoded_request = json.loads(request_snapshot.raw_config_json)
+            if not isinstance(decoded_request, Mapping):
+                return None
+            request_config = dict(decoded_request)
+        context_date = execution.context.as_of_date
+        request_date = request.as_of_date
+    except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+    as_of_date = _consistent_fact(
+        (
+            result_config.get("as_of_date"),
+            request_config.get("as_of_date"),
+            context_date,
+            request_date,
+        )
+    )
+    if as_of_date is None:
+        return None
+    decision_date = _consistent_fact(
+        (
+            result_config.get("decision_date"),
+            request_config.get("decision_date"),
+        )
+    )
+    if decision_date is None:
+        return None
+    if not decision_date:
+        decision_date = as_of_date
+
+    identity: dict[str, str] = {
+        "result_id": execution.result_id,
+        "stock_code": stock_code,
+        "as_of_date": as_of_date,
+        "decision_date": decision_date,
+    }
+    data_date = _consistent_fact(
+        (result_config.get("data_date"), request_config.get("data_date"))
+    )
+    if data_date is None:
+        return None
+    if not data_date:
+        data_date = _consistent_fact(
+            (
+                result_config.get("data_as_of_date"),
+                request_config.get("data_as_of_date"),
+            )
+        )
+        if data_date is None:
+            return None
+    identity["data_date"] = data_date
+    request_source_facts: dict[str, str] = {}
+    for field_name in ("source_snapshot_id", "source_snapshot_hash"):
+        value = _consistent_fact(
+            (result_config.get(field_name), request_config.get(field_name))
+        )
+        if value is None:
+            return None
+        request_source_facts[field_name] = value
+
+    # request config 的 source snapshot 是呼叫者來源 facts；Portfolio writer
+    # 的 source snapshot 則依序採 execution universe、universe ref 或唯一資料 ref。
+    # 兩個領域各自保留，不把 caller snapshot 當成 trade summary 的 universe 身分。
+    writer_source_snapshot_id = ""
+    writer_source_snapshot_hash = ""
+    universe_identity = execution.context.universe_identity
+    universe_snapshot = (
+        universe_identity.snapshot if universe_identity is not None else None
+    )
+    if universe_snapshot is not None:
+        snapshot_id = universe_snapshot.universe_snapshot_id
+        snapshot_hash = universe_snapshot.universe_snapshot_hash
+        if type(snapshot_id) is not str or type(snapshot_hash) is not str:
+            return None
+        writer_source_snapshot_id = snapshot_id
+        writer_source_snapshot_hash = snapshot_hash
+    elif execution.context.universe_snapshot_ref is not None:
+        writer_source_snapshot_id = (
+            execution.context.universe_snapshot_ref.reference_id
+        )
+    elif len(execution.context.data_snapshot_refs) == 1:
+        writer_source_snapshot_id = execution.context.data_snapshot_refs[0].reference_id
+    identity["source_snapshot_id"] = writer_source_snapshot_id
+    identity["source_snapshot_hash"] = writer_source_snapshot_hash
+    identity["request_source_snapshot_id"] = request_source_facts[
+        "source_snapshot_id"
+    ]
+    identity["request_source_snapshot_hash"] = request_source_facts[
+        "source_snapshot_hash"
+    ]
+    return identity
+
+
+def _summary_matches_saved_identity(
+    summary: Mapping[str, Any],
+    identity: Mapping[str, str],
+) -> bool:
+    """只在保存 facts 存在時核對 lineage；不替舊結果補造欄位。"""
+
+    for field_name in (
+        "result_id",
+        "stock_code",
+        "decision_date",
+        "data_date",
+        "source_snapshot_id",
+        "source_snapshot_hash",
+    ):
+        value = _fact_text(summary.get(field_name))
+        if value is None:
+            return False
+        expected = identity.get(field_name, "")
+        if value and (not expected or value != expected):
+            return False
+    return True
+
+
+def _position_snapshot_matches_saved_identity(
+    position: object | None,
+    identity: Mapping[str, str],
+) -> bool:
+    position_hash = _fact_text(getattr(position, "source_snapshot_hash", None))
+    saved_hash = identity.get("source_snapshot_hash", "")
+    return not (
+        position_hash is None
+        or (position_hash and (not saved_hash or position_hash != saved_hash))
+    )
+
+
+def _portfolio_source_numeric_value(value: Decimal | int | None) -> str | int | None:
+    """依 Portfolio source writer 的既有 JSON wire 表示正規化候選數值。"""
+
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError("candidate source 數值必須有限")
+        return format(value, "f")
+    return value
+
+
+def _candidate_reason_list(reason_text: str | None) -> list[str]:
+    text = str(reason_text or "").strip()
+    if not text:
+        return []
+    for separator in ("；", ";", "、", "\n"):
+        text = text.replace(separator, "|")
+    return [part.strip() for part in text.split("|") if part.strip()]
+
+
+def _json_wire_values_match(value: object, expected: object) -> bool:
+    """遞迴核對 JSON 值與型別，避免 bool 被當成整數接受。"""
+
+    if isinstance(expected, Mapping):
+        if not isinstance(value, Mapping) or set(value) != set(expected):
+            return False
+        return all(
+            _json_wire_values_match(value[key], expected[key]) for key in expected
+        )
+    if isinstance(expected, list):
+        return (
+            type(value) is list
+            and len(value) == len(expected)
+            and all(
+                _json_wire_values_match(actual, wanted)
+                for actual, wanted in zip(value, expected)
+            )
+        )
+    if type(value) is not type(expected):
+        return False
+    return value == expected
+
+
+_CANONICAL_PORTFOLIO_PROJECTION_FIELDS = (
+    "ranking_score_bp",
+    "calibrated_probability_bp",
+    "calibrated_probability_status",
+    "after_cost_profit_probability_bp",
+    "after_cost_profit_probability_status",
+    "evidence_confidence",
+    "sample_size",
+    "cost_basis_bp",
+    "calibration_model_version",
+    "calibration_dataset_version",
+    "calibration_horizon",
+    "calibration_status",
+    "calibration_source",
+    "calibration_source_trace",
+    "calibration_warnings",
+    "calibration_probability_transform_id",
+    "calibration_probability_baseline_id",
+    "calibration_probability_baseline_kind",
+    "calibration_probability_baseline_probability_bp",
+    "calibration_raw_probability_bp",
+    "calibration_raw_after_cost_probability_bp",
+    "calibration_provenance",
+)
+
+
+def _save_receipt_from_verified_read_model(
+    read_model: RecommendationExecutionReadModel,
+) -> SaveReceipt | None:
+    """以 canonical 查回 facts 重建核對用 receipt，不宣稱另一次保存。"""
+
+    if (
+        read_model.integrity_basis != "canonical_payload_and_index_verified"
+        or type(read_model.payload_hash) is not str
+        or not read_model.payload_hash
+        or type(read_model.artifact_location) is not str
+        or not read_model.artifact_location
+        or read_model.persisted_at is None
+        or type(read_model.schema_version) is not str
+        or type(read_model.schema_revision) is not int
+    ):
+        return None
+    try:
+        return SaveReceipt(
+            result_id=read_model.result_id,
+            payload_hash=read_model.payload_hash,
+            artifact_location=read_model.artifact_location,
+            persisted_at=read_model.persisted_at,
+            index_status=IndexStatus.INDEXED,
+            schema_version=read_model.schema_version,
+            schema_revision=read_model.schema_revision,
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _canonical_trade_summary_matches_execution(
+    position: object | None,
+    summary: Mapping[str, Any],
+    execution: RecommendationExecution,
+    read_model: RecommendationExecutionReadModel,
+    stock_code: str,
+) -> bool:
+    """核對 canonical adapter summary 對應同一個已驗證 execution。"""
+
+    if (
+        read_model.execution != execution
+        or read_model.result_id != execution.result_id
+        or read_model.integrity_basis != "canonical_payload_and_index_verified"
+        or type(read_model.payload_hash) is not str
+        or not read_model.payload_hash
+        or type(read_model.artifact_location) is not str
+        or not read_model.artifact_location
+        or summary.get("integrity_basis") != read_model.integrity_basis
+        or summary.get("result_id") != execution.result_id
+        or summary.get("payload_hash") != read_model.payload_hash
+        or summary.get("artifact_location") != read_model.artifact_location
+        or summary.get("decision_date")
+        != (
+            execution.context.as_of_date.isoformat()
+            if execution.context.as_of_date is not None
+            else None
+        )
+        or summary.get("stock_code") != stock_code
+        or _fact_text(getattr(position, "source_snapshot_hash", None))
+        != stable_snapshot_hash(summary)
+    ):
+        return False
+
+    matches = tuple(item for item in execution.items if item.stock_code == stock_code)
+    if len(matches) != 1:
+        return False
+    candidate_identity = summary.get("candidate_identity")
+    if not isinstance(candidate_identity, Mapping) or (
+        set(candidate_identity) != {"stock_code", "rank"}
+        or candidate_identity.get("stock_code") != stock_code
+        or type(candidate_identity.get("rank")) is not int
+        or candidate_identity.get("rank") != matches[0].rank
+    ):
+        return False
+    candidate = matches[0]
+    expected_candidate_fields: dict[str, object] = {
+        "stock_code": candidate.stock_code,
+        "stock_name": candidate.stock_name or "",
+        "close_price": _portfolio_source_numeric_value(candidate.close_price),
+        "price_change": _portfolio_source_numeric_value(candidate.price_change),
+        "total_score": _portfolio_source_numeric_value(candidate.rule_score),
+        "indicator_score": _portfolio_source_numeric_value(candidate.indicator_score),
+        "pattern_score": _portfolio_source_numeric_value(candidate.pattern_score),
+        "volume_score": _portfolio_source_numeric_value(candidate.volume_score),
+        "recommendation_reasons": candidate.reason_text or "",
+        "reasons": list(candidate.reasons) or _candidate_reason_list(candidate.reason_text),
+        "industry": candidate.industry or "",
+        "regime_match": candidate.regime_match,
+        "ranking_percentile_bp": candidate.score_percentile_bp,
+        "ranking_method": candidate.ranking_method,
+        "threshold_mode": candidate.threshold_mode,
+    }
+    if any(
+        field_name not in summary
+        or not _json_wire_values_match(summary[field_name], expected)
+        for field_name, expected in expected_candidate_fields.items()
+    ):
+        return False
+
+    receipt = _save_receipt_from_verified_read_model(read_model)
+    if receipt is None:
+        return False
+    try:
+        writer_projection = build_recommendation_execution_trade_source(
+            execution,
+            read_model,
+            receipt,
+            matches[0],
+        ).source_summary
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if any(
+        field_name not in summary
+        or field_name not in writer_projection
+        or not _json_wire_values_match(
+            summary[field_name],
+            writer_projection[field_name],
+        )
+        for field_name in _CANONICAL_PORTFOLIO_PROJECTION_FIELDS
+    ):
+        return False
+
+    context = execution.context
+    universe_identity = context.universe_identity
+    universe_snapshot = (
+        universe_identity.snapshot if universe_identity is not None else None
+    )
+    if universe_snapshot is not None:
+        expected_snapshot_id = universe_snapshot.universe_snapshot_id or ""
+        expected_snapshot_hash = universe_snapshot.universe_snapshot_hash or ""
+    elif context.universe_snapshot_ref is not None:
+        expected_snapshot_id = context.universe_snapshot_ref.reference_id
+        expected_snapshot_hash = ""
+    elif len(context.data_snapshot_refs) == 1:
+        expected_snapshot_id = context.data_snapshot_refs[0].reference_id
+        expected_snapshot_hash = ""
+    else:
+        expected_snapshot_id = ""
+        expected_snapshot_hash = ""
+    if (
+        summary.get("source_snapshot_id") != expected_snapshot_id
+        or summary.get("source_snapshot_hash") != expected_snapshot_hash
+    ):
+        return False
+    if universe_snapshot is not None and (
+        summary.get("source_snapshot_id") != (universe_snapshot.universe_snapshot_id or "")
+        or summary.get("source_snapshot_hash")
+        != (universe_snapshot.universe_snapshot_hash or "")
+    ):
+        return False
+
+    expected_data_snapshot_ids = [
+        item.reference_id for item in context.data_snapshot_refs
+    ]
+    if summary.get("data_snapshot_ids") != expected_data_snapshot_ids:
+        return False
+    expected_source_refs = [
+        {
+            "source_id": item.source_id,
+            "revision": item.revision,
+            "snapshot_id": item.snapshot_id,
+        }
+        for item in context.source_refs
+    ]
+    return _json_wire_values_match(summary.get("source_refs"), expected_source_refs)
+
+
+def _known_legacy_trade_summary_matches(
+    position: object | None,
+    summary: Mapping[str, Any],
+    legacy_result: Any,
+    stock_code: str,
+) -> bool:
+    """只接受可由 query DTO 與既有 legacy writer 精確重建的摘要。"""
+
+    recommendations = getattr(legacy_result, "recommendations", None)
+    if legacy_result is None or not isinstance(recommendations, (list, tuple)):
+        return False
+    matches = tuple(
+        item
+        for item in recommendations
+        if getattr(item, "stock_code", None) == stock_code
+    )
+    if len(matches) != 1:
+        return False
+    expected = build_recommendation_trade_source(legacy_result, matches[0])
+    try:
+        actual_summary_hash = stable_snapshot_hash(summary)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return (
+        summary.get("result_id") == expected.source_id
+        and summary.get("stock_code") == stock_code
+        and actual_summary_hash == expected.source_snapshot_hash
+        and _fact_text(getattr(position, "source_snapshot_hash", None))
+        == expected.source_snapshot_hash
+    )
+
+
+def _claims_canonical_trade_summary(summary: Mapping[str, Any]) -> bool:
+    if "integrity_basis" in summary:
+        return True
+    canonical_signature = {
+        "artifact_location",
+        "payload_hash",
+        "candidate_identity",
+    }
+    return bool(canonical_signature.intersection(summary)) or {
+        "data_snapshot_ids",
+        "source_refs",
+    }.issubset(summary)
+
+
+def _mutable_json_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _mutable_json_value(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [_mutable_json_value(item) for item in value]
+    return value
+
+
 def _paper_status_text(value: Any) -> str:
     """Render Paper readiness tokens with a Chinese explanation and raw token."""
 
     raw_status = str(value or "unknown").strip().lower() or "unknown"
+    shared_label = status_label(value, dimension="event")
     labels = {
         "ready": "可用",
         "partial": "部分完成",
@@ -92,7 +686,19 @@ def _paper_status_text(value: Any) -> str:
         "missing": "缺漏",
         "unknown": "未知",
     }
-    return f"{labels.get(raw_status, raw_status)}（{raw_status}）"
+    label = shared_label if shared_label.lower() != raw_status else labels.get(raw_status, shared_label)
+    return f"{label}（{raw_status}）"
+
+
+def _system_status_label(raw: Any, *, dimension: str, fallback: dict[str, str]) -> str:
+    """使用共用詞彙，僅對共用表未涵蓋的既有碼沿用專用文字。"""
+
+    raw_value = getattr(raw, "value", raw)
+    code = str(raw_value if raw_value is not None else "unknown").strip() or "unknown"
+    label = status_label(raw, dimension=dimension)
+    if label.lower() == code.lower():
+        return fallback.get(code.lower(), label)
+    return label
 
 
 class GradientCard(QFrame):
@@ -104,7 +710,6 @@ class GradientCard(QFrame):
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
         self.setMinimumHeight(86)
-        self.setMaximumHeight(96)
 
         # 設置漸層樣式與圓角、陰影
         self.setStyleSheet(f"""
@@ -382,14 +987,62 @@ class PortfolioView(QWidget):
         parent=None,
         *,
         async_refresh: bool = False,
+        presentation_service: DecisionPresentationService | None = None,
+        position_health_read_service: PositionHealthTransitionReadService | None = None,
+        user_declared_research_service: UserDeclaredHoldingResearchService | None = None,
+        user_declared_store: UserDeclaredHoldingResearchStore | None = None,
+        user_declared_portfolio_id: str = "default",
+        paper_readiness_service: PaperPortfolioReadinessService | None = None,
+        paper_weekly_evidence_service: PaperPortfolioWeeklyEvidenceService | None = None,
+        user_declared_market_source: Any | None = None,
+        user_declared_condition_source: Any | None = None,
     ):
         super().__init__(parent)
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.portfolio_service = portfolio_service
+        if (
+            getattr(portfolio_service.config, "personal_store_mode", None) is not None
+            or getattr(portfolio_service.config, "personal_store_root", None) is not None
+        ):
+            if (
+                user_declared_research_service is None and user_declared_store is None
+            ) or paper_readiness_service is None or paper_weekly_evidence_service is None:
+                raise ValueError("已配置私人 store 模式，聲明與 Paper 服務必須由中央注入；不回退 legacy")
+        if user_declared_research_service is not None and user_declared_store is not None:
+            raise ValueError("聲明持倉 service／store 只能注入其中一項")
+        if not isinstance(user_declared_portfolio_id, str) or not user_declared_portfolio_id.strip():
+            raise ValueError("聲明持倉 portfolio identity 不可空白")
+        if (paper_readiness_service is None) != (paper_weekly_evidence_service is None):
+            raise ValueError("Paper readiness／weekly 必須成對注入，不借 legacy 服務")
+        if paper_readiness_service is not None and paper_weekly_evidence_service is not None:
+            for field_name in (
+                "portfolio_id", "benchmark_id", "state_db_path", "benchmark_db_path", "cost_ledger_db_path",
+            ):
+                if getattr(paper_readiness_service, field_name) != getattr(paper_weekly_evidence_service, field_name):
+                    raise ValueError(f"Paper 注入服務 identity／path 不一致：{field_name}")
+        self.user_declared_portfolio_id = user_declared_portfolio_id
         self.journal_service = journal_service
         self.recommendation_service = recommendation_service
         self.condition_monitor = condition_monitor or PortfolioConditionMonitor()
+        self.presentation_service = presentation_service or DecisionPresentationService()
+        self.position_health_read_service = (
+            position_health_read_service
+            or PositionHealthTransitionReadService(
+                Path(self.portfolio_service.config.output_root)
+                / "position_health_transition"
+            )
+        )
+        if user_declared_research_service is not None:
+            self.user_declared_research_service = user_declared_research_service
+        elif user_declared_store is not None:
+            self.user_declared_research_service = UserDeclaredHoldingResearchService(user_declared_store)
+        else:
+            self.user_declared_research_service = UserDeclaredHoldingResearchService.under_output_root(
+                self.portfolio_service.config.output_root
+            )
+        self.user_declared_market_source = user_declared_market_source
+        self.user_declared_condition_source = user_declared_condition_source
         self.strategy_version_service = StrategyVersionService(self.portfolio_service.config)
         self.portfolio_feedback_service = PortfolioFeedbackService()
         self.stress_lab_service = PortfolioStressLabService()
@@ -401,10 +1054,10 @@ class PortfolioView(QWidget):
         self.stress_history_read_service = PortfolioStressHistoryReadService(
             self.stress_history_db_path,
         )
-        self.paper_readiness_service = PaperPortfolioReadinessService(
+        self.paper_readiness_service = paper_readiness_service if paper_readiness_service is not None else PaperPortfolioReadinessService(
             output_root=self.portfolio_service.config.output_root,
         )
-        self.paper_weekly_evidence_service = PaperPortfolioWeeklyEvidenceService(
+        self.paper_weekly_evidence_service = paper_weekly_evidence_service if paper_weekly_evidence_service is not None else PaperPortfolioWeeklyEvidenceService(
             output_root=self.portfolio_service.config.output_root,
             benchmark_db_path=self.paper_readiness_service.benchmark_db_path,
             cost_ledger_db_path=self.paper_readiness_service.cost_ledger_db_path,
@@ -419,9 +1072,16 @@ class PortfolioView(QWidget):
 
         self.positions_model: Optional[PandasTableModel] = None
         self.trades_model: Optional[PandasTableModel] = None
+        self.position_health_model = PositionHealthTableModel()
         # Summary 與明細表必須來自同一個 service DTO，避免一次 refresh 中
         # 分別讀取而顯示不同版本的持倉狀態。
         self._last_portfolio_dto: PortfolioDTO | None = None
+        self._position_presentations: dict[str, Any] = {}
+        self._position_current_snapshots: dict[
+            str, tuple[str, PortfolioCurrentSnapshot | None]
+        ] = {}
+        self._position_health_read_model: PositionHealthReadModel | None = None
+        self._position_health_by_id: dict[str, PositionHealthPresentationDTO] = {}
         self.selected_stock_code: str = ""
         self.selected_trade_id: str = ""
         # PortfolioService 讀取可能同時掃描 JSONL、SQLite 與價格來源；主
@@ -434,17 +1094,39 @@ class PortfolioView(QWidget):
         self._refresh_pending = False
         self._closing = False
         self._portfolio_narrow = False
-
-        # 緩存最新推薦結果，用以在背景進行 Condition Monitor 條件監控
-        self.rec_cache: Dict[str, Dict[str, Any]] = {}
+        self._portfolio_action_narrow: bool | None = None
+        self._advanced_details_visible = False
 
         self._setup_ui()
         self.refresh_all()
 
     def _setup_ui(self):
-        main_layout = QVBoxLayout(self)
+        # 全頁共用單一垂直捲動區，避免窄視窗／放大字體時頁首摘要、警示或
+        # 進階明細被主視窗 viewport 裁掉。保留 portfolio_advanced_scroll 公開
+        # 屬性供既有嵌入端與測試操作；它現在承接整頁，避免巢狀雙捲動。
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        self.portfolio_advanced_scroll = create_scroll_area(
+            QWidget(), object_name="portfolioAdvancedScroll"
+        )
+        self.portfolio_advanced_scroll.setAccessibleName("持倉與覆盤頁面可捲動區域")
+        self.portfolio_advanced_scroll.setAccessibleDescription(
+            "垂直捲動持倉摘要、警示、交易歷史、日誌、模擬持倉、壓力測試與研究分頁；"
+            "表格可另行垂直或水平捲動。"
+        )
+        page_content = self.portfolio_advanced_scroll.widget()
+        assert page_content is not None
+        page_content.setObjectName("portfolioPageContent")
+        page_content.setMinimumWidth(0)
+        page_content.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        outer_layout.addWidget(self.portfolio_advanced_scroll, 1)
+
+        # 頁首摘要、持倉狀態與明細置於同一個可捲動正文，確保所有資訊可達。
+        main_layout = QVBoxLayout(page_content)
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(12, 12, 12, 12)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
 
         # 標題列（標題 + InfoButton）
         title_layout = QHBoxLayout()
@@ -459,6 +1141,47 @@ class PortfolioView(QWidget):
         title_layout.addWidget(info_btn)
         main_layout.addLayout(title_layout)
 
+        account_row = QHBoxLayout()
+        account_row.addWidget(QLabel("分帳查看"))
+        self.portfolio_account_selector = QComboBox()
+        self.portfolio_account_selector.setAccessibleName("持倉分帳選擇")
+        self.portfolio_account_selector.addItem("真實／手動登錄帳（未核券商成交）", "manual")
+        self.portfolio_account_selector.addItem("使用者聲明研究帳", "user_declared")
+        self.portfolio_account_selector.addItem("Paper 模擬帳", "paper")
+        account_row.addWidget(self.portfolio_account_selector)
+        account_row.addStretch()
+        main_layout.addLayout(account_row)
+        self.portfolio_account_context_label = QLabel("三帳獨立；不合併總值，手動登錄不代表券商成交已核驗。")
+        self.portfolio_account_context_label.setWordWrap(True)
+        self.portfolio_account_context_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        main_layout.addWidget(self.portfolio_account_context_label)
+        self.portfolio_account_selector.currentIndexChanged.connect(self._select_portfolio_account)
+
+        self.portfolio_focus_summary = V5ResearchSummary("手動登錄帳持倉重點")
+        self.portfolio_focus_summary.setAccessibleName("持倉日常摘要")
+        self.portfolio_focus_summary.setToolTip(
+            "先看持倉狀態、已知原因或缺件與下一步；交易歷史、日誌、Paper、Stress 等由進階入口開啟。"
+        )
+        main_layout.addWidget(self.portfolio_focus_summary)
+
+        self.portfolio_compact_context_label = QLabel()
+        self.portfolio_compact_context_label.setObjectName("portfolioCompactContext")
+        self.portfolio_compact_context_label.setWordWrap(True)
+        self.portfolio_compact_context_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+        )
+        self.portfolio_compact_context_label.setAccessibleName("持倉進階工作區脈絡摘要")
+        self.portfolio_compact_context_label.setAccessibleDescription(
+            "展開進階正文時保留手動登錄持倉、模擬持倉評估資料與選取脈絡；完整來源原因在下方詳情。"
+        )
+        self.portfolio_compact_context_label.setStyleSheet(
+            f"color: {MIDNIGHT_ANALYST.text_secondary}; background-color: {MIDNIGHT_ANALYST.surface_1}; "
+            f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
+            f"border-radius: {MIDNIGHT_ANALYST.radius_panel}px; padding: 7px 10px;"
+        )
+        self.portfolio_compact_context_label.setVisible(False)
+        main_layout.addWidget(self.portfolio_compact_context_label)
+
         # ========== 1. 頂部狀態看板 (Summary Dashboard) ==========
         dashboard_layout = QHBoxLayout()
         dashboard_layout.setSpacing(10)
@@ -468,15 +1191,15 @@ class PortfolioView(QWidget):
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1a365d, stop:1 #2a4365)"
         )
         self.card_invested = GradientCard(
-            "總投入資金", "TWD 0",
+            "投入金額（毛額，未扣費稅）", "未知（尚未讀取）",
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2d3748, stop:1 #4a5568)"
         )
         self.card_pnl = GradientCard(
-            "已實現損益", "TWD 0",
+            "已實現損益（毛額，未扣費稅）", "未知（尚未讀取）",
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1a202c, stop:1 #2d3748)"
         )
         self.card_positions = GradientCard(
-            "活躍持倉部位", "0 檔",
+            "活躍持倉部位", "尚未讀取",
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #234e52, stop:1 #2c7a7b)"
         )
 
@@ -488,7 +1211,6 @@ class PortfolioView(QWidget):
 
         self.active_positions_summary_label = QLabel("活躍持倉：0 檔")
         self.active_positions_summary_label.setWordWrap(True)
-        self.active_positions_summary_label.setMaximumHeight(100)
         self.active_positions_summary_label.setStyleSheet(
             f"color: {MIDNIGHT_ANALYST.text_secondary}; background-color: {MIDNIGHT_ANALYST.surface_1}; "
             f"border: 1px solid {MIDNIGHT_ANALYST.border}; "
@@ -509,12 +1231,90 @@ class PortfolioView(QWidget):
         self.portfolio_refresh_status_label.setAccessibleDescription(evidence_scope_text)
         main_layout.addWidget(self.portfolio_refresh_status_label)
 
+        self.toggle_advanced_portfolio_btn = QPushButton(
+            "顯示進階：交易歷史／日誌／模擬持倉／壓力測試"
+        )
+        self.toggle_advanced_portfolio_btn.setProperty("variant", "secondary")
+        self.toggle_advanced_portfolio_btn.setCheckable(True)
+        self.toggle_advanced_portfolio_btn.setAccessibleName("顯示持倉進階工作區")
+        self.toggle_advanced_portfolio_btn.setToolTip(
+            "展開完整交易歷史、覆盤日誌、模擬持倉、壓力測試與研究內容。"
+        )
+        self.toggle_advanced_portfolio_btn.toggled.connect(
+            self._toggle_advanced_portfolio
+        )
+        main_layout.addWidget(self.toggle_advanced_portfolio_btn)
+
+        paper_health_group = QGroupBox(
+            "Paper 持倉健康／退出候選（獨立 Paper identity，唯讀）"
+        )
+        paper_health_layout = QVBoxLayout(paper_health_group)
+        paper_health_layout.setContentsMargins(8, 6, 8, 6)
+        paper_health_layout.setSpacing(4)
+        self.position_health_summary_label = QLabel(
+            "Paper Position Health：未知；尚未有 source-backed read model。"
+        )
+        self.position_health_summary_label.setWordWrap(True)
+        self.position_health_summary_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.position_health_summary_label.setAccessibleName(
+            "Paper 持倉健康摘要"
+        )
+        paper_health_layout.addWidget(self.position_health_summary_label)
+
+        self.position_health_table = QTableView()
+        self.position_health_table.setModel(self.position_health_model)
+        apply_financial_table_style(self.position_health_table)
+        position_health_header = self.position_health_table.horizontalHeader()
+        position_health_header.setStretchLastSection(False)
+        position_health_header.setSectionResizeMode(
+            self.position_health_model.column_index("why"), QHeaderView.Stretch
+        )
+        position_health_header.setSectionResizeMode(
+            self.position_health_model.column_index("review_required"),
+            QHeaderView.ResizeToContents,
+        )
+        self.position_health_table.setSelectionBehavior(QTableView.SelectRows)
+        self.position_health_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.position_health_table.setAccessibleName("Paper 持倉健康表")
+        self.position_health_table.setAccessibleDescription(
+            "只顯示 evaluator receipt 的 Paper identity；與人工 Portfolio 持倉分開，"
+            "缺資料或 identity 不一致時維持觀察／未知。"
+        )
+        self.position_health_table.clicked.connect(self._show_position_health_row)
+        paper_health_layout.addWidget(self.position_health_table)
+
+        self.position_health_detail_label = QLabel(
+            "選取 Paper health 列後顯示 why／why-not 與 source trace。"
+        )
+        self.position_health_detail_label.setWordWrap(True)
+        self.position_health_detail_label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse
+        )
+        self.position_health_detail_label.setAccessibleName("Paper 持倉健康詳情")
+        paper_health_layout.addWidget(self.position_health_detail_label)
+        paper_health_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.paper_health_group = paper_health_group
+
         # ========== 2. 中部核心分割區 (Splitter) ==========
         main_splitter = QSplitter(Qt.Horizontal)
         self.main_splitter = main_splitter
+        main_splitter.setObjectName("portfolioMainSplitter")
+        main_splitter.setChildrenCollapsible(False)
+        main_splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._portfolio_splitter_user_resized = False
+        self._portfolio_splitter_initialized = False
+        self._portfolio_programmatic_splitter_update = False
+        main_splitter.splitterMoved.connect(self._on_portfolio_splitter_moved)
 
         # Left Panel: 持倉列表與操作
         left_widget = QWidget()
+        self.manual_account_panel = left_widget
+        # 寬版 splitter 的左 pane 仍需保留可讀操作文字與持倉欄位；不足寬度時
+        # 由表格水平捲動承接欄位，而不是把操作按鈕壓成半個字。窄版 390px
+        # 仍可容納此 responsive lower bound，不以固定高度撐大視窗。
+        left_widget.setMinimumWidth(360)
         left_layout = QVBoxLayout(left_widget)
         left_layout.setSpacing(8)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -533,6 +1333,16 @@ class PortfolioView(QWidget):
         self.positions_table.horizontalHeader().setStretchLastSection(True)
         self.positions_table.setMinimumWidth(0)
         self.positions_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.positions_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.positions_table.setFocusPolicy(Qt.StrongFocus)
+        self.positions_table.setTabKeyNavigation(True)
+        self.positions_table.setAlternatingRowColors(True)
+        self.positions_table.setAccessibleName("當前持倉部位表")
+        self.positions_table.setAccessibleDescription(
+            "唯讀持倉表；可用方向鍵選取，查看共用動作適合度、權重差距、風險與失效條件。"
+        )
+        self.positions_table.verticalHeader().setDefaultSectionSize(28)
+        self.positions_table.verticalHeader().setMinimumSectionSize(28)
 
         # 監聽持倉選擇事件，用以更新右側明細與日記
         self.positions_table.clicked.connect(self._on_position_selected)
@@ -543,6 +1353,22 @@ class PortfolioView(QWidget):
         self.positions_table.customContextMenuRequested.connect(self._show_position_context_menu)
 
         left_layout.addWidget(self.positions_table, stretch=1)
+
+        position_detail_group = QGroupBox("選中持倉｜共用證據詳情")
+        position_detail_group.setObjectName("portfolioDecisionPresentation")
+        self.position_detail_group = position_detail_group
+        position_detail_layout = QVBoxLayout(position_detail_group)
+        position_detail_layout.setContentsMargins(8, 8, 8, 8)
+        position_detail_layout.setSpacing(4)
+        self.position_presentation_label = QLabel(
+            "研究路徑：" + format_research_workflow_path() +
+            "\n選取持倉列後顯示既有 Health／Exit 與權重來源；缺值維持未知。"
+        )
+        self.position_presentation_label.setWordWrap(True)
+        self.position_presentation_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.position_presentation_label.setAccessibleName("選中持倉共用證據詳情")
+        position_detail_layout.addWidget(self.position_presentation_label)
+        left_layout.addWidget(position_detail_group)
 
         # 左側底部操作按鈕
         btn_layout = QHBoxLayout()
@@ -575,7 +1401,7 @@ class PortfolioView(QWidget):
         self.btn_refresh = QPushButton("整理刷新")
         self.btn_refresh.setAccessibleName("重新整理持倉資料")
         self.btn_refresh.setAccessibleDescription(
-            "背景讀取單一 PortfolioDTO；完成後同步更新摘要與持倉表。"
+            "背景讀取一份持倉資料；完成後同步更新摘要與持倉表。"
         )
         self.btn_refresh.setToolTip("背景讀取既有持倉資料；不會寫入交易或資料庫。")
         self.btn_refresh.clicked.connect(self.refresh_all)
@@ -594,7 +1420,8 @@ class PortfolioView(QWidget):
 
         # Right Panel: 歷史明細與日記
         right_widget = QTabWidget()
-        right_widget.setMinimumWidth(0)
+        right_widget.setMinimumWidth(240)
+        right_widget.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
         self.portfolio_detail_tabs = right_widget
 
         # Right Tab 1: 交易歷史 (Trade History)
@@ -652,6 +1479,8 @@ class PortfolioView(QWidget):
 
         self.journal_list = QListWidget()
         self.journal_list.setWordWrap(True)
+        self.journal_list.setUniformItemSizes(False)
+        ensure_visible_rows(self.journal_list, 5)
         # 啟用右鍵選單
         self.journal_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.journal_list.customContextMenuRequested.connect(self._show_journal_context_menu)
@@ -659,7 +1488,44 @@ class PortfolioView(QWidget):
 
         right_widget.addTab(journal_tab, "覆盤日誌")
 
-        # Right Tab 3: Paper Portfolio / Equal Weight（唯讀狀態）
+        # Right Tab 3: user_declared holding research（與 Paper lane 分離）
+        user_declared_tab = QWidget()
+        user_declared_layout = QVBoxLayout(user_declared_tab)
+        user_declared_layout.setContentsMargins(6, 6, 6, 6)
+        self.user_declared_research_widget = UserDeclaredHoldingResearchWidget(
+            self.user_declared_research_service,
+            portfolio_service=self.portfolio_service,
+            condition_monitor=self.condition_monitor,
+            market_source=self.user_declared_market_source,
+            condition_source=self.user_declared_condition_source,
+            portfolio_id=self.user_declared_portfolio_id,
+            parent=None,
+        )
+        set_scroll_content_constraints(self.user_declared_research_widget)
+        # 研究頁同時承載安全邊界、結果列與可選技術詳情；在一般 viewport
+        # 中以頁內 scroll 保持表格至少能讀到表頭與五列，不把整個 Portfolio
+        # 撐出主視窗，也不把 Paper lane 的語意混進 user_declared lane。
+        self.user_declared_research_widget.setMinimumHeight(390)
+        self.user_declared_research_scroll_area = QScrollArea()
+        self.user_declared_research_scroll_area.setWidgetResizable(True)
+        self.user_declared_research_scroll_area.setFrameShape(QFrame.NoFrame)
+        self.user_declared_research_scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarAlwaysOff
+        )
+        self.user_declared_research_scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarAsNeeded
+        )
+        self.user_declared_research_scroll_area.setAccessibleName(
+            "使用者聲明持倉研究可捲動頁面"
+        )
+        self.user_declared_research_scroll_area.setAccessibleDescription(
+            "研究結果與安全邊界在此頁內垂直捲動；不會改變 Portfolio 或 Paper identity。"
+        )
+        self.user_declared_research_scroll_area.setWidget(self.user_declared_research_widget)
+        user_declared_layout.addWidget(self.user_declared_research_scroll_area)
+        right_widget.addTab(user_declared_tab, "聲明持倉研究")
+
+        # Right Tab 4: Paper Portfolio / Equal Weight（唯讀狀態）
         paper_tab = QWidget()
         paper_layout = QVBoxLayout(paper_tab)
         paper_layout.setContentsMargins(10, 10, 10, 10)
@@ -793,7 +1659,6 @@ class PortfolioView(QWidget):
         apply_financial_table_style(self.stress_history_table)
         self.stress_history_table.setSelectionBehavior(QTableView.SelectRows)
         self.stress_history_table.horizontalHeader().setStretchLastSection(True)
-        self.stress_history_table.setMaximumHeight(190)
         stress_layout.addWidget(self.stress_history_table)
         right_widget.addTab(stress_tab, "情境壓力")
 
@@ -933,25 +1798,174 @@ class PortfolioView(QWidget):
 
         main_splitter.addWidget(right_widget)
 
-        # 設定左右分割比例（60% : 40%）
+        # 初始比例由 _apply_responsive_layout 依實際 pane 寬度設定；保留
+        # QSplitter 自身的 handle 供使用者後續調整，不用 stretch factor 抵銷。
         main_splitter.setSizes([720, 480])
-        main_layout.addWidget(main_splitter)
+        main_layout.addWidget(paper_health_group)
+        main_layout.addWidget(main_splitter, 1)
+        set_scroll_content_constraints(page_content)
+        self._portfolio_advanced_widgets = (
+            self.portfolio_detail_tabs,
+            self.position_health_table,
+            self.position_health_detail_label,
+            self.position_detail_group,
+            self.btn_import_trades,
+            self.btn_add_journal,
+            self.btn_clear_all,
+        )
+        self._apply_portfolio_advanced_visibility()
+
+    def _select_portfolio_account(self, _index: int = 0) -> None:
+        """只切換既有分帳工作區，不讀取或寫入另一帳的資料。"""
+
+        account = self.portfolio_account_selector.currentData()
+        labels = {
+            "manual": "目前查看手動登錄帳；未核券商成交。成本為成交毛額，費稅另列；不合併聲明或 Paper 總值。",
+            "user_declared": "目前查看聲明研究帳；成本為使用者聲明，估值日期逐列顯示。非成交證明；不合併手動或 Paper 總值。",
+            "paper": "目前查看 Paper 模擬帳；估值／成本／turnover 沿原收據，缺件保持未知。非實盤績效；不合併其他帳總值。",
+        }
+        self.portfolio_account_context_label.setText(labels.get(account, "帳本未知；不能判讀總值。"))
+        if account != "manual":
+            self._toggle_advanced_portfolio(True)
+            target = "聲明持倉研究" if account == "user_declared" else "Paper Portfolio"
+            for index in range(self.portfolio_detail_tabs.count()):
+                if self.portfolio_detail_tabs.tabText(index) == target:
+                    self.portfolio_detail_tabs.setCurrentIndex(index)
+                    break
+        else:
+            self._toggle_advanced_portfolio(False)
+
+    def _toggle_advanced_portfolio(self, expanded: bool) -> None:
+        """切換持倉進階工作區；不改變任何既有資料或 identity。"""
+
+        self._advanced_details_visible = bool(expanded)
+        self.toggle_advanced_portfolio_btn.blockSignals(True)
+        self.toggle_advanced_portfolio_btn.setChecked(bool(expanded))
+        self.toggle_advanced_portfolio_btn.blockSignals(False)
+        self._apply_portfolio_advanced_visibility()
+
+    def _apply_portfolio_advanced_visibility(self) -> None:
+        """維持日常首屏精簡，讓完整研究資料由明確入口展開。"""
+
+        expanded = bool(getattr(self, "_advanced_details_visible", False))
+        manual = self.portfolio_account_selector.currentData() == "manual"
+        for widget in (
+            self.card_net_val, self.card_invested, self.card_pnl, self.card_positions,
+            self.active_positions_summary_label, self.manual_account_panel,
+        ):
+            widget.setVisible(manual)
+        for widget in getattr(self, "_portfolio_advanced_widgets", ()):
+            widget.setVisible(expanded)
+        if hasattr(self, "paper_health_group"):
+            self.paper_health_group.setVisible(
+                expanded and self.portfolio_account_selector.currentData() != "user_declared"
+            )
+            self.paper_health_group.setSizePolicy(
+                QSizePolicy.Expanding, QSizePolicy.Preferred
+            )
+        if hasattr(self, "portfolio_focus_summary"):
+            # 進階正文保留一行脈絡摘要；完整日常摘要仍可用同一切換鈕返回，
+            # Paper blocker／評估原因則固定留在正文健康區，不因精簡首屏而消失。
+            self.portfolio_focus_summary.setVisible(
+                not expanded and self.portfolio_account_selector.currentData() == "manual"
+            )
+        if hasattr(self, "portfolio_compact_context_label"):
+            self.portfolio_compact_context_label.setVisible(expanded and manual)
+        if hasattr(self, "toggle_advanced_portfolio_btn"):
+            self.toggle_advanced_portfolio_btn.setText(
+                "隱藏進階：交易歷史／日誌／模擬持倉／壓力測試"
+                if expanded
+                else "顯示進階：交易歷史／日誌／模擬持倉／壓力測試"
+            )
+        if hasattr(self, "portfolio_advanced_scroll"):
+            self.portfolio_advanced_scroll.updateGeometry()
+            self.portfolio_advanced_scroll.widget().adjustSize()
+            if self.width() > 0 and not self._portfolio_splitter_user_resized:
+                QTimer.singleShot(
+                    0, self, self._restore_portfolio_splitter_default_sizes
+                )
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
         self._apply_responsive_layout()
 
+    def _on_portfolio_splitter_moved(self, _position: int, _index: int) -> None:
+        """記住使用者調整過的比例，後續 resize 不覆寫該選擇。"""
+
+        if not self._portfolio_programmatic_splitter_update:
+            self._portfolio_splitter_user_resized = True
+            # 拖曳跨過 action pane 寬度門檻時只更新按鈕方向；不重設拖曳比例。
+            self._apply_responsive_layout(force=True)
+
+    def _restore_portfolio_splitter_default_sizes(self) -> None:
+        """進階正文完成 layout 後補套一次初始比例，避免 sizeHint 抢走左 pane。"""
+
+        if (
+            self._portfolio_splitter_user_resized
+            or self.main_splitter.orientation() != Qt.Horizontal
+            or self.main_splitter.width() <= 0
+        ):
+            return
+        self._set_portfolio_splitter_default_sizes()
+
+    def _set_portfolio_splitter_default_sizes(self) -> None:
+        """首次顯示／方向切換時套用比例；不在一般 resize 重設使用者拖曳。"""
+
+        if self.main_splitter.orientation() == Qt.Horizontal:
+            total = self.main_splitter.width()
+            if total > 1:
+                first = max(360, round(total * 0.60))
+                first = min(first, max(1, total - 240))
+                sizes = [first, max(1, total - first)]
+            else:
+                sizes = [720, 480]
+        else:
+            total = self.main_splitter.height()
+            if total > 1:
+                first = round(total * 0.43)
+                sizes = [max(1, first), max(1, total - first)]
+            else:
+                sizes = [460, 620]
+        self._portfolio_programmatic_splitter_update = True
+        try:
+            self.main_splitter.setSizes(sizes)
+        finally:
+            self._portfolio_programmatic_splitter_update = False
+
     def _apply_responsive_layout(self, *, force: bool = False) -> None:
-        """窄版先顯示持倉清單，再顯示既有明細 tabs，避免右側被裁切。"""
+        """依整頁與左側 pane 寬度調整方向，避免操作文字被切掉。"""
         if not hasattr(self, "main_splitter"):
             return
         narrow = self.width() < 900
-        if not force and narrow == self._portfolio_narrow:
+        desired_orientation = Qt.Vertical if narrow else Qt.Horizontal
+        orientation_changed = self.main_splitter.orientation() != desired_orientation
+        if orientation_changed:
+            self.main_splitter.setOrientation(desired_orientation)
+        initialize_splitter = (
+            not self._portfolio_splitter_initialized
+            or orientation_changed
+        )
+        if initialize_splitter and not self._portfolio_splitter_user_resized:
+            self._set_portfolio_splitter_default_sizes()
+        self._portfolio_splitter_initialized = True
+        splitter_sizes = self.main_splitter.sizes()
+        left_pane_width = splitter_sizes[0] if splitter_sizes else 0
+        action_narrow = narrow or (
+            self.main_splitter.orientation() == Qt.Horizontal
+            and left_pane_width < 680
+        )
+        if (
+            not force
+            and not orientation_changed
+            and narrow == self._portfolio_narrow
+            and action_narrow == self._portfolio_action_narrow
+        ):
+            self.positions_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             return
         self._portfolio_narrow = narrow
-        self.main_splitter.setOrientation(Qt.Vertical if narrow else Qt.Horizontal)
+        self._portfolio_action_narrow = action_narrow
         self.position_action_layout.setDirection(
-            QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
+            QBoxLayout.TopToBottom if action_narrow else QBoxLayout.LeftToRight
         )
         for layout in (
             self.history_filter_layout,
@@ -959,10 +1973,13 @@ class PortfolioView(QWidget):
             self.paper_controls_layout,
         ):
             layout.setDirection(QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight)
-        self.main_splitter.setSizes([460, 620] if narrow else [720, 480])
-        self.positions_table.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarAsNeeded if narrow else Qt.ScrollBarAlwaysOff
-        )
+        if initialize_splitter and not self._portfolio_splitter_user_resized:
+            # action row 的方向改變會影響左 pane sizeHint；再套一次初始比例，
+            # 讓 1280 shell 仍維持合理 60/40，而不是被 sizeHint 壓成窄條。
+            self._set_portfolio_splitter_default_sizes()
+        # 持倉表欄位包含來源、快照與 identity 欄；寬版 splitter 仍可能不足以
+        # 顯示最後欄位。保留水平捲動讓末欄可達，避免 AlwaysOff 造成資料被裁切。
+        self.positions_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
     def refresh_all(self) -> None:
         """重新整理持倉資料；正式 UI 入口使用背景 worker。"""
@@ -977,6 +1994,7 @@ class PortfolioView(QWidget):
         """保留同步相容入口，與背景完成回呼共用同一個套用路徑。"""
 
         logger.info("[PortfolioView] Refreshing all data synchronously...")
+        self._set_portfolio_focus_state("loading")
         try:
             portfolio = self._fetch_portfolio_dto()
         except Exception as error:  # noqa: BLE001
@@ -998,8 +2016,9 @@ class PortfolioView(QWidget):
         """以單一 DTO 更新摘要／持倉表，再刷新其餘只讀區塊。"""
 
         self._last_portfolio_dto = portfolio
-        self._load_portfolio_summary(portfolio)
+        self._refresh_position_health(portfolio)
         self._load_positions_table(portfolio)
+        self._load_portfolio_summary(portfolio)
         self._load_trades_history()
         self._load_journal_entries()
         self._load_paper_readiness()
@@ -1007,16 +2026,464 @@ class PortfolioView(QWidget):
         self._load_stress_lab(portfolio=portfolio)
         self._load_stress_history()
         self._update_monitoring_tab(portfolio)
+        self.user_declared_research_widget.refresh_research()
+        self._render_portfolio_focus_summary(portfolio)
+        raw_updated_at = str(portfolio.updated_at or "").strip()
+        display_updated_at = self._format_portfolio_timestamp(raw_updated_at)
         self.portfolio_refresh_status_label.setText(
-            f"持倉資料已更新｜DTO updated_at={portfolio.updated_at or '未提供'}｜"
-            "摘要與持倉表使用同一份 DTO；只讀。"
+            f"持倉資料已更新｜最後更新={display_updated_at}｜"
+            "摘要與持倉表使用同一份資料；只讀。"
         )
+        status_tooltip = (
+            "研究建議／待成交佇列／已記錄成交分開判讀；各層只採用既有 DTO／帳本狀態，"
+            "沒有數值就顯示未知，不自動下單、不擅自套用配置。"
+        )
+        if raw_updated_at:
+            status_tooltip += f"\n來源原始 timestamp：{raw_updated_at}"
+        self.portfolio_refresh_status_label.setToolTip(status_tooltip)
+
+    def _render_portfolio_focus_summary(self, portfolio: PortfolioDTO) -> None:
+        """將同一份 PortfolioDTO 整理成首屏可懂的結論與下一步。"""
+
+        positions = tuple(getattr(portfolio, "positions", ()) or ())
+        active_count = getattr(portfolio, "active_positions", None)
+        count_text = str(active_count) if active_count is not None else str(len(positions))
+        invested = getattr(portfolio, "total_invested_amount", None)
+        invested_text = f"TWD {invested:,.2f}" if invested is not None else "未知"
+        if positions:
+            names = [
+                f"{getattr(position, 'stock_code', '')} {getattr(position, 'stock_name', '')}".strip()
+                for position in positions[:2]
+            ]
+            names = [name for name in names if name]
+            known_positions = "、".join(names) if names else "持倉名稱未提供"
+            if len(positions) > 2:
+                known_positions += f" 等 {len(positions)} 檔"
+            reasons = [
+                "目前持有：" + known_positions + "。",
+                self._portfolio_health_focus_reason(),
+            ]
+            conclusion = (
+                f"目前持有 {count_text} 檔；投入金額（毛額，未扣費稅）{invested_text}。"
+            )
+            next_step = "選取一檔後按「個股研究」核對同股原來源；缺原結果身份時保留未連結，不借同股最新結果。"
+            sufficiency = "持倉資料可讀；健康與退出條件依獨立資料來源顯示。"
+        else:
+            reasons = [
+                "目前沒有可用的持倉。",
+                "待核對：沒有持倉資料時，不呈現健康與退出判讀。",
+            ]
+            conclusion = "目前沒有可用的持倉；尚不能形成持倉判讀。"
+            next_step = "先確認是否有已記錄持倉；歷史、日誌與模擬持倉可由進階工作區查看。"
+            sufficiency = "持倉資料不足；摘要只呈現已知狀態。"
+
+        updated_at = getattr(portfolio, "updated_at", "") or "未提供"
+        recorded_costs = _format_recorded_trade_costs(
+            getattr(portfolio, "recorded_trade_costs", None)
+        )
+        self.portfolio_focus_summary.set_summary(
+            conclusion=conclusion,
+            reasons=reasons,
+            next_step=next_step,
+            evidence=(
+                f"手動登錄帳；持倉資料最後更新：{updated_at}（不是估值日）；持倉數：{count_text}。"
+                f"{recorded_costs}。"
+            ),
+            change=self._portfolio_valuation_context(positions),
+            risk="滑價／換手率／部位集中度影響：本帳未提供，未知；不從市值推算。沒有精確健康來源不判安全，手動／聲明／模擬持倉不混總值。",
+            sufficiency=sufficiency,
+            reasons_title="重點",
+        )
+        self._render_portfolio_compact_context(portfolio)
+
+    def _portfolio_valuation_context(self, positions: Sequence[Any]) -> str:
+        """只列原報價日期與缺件，不把交易日期或更新時鐘冒充估值日。"""
+
+        dates: set[str] = set()
+        missing: list[str] = []
+        for position in positions:
+            raw_date = self._valuation_date_for_position(position)
+            if not raw_date:
+                missing.append(str(getattr(position, "stock_code", "未知")))
+            else:
+                dates.add(raw_date)
+        date_text = "、".join(sorted(dates)) or "未知"
+        missing_text = "、".join(missing) or "無已識別缺件"
+        return f"估值日期（原報價）：{date_text}；缺價格或日期：{missing_text}；異日價格不能視為同日估值，未有同口徑前值不能比較變化。"
+
+    def _valuation_date_for_position(self, position: Any) -> str:
+        """使用同列已快取報價；source summary 日期不是價格核驗證據。"""
+
+        code = str(getattr(position, "stock_code", "") or "")
+        snapshot = self._cached_current_snapshot_for_position(position, code)
+        if snapshot is None or snapshot.current_price is None:
+            return ""
+        try:
+            dto_price = Decimal(str(getattr(position, "current_price", None)))
+            quote_price = Decimal(str(snapshot.current_price))
+        except Exception:
+            return ""
+        if not dto_price.is_finite() or not quote_price.is_finite() or dto_price != quote_price:
+            return ""
+        return self._cached_position_quote_date(position, code)
+
+    def _portfolio_health_focus_reason(self) -> str:
+        """摘要只描述 Paper read model 狀態，不把它套成人工持倉結論。"""
+
+        model = self._position_health_read_model
+        if model is None:
+            return "模擬持倉健康：尚未取得 read model；人工持倉不套用 Paper 結果。"
+        if not model.positions:
+            return "模擬持倉健康：目前沒有可安全呈現列；人工持倉不以缺件推測。"
+        blocked_count = self._position_health_blocked_row_count(model)
+        status_text = {
+            "passed": "已驗證",
+            "degraded": "降級",
+            "blocked": "封鎖",
+            "stale": "過期",
+        }.get(str(model.status), "未知")
+        if blocked_count:
+            return (
+                f"模擬持倉健康：狀態{status_text}，有 {len(model.positions)} 筆評估紀錄，"
+                f"其中 {blocked_count} 筆因來源問題暫不可判讀；不套用為人工持倉結論。"
+            )
+        return (
+            f"模擬持倉健康：狀態{status_text}，有 {len(model.positions)} 筆 Paper 評估紀錄；"
+            "只按 Paper identity 顯示，不代表人工持倉。"
+        )
+
+    @staticmethod
+    def _format_portfolio_timestamp(value: object) -> str:
+        """將來源 timestamp 轉成分鐘級顯示；原始值留在詳情內容。"""
+
+        raw = str(value or "").strip()
+        if not raw:
+            return "未提供"
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return raw
+        formatted = parsed.strftime("%Y-%m-%d %H:%M")
+        offset = parsed.strftime("%z")
+        if offset:
+            formatted += f" UTC{offset[:3]}:{offset[3:]}"
+        return formatted
+
+    def _render_portfolio_compact_context(self, portfolio: PortfolioDTO | None) -> None:
+        """在進階正文頂端保留選取、來源日期與 Paper blocker 脈絡。"""
+
+        if not hasattr(self, "portfolio_compact_context_label"):
+            return
+        if portfolio is None:
+            self.portfolio_compact_context_label.setText(
+                "持倉資料尚未完成讀取；完整狀態與缺口會在進階正文中保留。"
+            )
+            return
+
+        positions = tuple(getattr(portfolio, "positions", ()) or ())
+        active_count = getattr(portfolio, "active_positions", None)
+        count_text = str(active_count) if active_count is not None else str(len(positions))
+        raw_updated_at = str(getattr(portfolio, "updated_at", "") or "").strip()
+        updated_at = self._format_portfolio_timestamp(raw_updated_at)
+        selected_text = self.selected_stock_code or "尚未選取"
+        health = self._position_health_read_model
+        if health is None:
+            health_text = "模擬持倉評估資料：尚未取得"
+        elif health.positions:
+            blocked_count = self._position_health_blocked_row_count(health)
+            health_text = f"模擬持倉評估資料：{len(health.positions)} 筆"
+            if blocked_count:
+                health_text += f"，其中 {blocked_count} 筆因來源問題暫不可判讀"
+            else:
+                health_text += "；完整原因與來源追溯見下方評估表"
+        else:
+            health_text = "模擬持倉評估資料：目前沒有可安全呈現紀錄；缺口／阻擋見下方"
+        self.portfolio_compact_context_label.setText(
+            f"目前持倉（手動登錄）：{count_text} 檔｜資料更新：{updated_at}｜"
+            f"目前選取：{selected_text}\n{health_text}。手動登錄持倉與模擬持倉分開顯示。"
+        )
+        tooltip_lines = [
+            "這裡的目前持倉來自手動 Portfolio 資料；模擬持倉評估另列。",
+        ]
+        if raw_updated_at:
+            tooltip_lines.append(f"來源原始 timestamp：{raw_updated_at}")
+        self.portfolio_compact_context_label.setToolTip("\n".join(tooltip_lines))
+
+    @staticmethod
+    def _position_health_blocked_row_count(model: PositionHealthReadModel) -> int:
+        """以 typed row 狀態計算暫不可判讀列數，不把 Paper row 當人工持倉。"""
+
+        if model.status in {"blocked", "stale"}:
+            return len(model.positions)
+        return sum(
+            1
+            for item in model.positions
+            if str(getattr(item, "source_status", "")).strip().lower()
+            in {"blocked", "stale", "missing", "unverified"}
+        )
+
+    def _format_portfolio_position_health_summary(
+        self, model: PositionHealthReadModel
+    ) -> str:
+        """Portfolio 專屬健康摘要，保留 blocked receipt 的實際 rows 計數。"""
+
+        status_text = _system_status_label(
+            model.status,
+            dimension="data",
+            fallback={"passed": "已驗證"},
+        )
+        source_text = _system_status_label(
+            model.source_status,
+            dimension="data",
+            fallback={"verified": "已驗證", "unverified": "未驗證"},
+        )
+        quality_text = _system_status_label(
+            model.quality,
+            dimension="data",
+            fallback={"verified": "已驗證", "unverified": "未驗證"},
+        )
+        if not model.positions:
+            blockers = "；".join(
+                position_health_blocker_label(item) for item in model.blockers[:3]
+            )
+            receipt_missing = any(
+                str(item).startswith("position_health_receipt_unavailable")
+                for item in model.blockers
+            )
+            next_step = (
+                "下一步：尚無已完成的模擬持倉評估；每日評估完成後，按「重新整理」查看。"
+                if receipt_missing
+                else "下一步：目前沒有可用的模擬持倉評估；修復來源後按「重新整理」查看，期間維持觀察／未知。"
+            )
+            return (
+                "尚無持倉健康評估資料\n"
+                f"狀態：{status_text}（來源：{source_text}／品質：{quality_text}）\n"
+                f"{next_step}\n"
+                f"缺口／阻擋：{blockers or '尚無可用 evaluator receipt'}"
+            )
+        blocked_count = self._position_health_blocked_row_count(model)
+        records_text = f"有 {len(model.positions)} 筆評估紀錄"
+        if blocked_count:
+            records_text += f"，其中 {blocked_count} 筆因來源問題暫不可判讀"
+        else:
+            records_text += "，目前沒有列級來源阻擋"
+        blockers = "；".join(str(item) for item in model.blockers[:3]) or "無"
+        raw_available_at = str(model.available_at or "").strip()
+        available_at = self._format_portfolio_timestamp(raw_available_at)
+        timestamp_text = f"可取得時間：{available_at}"
+        return (
+            f"Paper Position Health：{status_text}（來源：{source_text}／品質：{quality_text}）\n"
+            f"決策日：{model.decision_date or '未知'}｜{timestamp_text}｜{records_text}\n"
+            f"需要確認：{sum(1 for item in model.positions if item.review_required)}／"
+            f"{len(model.positions)} 筆；僅供研究，不自動下單／平倉。\n"
+            f"缺口／阻擋：{blockers}"
+        )
+
+    def _set_portfolio_focus_state(self, state: str, message: object = "") -> None:
+        """讓摘要和刷新狀態同步；保留上次資料時明確標示不是最新。"""
+
+        previous = self._last_portfolio_dto
+        if hasattr(self, "portfolio_compact_context_label"):
+            self._render_portfolio_compact_context(previous)
+        previous_date = (
+            str(getattr(previous, "updated_at", "") or "未提供")
+            if previous is not None
+            else "未提供"
+        )
+        error_text = _first_error_line(message) if message else ""
+        if state == "loading":
+            if previous is None:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="正在讀取持倉資料；目前尚不能判讀。",
+                    reasons=("尚未取得可用的持倉。", "健康與退出條件也尚未完成讀取。"),
+                    next_step="等待讀取完成；若失敗，查看狀態訊息後再重試。",
+                    evidence="目前沒有上一份可用持倉資料。",
+                    risk="資料尚未完成讀取，不推測持倉結果。",
+                    sufficiency="最新資料尚未確認。",
+                    reasons_title="目前狀態",
+                )
+            else:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="正在更新持倉資料；以下內容是上次可用資料。",
+                    reasons=(
+                        "已知：畫面仍保留上次的持倉。",
+                        "待確認：最新持倉與健康／退出條件尚未更新。",
+                    ),
+                    next_step="等待更新完成；若失敗，查看狀態訊息後再重試。",
+                    evidence=f"上次持倉資料最後更新：{previous_date}。",
+                    risk="更新完成前，畫面內容可能不是今天的資料。",
+                    sufficiency="目前只能使用上次資料，尚未確認最新狀態。",
+                    reasons_title="目前狀態",
+                )
+            return
+
+        if state in {"cancelled", "cancelling"}:
+            if previous is None:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="持倉資料讀取已取消；目前尚不能判讀。",
+                    reasons=("尚未取得可用的持倉。", "健康與退出條件也沒有最新資料。"),
+                    next_step="需要判讀時重新整理持倉資料。",
+                    evidence="目前沒有上一份可用持倉資料。",
+                    risk="沒有資料時不推測持倉結果。",
+                    sufficiency="最新資料尚未確認。",
+                    reasons_title="目前狀態",
+                )
+            else:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="持倉資料更新已取消；以下內容是上次可用資料。",
+                    reasons=(
+                        "已知：畫面仍保留上次的持倉。",
+                        "待確認：最新健康與退出條件尚未更新。",
+                    ),
+                    next_step="需要最新判讀時重新整理；歷史與日誌可由進階工作區查看。",
+                    evidence=f"上次持倉資料最後更新：{previous_date}。",
+                    risk="目前內容可能不是最新資料，不能據此補推缺漏。",
+                    sufficiency="最新資料尚未確認。",
+                    reasons_title="目前狀態",
+                )
+            return
+
+        if state == "error":
+            reason = f"讀取持倉資料遇到問題：{error_text}" if error_text else "讀取持倉資料遇到問題。"
+            if previous is None:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="持倉資料讀取失敗；目前沒有可判讀資料。",
+                    reasons=(reason, "健康與退出條件也沒有最新資料。"),
+                    next_step="查看下方狀態訊息後重新整理；需要時開啟進階工作區查看既有紀錄。",
+                    evidence="目前沒有上一份可用持倉資料。",
+                    risk="沒有資料時不推測持倉結果。",
+                    sufficiency="最新資料不可用。",
+                    reasons_title="目前狀態",
+                )
+            else:
+                self.portfolio_focus_summary.set_summary(
+                    conclusion="持倉資料更新失敗；以下內容是上次可用資料。",
+                    reasons=(
+                        reason,
+                        "待確認：最新持倉與健康／退出條件尚未更新。",
+                    ),
+                    next_step="查看下方狀態訊息後重新整理；完整歷史與日誌可由進階工作區查看。",
+                    evidence=f"上次持倉資料最後更新：{previous_date}。",
+                    risk="目前內容可能不是最新資料，不能據此補推缺漏。",
+                    sufficiency="最新資料不可用；畫面暫保留上次資料。",
+                    reasons_title="目前狀態",
+                )
+
+    def _refresh_position_health(self, portfolio: PortfolioDTO) -> None:
+        """刷新同一份 persisted Paper health projection；此處只讀，不執行 evaluator。"""
+
+        try:
+            self._position_health_read_model = self.position_health_read_service.read_latest(
+                max_age_days=1,
+            )
+            self._position_health_by_id = {
+                item.position_id: item
+                for item in self._position_health_read_model.positions
+                if item.position_id
+            }
+        except Exception as exc:  # noqa: BLE001 - reader boundary must keep UI alive
+            logger.error("Failed to read persisted Position Health projection: %s", exc)
+            self._position_health_read_model = None
+            self._position_health_by_id = {}
+        self._render_position_health()
+
+    def _render_position_health(self) -> None:
+        """獨立呈現 Paper rows；不把 Paper identity 猜配到人工持倉。"""
+
+        model = self._position_health_read_model
+        if model is None:
+            self.position_health_model.set_rows(())
+            self.position_health_table.setVisible(False)
+            self.position_health_summary_label.setText(
+                "Paper Position Health：未知；read model 無法取得。"
+            )
+            self.position_health_detail_label.setText(
+                "沒有可安全呈現的 Paper health；未以股票代號推測人工持倉 identity。"
+            )
+            self.position_health_summary_label.setToolTip("")
+            self._refresh_portfolio_health_geometry()
+            return
+
+        self.position_health_model.set_rows(model.positions)
+        self.position_health_table.setVisible(
+            bool(model.positions) and self._advanced_details_visible
+        )
+        self.position_health_detail_label.setVisible(self._advanced_details_visible)
+        self.position_health_summary_label.setText(
+            self._format_portfolio_position_health_summary(model)
+        )
+        raw_timestamp = str(model.available_at or model.observed_at or "").strip()
+        status_details = [
+            f"系統狀態：{status_detail(model.status, dimension='data')}",
+            f"來源狀態：{status_detail(model.source_status, dimension='data')}",
+            f"資料品質：{status_detail(model.quality, dimension='data')}",
+            f"決策日：{model.decision_date or '未知'}",
+        ]
+        if raw_timestamp:
+            status_details.append(f"來源原始 timestamp：{raw_timestamp}")
+        summary_tooltip = "\n".join(status_details)
+        self.position_health_summary_label.setToolTip(summary_tooltip)
+        self.position_health_summary_label.setAccessibleDescription(summary_tooltip)
+        detail_lines = [
+            "Paper health 投影為唯讀研究建議；選取列查看評估原因／為何不直接執行。"
+            if model.positions
+            else "目前沒有可安全呈現的 Paper health 列；缺資料維持觀察／未知。"
+        ]
+        if raw_timestamp:
+            detail_lines.append(
+                "評估時間："
+                + self._format_portfolio_timestamp(raw_timestamp)
+                + f"（原始 timestamp：{raw_timestamp}）"
+            )
+        if model.blockers:
+            detail_lines.append("目前阻擋：" + "；".join(str(item) for item in model.blockers))
+        self.position_health_detail_label.setText(
+            "\n".join(detail_lines)
+        )
+        self._refresh_portfolio_health_geometry()
+
+    def _refresh_portfolio_health_geometry(self) -> None:
+        """資料列變動後重算健康區，避免 empty state 保留上次高度。"""
+
+        if not hasattr(self, "paper_health_group"):
+            return
+        self.paper_health_group.updateGeometry()
+        self.paper_health_group.adjustSize()
+        if hasattr(self, "portfolio_advanced_scroll"):
+            content = self.portfolio_advanced_scroll.widget()
+            if content is not None:
+                content.updateGeometry()
+                content.adjustSize()
+            self.portfolio_advanced_scroll.updateGeometry()
+
+    def _show_position_health_row(self, index) -> None:
+        """顯示獨立 Paper row 詳情，不改變人工 Portfolio 選取狀態。"""
+
+        item = self.position_health_model.row_at(index.row())
+        if item is None:
+            return
+        self.position_health_detail_label.setText(
+            format_position_health_presentation(item)
+            + "\n\n來源 hash："
+            + ("；".join(f"{key}={value}" for key, value in item.source_hashes) or "未提供")
+            + "\n來源追溯："
+            + ("；".join(item.source_trace) or "未提供")
+        )
+
+    def _health_for_position(self, position: Any) -> PositionHealthPresentationDTO | None:
+        """以 Portfolio position_id 精確查詢；不以 stock code 綁定不同 cohort。"""
+
+        position_id = str(getattr(position, "position_id", "") or "").strip()
+        if not position_id:
+            return None
+        return self._position_health_by_id.get(position_id)
 
     def _start_refresh_worker(self) -> None:
         if self._closing:
             return
         if self._refresh_worker is not None and self._refresh_worker.isRunning():
             self._refresh_pending = True
+            self._set_portfolio_focus_state("loading")
             self.portfolio_refresh_status_label.setText(
                 "持倉背景刷新已排隊；正在取消較早一輪，保留最新 generation。"
             )
@@ -1027,6 +2494,7 @@ class PortfolioView(QWidget):
         generation = self._refresh_generation
         self._worker_generation = generation
         self.btn_refresh.setEnabled(False)
+        self._set_portfolio_focus_state("loading")
         self.portfolio_refresh_status_label.setText(
             f"持倉資料背景讀取中（generation={generation}）；目前畫面保留既有資料。"
         )
@@ -1086,6 +2554,7 @@ class PortfolioView(QWidget):
             self.portfolio_refresh_status_label.setText(
                 "持倉背景刷新已取消；畫面保留最近一次資料。"
             )
+            self._set_portfolio_focus_state("cancelled")
         self._release_refresh_worker(worker)
 
     def _release_refresh_worker(self, worker: TaskWorker) -> None:
@@ -1103,14 +2572,15 @@ class PortfolioView(QWidget):
     def _handle_portfolio_refresh_error(self, message: str) -> None:
         error_line = _first_error_line(message)
         logger.error("Failed to load portfolio DTO: %s", error_line)
+        self._set_portfolio_focus_state("error", error_line)
         if self._last_portfolio_dto is not None:
             self.portfolio_refresh_status_label.setText(
-                "持倉背景刷新失敗；保留最近一次 PortfolioDTO。"
+                "持倉背景刷新失敗；保留最近一次持倉資料。"
                 f"原因：{error_line}"
             )
             return
         self.portfolio_refresh_status_label.setText(
-            f"持倉資料狀態未知；尚無可信 PortfolioDTO。原因：{error_line}"
+            f"持倉資料狀態未知；尚無可信資料。原因：{error_line}"
         )
 
     def cancel_refresh(self) -> None:
@@ -1120,9 +2590,28 @@ class PortfolioView(QWidget):
         self._refresh_pending = False
         if self._refresh_worker is not None and self._refresh_worker.isRunning():
             self._refresh_worker.cancel(cooperative=True, wait=False)
+            self._set_portfolio_focus_state("cancelling")
             self.portfolio_refresh_status_label.setText(
                 "正在取消持倉背景刷新；目前資料仍保留。"
             )
+
+    def begin_shutdown(self) -> None:
+        """鎖住新的 refresh，並撤銷完成後重啟的 pending generation。"""
+
+        self._closing = True
+        self._refresh_generation += 1
+        self._refresh_pending = False
+        research_widget = getattr(self, "user_declared_research_widget", None)
+        if research_widget is not None:
+            research_widget.begin_shutdown()
+        worker = self._refresh_worker
+        if worker is not None:
+            try:
+                is_running = bool(worker.isRunning())
+            except RuntimeError:
+                is_running = False
+            if is_running:
+                worker.cancel(cooperative=True, wait=False)
 
     def closeEvent(self, event) -> None:
         """關閉前合作式取消 worker，避免回呼在 widget 銷毀後套用。"""
@@ -1138,6 +2627,12 @@ class PortfolioView(QWidget):
             )
             event.ignore()
             return
+        research_widget = getattr(self, "user_declared_research_widget", None)
+        if research_widget is not None:
+            research_widget.begin_shutdown()
+            if research_widget.is_refresh_running():
+                event.ignore()
+                return
         if worker is not None:
             self._refresh_worker = None
             worker.deleteLater()
@@ -1703,6 +3198,7 @@ class PortfolioView(QWidget):
             priced_count = 0
             unpriced_codes: list[str] = []
             price_dates: set[str] = set()
+            undated_count = 0
             for position in active_positions:
                 raw_price = getattr(position, "current_price", None)
                 try:
@@ -1716,14 +3212,19 @@ class PortfolioView(QWidget):
                     continue
                 marked_value += quantity * price
                 priced_count += 1
-                source_summary = getattr(position, "source_summary", {}) or {}
-                price_date = source_summary.get("current_price_date")
-                if isinstance(price_date, str) and price_date:
+                price_date = self._valuation_date_for_position(position)
+                if price_date:
                     price_dates.add(price_date)
+                else:
+                    undated_count += 1
 
-            if priced_count:
+            if priced_count and (undated_count or len(price_dates) != 1):
+                self.card_net_val.update_value("未知（估值日期缺件或不一致）")
+            elif priced_count and not unpriced_codes:
                 marked_value = marked_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 self.card_net_val.update_value(f"TWD {marked_value:,.2f}")
+            elif priced_count:
+                self.card_net_val.update_value("未知（部分持倉缺價格）")
             else:
                 self.card_net_val.update_value("N/A（缺最新價格）")
             self.card_invested.update_value(f"TWD {total_invested:,.2f}")
@@ -1770,19 +3271,50 @@ class PortfolioView(QWidget):
                 if not isinstance(portfolio, PortfolioDTO):
                     raise TypeError("PortfolioService.get_portfolio must return PortfolioDTO")
             positions = list(portfolio.positions)
+            self._position_current_snapshots = {}
+            self._position_presentations = {}
 
             if not positions:
                 df = pd.DataFrame(columns=[
                     "證券代號", "證券名稱", "持有股數", "平均成本", "目前價格",
-                    "投入金額", "未實現損益", "未實現損益%", "已實現損益",
-                    "來源脈絡", "進場分數", "目前分數", "狀態監控", "監控原因"
+                    "行情資料日", "行情新鮮度",
+                    "投入金額（毛額，未扣費稅）", "未實現損益（毛額，未扣費稅）",
+                    "未實現損益%（毛額）", "已實現損益（毛額，未扣費稅）",
+                    "來源脈絡", "進場分數", "目前分數", "狀態監控", "監控原因",
+                    "動作適合度", "Advice 動作（研究）", "Position Health", "Health 來源",
+                    "權重差距(bp)", "失效條件", "_position_id"
                 ])
             else:
                 data = []
                 for p in positions:
-                    snapshot = self._current_snapshot_for_position(p.stock_code)
+                    snapshot = self._current_snapshot_for_position(p.stock_code, p)
+                    position_id = str(getattr(p, "position_id", "") or "").strip()
+                    if position_id:
+                        self._position_current_snapshots[position_id] = (
+                            str(getattr(p, "stock_code", "") or "").strip(),
+                            snapshot,
+                        )
                     monitor_result = self.condition_monitor.evaluate(p, snapshot)
                     monitor_reason = "；".join(monitor_result.reasons)
+                    presentation = self.presentation_service.from_position(
+                        p,
+                        condition_result=monitor_result,
+                    )
+                    if position_id:
+                        self._position_presentations[position_id] = presentation
+                    health = self._health_for_position(p)
+                    health_action = (
+                        health.display_action
+                        if health is not None
+                        else position_health_action_label("WATCH")
+                    )
+                    health_source = (
+                        health.source_status
+                        if health is not None
+                        else "未精確對應"
+                    )
+                    invalidation_text = "；".join(presentation.invalidation_conditions) or "未提供"
+                    presentation_text = format_decision_presentation(presentation)
 
                     pnl_pct_str = "-"
                     if p.unrealized_pnl_pct is not None:
@@ -1794,26 +3326,57 @@ class PortfolioView(QWidget):
                         "持有股數": p.quantity,
                         "平均成本": p.average_cost,
                         "目前價格": p.current_price if p.current_price is not None else "-",
-                        "投入金額": p.invested_amount,
-                        "未實現損益": p.unrealized_pnl if p.unrealized_pnl is not None else "-",
-                        "未實現損益%": pnl_pct_str,
-                        "已實現損益": p.realized_pnl,
+                        "行情資料日": (
+                            snapshot.quote_data_date.isoformat()
+                            if snapshot.quote_data_date is not None
+                            else "未知"
+                        ),
+                        "行情新鮮度": snapshot.quote_freshness_status or "unverified",
+                        "投入金額（毛額，未扣費稅）": p.invested_amount,
+                        "未實現損益（毛額，未扣費稅）": (
+                            p.unrealized_pnl if p.unrealized_pnl is not None else "-"
+                        ),
+                        "未實現損益%（毛額）": pnl_pct_str,
+                        "已實現損益（毛額，未扣費稅）": p.realized_pnl,
                         "來源脈絡": monitor_result.source_label,
                         "進場分數": monitor_result.entry_total_score,
                         "目前分數": monitor_result.current_total_score,
                         "狀態監控": monitor_result.label,
                         "監控原因": monitor_reason,
-                        "_tooltip": monitor_reason,
+                        # Position Health 是本表的持倉 action authority；沒有
+                        # exact receipt row 時維持 WATCH/unknown。舊 Advice
+                        # 只作明確分離的研究欄位，避免悄悄填回 HOLD。
+                        "動作適合度": (
+                            health.display_action
+                            if health is not None
+                            else position_health_action_label("WATCH")
+                        ),
+                        "Advice 動作（研究）": decision_action_label(
+                            presentation.action_suitability
+                        ),
+                        "Position Health": health_action,
+                        "Health 來源": health_source,
+                        "權重差距(bp)": presentation.weight_gap_bp if presentation.weight_gap_bp is not None else "未知",
+                        "失效條件": invalidation_text,
+                        # 只供返回來源時把可排序的 table row 對回同一個
+                        # PositionDTO；不讓 UI 以 stock code 猜 identity。
+                        "_position_id": str(p.position_id),
+                        "_tooltip": presentation_text,
                     })
                 df = pd.DataFrame(data)
 
             self.positions_model = PandasTableModel(df)
-            # 隱藏內部輔助用的 _tooltip 欄位
-            if "_tooltip" in df.columns:
-                self.positions_model.setVisibleColumns([col for col in df.columns if col != "_tooltip"])
+            # 隱藏內部輔助欄位；_position_id 讓排序後的 table row 仍能
+            # 精確回到同一 PositionDTO，_tooltip 則只供畫面提示。
+            internal_columns = {"_position_id", "_tooltip"}
+            if internal_columns.intersection(df.columns):
+                self.positions_model.setVisibleColumns(
+                    [col for col in df.columns if col not in internal_columns]
+                )
 
             self.positions_table.setModel(self.positions_model)
             self.positions_table.resizeColumnsToContents()
+            self._render_selected_position_presentation()
 
             # 設定 Tooltip 提示以符合條件監控體驗
             # 這裡我們可以設置雙擊或滑鼠懸停 tooltip
@@ -1823,51 +3386,151 @@ class PortfolioView(QWidget):
             import traceback
             traceback.print_exc()
 
-    def _current_snapshot_for_position(self, stock_code: str) -> Optional[PortfolioCurrentSnapshot]:
-        """取得單一持倉的目前評分快照；取不到時交由 monitor 標示待更新。"""
-        current_price = self.portfolio_service.get_current_price(stock_code)
-
-        if not self.recommendation_service:
-            return PortfolioCurrentSnapshot(current_price=current_price)
+    def _current_snapshot_for_position(
+        self,
+        stock_code: str,
+        position: Any | None = None,
+    ) -> Optional[PortfolioCurrentSnapshot]:
+        """只讀取價格與持倉來源摘要；缺 current score 時由 monitor 保守標示待更新。"""
+        observation_reader = getattr(
+            self.portfolio_service, "get_current_price_observation", None
+        )
         try:
-            if stock_code not in self.rec_cache:
-                self._update_recommendation_cache_for_stock(stock_code)
-            rec_info = self.rec_cache.get(stock_code)
-            if not rec_info:
-                return PortfolioCurrentSnapshot(current_price=current_price)
-            return PortfolioCurrentSnapshot(
-                current_regime=str(rec_info.get("regime", "")),
-                current_total_score=rec_info.get("score"),
-                current_price=current_price,
+            observation = observation_reader(stock_code) if callable(observation_reader) else None
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not read dated quote for %s: %s", stock_code, exc)
+            observation = None
+        raw_price = getattr(observation, "price", None)
+        current_price = (
+            raw_price
+            if isinstance(raw_price, (Decimal, int, float, str)) and not isinstance(raw_price, bool)
+            else None
+        )
+        raw_quote_date = getattr(observation, "data_date", None)
+        quote_data_date = (
+            raw_quote_date
+            if isinstance(raw_quote_date, date) and not isinstance(raw_quote_date, datetime)
+            else None
+        )
+        raw_expected_date = getattr(observation, "expected_date", None)
+        quote_expected_date = (
+            raw_expected_date
+            if isinstance(raw_expected_date, date) and not isinstance(raw_expected_date, datetime)
+            else None
+        )
+        raw_source_id = getattr(observation, "source_id", "")
+        raw_source_hash = getattr(observation, "source_snapshot_hash", "")
+        raw_freshness = getattr(observation, "freshness_status", "unverified")
+        source_summary = getattr(position, "source_summary", {}) if position is not None else {}
+        if not isinstance(source_summary, dict):
+            source_summary = {}
+        current_regime = str(source_summary.get("current_regime") or "")
+        current_total_score = source_summary.get("current_total_score")
+        return PortfolioCurrentSnapshot(
+            current_regime=current_regime,
+            current_total_score=current_total_score,
+            current_price=current_price,
+            quote_data_date=quote_data_date,
+            quote_source_id=raw_source_id if isinstance(raw_source_id, str) else "",
+            quote_source_snapshot_hash=(raw_source_hash if isinstance(raw_source_hash, str) else ""),
+            quote_freshness_status=(
+                raw_freshness if isinstance(raw_freshness, str) else "unverified"
+            ),
+            quote_expected_date=quote_expected_date,
+        )
+
+    def _cached_current_snapshot_for_position(
+        self,
+        position: object | None,
+        stock_code: str,
+    ) -> PortfolioCurrentSnapshot | None:
+        """Return only the quote snapshot rendered for this exact position row."""
+        position_id = str(getattr(position, "position_id", "") or "").strip()
+        code = str(stock_code or "").strip()
+        if not position_id or not code:
+            return None
+        cached = self._position_current_snapshots.get(position_id)
+        if cached is None or cached[0] != code:
+            return None
+        snapshot = cached[1]
+        return snapshot if isinstance(snapshot, PortfolioCurrentSnapshot) else None
+
+    def _cached_position_quote_date(
+        self,
+        position: object | None,
+        stock_code: str,
+    ) -> str:
+        snapshot = self._cached_current_snapshot_for_position(position, stock_code)
+        quote_date = snapshot.quote_data_date if snapshot is not None else None
+        if not isinstance(quote_date, date) or isinstance(quote_date, datetime):
+            return ""
+        try:
+            today = taiwan_market_today()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not validate quote date for %s: %s", stock_code, exc)
+            return ""
+        if not isinstance(today, date) or isinstance(today, datetime) or quote_date > today:
+            return ""
+        return quote_date.isoformat()
+
+    def _presentation_for_position(
+        self,
+        position: object | None,
+        stock_code: str = "",
+    ) -> Any | None:
+        """依 position identity 取得呈現；同股多列時不退回股票代號猜測。"""
+
+        if position is not None:
+            position_id = str(getattr(position, "position_id", "") or "").strip()
+            if position_id:
+                presentation = self._position_presentations.get(position_id)
+                if presentation is not None:
+                    return presentation
+
+        code = str(stock_code or "").strip()
+        portfolio = self._last_portfolio_dto
+        if not code or portfolio is None:
+            return None
+        candidates = [
+            candidate
+            for candidate in portfolio.positions
+            if str(getattr(candidate, "stock_code", "") or "").strip() == code
+        ]
+        if len(candidates) != 1:
+            return None
+        position_id = str(getattr(candidates[0], "position_id", "") or "").strip()
+        return self._position_presentations.get(position_id) if position_id else None
+
+    def _render_selected_position_presentation(self) -> None:
+        """把共用 Advice 與 exact Position Health projection 顯示在明細區。"""
+
+        code = str(self.selected_stock_code or "").strip()
+        selected_position = self._selected_position_for_current_row()
+        presentation = self._presentation_for_position(selected_position, code)
+        health = self._health_for_position(selected_position)
+        health_text = (
+            "Paper Position Health（共用唯讀 projection）\n"
+            + format_position_health_presentation(health)
+            if health is not None
+            else (
+                "Paper Position Health：觀察／未知。"
+                "目前 receipt 沒有與此 position_id 精確對應的列；"
+                "不以 stock code 猜測 identity，也不把缺資料當成 HOLD。"
             )
-        except Exception as exc:
-            logger.debug("Current snapshot lookup failed for %s: %s", stock_code, exc)
-            return PortfolioCurrentSnapshot(current_price=current_price)
-
-    def _update_recommendation_cache_for_stock(self, stock_code: str):
-        """背景快速獲取特定個股的推薦狀態，用以更新 Condition Monitor"""
-        if not self.recommendation_service:
+        )
+        if presentation is None:
+            self.position_presentation_label.setText(
+                "研究路徑：" + format_research_workflow_path() +
+                "\n選取持倉列後顯示共用 Health／Exit 與權重來源；缺值維持未知。\n\n"
+                + health_text
+            )
             return
-        try:
-            # 獲取最新大盤 Regime 與個股打分 (極簡快速模擬以防止卡頓)
-            # 實際上可從 recommendation_service 的內部方法做快速單股 Scoring
-            # 此處做安全緩存防禦
-            engine = getattr(self.recommendation_service, 'screening_service', None)
-            if engine:
-                # 簡單查詢該股的分數快照
-                df_score = engine.get_market_strength_score()  # 這會返回大表
-                if not df_score.empty and '證券代號' in df_score.columns:
-                    stock_row = df_score[df_score['證券代號'] == stock_code]
-                    if not stock_row.empty:
-                        # 獲取總技術分數
-                        score = float(stock_row.iloc[0].get('綜合分數', 80.0))
-                        self.rec_cache[stock_code] = {
-                            "score": score,
-                            "regime": "",
-                            "why_not": "多空分數失衡" if score < 60 else ""
-                        }
-        except Exception as e:
-            logger.debug("Failed to prefetch recommendation score for %s: %s", stock_code, e)
+        self.position_presentation_label.setText(
+            f"研究路徑：{format_research_workflow_path()}\n"
+            "共用呈現契約（唯讀）\n" + format_decision_presentation(presentation)
+            + "\n\n"
+            + health_text
+        )
 
     def _load_trades_history(self):
         """加載交易明細，若有選定股票，則進行篩選"""
@@ -2015,22 +3678,244 @@ class PortfolioView(QWidget):
 
             logger.info("Selected position stock: %s", self.selected_stock_code)
             self.btn_stock_research.setEnabled(bool(self.selected_stock_code))
+            self._render_portfolio_compact_context(self._last_portfolio_dto)
+            self._render_selected_position_presentation()
             self._load_trades_history()
             self._load_journal_entries()
             self._update_monitoring_tab()
+
+    def _selected_position_for_current_row(self) -> object | None:
+        """取得目前選取列背後的 PositionDTO，不以同股第一列代替。"""
+
+        if self._last_portfolio_dto is None or self.positions_model is None:
+            return None
+        selection = self.positions_table.selectionModel()
+        selected_rows = selection.selectedRows() if selection else []
+        if len(selected_rows) != 1:
+            return None
+        return self._position_for_table_row(
+            self.positions_model.getDataFrame(),
+            selected_rows[0].row(),
+        )
 
     def _selected_position_name(self) -> str:
         """從目前顯示的持倉 model 取得名稱，不重新查詢或重算。"""
 
         if not self.positions_model or not self.selected_stock_code:
             return ""
+        selected_position = self._selected_position_for_current_row()
+        if selected_position is not None:
+            return str(getattr(selected_position, "stock_name", "") or "").strip()
         frame = self.positions_model.getDataFrame()
         if "證券代號" not in frame.columns:
             return ""
-        for row_number, value in enumerate(frame["證券代號"]):
-            if str(value).strip() == self.selected_stock_code:
-                return str(frame.iloc[row_number].get("證券名稱", "") or "").strip()
+        matching_rows = [
+            row_number
+            for row_number, value in enumerate(frame["證券代號"])
+            if str(value).strip() == self.selected_stock_code
+        ]
+        if len(matching_rows) == 1:
+            return str(frame.iloc[matching_rows[0]].get("證券名稱", "") or "").strip()
         return ""
+
+    def _validated_recommendation_result_id(self, position: object | None, stock_code: str) -> str:
+        """只有保存結果精確包含目前股票時，才回傳可串接的結果 ID。
+
+        ``PositionDTO.source_id`` 是泛用 lineage 欄位，可能指向回測、人工
+        持倉或其他 provider；不可只依字串形狀或同股／同日巧合升格為
+        continuity candidate identity。新保存結果必須通過 canonical query
+        的 integrity 與 typed execution 檢查；舊 DTO 只走明確的唯讀相容讀取。
+        """
+
+        source_type = str(getattr(position, "source_type", "") or "").strip()
+        source_id = str(getattr(position, "source_id", "") or "").strip()
+        code = str(stock_code or "").strip()
+        if source_type != "recommendation_result" or not source_id or not code:
+            return ""
+        # result id 是既有儲存庫的檔名；組合讀取路徑前先拒絕 traversal／歧義值。
+        if Path(source_id).name != source_id or source_id in {".", ".."}:
+            return ""
+
+        source_summary = getattr(position, "source_summary", {})
+        if not isinstance(source_summary, Mapping):
+            source_summary = {}
+
+        config = getattr(self.portfolio_service, "config", None)
+        if config is None:
+            return ""
+        try:
+            queries = build_recommendation_execution_queries(config)
+            read_model = queries.get(source_id)
+        except Exception:
+            # Canonical identity／integrity 無法判定時，不允許舊路徑救援。
+            return ""
+
+        if read_model is not None and read_model.execution is not None:
+            execution = read_model.execution
+            if (
+                read_model.result_id != source_id
+                or execution.result_id != source_id
+                or execution.status is not ExecutionStatus.COMPLETED
+                or read_model.integrity_basis
+                != "canonical_payload_and_index_verified"
+                or execution.decision is None
+            ):
+                return ""
+            matches = tuple(item for item in execution.items if item.stock_code == code)
+            if len(matches) != 1:
+                return ""
+            identity = _canonical_recommendation_identity_facts(execution, code)
+            if identity is None:
+                return ""
+            summary_identity = dict(identity)
+            # Portfolio source summary 的 decision_date 寫入 Context.as_of_date；
+            # request/result config 的 decision_date 是另一個獨立保存日期。
+            summary_identity["decision_date"] = identity["as_of_date"]
+            if not _summary_matches_saved_identity(source_summary, summary_identity):
+                return ""
+            if _claims_canonical_trade_summary(source_summary):
+                if not _canonical_trade_summary_matches_execution(
+                    position,
+                    source_summary,
+                    execution,
+                    read_model,
+                    code,
+                ):
+                    return ""
+            elif not _position_snapshot_matches_saved_identity(position, identity):
+                return ""
+            return source_id
+
+        # canonical query 若回傳了未知 read model，不能把它當成 legacy。
+        if read_model is not None and read_model.legacy_result is None:
+            return ""
+        try:
+            legacy = queries.get_legacy_original_payload(
+                source_id,
+                allow_unindexed_legacy=True,
+            )
+        except Exception:
+            # canonical identity claim 或完整性錯誤一律維持拒絕。
+            return ""
+        if legacy is None or not isinstance(legacy.payload, Mapping):
+            return ""
+        payload = legacy.payload
+        saved_result_id = payload.get("result_id")
+        if type(saved_result_id) is not str or saved_result_id.strip() != source_id:
+            return ""
+        recommendations = _payload_rows(payload.get("recommendations"))
+        if any(
+            _saved_recommendation_alias_conflicts_for_code(row, code)
+            for row in recommendations
+        ):
+            # 有效列不可遮蔽另一列對同一要求股票的雙語別名矛盾。
+            return ""
+        matches = tuple(
+            row
+            for row in recommendations
+            if _saved_recommendation_stock_code(row) == code
+        )
+        # 重複列會讓 source-to-candidate 對應不明確，只允許單一精確保存列升格。
+        if len(matches) != 1:
+            return ""
+
+        legacy_result = (
+            read_model.legacy_result if read_model is not None else None
+        )
+        if legacy_result is None:
+            try:
+                mutable_payload = _mutable_json_value(payload)
+                if not isinstance(mutable_payload, dict):
+                    return ""
+                legacy_result = RecommendationResultDTO.from_dict(mutable_payload)
+            except (TypeError, ValueError, KeyError):
+                legacy_result = None
+        if legacy_result is not None and _known_legacy_trade_summary_matches(
+            position,
+            source_summary,
+            legacy_result,
+            code,
+        ):
+            return source_id
+        if _claims_canonical_trade_summary(source_summary):
+            # 未由 canonical query 驗證的 canonical claim 不可借 legacy row 升格。
+            return ""
+
+        result_config = payload.get("config")
+        run_context = payload.get("run_context")
+        if not isinstance(result_config, Mapping):
+            result_config = {}
+        if not isinstance(run_context, Mapping):
+            run_context = {}
+        as_of_date = _consistent_fact(
+            (result_config.get("as_of_date"), run_context.get("as_of_date"))
+        )
+        decision_date = _consistent_fact(
+            (
+                result_config.get("decision_date"),
+                run_context.get("decision_date"),
+            )
+        )
+        data_date = _consistent_fact(
+            (result_config.get("data_date"), run_context.get("data_date"))
+        )
+        if data_date == "":
+            data_date = _consistent_fact(
+                (
+                    result_config.get("data_as_of_date"),
+                    run_context.get("data_as_of_date"),
+                )
+            )
+        if None in (as_of_date, decision_date, data_date):
+            return ""
+        identity = {
+            "result_id": source_id,
+            "stock_code": code,
+            "as_of_date": as_of_date,
+            "decision_date": decision_date or as_of_date,
+            "data_date": data_date,
+        }
+        for field_name in ("source_snapshot_id", "source_snapshot_hash"):
+            value = _consistent_fact(
+                (result_config.get(field_name), run_context.get(field_name))
+            )
+            if value is None:
+                return ""
+            identity[field_name] = value
+        if not _summary_matches_saved_identity(source_summary, identity):
+            return ""
+        if not _position_snapshot_matches_saved_identity(position, identity):
+            return ""
+        return source_id
+
+    def _position_for_table_row(self, frame: pd.DataFrame, row_number: int) -> object | None:
+        """以隱藏 position identity 把可排序表格列對回目前 DTO。"""
+
+        portfolio = self._last_portfolio_dto
+        if portfolio is None or row_number < 0 or row_number >= len(frame):
+            return None
+
+        row = frame.iloc[row_number]
+        position_id = str(row.get("_position_id", "") or "").strip()
+        if position_id:
+            return next(
+                (
+                    position
+                    for position in portfolio.positions
+                    if str(getattr(position, "position_id", "") or "").strip() == position_id
+                ),
+                None,
+            )
+
+        # 舊的／測試替身 model 可能沒有內部 identity 欄位；只有在目前
+        # stock code 對應唯一 PositionDTO 時才容許保守相容。
+        code = str(row.get("證券代號", "") or "").strip()
+        candidates = [
+            position
+            for position in portfolio.positions
+            if str(getattr(position, "stock_code", "") or "").strip() == code
+        ]
+        return candidates[0] if len(candidates) == 1 else None
 
     def _open_selected_stock_research(self, index=None) -> None:
         """持倉雙擊／明確按鈕共用的個股研究報告入口。"""
@@ -2042,12 +3927,37 @@ class PortfolioView(QWidget):
             self.portfolio_refresh_status_label.setText("請先選取一檔持倉，再查看個股研究報告。")
             self.btn_stock_research.setEnabled(False)
             return
+        position = self._selected_position_for_current_row()
+        presentation = self._presentation_for_position(position, code)
+        # 按鈕通常應有單一選取列；選取不存在或不明確時，不靜默代入同股第一列。
+        position_source_summary = getattr(position, "source_summary", {}) if position is not None else {}
+        if not isinstance(position_source_summary, Mapping):
+            position_source_summary = {}
+        validated_result_id = self._validated_recommendation_result_id(position, code)
+        identity_status = "linked" if validated_result_id else "unlinked"
+        if validated_result_id:
+            data_date = presentation.data_as_of_date if presentation is not None else ""
+        else:
+            data_date = self._cached_position_quote_date(position, code)
         self.stockResearchRequested.emit(
             ResearchStockContextDTO(
                 stock_code=code,
                 stock_name=self._selected_position_name(),
-                source_label="持倉管理",
-                source_kind="portfolio",
+                decision_date=str(position_source_summary.get("decision_date", "") or ""),
+                data_date=data_date,
+                result_id=validated_result_id,
+                identity_status=identity_status,
+                source_snapshot_id=str(position_source_summary.get("source_snapshot_id", "") or ""),
+                source_snapshot_hash=str(
+                    position_source_summary.get("source_snapshot_hash", "")
+                    if _claims_canonical_trade_summary(position_source_summary)
+                    else getattr(position, "source_snapshot_hash", "")
+                    or position_source_summary.get("source_snapshot_hash", "")
+                    or ""
+                ),
+                source_id=str(getattr(position, "source_id", "") or ""),
+                source_label="持倉管理／共用證據詳情",
+                source_kind=str(getattr(position, "source_type", "") or "portfolio"),
                 source_workspace="portfolio",
             )
         )
@@ -2055,19 +3965,45 @@ class PortfolioView(QWidget):
     def select_stock(self, stock_code: str, result_id: str | None = None) -> bool:
         """返回持倉頁時定位既有列，保留交易歷史篩選狀態。"""
 
-        del result_id
         if not self.positions_model:
             return False
         code = str(stock_code).strip()
         frame = self.positions_model.getDataFrame()
         if "證券代號" not in frame.columns:
             return False
-        for row_number, value in enumerate(frame["證券代號"]):
-            if str(value).strip() == code:
-                self.positions_table.selectRow(row_number)
-                self._on_position_selected(self.positions_model.index(row_number, 0))
-                return True
-        return False
+        matching_rows = [
+            row_number
+            for row_number, value in enumerate(frame["證券代號"])
+            if str(value).strip() == code
+        ]
+        if not matching_rows:
+            return False
+
+        requested_result_id = str(result_id or "").strip()
+        if not requested_result_id:
+            # 沒有 result identity 的舊／unlinked context 維持 stock-only
+            # 相容，但同股多列時不猜第一列。
+            if len(matching_rows) != 1:
+                return False
+            selected_row = matching_rows[0]
+        else:
+            exact_rows = []
+            for row_number in matching_rows:
+                position = self._position_for_table_row(frame, row_number)
+                validated_result_id = self._validated_recommendation_result_id(
+                    position,
+                    code,
+                )
+                if validated_result_id == requested_result_id:
+                    exact_rows.append(row_number)
+            # 明示 result_id 卻沒有唯一 exact match 時，禁止退回同股選取。
+            if len(exact_rows) != 1:
+                return False
+            selected_row = exact_rows[0]
+
+        self.positions_table.selectRow(selected_row)
+        self._on_position_selected(self.positions_model.index(selected_row, 0))
+        return True
 
     def _show_position_context_menu(self, pos):
         """右鍵選單操作"""
@@ -2092,6 +4028,10 @@ class PortfolioView(QWidget):
 
         action = menu.exec(self.positions_table.viewport().mapToGlobal(pos))
         if action == action_research:
+            # 右鍵選單的 index 不一定先改變表格選取；先綁定被點擊的實體列，
+            # 再共用按鈕入口，避免同股多 position 沿用舊選取。
+            self.positions_table.selectRow(row)
+            self._on_position_selected(self.positions_model.index(row, 0))
             self.selected_stock_code = str(stock_code).strip()
             self.btn_stock_research.setEnabled(True)
             self._open_selected_stock_research()
@@ -2310,18 +4250,43 @@ class PortfolioView(QWidget):
             return
 
         try:
-            snapshot = self._current_snapshot_for_position(position_dto.stock_code)
+            snapshot = self._cached_current_snapshot_for_position(
+                position_dto, position_dto.stock_code
+            )
             monitor_result = self.condition_monitor.evaluate(position_dto, snapshot)
             details = monitor_result.details
-            self._update_lifecycle_review(position_dto, monitor_result)
+            self._update_lifecycle_review(
+                position_dto,
+                monitor_result,
+                health=self._health_for_position(position_dto),
+            )
 
             # 價格對照
             self.lbl_mon_entry_price.setText(f"TWD {position_dto.average_cost:,.2f}")
-            if position_dto.current_price is not None:
-                price_text = f"TWD {position_dto.current_price:,.2f}"
-                price_date = self._position_price_date(position_dto)
-                if price_date:
-                    price_text += f"（價格日期：{price_date}）"
+            display_price = (
+                snapshot.current_price
+                if snapshot is not None and snapshot.current_price is not None
+                else position_dto.current_price
+            )
+            if display_price is not None:
+                price_text = f"TWD {display_price:,.2f}"
+                quote_date = snapshot.quote_data_date if snapshot is not None else None
+                freshness = (
+                    str(snapshot.quote_freshness_status or "unverified")
+                    if snapshot is not None
+                    else "unverified"
+                )
+                if quote_date is not None:
+                    price_text += f"（行情資料日：{quote_date.isoformat()}；freshness：{freshness}）"
+                else:
+                    price_text += "（行情資料日未知；僅供損益觀察）"
+                quote_evidence_check = getattr(
+                    self.condition_monitor, "has_current_quote_evidence", None
+                )
+                if snapshot is not None and not (
+                    callable(quote_evidence_check) and quote_evidence_check(snapshot)
+                ):
+                    price_text += "；僅供損益觀察"
                 self.lbl_mon_current_price.setText(price_text)
             else:
                 self.lbl_mon_current_price.setText("-")
@@ -2559,7 +4524,17 @@ class PortfolioView(QWidget):
         self.lbl_lifecycle_data_quality.setText("-")
         self.lbl_lifecycle_tokens.setText("-")
 
-    def _update_lifecycle_review(self, position_dto, monitor_result) -> None:
+    def _update_lifecycle_review(
+        self,
+        position_dto,
+        monitor_result,
+        *,
+        health: PositionHealthPresentationDTO | None = None,
+    ) -> None:
+        if health is not None:
+            self._render_position_health_lifecycle(health)
+            return
+
         try:
             from app_module.portfolio_feedback_service import FeedbackCategory
             from app_module.strategy_lifecycle_service import GateStatus
@@ -2583,11 +4558,73 @@ class PortfolioView(QWidget):
             self.lbl_lifecycle_signal.setText(self._format_lifecycle_category(report.items, FeedbackCategory.SIGNAL))
             self.lbl_lifecycle_market.setText(self._format_lifecycle_category(report.items, FeedbackCategory.MARKET))
             self.lbl_lifecycle_data_quality.setText(self._format_lifecycle_category(report.items, FeedbackCategory.DATA_QUALITY))
-            self.lbl_lifecycle_tokens.setText("；".join(report.summary_tokens) if report.summary_tokens else "-")
+            legacy_tokens = "；".join(report.summary_tokens) if report.summary_tokens else "-"
+            health_status = (
+                self._position_health_read_model.source_status
+                if self._position_health_read_model is not None
+                else "unknown"
+            )
+            self.lbl_lifecycle_tokens.setText(
+                f"Position Health 未精確對應（source={health_status}）；"
+                f"以下 legacy feedback 僅供研究：{legacy_tokens}"
+            )
         except Exception as exc:
             logger.error("Failed to update lifecycle review: %s", exc)
             self.lbl_lifecycle_status.setText("生命週期回顧不可用")
             self.lbl_lifecycle_status.setStyleSheet("background-color: #7b341e; color: #fffff0; padding: 2px 6px; border-radius: 3px; font-weight: bold;")
+
+    def _render_position_health_lifecycle(
+        self,
+        health: PositionHealthPresentationDTO,
+    ) -> None:
+        """在 Portfolio 顯示與 Workbench 相同的 health state projection。"""
+
+        state_styles = {
+            "HOLD": (
+                "持有（HOLD）",
+                "background-color: #22543d; color: #f0fff4; padding: 2px 6px; border-radius: 3px; font-weight: bold;",
+            ),
+            "WATCH": (
+                "觀察／未知（WATCH）",
+                "background-color: #7b341e; color: #fffff0; padding: 2px 6px; border-radius: 3px; font-weight: bold;",
+            ),
+            "REDUCE_CANDIDATE": (
+                "減碼候選（REDUCE_CANDIDATE）",
+                "background-color: #7b341e; color: #fffff0; padding: 2px 6px; border-radius: 3px; font-weight: bold;",
+            ),
+            "EXIT_CANDIDATE": (
+                "退出候選（EXIT_CANDIDATE）",
+                "background-color: #742a2a; color: #fff5f5; padding: 2px 6px; border-radius: 3px; font-weight: bold;",
+            ),
+        }
+        status_text, style = state_styles.get(
+            health.action_suitability,
+            ("觀察／未知（WATCH）", "color: white;"),
+        )
+        self.lbl_lifecycle_status.setText(status_text)
+        self.lbl_lifecycle_status.setStyleSheet(style)
+        self.lbl_lifecycle_source.setText(
+            f"Paper receipt；source={health.source_status}；"
+            f"identity={health.position_id or '未知'}；cohort={health.cohort_key or '未知'}"
+        )
+        self.lbl_lifecycle_execution.setText(
+            "proposal-only；不自動平倉、不下單、不修改 allocation。"
+        )
+        self.lbl_lifecycle_signal.setText(
+            f"condition={health.condition_status}；thesis={health.thesis_status}；"
+            f"metrics={health.metrics_status}"
+        )
+        self.lbl_lifecycle_market.setText(
+            f"決策日={health.decision_date}；available_at={health.available_at or '未知'}"
+        )
+        self.lbl_lifecycle_data_quality.setText(
+            f"quality={health.quality}；entry_lineage={health.entry_lineage_status}；"
+            f"人工 review={'需要' if health.review_required else '未標記'}"
+        )
+        self.lbl_lifecycle_tokens.setText(
+            f"Why：{health.why}\nWhy not："
+            + ("；".join(health.why_not) if health.why_not else "未提供")
+        )
 
     def _format_lifecycle_category(self, items, category) -> str:
         matched = [item for item in items if item.category == category]

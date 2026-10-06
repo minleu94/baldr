@@ -6,13 +6,16 @@
 import subprocess
 import os
 import sys
+import sqlite3
+import hashlib
 from pathlib import Path
-from typing import Dict ,Any ,Optional ,List ,Callable
-from datetime import date, datetime ,timedelta
+from typing import Dict ,Any ,Optional ,List ,Callable, Sequence
+from datetime import date, datetime, timedelta, timezone
 
 import app_module.update_data_normalization as update_data_normalization
 from app_module.update_service_status_support import (
     compose_sqlite_status_read_model,
+    FreshnessReceiptBinding,
 )
 from app_module.dtos.update_loop_dtos import (
     UpdateStatusSnapshotDTO,
@@ -43,10 +46,18 @@ from data_module.daily_price_source_guard import (
     validate_aggregate_receipt_payload,
     validate_daily_price_frame_date,
 )
+from data_module.daily_price_revision_write_guard import (
+    prepare_daily_price_revision_frame,
+    validate_excluded_price_frame,
+)
+from data_module.formal_market_revision import validate_market_replacement
 from data_module.official_trading_calendar import (
     OfficialTradingCalendar,
     OfficialTradingCalendarError,
 )
+
+
+_TPEX_FAILURE_MESSAGE_MAX_CHARS = 512
 
 
 def _monthly_revenue_status_today() -> str:
@@ -105,6 +116,338 @@ def _is_cancel_requested(callback: Optional[Callable[[], bool]]) -> bool:
         return False
 
 
+def _write_technical_indicator_publications(
+    conn,
+    frame,
+    *,
+    replace_market: bool = False,
+    database_path: Optional[Path] = None,
+    raw_alias_prevalidated: bool = False,
+    raw_alias_context: Any = None,
+) -> int:
+    """在呼叫端交易中只寫已驗證發布列，選擇性原子替換全市場資料。"""
+    import pandas as pd
+
+    if frame is None or frame.empty:
+        return 0
+    if database_path is None and raw_alias_context is not None:
+        database_path = raw_alias_context.database_path
+    if database_path is None:
+        database_path = next(
+            (Path(row[2]) for row in conn.execute("PRAGMA database_list") if row[1] == "main" and row[2]),
+            None,
+        )
+    context_was_supplied = raw_alias_context is not None
+    if database_path is not None:
+        from data_module.formal_technical_raw_alias_repair import (
+            create_raw_alias_writer_context,
+            normalize_raw_alias_values_for_storage,
+        )
+
+        if raw_alias_context is None:
+            raw_alias_context = create_raw_alias_writer_context(database_path)
+    raw_alias_active = raw_alias_context is not None
+    must_prevalidate = not raw_alias_prevalidated or not context_was_supplied
+    if database_path is not None and must_prevalidate:
+        from data_module.formal_technical_raw_alias_repair import (
+            prepare_raw_alias_upsert_frame,
+            validate_raw_alias_replacement,
+        )
+
+        if raw_alias_active and replace_market:
+            validate_raw_alias_replacement(
+                database_path,
+                _technical_frame_records(frame),
+                replace_all=True,
+                writer_context=raw_alias_context,
+            )
+        elif raw_alias_active:
+            frame = prepare_raw_alias_upsert_frame(
+                database_path,
+                frame,
+                writer_context=raw_alias_context,
+            )
+    if raw_alias_context is not None:
+        frame = normalize_raw_alias_values_for_storage(frame)
+    required = {"日期", "證券代號"}
+    missing = required.difference(frame.columns)
+    if missing:
+        raise ValueError(f"SQLite 技術指標發布缺少鍵欄位：{sorted(missing)}")
+    if frame.duplicated(subset=["證券代號", "日期"]).any():
+        raise ValueError("SQLite 技術指標發布含重複股票／日期鍵")
+
+    columns = list(frame.columns)
+    quoted_columns = ", ".join(f'"{str(column).replace(chr(34), chr(34) * 2)}"' for column in columns)
+    placeholders = ", ".join("?" for _ in columns)
+    mutable_columns = [
+        column for column in columns if column not in {"日期", "證券代號"}
+    ]
+    if mutable_columns:
+        update_clause = ", ".join(
+            f'"{str(column).replace(chr(34), chr(34) * 2)}" = '
+            f'excluded."{str(column).replace(chr(34), chr(34) * 2)}"'
+            for column in mutable_columns
+        )
+        conflict_clause = (
+            'ON CONFLICT("證券代號", "日期") DO UPDATE SET ' + update_clause
+        )
+    else:
+        conflict_clause = 'ON CONFLICT("證券代號", "日期") DO NOTHING'
+    statement = (
+        f'INSERT INTO "technical_indicators" '
+        f'({quoted_columns}) VALUES ({placeholders}) {conflict_clause}'
+    )
+    values = []
+    for row in frame.itertuples(index=False, name=None):
+        normalized: list[Any] = []
+        for value in row:
+            if pd.isna(value):
+                normalized.append(None)
+            elif hasattr(value, "item"):
+                normalized.append(value.item())
+            else:
+                normalized.append(value)
+        values.append(tuple(normalized))
+
+    # 逐列轉成 SQLite bind values 可能耗時；metadata bytes 必須在 mutation 前重驗。
+    if raw_alias_context is not None:
+        raw_alias_context.ensure_current(database_path)
+
+    if replace_market:
+        conn.execute('DELETE FROM "technical_indicators"')
+    conn.executemany(statement, values)
+    return len(values)
+
+
+def _technical_frame_records(frame):
+    columns = [str(column) for column in frame.columns]
+    for values in frame.itertuples(index=False, name=None):
+        yield dict(zip(columns, values, strict=True))
+
+
+def _validate_technical_raw_alias_frame(
+    database_path: Path,
+    frame,
+    *,
+    replace_all: bool = False,
+    replace_dates: bool = False,
+    raw_alias_context: Any = None,
+) -> None:
+    if frame is None or frame.empty:
+        return
+    validation_frame = frame
+    rename_columns = {}
+    if "證券代號" not in validation_frame.columns:
+        symbol_column = next(
+            (
+                column
+                for column in ("股票代號", "stock_id", "stock_code")
+                if column in validation_frame.columns
+            ),
+            None,
+        )
+        if symbol_column is not None:
+            rename_columns[symbol_column] = "證券代號"
+    if "日期" not in validation_frame.columns:
+        date_column = next(
+            (
+                column
+                for column in ("date", "trade_date", "trading_date", "Date")
+                if column in validation_frame.columns
+            ),
+            None,
+        )
+        if date_column is not None:
+            rename_columns[date_column] = "日期"
+    if rename_columns:
+        validation_frame = validation_frame.rename(columns=rename_columns)
+    from data_module.formal_technical_raw_alias_repair import (
+        validate_raw_alias_replacement,
+    )
+
+    validate_raw_alias_replacement(
+        database_path,
+        _technical_frame_records(validation_frame),
+        replace_all=replace_all,
+        replace_dates=replace_dates,
+        writer_context=raw_alias_context,
+    )
+
+
+def _preflight_and_ensure_technical_indicator_schema(
+    db: Any,
+    frame: Any,
+    *,
+    replace_all: bool,
+    raw_alias_context: Any = None,
+) -> tuple[Any, Any]:
+    """先核對最新 raw-alias marker，再允許 technical schema mutation。"""
+
+    from data_module.formal_technical_raw_alias_repair import (
+        create_raw_alias_writer_context,
+        prepare_raw_alias_upsert_frame,
+        validate_raw_alias_replacement,
+    )
+
+    database_path = Path(db.db_path)
+    if raw_alias_context is None:
+        raw_alias_context = create_raw_alias_writer_context(database_path)
+    if raw_alias_context is not None:
+        if replace_all:
+            validate_raw_alias_replacement(
+                database_path,
+                _technical_frame_records(frame),
+                replace_all=True,
+                writer_context=raw_alias_context,
+            )
+        else:
+            frame = prepare_raw_alias_upsert_frame(
+                database_path,
+                frame,
+                writer_context=raw_alias_context,
+            )
+
+    db.ensure_columns("technical_indicators", list(frame.columns))
+    return frame, raw_alias_context
+
+
+def _assert_technical_raw_aliases_unchanged(original, computed) -> None:
+    from data_module.formal_technical_raw_alias_repair import (
+        ALIASES,
+        RawAliasRepairError,
+        _same_numeric,
+    )
+
+    missing = [name for name in ALIASES if name not in original.columns or name not in computed.columns]
+    if missing:
+        raise RawAliasRepairError(f"技術指標計算結果省略受保護六欄：{missing}")
+    if len(original) != len(computed):
+        raise RawAliasRepairError("技術指標計算結果與已核驗輸入列數不同")
+    for name in ALIASES:
+        left = original[name].reset_index(drop=True)
+        right = computed[name].reset_index(drop=True)
+        if any(
+            not _same_numeric(a, b, name)
+            for a, b in zip(left, right, strict=True)
+        ):
+            raise RawAliasRepairError(f"技術指標計算結果改動已核准日價欄位：{name}")
+
+
+def _daily_price_symbol_universe(database_path: Path) -> set[str]:
+    """只接受 daily_prices 已有代號，不讓指標 CSV 擴張商品 universe。"""
+
+    import sqlite3
+
+    path = database_path.resolve(strict=True)
+    connection = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=30)
+    try:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        if "daily_prices" not in tables:
+            raise ValueError("raw alias 修訂啟用，但 daily_prices 不存在；停止技術指標重建")
+        columns = {
+            str(row[1])
+            for row in connection.execute('PRAGMA table_info("daily_prices")')
+        }
+        symbol_column = next(
+            (
+                name
+                for name in ("證券代號", "股票代號", "stock_code", "stock_id")
+                if name in columns
+            ),
+            None,
+        )
+        if symbol_column is None:
+            raise ValueError("daily_prices 缺少證券代號欄；停止技術指標重建")
+        symbols = {
+            update_data_normalization.stock_code_key(row[0])
+            for row in connection.execute(
+                f'SELECT DISTINCT "{symbol_column}" FROM daily_prices '
+                f'WHERE "{symbol_column}" IS NOT NULL'
+            )
+        }
+    finally:
+        connection.close()
+    symbols.discard("")
+    if not symbols:
+        raise ValueError("daily_prices 證券代號 universe 為空；停止技術指標重建")
+    return symbols
+
+
+def _can_replace_full_technical_market(
+    *,
+    force_all: bool,
+    target_stock: Optional[str],
+    requested_start_date: Optional[str],
+    recompute_currentity: bool,
+    cancelled: bool,
+    success_count: int,
+    fail_count: int,
+    insufficient_count: int,
+    total_stocks: int,
+    updated_stocks: List[str],
+) -> bool:
+    """只允許完整且未取消的全市場明確重算執行表級替換。"""
+    return bool(
+        force_all
+        and target_stock is None
+        and requested_start_date is None
+        and not recompute_currentity
+        and not cancelled
+        and success_count == total_stocks
+        and fail_count == 0
+        and insufficient_count == 0
+        and len(set(updated_stocks)) == total_stocks
+    )
+
+
+def _merge_partial_technical_publications(existing, publication):
+    """以股票／日期精確合併局部彙總 CSV，保留未提供欄位與其他 keys。"""
+    import pandas as pd
+
+    from analysis_module.technical_analysis.technical_date_support import (
+        safe_convert_technical_dates,
+    )
+
+    required = ["日期", "證券代號"]
+    for label, frame in (("既有彙總", existing), ("本輪發布", publication)):
+        missing = [column for column in required if column not in frame.columns]
+        if missing:
+            raise ValueError(f"{label}缺少技術指標鍵欄位：{missing}")
+
+    old = existing.copy()
+    new = publication.copy()
+    for frame in (old, new):
+        normalized_dates = pd.to_datetime(
+            safe_convert_technical_dates(frame["日期"]), errors="coerce"
+        )
+        if normalized_dates.isna().any():
+            raise ValueError("彙總技術指標 CSV 含無效日期")
+        frame["日期"] = normalized_dates.dt.strftime("%Y-%m-%d")
+        frame["證券代號"] = frame["證券代號"].astype(str).str.strip().str.zfill(4)
+
+    if new.duplicated(subset=required).any():
+        raise ValueError("本輪技術指標彙總發布含重複股票／日期鍵")
+    old = old.drop_duplicates(subset=required, keep="last")
+    old_indexed = old.set_index(required)
+    new_indexed = new.set_index(required)
+    index = old_indexed.index.union(new_indexed.index)
+    combined = old_indexed.reindex(index)
+    for column in new_indexed.columns:
+        if column not in combined.columns:
+            combined[column] = pd.NA
+        combined.loc[new_indexed.index, column] = new_indexed[column]
+    return (
+        combined.reset_index()
+        .sort_values(required, kind="stable")
+        .reset_index(drop=True)
+    )
+
+
 class UpdateService :
     """數據更新服務類"""
 
@@ -125,6 +468,14 @@ class UpdateService :
         self .scripts_dir =self .project_root /'scripts'
         # 最近一次 daily_data 來源選擇的唯讀診斷；不把 mtime 當成 custody 證據。
         self._last_daily_source_selection: Dict[str, Any] = {}
+        self._pending_industry_capture_manifests: List[Path] = []
+        self._pending_industry_csv_before: Optional[bytes] = None
+        self._pending_industry_csv_after_sha256: Optional[str] = None
+        self._industry_update_block_legacy_sync = False
+        self._industry_update_succeeded_without_capture = False
+        self._pending_industry_batch_partial = False
+        self._pending_industry_failed_dates: List[str] = []
+        self._pending_industry_unknown_legacy_dates: List[str] = []
         self .status_manifest_file =self .config .meta_data_dir /'data_status_manifest.json'
         self .monthly_revenue_source_version ="mops-static-snapshot-monthly-revenue-2026-06-16"
         configured_snapshot_candidate = (
@@ -153,10 +504,14 @@ class UpdateService :
     snapshot_file :Optional [Path ]=None ,
     availability_file :Optional [Path ]=None ,
     source_version :Optional [str ]=None ,
+    cancel_callback: Optional[Callable[[], bool]] = None,
     )->Dict [str ,Any ]:
         """Plan MOPS snapshot monthly revenue backfill without writing SQLite."""
+        if _is_cancel_requested(cancel_callback):
+            return {'success':False, 'cancelled':True, 'message':'月營收 dry-run 已在開始前取消'}
         try :
             from data_module .monthly_revenue_backfill import plan_mops_snapshot_monthly_revenue_backfill
+            from decision_module .factors .fundamental_adapters import source_diagnostics_to_factor_diagnostics
 
             snapshot_path =self ._resolve_monthly_revenue_snapshot_file (snapshot_file )
             availability_path =Path (availability_file or self .config .monthly_revenue_availability_file )
@@ -166,7 +521,7 @@ class UpdateService :
             availability_file =availability_path ,
             source_version =version ,
             )
-            diagnostic_payloads =[diagnostic .to_dict ()for diagnostic in plan .diagnostics ]
+            diagnostic_payloads =[diagnostic .to_dict ()for diagnostic in source_diagnostics_to_factor_diagnostics(plan.diagnostics) ]
             return {
             'success':plan .ready_for_apply ,
             'ready_for_apply':plan .ready_for_apply ,
@@ -184,6 +539,7 @@ class UpdateService :
         except Exception as exc :
             return {
             'success':False ,
+            'cancelled':False,
             'ready_for_apply':False ,
             'raw_row_count':0 ,
             'normalized_record_count':0 ,
@@ -197,8 +553,11 @@ class UpdateService :
     snapshot_file :Optional [Path ]=None ,
     availability_file :Optional [Path ]=None ,
     source_version :Optional [str ]=None ,
+    cancel_callback: Optional[Callable[[], bool]] = None,
     )->Dict [str ,Any ]:
         """Apply MOPS snapshot monthly revenue backfill into SQLite."""
+        if _is_cancel_requested(cancel_callback):
+            return {'success':False, 'cancelled':True, 'message':'月營收正式回填已在交易開始前取消'}
         try :
             from data_module .monthly_revenue_backfill import apply_mops_snapshot_monthly_revenue_backfill
 
@@ -214,6 +573,8 @@ class UpdateService :
             )
             return {
             'success':result .applied ,
+            'cancelled':False,
+            'cancel_requested_after_commit':_is_cancel_requested(cancel_callback),
             'applied':result .applied ,
             'inserted_count':result .inserted_count ,
             'ready_for_apply':result .plan .ready_for_apply ,
@@ -233,10 +594,40 @@ class UpdateService :
         except Exception as exc :
             return {
             'success':False ,
+            'cancelled':False,
             'applied':False ,
             'inserted_count':0 ,
             'message':f"MOPS 月營收寫入失敗: {exc}",
             }
+
+    def materialize_current_monthly_revenue(
+        self,
+        snapshot_file: Optional[Path] = None,
+        *,
+        apply: bool = False,
+        cancel_callback: Optional[Callable[[], bool]] = None,
+    ) -> Dict[str, Any]:
+        """重驗官方原件與Decimal正規化，只供現況研究，不修改正式PIT。"""
+        if _is_cancel_requested(cancel_callback):
+            return {'success': False, 'cancelled': True, 'message': '現況月營收已在開始前取消'}
+        try:
+            from data_module.current_monthly_revenue_materialization import plan_current_revenue, apply_current_revenue
+            plan = plan_current_revenue(self._resolve_monthly_revenue_snapshot_file(snapshot_file))
+            result = dict(plan.custody)
+            if _is_cancel_requested(cancel_callback):
+                return dict(result, success=False, cancelled=True, applied=False, message='現況月營收已在寫入前取消')
+            if apply:
+                result = apply_current_revenue(
+                    plan, db_file=Path(self.config.db_file),
+                    backup_dir=Path(self.config.meta_data_dir) / 'backup',
+                    receipt_dir=Path(self.config.output_root) / 'current_monthly_revenue_receipts',
+                )
+            return dict(result, success=True, cancelled=False, ready_for_current_apply=True,
+                        cancel_requested_after_commit=apply and _is_cancel_requested(cancel_callback),
+                        message=f"現況月營收{'已更新' if apply else '重驗完成'}：{len(plan.records):,} 筆 TWD；僅供現況研究，正式歷史可得日未改")
+        except Exception as exc:
+            return {'success': False, 'cancelled': False, 'applied': False, 'formal_pit_eligible': False,
+                    'message': f'現況月營收原件／正規化驗證失敗：{exc}'}
 
     def _resolve_monthly_revenue_snapshot_file (self ,snapshot_file :Optional [Path ])->Path :
         if snapshot_file :
@@ -260,6 +651,7 @@ class UpdateService :
         fetch_date: str | None = None,
         sleep_seconds: float = 0.5,
         progress_callback: Optional[Callable[[str, int], None]] = None,
+        cancel_callback: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         """抓取 MOPS 月營收候選 snapshot；只寫候選輸出，不寫 SQLite。
 
@@ -267,9 +659,16 @@ class UpdateService :
         避免使用者只看到舊 snapshot 卻沒有可追蹤的更新入口。正式月營收與
         availability mapping 仍須另行 dry-run／人工確認。
         """
+        if _is_cancel_requested(cancel_callback):
+            return {
+                "success": False, "cancelled": True, "candidate_only": True,
+                "output_csv": None, "row_count": 0,
+                "diagnostics": [], "message": "MOPS 月營收候選抓取已在開始前取消",
+            }
         try:
             from data_module.monthly_revenue_snapshot_harvester import (
                 build_mops_monthly_revenue_snapshot,
+                create_monthly_revenue_snapshot_capture_directory,
                 write_mops_snapshot_csv,
             )
 
@@ -287,19 +686,25 @@ class UpdateService :
                     10,
                 )
             output_dir = Path(self.config.output_root) / "monthly_revenue_mops_snapshots"
+            capture_dir = create_monthly_revenue_snapshot_capture_directory(
+                output_dir, fetch_date=target_date
+            )
+            raw_html_dir = capture_dir / "raw_html"
             result = build_mops_monthly_revenue_snapshot(
                 start_period=start_period,
                 end_period=end_period,
                 markets=normalized_markets,
                 fetch_date=target_date,
-                save_html_dir=output_dir / "raw_html",
+                save_html_dir=raw_html_dir,
                 sleep_seconds=max(0.0, float(sleep_seconds)),
+                cancel_callback=cancel_callback,
+                progress_callback=progress_callback,
             )
-            output_csv = output_dir / (
+            output_csv = capture_dir / (
                 f"mops_monthly_revenue_snapshot_{start_period}_{end_period}_"
                 f"{target_date.isoformat()}.csv"
             )
-            if result.rows:
+            if result.rows and not result.cancelled:
                 write_mops_snapshot_csv(output_csv, result.rows)
             if progress_callback is not None:
                 progress_callback(
@@ -315,10 +720,12 @@ class UpdateService :
             ]
             success = bool(result.rows) and result.valid_candidate
             return {
-                "success": success,
+                "success": success and not result.cancelled,
+                "cancelled": result.cancelled,
                 "candidate_only": True,
-                "output_csv": str(output_csv) if result.rows else None,
-                "raw_html_dir": str(output_dir / "raw_html"),
+                "output_csv": str(output_csv) if result.rows and not result.cancelled else None,
+                "raw_html_dir": str(raw_html_dir),
+                "capture_dir": str(capture_dir),
                 "start_period": start_period,
                 "end_period": end_period,
                 "fetch_date": target_date.isoformat(),
@@ -329,13 +736,19 @@ class UpdateService :
                 "message": (
                     f"MOPS 月營收候選完成：{len(result.rows):,} 筆；"
                     f"期別 {start_period} ~ {end_period}"
-                    if success
-                    else "MOPS 月營收候選未產生可用列；請查看 diagnostics"
+                    if success and not result.cancelled
+                    else (
+                        f"MOPS 月營收候選已安全取消；保留 {len(result.rows):,} 筆已解析資料，"
+                        "未發布不完整 CSV"
+                        if result.cancelled
+                        else "MOPS 月營收候選未產生可用列；請查看 diagnostics"
+                    )
                 ),
             }
         except Exception as exc:
             return {
                 "success": False,
+                "cancelled": False,
                 "candidate_only": True,
                 "output_csv": None,
                 "row_count": 0,
@@ -356,8 +769,10 @@ class UpdateService :
         sources: tuple[str, ...] = ("institutional", "credit"),
         include_latest_tdcc_snapshot: bool = False,
         allow_online_calendar_probe: bool = True,
+        calendar: Optional[OfficialTradingCalendar] = None,
         rate_limit_seconds: float = 3.0,
         progress_callback: Optional[Callable[[str, int], None]] = None,
+        cancel_callback: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         """更新 Phase 3C 候選資料；明確限制為隔離 Candidate DB。
 
@@ -384,12 +799,15 @@ class UpdateService :
                 rate_limit_seconds=max(0.0, float(rate_limit_seconds)),
                 allow_online_calendar_probe=allow_online_calendar_probe,
                 include_latest_tdcc_snapshot=include_latest_tdcc_snapshot,
+                calendar=calendar,
                 progress_callback=progress_callback,
+                cancel_callback=cancel_callback,
                 confirm_token=APPLY_CONFIRM_TOKEN,
             )
             summary = result.get("summary")
             return {
                 "success": bool(result.get("success")),
+                "cancelled": bool(result.get("cancelled", False)),
                 "candidate_only": True,
                 "candidate_db_path": str(candidate_path),
                 "summary": summary,
@@ -398,6 +816,7 @@ class UpdateService :
         except Exception as exc:
             return {
                 "success": False,
+                "cancelled": False,
                 "candidate_only": True,
                 "message": f"Phase 3C 候選更新失敗：{exc}",
                 "candidate_db_path": None,
@@ -409,6 +828,8 @@ class UpdateService :
     start_date :Optional [str ]=None ,
     end_date :Optional [str ]=None ,
     cancel_callback :Optional [Callable [[],bool ]]=None ,
+    *,
+    row_evidence_source_diagnostics: Optional[List[Dict[str, Any]]] = None,
     )->Dict [str ,Any ]:
         """將既有 CSV 更新結果同步到 SQLite，保留日常 CSV 輸出行為。"""
         import logging
@@ -422,7 +843,43 @@ class UpdateService :
             'source':source ,
             'synced_records':0 ,
             }
+        if (
+            source in {'industry', 'industry_index'}
+            and self._industry_update_block_legacy_sync
+            and not self._pending_industry_capture_manifests
+        ):
+            return {
+                'success': self._industry_update_succeeded_without_capture,
+                'skipped': self._industry_update_succeeded_without_capture,
+                'message': (
+                    '產業更新沒有新 capture；略過整份 CSV 同步'
+                    if self._industry_update_succeeded_without_capture
+                    else '產業來源更新未通過；拒絕以既有整份 CSV 自動同步 SQLite'
+                ),
+                'source': source,
+                'synced_records': 0,
+            }
         if not getattr (self .config ,'use_sqlite',False ):
+            if source in {'industry', 'industry_index'} and self._pending_industry_capture_manifests:
+                scoped_result = self.sync_industry_index_captures_to_sqlite(
+                    list(self._pending_industry_capture_manifests),
+                    batch_partial=self._pending_industry_batch_partial,
+                    failed_dates=self._pending_industry_failed_dates,
+                    unknown_legacy_dates=self._pending_industry_unknown_legacy_dates,
+                )
+                self._pending_industry_capture_manifests = []
+                self._pending_industry_csv_before = None
+                self._pending_industry_csv_after_sha256 = None
+                self._industry_update_block_legacy_sync = (
+                    not bool(scoped_result.get('success'))
+                    or self._pending_industry_batch_partial
+                    or bool(scoped_result.get('partial'))
+                )
+                self._pending_industry_batch_partial = False
+                self._pending_industry_failed_dates = []
+                self._pending_industry_unknown_legacy_dates = []
+                self._industry_update_succeeded_without_capture = False
+                return scoped_result
             return {
             'success':True ,
             'message':'SQLite 未啟用，略過同步',
@@ -451,6 +908,28 @@ class UpdateService :
                 'source':source ,
                 'synced_records':0 ,
                 }
+
+            if normalized == 'industry_index' and self._pending_industry_capture_manifests:
+                capture_paths = list(self._pending_industry_capture_manifests)
+                scoped_result = self.sync_industry_index_captures_to_sqlite(
+                    capture_paths,
+                    batch_partial=self._pending_industry_batch_partial,
+                    failed_dates=self._pending_industry_failed_dates,
+                    unknown_legacy_dates=self._pending_industry_unknown_legacy_dates,
+                )
+                self._pending_industry_capture_manifests = []
+                self._pending_industry_csv_before = None
+                self._pending_industry_csv_after_sha256 = None
+                self._industry_update_block_legacy_sync = (
+                    not bool(scoped_result.get('success'))
+                    or self._pending_industry_batch_partial
+                    or bool(scoped_result.get('partial'))
+                )
+                self._pending_industry_batch_partial = False
+                self._pending_industry_failed_dates = []
+                self._pending_industry_unknown_legacy_dates = []
+                self._industry_update_succeeded_without_capture = False
+                return scoped_result
 
             if normalized =='daily_price_files':
                 df =self ._load_daily_price_files_for_sqlite (start_date ,end_date )
@@ -489,12 +968,18 @@ class UpdateService :
                 delete_date_keys =False
 
             if df .empty :
-                return {
+                empty_result = {
                 'success':True ,
                 'message':f'{source} 沒有可同步的 CSV 資料',
                 'source':source ,
                 'synced_records':0 ,
                 }
+                if normalized == 'daily_price_files':
+                    empty_result['row_evidence'] = {
+                        'status': 'unknown',
+                        'reason_code': 'no_rows_to_read_back',
+                    }
+                return empty_result
 
             if _is_cancel_requested(cancel_callback):
                 return {
@@ -529,13 +1014,37 @@ class UpdateService :
                 }
 
             logger .info ("[UpdateService] %s 已同步 SQLite table %s，共 %s 筆",source ,table_name ,len (df ))
-            return {
+            result = {
             'success':True ,
             'message':f'{source} 已同步 SQLite',
             'source':source ,
             'table':table_name ,
             'synced_records':int (len (df )),
             }
+            if normalized == 'daily_price_files':
+                from data_module.twse_daily_price_publication import (
+                    publish_sqlite_row_evidence,
+                )
+
+                try:
+                    result['row_evidence'] = publish_sqlite_row_evidence(
+                        output_root=self.config.output_root,
+                        data_root=self.config.data_root,
+                        database_path=db.db_path,
+                        source_diagnostics=row_evidence_source_diagnostics or [],
+                        merged_frame=df,
+                    )
+                except Exception as evidence_error:
+                    # SQLite 已提交；新證據失敗不改寫舊同步結果，也不補發空覆蓋。
+                    logger.warning(
+                        "[UpdateService] SQLite row evidence unavailable after commit: %s",
+                        type(evidence_error).__name__,
+                    )
+                    result['row_evidence'] = {
+                        'status': 'unknown',
+                        'reason_code': 'publication_failed',
+                    }
+            return result
         except Exception as e :
             logger .exception ("[UpdateService] 同步 SQLite 失敗: source=%s",source )
             return {
@@ -545,10 +1054,277 @@ class UpdateService :
             'synced_records':0 ,
             }
 
+    def sync_industry_index_captures_to_sqlite(
+        self,
+        capture_manifests: Sequence[str | Path],
+        *,
+        batch_partial: bool = False,
+        failed_dates: Sequence[str] = (),
+        unknown_legacy_dates: Sequence[str] = (),
+    ) -> Dict[str, Any]:
+        """Sync only dates bound to verified TWSE industry captures."""
+        import logging
+
+        from data_module.twse_industry_index_capture import (
+            CSV_COLUMNS,
+            TwseIndustryIndexCaptureError,
+            canonical_rowset,
+            create_industry_projection_commit_manifest,
+            restore_csv_before_image,
+            verify_capture_receipt,
+            verify_csv_date_projection,
+        )
+
+        logger = logging.getLogger(__name__)
+        csv_path = Path(self.config.industry_index_file)
+        before_csv = self._pending_industry_csv_before
+        expected_csv_sha256 = self._pending_industry_csv_after_sha256
+        captures: List[Dict[str, Any]] = []
+        database_path = Path(self.config.db_file)
+        table_name = "industry_indices"
+        columns_sql = ", ".join(f'"{column}"' for column in CSV_COLUMNS)
+        committed = False
+        before_rows: List[Dict[str, Any]] = []
+        expected_rows: List[Dict[str, Any]] = []
+        expected_canonical: List[List[str | None]] = []
+        schema_signature: tuple[tuple[Any, ...], ...] = ()
+
+        def outcome(success: bool, message: str, *, partial: bool = False, rows: int = 0) -> Dict[str, Any]:
+            return {
+                "success": success,
+                "partial": partial,
+                "message": message,
+                "source": "industry_index",
+                "table": table_name,
+                "synced_records": rows if success else 0,
+                "capture_count": len(captures),
+                "batch_partial": batch_partial,
+                "failed_dates": sorted(set(failed_dates)),
+                "unknown_legacy_dates": sorted(set(unknown_legacy_dates)),
+                "projection_status": "not_committed",
+                "partial": partial or batch_partial,
+            }
+
+        def date_clause(dates: List[str]) -> tuple[str, List[str]]:
+            compact = [value.replace("-", "") for value in dates]
+            expression = "REPLACE(REPLACE(CAST(\"日期\" AS TEXT), '-', ''), '/', '')"
+            return f"{expression} IN ({','.join('?' for _ in compact)})", compact
+
+        def read_target(connection: sqlite3.Connection, dates: List[str]) -> List[Dict[str, Any]]:
+            clause, parameters = date_clause(dates)
+            result = connection.execute(
+                f"SELECT {columns_sql} FROM {table_name} WHERE {clause}",
+                parameters,
+            ).fetchall()
+            return [dict(row) for row in result]
+
+        def schema_for(connection: sqlite3.Connection) -> tuple[tuple[Any, ...], ...]:
+            rows = connection.execute(f'PRAGMA table_info("{table_name}")').fetchall()
+            return tuple(
+                (row["cid"], row["name"], row["type"], row["notnull"], row["dflt_value"], row["pk"])
+                for row in rows
+            )
+
+        def compensate_database() -> bool:
+            if not committed or not database_path.is_file():
+                return True
+            dates = sorted({str(item["source_date"]) for item in captures})
+            try:
+                with sqlite3.connect(database_path, timeout=30) as connection:
+                    connection.row_factory = sqlite3.Row
+                    connection.execute("BEGIN IMMEDIATE")
+                    if schema_for(connection) != schema_signature:
+                        connection.rollback()
+                        return False
+                    current = read_target(connection, dates)
+                    if canonical_rowset(current) != expected_canonical:
+                        connection.rollback()
+                        return False
+                    clause, parameters = date_clause(dates)
+                    connection.execute(f"DELETE FROM {table_name} WHERE {clause}", parameters)
+                    if before_rows:
+                        placeholders = ", ".join("?" for _ in CSV_COLUMNS)
+                        connection.executemany(
+                            f"INSERT INTO {table_name} ({columns_sql}) VALUES ({placeholders})",
+                            [tuple(row.get(column) for column in CSV_COLUMNS) for row in before_rows],
+                        )
+                    restored = read_target(connection, dates)
+                    if canonical_rowset(restored) != canonical_rowset(before_rows):
+                        connection.rollback()
+                        return False
+                    connection.commit()
+                return True
+            except Exception:
+                logger.exception("TWSE industry SQLite before-image compensation failed")
+                return False
+
+        def compensate_csv() -> bool:
+            if expected_csv_sha256 is None:
+                return True
+            try:
+                restore_csv_before_image(
+                    csv_path,
+                    before_csv,
+                    expected_current_sha256=expected_csv_sha256,
+                )
+                return True
+            except Exception:
+                logger.exception("TWSE industry CSV before-image compensation failed")
+                return False
+
+        try:
+            if not getattr(self.config, "use_sqlite", False):
+                raise TwseIndustryIndexCaptureError(
+                    "SQLite 未啟用；拒絕標記完整並回復本次 CSV projection"
+                )
+            if not capture_manifests:
+                return outcome(False, "沒有 TWSE capture receipt，拒絕執行日期範圍替換")
+            for manifest in capture_manifests:
+                captures.append(verify_capture_receipt(manifest, self.config.output_root))
+            dates = sorted({str(item["source_date"]) for item in captures})
+            if len(dates) != len(captures):
+                raise TwseIndustryIndexCaptureError("一個批次包含重複 source_date capture")
+            expected_rows = [
+                {column: row[index] for index, column in enumerate(CSV_COLUMNS)}
+                for item in captures
+                for row in item["rows"]
+            ]
+            expected_canonical = canonical_rowset(expected_rows)
+            row_keys = [(row["日期"], row["指數名稱"]) for row in expected_rows]
+            if len(row_keys) != len(set(row_keys)):
+                raise TwseIndustryIndexCaptureError("capture rowset 含重複日期/指數名稱鍵")
+            csv_rows, csv_sha256 = verify_csv_date_projection(csv_path, captures)
+            if canonical_rowset(csv_rows) != expected_canonical:
+                raise TwseIndustryIndexCaptureError("CSV six-column projection 與 captures 不符")
+            if expected_csv_sha256 is not None and csv_sha256 != expected_csv_sha256:
+                raise TwseIndustryIndexCaptureError("CSV 在更新與 SQLite 同步之間被其他 writer 修改")
+            if not database_path.is_file():
+                raise TwseIndustryIndexCaptureError("SQLite DB 不存在；不建立新 DB 或 schema")
+
+            with sqlite3.connect(database_path, timeout=30) as connection:
+                connection.row_factory = sqlite3.Row
+                schema_signature = schema_for(connection)
+                schema_columns = [row[1] for row in schema_signature]
+                if not all(column in schema_columns for column in CSV_COLUMNS):
+                    raise TwseIndustryIndexCaptureError("industry_indices schema 缺少既有六欄；不執行 DDL")
+                connection.execute("BEGIN IMMEDIATE")
+                before_rows = read_target(connection, dates)
+                before_keys = [(str(row.get("日期", "")).replace("-", "").replace("/", ""), str(row.get("指數名稱", "")).strip()) for row in before_rows]
+                if len(before_keys) != len(set(before_keys)):
+                    connection.rollback()
+                    raise TwseIndustryIndexCaptureError(
+                        "industry_indices transaction 前 scoped (日期, 指數名稱) 鍵重複"
+                    )
+                clause, parameters = date_clause(dates)
+                connection.execute(f"DELETE FROM {table_name} WHERE {clause}", parameters)
+                insert_rows = [
+                    tuple(
+                        row[column].replace("-", "") if column == "日期" and row[column] else row[column]
+                        for column in CSV_COLUMNS
+                    )
+                    for row in expected_rows
+                ]
+                placeholders = ", ".join("?" for _ in CSV_COLUMNS)
+                connection.executemany(
+                    f"INSERT INTO {table_name} ({columns_sql}) VALUES ({placeholders})",
+                    insert_rows,
+                )
+                in_transaction_rows = read_target(connection, dates)
+                transaction_keys = [
+                    (str(row.get("日期", "")).replace("-", "").replace("/", ""), str(row.get("指數名稱", "")).strip())
+                    for row in in_transaction_rows
+                ]
+                if len(transaction_keys) != len(set(transaction_keys)):
+                    connection.rollback()
+                    raise TwseIndustryIndexCaptureError(
+                        "industry_indices transaction 後 scoped (日期, 指數名稱) 鍵重複"
+                    )
+                if canonical_rowset(in_transaction_rows) != expected_canonical:
+                    connection.rollback()
+                    raise TwseIndustryIndexCaptureError("industry_indices transaction 內 rowset readback 不符")
+                connection.commit()
+                committed = True
+
+            # Read through a new connection after COMMIT; the marker is created only after this succeeds.
+            with sqlite3.connect(database_path, timeout=30) as readback_connection:
+                readback_connection.row_factory = sqlite3.Row
+                if schema_for(readback_connection) != schema_signature:
+                    raise TwseIndustryIndexCaptureError("SQLite schema 在同步期間改變")
+                sqlite_rows = read_target(readback_connection, dates)
+            readback_keys = [
+                (str(row.get("日期", "")).replace("-", "").replace("/", ""), str(row.get("指數名稱", "")).strip())
+                for row in sqlite_rows
+            ]
+            if len(readback_keys) != len(set(readback_keys)):
+                raise TwseIndustryIndexCaptureError(
+                    "獨立 SQLite readback scoped (日期, 指數名稱) 鍵重複"
+                )
+            if canonical_rowset(sqlite_rows) != expected_canonical:
+                raise TwseIndustryIndexCaptureError("獨立 SQLite readback rowset 不符")
+            # The CSV may be changed by another process while SQLite is being
+            # committed/read back. Re-read exact bytes and the scoped rowset
+            # immediately before the marker. This narrows the race window but
+            # does not replace a cross-process writer lock.
+            final_csv_rows, final_csv_sha256 = verify_csv_date_projection(
+                csv_path, captures,
+            )
+            if canonical_rowset(final_csv_rows) != expected_canonical:
+                raise TwseIndustryIndexCaptureError(
+                    "CSV marker 前日期範圍 readback 與 capture rowset 不符"
+                )
+            if (
+                expected_csv_sha256 is None
+                or final_csv_sha256 != expected_csv_sha256
+                or final_csv_sha256 != csv_sha256
+            ):
+                raise TwseIndustryIndexCaptureError(
+                    "CSV 在 SQLite commit 後至 marker 前被其他 writer 修改"
+                )
+            marker = create_industry_projection_commit_manifest(
+                output_root=self.config.output_root,
+                captures=captures,
+                csv_path=csv_path,
+                csv_sha256=final_csv_sha256,
+                database_path=database_path,
+                sqlite_rows=sqlite_rows,
+                batch_partial=batch_partial,
+                failed_dates=failed_dates,
+                unknown_legacy_dates=unknown_legacy_dates,
+            )
+            return {
+                **outcome(
+                    True,
+                    (
+                        "TWSE industry captured-date sync and exact readback complete; "
+                        "batch has failed dates and is partial"
+                        if batch_partial
+                        else "TWSE industry date-scoped SQLite sync and exact readback complete"
+                    ),
+                    rows=len(expected_rows),
+                ),
+                "projection_commit_marker": str(marker),
+                "projection_status": "committed_after_exact_csv_sqlite_readback",
+                "dates": dates,
+            }
+        except Exception as exc:
+            database_restored = compensate_database()
+            csv_restored = compensate_csv()
+            partial = not database_restored or not csv_restored
+            message = f"TWSE industry scoped sync failed: {exc}"
+            if partial:
+                message += "; before-image compensation could not be proven, status=partial"
+            else:
+                message += "; CSV/SQLite before-images restored or unchanged"
+            logger.error(message, exc_info=True)
+            return outcome(False, message, partial=partial)
+
     def _create_tpex_daily_price_source (self )->Any :
         from data_module .tpex_daily_price_source import TpexDailyPriceSource
 
-        return TpexDailyPriceSource (self .config .tpex_daily_price_dir )
+        return TpexDailyPriceSource (
+            self .config .tpex_daily_price_dir,
+            source_custody_root=self .config .output_root,
+        )
 
     def update_tpex_daily_price (
     self ,
@@ -617,6 +1393,7 @@ class UpdateService :
                 'diagnostic_count':int (result .diagnostic_count ),
                 'source_date':result .source_date ,
                 'output_file':str (result .output_file )if result .output_file else None ,
+                'source_custody':dict (getattr (result, 'source_custody', None) or {}) or None ,
                 }
 
             if result .source_date and result .source_date !=effective_target :
@@ -644,6 +1421,7 @@ class UpdateService :
                     'diagnostic_count':int (fallback_result .diagnostic_count ),
                     'source_date':fallback_result .source_date ,
                     'output_file':str (fallback_result .output_file )if fallback_result .output_file else None ,
+                    'source_custody':dict (getattr (fallback_result, 'source_custody', None) or {}) or None ,
                     }
 
             logger .warning ("[UpdateService] TPEX daily price update failed: %s",result .message )
@@ -691,6 +1469,7 @@ class UpdateService :
         import time
 
         logger =logging .getLogger (__name__ )
+        failure_diagnostics: list[dict[str, Any]] = []
         try :
             if _is_cancel_requested(cancel_callback):
                 return {
@@ -707,6 +1486,7 @@ class UpdateService :
                 'skipped_rows':0 ,
                 'diagnostic_count':0 ,
                 'source_dates':[],
+                'failure_diagnostics':[],
                 'sync_summary':None ,
                 }
             date_keys =self ._iter_weekday_date_keys (start_date ,end_date )
@@ -722,6 +1502,7 @@ class UpdateService :
                 'skipped_rows':0 ,
                 'diagnostic_count':0 ,
                 'source_dates':[],
+                'failure_diagnostics':[],
                 'sync_summary':None ,
                 'no_op':True ,
                 }
@@ -740,6 +1521,48 @@ class UpdateService :
             total_rows =0
             total_skipped_rows =0
             last_source_date :Optional [str ]=None
+            source_custody_receipts :list [dict [str ,Any ]]=[]
+
+            def append_failure_diagnostic(
+                requested_date: str,
+                result: Any,
+                *,
+                phase: str,
+            ) -> None:
+                """保留單日失敗上下文，避免區間摘要丟失來源診斷。"""
+                raw_message = str(getattr(result, 'message', '') or '')
+                diagnostic_count_value = getattr(result, 'diagnostic_count', 0)
+                try:
+                    diagnostic_count = max(0, int(diagnostic_count_value or 0))
+                except (TypeError, ValueError):
+                    diagnostic_count = 0
+                row_count_value = getattr(result, 'row_count', 0)
+                try:
+                    row_count = max(0, int(row_count_value or 0))
+                except (TypeError, ValueError):
+                    row_count = 0
+                skipped_count_value = getattr(result, 'skipped_count', 0)
+                try:
+                    skipped_count = max(0, int(skipped_count_value or 0))
+                except (TypeError, ValueError):
+                    skipped_count = 0
+                failure_diagnostics.append(
+                    {
+                        'requested_date': requested_date,
+                        'phase': phase,
+                        'success': bool(getattr(result, 'success', False)),
+                        'result_requested_date': getattr(result, 'requested_date', None),
+                        'source_date': getattr(result, 'source_date', None),
+                        'diagnostic_count': diagnostic_count,
+                        'row_count': row_count,
+                        'skipped_count': skipped_count,
+                        'message': raw_message[:_TPEX_FAILURE_MESSAGE_MAX_CHARS],
+                        'message_truncated': len(raw_message) > _TPEX_FAILURE_MESSAGE_MAX_CHARS,
+                        'source_custody_present': bool(
+                            getattr(result, 'source_custody', None)
+                        ),
+                    }
+                )
 
             def cancelled_result(message: str) -> Dict[str, Any]:
                 return {
@@ -754,8 +1577,11 @@ class UpdateService :
                 'warnings':[],
                 'tpex_rows':total_rows ,
                 'skipped_rows':total_skipped_rows ,
-                'diagnostic_count':0 ,
+                'diagnostic_count':sum(
+                    item['diagnostic_count'] for item in failure_diagnostics
+                ),
                 'source_dates':sorted (set (updated_dates )),
+                'failure_diagnostics':list(failure_diagnostics),
                 'sync_summary':None ,
                 }
 
@@ -792,6 +1618,13 @@ class UpdateService :
                 result =source .update_for_date (requested_date )
                 effective_source_date =result .source_date or requested_date
 
+                if not result.success:
+                    append_failure_diagnostic(
+                        requested_date,
+                        result,
+                        phase='requested',
+                    )
+
                 if _is_cancel_requested(cancel_callback):
                     return cancelled_result(f"TPEX 每日股價區間更新已取消（已完成 {requested_date}）")
 
@@ -801,6 +1634,8 @@ class UpdateService :
                     total_rows += int(result.row_count)
                     if effective_source_date != requested_date:
                         fallback_dates.append(effective_source_date)
+                    if getattr(result, 'source_custody', None):
+                        source_custody_receipts.append(dict(result.source_custody))
                 else:
                     twse_skipped = False
                     if twse_no_data_dates:
@@ -817,6 +1652,12 @@ class UpdateService :
                     fallback_dates .append (result .source_date )
                     if result .source_date not in source_date_seen :
                         fallback_result =source .update_for_date (result .source_date )
+                        if not fallback_result.success:
+                            append_failure_diagnostic(
+                                requested_date,
+                                fallback_result,
+                                phase='fallback',
+                            )
                         if _is_cancel_requested(cancel_callback):
                             return cancelled_result(
                                 f"TPEX 每日股價區間更新已取消（停止於 fallback {result.source_date}）"
@@ -827,6 +1668,8 @@ class UpdateService :
                             source_date_seen .add (fallback_source_date )
                             total_rows +=int (fallback_result .row_count )
                             effective_source_date =fallback_source_date
+                            if getattr(fallback_result, 'source_custody', None):
+                                source_custody_receipts.append(dict(fallback_result.source_custody))
                         else :
                             logger .warning (
                             "[UpdateService] TPEX fallback request failed: request=%s fallback=%s message=%s",
@@ -914,15 +1757,35 @@ class UpdateService :
             'warnings':warnings ,
             'tpex_rows':total_rows ,
             'skipped_rows':total_skipped_rows ,
-            'diagnostic_count':0 ,
+            'diagnostic_count':sum(
+                item['diagnostic_count'] for item in failure_diagnostics
+            ),
             'source_dates':unique_updated_dates ,
+            'source_custody':source_custody_receipts,
+            'failure_diagnostics':list(failure_diagnostics),
             'sync_summary':sync_summary ,
             }
         except Exception as exc :
             logger .exception ("[UpdateService] TPEX daily price range update failed")
+            range_failure_message = f'TPEX daily price range update failed: {exc}'
+            failure_diagnostics.append(
+                {
+                    'requested_date':self._date_key(start_date),
+                    'phase':'range',
+                    'success':False,
+                    'result_requested_date':None,
+                    'source_date':None,
+                    'diagnostic_count':1,
+                    'row_count':0,
+                    'skipped_count':0,
+                    'message':range_failure_message[:_TPEX_FAILURE_MESSAGE_MAX_CHARS],
+                    'message_truncated':len(range_failure_message) > _TPEX_FAILURE_MESSAGE_MAX_CHARS,
+                    'source_custody_present':False,
+                }
+            )
             return {
             'success':False ,
-            'message':f'TPEX daily price range update failed: {exc}',
+            'message':range_failure_message,
             'requested_dates':[],
             'updated_dates':[],
             'fallback_dates':[],
@@ -931,8 +1794,11 @@ class UpdateService :
             'warnings':[f"TPEX 每日股價缺少日期：{self ._date_key (start_date )}"],
             'tpex_rows':0 ,
             'skipped_rows':0 ,
-            'diagnostic_count':1 ,
+            'diagnostic_count':sum(
+                item['diagnostic_count'] for item in failure_diagnostics
+            ),
             'source_dates':[],
+            'failure_diagnostics':list(failure_diagnostics),
             'sync_summary':None ,
             }
 
@@ -1761,6 +2627,31 @@ class UpdateService :
             raise ValueError (f"無法從 DataFrame 提取有效日期進行替換: table={table_name}")
 
         try :
+            database_path = Path(db.db_path)
+            if table_name == 'technical_indicators':
+                validate_excluded_price_frame(database_path, df)
+                from data_module.formal_technical_raw_alias_repair import (
+                    validate_raw_alias_replacement,
+                )
+
+                validate_raw_alias_replacement(
+                    database_path,
+                    _technical_frame_records(df),
+                    replace_dates=True,
+                )
+            if table_name == 'daily_prices':
+                df = prepare_daily_price_revision_frame(
+                    database_path,
+                    df,
+                    replace_dates=dates,
+                )
+            elif table_name == 'market_indices':
+                validate_market_replacement(
+                    database_path,
+                    df.to_dict(orient='records'),
+                    replace_dates=True,
+                )
+
             db .ensure_columns (table_name ,list (df .columns ))
             placeholders =','.join ('?'for _ in dates )
             with db .connect ()as conn :
@@ -1783,6 +2674,19 @@ class UpdateService :
             df =df .drop_duplicates (subset =[code_col ,date_col ],keep ='last')
 
         try :
+            if table_name == 'technical_indicators':
+                validate_excluded_price_frame(Path(db.db_path), df)
+                from data_module.formal_technical_raw_alias_repair import (
+                    prepare_raw_alias_upsert_frame,
+                )
+
+                df = prepare_raw_alias_upsert_frame(Path(db.db_path), df)
+            if table_name == 'daily_prices':
+                df = prepare_daily_price_revision_frame(
+                    Path(db.db_path),
+                    df,
+                )
+
             db .ensure_columns (table_name ,list (df .columns ))
             with db .connect ()as conn :
                 table_columns =tuple (row ["name"]for row in conn .execute (f"PRAGMA table_info({table_name});").fetchall ())
@@ -1814,6 +2718,31 @@ class UpdateService :
             return True
 
         try :
+            database_path = Path(db.db_path)
+            if table_name == 'technical_indicators':
+                validate_excluded_price_frame(database_path, df)
+                from data_module.formal_technical_raw_alias_repair import (
+                    validate_raw_alias_replacement,
+                )
+
+                validate_raw_alias_replacement(
+                    database_path,
+                    _technical_frame_records(df),
+                    replace_all=True,
+                )
+            if table_name == 'daily_prices':
+                df = prepare_daily_price_revision_frame(
+                    database_path,
+                    df,
+                    replace_all=True,
+                )
+            elif table_name == 'market_indices':
+                validate_market_replacement(
+                    database_path,
+                    df.to_dict(orient='records'),
+                    replace_all=True,
+                )
+
             db .ensure_columns (table_name ,list (df .columns ))
             with db .connect ()as conn :
                 conn .execute (f'DELETE FROM {table_name};')
@@ -2047,7 +2976,9 @@ class UpdateService :
     def update_market (
     self ,
     start_date :str ,
-    end_date :str
+    end_date :str,
+    *,
+    capture_manifests: Optional[List[Path]] = None,
     )->Dict [str ,Any ]:
         """更新大盤指數數據
 
@@ -2071,7 +3002,6 @@ class UpdateService :
         import re
 
         logger =logging .getLogger (__name__ )
-
         # ✅ 記錄輸入參數
         logger .info (
         f"[UpdateService] 開始更新大盤指數數據: "
@@ -2135,12 +3065,16 @@ class UpdateService :
                 sig =inspect .signature (update_func )
                 params =list (sig .parameters .keys ())
 
-                if 'config'in params :
-                    logger .debug (f"[UpdateService] 更新函數支持 config 參數，傳遞配置")
-                    result =update_func (start_date =start_date ,end_date =end_date ,config =self .config )
-                else :
-                    logger .debug (f"[UpdateService] 更新函數不支持 config 參數，使用默認參數")
-                    result =update_func (start_date =start_date ,end_date =end_date )
+                update_kwargs: Dict[str, Any] = {
+                    "start_date": start_date,
+                    "end_date": end_date,
+                }
+                if 'config' in params:
+                    logger.debug("更新函數支持 config 參數，傳遞配置")
+                    update_kwargs["config"] = self.config
+                if capture_manifests is not None and 'capture_manifests' in params:
+                    update_kwargs["capture_manifests"] = capture_manifests
+                result = update_func(**update_kwargs)
                 logger .info (f"[UpdateService] 大盤指數更新函數執行完成")
 
                 # 解析結果（函數可能沒有返回值）
@@ -2196,10 +3130,27 @@ class UpdateService :
             'failed_dates':[]
             }
 
+    def publish_taiex_market_index(
+        self,
+        *,
+        capture_manifests: List[Path],
+        market_update_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """以 TAIEX 複合鍵同步完整 CSV，保留其他同日指數列。"""
+        from data_module.taiex_market_index_publication import publish_taiex_market_index
+
+        return publish_taiex_market_index(
+            config=self.config,
+            capture_manifests=capture_manifests,
+            market_update_result=market_update_result,
+        )
+
     def update_industry (
     self ,
     start_date :str ,
-    end_date :str
+    end_date :str ,
+    *,
+    reverify_unknown_legacy_dates: bool = False,
     )->Dict [str ,Any ]:
         """更新產業指數數據
 
@@ -2223,6 +3174,16 @@ class UpdateService :
         import re
 
         logger =logging .getLogger (__name__ )
+        # Block legacy whole-CSV synchronization before any industry update
+        # work; only a verified capture projection may clear this guard.
+        self._industry_update_block_legacy_sync = True
+        self._industry_update_succeeded_without_capture = False
+        self._pending_industry_batch_partial = False
+        self._pending_industry_failed_dates = []
+        self._pending_industry_unknown_legacy_dates = []
+        self._pending_industry_capture_manifests = []
+        self._pending_industry_csv_before = None
+        self._pending_industry_csv_after_sha256 = None
 
         # ✅ 記錄輸入參數
         logger .info (
@@ -2278,61 +3239,219 @@ class UpdateService :
                 'failed_dates':[]
                 }
 
-                # 執行更新函數
+            # 執行更新函數
             logger .info (f"[UpdateService] 開始執行產業指數更新函數")
+            capture_manifests: List[Path] = []
+            batch_outcome: Dict[str, Any] = {}
+            before_csv: bytes | None = None
             try :
             # ✅ 傳遞 config 給更新函數（如果它支持的話）
                 import inspect
                 update_func =update_module .batch_update_industry_index
                 sig =inspect .signature (update_func )
-                params =list (sig .parameters .keys ())
+                signature_parameters = list(sig.parameters.values())
+                params = [parameter.name for parameter in signature_parameters]
+                csv_path = Path(self.config.industry_index_file)
+                before_csv = csv_path.read_bytes() if csv_path.is_file() else None
 
-                if 'config'in params :
-                    logger .debug (f"[UpdateService] 更新函數支持 config 參數，傳遞配置")
-                    result =update_func (start_date =start_date ,end_date =end_date ,config =self .config )
-                else :
-                    logger .debug (f"[UpdateService] 更新函數不支持 config 參數，使用默認參數")
-                    result =update_func (start_date =start_date ,end_date =end_date )
+                update_kwargs: Dict[str, Any] = {
+                    'start_date': start_date,
+                    'end_date': end_date,
+                }
+                if 'config' in params:
+                    logger.debug("更新函數支持 config 參數，傳遞配置")
+                    update_kwargs['config'] = self.config
+                if 'capture_manifests' in params:
+                    update_kwargs['capture_manifests'] = capture_manifests
+                if 'batch_outcome' in params:
+                    update_kwargs['batch_outcome'] = batch_outcome
+                supports_legacy_reverification = (
+                    'reverify_unknown_legacy_dates' in params
+                )
+                if reverify_unknown_legacy_dates and not supports_legacy_reverification:
+                    message = (
+                        '已要求重新擷取未知 legacy 產業日期，但載入的批次更新器未明確支援此選項'
+                    )
+                    logger.error(message)
+                    return {
+                        'success': False,
+                        'partial': False,
+                        'message': message,
+                        'updated_dates': [],
+                        'recovered_dates': [],
+                        'failed_dates': [],
+                        'verified_skipped_dates': [],
+                        'unverified_legacy_dates': [],
+                        'pending_projection_dates': [],
+                        'capture_manifests': [],
+                        'source_status': 'legacy_reverification_contract_unsupported',
+                        'projection_status': 'not_started',
+                    }
+                if reverify_unknown_legacy_dates:
+                    update_kwargs['reverify_unknown_legacy_dates'] = True
+                result = update_func(**update_kwargs)
+                if capture_manifests:
+                    self._pending_industry_capture_manifests = list(capture_manifests)
+                    self._pending_industry_csv_before = before_csv
+                    if csv_path.is_file():
+                        self._pending_industry_csv_after_sha256 = hashlib.sha256(
+                            csv_path.read_bytes()
+                        ).hexdigest()
                 logger .info (f"[UpdateService] 產業指數更新函數執行完成")
 
-                # 解析結果（函數可能沒有返回值）
-                if result is None :
-                    return {
-                    'success':True ,
-                    'message':'產業指數更新完成',
-                    'updated_dates':[],
-                    'failed_dates':[]
-                    }
-                elif isinstance (result ,dict ):
-                    return {
-                    'success':result .get ('success',True ),
-                    'message':result .get ('message','更新完成'),
-                    'updated_dates':result .get ('updated_dates',[]),
-                    'failed_dates':result .get ('failed_dates',[])
-                    }
-                elif isinstance (result ,bool ):
-                    return {
-                    'success':result ,
-                    'message':'產業指數更新完成' if result else '產業指數更新失敗（批次更新回傳失敗）',
-                    'updated_dates':[],
-                    'failed_dates':[] if result else [start_date]
-                    }
-                else :
-                    return {
-                    'success':False ,
-                    'message':f'產業指數更新失敗（批次回傳型別無法辨識: {type(result).__name__}）',
-                    'updated_dates':[],
-                    'failed_dates':[start_date]
-                    }
+                # Keep successful captures date-scoped while preserving the
+                # batch failure signal if any requested dates were rejected.
+                if isinstance(result, dict):
+                    result_success = bool(result.get('success', True))
+                    updated_dates = list(result.get('updated_dates', []))
+                    recovered_dates = list(result.get('recovered_dates', []))
+                    failed_dates = list(result.get('failed_dates', []))
+                    result_message = str(result.get('message', '更新完成'))
+                elif result is None:
+                    result_success = True
+                    updated_dates = []
+                    recovered_dates = []
+                    failed_dates = []
+                    result_message = '產業指數更新完成'
+                elif isinstance(result, bool):
+                    result_success = result
+                    updated_dates = []
+                    recovered_dates = []
+                    failed_dates = [] if result else [start_date]
+                    result_message = (
+                        '產業指數更新完成'
+                        if result
+                        else '產業指數更新失敗（批次更新回傳失敗）'
+                    )
+                else:
+                    result_success = False
+                    updated_dates = []
+                    recovered_dates = []
+                    failed_dates = [start_date]
+                    result_message = (
+                        f'產業指數更新失敗（批次回傳型別無法辨識: {type(result).__name__}）'
+                    )
+
+                if batch_outcome:
+                    result_success = result_success and bool(
+                        batch_outcome.get('success', result_success)
+                    )
+                    updated_dates = list(batch_outcome.get('updated_dates', updated_dates))
+                    recovered_dates = list(batch_outcome.get('recovered_dates', recovered_dates))
+                    failed_dates = list(batch_outcome.get('failed_dates', failed_dates))
+                    source_status = batch_outcome.get('source_status')
+                    verified_skipped_dates = list(batch_outcome.get('verified_skipped_dates', []))
+                    unverified_legacy_dates = list(batch_outcome.get('unverified_legacy_dates', []))
+                    pending_projection_dates = list(
+                        batch_outcome.get('pending_projection_dates', [])
+                    )
+                else:
+                    source_status = None
+                    recovered_dates = []
+                    verified_skipped_dates = []
+                    unverified_legacy_dates = []
+                    pending_projection_dates = []
+                if not result_success and not failed_dates:
+                    if not unverified_legacy_dates:
+                        failed_dates = [start_date]
+                failed_dates = sorted(set(str(value) for value in failed_dates))
+                unverified_legacy_dates = sorted(set(str(value) for value in unverified_legacy_dates))
+                if unverified_legacy_dates and not capture_manifests:
+                    result_success = False
+                    result_message = (
+                        '保留既有 legacy CSV 日期為 unknown；本次沒有新的 TWSE capture 或更新證據'
+                    )
+                self._pending_industry_unknown_legacy_dates = unverified_legacy_dates
+                self._pending_industry_failed_dates = failed_dates
+                self._pending_industry_batch_partial = bool(
+                    capture_manifests
+                    and (failed_dates or not result_success or unverified_legacy_dates)
+                )
+                self._industry_update_succeeded_without_capture = bool(
+                    result_success and not failed_dates and not capture_manifests
+                )
+                result_message = (
+                    f'{result_message}；已有 capture 僅涵蓋成功日期，整批狀態為 partial'
+                    if self._pending_industry_batch_partial
+                    else result_message
+                )
+                return {
+                    'success': result_success and not failed_dates,
+                    'partial': self._pending_industry_batch_partial,
+                    'message': result_message,
+                    'updated_dates': updated_dates,
+                    'recovered_dates': recovered_dates,
+                    'failed_dates': failed_dates,
+                    'verified_skipped_dates': verified_skipped_dates,
+                    'unverified_legacy_dates': unverified_legacy_dates,
+                    'pending_projection_dates': pending_projection_dates,
+                    'source_status': source_status,
+                    'projection_status': (
+                        'pending_csv_sqlite_readback'
+                        if capture_manifests
+                        else 'not_started'
+                    ),
+                    'capture_manifests':[str(path) for path in capture_manifests],
+                }
             except Exception as e :
                 error_msg =f"執行產業指數更新函數時發生錯誤: {str(e)}"
                 logger .error (f"[UpdateService] {error_msg}")
                 logger .error (traceback .format_exc ())
+                captured_dates: List[str] = []
+                if capture_manifests:
+                    self._pending_industry_capture_manifests = list(capture_manifests)
+                    self._pending_industry_csv_before = before_csv
+                    csv_path = Path(self.config.industry_index_file)
+                    if csv_path.is_file():
+                        self._pending_industry_csv_after_sha256 = hashlib.sha256(
+                            csv_path.read_bytes()
+                        ).hexdigest()
+                    self._pending_industry_batch_partial = True
+                try:
+                    from data_module.twse_industry_index_capture import verify_capture_receipt
+                except Exception:
+                    logger.exception(
+                        "無法驗證 batch exception 前已保存的 TWSE capture receipts"
+                    )
+                else:
+                    for manifest in capture_manifests:
+                        try:
+                            receipt = verify_capture_receipt(
+                                manifest, self.config.output_root,
+                            )
+                            captured_dates.append(str(receipt["source_date"]))
+                        except Exception:
+                            logger.exception(
+                                "跳過無法驗證的 exception 前 capture date: %s",
+                                manifest,
+                            )
+
+                failure_code = (
+                    "batch_exception_after_capture"
+                    if capture_manifests
+                    else "batch_exception_without_capture"
+                )
+                partial_reason = (
+                    f"{failure_code}; exact failed date unknown within requested range "
+                    f"{start_date}..{end_date}"
+                )
+                self._pending_industry_failed_dates = []
+                self._pending_industry_unknown_legacy_dates = []
+                self._industry_update_succeeded_without_capture = False
                 return {
                 'success':False ,
-                'message':error_msg ,
-                'updated_dates':[],
-                'failed_dates':[]
+                'partial':bool(capture_manifests),
+                'message':f'{error_msg}；{partial_reason}' ,
+                'updated_dates':sorted(set(captured_dates)),
+                'failed_dates':[],
+                'capture_manifests':[str(path) for path in capture_manifests],
+                'failure_date_unknown':True,
+                'failure_date_range':{
+                    'start_date':start_date,
+                    'end_date':end_date,
+                },
+                'partial_reason':partial_reason,
+                'failure_reason_code':failure_code,
                 }
 
         except Exception as e :
@@ -2372,6 +3491,17 @@ class UpdateService :
         except (OSError, ValueError, TypeError):
             return None
         return payload if isinstance(payload, dict) else None
+
+    def _freshness_receipt_binding(self) -> FreshnessReceiptBinding:
+        """建立 receipt 必須符合的目前路徑、日曆政策與查詢時鐘。"""
+        candidate_path = configured_candidate_db_path()
+        return FreshnessReceiptBinding(
+            data_root=str(getattr(self.config, "data_root", "")),
+            db_path=str(getattr(self.config, "db_file", "")),
+            output_root=str(getattr(self.config, "output_root", "")),
+            candidate_db_path=str(candidate_path) if candidate_path is not None else None,
+            evaluated_at=datetime.now(timezone.utc),
+        )
 
     def _sqlite_unavailable_status(self) -> Dict[str, Any]:
         """回傳明確 unavailable payload，讓 UI／一鍵更新不會假裝成功。"""
@@ -2887,7 +4017,8 @@ class UpdateService :
                 'technical_indicators':self ._technical_status_from_sqlite (),
                 'monthly_revenue':self ._monthly_revenue_status_from_sqlite (),
                 }, apply_freshness=True, include_contract=True,
-                   freshness_receipt=self._read_freshness_receipt())
+                   freshness_receipt=self._read_freshness_receipt(),
+                   freshness_binding=self._freshness_receipt_binding())
                 logger .info ("[UpdateService] 成功從 SQLite 資料庫極速獲取數據狀態！")
                 return result
             except Exception as sql_err :
@@ -3083,7 +4214,8 @@ class UpdateService :
                 'technical_indicators':self ._technical_status_from_sqlite (),
                 'monthly_revenue':self ._monthly_revenue_status_from_sqlite (),
                 },is_overview =True ,apply_freshness =True ,include_contract =True,
-                   freshness_receipt=self._read_freshness_receipt())
+                   freshness_receipt=self._read_freshness_receipt(),
+                   freshness_binding=self._freshness_receipt_binding())
                 return overview
             except Exception as sql_err :
                 import logging
@@ -3266,6 +4398,7 @@ class UpdateService :
                         apply_freshness=True,
                         include_contract=True,
                         freshness_receipt=self._read_freshness_receipt(),
+                        freshness_binding=self._freshness_receipt_binding(),
                     ).get(normalized, detail)
                 return enrich_status_mapping({normalized: detail}).get(normalized, detail)
             except Exception as sql_err :
@@ -4072,6 +5205,7 @@ class UpdateService :
         *,
         calculator,
         tasks: List[tuple[str, Any]],
+        publication_rows: Dict[str, List[int]],
         ignore_existing: bool,
         max_workers: int,
         max_in_flight: Optional[int],
@@ -4079,12 +5213,13 @@ class UpdateService :
         cancel_callback: Optional[Callable[[], bool]],
         progress_callback,
         logger,
+        raw_alias_active: bool = False,
+        publication_phase_port: Optional[Callable[[str], int]] = None,
     ) -> Dict[str, Any]:
         """執行受控技術指標 worker，並由父程序逐股保存結果。
 
-        ``tasks`` 已由 ``calculate_technical_indicators`` 完成日期與 warm-up
-        判斷，因此這裡不重新篩資料。worker 回傳的 DataFrame 只在記憶體中
-        傳回，所有 CSV／SQLite 寫入仍走既有 calculator 與後續整合 writer。
+        ``tasks`` 保留完整 OHLC prefix；worker 用相同 causal kernel 計算後，
+        父程序才依 publication rows 裁切，CSV／SQLite 寫入仍只在父程序完成。
         """
         from app_module.technical_indicator_process_pool import (
             run_bounded_indicator_pool,
@@ -4103,6 +5238,7 @@ class UpdateService :
         successful: List[str] = []
         failed: List[str] = list(pool.get("failed_ids", []))
         stored: List[Any] = []
+        publications: List[Any] = []
 
         total = len(tasks)
         for index, (stock_id, group_df) in enumerate(tasks, start=1):
@@ -4113,24 +5249,39 @@ class UpdateService :
                 if stock_id not in failed:
                     failed.append(stock_id)
                 continue
+            row_positions = publication_rows.get(str(stock_id), [])
+            if not row_positions:
+                continue
+            publish_frame = group_df.iloc[row_positions].copy()
+            publish_result = precomputed.iloc[row_positions].copy()
+            if raw_alias_active:
+                _assert_technical_raw_aliases_unchanged(publish_frame, publish_result)
             if progress_callback:
                 progress_callback(
                     f"process-pool 父程序寫入 {stock_id} ({index}/{total})...",
                     20 + int((index / max(total, 1)) * 70),
                 )
+            if publication_phase_port is not None:
+                publication_phase_port("stock_file_write_started")
             try:
                 result = calculator.calculate_and_store_indicators(
-                    group_df,
+                    publish_frame,
                     stock_id,
                     output_dir=self.config.technical_dir,
                     ignore_existing=ignore_existing,
-                    precomputed_result=precomputed,
+                    precomputed_result=publish_result,
                 )
             except Exception as exc:  # noqa: BLE001
+                if publication_phase_port is not None:
+                    publication_phase_port("stock_file_write_failed")
                 logger.error("process-pool 父程序保存股票 %s 失敗: %s", stock_id, exc)
                 result = None
+            else:
+                if publication_phase_port is not None:
+                    publication_phase_port("stock_file_write_returned")
             if isinstance(result, pd.DataFrame):
                 stored.append(result)
+                publications.append(publish_result)
                 successful.append(stock_id)
             elif stock_id not in failed:
                 failed.append(stock_id)
@@ -4150,6 +5301,7 @@ class UpdateService :
         return {
             "report": summary,
             "all_data": stored,
+            "publications": publications,
             "success_count": len(successful),
             "updated_stocks": successful,
             "fail_count": len(unique_failed),
@@ -4169,7 +5321,9 @@ class UpdateService :
     technical_process_pool :Optional [bool ]=None ,
     technical_process_pool_workers :Optional [int ]=None ,
     technical_process_pool_max_in_flight :Optional [int ]=None ,
-    technical_process_pool_max_retries :Optional [int ]=None
+    technical_process_pool_max_retries :Optional [int ]=None ,
+    recompute_currentity :bool =False,
+    publication_phase_port: Optional[Callable[[str], int]] = None,
     )->Dict [str ,Any ]:
         """計算技術指標
 
@@ -4181,6 +5335,8 @@ class UpdateService :
             cancel_callback: 合作式取消回調；只在安全邊界停止後續計算／寫入
             ignore_existing_files: 是否忽略現有指標文件，直接覆蓋（用於修復有問題的文件）
             incremental_lookback_days: 增量更新時往前回補的交易日數，避免技術指標缺少歷史序列
+            recompute_currentity: 已 current 的 technical table 仍需重新計算時，
+                只對 bounded lookback window 重算，不清空全量 technical table
             technical_process_pool: 明確覆寫 process-pool feature flag；預設讀取 config，且預設關閉
             technical_process_pool_workers: process-pool worker 上限；僅在 feature flag 開啟時使用
             technical_process_pool_max_in_flight: parent queue 的最大 in-flight 任務數
@@ -4200,589 +5356,32 @@ class UpdateService :
                 'end_date': str
             }
         """
-        import os
-        import sys
-        import importlib .util
-        import logging
-        import traceback
 
-        logger =logging .getLogger (__name__ )
-
-        process_pool_enabled = (
-            bool(getattr(self.config, "technical_process_pool_enabled", False))
-            if technical_process_pool is None
-            else bool(technical_process_pool)
-        )
-        process_pool_workers = int(
-            technical_process_pool_workers
-            if technical_process_pool_workers is not None
-            else getattr(self.config, "technical_process_pool_workers", 2)
-        )
-        process_pool_max_in_flight = (
-            technical_process_pool_max_in_flight
-            if technical_process_pool_max_in_flight is not None
-            else getattr(self.config, "technical_process_pool_max_in_flight", 4)
-        )
-        process_pool_max_retries = int(
-            technical_process_pool_max_retries
-            if technical_process_pool_max_retries is not None
-            else getattr(self.config, "technical_process_pool_max_retries", 1)
+        from app_module.technical_indicator_job import (
+            TechnicalIndicatorJob,
+            TechnicalIndicatorJobPorts,
         )
 
-        logger .info (
-        f"[UpdateService] 開始計算技術指標: "
-        f"target_stock={target_stock}, force_all={force_all}, start_date={start_date}, "
-        f"process_pool_enabled={process_pool_enabled}"
+        ports = TechnicalIndicatorJobPorts(
+            config=self.config,
+            get_indicator_latest_date=self._get_indicator_latest_date,
+            run_process_pool=self._run_technical_indicator_process_pool,
         )
-
-        if _is_cancel_requested(cancel_callback):
-            return {
-            'success':False ,
-            'cancelled':True ,
-            'message':'技術指標計算已取消（尚未開始）',
-            'total_stocks':0 ,
-            'success_count':0 ,
-            'fail_count':0 ,
-            'insufficient_data_count':0 ,
-            'updated_stocks':[] ,
-            'failed_stocks':[] ,
-            'start_date':'',
-            'end_date':''
-            }
-
-        if progress_callback :
-            progress_callback ("初始化技術指標計算器...",5 )
-
-        try :
-        # 導入技術指標計算模組
-            from analysis_module .technical_analysis .technical_indicators import TechnicalIndicatorCalculator
-
-            # 創建計算器
-            calculator =TechnicalIndicatorCalculator (logger )
-
-            if progress_callback :
-                progress_callback ("讀取股票數據...",10 )
-
-                # 讀取股票數據
-            import pandas as pd
-            if getattr (self .config ,'use_sqlite',False ):
-                try :
-                    from data_module .db_manager import DBManager
-                    db =DBManager (self .config )
-                    logger .info ("優先從 SQLite 載入價格數據進行技術指標計算...")
-                    table_info_df =db .execute_query ("PRAGMA table_info(daily_prices);")
-                    table_columns =[str (v ).strip ()for v in table_info_df ["name"]]if not table_info_df .empty else []
-                    date_column ="日期"
-                    stock_column ="股票代號"
-                    for candidate in ("日期","date","trade_date","trading_date","Date"):
-                        if candidate in table_columns :
-                            date_column =candidate
-                            break
-                    for candidate in ("證券代號","股票代號","stock_code","stock_id"):
-                        if candidate in table_columns :
-                            stock_column =candidate
-                            break
-                    stock_data =db .execute_query (
-                    f'SELECT * FROM daily_prices ORDER BY "{date_column}" ASC, "{stock_column}" ASC;'
-                    )
-                    if not stock_data .empty :
-                    # 確保日期與代號為字串型態，與後續邏輯一致
-                        if date_column in stock_data .columns :
-                            stock_data [date_column ]=stock_data [date_column ].astype (str )
-                        if stock_column in stock_data .columns :
-                            stock_data [stock_column ]=stock_data [stock_column ].astype (str ).str .strip ()
-                            # 將欄位型態轉換以相容原有業務邏輯
-                        numeric_cols =['成交股數','成交筆數','成交金額','開盤價','最高價','最低價','收盤價','漲跌價差',
-                        '最後揭示買價','最後揭示買量','最後揭示賣價','最後揭示賣量','本益比']
-                        for col in numeric_cols :
-                            if col in stock_data .columns :
-                                stock_data [col ]=pd .to_numeric (stock_data [col ],errors ='coerce')
-                    else :
-                        logger .warning ("SQLite daily_prices 表為空，降級讀取 CSV...")
-                        stock_data =pd .read_csv (self .config .stock_data_file ,dtype ={'證券代號':str },low_memory =False )
-                except Exception as sql_err :
-                    logger .warning (f"從 SQLite 載入價格數據失敗: {sql_err}，降級讀取 CSV...")
-                    stock_data =pd .read_csv (self .config .stock_data_file ,dtype ={'證券代號':str },low_memory =False )
-            else :
-                stock_data =pd .read_csv (self .config .stock_data_file ,dtype ={'證券代號':str },low_memory =False )
-
-            stock_code_column =next (
-            (col for col in ('證券代號','股票代號','證券代號','stock_id','stock_code')if col in stock_data .columns ),
-            None ,
-            )
-            if stock_code_column is None :
-                stock_code_candidates =[c for c in stock_data .columns if '代號'in str (c )]
-                stock_code_column =stock_code_candidates [0 ]if stock_code_candidates else None
-            if stock_code_column is None :
-                return {
-                'success':False ,
-                'message':'技術指標計算失敗：找不到可用的股票代碼文桩',
-                'total_stocks':0 ,
-                'success_count':0 ,
-                'fail_count':1 ,
-                'insufficient_data_count':0 ,
-                'updated_stocks':[],
-                'failed_stocks':[target_stock ]if target_stock else [],
-                'start_date':'',
-                'end_date':''
-                }
-
-            stock_data =stock_data .copy ()
-            stock_data [stock_code_column ]=stock_data [stock_code_column ].astype (str ).str .strip ()
-            stock_data =stock_data [stock_data [stock_code_column ].str .match (r'^\d{4}$')]
-
-            # 如果指定了特定股票，只處理該股票
-            if target_stock :
-                if target_stock not in stock_data [stock_code_column ].unique ():
-                    return {
-                    'success':False ,
-                    'message':f'指定的股票 {target_stock} 不存在於股票數據中',
-                    'total_stocks':0 ,
-                    'success_count':0 ,
-                    'fail_count':1 ,
-                    'insufficient_data_count':0 ,
-                    'updated_stocks':[],
-                    'failed_stocks':[target_stock ],
-                    'start_date':'',
-                    'end_date':''
-                    }
-                stock_data =stock_data [stock_data [stock_code_column ]==target_stock ]
-
-            auto_incremental =not force_all and start_date is None
-            if auto_incremental :
-                logger .info (
-                f"使用智慧增量技術指標計算，回看 {incremental_lookback_days} 個交易日"
-                )
-                if progress_callback :
-                    progress_callback (
-                    f"使用智慧增量模式，回看 {incremental_lookback_days} 個交易日",
-                    15
-                    )
-            elif force_all :
-                start_date =None
-                logger .info ("強制更新所有數據")
-                if progress_callback :
-                    progress_callback ("強制更新所有數據",15 )
-
-                    # 批次處理
-            grouped =stock_data .groupby (stock_code_column )
-            total_stocks =len (grouped )
-
-            if _is_cancel_requested(cancel_callback):
-                return {
-                'success':False ,
-                'cancelled':True ,
-                'message':'技術指標計算已取消（完成資料載入後）',
-                'total_stocks':total_stocks ,
-                'success_count':0 ,
-                'fail_count':0 ,
-                'insufficient_data_count':0 ,
-                'updated_stocks':[] ,
-                'failed_stocks':[] ,
-                'start_date':'',
-                'end_date':''
-                }
-
-            if progress_callback :
-                progress_callback (f"開始處理 {total_stocks} 支股票的技術指標...",20 )
-
-            results :Dict [str ,Any ]={
-            'total_stocks':total_stocks ,
-            'success_count':0 ,
-            'fail_count':0 ,
-            'insufficient_data_count':0 ,
-            'updated_stocks':[],
-            'failed_stocks':[],
-            'insufficient_stocks':[],
-            'start_date':'',
-            'end_date':'',
-            'technical_process_pool': {
-                'enabled': process_pool_enabled,
-                'production_worker_enabled': process_pool_enabled,
-                'parent_single_writer': True,
-            },
-            }
-
-            all_data =[]
-            pending_process_pool_tasks :List [tuple[str ,pd .DataFrame ]]=[]
-            min_date ="9999-12-31"
-            max_date ="1900-01-01"
-
-            # 處理每檔股票
-            for idx ,(stock_id ,group_df )in enumerate (grouped ):
-                if _is_cancel_requested(cancel_callback):
-                    results ['start_date']=min_date if min_date !="9999-12-31"else "未知"
-                    results ['end_date']=max_date if max_date !="1900-01-01"else "未知"
-                    return {
-                    'success':False ,
-                    'cancelled':True ,
-                    'message':f'技術指標計算已取消（停止於 {stock_id} 前）',
-                    **results
-                    }
-                progress =20 +int ((idx /total_stocks )*70 )# 20% 到 90%
-                if progress_callback :
-                    progress_callback (f"處理 {stock_id} ({idx+1}/{total_stocks})...",progress )
-
-                group_df =group_df .copy ()
-                for legacy_col ,canonical_col in (
-                ('日期','日期'),
-                ('證券代號','證券代號'),
-                ):
-                    if legacy_col ==canonical_col :
-                        continue
-                    if legacy_col in group_df .columns and canonical_col in group_df .columns :
-                        group_df =group_df .drop (columns =[legacy_col ])
-                    elif legacy_col in group_df .columns :
-                        group_df =group_df .rename (columns ={legacy_col :canonical_col })
-
-                        # 跳過數據量不足的股票
-                if len (group_df )<self .config .min_data_days :
-                    logger .debug (f"股票 {stock_id} 數據量不足，跳過")
-                    results ['insufficient_data_count']+=1
-                    results ['insufficient_stocks'].append (stock_id )
-                    continue
-
-                group_date_column ='日期'if '日期'in group_df .columns else (
-                '日期'if '日期'in group_df .columns else None
-                )
-
-                # 記錄日期範圍
-                if group_date_column :
-                    group_min_date =str (group_df [group_date_column ].min ())
-                    group_max_date =str (group_df [group_date_column ].max ())
-                    min_date =min (min_date ,group_min_date )
-                    max_date =max (max_date ,group_max_date )
-
-                    # 檢查是否需要更新（基於日期）
-                if auto_incremental and group_date_column :
-                    indicator_file =self .config .technical_dir /f'{stock_id}_indicators.csv'
-                    existing_latest_date =self ._get_indicator_latest_date (indicator_file )
-                    if existing_latest_date and not ignore_existing_files :
-                        date_col =group_df [group_date_column ]
-                        if not pd .api .types .is_string_dtype (date_col ):
-                            date_col =date_col .astype (str )
-                        normalized_dates =pd .to_datetime (date_col ,errors ='coerce')
-                        latest_ts =pd .to_datetime (existing_latest_date ,errors ='coerce')
-                        if pd .notna (latest_ts ):
-                            has_new_data =(normalized_dates >latest_ts ).any ()
-                            if not has_new_data :
-                                logger .debug (f"股票 {stock_id} 沒有新數據需要更新")
-                                continue
-
-                            sorted_dates =(
-                            pd .Series (normalized_dates .dropna ().unique ())
-                            .sort_values ()
-                            .reset_index (drop =True )
-                            )
-                            previous_dates =sorted_dates [sorted_dates <=latest_ts ]
-                            if len (previous_dates )>0 :
-                                warmup_index =max (len (previous_dates )-incremental_lookback_days ,0 )
-                                warmup_start =previous_dates .iloc [warmup_index ]
-                            else :
-                                warmup_start =sorted_dates .iloc [0 ]
-                            group_df =group_df [normalized_dates >=warmup_start ]
-                            logger .debug (
-                            f"股票 {stock_id} 智慧增量從 {warmup_start.strftime('%Y-%m-%d')} 重新計算"
-                            )
-                    else :
-                        logger .debug (f"股票 {stock_id} 無既有指標檔，使用完整股價序列計算")
-                elif start_date and group_date_column and not force_all :
-                    date_col =group_df [group_date_column ]
-                    if not pd .api .types .is_string_dtype (date_col ):
-                        date_col =date_col .astype (str )
-                    filtered_df =group_df [date_col >start_date ]
-                    if len (filtered_df )==0 :
-                        logger .debug (f"股票 {stock_id} 沒有新數據需要更新")
-                        continue
-                    group_df =filtered_df
-
-                    # 計算並保存指標
-                if _is_cancel_requested(cancel_callback):
-                    results ['start_date']=min_date if min_date !="9999-12-31"else "未知"
-                    results ['end_date']=max_date if max_date !="1900-01-01"else "未知"
-                    return {
-                    'success':False ,
-                    'cancelled':True ,
-                    'message':f'技術指標計算已取消（尚未處理 {stock_id}）',
-                    **results
-                    }
-                if process_pool_enabled:
-                    # 日期／增量 warm-up 已在父程序決定；worker 只接收這個
-                    # 精確 frame 做純計算，之後仍由父程序逐股寫入。
-                    pending_process_pool_tasks.append((str(stock_id), group_df.copy()))
-                    continue
-                try :
-                    result =calculator .calculate_and_store_indicators (
-                    group_df ,
-                    stock_id ,
-                    output_dir =self .config .technical_dir ,
-                    ignore_existing =ignore_existing_files or force_all
-                    )
-
-                    if isinstance (result ,pd .DataFrame ):
-                        all_data .append (result )
-                        results ['success_count']+=1
-                        results ['updated_stocks'].append (stock_id )
-                        logger .debug (f"成功處理股票 {stock_id}")
-                    else :
-                        results ['fail_count']+=1
-                        results ['failed_stocks'].append (stock_id )
-                        logger .warning (f"處理股票 {stock_id} 失敗")
-                    if _is_cancel_requested(cancel_callback):
-                        results ['start_date']=min_date if min_date !="9999-12-31"else "未知"
-                        results ['end_date']=max_date if max_date !="1900-01-01"else "未知"
-                        return {
-                        'success':False ,
-                        'cancelled':True ,
-                        'message':f'技術指標計算已取消（已完成 {stock_id}）',
-                        **results
-                        }
-                except Exception as e :
-                    logger .error (f"處理股票 {stock_id} 時發生錯誤: {str(e)}")
-                    results ['fail_count']+=1
-                    results ['failed_stocks'].append (stock_id )
-
-                    if _is_cancel_requested(cancel_callback):
-                        results ['start_date']=min_date if min_date !="9999-12-31"else "未知"
-                        results ['end_date']=max_date if max_date !="1900-01-01"else "未知"
-                        return {
-                        'success':False ,
-                        'cancelled':True ,
-                        'message':f'技術指標計算已取消（處理 {stock_id} 後）',
-                        **results
-                        }
-
-                    # 更新結果日期範圍
-            process_pool_report = None
-            if process_pool_enabled and pending_process_pool_tasks:
-                process_pool_result = self._run_technical_indicator_process_pool(
-                    calculator=calculator,
-                    tasks=pending_process_pool_tasks,
-                    ignore_existing=ignore_existing_files or force_all,
-                    max_workers=process_pool_workers,
-                    max_in_flight=process_pool_max_in_flight,
-                    max_retries=process_pool_max_retries,
-                    cancel_callback=cancel_callback,
-                    progress_callback=progress_callback,
-                    logger=logger,
-                )
-                process_pool_report = process_pool_result["report"]
-                results["technical_process_pool"] = process_pool_report
-                all_data.extend(process_pool_result["all_data"])
-                results["success_count"] += process_pool_result["success_count"]
-                results["updated_stocks"].extend(process_pool_result["updated_stocks"])
-                results["fail_count"] += process_pool_result["fail_count"]
-                results["failed_stocks"].extend(process_pool_result["failed_stocks"])
-                if process_pool_result["cancelled"]:
-                    results ['start_date']=min_date if min_date !="9999-12-31"else "未知"
-                    results ['end_date']=max_date if max_date !="1900-01-01"else "未知"
-                    return {
-                    'success':False ,
-                    'cancelled':True ,
-                    'message':'技術指標 process-pool 計算已取消（已停止後續合併）',
-                    **results
-                    }
-            results ['start_date']=min_date if min_date !="9999-12-31"else "未知"
-            results ['end_date']=max_date if max_date !="1900-01-01"else "未知"
-
-            if _is_cancel_requested(cancel_callback):
-                return {
-                'success':False ,
-                'cancelled':True ,
-                'message':'技術指標計算已取消（尚未合併輸出）',
-                **results
-                }
-
-            # 合併並儲存所有結果
-            if all_data :
-                if progress_callback :
-                    progress_callback ("合併所有指標數據...",90 )
-
-                logger .info ("合併所有指標數據...")
-
-                if _is_cancel_requested(cancel_callback):
-                    return {
-                    'success':False ,
-                    'cancelled':True ,
-                    'message':'技術指標計算已取消（合併前）',
-                    **results
-                    }
-
-                # ✅ 數據驗證：檢查每個 DataFrame 的完整性
-                valid_data =[]
-                for idx ,df in enumerate (all_data ):
-                    if df is None or len (df )==0 :
-                        logger .warning (f"跳過空數據（索引 {idx}）")
-                        continue
-
-                    df =df .rename (columns ={
-                    '日期':'日期',
-                    '證券代號':'證券代號',
-                    })
-                    df =df .loc [:,~df .columns .duplicated (keep ='last')]
-
-                    # 檢查必要欄位
-                    required_cols =['日期','證券代號']
-                    missing_cols =[col for col in required_cols if col not in df .columns ]
-                    if missing_cols :
-                        logger .warning (f"跳過缺少必要欄位 {missing_cols} 的數據（索引 {idx}）")
-                        continue
-
-                        # 檢查日期欄位是否有效
-                    if '日期'in df .columns :
-                        date_col =pd .to_datetime (df ['日期'],errors ='coerce')
-                        valid_dates =date_col .notna ().sum ()
-                        if valid_dates ==0 :
-                            logger .warning (f"跳過日期欄位無效的數據（索引 {idx}）")
-                            continue
-
-                    valid_data .append (df )
-
-                if not valid_data :
-                    logger .error ("沒有有效的數據可以合併！")
-                    return {
-                    'success':False ,
-                    'message':'沒有有效的數據可以合併，請檢查技術指標計算結果',
-                    **results
-                    }
-
-                    # 合併有效數據
-                final_df =pd .concat (valid_data ,ignore_index =True )
-
-                # ✅ 數據驗證：檢查合併後的數據
-                logger .info (f"合併前有效數據數量: {len(valid_data)}")
-                logger .info (f"合併後總筆數: {len(final_df):,}")
-                logger .info (f"合併後股票數量: {final_df['證券代號'].nunique() if '證券代號' in final_df.columns else 'N/A'}")
-
-                # 檢查是否有重複數據
-                if '日期'in final_df .columns and '證券代號'in final_df .columns :
-                    duplicates =final_df .duplicated (subset =['日期','證券代號']).sum ()
-                    if duplicates >0 :
-                        logger .warning (f"發現 {duplicates} 筆重複數據（日期+證券代號），將去重")
-                        final_df =final_df .drop_duplicates (subset =['日期','證券代號'],keep ='last')
-                        logger .info (f"去重後總筆數: {len(final_df):,}")
-
-                save_path =self .config .all_stocks_data_file
-                skip_csv_save =getattr (self .config ,'use_sqlite',False )and auto_incremental
-
-                if _is_cancel_requested(cancel_callback):
-                    return {
-                    'success':False ,
-                    'cancelled':True ,
-                    'message':'技術指標計算已取消（寫入整合輸出前）',
-                    **results
-                    }
-
-                if not skip_csv_save :
-                # 創建備份
-                    if save_path .exists ():
-                        logger .info (f"備份現有的整合指標文件: {save_path}")
-                        self .config .create_backup (save_path )
-
-                        # 保存
-                    final_df .to_csv (save_path ,index =False ,encoding ='utf-8-sig')
-                    file_size_mb =save_path .stat ().st_size /1024 /1024
-                    logger .info (f"已保存整合指標到: {save_path}（檔案大小: {file_size_mb:.2f} MB）")
-                else :
-                    logger .info ("智慧增量模式且啟用 SQLite，跳過大型 all_stocks_data.csv 合併重寫，直接使用增量寫入 SQLite。")
-
-                    # 🌟 如果啟用 SQLite，同步將指標寫入 SQLite technical_indicators 表中
-                if getattr (self .config ,'use_sqlite',False ):
-                    if _is_cancel_requested(cancel_callback):
-                        return {
-                        'success':False ,
-                        'cancelled':True ,
-                        'message':'技術指標計算已取消（尚未寫入 SQLite）',
-                        **results
-                        }
-                    logger .info ("檢測到啟用 SQLite，開始同步寫入資料庫 technical_indicators 表...")
-                    if progress_callback :
-                        progress_callback ("正在將指標寫入 SQLite 資料庫...",95 )
-                    try :
-                        from data_module .db_manager import DBManager
-                        db =DBManager (self .config )
-
-                        df_db =final_df .copy ()
-                        df_db =df_db .rename (columns ={
-                        '日期':'日期',
-                        '證券代號':'證券代號',
-                        })
-                        df_db =df_db .loc [:,~df_db .columns .duplicated (keep ='last')]
-                        # 統一日期與代號格式
-                        df_db ['日期']=df_db ['日期'].apply (lambda x :str (x ).replace ('-','').replace ('/',''))
-                        df_db ['證券代號']=df_db ['證券代號'].astype (str ).str .zfill (4 )
-
-                        # 剔除價格與重複欄位以防止重複儲存
-                        cols_to_drop =[c for c in ['證券名稱','開盤價','最高價','最低價','收盤價','成交股數','成交量']if c in df_db .columns ]
-                        if cols_to_drop :
-                            df_db =df_db .drop (columns =cols_to_drop )
-
-                            # 確保 non-PK 欄位為數值型
-                        for col in df_db .columns :
-                            if col not in ['日期','證券代號']:
-                                df_db [col ]=pd .to_numeric (df_db [col ],errors ='coerce')
-
-                                # 判斷是否為增量更新
-                        if auto_incremental :
-                            logger .info ("智慧增量模式下，僅刪除並更新變更的技術指標記錄...")
-                            with db .connect ()as conn :
-                                conn .executemany (
-                                "DELETE FROM technical_indicators WHERE 證券代號 = ? AND 日期 = ?;",
-                                df_db [['證券代號','日期']].values .tolist ()
-                                )
-                            success =db .write_dataframe ('technical_indicators',df_db ,if_exists ='append')
-                        else :
-                        # 全量模式下，清空現有 table 進行全新全量寫入
-                            logger .info ("全量模式下，清空 technical_indicators 表後全新寫入...")
-                            with db .connect ()as conn :
-                                conn .execute ("DELETE FROM technical_indicators;")
-                            success =db .write_dataframe ('technical_indicators',df_db ,if_exists ='append')
-                        if success :
-                            logger .info ("技術指標成功批次寫入 SQLite 資料庫！")
-                        else :
-                            logger .error ("技術指標寫入 SQLite 失敗！")
-                    except Exception as sql_err :
-                        logger .error (f"技術指標同步寫入 SQLite 時發生錯誤: {sql_err}")
-
-                if progress_callback :
-                    progress_callback ("技術指標計算完成",100 )
-
-                    # 生成結果訊息
-            message =(
-            f"技術指標計算完成：\n"
-            f"總處理股票數: {results['total_stocks']}\n"
-            f"成功處理數: {results['success_count']}\n"
-            f"失敗數: {results['fail_count']}\n"
-            f"數據不足股票數: {results['insufficient_data_count']}\n"
-            f"處理數據日期範圍: {results['start_date']} 至 {results['end_date']}"
-            )
-
-            process_pool_failed = bool(
-                process_pool_report
-                and process_pool_report.get("status") in {"failed", "partial"}
-            )
-            return {
-            'success':not process_pool_failed ,
-            'message':message ,
-            **results
-            }
-
-        except Exception as e :
-            error_msg =f"計算技術指標時發生錯誤: {str(e)}"
-            logger .error (error_msg )
-            logger .error (traceback .format_exc ())
-            return {
-            'success':False ,
-            'message':f"{error_msg}\n{traceback.format_exc()}",
-            'total_stocks':0 ,
-            'success_count':0 ,
-            'fail_count':0 ,
-            'insufficient_data_count':0 ,
-            'updated_stocks':[],
-            'failed_stocks':[],
-            'start_date':'',
-            'end_date':''
-            }
+        return TechnicalIndicatorJob(ports).run(
+            target_stock=target_stock,
+            force_all=force_all,
+            start_date=start_date,
+            progress_callback=progress_callback,
+            cancel_callback=cancel_callback,
+            ignore_existing_files=ignore_existing_files,
+            incremental_lookback_days=incremental_lookback_days,
+            technical_process_pool=technical_process_pool,
+            technical_process_pool_workers=technical_process_pool_workers,
+            technical_process_pool_max_in_flight=technical_process_pool_max_in_flight,
+            technical_process_pool_max_retries=technical_process_pool_max_retries,
+            recompute_currentity=recompute_currentity,
+            publication_phase_port=publication_phase_port,
+        )
 
     def export_table_to_csv (
     self ,
@@ -5031,8 +5630,10 @@ class UpdateService :
             }
 
         def inspect_candidate(table_name: str, source: str) -> Dict[str, Any]:
-            if candidate_db is None or not candidate_db.exists():
-                return empty_info()
+            if candidate_db is None:
+                return {**empty_info(), "candidate_read_status": "not_configured"}
+            if not candidate_db.exists():
+                return {**empty_info(), "candidate_read_status": "missing"}
             try:
                 import sqlite3
                 read_only_uri = (
@@ -5045,7 +5646,7 @@ class UpdateService :
                         f"COUNT(DISTINCT decision_date) FROM {table_name}"
                     ).fetchone()
                     if row is None or int(row[0]) == 0:
-                        return empty_info()
+                        return {**empty_info(), "candidate_read_status": "available"}
                     try:
                         success_count, attempted_count = conn.execute(
                             """
@@ -5069,9 +5670,14 @@ class UpdateService :
                         "latest_date": row[2] or "無",
                         "coverage_pct": coverage,
                         "distinct_dates": int(row[3]),
+                        "candidate_read_status": "available",
                     }
-            except Exception:
-                return empty_info()
+            except Exception as exc:
+                return {
+                    **empty_info(),
+                    "candidate_read_status": "error",
+                    "candidate_read_error": f"{type(exc).__name__}: {exc}",
+                }
 
         result: Dict[str, Any] = {}
         for key, (table_name, source) in tables.items():
@@ -5092,7 +5698,14 @@ class UpdateService :
                 "disclaimer": "候選研究資料，不參與評分或投資決策",
                 "formal_records": 0,
                 "candidate_records": info["total_records"],
+                "candidate_earliest_date": info["earliest_date"],
                 "candidate_latest_date": info["latest_date"],
+                "formal_latest_date": None,
+                "formal_earliest_date": None,
+                "candidate_status": (
+                    "CANDIDATE_AVAILABLE" if has_candidate else info["candidate_read_status"].upper()
+                ),
+                "formal_status": "MISSING",
             }
             if formal_reference_date:
                 result[key]["freshness_reference_date"] = formal_reference_date
@@ -5120,6 +5733,9 @@ class UpdateService :
                             continue
                         row = conn.execute(f"SELECT COUNT(*), MIN(decision_date), MAX(decision_date), COUNT(DISTINCT decision_date) FROM {table_name}").fetchone()
                         result[key]["formal_records"] = int(row[0])
+                        result[key]["formal_latest_date"] = row[2]
+                        result[key]["formal_earliest_date"] = row[1]
+                        result[key]["formal_status"] = "FORMAL_AVAILABLE" if row[0] else "MISSING"
                         if row[0]:
                             result[key].update(
                                 total_records=int(row[0]), earliest_date=row[1], latest_date=row[2],
@@ -5135,4 +5751,5 @@ class UpdateService :
             except sqlite3.Error as exc:
                 for info in result.values():
                     info["formal_read_error"] = str(exc)
+                    info["formal_status"] = "READ_ERROR"
         return result

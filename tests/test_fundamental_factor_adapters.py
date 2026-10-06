@@ -1,11 +1,13 @@
 from datetime import date
 from decimal import Decimal
 
+from data_module.contracts.fundamental import SourceDiagnostic, SourceDiagnosticKind
 from decision_module.factors.factor_dtos import FactorQuality, MissingPolicy
 from decision_module.factors.factor_gate import FactorGate
 from decision_module.factors.fundamental_adapters import (
     FundamentalObservation,
     build_revenue_yoy_factor,
+    source_diagnostics_to_factor_diagnostics,
 )
 
 
@@ -85,3 +87,55 @@ def test_revenue_yoy_factor_gate_skips_future_available_date():
     assert gate_result.accepted == ()
     assert len(gate_result.skipped) == 1
     assert gate_result.diagnostics[0].code == "factor.skipped_lookahead"
+
+
+def test_source_diagnostic_adapter_preserves_order_and_legacy_factor_names():
+    source_diagnostics = (
+        SourceDiagnostic(
+            code="monthly_revenue_availability.fetch_failed",
+            stock_code="",
+            message="twse failed",
+            kind=SourceDiagnosticKind.AVAILABILITY_HISTORY,
+            market="twse",
+        ),
+        SourceDiagnostic(
+            code="fundamental_revenue.invalid_revenue",
+            stock_code="2330",
+            message="invalid revenue",
+            kind=SourceDiagnosticKind.MONTHLY_REVENUE,
+            period="2026-05",
+        ),
+        SourceDiagnostic(
+            code="monthly_revenue_snapshot.fetch_failed",
+            stock_code="",
+            message="tpex failed",
+            kind=SourceDiagnosticKind.MONTHLY_REVENUE_SNAPSHOT,
+            market="tpex",
+        ),
+    )
+
+    diagnostics = source_diagnostics_to_factor_diagnostics(source_diagnostics)
+
+    assert tuple(
+        (item.code, item.factor_name, item.stock_code, item.message)
+        for item in diagnostics
+    ) == (
+        (
+            "monthly_revenue_availability.fetch_failed",
+            "fundamental.availability.twse",
+            "",
+            "twse failed",
+        ),
+        (
+            "fundamental_revenue.invalid_revenue",
+            "fundamental.revenue",
+            "2330",
+            "invalid revenue",
+        ),
+        (
+            "monthly_revenue_snapshot.fetch_failed",
+            "fundamental.monthly_revenue_snapshot.tpex",
+            "",
+            "tpex failed",
+        ),
+    )

@@ -936,6 +936,8 @@ def _run_shadow_evidence_collector(
     *,
     database_path: Path,
     paper_state_db_path: Path,
+    paper_trade_ledger_db_path: Path | None,
+    official_calendar: object | None,
     run_root: Path,
     decision_date: date,
     strict_t_minus_one: date,
@@ -959,6 +961,7 @@ def _run_shadow_evidence_collector(
     collector = MLAllocationShadowCollector(
         market_database_path=database_path,
         paper_state_db_path=paper_state_db_path,
+        paper_trade_ledger_db_path=paper_trade_ledger_db_path,
         sidecar_database_path=collector_root / "shadow_evidence.sqlite",
         artifact_root=collector_root,
         promotion_reference_path=(
@@ -971,6 +974,7 @@ def _run_shadow_evidence_collector(
             if promotion_reference is not None
             else None
         ),
+        official_calendar=official_calendar,
     )
     return collector.record_and_mature(
         decision_date=decision_date,
@@ -1075,6 +1079,9 @@ def _base_status(
         "shadow_observation_hash": None,
         "shadow_observation_path": None,
         "shadow_observation_revision": None,
+        "paper_read_consistency": None,
+        "paper_preopen_coverage_receipt_path": None,
+        "paper_preopen_coverage_receipt_file_hash": None,
         "shadow_lane_count": 0,
         "shadow_evidence_hash": None,
         "shadow_evidence_path": None,
@@ -1127,6 +1134,27 @@ def _base_status(
         "writes_source_database": False,
         "changes_portfolio_state": False,
     }
+
+
+def _configured_related_shadow_sidecars(
+    *,
+    primary_sidecar: Path,
+) -> dict[str, Path]:
+    """Expose an existing forward sidecar as a diagnostic companion only."""
+
+    configured_root = os.environ.get("ML_FORWARD_OUTPUT_ROOT")
+    if not isinstance(configured_root, str) or not configured_root.strip():
+        return {}
+    candidate = (
+        Path(configured_root).expanduser().resolve()
+        / "scheduled"
+        / "ml_allocation_copilot"
+        / "shadow_evidence_collector"
+        / "shadow_evidence.sqlite"
+    )
+    if candidate == primary_sidecar.expanduser().resolve():
+        return {}
+    return {"natural_forward_candidate": candidate}
 
 
 def _write_status(
@@ -1300,12 +1328,18 @@ def _write_status(
                         # Keep the existing decision-date projection fallback;
                         # the malformed maturity field remains visible in status.
                         pass
+                primary_sidecar = (
+                    run_root / "shadow_evidence_collector" / "shadow_evidence.sqlite"
+                )
                 pruning_result = run_natural_shadow_pruning_evidence(
-                    sidecar_database_path=(
-                        run_root / "shadow_evidence_collector" / "shadow_evidence.sqlite"
-                    ),
+                    sidecar_database_path=primary_sidecar,
                     output_root=run_root,
                     as_of_date=projection_cutoff,
+                    related_sidecar_database_paths=(
+                        _configured_related_shadow_sidecars(
+                            primary_sidecar=primary_sidecar
+                        )
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001 - status must remain fail-closed
                 pruning_result = {
@@ -1471,6 +1505,7 @@ def run(
     output_root: Path,
     release_root: Path,
     paper_state_db_path: Path | None = None,
+    paper_trade_ledger_db_path: Path | None = None,
     decision_at: datetime,
     decision_selection_mode: str = "requested",
     requested_decision_at: datetime | None = None,
@@ -2217,6 +2252,8 @@ def run(
         shadow = _run_shadow_evidence_collector(
             database_path=database_path,
             paper_state_db_path=effective_paper_state_db_path,
+            paper_trade_ledger_db_path=paper_trade_ledger_db_path,
+            official_calendar=calendar_service,
             run_root=run_root,
             decision_date=local_decision_at.date(),
             strict_t_minus_one=strict_t_minus_one,
@@ -2301,6 +2338,43 @@ def run(
             shadow.get("observation_path"),
             field_name="shadow.observation_path",
         )
+        paper_read_consistency = shadow.get("paper_read_consistency")
+        if paper_read_consistency is not None and not isinstance(
+            paper_read_consistency,
+            Mapping,
+        ):
+            raise ValueError(
+                "shadow.paper_read_consistency must be an object or null"
+            )
+        status["paper_read_consistency"] = (
+            None
+            if paper_read_consistency is None
+            else dict(paper_read_consistency)
+        )
+        paper_receipt_path = shadow.get(
+            "paper_preopen_coverage_receipt_path"
+        )
+        if paper_receipt_path is not None and not isinstance(
+            paper_receipt_path,
+            str,
+        ):
+            raise ValueError(
+                "shadow.paper_preopen_coverage_receipt_path must be a string or null"
+            )
+        status["paper_preopen_coverage_receipt_path"] = paper_receipt_path
+        paper_receipt_file_hash = shadow.get(
+            "paper_preopen_coverage_receipt_file_hash"
+        )
+        if paper_receipt_file_hash is not None and not isinstance(
+            paper_receipt_file_hash,
+            str,
+        ):
+            raise ValueError(
+                "shadow.paper_preopen_coverage_receipt_file_hash must be a string or null"
+            )
+        status["paper_preopen_coverage_receipt_file_hash"] = (
+            paper_receipt_file_hash
+        )
         status["shadow_observation_revision"] = _integer(
             shadow.get("observation_revision"),
             field_name="shadow.observation_revision",
@@ -2371,6 +2445,13 @@ def run(
             "status": "completed",
             "observation_hash": status["shadow_observation_hash"],
             "observation_path": status["shadow_observation_path"],
+            "paper_read_consistency": status["paper_read_consistency"],
+            "paper_preopen_coverage_receipt_path": status[
+                "paper_preopen_coverage_receipt_path"
+            ],
+            "paper_preopen_coverage_receipt_file_hash": status[
+                "paper_preopen_coverage_receipt_file_hash"
+            ],
             "observation_emitted_at": shadow.get("observation_emitted_at"),
             "natural_forward_deadline_at": shadow.get(
                 "natural_forward_deadline_at"
@@ -2667,6 +2748,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="append-only Paper ledger sidecar；決策日只讀取嚴格 T-1 快照。",
     )
     parser.add_argument(
+        "--paper-trade-ledger-db",
+        type=Path,
+        default=output_root / "paper_portfolio" / "paper_trade_ledger.sqlite",
+        help=(
+            "append-only Paper transaction ledger；以 query-only 讀取實際"
+            " turnover_bp，不能由 snapshot 權重漂移反推。"
+        ),
+    )
+    parser.add_argument(
         "--promotion-reference-pointer",
         type=Path,
         default=(
@@ -2896,6 +2986,7 @@ def main(argv: list[str] | None = None) -> int:
                 output_root=args.output_root,
                 release_root=args.release_root,
                 paper_state_db_path=args.paper_state_db,
+                paper_trade_ledger_db_path=args.paper_trade_ledger_db,
                 decision_at=candidate_decision_at,
                 decision_selection_mode=selection_mode,
                 requested_decision_at=requested_decision_at,

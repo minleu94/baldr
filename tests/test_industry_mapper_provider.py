@@ -1,12 +1,61 @@
+from datetime import datetime, timezone
+import hashlib
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 
 from decision_module.industry_mapper import IndustryMapper
+from data_module.company_registry import (
+    COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR,
+    build_company_registry_source_contract,
+    company_registry_source_contract_path,
+    write_company_registry_source_contract,
+)
+from data_module.industry_mapper_data_provider import (
+    INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR,
+    IndustryMapperDataProvider,
+    _canonical_frame_value,
+    _industry_index_date_iso,
+    _industry_index_date_range,
+    industry_index_frame_rowset_sha256,
+    industry_index_source_observation_hash_matches,
+)
+
+
+def _write_companies(tmp_path) -> None:
+    companies_file = tmp_path / "companies.csv"
+    companies_file.write_text(
+        "stock_id,stock_name,industry_category\n2330,合成公司,半導體業\n",
+        encoding="utf-8-sig",
+    )
+
+
+def _config(tmp_path, *, use_sqlite: bool = True):
+    return SimpleNamespace(
+        meta_data_dir=tmp_path,
+        industry_index_file=tmp_path / "industry_index.csv",
+        use_sqlite=use_sqlite,
+    )
+
+
+def _mapper(config, *, index_provider=None, companies_provider=None):
+    reader = IndustryMapperDataProvider(config)
+    return IndustryMapper(
+        config,
+        index_provider if index_provider is not None else reader.load_legacy_industry_index,
+        companies_provider=(
+            companies_provider
+            if companies_provider is not None
+            else reader.load_companies
+        ),
+    )
 
 
 def test_industry_mapper_uses_injected_industry_index_provider(tmp_path) -> None:
+    _write_companies(tmp_path)
     provider = MagicMock(
         return_value=pd.DataFrame(
             {
@@ -16,17 +65,14 @@ def test_industry_mapper_uses_injected_industry_index_provider(tmp_path) -> None
             }
         )
     )
-    config = SimpleNamespace(
-        meta_data_dir=tmp_path,
-        industry_index_file=tmp_path / "missing.csv",
-        use_sqlite=True,
-    )
-
-    mapper = IndustryMapper(config, industry_index_provider=provider)
+    mapper = _mapper(_config(tmp_path), index_provider=provider)
 
     provider.assert_called_once_with()
     assert mapper.industry_index_df is not None
     assert str(mapper.industry_index_df["日期"].dtype).startswith("datetime64")
+    assert mapper.get_stock_industries("2330") == ["半導體業"]
+    assert mapper.industry_normalization == {"半導體": "半導體類指數"}
+    assert mapper.get_industry_index_name("半導體業") == "半導體類指數"
 
 
 def test_industry_mapper_preserves_iso_dates_from_provider_csv_fallback(tmp_path) -> None:
@@ -39,15 +85,418 @@ def test_industry_mapper_preserves_iso_dates_from_provider_csv_fallback(tmp_path
             }
         )
     )
-    config = SimpleNamespace(
-        meta_data_dir=tmp_path,
-        industry_index_file=tmp_path / "missing.csv",
-        use_sqlite=True,
+    mapper = _mapper(
+        _config(tmp_path), index_provider=provider, companies_provider=lambda: None
     )
-
-    mapper = IndustryMapper(config, industry_index_provider=provider)
 
     assert mapper.industry_index_df is not None
     assert mapper.industry_index_df["日期"].dt.strftime("%Y-%m-%d").tolist() == [
         "2026-07-10"
     ]
+
+
+def test_industry_mapper_missing_index_file_keeps_company_categories(tmp_path) -> None:
+    _write_companies(tmp_path)
+
+    mapper = _mapper(_config(tmp_path, use_sqlite=False))
+
+    assert mapper.industry_index_df is None
+    assert mapper.get_stock_industries("2330") == ["半導體業"]
+    assert mapper.industry_normalization == {}
+    assert mapper.get_industry_index_name("半導體業") is None
+    assert mapper.get_industry_performance("半導體業") is None
+
+
+def test_industry_mapper_empty_index_file_keeps_company_categories(tmp_path) -> None:
+    _write_companies(tmp_path)
+    (tmp_path / "industry_index.csv").write_text(
+        "日期,指數名稱,收盤指數\n",
+        encoding="utf-8-sig",
+    )
+
+    mapper = _mapper(_config(tmp_path, use_sqlite=False))
+
+    assert mapper.industry_index_df is not None
+    assert mapper.industry_index_df.empty
+    assert mapper.get_stock_industries("2330") == ["半導體業"]
+    assert mapper.industry_normalization == {}
+    assert mapper.get_industry_index_name("半導體業") is None
+    assert mapper.get_industry_performance("半導體業") is None
+
+
+@pytest.mark.parametrize("index_shape", ["empty", "missing_index_name"])
+def test_industry_mapper_incomplete_index_omits_index_mapping_without_losing_companies(
+    tmp_path,
+    index_shape: str,
+) -> None:
+    _write_companies(tmp_path)
+    if index_shape == "empty":
+        index_frame = pd.DataFrame()
+    else:
+        index_frame = pd.DataFrame(
+            {
+                "日期": ["20260710"],
+                "收盤指數": [100],
+            }
+        )
+    provider = MagicMock(return_value=index_frame)
+
+    mapper = _mapper(_config(tmp_path), index_provider=provider)
+
+    assert mapper.get_stock_industries("2330") == ["半導體業"]
+    assert mapper.industry_normalization == {}
+    assert mapper.get_industry_index_name("半導體業") is None
+    assert mapper.get_industry_performance("半導體業") is None
+
+
+def test_industry_mapper_keeps_positional_index_provider_and_requires_company_provider(
+    tmp_path,
+) -> None:
+    index_provider = MagicMock(return_value=pd.DataFrame())
+    company_provider = MagicMock(return_value=None)
+    mapper = IndustryMapper(
+        _config(tmp_path), index_provider, companies_provider=company_provider
+    )
+
+    index_provider.assert_called_once_with()
+    company_provider.assert_called_once_with()
+    assert mapper.industry_index_df is not None
+    assert mapper.industry_index_df.empty
+
+    untouched_provider = MagicMock(return_value=pd.DataFrame())
+    with pytest.raises(ValueError, match="companies_provider"):
+        IndustryMapper(_config(tmp_path), untouched_provider)
+    untouched_provider.assert_not_called()
+
+
+def test_industry_mapper_validates_both_callables_before_reading_either(tmp_path) -> None:
+    company_provider = MagicMock(return_value=None)
+    with pytest.raises(TypeError, match="must be callable"):
+        IndustryMapper(
+            _config(tmp_path),
+            industry_index_provider=object(),
+            companies_provider=company_provider,
+        )
+    company_provider.assert_not_called()
+
+
+def test_industry_mapper_source_has_no_csv_or_database_io() -> None:
+    from pathlib import Path
+
+    source_path = Path(__file__).resolve().parents[1] / "decision_module" / "industry_mapper.py"
+    source = source_path.read_text(encoding="utf-8")
+
+    assert "pd.read_csv" not in source
+    assert "DBManager" not in source
+    assert "execute_query" not in source
+
+
+def test_company_reader_preserves_missing_and_read_error_as_none(tmp_path, monkeypatch) -> None:
+    config = _config(tmp_path)
+    reader = IndustryMapperDataProvider(config, db_factory=lambda _: None)
+    assert reader.load_companies() is None
+
+    _write_companies(tmp_path)
+    monkeypatch.setattr(pd, "read_csv", MagicMock(side_effect=OSError("bad csv")))
+    assert reader.load_companies() is None
+
+
+def test_company_reader_attaches_only_csv_bound_source_contract(tmp_path) -> None:
+    _write_companies(tmp_path)
+    companies_file = tmp_path / "companies.csv"
+    csv_bytes = companies_file.read_bytes()
+    sources = [
+        {
+            "market": market,
+            "source_id": f"official:{market}:registry",
+            "endpoint": None,
+            "requested_url": None,
+            "format": "local_json",
+            "response_bytes": 0,
+            "response_sha256": f"sha256:{hashlib.sha256(b'').hexdigest()}",
+            "available_at": None,
+            "status": "unknown",
+            "source_date": None,
+            "publication_date": None,
+        }
+        for market in ("twse", "tpex", "emerging")
+    ]
+    contract = build_company_registry_source_contract(
+        csv_bytes=csv_bytes,
+        sources=sources,
+        generated_at=datetime(2026, 9, 27, 19, 0, tzinfo=timezone.utc),
+        artifact_name=companies_file.name,
+    )
+    write_company_registry_source_contract(companies_file, contract)
+
+    reader = IndustryMapperDataProvider(_config(tmp_path), db_factory=lambda _: None)
+    matched = reader.load_companies()
+    assert matched is not None
+    assert matched.attrs[COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR] == contract
+    assert "company_registry_source_manifest_mismatch" not in contract["warnings"]
+
+    companies_file.write_bytes(csv_bytes + b"\n")
+    replaced = reader.load_companies()
+    assert replaced is not None
+    source_contract = replaced.attrs[COMPANY_REGISTRY_SOURCE_CONTRACT_ATTR]
+    assert source_contract["status"] == "unknown"
+    assert source_contract["warnings"] == ["company_registry_source_manifest_mismatch"]
+    assert replaced["stock_id"].astype(str).tolist() == ["2330"]
+
+
+def test_main_index_reader_prefers_nonempty_sqlite_and_falls_back_to_primary_csv(
+    tmp_path,
+) -> None:
+    config = _config(tmp_path)
+    config.industry_index_file.write_text(
+        "日期,指數名稱,收盤指數\n2026-07-10,CSV指數,100\n", encoding="utf-8-sig"
+    )
+
+    class Database:
+        def __init__(self, frame):
+            self.frame = frame
+
+        def execute_query(self, query):
+            assert query == "SELECT * FROM industry_indices ORDER BY 日期 ASC;"
+            return self.frame
+
+    sqlite_frame = pd.DataFrame([{"日期": 20260710, "指數名稱": "SQLite指數"}])
+    sqlite_reader = IndustryMapperDataProvider(
+        config, db_factory=lambda _: Database(sqlite_frame)
+    )
+    sqlite_loaded = sqlite_reader.load_industry_index_frame()
+    assert sqlite_loaded["指數名稱"].tolist() == ["SQLite指數"]
+    sqlite_observation = sqlite_loaded.attrs[
+        INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR
+    ]
+    assert sqlite_observation["source_id"] == "sqlite.industry_indices"
+    assert sqlite_observation["storage_kind"] == "sqlite"
+    assert sqlite_observation["rowset_sha256"] == industry_index_frame_rowset_sha256(
+        sqlite_loaded
+    )
+    assert sqlite_observation["status"] == "unknown"
+    assert sqlite_observation["available_at"] is None
+    assert sqlite_observation["published_at"] is None
+    assert sqlite_observation["pit_eligible"] is False
+    assert sqlite_observation["time_provenance"] == (
+        "local_observation_only; upstream_capture_receipt_not_recorded"
+    )
+    assert sqlite_observation["date_range"] == {
+        "from": "2026-07-10",
+        "through": "2026-07-10",
+    }
+    assert industry_index_source_observation_hash_matches(
+        sqlite_observation, frame=sqlite_loaded
+    )
+
+    mapper = IndustryMapper(
+        config,
+        lambda: sqlite_loaded,
+        companies_provider=lambda: None,
+    )
+    assert mapper.industry_index_df is not None
+    assert mapper.industry_index_df.attrs[INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR] == (
+        sqlite_observation
+    )
+    assert industry_index_frame_rowset_sha256(mapper.industry_index_df) == (
+        sqlite_observation["rowset_sha256"]
+    )
+
+    empty_reader = IndustryMapperDataProvider(
+        config, db_factory=lambda _: Database(pd.DataFrame())
+    )
+    csv_loaded = empty_reader.load_industry_index_frame()
+    assert csv_loaded["指數名稱"].tolist() == ["CSV指數"]
+    csv_observation = csv_loaded.attrs[INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR]
+    assert sqlite_observation.keys() == csv_observation.keys()
+    assert csv_observation["source_id"] == "csv.industry_index"
+    assert csv_observation["storage_kind"] == "csv"
+    assert csv_observation["stored_artifact_bytes"] == len(
+        config.industry_index_file.read_bytes()
+    )
+    assert csv_observation["stored_artifact_sha256"] == (
+        "sha256:" + hashlib.sha256(config.industry_index_file.read_bytes()).hexdigest()
+    )
+    assert csv_observation["available_at"] is None
+    assert csv_observation["date_range"] == {
+        "from": "2026-07-10",
+        "through": "2026-07-10",
+    }
+    assert industry_index_source_observation_hash_matches(
+        csv_observation, frame=csv_loaded
+    )
+
+    mutated_observation = dict(csv_observation)
+    mutated_observation["available_at"] = "2026-07-10T12:00:00Z"
+    assert not industry_index_source_observation_hash_matches(mutated_observation)
+
+    forged_row_count = dict(csv_observation)
+    forged_row_count["row_count"] += 1
+    forged_body = dict(forged_row_count)
+    forged_body.pop("observation_sha256")
+    forged_observation_bytes = json.dumps(
+        forged_body,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    forged_row_count["observation_sha256"] = (
+        "sha256:" + hashlib.sha256(forged_observation_bytes).hexdigest()
+    )
+    assert not industry_index_source_observation_hash_matches(
+        forged_row_count, frame=csv_loaded
+    )
+
+    config.industry_index_file.write_text(
+        "日期,指數名稱,收盤指數\n2026-07-10,CSV指數,101\n",
+        encoding="utf-8-sig",
+    )
+    changed_csv_loaded = empty_reader.load_industry_index_frame()
+    changed_observation = changed_csv_loaded.attrs[
+        INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR
+    ]
+    assert changed_observation["stored_artifact_sha256"] != (
+        csv_observation["stored_artifact_sha256"]
+    )
+    assert changed_observation["rowset_sha256"] != csv_observation["rowset_sha256"]
+
+
+def test_industry_index_rowset_identity_tracks_order_and_numeric_dtype() -> None:
+    rows = pd.DataFrame(
+        {"日期": [20260924, 20260925], "收盤指數": [100, 101]}
+    )
+    iso_dates = pd.DataFrame(
+        {"日期": ["2026-09-24", "2026-09-25"], "收盤指數": [100, 101]}
+    )
+    reversed_rows = rows.iloc[::-1].reset_index(drop=True)
+    integer_values = pd.DataFrame({"收盤指數": pd.Series([100], dtype="int64")})
+    float_values = pd.DataFrame({"收盤指數": pd.Series([100.0], dtype="float64")})
+
+    assert industry_index_frame_rowset_sha256(rows) == (
+        industry_index_frame_rowset_sha256(iso_dates)
+    )
+    assert industry_index_frame_rowset_sha256(rows) != (
+        industry_index_frame_rowset_sha256(reversed_rows)
+    )
+    assert industry_index_frame_rowset_sha256(integer_values) != (
+        industry_index_frame_rowset_sha256(float_values)
+    )
+
+
+def test_industry_index_date_memo_preserves_canonical_hash_and_invalid_rows() -> None:
+    frame = pd.DataFrame(
+        {
+            "日期": pd.Series(
+                [
+                    "20261001",
+                    "20261001",
+                    20261001,
+                    20261001.0,
+                    pd.Timestamp("2026-10-01"),
+                    datetime(2026, 10, 2, 12, tzinfo=timezone.utc),
+                    None,
+                    pd.NA,
+                    pd.NaT,
+                    float("nan"),
+                    "malformed-date",
+                    20261340,
+                ],
+                dtype=object,
+            ),
+            "指數名稱": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
+            "收盤指數": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111],
+        }
+    )
+
+    # 直接走 canonical scalar 舊入口建立參考值，驗證 memo 只重用日期解析，
+    # 不改完整欄位順序、列順序、缺失值或格式錯誤日期的 fallback。
+    columns = [str(column) for column in frame.columns]
+    rows = [
+        [
+            _canonical_frame_value(value, column=columns[index])
+            for index, value in enumerate(row)
+        ]
+        for row in frame.itertuples(index=False, name=None)
+    ]
+    expected_payload = json.dumps(
+        {"columns": columns, "rows": rows},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    expected_hash = "sha256:" + hashlib.sha256(expected_payload).hexdigest()
+
+    assert industry_index_frame_rowset_sha256(frame) == expected_hash
+    expected_dates = sorted(
+        {
+            parsed_date
+            for value in frame["日期"]
+            if (parsed_date := _industry_index_date_iso(value)) is not None
+        }
+    )
+    assert _industry_index_date_range(frame) == expected_dates
+
+    changed_frame = frame.copy()
+    changed_frame.loc[0, "收盤指數"] = 999
+    assert industry_index_frame_rowset_sha256(changed_frame) != expected_hash
+
+
+def test_industry_index_date_memo_parses_each_repeated_scalar_once(monkeypatch) -> None:
+    import data_module.industry_mapper_data_provider as provider_module
+
+    frame = pd.DataFrame(
+        {
+            "日期": ["20261001"] * 20 + ["20261002"] * 20 + [20261001] * 20,
+            "收盤指數": list(range(60)),
+        }
+    )
+    calls = []
+    original = provider_module._industry_index_date_iso
+
+    def counted(value):
+        calls.append((type(value), value))
+        return original(value)
+
+    monkeypatch.setattr(provider_module, "_industry_index_date_iso", counted)
+    first_hash = industry_index_frame_rowset_sha256(frame)
+    assert len(calls) == 3
+    assert first_hash == industry_index_frame_rowset_sha256(frame)
+
+    calls.clear()
+    assert _industry_index_date_range(frame) == ["2026-10-01", "2026-10-02"]
+    assert len(calls) == 3
+
+    changed_frame = frame.copy()
+    changed_frame.loc[0, "日期"] = "20261003"
+    assert industry_index_frame_rowset_sha256(changed_frame) != first_hash
+
+
+def test_main_and_legacy_index_reader_keep_distinct_empty_and_error_semantics(
+    tmp_path, monkeypatch
+) -> None:
+    config = _config(tmp_path, use_sqlite=False)
+    missing_reader = IndustryMapperDataProvider(config, db_factory=lambda _: None)
+    missing_main = missing_reader.load_industry_index_frame()
+    assert missing_main.empty
+    assert INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR not in missing_main.attrs
+    assert missing_reader.load_legacy_industry_index() is None
+
+    config.industry_index_file.write_text(
+        "日期,指數名稱,收盤指數\n", encoding="utf-8-sig"
+    )
+    empty_reader = IndustryMapperDataProvider(config, db_factory=lambda _: None)
+    empty_main = empty_reader.load_industry_index_frame()
+    assert empty_main.empty
+    empty_observation = empty_main.attrs[INDUSTRY_INDEX_SOURCE_OBSERVATION_ATTR]
+    assert empty_observation["row_count"] == 0
+    assert empty_observation["status"] == "unknown"
+    assert empty_observation["available_at"] is None
+    legacy_empty = empty_reader.load_legacy_industry_index()
+    assert legacy_empty is not None and legacy_empty.empty
+
+    monkeypatch.setattr(pd, "read_csv", MagicMock(side_effect=OSError("bad csv")))
+    with pytest.raises(OSError, match="bad csv"):
+        empty_reader.load_industry_index_frame()
+    assert empty_reader.load_legacy_industry_index() is None

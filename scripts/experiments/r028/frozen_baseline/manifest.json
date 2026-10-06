@@ -1,0 +1,82 @@
+{
+  "schema": "r028-pre-migration-source-fixture.v1",
+  "status": "immutable_pre_r028_source_fixture",
+  "captured_git_head": "93850270971620841b76fe9aab68791f9aefe047",
+  "origin_custody": {
+    "manifest_path": "output/qa/refactor_completion_20260927/r027_logical_time_revision/r028_pre_migration_baseline_freeze/manifest.json",
+    "manifest_sha256": "5386541a8eb07835130a94c3492990e2954520be51eadb112e02eedab8783ce3",
+    "original_frozen_source_sha256": "697c3bd89aa256867f964e3cd01c253a28284f75a1c6d2d963354223e6daedec"
+  },
+  "baseline": {
+    "source_path": "scripts/experiments/r028/frozen_baseline/app_module/update_service.py",
+    "source_sha256": "697c3bd89aa256867f964e3cd01c253a28284f75a1c6d2d963354223e6daedec",
+    "size_bytes": 278508,
+    "module_name": "app_module.update_service",
+    "owner_class": "UpdateService",
+    "method_name": "calculate_technical_indicators",
+    "method_ast_sha256": "sha256:3efa15ecd09497100ea22765e32fb301f4eecaad7fa80d5bc9bf61d1ded3179c",
+    "method_line_start": 4729,
+    "method_line_end": 5598,
+    "loading_contract": "load_full_frozen_source_under_original_module_key"
+  },
+  "candidate_method_reference": {
+    "source_path": "scripts/experiments/r027/candidate_technical_indicator_job.py",
+    "source_sha256": "74fd9a64da28672d1e164fd46e059e1bb4314c3513e048cd16642aa3a4fd7aad",
+    "owner_class": "CandidateTechnicalIndicatorJob",
+    "method_name": "run",
+    "method_ast_sha256": "sha256:3c85b6e423dfbfa080ff74ac43025c4e76d8e517d62d2bef28e90ab03a033faf"
+  },
+  "approved_r028_migration": {
+    "facade": {
+      "source_path": "app_module/update_service.py",
+      "source_sha256": "sha256:27d0dd226ca8d9ac18b039a7778d74c5381b987f3d9f36b29053fa00175cf8b4",
+      "module_name": "app_module.update_service",
+      "owner_class": "UpdateService",
+      "method_name": "calculate_technical_indicators",
+      "method_ast_sha256": "sha256:641c5308d21c1fe52b3eb6954040e73369c974dbd36d5d85e81fee1fb525dd13"
+    },
+    "job": {
+      "source_path": "app_module/technical_indicator_job.py",
+      "source_sha256": "sha256:77d34c79ff63ec82a928b7e62dfa0f8395ae9307f54723752d2c270ebf81c97e",
+      "module_name": "app_module.technical_indicator_job",
+      "owner_class": "TechnicalIndicatorJob",
+      "method_name": "run",
+      "method_ast_sha256": "sha256:3c85b6e423dfbfa080ff74ac43025c4e76d8e517d62d2bef28e90ab03a033faf",
+      "port_names": [
+        "config",
+        "get_indicator_latest_date",
+        "run_process_pool"
+      ]
+    },
+    "delegation": "facade_lazy_import_then_job_run",
+    "writer_ownership": "Job 保留父程序協調；既有 process-pool port 維持父程序單一寫入邊界。"
+  },
+  "shared_source_contracts": [
+    {
+      "path": "app_module/__init__.py",
+      "sha256": "f3b101f96174652b869a46814eb8bfad642bac63bad8de83808795d5aa704681",
+      "role": "package_lazy_export_contract"
+    },
+    {
+      "path": "scripts/experiments/r027/logical_publication_phase_port.py",
+      "sha256": "2b0edc1e6c9f6df9fdb154ae967b93f134473056e43aaeed3a67760b2a9eeacc",
+      "role": "source_owned_callsite_observer"
+    },
+    {
+      "path": "scripts/experiments/r027/observation_clock.py",
+      "sha256": "7efe9d0f6358ce9fc84aed53be3f957a219dc19c636ed67d7e442b9fc86a3aab",
+      "role": "raw_observation_recorder"
+    },
+    {
+      "path": "scripts/experiments/r027/run_experiment.py",
+      "sha256": "e259eadef1e0d3b27c65fd93044b78927dcc24e72241721a861f30b399166068",
+      "size_bytes": 38936,
+      "role": "pinned_logical_time_comparator"
+    }
+  ],
+  "notes": [
+    "本 manifest 指向檢入的 byte-pinned pre-R028 source fixture，讓 clean checkout 不依賴 ignored 本機 QA output 才能重播。",
+    "原始 ignored custody manifest 及 receipt 保留為歷史來源證據；本 fixture 與其凍結 UpdateService bytes 相同。",
+    "R027 嚴格 gate、runner、oracle 與原 receipts 未修改；本 fixture 只供舊候選提取測試及 R028 baseline 載入。"
+  ]
+}

@@ -5,7 +5,7 @@ from data_module.fundamental_availability import (
     parse_formal_official_provenance,
     resolve_fundamental_availability,
 )
-from decision_module.factors.factor_dtos import FactorQuality
+from data_module.contracts.market import AvailabilityStatus
 
 
 def test_resolve_availability_accepts_explicit_available_date_with_announcement():
@@ -22,7 +22,7 @@ def test_resolve_availability_accepts_explicit_available_date_with_announcement(
 
     assert result.available_date == date(2026, 6, 11)
     assert result.announced_date == date(2026, 6, 10)
-    assert result.quality == FactorQuality.OBSERVED
+    assert result.availability.status is AvailabilityStatus.KNOWN
     assert result.diagnostics == ()
 
 
@@ -40,7 +40,7 @@ def test_resolve_availability_degrades_when_announcement_date_is_missing():
 
     assert result.available_date == date(2026, 6, 11)
     assert result.announced_date is None
-    assert result.quality == FactorQuality.DEGRADED
+    assert result.availability.status is AvailabilityStatus.KNOWN
     assert result.diagnostics[0].code == "fundamental_availability.missing_announced_date"
 
 
@@ -57,7 +57,7 @@ def test_resolve_availability_reports_missing_available_date():
     )
 
     assert result.available_date is None
-    assert result.quality == FactorQuality.MISSING
+    assert result.availability.status is AvailabilityStatus.UNKNOWN
     assert result.diagnostics[0].code == "fundamental_availability.missing_available_date"
 
 
@@ -74,7 +74,7 @@ def test_resolve_availability_rejects_available_date_before_announcement():
     )
 
     assert result.available_date is None
-    assert result.quality == FactorQuality.MISSING
+    assert result.availability.status is AvailabilityStatus.UNKNOWN
     assert result.diagnostics[0].code == "fundamental_availability.available_before_announcement"
 
 
@@ -91,7 +91,7 @@ def test_resolve_availability_rejects_available_date_before_period_end():
     )
 
     assert result.available_date is None
-    assert result.quality == FactorQuality.MISSING
+    assert result.availability.status is AvailabilityStatus.UNKNOWN
     assert result.diagnostics[0].code == "fundamental_availability.available_before_period_end"
 
 

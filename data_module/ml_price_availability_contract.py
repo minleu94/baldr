@@ -1,21 +1,44 @@
 """Research-only contract for daily rows whose price inputs are unavailable.
 
 This module deliberately does not infer why a price is unavailable.  It keeps
-the source row and its date so downstream feature/label builders can exclude
-the affected window without filling values or treating surrounding dates as
-adjacent observations.
+the source row and its anchor date so downstream feature/label builders can
+exclude only the affected feature or label path without filling values or
+treating surrounding dates as adjacent observations.  Explicit feature and
+label windows are context evidence; their dates are not additional missing
+rows.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+import re
 from typing import Any, Mapping, Sequence
 
 
 PRICE_AVAILABILITY_CONTRACT_VERSION = "ml-daily-price-availability.v1"
 PRICE_FIELDS: tuple[str, ...] = ("open", "high", "low", "close")
-_UNAVAILABLE_MARKERS = frozenset({"", "--", "—", "－", "N/A", "NA", "null", "None"})
+_UNAVAILABLE_MARKERS = frozenset(
+    {
+        "",
+        "-",
+        "--",
+        "n/a",
+        "na",
+        "none",
+        "null",
+        "—",
+        "–",
+        "―",
+        "−",
+        "－",
+        "﹘",
+        "﹣",
+    }
+)
+_GROUPED_PRICE_PATTERN = re.compile(
+    r"^[+-]?(?:[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]+)?$"
+)
 
 
 def _canonical_date(value: str, *, field_name: str) -> str:
@@ -50,11 +73,18 @@ def _canonical_window(
 def _field_status(value: Any) -> str:
     if value is None:
         return "missing"
+    if isinstance(value, bool):
+        return "invalid"
     if isinstance(value, str):
         stripped = value.strip()
-        if stripped in _UNAVAILABLE_MARKERS:
+        if stripped.casefold() in _UNAVAILABLE_MARKERS:
             return "missing_marker"
-        value = stripped
+        if "," in stripped:
+            if _GROUPED_PRICE_PATTERN.fullmatch(stripped) is None:
+                return "invalid"
+            value = stripped.replace(",", "")
+        else:
+            value = stripped
     try:
         numeric = Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError):

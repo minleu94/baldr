@@ -11,9 +11,9 @@ from typing import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STRATEGY_FILES_TO_SCAN = (
-    "app_module/strategies/baseline_score_executor.py",
-    "app_module/strategies/momentum_aggressive_executor.py",
-    "app_module/strategies/stable_conservative_executor.py",
+    "decision_module/strategies/baseline_score_executor.py",
+    "decision_module/strategies/momentum_aggressive_executor.py",
+    "decision_module/strategies/stable_conservative_executor.py",
 )
 
 

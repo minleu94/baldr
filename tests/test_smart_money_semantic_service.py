@@ -2,6 +2,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 import sqlite3
 
+import pytest
+
 from decision_module.flow_contracts import BrokerFlowEvent
 from app_module.smart_money_semantic_service import (
     SQLiteSmartMoneyBatchPriceProvider,
@@ -10,6 +12,7 @@ from app_module.smart_money_semantic_service import (
     _build_batch_price_query,
     _parse_event_date,
 )
+from app_module.exceptions import BacktestCancelledError
 from app_module.broker_flow_sqlite_read_repository import BrokerFlowReadSnapshot
 
 
@@ -220,3 +223,29 @@ def test_batch_price_query_keeps_indexable_code_and_date_predicates():
     assert "日期 <= ?" in sql
     assert "ORDER BY 日期 DESC" in sql
     assert "REPLACE" not in sql
+
+
+def test_dashboard_cancellation_does_not_return_a_partial_stock_summary():
+    decision = date(2026, 6, 20)
+    cancel_requested = False
+
+    class CancellingPrices:
+        calls = 0
+
+        def load_recent_prices(self, stock_code, decision_date, limit):
+            nonlocal cancel_requested
+            self.calls += 1
+            cancel_requested = True
+            return [(decision_date, Decimal("100"))]
+
+    prices = CancellingPrices()
+    service = SmartMoneySemanticService(FakeBrokerFlowService([]), price_provider=prices)
+
+    with pytest.raises(BacktestCancelledError):
+        service.build_dashboard_summary(
+            decision,
+            stock_codes=("2330", "2317"),
+            cancel_callback=lambda: cancel_requested,
+        )
+
+    assert prices.calls == 1

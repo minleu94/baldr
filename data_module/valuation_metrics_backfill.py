@@ -1,39 +1,34 @@
-"""Controlled P/E valuation backfill into governed fundamental SQLite tables."""
+"""Source I/O and persistence for controlled P/E valuation backfill."""
 
 from __future__ import annotations
 
 import csv
-import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Mapping, cast
+from typing import Mapping
 
-from data_module.backup_retention import create_retained_backup
-from data_module.valuation_data import calculate_industry_percentiles_bp
-from decision_module.factors.factor_dtos import FactorDiagnostic, FactorQuality
-
-
-@dataclass(frozen=True)
-class ValuationMetricBackfillRecord:
-    stock_code: str
-    as_of_date: date
-    available_date: date
-    metric_name: str
-    value: Decimal
-    industry: str
-    industry_percentile_bp: int | None
-    source: str
-    source_version: str
-    quality: FactorQuality
+from data_module.backup_retention import (
+    create_sqlite_retained_backup,
+    restore_sqlite_backup,
+)
+from data_module.contracts.fundamental import (
+    SourceDiagnostic,
+    SourceDiagnosticKind,
+    parse_legacy_quality_wire_value,
+)
+from data_module.contracts.valuation import (
+    ValuationBackfillSourceRow,
+    ValuationMetricRecord,
+)
 
 
 @dataclass(frozen=True)
-class ValuationMetricsBackfillPlan:
-    records: tuple[ValuationMetricBackfillRecord, ...]
-    diagnostics: tuple[FactorDiagnostic, ...]
+class ValuationMetricsBackfillSourcePlan:
+    records: tuple[ValuationBackfillSourceRow, ...]
+    diagnostics: tuple[SourceDiagnostic, ...]
     source_row_count: int
     as_of_date: date | None
 
@@ -41,34 +36,17 @@ class ValuationMetricsBackfillPlan:
         object.__setattr__(self, "records", tuple(self.records))
         object.__setattr__(self, "diagnostics", tuple(self.diagnostics))
 
-    @property
-    def ready_for_apply(self) -> bool:
-        return bool(self.records)
-
-    def to_markdown(self) -> str:
-        return "\n".join(
-            [
-                "# Valuation Metrics Backfill Plan",
-                "",
-                f"- ready_for_apply: {str(self.ready_for_apply).lower()}",
-                f"- as_of_date: {self.as_of_date.isoformat() if self.as_of_date else 'none'}",
-                f"- source_row_count: {self.source_row_count}",
-                f"- normalized_record_count: {len(self.records)}",
-                f"- diagnostics: {len(self.diagnostics)}",
-            ]
-        )
-
 
 @dataclass(frozen=True)
 class ValuationMetricsBackfillApplyResult:
     applied: bool
     inserted_count: int
     backup_file: Path | None
-    plan: ValuationMetricsBackfillPlan
 
 
 def load_industry_by_stock_from_companies(companies_file: Path) -> dict[str, str]:
     """Load the existing companies.csv stock-to-latest-primary-industry mapping."""
+
     companies_file = Path(companies_file)
     if not companies_file.exists():
         return {}
@@ -91,25 +69,22 @@ def load_industry_by_stock_from_companies(companies_file: Path) -> dict[str, str
     return {stock_code: industry for stock_code, (_, _, industry) in selected.items()}
 
 
-def plan_valuation_metrics_backfill(
+def read_valuation_metrics_backfill_source(
     *,
     db_file: Path,
     as_of_date: str | date | None,
-    industry_by_stock: Mapping[str, str],
-    source_version: str,
-) -> ValuationMetricsBackfillPlan:
-    db_file = Path(db_file)
-    diagnostics: list[FactorDiagnostic] = []
+) -> ValuationMetricsBackfillSourcePlan:
+    """Read P/E source rows; do not apply industry, percentile, or quality policy."""
 
+    db_file = Path(db_file)
     try:
         target_date = _resolve_as_of_date(db_file, as_of_date)
         if target_date is None:
-            return ValuationMetricsBackfillPlan(
+            return ValuationMetricsBackfillSourcePlan(
                 records=(),
                 diagnostics=(
-                    FactorDiagnostic(
+                    _source_diagnostic(
                         code="valuation_backfill.no_source_date",
-                        factor_name="valuation.pe",
                         stock_code="",
                         message="daily_prices has no P/E source date available",
                     ),
@@ -119,102 +94,59 @@ def plan_valuation_metrics_backfill(
             )
         source_rows = _load_daily_pe_rows(db_file, target_date)
     except sqlite3.Error as exc:
-        return ValuationMetricsBackfillPlan(
+        return ValuationMetricsBackfillSourcePlan(
             records=(),
             diagnostics=(
-                    FactorDiagnostic(
-                        code="valuation_backfill.source_query_failed",
-                        factor_name="valuation.pe",
-                        stock_code="",
-                        message=str(exc),
-                    ),
+                _source_diagnostic(
+                    code="valuation_backfill.source_query_failed",
+                    stock_code="",
+                    message=str(exc),
+                ),
             ),
             source_row_count=0,
             as_of_date=None,
         )
 
     if not source_rows:
-        return ValuationMetricsBackfillPlan(
+        return ValuationMetricsBackfillSourcePlan(
             records=(),
             diagnostics=(
-                    FactorDiagnostic(
-                        code="valuation_backfill.no_source_rows",
-                        factor_name="valuation.pe",
-                        stock_code="",
-                        message=f"daily_prices has no P/E rows for {target_date.isoformat()}",
-                    ),
+                _source_diagnostic(
+                    code="valuation_backfill.no_source_rows",
+                    stock_code="",
+                    message=f"daily_prices has no P/E rows for {target_date.isoformat()}",
+                ),
             ),
             source_row_count=0,
             as_of_date=target_date,
         )
 
-    percentile_inputs: list[Mapping[str, object]] = []
+    records: list[ValuationBackfillSourceRow] = []
     for stock_code, pe_value in source_rows:
-        industry = str(industry_by_stock.get(stock_code, "")).strip()
-        if not industry:
-            diagnostics.append(
-                FactorDiagnostic(
-                    code="valuation_backfill.missing_industry",
-                    factor_name="valuation.pe",
-                    stock_code=stock_code,
-                    message="stock has P/E source row but no companies.csv industry mapping",
-                )
-            )
-            continue
         try:
-            metric_value = Decimal(str(pe_value))
-        except InvalidOperation:
-            diagnostics.append(
-                FactorDiagnostic(
-                    code="valuation_backfill.invalid_pe",
-                    factor_name="valuation.pe",
+            value = Decimal(str(pe_value))
+            if not value.is_finite():
+                raise InvalidOperation
+        except (InvalidOperation, ValueError):
+            records.append(
+                ValuationBackfillSourceRow(
                     stock_code=stock_code,
-                    message="daily_prices P/E value is not numeric",
+                    metric_value=None,
+                    diagnostic=_source_diagnostic(
+                        code="valuation_backfill.invalid_pe",
+                        stock_code=stock_code,
+                        message="daily_prices P/E value is not numeric",
+                    ),
                 )
             )
             continue
-        if metric_value <= 0:
-            diagnostics.append(
-                FactorDiagnostic(
-                    code="valuation_backfill.invalid_pe",
-                    factor_name="valuation.pe",
-                    stock_code=stock_code,
-                    message="daily_prices P/E value must be positive",
-                )
-            )
-            continue
-        percentile_inputs.append(
-            {
-                "stock_code": stock_code,
-                "industry": industry,
-                "metric_value": metric_value,
-            }
+        records.append(
+            ValuationBackfillSourceRow(stock_code=stock_code, metric_value=value)
         )
 
-    percentiles = calculate_industry_percentiles_bp(percentile_inputs)
-    records = [
-        ValuationMetricBackfillRecord(
-            stock_code=str(row["stock_code"]),
-            as_of_date=target_date,
-            available_date=target_date,
-            metric_name="pe",
-            value=cast(Decimal, row["metric_value"]),
-            industry=str(row["industry"]),
-            industry_percentile_bp=percentiles[(str(row["stock_code"]), str(row["industry"]))],
-            source="daily_prices.pe",
-            source_version=source_version,
-            quality=(
-                FactorQuality.OBSERVED
-                if percentiles[(str(row["stock_code"]), str(row["industry"]))] is not None
-                else FactorQuality.DEGRADED
-            ),
-        )
-        for row in percentile_inputs
-    ]
-
-    return ValuationMetricsBackfillPlan(
+    return ValuationMetricsBackfillSourcePlan(
         records=tuple(records),
-        diagnostics=tuple(diagnostics),
+        diagnostics=(),
         source_row_count=len(source_rows),
         as_of_date=target_date,
     )
@@ -224,26 +156,24 @@ def apply_valuation_metrics_backfill(
     *,
     db_file: Path,
     backup_dir: Path,
-    as_of_date: str | date | None,
-    industry_by_stock: Mapping[str, str],
-    source_version: str,
+    records: tuple[ValuationMetricRecord, ...],
 ) -> ValuationMetricsBackfillApplyResult:
-    plan = plan_valuation_metrics_backfill(
-        db_file=db_file,
-        as_of_date=as_of_date,
-        industry_by_stock=industry_by_stock,
-        source_version=source_version,
-    )
-    if not plan.ready_for_apply:
+    """Persist already interpreted source records using their unchanged wire fields."""
+
+    records = tuple(records)
+    if not records:
         return ValuationMetricsBackfillApplyResult(
             applied=False,
             inserted_count=0,
             backup_file=None,
-            plan=plan,
         )
+    quality_wire_values = tuple(
+        parse_legacy_quality_wire_value(record.legacy_quality_wire_value)
+        for record in records
+    )
 
     db_file = Path(db_file)
-    backup_file = create_retained_backup(
+    backup_file = create_sqlite_retained_backup(
         db_file,
         Path(backup_dir),
         label="valuation_metrics_backfill",
@@ -253,12 +183,16 @@ def apply_valuation_metrics_backfill(
 
     conn = sqlite3.connect(db_file)
     try:
-        inserted_count = _insert_valuation_metric_records(conn, plan.records)
+        inserted_count = _insert_valuation_metric_records(
+            conn,
+            records,
+            quality_wire_values,
+        )
         conn.commit()
     except Exception:
         conn.rollback()
         conn.close()
-        shutil.copy2(backup_file, db_file)
+        restore_sqlite_backup(backup_file, db_file)
         raise
     finally:
         try:
@@ -270,7 +204,16 @@ def apply_valuation_metrics_backfill(
         applied=True,
         inserted_count=inserted_count,
         backup_file=backup_file,
-        plan=plan,
+    )
+
+
+def _source_diagnostic(code: str, stock_code: str, message: str) -> SourceDiagnostic:
+    return SourceDiagnostic(
+        code=code,
+        stock_code=stock_code,
+        message=message,
+        kind=SourceDiagnosticKind.VALUATION,
+        metric_name="pe",
     )
 
 
@@ -306,8 +249,11 @@ def _load_daily_pe_rows(db_file: Path, target_date: date) -> list[tuple[str, obj
 
 def _insert_valuation_metric_records(
     conn: sqlite3.Connection,
-    records: tuple[ValuationMetricBackfillRecord, ...],
+    records: tuple[ValuationMetricRecord, ...],
+    quality_wire_values: tuple[str, ...],
 ) -> int:
+    if len(records) != len(quality_wire_values):
+        raise ValueError("valuation quality projection count does not match records")
     conn.executemany(
         """
         INSERT OR REPLACE INTO fundamental_valuation_metrics(
@@ -322,14 +268,14 @@ def _insert_valuation_metric_records(
                 record.as_of_date.isoformat(),
                 record.available_date.isoformat(),
                 record.metric_name,
-                str(record.value),
+                str(record.metric_value),
                 record.industry,
                 record.industry_percentile_bp,
                 record.source,
                 record.source_version,
-                record.quality.value,
+                quality_wire_value,
             )
-            for record in records
+            for record, quality_wire_value in zip(records, quality_wire_values)
         ],
     )
     return len(records)

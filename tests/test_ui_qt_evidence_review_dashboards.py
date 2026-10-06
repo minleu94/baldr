@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
+import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import shiboken6
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDateEdit, QTabWidget
+import pytest
 
 from app_module.decision_quality_dashboard_dtos import (
     DecisionQualityDashboardCards,
@@ -63,13 +69,30 @@ class FakeScheduledStatus:
             evidence_status="degraded",
             pipeline_overall_status="degraded",
             recommendation_status="passed",
+            forward_outcome_status="passed_with_warnings",
             latest_data_date="20260707",
             decision_date="2026-07-07",
             recommendation_result_id="scheduled_rec_20260707_051001",
+            forward_outcome_run_id="20260707T214000000000Z",
             recommendations_count=12,
+            forward_outcome_events_scanned=12,
+            forward_outcome_outcomes_written=7,
+            forward_outcome_pending=5,
+            forward_outcome_warnings_count=1,
+            evidence_progress_status="passed_with_warnings",
+            evidence_progress_daily={
+                "captures": {"decision_day_count": 2, "new_event_count": 1},
+                "maturity": {"ready": 0, "pending": 12, "missing": 0},
+            },
+            evidence_progress_weekly={"capture_decision_day_count": 2},
+            evidence_progress_no_new_data_alert={
+                "alert": False,
+                "consecutive_no_new_data_days": 0,
+            },
             screening_matrix_rows=200,
             dry_run=True,
             writes_evidence_db=False,
+            forward_outcome_writes_evidence_db=False,
             writes_recommendation_result=True,
             auto_trading=False,
             lifecycle_action=False,
@@ -157,6 +180,29 @@ class _AlwaysFailScheduledStatus:
         raise RuntimeError()
 
 
+class _GatedScheduledStatus:
+    def __init__(self, result, *, error: str | None = None) -> None:
+        self.result = result
+        self.error = error
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def load_latest(self):
+        self.started.set()
+        if not self.release.wait(timeout=5):
+            raise TimeoutError("test did not release scheduled status worker")
+        if self.error is not None:
+            raise RuntimeError(self.error)
+        return self.result
+
+
+def _wait_for_qt_callbacks(application: QApplication) -> None:
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        application.processEvents()
+        QTest.qWait(5)
+
+
 def test_signal_decay_table_model_formats_bp_without_changing_raw_value() -> None:
     app()
     from app_module.signal_decay_dashboard_dtos import SignalDecayDashboardRow
@@ -242,16 +288,184 @@ def test_scheduled_evidence_status_view_shows_latest_scheduled_run() -> None:
     assert "20260707" in view.freshness_label.text()
     assert "scheduled_rec_20260707_051001" in view.recommendation_label.text()
     assert "degraded / 決策日 2026-07-07" in view.evidence_label.text()
+    assert "passed_with_warnings / 掃描 12 / 寫入 7" in view.forward_outcome_label.text()
+    assert "進度：passed_with_warnings / 無新增 0 天 / 正常" in view.forward_outcome_label.text()
     assert "writes_recommendation_result: true" in view.detail_panel.toPlainText()
     assert "writes_evidence_db=false" in view.safety_label.text()
     assert "screening_matrix_missing" in view.detail_panel.toPlainText()
     assert "pipeline warnings: 7 warning occurrences / 2 warning types" in view.detail_panel.toPlainText()
     assert "pipeline advisories: 3 advisory occurrences / 2 advisory types" in view.detail_panel.toPlainText()
     assert "pipeline_overall_status: degraded" in view.detail_panel.toPlainText()
+    assert "forward outcomes: passed_with_warnings" in view.detail_panel.toPlainText()
+    assert "evidence progress: status=passed_with_warnings" in view.detail_panel.toPlainText()
+    assert "weekly decision days=2" in view.detail_panel.toPlainText()
     assert "recommendation result write: true / research-only output" in view.detail_panel.toPlainText()
     assert "production evidence/trading write risk: false" in view.detail_panel.toPlainText()
     assert "risk_prompt_source_quality:portfolio_alerts:estimated=4" in view.detail_panel.toPlainText()
     assert "Run Metadata" in view.detail_panel.toPlainText()
+
+
+def test_scheduled_status_view_separates_engineering_run_from_research_cohort_quality() -> None:
+    app()
+    from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatus
+
+    class FixedStatus:
+        def __init__(self, result):
+            self.result = result
+
+        def load_latest(self):
+            return self.result
+
+    verified = ScheduledEvidenceStatus(
+        recommendation_status="passed",
+        recommendation_source="scheduled_latest_status",
+        recommendation_result_id="rec_20261002_verified",
+        decision_date="2026-10-02",
+        recommendations_count=15,
+        recommendation_cohort_integrity_basis="canonical_payload_and_index_verified",
+        recommendation_canonical_payload_hash="sha256:" + "b" * 64,
+        recommendation_cohort_hash="sha256:" + "a" * 64,
+        recommendation_cohort_requested_count=200,
+        recommendation_cohort_quality_missing_count=0,
+        recommendation_cohort_quality_degraded_count=185,
+        recommendation_cohort_classifications=(
+            ("可用候選", 15),
+            ("策略排除", 185),
+            ("缺資料", 0),
+            ("來源品質問題", 0),
+            ("其他未判定", 0),
+        ),
+    )
+    view = ScheduledEvidenceStatusView(
+        FixedStatus(verified), auto_refresh=False, async_refresh=False
+    )
+    view.refresh_status()
+
+    card = view.recommendation_label.text()
+    details = view.detail_panel.toPlainText()
+    assert view.recommendation_label.wordWrap()
+    assert view.recommendation_label.minimumHeight() >= 112
+    assert "passed / scheduled_latest_status" in card
+    assert "可用候選 15 / 策略排除 185 / 缺資料 0 / 來源品質問題 0 / 其他未判定 0" in card
+    assert "推薦工程執行結果：passed" in details
+    assert "canonical_payload_and_index_verified" in details
+    assert "payload_hash=sha256:" in details
+    assert "保存的 cohort quality 原始統計（未改寫）：degraded=185 / missing=0" in details
+    assert "研究用途" in details
+    assert "不代表勝率或策略績效" in details
+
+    unverified = ScheduledEvidenceStatus(
+        recommendation_status="passed",
+        recommendation_source="scheduled_latest_status",
+        recommendation_result_id="rec_20261002_unverified",
+    )
+    unverified_view = ScheduledEvidenceStatusView(
+        FixedStatus(unverified), auto_refresh=False, async_refresh=False
+    )
+    unverified_view.refresh_status()
+    assert "未確認" in unverified_view.recommendation_label.text()
+    assert "來源品質問題 0" not in unverified_view.recommendation_label.text()
+
+
+@pytest.mark.parametrize(
+    "error",
+    (None, "controlled scheduled status error"),
+    ids=("success", "error"),
+)
+def test_scheduled_status_worker_release_while_view_is_alive(monkeypatch, error) -> None:
+    application = app()
+    qt_exceptions = []
+    monkeypatch.setattr(
+        sys,
+        "excepthook",
+        lambda exception_type, exception, traceback: qt_exceptions.append(
+            (exception_type, exception, traceback)
+        ),
+    )
+
+    service = _GatedScheduledStatus(FakeScheduledStatus().result, error=error)
+    view = ScheduledEvidenceStatusView(
+        service,
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    view.refresh_status()
+    worker = view._worker
+    assert worker is not None
+    assert service.started.wait(timeout=2)
+    service.release.set()
+    assert worker.wait(5000)
+    _wait_for_qt_callbacks(application)
+
+    assert view._worker is None
+    assert view.refresh_button.isEnabled()
+    if error is None:
+        assert "20260707" in view.freshness_label.text()
+    else:
+        assert "狀態未知" in view.boundary_label.text()
+    assert qt_exceptions == []
+
+    worker.deleteLater()
+    view.setAttribute(Qt.WA_DeleteOnClose, True)
+    assert view.close()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+@pytest.mark.parametrize(
+    "error",
+    (None, "controlled scheduled status error"),
+    ids=("success", "error"),
+)
+@pytest.mark.parametrize(
+    "delete_before_result",
+    (True, False),
+    ids=("view-deleted-first", "result-queued-first"),
+)
+def test_scheduled_status_worker_callbacks_disconnect_when_view_is_deleted(
+    monkeypatch,
+    error,
+    delete_before_result,
+) -> None:
+    application = app()
+    qt_exceptions = []
+    monkeypatch.setattr(
+        sys,
+        "excepthook",
+        lambda exception_type, exception, traceback: qt_exceptions.append(
+            (exception_type, exception, traceback)
+        ),
+    )
+
+    service = _GatedScheduledStatus(FakeScheduledStatus().result, error=error)
+    view = ScheduledEvidenceStatusView(
+        service,
+        auto_refresh=False,
+        async_refresh=True,
+    )
+    view.refresh_status()
+    worker = view._worker
+    assert worker is not None
+    assert service.started.wait(timeout=2)
+
+    if not delete_before_result:
+        service.release.set()
+        assert worker.wait(5000)
+        assert view._worker is worker
+        assert not view.refresh_button.isEnabled()
+
+    view.setAttribute(Qt.WA_DeleteOnClose, True)
+    assert view.close()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert not shiboken6.isValid(view)
+
+    if delete_before_result:
+        service.release.set()
+    assert worker.wait(5000)
+    _wait_for_qt_callbacks(application)
+
+    assert qt_exceptions == []
+    worker.deleteLater()
+    QCoreApplication.sendPostedEvents(worker, QEvent.DeferredDelete)
 
 
 def test_scheduled_evidence_status_view_prioritizes_manual_observed_summary_over_raw_report() -> None:
@@ -285,6 +499,7 @@ def test_scheduled_status_view_marks_each_card_stale_and_focuses_retry() -> None
         view.freshness_label,
         view.recommendation_label,
         view.evidence_label,
+        view.forward_outcome_label,
         view.safety_label,
         view.report_label,
     ))

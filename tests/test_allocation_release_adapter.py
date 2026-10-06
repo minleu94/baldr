@@ -9,7 +9,14 @@ import joblib
 import pytest
 from typing import Any, cast
 
-from app_module.allocation_release_adapter import AllocationReleaseAdapter
+import app_module.allocation_release_adapter as release_adapter_module
+from app_module.allocation_release_adapter import (
+    AllocationReleaseAdapter,
+    LoadedAllocationRelease,
+)
+from data_module.ml_daily_price_revision_gate import (
+    KNOWN_MODEL_SOURCE_REVISION_QUARANTINES,
+)
 from ml_module.allocation_release_contract import (
     AllocationReleaseManifest,
     CalibrationBinding,
@@ -20,6 +27,7 @@ from ml_module.allocation_release_contract import (
     canonical_json,
     feature_order_hash,
 )
+from ml_module.allocation_release_loader import load_verified_allocation_release
 from tests.test_ml_allocation_inference_service import (
     _inference_rows,
     _research_rows,
@@ -30,6 +38,9 @@ _MODEL_ID = "allocator-v4-release-test"
 _UNIVERSE_ID = "pit-universe-test"
 _POLICY_ID = "balanced-v1"
 _POLICY_HASH = MissingPolicyBinding.create(policy_id=_POLICY_ID).policy_hash
+_QUARANTINED_V1_ARTIFACT_HASH = (
+    "sha256:5c851d94b4a9385b30317b345ff084cdc47cdc165394e5463061272fbad67a52"
+)
 
 
 def _write_json(path: Path, payload: object) -> bytes:
@@ -43,6 +54,7 @@ def _write_release(
     training_result,
     *,
     external_calibration: bool = False,
+    artifact_hash_override: str | None = None,
 ) -> AllocationReleaseManifest:
     root = tmp_path / "release"
     root.mkdir()
@@ -125,7 +137,11 @@ def _write_release(
         dataset_id=training_result.dataset_id,
         training_manifest_hash=training_result.dataset_manifest_file_hash,
         artifact_file=artifact_path.name,
-        artifact_hash=training_result.artifact_hash,
+        artifact_hash=(
+            training_result.artifact_hash
+            if artifact_hash_override is None
+            else artifact_hash_override
+        ),
         dataset_identity_hash=training_result.dataset_identity_hash,
         feature_registry_hash=training_result.feature_registry_hash,
         source_manifest_hashes=training_result.source_manifest_hashes,
@@ -136,6 +152,41 @@ def _write_release(
     )
     _write_json(root / "release_manifest.json", manifest.to_dict())
     return manifest
+
+
+def test_release_adapter_blocks_known_pre_repair_artifact_before_deserialization(
+    tmp_path: Path,
+    training_result,
+) -> None:
+    quarantined_hash = next(iter(KNOWN_MODEL_SOURCE_REVISION_QUARANTINES))
+    _write_release(
+        tmp_path,
+        training_result,
+        artifact_hash_override=quarantined_hash,
+    )
+
+    with pytest.raises(ValueError, match="quarantined by a daily-price source revision"):
+        AllocationReleaseAdapter().load(tmp_path / "release")
+
+
+def test_same_source_revision_also_quarantines_v1_before_deserialization(
+    tmp_path: Path,
+    training_result,
+    monkeypatch,
+) -> None:
+    _write_release(
+        tmp_path,
+        training_result,
+        artifact_hash_override=_QUARANTINED_V1_ARTIFACT_HASH,
+    )
+
+    monkeypatch.setattr(
+        release_adapter_module,
+        "_load_joblib_object",
+        lambda *_args, **_kwargs: pytest.fail("quarantined V1 artifact was deserialized"),
+    )
+    with pytest.raises(ValueError, match="quarantined by a daily-price source revision"):
+        AllocationReleaseAdapter().load(tmp_path / "release")
 
 
 def test_release_adapter_binds_artifact_components_and_replays_rows(
@@ -165,6 +216,23 @@ def test_release_adapter_binds_artifact_components_and_replays_rows(
     assert result.proposal.production_blend_alpha_bp == 0
     assert parity.matched
     assert parity.row_count == 2
+
+
+def test_verified_readback_keeps_the_adapter_class_path_and_identity(
+    tmp_path: Path,
+    training_result,
+) -> None:
+    manifest = _write_release(tmp_path, training_result)
+
+    loaded = load_verified_allocation_release(
+        tmp_path / "release",
+        expected_release_identity_hash=manifest.release_identity_hash,
+    )
+
+    assert type(loaded) is LoadedAllocationRelease
+    assert type(loaded).__module__ == "app_module.allocation_release_adapter"
+    assert loaded.manifest.release_identity_hash == manifest.release_identity_hash
+    assert loaded.release_id == manifest.release_id
 
 
 def test_release_adapter_research_shadow_entrypoint_preserves_safety_flags(

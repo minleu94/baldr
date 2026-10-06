@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 from contextlib import closing, contextmanager
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any, Iterator
@@ -11,8 +12,13 @@ from typing import Any, Iterator
 from app_module.research_run_dtos import (
     ResearchRunMetadataDTO,
     canonical_json,
+    normalize_research_run_json_value,
     parse_json_list,
     parse_json_object,
+)
+from app_module.sqlite_read_only import (
+    check_read_cancelled,
+    connect_read_only_sqlite,
 )
 
 
@@ -34,6 +40,24 @@ class ResearchRunRepository:
     SCHEMA_NAME = "research_runs"
     SCHEMA_VERSION = 2
 
+    PORTFOLIO_RESULT_REQUIRED_MARKER = "portfolio_result_required"
+    PORTFOLIO_RESULT_DESCRIPTOR_KEY = "portfolio_result_sidecar"
+    PORTFOLIO_RESULT_SCHEMA_VERSION = "recommendation-portfolio-result.v1"
+    PORTFOLIO_RESULT_SCHEMA_REVISION = 1
+    PORTFOLIO_RESULT_DESCRIPTOR_KEYS = frozenset(
+        {
+            "schema_version",
+            "schema_revision",
+            "registry_run_id",
+            "portfolio_parent_id",
+            "relative_path",
+            "raw_payload_sha256",
+            "payload_hash",
+            "equity_parquet_sha256",
+            "trades_parquet_sha256",
+        }
+    )
+
     JSON_FIELD_MAP = {
         "original_input": "original_input_json",
         "normalized_params": "normalized_params_json",
@@ -51,8 +75,7 @@ class ResearchRunRepository:
 
     @contextmanager
     def _read_connection(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path.resolve().as_uri() + "?mode=ro", uri=True)
-        conn.execute("PRAGMA query_only = ON")
+        conn = connect_read_only_sqlite(self.db_path, require_existing=False)
         try:
             row = conn.execute(
                 "SELECT version FROM schema_version WHERE name = ?", (self.SCHEMA_NAME,)
@@ -61,6 +84,7 @@ class ResearchRunRepository:
                 raise ResearchRunRepositoryError("Registry schema version 不相容；需由寫入 owner 明確遷移")
             yield conn
         except sqlite3.Error as exc:
+            check_read_cancelled()
             raise ResearchRunRepositoryError(f"Registry schema 無法唯讀載入: {exc}") from exc
         finally:
             conn.close()
@@ -278,6 +302,403 @@ class ResearchRunRepository:
                 params,
             )
 
+    @staticmethod
+    def _is_sha256(value: object) -> bool:
+        return (
+            type(value) is str
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
+        )
+
+    @staticmethod
+    def _is_safe_relative_artifact_path(value: object) -> bool:
+        if (
+            type(value) is not str
+            or not value
+            or value != value.strip()
+            or "\\" in value
+            or ":" in value
+            or "\x00" in value
+        ):
+            return False
+        parts = value.split("/")
+        return all(part not in {"", ".", ".."} for part in parts)
+
+    def _resolved_parquet_path(self, value: object) -> Path | None:
+        if type(value) is not str or not Path(value).is_absolute():
+            return None
+        try:
+            parquet_root = Path(self.config.research_run_parquet_dir).resolve()
+            candidate = Path(value).resolve()
+            candidate.relative_to(parquet_root)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if candidate == parquet_root:
+            return None
+        return candidate
+
+    def _validate_portfolio_result_finalization(
+        self,
+        run_id: str,
+        expected_payload_hash: str,
+        finalized_metadata: ResearchRunMetadataDTO,
+    ) -> None:
+        if not isinstance(finalized_metadata, ResearchRunMetadataDTO):
+            raise ResearchRunRepositoryError("finalized_metadata DTO 型別無效")
+        if type(run_id) is not str or not run_id or run_id != run_id.strip():
+            raise ResearchRunRepositoryError("portfolio finalize run_id 無效")
+        if type(expected_payload_hash) is not str or not expected_payload_hash:
+            raise ResearchRunRepositoryError("expected_payload_hash 不可為空")
+        if finalized_metadata.run_id != run_id:
+            raise ResearchRunRepositoryError("finalized metadata run_id 不相符")
+        if finalized_metadata.run_type != "recommendation_portfolio":
+            raise ResearchRunRepositoryError(
+                "portfolio finalize metadata run_type 必須是 recommendation_portfolio"
+            )
+        if not self._is_sha256(finalized_metadata.payload_hash):
+            raise ResearchRunRepositoryError("finalized payload_hash 格式無效")
+        if finalized_metadata.payload_hash == expected_payload_hash:
+            raise ResearchRunRepositoryError(
+                "finalized payload_hash 必須反映 manifest 更新"
+            )
+        for label, value in (
+            ("equity_path", finalized_metadata.equity_path),
+            ("trades_path", finalized_metadata.trades_path),
+        ):
+            if self._resolved_parquet_path(value) is None:
+                raise ResearchRunRepositoryError(
+                    f"{label} 必須是位於 research_run_parquet_dir 下的 absolute path"
+                )
+        equity_path = self._resolved_parquet_path(finalized_metadata.equity_path)
+        trades_path = self._resolved_parquet_path(finalized_metadata.trades_path)
+        if equity_path is None or trades_path is None:
+            raise ResearchRunRepositoryError("Parquet absolute path 無法解析")
+        if equity_path == trades_path:
+            raise ResearchRunRepositoryError("equity 與 trades 路徑必須分離")
+        if not self._is_sha256(finalized_metadata.equity_parquet_hash):
+            raise ResearchRunRepositoryError("equity Parquet hash 格式無效")
+        if not self._is_sha256(finalized_metadata.trades_parquet_hash):
+            raise ResearchRunRepositoryError("trades Parquet hash 格式無效")
+
+        manifest = finalized_metadata.data_manifest
+        if type(manifest) is not dict:
+            raise ResearchRunRepositoryError("data_manifest 必須是 object")
+        if manifest.get(self.PORTFOLIO_RESULT_REQUIRED_MARKER) is not True:
+            raise ResearchRunRepositoryError("portfolio result required marker 缺失")
+        descriptor = manifest.get(self.PORTFOLIO_RESULT_DESCRIPTOR_KEY)
+        if type(descriptor) is not dict:
+            raise ResearchRunRepositoryError("portfolio result descriptor 缺失")
+        if set(descriptor) != self.PORTFOLIO_RESULT_DESCRIPTOR_KEYS:
+            raise ResearchRunRepositoryError(
+                "portfolio result descriptor 欄位不完整或含未知欄位"
+            )
+        if descriptor.get("schema_version") != self.PORTFOLIO_RESULT_SCHEMA_VERSION:
+            raise ResearchRunRepositoryError("portfolio result schema_version 不支援")
+        revision = descriptor.get("schema_revision")
+        if type(revision) is not int or revision != self.PORTFOLIO_RESULT_SCHEMA_REVISION:
+            raise ResearchRunRepositoryError("portfolio result schema_revision 不支援")
+        if descriptor.get("registry_run_id") != run_id:
+            raise ResearchRunRepositoryError("portfolio result Registry identity 不相符")
+        parent_id = descriptor.get("portfolio_parent_id")
+        if (
+            type(parent_id) is not str
+            or not parent_id
+            or parent_id != parent_id.strip()
+            or parent_id == run_id
+        ):
+            raise ResearchRunRepositoryError("portfolio parent identity 無效")
+        if not self._is_safe_relative_artifact_path(descriptor.get("relative_path")):
+            raise ResearchRunRepositoryError("portfolio sidecar path 必須是安全相對路徑")
+        parquet_root = Path(self.config.research_run_parquet_dir).resolve()
+        if descriptor["relative_path"] in {
+            equity_path.relative_to(parquet_root).as_posix(),
+            trades_path.relative_to(parquet_root).as_posix(),
+        }:
+            raise ResearchRunRepositoryError("portfolio sidecar path 必須與 Parquet 路徑分離")
+        for key in (
+            "raw_payload_sha256",
+            "payload_hash",
+            "equity_parquet_sha256",
+            "trades_parquet_sha256",
+        ):
+            if not self._is_sha256(descriptor.get(key)):
+                raise ResearchRunRepositoryError(f"portfolio descriptor {key} 格式無效")
+        if descriptor["equity_parquet_sha256"] != finalized_metadata.equity_parquet_hash:
+            raise ResearchRunRepositoryError("portfolio descriptor equity hash 不相符")
+        if descriptor["trades_parquet_sha256"] != finalized_metadata.trades_parquet_hash:
+            raise ResearchRunRepositoryError("portfolio descriptor trades hash 不相符")
+
+    def finalize_portfolio_result_staging(
+        self,
+        run_id: str,
+        *,
+        expected_payload_hash: str,
+        finalized_metadata: ResearchRunMetadataDTO,
+    ) -> ResearchRunMetadataDTO:
+        """以 CAS 將 staging portfolio row 的 manifest 與檔案綁定一次定稿。
+
+        此窄 command 僅供 portfolio-result publisher 使用；通用
+        ``update_storage_fields`` 的既有語意不變。B2 service 呼叫前必須完成
+        sidecar/Parquet 原始 bytes 與 canonical hash 驗證，並重算 Registry
+        payload_hash；本 command 負責核對 staging CAS、metadata identity 與
+        manifest 只新增 marker/descriptor。
+        """
+
+        self._validate_portfolio_result_finalization(
+            run_id, expected_payload_hash, finalized_metadata
+        )
+        self.ensure_schema()
+        unchanged_fields = {
+            "data_manifest",
+            "payload_hash",
+            "equity_path",
+            "equity_parquet_hash",
+            "trades_path",
+            "trades_parquet_hash",
+        }
+
+        with self._write_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM research_runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if row is None:
+                raise ResearchRunConflictError("portfolio finalize run_id 不存在")
+            current_row = dict(row)
+            if current_row["run_type"] != "recommendation_portfolio":
+                raise ResearchRunConflictError("Registry row 不是 recommendation_portfolio")
+            if (
+                current_row["storage_state"] != "staging"
+                or current_row["integrity_status"] != "pending"
+            ):
+                raise ResearchRunConflictError(
+                    "portfolio finalize 僅允許 staging/pending Registry row"
+                )
+            if current_row["payload_hash"] != expected_payload_hash:
+                raise ResearchRunConflictError("portfolio finalize base payload_hash 已變更")
+
+            current_metadata = self._row_to_dto(current_row)
+            current_manifest = current_metadata.data_manifest
+            finalized_manifest = finalized_metadata.data_manifest
+            if self.PORTFOLIO_RESULT_DESCRIPTOR_KEY in current_manifest:
+                raise ResearchRunRepositoryError(
+                    "staging manifest 已有 portfolio result descriptor，不可覆寫"
+                )
+            expected_manifest_keys = set(current_manifest) | {
+                self.PORTFOLIO_RESULT_REQUIRED_MARKER,
+                self.PORTFOLIO_RESULT_DESCRIPTOR_KEY,
+            }
+            if set(finalized_manifest) != expected_manifest_keys:
+                raise ResearchRunRepositoryError(
+                    "finalize manifest 只能新增 portfolio result marker 與 descriptor"
+                )
+            for key, value in current_manifest.items():
+                finalized_value = normalize_research_run_json_value(
+                    finalized_manifest.get(key)
+                )
+                if finalized_value != value:
+                    raise ResearchRunRepositoryError(
+                        f"portfolio finalize 不得變更既有 manifest 欄位: {key}"
+                    )
+            for field_info in fields(ResearchRunMetadataDTO):
+                name = field_info.name
+                if (
+                    name not in unchanged_fields
+                    and getattr(current_metadata, name) != getattr(finalized_metadata, name)
+                ):
+                    raise ResearchRunRepositoryError(
+                        f"portfolio finalize 不得變更既有 metadata 欄位: {name}"
+                    )
+
+            finalized_row = self._dto_to_row(finalized_metadata)
+            cursor = conn.execute(
+                """
+                UPDATE research_runs
+                SET data_manifest_json = ?,
+                    payload_hash = ?,
+                    equity_path = ?,
+                    equity_parquet_hash = ?,
+                    trades_path = ?,
+                    trades_parquet_hash = ?
+                WHERE run_id = ?
+                  AND run_type = 'recommendation_portfolio'
+                  AND storage_state = 'staging'
+                  AND integrity_status = 'pending'
+                  AND payload_hash = ?
+                """,
+                (
+                    finalized_row["data_manifest_json"],
+                    finalized_row["payload_hash"],
+                    finalized_row["equity_path"],
+                    finalized_row["equity_parquet_hash"],
+                    finalized_row["trades_path"],
+                    finalized_row["trades_parquet_hash"],
+                    run_id,
+                    expected_payload_hash,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ResearchRunConflictError(
+                    "portfolio finalize CAS 未命中唯一 staging row"
+                )
+
+        return finalized_metadata
+
+    def _transition_portfolio_result_state(
+        self,
+        run_id: str,
+        *,
+        expected_payload_hash: str,
+        expected_data_manifest: dict[str, Any],
+        from_storage_state: str,
+        from_integrity_status: str,
+        to_storage_state: str,
+        to_integrity_status: str,
+    ) -> None:
+        descriptor = expected_data_manifest.get(self.PORTFOLIO_RESULT_DESCRIPTOR_KEY)
+        if (
+            expected_data_manifest.get(self.PORTFOLIO_RESULT_REQUIRED_MARKER) is not True
+            or type(descriptor) is not dict
+            or set(descriptor) != self.PORTFOLIO_RESULT_DESCRIPTOR_KEYS
+            or descriptor.get("registry_run_id") != run_id
+        ):
+            raise ResearchRunRepositoryError(
+                "portfolio result state transition 缺少 identity-bound descriptor"
+            )
+        manifest_json = canonical_json(
+            normalize_research_run_json_value(expected_data_manifest)
+        )
+        self.ensure_schema()
+        with self._write_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.execute(
+                """
+                UPDATE research_runs
+                SET storage_state = ?, integrity_status = ?
+                WHERE run_id = ?
+                  AND run_type = 'recommendation_portfolio'
+                  AND storage_state = ?
+                  AND integrity_status = ?
+                  AND payload_hash = ?
+                  AND data_manifest_json = ?
+                """,
+                (
+                    to_storage_state,
+                    to_integrity_status,
+                    run_id,
+                    from_storage_state,
+                    from_integrity_status,
+                    expected_payload_hash,
+                    manifest_json,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ResearchRunConflictError(
+                    "portfolio result storage state CAS 未命中唯一預期 row"
+                )
+
+    def mark_portfolio_result_files_ready(
+        self,
+        run_id: str,
+        *,
+        expected_payload_hash: str,
+        expected_data_manifest: dict[str, Any],
+    ) -> None:
+        """僅將已 finalize 的 portfolio staging row CAS 至 files_ready。"""
+
+        self._transition_portfolio_result_state(
+            run_id,
+            expected_payload_hash=expected_payload_hash,
+            expected_data_manifest=expected_data_manifest,
+            from_storage_state="staging",
+            from_integrity_status="pending",
+            to_storage_state="files_ready",
+            to_integrity_status="pending",
+        )
+
+    def mark_portfolio_result_committed(
+        self,
+        run_id: str,
+        *,
+        expected_payload_hash: str,
+        expected_data_manifest: dict[str, Any],
+    ) -> None:
+        """僅將已驗證完整 artifacts 的 portfolio files_ready row CAS commit。"""
+
+        self._transition_portfolio_result_state(
+            run_id,
+            expected_payload_hash=expected_payload_hash,
+            expected_data_manifest=expected_data_manifest,
+            from_storage_state="files_ready",
+            from_integrity_status="pending",
+            to_storage_state="committed",
+            to_integrity_status="valid",
+        )
+
+    def mark_portfolio_result_failed(
+        self,
+        run_id: str,
+        *,
+        expected_payload_hash: str,
+        expected_data_manifest: dict[str, Any],
+        expected_storage_state: str,
+        expected_integrity_status: str,
+    ) -> None:
+        """以 CAS 標記失敗的 opt-in portfolio publisher row。
+
+        staging row 可尚未完成 sidecar descriptor；files_ready row 則必須已綁定
+        descriptor。兩者都必須保留明確 marker，避免這個窄轉移影響舊 publisher。
+        """
+
+        descriptor_key = self.PORTFOLIO_RESULT_DESCRIPTOR_KEY
+        if (
+            self.PORTFOLIO_RESULT_REQUIRED_MARKER not in expected_data_manifest
+            and descriptor_key not in expected_data_manifest
+        ):
+            raise ResearchRunRepositoryError(
+                "portfolio result failure transition 缺少 reserved marker/descriptor"
+            )
+        # Failure-only transition may quarantine a malformed marker/descriptor.
+        # The exact manifest JSON remains part of the CAS predicate, so it cannot
+        # overwrite a corrected, committed, or otherwise changed row.
+        allowed_from = {
+            ("staging", "pending"),
+            ("files_ready", "pending"),
+        }
+        if (expected_storage_state, expected_integrity_status) not in allowed_from:
+            raise ResearchRunRepositoryError(
+                "portfolio result failure transition source state 無效"
+            )
+        manifest_json = canonical_json(
+            normalize_research_run_json_value(expected_data_manifest)
+        )
+        self.ensure_schema()
+        with self._write_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.execute(
+                """
+                UPDATE research_runs
+                SET storage_state = 'failed', integrity_status = 'failed'
+                WHERE run_id = ?
+                  AND run_type = 'recommendation_portfolio'
+                  AND storage_state = ?
+                  AND integrity_status = ?
+                  AND payload_hash = ?
+                  AND data_manifest_json = ?
+                """,
+                (
+                    run_id,
+                    expected_storage_state,
+                    expected_integrity_status,
+                    expected_payload_hash,
+                    manifest_json,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ResearchRunConflictError(
+                    "portfolio result failed CAS 未命中唯一預期 row"
+                )
+
     def list_uncommitted_rows(self) -> list[dict[str, Any]]:
         if not self.db_path.exists():
             return []
@@ -345,7 +766,9 @@ class ResearchRunRepository:
             name = field_info.name
             value = getattr(metadata, name)
             if name in self.JSON_FIELD_MAP:
-                row[self.JSON_FIELD_MAP[name]] = canonical_json(value)
+                row[self.JSON_FIELD_MAP[name]] = canonical_json(
+                    normalize_research_run_json_value(value)
+                )
             elif name == "is_archived":
                 row[name] = 1 if value else 0
             else:

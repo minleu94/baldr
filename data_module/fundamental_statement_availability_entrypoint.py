@@ -6,18 +6,16 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
+from data_module.contracts.fundamental import SourceDiagnostic, SourceDiagnosticKind
+from data_module.contracts.statement import StatementAvailabilityOverride
 from data_module.fundamental_availability import RETROACTIVE_STATEMENT_BASELINE_SOURCE
 from data_module.fundamental_statement_availability_sources import (
     STATEMENT_ALLOWED_AVAILABILITY_SOURCES as _STATEMENT_ALLOWED_AVAILABILITY_SOURCES,
-    StatementAvailabilityOverride,
     load_statement_availability_overrides_csv,
 )
 from data_module.mops_ezsearch_statement_availability import (
     MOPS_STATEMENT_AVAILABILITY_SOURCE,
 )
-from decision_module.factors.factor_dtos import FactorDiagnostic
-
-
 STATEMENT_ALLOWED_AVAILABILITY_SOURCES = _STATEMENT_ALLOWED_AVAILABILITY_SOURCES
 STATEMENT_MAX_AVAILABLE_LAG_DAYS = 120
 
@@ -27,7 +25,7 @@ class StatementAvailabilityValidationResult:
     valid: bool
     accepted_count: int
     source_versions: tuple[str, ...]
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[SourceDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_versions", tuple(self.source_versions))
@@ -79,25 +77,27 @@ def validate_statement_availability_file(
 
 def _unsupported_source_diagnostic(
     override: StatementAvailabilityOverride,
-) -> FactorDiagnostic:
-    return FactorDiagnostic(
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code="fundamental_statement_availability.unsupported_available_date_source",
-        factor_name="fundamental.statement_availability",
         stock_code=override.stock_code,
         message=(
             "statement availability source is not in allowed source list; "
             f"statement_type={override.statement_type}; period={override.period}; "
             f"source={override.source}"
         ),
+        kind=SourceDiagnosticKind.STATEMENT_AVAILABILITY,
+        period=override.period,
+        source_id=override.source,
+        source_version=override.source_version,
     )
 
 
 def _unreasonably_late_available_date_diagnostic(
     override: StatementAvailabilityOverride,
-) -> FactorDiagnostic:
-    return FactorDiagnostic(
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code="fundamental_statement_availability.available_date_unreasonably_late",
-        factor_name="fundamental.statement_availability",
         stock_code=override.stock_code,
         message=(
             "statement availability date is outside the allowed disclosure window; "
@@ -106,6 +106,10 @@ def _unreasonably_late_available_date_diagnostic(
             f"available_date={override.available_date.isoformat()}; "
             f"max_lag_days={STATEMENT_MAX_AVAILABLE_LAG_DAYS}"
         ),
+        kind=SourceDiagnosticKind.STATEMENT_AVAILABILITY,
+        period=override.period,
+        source_id=override.source,
+        source_version=override.source_version,
     )
 
 

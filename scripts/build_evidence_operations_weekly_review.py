@@ -6,6 +6,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -17,6 +18,8 @@ from app_module.evidence_operations_history_repository import (
     EvidenceOperationsHistoryRepository,
 )
 from data_module.config import TWStockConfig
+from app_module.personal_store_selection import resolve_personal_store_selection
+from app_module.personal_store_routes import PersonalStoreMode
 from runtime.console_encoding import configure_utf8_console
 
 
@@ -27,6 +30,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--db-path")
     parser.add_argument("--data-root")
     parser.add_argument("--output-root")
+    parser.add_argument("--personal-store-root")
+    parser.add_argument("--personal-store-mode", choices=("personal", "legacy_read_only"))
     parser.add_argument("--smoke-report-path")
     parser.add_argument("--result-id")
     parser.add_argument("--plan-action-items", action="store_true")
@@ -46,6 +51,10 @@ def _config(args: argparse.Namespace) -> TWStockConfig:
         kwargs["data_root"] = args.data_root
     if args.output_root is not None:
         kwargs["output_root"] = args.output_root
+    for field in ("personal_store_root", "personal_store_mode"):
+        value = getattr(args, field, None)
+        if value is not None:
+            kwargs[field] = value
     config = TWStockConfig(**kwargs)
     if args.db_path:
         config.db_file = Path(args.db_path)
@@ -81,10 +90,20 @@ def _read_only_history_db_path(args: argparse.Namespace) -> Path:
 
 def _list_history(args: argparse.Namespace) -> int:
     diagnostics: list[str] = []
+    data_root = Path(args.data_root) if args.data_root is not None else Path(
+        os.environ.get("DATA_ROOT", _DEFAULT_PRODUCTION_DATA_ROOT))
+    config = SimpleNamespace(data_root=data_root,
+        output_root=Path(args.output_root) if args.output_root is not None else data_root / "output",
+        db_file=_read_only_history_db_path(args),
+        personal_store_root=(getattr(args, "personal_store_root", None)
+            if getattr(args, "personal_store_root", None) is not None else os.environ.get("PERSONAL_STORE_ROOT")),
+        personal_store_mode=(getattr(args, "personal_store_mode", None)
+            if getattr(args, "personal_store_mode", None) is not None else os.environ.get("PERSONAL_STORE_MODE")))
+    selection = resolve_personal_store_selection(config)
     try:
         records = EvidenceOperationsHistoryRepository(
-            None,
-            db_path=_read_only_history_db_path(args),
+            config,
+            db_path=config.db_file if selection.mode is PersonalStoreMode.LEGACY_COMPAT else None,
             read_only=True,
         ).list_weekly_reviews(
             start_date=args.start_date,
@@ -133,6 +152,8 @@ def main() -> int:
         result_id=args.result_id,
     )
     payload = report.to_dict()
+    if service.source_lineage:
+        payload["source_lineage"] = service.source_lineage
     if args.plan_action_items or args.confirm_action_items:
         action_plan = service.plan_action_items(
             start_date=args.start_date,
@@ -148,12 +169,16 @@ def main() -> int:
                 result_id=args.result_id,
             )
             payload = report.to_dict()
+            if service.source_lineage:
+                payload["source_lineage"] = service.source_lineage
         payload["action_owner"] = args.action_owner
         payload["action_item_plan"] = action_plan.to_dict()
         payload["write_performed"] = payload["write_performed"] or action_plan.write_performed
     if args.save_history:
         payload["write_performed"] = True
-        record = EvidenceOperationsHistoryRepository(config, db_path=Path(config.db_file)).save_weekly_review(
+        selection = resolve_personal_store_selection(config)
+        record = EvidenceOperationsHistoryRepository(config,
+            db_path=Path(config.db_file) if selection.mode is PersonalStoreMode.LEGACY_COMPAT else None).save_weekly_review(
             report,
             generated_by="build_evidence_operations_weekly_review.py",
             payload_json=payload,

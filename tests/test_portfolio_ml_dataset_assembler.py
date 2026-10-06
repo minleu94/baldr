@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from data_module import portfolio_ml_dataset_assembler as assembler_module
+from data_module import pit_taxonomy_source_producer as source_producer_module
 from data_module.ml_pit_year_shard_exporter import (
     PITYearShardBuildRequest,
     PITYearShardExporter,
@@ -1057,6 +1058,97 @@ def test_sector_membership_sidecar_rejects_missing_or_tampered_manifest(
     connection.close()
 
 
+def test_split_taxonomy_candidate_cannot_self_promote_to_formal_consumer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar_path = tmp_path / "split-bundle" / "pit_sector_membership" / "sidecar.json"
+    sidecar_path.parent.mkdir(parents=True)
+    bundle_path = sidecar_path.parent.parent / "bundle_manifest.json"
+    decision_at = "2026-08-25T08:30:00+08:00"
+    diff: dict[str, object] = {
+        "denominator_count": 1,
+        "candidate_count": 1,
+        "intersection_count": 1,
+        "denominator_only_count": 0,
+        "rule_only_count": 0,
+        "intersection_symbols": ["2330"],
+        "intersection_symbols_hash": _manifest_hash(["2330"]),
+        "denominator_only_symbols": [],
+        "denominator_only_symbols_hash": _manifest_hash([]),
+        "rule_only_symbols": [],
+        "rule_only_symbols_hash": _manifest_hash([]),
+    }
+    scope_fields: dict[str, object] = {
+        "scope_binding_schema_version": "pit-industry-taxonomy-scope-binding.v1",
+        "denominator_binding": {"schema_version": "denominator-binding-fixture.v1"},
+        "rule_candidate_binding": {"schema_version": "rule-binding-fixture.v1"},
+        "scope_diff": diff,
+        "taxonomy_coverage_complete": True,
+        "rule_scope_compatible": True,
+    }
+    bundle_hash = "sha256:" + ("e" * 64)
+    bundle_path.write_text(
+        json.dumps(scope_fields, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
+    row = _sector_membership_row()
+    manifest: dict[str, object] = {
+        "schema_version": assembler_module.SPLIT_SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION,
+        "row_count": 1,
+        "rows_hash": _manifest_hash([row]),
+        **scope_fields,
+        "taxonomy_bundle_manifest_path": "../bundle_manifest.json",
+        "taxonomy_bundle_hash": bundle_hash,
+        "decision_at": decision_at,
+        # Deliberately forge every promotion-looking flag, then compute the
+        # canonical hash honestly.  The assembler still requires an accepted
+        # owner contract for v2 before any formal consumption.
+        "research_only": False,
+        "candidate_only": False,
+        "formal_consumer_compatible": True,
+    }
+    canonical_hash = _manifest_hash(
+        {
+            "sidecar_schema_version": assembler_module.SPLIT_SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION,
+            "manifest": manifest,
+        }
+    )
+    sidecar_path.write_text(
+        json.dumps(
+            {
+                "schema_version": assembler_module.SPLIT_SECTOR_MEMBERSHIP_SIDECAR_SCHEMA_VERSION,
+                "manifest": {**manifest, "canonical_hash": canonical_hash},
+                "rows": [row],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        source_producer_module,
+        "validate_daily_pit_taxonomy_bundle",
+        lambda *_args, **_kwargs: {
+            "taxonomy_coverage_complete": True,
+            "rule_scope_compatible": True,
+            "bundle_hash": bundle_hash,
+            "scope_diff": diff,
+        },
+    )
+    connection = sqlite3.connect(":memory:")
+    _initialize_spool(connection)
+    try:
+        with pytest.raises(ValueError, match="remains preview-only"):
+            _spool_sector_memberships(
+                connection,
+                sidecar_path,
+                training_as_of=datetime.fromisoformat(decision_at),
+            )
+    finally:
+        connection.close()
+
+
 def test_sector_membership_rejects_current_snapshot_backfill_poison(
     tmp_path: Path,
 ) -> None:
@@ -1622,3 +1714,192 @@ def test_raw_manifest_rejects_integer_in_json_boolean_field() -> None:
         match=r"safety\.formal_dataset must be a JSON boolean",
     ):
         _validate_raw_dataset_manifest(payload)
+
+
+def test_research_raw_parser_preserves_price_and_volume_canonical_scales(
+    tmp_path: Path,
+) -> None:
+    dataset_id = "all_field_enriched"
+    feature_specs = (
+        ("daily_prices.收盤價", 2, 11_205),
+        ("daily_prices.成交股數", 0, 60_951_975),
+    )
+    features = [
+        {
+            "feature_id": feature_id,
+            "table_name": "daily_prices",
+            "family": "daily_prices",
+            "source_id": "daily_prices",
+            "scale": scale,
+            "staleness_days": 10,
+            "record_hash": "sha256:" + str(index) * 64,
+        }
+        for index, (feature_id, scale, _) in enumerate(feature_specs, start=1)
+    ]
+    values = [
+        {
+            "feature_id": feature_id,
+            "value_int": value_int,
+            "scale": scale,
+            "source_value_hash": "sha256:" + str(index) * 64,
+            "stale_after_days": 10,
+            "formal_training_eligible": True,
+            "missing_mask": False,
+            "quality_blocked_mask": False,
+            "staleness_mask": False,
+        }
+        for index, (feature_id, scale, value_int) in enumerate(
+            feature_specs, start=3
+        )
+    ]
+    observation: dict[str, object] = {
+        "schema_version": "ml-pit-observation.v1",
+        "dataset_id": dataset_id,
+        "pit_status": "eligible_as_of_decision",
+        "entity_id": "2330",
+        "symbol": "2330",
+        "source_table": "daily_prices",
+        "table_name": "daily_prices",
+        "source_id": "daily_prices",
+        "family": "daily_prices",
+        "event_at": "2026-10-01T13:30:00+08:00",
+        "available_at": "2026-10-01T14:30:00+08:00",
+        "revision_id": "source-current-v1",
+        "quality": "accepted",
+        "values": values,
+    }
+    observation["source_row_hash"] = assembler_module._sha256_json(observation)
+    shard_path = tmp_path / "all_field_enriched" / "observations.jsonl.gz"
+    shard_path.parent.mkdir(parents=True)
+    observation_bytes = (
+        json.dumps(
+            observation,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        + b"\n"
+    )
+    with shard_path.open("wb") as compressed_stream:
+        with gzip.GzipFile(
+            fileobj=compressed_stream, mode="wb", mtime=0
+        ) as stream:
+            stream.write(observation_bytes)
+    manifest: dict[str, object] = {
+        "schema_version": "ml-research-adapted-raw-manifest.v1",
+        "stage": "raw_pit_observations",
+        "format": "gzip_jsonl",
+        "dataset_id": dataset_id,
+        "decision_at": "2026-10-02T08:30:00+08:00",
+        "safety": {
+            "formal_dataset": True,
+            "unreviewed_included": False,
+            "excluded_leakage_included": False,
+            "research_shadow_isolated": True,
+            "raw_float_persistence_allowed": False,
+        },
+        "features": features,
+        "shards": [
+            {
+                "path": "all_field_enriched/observations.jsonl.gz",
+                "compressed_sha256": assembler_module._file_sha256(shard_path),
+                "content_sha256": "sha256:" + hashlib.sha256(
+                    observation_bytes
+                ).hexdigest(),
+                "row_count": 1,
+                "feature_value_count": 2,
+                "year": 2026,
+            }
+        ],
+    }
+    manifest["manifest_hash"] = assembler_module._sha256_json(manifest)
+    manifest_path = tmp_path / "all_field_enriched" / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
+    connection = sqlite3.connect(":memory:")
+    _initialize_spool(connection)
+    definitions = _base_feature_definitions(manifest)
+    assembler = PortfolioMLDatasetAssembler()
+    row_count, value_count = assembler._spool_raw_observations(
+        connection=connection,
+        dataset_manifest_path=manifest_path,
+        manifest=manifest,
+        definitions=definitions,
+        source_digest=hashlib.sha256(),
+        batch_size=10,
+    )
+
+    assert (row_count, value_count) == (1, 2)
+    assert connection.execute(
+        "SELECT feature_id, value_int, scale FROM observations ORDER BY feature_id"
+    ).fetchall() == [
+        ("daily_prices.成交股數", 60_951_975, 0),
+        ("daily_prices.收盤價", 11_205, 2),
+    ]
+    assert connection.execute(
+        "SELECT close_int, close_scale FROM prices"
+    ).fetchone() == (11_205, 2)
+    connection.close()
+
+
+@pytest.mark.parametrize(
+    "safety_field,safety_value",
+    (
+        ("unreviewed_included", True),
+        ("excluded_leakage_included", True),
+        ("research_shadow_isolated", False),
+    ),
+)
+def test_research_raw_manifest_keeps_safety_guards(
+    safety_field: str, safety_value: bool
+) -> None:
+    payload: dict[str, object] = {
+        "schema_version": "ml-research-adapted-raw-manifest.v1",
+        "stage": "research_adapted_raw_observations",
+        "format": "gzip_jsonl",
+        "safety": {
+            "formal_dataset": False,
+            "unreviewed_included": False,
+            "excluded_leakage_included": False,
+            "research_shadow_isolated": True,
+            "raw_float_persistence_allowed": False,
+            safety_field: safety_value,
+        },
+        "features": [],
+    }
+    payload["manifest_hash"] = assembler_module._sha256_json(payload)
+
+    with pytest.raises(ValueError):
+        _validate_raw_dataset_manifest(payload, allow_research=True)
+
+
+def test_current_restated_manifest_does_not_enter_pit_assembly() -> None:
+    from data_module.ml_daily_price_revision_gate import (
+        CurrentRestatedContractNotConnectedError,
+    )
+
+    payload: dict[str, object] = {
+        "schema_version": "ml-pit-year-shard-dataset.v1",
+        "stage": "raw_pit_observations",
+        "dataset_id": "core_long_history",
+        "format": "gzip_jsonl",
+        "data_temporality": "current_restated_research",
+        "features": [],
+        "safety": {
+            "formal_dataset": False,
+            "unreviewed_included": False,
+            "excluded_leakage_included": False,
+            "research_shadow_isolated": True,
+            "raw_float_persistence_allowed": False,
+        },
+    }
+    payload["manifest_hash"] = assembler_module._sha256_json(payload)
+
+    with pytest.raises(
+        CurrentRestatedContractNotConnectedError,
+        match="cannot enter PIT row assembly",
+    ):
+        _validate_raw_dataset_manifest(payload, allow_research=True)

@@ -74,7 +74,7 @@
 1. `quick` healthcheck：通過。
 2. 分 tab healthcheck：`decision`、`recommendation`、`watchlist`、`runtime`、`portfolio` 皆通過。
 3. `MainWindow` opt-in smoke：通過；可啟動主 UI、切換 8 個頂層 tab、產生 startup / resize screenshot、執行 `update_force_merge_daily_price` dialog cancel probe，且未觸發 destructive action。
-4. 主要證據：`C:\Users\archi\AppData\Local\Temp\baldr_hc_1h_mainwindow\20260629_180401\result.json`。
+4. 主要證據：`<USER_HOME>\AppData\Local\Temp\baldr_hc_1h_mainwindow\20260629_180401\result.json`。
 
 本批次發現並已排入修正 / 複測的問題：
 
@@ -85,8 +85,8 @@
 
 1. Focused pytest：`tests/test_ui_qt_theme.py`、`tests/test_full_app_healthcheck_mainwindow_smoke_runner.py`、`tests/test_full_app_healthcheck_actions.py`，19 passed。
 2. `py_compile`：`ui_qt/theme/fonts.py`、`ui_qt/main.py`、`qa/full_app_healthcheck/mainwindow_smoke_runner.py` 與相關測試檔通過。
-3. Baldr Human-Lite UI Sweep 重跑：`20260629_181537` 通過；證據：`C:\Users\archi\AppData\Local\Temp\baldr_hc_after_font_fix2\20260629_181537\result.json`。
-4. 重跑 screenshot：`C:\Users\archi\AppData\Local\Temp\baldr_hc_after_font_fix2\mainwindow_ui_smoke\screenshots\startup.png` 中文可讀。
+3. Baldr Human-Lite UI Sweep 重跑：`20260629_181537` 通過；證據：`<USER_HOME>\AppData\Local\Temp\baldr_hc_after_font_fix2\20260629_181537\result.json`。
+4. 重跑 screenshot：`<USER_HOME>\AppData\Local\Temp\baldr_hc_after_font_fix2\mainwindow_ui_smoke\screenshots\startup.png` 中文可讀。
 5. Resize evidence：`1366x768` 為 `constrained_by_minimum`；`1726x768` 與 `1920x1080` 為 `matched`。
 
 已完成的下一個 2 小時自動化排除批次：
@@ -109,10 +109,10 @@
 
 已完成：
 
-1. `quick` gate：`20260629_191624`，通過；證據：`C:\Users\archi\AppData\Local\Temp\baldr_hc_safe_all_quick\20260629_191624\result.json`。
-2. `full` mode + `coverage-burndown` / `flow-diagnostics` / `full-release-checklist`：`20260629_191946`，通過；證據：`C:\Users\archi\AppData\Local\Temp\baldr_hc_safe_all_full_after_flow_fix\20260629_191946\result.json`。
-3. `high-risk-dry-run`：`20260629_191707`，通過；證據：`C:\Users\archi\AppData\Local\Temp\baldr_hc_safe_all_high_risk_dry_run\20260629_191707\result.json`。注意：本次 manifest 未產生實際 step，僅代表 dry-run mode 入口可執行且未失敗，不代表已實測所有高風險 dialog。
-4. `MainWindow` offscreen smoke：`20260629_191745`，通過；證據：`C:\Users\archi\AppData\Local\Temp\baldr_hc_safe_all_mainwindow\20260629_191745\result.json`。
+1. `quick` gate：`20260629_191624`，通過；證據：`<USER_HOME>\AppData\Local\Temp\baldr_hc_safe_all_quick\20260629_191624\result.json`。
+2. `full` mode + `coverage-burndown` / `flow-diagnostics` / `full-release-checklist`：`20260629_191946`，通過；證據：`<USER_HOME>\AppData\Local\Temp\baldr_hc_safe_all_full_after_flow_fix\20260629_191946\result.json`。
+3. `high-risk-dry-run`：`20260629_191707`，通過；證據：`<USER_HOME>\AppData\Local\Temp\baldr_hc_safe_all_high_risk_dry_run\20260629_191707\result.json`。注意：本次 manifest 未產生實際 step，僅代表 dry-run mode 入口可執行且未失敗，不代表已實測所有高風險 dialog。
+4. `MainWindow` offscreen smoke：`20260629_191745`，通過；證據：`<USER_HOME>\AppData\Local\Temp\baldr_hc_safe_all_mainwindow\20260629_191745\result.json`。
 5. Healthcheck runner-owned pytest：161 passed。
 
 本批次期間發現並修正：
@@ -132,7 +132,7 @@
 
 已完成：
 
-1. Windows 前景 `MainWindow` smoke：`20260629_195829`，通過；證據：`C:\Users\archi\AppData\Local\Temp\baldr_hc_foreground_mainwindow_after_resize_status\20260629_195829\result.json`。
+1. Windows 前景 `MainWindow` smoke：`20260629_195829`，通過；證據：`<USER_HOME>\AppData\Local\Temp\baldr_hc_foreground_mainwindow_after_resize_status\20260629_195829\result.json`。
 2. 前景 `direct bridge` UI pytest：106 passed。
 3. 前景 `candidate UI` pytest：48 passed。
 4. 非破壞已登錄 pytest 批次：995 passed，19 warnings。

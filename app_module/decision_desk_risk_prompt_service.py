@@ -48,6 +48,11 @@ class DecisionDeskRiskPromptService:
             if section.quality != DecisionDeskQuality.OBSERVED:
                 warnings.append(f"risk_prompt_source_quality:{section_name}:{section.quality.value}")
 
+        source_quality = (
+            DecisionDeskQuality.DEGRADED if any(section.quality in {DecisionDeskQuality.MISSING, DecisionDeskQuality.DEGRADED} for _, section in sections)
+            else DecisionDeskQuality.ESTIMATED if any(section.quality == DecisionDeskQuality.ESTIMATED for _, section in sections)
+            else DecisionDeskQuality.OBSERVED
+        )
         prompts.extend(self._market_context_prompts(market_regime))
         prompts.extend(self._relative_strength_prompts(relative_strength_liquidity))
         prompts.extend(self._watchlist_prompts(watchlist_triggers))
@@ -62,7 +67,7 @@ class DecisionDeskRiskPromptService:
             # 這裡因為 dedupe 後 prompts 為空，我們先確認是不是全部都是 MISSING，或是其他情況。
             # 如果 all sections 都是 MISSING，那我們回傳 MISSING 並在 warnings 寫 "risk_prompt_missing"
             all_missing = all(section.quality == DecisionDeskQuality.MISSING for _, section in sections)
-            quality = DecisionDeskQuality.MISSING if all_missing else (DecisionDeskQuality.DEGRADED if warnings else DecisionDeskQuality.OBSERVED)
+            quality = DecisionDeskQuality.MISSING if all_missing else source_quality
             
             # 如果 all_missing, warning 就包含 "risk_prompt_missing"
             # 如果非 all_missing 但 prompts 為空，說明沒有訊號，那這也是 observed / degraded 的正常狀態
@@ -73,7 +78,7 @@ class DecisionDeskRiskPromptService:
                 prompts=(),
             )
 
-        quality = DecisionDeskQuality.OBSERVED if not warnings else DecisionDeskQuality.DEGRADED
+        quality = source_quality
         return DecisionDeskRiskPromptSummary(
             as_of_date=as_of_date,
             quality=quality,

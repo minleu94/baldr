@@ -11,7 +11,10 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from app_module.dtos import BacktestReportDTO
-from app_module.strategy_spec import StrategySpec
+from app_module.recommendation_portfolio_dtos import (
+    RecommendationPortfolioBacktestResultDTO,
+)
+from decision_module.strategies.contracts import StrategySpec
 from data_module.config import TWStockConfig
 from decision_module.factors.factor_adapters import build_technical_total_score_factor
 from ui_qt.views.backtest_view import BacktestView
@@ -39,6 +42,22 @@ def backtest_view(qt_app, tmp_path):
     return view
 
 
+@pytest.fixture
+def close_fixed_basket_test_view(qt_app, backtest_view):
+    # 在 fixture setup 期間載入既有 helper，讓此測試明確擁有 view 的安全清理。
+    from ui_qt.main import _drain_qt_deferred_deletes
+    import shiboken6
+
+    yield
+
+    worker = getattr(backtest_view, "worker", None)
+    if worker is not None:
+        assert worker.isRunning() is False
+    assert backtest_view.close()
+    _drain_qt_deferred_deletes(qt_app, (backtest_view,))
+    assert not shiboken6.isValid(backtest_view)
+
+
 def _backtest_report():
     return BacktestReportDTO(
         total_return=0.12,
@@ -59,26 +78,35 @@ def _backtest_report():
     )
 
 
-class _FakePortfolioResult:
-    summary = {"total_return": 0.15, "max_drawdown": -0.05, "total_trades": 4}
-    equity_curve = pd.DataFrame([{"日期": "2026-01-02", "equity": 1000000}])
-    trades = pd.DataFrame([{"日期": "2026-01-05", "stock_code": "2330"}])
-    details = {
-        "data_version": "sha256:data",
-        "data_as_of_date": "2026-06-13",
-        "strategy_version": "recommendation_replay@1.0",
-        "execution_price": "next_open",
-        "data_manifest": {
-            "factor_snapshot": {
-                "schema_version": 1,
-                "records": [{"factor_name": "technical.total_score"}],
-            },
-            "factor_contributions": {
-                "schema_version": 1,
-                "by_stock": {"2330": [{"factor_name": "technical.total_score"}]},
+def _portfolio_result() -> RecommendationPortfolioBacktestResultDTO:
+    result = RecommendationPortfolioBacktestResultDTO(
+        summary={"total_return": 0.15, "max_drawdown": -0.05, "total_trades": 4},
+        equity_curve=pd.DataFrame([{"日期": "2026-01-02", "equity": 1000000}]),
+        trades=pd.DataFrame([{"日期": "2026-01-05", "stock_code": "2330"}]),
+        snapshots=[],
+        period_holdings=[],
+        stock_contribution=[],
+        details={
+            "data_version": "sha256:data",
+            "data_as_of_date": "2026-06-13",
+            "strategy_version": "recommendation_replay@1.0",
+            "execution_price": "next_open",
+            "data_manifest": {
+                "factor_snapshot": {
+                    "schema_version": 1,
+                    "records": [{"factor_name": "technical.total_score"}],
+                },
+                "factor_contributions": {
+                    "schema_version": 1,
+                    "by_stock": {
+                        "2330": [{"factor_name": "technical.total_score"}]
+                    },
+                },
             },
         },
-    }
+    )
+    result.attach_replay_parent_id("synthetic-replay-parent")
+    return result
 
 
 def test_single_backtest_save_uses_research_run_service_not_legacy_repo(backtest_view):
@@ -177,7 +205,7 @@ def test_single_backtest_save_rejects_stale_result(backtest_view):
 
 
 def test_recommendation_replay_save_uses_research_run_service(backtest_view):
-    result = _FakePortfolioResult()
+    result = _portfolio_result()
     backtest_view.current_recommendation_portfolio_result = result
     backtest_view.current_recommendation_portfolio_config = {
         "profile_id": "advanced",
@@ -194,6 +222,7 @@ def test_recommendation_replay_save_uses_research_run_service(backtest_view):
     }
     backtest_view._execution_generation = 3
     backtest_view._recommendation_portfolio_result_generation = 3
+    backtest_view._recommendation_portfolio_result_source = "execution"
 
     run_id = backtest_view._save_recommendation_portfolio_to_research_registry(
         "Replay Run",
@@ -204,7 +233,8 @@ def test_recommendation_replay_save_uses_research_run_service(backtest_view):
     backtest_view.portfolio_run_repository.save_run.assert_not_called()
     metadata, equity, trades = backtest_view.research_run_service.save_run.call_args.args
     assert run_id == metadata.run_id
-    assert backtest_view.current_portfolio_run_id == metadata.run_id
+    assert backtest_view.current_portfolio_run_id is None
+    assert backtest_view.current_recommendation_registry_run_id == metadata.run_id
     assert metadata.run_type == "recommendation_portfolio"
     assert metadata.strategy_id == "recommendation_replay"
     assert metadata.normalized_params["top_n"] == 5
@@ -216,12 +246,13 @@ def test_recommendation_replay_save_uses_research_run_service(backtest_view):
 
 
 def test_recommendation_replay_updates_current_run_id_only_after_save(backtest_view):
-    result = _FakePortfolioResult()
+    result = _portfolio_result()
     backtest_view.current_recommendation_portfolio_result = result
     backtest_view.current_recommendation_portfolio_config = {"profile_id": "advanced"}
     backtest_view.current_recommendation_portfolio_run_params = {"initial_capital": 1000000}
     backtest_view._execution_generation = 3
     backtest_view._recommendation_portfolio_result_generation = 3
+    backtest_view._recommendation_portfolio_result_source = "execution"
     backtest_view.current_portfolio_run_id = "previous-run"
 
     def assert_save_order(metadata, equity, trades, **kwargs):
@@ -231,9 +262,11 @@ def test_recommendation_replay_updates_current_run_id_only_after_save(backtest_v
 
     run_id = backtest_view._save_recommendation_portfolio_to_research_registry("Replay Run", "")
 
-    assert backtest_view.current_portfolio_run_id == run_id
+    assert backtest_view.current_portfolio_run_id is None
+    assert backtest_view.current_recommendation_registry_run_id == run_id
 
 
+@pytest.mark.usefixtures("close_fixed_basket_test_view")
 def test_fixed_basket_execution_forwards_research_mode_to_batch_service(backtest_view):
     backtest_view.batch_backtest_service = MagicMock()
     backtest_view.research_lab_mode_combo.setCurrentIndex(
@@ -248,6 +281,7 @@ def test_fixed_basket_execution_forwards_research_mode_to_batch_service(backtest
 
     with patch("ui_qt.views.backtest_view.TaskWorker") as task_worker_cls:
         worker = MagicMock()
+        worker.isRunning.return_value = False
         task_worker_cls.return_value = worker
 
         backtest_view._execute_batch_backtest(

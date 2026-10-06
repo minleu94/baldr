@@ -34,18 +34,29 @@ sys.path.insert(0, str(project_root))
 
 from data_module.config import TWStockConfig
 from app_module.recommendation_service import RecommendationService
+from app_module.decision_service_composition import build_industry_mapper
+from app_module.recommendation.input_preparation import (
+    build_default_recommendation_input_preparer,
+)
+from app_module.recommendation.execute import project_legacy_recommendations
+from app_module.recommendation.negative_evidence_projection import (
+    project_canonical_negative_evidence,
+)
 from app_module.regime_service import RegimeService
-from app_module.dtos import RecommendationDTO, RecommendationResultDTO
-# from ui_app.industry_mapper import IndustryMapper
+from app_module.recommendation.legacy_dtos import RecommendationDTO
+from scripts.recommendation_execution_qa_support import execute_and_readback
 # from ui_app.strategy_configurator import StrategyConfigurator
-from decision_module.industry_mapper import IndustryMapper
 from decision_module.strategy_configurator import StrategyConfigurator
 
 # 確保策略已註冊
-import app_module.strategies  # 這會觸發策略註冊
+import decision_module.strategies  # 這會觸發策略註冊
 
 # 設置日誌
-log_dir = project_root / 'output' / 'qa' / 'recommendation_tab'
+qa_temp_root = Path(tempfile.gettempdir()).resolve()
+configured_output_root = Path(os.environ.get("OUTPUT_ROOT", qa_temp_root / "recommendation_qa")).expanduser().resolve()
+if not configured_output_root.is_relative_to(qa_temp_root):
+    configured_output_root = qa_temp_root / "recommendation_qa"
+log_dir = configured_output_root / '_test' / 'qa' / 'recommendation_tab'
 log_dir.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
@@ -296,9 +307,14 @@ def validate_service_layer(config, result: ValidationResult):
     logger.info("=" * 80)
     
     try:
-        industry_mapper = IndustryMapper(config)
-        recommendation_service = RecommendationService(config, industry_mapper)
+        industry_mapper = build_industry_mapper(config)
         regime_service = RegimeService(config)
+        recommendation_service = RecommendationService(
+            config,
+            industry_mapper,
+            input_preparer=build_default_recommendation_input_preparer(config),
+            regime_service=regime_service,
+        )
         
         # 獲取當前 Regime
         regime_result = regime_service.detect_regime()
@@ -431,14 +447,21 @@ def validate_service_layer(config, result: ValidationResult):
             logger.info(f"  配置: {json.dumps(test_config, indent=2, ensure_ascii=False)}")
             
             try:
-                # 執行推薦分析
-                recommendations = recommendation_service.run_recommendation(
-                    config=test_config,
+                # 執行 sealed execution 並驗證 canonical query readback；
+                # RecommendationDTO 僅由既有相容 projector 供 UI 欄位 QA 使用。
+                capture = {}
+                execution, readback, receipt = execute_and_readback(
+                    recommendation_service,
+                    test_config,
                     max_stocks=50,
-                    top_n=10
+                    top_n=10,
+                    capture_sink=capture,
                 )
+                assert readback.execution is not None
+                recommendations = project_legacy_recommendations(readback.execution, capture)
                 
                 logger.info(f"  返回 {len(recommendations)} 個推薦")
+                logger.info(f"  verified execution={receipt.result_id}, hash={readback.payload_hash}")
                 
                 # 驗證返回類型
                 if not isinstance(recommendations, list):
@@ -538,7 +561,7 @@ def validate_ui_service_contract(result: ValidationResult):
         # 實際上 UI 使用 to_dict()，所以應該檢查 to_dict() 的輸出欄位
         
         # 驗證所有 EXPECTED_DTO_FIELDS 都存在於 DTO.to_dict() 中
-        from app_module.dtos import RecommendationDTO
+        from app_module.recommendation.legacy_dtos import RecommendationDTO
         
         # 創建一個測試 DTO 來檢查 to_dict() 輸出
         test_dto = RecommendationDTO(
@@ -592,9 +615,14 @@ def validate_filtering_logic(config, result: ValidationResult):
     logger.info("=" * 80)
     
     try:
-        industry_mapper = IndustryMapper(config)
-        recommendation_service = RecommendationService(config, industry_mapper)
+        industry_mapper = build_industry_mapper(config)
         regime_service = RegimeService(config)
+        recommendation_service = RecommendationService(
+            config,
+            industry_mapper,
+            input_preparer=build_default_recommendation_input_preparer(config),
+            regime_service=regime_service,
+        )
         
         regime_result = regime_service.detect_regime()
         current_regime = regime_result.regime
@@ -670,11 +698,16 @@ def validate_filtering_logic(config, result: ValidationResult):
             try:
                 test_config = {**base_config, 'filters': filters}
                 
-                recommendations = recommendation_service.run_recommendation(
-                    config=test_config,
+                capture = {}
+                _execution, readback, _receipt = execute_and_readback(
+                    recommendation_service,
+                    test_config,
                     max_stocks=50,
-                    top_n=10
+                    top_n=10,
+                    capture_sink=capture,
                 )
+                assert readback.execution is not None
+                recommendations = project_legacy_recommendations(readback.execution, capture)
                 
                 logger.info(f"  返回 {len(recommendations)} 個推薦")
                 
@@ -850,8 +883,7 @@ def generate_report(result: ValidationResult) -> str:
 
 
 def validate_isolated_recommendation_loop(root: Path, result: ValidationResult) -> None:
-    """自備離線行情，使用真實評分及推薦 repository；不讀取正式雙根。"""
-    from app_module.recommendation_repository import RecommendationRepository
+    """自備離線行情，使用真實評分及 sealed execution query readback。"""
 
     config = TWStockConfig(data_root=root / "data", output_root=root / "artifacts", profile="test")
     if not config.data_root.resolve().is_relative_to(root.resolve()) or not config.output_root.resolve().is_relative_to(root.resolve()):
@@ -867,16 +899,55 @@ def validate_isolated_recommendation_loop(root: Path, result: ValidationResult) 
     history.to_csv(source_file, index=False, encoding="utf-8-sig")
     source_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
     mapper = SimpleNamespace(get_stock_industries=lambda code: [])
-    service = RecommendationService(config, industry_mapper=mapper, market_data_provider=lambda: history, regime_detector=SimpleNamespace())
+    market_data_provider = lambda: history
+    regime_detector = SimpleNamespace()
+    service = RecommendationService(
+        config,
+        industry_mapper=mapper,
+        market_data_provider=market_data_provider,
+        regime_service=RegimeService(config, regime_detector=regime_detector),
+        input_preparer=build_default_recommendation_input_preparer(
+            config, market_data_provider=market_data_provider
+        ),
+    )
     strategy = {"profile_id": "qa_fixture", "profile_version": "1.0", "filters": {"volume_change_min_percent": "0"}, "weights": {"technical": 5000, "pattern": 3000, "volume": 2000}}
     original = deepcopy(strategy)
-    recommendations = service.run_recommendation(strategy, as_of_date="2026-05-25", top_n=1)
+    first_capture = {}
+    first_execution, first_readback, first_receipt = execute_and_readback(
+        service,
+        strategy,
+        as_of_date="2026-05-25",
+        max_stocks=200,
+        top_n=1,
+        capture_sink=first_capture,
+    )
+    assert first_readback.execution is not None and first_readback.execution.decision is not None
+    recommendations = project_legacy_recommendations(first_readback.execution, first_capture)
     if len(recommendations) != 1 or not isinstance(recommendations[0].total_score, Decimal):
         raise AssertionError("離線真實評分必須產生 Decimal 推薦結果")
     validate_dto_structure(recommendations[0], result)
     validate_score_ranges(recommendations[0], result)
-    context = deepcopy(service.last_run_context)
-    why_not = deepcopy(service.last_why_not_payload_json)
+    first_saved_execution = first_readback.execution
+    if first_saved_execution is None or first_saved_execution.decision is None:
+        raise AssertionError("saved execution 必須包含 typed DecisionBatch")
+    first_negative_evidence = project_canonical_negative_evidence(
+        first_saved_execution.decision,
+        allow_empty=True,
+    )
+    first_screening_matrix = first_negative_evidence.screening_matrix
+    context = {
+        "eligible_universe_size": (
+            first_saved_execution.decision.items[0].eligible_universe_size
+            if first_saved_execution.decision.items
+            else None
+        ),
+        "data_fingerprint": (
+            first_screening_matrix[0]["data_fingerprint"]
+            if first_screening_matrix
+            else None
+        ),
+    }
+    why_not = first_negative_evidence.why_not_payload
     if context["eligible_universe_size"] != 2 or not why_not or "recommendation_outside_top_n" not in why_not[0]["reason_codes"]:
         raise AssertionError("母體必須在 top_n 前計算且保留落選理由")
     result.add_pass("Eligible_Universe_Why_Not", {"universe": 2, "selected": 1})
@@ -884,20 +955,64 @@ def validate_isolated_recommendation_loop(root: Path, result: ValidationResult) 
     future["available_date"] = pd.Timestamp("2026-06-01")
     future["收盤價"] = 9999
     history = pd.concat([history, future], ignore_index=True)
-    repeated = service.run_recommendation(strategy, as_of_date="2026-05-25", top_n=1)
-    if [item.to_dict() for item in recommendations] != [item.to_dict() for item in repeated] or service.last_run_context != context or service.last_why_not_payload_json != why_not:
+    second_capture = {}
+    second_execution, second_readback, second_receipt = execute_and_readback(
+        service,
+        strategy,
+        as_of_date="2026-05-25",
+        max_stocks=200,
+        top_n=1,
+        capture_sink=second_capture,
+    )
+    assert second_readback.execution is not None
+    repeated = project_legacy_recommendations(second_readback.execution, second_capture)
+    second_saved_execution = second_readback.execution
+    if second_saved_execution is None or second_saved_execution.decision is None:
+        raise AssertionError("repeated saved execution 必須包含 typed DecisionBatch")
+    second_negative_evidence = project_canonical_negative_evidence(
+        second_saved_execution.decision,
+        allow_empty=True,
+    )
+    second_screening_matrix = second_negative_evidence.screening_matrix
+    repeated_context = {
+        "eligible_universe_size": (
+            second_saved_execution.decision.items[0].eligible_universe_size
+            if second_saved_execution.decision.items
+            else None
+        ),
+        "data_fingerprint": (
+            second_screening_matrix[0]["data_fingerprint"]
+            if second_screening_matrix
+            else None
+        ),
+    }
+    repeated_why_not = second_negative_evidence.why_not_payload
+    if (
+        [item.to_dict() for item in recommendations] != [item.to_dict() for item in repeated]
+        or repeated_context.get("data_fingerprint") != context.get("data_fingerprint")
+        or repeated_why_not != why_not
+    ):
         raise AssertionError("延遲修訂不得改變已知日推薦及負面證據")
     if strategy != original:
         raise AssertionError("推薦不得修改呼叫端設定")
     result.add_pass("Future_Append_Config_Freeze", {"data_fingerprint": context["data_fingerprint"]})
-    repository = RecommendationRepository(config)
-    dto = RecommendationResultDTO("", "隔離推薦驗收", strategy, repeated, why_not_payload_json=why_not, run_context=context)
-    result_id = repository.save_result(dto, "隔離推薦驗收")
-    loaded = repository.load_result(result_id)
-    if loaded is None or loaded.run_context != context or loaded.why_not_payload_json != why_not:
-        raise AssertionError("推薦保存重載不得遺失執行上下文與 Why Not")
-    result.add_pass("Repository_Context_Roundtrip", {"schema_version": context["schema_version"]})
-    if service.run_recommendation(strategy, as_of_date="2026-04-01") != []:
+    saved_again = second_readback.execution
+    if (
+        saved_again != second_execution
+        or second_receipt.result_id != second_execution.result_id
+        or second_readback.payload_hash != second_receipt.payload_hash
+    ):
+        raise AssertionError("推薦 execution verified readback 不一致")
+    result.add_pass("Execution_Query_Roundtrip", {"result_id": second_receipt.result_id})
+    empty_execution, empty_readback, _empty_receipt = execute_and_readback(
+        service,
+        strategy,
+        as_of_date="2026-04-01",
+        max_stocks=200,
+        top_n=1,
+    )
+    assert empty_readback.execution is not None
+    if empty_execution.decision is None or empty_execution.decision.items != ():
         raise AssertionError("無可得行情應回傳空集合")
     result.add_pass("Empty_As_Of_Result")
     if hashlib.sha256(source_file.read_bytes()).hexdigest() != source_hash:

@@ -24,6 +24,8 @@ SUMMARY_STATUS_READY = "READY"
 SUMMARY_STATUS_DEGRADED = "DEGRADED"
 SUMMARY_STATUS_MISSING_BENCHMARK = "MISSING_BENCHMARK"
 SUMMARY_STATUS_MISSING_INDUSTRY = "MISSING_INDUSTRY"
+BLOCKED_TIME_CONTRACT_WARNING = "blocked_time_contract_requires_review"
+MATURITY_CALENDAR_BLOCKED_WARNING = "maturity_calendar_comparison_blocked"
 
 SUPPORTED_GROUP_BY = (
     "event_type",
@@ -128,8 +130,30 @@ class ForwardPerformanceReadModel:
         rows: list[tuple[EvidenceEvent, EvidenceOutcome]],
         min_sample_size: int,
     ) -> ForwardPerformanceGroupSummary:
-        ready = [row for row in rows if row[1].outcome_status == EvidenceOutcomeStatus.READY]
-        pending_count = sum(1 for _, outcome in rows if outcome.outcome_status == EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA)
+        blocked_time_contract = [
+            row
+            for row in rows
+            if row[1].metadata.get("maturity_calendar_comparison") == "blocked_mismatch"
+        ]
+        blocked_outcome_ids = {
+            outcome.outcome_id for _, outcome in blocked_time_contract
+        }
+        ready = [
+            row
+            for row in rows
+            if row[1].outcome_status == EvidenceOutcomeStatus.READY
+            and row[1].outcome_id not in blocked_outcome_ids
+        ]
+        pending_count = sum(
+            1
+            for _, outcome in rows
+            if outcome.outcome_status
+            in (
+                EvidenceOutcomeStatus.PENDING,
+                EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA,
+            )
+            or outcome.outcome_id in blocked_outcome_ids
+        )
         missing_count = sum(1 for _, outcome in rows if outcome.outcome_status == EvidenceOutcomeStatus.MISSING_PRICE)
         dates = sorted(event.event_date for event, _ in rows)
         quality_counts = Counter(normalize_data_quality(event.data_quality).value for event, _ in rows)
@@ -138,10 +162,22 @@ class ForwardPerformanceReadModel:
         for event, outcome in rows:
             warning_counts.update(event.warnings)
             warning_counts.update(outcome.warnings)
+            if outcome.outcome_id in blocked_outcome_ids:
+                if BLOCKED_TIME_CONTRACT_WARNING not in outcome.warnings:
+                    warning_counts[BLOCKED_TIME_CONTRACT_WARNING] += 1
+                if MATURITY_CALENDAR_BLOCKED_WARNING not in outcome.warnings:
+                    warning_counts[MATURITY_CALENDAR_BLOCKED_WARNING] += 1
         expected_maturity_dates = sorted(
             str(outcome.metadata.get("expected_maturity_date"))
             for _, outcome in rows
-            if outcome.outcome_status == EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA
+            if (
+                outcome.outcome_status
+                in (
+                    EvidenceOutcomeStatus.PENDING,
+                    EvidenceOutcomeStatus.INSUFFICIENT_FUTURE_DATA,
+                )
+                and outcome.outcome_id not in blocked_outcome_ids
+            )
             and outcome.metadata.get("expected_maturity_date")
         )
 

@@ -27,6 +27,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import tempfile
 from typing import Any
@@ -45,6 +46,7 @@ from app_module.paper_portfolio_policy import PaperPortfolioPolicyConfig
 from app_module.paper_trade_ledger import (
     PaperTradeFill,
     PaperTradeLedgerRepository,
+    PaperTradeTransition,
 )
 from app_module.portfolio_construction_dtos import (
     PortfolioConstructionCandidate,
@@ -52,6 +54,11 @@ from app_module.portfolio_construction_dtos import (
 )
 from app_module.portfolio_construction_service import PortfolioConstructionService
 from data_module.official_trading_calendar import OfficialTradingCalendar
+from data_module.wp5_official_daily_capture_validator import (
+    CaptureValidationError,
+    MAX_METADATA_BYTES,
+    _read_regular_single_link_file,
+)
 from financial_module.units import calculate_fee, quantize_money
 
 
@@ -77,7 +84,23 @@ PAPER_PORTFOLIO_ID = "paper-main"
 PAPER_EXECUTION_PENDING_QUEUE_STATES = frozenset(
     {"pending_execution", "candidate_only_pending_append"}
 )
-PAPER_EXECUTION_TERMINAL_QUEUE_STATES = frozenset({"processed", "superseded"})
+PAPER_EXECUTION_TERMINAL_QUEUE_STATES = frozenset({"processed", "superseded", "rejected"})
+# 只有完全相符的會期前日曆 blocker，才可由較晚 processed receipt 結案。
+_UNPROVEN_TWSE_CALENDAR_BLOCKER = (
+    "official_calendar_not_proven:twse_holiday_schedule_unavailable"
+)
+# 沒有選中來源時，僅這些明確的無工作情況可以安全略過；未知或完整性錯誤一律阻擋。
+PAPER_EXECUTION_SAFE_NO_SELECTION_REASONS = frozenset(
+    {
+        "no_pending_recommendation",
+        "no_pending_recommendation_already_processed",
+        "no_pending_recommendation_due_for_current_session",
+    }
+)
+PAPER_EXECUTION_RECOMMENDATION_PATTERNS = frozenset(
+    {"*.json", "paper_frozen_*.json"}
+)
+PAPER_EXECUTION_PENDING_SOURCE_MAX_BYTES = 8 * 1024 * 1024
 # Receipts written before the pending-state contract existed are still
 # admissible when their complete source/result hashes and a narrowly
 # retryable status can be revalidated.  They are adopted in memory only;
@@ -112,6 +135,15 @@ class PaperExecutionPaths:
     # it at the frozen recommendation time.
     sector_membership_path: Path | None = None
     sector_membership_file_hash: str | None = None
+    queue_selection_metadata: dict[str, object] | None = None
+
+
+def ensure_paper_ledger_schema(path: Path) -> dict[str, object]:
+    """由 EOD append writer 建立並唯讀回讀 Paper ledger schema。"""
+
+    resolved = path.expanduser().resolve()
+    repository = PaperTradeLedgerRepository(resolved)
+    return repository.schema_readback()
 
 
 @dataclass(frozen=True)
@@ -138,6 +170,78 @@ class _QueueReceipt:
     portfolio_id: str
     execution_date: date | None
     recorded_at: datetime
+    receipt_content_hash: str | None = None
+    source_path: str | None = None
+
+
+@dataclass(frozen=True)
+class _RecoverableQueueReceiptIssue:
+    """只記錄可由後續同來源 processed receipt 結案的窄型歷史問題。"""
+
+    diagnostic: str
+    source_file_hash: str
+    source_result_id: str
+    portfolio_id: str
+    recorded_at: datetime
+
+
+@dataclass(frozen=True)
+class _InvalidPendingQueueReceiptIssue:
+    """保存無法驗證的待處理 receipt 與可相信的觀測時鐘。"""
+
+    diagnostic: str
+    recorded_at: datetime | None
+    receipt_hash_verified: bool
+
+
+def _effective_queue_receipts(
+    receipts: Sequence[_QueueReceipt],
+    *,
+    observed_at: datetime,
+) -> tuple[dict[tuple[str, date, str], _QueueReceipt], tuple[str, ...]]:
+    """依觀測時點解析已驗證的 append-only receipt。
+
+    終態只結束其 portfolio／session／frozen-source identity。歷史 pending
+    receipt 仍保留為不可變稽核資料，但不能重新打開已到達可信終態的來源。
+    ``observed_at`` 之後記錄的 receipt 不會出現在本次讀取。
+    """
+
+    visible = sorted(
+        (
+            receipt
+            for receipt in receipts
+            if receipt.execution_date is not None
+            and receipt.recorded_at <= observed_at
+        ),
+        key=lambda item: (item.recorded_at, item.path.name),
+    )
+    effective: dict[tuple[str, date, str], _QueueReceipt] = {}
+    conflicts: list[str] = []
+    for receipt in visible:
+        execution_date = receipt.execution_date
+        if execution_date is None:  # 保留型別收窄後的執行期防線
+            continue
+        key = (receipt.portfolio_id, execution_date, receipt.source_file_hash)
+        previous = effective.get(key)
+        if previous is None:
+            effective[key] = receipt
+            continue
+        previous_terminal = previous.state in PAPER_EXECUTION_TERMINAL_QUEUE_STATES
+        receipt_terminal = receipt.state in PAPER_EXECUTION_TERMINAL_QUEUE_STATES
+        if previous_terminal and receipt_terminal and previous.state != receipt.state:
+            conflicts.append(
+                f"{receipt.portfolio_id}:{execution_date.isoformat()}:"
+                f"{receipt.source_file_hash}"
+            )
+            continue
+        if previous_terminal:
+            # 較晚新增的 pending retry 不能重新打開已結束的 immutable identity。
+            if receipt_terminal and receipt.recorded_at >= previous.recorded_at:
+                effective[key] = receipt
+            continue
+        # 可信終態關閉較早的 pending；多筆 pending 則以最新時間作為目前 retry。
+        effective[key] = receipt
+    return effective, tuple(dict.fromkeys(conflicts))
 
 
 @dataclass(frozen=True)
@@ -233,10 +337,13 @@ def run_paper_execution_daily(
         "retryable": False,
         "append_requested": bool(confirm_append),
     }
+    if paths.queue_selection_metadata is not None:
+        base["queue_selection"] = dict(paths.queue_selection_metadata)
     try:
-        recommendation = _load_recommendation(
+        recommendation = _load_selected_recommendation(
             paths.recommendation_json,
             observed=observed,
+            queue_selection_metadata=paths.queue_selection_metadata,
         )
         base.update(
             {
@@ -430,6 +537,18 @@ def run_paper_execution_daily(
             policy=policy,
         )
         fill_records = _fill_candidate_records(fills, projection)
+        transition = (
+            _build_paper_trade_transition(
+                state=state,
+                fills=fills,
+                prices=market.prices,
+                projection=projection,
+                execution_date=execution_date,
+                recommendation_hash=recommendation.content_hash,
+            )
+            if fills
+            else None
+        )
         target_policy = _policy_projection(policy, target, recommendation)
         target_policy.update(
             {
@@ -511,6 +630,15 @@ def run_paper_execution_daily(
                     "append_requested": bool(confirm_append),
                     "appended": False,
                     "readback_verified": False,
+                    "transition_id": (
+                        None if transition is None else transition.transition_id
+                    ),
+                    "batch_id": (
+                        None if transition is None else transition.batch_id
+                    ),
+                    "transition_contract": (
+                        "paper_trade_transition.pre_post_common_price_canonical_bp_v1"
+                    ),
                 },
             }
         )
@@ -522,9 +650,12 @@ def run_paper_execution_daily(
                 raise PaperExecutionProducerError(
                     "paper ledger path is required for explicit append"
                 )
+            if transition is None:  # pragma: no cover - guarded by non-empty fills
+                raise PaperExecutionProducerError("paper transition is missing")
             idempotent_replay = _append_and_read_back(
                 paths.ledger_db,
                 fills,
+                transition=transition,
             )
             ledger = base["ledger"]
             if not isinstance(ledger, dict):  # pragma: no cover - local construction
@@ -576,6 +707,7 @@ def run_paper_execution_daily_from_queue(
     calendar: OfficialTradingCalendar | None = None,
     confirm_append: bool = False,
     persist_receipt: bool = True,
+    recommendation_pattern: str = "*.json",
 ) -> dict[str, object]:
     """由持久 recommendation queue 選取一筆待執行決策並可保存 receipt。
 
@@ -588,12 +720,25 @@ def run_paper_execution_daily_from_queue(
     observed = _aware_datetime(
         now if now is not None else datetime.now(timezone.utc), "now"
     ).astimezone(timezone.utc)
+    if recommendation_pattern not in PAPER_EXECUTION_RECOMMENDATION_PATTERNS:
+        raise PaperExecutionProducerError(
+            "recommendation source pattern is not supported"
+        )
+    resolved_historical_receipt_diagnostics: list[dict[str, str]] = []
+    pending_source_fallbacks: list[dict[str, str]] = []
+    selected_source_identities: list[dict[str, str]] = []
     selected, reason = resolve_pending_recommendation(
         recommendation_root,
         observed=observed,
         market_db=paths.market_db,
         calendar=calendar,
         receipt_root=receipt_root,
+        recommendation_pattern=recommendation_pattern,
+        _resolved_historical_receipt_diagnostics=(
+            resolved_historical_receipt_diagnostics
+        ),
+        _legacy_pending_source_fallbacks=pending_source_fallbacks,
+        _selected_source_identities=selected_source_identities,
     )
     if selected is None:
         result = _write_queue_status(
@@ -603,8 +748,55 @@ def run_paper_execution_daily_from_queue(
             reason=reason,
             append_requested=confirm_append,
             controlled_root=paths.controlled_output_root,
+            recommendation_pattern=recommendation_pattern,
+            resolved_historical_receipt_diagnostics=(
+                resolved_historical_receipt_diagnostics
+            ),
+            pending_source_fallbacks=pending_source_fallbacks,
         )
     else:
+        if len(selected_source_identities) != 1:
+            result = _write_queue_status(
+                paths.output_root,
+                recommendation_root=recommendation_root,
+                observed=observed,
+                reason="selected_source_identity_missing",
+                append_requested=confirm_append,
+                controlled_root=paths.controlled_output_root,
+                recommendation_pattern=recommendation_pattern,
+                resolved_historical_receipt_diagnostics=(
+                    resolved_historical_receipt_diagnostics
+                ),
+                pending_source_fallbacks=pending_source_fallbacks,
+            )
+            if receipt_root is not None and persist_receipt:
+                result = persist_operational_receipt(
+                    result,
+                    receipt_root,
+                    observed=observed,
+                )
+            return result
+        queue_selection_metadata: dict[str, object] = {
+            "policy": "fixed_recommendation_filename_pattern.v1",
+            "recommendation_pattern": recommendation_pattern,
+            "scope": (
+                "paper_frozen_recommendation_exports_only"
+                if recommendation_pattern == "paper_frozen_*.json"
+                else "all_top_level_json_recommendations"
+            ),
+            "legacy_pending_source_fallback_policy": (
+                "exact_active_pending_identity_only"
+            ),
+            "selected_source_identity": dict(selected_source_identities[0]),
+        }
+        if pending_source_fallbacks:
+            queue_selection_metadata["legacy_pending_source_fallbacks"] = [
+                dict(item) for item in pending_source_fallbacks
+            ]
+        if resolved_historical_receipt_diagnostics:
+            queue_selection_metadata["resolved_historical_receipts"] = [
+                dict(item) for item in resolved_historical_receipt_diagnostics
+            ]
         selected_paths = PaperExecutionPaths(
             recommendation_json=selected,
             state_db=paths.state_db,
@@ -615,6 +807,7 @@ def run_paper_execution_daily_from_queue(
             controlled_output_root=paths.controlled_output_root,
             sector_membership_path=paths.sector_membership_path,
             sector_membership_file_hash=paths.sector_membership_file_hash,
+            queue_selection_metadata=queue_selection_metadata,
         )
         result = run_paper_execution_daily(
             selected_paths,
@@ -638,6 +831,10 @@ def resolve_pending_recommendation(
     market_db: Path | None = None,
     calendar: OfficialTradingCalendar | None = None,
     receipt_root: Path | None = None,
+    recommendation_pattern: str = "*.json",
+    _resolved_historical_receipt_diagnostics: list[dict[str, str]] | None = None,
+    _legacy_pending_source_fallbacks: list[dict[str, str]] | None = None,
+    _selected_source_identities: list[dict[str, str]] | None = None,
 ) -> tuple[Path | None, str]:
     """選取尚未處理、且下一官方 session 已到期的 frozen recommendation。
 
@@ -645,6 +842,11 @@ def resolve_pending_recommendation(
     同 session 的較舊候選會留下 ``superseded`` receipt，避免 processed hash
     排除最新候選後，下一次重跑又切換到較舊策略。
     """
+
+    if recommendation_pattern not in PAPER_EXECUTION_RECOMMENDATION_PATTERNS:
+        raise PaperExecutionProducerError(
+            "recommendation source pattern is not supported"
+        )
 
     observed_at = _aware_datetime(
         observed if observed is not None else datetime.now(timezone.utc), "observed"
@@ -654,22 +856,130 @@ def resolve_pending_recommendation(
         return None, "recommendation_root_missing"
     if not resolved_root.is_dir():
         return None, "recommendation_root_not_directory"
-    queue_receipts, receipt_issues = _load_queue_receipts(receipt_root)
-    terminal_hashes = {
-        receipt.source_file_hash
-        for receipt in queue_receipts
+    (
+        queue_receipts,
+        receipt_issues,
+        recoverable_receipt_issues,
+        invalid_pending_receipt_issues,
+    ) = _load_queue_receipts_with_historical_issues(receipt_root)
+    effective_invalid_pending_issues = tuple(
+        issue
+        for issue in invalid_pending_receipt_issues
+        if (
+            not issue.receipt_hash_verified
+            or issue.recorded_at is None
+            or issue.recorded_at <= observed_at
+        )
+    )
+    if effective_invalid_pending_issues:
+        return None, _queue_diagnostic_reason(
+            "pending_execution_receipt_invalid",
+            tuple(issue.diagnostic for issue in effective_invalid_pending_issues),
+        )
+    effective_receipts, receipt_conflicts = _effective_queue_receipts(
+        queue_receipts,
+        observed_at=observed_at,
+    )
+    if receipt_conflicts:
+        return None, "queue_terminal_state_conflict:" + ",".join(receipt_conflicts)
+    terminal_receipts = {
+        key: receipt
+        for key, receipt in effective_receipts.items()
         if receipt.state in PAPER_EXECUTION_TERMINAL_QUEUE_STATES
     }
+    if _resolved_historical_receipt_diagnostics is not None:
+        for receipt in terminal_receipts.values():
+            if receipt.state == "rejected":
+                _resolved_historical_receipt_diagnostics.append({
+                    "receipt_path": str(receipt.path),
+                    "receipt_content_sha256": str(receipt.receipt_content_hash),
+                    "status": "rejected_nonretryable_policy",
+                    "proof": "原source、candidate及receipt雜湊已驗證；拒絕終態不授成交或formal credit",
+                })
+    processed_receipts = tuple(
+        receipt
+        for receipt in effective_receipts.values()
+        if receipt.state == "processed"
+    )
+    resolved_issue_proofs: dict[str, dict[str, str]] = {}
+    for issue in recoverable_receipt_issues:
+        matching_processed = tuple(
+            receipt
+            for receipt in processed_receipts
+            if (
+                receipt.portfolio_id == issue.portfolio_id
+                and receipt.source_result_id == issue.source_result_id
+                and receipt.source_file_hash == issue.source_file_hash
+                and receipt.recorded_at > issue.recorded_at
+                and receipt.recorded_at <= observed_at
+            )
+        )
+        if not matching_processed:
+            continue
+        processed_terminal = min(
+            matching_processed,
+            key=lambda receipt: receipt.recorded_at,
+        )
+        execution_date = processed_terminal.execution_date
+        if execution_date is None:
+            continue
+        resolved_issue_proofs[issue.diagnostic] = {
+            "issue": issue.diagnostic,
+            "issue_recorded_at": issue.recorded_at.isoformat(),
+            "portfolio_id": issue.portfolio_id,
+            "source_result_id": issue.source_result_id,
+            "source_file_hash": issue.source_file_hash,
+            "resolved_by_processed_receipt": str(
+                processed_terminal.path.expanduser().resolve()
+            ),
+            "processed_recorded_at": processed_terminal.recorded_at.isoformat(),
+            "processed_execution_date": execution_date.isoformat(),
+            "processed_receipt_content_sha256": (
+                processed_terminal.receipt_content_hash
+                if processed_terminal.receipt_content_hash is not None
+                else ""
+            ),
+            "proof": (
+                "較晚的已驗證 processed receipt 具有相同 portfolio、result id 與 source hash；"
+                "適用的來源、candidate 與 ledger readback 檢查均已通過"
+            ),
+        }
+    if _resolved_historical_receipt_diagnostics is not None:
+        _resolved_historical_receipt_diagnostics.extend(
+            resolved_issue_proofs.values()
+        )
+    receipt_issues = tuple(
+        issue
+        for issue in receipt_issues
+        if issue not in resolved_issue_proofs
+    )
+    terminal_source_identities = {
+        (receipt.portfolio_id, receipt.source_file_hash)
+        for receipt in terminal_receipts.values()
+    }
     processed_by_execution: dict[tuple[str, date], _QueueReceipt] = {}
-    for receipt in queue_receipts:
+    processed_hashes_by_execution: dict[tuple[str, date], set[str]] = {}
+    for receipt in effective_receipts.values():
         if receipt.state != "processed" or receipt.execution_date is None:
             continue
-        processed_by_execution.setdefault(
-            (receipt.portfolio_id, receipt.execution_date),
-            receipt,
+        execution_key = (receipt.portfolio_id, receipt.execution_date)
+        processed_hashes_by_execution.setdefault(execution_key, set()).add(
+            receipt.source_file_hash
         )
+        processed_by_execution[execution_key] = receipt
+    conflicting_processed = [
+        execution_key
+        for execution_key, hashes in processed_hashes_by_execution.items()
+        if len(hashes) > 1
+    ]
+    if conflicting_processed:
+        conflicts = ",".join(
+            f"{portfolio_id}:{execution_date.isoformat()}"
+            for portfolio_id, execution_date in sorted(conflicting_processed)
+        )
+        return None, "processed_execution_source_conflict:" + conflicts
     pending_by_execution: dict[tuple[str, date], list[_QueueReceipt]] = {}
-    for receipt in queue_receipts:
+    for receipt in effective_receipts.values():
         if (
             receipt.state in PAPER_EXECUTION_PENDING_QUEUE_STATES
             and receipt.execution_date is not None
@@ -680,7 +990,7 @@ def resolve_pending_recommendation(
             ).append(receipt)
     stale_pending = [
         receipt
-        for receipt in queue_receipts
+        for receipt in effective_receipts.values()
         if (
             receipt.state in PAPER_EXECUTION_PENDING_QUEUE_STATES
             and receipt.execution_date is not None
@@ -698,17 +1008,66 @@ def resolve_pending_recommendation(
     observed_taipei_date = observed_at.astimezone(TAIPEI).date()
     candidates: list[_Recommendation] = []
     invalid_sources: list[str] = []
-    for path in sorted(resolved_root.glob("*.json")):
-        try:
-            recommendation = _load_recommendation(path, observed=observed_at)
-        except (OSError, PaperExecutionProducerError, ValueError) as error:
-            invalid_sources.append(
-                f"{path.name}:{type(error).__name__}:{str(error)[:160]}"
-            )
-            continue
+    scoped_paths = set(resolved_root.glob(recommendation_pattern))
+    source_paths = set(scoped_paths)
+    prevalidated_pending_sources: dict[Path, _Recommendation] = {}
+    if recommendation_pattern != "*.json":
+        for execution_key, pending_receipts in pending_by_execution.items():
+            if execution_key[1] < observed_taipei_date:
+                continue
+            for pending_receipt in pending_receipts:
+                fallback, proof, error_reason = _load_exact_pending_source_fallback(
+                    resolved_root,
+                    pending_receipt,
+                    observed_at=observed_at,
+                    market_db=market_db,
+                    calendar=calendar,
+                    scoped_paths=scoped_paths,
+                )
+                if error_reason is not None:
+                    return None, error_reason
+                if fallback is None:
+                    return None, (
+                        "pending_execution_source_missing:"
+                        + execution_key[1].isoformat()
+                    )
+                source_paths.add(fallback.path)
+                prevalidated_pending_sources[fallback.path] = fallback
+                if proof is not None and _legacy_pending_source_fallbacks is not None:
+                    _legacy_pending_source_fallbacks.append(proof)
+    for path in sorted(source_paths, key=lambda item: str(item)):
+        recommendation = prevalidated_pending_sources.get(path)
+        if recommendation is None:
+            try:
+                if recommendation_pattern == "*.json":
+                    recommendation = _load_recommendation(
+                        path,
+                        observed=observed_at,
+                    )
+                else:
+                    source_raw = _read_regular_single_link_file(
+                        path,
+                        label="scoped_paper_recommendation",
+                        max_bytes=PAPER_EXECUTION_PENDING_SOURCE_MAX_BYTES,
+                    )
+                    recommendation = _load_recommendation(
+                        path,
+                        observed=observed_at,
+                        _raw_bytes=source_raw,
+                    )
+            except (OSError, PaperExecutionProducerError, ValueError) as error:
+                invalid_sources.append(
+                    f"{path.name}:{type(error).__name__}:{str(error)[:160]}"
+                )
+                continue
         if recommendation.decision_date >= observed_taipei_date:
             continue
-        if recommendation.file_hash in terminal_hashes:
+        # 沒有 market_db 時無法重建 execution session；保留舊有保守行為，
+        # 不再選取已在同一 portfolio 結束的 frozen source。
+        if market_db is None and (
+            recommendation.portfolio_id,
+            recommendation.file_hash,
+        ) in terminal_source_identities:
             continue
         candidates.append(recommendation)
     if not candidates:
@@ -731,6 +1090,7 @@ def resolve_pending_recommendation(
         )
     )
     if market_db is None:
+        _record_selected_source_identity(candidates[-1], _selected_source_identities)
         return candidates[-1].path, "latest_prior_frozen_recommendation"
 
     due_by_execution: dict[tuple[str, date], list[_Recommendation]] = {}
@@ -744,6 +1104,14 @@ def resolve_pending_recommendation(
         if next_day.get("status") == "ready" and next_day.get("date"):
             next_date = _strict_date(next_day["date"], "next_proven_trading_day.date")
             if next_date == observed_taipei_date:
+                receipt_key = (
+                    recommendation.portfolio_id,
+                    next_date,
+                    recommendation.file_hash,
+                )
+                terminal = terminal_receipts.get(receipt_key)
+                if terminal is not None and terminal.state == "superseded":
+                    continue
                 due_by_execution.setdefault(
                     (recommendation.portfolio_id, next_date),
                     [],
@@ -763,6 +1131,12 @@ def resolve_pending_recommendation(
                 for recommendation in group:
                     if recommendation.file_hash == processed.source_file_hash:
                         continue
+                    if (
+                        recommendation.portfolio_id,
+                        execution_key[1],
+                        recommendation.file_hash,
+                    ) in terminal_receipts:
+                        continue
                     _write_superseded_receipt(
                         recommendation,
                         execution_date=execution_key[1],
@@ -770,7 +1144,6 @@ def resolve_pending_recommendation(
                         receipt_root=receipt_root,
                         observed=observed_at,
                     )
-                    terminal_hashes.add(recommendation.file_hash)
                 continue
             pending = pending_by_execution.get(execution_key, [])
             pending_hashes = {item.source_file_hash for item in pending}
@@ -805,8 +1178,20 @@ def resolve_pending_recommendation(
                 selected_due.append(pinned)
                 pending_retry_selected = True
                 continue
+            eligible_group = [
+                recommendation
+                for recommendation in group
+                if (
+                    recommendation.portfolio_id,
+                    execution_key[1],
+                    recommendation.file_hash,
+                )
+                not in terminal_receipts
+            ]
+            if not eligible_group:
+                continue
             winner = max(
-                group,
+                eligible_group,
                 key=lambda item: (
                     item.decision_date,
                     item.created_at.astimezone(timezone.utc),
@@ -814,7 +1199,7 @@ def resolve_pending_recommendation(
                 ),
             )
             selected_due.append(winner)
-            for recommendation in group:
+            for recommendation in eligible_group:
                 if recommendation.file_hash == winner.file_hash:
                     continue
                 _write_superseded_receipt(
@@ -824,7 +1209,6 @@ def resolve_pending_recommendation(
                     receipt_root=receipt_root,
                     observed=observed_at,
                 )
-                terminal_hashes.add(recommendation.file_hash)
         if selected_due:
             selected_due.sort(
                 key=lambda item: (
@@ -832,6 +1216,9 @@ def resolve_pending_recommendation(
                     item.created_at.astimezone(timezone.utc),
                     item.path.name,
                 )
+            )
+            _record_selected_source_identity(
+                selected_due[-1], _selected_source_identities
             )
             return selected_due[-1].path, (
                 "pending_execution_retry"
@@ -854,6 +1241,7 @@ def resolve_pending_recommendation(
                 item.path.name,
             )
         )
+        _record_selected_source_identity(unknown[-1], _selected_source_identities)
         return unknown[-1].path, "next_official_session_unproven"
     if invalid_sources:
         return None, _queue_diagnostic_reason(
@@ -861,6 +1249,227 @@ def resolve_pending_recommendation(
             invalid_sources,
         )
     return None, "no_pending_recommendation_due_for_current_session"
+
+
+def _record_selected_source_identity(
+    recommendation: _Recommendation,
+    output: list[dict[str, str]] | None,
+) -> None:
+    """保存 resolver 已驗證的來源身分，供 producer 以同一份 bytes 解析。"""
+
+    if output is None:
+        return
+    output.append(
+        {
+            "policy": "selected_source_content_identity.v1",
+            "recommendation_path": str(recommendation.path.expanduser().resolve()),
+            "source_file_hash": recommendation.file_hash,
+            "source_content_hash": recommendation.content_hash,
+            "source_result_id": recommendation.result_id,
+            "portfolio_id": recommendation.portfolio_id,
+            "decision_date": recommendation.decision_date.isoformat(),
+            "created_at": recommendation.created_at.isoformat(),
+        }
+    )
+
+
+def _load_selected_recommendation(
+    path: Path,
+    *,
+    observed: datetime,
+    queue_selection_metadata: Mapping[str, object] | None,
+) -> _Recommendation:
+    """以選取時已固定的 identity 與 bounded bytes 載入 queue source。"""
+
+    if queue_selection_metadata is None:
+        return _load_recommendation(path, observed=observed)
+    identity_value = queue_selection_metadata.get("selected_source_identity")
+    if not isinstance(identity_value, Mapping):
+        raise PaperExecutionProducerError("selected source identity proof is missing")
+    expected_path = identity_value.get("recommendation_path")
+    if not isinstance(expected_path, str) or not expected_path.strip():
+        raise PaperExecutionProducerError("selected source identity path is invalid")
+    resolved_path = path.expanduser().resolve(strict=False)
+    if Path(expected_path).expanduser().resolve(strict=False) != resolved_path:
+        raise PaperExecutionProducerError("selected source identity path changed")
+    try:
+        source_raw = _read_regular_single_link_file(
+            resolved_path,
+            label="selected_paper_recommendation",
+            max_bytes=PAPER_EXECUTION_PENDING_SOURCE_MAX_BYTES,
+        )
+    except (CaptureValidationError, OSError, RuntimeError) as error:
+        raise PaperExecutionProducerError(
+            f"selected source identity bytes are unavailable:{type(error).__name__}"
+        ) from error
+    recommendation = _load_recommendation(
+        resolved_path,
+        observed=observed,
+        _raw_bytes=source_raw,
+    )
+    expected_values = {
+        "source_file_hash": recommendation.file_hash,
+        "source_content_hash": recommendation.content_hash,
+        "source_result_id": recommendation.result_id,
+        "portfolio_id": recommendation.portfolio_id,
+        "decision_date": recommendation.decision_date.isoformat(),
+        "created_at": recommendation.created_at.isoformat(),
+    }
+    if any(identity_value.get(key) != value for key, value in expected_values.items()):
+        raise PaperExecutionProducerError("selected source identity changed after selection")
+    return recommendation
+
+
+def _load_exact_pending_source_fallback(
+    recommendation_root: Path,
+    pending_receipt: _QueueReceipt,
+    *,
+    observed_at: datetime,
+    market_db: Path | None,
+    calendar: OfficialTradingCalendar | None,
+    scoped_paths: set[Path],
+) -> tuple[_Recommendation | None, dict[str, str] | None, str | None]:
+    """驗證 pending receipt 固定來源，必要時找回唯一範圍外來源。"""
+
+    execution_date = pending_receipt.execution_date
+    result_id = pending_receipt.source_result_id
+    if execution_date is None or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,159}", result_id) is None:
+        return None, None, "pending_execution_source_identity_mismatch:unknown"
+
+    pinned_source_path = pending_receipt.source_path
+    if not isinstance(pinned_source_path, str) or not pinned_source_path.strip():
+        return (
+            None,
+            None,
+            "pending_execution_source_identity_mismatch:source_path_missing",
+        )
+    try:
+        pinned_path = Path(pinned_source_path).expanduser().resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return (
+            None,
+            None,
+            "pending_execution_source_identity_mismatch:source_path_invalid",
+        )
+    if pinned_path.parent != recommendation_root.resolve():
+        return (
+            None,
+            None,
+            "pending_execution_source_identity_mismatch:source_outside_root",
+        )
+
+    matches: list[_Recommendation] = []
+    invalid_identity_match = False
+    pinned_path_seen = False
+    for path in sorted(recommendation_root.glob("*.json"), key=lambda item: str(item)):
+        is_pinned_path = path.resolve(strict=False) == pinned_path
+        pinned_path_seen = pinned_path_seen or is_pinned_path
+        try:
+            raw = _read_regular_single_link_file(
+                path,
+                label="pending_recommendation_source",
+                max_bytes=PAPER_EXECUTION_PENDING_SOURCE_MAX_BYTES,
+            )
+        except (CaptureValidationError, OSError, RuntimeError):
+            if is_pinned_path:
+                invalid_identity_match = True
+            continue
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError):
+            if is_pinned_path:
+                invalid_identity_match = True
+            continue
+        if not isinstance(payload, Mapping):
+            if is_pinned_path:
+                invalid_identity_match = True
+            continue
+        if payload.get("result_id") != result_id:
+            if is_pinned_path:
+                invalid_identity_match = True
+            continue
+        try:
+            recommendation = _load_recommendation(
+                path,
+                observed=observed_at,
+                _raw_bytes=raw,
+            )
+        except (OSError, UnicodeError, PaperExecutionProducerError, ValueError):
+            invalid_identity_match = True
+            continue
+        if (
+            recommendation.result_id != result_id
+            or recommendation.portfolio_id != pending_receipt.portfolio_id
+            or recommendation.file_hash != pending_receipt.source_file_hash
+            or recommendation.created_at > pending_receipt.recorded_at
+            or recommendation.decision_date >= execution_date
+        ):
+            invalid_identity_match = True
+            continue
+        if not is_pinned_path:
+            # 一份 receipt 不可由同一 frozen source 的其他路徑副本代替。
+            matches.append(recommendation)
+            continue
+        if market_db is None:
+            invalid_identity_match = True
+            continue
+        next_session = _next_day_projection(
+            recommendation.decision_date,
+            market_db,
+            calendar=calendar,
+        )
+        if (
+            next_session.get("status") != "ready"
+            or next_session.get("date") != execution_date.isoformat()
+        ):
+            invalid_identity_match = True
+            continue
+        matches.append(recommendation)
+
+    if invalid_identity_match:
+        return (
+            None,
+            None,
+            "pending_execution_source_identity_mismatch:"
+            + execution_date.isoformat(),
+        )
+    if len(matches) > 1:
+        return (
+            None,
+            None,
+            "pending_execution_source_duplicate:" + execution_date.isoformat(),
+        )
+    if not pinned_path_seen:
+        return (
+            None,
+            None,
+            "pending_execution_source_identity_mismatch:source_path_missing",
+        )
+    if not matches:
+        return None, None, None
+
+    recommendation = matches[0]
+    legacy_fallback = recommendation.path.resolve() not in scoped_paths
+    if not legacy_fallback:
+        return recommendation, None, None
+    proof = {
+        "resolution": "exact_active_pending_source_fallback.v1",
+        "recommendation_path": str(recommendation.path.expanduser().resolve()),
+        "source_result_id": recommendation.result_id,
+        "source_file_hash": recommendation.file_hash,
+        "portfolio_id": recommendation.portfolio_id,
+        "decision_date": recommendation.decision_date.isoformat(),
+        "execution_date": execution_date.isoformat(),
+        "source_created_at": recommendation.created_at.isoformat(),
+        "pending_receipt_path": str(pending_receipt.path.expanduser().resolve()),
+        "pending_recorded_at": pending_receipt.recorded_at.isoformat(),
+        "observed_at": observed_at.isoformat(),
+        "proof": (
+            "唯一來源通過 bounded no-follow 讀取、Paper 完整解析、"
+            "portfolio/result/hash/時間/下一官方 session 比對"
+        ),
+    }
+    return recommendation, proof, None
 
 
 def persist_operational_receipt(
@@ -1021,10 +1630,18 @@ def _write_queue_status(
     reason: str,
     append_requested: bool,
     controlled_root: Path | None = None,
+    recommendation_pattern: str = "*.json",
+    resolved_historical_receipt_diagnostics: Sequence[Mapping[str, str]] = (),
+    pending_source_fallbacks: Sequence[Mapping[str, str]] = (),
 ) -> dict[str, object]:
     resolved_output = _prepare_output_root(
         output_root,
         controlled_root=controlled_root,
+    )
+    status = (
+        "skipped_no_pending_recommendation"
+        if reason in PAPER_EXECUTION_SAFE_NO_SELECTION_REASONS
+        else "blocked"
     )
     body: dict[str, object] = {
         "schema_version": PAPER_EXECUTION_SCHEMA_VERSION,
@@ -1052,14 +1669,40 @@ def _write_queue_status(
         "training_started": False,
         "broker_execution": False,
         "append_requested": bool(append_requested),
-        "status": "skipped_no_pending_recommendation",
+        "status": status,
         "blockers": [reason],
         "queue": {
             "recommendation_root": str(recommendation_root.expanduser().resolve()),
             "selection": "next_official_session_due",
+            "selection_policy": "fixed_recommendation_filename_pattern.v1",
+            "recommendation_pattern": recommendation_pattern,
+            "source_scope": (
+                "paper_frozen_recommendation_exports_only"
+                if recommendation_pattern == "paper_frozen_*.json"
+                else "all_top_level_json_recommendations"
+            ),
             "reason": reason,
             "source_configured": recommendation_root.exists(),
             "late_replay_policy": "no_historical_backfill_pending_session_missed",
+            **(
+                {
+                    "resolved_historical_receipts": [
+                        dict(item)
+                        for item in resolved_historical_receipt_diagnostics
+                    ]
+                }
+                if resolved_historical_receipt_diagnostics
+                else {}
+            ),
+            **(
+                {
+                    "legacy_pending_source_fallbacks": [
+                        dict(item) for item in pending_source_fallbacks
+                    ]
+                }
+                if pending_source_fallbacks
+                else {}
+            ),
         },
     }
     return _write_candidate(resolved_output, body)
@@ -1077,6 +1720,22 @@ def _processed_recommendation_hashes(receipt_root: Path | None) -> set[str]:
 def _load_queue_receipts(
     receipt_root: Path | None,
 ) -> tuple[tuple[_QueueReceipt, ...], tuple[str, ...]]:
+    """回傳已驗證的 queue receipt 與原始診斷，維持既有呼叫契約。"""
+
+    receipts, issues, _recoverable_issues, _invalid_pending_issues = (
+        _load_queue_receipts_with_historical_issues(receipt_root)
+    )
+    return receipts, issues
+
+
+def _load_queue_receipts_with_historical_issues(
+    receipt_root: Path | None,
+) -> tuple[
+    tuple[_QueueReceipt, ...],
+    tuple[str, ...],
+    tuple[_RecoverableQueueReceiptIssue, ...],
+    tuple[_InvalidPendingQueueReceiptIssue, ...],
+]:
     """讀取完整 receipt，並只把可重驗狀態接回 queue。
 
     ``pending_execution``（以及舊版未完成 append 的
@@ -1086,20 +1745,32 @@ def _load_queue_receipts(
     """
 
     if receipt_root is None:
-        return (), ()
+        return (), (), (), ()
     resolved_root = receipt_root.expanduser().resolve()
     if not resolved_root.is_dir():
-        return (), ()
+        return (), (), (), ()
     valid: list[_QueueReceipt] = []
     issues: list[str] = []
+    recoverable_issues: list[_RecoverableQueueReceiptIssue] = []
+    invalid_pending_issues: list[_InvalidPendingQueueReceiptIssue] = []
     for path in sorted(resolved_root.glob("*.json")):
         try:
             raw_value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as error:
-            issues.append(f"{path.name}:{type(error).__name__}:{str(error)[:160]}")
+            diagnostic = f"{path.name}:{type(error).__name__}:{str(error)[:160]}"
+            issues.append(diagnostic)
+            if path.name.startswith("paper_execution_"):
+                invalid_pending_issues.append(
+                    _invalid_pending_receipt_issue(path, None, diagnostic)
+                )
             continue
         if not isinstance(raw_value, Mapping):
-            issues.append(f"{path.name}:receipt must be a JSON object")
+            diagnostic = f"{path.name}:receipt must be a JSON object"
+            issues.append(diagnostic)
+            if path.name.startswith("paper_execution_"):
+                invalid_pending_issues.append(
+                    _invalid_pending_receipt_issue(path, None, diagnostic)
+                )
             continue
         state = raw_value.get("queue_state")
         if state not in (
@@ -1110,7 +1781,23 @@ def _load_queue_receipts(
             continue
         validation_error = _validate_queue_receipt(path, raw_value)
         if validation_error is not None:
-            issues.append(f"{path.name}:{validation_error}")
+            diagnostic = f"{path.name}:{validation_error}"
+            issues.append(diagnostic)
+            recoverable_issue = _recoverable_calendar_receipt_issue(
+                path,
+                raw_value,
+                validation_error=validation_error,
+                diagnostic=diagnostic,
+            )
+            if recoverable_issue is not None:
+                recoverable_issues.append(recoverable_issue)
+            elif state in (
+                PAPER_EXECUTION_PENDING_QUEUE_STATES
+                | PAPER_EXECUTION_LEGACY_PENDING_QUEUE_STATES
+            ):
+                invalid_pending_issues.append(
+                    _invalid_pending_receipt_issue(path, raw_value, diagnostic)
+                )
             continue
         source_hash = raw_value.get("source_file_hash")
         source_result_id = raw_value.get("source_result_id")
@@ -1123,6 +1810,10 @@ def _load_queue_receipts(
             else _strict_date(execution_value, f"{path.name}.execution_date")
         )
         if not isinstance(source_hash, str) or not isinstance(source_result_id, str):
+            if source_hash is None and source_result_id is None:
+                # 上方已驗證 source-less queue diagnostic 的 receipt/candidate；
+                # 它不是待執行來源，不能永久自我衍生新的 queue blocker。
+                continue
             # _validate_queue_receipt has already rejected this path.  Keep the
             # guard for type narrowing and future schema additions.
             issues.append(f"{path.name}:receipt source identity is invalid")
@@ -1132,11 +1823,35 @@ def _load_queue_receipts(
         except PaperExecutionProducerError as error:
             issues.append(f"{path.name}:receipt recorded_at is invalid:{error}")
             continue
+        result_value = raw_value.get("result")
+        recommendation_value = (
+            result_value.get("recommendation")
+            if isinstance(result_value, Mapping)
+            else None
+        )
+        source_path = (
+            recommendation_value.get("path")
+            if isinstance(recommendation_value, Mapping)
+            else None
+        )
+        if not isinstance(source_path, str) or not source_path.strip():
+            diagnostic = f"{path.name}:receipt recommendation path is invalid"
+            issues.append(diagnostic)
+            if state in (
+                PAPER_EXECUTION_PENDING_QUEUE_STATES
+                | PAPER_EXECUTION_LEGACY_PENDING_QUEUE_STATES
+            ):
+                invalid_pending_issues.append(
+                    _invalid_pending_receipt_issue(path, raw_value, diagnostic)
+                )
+            continue
         valid.append(
             _QueueReceipt(
                 path=path,
                 state=(
-                    "pending_execution"
+                    "rejected"
+                    if _is_nonretryable_policy_rejection(raw_value)
+                    else "pending_execution"
                     if state in PAPER_EXECUTION_LEGACY_PENDING_QUEUE_STATES
                     else str(state)
                 ),
@@ -1145,9 +1860,186 @@ def _load_queue_receipts(
                 portfolio_id=str(portfolio_value),
                 execution_date=execution_date,
                 recorded_at=recorded_at,
+                receipt_content_hash=str(raw_value.get("content_sha256")),
+                source_path=source_path,
             )
         )
-    return tuple(valid), tuple(issues)
+    return tuple(valid), tuple(issues), tuple(recoverable_issues), tuple(
+        invalid_pending_issues
+    )
+
+
+def _invalid_pending_receipt_issue(
+    path: Path,
+    value: Mapping[object, object] | None,
+    diagnostic: str,
+) -> _InvalidPendingQueueReceiptIssue:
+    """僅在 receipt 自身雜湊與時鐘有效時採信其待處理觀測時間。"""
+
+    if value is None:
+        return _InvalidPendingQueueReceiptIssue(
+            diagnostic=diagnostic,
+            recorded_at=None,
+            receipt_hash_verified=False,
+        )
+    declared_hash = value.get("content_sha256")
+    if not _is_sha256(declared_hash):
+        return _InvalidPendingQueueReceiptIssue(
+            diagnostic=diagnostic,
+            recorded_at=None,
+            receipt_hash_verified=False,
+        )
+    body = dict(value)
+    body.pop("content_sha256", None)
+    if _payload_hash(body) != declared_hash:
+        return _InvalidPendingQueueReceiptIssue(
+            diagnostic=diagnostic,
+            recorded_at=None,
+            receipt_hash_verified=False,
+        )
+    try:
+        recorded_at = _aware_datetime(value.get("recorded_at"), f"{path.name}.recorded_at")
+    except PaperExecutionProducerError:
+        recorded_at = None
+    return _InvalidPendingQueueReceiptIssue(
+        diagnostic=diagnostic,
+        recorded_at=recorded_at,
+        receipt_hash_verified=True,
+    )
+
+
+def _recoverable_calendar_receipt_issue(
+    path: Path,
+    value: Mapping[object, object],
+    *,
+    validation_error: str,
+    diagnostic: str,
+) -> _RecoverableQueueReceiptIssue | None:
+    """僅辨識內容與 frozen source 都可重驗的精確舊 calendar failure。"""
+
+    if validation_error != "execution_date_missing":
+        return None
+    if value.get("queue_state") != "failed" or value.get("status") != "blocked":
+        return None
+    if value.get("execution_date") is not None:
+        return None
+    declared_hash = value.get("content_sha256")
+    if not _is_sha256(declared_hash):
+        return None
+    body = dict(value)
+    body.pop("content_sha256", None)
+    if _payload_hash(body) != declared_hash:
+        return None
+
+    source_file_hash = value.get("source_file_hash")
+    source_result_id = value.get("source_result_id")
+    portfolio_value = value.get("portfolio_id")
+    if not _is_sha256(source_file_hash):
+        return None
+    if not isinstance(source_result_id, str) or not source_result_id.strip():
+        return None
+    if not isinstance(portfolio_value, str) or not portfolio_value.strip():
+        return None
+    try:
+        recorded_at = _aware_datetime(value.get("recorded_at"), "receipt.recorded_at")
+    except PaperExecutionProducerError:
+        return None
+
+    result_value = value.get("result")
+    if not isinstance(result_value, Mapping):
+        return None
+    if result_value.get("status") != "blocked":
+        return None
+    if result_value.get("execution_date") is not None:
+        return None
+    blockers = result_value.get("blockers")
+    if blockers != [_UNPROVEN_TWSE_CALENDAR_BLOCKER]:
+        return None
+    recommendation_value = result_value.get("recommendation")
+    if not isinstance(recommendation_value, Mapping):
+        return None
+    if recommendation_value.get("file_hash") != source_file_hash:
+        return None
+    if recommendation_value.get("result_id") != source_result_id:
+        return None
+    if recommendation_value.get("portfolio_id") != portfolio_value:
+        return None
+    if recommendation_value.get("decision_date") != result_value.get("decision_date"):
+        return None
+    if recommendation_value.get("decision_date") != value.get("decision_date"):
+        return None
+    content_hash = recommendation_value.get("content_hash")
+    source_path = recommendation_value.get("path")
+    if not _is_sha256(content_hash):
+        return None
+    if not isinstance(source_path, str) or not source_path.strip():
+        return None
+    try:
+        source_path_candidate = Path(source_path).expanduser()
+        source_raw = _read_regular_single_link_file(
+            source_path_candidate,
+            label="historical_queue_recommendation",
+            max_bytes=MAX_METADATA_BYTES,
+        )
+        resolved_source = source_path_candidate.resolve(strict=True)
+        if _sha256_bytes(source_raw) != source_file_hash:
+            return None
+        source_value = json.loads(source_raw.decode("utf-8"))
+        if not isinstance(source_value, Mapping):
+            return None
+        if _payload_hash(source_value) != content_hash:
+            return None
+        recommendation = _load_recommendation(
+            resolved_source,
+            observed=recorded_at,
+            _raw_bytes=source_raw,
+        )
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        CaptureValidationError,
+        PaperExecutionProducerError,
+        ValueError,
+        RuntimeError,
+    ):
+        return None
+    if recommendation.result_id != source_result_id:
+        return None
+    if recommendation.portfolio_id != portfolio_value:
+        return None
+    if recommendation.decision_date.isoformat() != recommendation_value.get(
+        "decision_date"
+    ):
+        return None
+    return _RecoverableQueueReceiptIssue(
+        diagnostic=diagnostic,
+        source_file_hash=source_file_hash,
+        source_result_id=source_result_id,
+        portfolio_id=portfolio_value,
+        recorded_at=recorded_at,
+    )
+
+
+def _is_nonretryable_policy_rejection(value: Mapping[object, object]) -> bool:
+    """僅識別已保存的政策時間拒絕；不把來源缺漏或未知失敗當成功。"""
+    result = value.get("result")
+    if not isinstance(result, Mapping):
+        return False
+    blockers = result.get("blockers")
+    return (
+        value.get("queue_state") in {"failed", "rejected"}
+        and result.get("status") == "blocked"
+        and result.get("retryable") is False
+        and value.get("ledger") is None
+        and result.get("ledger") is None
+        and isinstance(blockers, list) and bool(blockers)
+        and all(isinstance(item, str) and (
+            item == "paper_event_source_capture_missing_durable_manifest"
+            or item == "paper policy sector archive rejected:PITArchiveConsumerError:archive was not persisted before consumer decision"
+        ) for item in blockers)
+        and any(isinstance(item, str) and item.startswith("paper policy sector archive rejected:") for item in blockers)
+    )
 
 
 def _validate_queue_receipt(
@@ -1175,6 +2067,23 @@ def _validate_queue_receipt(
         recorded_at = _aware_datetime(value.get("recorded_at"), f"{path.name}.recorded_at")
     except PaperExecutionProducerError as error:
         return f"recorded_at_invalid:{error}"
+    result = value.get("result")
+    if (
+        value.get("queue_state") == "failed"
+        and value.get("source_file_hash") is None
+        and value.get("source_result_id") is None
+        and value.get("decision_date") is None
+        and value.get("execution_date") is None
+        and value.get("ledger") is None
+        and isinstance(result, Mapping)
+        and result.get("status") == "blocked"
+        and result.get("ledger") is None
+        and isinstance(result.get("queue"), Mapping)
+        and str(result["queue"].get("reason", "")).startswith("pending_execution_receipt_invalid:")
+        and result.get("blockers") == [result["queue"].get("reason")]
+    ):
+        # 沒有選中來源的診斷不建立待執行 identity；原始錯誤收據仍逐筆驗證。
+        return _validate_required_candidate_hashes(value, result)
     source_hash = value.get("source_file_hash")
     if not _is_sha256(source_hash):
         return "source_file_hash_missing_or_invalid"
@@ -1227,6 +2136,8 @@ def _validate_queue_receipt(
             "decision_date"
         ):
             return "recommendation_source_decision_date_changed"
+        if recommendation.portfolio_id != portfolio_value:
+            return "receipt_portfolio_id_mismatch"
     except PaperExecutionProducerError as error:
         return f"recommendation_source_contract_invalid:{type(error).__name__}"
     except (UnicodeError, json.JSONDecodeError):
@@ -1244,6 +2155,8 @@ def _validate_queue_receipt(
         return "result_execution_date_mismatch"
     if result_value.get("decision_date") != recommendation_value.get("decision_date"):
         return "result_decision_date_mismatch"
+    if _is_nonretryable_policy_rejection(value):
+        return _validate_required_candidate_hashes(value, result_value)
     if state == "superseded":
         superseded_by = value.get("superseded_by_source_file_hash")
         if not _is_sha256(superseded_by) or superseded_by == source_hash:
@@ -1645,11 +2558,16 @@ def _reference_day_projection(
         }
 
 
-def _load_recommendation(path: Path, *, observed: datetime) -> _Recommendation:
+def _load_recommendation(
+    path: Path,
+    *,
+    observed: datetime,
+    _raw_bytes: bytes | None = None,
+) -> _Recommendation:
     resolved = path.expanduser().resolve()
-    if not resolved.is_file():
+    if _raw_bytes is None and not resolved.is_file():
         raise PaperExecutionProducerError("paper recommendation source file is missing")
-    raw = resolved.read_bytes()
+    raw = resolved.read_bytes() if _raw_bytes is None else _raw_bytes
     file_hash = _sha256_bytes(raw)
     try:
         payload_value = json.loads(raw.decode("utf-8"))
@@ -3530,9 +4448,113 @@ def _policy_projection(
     }
 
 
+def _build_paper_trade_transition(
+    *,
+    state: _State,
+    fills: Sequence[PaperTradeFill],
+    prices: Mapping[str, Decimal],
+    projection: Mapping[str, object],
+    execution_date: date,
+    recommendation_hash: str,
+) -> PaperTradeTransition:
+    """Build the immutable common-price boundary for one execution batch."""
+
+    if not fills:
+        raise PaperExecutionProducerError(
+            "cannot build a transition for an empty Paper fill batch"
+        )
+    pre_positions = {
+        item.stock_code: item.quantity
+        for item in state.positions
+        if item.quantity > 0
+    }
+    post_positions = dict(pre_positions)
+    for fill in fills:
+        if fill.filled_quantity <= 0:
+            continue
+        quantity = post_positions.get(fill.stock_code, 0)
+        if fill.side == "sell":
+            quantity -= fill.filled_quantity
+            if quantity < 0:
+                raise PaperExecutionProducerError(
+                    f"paper transition sell exceeds pre quantity:{fill.fill_id}"
+                )
+        else:
+            quantity += fill.filled_quantity
+        if quantity > 0:
+            post_positions[fill.stock_code] = quantity
+        else:
+            post_positions.pop(fill.stock_code, None)
+
+    symbols = tuple(sorted(set(pre_positions) | set(post_positions) | {
+        fill.stock_code for fill in fills
+    }))
+    common_prices: dict[str, Decimal] = {}
+    for symbol in symbols:
+        price = prices.get(symbol)
+        if not isinstance(price, Decimal) or not price.is_finite() or price <= 0:
+            raise PaperExecutionProducerError(
+                f"paper transition common price is missing:{symbol}"
+            )
+        common_prices[symbol] = price
+    for fill in fills:
+        if fill.stock_code not in common_prices:
+            raise PaperExecutionProducerError(
+                f"paper transition fill price basis is missing:{fill.fill_id}"
+            )
+        if fill.reference_price != common_prices[fill.stock_code]:
+            raise PaperExecutionProducerError(
+                f"paper transition reference price basis mismatch:{fill.fill_id}"
+            )
+
+    common_nav = quantize_money(
+        state.cash
+        + sum(
+            (
+                common_prices[symbol] * Decimal(quantity)
+                for symbol, quantity in pre_positions.items()
+            ),
+            Decimal("0.00"),
+        )
+    )
+    if common_nav <= Decimal("0"):
+        raise PaperExecutionProducerError("paper transition common NAV is invalid")
+    try:
+        post_cash = Decimal(str(projection["cash_after"]))
+        post_total_value = Decimal(str(projection["total_value_after_mark"]))
+    except (KeyError, InvalidOperation, ValueError) as error:
+        raise PaperExecutionProducerError(
+            "paper transition post cash/NAV projection is invalid"
+        ) from error
+    return PaperTradeTransition(
+        transition_id=(
+            "paper-transition:"
+            f"{execution_date.isoformat()}:{recommendation_hash.replace('sha256:', '')}"
+        ),
+        batch_id=(
+            "paper-batch:"
+            f"{execution_date.isoformat()}:{recommendation_hash.replace('sha256:', '')}"
+        ),
+        portfolio_id=state.portfolio_id,
+        event_date=execution_date.isoformat(),
+        fill_ids=tuple(sorted(fill.fill_id for fill in fills)),
+        pre_cash=state.cash,
+        pre_total_value=state.total_value,
+        post_cash=post_cash,
+        post_total_value=post_total_value,
+        common_nav=common_nav,
+        common_prices=common_prices,
+        pre_positions=pre_positions,
+        post_positions=post_positions,
+        source_type=PAPER_EXECUTION_SOURCE_TYPE,
+    )
+
+
 def _append_and_read_back(
     path: Path,
     fills: Sequence[PaperTradeFill],
+    *,
+    transition: PaperTradeTransition | None = None,
 ) -> bool:
     """Append a batch once and verify it; return True for an exact replay.
 
@@ -3553,12 +4575,28 @@ def _append_and_read_back(
                 raise PaperExecutionProducerError(
                     "paper ledger contains a partial or divergent generated fill batch"
                 )
+            if transition is not None:
+                existing_transitions = PaperTradeLedgerRepository(
+                    resolved
+                ).list_transitions(
+                    portfolio_id=transition.portfolio_id,
+                    start_date=transition.event_date,
+                    end_date=transition.event_date,
+                )
+                if existing_transitions != (transition,):
+                    raise PaperExecutionProducerError(
+                        "paper ledger contains a partial or divergent generated transition"
+                    )
             return True
     # A preopen snapshot is the T-1 starting state.  The first EOD replay may
     # append its independent postfill transition even when that snapshot was
     # written earlier in the day; only a partial or divergent existing batch is
     # rejected above.
-    PaperTradeLedgerRepository(resolved).append_many(fills)
+    repository = PaperTradeLedgerRepository(resolved)
+    if transition is None:
+        repository.append_many(fills)
+    else:
+        repository.append_batch(fills, transition)
     observed = _read_ledger_rows(resolved, [fill.fill_id for fill in fills])
     if len(observed) != len(fills):
         raise PaperExecutionProducerError("paper ledger append readback row count mismatch")
@@ -3566,6 +4604,16 @@ def _append_and_read_back(
         if actual != expected:
             raise PaperExecutionProducerError(
                 f"paper ledger append readback mismatch:{expected.fill_id}"
+            )
+    if transition is not None:
+        observed_transitions = repository.list_transitions(
+            portfolio_id=transition.portfolio_id,
+            start_date=transition.event_date,
+            end_date=transition.event_date,
+        )
+        if observed_transitions != (transition,):
+            raise PaperExecutionProducerError(
+                "paper ledger transition append readback mismatch"
             )
     return False
 
@@ -3916,6 +4964,7 @@ __all__ = [
     "PAPER_MAX_PARTICIPATION_BP",
     "PaperExecutionPaths",
     "PaperExecutionProducerError",
+    "ensure_paper_ledger_schema",
     "latest_proven_market_session_on_or_before",
     "next_proven_trading_day",
     "persist_operational_receipt",

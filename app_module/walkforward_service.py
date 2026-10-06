@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from app_module.backtest_service import BacktestService
 from app_module.dtos import BacktestReportDTO
-from app_module.strategy_spec import StrategySpec
+from decision_module.strategies.contracts import StrategySpec
 
 
 @dataclass

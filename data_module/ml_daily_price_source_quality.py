@@ -9,13 +9,14 @@ quarantine detector，不是 corporate action 推論；若 canonical CSV 也異�
 保留 raw-source quarantine，交由正式來源治理處理。PIT/ingest 使用獨立的
 ``ingest_guard``，只讀當筆與已存在的前一筆證據，絕不讀下一筆資料；因此事後
 稽核結果不能回溯篩除歷史 decision row，也不能把檔案 mtime 當成
-``quality_known_at``。
+``quality_known_at``。前／後 canonical context 以 SQLite 中嚴格相鄰的 observation
+date 路由，不用 calendar day 或固定 weekday 代替交易日。
 """
 
 from __future__ import annotations
 
 import csv
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
@@ -23,6 +24,7 @@ import os
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterable, Literal, Mapping, Sequence
+import uuid
 
 from data_module.ml_price_availability_contract import (
     PRICE_AVAILABILITY_CONTRACT_VERSION,
@@ -53,6 +55,24 @@ _DB_PRICE_COLUMNS = (
     "最低價",
     "收盤價",
     "成交股數",
+)
+_RAW_MISSING_MARKERS = frozenset(
+    {
+        "",
+        "-",
+        "--",
+        "n/a",
+        "na",
+        "none",
+        "null",
+        "—",
+        "–",
+        "―",
+        "−",
+        "－",
+        "﹘",
+        "﹣",
+    }
 )
 
 
@@ -112,8 +132,10 @@ def _candidate_digest_payload(candidate: Mapping[str, Any]) -> dict[str, Any]:
         {
             key: detector[key]
             for key in (
+                "previous_observation_date",
                 "previous_close",
                 "current_open",
+                "next_observation_date",
                 "next_open",
                 "threshold_factor",
                 "policy_version",
@@ -128,7 +150,9 @@ def _candidate_digest_payload(candidate: Mapping[str, Any]) -> dict[str, Any]:
     context_payload: dict[str, Any] | None = None
     if isinstance(context, Mapping):
         context_payload = {
+            "previous_date": context.get("previous_date"),
             "previous": _candidate_digest_row(context.get("previous")),
+            "next_date": context.get("next_date"),
             "next": _candidate_digest_row(context.get("next")),
             "previous_file": _candidate_digest_file(context.get("previous_file")),
             "next_file": _candidate_digest_file(context.get("next_file")),
@@ -206,12 +230,153 @@ def _update_candidate_digest(
     digest.update(encoded)
 
 
+def _update_candidate_key_digest(
+    digest: Any,
+    candidate_date: str,
+    candidate_symbol: str,
+) -> None:
+    """Update the deterministic digest for a candidate's business key."""
+
+    encoded = _canonical_json(
+        {"date": candidate_date, "symbol": candidate_symbol}
+    ).encode("utf-8")
+    digest.update(len(encoded).to_bytes(8, "big"))
+    digest.update(encoded)
+
+
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         while chunk := stream.read(1 << 20):
             digest.update(chunk)
     return _SHA256_PREFIX + digest.hexdigest()
+
+
+class _CandidateEvidenceWriter:
+    """Stream complete source-quality candidates to a non-overwriting JSONL file."""
+
+    _SCHEMA_VERSION = "portfolio-ml-daily-price-source-quality-candidates.v1"
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        source_roots: Iterable[Path],
+    ) -> None:
+        output = path.resolve()
+        for root in source_roots:
+            resolved_root = Path(root).resolve()
+            if output == resolved_root or resolved_root in output.parents:
+                raise ValueError(
+                    "candidate evidence must be outside source roots"
+                )
+        self.path = output
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.exists():
+            raise FileExistsError(
+                f"candidate evidence already exists: {self.path}"
+            )
+        temporary = self.path.with_name(
+            f".{uuid.uuid4().hex}.tmp"
+        )
+        self._temporary_path = temporary
+        self._stream = temporary.open("xb")
+        self._candidate_digest = hashlib.sha256()
+        self._key_digest = hashlib.sha256()
+        self._row_count = 0
+        self._unique_key_count = 0
+        self._duplicate_key_count = 0
+        self._out_of_order_key_count = 0
+        self._previous_key: tuple[str, str] | None = None
+        self._closed = False
+
+    def write(self, candidate: Mapping[str, Any]) -> None:
+        if self._closed:
+            raise RuntimeError("candidate evidence writer is closed")
+        candidate_date = candidate.get("date")
+        candidate_symbol = candidate.get("symbol")
+        if not isinstance(candidate_date, str) or not isinstance(
+            candidate_symbol, str
+        ):
+            raise ValueError("candidate evidence requires string date and symbol")
+        encoded = (_canonical_json(dict(candidate)) + "\n").encode("utf-8")
+        self._stream.write(encoded)
+        _update_candidate_digest(self._candidate_digest, candidate)
+        _update_candidate_key_digest(
+            self._key_digest,
+            candidate_date,
+            candidate_symbol,
+        )
+        key = (candidate_date, candidate_symbol)
+        if self._previous_key is None or key > self._previous_key:
+            self._unique_key_count += 1
+        elif key == self._previous_key:
+            self._duplicate_key_count += 1
+        else:
+            self._out_of_order_key_count += 1
+        self._previous_key = key
+        self._row_count += 1
+
+    def finalize(self) -> dict[str, Any]:
+        if self._closed:
+            raise RuntimeError("candidate evidence writer is already closed")
+        try:
+            self._stream.flush()
+            os.fsync(self._stream.fileno())
+            self._stream.close()
+            self._closed = True
+            if self.path.exists():
+                raise FileExistsError(
+                    f"candidate evidence already exists: {self.path}"
+                )
+            # A hard-link publication is atomic and cannot replace a retry's
+            # existing artifact.  The temporary file is in the same directory.
+            os.link(self._temporary_path, self.path)
+            self._temporary_path.unlink(missing_ok=True)
+        except BaseException:
+            if not self._stream.closed:
+                try:
+                    self._stream.close()
+                except OSError:
+                    pass
+            self._closed = True
+            try:
+                self._temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+        return {
+            "schema_version": self._SCHEMA_VERSION,
+            "format": "jsonl",
+            "path": str(self.path),
+            "key_fields": ["date", "symbol"],
+            "key_order": "date_symbol_ascending",
+            "complete": (
+                self._duplicate_key_count == 0
+                and self._out_of_order_key_count == 0
+            ),
+            "row_count": self._row_count,
+            "unique_key_count": self._unique_key_count,
+            "duplicate_key_count": self._duplicate_key_count,
+            "out_of_order_key_count": self._out_of_order_key_count,
+            "candidate_digest": (
+                _SHA256_PREFIX + self._candidate_digest.hexdigest()
+            ),
+            "key_digest": _SHA256_PREFIX + self._key_digest.hexdigest(),
+            "file_sha256": _file_sha256(self.path),
+        }
+
+    def abort(self) -> None:
+        if not self._closed:
+            try:
+                self._stream.close()
+            except (OSError, ValueError):
+                pass
+            self._closed = True
+        try:
+            self._temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _normalise_date(value: str, *, field_name: str) -> tuple[str, str]:
@@ -228,6 +393,18 @@ def _normalise_date(value: str, *, field_name: str) -> tuple[str, str]:
         except ValueError as exc:
             raise ValueError(f"{field_name} must be YYYY-MM-DD or YYYYMMDD") from exc
     return parsed.strftime("%Y%m%d"), parsed.isoformat()
+
+
+def _normalise_optional_date(
+    value: object,
+    *,
+    field_name: str,
+) -> tuple[str | None, str | None]:
+    """Normalize an optional SQLite observation date without calendar fallback."""
+
+    if value is None or not str(value).strip():
+        return None, None
+    return _normalise_date(str(value).strip(), field_name=field_name)
 
 
 def _decimal(value: object, *, field_name: str) -> Decimal:
@@ -559,16 +736,20 @@ def _canonical_invalid_rows_for_symbol(
 
 
 def _raw_field_equal(field: str, left: object, right: object) -> bool:
-    """Compare raw values without hiding a marker/non-numeric discrepancy."""
+    """Compare raw values while equating explicit missing representations."""
 
     try:
         return _payload_field_equal(field, left, right)
     except (TypeError, ValueError, InvalidOperation):
         def marker(value: object) -> str | None:
             if value is None:
-                return None
+                return "__missing__"
             text = str(value).strip()
-            return text if text in {"", "-", "--", "N/A", "NA", "None", "null", "—", "－"} else None
+            return (
+                "__missing__"
+                if text.casefold() in _RAW_MISSING_MARKERS
+                else None
+            )
 
         left_marker = marker(left)
         right_marker = marker(right)
@@ -672,7 +853,7 @@ def _normalise_quality_known_at(value: str | None) -> str | None:
 
 
 def _normalise_candidate_sample_limit(value: int | None) -> int | None:
-    """限制 report 內保留的 candidate sample；計數仍涵蓋全部候選。"""
+    """限制 report 內保留的 candidate sample；sidecar 可保存全量候選。"""
 
     if value is None:
         return None
@@ -715,6 +896,7 @@ def _audit_ingest_guard(
     source_manifest_hash: str | None,
     quality_known_at: str | None,
     candidate_sample_limit: int | None,
+    candidate_evidence_path: Path | None,
 ) -> dict[str, Any]:
     """以當時可得的當筆/前一筆證據執行 ingest guard。
 
@@ -745,14 +927,20 @@ def _audit_ingest_guard(
     research_price_invalid_count = 0
     classification_counts: dict[str, int] = {}
     date_counts: dict[str, int] = {}
+    candidate_evidence_writer: _CandidateEvidenceWriter | None = None
+    candidate_evidence_manifest: dict[str, Any] | None = None
+    scan_completed = False
 
     def record_candidate(candidate: dict[str, Any]) -> None:
-        """保留有限 evidence sample，同時累計全量判定數。"""
+        """保存可選的 full sidecar，同時保留 bounded sample 與全量計數。"""
 
         nonlocal candidate_count, research_price_unavailable_count
         nonlocal research_price_invalid_count
         candidate_count += 1
-        _update_candidate_digest(candidate_digest, candidate)
+        if candidate_evidence_writer is None:
+            _update_candidate_digest(candidate_digest, candidate)
+        else:
+            candidate_evidence_writer.write(candidate)
         research_contract = candidate.get("research_contract")
         if (
             isinstance(research_contract, Mapping)
@@ -783,6 +971,11 @@ def _audit_ingest_guard(
     route_selected_by_source: dict[str, int] = {}
     route_selected_samples: list[dict[str, Any]] = []
     try:
+        if candidate_evidence_path is not None:
+            candidate_evidence_writer = _CandidateEvidenceWriter(
+                candidate_evidence_path,
+                source_roots=(database.parent, *canonical_source_dirs),
+            )
         symbol_predicate = ""
         parameters: list[object] = [start_key, end_key]
         if normalized_symbols is not None:
@@ -792,7 +985,7 @@ def _audit_ingest_guard(
                 + ")"
             )
             parameters.extend(normalized_symbols)
-        # 只取前一筆 SQLite close；下一筆資料在此模式中不可被觀察。
+        # 只取前一筆 SQLite observation；下一筆資料在此模式中不可被觀察。
         cursor = connection.execute(
             """
             SELECT cur.日期, cur.證券代號, cur.證券名稱,
@@ -801,7 +994,11 @@ def _audit_ingest_guard(
                    (SELECT prev.收盤價 FROM daily_prices AS prev
                     WHERE prev.證券代號 = cur.證券代號
                       AND prev.日期 < cur.日期
-                    ORDER BY prev.日期 DESC LIMIT 1) AS previous_close
+                      ORDER BY prev.日期 DESC LIMIT 1) AS previous_close,
+                   (SELECT prev.日期 FROM daily_prices AS prev
+                    WHERE prev.證券代號 = cur.證券代號
+                      AND prev.日期 < cur.日期
+                    ORDER BY prev.日期 DESC LIMIT 1) AS previous_date
             FROM daily_prices AS cur
             WHERE cur.日期 >= ? AND cur.日期 <= ?
             """ + symbol_predicate + " ORDER BY cur.日期, cur.證券代號",
@@ -814,6 +1011,17 @@ def _audit_ingest_guard(
                     field_name="sqlite.日期",
                 )
                 symbol = _symbol(row["證券代號"], field_name="sqlite.證券代號")
+                previous_date_key, previous_date_iso = _normalise_optional_date(
+                    row["previous_date"],
+                    field_name="sqlite.previous_date",
+                )
+                previous_rows: dict[str, dict[str, Any]]
+                previous_files: dict[str, dict[str, Any]]
+                previous_route_candidates: dict[
+                    str,
+                    tuple[tuple[dict[str, Any], dict[str, Any]], ...],
+                ]
+                previous_files_for_date: tuple[dict[str, Any], ...]
                 (
                     canonical_rows,
                     canonical_files,
@@ -825,20 +1033,23 @@ def _audit_ingest_guard(
                     csv_cache=csv_cache,
                     route_cache=route_cache,
                 )
-                previous_date = (
-                    date.fromisoformat(date_iso) - timedelta(days=1)
-                ).strftime("%Y%m%d")
-                (
-                    previous_rows,
-                    previous_files,
-                    previous_route_candidates,
-                    previous_files_for_date,
-                ) = _canonical_rows_for_date(
-                    previous_date,
-                    source_dirs=canonical_source_dirs,
-                    csv_cache=csv_cache,
-                    route_cache=route_cache,
-                )
+                if previous_date_key is None:
+                    previous_rows = {}
+                    previous_files = {}
+                    previous_route_candidates = {}
+                    previous_files_for_date = ()
+                else:
+                    (
+                        previous_rows,
+                        previous_files,
+                        previous_route_candidates,
+                        previous_files_for_date,
+                    ) = _canonical_rows_for_date(
+                        previous_date_key,
+                        source_dirs=canonical_source_dirs,
+                        csv_cache=csv_cache,
+                        route_cache=route_cache,
+                    )
                 canonical = canonical_rows.get(symbol)
                 canonical_file = canonical_files.get(symbol)
                 route_entries = route_candidates.get(symbol, ())
@@ -863,8 +1074,22 @@ def _audit_ingest_guard(
                                 "file_sha256": canonical_file.get("file_sha256"),
                             }
                         )
-                if canonical_file is None and canonical_files_for_date:
-                    canonical_file = canonical_files_for_date[0]
+                canonical_invalid_entries = _canonical_invalid_rows_for_symbol(
+                    canonical_files_for_date,
+                    symbol,
+                )
+                if canonical_file is None:
+                    if len(canonical_invalid_entries) == 1:
+                        # A unique rejected raw row is the authoritative
+                        # evidence location for this symbol.  Do not let the
+                        # first TWSE root mask a TPEX-only invalid row.
+                        canonical_file = dict(canonical_invalid_entries[0][1])
+                    elif len(canonical_invalid_entries) > 1:
+                        # Multiple rejected rows are ambiguous; retain their
+                        # per-entry metadata below and do not invent one file.
+                        canonical_file = None
+                    elif canonical_files_for_date:
+                        canonical_file = canonical_files_for_date[0]
                 canonical_previous = previous_rows.get(symbol)
                 previous_file = previous_files.get(symbol)
                 previous_route_entries = previous_route_candidates.get(symbol, ())
@@ -908,10 +1133,6 @@ def _audit_ingest_guard(
                         # 例如 volume 非法但四個價格仍可用；這不是
                         # price_unavailable contract 的適用範圍。
                         research_contract = None
-                    canonical_invalid_entries = _canonical_invalid_rows_for_symbol(
-                        canonical_files_for_date,
-                        symbol,
-                    )
                     canonical_raw_row = (
                         canonical_invalid_entries[0][0]
                         if len(canonical_invalid_entries) == 1
@@ -988,7 +1209,9 @@ def _audit_ingest_guard(
                             "symbol": symbol,
                             "date": date_iso,
                             "detector": {
+                                "previous_observation_date": previous_date_iso,
                                 "previous_close": None,
+                                "next_observation_date": None,
                                 "current_open": None,
                                 "next_open": None,
                                 "threshold_factor": "10",
@@ -1015,7 +1238,9 @@ def _audit_ingest_guard(
                                 for candidate_row, candidate_file in route_entries
                             ],
                             "canonical_context": {
+                                "previous_date": previous_date_iso,
                                 "previous": canonical_previous,
+                                "next_date": None,
                                 "next": None,
                                 "previous_file": previous_file,
                                 "next_file": None,
@@ -1107,6 +1332,7 @@ def _audit_ingest_guard(
                         "symbol": symbol,
                         "date": date_iso,
                         "detector": {
+                            "previous_observation_date": previous_date_iso,
                             "previous_close": (
                                 _decimal_text(sqlite_previous_close)
                                 if sqlite_previous_close is not None
@@ -1117,6 +1343,7 @@ def _audit_ingest_guard(
                                 if sqlite_current_open is not None
                                 else None
                             ),
+                            "next_observation_date": None,
                             "next_open": None,
                             "threshold_factor": "10",
                             "policy_version": INGEST_GUARD_POLICY_VERSION,
@@ -1133,7 +1360,9 @@ def _audit_ingest_guard(
                             for candidate_row, candidate_file in route_entries
                         ],
                         "canonical_context": {
+                            "previous_date": previous_date_iso,
                             "previous": canonical_previous,
+                            "next_date": None,
                             "next": None,
                             "previous_file": previous_file,
                             "next_file": None,
@@ -1150,10 +1379,21 @@ def _audit_ingest_guard(
                         "classification": classification,
                     }
                 )
+        scan_completed = True
     finally:
         connection.close()
+        if candidate_evidence_writer is not None:
+            if scan_completed:
+                candidate_evidence_manifest = candidate_evidence_writer.finalize()
+            else:
+                candidate_evidence_writer.abort()
 
     anomaly = candidate_count > 0
+    candidate_digest_value = (
+        str(candidate_evidence_manifest["candidate_digest"])
+        if candidate_evidence_manifest is not None
+        else _SHA256_PREFIX + candidate_digest.hexdigest()
+    )
     report: dict[str, Any] = {
         "schema_version": SOURCE_QUALITY_SCHEMA_VERSION,
         "status": "quarantine_required" if anomaly else "source_quality_pass",
@@ -1215,7 +1455,7 @@ def _audit_ingest_guard(
         "candidate_sample_count": len(candidates),
         "candidate_sample_limit": candidate_sample_limit,
         "candidate_samples_truncated": candidate_count > len(candidates),
-        "candidate_digest": _SHA256_PREFIX + candidate_digest.hexdigest(),
+        "candidate_digest": candidate_digest_value,
         "affected_date_counts": dict(sorted(date_counts.items())),
         "classification_counts": dict(sorted(classification_counts.items())),
         "candidates": sorted(
@@ -1223,6 +1463,8 @@ def _audit_ingest_guard(
             key=lambda item: (str(item["date"]), str(item["symbol"])),
         ),
     }
+    if candidate_evidence_manifest is not None:
+        report["candidate_evidence"] = candidate_evidence_manifest
     report["report_hash"] = _payload_hash(report)
     return report
 
@@ -1239,6 +1481,7 @@ def audit_daily_price_source(
     quality_known_at: str | None = None,
     canonical_daily_price_dirs: Sequence[Path] | None = None,
     candidate_sample_limit: int | None = None,
+    candidate_evidence_path: Path | None = None,
 ) -> dict[str, Any]:
     """以唯讀 SQLite 與 canonical daily CSV 比對固定日期範圍。
 
@@ -1278,6 +1521,7 @@ def audit_daily_price_source(
             source_manifest_hash=source_manifest_hash,
             quality_known_at=normalized_quality_known_at,
             candidate_sample_limit=normalized_candidate_sample_limit,
+            candidate_evidence_path=candidate_evidence_path,
         )
     connection = _open_readonly(database)
     csv_cache: dict[
@@ -1306,13 +1550,19 @@ def audit_daily_price_source(
     candidate_digest = hashlib.sha256()
     classification_counts: dict[str, int] = {}
     date_counts: dict[str, int] = {}
+    candidate_evidence_writer: _CandidateEvidenceWriter | None = None
+    candidate_evidence_manifest: dict[str, Any] | None = None
+    scan_completed = False
 
     def record_candidate(candidate: dict[str, Any]) -> None:
-        """保留有限 evidence sample，同時累計全量判定數。"""
+        """保存可選的 full sidecar，同時保留 bounded sample 與全量計數。"""
 
         nonlocal candidate_count
         candidate_count += 1
-        _update_candidate_digest(candidate_digest, candidate)
+        if candidate_evidence_writer is None:
+            _update_candidate_digest(candidate_digest, candidate)
+        else:
+            candidate_evidence_writer.write(candidate)
         classification = str(candidate["classification"])
         classification_counts[classification] = (
             classification_counts.get(classification, 0) + 1
@@ -1322,6 +1572,11 @@ def audit_daily_price_source(
         if candidate_sample_limit is None or len(candidates) < candidate_sample_limit:
             candidates.append(candidate)
     try:
+        if candidate_evidence_path is not None:
+            candidate_evidence_writer = _CandidateEvidenceWriter(
+                candidate_evidence_path,
+                source_roots=(database.parent, *canonical_source_dirs),
+            )
         symbol_predicate = ""
         parameters: list[object] = [start_key, end_key]
         if normalized_symbols is not None:
@@ -1341,11 +1596,19 @@ def audit_daily_price_source(
                    (SELECT prev.收盤價 FROM daily_prices AS prev
                     WHERE prev.證券代號 = cur.證券代號
                       AND prev.日期 < cur.日期
-                    ORDER BY prev.日期 DESC LIMIT 1) AS previous_close,
+                      ORDER BY prev.日期 DESC LIMIT 1) AS previous_close,
+                   (SELECT prev.日期 FROM daily_prices AS prev
+                    WHERE prev.證券代號 = cur.證券代號
+                      AND prev.日期 < cur.日期
+                    ORDER BY prev.日期 DESC LIMIT 1) AS previous_date,
                    (SELECT next_row.開盤價 FROM daily_prices AS next_row
                     WHERE next_row.證券代號 = cur.證券代號
                       AND next_row.日期 > cur.日期
-                    ORDER BY next_row.日期 ASC LIMIT 1) AS next_open
+                      ORDER BY next_row.日期 ASC LIMIT 1) AS next_open,
+                   (SELECT next_row.日期 FROM daily_prices AS next_row
+                    WHERE next_row.證券代號 = cur.證券代號
+                      AND next_row.日期 > cur.日期
+                    ORDER BY next_row.日期 ASC LIMIT 1) AS next_date
             FROM daily_prices AS cur
             WHERE cur.日期 >= ? AND cur.日期 <= ?
             """ + symbol_predicate + " ORDER BY cur.日期, cur.證券代號",
@@ -1374,6 +1637,14 @@ def audit_daily_price_source(
                 date_key, date_iso = _normalise_date(
                     date_key,
                     field_name="sqlite.日期",
+                )
+                previous_date_key, previous_date_iso = _normalise_optional_date(
+                    row["previous_date"],
+                    field_name="sqlite.previous_date",
+                )
+                next_date_key, next_date_iso = _normalise_optional_date(
+                    row["next_date"],
+                    field_name="sqlite.next_date",
                 )
                 (
                     canonical_rows,
@@ -1422,11 +1693,19 @@ def audit_daily_price_source(
                     "next_candidates": [],
                     "scale_discontinuity": None,
                 }
-                current_date = date.fromisoformat(date_iso)
-                for relation, offset in (("previous", -1), ("next", 1)):
-                    context_key = (current_date + timedelta(days=offset)).strftime(
-                        "%Y%m%d"
-                    )
+                context_dates = {
+                    "previous": (previous_date_key, previous_date_iso),
+                    "next": (next_date_key, next_date_iso),
+                }
+                canonical_context["previous_date"] = previous_date_iso
+                canonical_context["next_date"] = next_date_iso
+                for relation in ("previous", "next"):
+                    context_key, _context_iso = context_dates[relation]
+                    if context_key is None:
+                        canonical_context[f"{relation}_file"] = None
+                        canonical_context[relation] = None
+                        canonical_context[f"{relation}_candidates"] = []
+                        continue
                     (
                         context_rows,
                         context_files,
@@ -1537,10 +1816,21 @@ def audit_daily_price_source(
                         "classification": classification,
                     }
                 )
+        scan_completed = True
     finally:
         connection.close()
+        if candidate_evidence_writer is not None:
+            if scan_completed:
+                candidate_evidence_manifest = candidate_evidence_writer.finalize()
+            else:
+                candidate_evidence_writer.abort()
 
     anomaly = candidate_count > 0
+    candidate_digest_value = (
+        str(candidate_evidence_manifest["candidate_digest"])
+        if candidate_evidence_manifest is not None
+        else _SHA256_PREFIX + candidate_digest.hexdigest()
+    )
     report: dict[str, Any] = {
         "schema_version": SOURCE_QUALITY_SCHEMA_VERSION,
         "status": (
@@ -1596,7 +1886,7 @@ def audit_daily_price_source(
         "candidate_sample_count": len(candidates),
         "candidate_sample_limit": candidate_sample_limit,
         "candidate_samples_truncated": candidate_count > len(candidates),
-        "candidate_digest": _SHA256_PREFIX + candidate_digest.hexdigest(),
+        "candidate_digest": candidate_digest_value,
         "affected_date_counts": dict(sorted(date_counts.items())),
         "classification_counts": dict(sorted(classification_counts.items())),
         "candidates": sorted(
@@ -1604,6 +1894,8 @@ def audit_daily_price_source(
             key=lambda item: (str(item["date"]), str(item["symbol"])),
         ),
     }
+    if candidate_evidence_manifest is not None:
+        report["candidate_evidence"] = candidate_evidence_manifest
     report["report_hash"] = _payload_hash(report)
     return report
 
@@ -1660,6 +1952,7 @@ def assert_daily_price_source_quality(
     quality_known_at: str | None = None,
     canonical_daily_price_dirs: Sequence[Path] | None = None,
     candidate_sample_limit: int | None = None,
+    candidate_evidence_path: Path | None = None,
 ) -> dict[str, Any]:
     """供 PIT ingest 使用的 fail-closed source guard。
 
@@ -1678,6 +1971,7 @@ def assert_daily_price_source_quality(
         quality_mode=quality_mode,
         quality_known_at=quality_known_at,
         candidate_sample_limit=candidate_sample_limit,
+        candidate_evidence_path=candidate_evidence_path,
     )
     if report["candidate_count"]:
         raise DailyPriceSourceQualityError(

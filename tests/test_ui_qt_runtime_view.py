@@ -79,10 +79,26 @@ def test_runtime_view_static_labels_are_chinese_and_scope_is_explicit():
 def test_runtime_scope_note_is_compact_and_content_starts_near_top():
     app()
     view = RuntimeView()
+    try:
+        view.operations_details_button.setChecked(True)
+        view.scope_label.setText("窄版長範圍說明；" * 16)
+        view.resize(390, 420)
+        view.show()
+        app().processEvents()
 
-    assert view.scope_label.maximumHeight() <= 48
-    assert hasattr(view, "main_splitter")
-    assert view.main_splitter.minimumHeight() >= 360
+        assert view.scope_label.wordWrap()
+        assert view.scope_label.maximumHeight() > view.scope_label.height()
+        assert view.scope_label.height() >= view.scope_label.heightForWidth(
+            view.scope_label.width()
+        )
+        assert hasattr(view, "main_splitter")
+        assert view.content_scroll.verticalScrollBar().maximum() > 0
+        assert view.content_scroll.verticalScrollBar().value() == 0
+        assert view.scope_label.isVisible()
+    finally:
+        view.close()
+        view.deleteLater()
+        app().processEvents()
 
 
 def test_runtime_view_yields_horizontal_size_hints_for_narrow_workspaces():
@@ -192,8 +208,10 @@ def test_runtime_view_renders_operation_status_without_claiming_scheduler_state(
     view.on_scheduled_operations_updated(dto)
 
     assert "核心工作已就緒 6/6" in view.operations_summary_label.text()
-    assert "每日資料更新｜正常｜passed" in view.operations_list.item(0).text()
-    assert "ML Shadow Co-pilot｜安全邊界中｜passed_rule_only" in view.operations_list.item(1).text()
+    assert "每日資料更新｜正常｜觀測時間：" in view.operations_list.item(0).text()
+    assert "ML Shadow Co-pilot｜安全邊界中｜觀測時間：" in view.operations_list.item(1).text()
+    assert "raw_status: passed" in view.operations_list.item(0).toolTip()
+    assert "raw_status: passed_rule_only" in view.operations_list.item(1).toolTip()
     assert "timestamp_source: checked_at" in view.operations_list.item(0).toolTip()
 
 

@@ -27,16 +27,7 @@
 
 ## 📚 必讀文件清單（每次任務必須先讀）
 
-**任何任務開始前，必須依序閱讀（見 docs/agents/README.md 的「強制流程」）：**
-
-1. `docs/agents/README.md` - Agent 總覽
-2. `docs/agents/shared_context.md` - 共用上下文（不可違背前提）
-3. `docs/00_core/PROJECT_SNAPSHOT.md` - 專案快照（開場 30 秒狀態）
-4. `docs/agents/data_cleanup_agent.md` - 本文件
-
-**未完成上述閱讀，不得執行任何任務。**
-
-**注意**：Data Cleanup Agent 無補充必讀文件，僅需閱讀全 Agent 必讀文件清單。
+依 [Agent 總覽的強制流程](README.md) 執行固定順序及本角色的補充必讀，再讀本文件與任務涉及的文件。未完成閱讀不得執行任務；本頁不另維護第二份清單，以免漏掉 Git 排除或新加入的權威入口。
 
 ## ⛔ 行為邊界（重要）
 

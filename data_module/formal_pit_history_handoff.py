@@ -76,6 +76,8 @@ def inspect_pit_candidate_archive_history(
         "valid_archive_count": 0,
         "future_archive_count": 0,
         "invalid_archive_count": 0,
+        "out_of_scope_archive_count": 0,
+        "out_of_scope_archives": [],
         "lineage": [],
         "coverage": {
             "coverage_start": (
@@ -138,7 +140,22 @@ def inspect_pit_candidate_archive_history(
     valid: list[dict[str, object]] = []
     future_count = 0
     invalid_count = 0
+    out_of_scope: list[dict[str, str]] = []
     for manifest_path in manifests[:MAX_ARCHIVE_MANIFESTS]:
+        # 日期資料夾限定本次來源 inventory；範圍外檔不參與 universe／license
+        # 或 coverage。它們保留作隔離診斷，不把舊 schema 問題變成本日 blocker。
+        # 範圍內仍完整 readback 並比對 effective_from；未知資料夾不能靜默跳過。
+        try:
+            path_date = _required_date(manifest_path.parent.parent.name, "archive_directory_date")
+        except FormalPITHistoryHandoffError:
+            path_date = None
+        if coverage_start is not None and path_date is not None and path_date < coverage_start:
+            out_of_scope.append({
+                "archive_manifest_path": str(manifest_path),
+                "directory_date": path_date.isoformat(),
+                "reason": "before_requested_coverage_start_not_consumed",
+            })
+            continue
         try:
             item = _read_archive_observation(
                 manifest_path,
@@ -168,6 +185,8 @@ def inspect_pit_candidate_archive_history(
         valid.append(item)
 
     report["future_archive_count"] = future_count
+    report["out_of_scope_archive_count"] = len(out_of_scope)
+    report["out_of_scope_archives"] = out_of_scope
     report["invalid_archive_count"] = invalid_count
     report["valid_archive_count"] = len(valid)
     if not valid:

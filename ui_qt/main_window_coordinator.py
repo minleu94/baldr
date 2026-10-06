@@ -18,9 +18,10 @@ WORKSPACE_DEFINITIONS = (
     WorkspaceDefinition("recommendation", "推薦分析", "spark-list"),
     WorkspaceDefinition("backtest", "策略回測", "replay"),
     WorkspaceDefinition("watchlist", "觀察清單", "bookmark"),
+    WorkspaceDefinition("stock_research", "個股研究", "spark-list"),
     WorkspaceDefinition("portfolio", "持倉管理", "briefcase"),
     WorkspaceDefinition("update", "數據更新", "database-sync"),
-    WorkspaceDefinition("runtime", "Runtime", "pulse"),
+    WorkspaceDefinition("runtime", "系統狀態", "pulse"),
 )
 
 
@@ -32,10 +33,13 @@ WORKSPACE_ALIASES = {
     "推薦分析": "recommendation",
     "策略回測": "backtest",
     "觀察清單": "watchlist",
+    "個股研究": "stock_research",
+    "個股研究報告": "stock_research",
     "持倉管理": "portfolio",
     "數據更新": "update",
     "Runtime": "runtime",
     "Runtime Observatory": "runtime",
+    "系統狀態": "runtime",
 }
 
 

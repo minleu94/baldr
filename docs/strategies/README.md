@@ -13,5 +13,5 @@
 ## 維護規則
 
 - 新增策略說明時，需同步更新 `../00_core/DOCUMENTATION_INDEX.md`。
-- 策略實作與 registry 狀態以 `app_module/strategy_registry.py`、`app_module/strategies/` 與 `docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` 為準。
+- 策略實作與唯一 registry 狀態以 `decision_module/strategies/` 為準；舊 `app_module/` strategy imports 僅由 `TMP-STR-01` 薄 facade 暫時相容，退休條件見 [`FINAL_MIGRATION_SEQUENCE.md`](../01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md)。策略語意仍以 [`STRATEGY_DESIGN_SPECIFICATION.md`](../02_features/STRATEGY_DESIGN_SPECIFICATION.md) 為準。
 - 策略說明不得宣稱投資績效或保證收益；若提及驗證結果，必須連到對應 QA 或 Research Run evidence。

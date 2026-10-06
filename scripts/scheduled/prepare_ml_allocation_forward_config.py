@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import sys
 from typing import Any, Mapping, Protocol, Sequence
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 
@@ -29,7 +30,8 @@ if str(ROOT) not in sys.path:
 TAIPEI = ZoneInfo("Asia/Taipei")
 TAIPEI_DECISION_TIME = time(8, 30)
 FORWARD_DEADLINE_TIME = time(8, 35)
-SCHEDULED_WAKE_LOCAL_TIME = "16:15"
+SCHEDULED_WAKE_LOCAL_TIME = "08:25"
+SCHEDULED_WAKE_TIMEZONE = "Asia/Taipei"
 TASK_NAME = "baldr-ml-allocation-forward-daily"
 CONFIG_SCHEMA_VERSION = "ml-forward-scheduled-config.v1"
 STATUS_SCHEMA_VERSION = "ml-forward-config-producer-status.v1"
@@ -147,6 +149,15 @@ def default_paper_state_db() -> Path:
         / "paper_execution_eod_replay"
         / "paper_portfolio"
         / "paper_portfolio.sqlite"
+    )
+
+
+def default_paper_trade_ledger_db() -> Path:
+    return _env_path("ML_FORWARD_PAPER_TRADE_LEDGER_DB") or (
+        ROOT
+        / "output"
+        / "paper_execution_eod_replay"
+        / "paper_trade_ledger.sqlite"
     )
 
 
@@ -461,7 +472,10 @@ def _write_selection_status(
     root = _path(config_root)
     now = datetime.now(timezone.utc)
     stamp = now.strftime("%Y%m%dT%H%M%S%fZ")
-    receipt = root / "selection_receipts" / f"{stamp}-{os.getpid()}.json"
+    # Windows clock resolution can return the same microsecond for two rapid
+    # create-only calls.  Keep immutable receipts distinct without changing
+    # the date-keyed config reuse contract.
+    receipt = root / "selection_receipts" / f"{stamp}-{os.getpid()}-{uuid4().hex[:12]}.json"
     latest = root / "latest_selection.json"
     record = dict(payload)
     record["receipt_path"] = str(receipt)
@@ -483,6 +497,7 @@ def prepare_daily_config(
     now: datetime,
     database: Path,
     paper_state_db: Path,
+    paper_trade_ledger_db: Path | None = None,
     output_root: Path,
     release_root: Path,
     release_manifest_file_hash: str | None = None,
@@ -617,9 +632,13 @@ def prepare_daily_config(
         "decision_timezone": "Asia/Taipei",
         "decision_time": "08:30",
         "scheduled_wake_local": SCHEDULED_WAKE_LOCAL_TIME,
+        "scheduled_wake_timezone": SCHEDULED_WAKE_TIMEZONE,
         "run_date": decision.date().isoformat(),
         "database": str(_path(database)),
         "paper_state_db": str(_path(paper_state_db)),
+        "paper_trade_ledger_db": str(
+            _path(paper_trade_ledger_db or default_paper_trade_ledger_db())
+        ),
         "output_root": str(_path(output_root)),
         "release_root": str(_path(release_root)),
         "release_manifest_file_hash": _validated_release_manifest_hash(
@@ -680,6 +699,12 @@ def build_parser() -> Any:
     parser.add_argument("--archive-root", type=Path, default=default_archive_root())
     parser.add_argument("--database", type=Path, default=default_database())
     parser.add_argument("--paper-state-db", type=Path, default=default_paper_state_db())
+    parser.add_argument(
+        "--paper-trade-ledger-db",
+        type=Path,
+        default=default_paper_trade_ledger_db(),
+        help="append-only Paper transaction ledger；forward reader 以 query-only 讀取。",
+    )
     parser.add_argument("--output-root", type=Path, default=default_output_root())
     parser.add_argument("--release-root", type=Path, default=default_release_root())
     parser.add_argument(
@@ -728,6 +753,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             now=now,
             database=args.database,
             paper_state_db=args.paper_state_db,
+            paper_trade_ledger_db=args.paper_trade_ledger_db,
             output_root=args.output_root,
             release_root=args.release_root,
             release_manifest_file_hash=args.release_manifest_file_hash,

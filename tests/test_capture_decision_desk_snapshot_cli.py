@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from app_module.decision_desk_snapshot_repository import DecisionDeskSnapshotRepository
+from app_module.evidence_event_importer_dtos import capture_context_is_valid
 from data_module.config import TWStockConfig
 
 
@@ -51,6 +52,38 @@ def test_confirm_writes_snapshot_and_duplicate_is_skipped(tmp_path):
     assert first["saved"] is True
     assert second["skipped_duplicate"] is True
     assert len(DecisionDeskSnapshotRepository(config).list_snapshots()) == 1
+
+
+def test_explicit_capture_clock_is_persisted_without_preopen_authority(tmp_path):
+    summary, config = _run(
+        tmp_path,
+        "--as-of",
+        "2026-06-30",
+        "--decision-at",
+        "2026-06-30T20:10:00+08:00",
+        "--captured-at",
+        "2026-06-30T20:25:00+08:00",
+        "--capture-mode",
+        "eod_research",
+        "--confirm",
+    )
+
+    stored = DecisionDeskSnapshotRepository(config).list_snapshots()[0]
+    context = stored.metadata_json["capture_context"]
+    assert summary["decision_at"] == "2026-06-30T20:10:00+08:00"
+    assert summary["as_of"] == "2026-06-30"
+    assert summary["captured_at"] == "2026-06-30T20:25:00+08:00"
+    assert summary["capture_mode"] == "eod_research"
+    assert summary["research_only"] is True
+    assert summary["preopen_authority"] is False
+    assert summary["natural_authority"] is False
+    assert stored.metadata_json["generated_at"] == "2026-06-30T20:25:00+08:00"
+    assert capture_context_is_valid(context)
+    assert stored.hash_payload()["metadata_json"]["capture_context"] == {
+        key: value
+        for key, value in context.items()
+        if key not in {"captured_at", "capture_context_hash", "capture_context_identity_hash"}
+    }
 
 
 def test_inspect_decision_desk_snapshots_cli_reports_latest(tmp_path):

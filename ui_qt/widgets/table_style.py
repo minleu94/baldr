@@ -2,6 +2,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableView
 
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.widgets.layout_helpers import ensure_visible_rows
 
 
 def apply_financial_table_style(table: QTableView) -> None:
@@ -74,3 +75,4 @@ def apply_financial_table_style(table: QTableView) -> None:
 
     table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
     table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+    ensure_visible_rows(table, 5)

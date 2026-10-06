@@ -8,6 +8,7 @@ import pandas as pd
 import app_module.recommendation_service as recommendation_service_module
 from app_module.recommendation_service import RecommendationService
 from decision_module.strategy_configurator import StrategyConfigurator
+from recommendation_test_support import build_recommendation_test_preparer
 
 
 def _stock_frame() -> pd.DataFrame:
@@ -36,7 +37,11 @@ def test_recommendation_enriches_features_once_per_stock(
     config.stock_data_file.stat.return_value.st_size = 1024
     config.all_stocks_data_file.exists.return_value = False
     mock_read_csv.return_value = _stock_frame()
-    service = RecommendationService(config, industry_mapper=MagicMock())
+    service = RecommendationService(
+        config,
+        industry_mapper=MagicMock(),
+        input_preparer=build_recommendation_test_preparer(config),
+    )
     service.strategy_configurator.generate_recommendations = lambda frame, _: pd.DataFrame()
 
     calls = 0

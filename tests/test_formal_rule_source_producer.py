@@ -160,7 +160,10 @@ def _patch_real_source_checks(
     monkeypatch.setattr(
         producer,
         "rank_rule_only_candidates",
-        lambda *_args, **_kwargs: [SimpleNamespace(symbol=s) for s in symbols],
+        lambda *_args, **_kwargs: [
+            SimpleNamespace(symbol=s, score_bp=7000 + index)
+            for index, s in enumerate(symbols)
+        ],
     )
     monkeypatch.setattr(producer, "_universe_hash", lambda _value: UNIVERSE_HASH)
     monkeypatch.setattr(producer, "file_sha256", lambda path: _real_file_hash(path))
@@ -169,6 +172,11 @@ def _patch_real_source_checks(
 def _patch_policy_and_calendar_only(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the market window and ranking on the real SQLite implementation."""
 
+    monkeypatch.setattr(
+        producer,
+        "formal_schedule_day_state",
+        lambda **_kwargs: (True, "test_verified_open"),
+    )
     monkeypatch.setattr(
         producer,
         "_load_owner_acceptance",
@@ -741,6 +749,27 @@ def test_postopen_first_attempt_is_blocked_without_prepublished_bundle(
             now=POST_OPEN,
         )
     assert not (tmp_path / "publication").exists()
+
+
+def test_research_output_root_preflight_rejects_misrouted_api_call_before_reads(
+    tmp_path: Path,
+) -> None:
+    expected_root = tmp_path / "research" / "rule_source"
+    routed_root = tmp_path / "formal" / "rule_source"
+    with pytest.raises(
+        producer.FormalRuleSourceProducerError,
+        match="rule_source_expected_output_root_mismatch",
+    ):
+        producer.produce_current_rule_source_bundle(
+            output_root=routed_root,
+            expected_output_root=expected_root,
+            market_db=tmp_path / "missing-market.sqlite",
+            baseline_root=tmp_path / "missing-baseline",
+            calendar_cache_root=tmp_path / "missing-calendar",
+            now=PREOPEN,
+        )
+    assert not routed_root.exists()
+    assert not expected_root.exists()
 
 
 def test_scheduled_rule_wrapper_creates_preopen_then_reuses_postopen(

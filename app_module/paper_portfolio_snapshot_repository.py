@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 import sqlite3
+from contextlib import contextmanager
+from typing import Iterator
+from app_module.personal_store_routes import PersonalStoreRoute
+from app_module.personal_paper_store_paths import PersonalPaperStorePaths, PersonalStoreCustody
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_io_path, to_internal_sqlite_uri
 
 
 @dataclass(frozen=True)
@@ -49,14 +54,46 @@ class PaperPortfolioSnapshot:
 
 
 class PaperPortfolioSnapshotRepository:
-    def __init__(self, db_path: str | Path) -> None:
+    def __init__(self, db_path: str | Path, *, route: PersonalStoreRoute | None = None,
+                 portfolio_id: str | None = None, personal_paths: PersonalDataPaths | None = None) -> None:
+        self.custody = PersonalStoreCustody(route, personal_paths)
         self._path = Path(db_path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self.route = route
+        self.portfolio_id = portfolio_id
+        self.read_only = route is not None and route.write_target is None
+        if route is not None:
+            paths = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id or "")
+            paths.require_selected(db_path, paths.state_db)
+        if self.read_only:
+            return
+        self.custody.sqlite_guard(self._path)
+        self.custody.prepare_parent(self._path)
         self._ensure_schema()
 
-    def append(self, snapshot: PaperPortfolioSnapshot) -> None:
+    def _require_identity(self, portfolio_id: str) -> None:
+        if self.route is not None and portfolio_id != self.route.identity.key:
+            raise ValueError("paper identity mismatch")
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        self.custody.sqlite_guard(self._path)
+        if self.read_only:
+            conn = sqlite3.connect(to_internal_sqlite_uri(self._path, "ro"), uri=True)
+            conn.execute("PRAGMA query_only=ON")
+        else:
+            conn = sqlite3.connect(self.custody.io(self._path) if self.route is not None else to_internal_io_path(self._path.resolve()))
         try:
-            with sqlite3.connect(self._path) as conn:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
+    def append(self, snapshot: PaperPortfolioSnapshot) -> None:
+        if self.read_only:
+            raise PermissionError("paper snapshot route is read-only")
+        self._require_identity(snapshot.portfolio_id)
+        try:
+            with self._connect() as conn:
                 conn.execute(
                     "INSERT INTO paper_portfolio_snapshots VALUES (?, ?, ?, ?, ?, ?)",
                     (
@@ -86,7 +123,9 @@ class PaperPortfolioSnapshotRepository:
             raise ValueError(f"snapshot already exists: {snapshot.snapshot_id}") from exc
 
     def get(self, snapshot_id: str) -> PaperPortfolioSnapshot | None:
-        with sqlite3.connect(self._path) as conn:
+        if self.read_only and not self.custody.exists(self._path):
+            return None
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT * FROM paper_portfolio_snapshots WHERE snapshot_id = ?", (snapshot_id,)
@@ -96,7 +135,10 @@ class PaperPortfolioSnapshotRepository:
             return self._hydrate(conn, row)
 
     def list_for_portfolio(self, portfolio_id: str) -> tuple[PaperPortfolioSnapshot, ...]:
-        with sqlite3.connect(self._path) as conn:
+        self._require_identity(portfolio_id)
+        if self.read_only and not self.custody.exists(self._path):
+            return ()
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 "SELECT * FROM paper_portfolio_snapshots WHERE portfolio_id = ? ORDER BY decision_date, snapshot_id",
@@ -105,6 +147,7 @@ class PaperPortfolioSnapshotRepository:
             return tuple(self._hydrate(conn, row) for row in rows)
 
     def _hydrate(self, conn: sqlite3.Connection, row: sqlite3.Row) -> PaperPortfolioSnapshot:
+        self._require_identity(str(row["portfolio_id"]))
         position_rows = conn.execute(
             "SELECT * FROM paper_portfolio_positions WHERE snapshot_id = ? ORDER BY stock_code",
             (row["snapshot_id"],),
@@ -130,7 +173,7 @@ class PaperPortfolioSnapshotRepository:
         )
 
     def _ensure_schema(self) -> None:
-        with sqlite3.connect(self._path) as conn:
+        with self._connect() as conn:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS paper_portfolio_snapshots (

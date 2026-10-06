@@ -18,11 +18,11 @@ rem OUTPUT_ROOT cannot block the otherwise read-only probe.
 if not "%BALDR_FRESHNESS_STATUS_PATH%"=="" if "%BALDR_FRESHNESS_LOG_PATH%"=="" set "BALDR_FRESHNESS_LOG_PATH=%BALDR_FRESHNESS_STATUS_PATH%.log"
 if "%BALDR_FRESHNESS_STATUS_PATH%"=="" (
   if "%BALDR_FRESHNESS_LOG_PATH%"=="" (
-    "%PYTHON%" "scripts\scheduled\data_freshness_probe.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --db-path "%DB_PATH%" --stale-days "%STALE_DAYS%"
+    "%PYTHON%" "scripts\scheduled\data_freshness_probe.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --db-path "%DB_PATH%" --stale-days "%STALE_DAYS%" %*
   ) else (
-    "%PYTHON%" "scripts\scheduled\data_freshness_probe.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --db-path "%DB_PATH%" --log-path "%BALDR_FRESHNESS_LOG_PATH%" --stale-days "%STALE_DAYS%"
+    "%PYTHON%" "scripts\scheduled\data_freshness_probe.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --db-path "%DB_PATH%" --log-path "%BALDR_FRESHNESS_LOG_PATH%" --stale-days "%STALE_DAYS%" %*
   )
 ) else (
-  "%PYTHON%" "scripts\scheduled\data_freshness_probe.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --db-path "%DB_PATH%" --status-path "%BALDR_FRESHNESS_STATUS_PATH%" --log-path "%BALDR_FRESHNESS_LOG_PATH%" --stale-days "%STALE_DAYS%"
+  "%PYTHON%" "scripts\scheduled\data_freshness_probe.py" --data-root "%DATA_ROOT%" --output-root "%OUTPUT_ROOT%" --db-path "%DB_PATH%" --status-path "%BALDR_FRESHNESS_STATUS_PATH%" --log-path "%BALDR_FRESHNESS_LOG_PATH%" --stale-days "%STALE_DAYS%" %*
 )
 exit /b %ERRORLEVEL%

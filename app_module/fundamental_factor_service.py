@@ -9,7 +9,10 @@ from pathlib import Path
 from data_module.fundamental_sqlite_provider import FundamentalSQLiteProvider
 from decision_module.factors.factor_dtos import FactorDiagnostic, FactorRecord
 from decision_module.factors.factor_gate import FactorGate
-from decision_module.factors.fundamental_adapters import build_revenue_factor_pack
+from decision_module.factors.fundamental_adapters import (
+    build_revenue_factor_pack,
+    source_diagnostics_to_factor_diagnostics,
+)
 from decision_module.factors.statement_factor_adapters import build_statement_factor_pack
 from decision_module.factors.valuation_adapters import build_relative_valuation_factor
 
@@ -72,7 +75,9 @@ class FundamentalFactorService:
             stock_code=stock_code,
             decision_date=decision_date,
         )
-        diagnostics.extend(valuation_result.diagnostics)
+        diagnostics.extend(
+            source_diagnostics_to_factor_diagnostics(valuation_result.diagnostics)
+        )
         for observation in valuation_result.records:
             factor_result = build_relative_valuation_factor(observation)
             records.extend(factor_result.records)

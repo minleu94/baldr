@@ -12,7 +12,7 @@ registry 或 broker，也不能授權非零 alpha。
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date, datetime, time
 from decimal import Decimal, ROUND_HALF_EVEN
 import hashlib
@@ -23,6 +23,10 @@ from typing import Any, Callable, Mapping, Sequence, cast
 from zoneinfo import ZoneInfo
 
 import joblib
+
+from data_module.ml_daily_price_revision_gate import (
+    assert_model_artifact_source_revision_safe,
+)
 import numpy as np
 from numpy.typing import NDArray
 
@@ -34,6 +38,11 @@ from app_module.portfolio_allocation_dtos import (
 )
 from financial_module.portfolio_turnover import canonical_turnover_bp
 from ml_module.allocation_contracts import PITFeatureValue, PortfolioMLDatasetRow
+from artifact_contracts.restated_research_contract import (
+    RESTATED_RESEARCH_PROFILE,
+    RestatedResearchInputBinding,
+    hash_canonical_research_row_payloads,
+)
 from ml_module.allocation_rank_contract import (
     DEFAULT_RANK_CONTRACT,
     rank_values_bp,
@@ -217,6 +226,8 @@ class MLAllocationInferenceService:
         actual_hash = _sha256(artifact_bytes)
         if actual_hash != expected_artifact_hash:
             raise ValueError("artifact hash mismatch")
+        # hash 驗證後、joblib 反序列化前再檢查已知來源修訂隔離。
+        assert_model_artifact_source_revision_safe(actual_hash)
 
         try:
             raw_payload = joblib.load(BytesIO(artifact_bytes))
@@ -267,6 +278,7 @@ class MLAllocationInferenceService:
         policy_hash: str,
         expected_universe_hash: str | None = None,
         allow_research_shadow: bool = False,
+        research_input_binding: RestatedResearchInputBinding | None = None,
     ) -> MLAllocationInferenceResult:
         """產生不具 alpha、apply 或 broker 權限的配置提案。"""
 
@@ -287,6 +299,7 @@ class MLAllocationInferenceService:
         canonical_rows, decision_at = self._validate_rows(
             rows,
             allow_research_shadow=allow_research_shadow,
+            research_input_binding=research_input_binding,
         )
         feature_snapshot_hashes = {
             row.row_id: _feature_snapshot_hash(row) for row in canonical_rows
@@ -498,6 +511,13 @@ class MLAllocationInferenceService:
                 "broker_order_routing",
             ],
         }
+        if research_input_binding is not None:
+            # 原 proposal 的 dataset 欄位仍指模型訓練身分；此次輸入另列，
+            # 不把較新的來源改名為舊 training snapshot。
+            audit_without_replay_hash["research_input_binding"] = {
+                **research_input_binding.to_dict(),
+                "binding_hash": research_input_binding.binding_hash,
+            }
         replay_hash = _sha256_json(audit_without_replay_hash)
         audit_payload = {
             **audit_without_replay_hash,
@@ -516,6 +536,7 @@ class MLAllocationInferenceService:
         rows: Sequence[PortfolioMLDatasetRow],
         *,
         allow_research_shadow: bool = False,
+        research_input_binding: RestatedResearchInputBinding | None = None,
     ) -> tuple[tuple[PortfolioMLDatasetRow, ...], datetime]:
         if not rows:
             raise ValueError("inference rows are required")
@@ -553,6 +574,36 @@ class MLAllocationInferenceService:
         if training_as_of > decision_at:
             raise ValueError("model training_as_of exceeds inference decision_at")
 
+        expected_dataset_identity = self._artifact.dataset_identity_hash
+        expected_sources = self._artifact.source_manifest_hashes
+        if research_input_binding is not None:
+            if (
+                not allow_research_shadow
+                or self._artifact.training_profile != RESTATED_RESEARCH_PROFILE
+                or not isinstance(research_input_binding, RestatedResearchInputBinding)
+            ):
+                raise ValueError("distinct input binding requires a restated research release")
+            if research_input_binding.feature_registry_hash != self._artifact.feature_registry_hash:
+                raise ValueError("research input feature registry differs from training")
+            research_input_binding.require_compatible_training_sources(
+                self._artifact.source_manifest_hashes,
+            )
+            if tuple(name for name, _ in research_input_binding.ordered_features) != tuple(
+                feature_id for pack in self._artifact.feature_packs for feature_id in pack.feature_ids
+            ):
+                raise ValueError("research input feature order differs from training")
+            if _parse_available_at(research_input_binding.captured_at, field_name="captured_at") != decision_at:
+                raise ValueError("research input capture clock differs from inference")
+            if hash_canonical_research_row_payloads(
+                [asdict(row) for row in canonical]
+            ) != research_input_binding.prepared_rows_hash:
+                raise ValueError("prepared research rows changed after binding")
+            for row in canonical:
+                if tuple((feature.feature_id, feature.scale) for feature in row.features) != research_input_binding.ordered_features:
+                    raise ValueError("research input row order or scale differs from binding")
+            expected_dataset_identity = research_input_binding.dataset_identity_hash
+            expected_sources = research_input_binding.source_manifest_hashes
+
         expected_features = {
             feature_id: pack.pack_id
             for pack in self._artifact.feature_packs
@@ -568,11 +619,11 @@ class MLAllocationInferenceService:
                 raise ValueError(
                     "inference rows must not contain supervised AllocationTargets"
                 )
-            if row.dataset_identity_hash != self._artifact.dataset_identity_hash:
+            if row.dataset_identity_hash != expected_dataset_identity:
                 raise ValueError("dataset identity hash mismatch")
             if row.feature_registry_hash != self._artifact.feature_registry_hash:
                 raise ValueError("feature registry hash mismatch")
-            if row.source_manifest_hashes != self._artifact.source_manifest_hashes:
+            if row.source_manifest_hashes != expected_sources:
                 raise ValueError("source manifest hashes mismatch")
             if row.portfolio_state != expected_state:
                 raise ValueError("inference rows must share one causal portfolio state")
@@ -1362,19 +1413,36 @@ def _parse_artifact(value: object) -> _ArtifactContract:
             base_models[expert_key],
             field_name=f"base_models[{expert_key}]",
         )
-        if set(model_payload) != {
+        base_fields = {
             "regression_models",
             "classification_models",
             "preprocessing_strategy",
             "head_fit_row_ids",
             "head_missing_reasons",
             "fit_row_ids",
-        }:
+        }
+        fit_lineage: Mapping[str, Any] | None
+        if set(model_payload) == base_fields:
+            fit_lineage = None
+            fit_row_ids = _string_tuple(
+                model_payload["fit_row_ids"],
+                field_name=f"{expert_key}.fit_row_ids",
+            )
+        elif set(model_payload) == base_fields | {"fit_row_lineage"}:
+            fit_lineage = _parse_fit_row_lineage(
+                model_payload["fit_row_lineage"], field_name=f"{expert_key}.fit_row_lineage"
+            )
+            _validate_fit_lineage_profile(training_profile=training_profile)
+            fit_row_ids = _possibly_empty_string_tuple(
+                model_payload["fit_row_ids"],
+                field_name=f"{expert_key}.fit_row_ids",
+            )
+            if fit_row_ids:
+                raise ValueError(
+                    f"{expert_key} commitment lineage cannot also embed row ids"
+                )
+        else:
             raise ValueError(f"base model contract mismatch: {expert_key}")
-        fit_row_ids = _string_tuple(
-            model_payload["fit_row_ids"],
-            field_name=f"{expert_key}.fit_row_ids",
-        )
         head_fit_row_ids = _mapping(
             model_payload["head_fit_row_ids"],
             field_name=f"{expert_key}.head_fit_row_ids",
@@ -1416,7 +1484,11 @@ def _parse_artifact(value: object) -> _ArtifactContract:
                 head_fit_row_ids[head_id],
                 field_name=f"{expert_key}.{head_id}.fit_row_ids",
             )
-            if not set(rows).issubset(fit_row_ids):
+            if fit_lineage is not None and rows:
+                raise ValueError(
+                    f"{expert_key}.{head_id} commitment lineage cannot embed row ids"
+                )
+            if fit_lineage is None and not set(rows).issubset(fit_row_ids):
                 raise ValueError(
                     f"head fit rows exceed expert fit rows: {expert_key}"
                 )
@@ -1431,10 +1503,24 @@ def _parse_artifact(value: object) -> _ArtifactContract:
                     raise ValueError(
                         f"missing head contract mismatch: {expert_key}.{head_id}"
                     )
+                if (
+                    fit_lineage is not None
+                    and fit_lineage["heads"][head_id]["row_count"] != 0
+                ):
+                    raise ValueError(
+                        f"missing head has non-empty fit commitment: {expert_key}.{head_id}"
+                    )
                 continue
-            if head_missing or not rows:
+            if head_missing or (fit_lineage is None and not rows):
                 raise ValueError(
                     f"available head contract mismatch: {expert_key}.{head_id}"
+                )
+            if (
+                fit_lineage is not None
+                and fit_lineage["heads"][head_id]["row_count"] < 2
+            ):
+                raise ValueError(
+                    f"available head needs at least two committed fit rows: {expert_key}.{head_id}"
                 )
             _require_predictor(
                 model,
@@ -1467,7 +1553,11 @@ def _parse_artifact(value: object) -> _ArtifactContract:
         method_name="predict_proba",
         field_name="meta.rebalance",
     )
-    _string_tuple(meta_models["fit_row_ids"], field_name="meta.fit_row_ids")
+    _validate_meta_fit_lineage(
+        meta_models=meta_models,
+        target_summary=target_summary,
+        training_profile=training_profile,
+    )
 
     family_weights = _weight_pairs(
         value["feature_family_weights_bp"],
@@ -1542,6 +1632,125 @@ def _feature_packs(value: object) -> tuple[_FeaturePack, ...]:
     if pack_ids != tuple(sorted(pack_ids)):
         raise ValueError("artifact feature packs must use canonical order")
     return tuple(packs)
+
+
+def _validate_meta_fit_lineage(
+    *,
+    meta_models: Mapping[str, Any],
+    target_summary: Mapping[str, Any] | None,
+    training_profile: str | None,
+) -> None:
+    """Permit empty lineage only for the audited, exact cash-only adapter."""
+
+    fit_row_ids = _possibly_empty_string_tuple(
+        meta_models["fit_row_ids"], field_name="meta.fit_row_ids"
+    )
+    if fit_row_ids:
+        return
+    if (
+        target_summary is None
+        or training_profile != "sealed_restated_linear_shadow_v1"
+        or target_summary.get("training_skipped") is not True
+        or target_summary.get("model_learned_allocation") is not False
+        or target_summary.get("status")
+        != "verified_original_targets_constant_cash_only; neutral_meta_policy"
+        or target_summary.get("neutral_meta_policy")
+        != "fixed cash-only schema adapter; allocation heads remain research signals only"
+        or target_summary.get("target_values")
+        != {
+            "target_weight_bp": 0,
+            "delta_weight_bp": 0,
+            "risk_contribution_bp": 0,
+            "risky_budget_bp": 0,
+            "cash_bp": 10_000,
+            "rebalance": 0,
+        }
+    ):
+        raise ValueError(
+            "empty meta fit lineage is allowed only for the audited cash-only policy"
+        )
+
+    # Import lazily to keep the common inference parser's dependency surface
+    # unchanged.  Exact types prevent an arbitrary predictor from opting into
+    # this no-training exception by copying a few target-summary flags.
+    from artifact_contracts.allocation_model_types import (
+        _ConstantProbabilityModel,
+        _ConstantRegressionModel,
+    )
+
+    numeric = _mapping(meta_models["numeric"], field_name="meta.numeric")
+    expected_values = {
+        "target_weight_bp": 0,
+        "delta_weight_bp": 0,
+        "risk_contribution_bp": 0,
+        "risky_budget_bp": 0,
+        "cash_bp": 10_000,
+    }
+    for field_name, expected in expected_values.items():
+        model = numeric[field_name]
+        if (
+            type(model) is not _ConstantRegressionModel
+            or model.value != expected
+        ):
+            raise ValueError(
+                "empty meta fit lineage requires the exact audited cash-only constants"
+            )
+    rebalance = meta_models["rebalance"]
+    if (
+        type(rebalance) is not _ConstantProbabilityModel
+        or rebalance.probability_class != 0
+    ):
+        raise ValueError(
+            "empty meta fit lineage requires the exact no-rebalance constant"
+        )
+
+
+def _parse_fit_row_lineage(
+    value: object,
+    *,
+    field_name: str,
+) -> Mapping[str, Any]:
+    lineage = _mapping(value, field_name=field_name)
+    if set(lineage) != {
+        "schema_version",
+        "mode",
+        "row_count",
+        "row_id_sha256",
+        "heads",
+    }:
+        raise ValueError(f"{field_name} contract mismatch")
+    if lineage["schema_version"] != "allocation-fit-row-commitments.v1":
+        raise ValueError(f"{field_name} schema version mismatch")
+    if lineage["mode"] != "sha256_row_id_commitments":
+        raise ValueError(f"{field_name} mode mismatch")
+    row_count = _integer(lineage["row_count"], field_name=f"{field_name}.row_count")
+    if row_count <= 0:
+        raise ValueError(f"{field_name}.row_count must be positive")
+    _sha_text(lineage["row_id_sha256"], field_name=f"{field_name}.row_id_sha256")
+    heads = _mapping(lineage["heads"], field_name=f"{field_name}.heads")
+    if set(heads) != set(EXPERT_HEAD_IDS):
+        raise ValueError(f"{field_name}.heads does not match the frozen head set")
+    for head_id in EXPERT_HEAD_IDS:
+        head = _mapping(heads[head_id], field_name=f"{field_name}.heads.{head_id}")
+        if set(head) != {"row_count", "row_id_sha256"}:
+            raise ValueError(f"{field_name}.heads.{head_id} contract mismatch")
+        head_count = _integer(
+            head["row_count"], field_name=f"{field_name}.heads.{head_id}.row_count"
+        )
+        if head_count < 0 or head_count > row_count:
+            raise ValueError(f"{field_name}.heads.{head_id}.row_count is invalid")
+        _sha_text(
+            head["row_id_sha256"],
+            field_name=f"{field_name}.heads.{head_id}.row_id_sha256",
+        )
+    return lineage
+
+
+def _validate_fit_lineage_profile(*, training_profile: str | None) -> None:
+    if training_profile != "sealed_restated_linear_shadow_v1":
+        raise ValueError(
+            "fit-row commitment extension requires the sealed restated research profile"
+        )
 
 
 def _pack_matrix(

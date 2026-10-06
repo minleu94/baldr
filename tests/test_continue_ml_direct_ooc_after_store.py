@@ -60,6 +60,49 @@ def test_main_publishes_live_waiting_status_before_store_wait(
     assert terminal_payload["message"] == "test_wait_boundary"
 
 
+def test_research_mode_blocks_before_formal_trainer_or_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(continuation, "ROOT", tmp_path)
+    research_root = tmp_path / "output" / "ml_research"
+    store_output_dir = research_root / "store"
+    training_output_dir = research_root / "training"
+    store_output_dir.mkdir(parents=True)
+    training_output_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        continuation,
+        "_ensure_current_direct_schema",
+        lambda **_: pytest.fail("formal store upgrade must not start"),
+    )
+
+    result = continuation.main(
+        [
+            "--resume-after-direct-store",
+            "--store-output-dir",
+            str(store_output_dir),
+            "--training-output-dir",
+            str(training_output_dir),
+            "--output-root",
+            str(research_root),
+            "--allow-research",
+        ]
+    )
+
+    status = json.loads(
+        (training_output_dir / "continuation_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert result == 2
+    assert status["classification"] == (
+        "current_restated_training_consumer_not_connected"
+    )
+    assert status["formal_release_coordinator_started"] is False
+    assert status["formal_oos_allowed"] is False
+
+
 def test_main_publishes_store_custody_validation_phase(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -32,6 +32,7 @@ from app_module.portfolio_condition_monitor import (
 from app_module.position_health_source_providers import (
     CONDITION_SOURCE_SCHEMA_VERSION,
     METRICS_SOURCE_SCHEMA_VERSION,
+    OfficialCalendarSourceProvider,
 )
 
 
@@ -55,6 +56,22 @@ _DECIMAL_COLUMNS: tuple[tuple[str, str], ...] = (
     ("atr", "atr"),
     ("adx", "adx"),
 )
+_QUICK_MARKET_REQUIRED_STEPS = frozenset(
+    {
+        "update_twse_daily_prices",
+        "update_tpex_daily_prices",
+        "sync_daily_prices_to_sqlite",
+        "calculate_technical_indicators",
+    }
+)
+_FRESHNESS_MARKET_REQUIRED_SOURCES = frozenset(
+    {
+        "twse.daily_prices.raw",
+        "tpex.daily_prices.raw",
+        "sqlite.daily_prices",
+        "sqlite.technical_indicators",
+    }
+)
 
 
 class PositionHealthMarketSourceError(ValueError):
@@ -76,6 +93,15 @@ def _sha256_bytes(raw: bytes) -> str:
 
 def _sha256_json(value: object) -> str:
     return _sha256_bytes(_canonical(value))
+
+
+def _is_sha256(value: object) -> bool:
+    text = str(value or "")
+    return (
+        len(text) == 71
+        and text.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in text[7:])
+    )
 
 
 def _parse_date(value: object, field_name: str) -> date:
@@ -134,6 +160,86 @@ def _read_json(path: Path, field_name: str) -> tuple[dict[str, Any], str]:
     if not isinstance(payload, Mapping):
         raise PositionHealthMarketSourceError(f"{field_name}_must_be_object")
     return dict(payload), _sha256_bytes(before)
+
+
+def _quick_market_lane_ready(payload: Mapping[str, Any]) -> bool:
+    status = str(payload.get("status") or "")
+    if status == "passed":
+        return True
+    if status != "passed_with_warnings":
+        return False
+    raw_steps = payload.get("steps")
+    if not isinstance(raw_steps, list):
+        return False
+    steps = {
+        str(item.get("name") or ""): item
+        for item in raw_steps
+        if isinstance(item, Mapping) and str(item.get("name") or "")
+    }
+    for name in _QUICK_MARKET_REQUIRED_STEPS:
+        step = steps.get(name)
+        if step is None or str(step.get("status") or "") not in {"passed", "skipped"}:
+            return False
+        result = step.get("result")
+        if not isinstance(result, Mapping) or result.get("success") is not True:
+            return False
+    warning_steps = [
+        item
+        for item in raw_steps
+        if isinstance(item, Mapping) and item.get("status") == "warning"
+    ]
+    if not warning_steps:
+        return False
+    allowed_messages: set[str] = set()
+    for step in warning_steps:
+        result = step.get("result")
+        if (
+            step.get("name") != "update_phase3c_candidate_sources"
+            or not isinstance(result, Mapping)
+            or result.get("candidate_only") is not True
+        ):
+            return False
+        message = str(step.get("message") or "").strip()
+        if message:
+            allowed_messages.add(message)
+    warnings = {
+        str(item).strip()
+        for item in (payload.get("warnings") or [])
+        if str(item).strip()
+    }
+    return bool(warnings) and warnings.issubset(allowed_messages)
+
+
+def _freshness_market_lane_ready(payload: Mapping[str, Any]) -> bool:
+    status = str(payload.get("status") or "")
+    if status == "passed":
+        return True
+    if status != "degraded" or payload.get("errors") not in (None, [], ()):
+        return False
+    raw_statuses = payload.get("source_statuses")
+    if not isinstance(raw_statuses, list):
+        return False
+    statuses = {
+        str(item.get("source_id") or ""): item
+        for item in raw_statuses
+        if isinstance(item, Mapping) and str(item.get("source_id") or "")
+    }
+    for source_id in _FRESHNESS_MARKET_REQUIRED_SOURCES:
+        item = statuses.get(source_id)
+        if item is None or item.get("freshness_status") != "current":
+            return False
+    for raw_warning in payload.get("warnings") or []:
+        warning = str(raw_warning).strip()
+        if warning in {
+            "monthly_revenue_expected_period_not_available",
+            "quarterly_statement_expected_period_not_available",
+        }:
+            continue
+        prefix = "source_freshness_degraded:"
+        if warning.startswith(prefix) and warning[len(prefix):] not in _FRESHNESS_MARKET_REQUIRED_SOURCES:
+            continue
+        return False
+    return True
 
 
 def _stat_token(path: Path) -> dict[str, int]:
@@ -270,11 +376,15 @@ class PositionHealthMarketSourceProducer:
         quick_status_path: str | Path,
         freshness_status_path: str | Path,
         now_provider: Callable[[], datetime] | None = None,
+        calendar_cache_path: str | Path | None = None,
+        temporary_closure_path: str | Path | None = None,
     ) -> None:
         self.market_db_path = Path(market_db_path).expanduser().resolve()
         self.quick_status_path = Path(quick_status_path).expanduser().resolve()
         self.freshness_status_path = Path(freshness_status_path).expanduser().resolve()
         self.now_provider = now_provider or (lambda: datetime.now(UTC))
+        self.calendar_cache_path = calendar_cache_path
+        self.temporary_closure_path = temporary_closure_path
 
     def produce(
         self,
@@ -308,20 +418,129 @@ class PositionHealthMarketSourceProducer:
         receipt_observed = requested_observed or run_started
 
         baseline_payload, baseline_hash = _read_json(baseline, "health_baseline")
-        baseline_date = _parse_date(
-            baseline_payload.get("decision_date") or baseline_payload.get("as_of_date"),
-            "health_baseline_decision_date",
-        )
-        if baseline_date != decision:
-            raise PositionHealthMarketSourceError("health_baseline_date_mismatch")
+        if baseline_payload.get("schema_version") == "position-health-daily-refresh.v1":
+            baseline_date = _parse_date(
+                baseline_payload.get("decision_date"),
+                "health_baseline_decision_date",
+            )
+            as_of_value = baseline_payload.get("as_of_date")
+            baseline_as_of_date = (
+                None
+                if as_of_value in (None, "")
+                else _parse_date(as_of_value, "health_baseline_as_of_date")
+            )
+            snapshot_date_value = baseline_payload.get("source_snapshot_date")
+            baseline_snapshot_date = (
+                None
+                if snapshot_date_value in (None, "")
+                else _parse_date(
+                    snapshot_date_value,
+                    "health_baseline_source_snapshot_date",
+                )
+            )
+            if (
+                baseline_date > decision
+                or (baseline_as_of_date is not None and baseline_as_of_date != decision)
+                or (baseline_date < decision and baseline_as_of_date is None)
+            ):
+                raise PositionHealthMarketSourceError("health_baseline_date_mismatch")
+            if baseline_snapshot_date is not None and baseline_snapshot_date != baseline_date:
+                raise PositionHealthMarketSourceError("health_baseline_date_mismatch")
+            is_stale_snapshot = baseline_date < decision
+            snapshot_id_value = baseline_payload.get("source_snapshot_id")
+            rows_hash_value = baseline_payload.get("source_snapshot_rows_sha256")
+            snapshot_id = str(snapshot_id_value or "").strip()
+            rows_hash = str(rows_hash_value or "").strip()
+            if is_stale_snapshot:
+                if baseline_snapshot_date is None or baseline_as_of_date is None:
+                    raise PositionHealthMarketSourceError("health_baseline_date_mismatch")
+                if not snapshot_id or not _is_sha256(rows_hash):
+                    raise PositionHealthMarketSourceError(
+                        "health_baseline_snapshot_identity_invalid"
+                    )
+                if (
+                    baseline_payload.get("status") != "fresh"
+                    or baseline_payload.get("source_type") != "paper_snapshot_read_only"
+                    or baseline_payload.get("source_read_mode")
+                    != "sqlite_uri_mode_ro_and_query_only"
+                ):
+                    raise PositionHealthMarketSourceError(
+                        "health_baseline_source_contract_invalid"
+                    )
+                if (
+                    baseline_payload.get("research_only") is not True
+                    or baseline_payload.get("writes_positions_db") is not False
+                    or baseline_payload.get("auto_action_allowed") is not False
+                    or baseline_payload.get("broker_execution") is not False
+                    or baseline_payload.get("formal_credit") is not False
+                ):
+                    raise PositionHealthMarketSourceError(
+                        "health_baseline_boundary_invalid"
+                    )
+            position_snapshot_observation = {
+                "schema_version": "position-health-daily-refresh.v1",
+                "source_snapshot_id": snapshot_id or None,
+                "source_snapshot_date": (
+                    baseline_date.isoformat()
+                    if baseline_snapshot_date is None
+                    else baseline_snapshot_date.isoformat()
+                ),
+                "source_snapshot_rows_sha256": rows_hash or None,
+                "decision_date": baseline_date.isoformat(),
+                "as_of_date": (
+                    decision.isoformat()
+                    if baseline_as_of_date is None
+                    else baseline_as_of_date.isoformat()
+                ),
+                "observation_semantics": "paper_holdings_snapshot_observation_only",
+                "same_day_paper_producer_success_proven": False,
+                "is_stale_as_of": is_stale_snapshot,
+            }
+        else:
+            baseline_date = _parse_date(
+                baseline_payload.get("decision_date") or baseline_payload.get("as_of_date"),
+                "health_baseline_decision_date",
+            )
+            if baseline_date != decision:
+                raise PositionHealthMarketSourceError("health_baseline_date_mismatch")
+            position_snapshot_observation = {
+                "schema_version": baseline_payload.get("schema_version"),
+                "decision_date": baseline_date.isoformat(),
+                "as_of_date": baseline_date.isoformat(),
+                "observation_semantics": "legacy_baseline_decision_date_match",
+                "same_day_paper_producer_success_proven": False,
+                "is_stale_as_of": False,
+            }
         positions, unresolved = _normalise_positions(baseline_payload)
 
         quick, quick_hash = _read_json(self.quick_status_path, "quick_status")
         freshness, freshness_hash = _read_json(self.freshness_status_path, "freshness_status")
+        checks = freshness.get("checks")
+        market_date = decision
+        calendar_provenance: dict[str, Any] = {}
+        if isinstance(checks, Mapping) and checks.get("expected_official_session"):
+            market_date = _parse_date(checks["expected_official_session"], "expected_official_session")
+        if market_date > decision:
+            raise PositionHealthMarketSourceError("market_data_date_future")
+        if market_date < decision:
+            if self.calendar_cache_path is None:
+                raise PositionHealthMarketSourceError("market_date_calendar_evidence_missing")
+            calendar = OfficialCalendarSourceProvider(
+                calendar_cache_path=self.calendar_cache_path,
+                temporary_closure_path=self.temporary_closure_path,
+            ).read_range(
+                start_date=market_date.isoformat(), end_date=decision.isoformat(),
+                decision_at=receipt_cutoff, observed_at=receipt_observed,
+            )
+            if calendar.blockers or calendar.values.get("trading_dates") != (market_date.isoformat(),):
+                raise PositionHealthMarketSourceError("market_date_not_latest_verified_session")
+            calendar_provenance = dict(calendar.provenance)
         available_at, status_warnings = self._validate_receipts(
             quick,
             freshness,
             decision=decision,
+            market_date=market_date,
+            closed_date_range_verified=bool(calendar_provenance),
             cutoff=receipt_cutoff,
             observed=receipt_observed,
         )
@@ -343,7 +562,7 @@ class PositionHealthMarketSourceProducer:
 
         rows, db_binding = self._read_market_rows(
             codes=tuple(item["stock_code"] for item in positions),
-            decision=decision,
+            decision=market_date,
         )
         capture_completed = _parse_aware(
             self.now_provider(), "market_capture_completed_at"
@@ -363,19 +582,16 @@ class PositionHealthMarketSourceProducer:
             {item["stock_code"] for item in positions} - selected_codes
         )
         source_id = f"{SOURCE_ID_PREFIX}:{decision.strftime('%Y%m%d')}"
+        # ``source_snapshot_hash`` identifies the selected market observations,
+        # not this invocation's receipt clock.  Capture timestamps, baseline
+        # receipt bytes and whole-database stat tokens remain in the immutable
+        # artifacts below, but must not turn a same-day scheduler retry over the
+        # same rows into a different market snapshot.
         source_binding = {
             "schema_version": SOURCE_VERSION,
             "source_id": source_id,
             "decision_date": decision.isoformat(),
-            "upstream_receipt_available_at": available_at.isoformat(),
-            "available_at": capture_completed.isoformat(),
-            "decision_cutoff_at": cutoff.isoformat(),
-            "market_capture_started_at": capture_started.isoformat(),
-            "market_capture_completed_at": capture_completed.isoformat(),
-            "baseline_sha256": baseline_hash,
-            "quick_status_sha256": quick_hash,
-            "freshness_status_sha256": freshness_hash,
-            "market_db": db_binding,
+            "market_data_date": market_date.isoformat(),
             "selected_rows": rows,
         }
         source_hash = _sha256_json(source_binding)
@@ -394,6 +610,7 @@ class PositionHealthMarketSourceProducer:
                     source_id=source_id,
                     source_hash=source_hash,
                     decision=decision,
+                    position_snapshot_observation=position_snapshot_observation,
                 )
             )
             metric_rows.extend(
@@ -412,6 +629,8 @@ class PositionHealthMarketSourceProducer:
             "source_id": source_id,
             "source_snapshot_hash": source_hash,
             "as_of_date": decision.isoformat(),
+            "market_data_date": market_date.isoformat(),
+            "market_calendar": calendar_provenance,
             "upstream_receipt_available_at": available_at.isoformat(),
             "available_at": capture_completed.isoformat(),
             "decision_cutoff_at": cutoff.isoformat(),
@@ -424,6 +643,7 @@ class PositionHealthMarketSourceProducer:
             "freshness_status_path": str(self.freshness_status_path),
             "baseline_path": str(baseline),
             "baseline_sha256": baseline_hash,
+            "position_snapshot_observation": position_snapshot_observation,
             "unresolved_identity_codes": unresolved,
             "missing_market_codes": missing_codes,
         }
@@ -449,6 +669,11 @@ class PositionHealthMarketSourceProducer:
             output / f"metrics_{decision.strftime('%Y%m%d')}.json", metrics_body
         )
         warnings = [*status_warnings]
+        if position_snapshot_observation["is_stale_as_of"]:
+            warnings.append(
+                "paper_holdings_snapshot_older_than_health_as_of:"
+                + str(position_snapshot_observation["source_snapshot_date"])
+            )
         warnings.extend(f"position_health_source_identity_missing:{code}" for code in unresolved)
         warnings.extend(f"position_health_source_market_missing:{code}" for code in missing_codes)
         if not positions:
@@ -459,6 +684,8 @@ class PositionHealthMarketSourceProducer:
             "producer": f"{type(self).__module__}.{type(self).__name__}",
             "status": status,
             "decision_date": decision.isoformat(),
+            "market_data_date": market_date.isoformat(),
+            "market_calendar": calendar_provenance,
             "decision_cutoff_at": cutoff.isoformat(),
             "available_at": capture_completed.isoformat(),
             "observed_at": observed.isoformat(),
@@ -466,6 +693,13 @@ class PositionHealthMarketSourceProducer:
             "market_capture_completed_at": capture_completed.isoformat(),
             "source_id": source_id,
             "source_snapshot_hash": source_hash,
+            "position_snapshot_observation": position_snapshot_observation,
+            "source_custody": {
+                "baseline_sha256": baseline_hash,
+                "quick_status_sha256": quick_hash,
+                "freshness_status_sha256": freshness_hash,
+                "market_db": db_binding,
+            },
             "upstream_receipt_available_at": available_at.isoformat(),
             "condition_source_path": str(condition_path),
             "condition_source_file_sha256": condition_file_hash,
@@ -505,25 +739,30 @@ class PositionHealthMarketSourceProducer:
         decision: date,
         cutoff: datetime,
         observed: datetime,
+        market_date: date | None = None,
+        closed_date_range_verified: bool = False,
     ) -> tuple[datetime, list[str]]:
-        if quick.get("status") != "passed":
+        if not _quick_market_lane_ready(quick):
             raise PositionHealthMarketSourceError("quick_status_not_passed")
         if quick.get("writes_market_data_db") is not True:
             raise PositionHealthMarketSourceError("quick_status_market_write_receipt_missing")
         if quick.get("errors") not in (None, [], ()):
             raise PositionHealthMarketSourceError("quick_status_errors_present")
         quick_date = _parse_date(quick.get("end_date"), "quick_status_end_date")
-        if quick_date != decision:
+        target_date = market_date or decision
+        if quick_date != target_date and not (
+            closed_date_range_verified and target_date < quick_date <= decision
+        ):
             raise PositionHealthMarketSourceError("quick_status_date_mismatch")
         completed = _parse_aware(quick.get("completed_at"), "quick_status_completed_at")
         if completed > cutoff or completed > observed:
             raise PositionHealthMarketSourceError("quick_status_completed_at_future")
-        if freshness.get("status") != "passed":
+        if not _freshness_market_lane_ready(freshness):
             raise PositionHealthMarketSourceError("freshness_status_not_passed")
         checks = freshness.get("checks")
         if not isinstance(checks, Mapping):
             raise PositionHealthMarketSourceError("freshness_checks_missing")
-        target_key = decision.strftime("%Y%m%d")
+        target_key = target_date.strftime("%Y%m%d")
         # The long-running updater has emitted both singular and plural key
         # spellings across existing receipt versions.  Accept only those two
         # explicit canonical names; never infer freshness from the SQLite
@@ -670,6 +909,7 @@ class PositionHealthMarketSourceProducer:
         source_id: str,
         source_hash: str,
         decision: date,
+        position_snapshot_observation: Mapping[str, Any],
     ) -> dict[str, Any]:
         metrics = row.get("metrics")
         if not isinstance(metrics, Mapping):
@@ -687,6 +927,15 @@ class PositionHealthMarketSourceProducer:
             details={
                 "condition_semantics": "observation_only_without_entry_thesis",
                 "as_of_date": decision.isoformat(),
+                "paper_position_snapshot_date": position_snapshot_observation.get(
+                    "source_snapshot_date", position_snapshot_observation.get("as_of_date")
+                ),
+                "paper_position_snapshot_id": position_snapshot_observation.get(
+                    "source_snapshot_id"
+                ),
+                "paper_position_observation_semantics": position_snapshot_observation[
+                    "observation_semantics"
+                ],
                 "current_price": close_price,
                 "current_snapshot_source": source_id,
             },

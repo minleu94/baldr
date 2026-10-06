@@ -1,0 +1,3 @@
+"""純推薦決策契約共用的常數。"""
+
+MINIMUM_RECOMMENDATION_HISTORY_ROWS = 20

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from dataclasses import replace
 from copy import deepcopy
 from contextlib import closing
@@ -8,7 +8,7 @@ from pathlib import Path
 import json
 import os
 import sqlite3
-from typing import Any
+from typing import Any, Callable
 
 from app_module.decision_desk_dtos import DecisionDeskSnapshot, DecisionDeskQuality, RecommendationDeskSummary
 from app_module.decision_desk_snapshot_storage_dtos import StoredDecisionDeskSnapshot
@@ -18,10 +18,51 @@ from app_module.pre_v2_readiness_service import (
     PreV2ReadinessService,
 )
 from app_module.workbench_dtos import WorkbenchDashboardDTO
+from app_module.personal_journal_paths import PersonalJournalPaths
+from app_module.continuity_review_projection import (
+    ContinuityReviewProjectionService,
+)
+from app_module.daily_investment_journey import DailyInvestmentJourneyService
 from app_module.workbench_read_only_composer import WorkbenchReadOnlyComposer
+from app_module.recommendation_learning_paths import (
+    RecommendationLearningPathError,
+    resolve_recommendation_learning_paths,
+)
 from app_module.workbench_replay_summary import load_historical_replay_summary
+from app_module.recommendation_learning_evidence_projection_service import (
+    RecommendationLearningEvidenceProjectionService,
+)
+from app_module.recommendation.queries import RecommendationExecutionReadSnapshot
+from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from app_module.scheduled_evidence_status_service import ScheduledEvidenceStatusService
 from app_module.paper_portfolio_time import taiwan_market_today
+from app_module.position_health_transition_read_service import (
+    PositionHealthTransitionReadService,
+)
+from app_module.sqlite_read_only import (
+    check_read_cancelled,
+    cooperative_read_cancellation,
+    connect_read_only_sqlite,
+)
+
+
+class _WorkbenchRecommendationReadSession:
+    """限定單次 inspect 共用讀取；新 inspect 會建立新的 session。"""
+
+    def __init__(self, queries: Any) -> None:
+        self._queries = queries
+        self._snapshot: RecommendationExecutionReadSnapshot | None = None
+
+    def list(self) -> tuple[Any, ...]:
+        check_read_cancelled()
+        if self._snapshot is None:
+            self._snapshot = RecommendationExecutionReadSnapshot.capture(self._queries)
+        check_read_cancelled()
+        return self._snapshot.require_read_models()
+
+    def __getattr__(self, name: str) -> Any:
+        # legacy collision 的 get/get_legacy_original_payload 仍逐次走原始精確讀取。
+        return getattr(self._queries, name)
 
 
 class WorkbenchSourceService:
@@ -33,8 +74,33 @@ class WorkbenchSourceService:
         *,
         evidence_db_path: str | Path | None = None,
         research_db_path: str | Path | None = None,
+        learning_evidence_projection_service: RecommendationLearningEvidenceProjectionService | None = None,
+        position_health_read_service: PositionHealthTransitionReadService | None = None,
+        continuity_review_projection_service: ContinuityReviewProjectionService | None = None,
+        recommendation_queries: Any | None = None,
+        journal_paths: PersonalJournalPaths | None = None,
+        legacy_journal_read_only: bool = False,
     ) -> None:
+        if journal_paths is None and (
+            getattr(config, "personal_journal_root", None) is not None
+            or getattr(config, "personal_journal_mode", None) is not None
+        ):
+            raise ValueError("personal_journal_selector_required")
+        if journal_paths is not None and continuity_review_projection_service is not None:
+            raise ValueError("personal_journal_selector_conflict")
+        if legacy_journal_read_only and journal_paths is None:
+            raise ValueError("personal_journal_paths_required")
+        selected_continuity = (
+            ContinuityReviewProjectionService.from_personal_paths(
+                journal_paths, legacy_read_only=legacy_journal_read_only,
+            ) if journal_paths is not None else None
+        )
         self.config = config
+        self.recommendation_queries = (
+            recommendation_queries
+            if recommendation_queries is not None
+            else build_recommendation_execution_queries(config)
+        )
         self.evidence_db_path = Path(evidence_db_path) if evidence_db_path is not None else Path(config.db_file)
         self.research_db_path = (
             Path(research_db_path) if research_db_path is not None else Path(config.research_run_db_file)
@@ -44,9 +110,35 @@ class WorkbenchSourceService:
             evidence_db_path=self.evidence_db_path,
             research_db_path=self.research_db_path,
             approved_weekly_history_projection_path=os.environ.get("WEEKLY_EVIDENCE_HISTORY_PROJECTION_PATH"),
+            recommendation_queries=self.recommendation_queries,
         )
         self.composer = WorkbenchReadOnlyComposer()
-        self.scheduled_status_service = ScheduledEvidenceStatusService(config)
+        self.scheduled_status_service = ScheduledEvidenceStatusService(
+            config,
+            recommendation_queries=self.recommendation_queries,
+        )
+        self.learning_evidence_projection_service = (
+            learning_evidence_projection_service
+            or RecommendationLearningEvidenceProjectionService(config)
+        )
+        self.daily_investment_journey_service = DailyInvestmentJourneyService(
+            config,
+            evidence_db_path=self.evidence_db_path,
+        )
+        self.position_health_read_service = (
+            position_health_read_service
+            or PositionHealthTransitionReadService(
+                Path(config.output_root) / "position_health_transition"
+            )
+        )
+        # This is deliberately a direct read adapter.  Do not construct
+        # JournalService/PortfolioJsonlStore here: their constructors can
+        # create output directories on an otherwise read-only Workbench load.
+        self.continuity_review_projection_service = (
+            continuity_review_projection_service
+            or selected_continuity
+            or ContinuityReviewProjectionService.from_output_root(config.output_root)
+        )
 
     def inspect(
         self,
@@ -57,22 +149,72 @@ class WorkbenchSourceService:
         min_dry_run_days: int = DEFAULT_MIN_DRY_RUN_DAYS,
         agent_report_limit: int = 5,
         replay_summary_json: str | Path | None = None,
+        recommendation_learning_status_json: str | Path | None = None,
+        continuity_as_of: datetime | str | None = None,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> WorkbenchDashboardDTO:
+        with cooperative_read_cancellation(cancel_callback):
+            check_read_cancelled()
+            return self._inspect(
+                decision_date=decision_date,
+                multi_day_record_path=multi_day_record_path,
+                min_weekly_records=min_weekly_records,
+                min_dry_run_days=min_dry_run_days,
+                agent_report_limit=agent_report_limit,
+                replay_summary_json=replay_summary_json,
+                recommendation_learning_status_json=recommendation_learning_status_json,
+                continuity_as_of=continuity_as_of,
+            )
+
+    def _inspect(
+        self,
+        *,
+        decision_date: str | None = None,
+        multi_day_record_path: str | Path | None = None,
+        min_weekly_records: int = DEFAULT_MIN_WEEKLY_HISTORY_RECORDS,
+        min_dry_run_days: int = DEFAULT_MIN_DRY_RUN_DAYS,
+        agent_report_limit: int = 5,
+        replay_summary_json: str | Path | None = None,
+        recommendation_learning_status_json: str | Path | None = None,
+        continuity_as_of: datetime | str | None = None,
+    ) -> WorkbenchDashboardDTO:
+        recommendation_read_session = _WorkbenchRecommendationReadSession(
+            self.recommendation_queries
+        )
         decision_snapshot, source_diagnostics = self._load_decision_snapshot(decision_date)
+        check_read_cancelled()
         readiness_report = self.readiness_service.inspect(
             decision_date=decision_date,
             multi_day_record_path=multi_day_record_path,
             min_weekly_records=min_weekly_records,
             min_dry_run_days=min_dry_run_days,
             agent_report_limit=agent_report_limit,
+            recommendation_queries=recommendation_read_session,
         )
-        agent_report_sample = self.readiness_service.build_agent_report_sample(limit=agent_report_limit)
+        check_read_cancelled()
+        agent_report_sample = self.readiness_service.build_agent_report_sample(
+            limit=agent_report_limit
+        )
+        check_read_cancelled()
         historical_replay_summary = (
             load_historical_replay_summary(replay_summary_json) if replay_summary_json is not None else None
         )
-        scheduled_status = self.scheduled_status_service.load_latest()
+        check_read_cancelled()
+        scheduled_status = self.scheduled_status_service.load_latest(
+            recommendation_queries=recommendation_read_session,
+        )
+        check_read_cancelled()
+        recommendation_learning_status, learning_diagnostics = self._load_recommendation_learning_status(
+            recommendation_learning_status_json
+        )
+        check_read_cancelled()
+        source_diagnostics.extend(learning_diagnostics)
+        continuity_reviews = self.continuity_review_projection_service.project(
+            as_of=continuity_as_of,
+        )
+        check_read_cancelled()
         source_mode = "read_only_sources_plus_historical_replay" if historical_replay_summary else "read_only_sources"
-        return self.composer.compose(
+        dashboard = self.composer.compose(
             decision_snapshot=decision_snapshot,
             readiness_report=readiness_report,
             agent_report_sample=agent_report_sample,
@@ -80,7 +222,78 @@ class WorkbenchSourceService:
             historical_replay_summary=historical_replay_summary,
             source_mode=source_mode,
             source_diagnostics=tuple(source_diagnostics),
+            recommendation_learning_status=recommendation_learning_status,
+            continuity_reviews=continuity_reviews,
         )
+        learning_projection = self.learning_evidence_projection_service.inspect(
+            requested_date=dashboard.as_of_date.isoformat()
+        )
+        check_read_cancelled()
+        daily_evidence = self.daily_investment_journey_service.build(
+            decision_snapshot=decision_snapshot,
+            scheduled_status=scheduled_status,
+            recommendation_learning_status=recommendation_learning_status,
+            recommendation_learning_projection=learning_projection,
+            requested_decision_date=dashboard.as_of_date.isoformat(),
+        )
+        check_read_cancelled()
+        position_health = self.position_health_read_service.read_latest(
+            expected_decision_date=dashboard.as_of_date.isoformat(),
+        )
+        check_read_cancelled()
+        return replace(
+            dashboard,
+            daily_evidence=daily_evidence,
+            position_health=position_health,
+        )
+
+    def _load_recommendation_learning_status(
+        self,
+        explicit_path: str | Path | None,
+    ) -> tuple[dict[str, Any] | None, list[str]]:
+        """Load only the runner's immutable latest status; never execute the runner in UI."""
+
+        if explicit_path is not None:
+            path = Path(explicit_path)
+        else:
+            try:
+                path = resolve_recommendation_learning_paths(
+                    data_root=getattr(self.config, "data_root", None)
+                ).latest_status_path
+            except RecommendationLearningPathError as exc:
+                return (
+                    {
+                        "status": "failed",
+                        "reason": "recommendation_learning_output_root_invalid",
+                        "decision": "retain_current",
+                        "decision_reason": "recommendation_learning_output_root_invalid",
+                        "warnings": [str(exc)],
+                    },
+                    ["recommendation_learning_output_root_invalid"],
+                )
+        if not path.is_file():
+            return None, []
+        check_read_cancelled()
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            check_read_cancelled()
+            return {
+                "status": "failed",
+                "reason": "recommendation_learning_latest_status_invalid",
+                "decision": "retain_current",
+                "decision_reason": "recommendation_learning_latest_status_invalid",
+                "warnings": [f"{type(exc).__name__}"],
+            }, ["recommendation_learning_latest_status_invalid"]
+        check_read_cancelled()
+        if not isinstance(payload, dict):
+            return {
+                "status": "failed",
+                "reason": "recommendation_learning_latest_status_not_object",
+                "decision": "retain_current",
+                "decision_reason": "recommendation_learning_latest_status_not_object",
+            }, ["recommendation_learning_latest_status_not_object"]
+        return payload, []
 
     def _load_decision_snapshot(self, decision_date: str | None) -> tuple[DecisionDeskSnapshot | None, list[str]]:
         diagnostics: list[str] = []
@@ -125,6 +338,7 @@ class WorkbenchSourceService:
             diagnostics.append(f"decision_desk_snapshot_db_missing:{exc}")
             return None, diagnostics
         except sqlite3.Error as exc:
+            check_read_cancelled()
             diagnostics.append(f"decision_desk_snapshot_unavailable:{exc}")
             return None, diagnostics
 
@@ -165,10 +379,8 @@ class WorkbenchSourceService:
 def _connect_read_only(path: Path) -> sqlite3.Connection:
     if not path.exists():
         raise FileNotFoundError(str(path))
-    uri_path = path.resolve().as_posix()
-    conn = sqlite3.connect(f"file:{uri_path}?mode=ro", uri=True)
+    conn = connect_read_only_sqlite(path)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA query_only = ON")
     return conn
 
 

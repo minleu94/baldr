@@ -94,7 +94,8 @@ def _parse_aware(value: object, *, field_name: str) -> datetime:
 def next_forward_cutoff(observed: datetime) -> datetime:
     """Return the next real Taipei 08:30 boundary after ``observed``.
 
-    The forward task is normally launched at Taipei 07:15/08:15.  Keeping the
+    The forward task is normally launched at timezone-aware Taipei 08:25.
+    Keeping the
     calculation based on the actual local clock also handles manual recovery,
     DST changes on the Pacific host, and year boundaries without a fixed date.
     """

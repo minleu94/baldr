@@ -25,7 +25,9 @@ def test_review_queue_state_text_preserves_pending_and_session_viewed_contract()
 def test_review_queue_state_text_does_not_treat_empty_queue_as_gate_completion() -> None:
     dashboard = SimpleNamespace(review_items=[])
 
-    assert "不代表 Phase gate 已完成" in review_queue_state_text(dashboard, set())
+    text = review_queue_state_text(dashboard, set())
+    assert "Phase gate 仍須查看" in text
+    assert "不代表風險已確認" in text
 
 
 def test_section_state_presenters_distinguish_empty_degraded_and_ready() -> None:
@@ -48,3 +50,10 @@ def test_section_state_presenters_distinguish_empty_degraded_and_ready() -> None
     assert "人工處理 1 步" in operating_loop_state_text(degraded)
     assert "已載入 1 筆唯讀來源" in evidence_feed_state_text(ready)
     assert "已載入 1 筆人工待處理事項" in action_item_state_text(ready)
+
+    machine_only = SimpleNamespace(
+        background_evidence_feed=[SimpleNamespace(status_classification="machine_degraded")],
+        action_items=[],
+        operating_loop_steps=[],
+    )
+    assert "背景機器提示 1 批" in action_item_state_text(machine_only)

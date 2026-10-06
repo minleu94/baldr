@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from datetime import date, datetime
 import json
 from pathlib import Path
 import sys
 from typing import Any
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -23,8 +24,18 @@ from app_module.evidence_event_importers import (
 from app_module.evidence_event_repository import EvidenceEventRepository
 from app_module.evidence_event_service import EvidenceEventService
 from app_module.decision_desk_snapshot_repository import DecisionDeskSnapshotRepository
-from app_module.recommendation_repository import RecommendationRepository
+from app_module.forward_outcome_context import resolve_canonical_evidence_release_root
+from app_module.saved_recommendation_queries import build_recommendation_execution_queries
 from data_module.config import TWStockConfig
+from data_module.ml_storage_capacity import (
+    acquire_heavy_chain_reservation,
+    heavy_chain_lock_path,
+    release_heavy_chain_reservation,
+    validate_heavy_chain_reservation_handoff,
+)
+
+
+TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,6 +46,24 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
     )
     parser.add_argument("--decision-date")
+    parser.add_argument(
+        "--as-of",
+        "--as-of-date",
+        dest="as_of",
+        help="Explicit source as-of date; date-only legacy callers remain temporally unproven.",
+    )
+    parser.add_argument(
+        "--decision-at",
+        help="Explicit aware decision/evaluation timestamp; after-close values remain research-only.",
+    )
+    parser.add_argument(
+        "--captured-at",
+        help="Explicit aware capture timestamp.",
+    )
+    parser.add_argument(
+        "--capture-mode",
+        help="Explicit research capture mode, e.g. eod_research.",
+    )
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
     parser.add_argument("--result-id")
@@ -62,6 +91,15 @@ def _config_from_args(args: argparse.Namespace) -> TWStockConfig:
     return config
 
 
+def _parse_aware_datetime(value: str | None, *, field_name: str) -> datetime | None:
+    if value is None:
+        return None
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"--{field_name.replace('_', '-')} 必須是含時區 ISO timestamp")
+    return parsed.astimezone(TAIPEI)
+
+
 class _DecisionDeskSnapshotSectionProvider:
     def __init__(self, stored_snapshot, section_name: str) -> None:
         self.stored_snapshot = stored_snapshot
@@ -71,6 +109,11 @@ class _DecisionDeskSnapshotSectionProvider:
             "decision_desk_snapshot_id": stored_snapshot.snapshot_id,
             "decision_desk_snapshot_hash": stored_snapshot.snapshot_hash,
             "decision_desk_snapshot_source": "durable_snapshot",
+            "decision_desk_snapshot_generated_at": (
+                stored_snapshot.metadata_json.get("generated_at")
+                or stored_snapshot.created_at
+                or None
+            ),
         }
 
     def build_snapshot(self, as_of_date):
@@ -87,11 +130,18 @@ class _DecisionDeskSnapshotSectionProvider:
 def _decision_date_for_snapshot(args: argparse.Namespace) -> str:
     if args.decision_date:
         return str(args.decision_date)[:10]
-    return date.today().isoformat()
+    if args.as_of:
+        return str(args.as_of)[:10]
+    return datetime.now(TAIPEI).date().isoformat()
 
 
-def _decision_desk_importers(config: TWStockConfig, decision_date: str):
-    repository = DecisionDeskSnapshotRepository(config)
+def _decision_desk_importers(
+    config: TWStockConfig,
+    decision_date: str,
+    *,
+    read_only: bool,
+):
+    repository = DecisionDeskSnapshotRepository(config, read_only=read_only)
     stored = repository.latest_before_or_on(decision_date) if decision_date else None
     if stored is None:
         reason = "durable decision desk snapshot not found; run capture_decision_desk_snapshot.py first"
@@ -113,36 +163,87 @@ def _decision_desk_importers(config: TWStockConfig, decision_date: str):
     }
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    config = _config_from_args(args)
+def _run_capture(args: argparse.Namespace, config: TWStockConfig, *, effective_dry_run: bool) -> int:
 
-    repository = EvidenceEventRepository(config)
+    decision_at = _parse_aware_datetime(args.decision_at, field_name="decision_at")
+    captured_at = _parse_aware_datetime(args.captured_at, field_name="captured_at")
+    if decision_at is not None and captured_at is not None and captured_at < decision_at:
+        raise ValueError("captured_at 不得早於 decision_at")
+
+    repository = EvidenceEventRepository(config, read_only=effective_dry_run)
     event_service = EvidenceEventService(repository)
-    recommendation_repository = RecommendationRepository(config)
-    ddd_importers = _decision_desk_importers(config, _decision_date_for_snapshot(args))
+    recommendation_queries = build_recommendation_execution_queries(config)
+    ddd_importers = _decision_desk_importers(
+        config,
+        _decision_date_for_snapshot(args),
+        read_only=effective_dry_run,
+    )
     capture_service = EvidenceCaptureService(
         event_service,
         {
-            "recommendation": RecommendationEvidenceImporter(recommendation_repository),
+            "recommendation": RecommendationEvidenceImporter(recommendation_queries),
             **ddd_importers,
         },
     )
+    resolved_decision_date = args.decision_date or args.as_of
     request = EvidenceCaptureRequest(
         source=args.source,
-        decision_date=args.decision_date,
+        decision_date=resolved_decision_date,
         start_date=args.start_date,
         end_date=args.end_date,
         result_id=args.result_id,
         symbol=args.symbol,
         limit=args.limit,
-        dry_run=(args.dry_run or not args.confirm),
+        dry_run=effective_dry_run,
         confirm=bool(args.confirm),
+        decision_at=decision_at,
+        as_of=args.as_of,
+        captured_at=captured_at,
+        capture_mode=args.capture_mode,
     )
     summary = capture_service.capture(request)
-    print(json.dumps(summary.to_dict(), ensure_ascii=False, sort_keys=True, indent=2))
+    print(json.dumps(summary.to_dict(), ensure_ascii=True, sort_keys=True, indent=2))
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    config = _config_from_args(args)
+    effective_dry_run = bool(args.dry_run or not args.confirm)
+    reservation = None
+    handoff = None
+    if not effective_dry_run:
+        canonical_config = TWStockConfig()
+        release_root = resolve_canonical_evidence_release_root(
+            canonical_config=canonical_config,
+            db_path=config.db_file,
+        )
+        if release_root is not None:
+            lock_path = heavy_chain_lock_path(release_root)
+            handoff = validate_heavy_chain_reservation_handoff(lock_path)
+            if handoff is None:
+                reservation = acquire_heavy_chain_reservation(lock_path)
+            if reservation is None and handoff is None:
+                print(
+                    json.dumps(
+                        {
+                            "status": "blocked_writer_busy",
+                            "db_path": str(config.db_file.expanduser().resolve()),
+                            "lock_path": str(lock_path),
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                    file=sys.stderr,
+                )
+                return 2
+    try:
+        return _run_capture(args, config, effective_dry_run=effective_dry_run)
+    finally:
+        if handoff is not None:
+            handoff.close()
+        if reservation is not None:
+            release_heavy_chain_reservation(reservation)
 
 
 if __name__ == "__main__":

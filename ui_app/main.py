@@ -44,11 +44,16 @@ try:
     # from ui_app.market_regime_detector import MarketRegimeDetector
     # from ui_app.industry_mapper import IndustryMapper
     from decision_module.strategy_configurator import StrategyConfigurator
-    from decision_module.stock_screener import StockScreener
     from decision_module.reason_engine import ReasonEngine
-    from decision_module.market_regime_detector import MarketRegimeDetector
-    from decision_module.industry_mapper import IndustryMapper
+    from app_module.regime_service import RegimeService
     # 導入應用服務層
+    from app_module.decision_service_composition import (
+        build_industry_mapper,
+        build_stock_screener,
+    )
+    from app_module.recommendation.input_preparation import (
+        build_default_recommendation_input_preparer,
+    )
     from app_module.recommendation_service import RecommendationService
 except ImportError as e:
     print(f"錯誤：無法導入專案模組: {e}")
@@ -71,12 +76,19 @@ class TradingAnalysisApp:
         self.data_loader = DataLoader(self.config)
         # 保留原有實例以保持向後兼容（UI 層仍可直接使用）
         self.strategy_configurator = StrategyConfigurator()
-        self.industry_mapper = IndustryMapper(self.config)  # 先初始化，因為 StockScreener 需要它
-        self.stock_screener = StockScreener(self.config, self.industry_mapper)
+        self.industry_mapper = build_industry_mapper(self.config)  # 先初始化，因為 StockScreener 需要它
+        self.stock_screener = build_stock_screener(self.config, self.industry_mapper)
         self.reason_engine = ReasonEngine()
-        self.regime_detector = MarketRegimeDetector(self.config)
+        self.regime_service = RegimeService(
+            self.config,
+            use_persistent_history=True,
+        )
         # 新增：應用服務層
-        self.recommendation_service = RecommendationService(self.config)
+        self.recommendation_service = RecommendationService(
+            self.config,
+            input_preparer=build_default_recommendation_input_preparer(self.config),
+            regime_service=self.regime_service,
+        )
         
         # 當前市場狀態
         self.current_regime = None
@@ -1023,9 +1035,9 @@ class TradingAnalysisApp:
     def execute_strategy_analysis(self):
         """執行策略分析（在背景執行）"""
         # 檢測市場狀態
-        regime_result = self.regime_detector.detect_regime()
-        self.current_regime = regime_result.get('regime', 'Trend')
-        regime_confidence = regime_result.get('confidence', 0.5)
+        regime_result = self.regime_service.detect_regime()
+        self.current_regime = regime_result.regime
+        regime_confidence = regime_result.confidence
         
         # 更新UI顯示市場狀態
         regime_name_map = {
@@ -1044,7 +1056,7 @@ class TradingAnalysisApp:
         
         # 如果用戶沒有啟用任何指標，使用 Regime 預設配置
         if not self._has_user_config(config):
-            regime_config = self.regime_detector.get_strategy_config(self.current_regime)
+            regime_config = self.regime_service.get_strategy_config(self.current_regime)
             config = self._merge_configs(config, regime_config)
         
         # 添加 Regime 信息到配置
@@ -1066,10 +1078,10 @@ class TradingAnalysisApp:
     def detect_market_regime(self):
         """檢測市場狀態（手動觸發）"""
         try:
-            regime_result = self.regime_detector.detect_regime()
-            self.current_regime = regime_result.get('regime', 'Trend')
-            regime_confidence = regime_result.get('confidence', 0.5)
-            details = regime_result.get('details', {})
+            regime_result = self.regime_service.detect_regime()
+            self.current_regime = regime_result.regime
+            regime_confidence = regime_result.confidence
+            details = regime_result.details
             
             regime_name_map = {
                 'Trend': '趨勢追蹤',

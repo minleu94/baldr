@@ -4,7 +4,7 @@ Dashboard 視圖
 """
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QPushButton, QTableView, QFrame, QGroupBox,
     QTextEdit, QHeaderView
 )
@@ -18,10 +18,13 @@ from app_module.screening_service import ScreeningService
 from app_module.regime_service import RegimeService
 from app_module.dtos import RegimeResultDTO
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 
 
 class DashboardView(QWidget):
     """Dashboard 主視圖"""
+
+    RESPONSIVE_BREAKPOINT = 1120
     
     # 自定義信號
     refreshRequested = Signal()  # 刷新請求
@@ -47,21 +50,54 @@ class DashboardView(QWidget):
     
     def _setup_ui(self):
         """設置 UI"""
-        main_layout = QHBoxLayout(self)
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
+
+        page_content = QWidget()
+        main_layout = QGridLayout(page_content)
         main_layout.setSpacing(10)
         main_layout.setContentsMargins(10, 10, 10, 10)
+        self._dashboard_layout = main_layout
         
         # 左側：強勢股表
         left_panel = self._create_stocks_panel()
-        main_layout.addWidget(left_panel, 1)
         
         # 中間：市場狀態卡片
         center_panel = self._create_regime_panel()
-        main_layout.addWidget(center_panel, 1)
         
         # 右側：強勢產業表
         right_panel = self._create_industries_panel()
-        main_layout.addWidget(right_panel, 1)
+        self._dashboard_panels = (left_panel, center_panel, right_panel)
+        self._dashboard_narrow: bool | None = None
+        self._apply_responsive_layout(force=True)
+        self.page_scroll_area = create_scroll_area(
+            page_content, object_name="dashboardPageScrollArea"
+        )
+        page_layout.addWidget(self.page_scroll_area)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self, *, force: bool = False) -> None:
+        if not hasattr(self, "_dashboard_layout"):
+            return
+        narrow = self.width() < self.RESPONSIVE_BREAKPOINT
+        if not force and narrow == self._dashboard_narrow:
+            return
+
+        for panel in self._dashboard_panels:
+            self._dashboard_layout.removeWidget(panel)
+        for index in range(len(self._dashboard_panels)):
+            self._dashboard_layout.setRowStretch(index, 0)
+            self._dashboard_layout.setColumnStretch(index, 0)
+        for index, panel in enumerate(self._dashboard_panels):
+            row, column = (index, 0) if narrow else (0, index)
+            self._dashboard_layout.addWidget(panel, row, column)
+            self._dashboard_layout.setRowStretch(row, 0)
+            self._dashboard_layout.setColumnStretch(column, 1)
+        self._dashboard_narrow = narrow
     
     def _create_stocks_panel(self) -> QGroupBox:
         """創建強勢股面板"""
@@ -97,7 +133,10 @@ class DashboardView(QWidget):
         apply_financial_table_style(self.stocks_table)
         self.stocks_table.setSelectionBehavior(QTableView.SelectRows)
         self.stocks_table.setSortingEnabled(True)
-        self.stocks_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.stocks_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents
+        )
+        ensure_visible_rows(self.stocks_table, rows=5)
         layout.addWidget(self.stocks_table)
 
         self.stocks_status_label = QLabel("尚未載入")
@@ -120,6 +159,7 @@ class DashboardView(QWidget):
         # 狀態顯示
         self.regime_text = QTextEdit()
         self.regime_text.setReadOnly(True)
+        self.regime_text.setMinimumHeight(180)
         self.regime_text.setMaximumHeight(300)
         self.regime_text.setPlaceholderText("點擊「檢測市場狀態」按鈕查看大盤信息")
         layout.addWidget(self.regime_text)
@@ -162,7 +202,10 @@ class DashboardView(QWidget):
         apply_financial_table_style(self.industries_table)
         self.industries_table.setSelectionBehavior(QTableView.SelectRows)
         self.industries_table.setSortingEnabled(True)
-        self.industries_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.industries_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeToContents
+        )
+        ensure_visible_rows(self.industries_table, rows=5)
         layout.addWidget(self.industries_table)
 
         self.industries_status_label = QLabel("尚未載入")

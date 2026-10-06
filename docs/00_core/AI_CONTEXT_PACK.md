@@ -5,7 +5,7 @@
 > **2026-08-30 current overlay**：目前為 `V3.3 Engineering Complete / V4 Evidence
 > Accumulation`，整體 readiness=`action_required`，不是正式 V4.0 Production。本文較下方的
 > V2.0 Phase 1／2「下一步」若與 current overlay 衝突，視為歷史路徑。先讀
-> [Program Status Rebaseline](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md) 與
+> Program Status Rebaseline（開發收據見dev） 與
 > [Project Snapshot](PROJECT_SNAPSHOT.md)。
 
 ---

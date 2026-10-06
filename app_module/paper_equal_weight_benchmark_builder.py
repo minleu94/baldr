@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import stat
 import tempfile
 from typing import Any, Callable, Mapping, Sequence
 
@@ -24,7 +25,10 @@ from app_module.paper_equal_weight_benchmark_ledger import (
 )
 from app_module.paper_portfolio_daily_runner import PaperPriceObservation
 from app_module.paper_portfolio_time import paper_portfolio_today
-from app_module.sqlite_read_only import ReadOnlySQLiteManager
+from app_module.personal_data_paths import PersonalDataPaths, PersonalDataPathError, _absolute, to_internal_io_path
+from app_module.personal_paper_store_paths import PersonalPaperStorePaths, PersonalStoreCustody
+from app_module.personal_store_selection import assert_personal_store_path
+from app_module.personal_store_routes import PersonalStoreRoute, PersonalStoreMode, PersonalStoreRouteError
 
 
 PAPER_EQUAL_WEIGHT_BENCHMARK_BUILD_SCHEMA_VERSION = "paper-equal-weight-benchmark-build.v1"
@@ -115,12 +119,27 @@ class PaperEqualWeightBenchmarkBuilder:
         self,
         *,
         portfolio_id: str = DEFAULT_PORTFOLIO_ID,
-        benchmark_id: str = DEFAULT_BENCHMARK_ID,
+        benchmark_id: str | None = None,
         today_provider: TodayProvider = paper_portfolio_today,
+        route: PersonalStoreRoute | None = None,
+        personal_paths: PersonalDataPaths | None = None,
     ) -> None:
         self.portfolio_id = str(portfolio_id)
-        self.benchmark_id = str(benchmark_id)
+        self.benchmark_id = (DEFAULT_BENCHMARK_ID if benchmark_id is None and route is None else str(benchmark_id or ""))
         self._today_provider = today_provider
+        self.route = route
+        self.personal_paths = personal_paths
+        self.selected = (None if route is None else
+                         PersonalPaperStorePaths.from_route(route, portfolio_id=self.portfolio_id))
+        if route is not None and not self.benchmark_id.strip():
+            raise PersonalStoreRouteError("paper_benchmark_identity_required")
+        self.custody = PersonalStoreCustody(route, personal_paths)
+
+    def _input(self, value: str | Path, selected: Path | None, *, sqlite: bool = False) -> Path:
+        if selected is None:
+            return _resolve_path(value)
+        path = PersonalPaperStorePaths.require_selected(value, selected)
+        return self.custody.sqlite_guard(path) if sqlite else self.custody.guard(path)
 
     def preview(
         self,
@@ -130,10 +149,11 @@ class PaperEqualWeightBenchmarkBuilder:
         market_db_path: str | Path,
         output_ledger_path: str | Path,
     ) -> PaperEqualWeightBenchmarkPreview:
-        baseline = _resolve_path(baseline_path)
-        state_db = _resolve_path(state_db_path)
-        market_db = _resolve_path(market_db_path)
-        output = _resolve_path(output_ledger_path)
+        baseline = self._input(baseline_path, self.selected.baseline if self.selected else None)
+        state_db = self._input(state_db_path, self.selected.state_db if self.selected else None, sqlite=True)
+        market_db = require_market_separation(Path(market_db_path), self.personal_paths)
+        output = self._input(output_ledger_path, self.selected.benchmark_db if self.selected else None, sqlite=True)
+        require_market_separation(market_db, self.personal_paths)
         if output in {baseline, state_db, market_db}:
             raise ValueError("benchmark output must be different from every input path")
         entries = self.build_entries(
@@ -163,7 +183,7 @@ class PaperEqualWeightBenchmarkBuilder:
         if preview.portfolio_id != self.portfolio_id or preview.benchmark_id != self.benchmark_id:
             raise ValueError("benchmark preview belongs to a different builder identity")
         output = preview.output_ledger_path
-        if output.exists():
+        if os.path.exists(self.custody.io(output)):
             raise ValueError(f"output ledger already exists: {output}")
 
         current = self.preview(
@@ -174,7 +194,9 @@ class PaperEqualWeightBenchmarkBuilder:
         )
         if current.entries != preview.entries:
             raise ValueError("benchmark inputs changed after preview")
-        self.write_new_ledger(output, current.entries)
+        self.write_new_ledger(output, current.entries, route=self.route,
+                              personal_paths=self.personal_paths, portfolio_id=self.portfolio_id,
+                              benchmark_id=self.benchmark_id)
         return output
 
     def build_entries(
@@ -184,10 +206,15 @@ class PaperEqualWeightBenchmarkBuilder:
         state_db_path: str | Path,
         market_db_path: str | Path,
     ) -> tuple[EqualWeightBenchmarkEntry, ...]:
-        baseline_date, capital, prices = _baseline_inputs(_read_object(_resolve_path(baseline_path)))
-        snapshot_dates = self._snapshot_dates(
-            _resolve_path(state_db_path),
-        )
+        baseline = self._input(baseline_path, self.selected.baseline if self.selected else None)
+        state = self._input(state_db_path, self.selected.state_db if self.selected else None, sqlite=True)
+        market = require_market_separation(Path(market_db_path), self.personal_paths)
+        require_market_separation(market, self.personal_paths)
+        baseline_payload = _read_object(Path(self.custody.io(baseline)))
+        if self.route is not None and "portfolio_id" in baseline_payload and str(baseline_payload["portfolio_id"]) != self.portfolio_id:
+            raise PersonalStoreRouteError("paper_baseline_identity_mismatch")
+        baseline_date, capital, prices = _baseline_inputs(baseline_payload)
+        snapshot_dates = self._snapshot_dates(state)
         if snapshot_dates[0] != baseline_date:
             raise ValueError(
                 "paper snapshot and benchmark baseline require aligned first date: "
@@ -204,7 +231,7 @@ class PaperEqualWeightBenchmarkBuilder:
         ]
         for decision_date in snapshot_dates[1:]:
             observations = self._latest_price_observations(
-                _resolve_path(market_db_path),
+                market,
                 symbols=tuple(prices),
                 decision_date=decision_date,
             )
@@ -221,33 +248,54 @@ class PaperEqualWeightBenchmarkBuilder:
     def write_new_ledger(
         path: str | Path,
         entries: tuple[EqualWeightBenchmarkEntry, ...],
+        *, route: PersonalStoreRoute | None = None,
+        personal_paths: PersonalDataPaths | None = None,
+        portfolio_id: str | None = None,
+        benchmark_id: str | None = None,
     ) -> None:
-        output = _resolve_path(path)
-        if output.exists():
+        custody = PersonalStoreCustody(route, personal_paths)
+        output = Path(path) if route is not None else _resolve_path(path)
+        if route is not None:
+            selected = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id or "")
+            selected.require_selected(output, selected.benchmark_db)
+            require_paper_writer(route)
+            if not benchmark_id or any(row.benchmark_id != benchmark_id for row in entries):
+                raise PersonalStoreRouteError("paper_benchmark_identity_mismatch")
+        custody.sqlite_guard(output)
+        if os.path.exists(custody.io(output)):
             raise ValueError(f"output ledger already exists: {output}")
-        output.parent.mkdir(parents=True, exist_ok=True)
+        custody.prepare_parent(output)
+        custody.sqlite_guard(output)
         fd, temporary_name = tempfile.mkstemp(
             prefix=f".{output.stem}.",
             suffix=".tmp.sqlite",
-            dir=str(output.parent),
+            dir=str(Path(custody.io(output)).parent),
         )
+        creation_identity = GeneratedPaperStaging._inode(os.fstat(fd))
         os.close(fd)
-        temporary = Path(temporary_name)
+        temporary = output.parent / Path(temporary_name).name
+        staging = GeneratedPaperStaging(custody, output, temporary, creation_identity=creation_identity)
         try:
-            ledger = EqualWeightBenchmarkLedger(temporary)
+            ledger = _GeneratedBenchmarkLedger(staging, benchmark_id)
             for entry in entries:
                 ledger.append(entry)
-            # 目標檔案必須是新檔；Windows rename 在競態時會拒絕覆寫。
-            os.rename(temporary, output)
+            staging.guard_sqlite()
+            if os.path.exists(custody.io(output)):
+                raise ValueError(f"output ledger already exists: {output}")
+            custody.sqlite_guard(output)
+            # Windows rename 為 create-only；其他平台以 hardlink 原子建立目標。
+            if os.name == "nt":
+                os.rename(staging.io(), custody.io(output))
+            else:
+                os.link(staging.io(), custody.io(output), follow_symlinks=False)
+                os.unlink(to_internal_io_path(temporary))
         finally:
-            if temporary.exists():
-                temporary.unlink()
+            staging.cleanup()
 
     def _snapshot_dates(self, state_db: Path) -> tuple[str, ...]:
-        if not state_db.is_file():
+        if not self.custody.exists(state_db):
             raise FileNotFoundError(state_db)
-        manager = ReadOnlySQLiteManager(state_db)
-        with manager.connect() as conn:
+        with self.custody.read_sqlite(state_db) as conn:
             if not _table_exists(conn, "paper_portfolio_snapshots"):
                 raise ValueError("paper snapshot DB is missing paper_portfolio_snapshots")
             rows = conn.execute(
@@ -281,11 +329,11 @@ class PaperEqualWeightBenchmarkBuilder:
         symbols: Sequence[str],
         decision_date: str,
     ) -> tuple[PaperPriceObservation, ...]:
-        if not market_db.is_file():
+        market_db = require_market_separation(market_db, self.personal_paths)
+        if not Path(to_internal_io_path(market_db)).is_file():
             raise FileNotFoundError(market_db)
-        manager = ReadOnlySQLiteManager(market_db)
         selected: dict[str, tuple[str, Decimal]] = {}
-        with manager.connect() as conn:
+        with PersonalStoreCustody(None, None).read_sqlite(market_db) as conn:
             if not _table_exists(conn, "daily_prices"):
                 raise ValueError("market DB is missing daily_prices")
             columns = {
@@ -435,3 +483,111 @@ __all__ = [
     "PaperEqualWeightBenchmarkBuilder",
     "PaperEqualWeightBenchmarkPreview",
 ]
+
+
+def require_paper_writer(route: PersonalStoreRoute | None) -> None:
+    if route is not None and (route.write_target is None or route.mode is PersonalStoreMode.LEGACY_READ_ONLY):
+        raise PersonalStoreRouteError("legacy_read_only_writer_forbidden")
+
+
+def require_market_separation(market: Path, paths: PersonalDataPaths | None) -> Path:
+    """每次市場 I/O 核 main／sidecars 的實體身分，保留 legacy relative caller。"""
+    value = market.expanduser().absolute()
+    canonical = _absolute(value)
+    if canonical != value:
+        raise PersonalDataPathError("paper_market_path_alias", market)
+    if paths is not None and (
+        canonical.is_relative_to(paths.personal_root)
+        or canonical.is_relative_to(paths.legacy_output_root)
+    ):
+        raise PersonalStoreRouteError("paper_market_must_be_independent")
+    for candidate in (canonical, *(canonical.with_name(canonical.name + suffix)
+                                    for suffix in ("-journal", "-wal", "-shm"))):
+        if _absolute(candidate) != candidate:
+            raise PersonalDataPathError("paper_market_path_alias", candidate)
+        try:
+            info = os.stat(to_internal_io_path(candidate), follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise PersonalDataPathError("paper_market_alias_or_type", candidate)
+    return canonical
+
+
+class GeneratedPaperStaging:
+    """只綁本次已建立 temporary；target／parent 與 inode 每次重新核驗。"""
+
+    def __init__(self, custody: PersonalStoreCustody, target: Path, generated: Path, *, creation_identity: tuple[int, int]) -> None:
+        self.custody, self.target, self.path = custody, target, generated
+        custody.guard(target)
+        if generated.parent != target.parent or not generated.name.startswith(f".{target.stem}."):
+            raise PersonalStoreRouteError("paper_generated_staging_mismatch")
+        self._identity = creation_identity
+        self._parent_identity = self._inode(os.stat(to_internal_io_path(target.parent), follow_symlinks=False))
+        self.guard_sqlite()
+
+    @staticmethod
+    def _inode(info: os.stat_result) -> tuple[int, int]:
+        return info.st_dev, info.st_ino
+
+    def guard(self, path: Path) -> Path:
+        self.custody.guard(self.target)
+        if path not in {self.path, *(self.path.with_name(self.path.name + suffix)
+                                    for suffix in ("-journal", "-wal", "-shm"))}:
+            raise PersonalStoreRouteError("paper_generated_staging_mismatch")
+        if self.custody.route is not None and self.custody.route.mode is PersonalStoreMode.PERSONAL:
+            if self.custody.paths is None:
+                raise PersonalStoreRouteError("personal_paths_required")
+            assert_personal_store_path(self.custody.paths, path)
+        elif _absolute(path) != path:
+            raise PersonalDataPathError("personal_store_path_alias", path)
+        parent = os.stat(to_internal_io_path(self.path.parent), follow_symlinks=False)
+        if self._inode(parent) != self._parent_identity:
+            raise PersonalStoreRouteError("paper_staging_parent_changed")
+        try:
+            info = os.stat(to_internal_io_path(path), follow_symlinks=False)
+        except FileNotFoundError:
+            if path == self.path:
+                raise PersonalStoreRouteError("paper_generated_staging_missing")
+            return path
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise PersonalDataPathError("personal_store_alias_or_type", path)
+        if path == self.path and self._inode(info) != self._identity:
+            raise PersonalStoreRouteError("paper_generated_staging_changed")
+        return path
+
+    def guard_sqlite(self) -> None:
+        self.custody.sqlite_guard(self.target)
+        for path in (self.path, *(self.path.with_name(self.path.name + suffix)
+                                 for suffix in ("-journal", "-wal", "-shm"))):
+            self.guard(path)
+
+    def io(self) -> str:
+        self.guard_sqlite()
+        return to_internal_io_path(self.path)
+
+    def cleanup(self) -> None:
+        # 已出版 main 不存在；仍核 sidecars，拒絕清理遭替換或別名的檔案。
+        for suffix in ("-journal", "-wal", "-shm", ""):
+            path = self.path.with_name(self.path.name + suffix)
+            if os.path.lexists(to_internal_io_path(path)):
+                self.guard(path)
+                os.unlink(to_internal_io_path(path))
+
+
+class _GeneratedBenchmarkLedger(EqualWeightBenchmarkLedger):
+    """只替換 connect custody，金融 schema／append 全沿 P1 writer。"""
+
+    def __init__(self, staging: GeneratedPaperStaging, benchmark_id: str | None):
+        self.staging = staging
+        self.expected_benchmark_id = benchmark_id
+        super().__init__(staging.io())
+
+    def _connect(self, *, read_only: bool = False) -> sqlite3.Connection:
+        if read_only:
+            raise PersonalStoreRouteError("paper_staging_reader_forbidden")
+        return sqlite3.connect(self.staging.io())
+
+    def _require_identity(self, benchmark_id: str) -> None:
+        if self.expected_benchmark_id is not None and benchmark_id != self.expected_benchmark_id:
+            raise PersonalStoreRouteError("paper_benchmark_identity_mismatch")

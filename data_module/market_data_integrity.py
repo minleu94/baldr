@@ -28,6 +28,7 @@ def normalize_market_index_frame(frame: pd.DataFrame) -> pd.DataFrame:
     else:
         normalized["指數名稱"] = normalized["指數名稱"].fillna("").astype(str).str.strip()
         normalized.loc[normalized["指數名稱"] == "", "指數名稱"] = TAIEX_INDEX_NAME
+        normalized.loc[normalized["指數名稱"] == "加權指數", "指數名稱"] = TAIEX_INDEX_NAME
     return normalized
 
 
@@ -60,6 +61,25 @@ def official_twse_session_exists(date_key: str) -> bool:
         )
         response.raise_for_status()
         payload = response.json()
-        return payload.get("stat") == "OK" and bool(payload.get("data"))
+        return official_twse_price_table(payload, date_key) is not None
     except (requests.RequestException, ValueError):
         return False
+
+
+def official_twse_price_table(payload: object, date_key: str) -> dict | None:
+    """核對請求日期與個股表；新版 MI_INDEX 使用 tables，不能誤判補班交易日。"""
+    if not isinstance(payload, dict) or payload.get('stat') != 'OK' or str(payload.get('date')) != date_key:
+        return None
+    tables = payload.get('tables')
+    candidates = [payload, *(tables if isinstance(tables, list) else [])]
+    for table in candidates:
+        if not isinstance(table, dict):
+            continue
+        fields, rows = table.get('fields'), table.get('data')
+        if not isinstance(fields, list) or not isinstance(rows, list) or not rows:
+            continue
+        if not {'證券代號', '證券名稱', '收盤價'} <= set(fields):
+            continue
+        if all(isinstance(row, list) and len(row) == len(fields) for row in rows):
+            return table
+    return None

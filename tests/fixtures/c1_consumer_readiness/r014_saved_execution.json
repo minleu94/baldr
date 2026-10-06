@@ -1,0 +1,259 @@
+{
+  "context": {
+    "as_of_date": "2026-09-21",
+    "available_at": "2026-09-22T09:04:30+08:00",
+    "config_sha256": "sha256:c02be9ae26d0ce1de7c55a811bdcc307d9fc74eca125a9cc8889428fde7c51a8",
+    "created_at": "2026-09-22T09:04:00+08:00",
+    "decision_at": "2026-09-22T09:05:06+08:00",
+    "evidence_identity": {
+      "benchmark_id": "TAIEX",
+      "cost_model_id": "synthetic-cost-v1",
+      "evidence_tier": "forward",
+      "horizon_days": 20,
+      "industry_benchmark_id": "synthetic-industry-v1",
+      "return_basis": "close_to_close_event_date"
+    },
+    "result_config": {
+      "as_of_date": "2026-09-21",
+      "benchmark_id": "TAIEX",
+      "cost_model_id": "synthetic-cost-v1",
+      "decision_date": "2026-09-22",
+      "entry_threshold": "0.0100",
+      "evidence_tier": "forward",
+      "horizon_days": 20,
+      "industry_benchmark_id": "synthetic-industry-v1",
+      "look_ahead_check": "synthetic fixture uses only sealed decision-time observations",
+      "max_stocks": 2,
+      "profile_id": "synthetic-r014-profile",
+      "profile_name": "Synthetic C1 R014",
+      "profile_version": "1",
+      "research_only": true,
+      "return_basis": "close_to_close_event_date",
+      "safety_boundary": {
+        "auto_trading": false,
+        "confirm": false,
+        "lifecycle_action": false,
+        "writes_evidence_db": false
+      },
+      "scheduled_snapshot": true,
+      "snapshot_cohort": {
+        "cohort_hash": "sha256:2f8fbe710a5ade4f6e66b7427e3933526a8024162ddf87bfcdb022d1ec3aec48",
+        "coverage_by_symbol": {},
+        "coverage_status": "complete",
+        "degraded_count": 0,
+        "degraded_definition": "screening rows with quality=degraded; visible but not source-missing",
+        "degraded_symbols": [],
+        "eligible_count": 2,
+        "eligible_definition": "final scheduled recommendation DTO rows",
+        "eligible_symbols": [
+          "AAA",
+          "BET"
+        ],
+        "excluded_count": 0,
+        "excluded_definition": "requested rows not selected and not missing/degraded",
+        "excluded_symbols": [],
+        "missing_count": 0,
+        "missing_definition": "screening rows with quality=missing; same-day retry candidates",
+        "missing_symbols": [],
+        "requested_count": 2,
+        "requested_symbols": [
+          "AAA",
+          "BET"
+        ],
+        "schema_version": "scheduled-recommendation-snapshot-cohort.v1"
+      },
+      "strategy_config_hash": "sha256:c110e13e9fef826526877367faef99e4725b9e2b5f7b3bc482d61861d221713b",
+      "strategy_config_id": "recommendation-strategy-config-v1:c110e13e9fef826526877367faef99e4725b9e2b5f7b3bc482d61861d221713b",
+      "strategy_config_schema": "recommendation-strategy-config.v1",
+      "strategy_config_spec": {
+        "config": {
+          "entry_threshold": "0.0100",
+          "threshold_mode": "fixed"
+        },
+        "max_stocks": 2,
+        "schema": "recommendation-strategy-config.v1",
+        "top_n": 2
+      },
+      "strategy_version_id": "synthetic-r014-strategy-v1",
+      "threshold_mode": "fixed",
+      "top_n": 2,
+      "universe_hash": "sha256:a25fcd15a6d7e2a5b2c6f194f6ba087c04261c4cafeb4ba89c108ce955635a85",
+      "universe_id": "recommendation-universe-v1:a25fcd15a6d7e2a5b2c6f194f6ba087c04261c4cafeb4ba89c108ce955635a85",
+      "universe_identity_schema": "recommendation-universe-snapshot.v1",
+      "universe_policy_hash": "sha256:1a189637ce147f8190b4257ef8994a8f4abf68b117a6e84443516988863d8174",
+      "universe_policy_id": "recommendation-universe-policy-v1:1a189637ce147f8190b4257ef8994a8f4abf68b117a6e84443516988863d8174",
+      "universe_policy_schema": "recommendation-universe-policy.v1",
+      "universe_policy_spec": {
+        "industry_filter": "synthetic-all",
+        "max_stocks": 2,
+        "requested_codes": [
+          "AAA",
+          "BET"
+        ],
+        "schema": "recommendation-universe-policy.v1",
+        "selection_algorithm": "ordered-candidate-frame-v1",
+        "selection_mode": "explicit",
+        "source_provider_id": "synthetic-r014-provider-v1"
+      },
+      "universe_snapshot_hash": "sha256:a25fcd15a6d7e2a5b2c6f194f6ba087c04261c4cafeb4ba89c108ce955635a85",
+      "universe_snapshot_id": "recommendation-universe-snapshot-v1:a25fcd15a6d7e2a5b2c6f194f6ba087c04261c4cafeb4ba89c108ce955635a85",
+      "universe_snapshot_schema": "recommendation-universe-snapshot.v1",
+      "universe_snapshot_selected_codes_hash": "sha256:bac64cf521d63d601032d08d740d2b4ddd241f116f03d7eefc7415a36a215223",
+      "universe_snapshot_source_provider_id": "synthetic-r014-provider-v1",
+      "universe_snapshot_spec": {
+        "decision_date": "2026-09-22",
+        "requested_codes": [
+          "AAA",
+          "BET"
+        ],
+        "schema": "recommendation-universe-snapshot.v1",
+        "selected_codes": [
+          "AAA",
+          "BET"
+        ],
+        "selected_codes_hash": "sha256:bac64cf521d63d601032d08d740d2b4ddd241f116f03d7eefc7415a36a215223",
+        "selected_count": 2,
+        "selection_mode": "explicit",
+        "source_provider_id": "synthetic-r014-provider-v1",
+        "universe_policy_id": "recommendation-universe-policy-v1:1a189637ce147f8190b4257ef8994a8f4abf68b117a6e84443516988863d8174"
+      }
+    },
+    "snapshot_cohort": {
+      "cohort_hash": "sha256:2f8fbe710a5ade4f6e66b7427e3933526a8024162ddf87bfcdb022d1ec3aec48",
+      "coverage_by_symbol": {},
+      "coverage_status": "complete",
+      "degraded_count": 0,
+      "degraded_definition": "screening rows with quality=degraded; visible but not source-missing",
+      "degraded_symbols": [],
+      "eligible_count": 2,
+      "eligible_definition": "final scheduled recommendation DTO rows",
+      "eligible_symbols": [
+        "AAA",
+        "BET"
+      ],
+      "excluded_count": 0,
+      "excluded_definition": "requested rows not selected and not missing/degraded",
+      "excluded_symbols": [],
+      "missing_count": 0,
+      "missing_definition": "screening rows with quality=missing; same-day retry candidates",
+      "missing_symbols": [],
+      "requested_count": 2,
+      "requested_symbols": [
+        "AAA",
+        "BET"
+      ],
+      "schema_version": "scheduled-recommendation-snapshot-cohort.v1"
+    },
+    "strategy_identity": {
+      "strategy_config_hash": "sha256:c110e13e9fef826526877367faef99e4725b9e2b5f7b3bc482d61861d221713b",
+      "strategy_config_id": "recommendation-strategy-config-v1:c110e13e9fef826526877367faef99e4725b9e2b5f7b3bc482d61861d221713b",
+      "strategy_config_schema": "recommendation-strategy-config.v1",
+      "strategy_config_spec": {
+        "config": {
+          "entry_threshold": "0.0100",
+          "threshold_mode": "fixed"
+        },
+        "max_stocks": 2,
+        "schema": "recommendation-strategy-config.v1",
+        "top_n": 2
+      },
+      "strategy_version_id": "synthetic-r014-strategy-v1"
+    },
+    "universe_identity": {
+      "policy": {
+        "universe_policy_hash": "sha256:1a189637ce147f8190b4257ef8994a8f4abf68b117a6e84443516988863d8174",
+        "universe_policy_id": "recommendation-universe-policy-v1:1a189637ce147f8190b4257ef8994a8f4abf68b117a6e84443516988863d8174",
+        "universe_policy_schema": "recommendation-universe-policy.v1",
+        "universe_policy_spec": {
+          "industry_filter": "synthetic-all",
+          "max_stocks": 2,
+          "requested_codes": [
+            "AAA",
+            "BET"
+          ],
+          "schema": "recommendation-universe-policy.v1",
+          "selection_algorithm": "ordered-candidate-frame-v1",
+          "selection_mode": "explicit",
+          "source_provider_id": "synthetic-r014-provider-v1"
+        }
+      },
+      "snapshot": {
+        "universe_snapshot_hash": "sha256:a25fcd15a6d7e2a5b2c6f194f6ba087c04261c4cafeb4ba89c108ce955635a85",
+        "universe_snapshot_id": "recommendation-universe-snapshot-v1:a25fcd15a6d7e2a5b2c6f194f6ba087c04261c4cafeb4ba89c108ce955635a85",
+        "universe_snapshot_schema": "recommendation-universe-snapshot.v1",
+        "universe_snapshot_selected_codes_hash": "sha256:bac64cf521d63d601032d08d740d2b4ddd241f116f03d7eefc7415a36a215223",
+        "universe_snapshot_source_provider_id": "synthetic-r014-provider-v1",
+        "universe_snapshot_spec": {
+          "decision_date": "2026-09-22",
+          "requested_codes": [
+            "AAA",
+            "BET"
+          ],
+          "schema": "recommendation-universe-snapshot.v1",
+          "selected_codes": [
+            "AAA",
+            "BET"
+          ],
+          "selected_codes_hash": "sha256:bac64cf521d63d601032d08d740d2b4ddd241f116f03d7eefc7415a36a215223",
+          "selected_count": 2,
+          "selection_mode": "explicit",
+          "source_provider_id": "synthetic-r014-provider-v1",
+          "universe_policy_id": "recommendation-universe-policy-v1:1a189637ce147f8190b4257ef8994a8f4abf68b117a6e84443516988863d8174"
+        }
+      },
+      "universe_hash": "sha256:a25fcd15a6d7e2a5b2c6f194f6ba087c04261c4cafeb4ba89c108ce955635a85",
+      "universe_id": "recommendation-universe-v1:a25fcd15a6d7e2a5b2c6f194f6ba087c04261c4cafeb4ba89c108ce955635a85",
+      "universe_identity_schema": "recommendation-universe-snapshot.v1"
+    }
+  },
+  "expected_hashes": {
+    "request_raw_config_sha256": "sha256:0f83b59ae13214d8605a66e0092d4665f8d0191ebb016af55b4b915aba9c1885",
+    "result_config_sha256": "sha256:c02be9ae26d0ce1de7c55a811bdcc307d9fc74eca125a9cc8889428fde7c51a8",
+    "strategy_config_hash": "sha256:c110e13e9fef826526877367faef99e4725b9e2b5f7b3bc482d61861d221713b"
+  },
+  "fixture_id": "c1-r014-saved-execution",
+  "recommendations": [
+    {
+      "close_price": "100.2500",
+      "indicator_score": "40.0000",
+      "industry": "合成產業甲",
+      "pattern_score": "25.0000",
+      "price_change": "1.2500",
+      "rank": 1,
+      "reason_text": "AAA 封存推薦理由",
+      "reasons": [],
+      "regime_match": true,
+      "rule_score": "82.1000",
+      "stock_code": "AAA",
+      "stock_name": "Synthetic Alpha",
+      "threshold_mode": "fixed",
+      "volume_score": "17.1000"
+    },
+    {
+      "close_price": "48.5",
+      "indicator_score": "32",
+      "industry": "合成產業乙",
+      "pattern_score": "21.5",
+      "price_change": "-0.2500",
+      "rank": 2,
+      "reason_text": "BET 封存推薦理由",
+      "reasons": [],
+      "regime_match": false,
+      "rule_score": "71",
+      "stock_code": "BET",
+      "stock_name": "Synthetic Beta",
+      "threshold_mode": "fixed",
+      "volume_score": "17.5"
+    }
+  ],
+  "request": {
+    "as_of_date": "2026-09-21",
+    "max_stocks": 2,
+    "raw_config_json": "{\n  \"as_of_date\": \"2026-09-21\",\n  \"decision_date\": \"2026-09-21\",\n  \"max_stocks\": 2,\n  \"top_n\": 2,\n  \"profile_id\": \"synthetic-r014-profile\",\n  \"profile_version\": \"1\",\n  \"profile_name\": \"Synthetic C1 R014\",\n  \"strategy_version_id\": \"synthetic-r014-strategy-v1\",\n  \"entry_threshold\": \"0.0100\",\n  \"threshold_mode\": \"fixed\",\n  \"cost_model_id\": \"synthetic-cost-v1\",\n  \"benchmark_id\": \"TAIEX\",\n  \"industry_benchmark_id\": \"synthetic-industry-v1\",\n  \"horizon_days\": 20,\n  \"evidence_tier\": \"forward\",\n  \"return_basis\": \"close_to_close_event_date\",\n  \"research_only\": true,\n  \"look_ahead_check\": \"synthetic fixture uses only sealed decision-time observations\",\n  \"safety_boundary\": {\n    \"confirm\": false,\n    \"writes_evidence_db\": false,\n    \"auto_trading\": false,\n    \"lifecycle_action\": false\n  }\n}\n",
+    "raw_json_sha256": "sha256:0f83b59ae13214d8605a66e0092d4665f8d0191ebb016af55b4b915aba9c1885",
+    "top_n": 2
+  },
+  "result_id": "c1-r014-forward-saved-A",
+  "schema_revision": 2,
+  "schema_version": "recommendation-execution.v1"
+}

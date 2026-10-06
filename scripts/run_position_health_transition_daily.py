@@ -16,6 +16,9 @@ from app_module.position_health_transition_evaluator import (  # noqa: E402
     DEFAULT_POLICY_HASH,
     evaluate_baseline_file,
 )
+from app_module.position_health_transition_repository import (  # noqa: E402
+    POSITION_HEALTH_TRANSITION_DB_FILENAME,
+)
 from scripts.scheduled.scheduled_clock import scheduled_now  # noqa: E402
 
 
@@ -64,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     transition_db = (
         Path(args.transition_db).expanduser().resolve()
         if args.transition_db
-        else output_dir / "position_health_transitions.sqlite"
+        else output_dir / POSITION_HEALTH_TRANSITION_DB_FILENAME
     )
     result = evaluate_baseline_file(
         baseline_path=args.baseline,

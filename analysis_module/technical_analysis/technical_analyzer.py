@@ -79,6 +79,10 @@ class TechnicalAnalyzer:
             if momentum_indicators:
                 for key, value in momentum_indicators.items():
                     df_result[key] = value
+                    if key == "MACD_signal":
+                        # ScoringEngine 的正式欄位名稱採用底線大寫；保留
+                        # 計算器既有別名，並同步填入計分器讀取的欄位。
+                        df_result["MACD_Signal"] = value
         
         # 只有在啟用 KD 時，才呼叫 calculate_kd_indicator
         if kd_params is not None:
@@ -90,6 +94,8 @@ class TechnicalAnalyzer:
             if kd_indicators:
                 df_result['SlowK'] = kd_indicators.get('slowk')
                 df_result['SlowD'] = kd_indicators.get('slowd')
+                df_result['slowk'] = kd_indicators.get('slowk')
+                df_result['slowd'] = kd_indicators.get('slowd')
             
         return df_result
     
@@ -152,10 +158,13 @@ class TechnicalAnalyzer:
             if volatility_indicators:
                 if 'upperband' in volatility_indicators:
                     df_result['BB_Upper'] = volatility_indicators['upperband']
+                    df_result['upperband'] = volatility_indicators['upperband']
                 if 'middleband' in volatility_indicators:
                     df_result['BB_Middle'] = volatility_indicators['middleband']
+                    df_result['middleband'] = volatility_indicators['middleband']
                 if 'lowerband' in volatility_indicators:
                     df_result['BB_Lower'] = volatility_indicators['lowerband']
+                    df_result['lowerband'] = volatility_indicators['lowerband']
                 if 'SAR' in volatility_indicators:
                     df_result['SAR'] = volatility_indicators['SAR']
             

@@ -16,6 +16,7 @@ from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioSnapshot,
     PaperPortfolioSnapshotRepository,
 )
+from data_module import paper_daily_execution_producer as paper_producer
 from app_module.paper_portfolio_policy import PaperPortfolioPolicyConfig
 from data_module.portfolio_ml_dataset_assembler import (
     SECTOR_MEMBERSHIP_MANIFEST_SCHEMA_VERSION,
@@ -23,11 +24,15 @@ from data_module.portfolio_ml_dataset_assembler import (
 )
 from data_module.paper_daily_execution_producer import (
     PaperExecutionPaths,
+    _QueueReceipt,
     _Position,
     _State,
     _append_and_read_back,
     _apply_prior_paper_fills,
     _build_fills,
+    _effective_queue_receipts,
+    ensure_paper_ledger_schema,
+    persist_operational_receipt,
     resolve_pending_recommendation,
     run_paper_execution_daily_from_queue,
     run_paper_execution_daily,
@@ -37,7 +42,7 @@ from data_module.official_trading_calendar_cache import (
     build_twse_calendar_cache,
     write_twse_calendar_cache,
 )
-from app_module.paper_trade_ledger import PaperTradeLedgerRepository
+from app_module.paper_trade_ledger import PaperTradeFill, PaperTradeLedgerRepository
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -287,8 +292,150 @@ def _paths(
     )
 
 
+def _legacy_eight_row_ledger(path: Path) -> None:
+    """建立僅有舊 fill table 的 bounded fixture，不創造 transition 歷史。"""
+
+    repository = PaperTradeLedgerRepository(path)
+    for index in range(8):
+        repository.append(
+            PaperTradeFill(
+                fill_id=f"legacy-rejected-{index}",
+                order_id=f"legacy-order-{index}",
+                portfolio_id="paper-main",
+                event_date=DECISION_DATE,
+                stock_code="2330",
+                side="buy",
+                requested_quantity=1000,
+                filled_quantity=0,
+                reference_price=Decimal("10.00"),
+                fill_price=None,
+                commission=Decimal("0.00"),
+                tax=Decimal("0.00"),
+                slippage_cost=Decimal("0.00"),
+                turnover_bp=0,
+                execution_gap_bp=None,
+                status="rejected",
+                source_event_id=f"legacy-source-{index}",
+                source_type="paper_daily_execution_delayed_eod_replay_v1",
+            )
+        )
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TABLE paper_trade_transitions")
+
+
+def _set_fixture_state_to_existing_target(path: Path) -> None:
+    """將 fixture 持倉調到 recommendation 的 board-lot target。"""
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE paper_portfolio_positions "
+            "SET quantity = 1000, market_value = '10000.00', weight_bp = 1000"
+        )
+        connection.execute(
+            "UPDATE paper_portfolio_snapshots SET cash = '90000.00'"
+        )
+
+
 def _open_calendar() -> _Calendar:
     return _Calendar({DECISION_DATE, EXECUTION_DATE})
+
+
+def _queue_paths_for_fixture(
+    tmp_path: Path,
+    input_paths: PaperExecutionPaths,
+    *,
+    output_name: str = "queue-candidate",
+) -> PaperExecutionPaths:
+    return PaperExecutionPaths(
+        recommendation_json=tmp_path / "unused-placeholder.json",
+        state_db=input_paths.state_db,
+        market_db=input_paths.market_db,
+        output_root=tmp_path / output_name,
+        ledger_db=input_paths.ledger_db,
+        sector_membership_path=input_paths.sector_membership_path,
+        sector_membership_file_hash=input_paths.sector_membership_file_hash,
+    )
+
+
+def _receipt_payload(path: Path) -> dict[str, object]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(value, dict)
+    return value
+
+
+def _write_receipt_payload(
+    path: Path,
+    payload: dict[str, object],
+    *,
+    refresh_content_hash: bool = True,
+) -> None:
+    payload.pop("content_sha256", None)
+    if refresh_content_hash:
+        payload["content_sha256"] = paper_producer._payload_hash(payload)
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _queue_fixture_with_calendar_failure_and_processed_receipt(
+    tmp_path: Path,
+) -> dict[str, object]:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    input_paths = _paths(input_root)
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    queued_recommendation = recommendation_root / "scheduled_rec_20260904_200000.json"
+    queued_recommendation.write_bytes(input_paths.recommendation_json.read_bytes())
+    receipt_root = tmp_path / "receipts"
+
+    failed = run_paper_execution_daily(
+        input_paths,
+        now=NOW,
+        calendar=_UnknownCalendar(),
+    )
+    assert failed["status"] == "blocked"
+    assert failed["blockers"] == [
+        "official_calendar_not_proven:twse_holiday_schedule_unavailable"
+    ]
+    failed_with_receipt = persist_operational_receipt(
+        failed,
+        receipt_root,
+        observed=NOW,
+    )
+    failed_operational_receipt = failed_with_receipt["operational_receipt"]
+    assert isinstance(failed_operational_receipt, dict)
+    failed_receipt_path = Path(str(failed_operational_receipt["path"]))
+    failed_receipt_bytes = failed_receipt_path.read_bytes()
+
+    queue_paths = _queue_paths_for_fixture(tmp_path, input_paths)
+    processed = run_paper_execution_daily_from_queue(
+        queue_paths,
+        recommendation_root=recommendation_root,
+        receipt_root=receipt_root,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+    )
+    assert processed["status"] == "machine_verified_candidate"
+    processed_operational_receipt = processed["operational_receipt"]
+    assert isinstance(processed_operational_receipt, dict)
+    assert processed_operational_receipt["queue_state"] == "processed"
+    processed_receipt_path = Path(str(processed_operational_receipt["path"]))
+    processed_receipt_bytes = processed_receipt_path.read_bytes()
+
+    return {
+        "input_paths": input_paths,
+        "recommendation_root": recommendation_root,
+        "queued_recommendation": queued_recommendation,
+        "receipt_root": receipt_root,
+        "queue_paths": queue_paths,
+        "failed_receipt_path": failed_receipt_path,
+        "failed_receipt_bytes": failed_receipt_bytes,
+        "processed_receipt_path": processed_receipt_path,
+        "processed_receipt_bytes": processed_receipt_bytes,
+    }
 
 
 def test_t1_next_session_uses_official_open_and_prior_close_binding(
@@ -512,6 +659,80 @@ def test_explicit_append_is_exactly_idempotent_after_preopen_snapshot_exists(
     assert second["ledger"]["idempotent_replay"] is True
     with sqlite3.connect(f"file:{ledger.resolve().as_posix()}?mode=ro", uri=True) as connection:
         assert connection.execute("SELECT COUNT(*) FROM paper_trade_ledger").fetchone()[0] == 1
+
+
+def test_eod_schema_readback_preserves_legacy_fills_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    ledger = tmp_path / "legacy-paper-ledger.sqlite"
+    _legacy_eight_row_ledger(ledger)
+
+    first_hash = _sha256(ledger)
+    first = ensure_paper_ledger_schema(ledger)
+    after_first_hash = _sha256(ledger)
+    second = ensure_paper_ledger_schema(ledger)
+
+    assert first["readback_verified"] is True
+    assert first["row_counts"] == {
+        "paper_trade_ledger": 8,
+        "paper_trade_transitions": 0,
+    }
+    assert first["historical_transition_evidence_inferred"] is False
+    assert second["row_counts"] == first["row_counts"]
+    assert after_first_hash != first_hash
+    assert _sha256(ledger) == after_first_hash
+    with sqlite3.connect(ledger.as_uri() + "?mode=ro", uri=True) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        assert connection.execute(
+            "SELECT COUNT(*) FROM paper_trade_ledger"
+        ).fetchone()[0] == 8
+        assert connection.execute(
+            "SELECT COUNT(*) FROM paper_trade_transitions"
+        ).fetchone()[0] == 0
+
+
+def test_eod_schema_readback_rejects_malformed_existing_transition_table(
+    tmp_path: Path,
+) -> None:
+    ledger = tmp_path / "malformed-paper-ledger.sqlite"
+    PaperTradeLedgerRepository(ledger)
+    with sqlite3.connect(ledger) as connection:
+        connection.execute("DROP TABLE paper_trade_transitions")
+        connection.execute(
+            "CREATE TABLE paper_trade_transitions ("
+            "transition_id TEXT PRIMARY KEY, portfolio_id TEXT, event_date TEXT)"
+        )
+
+    with pytest.raises(ValueError, match="schema columns are missing"):
+        ensure_paper_ledger_schema(ledger)
+
+
+def test_candidate_without_append_confirmation_does_not_initialize_missing_transition_table(
+    tmp_path: Path,
+) -> None:
+    paths = _paths(tmp_path)
+    assert paths.ledger_db is not None
+    _set_fixture_state_to_existing_target(paths.state_db)
+    _legacy_eight_row_ledger(paths.ledger_db)
+    before_hash = _sha256(paths.ledger_db)
+
+    result = run_paper_execution_daily(
+        paths,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=False,
+    )
+
+    assert result["status"] == "no_trade_required_candidate"
+    assert result["fill_count"] == 0
+    assert result["append_requested"] is False
+    assert _sha256(paths.ledger_db) == before_hash
+    with sqlite3.connect(paths.ledger_db.as_uri() + "?mode=ro", uri=True) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        assert connection.execute(
+            "SELECT COUNT(*) FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'paper_trade_transitions'"
+        ).fetchone()[0] == 0
 
 
 def test_missing_append_confirmation_does_not_create_ledger(tmp_path: Path) -> None:
@@ -747,6 +968,7 @@ def test_queue_selects_due_frozen_recommendation_and_persists_processed_receipt(
         sector_membership_path=input_paths.sector_membership_path,
         sector_membership_file_hash=input_paths.sector_membership_file_hash,
     )
+    PaperTradeLedgerRepository(queue_paths.ledger_db)
 
     selected, reason = resolve_pending_recommendation(
         recommendation_root,
@@ -785,7 +1007,1177 @@ def test_queue_selects_due_frozen_recommendation_and_persists_processed_receipt(
         receipt_root=receipts,
     )
     assert selected_again is None
-    assert reason_again == "no_pending_recommendation"
+    assert reason_again == "no_pending_recommendation_already_processed"
+    selected_without_market_db, reason_without_market_db = resolve_pending_recommendation(
+        recommendation_root,
+        observed=EOD_REPLAY_NOW,
+        receipt_root=receipts,
+    )
+    assert selected_without_market_db is None
+    assert reason_without_market_db == "no_pending_recommendation"
+
+
+def test_scoped_frozen_queue_ignores_legacy_invalid_sources_and_hashes_policy(
+    tmp_path: Path,
+) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    input_paths = _paths(input_root)
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    frozen_path = recommendation_root / "paper_frozen_current.json"
+    frozen_payload = json.loads(input_paths.recommendation_json.read_text(encoding="utf-8"))
+    frozen_payload["result_id"] = "canonical-result-current"
+    frozen_path.write_text(
+        json.dumps(frozen_payload, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    legacy_invalid = recommendation_root / "scheduled_rec_20260105_165133.json"
+    legacy_payload = dict(frozen_payload)
+    legacy_payload["result_id"] = "legacy-naive-clock"
+    legacy_payload["created_at"] = "2026-09-04T20:00:00"
+    legacy_invalid.write_text(
+        json.dumps(legacy_payload, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    receipt_root = tmp_path / "receipts"
+    paths = _queue_paths_for_fixture(tmp_path, input_paths)
+
+    result = run_paper_execution_daily_from_queue(
+        paths,
+        recommendation_root=recommendation_root,
+        receipt_root=receipt_root,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+        recommendation_pattern="paper_frozen_*.json",
+    )
+
+    assert result["status"] == "machine_verified_candidate"
+    assert result["recommendation"]["path"] == str(frozen_path.resolve())
+    assert result["ledger"]["readback_verified"] is True
+    selection = result["queue_selection"]
+    assert selection["policy"] == "fixed_recommendation_filename_pattern.v1"
+    assert selection["recommendation_pattern"] == "paper_frozen_*.json"
+    assert selection["scope"] == "paper_frozen_recommendation_exports_only"
+    assert "legacy_pending_source_fallbacks" not in selection
+
+    candidate_path = Path(str(result["candidate_path"]))
+    candidate = _receipt_payload(candidate_path)
+    candidate_hash = candidate.pop("content_sha256")
+    assert candidate_hash == paper_producer._payload_hash(candidate)
+    assert candidate["queue_selection"] == selection
+
+    operational = result["operational_receipt"]
+    assert isinstance(operational, dict)
+    operational_path = Path(str(operational["path"]))
+    operational_payload = _receipt_payload(operational_path)
+    assert operational_payload["queue_state"] == "processed"
+    assert operational_payload["result"]["queue_selection"] == selection
+    assert paper_producer._validate_queue_receipt(
+        operational_path,
+        operational_payload,
+    ) is None
+    assert legacy_invalid.is_file()
+
+
+def _scoped_pending_fallback_fixture(
+    tmp_path: Path,
+    *,
+    source_name: str = "legacy-source.json",
+    initial_pattern: str = "*.json",
+) -> dict[str, object]:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    input_paths = _paths(input_root)
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    legacy_source = recommendation_root / source_name
+    legacy_source.write_bytes(input_paths.recommendation_json.read_bytes())
+    receipt_root = tmp_path / "receipts"
+    queue_paths = _queue_paths_for_fixture(tmp_path, input_paths)
+    with sqlite3.connect(input_paths.market_db) as connection:
+        connection.execute(
+            "DELETE FROM daily_prices WHERE 日期=? AND 證券代號=?",
+            ("20260907", "2330"),
+        )
+    pending = run_paper_execution_daily_from_queue(
+        queue_paths,
+        recommendation_root=recommendation_root,
+        receipt_root=receipt_root,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+        recommendation_pattern=initial_pattern,
+    )
+    assert pending["status"] == "blocked"
+    pending_receipt = pending["operational_receipt"]
+    assert isinstance(pending_receipt, dict)
+    assert pending_receipt["queue_state"] == "pending_execution"
+    pending_receipt_path = Path(str(pending_receipt["path"]))
+    pending_receipt_bytes = pending_receipt_path.read_bytes()
+
+    newer_payload = json.loads(legacy_source.read_text(encoding="utf-8"))
+    newer_payload["result_id"] = "scheduled_rec_20260904_210000"
+    newer_payload["created_at"] = "2026-09-04T21:00:00+08:00"
+    frozen_source = recommendation_root / "paper_frozen_newer.json"
+    frozen_source.write_text(
+        json.dumps(newer_payload, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with sqlite3.connect(input_paths.market_db) as connection:
+        connection.execute(
+            "INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?)",
+            ("20260907", "2330", "測試公司", "10.20", "10.50", 100000),
+        )
+    return {
+        "input_paths": input_paths,
+        "recommendation_root": recommendation_root,
+        "receipt_root": receipt_root,
+        "queue_paths": queue_paths,
+        "legacy_source": legacy_source,
+        "frozen_source": frozen_source,
+        "pending_receipt_path": pending_receipt_path,
+        "pending_receipt_bytes": pending_receipt_bytes,
+    }
+
+
+def test_scoped_queue_retries_pinned_scoped_source_with_writer_readback(
+    tmp_path: Path,
+) -> None:
+    fixture = _scoped_pending_fallback_fixture(
+        tmp_path,
+        source_name="paper_frozen_pinned.json",
+        initial_pattern="paper_frozen_*.json",
+    )
+    input_paths = fixture["input_paths"]
+    assert isinstance(input_paths, PaperExecutionPaths)
+    pinned_source = Path(str(fixture["legacy_source"]))
+    newer_source = Path(str(fixture["frozen_source"]))
+    pending_receipt_path = Path(str(fixture["pending_receipt_path"]))
+    pending_receipt_bytes = bytes(fixture["pending_receipt_bytes"])
+
+    retry = run_paper_execution_daily_from_queue(
+        PaperExecutionPaths(
+            **{
+                **fixture["queue_paths"].__dict__,
+                "output_root": tmp_path / "scoped-pinned-retry-candidate",
+            }
+        ),
+        recommendation_root=Path(str(fixture["recommendation_root"])),
+        receipt_root=Path(str(fixture["receipt_root"])),
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+        recommendation_pattern="paper_frozen_*.json",
+    )
+
+    assert retry["status"] == "machine_verified_candidate"
+    assert retry["recommendation"]["path"] == str(pinned_source.resolve())
+    assert retry["ledger"]["readback_verified"] is True
+    assert retry["operational_receipt"]["queue_state"] == "processed"
+    selection = retry["queue_selection"]
+    assert selection["recommendation_pattern"] == "paper_frozen_*.json"
+    assert "legacy_pending_source_fallbacks" not in selection
+
+    candidate_path = Path(str(retry["candidate_path"]))
+    candidate = _receipt_payload(candidate_path)
+    candidate_hash = candidate.pop("content_sha256")
+    assert candidate_hash == paper_producer._payload_hash(candidate)
+    assert candidate["queue_selection"] == selection
+
+    operational = retry["operational_receipt"]
+    assert isinstance(operational, dict)
+    operational_path = Path(str(operational["path"]))
+    operational_payload = _receipt_payload(operational_path)
+    assert operational_payload["result"]["recommendation"]["path"] == str(
+        pinned_source.resolve()
+    )
+    assert paper_producer._validate_queue_receipt(
+        operational_path,
+        operational_payload,
+    ) is None
+    assert pending_receipt_path.read_bytes() == pending_receipt_bytes
+    assert newer_source.is_file()
+
+
+@pytest.mark.parametrize("source_change", ("tampered", "missing"))
+def test_scoped_pending_source_cannot_be_replaced_after_integrity_failure(
+    tmp_path: Path,
+    source_change: str,
+) -> None:
+    fixture = _scoped_pending_fallback_fixture(
+        tmp_path,
+        source_name="paper_frozen_pinned.json",
+        initial_pattern="paper_frozen_*.json",
+    )
+    pinned_source = Path(str(fixture["legacy_source"]))
+    replacement_source = Path(str(fixture["frozen_source"]))
+    if source_change == "missing":
+        pinned_source.unlink()
+    else:
+        pinned_payload = json.loads(pinned_source.read_text(encoding="utf-8"))
+        pinned_payload["recommendations"][0]["收盤價"] = "9.99"
+        pinned_source.write_text(
+            json.dumps(pinned_payload, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    result = run_paper_execution_daily_from_queue(
+        PaperExecutionPaths(
+            **{
+                **fixture["queue_paths"].__dict__,
+                "output_root": tmp_path / "scoped-invalid-pinned-retry",
+            }
+        ),
+        recommendation_root=Path(str(fixture["recommendation_root"])),
+        receipt_root=Path(str(fixture["receipt_root"])),
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+        recommendation_pattern="paper_frozen_*.json",
+    )
+
+    assert result["status"] == "blocked"
+    assert result["blockers"][0].startswith("pending_execution_receipt_invalid:")
+    assert result.get("recommendation") is None
+    assert "ledger" not in result
+    assert replacement_source.is_file()
+
+
+def test_future_invalid_pending_receipt_does_not_change_current_queue_state(
+    tmp_path: Path,
+) -> None:
+    fixture = _scoped_pending_fallback_fixture(
+        tmp_path,
+        source_name="paper_frozen_pinned.json",
+        initial_pattern="paper_frozen_*.json",
+    )
+    pinned_source = Path(str(fixture["legacy_source"]))
+    pinned_payload = json.loads(pinned_source.read_text(encoding="utf-8"))
+    pinned_payload["recommendations"][0]["收盤價"] = "9.99"
+    pinned_source.write_text(
+        json.dumps(pinned_payload, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    pending_receipt_path = Path(str(fixture["pending_receipt_path"]))
+    pending_receipt = _receipt_payload(pending_receipt_path)
+    pending_receipt["recorded_at"] = "2026-09-08T03:00:00+00:00"
+    _write_receipt_payload(pending_receipt_path, pending_receipt)
+    input_paths = fixture["input_paths"]
+    assert isinstance(input_paths, PaperExecutionPaths)
+
+    selected, reason = resolve_pending_recommendation(
+        Path(str(fixture["recommendation_root"])),
+        observed=EOD_REPLAY_NOW,
+        market_db=input_paths.market_db,
+        calendar=_open_calendar(),
+        receipt_root=Path(str(fixture["receipt_root"])),
+        recommendation_pattern="paper_frozen_*.json",
+    )
+
+    assert selected == Path(str(fixture["frozen_source"]))
+    assert reason == "next_official_session_due"
+
+
+@pytest.mark.parametrize(
+    ("source_name", "initial_pattern"),
+    (
+        ("paper_frozen_pinned.json", "paper_frozen_*.json"),
+        ("legacy-pinned.json", "*.json"),
+    ),
+    ids=("scoped-pending", "legacy-pending-fallback"),
+)
+def test_queue_selection_pins_bytes_until_producer_load(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_name: str,
+    initial_pattern: str,
+) -> None:
+    fixture = _scoped_pending_fallback_fixture(
+        tmp_path,
+        source_name=source_name,
+        initial_pattern=initial_pattern,
+    )
+    pinned_source = Path(str(fixture["legacy_source"]))
+    input_paths = fixture["input_paths"]
+    assert isinstance(input_paths, PaperExecutionPaths)
+    with sqlite3.connect(input_paths.ledger_db) as connection:
+        fill_count_before = int(
+            connection.execute("SELECT COUNT(*) FROM paper_trade_ledger").fetchone()[0]
+        )
+
+    original_resolver = paper_producer.resolve_pending_recommendation
+
+    def resolve_then_replace_selected_source(*args: object, **kwargs: object):
+        selected, reason = original_resolver(*args, **kwargs)
+        if selected is not None:
+            replacement = json.loads(selected.read_text(encoding="utf-8"))
+            replacement["result_id"] = "replacement_after_queue_selection"
+            replacement["recommendations"][0]["總分"] = "99.00"
+            selected.write_text(
+                json.dumps(replacement, ensure_ascii=False, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        return selected, reason
+
+    monkeypatch.setattr(
+        paper_producer,
+        "resolve_pending_recommendation",
+        resolve_then_replace_selected_source,
+    )
+    result = run_paper_execution_daily_from_queue(
+        PaperExecutionPaths(
+            **{
+                **fixture["queue_paths"].__dict__,
+                "output_root": tmp_path / "source-changed-after-selection",
+            }
+        ),
+        recommendation_root=Path(str(fixture["recommendation_root"])),
+        receipt_root=Path(str(fixture["receipt_root"])),
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+        recommendation_pattern="paper_frozen_*.json",
+    )
+
+    assert result["status"] == "blocked"
+    assert result["blockers"] == ["selected source identity changed after selection"]
+    selection = result["queue_selection"]
+    assert selection["selected_source_identity"]["recommendation_path"] == str(
+        pinned_source.resolve()
+    )
+    assert selection["selected_source_identity"]["source_result_id"] != (
+        "replacement_after_queue_selection"
+    )
+    candidate_path = Path(str(result["candidate_path"]))
+    candidate = _receipt_payload(candidate_path)
+    candidate_hash = candidate.pop("content_sha256")
+    assert candidate_hash == paper_producer._payload_hash(candidate)
+    assert candidate["queue_selection"] == selection
+    with sqlite3.connect(input_paths.ledger_db) as connection:
+        fill_count_after = int(
+            connection.execute("SELECT COUNT(*) FROM paper_trade_ledger").fetchone()[0]
+        )
+    assert fill_count_after == fill_count_before
+
+
+def test_scoped_queue_retries_exact_legacy_pending_and_reads_back_fallback_proof(
+    tmp_path: Path,
+) -> None:
+    fixture = _scoped_pending_fallback_fixture(tmp_path)
+    input_paths = fixture["input_paths"]
+    assert isinstance(input_paths, PaperExecutionPaths)
+    legacy_source = Path(str(fixture["legacy_source"]))
+    frozen_source = Path(str(fixture["frozen_source"]))
+    pending_receipt_path = Path(str(fixture["pending_receipt_path"]))
+    pending_receipt_bytes = bytes(fixture["pending_receipt_bytes"])
+
+    retry = run_paper_execution_daily_from_queue(
+        PaperExecutionPaths(
+            **{
+                **fixture["queue_paths"].__dict__,
+                "output_root": tmp_path / "scoped-retry-candidate",
+            }
+        ),
+        recommendation_root=Path(str(fixture["recommendation_root"])),
+        receipt_root=Path(str(fixture["receipt_root"])),
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+        recommendation_pattern="paper_frozen_*.json",
+    )
+
+    assert retry["status"] == "machine_verified_candidate"
+    assert retry["recommendation"]["path"] == str(legacy_source.resolve())
+    assert retry["ledger"]["readback_verified"] is True
+    selection = retry["queue_selection"]
+    fallbacks = selection["legacy_pending_source_fallbacks"]
+    assert len(fallbacks) == 1
+    proof = fallbacks[0]
+    assert proof["recommendation_path"] == str(legacy_source.resolve())
+    assert proof["source_file_hash"] == retry["recommendation"]["file_hash"]
+    assert proof["source_result_id"] == retry["recommendation"]["result_id"]
+    assert proof["decision_date"] == DECISION_DATE
+    assert proof["execution_date"] == EXECUTION_DATE
+    assert proof["source_created_at"] <= proof["pending_recorded_at"]
+    assert proof["pending_receipt_path"] == str(pending_receipt_path.resolve())
+    assert frozen_source.is_file()
+
+    candidate_path = Path(str(retry["candidate_path"]))
+    candidate = _receipt_payload(candidate_path)
+    candidate_hash = candidate.pop("content_sha256")
+    assert candidate_hash == paper_producer._payload_hash(candidate)
+    assert candidate["queue_selection"] == selection
+    operational = retry["operational_receipt"]
+    assert isinstance(operational, dict)
+    operational_path = Path(str(operational["path"]))
+    operational_payload = _receipt_payload(operational_path)
+    assert operational_payload["result"]["queue_selection"] == selection
+    assert paper_producer._validate_queue_receipt(
+        operational_path,
+        operational_payload,
+    ) is None
+    assert pending_receipt_path.read_bytes() == pending_receipt_bytes
+
+
+@pytest.mark.parametrize(
+    ("tamper", "expected_reason"),
+    (
+        ("source_hash", "pending_execution_receipt_invalid"),
+        ("wrong_portfolio", "pending_execution_receipt_invalid"),
+        ("wrong_result_id", "pending_execution_receipt_invalid"),
+        ("future_source_clock", "pending_execution_receipt_invalid"),
+        ("duplicate_source", "pending_execution_source_duplicate"),
+    ),
+)
+def test_scoped_pending_fallback_fails_closed_without_switching_sources(
+    tmp_path: Path,
+    tamper: str,
+    expected_reason: str,
+) -> None:
+    fixture = _scoped_pending_fallback_fixture(tmp_path)
+    legacy_source = Path(str(fixture["legacy_source"]))
+    payload = json.loads(legacy_source.read_text(encoding="utf-8"))
+    if tamper == "source_hash":
+        payload["recommendations"][0]["收盤價"] = "9.99"
+        legacy_source.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    elif tamper == "wrong_portfolio":
+        payload["config"]["portfolio_id"] = "paper-other"
+        legacy_source.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    elif tamper == "wrong_result_id":
+        payload["result_id"] = "different-result"
+        legacy_source.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    elif tamper == "future_source_clock":
+        payload["created_at"] = "2026-09-07T15:00:01+08:00"
+        legacy_source.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    elif tamper == "duplicate_source":
+        duplicate = Path(str(fixture["recommendation_root"])) / "duplicate-copy.json"
+        duplicate.write_bytes(legacy_source.read_bytes())
+
+    result = run_paper_execution_daily_from_queue(
+        PaperExecutionPaths(
+            **{
+                **fixture["queue_paths"].__dict__,
+                "output_root": tmp_path / "blocked-scoped-retry",
+            }
+        ),
+        recommendation_root=Path(str(fixture["recommendation_root"])),
+        receipt_root=Path(str(fixture["receipt_root"])),
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+        recommendation_pattern="paper_frozen_*.json",
+    )
+
+    assert result["status"] == "blocked"
+    assert str(result["blockers"][0]).startswith(expected_reason)
+    assert "ledger" not in result
+    assert result.get("recommendation") is None
+    assert Path(str(fixture["frozen_source"])).is_file()
+
+
+def test_scoped_queue_still_validates_every_queue_receipt_and_pattern_is_fixed(
+    tmp_path: Path,
+) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    input_paths = _paths(input_root)
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    frozen_path = recommendation_root / "paper_frozen_current.json"
+    frozen_payload = json.loads(input_paths.recommendation_json.read_text(encoding="utf-8"))
+    frozen_payload["result_id"] = "canonical-result-current"
+    frozen_payload["created_at"] = "2026-09-03T20:00:00+08:00"
+    frozen_payload["config"]["decision_date"] = "2026-09-03"
+    frozen_payload["recommendations"][0]["eligible_universe_date"] = "2026-09-03"
+    frozen_path.write_text(
+        json.dumps(frozen_payload, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    receipt_root = tmp_path / "receipts"
+    receipt_root.mkdir()
+    (receipt_root / "unrelated-corrupt-receipt.json").write_text(
+        "{invalid", encoding="utf-8"
+    )
+    frozen_path.unlink()
+
+    blocked = run_paper_execution_daily_from_queue(
+        _queue_paths_for_fixture(tmp_path, input_paths, output_name="bad-receipt"),
+        recommendation_root=recommendation_root,
+        receipt_root=receipt_root,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        recommendation_pattern="paper_frozen_*.json",
+    )
+    assert blocked["status"] == "blocked"
+    assert "no_pending_recommendation_invalid_receipt" in blocked["blockers"][0]
+    assert not Path(str(blocked["operational_receipt"]["path"])).name.startswith(
+        "unrelated-corrupt"
+    )
+
+    with pytest.raises(paper_producer.PaperExecutionProducerError):
+        resolve_pending_recommendation(
+            recommendation_root,
+            observed=EOD_REPLAY_NOW,
+            market_db=input_paths.market_db,
+            calendar=_open_calendar(),
+            receipt_root=None,
+            recommendation_pattern="**/*.json",
+        )
+
+
+def test_later_processed_source_resolves_old_calendar_failure_with_auditable_noop(
+    tmp_path: Path,
+) -> None:
+    fixture = _queue_fixture_with_calendar_failure_and_processed_receipt(tmp_path)
+    recommendation_root = Path(str(fixture["recommendation_root"]))
+    receipt_root = Path(str(fixture["receipt_root"]))
+    queued_recommendation = Path(str(fixture["queued_recommendation"]))
+    input_paths = fixture["input_paths"]
+    assert isinstance(input_paths, PaperExecutionPaths)
+    failed_receipt_path = Path(str(fixture["failed_receipt_path"]))
+    processed_receipt_path = Path(str(fixture["processed_receipt_path"]))
+    failed_receipt_bytes = bytes(fixture["failed_receipt_bytes"])
+    processed_receipt_bytes = bytes(fixture["processed_receipt_bytes"])
+
+    failed_receipt = _receipt_payload(failed_receipt_path)
+    processed_receipt = _receipt_payload(processed_receipt_path)
+    assert paper_producer._validate_queue_receipt(
+        failed_receipt_path,
+        failed_receipt,
+    ) == "execution_date_missing"
+    assert paper_producer._validate_queue_receipt(
+        processed_receipt_path,
+        processed_receipt,
+    ) is None
+    assert processed_receipt["ledger"]["readback_verified"] is True
+
+    resolved_diagnostics: list[dict[str, str]] = []
+    selected, reason = resolve_pending_recommendation(
+        recommendation_root,
+        observed=EOD_REPLAY_NOW,
+        market_db=input_paths.market_db,
+        calendar=_open_calendar(),
+        receipt_root=receipt_root,
+        _resolved_historical_receipt_diagnostics=resolved_diagnostics,
+    )
+    assert selected is None
+    assert reason == "no_pending_recommendation_already_processed"
+    assert len(resolved_diagnostics) == 1
+    proof = resolved_diagnostics[0]
+    assert proof["issue"] == f"{failed_receipt_path.name}:execution_date_missing"
+    assert proof["source_file_hash"] == processed_receipt["source_file_hash"]
+    assert proof["source_result_id"] == processed_receipt["source_result_id"]
+    assert proof["portfolio_id"] == processed_receipt["portfolio_id"]
+    assert proof["resolved_by_processed_receipt"] == str(processed_receipt_path.resolve())
+    assert proof["processed_recorded_at"] > proof["issue_recorded_at"]
+    assert proof["processed_execution_date"] == EXECUTION_DATE
+    assert proof["processed_receipt_content_sha256"] == processed_receipt["content_sha256"]
+
+    def ledger_fill_count(path: Path) -> int:
+        uri = f"file:{path.resolve().as_posix()}?mode=ro"
+        with sqlite3.connect(uri, uri=True) as connection:
+            connection.execute("PRAGMA query_only=ON")
+            return int(
+                connection.execute("SELECT COUNT(*) FROM paper_trade_ledger").fetchone()[0]
+            )
+
+    ledger_count_before = ledger_fill_count(input_paths.ledger_db)
+    no_op_paths = _queue_paths_for_fixture(
+        tmp_path,
+        input_paths,
+        output_name="already-processed-noop",
+    )
+    no_op = run_paper_execution_daily_from_queue(
+        no_op_paths,
+        recommendation_root=recommendation_root,
+        receipt_root=receipt_root,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+    )
+    assert no_op["status"] == "skipped_no_pending_recommendation"
+    assert no_op["blockers"] == ["no_pending_recommendation_already_processed"]
+    queue = no_op["queue"]
+    assert isinstance(queue, dict)
+    assert queue["resolved_historical_receipts"] == resolved_diagnostics
+    assert ledger_fill_count(input_paths.ledger_db) == ledger_count_before
+
+    candidate_path = Path(str(no_op["candidate_path"]))
+    candidate = _receipt_payload(candidate_path)
+    candidate_content_hash = candidate.pop("content_sha256")
+    assert candidate_content_hash == no_op["content_sha256"]
+    assert candidate_content_hash == paper_producer._payload_hash(candidate)
+    assert paper_producer._file_sha256(candidate_path) == no_op["candidate_file_hash"]
+
+    no_op_operational_receipt = no_op["operational_receipt"]
+    assert isinstance(no_op_operational_receipt, dict)
+    no_op_receipt_path = Path(str(no_op_operational_receipt["path"]))
+    no_op_receipt = _receipt_payload(no_op_receipt_path)
+    no_op_receipt_hash = no_op_receipt.pop("content_sha256")
+    assert no_op_receipt_hash == paper_producer._payload_hash(no_op_receipt)
+    assert no_op_receipt["result"]["queue"]["resolved_historical_receipts"] == (
+        resolved_diagnostics
+    )
+
+    assert queued_recommendation.is_file()
+    assert failed_receipt_path.read_bytes() == failed_receipt_bytes
+    assert processed_receipt_path.read_bytes() == processed_receipt_bytes
+
+
+def test_selected_queue_candidate_hashes_resolved_historical_receipt_proof(
+    tmp_path: Path,
+) -> None:
+    fixture = _queue_fixture_with_calendar_failure_and_processed_receipt(tmp_path)
+    input_paths = fixture["input_paths"]
+    assert isinstance(input_paths, PaperExecutionPaths)
+    recommendation_root = Path(str(fixture["recommendation_root"]))
+    new_recommendation = recommendation_root / "paper_frozen_next_session.json"
+    _recommendation(
+        new_recommendation,
+        created_at="2026-09-07T20:00:00+08:00",
+        decision_date="2026-09-07",
+        price="10.50",
+    )
+    new_payload = _receipt_payload(new_recommendation)
+    new_payload["result_id"] = "scheduled_rec_20260907_200000"
+    new_recommendation.write_text(
+        json.dumps(new_payload, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with sqlite3.connect(input_paths.market_db) as connection:
+        connection.execute(
+            "INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?)",
+            ("20260908", "2330", "測試公司", "10.50", "10.60", 100000),
+        )
+
+    result = run_paper_execution_daily_from_queue(
+        PaperExecutionPaths(
+            **{
+                **fixture["queue_paths"].__dict__,
+                "output_root": tmp_path / "selected-with-history-proof",
+            }
+        ),
+        recommendation_root=recommendation_root,
+        receipt_root=Path(str(fixture["receipt_root"])),
+        now=datetime(2026, 9, 8, 15, 0, tzinfo=TAIPEI),
+        calendar=_Calendar({DECISION_DATE, EXECUTION_DATE, "2026-09-08"}),
+        confirm_append=False,
+    )
+
+    assert result["recommendation"]["path"] == str(new_recommendation.resolve())
+    selection = result["queue_selection"]
+    resolved = selection["resolved_historical_receipts"]
+    assert len(resolved) == 1
+    assert resolved[0]["source_result_id"] == "scheduled_rec_20260904_200000"
+    candidate_path = Path(str(result["candidate_path"]))
+    candidate = _receipt_payload(candidate_path)
+    candidate_hash = candidate.pop("content_sha256")
+    assert candidate_hash == paper_producer._payload_hash(candidate)
+    assert candidate["queue_selection"] == selection
+
+
+@pytest.mark.parametrize(
+    "invalid_change",
+    (
+        "wrong_source_hash",
+        "wrong_portfolio",
+        "wrong_result_id",
+        "other_blocker",
+        "tampered_issue_hash",
+        "invalid_processed_readback",
+    ),
+)
+def test_nonmatching_or_invalid_queue_receipts_remain_blocking(
+    tmp_path: Path,
+    invalid_change: str,
+) -> None:
+    fixture = _queue_fixture_with_calendar_failure_and_processed_receipt(tmp_path)
+    recommendation_root = Path(str(fixture["recommendation_root"]))
+    receipt_root = Path(str(fixture["receipt_root"]))
+    input_paths = fixture["input_paths"]
+    assert isinstance(input_paths, PaperExecutionPaths)
+    failed_receipt_path = Path(str(fixture["failed_receipt_path"]))
+    processed_receipt_path = Path(str(fixture["processed_receipt_path"]))
+
+    if invalid_change == "invalid_processed_readback":
+        processed_receipt = _receipt_payload(processed_receipt_path)
+        ledger = processed_receipt["ledger"]
+        result = processed_receipt["result"]
+        assert isinstance(ledger, dict)
+        assert isinstance(result, dict)
+        result_ledger = result["ledger"]
+        assert isinstance(result_ledger, dict)
+        ledger["readback_verified"] = False
+        result_ledger["readback_verified"] = False
+        _write_receipt_payload(processed_receipt_path, processed_receipt)
+        assert paper_producer._validate_queue_receipt(
+            processed_receipt_path,
+            _receipt_payload(processed_receipt_path),
+        ) == "processed_ledger_readback_not_verified"
+    else:
+        failed_receipt = _receipt_payload(failed_receipt_path)
+        if invalid_change == "wrong_source_hash":
+            failed_receipt["source_file_hash"] = "sha256:" + ("f" * 64)
+            _write_receipt_payload(failed_receipt_path, failed_receipt)
+        elif invalid_change == "wrong_portfolio":
+            failed_receipt["portfolio_id"] = "paper-other"
+            _write_receipt_payload(failed_receipt_path, failed_receipt)
+        elif invalid_change == "wrong_result_id":
+            failed_receipt["source_result_id"] = "different-result"
+            _write_receipt_payload(failed_receipt_path, failed_receipt)
+        elif invalid_change == "other_blocker":
+            result = failed_receipt["result"]
+            assert isinstance(result, dict)
+            result["blockers"] = ["paper_market_data_missing"]
+            _write_receipt_payload(failed_receipt_path, failed_receipt)
+        else:
+            result = failed_receipt["result"]
+            assert isinstance(result, dict)
+            result["blockers"] = ["different_blocker"]
+            _write_receipt_payload(
+                failed_receipt_path,
+                failed_receipt,
+                refresh_content_hash=False,
+            )
+
+    resolved_diagnostics: list[dict[str, str]] = []
+    selected, reason = resolve_pending_recommendation(
+        recommendation_root,
+        observed=EOD_REPLAY_NOW,
+        market_db=input_paths.market_db,
+        calendar=_open_calendar(),
+        receipt_root=receipt_root,
+        _resolved_historical_receipt_diagnostics=resolved_diagnostics,
+    )
+    if invalid_change == "invalid_processed_readback":
+        assert selected == Path(str(fixture["queued_recommendation"]))
+        assert reason == "next_official_session_due"
+        assert resolved_diagnostics == []
+        return
+    assert selected is None
+    assert reason.startswith("pending_execution_receipt_invalid:")
+    assert resolved_diagnostics == []
+
+
+def test_processed_receipt_before_calendar_failure_does_not_resolve_it(
+    tmp_path: Path,
+) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    input_paths = _paths(input_root)
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    queued_recommendation = recommendation_root / "scheduled_rec_20260904_200000.json"
+    queued_recommendation.write_bytes(input_paths.recommendation_json.read_bytes())
+    receipt_root = tmp_path / "receipts"
+    queue_paths = _queue_paths_for_fixture(tmp_path, input_paths)
+
+    processed = run_paper_execution_daily_from_queue(
+        queue_paths,
+        recommendation_root=recommendation_root,
+        receipt_root=receipt_root,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+    )
+    assert processed["operational_receipt"]["queue_state"] == "processed"
+
+    later_failure_time = datetime(2026, 9, 7, 15, 1, tzinfo=TAIPEI)
+    failed = run_paper_execution_daily(
+        input_paths,
+        now=later_failure_time,
+        calendar=_UnknownCalendar(),
+    )
+    failed_with_receipt = persist_operational_receipt(
+        failed,
+        receipt_root,
+        observed=later_failure_time,
+    )
+    failed_operational_receipt = failed_with_receipt["operational_receipt"]
+    assert isinstance(failed_operational_receipt, dict)
+    failed_receipt_path = Path(str(failed_operational_receipt["path"]))
+    assert paper_producer._validate_queue_receipt(
+        failed_receipt_path,
+        _receipt_payload(failed_receipt_path),
+    ) == "execution_date_missing"
+
+    resolved_diagnostics: list[dict[str, str]] = []
+    selected, reason = resolve_pending_recommendation(
+        recommendation_root,
+        observed=later_failure_time,
+        market_db=input_paths.market_db,
+        calendar=_open_calendar(),
+        receipt_root=receipt_root,
+        _resolved_historical_receipt_diagnostics=resolved_diagnostics,
+    )
+    assert selected is None
+    assert reason.startswith("no_pending_recommendation_already_processed_invalid_receipt:")
+    assert resolved_diagnostics == []
+
+
+def test_future_processed_receipt_does_not_resolve_calendar_failure_yet(
+    tmp_path: Path,
+) -> None:
+    fixture = _queue_fixture_with_calendar_failure_and_processed_receipt(tmp_path)
+    recommendation_root = Path(str(fixture["recommendation_root"]))
+    receipt_root = Path(str(fixture["receipt_root"]))
+    input_paths = fixture["input_paths"]
+    assert isinstance(input_paths, PaperExecutionPaths)
+    queued_recommendation = Path(str(fixture["queued_recommendation"]))
+    observed_before_terminal = datetime(2026, 9, 7, 14, 59, tzinfo=TAIPEI)
+
+    resolved_diagnostics: list[dict[str, str]] = []
+    selected, reason = resolve_pending_recommendation(
+        recommendation_root,
+        observed=observed_before_terminal,
+        market_db=input_paths.market_db,
+        calendar=_open_calendar(),
+        receipt_root=receipt_root,
+        _resolved_historical_receipt_diagnostics=resolved_diagnostics,
+    )
+    assert selected == queued_recommendation
+    assert reason == "next_official_session_due"
+    assert resolved_diagnostics == []
+
+
+def test_superseded_receipt_does_not_resolve_calendar_failure(
+    tmp_path: Path,
+) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    input_paths = _paths(input_root)
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    queued_recommendation = recommendation_root / "scheduled_rec_20260904_200000.json"
+    queued_recommendation.write_bytes(input_paths.recommendation_json.read_bytes())
+    receipt_root = tmp_path / "receipts"
+
+    failed = run_paper_execution_daily(
+        input_paths,
+        now=NOW,
+        calendar=_UnknownCalendar(),
+    )
+    failed_with_receipt = persist_operational_receipt(
+        failed,
+        receipt_root,
+        observed=NOW,
+    )
+    failed_operational_receipt = failed_with_receipt["operational_receipt"]
+    assert isinstance(failed_operational_receipt, dict)
+    failed_receipt_path = Path(str(failed_operational_receipt["path"]))
+
+    recommendation = paper_producer._load_recommendation(
+        queued_recommendation,
+        observed=EOD_REPLAY_NOW,
+    )
+    paper_producer._write_superseded_receipt(
+        recommendation,
+        execution_date=date.fromisoformat(EXECUTION_DATE),
+        selected_source_file_hash="sha256:" + ("e" * 64),
+        receipt_root=receipt_root,
+        observed=EOD_REPLAY_NOW,
+    )
+    superseded_path = next(receipt_root.glob("paper_execution_superseded_*.json"))
+    assert paper_producer._validate_queue_receipt(
+        superseded_path,
+        _receipt_payload(superseded_path),
+    ) is None
+    assert paper_producer._validate_queue_receipt(
+        failed_receipt_path,
+        _receipt_payload(failed_receipt_path),
+    ) == "execution_date_missing"
+
+    resolved_diagnostics: list[dict[str, str]] = []
+    selected, reason = resolve_pending_recommendation(
+        recommendation_root,
+        observed=EOD_REPLAY_NOW,
+        market_db=input_paths.market_db,
+        calendar=_open_calendar(),
+        receipt_root=receipt_root,
+        _resolved_historical_receipt_diagnostics=resolved_diagnostics,
+    )
+    assert selected is None
+    assert reason == "no_pending_recommendation_due_for_current_session"
+    assert resolved_diagnostics == []
+
+
+def test_effective_queue_receipts_are_observed_and_identity_scoped() -> None:
+    observed = datetime(2026, 9, 8, 2, 0, tzinfo=timezone.utc)
+    source_hash = "sha256:" + "a" * 64
+    other_hash = "sha256:" + "b" * 64
+
+    def receipt(
+        *,
+        state: str,
+        portfolio: str,
+        execution_day: str,
+        source: str,
+        recorded_at: str,
+        name: str,
+    ) -> _QueueReceipt:
+        return _QueueReceipt(
+            path=Path(name),
+            state=state,
+            source_file_hash=source,
+            source_result_id="result",
+            portfolio_id=portfolio,
+            execution_date=date.fromisoformat(execution_day),
+            recorded_at=datetime.fromisoformat(recorded_at),
+        )
+
+    effective, conflicts = _effective_queue_receipts(
+        (
+            receipt(
+                state="pending_execution",
+                portfolio="paper-main",
+                execution_day="2026-09-07",
+                source=source_hash,
+                recorded_at="2026-09-07T02:00:00+00:00",
+                name="pending.json",
+            ),
+            receipt(
+                state="processed",
+                portfolio="paper-main",
+                execution_day="2026-09-07",
+                source=source_hash,
+                recorded_at="2026-09-07T07:00:00+00:00",
+                name="processed.json",
+            ),
+            receipt(
+                state="pending_execution",
+                portfolio="paper-main",
+                execution_day="2026-09-07",
+                source=source_hash,
+                recorded_at="2026-09-07T08:00:00+00:00",
+                name="late-pending.json",
+            ),
+            receipt(
+                state="processed",
+                portfolio="paper-other",
+                execution_day="2026-09-07",
+                source=source_hash,
+                recorded_at="2026-09-07T09:00:00+00:00",
+                name="other-portfolio.json",
+            ),
+            receipt(
+                state="processed",
+                portfolio="paper-main",
+                execution_day="2026-09-08",
+                source=source_hash,
+                recorded_at="2026-09-07T09:00:00+00:00",
+                name="other-session.json",
+            ),
+            receipt(
+                state="processed",
+                portfolio="paper-main",
+                execution_day="2026-09-07",
+                source=other_hash,
+                recorded_at="2026-09-08T03:00:00+00:00",
+                name="future-terminal.json",
+            ),
+        ),
+        observed_at=observed,
+    )
+
+    assert conflicts == ()
+    assert effective[("paper-main", date(2026, 9, 7), source_hash)].state == "processed"
+    assert ("paper-other", date(2026, 9, 7), source_hash) in effective
+    assert ("paper-main", date(2026, 9, 8), source_hash) in effective
+    assert ("paper-main", date(2026, 9, 7), other_hash) not in effective
+
+
+def test_processed_receipt_closes_historical_pending_for_next_session_selection(
+    tmp_path: Path,
+) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    input_paths = _paths(input_root)
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    original = recommendation_root / "original.json"
+    original.write_bytes(input_paths.recommendation_json.read_bytes())
+    receipt_root = tmp_path / "receipts"
+    queue_paths = PaperExecutionPaths(
+        recommendation_json=tmp_path / "unused-placeholder.json",
+        state_db=input_paths.state_db,
+        market_db=input_paths.market_db,
+        output_root=tmp_path / "waiting-candidate",
+        ledger_db=tmp_path / "paper-ledger.sqlite",
+        sector_membership_path=input_paths.sector_membership_path,
+        sector_membership_file_hash=input_paths.sector_membership_file_hash,
+    )
+    PaperTradeLedgerRepository(queue_paths.ledger_db)
+
+    waiting = run_paper_execution_daily_from_queue(
+        queue_paths,
+        recommendation_root=recommendation_root,
+        receipt_root=receipt_root,
+        now=NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+    )
+    assert waiting["operational_receipt"]["queue_state"] == "pending_execution"
+    processed = run_paper_execution_daily_from_queue(
+        PaperExecutionPaths(
+            **{**queue_paths.__dict__, "output_root": tmp_path / "processed-candidate"}
+        ),
+        recommendation_root=recommendation_root,
+        receipt_root=receipt_root,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+    )
+    assert processed["operational_receipt"]["queue_state"] == "processed", processed.get(
+        "blockers"
+    )
+
+    next_session = recommendation_root / "next-session.json"
+    _recommendation(
+        next_session,
+        created_at="2026-09-07T20:00:00+08:00",
+        decision_date="2026-09-07",
+    )
+    selected, reason = resolve_pending_recommendation(
+        recommendation_root,
+        observed=datetime(2026, 9, 8, 10, 0, tzinfo=TAIPEI),
+        market_db=input_paths.market_db,
+        calendar=_Calendar({DECISION_DATE, EXECUTION_DATE, "2026-09-08"}),
+        receipt_root=receipt_root,
+    )
+
+    assert selected == next_session
+    assert reason == "next_official_session_due"
+
+
+def test_future_processed_receipt_does_not_close_stale_pending_execution(
+    tmp_path: Path,
+) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    input_paths = _paths(input_root)
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    queued = recommendation_root / "queued.json"
+    queued.write_bytes(input_paths.recommendation_json.read_bytes())
+    receipt_root = tmp_path / "receipts"
+    queue_paths = PaperExecutionPaths(
+        recommendation_json=tmp_path / "unused-placeholder.json",
+        state_db=input_paths.state_db,
+        market_db=input_paths.market_db,
+        output_root=tmp_path / "waiting-candidate",
+        ledger_db=tmp_path / "paper-ledger.sqlite",
+        sector_membership_path=input_paths.sector_membership_path,
+        sector_membership_file_hash=input_paths.sector_membership_file_hash,
+    )
+    PaperTradeLedgerRepository(queue_paths.ledger_db)
+    waiting = run_paper_execution_daily_from_queue(
+        queue_paths,
+        recommendation_root=recommendation_root,
+        receipt_root=receipt_root,
+        now=NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+    )
+    processed = run_paper_execution_daily_from_queue(
+        PaperExecutionPaths(
+            **{**queue_paths.__dict__, "output_root": tmp_path / "processed-candidate"}
+        ),
+        recommendation_root=recommendation_root,
+        receipt_root=receipt_root,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+    )
+    assert waiting["operational_receipt"]["queue_state"] == "pending_execution"
+    assert processed["operational_receipt"]["queue_state"] == "processed", processed.get(
+        "blockers"
+    )
+
+    terminal_path = Path(str(processed["operational_receipt"]["path"]))
+    terminal = json.loads(terminal_path.read_text(encoding="utf-8"))
+    terminal["recorded_at"] = "2026-09-08T03:00:00+00:00"
+    unsigned = dict(terminal)
+    unsigned.pop("content_sha256")
+    terminal["content_sha256"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    terminal_path.write_text(
+        json.dumps(terminal, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    selected, reason = resolve_pending_recommendation(
+        recommendation_root,
+        observed=datetime(2026, 9, 8, 10, 0, tzinfo=TAIPEI),
+        market_db=input_paths.market_db,
+        calendar=_Calendar({DECISION_DATE, EXECUTION_DATE, "2026-09-08"}),
+        receipt_root=receipt_root,
+    )
+
+    assert selected is None
+    assert reason == "pending_execution_session_missed:2026-09-07"
+
+
+def test_two_processed_hashes_for_one_session_fail_closed(tmp_path: Path) -> None:
+    input_root = tmp_path / "inputs"
+    input_root.mkdir()
+    input_paths = _paths(input_root)
+    recommendation_root = tmp_path / "recommendation-queue"
+    recommendation_root.mkdir()
+    first = input_paths.recommendation_json
+    second = tmp_path / "second-recommendation.json"
+    _recommendation(second, created_at="2026-09-04T21:00:00+08:00")
+    receipt_root = tmp_path / "receipts"
+    for index, recommendation in enumerate((first, second)):
+        ledger_path = tmp_path / f"ledger-{index}.sqlite"
+        PaperTradeLedgerRepository(ledger_path)
+        result = run_paper_execution_daily(
+            PaperExecutionPaths(
+                recommendation_json=recommendation,
+                state_db=input_paths.state_db,
+                market_db=input_paths.market_db,
+                output_root=tmp_path / f"candidate-{index}",
+                ledger_db=ledger_path,
+                sector_membership_path=input_paths.sector_membership_path,
+                sector_membership_file_hash=input_paths.sector_membership_file_hash,
+            ),
+            now=EOD_REPLAY_NOW,
+            calendar=_open_calendar(),
+            confirm_append=True,
+        )
+        assert result["status"] == "machine_verified_candidate", result.get("blockers")
+        assert result["ledger"]["readback_verified"] is True
+        persist_operational_receipt(result, receipt_root, observed=EOD_REPLAY_NOW)
+
+    selected, reason = resolve_pending_recommendation(
+        recommendation_root,
+        observed=EOD_REPLAY_NOW,
+        market_db=input_paths.market_db,
+        calendar=_open_calendar(),
+        receipt_root=receipt_root,
+    )
+
+    assert selected is None
+    assert reason == "processed_execution_source_conflict:paper-main:2026-09-07"
 
 
 def test_same_day_retry_keeps_first_pending_recommendation_when_newer_source_arrives(
@@ -1017,8 +2409,8 @@ def test_legacy_pending_adoption_rejects_mixed_source_and_identity_blockers(
         calendar=_open_calendar(),
         receipt_root=receipts,
     )
-    assert selected == queued
-    assert reason == "next_official_session_due"
+    assert selected is None
+    assert reason.startswith("pending_execution_receipt_invalid:")
 
 
 def test_pending_execution_session_missed_blocks_cross_day_source_switch(
@@ -1074,7 +2466,7 @@ def test_pending_execution_session_missed_blocks_cross_day_source_switch(
     assert receipt_path.read_bytes() == receipt_bytes
 
 
-def test_missing_queue_is_observable_and_persists_skipped_receipt(
+def test_missing_queue_root_is_blocked_and_persists_failed_receipt(
     tmp_path: Path,
 ) -> None:
     receipt_root = tmp_path / "receipts"
@@ -1093,12 +2485,95 @@ def test_missing_queue_is_observable_and_persists_skipped_receipt(
         confirm_append=True,
     )
 
-    assert result["status"] == "skipped_no_pending_recommendation"
+    assert result["status"] == "blocked"
     assert result["blockers"] == ["recommendation_root_missing"]
     receipt = result["operational_receipt"]
     assert isinstance(receipt, dict)
-    assert receipt["queue_state"] == "skipped"
+    assert receipt["queue_state"] == "failed"
     assert Path(str(receipt["path"])).is_file()
+    assert not (tmp_path / "ledger.sqlite").exists()
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected_status", "expected_queue_state"),
+    [
+        ("no_pending_recommendation", "skipped_no_pending_recommendation", "skipped"),
+        (
+            "no_pending_recommendation_already_processed",
+            "skipped_no_pending_recommendation",
+            "skipped",
+        ),
+        (
+            "no_pending_recommendation_due_for_current_session",
+            "skipped_no_pending_recommendation",
+            "skipped",
+        ),
+        ("recommendation_root_missing", "blocked", "failed"),
+        (
+            "no_pending_recommendation_invalid_source:broken.json:invalid identity",
+            "blocked",
+            "failed",
+        ),
+        (
+            "no_pending_recommendation_invalid_receipt:receipt.json:hash mismatch",
+            "blocked",
+            "failed",
+        ),
+        ("queue_terminal_state_conflict:paper-main:2026-09-07:sha256:abc", "blocked", "failed"),
+        ("processed_execution_source_conflict:paper-main:2026-09-07", "blocked", "failed"),
+        ("pending_execution_source_conflict:2026-09-07", "blocked", "failed"),
+        ("pending_execution_source_missing:2026-09-07", "blocked", "failed"),
+        ("pending_execution_session_missed:2026-09-07", "blocked", "failed"),
+        ("unrecognized_future_queue_reason", "blocked", "failed"),
+    ],
+    ids=[
+        "empty-queue",
+        "already-processed",
+        "no-source-due-today",
+        "missing-root",
+        "invalid-source",
+        "invalid-receipt",
+        "terminal-conflict",
+        "processed-conflict",
+        "pending-conflict",
+        "pinned-source-missing",
+        "missed-pending",
+        "unknown-reason-fails-closed",
+    ],
+)
+def test_queue_selection_status_is_safe_allowlist_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reason: str,
+    expected_status: str,
+    expected_queue_state: str,
+) -> None:
+    monkeypatch.setattr(
+        paper_producer,
+        "resolve_pending_recommendation",
+        lambda *args, **kwargs: (None, reason),
+    )
+    receipt_root = tmp_path / "receipts"
+    result = run_paper_execution_daily_from_queue(
+        PaperExecutionPaths(
+            recommendation_json=tmp_path / "unused-placeholder.json",
+            state_db=tmp_path / "state.sqlite",
+            market_db=tmp_path / "market.sqlite",
+            output_root=tmp_path / "candidate",
+            ledger_db=tmp_path / "ledger.sqlite",
+        ),
+        recommendation_root=tmp_path / "recommendation-root",
+        receipt_root=receipt_root,
+        now=EOD_REPLAY_NOW,
+        calendar=_open_calendar(),
+        confirm_append=True,
+    )
+
+    assert result["status"] == expected_status
+    assert result["blockers"] == [reason]
+    receipt = result["operational_receipt"]
+    assert isinstance(receipt, dict)
+    assert receipt["queue_state"] == expected_queue_state
     assert not (tmp_path / "ledger.sqlite").exists()
 
 
@@ -1161,7 +2636,7 @@ def test_queue_freezes_one_latest_recommendation_per_execution_session(
         receipt_root=receipts,
     )
     assert selected_again is None
-    assert reason_again == "no_pending_recommendation"
+    assert reason_again == "no_pending_recommendation_already_processed"
     states = {
         json.loads(path.read_text(encoding="utf-8"))["queue_state"]
         for path in receipts.glob("*.json")
@@ -1357,10 +2832,14 @@ def test_real_paper_consumer_reads_hash_bound_calendar_cache(
         calendar_cache_path=cache_dir,
     )
 
-    with patch(
-        "data_module.official_trading_calendar.safe_request",
-        side_effect=AssertionError("valid cache must be consumed before network"),
+    with (
+        patch("data_module.official_trading_calendar.datetime") as clock,
+        patch(
+            "data_module.official_trading_calendar.safe_request",
+            side_effect=AssertionError("valid cache must be consumed before network"),
+        ),
     ):
+        clock.now.return_value = EOD_REPLAY_NOW.astimezone(timezone.utc)
         result = run_paper_execution_daily(
             paths,
             now=EOD_REPLAY_NOW,
@@ -1384,3 +2863,37 @@ def test_schedule_snapshots_before_t1_candidate_handoff() -> None:
     execution = text.index("run_paper_execution_daily.py")
     assert valuation < execution
     assert "--confirm-append-paper-ledger" not in text
+
+
+@pytest.mark.parametrize("tamper", [False, True])
+def test_nonretryable_policy_rejection_closes_only_verified_old_source(tmp_path: Path, tamper: bool) -> None:
+    """舊政策拒絕可結束 queue，但任何 candidate 異動仍需阻擋。"""
+    paths = _paths(tmp_path)
+    result = run_paper_execution_daily(paths, now=EOD_REPLAY_NOW, calendar=_open_calendar())
+    candidate_path = Path(str(result["candidate_path"]))
+    body = json.loads(candidate_path.read_text(encoding="utf-8"))
+    body.pop("content_sha256", None)
+    body.update(status="blocked", retryable=False, ledger=None, formal_credit=False,
+                blockers=["paper policy sector archive rejected:PITArchiveConsumerError:archive was not persisted before consumer decision",
+                          "paper_event_source_capture_missing_durable_manifest"])
+    body["content_sha256"] = paper_producer._payload_hash(body)
+    candidate_path.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+    result.update(body, candidate_path=str(candidate_path), candidate_file_hash=paper_producer._file_sha256(candidate_path))
+    saved = persist_operational_receipt(result, tmp_path / "receipts", observed=EOD_REPLAY_NOW)
+    receipt_path = Path(saved["operational_receipt"]["path"])
+    before = receipt_path.read_bytes()
+    if tamper:
+        candidate_path.write_bytes(candidate_path.read_bytes() + b" ")
+    diagnostics = []
+    selected, reason = resolve_pending_recommendation(
+        paths.recommendation_json.parent, observed=EOD_REPLAY_NOW + timedelta(days=1),
+        market_db=paths.market_db, calendar=_open_calendar(), receipt_root=tmp_path / "receipts",
+        _resolved_historical_receipt_diagnostics=diagnostics,
+    )
+    assert selected is None
+    if tamper:
+        assert reason.startswith("pending_execution_receipt_invalid:")
+    else:
+        assert not reason.startswith("pending_execution_receipt_invalid:")
+        assert diagnostics[0]["status"] == "rejected_nonretryable_policy"
+    assert receipt_path.read_bytes() == before

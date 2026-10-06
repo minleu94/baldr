@@ -117,7 +117,7 @@ def test_scheduled_wrapper_wires_transition_evaluation_to_isolated_output(
     assert transition_call["baseline_path"] == health_path
     assert transition_call["output_dir"] == output_root / "position_health_transition"
     assert transition_call["transition_repository_path"] == (
-        output_root / "position_health_transition" / "position_health_transitions.sqlite"
+        output_root / "position_health_transition" / "position_health_transitions_v2.sqlite"
     )
     assert payload["status"] == "degraded"
     assert payload["position_health_transition_status"] == "degraded"

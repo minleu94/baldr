@@ -5,13 +5,14 @@
 
 from PySide6.QtWidgets import (
     QPushButton, QDialog, QVBoxLayout, QHBoxLayout, 
-    QLabel, QTextEdit, QScrollArea, QWidget, QFrame
+    QLabel, QScrollArea, QWidget, QFrame
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QFont, QIcon
-from typing import Dict, List, Optional
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from typing import List
 
 from ui_qt.tab_info_config import get_tab_info
+from ui_qt.theme import MIDNIGHT_ANALYST
 
 
 class InfoDialog(QDialog):
@@ -32,10 +33,8 @@ class InfoDialog(QDialog):
     def _setup_ui(self):
         """設置 UI"""
         self.setWindowTitle("頁面說明")
-        self.setMinimumWidth(500)
-        self.setMinimumHeight(400)
-        self.setMaximumWidth(700)
-        self.setMaximumHeight(600)
+        self.resize(760, 680)
+        self.setMinimumSize(500, 400)
         
         # 主布局
         main_layout = QVBoxLayout(self)
@@ -70,22 +69,18 @@ class InfoDialog(QDialog):
         scroll_layout.addWidget(what_frame)
         
         # 【你通常怎麼用它】
-        how_to_use = info.get("how_to_use", [])
+        sections = info.get("sections", [])
+        for section in sections:
+            scroll_layout.addWidget(self._create_section(
+                section["title"], section["content"]
+            ))
+        how_to_use = [] if sections else info.get("how_to_use", [])
         if how_to_use:
             how_frame = self._create_section(
                 "你通常怎麼用它",
                 self._format_list(how_to_use)
             )
             scroll_layout.addWidget(how_frame)
-        
-        # 【常見誤解 / 不該拿來做什麼】
-        misconceptions = info.get("misconceptions", [])
-        if misconceptions:
-            mis_frame = self._create_section(
-                "常見誤解 / 不該拿來做什麼",
-                self._format_list(misconceptions)
-            )
-            scroll_layout.addWidget(mis_frame)
         
         scroll_layout.addStretch()
         scroll.setWidget(scroll_widget)
@@ -112,14 +107,15 @@ class InfoDialog(QDialog):
             QFrame 元件
         """
         frame = QFrame()
+        frame.setObjectName("pageHelpSection")
         frame.setFrameShape(QFrame.StyledPanel)
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #f5f5f5;
-                border: 1px solid #ddd;
+        frame.setStyleSheet(f"""
+            QFrame#pageHelpSection {{
+                background-color: {MIDNIGHT_ANALYST.surface_2};
+                border: 1px solid {MIDNIGHT_ANALYST.border};
                 border-radius: 5px;
                 padding: 10px;
-            }
+            }}
         """)
         
         layout = QVBoxLayout(frame)
@@ -132,13 +128,15 @@ class InfoDialog(QDialog):
         title_font.setPointSize(12)
         title_font.setBold(True)
         title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #333;")
+        title_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_primary};")
         layout.addWidget(title_label)
         
         # 內容
         content_label = QLabel(content)
+        content_label.setTextFormat(Qt.PlainText)
+        content_label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
         content_label.setWordWrap(True)
-        content_label.setStyleSheet("color: #666; line-height: 1.6;")
+        content_label.setStyleSheet(f"color: {MIDNIGHT_ANALYST.text_secondary};")
         layout.addWidget(content_label)
         
         return frame
@@ -175,6 +173,8 @@ class InfoButton(QPushButton):
         
         # 設置按鈕樣式
         self.setText("i")
+        self.setAccessibleName("頁面說明")
+        self.setAccessibleDescription("開啟目前頁面的操作、欄位與結果判讀說明")
         self.setToolTip("點擊查看頁面說明")
         self.setFixedSize(24, 24)
         
@@ -185,22 +185,30 @@ class InfoButton(QPushButton):
         self.setFont(font)
         
         # 設置樣式（低干擾、hover 才高亮）
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: #e0e0e0;
-                color: #666;
-                border: 1px solid #ccc;
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {MIDNIGHT_ANALYST.surface_2};
+                color: {MIDNIGHT_ANALYST.accent};
+                border: 1px solid {MIDNIGHT_ANALYST.accent};
                 border-radius: 12px;
+                padding: 0;
+                min-width: 22px;
+                max-width: 22px;
+                min-height: 22px;
+                max-height: 22px;
+                font-family: Arial, sans-serif;
+                font-size: 11pt;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #4CAF50;
-                color: white;
-                border: 1px solid #4CAF50;
-            }
-            QPushButton:pressed {
-                background-color: #45a049;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {MIDNIGHT_ANALYST.surface_3};
+                color: {MIDNIGHT_ANALYST.text_primary};
+                border: 1px solid {MIDNIGHT_ANALYST.accent_hover};
+            }}
+            QPushButton:pressed {{
+                background-color: {MIDNIGHT_ANALYST.app_bg};
+                border-color: {MIDNIGHT_ANALYST.accent_hover};
+            }}
         """)
         
         # 連接點擊事件

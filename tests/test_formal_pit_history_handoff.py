@@ -36,6 +36,45 @@ from tests.test_formal_daily_input_producer import (
 TAIPEI = ZoneInfo("Asia/Taipei")
 
 
+def test_old_corrupt_archive_is_not_consumed_outside_requested_coverage(tmp_path, monkeypatch):
+    paths, result = _produce_with_archive(tmp_path, monkeypatch)
+    manifest = Path(str(result["durable_archive"]["archive_manifest_path"]))
+    expected = _expected_universe_for_archive(manifest, tmp_path / "expected.json")
+    root = paths.publication_root / "pit_candidate_archive"
+    old = root / "2014-01-01" / "old-corrupt" / "archive_manifest.json"
+    old.parent.mkdir(parents=True)
+    old.write_text("not valid JSON", encoding="utf-8")
+    report = inspect_pit_candidate_archive_history(
+        root, decision_at=datetime.now(timezone.utc), expected_universe_path=expected,
+        coverage_start=datetime.now(TAIPEI).date(), calendar=_AllTradingDays(),
+    )
+    assert report["out_of_scope_archive_count"] == 1
+    assert report["invalid_archive_count"] == 0
+    assert report["valid_archive_count"] == 1
+    assert report["out_of_scope_archives"][0]["reason"] == "before_requested_coverage_start_not_consumed"
+    assert old.read_text(encoding="utf-8") == "not valid JSON"
+    assert not any("old-corrupt" in str(item) for item in report["blockers"])
+
+
+def test_old_archive_cannot_supply_requested_coverage_and_in_scope_invalid_stays_blocked(tmp_path):
+    root = tmp_path / "archives"
+    old = root / "2014-01-01" / "old" / "archive_manifest.json"
+    current_date = datetime.now(TAIPEI).date()
+    current = root / current_date.isoformat() / "corrupt" / "archive_manifest.json"
+    for path in (old, current):
+        path.parent.mkdir(parents=True)
+        path.write_text("{}", encoding="utf-8")
+    report = inspect_pit_candidate_archive_history(
+        root, decision_at=datetime.now(timezone.utc), expected_universe_path=None,
+        coverage_start=current_date, calendar=_AllTradingDays(),
+    )
+    assert report["out_of_scope_archive_count"] == 1
+    assert report["invalid_archive_count"] == 1
+    assert report["valid_archive_count"] == 0
+    assert report["coverage"]["missing_trading_dates"] == [current_date.isoformat()]
+    assert any("candidate_archive_invalid:corrupt" in str(item) for item in report["blockers"])
+
+
 class _FixtureDateTime(datetime):
     frozen_utc = datetime(2026, 9, 8, 0, 0, tzinfo=timezone.utc)
 

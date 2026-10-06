@@ -9,6 +9,9 @@ if defined BALDR_PYTHON set "PYTHON=%BALDR_PYTHON%"
 if not defined PYTHON if exist "%REPO_ROOT%\.venv\Scripts\python.exe" set "PYTHON=%REPO_ROOT%\.venv\Scripts\python.exe"
 if not defined PYTHON set "PYTHON=python"
 if not defined FORMAL_DAILY_PUBLICATION_ROOT set "FORMAL_DAILY_PUBLICATION_ROOT=%REPO_ROOT%\output\formal_daily_publications"
+rem 使用可重驗的官方 live source 設定，不依賴歷史 TEMP 研究檔。
+rem 明確 caller 設定優先；設定仍限 research，不授予 formal license。
+if not defined PIT_TAXONOMY_SOURCE_CONFIG set "PIT_TAXONOMY_SOURCE_CONFIG=%SCRIPT_DIR%pit_taxonomy_source_config.json"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 
@@ -20,7 +23,7 @@ rem 但最後 exit code 保留失敗，避免排程把部分成功誤報成整�
 call "%REPO_ROOT%\scripts\scheduled\run_formal_rule_source_preopen.cmd"
 set "RULE_SOURCE_EXIT=%ERRORLEVEL%"
 if not "%RULE_SOURCE_EXIT%"=="0" echo Rule source preopen blocked; inspect rule_source\scheduler\rule_source_latest_status.json
-"%PYTHON%" "%REPO_ROOT%\scripts\scheduled\run_pit_sector_membership_preopen_capture.py"
+"%PYTHON%" "%REPO_ROOT%\scripts\scheduled\run_pit_sector_membership_preopen_capture.py" --split-denominator-contract
 set "PIT_EXIT=%ERRORLEVEL%"
 if not "%PIT_EXIT%"=="0" exit /b %PIT_EXIT%
 exit /b %RULE_SOURCE_EXIT%

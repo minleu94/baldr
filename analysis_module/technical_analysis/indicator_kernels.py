@@ -3,14 +3,15 @@
 import numpy as np
 import pandas as pd
 
+from utils.numeric_text import normalize_grouped_numeric_text
+
 
 def clean_price_values(series: pd.Series) -> np.ndarray:
-    """將價格轉成 causal float64 array；缺值只可使用當下以前的觀測值。"""
+    """將價格轉成 float64 array，保留缺值供呼叫端分段計算。"""
     cleaned = series
-    if cleaned.dtype == "object":
-        cleaned = cleaned.mask(cleaned.isin(["--", "", "nan", "NaN", "None"]), np.nan)
-        cleaned = pd.to_numeric(cleaned, errors="coerce")
-    prices = np.ascontiguousarray(cleaned.values, dtype=np.float64)
-    if np.isnan(prices).any():
-        prices = pd.Series(prices).ffill().fillna(0.0).to_numpy(dtype=np.float64)
+    if not pd.api.types.is_numeric_dtype(cleaned.dtype):
+        cleaned = cleaned.map(normalize_grouped_numeric_text)
+    cleaned = pd.to_numeric(cleaned, errors="coerce")
+    prices = cleaned.to_numpy(dtype=np.float64, copy=True, na_value=np.nan)
+    prices[~np.isfinite(prices)] = np.nan
     return np.ascontiguousarray(prices, dtype=np.float64)

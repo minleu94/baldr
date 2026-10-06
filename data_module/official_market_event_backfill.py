@@ -8,14 +8,16 @@ PIT 語意：
 * 停牌與復牌拆成獨立事件，避免停牌列攜帶未來復牌資訊。
 * 有官方事件時分秒時，available_at 與 effective_at 相同。
 * TWT49U／TWTAUU 是事後計算結果表；只可供 label／ledger，並保守地在
-  effective date 台北時間日終才標記 available。
+  effective date 台北時間日終才標記 available。TWT49U 若只發現顯示名稱
+  修訂，修訂版另以 raw response 的實際觀測時間作為 available_at，避免把
+  後來才觀測到的名稱倒灌成歷史已知資料。
 * 官方來源未提供 revision／supersedes link；同 natural key 若內容改變，
   publication 必須 fail closed，不得以 last-write-wins 覆蓋。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timezone
 from hashlib import sha256
 import json
@@ -23,9 +25,12 @@ import os
 from pathlib import Path
 import re
 import shutil
+import ssl
 import time as time_module
 from typing import Any, Callable, Mapping, Protocol, Sequence
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin, urlparse
+from urllib.error import HTTPError
+from urllib.request import HTTPSHandler, HTTPRedirectHandler, Request, build_opener
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -47,6 +52,10 @@ _TAIPEI = ZoneInfo("Asia/Taipei")
 _UTC = timezone.utc
 _SHA256_PREFIX = "sha256:"
 _RESULT_AVAILABLE_TIME = time(23, 59, 59)
+_TWT49U_SOURCE_ID = "twse.TWT49U.ex_right_dividend_result"
+_TWT49U_DISPLAY_NAME_FIELD = "股票名稱"
+_REVISION_KIND_SOURCE_CONTENT = "source_content"
+_REVISION_KIND_DISPLAY_NAME_ONLY = "display_name_only"
 _TWSE_EXPLICIT_NO_DATA_STATUSES = frozenset(
     {
         "很抱歉，沒有符合條件的資料!",
@@ -214,6 +223,10 @@ class CanonicalMarketEvent:
     revision_id: str
     supersedes_revision_id: str | None
     source_record: Mapping[str, str]
+    revision_kind: str = _REVISION_KIND_SOURCE_CONTENT
+    revision_sequence: int = 0
+    economic_content_hash: str | None = None
+    display_revision_of: str | None = None
 
     def __post_init__(self) -> None:
         effective = _aware_datetime(
@@ -289,6 +302,57 @@ class CanonicalMarketEvent:
                 self.supersedes_revision_id,
                 field_name="supersedes_revision_id",
             )
+        if self.revision_kind not in {
+            _REVISION_KIND_SOURCE_CONTENT,
+            _REVISION_KIND_DISPLAY_NAME_ONLY,
+        }:
+            raise ValueError(
+                "unsupported canonical revision_kind"
+            )
+        if (
+            isinstance(self.revision_sequence, bool)
+            or not isinstance(self.revision_sequence, int)
+            or self.revision_sequence < 0
+        ):
+            raise ValueError(
+                "canonical revision_sequence must be non-negative integer"
+            )
+        resolved_economic_content_hash = self.economic_content_hash
+        if resolved_economic_content_hash is None:
+            resolved_economic_content_hash = _economic_content_hash(
+                self.source_id,
+                self.source_record,
+            )
+            object.__setattr__(
+                self,
+                "economic_content_hash",
+                resolved_economic_content_hash,
+            )
+        _require_sha256(
+            resolved_economic_content_hash,
+            field_name="economic_content_hash",
+        )
+        if self.revision_kind == _REVISION_KIND_DISPLAY_NAME_ONLY:
+            if self.source_id != _TWT49U_SOURCE_ID:
+                raise ValueError(
+                    "display-name revision is only supported for TWT49U"
+                )
+            if self.display_revision_of is None:
+                raise ValueError(
+                    "display-name revision predecessor is required"
+                )
+            if self.supersedes_revision_id != self.display_revision_of:
+                raise ValueError(
+                    "display-name revision predecessor mismatch"
+                )
+            if self.revision_sequence <= 0:
+                raise ValueError(
+                    "display-name revision sequence must be positive"
+                )
+        elif self.display_revision_of is not None:
+            raise ValueError(
+                "source-content revision cannot have display predecessor"
+            )
 
     def payload(self) -> dict[str, object]:
         return {
@@ -329,6 +393,10 @@ class CanonicalMarketEvent:
             "revision_id": self.revision_id,
             "supersedes_revision_id": self.supersedes_revision_id,
             "source_record": dict(self.source_record),
+            "revision_kind": self.revision_kind,
+            "revision_sequence": self.revision_sequence,
+            "economic_content_hash": self.economic_content_hash,
+            "display_revision_of": self.display_revision_of,
         }
 
 
@@ -338,6 +406,7 @@ class OfficialMarketEventBackfillRequest:
     raw_custody: Path | None = None
     start_year: int = 2014
     end_year: int = 2026
+    publication_scope: str = "formal_historical"
     timeout_seconds: int = 30
     max_attempts: int = 3
     retry_delay_seconds: int = 2
@@ -346,6 +415,14 @@ class OfficialMarketEventBackfillRequest:
     def __post_init__(self) -> None:
         if self.start_year < 1912 or self.end_year < self.start_year:
             raise ValueError("invalid official market event year range")
+        if self.publication_scope not in {
+            "formal_historical",
+            "prospective_bounded",
+        }:
+            raise ValueError(
+                "publication_scope must be formal_historical or "
+                "prospective_bounded"
+            )
         for field_name in (
             "timeout_seconds",
             "max_attempts",
@@ -430,12 +507,67 @@ class RequestsOfficialEndpointFetcher:
         last_error: BaseException | None = None
         for attempt in range(1, max_attempts + 1):
             try:
-                response = self._session.get(
-                    endpoint.endpoint_url,
-                    params=parameters,
-                    headers=headers,
-                    timeout=timeout_seconds,
-                )
+                try:
+                    response = self._session.get(
+                        endpoint.endpoint_url,
+                        params=parameters,
+                        headers=headers,
+                        timeout=timeout_seconds,
+                        allow_redirects=False,
+                    )
+                except TypeError:
+                    # Keep compatibility with the tiny fake sessions used by
+                    # the deterministic tests; production requests.Session
+                    # accepts allow_redirects.
+                    response = self._session.get(
+                        endpoint.endpoint_url,
+                        params=parameters,
+                        headers=headers,
+                        timeout=timeout_seconds,
+                    )
+                except requests.exceptions.SSLError as exc:
+                    try:
+                        response = _urllib_official_response(
+                            endpoint,
+                            parameters,
+                            headers,
+                            timeout_seconds,
+                        )
+                    except (OSError, RuntimeError, TypeError, ValueError) as fallback_exc:
+                        last_error = RuntimeError(
+                            "requests TLS verification failed and verified urllib "
+                            f"fallback failed: {type(fallback_exc).__name__}: {fallback_exc}"
+                        )
+                        if attempt < max_attempts and retry_delay_seconds:
+                            time_module.sleep(min(30, retry_delay_seconds * attempt))
+                        continue
+                response_source_url = source_url
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    location = _optional_header(response.headers, "Location")
+                    if not location:
+                        raise RuntimeError(
+                            f"official endpoint redirect missing Location: {source_url}"
+                        )
+                    redirect_url = _safe_official_redirect_url(
+                        endpoint,
+                        source_url,
+                        location,
+                        parameters,
+                    )
+                    try:
+                        response = self._session.get(
+                            redirect_url,
+                            headers=headers,
+                            timeout=timeout_seconds,
+                            allow_redirects=False,
+                        )
+                    except TypeError:
+                        response = self._session.get(
+                            redirect_url,
+                            headers=headers,
+                            timeout=timeout_seconds,
+                        )
+                    response_source_url = redirect_url
                 if response.status_code == 200:
                     try:
                         _official_response_classification(
@@ -444,8 +576,8 @@ class RequestsOfficialEndpointFetcher:
                         )
                     except (TypeError, ValueError) as exc:
                         last_error = RuntimeError(
-                            "official endpoint returned anomalous "
-                            f"payload: {source_url}: {exc}"
+                                "official endpoint returned anomalous "
+                            f"payload: {response_source_url}: {exc}"
                         )
                     else:
                         retrieved_at = self._now()
@@ -462,7 +594,7 @@ class RequestsOfficialEndpointFetcher:
                             request_parameters=tuple(
                                 sorted(parameters.items())
                             ),
-                            source_url=source_url,
+                            source_url=response_source_url,
                             retrieved_at=retrieved_at.isoformat(),
                             http_status=200,
                             content_type=str(
@@ -492,7 +624,7 @@ class RequestsOfficialEndpointFetcher:
                             )
                     last_error = RuntimeError(
                         "official endpoint returned HTTP "
-                        f"{response.status_code}: {source_url}; "
+                        f"{response.status_code}: {response_source_url}; "
                         + "; ".join(header_diagnostics)
                     )
                     if (
@@ -517,11 +649,90 @@ class RequestsOfficialEndpointFetcher:
         ) from last_error
 
 
+def _safe_official_redirect_url(
+    endpoint: OfficialMarketEndpoint,
+    source_url: str,
+    location: str,
+    parameters: Mapping[str, str],
+) -> str:
+    """Allow at most one HTTPS redirect on the same official host."""
+
+    target = urljoin(source_url, location)
+    source_host = (urlparse(endpoint.endpoint_url).hostname or "").lower()
+    parsed = urlparse(target)
+    if parsed.scheme.lower() != "https" or (parsed.hostname or "").lower() != source_host:
+        raise RuntimeError(
+            "official endpoint redirect escaped the registered HTTPS host: "
+            f"{source_url} -> {target}"
+        )
+    if not parsed.query:
+        target += ("&" if "?" in target else "?") + urlencode(parameters)
+    return target
+
+
+class _NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+def _urllib_official_response(
+    endpoint: OfficialMarketEndpoint,
+    parameters: Mapping[str, str],
+    headers: Mapping[str, str],
+    timeout_seconds: int,
+) -> Any:
+    """Verified-CA urllib fallback for hosts whose requests CA bundle is stale."""
+
+    url = f"{endpoint.endpoint_url}?{urlencode(parameters)}"
+    opener = build_opener(
+        _NoRedirectHandler,
+        HTTPSHandler(context=ssl.create_default_context()),
+    )
+    for _ in range(2):
+        request = Request(url, headers=dict(headers), method="GET")
+        try:
+            response = opener.open(request, timeout=timeout_seconds)
+        except HTTPError as exc:
+            if exc.code not in {301, 302, 303, 307, 308}:
+                return type(
+                    "UrllibResponse",
+                    (),
+                    {
+                        "status_code": int(exc.code),
+                        "content": exc.read(),
+                        "headers": dict(exc.headers.items()),
+                        "url": url,
+                    },
+                )()
+            location = exc.headers.get("Location")
+            if not location:
+                raise RuntimeError("urllib official redirect missing Location") from exc
+            url = _safe_official_redirect_url(endpoint, url, location, parameters)
+            continue
+        with response:
+            return type(
+                "UrllibResponse",
+                (),
+                {
+                    "status_code": int(getattr(response, "status", 200)),
+                    "content": response.read(),
+                    "headers": dict(response.headers.items()),
+                    "url": response.geturl(),
+                },
+            )()
+    raise RuntimeError("urllib official endpoint returned too many redirects")
+
+
 @dataclass(frozen=True)
 class _PriorPublication:
     manifest_hash: str | None
     manifest_file_hash: str | None
     events: tuple[CanonicalMarketEvent, ...]
+    raw_entries: tuple[Mapping[str, object], ...] = ()
+    raw_root: Path | None = None
+    raw_entry_sources: Mapping[tuple[str, str], Path] = field(
+        default_factory=dict
+    )
 
 
 class OfficialMarketEventBackfillBuilder:
@@ -554,7 +765,17 @@ class OfficialMarketEventBackfillBuilder:
         runs_root = output_root / "runs"
         output_root.mkdir(parents=True, exist_ok=True)
         runs_root.mkdir(parents=True, exist_ok=True)
-        prior = _load_prior_publication(output_root)
+        is_formal_publication = (
+            request.publication_scope == "formal_historical"
+        )
+        # A bounded prospective publication is an isolated current-period
+        # observation.  It must not inherit historical events or move the
+        # formal pointer, even when both scopes share a publication root.
+        prior = (
+            _load_prior_publication(output_root)
+            if is_formal_publication
+            else _PriorPublication(None, None, ())
+        )
         (
             raw_custody_entries,
             raw_custody_manifest_hash,
@@ -574,6 +795,7 @@ class OfficialMarketEventBackfillBuilder:
             request.end_year - request.start_year + 1
         )
         try:
+            _copy_prior_raw_custody(staging, prior)
             for endpoint_index, endpoint in enumerate(self._endpoints):
                 source_effective_values: list[str] = []
                 source_raw_rows = 0
@@ -608,12 +830,14 @@ class OfficialMarketEventBackfillBuilder:
                         / f"year={request_year:04d}"
                         / "response.json"
                     )
-                    target = staging / relative_path
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(raw.payload)
+                    staged_relative_path = _stage_raw_response(
+                        staging,
+                        relative_path,
+                        raw,
+                    )
                     raw_index_entry = _raw_index_entry(
                         raw,
-                        response_path=relative_path.as_posix(),
+                        response_path=staged_relative_path.as_posix(),
                     )
                     raw_index_entry["reused_from_failed_custody"] = reused
                     raw_entries.append(raw_index_entry)
@@ -673,9 +897,19 @@ class OfficialMarketEventBackfillBuilder:
             merged_events, new_event_count, duplicate_count = _merge_events(
                 prior.events,
                 parsed_events,
+                raw_observed_at_by_hash={
+                    str(entry["response_sha256"]): str(
+                        entry["retrieved_at"]
+                    )
+                    for entry in raw_entries
+                },
+            )
+            all_raw_entries = _merge_raw_entries(
+                current=raw_entries,
+                prior=prior.raw_entries,
             )
             raw_index_path = staging / "raw_index.jsonl"
-            raw_index_bytes = _jsonl_bytes(raw_entries)
+            raw_index_bytes = _jsonl_bytes(all_raw_entries)
             raw_index_path.write_bytes(raw_index_bytes)
             canonical_events_path = staging / "canonical" / "events.jsonl"
             canonical_events_path.parent.mkdir(parents=True, exist_ok=True)
@@ -705,6 +939,7 @@ class OfficialMarketEventBackfillBuilder:
                 "generated_at": generated_text,
                 "requested_start_year": request.start_year,
                 "requested_end_year": request.end_year,
+                "publication_scope": request.publication_scope,
                 "raw_index_hash": raw_index_hash,
                 "canonical_events_hash": canonical_events_hash,
                 "source_registry_hash": _sha256_json(source_registry),
@@ -716,13 +951,19 @@ class OfficialMarketEventBackfillBuilder:
             manifest: dict[str, object] = {
                 "schema_version": PUBLICATION_SCHEMA_VERSION,
                 "publication_id": publication_id,
-                "status": "formal_source_publication",
+                "status": (
+                    "formal_source_publication"
+                    if is_formal_publication
+                    else "prospective_source_publication"
+                ),
+                "publication_scope": request.publication_scope,
                 "generated_at": generated_text,
                 "parent_manifest_hash": prior.manifest_hash,
                 "parent_manifest_file_hash": prior.manifest_file_hash,
                 "request": {
                     "start_year": request.start_year,
                     "end_year": request.end_year,
+                    "publication_scope": request.publication_scope,
                     "timeout_seconds": request.timeout_seconds,
                     "max_attempts": request.max_attempts,
                     "retry_delay_seconds": request.retry_delay_seconds,
@@ -747,6 +988,10 @@ class OfficialMarketEventBackfillBuilder:
                     "path": "raw_index.jsonl",
                     "file_hash": raw_index_hash,
                     "request_count": raw_request_count,
+                    "response_count": len(all_raw_entries),
+                    "lineage_response_count": (
+                        len(all_raw_entries) - raw_request_count
+                    ),
                     "network_request_count": network_request_count,
                     "reused_failed_custody_response_count": (
                         reused_raw_response_count
@@ -766,7 +1011,10 @@ class OfficialMarketEventBackfillBuilder:
                     ),
                 },
                 "safety": {
-                    "formal_source_publication": True,
+                    "formal_source_publication": is_formal_publication,
+                    "prospective_source_publication": (
+                        not is_formal_publication
+                    ),
                     "active_sqlite_written": False,
                     "original_raw_files_modified": False,
                     "immutable_raw_responses": True,
@@ -781,6 +1029,11 @@ class OfficialMarketEventBackfillBuilder:
                     "unlinked_revision_last_write_wins": False,
                     "unlinked_revision_fails_closed": True,
                     "all_official_revision_vintages_preserved": True,
+                    "raw_revision_lineage_preserved": True,
+                    "display_name_revision_equivalence_supported": True,
+                    "display_name_revision_requires_later_raw_observation": (
+                        True
+                    ),
                     "same_availability_revision_ties_diagnosed": True,
                     "same_availability_revision_claims_later_visibility": (
                         False
@@ -788,6 +1041,9 @@ class OfficialMarketEventBackfillBuilder:
                     "result_tables_label_ledger_only": True,
                     "result_tables_decision_feature_allowed": False,
                     "atomic_latest_manifest_publish": True,
+                    "formal_latest_manifest_untouched": (
+                        not is_formal_publication
+                    ),
                 },
             }
             manifest["manifest_hash"] = _sha256_json(manifest)
@@ -808,11 +1064,16 @@ class OfficialMarketEventBackfillBuilder:
             else:
                 staging.replace(publication_directory)
             final_manifest_path = publication_directory / "manifest.json"
-            latest_manifest_path = output_root / "latest_manifest.json"
+            latest_manifest_path = output_root / (
+                "latest_manifest.json"
+                if is_formal_publication
+                else "prospective_latest_manifest.json"
+            )
             _atomic_write_json(
                 latest_manifest_path,
                 {
                     "schema_version": LATEST_POINTER_SCHEMA_VERSION,
+                    "publication_scope": request.publication_scope,
                     "publication_id": publication_id,
                     "manifest_path": (
                         f"runs/{publication_id}/manifest.json"
@@ -1376,9 +1637,42 @@ def _canonical_event(
     )
 
 
+def _economic_content_projection(
+    source_id: str,
+    source_record: Mapping[str, str],
+) -> dict[str, str]:
+    excluded_fields = (
+        {_TWT49U_DISPLAY_NAME_FIELD}
+        if source_id == _TWT49U_SOURCE_ID
+        else set()
+    )
+    return {
+        str(key): str(value)
+        for key, value in source_record.items()
+        if str(key) not in excluded_fields
+    }
+
+
+def _economic_content_hash(
+    source_id: str,
+    source_record: Mapping[str, str],
+) -> str:
+    return _sha256_json(
+        {
+            "source_id": source_id,
+            "economic_content": _economic_content_projection(
+                source_id,
+                source_record,
+            ),
+        }
+    )
+
+
 def _merge_events(
     prior: Sequence[CanonicalMarketEvent],
     current: Sequence[CanonicalMarketEvent],
+    *,
+    raw_observed_at_by_hash: Mapping[str, str] | None = None,
 ) -> tuple[tuple[CanonicalMarketEvent, ...], int, int]:
     by_revision: dict[
         tuple[str, str],
@@ -1407,6 +1701,32 @@ def _merge_events(
         revisions = by_natural_key.setdefault(event.natural_key, [])
         if revisions:
             latest = max(revisions, key=_revision_order_key)
+            latest_index = revisions.index(latest)
+            if not _same_revision_identity(event, latest):
+                raise ValueError(
+                    "unlinked_revision_conflict:"
+                    f"{event.natural_key}:revision_identity_changed"
+                )
+            if event.source_id == _TWT49U_SOURCE_ID:
+                display_revision = _display_name_only_revision(
+                    event,
+                    latest,
+                    observation_available_at=(
+                        None
+                        if raw_observed_at_by_hash is None
+                        else raw_observed_at_by_hash.get(
+                            event.raw_response_sha256
+                        )
+                    ),
+                )
+                if display_revision is None:
+                    raise ValueError(
+                        "unlinked_revision_conflict:"
+                        f"{event.natural_key}:prior={latest.revision_id}:"
+                        f"current={event.revision_id}"
+                    )
+                revisions[latest_index] = latest
+                event = display_revision
             if (
                 event.supersedes_revision_id != latest.revision_id
                 or _revision_order_key(event)
@@ -1428,6 +1748,22 @@ def _merge_events(
         revisions.append(event)
         new_event_count += 1
     for natural_key, revisions in by_natural_key.items():
+        availability_counts: dict[str, int] = {}
+        for revision in revisions:
+            availability_counts[revision.available_at] = (
+                availability_counts.get(revision.available_at, 0) + 1
+            )
+        for index, revision in enumerate(revisions):
+            expected_ambiguity = (
+                availability_counts[revision.available_at] > 1
+            )
+            if revision.revision_availability_ambiguous != expected_ambiguity:
+                normalized = replace(
+                    revision,
+                    revision_availability_ambiguous=expected_ambiguity,
+                )
+                revisions[index] = normalized
+                by_revision[(natural_key, normalized.revision_id)] = normalized
         _validate_revision_chain(natural_key, revisions)
     return (
         tuple(
@@ -1470,7 +1806,7 @@ def _validate_revision_chain(
 
 def _revision_order_key(
     event: CanonicalMarketEvent,
-) -> tuple[str, str, int, str]:
+) -> tuple[str, str, int, int, str]:
     return (
         event.available_at,
         event.announced_at or "",
@@ -1479,7 +1815,147 @@ def _revision_order_key(
             if event.source_row_ordinal is not None
             else 2_147_483_647
         ),
+        event.revision_sequence,
         event.revision_id,
+    )
+
+
+def _display_name_only_revision(
+    current: CanonicalMarketEvent,
+    prior: CanonicalMarketEvent,
+    *,
+    observation_available_at: str | None,
+) -> CanonicalMarketEvent | None:
+    """Link only a verified TWT49U display-name correction.
+
+    TWT49U has no source-provided revision predecessor.  Its result table is
+    therefore allowed to create a new revision only when every source and
+    economic field is byte-for-byte stable except ``股票名稱``.  The raw
+    response hash is intentionally allowed to change because the new raw
+    response is separately retained in the next publication.  A separate
+    raw retrieval timestamp is required so a later display observation cannot
+    be presented as known at the original effective date.
+    """
+
+    if (
+        current.source_id != _TWT49U_SOURCE_ID
+        or prior.source_id != _TWT49U_SOURCE_ID
+    ):
+        return None
+    if current.supersedes_revision_id is not None:
+        return None
+    if current.security_name == prior.security_name:
+        return None
+    if current.economic_content_hash != prior.economic_content_hash:
+        return None
+    if observation_available_at is None:
+        return None
+    try:
+        observed_at = _aware_datetime(
+            observation_available_at,
+            field_name="display revision observation_available_at",
+        )
+        prior_available_at = _aware_datetime(
+            prior.available_at,
+            field_name="prior display revision available_at",
+        )
+        effective_at = _aware_datetime(
+            current.effective_at,
+            field_name="display revision effective_at",
+        )
+    except (TypeError, ValueError):
+        return None
+    if observed_at <= prior_available_at or observed_at < effective_at:
+        return None
+    immutable_fields = (
+        "natural_key",
+        "event_id",
+        "source_id",
+        "source_version",
+        "venue",
+        "symbol",
+        "event_type",
+        "event_at",
+        "effective_at",
+        "announced_at",
+        "effective_precision",
+        "availability_basis",
+        "result_only",
+        "formal_trading_restriction_allowed",
+        "formal_label_ledger_allowed",
+        "source_year",
+        "source_url",
+        "license_url",
+        "event_chain_id",
+        "predecessor_event_id",
+        "source_row_ordinal",
+    )
+    if any(
+        getattr(current, field_name) != getattr(prior, field_name)
+        for field_name in immutable_fields
+    ):
+        return None
+    current_record = dict(current.source_record)
+    prior_record = dict(prior.source_record)
+    if current_record.get(_TWT49U_DISPLAY_NAME_FIELD) != current.security_name:
+        return None
+    if prior_record.get(_TWT49U_DISPLAY_NAME_FIELD) != prior.security_name:
+        return None
+    if (
+        {
+            key: value
+            for key, value in current_record.items()
+            if key != _TWT49U_DISPLAY_NAME_FIELD
+        }
+        != {
+            key: value
+            for key, value in prior_record.items()
+            if key != _TWT49U_DISPLAY_NAME_FIELD
+        }
+    ):
+        return None
+    if current.raw_response_sha256 == prior.raw_response_sha256:
+        return None
+    return replace(
+        current,
+        available_at=observed_at.isoformat(),
+        revision_kind=_REVISION_KIND_DISPLAY_NAME_ONLY,
+        revision_sequence=prior.revision_sequence + 1,
+        supersedes_revision_id=prior.revision_id,
+        display_revision_of=prior.revision_id,
+    )
+
+
+def _same_revision_identity(
+    current: CanonicalMarketEvent,
+    prior: CanonicalMarketEvent,
+) -> bool:
+    """Keep natural-key identity stable across every revision type."""
+
+    immutable_fields = (
+        "natural_key",
+        "event_id",
+        "source_id",
+        "source_version",
+        "venue",
+        "symbol",
+        "event_type",
+        "event_at",
+        "effective_at",
+        "effective_precision",
+        "availability_basis",
+        "result_only",
+        "formal_trading_restriction_allowed",
+        "formal_label_ledger_allowed",
+        "source_year",
+        "source_url",
+        "license_url",
+        "event_chain_id",
+        "predecessor_event_id",
+    )
+    return all(
+        getattr(current, field_name) == getattr(prior, field_name)
+        for field_name in immutable_fields
     )
 
 
@@ -1537,6 +2013,221 @@ def _link_event_revisions(
     )
 
 
+def _load_verified_raw_entries(
+    manifest_path: Path,
+    manifest: Mapping[str, object],
+    *,
+    field_prefix: str,
+) -> tuple[list[dict[str, object]], dict[tuple[str, str], Path]]:
+    """Read one publication's raw index and verify every referenced byte file."""
+
+    publication_root = manifest_path.parent.resolve()
+    raw_index = _required_mapping(
+        manifest.get("raw_index"),
+        field_name=f"{field_prefix} raw_index",
+    )
+    relative_raw_index = _required_text(
+        raw_index.get("path"),
+        field_name=f"{field_prefix} raw_index path",
+    )
+    raw_index_path = (publication_root / relative_raw_index).resolve()
+    if not raw_index_path.is_relative_to(publication_root):
+        raise ValueError(f"{field_prefix} raw_index path escapes publication")
+    expected_raw_index_hash = _required_text(
+        raw_index.get("file_hash"),
+        field_name=f"{field_prefix} raw_index file_hash",
+    )
+    _require_sha256(
+        expected_raw_index_hash,
+        field_name=f"{field_prefix} raw_index file_hash",
+    )
+    if _file_sha256(raw_index_path) != expected_raw_index_hash:
+        raise ValueError(f"{field_prefix} raw_index file hash mismatch")
+
+    raw_entries: list[dict[str, object]] = []
+    raw_entry_sources: dict[tuple[str, str], Path] = {}
+    seen_raw_paths: set[str] = set()
+    for raw_entry in _read_jsonl_mappings(raw_index_path):
+        response_relative = _required_text(
+            raw_entry.get("response_path"),
+            field_name=f"{field_prefix} raw response_path",
+        )
+        response_path = (
+            publication_root / response_relative
+        ).resolve()
+        if not response_path.is_relative_to(publication_root):
+            raise ValueError(
+                f"{field_prefix} raw response path escapes publication"
+            )
+        response_hash = _required_text(
+            raw_entry.get("response_sha256"),
+            field_name=f"{field_prefix} raw response_sha256",
+        )
+        _require_sha256(
+            response_hash,
+            field_name=f"{field_prefix} raw response_sha256",
+        )
+        if _file_sha256(response_path) != response_hash:
+            raise ValueError(f"{field_prefix} raw response hash mismatch")
+        if response_relative in seen_raw_paths:
+            raise ValueError(
+                f"{field_prefix} raw index contains duplicate response path"
+            )
+        seen_raw_paths.add(response_relative)
+        key = (response_relative, response_hash)
+        if key in raw_entry_sources:
+            raise ValueError(
+                f"{field_prefix} raw index contains duplicate response"
+            )
+        raw_entry_sources[key] = response_path
+        raw_entries.append(dict(raw_entry))
+    return raw_entries, raw_entry_sources
+
+
+def _verified_prior_manifest_index(
+    runs_root: Path,
+) -> dict[tuple[str, str], tuple[Path, Mapping[str, object]]]:
+    """Index verified immutable manifests by their logical and file hashes."""
+
+    resolved_runs_root = runs_root.resolve()
+    index: dict[tuple[str, str], tuple[Path, Mapping[str, object]]] = {}
+    for candidate in sorted(resolved_runs_root.glob("*/manifest.json")):
+        candidate_path = candidate.resolve()
+        if not candidate_path.is_relative_to(resolved_runs_root):
+            raise ValueError("prior manifest path escapes runs root")
+        try:
+            candidate_manifest = _read_json_mapping(
+                candidate_path,
+                field_name="prior ancestor manifest",
+            )
+            if (
+                candidate_manifest.get("schema_version")
+                != PUBLICATION_SCHEMA_VERSION
+            ):
+                continue
+            candidate_hash = _required_text(
+                candidate_manifest.get("manifest_hash"),
+                field_name="prior ancestor manifest_hash",
+            )
+            _require_sha256(
+                candidate_hash,
+                field_name="prior ancestor manifest_hash",
+            )
+            logical_payload = dict(candidate_manifest)
+            logical_payload.pop("manifest_hash", None)
+            if _sha256_json(logical_payload) != candidate_hash:
+                raise ValueError("prior ancestor manifest logical hash mismatch")
+            candidate_file_hash = _file_sha256(candidate_path)
+            key = (candidate_hash, candidate_file_hash)
+        except (OSError, TypeError, ValueError):
+            # An unrelated quarantine or partially copied run must not become
+            # a parent candidate.  A required parent still fails closed below.
+            continue
+        previous = index.get(key)
+        if previous is not None and previous[0] != candidate_path:
+            raise ValueError("prior ancestor manifest identity collision")
+        index[key] = (candidate_path, candidate_manifest)
+    return index
+
+
+def _raw_lineage_response_path(response_hash: str) -> Path:
+    _require_sha256(
+        response_hash,
+        field_name="prior lineage response_sha256",
+    )
+    return Path("raw_lineage") / f"{response_hash[len(_SHA256_PREFIX):]}.json"
+
+
+def _load_ancestor_raw_lineage(
+    *,
+    manifest: Mapping[str, object],
+    manifest_hash: str,
+    manifest_file_hash: str,
+    runs_root: Path,
+    missing_hashes: set[str],
+) -> tuple[list[dict[str, object]], dict[tuple[str, str], Path]]:
+    """Resolve missing canonical raw hashes through the immutable parent chain."""
+
+    if not missing_hashes:
+        return [], {}
+    manifest_index = _verified_prior_manifest_index(runs_root)
+    current_manifest = manifest
+    current_identity = (manifest_hash, manifest_file_hash)
+    visited = {current_identity}
+    lineage_entries: list[dict[str, object]] = []
+    lineage_sources: dict[tuple[str, str], Path] = {}
+
+    while missing_hashes:
+        parent_hash_value = current_manifest.get("parent_manifest_hash")
+        parent_file_hash_value = current_manifest.get(
+            "parent_manifest_file_hash"
+        )
+        if parent_hash_value is None and parent_file_hash_value is None:
+            break
+        if parent_hash_value is None or parent_file_hash_value is None:
+            raise ValueError("prior parent manifest lineage metadata missing")
+        parent_hash = _required_text(
+            parent_hash_value,
+            field_name="prior parent_manifest_hash",
+        )
+        parent_file_hash = _required_text(
+            parent_file_hash_value,
+            field_name="prior parent_manifest_file_hash",
+        )
+        _require_sha256(
+            parent_hash,
+            field_name="prior parent_manifest_hash",
+        )
+        _require_sha256(
+            parent_file_hash,
+            field_name="prior parent_manifest_file_hash",
+        )
+        parent_identity = (parent_hash, parent_file_hash)
+        if parent_identity in visited:
+            raise ValueError("prior manifest parent lineage cycle")
+        parent_record = manifest_index.get(parent_identity)
+        if parent_record is None:
+            break
+        parent_path, parent_manifest = parent_record
+        visited.add(parent_identity)
+        parent_entries, parent_sources = _load_verified_raw_entries(
+            parent_path,
+            parent_manifest,
+            field_prefix="prior",
+        )
+        for parent_entry in parent_entries:
+            response_hash = _required_text(
+                parent_entry.get("response_sha256"),
+                field_name="prior raw response_sha256",
+            )
+            if response_hash not in missing_hashes:
+                continue
+            response_relative = _required_text(
+                parent_entry.get("response_path"),
+                field_name="prior raw response_path",
+            )
+            source_key = (response_relative, response_hash)
+            source_path = parent_sources[source_key]
+            lineage_relative = _raw_lineage_response_path(response_hash)
+            lineage_key = (lineage_relative.as_posix(), response_hash)
+            if lineage_key not in lineage_sources:
+                lineage_entry = dict(parent_entry)
+                lineage_entry["response_path"] = lineage_relative.as_posix()
+                lineage_entry["lineage_only"] = True
+                lineage_entry["lineage_source_manifest_hash"] = parent_hash
+                lineage_entry["lineage_source_response_path"] = (
+                    response_relative
+                )
+                lineage_entries.append(lineage_entry)
+                lineage_sources[lineage_key] = source_path
+            missing_hashes.remove(response_hash)
+        current_manifest = parent_manifest
+
+    if missing_hashes:
+        raise ValueError("prior canonical raw lineage missing")
+    return lineage_entries, lineage_sources
+
+
 def _load_prior_publication(output_root: Path) -> _PriorPublication:
     pointer_path = output_root / "latest_manifest.json"
     if not pointer_path.exists():
@@ -1577,6 +2268,11 @@ def _load_prior_publication(output_root: Path) -> _PriorPublication:
         raise ValueError("prior manifest logical hash mismatch")
     if pointer.get("manifest_hash") != expected_manifest_hash:
         raise ValueError("latest pointer logical manifest hash mismatch")
+    raw_entries, raw_entry_sources = _load_verified_raw_entries(
+        manifest_path,
+        manifest,
+        field_prefix="prior",
+    )
     canonical = _required_mapping(
         manifest.get("canonical_events"),
         field_name="prior canonical_events",
@@ -1605,11 +2301,36 @@ def _load_prior_publication(output_root: Path) -> _PriorPublication:
         or expected_count != len(events)
     ):
         raise ValueError("prior canonical event_count mismatch")
-    _merge_events((), events)
+    raw_hashes = {
+        _required_text(
+            entry.get("response_sha256"),
+            field_name="prior raw response_sha256",
+        )
+        for entry in raw_entries
+    }
+    missing_hashes = {
+        event.raw_response_sha256
+        for event in events
+        if event.raw_response_sha256 not in raw_hashes
+    }
+    if missing_hashes:
+        lineage_entries, lineage_sources = _load_ancestor_raw_lineage(
+            manifest=manifest,
+            manifest_hash=expected_manifest_hash,
+            manifest_file_hash=expected_file_hash,
+            runs_root=runs_root,
+            missing_hashes=missing_hashes,
+        )
+        raw_entries.extend(lineage_entries)
+        raw_entry_sources.update(lineage_sources)
+    _merge_events(events, ())
     return _PriorPublication(
         manifest_hash=expected_manifest_hash,
         manifest_file_hash=expected_file_hash,
         events=events,
+        raw_entries=tuple(raw_entries),
+        raw_root=manifest_path.parent.resolve(),
+        raw_entry_sources=raw_entry_sources,
     )
 
 
@@ -1758,6 +2479,24 @@ def _event_from_payload(
             )
         ),
         source_record=source_record,
+        revision_kind=(
+            _optional_text(payload.get("revision_kind"))
+            or _REVISION_KIND_SOURCE_CONTENT
+        ),
+        revision_sequence=(
+            0
+            if payload.get("revision_sequence") is None
+            else _required_int(
+                payload.get("revision_sequence"),
+                field_name="canonical revision_sequence",
+            )
+        ),
+        economic_content_hash=_optional_text(
+            payload.get("economic_content_hash")
+        ),
+        display_revision_of=_optional_text(
+            payload.get("display_revision_of")
+        ),
     )
 
 
@@ -1794,6 +2533,141 @@ def _raw_index_entry(
     }
 
 
+def _copy_prior_raw_custody(
+    staging: Path,
+    prior: _PriorPublication,
+) -> None:
+    if prior.raw_root is None:
+        if prior.raw_entries:
+            raise ValueError("prior raw custody root is missing")
+        return
+    prior_root = prior.raw_root.resolve()
+    staging_root = staging.resolve()
+    for raw_entry in prior.raw_entries:
+        relative_text = _required_text(
+            raw_entry.get("response_path"),
+            field_name="prior raw response_path",
+        )
+        relative_path = Path(relative_text)
+        expected_hash = _required_text(
+            raw_entry.get("response_sha256"),
+            field_name="prior raw response_sha256",
+        )
+        _require_sha256(
+            expected_hash,
+            field_name="prior raw response_sha256",
+        )
+        source_path = prior.raw_entry_sources.get(
+            (relative_text, expected_hash)
+        )
+        if source_path is None:
+            source_path = (prior_root / relative_path).resolve()
+            if not source_path.is_relative_to(prior_root):
+                raise ValueError(
+                    "prior raw response path escapes publication"
+                )
+        else:
+            source_path = source_path.resolve()
+        if not source_path.is_file():
+            raise ValueError("prior raw response file is missing")
+        if _file_sha256(source_path) != expected_hash:
+            raise ValueError("prior raw response hash mismatch")
+        target_path = (staging / relative_path).resolve()
+        if not target_path.is_relative_to(staging_root):
+            raise ValueError("prior raw staging path escapes staging root")
+        if target_path.exists():
+            if _file_sha256(target_path) != expected_hash:
+                raise ValueError(
+                    "prior raw staging path has conflicting content"
+                )
+            continue
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path)
+
+
+def _stage_raw_response(
+    staging: Path,
+    requested_relative_path: Path,
+    raw: RawOfficialResponse,
+) -> Path:
+    """Stage current raw bytes without overwriting a prior revision."""
+
+    target = (staging / requested_relative_path).resolve()
+    if not target.is_relative_to(staging.resolve()):
+        raise ValueError("raw response staging path escapes staging root")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists() and _file_sha256(target) == raw.response_sha256:
+        return requested_relative_path
+    if not target.exists():
+        target.write_bytes(raw.payload)
+        return requested_relative_path
+
+    revision_relative_path = requested_relative_path.with_name(
+        f"{requested_relative_path.stem}.revision-"
+        # Keep the filename bounded on Windows; the raw index still stores
+        # and validates the complete SHA-256, so a prefix collision fails
+        # closed below rather than silently reusing bytes.
+        f"{raw.response_sha256[7:15]}.json"
+    )
+    revision_target = (staging / revision_relative_path).resolve()
+    if not revision_target.is_relative_to(staging.resolve()):
+        raise ValueError(
+            "raw response revision path escapes staging root"
+        )
+    revision_target.parent.mkdir(parents=True, exist_ok=True)
+    if revision_target.exists():
+        if _file_sha256(revision_target) != raw.response_sha256:
+            raise ValueError("raw response revision path collision")
+        return revision_relative_path
+    revision_target.write_bytes(raw.payload)
+    return revision_relative_path
+
+
+def _merge_raw_entries(
+    *,
+    current: Sequence[Mapping[str, object]],
+    prior: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """Retain prior raw artifacts needed by append-only canonical rows."""
+
+    result: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for raw_entry in current:
+        entry = dict(raw_entry)
+        key = (
+            _required_text(
+                entry.get("response_path"),
+                field_name="current raw response_path",
+            ),
+            _required_text(
+                entry.get("response_sha256"),
+                field_name="current raw response_sha256",
+            ),
+        )
+        if key in seen:
+            raise ValueError("current raw index contains duplicate response")
+        seen.add(key)
+        result.append(entry)
+    for raw_entry in prior:
+        entry = dict(raw_entry)
+        key = (
+            _required_text(
+                entry.get("response_path"),
+                field_name="prior raw response_path",
+            ),
+            _required_text(
+                entry.get("response_sha256"),
+                field_name="prior raw response_sha256",
+            ),
+        )
+        if key in seen:
+            continue
+        entry["lineage_only"] = True
+        seen.add(key)
+        result.append(entry)
+    return result
+
+
 def _quarantine_failed_staging(
     *,
     staging: Path,
@@ -1826,6 +2700,7 @@ def _quarantine_failed_staging(
         "request": {
             "start_year": request.start_year,
             "end_year": request.end_year,
+            "publication_scope": request.publication_scope,
             "timeout_seconds": request.timeout_seconds,
             "max_attempts": request.max_attempts,
             "retry_delay_seconds": request.retry_delay_seconds,

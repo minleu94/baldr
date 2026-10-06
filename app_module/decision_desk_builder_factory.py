@@ -5,6 +5,9 @@ from datetime import datetime
 from typing import Any, Callable
 
 from app_module.broker_flow_service import BrokerFlowService
+from pathlib import Path
+from app_module.official_quote_exclusion_diagnostics import OfficialQuoteExclusionDiagnostics
+from app_module.market_session_cadence import MarketSessionCadence
 from app_module.decision_desk_dtos import DecisionDeskQuality, MarketRegimeSummary
 from app_module.decision_market_frame import DecisionMarketFrameLoader
 from app_module.decision_desk_service import DecisionDeskSnapshotBuilder
@@ -19,6 +22,7 @@ from app_module.relative_strength_liquidity_service import (
     SQLiteDailyPriceRelativeStrengthLiquidityProvider,
 )
 from app_module.sector_rotation_service import SectorRotationService, SQLiteIndustryIndexSectorRotationProvider
+from app_module.industry_strength_service import IndustryStrengthService
 from app_module.smart_money_semantic_service import SmartMoneySemanticService, SQLiteSmartMoneyPriceProvider
 from app_module.watchlist_service import WatchlistService
 from app_module.watchlist_trigger_service import (
@@ -27,6 +31,7 @@ from app_module.watchlist_trigger_service import (
     WatchlistTriggerService,
 )
 from data_module.config import TWStockConfig
+from data_module.pit_sector_membership_reader import PITSectorMembershipReader
 
 
 logger = logging.getLogger(__name__)
@@ -110,6 +115,7 @@ def build_service_backed_decision_desk_snapshot_builder(
     watchlist_service: WatchlistService | None = None,
     broker_flow_service: BrokerFlowService | None = None,
     smart_money_service: Any | None = None,
+    pit_membership_reader: PITSectorMembershipReader | None = None,
 ) -> DecisionDeskSnapshotBuilder:
     """Create the Decision Desk builder used by non-UI batch and CLI flows."""
 
@@ -118,6 +124,7 @@ def build_service_backed_decision_desk_snapshot_builder(
     active_watchlist_service = watchlist_service or _try_create("WatchlistService", lambda: WatchlistService(config))
     active_broker_flow_service = broker_flow_service or _try_create("BrokerFlowService", lambda: BrokerFlowService(config))
     market_frame_loader = DecisionMarketFrameLoader(config.db_file)
+    cadence = MarketSessionCadence.for_config(config, clock=clock)
 
     market_breadth_service = _try_create(
         "MarketBreadthService",
@@ -125,20 +132,47 @@ def build_service_backed_decision_desk_snapshot_builder(
             SQLiteDailyPriceMarketBreadthProvider(
                 config.db_file,
                 market_frame_loader=market_frame_loader,
-            )
+                quote_diagnostics=OfficialQuoteExclusionDiagnostics(Path(config.db_file).parent.parent / "output/scheduled/daily_price_source_custody", clock=cadence.clock),
+            ),
+            cadence=cadence,
         ),
     )
-    sector_rotation_service = _try_create(
-        "SectorRotationService",
-        lambda: SectorRotationService(SQLiteIndustryIndexSectorRotationProvider(config.db_file)),
-    )
+    active_pit_reader = pit_membership_reader or _configured_pit_reader(config)
+    if active_pit_reader is not None:
+        sector_rotation_service = _try_create(
+            "IndustryStrengthService",
+            lambda: IndustryStrengthService(
+                config,
+                pit_membership_reader=active_pit_reader,
+                **(
+                    {"pit_market_scope": getattr(config, "pit_market_scope")}
+                    if getattr(config, "pit_market_scope", None)
+                    else {}
+                ),
+            ),
+        )
+    else:
+        # PIT is opt-in.  Preserve the existing current-research Decision Desk
+        # section when no explicit PIT artifact has been configured.
+        sector_rotation_service = _try_create(
+            "SectorRotationService",
+            lambda: SectorRotationService(
+                SQLiteIndustryIndexSectorRotationProvider(config.db_file), cadence=cadence
+            ),
+        )
+    if sector_rotation_service is None:
+        sector_rotation_service = _try_create(
+            "SectorRotationService",
+            lambda: SectorRotationService(SQLiteIndustryIndexSectorRotationProvider(config.db_file), cadence=cadence),
+        )
     relative_strength_liquidity_service = _try_create(
         "RelativeStrengthLiquidityService",
         lambda: RelativeStrengthLiquidityService(
             SQLiteDailyPriceRelativeStrengthLiquidityProvider(
                 config.db_file,
                 market_frame_loader=market_frame_loader,
-            )
+            ),
+            cadence=cadence,
         ),
     )
     watchlist_trigger_service = _try_create(
@@ -146,6 +180,7 @@ def build_service_backed_decision_desk_snapshot_builder(
         lambda: WatchlistTriggerService(
             WatchlistServiceWatchlistProvider(active_watchlist_service),
             SQLiteRankingProvider(config.db_file),
+            cadence=cadence,
         ),
     )
     portfolio_alert_service = None
@@ -176,6 +211,7 @@ def build_service_backed_decision_desk_snapshot_builder(
 
     return DecisionDeskSnapshotBuilder(
         provider=DecisionDeskMarketRegimeProvider(active_regime_service),
+        cadence=cadence,
         clock=clock,
         market_breadth_service=market_breadth_service,
         sector_rotation_service=sector_rotation_service,
@@ -193,3 +229,14 @@ def _try_create(name: str, factory: Callable[[], Any]) -> Any | None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Decision Desk %s initialization failed: %s", name, exc)
         return None
+
+
+def _configured_pit_reader(config: Any) -> PITSectorMembershipReader | None:
+    """只在 config 明確指定 artifact path 時組合 PIT reader。"""
+
+    configured = getattr(config, "pit_sector_membership_paths", None)
+    if configured is None:
+        configured = getattr(config, "pit_sector_membership_path", None)
+    if not configured:
+        return None
+    return PITSectorMembershipReader.from_config(config)

@@ -12,6 +12,14 @@
 
 本文檔說明如何使用主模組更新每日股票數據。系統已實現完整的數據更新功能，包括批量更新、單日更新和數據合併。
 
+產業指數批次更新只檢查本次請求交易日的 capture／projection marker。請求範圍外的舊 CSV 日期即使仍屬 unknown，也不會讓當日已驗證的 no-op 排程失敗；請求範圍內的未驗證 legacy 日期仍須回報 unknown／失敗，不可當成已更新或整份同步至 SQLite。排錯時應對照 `data_update_quick/latest_status.json` 的 `verified_skipped_dates`、`unverified_legacy_dates` 與 `failed_dates`，不要僅看 CSV 是否存在。
+
+## 2026-10-03 freshness 與隔離候選操作補充
+
+更新頁的 Formal／Candidate 狀態分別對應正式 SQLite 與隔離 Candidate DB；`FORMAL_AVAILABLE`／`CANDIDATE_AVAILABLE` 是狀態 token，不是同一資料集的兩種名稱。freshness receipt 綁定 `DATA_ROOT`、SQLite／Candidate DB 路徑、cutoff 與各來源實際期別；台北 04:30 cutoff 前檢查的 `expected_wait` 若到查詢時已跨過 cutoff，必須重新執行唯讀 freshness probe，狀態先標 unknown／needs_revalidation，不自行推定 current 或 stale。
+
+更新頁「取消目前工作」採合作式停止，於檔案／日期／transaction 安全邊界生效。已安全提交的部分資料可保留，但本輪仍應明示取消或失敗並重新檢查，不可標為完整成功。TDCC 是週候選、只對應官方最近一個每週最後營業日；資料 rows 與 checkpoint 同 transaction，完全相同自然鍵可冪等重試，衝突或未完成 transaction 仍須診斷。MOPS 月營收抓取取消可以保留完整 raw HTML，未完成 candidate CSV 不發布；「已解析資料」數量不表示候選列已可用。詳細 UI 操作與安全邊界見[完整手冊第 4 節](../07_guides/APPLICATION_MANUAL.md)。
+
 ## 批量更新（推薦 ⭐⭐⭐）
 
 ### 使用方式

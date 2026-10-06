@@ -22,6 +22,7 @@ import tempfile
 import time
 from uuid import uuid4
 
+from data_module.contracts.fundamental import SourceDiagnostic
 from data_module.fundamental_availability_entrypoint import (
     validate_monthly_revenue_availability_file,
 )
@@ -34,7 +35,6 @@ from data_module.ml_storage_capacity import (
     acquire_heavy_chain_reservation,
     release_heavy_chain_reservation,
 )
-from decision_module.factors.factor_dtos import FactorDiagnostic
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,7 @@ class MonthlyRevenueAvailabilityMergePlan:
     unchanged_count: int
     conflict_count: int
     merged_rows: tuple[dict[str, str], ...]
-    diagnostics: tuple[FactorDiagnostic, ...] = ()
+    diagnostics: tuple[SourceDiagnostic, ...] = ()
     target_sha256: str | None = None
     merged_sha256: str | None = None
 
@@ -109,7 +109,7 @@ def plan_monthly_revenue_availability_merge(
 
     candidate_path = Path(candidate_file).expanduser().resolve(strict=False)
     target_path = Path(target_file).expanduser().resolve(strict=False)
-    diagnostics: list[FactorDiagnostic] = []
+    diagnostics: list[SourceDiagnostic] = []
 
     validation = validate_monthly_revenue_availability_file(candidate_path)
     diagnostics.extend(validation.diagnostics)
@@ -457,10 +457,9 @@ def _diagnostic(
     message: str,
     *,
     stock_code: str = "",
-) -> FactorDiagnostic:
-    return FactorDiagnostic(
+) -> SourceDiagnostic:
+    return SourceDiagnostic(
         code=f"fundamental_availability.{code}",
-        factor_name="fundamental.availability",
         stock_code=stock_code,
         message=message,
     )

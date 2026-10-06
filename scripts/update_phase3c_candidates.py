@@ -13,6 +13,10 @@ sys.path.insert(0, str(project_root))
 from data_module.config import TWStockConfig
 from data_module.db_manager import DBManager
 from data_module.p0_candidate_repository import validate_candidate_working_copy_path
+from data_module.official_trading_calendar import (
+    OfficialTradingCalendar,
+    OfficialTradingCalendarError,
+)
 from data_module.official_phase3c_fetcher import (
     fetch_institutional_flows,
     fetch_credit_transactions,
@@ -671,6 +675,8 @@ def update_phase3c_candidates_range(
     include_latest_tdcc_snapshot: bool = False,
     progress_callback=None,
     confirm_token: Optional[str] = None,
+    calendar=None,
+    cancel_callback=None,
 ):
     """官方交易日驅動之受控 Phase 3C 區間資料回補。"""
     st_date = date.fromisoformat(start_date)
@@ -691,6 +697,7 @@ def update_phase3c_candidates_range(
         rate_limit_seconds=rate_limit_seconds,
         allow_online_calendar_probe=allow_online_calendar_probe,
         include_latest_tdcc_snapshot=include_latest_tdcc_snapshot,
+        calendar=calendar,
     )
 
     summary = runner.run_backfill(
@@ -699,16 +706,75 @@ def update_phase3c_candidates_range(
         dry_run=dry_run,
         confirm_token=confirm_token,
         progress_callback=progress_callback,
+        cancel_callback=cancel_callback,
     )
 
+    unresolved_calendar_dates = sorted(
+        {
+            str(item.get("decision_date"))
+            for item in summary.daily_results
+            if item.get("status") == "BLOCKED_CALENDAR_UNKNOWN"
+        }
+    )
+    message = (
+        f"成功處理 {summary.total_days} 天 "
+        f"({summary.succeeded_days_count} 成功, {summary.skipped_days_count} 跳過, "
+        f"{summary.failed_days_count} 待重試)"
+    )
+    if bool(getattr(summary, "cancelled", False)):
+        message = (
+            f"候選更新已安全取消；已完成 {summary.succeeded_days_count} 天、"
+            f"跳過 {summary.skipped_days_count} 天、{summary.failed_days_count} 天待重試"
+        )
+    if unresolved_calendar_dates:
+        message += (
+            "；官方交易日未解析，需重試日期："
+            + ", ".join(unresolved_calendar_dates)
+        )
+
     return {
-        "success": summary.failed_days_count == 0,
+        "success": summary.failed_days_count == 0 and not bool(getattr(summary, "cancelled", False)),
+        "cancelled": bool(getattr(summary, "cancelled", False)),
         "summary": summary,
-        "message": f"成功處理 {summary.total_days} 天 ({summary.succeeded_days_count} 成功, {summary.skipped_days_count} 跳過, {summary.failed_days_count} 待重試)",
+        "message": message,
     }
 
 
-if __name__ == "__main__":
+def _calendar_for_candidate_cli(
+    calendar_cache_path: str | Path | None,
+    start_date: str,
+    end_date: str,
+) -> OfficialTradingCalendar | None:
+    """Load and validate an explicit annual calendar cache without online fallback."""
+    if calendar_cache_path is None:
+        return None
+
+    try:
+        cache_path = Path(calendar_cache_path).expanduser().resolve()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise OfficialTradingCalendarError(
+            "explicit annual calendar cache path cannot be resolved"
+        ) from exc
+    if not cache_path.exists():
+        raise OfficialTradingCalendarError(
+            f"explicit annual calendar cache path does not exist: {cache_path}"
+        )
+
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+    first_year = min(start.year, end.year)
+    last_year = max(start.year, end.year)
+    calendar = OfficialTradingCalendar(calendar_cache_path=cache_path)
+    for calendar_year in range(first_year, last_year + 1):
+        if calendar._load_cached_year_schedule(calendar_year) is None:
+            raise OfficialTradingCalendarError(
+                "explicit annual calendar cache unavailable for "
+                f"{calendar_year}; online fallback is disabled"
+            )
+    return calendar
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
     import argparse
 
     # Windows 傳統主控台可能仍使用 cp1252；先固定成 UTF-8，讓中文 help 與
@@ -733,12 +799,20 @@ if __name__ == "__main__":
         help="僅在本地官方交易日證據缺失時，允許一次 TWSE 查詢；預設不連線猜測。",
     )
     parser.add_argument(
+        "--calendar-cache-path",
+        type=Path,
+        help=(
+            "指定 hash-bound TWSE 年度日曆 cache；驗證指定日期涵蓋年度，"
+            "使用時停用 online fallback。"
+        ),
+    )
+    parser.add_argument(
         "--include-latest-tdcc",
         action="store_true",
         help="另外取得 TDCC 最新一週 snapshot；不假造逐日歷史資料。",
     )
     parser.add_argument("--dry-run", action="store_true", help="強制 dry-run", default=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     is_dry_run = True
     confirm_token = None
@@ -758,6 +832,18 @@ if __name__ == "__main__":
     elif not ed_str:
         ed_str = date.today().isoformat()
 
+    try:
+        calendar = _calendar_for_candidate_cli(
+            args.calendar_cache_path,
+            st_str,
+            ed_str,
+        )
+    except (OfficialTradingCalendarError, ValueError) as exc:
+        parser.error(f"官方交易日曆不可用：{exc}")
+    allow_online_calendar_probe = bool(
+        args.allow_online_calendar_probe and calendar is None
+    )
+
     res = update_phase3c_candidates_range(
         start_date=st_str,
         end_date=ed_str,
@@ -765,8 +851,19 @@ if __name__ == "__main__":
         db_path=args.db_path,
         sources=sources_list,
         rate_limit_seconds=args.rate_limit_seconds,
-        allow_online_calendar_probe=args.allow_online_calendar_probe,
+        allow_online_calendar_probe=allow_online_calendar_probe,
         include_latest_tdcc_snapshot=args.include_latest_tdcc,
         confirm_token=confirm_token,
+        calendar=calendar,
     )
-    logger.info(res["message"])
+    success = res.get("success") is True
+    message = str(res.get("message") or "Phase 3C candidate update finished")
+    if success:
+        logger.info(message)
+        return 0
+    logger.error(message)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

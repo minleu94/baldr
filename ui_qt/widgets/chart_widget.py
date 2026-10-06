@@ -11,6 +11,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from matplotlib.ticker import MaxNLocator
 import pandas as pd
 import numpy as np
 from typing import Optional, Dict, Any, Tuple
@@ -858,7 +859,7 @@ class DrawdownCurveWidget(QWidget):
 
 
 class TradeReturnHistogramWidget(QWidget):
-    """交易報酬分佈直方圖"""
+    """交易報酬圖表；小樣本逐筆呈現，大樣本才使用直方圖。"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -875,14 +876,14 @@ class TradeReturnHistogramWidget(QWidget):
         layout.addWidget(self.canvas)
         
         self.ax = self.figure.add_subplot(111)
-        self.ax.set_title('交易報酬分佈 (Trade Return Distribution)', fontsize=12, fontweight='bold')
+        self.ax.set_title('交易報酬', fontsize=12, fontweight='bold')
         self.ax.set_xlabel('報酬率 (%)')
         self.ax.set_ylabel('頻率')
         self.ax.grid(True, alpha=0.3, axis='y')
     
     def plot(self, returns: np.ndarray, stats: Optional[Dict[str, float]] = None):
         """
-        繪製交易報酬分佈
+        繪製自適應交易報酬圖表：小樣本逐筆，大樣本直方圖。
         
         Args:
             returns: 報酬率陣列（百分比）
@@ -895,35 +896,74 @@ class TradeReturnHistogramWidget(QWidget):
             self.canvas.draw()
             return
         
-        # 繪製直方圖（單筆交易時使用較少的 bins）
-        num_bins = min(30, max(5, len(returns)))  # 至少5個bins，最多30個
-        n, bins, patches = self.ax.hist(returns, bins=num_bins, alpha=0.7, color='#2196F3', edgecolor='black')
-        
-        # 根據正負值設定顏色
-        for i, (patch, bin_val) in enumerate(zip(patches, bins[:-1])):
-            if bin_val < 0:
-                patch.set_facecolor('#F44336')  # 紅色（虧損）
-            else:
-                patch.set_facecolor('#4CAF50')  # 綠色（獲利）
-        
-        # 顯示統計資訊
-        if stats:
-            mean = stats.get('mean', 0)
-            median = stats.get('median', 0)
-            var_95 = stats.get('var_95', 0)
-            
-            # 標記平均值和中位數
-            self.ax.axvline(mean, color='blue', linestyle='--', linewidth=2, label=f'平均值: {mean:.2f}%')
-            self.ax.axvline(median, color='orange', linestyle='--', linewidth=2, label=f'中位數: {median:.2f}%')
-            
-            # 標記 95% VaR
-            if var_95 is not None:
-                self.ax.axvline(var_95, color='red', linestyle=':', linewidth=2, label=f'95% VaR: {var_95:.2f}%')
-        
-        self.ax.set_title('交易報酬分佈 (Trade Return Distribution)', fontsize=12, fontweight='bold')
+        values = np.asarray(returns, dtype=float)
+        sample_count = len(values)
+        if sample_count < 10:
+            positions = np.arange(sample_count)
+            colors = ['#F44336' if value < 0 else '#4CAF50' for value in values]
+            max_abs = max(float(np.max(np.abs(values))), 1.0)
+            self.ax.axvline(0, color='#64748b', linewidth=1.5)
+            self.ax.barh(positions, values, color=colors, alpha=0.85)
+            for position, value in zip(positions, values):
+                self.ax.text(
+                    value + (max_abs * 0.025 if value >= 0 else -max_abs * 0.025),
+                    position,
+                    f'{value:+.2f}%',
+                    va='center',
+                    ha='left' if value >= 0 else 'right',
+                    fontsize=9,
+                )
+            self.ax.set_xlim(-max_abs * 1.2, max_abs * 1.2)
+            self.ax.set_yticks(positions)
+            self.ax.set_yticklabels([f'交易 {index}' for index in range(1, sample_count + 1)])
+            self.ax.invert_yaxis()
+            self.ax.set_title(
+                f'交易報酬（逐筆）｜樣本 {sample_count} 筆；不宜解讀為分布或 95% VaR',
+                fontsize=12,
+                fontweight='bold',
+            )
+        else:
+            max_abs = max(abs(float(values.min())), abs(float(values.max())))
+            max_abs = max(float(np.ceil(max_abs)), 1.0)
+            num_bins = min(16, max(8, sample_count))
+            if num_bins % 2 != 0:
+                num_bins += 1
+            bins = np.linspace(-max_abs, max_abs, num_bins + 1)
+            _, _, patches = self.ax.hist(
+                values,
+                bins=bins,
+                alpha=0.7,
+                color='#2196F3',
+                edgecolor='black',
+            )
+            for patch, bin_val in zip(patches, bins[:-1]):
+                patch.set_facecolor('#F44336' if bin_val < 0 else '#4CAF50')
+            self.ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+
+            self.ax.set_title(
+                f'交易報酬分布｜樣本 {sample_count} 筆'
+                + ('；95% VaR 需至少 20 筆，暫不顯示' if sample_count < 20 else ''),
+                fontsize=12,
+                fontweight='bold',
+            )
+
+            if stats:
+                mean = stats.get('mean')
+                median = stats.get('median')
+                if mean is not None:
+                    self.ax.axvline(mean, color='blue', linestyle='--', linewidth=2, label=f'平均值: {mean:.2f}%')
+                if median is not None:
+                    self.ax.axvline(median, color='orange', linestyle='--', linewidth=2, label=f'中位數: {median:.2f}%')
+                var_95 = stats.get('var_95') if sample_count >= 20 else None
+                if var_95 is not None:
+                    self.ax.axvline(var_95, color='red', linestyle=':', linewidth=2, label=f'95% VaR: {var_95:.2f}%')
+
         self.ax.set_xlabel('報酬率 (%)')
         self.ax.set_ylabel('頻率')
-        self.ax.legend(loc='best')
+        if sample_count < 10:
+            self.ax.set_ylabel('逐筆交易')
+        if sample_count >= 10 and stats:
+            self.ax.legend(loc='best')
         self.ax.grid(True, alpha=0.3, axis='y')
         
         self.canvas.draw()
@@ -999,4 +1039,3 @@ class HoldingDaysHistogramWidget(QWidget):
         self.ax.grid(True, alpha=0.3, axis='y')
         
         self.canvas.draw()
-

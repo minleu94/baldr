@@ -4,7 +4,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
+from typing import List, Mapping, Optional, Dict, Any, cast
 from enum import Enum
 from copy import deepcopy
 from decimal import Decimal
@@ -16,6 +16,26 @@ from app_module.dtos.portfolio_dtos import (
     PositionDTO,
     TradeDTO,
 )
+from app_module.dtos.decision_continuity_dtos import (
+    ACTION_ACCEPTED,
+    ACTION_ADDED,
+    ACTION_CLEARED,
+    ACTION_NOTE,
+    ACTION_REMOVED,
+    ACTION_REVIEW_SCHEDULED,
+    ACTION_SKIPPED,
+    ACTION_UPDATED,
+    DECISION_CONTINUITY_RECORD_TYPE,
+    DECISION_CONTINUITY_SCHEMA_VERSION,
+    DECISION_CONTINUITY_TOMBSTONE_ACTIONS,
+    DECISION_IDENTITY_SCHEMA_VERSION,
+    DecisionContinuityRevision,
+    DecisionIdentity,
+    IDENTITY_STATUS_CONFLICT,
+    IDENTITY_STATUS_LINKED,
+    IDENTITY_STATUS_UNKNOWN,
+    IDENTITY_STATUS_UNLINKED,
+)
 
 
 class ValidationStatus(Enum):
@@ -25,100 +45,10 @@ class ValidationStatus(Enum):
     FAIL = "FAIL"  # 不符合 SOP，禁止 Promote
 
 
-@dataclass
-class RecommendationDTO:
-    """股票推薦數據傳輸對象"""
-    stock_code: str
-    stock_name: str
-    close_price: float | Decimal
-    price_change: float  # 漲幅百分比
-    total_score: float
-    indicator_score: float
-    pattern_score: float
-    volume_score: float
-    recommendation_reasons: str
-    industry: str
-    regime_match: bool
-    
-    # 追溯元數據
-    score_percentile_bp: Optional[int] = None
-    eligible_universe_size: Optional[int] = None
-    eligible_universe_date: Optional[str] = None
-    ranking_method: Optional[str] = None
-    threshold_mode: str = "fixed"
-    
-    def to_dict(self) -> dict:
-        """轉換為字典"""
-        result = {
-            '證券代號': self.stock_code,
-            '證券名稱': self.stock_name,
-            '收盤價': self.close_price,
-            '漲幅%': self.price_change,
-            '總分': self.total_score,
-            '指標分': self.indicator_score,
-            '圖形分': self.pattern_score,
-            '成交量分': self.volume_score,
-            '推薦理由': self.recommendation_reasons,
-            '產業': self.industry,
-            'Regime匹配': '是' if self.regime_match else '否',
-            'score_percentile_bp': self.score_percentile_bp,
-            'eligible_universe_size': self.eligible_universe_size,
-            'eligible_universe_date': self.eligible_universe_date,
-            'ranking_method': self.ranking_method,
-            'threshold_mode': self.threshold_mode
-        }
-        if self.threshold_mode == "quantile":
-            result['百分位'] = f"{self.score_percentile_bp / 100:.2f}%" if self.score_percentile_bp is not None else "N/A"
-            result['母體數'] = self.eligible_universe_size if self.eligible_universe_size is not None else "N/A"
-            result['排名日期'] = self.eligible_universe_date if self.eligible_universe_date is not None else "N/A"
-            result['排名方法'] = self.ranking_method if self.ranking_method is not None else "N/A"
-            result['門檻模式'] = '百分位'
-        return result
-
-    @classmethod
-    def from_dict(cls, data: dict) -> 'RecommendationDTO':
-        """從字典還原 RecommendationDTO，支援英文與舊有中文 key，並確保對歷史欄位的相容性"""
-        stock_code = data.get('stock_code', data.get('證券代號', ''))
-        stock_name = data.get('stock_name', data.get('證券名稱', ''))
-        close_price = data.get('close_price', data.get('收盤價', 0.0))
-        price_change = data.get('price_change', data.get('漲幅%', 0.0))
-        total_score = data.get('total_score', data.get('總分', 0.0))
-        indicator_score = data.get('indicator_score', data.get('指標分', 0.0))
-        pattern_score = data.get('pattern_score', data.get('圖形分', 0.0))
-        volume_score = data.get('volume_score', data.get('成交量分', 0.0))
-        recommendation_reasons = data.get('recommendation_reasons', data.get('推薦理由', ''))
-        industry = data.get('industry', data.get('產業', ''))
-        
-        regime_match_val = data.get('regime_match', data.get('Regime匹配', False))
-        if isinstance(regime_match_val, str):
-            regime_match = (regime_match_val == '是')
-        else:
-            regime_match = bool(regime_match_val)
-            
-        score_percentile_bp = data.get('score_percentile_bp')
-        eligible_universe_size = data.get('eligible_universe_size')
-        eligible_universe_date = data.get('eligible_universe_date')
-        ranking_method = data.get('ranking_method')
-        threshold_mode = data.get('threshold_mode', 'fixed')
-        
-        return cls(
-            stock_code=str(stock_code),
-            stock_name=str(stock_name),
-            close_price=Decimal(str(close_price)),
-            price_change=float(price_change),
-            total_score=float(total_score),
-            indicator_score=float(indicator_score),
-            pattern_score=float(pattern_score),
-            volume_score=float(volume_score),
-            recommendation_reasons=str(recommendation_reasons),
-            industry=str(industry),
-            regime_match=regime_match,
-            score_percentile_bp=score_percentile_bp,
-            eligible_universe_size=eligible_universe_size,
-            eligible_universe_date=eligible_universe_date,
-            ranking_method=ranking_method,
-            threshold_mode=threshold_mode
-        )
+from app_module.recommendation.legacy_dtos import (
+    RecommendationDTO,
+    RecommendationResultDTO,
+)
 
 
 @dataclass
@@ -137,75 +67,6 @@ class RegimeResultDTO:
             'confidence': self.confidence,
             'details': self.details
         }
-
-
-@dataclass
-class RecommendationResultDTO:
-    """推薦結果數據傳輸對象（固定欄位，可保存、可追溯）"""
-    result_id: str  # 結果ID（唯一標識）
-    result_name: str  # 結果名稱
-    config: Dict[str, Any]  # 策略配置（完整配置）
-    recommendations: List[RecommendationDTO]  # 推薦股票列表
-    regime: Optional[str] = None  # 市場狀態
-    created_at: Optional[str] = None  # 創建時間
-    notes: str = ""  # 備註
-
-    excluded_candidates_json: List[Dict[str, Any]] = field(default_factory=list)
-    screening_matrix_json: List[Dict[str, Any]] = field(default_factory=list)
-    why_not_payload_json: List[Dict[str, Any]] = field(default_factory=list)
-    liquidity_gate_payload_json: List[Dict[str, Any]] = field(default_factory=list)
-    exclusion_quality: Optional[str] = None
-    exclusion_warnings_json: List[str] = field(default_factory=list)
-    run_context: Dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        """相容既有保存協調器，以 config 接點接收完整執行快照。"""
-        self.config = deepcopy(self.config)
-        supplied_context = self.config.pop("_recommendation_run_context", {})
-        self.run_context = deepcopy(self.run_context or supplied_context)
-
-    def to_dict(self) -> dict:
-        """轉換為字典"""
-        return {
-            'result_id': self.result_id,
-            'result_name': self.result_name,
-            'config': self.config,
-            'recommendations': [rec.to_dict() for rec in self.recommendations],
-            'regime': self.regime,
-            'created_at': self.created_at,
-            'notes': self.notes,
-            'excluded_candidates_json': self.excluded_candidates_json,
-            'screening_matrix_json': self.screening_matrix_json,
-            'why_not_payload_json': self.why_not_payload_json,
-            'liquidity_gate_payload_json': self.liquidity_gate_payload_json,
-            'exclusion_quality': self.exclusion_quality,
-            'exclusion_warnings_json': self.exclusion_warnings_json,
-            'run_context': deepcopy(self.run_context),
-        }
-    
-    @classmethod
-    def from_dict(cls, data: dict) -> 'RecommendationResultDTO':
-        """從字典創建對象"""
-        recommendations = [
-            RecommendationDTO.from_dict(rec) if isinstance(rec, dict) else rec
-            for rec in data.get('recommendations', [])
-        ]
-        return cls(
-            result_id=data.get('result_id', ''),
-            result_name=data.get('result_name', ''),
-            config=data.get('config', {}),
-            recommendations=recommendations,
-            regime=data.get('regime'),
-            created_at=data.get('created_at'),
-            notes=data.get('notes', ''),
-            excluded_candidates_json=list(data.get('excluded_candidates_json') or []),
-            screening_matrix_json=list(data.get('screening_matrix_json') or []),
-            why_not_payload_json=list(data.get('why_not_payload_json') or []),
-            liquidity_gate_payload_json=list(data.get('liquidity_gate_payload_json') or []),
-            exclusion_quality=data.get('exclusion_quality'),
-            exclusion_warnings_json=[str(item) for item in (data.get('exclusion_warnings_json') or [])],
-            run_context=deepcopy(data.get('run_context') or {}),
-        )
 
 
 @dataclass

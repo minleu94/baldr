@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -17,6 +18,13 @@ from app_module.workbench_dtos import (
     WorkbenchStatusItem,
 )
 from app_module.advice_dtos import PortfolioAdviceDTO, RecommendationAdviceDTO
+from app_module.decision_presentation import (
+    PositionHealthPresentationDTO,
+    position_health_action_label,
+    position_health_reason_text,
+    position_health_review_label,
+    position_health_source_status_label,
+)
 
 
 ColumnSpec = tuple[tuple[str, str], ...]
@@ -79,6 +87,34 @@ class _WorkbenchTableModel(QAbstractTableModel):
         if 0 <= row < len(self._rows):
             return self._rows[row]
         return None
+
+
+@dataclass(frozen=True)
+class GuidedWorkbenchRow:
+    """首頁摘要專用的 UI read model；不承載策略或來源計算。"""
+
+    key: str
+    title: str
+    status: str
+    conclusion: str
+    reasons: str
+    action_label: str
+    target: str
+
+
+class WorkbenchGuidedSummaryTableModel(_WorkbenchTableModel):
+    """將首頁四個重點保留成可測試的輕量投影，完整欄位仍留在進階模型。"""
+
+    COLUMNS = (
+        ("title", "重點"),
+        ("status", "狀態"),
+        ("conclusion", "結論"),
+        ("reasons", "主要理由"),
+        ("action_label", "下一步"),
+    )
+
+    def __init__(self, rows: Sequence[GuidedWorkbenchRow] = (), parent=None) -> None:
+        super().__init__(rows, parent)
 
 
 class WorkbenchStatusStripTableModel(_WorkbenchTableModel):
@@ -202,6 +238,40 @@ class AdvicePortfolioTableModel(_WorkbenchTableModel):
         super().__init__(rows, parent)
 
 
+class PositionHealthTableModel(_WorkbenchTableModel):
+    """以共用 typed projection 呈現 Paper health，不讀取原始 dictionary。"""
+
+    COLUMNS = (
+        ("stock_code", "標的"),
+        ("decision_date", "決策日"),
+        ("source_status", "來源狀態"),
+        ("action_suitability", "研究建議"),
+        ("why", "評估原因"),
+        ("review_required", "需要確認"),
+    )
+
+    def __init__(
+        self,
+        rows: Sequence[PositionHealthPresentationDTO] = (),
+        parent=None,
+    ) -> None:
+        super().__init__(rows, parent)
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+        if role == Qt.DisplayRole and index.isValid() and 0 <= index.row() < len(self._rows):
+            field_name = self.COLUMNS[index.column()][0]
+            row = self._rows[index.row()]
+            if field_name == "source_status":
+                return position_health_source_status_label(row.source_status)
+            if field_name == "action_suitability":
+                return position_health_action_label(row.action_suitability)
+            if field_name == "why":
+                return position_health_reason_text(row.why)
+            if field_name == "review_required":
+                return position_health_review_label(row.review_required)
+        return super().data(index, role)
+
+
 def _display_value(value: object) -> str:
     if isinstance(value, Enum):
         return str(value.value)
@@ -250,12 +320,24 @@ def _display_token(value: str) -> str:
         "read_only_sources_plus_historical_replay": "唯讀來源 + 歷史 replay summary",
         "missing": "缺漏",
         "source_missing": "來源缺件",
+        "read_failure": "來源讀取失敗",
         "invalid_evidence": "證據無效",
         "machine_candidate": "機器候選",
         "machine_verified": "機器已驗證",
         "machine_degraded": "機器觀測降級",
+        "candidate": "研究候選",
+        "candidate_degraded": "研究候選（資料降級）",
+        "challenger_candidate": "challenger 研究候選",
+        "active_model": "active model",
+        "future_blocked": "未來日期已阻擋",
         "stale": "資料過期（stale）",
         "unknown": "未知",
+        "verified": "已驗證",
+        "unverified": "未驗證",
+        "HOLD": "持有",
+        "WATCH": "觀察／未知",
+        "REDUCE_CANDIDATE": "減碼候選",
+        "EXIT_CANDIDATE": "退出候選",
         "warning": "警告",
         "info": "資訊",
         "observed": "已觀測",
@@ -271,11 +353,23 @@ def _display_token(value: str) -> str:
         "watchlist_trigger": "觀察清單觸發",
         "portfolio_alert": "持倉警示",
         "risk_prompt": "風險提示",
+        "continuity_review": "連續研究檢討",
+        "decision_continuity_review": "連續研究檢討",
         "portfolio_review": "持倉覆盤",
         "daily_review": "每日判讀",
         "evidence_gate": "證據門檻",
         "replay_diagnostics": "Replay 診斷",
         "manual_review": "人工覆盤",
+        "linked": "已精確連結",
+        "unlinked": "未連結",
+        "conflict": "身份衝突",
+        "accepted": "已納入研究",
+        "skipped": "已略過",
+        "unrecorded": "尚未記錄",
+        "scheduled": "已排程",
+        "due": "今日到期",
+        "overdue": "已逾期",
+        "invalid": "無效",
         "evidence_mode": "證據模式",
         "daily_decision": "每日決策",
         "evidence_review": "證據覆盤",
@@ -338,7 +432,14 @@ def _display_token(value: str) -> str:
 
 
 def _row_status(row: object) -> str:
-    return str(getattr(row, "status", getattr(row, "severity", "")) or "")
+    return str(
+        getattr(
+            row,
+            "status",
+            getattr(row, "source_status", getattr(row, "severity", "")),
+        )
+        or ""
+    )
 
 
 def _is_attention_status(status: str) -> bool:

@@ -11,6 +11,7 @@ from typing import Any, List, Dict, Optional
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
+from app_module.sqlite_read_only import ReadOnlySQLiteManager
 from app_module.broker_flow_dashboard_dtos import BrokerFlowDashboardQuery
 from app_module.broker_flow_dashboard_query_service import BrokerFlowDashboardQueryService
 from app_module.broker_flow_sqlite_read_repository import BrokerFlowSQLiteReadRepository
@@ -187,10 +188,15 @@ class BrokerFlowService:
 
         # 第二步：批次向 SQLite 查詢收盤價對照表 (優化為按日期分組 + IN 查詢)
         price_map = {}
+        immutable_price_snapshot_used = False
         if missing_keys and getattr(self.config, 'use_sqlite', False):
             try:
-                from data_module.db_manager import DBManager
-                db = DBManager(self.config)
+                db_file = getattr(
+                    self.config,
+                    "db_file",
+                    Path(getattr(self.config, "data_dir", ".")) / "sqlite" / "twstock.db",
+                )
+                db = ReadOnlySQLiteManager(db_file)
 
                 # 按日期分組收集股票代號
                 date_to_stocks = defaultdict(set)
@@ -206,11 +212,21 @@ class BrokerFlowService:
                         placeholders = ",".join("?" for _ in sub_stocks)
                         query = f"SELECT 證券代號, 收盤價 FROM daily_prices WHERE 日期 = ? AND 證券代號 IN ({placeholders})"
                         df_prices = db.execute_query(query, (d_val, *sub_stocks))
+                        immutable_price_snapshot_used = (
+                            immutable_price_snapshot_used
+                            or db.last_read_mode == "immutable_fallback"
+                        )
                         for _, row_p in df_prices.iterrows():
                             s_val = str(row_p['證券代號']).strip()
                             price_map[(d_val, s_val)] = str(row_p['收盤價']).strip()
             except Exception as e:
                 self.logger.warning(f"分組查詢收盤價失敗: {e}")
+            if immutable_price_snapshot_used:
+                # immutable 讀取可能只看見較舊的已提交價格；不可用它新估 lots。
+                price_map.clear()
+                self.logger.warning(
+                    "SQLite 價格補查使用 immutable 快照；保留缺值，不以較舊價格估算 lots。"
+                )
 
         # 第三步：套用 Decimal 與 ROUND_HALF_UP 折算
         from decimal import Decimal, ROUND_HALF_UP

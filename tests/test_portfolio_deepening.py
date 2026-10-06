@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from datetime import date
 import pytest
 from decimal import Decimal
 from unittest.mock import MagicMock
@@ -92,6 +93,18 @@ def test_portfolio_service_dto_calculates_unrealized_pnl(tmp_path):
 def test_portfolio_condition_monitor_stop_loss_and_take_profit():
     monitor = PortfolioConditionMonitor(score_warning_points=10)
 
+    def current_quote(price: float) -> PortfolioCurrentSnapshot:
+        return PortfolioCurrentSnapshot(
+            current_regime="trend",
+            current_total_score=85.0,
+            current_price=price,
+            quote_data_date=date(2026, 10, 2),
+            quote_source_id="sqlite.daily_prices",
+            quote_source_snapshot_hash="e" * 64,
+            quote_freshness_status="current",
+            quote_expected_date=date(2026, 10, 2),
+        )
+
     # 準備 PositionDTO
     pos = PositionDTO.from_dict({
         "position_id": "pos_001",
@@ -114,11 +127,7 @@ def test_portfolio_condition_monitor_stop_loss_and_take_profit():
     })
 
     # 1. 未觸發任何停損/停利且 regime/score 無變化
-    snapshot_normal = PortfolioCurrentSnapshot(
-        current_regime="trend",
-        current_total_score=85.0,
-        current_price=100.0,
-    )
+    snapshot_normal = current_quote(100.0)
     res = monitor.evaluate(pos, snapshot_normal)
     assert res.status == "valid"
     assert res.label == "仍符合"
@@ -126,11 +135,7 @@ def test_portfolio_condition_monitor_stop_loss_and_take_profit():
     assert "未觸發停利點 (15.0%)" in res.reasons
 
     # 2. 觸發停損 (跌至 92.5，跌幅 7.5% > 7%)
-    snapshot_sl = PortfolioCurrentSnapshot(
-        current_regime="trend",
-        current_total_score=85.0,
-        current_price=92.5,
-    )
+    snapshot_sl = current_quote(92.5)
     res_sl = monitor.evaluate(pos, snapshot_sl)
     assert res_sl.status == "invalid"
     assert res_sl.label == "假設失效"
@@ -138,11 +143,7 @@ def test_portfolio_condition_monitor_stop_loss_and_take_profit():
     assert res_sl.details["stop_loss_triggered"] is True
 
     # 3. 觸發停利 (漲至 116.0，漲幅 16.0% > 15%)
-    snapshot_tp = PortfolioCurrentSnapshot(
-        current_regime="trend",
-        current_total_score=85.0,
-        current_price=116.0,
-    )
+    snapshot_tp = current_quote(116.0)
     res_tp = monitor.evaluate(pos, snapshot_tp)
     assert res_tp.status == "invalid"
     assert res_tp.label == "假設失效"
@@ -154,6 +155,11 @@ def test_portfolio_condition_monitor_stop_loss_and_take_profit():
         current_regime="range",
         current_total_score=85.0,
         current_price=100.0,
+        quote_data_date=date(2026, 10, 2),
+        quote_source_id="sqlite.daily_prices",
+        quote_source_snapshot_hash="f" * 64,
+        quote_freshness_status="current",
+        quote_expected_date=date(2026, 10, 2),
     )
     res_regime = monitor.evaluate(pos, snapshot_regime)
     assert res_regime.status == "warning"

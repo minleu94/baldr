@@ -21,6 +21,9 @@ if str(ROOT) not in sys.path:
 
 from data_module import portfolio_ml_dataset_assembler as dataset_assembler
 from data_module import portfolio_ml_out_of_core_store as store_module
+from data_module.ml_research_output_boundary import (
+    resolve_ml_research_output_path,
+)
 from data_module.ml_storage_capacity import (  # noqa: E402
     authorize_heavy_chain_reservation_handoff_child,
     HEAVY_CHAIN_RESERVATION_HELD_ENV,
@@ -88,6 +91,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--hgb-max-iter", type=int, default=100)
     parser.add_argument("--hgb-max-fit-rows", type=int, default=250_000)
     parser.add_argument("--poll-seconds", type=int, default=5)
+    parser.add_argument(
+        "--allow-research",
+        action="store_true",
+        help="隔離研究資料僅在 typed research consumer 接通後才可訓練",
+    )
     return parser
 
 
@@ -100,6 +108,51 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--direct-process-id is required unless "
             "--resume-after-direct-store is set"
         )
+    if args.allow_research:
+        store_output_dir = resolve_ml_research_output_path(
+            args.store_output_dir,
+            repository_root=ROOT,
+            access="read",
+        )
+        training_output_dir = resolve_ml_research_output_path(
+            args.training_output_dir,
+            repository_root=ROOT,
+            access="write",
+        )
+        if args.output_root is not None:
+            resolve_ml_research_output_path(
+                args.output_root,
+                repository_root=ROOT,
+                access="write",
+            )
+        status_path = training_output_dir / "continuation_status.json"
+        status_path = resolve_ml_research_output_path(
+            status_path,
+            repository_root=ROOT,
+            access="write",
+        )
+        _atomic_write_json(
+            status_path,
+            {
+                "schema_version": "portfolio-ml-direct-ooc-continuation.v1",
+                "status": "blocked",
+                "classification": (
+                    "current_restated_training_consumer_not_connected"
+                ),
+                "message": (
+                    "research lane requires a verified current-restated "
+                    "numeric consumer; formal trainer was not started"
+                ),
+                "store_output_dir": str(store_output_dir),
+                "training_output_dir": str(training_output_dir),
+                "formal_release_coordinator_started": False,
+                "formal_oos_allowed": False,
+                "production_alpha_bp": 0,
+                "broker_order_allowed": False,
+            },
+        )
+        print(json.dumps(_read_json(status_path), ensure_ascii=False, sort_keys=True))
+        return 2
     status_path = args.training_output_dir.resolve() / "continuation_status.json"
     store_output_dir = args.store_output_dir.resolve()
     training_output_dir = args.training_output_dir.resolve()
@@ -196,6 +249,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             formal_rule_champion_history_path=(
                 args.formal_rule_champion_history
             ),
+        )
+        _validate_current_direct_computation_provenance(
+            manifest_path=store_manifest_path,
+            manifest=store_manifest,
         )
         _atomic_write_json(
             status_path,
@@ -316,6 +373,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "status": "blocked",
                 "error_type": type(exc).__name__,
                 "message": str(exc),
+                "provenance_classification": getattr(
+                    exc, "classification", None
+                ),
                 "formal_oos_allowed": False,
                 "production_alpha_bp": 0,
                 "broker_order_allowed": False,
@@ -1002,6 +1062,100 @@ def _required_positive_int(value: object, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise TypeError(f"{field_name} must be a positive integer")
     return value
+
+
+def _validate_current_direct_computation_provenance(
+    *,
+    manifest_path: Path,
+    manifest: Mapping[str, Any],
+) -> None:
+    """確認 Direct 與 checkpoint 都屬於目前 stable computation identity。"""
+
+    from data_module import portfolio_ml_direct_numeric_store as direct_store
+
+    current_dependencies = direct_store._direct_computation_dependency_payload()
+    current_identity_hash = direct_store._stable_direct_computation_identity_hash(
+        current_dependencies
+    )
+
+    def validate_payload(
+        payload: Mapping[str, Any],
+        *,
+        label: str,
+    ) -> None:
+        identity_hash = payload.get("computation_identity_hash")
+        identity = payload.get("computation_identity")
+        dependency_hash = payload.get("computation_dependency_hash")
+        dependencies = payload.get("computation_dependencies")
+        if (
+            identity_hash is None
+            and identity is None
+            and dependency_hash is None
+            and dependencies is None
+        ):
+            raise direct_store.DirectCheckpointProvenanceError(
+                f"{label} computation provenance is legacy and missing",
+                classification="legacy_missing_computation_provenance",
+            )
+        if not isinstance(identity_hash, str) or not isinstance(
+            identity, dict
+        ):
+            raise direct_store.DirectCheckpointProvenanceError(
+                f"{label} stable computation identity is missing",
+                classification="legacy_missing_stable_computation_identity",
+            )
+        if direct_store._sha256_json(identity) != identity_hash:
+            raise direct_store.DirectCheckpointProvenanceError(
+                f"{label} stable computation identity hash mismatch",
+                classification="computation_identity_provenance_corrupt",
+            )
+        if identity_hash != current_identity_hash:
+            raise direct_store.DirectCheckpointProvenanceError(
+                f"{label} computation identity drift detected",
+                classification="computation_identity_drift",
+            )
+        if not isinstance(dependency_hash, str) or not isinstance(
+            dependencies, dict
+        ):
+            raise direct_store.DirectCheckpointProvenanceError(
+                f"{label} computation dependency snapshot is missing",
+                classification="checkpoint_dependency_snapshot_missing",
+            )
+        if direct_store._sha256_json(dependencies) != dependency_hash:
+            raise direct_store.DirectCheckpointProvenanceError(
+                f"{label} computation dependency snapshot hash mismatch",
+                classification="checkpoint_dependency_snapshot_corrupt",
+            )
+        if (
+            direct_store._stable_direct_computation_identity_hash(dependencies)
+            != identity_hash
+        ):
+            raise direct_store.DirectCheckpointProvenanceError(
+                f"{label} computation identity does not match dependency snapshot",
+                classification="computation_identity_provenance_mismatch",
+            )
+        if not direct_store._dependency_payloads_compatible(
+            dependencies,
+            current_dependencies,
+        ):
+            raise direct_store.DirectCheckpointProvenanceError(
+                f"{label} computation dependency custody mismatch",
+                classification="runtime_dependency_custody_mismatch",
+            )
+
+    validate_payload(manifest, label="direct manifest")
+    checkpoint_path = manifest_path.parent / "checkpoint.json"
+    checkpoint = _read_json(checkpoint_path)
+    validate_payload(checkpoint, label="direct checkpoint")
+    for field_name in (
+        "computation_identity_hash",
+        "computation_dependency_hash",
+    ):
+        if checkpoint.get(field_name) != manifest.get(field_name):
+            raise direct_store.DirectCheckpointProvenanceError(
+                f"direct checkpoint {field_name} does not match manifest",
+                classification="computation_identity_provenance_mismatch",
+            )
 
 
 def _validated_store_manifest(

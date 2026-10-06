@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pandas as pd
 
 from decision_module.industry_mapper import IndustryMapper
+from data_module.industry_mapper_data_provider import IndustryMapperDataProvider
 
 
 def test_industry_mapper_uses_latest_performance_cache_without_rescanning_frame(tmp_path):
@@ -29,7 +30,12 @@ def test_industry_mapper_uses_latest_performance_cache_without_rescanning_frame(
         meta_data_dir=meta_data_dir,
         industry_index_file=industry_file,
     )
-    mapper = IndustryMapper(config)
+    data_provider = IndustryMapperDataProvider(config)
+    mapper = IndustryMapper(
+        config,
+        data_provider.load_legacy_industry_index,
+        companies_provider=data_provider.load_companies,
+    )
 
     mapper.industry_index_df = pd.DataFrame()
     performance = mapper.get_industry_performance("半導體業")

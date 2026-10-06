@@ -25,6 +25,13 @@ schtasks /Query /TN baldr-evidence-pipeline-dry-run-daily /V /FO LIST
 - `baldr-evidence-working-copy-smoke-manual`：manual-only；目前不建立每日自動 task。
 - Codex app `baldr scheduled evidence morning report`：每天約 05:30，只讀查詢上述 task、status、report 與必要 log，產生繁體中文摘要；它不是 Windows Task Scheduler task，也不重新執行 pipeline。
 
+### Codex app 的兩項唯讀 heartbeat
+
+- `baldr-scheduled-evidence-morning-report`：每天 `America/Los_Angeles` 本地 05:30，讀當次 Quick／freshness／evidence 與 Task 終態；沒有有意義變化時保持安靜。
+- `paper`（「晚間學習與 Paper 排程驗收」）：每天 `America/Los_Angeles` 本地 06:20，唯讀核對 Paper／ML run identity、同次 immutable receipt/hash 與有限錯誤摘要；不重新執行 Task、更新來源、訓練模型或寫入 Paper。
+
+兩項 heartbeat 已保留原名稱／thread／ACTIVE／trigger，prompt 原地更新並精確 readback；排程依美西本地時區處理 DST，不要轉成手動固定 UTC 時刻。它們只在同一 run 的 status、receipt 與 identity 能對上時報告結果，不拿舊 `latest_status` 冒充新 run，也不在摘要工作中重新計算或修改 receipt。通知採 change-only 的有意義變化判讀；兩個 heartbeat 不是 Windows Task Scheduler tasks。
+
 若前兩個 task 沒有出現，先執行：
 
 ```cmd
@@ -57,6 +64,9 @@ scripts\scheduled\register_baldr_scheduled_tasks.cmd register
 - `status` 應為 `passed`、`ready_with_advisories`，或是可解讀的 `degraded`；`ready_with_advisories` 表示流程可用但有已揭露的估算來源品質提示。
 - `read_only` 必須為 `true`。
 - `daily_prices_latest_date` 與 `technical_indicators_latest_date` 應符合人工預期。
+- institutional／credit／TDCC 的 quick update 寫入隔離的 Phase3C candidate DB；freshness 會以明確設定的 candidate DB path、SQLite `mode=ro`／`query_only` 驗證日期、TWSE／TPEx source version、natural-key 重複與 row count，不再拿正式 `twstock.db` 的舊 candidate table 誤判本次 quick update。
+- 官方端點若回 HTTP 200 但 `stat`／明細 table 尚未發布，fetcher 只做最多 3 次、每次 30 秒的 bounded semantic retry；日期不符或 payload 契約錯誤仍立即 fail closed。
+- `fundamental.current_monthly_observations`／`current_statement_observations` 只代表目前觀測值。它們不能自動補成 formal PIT table；缺 announcement／available-at／revision evidence 時，`monthly_revenue_expected_period_not_available` 或 `quarterly_statement_expected_period_not_available` 必須保留給資料 owner 處理。
 - 若出現 `sqlite_db_missing`、`data_root_missing` 或 `sqlite_read_failed`，當天 evidence dry-run 只能視為 degraded / failed。
 
 ## 3. 明天早上檢查 evidence dry-run
@@ -65,7 +75,8 @@ scripts\scheduled\register_baldr_scheduled_tasks.cmd register
 
 ```text
 <OUTPUT_ROOT>/scheduled/evidence_pipeline_dry_run/latest_status.json
-<OUTPUT_ROOT>/scheduled/evidence_pipeline_dry_run/YYYYMMDD_evidence_pipeline_dry_run.log
+<OUTPUT_ROOT>/scheduled/evidence_pipeline_dry_run/YYYYMMDD_HHMMSS_microseconds_evidence_pipeline_dry_run.log
+<OUTPUT_ROOT>/scheduled/evidence_pipeline_dry_run/YYYYMMDD_HHMMSS_microseconds_exit_effectiveness.log
 <OUTPUT_ROOT>/scheduled/evidence_pipeline_dry_run/reports/YYYYMMDD_evidence_pipeline_dry_run.md
 ```
 
@@ -75,7 +86,12 @@ scripts\scheduled\register_baldr_scheduled_tasks.cmd register
 - `writes_evidence_db` 必須為 `false`。
 - `freshness_status` 若不是 `passed`，`status` 應標為 `degraded` 或 `failed`。
 - `pipeline_overall_status` 若為 `degraded`，scheduled `status` 也必須為 `degraded`；Task Scheduler `LastTaskResult=0` 只代表 wrapper 正常完成，不代表 report 無 warnings。
+- CMD 與 PowerShell 入口都必須委派 `run_scheduled_evidence_pipeline_dry_run.py`；PowerShell 不可另行維護一套 child 參數。Exit Effectiveness timeout 為 bounded 300 秒；每次 run 使用唯一 log，log 碰撞／寫入錯誤會落在結構化 status，不可留下未處理 traceback。
 - 若 `paper_health_refresh_status` 不是 `passed` 或 `reused`，wrapper 會把 health baseline 指向不存在的 sentinel、將 scheduled `status` 設為 `failed` 並以非零退出；即使 child exit code 為 0，也不得沿用舊的 `position_health/latest.json`。
+- 隔離 Paper producer 的外層 receipt 使用 canonical `paper-portfolio-daily-status.v1`；隔離範圍另存 `isolated_scope_schema_version`。consumer 只接受 canonical schema，或同時通過 research-only／no-broker／isolated DB boundary 的 bounded legacy receipt。預設 status path 是 `scheduled/paper_portfolio_isolated/latest_status.json`。
+- `paper_health_source_status=degraded` 不必然是工程 blocker：只有 quick 的核心市場步驟成功、warnings 僅屬 Phase3C candidate lane，且 freshness 的價格／技術面皆 current、degradation 僅屬明列的 fundamental lane 時才可繼續；任何未知 warning 仍 fail closed。
+- Frozen Rule policy consumer 接受 producer 實際輸出的 `rule_source_bundle_created`／`rule_source_bundle_reused`。`position_health_transition_status=degraded` 若只剩 thesis 或 position lineage 人工欄位，不可再誤報成 policy schema failure。
+- Position Health proposal 的 decision identity v2 排除 capture timestamp、檔案路徑與 receipt-only file hash，但保留 position／condition／metrics／policy 與 semantic source hashes。新事件寫入 `position_health_transitions_v2.sqlite`；既有 v1 DB 不修改、不刪除、不自動提升舊 proposal。相同資料同日重跑應為 idempotent，實質 metric／policy／source hash 改變仍 fail closed。
 - `pipeline_warnings_count` 是跨 pipeline steps 的 warning occurrences；需搭配 `pipeline_warning_unique_count` 與 `pipeline_warning_top_counts` 判讀，不可把 `pipeline_diagnostic_codes=[]` 誤解成完全沒有 warnings。
 - `pipeline_overall_status=ready_with_advisories` 時，確認 `pipeline_advisories_count`、`pipeline_advisory_top_counts` 與 report 的 `Source Quality Coverage`。MoneyDJ 個股若只在金額榜而未在張數榜，估算股數仍須保留 `estimated`，但完整 observed / estimated 覆蓋不是資料缺失。
 - fixed-threshold recommendation snapshot 未保存比較母體時，`score_percentile_bp` 為不適用；不可從已選推薦股反推百分位。

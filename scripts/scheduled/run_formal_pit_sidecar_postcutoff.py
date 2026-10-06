@@ -25,6 +25,8 @@ from data_module.formal_pit_history_handoff import (  # noqa: E402
     persist_pit_candidate_history_handoff,
 )
 from data_module.formal_pit_sector_publisher import (  # noqa: E402
+    DAILY_PIT_TAXONOMY_PUBLISHER_VERSION,
+    publish_daily_pit_taxonomy_sidecar,
     publish_formal_pit_sector_sidecar,
 )
 from data_module.official_trading_calendar import OfficialTradingCalendar  # noqa: E402
@@ -36,12 +38,25 @@ from data_module.formal_runtime_config import (  # noqa: E402
     FormalRuntimeConfigError,
     load_optional_formal_runtime_config,
 )
+from data_module.formal_schedule_gate import (  # noqa: E402
+    formal_schedule_day_state,
+)
 
 
 TASK_NAME = "baldr-formal-pit-sidecar-postcutoff-daily"
 TAIPEI = ZoneInfo("Asia/Taipei")
 PIT_CUTOFF = time(8, 30)
 DEFAULT_PUBLICATION_ROOT = ROOT / "output" / "formal_daily_publications"
+PIT_TAXONOMY_PREOPEN_ROOT_ENV = "PIT_TAXONOMY_PREOPEN_ROOT"
+
+
+class _OfflinePITHistoryCalendar(OfficialTradingCalendar):
+    """歷史覆蓋與前置 gate 共用離線 calendar，缺 cache 不做 HTTP 補證。"""
+
+    def is_official_trading_day(
+        self, target_date: date, allow_online_probe: bool = True,
+    ) -> tuple[bool | None, str]:
+        return super().is_official_trading_day(target_date, allow_online_probe=False)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -145,6 +160,41 @@ def _find_denominator(
     )
 
 
+def _find_taxonomy_bundle(
+    publication_root: Path,
+    *,
+    target_date: date,
+) -> Path | None:
+    """只解析 preopen 固定日期路徑，不掃描 latest 或重抓來源。"""
+
+    configured = _env_path(PIT_TAXONOMY_PREOPEN_ROOT_ENV)
+    root = (configured or publication_root / "pit_taxonomy_preopen").expanduser().resolve()
+    try:
+        root.relative_to(publication_root.expanduser().resolve())
+    except ValueError as error:
+        raise ValueError("PIT taxonomy preopen root must be under publication root") from error
+    path = root / target_date.isoformat() / "bundle_manifest.json"
+    return path if path.is_file() else None
+
+
+def _missing_taxonomy_result() -> dict[str, object]:
+    return {
+        "status": "blocked",
+        "publisher": "data_module.formal_pit_sector_publisher",
+        "publisher_version": DAILY_PIT_TAXONOMY_PUBLISHER_VERSION,
+        "industry_filter_usable": False,
+        "formal_ready": False,
+        "formal_consumer_compatible": False,
+        "candidate_only": True,
+        "formal_oos_allowed": False,
+        "promotion_eligible": False,
+        "production_action_allowed": False,
+        "broker_order_allowed": False,
+        "post_cutoff_refetch_forbidden": True,
+        "blockers": ["pit_taxonomy_preopen_bundle_missing"],
+    }
+
+
 def run_sidecar(
     *,
     publication_root: Path,
@@ -155,15 +205,24 @@ def run_sidecar(
     decision = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     local = decision.astimezone(TAIPEI)
     status_path = status_root / "latest_status.json"
+    calendar_state, calendar_reason = formal_schedule_day_state(
+        observed=decision,
+        market_db=_env_path("FORMAL_DAILY_MARKET_DB"),
+        calendar_cache_root=(
+            _env_path("FORMAL_DAILY_CALENDAR_CACHE_ROOT")
+            or ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache"
+        ),
+    )
     runtime_config: dict[str, object] | None = None
     runtime_config_error: str | None = None
-    try:
-        runtime_config = load_optional_formal_runtime_config(
-            role="pit_sidecar_wrapper",
-            observed=decision,
-        )
-    except FormalRuntimeConfigError as error:
-        runtime_config_error = str(error)
+    if calendar_state is True:
+        try:
+            runtime_config = load_optional_formal_runtime_config(
+                role="pit_sidecar_wrapper",
+                observed=decision,
+            )
+        except FormalRuntimeConfigError as error:
+            runtime_config_error = str(error)
     base: dict[str, object] = {
         "schema_version": "formal-pit-sidecar-scheduled-status.v1",
         "task": TASK_NAME,
@@ -185,6 +244,11 @@ def run_sidecar(
         "training_started": False,
         "broker_execution": False,
         "historical_backfill_claimed": False,
+        "calendar": {
+            "date": local.date().isoformat(),
+            "is_official_trading_day": calendar_state,
+            "reason": calendar_reason,
+        },
         "formal_runtime_config": (
             runtime_config
             if runtime_config is not None
@@ -195,6 +259,29 @@ def run_sidecar(
             }
         ),
     }
+    if calendar_state is False:
+        payload = {
+            **base,
+            "status": "skipped_non_trading_day",
+            "reason": calendar_reason,
+            "blockers": [],
+            "formal_ready": False,
+            "formal_consumer_compatible": False,
+            "candidate_only": True,
+        }
+        _write_status(status_path, payload)
+        return payload, 0
+    if calendar_state is None:
+        payload = {
+            **base,
+            "status": "blocked",
+            "blockers": [f"official_calendar_unresolved:{calendar_reason}"],
+            "formal_ready": False,
+            "formal_consumer_compatible": False,
+            "candidate_only": True,
+        }
+        _write_status(status_path, payload)
+        return payload, 2
     if runtime_config_error is not None:
         payload = {
             **base,
@@ -253,7 +340,14 @@ def run_sidecar(
             decision_at=decision,
             expected_universe_path=denominator,
             coverage_start=coverage_start,
-            calendar=OfficialTradingCalendar(),
+            calendar=_OfflinePITHistoryCalendar(
+                db_path=_env_path("FORMAL_DAILY_MARKET_DB")
+                or Path(r"D:\Min\Python\Project\FA_Data\sqlite\twstock.db"),
+                calendar_cache_path=_env_path("FORMAL_DAILY_CALENDAR_CACHE_ROOT")
+                or ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache",
+                temporary_closure_path=_env_path("FORMAL_DAILY_CALENDAR_CACHE_ROOT")
+                or ROOT / "output" / "paper_execution_eod_replay" / "calendar_cache",
+            ),
         )
         handoff_path = Path(str(handoff["handoff_path"])).resolve()
         result = publish_formal_pit_sector_sidecar(
@@ -263,6 +357,20 @@ def run_sidecar(
             decision_at=decision,
             now=decision,
         )
+        taxonomy_bundle_path = _find_taxonomy_bundle(
+            publication_root,
+            target_date=local.date(),
+        )
+        taxonomy_result = (
+            publish_daily_pit_taxonomy_sidecar(
+                bundle_manifest_path=taxonomy_bundle_path,
+                publication_root=publication_root,
+                decision_at=decision,
+                now=decision,
+            )
+            if taxonomy_bundle_path is not None
+            else _missing_taxonomy_result()
+        )
         status_text = str(result.get("status", "blocked"))
         raw_blockers = result.get("blockers")
         blockers = (
@@ -270,6 +378,14 @@ def run_sidecar(
             if isinstance(raw_blockers, list)
             else []
         )
+        taxonomy_blockers = taxonomy_result.get("blockers")
+        if isinstance(taxonomy_blockers, list):
+            blockers.extend(str(item) for item in taxonomy_blockers)
+        sector_ready = result.get("formal_ready") is True
+        taxonomy_ready = taxonomy_result.get("industry_filter_usable") is True
+        combined_ready = sector_ready and taxonomy_ready
+        if status_text == "formal_source_publication" and not combined_ready:
+            status_text = "blocked"
         payload = {
             **base,
             "status": status_text,
@@ -279,10 +395,17 @@ def run_sidecar(
             "handoff_file_hash": _file_hash(handoff_path),
             "handoff": handoff,
             "publisher": result,
-            "formal_ready": result.get("formal_ready") is True,
-            "formal_consumer_compatible": result.get("formal_consumer_compatible") is True,
-            "candidate_only": result.get("candidate_only") is True,
-            "blockers": blockers,
+            "taxonomy_bundle_path": (
+                str(taxonomy_bundle_path.resolve())
+                if taxonomy_bundle_path is not None
+                else None
+            ),
+            "taxonomy_publisher": taxonomy_result,
+            "taxonomy_industry_filter_usable": taxonomy_ready,
+            "formal_ready": combined_ready,
+            "formal_consumer_compatible": combined_ready,
+            "candidate_only": not combined_ready,
+            "blockers": sorted(set(blockers)),
         }
         _write_status(status_path, payload)
         return payload, 0 if status_text == "formal_source_publication" else 2

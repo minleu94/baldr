@@ -36,6 +36,13 @@ for package in ('scikit-learn', 'TA-Lib', 'joblib'):
     datas += copy_metadata(package)
 a = Analysis([str(root / 'baldr_launcher.py')], pathex=[str(root)], binaries=[], datas=datas,
              hiddenimports=hidden, hookspath=[], runtime_hooks=[], excludes=['PyQt5', 'PyQt6', 'PySide2', 'pytest', 'IPython', 'jupyter', 'notebook'], noarchive=False)
+# 本專案是 onedir；共同 launcher 在 matplotlib 匯入前建立並設定外部
+# MPLCONFIGDIR。移除只為 onefile 字型路徑建立隨機暫存目錄的 hook，
+# 保留使用者明示值／runtime 預設，避免覆寫 Python 與子程序的同一設定。
+mpl_hooks = [entry for entry in a.scripts if entry[0] == 'pyi_rth_mplconfig']
+if len(mpl_hooks) != 1:
+    raise ValueError('PyInstaller matplotlib runtime hook 形狀改變，需重新覆核共同設定')
+a.scripts = [entry for entry in a.scripts if entry[0] != 'pyi_rth_mplconfig']
 # Python 3.11 的 14.38 runtime 比 Qt 6.10 wheel 的 14.44 舊；
 # Windows 會重用先載入 DLL，同名 C++ runtime 必須沿同份官方 wheel。
 qt_dir = Path(importlib.util.find_spec('PySide6').origin).parent

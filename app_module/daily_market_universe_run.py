@@ -2225,4 +2225,3 @@ def _require_disjoint_paths(left: Path, right: Path, code: str) -> None:
     b = right.expanduser().resolve()
     if a == b or a.is_relative_to(b) or b.is_relative_to(a):
         raise DailyMarketUniverseRunError(code)
-

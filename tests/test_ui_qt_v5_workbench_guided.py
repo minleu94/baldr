@@ -99,6 +99,10 @@ def _mixed_dashboard():
             "waiting_for_time:evidence_window",
         ),
         market_context={"source_status": "ready", "overall_quality": "observed"},
+        snapshot_date=date(2026, 7, 6),
+        market_data_as_of_date=date(2026, 7, 5),
+        market_index_as_of_date=date(2026, 7, 5),
+        evaluation_date=date(2026, 7, 7),
     )
 
 
@@ -118,7 +122,10 @@ def test_guided_home_keeps_mixed_sources_separate_and_advanced_collapsed() -> No
     )
 
     assert view.advanced_workbench_panel.is_collapsed()
-    assert view.guided_date_label.text() == "判讀日期：2026-07-06｜資料日期：2026-07-05"
+    assert view.guided_date_label.text() == (
+        "保存快照日：2026-07-06｜行情截至：2026-07-05｜"
+        "台北評估日：2026-07-07｜最近保存：未知"
+    )
     assert "先確認持倉風險" in view.guided_conclusion_label.text()
     assert view.guided_summary_model.rowCount() == 5
     rows = {

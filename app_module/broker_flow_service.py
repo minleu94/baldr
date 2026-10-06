@@ -3,6 +3,8 @@ Broker Flow Orchestration Service
 負責資料讀取、聚合管線 (Pipeline)，以及串接決策模組的 FlowSignalEngine
 """
 
+from app_module.decision_snapshot_diagnostics import trace_snapshot_stage
+
 import logging
 import pandas as pd
 from decimal import Decimal
@@ -88,6 +90,7 @@ class BrokerFlowService:
             return 0
         return int(value)
 
+    @trace_snapshot_stage("broker_events")
     def _load_data(self, force_reload: bool = False) -> List[BrokerFlowEvent]:
         """從檔案系統載入所有追蹤分點的原始事件資料"""
 

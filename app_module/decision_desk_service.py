@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app_module.decision_snapshot_diagnostics import trace_snapshot_stage, snapshot_stage
+
 import inspect
 from datetime import date, datetime
 from typing import Any, Callable, Protocol, TypeVar
@@ -283,6 +285,7 @@ class DecisionDeskSnapshotBuilder:
         self.recommendation_provider = recommendation_provider
         self.portfolio_ledger_provider = portfolio_ledger_provider
 
+    @trace_snapshot_stage("snapshot")
     def build_snapshot(
         self,
         as_of_date: date,
@@ -334,15 +337,16 @@ class DecisionDeskSnapshotBuilder:
         _raise_if_cancelled(cancel_callback)
         market_data_visibility = self._build_market_data_visibility(as_of_date)
         _raise_if_cancelled(cancel_callback)
-        risk_prompts = self.risk_prompt_service.build_summary(
-            as_of_date=as_of_date,
-            market_regime=market_regime,
-            market_breadth=market_breadth,
-            sector_rotation=sector_rotation,
-            relative_strength_liquidity=relative_strength_liquidity,
-            watchlist_triggers=watchlist_triggers,
-            portfolio_alerts=portfolio_alerts,
-        )
+        with snapshot_stage("risk_prompts"):
+            risk_prompts = self.risk_prompt_service.build_summary(
+                as_of_date=as_of_date,
+                market_regime=market_regime,
+                market_breadth=market_breadth,
+                sector_rotation=sector_rotation,
+                relative_strength_liquidity=relative_strength_liquidity,
+                watchlist_triggers=watchlist_triggers,
+                portfolio_alerts=portfolio_alerts,
+            )
         sections = (
             market_regime,
             market_breadth,
@@ -371,16 +375,17 @@ class DecisionDeskSnapshotBuilder:
         smart_money_summary = None
         if self.smart_money_service is not None:
             try:
-                smart_money_summary = _call_with_optional_cancel_callback(
-                    self.smart_money_service.build_dashboard_summary,
-                    as_of_date,
-                    cancel_callback=cancel_callback,
-                    stock_codes=self._collect_smart_money_candidate_codes(
-                        relative_strength_liquidity,
-                        watchlist_triggers,
-                        portfolio_alerts,
-                    ),
-                )
+                with snapshot_stage("smart_money"):
+                    smart_money_summary = _call_with_optional_cancel_callback(
+                        self.smart_money_service.build_dashboard_summary,
+                        as_of_date,
+                        cancel_callback=cancel_callback,
+                        stock_codes=self._collect_smart_money_candidate_codes(
+                            relative_strength_liquidity,
+                            watchlist_triggers,
+                            portfolio_alerts,
+                        ),
+                    )
             except BacktestCancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -392,15 +397,16 @@ class DecisionDeskSnapshotBuilder:
         stock_focus = None
         try:
             _raise_if_cancelled(cancel_callback)
-            dashboard = self.dashboard_composer.compose(
-                market_regime=market_regime,
-                market_breadth=market_breadth,
-                sector_rotation=sector_rotation,
-                relative_strength_liquidity=relative_strength_liquidity,
-                watchlist_triggers=watchlist_triggers,
-                portfolio_alerts=portfolio_alerts,
-                smart_money_summary=smart_money_summary,
-            )
+            with snapshot_stage("dashboard"):
+                dashboard = self.dashboard_composer.compose(
+                    market_regime=market_regime,
+                    market_breadth=market_breadth,
+                    sector_rotation=sector_rotation,
+                    relative_strength_liquidity=relative_strength_liquidity,
+                    watchlist_triggers=watchlist_triggers,
+                    portfolio_alerts=portfolio_alerts,
+                    smart_money_summary=smart_money_summary,
+                )
             action_summary = dashboard.action_summary
             sector_focus = dashboard.sector_focus
             stock_focus = dashboard.stock_focus
@@ -432,6 +438,7 @@ class DecisionDeskSnapshotBuilder:
             source_lineage=source_lineage,
         )
 
+    @trace_snapshot_stage("portfolio_ledger")
     def _build_ledger_lineage(self, as_of_date: date) -> dict[str, Any]:
         try:
             if self.portfolio_ledger_provider is None:
@@ -465,6 +472,7 @@ class DecisionDeskSnapshotBuilder:
             return replace(section, quality=quality, warnings=tuple(section.warnings) + (f"{name}_as_of_fallback:{section.as_of_date.isoformat()}",))
         return section
 
+    @trace_snapshot_stage("recommendations")
     def _build_recommendations(self, as_of_date: date) -> RecommendationDeskSummary:
         try:
             if self.recommendation_provider is None:
@@ -493,6 +501,7 @@ class DecisionDeskSnapshotBuilder:
         except Exception as exc:
             return RecommendationDeskSummary(None, DecisionDeskQuality.MISSING, (f"recommendation_snapshot_error:{exc}",))
 
+    @trace_snapshot_stage("market_data_visibility")
     def _build_market_data_visibility(
         self, as_of_date: date
     ) -> MarketDataVisibilitySummary | None:
@@ -555,6 +564,7 @@ class DecisionDeskSnapshotBuilder:
                 warnings=(warning,),
             )
 
+    @trace_snapshot_stage("market_regime")
     def _build_market_regime(self, as_of_date: date) -> MarketRegimeSummary:
         if self.provider is None:
             return MarketRegimeSummary(
@@ -591,6 +601,7 @@ class DecisionDeskSnapshotBuilder:
             )
         return snapshot
 
+    @trace_snapshot_stage("market_breadth")
     def _build_market_breadth(
         self,
         as_of_date: date,
@@ -643,6 +654,7 @@ class DecisionDeskSnapshotBuilder:
             )
         return snapshot
 
+    @trace_snapshot_stage("sector_rotation")
     def _build_sector_rotation(self, as_of_date: date) -> SectorRotationSummary:
         snapshot: SectorRotationSummary | None
         if self.sector_rotation_service is not None:
@@ -682,6 +694,7 @@ class DecisionDeskSnapshotBuilder:
             )
         return snapshot
 
+    @trace_snapshot_stage("relative_strength_liquidity")
     def _build_relative_strength_liquidity(
         self,
         as_of_date: date,
@@ -712,6 +725,7 @@ class DecisionDeskSnapshotBuilder:
             warnings=("relative_strength_liquidity_missing",),
         )
 
+    @trace_snapshot_stage("watchlist_triggers")
     def _build_watchlist_triggers(self, as_of_date: date) -> WatchlistTriggerSummary:
         snapshot: WatchlistTriggerSummary | None
         if self.watchlist_trigger_service is not None:
@@ -759,6 +773,7 @@ class DecisionDeskSnapshotBuilder:
             )
         return snapshot
 
+    @trace_snapshot_stage("portfolio_alerts")
     def _build_portfolio_alerts(self, as_of_date: date) -> PortfolioAlertSummary:
         snapshot: PortfolioAlertSummary | None
         if self.portfolio_alert_service is not None:

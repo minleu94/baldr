@@ -618,12 +618,17 @@ class MainWindow(QMainWindow):
 
         try:
             # 初始化配置和服務
+            if _startup_controller is not None:
+                _startup_controller.window = self
+                self.setEnabled(False)
+            _startup_step("正在讀取資料設定")
             self.config = TWStockConfig()
             self.personal_policy_config_path = _resolve_personal_policy_config_path(
                 policy_config_path,
                 configured_path=getattr(self.config, "personal_model_policy_path", None),
             )
 
+            _startup_step("正在建立分析服務")
             decision_services = build_decision_service_composition(config=self.config)
             self.screening_service = decision_services.screening_service
             self.industry_strength_service = decision_services.industry_strength_service
@@ -675,6 +680,7 @@ class MainWindow(QMainWindow):
 
             # 個股研究報告只組合既有 read contract；MainWindow 注入已驗證的
             # current-restated ML registry，不重算推薦，也不把 owner 邏輯搬入 UI。
+            _startup_step("正在連接研究資料")
             self.stock_research_ml_registry = CurrentRestatedMLRunRegistry()
             self.daily_market_snapshot_root = (
                 Path(daily_market_snapshot_root).expanduser().resolve()
@@ -922,6 +928,7 @@ class MainWindow(QMainWindow):
 
             # 數據更新標籤
             print("[MainWindow] 創建數據更新視圖...")
+            _startup_step("正在建立更新工作區")
             update_view = UpdateView(
                 update_service=self.update_service,
                 parent=self,
@@ -939,6 +946,7 @@ class MainWindow(QMainWindow):
 
             # 市場探索標籤頁（包含多個子標籤）
             print("[MainWindow] 創建市場探索視圖...")
+            _startup_step("正在建立市場工作區")
             market_tabs = QTabWidget()
 
             # 大盤指數標籤（放在最前面）
@@ -1041,6 +1049,7 @@ class MainWindow(QMainWindow):
 
             # 市場總覽是 Decision Desk 的唯一實例，固定置於市場探索首頁。
             print("[MainWindow] 開始建立每日決策來源...")
+            _startup_step("正在建立每日決策")
             try:
                 self.decision_desk_builder = self._create_decision_desk_builder()
                 decision_desk_view = DecisionDeskView(
@@ -1065,6 +1074,7 @@ class MainWindow(QMainWindow):
 
             # Phase 2 Unified Decision Workbench shell（唯讀 DTO/service 邊界）
             print("[MainWindow] 開始建立決策工作台...")
+            _startup_step("正在建立決策工作台")
             try:
                 self.learning_projection_service = (
                     RecommendationLearningEvidenceProjectionService(
@@ -1125,6 +1135,7 @@ class MainWindow(QMainWindow):
 
             # 策略回測標籤（先創建，因為推薦分析需要引用它）
             print("[MainWindow] 創建策略回測視圖...")
+            _startup_step("正在建立回測工作區")
             backtest = BacktestView(
                 backtest_service=self.backtest_service,
                 config=self.config,
@@ -1136,6 +1147,7 @@ class MainWindow(QMainWindow):
 
             # 推薦分析標籤
             print("[MainWindow] 創建推薦分析視圖...")
+            _startup_step("正在建立推薦工作區")
             recommendation = RecommendationView(
                 recommendation_service=self.recommendation_service,
                 daily_market_research_service=self.daily_market_research_screener_service,
@@ -1162,6 +1174,7 @@ class MainWindow(QMainWindow):
 
             # 觀察清單標籤（作為獨立 Tab，方便管理）
             # 只有在 watchlist_service 可用時才創建
+            _startup_step("正在建立觀察清單")
             watchlist_widget: QWidget
             if self.watchlist_service is not None:
                 try:
@@ -1204,6 +1217,7 @@ class MainWindow(QMainWindow):
                 self.watchlist_view = watchlist_widget
 
             # 持倉管理標籤 (Portfolio MVP)
+            _startup_step("正在建立持倉工作區")
             portfolio_widget: QWidget
             try:
                 print("[MainWindow] 創建持倉管理視圖...")
@@ -1238,6 +1252,7 @@ class MainWindow(QMainWindow):
             self.market_tabs = market_tabs
 
             # --- Runtime Observatory MVP Integration ---
+            _startup_step("正在建立執行監控")
             runtime_widget: QWidget
             try:
                 print("[MainWindow] 初始化 Runtime Observatory...")
@@ -1269,6 +1284,7 @@ class MainWindow(QMainWindow):
                 runtime_widget.setWordWrap(True)
             # --------------------------------------------
 
+            _startup_step("正在建立個股研究")
             self.stock_research_workspace = StockResearchWorkspace(
                 self.stock_research_report_service,
                 journey_service=self.decision_outcome_journey_service,
@@ -1305,6 +1321,7 @@ class MainWindow(QMainWindow):
             self.stock_research_workspace.report_view.reportLoaded.connect(
                 self._load_personal_h20_product
             )
+            _startup_step("正在完成介面配置")
             workspace_instances = {
                 "workbench": workbench_view,
                 "market_explore": market_tabs,
@@ -2154,6 +2171,32 @@ class MainWindow(QMainWindow):
         event.accept()
 
 
+_startup_controller = None
+
+
+def _startup_step(label: str) -> None:
+    if _startup_controller is not None:
+        _startup_controller.step(label)
+
+
+def _cleanup_startup(app, controller) -> None:
+    """不顯示半成品視窗，沿既有合作式關閉流程等待 worker 結束。"""
+    window = controller.window
+    controller.dismiss()
+    if window is None:
+        return
+    window.hide()
+    window.close()
+    if not getattr(window, "_shutdown_close_finalizing", True):
+        timer = QTimer()
+        timer.setInterval(50)
+        timer.timeout.connect(lambda: app.quit() if window._shutdown_close_finalizing else None)
+        timer.start()
+        app.exec()
+        timer.stop()
+    _drain_qt_deferred_deletes(app, (window,))
+
+
 def main():
     """主函數"""
     import traceback
@@ -2165,7 +2208,7 @@ def main():
 
     try:
         print("[Main] 正在創建 QApplication...")
-        app = QApplication(sys.argv)
+        app = QApplication.instance() or QApplication(sys.argv)
         app.setOrganizationName("TechnicalAnalysis")
         app.setApplicationName("TechnicalAnalysis")
         print("[Main] QApplication 創建成功")
@@ -2190,11 +2233,19 @@ def main():
             print("[Main] 主窗口創建成功")
 
             print("[Main] 正在顯示主窗口...")
-            window.show()
+            if _startup_controller is not None:
+                _startup_controller.ready(window)
+            else:
+                window.show()
             print("[Main] 主窗口顯示成功")
 
             print("[Main] 應用程序準備就緒，進入事件循環...")
         except Exception as e:
+            from ui_qt.startup_view import StartupCancelled
+            if _startup_controller is not None:
+                _cleanup_startup(app, _startup_controller)
+            if isinstance(e, StartupCancelled):
+                return 0
             record_exception("main_window_initialization", e)
             print(f"[Main] 錯誤：創建主窗口失敗")
             print(f"[Main] 錯誤類型: {type(e).__name__}")
@@ -2214,6 +2265,8 @@ def main():
         return int(exit_code)
     except Exception as e:
         record_exception("application_startup", e)
+        if _startup_controller is not None:
+            _cleanup_startup(app, _startup_controller)
         print(f"[Main] 錯誤：應用程序啟動失敗")
         print(f"[Main] 錯誤類型: {type(e).__name__}")
         print(f"[Main] 錯誤訊息: {str(e)}")

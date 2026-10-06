@@ -463,7 +463,7 @@ Application Services / DTO / Repository
 
 ### 主要服務群
 
-2026-09-06 閉環增量以 [八卡交接索引](C:/Projects/PythonProjects/technical_analysis/docs/00_core/DOCUMENTATION_INDEX.md) 與 TASK-08 整合交接（dev 內部收據：C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md） 追溯；以下新增契約已在隔離來源驗證，正式 source acceptance／writer 切換與 V4 產品成熟度維持既有 Gate。
+2026-09-06 閉環增量以 [八卡交接索引](C:/Projects/PythonProjects/technical_analysis/docs/00_core/DOCUMENTATION_INDEX.md) 與 [TASK-08 整合交接](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md) 追溯；以下新增契約已在隔離來源驗證，正式 source acceptance／writer 切換與 V4 產品成熟度維持既有 Gate。
 
 - 更新的 [update_loop_dtos.py](C:/Projects/PythonProjects/technical_analysis/app_module/dtos/update_loop_dtos.py) 保留來源、實際日期、quality、warnings、candidate 與 read mode；UpdateService 的 status／overview／detail 查詢不寫 manifest，不建 schema。離線落地維持 broker 四欄身份鍵與指標父程序單一寫入者。
 - 市場的 [market_loop_dtos.py](C:/Projects/PythonProjects/technical_analysis/app_module/dtos/market_loop_dtos.py) 統一 `decision_date`／`effective_date` 與來源品質。ScreeningService 先以決策日裁切再排名；既有 tuple／DataFrame API 保留相容。較舊有效日期降級，未知或未來資料不補零；Regime 匹配度不代表勝率。
@@ -1544,3 +1544,10 @@ P2資料流：TWStockConfig→既有selector→同帳Paper route＋PersonalDataP
 ### 2026-10-07 個人H20完整保存母體／自然caller增量
 
 MainWindow在既有推薦source tabs掛PersonalH20ResearchWidget；背景CLI composition注入原public prediction ports，App只持唯讀typed cohort，不匯入ML。原activation/reference→immutablemanifest→全symbols預測pins→整數gross排序→原ResearchStockContextDTO與記憶selection→重讀exactrestore。canonical result_id不造。日常三分支沿原entry保存後登記manifest/entry pins，原outcome verifier後以captureSHA定址歷史manifest；原20-session projector與create-only joins不改，無新model writer或市場資料庫寫入。BBUI與bookmarkcodec只認已核原v3來源，BBP01 parent尚待直接human批准採入。完整同版scope與限制見中央整合QA（dev 內部收據：../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md）。
+
+
+## 啟動載入畫面與圖示
+
+雙擊 exe 後，在 Qt 可建立視窗時顯示原 loading_view.png 背景、目前工作與進度條。套件匯入使用不定進度；14 個實際初始化階段完成後推進，主視窗顯示後才完成。進度代表介面初始化，不代表市場資料新鮮度或排程成功。可按 Esc／Alt+F4 關閉載入窗；程式在安全階段邊界取消，等待既有 worker 合作式退出，不會顯示半成品主視窗。單一同步初始化呼叫期間仍須等該呼叫返回；不宣稱能強制中斷。缺圖時保留深色底與可讀進度。
+
+exe、應用程式與主視窗使用原 app_icon.png；Windows AppUserModelID 在建立視窗前設定為 Baldr.TechnicalAnalysis，不修改 registry。既有釘選或 Windows 圖示快取可能仍顯示舊圖，未自動更動使用者釘選。初始化失敗會關閉載入窗，顯示既有錯誤／log 位置；offscreen 測試不顯示阻塞對話框。

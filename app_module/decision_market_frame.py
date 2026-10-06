@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app_module.decision_snapshot_diagnostics import snapshot_stage, trace_snapshot_stage
+
 import sqlite3
 from collections import defaultdict
 from datetime import date, datetime
@@ -206,6 +208,7 @@ class DecisionMarketFrameLoader:
                 if code in prices_by_code
             }
 
+    @trace_snapshot_stage("market_frame")
     def _read_frame(
         self,
         as_of_date: date,
@@ -235,17 +238,18 @@ class DecisionMarketFrameLoader:
                     str(row[1])
                     for row in conn.execute('PRAGMA table_info("daily_prices")')
                 }
-                date_rows = pd.read_sql_query(
-                    """
+                with snapshot_stage("market_frame_dates_sql"):
+                    date_rows = pd.read_sql_query(
+                        """
                     SELECT DISTINCT 日期
                     FROM daily_prices
                     WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') <= ?
                     ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') DESC
                     LIMIT ?
                     """,
-                    conn,
-                    params=(target_key, int(lookback_days)),
-                )
+                        conn,
+                        params=(target_key, int(lookback_days)),
+                    )
                 self._raise_if_cancelled(cancel_callback)
                 if date_rows.empty:
                     return pd.DataFrame(columns=self._columns(include_source_timing))
@@ -264,16 +268,17 @@ class DecisionMarketFrameLoader:
                         f'"{name}"' if name in table_columns else f'NULL AS "{name}"'
                         for name in self.SOURCE_TIMING_COLUMNS
                     )
-                frame = pd.read_sql_query(
-                    f"""
+                with snapshot_stage("market_frame_rows_sql"):
+                    frame = pd.read_sql_query(
+                        f"""
                     SELECT 日期, 證券代號, 收盤價, 漲跌價差, 成交股數, {sign_projection}{timing_projection}
                     FROM daily_prices
                     WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') IN ({placeholders})
                     ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') ASC, 證券代號 ASC
                     """,
-                    conn,
-                    params=tuple(normalized_dates),
-                )
+                        conn,
+                        params=tuple(normalized_dates),
+                    )
                 self._raise_if_cancelled(cancel_callback)
                 return frame
         except sqlite3.Error as exc:

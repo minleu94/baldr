@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import inspect
+from contextvars import ContextVar
 from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -10,6 +11,7 @@ from typing import Callable, Iterable, Mapping, Protocol
 
 from app_module.decision_market_frame import DecisionMarketFrameLoader
 from app_module.exceptions import BacktestCancelledError
+from app_module.decision_snapshot_diagnostics import snapshot_stage
 from decision_module.flow_contracts import BrokerFlowEvent
 from app_module.dtos.smart_money_semantic_dtos import (
     SmartMoneyDashboardSummary,
@@ -20,6 +22,11 @@ from app_module.dtos.smart_money_semantic_dtos import (
 
 class BrokerFlowEventProvider(Protocol):
     def get_events(self, force_reload: bool = False) -> list[BrokerFlowEvent]: ...
+
+
+_DASHBOARD_EVENTS: ContextVar[
+    tuple[object, date, dict[str, list[tuple[date, BrokerFlowEvent]]]] | None
+] = ContextVar("smart_money_dashboard_events", default=None)
 
 
 class SmartMoneyPriceProvider(Protocol):
@@ -348,23 +355,41 @@ class SmartMoneySemanticService:
         cancel_callback: Callable[[], bool] | None = None,
     ) -> SmartMoneyDashboardSummary:
         _raise_if_cancelled(cancel_callback)
-        codes = stock_codes or tuple(
-            sorted(
-                {
-                    event.stock_code
-                    for _, event in self._events_for_stock(None, decision_date)
-                    if event.stock_code
-                }
+        # 單次摘要只讀一次事件；不保留跨次 cache，也不更動原窗口計算。
+        # 先依原決策日排除未來事件，再分組，讓每股避免重新遍歷完整來源。
+        grouped: dict[str, list[tuple[date, BrokerFlowEvent]]] = defaultdict(list)
+        discovered_codes: set[str] = set()
+        with snapshot_stage("broker_events_group"):
+            wanted = frozenset(str(code) for code in stock_codes) if stock_codes else None
+            for index, event in enumerate(self.broker_flow_provider.get_events(force_reload=False)):
+                if index % 256 == 0:
+                    _raise_if_cancelled(cancel_callback)
+                code = str(event.stock_code)
+                if wanted is not None and code not in wanted:
+                    continue
+                try:
+                    event_date = _parse_event_date(event.date)
+                except ValueError:
+                    continue
+                if event_date <= decision_date:
+                    grouped[code].append((event_date, event))
+                    if event.stock_code:
+                        discovered_codes.add(event.stock_code)
+            for values in grouped.values():
+                values.sort(key=lambda item: item[0], reverse=True)
+        codes = stock_codes or tuple(sorted(discovered_codes))
+        token = _DASHBOARD_EVENTS.set((self, decision_date, grouped))
+        try:
+            summaries = tuple(
+                self._build_stock_semantics_cancellable(
+                    code,
+                    decision_date,
+                    cancel_callback=cancel_callback,
+                )
+                for code in codes
             )
-        )
-        summaries = tuple(
-            self._build_stock_semantics_cancellable(
-                code,
-                decision_date,
-                cancel_callback=cancel_callback,
-            )
-            for code in codes
-        )
+        finally:
+            _DASHBOARD_EVENTS.reset(token)
         priority = tuple(
             item
             for item in summaries
@@ -396,8 +421,13 @@ class SmartMoneySemanticService:
         cancel_callback: Callable[[], bool] | None = None,
     ) -> list[tuple[date, BrokerFlowEvent]]:
         _raise_if_cancelled(cancel_callback)
+        cached = _DASHBOARD_EVENTS.get()
+        if stock_code is not None and cached is not None and cached[0] is self and cached[1] == decision_date:
+            return list(cached[2].get(str(stock_code), ()))
         selected: list[tuple[date, BrokerFlowEvent]] = []
-        for event in self.broker_flow_provider.get_events(force_reload=False):
+        for index, event in enumerate(self.broker_flow_provider.get_events(force_reload=False)):
+            if index % 256 == 0:
+                _raise_if_cancelled(cancel_callback)
             if stock_code is not None and str(event.stock_code) != str(stock_code):
                 continue
             try:

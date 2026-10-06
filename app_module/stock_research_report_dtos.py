@@ -409,6 +409,9 @@ class StockMLSnapshotDTO:
     production_action_allowed: bool = False
     qualification: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
+    target_round_trip_cost_bp: int | None = None
+    target_buy_side_cost_bp: int | None = None
+    target_sell_side_cost_bp: int | None = None
 
 
 @dataclass(frozen=True)

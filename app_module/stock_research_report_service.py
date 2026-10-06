@@ -78,6 +78,7 @@ from app_module.stock_research_report_dtos import (
 )
 from app_module.stock_research_report_provider_adapters import (
     PortfolioExitReadProvider,
+    _validated_target_costs,
     stock_price_row_fingerprint_sha256,
 )
 from app_module.watchlist_analysis_service import WatchlistAnalysisDTO, WatchlistAnalysisService
@@ -3452,6 +3453,11 @@ class StockResearchReportReadService:
             return value
 
         qualifications = _object_strings(result, "qualification")
+        target_costs = _validated_target_costs(target_metric, {
+            "total_round_trip_cost_bp": _object_value(result, "target_round_trip_cost_bp"),
+            "buy_side_cost_bp": _object_value(result, "target_buy_side_cost_bp"),
+            "sell_side_cost_bp": _object_value(result, "target_sell_side_cost_bp"),
+        })
         explanations = _dedupe((
             "此為當下重述研究預測，不具歷史 PIT 資格，也未完成正式校準。",
             "輸出為此執行紀錄確切股票範圍內的基準超額報酬基點。",
@@ -3478,6 +3484,9 @@ class StockResearchReportReadService:
                 result, "current_price_row_fingerprint_sha256"
             ),
             predicted_benchmark_excess_return_bp=predictions,
+            target_round_trip_cost_bp=target_costs[0],
+            target_buy_side_cost_bp=target_costs[1],
+            target_sell_side_cost_bp=target_costs[2],
             h5_status=h5_status,
             h5_horizon=h5_horizon,
             h5_gross_stock_return_bp=h5_int("gross_stock_return_bp", "h5_gross_stock_return_bp"),

@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app_module.decision_snapshot_diagnostics import snapshot_diagnostics, snapshot_stage, trace_snapshot_stage
+
 from app_module.decision_desk_dtos import (
     DecisionDeskQuality,
     DecisionDeskSnapshot,
@@ -68,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--capture-mode",
         help="Explicit research capture mode, e.g. eod_research.",
     )
+    parser.add_argument("--stage-diagnostics", action="store_true", help="非私人階段耗時寫至 stderr；保留 stdout JSON。")
     parser.add_argument("--db-path")
     parser.add_argument("--dry-run", action="store_true", help="Preview only. This is also the default.")
     parser.add_argument("--confirm", action="store_true", help="Persist the snapshot.")
@@ -78,6 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+@trace_snapshot_stage("config")
 def _config_from_args(args: argparse.Namespace) -> TWStockConfig:
     kwargs: dict[str, Any] = {}
     if args.data_root:
@@ -198,6 +202,11 @@ def _summary(
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    with snapshot_diagnostics(enabled=args.stage_diagnostics):
+        return _capture(args)
+
+
+def _capture(args: argparse.Namespace) -> int:
     config = _config_from_args(args)
     decision_date = _parse_date(args.decision_date)
     as_of_date = _parse_date(args.as_of or args.decision_date)
@@ -238,18 +247,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     snapshot = builder.build_snapshot(as_of_date)
     snapshot = _limit_snapshot(snapshot, _limited_sections(args.limit_sections))
-    stored = build_stored_decision_desk_snapshot(
-        snapshot,
-        decision_date=decision_date,
-        metadata=capture_metadata,
-    )
+    with snapshot_stage("serialize"):
+        stored = build_stored_decision_desk_snapshot(
+            snapshot,
+            decision_date=decision_date,
+            metadata=capture_metadata,
+        )
 
     saved = False
     skipped_duplicate = False
     if not dry_run:
-        repository = DecisionDeskSnapshotRepository(config)
-        skipped_duplicate = repository.get_snapshot_by_hash(stored.snapshot_hash) is not None
-        stored = repository.save_snapshot(stored)
+        with snapshot_stage("repository"):
+            repository = DecisionDeskSnapshotRepository(config)
+        with snapshot_stage("readback"):
+            skipped_duplicate = repository.get_snapshot_by_hash(stored.snapshot_hash) is not None
+        with snapshot_stage("save"):
+            stored = repository.save_snapshot(stored)
         persisted_context = stored.metadata_json.get("capture_context")
         expected_context = capture_request.capture_context
         if expected_context is not None and persisted_context is None:

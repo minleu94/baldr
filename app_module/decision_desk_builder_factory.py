@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app_module.decision_snapshot_diagnostics import snapshot_stage, trace_snapshot_stage
+
 import logging
 from datetime import datetime
 from typing import Any, Callable
@@ -106,6 +108,7 @@ class DecisionDeskMarketRegimeProvider:
             return None
 
 
+@trace_snapshot_stage("composition")
 def build_service_backed_decision_desk_snapshot_builder(
     config: TWStockConfig,
     *,
@@ -225,7 +228,8 @@ def build_service_backed_decision_desk_snapshot_builder(
 
 def _try_create(name: str, factory: Callable[[], Any]) -> Any | None:
     try:
-        return factory()
+        with snapshot_stage(name):
+            return factory()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Decision Desk %s initialization failed: %s", name, exc)
         return None

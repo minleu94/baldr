@@ -8,12 +8,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 import inspect
 import hashlib
 import json
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QSize, Qt, Signal, QUrl
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QDesktopServices
@@ -234,9 +235,9 @@ class StockPriceChartWidget(QWidget):
             text += "\n" + technical_text
         for marker in self._markers:
             if marker.event_date == point.data_date:
-                text += f"\n{marker.label}；帳本：{marker.account_id}；來源：{marker.source_id}；列 SHA-256：{marker.source_row_hash}"
+                text += f"\n{marker.label}；帳本：{marker.account_id}"
         self.setToolTip(text)
-        self.setAccessibleDescription(text)
+        self.setAccessibleDescription(f"{_price_chart_range_text(self._points)}\n{text}")
         self.dateSelected.emit(point.data_date)
         self.update()
 
@@ -281,12 +282,6 @@ class StockPriceChartWidget(QWidget):
         for line in self._technical_lines:
             point = next((point for point in line.points if point.data_date == data_date), None)
             rows.append(f"{line.label}：{_chart_exact_decimal_text(point.value if point else None)}")
-            if point is not None:
-                rows.append(
-                    f"來源：{point.source_id or '未知'}；"
-                    f"可得時間：{point.available_at or '未知'}；"
-                    f"列 SHA-256：{point.source_row_hash or '未知'}"
-                )
         return "\n".join(rows)
 
     def _drawable_points(self) -> tuple[StockPricePointDTO, ...]:
@@ -324,9 +319,6 @@ class StockPriceChartWidget(QWidget):
                     )
                 ),
                 f"成交量：{_chart_integer_text(point.volume)}",
-                f"來源：{point.source_id or '未知'}",
-                f"可得時間：{point.available_at or '未知（來源未提供）'}",
-                f"資料列 SHA-256：{point.source_snapshot_hash or '未知'}",
             )
         )
 
@@ -2045,9 +2037,36 @@ class StockResearchReportView(QWidget):
         if (not isinstance(evidence, PersonalH20ProductEvidence) or self._loaded_report is None
                 or evidence.stock_code != self._loaded_report.stock_code):
             return
-        cutoff = _stock_chart_cutoff_date(self._loaded_report, self._loaded_request_context or self.context)
-        if evidence.decision_date and (not cutoff or evidence.decision_date > cutoff):
+        context = self._loaded_request_context or self.context
+        if self._loaded_request_context is not None and self.context != self._loaded_request_context:
             return
+        cutoff = _stock_chart_cutoff_date(self._loaded_report, context)
+        if evidence.status == "available":
+            observed = datetime.fromisoformat(evidence.observed_at or "")
+            now = datetime.now(timezone.utc)
+            if observed > now:
+                return
+            current_scope = context is not None and (
+                context.source_kind == "explicit_latest_stock_research"
+                or (context.ml_scope_mode == "current_stock_research"
+                    and context.source_kind != "daily_market_research_snapshot")
+            )
+            if current_scope and not _current_h20_observation_allows(
+                evidence, self._loaded_report, context, now=now
+            ):
+                return
+        if evidence.decision_date and (not cutoff or evidence.decision_date > cutoff):
+            if not _current_h20_observation_allows(
+                evidence, self._loaded_report, context, now=datetime.now(timezone.utc)
+            ):
+                return
+        if evidence.status == "unavailable":
+            self.personal_h20_label.setText(
+                "個人 H20 模型：模型資料暫時無法驗證；查看提示中的來源診斷，重新載入可重試。"
+            )
+            self.personal_h20_label.setToolTip(evidence.reason)
+            return
+        self.personal_h20_label.setToolTip("")
         self.personal_h20_label.setText(personal_h20_product_text(evidence))
 
     def _on_report_tab_changed(self, index: int) -> None:
@@ -3018,7 +3037,11 @@ class StockResearchReportView(QWidget):
             ml_layout.addWidget(self._missing_panel("目前沒有合格的個股 ML 研究輸出；不補造估計或機率。"))
         if ml.limitations:
             prefix = "ML 品質降級：" if ml.status == "degraded" else "ML 限制："
-            ml_layout.addWidget(self._wrapped_label(prefix + "；".join(research_limitation_text(x) for x in ml.limitations[:2])))
+            ml_layout.addWidget(self._wrapped_label(prefix + "；".join(
+                "H5 實際結果尚未成熟；不顯示實際報酬或成功結果，研究估計仍可查看。"
+                if x == "H5 標籤尚未成熟；不顯示報酬或成功結果。"
+                else research_limitation_text(x) for x in ml.limitations[:2]
+            )))
             audit_layout.addWidget(self._wrapped_label("ML 原始限制：" + "；".join(ml.limitations)))
         elif ml.status == "degraded":
             ml_layout.addWidget(self._wrapped_label("ML 品質降級：原因未提供。"))
@@ -3680,6 +3703,44 @@ def _stock_chart_requested_cutoff(
     return str(context.decision_date or "").strip() or None
 
 
+def _current_h20_observation_allows(
+    evidence: object,
+    report: StockResearchReportDTO,
+    context: ResearchStockContextDTO | None,
+    *,
+    now: datetime,
+) -> bool:
+    """當下預測沿原觀測時鐘；行情日期不替代模型決策日。"""
+    from app_module.recommendation.personal_h20_product_evidence import PersonalH20ProductEvidence
+
+    if not isinstance(evidence, PersonalH20ProductEvidence) or evidence.status != "available":
+        return False
+    if context is None or context.stock_code != report.stock_code or evidence.stock_code != report.stock_code:
+        return False
+    if not (
+        context.source_kind == "explicit_latest_stock_research"
+        or (context.ml_scope_mode == "current_stock_research"
+            and context.source_kind != "daily_market_research_snapshot")
+    ):
+        return False
+    try:
+        observed = datetime.fromisoformat(evidence.observed_at or "")
+        decision = date.fromisoformat(evidence.decision_date or "")
+        source = date.fromisoformat(evidence.source_date or "")
+        feature = date.fromisoformat(evidence.feature_date or "")
+        price_date = max(point.data_date for point in report.price_points if point.data_date)
+        return (
+            observed.tzinfo is not None and observed.utcoffset() is not None
+            and now.tzinfo is not None and now.utcoffset() is not None
+            and observed <= now
+            and observed.astimezone(ZoneInfo("Asia/Taipei")).date() == decision
+            and decision <= now.astimezone(ZoneInfo("Asia/Taipei")).date()
+            and source.isoformat() == price_date and source <= decision and feature < decision
+        )
+    except (ValueError, TypeError):
+        return False
+
+
 def _stock_chart_cutoff_date(
     report: StockResearchReportDTO,
     context: ResearchStockContextDTO | None,
@@ -4047,9 +4108,23 @@ def _ml_estimate_summary(ml: object) -> str:
         "benchmark_excess_after_standard_80bp_cost", "成本後基準超額報酬",
     }
     cost_label = "成本後基準超額報酬" if target.casefold() in after_cost_targets else "基準超額報酬（成本定義未提供）"
+    from app_module.stock_research_report_provider_adapters import _validated_target_costs
+    total, buy, sell = _validated_target_costs(target, {
+        "total_round_trip_cost_bp": getattr(ml, "target_round_trip_cost_bp", None),
+        "buy_side_cost_bp": getattr(ml, "target_buy_side_cost_bp", None),
+        "sell_side_cost_bp": getattr(ml, "target_sell_side_cost_bp", None),
+    })
+    cost_context = "估計所扣成本情境與數值未提供。"
+    if total is not None and buy is not None and sell is not None:
+        percentages = tuple(format(Decimal(value) / Decimal(100), "f") for value in (total, buy, sell))
+        cost_context = (
+            f"本次模型假設總成本{percentages[0]}%（買進{percentages[1]}%、賣出{percentages[2]}%）；"
+            "這是模型成本情境，不是你的實際交易成本。"
+        )
     return (
         f"研究估計（{cost_label}）：{estimate}。原始目標定義保留於稽核。"
-        "基準名稱、期間的交易日／日曆日定義、估計所扣成本情境與數值未提供。"
+        "基準名稱、期間的交易日／日曆日定義未提供。"
+        f"{cost_context}"
         f"{qualification}；不是股價漲跌預測、獲利機率或已驗證收益。"
     )
 
@@ -4069,11 +4144,13 @@ def _report_pending_text(report: StockResearchReportDTO) -> str:
         "skipped_non_trading_day",
     }:
         maturity_label = status_label(raw_status, dimension="event")
-    elif raw_status in {"pending", "unknown", "unavailable"}:
+    elif raw_status in {"pending", "unknown", "unavailable", "not_mature", "not_mature_as_of_cutoff"}:
         maturity_label = {
             "pending": status_label(raw_status, dimension="research"),
             "unknown": "成熟條件未知",
             "unavailable": "結果未提供",
+            "not_mature": "原保存結果尚未成熟／尚待合格結果讀回；研究估計仍可查看",
+            "not_mature_as_of_cutoff": "截至本次查詢日結果尚未成熟；研究估計仍可查看",
         }[raw_status]
     else:
         shared_label = status_label(raw_status, dimension="research")

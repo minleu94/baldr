@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import json
 import sqlite3
 from pathlib import Path
@@ -475,15 +475,15 @@ def test_workbench_source_service_excludes_future_snapshot_from_default_current_
         build_stored_decision_desk_snapshot(_decision_snapshot(), decision_date="2026-07-08")
     )
     monkeypatch.setattr(
-        "app_module.workbench_source_service.taiwan_market_today",
-        lambda: date(2026, 7, 7),
-    )
-    monkeypatch.setattr(
         "app_module.pre_v2_readiness_service.taiwan_market_today",
         lambda: date(2026, 7, 7),
     )
 
-    payload = WorkbenchSourceService(config, evidence_db_path=config.db_file).inspect(
+    payload = WorkbenchSourceService(
+        config,
+        evidence_db_path=config.db_file,
+        clock=lambda: datetime(2026, 7, 7, 12, tzinfo=timezone.utc),
+    ).inspect(
         multi_day_record_path=record_path,
     ).to_dict()
     status_items = {item["item_id"]: item for item in payload["status_strip"]}

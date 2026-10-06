@@ -29,6 +29,8 @@ Main共用DailyMarketResearchScreenerService，Recommendation研究來源頁只�
 
 UX08 個股價格圖在既有 StockResearchReportDTO 與原生 Qt consumer 之間增加純 application 投影：同一份核對後 points 供圖與精確表，來源上下文 pin 與逐列價格指紋分別按原語義核對，不新增 SQL／producer／金融公式。cutoff 與已知 available_at 在投影前過濾；未知可得時間不升格 PIT。Qt 不重新讀最新行情、不自行重算來源 hash；原生 renderer 初始化／填值失敗保留已核對表格。單日 technical snapshot 不變成歷史線，無完整身份的 event 不轉已驗證交易 marker。詳細工程範圍與未完成項見 [UX08 QA](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md)。
 
+UX08 後續歷史技術切片：read service 有界讀既存 technical_indicators 的 MA20／MA60，報告追加 frozen 歷史列；純投影核對 stock／source／date／row hash／cutoff，再按價格日期對齊給原生覆蓋線與精確表。缺值保 None 並斷線，不推導指標、不延伸單日快照、不把 live 歷史補入缺件的保存來源；可得時間與暖機資格仍明示未知。此新增 readonly query 不改 producer、儲存 schema 或金融公式。
+
 `StockResearchReportReadService` 在既有價格／技術唯讀查詢後，交由 `DailyMarketFeatureSnapshotService` 投影close／MA20／MA60；不加SQL或producer。每service有RLock與最多4筆LRU，契約版本／scope／日期／全DTO內容及來源fingerprint綁identity。DTO的 `shared_daily_features` 交給研究理由與Qt首屏同一三態，失敗／不足暖機保留unknown。必要暖機沿既有SMA的末段有效OHLC20／60窗口；不授calendar／available-at／PIT或完整producer等價資格。舊DTO空mapping相容，既有RSI／Advice／原排名與canonical writer不變。此為UX18有限consumer；UX19 manifest／bounded writer／atomic publish仍待，詳見[QA新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
 
 > **最後更新：2026-10-04｜目前程式結構；不代替運行狀態。**

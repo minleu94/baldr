@@ -73,6 +73,8 @@ freshness receipt 的 `candidate_only=true` 會維持 candidate／research-only 
 
 UX08 原生圖安全切片：價格圖與 OHLC／量數值表共用 application 核對後投影，明示來源、截止日與實際資料範圍，保留 Decimal／整數及缺值。錯股 DTO、已知來源／日期／行指紋失配拒絕；未來與明示晚發布資料排除，缺可得時間仍未知。圖表初始化／填值失敗保留同源數值表。技術資料只有單日快照，不補歷史指標線或未核實交易標記；原生圖仍是 default，未整合 LWC／Hosted Widgets。
 
+後續限定切片加入既存 MA20／MA60 歷史覆蓋線與同序列精確表：缺列／缺值處斷線，不補末值；保存來源缺合法歷史時明示缺件，不向 live 借值。單日技術快照仍獨立，歷史值未授予暖機／PIT資格；沒有新增縮放、平移、外部 bundle 或個人交易 markers。
+
 推薦與回測的 guided summary 只翻譯現有參數與輸入母體。推薦保存仍保留 `result_id`、repository create-only、delivery ACK、Journal／readback 與 context binding；回測的研究模式、日期、策略、資金、費用、滑價、執行價格及停損停利值不因折疊進階而改變。結果頁的摘要、診斷、圖表、最佳化與 Walk-forward evidence 仍是原功能。
 
 ### 可讀性與安全契約

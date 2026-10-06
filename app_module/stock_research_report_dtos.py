@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field, is_dataclass
 from decimal import Decimal
 from enum import Enum
+import hashlib
+import json
 from typing import Any, Mapping, cast
 
 from app_module.advice_dtos import PortfolioAdviceDTO, RecommendationAdviceDTO
@@ -233,6 +235,82 @@ class StockPositionSnapshotDTO:
 
 
 @dataclass(frozen=True)
+class StockTechnicalHistoryRowDTO:
+    """單一既有技術指標列；不代表 PIT 或指標暖機資格。"""
+
+    stock_code: str
+    source_id: str
+    data_date: str
+    source_row_hash: str
+    ma20: Decimal | None = None
+    ma60: Decimal | None = None
+    available_at: str = ""
+
+
+def stock_technical_history_row_fingerprint_sha256(
+    *,
+    stock_code: str,
+    source_id: str,
+    data_date: str,
+    ma20: Decimal | None,
+    ma60: Decimal | None,
+    available_at: str = "",
+) -> str:
+    """以投影欄位建立技術歷史列指紋，不寫入 legacy SQLite schema。"""
+
+    def decimal_text(value: Decimal | None) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, Decimal) or not value.is_finite():
+            raise ValueError("technical history values must be finite Decimal or None")
+        return format(value, "f")
+
+    identity = (
+        str(stock_code).strip(),
+        str(source_id).strip(),
+        str(data_date).strip(),
+        decimal_text(ma20),
+        decimal_text(ma60),
+        str(available_at or "").strip(),
+    )
+    if not identity[0] or not identity[1] or not identity[2]:
+        raise ValueError("technical history row identity is required")
+    payload = json.dumps(identity, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def technical_history_saved_scope_limitation(
+    context: Mapping[str, object] | None,
+) -> str | None:
+    """回傳不可由目前 SQLite 補接歷史線的保存來源說明。"""
+
+    if not isinstance(context, Mapping) or not context:
+        return None
+    source_kind = str(context.get("source_kind", "") or "").strip()
+    scope_mode = str(context.get("ml_scope_mode", "") or "").strip()
+    if source_kind in {
+        "daily_market_research_snapshot",
+        "original_stock_ranking",
+        "original_stock_ranking_bookmark",
+    }:
+        return "保存來源沒有綁定相同版本的 MA20/MA60 歷史列；不以目前 SQLite 資料補接。"
+    # 與既有個股研究 scope 規則一致：明確標記 current_stock_research 時，舊 metadata
+    # 不會把目前個股研究誤判成已保存決策；每日快照已在上方先行封鎖。
+    if scope_mode == "current_stock_research":
+        return None
+    if scope_mode and scope_mode != "current_stock_research":
+        return "目前選取的是已保存研究來源；沒有同來源 MA20/MA60 歷史列，因此不接目前 SQLite。"
+    if source_kind:
+        return "目前選取的是已保存研究來源；沒有同來源 MA20/MA60 歷史列，因此不接目前 SQLite。"
+    if any(
+        str(context.get(key, "") or "").strip()
+        for key in ("result_id", "source_snapshot_id", "source_snapshot_hash")
+    ) or source_kind == "recommendation":
+        return "目前選取的是已保存研究來源；沒有同來源 MA20/MA60 歷史列，因此不接目前 SQLite。"
+    return None
+
+
+@dataclass(frozen=True)
 class StockTradingRestrictionDTO:
     restriction_type: str
     restriction_state: str
@@ -449,6 +527,8 @@ class StockResearchReportDTO:
     original_ranking: StockOriginalRankingReportDTO | None = None
     read_only: bool = True
     schema_version: str = STOCK_RESEARCH_REPORT_SCHEMA_VERSION
+    # 保留在欄位尾端以維持既有位置參數呼叫相容。
+    technical_history: tuple[StockTechnicalHistoryRowDTO, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.stock_code.strip():

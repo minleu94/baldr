@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 UX08 原生歷史 MA20／MA60 有限接線
+
+沿d9a4a086，既存MA20／MA60有界唯讀歷史列接到純投影、原生覆蓋線與精確表；同股／來源／日期／hash／cutoff核對，缺列／None斷線，不重算或補末值。保存／daily／rank未具備同版本技術artifact歷史時明示缺件、禁止借live；暖機與availability未知不授PIT。116受影響案例、Workbench85、validator25／4skip、mypy795、6檔compile／quant guard通過，見[UX08最新章](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md)。整項／stage4仍partial，saved歷史、其他指標、markers、期間／縮放／平移、renderer故障與Native／真人未完。
+
+Widget獨立調查核實5個主站身份，但126格嵌入資格全部unknown；桌面條件／歷史深度／實際嵌入未驗，原生default維持，見[UX07補充](../06_qa/UX07_CHART_FEASIBILITY_20261005.md)。Personal path/control_paths另lane進行，未整合或正式啟用。F1接受例外、20%未達的批准邊界維持。
+
 ## 2026-10-05 UX08 原生圖同源契約與最新批准邊界
 
 以631d6ad為基線，個股原生價格圖與精確數值表共用純投影、來源身份與 cutoff；已知股號／日期／hash／來源失配拒絕，未來／晚到資料排除，缺件保 unknown。原生圖建構或填值失敗保留已核對表格，單日技術快照不延伸歷史線，身份不足事件不畫交易 marker。限定59案例通過，Workbench85、validator25通過／4略過、mypy795及4檔compile／quant guard通過；詳見[UX08限定收據](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md)。UX08整項／stage4仍partial：互動期間、歷史線／markers、圖商原型選型、paint故障與Native／真人驗收待辦。

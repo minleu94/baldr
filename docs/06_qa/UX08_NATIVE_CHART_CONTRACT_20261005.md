@@ -1,5 +1,19 @@
 # UX08 原生圖同源契約限定驗證（2026-10-05）
 
+## 2026-10-06 歷史 MA20／MA60 限定切片（最新）
+
+基線d9a4a086。read service追加有界唯讀technical_indicators歷史入口，只讀價格日期與cutoff交集、最多120列，沿既有「證券代號／stock_code／Code」欄位別名。report尾端追加frozen歷史DTO，保留位置參數相容；舊儲存schema／bookmark與feature artifact沒有改寫。只投影已存MA20／MA60，不重算指標、策略或暖機。
+
+每列指紋綁stock／source／date／MA20／MA60／available_at。來源與列的已知未來資料日／可得時間排除；錯股／來源／hash／重複日期或無效值拒絕。缺來源時鐘、缺值／暖機資格維持unknown，PIT=false。來源pin依前包契約核對；保存／daily／rank來源未具備同版本技術artifact歷史契約，禁止live補查並明示缺件，saved歷史讀回仍pending。明示current_stock_research與空context的一般研究才讀既存SQLite歷史。
+
+同一technical_lines驅動原生圖MA20金色／MA60藍色覆蓋線、精確表與hover／table來源及列hash提示。按價格日期對齊，缺列、None或缺收盤日斷線；不插值或補末值。沒有合法序列就不畫線，單日snapshot獨立顯示。覆蓋線更新保持價格日期、模式、widget幾何與hover；尚無可縮放／平移viewport。初始化／填值故障仍保留價格及技術表，paint／GPU故障另待。
+
+Root有限整合116個不同案例通過（pure15＋新歷史11＋service40＋原UI44＋新UI6）。隔離SQLite實際read_report→來源核對→投影→原生圖／表通過，核對高精度值、缺列斷線及截止後999值排除，不是正式DB驗收。Workbench85、validator25通過／4略過／0失敗、mypy795、6檔compile及quant guard通過。review修正欄位別名、例外空tuple初始化與來源時鐘gate；mypy日期變數改名後pure26再次通過（重疊，不增加116）。無全套回歸、producer／ML、個人資料讀取／遷移、vendor安裝、Native或push。
+
+Raw承接output/qa/ux08_native_technical_history_20261005/，驗證跨至2026-10-06 UTC；原計畫append-only。current-observed MA20／60工程切片done；saved技術artifact歷史、其他指標／尺度、交易markers、期間／縮放／平移、圖商原型選型、Native／真人pending，UX08整項／stage4仍partial。Widget獨立lane結論同步[UX07收據](UX07_CHART_FEASIBILITY_20261005.md)，不引入依賴。Personal path/control_paths另lane工作，未在此commit混入或啟用。
+
+以下保留前包與當時pending邊界，最新限定結果以本節為準。
+
 基線 `631d6ad189e490dc75e964ee4abafc69df7ce114`。沿唯一原計畫 UX08／§7.5，本批只做不需圖商選型的 application 投影與既有原生圖接線。Sol 整合、兩位 LunaMax 分別負責 payload 與 consumer；沒有安裝／下載、接受條款、外站資料傳送、正式資料內容讀取／套用、producer／ML、前景 Native、清理或 push。
 
 ## 同源契約與數值邊界

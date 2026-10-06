@@ -77,3 +77,13 @@ rollback 核對 marker／audit／receipt、source pin、target baseline 與容�
 ## 驗證與文檔狀態
 
 本批僅背景研究；沒有新 UI 或金融計算，無需重跑113個已接受 COW tests／全套回歸。原計畫只追加並保留原 bytes 前綴，這份調查不等於圖表整合完成。Raw 根 `output/qa/ux07_chart_feasibility_20261005/` 保存 metadata／查閱清單，按 Git 排除留本機；正式套用與 F1 例外仍未批准。
+
+## 台股 Widget 獨立 lane 補充（2026-10-05）
+
+主線讀回 `output/qa/ux07_widget_coverage_lane_20261005/` 的 REPORT、coverage_matrix、contract_proposal、verification，核對收據 SHA 與126格數量；沒有重做外站調查或執行嵌入。17筆官方來源核實5個主站商品身份：TWSE:2382、TWSE:1477、TPEX:6488、TWSE:00878、TWSE:IX0001。14個商品／狀態範圍×3元件×日週月共126格的 Widget 嵌入資格全部 unknown、confirmed 0；主站身份成立不授 Widget 商品、週期或歷史深度資格。特殊交易狀態與興櫃代表未核實，不猜 symbol。
+
+[Widget亞太表](https://www.tradingview.com/widget-docs/markets/asia-pacific/)列TPEx延遲，未列TWSE或獨立興櫃範圍；「未列」不能推為全市場支援或不支援。主站TPEx即時口徑不能套用Widget。逐商品／元件／週期、歷史深度、Qt origin與桌面散布條件、離線fallback與效能實跑仍待確認。官方商品頁可核實[廣達](https://tw.tradingview.com/symbols/TWSE-2382/)與[聚陽](https://tw.tradingview.com/symbols/TWSE-1477/)主站身份；沒有因此啟用外部模式。
+
+contract為建議而非新增配置：分開website identity、市場表、Widget商品／週期、Qt origin與部署資格；未知不自動標unsupported。原生圖／同源表保持default，Hosted Widget僅外部參考，same_source=false、PIT=false；不取iframe數字回填金融核心。遠端若後續獲准，只能送已核實公開商品與必要顯示設定，不送收藏、持倉、成本、備註、私人路徑／run／source ID，不給Python／SQL／檔案bridge；署名沿官方設計。[資料FAQ](https://www.tradingview.com/widget-docs/faq/data/)與[一般FAQ](https://www.tradingview.com/widget-docs/faq/general/)為產品差異與署名入口。
+
+舊章正式D候選路徑已被最新個人資料分離要求列為套用blocker；F1於23:32 UTC獲使用者接受效能例外，20%目標未達仍保留。這兩項最新邊界詳見[UX08收據](UX08_NATIVE_CHART_CONTRACT_20261005.md)，不以本調查授權遷移。UX07全原型／選型與UX08整項仍未完成。

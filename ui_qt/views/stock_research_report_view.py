@@ -68,7 +68,10 @@ from app_module.research_result_presentation import (
     build_stock_research_event_table,
 )
 from app_module.stock_research_report_service import StockResearchReportReadService
-from app_module.stock_research_chart_payload import project_stock_chart_payload
+from app_module.stock_research_chart_payload import (
+    StockChartTechnicalLineDTO,
+    project_stock_chart_payload,
+)
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.widgets.decision_outcome_journey_widget import DecisionOutcomeJourneyWidget
@@ -152,6 +155,7 @@ class StockPriceChartWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._points: tuple[StockPricePointDTO, ...] = ()
+        self._technical_lines: tuple[StockChartTechnicalLineDTO, ...] = ()
         self._mode = "close"
         self._hover_index: int | None = None
         self._base_tooltip = "目前沒有可繪製的價格資料。"
@@ -165,6 +169,7 @@ class StockPriceChartWidget(QWidget):
 
     def set_points(self, points: Sequence[StockPricePointDTO]) -> None:
         self._points = tuple(points)
+        self._technical_lines = ()
         self._mode = self._resolve_mode(self._points)
         self._hover_index = None
         QToolTip.hideText()
@@ -192,6 +197,45 @@ class StockPriceChartWidget(QWidget):
             self.setToolTip(self._base_tooltip)
             self.setAccessibleDescription("目前沒有可繪製的價格資料。")
         self.update()
+
+    def set_technical_lines(self, lines: Sequence[StockChartTechnicalLineDTO]) -> None:
+        """只更新同源投影線；保留價格日期、模式、游標與 widget 幾何。"""
+        self._technical_lines = tuple(lines)
+        self.update()
+
+    def _technical_segments(
+        self, line: StockChartTechnicalLineDTO
+    ) -> tuple[tuple[tuple[int, Decimal], ...], ...]:
+        """按價格日期對齊；空值或缺收盤日期斷線，不插值。"""
+        by_date = {point.data_date: point.value for point in line.points}
+        drawable_indices = {point.data_date: i for i, point in enumerate(self._drawable_points())}
+        segments: list[tuple[tuple[int, Decimal], ...]] = []
+        current: list[tuple[int, Decimal]] = []
+        for point in self._points:
+            value = by_date.get(point.data_date)
+            index = drawable_indices.get(point.data_date)
+            if value is None or index is None:
+                if current:
+                    segments.append(tuple(current))
+                    current = []
+                continue
+            current.append((index, value))
+        if current:
+            segments.append(tuple(current))
+        return tuple(segments)
+
+    def _technical_tooltip(self, data_date: str) -> str:
+        rows: list[str] = []
+        for line in self._technical_lines:
+            point = next((point for point in line.points if point.data_date == data_date), None)
+            rows.append(f"{line.label}：{_chart_exact_decimal_text(point.value if point else None)}")
+            if point is not None:
+                rows.append(
+                    f"來源：{point.source_id or '未知'}；"
+                    f"可得時間：{point.available_at or '未知'}；"
+                    f"列 SHA-256：{point.source_row_hash or '未知'}"
+                )
+        return "\n".join(rows)
 
     def _drawable_points(self) -> tuple[StockPricePointDTO, ...]:
         return tuple(point for point in self._points if point.close_price is not None)
@@ -247,6 +291,9 @@ class StockPriceChartWidget(QWidget):
             points = self._drawable_points()
             self._hover_index = index
             text = self._point_tooltip(points[index])
+            technical_text = self._technical_tooltip(points[index].data_date)
+            if technical_text:
+                text += "\n" + technical_text
             self.setToolTip(text)
             QToolTip.showText(
                 self.mapToGlobal(event.position().toPoint()),
@@ -314,8 +361,13 @@ class StockPriceChartWidget(QWidget):
                     for point in points
                     if point.close_price is not None
                 )
-            low = min(values)
-            high = max(values)
+            overlay_values = tuple(
+                value for line in self._technical_lines
+                for segment in self._technical_segments(line)
+                for _index, value in segment
+            )
+            low = min((*values, *overlay_values))
+            high = max((*values, *overlay_values))
             span = high - low
             if span == 0:
                 span = Decimal("1")
@@ -441,6 +493,22 @@ class StockPriceChartWidget(QWidget):
                 painter.setBrush(QBrush(QColor(MIDNIGHT_ANALYST.accent)))
                 painter.setPen(QPen(QColor(MIDNIGHT_ANALYST.accent)))
                 painter.drawEllipse(path_points[-1], 3, 3)
+            for line in self._technical_lines:
+                color = "#fbbf24" if line.key == "MA20" else "#60a5fa"
+                painter.setPen(QPen(QColor(color), 2))
+                painter.setBrush(QBrush(QColor(color)))
+                for segment in self._technical_segments(line):
+                    vertices = tuple(
+                        QPoint(
+                            left + int(Decimal(right - left) * Decimal(index) / Decimal(denominator)),
+                            bottom - int(Decimal(bottom - top) * (value - low) / span),
+                        )
+                        for index, value in segment
+                    )
+                    for first, second in zip(vertices, vertices[1:]):
+                        painter.drawLine(first, second)
+                    if len(vertices) == 1:
+                        painter.drawEllipse(vertices[0], 2, 2)
         finally:
             if painter.isActive():
                 painter.end()
@@ -1963,6 +2031,7 @@ class StockResearchReportView(QWidget):
         try:
             chart = StockPriceChartWidget()
             chart.set_points(payload.price_points)
+            chart.set_technical_lines(payload.technical_lines)
             layout.addWidget(chart)
             chart_mode_text = {
                 "ohlc_volume": "原生圖表：OHLC K 線與成交量；下方表格保留來源精度。",
@@ -2050,6 +2119,45 @@ class StockResearchReportView(QWidget):
             )
 
         technical = payload.technical_snapshot
+        history_label = QLabel(
+            "MA20（金色）／MA60（藍色）：既存歷史值，空值或缺列處斷線；暖機與可得時間未確認，不代表歷史 PIT。"
+            if payload.technical_lines
+            else "沒有可核對的歷史 MA20／MA60 序列；不以單日快照或最新值補線。"
+        )
+        history_label.setObjectName("stockResearchTechnicalHistoryStatus")
+        history_label.setWordWrap(True)
+        history_label.setProperty("role", "muted")
+        history_label.setToolTip("\n".join(payload.limitations))
+        layout.addWidget(history_label)
+        if payload.technical_lines:
+            values_by_key = {
+                line.key: {point.data_date: point.value for point in line.points}
+                for line in payload.technical_lines
+            }
+            history_rows = tuple(
+                (
+                    point.data_date,
+                    _chart_exact_decimal_text(values_by_key.get("MA20", {}).get(point.data_date)),
+                    _chart_exact_decimal_text(values_by_key.get("MA60", {}).get(point.data_date)),
+                )
+                for point in reversed(payload.price_points)
+            )
+            history_tooltips = tuple(
+                tuple(
+                    "\n".join(
+                        f"{line.label}；來源：{item.source_id or '未知'}；"
+                        f"可得時間：{item.available_at or '未知'}；"
+                        f"列 SHA-256：{item.source_row_hash or '未知'}"
+                        for line in payload.technical_lines
+                        for item in line.points if item.data_date == point.data_date
+                    ) for _column in range(3)
+                ) for point in reversed(payload.price_points)
+            )
+            self._add_table(
+                layout, ("資料日", "MA20", "MA60"), history_rows, 240,
+                tooltips=history_tooltips,
+                object_name="stockResearchTechnicalHistoryTable",
+            )
         if technical is not None:
             group = QGroupBox(f"技術指標快照｜資料日 {technical.data_date or '未知'}")
             group_layout = QVBoxLayout(group)

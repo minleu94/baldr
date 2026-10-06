@@ -17,7 +17,10 @@ from app_module.stock_research_report_dtos import (
     StockEvidenceEventDTO,
     StockPricePointDTO,
     StockResearchReportDTO,
+    StockTechnicalHistoryRowDTO,
     StockTechnicalSnapshotDTO,
+    stock_technical_history_row_fingerprint_sha256,
+    technical_history_saved_scope_limitation,
 )
 from app_module.stock_research_report_provider_adapters import (
     stock_price_row_fingerprint_sha256,
@@ -36,7 +39,10 @@ class StockChartProjectionStatus(str, Enum):
 @dataclass(frozen=True)
 class StockChartTechnicalPointDTO:
     data_date: str
-    value: Decimal
+    value: Decimal | None
+    source_id: str = ""
+    source_row_hash: str = ""
+    available_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -65,6 +71,8 @@ class StockChartPayloadDTO:
     marker_status: str = "unknown"
     historical_pit_eligible: bool = False
     limitations: tuple[str, ...] = ()
+    technical_history_status: str = "unknown"
+    technical_history_limitations: tuple[str, ...] = ()
 
     @property
     def table_rows(self) -> tuple[StockPricePointDTO, ...]:
@@ -221,6 +229,19 @@ def project_stock_chart_payload(
         if matches[0][2] != pinned_price_hash:
             return _rejected("price_row_pin_hash_mismatch")
 
+    price_dates = tuple(point.data_date for point in price_points)
+    technical_lines, technical_history_status, technical_history_limitations, history_error = (
+        _project_technical_history(
+            report,
+            stock_code=stock_code,
+            cutoff=cutoff,
+            price_dates=price_dates,
+            source_by_id=source_by_id,
+        )
+    )
+    if history_error:
+        return _rejected(history_error)
+
     technical_snapshot = getattr(report, "technical", None)
     technical_status = "unknown"
     snapshot_clock_status = "unknown"
@@ -310,6 +331,7 @@ def project_stock_chart_payload(
     elif technical_status == "future_excluded":
         limitations.append("技術指標資料日或可得時間晚於 cutoff，已排除。")
 
+    limitations.extend(technical_history_limitations)
     events = tuple(getattr(report, "events", ()) or ())
     marker_candidates, marker_status = _project_marker_candidates(
         events,
@@ -336,7 +358,9 @@ def project_stock_chart_payload(
         technical_snapshot=technical_snapshot,
         technical_status=technical_status,
         # 現行 report 沒有歷史技術序列，不能把 snapshot 拉成整條線。
-        technical_lines=(),
+        technical_lines=technical_lines,
+        technical_history_status=technical_history_status,
+        technical_history_limitations=technical_history_limitations,
         # 事件缺列級身份，候選只供診斷；UI 不得把候選當 marker 繪製。
         evidence_markers=(),
         unverified_marker_candidates=marker_candidates,
@@ -474,6 +498,177 @@ def _price_fingerprint(
     except ValueError:
         # 缺少 OHLC 時不能重算已知 fingerprint。
         return None
+
+
+def _project_technical_history(
+    report: StockResearchReportDTO,
+    *,
+    stock_code: str,
+    cutoff: date,
+    price_dates: tuple[str, ...],
+    source_by_id: Mapping[str, object],
+) -> tuple[
+    tuple[StockChartTechnicalLineDTO, ...],
+    str,
+    tuple[str, ...],
+    str | None,
+]:
+    """驗證既有 MA 列，依價格日期輸出可由 None 中斷的折線點。"""
+
+    saved_scope_limitation = technical_history_saved_scope_limitation(
+        getattr(report, "research_context", {})
+    )
+    if saved_scope_limitation is not None:
+        return (), "unavailable", (saved_scope_limitation,), None
+    if not price_dates:
+        return (), "unknown", ("沒有價格日期可供 MA20/MA60 對齊。",), None
+
+    history_rows = tuple(getattr(report, "technical_history", ()) or ())
+    if not history_rows:
+        return (), "unknown", (
+            "沒有與目前價格日期對齊的既有 MA20/MA60 歷史列。",
+            "缺值可能來自來源缺列或暖機未知；不補前值，也不宣稱 PIT 資格。",
+        ), None
+
+    expected_source_id = "sqlite.technical_indicators"
+    source = source_by_id.get(expected_source_id)
+    if source is None:
+        return (), "unknown", (), "technical_history_source_missing"
+    source_status = str(getattr(source, "status", "") or "").strip().lower()
+    if source_status not in {"available", "partial", "stale"}:
+        return (), "unknown", (), "technical_history_source_unavailable"
+
+    price_date_set = set(price_dates)
+    history_by_date: dict[str, StockTechnicalHistoryRowDTO] = {}
+    has_unknown_clock = source_status != "available"
+    has_excluded_rows = False
+    source_date_text = str(getattr(source, "data_as_of", "") or "").strip()
+    source_date = _strict_date(source_date_text) if source_date_text else None
+    if source_date_text and source_date is None:
+        return (), "unknown", (), "invalid_technical_history_source_date"
+    if source_date is not None and source_date > cutoff:
+        return (), "future_excluded", (
+            "技術來源 data_as_of 晚於 cutoff，整段 MA20/MA60 歷史已排除。",
+        ), None
+    if source_date is None:
+        has_unknown_clock = True
+    source_available_date, source_clock_status = _availability_date(
+        getattr(source, "available_at", "")
+    )
+    if source_clock_status == "invalid":
+        return (), "unknown", (), "invalid_technical_history_source_available_at"
+    if source_clock_status == "verified" and source_available_date is not None:
+        if source_available_date > cutoff:
+            return (), "future_excluded", (
+                "技術來源 available_at 晚於 cutoff，整段 MA20/MA60 歷史已排除。",
+            ), None
+    else:
+        has_unknown_clock = True
+    for row in history_rows:
+        data_date_text = str(getattr(row, "data_date", "") or "").strip()
+        data_date = _strict_date(data_date_text)
+        if data_date is None:
+            return (), "unknown", (), "invalid_technical_history_date"
+        if data_date > cutoff or data_date_text not in price_date_set:
+            has_excluded_rows = True
+            continue
+
+        row_stock = str(getattr(row, "stock_code", "") or "").strip()
+        if row_stock != stock_code:
+            return (), "unknown", (), "technical_history_stock_mismatch"
+        row_source_id = str(getattr(row, "source_id", "") or "").strip()
+        if row_source_id != expected_source_id:
+            return (), "unknown", (), "technical_history_source_mismatch"
+
+        ma20 = getattr(row, "ma20", None)
+        ma60 = getattr(row, "ma60", None)
+        for value in (ma20, ma60):
+            if value is not None and (
+                not isinstance(value, Decimal) or not value.is_finite()
+            ):
+                return (), "unknown", (), "invalid_technical_history_numeric"
+
+        available_at = str(getattr(row, "available_at", "") or "").strip()
+        available_date, clock_status = _availability_date(available_at)
+        if clock_status == "invalid":
+            return (), "unknown", (), "invalid_technical_history_available_at"
+        if clock_status == "verified" and available_date is not None and available_date > cutoff:
+            has_excluded_rows = True
+            continue
+        if clock_status == "unknown":
+            has_unknown_clock = True
+
+        row_hash = str(getattr(row, "source_row_hash", "") or "").strip()
+        normalized_hash = _normalized_sha256(row_hash)
+        if normalized_hash is None:
+            return (), "unknown", (), "invalid_technical_history_hash"
+        try:
+            expected_hash = stock_technical_history_row_fingerprint_sha256(
+                stock_code=row_stock,
+                source_id=row_source_id,
+                data_date=data_date_text,
+                ma20=ma20,
+                ma60=ma60,
+                available_at=available_at,
+            )
+        except ValueError:
+            return (), "unknown", (), "invalid_technical_history_numeric"
+        if normalized_hash != expected_hash:
+            return (), "unknown", (), "technical_history_hash_mismatch"
+        if data_date_text in history_by_date:
+            return (), "unknown", (), "duplicate_technical_history_date"
+        history_by_date[data_date_text] = row
+
+    if not history_by_date:
+        reason = (
+            "cutoff 後或價格日期以外的 MA20/MA60 列已排除。"
+            if has_excluded_rows
+            else "沒有通過來源檢核的 MA20/MA60 歷史列。"
+        )
+        return (), "unknown", (reason, "暖機狀態未知；歷史 PIT 資格維持 false。"), None
+
+    lines: list[StockChartTechnicalLineDTO] = []
+    has_missing_value = False
+    has_any_value = False
+    for key, label, attribute in (
+        ("MA20", "MA20", "ma20"),
+        ("MA60", "MA60", "ma60"),
+    ):
+        points: list[StockChartTechnicalPointDTO] = []
+        for price_date_text in price_dates:
+            row = history_by_date.get(price_date_text)
+            value = getattr(row, attribute, None) if row is not None else None
+            if value is None:
+                has_missing_value = True
+            else:
+                has_any_value = True
+            points.append(
+                StockChartTechnicalPointDTO(
+                    data_date=price_date_text,
+                    value=value,
+                    source_id=(row.source_id if row is not None else ""),
+                    source_row_hash=(row.source_row_hash if row is not None else ""),
+                    available_at=(row.available_at if row is not None else ""),
+                )
+            )
+        lines.append(StockChartTechnicalLineDTO(key=key, label=label, points=tuple(points)))
+
+    limitations = [
+        "僅投影既有 technical_indicators 的 MA20/MA60 stored rows；不重算指標。",
+        "缺列或空值代表缺值／暖機未知；不補末值，且不授予歷史 PIT 或暖機充分資格。",
+    ]
+    if has_unknown_clock:
+        limitations.append("技術列或來源 availability 未核實，歷史時間資格為 unknown。")
+    if has_excluded_rows:
+        limitations.append("cutoff 後或價格日期以外的技術列已排除。")
+
+    if not has_any_value or has_unknown_clock:
+        status = "unknown"
+    elif has_missing_value:
+        status = "partial"
+    else:
+        status = "observed_only"
+    return tuple(lines), status, tuple(limitations), None
 
 
 def _normalized_sha256(value: object) -> str | None:

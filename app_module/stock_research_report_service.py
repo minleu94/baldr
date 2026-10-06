@@ -67,6 +67,9 @@ from app_module.stock_research_report_dtos import (
     StockResearchReportDTO,
     StockOriginalRankingReportDTO,
     StockTechnicalSnapshotDTO,
+    StockTechnicalHistoryRowDTO,
+    stock_technical_history_row_fingerprint_sha256,
+    technical_history_saved_scope_limitation,
 )
 from app_module.stock_research_report_provider_adapters import (
     PortfolioExitReadProvider,
@@ -313,6 +316,7 @@ class StockResearchReportReadService:
             )
 
         technical: StockTechnicalSnapshotDTO | None = None
+        technical_history: tuple[StockTechnicalHistoryRowDTO, ...] = ()
         technical_source: StockReportSourceDTO | None = None
         try:
             self._check_cancel(cancel_callback)
@@ -336,6 +340,22 @@ class StockResearchReportReadService:
                     missing_reason="找不到不晚於查詢日的技術指標；請先更新技術資料。",
                 )
             )
+
+        saved_history_limitation = technical_history_saved_scope_limitation(context_map)
+        if saved_history_limitation is not None:
+            limitations.append(saved_history_limitation)
+        else:
+            try:
+                self._check_cancel(cancel_callback)
+                technical_history = self._read_technical_history(
+                    code,
+                    cutoff,
+                    price_points,
+                )
+            except StockResearchReportCancelled:
+                raise
+            except Exception as exc:
+                limitations.append(_error_text("技術歷史", exc))
 
         shared_daily_features: Mapping[str, Any] = {}
         try:
@@ -918,6 +938,7 @@ class StockResearchReportReadService:
             shared_daily_features=shared_daily_features,
             research_context=context_map,
             original_ranking=original_ranking,
+            technical_history=technical_history,
         )
 
     def _read_prices(
@@ -1089,6 +1110,88 @@ class StockResearchReportReadService:
             limitations=technical.limitations,
         )
         return technical, source
+
+    def _read_technical_history(
+        self,
+        code: str,
+        cutoff: date,
+        price_points: Sequence[StockPricePointDTO],
+    ) -> tuple[StockTechnicalHistoryRowDTO, ...]:
+        """只讀價格投影日期交集內既有 MA20/MA60 列，沿用價格列數上限。"""
+
+        table = "technical_indicators"
+        columns = self._columns(table)
+        if not columns or not price_points:
+            return ()
+        date_col = _pick(columns, "日期", "Date")
+        code_col = _pick(columns, "證券代號", "stock_code", "Code")
+        if date_col is None or code_col is None:
+            raise ValueError("technical_indicators 缺少日期或股票代號欄位")
+
+        price_dates: set[str] = set()
+        for point in price_points:
+            parsed = _coerce_date(point.data_date)
+            if parsed is not None and parsed <= cutoff:
+                price_dates.add(_date_key(parsed))
+        bounded_dates = tuple(sorted(price_dates, reverse=True)[:_PRICE_LIMIT])
+        if not bounded_dates:
+            return ()
+
+        availability_col = _pick(columns, "available_at", "available_date")
+        select = [
+            _select_column(columns, ("日期", "Date"), "data_date"),
+            _select_column(columns, ("MA20",), "ma20"),
+            _select_column(columns, ("MA60",), "ma60"),
+            _select_column(
+                columns,
+                (availability_col,) if availability_col is not None else (),
+                "available_at",
+            ),
+        ]
+        date_placeholders = ", ".join("?" for _ in bounded_dates)
+        sql = f"""
+            SELECT {", ".join(select)}
+            FROM {self._table(table)}
+            WHERE {_quote(code_col)} = ?
+              AND {_non_empty_expr(date_col)}
+              AND {_date_key_expr(date_col)} <= ?
+              AND {_date_key_expr(date_col)} IN ({date_placeholders})
+            ORDER BY {_date_key_expr(date_col)} DESC
+            LIMIT ?
+        """
+        rows = self._query(
+            sql,
+            (code, _date_key(cutoff), *bounded_dates, _PRICE_LIMIT),
+        )
+        history: list[StockTechnicalHistoryRowDTO] = []
+        for row in rows:
+            data_date = _iso_date(row["data_date"])
+            if not data_date:
+                continue
+            ma20 = _decimal(row["ma20"])
+            ma60 = _decimal(row["ma60"])
+            available_at = str(row["available_at"] or "").strip()
+            source_id = "sqlite.technical_indicators"
+            source_row_hash = stock_technical_history_row_fingerprint_sha256(
+                stock_code=code,
+                source_id=source_id,
+                data_date=data_date,
+                ma20=ma20,
+                ma60=ma60,
+                available_at=available_at,
+            )
+            history.append(
+                StockTechnicalHistoryRowDTO(
+                    stock_code=code,
+                    source_id=source_id,
+                    data_date=data_date,
+                    source_row_hash=source_row_hash,
+                    ma20=ma20,
+                    ma60=ma60,
+                    available_at=available_at,
+                )
+            )
+        return tuple(sorted(history, key=lambda row: row.data_date))
 
     def _read_fundamentals(
         self,

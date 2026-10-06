@@ -292,3 +292,198 @@ def test_windows_device_namespace_root_rejected(tmp_path, prefix):
     assert_code("ambiguous_windows_path", lambda: resolve_personal_data_paths(
         tmp_path / "market", personal_root=prefix + str(tmp_path / "personal"),
     ))
+
+def internal_layout(tmp_path):
+    market = tmp_path / "FA_Data"
+    return resolve_personal_data_paths(market, personal_root=market / "personal", environ={})
+
+
+def test_exact_personal_subtree_resolves_without_creating_directories(tmp_path):
+    paths = internal_layout(tmp_path)
+    assert paths.personal_root == paths.market_root / "personal"
+    for path in (paths.watchlist_db, paths.activation_marker, paths.conversion_receipt,
+                 paths.backup_root, paths.marker_backup_root, paths.research_notes_root, paths.ledger_root):
+        assert path.is_relative_to(paths.personal_root)
+        assert path != paths.market_root / "sqlite/twstock.db"
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("child", ["", "sqlite", "sqlite/personal", "daily_price", "daily_price/personal",
+                                  "output", "output/personal", "technical_analysis", "personal/notes", "personalized"])
+def test_only_exact_market_personal_subtree_is_allowed(tmp_path, child):
+    market = tmp_path / "FA_Data"
+    assert_code("overlapping_roots", lambda: resolve_personal_data_paths(
+        market, personal_root=market / child, environ={},
+    ))
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("child", ["personal", "personal/cache", ""])
+def test_legacy_output_may_not_overlap_internal_personal(tmp_path, child):
+    market = tmp_path / "FA_Data"
+    assert_code("overlapping_roots", lambda: resolve_personal_data_paths(
+        market, personal_root=market / "personal", legacy_output_root=market / child, environ={},
+    ))
+
+
+@pytest.mark.parametrize("name", ["personal/watchlists/watchlists.v3.sqlite", "personal/research_notes/journal_entries.jsonl",
+                                 "personal/notes.csv", "Personal/notes.csv", "personal/backups/research_notes/a.csv"])
+def test_market_export_rejects_personal_subtree_even_csv(tmp_path, name):
+    paths = internal_layout(tmp_path)
+    assert_code("personal_subtree_excluded", lambda: plan_market_only_export(
+        paths, [name], destination_root=tmp_path / "package",
+    ))
+    assert not paths.market_root.exists()
+
+
+def test_scan_of_market_tree_with_personal_file_is_rejected(tmp_path):
+    paths = internal_layout(tmp_path)
+    create_market_file(paths)
+    secret = paths.personal_root / "notes.csv"
+    secret.parent.mkdir()
+    secret.write_bytes(b"synthetic private")
+    names = [p.relative_to(paths.market_root).as_posix() for p in paths.market_root.rglob("*.csv")]
+    assert_code("personal_subtree_excluded", lambda: plan_market_only_export(
+        paths, names, destination_root=tmp_path / "package",
+    ))
+    selected = plan_market_only_export(paths, ["daily_price/20261002.csv"], destination_root=tmp_path / "package")
+    selected.validate()
+    assert [f.relative_path for f in selected.files] == ["daily_price/20261002.csv"]
+    assert secret.read_bytes() == b"synthetic private"
+    assert not (tmp_path / "package").exists()
+
+
+def test_internal_personal_hardlink_into_csv_whitelist_rejected(tmp_path):
+    paths = internal_layout(tmp_path)
+    secret = paths.research_notes_root / "fixture.csv"
+    secret.parent.mkdir(parents=True)
+    secret.write_bytes(b"synthetic private")
+    allowed = paths.market_root / "daily_price/private.csv"
+    allowed.parent.mkdir()
+    os.link(secret, allowed)
+    assert_code("hardlinked_export_file", lambda: plan_market_only_export(
+        paths, ["daily_price/private.csv"], destination_root=tmp_path / "package",
+    ))
+
+
+@pytest.mark.parametrize("child", ["personal", "personal/watchlists", "daily_price"])
+def test_internal_root_or_market_cross_junction_rejected(tmp_path, child):
+    paths = internal_layout(tmp_path)
+    outside = tmp_path / "outside"; outside.mkdir()
+    link = paths.market_root / child
+    link.parent.mkdir(parents=True, exist_ok=True)
+    target = paths.personal_root if child == "daily_price" else outside
+    target.mkdir(parents=True, exist_ok=True)
+    try:
+        make_directory_link(link, target)
+        if child == "daily_price":
+            assert_code("linked_path", lambda: plan_market_only_export(
+                paths, ["daily_price/secret.csv"], destination_root=tmp_path / "package",
+            ))
+        else:
+            assert_code("linked_path", paths.validate)
+    finally:
+        if os.path.lexists(link):
+            if os.name == "nt": os.rmdir(link)
+            else: link.unlink()
+
+
+def test_internal_cow_controls_and_legacy_source_boundary(tmp_path):
+    from app_module.personal_data_paths import WatchlistCowControlPaths
+    paths = internal_layout(tmp_path)
+    source = paths.legacy_output_root / "watchlist/default.json"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b'{"version":1,"items":[]}\n')
+    before = source.read_bytes()
+    controls = WatchlistCowControlPaths(paths, source)
+    controls.validate(source, paths.watchlist_db)
+    for path in (controls.marker_path, controls.lock_path, controls.receipt_path, controls.source_backup_path,
+                 controls.backup_marker_path("a"*32)):
+        assert path.is_relative_to(paths.personal_root)
+    assert source.read_bytes() == before
+    assert not paths.personal_root.exists()
+    fake_source = paths.personal_root / "old.json"
+    assert_code("source_in_personal_subtree", lambda: WatchlistCowControlPaths(paths, fake_source).validate(
+        fake_source, paths.watchlist_db,
+    ))
+
+
+@pytest.mark.parametrize("kind", ["json", "1", "2"])
+def test_cow_synthetic_pipeline_with_new_internal_root(tmp_path, kind):
+    import json
+    from app_module.personal_data_paths import WatchlistCowControlPaths
+    from app_module.watchlist_cow_activation import activate_watchlist_sqlite, rollback_watchlist_sqlite, PersonalWatchlistCowService
+    from data_module.watchlist_json_cow import convert_watchlist_json
+    from data_module.watchlist_sqlite_cow import convert_watchlist_sqlite
+    from test_watchlist_cow_activation import _build_source
+    paths = internal_layout(tmp_path)
+    source = paths.legacy_output_root / "watchlist" / ("default.json" if kind == "json" else "watchlists.db")
+    source.parent.mkdir(parents=True)
+    if kind == "json":
+        source.write_text(json.dumps({"version": 1, "name": "fixture", "items": [{
+            "stock_code": "2330", "stock_name": "fixture", "added_at": "2026-10-01T09:00:00",
+            "source": "manual", "notes": "synthetic", "tags": [],
+        }], "created_at": "2026-10-01T09:00:00", "updated_at": "2026-10-01T09:00:00"}), encoding="utf-8")
+    else:
+        _build_source(source, int(kind))
+    before = source.read_bytes(), source.stat().st_mtime_ns
+    controls = WatchlistCowControlPaths(paths, source)
+    converter = convert_watchlist_json if kind == "json" else convert_watchlist_sqlite
+    result = converter(source, paths.watchlist_db, control_paths=controls)
+    assert result["status"] == "ready", result
+    assert activate_watchlist_sqlite(source, paths.watchlist_db, control_paths=controls)["status"] == "activated"
+    service = PersonalWatchlistCowService(controls)
+    loaded = service.load("default")
+    assert loaded is not None
+    payload, revision = loaded
+    payload["items"].append({"stock_code": "9999", "stock_name": "synthetic", "source": "manual",
+                             "added_at": "2026-10-01T09:00:00", "tags": [], "notes": "fixture"})
+    assert service.save("default", payload, expected_revision=revision) == revision + 1
+    target_bytes = paths.watchlist_db.read_bytes()
+    assert rollback_watchlist_sqlite(source, control_paths=controls)["status"] == "rolled_back"
+    assert paths.watchlist_db.read_bytes() == target_bytes
+    assert (source.read_bytes(), source.stat().st_mtime_ns) == before
+    assert not source.with_name(source.name+".cow-active.json").exists()
+    assert not paths.market_root.joinpath("sqlite/twstock.db").exists()
+    assert controls.marker_path.exists() and controls.receipt_path.exists()
+
+
+@pytest.mark.parametrize("which", ["db", "marker", "receipt", "lock", "source_backup", "rollback"])
+def test_internal_control_artifact_hardlinks_rejected(tmp_path, which):
+    from app_module.personal_data_paths import WatchlistCowControlPaths
+    paths = internal_layout(tmp_path)
+    source = paths.legacy_output_root / "watchlist/default.json"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"synthetic source")
+    controls = WatchlistCowControlPaths(paths, source)
+    target = {"db": paths.watchlist_db, "marker": controls.marker_path, "receipt": controls.receipt_path,
+              "lock": controls.lock_path, "source_backup": controls.source_backup_path,
+              "rollback": controls.backup_marker_path("a"*32)}[which]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    os.link(source, target)
+    with pytest.raises(PersonalDataPathError, match="hardlinked"):
+        controls.assert_personal(target)
+    assert source.read_bytes() == b"synthetic source"
+
+
+def test_internal_root_alias_and_escape_forms_rejected(tmp_path):
+    market = tmp_path / "FA_Data"
+    assert_code("absolute_path_required", lambda: resolve_personal_data_paths(
+        market, personal_root=market / "personal" / ".." / "personal", environ={},
+    ))
+    if os.name == "nt":
+        for spelling in ("personal.", "personal ", "personal:notes", "CON"):
+            assert_code("ambiguous_windows_path", lambda spelling=spelling: resolve_personal_data_paths(
+                market, personal_root=market / spelling, environ={},
+            ))
+    assert not market.exists()
+
+
+def test_internal_root_environment_is_explicit_and_external_still_opt_in(tmp_path):
+    market = tmp_path / "FA_Data"
+    paths = resolve_personal_data_paths(market, environ={"PERSONAL_DATA_ROOT": str(market / "personal")})
+    assert paths.personal_root == market / "personal"
+    assert_code("personal_root_unconfigured", lambda: resolve_personal_data_paths(market, environ={}))
+    external = resolve_personal_data_paths(market, personal_root=tmp_path / "custom", environ={})
+    assert external.personal_root == tmp_path / "custom"
+    assert not market.exists() and not external.personal_root.exists()

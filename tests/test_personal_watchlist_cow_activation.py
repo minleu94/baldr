@@ -226,7 +226,7 @@ def test_overlapping_personal_root_rejected_even_manual_contract(tmp_path):
     controls = setup_controls(tmp_path, "json")
     unsafe = WatchlistCowControlPaths(PersonalDataPaths(
         controls.personal_paths.market_root, controls.personal_paths.legacy_output_root,
-        controls.personal_paths.market_root / "personal",
+        controls.personal_paths.market_root / "output" / "personal",
     ), controls.source_path)
     result = preview_watchlist_sqlite_activation(
         unsafe.source_path, unsafe.personal_paths.watchlist_db, control_paths=unsafe,

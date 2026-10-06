@@ -18,7 +18,7 @@ from app_module.workbench_source_service import WorkbenchSourceService
 
 
 def setup(tmp_path):
-    paths = resolve_personal_journal_paths(tmp_path / 'FA_Data', personal_root=tmp_path / 'personal')
+    paths = resolve_personal_journal_paths(tmp_path / 'FA_Data', personal_root=tmp_path / 'FA_Data/personal')
     config = SimpleNamespace(output_root=paths.personal_paths.legacy_output_root,
                              db_file=tmp_path/'FA_Data/sqlite/twstock.db',
                              research_run_db_file=tmp_path/'FA_Data/output/research_runs/research_runs.db')
@@ -30,6 +30,11 @@ def inventory(root):
         return {}
     return {str(p.relative_to(root)): (p.read_bytes(), p.stat().st_mtime_ns)
             for p in root.rglob('*') if p.is_file()}
+
+
+def market_inventory(paths):
+    return {name: info for name, info in inventory(paths.personal_paths.market_root).items()
+            if Path(name).parts[0].casefold() != "personal"}
 
 
 def identity(result='R'):
@@ -50,13 +55,14 @@ def test_construct_and_readonly_discovery_create_no_store_or_watchlist(tmp_path)
     assert workbench.continuity_review_projection_service.journal_path == paths.journal_file
     assert not paths.personal_paths.personal_root.exists()
     assert not paths.personal_paths.market_root.exists()
+    assert not paths.personal_paths.legacy_output_root.exists()
 
 
 def test_personal_writer_and_legacy_readonly_are_separate(tmp_path):
     paths, config = setup(tmp_path)
     legacy = JournalService(config)
     legacy.add_journal_entry('synthetic source', journal_id='legacy')
-    before = inventory(paths.personal_paths.market_root)
+    before = market_inventory(paths)
     old = JournalService(config, journal_paths=paths, legacy_read_only=True)
     assert old.list_journal_entries()[0].journal_id == 'legacy'
     writer = JournalService(config, journal_paths=paths)
@@ -65,12 +71,12 @@ def test_personal_writer_and_legacy_readonly_are_separate(tmp_path):
     reopened = JournalService(config, journal_paths=paths)
     assert reopened.list_journal_entries()[0].body == 'personal fixture'
     assert paths.lock_file.is_file()
-    assert inventory(paths.personal_paths.market_root) == before
+    assert market_inventory(paths) == before
     assert not paths.personal_paths.watchlist_db.exists()
     assert not paths.backup_root.exists() and not paths.audit_root.exists()
     with pytest.raises(RuntimeError, match='legacy_journal_read_only'):
         old.add_journal_entry('forbidden')
-    assert inventory(paths.personal_paths.market_root) == before
+    assert market_inventory(paths) == before
 
 
 def test_legacy_missing_discovery_does_not_create_source_lock(tmp_path):
@@ -82,7 +88,7 @@ def test_legacy_missing_discovery_does_not_create_source_lock(tmp_path):
     reader = PersonalizationReadService.from_paths(output_root=config.output_root, journal_paths=paths,
                                                   legacy_journal_read_only=True)
     reader.journal_source.scan_integrity()
-    assert not paths.personal_paths.market_root.exists()
+    assert not paths.personal_paths.legacy_output_root.exists()
     assert not paths.personal_paths.personal_root.exists()
 
 
@@ -137,7 +143,7 @@ def test_cancel_then_resume_without_rollback_or_source_changes(tmp_path):
     assert paths.journal_file.read_bytes() == before
     state[0] = False
     assert service.list_journal_entries()[0].body == 'persisted'
-    assert not paths.personal_paths.market_root.exists()
+    assert not paths.personal_paths.legacy_output_root.exists()
 
 
 @pytest.mark.parametrize('method,args', [('append_trade', ({},)), ('load_trades', ()),
@@ -176,6 +182,7 @@ def test_rejects_junction_swap_after_discovery(tmp_path):
     reader = ReadOnlyJournalRevisionSource(paths.journal_file, journal_paths=paths)
     service = JournalService(config, journal_paths=paths)
     outside = tmp_path/'outside'; outside.mkdir()
+    paths.personal_paths.market_root.mkdir()
     link = paths.personal_paths.personal_root
     try:
         if os.name == 'nt':
@@ -218,7 +225,7 @@ def test_duplicate_selector_rejected_before_initialization(tmp_path, caller):
         else:
             PersonalizationReadService.from_paths(output_root=config.output_root, journal_paths=paths,
                                                   journal_path=paths.legacy_source)
-    assert not paths.personal_paths.market_root.exists()
+    assert not paths.personal_paths.legacy_output_root.exists()
     assert not paths.personal_paths.personal_root.exists()
 
 
@@ -250,7 +257,7 @@ def test_two_fresh_processes_os_lock_and_cas(tmp_path, mode):
     source = paths.legacy_source
     source.parent.mkdir(parents=True)
     source.write_bytes(b'{"synthetic":"legacy"}\n')
-    before = inventory(paths.personal_paths.market_root)
+    before = market_inventory(paths)
     service = JournalService(config, journal_paths=paths)
     _, token = service.store.load_journal_snapshot()
     workers = [subprocess.Popen([sys.executable, '-c', CHILD, str(paths.personal_paths.market_root),
@@ -267,7 +274,7 @@ def test_two_fresh_processes_os_lock_and_cas(tmp_path, mode):
     else:
         assert sorted(outputs)==['conflict','saved']
         assert len(reopened.list_journal_entries()) == 1
-    assert inventory(paths.personal_paths.market_root) == before
+    assert market_inventory(paths) == before
     assert not paths.personal_paths.watchlist_db.exists()
     assert not (paths.personal_paths.legacy_output_root/'portfolio/.journal_entries.jsonl.lock').exists()
 
@@ -278,7 +285,7 @@ def test_legacy_adapter_helpers_do_not_create_source_locks(tmp_path):
     assert list(service.store._read_jsonl(paths.legacy_source)) == []
     with pytest.raises(RuntimeError, match="legacy_journal_read_only"):
         service.store._ensure_line_separator_unlocked(paths.legacy_source)
-    assert not paths.personal_paths.market_root.exists()
+    assert not paths.personal_paths.legacy_output_root.exists()
 
 
 @pytest.mark.parametrize("caller", ["continuity", "personalization"])
@@ -302,7 +309,7 @@ def test_personal_reader_refuses_unknown_types_and_cancels_without_side_effect(t
 
 def test_paths_cannot_overlap_market_or_legacy_output(tmp_path):
     with pytest.raises(PersonalDataPathError, match="overlapping_roots"):
-        resolve_personal_journal_paths(tmp_path / "market", personal_root=tmp_path / "market/personal")
+        resolve_personal_journal_paths(tmp_path / "market", personal_root=tmp_path / "market/output/personal")
     with pytest.raises(PersonalDataPathError, match="overlapping_roots"):
         resolve_personal_journal_paths(tmp_path / "market", personal_root=tmp_path / "outside",
                                        legacy_output_root=tmp_path / "outside/output")
@@ -326,7 +333,7 @@ def test_delivery_ack_history_idempotent_cas_and_fresh_read(tmp_path):
     with pytest.raises(RuntimeError, match="stream_conflict"):
         service.record_personalization_delivery_acks([ack], expected_history_token="stale")
     assert paths.journal_file.read_bytes() == before
-    assert not paths.personal_paths.market_root.exists()
+    assert not paths.personal_paths.legacy_output_root.exists()
 
 
 def test_read_cancellation_during_parse_does_not_rewrite(tmp_path):

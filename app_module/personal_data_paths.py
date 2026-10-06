@@ -104,7 +104,9 @@ class PersonalDataPaths:
         market = _directory(self.market_root)
         output = _directory(self.legacy_output_root)
         personal = _directory(self.personal_root)
-        _separate(market, personal)
+        # 使用者指定唯一市場包內個人子樹；其他重疊仍拒絕。
+        if personal != market / "personal":
+            _separate(market, personal)
         _separate(output, personal)
         # 個人子路徑未建立也檢查既有祖先，阻擋日後新增的 link 逃逸。
         for child in (self.watchlist_db, self.activation_marker, self.conversion_receipt,
@@ -156,6 +158,8 @@ def _market_relative(raw: str) -> Path:
     ):
         raise PersonalDataPathError("invalid_export_relative_path", raw)
     parts = value.parts
+    if parts[0].casefold() == "personal":
+        raise PersonalDataPathError("personal_subtree_excluded", raw)
     if len(parts) == 2 and parts[0] == "meta_data" and parts[1] in _MARKET_METADATA_FILES:
         return Path(*parts)
     if len(parts) >= 2 and parts[0] in _MARKET_CSV_TREES and value.suffix == ".csv":
@@ -202,6 +206,8 @@ class MarketOnlyExportPlan:
             source = _absolute(self.paths.market_root / relative)
             if source != entry.source_path or not source.is_relative_to(self.paths.market_root):
                 raise PersonalDataPathError("export_source_changed", source)
+            if _overlap(source, self.paths.personal_root):
+                raise PersonalDataPathError("personal_subtree_excluded", source)
             if _overlap(source, self.paths.legacy_output_root):
                 raise PersonalDataPathError("legacy_output_excluded", source)
             if source in seen:
@@ -218,7 +224,11 @@ def plan_market_only_export(
     *,
     destination_root: str | Path,
 ) -> MarketOnlyExportPlan:
-    """caller 明列檔案，固定白名單檢查；不 glob、不讀內容、不建立包或目的目錄。"""
+    """caller 明列市場 CSV；不 glob／複製／開庫／分享。
+
+    DATA_ROOT/personal 是使用者資料，FA_Data 整包不能直接分享；CSV manifest
+    不代表市場 SQLite 表分享契約，也不解析 CSV 的私人內容。
+    """
     paths.validate()
     entries = []
     for raw in relative_files:
@@ -280,6 +290,9 @@ class WatchlistCowControlPaths:
         expected_source = _absolute(self.source_path)
         if source_value != expected_source:
             raise PersonalDataPathError("control_source_mismatch", source_value)
+        # personal 在 market 內時不能被誤認為 legacy 市場來源。
+        if source_value.is_relative_to(self.personal_paths.personal_root):
+            raise PersonalDataPathError("source_in_personal_subtree", source_value)
         if not any(source_value.is_relative_to(root) for root in
                    (self.personal_paths.market_root, self.personal_paths.legacy_output_root)):
             raise PersonalDataPathError("source_outside_legacy_root", source_value)

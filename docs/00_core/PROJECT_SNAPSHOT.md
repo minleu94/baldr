@@ -707,3 +707,8 @@ UX11 readmodel c7a9ea37整合為a3b63070；回測策略設定新增按需版本�
 ## 2026-10-06 UX08 原生viewport可操作接線（後續最新）
 
 e52b27dd以cd33ddd6採納controller，產品價格頁加入縮放／平移／重設與可見範圍、全量精確表。缺價格槽hover/paint日期一致，價格與MA缺值斷線；完整同身份重讀保範圍，未知或版本/source/cutoff/context變更重設，取消/stale/保存重開驗證。115相關案例、Workbench85、validator25／4skip、mypy820／compile／quant／offscreen；V5另有2個基線既有斷言失敗留證據。UX08／stage4仍partial，9stage1done8partial0pending、24UX2done22partial0pending不變，無Native／真人／正式Task／DB／push。CSV收據rename阻礙另包修，UX23 readonly未整合。[QA](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)。
+
+
+## 2026-10-06 明示市場CSV consumer／CLI採納（後續最新）
+
+f0e1d8e→8d0a6090精確review後以ac0cc19b→ffa6e537採納，consumer與獨立preview/accepted-preview/execute CLI；修正長UTF16路徑receipt錯名及API成功不足以completed，exact canonical/identity/hash發布後再驗。192去重synthetic通過、深CSV/CLI88重複驗、targeted3／fullmypy821／compile4／quant通過；3個初次deep COW普通open長路徑失敗另記，短fixture全套過。無UI／真匯出／分享／migration／Task／Native／push，FA_Data/personal沒有啟用。整體仍9stage1done8partial0pending、24UX2done22partial0pending，UX08／資料分離partial不增done。Manual同步，[QA](../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。

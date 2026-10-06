@@ -162,12 +162,14 @@ def _publish_receipt(stream: BinaryIO, receipt: Path) -> None:
     encoded_name = name.encode("utf-16-le")
     class RenameInfo(ctypes.Structure):
         _fields_ = [("ReplaceIfExists", wintypes.BOOLEAN), ("RootDirectory", wintypes.HANDLE),
-                    ("FileNameLength", wintypes.DWORD), ("FileName", wintypes.WCHAR * (len(encoded_name) // 2))]
+                    ("FileNameLength", wintypes.DWORD), ("FileName", wintypes.WCHAR * (len(encoded_name) // 2 + 1))]
 
     info = RenameInfo()
     info.ReplaceIfExists = False
     info.FileNameLength = len(encoded_name)
-    info.FileName = name
+    # Win32 FileName 是 NUL 結尾的寬字串；長度欄不含結尾。
+    ctypes.memmove(ctypes.addressof(info) + RenameInfo.FileName.offset,
+                   encoded_name + b"\x00\x00", len(encoded_name) + 2)
     rename = ctypes.WinDLL("kernel32", use_last_error=True).SetFileInformationByHandle
     rename.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
     rename.restype = wintypes.BOOL
@@ -304,6 +306,11 @@ def export_market_csv(
                                 raise MarketCsvExportError("unexpected_export_artifact", child)
                 pins.validate()
                 _publish_receipt(stream, receipt)
+                # 發布API成功不足以宣稱完成：核對 exact canonical 路徑的原handle與bytes。
+                if pending.exists() or not receipt.exists() or _identity(os.fstat(stream.fileno())) != _file_identity(receipt):
+                    raise MarketCsvExportError("export_receipt_publication_mismatch", receipt)
+                if _hash_file(stream, None) != hashlib.sha256(raw).hexdigest():
+                    raise MarketCsvExportError("export_receipt_hash_mismatch", receipt)
             return MarketCsvExportReceipt(destination, receipt, hashlib.sha256(raw).hexdigest(), tuple(verified))
     except OSError as exc:
         raise MarketCsvExportError("export_io_failed", destination) from exc

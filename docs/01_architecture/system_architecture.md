@@ -1426,3 +1426,8 @@ RecommendationInputSession prepared frame→body publish（只封存入選股既
 ### 2026-10-06 UX08 viewport展示邊界
 
 核驗StockChartPayload→view持有ChartViewportState（stock/source/version/cutoff/context identity）→原DTO可見切片→既有Qt圖／同源MA；price及MA表維持原全量。完整同identity可保日期交集，未知或任一差異reset；不儲存偏好、不讀新行情。paint/hover共享原日期槽，None斷線；取消／stale由既有request guard及現chart身份防護。[UI與控制驗證](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)。
+
+
+### 2026-10-06 明示市場CSV caller／consumer邊界
+
+獨立CLI→既有MarketOnlyExportPlan→只讀preview來源identity/size/hash→caller核對保存accepted-preview→明示execute→Windows source/output／ancestor pins與最後復核→原handle不可覆寫canonical receipt發布→exact path／identity／bytes再核驗。只CSV明列範圍，personal/output/SQLite/未列檔排除，取消留partial另新目標重試；不新增正式root/config或Task/分享。UTF16 filename尾NUL避免長路徑錯名。[scope與證據](../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。

@@ -108,3 +108,8 @@ C:/Projects/PythonProjects/technical_analysis/.venv/Scripts/python.exe -m py_com
 ```
 
 此包回滾 `git revert <CLI commit>`，只撤回新 script／tests 和本追加 QA，保留第一包 consumer；沒有資料遺失風險，也不得刪除 caller 日後真實輸出。下一安全接手點為主 owner review 兩包依賴後限定採納；本 lane 完成本機 commit／readback 後停，沒有 dev 整合或 push。真來源完整度、handle／檔數容量效能、分享授權、UI／Task／Manual 正式接線仍未驗收。
+
+
+## 2026-10-06 dev owner採納與長路徑修正
+
+兩lane commits以ac0cc19b→ffa6e537採納。review重現長路徑canonical receipt錯名，修UTF16尾NUL且發布後核exact path／identity／hash；新10案例、192synthetic全套與深CSV／CLI88重複驗通過。Manual與原plan同步，真資料／分享未做，[整合限制與證據](MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。

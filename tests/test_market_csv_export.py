@@ -351,3 +351,25 @@ def test_new_process_reads_same_bytes_and_receipt(fixture_plan):
                                capture_output=True, text=True, encoding="utf-8", creationflags=subprocess.CREATE_NO_WINDOW)
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == "3"
+
+
+@pytest.mark.parametrize("extra", range(8))
+def test_canonical_receipt_across_utf16_path_lengths(fixture_plan, extra):
+    plan = replace(fixture_plan, destination_root=fixture_plan.destination_root.parent / ("包😀" + "x" * extra))
+    before = snapshot(plan)
+    receipt = run_export(plan)
+    assert receipt.receipt_path.name == consumer.RECEIPT_NAME
+    assert {p.name for p in plan.destination_root.iterdir() if p.is_file()} == {consumer.RECEIPT_NAME}
+    assert hashlib.sha256(receipt.receipt_path.read_bytes()).hexdigest() == receipt.receipt_sha256
+    assert_unchanged(before)
+
+
+@pytest.mark.parametrize("misnamed", [False, True])
+def test_successful_publish_api_without_exact_receipt_cannot_report_complete(fixture_plan, monkeypatch, misnamed):
+    publish = consumer._publish_receipt
+    def wrong(stream, receipt):
+        if misnamed: publish(stream, receipt.with_name(receipt.name + "wrong"))
+    monkeypatch.setattr(consumer, "_publish_receipt", wrong)
+    reject(fixture_plan, "export_receipt_publication_mismatch")
+    # 失敗證據保留，沒有刪除pending或錯名檔案。
+    assert any(p.is_file() for p in fixture_plan.destination_root.iterdir())

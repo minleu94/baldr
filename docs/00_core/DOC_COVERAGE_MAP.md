@@ -447,3 +447,8 @@ Manual 已覆蓋 preview／明示 save／exact read／stop、參數與 DTO 匯�
 ### 2026-10-06 UX08 可操作viewport
 
 [縮放／平移／重設與日期槽hover整合收據](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)：全量精確表／完整同身份保留、未知與source版本切換reset，115相關通過、V5兩項基線失敗另記；Manual／架構／Snapshot同步，UX08仍partial。
+
+
+### 2026-10-06 明示市場CSV consumer／CLI
+
+[隔離preview→明示接受→execute與canonical收據整合](../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)：192synthetic、深路徑88重複驗、修正錯名／假完成；完整Manual步驟／參數／判讀／排錯／Windows與真分享限制同步，無正式啟用，不增加done。

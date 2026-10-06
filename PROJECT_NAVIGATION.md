@@ -709,3 +709,8 @@ python ui_qt/main.py
 ### 2026-10-06 UX08 viewport產品按鈕
 
 app_module/chart_viewport_state.py接StockResearchReportView價格頁按鈕；範圍控制只切原DTO，原生paint/hover日期槽一致，精確表全量。流程見Manual，[scope／失敗基線／限制](docs/06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)。
+
+
+### 2026-10-06 明示市場CSV CLI
+
+scripts/export_market_csv.py提供唯讀preview、caller保存接受的preview後明示execute；app_module/market_csv_export.py只consumer，no Task/上傳/分享/根目錄啟用。Windows handles／來源與exact receipt核驗，實際流程看Manual，[synthetic範圍](docs/06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。

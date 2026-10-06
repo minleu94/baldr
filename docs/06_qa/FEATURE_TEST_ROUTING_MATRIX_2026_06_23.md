@@ -192,3 +192,8 @@ Focused 路由：`tests/test_rule_research_shadow_acceptance.py`、`tests/test_r
 ### 2026-10-06 UX08 viewport UI測試路由
 
 controller34及新增test_ui_qt_chart_viewport11案例，實際放大／平移／重設、缺價槽hover／None斷線、identity差異／unknown／empty／已淘汰控制、取消重試stale返回／保存新view全量／重畫fallback；既有研究UI／技術歷史／保存來源／投影／navigation，共115通過。擴充V5兩項以96ebcb33原UI重現基線失敗，不改無關summary。mandatoryWorkbench85→validator25/4skip→mypy820、compile／quant。[證據](UX08_VIEWPORT_INTEGRATION_20261006.md)。
+
+
+### 2026-10-06 市場CSV consumer／CLI路由
+
+test_market_csv_export62／test_export_market_csv_cli26／test_personal_data_paths104，共192通過；長UTF16／surrogate／no-op或錯名publish guard新10，深root CSV／CLI88再驗不增案例。包含preview不寫、來源pins接受／修訂拒絕、publication race／取消partial、來源bytes/stat不變。完整mypy821／CLI targeted3與compile4；不改UI不重跑其gate，不修3個普通open COW長路徑問題，使用新短fixture全套過。[收據](MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。

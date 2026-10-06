@@ -4999,3 +4999,21 @@ UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監�
 重新載入與安全：只有完整同股／來源／版本／cutoff／context才保留可見日期交集，未知或改版自動全量重設。取消背景重讀保留原圖與範圍，重試同版本保留；返回保留來源，新開view從全量開始，不把viewport偏好寫到DB。缺保存圖仍不借live；需現況可另開最新研究。
 
 排錯：若重畫失敗，圖與控制停用，下方全量精確表仍可查看；可重讀該來源重試。可得時間／暖機未知仍未知，可縮放不代表PIT／模型或交易資格。Native／真人及更多指標markers尚未驗收。[按鈕與來源驗證](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)。
+
+
+## 明示市場CSV隔離預覽與執行CLI（2026-10-06）
+
+入口為 `scripts/export_market_csv.py`，目前只有獨立CLI，不在App主選單自動啟用。必須使用Windows且可鎖定來源／目標完整目錄鏈。必填 `--market-root` 與 `--destination-root` 絕對路徑，`--file` 可重複但每次只明列一個相對CSV；目標必須全新、父目錄已存在，不接受整包FA_Data、glob或SQLite。`--personal-root` 預設market-root/personal、`--legacy-output-root` 預設market-root/output，兩者只解析與排除，不建立或啟用。
+
+操作步驟：先不加execute執行preview，stdout JSON列出檔案、體積、來源版本／SHA-256及排除項，不寫目標。caller核對明列來源與預覽後，自行保存UTF-8 preview JSON到來源／personal／output／目標以外的隔離路徑；再同時明示 `--execute --accepted-preview <absolute-preview.json>`。單給接受檔不會隱性執行，來源修訂或hash失配會blocked，不自動接受新版本。此輪只完成synthetic fixture驗收，真來源匯出或分享仍未授權。
+
+```powershell
+# 只讀明示樣例預覽；請自行替換隔離fixture路徑，不使用真FA_Data整包。
+.\.venv\Scripts\python.exe scripts/export_market_csv.py --market-root "<absolute-fixture-market>" --destination-root "<absolute-new-fixture-target>" --file daily_price/fake.csv
+# caller已核對及保存preview後的明示fixture執行：
+.\.venv\Scripts\python.exe scripts/export_market_csv.py --market-root "<absolute-fixture-market>" --destination-root "<absolute-new-fixture-target>" --file daily_price/fake.csv --execute --accepted-preview "<absolute-reviewed-preview.json>"
+```
+
+結果：preview不是來源hash接受或完成包；execute只有canonical `market-csv-export.v1.json` 精確檔名、原handle identity及bytes hash核驗後回傳completed與檔數／體積。收據只含明列市場檔metadata，不包含私人root／檔內容，不上傳或分享。白名單與hash不能證明每欄都非私人或有來源授權，真來源需另核對。
+
+排錯與取消：Ctrl+C合作取消回傳130，blocked／IO回傳2；保留partial／pending，沒有本次canonical收據不能當完成。既有目標不覆寫，取消／失敗重試必須明示另一全新目標；來源pins不變可沿原接受preview，來源已改版需重新預覽核對。no-follow／sharing／來源版本不合或SQLite偽裝拒絕時依code處理，不降級copy、手改收據或清理原資料。長路徑canonical receipt錯名已修正並驗證；超Windows普通open限制的其他既有工具仍需短隔離fixture。此CLI不是personal migration／啟用／分享工具。[限定驗證](../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。

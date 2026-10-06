@@ -188,6 +188,16 @@ class DailyMarketResearchView(QWidget):
             f"border-left: 4px solid {MIDNIGHT_ANALYST.accent}; padding: 7px;"
         )
         root.addWidget(self.disclaimer_label)
+        self.local_stock_filter = QLineEdit()
+        self.local_stock_filter.setObjectName("dailyMarketLocalStockFilter")
+        self.local_stock_filter.setAccessibleName("只篩選目前已核驗名單股票")
+        self.local_stock_filter.setPlaceholderText("在目前名單找股票代碼；不重讀、不更新來源")
+        self.local_stock_filter.setMaxLength(16)
+        self.local_stock_filter.textChanged.connect(self._render_rows)
+        root.addWidget(self.local_stock_filter)
+        self.local_filter_summary_label = QLabel("局部顯示：尚未載入核驗名單。")
+        self.local_filter_summary_label.setWordWrap(True)
+        root.addWidget(self.local_filter_summary_label)
 
         self.sample_readiness_label = QLabel("研究樣本：尚未核對完整單批控制組；成熟結果未知。")
         self.sample_readiness_label.setObjectName("dailyMarketRuleSampleReadiness")
@@ -2247,6 +2257,9 @@ class DailyMarketResearchView(QWidget):
         rows = self._current_filtered_rows()
         rows = self._sort_filtered_rows(rows)
         self._visible_rows = rows
+        self.local_filter_summary_label.setText(
+            f"局部顯示 {len(rows)}／{len(self._all_rows)} 核驗列；完整來源分母與未知條件保留。"
+        )
         self.results_table.setSortingEnabled(False)
         self.results_table.clearContents()
         self.results_table.setRowCount(len(rows))
@@ -2429,11 +2442,13 @@ class DailyMarketResearchView(QWidget):
 
     def _current_filtered_rows(self) -> tuple[object, ...]:
         selected_filter = str(self.filter_state_combo.currentData() or "all")
+        stock_filter = self.local_stock_filter.text().strip()
         return tuple(
             row
             for row in self._all_rows
-            if selected_filter == "all"
-            or str(getattr(row, "combined_state", "unknown") or "unknown") == selected_filter
+            if (selected_filter == "all"
+                or str(getattr(row, "combined_state", "unknown") or "unknown") == selected_filter)
+            and (not stock_filter or stock_filter in str(getattr(row, "stock_code", "")))
         )
 
     def _sort_filtered_rows(self, rows: tuple[object, ...]) -> tuple[object, ...]:
@@ -3076,6 +3091,7 @@ class DailyMarketResearchView(QWidget):
             self.sort_key_combo,
             self.sort_direction_combo,
             self.results_table,
+            self.local_stock_filter,
         ):
             widget.setEnabled(False)
         worker = self._worker
@@ -3086,6 +3102,7 @@ class DailyMarketResearchView(QWidget):
 
     def _clear_current_snapshot(self) -> None:
         self._snapshot = None
+        self.local_filter_summary_label.setText("局部顯示：來源已清除，尚無核驗名單。")
         self.sample_readiness_label.setText("研究樣本：來源已清除，完整單批控制組與成熟結果未知。")
         self.sample_readiness_label.setToolTip("")
         self._multi_method_consensus = None

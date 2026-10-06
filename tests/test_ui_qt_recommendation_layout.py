@@ -95,6 +95,13 @@ def _assert_recommendation_table_geometry(view: RecommendationView, app: QApplic
 
 
 def _assert_personal_controls_fit(view: RecommendationView) -> None:
+    # 收合是預設；展開後仍需驗證既有 capture／Stage C 完整控制幾何。
+    view.personal_research_toggle.setChecked(True)
+    _app().processEvents()
+    view.result_scroll.verticalScrollBar().setValue(view.result_scroll.verticalScrollBar().maximum())
+    _app().processEvents()
+    assert not view.personal_capture_widget.isHidden()
+    assert not view.personal_assessment_group.isHidden()
     buttons = (
         view.personal_model_assessment_capture_button,
         view.personal_model_assessment_summary_button,

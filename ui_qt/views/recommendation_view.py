@@ -784,6 +784,9 @@ class RecommendationView(QWidget):
         self._saved_result_load_worker: TaskWorker | None = None
         self._saved_result_load_generation = 0
         self._saved_result_load_requested_id = ""
+        self._saved_source_list_worker: TaskWorker | None = None
+        self._saved_source_list_generation = 0
+        self._saved_source_expected_identity: tuple[str, ...] | None = None
         self._personal_prediction_capture_worker: TaskWorker | None = None
         self._personal_prediction_capture_generation = 0
         self._personal_prediction_capture_status_result_id = ""
@@ -3478,16 +3481,34 @@ class RecommendationView(QWidget):
         saved_result_row = QHBoxLayout()
         self.saved_result_row = saved_result_row
         saved_result_row.addWidget(QLabel("讀取已保存結果"))
+        self.saved_source_combo = QComboBox()
+        self.saved_source_combo.setObjectName("savedRecommendationSourceChoice")
+        self.saved_source_combo.setAccessibleName("選擇已核驗保存推薦來源")
+        self.saved_source_combo.setMinimumWidth(0)
+        self.saved_source_combo.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.saved_source_combo.addItem("請先讀取可用來源", None)
+        self.saved_source_combo.currentIndexChanged.connect(self._select_saved_source)
+        saved_result_row.addWidget(self.saved_source_combo, 1)
+        self.refresh_saved_sources_button = QPushButton("讀取可用來源")
+        self.refresh_saved_sources_button.setEnabled(self.config is not None)
+        self.refresh_saved_sources_button.clicked.connect(self._refresh_saved_sources)
+        saved_result_row.addWidget(self.refresh_saved_sources_button)
+        self.cancel_saved_source_button = QPushButton("取消讀取")
+        self.cancel_saved_source_button.setEnabled(False)
+        self.cancel_saved_source_button.clicked.connect(self._cancel_saved_source_read)
+        saved_result_row.addWidget(self.cancel_saved_source_button)
         self.saved_result_id_input = QLineEdit()
         self.saved_result_id_input.setObjectName("savedRecommendationResultId")
         self.saved_result_id_input.setPlaceholderText("輸入完整結果 ID；只讀取這一筆")
         self.saved_result_id_input.setAccessibleName("讀取單筆已保存推薦結果 ID")
         self.saved_result_id_input.setClearButtonEnabled(True)
-        saved_result_row.addWidget(self.saved_result_id_input, 1)
+        # 保留舊單筆入口 ABI；日常操作由已核驗選項帶入完整 ID。
+        self.saved_result_id_input.setVisible(False)
+        saved_result_row.addWidget(self.saved_result_id_input)
         self.load_saved_result_button = QPushButton("讀取")
         self.load_saved_result_button.setObjectName("loadSavedRecommendationResult")
         self.load_saved_result_button.setToolTip(
-            "以完整結果 ID 背景讀取一筆已保存的 canonical 結果；不列出全部歷史、不重新執行推薦。"
+            "選擇已核驗保存來源，再讀回完全相同的結果身份；不重新執行推薦。"
         )
         self.load_saved_result_button.setEnabled(self.config is not None)
         self.load_saved_result_button.clicked.connect(
@@ -3620,7 +3641,15 @@ class RecommendationView(QWidget):
         personal_capture_row.addWidget(
             self.personal_prediction_capture_retry_button
         )
-        layout.addLayout(personal_capture_row)
+        self.personal_research_toggle = QToolButton()
+        self.personal_research_toggle.setText("個人模型擷取與評估（進階）")
+        self.personal_research_toggle.setCheckable(True)
+        self.personal_research_toggle.setAccessibleName("展開個人模型擷取與 Stage C 評估")
+        layout.addWidget(self.personal_research_toggle)
+        self.personal_capture_widget = QWidget()
+        self.personal_capture_widget.setLayout(personal_capture_row)
+        self.personal_capture_widget.setVisible(False)
+        layout.addWidget(self.personal_capture_widget)
 
         personal_assessment_group = QGroupBox("個人模型評估（唯讀）")
         personal_assessment_group.setObjectName("personalModelAssessmentControls")
@@ -3754,6 +3783,10 @@ class RecommendationView(QWidget):
         personal_assessment_layout.addWidget(
             self.personal_model_assessment_safety_label
         )
+        self.personal_assessment_group = personal_assessment_group
+        personal_assessment_group.setVisible(False)
+        self.personal_research_toggle.toggled.connect(self.personal_capture_widget.setVisible)
+        self.personal_research_toggle.toggled.connect(personal_assessment_group.setVisible)
         layout.addWidget(personal_assessment_group)
 
         self.personal_model_assessment_capture_path.textChanged.connect(
@@ -6249,12 +6282,110 @@ class RecommendationView(QWidget):
             persisted_at.isoformat(timespec="microseconds"),
         )
 
+    def _select_saved_source(self, _index: int) -> None:
+        value = self.saved_source_combo.currentData()
+        # QVariant 會把 Python tuple 轉成 list；核對形狀後還原 immutable 身份。
+        identity = (
+            tuple(value)
+            if isinstance(value, (tuple, list)) and len(value) == 8
+            and all(type(part) is str for part in value)
+            else None
+        )
+        self._saved_source_expected_identity = identity
+        self.saved_result_id_input.setText(identity[3] if identity is not None else "")
+
+    def _refresh_saved_sources(self) -> None:
+        """明示唯讀查詢原 saved seam，僅提供目前 reader 可讀的來源。"""
+        if self.config is None or self._saved_source_list_worker is not None:
+            return
+        if self._saved_result_load_worker is not None:
+            self.result_status_label.setText("請等單筆讀取完成，再更新來源選項。")
+            return
+        try:
+            queries = self._get_recommendation_composition().queries
+        except Exception as exc:
+            self.result_status_label.setText(f"保存來源不可用：{exc}")
+            return
+        self._saved_source_list_generation += 1
+        generation = self._saved_source_list_generation
+        self.refresh_saved_sources_button.setEnabled(False)
+        self.cancel_saved_source_button.setEnabled(True)
+        self.result_status_label.setText("正在核驗保存來源；原結果保留。")
+
+        def read_sources(cancel_callback=None):
+            if callable(cancel_callback) and cancel_callback():
+                return ()
+            return queries.list()
+
+        worker = TaskWorker(read_sources)
+        self._saved_source_list_worker = worker
+        worker.finished.connect(lambda values: self._on_saved_sources_finished(values, generation))
+        worker.error.connect(lambda message: self._on_saved_sources_error(message, generation))
+        worker.native_thread_finished.connect(lambda: self._release_saved_sources_worker(worker))
+        worker.start()
+
+    def _on_saved_sources_finished(self, values, generation: int) -> None:
+        if generation != self._saved_source_list_generation:
+            return
+        options: list[tuple[str, tuple[str, ...]]] = []
+        refused = 0
+        try:
+            for value in values:
+                try:
+                    identity = self._canonical_loaded_result_identity(value, value.result_id)
+                except (AttributeError, TypeError, ValueError):
+                    refused += 1
+                    continue
+                label = str(value.label or "未命名結果")
+                decision_date = value.execution.context.as_of_date.isoformat()
+                source_label = "保存推薦" if value.execution.items else "保存篩選／空結果（非推薦）"
+                options.append((f"{source_label}｜{label}｜決策日 {decision_date}｜保存於 {identity[7][:10]}｜{identity[3]}", identity))
+        except Exception as exc:
+            self._on_saved_sources_error(str(exc), generation)
+            return
+        previous = self.saved_source_combo.currentData()
+        self.saved_source_combo.blockSignals(True)
+        self.saved_source_combo.clear()
+        self.saved_source_combo.addItem("請選擇保存推薦來源" if options else "沒有目前可讀的保存推薦來源", None)
+        for label, identity in options:
+            self.saved_source_combo.addItem(label, identity)
+        if previous is not None:
+            index = self.saved_source_combo.findData(previous)
+            if index >= 0:
+                self.saved_source_combo.setCurrentIndex(index)
+        self.saved_source_combo.blockSignals(False)
+        self._select_saved_source(self.saved_source_combo.currentIndex())
+        self.result_status_label.setText(
+            f"可讀保存推薦來源 {len(options)} 筆；不支援或缺件 {refused} 筆。"
+            "請明確選擇後按讀取；每日研究條件是另一種研究來源。"
+        )
+
+    def _on_saved_sources_error(self, message: str, generation: int) -> None:
+        if generation == self._saved_source_list_generation:
+            self.result_status_label.setText(f"來源核驗失敗，保留原選項與結果：{str(message).splitlines()[0][:300]}")
+
+    def _release_saved_sources_worker(self, worker: TaskWorker) -> None:
+        if self._saved_source_list_worker is worker:
+            self._saved_source_list_worker = None
+            self.refresh_saved_sources_button.setEnabled(self.config is not None)
+            self.cancel_saved_source_button.setEnabled(self._saved_result_load_worker is not None)
+        worker.deleteLater()
+
+    def _cancel_saved_source_read(self) -> None:
+        self._saved_source_list_generation += 1
+        self._saved_result_load_generation += 1
+        for worker in (self._saved_source_list_worker, self._saved_result_load_worker):
+            if worker is not None and worker.isRunning():
+                worker.cancel(cooperative=True, wait=False)
+        self.result_status_label.setText("已取消保存來源讀取；原選項與結果保留。")
+        self.cancel_saved_source_button.setEnabled(False)
+
     def _load_saved_recommendation_result(self) -> None:
         """Read one explicitly named canonical saved result on a background worker."""
 
         requested_result_id = self.saved_result_id_input.text().strip()
         if not requested_result_id:
-            self.result_status_label.setText("請輸入完整結果 ID；此入口不會列出全部歷史。")
+            self.result_status_label.setText("請先讀取可用來源，再明確選擇一筆保存推薦。")
             return
         if self.config is None:
             self.result_status_label.setText("目前未設定推薦保存位置，無法讀取已保存結果。")
@@ -6285,9 +6416,14 @@ class RecommendationView(QWidget):
             self, "_saved_result_load_generation", 0
         ) + 1
         generation = self._saved_result_load_generation
+        expected_identity = getattr(self, "_saved_source_expected_identity", None)
+        if expected_identity is not None and expected_identity[3] != requested_result_id:
+            self.result_status_label.setText("選項與結果 ID 不一致；請重新選擇來源。")
+            return
         # A queued run completion from a prior native worker must not overwrite this readback.
         self._execution_generation = getattr(self, "_execution_generation", 0) + 1
         self.load_saved_result_button.setEnabled(False)
+        self.cancel_saved_source_button.setEnabled(True)
         self.execute_btn.setEnabled(False)
         self.result_status_label.setText(
             f"正在讀取單筆已保存結果 {requested_result_id}；目前畫面保留不變。"
@@ -6305,7 +6441,7 @@ class RecommendationView(QWidget):
 
         def apply_loaded_result(read_model) -> None:
             self._on_saved_result_load_finished(
-                read_model, requested_result_id, generation
+                read_model, requested_result_id, generation, expected_identity
             )
 
         def show_load_error(message: str) -> None:
@@ -6331,6 +6467,7 @@ class RecommendationView(QWidget):
         read_model: RecommendationExecutionReadModel | None,
         requested_result_id: str,
         generation: int,
+        expected_identity: tuple[str, ...] | None = None,
     ) -> None:
         if generation != getattr(self, "_saved_result_load_generation", None):
             return
@@ -6338,6 +6475,8 @@ class RecommendationView(QWidget):
             identity = self._canonical_loaded_result_identity(
                 read_model, requested_result_id
             )
+            if expected_identity is not None and identity != expected_identity:
+                raise ValueError("保存來源已變動；未替換原結果，請重讀可用來源。")
         except Exception as exc:
             self._on_saved_result_load_error(
                 f"{type(exc).__name__}: {exc}", requested_result_id, generation
@@ -6450,6 +6589,7 @@ class RecommendationView(QWidget):
     def _release_saved_result_load_worker(self, worker: TaskWorker) -> None:
         if getattr(self, "_saved_result_load_worker", None) is worker:
             self._saved_result_load_worker = None
+            self.cancel_saved_source_button.setEnabled(self._saved_source_list_worker is not None)
             button = getattr(self, "load_saved_result_button", None)
             if button is not None:
                 button.setEnabled(self.config is not None)
@@ -8226,6 +8366,7 @@ class RecommendationView(QWidget):
         QMessageBox.information(self, "取消", "匯出已被取消")
 
     def request_cooperative_shutdown(self) -> bool:
+        self._saved_source_list_generation += 1
         daily_view = getattr(self, "daily_market_research_view", None)
         daily_view_ready = (
             True
@@ -8248,6 +8389,7 @@ class RecommendationView(QWidget):
             self._personal_candidate_worker,
             self._personal_policy_history_worker,
             saved_result_worker,
+            self._saved_source_list_worker,
             capture_worker,
         ]
         for worker in workers:

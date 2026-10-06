@@ -87,6 +87,7 @@ class WatchlistView(QWidget):
         self._analysis_request_id = 0
         self._analysis_worker: TaskWorker | None = None
         self._research_bookmark_restore_tokens: list[object] = []
+        self._observation_session_states: dict[str, str] = {}
         logger.info("[WatchlistView] watchlist_service 設置完成")
         
         # 初始化選股清單服務（用於回測）
@@ -407,6 +408,30 @@ class WatchlistView(QWidget):
         next_actions_layout.addLayout(research_actions_layout)
         next_actions_layout.addLayout(batch_actions_layout)
         candidate_layout.addWidget(next_actions_group)
+
+        observation_group = QGroupBox("收藏理由與查看狀態")
+        observation_layout = QVBoxLayout(observation_group)
+        self.observation_reason_label = QLabel("收藏理由：尚未選取")
+        self.observation_reason_label.setTextFormat(Qt.PlainText)
+        self.observation_reason_label.setWordWrap(True)
+        self.observation_change_label = QLabel("較前變化：未知；沒有同源比較資料。")
+        self.observation_change_label.setTextFormat(Qt.PlainText)
+        self.observation_change_label.setWordWrap(True)
+        self.observation_state_label = QLabel("查看狀態：尚未選取（僅本次視窗，不保存、不排程提醒）")
+        self.observation_state_label.setWordWrap(True)
+        observation_layout.addWidget(self.observation_reason_label)
+        observation_layout.addWidget(self.observation_change_label)
+        observation_layout.addWidget(self.observation_state_label)
+        observation_actions = QHBoxLayout()
+        self.confirm_observation_button = QPushButton("已確認查看")
+        self.later_observation_button = QPushButton("稍後查看")
+        self.confirm_observation_button.clicked.connect(lambda: self._set_observation_state("已確認查看"))
+        self.later_observation_button.clicked.connect(lambda: self._set_observation_state("稍後查看"))
+        for button in (self.confirm_observation_button, self.later_observation_button):
+            button.setEnabled(False)
+            observation_actions.addWidget(button)
+        observation_layout.addLayout(observation_actions)
+        candidate_layout.addWidget(observation_group)
 
         # 數量與狀態分開，讓「有幾檔」不會被「已更新」覆蓋。
         candidate_status_layout = QHBoxLayout()
@@ -811,6 +836,7 @@ class WatchlistView(QWidget):
         QMessageBox.warning(self, "觀察清單儲存升級未完成", message)
 
     def _load_watchlist(self):
+        self._render_observation(None)
         """載入觀察清單"""
         self._analysis_request_id += 1
         self.stock_analysis_btn.setEnabled(False)
@@ -1264,6 +1290,7 @@ class WatchlistView(QWidget):
         selection = self.stocks_table.selectionModel()
         rows = selection.selectedRows() if selection else []
         if self.stocks_model is None or len(rows) != 1:
+            self._render_observation(None)
             self.stock_analysis_btn.setEnabled(False)
             self.latest_research_btn.setEnabled(False)
             self._set_source_choice_state(None)
@@ -1276,6 +1303,7 @@ class WatchlistView(QWidget):
             self.analysis_text.setPlainText("請選取一檔股票查看分析摘要。")
             return
         row = self.stocks_model.getDataFrame().iloc[rows[0].row()]
+        self._render_observation(row)
         code = str(row["證券代號"]).strip()
         source = row.get("source_id", "")
         legacy_source_id = source.strip() if isinstance(source, str) else ""
@@ -1298,6 +1326,44 @@ class WatchlistView(QWidget):
             )
             return
         self._request_stock_summary(code, source_id, request_id)
+
+    @staticmethod
+    def _observation_identity(row) -> str:
+        """本次視窗狀態固定於完整來源列；同股不同版本不得共用。"""
+        fields = (
+            "證券代號", "加入時間", "source", "source_id", "result_id",
+            "decision_date", "source_snapshot_id", "source_snapshot_hash",
+            "decision_identity", "research_bookmark", "備註",
+        )
+        return json.dumps({key: row.get(key, None) for key in fields}, sort_keys=True, ensure_ascii=False, default=str)
+
+    def _render_observation(self, row) -> None:
+        enabled = row is not None
+        self.confirm_observation_button.setEnabled(enabled)
+        self.later_observation_button.setEnabled(enabled)
+        self.observation_change_label.setText("較前變化：未知；沒有同源比較資料，不借最新行情。")
+        if row is None:
+            self.observation_reason_label.setText("收藏理由：尚未選取")
+            state = "尚未選取"
+        else:
+            notes = row.get("備註", "")
+            reason = notes.strip() if isinstance(notes, str) else ""
+            if not reason:
+                reason = "未提供；可查看原保存推薦理由或研究條件，不代作個人收藏理由。"
+            self.observation_reason_label.setText(f"收藏理由：{reason}")
+            key = self._observation_identity(row)
+            state = self._observation_session_states.get(key, "待查看")
+        self.observation_state_label.setText(f"查看狀態：{state}（僅本次視窗，不保存、不排程提醒）")
+
+    def _set_observation_state(self, state: str) -> None:
+        if state not in {"已確認查看", "稍後查看"}:
+            return
+        selected = self._selected_watchlist_row()
+        if selected is None:
+            return
+        row, _code = selected
+        self._observation_session_states[self._observation_identity(row)] = state
+        self._render_observation(row)
 
     @staticmethod
     def _row_decision_identity(row: object, stock_code: str) -> DecisionIdentity:

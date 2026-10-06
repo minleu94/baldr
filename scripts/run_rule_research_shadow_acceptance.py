@@ -26,6 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--comparison-policy")
     parser.add_argument("--inputs-bundle")
     parser.add_argument("--lifecycle-export", help="明示 registry DTO 匯出；不連線資料庫")
+    parser.add_argument("--registry-snapshot", help="明示絕對路徑的一致 SQLite snapshot；只讀 metadata，WAL／sidecar 拒絕")
     parser.add_argument("--stop-reason", help="僅停止本次隔離研究投影，保留規則路徑")
     parser.add_argument("--store", help="output/qa 或系統 Temp 的獨立子目錄")
     parser.add_argument("--save", action="store_true", help="明示保存不可變研究收據")
@@ -36,10 +37,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.identity is not None:
             if not args.store or args.save or any((args.receipt, args.case_id, args.label_policy,
                     args.split_policy, args.comparison_policy, args.inputs_bundle,
-                    args.lifecycle_export, args.stop_reason)):
+                    args.lifecycle_export, args.registry_snapshot, args.stop_reason)):
                 raise ValueError("exact_read_requires_only_store_and_identity")
             result = read_shadow_acceptance(args.store, args.identity)
-            summary = result["capture"]["summary_text"]
+            display_capture = result["capture"]
+            summary = display_capture["summary_text"]
         else:
             if not args.receipt or not args.case_id or len(args.receipt) > 32:
                 raise ValueError("explicit_case_and_bounded_receipts_required")
@@ -53,8 +55,10 @@ def main(argv: list[str] | None = None) -> int:
                     split_policy=_config(args.split_policy),
                     comparison_policy=_config(args.comparison_policy),
                     bundle=_bundle(args.inputs_bundle),
-                    lifecycle_export=_config(args.lifecycle_export), stop_reason=args.stop_reason)
+                    lifecycle_export=_config(args.lifecycle_export), registry_snapshot=args.registry_snapshot,
+                    stop_reason=args.stop_reason)
             report = build()
+            display_capture = report
             summary = report["summary_text"]
             result = save_shadow_acceptance(report, args.store, revalidate=build) if args.save else report
         if args.json:
@@ -62,6 +66,16 @@ def main(argv: list[str] | None = None) -> int:
                              separators=(",", ":"), allow_nan=False))
         else:
             print(summary)
+            readback = display_capture.get("diagnostics", {}).get("registry_readback", {})
+            mode = readback.get("mode")
+            if mode == "exported_declaration":
+                print("來源：匯出聲明；未連線讀取 registry metadata。")
+            elif mode == "registry_snapshot_read":
+                if readback.get("status") == "metadata_verified":
+                    print("來源：已只讀核對 registry metadata；訓練／target 聲明未驗證，模型資格仍未知，未啟用。")
+                else:
+                    print("來源：registry metadata 無法核對；WAL／sidecar 需另行受控的一致 snapshot。診斷："
+                          + ",".join(readback.get("reason_codes", [])))
             if args.save:
                 print(f"隔離收據：{result['receipt']['capture_identity_sha256']}（{result['status']}）")
         return 0

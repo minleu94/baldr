@@ -1431,3 +1431,8 @@ RecommendationInputSession prepared frame→body publish（只封存入選股既
 ### 2026-10-06 明示市場CSV caller／consumer邊界
 
 獨立CLI→既有MarketOnlyExportPlan→只讀preview來源identity/size/hash→caller核對保存accepted-preview→明示execute→Windows source/output／ancestor pins與最後復核→原handle不可覆寫canonical receipt發布→exact path／identity／bytes再核驗。只CSV明列範圍，personal/output/SQLite/未列檔排除，取消留partial另新目標重試；不新增正式root/config或Task/分享。UTF16 filename尾NUL避免長路徑錯名。[scope與證據](../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。
+
+
+### 2026-10-06 UX23 registry readonly 整合補記
+
+UX23 CLI → shadow acceptance → explicit ModelRegistryReadonly snapshot；只讀 metadata/events，source SHA seals receipt。training_audit/target_contract 保留未驗 caller 聲明，不進 model loader/writer。

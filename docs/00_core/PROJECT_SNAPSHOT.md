@@ -712,3 +712,8 @@ e52b27dd以cd33ddd6採納controller，產品價格頁加入縮放／平移／重
 ## 2026-10-06 明示市場CSV consumer／CLI採納（後續最新）
 
 f0e1d8e→8d0a6090精確review後以ac0cc19b→ffa6e537採納，consumer與獨立preview/accepted-preview/execute CLI；修正長UTF16路徑receipt錯名及API成功不足以completed，exact canonical/identity/hash發布後再驗。192去重synthetic通過、深CSV/CLI88重複驗、targeted3／fullmypy821／compile4／quant通過；3個初次deep COW普通open長路徑失敗另記，短fixture全套過。無UI／真匯出／分享／migration／Task／Native／push，FA_Data/personal沒有啟用。整體仍9stage1done8partial0pending、24UX2done22partial0pending，UX08／資料分離partial不增done。Manual同步，[QA](../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。
+
+
+### 2026-10-06 UX23 registry readonly 整合補記
+
+UX23 readonly metadata adapter 已整合至 shadow acceptance CLI；export declaration／registry snapshot read 分開。WAL／sidecar 拒絕，不改真 DB，所有資格仍 false；UX23 partial。

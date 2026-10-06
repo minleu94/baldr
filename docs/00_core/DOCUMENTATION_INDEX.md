@@ -185,3 +185,8 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 ### 2026-10-06 明示市場CSV consumer／CLI
 
 [隔離preview→明示接受→execute與canonical收據整合](../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)：192synthetic、深路徑88重複驗、修正錯名／假完成；完整Manual步驟／參數／判讀／排錯／Windows與真分享限制同步，無正式啟用，不增加done。
+
+
+### 2026-10-06 UX23 registry readonly 整合補記
+
+UX23 registry readonly 整合：[QA](../06_qa/UX23_REGISTRY_INTEGRATION_20261006.md)，操作見完整 Manual。

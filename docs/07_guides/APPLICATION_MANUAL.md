@@ -5017,3 +5017,10 @@ UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監�
 結果：preview不是來源hash接受或完成包；execute只有canonical `market-csv-export.v1.json` 精確檔名、原handle identity及bytes hash核驗後回傳completed與檔數／體積。收據只含明列市場檔metadata，不包含私人root／檔內容，不上傳或分享。白名單與hash不能證明每欄都非私人或有來源授權，真來源需另核對。
 
 排錯與取消：Ctrl+C合作取消回傳130，blocked／IO回傳2；保留partial／pending，沒有本次canonical收據不能當完成。既有目標不覆寫，取消／失敗重試必須明示另一全新目標；來源pins不變可沿原接受preview，來源已改版需重新預覽核對。no-follow／sharing／來源版本不合或SQLite偽裝拒絕時依code處理，不降級copy、手改收據或清理原資料。長路徑canonical receipt錯名已修正並驗證；超Windows普通open限制的其他既有工具仍需短隔離fixture。此CLI不是personal migration／啟用／分享工具。[限定驗證](../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。
+
+
+### UX23：明示 registry snapshot 的唯讀 metadata 核對（2026-10-06）
+
+在既有 `scripts/run_rule_research_shadow_acceptance.py` 的 receipt／case／policy／bundle 輸入後，加 `--registry-snapshot C:/absolute/consistent-registry.db`，只允許明示絕對路徑。與 `--lifecycle-export` 互斥；後者只是匯出聲明，CLI 明示未連庫核對。`--json` 的 `diagnostics.registry_readback` 區分來源、狀態、SHA256、缺件原因與未驗 metadata 欄位。成功只表示 stored metadata 符合完整 candidate pin；training_audit／target_contract 仍未驗，模型資格未知、所有 eligibility false、未啟用。
+
+缺件／鎖定／錯來源／schema 或 version 不符維持 rule-only fallback。WAL header 或 wal/shm/journal 殘件顯示需要受控一致 snapshot；不要藉本工具對真 DB checkpoint、改 journal mode 或移除 sidecar。工具不讀 artifact、不反序列化模型、不寫 registry、不 adopt／rollback。若需保存，沿用 `--save --store` 指定 output/qa 或 OS Temp 子目錄；保存前重讀變更則拒絕，新程序 `--store ... --identity <exact SHA>` 可讀同收據，不連庫或選 latest。取消可重試，不發布取消結果。此入口是 CLI 研究 consumer，非正式 shadow 啟用。驗收見 `docs/06_qa/UX23_REGISTRY_INTEGRATION_20261006.md`。

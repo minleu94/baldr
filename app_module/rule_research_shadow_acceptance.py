@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+from app_module.model_registry_readonly import ModelRegistryReadonly, ModelRegistryReadError
 from app_module.rule_research_fair_comparison import build_fair_comparison
 from app_module.rule_research_sample_capture import (
     BoundedRuleResearchCaptureWriter,
@@ -409,6 +410,7 @@ def build_shadow_acceptance(
     comparison_policy: dict[str, Any] | None = None,
     bundle: dict[str, Any] | None = None,
     lifecycle_export: dict[str, Any] | None = None,
+    registry_snapshot: str | Path | None = None,
     stop_reason: str | None = None,
     cancel_callback: Callable[[], bool] | None = None,
     observed_at: datetime | None = None,
@@ -426,6 +428,8 @@ def build_shadow_acceptance(
         raise ValueError("shadow_receipts_sequence_required")
     if not 1 <= len(receipts) <= MAX_RECEIPTS:
         raise ValueError("shadow_receipt_count_bound")
+    if registry_snapshot is not None and lifecycle_export is not None:
+        raise ValueError("registry_snapshot_and_export_mutually_exclusive")
     pins = _input_pins(receipts)
     input_context = {
         "receipt_input_pins": pins,
@@ -436,6 +440,8 @@ def build_shadow_acceptance(
         "lifecycle_export": lifecycle_export,
         "stop_reason": stop_reason,
     }
+    if registry_snapshot is not None:
+        input_context["registry_snapshot"] = _input_path(registry_snapshot)
     try:
         context_raw = _canonical(input_context).encode("utf-8")
     except (TypeError, ValueError) as exc:
@@ -478,8 +484,30 @@ def build_shadow_acceptance(
             return _cancelled_report(case_id, pins, why)
     comparison = _compact_comparison(fair, pins)
     # A stop request takes precedence over the projection, but never skips input validation.
-    observed = _utc_now()
+    observed = observed_at.isoformat() if observed_at is not None else _utc_now()
     candidate_pin = _model_pin_from_comparison(comparison)
+    registry_readback: dict[str, Any] = {
+        "mode": "exported_declaration" if lifecycle_export is not None else "not_requested",
+        "status": "not_read", "source_sha256": None,
+        "unverified_metadata_fields": [], "reason_codes": [],
+    }
+    if registry_snapshot is not None:
+        registry_readback.update(mode="registry_snapshot_read", status="unavailable")
+        if candidate_pin is None:
+            registry_readback["reason_codes"] = ["candidate_pin_missing"]
+        else:
+            try:
+                readback = ModelRegistryReadonly(registry_snapshot).read(
+                    candidate_pin["model_id"], expected_metadata=candidate_pin, observed_at=observed)
+                lifecycle_export = readback.lifecycle_export
+                registry_readback.update(status="metadata_verified", source_sha256=readback.source_sha256,
+                    unverified_metadata_fields=list(readback.unverified_metadata_fields))
+            except (ModelRegistryReadError, OSError, ValueError) as exc:
+                registry_readback["reason_codes"] = [
+                    exc.reason_code if isinstance(exc, ModelRegistryReadError) else type(exc).__name__]
+    if cancel_callback is not None and checked_cancel():
+        why = "cancel_callback_error:" + cancel_error[-1] if cancel_error else "cancel_requested_after_registry_read"
+        return _cancelled_report(case_id, pins, why)
     lifecycle = _validate_lifecycle(lifecycle_export, candidate_pin, observed)
     can_project = (
         comparison.get("status") == "research_only_comparison"
@@ -496,6 +524,7 @@ def build_shadow_acceptance(
         status, engineering = "rule_only_fallback", "rule_only_fallback"
     diagnostics = {
         "stop_reason": stop_reason,
+        "registry_readback": registry_readback,
         "input_contract_sha256": input_contract_sha256,
         "comparison_reason_codes": fair.get("reason_codes", []) if isinstance(fair, dict) else [],
         "comparison_error": fair.get("reason_codes", []) if fair.get("status") == "comparison_failed" else [],

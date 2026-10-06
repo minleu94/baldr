@@ -52,3 +52,8 @@ targeted mypy：`Success: no issues found in 1 source file`；兩檔 py_compile 
 | docs/06_qa/UX23_REGISTRY_READONLY_20261006.md | 未提交時核對 ownership 後 `Remove-Item -LiteralPath docs/06_qa/UX23_REGISTRY_READONLY_20261006.md` | 僅移除 QA 說明 |
 
 回滾依序：先 `git status --short`／核對本包 diff 與 consumer 依賴，再逐檔操作、重跑相關 consumer tests。已提交版本交由整合 owner 選擇 `git revert <本包hash>`，不自行回退其他工作。原始資料從未變更。
+
+
+### 2026-10-06 UX23 registry readonly 整合補記
+
+唯一 owner 採納 lane：62c82e85；既有 consumer／CLI 實際接線與限制見 UX23_REGISTRY_INTEGRATION_20261006.md，不據此提升資格。

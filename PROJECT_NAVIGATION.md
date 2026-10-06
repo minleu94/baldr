@@ -699,3 +699,8 @@ python ui_qt/main.py
 ### UX23 隔離 shadow 工程驗收（2026-10-06）
 
 入口 `scripts/run_rule_research_shadow_acceptance.py`；consumer `app_module/rule_research_shadow_acceptance.py`；操作依 [Manual](docs/07_guides/APPLICATION_MANUAL.md)，工程／資料效果／未啟用三軸及未完項依 [UX23 QA](docs/06_qa/UX23_SHADOW_ACCEPTANCE_20261006.md)。不連 registry、不啟用正式行為。
+
+
+### 2026-10-06 UX08 推薦保存圖表
+
+推薦執行→同次frame capture→immutable execution→exact保存來源研究圖／精確表；helper為`app_module/recommendation_saved_chart.py`，接線service／execute／report read service，既有Qt consumer。使用流程見完整Manual，[範圍／測試／下一包接線](docs/06_qa/UX08_RECOMMENDATION_SAVED_CHART_20261006.md)。UX08整項仍partial，viewport／CSV lane待父層安排。

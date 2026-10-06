@@ -182,3 +182,8 @@ focused：`test_rule_research_fair_comparison.py`／`test_rule_research_fair_com
 ### UX23 隔離 shadow 工程狀態（2026-10-06）
 
 Focused 路由：`tests/test_rule_research_shadow_acceptance.py`、`tests/test_rule_research_shadow_acceptance_cli.py`、`tests/test_rule_research_shadow_acceptance_boundary.py`；同源比較回歸走 `tests/test_rule_research_fair_comparison.py`。驗缺候選／模型版本與非法 lifecycle／失敗回退、明示停止、取消／來源重驗／殘件、duplicate／新程序 exact read。無 UI 改動，不重開已接受效能／Native gate；全 repo boundary 八條既有違例另報，不等於通過。證據見 [UX23 QA](UX23_SHADOW_ACCEPTANCE_20261006.md)。
+
+
+### 2026-10-06 UX08 推薦保存圖表入口與驗證
+
+[推薦writer→保存圖／精確表收據](UX08_RECOMMENDATION_SAVED_CHART_20261006.md)；Manual入口／步驟／參數／缺件／安全／排錯同步。新增pure helper15案例、writer／新程序／scheduled日期／來源失配及實際offscreen取消重試stale；既有execution、daily保存圖、read service／projection／技術歷史／shared consumer／研究畫面／scheduled日期，去重182相關案例。Workbench85／validator25+4skip／mypy819／compile／quant通過。UX08整項partial，viewport／CSV lanes未採納，不新增done。

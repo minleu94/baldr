@@ -131,8 +131,17 @@ def project_stock_chart_payload(
     if saved_chart_text:
         try:
             envelope = json.loads(saved_chart_text)
+            chart_day = cutoff
+            if context.get("source_kind") == "recommendation":
+                saved_cutoff = context.get("saved_chart_cutoff", "")
+                if (saved_cutoff != envelope["decision_cutoff"]
+                        or context.get("saved_chart_scope_identity") != envelope["scope_identity"]):
+                    return _rejected("recommendation_chart_source_cutoff_pin_mismatch")
+                chart_day = date.fromisoformat(saved_cutoff[:10])
+                if chart_day > cutoff:
+                    return _rejected("recommendation_chart_future_cutoff")
             chart = read_saved_technical_chart(
-                envelope, stock_code=stock_code, decision_date=cutoff,
+                envelope, stock_code=stock_code, decision_date=chart_day,
                 scope_identity=envelope["scope_identity"],
                 input_fingerprint_sha256=envelope["input_fingerprint_sha256"],
             )
@@ -548,7 +557,10 @@ def _project_technical_history(
             "缺值可能來自來源缺列或暖機未知；不補前值，也不宣稱 PIT 資格。",
         ), None
 
-    expected_source_id = "sqlite.technical_indicators"
+    expected_source_id = ("recommendation.market_frame.indicators"
+                          if getattr(report, "saved_technical_chart_json", "")
+                          and _string_context(getattr(report, "research_context", {})).get("source_kind") == "recommendation"
+                          else "sqlite.technical_indicators")
     source = source_by_id.get(expected_source_id)
     if source is None:
         return (), "unknown", (), "technical_history_source_missing"

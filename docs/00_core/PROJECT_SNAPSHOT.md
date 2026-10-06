@@ -697,3 +697,8 @@ UX11 readmodel c7a9ea37整合為a3b63070；回測策略設定新增按需版本�
 ### 2026-10-06 UX22 同源公平比較工程
 
 新增sealed receipt→既有CORE20 feature／整數shadow prediction DTO→共同樣本計分→白話CLI／JSON重讀。明示method/horizon/label/split/cost/benchmark/target contract，流失及不可比較分母不消失；未配置或無candidate不造結果。唯讀匯出、隔離fixture驗工程，不fit或提升PIT／training／formal／natural／execution資格。UX22／Stage7仍partial；9stage=1done/8partial/0pending、24UX=2done/21partial/1pending，真來源／合格模型及效果證據待補。操作依Manual；QA：`docs/06_qa/UX22_FAIR_COMPARISON_20261006.md`。
+
+
+## 2026-10-06 UX08 推薦保存圖表（後續最新）
+
+沿1454a125：同次prepared行情frame封存價格／既有MA20／60到immutable execution，保存後exact讀取供既有原生圖與精確表；來源result/provider/version/cutoff/完整股票分母核驗、legacy／缺件不借live，scheduled決策日與行情截止日分離。182相關案例、Workbench85、validator25／4skip、mypy819、compile／quant／offscreen核對。UX08推薦writer有限工程終點完成，整項／stage4仍partial；9stage1done8partial0pending、24UX2done22partial0pending不變。viewport e52b27dd及CSV f0e1d8e→8d0a6090仍lane-only，產品控制尚未採納，待下一包；無Native／正式Task／真資料寫入／分享。Manual及[QA](../06_qa/UX08_RECOMMENDATION_SAVED_CHART_20261006.md)同步。

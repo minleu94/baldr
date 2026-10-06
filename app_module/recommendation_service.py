@@ -2785,6 +2785,25 @@ class RecommendationService:
                 ).encode("utf-8")
             ).hexdigest()
             self.last_run_context["data_fingerprint"] = fingerprint
+            # 只封存同次已接受的來源 frame，不另讀行情或重算均線；缺圖不改推薦。
+            if legacy_recommendations and decision_cutoff:
+                from app_module.recommendation_saved_chart import build_recommendation_chart_capture
+
+                try:
+                    self.last_run_context["saved_technical_charts"] = build_recommendation_chart_capture(
+                        frame=prepared_market.frame,
+                        stock_column=prepared_market.stock_column,
+                        stock_codes=tuple(item.stock_code for item in legacy_recommendations),
+                        result_id=resolved_result_id,
+                        source_id=str(prepared_market.source_id),
+                        market_data_fingerprint=str(prepared_market.market_data_fingerprint),
+                        decision_cutoff=datetime.combine(
+                            date.fromisoformat(decision_cutoff), datetime.max.time(),
+                            tzinfo=ZoneInfo("Asia/Taipei"),
+                        ),
+                    )
+                except (ValueError, TypeError) as exc:
+                    self.last_run_context["saved_technical_chart_failure"] = str(exc)
             warning_values = self.last_run_context.get("warnings", [])
             if not isinstance(warning_values, list) or any(
                 type(item) is not str for item in warning_values

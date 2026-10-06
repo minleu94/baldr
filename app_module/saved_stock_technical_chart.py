@@ -99,7 +99,7 @@ def _validate_rows(chart: SavedTechnicalChart) -> None:
             previous = row.data_date
             _require(not row.available_at or _clock(row.available_at) <= cutoff, "chart_future_availability")
             if isinstance(row, StockPricePointDTO):
-                _require(row.source_id == "sqlite.daily_prices", "chart_price_source_mismatch")
+                _require(row.source_id in {"sqlite.daily_prices", "recommendation.market_frame"}, "chart_price_source_mismatch")
                 expected = stock_price_row_fingerprint_sha256(
                     stock_code=chart.stock_code, data_date=row.data_date,
                     open_price=row.open_price, high_price=row.high_price, low_price=row.low_price,
@@ -107,7 +107,9 @@ def _validate_rows(chart: SavedTechnicalChart) -> None:
                 )
                 _require(row.source_snapshot_hash == expected, "chart_price_hash_mismatch")
             else:
-                _require(row.stock_code == chart.stock_code and row.source_id == "sqlite.technical_indicators", "chart_technical_source_mismatch")
+                _require(row.stock_code == chart.stock_code and row.source_id in {"sqlite.technical_indicators", "recommendation.market_frame.indicators"}, "chart_technical_source_mismatch")
+                expected_price_source = ("recommendation.market_frame" if row.source_id == "recommendation.market_frame.indicators" else "sqlite.daily_prices")
+                _require(all(point.source_id == expected_price_source for point in chart.price_points), "chart_source_pair_mismatch")
                 _require(row.data_date in {point.data_date for point in chart.price_points}, "chart_technical_date_mismatch")
                 expected = stock_technical_history_row_fingerprint_sha256(
                     stock_code=row.stock_code, source_id=row.source_id, data_date=row.data_date,

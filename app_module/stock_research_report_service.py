@@ -292,7 +292,8 @@ class StockResearchReportReadService:
         price_points: tuple[StockPricePointDTO, ...] = ()
         saved_chart = None
         saved_chart_json = ""
-        saved_chart_scope = technical_history_saved_scope_limitation(context_map) is not None
+        saved_chart_scope = (technical_history_saved_scope_limitation(context_map) is not None
+                             or context_map.get("source_kind") == "recommendation")
         if is_daily_research_snapshot or is_rank_research_context:
             try:
                 self._check_cancel(cancel_callback)
@@ -329,13 +330,82 @@ class StockResearchReportReadService:
                 raise
             except Exception as exc:
                 limitations.append("原保存圖表無法核驗，不以最新資料補圖：" + str(exc))
+        elif context_map.get("source_kind") == "recommendation" and saved_chart_scope:
+            try:
+                from app_module.saved_recommendation_queries import (
+                    build_recommendation_execution_queries, canonical_scheduled_decision_date,
+                    execution_result_config,
+                )
+                from app_module.recommendation_saved_chart import read_recommendation_chart_capture
+                from app_module.saved_stock_technical_chart import canonical
+
+                self._check_cancel(cancel_callback)
+                result_id = context_map.get("result_id", "")
+                result = build_recommendation_execution_queries(self.config).get(result_id)
+                execution = result.execution if result is not None else None
+                if result is None or execution is None or execution.result_id != result_id or execution.context.as_of_date is None:
+                    raise ValueError("recommendation_chart_execution_missing")
+                display_day = (canonical_scheduled_decision_date(result)
+                               if execution_result_config(execution).get("scheduled_snapshot") is True
+                               else execution.context.as_of_date.isoformat())
+                if (not display_day or display_day != cutoff.isoformat()
+                        or context_map.get("decision_date", display_day) != display_day
+                        or context_map.get("stock_code", code) != code):
+                    raise ValueError("recommendation_chart_context_mismatch")
+                captures = [event.details for event in execution.events
+                            if event.event_type == "recommendation_saved_technical_charts"]
+                provenance = [event.details for event in execution.events
+                              if event.event_type == "legacy_invocation_context"]
+                if len(captures) != 1 or len(provenance) != 1:
+                    raise ValueError("recommendation_chart_capture_missing_or_duplicate")
+                capture, origin = captures[0], provenance[0]
+                if not isinstance(capture, Mapping) or not isinstance(origin, Mapping):
+                    raise ValueError("recommendation_chart_capture_invalid")
+                captured_codes = capture.get("stock_codes", ())
+                if (not isinstance(captured_codes, (tuple, list))
+                        or tuple(captured_codes) != tuple(item.stock_code for item in execution.items)):
+                    raise ValueError("recommendation_chart_selected_population_mismatch")
+                provider = str(origin.get("source_id", ""))
+                market_version = str(origin.get("market_data_fingerprint", ""))
+                if context_map.get("source_id", result_id) not in {result_id, provider}:
+                    raise ValueError("recommendation_chart_source_mismatch")
+                chart_cutoff = datetime.combine(execution.context.as_of_date, datetime.max.time(), tzinfo=_TAIPEI)
+                if chart_cutoff.date() > cutoff:
+                    raise ValueError("recommendation_chart_future_cutoff")
+                self._check_cancel(cancel_callback)
+                saved_chart = read_recommendation_chart_capture(
+                    capture, stock_code=code, result_id=result_id, source_id=provider,
+                    market_data_fingerprint=market_version, decision_cutoff=chart_cutoff,
+                )
+                if saved_chart is None:
+                    missing = capture.get("missing", {})
+                    reason = missing.get(code, "stock_not_captured") if isinstance(missing, Mapping) else "capture_missing"
+                    limitations.append("原推薦缺少保存圖表，不借今天資料：" + str(reason))
+                else:
+                    charts = capture["charts"]
+                    if not isinstance(charts, Mapping) or not isinstance(charts.get(code), Mapping):
+                        raise ValueError("recommendation_chart_envelope_missing")
+                    saved_chart_json = canonical(dict(charts[code])).decode("utf-8")
+                    if context_map.get("data_date") and context_map["data_date"] != saved_chart.price_points[-1].data_date:
+                        saved_chart = None
+                        saved_chart_json = ""
+                        raise ValueError("recommendation_chart_data_date_mismatch")
+                    context_map["data_date"] = saved_chart.price_points[-1].data_date
+                    context_map["saved_chart_cutoff"] = saved_chart.decision_cutoff
+                    context_map["saved_chart_scope_identity"] = saved_chart.scope_identity
+            except StockResearchReportCancelled:
+                raise
+            except Exception as exc:
+                saved_chart = None
+                saved_chart_json = ""
+                limitations.append("原推薦圖表無法核驗，不借今天資料：" + str(exc))
         price_source: StockReportSourceDTO | None = None
         try:
             self._check_cancel(cancel_callback)
             if saved_chart is not None:
                 price_points = saved_chart.price_points
                 price_source = StockReportSourceDTO(
-                    "sqlite.daily_prices", "同版保存價格", status="available" if price_points else "missing",
+                    saved_chart.price_points[0].source_id if saved_chart.price_points else "sqlite.daily_prices", "同版保存價格", status="available" if price_points else "missing",
                     data_as_of=price_points[-1].data_date if price_points else "", row_count=len(price_points),
                     version="stock-research-saved-technical-chart.v1", historical_pit_eligible=False,
                 )
@@ -372,7 +442,7 @@ class StockResearchReportReadService:
             self._check_cancel(cancel_callback)
             if saved_chart is not None:
                 technical_source = StockReportSourceDTO(
-                    "sqlite.technical_indicators", "同版保存MA20／MA60", status="available",
+                    saved_chart.technical_history[0].source_id if saved_chart.technical_history else "sqlite.technical_indicators", "同版保存MA20／MA60", status="available",
                     data_as_of=saved_chart.technical_history[-1].data_date if saved_chart.technical_history else "",
                     row_count=len(saved_chart.technical_history), historical_pit_eligible=False,
                 )
@@ -408,8 +478,8 @@ class StockResearchReportReadService:
         saved_history_limitation = technical_history_saved_scope_limitation(context_map)
         if saved_chart is not None:
             technical_history = saved_chart.technical_history
-        elif saved_history_limitation is not None:
-            limitations.append(saved_history_limitation)
+        elif saved_chart_scope:
+            limitations.append(saved_history_limitation or "原推薦缺少同版MA歷史，不以最新資料補圖。")
         else:
             try:
                 self._check_cancel(cancel_callback)

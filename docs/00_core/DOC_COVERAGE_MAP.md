@@ -437,3 +437,8 @@ Must已同步：Manual入口／步驟／policy與bundle／結果／安全限制�
 ### 2026-10-06 UX23 隔離工程狀態
 
 Manual 已覆蓋 preview／明示 save／exact read／stop、參數與 DTO 匯出、三軸判讀、版本失配／缺件／容量／殘件與安全限制；Snapshot 與 QA 區分工程 partial、自然成熟／漂移／採用／效果缺口。architecture／navigation／index／測試路由同步，不更動產品方向或正式部署契約。
+
+
+### 2026-10-06 UX08 推薦保存圖表入口與驗證
+
+[推薦writer→保存圖／精確表收據](../06_qa/UX08_RECOMMENDATION_SAVED_CHART_20261006.md)；Manual入口／步驟／參數／缺件／安全／排錯同步。新增pure helper15案例、writer／新程序／scheduled日期／來源失配及實際offscreen取消重試stale；既有execution、daily保存圖、read service／projection／技術歷史／shared consumer／研究畫面／scheduled日期，去重182相關案例。Workbench85／validator25+4skip／mypy819／compile／quant通過。UX08整項partial，viewport／CSV lanes未採納，不新增done。

@@ -1270,6 +1270,14 @@ def _capture_events(
         # invocation identity to bind; preserve its ordinary failure events
         # without masking the original exception with an invalid empty ID.
         if body_result is not None:
+            chart_capture = legacy_context.get("saved_technical_charts")
+            if isinstance(chart_capture, Mapping) and status == ExecutionStatus.COMPLETED:
+                events.append(ExecutionEvent(
+                    event_type="recommendation_saved_technical_charts",
+                    message="封存同次推薦來源價格與既有MA20／MA60，僅供研究重讀，不授予PIT或交易資格。",
+                    occurred_at=context_decision_at,
+                    details=dict(chart_capture),
+                ))
             current_lineage_event = _current_fundamental_lineage_event(
                 legacy_context,
                 result_id=result_id,

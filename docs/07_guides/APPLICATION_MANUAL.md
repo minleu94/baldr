@@ -4977,3 +4977,14 @@ bundle為版本化JSON匯出：CORE20完整feature slots、dataset／feature sch
 排錯：模型／資料集／artifact 版本失配、非法事件鏈、缺 candidate 或比較拒絕都回退規則路徑，核對原匯出與 exact 收據後另預覽；不要補最新資料或覆寫舊版。容量不足、來源修訂、writer busy、殘件或 hash 失配拒絕發布；取消不發布完成版，重試仍重驗來源。partial 證據保留且後續 fail closed，需人工檢視，不能用本入口清除。政策及 lifecycle 匯出各64KiB、bundle最多2MiB、合併輸入context最多2MiB＋128KiB；超限拒絕不截斷。CLI 參數／檔案／保存錯誤 exit 2，研究缺件摘要仍是安全研究結果，不能據 exit 0 宣稱效果合格。
 
 UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監控、具名採用條件、真模型優於基準、正式回退／啟用及真人驗收仍缺；training／PIT／formal／natural／execution 與 shadow_enabled 全 false、alpha 0、selection unknown。驗證與限制見 [UX23 QA](../06_qa/UX23_SHADOW_ACCEPTANCE_20261006.md)。
+
+
+## UX08 推薦保存結果的同版價格／MA20／MA60（2026-10-06）
+
+入口與操作：在「推薦」執行分析並保存該次結果；再從保存推薦的個股研究入口，或研究頁「使用這筆保存來源」，開啟價格／技術頁。新 writer 會連同該次推薦封存原來源價格、既有MA20／MA60，原生圖、精確價格表及MA歷史表共用同版列。重新載入與新程序重開都讀該結果版本；返回仍保留原来源。取消背景讀取保留已載入版本，可重試；舊callback不會覆蓋新請求。
+
+參數與範圍：沒有新計算參數。每股最多最後120筆、最多64張圖、總capture 2MiB；完整推薦分母保留，超界或缺OHLC會明示缺圖，不改推薦結果。價格與均線使用Decimal保存值，精確表可查原小數；缺MA60／暖機資料顯示未提供並斷線，不自行重算。保存的行情截止日與scheduled決策日分開核驗，來源較早不會移到決策日。
+
+結果判讀與限制：可見圖表只代表同版資料可重讀，不代表官方來源、當時已可得、PIT、方法有效、交易選擇或模型資格。來源明細使用 recommendation.market_frame／indicators；unknown可得時間維持unknown。其他區塊的原排名、基本面與方法仍各自核驗。圖表與完整精確表目前尚無產品縮放／平移／期間按鈕。
+
+排錯：舊結果沒有artifact、原保存檔遺失、資料日／來源／版本失配或OHLC不完整時，原圖留缺件，不借今天資料。先確認選到正確保存結果／股票／決策日，可取消後重試；需要現況時明示按「另開最新研究」建立獨立來源，不修補原收據。不要手改保存artifact。保存圖有值而原方法／排名仍未知時，依各區塊缺件處理。Native／真人與舊結果補建尚未驗收。[工程證據](../06_qa/UX08_RECOMMENDATION_SAVED_CHART_20261006.md)。

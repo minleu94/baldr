@@ -1416,3 +1416,8 @@ exact parent/readiness→current-observed SQLite snapshot transaction（原決�
 ### 2026-10-06 UX23 隔離研究驗收 leaf
 
 `run_rule_research_shadow_acceptance.py` → `rule_research_shadow_acceptance` → 既有公平比較／exported ModelLifecycleEvent 與轉移規則 → 既有 BoundedRuleResearchCaptureWriter 的薄 capture subclass。只固定 model／source／comparison pins、分母與三軸狀態，不開 registry RW、不載模型／fit／監控 writer，不增加 shadow 平台或正式控制。exact immutable read 不讀 latest；停止只描述此隔離投影。[範圍與證據](../06_qa/UX23_SHADOW_ACCEPTANCE_20261006.md)。
+
+
+### 2026-10-06 UX08 推薦同次frame保存圖表資料流
+
+RecommendationInputSession prepared frame→body publish（只封存入選股既有OHLC／MA20／60）→ExecutionEvent推薦圖表capture→既有codec／create-only SaveService→exact RecommendationExecutionQueries→StockResearchReportReadService→純projection→既有Qt圖／精確表。結果／同次provider與market指紋／入選完整分母／cutoff核驗；圖表來源明示recommendation.market_frame及indicators，不假稱SQLite。scheduled決策日與原行情截止日各驗；資料不足留缺件，不借live。codec/read不查最新行情或新算均線，unknown不授PIT。[範圍與容量](../06_qa/UX08_RECOMMENDATION_SAVED_CHART_20261006.md)。

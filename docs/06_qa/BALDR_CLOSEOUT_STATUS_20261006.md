@@ -115,3 +115,10 @@ H6/H7 worker 56ae8d82 → 中央4cea589d已有限接受；H1–H5/H8仍六項真
 ## B01-H6/H7 審核整合收據
 
 前節「下一個有限包」是派工時的歷史提案，現由[有限label裁決](BALDR_B01_HISTORICAL_LABEL_BOUNDARY_20261006.md)取代待辦狀態。三檔exact scope、全部raw hashes與63pass／0fail／0skip JUnit已核；中央只重CLI affected subset並另跑guard，未重四用途／mandatory union。中央raw見output/qa/b01_h6_h7_central.log／xml與b01_h6_h7_central_guard.log；最終結果在output/qa/baldr_b01_h6_h7_integration_20261006.json。原9stage／24UX仍1/8/0與2/22/0、七有限closed／性能例外保留，未升Stage／UX done。
+
+
+## I20／P1有限採入與一次清冊收尾
+
+I20 worker2f7c467c→中央95d381a4；四治理檔exact、20來源blobs／舊entries／direct12與raw hashes核對，中央metadata1281／1125／missing156／docstale0，exit1。worker治理10pass/3原global完整性FAIL收據保留，不稱局部分類全完成。P1 workerd4d32fe2→中央e1857a31；兩ledger＋newtest/QA，172pass0skip immutable raw/JUnit核對，中央affected44pass5.66s。routed route＋paths＋exactportfolio、獨立benchmark_id，read_only缺庫不建／writer拒legacyreadonly；原金融AST/SQL與原子交易未變。builder／雙CLI尚由P2接線，正式writer未授。P1另加一具名新test，現預期1282／1125／missing157（原156＋此1），待同一I156owner分類；不假把I20當已含P1。
+
+全部156可本次一次有界分類完成，由一owner寫四治理檔、四readers只讀交逐檔用途／fixture／assert／副作用與分類理由，見[完整範圍及prompts](BALDR_NEXT_OWNERSHIP_DISPATCH_20261006.md#i156-一次有界分類收尾i20-採入後)。不是每20循環，不為增registry啟用direct或改tests/support API；來源pin索引classification仍not_yet_reviewed。Stage/UX與六boundaryFAIL及source_id批准未變。

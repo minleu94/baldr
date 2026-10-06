@@ -21,13 +21,13 @@ LEGACY_VIOLATIONS = (
 )
 
 
-def test_shadow_boundary_cli_reports_repository_legacy_violations(capsys) -> None:
-    assert main([]) == 1
+def test_shadow_boundary_cli_reports_clean_repository(capsys) -> None:
+    assert main([]) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["inspected_files"] >= 659
     assert report["shadow_only"] is True
-    assert tuple(item.replace("\\", "/") for item in report["violations"]) == LEGACY_VIOLATIONS
-    assert MLShadowBoundaryGuard(ROOT).inspect().violations
+    assert report["violations"] == []
+    assert MLShadowBoundaryGuard(ROOT).inspect().violations == ()
 
 
 def _inspect_import(tmp_path: Path, source: str, caller: str = "model_registry_readonly.py"):

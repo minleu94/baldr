@@ -90,3 +90,27 @@ raw logs 保留在本 worktree `output/qa/baldr_b09_20261006/`，不提交：
 回滾步驟：先 `git status --short` 確認不含別人 dirty；中央檢查所有新 API caller；在整合分支以 `git revert <B09完整commit>` 撤回，focused 驗回原相容入口。B08 定版與原始 fixture／資料不隨 B09 回滾刪除。此清單是可執行提案，未執行清理或回滾。
 
 待中央：採 owned commit、main/config／B06 caller／B10 bound service 接線、Manual 同步與一次穩定 union gates。backend 完成不代表 Paper producer、真 migration、真人／Native、投資有效性或自然時間 gate 完成。
+
+## 2026-10-06 custody 補強交付（取代上方初版 API 完整性聲明）
+
+初版 owned commit `d11f187a44c274515f23c472ac9b57e9cef9523e` 尚缺每次 I/O 的路徑 custody；本補強必須與初版一起整合。中央授權 dependency `5441e1c747f2e54e68143eb293c5147617a986d5` 在 lane 為 `44c3bd17de11acab7fde5fa36984b1ed48b2d706`。其 `personal_store_selection.py` 與中央 dev 對照相同；Manual conflict 僅保留 dependency 原段落及既有 context，未新增操作內容。中央已持有 dependency，應只 pick B09 owned commits。
+
+所有 routed app constructors 新增 keyword-only `personal_paths: PersonalDataPaths | None = None`：PortfolioService、PortfolioJsonlStore、UserDeclaredHoldingResearchStore（含 from_route）、Paper readiness/weekly、Paper snapshot repository。PERSONAL 缺 paths 在任何 I/O 前拒 `personal_paths_required`。中央 selection caller 必須傳 route 與 selection.paths；不得只傳 route。配置 root/mode 任一不為 None（包含空字串）而未傳 route，服務在 legacy constructor / mkdir / env 前拒 `personal_store_selector_required`；未配置 legacy defaults 保留。
+
+```python
+portfolio_service = PortfolioService(config, route=trades_route, personal_paths=selection.paths)
+declared_store = UserDeclaredHoldingResearchStore.from_route(declared_route, personal_paths=selection.paths)
+paper_readiness = PaperPortfolioReadinessService(output_root=config.output_root,
+    route=paper_route, config=config, portfolio_id=paper_route.identity.key,
+    personal_paths=selection.paths)
+```
+
+`PersonalStoreCustody` 放在已授權的 `personal_paper_store_paths.py`，使用中央 shared `assert_personal_store_path` 與 extended-length I/O / SQLite URI renderer。在 constructor 及每次 metadata/read/write/lock/connect 前驗 exact selected path、canonical roots、junction/reparse、hardlink/type；SQLite main 與 journal/wal/shm sidecars 都驗。Paper 限原有精確 siblings，不改 schema；consumer fresh connection 採 mode=ro/query_only，關閉 connection。data ledger 僅 typed callbacks（path_validator/io_renderer/readonly_uri_renderer），不反向依賴 app；PortfolioService 注入 bound custody。原 Journal 子類別略過 Portfolio constructor，其 inherited API 與覆寫 read/separator 維持相容，未共編 Journal ownership。
+
+新增 synthetic 負例包含 constructor 後替換 9 種 hardlink（trades、declared、lock、status、state、benchmark、cost、sidecar、ledger）、新 process 拒讀、Windows 真實 junction、lexical `..`、mutable path 改到同 root 的別 domain，以及 missing paths/config guard。market/legacy fixture 原 bytes 與 source hash 不變；無真實資料碰觸、遷移或 benchmark/fill/cost 計算/schema 修改。既有新 process exact JSONL/ledger/Paper readback 與 create-only restore 保留。
+
+最終 focused union：**146 passed in 14.51s**，共 13 個檔案（前述 union 加 `test_personal_store_selection.py`、`test_personal_journal_storage.py`）。Journal storage 27 cases、B09 26 cases已涵蓋於此數字，不能重複累計。八個 owned source targeted mypy 成功；九個 changed Python compile 成功；quant float/look-ahead guard 與 diff-check 成功。raw logs：`output/qa/baldr_b09_20261006/custody_union.log`、`custody_mypy.log`、`custody_quant.log`，完整 hashes 於 handoff。未重跑中央 UI/heavy gates。
+
+Look-ahead 自查：只切換 store custody 與既有 consumer source，未新增訊號、標準化、績效公式或放寬 as-of/available-at cutoff。shared guard 在每次 I/O 前驗證，未宣稱可防敵意並行替换 junction 的 handle-bound atomic race。正式 Paper producer（trade ledger、benchmark/baseline/daily）仍不屬 B09 完整鏈；本交付僅 typed consumers / owned snapshot writer。中央 main/config/B06 caller 接 personal_paths 與中央 union review 尚待 owner 整合，不能先宣稱 end-to-end complete。
+
+回滾：先由中央撤掉本 lane caller keyword 接線，再 revert 本補強 owned commit 與初版 owned commit；保留 shared dependency，不碰真資料。補強僅十個 owned files，無 main/config/Manual/plan 的額外手工變更。

@@ -9,8 +9,8 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Iterator
 from app_module.personal_store_routes import PersonalStoreRoute
-from app_module.personal_paper_store_paths import PersonalPaperStorePaths
-from app_module.personal_data_paths import to_internal_io_path, to_internal_sqlite_uri
+from app_module.personal_paper_store_paths import PersonalPaperStorePaths, PersonalStoreCustody
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_io_path, to_internal_sqlite_uri
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,8 @@ class PaperPortfolioSnapshot:
 
 class PaperPortfolioSnapshotRepository:
     def __init__(self, db_path: str | Path, *, route: PersonalStoreRoute | None = None,
-                 portfolio_id: str | None = None) -> None:
+                 portfolio_id: str | None = None, personal_paths: PersonalDataPaths | None = None) -> None:
+        self.custody = PersonalStoreCustody(route, personal_paths)
         self._path = Path(db_path)
         self.route = route
         self.portfolio_id = portfolio_id
@@ -65,7 +66,8 @@ class PaperPortfolioSnapshotRepository:
             paths.require_selected(db_path, paths.state_db)
         if self.read_only:
             return
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self.custody.sqlite_guard(self._path)
+        self.custody.prepare_parent(self._path)
         self._ensure_schema()
 
     def _require_identity(self, portfolio_id: str) -> None:
@@ -74,11 +76,12 @@ class PaperPortfolioSnapshotRepository:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
+        self.custody.sqlite_guard(self._path)
         if self.read_only:
             conn = sqlite3.connect(to_internal_sqlite_uri(self._path, "ro"), uri=True)
             conn.execute("PRAGMA query_only=ON")
         else:
-            conn = sqlite3.connect(to_internal_io_path(self._path.resolve()))
+            conn = sqlite3.connect(self.custody.io(self._path) if self.route is not None else to_internal_io_path(self._path.resolve()))
         try:
             with conn:
                 yield conn
@@ -120,7 +123,7 @@ class PaperPortfolioSnapshotRepository:
             raise ValueError(f"snapshot already exists: {snapshot.snapshot_id}") from exc
 
     def get(self, snapshot_id: str) -> PaperPortfolioSnapshot | None:
-        if self.read_only and not self._path.exists():
+        if self.read_only and not self.custody.exists(self._path):
             return None
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
@@ -133,7 +136,7 @@ class PaperPortfolioSnapshotRepository:
 
     def list_for_portfolio(self, portfolio_id: str) -> tuple[PaperPortfolioSnapshot, ...]:
         self._require_identity(portfolio_id)
-        if self.read_only and not self._path.exists():
+        if self.read_only and not self.custody.exists(self._path):
             return ()
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row

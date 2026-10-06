@@ -18,7 +18,8 @@ import sqlite3
 from typing import Any, Mapping
 
 from app_module.personal_store_routes import PersonalStoreRoute, PersonalStoreRouteError
-from app_module.personal_paper_store_paths import PersonalPaperStorePaths
+from app_module.personal_data_paths import PersonalDataPaths
+from app_module.personal_paper_store_paths import PersonalPaperStorePaths, PersonalStoreCustody
 from app_module.paper_trade_ledger import (
     PAPER_TRADE_LEDGER_SCHEMA_VERSION,
     PaperTradeFill,
@@ -234,12 +235,14 @@ class PaperPortfolioReadinessService:
         portfolio_id: str = DEFAULT_PORTFOLIO_ID,
         benchmark_id: str = DEFAULT_BENCHMARK_ID,
         route: PersonalStoreRoute | None = None,
+        personal_paths: PersonalDataPaths | None = None,
         config: object | None = None,
     ) -> None:
         if route is None and (
-            getattr(config, "personal_store_root", None) or getattr(config, "personal_store_mode", None)
+            getattr(config, "personal_store_root", None) is not None or getattr(config, "personal_store_mode", None) is not None
         ):
             raise PersonalStoreRouteError("personal_store_selector_required")
+        self.custody = PersonalStoreCustody(route, personal_paths)
         self.output_root = Path(output_root)
         if route is not None:
             paths = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id)
@@ -446,11 +449,11 @@ class PaperPortfolioReadinessService:
         warnings: list[str],
         diagnostics: list[str],
     ) -> tuple[dict[str, Any] | None, str]:
-        if not self.status_path.is_file():
+        if not self.custody.exists(self.status_path):
             blockers.append("paper_daily_status_missing")
             return None, "not_configured"
         try:
-            payload = json.loads(self.status_path.read_text(encoding="utf-8"))
+            payload = json.loads(Path(self.custody.io(self.status_path)).read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             blockers.append("paper_daily_status_invalid")
             diagnostics.append(f"paper_daily_status_read_error:{type(exc).__name__}")
@@ -476,12 +479,12 @@ class PaperPortfolioReadinessService:
         blockers: list[str],
         diagnostics: list[str],
     ) -> tuple[list[dict[str, Any]], list[PaperPositionReadModel]]:
-        if not self.state_db_path.is_file():
+        if not self.custody.exists(self.state_db_path):
             blockers.append("paper_snapshot_db_missing")
             return [], []
         manager = ReadOnlySQLiteManager(self.state_db_path)
         try:
-            with manager.connect() as conn:
+            with (self.custody.read_sqlite(manager.db_path) if self.custody.route is not None else manager.connect()) as conn:
                 if not _table_exists(conn, "paper_portfolio_snapshots"):
                     blockers.append("paper_snapshot_table_missing")
                     return [], []
@@ -559,7 +562,7 @@ class PaperPortfolioReadinessService:
 
         manager = ReadOnlySQLiteManager(self.state_db_path)
         try:
-            with manager.connect() as conn:
+            with (self.custody.read_sqlite(manager.db_path) if self.custody.route is not None else manager.connect()) as conn:
                 if not _table_exists(conn, "paper_portfolio_positions"):
                     blockers.append("paper_snapshot_positions_table_missing")
                     return []
@@ -595,12 +598,12 @@ class PaperPortfolioReadinessService:
 
     def _read_benchmark(self, blockers: list[str], diagnostics: list[str]) -> dict[str, Any]:
         result: dict[str, Any] = {"count": 0, "first_date": None, "latest_date": None}
-        if not self.benchmark_db_path.is_file():
+        if not self.custody.exists(self.benchmark_db_path):
             blockers.append("equal_weight_benchmark_db_missing")
             return result
         manager = ReadOnlySQLiteManager(self.benchmark_db_path)
         try:
-            with manager.connect() as conn:
+            with (self.custody.read_sqlite(manager.db_path) if self.custody.route is not None else manager.connect()) as conn:
                 if not _table_exists(conn, "paper_equal_weight_benchmark"):
                     blockers.append("equal_weight_benchmark_table_missing")
                     return result
@@ -643,14 +646,14 @@ class PaperPortfolioReadinessService:
             "missing_turnover_count": 0,
             "future_dated_event_count": 0,
         }
-        if not self.cost_ledger_db_path.is_file():
+        if not self.custody.exists(self.cost_ledger_db_path):
             warnings.append("paper_trade_cost_ledger_not_configured")
             diagnostics.append(f"paper_trade_ledger_path_missing:{self.cost_ledger_db_path}")
             return result
 
         manager = ReadOnlySQLiteManager(self.cost_ledger_db_path)
         try:
-            with manager.connect() as conn:
+            with (self.custody.read_sqlite(manager.db_path) if self.custody.route is not None else manager.connect()) as conn:
                 if not _table_exists(conn, "paper_trade_ledger"):
                     blockers.append("paper_trade_ledger_schema_mismatch")
                     diagnostics.append("paper_trade_ledger_table_missing")

@@ -30,6 +30,8 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_io_path
+from app_module.personal_paper_store_paths import PersonalStoreCustody
 from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreRoute, PersonalStoreRouteError
 from app_module.dtos.portfolio_dtos import PositionDTO
 
@@ -251,12 +253,19 @@ def _source_trace_item(
 
 
 @contextmanager
-def _interprocess_lock(path: Path, *, timeout_seconds: float = 10.0) -> Iterator[None]:
+def _interprocess_lock(path: Path, *, timeout_seconds: float = 10.0, path_validator: Callable[[Path], Path] | None = None) -> Iterator[None]:
     """以 sibling lock file 保護 JSONL 的讀取、投影與 append。"""
 
     lock_path = path.with_name(f".{path.name}.lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = open(lock_path, "a+b")
+    if path_validator is not None:
+        path_validator(path)
+        path_validator(lock_path)
+    io_lock = to_internal_io_path(lock_path) if path_validator is not None else str(lock_path)
+    Path(io_lock).parent.mkdir(parents=True, exist_ok=True)
+    if path_validator is not None:
+        path_validator(path)
+        path_validator(lock_path)
+    handle = open(io_lock, "a+b")
     try:
         handle.seek(0, os.SEEK_END)
         if handle.tell() == 0:
@@ -300,11 +309,14 @@ def _read_jsonl_unlocked(
     path: Path,
     *,
     cancel_callback: Callable[[], bool] | None = None,
+    custody: PersonalStoreCustody | None = None,
 ) -> list[dict[str, Any]]:
-    if not path.exists():
+    canonical_path = path
+    path = Path(custody.io(path)) if custody is not None else path
+    if not (custody.exists(canonical_path) if custody is not None else path.exists()):
         return []
     records: list[dict[str, Any]] = []
-    with open(path, "r", encoding="utf-8") as handle:
+    with open(custody.io(canonical_path) if custody is not None else path, "r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
             _raise_if_cancelled(cancel_callback)
             stripped = line.strip()
@@ -1474,9 +1486,10 @@ class UserDeclaredHoldingResearchReadModel:
 class UserDeclaredHoldingResearchStore:
     """保存 user_declared revision stream 的 append-only JSONL adapter。"""
 
-    def __init__(self, path: Path | str, *, route: PersonalStoreRoute | None = None):
+    def __init__(self, path: Path | str, *, route: PersonalStoreRoute | None = None, personal_paths: PersonalDataPaths | None = None):
         self.path = Path(path)
         self.route = route
+        self.custody = PersonalStoreCustody(route, personal_paths)
         if route is not None:
             if route.domain is not PersonalStoreDomain.DECLARED_HOLDINGS:
                 raise PersonalStoreRouteError("declared_holdings_domain_required")
@@ -1484,11 +1497,11 @@ class UserDeclaredHoldingResearchStore:
                 raise PersonalStoreRouteError("declared_holdings_identity_mismatch")
 
     @classmethod
-    def from_route(cls, route: PersonalStoreRoute) -> "UserDeclaredHoldingResearchStore":
-        return cls(route.read_source, route=route)
+    def from_route(cls, route: PersonalStoreRoute, *, personal_paths: PersonalDataPaths | None = None) -> "UserDeclaredHoldingResearchStore":
+        return cls(route.read_source, route=route, personal_paths=personal_paths)
 
     def _read_selected_records(self, *, cancel_callback: Callable[[], bool] | None = None) -> list[dict[str, Any]]:
-        records = _read_jsonl_unlocked(self.path, cancel_callback=cancel_callback)
+        records = _read_jsonl_unlocked(self.path, cancel_callback=cancel_callback, custody=self.custody)
         if self.route is not None:
             for event in records:
                 if str(event.get("portfolio_id", "")) != self.route.identity.key:
@@ -1498,7 +1511,7 @@ class UserDeclaredHoldingResearchStore:
     def _read_lock(self) -> Any:
         if self.route is not None and self.route.write_target is None:
             return nullcontext()
-        return _interprocess_lock(self.path)
+        return _interprocess_lock(self.path, path_validator=self.custody.guard if self.route is not None else None)
 
     def require_writer(self) -> None:
         if self.route is not None and self.route.write_target is None:
@@ -1515,7 +1528,7 @@ class UserDeclaredHoldingResearchStore:
     ) -> tuple[dict[str, Any], ...]:
         # 空的 research lane 必須保持真正唯讀；Portfolio 初始化或首次
         # 背景 refresh 不應為了讀取不存在的 JSONL 建立資料夾／lock file。
-        if not self.path.exists():
+        if not self.custody.exists(self.path):
             _raise_if_cancelled(cancel_callback)
             return ()
         with self._read_lock():
@@ -1548,7 +1561,7 @@ class UserDeclaredHoldingResearchStore:
         if self.route is not None and portfolio_id is not None and portfolio_id != self.route.identity.key:
             raise PersonalStoreRouteError("declared_holdings_identity_mismatch")
         cutoff_utc = _normalise_datetime(cutoff)
-        if not self.path.exists():
+        if not self.custody.exists(self.path):
             _raise_if_cancelled(cancel_callback)
             return ()
         with self._read_lock():
@@ -1572,7 +1585,7 @@ class UserDeclaredHoldingResearchStore:
             return tuple(result)
 
     def read_head(self, holding_id: str) -> dict[str, Any] | None:
-        if not self.path.exists():
+        if not self.custody.exists(self.path):
             return None
         with self._read_lock():
             records = self._read_selected_records()
@@ -1634,14 +1647,14 @@ class UserDeclaredHoldingResearchStore:
 
             resulting_records = [*records, candidate]
             _project_heads(resulting_records)
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            if self.path.exists() and self.path.stat().st_size:
-                with open(self.path, "rb") as handle:
+            self.custody.prepare_parent(self.path)
+            if self.custody.exists(self.path) and Path(self.custody.io(self.path)).stat().st_size:
+                with open(self.custody.io(self.path), "rb") as handle:
                     handle.seek(-1, os.SEEK_END)
                     if handle.read(1) != b"\n":
-                        with open(self.path, "ab") as separator:
+                        with open(self.custody.io(self.path), "ab") as separator:
                             separator.write(b"\n")
-            with open(self.path, "a", encoding="utf-8") as handle:
+            with open(self.custody.io(self.path), "a", encoding="utf-8") as handle:
                 handle.write(candidate_canonical)
                 handle.write("\n")
             return dict(candidate)
@@ -1666,7 +1679,7 @@ class UserDeclaredHoldingResearchStore:
         request_text = str(request_id) if request_id else None
         if request_text is None:
             return None
-        if not self.path.exists():
+        if not self.custody.exists(self.path):
             return None
         with self._read_lock():
             records = self._read_selected_records()
@@ -1733,7 +1746,7 @@ class UserDeclaredHoldingResearchService:
         id_provider: Callable[[], str] | None = None,
     ):
         if store.route is None and (
-            getattr(config, "personal_store_root", None) or getattr(config, "personal_store_mode", None)
+            getattr(config, "personal_store_root", None) is not None or getattr(config, "personal_store_mode", None) is not None
         ):
             raise PersonalStoreRouteError("personal_store_selector_required")
         self.store = store

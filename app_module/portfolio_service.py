@@ -24,6 +24,8 @@ from app_module.dtos.portfolio_dtos import (
     RecordedTradeCostSummaryDTO,
     TradeDTO,
 )
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_sqlite_uri
+from app_module.personal_paper_store_paths import PersonalStoreCustody
 from app_module.portfolio_store import PortfolioJsonlStore
 from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreRoute, PersonalStoreRouteError
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
@@ -69,6 +71,7 @@ class PortfolioService:
         position_service: object = None,
         ledger_repository: Optional[PortfolioLedgerRepository] = None,
         *,
+        personal_paths: PersonalDataPaths | None = None,
         route: PersonalStoreRoute | None = None,
         ledger_route: PersonalStoreRoute | None = None,
         ledger_source_namespace: str | None = None,
@@ -76,14 +79,14 @@ class PortfolioService:
         now_provider: Any | None = None,
     ):
         if route is None and (
-            getattr(config, "personal_store_root", None) or getattr(config, "personal_store_mode", None)
+            getattr(config, "personal_store_root", None) is not None or getattr(config, "personal_store_mode", None) is not None
         ):
             raise PersonalStoreRouteError("personal_store_selector_required")
         self.config = config
         self.position_service = position_service
         if ledger_route is not None and route is None:
             raise PersonalStoreRouteError("explicit_trades_route_required")
-        self.store = PortfolioJsonlStore(config.output_root, route=route)
+        self.store = PortfolioJsonlStore(config.output_root, route=route, personal_paths=personal_paths)
         if ledger_route is not None:
             if ledger_route.domain is not PersonalStoreDomain.PORTFOLIO_LEDGER:
                 raise PersonalStoreRouteError("portfolio_ledger_domain_required")
@@ -95,9 +98,12 @@ class PortfolioService:
                 raise PersonalStoreRouteError("portfolio_ledger_identity_mismatch")
             if route.mode is not ledger_route.mode or route.source_kind is not ledger_route.source_kind:
                 raise PersonalStoreRouteError("portfolio_ledger_mode_mismatch")
+            ledger_custody = PersonalStoreCustody(ledger_route, personal_paths)
             ledger_repository = PortfolioLedgerRepository(
                 ledger_route.read_source, read_only=ledger_route.write_target is None,
                 portfolio_id=ledger_route.identity.key, source_namespace=ledger_source_namespace,
+                path_validator=ledger_custody.sqlite_guard, io_renderer=ledger_custody.io,
+                readonly_uri_renderer=lambda path: to_internal_sqlite_uri(ledger_custody.sqlite_guard(path), "ro"),
             )
         elif route is not None and ledger_repository is not None:
             raise PersonalStoreRouteError("explicit_ledger_route_required")

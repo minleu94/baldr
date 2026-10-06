@@ -18,7 +18,8 @@ import sqlite3
 from typing import Any
 
 from app_module.personal_store_routes import PersonalStoreRoute, PersonalStoreRouteError
-from app_module.personal_paper_store_paths import PersonalPaperStorePaths
+from app_module.personal_data_paths import PersonalDataPaths
+from app_module.personal_paper_store_paths import PersonalPaperStorePaths, PersonalStoreCustody
 from app_module.paper_equal_weight_benchmark_ledger import EqualWeightBenchmarkEntry
 from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioPositionSnapshot,
@@ -150,12 +151,14 @@ class PaperPortfolioWeeklyEvidenceService:
         portfolio_id: str = DEFAULT_PORTFOLIO_ID,
         benchmark_id: str = DEFAULT_BENCHMARK_ID,
         route: PersonalStoreRoute | None = None,
+        personal_paths: PersonalDataPaths | None = None,
         config: object | None = None,
     ) -> None:
         if route is None and (
-            getattr(config, "personal_store_root", None) or getattr(config, "personal_store_mode", None)
+            getattr(config, "personal_store_root", None) is not None or getattr(config, "personal_store_mode", None) is not None
         ):
             raise PersonalStoreRouteError("personal_store_selector_required")
+        self.custody = PersonalStoreCustody(route, personal_paths)
         self.output_root = Path(output_root)
         if route is not None:
             paths = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id)
@@ -318,7 +321,7 @@ class PaperPortfolioWeeklyEvidenceService:
         dates, blockers, diagnostics = self._list_snapshot_dates()
         if not dates:
             return self._empty_result(
-                status="not_configured" if not self.state_db_path.is_file() else "not_computable",
+                status="not_configured" if not self.custody.exists(self.state_db_path) else "not_computable",
                 expected_trading_days=expected_trading_days,
                 blockers=tuple(blockers or ["paper_weekly_report_snapshot_dates_missing"]),
                 diagnostics=tuple(diagnostics),
@@ -336,12 +339,12 @@ class PaperPortfolioWeeklyEvidenceService:
     def _list_snapshot_dates(self) -> tuple[list[str], list[str], list[str]]:
         blockers: list[str] = []
         diagnostics: list[str] = []
-        if not self.state_db_path.is_file():
+        if not self.custody.exists(self.state_db_path):
             blockers.append("paper_snapshot_db_missing")
             return [], blockers, diagnostics
         manager = ReadOnlySQLiteManager(self.state_db_path)
         try:
-            with manager.connect() as conn:
+            with (self.custody.read_sqlite(manager.db_path) if self.custody.route is not None else manager.connect()) as conn:
                 if not _table_exists(conn, "paper_portfolio_snapshots"):
                     blockers.append("paper_snapshot_table_missing")
                     return [], blockers, diagnostics
@@ -383,12 +386,12 @@ class PaperPortfolioWeeklyEvidenceService:
         blockers: list[str],
         diagnostics: list[str],
     ) -> tuple[PaperPortfolioSnapshot, ...]:
-        if not self.state_db_path.is_file():
+        if not self.custody.exists(self.state_db_path):
             blockers.append("paper_snapshot_db_missing")
             return ()
         manager = ReadOnlySQLiteManager(self.state_db_path)
         try:
-            with manager.connect() as conn:
+            with (self.custody.read_sqlite(manager.db_path) if self.custody.route is not None else manager.connect()) as conn:
                 if not _table_exists(conn, "paper_portfolio_snapshots"):
                     blockers.append("paper_snapshot_table_missing")
                     return ()
@@ -461,12 +464,12 @@ class PaperPortfolioWeeklyEvidenceService:
         blockers: list[str],
         diagnostics: list[str],
     ) -> tuple[EqualWeightBenchmarkEntry, ...]:
-        if not self.benchmark_db_path.is_file():
+        if not self.custody.exists(self.benchmark_db_path):
             blockers.append("equal_weight_benchmark_db_missing")
             return ()
         manager = ReadOnlySQLiteManager(self.benchmark_db_path)
         try:
-            with manager.connect() as conn:
+            with (self.custody.read_sqlite(manager.db_path) if self.custody.route is not None else manager.connect()) as conn:
                 if not _table_exists(conn, "paper_equal_weight_benchmark"):
                     blockers.append("equal_weight_benchmark_table_missing")
                     return ()
@@ -536,12 +539,12 @@ class PaperPortfolioWeeklyEvidenceService:
         if self.cost_ledger_db_path is None:
             blockers.append("paper_trade_ledger_path_not_configured")
             return ()
-        if not self.cost_ledger_db_path.is_file():
+        if not self.custody.exists(self.cost_ledger_db_path):
             blockers.append("paper_trade_ledger_db_missing")
             return ()
         manager = ReadOnlySQLiteManager(self.cost_ledger_db_path)
         try:
-            with manager.connect() as conn:
+            with (self.custody.read_sqlite(manager.db_path) if self.custody.route is not None else manager.connect()) as conn:
                 if not _table_exists(conn, "paper_trade_ledger"):
                     blockers.append("paper_trade_ledger_schema_mismatch")
                     diagnostics.append("paper_trade_ledger_table_missing")

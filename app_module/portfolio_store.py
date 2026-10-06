@@ -7,7 +7,9 @@ import os
 from decimal import Decimal
 from pathlib import Path
 import time
-from typing import Any, Dict, Iterable, Iterator, List, Mapping, Sequence
+from typing import Any, Dict, Iterable, Iterator, List, Mapping, Sequence, Callable
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_io_path
+from app_module.personal_paper_store_paths import PersonalStoreCustody
 from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreRoute, PersonalStoreRouteError
 
 from app_module.dtos.decision_continuity_dtos import (
@@ -44,12 +46,19 @@ def _json_safe(value: Any) -> Any:
 
 
 @contextmanager
-def _interprocess_lock(path: Path, *, timeout_seconds: float = 10.0) -> Iterator[None]:
+def _interprocess_lock(path: Path, *, timeout_seconds: float = 10.0, path_validator: Callable[[Path], Path] | None = None) -> Iterator[None]:
     """Lock a sibling file using OS file locking, without PID guesses."""
 
     lock_path = path.with_name(f".{path.name}.lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = open(lock_path, "a+b")
+    if path_validator is not None:
+        path_validator(path)
+        path_validator(lock_path)
+    io_lock = to_internal_io_path(lock_path) if path_validator is not None else str(lock_path)
+    Path(io_lock).parent.mkdir(parents=True, exist_ok=True)
+    if path_validator is not None:
+        path_validator(path)
+        path_validator(lock_path)
+    handle = open(io_lock, "a+b")
     try:
         handle.seek(0, os.SEEK_END)
         if handle.tell() == 0:
@@ -209,9 +218,28 @@ def project_journal_records(
 class PortfolioJsonlStore:
     """Small storage adapter kept behind app_module services."""
 
+    # Journal adapters intentionally omit this constructor; preserve their overrides.
+    route: PersonalStoreRoute | None = None
+
+    @property
+    def _io_custody(self) -> PersonalStoreCustody:
+        return getattr(self, "custody", None) or PersonalStoreCustody(None, None)
+
+    def _read_selected_unlocked(self, path: Path) -> list[dict[str, Any]]:
+        if self.route is None:
+            return self._read_jsonl_unlocked(path)
+        return PortfolioJsonlStore._read_jsonl_unlocked(path, custody=self._io_custody)
+
+    def _separate_selected_unlocked(self, path: Path) -> None:
+        if self.route is None:
+            self._ensure_line_separator_unlocked(path)
+        else:
+            PortfolioJsonlStore._ensure_line_separator_unlocked(path, custody=self._io_custody)
+
     def __init__(self, output_root: Path, *, journal_file: Path | None = None,
-                 route: PersonalStoreRoute | None = None):
+                 route: PersonalStoreRoute | None = None, personal_paths: PersonalDataPaths | None = None):
         self.route = route
+        self.custody = PersonalStoreCustody(route, personal_paths)
         if route is not None:
             if route.domain is not PersonalStoreDomain.TRADES:
                 raise PersonalStoreRouteError("trades_domain_required")
@@ -235,20 +263,23 @@ class PortfolioJsonlStore:
         if journal_file is not None:
             self.journal_file.parent.mkdir(parents=True, exist_ok=True)
 
+    def _lock(self, path: Path) -> Any:
+        return _interprocess_lock(path, path_validator=self._io_custody.guard if self.route is not None else None)
+
     def append_trade(self, trade: Dict[str, Any]) -> None:
         self._append_jsonl(self.trades_file, trade)
 
     def load_trades(self) -> List[Dict[str, Any]]:
         if self.route is not None:
-            if self.route.write_target is None or not self.trades_file.exists():
-                records = list(self._read_jsonl_unlocked(self.trades_file))
+            if self.route.write_target is None or not self._io_custody.exists(self.trades_file):
+                records = list(self._read_selected_unlocked(self.trades_file))
             else:
-                with _interprocess_lock(self.trades_file):
-                    records = list(self._read_jsonl_unlocked(self.trades_file))
+                with self._lock(self.trades_file):
+                    records = list(self._read_selected_unlocked(self.trades_file))
             self._validate_trade_identity(records)
             return records
-        with _interprocess_lock(self.trades_file):
-            return list(self._read_jsonl_unlocked(self.trades_file))
+        with self._lock(self.trades_file):
+            return list(self._read_selected_unlocked(self.trades_file))
 
     def require_portfolio_identity(self, portfolio_id: str) -> None:
         if self.route is not None and portfolio_id != self.route.identity.key:
@@ -295,7 +326,7 @@ class PortfolioJsonlStore:
             DecisionContinuityRevision.from_mapping(item)
             _canonical_record(item)
 
-        with _interprocess_lock(self.journal_file):
+        with self._lock(self.journal_file):
             existing = self._read_jsonl_unlocked(self.journal_file)
             if (
                 expected_history_token is not None
@@ -337,7 +368,7 @@ class PortfolioJsonlStore:
     def load_journal_entries(self) -> List[Dict[str, Any]]:
         if self.route is not None:
             raise PersonalStoreRouteError("trades_route_journal_forbidden")
-        with _interprocess_lock(self.journal_file):
+        with self._lock(self.journal_file):
             records = self._read_jsonl_unlocked(self.journal_file)
         return project_journal_records(records)
 
@@ -346,7 +377,7 @@ class PortfolioJsonlStore:
 
         if self.route is not None:
             raise PersonalStoreRouteError("trades_route_journal_forbidden")
-        with _interprocess_lock(self.journal_file):
+        with self._lock(self.journal_file):
             return list(self._read_jsonl_unlocked(self.journal_file))
 
     def load_journal_snapshot(self) -> tuple[List[Dict[str, Any]], str]:
@@ -354,7 +385,7 @@ class PortfolioJsonlStore:
 
         if self.route is not None:
             raise PersonalStoreRouteError("trades_route_journal_forbidden")
-        with _interprocess_lock(self.journal_file):
+        with self._lock(self.journal_file):
             records = list(self._read_jsonl_unlocked(self.journal_file))
             return records, _journal_history_token(records)
 
@@ -383,59 +414,64 @@ class PortfolioJsonlStore:
     def _overwrite_jsonl(self, path: Path, entries: Iterable[Mapping[str, Any]]) -> None:
         self._require_writer(path)
         entries = list(entries)
-        if path == self.trades_file:
+        if path == getattr(self, "trades_file", None):
             self._validate_trade_identity(entries)
             if self.route is not None:
                 self.load_trades()
         lines = [_canonical_record(item) for item in entries]
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with _interprocess_lock(path):
-            with open(path, "w", encoding="utf-8") as handle:
+        self._io_custody.prepare_parent(path)
+        with self._lock(path):
+            with open(self._io_custody.io(path), "w", encoding="utf-8") as handle:
                 if lines:
                     handle.write("\n".join(lines))
                     handle.write("\n")
 
     def _append_jsonl(self, path: Path, item: Dict[str, Any]) -> None:
         self._require_writer(path)
-        if path == self.trades_file:
+        if path == getattr(self, "trades_file", None):
             self._validate_trade_identity((item,))
         line = _canonical_record(item)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with _interprocess_lock(path):
+        self._io_custody.prepare_parent(path)
+        with self._lock(path):
             # Never append behind a partial/corrupt stream; importantly, this
             # read does not rewrite any pre-existing bytes.
-            existing = self._read_jsonl_unlocked(path)
-            if path == self.trades_file:
+            existing = self._read_selected_unlocked(path)
+            if path == getattr(self, "trades_file", None):
                 self._validate_trade_identity(existing)
-            self._ensure_line_separator_unlocked(path)
-            with open(path, "a", encoding="utf-8") as handle:
+            self._separate_selected_unlocked(path)
+            with open(self._io_custody.io(path), "a", encoding="utf-8") as handle:
                 handle.write(line)
                 handle.write("\n")
 
     @staticmethod
-    def _ensure_line_separator_unlocked(path: Path) -> None:
+    def _ensure_line_separator_unlocked(path: Path, *, custody: PersonalStoreCustody | None = None) -> None:
         """Separate a valid final line that lacks its trailing newline."""
 
-        if not path.exists() or path.stat().st_size == 0:
+        canonical_path = path
+        path = Path(custody.io(path)) if custody is not None else path
+        exists = custody.exists(canonical_path) if custody is not None else path.exists()
+        if not exists or Path(custody.io(canonical_path) if custody is not None else path).stat().st_size == 0:
             return
-        with open(path, "rb") as handle:
+        with open(custody.io(canonical_path) if custody is not None else path, "rb") as handle:
             handle.seek(-1, os.SEEK_END)
             last = handle.read(1)
         if last != b"\n":
-            with open(path, "ab") as handle:
+            with open(custody.io(canonical_path) if custody is not None else path, "ab") as handle:
                 handle.write(b"\n")
 
     def _read_jsonl(self, path: Path) -> Iterable[Dict[str, Any]]:
-        with _interprocess_lock(path):
-            return self._read_jsonl_unlocked(path)
+        with self._lock(path):
+            return self._read_selected_unlocked(path)
 
     @staticmethod
-    def _read_jsonl_unlocked(path: Path) -> list[dict[str, Any]]:
-        if not path.exists():
+    def _read_jsonl_unlocked(path: Path, *, custody: PersonalStoreCustody | None = None) -> list[dict[str, Any]]:
+        canonical_path = path
+        path = Path(custody.io(path)) if custody is not None else path
+        if not (custody.exists(canonical_path) if custody is not None else path.exists()):
             return []
 
         records: list[dict[str, Any]] = []
-        with open(path, "r", encoding="utf-8") as handle:
+        with open(custody.io(canonical_path) if custody is not None else path, "r", encoding="utf-8") as handle:
             for line_number, line in enumerate(handle, start=1):
                 stripped = line.strip()
                 if not stripped:

@@ -15,7 +15,7 @@ import json
 from contextlib import contextmanager
 from pathlib import Path
 import sqlite3
-from typing import Any, Iterable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 
 PORTFOLIO_LEDGER_SCHEMA_VERSION = "portfolio-ledger.v1"
@@ -233,6 +233,9 @@ class PortfolioLedgerRepository:
         *,
         initialize: bool = True,
         read_only: bool = False,
+        path_validator: Callable[[Path], Path] | None = None,
+        io_renderer: Callable[[Path], str] | None = None,
+        readonly_uri_renderer: Callable[[Path], str] | None = None,
         portfolio_id: str | None = None,
         source_namespace: str | None = None,
     ) -> None:
@@ -242,15 +245,22 @@ class PortfolioLedgerRepository:
             raise ValueError("unsupported source namespace")
         self.portfolio_id = portfolio_id
         self.source_namespace = source_namespace
-        self.db_path = Path(db_path).expanduser().resolve()
+        self._io_renderer = io_renderer
+        self._readonly_uri_renderer = readonly_uri_renderer
+        self._path_validator = path_validator
+        selected_path = Path(db_path)
+        self.db_path = (path_validator(selected_path) if path_validator is not None
+                        else selected_path.expanduser().resolve())
         self.read_only = read_only
         if read_only or not initialize:
-            if not self.db_path.is_file():
+            if not Path(self._io_renderer(self.db_path) if self._io_renderer is not None else self.db_path).is_file():
                 raise FileNotFoundError(self.db_path)
             if read_only:
                 self._assert_schema_exists()
         else:
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            Path(self._io_renderer(self.db_path) if self._io_renderer is not None else self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            if self._path_validator is not None:
+                self._path_validator(self.db_path)
             self._ensure_schema()
 
     @classmethod
@@ -499,11 +509,14 @@ class PortfolioLedgerRepository:
         )
 
     def _connect(self) -> sqlite3.Connection:
+        if self._path_validator is not None:
+            self._path_validator(self.db_path)
         if self.read_only:
-            uri = f"file:{self.db_path.as_posix()}?mode=ro"
+            uri = (self._readonly_uri_renderer(self.db_path) if self._readonly_uri_renderer is not None
+                   else f"file:{self.db_path.as_posix()}?mode=ro")
             connection = sqlite3.connect(uri, uri=True)
         else:
-            connection = sqlite3.connect(self.db_path)
+            connection = sqlite3.connect(self._io_renderer(self.db_path) if self._io_renderer is not None else self.db_path)
         connection.row_factory = sqlite3.Row
         return connection
 

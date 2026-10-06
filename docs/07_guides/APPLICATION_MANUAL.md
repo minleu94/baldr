@@ -2,6 +2,8 @@
 
 ## Windows 可攜版入口
 
+Source `ui_qt/main.py` 未設環境時預設 FA_Data 及其 output；exe 優先環境、其次外部 config.json、最後 LOCALAPPDATA 空根，兩者未配置的 defaults 不同，且均不自動讀 `.env`。本機既有使用者已將外部 JSON 對齊 `D:/Min/Python/Project/FA_Data`／`D:/Min/Python/Project/FA_Data/output`，H20 沿原 DATA_ROOT 下的 activation hook；未重新 enable／fit。完整優先序、衍生 registry 差異與實際 root 檢查見可攜指南。
+
 保留整個 `baldr` 資料夾並雙擊 `baldr.exe`，不需 IDE 或全域 Python。首次無設定使用外部空根並提示設定，不借開發機資料；設定 JSON、私人模式／原可信模型、重開、CLI／scheduler、日誌與安全限制見 [可攜指南](PORTABLE_WINDOWS.md)。原九工作區與四用途步驟不變。未簽章，Native 真人與正式 Task 自然 run 不由 offscreen 測試代替。
 
 更新帶警告成功時，Timeline 顯示 partial 並保留成功時間、警告與來源日期；Runtime 顯示 guarded。只接受 producer 一致的合法 `passed_with_warnings`；失敗 step、errors、缺身份／日期、unknown／stale 或來源日期不一致仍按原 gate 拒絕或降級，不等於所有資料正常。

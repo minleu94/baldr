@@ -15,3 +15,7 @@ Workbench＋初版 affected tests 106 passed；最終 D01＋launcher 30 passed�
 四用途增強 probe：市場／個股／持倉畫面以合成 DTO 與缺報價安全 N/A 驗證；選股用合成 sealed execution 展示。推薦 legacy SQLite runs canonical readback 被原 no-follow root／ancestor guard 阻擋，保留失敗 raw，不列 pass、不換路放寬來源資格。Watchlist 保存跨程序讀回與推薦保存是不同契約。
 
 最後在同一隔離設定／空資料根再連續啟動、關閉兩個 frozen launcher 程序，兩次 exit0，收據 `output/packaging/repeated_entry.json`。四組原報告與 process receipt 已複製到 repo ignored `output/packaging/reports/`，BUILD_INFO 指向 durable 副本，不只依賴 Temp。
+
+最終 log 修正版 exe SHA256 `92219cdd34274e13dddb5e82d774054754caaf750baa4b5b7a31d222c789db7e`／52,271,578 bytes。上一節最初交付 SHA 保留為歷史。Frozen TechnicalIndicator logger 改 OUTPUT_ROOT/application_state/logs，source 版原日誌行為保留；最後 affected 31 passed、完整 mypy 848 sources 無 error，四組新 exe probe 通過且檢查 cwd 不再產生技術 log。舊包完整保留 dist/baldr_previous_20261006，可逆換包前確認無 baldr process。
+
+使用者明示要求後，唯讀核現有 Task action／官方 cmd／TWStockConfig／白名單環境，確認正式 DATA_ROOT 和 OUTPUT_ROOT，外部 config.json 原不存在所以建立兩鍵；不搬資料／改 Task 或啟用 private store。新 frozen CLI 只讀核兩 roots 與原 H20 activation SHA，吻合中央最新兩具名 handoff 的 enabled revision1 pin；沿原 H20 namespace，不把它塞另一 PERSONAL_MODEL_POLICY_PATH。配置收據 output/packaging/existing_user_config.json／configured_exe_readback.json。真人提供第一次開窗的中文 screenshot，只證明該次空根提示／背景文字可見，仍不能當完整 Native 四用途驗收。

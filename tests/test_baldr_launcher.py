@@ -54,3 +54,17 @@ def test_frozen_data_cannot_write_into_package(monkeypatch,tmp_path):
     monkeypatch.setenv('DATA_ROOT',str(tmp_path/'package'/'market'))
     with pytest.raises(ValueError,match='程式包'):
         configure_portable()
+def test_frozen_indicator_log_stays_outside_bundle(tmp_path, monkeypatch):
+    from analysis_module.technical_analysis import technical_indicators as indicators
+    import logging
+    monkeypatch.setattr(indicators.sys, 'frozen', True, raising=False)
+    monkeypatch.setenv('OUTPUT_ROOT', str(tmp_path/'output'))
+    monkeypatch.chdir(tmp_path)
+    calculator = indicators.TechnicalIndicatorCalculator()
+    logger = logging.getLogger(indicators.__name__)
+    paths = [Path(handler.baseFilename) for handler in logger.handlers if isinstance(handler, logging.FileHandler)]
+    assert paths == [tmp_path/'output/application_state/logs/technical_calculation.log']
+    assert not (tmp_path/'technical_calculation.log').exists()
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()

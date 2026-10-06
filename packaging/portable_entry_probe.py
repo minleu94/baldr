@@ -38,6 +38,8 @@ assert len(result['setup_dialogs']) == 1, result
 assert str(case / 'local' / 'baldr' / 'market') in result['setup_dialogs'][0], result
 assert Path(os.environ['DATA_ROOT']).is_relative_to(case), os.environ['DATA_ROOT']
 assert Path(os.environ['OUTPUT_ROOT']).is_relative_to(case), os.environ['OUTPUT_ROOT']
+assert not (case/'technical_calculation.log').exists()
+assert (Path(os.environ['OUTPUT_ROOT'])/'application_state/logs/technical_calculation.log').is_file()
 result.update(status='passed', exit=code, frozen=sys.frozen, native=False,
               data_root=os.environ['DATA_ROOT'], output_root=os.environ['OUTPUT_ROOT'])
 (case / 'portable_entry_probe.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')

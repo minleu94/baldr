@@ -7,7 +7,7 @@ import sys
 import tempfile
 
 root=Path(__file__).resolve().parents[1]
-exe=root/'dist/baldr/baldr.exe'
+exe=Path(os.environ.get('BALDR_PROBE_EXE', str(root/'dist/baldr/baldr.exe')))
 case=Path(tempfile.mkdtemp(prefix='baldr portable 空間 '))
 env={k:v for k,v in os.environ.items() if not k.startswith(('PERSONAL_','PIT_','CURRENT_RESTATED_','DAILY_MARKET_','RULE_RESEARCH_'))}
 env.update(DATA_ROOT=str(case/'market'),OUTPUT_ROOT=str(case/'output'),LOCALAPPDATA=str(case/'local'),

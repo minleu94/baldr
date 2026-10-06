@@ -35,6 +35,7 @@ info = dict(version='2026.10.06', exe=str(bundle/'baldr.exe'), folder_required=T
     private_model_verified=False)
 info['production_source_sha256_lf'] = {name:sha((root/name).read_bytes().replace(b'\r\n',b'\n'))
     for name in ('baldr_launcher.py','packaging/baldr.spec',
+                 'analysis_module/technical_analysis/technical_indicators.py',
                  'app_module/update_status_timeline.py',
                  'app_module/runtime_services/scheduled_operations_service.py')}
 (bundle/'BUILD_INFO.json').write_text(json.dumps(info,ensure_ascii=False,indent=2),encoding='utf-8')

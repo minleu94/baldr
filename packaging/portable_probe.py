@@ -85,5 +85,7 @@ else:
     workers,background=main_module.MainWindow._request_shutdown_dependencies(window,send_cancel=False)
     assert not workers and not background
     main_module._drain_qt_deferred_deletes(app,(window,))
+    assert not (case/'technical_calculation.log').exists()
+    assert (Path(os.environ['OUTPUT_ROOT'])/'application_state/logs/technical_calculation.log').is_file()
     (case/'probe.json').write_text(json.dumps({'status':'passed','navigation':navigation,'model':loaded.status,
         'spawn':child.exitcode,'dialogs':dialogs,'scipy':scipy.__version__,'native':False},ensure_ascii=False,indent=2),encoding='utf-8')

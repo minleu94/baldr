@@ -5,6 +5,9 @@ import subprocess
 import sys
 
 root=Path(__file__).resolve().parents[1]
+dist = root/'dist'/'candidate_20261006' if sys.argv[1:] == ['--candidate'] else root/'dist'
+if sys.argv[1:] not in ([], ['--candidate']):
+    raise SystemExit('使用 build_windows.py [--candidate]')
 if sys.platform != 'win32':
     raise SystemExit('請使用 Windows x64／Python 3.11 建置')
 env=dict(os.environ, PYTHONUTF8='1',PYTHONNOUSERSITE='1',
@@ -14,4 +17,4 @@ windows=Path(os.environ.get('WINDIR',r'C:\Windows'))
 env['PATH']=';'.join(map(str,(Path(sys.executable).parent,windows/'System32',windows,
                               Path(sys.base_prefix),Path(sys.base_prefix)/'DLLs')))
 raise SystemExit(subprocess.call([sys.executable,'-m','PyInstaller',str(root/'packaging/baldr.spec'),
-    '--distpath',str(root/'dist'),'--workpath',str(root/'output/packaging/build'),'--noconfirm'],cwd=root,env=env))
+    '--distpath',str(dist),'--workpath',str(root/'output/packaging/build'),'--noconfirm'],cwd=root,env=env))

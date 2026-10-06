@@ -39,6 +39,8 @@ from app_module.daily_market_research_screener import DailyMarketResearchScreenR
 from app_module.original_stock_ranking import VerifiedOriginalStockRanking
 from app_module.original_stock_ranking import research_context_for_original_stock_ranking
 from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
+from app_module.rule_research_sample_capture import build_rule_research_capture
+from app_module.rule_research_sample_readiness import project_rule_sample_readiness
 from app_module.multi_method_research_consensus import (
     MultiMethodResearchConsensus,
     adapt_daily_market_snapshot,
@@ -177,6 +179,12 @@ class DailyMarketResearchView(QWidget):
             f"border-left: 4px solid {MIDNIGHT_ANALYST.accent}; padding: 7px;"
         )
         root.addWidget(self.disclaimer_label)
+
+        self.sample_readiness_label = QLabel("研究樣本：尚未核對完整單批控制組；成熟結果未知。")
+        self.sample_readiness_label.setObjectName("dailyMarketRuleSampleReadiness")
+        self.sample_readiness_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.sample_readiness_label.setWordWrap(True)
+        root.addWidget(self.sample_readiness_label)
 
         inputs = QGroupBox("研究範圍與條件")
         inputs.setObjectName("dailyMarketResearchInputs")
@@ -1562,6 +1570,7 @@ class DailyMarketResearchView(QWidget):
         self._loaded_cohort_id = cohort_id
         self._loaded_decision_date = decision_date
         self._project_multi_method_consensus(snapshot)
+        self._render_rule_sample_readiness(snapshot)
         self._selected_stock_code = ""
         self._history_page = None
         self._history_cursors = [None]
@@ -1601,6 +1610,28 @@ class DailyMarketResearchView(QWidget):
             self.original_ranking_label.setText(
                 "原始排名：未知；此 service 未提供不可變來源 reader。"
             )
+
+    def _render_rule_sample_readiness(self, snapshot: object) -> None:
+        """呈現當期完整控制組；純 DTO 投影不保存 capture 或補入成熟資格。"""
+        import json
+        try:
+            observed = datetime.fromisoformat(self._multi_method_as_of)
+            capture = build_rule_research_capture(cast(VerifiedDailyMarketSnapshot, snapshot),
+                as_of=observed, observed_at=observed)
+            readiness = project_rule_sample_readiness(capture)
+            counts = readiness["method_counts"]
+            summaries = []
+            for item in counts:
+                label = "MA20" if item["method_id"].endswith("ma20") else "MA60"
+                summaries.append(f"{label} 符合 {item['matched']}／不符合 {item['notmatched']}／未知 {item['unknown']}／排除 {item['excluded']}")
+            self.sample_readiness_label.setText(
+                f"研究樣本：{readiness['decision_date']}，完整聲明單批 {readiness['represented_denominator']} 檔（含排除）；"
+                + "；".join(summaries)
+                + "。僅當期投影，尚未保存樣本；入選規則、來源當時可得、交易日曆與成熟結果未知。")
+            self.sample_readiness_label.setToolTip(json.dumps(readiness, ensure_ascii=False, indent=2))
+        except Exception as exc:
+            self.sample_readiness_label.setText("研究樣本：完整單批控制組尚未核對；未保存樣本，成熟結果未知。")
+            self.sample_readiness_label.setToolTip(f"{type(exc).__name__}: {exc}")
 
     def _project_multi_method_consensus(self, snapshot: object) -> None:
         """只投影剛接受的 pinned snapshot；不相容時不沿用前次交集。"""
@@ -3041,6 +3072,8 @@ class DailyMarketResearchView(QWidget):
 
     def _clear_current_snapshot(self) -> None:
         self._snapshot = None
+        self.sample_readiness_label.setText("研究樣本：來源已清除，完整單批控制組與成熟結果未知。")
+        self.sample_readiness_label.setToolTip("")
         self._multi_method_consensus = None
         self._multi_method_consensus_error = ""
         self._multi_method_as_of = ""

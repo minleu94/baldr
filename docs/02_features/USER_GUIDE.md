@@ -1242,3 +1242,7 @@ notes 的 root／mode 選擇獨立 watchlist activation；personal writer與全�
 
 
 保存研究結果可在研究Registry選單筆按「查看單筆結果與規則」，核對保存版本、期間及費率；身份吻合不代表正式資格。若缺來源或成本則不可評估，不自動改保存結果；操作與排錯見完整Manual。
+
+### 2026-10-06 UX20 單批 MA 樣本限定整合
+
+既有隔離 MA CLI 明示保存完整 matched/notmatched/unknown/excluded 單批capture＋receipt，再按原pin唯讀核對readiness；既有MA頁只呈現當期完整控制組投影並明示尚未保存。included≤16、超限拒絕；未知availability/calendar/outcomes不補PIT或訓練資格。Stage5／UX20 partial，多批parent／排程與Outcome接線仍是工程待辦。QA：`docs/06_qa/UX20_SAMPLE_CAPTURE_INTEGRATION_20261006.md`；操作以Manual同日章節為準。個人儲存／Journal程式已整合，只有正式migration／activation未做。

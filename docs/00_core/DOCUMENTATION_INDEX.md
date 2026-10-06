@@ -118,3 +118,7 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 
 
 2026-10-06：[UX11保存結果→規則卡readback收據](../06_qa/UX11_SAVED_RESULT_RULE_READBACK_20261006.md)：來源identity、窗口／成本／kind核對及background UI；沒有正式資格升格。
+
+### 2026-10-06 UX20 單批 MA 樣本限定整合
+
+既有隔離 MA CLI 明示保存完整 matched/notmatched/unknown/excluded 單批capture＋receipt，再按原pin唯讀核對readiness；既有MA頁只呈現當期完整控制組投影並明示尚未保存。included≤16、超限拒絕；未知availability/calendar/outcomes不補PIT或訓練資格。Stage5／UX20 partial，多批parent／排程與Outcome接線仍是工程待辦。QA：`docs/06_qa/UX20_SAMPLE_CAPTURE_INTEGRATION_20261006.md`；操作以Manual同日章節為準。個人儲存／Journal程式已整合，只有正式migration／activation未做。

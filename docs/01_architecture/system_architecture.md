@@ -1355,3 +1355,7 @@ F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚�
 
 
 UX11後續：saved_strategy_rule_card只調既有ResearchRunService完整性reader，核對已選metadata与保存Spec／rule pin／執行context。RunRegistryCompareWidget按需單TaskWorker讀取，generation／source hash防舊回呼；Dialog只讀detached投影。沒有新增writer/schema／producer、結果重算、資格升格；源缺欄位保持not_evaluable。
+
+### 2026-10-06 UX20 單批 MA 樣本限定整合
+
+既有隔離 MA CLI 明示保存完整 matched/notmatched/unknown/excluded 單批capture＋receipt，再按原pin唯讀核對readiness；既有MA頁只呈現當期完整控制組投影並明示尚未保存。included≤16、超限拒絕；未知availability/calendar/outcomes不補PIT或訓練資格。Stage5／UX20 partial，多批parent／排程與Outcome接線仍是工程待辦。QA：`docs/06_qa/UX20_SAMPLE_CAPTURE_INTEGRATION_20261006.md`；操作以Manual同日章節為準。個人儲存／Journal程式已整合，只有正式migration／activation未做。

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sys
@@ -37,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     scope_group.add_argument("--symbols", nargs="+", help="1-16 explicit research symbols")
     scope_group.add_argument("--universe-config", help="Strict research-universe JSON; uses its included members")
     parser.add_argument("--read-stock", help="可選明示cohort內一股，發布後經個股read_report核驗讀回；不觸發live projection。")
+    parser.add_argument("--capture-root", help="可選 output/qa 或 Temp 子目錄，明示保存完整單批 MA 控制組。")
+    parser.add_argument("--capture-as-of", help="與 capture-root 配對；首次可用 observed-now，之後沿用回傳固定含時區 as_of 才能去重。")
     args = parser.parse_args(argv)
     try:
         cutoff = datetime.fromisoformat(args.decision_cutoff)
@@ -44,6 +46,20 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("decision_cutoff 必須含時區")
         cutoff = cutoff.astimezone(ZoneInfo("Asia/Taipei"))
         root = _isolated_output(args.output_root)
+        if bool(args.capture_root) != bool(args.capture_as_of):
+            raise ValueError("capture-root 與 capture-as-of 必須配對")
+        capture_writer = None
+        capture_as_of = None
+        if args.capture_root:
+            from app_module.rule_research_sample_capture import BoundedRuleResearchCaptureWriter
+            capture_writer = BoundedRuleResearchCaptureWriter(args.capture_root)
+            if args.capture_as_of != "observed-now":
+                capture_as_of = datetime.fromisoformat(args.capture_as_of)
+                if capture_as_of.tzinfo is None or capture_as_of.utcoffset() is None:
+                    raise ValueError("capture-as-of 必須含時區或明示 observed-now")
+            source_root = root.resolve()
+            if capture_writer.output_root.is_relative_to(source_root) or source_root.is_relative_to(capture_writer.output_root):
+                raise ValueError("source_output_overlap")
         universe_spec = (
             load_research_universe_spec(args.universe_config)
             if args.universe_config is not None
@@ -63,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("--cohort-id is required without --universe-config")
         if universe_spec is not None and cohort_id != universe_spec.universe_id:
             raise ValueError("--cohort-id must match universe_id from --universe-config")
+        if not 1 <= len(symbols) <= 16 or len(set(symbols)) != len(symbols):
+            raise ValueError("單批母體必須是 1–16 檔不同股票；較大母體尚無完整多批 parent manifest，拒絕截斷或拆批冒充完整。")
         if args.read_stock is not None and args.read_stock not in symbols:
             raise ValueError("read_stock 必須屬於明示symbols")
         with SQLiteDailyMarketSnapshotSource(args.db_path, cutoff.date()) as source:
@@ -87,6 +105,27 @@ def main(argv: list[str] | None = None) -> int:
         if result.status not in {"published_complete", "published_partial", "unchanged"}:
             print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
             return 2
+        if capture_writer is not None:
+            from app_module.daily_market_snapshot_repository import DailyMarketSnapshotRepository
+            from app_module.rule_research_sample_readiness import read_saved_rule_sample_readiness
+            repository = DailyMarketSnapshotRepository(root)
+            if capture_as_of is None:
+                capture_as_of = datetime.now(timezone.utc)
+            try:
+                captured = capture_writer.capture_pinned(repository, manifest_sha256=result.manifest_sha256,
+                    cohort_id=cohort_id, decision_date=cutoff.date(), as_of=capture_as_of)
+                identity = captured["receipt"]["capture_identity_sha256"]
+                payload["sample_capture"] = captured
+                payload["sample_readiness"] = read_saved_rule_sample_readiness(
+                    capture_writer, repository, identity_sha256=identity,
+                    manifest_sha256=result.manifest_sha256, cohort_id=cohort_id,
+                    decision_date=cutoff.date(), as_of=capture_as_of)
+            except Exception as exc:
+                # 上游快照可能已發布；保留其收據，不把 capture 失敗當全部未寫入。
+                payload["sample_capture_status"] = "rejected"
+                payload["sample_capture_error"] = {"type": type(exc).__name__, "code": getattr(exc, "code", ""), "message": str(exc)}
+                print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+                return 2
         if args.read_stock is not None:
             from app_module.stock_research_report_service import StockResearchReportReadService
             report = StockResearchReportReadService(

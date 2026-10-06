@@ -353,7 +353,8 @@ def test_failure_after_staging_retains_partial_and_never_commits(tmp_path, monke
     assert not (writer.output_root / ".writer.lock").exists()
 
 
-@pytest.mark.parametrize("mutation", ["counts", "policy", "duplicate", "availability"])
+@pytest.mark.parametrize("mutation", ["counts", "policy", "duplicate", "availability",
+    "members", "row_version", "clock_invalid", "clock_order", "population", "exclusion_reason"])
 def test_rehashed_capture_semantic_damage_rejected(tmp_path, mutation):
     _, _, capture = _fixture(tmp_path)
     body = capture.to_dict()
@@ -363,8 +364,24 @@ def test_rehashed_capture_semantic_damage_rejected(tmp_path, mutation):
         body["policy"]["selected_count"] = 1
     elif mutation == "duplicate":
         body["rows"].append(body["rows"][0])
-    else:
+    elif mutation == "availability":
         body["source_available_at"] = body["observed_at"]
+    elif mutation == "members":
+        for row in body["rows"]:
+            if row["stock_code"] == "2382":
+                row["stock_code"] = "9999"
+    elif mutation == "row_version":
+        body["rows"][0]["method_version"] = "wrong"
+    elif mutation == "clock_invalid":
+        body["observed_at"] = "invalid"
+    elif mutation == "clock_order":
+        body["observed_at"] = "1990-01-01T00:00:00+00:00"
+    elif mutation == "population":
+        body["population_count"] = 999
+    else:
+        for row in body["rows"]:
+            if row["state"] == "excluded":
+                row["reason"] = "被替換的排除理由"
     body["capture_identity_sha256"] = capture_module._identity(body)
     with pytest.raises(RuleSampleCaptureError):
         RuleResearchCapture(capture_module._json(body)).to_dict()

@@ -4736,3 +4736,15 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 「保存身份已核對」只表示來源pin相容，正式資格未授予。版本／source／期間／成本不符、沒有保存Spec／pin時標不可評估；不借目前設定或default成本。未知benchmark及稅費保留未知，Registry說明／參數不當作完整執行契約。來源／hash／完整標的及檔案ref可展開核對。研究追蹤不稱live、機率或真成交。
 
 讀取失敗會顯示「保存來源核對失敗」，可重試或重新整理；先核對保存來源，勿以重新分析替舊結果補章。一次只能開單筆，兩筆以上仍使用原比較入口。取消不會強殺正在讀檔的thread，完成後不套舊結果；不會改保存內容。
+
+## 2026-10-06 UX20 單批 MA 研究樣本
+
+每日研究條件載入已核驗快照後，「研究樣本」顯示該聲明母體（含排除）及 MA20／MA60 符合、不符合、未知、排除分母。這是純投影，未保存樣本；入選規則／來源當時可得／交易日曆／成熟結果未知，不授訓練、PIT或正式交易資格。
+
+隔離 CLI `scripts/produce_daily_market_research_snapshot.py` 保留既有 db/output/cohort/cutoff/symbols 或 universe-config 參數；額外明示 `--capture-root output/qa/<專用子目錄> --capture-as-of observed-now` 才保存完整控制組。首次結果的 `sample_readiness.as_of` 是本次觀測時刻；重跑改用該完整 ISO 值，且相同母體、pin與來源才 duplicate。再次 observed-now 會成新觀測；同日來源修訂保存新包，舊包不覆寫。保存結果的 saved_verified 只表示 capture/receipt與snapshot pin一致，不代表自然資料成熟。
+
+單批僅1–16檔不同 included，含 excluded最多32；更大母體尚無parent manifest，明示拒絕。capture根只接受 repo output/qa 或系統Temp子目錄，與snapshot來源不能重疊；200GiB reserve、256KiB/包及8MiB/128包留存不放寬。若容量不足、來源／as_of晚於或早於合法範圍、busy、partial或receipt壞，CLI返回rejected；保留原證據，先核對來源及容量，不自動清理／補時鐘。未加正式配置或排程，頁面瀏覽不會保存。
+
+詳見 [UX20限定QA](../06_qa/UX20_SAMPLE_CAPTURE_INTEGRATION_20261006.md)。個人儲存／Journal程式已整合，正式migration／啟用尚未進行。
+
+CLI capture階段失敗時返回碼2，但上游snapshot可能已發布；回傳保留producer的manifest/status，另列sample_capture_status=rejected。只有成功readiness才表示樣本讀回已驗，請勿把上游發布誤認為樣本成功。

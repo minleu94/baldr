@@ -618,3 +618,7 @@ UX11 readmodel c7a9ea37整合為a3b63070；回測策略設定新增按需版本�
 
 
 2026-10-06：UX11新增Research Registry單筆保存結果→規則卡readback，來源Spec／pin、version／params／window／cost／data身份核對，缺件not_evaluable、不補章／默認。有限source consumer子項已完成，UX11仍partial而無新增人工blocking gate；未接自然forward／完整execution資格。39focused＋6shell、Workbench85、validator25/4skip、mypy802通過，未讀正式DB或改UX20 lane。
+
+### 2026-10-06 UX20 單批 MA 樣本限定整合
+
+既有隔離 MA CLI 明示保存完整 matched/notmatched/unknown/excluded 單批capture＋receipt，再按原pin唯讀核對readiness；既有MA頁只呈現當期完整控制組投影並明示尚未保存。included≤16、超限拒絕；未知availability/calendar/outcomes不補PIT或訓練資格。Stage5／UX20 partial，多批parent／排程與Outcome接線仍是工程待辦。QA：`docs/06_qa/UX20_SAMPLE_CAPTURE_INTEGRATION_20261006.md`；操作以Manual同日章節為準。個人儲存／Journal程式已整合，只有正式migration／activation未做。

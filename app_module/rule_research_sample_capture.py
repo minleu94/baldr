@@ -135,11 +135,76 @@ class RuleResearchCapture:
                 and len(members) - tally["excluded"] == body["included_denominator"],
                 "capture_counts_mismatch")
         _require(scopes[0] == scopes[1], "capture_method_scope_mismatch")
+        _validate_saved_semantics(body)
         return body
 
     @property
     def identity_sha256(self) -> str:
         return str(self.to_dict()["capture_identity_sha256"])
+
+
+def _validate_saved_semantics(body: dict[str, Any]) -> None:
+    """讀回也驗母體／版本／時鐘；重算 bytes hash 不能替代語意契約。"""
+    try:
+        clocks = [datetime.fromisoformat(body[k]) for k in
+                  ("decision_cutoff", "artifact_published_at", "as_of", "observed_at")]
+        for clock in clocks:
+            _clock(clock)
+        _require(clocks == sorted(clocks), "capture_clock_order_invalid")
+        _require(clocks[0].date().isoformat() == body["decision_date"], "capture_date_mismatch")
+    except (TypeError, KeyError, ValueError) as exc:
+        if isinstance(exc, RuleSampleCaptureError):
+            raise
+        raise RuleSampleCaptureError("capture_clock_invalid") from exc
+    universe = body.get("universe")
+    _require(isinstance(universe, dict)
+             and body.get("universe_sha256") == _digest(_json(universe).encode("utf-8")),
+             "capture_universe_hash_mismatch")
+    assert isinstance(universe, dict)
+    legacy = universe.get("scope") == "legacy_declared_research_only"
+    included = universe.get("declared_stock_codes" if legacy else "included_stock_codes")
+    excluded = [] if legacy else universe.get("excluded_stock_codes")
+    _require(isinstance(included, list) and 1 <= len(included) <= 16
+             and all(isinstance(c, str) and c.strip() == c and c for c in included)
+             and len(set(included)) == len(included), "capture_universe_members_invalid")
+    _require(isinstance(excluded, list) and len(excluded) <= 16
+             and all(isinstance(e, dict) and isinstance(e.get("stock_code"), str)
+                     and isinstance(e.get("reason"), str) and e["reason"] for e in excluded),
+             "capture_exclusions_invalid")
+    assert isinstance(included, list) and isinstance(excluded, list)
+    excluded_by_code = {e["stock_code"]: e["reason"] for e in excluded}
+    _require(len(excluded_by_code) == len(excluded) and not set(included).intersection(excluded_by_code),
+             "capture_exclusions_invalid")
+    represented = set(included) | set(excluded_by_code)
+    _require(body["included_denominator"] == len(included)
+             and body["represented_denominator"] == len(represented), "capture_universe_denominator_mismatch")
+    if legacy:
+        _require(universe == {"scope": "legacy_declared_research_only", "cohort_identity": body["cohort_sha256"],
+                 "declared_stock_codes": included} and body.get("population_count") is None
+                 and body.get("population_status") == "unknown_full_market_population",
+                 "capture_population_mismatch")
+    else:
+        _require(universe.get("scope") == "bounded_research_cohort"
+                 and universe.get("universe_id") == body["cohort_id"]
+                 and universe.get("as_of_date") == body["decision_date"]
+                 and universe.get("research_only") is True
+                 and universe.get("complete_fixed_cohort") is True
+                 and type(body.get("population_count")) is int
+                 and universe.get("population_count") == body["population_count"] == len(represented)
+                 and body.get("population_status") == "declared_fixed_cohort", "capture_population_mismatch")
+    contracts = {c["method_id"]: c for c in method_contracts_payload().values()}
+    for method_id, contract in contracts.items():
+        rows = [r for r in body["rows"] if r["method_id"] == method_id]
+        _require({r["stock_code"] for r in rows} == represented, "capture_control_members_mismatch")
+        for row in rows:
+            _require(row.get("method_version") == contract["version"], "capture_row_version_mismatch")
+            _require(isinstance(row.get("reason"), str) and bool(row["reason"]), "capture_row_reason_missing")
+            excluded_reason = excluded_by_code.get(row["stock_code"])
+            _require((row["state"] == "excluded") == (excluded_reason is not None)
+                     and (excluded_reason is None or row["reason"] == excluded_reason), "capture_exclusion_mismatch")
+            if body.get("completeness") == "partial_research" and excluded_reason is None:
+                _require(row["state"] == "unknown", "capture_partial_control_mismatch")
+    _require(body.get("completeness") in {"complete_declared_cohort", "partial_research"}, "capture_completeness_invalid")
 
 
 def build_rule_research_capture(snapshot: VerifiedDailyMarketSnapshot, *,

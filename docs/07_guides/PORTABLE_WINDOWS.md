@@ -8,6 +8,8 @@
 
 已驗隔離 offscreen 啟動、空資料設定提示、九工作區、Unicode／空格工作目錄、synthetic 模型安全載入與新程序重開、multiprocessing、保存重開、Worker 取消與重新執行，以及 CLI／scheduler 未配置 preflight。Native 真人操作、真實私人模型、正式 Task 自然 run、其他 Windows 機器尚未由本包驗證；不以 fixture 改寫原資格。
 
+四用途以合成來源／空報價 fixture 驗證畫面與安全未知狀態；推薦 legacy SQLite runs 的 canonical 保存結果重開，在本環境受既有 no-follow handles root／ancestor guard 阻擋，不能列為通過。此限制沿原 audit 保留，沒有放寬 guard；Watchlist 保存重開不等同推薦保存重開。
+
 首次未明示設定時使用 `%LOCALAPPDATA%\baldr\market` 與 `output` 空根，顯示設定提示。空來源保持 missing／unknown，不帶行情、私人持倉或模型。設定檔位於 `%LOCALAPPDATA%\baldr\config.json`；可用 `BALDR_CONFIG` 指定另一個絕對路徑。設定檔不是 `.env`，程式不自動讀 `.env`。同名環境變數優先於 JSON。
 
 ```json

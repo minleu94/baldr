@@ -7389,7 +7389,11 @@ class RecommendationView(QWidget):
             raise RuntimeError("個人選擇需要明示 output_root 與 JournalService")
         return PersonalizationReadService.from_paths(
             output_root=Path(self.config.output_root),
-            journal_path=self.journal_service.store.journal_file,
+            journal_path=(self.journal_service.store.journal_file
+                          if self.journal_service.journal_paths is None else None),
+            journal_paths=self.journal_service.journal_paths,
+            legacy_journal_read_only=self.journal_service.legacy_read_only,
+            evidence_db_path=Path(self.config.output_root).parent / "sqlite" / "twstock.db",
         )
 
     def _refresh_personal_choice_controls(self) -> None:

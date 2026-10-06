@@ -1342,3 +1342,8 @@ F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚�
 ## UX10 同來源多方法 readmodel（2026-10-06）
 
 `multi_method_research_consensus.py` 的 pinned repository adapter／Verified DTO adapter 重核manifest、artifact、cohort、date、captured contract與逐股hash；純投影以完整declared分母保留三態並去重method/stock/family。每日名單consumer沿已接受快照呈現母體與單股摘要，source清除／不相容不留舊投影；不接live、原排名predicate、producer或正式DB。當前只有close_vs_moving_average家族，2MA≠2獨立family，跨family維持unknown。current-observed research不賦PIT/Formal資格。整項UX10 partial。[QA](../06_qa/UX10_MULTI_METHOD_LANE_20261006.md)
+
+
+## 個人 notes 的明示 composition（2026-10-06）
+
+`TWStockConfig.personal_journal_root`／`personal_journal_mode` 成對選擇且獨立 watchlist；`resolve_journal_storage_selection` 不 mkdir／migration。UI main 注入同一 PersonalJournalPaths 至 JournalService／controller、Workbench continuity 和 DecisionOutcomeJourney；Recommendation Personalization reader 取 JournalService 的相同 selector與明示原 Evidence 來源。personal writer／lock 留 personal root，RO reader 不建 lock；legacy_read_only 固定單一舊來源。漏 selector 的已設定 caller 拒絕，None 僅在未設定時保留相容 writer。DecisionQuality／DeskSnapshot／Evidence 的 source-target 分離另案，不能替換全域 config.db_file。[QA](../06_qa/PERSONAL_JOURNAL_LANE_20261006.md)

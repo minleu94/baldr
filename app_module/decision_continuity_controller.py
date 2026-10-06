@@ -53,13 +53,16 @@ class DecisionContinuityState:
     active_note_count: int = 0
     read_error: str = ""
     identity_conflict_reason: str = ""
+    storage_read_only: bool = False
 
     @property
     def can_write(self) -> bool:
-        return self.identity.is_linked and not self.read_error
+        return self.identity.is_linked and not self.read_error and not self.storage_read_only
 
     @property
     def blocked_reason(self) -> str:
+        if self.storage_read_only:
+            return "目前 notes 使用明示舊來源唯讀模式；研究動作不會寫入。"
         if self.read_error:
             return f"研究狀態讀取失敗：{self.read_error}"
         if self.identity.identity_status == IDENTITY_STATUS_CONFLICT:
@@ -285,6 +288,7 @@ class DecisionContinuityController:
             return DecisionContinuityState(
                 identity=identity,
                 candidate_entity_id=candidate_entity_id,
+                storage_read_only=self.journal_service.legacy_read_only,
             )
         try:
             history = self._matching_history(identity, candidate_entity_id)
@@ -292,6 +296,7 @@ class DecisionContinuityController:
             return DecisionContinuityState(
                 identity=replace(identity, identity_status=IDENTITY_STATUS_CONFLICT),
                 candidate_entity_id=candidate_entity_id,
+                storage_read_only=self.journal_service.legacy_read_only,
                 identity_conflict_reason=str(exc),
             )
         except Exception as exc:
@@ -300,6 +305,7 @@ class DecisionContinuityController:
                 identity=identity,
                 candidate_entity_id=candidate_entity_id,
                 read_error=message,
+                storage_read_only=self.journal_service.legacy_read_only,
             )
 
         decision_history = tuple(
@@ -343,6 +349,7 @@ class DecisionContinuityController:
             identity=identity,
             candidate_entity_id=candidate_entity_id,
             history=history,
+            storage_read_only=self.journal_service.legacy_read_only,
             head_revision_id=head.revision_id if head is not None else "",
             last_action=history[-1].action if history else "",
             decision_status=decision_status,

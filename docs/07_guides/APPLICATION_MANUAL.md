@@ -4700,3 +4700,16 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 缺第二個合格家族時，跨家族共同入選維持未知。缺 artifact／方法 metadata、partial cohort 或來源不可比也明示未知／無法投影；未知不當未入選、負樣本或退出。日期／來源／修訂／方法版本不符時，移除舊摘要而保留理由，不借 live 或另一日期補資料。清除快照同步清除摘要；篩選不改原完整分母。
 
 排錯時查看來源與方法資格 tooltip，重新選擇可核驗的固定快照；不要更新 producer 或修改來源以湊交集。本功能限定 current-observed research，歷史 PIT／官方可得時間未證明；真正跨家族結果、其他方法、生命週期聯動與 Native／真人驗收仍待後續。詳見 [UX10 QA](../06_qa/UX10_MULTI_METHOD_LANE_20261006.md)。
+
+
+## 個人 notes 明示選擇與舊來源唯讀（2026-10-06）
+
+本功能接到既有研究筆記／個股研究動作、決策工作台、推薦個人選擇／delivery ACK 與 outcome journey。notes 選擇獨立於觀察清單轉換／啟用；不全域改市場 `db_file` 或 `OUTPUT_ROOT`，Portfolio trades／ledger 的位置保留。正式個人位置與 notes migration 尚待使用者批准；以下只說明已完成的程式契約，沒有套用真實 notes。
+
+1. 未設定 `PERSONAL_JOURNAL_ROOT` 與 `PERSONAL_JOURNAL_MODE` 時，保留既有相容設定：notes 在 `OUTPUT_ROOT/portfolio/journal_entries.jsonl`，包含既有 writer；這不是全域禁寫。
+2. 經批准選定位置後才成對設定絕對 `PERSONAL_JOURNAL_ROOT=P` 與 `PERSONAL_JOURNAL_MODE=personal`。Qt 主程式透過環境載入；使用 `TWStockConfig.from_args` 的工具可傳 `--personal-journal-root P --personal-journal-mode personal`。root 不能與市場／legacy output／程式目錄重疊，也不能經 junction、symlink 或 hardlink 別名。設定本身不建立 notes、watchlist 或搬移檔案。
+3. 個人模式的所有 UI notes caller 使用同一 selector；新筆記／revision／ACK 保存於 `P/research_notes/journal_entries.jsonl`，OS lock 為同目錄 `.journal_entries.jsonl.lock`。讀取空的個人來源會顯示缺資料，不改讀 legacy，也不合併兩份歷史。首次 writer 操作才建立個人目錄／lock。
+4. 若要明示看舊 notes，使用相同 root 與 `PERSONAL_JOURNAL_MODE=legacy_read_only`。固定讀 `OUTPUT_ROOT/portfolio/journal_entries.jsonl`；不建來源目錄／lock，不 append。研究動作控制器會顯示唯讀原因並停用寫入；一般筆記或個人選擇／ACK 保存也會明確拒絕，不能把拒寫當保存成功。
+5. `P/backups/research_notes/`、`P/research_notes/audit/` 目前只是受守衛的預留路徑，沒有備份／migration producer；`config.create_backup` 不提供 personal root 的整體備份。不可只取消設定就把新內容視為已回滾或重新啟用舊 writer。真正搬移須另行批准來源、target、備份、停寫、驗證及回復方案。
+
+排錯：root／模式缺一、錯模式或 unsafe path 會在設定或操作時拒絕。已設定 notes 模式卻漏傳 selector 的 Journal／Workbench／journey caller 也會拒絕，不回退 legacy；尚未接線的工具不能用此模式寫入。未知 record type、來源變更、CAS 衝突或取消時保留原歷史，檢查模式與 exact identity，勿刪 lock／資料重試。Notes 與 Evidence DB、DecisionQuality、DeskSnapshot 的獨立路由仍是後續工程；本次不是市場 SQLite 的分享資格證明。詳見 [Journal QA](../06_qa/PERSONAL_JOURNAL_LANE_20261006.md)。

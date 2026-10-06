@@ -70,3 +70,37 @@ baseline bootstrap 與兩次 synthetic receipts 位於 Temp `ta_journal_baseline
 沒有 UI 修改，不將本包驗證冒稱主 owner 的 UI／正式資料驗收。整合前重查所有 exclusive 檔 ownership，再 cherry-pick 本 lane 第三包（前兩包已整合）。正式 journal migration 另需批准 source、target、backup、停寫、校驗、切 writer 與回復方案；不能把 watchlist 已批准／整合當成 notes／portfolio 搬移批准。
 
 回滾：尚未正式啟用時可受控 revert 本包，保留前兩包個人 path/COW 契約。本 lane 未執行 revert。已寫入 personal notes 後不能只退程式就重新啟用 legacy writer；先停用 caller 並保留兩個 streams 待人工審查，不自動覆寫或合併歷史。
+
+
+## 主線 composition 整合（2026-10-06）
+
+主線於乾淨 dev `e61786bc40a163d52c271e5909133343fadcff54` 完整 review 七檔 lane diff，確認四個既有 service 檔相對 lane parent 沒有主線差異後，`5115a12772397960ebad783396425ea34457d950` cherry-pick 為 `19d4edf4`；原 worktree 保留。後續只改 notes composition／兩個指定測試 driver及必要文件，不含 UX11、Paper／Evidence producer／capacity 或其他私人領域 migration。
+
+新增 config 欄位 `personal_journal_root`／`personal_journal_mode`（環境 `PERSONAL_JOURNAL_ROOT`／`PERSONAL_JOURNAL_MODE`；from_args 對應同名 kebab CLI），模式只能 `personal`／`legacy_read_only`。兩欄必須成對、根目錄不能與市場／legacy output／程式包重疊；完全獨立 watchlist root／source／activate。未設定仍保留既有相容 writer；已設定但 JournalService／Workbench／Journey.from_config 漏 selector，會拒絕而不建立舊 writer。
+
+MainWindow 解析一次 JournalStorageSelection，再明示注入 JournalService／DecisionContinuityController、Workbench continuity與 outcome journey。Recommendation Personalization factory 沿 JournalService 的相同 selector／mode，明示保留原 `output_root.parent/sqlite/twstock.db` Evidence 來源，不改市場 DB／OUTPUT_ROOT；其他 ACK／筆記 UI 沿同 JournalService。Journey JSONL adapter 新增逐次 guarded path與未知 record_type 驗證。Controller 的 legacy readonly state 明示不可寫；歷史投影不當成熟 outcome 或真成交。
+
+個人 notes 與 lock 在 personal root，備份／audit 僅預留 guarded paths，沒有 producer。沒有真 notes 內容讀寫、真 migration／配置啟用／Native／push。正式 personal location 仍待使用者批准（`%LOCALAPPDATA%/baldr/personal` 只是提案），migration 需另准。未接 notes selector 的 CLI／其他 writer 在此模式將拒絕；未設定時維持相容契約，不聲稱全程式已移出私人資料。
+
+### 文件 coverage
+
+Manual 更新入口、模式參數、結果、拒寫、缺資料與排錯；Snapshot／current architecture 更新接線及剩餘 boundary；UI 說明／Project Navigation／Index 更新入口；原唯一 product plan 保留前文並 append 本次收據。沒有 Roadmap 方向／成熟度變更，6M／Version／Product Roadmap 不改。
+
+### 後續獨立 routing 包（本輪未實作）
+
+DecisionQuality／DeskSnapshot／EvidenceEvent 均有 config.db_file fallback，但 source-target 必須分開：Quality 個人 review writer 不應連動 Evidence／Gap／Decay reader；Desk 市場查詢不應被 snapshot target 改寫；Evidence 與 Outcome 的 provenance／FK／receipt 由 owner 協調。可另新增 research_storage_routing_contract 及純路由測試，明示市場讀取、研究證據讀取、個人寫入與 unknown provenance。未查真 DB rows，機器產生不代表公開；不能整庫搬移／宣稱 SQLite 可分享。
+
+
+### 主線最後驗證與未關閉 gate
+
+受影響隔離測試去重後 **251 passed／1 failed／1 skipped**：完整重驗先為246 pass／2 fail／1 skip，COW修正後指定案例通過，App新增四案例再通過（App總16含先前12）；唯一失敗保留如下。skip 是既有 real scheduled Qt smoke 需明示 opt-in，不是 personal junction／hardlink負例。UI Workbench85、validator25／0fail／4skip、full roots mypy799、compile與量化精度／未來函數 guard通過。
+
+兩個指定 baseline：
+
+- Watchlist舊 inplace-upgrade expectation 改為明示拒絕舊schema原地升級，再執行synthetic COW獨立target；target migration_baseline明示synthetic，來源bytes不變。指定案例root／lane各自隔離通過，未放寬production guard。
+- busy-close wrapper缺少as_of_date會在worker barrier前被cutoff guard拒絕；只補參數並原樣forward。root以原隔離fixture單獨執行新driver，receipt pid2824：close_requested_while_busy=true、dialog_finished=true、app_exec_returncode=0、process_exit_code=0，正常退出；沒有Native／真notes。
+- 完整 `test_producer_backed_workbench_to_shared_report_journey_and_readback` 仍在line373逾時，尚未執行到該case的busy-close子程序。Temp同步deadline診斷：journey存在／已載入，journey worker已清空；report worker仍running且未finished、dialog busy=true、狀態loading而非error，8s前置未完成。未加timeout／放寬predicate，根因仍未確認，完整跨頁readback gate不能標pass。這是工程／driver驗證待辦，不能說等自然成熟。
+
+初始sandbox重驗的Recommendation no-follow讀取失敗，以完全相同canonical單例證明sandbox fail／escalated pass後，改在允許Win32 handles的隔離fixture重驗；production no-follow guard未修改。新增App16項涵蓋獨立設定、不改市場路徑、writer/controller/readback、全部RO來源、未知type與alias拒絕、漏selector fail-closed、compat writer、新程序JSONL重開，以及兩種模式的實際MainWindow offscreen composition。MainWindow fixture的正式ML registry被stub，不當真模型或Native資格。
+
+原plan保持192851B前文／SHA256 cc9a4b9719ce08786b4b5846f0776deae4f2319a18da5ac1766d6cb9acc2576d，僅append本次收據；plan及raw receipts依git exclusions留本地output，不stage。驗證raw路徑 `output/qa/personal_journal_app_integration_20261006/`，包含cherry七blob對照、verification與busy_close_receipt。正式personal位置、notes migration／真正備份／Native仍待批准；所有lane worktrees保留。UX11不混入本包。

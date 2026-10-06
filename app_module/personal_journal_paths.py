@@ -14,6 +14,32 @@ from app_module.dtos.decision_continuity_dtos import DECISION_CONTINUITY_RECORD_
 from app_module.sqlite_read_only import check_read_cancelled
 
 
+@dataclass(frozen=True)
+class JournalStorageSelection:
+    """所有 notes caller 共用的選擇；None 明確代表既有相容行為。"""
+    paths: PersonalJournalPaths | None = None
+    legacy_read_only: bool = False
+
+
+def resolve_journal_storage_selection(config: Any) -> JournalStorageSelection:
+    root = getattr(config, "personal_journal_root", None)
+    mode = getattr(config, "personal_journal_mode", None)
+    if root is None and mode is None:
+        return JournalStorageSelection()
+    if root is None or mode is None:
+        raise ValueError("personal_journal_selection_incomplete")
+    if mode not in ("personal", "legacy_read_only"):
+        raise ValueError("personal_journal_mode_invalid")
+    paths = resolve_personal_journal_paths(
+        config.data_root, personal_root=root, legacy_output_root=config.output_root,
+    )
+    package_root = Path(__file__).resolve().parents[1]
+    personal_root = paths.personal_paths.personal_root
+    if personal_root.is_relative_to(package_root) or package_root.is_relative_to(personal_root):
+        raise ValueError("personal_root_overlaps_application_package")
+    return JournalStorageSelection(paths, mode == "legacy_read_only")
+
+
 def validate_personal_journal_record(record: Mapping[str, Any]) -> None:
     """未知新版 record type 不降級解讀為 legacy note。"""
     check_read_cancelled()

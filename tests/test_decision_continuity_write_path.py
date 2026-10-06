@@ -28,6 +28,7 @@ from app_module.portfolio_store import PortfolioJsonlStore
 from app_module.watchlist_service import WatchlistService
 from data_module.watchlist_migration import migrate_watchlist_copy
 from data_module.watchlist_repository import WatchlistRepository
+from data_module.watchlist_sqlite_cow import convert_watchlist_sqlite
 
 
 def _config(root: Path) -> SimpleNamespace:
@@ -256,9 +257,27 @@ def test_watchlist_repository_history_conflict_tombstone_and_legacy_baseline(tmp
             "INSERT INTO watchlists VALUES(?,?,?,?)",
             ("default", json.dumps(old_payload), 4, "old-hash"),
         )
-    upgraded = WatchlistRepository(old_db, initialize=True)
+    source_bytes = old_db.read_bytes()
+    legacy_repository = WatchlistRepository(old_db)
+    storage = legacy_repository.detect_storage_format()
+    assert storage["schema_version"] == 1
+    assert storage["requires_copy_on_write"] is True
+    with pytest.raises(RuntimeError, match="watchlist_schema_requires_copy_on_write"):
+        WatchlistRepository(old_db, initialize=True)
+    assert old_db.read_bytes() == source_bytes
+
+    cow_db = tmp_path / "old-cow.db"
+    converted = convert_watchlist_sqlite(
+        old_db,
+        cow_db,
+        capacity_preflight=lambda _request: True,
+    )
+    assert converted["status"] == "ready", converted
+    upgraded = WatchlistRepository(cow_db, initialize=True)
     baseline = upgraded.list_revisions("default")
-    assert baseline[0]["operation"] == "legacy_baseline"
+    assert baseline[0]["operation"] == "migration_baseline"
+    assert baseline[0]["is_synthetic_baseline"] is True
+    assert baseline[0]["source_revision_id"] == ""
     assert baseline[0]["payload"] == old_payload
     upgraded.save(
         "default",
@@ -273,6 +292,7 @@ def test_watchlist_repository_history_conflict_tombstone_and_legacy_baseline(tmp
         **old_payload,
         "description": "new",
     }
+    assert old_db.read_bytes() == source_bytes
 
 
 def test_watchlist_sqlite_cross_process_competition_is_single_winner(tmp_path: Path) -> None:

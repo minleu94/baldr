@@ -596,3 +596,10 @@ UX07 官方資料與 repo 可行性調查已交付，修正上段「未啟動」
 ## UX10 MA 方法重合摘要限定接線（2026-10-06）
 
 獨立lane `340eac2f5729fade53190967d11d2d637a4c85bf` 已納入dev，沿同accepted快照接每日名單與候選摘要，股票／方法／family去重、完整分母三態與各自理由。MA20／60同family，2方法1family；沒有排名入選predicate或新family，跨familyunknown。來源不可比／partial明示，current-observed research不賦PIT或Formal。UX10維持partial：第二合格家族由父層另行提供，Native／真人另驗。[QA](../06_qa/UX10_MULTI_METHOD_LANE_20261006.md)
+
+
+## 2026-10-06 個人 Journal composition 整合
+
+Journal lane 的 guarded JSONL adapter 已接獨立 notes root／mode；MainWindow writer／controller、Workbench continuity、推薦 Personalization／ACK 與 outcome journey 共用選擇。personal 不混讀舊來源；legacy_read_only 無來源 lock／mkdir且拒寫。已設定模式漏 selector 會 fail-closed；未設定保留舊相容 writer，不宣稱全域禁寫。正式 personal location、真 notes migration／備份 producer／Native 尚待批准；Portfolio／Ledger／Paper 與 Evidence DB 路由未搬移。[QA](../06_qa/PERSONAL_JOURNAL_LANE_20261006.md)
+
+驗證邊界：App16（含2種實際MainWindow offscreen新程序）、COW指定案例及獨立busy-close driver通過；affected去重251pass／1fail／1skip。完整Workbench跨頁readback案例仍在8s前置時report worker running／loading／無error，根因待診斷，不能關閉工程gate或歸因自然成熟。Workbench85、validator25／4skip、mypy799及compile／quant通過。

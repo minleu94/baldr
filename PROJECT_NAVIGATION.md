@@ -639,3 +639,6 @@ python ui_qt/main.py
 
 
 - 2026-10-06：[UX10 MA研究方法符合度](docs/06_qa/UX10_MULTI_METHOD_LANE_20261006.md)：`app_module/multi_method_research_consensus.py` 純readmodel／pinned adapter；每日研究名單沿同accepted快照呈現方法與家族counts，不增加排序分數或新方法。
+
+
+- 2026-10-06：[Journal 個人路徑及 UI composition](docs/06_qa/PERSONAL_JOURNAL_LANE_20261006.md)：`personal_journal_paths.py` 明示 selector／JSONL adapter；config → Main writer/controller、Workbench continuity、推薦 Personalization 與 outcome journey。模式獨立 watchlist，未設定仍保留相容 writer；正式位置／migration 未批准。

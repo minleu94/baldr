@@ -43,6 +43,8 @@ class JournalService:
         cancel_check: Callable[[], bool] | None = None,
     ):
         self.config = config
+        self.journal_paths = journal_paths
+        self.legacy_read_only = legacy_read_only
         if journal_paths is not None:
             if journal_path is not None:
                 raise ValueError("personal_journal_selector_conflict")
@@ -50,6 +52,9 @@ class JournalService:
                 journal_paths, legacy_read_only=legacy_read_only, cancel_check=cancel_check,
             )
         else:
+            if (getattr(config, "personal_journal_root", None) is not None
+                    or getattr(config, "personal_journal_mode", None) is not None):
+                raise ValueError("personal_journal_selector_required")
             if legacy_read_only or cancel_check is not None:
                 raise ValueError("personal_journal_paths_required")
             self.store = PortfolioJsonlStore(config.output_root, journal_file=journal_path)

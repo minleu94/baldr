@@ -81,6 +81,11 @@ class WorkbenchSourceService:
         journal_paths: PersonalJournalPaths | None = None,
         legacy_journal_read_only: bool = False,
     ) -> None:
+        if journal_paths is None and (
+            getattr(config, "personal_journal_root", None) is not None
+            or getattr(config, "personal_journal_mode", None) is not None
+        ):
+            raise ValueError("personal_journal_selector_required")
         if journal_paths is not None and continuity_review_projection_service is not None:
             raise ValueError("personal_journal_selector_conflict")
         if legacy_journal_read_only and journal_paths is None:

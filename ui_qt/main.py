@@ -353,9 +353,14 @@ class MainWindow(QMainWindow):
             # 初始化持倉與日記服務
             from app_module.portfolio_service import PortfolioService
             from app_module.journal_service import JournalService
+            from app_module.personal_journal_paths import resolve_journal_storage_selection
 
             self.portfolio_service = PortfolioService(self.config)
-            self.journal_service = JournalService(self.config)
+            self.journal_storage_selection = resolve_journal_storage_selection(self.config)
+            self.journal_service = JournalService(
+                self.config, journal_paths=self.journal_storage_selection.paths,
+                legacy_read_only=self.journal_storage_selection.legacy_read_only,
+            )
             self.decision_continuity_controller = DecisionContinuityController(
                 self.journal_service
             )
@@ -415,9 +420,10 @@ class MainWindow(QMainWindow):
             self.decision_outcome_journey_service = (
                 DecisionOutcomeJourneyService.from_config(
                     self.config,
-                    journal_path=Path(self.config.output_root)
-                    / "portfolio"
-                    / "journal_entries.jsonl",
+                    journal_path=(self.journal_service.store.journal_file
+                                  if self.journal_storage_selection.paths is None else None),
+                    journal_paths=self.journal_storage_selection.paths,
+                    legacy_journal_read_only=self.journal_storage_selection.legacy_read_only,
                     portfolio_trades_path=Path(self.config.output_root)
                     / "portfolio"
                     / "trades.jsonl",
@@ -787,6 +793,8 @@ class MainWindow(QMainWindow):
                 self.workbench_source_service = WorkbenchSourceService(
                     self.config,
                     learning_evidence_projection_service=self.learning_projection_service,
+                    journal_paths=self.journal_storage_selection.paths,
+                    legacy_journal_read_only=self.journal_storage_selection.legacy_read_only,
                 )
                 self.research_console_source_service = ResearchConsoleSourceService(
                     projection_path=self._research_console_projection_path(),

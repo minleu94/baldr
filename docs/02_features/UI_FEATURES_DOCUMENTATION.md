@@ -591,3 +591,8 @@ MainWindow 啟動方可明示研究 snapshot root／cohort 與 original-rank roo
 ## UX10 方法與家族符合度（2026-10-06）
 
 每日研究名單在同一 accepted snapshot 顯示唯讀母體與選取股票摘要：方法三態分母、符合方法數／去重家族數、方法版本與理由。雙 MA 命中為2方法1家族；缺第二合格獨立家族則跨家族未知，排名不加入方法count、不增加分數。partial／不相容來源與清除不留舊摘要；不觸發新運算或producer。整項UX10維持partial。[Manual](../07_guides/APPLICATION_MANUAL.md)／[QA](../06_qa/UX10_MULTI_METHOD_LANE_20261006.md)
+
+
+## 個人 notes 與唯讀研究動作（2026-10-06）
+
+研究筆記／個股研究動作、決策工作台 continuity、推薦個人選擇／ACK、outcome journey 使用同一獨立 notes selector。personal 使用個人 JSONL；legacy_read_only 顯示舊 notes，但控制器禁止保存研究動作，其他寫入也具名拒絕。缺 personal notes 不 fallback，不要求啟用 watchlist。未設定保留原 writer；正式 root／migration／Native 仍待批准。[Manual](../07_guides/APPLICATION_MANUAL.md)／[QA](../06_qa/PERSONAL_JOURNAL_LANE_20261006.md)

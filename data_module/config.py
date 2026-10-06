@@ -51,6 +51,14 @@ class TWStockConfig:
     personal_watchlist_source: Path | None = field(
         default_factory=lambda: _optional_env_path("PERSONAL_WATCHLIST_SOURCE"), kw_only=True,
     )
+    # notes 選擇獨立於 watchlist；root 與模式須成對明示，沒有自動 migration。
+    personal_journal_root: Path | None = field(
+        default_factory=lambda: _optional_env_path("PERSONAL_JOURNAL_ROOT"), kw_only=True,
+    )
+    personal_journal_mode: str | None = field(
+        default_factory=lambda: os.environ.get("PERSONAL_JOURNAL_MODE", "").strip() or None,
+        kw_only=True,
+    )
 
     # PIT sector membership 是 opt-in 的唯讀輸入；未設定時不做目錄掃描。
     pit_sector_membership_path: Path | None = field(
@@ -119,6 +127,10 @@ class TWStockConfig:
         # 處理路徑覆蓋邏輯
         self._resolve_paths()
         self._validate_personal_storage_selection()
+        from app_module.personal_journal_paths import resolve_journal_storage_selection
+        notes = resolve_journal_storage_selection(self)
+        if notes.paths is not None:
+            self.personal_journal_root = notes.paths.personal_paths.personal_root
         
         # 設定數據目錄
         self.data_dir = self.data_root
@@ -407,6 +419,9 @@ class TWStockConfig:
         parser.add_argument("--output-root", type=str, help="覆蓋輸出根目錄路徑")
         parser.add_argument("--personal-data-root", type=Path, help="個人儲存候選root；須與來源成對，不自動啟用")
         parser.add_argument("--personal-watchlist-source", type=Path, help="明示既有JSON／SQLite來源；只讀保留")
+        parser.add_argument("--personal-journal-root", type=Path, help="明示 notes 個人root；須搭配模式")
+        parser.add_argument("--personal-journal-mode", choices=["personal", "legacy_read_only"],
+                            help="notes 個人寫入或固定舊來源唯讀；不搬移資料")
         parser.add_argument("--profile", type=str, default="prod", 
                            choices=["prod", "staging", "test"], help="配置檔案")
         parser.add_argument("--dry-run", action="store_true", help="乾運行模式，不實際寫入檔案")
@@ -423,6 +438,10 @@ class TWStockConfig:
             config_kwargs['personal_data_root'] = parsed_args.personal_data_root
         if parsed_args.personal_watchlist_source is not None:
             config_kwargs['personal_watchlist_source'] = parsed_args.personal_watchlist_source
+        if parsed_args.personal_journal_root is not None:
+            config_kwargs['personal_journal_root'] = parsed_args.personal_journal_root
+        if parsed_args.personal_journal_mode is not None:
+            config_kwargs['personal_journal_mode'] = parsed_args.personal_journal_mode
         if parsed_args.profile:
             config_kwargs['profile'] = parsed_args.profile
             

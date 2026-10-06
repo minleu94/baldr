@@ -48,6 +48,7 @@ from app_module.recommendation.queries import (
 )
 from app_module.portfolio_source_adapter import stable_snapshot_hash
 from data_module.result_artifact_store import ResultArtifactStore
+from app_module.personal_journal_paths import PersonalJournalPaths, validate_personal_journal_record
 from data_module.portfolio_ledger_repository import (
     PortfolioLedgerEvent,
     PortfolioLedgerRepository,
@@ -1481,11 +1482,27 @@ class EvidenceRepositoryReadAdapter:
 class JsonlJournalReadAdapter:
     """直接開啟既有 journal JSONL，不建目錄也不使用 writer。"""
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, journal_paths: PersonalJournalPaths | None = None,
+                 legacy_read_only: bool = False) -> None:
+        if journal_paths is not None:
+            journal_paths.assert_selected(Path(path), legacy_read_only=legacy_read_only)
+        elif legacy_read_only:
+            raise ValueError("personal_journal_paths_required")
+        self.journal_paths = journal_paths
+        self.legacy_read_only = legacy_read_only
         self.path = Path(path).expanduser().resolve()
 
+    def _records(self) -> tuple[Mapping[str, Any], ...]:
+        if self.journal_paths is not None:
+            self.journal_paths.assert_selected(self.path, legacy_read_only=self.legacy_read_only)
+            records = _read_jsonl(self.path)
+            for record in records:
+                validate_personal_journal_record(record)
+            return records
+        return _read_jsonl(self.path)
+
     def list_entries(self) -> Sequence[Mapping[str, Any]]:
-        records = _read_jsonl(self.path)
+        records = self._records()
         # The backend writer may append continuity revisions/tombstones to the
         # same JSONL. Project only active journal notes here so research action
         # history cannot be mistaken for a mature outcome.
@@ -1500,7 +1517,7 @@ class JsonlJournalReadAdapter:
         journey is explicitly queried at an earlier boundary.
         """
 
-        records = _read_jsonl(self.path)
+        records = self._records()
         visible: list[Mapping[str, Any]] = []
         for record in records:
             if str(record.get("record_type", "")) == "decision_continuity_revision":
@@ -1557,6 +1574,8 @@ class DecisionOutcomeJourneyService:
         output_root: str | Path,
         evidence_db_path: str | Path | None = None,
         journal_path: str | Path | None = None,
+        journal_paths: PersonalJournalPaths | None = None,
+        legacy_journal_read_only: bool = False,
         portfolio_ledger_path: str | Path | None = None,
         portfolio_trades_path: str | Path | None = None,
         max_evidence_events: int = DEFAULT_MAX_EVIDENCE_EVENTS,
@@ -1568,6 +1587,12 @@ class DecisionOutcomeJourneyService:
         """
 
         output = Path(output_root).expanduser().resolve()
+        if journal_paths is not None:
+            if journal_path is not None:
+                raise ValueError("personal_journal_selector_conflict")
+            journal_path = journal_paths.read_path(legacy_read_only=legacy_journal_read_only)
+        elif legacy_journal_read_only:
+            raise ValueError("personal_journal_paths_required")
         return cls(
             recommendation_reader=JsonRecommendationReadAdapter(output),
             evidence_reader=(
@@ -1579,7 +1604,8 @@ class DecisionOutcomeJourneyService:
                 )
             ),
             journal_reader=(
-                JsonlJournalReadAdapter(journal_path)
+                JsonlJournalReadAdapter(journal_path, journal_paths=journal_paths,
+                                       legacy_read_only=legacy_journal_read_only)
                 if journal_path is not None
                 else None
             ),
@@ -1603,14 +1629,23 @@ class DecisionOutcomeJourneyService:
         portfolio_ledger_path: str | Path | None = None,
         portfolio_trades_path: str | Path | None = None,
         journal_path: str | Path | None = None,
+        journal_paths: PersonalJournalPaths | None = None,
+        legacy_journal_read_only: bool = False,
         max_evidence_events: int = DEFAULT_MAX_EVIDENCE_EVENTS,
     ) -> "DecisionOutcomeJourneyService":
         """使用已存在 config；本方法不建立 config 或資料目錄。"""
 
+        if journal_paths is None and (
+            getattr(config, "personal_journal_root", None) is not None
+            or getattr(config, "personal_journal_mode", None) is not None
+        ):
+            raise ValueError("personal_journal_selector_required")
         return cls.from_paths(
             output_root=Path(config.output_root),
             evidence_db_path=Path(config.db_file),
             journal_path=journal_path,
+            journal_paths=journal_paths,
+            legacy_journal_read_only=legacy_journal_read_only,
             portfolio_ledger_path=portfolio_ledger_path,
             portfolio_trades_path=portfolio_trades_path,
             max_evidence_events=max_evidence_events,

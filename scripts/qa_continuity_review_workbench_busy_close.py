@@ -77,12 +77,23 @@ def main() -> int:
         release_worker = Event()
 
         class BarrierReportReadService:
-            def read_report(self, stock_code, *, context=None, cancel_callback=None):
+            def read_report(
+                self,
+                stock_code,
+                *,
+                as_of_date=None,
+                context=None,
+                cancel_callback=None,
+            ):
                 del cancel_callback
                 worker_started.set()
                 if not release_worker.wait(timeout=8):
                     raise TimeoutError("busy-close probe worker release timed out")
-                return report_service.read_report(stock_code, context=context)
+                return report_service.read_report(
+                    stock_code,
+                    as_of_date=as_of_date,
+                    context=context,
+                )
 
         dialog = StockResearchReportDialog(
             BarrierReportReadService(),

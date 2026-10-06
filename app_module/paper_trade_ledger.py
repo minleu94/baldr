@@ -16,6 +16,15 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Iterable, Mapping
 
+from app_module.personal_data_paths import PersonalDataPaths, to_internal_sqlite_uri
+from app_module.personal_paper_store_paths import (
+    PersonalPaperStorePaths, PersonalStoreCustody,
+)
+from app_module.personal_store_routes import (
+    PersonalStoreMode, PersonalStoreRoute, PersonalStoreRouteError,
+)
+from app_module.sqlite_read_only import configure_read_only_connection
+
 
 PAPER_TRADE_LEDGER_SCHEMA_VERSION = "paper-trade-ledger.v1"
 PAPER_TRADE_EVENT_STATUSES = frozenset(
@@ -412,15 +421,62 @@ def _canonical_transition_json(value: object) -> str:
 class PaperTradeLedgerRepository:
     """Append-only SQLite writer for explicit paper fill events.
 
-    The constructor is intentionally a writer boundary.  UI/readiness code
-    must use ``ReadOnlySQLiteManager`` instead and therefore cannot create the
-    schema merely by inspecting status.
+    預設 ctor 是 writer 邊界；明示 read_only 的 routed reader 不建立 schema。
+    UI/readiness 仍沿既有唯讀 repository，不因查看狀態啟用 writer。
     """
 
-    def __init__(self, db_path: str | Path) -> None:
+    def __init__(
+        self, db_path: str | Path, *,
+        route: PersonalStoreRoute | None = None,
+        personal_paths: PersonalDataPaths | None = None,
+        portfolio_id: str | None = None,
+        read_only: bool = False,
+    ) -> None:
         self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._ensure_schema()
+        self._route = route
+        self._portfolio_id = portfolio_id
+        self._read_only = read_only
+        if route is not None:
+            selected = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id or "")
+            PersonalPaperStorePaths.require_selected(self.db_path, selected.cost_ledger_db)
+            if not read_only and route.mode is PersonalStoreMode.LEGACY_READ_ONLY:
+                raise PersonalStoreRouteError("legacy_read_only_writer_forbidden")
+        self._custody = PersonalStoreCustody(route, personal_paths)
+        self._custody.sqlite_guard(self.db_path)
+        if not read_only:
+            self._custody.prepare_parent(self.db_path)
+            self._ensure_schema()
+
+    def _require_identity(self, portfolio_id: str) -> None:
+        if self._route is not None and portfolio_id != self._portfolio_id:
+            raise PersonalStoreRouteError("paper_identity_mismatch")
+
+    def _guard_path(self) -> Path:
+        """每次 I/O 重驗精確 DB 與三個 sidecar，不以 resolve 掩蓋 alias。"""
+        if self._route is not None:
+            selected = PersonalPaperStorePaths.from_route(
+                self._route, portfolio_id=self._portfolio_id or ""
+            )
+            PersonalPaperStorePaths.require_selected(self.db_path, selected.cost_ledger_db)
+        return self._custody.sqlite_guard(self.db_path)
+
+    def _connect(self, *, read_only: bool = False) -> sqlite3.Connection:
+        if not read_only and (self._read_only or (
+            self._route is not None and self._route.mode is PersonalStoreMode.LEGACY_READ_ONLY
+        )):
+            raise PersonalStoreRouteError("paper_read_only_writer_forbidden")
+        canonical = self._guard_path()
+        if read_only and (self._route is not None or self._read_only):
+            if self._route is None:
+                canonical = canonical.expanduser().absolute()
+            conn = sqlite3.connect(to_internal_sqlite_uri(canonical, "ro"), uri=True)
+            try:
+                configure_read_only_connection(conn)
+            except Exception:
+                conn.close()
+                raise
+            return conn
+        return sqlite3.connect(self._custody.io(self.db_path))
 
     def append(self, fill: PaperTradeFill) -> None:
         self.append_many((fill,))
@@ -459,6 +515,10 @@ class PaperTradeLedgerRepository:
         *,
         transition: PaperTradeTransition | None,
     ) -> None:
+        for item in entries:
+            self._require_identity(item.portfolio_id)
+        if transition is not None:
+            self._require_identity(transition.portfolio_id)
         fill_ids = tuple(item.fill_id for item in entries)
         source_event_keys = tuple(
             (item.portfolio_id, item.source_event_id) for item in entries
@@ -469,7 +529,7 @@ class PaperTradeLedgerRepository:
             raise ValueError(
                 "paper trade fill already exists: duplicate portfolio/source_event_id in batch"
             )
-        connection = sqlite3.connect(self.db_path)
+        connection = self._connect()
         try:
             # Serialize the identity check with the insert.  A retry after a
             # process crash can then either observe the complete batch
@@ -598,6 +658,7 @@ class PaperTradeLedgerRepository:
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> tuple[PaperTradeTransition, ...]:
+        self._require_identity(portfolio_id)
         clauses = ["portfolio_id = ?"]
         params: list[Any] = [portfolio_id]
         if start_date is not None:
@@ -611,7 +672,7 @@ class PaperTradeLedgerRepository:
             + " AND ".join(clauses)
             + " ORDER BY event_date, transition_id"
         )
-        connection = sqlite3.connect(self.db_path)
+        connection = self._connect(read_only=True)
         try:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(query, tuple(params)).fetchall()
@@ -626,6 +687,7 @@ class PaperTradeLedgerRepository:
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> tuple[PaperTradeFill, ...]:
+        self._require_identity(portfolio_id)
         clauses = ["portfolio_id = ?"]
         params: list[Any] = [portfolio_id]
         if start_date is not None:
@@ -639,7 +701,7 @@ class PaperTradeLedgerRepository:
             + " AND ".join(clauses)
             + " ORDER BY event_date, fill_id"
         )
-        connection = sqlite3.connect(self.db_path)
+        connection = self._connect(read_only=True)
         try:
             connection.row_factory = sqlite3.Row
             rows = connection.execute(query, tuple(params)).fetchall()
@@ -650,8 +712,9 @@ class PaperTradeLedgerRepository:
     def schema_readback(self) -> dict[str, object]:
         """以唯讀連線確認 writer 建立的兩張 ledger 表仍可讀。"""
 
-        resolved = self.db_path.expanduser().resolve()
-        if not resolved.is_file():
+        resolved = (self._guard_path() if self._route is not None
+                    else self.db_path.expanduser().resolve())
+        if not self._custody.exists(resolved):
             raise ValueError("paper ledger schema readback path is not a file")
         uri = resolved.as_uri() + "?mode=ro"
         connection: sqlite3.Connection | None = None
@@ -661,7 +724,8 @@ class PaperTradeLedgerRepository:
             "paper_trade_transitions": PAPER_TRADE_TRANSITION_COLUMNS,
         }
         try:
-            connection = sqlite3.connect(uri, uri=True)
+            connection = (self._connect(read_only=True) if self._route is not None
+                          else sqlite3.connect(uri, uri=True))
             connection.execute("PRAGMA query_only=ON")
             if connection.execute("PRAGMA query_only").fetchone() != (1,):
                 raise ValueError("paper ledger schema readback is not query-only")
@@ -708,7 +772,7 @@ class PaperTradeLedgerRepository:
         }
 
     def _ensure_schema(self) -> None:
-        connection = sqlite3.connect(self.db_path)
+        connection = self._connect()
         try:
             connection.executescript(
                 """

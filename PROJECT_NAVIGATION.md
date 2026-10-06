@@ -645,3 +645,6 @@ python ui_qt/main.py
 
 
 2026-10-06：回測策略設定新增按需版本化規則說明（ui_qt/widgets/strategy_rule_card_dialog.py），唯讀目前Spec，不連既有run；操作及限制見docs/07_guides/APPLICATION_MANUAL.md，UX11仍partial。
+
+
+2026-10-06：研究Registry新增單筆保存結果／規則来源核對，app_module/saved_strategy_rule_card.py＋既有RunRegistryCompareWidget；QA見docs/06_qa/UX11_SAVED_RESULT_RULE_READBACK_20261006.md。

@@ -615,3 +615,6 @@ Journal lane 的 guarded JSONL adapter 已接獨立 notes root／mode；MainWind
 Journal跨頁功能gate在單一15000ms有界等待下完整通過（含新process readback與busy-close）；原current8.109／baseline8.141秒未達8秒保留性能觀察，使用者已接受微小差距，不再阻塞。source/date/hash/no-follow/hardlink/personal守衛未改。
 
 UX11 readmodel c7a9ea37整合為a3b63070；回測策略設定新增按需版本化規則說明，使用與既有回測相同StrategySpec設定，尚未連結執行結果。缺entry/exit/cost/benchmark等維持未知／not_evaluable，不新增executor或績效資格。UX11由待辦改partial，stage6仍partial，Native及真資料migration未完成。
+
+
+2026-10-06：UX11新增Research Registry單筆保存結果→規則卡readback，來源Spec／pin、version／params／window／cost／data身份核對，缺件not_evaluable、不補章／默認。有限source consumer子項已完成，UX11仍partial而無新增人工blocking gate；未接自然forward／完整execution資格。39focused＋6shell、Workbench85、validator25/4skip、mypy802通過，未讀正式DB或改UX20 lane。

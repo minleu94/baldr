@@ -601,3 +601,6 @@ MainWindow 啟動方可明示研究 snapshot root／cohort 與 original-rank roo
 ## 版本化規則說明卡（2026-10-06）
 
 回測策略設定增加「查看版本化規則說明」按鈕；按需唯讀投影目前StrategySpec，顯示版本／此次參數／未知交易契約。來源與hash放收合核對區，開卡不初始化VersionService或executor，不用目前identity替舊run補章。操作及不可评估限制見完整Manual。
+
+
+2026-10-06：研究Registry「查看單筆結果與規則」以背景讀取保存來源，結果類型／期間／成本／來源資格可讀，詳細ref及hash收合；錯身份拒絕連結、未知保留，換選取／取消不套舊回呼，不提供新績效算法。

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
+from copy import deepcopy
 
 import pandas as pd
 from PySide6.QtCore import QSize, QSignalBlocker, Qt
@@ -37,6 +38,10 @@ from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.widgets.layout_helpers import ensure_visible_rows
 from ui_qt.widgets.table_style import apply_financial_table_style
+
+
+if TYPE_CHECKING:
+    from ui_qt.workers.task_worker import TaskWorker
 
 
 RUN_TYPE_LABELS = {
@@ -84,6 +89,11 @@ class RunRegistryCompareWidget(QWidget):
         self._run_aliases: dict[str, str] = {}
         self._run_display_names: dict[str, str] = {}
         self._selected_run_ids: list[str] = []
+        self._rule_worker: TaskWorker | None = None
+        self._rule_active_request_id = 0
+        self._rule_active_run_id = ""
+        self._rule_request_id = 0
+        self._rule_closed = False
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -190,7 +200,15 @@ class RunRegistryCompareWidget(QWidget):
         )
         self.open_recommendation_button.setEnabled(False)
         page_row.addWidget(self.open_recommendation_button)
+        self.rule_result_button = QPushButton("查看單筆結果與規則")
+        self.rule_result_button.setToolTip("背景核對已保存來源；不重跑回測或替來源補版本／成本。")
+        self.rule_result_button.clicked.connect(self.open_selected_rule_result)
+        self.rule_result_button.setEnabled(False)
+        page_row.addWidget(self.rule_result_button)
         list_layout.addLayout(page_row)
+        self.rule_result_status = QLabel("")
+        self.rule_result_status.setWordWrap(True)
+        list_layout.addWidget(self.rule_result_status)
         layout.addWidget(list_group, stretch=1)
 
         self.comparability_badge = QLabel("尚未比較")
@@ -320,6 +338,7 @@ class RunRegistryCompareWidget(QWidget):
 
     def clear_selection(self) -> None:
         self._selected_run_ids = []
+        self._rule_request_id += 1
         blocker = QSignalBlocker(self.run_list)
         try:
             self.run_list.clearSelection()
@@ -353,6 +372,9 @@ class RunRegistryCompareWidget(QWidget):
             finally:
                 del blocker
         self._selected_run_ids = ordered
+        self._rule_request_id += 1
+        if self._rule_worker is not None:
+            self._rule_worker.cancel()
         self._update_compare_button_state()
 
     def compare_selected_runs(self) -> None:
@@ -494,6 +516,7 @@ class RunRegistryCompareWidget(QWidget):
 
     def _update_compare_button_state(self) -> None:
         selected_count = len(self.selected_run_ids())
+        self.rule_result_button.setEnabled(selected_count == 1 and self._rule_worker is None)
         self.compare_button.setEnabled(2 <= selected_count <= 5)
         selected_run = self._single_selected_recommendation_run()
         self.open_recommendation_button.setEnabled(
@@ -526,6 +549,75 @@ class RunRegistryCompareWidget(QWidget):
             )
             return
         self.on_open_recommendation_run(run)
+
+    def open_selected_rule_result(self) -> None:
+        from app_module.saved_strategy_rule_card import load_saved_strategy_rule_card, metadata_sha256
+        from ui_qt.workers.task_worker import TaskWorker
+        ids = self.selected_run_ids()
+        if len(ids) != 1 or self._rule_worker is not None:
+            return
+        expected = next((run for run in self._filtered_runs if run.run_id == ids[0]), None)
+        if expected is None:
+            return
+        expected = deepcopy(expected)
+        self._rule_closed = False
+        self._rule_request_id += 1
+        request_id = self._rule_request_id
+        self._rule_active_request_id = request_id
+        self._rule_active_run_id = expected.run_id
+        def read(cancel_callback: Callable[[], bool] | None = None) -> dict[str, Any] | None:
+            if cancel_callback and cancel_callback():
+                return None
+            result = load_saved_strategy_rule_card(self.research_run_service, expected)
+            if cancel_callback and cancel_callback():
+                return None
+            return {"request_id": request_id, "run_id": expected.run_id,
+                    "metadata_sha256": metadata_sha256(expected), "result": result}
+        self._rule_worker = TaskWorker(read)
+        self._rule_worker.finished.connect(self._on_rule_result_loaded)
+        self._rule_worker.error.connect(self._on_rule_result_error)
+        self._rule_worker.native_thread_finished.connect(self._on_rule_worker_finished)
+        self._rule_worker.native_thread_finished.connect(self._rule_worker.deleteLater)
+        self.rule_result_status.setText("核對保存來源中…")
+        self.rule_result_button.setToolTip("背景核對已保存來源；不重跑回測或替來源補版本／成本。")
+        self.rule_result_button.setText("核對保存來源中…")
+        self._update_compare_button_state()
+        self._rule_worker.start()
+
+    def _on_rule_result_loaded(self, payload: object) -> None:
+        from app_module.saved_strategy_rule_card import metadata_sha256
+        from ui_qt.widgets.strategy_rule_card_dialog import StrategyRuleCardDialog
+        if self._rule_closed or not isinstance(payload, dict) or payload.get("request_id") != self._rule_request_id:
+            return
+        if self.selected_run_ids() != [payload.get("run_id")]:
+            return
+        current = next((run for run in self._filtered_runs if run.run_id == payload["run_id"]), None)
+        if current is None or metadata_sha256(current) != payload["metadata_sha256"]:
+            return
+        result = payload["result"]
+        self.rule_result_status.setText("保存來源已讀回；規則連結及缺件見結果卡。")
+        StrategyRuleCardDialog(result.rule_card, self, result=result).exec()
+
+    def _on_rule_result_error(self, message: str) -> None:
+        if (not self._rule_closed and self._rule_active_request_id == self._rule_request_id
+                and self.selected_run_ids() == [self._rule_active_run_id]):
+            self.rule_result_status.setText("保存來源核對失敗；未連結規則。可重試或重新整理來源。")
+            self.rule_result_button.setToolTip("保存來源核對失敗，沒有連結規則。\n" + message)
+            self.rule_result_button.setText("來源核對失敗；可重試")
+
+    def _on_rule_worker_finished(self) -> None:
+        self._rule_worker = None
+        if self.rule_result_status.text() == "核對保存來源中…":
+            self.rule_result_status.setText("讀取已結束；舊選取未套用，可重新選取單筆來源。")
+        self.rule_result_button.setText("查看單筆結果與規則")
+        self._update_compare_button_state()
+
+    def closeEvent(self, event) -> None:
+        self._rule_closed = True
+        self._rule_request_id += 1
+        if self._rule_worker is not None:
+            self._rule_worker.cancel()
+        super().closeEvent(event)
 
     def _total_pages(self) -> int:
         if not self._filtered_runs:

@@ -1352,3 +1352,6 @@ F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚�
 ### 2026-10-06 UX11有限consumer
 
 `strategy_rule_card_readmodel`唯讀Registry／傳入Spec、Version、Profile或MA snapshot，不建服務／executor、不計算績效。BacktestView按需以與既有執行相同版本及目前參數投影Spec，StrategyRuleCardDialog只顯示detached值及收合來源；不綁既有run、backtest_summary或forward結果。缺execution欄位與結果資格保留not_evaluable，未變更執行／保存／producer邊界。
+
+
+UX11後續：saved_strategy_rule_card只調既有ResearchRunService完整性reader，核對已選metadata与保存Spec／rule pin／執行context。RunRegistryCompareWidget按需單TaskWorker讀取，generation／source hash防舊回呼；Dialog只讀detached投影。沒有新增writer/schema／producer、結果重算、資格升格；源缺欄位保持not_evaluable。

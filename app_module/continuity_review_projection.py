@@ -31,6 +31,7 @@ from app_module.dtos.decision_continuity_dtos import (
     DecisionContinuityRevision,
     IDENTITY_STATUS_LINKED,
 )
+from app_module.personal_journal_paths import PersonalJournalPaths, validate_personal_journal_record
 from app_module.portfolio_store import project_journal_records
 
 
@@ -208,8 +209,24 @@ class _CandidateState:
 class ContinuityReviewProjectionService:
     """Project existing Journal revisions without opening a writer path."""
 
-    def __init__(self, journal_path: str | Path) -> None:
+    def __init__(self, journal_path: str | Path, *, journal_paths: PersonalJournalPaths | None = None,
+                 legacy_read_only: bool = False) -> None:
         self.journal_path = Path(journal_path)
+        self.journal_paths = journal_paths
+        self.legacy_read_only = legacy_read_only
+        self._validate_path()
+
+    def _validate_path(self) -> None:
+        if self.journal_paths is not None:
+            self.journal_paths.assert_selected(self.journal_path, legacy_read_only=self.legacy_read_only)
+        elif self.legacy_read_only:
+            raise ValueError("personal_journal_paths_required")
+
+    @classmethod
+    def from_personal_paths(cls, paths: PersonalJournalPaths, *, legacy_read_only: bool = False
+                            ) -> "ContinuityReviewProjectionService":
+        return cls(paths.read_path(legacy_read_only=legacy_read_only), journal_paths=paths,
+                   legacy_read_only=legacy_read_only)
 
     @classmethod
     def from_output_root(cls, output_root: str | Path) -> "ContinuityReviewProjectionService":
@@ -220,6 +237,7 @@ class ContinuityReviewProjectionService:
         *,
         as_of: datetime | str | None = None,
     ) -> ContinuityReviewProjectionResult:
+        self._validate_path()
         source_path = str(self.journal_path)
         as_of_time, as_of_error = _coerce_as_of(as_of)
         if as_of_error:
@@ -388,6 +406,7 @@ class ContinuityReviewProjectionService:
     read = project
 
     def _read_jsonl(self) -> tuple[list[dict[str, Any]], str]:
+        self._validate_path()
         records: list[dict[str, Any]] = []
         try:
             with self.journal_path.open("r", encoding="utf-8") as handle:
@@ -401,6 +420,8 @@ class ContinuityReviewProjectionService:
                         return [], f"continuity_review_json_invalid:{index}:{_first_line(exc)}"
                     if not isinstance(value, dict):
                         return [], f"continuity_review_record_not_object:{index}"
+                    if self.journal_paths is not None:
+                        validate_personal_journal_record(value)
                     records.append(value)
         except (OSError, UnicodeError) as exc:
             return [], f"continuity_review_journal_unavailable:{type(exc).__name__}:{_first_line(exc)}"

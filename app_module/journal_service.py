@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
 from uuid import uuid4
 
 from app_module.dtos.decision_continuity_dtos import (
@@ -23,6 +23,7 @@ from app_module.personalization_contract import (
     PersonalRecommendationChoice,
     canonical_aware_datetime,
 )
+from app_module.personal_journal_paths import PersonalJournalPaths, PersonalJournalJsonlStore
 from app_module.portfolio_store import PortfolioJsonlStore, project_journal_records
 from data_module.config import TWStockConfig
 
@@ -37,12 +38,21 @@ class JournalService:
         config: TWStockConfig,
         *,
         journal_path: Path | None = None,
+        journal_paths: PersonalJournalPaths | None = None,
+        legacy_read_only: bool = False,
+        cancel_check: Callable[[], bool] | None = None,
     ):
         self.config = config
-        self.store = PortfolioJsonlStore(
-            config.output_root,
-            journal_file=journal_path,
-        )
+        if journal_paths is not None:
+            if journal_path is not None:
+                raise ValueError("personal_journal_selector_conflict")
+            self.store: PortfolioJsonlStore = PersonalJournalJsonlStore(
+                journal_paths, legacy_read_only=legacy_read_only, cancel_check=cancel_check,
+            )
+        else:
+            if legacy_read_only or cancel_check is not None:
+                raise ValueError("personal_journal_paths_required")
+            self.store = PortfolioJsonlStore(config.output_root, journal_file=journal_path)
 
     @staticmethod
     def _identity(

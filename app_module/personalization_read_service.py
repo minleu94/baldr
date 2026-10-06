@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from app_module.personal_journal_paths import PersonalJournalPaths, validate_personal_journal_record
 import sqlite3
 import stat
 from types import SimpleNamespace
@@ -1006,9 +1007,17 @@ class ReadOnlyJournalRevisionSource:
         path: str | Path,
         *,
         max_records: int = DEFAULT_MAX_JOURNAL_ROWS,
+        journal_paths: PersonalJournalPaths | None = None,
+        legacy_read_only: bool = False,
     ) -> None:
         if isinstance(max_records, bool) or max_records <= 0:
             raise ValueError("max_records must be positive")
+        self.journal_paths = journal_paths
+        self.legacy_read_only = legacy_read_only
+        if journal_paths is not None:
+            journal_paths.assert_selected(Path(path), legacy_read_only=legacy_read_only)
+        elif legacy_read_only:
+            raise ValueError("personal_journal_paths_required")
         self.path = Path(path).expanduser().resolve()
         self.max_records = max_records
         self.diagnostics: list[str] = []
@@ -1020,6 +1029,10 @@ class ReadOnlyJournalRevisionSource:
         self._incomplete_queries: set[str] = set()
         self._journal_read_issue = False
         self._broad_history_truncated = False
+
+    def _validate_path(self) -> None:
+        if self.journal_paths is not None:
+            self.journal_paths.assert_selected(self.path, legacy_read_only=self.legacy_read_only)
 
     def _add_diagnostic(self, value: str) -> None:
         if value not in self.diagnostics:
@@ -1055,6 +1068,7 @@ class ReadOnlyJournalRevisionSource:
     def inventory_summary(self) -> Mapping[str, Any]:
         """Expose bounded-reader state separately from byte consistency."""
 
+        self._validate_path()
         return {
             "path": str(self.path),
             "exists": self.path.is_file(),
@@ -1067,9 +1081,11 @@ class ReadOnlyJournalRevisionSource:
         }
 
     def paths_for_fingerprint(self) -> tuple[Path, ...]:
+        self._validate_path()
         return (self.path,)
 
     def _load(self) -> tuple[Mapping[str, Any], ...]:
+        self._validate_path()
         if self._records is not None:
             return self._records
         if not self.path.is_file():
@@ -1092,6 +1108,8 @@ class ReadOnlyJournalRevisionSource:
                             f"journal_jsonl_malformed_line:{line_number}"
                         )
                         continue
+                    if self.journal_paths is not None and isinstance(value, Mapping):
+                        validate_personal_journal_record(value)
                     if isinstance(value, Mapping):
                         valid_count += 1
                         if len(records) < self.max_records:
@@ -1133,6 +1151,7 @@ class ReadOnlyJournalRevisionSource:
         ``not_recorded``.
         """
 
+        self._validate_path()
         cache_key = (query_kind, _text(result_id), _text(stock_code), self._scope_id)
         cached = self._exact_cache.get(cache_key)
         if cached is not None:
@@ -1157,6 +1176,8 @@ class ReadOnlyJournalRevisionSource:
                             f"journal_jsonl_malformed_line:{line_number}"
                         )
                         continue
+                    if self.journal_paths is not None and isinstance(value, Mapping):
+                        validate_personal_journal_record(value)
                     if not isinstance(value, Mapping):
                         self._journal_read_issue = True
                         self._add_diagnostic(
@@ -1983,6 +2004,8 @@ class PersonalizationReadService:
         *,
         output_root: str | Path,
         journal_path: str | Path | None = None,
+        journal_paths: PersonalJournalPaths | None = None,
+        legacy_journal_read_only: bool = False,
         evidence_db_path: str | Path | None = None,
         max_results: int = DEFAULT_MAX_RESULTS,
         max_candidates_per_result: int = DEFAULT_MAX_CANDIDATES_PER_RESULT,
@@ -1990,7 +2013,15 @@ class PersonalizationReadService:
         max_journal_rows: int = DEFAULT_MAX_JOURNAL_ROWS,
     ) -> "PersonalizationReadService":
         root = Path(output_root).expanduser().resolve()
-        resolved_journal = Path(journal_path) if journal_path is not None else root / "portfolio" / "journal_entries.jsonl"
+        if journal_paths is not None and journal_path is not None:
+            raise ValueError("personal_journal_selector_conflict")
+        if legacy_journal_read_only and journal_paths is None:
+            raise ValueError("personal_journal_paths_required")
+        resolved_journal = (
+            journal_paths.read_path(legacy_read_only=legacy_journal_read_only)
+            if journal_paths is not None
+            else (Path(journal_path) if journal_path is not None else root / "portfolio" / "journal_entries.jsonl")
+        )
         resolved_evidence = (
             Path(evidence_db_path)
             if evidence_db_path is not None
@@ -1999,7 +2030,10 @@ class PersonalizationReadService:
         runs_dir = root / "recommendation" / "runs"
         return cls(
             ReadOnlyRecommendationSource(root, max_results=max_results),
-            ReadOnlyJournalRevisionSource(resolved_journal, max_records=max_journal_rows),
+            ReadOnlyJournalRevisionSource(
+                resolved_journal, max_records=max_journal_rows, journal_paths=journal_paths,
+                legacy_read_only=legacy_journal_read_only,
+            ),
             ReadOnlyEvidenceSource(resolved_evidence, max_events=max_evidence_events),
             ReadOnlyProjectionReceiptSource(root),
             execution_queries=build_recommendation_execution_queries(

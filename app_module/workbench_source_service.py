@@ -18,6 +18,7 @@ from app_module.pre_v2_readiness_service import (
     PreV2ReadinessService,
 )
 from app_module.workbench_dtos import WorkbenchDashboardDTO
+from app_module.personal_journal_paths import PersonalJournalPaths
 from app_module.continuity_review_projection import (
     ContinuityReviewProjectionService,
 )
@@ -77,7 +78,18 @@ class WorkbenchSourceService:
         position_health_read_service: PositionHealthTransitionReadService | None = None,
         continuity_review_projection_service: ContinuityReviewProjectionService | None = None,
         recommendation_queries: Any | None = None,
+        journal_paths: PersonalJournalPaths | None = None,
+        legacy_journal_read_only: bool = False,
     ) -> None:
+        if journal_paths is not None and continuity_review_projection_service is not None:
+            raise ValueError("personal_journal_selector_conflict")
+        if legacy_journal_read_only and journal_paths is None:
+            raise ValueError("personal_journal_paths_required")
+        selected_continuity = (
+            ContinuityReviewProjectionService.from_personal_paths(
+                journal_paths, legacy_read_only=legacy_journal_read_only,
+            ) if journal_paths is not None else None
+        )
         self.config = config
         self.recommendation_queries = (
             recommendation_queries
@@ -119,6 +131,7 @@ class WorkbenchSourceService:
         # create output directories on an otherwise read-only Workbench load.
         self.continuity_review_projection_service = (
             continuity_review_projection_service
+            or selected_continuity
             or ContinuityReviewProjectionService.from_output_root(config.output_root)
         )
 

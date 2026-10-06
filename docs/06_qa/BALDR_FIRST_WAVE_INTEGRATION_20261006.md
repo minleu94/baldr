@@ -62,10 +62,12 @@ B02已完成同版helper canonical DB本身>260、suffix、JSON/SQLite v1/v2 con
 
 B08私人domain typed routes仍以契約交付；不等於B09/B10 caller已接。PERSONAL私人read/write同target，空庫不借legacy；市場Evidence reader獨立無私人writer；Review與Evidence/Gap/Decay source-writer分流及DecisionQuality notes漏selector留B10。Portfolio trades／聲明／Paper／ledger caller留B09。
 
-B03額外核對在未改base重現 `test_mainwindow_portfolio_return_requires_current_exact_result_identity` 失敗（result_id空而非result-r1）；具名列B06/B09修，不能baseline當pass，不由B03越權改。其餘B03 central nav/update/runtime等未完成工程仍保留B03/B15清單。
+B03額外核對在未改base重現 `test_mainwindow_portfolio_return_requires_current_exact_result_identity` 失敗（result_id空而非result-r1），原紅收據保留。B06 後續在固定base且不改node/main/storage/assert，以repo合成basetemp重跑1pass／2.15s、Portfolio39case全pass／5.59s；原問題是 `C:/Users/archi` ancestor CreateFileW Errno5 令 no-follow fail-closed 的 sandbox fixture，沒有 main 產品 patch 需求。此node非長path測試，不能把這種fixture安排用於掩蓋B02長路徑失敗。其餘B03 central nav/update/runtime等未完成工程仍保留B03/B15清單。
 
 原plan已append1133bytes，舊237637bytes逐byte完整保持，prefix SHA256 `b88864218e1856e954d559e6d91ced7b57ee21311a4df3b34092874da8be8ace`；新238770bytes SHA256 `9730be99e060ea467827a532abb24a2342db1a3ecc2e5f756d0a979ee2a28543`。本機review位於 `output/plans/baldr_completion_review_sol_20261006.md`，不stage ignored output。
 
 首波定版另追加1959bytes，前238770bytes再逐byte保持；目前原plan共240729bytes，SHA256 `c616080dd42bdaad0a6f151e47d4ef21b465502bfa393581baac065eacd90991`。次波 B04／B05／B06／B09 已由父層鎖定並開工，固定 base `ba4e9e59da7946aa66fd5eac3729e091dfe5cced`；B09只採B08獨立契約依賴，中央保留main/config/B10。這是進行中工程，沒有新的整項closed。
 
 無push/mainmerge／正式DBwrite／personal migration或activation／正式Task／ACL／交易／foregroundNative／真訓練。自然成熟、正式source資格與部署另列X/U；不把這些時間／批准條件當工程完成gate，也不把尚缺caller／控制port寫成工程closed。
+
+次波核心與環境校正另追加2283bytes；前240729bytes逐byte不變，原plan目前243012bytes、SHA256 `c4126a56cbe6a1c28b541222f11616af26b18a7149ed29ac8d402a53e729fc85`。採入B04/B05初包與B06、B10核心不提升整項資格；B04/B05續包與B09 custody/main路由仍進行中，次波穩定版 mandatory UI union 尚待一次跑驗。

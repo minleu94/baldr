@@ -5037,6 +5037,16 @@ UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監�
 排錯與取消：Ctrl+C合作取消回傳130，blocked／IO回傳2；保留partial／pending，沒有本次canonical收據不能當完成。既有目標不覆寫，取消／失敗重試必須明示另一全新目標；來源pins不變可沿原接受preview，來源已改版需重新預覽核對。no-follow／sharing／來源版本不合或SQLite偽裝拒絕時依code處理，不降級copy、手改收據或清理原資料。長路徑canonical receipt錯名已修正並驗證；超Windows普通open限制的其他既有工具仍需短隔離fixture。此CLI不是personal migration／啟用／分享工具。[限定驗證](../06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。
 
 
+## 私人覆盤與 notes 備份工程入口（2026-10-06）
+
+這些入口目前供隔離工程驗證，尚未在主選單提供備份按鈕，也未批准真私人資料遷移或啟用。`personal_store_root/personal_store_mode` 只選一般私人 store；notes 仍須明示原 `personal_journal_root/personal_journal_mode`。私人覆盤 writer 必須由中央注入相同私人 TRADES 路由及帳戶的 Portfolio service，notes 必須同一 personal root；缺設定、錯帳戶或混用 roots 會拒絕，不借 legacy 或市場覆盤。市場 Evidence／Gap／Decay 僅唯讀引用，覆盤保留原來源 DB、事件身份與 hash；私人資料不寫入市場來源庫。
+
+notes 備份 adapter 為 `PersonalNotesBackupAdapter(journal_paths, store_identity=..., max_bytes=...)`。identity 必須是 caller 已確認的 store 身份，byte budget 為本次接受的最大 notes 位元組數，不能省略或以未知容量代替。先呼叫 `backup(snapshot_path, receipt_path)` 做 dry-run：只讀原 notes，回傳 size／SHA256／預計 receipt，不建立輸出。兩個新檔必須直接位於原 selector 的 `backups/research_notes`，既有檔不覆寫。隔離 fixture 核對後加 `confirmed=True`，才以 create-only 建立 snapshot 與 receipt，並讀回驗 hash；正式來源仍須另有具體批准。
+
+還原先取得並獨立保存原 receipt 的 SHA256 pin，再明示另一個 target `PersonalJournalPaths`，呼叫 `restore_into(target, receipt_path, expected_receipt_sha256=...)` 預演；核對 schema、identity、原 source 引用、snapshot 路徑／size／hash 後，隔離 fixture 才可加 `confirmed=True`。target 只允許該 selector 的精確 notes JSONL，必須尚不存在，不能覆寫既有筆記或複製整份市場 DB。成功後以同一 target selector 在新程序讀回，確認身份與內容。
+
+排錯：pin／schema／identity／size／hash 失配先停下核對原收據；不可手改 hash、改用另一帳戶或借 latest。超 byte budget、超32KiB receipt、link／hardlink 或錯根目錄會拒絕。預演與操作前取消不建立輸出；開始建立後的取消或失敗會保留部分產物，不能稱完成，也不自動清理；再次操作需另選全新輸出。路徑根與父目錄須由 caller 控制，普通前後 fstat 不保證抵擋惡意競態。備份不授 PIT、模型、交易或正式啟用資格。[覆盤證據](../06_qa/BALDR_B10_PRIVATE_REVIEW_20261006.md)、[備份證據](../06_qa/BALDR_B10_NOTES_BACKUP_20261006.md)。
+
 ### UX23：明示 registry snapshot 的唯讀 metadata 核對（2026-10-06）
 
 在既有 `scripts/run_rule_research_shadow_acceptance.py` 的 receipt／case／policy／bundle 輸入後，加 `--registry-snapshot C:/absolute/consistent-registry.db`，只允許明示絕對路徑。與 `--lifecycle-export` 互斥；後者只是匯出聲明，CLI 明示未連庫核對。`--json` 的 `diagnostics.registry_readback` 區分來源、狀態、SHA256、缺件原因與未驗 metadata 欄位。成功只表示 stored metadata 符合完整 candidate pin；training_audit／target_contract 仍未驗，模型資格未知、所有 eligibility false、未啟用。

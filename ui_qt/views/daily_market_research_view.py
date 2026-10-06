@@ -36,6 +36,10 @@ from app_module.daily_market_cohort_projection import (
     sort_daily_market_cohort_members,
 )
 from app_module.daily_market_research_screener import DailyMarketResearchScreenRow
+from app_module.daily_market_feature_snapshot import (
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
+    feature_contract_for_version,
+)
 from app_module.original_stock_ranking import VerifiedOriginalStockRanking
 from app_module.original_stock_ranking import research_context_for_original_stock_ranking
 from app_module.daily_market_snapshot_repository import VerifiedDailyMarketSnapshot
@@ -76,7 +80,14 @@ _TAIPEI = ZoneInfo("Asia/Taipei")
 _CONDITION_LABELS = {
     "close_above_ma20": "收盤價高於 MA20",
     "close_above_ma60": "收盤價高於 MA60",
+    "close_above_bbands30_upper": "收盤價高於布林上軌（30）",
 }
+_METHOD_HELP = (
+    "固定 close／MA20／MA60 比較；MA20 需 20 根、MA60 需 60 根有效觀測。"
+    "布林上軌（30）只讀已核驗 v3 保存值，需 30 根有效觀測；"
+    "v2 未保存 BB、缺件或暖機不足維持未知，來源參數 lineage 未核驗仍為未知。"
+    "僅供研究，不代表預測、勝率或投資結論。"
+)
 _STATE_LABELS = {
     "match": "符合",
     "no_match": "不符合",
@@ -176,7 +187,7 @@ class DailyMarketResearchView(QWidget):
         root.addLayout(title_layout)
 
         self.disclaimer_label = QLabel(
-            "研究快照：僅表示明示 cohort 的既有 close／MA20／MA60 條件，"
+            "研究快照：僅表示明示 cohort 的已保存 close／MA20／MA60／布林上軌條件，"
             "不是全市場、正式推薦、獲利機率或交易資格。未知條件會保留為未知。"
         )
         self.disclaimer_label.setObjectName("dailyMarketResearchDisclaimer")
@@ -267,6 +278,13 @@ class DailyMarketResearchView(QWidget):
         self.ma60_checkbox.setAccessibleName("使用收盤價高於 MA60 條件")
         self.ma60_checkbox.setChecked(True)
         condition_row.addWidget(self.ma60_checkbox)
+        self.bbands30_upper_checkbox = QCheckBox("收盤價高於布林上軌（30）")
+        self.bbands30_upper_checkbox.setObjectName("dailyMarketResearchBbands30Upper")
+        self.bbands30_upper_checkbox.setAccessibleName("使用收盤價高於布林上軌 30 條件")
+        self.bbands30_upper_checkbox.setToolTip(
+            "只篩選原保存 v3 證據；按更新研究快照才明示 opt-in，來源參數 lineage 未核驗。"
+        )
+        condition_row.addWidget(self.bbands30_upper_checkbox)
         self.combine_mode_combo = QComboBox()
         self.combine_mode_combo.setObjectName("dailyMarketResearchCombineMode")
         self.combine_mode_combo.setAccessibleName("每日研究條件組合方式")
@@ -295,17 +313,11 @@ class DailyMarketResearchView(QWidget):
         form.addRow("條件預設", preset_row)
         root.addWidget(inputs)
 
-        self.preset_help_label = QLabel(
-            "固定收盤價與 MA20／MA60 比較；MA20 需 20 個有效觀測、MA60 需 60 個，"
-            "暖機不足保留為未知。僅供研究，沒有強弱排名或勝率含義；選取預設後須按「套用預設」。"
-        )
+        self.preset_help_label = QLabel(_METHOD_HELP)
         self.preset_help_label.setObjectName("dailyMarketResearchPresetHelp")
         self.preset_help_label.setAccessibleName("每日研究方法與預設使用說明")
         self.preset_help_label.setWordWrap(True)
-        self.preset_help_label.setToolTip(
-            "方法只比較已核驗快照提供的 close、MA20 與 MA60。需要的觀測暖機不足時維持未知；"
-            "不推定交易日完整性、可得時間、historical PIT、預測能力或投資結論。"
-        )
+        self.preset_help_label.setToolTip(_METHOD_HELP)
         root.addWidget(self.preset_help_label)
 
         self.market_cohort_group = QGroupBox("研究母體盤勢")
@@ -388,6 +400,7 @@ class DailyMarketResearchView(QWidget):
             ("收盤價", "close"),
             ("MA20", "ma20"),
             ("MA60", "ma60"),
+            ("布林上軌（30）", "bbands30_upper"),
         ):
             self.sort_key_combo.addItem(label, key)
         self.sort_key_combo.addItem("原始強弱排名（未提供）", "original_strength_rank")
@@ -473,7 +486,7 @@ class DailyMarketResearchView(QWidget):
         self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         root.addWidget(self.status_label)
 
-        self.results_table = QTableWidget(0, 11)
+        self.results_table = QTableWidget(0, 13)
         self.results_table.setObjectName("dailyMarketResearchResults")
         self.results_table.setAccessibleName("每日研究條件結果")
         self.results_table.setHorizontalHeaderLabels(
@@ -493,8 +506,11 @@ class DailyMarketResearchView(QWidget):
             9, QTableWidgetItem("原始名次")
         )
         self.results_table.setHorizontalHeaderItem(10, QTableWidgetItem("入選歷程"))
+        self.results_table.setHorizontalHeaderItem(11, QTableWidgetItem("收盤／布林上軌（30）"))
+        self.results_table.setHorizontalHeaderItem(12, QTableWidgetItem("布林上軌（30）保存值"))
         # 邏輯欄位不移位，讓歷程緊接目前符合狀態出現在可見區。
         self.results_table.horizontalHeader().moveSection(10, 5)
+        self.results_table.horizontalHeader().moveSection(11, 4)
         self.results_table.setColumnWidth(10, 220)
         self.results_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.results_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -560,6 +576,7 @@ class DailyMarketResearchView(QWidget):
             self.decision_time_edit,
             self.ma20_checkbox,
             self.ma60_checkbox,
+            self.bbands30_upper_checkbox,
             self.combine_mode_combo,
             self.filter_state_combo,
             self.sort_key_combo,
@@ -601,7 +618,7 @@ class DailyMarketResearchView(QWidget):
             self.preset_combo.addItem("預設尚未提供", "")
             self.preset_combo.setEnabled(False)
             self.preset_combo.setToolTip(
-                "預設 API 尚未載入；仍可使用 MA20／MA60 手動條件。"
+                "預設 API 尚未載入；仍可使用 MA20／MA60／布林上軌手動條件。"
             )
             return
         default_index = self.preset_combo.findData("all_observations")
@@ -663,7 +680,7 @@ class DailyMarketResearchView(QWidget):
             for key in tuple(getattr(preset, "condition_keys", ()) or ())
         )
         if not condition_keys or any(
-            key not in {"close_above_ma20", "close_above_ma60"}
+            key not in _CONDITION_LABELS
             for key in condition_keys
         ):
             self.status_label.setText("研究預設條件不受支援；目前快照與篩選未變。")
@@ -678,12 +695,14 @@ class DailyMarketResearchView(QWidget):
             for widget in (
                 self.ma20_checkbox,
                 self.ma60_checkbox,
+                self.bbands30_upper_checkbox,
                 self.combine_mode_combo,
                 self.filter_state_combo,
             )
         ]
         self.ma20_checkbox.setChecked("close_above_ma20" in condition_keys)
         self.ma60_checkbox.setChecked("close_above_ma60" in condition_keys)
+        self.bbands30_upper_checkbox.setChecked("close_above_bbands30_upper" in condition_keys)
         self.combine_mode_combo.setCurrentIndex(
             max(0, self.combine_mode_combo.findData(combine_mode))
         )
@@ -987,7 +1006,7 @@ class DailyMarketResearchView(QWidget):
         if not key[1]:
             self._lifecycle_result = None
             self._lifecycle_pending = False
-            self._lifecycle_error = "請選擇 MA 條件；入選歷程未知"
+            self._lifecycle_error = "請選擇研究條件；入選歷程未知"
             return
         if key == self._lifecycle_query_key:
             return
@@ -1066,7 +1085,7 @@ class DailyMarketResearchView(QWidget):
                 + f"首次觀測={getattr(row, 'first_seen', None)}；最後命中={getattr(row, 'last_hit', None)}；連續有效期={getattr(row, 'streak', 0)}\n"
                 + f"history observations={getattr(row, 'history_observation_ids', ())}\n"
                 + f"source identities={getattr(row, 'source_refs', getattr(row, 'source_identities', ()))}\n"
-                + "僅比較相同 MA 查詢及具名母體的完整已發布觀測；刷新不寫入歷程事件。")
+                + "僅比較相同研究條件查詢及具名母體的完整已發布觀測；刷新不寫入歷程事件。")
 
     def _membership_summary_text(self) -> str:
         rows = tuple(getattr(self._lifecycle_result, "rows", ()) or ())
@@ -1202,7 +1221,7 @@ class DailyMarketResearchView(QWidget):
         if (
             not cohort_id
             or not condition_keys
-            or any(key not in {"close_above_ma20", "close_above_ma60"} for key in condition_keys)
+            or any(key not in _CONDITION_LABELS for key in condition_keys)
             or combine_mode not in {"AND", "OR"}
         ):
             self.status_label.setText(
@@ -1222,12 +1241,14 @@ class DailyMarketResearchView(QWidget):
                 self.cohort_id_input,
                 self.ma20_checkbox,
                 self.ma60_checkbox,
+                self.bbands30_upper_checkbox,
                 self.combine_mode_combo,
             )
         ]
         self.cohort_id_input.setText(cohort_id)
         self.ma20_checkbox.setChecked("close_above_ma20" in condition_keys)
         self.ma60_checkbox.setChecked("close_above_ma60" in condition_keys)
+        self.bbands30_upper_checkbox.setChecked("close_above_bbands30_upper" in condition_keys)
         self.combine_mode_combo.setCurrentIndex(
             max(0, self.combine_mode_combo.findData(combine_mode))
         )
@@ -1306,6 +1327,7 @@ class DailyMarketResearchView(QWidget):
                 cohort_id=cohort_id,
                 stock_codes=stock_codes,
                 decision_cutoff=decision_cutoff,
+                include_bbands30_upper="close_above_bbands30_upper" in condition_keys,
                 cancel_callback=cancel_callback,
             ),
         )
@@ -1318,12 +1340,18 @@ class DailyMarketResearchView(QWidget):
         stock_codes: tuple[str, ...],
         decision_cutoff: datetime,
         cancel_callback: Callable[[], bool],
+        include_bbands30_upper: bool = False,
     ) -> dict[str, object]:
+        # 未勾選保留原 v2 呼叫契約；勾選才明示產生 v3，讀回仍走原 reader。
+        options: dict[str, object] = {}
+        if include_bbands30_upper:
+            options["include_bbands30_upper"] = True
         result = producer(
             stock_codes,
             decision_cutoff,
             cohort_id,
             cancel_callback=cancel_callback,
+            **options,
         )
         status = str(getattr(result, "status", ""))
         if status not in {"published_complete", "unchanged"}:
@@ -1417,6 +1445,7 @@ class DailyMarketResearchView(QWidget):
                 self.decision_time_edit,
                 self.ma20_checkbox,
                 self.ma60_checkbox,
+                self.bbands30_upper_checkbox,
                 self.combine_mode_combo,
                 self.filter_state_combo,
                 self.preset_combo,
@@ -1646,7 +1675,8 @@ class DailyMarketResearchView(QWidget):
             counts = readiness["method_counts"]
             summaries = []
             for item in counts:
-                label = "MA20" if item["method_id"].endswith("ma20") else "MA60"
+                label = next((label for key, label in _CONDITION_LABELS.items()
+                    if str(item["method_id"]).endswith(key)), str(item["method_id"]))
                 summaries.append(f"{label} 符合 {item['matched']}／不符合 {item['notmatched']}／未知 {item['unknown']}／排除 {item['excluded']}")
             self.sample_readiness_label.setText(
                 f"研究樣本：{readiness['decision_date']}，完整聲明單批 {readiness['represented_denominator']} 檔（含排除）；"
@@ -1822,6 +1852,7 @@ class DailyMarketResearchView(QWidget):
         self._cohort_projection = None
         self._cohort_members_by_code = {}
         self._render_market_cohort_projection()
+
         if self.service is None:
             return
         filter_rows = getattr(self.service, "filter_rows", None)
@@ -1834,7 +1865,7 @@ class DailyMarketResearchView(QWidget):
             full_rows = tuple(
                 filter_rows(
                     snapshot,
-                    ("close_above_ma20", "close_above_ma60"),
+                    self._saved_condition_keys(snapshot),
                     "AND",
                 )
             )
@@ -1871,6 +1902,32 @@ class DailyMarketResearchView(QWidget):
             return
         self._render_market_cohort_projection()
 
+    @staticmethod
+    def _saved_condition_keys(snapshot: object) -> tuple[str, ...]:
+        manifest = getattr(snapshot, "manifest", {})
+        version = manifest.get("feature_contract_version") if isinstance(manifest, Mapping) else None
+        if version == DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER:
+            return feature_contract_for_version(str(version)).condition_keys
+        return ("close_above_ma20", "close_above_ma60")
+
+    def _bbands_condition_text(self, condition: object | None) -> str:
+        if "close_above_bbands30_upper" not in self._saved_condition_keys(self._snapshot):
+            return "未知｜此版本未保存 BB 證據"
+        reason = str(getattr(condition, "unknown_reason", "") or "")
+        reason_labels = {
+            "insufficient_valid_ohlc_streak": "有效觀測不足 30 根",
+            "technical_metric_missing": "缺少保存上軌值",
+            "technical_source_identity_missing": "上軌來源身份未知",
+            "technical_metric_not_observed": "上軌來源品質未知",
+            "method_contract_invalid": "上軌方法／參數未核驗",
+        }
+        detail = "、".join(label for code, label in reason_labels.items() if code in reason)
+        return (
+            self._condition_text(condition)
+            + (f"｜{detail}" if detail else "")
+            + "｜來源參數 lineage 未核驗（未知）"
+        )
+
     def _render_market_cohort_projection(self) -> None:
         projection = self._cohort_projection
         available = projection is not None
@@ -1881,8 +1938,7 @@ class DailyMarketResearchView(QWidget):
         )
         if projection is None:
             self.preset_help_label.setToolTip(
-                "固定 close／MA20／MA60 收盤比較；MA20 需 20 個有效觀測、"
-                "MA60 需 60 個有效觀測，暖機不足為未知。僅供研究，不代表預測或投資結論。"
+                _METHOD_HELP
             )
             if self._snapshot is None:
                 self.cohort_identity_label.setText(
@@ -2016,9 +2072,7 @@ class DailyMarketResearchView(QWidget):
             + "\n".join(method_audit_lines)
         )
         self.preset_help_label.setToolTip(
-            "固定 close／MA20／MA60 收盤比較；MA20 需 20 個有效觀測、"
-            "MA60 需 60 個有效觀測，暖機不足為未知。僅供研究，不代表預測或投資結論。\n"
-            "已發布方法契約：\n"
+            _METHOD_HELP + "\n已發布方法契約：\n"
             + "\n".join(method_audit_lines)
             + f"\nmethod_contracts_sha256={method_hash}"
         )
@@ -2043,7 +2097,7 @@ class DailyMarketResearchView(QWidget):
             self._lifecycle_result = None
             self._lifecycle_pending = False
             self._lifecycle_query_key = None
-            self._lifecycle_error = "請選擇 MA 條件；入選歷程未知"
+            self._lifecycle_error = "請選擇研究條件；入選歷程未知"
             self._all_rows = ()
             self._visible_rows = ()
             self._render_rows()
@@ -2283,6 +2337,8 @@ class DailyMarketResearchView(QWidget):
                 self._market_value_text(member, "ma60"),
                 original_rank_cell(self._original_ranking, stock_code),
                 " · ".join(self._membership_text(stock_code).split(" · ")[:2]),
+                self._bbands_condition_text(condition_map.get("close_above_bbands30_upper")),
+                self._market_value_text(member, "bbands30_upper"),
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -2301,6 +2357,17 @@ class DailyMarketResearchView(QWidget):
                     )
                 if column == 10:
                     item.setToolTip(self._membership_tooltip(stock_code))
+                if column in {11, 12}:
+                    import json
+                    payloads = getattr(self._snapshot, "stock_snapshots", {})
+                    payload = payloads.get(stock_code, {}) if isinstance(payloads, Mapping) else {}
+                    features = payload.get("features", {}) if isinstance(payload, Mapping) else {}
+                    feature = features.get("BB_Upper") if isinstance(features, Mapping) else None
+                    item.setToolTip(
+                        f"manifest_sha256={self._manifest_sha256}\n"
+                        + _METHOD_HELP + "\n保存 BB_Upper：\n"
+                        + json.dumps(feature, ensure_ascii=False, sort_keys=True)
+                    )
                 self.results_table.setItem(row_number, column, item)
         if selected_identity is not None:
             for row_number, row in enumerate(rows):
@@ -2390,7 +2457,9 @@ class DailyMarketResearchView(QWidget):
                 method_details.append(
                     f"{_CONDITION_LABELS.get(key, key)}：{method_text}"
                 )
-        visible_methods = "固定 MA20（20 個有效觀測）／MA60（60 個有效觀測）比較"
+        visible_methods = "、".join(_CONDITION_LABELS.get(key, key) for key in by_key)
+        if "close_above_bbands30_upper" in by_key:
+            limitations.append("BB 來源參數 lineage 未核驗（未知）；比較結果不授予模型或交易資格")
         methods = "；".join(method_details) if method_details else visible_methods
         visible_limitations = [
             f"{reason[:80]}{'…' if len(reason) > 80 else ''}"
@@ -2412,7 +2481,7 @@ class DailyMarketResearchView(QWidget):
             f"支持理由來源={self._as_texts(getattr(row, 'why', ()))}\n"
             f"不符合條件來源={self._as_texts(getattr(row, 'why_not', ()))}\n"
             f"支持={supporting}\n反證={refuting}\n資料限制={limitations}\n"
-            "close/MA 條件不構成預測、勝率或投資建議。"
+            + _METHOD_HELP
         )
 
         selected_ranking_rows = ranking_rows_by_code(self._original_ranking) or {}
@@ -2586,6 +2655,8 @@ class DailyMarketResearchView(QWidget):
             keys.append("close_above_ma20")
         if self.ma60_checkbox.isChecked():
             keys.append("close_above_ma60")
+        if self.bbands30_upper_checkbox.isChecked():
+            keys.append("close_above_bbands30_upper")
         return tuple(keys)
 
     def _selected_decision_date(self) -> date:
@@ -3041,7 +3112,8 @@ class DailyMarketResearchView(QWidget):
         requested = str(code or "").strip()
         expected_hash = str(manifest_sha256 or self._manifest_sha256).strip()
         if (
-            not requested
+            self._shutting_down
+            or not requested
             or self._snapshot is None
             or not expected_hash
             or expected_hash != self._manifest_sha256
@@ -3086,6 +3158,7 @@ class DailyMarketResearchView(QWidget):
             self.decision_time_edit,
             self.ma20_checkbox,
             self.ma60_checkbox,
+            self.bbands30_upper_checkbox,
             self.combine_mode_combo,
             self.filter_state_combo,
             self.sort_key_combo,

@@ -15,6 +15,11 @@ import re
 from typing import Any, Literal, NoReturn
 
 from app_module.daily_market_method_contract import method_contracts_sha256
+from app_module.daily_market_feature_snapshot import (
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
+    feature_contract_for_version,
+)
 from app_module.daily_market_research_screener import (
     DAILY_MARKET_RESEARCH_SCOPE_LABEL,
     DAILY_MARKET_RESEARCH_SOURCE_KIND,
@@ -39,6 +44,8 @@ ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE = "original_stock_ranking_bookmark"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SORT_KEYS = frozenset({"stock_code", "data_date", "close", "ma20", "ma60"})
 _CONDITION_KEYS = frozenset({"close_above_ma20", "close_above_ma60"})
+_BB_CONDITION_KEY = "close_above_bbands30_upper"
+_V3_CONDITION_KEYS = _CONDITION_KEYS | {_BB_CONDITION_KEY}
 _V1_CONTEXT_KEYS = (
     "stock_code",
     "stock_name",
@@ -341,14 +348,12 @@ def create_daily_market_research_bookmark(
     stock_name: str = "",
     filter_state: str = "all",
 ) -> DailyMarketResearchBookmark:
-    """只有畫面列與已驗證 v2 來源完全相符時才建立收藏。"""
+    """只有畫面列與已驗證 v2／v3 來源完全相符時才建立收藏。"""
 
     if not isinstance(verified_snapshot, VerifiedDailyMarketSnapshot):
         _fail("snapshot_unverified", "收藏需要 reader 驗證過的每日市場快照")
     if not isinstance(row, DailyMarketResearchScreenRow):
         _fail("row_invalid", "收藏來源必須是原始 DailyMarketResearchScreenRow")
-    if sort_key not in _SORT_KEYS:
-        _fail("query_sort_invalid", "收藏排序欄位不在固定研究欄位內")
     if not isinstance(descending, bool):
         _fail("query_sort_invalid", "descending 必須是布林值")
     if filter_state not in {"all", "match", "no_match", "unknown"}:
@@ -360,6 +365,16 @@ def create_daily_market_research_bookmark(
         _fail("snapshot_manifest_invalid", "verified snapshot 缺少 manifest")
     if manifest.get("schema_version") != DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA:
         _fail("snapshot_schema_mismatch", "每日研究 bookmark 只接受已驗證的 v2 manifest")
+    version = manifest.get("feature_contract_version")
+    if version not in {
+        DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+        DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
+    }:
+        _fail("snapshot_feature_version_invalid", "收藏來源 feature version 不支援")
+    condition_keys = frozenset(feature_contract_for_version(str(version)).condition_keys)
+    sort_keys = _SORT_KEYS | ({"bbands30_upper"} if condition_keys == _V3_CONDITION_KEYS else set())
+    if sort_key not in sort_keys:
+        _fail("query_sort_invalid", "收藏排序欄位不在原保存版本的研究欄位內")
     if canonical_snapshot_sha256(manifest) != snapshot.manifest_sha256:
         _fail("snapshot_hash_mismatch", "manifest 內容與 verified snapshot hash 不符")
     if snapshot_manifest_identity_sha256(manifest) != snapshot.manifest_identity_sha256:
@@ -402,7 +417,7 @@ def create_daily_market_research_bookmark(
     if (
         not keys
         or len(keys) != len(set(keys))
-        or any(key not in _CONDITION_KEYS for key in keys)
+        or any(key not in condition_keys for key in keys)
         or row.combine_mode not in {"AND", "OR"}
     ):
         _fail("query_filter_invalid", "收藏條件或 AND/OR 組合方式無效")
@@ -427,7 +442,9 @@ def create_daily_market_research_bookmark(
         _fail("method_contract_invalid", "manifest 缺少已捕獲的方法契約")
     contracts = json.loads(_canonical_json(raw_contracts))
     contract_hash = str(manifest.get("method_contracts_sha256") or "")
-    _validate_method_contracts(contracts, contract_hash)
+    captured_keys = _validate_method_contracts(contracts, contract_hash)
+    if captured_keys != condition_keys or payload.get("contract_version") != version:
+        _fail("method_contract_mismatch", "收藏方法與原保存 feature version 不符")
     if (
         payload.get("method_contracts") != contracts
         or payload.get("method_contracts_sha256") != contract_hash
@@ -701,7 +718,7 @@ def decode_daily_market_research_bookmark(
     contract_hash = _require_sha256(payload.get("method_contracts_sha256"), "method_contracts_sha256")
     if not isinstance(contracts, Mapping):
         _fail("method_contract_invalid", "method_contracts 必須是 object")
-    _validate_method_contracts(contracts, contract_hash)
+    captured_keys = _validate_method_contracts(contracts, contract_hash)
     if payload.get("manifest_schema_version") != DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA:
         _fail("bookmark_source_schema_mismatch", "研究收藏來源 manifest schema 不支援")
 
@@ -724,7 +741,7 @@ def decode_daily_market_research_bookmark(
     if (
         not isinstance(keys, list)
         or not keys
-        or any(not isinstance(key, str) or key not in _CONDITION_KEYS for key in keys)
+        or any(not isinstance(key, str) or key not in captured_keys for key in keys)
         or len(keys) != len(set(keys))
     ):
         _fail("bookmark_query_invalid", "研究收藏 condition_keys 無效")
@@ -734,7 +751,8 @@ def decode_daily_market_research_bookmark(
     if filter_state not in {"all", "match", "no_match", "unknown"}:
         _fail("bookmark_query_invalid", "研究收藏 filter_state 無效")
     sort_key = payload.get("sort_key")
-    if not isinstance(sort_key, str) or sort_key not in _SORT_KEYS:
+    sort_keys = _SORT_KEYS | ({"bbands30_upper"} if captured_keys == _V3_CONDITION_KEYS else set())
+    if not isinstance(sort_key, str) or sort_key not in sort_keys:
         _fail("bookmark_query_invalid", "研究收藏 sort_key 無效")
     descending = payload.get("descending")
     if not isinstance(descending, bool):
@@ -845,6 +863,8 @@ def decode_daily_market_research_bookmark(
     )
     if result.to_dict() != payload:
         _fail("bookmark_payload_noncanonical", "研究收藏 payload 不是 canonical v1 表示")
+    if captured_keys == _V3_CONDITION_KEYS:
+        _verify_v3_bookmark_source(result)
     return result
 
 
@@ -995,12 +1015,19 @@ def _build_payload_body(
     return provisional.to_dict()
 
 
-def _validate_method_contracts(value: Any, claimed_sha256: str) -> None:
-    if not isinstance(value, Mapping) or set(value) != _CONDITION_KEYS:
-        _fail("method_contract_invalid", "收藏 method_contracts 必須包含固定兩個每日 close/MA 方法")
+def _validate_method_contracts(value: Any, claimed_sha256: str) -> frozenset[str]:
+    if not isinstance(value, Mapping) or frozenset(value) not in {_CONDITION_KEYS, _V3_CONDITION_KEYS}:
+        _fail("method_contract_invalid", "收藏方法必須是原 v2 兩 MA 或 v3 兩 MA 與 BB 上軌")
+    keys = frozenset(value)
     if method_contracts_sha256(value) != claimed_sha256:
         _fail("method_contract_hash_mismatch", "捕獲的 method_contracts hash 不符")
-    for key in _CONDITION_KEYS:
+    if keys == _V3_CONDITION_KEYS:
+        expected = feature_contract_for_version(
+            DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER
+        ).method_contracts[_BB_CONDITION_KEY]
+        if value[_BB_CONDITION_KEY] != expected:
+            _fail("method_contract_invalid", "BB 方法／參數與已核 v3 契約不符")
+    for key in keys:
         item = value.get(key)
         if not isinstance(item, Mapping):
             _fail("method_contract_invalid", f"方法契約 {key} 必須是 object")
@@ -1008,6 +1035,50 @@ def _validate_method_contracts(value: Any, claimed_sha256: str) -> None:
             _fail("method_contract_invalid", f"方法契約 {key} 缺少固定身份欄位")
         if not isinstance(item.get("parameters"), Mapping) or not isinstance(item.get("required_fields"), list):
             _fail("method_contract_invalid", f"方法契約 {key} 的 parameters/required_fields 格式無效")
+    return keys
+
+
+def _verify_v3_bookmark_source(bookmark: DailyMarketResearchBookmark) -> None:
+    """新 BB 收藏只以原 pinned 保存來源確認版本；不查 DB、不讀 latest。"""
+    try:
+        snapshot = DailyMarketSnapshotRepository(bookmark.snapshot_root).load_manifest(
+            bookmark.source_snapshot_hash,
+            cohort_id=bookmark.cohort_id,
+            decision_date=date.fromisoformat(bookmark.decision_date),
+            expected_stock_codes=bookmark.declared_stock_codes,
+        )
+    except Exception as exc:
+        raise DailyMarketResearchBookmarkError(
+            "bookmark_snapshot_root_mismatch", "BB 收藏的 pinned 保存來源無法核驗"
+        ) from exc
+    if (
+        snapshot.manifest.get("feature_contract_version")
+        != DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER
+        or snapshot.manifest_identity_sha256 != bookmark.source_snapshot_id
+        or snapshot.manifest.get("method_contracts") != bookmark.method_contracts
+        or snapshot.manifest.get("method_contracts_sha256") != bookmark.method_contracts_sha256
+        or snapshot.completeness != bookmark.completeness
+    ):
+        _fail("bookmark_feature_version_mismatch", "BB 收藏與原保存 v3 版本／方法身份不符")
+    artifact = snapshot.stock_snapshots.get(bookmark.stock_code)
+    if (
+        not isinstance(artifact, Mapping)
+        or artifact.get("snapshot_identity_sha256") != bookmark.snapshot_identity_sha256
+        or artifact.get("input_fingerprint_sha256") != bookmark.input_fingerprint_sha256
+        or str(artifact.get("market_date") or "") != bookmark.data_date
+    ):
+        _fail("bookmark_source_mismatch", "BB 收藏與原保存股票身份不符")
+    evaluation = evaluate_daily_market_conditions(
+        artifact["conditions"], bookmark.condition_keys, bookmark.combine_mode,
+        expected_decision_date=snapshot.decision_date,
+    )
+    if (
+        [item.to_dict() for item in evaluation.conditions] != bookmark.conditions
+        or evaluation.combined_state != bookmark.combined_state
+        or evaluation.why != bookmark.why
+        or evaluation.why_not != bookmark.why_not
+    ):
+        _fail("bookmark_condition_mismatch", "BB 收藏與原保存條件結果不符")
 
 
 def _verify_snapshot_root(

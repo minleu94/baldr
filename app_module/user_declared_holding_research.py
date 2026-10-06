@@ -11,7 +11,7 @@ slippage。保存採 append-only JSONL，讓修訂與封存仍可追溯，且不
 
 from __future__ import annotations
 
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 import csv
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -30,6 +30,7 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreRoute, PersonalStoreRouteError
 from app_module.dtos.portfolio_dtos import PositionDTO
 
 
@@ -1473,8 +1474,35 @@ class UserDeclaredHoldingResearchReadModel:
 class UserDeclaredHoldingResearchStore:
     """保存 user_declared revision stream 的 append-only JSONL adapter。"""
 
-    def __init__(self, path: Path | str):
+    def __init__(self, path: Path | str, *, route: PersonalStoreRoute | None = None):
         self.path = Path(path)
+        self.route = route
+        if route is not None:
+            if route.domain is not PersonalStoreDomain.DECLARED_HOLDINGS:
+                raise PersonalStoreRouteError("declared_holdings_domain_required")
+            if not route.identity.key.strip() or self.path != route.read_source:
+                raise PersonalStoreRouteError("declared_holdings_identity_mismatch")
+
+    @classmethod
+    def from_route(cls, route: PersonalStoreRoute) -> "UserDeclaredHoldingResearchStore":
+        return cls(route.read_source, route=route)
+
+    def _read_selected_records(self, *, cancel_callback: Callable[[], bool] | None = None) -> list[dict[str, Any]]:
+        records = _read_jsonl_unlocked(self.path, cancel_callback=cancel_callback)
+        if self.route is not None:
+            for event in records:
+                if str(event.get("portfolio_id", "")) != self.route.identity.key:
+                    raise PersonalStoreRouteError("declared_holdings_identity_mismatch")
+        return records
+
+    def _read_lock(self) -> Any:
+        if self.route is not None and self.route.write_target is None:
+            return nullcontext()
+        return _interprocess_lock(self.path)
+
+    def require_writer(self) -> None:
+        if self.route is not None and self.route.write_target is None:
+            raise PermissionError("declared holdings route is read-only")
 
     @classmethod
     def under_output_root(cls, output_root: Path | str) -> "UserDeclaredHoldingResearchStore":
@@ -1490,8 +1518,8 @@ class UserDeclaredHoldingResearchStore:
         if not self.path.exists():
             _raise_if_cancelled(cancel_callback)
             return ()
-        with _interprocess_lock(self.path):
-            records = _read_jsonl_unlocked(self.path, cancel_callback=cancel_callback)
+        with self._read_lock():
+            records = self._read_selected_records(cancel_callback=cancel_callback)
             _project_heads(records, cancel_callback=cancel_callback)
             return tuple(dict(record) for record in records)
 
@@ -1517,12 +1545,14 @@ class UserDeclaredHoldingResearchStore:
         include_archived: bool = False,
         cancel_callback: Callable[[], bool] | None = None,
     ) -> tuple[dict[str, Any], ...]:
+        if self.route is not None and portfolio_id is not None and portfolio_id != self.route.identity.key:
+            raise PersonalStoreRouteError("declared_holdings_identity_mismatch")
         cutoff_utc = _normalise_datetime(cutoff)
         if not self.path.exists():
             _raise_if_cancelled(cancel_callback)
             return ()
-        with _interprocess_lock(self.path):
-            records = _read_jsonl_unlocked(self.path, cancel_callback=cancel_callback)
+        with self._read_lock():
+            records = self._read_selected_records(cancel_callback=cancel_callback)
             _project_heads(records, cancel_callback=cancel_callback)
             visible_records: list[Mapping[str, Any]] = []
             for event in records:
@@ -1544,17 +1574,21 @@ class UserDeclaredHoldingResearchStore:
     def read_head(self, holding_id: str) -> dict[str, Any] | None:
         if not self.path.exists():
             return None
-        with _interprocess_lock(self.path):
-            records = _read_jsonl_unlocked(self.path)
+        with self._read_lock():
+            records = self._read_selected_records()
             heads = _project_heads(records)
             event = heads.get(holding_id)
             return None if event is None else dict(event)
 
     def append_revision(self, event: Mapping[str, Any]) -> dict[str, Any]:
+        self.require_writer()
+        if self.route is not None:
+            if str(event.get("portfolio_id", "")) != self.route.identity.key:
+                raise PersonalStoreRouteError("declared_holdings_identity_mismatch")
         candidate = dict(_json_safe(event))
         _validate_event_shape(candidate)
-        with _interprocess_lock(self.path):
-            records = _read_jsonl_unlocked(self.path)
+        with self._read_lock():
+            records = self._read_selected_records()
             heads = _project_heads(records)
             candidate_canonical = _event_canonical(candidate)
             request_id = str(candidate["request_id"])
@@ -1634,8 +1668,8 @@ class UserDeclaredHoldingResearchStore:
             return None
         if not self.path.exists():
             return None
-        with _interprocess_lock(self.path):
-            records = _read_jsonl_unlocked(self.path)
+        with self._read_lock():
+            records = self._read_selected_records()
             _project_heads(records)
             for event in records:
                 if str(event["request_id"]) == request_text:
@@ -1694,9 +1728,14 @@ class UserDeclaredHoldingResearchService:
         self,
         store: UserDeclaredHoldingResearchStore,
         *,
+        config: object | None = None,
         now_provider: Callable[[], datetime] | None = None,
         id_provider: Callable[[], str] | None = None,
     ):
+        if store.route is None and (
+            getattr(config, "personal_store_root", None) or getattr(config, "personal_store_mode", None)
+        ):
+            raise PersonalStoreRouteError("personal_store_selector_required")
         self.store = store
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
         self._id_provider = id_provider or (lambda: uuid4().hex)
@@ -1825,6 +1864,7 @@ class UserDeclaredHoldingResearchService:
         *,
         request_id: str | None = None,
     ) -> UserDeclaredHoldingRecord:
+        self.store.require_writer()
         payload = self._normalise_draft(draft)
         command_fingerprint = self._command_fingerprint(
             "create",
@@ -1886,6 +1926,7 @@ class UserDeclaredHoldingResearchService:
         expected_revision_number: int,
         request_id: str | None = None,
     ) -> UserDeclaredHoldingRecord:
+        self.store.require_writer()
         if (
             isinstance(expected_revision_number, bool)
             or not isinstance(expected_revision_number, int)
@@ -1951,6 +1992,7 @@ class UserDeclaredHoldingResearchService:
         reason: str = "",
         request_id: str | None = None,
     ) -> UserDeclaredHoldingRecord:
+        self.store.require_writer()
         if (
             isinstance(expected_revision_number, bool)
             or not isinstance(expected_revision_number, int)

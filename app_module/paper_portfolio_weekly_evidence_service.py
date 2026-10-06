@@ -17,6 +17,8 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
+from app_module.personal_store_routes import PersonalStoreRoute, PersonalStoreRouteError
+from app_module.personal_paper_store_paths import PersonalPaperStorePaths
 from app_module.paper_equal_weight_benchmark_ledger import EqualWeightBenchmarkEntry
 from app_module.paper_portfolio_snapshot_repository import (
     PaperPortfolioPositionSnapshot,
@@ -147,8 +149,23 @@ class PaperPortfolioWeeklyEvidenceService:
         cost_ledger_db_path: str | Path | None = None,
         portfolio_id: str = DEFAULT_PORTFOLIO_ID,
         benchmark_id: str = DEFAULT_BENCHMARK_ID,
+        route: PersonalStoreRoute | None = None,
+        config: object | None = None,
     ) -> None:
+        if route is None and (
+            getattr(config, "personal_store_root", None) or getattr(config, "personal_store_mode", None)
+        ):
+            raise PersonalStoreRouteError("personal_store_selector_required")
         self.output_root = Path(output_root)
+        if route is not None:
+            paths = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id)
+            self.state_db_path = paths.require_selected(state_db_path, paths.state_db)
+            self.benchmark_db_path = paths.require_selected(benchmark_db_path, paths.benchmark_db)
+            self.cost_ledger_db_path = paths.require_selected(cost_ledger_db_path, paths.cost_ledger_db)
+            self.portfolio_id = portfolio_id
+            self.benchmark_id = benchmark_id
+            self._report_service = PaperPortfolioWeeklyReportService()
+            return
         self.state_db_path = (
             Path(state_db_path)
             if state_db_path is not None

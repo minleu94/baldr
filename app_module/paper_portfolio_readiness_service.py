@@ -17,6 +17,8 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Mapping
 
+from app_module.personal_store_routes import PersonalStoreRoute, PersonalStoreRouteError
+from app_module.personal_paper_store_paths import PersonalPaperStorePaths
 from app_module.paper_trade_ledger import (
     PAPER_TRADE_LEDGER_SCHEMA_VERSION,
     PaperTradeFill,
@@ -231,8 +233,24 @@ class PaperPortfolioReadinessService:
         cost_ledger_db_path: str | Path | None = None,
         portfolio_id: str = DEFAULT_PORTFOLIO_ID,
         benchmark_id: str = DEFAULT_BENCHMARK_ID,
+        route: PersonalStoreRoute | None = None,
+        config: object | None = None,
     ) -> None:
+        if route is None and (
+            getattr(config, "personal_store_root", None) or getattr(config, "personal_store_mode", None)
+        ):
+            raise PersonalStoreRouteError("personal_store_selector_required")
         self.output_root = Path(output_root)
+        if route is not None:
+            paths = PersonalPaperStorePaths.from_route(route, portfolio_id=portfolio_id)
+            self.status_path = paths.require_selected(status_path, paths.status)
+            self.state_db_path = paths.require_selected(state_db_path, paths.state_db)
+            self.baseline_path = paths.require_selected(baseline_path, paths.baseline)
+            self.benchmark_db_path = paths.require_selected(benchmark_db_path, paths.benchmark_db)
+            self.cost_ledger_db_path = paths.require_selected(cost_ledger_db_path, paths.cost_ledger_db)
+            self.portfolio_id = portfolio_id
+            self.benchmark_id = benchmark_id
+            return
         self.status_path = (
             Path(status_path)
             if status_path is not None

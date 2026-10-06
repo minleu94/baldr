@@ -25,6 +25,7 @@ from app_module.dtos.portfolio_dtos import (
     TradeDTO,
 )
 from app_module.portfolio_store import PortfolioJsonlStore
+from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreRoute, PersonalStoreRouteError
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
 from data_module.config import TWStockConfig
 from data_module.portfolio_ledger_repository import (
@@ -68,12 +69,38 @@ class PortfolioService:
         position_service: object = None,
         ledger_repository: Optional[PortfolioLedgerRepository] = None,
         *,
+        route: PersonalStoreRoute | None = None,
+        ledger_route: PersonalStoreRoute | None = None,
+        ledger_source_namespace: str | None = None,
         market_session_cadence: MarketSessionCadence | None = None,
         now_provider: Any | None = None,
     ):
+        if route is None and (
+            getattr(config, "personal_store_root", None) or getattr(config, "personal_store_mode", None)
+        ):
+            raise PersonalStoreRouteError("personal_store_selector_required")
         self.config = config
         self.position_service = position_service
-        self.store = PortfolioJsonlStore(config.output_root)
+        if ledger_route is not None and route is None:
+            raise PersonalStoreRouteError("explicit_trades_route_required")
+        self.store = PortfolioJsonlStore(config.output_root, route=route)
+        if ledger_route is not None:
+            if ledger_route.domain is not PersonalStoreDomain.PORTFOLIO_LEDGER:
+                raise PersonalStoreRouteError("portfolio_ledger_domain_required")
+            if ledger_repository is not None:
+                raise PersonalStoreRouteError("ledger_route_repository_conflict")
+            if not ledger_route.identity.key.strip() or not ledger_source_namespace:
+                raise PersonalStoreRouteError("portfolio_ledger_identity_unknown")
+            if route is None or route.identity != ledger_route.identity:
+                raise PersonalStoreRouteError("portfolio_ledger_identity_mismatch")
+            if route.mode is not ledger_route.mode or route.source_kind is not ledger_route.source_kind:
+                raise PersonalStoreRouteError("portfolio_ledger_mode_mismatch")
+            ledger_repository = PortfolioLedgerRepository(
+                ledger_route.read_source, read_only=ledger_route.write_target is None,
+                portfolio_id=ledger_route.identity.key, source_namespace=ledger_source_namespace,
+            )
+        elif route is not None and ledger_repository is not None:
+            raise PersonalStoreRouteError("explicit_ledger_route_required")
         # 只有呼叫者明確注入隔離 repository 才會啟用精確帳本；既有 JSONL
         # 相容路徑仍由既有測試與 UI 使用，避免偷偷切換正式 writer。
         self.ledger_repository = ledger_repository
@@ -153,6 +180,7 @@ class PortfolioService:
         normalized: list[TradeDTO] = []
         for incoming in trades:
             dto = TradeDTO.from_dict(incoming.to_dict())
+            self.store.require_portfolio_identity(dto.portfolio_id)
             if not dto.created_at:
                 dto.created_at = datetime.now().isoformat()
             if not dto.trade_id:
@@ -173,6 +201,7 @@ class PortfolioService:
         return normalized
 
     def list_trades(self, portfolio_id: str = "default") -> List[TradeDTO]:
+        self.store.require_portfolio_identity(portfolio_id)
         trades = [TradeDTO.from_dict(item) for item in self.store.load_trades()]
         return [trade for trade in trades if trade.portfolio_id == portfolio_id]
 
@@ -191,6 +220,7 @@ class PortfolioService:
         return None
 
     def get_portfolio(self, portfolio_id: str = "default") -> PortfolioDTO:
+        self.store.require_portfolio_identity(portfolio_id)
         # 由同一次 JSONL 讀取建立持倉與已記錄費稅摘要，避免兩個投影讀到
         # 不同版本；此路徑只讀取，沒有改寫或補算交易成本。
         raw_trades = self.store.load_trades()
@@ -323,6 +353,8 @@ class PortfolioService:
         logger.info("[PortfolioService] cleared all trades data")
 
     def _load_domain_trades(self, portfolio_id: Optional[str] = None) -> List[Trade]:
+        if portfolio_id is not None:
+            self.store.require_portfolio_identity(portfolio_id)
         trades = [Trade.from_mapping(item) for item in self.store.load_trades()]
         if portfolio_id is not None:
             trades = [trade for trade in trades if trade.portfolio_id == portfolio_id]

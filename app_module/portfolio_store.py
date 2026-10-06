@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 import time
 from typing import Any, Dict, Iterable, Iterator, List, Mapping, Sequence
+from app_module.personal_store_routes import PersonalStoreDomain, PersonalStoreRoute, PersonalStoreRouteError
 
 from app_module.dtos.decision_continuity_dtos import (
     ACTION_ADDED,
@@ -208,7 +209,20 @@ def project_journal_records(
 class PortfolioJsonlStore:
     """Small storage adapter kept behind app_module services."""
 
-    def __init__(self, output_root: Path, *, journal_file: Path | None = None):
+    def __init__(self, output_root: Path, *, journal_file: Path | None = None,
+                 route: PersonalStoreRoute | None = None):
+        self.route = route
+        if route is not None:
+            if route.domain is not PersonalStoreDomain.TRADES:
+                raise PersonalStoreRouteError("trades_domain_required")
+            if not route.identity.key.strip():
+                raise PersonalStoreRouteError("trades_identity_unknown")
+            if journal_file is not None:
+                raise PersonalStoreRouteError("trades_route_journal_forbidden")
+            self.portfolio_dir = route.read_source.parent
+            self.trades_file = route.read_source
+            self.journal_file = self.portfolio_dir / "journal_entries.jsonl"
+            return
         self.portfolio_dir = Path(output_root) / "portfolio"
         if journal_file is None:
             self.portfolio_dir.mkdir(parents=True, exist_ok=True)
@@ -225,8 +239,32 @@ class PortfolioJsonlStore:
         self._append_jsonl(self.trades_file, trade)
 
     def load_trades(self) -> List[Dict[str, Any]]:
+        if self.route is not None:
+            if self.route.write_target is None or not self.trades_file.exists():
+                records = list(self._read_jsonl_unlocked(self.trades_file))
+            else:
+                with _interprocess_lock(self.trades_file):
+                    records = list(self._read_jsonl_unlocked(self.trades_file))
+            self._validate_trade_identity(records)
+            return records
         with _interprocess_lock(self.trades_file):
             return list(self._read_jsonl_unlocked(self.trades_file))
+
+    def require_portfolio_identity(self, portfolio_id: str) -> None:
+        if self.route is not None and portfolio_id != self.route.identity.key:
+            raise PersonalStoreRouteError("trades_identity_mismatch")
+
+    def _validate_trade_identity(self, records: Iterable[Mapping[str, Any]]) -> None:
+        if self.route is not None:
+            for item in records:
+                self.require_portfolio_identity(str(item.get("portfolio_id", "")))
+
+    def _require_writer(self, path: Path) -> None:
+        if self.route is not None:
+            if path != self.trades_file:
+                raise PersonalStoreRouteError("trades_route_journal_forbidden")
+            if self.route.write_target is None:
+                raise PermissionError("portfolio trades route is read-only")
 
     def append_journal_entry(self, entry: Dict[str, Any]) -> None:
         self._append_jsonl(self.journal_file, entry)
@@ -248,6 +286,7 @@ class PortfolioJsonlStore:
         expected_history_token: str | None = None,
     ) -> None:
         items = [dict(item) for item in revisions]
+        self._require_writer(self.journal_file)
         if not items:
             return
         for item in items:
@@ -296,6 +335,8 @@ class PortfolioJsonlStore:
                 handle.write("\n")
 
     def load_journal_entries(self) -> List[Dict[str, Any]]:
+        if self.route is not None:
+            raise PersonalStoreRouteError("trades_route_journal_forbidden")
         with _interprocess_lock(self.journal_file):
             records = self._read_jsonl_unlocked(self.journal_file)
         return project_journal_records(records)
@@ -303,12 +344,16 @@ class PortfolioJsonlStore:
     def load_journal_history(self) -> List[Dict[str, Any]]:
         """Return raw parsed records, including legacy rows and tombstones."""
 
+        if self.route is not None:
+            raise PersonalStoreRouteError("trades_route_journal_forbidden")
         with _interprocess_lock(self.journal_file):
             return list(self._read_jsonl_unlocked(self.journal_file))
 
     def load_journal_snapshot(self) -> tuple[List[Dict[str, Any]], str]:
         """Read history and a compare-and-append token under one lock."""
 
+        if self.route is not None:
+            raise PersonalStoreRouteError("trades_route_journal_forbidden")
         with _interprocess_lock(self.journal_file):
             records = list(self._read_jsonl_unlocked(self.journal_file))
             return records, _journal_history_token(records)
@@ -336,6 +381,12 @@ class PortfolioJsonlStore:
         self._overwrite_jsonl(self.journal_file, entries)
 
     def _overwrite_jsonl(self, path: Path, entries: Iterable[Mapping[str, Any]]) -> None:
+        self._require_writer(path)
+        entries = list(entries)
+        if path == self.trades_file:
+            self._validate_trade_identity(entries)
+            if self.route is not None:
+                self.load_trades()
         lines = [_canonical_record(item) for item in entries]
         path.parent.mkdir(parents=True, exist_ok=True)
         with _interprocess_lock(path):
@@ -345,12 +396,17 @@ class PortfolioJsonlStore:
                     handle.write("\n")
 
     def _append_jsonl(self, path: Path, item: Dict[str, Any]) -> None:
+        self._require_writer(path)
+        if path == self.trades_file:
+            self._validate_trade_identity((item,))
         line = _canonical_record(item)
         path.parent.mkdir(parents=True, exist_ok=True)
         with _interprocess_lock(path):
             # Never append behind a partial/corrupt stream; importantly, this
             # read does not rewrite any pre-existing bytes.
-            self._read_jsonl_unlocked(path)
+            existing = self._read_jsonl_unlocked(path)
+            if path == self.trades_file:
+                self._validate_trade_identity(existing)
             self._ensure_line_separator_unlocked(path)
             with open(path, "a", encoding="utf-8") as handle:
                 handle.write(line)

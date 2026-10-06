@@ -1,5 +1,9 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-06 明示benchmark覆蓋
+
+新增[benchmark來源／保存／唯讀UI QA](../06_qa/UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md)，Manual／Snapshot／architecture同步具名無預設、v1/null與v2保存、same-period basis gate、成本版本、query-only公開資料與fixture分報、取消stale與完整label最小缺口。UX21仍partial；正式／PIT／fit與Task未啟用。
+
 ## 2026-10-06 UX08 保存圖表覆蓋
 
 新增[QA收據](../06_qa/UX08_SAVED_CHART_READBACK_20261006.md)對應versioned nested artifact／producer／exact parent讀回、原精度及MA缺列、舊保存缺件與最新研究分離、合作取消返回與stale。Manual同步入口、步驟、cutoff／120列參數、資格限制及排錯；Snapshot與現行架構同步有限範圍。251案例不等於Native／真人、推薦writer／舊補建或全部UX08驗收。

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -12,18 +13,24 @@ from app_module.rule_research_observation_acceptance import _parent
 from app_module.rule_research_parent_capture import BoundedRuleResearchParentWriter, _snapshot_repository
 from app_module.rule_research_sample_capture import BoundedRuleResearchCaptureWriter, _digest, _json, _require
 from data_module.official_trading_calendar_cache import load_verified_twse_calendar_cache
+from app_module.rule_research_benchmark_adapter import load_explicit_market_benchmark
+from app_module.rule_research_benchmark_settings import benchmark_request as make_benchmark_request, result_payload, read_benchmark_settings
 
 ADAPTER_VERSION = "rule-research-current-observed-forward.v1"
+BENCHMARK_ADAPTER_VERSION = "rule-research-current-observed-forward.v2"
 
 
 def build_current_observed_forward(parent_receipt: str | Path, source_db: str | Path,
         calendar_cache: str | Path, *, as_of_date: str, cost_policy: CostPolicy | None = None,
+        benchmark_settings: dict[str, Any] | None = None,
         cancel_callback: Callable[[], bool] | None = None) -> dict[str, Any]:
     """只讀指定來源；年度計畫 session 僅供研究，臨時休市與 available-at 保留未知。"""
     cancel = cancel_callback or (lambda: False)
     def check() -> None:
         _require(not cancel(), "forward_cancelled")
     check()
+    if benchmark_settings is not None:
+        benchmark_settings = read_benchmark_settings(benchmark_settings)
     now = datetime.now(timezone.utc)
     as_of = date.fromisoformat(as_of_date)
     _require(as_of.isoformat() == as_of_date and as_of <= now.date(), "forward_as_of_invalid")
@@ -62,6 +69,17 @@ def build_current_observed_forward(parent_receipt: str | Path, source_db: str | 
     source_path = Path(source_db).absolute()
     with SQLiteDailyMarketSnapshotSource(source_path, as_of, cancel_callback=cancel) as source:
         pin = _source_pin(source.db_path)
+        target_pin = _digest(_json({"database": str(source.db_path.resolve()),
+            "schema_identity": source.schema_identity, "database_revision_pin": pin}).encode("utf-8"))
+        benchmark_result = None
+        target_basis_status = "unknown"
+        request = None
+        if benchmark_settings is not None:
+            request, target_basis_status = make_benchmark_request(benchmark_settings,
+                decision_date=decision.isoformat(), endpoint_dates=endpoints,
+                as_of_date=as_of_date, target_source_pin=target_pin)
+            benchmark_result = load_explicit_market_benchmark(request, cancel_callback=cancel, observed_at=now)
+            check()
         for code in parent["universe"]["value"]["included_stock_codes"]:
             check()
             rows, _, scope, _ = source.load(code)
@@ -92,10 +110,19 @@ def build_current_observed_forward(parent_receipt: str | Path, source_db: str | 
                 points.append(PricePoint(code, day, "available" if price is not None else "missing",
                     price, scope + ":daily_prices", "TWD", "share", "unadjusted_close", "unknown", None))
         source.validate_source_stable()
+        if benchmark_result is not None and benchmark_result.status == "qualified_research":
+            _require(request is not None and target_basis_status == "caller_declared_research_only",
+                     "forward_benchmark_target_basis_unverified")
+            assert request is not None and request.target_corporate_action_basis is not None
+            points = [replace(point, corporate_action_basis=request.target_corporate_action_basis)
+                      for point in points]  # 只用明示、source-pin綁定的研究宣告，不授自然權威。
+            points.extend(benchmark_result.prices)
         projection = build_parent_rule_research_forward_outcome(
             BoundedRuleResearchParentWriter(Path(parent_receipt).absolute().parent.parent).read(parent_pin["parent_identity_sha256"]),
             children, decision_date=decision.isoformat(), as_of_date=as_of_date,
-            calendar=calendar, prices=points, benchmark=None, cost_policy=cost_policy).to_dict()
+            calendar=calendar, prices=points,
+            benchmark=None if benchmark_result is None else benchmark_result.benchmark,
+            cost_policy=cost_policy).to_dict()
         source_contract = {"adapter_version": ADAPTER_VERSION, "database": str(source.db_path),
             "schema_identity_sha256": source.schema_identity, "database_revision_pin": pin,
             "calendar_cache": str(path.resolve()), "calendar_evidence": calendar_evidence,
@@ -104,6 +131,17 @@ def build_current_observed_forward(parent_receipt: str | Path, source_db: str | 
             "price_basis": "unadjusted_close", "corporate_action_basis": "unknown",
             "source_availability": "unknown", "source_mode": "current_observed",
             "benchmark_status": "unconfigured_unknown", "row_pins": row_pins, "issues": issues}
+        if benchmark_settings is not None:
+            _require(benchmark_result is not None, "forward_benchmark_result_missing")
+            assert benchmark_result is not None
+            source_contract.update(adapter_version=BENCHMARK_ADAPTER_VERSION,
+                benchmark_request=benchmark_settings, benchmark_result=result_payload(benchmark_result),
+                benchmark_status=benchmark_result.status, benchmark_endpoint_dates=endpoints,
+                target_source_pin_sha256=target_pin, target_basis_status=target_basis_status)
+            # 再讀同請求，拒絕benchmark在target讀取期間修訂；不自動接受觀測pin。
+            _require(request is not None and result_payload(load_explicit_market_benchmark(
+                request, cancel_callback=cancel, observed_at=now)) == source_contract["benchmark_result"],
+                "forward_benchmark_changed_during_read")
         source.validate_source_stable()
     check()
     _require(_parent(parent_receipt)[2] == parent_pin, "forward_parent_changed")

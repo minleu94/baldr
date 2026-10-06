@@ -1,5 +1,19 @@
 # baldr 完整操作手冊
 
+## 2026-10-06 明示市場基準的研究成效
+
+入口仍是每日研究的母體保存收據→「研究結果」→選擇同parent的outcome receipt。畫面唯讀：顯示基準名稱／設定版本、比較可用或資料不足、成本版本、H5／10／20完整分母與毛／淨／超額；basis／來源／availability及hash在「展開來源與診斷」。沒有可比行或沒有設定就保留未知與空值。這不授PIT／ML／正式／交易資格；符合方法不等於交易selected。
+
+本機隔離CLI：`python scripts/scheduled/run_rule_research_forward_isolated.py --runtime-config <runtime.json> --benchmark-settings <明示設定.json>`，預設只preflight；只有明示`--execute-isolated`才保存隔離研究版本。`--without-benchmark`明示未設定，與前一選項互斥；不給選項使用runtime原設定。沒有benchmark預設，未設定不可自動代入其他ML／回測基準。正式Task未啟用。UI只看原收據的選擇，不在舊結果上換基準重算。
+
+參數：runtime v1只接受benchmark=null，v2接受null或明示設定。設定schema為`rule-research-explicit-benchmark-settings.v1`：version是使用者研究契約版本；database_path必須absolute；source_identity／benchmark_name須明示；currency／unit／price_basis／corporate_action_basis及target_currency／target_price_basis／target_corporate_action_basis說明同期間比較basis；availability_by_date對每個decision／H5／10／20 endpoint明示可得日或null；expected_rowset_sha256、expected_decision_row_sha256與target_source_pin_sha256核對來源版本。period不由設定另選，沿同parent、calendar與asof。缺任何契約資料不得補0或補查最新日。
+
+先不帶pins的preflight只提供observed pins與unknown；核對自己明示的來源、期間與basis後，才把接受的pins填回設定重送，程式不自動接受。target source pin綁實際DB／schema／main-WAL revision；公司行動basis原unknown，只有與pin相符的caller研究宣告可用於比較，不等於取得歷史資料權威。availability未知或晚到保持缺件，不用觀測時鐘補歷史時點。
+
+成本沿原CostPolicy：version／formula_id及target／benchmark各entry_bp／exit_bp，整數bp，null表示未知；0僅表示使用者明示零成本，不把未知補成0。target_net減benchmark_net須同期間相容、兩邊成本齊全才有net excess；只有gross可算時保留gross，其他留空。保存會封存設定來源檔hash、original／effective runtime、basis／期間／availability／pins與成本版本；重讀不查較新DB，來源修訂另存，舊benchmark=null收據仍可讀。
+
+排錯：跨來源／revision pin失配不接受；target pin失配會blocked，benchmark缺日／basis失配／availability缺件會未知且不產生excess。核對來源診斷，更新自己的明示設定後重跑隔離版本；不要更改舊收據或從最新資料補舊版。取消／重試／返回及stale callback仍沿既有gate。完整label的actual-session／custody、歷史調整／時點、期間MFE／MAE／停牌、成本政策與ML consumer資格仍缺；不因此開重訓。[整合與分開的公開資料QA](../06_qa/UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md)。
+
 ## 2026-10-06 保存價格／MA20／MA60 的原版本圖表
 
 入口：新產生的每日研究快照／parent capture→該股個股研究→「價格／技術」。原排名下鑽沿相同parent版本。此頁重讀已保存價格與MA20／60，不會補今天的行情，也不重算均線；圖與精確表共用原DTO。股票、決策日、實際資料日、同版來源、cutoff及可得時間均列出；完整hash在來源診斷／提示。cutoff依原保存manifest（含時區）固定，120列有界，不是目前日期選擇器。

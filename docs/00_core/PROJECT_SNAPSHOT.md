@@ -1,5 +1,11 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
+## 2026-10-06 UX21 明示benchmark整合
+
+沿5b978df2，review10508947／focused35後cherry-pick57934c51，caller具名設定→actual query-only source→同期間Decimal core→版本化保存／重讀→readonly receipt UI已接線。runtime／saved v2保留v1 benchmark=null相容，成本與basis／availability／source／期間pins封存；未知與失配不補0，不提高PIT／ML／正式／交易資格。沒有UX21預設基準，CLI需明示JSON或未設定。
+
+fixture可比gross／net excess與新程序／修訂、缺日、跨source、取消stale驗證；公開D市場TAIEX四日只讀另報，source main/WAL不變、duplicate／newprocess一致，actual公司行動basis／accepted pins未具備，benchmark unknown／excess null。TAIEX只屬QA具名請求，不是使用者預設。UX21整項仍partial／stage7pending，完整label與正式部署／真人／自然成熟未完成；9stage 1done/7partial/1pending、24UX 2done/20partial/2pending不變。[整合收據及完整label最小缺口](../06_qa/UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md)。
+
 ## 2026-10-06 UX08 保存圖表有限閉環
 
 沿3ee80ff8，新日研究／隔離parent producer把既存價格及MA20／60歷史以有界versioned chart封入原feature artifact；個股／原排名下鑽只讀exact parent，圖與精確表同源，不以今天補保存來源。原DB改值／不存在、新程序重讀、gap、取消重試返回／stale及舊保存缺件／獨立最新研究已驗。圖表可用不放寬原feature／rank核驗；未知availability／PIT仍false。

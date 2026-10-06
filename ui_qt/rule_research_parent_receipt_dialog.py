@@ -108,6 +108,108 @@ def _outcome_reasons(horizon: dict[str, Any]) -> str:
     return "；".join(dict.fromkeys(labels)) or "僅端點研究"
 
 
+def _benchmark_reason_summary(reason_codes: object) -> str:
+    """將基準診斷化為保守的白話提示；原始代碼留在收合診斷。"""
+    if not isinstance(reason_codes, (list, tuple)):
+        return "基準尚未完成核對"
+    codes = [item.casefold() for item in reason_codes if isinstance(item, str)]
+    labels: list[str] = []
+    if any("availability" in code or "available_date" in code for code in codes):
+        labels.append("來源可得時間未知或晚於評估日")
+    if any(any(token in code for token in ("basis", "currency", "unit", "corporate_action", "price_basis")) for code in codes):
+        labels.append("比較基礎缺件或不相容")
+    if any("missing" in code or "duplicate" in code or "not_observed" in code for code in codes):
+        labels.append("基準指定日期資料缺件或不唯一")
+    if any(any(token in code for token in ("pin", "revision", "hash")) for code in codes):
+        labels.append("基準來源版本或指紋未核對")
+    if any("source" in code or "database" in code for code in codes):
+        labels.append("基準來源無法核對")
+    return "；".join(dict.fromkeys(labels)) or "比較基礎或來源資料尚未核對"
+
+
+def _has_comparable_benchmark_row(projection: dict[str, Any]) -> bool:
+    """規格或來源狀態不能代替實際的相容超額結果。"""
+    members = projection.get("members")
+    if not isinstance(members, list):
+        return False
+    for member in members:
+        if not isinstance(member, dict) or not isinstance(member.get("horizons"), list):
+            continue
+        for horizon in member["horizons"]:
+            comparison = horizon.get("comparison") if isinstance(horizon, dict) else None
+            if not isinstance(comparison, dict) or comparison.get("basis_comparable") is not True:
+                continue
+            gross_excess = comparison.get("gross_excess_return")
+            if isinstance(gross_excess, dict) and gross_excess.get("integer_bp_half_even") is not None:
+                return True
+    return False
+
+
+def _benchmark_summary(projection: dict[str, Any], source_contract: object) -> str:
+    """只呈現保存回執中的基準設定與狀態，不推定或補造來源。"""
+    source = source_contract if isinstance(source_contract, dict) else {}
+    request = source.get("benchmark_request")
+    request = request if isinstance(request, dict) else None
+    result = source.get("benchmark_result")
+    result = result if isinstance(result, dict) else {}
+    result_spec = result.get("benchmark")
+    result_spec = result_spec if isinstance(result_spec, dict) else None
+    projection_spec = projection.get("benchmark")
+    projection_spec = projection_spec if isinstance(projection_spec, dict) else None
+    name = next((value for value in (
+        request.get("benchmark_name") if request is not None else None,
+        request.get("instrument_id") if request is not None else None,
+        result_spec.get("instrument_id") if result_spec is not None else None,
+        projection_spec.get("instrument_id") if projection_spec is not None else None,
+    ) if isinstance(value, str) and value.strip()), None)
+
+    has_spec = result_spec is not None or projection_spec is not None
+    has_request = request is not None and bool(request)
+    raw_status = result.get("status") or source.get("benchmark_status")
+    if not isinstance(raw_status, str) or not raw_status.strip():
+        raw_status = "explicit_research_input" if has_spec else "unconfigured_unknown"
+    status = raw_status.strip().casefold()
+    reasons = result.get("reason_codes", [])
+    basis_status = source.get("target_basis_status")
+    reason_codes = [item.casefold() for item in reasons if isinstance(item, str)] if isinstance(reasons, (list, tuple)) else []
+    incomplete_benchmark = any(
+        "missing" in code or "duplicate" in code or "not_observed" in code
+        or any(token in code for token in ("basis", "currency", "unit", "corporate_action", "price_basis"))
+        for code in reason_codes
+    )
+    has_comparable_row = _has_comparable_benchmark_row(projection)
+
+    if not has_request and not has_spec:
+        return "基準設定：未設定；超額未知，保留空值。歷史 PIT／正式／訓練／交易資格未核定。"
+
+    label = name or "已明示基準"
+    version = request.get("version") if request is not None else None
+    setting = f"設定版本 {version}" if isinstance(version, str) and version.strip() else "設定版本未載明"
+    lines = [f"基準設定：{label} · {setting}（收據明示）。"]
+    if (status in {"qualified_research", "explicit_research_input"}
+            and projection_spec is not None and basis_status != "unknown" and not incomplete_benchmark
+            and has_comparable_row):
+        lines.append("基準狀態：已有同期間可比研究結果；其他列依表格缺件。此宣告不核定歷史 PIT／正式／訓練／交易資格。")
+    else:
+        reason = _benchmark_reason_summary(reasons)
+        if basis_status == "unknown" and "比較基礎" not in reason:
+            if reason != "比較基礎或來源資料尚未核對":
+                reason = "比較基礎未知或不相容；" + reason
+            else:
+                reason = "比較基礎未知或不相容"
+        elif status in {"unconfigured_unknown", "not_configured", "unconfigured"}:
+            reason = "未設定或來源未核對"
+        elif status == "rejected":
+            reason = "設定或來源未通過核對"
+        elif projection_spec is None and status == "qualified_research":
+            reason = "基準結果缺少可比較資料"
+        elif not has_comparable_row and reason == "比較基礎或來源資料尚未核對":
+            reason = "目前沒有基礎相容且端點完整的同期間結果"
+        lines.append(f"基準狀態：未知（{reason}）；超額未知，保留空值。")
+        lines.append("歷史 PIT／正式／訓練／交易資格未核定。")
+    return "\n".join(lines)
+
+
 class RuleResearchParentReceiptDialog(QDialog):
     """同一視窗重讀、合作取消及返回；generation 拒絕舊 callback。"""
     def __init__(self, parent: QWidget | None = None, *, reader: Callable[..., dict[str, Any]] = read_parent_receipt_selection) -> None:
@@ -145,6 +247,11 @@ class RuleResearchParentReceiptDialog(QDialog):
         self.outcome_summary.setTextFormat(Qt.TextFormat.PlainText)
         self.outcome_summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         outcome_layout.addWidget(self.outcome_summary)
+        self.benchmark_summary = QLabel("基準設定尚未核對；超額未知。")
+        self.benchmark_summary.setWordWrap(True)
+        self.benchmark_summary.setTextFormat(Qt.TextFormat.PlainText)
+        self.benchmark_summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        outcome_layout.addWidget(self.benchmark_summary)
         controls = QHBoxLayout()
         self.outcome_input_button = QPushButton("選擇結果輸入／保存收據")
         self.outcome_input_button.clicked.connect(self.choose_outcome_input)
@@ -239,6 +346,7 @@ class RuleResearchParentReceiptDialog(QDialog):
     def _clear_outcome(self, message: str) -> None:
         self._outcome_projection = None
         self.outcome_summary.setText(message)
+        self.benchmark_summary.setText("基準設定尚未核對；超額未知。")
         self.outcome_method.clear()
         self.outcome_table.setRowCount(0)
 
@@ -343,11 +451,11 @@ class RuleResearchParentReceiptDialog(QDialog):
         self.audit.setPlainText(json.dumps({"source": result["audit"], "readiness": r}, ensure_ascii=False, indent=2))
         outcome = result.get("outcome")
         if outcome is not None:
-            self._render_outcome(outcome["projection"], contracts)
+            source = outcome.get("source_contract")
+            self._render_outcome(outcome["projection"], contracts, source)
             if outcome.get("source_contract") is not None:
-                source = outcome["source_contract"]
                 self.outcome_summary.setText(self.outcome_summary.text() + "\n來源：目前觀察未調整收盤價／年度計畫日曆，非含息總報酬；臨時休市與歷史可用時間未知，僅供研究。保存版本不採用較新資料。")
-                if source.get("issues"):
+                if isinstance(source, dict) and source.get("issues"):
                     self.outcome_summary.setText(self.outcome_summary.text() + f"\n來源缺件：指定決策日或終點有 {len(source['issues'])} 筆價格資料不足；未成熟與缺件分開保留，詳情可展開來源診斷。")
             self.audit.setPlainText(self.audit.toPlainText() + "\n" + json.dumps({"forward_outcome": outcome}, ensure_ascii=False, indent=2))
             self.next_step.setText("母體保存與明示研究輸入已核對；H5／H10／H20 的可看報酬、資料不足與未成熟分列於結果頁。"
@@ -358,7 +466,9 @@ class RuleResearchParentReceiptDialog(QDialog):
             if result.get("outcome_error"):
                 self.audit.setPlainText(self.audit.toPlainText() + "\n" + str(result["outcome_error"]))
 
-    def _render_outcome(self, projection: dict[str, Any], contracts: dict[str, Any]) -> None:
+    def _render_outcome(
+        self, projection: dict[str, Any], contracts: dict[str, Any], source_contract: object = None,
+    ) -> None:
         self._outcome_projection = projection
         self.outcome_method.blockSignals(True)
         self.outcome_method.clear()
@@ -377,12 +487,13 @@ class RuleResearchParentReceiptDialog(QDialog):
                     f"{_OUTCOME_STATUS.get(state, state)} {count}" for state, count in counts.items()))
         cost = projection["cost_policy"]
         if cost is None:
-            lines.append("成本未知：毛報酬可判讀時保留，成本後及成本後超額不評估。")
+            lines.append("成本政策版本未明示；成本未知，毛報酬可判讀時保留，成本後及成本後超額不評估。")
         else:
             fields = ("target_entry_bp", "target_exit_bp", "benchmark_entry_bp", "benchmark_exit_bp")
             values = ["未知" if cost[f] is None else str(cost[f]) for f in fields]
             lines.append(f"成本版本 {cost['version']} · 標的進／出 {values[0]}/{values[1]} bp · 基準進／出 {values[2]}/{values[3]} bp。")
         self.outcome_summary.setText("\n".join(lines))
+        self.benchmark_summary.setText(_benchmark_summary(projection, source_contract))
         self.outcome_method.blockSignals(False)
         self._render_outcome_rows()
 

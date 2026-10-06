@@ -1,5 +1,9 @@
 # Feature-to-Test Routing Matrix (2026-06-23)
 
+## 2026-10-06 UX21 benchmark接線測試路由
+
+`test_rule_research_benchmark_adapter`＋`test_rule_research_benchmark_integration`驗typed設定、source／basis／period／availability／pins與成本保存；既有`test_rule_research_forward_outcome`／`test_rule_research_forward_isolated`／`test_rule_research_forward_outcome_reader`／`test_rule_research_daily_owner`驗core、null相容與日報；`test_ui_qt_forward_outcome_receipt`／`test_ui_qt_parent_receipt_dialog`驗readonly顯示、cancel／retry／return／stale。deep parent使用短user Temp避免Windows260路徑超限。UI仍強制Workbench／validator／fullmypy、changed compile／quant。[公開市場唯讀與fixture分報](UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md)。
+
 ## 2026-10-06 UX08 同版保存圖表測試路由
 
 新增`test_saved_stock_technical_chart`／`test_ui_qt_saved_stock_chart`；改動service先跑`test_stock_research_report_service`／`test_stock_research_chart_payload`／`test_stock_research_technical_history`／`test_stock_research_shared_feature_consumer`／`test_ui_qt_stock_research_report`，producer／repository／screener及parent capture／daily owner／forward isolated驗相容；rank bookmark flow／source recovery／navigation驗最新研究與來源返回。深parent fixture用短authorized Temp避免Windows路徑超限。UI後強制Workbench／update validator／完整mypy與changed Python compile、quant。[251案例去重及raw收據](UX08_SAVED_CHART_READBACK_20261006.md)。

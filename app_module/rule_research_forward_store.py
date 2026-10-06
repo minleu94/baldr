@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app_module.rule_research_forward_outcome import CostPolicy, ForwardOutcomeProjection
-from app_module.rule_research_forward_source import ADAPTER_VERSION, build_current_observed_forward
+from app_module.rule_research_forward_source import ADAPTER_VERSION, BENCHMARK_ADAPTER_VERSION, build_current_observed_forward
+from app_module.rule_research_benchmark_settings import read_benchmark_settings, verify_saved_benchmark
 from app_module.rule_research_observation_acceptance import _parent
 from app_module.rule_research_sample_capture import (
     MAX_CAPTURES, MAX_CAPTURE_BYTES, MAX_RETAINED_BYTES, SAFETY_RESERVE_BYTES,
@@ -20,6 +21,8 @@ from app_module.rule_research_sample_capture import (
 
 STORE_SCHEMA = "rule-research-forward-saved.v1"
 RUNTIME_SCHEMA = "rule-research-forward-isolated-runtime.v1"
+BENCHMARK_RUNTIME_SCHEMA = "rule-research-forward-isolated-runtime.v2"
+BENCHMARK_STORE_SCHEMA = "rule-research-forward-saved.v2"
 QUALIFICATION = {"research_only": True, "historical_pit_eligible": False, "formal_eligible": False,
                  "training_eligible": False, "natural_authority": False, "execution_eligible": False,
                  "selection_status": "unknown", "source_mode": "current_observed"}
@@ -59,7 +62,8 @@ class SavedForwardOutcome:
                  "forward_saved_byte_or_canonical_bound")
         _require(set(b) == {"schema_version", "capture_identity_sha256", "observed_at", "adapter_version",
             "qualification", "runtime_pin", "parent_pin", "source_contract", "projection"}
-            and b["schema_version"] == STORE_SCHEMA and b["adapter_version"] == ADAPTER_VERSION
+            and (b["schema_version"], b["adapter_version"]) in {
+                (STORE_SCHEMA, ADAPTER_VERSION), (BENCHMARK_STORE_SCHEMA, BENCHMARK_ADAPTER_VERSION)}
             and b["qualification"] == QUALIFICATION and b["capture_identity_sha256"] == _identity(b),
             "forward_saved_envelope_invalid")
         p = _projection(b)
@@ -67,8 +71,15 @@ class SavedForwardOutcome:
         _require(b["source_contract"]["source_mode"] == "current_observed"
             and b["source_contract"]["source_availability"] == "unknown"
             and b["source_contract"]["calendar_scope"] == "planned_annual_closures_only"
-            and b["source_contract"]["temporary_closure_status"] == "unknown"
-            and p["benchmark"] is None, "forward_saved_source_scope_invalid")
+            and b["source_contract"]["temporary_closure_status"] == "unknown",
+            "forward_saved_source_scope_invalid")
+        if b["schema_version"] == STORE_SCHEMA:
+            _require(p["benchmark"] is None, "forward_saved_source_scope_invalid")
+        else:
+            _require(b["source_contract"]["adapter_version"] == BENCHMARK_ADAPTER_VERSION
+                     and b["runtime_pin"]["value"]["schema_version"] == BENCHMARK_RUNTIME_SCHEMA,
+                     "forward_saved_benchmark_version_invalid")
+            verify_saved_benchmark(b["source_contract"], p, b["runtime_pin"]["value"])
         observed = datetime.fromisoformat(b["observed_at"])
         _clock(observed)
         _require(observed <= datetime.now(timezone.utc), "forward_saved_future_clock")
@@ -121,6 +132,7 @@ def read_forward_receipt(parent_receipt: str | Path, outcome_receipt: str | Path
 
 
 def run_forward_isolated(runtime_path: str | Path, *, execute: bool = False,
+        benchmark_settings_path: str | Path | None = None, benchmark_unconfigured: bool = False,
         cancel_callback: Callable[[], bool] | None = None) -> dict[str, Any]:
     """明示 exact parent／來源／clock／cost；預設 preflight，不建 Task。"""
     publication: dict[str, Any] | None = None
@@ -131,11 +143,31 @@ def run_forward_isolated(runtime_path: str | Path, *, execute: bool = False,
         config = json.loads(raw, object_pairs_hook=_pairs)
         _require(isinstance(config, dict) and set(config) == {"schema_version", "parent_receipt", "source_db",
             "calendar_cache", "as_of_date", "cost_policy", "benchmark", "outcome_root"}
-            and config["schema_version"] == RUNTIME_SCHEMA and config["benchmark"] is None,
+            and (config["schema_version"] == RUNTIME_SCHEMA and config["benchmark"] is None
+                 or config["schema_version"] == BENCHMARK_RUNTIME_SCHEMA),
+            "forward_runtime_scope_invalid")
+        selected_pin: dict[str, Any] | None = None
+        _require(not (benchmark_settings_path is not None and benchmark_unconfigured),
+                 "forward_benchmark_selection_conflict")
+        original_config = json.loads(raw, object_pairs_hook=_pairs)
+        if benchmark_settings_path is not None:
+            selected_path = Path(benchmark_settings_path).absolute()
+            selected_raw = _read_file(selected_path, 48 * 1024)
+            selected_value = read_benchmark_settings(json.loads(selected_raw, object_pairs_hook=_pairs))
+            selected_pin = {"source_ref": str(selected_path.resolve()),
+                            "source_sha256": _digest(selected_raw), "value": selected_value}
+            config = {**config, "schema_version": BENCHMARK_RUNTIME_SCHEMA, "benchmark": selected_value}
+        elif benchmark_unconfigured:
+            config = {**config, "benchmark": None}
+        _require(isinstance(config, dict) and set(config) == {"schema_version", "parent_receipt", "source_db",
+            "calendar_cache", "as_of_date", "cost_policy", "benchmark", "outcome_root"}
+            and (config["schema_version"] == RUNTIME_SCHEMA and config["benchmark"] is None
+                 or config["schema_version"] == BENCHMARK_RUNTIME_SCHEMA),
             "forward_runtime_scope_invalid")
         for key in ("parent_receipt", "source_db", "calendar_cache", "outcome_root"):
             _require(isinstance(config[key], str) and Path(config[key]).is_absolute(), "forward_runtime_absolute_paths_required")
         cost = None if config["cost_policy"] is None else CostPolicy(**config["cost_policy"])
+        benchmark_settings = None if config["benchmark"] is None else read_benchmark_settings(config["benchmark"])
         writer = BoundedForwardOutcomeWriter(config["outcome_root"])
         parent, _, _ = _parent(config["parent_receipt"])
         for source in (Path(parent["capture_root"]), Path(parent["snapshot_root"])):
@@ -143,6 +175,12 @@ def run_forward_isolated(runtime_path: str | Path, *, execute: bool = False,
                 and not writer.output_root.is_relative_to(source.resolve()), "forward_source_output_overlap")
         for source in (path, Path(config["source_db"]), Path(config["calendar_cache"]), Path(parent["universe"]["source_ref"])):
             _require(not source.resolve().is_relative_to(writer.output_root), "forward_source_output_overlap")
+        if benchmark_settings is not None:
+            _require(not Path(benchmark_settings["database_path"]).resolve().is_relative_to(writer.output_root),
+                     "forward_benchmark_source_output_overlap")
+        if selected_pin is not None:
+            _require(not Path(selected_pin["source_ref"]).resolve().is_relative_to(writer.output_root),
+                     "forward_benchmark_settings_output_overlap")
         # 在 mkdir／lock 前做真實容量與保留上限檢查；不清除歷史，也不降低 200 GiB 保留。
         _safe_path(writer.output_root)
         if writer.output_root.exists():
@@ -152,14 +190,26 @@ def run_forward_isolated(runtime_path: str | Path, *, execute: bool = False,
             count, retained = 0, 0
         _require(writer._free_bytes() >= SAFETY_RESERVE_BYTES + 2 * (MAX_CAPTURE_BYTES + 4096), "capacity_reserve")
         runtime_pin = {"source_ref": str(path.resolve()), "source_sha256": _digest(raw), "value": config}
+        if selected_pin is not None or benchmark_unconfigured:
+            runtime_pin.update(original_value=original_config, selected_benchmark_settings=selected_pin,
+                               benchmark_unconfigured=benchmark_unconfigured)
         observed = datetime.now(timezone.utc).isoformat()
         def build() -> SavedForwardOutcome:
             _require(_read_file(path, 64 * 1024) == raw, "forward_runtime_changed")
+            if selected_pin is not None:
+                _require(_digest(_read_file(Path(selected_pin["source_ref"]), 48 * 1024))
+                         == selected_pin["source_sha256"], "forward_benchmark_settings_changed")
             result = build_current_observed_forward(config["parent_receipt"], config["source_db"],
                 config["calendar_cache"], as_of_date=config["as_of_date"], cost_policy=cost,
+                benchmark_settings=benchmark_settings,
                 cancel_callback=cancel_callback)
+            _require(_read_file(path, 64 * 1024) == raw, "forward_runtime_changed")
+            if selected_pin is not None:
+                _require(_digest(_read_file(Path(selected_pin["source_ref"]), 48 * 1024))
+                         == selected_pin["source_sha256"], "forward_benchmark_settings_changed")
             result["projection"] = _pack_projection(result["projection"])
-            body = {"schema_version": STORE_SCHEMA, "adapter_version": ADAPTER_VERSION,
+            body = {"schema_version": STORE_SCHEMA if benchmark_settings is None else BENCHMARK_STORE_SCHEMA,
+                "adapter_version": ADAPTER_VERSION if benchmark_settings is None else BENCHMARK_ADAPTER_VERSION,
                 "qualification": dict(QUALIFICATION), "observed_at": observed, "runtime_pin": runtime_pin, **result}
             body["capture_identity_sha256"] = _identity(body)
             saved = SavedForwardOutcome(_json(body))

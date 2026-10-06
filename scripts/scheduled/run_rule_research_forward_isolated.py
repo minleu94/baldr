@@ -18,10 +18,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="UX21 隔離唯讀來源→研究成效；需明示設定，預設不保存")
     parser.add_argument("--runtime-config", required=True)
     parser.add_argument("--execute-isolated", action="store_true")
+    benchmark = parser.add_mutually_exclusive_group()
+    benchmark.add_argument("--benchmark-settings", help="明示具名基準JSON；保留來源pin與版本，不造預設")
+    benchmark.add_argument("--without-benchmark", action="store_true", help="明示未設定基準；excess保持未知")
     parser.add_argument("--policy-config")
     parser.add_argument("--acceptance-root")
     args = parser.parse_args(argv)
-    result = run_forward_isolated(args.runtime_config, execute=args.execute_isolated)
+    result = run_forward_isolated(args.runtime_config, execute=args.execute_isolated,
+        benchmark_settings_path=args.benchmark_settings, benchmark_unconfigured=args.without_benchmark)
     if args.policy_config or args.acceptance_root:
         try:
             if not args.policy_config or not args.acceptance_root:

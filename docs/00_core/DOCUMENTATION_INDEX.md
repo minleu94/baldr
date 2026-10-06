@@ -1,5 +1,9 @@
 # 文檔索引
 
+## 2026-10-06 UX21 benchmark整合入口
+
+[明示source/store/readonly UI收據](../06_qa/UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md)承接adapter lane10508947（cherry57934c51）；[Manual](../07_guides/APPLICATION_MANUAL.md)列CLI明示選項、設定／成本／basis參數、保存版本相容與缺件排錯。fixture可比結果與公開D市場unknown路徑分報，完整label最小工程另列，不提升UX21全項或ML資格。
+
 ## 2026-10-06 UX08 保存圖表入口
 
 [保存價格／MA20／60收據](../06_qa/UX08_SAVED_CHART_READBACK_20261006.md)：新日研究parent producer→同版reader→原生圖／精確表、舊缺件／獨立最新研究，251案例與offscreen證據；UX08整項仍partial。[操作](../07_guides/APPLICATION_MANUAL.md)／[現行資料流](../01_architecture/system_architecture.md)同步。原七項首版有限終點不重開；benchmark lane只讀接線筆記附於收據，未整合。

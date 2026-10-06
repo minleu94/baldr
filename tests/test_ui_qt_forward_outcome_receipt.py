@@ -10,7 +10,9 @@ import pytest
 from PySide6.QtWidgets import QFileDialog
 from tests.test_ui_qt_parent_receipt_dialog import qt_driver, _wait
 from tests.test_rule_research_forward_outcome_reader import forward_saved
-from ui_qt.rule_research_parent_receipt_dialog import RuleResearchParentReceiptDialog, read_parent_receipt_selection
+from ui_qt.rule_research_parent_receipt_dialog import (
+    RuleResearchParentReceiptDialog, _benchmark_summary, read_parent_receipt_selection,
+)
 
 
 def _load(qt_driver, saved, monkeypatch):
@@ -130,3 +132,108 @@ def test_cancel_stale_and_retry_same_input(qt_driver, forward_saved):
     dialog.reject()
     dialog._completed(dialog._generation - 1, late)
     assert dialog._returned
+
+
+def test_saved_benchmark_request_status_and_cost_version_survive_same_receipt_reload(
+    qt_driver, forward_saved,
+):
+    _, receipt, source, value = forward_saved
+    request = {
+        "version": "benchmark-settings-v1",
+        "benchmark_name": "TAIEX",
+        "currency": "TWD",
+        "unit": "index_point",
+        "price_basis": "unadjusted_close",
+        "corporate_action_basis": "not_applicable",
+    }
+    contract = {
+        "benchmark_request": request,
+        "benchmark_result": {
+            "status": "unknown",
+            "reason_codes": ["benchmark_row_missing", "target_basis_incompatible", "benchmark_available_date_unknown"],
+            "benchmark": None,
+            "prices": [],
+            "observed_rowset_sha256": "a" * 64,
+            "observed_decision_row_sha256": "b" * 64,
+            "source_contract_json": "{\"historical_pit_eligible\":false}",
+            "source_contract_sha256": "c" * 64,
+            "historical_pit_eligible": False,
+            "formal_eligible": False,
+            "training_eligible": False,
+            "execution_eligible": False,
+        },
+        "benchmark_status": "unknown",
+        "target_basis_status": "unknown",
+        "historical_pit_eligible": False,
+    }
+
+    def reader(path, **kwargs):
+        result = read_parent_receipt_selection(path, **kwargs)
+        if result.get("outcome") is not None:
+            result["outcome"]["source_contract"] = contract
+        return result
+
+    dialog = RuleResearchParentReceiptDialog(reader=reader)
+    qt_driver.addWidget(dialog)
+    dialog.show()
+    dialog._selected_path = str(receipt)
+    dialog._outcome_input_path = str(source)
+    dialog.reload_receipt()
+    _wait(qt_driver, dialog)
+
+    expected_cost_version = value["cost_policy"]["version"]
+    assert "基準設定：TAIEX · 設定版本 benchmark-settings-v1" in dialog.benchmark_summary.text()
+    assert "設定版本 benchmark-settings-v1" in dialog.benchmark_summary.text()
+    assert "基準狀態：未知（" in dialog.benchmark_summary.text()
+    assert "比較基礎缺件或不相容" in dialog.benchmark_summary.text()
+    assert "來源可得時間未知或晚於評估日" in dialog.benchmark_summary.text()
+    assert "超額未知，保留空值" in dialog.benchmark_summary.text()
+    assert "歷史 PIT／正式／訓練／交易資格未核定" in dialog.benchmark_summary.text()
+    assert "index_point" not in dialog.benchmark_summary.text()
+    assert "unadjusted_close" not in dialog.benchmark_summary.text()
+    assert f"成本版本 {expected_cost_version}" in dialog.outcome_summary.text()
+    assert not dialog.audit.isVisible()
+
+    displayed_benchmark = dialog.benchmark_summary.text()
+    dialog.reload_button.click()
+    _wait(qt_driver, dialog)
+    assert dialog.benchmark_summary.text() == displayed_benchmark
+    assert dialog.outcome_table.rowCount() == 19
+
+    dialog.audit_button.click()
+    assert dialog.audit.isVisible()
+    assert "observed_rowset_sha256" in dialog.audit.toPlainText()
+    assert "source_contract_sha256" in dialog.audit.toPlainText()
+    assert "benchmark_request" in dialog.audit.toPlainText()
+    assert "basis_comparable" in dialog.audit.toPlainText()
+    assert "index_point" in dialog.audit.toPlainText()
+
+
+def test_legacy_unconfigured_benchmark_stays_unknown():
+    projection = {"benchmark": None, "members": []}
+    summary = _benchmark_summary(projection, {"benchmark_status": "unconfigured_unknown"})
+    assert "基準設定：未設定" in summary
+    assert "超額未知，保留空值" in summary
+
+
+def test_benchmark_spec_without_any_comparable_rows_stays_unknown():
+    projection = {
+        "benchmark": {"instrument_id": "market_indices.TAIEX"},
+        "members": [{"horizons": [{"comparison": {
+            "basis_comparable": None,
+            "gross_excess_return": {"integer_bp_half_even": None},
+        }}]}],
+    }
+    source_contract = {
+        "benchmark_request": {"version": "settings-v2", "benchmark_name": "TAIEX"},
+        "benchmark_result": {"status": "qualified_research", "reason_codes": [],
+                             "benchmark": projection["benchmark"]},
+        "benchmark_status": "qualified_research",
+        "target_basis_status": "caller_declared_research_only",
+    }
+
+    summary = _benchmark_summary(projection, source_contract)
+    assert "基準狀態：未知" in summary
+    assert "目前沒有基礎相容且端點完整的同期間結果" in summary
+    assert "已有同期間可比研究結果" not in summary
+    assert "market_indices.TAIEX" not in summary

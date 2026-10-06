@@ -1234,3 +1234,8 @@ A: 需要修改 `{meta_data_dir}/broker_branch_registry.csv` 檔案，添加新�
 ## 個人 notes 模式（2026-10-06）
 
 notes 的 root／mode 選擇獨立 watchlist activation；personal writer與全部 UI notes reader 共用單一來源，legacy_read_only 不寫來源。缺 personal 檔案不混讀舊 notes；未設定仍保留相容 writer。位置已選 FA_Data/personal；精確 root guard 已整合，必須明示設定；migration／activation 未批准。參數、操作限制及排錯見 [完整 Manual](../07_guides/APPLICATION_MANUAL.md)。
+
+
+## 查看策略的規則來源
+
+回測策略設定按「查看版本化規則說明」，可核對此次版本與參數。來源未提供的交易條件會顯示未知，卡片尚未連結執行結果，不能當獲利或可交易證明；來源核對區可展開。操作詳見[完整Manual](../07_guides/APPLICATION_MANUAL.md)。

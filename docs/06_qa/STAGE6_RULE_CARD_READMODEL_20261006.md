@@ -76,3 +76,14 @@ UI 可分開呈現「規則說明」、「既有觀察」與「結果來源」�
 本包完成 UX11 規則 readmodel 的有界 backend 切片；**stage6／UX11 整項仍 partial**。完整 entry/exit/execution/cost/benchmark/績效來源資格的 typed execution artifact 尚未由既有 metadata 提供；沒有補寫 shared registry/executor。規則卡一律明示缺件，既有方法只授觀察資格。真實歷史／自然 forward/live 結果來源的 adapter／custody、UI／Manual／plan、全頁一致化、Native／真人與長期 producer 均由主層另行處理。
 
 回滾：主層 cherry-pick 前可保留 lane 不採用；採用後確認無其他依賴，對本包提交 `git revert <本地交付commit>`，再執行定向測試。回滾不碰正式資料；已新增 consumer 時需同步撤回其接線。worktree 保留供主層審查，不自行清理或合併。
+
+
+## 主線review及最小consumer整合（2026-10-06）
+
+三檔lane c7a9ea37 review後整合為a3b63070，所有lane worktrees保留。BacktestConfigPanel增加按需按鈕，BacktestView以既有回測同版StrategySpec（1.0與目前default config／params）呼叫read_strategy_rule_card，沒有借Registry新版本或綁旧结果；源版不符仍not_evaluable。新StrategyRuleCardDialog顯示當前設定、未連執行結果、未知契約、唯讀欄位及預設收合來源。Registry描述不推導交易規則，method/family/pin沿backend驗證，不造MA或賣出算法、費用、benchmark、勝率／曲線。
+
+主線focused：63 passed（lane51＋consumer4＋既有backtest layout8），Workbench85 passed，validator25／0fail／4skip，完整roots mypy801、compile5、quant guards及diffcheck通過。pytest唯一warning是sandbox cache不可寫，無測試skip；不重跑251項或全市場。Consumer四項涵蓋參數修訂改hash、不取executor／不借舊run、未知欄位及收合唯讀、registry版不符及未選擇不開卡。
+
+合成offscreen截圖留output/qa/ux11_rule_card_consumer_20261006/controlled_rule_card.png。首次獨立renderer未套主程式中文字型顯示方框，套既有register_qt_chinese_fonts後可讀；不修改font流程。此圖是合成設定，不是Native／真實結果。Manual同步入口、參數／結果解讀、安全限制及排錯，Snapshot／current architecture／UI feature／UserGuide與唯一plan同步。
+
+UX11完成有限consumer，由待辦改partial；stage6仍partial。完整typed execution contract、真實結果adapter／custody、規則與執行一致證據、Native／真人仍待辦，readmodel不等於execution/performancequalification。UTC07:00停止期限不變；本批不新增代理、migration／activation／producer／push／清理。

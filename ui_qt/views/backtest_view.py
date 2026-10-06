@@ -1687,6 +1687,24 @@ class BacktestView(QWidget):
             logger.error(traceback.format_exc())
             self.strategy_combo.addItem("載入策略失敗", None)
 
+    def _show_strategy_rule_card(self):
+        """只投影此次回測設定；不替既有 run 補來源身份。"""
+        from app_module.strategy_rule_card_readmodel import read_strategy_rule_card
+        from ui_qt.widgets.strategy_rule_card_dialog import StrategyRuleCardDialog
+        strategy_id = self.strategy_combo.currentData()
+        if not strategy_id:
+            QMessageBox.warning(self, "規則說明", "請先選擇策略。")
+            return
+        # 與本頁既有回測 StrategySpec 使用相同版本及設定；不借 registry 新版。
+        spec = StrategySpec(
+            strategy_id=strategy_id, strategy_version="1.0",
+            name=self.strategy_combo.currentText(), description=self.strategy_desc.text(),
+            regime=[], risk_level="medium", target_type="stock",
+            config={**self._get_default_strategy_config(), 'params': self._get_strategy_params()},
+        )
+        card = read_strategy_rule_card(spec, result_kind="historical_backtest")
+        StrategyRuleCardDialog(card, self).exec()
+
     def _on_strategy_changed(self):
         """策略選擇改變"""
         strategy_id = self.strategy_combo.currentData()

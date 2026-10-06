@@ -608,3 +608,10 @@ Journal lane 的 guarded JSONL adapter 已接獨立 notes root／mode；MainWind
 ## 2026-10-06 最新個人儲存位置決策
 
 使用者已選擇 `D:/Min/Python/Project/FA_Data/personal` 獨立子目錄，取代先前 LOCALAPPDATA／FA_Data 外 root 提案。專用 SQLite 不與市場 `twstock.db` 共用。這次只批准位置，真實 migration／activation 仍未批准；尚未搬移／建立正式 personal store。精確 `data_root/personal` 契約已整合；其他市場子樹、ancestor、output 與 links/hardlinks 仍拒絕。必須明示設定 root／source 或獨立 notes root／mode，未設定不會自動啟用。市場分享只能按 explicit allowlist 排除 personal、舊 watchlist JSON 與其他私人來源，不能宣稱整包 FA_Data 可直接分享。
+
+
+## 2026-10-06 最新功能收尾
+
+Journal跨頁功能gate在單一15000ms有界等待下完整通過（含新process readback與busy-close）；原current8.109／baseline8.141秒未達8秒保留性能觀察，使用者已接受微小差距，不再阻塞。source/date/hash/no-follow/hardlink/personal守衛未改。
+
+UX11 readmodel c7a9ea37整合為a3b63070；回測策略設定新增按需版本化規則說明，使用與既有回測相同StrategySpec設定，尚未連結執行結果。缺entry/exit/cost/benchmark等維持未知／not_evaluable，不新增executor或績效資格。UX11由待辦改partial，stage6仍partial，Native及真資料migration未完成。

@@ -596,3 +596,8 @@ MainWindow 啟動方可明示研究 snapshot root／cohort 與 original-rank roo
 ## 個人 notes 與唯讀研究動作（2026-10-06）
 
 研究筆記／個股研究動作、決策工作台 continuity、推薦個人選擇／ACK、outcome journey 使用同一獨立 notes selector。personal 使用個人 JSONL；legacy_read_only 顯示舊 notes，但控制器禁止保存研究動作，其他寫入也具名拒絕。缺 personal notes 不 fallback，不要求啟用 watchlist。未設定保留原 writer；正式 root／migration／Native 仍待批准。[Manual](../07_guides/APPLICATION_MANUAL.md)／[QA](../06_qa/PERSONAL_JOURNAL_LANE_20261006.md)
+
+
+## 版本化規則說明卡（2026-10-06）
+
+回測策略設定增加「查看版本化規則說明」按鈕；按需唯讀投影目前StrategySpec，顯示版本／此次參數／未知交易契約。來源與hash放收合核對區，開卡不初始化VersionService或executor，不用目前identity替舊run補章。操作及不可评估限制見完整Manual。

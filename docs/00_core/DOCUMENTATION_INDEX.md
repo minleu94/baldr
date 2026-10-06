@@ -112,3 +112,6 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 
 
 - 2026-10-06：[Personal Journal lane 與主線整合](../06_qa/PERSONAL_JOURNAL_LANE_20261006.md)：獨立 notes selector、guarded JSONL、全部 UI reader/controller composition；正式位置／migration／Native 另列。
+
+
+2026-10-06：[UX11規則卡readmodel與consumer收據](../06_qa/STAGE6_RULE_CARD_READMODEL_20261006.md)、[Journal完整旅程功能等待診斷／接受收據](../06_qa/JOURNAL_JOURNEY_WORKER_GATE_20261006.md)；操作入口見[完整Manual](../07_guides/APPLICATION_MANUAL.md)。

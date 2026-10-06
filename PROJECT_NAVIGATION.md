@@ -642,3 +642,6 @@ python ui_qt/main.py
 
 
 - 2026-10-06：[Journal 個人路徑及 UI composition](docs/06_qa/PERSONAL_JOURNAL_LANE_20261006.md)：`personal_journal_paths.py` 明示 selector／JSONL adapter；config → Main writer/controller、Workbench continuity、推薦 Personalization 與 outcome journey。模式獨立 watchlist，未設定仍保留相容 writer；正式位置／migration 未批准。
+
+
+2026-10-06：回測策略設定新增按需版本化規則說明（ui_qt/widgets/strategy_rule_card_dialog.py），唯讀目前Spec，不連既有run；操作及限制見docs/07_guides/APPLICATION_MANUAL.md，UX11仍partial。

@@ -1347,3 +1347,8 @@ F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚�
 ## 個人 notes 的明示 composition（2026-10-06）
 
 `TWStockConfig.personal_journal_root`／`personal_journal_mode` 成對選擇且獨立 watchlist；`resolve_journal_storage_selection` 不 mkdir／migration。UI main 注入同一 PersonalJournalPaths 至 JournalService／controller、Workbench continuity 和 DecisionOutcomeJourney；Recommendation Personalization reader 取 JournalService 的相同 selector與明示原 Evidence 來源。personal writer／lock 留 personal root，RO reader 不建 lock；legacy_read_only 固定單一舊來源。漏 selector 的已設定 caller 拒絕，None 僅在未設定時保留相容 writer。DecisionQuality／DeskSnapshot／Evidence 的 source-target 分離另案，不能替換全域 config.db_file。[QA](../06_qa/PERSONAL_JOURNAL_LANE_20261006.md)
+
+
+### 2026-10-06 UX11有限consumer
+
+`strategy_rule_card_readmodel`唯讀Registry／傳入Spec、Version、Profile或MA snapshot，不建服務／executor、不計算績效。BacktestView按需以與既有執行相同版本及目前參數投影Spec，StrategyRuleCardDialog只顯示detached值及收合來源；不綁既有run、backtest_summary或forward結果。缺execution欄位與結果資格保留not_evaluable，未變更執行／保存／producer邊界。

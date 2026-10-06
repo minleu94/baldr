@@ -540,6 +540,10 @@ class BacktestConfigPanel(QWidget):
         )
         self.strategy_desc.setWordWrap(True)
         strategy_layout.addWidget(self.strategy_desc)
+        self.rule_card_button = QPushButton("查看版本化規則說明")
+        self.rule_card_button.setAccessibleName("查看目前回測設定的版本化規則說明")
+        self.rule_card_button.clicked.connect(self.parent_view._show_strategy_rule_card)
+        strategy_layout.addWidget(self.rule_card_button)
 
         self.strategy_combo.currentTextChanged.connect(lambda: self.parent_view._on_strategy_changed())
         self.strategy_combo.currentTextChanged.connect(

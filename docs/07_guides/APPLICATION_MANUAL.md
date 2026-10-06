@@ -4718,3 +4718,12 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 ## 2026-10-06 最新個人儲存位置決策
 
 使用者已選擇 `D:/Min/Python/Project/FA_Data/personal` 獨立子目錄，取代先前 LOCALAPPDATA／FA_Data 外 root 提案。專用 SQLite 不與市場 `twstock.db` 共用。這次只批准位置，真實 migration／activation 仍未批准；尚未搬移／建立正式 personal store。精確 `data_root/personal` 契約已整合；其他市場子樹、ancestor、output 與 links/hardlinks 仍拒絕。必須明示設定 root／source 或獨立 notes root／mode，未設定不會自動啟用。市場分享只能按 explicit allowlist 排除 personal、舊 watchlist JSON 與其他私人來源，不能宣稱整包 FA_Data 可直接分享。
+
+
+## 回測設定的版本化規則說明（2026-10-06）
+
+在研究實驗室／回測的策略設定選擇策略後，按「查看版本化規則說明」。卡片唯讀呈現此次回測設定的策略版本、參數、來源已提供的適用範圍及規則；未連結任何執行結果。參數仍由原設定頁修改，再重新開卡核對；開卡不執行回測、不建立executor或啟動資料更新。
+
+來源沒有完整入場／出場、成交時點、費稅、停損停利、部位、benchmark等契約時，畫面保留「未知」，完整交易規則與績效維持尚不可評估。Registry描述或參數schema不是執行資格，既有validated宣告也不是已核對績效。此次卡不能替歷史回測、自然forward或當期結果補身份；不同結果類型必須各自核對。
+
+按「查看來源與版本核對」展開原欄位來源、精確version/hash、缺件與不相容原因；可選取複製文字。若尚未選策略，先選擇再開卡；版本不符或來源缺件時保留不可評估，不借最新版設定。不提供曲線、勝率、排名或自動套用動作。此為UX11有限說明consumer，完整execution／performance資格及Native真人驗收仍待辦。

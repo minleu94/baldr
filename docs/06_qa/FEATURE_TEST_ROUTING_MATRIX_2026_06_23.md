@@ -1,5 +1,13 @@
 # Feature-to-Test Routing Matrix (2026-06-23)
 
+## 2026-10-06 第二波新增差異路由
+
+B03首頁／Update／Runtime：test_baldr_b03_market_home、test_baldr_b03_update_runtime及原market/runtime tests，核unknown日期／collapsed refresh／exact來源。B04兩個新test_baldr_b04_*核保存選擇及理由/查看狀態CAS／cancel／同源revision。B05新chart_markers／chart_marker_reader與原payload/viewport核原保存record→獨立pins→markers→newprocess、缺account/clock/stale拒。B06 portfolio_summary及原portfolio/declared/navigation核三帳/估值unknown/注入pair。
+
+B10 private_review/evidence_composition、原decision-quality/weekly/history/CLI及personal_notes_backup核私人Review route、query-only市場refs、每connect custody、create-only notes backup/restore、新程序原hash讀回。B12 daily_runtime＋原daily_owner/storage/snapshot producer/repo核calendar/terminal/hash/clock、zero-exit/timeout/cancel/CAS writer、deepUnicode/emoji與角色20/200GiB reserve，不用短路徑假冒深回歸。
+
+以上僅candidate／oracle，test_inventory新增14具名分類，directbridge數12不變。四用途完整journey、B05main／B09composition及B07/B11/B13/B14 final採納後，中央穩定版依序Workbench→update validator→full roots mypy→changed compile／quant一次。首波固定樹與lane focused不能代替新union。Native／真人／正式write/migration/Task/ACL/fit未執行；[第二波收據與剩餘](BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。
+
 ## 2026-10-06 原計畫首波增量路由
 
 B01：`test_ml_shadow_boundary_cli`／`test_model_registry_readonly`核exact symbols與拒writer、import/DTO無data IO；repo舊8仍guard fail。V5 summary足／缺＋hover核日期/OHLCV/變化/基本面與ML未知。B03：`test_baldr_b03_market_home`與`test_ui_qt_market_regime_view`核四用途、當下／保存身份分流、defaultcollapsed／expanded兩次refresh、完整indicators／unknown/error。中央穩定版依序Workbench85、update validator、全roots mypy與changed compile；不把targeted替全gate。B08 helper沿personal path guard，B02同版deep canonicalDB/suffix/newprocess/hardlink另驗，不用短根替代。真結果與未驗邊界見[首波QA](BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。

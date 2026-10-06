@@ -1,5 +1,11 @@
 # Full App Healthcheck 逐列 Coverage Mapping 2026-06-24
 
+## 2026-10-06 第二波增量覆蓋補充
+
+本段是已有測試的對照，不是新bridge或全App pass。首頁四用途／保存與當下身份、Update/Runtime unknown日期與收合、候選池exact保存/CAS、圖表原紀錄marker/clock/account拒絕、三帳估值與注入guard由本輪B03/04/05/06 candidate tests覆蓋；Native/readability真人仍manual-only。B10私人覆盤/weekly/history/source分離及notes create-only是synthetic service oracle，正式資料寫入/migration仍write-risk-manual；B12隔離calendar/terminal/subprocess/長路徑/reserve是oracle，正式Task/account/ACL未啟用。
+
+新14個具名tests分類只補inventory，7candidate/4serviceoracle/3generalunit，directbridge原12不變。B05main來源reader／B09完整composition與新四旅程union尚未完成，不能只因view/reader各自focused通過而標coverage閉環。完整執行結果與原stage/UX界線見[第二波整合收據](BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。
+
 > 來源母檔：[`FULL_APP_HEALTHCHECK_2026_06_16.md`](FULL_APP_HEALTHCHECK_2026_06_16.md)。
 > 目的：把人工 healthcheck 每一列對照到目前非破壞式 super healthcheck runner、direct bridge、candidate bridge、service oracle evidence 或 manual-only 狀態。
 

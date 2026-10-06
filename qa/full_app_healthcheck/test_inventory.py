@@ -6,6 +6,22 @@ from pathlib import Path
 # This registry serves as a guardrail to ensure that only allowed tests are bridged.
 
 TEST_INVENTORY: dict[str, str] = {
+    # 2026-10-06 Baldr bounded closeout; candidate/oracle only, no new direct bridge.
+    "tests/test_baldr_b03_market_home.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_baldr_b03_update_runtime.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_baldr_b04_selection_watchlist.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_baldr_b04_watchlist_review_state.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_baldr_b05_chart_marker_reader.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_baldr_b05_chart_markers.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_baldr_b06_portfolio_summary.py": "ui-healthcheck-candidate-bridge",
+    "tests/test_baldr_b10_evidence_composition.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_baldr_b10_private_review.py": "service-oracle-portfolio-decision-runtime",
+    "tests/test_baldr_b12_daily_runtime.py": "service-oracle-research-backtest",
+    "tests/test_model_registry_readonly.py": "general-unit-keep-in-pytest",
+    "tests/test_personal_store_routes.py": "general-unit-keep-in-pytest",
+    "tests/test_personal_store_selection.py": "general-unit-keep-in-pytest",
+    "tests/test_personal_notes_backup.py": "service-oracle-portfolio-decision-runtime",
+
     "tests/test_snapshot_publication_recovery.py": "service-oracle-recommendation",
     "tests/test_research_snapshot_storage_governance.py": "governance-doc-tooling",
     "tests/test_rank_research_bookmark.py": "service-oracle-recommendation",

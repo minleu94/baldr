@@ -4783,3 +4783,16 @@ CLI capture階段失敗時返回碼2，但上游snapshot可能已發布；回傳
 相同policy/exact parent輸入duplicate沿首次receipt。同日不同revision/as_of保舊新包，日報列所有pin，不自動挑winner；policy bytes／方法或模板改變須明示版本處理，舊記錄不混算。退出0不表示無漏日，需看missing_observation_dates與日狀態；未完整候選/日報拒絕返回2。
 
 失敗時核對receipt：acceptance_saved=true＋day_readiness_status=rejected表示接受包已寫、報表未核對；accept exception以unknown表示可能有殘件，不能當沒寫內容。容量不足且無partial可修正容量後原root重試；partial/busy保持fail closed，保留原件，經確認明示新的隔離root重試，不刪lock/partial繞過。沒有正式WindowsTask、自動清理或市場資料搬移。部署缺件與待決策見 [固定觀測日QA](../06_qa/UX20_OBSERVATION_DAY_ACCEPTANCE_20261006.md)。
+
+
+## 2026-10-06 執行隔離每日研究 owner
+
+入口scripts/scheduled/run_rule_research_daily_isolated.py。--runtime-config R與--target-date YYYY-MM-DD必須明示；未設定回unconfigured，預設preflight只讀，--execute-isolated才執行。無DATA_ROOT/OUTPUT_ROOT、today/latest或正式Task預設。
+
+runtime JSON schema_version=rule-research-daily-owner-runtime.v1、mode=isolated_research、date_source=explicit_policy_dates；填絕對policy_config/source_db與snapshot_root/capture_root/acceptance_root/status_root、per_root_quota_bytes（正整數≤64MiB）、max_attempts（1–3）、retry_delay_seconds（整數0–5）及parent_universe_configs（目標日期→parent母體JSON絕對路徑，最多31）。policy是上節固定觀測日policy，沒有cutoff/window/expected dates即unconfigured。四根互不重疊，不含配置/來源檔，source也只能在output/qa或Temp，正式市場DB拒絕。本批沒有正式配置檔。
+
+先preflight核對同一目標日/母體/來源pin/窗口和capacity，通過才明示execute。容量按批數保守預留，可能阻擋較大母體；reserve/8MiB/128包等守衛不放寬、不自行清理。窗口未到not_due，隔日遲到昨天目標missed_window＋missing日報，不改用今日或latest補資料。
+
+結果observed表示隔離全鏈讀回完成；already_observed表示唯一exact source/policy/日期保存收據沿用，未重跑producer。每attempt各批快照產生與sample保存結果分列，已發布後sample拒絕不能當沒寫內容；parent/acceptance/owner receipt與day readiness分開。runtime/policy/revision途中改變blocked保留原件；owner status保存拒絕也保留前面實際結果。未完整資料日不算當日完成，方法符合仍非正式入選，official calendar/available-at/outcome未知，不授natural/PIT/formal/training。
+
+retry最多配置次數與有限合作式delay；busy保留別人lock，cancel等待安全返回。partial需明示fresh隔離root，不刪除繞過。返回2不代表沒有producer artifact，請查attempt及receipt；容量不足可能只輸出stdout，勿期待藉status寫入突破容量。正式日期來源/Task/account/ACL/留存/通知仍待部署；三項有推薦值的決策見 [daily owner QA](../06_qa/UX20_DAILY_OWNER_ISOLATED_20261006.md)，現在未套用任何生產值。

@@ -2546,3 +2546,8 @@ Registry artifact、R012 child artifact 與 SQLite 各自保存，沒有共同 t
 ## 2026-10-06 固定觀測日接受的受控維運
 
 操作依APPLICATION_MANUAL「固定觀測日研究收據接受（隔離CLI）」章。先preview，明示--accept才沿既有atomic envelope寫研究接受記錄；日報readonly且不啟producer。R維持output/qa或Temp專用根，200GiB reserve／256KiB/包／8MiB/128包不放寬；partial與busy不可刪除繞過。CLI0非日覆蓋完整，應檢查missing_observation_dates、每筆saved_verified與acceptance_saved/day_readiness_status，不能因接受/報表拒絕說上游producer沒發布。正式owner/Task/留存未部署；QA與決策表：docs/06_qa/UX20_OBSERVATION_DAY_ACCEPTANCE_20261006.md。
+
+
+## 2026-10-06 UX20 isolated daily owner
+
+run_rule_research_daily_isolated.py已可執行既有MA parent/固定日接受全鏈；明示runtime-config/target-date，預設preflight，execute-isolated才寫小型隔離source/output。未配置窗口/日期/落點/quota則unconfigured；capacity fail停寫、同revision exact replay、有限retry保留producer/capture雙結果，不挑latest或註冊正式Task。配置/操作依APPLICATION_MANUAL最新章；工程及三項部署建議：docs/06_qa/UX20_DAILY_OWNER_ISOLATED_20261006.md。未改既有owner與Task身份，官方來源資格未知。

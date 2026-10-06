@@ -1343,3 +1343,8 @@ Evidence runner 使用 aware UTC 真實 clock。MarketSessionCadence 以既有 h
 Paper adapter 只在 source_lineage/metadata/source_coverage 的 paper_research lane 附加 alerts/risk/status/warnings/blockers/ready，不取代普通 Portfolio/Risk。required_governance_fields 與來源確認使用者的 required_human_fields/user_actions 分開；legacy manual 名稱不能證明 real holding。wrapper summary failed/errors>0 強制 exit2，實際 child exit 另列。engineering_action_required、source_qualification_required/gaps、research_qualification_required、validation_attention_required 與自然 sample 分報；aggregate freshness／正式 PIT/model gates 不放寬。
 
 `--validation-decision-date` 控制實跑仍必須唯一 QA status-path 與 recommendation identity；所有衍生 writer 只在其 controlled_runs。自然 Windows LastTaskResult 不被控制 run 改寫。驗收見 [補驗報告](../../docs/06_qa/OPERATIONAL_QUALITY_AND_RESEARCH_ISOLATION_20261003.md)。
+
+
+## 2026-10-06 UX20 isolated daily owner
+
+run_rule_research_daily_isolated.py已可執行既有MA parent/固定日接受全鏈；明示runtime-config/target-date，預設preflight，execute-isolated才寫小型隔離source/output。未配置窗口/日期/落點/quota則unconfigured；capacity fail停寫、同revision exact replay、有限retry保留producer/capture雙結果，不挑latest或註冊正式Task。配置/操作依APPLICATION_MANUAL最新章；工程及三項部署建議：docs/06_qa/UX20_DAILY_OWNER_ISOLATED_20261006.md。未改既有owner與Task身份，官方來源資格未知。

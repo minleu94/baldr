@@ -1521,3 +1521,6 @@ F01 `042a2dac` 只補FlakyJournal唯讀delegate property，原controller7例在i
 唯一原plan只append；9Stage＝1done/8partial/0pending、24UX＝2done/22partial/0pending、七有限closed UX03/04/05/06/09/15/17保持，F1 18.6219658%（20%門檻）與Journey8.109s（8s門檻）性能例外保留。自然累積不是工程gate，U1/U2與未知PIT/model/account/source資格不造。可核本機 `output/qa/p2_m03_central_acceptance_20261006.json` 及同批raw/XML；完整操作看Manual，既有c9d57fc7 mandatory union只沿原測試範圍。無push/mainmerge/正式DBwrite/Task/ACL/Native/交易/真fit/清理。
 
 P2資料流：TWStockConfig→既有selector→同帳Paper route＋PersonalDataPaths→P1逐I/O custody→selected state/cost/status與create-only benchmark；市場另外以ro/query_only並核physical main/sidecars。M03 exception留neutral artifact契約、ML training reexport，app consumer不再經trainer module取得該exception；其餘既有依賴本包未改，正式能力不提升。
+
+
+2026-10-06 中央 A01/A03 更新：v3 個股/capture 選版及 CLI 可信 gross contract/lineage reader 接線完成；今日原 public current-observed 真 H20 模型十檔 available 已有 QA receipt。canonical daily live source-time composition／正式 Task 尚未完成，原模型來源、PIT、自然成熟與 compression 資格不升。操作與限制見 APPLICATION_MANUAL.md 9.9.1h；完整收據見 docs/06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。

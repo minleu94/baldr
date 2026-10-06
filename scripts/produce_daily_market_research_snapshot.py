@@ -17,6 +17,7 @@ if str(REPOSITORY_ROOT) not in sys.path:
 from app_module.daily_market_snapshot_producer import DailyMarketSnapshotInput, DailyMarketSnapshotProducer
 from app_module.daily_market_research_universe import load_research_universe_spec
 from app_module.daily_market_snapshot_source import SQLiteDailyMarketSnapshotSource
+from app_module.daily_market_feature_snapshot import DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER
 
 
 def _isolated_output(path: str) -> Path:
@@ -41,6 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--read-stock", help="可選明示cohort內一股，發布後經個股read_report核驗讀回；不觸發live projection。")
     parser.add_argument("--capture-root", help="可選 output/qa 或 Temp 子目錄，明示保存完整單批 MA 控制組。")
     parser.add_argument("--capture-as-of", help="與 capture-root 配對；首次可用 observed-now，之後沿用回傳固定含時區 as_of 才能去重。")
+    parser.add_argument("--include-bbands30-upper", action="store_true", help="明示 opt-in v3 上軌有限比較，預設保留原v2。")
     args = parser.parse_args(argv)
     try:
         cutoff = datetime.fromisoformat(args.decision_cutoff)
@@ -65,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.read_parent_identity and not args.parent_universe_config:
             raise ValueError("read-parent-identity 必須搭配 parent-universe-config")
         if args.parent_universe_config:
+            if args.include_bbands30_upper:
+                raise ValueError("parent capture v3 未接線；不得把v2多批母體冒稱含BB上軌")
             if not args.capture_root or args.read_stock is not None or args.cohort_id is not None:
                 raise ValueError("parent 母體需明示 capture-root/capture-as-of；不接受單股read-stock或覆寫cohort-id")
             from app_module.rule_research_parent_capture import produce_parent_rule_samples
@@ -110,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
             def load_inputs(code: str, day):
                 if day != cutoff.date():
                     raise ValueError("source_decision_date_mismatch")
-                return source.load_input(code)
+                return source.load_input(code, include_bbands30_upper=args.include_bbands30_upper)
 
             def validate_sources_stable() -> None:
                 source.validate_source_stable()
@@ -122,6 +126,8 @@ def main(argv: list[str] | None = None) -> int:
                 stock_codes=symbols, source_loader=load_inputs,
                 before_publish=validate_sources_stable,
                 research_universe=universe_spec,
+                contract_version=(DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER
+                                  if args.include_bbands30_upper else None),
             )
         payload = result.to_dict()
         if result.status not in {"published_complete", "published_partial", "unchanged"}:

@@ -37,7 +37,12 @@ from app_module.price_change_direction import (
     resolve_signed_change as _resolve_signed_change,
 )
 from app_module.sqlite_read_only import ReadOnlySQLiteManager
-from app_module.daily_market_feature_snapshot import DailyMarketFeatureSnapshotService, daily_market_feature_input_fingerprint
+from app_module.daily_market_feature_snapshot import (
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
+    DailyMarketFeatureSnapshotService,
+    daily_market_feature_input_fingerprint,
+    feature_contract_for_version,
+)
 from app_module.daily_market_snapshot_repository import DailyMarketSnapshotRepository
 from app_module.daily_market_snapshot_repository import DailyMarketSnapshotVerificationError
 from app_module.daily_market_snapshot_source import daily_snapshot_schema_identity, daily_snapshot_scope_identity
@@ -532,9 +537,21 @@ class StockResearchReportReadService:
                 scope_identity = daily_snapshot_scope_identity(db_path, code, schema_identity)
                 # feature契約仍獨立核對來源；只用於驗證，不交給保存圖表補洞。
                 legacy_points, _legacy_price_source, _legacy_name = self._read_prices(code, cutoff)
-                legacy_technical, _legacy_technical_source = self._read_technical(code, cutoff)
-                expected_hash = daily_market_feature_input_fingerprint(code, cutoff, scope_identity, legacy_points, legacy_technical)
                 pinned_repository = DailyMarketSnapshotRepository(Path(snapshot_root))
+                verified = pinned_repository.load_manifest(
+                    manifest_sha256, cohort_id=cohort_id, decision_date=cutoff,
+                )
+                contract = feature_contract_for_version(str(verified.manifest["feature_contract_version"]))
+                if contract.version == DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER:
+                    legacy_technical, _legacy_technical_source = self._read_technical(
+                        code, cutoff, include_bbands30_upper=True,
+                    )
+                else:
+                    legacy_technical, _legacy_technical_source = self._read_technical(code, cutoff)
+                expected_hash = daily_market_feature_input_fingerprint(
+                    code, cutoff, scope_identity, legacy_points, legacy_technical,
+                    contract_version=contract.version,
+                )
                 verified = pinned_repository.load_manifest(
                     manifest_sha256, cohort_id=cohort_id, decision_date=cutoff,
                     expected_input_hashes={code: expected_hash},
@@ -700,8 +717,23 @@ class StockResearchReportReadService:
                     self._columns("daily_prices"), self._columns("technical_indicators")
                 )
                 scope_identity = daily_snapshot_scope_identity(db_path, code, schema_identity)
-                expected_hash = daily_market_feature_input_fingerprint(code, cutoff, scope_identity, price_points, technical)
                 verified = self.daily_market_snapshot_repository.load_latest(
+                    cohort_id=str(self.daily_market_snapshot_cohort_id),
+                    decision_date=cutoff,
+                )
+                contract = feature_contract_for_version(str(verified.manifest["feature_contract_version"]))
+                fingerprint_technical = technical
+                if contract.version == DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER:
+                    fingerprint_technical, _fingerprint_source = self._read_technical(
+                        code, cutoff, include_bbands30_upper=True,
+                    )
+                expected_hash = daily_market_feature_input_fingerprint(
+                    code, cutoff, scope_identity, price_points, fingerprint_technical,
+                    contract_version=contract.version,
+                )
+                # Revalidate the exact selected manifest, not a newly advanced latest pointer.
+                verified = self.daily_market_snapshot_repository.load_manifest(
+                    verified.manifest_sha256,
                     cohort_id=str(self.daily_market_snapshot_cohort_id),
                     decision_date=cutoff,
                     expected_input_hashes={code: expected_hash},

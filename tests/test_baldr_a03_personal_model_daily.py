@@ -38,6 +38,32 @@ def _write_request(tmp_path: Path, value: object | None = None) -> tuple[Path, s
     return request_path, digest
 
 
+@pytest.mark.parametrize("mode", ["bound", "wrong_hash", "missing_pair"])
+def test_central_cli_binds_explicit_gross_contract_before_daily_io(tmp_path, monkeypatch, capsys, mode):
+    from types import SimpleNamespace
+
+    identity = "sha256:" + "1" * 64
+    request_path, digest = _write_request(tmp_path, {"gross_model_contract_hash": identity if mode != "wrong_hash" else "sha256:" + "2" * 64})
+    reader = object()
+    contract = SimpleNamespace(contract_hash=identity)
+    monkeypatch.setattr(daily_cli, "_load_gross_dependencies", lambda *args: {"gross_contract": contract, "lineage_reader": reader})
+    calls = []
+    def run(**kwargs):
+        calls.append(kwargs)
+        return {"status": "completed"}
+    monkeypatch.setattr(daily_cli, "_load_api_runner", lambda: run)
+    argv = ["--request-json", str(request_path), "--request-sha256", digest,
+            "--receipt-root", str(tmp_path / "receipts"), "--gross-fit-receipt", str(tmp_path / "fit.json")]
+    if mode != "missing_pair":
+        argv += ["--gross-fit-receipt-sha256", identity]
+    assert daily_cli.main(argv) == (0 if mode == "bound" else 2)
+    if mode == "bound":
+        assert calls[0]["gross_contract"] is contract
+        assert calls[0]["lineage_reader"] is reader
+    else:
+        assert calls == []
+
+
 @pytest.mark.parametrize("mode", ["success", "cancel", "timeout"])
 def test_fixed_producer_port_uses_same_runtime_and_stops_its_actual_child(
     qa_tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str,
@@ -75,7 +101,7 @@ def test_fixed_producer_port_uses_same_runtime_and_stops_its_actual_child(
     assert process_receipt["status"] == "exited"
 
 
-@pytest.mark.parametrize("changed", [None, "version", "probability_only", "future_model", "future_model_clock", "wrong_price_basis"])
+@pytest.mark.parametrize("changed", [None, "version", "probability_only", "future_model", "future_model_clock", "wrong_price_basis", "later_lineage", "future_lineage", "wrong_lineage_cutoff"])
 def test_gross_saved_projection_distinguishes_versions_and_never_derives_probability(
     qa_tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed: str | None,
 ) -> None:
@@ -125,6 +151,10 @@ def test_gross_saved_projection_distinguishes_versions_and_never_derives_probabi
     )}
     lineage.update(feature_schema=[list(row) for row in schema], return_basis=contract.price_basis,
                    training_context={"semantics": "decision_time", "decision_time_eligible": True})
+    if changed in {"later_lineage", "future_lineage", "wrong_lineage_cutoff"}:
+        contract.lineage_training_as_of = "2025-06-01" if changed == "future_lineage" else "2025-02-01"
+        lineage["training_as_of"] = contract.lineage_training_as_of
+        candidate["training_cutoff"] = "2025-01-01" if changed == "wrong_lineage_cutoff" else contract.lineage_training_as_of
     for filename, value, field in (
         ("manifest.json", manifest, "manifest_raw_sha256"),
         ("candidate.json", candidate, "candidate_raw_sha256"),
@@ -161,7 +191,7 @@ def test_gross_saved_projection_distinguishes_versions_and_never_derives_probabi
         qa_tmp_path / "capture.json", None, qa_tmp_path,
         contract=contract, lineage_reader=lambda *a, **k: SimpleNamespace(manifest_hash=digest, payload=lineage),
     )
-    if changed is None:
+    if changed in {None, "later_lineage"}:
         assert result["status"] == "h20_gross_available"
         assert result["rows"][0]["predicted_gross_return_bp"] == -1250
         assert result["capture_model_version"] != result["model_version"]
@@ -282,7 +312,7 @@ def _invoke_cli_process(
 def qa_tmp_path() -> Iterator[Path]:
     """使用短 workspace QA 路徑保存 synthetic fixtures 與 SQLite 讀取痕跡。"""
 
-    parent = Path(daily_cli.ROOT).parents[2] / "output" / "qa" / "a03"
+    parent = Path(daily_cli.ROOT) / "output" / "qa" / "a03"
     parent.mkdir(parents=True, exist_ok=True)
     yield Path(tempfile.mkdtemp(prefix="a03-", dir=parent))
 

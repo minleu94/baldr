@@ -823,3 +823,6 @@ worker56ae8d82採入中央4cea589d：僅guard exact caller兩label symbols、CLI
 ### 2026-10-06 I20/P1採入，剩清冊一次有限收尾
 
 I20中央95d381a4：20exact entries，原20test/舊分類/direct12不變；metadata1281/1125/missing156/docstale0、exit1。P1中央e1857a31：ledger route/path/account guards與readonly ctor，原金融AST/SQL不變，172lane raw/44central affected通過；builder＋雙CLI P2依此API執行，尚不代表正式writer啟用。P1新test另1，當前預期1282/1125/missing157。原156全scope＋此具名增量可一次由唯一I156owner改四治理檔，其他四群只讀逐檔證據，不bulk猜、不改tests/support/runner，不重union；[完整派工及frozen paths](../06_qa/BALDR_NEXT_OWNERSHIP_DISPATCH_20261006.md)。source_id三檔仍未准；Formal/Task/Native/fit與Stage/UX资格保留。
+
+
+2026-10-06 中央 A01/A03 更新：v3 個股/capture 選版及 CLI 可信 gross contract/lineage reader 接線完成；今日原 public current-observed 真 H20 模型十檔 available 已有 QA receipt。canonical daily live source-time composition／正式 Task 尚未完成，原模型來源、PIT、自然成熟與 compression 資格不升。操作與限制見 APPLICATION_MANUAL.md 9.9.1h；完整收據見 docs/06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。

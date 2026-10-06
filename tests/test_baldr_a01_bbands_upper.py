@@ -281,3 +281,78 @@ def test_new_band_method_requires_binding_and_rejects_wrong_parameters():
     ).conditions[0]
     assert mismatched.state == "unknown"
     assert mismatched.eligibility == "unknown"
+
+
+@pytest.mark.parametrize("version", [DAILY_MARKET_FEATURE_CONTRACT_VERSION, V3])
+def test_central_report_consumer_uses_saved_feature_version(tmp_path, version):
+    from tests.test_daily_market_snapshot_consumer import _consumer
+
+    db, day = _database(tmp_path)
+    root = tmp_path / "snapshots"
+    published = _publish(db, day, root, version=version)
+    assert published.status == "published_complete"
+    report = _consumer(db, day, root, cohort=COHORT).read_report("2382", as_of_date=day)
+    assert report.shared_daily_features["readback"]["mode"] == "verified_published_research_snapshot"
+    assert report.shared_daily_features["contract_version"] == version
+    assert ("BB_Upper" in report.shared_daily_features["features"]) is (version == V3)
+    if version == V3:
+        assert report.shared_daily_features["conditions"][METHOD]["state"] == "match"
+        with sqlite3.connect(db) as connection:
+            connection.execute("UPDATE technical_indicators SET BB_Upper='999'")
+        changed = _consumer(db, day, root, cohort=COHORT).read_report("2382", as_of_date=day)
+        assert changed.shared_daily_features["projection_status"] == "failed"
+
+
+@pytest.mark.parametrize("version,method_count", [(DAILY_MARKET_FEATURE_CONTRACT_VERSION, 2), (V3, 3)])
+def test_central_versioned_capture_preserves_all_method_denominators(tmp_path, monkeypatch, version, method_count):
+    from app_module.rule_research_sample_capture import build_rule_research_capture, RuleResearchCapture
+    from tests.test_rule_research_sample_capture import _writer
+
+    db, day = _database(tmp_path)
+    root = tmp_path / "snapshots"
+    published = _publish(db, day, root, version=version)
+    saved = DailyMarketSnapshotRepository(root).load_manifest(
+        published.manifest_sha256, cohort_id=COHORT, decision_date=day,
+    )
+    clock = datetime.fromisoformat(saved.manifest["published_at"])
+    capture = build_rule_research_capture(saved, as_of=clock, observed_at=clock)
+    body = capture.to_dict()
+    assert len(body["method_counts"]) == len(body["rows"]) == method_count
+    assert all(item["included_denominator"] == 1 for item in body["method_counts"])
+    assert all(item["represented_denominator"] == 1 for item in body["method_counts"])
+    assert body["feature_contract_version"] == version
+    assert body["policy"]["formal_eligible"] is False
+    written = _writer(tmp_path, monkeypatch).write(capture, revalidate=lambda: capture)
+    stored = Path(written["directory"]) / "capture.json"
+    assert RuleResearchCapture(stored.read_text(encoding="utf-8")).identity_sha256 == capture.identity_sha256
+    if version == V3:
+        import app_module.rule_research_sample_capture as capture_module
+
+        forged = deepcopy(body)
+        forged["rows"][-1]["stock_code"] = "3333"
+        forged["capture_identity_sha256"] = capture_module._identity(forged)
+        with pytest.raises(capture_module.RuleSampleCaptureError) as error:
+            RuleResearchCapture(capture_module._json(forged)).to_dict()
+        assert error.value.code == "capture_method_scope_mismatch"
+
+
+@pytest.mark.parametrize("version", [DAILY_MARKET_FEATURE_CONTRACT_VERSION, V3])
+def test_central_pinned_report_keeps_exact_saved_version(tmp_path, version):
+    from tests.test_daily_market_snapshot_consumer import _consumer
+
+    db, day = _database(tmp_path)
+    root = tmp_path / "snapshots"
+    published = _publish(db, day, root, version=version)
+    saved = DailyMarketSnapshotRepository(root).load_manifest(
+        published.manifest_sha256, cohort_id=COHORT, decision_date=day,
+    )
+    context = {"source_kind": "daily_market_research_snapshot", "decision_date": day.isoformat(),
+               "daily_snapshot_root": str(root), "daily_snapshot_cohort_id": COHORT,
+               "source_snapshot_hash": saved.manifest_sha256,
+               "source_snapshot_id": saved.manifest_identity_sha256,
+               "daily_snapshot_condition_keys": METHOD if version == V3 else "close_above_ma20",
+               "daily_snapshot_combine_mode": "AND"}
+    report = _consumer(db, day, root, cohort=COHORT).read_report("2382", as_of_date=day, context=context)
+    assert report.shared_daily_features["readback"]["mode"] == "verified_pinned_daily_market_research_snapshot"
+    assert report.shared_daily_features["contract_version"] == version
+    assert report.shared_daily_features["readback"]["manifest_sha256"] == saved.manifest_sha256

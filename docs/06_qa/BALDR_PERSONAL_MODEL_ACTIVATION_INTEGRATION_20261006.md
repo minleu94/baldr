@@ -44,3 +44,18 @@ raw：`output/qa/baldr_real_model_intake_20261006/verified_existing_h20_saved_re
 可信候選對原 frozen source 的 source-time proposal=`proposal_ready`；對當前正式 DB 則 `training_source_time_training_rows_unbound`。剩下必須完成目前 current-restated observation 與 frozen training source 的明示分域，以及 A03 CLI 的真 lineage reader／contract 接線、自然結果與中央 union。新 gross trainer不是前置需求。
 
 可逆回退：先撤新 policy path override 使用原路徑；原 rule-only／policy CAS 回退契約不變。不要刪原 receipt 假裝未曾推論或重新標記舊模型資格。本次不變更 Task、ACL、交易、真 DB、migration，也未 push／main merge。
+
+
+## 2026-10-06 中央 A01/A03 與今日真模型讀回
+
+A01 已採入 `32dea52c`，A03 已採入 `ca762901`。中央補齊 v2/v3 個股 consumer 的 manifest 選版、BB opt-in fingerprint、exact manifest 再驗，以及多方法 consensus／capture 第三方法的完整共同分母；v2 原 pins 不變。單批 snapshot CLI 新增 `--include-bbands30-upper`，預設仍 v2；parent-universe 路徑尚未接 v3，明示拒絕該組合。保存容量、200GiB capture reserve、PIT／來源資格與 compression 未決均保留。
+
+A03 CLI 新增成對 `--gross-fit-receipt`／`--gross-fit-receipt-sha256`，由原可信 receipt 重建 A02 contract、注入原 `read_recommendation_training_lineage`；request 必須明示相同 `gross_model_contract_hash`。不重訓、不載模型、不代造 canonical 結果。gross 保存 projection 區分 model final-fold 日期與 merged lineage cutoff，後者不得晚於決策日。worker fixture root 改成當前 repo/output/qa，不再在主 checkout 誤寫 C:/output。
+
+今日真來源推論已實測：原 public current-observed context verifier／provider／feature builder →同 bytes 的既有 H20 return head；10 檔全部 available。decision_date=2026-10-06，observed_at=2026-10-06T15:35:41.658492+00:00，特徵截至 2026-10-05。收據 `output/qa/baldr_real_model_intake_20261006/current_verified_h20_observation_final.json` raw SHA256 `3abb94591d90256afe83e62d5923aeffb9ddd1bc53e3f7a54f6412bcb5c1a46b`。模型 artifact `sha256:8890df64cb66d73af1b34755053d271dad4d38450bdb6e51578681e8684d7310`；completed cycle terminal `sha256:7e552bfeed88527d7bef66c233a5b90d5dae39cccd937dd100730302318c2819`。
+
+十檔 gross bp：1225=2204、1256=365、1465=1673、1477=2557、1560=2135、1714=1931、1721=2093、2382=684、3207=835、9935=1314。這是新觀測的真模型研究預測，已保存 QA receipt；尚不是 canonical RecommendationResult／personal capture，不冒稱每日正式 producer 已啟用。原來源 availability、PIT、訓練與自然成熟資格未提升。原 holdout Brier2730 比 null2500 差230bp，保留揭露；不把自然成熟或績效變成人工工程啟用 gate。
+
+Windows sandbox 對 snapshot SHM 讀取造成 data_version 每次遞增；同一唯讀探針在允許環境保持不變，原 guard／ACL 未改。相鄰 A03 原 no-follow ancestor handles 同理，紅收據保留，隔離合成同版允許重驗 64 passed/1 skip。A01 composition 133 passed/1 skip；第三方法 scope 偽造 delta2 passed；Workbench85、validator25/4skip、full mypy841零錯誤。這些數量不相加宣稱全 App。
+
+剩餘精確 composition：把已成功的 current-observed public 路徑接成可重複每日保存與 outcome 的可信 caller，不能以舊 frozen training DB 偽裝今日來源；原 V2 canonical source-time policy 與目前 daily live DB 尚不相容，不移除 source marker／改時鐘來通過。日常 Task 真啟用、Private root/帳戶正式選擇未執行。parent-universe v3、compression、原 Stage/UX、七有限 closed／性能例外均未擅自升級。

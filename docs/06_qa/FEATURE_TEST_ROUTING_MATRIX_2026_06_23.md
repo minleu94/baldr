@@ -333,3 +333,12 @@ test_market_csv_export62／test_export_market_csv_cli26／test_personal_data_pat
 
 
 同版c9d57fc7已准樹結果：四用途delta64、Workbench85、validator25/4skip、full roots mypy839、100 changed compile／quant通過。原固定樹lane收據各有scope，不累加案例； source_id三檔blocked不計通過。next有限工程scope及原9/24對照見[BALDR移交](BALDR_CLOSEOUT_STATUS_20261006.md)。
+
+
+## 2026-10-06 A01/A02/A03 中央接線分類
+
+- `tests/test_baldr_a01_bbands_upper.py`：`service-oracle-data-market`。
+- `tests/test_baldr_a03_personal_model_daily.py`：`write-risk-dry-run-required`。
+- `tests/test_baldr_a02_h20_gross_model.py`：`service-oracle-recommendation`。
+
+A01 是隔離 SQLite→版別 snapshot→個股讀回／capture oracle；A02 是 pinned H20 gross 契約與受控 loader oracle；A03 含固定 repo QA 收據、合成 child process 與排程 CLI，需明示隔離／dry-run 路由。三者均不新增 direct bridge、不豁免 pytest，也不表示 Native、正式 Task、自然成熟或全 App 通過。中央原始收據見 `output/qa/baldr_real_model_intake_20261006/`；分類不替代 runtime 驗證。

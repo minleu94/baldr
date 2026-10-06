@@ -4,8 +4,8 @@
 
 R01 新增唯一 test 檔登錄為 service-oracle-research-backtest：原 Registry writer 合成保存→lookup/service same-bytes bounded reader→新程序、exact identity/DataFrame/source SHA/mtime oracle；所有 writer僅tmp fixture，無正式資料／Task／Native／fit。超容量／aggregate／取消／替換／消失／marked sidecar與lineage屬讀取服務驗證，不是direct UI bridge；舊1283分類、direct12、support/runner API不改。沿用64/256MiB caller budget，不降低20/200GiB reserve。原worker101 focused與73 adjacent/1skip按各自scope核raw，不累加為全App。中央入冊與 final union收據另存output/qa；歷史I156／P2節保留。
 
-Current filesystem Python files: `1284`
-Current registry entries: `1284`
+Current filesystem Python files: `1287`
+Current registry entries: `1287`
 Current collected test cases: not collected
 
 | Category | Count |
@@ -15,15 +15,17 @@ Current collected test cases: not collected
 | `healthcheck-runner-owned` | 29 |
 | `legacy-or-low-priority` | 3 |
 | `manual-only` | 14 |
-| `service-oracle-data-market` | 192 |
+| `service-oracle-data-market` | 193 |
 | `service-oracle-portfolio-decision-runtime` | 155 |
-| `service-oracle-recommendation` | 187 |
+| `service-oracle-recommendation` | 188 |
 | `service-oracle-research-backtest` | 134 |
 | `slow-e2e-or-environment` | 11 |
 | `ui-healthcheck-candidate-bridge` | 97 |
 | `ui-healthcheck-direct-bridge` | 12 |
-| `write-risk-dry-run-required` | 91 |
+| `write-risk-dry-run-required` | 92 |
 
+
+A01/A02/A03 三項 exact path 本輪新增；current table 同步1287，direct仍12。歷史區段原文保留，不以分類覆蓋 runtime 資格。
 
 ## 2026-10-06 P2 historical refresh
 
@@ -562,3 +564,12 @@ registry 879、missing 108，stale 與 collection errors 均為 0，`service-ora
 ## 2026-10-05 UX05 有界新增分類
 
 本包只登錄 tests/test_daily_market_research_presets.py 為service-oracle-recommendation、tests/test_ux05_research_presets_ui.py 為ui-healthcheck-candidate-bridge。與相關route共43項定向通過，不升為healthcheck direct bridge。本包不refresh全量清冊／collection，上述舊全量數字不是今日完整數目；其餘先前新增而尚未登錄項目不在本包重新分類。
+
+
+## 2026-10-06 A01/A02/A03 中央接線分類
+
+- `tests/test_baldr_a01_bbands_upper.py`：`service-oracle-data-market`。
+- `tests/test_baldr_a03_personal_model_daily.py`：`write-risk-dry-run-required`。
+- `tests/test_baldr_a02_h20_gross_model.py`：`service-oracle-recommendation`。
+
+A01 是隔離 SQLite→版別 snapshot→個股讀回／capture oracle；A02 是 pinned H20 gross 契約與受控 loader oracle；A03 含固定 repo QA 收據、合成 child process 與排程 CLI，需明示隔離／dry-run 路由。三者均不新增 direct bridge、不豁免 pytest，也不表示 Native、正式 Task、自然成熟或全 App 通過。中央原始收據見 `output/qa/baldr_real_model_intake_20261006/`；分類不替代 runtime 驗證。

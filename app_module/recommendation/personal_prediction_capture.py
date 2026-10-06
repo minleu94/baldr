@@ -365,10 +365,15 @@ def project_personal_capture_h20_gross(
             raise PersonalPredictionCaptureError("h20_gross_verified_lineage_bytes_mismatch")
         for field, expected in (("training_source_hash", contract.training_source_hash),
                                 ("training_pit_hash", contract.training_pit_hash),
-                                ("training_as_of", contract.training_as_of),
+                                ("training_as_of", getattr(contract, "lineage_training_as_of", None) or contract.training_as_of),
                                 ("feature_registry_hash", contract.feature_registry_hash)):
             if lineage.get(field) != expected:
                 raise PersonalPredictionCaptureError(f"h20_gross_lineage_mismatch:{field}")
+        if (getattr(contract, "lineage_training_as_of", None) is not None
+                and candidate.get("training_cutoff") != contract.lineage_training_as_of):
+            raise PersonalPredictionCaptureError("h20_gross_candidate_lineage_cutoff_mismatch")
+        if date.fromisoformat(lineage["training_as_of"]) > date.fromisoformat(binding["decision_date"]):
+            raise PersonalPredictionCaptureError("h20_gross_lineage_after_decision")
         if (lineage.get("feature_schema") != [list(row) for row in contract.feature_schema]
                 or lineage.get("return_basis") != contract.price_basis
                 or lineage.get("training_context", {}).get("semantics") != "decision_time"

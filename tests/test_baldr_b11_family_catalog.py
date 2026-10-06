@@ -110,13 +110,16 @@ def test_only_two_existing_versioned_methods_share_one_family():
         "daily_market.close_above_ma20@1.0.0", "daily_market.close_above_ma60@1.0.0",
     )
     assert {contract["family"] for contract in contracts.values()} == {family.family_id}
-    assert all(not item.versioned_method_refs for item in families.list_rule_research_families() if item != family)
+    upper = families.get_rule_research_family("bollinger_compression_breakout")
+    assert upper.versioned_method_refs == ("daily_market.close_above_bbands30_upper@1.0.0",)
+    assert all(not item.versioned_method_refs for item in families.list_rule_research_families()
+               if item.family_id not in (family.family_id, upper.family_id))
 
 
 def test_bollinger_candidate_is_not_a_saved_or_enabled_compression_method():
     family = families.get_rule_research_family("bollinger_compression_breakout")
-    assert family.status == "unavailable"
-    assert family.versioned_method_refs == ()
+    assert family.status == "partial"
+    assert family.versioned_method_refs == ("daily_market.close_above_bbands30_upper@1.0.0",)
     assert family.warmup["required_observation_count"] == 30
     assert family.warmup["parameters"] == {"timeperiod": 30, "nbdevup": "2.0", "nbdevdn": "2.0", "matype": "SMA"}
     assert family.warmup["compression_threshold"] is None

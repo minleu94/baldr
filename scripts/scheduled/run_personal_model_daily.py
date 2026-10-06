@@ -63,6 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="絕對路徑的隔離 receipt 根目錄。",
     )
+    parser.add_argument("--gross-fit-receipt", help="原始可信 fit receipt 的絕對路徑；僅讀回既有模型契約")
+    parser.add_argument("--gross-fit-receipt-sha256", help="caller 已核准的原 receipt raw SHA256")
     return parser
 
 
@@ -188,6 +190,20 @@ def _load_api_runner():
     return run_personal_model_daily
 
 
+def _load_gross_dependencies(path: Path, expected_sha256: str) -> dict[str, Any]:
+    from scripts.qa_prepare_personal_h20_gross_contract import prepare_contract
+    from ml_module.personal_h20_gross_model_contract import H20GrossModelContract
+    from ml_module.recommendation_training_lineage import read_recommendation_training_lineage
+
+    prepared = prepare_contract(path, expected_fit_receipt_sha256=expected_sha256)
+    body = dict(prepared["contract"])
+    body["feature_schema"] = tuple(tuple(row) for row in body["feature_schema"])
+    contract = H20GrossModelContract(**body)
+    if contract.contract_hash != prepared["contract_hash"]:
+        raise _RequestError("gross_contract_identity_mismatch")
+    return {"gross_contract": contract, "lineage_reader": read_recommendation_training_lineage}
+
+
 def _write_json(payload: dict[str, Any]) -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -212,7 +228,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         receipt_root = _require_absolute_path(args.receipt_root, "receipt-root")
         raw = _read_bounded_plain_request(request_path)
         request = _decode_request(raw, args.request_sha256)
-        receipt = _load_api_runner()(request=request, receipt_root=receipt_root)
+        if bool(args.gross_fit_receipt) != bool(args.gross_fit_receipt_sha256):
+            raise _RequestError("gross_fit_receipt_and_sha256_required_together")
+        dependencies = {}
+        if args.gross_fit_receipt:
+            dependencies = _load_gross_dependencies(
+                _require_absolute_path(args.gross_fit_receipt, "gross-fit-receipt"),
+                args.gross_fit_receipt_sha256,
+            )
+            if request.get("gross_model_contract_hash") != dependencies["gross_contract"].contract_hash:
+                raise _RequestError("request_gross_contract_hash_mismatch")
+        receipt = _load_api_runner()(request=request, receipt_root=receipt_root, **dependencies)
         if not isinstance(receipt, dict):
             raise _RequestError("daily API 必須回傳 receipt object")
         status = receipt.get("status")

@@ -231,3 +231,6 @@ UX23 registry readonly 整合：[QA](../06_qa/UX23_REGISTRY_INTEGRATION_20261006
 [2026-10-06 BALDR十五包／九階段／二十四UX有限移交](../06_qa/BALDR_CLOSEOUT_STATUS_20261006.md)：已准固定樹驗收、source_id批准block、8boundary／176inventory／Paperproducer可修工程、U1/U2與敏感啟用／自然證據分開，下一有限包精確ownership提案；不是新roadmap。
 
 2026-10-06：[P2 selected Paper daily／benchmark與市場alias有限接受](../06_qa/BALDR_PERSONAL_PAPER_PRODUCERS_20261006.md)，原P1 schema／formula／custody接口保留，操作見Manual；[中央P2／F01／M03收據](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)記具名metadata1283、H5移位與剩5違例，不授正式私人writer或Task。
+
+
+2026-10-06 中央 A01/A03 更新：v3 個股/capture 選版及 CLI 可信 gross contract/lineage reader 接線完成；今日原 public current-observed 真 H20 模型十檔 available 已有 QA receipt。canonical daily live source-time composition／正式 Task 尚未完成，原模型來源、PIT、自然成熟與 compression 資格不升。操作與限制見 APPLICATION_MANUAL.md 9.9.1h；完整收據見 docs/06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md。

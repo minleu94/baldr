@@ -22,8 +22,7 @@ from app_module.daily_market_snapshot_repository import (
     DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA, DailyMarketSnapshotRepository,
     VerifiedDailyMarketSnapshot,
 )
-from app_module.daily_market_feature_snapshot import DAILY_MARKET_FEATURE_CONTRACT_VERSION
-from app_module.daily_market_method_contract import method_contracts_payload, method_contracts_sha256
+from app_module.daily_market_feature_snapshot import feature_contract_for_version
 from app_module.multi_method_research_consensus import (
     adapt_daily_market_snapshot, build_multi_method_consensus,
 )
@@ -101,15 +100,20 @@ class RuleResearchCapture:
         _require(body.get("schema_version") == CAPTURE_SCHEMA, "capture_version_mismatch")
         _require(body.get("policy") == _POLICY, "capture_policy_mismatch")
         _require(body.get("capture_identity_sha256") == _identity(body), "capture_identity_mismatch")
-        _require(body.get("method_contracts") == method_contracts_payload()
-                 and body.get("method_contracts_sha256") == method_contracts_sha256(),
+        try:
+            contract = feature_contract_for_version(str(body.get("feature_contract_version") or ""))
+        except ValueError as exc:
+            raise RuleSampleCaptureError("feature_version_mismatch") from exc
+        _require(body.get("method_contracts") == contract.method_contracts
+                 and body.get("method_contracts_sha256") == contract.method_contracts_sha256,
                  "capture_method_version_mismatch")
         _require(body.get("source_observed_at") is None and body.get("source_available_at") is None,
                  "source_clock_backfill_rejected")
         _require(body.get("source_sha256") == _digest(_json({"source_ref": body.get("source_ref"),
                  "source_refs": body.get("source_refs")}).encode("utf-8")), "capture_source_hash_mismatch")
         rows = body.get("rows")
-        _require(isinstance(rows, list) and 2 <= len(rows) <= 64, "capture_row_bound")
+        _require(isinstance(rows, list) and len(contract.condition_keys) <= len(rows)
+                 <= 32 * len(contract.condition_keys), "capture_row_bound")
         seen: set[tuple[str, str]] = set()
         for row in rows:
             _require(isinstance(row, dict) and row.get("state") in
@@ -126,8 +130,8 @@ class RuleResearchCapture:
                  and body["included_denominator"] <= body["represented_denominator"] <= 32,
                  "capture_denominator_invalid")
         counts = body.get("method_counts")
-        expected_ids = {m["method_id"] for m in method_contracts_payload().values()}
-        _require(isinstance(counts, list) and len(counts) == 2
+        expected_ids = {m["method_id"] for m in contract.method_contracts.values()}
+        _require(isinstance(counts, list) and len(counts) == len(expected_ids)
                  and {c["method_id"] for c in counts} == expected_ids
                  and {r["method_id"] for r in rows} == expected_ids,
                  "capture_methods_missing")
@@ -143,7 +147,7 @@ class RuleResearchCapture:
                 and len(members) == body["represented_denominator"]
                 and len(members) - tally["excluded"] == body["included_denominator"],
                 "capture_counts_mismatch")
-        _require(scopes[0] == scopes[1], "capture_method_scope_mismatch")
+        _require(all(scope == scopes[0] for scope in scopes), "capture_method_scope_mismatch")
         _validate_saved_semantics(body)
         return body
 
@@ -201,7 +205,8 @@ def _validate_saved_semantics(body: dict[str, Any]) -> None:
                  and type(body.get("population_count")) is int
                  and universe.get("population_count") == body["population_count"] == len(represented)
                  and body.get("population_status") == "declared_fixed_cohort", "capture_population_mismatch")
-    contracts = {c["method_id"]: c for c in method_contracts_payload().values()}
+    descriptor = feature_contract_for_version(str(body.get("feature_contract_version") or ""))
+    contracts = {c["method_id"]: c for c in descriptor.method_contracts.values()}
     for method_id, contract in contracts.items():
         rows = [r for r in body["rows"] if r["method_id"] == method_id]
         _require({r["stock_code"] for r in rows} == represented, "capture_control_members_mismatch")
@@ -225,8 +230,10 @@ def build_rule_research_capture(snapshot: VerifiedDailyMarketSnapshot, *,
     manifest = deepcopy(dict(snapshot.manifest))
     _require(manifest.get("schema_version") == DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA,
              "snapshot_version_mismatch")
-    _require(manifest.get("feature_contract_version") == DAILY_MARKET_FEATURE_CONTRACT_VERSION,
-             "feature_version_mismatch")
+    try:
+        feature_contract_for_version(str(manifest.get("feature_contract_version") or ""))
+    except ValueError as exc:
+        raise RuleSampleCaptureError("feature_version_mismatch") from exc
     _require(manifest.get("policy") == {"research_only": True, "historical_pit_eligible": False},
              "snapshot_policy_mismatch")
     _require(manifest.get("counts") == {"declared": len(manifest["declared_stock_codes"]),

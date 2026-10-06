@@ -5180,3 +5180,18 @@ benchmark使用 `scripts/build_paper_equal_weight_benchmark.py --portfolio-id <�
 selected時可省略既有path override；若提供 `--baseline`、`--state-db`、daily的 `--ledger-db` 或benchmark的 `--output-ledger`，必須exact selected path。`--output-root`仍為config的legacy output定位，不能另選private writer。無route的legacy benchmark仍要求原baseline/state/market/output四參數。不得以resolve先掩蓋alias，不能自動搬庫或退回legacy。
 
 daily passed只代表本次Paper snapshot流程結果，不等於真成交、投資有效性或來源正式資格；future／未知交易日不建state或提高資格。exit2先核root/mode成對、空值、帳戶／benchmark、精確override與main/sidecars/祖先aliases；selected失敗只回JSON，不補寫legacy status。不要以刪除可疑temporary、改ACL、migration或正式Task解決；原bytes/hash／未知diagnostic保留。[P2具名QA](../06_qa/BALDR_PERSONAL_PAPER_PRODUCERS_20261006.md)記錄工程驗收與限制。
+
+
+### 9.9.1h H20 gross 每日收據與 BBANDS 上軌保存版別（2026-10-06）
+
+單批大盤研究保存若需有限 BBANDS30 上軌比較，沿既有命令加 `--include-bbands30-upper`；預設不加仍為 v2。v3 保存原 BB_Upper，個股頁依已保存 manifest 讀回同版 fingerprint。close > upper 是有限比較，缺 band／30 根有效連續 OHLC 時為 unknown；不代表 compression 完成，也不授 PIT 或正式模型資格。parent-universe + 此旗標目前拒絕，請使用明示的單批範圍。
+
+每日既有 canonical capture／自然 outcome 入口：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/scheduled/run_personal_model_daily.py --request-json <絕對request路徑> --request-sha256 sha256:<raw64hex> --receipt-root <獨立receipt根> --gross-fit-receipt <可信原fit收據絕對路徑> --gross-fit-receipt-sha256 <已核raw64hex>
+```
+
+request schema 為 `personal-model-daily-request.v1`，必須明示 canonical recommendation root、個人 capture root、隔離 outcome root、原 market DB／calendar cache pins、aware evaluation_at 與 result_ids 或 capture_paths。欲讀 gross 加 `gross_model_contract_hash`，必須匹配由原 fit receipt 重建的契約；gross flags 不成對或身份不符會在每日 I/O 前拒絕。已有模型的 return head 以整數 bp 展示 H20 absolute/no-cost，不能從 probability 或 after-cost head 推導。自然 outcome 未達20交易日或官方 calendar 缺件時 pending／unknown，保留原資料，不補時間與結果。
+
+今日十檔 current-observed 真模型推論已保存 QA，但尚未接成此 canonical 每日 ingress，也未啟用正式 Task。請勿把 QA 預測檔當 RecommendationResult、把 frozen 舊來源當今日資料，或改 source marker/PIT 來通過。預覽／來源核驗與正式啟用須保留 exact model、source、帳戶與 private-root 身份；有錯誤先核 request raw pin、來源 receipt、contract hash、模型／lineage 兩個 cutoff 及 no-follow 權限，禁止放寬 guard。

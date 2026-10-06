@@ -10,6 +10,11 @@ import re
 from typing import Literal
 
 from app_module.daily_market_method_contract import method_contracts_payload, method_contracts_sha256
+from app_module.daily_market_feature_snapshot import (
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
+    feature_contract_for_version,
+)
 from app_module.daily_market_research_screener import evaluate_daily_market_conditions
 from app_module.daily_market_snapshot_repository import (
     DailyMarketSnapshotRepository, VerifiedDailyMarketSnapshot,
@@ -160,12 +165,17 @@ def _validate_source(source: MethodResultSource) -> dict[str, MethodObservation]
     cutoff, published = _aware(source.decision_cutoff), _aware(source.published_at)
     _require(cutoff.date() == day and cutoff <= published, "source_clock_mismatch")
     _require(source.research_only is True and source.historical_pit_eligible is False, "unsupported_qualification")
-    expected = method_contracts_payload().get(source.method_key)
+    supported_contract = next((feature_contract_for_version(version) for version in (
+        DAILY_MARKET_FEATURE_CONTRACT_VERSION, DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
+    ) if feature_contract_for_version(version).method_contracts_sha256 == source.contracts_sha256), None)
+    _require(supported_contract is not None, "method_version_or_contract_mismatch")
+    assert supported_contract is not None
+    expected = supported_contract.method_contracts.get(source.method_key)
     _require(expected is not None, "method_not_supported")
     assert expected is not None
     _require((source.method_id, source.family, source.version, source.parameters_json,
               source.contracts_sha256) == (expected["method_id"], expected["family"],
-              expected["version"], _json(expected["parameters"]), method_contracts_sha256()),
+              expected["version"], _json(expected["parameters"]), supported_contract.method_contracts_sha256),
              "method_version_or_contract_mismatch")
     _require(source.completeness in {"complete_declared_cohort", "partial_research"}, "completeness_invalid")
     codes = source.declared_stock_codes
@@ -316,8 +326,9 @@ def adapt_daily_market_snapshot(snapshot: VerifiedDailyMarketSnapshot, *, as_of:
              and manifest.get("cohort_id") == snapshot.cohort_id
              and manifest.get("decision_date") == snapshot.decision_date.isoformat()
              and manifest.get("completeness") == snapshot.completeness, "verified_wrapper_mismatch")
-    _require(manifest.get("method_contracts") == method_contracts_payload()
-             and manifest.get("method_contracts_sha256") == method_contracts_sha256(), "captured_methods_missing_or_mixed")
+    contract = feature_contract_for_version(str(manifest.get("feature_contract_version") or ""))
+    _require(manifest.get("method_contracts") == contract.method_contracts
+             and manifest.get("method_contracts_sha256") == contract.method_contracts_sha256, "captured_methods_missing_or_mixed")
     cutoff, published = str(manifest["decision_cutoff"]), str(manifest["published_at"])
     _require(_aware(cutoff) <= as_of and _aware(published) <= as_of, "source_after_as_of")
     codes = tuple(manifest["declared_stock_codes"])
@@ -331,7 +342,7 @@ def adapt_daily_market_snapshot(snapshot: VerifiedDailyMarketSnapshot, *, as_of:
     _require(set(records) == set(snapshot.stock_snapshots) and set(records) | set(missing) == set(codes)
              and not set(records).intersection(missing), "artifact_denominator_mismatch")
     sources: list[MethodResultSource] = []
-    for key, method in method_contracts_payload().items():
+    for key, method in contract.method_contracts.items():
         rows: list[MethodObservation] = []
         for code in codes:
             payload = snapshot.stock_snapshots.get(code)

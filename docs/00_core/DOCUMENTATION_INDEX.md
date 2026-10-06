@@ -167,3 +167,6 @@ Archive、QA receipt、FINAL 設計分冊及 31 份 task specs 仍保留原文�
 
 
 - 2026-10-06 [UX22 同源公平比較 QA](../06_qa/UX22_FAIR_COMPARISON_20261006.md)：sealed來源／CORE20／既有shadow DTO共同分母、明示target與流失、CLI新程序重讀；隔離工程驗證，不宣稱模型效果或訓練資格。
+
+
+- [UX23 隔離 shadow 工程狀態與 exact 收據](../06_qa/UX23_SHADOW_ACCEPTANCE_20261006.md)：有限工程 partial；規則回退、版本 pins、新程序重讀、始終未啟用。操作同步完整 Manual。

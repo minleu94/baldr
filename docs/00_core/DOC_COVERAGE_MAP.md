@@ -432,3 +432,8 @@ source adapter／sealed outcome 保存與只讀日報→system_architecture、AP
 ### 2026-10-06 UX22 公平比較 coverage
 
 Must已同步：Manual入口／步驟／policy與bundle／結果／安全限制／排錯；Snapshot實際狀態；current architecture exact讀取與ML邊界；Navigation／Index新入口；QA routing與tracked QA。原plan僅追加，raw proof在output/qa/ux22_fair_comparison_20261006，不stage。產品／6M／長期／target無方向或部署改變，UX22仍partial，既有gate不重開。
+
+
+### 2026-10-06 UX23 隔離工程狀態
+
+Manual 已覆蓋 preview／明示 save／exact read／stop、參數與 DTO 匯出、三軸判讀、版本失配／缺件／容量／殘件與安全限制；Snapshot 與 QA 區分工程 partial、自然成熟／漂移／採用／效果缺口。architecture／navigation／index／測試路由同步，不更動產品方向或正式部署契約。

@@ -20,6 +20,10 @@ FORBIDDEN_ML_IMPORT_ROOTS = frozenset(PRODUCTION_ROOTS)
 ARTIFACT_CONTRACT_ROOT = "artifact_contracts"
 ARTIFACT_CONTRACT_ALLOWED_EXTERNAL_ROOTS = frozenset({"numpy"})
 ALLOWED_READ_ONLY_PRODUCTION_ML_IMPORTS: dict[str, dict[str, frozenset[str]]] = {
+    # UX23 consumes exported lifecycle DTOs/policy only; never opens a registry.
+    "app_module/rule_research_shadow_acceptance.py": {
+        "ml_module.model_lifecycle_registry": frozenset({"ModelLifecycleEvent", "_ALLOWED_TRANSITIONS"}),
+    },
     # Sealed research exports only: no training runners or registry I/O.
     "app_module/rule_research_fair_comparison.py": {
         "ml_module.historical_contracts": frozenset({"HistoricalFeatureRow"}),

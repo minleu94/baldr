@@ -177,3 +177,8 @@ Testing / QA Agent 接收到功能驗證請求後，將其映射到系統的六�
 ### 2026-10-06 UX22 公平比較
 
 focused：`test_rule_research_fair_comparison.py`／`test_rule_research_fair_comparison_cli.py`／`test_rule_research_fair_boundary.py`；regression：ML historical evaluator、feature builder、shadow DTO及label readiness。驗同源／固定target／共同分母、缺candidate與不可比較、未來資料拒絕、取消重試、JSON有界與新程序readback。未改UI，不重跑Native／效能或已接受工作臺gate；完整ML boundary原HEAD八條違例另記基線，不覆寫其他owner。詳UX22_FAIR_COMPARISON_20261006。
+
+
+### UX23 隔離 shadow 工程狀態（2026-10-06）
+
+Focused 路由：`tests/test_rule_research_shadow_acceptance.py`、`tests/test_rule_research_shadow_acceptance_cli.py`、`tests/test_rule_research_shadow_acceptance_boundary.py`；同源比較回歸走 `tests/test_rule_research_fair_comparison.py`。驗缺候選／模型版本與非法 lifecycle／失敗回退、明示停止、取消／來源重驗／殘件、duplicate／新程序 exact read。無 UI 改動，不重開已接受效能／Native gate；全 repo boundary 八條既有違例另報，不等於通過。證據見 [UX23 QA](UX23_SHADOW_ACCEPTANCE_20261006.md)。

@@ -694,3 +694,8 @@ python ui_qt/main.py
 - `app_module/rule_research_fair_comparison.py`：明示target／來源契約、CORE20 feature與整數shadow DTO共同樣本比較。
 - `scripts/run_rule_research_fair_comparison.py`：預設白話摘要，--json保存有界研究收據；不fit或寫registry。
 - focused／CLI／ML boundary tests與[QA](docs/06_qa/UX22_FAIR_COMPARISON_20261006.md)；[Manual](docs/07_guides/APPLICATION_MANUAL.md)列政策、分母／缺件及排錯。UX22保持partial。
+
+
+### UX23 隔離 shadow 工程驗收（2026-10-06）
+
+入口 `scripts/run_rule_research_shadow_acceptance.py`；consumer `app_module/rule_research_shadow_acceptance.py`；操作依 [Manual](docs/07_guides/APPLICATION_MANUAL.md)，工程／資料效果／未啟用三軸及未完項依 [UX23 QA](docs/06_qa/UX23_SHADOW_ACCEPTANCE_20261006.md)。不連 registry、不啟用正式行為。

@@ -4952,3 +4952,28 @@ bundle為版本化JSON匯出：CORE20完整feature slots、dataset／feature sch
 模型MAE指平均絕對預測誤差（bp），不是交易期間最大不利波動；precision是原計分器所定義的top-k正報酬比例。endpoint資料仍不能計算期間MFE／最大不利波動或停牌影響。
 
 政策輸入64KiB、bundle／報告2MiB、label行4096；重複JSON key、未知版本、浮點／bool預測、超限或身份失配拒絕，不截斷。錯配請核對原exact配對與原匯出，不重跑來源或用最新DB補舊預測。來源current-observed／calendar及availability限制仍在，training／PIT／formal／natural／execution皆false、selection unknown；不fit／部署／載入模型pickle／寫registry、Task或正式DB。受控fixture只能驗工程，不能證明真模型改善。詳[QA](../06_qa/UX22_FAIR_COMPARISON_20261006.md)。
+
+
+## UX23 隔離 shadow 工程狀態與收據（2026-10-06）
+
+沿上一節 exact parent／outcome、label／split／comparison policy 與既有模型輸入 bundle，另明示 case-id 及 lifecycle DTO 匯出。這個 CLI 只驗研究投影能否執行、保存或回退；沒有啟用、正式推薦、重訓或排程操作。
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_rule_research_shadow_acceptance.py --case-id <具名研究案例> --receipt <parent.json> <outcome.json> --label-policy <label.json> --split-policy <split.json> --comparison-policy <comparison.json> --inputs-bundle <inputs.json> --lifecycle-export <lifecycle.json>
+```
+
+預設只預覽。預設摘要分三軸：「工程可執行／資料或效果未合格／未啟用」；缺候選模型、資料不相容或執行失敗會保留規則路徑。`--json` 才展開 comparison identity／binding、模型與來源版本、分母、lifecycle 和診斷。不把未知 availability 或零合格樣本改成通過，研究分數也不等於自然效果或採用接受。
+
+`lifecycle.json` 明示 schema_version=`rule-research-shadow-lifecycle-export.v1`、model_id、dataset_id、artifact_hash、metadata（完整 candidate model_pin，須 canonical 相同）、events（既有 ModelLifecycleEvent 的 event_id／model_id／event_type／created_at／reason）。模型三個 pins 必須與 candidate 相同；事件依匯出原順序核對既有轉移規則。空事件表示尚無啟用事件，缺整份匯出則缺件。即使匯出含 activated_for_shadow，本入口仍未啟用任何實際 overlay；disabled／superseded／rollback_requested／review_required 使隔離投影停止。匯出是聲明，未驗真 registry 或模型訓練 lineage；不開啟資料庫。
+
+需要保存時，在同一命令明示 `--save --store <隔離子目錄>`。store 只接受 repo output/qa 或系統 Temp 下的獨立子目錄；保存前後重新讀取全部輸入及 exact 來源並核對身份，沿既有同目錄 atomic capture＋receipt writer。保留 256KiB capture、128 筆／8MiB retention、200GiB 剩餘容量安全線，不提供繞過選項。同版重試 duplicate 保留第一次 observed_at；不是新自然預測。
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_rule_research_shadow_acceptance.py --store <同一隔離子目錄> --identity <保存回傳的64位SHA>
+```
+
+重讀只接受 store／identity 及可選 `--json`，不讀 latest、不查 registry／DB 或今天行情。收據凍結保存時的研究狀態，並非現在模型控制狀態。要留下停止判定，在原預覽命令加 `--stop-reason <原因>`，可明示保存一份新的停止收據；它只停止此隔離研究投影，不寫 disabled 事件、不改實際模型或舊收據。既有收據與停止收據都始終未啟用。
+
+排錯：模型／資料集／artifact 版本失配、非法事件鏈、缺 candidate 或比較拒絕都回退規則路徑，核對原匯出與 exact 收據後另預覽；不要補最新資料或覆寫舊版。容量不足、來源修訂、writer busy、殘件或 hash 失配拒絕發布；取消不發布完成版，重試仍重驗來源。partial 證據保留且後續 fail closed，需人工檢視，不能用本入口清除。政策及 lifecycle 匯出各64KiB、bundle最多2MiB、合併輸入context最多2MiB＋128KiB；超限拒絕不截斷。CLI 參數／檔案／保存錯誤 exit 2，研究缺件摘要仍是安全研究結果，不能據 exit 0 宣稱效果合格。
+
+UX23 只有有限工程 partial。自然預測封存、成熟讀回、漂移監控、具名採用條件、真模型優於基準、正式回退／啟用及真人驗收仍缺；training／PIT／formal／natural／execution 與 shadow_enabled 全 false、alpha 0、selection unknown。驗證與限制見 [UX23 QA](../06_qa/UX23_SHADOW_ACCEPTANCE_20261006.md)。

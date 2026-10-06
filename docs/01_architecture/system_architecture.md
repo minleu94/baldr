@@ -1411,3 +1411,8 @@ exact parent/readiness→current-observed SQLite snapshot transaction（原決�
 ### UX22 sealed 同源比較（2026-10-06）
 
 `rule_research_fair_comparison`重用label readiness sealed reader、CORE20 HistoricalFeatureBuilder、MLModelRecord／MLShadowPredictionRecord與既有integer historical evaluator；只接受匯出DTO，不呼叫registry／fit。兩模型共用exact sample IDs、原decision feature source pins及target contract，事後label envelope另綁；固定來源／split／成本／基準不相容不pool。CLI預設白話摘要，JSON含完整母體與逐行流失／共同分母、身份及research-only false資格旗標。精確ML read-only symbols獨立allowlist，不放寬training/service匯入；QA見UX22_FAIR_COMPARISON_20261006。
+
+
+### 2026-10-06 UX23 隔離研究驗收 leaf
+
+`run_rule_research_shadow_acceptance.py` → `rule_research_shadow_acceptance` → 既有公平比較／exported ModelLifecycleEvent 與轉移規則 → 既有 BoundedRuleResearchCaptureWriter 的薄 capture subclass。只固定 model／source／comparison pins、分母與三軸狀態，不開 registry RW、不載模型／fit／監控 writer，不增加 shadow 平台或正式控制。exact immutable read 不讀 latest；停止只描述此隔離投影。[範圍與證據](../06_qa/UX23_SHADOW_ACCEPTANCE_20261006.md)。

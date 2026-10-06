@@ -1,6 +1,12 @@
 # PROJECT_SNAPSHOT（必讀｜目前狀態）
 
-## 2026-10-06 UX22 同源公平比較工程（最新）
+## 2026-10-06 UX23 隔離 shadow 最小工程狀態（最新）
+
+沿59a09f9b，existing fair comparison＋registry lifecycle DTO 匯出→模型／來源／比較收據 pins→規則回退／隔離投影停止→atomic 保存／exact 新程序重讀。白話三軸「工程可執行／資料或效果未合格／未啟用」，不開 registry RW、不載模型／fit、不改正式控制或 Task。未知 availability／0合格樣本及所有資格 false 保留，alpha 0、selection unknown。
+
+UX23 pending→partial，沒有新增 done；9stage=1done/8partial/0pending、24UX=2done/22partial/0pending。自然預測與成熟／漂移／採用／真效果／正式啟用仍未完成；停止收據僅是研究投影，不是實際 disabled 操作。無 UI／Native／效能 gate 變更，其他 owner 三檔及八條既有 ML boundary 違例保留。[QA 與剩餘工程](../06_qa/UX23_SHADOW_ACCEPTANCE_20261006.md)；Manual 已同步。
+
+## 2026-10-06 UX22 同源公平比較工程
 
 沿ae90ba2c，exact sealed labels→既有CORE20特徵loader／整數shadow prediction DTO→同序共同樣本計分→白話CLI／JSON新程序重讀已接線。明示方法、horizon、label／split／cost／benchmark及兩模型target契約，完整母體、方法行、所選目標與流失分母分列；缺baseline／candidate或目標映射不計分。原sealed fixture仍18 labels／12數值、18 availability unknown、0 temporal training candidates；合成日期及模型輸出只驗工程，PIT／training／formal／natural／execution皆false。
 

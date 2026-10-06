@@ -106,7 +106,10 @@ from app_module.paper_equal_weight_benchmark_builder import (
 )
 from app_module.paper_trade_import_service import PaperTradeImportService
 from app_module.trade_import_service import TradeImportService
-from app_module.user_declared_holding_research import UserDeclaredHoldingResearchService
+from app_module.user_declared_holding_research import (
+    UserDeclaredHoldingResearchService,
+    UserDeclaredHoldingResearchStore,
+)
 from ui_qt.models.workbench_table_models import PositionHealthTableModel
 from ui_qt.widgets.user_declared_holding_research_widget import (
     UserDeclaredHoldingResearchWidget,
@@ -987,6 +990,10 @@ class PortfolioView(QWidget):
         presentation_service: DecisionPresentationService | None = None,
         position_health_read_service: PositionHealthTransitionReadService | None = None,
         user_declared_research_service: UserDeclaredHoldingResearchService | None = None,
+        user_declared_store: UserDeclaredHoldingResearchStore | None = None,
+        user_declared_portfolio_id: str = "default",
+        paper_readiness_service: PaperPortfolioReadinessService | None = None,
+        paper_weekly_evidence_service: PaperPortfolioWeeklyEvidenceService | None = None,
         user_declared_market_source: Any | None = None,
         user_declared_condition_source: Any | None = None,
     ):
@@ -994,6 +1001,27 @@ class PortfolioView(QWidget):
         self.setMinimumWidth(0)
         self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.portfolio_service = portfolio_service
+        if (
+            getattr(portfolio_service.config, "personal_store_mode", None) is not None
+            or getattr(portfolio_service.config, "personal_store_root", None) is not None
+        ):
+            if (
+                user_declared_research_service is None and user_declared_store is None
+            ) or paper_readiness_service is None or paper_weekly_evidence_service is None:
+                raise ValueError("已配置私人 store 模式，聲明與 Paper 服務必須由中央注入；不回退 legacy")
+        if user_declared_research_service is not None and user_declared_store is not None:
+            raise ValueError("聲明持倉 service／store 只能注入其中一項")
+        if not isinstance(user_declared_portfolio_id, str) or not user_declared_portfolio_id.strip():
+            raise ValueError("聲明持倉 portfolio identity 不可空白")
+        if (paper_readiness_service is None) != (paper_weekly_evidence_service is None):
+            raise ValueError("Paper readiness／weekly 必須成對注入，不借 legacy 服務")
+        if paper_readiness_service is not None and paper_weekly_evidence_service is not None:
+            for field_name in (
+                "portfolio_id", "benchmark_id", "state_db_path", "benchmark_db_path", "cost_ledger_db_path",
+            ):
+                if getattr(paper_readiness_service, field_name) != getattr(paper_weekly_evidence_service, field_name):
+                    raise ValueError(f"Paper 注入服務 identity／path 不一致：{field_name}")
+        self.user_declared_portfolio_id = user_declared_portfolio_id
         self.journal_service = journal_service
         self.recommendation_service = recommendation_service
         self.condition_monitor = condition_monitor or PortfolioConditionMonitor()
@@ -1005,12 +1033,14 @@ class PortfolioView(QWidget):
                 / "position_health_transition"
             )
         )
-        self.user_declared_research_service = (
-            user_declared_research_service
-            or UserDeclaredHoldingResearchService.under_output_root(
+        if user_declared_research_service is not None:
+            self.user_declared_research_service = user_declared_research_service
+        elif user_declared_store is not None:
+            self.user_declared_research_service = UserDeclaredHoldingResearchService(user_declared_store)
+        else:
+            self.user_declared_research_service = UserDeclaredHoldingResearchService.under_output_root(
                 self.portfolio_service.config.output_root
             )
-        )
         self.user_declared_market_source = user_declared_market_source
         self.user_declared_condition_source = user_declared_condition_source
         self.strategy_version_service = StrategyVersionService(self.portfolio_service.config)
@@ -1024,10 +1054,10 @@ class PortfolioView(QWidget):
         self.stress_history_read_service = PortfolioStressHistoryReadService(
             self.stress_history_db_path,
         )
-        self.paper_readiness_service = PaperPortfolioReadinessService(
+        self.paper_readiness_service = paper_readiness_service if paper_readiness_service is not None else PaperPortfolioReadinessService(
             output_root=self.portfolio_service.config.output_root,
         )
-        self.paper_weekly_evidence_service = PaperPortfolioWeeklyEvidenceService(
+        self.paper_weekly_evidence_service = paper_weekly_evidence_service if paper_weekly_evidence_service is not None else PaperPortfolioWeeklyEvidenceService(
             output_root=self.portfolio_service.config.output_root,
             benchmark_db_path=self.paper_readiness_service.benchmark_db_path,
             cost_ledger_db_path=self.paper_readiness_service.cost_ledger_db_path,
@@ -1111,7 +1141,23 @@ class PortfolioView(QWidget):
         title_layout.addWidget(info_btn)
         main_layout.addLayout(title_layout)
 
-        self.portfolio_focus_summary = V5ResearchSummary("目前持倉重點")
+        account_row = QHBoxLayout()
+        account_row.addWidget(QLabel("分帳查看"))
+        self.portfolio_account_selector = QComboBox()
+        self.portfolio_account_selector.setAccessibleName("持倉分帳選擇")
+        self.portfolio_account_selector.addItem("真實／手動登錄帳（未核券商成交）", "manual")
+        self.portfolio_account_selector.addItem("使用者聲明研究帳", "user_declared")
+        self.portfolio_account_selector.addItem("Paper 模擬帳", "paper")
+        account_row.addWidget(self.portfolio_account_selector)
+        account_row.addStretch()
+        main_layout.addLayout(account_row)
+        self.portfolio_account_context_label = QLabel("三帳獨立；不合併總值，手動登錄不代表券商成交已核驗。")
+        self.portfolio_account_context_label.setWordWrap(True)
+        self.portfolio_account_context_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        main_layout.addWidget(self.portfolio_account_context_label)
+        self.portfolio_account_selector.currentIndexChanged.connect(self._select_portfolio_account)
+
+        self.portfolio_focus_summary = V5ResearchSummary("手動登錄帳持倉重點")
         self.portfolio_focus_summary.setAccessibleName("持倉日常摘要")
         self.portfolio_focus_summary.setToolTip(
             "先看持倉狀態、已知原因或缺件與下一步；交易歷史、日誌、Paper、Stress 等由進階入口開啟。"
@@ -1145,15 +1191,15 @@ class PortfolioView(QWidget):
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1a365d, stop:1 #2a4365)"
         )
         self.card_invested = GradientCard(
-            "投入金額（毛額，未扣費稅）", "TWD 0",
+            "投入金額（毛額，未扣費稅）", "未知（尚未讀取）",
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2d3748, stop:1 #4a5568)"
         )
         self.card_pnl = GradientCard(
-            "已實現損益（毛額，未扣費稅）", "TWD 0",
+            "已實現損益（毛額，未扣費稅）", "未知（尚未讀取）",
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #1a202c, stop:1 #2d3748)"
         )
         self.card_positions = GradientCard(
-            "活躍持倉部位", "0 檔",
+            "活躍持倉部位", "尚未讀取",
             "qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #234e52, stop:1 #2c7a7b)"
         )
 
@@ -1264,6 +1310,7 @@ class PortfolioView(QWidget):
 
         # Left Panel: 持倉列表與操作
         left_widget = QWidget()
+        self.manual_account_panel = left_widget
         # 寬版 splitter 的左 pane 仍需保留可讀操作文字與持倉欄位；不足寬度時
         # 由表格水平捲動承接欄位，而不是把操作按鈕壓成半個字。窄版 390px
         # 仍可容納此 responsive lower bound，不以固定高度撐大視窗。
@@ -1451,6 +1498,7 @@ class PortfolioView(QWidget):
             condition_monitor=self.condition_monitor,
             market_source=self.user_declared_market_source,
             condition_source=self.user_declared_condition_source,
+            portfolio_id=self.user_declared_portfolio_id,
             parent=None,
         )
         set_scroll_content_constraints(self.user_declared_research_widget)
@@ -1767,29 +1815,62 @@ class PortfolioView(QWidget):
         )
         self._apply_portfolio_advanced_visibility()
 
+    def _select_portfolio_account(self, _index: int = 0) -> None:
+        """只切換既有分帳工作區，不讀取或寫入另一帳的資料。"""
+
+        account = self.portfolio_account_selector.currentData()
+        labels = {
+            "manual": "目前查看手動登錄帳；未核券商成交。成本為成交毛額，費稅另列；不合併聲明或 Paper 總值。",
+            "user_declared": "目前查看聲明研究帳；成本為使用者聲明，估值日期逐列顯示。非成交證明；不合併手動或 Paper 總值。",
+            "paper": "目前查看 Paper 模擬帳；估值／成本／turnover 沿原收據，缺件保持未知。非實盤績效；不合併其他帳總值。",
+        }
+        self.portfolio_account_context_label.setText(labels.get(account, "帳本未知；不能判讀總值。"))
+        if account != "manual":
+            self._toggle_advanced_portfolio(True)
+            target = "聲明持倉研究" if account == "user_declared" else "Paper Portfolio"
+            for index in range(self.portfolio_detail_tabs.count()):
+                if self.portfolio_detail_tabs.tabText(index) == target:
+                    self.portfolio_detail_tabs.setCurrentIndex(index)
+                    break
+        else:
+            self._toggle_advanced_portfolio(False)
+
     def _toggle_advanced_portfolio(self, expanded: bool) -> None:
         """切換持倉進階工作區；不改變任何既有資料或 identity。"""
 
         self._advanced_details_visible = bool(expanded)
+        self.toggle_advanced_portfolio_btn.blockSignals(True)
+        self.toggle_advanced_portfolio_btn.setChecked(bool(expanded))
+        self.toggle_advanced_portfolio_btn.blockSignals(False)
         self._apply_portfolio_advanced_visibility()
 
     def _apply_portfolio_advanced_visibility(self) -> None:
         """維持日常首屏精簡，讓完整研究資料由明確入口展開。"""
 
         expanded = bool(getattr(self, "_advanced_details_visible", False))
+        manual = self.portfolio_account_selector.currentData() == "manual"
+        for widget in (
+            self.card_net_val, self.card_invested, self.card_pnl, self.card_positions,
+            self.active_positions_summary_label, self.manual_account_panel,
+        ):
+            widget.setVisible(manual)
         for widget in getattr(self, "_portfolio_advanced_widgets", ()):
             widget.setVisible(expanded)
         if hasattr(self, "paper_health_group"):
-            self.paper_health_group.setVisible(expanded)
+            self.paper_health_group.setVisible(
+                expanded and self.portfolio_account_selector.currentData() != "user_declared"
+            )
             self.paper_health_group.setSizePolicy(
                 QSizePolicy.Expanding, QSizePolicy.Preferred
             )
         if hasattr(self, "portfolio_focus_summary"):
             # 進階正文保留一行脈絡摘要；完整日常摘要仍可用同一切換鈕返回，
             # Paper blocker／評估原因則固定留在正文健康區，不因精簡首屏而消失。
-            self.portfolio_focus_summary.setVisible(not expanded)
+            self.portfolio_focus_summary.setVisible(
+                not expanded and self.portfolio_account_selector.currentData() == "manual"
+            )
         if hasattr(self, "portfolio_compact_context_label"):
-            self.portfolio_compact_context_label.setVisible(expanded)
+            self.portfolio_compact_context_label.setVisible(expanded and manual)
         if hasattr(self, "toggle_advanced_portfolio_btn"):
             self.toggle_advanced_portfolio_btn.setText(
                 "隱藏進階：交易歷史／日誌／模擬持倉／壓力測試"
@@ -1936,8 +2017,8 @@ class PortfolioView(QWidget):
 
         self._last_portfolio_dto = portfolio
         self._refresh_position_health(portfolio)
-        self._load_portfolio_summary(portfolio)
         self._load_positions_table(portfolio)
+        self._load_portfolio_summary(portfolio)
         self._load_trades_history()
         self._load_journal_entries()
         self._load_paper_readiness()
@@ -1985,7 +2066,7 @@ class PortfolioView(QWidget):
             conclusion = (
                 f"目前持有 {count_text} 檔；投入金額（毛額，未扣費稅）{invested_text}。"
             )
-            next_step = "先選取一檔持倉核對目前價格與退出條件；歷史、日誌與模擬持倉請開啟進階。"
+            next_step = "選取一檔後按「個股研究」核對同股原來源；缺原結果身份時保留未連結，不借同股最新結果。"
             sufficiency = "持倉資料可讀；健康與退出條件依獨立資料來源顯示。"
         else:
             reasons = [
@@ -2005,14 +2086,46 @@ class PortfolioView(QWidget):
             reasons=reasons,
             next_step=next_step,
             evidence=(
-                f"持倉資料最後更新：{updated_at}；持倉數：{count_text}。"
+                f"手動登錄帳；持倉資料最後更新：{updated_at}（不是估值日）；持倉數：{count_text}。"
                 f"{recorded_costs}。"
             ),
-            risk="目前價格或健康資料缺漏時，這頁不替你推測結果；人工持倉與模擬持倉分開核對。",
+            change=self._portfolio_valuation_context(positions),
+            risk="滑價／換手率／部位集中度影響：本帳未提供，未知；不從市值推算。沒有精確健康來源不判安全，手動／聲明／模擬持倉不混總值。",
             sufficiency=sufficiency,
             reasons_title="重點",
         )
         self._render_portfolio_compact_context(portfolio)
+
+    def _portfolio_valuation_context(self, positions: Sequence[Any]) -> str:
+        """只列原報價日期與缺件，不把交易日期或更新時鐘冒充估值日。"""
+
+        dates: set[str] = set()
+        missing: list[str] = []
+        for position in positions:
+            raw_date = self._valuation_date_for_position(position)
+            if not raw_date:
+                missing.append(str(getattr(position, "stock_code", "未知")))
+            else:
+                dates.add(raw_date)
+        date_text = "、".join(sorted(dates)) or "未知"
+        missing_text = "、".join(missing) or "無已識別缺件"
+        return f"估值日期（原報價）：{date_text}；缺價格或日期：{missing_text}；異日價格不能視為同日估值，未有同口徑前值不能比較變化。"
+
+    def _valuation_date_for_position(self, position: Any) -> str:
+        """使用同列已快取報價；source summary 日期不是價格核驗證據。"""
+
+        code = str(getattr(position, "stock_code", "") or "")
+        snapshot = self._cached_current_snapshot_for_position(position, code)
+        if snapshot is None or snapshot.current_price is None:
+            return ""
+        try:
+            dto_price = Decimal(str(getattr(position, "current_price", None)))
+            quote_price = Decimal(str(snapshot.current_price))
+        except Exception:
+            return ""
+        if not dto_price.is_finite() or not quote_price.is_finite() or dto_price != quote_price:
+            return ""
+        return self._cached_position_quote_date(position, code)
 
     def _portfolio_health_focus_reason(self) -> str:
         """摘要只描述 Paper read model 狀態，不把它套成人工持倉結論。"""
@@ -3085,6 +3198,7 @@ class PortfolioView(QWidget):
             priced_count = 0
             unpriced_codes: list[str] = []
             price_dates: set[str] = set()
+            undated_count = 0
             for position in active_positions:
                 raw_price = getattr(position, "current_price", None)
                 try:
@@ -3098,14 +3212,19 @@ class PortfolioView(QWidget):
                     continue
                 marked_value += quantity * price
                 priced_count += 1
-                source_summary = getattr(position, "source_summary", {}) or {}
-                price_date = source_summary.get("current_price_date")
-                if isinstance(price_date, str) and price_date:
+                price_date = self._valuation_date_for_position(position)
+                if price_date:
                     price_dates.add(price_date)
+                else:
+                    undated_count += 1
 
-            if priced_count:
+            if priced_count and (undated_count or len(price_dates) != 1):
+                self.card_net_val.update_value("未知（估值日期缺件或不一致）")
+            elif priced_count and not unpriced_codes:
                 marked_value = marked_value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 self.card_net_val.update_value(f"TWD {marked_value:,.2f}")
+            elif priced_count:
+                self.card_net_val.update_value("未知（部分持倉缺價格）")
             else:
                 self.card_net_val.update_value("N/A（缺最新價格）")
             self.card_invested.update_value(f"TWD {total_invested:,.2f}")

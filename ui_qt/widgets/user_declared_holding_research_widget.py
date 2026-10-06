@@ -143,6 +143,7 @@ class UserDeclaredHoldingResearchTableModel(QAbstractTableModel):
         "研究建議",
         "研究狀態",
         "目前價格",
+        "估值日期",
         "帳面變化",
         "原因",
     )
@@ -174,12 +175,13 @@ class UserDeclaredHoldingResearchTableModel(QAbstractTableModel):
                 _table_action_text(row.advice_action),
                 _table_status_text(row.research_status),
                 _money_text(row.market_price),
+                row.market_as_of_date.isoformat() if row.market_as_of_date is not None else "未知",
                 _money_text(row.mark_to_declared_cost_delta),
                 _reason_text(row),
             )[index.column()]
         if role == Qt.ToolTipRole:
             return format_user_declared_research_technical(row)
-        if role == Qt.TextAlignmentRole and index.column() in {1, 2, 5, 6}:
+        if role == Qt.TextAlignmentRole and index.column() in {1, 2, 5, 7}:
             return int(Qt.AlignRight | Qt.AlignVCenter)
         return None
 
@@ -718,7 +720,11 @@ class UserDeclaredHoldingResearchWidget(QWidget):
         self.archive_button.setEnabled(not row.record.archived)
         self.detail_label.setText(
             f"{row.stock_code}｜研究建議：{research_action_label(row.advice_action)}｜"
-            f"狀態：{research_status_label(row.research_status)}｜原因：{_reason_text(row)}"
+            f"狀態：{research_status_label(row.research_status)}｜原因：{_reason_text(row)}\n"
+            f"聲明研究帳｜估值日期：{row.market_as_of_date.isoformat() if row.market_as_of_date else '未知'}｜"
+            f"評估日：{row.evaluation_date.isoformat()}｜成本口徑：使用者聲明單價 {_money_text(row.record.declared_cost)}\n"
+            "費稅／滑價／換手率／集中度影響：未提供，未知；帳面變化不是已實現績效。"
+            "過期或缺件時維持待確認，不以研究建議判定安全；同股原研究身份見技術詳情。"
         )
         self.technical_detail.setText(format_user_declared_research_technical(row))
 

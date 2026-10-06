@@ -375,7 +375,7 @@ def test_portfolio_active_summary_lists_position_count_and_top_symbols(tmp_path)
     assert "活躍持倉：2 檔" in view.active_positions_summary_label.text()
     assert "2330 台積電" in view.active_positions_summary_label.text()
     assert view.card_net_val.title_label.text() == "持倉市值（未含現金）"
-    assert view.card_net_val.value_label.text() == "TWD 261,000.00"
+    assert view.card_net_val.value_label.text() == "未知（估值日期缺件或不一致）"
     assert "已標記市值 2/2 檔" in view.active_positions_summary_label.text()
 
 

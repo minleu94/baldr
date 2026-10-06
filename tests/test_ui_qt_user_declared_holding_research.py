@@ -163,6 +163,10 @@ def test_user_declared_widget_crud_research_and_exact_revision_resync(tmp_path: 
         widget._on_row_selected(widget.table_model.index(0, 0))
         assert widget._editing_holding_id == holding_id
         assert widget._editing_revision_number == 1
+        assert "聲明研究帳" in widget.detail_label.text()
+        assert "成本口徑：使用者聲明單價 100.00" in widget.detail_label.text()
+        assert "估值日期：" in widget.detail_label.text()
+        assert "費稅／滑價／換手率／集中度影響：未提供，未知" in widget.detail_label.text()
 
         widget.quantity_input.setValue(120)
         widget.save_revision()

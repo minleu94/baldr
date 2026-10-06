@@ -1,5 +1,11 @@
 # baldr 完整操作手冊
 
+## Windows 可攜版入口
+
+保留整個 `baldr` 資料夾並雙擊 `baldr.exe`，不需 IDE 或全域 Python。首次無設定使用外部空根並提示設定，不借開發機資料；設定 JSON、私人模式／原可信模型、重開、CLI／scheduler、日誌與安全限制見 [可攜指南](PORTABLE_WINDOWS.md)。原九工作區與四用途步驟不變。未簽章，Native 真人與正式 Task 自然 run 不由 offscreen 測試代替。
+
+更新帶警告成功時，Timeline 顯示 partial 並保留成功時間、警告與來源日期；Runtime 顯示 guarded。只接受 producer 一致的合法 `passed_with_warnings`；失敗 step、errors、缺身份／日期、unknown／stale 或來源日期不一致仍按原 gate 拒絕或降級，不等於所有資料正常。
+
 ## 現況判讀（2026-10-06 文檔整理）
 
 目前已接受 U1 有限 BBANDS30 上軌比較與 U2 H20 gross；個人 H20 已啟用，保存 10 股完整 cohort／gross 排序／exact 返回驗收過。gross 報酬 head 與 canonical 機率 head 分開，Brier 2730 對 null 2500 未勝；工程可讀不代表模型品質合格。自然 10 pending／0 成熟，下一原 Task 2026-10-07 12:45 UTC／05:45 PDT 待真正自動 run，Native 真人易用性仍未驗。後文日期化「U1/U2 等答覆／尚未啟用」只描述當時範圍，現況以 [Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與具名收據為準；不改原步驟、guard 或原失敗證據。

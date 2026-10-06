@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 
 from app_module.dtos.runtime_dtos import (
     ScheduledOperationStatusDTO,
@@ -215,6 +215,10 @@ class ScheduledOperationsStatusService:
         payload: dict[str, object],
         is_core_job: bool,
     ) -> tuple[str, str]:
+        if raw_status == "passed_with_warnings" and job_id == "data_update_quick":
+            if _has_valid_warning_success_evidence(payload):
+                return "guarded", "scheduled_job_completed_with_warnings"
+            return "attention", "invalid_warning_success_artifact"
         if raw_status in _SUCCESS_STATUSES:
             return "operational", ""
         if raw_status in {"failed", "failure", "error"}:
@@ -240,6 +244,103 @@ class ScheduledOperationsStatusService:
         if is_core_job:
             return "attention", f"unexpected_core_status:{raw_status}"
         return "attention", f"unexpected_status:{raw_status}"
+
+
+def _has_valid_warning_success_evidence(payload: Mapping[str, object]) -> bool:
+    warnings = payload.get("warnings")
+    errors = payload.get("errors")
+    steps = payload.get("steps")
+    run_id = payload.get("run_id")
+    target_date = payload.get("end_date") or payload.get("target_date")
+    if not isinstance(warnings, list) or not any(
+        isinstance(item, str) and item.strip() for item in warnings
+    ):
+        return False
+    if not isinstance(errors, list) or errors:
+        return False
+    if not isinstance(run_id, str) or not run_id.strip():
+        return False
+    if not isinstance(target_date, str):
+        return False
+    date_key = target_date.strip().replace("-", "").replace("/", "")
+    if len(date_key) != 8 or not date_key.isdigit():
+        return False
+    if not isinstance(steps, list) or not steps:
+        return False
+
+    seen_names: set[str] = set()
+    broker_skips: set[str] = set()
+    for step in steps:
+        if not isinstance(step, Mapping):
+            return False
+        name = step.get("name")
+        if not isinstance(name, str) or not name.strip() or name in seen_names:
+            return False
+        seen_names.add(name)
+        step_status = str(step.get("status", "unknown")).strip().lower()
+        if step_status in {"passed", "warning"}:
+            continue
+        if step_status != "skipped" or not _is_valid_producer_skip(name, step):
+            return False
+        if name in {"update_broker_branch", "sync_broker_branch_to_sqlite"}:
+            broker_skips.add(name)
+
+    expected_broker_skips = {
+        "update_broker_branch",
+        "sync_broker_branch_to_sqlite",
+    }
+    if broker_skips and broker_skips != expected_broker_skips:
+        return False
+    return True
+
+
+def _is_valid_producer_skip(
+    name: str,
+    step: Mapping[str, object],
+) -> bool:
+    result = step.get("result")
+    if not isinstance(result, Mapping):
+        return False
+    if result.get("success") is not True or result.get("skipped") is not True:
+        return False
+
+    if name == "update_broker_branch":
+        return (
+            result.get("optional_source") is True
+            and result.get("reason") == "explicit_skip_broker_branch"
+        )
+    if name == "sync_broker_branch_to_sqlite":
+        return (
+            result.get("optional_source") is True
+            and result.get("reason") == "broker_branch_refresh_skipped"
+        )
+    if name == "update_phase3c_candidate_sources":
+        return (
+            result.get("candidate_only") is True
+            and result.get("reason")
+            in {
+                "operator_requested_candidate_update_skip",
+                "candidate_db_path_not_configured",
+            }
+        )
+    if name == "capture_tdcc_current_ownership":
+        return (
+            result.get("reason") == "phase3c_tdcc_result_not_verified"
+            and result.get("network_requested") is False
+            and result.get("writes_performed") is False
+            and str(result.get("phase3c_step_status", "unknown")).strip().lower()
+            in {"passed", "warning", "skipped"}
+        )
+    if name == "calculate_technical_indicators":
+        validation = result.get("technical_reuse_validation")
+        return (
+            result.get("skip_reason") == "technical_indicators_current"
+            and isinstance(result.get("technical_computation"), Mapping)
+            and isinstance(result.get("technical_computation_reuse"), Mapping)
+            and isinstance(validation, Mapping)
+            and validation.get("status") == "reused"
+        )
+    return False
 
 
 def _as_utc(value: datetime) -> datetime:

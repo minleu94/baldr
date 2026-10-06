@@ -4,6 +4,8 @@
 
 ## 權威入口
 
+Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS](../07_guides/PORTABLE_WINDOWS.md)。
+
 | 問題 | 入口 |
 |---|---|
 | 目前狀態與下一步 | [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md) |
@@ -23,7 +25,7 @@
 
 ## 必要調度與維運
 
-[Scheduled CMD／契約](../../scripts/scheduled/README.md)、[日常 morning check](../07_guides/EVIDENCE_SCHEDULED_MORNING_CHECK.md)、[Evidence rehearsal](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md)、[ML shadow inference 維運](../07_guides/ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md)、[模型 shadow runbook](../07_guides/HISTORICAL_ML_SHADOW_RUNBOOK.md) 與安裝／設定手冊保留為可完整調度系統的必要文件，不因包含排程或 ML 就當成 internal junk。啟用權限、正式來源與模型品質仍依 Manual／Snapshot／具名 receipt；本輪沒有改 Task 或打包 exe。
+[Scheduled CMD／契約](../../scripts/scheduled/README.md)、[日常 morning check](../07_guides/EVIDENCE_SCHEDULED_MORNING_CHECK.md)、[Evidence rehearsal](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md)、[ML shadow inference 維運](../07_guides/ML_SHADOW_INFERENCE_OPERATIONS_RUNBOOK.md)、[模型 shadow runbook](../07_guides/HISTORICAL_ML_SHADOW_RUNBOOK.md) 與安裝／設定手冊保留為可完整調度系統的必要文件，不因包含排程或 ML 就當成 internal junk。啟用權限、正式來源與模型品質仍依 Manual／Snapshot／具名 receipt；可攜 exe 已交付，本輪沒有改 Task；操作見可攜指南。
 
 ## 歷史與原始證據
 

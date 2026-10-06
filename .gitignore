@@ -179,3 +179,5 @@ qa/reports/
 pattern_profile_times.txt
 scratch_logs.txt
 scratch/
+# Windows 可攜建置輸出，禁止納入 source commit。
+/dist/

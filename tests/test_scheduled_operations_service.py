@@ -36,6 +36,58 @@ def _expected_evidence_payload() -> dict[str, object]:
     }
 
 
+def _warning_update_payload() -> dict[str, object]:
+    return {
+        "status": "passed_with_warnings",
+        "run_id": "update-run-1",
+        "checked_at": NOW.isoformat(),
+        "end_date": "2026-08-06",
+        "warnings": ["TPEX daily prices were already current"],
+        "errors": [],
+        "steps": [
+            {"name": "download", "status": "passed"},
+            {"name": "update_tpex_daily_prices", "status": "warning"},
+        ],
+    }
+
+
+def _producer_skip(name: str, **result: object) -> dict[str, object]:
+    return {"name": name, "status": "skipped", "result": result}
+
+
+def _warning_update_with_producer_skips() -> dict[str, object]:
+    payload = _warning_update_payload()
+    payload["steps"].extend(
+        [
+            _producer_skip(
+                "update_broker_branch", success=True, skipped=True,
+                optional_source=True, reason="explicit_skip_broker_branch",
+            ),
+            _producer_skip(
+                "sync_broker_branch_to_sqlite", success=True, skipped=True,
+                optional_source=True, reason="broker_branch_refresh_skipped",
+            ),
+            _producer_skip(
+                "update_phase3c_candidate_sources", success=True, skipped=True,
+                candidate_only=True, reason="operator_requested_candidate_update_skip",
+            ),
+            _producer_skip(
+                "capture_tdcc_current_ownership", success=True, skipped=True,
+                reason="phase3c_tdcc_result_not_verified",
+                phase3c_step_status="skipped", network_requested=False,
+                writes_performed=False,
+            ),
+            _producer_skip(
+                "calculate_technical_indicators", success=True, skipped=True,
+                skip_reason="technical_indicators_current",
+                technical_computation={}, technical_computation_reuse={},
+                technical_reuse_validation={"status": "reused"},
+            ),
+        ]
+    )
+    return payload
+
+
 def test_snapshot_distinguishes_operational_core_from_guarded_safety_boundaries(tmp_path):
     root = tmp_path / "scheduled"
     for job_id in (
@@ -74,6 +126,139 @@ def test_snapshot_distinguishes_operational_core_from_guarded_safety_boundaries(
     assert operations["ml_direct_chain_maintenance"].diagnostic == (
         "direct_chain_storage_preflight_blocked"
     )
+
+
+def test_warning_success_is_guarded_and_counts_as_ready_core_operation(tmp_path):
+    root = tmp_path / "scheduled"
+    for job_id in (
+        "data_freshness",
+        "recommendation_snapshot",
+        "evidence_pipeline_dry_run",
+        "decision_evidence_capture",
+        "paper_portfolio_daily",
+    ):
+        _write_status(root, job_id, {"status": "passed", "checked_at": NOW.isoformat()})
+    _write_status(root, "data_update_quick", _warning_update_payload())
+
+    snapshot = ScheduledOperationsStatusService(root, now_provider=lambda: NOW).get_snapshot()
+    operation = next(item for item in snapshot.operations if item.job_id == "data_update_quick")
+
+    assert snapshot.overall_state == "operational"
+    assert snapshot.core_ready_count == 6
+    assert operation.raw_status == "passed_with_warnings"
+    assert operation.state == "guarded"
+    assert operation.diagnostic == "scheduled_job_completed_with_warnings"
+
+
+def test_warning_success_accepts_only_named_producer_skips(tmp_path):
+    root = tmp_path / "scheduled"
+    _write_status(root, "data_update_quick", _warning_update_with_producer_skips())
+
+    snapshot = ScheduledOperationsStatusService(root, now_provider=lambda: NOW).get_snapshot()
+    operation = next(item for item in snapshot.operations if item.job_id == "data_update_quick")
+
+    assert operation.raw_status == "passed_with_warnings"
+    assert operation.state == "guarded"
+    assert operation.diagnostic == "scheduled_job_completed_with_warnings"
+
+
+def test_warning_success_rejects_uncontracted_or_malformed_skips(tmp_path):
+    unknown_skip = _warning_update_payload()
+    unknown_skip["steps"].append(
+        {
+            "name": "unknown_optional_step",
+            "status": "skipped",
+            "result": {"success": True, "skipped": True, "optional_source": True},
+        }
+    )
+    wrong_broker_reason = _warning_update_with_producer_skips()
+    wrong_broker_reason["steps"][2]["result"]["reason"] = "other_skip_reason"
+    unpaired_broker_skip = _warning_update_with_producer_skips()
+    unpaired_broker_skip["steps"].remove(
+        next(
+            step
+            for step in unpaired_broker_skip["steps"]
+            if step["name"] == "sync_broker_branch_to_sqlite"
+        )
+    )
+    unmarked_candidate_skip = _warning_update_payload()
+    unmarked_candidate_skip["steps"].append(
+        {
+            "name": "update_phase3c_candidate_sources",
+            "status": "skipped",
+            "result": {
+                "success": True,
+                "skipped": True,
+                "reason": "operator_requested_candidate_update_skip",
+            },
+        }
+    )
+    unsafe_tdcc_skip = _warning_update_with_producer_skips()
+    unsafe_tdcc_skip["steps"][5]["result"]["network_requested"] = True
+    invalid_technical_reuse = _warning_update_with_producer_skips()
+    invalid_technical_reuse["steps"][6]["result"]["technical_reuse_validation"][
+        "status"
+    ] = "not_found"
+
+    for name, payload in (
+        ("unknown", unknown_skip),
+        ("wrong-broker-reason", wrong_broker_reason),
+        ("unpaired-broker", unpaired_broker_skip),
+        ("unmarked-candidate", unmarked_candidate_skip),
+        ("unsafe-tdcc", unsafe_tdcc_skip),
+        ("invalid-technical-reuse", invalid_technical_reuse),
+    ):
+        root = tmp_path / name
+        _write_status(root, "data_update_quick", payload)
+        snapshot = ScheduledOperationsStatusService(root, now_provider=lambda: NOW).get_snapshot()
+        operation = next(
+            item for item in snapshot.operations if item.job_id == "data_update_quick"
+        )
+        assert operation.state == "attention"
+        assert operation.diagnostic == "invalid_warning_success_artifact"
+
+
+def test_malformed_warning_success_remains_attention(tmp_path):
+    with_errors = _warning_update_payload()
+    with_errors["errors"] = ["a scheduled update step failed"]
+    without_warning = _warning_update_payload()
+    without_warning["warnings"] = []
+    without_identity = _warning_update_payload()
+    without_identity.pop("run_id")
+    without_date = _warning_update_payload()
+    without_date.pop("end_date")
+    with_unknown_step = _warning_update_payload()
+    with_unknown_step["steps"][1]["status"] = "pending"
+
+    for name, payload in (
+        ("with-errors", with_errors),
+        ("without-warning", without_warning),
+        ("without-identity", without_identity),
+        ("without-date", without_date),
+        ("unknown-step", with_unknown_step),
+    ):
+        root = tmp_path / name
+        _write_status(root, "data_update_quick", payload)
+
+        snapshot = ScheduledOperationsStatusService(root, now_provider=lambda: NOW).get_snapshot()
+        operation = next(
+            item for item in snapshot.operations if item.job_id == "data_update_quick"
+        )
+
+        assert snapshot.overall_state == "attention"
+        assert operation.state == "attention"
+        assert operation.diagnostic == "invalid_warning_success_artifact"
+
+
+def test_unknown_core_terminal_status_remains_attention(tmp_path):
+    root = tmp_path / "scheduled"
+    _write_status(root, "data_update_quick", {"status": "mystery"})
+
+    snapshot = ScheduledOperationsStatusService(root, now_provider=lambda: NOW).get_snapshot()
+    operation = next(item for item in snapshot.operations if item.job_id == "data_update_quick")
+
+    assert operation.state == "attention"
+    assert operation.diagnostic == "unexpected_core_status:mystery"
 
 
 def test_evidence_degraded_fails_closed_without_complete_natural_maturity_proof(tmp_path):

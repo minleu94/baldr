@@ -6,6 +6,10 @@ baldr 是台股資料整理、技術研究、選股比較與投資組合研究�
 
 ## 安裝與首次啟動
 
+取得本機可攜版後，保留整個 `baldr` 資料夾並雙擊 `baldr.exe`；不需 IDE 或全域 Python。`_internal` 是必要依賴，不能只複製 exe。首次空資料、外部 JSON 設定、既有私人模型選擇、子程序與排錯見 [Windows 可攜指南](docs/07_guides/PORTABLE_WINDOWS.md)。未簽章，Windows 信譽未知；不繞過系統警告。
+
+以下為 source 版安裝方式：
+
 使用 Windows x64、Python 3.11。在專案根目錄的同一個 PowerShell 執行：
 
 ```powershell

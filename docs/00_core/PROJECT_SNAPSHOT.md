@@ -29,4 +29,4 @@ H20 已實際啟用；原保存 10 股完整 cohort 的 gross 整數排序與 ex
 
 優先觀察下一次自然 Task 真實結果、Native 真人接受與尚存來源／模型品質資格；不以文件整理或 graphify 成功折抵 Gate。方向見 [Roadmap Hub](DEVELOPMENT_ROADMAP.md)，邊界見 [目前架構](../01_architecture/system_architecture.md)／[FINAL 目標架構](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)，完整文件清單與維護流程見 [文檔索引](DOCUMENTATION_INDEX.md)。
 
-使用者後續要求可直接雙擊的 `baldr.exe`，不需 IDE，並重新評估 main／dev；由後續 owner 在 docs＋功能 audit 完成後實作，本輪未製作或宣稱可用。main 應保留乾淨且可完整調度的系統與必要安裝／設定／scheduler／模型載入文檔；開發歷史分層保存，main 同步仍待後續 owner，本輪不改 main。
+其後已實際交付 Windows onedir `dist/baldr/baldr.exe`，需保留整個資料夾、不需 IDE／全域 Python。外部資料／輸出／私人設定分離，不內附 FA_Data 或個人模型。首次操作、SHA、已驗與未驗項見 [可攜指南](../07_guides/PORTABLE_WINDOWS.md)。D01 合法警告成功保留 last success、warning 與 freshness/date 診斷，Runtime 維持 guarded，不把未知／失敗變成功。main 保留既有完整 scheduler／模型／資料功能與必要文件；dev 保存內部 QA、規劃及打包 probe。本輪可逆本機 commit 同步 main，沒有 push；詳細收據見 [可攜 QA](../06_qa/BALDR_PORTABLE_WINDOWS_20261006.md)。上方文檔整理時的 branch／未同步狀態保留為該輪歷史。

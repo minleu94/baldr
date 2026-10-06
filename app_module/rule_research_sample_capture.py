@@ -16,7 +16,7 @@ import shutil
 import stat
 import tempfile
 import uuid
-from typing import Any
+from typing import Any, Protocol
 
 from app_module.daily_market_snapshot_repository import (
     DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA, DailyMarketSnapshotRepository,
@@ -48,6 +48,15 @@ class RuleSampleCaptureError(ValueError):
     def __init__(self, code: str) -> None:
         self.code = code
         super().__init__(code)
+
+
+class VerifiedResearchCapture(Protocol):
+    """共用有界原子保存封裝；各 capture schema 自行驗語意。"""
+    @property
+    def body_json(self) -> str: ...
+    @property
+    def identity_sha256(self) -> str: ...
+    def to_dict(self) -> dict[str, Any]: ...
 
 
 def _require(ok: bool, code: str) -> None:
@@ -376,16 +385,22 @@ class BoundedRuleResearchCaptureWriter:
         _require(len(files) == 2 and {p.name for p in files} == {"capture.json", "receipt.json"},
                  "store_partial_entry")
         capture_raw = _read_file(directory / "capture.json", MAX_CAPTURE_BYTES)
-        capture = RuleResearchCapture(capture_raw.decode("utf-8")).to_dict()
+        capture = self._decode_capture(capture_raw)
         receipt_raw = _read_file(directory / "receipt.json", 4096)
         receipt = json.loads(receipt_raw)
-        expected = {"schema_version": RECEIPT_SCHEMA, "status": "complete",
-                    "capture_identity_sha256": capture["capture_identity_sha256"],
-                    "capture_sha256": _digest(capture_raw), "rows_count": len(capture["rows"]),
-                    "observed_at": capture["observed_at"], "research_only": True}
+        expected = self._make_receipt(capture, capture_raw)
         _require(receipt == expected and _json(receipt).encode("utf-8") == receipt_raw
                  and directory.name == capture["capture_identity_sha256"], "receipt_binding_mismatch")
         return receipt
+
+    def _decode_capture(self, raw: bytes) -> dict[str, Any]:
+        return RuleResearchCapture(raw.decode("utf-8")).to_dict()
+
+    def _make_receipt(self, body: dict[str, Any], raw: bytes) -> dict[str, Any]:
+        return {"schema_version": RECEIPT_SCHEMA, "status": "complete",
+                "capture_identity_sha256": body["capture_identity_sha256"],
+                "capture_sha256": _digest(raw), "rows_count": len(body["rows"]),
+                "observed_at": body["observed_at"], "research_only": True}
 
     def read(self, identity_sha256: str) -> dict[str, Any]:
         """單一 immutable capture 有界讀回，不建立目錄／鎖或讀 latest。"""
@@ -393,17 +408,18 @@ class BoundedRuleResearchCaptureWriter:
                  "capture_pin_invalid")
         directory = self.output_root / identity_sha256
         receipt = self._read_completed(directory)
-        body = RuleResearchCapture(_read_file(directory / "capture.json", MAX_CAPTURE_BYTES)
-                                   .decode("utf-8")).to_dict()
+        body = self._decode_capture(_read_file(directory / "capture.json", MAX_CAPTURE_BYTES))
         _require(_digest(_json(body).encode("utf-8")) == receipt["capture_sha256"],
                  "readback_changed")
         return {"capture": body, "receipt": receipt}
 
-    def write(self, capture: RuleResearchCapture, *,
-              revalidate: Callable[[], RuleResearchCapture]) -> dict[str, Any]:
+    def write(self, capture: VerifiedResearchCapture, *,
+              revalidate: Callable[[], VerifiedResearchCapture]) -> dict[str, Any]:
         """重讀來源前後一致才發布；中斷殘件保留且下次 fail closed。"""
         body = capture.to_dict()
         identity = capture.identity_sha256
+        _require(self._decode_capture(capture.body_json.encode("utf-8")) == body
+                 and body.get("capture_identity_sha256") == identity, "capture_envelope_mismatch")
         _safe_path(self.output_root)
         self.output_root.mkdir(parents=True, exist_ok=True)
         _safe_path(self.output_root)
@@ -425,10 +441,7 @@ class BoundedRuleResearchCaptureWriter:
                     return {"status": "duplicate", "receipt": receipt,
                             "directory": str(destination)}
                 raw = capture.body_json.encode("utf-8")
-                receipt = {"schema_version": RECEIPT_SCHEMA, "status": "complete",
-                    "capture_identity_sha256": identity, "capture_sha256": _digest(raw),
-                    "rows_count": len(body["rows"]), "observed_at": body["observed_at"],
-                    "research_only": True}
+                receipt = self._make_receipt(body, raw)
                 receipt_raw = _json(receipt).encode("utf-8")
                 new_bytes = len(raw) + len(receipt_raw)
                 _require(count < MAX_CAPTURES, "retention_entry_limit")

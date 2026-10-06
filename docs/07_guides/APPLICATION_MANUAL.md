@@ -4748,3 +4748,16 @@ $target = 'C:\approved-fixture\watchlist\watchlists.v3-cow.sqlite'
 詳見 [UX20限定QA](../06_qa/UX20_SAMPLE_CAPTURE_INTEGRATION_20261006.md)。個人儲存／Journal程式已整合，正式migration／啟用尚未進行。
 
 CLI capture階段失敗時返回碼2，但上游snapshot可能已發布；回傳保留producer的manifest/status，另列sample_capture_status=rejected。只有成功readiness才表示樣本讀回已驗，請勿把上游發布誤認為樣本成功。
+
+
+## 2026-10-06 UX20 具名多批母體保存與唯讀讀回
+
+較大母體已提供 parent CLI；上節「尚無parent」限制只屬前批單批入口。使用 scripts/produce_daily_market_research_snapshot.py，明示 --db-path、repo output內專用 --output-root、含時區 --decision-cutoff、--parent-universe-config、隔離 --capture-root、--capture-as-of observed-now。parent模式不接受 --symbols／--universe-config／--cohort-id／--read-stock。
+
+配置 schema_version=daily-market-research-parent-universe.v1，填 universe_id/version/as_of_date、method=daily-market-close-ma.v1、scope=bounded_multibatch_research_cohort、included_stock_codes、excluded_stock_codes（stock_code/reason）、population_count，research_only與complete_fixed_cohort皆true。最多256 included、256 excluded、16批，每批仍≤16 included與≤16 excluded；若不能合法分批則拒絕，完整只指聲明母體。
+
+首次保存後保留 sample_readiness.as_of 及 parent identity，重試改用該固定完整ISO時刻才去重。加入 --read-parent-identity <identity> 及同一配置/output/capture/cutoff/as_of可由新程序唯讀讀回；CLI仍要求db-path參數，但此模式不開DB。錯cutoff/as_of、來源pin或方法不符會拒絕，不借另一日補資料。
+
+檢查 cohort status、captured/uncaptured分母與每批 production_status/sample_capture_status。producer可能已發布而sample拒絕；返回碼2不代表未寫任何來源。cancelled/incomplete parent envelope可完整保存，但不能稱母體完整。缺批成員列uncaptured，不當負樣本；available-at/calendar/outcome仍unknown，selected=0，不授PIT、訓練或正式资格。
+
+容量與單store守衛不放寬，另限各root64MiB/4096 entries。busy/partial/hash錯誤保留原件；先核對明示配置、容量與來源。child保存中斷留下partial時，舊store拒絕重試；經確認使用新的隔離capture root，保留舊root供審查，不刪lock/partial繞過。沒有正式排程／自動清理。每日MA頁仍為原單批純投影，未提供parent瀏覽動作。詳見 [多批QA](../06_qa/UX20_PARENT_CAPTURE_INTEGRATION_20261006.md)。

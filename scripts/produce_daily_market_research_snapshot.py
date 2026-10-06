@@ -36,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     scope_group = parser.add_mutually_exclusive_group(required=True)
     scope_group.add_argument("--symbols", nargs="+", help="1-16 explicit research symbols")
     scope_group.add_argument("--universe-config", help="Strict research-universe JSON; uses its included members")
+    scope_group.add_argument("--parent-universe-config", help="具名多批母體 JSON；每批仍≤16股，總批數≤16。")
+    parser.add_argument("--read-parent-identity", help="搭配 parent-universe-config/capture-root，唯讀重讀指定 parent；不開 DB/producer。")
     parser.add_argument("--read-stock", help="可選明示cohort內一股，發布後經個股read_report核驗讀回；不觸發live projection。")
     parser.add_argument("--capture-root", help="可選 output/qa 或 Temp 子目錄，明示保存完整單批 MA 控制組。")
     parser.add_argument("--capture-as-of", help="與 capture-root 配對；首次可用 observed-now，之後沿用回傳固定含時區 as_of 才能去重。")
@@ -60,6 +62,27 @@ def main(argv: list[str] | None = None) -> int:
             source_root = root.resolve()
             if capture_writer.output_root.is_relative_to(source_root) or source_root.is_relative_to(capture_writer.output_root):
                 raise ValueError("source_output_overlap")
+        if args.read_parent_identity and not args.parent_universe_config:
+            raise ValueError("read-parent-identity 必須搭配 parent-universe-config")
+        if args.parent_universe_config:
+            if not args.capture_root or args.read_stock is not None or args.cohort_id is not None:
+                raise ValueError("parent 母體需明示 capture-root/capture-as-of；不接受單股read-stock或覆寫cohort-id")
+            from app_module.rule_research_parent_capture import produce_parent_rule_samples
+            from app_module.rule_research_sample_readiness import read_saved_parent_rule_sample_readiness
+            if args.read_parent_identity:
+                ready = read_saved_parent_rule_sample_readiness(root, args.capture_root,
+                    universe_path=args.parent_universe_config, identity_sha256=args.read_parent_identity)
+                if ready["decision_cutoff"] != cutoff.isoformat():
+                    raise ValueError("parent_decision_cutoff_mismatch")
+                if capture_as_of is not None and ready["as_of"] != capture_as_of.astimezone(timezone.utc).isoformat():
+                    raise ValueError("parent_as_of_mismatch")
+                print(json.dumps({"status": "readonly", "sample_readiness": ready}, ensure_ascii=False, sort_keys=True))
+                return 0
+            parent_result = produce_parent_rule_samples(db_path=args.db_path, snapshot_root=root,
+                capture_root=args.capture_root, universe_path=args.parent_universe_config,
+                decision_cutoff=cutoff, as_of=capture_as_of)
+            print(json.dumps(parent_result, ensure_ascii=False, sort_keys=True))
+            return 0 if parent_result["status"] == "complete" else 2
         universe_spec = (
             load_research_universe_spec(args.universe_config)
             if args.universe_config is not None
@@ -80,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         if universe_spec is not None and cohort_id != universe_spec.universe_id:
             raise ValueError("--cohort-id must match universe_id from --universe-config")
         if not 1 <= len(symbols) <= 16 or len(set(symbols)) != len(symbols):
-            raise ValueError("單批母體必須是 1–16 檔不同股票；較大母體尚無完整多批 parent manifest，拒絕截斷或拆批冒充完整。")
+            raise ValueError("單批母體必須是 1–16 檔不同股票；較大母體請使用 --parent-universe-config；拒絕截斷或拆批冒充完整。")
         if args.read_stock is not None and args.read_stock not in symbols:
             raise ValueError("read_stock 必須屬於明示symbols")
         with SQLiteDailyMarketSnapshotSource(args.db_path, cutoff.date()) as source:

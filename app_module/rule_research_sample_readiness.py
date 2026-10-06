@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
 from app_module.daily_market_snapshot_repository import DailyMarketSnapshotRepository
@@ -51,3 +52,11 @@ def read_saved_rule_sample_readiness(
     result = project_rule_sample_readiness(source, saved=True)
     result["receipt"] = package["receipt"]
     return result
+
+
+def read_saved_parent_rule_sample_readiness(snapshot_root: str | Path, capture_root: str | Path, *,
+        universe_path: str | Path, identity_sha256: str) -> dict[str, Any]:
+    """同一 readiness 入口的多批 variant；延後 import 不新增服務或啟動 producer。"""
+    from app_module.rule_research_parent_capture import read_parent_rule_sample_readiness
+    return read_parent_rule_sample_readiness(snapshot_root, capture_root,
+        universe_path=universe_path, identity_sha256=identity_sha256)

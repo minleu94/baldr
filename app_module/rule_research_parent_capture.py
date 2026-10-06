@@ -11,6 +11,11 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app_module.daily_market_method_contract import method_contracts_payload, method_contracts_sha256
+from app_module.daily_market_feature_snapshot import (
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION,
+    DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
+    DailyMarketFeatureContract, feature_contract_for_version,
+)
 from app_module.daily_market_research_universe import (
     RESEARCH_UNIVERSE_SCHEMA, load_research_universe_spec, _object, _text,
 )
@@ -36,6 +41,27 @@ _STATES = {"pending", "snapshot_ready", "captured", "failed", "cancelled"}
 
 def _sha(value: Any) -> bool:
     return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def _contract(version: str | None) -> DailyMarketFeatureContract:
+    resolved = DAILY_MARKET_FEATURE_CONTRACT_VERSION if version is None else version
+    _require(isinstance(resolved, str), "parent_feature_version_invalid")
+    return feature_contract_for_version(resolved)
+
+
+def _saved_contract(body: dict[str, Any]) -> DailyMarketFeatureContract:
+    # 只有沒有版欄的舊 parent 可推定 v2；明示 null 或非法版不回落。
+    version = body.get("feature_contract_version", DAILY_MARKET_FEATURE_CONTRACT_VERSION)
+    _require(isinstance(version, str), "parent_feature_version_invalid")
+    return _contract(version)
+
+
+def _check_child_contract(capture: dict[str, Any], contract: DailyMarketFeatureContract) -> None:
+    _require(capture.get("feature_contract_version") == contract.version,
+             "parent_child_feature_version_mismatch")
+    _require(capture.get("method_contracts") == contract.method_contracts
+             and capture.get("method_contracts_sha256") == contract.method_contracts_sha256,
+             "parent_child_method_mismatch")
 
 
 def _parent_identity(body: dict[str, Any]) -> str:
@@ -115,6 +141,7 @@ class RuleResearchParentCapture:
         _require(isinstance(body, dict) and _json(body) == self.body_json
                  and body.get("schema_version") == PARENT_SCHEMA and body.get("policy") == _POLICY,
                  "parent_schema_invalid")
+        contract = _saved_contract(body)
         _require(body.get("capture_identity_sha256") == _parent_identity(body), "parent_identity_mismatch")
         _validate_universe(body["universe"]["value"])
         _require(_sha(body["universe"].get("source_sha256")), "parent_universe_pin_invalid")
@@ -165,6 +192,8 @@ class RuleResearchParentCapture:
                  "parent_source_pin_invalid")
         plan = {"universe": body["universe"], "decision_cutoff": body["decision_cutoff"],
                 "method_contracts_sha256": body["method_contracts_sha256"], "source_binding": source}
+        if contract.version != DAILY_MARKET_FEATURE_CONTRACT_VERSION:
+            plan["feature_contract_version"] = contract.version
         _require(body["plan_sha256"] == _digest(_json(plan).encode("utf-8")), "parent_plan_mismatch")
         return body
 
@@ -216,9 +245,13 @@ def _child_spec(universe: dict[str, Any], batch: dict[str, Any]) -> dict[str, An
             "population_count": len(batch["included_stock_codes"]) + len(batch["excluded_stock_codes"])}
 
 
-def _plan(universe: dict[str, Any], cutoff: str, method_sha: str, source: Any) -> str:
-    return _digest(_json({"universe": universe, "decision_cutoff": cutoff,
-                         "method_contracts_sha256": method_sha, "source_binding": source}).encode("utf-8"))
+def _plan(universe: dict[str, Any], cutoff: str, method_sha: str, source: Any,
+          contract_version: str | None = None) -> str:
+    plan = {"universe": universe, "decision_cutoff": cutoff,
+            "method_contracts_sha256": method_sha, "source_binding": source}
+    if contract_version is not None and contract_version != DAILY_MARKET_FEATURE_CONTRACT_VERSION:
+        plan["feature_contract_version"] = contract_version
+    return _digest(_json(plan).encode("utf-8"))
 
 
 def _batches(universe: dict[str, Any], plan: str) -> list[dict[str, Any]]:
@@ -233,11 +266,14 @@ def _snapshot_repository(root: Path, body: dict[str, Any], batch: dict[str, Any]
 
 
 def read_parent_rule_sample_readiness(snapshot_root: str | Path, capture_root: str | Path, *, universe_path: str | Path,
-                                     identity_sha256: str) -> dict[str, Any]:
+                                     identity_sha256: str, contract_version: str | None = None) -> dict[str, Any]:
     """新程序只讀 parent→receipt→完整 child pins；不開原 DB 或 latest。"""
     parent_writer = BoundedRuleResearchParentWriter(Path(capture_root) / "parents")
     package = parent_writer.read(identity_sha256)
     body = package["capture"]
+    contract = _saved_contract(body)
+    if contract_version is not None:
+        _require(_contract(contract_version).version == contract.version, "parent_feature_version_mismatch")
     root = Path(snapshot_root).absolute()
     _safe_path(root)
     _require(str(root.resolve()) == body["snapshot_root"]
@@ -246,8 +282,10 @@ def read_parent_rule_sample_readiness(snapshot_root: str | Path, capture_root: s
     _safe_path(explicit_universe)
     _require(str(explicit_universe.resolve()) == body["universe"]["source_ref"], "parent_universe_path_mismatch")
     _require(load_parent_universe(explicit_universe) == body["universe"], "parent_universe_changed")
-    _require(body["method_contracts"] == method_contracts_payload()
-             and body["method_contracts_sha256"] == method_contracts_sha256(), "parent_method_changed")
+    _require(body["method_contracts"] == contract.method_contracts
+             and body["method_contracts_sha256"] == contract.method_contracts_sha256, "parent_method_changed")
+    if contract.version == DAILY_MARKET_FEATURE_CONTRACT_VERSION:
+        _require(method_contracts_sha256() == contract.method_contracts_sha256, "parent_method_changed")
     child_writer = BoundedRuleResearchCaptureWriter(Path(capture_root) / "samples" / body["plan_sha256"])
     tallies: dict[str, Counter[str]] = {c["method_id"]: Counter() for c in body["method_contracts"].values()}
     covered = 0
@@ -261,6 +299,7 @@ def read_parent_rule_sample_readiness(snapshot_root: str | Path, capture_root: s
             cohort_id=b["cohort_id"], decision_date=date.fromisoformat(body["universe"]["value"]["as_of_date"]),
             as_of=datetime.fromisoformat(body["as_of"]))
         capture = child_writer.read(b["capture_identity_sha256"])["capture"]
+        _check_child_contract(capture, contract)
         expected = _child_spec(body["universe"]["value"], b)
         actual = capture["universe"]
         _require(all(actual.get(k) == v for k, v in expected.items() if k != "schema_version"),
@@ -291,6 +330,7 @@ def read_parent_rule_sample_readiness(snapshot_root: str | Path, capture_root: s
             "batches_count": len(body["batches"]), "batches": body["batches"],
             "method_counts": [{"method_id": m, **{s: t[s] for s in ("matched", "notmatched", "unknown", "excluded")},
                                "uncaptured": missing} for m, t in tallies.items()],
+            **({"feature_contract_version": contract.version} if "feature_contract_version" in body else {}),
             "source_completeness": "partial_research" if partial_artifact or missing else "complete_declared_cohort",
             "source_status": body["source_status"], "error_code": body["error_code"],
             "batch_status": "bounded_parent_manifest", "max_included_per_batch": 16,
@@ -300,8 +340,11 @@ def read_parent_rule_sample_readiness(snapshot_root: str | Path, capture_root: s
 
 def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Path,
         capture_root: str | Path, universe_path: str | Path, decision_cutoff: datetime,
-        as_of: datetime | None = None, cancel_callback: Callable[[], bool] | None = None) -> dict[str, Any]:
+        as_of: datetime | None = None, cancel_callback: Callable[[], bool] | None = None,
+        contract_version: str | None = None) -> dict[str, Any]:
     """明示隔離小母體，一次只處理一批；不部署排程或寫正式 DB。"""
+    contract = _contract(contract_version)
+    include_bbands = contract.version == DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER
     cancel = cancel_callback or (lambda: False)
     _clock(decision_cutoff)
     cutoff = decision_cutoff.astimezone(ZoneInfo("Asia/Taipei"))
@@ -311,10 +354,10 @@ def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Pat
         _require(cutoff <= as_of <= datetime.now(timezone.utc), "parent_as_of_invalid")
     universe = load_parent_universe(universe_path)
     _require(universe["value"]["as_of_date"] == cutoff.date().isoformat(), "parent_date_mismatch")
-    methods, method_sha = method_contracts_payload(), method_contracts_sha256()
+    methods, method_sha = contract.method_contracts, contract.method_contracts_sha256
     cutoff_text = cutoff.isoformat()
     source_binding = None
-    plan = _plan(universe, cutoff_text, method_sha, source_binding)
+    plan = _plan(universe, cutoff_text, method_sha, source_binding, contract.version)
     batches = _batches(universe["value"], plan)
     # 共用 writer 的既有隔離路徑政策；不建立 guard 目錄。
     BoundedRuleResearchCaptureWriter(Path(snapshot_root) / "guard")
@@ -337,14 +380,18 @@ def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Pat
             try:
                 with SQLiteDailyMarketSnapshotSource(db_path, cutoff.date(), cancel_callback=cancel) as source:
                     source_binding = _source_binding(source)
-                    plan = _plan(universe, cutoff_text, method_sha, source_binding)
+                    plan = _plan(universe, cutoff_text, method_sha, source_binding, contract.version)
                     batches = _batches(universe["value"], plan)
                     child_writer = BoundedRuleResearchCaptureWriter(capture_path / "samples" / plan)
                     def check() -> None:
                         _require(not cancel(), "parent_cancelled")
                         _require(load_parent_universe(universe_path) == universe, "parent_universe_changed")
-                        _require(method_contracts_sha256() == method_sha and method_contracts_payload() == methods,
+                        current = _contract(contract.version)
+                        _require(current.method_contracts_sha256 == method_sha and current.method_contracts == methods,
                                  "parent_method_changed")
+                        if not include_bbands:
+                            _require(method_contracts_sha256() == method_sha and method_contracts_payload() == methods,
+                                     "parent_method_changed")
                         _require(_json(_source_binding(source)) == _json(source_binding), "parent_source_changed")
                     for b in batches:
                         active = b
@@ -362,11 +409,11 @@ def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Pat
                         def load(code: str, day: date) -> DailyMarketSnapshotInput:
                             _require(day == cutoff.date(), "parent_date_mismatch")
                             check()
-                            return source.load_input(code)
+                            return source.load_input(code, include_bbands30_upper=include_bbands)
                         produced = DailyMarketSnapshotProducer(root / "batches" / plan / b["batch_id"]).produce(
                             cohort_id=b["cohort_id"], decision_cutoff=cutoff,
                             stock_codes=tuple(b["included_stock_codes"]), source_loader=load,
-                            research_universe=spec, before_publish=check)
+                            research_universe=spec, before_publish=check, contract_version=contract.version)
                         b["production_status"] = produced.status
                         b["manifest_sha256"] = produced.manifest_sha256 or None
                         if produced.status not in {"published_complete", "published_partial", "unchanged"}:
@@ -384,6 +431,7 @@ def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Pat
                         repo = DailyMarketSnapshotRepository(root / "batches" / plan / b["batch_id"])
                         captured = child_writer.capture_pinned(repo, manifest_sha256=b["manifest_sha256"],
                             cohort_id=b["cohort_id"], decision_date=cutoff.date(), as_of=actual_as_of)
+                        _check_child_contract(child_writer.read(captured["receipt"]["capture_identity_sha256"])["capture"], contract)
                         b["capture_identity_sha256"] = captured["receipt"]["capture_identity_sha256"]
                         b["sample_capture_status"] = captured["status"]
                         b["status"] = "captured"
@@ -418,6 +466,8 @@ def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Pat
                     "decision_cutoff": cutoff_text, "as_of": _clock(actual_as_of), "observed_at": _clock(observed),
                     "batches": batches, "status": status, "source_status": source_status,
                     "error_code": error, "policy": _POLICY}
+            if include_bbands:
+                body["feature_contract_version"] = contract.version
             body["capture_identity_sha256"] = _parent_identity(body)
             parent = RuleResearchParentCapture(_json(body))
             def revalidate() -> RuleResearchParentCapture:
@@ -425,11 +475,14 @@ def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Pat
                     _require(load_parent_universe(universe_path) == universe, "parent_universe_changed")
                     assert source_binding is not None
                     _require(not cancel(), "parent_cancelled")
-                    _require(method_contracts_sha256() == method_sha, "parent_method_changed")
+                    _require(_contract(contract.version).method_contracts_sha256 == method_sha, "parent_method_changed")
+                    if not include_bbands:
+                        _require(method_contracts_sha256() == method_sha, "parent_method_changed")
                     _require(_json(_source_pin(Path(source_binding["database"]))) == _json(source_binding["revision_pin"]),
                              "parent_source_changed")
                     # 每個已完成 child 的 source/receipt 再核對才發布 parent。
                     for b in batches:
+                        _check_child_contract(child_writer.read(b["capture_identity_sha256"])["capture"], contract)
                         read_saved_rule_sample_readiness(child_writer,
                             DailyMarketSnapshotRepository(root / "batches" / plan / b["batch_id"]),
                             identity_sha256=b["capture_identity_sha256"], manifest_sha256=b["manifest_sha256"],
@@ -439,7 +492,7 @@ def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Pat
                 _check_source_budget(capture_path, 2 * MAX_CAPTURE_BYTES)
                 saved = parent_writer.write(parent, revalidate=revalidate)
                 ready = read_parent_rule_sample_readiness(root, capture_path, universe_path=universe_path,
-                                                         identity_sha256=parent.identity_sha256)
+                                                         identity_sha256=parent.identity_sha256, contract_version=contract.version)
                 return {"status": status, "production": batches, "parent_capture": saved,
                         "sample_capture_status": saved["status"], "sample_readiness_status": "verified", "sample_readiness": ready}
             except (Exception, KeyboardInterrupt) as exc:

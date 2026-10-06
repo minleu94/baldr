@@ -67,15 +67,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.read_parent_identity and not args.parent_universe_config:
             raise ValueError("read-parent-identity 必須搭配 parent-universe-config")
         if args.parent_universe_config:
-            if args.include_bbands30_upper:
-                raise ValueError("parent capture v3 未接線；不得把v2多批母體冒稱含BB上軌")
             if not args.capture_root or args.read_stock is not None or args.cohort_id is not None:
                 raise ValueError("parent 母體需明示 capture-root/capture-as-of；不接受單股read-stock或覆寫cohort-id")
-            from app_module.rule_research_parent_capture import produce_parent_rule_samples
-            from app_module.rule_research_sample_readiness import read_saved_parent_rule_sample_readiness
+            from app_module.rule_research_parent_capture import (
+                produce_parent_rule_samples, read_parent_rule_sample_readiness,
+            )
+            parent_contract_version = (DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER
+                                       if args.include_bbands30_upper else None)
             if args.read_parent_identity:
-                ready = read_saved_parent_rule_sample_readiness(root, args.capture_root,
-                    universe_path=args.parent_universe_config, identity_sha256=args.read_parent_identity)
+                ready = read_parent_rule_sample_readiness(root, args.capture_root,
+                    universe_path=args.parent_universe_config, identity_sha256=args.read_parent_identity,
+                    contract_version=parent_contract_version)
                 if ready["decision_cutoff"] != cutoff.isoformat():
                     raise ValueError("parent_decision_cutoff_mismatch")
                 if capture_as_of is not None and ready["as_of"] != capture_as_of.astimezone(timezone.utc).isoformat():
@@ -84,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             parent_result = produce_parent_rule_samples(db_path=args.db_path, snapshot_root=root,
                 capture_root=args.capture_root, universe_path=args.parent_universe_config,
-                decision_cutoff=cutoff, as_of=capture_as_of)
+                decision_cutoff=cutoff, as_of=capture_as_of, contract_version=parent_contract_version)
             print(json.dumps(parent_result, ensure_ascii=False, sort_keys=True))
             return 0 if parent_result["status"] == "complete" else 2
         universe_spec = (

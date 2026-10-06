@@ -1,5 +1,16 @@
 # BALDR 有界收尾狀態與移交（2026-10-06）
 
+## 2026-10-06 當前裁決（下方舊包表為歷史checkpoint）
+
+M01 `47873e1d→5cc54631`、二次source補正 `ff7adffe→a5304f1c` 已採。原saved artifact／index／stdout reader AST除pure cohort validation保留在ML wrapper外相同。缺port／非callable／returned verified flag拒絕，scheduled script注入原App reader；capture、fit receipt、outcome builder、receipt readback與二次source binding傳遞同port。v1、金融公式、時序、custody及false資格不變。
+
+中央M01 53 passed／1 Windows symlink skip／1 真fit deselected（7.13s）；相鄰原v2 batch15 passed（0.76s）；CLI＋原dependency boundary55 passed（13.95s）。6 source mypy、9 files compile通過。各subset不累加成完整App數量。guard678/0 exit0；原global零違例assert未改，只有 `a0abe901` 將過時CLI六歷史違例期望收緊為main0／zero，原負例保留。raw／blobs見 `output/qa/m01_central_acceptance_20261006.json`。
+
+9 Stage仍1 done／8 partial／0 pending，24 UX仍2 done／22 partial／0 pending；七項有限closed UX03/04/05/06/09/15/17保留。partial混合後續增量、規格、外部資格與真人接受，不能全部稱為未修工程。歷史raw／失敗與唯一plan前綴保留；無push/mainmerge、真DBwrite、migration、Task、ACL、Native、fit或清理。
+
+`docs/06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md`
+
+
 ## 2026-10-06 M02／M04 最新 guard 狀態
 
 M02/H4 `0a6f7a32→48d2ae5f`、M04/H8 `3d00f624→a941c79c` 已完成有界審核並採入。M02 僅將原 20 official session proof 驗證移至 data adapter，signature、錯誤與原 resolver 語義不變；純 adapter 冷載入零 ML／data I/O。M03 後完整 personalization 冷載入仍觸及 consumer 其他既有 allowed training imports，負例如實保留，不宣稱整個 app 無 trainer。M04 publisher 必須明示注入原 model loader；缺 loader 在來源讀取／lock／mkdir 前拒絕，原 hash／clock／custody／exception 不變。readonly reader 不載模型；scheduled composition 只驗 AST 接線，未實跑完整 scheduled cycle。

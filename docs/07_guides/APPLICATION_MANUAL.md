@@ -1,5 +1,12 @@
 # baldr 完整操作手冊
 
+## 2026-10-06 scheduled v2來源核驗與操作界線
+
+v2 current-observed composition/capture/outcome/receipt/fit必須明示source_binding_verifier，scheduled caller已注入原saved-result/index/stdout readonly custody reader。缺port或只回verified flag拒絕；排錯先核exact caller注入、原raw hash/schema/cohort/時鐘/可用日期，不繞過來源檢查或注入默認成功port。v1操作不變。
+
+中央678/0 dependency guard、synthetic保存→reader→v2／新程序是工程證據；未授正式Task、真個資migration、模型fit/stop/promotion或前景Native。unknown與原性能例外保留。可自主增量、U1/U2、正式來源與真人接受差異見 `../06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md`。
+
+
 ## 2026-10-06 自然成熟證明與研究 run 發布排錯
 
 Personalization 的入口與操作步驟不變。自然成熟判讀仍需要原 20 個官方交易 session、正確 capture／endpoint／evaluation cutoff 與原 calendar／market bytes proof；缺件維持 pending／unknown，不能因 adapter 改動提升為已成熟。

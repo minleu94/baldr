@@ -1,5 +1,10 @@
 # 文檔索引
 
+## 2026-10-06 Baldr當前工程與決策差異
+
+[當前工程與決策差異](../06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md)：已關閉的點名工程、可自主後續與驗證覆蓋、U1/U2／正式啟用／真資料／Native真人分列；不替代Scoped SSOT或唯一原plan。
+
+
 ## 2026-10-06 第二波有限工程入口
 
 目前接受／剩餘以 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md) 為準；模組邊界看 [目前架構](../01_architecture/system_architecture.md)，操作以 [完整 Manual](../07_guides/APPLICATION_MANUAL.md) 為準。新增 [B03 Update／Runtime](../06_qa/BALDR_B03_UPDATE_RUNTIME_20261006.md)、[B04 保存来源與收藏](../06_qa/BALDR_B04_SELECTION_WATCHLIST_20261006.md)、[B05 chart reader](../06_qa/BALDR_B05_CHART_INCREMENT_20261006.md)、[B06 三帳](../06_qa/BALDR_B06_PORTFOLIO_SUMMARY_20261006.md)、[B10 私人覆盤／週報 history](../06_qa/BALDR_B10_PRIVATE_REVIEW_20261006.md)／[notes 備份](../06_qa/BALDR_B10_NOTES_BACKUP_20261006.md)、[B12 隔離 runtime](../06_qa/BALDR_B12_DAILY_RUNTIME_20261006.md) 具名收據。B09 custody／B05 main 注入等未完成接線仍明列，不建立另一份路線或提升原整項資格。

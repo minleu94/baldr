@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 import hashlib
@@ -46,7 +46,9 @@ from app_module.rule_research_sample_capture import (
     _safe_path,
 )
 from app_module.rule_research_technical_parent_capture_v4 import (
+    BoundedDailyMarketTechnicalParentCaptureWriterV4,
     DailyMarketTechnicalCohortV4,
+    DailyMarketTechnicalParentCaptureV4VerifiedRead,
     TechnicalParentCaptureV4Error,
     _FileLockV4,
     read_daily_market_technical_parent_capture_v4,
@@ -143,6 +145,23 @@ class DailyMarketTechnicalUniverseV4StoreError(ValueError):
 
 def _fail(code: str, message: str | None = None) -> NoReturn:
     raise DailyMarketTechnicalUniverseV4StoreError(code, message)
+
+
+def _check_universe_read_cancelled(
+    cancel_callback: Callable[[], bool] | None,
+) -> None:
+    if cancel_callback is None:
+        return
+    try:
+        cancelled = cancel_callback()
+    except Exception as exc:
+        raise DailyMarketTechnicalUniverseV4StoreError(
+            "technical_universe_v4_read_cancel_check_failed", str(exc)
+        ) from exc
+    if type(cancelled) is not bool:
+        _fail("technical_universe_v4_read_cancel_callback_invalid")
+    if cancelled:
+        _fail("technical_universe_v4_read_cancelled")
 
 
 def _reject_float_tree(value: object) -> None:
@@ -1335,19 +1354,41 @@ def _verify_parent_reference(
     reference: DailyMarketTechnicalUniverseV4ParentReceiptReference,
     *,
     store_output_root: Path,
-) -> tuple[tuple[str, ...], int, str | None]:
+    include_verified_read: bool = False,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> tuple[
+    tuple[str, ...],
+    int,
+    str | None,
+    DailyMarketTechnicalParentCaptureV4VerifiedRead | None,
+]:
     segment_cohort = plan.segment_cohort(segment_index)
     parent_root = Path(reference.parent_root)
     if parent_root == store_output_root or parent_root.is_relative_to(store_output_root) or store_output_root.is_relative_to(parent_root):
         _fail("technical_universe_v4_parent_store_overlap")
+    verified_parent_read: DailyMarketTechnicalParentCaptureV4VerifiedRead | None = None
     try:
-        package = read_daily_market_technical_parent_capture_v4(
-            parent_root,
-            reference.parent_plan_identity_sha256,
-            reference.parent_receipt_identity_sha256,
-            expected_receipt_sha256=reference.parent_receipt_sha256,
-            expected_plan_sha256=reference.parent_plan_sha256,
-        )
+        if include_verified_read or cancel_callback is not None:
+            parent_reader = BoundedDailyMarketTechnicalParentCaptureWriterV4(
+                parent_root,
+                read_only=True,
+            )
+            verified_parent_read = parent_reader.read_verified(
+                reference.parent_plan_identity_sha256,
+                reference.parent_receipt_identity_sha256,
+                expected_receipt_sha256=reference.parent_receipt_sha256,
+                expected_plan_sha256=reference.parent_plan_sha256,
+                cancel_callback=cancel_callback,
+            )
+            package = verified_parent_read.package
+        else:
+            package = read_daily_market_technical_parent_capture_v4(
+                parent_root,
+                reference.parent_plan_identity_sha256,
+                reference.parent_receipt_identity_sha256,
+                expected_receipt_sha256=reference.parent_receipt_sha256,
+                expected_plan_sha256=reference.parent_plan_sha256,
+            )
     except (TechnicalParentCaptureV4Error, OSError, ValueError) as exc:
         code = getattr(exc, "code", "technical_universe_v4_parent_reference_invalid")
         raise DailyMarketTechnicalUniverseV4StoreError(
@@ -1400,6 +1441,7 @@ def _verify_parent_reference(
         tuple(missing),
         len(segment_cohort.included_stock_codes),
         calculation_identity_sha256,
+        verified_parent_read if include_verified_read else None,
     )
 
 
@@ -1525,7 +1567,7 @@ class DailyMarketTechnicalUniverseV4StoreWriter:
                 _fail("technical_universe_v4_segment_order_or_duplicate_invalid")
             if not 0 <= segment_index < len(plan.segments):
                 _fail("technical_universe_v4_segment_index_invalid")
-            missing, _included_count, parent_calculation_identity = _verify_parent_reference(
+            missing, _included_count, parent_calculation_identity, _verified_parent_read = _verify_parent_reference(
                 plan,
                 segment_index,
                 parent_reference,
@@ -1733,6 +1775,34 @@ class DailyMarketTechnicalUniverseV4StoreReader:
         )
         return state
 
+    def read_exact_with_verified_parent_callback(
+        self,
+        generation_identity_sha256: str,
+        plan_identity_sha256: str,
+        receipt_identity_sha256: str,
+        *,
+        expected_receipt_sha256: str,
+        expected_plan_sha256: str | None = None,
+        parent_verified_callback: Callable[
+            [int, DailyMarketTechnicalParentCaptureV4VerifiedRead], None
+        ] | None = None,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketTechnicalUniverseV4VerifiedState:
+        """精確讀回 store，逐段交付同次 parent 核驗結果供同步消費。"""
+
+        if parent_verified_callback is not None and not callable(parent_verified_callback):
+            _fail("technical_universe_v4_parent_verified_callback_invalid")
+        state, _history_head_identity = self._read_exact_with_head(
+            generation_identity_sha256,
+            plan_identity_sha256,
+            receipt_identity_sha256,
+            expected_receipt_sha256=expected_receipt_sha256,
+            expected_plan_sha256=expected_plan_sha256,
+            parent_verified_callback=parent_verified_callback,
+            cancel_callback=cancel_callback,
+        )
+        return state
+
     def _read_exact_with_head(
         self,
         generation_identity_sha256: str,
@@ -1741,9 +1811,14 @@ class DailyMarketTechnicalUniverseV4StoreReader:
         *,
         expected_receipt_sha256: str,
         expected_plan_sha256: str | None = None,
+        parent_verified_callback: Callable[
+            [int, DailyMarketTechnicalParentCaptureV4VerifiedRead], None
+        ] | None = None,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> tuple[DailyMarketTechnicalUniverseV4VerifiedState, str]:
         """核完整 receipt graph，同時只回傳所選 prefix 與 graph head pin。"""
 
+        _check_universe_read_cancelled(cancel_callback)
         _validate_store_root(self.output_root, self.store_root, None, writing=False)
         if not _is_sha256(generation_identity_sha256) or not _is_sha256(plan_identity_sha256) or not _is_sha256(receipt_identity_sha256):
             _fail("technical_universe_v4_read_pin_invalid")
@@ -1826,6 +1901,7 @@ class DailyMarketTechnicalUniverseV4StoreReader:
         previous_sha: str | None = None
         calculation_identity_sha256: str | None = None
         for index, (item, item_sha) in enumerate(chain):
+            _check_universe_read_cancelled(cancel_callback)
             body = item.to_dict()
             if index == 0:
                 if body["status"] != "partial" or body["segment_reference"] is not None:
@@ -1840,17 +1916,22 @@ class DailyMarketTechnicalUniverseV4StoreReader:
                     _fail("technical_universe_v4_receipt_chain_invalid")
                 _validate_transition(previous.to_dict(), body)
             segment_ref = body["segment_reference"]
+            verified_parent_read: DailyMarketTechnicalParentCaptureV4VerifiedRead | None = None
+            segment_index: int | None = None
             if segment_ref is not None:
                 if body["status"] != "partial" or int(segment_ref["segment_index"]) != len(references):
                     _fail("technical_universe_v4_segment_progress_order_invalid")
                 segment_index = int(segment_ref["segment_index"])
                 parent_ref = DailyMarketTechnicalUniverseV4ParentReceiptReference.from_dict(segment_ref["parent_reference"])
-                missing, _processed, segment_calculation_identity = _verify_parent_reference(
+                missing, _processed, segment_calculation_identity, verified_parent_read = _verify_parent_reference(
                     plan,
                     segment_index,
                     parent_ref,
                     store_output_root=self.output_root,
+                    include_verified_read=parent_verified_callback is not None,
+                    cancel_callback=cancel_callback,
                 )
+                _check_universe_read_cancelled(cancel_callback)
                 if segment_calculation_identity is not None:
                     if (
                         calculation_identity_sha256 is not None
@@ -1875,6 +1956,24 @@ class DailyMarketTechnicalUniverseV4StoreReader:
             if body["status"] == "complete":
                 if len(references) != len(plan.segments) or expected_counts.pending_count != 0:
                     _fail("technical_universe_v4_false_complete")
+            if verified_parent_read is not None:
+                assert (
+                    segment_ref is not None
+                    and segment_index is not None
+                    and parent_verified_callback is not None
+                )
+                _check_universe_read_cancelled(cancel_callback)
+                try:
+                    parent_verified_callback(segment_index, verified_parent_read)
+                except DailyMarketTechnicalUniverseV4StoreError:
+                    raise
+                except Exception as exc:
+                    raise DailyMarketTechnicalUniverseV4StoreError(
+                        "technical_universe_v4_parent_verified_callback_failed",
+                        str(exc),
+                    ) from exc
+                _check_universe_read_cancelled(cancel_callback)
+                del verified_parent_read
             previous = item
             previous_sha = item_sha
 

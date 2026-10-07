@@ -20,10 +20,16 @@ from app_module.daily_market_technical_read_session import DailyMarketTechnicalR
 from app_module.daily_market_technical_snapshot_v4_producer import (
     write_daily_market_technical_snapshot_v4_batch,
 )
+from app_module.daily_market_technical_snapshot_v4_repository import (
+    DailyMarketTechnicalSnapshotV4Repository,
+    DailyMarketTechnicalSnapshotV4RepositoryError,
+)
+from app_module.personal_data_paths import to_internal_io_path
 from app_module.rule_research_sample_capture import ResearchCaptureWriteScope
 from app_module.rule_research_technical_parent_capture_v4 import (
     DailyMarketTechnicalCohortV4,
     DailyMarketTechnicalParentPlanV4,
+    DailyMarketTechnicalParentCaptureV4VerifiedRead,
     BoundedDailyMarketTechnicalParentCaptureWriterV4,
     TechnicalParentCaptureV4Error,
     build_daily_market_technical_parent_plan_v4,
@@ -128,6 +134,7 @@ def _make_batch(
 
 def test_17_stock_parent_uses_one_finished_source_session_16_plus_1_and_resumes_exactly(
     short_temp: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     codes = tuple(f"S{index:04d}" for index in range(17))
     database = short_temp / "prices.sqlite"
@@ -242,6 +249,88 @@ def test_17_stock_parent_uses_one_finished_source_session_16_plus_1_and_resumes_
         expected_receipt_sha256=completed.content_sha256,
     )
     assert package["receipt"]["status"] == "complete"
+
+    original_read_exact = DailyMarketTechnicalSnapshotV4Repository.read_exact
+    read_exact_paths: list[Path] = []
+
+    def tracked_read_exact(
+        repository: DailyMarketTechnicalSnapshotV4Repository,
+        manifest_path: str | Path,
+        **kwargs: Any,
+    ) -> Any:
+        read_exact_paths.append(Path(manifest_path))
+        return original_read_exact(repository, manifest_path, **kwargs)
+
+    monkeypatch.setattr(
+        DailyMarketTechnicalSnapshotV4Repository,
+        "read_exact",
+        tracked_read_exact,
+    )
+    verified = read_root.read_verified(
+        plan.identity_sha256,
+        completed.identity_sha256,
+        expected_receipt_sha256=completed.content_sha256,
+        expected_plan_sha256=plan.content_sha256,
+    )
+    assert isinstance(verified, DailyMarketTechnicalParentCaptureV4VerifiedRead)
+    assert verified.package == package
+    assert set(verified.package) == {
+        "plan", "plan_sha256", "receipt", "receipt_sha256"
+    }
+    assert tuple(len(batch.snapshots) for batch in verified.verified_batches) == (16, 1)
+    assert tuple(
+        snapshot.stock_code
+        for batch in verified.verified_batches
+        for snapshot in batch.snapshots
+    ) == codes
+    assert read_exact_paths == [
+        Path(item["manifest_path"]) for item in completed.to_dict()["batch_artifacts"]
+    ]
+
+    # 舊 API 仍回傳原 dict 並自行完成所有核驗，不經 read_verified 留住批次。
+    old_api_package = read_root.read(
+        plan.identity_sha256,
+        completed.identity_sha256,
+        expected_receipt_sha256=completed.content_sha256,
+        expected_plan_sha256=plan.content_sha256,
+    )
+    assert old_api_package == verified.package
+    assert len(read_exact_paths) == 4
+
+    cancel_checks = 0
+
+    def cancel_before_first_batch() -> bool:
+        nonlocal cancel_checks
+        cancel_checks += 1
+        return cancel_checks == 2
+
+    with pytest.raises(TechnicalParentCaptureV4Error, match="technical_parent_v4_read_cancelled"):
+        read_root.read_verified(
+            plan.identity_sha256,
+            completed.identity_sha256,
+            expected_receipt_sha256=completed.content_sha256,
+            cancel_callback=cancel_before_first_batch,
+        )
+    assert cancel_checks == 2
+    assert len(read_exact_paths) == 4
+
+    cancel_checks = 0
+
+    def cancel_after_first_batch() -> bool:
+        nonlocal cancel_checks
+        cancel_checks += 1
+        return cancel_checks == 3
+
+    with pytest.raises(TechnicalParentCaptureV4Error, match="technical_parent_v4_read_cancelled"):
+        read_root.read_verified(
+            plan.identity_sha256,
+            completed.identity_sha256,
+            expected_receipt_sha256=completed.content_sha256,
+            cancel_callback=cancel_after_first_batch,
+        )
+    assert cancel_checks == 3
+    assert len(read_exact_paths) == 5
+
     script = (
         "from app_module.rule_research_technical_parent_capture_v4 import "
         "read_daily_market_technical_parent_capture_v4; import sys; "
@@ -257,6 +346,20 @@ def test_17_stock_parent_uses_one_finished_source_session_16_plus_1_and_resumes_
         text=True,
     )
     assert reopened.stdout.strip() == "complete"
+
+    first_batch = verified.verified_batches[0]
+    manifest_io_path = to_internal_io_path(first_batch.manifest_path)
+    with open(manifest_io_path, "rb") as manifest_reader:
+        manifest_bytes = manifest_reader.read()
+    with open(manifest_io_path, "wb") as manifest_writer:
+        manifest_writer.write(manifest_bytes + b" ")
+    with pytest.raises(DailyMarketTechnicalSnapshotV4RepositoryError) as error:
+        read_root.read_verified(
+            plan.identity_sha256,
+            completed.identity_sha256,
+            expected_receipt_sha256=completed.content_sha256,
+        )
+    assert error.value.code == "technical_snapshot_v4_manifest_sha_mismatch"
 
 
 @pytest.mark.parametrize(
@@ -317,6 +420,16 @@ def test_zero_included_has_explicit_complete_state_without_child_or_no_match(
     assert reopened["receipt"]["status"] == "complete"
     assert reopened["receipt"]["batch_artifacts"] == []
     assert reopened["receipt"]["repository_output_root"] is None
+    verified = BoundedDailyMarketTechnicalParentCaptureWriterV4(
+        parent_root, read_only=True
+    ).read_verified(
+        plan.identity_sha256,
+        completed.identity_sha256,
+        expected_plan_sha256=plan.content_sha256,
+        expected_receipt_sha256=completed.content_sha256,
+    )
+    assert verified.package == reopened
+    assert verified.verified_batches == ()
     assert hashlib.sha256(database.read_bytes()).hexdigest() == source_sha
 
 

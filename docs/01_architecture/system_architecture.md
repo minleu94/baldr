@@ -1578,3 +1578,5 @@ v4 技術保存底層（2026-10-07 dev）：daily_market_technical_snapshot_v4_p
 2026-10-07 v4個股保存讀回接點：daily_market_technical_universe_v4_stock 先重核原query當頁，沿固定full receipt／segment parent／child manifest回傳snapshot及origin query，不開來源DB／不選latest。DailyMarketTechnicalStockV4View只展示保存五規則與日期限制，返回signal維持原query；正常工作區接線仍在施工。catalog有界metadata inventory與strict selection分開，cursor綁raw bytes SHA。中央catalog／stock五項及個股Qt真來源一項通過；詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
 
 完整母體 v4 查詢由 daily_market_technical_universe_v4_query 讀固定 store generation／plan／receipt pins，對全部完成分段做三態 AND／OR 與全域排序，再分頁；候選只留輕量排序鍵，不把完整母體列DTO當快取。stock reader固定原頁與原child下鑽；comparison reader保留每欄原query並strict重開。bookmark.v1是獨立technical-universe來源，沿WatchlistService既有JSON／COW儲存及revision；新kind不能轉成舊每日context，typed reopen回原query／個股／比較。UI完整收藏接線及性能仍施工。
+
+2026-10-07 逐段核驗 API：parent read_verified 沿同次 strict read 返回核驗批次；StoreReader.read_exact_with_verified_parent_callback 在 selected receipt prefix 每段核完身份／分母／來源／calculation 後同步交付，再釋放最多256股context。整個API成功前consumer只保留暫存；後段失敗或取消不得採用先前段結果。舊read/read_exact保持相容，沒有全N DTO cache。query採用與性能另驗，詳見 [逐段核驗QA](../06_qa/TECHNICAL_VERIFIED_PARENT_STREAM_20261007.md)。

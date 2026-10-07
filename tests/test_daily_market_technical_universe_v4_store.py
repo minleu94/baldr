@@ -383,6 +383,51 @@ def test_real_257_included_parent_segments_roundtrip_cancel_resume_missing_and_f
     assert verified.missing_data_stock_codes == (included[0],)
     assert len(verified.segment_parent_references) == 2
 
+    consumed_segments: list[tuple[int, int, tuple[tuple[str, int], ...]]] = []
+
+    def consume_verified_parent(
+        segment_index: int,
+        parent_read: Any,
+    ) -> None:
+        reference = parent_refs[segment_index]
+        package = parent_read.package
+        assert package["plan_sha256"] == reference.parent_plan_sha256
+        assert package["receipt_sha256"] == reference.parent_receipt_sha256
+        batches = parent_read.verified_batches
+        actual_codes = tuple(
+            snapshot.stock_code
+            for batch in batches
+            for snapshot in batch.snapshots
+        )
+        assert actual_codes == plan.segment_cohort(segment_index).included_stock_codes
+        child_refs = package["receipt"]["batch_artifacts"]
+        assert tuple(str(batch.manifest_path) for batch in batches) == tuple(
+            item["manifest_path"] for item in child_refs
+        )
+        assert tuple(batch.manifest_sha256 for batch in batches) == tuple(
+            item["manifest_sha256"] for item in child_refs
+        )
+        assert len(actual_codes) <= 256
+        consumed_segments.append((
+            segment_index,
+            len(actual_codes),
+            tuple((batch.manifest_sha256, len(batch.snapshots)) for batch in batches),
+        ))
+
+    streamed_state = DailyMarketTechnicalUniverseV4StoreReader(
+        store_root
+    ).read_exact_with_verified_parent_callback(
+        plan.generation_identity_sha256,
+        plan.identity_sha256,
+        complete.identity_sha256,
+        expected_receipt_sha256=complete.content_sha256,
+        expected_plan_sha256=plan_sha,
+        parent_verified_callback=consume_verified_parent,
+    )
+    assert streamed_state == verified
+    assert [item[:2] for item in consumed_segments] == [(0, 256), (1, 1)]
+    assert [len(item[2]) for item in consumed_segments] == [16, 1]
+
     script = (
         "from app_module.daily_market_technical_universe_v4_store import "
         "DailyMarketTechnicalUniverseV4StoreReader; import sys; "
@@ -470,6 +515,190 @@ def test_real_257_included_parent_segments_roundtrip_cancel_resume_missing_and_f
         )
 
 
+def test_verified_parent_callback_cancels_preserves_legacy_and_rejects_fresh_tamper(
+    short_temp: Path,
+) -> None:
+    included = ("C0001",)
+    cohort = _full_cohort(included)
+    database = short_temp / "verified-parent-source.sqlite"
+    _write_source(database, included)
+    configured_root = _long_configured_root(short_temp)
+    scope, parent_refs, parent_packages = _produce_parents(
+        short_temp,
+        configured_root,
+        database,
+        _segment_cohorts(cohort),
+    )
+    source_clock = daily_market_technical_source_clock_v4_from_dict(
+        parent_packages[0]["plan"]["source_clock"]
+    )
+    plan = DailyMarketTechnicalUniverseV4Plan.build(
+        cohort,
+        source_clock=source_clock,
+    )
+    plan_sha = _expected_plan_sha(plan)
+    store_root = scope.root / "verified-parent-store"
+    writer = DailyMarketTechnicalUniverseV4StoreWriter(
+        store_root,
+        research_scope=scope,
+    )
+    initial = writer.start(plan)
+    progress = writer.record_segment_parent(
+        plan.generation_identity_sha256,
+        plan.identity_sha256,
+        initial.identity_sha256,
+        expected_previous_receipt_sha256=initial.content_sha256,
+        segment_index=0,
+        parent_reference=parent_refs[0],
+    )
+    complete = writer.complete(
+        plan.generation_identity_sha256,
+        plan.identity_sha256,
+        progress.identity_sha256,
+        expected_previous_receipt_sha256=progress.content_sha256,
+    )
+    assert complete.status == "complete"
+
+    reader = DailyMarketTechnicalUniverseV4StoreReader(store_root)
+    pins = (
+        plan.generation_identity_sha256,
+        plan.identity_sha256,
+        complete.identity_sha256,
+    )
+    legacy_state = reader.read_exact(
+        *pins,
+        expected_receipt_sha256=complete.content_sha256,
+        expected_plan_sha256=plan_sha,
+    )
+    no_callback_state = reader.read_exact_with_verified_parent_callback(
+        *pins,
+        expected_receipt_sha256=complete.content_sha256,
+        expected_plan_sha256=plan_sha,
+    )
+    assert no_callback_state == legacy_state
+
+    consumed: list[tuple[int, tuple[str, ...], tuple[str, ...]]] = []
+
+    def consume_one_parent(segment_index: int, parent_read: Any) -> None:
+        reference = parent_refs[segment_index]
+        assert segment_index == 0
+        assert parent_read.package["plan_sha256"] == reference.parent_plan_sha256
+        assert parent_read.package["receipt_sha256"] == reference.parent_receipt_sha256
+        batches = parent_read.verified_batches
+        consumed.append((
+            segment_index,
+            tuple(
+                snapshot.stock_code
+                for batch in batches
+                for snapshot in batch.snapshots
+            ),
+            tuple(batch.manifest_sha256 for batch in batches),
+        ))
+
+    streamed_state = reader.read_exact_with_verified_parent_callback(
+        *pins,
+        expected_receipt_sha256=complete.content_sha256,
+        expected_plan_sha256=plan_sha,
+        parent_verified_callback=consume_one_parent,
+    )
+    assert streamed_state == legacy_state
+    assert consumed == [(0, included, (parent_packages[0]["receipt"]["batch_artifacts"][0]["manifest_sha256"],))]
+
+    cancellation_checks = 0
+
+    def cancel_after_first_parent_batch() -> bool:
+        nonlocal cancellation_checks
+        cancellation_checks += 1
+        return cancellation_checks == 5
+
+    with pytest.raises(DailyMarketTechnicalUniverseV4StoreError) as cancelled:
+        reader.read_exact_with_verified_parent_callback(
+            *pins,
+            expected_receipt_sha256=complete.content_sha256,
+            expected_plan_sha256=plan_sha,
+            parent_verified_callback=consume_one_parent,
+            cancel_callback=cancel_after_first_parent_batch,
+        )
+    assert cancelled.value.code == "technical_universe_v4_technical_parent_v4_read_cancelled"
+    assert cancellation_checks == 5
+    assert len(consumed) == 1
+
+    with pytest.raises(DailyMarketTechnicalUniverseV4StoreError) as entry_cancelled:
+        reader.read_exact_with_verified_parent_callback(
+            *pins,
+            expected_receipt_sha256=complete.content_sha256,
+            expected_plan_sha256=plan_sha,
+            parent_verified_callback=consume_one_parent,
+            cancel_callback=lambda: True,
+        )
+    assert entry_cancelled.value.code == "technical_universe_v4_read_cancelled"
+    assert len(consumed) == 1
+
+    cancel_at_segment_boundary = False
+    boundary_callbacks: list[int] = []
+
+    def check_segment_boundary_cancel() -> bool:
+        return cancel_at_segment_boundary
+
+    def consume_then_cancel_segment(
+        segment_index: int,
+        _parent_read: Any,
+    ) -> None:
+        nonlocal cancel_at_segment_boundary
+        boundary_callbacks.append(segment_index)
+        cancel_at_segment_boundary = True
+
+    with pytest.raises(DailyMarketTechnicalUniverseV4StoreError) as boundary_cancelled:
+        reader.read_exact_with_verified_parent_callback(
+            *pins,
+            expected_receipt_sha256=complete.content_sha256,
+            expected_plan_sha256=plan_sha,
+            parent_verified_callback=consume_then_cancel_segment,
+            cancel_callback=check_segment_boundary_cancel,
+        )
+    assert boundary_cancelled.value.code == "technical_universe_v4_read_cancelled"
+    assert boundary_callbacks == [0]
+
+    def fail_consumer(_segment_index: int, _parent_read: Any) -> None:
+        raise RuntimeError("synthetic callback failure")
+
+    with pytest.raises(DailyMarketTechnicalUniverseV4StoreError) as callback_error:
+        reader.read_exact_with_verified_parent_callback(
+            *pins,
+            expected_receipt_sha256=complete.content_sha256,
+            expected_plan_sha256=plan_sha,
+            parent_verified_callback=fail_consumer,
+        )
+    assert callback_error.value.code == "technical_universe_v4_parent_verified_callback_failed"
+    assert isinstance(callback_error.value.__cause__, RuntimeError)
+
+    manifest_path = Path(
+        parent_packages[0]["receipt"]["batch_artifacts"][0]["manifest_path"]
+    )
+    manifest_io_path = to_internal_io_path(manifest_path)
+    with open(manifest_io_path, "rb") as manifest_reader:
+        manifest_bytes = manifest_reader.read()
+    with open(manifest_io_path, "wb") as manifest_writer:
+        manifest_writer.write(manifest_bytes + b" ")
+    callbacks_after_tamper = 0
+
+    def should_not_consume_tampered_parent(_segment_index: int, _parent_read: Any) -> None:
+        nonlocal callbacks_after_tamper
+        callbacks_after_tamper += 1
+
+    with pytest.raises(DailyMarketTechnicalUniverseV4StoreError) as tampered:
+        reader.read_exact_with_verified_parent_callback(
+            *pins,
+            expected_receipt_sha256=complete.content_sha256,
+            expected_plan_sha256=plan_sha,
+            parent_verified_callback=should_not_consume_tampered_parent,
+        )
+    assert tampered.value.code == (
+        "technical_universe_v4_technical_snapshot_v4_manifest_sha_mismatch"
+    )
+    assert callbacks_after_tamper == 0
+
+
 def test_exclusion_only_parent_is_required_and_empty_full_cohort_is_truthful(
     short_temp: Path,
 ) -> None:
@@ -523,6 +752,30 @@ def test_exclusion_only_parent_is_required_and_empty_full_cohort_is_truthful(
         "missing_data_count": 0,
         "missing_data_pending_count": 0,
     }
+    empty_parent_calls: list[tuple[int, int, str]] = []
+
+    def consume_exclusion_only_parent(segment_index: int, parent_read: Any) -> None:
+        assert segment_index == 0
+        assert parent_read.package["receipt"]["status"] == "complete"
+        assert parent_read.verified_batches == ()
+        empty_parent_calls.append((
+            segment_index,
+            len(parent_read.verified_batches),
+            parent_read.package["receipt_sha256"],
+        ))
+
+    streamed_state = DailyMarketTechnicalUniverseV4StoreReader(
+        scope.root / "excluded-store"
+    ).read_exact_with_verified_parent_callback(
+        plan.generation_identity_sha256,
+        plan.identity_sha256,
+        completed.identity_sha256,
+        expected_receipt_sha256=completed.content_sha256,
+        expected_plan_sha256=_expected_plan_sha(plan),
+        parent_verified_callback=consume_exclusion_only_parent,
+    )
+    assert streamed_state == state
+    assert empty_parent_calls == [(0, 0, references[0].parent_receipt_sha256)]
 
     empty_cohort = _full_cohort(())
     empty_plan = DailyMarketTechnicalUniverseV4Plan.build(empty_cohort, source_clock=source_clock)
@@ -545,6 +798,24 @@ def test_exclusion_only_parent_is_required_and_empty_full_cohort_is_truthful(
         "missing_data_count": 0,
         "missing_data_pending_count": 0,
     }
+    empty_full_calls = 0
+
+    def unexpected_parent_call(_segment_index: int, _parent_read: Any) -> None:
+        nonlocal empty_full_calls
+        empty_full_calls += 1
+
+    empty_state = DailyMarketTechnicalUniverseV4StoreReader(
+        scope.root / "empty-store"
+    ).read_exact_with_verified_parent_callback(
+        empty_plan.generation_identity_sha256,
+        empty_plan.identity_sha256,
+        empty_complete.identity_sha256,
+        expected_receipt_sha256=empty_complete.content_sha256,
+        expected_plan_sha256=_expected_plan_sha(empty_plan),
+        parent_verified_callback=unexpected_parent_call,
+    )
+    assert empty_state.receipt.status == "complete"
+    assert empty_full_calls == 0
 
 
 def test_exact_history_pins_keep_their_prefix_and_reject_future_forks(

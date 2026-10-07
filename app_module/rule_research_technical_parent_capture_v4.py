@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import hashlib
@@ -138,6 +138,33 @@ class TechnicalParentCaptureV4Error(ValueError):
     def __init__(self, code: str) -> None:
         self.code = code
         super().__init__(code)
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMarketTechnicalParentCaptureV4VerifiedRead:
+    """一次精確讀回的 parent 套件與同次核驗批次。"""
+
+    package: dict[str, Any]
+    verified_batches: tuple["DailyMarketTechnicalBatchArtifactV4", ...]
+
+
+def _check_parent_read_cancelled(
+    cancel_callback: Callable[[], bool] | None,
+) -> None:
+    if cancel_callback is None:
+        return
+    try:
+        cancelled = cancel_callback()
+    except Exception as exc:
+        raise TechnicalParentCaptureV4Error(
+            "technical_parent_v4_read_cancel_check_failed"
+        ) from exc
+    if type(cancelled) is not bool:
+        raise TechnicalParentCaptureV4Error(
+            "technical_parent_v4_read_cancel_callback_invalid"
+        )
+    if cancelled:
+        raise TechnicalParentCaptureV4Error("technical_parent_v4_read_cancelled")
 
 
 def _require(condition: bool, code: str) -> None:
@@ -1003,6 +1030,52 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
     ) -> dict[str, Any]:
         """依明示雙 pin 唯讀重開；不挑 latest、不建目錄、不開來源DB。"""
 
+        package, _verified_batches = self._read_internal(
+            plan_identity_sha256,
+            receipt_identity_sha256,
+            expected_receipt_sha256=expected_receipt_sha256,
+            expected_plan_sha256=expected_plan_sha256,
+            cancel_callback=None,
+            retain_verified_batches=False,
+        )
+        return package
+
+    def read_verified(
+        self,
+        plan_identity_sha256: str,
+        receipt_identity_sha256: str,
+        *,
+        expected_receipt_sha256: str,
+        expected_plan_sha256: str | None = None,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketTechnicalParentCaptureV4VerifiedRead:
+        """按精確 pins 重讀 parent，並回傳同次驗證的不可變批次。"""
+
+        package, verified_batches = self._read_internal(
+            plan_identity_sha256,
+            receipt_identity_sha256,
+            expected_receipt_sha256=expected_receipt_sha256,
+            expected_plan_sha256=expected_plan_sha256,
+            cancel_callback=cancel_callback,
+            retain_verified_batches=True,
+        )
+        return DailyMarketTechnicalParentCaptureV4VerifiedRead(
+            package=package,
+            verified_batches=verified_batches,
+        )
+
+    def _read_internal(
+        self,
+        plan_identity_sha256: str,
+        receipt_identity_sha256: str,
+        *,
+        expected_receipt_sha256: str,
+        expected_plan_sha256: str | None,
+        cancel_callback: Callable[[], bool] | None,
+        retain_verified_batches: bool,
+    ) -> tuple[dict[str, Any], tuple["DailyMarketTechnicalBatchArtifactV4", ...]]:
+        _check_parent_read_cancelled(cancel_callback)
+
         self._validate_path(writing=False)
         plan = self._read_plan(plan_identity_sha256)
         plan_raw = _read_file(self._plan_dir(plan_identity_sha256) / "plan.json", PARENT_CAPTURE_MAX_BYTES_V4)
@@ -1024,14 +1097,20 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
             raise TechnicalParentCaptureV4Error("technical_parent_v4_receipt_plan_link_mismatch")
         self._verify_receipt_chain(plan, body)
         self._verify_receipt_semantics(plan, body)
-        if body["batch_artifacts"]:
-            self._reverify_all_child_batches(plan, body)
-        return {
+        verified_batches = self._reverify_all_child_batches(
+            plan,
+            body,
+            cancel_callback=cancel_callback,
+            retain_verified_batches=retain_verified_batches,
+        )
+        package = {
             "plan": plan.to_dict(),
             "plan_sha256": plan_sha,
             "receipt": body,
             "receipt_sha256": _sha256_bytes(receipt_raw),
         }
+        _check_parent_read_cancelled(cancel_callback)
+        return package, verified_batches
 
     def start(
         self,
@@ -1225,15 +1304,26 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
         self._verify_receipt_semantics(plan, receipt.to_dict())
         return self._append_receipt(plan, receipt)
 
-    def _reverify_all_child_batches(self, plan: DailyMarketTechnicalParentPlanV4, receipt: Mapping[str, Any]) -> None:
+    def _reverify_all_child_batches(
+        self,
+        plan: DailyMarketTechnicalParentPlanV4,
+        receipt: Mapping[str, Any],
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+        retain_verified_batches: bool = False,
+    ) -> tuple["DailyMarketTechnicalBatchArtifactV4", ...]:
         from app_module.daily_market_technical_snapshot_v4_repository import DailyMarketTechnicalSnapshotV4Repository
 
         if not receipt["batch_artifacts"]:
             if receipt["repository_output_root"] is not None:
                 raise TechnicalParentCaptureV4Error("technical_parent_v4_empty_child_root_mismatch")
-            return
+            return ()
         repository = DailyMarketTechnicalSnapshotV4Repository(receipt["repository_output_root"])
+        retained: list["DailyMarketTechnicalBatchArtifactV4"] | None = (
+            [] if retain_verified_batches else None
+        )
         for child in receipt["batch_artifacts"]:
+            _check_parent_read_cancelled(cancel_callback)
             verified = repository.read_exact(
                 child["manifest_path"],
                 expected_manifest_sha256=child["manifest_sha256"],
@@ -1242,9 +1332,13 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
                 expected_method_contract_sha256=plan.to_dict()["method_contracts_sha256"],
                 expected_decision_date=plan.cohort.decision_date,
             )
+            _check_parent_read_cancelled(cancel_callback)
             actual = _batch_artifact_to_dict(verified, plan, _already_read_exact=True)
             if actual != child:
                 raise TechnicalParentCaptureV4Error("technical_parent_v4_receipt_child_pin_mismatch")
+            if retained is not None:
+                retained.append(verified)
+        return tuple(retained) if retained is not None else ()
 
     def _validate_plan_scope(self, plan: DailyMarketTechnicalParentPlanV4) -> None:
         if self._research_scope is None:

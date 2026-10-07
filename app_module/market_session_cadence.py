@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+import os
+import sys
 from typing import Any, Callable
 from app_module.position_health_source_providers import OfficialCalendarSourceProvider
 from data_module.market_session_policy import (
@@ -38,8 +40,17 @@ class MarketSessionCadence:
 
     @classmethod
     def for_config(cls, config: Any, *, clock: Callable[[], datetime] | None = None) -> MarketSessionCadence:
-        default = Path(__file__).resolve().parents[1] / "output/paper_execution_eod_replay/calendar_cache"
-        cache = getattr(config, "official_calendar_cache_path", None) or default
+        # 可攜包不含本機 output；有共同外部研究根時不可回到 bundle 尋找日曆。
+        research_root = os.environ.get("RESEARCH_STATE_ROOT", "").strip()
+        if research_root:
+            repository_root = Path(research_root)
+        elif bool(getattr(sys, "frozen", False)):
+            repository_root = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "baldr/research_state"
+        else:
+            repository_root = Path(__file__).resolve().parents[1]
+        default = repository_root / "output/paper_execution_eod_replay/calendar_cache"
+        cache = (getattr(config, "official_calendar_cache_path", None)
+            or os.environ.get("OFFICIAL_CALENDAR_CACHE_PATH", "").strip() or default)
         return cls(OfficialCalendarSourceProvider(calendar_cache_path=cache,
             temporary_closure_path=getattr(config, "temporary_closure_path", None)), clock=clock)
 

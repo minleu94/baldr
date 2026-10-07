@@ -15,6 +15,7 @@ _PORTABLE_KEYS = frozenset(
         "DATA_ROOT",
         "OUTPUT_ROOT",
         "RESEARCH_STATE_ROOT",
+        "OFFICIAL_CALENDAR_CACHE_PATH",
         "PERSONAL_DATA_ROOT",
         "PERSONAL_WATCHLIST_SOURCE",
         "PERSONAL_JOURNAL_ROOT",
@@ -145,6 +146,11 @@ def resolve_application_settings(
     _validate_research_isolation(ml_registry_root, data_root)
     if is_frozen:
         bundle_roots = _frozen_bundle_roots(selected_resource_root)
+        calendar_path = effective.get("OFFICIAL_CALENDAR_CACHE_PATH")
+        if calendar_path is not None and any(
+            _is_same_or_child(Path(calendar_path), bundle) for bundle in bundle_roots
+        ):
+            raise ValueError("OFFICIAL_CALENDAR_CACHE_PATH 必須位於 frozen 程式包之外")
         for name, path in (
             ("DATA_ROOT", data_root),
             ("OUTPUT_ROOT", output_root),

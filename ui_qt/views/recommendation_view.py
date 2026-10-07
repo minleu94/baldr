@@ -818,6 +818,7 @@ class RecommendationView(QWidget):
         self._execution_generation = 0
         self._recommendation_narrow = False
         self._recommendation_result_narrow = False
+        self._personal_policy_history_narrow = False
 
         # 策略配置狀態
         self.strategy_config = self._get_default_config()
@@ -1967,8 +1968,14 @@ class RecommendationView(QWidget):
                 f"{mode_label}｜候選 {candidate_id}"
             )
             combo.addItem(label, policy)
+            combo.setItemData(
+                combo.count() - 1,
+                label,
+                Qt.ItemDataRole.ToolTipRole,
+            )
         combo.blockSignals(False)
         combo.setEnabled(combo.count() > 0)
+        self._update_personal_policy_history_accessibility()
         self.personal_policy_history_refresh_button.setText("重新整理歷史版本")
         issues = tuple(result.get("issues", ()))
         pieces = [
@@ -1987,6 +1994,24 @@ class RecommendationView(QWidget):
             pieces.append("目前沒有可驗證的較早版本。")
         self.personal_policy_history_status_label.setText(" ".join(pieces))
         self.personal_policy_rollback_button.setEnabled(combo.count() > 0)
+
+    def _update_personal_policy_history_accessibility(
+        self,
+        selected_text: str | None = None,
+    ) -> None:
+        """讓被選版本的完整文字可由工具提示與輔助技術讀取。"""
+
+        combo = getattr(self, "personal_policy_history_combo", None)
+        if combo is None:
+            return
+        text = combo.currentText() if selected_text is None else selected_text
+        combo.setToolTip(text)
+        if text:
+            combo.setAccessibleDescription(f"目前選取的歷史版本：{text}")
+        else:
+            combo.setAccessibleDescription(
+                "選擇要回退的個人推薦設定歷史版本；完整版本標籤可透過工具提示讀取。"
+            )
 
     def _on_personal_policy_history_error(
         self,
@@ -2694,19 +2719,26 @@ class RecommendationView(QWidget):
 
     def _apply_responsive_layout(self, *, force: bool = False) -> None:
         """在窄版把設定與結果上下排列，保留同一份分析 context。"""
-        if not hasattr(self, "main_splitter") or not hasattr(self, "result_scroll"):
+        if (
+            not hasattr(self, "main_splitter")
+            or not hasattr(self, "result_scroll")
+            or not hasattr(self, "config_scroll")
+        ):
             return
         narrow = self.width() < 820
         result_narrow = narrow or self.result_scroll.viewport().width() < 900
+        history_narrow = self.config_scroll.viewport().width() < 560
         if (
             not force
             and narrow == self._recommendation_narrow
             and result_narrow == self._recommendation_result_narrow
+            and history_narrow == self._personal_policy_history_narrow
         ):
             return
         orientation_changed = narrow != self._recommendation_narrow
         self._recommendation_narrow = narrow
         self._recommendation_result_narrow = result_narrow
+        self._personal_policy_history_narrow = history_narrow
         self.main_splitter.setOrientation(Qt.Vertical if narrow else Qt.Horizontal)
         self.result_title_layout.setDirection(
             QBoxLayout.TopToBottom if result_narrow else QBoxLayout.LeftToRight
@@ -2715,6 +2747,7 @@ class RecommendationView(QWidget):
         self.config_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.result_scroll.setMinimumWidth(0)
         self._set_result_row_directions(result_narrow)
+        self._set_personal_policy_history_direction(history_narrow)
         self.result_panel.setMinimumWidth(0)
         self.result_panel.updateGeometry()
         if orientation_changed and narrow:
@@ -2741,10 +2774,22 @@ class RecommendationView(QWidget):
             "assessment_summary_path_row",
             "assessment_action_row",
             "personal_policy_row",
-            "personal_policy_history_row",
             "personal_source_path_row",
             "personal_candidate_row",
             "research_actions_layout",
+        ):
+            row = getattr(self, layout_name, None)
+            if row is not None:
+                row.setDirection(direction)
+
+    def _set_personal_policy_history_direction(self, narrow: bool) -> None:
+        """依左側設定欄寬度排列歷史選擇器與其操作按鈕。"""
+
+        direction = QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
+        for layout_name in (
+            "personal_policy_history_row",
+            "personal_policy_history_selector_row",
+            "personal_policy_history_actions_row",
         ):
             row = getattr(self, layout_name, None)
             if row is not None:
@@ -3849,18 +3894,66 @@ class RecommendationView(QWidget):
         personal_policy_layout.addWidget(self.personal_policy_status_label)
         self._sync_personal_policy_controls()
 
-        history_row = QHBoxLayout()
+        history_row = QBoxLayout(QBoxLayout.LeftToRight)
         self.personal_policy_history_row = history_row
-        history_row.addWidget(QLabel("已保存版本"))
+        history_selector_row = QBoxLayout(QBoxLayout.LeftToRight)
+        history_selector_row.setContentsMargins(0, 0, 0, 0)
+        self.personal_policy_history_selector_row = history_selector_row
+        self.personal_policy_history_label = QLabel("已保存版本")
+        self.personal_policy_history_label.setObjectName(
+            "personalRecommendationPolicyHistoryLabel"
+        )
+        self.personal_policy_history_label.setMinimumWidth(0)
+        self.personal_policy_history_label.setMinimumHeight(
+            self.personal_policy_history_label.sizeHint().height()
+        )
         self.personal_policy_history_combo = QComboBox()
         self.personal_policy_history_combo.setObjectName(
             "personalRecommendationPolicyHistory"
         )
+        self.personal_policy_history_combo.setAccessibleName("已保存版本")
+        self.personal_policy_history_combo.setAccessibleDescription(
+            "選擇要回退的個人推薦設定歷史版本；完整版本標籤可透過工具提示讀取。"
+        )
+        self.personal_policy_history_combo.setMinimumWidth(0)
+        self.personal_policy_history_combo.setMinimumContentsLength(18)
+        self.personal_policy_history_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.personal_policy_history_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.personal_policy_history_combo.setMinimumHeight(
+            self.personal_policy_history_combo.sizeHint().height()
+        )
         self.personal_policy_history_combo.setEnabled(False)
-        history_row.addWidget(self.personal_policy_history_combo, 1)
+        self.personal_policy_history_label.setBuddy(
+            self.personal_policy_history_combo
+        )
+        history_selector_row.addWidget(self.personal_policy_history_label)
+        history_selector_row.addWidget(self.personal_policy_history_combo, 1)
+        history_row.addLayout(history_selector_row, 1)
+
+        history_actions_row = QBoxLayout(QBoxLayout.LeftToRight)
+        history_actions_row.setContentsMargins(0, 0, 0, 0)
+        self.personal_policy_history_actions_row = history_actions_row
         self.personal_policy_history_refresh_button = QPushButton("讀取歷史版本")
         self.personal_policy_history_refresh_button.setObjectName(
             "personalRecommendationPolicyHistoryRefresh"
+        )
+        self.personal_policy_history_refresh_button.setAccessibleName(
+            "讀取歷史版本"
+        )
+        self.personal_policy_history_refresh_button.setAccessibleDescription(
+            "安全檢查本機已封存的個人推薦設定歷史版本。"
+        )
+        self.personal_policy_history_refresh_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.personal_policy_history_refresh_button.setMinimumHeight(
+            self.personal_policy_history_refresh_button.sizeHint().height()
         )
         self.personal_policy_history_refresh_button.setEnabled(
             self.personal_policy_path is not None
@@ -3868,16 +3961,39 @@ class RecommendationView(QWidget):
         self.personal_policy_history_refresh_button.clicked.connect(
             self._refresh_personal_policy_history
         )
-        history_row.addWidget(self.personal_policy_history_refresh_button)
+        history_actions_row.addWidget(self.personal_policy_history_refresh_button)
         self.personal_policy_rollback_button = QPushButton("回退到所選版本")
         self.personal_policy_rollback_button.setObjectName(
             "personalRecommendationPolicyRollback"
+        )
+        self.personal_policy_rollback_button.setAccessibleName("回退到所選版本")
+        self.personal_policy_rollback_button.setAccessibleDescription(
+            "以新版本記錄所選設定，保留既有歷史版本。"
+        )
+        self.personal_policy_rollback_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.personal_policy_rollback_button.setMinimumHeight(
+            self.personal_policy_rollback_button.sizeHint().height()
         )
         self.personal_policy_rollback_button.setEnabled(False)
         self.personal_policy_rollback_button.clicked.connect(
             self._rollback_to_selected_personal_policy
         )
-        history_row.addWidget(self.personal_policy_rollback_button)
+        history_actions_row.addWidget(self.personal_policy_rollback_button)
+        history_row.addLayout(history_actions_row)
+        self.personal_policy_history_combo.currentTextChanged.connect(
+            self._update_personal_policy_history_accessibility
+        )
+        QWidget.setTabOrder(
+            self.personal_policy_history_combo,
+            self.personal_policy_history_refresh_button,
+        )
+        QWidget.setTabOrder(
+            self.personal_policy_history_refresh_button,
+            self.personal_policy_rollback_button,
+        )
         personal_policy_layout.addLayout(history_row)
         self.personal_policy_history_status_label = QLabel(
             "歷史設定只會由已知封存目錄逐筆驗證；回退會建立新版本。"
@@ -5434,7 +5550,13 @@ class RecommendationView(QWidget):
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
 
+        calendar_blocked = any(code in error_msg for code in (
+            "natural_market_official_calendar_unverified",
+            "natural_market_official_calendar_unavailable",
+        ))
         self.result_status_label.setText(
+            "分析未完成：官方交易日曆無法核驗；沒有套用部分結果。"
+            if calendar_blocked else
             "分析未完成：沒有套用部分結果。請檢查資料日期、標的與篩選條件後再試；"
             "完整錯誤可在詳細資訊中查看。"
         )
@@ -5470,10 +5592,17 @@ class RecommendationView(QWidget):
         error_box.setIcon(QMessageBox.Critical)
         error_box.setWindowTitle("推薦分析未完成")
         error_box.setText(
+            "官方交易日曆無法核驗，尚不能確認本次推薦所需的交易日。\n"
+            "推薦分析已停止，沒有套用部分結果。"
+            if calendar_blocked else
             "推薦分析沒有完成，因此沒有套用部分結果。\n"
             f"目前可見原因：{display_msg}"
         )
         error_box.setInformativeText(
+            "三個預設策略共用交易日曆；切換策略或放寬選股條件不會解除此問題。\n"
+            "請核對已保存的官方日曆來源、覆蓋日期與有效期限；"
+            "缺件或過期時需更新原來源。完整原因請展開「詳細資訊」。"
+            if calendar_blocked else
             "請檢查資料日期、標的與必要欄位後再試；完整技術細節請展開「詳細資訊」。"
         )
         error_box.setDetailedText(str(error_msg))

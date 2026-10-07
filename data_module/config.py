@@ -73,6 +73,11 @@ class TWStockConfig:
         default_factory=lambda: _optional_env_path("PERSONAL_MODEL_POLICY_PATH"),
         kw_only=True,
     )
+    # 官方日曆為外部唯讀證據；Python 與 exe 沿共同設定選同一保存根。
+    official_calendar_cache_path: Path | None = field(
+        default_factory=lambda: _optional_env_path("OFFICIAL_CALENDAR_CACHE_PATH"),
+        kw_only=True,
+    )
 
     # PIT sector membership 是 opt-in 的唯讀輸入；未設定時不做目錄掃描。
     pit_sector_membership_path: Path | None = field(

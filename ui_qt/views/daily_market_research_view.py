@@ -164,6 +164,9 @@ class DailyMarketResearchView(QWidget):
         self._return_query: tuple[str, DailyResearchQuery] | None = None
         self._last_emitted_query: DailyResearchQuery | None = None
         self.source_selector: DailyResearchSourceSelector | None = None
+        self.universe_view = None
+        self._universe_origin: tuple[str, str, object] | None = None
+        self._pending_universe_stock: tuple[object, str, DailyResearchQuery] | None = None
         self._build_ui()
         self._set_service_availability()
 
@@ -181,6 +184,15 @@ class DailyMarketResearchView(QWidget):
         root.setSpacing(8)
         config = getattr(self.service, "config", None)
         if config is not None:
+            from pathlib import Path
+            from ui_qt.views.daily_market_universe_view import DailyMarketUniverseView
+            output_root = getattr(config, "output_root", None)
+            if output_root is not None:
+                self.universe_view = DailyMarketUniverseView(
+                    Path(output_root) / "research_snapshots" / "daily_universe", self)
+                self.universe_view.childSnapshotRequested.connect(self._accept_universe_stock)
+                self.universe_view.cancelRequested.connect(self.cancel_active_operation)
+                root.addWidget(self.universe_view)
             self.source_selector = DailyResearchSourceSelector(config,
                 snapshot_root=getattr(self.service, "snapshot_root", None), parent=self)
             self.source_selector.sourceLoaded.connect(self._accept_selected_source)
@@ -1590,8 +1602,10 @@ class DailyMarketResearchView(QWidget):
                     if self._lifecycle_result is not None
                     else "已核驗目前快照；" + self._lifecycle_error
                 )
+            self._finish_universe_stock_drilldown()
 
     def cancel_active_operation(self) -> None:
+        self._pending_universe_stock = None
         worker = self._worker
         if worker is None or not worker.isRunning():
             return
@@ -2408,10 +2422,54 @@ class DailyMarketResearchView(QWidget):
             self.status_label.setText("來源選擇未回傳 verified 規則快照；原名單保留。")
             return
         service, snapshot = value
+        self._pending_universe_stock = None
         self.service = service
         self.cohort_id_input.setText(snapshot.cohort_id)
         self._return_query = None
         self._accept_snapshot(snapshot, sync_cutoff=True)
+
+    def _accept_universe_stock(self, value: object) -> None:
+        """完整母體沿原 child 下鑽；原母體 query 留在來源頁，不縮成 child 分母。"""
+        from app_module.daily_market_universe_selection import UniverseResearchQuery
+        if not isinstance(value, tuple) or len(value) != 3 or not isinstance(value[0], UniverseResearchQuery):
+            self.status_label.setText("完整母體下鑽身份不符；原來源保留。")
+            return
+        query, code, child = value
+        if self._shutting_down or self._worker is not None:
+            return
+        if self.universe_view is None or query != self.universe_view.current_query:
+            self.status_label.setText("完整母體來源或查詢已變；未套用舊下鑽結果。")
+            return
+        if (not isinstance(code, str) or not isinstance(child, tuple) or len(child) != 2
+                or not isinstance(child[1], VerifiedDailyMarketSnapshot)
+                or code not in child[1].stock_snapshots):
+            self.status_label.setText("完整母體未回傳選取股票的原保存快照；未下鑽。")
+            return
+        self._accept_selected_source(child)
+        if not isinstance(self._snapshot, VerifiedDailyMarketSnapshot):
+            return
+        child_query = DailyResearchQuery(self._snapshot.manifest_sha256,
+            self._snapshot.manifest_identity_sha256, query.condition_keys, query.combine_mode,
+            "all", "stock_code", False, "")
+        if not self.restore_research_query(child_query):
+            return
+        self._pending_universe_stock = (query, code, child_query)
+        self._finish_universe_stock_drilldown()
+
+    def _finish_universe_stock_drilldown(self) -> None:
+        """等待補充唯讀工作結束，仍只開啟原完整母體選取的 child。"""
+        pending = self._pending_universe_stock
+        if pending is None or self._worker is not None or self._shutting_down:
+            return
+        self._pending_universe_stock = None
+        query, code, child_query = pending
+        if (self.universe_view is None or self.universe_view.current_query != query
+                or not isinstance(self._snapshot, VerifiedDailyMarketSnapshot)
+                or self._snapshot.manifest_sha256 != child_query.manifest_sha256):
+            self.status_label.setText("等待下鑽期間來源或查詢已變；未開啟舊結果。")
+            return
+        if self.open_stock_from_shared_query(code, child_query):
+            self._universe_origin = (code, child_query.manifest_sha256, query)
 
     def current_research_query(self) -> DailyResearchQuery | None:
         if self._snapshot is None or not self._selected_condition_keys():
@@ -3192,6 +3250,15 @@ class DailyMarketResearchView(QWidget):
 
         requested = str(code or "").strip()
         expected_hash = str(manifest_sha256 or self._manifest_sha256).strip()
+        if self._shutting_down:
+            return False
+        if (self._universe_origin is not None
+                and self._universe_origin[:2] == (requested, expected_hash)
+                and self.universe_view is not None
+                and self.universe_view.current_query == self._universe_origin[2]):
+            self.universe_view.table.setFocus()
+            self.status_label.setText("已返回原完整母體；來源、全域查詢、頁碼與選取保留。")
+            return True
         if (
             self._shutting_down
             or not requested
@@ -3227,7 +3294,10 @@ class DailyMarketResearchView(QWidget):
     def begin_shutdown(self) -> bool:
         """凍結本頁回呼並合作取消自己的來源讀取／更新工作。"""
 
+        self._pending_universe_stock = None
         selector_done = self.source_selector is None or self.source_selector.begin_shutdown()
+        universe_done = self.universe_view is None or self.universe_view.begin_shutdown()
+        selector_done = selector_done and universe_done
         if self._shutting_down:
             worker = self._worker
             return selector_done and (worker is None or not worker.isRunning())

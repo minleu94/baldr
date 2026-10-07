@@ -720,3 +720,8 @@ app_module/chart_viewport_state.py接StockResearchReportView價格頁按鈕；�
 ### 2026-10-06 明示市場CSV CLI
 
 scripts/export_market_csv.py提供唯讀preview、caller保存接受的preview後明示execute；app_module/market_csv_export.py只consumer，no Task/上傳/分享/根目錄啟用。Windows handles／來源與exact receipt核驗，實際流程看Manual，[synthetic範圍](docs/06_qa/MARKET_CSV_EXPORT_INTEGRATION_20261006.md)。
+
+
+### 2026-10-07 完整保存母體瀏覽（dev）
+
+查每日研究完整來源 UI：ui_qt/views/daily_market_universe_view.py；完整 query／原 child 解析：app_module/daily_market_universe_selection.py；個股發出／返回／取消續接：ui_qt/views/daily_market_research_view.py。底層仍沿既有 daily_market_universe_run 與 parent repository。操作見[完整手冊](docs/07_guides/APPLICATION_MANUAL.md#2026-10-07-施工版完整保存母體瀏覽)，限制與88項UI回歸見[M2 QA](docs/06_qa/BALDR_COMPLETION_M2_20261007.md)。尚未代表新五規則full-N產製／收藏／比較或候選可用。

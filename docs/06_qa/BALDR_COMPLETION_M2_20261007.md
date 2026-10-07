@@ -77,3 +77,18 @@ SQL 使用與 Python 相同的完整日期解析器；NULL、空值、非法及�
 同實體 kernel／同既有合成 DB 的變更前 preimage 比較重驗通過，舊 public／新 public／共享 session 完整 to_dict 相同，DB SHA／mtime 不變、網路禁止。新收據 `output/qa/baldr_completion_m2_20261007/technical_same_version_b7fa6b8e/session_binding_preimage_compat.json`，raw `technical_binding_preimage_root_1.log`。初次直接執行 script 因缺 repo 匯入路徑失敗，改 runpy 保留匯入路徑；未將該失敗視為來源差異。另 `v4_snapshot_root_2.log` 的 65 errors 是短 basetemp 父目錄未建立，建立另一獨立父目錄後才有上述 65 passed，原失敗保留。
 
 這批完成的是 immutable projection 與來源契約；v4 repository／producer／parent、正常 UI 全母體五規則與新 candidate 尚待整合。H20 獨立 reader／重新核驗面板的旅程仍有失敗正在定位，不能援引本節宣稱使用者 2382 畫面已可用。
+
+
+## 完整保存母體瀏覽與真正個股下鑽
+
+中央 `ui_universe_root_7.log`：88 passed in 75.52s，包含既有 Update workbench 與三個完整母體案例；`update_root_7.log`：25 passed、0 failed、4 skipped（受保護寫入案例）；`ui_mypy_root_3.log`：868 source files、0 error，另 changed Python py_compile 通過。新增頁讀取既有完整 run，完整納入257／排除1的原保存來源先全域 AND／OR 篩選排序，再取第六頁8列；實際 DailyMarketResearchView 發出原 child 的 stockResearchRequested，返回保留原母體、頁碼、查詢、選取及完整分母。明示取消按鈕與等待期間 query 改變都不開啟舊結果。
+
+原直接頁面測試未涵蓋 DailyMarketResearchView 補充核驗 worker；加入真路由後 `ui_universe_root_4.log` 出現開啟事件0次。原因是接受 child 時啟動來源核驗，立即開啟請求被 busy guard 拒絕。現在保留有來源身份的待開啟請求，worker 結束後重核來源／query，再開原保存 child；取消、切來源或關閉清除請求。原失敗保留。`ui_universe_root_2.log` 的隔離 root 錯配亦保留，改對齊 child TEMP／TMP 與 basetemp，未放寬原 guard。
+
+800px offscreen 截圖 `universe_layout_800_fonts.png` 使用既有中文 font bootstrap，控制項文字可讀且按鈕達 sizeHint；首次未載入字型的 `universe_layout_800.png` 出現方框，不能作中文字形驗收。此頁目前仍是 v2／v3 三個既有條件：價高於 MA20／MA60／布林上軌30；沒有以它宣稱新 v4 五規則、正常 UI 產製、完整 query 收藏／比較或真 N 已完成，也不代表新 candidate／Native 真人通過。
+
+回滾範圍：新增 daily_market_universe_selection、daily_market_universe_view 及其測試；修改 daily_market_research_view 接線；文件只追加本輪具名內容。整合提交可用 git revert 該提交恢復本輪，先保存後續未提交變更；不還原其他聊天檔案、不刪原保存來源。撤回後新完整母體瀏覽入口不可用，原單批來源保持；不改正式 DB／Task／模型／原 exe。
+
+## v4 repository／batch producer／parent 中央整合
+
+`v4_parent_repository_root_1.log`：92 passed、1 skipped in 72.48s；包含 source 26、read session 8、method 4、snapshot 27、repository／producer 24與 parent 4。Windows symlink 權限不足跳過一例，hardlink 拒絕仍實際執行。真 SQLite→一次 finish→16+1 stock batch→immutable parent→刪除測試自有 synthetic DB後新程序唯讀重開，並涵蓋取消續跑、錯 clock／cohort／date、語義與 bytes tamper、長路徑和舊新 schema 隔離。這只證有界底層保存鏈；正常 orchestration、v4 query 與完整市場聚合尚在下一包，不能把256股上限改稱 M2 全市場完成。

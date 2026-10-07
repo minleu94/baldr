@@ -172,3 +172,19 @@ catalog每次明示100000 entries／64MiB metadata inventory掃描，plan／rece
 目前257股固定來源profile（session39338 exit0）建立query17.258s，page含cProfile203.435s、717349037 calls、repository.read_exact199次、snapshot.from_json3079次；`.prof`及exact pins保存在 `output/qa/baldr_completion_m2_20261007/full_v4_query_current.prof`／`full_v4_query_current_pins.json`，probe同目錄。這不是無profile產品延遲。發現parent reader剛read_exact後投影helper又read_exact，中央改僅該同次reader投影使用已核artifact，writer預設capture變動重讀不變；四套回歸session7913仍執行，尚未列通過。後續需同pins重驗成本，不授效能Gate。
 
 上述四套中央回歸session7913其後terminal exit0，**18 passed in 52.23s**，包含真parent／正常producer／query／個股Qt讀回，隔離根 `C:/t/v4-once-read-root-20261007-a`。同保留257股來源的第二profile另存 `profile_full_v4_query_after.py`／`full_v4_query_after_pins.json`，session19963仍live；query.create目前量到7.592s，page尚未完成，不宣告整頁達標。正常產製setup factory已交Luna下一包，完整母體設定、截止與原receipt續跑須明示；收藏／比較、1000／真N與Native仍未驗完。
+
+第二profile session19963其後terminal exit0，同一來源page含cProfile **130.254s**、460537975 calls，repository.read_exact116次、snapshot.from_json1796次；原profile203.435s／199／3079分別保留，兩份pins亦保留。主要剩餘成本在full query為取得全段rows而重建bounded query及再次讀parent，交query owner去除中間查詢，保留lightweight global candidates、原完整pins及逐child取消；新碼尚未驗完，不能授效能Gate。
+
+中央新增每日研究入口真兩股保存來源的signal→詳情→返回驗證，**1 passed in 7.70s**，`C:/t/stock-ui-entry-root-20261007-a`；config外殼只提供隔離output根，資料由真producer／store／query核得，確認正常入口的store根、原query與2382選取保留。新257 Qt背景旅程仍live，這項小型dispatch驗證不能替代其跨分段／取消／stale／窄窗及Native要求。
+
+移除full query中間bounded query後，中央當前碼catalog／stock Qt入口回歸 **5 passed in 16.76s**（session35547 exit0，`C:/t/direct-query-stock-root-20261007-a`），targeted mypy query／stock兩檔0、py_compile通過；新257整頁profile82916及完整query新程序仍待完成。Luna首輪257 Qt session86664為 **1 failed／1 passed，431.56s**，initial全母體strict read已完成，但來源摘要未明示availability unknown／historical PIT false／current-restated用途，屬可見限制說明缺口；補繁中可見說明後須重驗，不能把SHA呈現當限制說明已完整。
+
+第三profile82916已terminal exit0，同來源page含cProfile **88.594s**、318826225 calls，repository.read_exact83次、snapshot.from_json1283次；固定pins與 `.prof` 分別另存 `full_v4_query_direct_pins.json`／`full_v4_query_direct.prof`。三輪203.435→130.254→88.594s僅證明剖析中的結構去重，非無profile延遲或效能Gate完成。
+
+store歷史prefix／graph-head CAS最終凍結版，Luna全檔22439 exit0 **6 passed in 523.65s**，最後加強的257真parent案例39070 exit0 **1 passed in 459.41s**，覆蓋partial與cancelled兩種舊pins遇後續child／parent缺件仍讀原內容、complete具名拒絕，舊pin寫入拒絕且不落新receipt；mypy兩檔／py_compile／diff-check通過。store SHA=`4E45C606F03853929E504537434920A272A55B8966D970E4833F7C292DF19CAC`、test SHA=`23D438A8B829E1DACD0B427CFEFC47799C573E960CB0AAF1CF602B083BE25C05`，中央實檔比對一致；摘要在 `output/qa/fn4/universe_store_final_20261007/validation_summary.txt`，原首紅與preimages保留。中央目前producer五项新程序20564仍執行，不以歷史producer結果代替當前store整合。
+
+為保留前三輪profile的原absolute source refs，Luna已將自身58206合成fixture備份至 `output/qa/fn4/fixture_58206_uv4query_wcx8nthv`：307 files／21402462 bytes，原前／後及副本inventory SHA一致，bytes不改、307副本唯讀，origin manifest記錄原root。已授權停止該agent自己的obsolete58206／95604測試，須保留中止terminal，不計pass；當前完整query9924保留。這不是正式資料備份或清理，其他來源不動。
+
+中央 producer session20564 已 terminal exit0，當前 store／parent reader 整合 **5 passed in 95.47s**，隔離根 `C:/t/full-producer-current-root-20261007-a`；取代上述仍執行狀態，不取代尚未完成的全 N UI／查詢與效能 Gate。
+
+保存研究比較 reader 新增於 `app_module/daily_market_technical_universe_v4_comparison.py`。各欄保留原查詢與完整來源 pins，逐原頁公開 strict reader 重開，只保留所選 rows；明示混合 cutoff／方法／來源時鐘，不計算交易或績效、不授 historical PIT。中央真兩股 producer 保存 fixture 移除自建行情 DB 後，驗證兩個原頁比較、五規則、原查詢保留、重複欄／跨頁錯選／取消拒絕，以及 manifest bytes 篡改拒絕。與個股／Qt 原來源返回同一測試 **1 passed in 8.29s**，session8537 exit0，隔離根 `C:/t/comparison-stock-root-20261007-c`；comparison mypy 1 file 0、兩檔 py_compile 通過。前兩次 sandbox 原生路徑 PermissionError setup／scope 失敗保留，不以其結果判定產品功能通過。此為 reader 完成證據，尚未有比較 UI、收藏比較或完整母體效能驗收。

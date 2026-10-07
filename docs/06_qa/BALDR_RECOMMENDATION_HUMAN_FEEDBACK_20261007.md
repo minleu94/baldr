@@ -28,3 +28,15 @@
 ## 修正版再驗方式
 
 先核開啟程式的完整版本；H20選2382下鑽後看摘要結論與日期，再返回核原來源／選取。H20收藏目前不列驗收。每日研究收藏另依Manual原入口核對。修正版同一有效官方日曆設定下再跑三預設策略；無有效日曆時必須清楚阻擋，不能記成分析成功。非全螢幕左欄核三控制項全文、可點、Tab順序及版本工具提示。完整入口見[Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-07-真人回饋摘要收藏與推薦失敗)，原完整補完範圍沿[單一計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。
+
+## 同版候選更新（原碼驗證之後）
+
+固定來源 `2b6fda426b6fd69919fd563cc3389293b591f9b1` 已建成 `2026.10.06+2b6fda426b6f`。版本字串沿固定來源 metadata，不能依驗證日期改寫。候選位於 `dist/candidate_2b6fda426b6f_3ed9cb87/baldr/baldr.exe`（52,436,967 bytes），SHA-256 `f18e4fb154d1662b544d5e0c5f5be1cd7ebcfdb744191444de215dde048cffbd`；固定 archive SHA-256 `b2bfd6ffbd14cf4dd3c8ea19c93aac7c807090547cee69a70404ae3ff4b7705a`。
+
+原同版隔離比較通過：`output/qa/baldr_same_version_2b6fda426b6f_5c5f2aa4/same_version_receipt.json`，raw SHA-256 `82d13dcfaf2af82318d9d99f9636aa6c65ffe7e25d3ba622820abea030758d7e`。包含啟動設定／版本、四用途 synthetic旅程、未訓練模型artifact、保存新程序、H20呈現與原異常案例；H20仍非完整保存來源旅程。`BUILD_INFO.json` 保留 built_not_validated 建置時快照，另增 `VALIDATION_INFO.json` 綁定實際驗證收據，沒有事後改寫建置證據。
+
+另以同一外部 synthetic 日曆 bytes及相同共用JSON，在固定 Python 與 exe 沿實際 cache reader／RecommendationInputSession交易日邊界逐值比較通過；同一缺來源時重現使用者的 `official_calendar_unknown:2026-09-16…`，有效來源時通過，bytes未變且無網路。收據 `output/qa/baldr_completion_m2_20261007/calendar_same_version/comparison.json` SHA-256 `2481a4de87b7da2a29eb70c9b69c4e4e08e39592ec2145b6ecb82016550a7296`。這不是三個真實策略執行。初次driver以相對路徑被launcher切換cwd後找不到檔、第二次managed strict realpath WinError5；改絕對路徑與受控隔離執行通過，原失敗工具輸出保留。
+
+2026-10-07T19:00:25Z 唯讀既有官方cache範圍2026-09-16～10-07核驗通過，cache原捕捉／可得時間2026-10-06T00:25:04Z、期限10-13；原bytes SHA-256 `37083f2b35c79d6d0e11ccd7ba2f5583be4b8c09babdb96e9518e4f0107a6157`。原件保留於 `output/paper_execution_eod_replay/calendar_cache`；未開市場DB、未下載／改cache／取得PIT或臨時停市覆蓋資格。
+
+真人啟動helper `output/qa/baldr_completion_m2_20261007/start_feedback_candidate.ps1` 只核候選SHA並給child上述原日曆路徑，其他市場／個人設定沿原配置，**沒有自動執行**。PowerShell語法檢查通過；若來源期限或hash不符仍由程式拒絕。原exe SHA仍 `ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e`，active delivery／Task／私人設定未改。Native及使用者2382／三策略／窄欄仍待實測；全母體UI／producer／technical adapter另在施工，未包含此候選，也未把原完整補完範圍改成完成。

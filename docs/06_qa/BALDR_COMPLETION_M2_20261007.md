@@ -101,3 +101,12 @@ SQL 使用與 Python 相同的完整日期解析器；NULL、空值、非法及�
 parent API 接全部完成窗口建 immutable plan，最多256納入／256排除、16股一批；start／record_verified_batch／mark_terminal／resume／complete 產生 append-only receipts。read 需原 plan identity、receipt identity 及 receipt bytes SHA，重驗 chain、全 child manifest 與逐股保存證據，不開 DB、不選 latest。取消保存 partial／cancelled，不能當完整；只有全 batch 核驗才 complete，全排除／空母體可真零完成。此256上限是有界 child parent 契約，不是市場母體或選股名單上限。正常 orchestration、full-N v4 aggregate 及 UI 尚未封存。
 
 本輪新增三模組與三測試，未修改舊 v2／v3 reader／writer 或資料格式；回滾可 git revert 本輪整合提交，先保護後續修改與新 consumer，相依新功能會不可用。原 artifact／partial／QA 及舊 reader 保留，不刪資料恢復乾淨。批次 scope 是 preflight 驗證，不能描述為每次 OS 寫入皆獨立重驗；後續正常 caller 仍需逐批檢查範圍。
+
+
+## 正常 v4 parent 產製 caller 中央整合
+
+`parent_v4_orchestration_root_1.log`：20 passed in 86.69s，涵蓋實際 batch producer、parent writer及新增正常caller；root targeted mypy兩檔及py_compile通過。API `produce_daily_market_technical_parent_v4` 明示來源DB、完整bounded cohort、aware cutoff、child／parent roots、scope及取消；單一read session載全部納入，只finish後窗口建plan，真batch writer→verified parent record→全部完成才complete。取消在finish之前沒有plan／receipt；之後明示取消狀態，partial／失敗及原child不刪。17股16+1保存後明示原receipt續跑，重核同plan／clock／cohort／method與可選外部rawSHA，不尋latest；新程序刪除測試自有合成DB後仍可唯讀原完整收據。
+
+每批前、child返回後記parent前及complete前重驗main／WAL source pin、scope與兩個root；合成DB在child保存後改變時保留verified child、保存failed receipt、阻止complete。外部resume SHA若未提供，計算exact原receipt rawSHA只供讀取競態守衛，不冒充獨立外部pin證據。另一來源clock續跑拒絕，原收據不改；全排除真零納入完成。測試短root由命令TEMP／TMP指定，版本化fixture沿tempfile.gettempdir，不硬寫主機C:/t。
+
+新增 parent producer／測試兩檔，舊reader／writer未修改；回滾用git revert這輪caller提交，先保護後續consumer／未提交修改，原artifact與QA不刪。此caller仍至多256納入，不是全市場終點；完整N獨立store／aggregate/query、正常UI產製與candidate尚在下一包，M2未完成。

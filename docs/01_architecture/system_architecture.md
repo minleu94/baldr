@@ -1561,3 +1561,6 @@ DailyMarketResearchView 掛載 DailyMarketUniverseView；app_module.daily_market
 
 
 v4 技術保存底層（2026-10-07 dev）：daily_market_technical_snapshot_v4_producer 只接唯讀交易 finish 的窗口，封存到獨立 v4 batch；daily_market_technical_snapshot_v4_repository 以 exact manifest 核全部 bytes、clock、method、來源與規則語義；rule_research_technical_parent_capture_v4 以完整 bounded cohort／clock／窗口建 plan，typed verified batch 組成 append-only parent receipts。讀回不開市場 DB、不套目前計算 kernel，也不改舊 v2／v3保存。這仍是最多256納入的 bounded parent 底層，正常 caller／full-N聚合／UI五規則尚未完成，證據見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+正常 v4 bounded parent caller（2026-10-07 dev）由 app_module.daily_market_technical_parent_v4_producer 組裝唯讀session→finish→immutable plan→真v4批次producer→strict parent writer；每批前／記child前／complete前重驗來源main+WAL與scope，明示receipt續跑不查latest。中央20例通過；full-N aggregate與UI尚未完成，不將child parent上限轉成產品母體上限。證據見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。

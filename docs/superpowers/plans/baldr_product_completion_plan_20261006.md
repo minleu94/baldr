@@ -625,3 +625,6 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 ### 2026-10-07 M2 完整來源下鑽與 v4 保存鏈補記
 
 正常每日研究頁已掛載完整保存母體瀏覽；原257納入／1排除的完整來源經 DailyMarketResearchView 真發出個股 context，再精確返回，全域 query／第六頁／排序與選取保留。修正 child 接受後背景核驗造成立即下鑽被丟棄的實際紅測；取消按鈕與 query 改變撤回待開啟請求。中央 UI 88 passed、Update validator 25 passed／4 protected skips、全域 mypy 868 files 通過。v4 repository／batch producer／parent 中央92 passed／1 permission skip，仍是有界256股保存底層。完整 UI 產製、新五規則 full-N 聚合、query 收藏／比較／新程序、候選同版與 Native 驗收尚未完成；H20完整旅程仍在定位。所有 raw／原失敗沿[M2 QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)，不縮減 P00–P14／M1–M3 範圍。
+
+
+2026-10-07 v4正常parent產製已接單一finish→真batch→strict parent→complete，中央連同舊batch／parent20例通過，明示原receipt續跑、取消前後狀態與逐批source pin重驗；這仍是256納入的child parent，完整N後續獨立store／aggregate/query（最多100000代碼沿原完整母體）不能縮成bounded成功。UI五規則產製、query收藏比較、候選與H20完整旅程尚在施工，完整驗收沿原M2及P00–P14，見[M2 QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)。

@@ -728,3 +728,6 @@ scripts/export_market_csv.py提供唯讀preview、caller保存接受的preview�
 
 
 v4技術保存底層：app_module/daily_market_technical_snapshot_v4_repository.py（exact manifest唯讀）、daily_market_technical_snapshot_v4_producer.py（finish窗口保存批次）、rule_research_technical_parent_capture_v4.py（immutable plan／append-only parent進度及明示續跑）。與舊v2／v3保存隔離，最多256納入是child parent邊界；full-N orchestration及UI尚未完成。中央92 passed／1權限skip及契約見[M2 QA](docs/06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+v4正常bounded產製入口：app_module/daily_market_technical_parent_v4_producer.py／produce_daily_market_technical_parent_v4；單一finish後真保存／明示receipt續跑與每批source pin重驗，caller中央20案例通過。full-N aggregate及正常UI另在施工，操作入口尚未開放，不用舊候選驗新caller。

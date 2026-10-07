@@ -22,7 +22,11 @@ from typing import Any, Callable, Mapping, Sequence, SupportsFloat, cast
 from zoneinfo import ZoneInfo
 
 from app_module.build_identity import detect_build_identity
-from app_module.sqlite_read_only import connect_read_only_sqlite, cooperative_read_cancellation
+from app_module.daily_market_technical_read_session import (
+    DAILY_MARKET_TECHNICAL_CUTOFF_GUARD_VERSION,
+    DAILY_MARKET_TECHNICAL_SOURCE_MAX_ROWS,
+    DailyMarketTechnicalReadSession,
+)
 from decision_module.factors.selection_technical_rules import (
     CAUSAL_INDICATOR_LINEAGE_METHOD_ID,
     CAUSAL_INDICATOR_LINEAGE_VERSION,
@@ -50,8 +54,6 @@ from decision_module.factors.selection_technical_rules import (
 
 
 DAILY_MARKET_TECHNICAL_SOURCE_SCHEMA = "daily-market-technical-source.v1"
-DAILY_MARKET_TECHNICAL_SOURCE_MAX_ROWS = 120
-DAILY_MARKET_TECHNICAL_CUTOFF_GUARD_VERSION = "daily-close-research-cutoff.v1"
 _TAIPEI = ZoneInfo("Asia/Taipei")
 _MINIMUM_TAIPEI_RESEARCH_CUTOFF = time(16, 0)
 _SOURCE_FIELDS = ("date", "stock_code", "open", "high", "low", "close", "volume_shares")
@@ -282,71 +284,39 @@ def load_daily_market_technical_window(
     code = str(stock_code).strip()
     if not code or not code.isalnum() or len(code) > 16:
         raise DailyMarketTechnicalSourceError("daily_technical_source_invalid_stock")
-    cutoff = decision_cutoff
-    local_cutoff = cutoff.astimezone(_TAIPEI)
+    local_cutoff = decision_cutoff.astimezone(_TAIPEI)
     if local_cutoff.time() < _MINIMUM_TAIPEI_RESEARCH_CUTOFF:
         raise DailyMarketTechnicalSourceError("daily_technical_requires_after_close_cutoff")
-    decision_date = local_cutoff.date()
-    database = Path(db_path).expanduser().resolve(strict=True)
-    before_pin = _source_pin(database)
-    if before_pin is None:
-        raise DailyMarketTechnicalSourceError("daily_technical_source_pin_unavailable")
 
-    with cooperative_read_cancellation(cancel_callback):
-        connection = connect_read_only_sqlite(database)
-        try:
-            connection.row_factory = sqlite3.Row
-            connection.execute("BEGIN")
-            schema_rows = connection.execute('PRAGMA table_info("daily_prices")').fetchall()
-            if not schema_rows:
-                raise DailyMarketTechnicalSourceError("daily_technical_source_table_missing")
-            columns = tuple(str(row[1]) for row in schema_rows)
-            column_types = tuple(
-                (str(row[1]), str(row[2] or ""), int(row[3]), int(row[5]))
-                for row in schema_rows
-            )
-            selected = _resolve_source_columns(columns)
-            schema_identity = _sha256_json({
-                "table": "daily_prices",
-                "columns": [list(item) for item in column_types],
-                "resolved_columns": selected,
-            })
-            selected_names: list[str] = []
-            for key in _SOURCE_FIELDS:
-                column_name = selected.get(key)
-                if column_name is not None:
-                    selected_names.append(column_name)
-            selected_sql = ",".join(_quote(name) for name in selected_names)
-            date_column = _quote(_required_column(selected, "date"))
-            code_column = _quote(_required_column(selected, "stock_code"))
-            connection.create_function(
-                "daily_market_technical_date_key",
-                1,
-                _sqlite_date_key,
-                deterministic=True,
-            )
-            date_key_expr = f"daily_market_technical_date_key({date_column})"
-            raw_rows = connection.execute(
-                f"SELECT {selected_sql} FROM \"daily_prices\" "
-                f"WHERE {code_column} = ? AND ({date_key_expr} IS NULL OR {date_key_expr} <= ?) "
-                f"ORDER BY CASE WHEN {date_key_expr} IS NULL THEN 0 ELSE 1 END, "
-                f"{date_key_expr} DESC, "
-                + ",".join(
-                    f"CAST({_quote(name)} AS TEXT) DESC" for name in selected_names
-                )
-                + " LIMIT ?",
-                (code, decision_date.strftime("%Y%m%d"), DAILY_MARKET_TECHNICAL_SOURCE_MAX_ROWS),
-            ).fetchall()
-        except sqlite3.Error as exc:
-            raise DailyMarketTechnicalSourceError(
-                "daily_technical_source_query_failed", str(exc)
-            ) from exc
-        finally:
-            connection.close()
+    with DailyMarketTechnicalReadSession(
+        db_path,
+        decision_cutoff,
+        cancel_callback=cancel_callback,
+    ) as session:
+        session.load_batch((code,))
+        windows = session.finish()
+    if len(windows) != 1:
+        raise DailyMarketTechnicalSourceError("daily_technical_read_session_result_count_invalid")
+    return windows[0]
 
-    after_pin = _source_pin(database)
-    if after_pin is None or after_pin != before_pin:
-        raise DailyMarketTechnicalSourceError("daily_technical_source_changed_during_read")
+
+def _build_window_from_snapshot(
+    *,
+    database: Path,
+    stock_code: str,
+    decision_cutoff: datetime,
+    decision_date: date,
+    source_file_pin: tuple[tuple[str, int, int, int, int] | tuple[str], ...],
+    source_pin_sha256: str,
+    schema_identity_sha256: str,
+    selected: Mapping[str, str | None],
+    raw_rows: Sequence[sqlite3.Row],
+    calculation_identity: tuple[str, str, str],
+) -> DailyMarketTechnicalSourceWindow:
+    """由完成最終來源 pin 驗證的 SQLite 列建立不可變窗口。"""
+
+    code = stock_code
+    cutoff = decision_cutoff
     rows = _normalize_rows(raw_rows, selected, code)
     # SQLite 排序先縮到最近 120 列，再在 Python 以正規日期和原始 token
     # 排升序；重複日期仍保留，絕不去重後跨過資料缺口計算。
@@ -357,26 +327,24 @@ def load_daily_market_technical_window(
     )))
     raw_window_fingerprint = _sha256_json({
         "schema_version": DAILY_MARKET_TECHNICAL_SOURCE_SCHEMA,
-        "schema_identity_sha256": schema_identity,
+        "schema_identity_sha256": schema_identity_sha256,
         "stock_code": code,
         "decision_date": decision_date.isoformat(),
         "decision_cutoff": cutoff.isoformat(),
         "cutoff_guard_version": DAILY_MARKET_TECHNICAL_CUTOFF_GUARD_VERSION,
         "rows": [row.to_dict() for row in rows],
     })
-    calculation_identity, calculation_version, talib_version = _calculation_identity()
-    pin_payload = _source_pin_payload(before_pin)
-    source_pin_sha256 = _sha256_json(pin_payload)
+    calculation_sha256, calculation_version, talib_version = calculation_identity
     source_identity_payload = {
         'database': str(database),
         'source_pin_sha256': source_pin_sha256,
-        'schema_identity_sha256': schema_identity,
+        'schema_identity_sha256': schema_identity_sha256,
         'stock_code': code,
         'decision_date': decision_date.isoformat(),
         'decision_cutoff': cutoff.isoformat(),
         'cutoff_guard_version': DAILY_MARKET_TECHNICAL_CUTOFF_GUARD_VERSION,
         'raw_source_window_fingerprint_sha256': raw_window_fingerprint,
-        'calculation_identity_sha256': calculation_identity,
+        'calculation_identity_sha256': calculation_sha256,
     }
     source_identity = f"{TECHNICAL_SOURCE_ID}:{_sha256_json(source_identity_payload)}"
 
@@ -409,11 +377,6 @@ def load_daily_market_technical_window(
         sessions=sessions,
         observed_prefix_contiguous=contiguous,
     )
-    # 來源檔在計算期間又變動時，拒絕標記已驗證 pin。通常這只會在另
-    # 一程序寫入來源的競態中發生；不回退到 live latest value。
-    final_pin = _source_pin(database)
-    if final_pin is None or final_pin != before_pin:
-        raise DailyMarketTechnicalSourceError("daily_technical_source_changed_during_calculation")
     return DailyMarketTechnicalSourceWindow(
         stock_code=code,
         decision_date=decision_date,
@@ -421,12 +384,12 @@ def load_daily_market_technical_window(
         database_path=str(database),
         source_id="sqlite.daily_prices",
         source_identity=source_identity,
-        schema_identity_sha256=schema_identity,
-        source_file_pin=before_pin,
+        schema_identity_sha256=schema_identity_sha256,
+        source_file_pin=source_file_pin,
         source_pin_sha256=source_pin_sha256,
         raw_source_window_fingerprint_sha256=raw_window_fingerprint,
         source_window_fingerprint_sha256=window_fingerprint,
-        calculation_identity_sha256=calculation_identity,
+        calculation_identity_sha256=calculation_sha256,
         calculation_version=calculation_version,
         talib_version=talib_version,
         source_available_at=None,

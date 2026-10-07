@@ -58,3 +58,11 @@ SQL 使用與 Python 相同的完整日期解析器；NULL、空值、非法及�
 固定 `e5026b3a5afa2501da1f2d5956211d74130898e3` 新候選位於 `dist/candidate_e5026b3a5afa_abeea6de/baldr/baldr.exe`，52,502,536 bytes，SHA-256 `f6bbfb316e3db53787171722d49f369346d3827534c3e54d3021a3f1e9b879ef`。Python 使用同 commit archive，exe 使用實際 frozen kernel bytes與metadata；同一合成日線SQLite的65列窗口、排除未來列、計算身份及完整JSON逐值一致，來源SHA／mtime保持、網路禁止。收據 `output/qa/baldr_completion_m2_20261007/technical_same_version_b7fa6b8e/comparison.json`，SHA-256 `215633b406a3ace1d70ea7834a1d4de389521257ac19412318d497da3e755b70`。
 
 建置本身與建置收據已成功，CLI最後輸出中文時曾因host cp1252出UnicodeEncodeError；沒有重新build或覆寫候選，先核原receipt／exe hash再執行上述真同版比較。build_windows另補UTF-8輸出，原失敗保留。這份engine probe不證H20獨立panel、正常UI產製、v4保存或Native真人可用；各候選及原exe保留，未更新active delivery。
+
+## 共享唯讀日線交易快照
+
+中央 `technical_session_root_1.log`：69 passed in 6.95s（原技術來源26、共享session8、打包／版本35），targeted mypy／py_compile通過。17股16+1批共用一條query-only connection、一個BEGIN及一次schema alias map；load_batch只累積raw rows、不回傳窗口。只有finish關閉read交易／connection、核main+WAL與共用計算版本、完成全部股後再核source pin及取消，才一次交付immutable tuple。來源update／rollback／schema WAL變動均拒絕完成，duplicate／原exception／late cancel均清理connection；clock核原pin與台北日期。
+
+舊單股public loader維持原輸出欄位／source identity／計算身份，改包裝一股session；新v4 clock十一欄只給新session與保存版本，不寫入舊單股to_dict。沒有以legacy technical_indicators schema冒充日線來源。v4快照semantic verifier仍有volume結果任意改unknown且重hash可被接受的紅測，尚在修正，不能把session通過視為v4保存或完整UI完成。
+
+另用同一合成DB與相同實體kernel bytes，獨立載入變更前preimage（SHA `130713c5e0a2a636bb942757a6ca77d60ee8f5d75f8dfe005258187eeca022a8`）及新API，完整to_dict逐值相同，shared session結果亦同，DB SHA／mtime不變。收據 `output/qa/baldr_completion_m2_20261007/technical_same_version_b7fa6b8e/session_preimage_compat.json`。初次直接拿工作樹對固定archive比失敗：technical_indicators.py工作樹為CRLF、archive為LF，kernel原bytes SHA不同使calc identity不同；換行正規化後內容一致。沒有用正規化SHA放寬production guard，亦未冒稱那次直接比較通過；該失敗probe `technical_session_compat_probe.py` 及原工具輸出保留。固定e5026b3a Python／exe使用同archive原bytes的具名比較仍成立。

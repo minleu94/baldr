@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+import app_module.daily_market_technical_read_session as read_session_adapter
 import app_module.daily_market_technical_source as source_adapter
 import analysis_module.technical_analysis.technical_indicators as technical_indicators
 from app_module.daily_market_technical_source import (
@@ -228,7 +229,7 @@ def test_intraday_cutoff_is_rejected_before_source_access(
         pytest.fail("cutoff guard must run before source access or calculation")
 
     monkeypatch.setattr(source_adapter, "_source_pin", unexpected_access)
-    monkeypatch.setattr(source_adapter, "connect_read_only_sqlite", unexpected_access)
+    monkeypatch.setattr(read_session_adapter, "connect_read_only_sqlite", unexpected_access)
     monkeypatch.setattr(source_adapter, "_calculation_identity", unexpected_access)
     cutoff = datetime.combine(date(2026, 8, 1), time(hour, minute), tzinfo=_TAIPEI)
 

@@ -200,3 +200,17 @@ store歷史prefix／graph-head CAS最終凍結版，Luna全檔22439 exit0 **6 pa
 root正常每日入口已接 comparisonReady→比較dialog；第二欄origin tuple(query,stock)交public restore_origin背景strict讀回，成功恢復原頁及9999選取，shutdown關閉自己dialog。真兩股保存＋正常入口＋必要workbench，session15770 terminal0：86passed11.28s（C:/t/comparison-entry-root-20261007-a），不代替跨257basket旅程。固定原257完整receipt pins非profile單次讀取session93163 terminal0：35.8078331s，counts258declared257inc1exc257processed0pending1missing、頁5stock原碼一致；receipt output/qa/baldr_completion_m2_20261007/full_v4_query_plain_measurement_20261007.json。querySHA6e853049ecbb2d4b1bed753f0d1e716402061c3f069650248e9e9540a80e536e；同時有其他QA，非冷暖30互動或真N效能Gate，結果明示尚不符合可順暢互動，續作結構去重不可跳原guard。
 
 兩階段設定factory中央原碼審核及重驗：GUI fixed metadata+bounded settings，background prepare_request才canonical source/scope+exact receipt和逐欄pins/count/source核對；讀前後取消，不授exact讀中即時取消。root隔離整檔21passed3.19s（C:/t/deferred-setup-root-20261007-a），target兩檔mypy／compile通過。正常view仍待factory union和worker接線，不能以此宣告GUI完整background qualification已啟用。原同步factory保留兼容，不把21項獨立API通過當完整旅程。
+
+中央審查比較跨來源返回發現新的顯示缺口：_show_page無新source_clock payload時可能沿用前一來源payload，在新query SHA旁標為已核驗；已交view owner於live23951 terminal後修正，跨source需清舊payload，同source查詢可保留，不重新讀行情。這是未修缺口，不由同來源返回綠燈關閉。root比較首屏已直接顯示decision cutoff／raw row count，不依hover；session31154 exit0，86passed10.58s（C:/t/comparison-cutoff-root-20261007-a），全域mypy881檔0、compile通過、validator25通過4保護跳過。
+
+P09中央watchlist擴充施工：固定新schema分派decoder、新source namespace与payload identity helper，沿既有add/get/idempotency/revision/COW caller、不另建store；新增typed fullN bookmark state重開，旧context入口具名拒絕新kind。既有每日／排名／personal watchlist三檔16passed5.96s；真保存收藏首輪發現旧WatchlistItem.from_mapping把空股票名稱補成代碼，造成同identity重存conflict，已限定新source保留未知空名，不改旧來源fallback；首紅隔離根C:/t/fulln-watchlist-integration-root-20261007-a保留。當前真保存新收藏與旧兼容整合50834仍待terminal；source targetmypy/compile通過。
+
+50834其後terminal0：17passed18.25s，C:/t/fulln-watchlist-integration-root-20261007-b；真fullN bookmark經既有WatchlistService保存、重存idempotent、重建service重開原query/stock/比較集合，旧每日/排名/personal兼容皆通過。這是isolated legacy JSON route，仍需COW啟用route、新Python程序以及正常UI收藏按鈕旅程，不授私人既存資料寫入或P09完成。
+
+COW新增重驗首輪C:/t/fulln-watchlist-cow-root-20261007-a失敗：原converter拒空stock_name。按P09 readonly migration邊界，不改converter／COW容量或驗證；中央adapter改以stock_code作Watchlist顯示標籤，fullN payload.stock_name仍未知空字串，匹配只接受此固定標籤。撤回前輪限定空名讀法與migration空名例外，原WatchlistItem／JSON migration guard恢復原契約。新64359包括真COW原JSON bytes保留與新Python讀原收藏query，待terminal後記結果。
+
+64359其後terminal0：17passed20.80s，C:/t/fulln-watchlist-cow-root-20261007-b。真合成保存来源→Watchlist JSON→明示COW→原JSON bytes unchanged→新Python程序exact fullN收藏query重開及比較pins通過，source DB已移除，原每日／排名／personal兼容同run通過；target mypy/compile通過。仍未有正常UI收藏／移除復原／錯kind／COW stale revision完整矩陣，不宣告P09完成。
+
+COW收藏移除／復原矩陣中央追加：首輪5915 terminal1（1failed16passed13.00s）指出restore重試仍比payload未知名稱，已令外層身份統一用固定code顯示標籤，未改payload或COW guard。82287 terminal0：17passed20.74s（C:/t/fulln-watchlist-restore-root-20261007-b），移除只動具名ID、完整收藏內容復原、revision追加、第二次復原already_present且不增revision，新程序source讀回與旧來源兼容同run通過。跨257比較owner23951 terminal0：3passed592.10s；全N來源clock修正與deferred worker仍另驗，時間不授效能Gate。
+
+中央已讀owner原log：query20159排序單案terminal0，1passed423.34s（不是整份suite重跑）；9924其餘7case原通過仍保留首紅。bookmark25165 terminal0：3passed12.22s。當前query／bookmark兩模組與兩測試＋WatchlistService共5檔mypy0，parent Callable實檔import已核；新parent verified-context變更另由owner驗證，不據此完成fullN性能。

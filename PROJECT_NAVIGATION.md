@@ -740,3 +740,5 @@ H20原保存來源獨立摘要（dev）：ui_qt/main.py的_context_changed/read/
 
 
 2026-10-07 v4讀回修正：`daily_market_technical_feature_snapshot_v4.py`／`daily_market_technical_snapshot_v4_repository.py`／`rule_research_technical_parent_capture_v4.py`移除同一read內重複語義核驗，保留每次真檔pin與變動核驗；零child公開parent讀回可用。六套中央67 passed／1 Windows symlink權限skip，full-N各leaf及正常UI閉環仍待整合。
+
+五規則完整母體：app_module/daily_market_technical_universe_v4_query.py（全域保存查詢）、daily_market_technical_universe_v4_stock.py（原頁個股）、daily_market_technical_universe_v4_comparison.py（原query各欄比較）、daily_market_technical_universe_v4_bookmark.py（固定收藏與typed重開）；持久化沿app_module/watchlist_service.py原JSON／COW caller，工程限制見docs/06_qa/BALDR_COMPLETION_M2_20261007.md。

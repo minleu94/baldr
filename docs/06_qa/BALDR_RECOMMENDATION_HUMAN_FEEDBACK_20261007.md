@@ -40,3 +40,7 @@
 2026-10-07T19:00:25Z 唯讀既有官方cache範圍2026-09-16～10-07核驗通過，cache原捕捉／可得時間2026-10-06T00:25:04Z、期限10-13；原bytes SHA-256 `37083f2b35c79d6d0e11ccd7ba2f5583be4b8c09babdb96e9518e4f0107a6157`。原件保留於 `output/paper_execution_eod_replay/calendar_cache`；未開市場DB、未下載／改cache／取得PIT或臨時停市覆蓋資格。
 
 真人啟動helper `output/qa/baldr_completion_m2_20261007/start_feedback_candidate.ps1` 只核候選SHA並給child上述原日曆路徑，其他市場／個人設定沿原配置，**沒有自動執行**。PowerShell語法檢查通過；若來源期限或hash不符仍由程式拒絕。原exe SHA仍 `ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e`，active delivery／Task／私人設定未改。Native及使用者2382／三策略／窄欄仍待實測；全母體UI／producer／technical adapter另在施工，未包含此候選，也未把原完整補完範圍改成完成。
+
+## 真人啟動設定的唯讀核對補記
+
+正常主機環境以純 `resolve_application_settings()`（未apply、未建目錄、未開DB）核對：`C:/Users/archi/AppData/Local/baldr/config.json` 存在、configured=true，行情／輸出仍是原 FA_Data／output，研究根是主機LOCALAPPDATA的baldr/research_state；目前portable設定沒有 `OFFICIAL_CALENDAR_CACHE_PATH`。受限sandbox的LOCALAPPDATA會被虛擬化成獨立空根，該環境的configured=false不能當成真人未設定的證據。原候選啟動helper只向child指定原官方日曆cache，沒有改寫上述JSON或其他私人設定。這仍不證使用者正在開啟的exe版本、2382讀取狀態或三策略的實際執行成功。

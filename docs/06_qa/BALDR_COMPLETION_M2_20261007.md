@@ -66,3 +66,14 @@ SQL 使用與 Python 相同的完整日期解析器；NULL、空值、非法及�
 舊單股public loader維持原輸出欄位／source identity／計算身份，改包裝一股session；新v4 clock十一欄只給新session與保存版本，不寫入舊單股to_dict。沒有以legacy technical_indicators schema冒充日線來源。v4快照semantic verifier仍有volume結果任意改unknown且重hash可被接受的紅測，尚在修正，不能把session通過視為v4保存或完整UI完成。
 
 另用同一合成DB與相同實體kernel bytes，獨立載入變更前preimage（SHA `130713c5e0a2a636bb942757a6ca77d60ee8f5d75f8dfe005258187eeca022a8`）及新API，完整to_dict逐值相同，shared session結果亦同，DB SHA／mtime不變。收據 `output/qa/baldr_completion_m2_20261007/technical_same_version_b7fa6b8e/session_preimage_compat.json`。初次直接拿工作樹對固定archive比失敗：technical_indicators.py工作樹為CRLF、archive為LF，kernel原bytes SHA不同使calc identity不同；換行正規化後內容一致。沒有用正規化SHA放寬production guard，亦未冒稱那次直接比較通過；該失敗probe `technical_session_compat_probe.py` 及原工具輸出保留。固定e5026b3a Python／exe使用同archive原bytes的具名比較仍成立。
+
+
+## v4 技術快照語義與計算來源補強
+
+中央 `v4_snapshot_root_3.log`：65 passed in 7.72s，包含原 source 26、共享 session 8、方法契約 4、v4 快照 27。先前把已知量比任意改成 unknown 並重算快照 SHA 的紅測已修正：讀回用保存的最近兩日事實與原量能列重驗完整五項規則結果，不能只核 JSON hash。方法版本、參數、交叉狀態、暖機不足、量比及未知日期均保留 fail-closed。
+
+新 v4 calculation 同時封存兩份 kernel 原 bytes SHA、NumPy／pandas／TA-Lib 版本及固定參數，整份 binding 必須對上原 calculation identity。保存讀回不重讀目前 kernel 或套件；重 hash 外層快照仍不能任意更換原 binding。新欄位只存在記憶體來源窗口及 v4 保存版，舊 public to_dict 欄位保持。中央 targeted mypy 四個來源／session／v4 模組與 changed Python 語法檢查通過。
+
+同實體 kernel／同既有合成 DB 的變更前 preimage 比較重驗通過，舊 public／新 public／共享 session 完整 to_dict 相同，DB SHA／mtime 不變、網路禁止。新收據 `output/qa/baldr_completion_m2_20261007/technical_same_version_b7fa6b8e/session_binding_preimage_compat.json`，raw `technical_binding_preimage_root_1.log`。初次直接執行 script 因缺 repo 匯入路徑失敗，改 runpy 保留匯入路徑；未將該失敗視為來源差異。另 `v4_snapshot_root_2.log` 的 65 errors 是短 basetemp 父目錄未建立，建立另一獨立父目錄後才有上述 65 passed，原失敗保留。
+
+這批完成的是 immutable projection 與來源契約；v4 repository／producer／parent、正常 UI 全母體五規則與新 candidate 尚待整合。H20 獨立 reader／重新核驗面板的旅程仍有失敗正在定位，不能援引本節宣稱使用者 2382 畫面已可用。

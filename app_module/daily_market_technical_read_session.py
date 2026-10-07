@@ -310,6 +310,9 @@ class DailyMarketTechnicalReadSession:
                 raise _source_error("daily_technical_source_changed_during_read")
 
             calculation_identity = self._source_adapter._calculation_identity()
+            calculation_binding_json = self._source_adapter._canonical_json(
+                self._source_adapter._calculation_binding_payload()
+            )
             results: list[DailyMarketTechnicalSourceWindow] = []
             for code, raw_rows in self._raw_windows:
                 check_read_cancelled()
@@ -324,6 +327,7 @@ class DailyMarketTechnicalReadSession:
                     selected=self._selected or {},
                     raw_rows=raw_rows,
                     calculation_identity=calculation_identity,
+                    calculation_binding_json=calculation_binding_json,
                 ))
                 check_read_cancelled()
             if self._source_adapter._calculation_identity() != calculation_identity:

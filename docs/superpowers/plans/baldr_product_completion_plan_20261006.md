@@ -18,7 +18,7 @@
 
 ### 0.1 M2 施工與真人回報（2026-10-07，未完成）
 
-本輪[工程 QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)保存新增受控研究根、Windows 長路徑失敗與修正及 H20 真讀取器旅程。受控根實際17股兩批產製／全域查詢／新程序唯讀重開已通過；中央受影響 capture／parent／scope／長路徑回歸80 passed、2 skipped。H20三日期不同的保存來源UI旅程2案例通過，模型contract仍為明示合成邊界，不授真fit或Native資格。來源未知日期保留、盤中cutoff拒絕、aware時區正規化及kernel／frozen metadata契約最終重驗61案例通過，尚未接正常UI／保存新版本；固定e5026b3a的實際exe／Python同版技術來源probe已通過，僅證engine合成來源；完整query收藏／比較與全流程新candidate仍未完成。共享readonly session中央69例通過，17股跨批共用一個交易快照且只有finish可交付；v4快照語義紅測與正常保存鏈仍在施工，不能沿局部綠燈標M2完成。
+本輪[工程 QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)保存新增受控研究根、Windows 長路徑失敗與修正及 H20 真讀取器旅程。受控根實際17股兩批產製／全域查詢／新程序唯讀重開已通過；中央受影響 capture／parent／scope／長路徑回歸80 passed、2 skipped。H20三日期不同的保存來源UI旅程2案例通過，模型contract仍為明示合成邊界，不授真fit或Native資格。來源未知日期保留、盤中cutoff拒絕、aware時區正規化及kernel／frozen metadata契約最終重驗61案例通過，尚未接正常UI／保存新版本；固定e5026b3a的實際exe／Python同版技術來源probe已通過，僅證engine合成來源；完整query收藏／比較與全流程新candidate仍未完成。共享readonly session中央69例通過，17股跨批共用一個交易快照且只有finish可交付；v4快照語義紅測已修正，中央來源／session／方法／快照65例通過，封存原kernel SHA、套件版本與固定參數；v4正常保存鏈及UI仍在施工，不能沿局部綠燈標M2完成。
 
 使用者已授權繼續 Luna Max 分工、由中央審核。新增排他範圍：P01 producer 葉片為 `app_module/daily_market_universe_producer.py`／同名測試；query 葉片為既有 `daily_market_universe_run.py`／新 `test_daily_market_universe_run_query.py`；P02 葉片為 `decision_module/factors/selection_technical_rules.py`／`test_baldr_completion_p02_methods.py`。中央擁有新增 `app_module/daily_market_universe_selection.py`、`ui_qt/views/daily_market_universe_view.py`、其 UI 測試及既有每日研究頁接線。使用者回報的個人推薦歷史版本窄欄排版另釋出 `recommendation_view.py`／新版面測試給啟動契約 Luna；不與中央同檔並寫。
 

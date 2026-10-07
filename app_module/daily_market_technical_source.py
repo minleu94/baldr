@@ -141,8 +141,22 @@ class DailyMarketTechnicalSourceWindow:
     rows: tuple[DailyMarketTechnicalSourceRow, ...]
     sessions: tuple[TechnicalObservedSession, ...]
     observation_window: TechnicalObservationWindow
+    # 新保存版可封存計算身份原件；舊 public to_dict 保持原欄位。
+    calculation_binding_json: str | None = None
 
     def __post_init__(self) -> None:
+        if self.calculation_binding_json is not None:
+            if len(self.calculation_binding_json.encode("utf-8")) > 8192:
+                raise ValueError("daily_technical_calculation_binding_limit")
+            binding = json.loads(self.calculation_binding_json,
+                                 object_pairs_hook=_unique_json_object,
+                                 parse_constant=_reject_json_constant)
+            validate_daily_market_technical_calculation_binding(
+                binding, expected_identity=self.calculation_identity_sha256,
+                expected_talib_version=self.talib_version,
+            )
+            if _canonical_json(binding) != self.calculation_binding_json:
+                raise ValueError("daily_technical_calculation_binding_noncanonical")
         if isinstance(self.decision_date, datetime) or not isinstance(self.decision_date, date):
             raise TypeError("decision_date 必須是 date")
         if self.decision_cutoff.utcoffset() is None:
@@ -312,6 +326,7 @@ def _build_window_from_snapshot(
     selected: Mapping[str, str | None],
     raw_rows: Sequence[sqlite3.Row],
     calculation_identity: tuple[str, str, str],
+    calculation_binding_json: str,
 ) -> DailyMarketTechnicalSourceWindow:
     """由完成最終來源 pin 驗證的 SQLite 列建立不可變窗口。"""
 
@@ -398,6 +413,7 @@ def _build_window_from_snapshot(
         rows=rows,
         sessions=sessions,
         observation_window=observation_window,
+        calculation_binding_json=calculation_binding_json,
     )
 
 
@@ -729,6 +745,12 @@ def _run_causal_calculation(frame: Any) -> Any:
 
 
 def _calculation_identity() -> tuple[str, str, str]:
+    payload = _calculation_binding_payload()
+    return _sha256_json(payload), CAUSAL_INDICATOR_LINEAGE_VERSION, str(payload["talib_version"])
+
+
+def _calculation_binding_payload() -> dict[str, Any]:
+    """取得本次計算身份的原 payload，不替舊來源補推版本。"""
     import numpy as np
     import pandas as pd
     import talib
@@ -763,8 +785,42 @@ def _calculation_identity() -> tuple[str, str, str]:
             "MACD_12_26_9": _parameter_dict(_MACD_PARAMETERS),
         },
     }
-    identity = _sha256_json(calculation_payload)
-    return identity, CAUSAL_INDICATOR_LINEAGE_VERSION, talib_version
+    return calculation_payload
+
+
+def validate_daily_market_technical_calculation_binding(
+    value: object, *, expected_identity: str, expected_talib_version: str,
+) -> dict[str, Any]:
+    """只核保存的計算契約與 SHA；讀回時不重讀現行 kernel 或套件。"""
+    keys = {"method_id", "method_version", "technical_indicators_module_sha256",
+            "indicator_kernels_module_sha256", "talib_version", "numpy_version",
+            "pandas_version", "parameters"}
+    if not isinstance(value, dict) or set(value) != keys:
+        raise ValueError("daily_technical_calculation_binding_invalid")
+    if (value["method_id"] != CAUSAL_INDICATOR_LINEAGE_METHOD_ID
+            or value["method_version"] != CAUSAL_INDICATOR_LINEAGE_VERSION):
+        raise ValueError("daily_technical_calculation_binding_method_mismatch")
+    for key in ("technical_indicators_module_sha256", "indicator_kernels_module_sha256"):
+        token = value[key]
+        if (not isinstance(token, str) or len(token) != 64
+                or any(char not in "0123456789abcdef" for char in token)):
+            raise ValueError("daily_technical_calculation_binding_kernel_invalid")
+    for key in ("talib_version", "numpy_version", "pandas_version"):
+        token = value[key]
+        if (not isinstance(token, str) or not token or token != token.strip()
+                or len(token.encode("utf-8")) > 128 or token.casefold() == "unknown"):
+            raise ValueError("daily_technical_calculation_binding_version_invalid")
+    expected_parameters = {
+        "MA5": _parameter_dict(_MA5_PARAMETERS), "MA20": _parameter_dict(_MA20_PARAMETERS),
+        "STOCH_5_3_3": _parameter_dict(_KD_PARAMETERS),
+        "MACD_12_26_9": _parameter_dict(_MACD_PARAMETERS),
+    }
+    # JSON 正規字串比較同時拒絕 bool/float 冒用同值整數參數。
+    if _canonical_json(value["parameters"]) != _canonical_json(expected_parameters):
+        raise ValueError("daily_technical_calculation_binding_parameters_mismatch")
+    if value["talib_version"] != expected_talib_version or _sha256_json(value) != expected_identity:
+        raise ValueError("daily_technical_calculation_binding_identity_mismatch")
+    return value
 
 
 def _frozen_calculation_source_hashes() -> tuple[str, str]:

@@ -123,6 +123,19 @@ def create_build_metadata(source: Path, commit: str, lock_sha256: str) -> dict[s
         for path in sorted((source / "ui_qt").rglob("*"))
         if path.is_file() and path.suffix.lower() in {".png", ".ico", ".qss"}
     }
+    # 研究來源需在 frozen 環境讀回原 kernel bytes；與固定 build 一起核身份，
+    # 不用缺 source 時的假 hash，也不把市場／私人資料放進包內。
+    kernels = (
+        "analysis_module/technical_analysis/technical_indicators.py",
+        "analysis_module/technical_analysis/indicator_kernels.py",
+    )
+    if any((source / relative).exists() for relative in kernels):
+        if not all((source / relative).is_file() for relative in kernels):
+            raise ValueError("kernel source 資料必須完整成對")
+        resource_hashes.update({
+            relative: hashlib.sha256((source / relative).read_bytes()).hexdigest()
+            for relative in kernels
+        })
     return {
         "schema": "baldr-application-build.v1",
         "version": f"2026.10.06+{commit[:12]}", "source_commit": commit,

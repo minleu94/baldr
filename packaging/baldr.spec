@@ -13,6 +13,12 @@ dependency_lock = root / 'packaging' / 'windows-dependencies.lock.json'
 if not build_metadata.is_file() or not dependency_lock.is_file():
     raise ValueError('請透過 build_windows.py --commit 建置，需固定來源與依賴 metadata')
 datas += [(str(build_metadata), '.'), (str(dependency_lock), 'packaging')]
+# 保存原計算來源供research fingerprint讀取，沿application_build metadata核hash。
+for kernel_name in ('technical_indicators.py', 'indicator_kernels.py'):
+    kernel = root / 'analysis_module' / 'technical_analysis' / kernel_name
+    if not kernel.is_file():
+        raise ValueError('研究kernel source缺件，拒絕建立無法核驗的candidate')
+    datas.append((str(kernel), 'analysis_module/technical_analysis'))
 for package in packages:
     for path in (root / package).rglob('*.py'):
         if '__pycache__' in path.parts or 'tests' in path.parts:

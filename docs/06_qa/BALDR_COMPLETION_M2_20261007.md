@@ -10,6 +10,8 @@
 | 技術來源與封裝 | 中央 `52 passed in 6.73s`；raw：`output/qa/baldr_completion_m2_20261007/kernel_source_root_1.log`。17 項來源測試加 35 項封裝／版本測試，包含兩份 kernel 原件 SHA、缺件／篡改拒絕與合成 frozen 根。 | 合成 frozen 根只證明契約，未建置或驗證包含此 adapter 的新 exe。日期無效列的 SQL 邊界另在補強，須再驗。 |
 | 受控保存 preflight | 明示 `ResearchCaptureWriteScope` 的來源不符、範圍外輸出、沒有 scope 的外部輸出皆拒絕，且未建立設定輸出根。 | 實際 17 股正常外部保存最初失敗；不能由拒絕測試通過推導正常流程可用。 |
 | 長路徑與受控根整合完成 | 中央 `managed_scope_root_7.log`：4 passed；後續 `managed_engine_root_1.log`：80 passed、2 skipped，包含原 capture／parent、managed scope 與長路徑閉環。17 股兩批實際保存、全域查詢及新程序唯讀重開通過，來源 DB bytes／mtime 保持。 | 兩項 skip 為 Windows 一般 symlink 建立權限限制；hardlink 替換檢查實際執行。這是底層工程完成，正常 UI 產製／完整 query 收藏與新 exe 未因此完成。 |
+| 技術來源日期 guard 後重驗 | 中央 `kernel_source_root_2.log`：59 passed in 6.46s，包含來源24項及封裝／版本35項；targeted mypy／py_compile 通過。 | SQL 未知日期、日線 cutoff 及合成 frozen 契約皆受驗；仍不是正常 UI、保存 v4 或實際 exe 的證據。 |
+| 技術來源時區 guard 最終重驗 | 中央 `kernel_source_root_4.log`：61 passed in 6.50s，來源26項及封裝／版本35項。 | aware timestamp 先換台北日期再核 cutoff；naive date 維持本地日期。先前誤用不存在測試檔的 collection 失敗保存在 `kernel_source_root_3.log`，未算通過。實際新 exe 尚待建置。 |
 
 ## 正常研究保存的長路徑缺陷
 
@@ -34,6 +36,16 @@
 最終 `tests/test_ui_qt_h20_saved_source_journey.py`：2 passed in 246.84s，原 log `C:/t/h20journey_20261007_final2.log`。成功路徑決策日 10/6、來源日 10/5、特徵日 10/2，各自核對 report／context／H20 evidence；摘要顯示 +12.34% 保存預測、未扣成本及自然結果尚未成熟。詳細 label 位於預設折疊的來源區，驗可見性的是首屏五問結論及狀態 panel。
 
 報告 service 失敗時，H20 reader 目前不會啟動，原因在狀態／限制可見；這項測試只證明現有失敗行為，不能宣稱有效 H20 可獨立於一般報告失敗呈現。一般價格列不混入保存 H20 context 是既有來源隔離政策，不能由 `price_points=()` 判定 H20 原件不存在。使用者原 2382 畫面與開啟版本仍待核對。
+
+## 新技術來源的日期與計算契約
+
+adapter 只唯讀 `daily_prices`，最多保留 120 列原始 OHLCV，核對主檔／WAL／schema 與逐列原始 token 指紋。沒有來源 lineage 的舊 `technical_indicators` 不借用。既有純記憶體因果 kernel 的浮點只在隔離分析邊界，輸入規則前轉為 Decimal；不修改程序 OUTPUT_ROOT，不初始化資料庫或額外 logger。
+
+SQL 使用與 Python 相同的完整日期解析器；NULL、空值、非法及部分非法日期列優先納入有界結果，不能因篩掉壞列而跨過未知日期計算。帶時區的日期／時間先換算台北日期，無時區日期沿原本地日期；合法 cutoff 之後日期排除。未知日期使 observation prefix 不可核、規則結果為 unknown，raw token 與來源 bytes／pin 保留。
+
+原日期篩選只比 day，09:00 cutoff 也可能拿到同日收盤資料。現在新 adapter 明確採日線收盤研究契約：台北 16:00 前，在資料庫解析／開啟／計算前拒絕；16:00 及等值 UTC 有回歸。`daily-close-research-cutoff.v1` 納入原窗口指紋、source identity 與輸出。16:00 是這項研究 API 的門檻，**不是官方收盤或來源可得時間證據**；`source_available_at=None`／availability unknown 保留，未授 PIT、回測、訓練或正式 Advice 資格。
+
+固定建置 metadata 新增 `technical_indicators.py` 與 `indicator_kernels.py` 的 resource SHA，spec 隨包保存這兩份計算原件。frozen adapter 必須核 `_MEIPASS`、有界 metadata、release／clean build identity、成對 resource keys 與 bytes SHA；缺件或篡改拒絕。source 模式讀本身的原件。合成 frozen fixture 不取代後續真候選同版比較。
 
 ## 仍須完成
 

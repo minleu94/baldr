@@ -152,3 +152,9 @@ parent API 接全部完成窗口建 immutable plan，最多256納入／256排除
 固定同一parent plan／receipt的公開read profile由13.781s、45,464,235 calls改為1.969s、6,927,994 calls；2child的read_exact呼叫8→4、snapshot語義核驗272→34。原與修正profile分別 `parent_v4_read_profile_17.log/.prof`、`parent_v4_read_profile_17_after.log/.prof`，都位於上述QA目錄。這是同機診斷含cProfile overhead／同時其他QA程序，不能當已達真N產品效能Gate。
 
 最新snapshot／repository／batchproducer／parent／normalcaller／query六套中央回歸 **67 passed／1 skipped，108.28s**，raw `v4_read_validation_root_1.log`；Windows無symlink建立權限skip，硬連結拒絕實際通過；targeted mypy4檔0、py_compile4檔通過。原錯誤raw與較早不同import版本的fullstore pytest保留；當前fullstore／producer／query／catalog仍在中央驗證與補完。Native待使用者四項，M2／M3與P00–P14未完成。
+
+### full-N 中央整合首輪與審核待修（2026-10-07）
+
+中央 pytest session 4314 已回 terminal exit 1：store／producer 十項 **9 passed／1 failed，667.83s**，隔離 basetemp `C:/t/fullv4-root-20261007-n` 保留。唯一失敗是 `test_full_plan_rejects_changed_method_contract_and_json_float_or_duplicate_keys`：實際拒絕浮點值，exception.code=`technical_universe_v4_float_forbidden`，但 exception 文字是 `1.5`，測試 regex `float_forbidden` 未匹配。交原 leaf owner 改用具名 code 斷言，不放寬 float 拒絕；尚未重驗通過。此程序載入的是歷史 receipt graph 修正前的 store，pytest 結束時工作檔已更新，trace 顯示的工作檔行文不能當同版證據；也不以此首輪結果證明新歷史 prefix／CAS 已通過。
+
+中央要求新增取消後續跑到 complete 仍可讀舊 receipt 的原 counts／refs，以及只移走後續 segment 的合成 parent 時，舊 prefix 仍可讀、complete pin 具名拒絕。版本 catalog 另須用 metadata bytes SHA 偵測同長度替換／mtime 還原造成的 stale cursor，語義解析只做 limit+1 列；全 inventory 掃描的100000 entries／64MiB成本需明示。這些為審核待修，不是完成結論。

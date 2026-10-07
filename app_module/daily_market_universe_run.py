@@ -541,7 +541,10 @@ class DailyMarketUniverseRunWriter:
                 for result in self._segment_results.values()
                 for code in result["unknown_evidence_stock_codes"]
             )
-            unknown_counts: dict[str, int] = {}
+            condition_keys = _condition_keys_for_source_clock(self.plan.source_clock)
+            # 即使全母體明示排除、沒有 parent result，也保存版本契約的完整
+            # condition key 集合，讓零納入 manifest 與 reader 使用同一結構。
+            unknown_counts = {key: 0 for key in condition_keys}
             for result in self._segment_results.values():
                 for key, count in result["condition_unknown_counts"].items():
                     unknown_counts[key] = unknown_counts.get(key, 0) + int(count)
@@ -1245,10 +1248,7 @@ class DailyMarketUniverseRunReader:
         snapshot_missing_codes: set[str] = set()
         unknown_evidence_codes: set[str] = set()
         missing_codes: set[str] = set()
-        contract_keys = (
-            tuple(feature_contract_for_version(self.plan.source_clock.feature_contract_version).condition_keys)
-            if self.plan.source_clock is not None else ()
-        )
+        contract_keys = _condition_keys_for_source_clock(self.plan.source_clock)
         unknown_counts = {key: 0 for key in contract_keys}
         for item, segment in zip(segment_items, self.plan.segments):
             if not isinstance(item, Mapping):
@@ -2018,6 +2018,18 @@ def _condition_unknown_counts(
             if not isinstance(condition, Mapping) or condition.get("state") == "unknown":
                 counts[key] += 1
     return counts
+
+
+def _condition_keys_for_source_clock(
+    source_clock: DailyMarketParentSourceClock | None,
+) -> tuple[str, ...]:
+    """從固定來源時計取本 run 唯一有效的條件 key 合約。"""
+
+    if source_clock is None:
+        return ()
+    return tuple(
+        feature_contract_for_version(source_clock.feature_contract_version).condition_keys
+    )
 
 
 def _unknown_evidence_codes(

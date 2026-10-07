@@ -731,3 +731,6 @@ v4技術保存底層：app_module/daily_market_technical_snapshot_v4_repository.
 
 
 v4正常bounded產製入口：app_module/daily_market_technical_parent_v4_producer.py／produce_daily_market_technical_parent_v4；單一finish後真保存／明示receipt續跑與每批source pin重驗，caller中央20案例通過。full-N aggregate及正常UI另在施工，操作入口尚未開放，不用舊候選驗新caller。
+
+
+H20原保存來源獨立摘要（dev）：ui_qt/main.py的_context_changed/read/recheck/refresh cohort routes，ui_qt/views/stock_research_workspace.py首屏卡；公開product reader仍在app_module/recommendation/personal_h20_product_evidence.py未改。完整來源／失敗仍顯示／stale／retry／pointer漂移測試：tests/test_ui_qt_h20_saved_source_journey.py，UI panel測試：tests/test_ui_qt_personal_h20_workspace_panel.py。中央96案例與Native限制沿[M2 QA](docs/06_qa/BALDR_COMPLETION_M2_20261007.md)。

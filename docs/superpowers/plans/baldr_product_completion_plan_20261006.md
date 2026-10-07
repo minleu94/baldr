@@ -628,3 +628,6 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 
 
 2026-10-07 v4正常parent產製已接單一finish→真batch→strict parent→complete，中央連同舊batch／parent20例通過，明示原receipt續跑、取消前後狀態與逐批source pin重驗；這仍是256納入的child parent，完整N後續獨立store／aggregate/query（最多100000代碼沿原完整母體）不能縮成bounded成功。UI五規則產製、query收藏比較、候選與H20完整旅程尚在施工，完整驗收沿原M2及P00–P14，見[M2 QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+2026-10-07 H20回饋工程已接獨立保存摘要，原一般報告失敗依賴解除；來源指標變動返回保留原表／排序／選取，明示retry原來源及切股stale通過。中央96項UI、validator25 passed／4 protected skips、mypy870檔通過；Qt慢測為test pump飢餓，僅修等待、原失敗保留。真保存reader旅程的模型contract仍為合成邊界，不當原2382或Native通過；新固定候選與同版比較待整合，full-N五規則／query收藏比較／其餘P00–P14與M3仍未完成，見[M2 QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)。

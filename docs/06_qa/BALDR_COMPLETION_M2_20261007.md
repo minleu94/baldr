@@ -110,3 +110,16 @@ parent API 接全部完成窗口建 immutable plan，最多256納入／256排除
 每批前、child返回後記parent前及complete前重驗main／WAL source pin、scope與兩個root；合成DB在child保存後改變時保留verified child、保存failed receipt、阻止complete。外部resume SHA若未提供，計算exact原receipt rawSHA只供讀取競態守衛，不冒充獨立外部pin證據。另一來源clock續跑拒絕，原收據不改；全排除真零納入完成。測試短root由命令TEMP／TMP指定，版本化fixture沿tempfile.gettempdir，不硬寫主機C:/t。
 
 新增 parent producer／測試兩檔，舊reader／writer未修改；回滾用git revert這輪caller提交，先保護後續consumer／未提交修改，原artifact與QA不刪。此caller仍至多256納入，不是全市場終點；完整N獨立store／aggregate/query、正常UI產製與candidate尚在下一包，M2未完成。
+
+
+## H20 獨立摘要與完整操作旅程中央封存
+
+`h20_universe_ui_root_1.log`：96 passed in 60.61s，包含必備workbench85、完整母體3、H20 journey／panel／既有cohort integration8。`h20_update_root_1.log`：25 passed、0 failed、4 protected skips；`h20_global_mypy_root_1.log`：870 source files、0 error；五個changed Python py_compile通過。H20 journey五個案例涵蓋真公開保存來源→cohort→MainWindow選取→報告TaskWorker→公開product reader；成功+12.34%／10/6預測／10/5來源／10/2特徵，報告失敗仍獨立顯示、切來源晚到拒收、明示原來源重新核驗與pointer變動保持原清單／排序／選取。panel另驗父workspace暫時隱藏時仍可保留retry狀態。模型contract port是明示合成且未fit、未推論的測試邊界；不稱canonical模型品質或原真人2382通過。
+
+控制流程修正：保存H20隨activeContextChanged獨立讀取，不再等reportLoaded成功；讀回cache只供相同context／reference使用。首屏新「保存的個人 H20 研究預測」位於整個個股研究報告上方，顯原gross與三個日期、實際結果尚無已核驗結果，失敗仍有原因／診斷與明示「重新核驗保存預測」。不同model／manifest／capture／stock／配置、取消、切來源或關閉的舊回呼不覆寫。重新核驗不切latest；返回重讀若pointer改變先拒絕，再保留原名單與選取，不先換表格才報錯。H20研究收藏仍未接，不套用每日規則收藏。
+
+原慢測原因已撤回production reader／Qt執行緒缺陷判定：同一保存fixture直接公開reader約1s、TaskWorker0.609s，最小Main handler的publish／UI setter均在GUI thread；完整pytest原QTest.qWait pump使cohort123s、product75s，`h20_report_failure_thread_trace_run_escalated_20261007.log`失敗201.18s。重用同一fixture，僅改event pump為processEvents後time.sleep(0.01)讓出Python執行緒，完整route3.78s；新fixture單測3.39s、葉片完整8例9.43s。原失敗、JSONL及fair-pump probe保留；未用加timeout或放寬source guard換通過。stack dump檔為0 bytes因修正後未達15s觸發，不當作堆疊證據。完整母體測試同樣讓出執行緒後仍由上述中央96例重驗。
+
+保存來源fixture偽TWStockConfig先前缺既有`__dataclass_fields__`介面，改為真正dataclass/default_factory隔離root，未修改production輸出守衛。各Windows strict resolve／longpath失敗root、原4failed1passed等輸出均保留，不把sandbox缺件當真人設定缺失。原共享收據中「一般報告失敗H20不啟動」是修正前行為，本節為目前dev工程狀態；新candidate／同版比較／Native及三真策略仍未完成。
+
+本輪修改main／stock_research_workspace、新增H20 journey／panel測試、調整完整母體測試pump；回滾用git revert本輪整合提交，先保護後續修改，撤回後保存H20重新受一般報告成功限制。main原其他errorhook與所有資料／模型／原exe／Task保持。沒有正式DB讀寫、模型訓練、啟用、交易或發布。

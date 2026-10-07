@@ -44,3 +44,10 @@
 ## 真人啟動設定的唯讀核對補記
 
 正常主機環境以純 `resolve_application_settings()`（未apply、未建目錄、未開DB）核對：`C:/Users/archi/AppData/Local/baldr/config.json` 存在、configured=true，行情／輸出仍是原 FA_Data／output，研究根是主機LOCALAPPDATA的baldr/research_state；目前portable設定沒有 `OFFICIAL_CALENDAR_CACHE_PATH`。受限sandbox的LOCALAPPDATA會被虛擬化成獨立空根，該環境的configured=false不能當成真人未設定的證據。原候選啟動helper只向child指定原官方日曆cache，沒有改寫上述JSON或其他私人設定。這仍不證使用者正在開啟的exe版本、2382讀取狀態或三策略的實際執行成功。
+
+
+## H20 摘要獨立讀取已整合（dev，候選待更新）
+
+前文「一般報告失敗不啟動H20」為修正前狀態；目前activeContextChanged直接對原保存cohort精確pins核驗，不等報告成功。個股研究上方新增「保存的個人 H20 研究預測」，顯gross、預測／來源／特徵日期與實際結果尚無已核驗結果；一般報告錯誤仍保留，H20資訊可獨立讀回。「重新核驗保存預測」明示重讀原來源；pointer變動返回保留原列表／排序／選取並拒絕新版本。H20收藏尚未實作。
+
+中央整合workbench／完整母體／H20旅程96 passed、validator25 passed／4 protected skips、mypy870檔通過；H20公開來源旅程使用真SQLite／保存reader，模型contract為明示未fit合成邊界。原Qt測試pump飢餓失敗已定位並保留，同一fixture改等待方式full route3.78s；未改production reader或放寬guard。完整證據見[M2 QA](BALDR_COMPLETION_M2_20261007.md)。原真人2382、三真策略、窄欄與新candidate／同版仍未驗，目前不用使用者用舊exe重驗。

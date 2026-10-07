@@ -383,9 +383,256 @@ class MainWindow(QMainWindow):
                     worker.cancel(wait=False)
             except RuntimeError:
                 pass
+        self._personal_h20_saved_context = None
+        self._personal_h20_saved_reference = None
+        self._personal_h20_saved_evidence = None
         workspace = getattr(self, "stock_research_workspace", None)
         if workspace is not None:
             workspace.report_view.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
+            workspace.clear_personal_h20_saved_summary()
+
+    def _personal_h20_saved_origin_for_context(self, context: object) -> tuple[object, object] | None:
+        """只接受目前已核驗母體中精確選取的保存 H20 列。"""
+
+        from app_module.recommendation.personal_h20_product_evidence import (
+            PersonalH20ProductReference,
+        )
+        from app_module.recommendation.personal_h20_research_cohort import (
+            PersonalH20ResearchSelection,
+        )
+
+        if getattr(context, "source_kind", None) != "personal_h20_saved_cohort":
+            return None
+        origin = getattr(self, "_personal_h20_research_origin", None)
+        if not isinstance(origin, tuple) or len(origin) != 3 or origin[0] != context:
+            return None
+        _, selection, reference = origin
+        if (not isinstance(selection, PersonalH20ResearchSelection)
+                or not isinstance(reference, PersonalH20ProductReference)):
+            return None
+        try:
+            market_root, _config_path = self._personal_h20_configuration()
+            activation = reference.activation
+            pins_match = (
+                context.source_workspace == "recommendation"
+                and context.identity_status == "personal_research_only"
+                and context.stock_code == selection.symbol
+                and context.source_id == selection.prediction_id
+                and context.source_snapshot_id == selection.cycle_id == reference.cycle_id
+                and context.source_snapshot_hash == selection.manifest_sha256 == reference.manifest_sha256
+                and context.profile_id == selection.candidate_id == activation.candidate_id
+                and context.source_version == selection.contract_hash == activation.model_contract_hash
+                and context.decision_date == reference.decision_date
+                and bool(context.data_date)
+                and len(selection.capture_sha256) == 71
+                and selection.capture_sha256.startswith("sha256:")
+                and all(char in "0123456789abcdef" for char in selection.capture_sha256[7:])
+                and activation.enabled
+                and Path(activation.market_root) == market_root
+            )
+        except (AttributeError, OSError, TypeError, ValueError):
+            return None
+        return (selection, reference) if pins_match else None
+
+    def _personal_h20_saved_feature_date(
+        self, context: object, selection: object, reference: object
+    ) -> str:
+        """從同一份已核驗 cohort 回填預測特徵日，不猜測缺失日期。"""
+
+        from datetime import date
+
+        cohort = getattr(getattr(self, "personal_h20_research_widget", None), "_cohort", None)
+        if cohort is None or (
+            cohort.manifest_sha256 != getattr(selection, "manifest_sha256", None)
+            or cohort.manifest_sha256 != getattr(reference, "manifest_sha256", None)
+            or cohort.candidate_id != getattr(selection, "candidate_id", None)
+            or cohort.contract_hash != getattr(selection, "contract_hash", None)
+            or cohort.cycle_id != getattr(selection, "cycle_id", None)
+            or cohort.decision_date != getattr(reference, "decision_date", None)
+        ):
+            return ""
+        for row in cohort.rows:
+            if row.symbol != getattr(selection, "symbol", None):
+                continue
+            feature_date = str(row.feature_as_of_date or "")
+            if (row.status != "available"
+                    or row.sample_id != getattr(selection, "sample_id", None)
+                    or row.prediction_id != getattr(selection, "prediction_id", None)
+                    or row.capture_sha256 != getattr(selection, "capture_sha256", None)
+                    or row.decision_date != getattr(context, "decision_date", None)
+                    or row.source_date != getattr(context, "data_date", None)
+                    or not feature_date):
+                return ""
+            try:
+                if date.fromisoformat(feature_date) >= date.fromisoformat(str(context.decision_date)):
+                    return ""
+            except (TypeError, ValueError):
+                return ""
+            return feature_date
+        return ""
+
+    def _handle_personal_h20_context_changed(self, context: object, *, force: bool = False) -> None:
+        """對精確保存 H20 下鑽獨立讀取；報告分域成功與否不影響此路徑。"""
+
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is None or getattr(context, "source_kind", None) != "personal_h20_saved_cohort":
+            self._clear_personal_h20_product()
+            return
+        if (getattr(self, "_shutdown_close_requested", False)
+                or workspace.report_view._closing):
+            self._clear_personal_h20_product()
+            return
+        origin = self._personal_h20_saved_origin_for_context(context)
+        if origin is None:
+            self._clear_personal_h20_product()
+            from app_module.recommendation.personal_h20_product_evidence import (
+                PersonalH20ProductEvidence,
+            )
+
+            workspace.set_personal_h20_saved_evidence(PersonalH20ProductEvidence(
+                stock_code=str(getattr(context, "stock_code", "") or "unknown"),
+                status="unavailable",
+                reason="saved_h20_selection_reference_pin_mismatch",
+            ), context=context, retry_allowed=False)
+            return
+        selection, reference = origin
+        worker = getattr(self, "_personal_h20_worker", None)
+        same_read = (
+            getattr(self, "_personal_h20_saved_context", None) == context
+            and getattr(self, "_personal_h20_saved_reference", None) == reference
+            and (getattr(self, "_personal_h20_saved_evidence", None) is not None
+                 or worker is not None and not worker.isFinished())
+        )
+        if same_read and not force:
+            return
+        self._clear_personal_h20_product()
+        self._personal_h20_saved_context = context
+        self._personal_h20_saved_reference = reference
+        workspace.show_personal_h20_saved_loading(
+            context,
+            feature_date=self._personal_h20_saved_feature_date(context, selection, reference),
+        )
+        market_root, config_path = self._personal_h20_configuration()
+        self._start_personal_h20_saved_product_read(
+            context, selection, reference, market_root=market_root, config_path=config_path
+        )
+
+    def _recheck_personal_h20_saved_evidence(self) -> None:
+        """由明確按鈕重驗目前保存來源，不重新選 latest。"""
+
+        workspace = getattr(self, "stock_research_workspace", None)
+        context = getattr(getattr(workspace, "report_view", None), "context", None)
+        if (workspace is None or context is None
+                or getattr(context, "source_kind", None) != "personal_h20_saved_cohort"
+                or self._personal_h20_saved_origin_for_context(context) is None):
+            return
+        self._handle_personal_h20_context_changed(context, force=True)
+
+    def _start_personal_h20_saved_product_read(
+        self,
+        context: object,
+        selection: object,
+        reference: object,
+        *,
+        market_root: Path,
+        config_path: Path,
+    ) -> None:
+        from app_module.recommendation.personal_h20_product_evidence import (
+            PersonalH20ProductEvidence,
+            read_personal_h20_product_for_stock,
+        )
+        from scripts.scheduled.personal_h20_daily_hook import (
+            read_personal_h20_daily_receipt,
+            read_personal_h20_prediction,
+        )
+        from ui_qt.workers.task_worker import TaskWorker
+
+        workspace = self.stock_research_workspace
+        view = workspace.report_view
+        generation = self._personal_h20_generation
+        stock_code = str(getattr(context, "stock_code", ""))
+        def current() -> bool:
+            try:
+                configured = self._personal_h20_configuration() == (market_root, config_path)
+            except (OSError, TypeError, ValueError):
+                configured = False
+            return (
+                generation == self._personal_h20_generation
+                and not view._closing
+                and not getattr(self, "_shutdown_close_requested", False)
+                and view.context == context
+                and self._personal_h20_saved_origin_for_context(context) == (selection, reference)
+                and getattr(self, "_personal_h20_saved_context", None) == context
+                and getattr(self, "_personal_h20_saved_reference", None) == reference
+                and configured
+            )
+
+        def checked_evidence(value: object) -> PersonalH20ProductEvidence:
+            if not isinstance(value, PersonalH20ProductEvidence):
+                return PersonalH20ProductEvidence(
+                    stock_code=stock_code,
+                    status="unavailable",
+                    reason="saved_h20_reader_returned_invalid_evidence",
+                )
+            if value.stock_code != stock_code:
+                return PersonalH20ProductEvidence(
+                    stock_code=stock_code,
+                    status="unavailable",
+                    reason="saved_h20_reader_stock_mismatch",
+                )
+            if value.status == "available" and (
+                value.candidate_id != getattr(selection, "candidate_id", None)
+                or value.sample_id != getattr(selection, "sample_id", None)
+                or value.prediction_id != getattr(selection, "prediction_id", None)
+                or value.decision_date != getattr(reference, "decision_date", None)
+                or value.decision_date != getattr(context, "decision_date", None)
+                or value.source_date != getattr(context, "data_date", None)
+                or getattr(selection, "symbol", None) != stock_code
+            ):
+                return PersonalH20ProductEvidence(
+                    stock_code=stock_code,
+                    status="unavailable",
+                    reason="saved_h20_evidence_does_not_match_selected_pins",
+                )
+            return value
+
+        def publish(value: object) -> None:
+            if not current():
+                return
+            evidence = checked_evidence(value)
+            self._personal_h20_saved_evidence = evidence
+            workspace.set_personal_h20_saved_evidence(evidence, context=context)
+            workspace.set_personal_h20_saved_busy(True)
+            report = view._loaded_report
+            if (report is not None and report.stock_code == stock_code
+                    and view._loaded_request_context == context):
+                view.set_personal_h20_evidence(evidence)
+
+        worker = TaskWorker(
+            read_personal_h20_product_for_stock,
+            config_path,
+            stock_code=stock_code,
+            market_root=market_root,
+            daily_reader=read_personal_h20_daily_receipt,
+            prediction_reader=read_personal_h20_prediction,
+            expected_reference=reference,
+        )
+        self._personal_h20_worker = worker
+        workspace.set_personal_h20_saved_busy(True)
+        worker.finished.connect(publish)
+        worker.error.connect(lambda message: publish(PersonalH20ProductEvidence(
+            stock_code=stock_code,
+            status="unavailable",
+            reason=str(message).splitlines()[0][:300] or "saved_h20_reader_failed",
+        )))
+        def cleanup() -> None:
+            if getattr(self, "_personal_h20_worker", None) is worker:
+                self._personal_h20_worker = None
+                workspace.set_personal_h20_saved_busy(False)
+
+        worker.native_thread_finished.connect(cleanup)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
 
     def _load_personal_h20_product(self, report: object) -> None:
         from app_module.stock_research_report_dtos import StockResearchReportDTO
@@ -395,14 +642,32 @@ class MainWindow(QMainWindow):
         from ui_qt.workers.task_worker import TaskWorker
         from scripts.scheduled.personal_h20_daily_hook import read_personal_h20_daily_receipt, read_personal_h20_prediction
 
-        self._clear_personal_h20_product()
         workspace = getattr(self, "stock_research_workspace", None)
         if workspace is None or not isinstance(report, StockResearchReportDTO):
+            self._clear_personal_h20_product()
             return
         view = workspace.report_view
         context = view._loaded_request_context
         if context is None or view._loaded_report is not report or context.stock_code != report.stock_code:
+            self._clear_personal_h20_product()
             return
+        if context.source_kind == "personal_h20_saved_cohort":
+            origin = self._personal_h20_saved_origin_for_context(context)
+            if origin is None:
+                self._handle_personal_h20_context_changed(context)
+                return
+            selection, reference = origin
+            if (getattr(self, "_personal_h20_saved_context", None) != context
+                    or getattr(self, "_personal_h20_saved_reference", None) != reference):
+                self._handle_personal_h20_context_changed(context)
+            evidence = getattr(self, "_personal_h20_saved_evidence", None)
+            if (evidence is not None
+                    and getattr(self, "_personal_h20_saved_context", None) == context
+                    and getattr(self, "_personal_h20_saved_reference", None) == reference
+                    and getattr(selection, "symbol", None) == report.stock_code):
+                view.set_personal_h20_evidence(evidence)
+            return
+        self._clear_personal_h20_product()
         generation = self._personal_h20_generation
         market_root = Path(self.config.data_root)
         configured = os.environ.get("PERSONAL_H20_ACTIVATION_CONFIG")
@@ -428,6 +693,15 @@ class MainWindow(QMainWindow):
                 view.set_personal_h20_evidence(result)
 
         worker.finished.connect(apply)
+        def failed(message: str) -> None:
+            if (generation != self._personal_h20_generation or view._closing
+                    or getattr(self, "_shutdown_close_requested", False)
+                    or view._loaded_report is not report or view._loaded_request_context != context):
+                return
+            view.set_personal_h20_evidence(PersonalH20ProductEvidence(
+                stock_code=report.stock_code, status="unavailable", reason=str(message)))
+            self.statusBar().showMessage("此股 H20 保存來源讀取失敗；摘要已列原因，未使用其他日期預測。")
+        worker.error.connect(failed)
         worker.native_thread_finished.connect(
             lambda: setattr(self, "_personal_h20_worker", None)
             if getattr(self, "_personal_h20_worker", None) is worker else None)
@@ -481,14 +755,25 @@ class MainWindow(QMainWindow):
             return
         self._personal_h20_cohort_generation += 1
         generation = self._personal_h20_cohort_generation
+        expected_reference = None
+        if selection is not None:
+            origin = getattr(self, "_personal_h20_research_origin", None)
+            if (isinstance(origin, tuple) and len(origin) == 3 and origin[1] == selection):
+                expected_reference = origin[2]
+            else:
+                expected_reference = getattr(self, "_personal_h20_cohort_reference", None)
         previous = getattr(self, "_personal_h20_cohort_worker", None)
         if previous is not None and previous.isRunning():
             previous.cancel(wait=False)
         market_root, config_path = self._personal_h20_configuration()
         widget.setEnabled(False)
-        widget._cohort = None
-        widget.table.setRowCount(0)
-        widget.summary_label.setText("正在唯讀核驗原完整模型名單、預測與來源 pins…")
+        if selection is None:
+            self._personal_h20_cohort_reference = None
+            widget._cohort = None
+            widget.table.setRowCount(0)
+            widget.summary_label.setText("正在唯讀核驗原完整模型名單、預測與來源 pins…")
+        else:
+            widget.summary_label.setText("正在核對所選保存名單版本；完成前保留原清單與選取…")
         worker = TaskWorker(read_personal_h20_product_cohort, config_path, market_root=market_root)
         self._personal_h20_cohort_worker = worker
         def current() -> bool:
@@ -496,10 +781,25 @@ class MainWindow(QMainWindow):
                 and not getattr(self, "_shutdown_close_requested", False)
                 and self._personal_h20_configuration() == (market_root, config_path))
         def apply(result: object) -> None:
-            if not current() or not isinstance(result, tuple) or len(result) != 2:
+            if not current():
+                return
+            if not isinstance(result, tuple) or len(result) != 2:
+                widget.setEnabled(True)
+                widget.summary_label.setText("保存名單回傳格式無法核驗；原清單與選取已保留。")
+                self.statusBar().showMessage("保存模型名單回傳格式無法核驗；未替換目前名單。")
                 return
             reference, cohort = result
             if not isinstance(cohort, PersonalH20ResearchCohort):
+                widget.setEnabled(True)
+                widget.summary_label.setText("保存名單內容無法核驗；原清單與選取已保留。")
+                self.statusBar().showMessage("保存模型名單內容無法核驗；未替換目前名單。")
+                return
+            if selection is not None and (
+                expected_reference is None or reference != expected_reference
+            ):
+                widget.setEnabled(True)
+                widget.summary_label.setText("原保存名單版本已變動；已保留原清單與選取，未開啟新版本。")
+                self.statusBar().showMessage("原保存模型名單版本已變動；保留原清單與選取，未以新版本替代。")
                 return
             self._personal_h20_cohort_reference = reference
             widget.set_cohort(cohort)
@@ -523,9 +823,15 @@ class MainWindow(QMainWindow):
             self._open_stock_research_context(context)
         def failed(message: str) -> None:
             if current():
-                self._personal_h20_cohort_reference = None
-                widget.summary_label.setText("模型名單待核驗／目前不可用：" + str(message)[:300])
-                self.statusBar().showMessage("原保存模型名單無法核驗；不以其他日期或QA樣本代替。")
+                widget.setEnabled(True)
+                detail = str(message)[:300]
+                if selection is None:
+                    self._personal_h20_cohort_reference = None
+                    widget.summary_label.setText("模型名單待核驗／目前不可用：" + detail)
+                    self.statusBar().showMessage("原保存模型名單無法核驗；不以其他日期或QA樣本代替。")
+                else:
+                    widget.summary_label.setText("原保存名單重新核驗失敗；已保留原清單與選取：" + detail)
+                    self.statusBar().showMessage("原保存模型名單重新核驗失敗；保留原清單與選取。")
         worker.finished.connect(apply)
         worker.error.connect(failed)
         worker.native_thread_finished.connect(lambda:
@@ -1341,10 +1647,13 @@ class MainWindow(QMainWindow):
                 self._load_stock_chart_markers
             )
             self.stock_research_workspace.report_view.activeContextChanged.connect(
-                self._clear_personal_h20_product
+                self._handle_personal_h20_context_changed
             )
             self.stock_research_workspace.report_view.reportLoaded.connect(
                 self._load_personal_h20_product
+            )
+            self.stock_research_workspace.personalH20SavedRecheckRequested.connect(
+                self._recheck_personal_h20_saved_evidence
             )
             _startup_step("正在完成介面配置")
             workspace_instances = {

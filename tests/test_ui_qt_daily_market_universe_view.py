@@ -4,7 +4,6 @@ from __future__ import annotations
 from dataclasses import replace
 import time
 import pytest
-from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from app_module.daily_market_universe_run import DailyMarketUniverseRunReader
@@ -19,7 +18,7 @@ def _wait_for_idle(app, daily):
     deadline = time.monotonic() + 30
     while daily._worker is not None and time.monotonic() < deadline:
         app.processEvents()
-        QTest.qWait(10)
+        time.sleep(0.01)
     assert daily._worker is None, daily.status_label.text()
 
 
@@ -62,7 +61,7 @@ def test_saved_full_population_page_and_exact_child(completed_run):
     deadline = time.monotonic() + 30
     while not opened and time.monotonic() < deadline:
         app.processEvents()
-        QTest.qWait(10)
+        time.sleep(0.01)
     assert len(opened) == 1, daily.status_label.text()
     assert opened[0].stock_code == codes[-1]
     assert opened[0].source_snapshot_hash == snapshot.manifest_sha256

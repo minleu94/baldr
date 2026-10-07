@@ -647,3 +647,6 @@ MainWindow 啟動方可明示研究 snapshot root／cohort 與 original-rank roo
 ### 2026-10-07 dev 完整保存母體瀏覽
 
 推薦分析→每日研究條件新增完整保存母體區：明示選原保存來源，三個既有 v2／v3 條件全域 AND／OR 篩選排序後分頁，完整分母與排除／未知分列。原 child 下鑽等待背景核驗，再開個股；返回保留來源／query／頁碼／選取，取消及 query 變更撤回舊請求。瀏覽不產生研究；正常 UI 產製、v4五規則full-N、完整 query 收藏／比較與 candidate／Native尚未完成。入口、限制及排錯見[Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-07-施工版完整保存母體瀏覽)，證據見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+2026-10-07 dev個股研究新增「保存的個人 H20 研究預測」首屏卡：active context獨立核驗原保存cohort，報告失敗仍可呈現gross／三日期／尚無已核驗實際結果；「重新核驗保存預測」沿原pins，不切latest。返回pointer漂移保留原名單／排序／選取，不換新來源；H20收藏尚未接。操作見[Manual](../07_guides/APPLICATION_MANUAL.md#2026-10-07-dev-修正h20-摘要獨立於一般個股報告)，中央96案例與合成contract／Native限制見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。

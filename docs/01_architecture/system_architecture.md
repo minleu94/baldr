@@ -1564,3 +1564,6 @@ v4 技術保存底層（2026-10-07 dev）：daily_market_technical_snapshot_v4_p
 
 
 正常 v4 bounded parent caller（2026-10-07 dev）由 app_module.daily_market_technical_parent_v4_producer 組裝唯讀session→finish→immutable plan→真v4批次producer→strict parent writer；每批前／記child前／complete前重驗來源main+WAL與scope，明示receipt續跑不查latest。中央20例通過；full-N aggregate與UI尚未完成，不將child parent上限轉成產品母體上限。證據見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+2026-10-07 H20原保存來源消費增量：MainWindow由activeContextChanged獨立發TaskWorker公開product reader，以原selection/reference/context pins與generation限定回呼；StockResearchWorkspace首屏卡不受一般report service成功依賴，同context cache可回投一般摘要。重新核驗只重讀原source，pointer漂移返回不換表格；原model inference／fit／Task及公開保存reader不改。中央96項UI回歸通過；candidate、Native、真模型品質仍未驗。細節見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。

@@ -38,3 +38,6 @@ H20 已實際啟用；原保存 10 股完整 cohort 的 gross 整數排序與 ex
 
 
 2026-10-07 M2 工程補記：dev 完整保存母體瀏覽已接每日研究頁，257納入／1排除的真保存來源下鑽與返回、取消／query變更保護通過；中央UI88例、Update validator25 passed／4 protected skips、全域mypy868檔通過。v4 repository／batch producer／parent中央92 passed／1 Windows symlink權限skip。現有瀏覽仍是v2／v3三條件；v4五規則full-N、正常UI產製、query收藏／比較與新candidate／Native仍未完成。H20獨立摘要完整旅程正在定位，不把最小handler成功當2382真人通過。細節見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)，完整範圍沿原單一補完計畫。
+
+
+2026-10-07 H20工程修正：dev個股研究新增首屏保存預測獨立摘要，不再依賴一般報告成功；精確來源重讀／retry／切來源stale與返回pointer變動保留原表已驗。中央含workbench／完整母體／H20旅程96 passed、validator25 passed／4 protected skips、mypy870檔通過；原慢測為Qt test pump造成Python worker飢餓，同fixture讓出執行緒後3.78s，未修改product reader守衛。模型contract仍為明示合成邊界，原真人2382、三策略、新candidate／Native未驗，H20收藏與full-N新五規則尚未完成。詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。

@@ -324,21 +324,28 @@ def evaluate_daily_technical_rules(
 
     if not isinstance(window, TechnicalObservationWindow):
         raise TypeError("window 必須是 TechnicalObservationWindow")
+    # Window、sessions、features 與參數 tuple 均為 frozen/immutable；同一次
+    # 評估只需核驗一次共同來源狀態，並把結果留在本次呼叫的區域變數中。
+    common = _window_status(window)
     return (
         _evaluate_cross_rule(window, "ma5_20_golden_cross", MA5_20_CROSS_METHOD_ID,
                              _MA_CROSS_PARAMETERS, (("MA5", 5, _MA5_PARAMETERS),
                                                     ("MA20", 20, _MA20_PARAMETERS)),
-                             _ma_cross_predicate),
+                             common=common,
+                             predicate=_ma_cross_predicate),
         _evaluate_cross_rule(window, "kd_golden_cross", KD_CROSS_METHOD_ID,
                              _KD_RULE_PARAMETERS, (("slowk", 9, _KD_PARAMETERS),
                                                    ("slowd", 9, _KD_PARAMETERS)),
-                             _kd_cross_predicate),
+                             common=common,
+                             predicate=_kd_cross_predicate),
         _evaluate_cross_rule(window, "macd_golden_cross", MACD_CROSS_METHOD_ID,
                              _MACD_RULE_PARAMETERS, (("MACD", 34, _MACD_PARAMETERS),
                                                      ("MACD_signal", 34, _MACD_PARAMETERS)),
-                             _macd_cross_predicate),
+                             common=common,
+                             predicate=_macd_cross_predicate),
         _evaluate_volume_rule(
             window,
+            common=common,
             key="volume_ratio_20_including_current",
             method_id=VOLUME_RATIO_20_METHOD_ID,
             periods=20,
@@ -346,6 +353,7 @@ def evaluate_daily_technical_rules(
         ),
         _evaluate_volume_rule(
             window,
+            common=common,
             key="volume_ratio_5_including_current",
             method_id=VOLUME_RATIO_5_METHOD_ID,
             periods=5,
@@ -385,9 +393,10 @@ def _evaluate_cross_rule(
     method_id: str,
     parameters: tuple[tuple[str, ParameterValue], ...],
     requirements: tuple[tuple[str, int, tuple[tuple[str, ParameterValue], ...]], ...],
+    *,
+    common: _WindowStatus,
     predicate,
 ) -> TechnicalRuleResult:
-    common = _window_status(window)
     sessions = window.sessions
     current = sessions[-1] if sessions else None
     previous = sessions[-2] if len(sessions) >= 2 else None
@@ -445,12 +454,14 @@ def _evaluate_cross_rule(
         raw_facts=tuple(facts),
         feature_date=current.feature_date if current else None,
         previous_feature_date=previous.feature_date if previous else None,
+        common=common,
     )
 
 
 def _evaluate_volume_rule(
     window: TechnicalObservationWindow,
     *,
+    common: _WindowStatus,
     key: str,
     method_id: str,
     periods: int,
@@ -461,7 +472,6 @@ def _evaluate_volume_rule(
         ("threshold_ratio", threshold),
         ("window_sessions", periods),
     )
-    common = _window_status(window)
     selected = window.sessions[-periods:]
     facts: list[TechnicalObservedFact] = []
     unknowns = list(common.unknown_reasons)
@@ -549,6 +559,7 @@ def _evaluate_volume_rule(
         numerator=numerator,
         denominator=denominator,
         ratio=ratio,
+        common=common,
     )
 
 
@@ -753,6 +764,7 @@ class _WindowStatus:
 def _make_result(
     window: TechnicalObservationWindow,
     *,
+    common: _WindowStatus,
     key: str,
     method_id: str,
     parameters: tuple[tuple[str, ParameterValue], ...],
@@ -767,10 +779,9 @@ def _make_result(
     denominator: Decimal | None = None,
     ratio: Decimal | None = None,
 ) -> TechnicalRuleResult:
-    status = _window_status(window)
     # Missing availability time is visible but does not erase a current-restated
     # research predicate; a future timestamp already appears as a blocking reason.
-    availability = status.availability_result
+    availability = common.availability_result
     return TechnicalRuleResult(
         key=key,
         method_id=method_id,
@@ -791,7 +802,7 @@ def _make_result(
         previous_feature_date=previous_feature_date,
         source_identity=window.source_identity,
         source_window_fingerprint_sha256=window.source_window_fingerprint_sha256,
-        lookahead_check=status.lookahead_check,
+        lookahead_check=common.lookahead_check,
         availability_result=availability,
     )
 

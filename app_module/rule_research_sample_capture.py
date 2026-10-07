@@ -13,10 +13,11 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 import stat
 import tempfile
 import uuid
-from typing import Any, Protocol
+from typing import Any, IO, Protocol
 
 from app_module.daily_market_snapshot_repository import (
     DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA, DailyMarketSnapshotRepository,
@@ -26,6 +27,7 @@ from app_module.daily_market_feature_snapshot import feature_contract_for_versio
 from app_module.multi_method_research_consensus import (
     adapt_daily_market_snapshot, build_multi_method_consensus,
 )
+from app_module.personal_data_paths import _strip_windows_io_prefix, to_internal_io_path
 
 CAPTURE_SCHEMA = "rule-research-sample-capture.v1"
 RECEIPT_SCHEMA = "rule-research-sample-receipt.v1"
@@ -70,6 +72,56 @@ def _json(value: object) -> str:
 
 def _digest(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _resolve_path(path: Path, *, strict: bool = False) -> Path:
+    resolved = os.path.realpath(to_internal_io_path(path), strict=strict)
+    return Path(_strip_windows_io_prefix(resolved))
+
+
+def _path_exists(path: Path) -> bool:
+    io_path = to_internal_io_path(path)
+    return os.path.exists(io_path) or os.path.islink(io_path)
+
+
+def _path_stat(path: Path) -> os.stat_result:
+    return os.stat(to_internal_io_path(path))
+
+
+def _path_lstat(path: Path) -> os.stat_result:
+    return os.lstat(to_internal_io_path(path))
+
+
+def _path_is_file(path: Path) -> bool:
+    return os.path.isfile(to_internal_io_path(path))
+
+
+def _path_is_dir(path: Path) -> bool:
+    return os.path.isdir(to_internal_io_path(path))
+
+
+def _directory_names(path: Path, limit: int) -> list[str]:
+    with os.scandir(to_internal_io_path(path)) as entries:
+        return [entry.name for entry in islice(entries, limit)]
+
+
+def _path_mkdir(path: Path, *, parents: bool = False, exist_ok: bool = False) -> None:
+    if parents:
+        os.makedirs(to_internal_io_path(path), exist_ok=exist_ok)
+    else:
+        os.mkdir(to_internal_io_path(path))
+
+
+def _path_rename(source: Path, destination: Path) -> None:
+    Path(to_internal_io_path(source)).rename(Path(to_internal_io_path(destination)))
+
+
+def _path_unlink(path: Path) -> None:
+    os.unlink(to_internal_io_path(path))
+
+
+def _path_open(path: Path, mode: str) -> IO[Any]:
+    return open(to_internal_io_path(path), mode)
 
 
 def _clock(value: datetime) -> str:
@@ -317,8 +369,8 @@ def read_rule_research_capture(repository: DailyMarketSnapshotRepository, *,
 
 def _safe_path(path: Path) -> None:
     for item in (path, *path.parents):
-        if item.exists() or item.is_symlink():
-            info = item.lstat()
+        if _path_exists(item):
+            info = _path_lstat(item)
             _require(not stat.S_ISLNK(info.st_mode)
                      and not getattr(info, "st_file_attributes", 0) & 0x400,
                      "path_link_rejected")
@@ -326,15 +378,129 @@ def _safe_path(path: Path) -> None:
                 _require(info.st_nlink == 1, "path_hardlink_rejected")
 
 
+def _absolute_safe_path(value: str | Path, code: str, *, strict: bool = False) -> Path:
+    try:
+        raw = Path(value)
+    except (TypeError, ValueError) as exc:
+        raise RuleSampleCaptureError(code) from exc
+    _require(raw.is_absolute(), code)
+    _safe_path(raw)
+    try:
+        resolved = _resolve_path(raw, strict=strict)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RuleSampleCaptureError(code) from exc
+    _safe_path(resolved)
+    return resolved
+
+
+def _path_is_within(path: Path, parent: Path) -> bool:
+    return path == parent or path.is_relative_to(parent)
+
+
+def _paths_overlap(left: Path, right: Path) -> bool:
+    return _path_is_within(left, right) or _path_is_within(right, left)
+
+
+def _validate_readonly_source_database(
+    database: Path, configured_output_root: Path
+) -> None:
+    _safe_path(database)
+    _require(_path_is_file(database), "source_database_invalid")
+    database_stat = _path_stat(database)
+    _require(stat.S_ISREG(database_stat.st_mode), "source_database_invalid")
+    _require(database_stat.st_nlink == 1, "path_hardlink_rejected")
+
+    wal_path = Path(f"{database}-wal")
+    _safe_path(wal_path)
+    for source_path in (database, wal_path):
+        _require(
+            not _paths_overlap(source_path, configured_output_root),
+            "source_output_overlap",
+        )
+
+    from app_module.sqlite_read_only import connect_read_only_sqlite
+
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = connect_read_only_sqlite(database)
+        databases = connection.execute("PRAGMA database_list").fetchall()
+        _require(bool(databases) and len(databases[0]) >= 3, "source_database_invalid")
+        actual_path = _resolve_path(Path(str(databases[0][2])), strict=True)
+        _require(actual_path == database, "source_database_not_canonical")
+        query_only = connection.execute("PRAGMA query_only").fetchone()
+        _require(
+            query_only is not None and int(query_only[0]) == 1,
+            "source_database_not_readonly",
+        )
+    except RuleSampleCaptureError:
+        raise
+    except (OSError, RuntimeError, sqlite3.Error, TypeError, ValueError) as exc:
+        raise RuleSampleCaptureError("source_database_not_readonly") from exc
+    finally:
+        if connection is not None:
+            connection.close()
+
+    _safe_path(database)
+    _safe_path(wal_path)
+
+
+def _validate_research_capture_scope_paths(
+    configured_output_root: str | Path, source_database: str | Path
+) -> tuple[Path, Path]:
+    output_root = _absolute_safe_path(
+        configured_output_root, "research_scope_path_absolute_required"
+    )
+    source_raw = Path(source_database)
+    source_path = _absolute_safe_path(
+        source_database, "research_scope_path_absolute_required", strict=True
+    )
+    _require(source_raw == source_path, "source_database_not_canonical")
+    _validate_readonly_source_database(source_path, output_root)
+    return output_root, source_path
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchCaptureWriteScope:
+    """明示受控保存根；只授予路徑範圍，不代表來源或資料具正式資格。"""
+
+    configured_output_root: str | Path
+    source_database: str | Path
+
+    def __post_init__(self) -> None:
+        output_root, source_database = _validate_research_capture_scope_paths(
+            self.configured_output_root, self.source_database
+        )
+        object.__setattr__(self, "configured_output_root", output_root)
+        object.__setattr__(self, "source_database", source_database)
+
+    @property
+    def root(self) -> Path:
+        """由設定輸出根派生的研究保存範圍。"""
+
+        return Path(self.configured_output_root) / "research_snapshots"
+
+    def validate(self) -> None:
+        """每次寫入前重驗根路徑、來源 DB 與主檔／WAL 隔離。"""
+
+        output_root, source_database = _validate_research_capture_scope_paths(
+            self.configured_output_root, self.source_database
+        )
+        _require(
+            output_root == self.configured_output_root
+            and source_database == self.source_database,
+            "research_scope_changed",
+        )
+
+
 def _read_file(path: Path, limit: int) -> bytes:
     _safe_path(path)
-    before = path.stat()
+    before = _path_stat(path)
     _require(stat.S_ISREG(before.st_mode) and before.st_size <= limit, "store_file_bound")
-    with path.open("rb") as handle:
+    with _path_open(path, "rb") as handle:
         raw = handle.read(limit + 1)
         after = os.fstat(handle.fileno())
     _safe_path(path)
-    current = path.stat()
+    current = _path_stat(path)
     _require((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) ==
              (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
              == (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns)
@@ -343,7 +509,7 @@ def _read_file(path: Path, limit: int) -> bytes:
 
 
 def _write_file(path: Path, raw: bytes) -> None:
-    with path.open("xb") as handle:
+    with _path_open(path, "xb") as handle:
         handle.write(raw)
         handle.flush()
         os.fsync(handle.fileno())
@@ -352,22 +518,65 @@ def _write_file(path: Path, raw: bytes) -> None:
 class BoundedRuleResearchCaptureWriter:
     """小型隔離目錄 writer；同目錄 rename 一次提交 capture＋receipt。"""
 
-    def __init__(self, output_root: str | Path) -> None:
-        raw = Path(output_root).absolute()
-        _safe_path(raw)
-        root = raw.resolve()
-        allowed = (Path(__file__).resolve().parents[1] / "output" / "qa",
-                   Path(tempfile.gettempdir()).resolve())
-        _require(any(root.is_relative_to(parent) and root != parent for parent in allowed),
-                 "isolated_output_required")
+    def __init__(
+        self,
+        output_root: str | Path,
+        *,
+        research_scope: ResearchCaptureWriteScope | None = None,
+        read_only: bool = False,
+    ) -> None:
+        _require(isinstance(read_only, bool), "writer_mode_invalid")
+        _require(not (read_only and research_scope is not None), "writer_mode_conflict")
+
+        if research_scope is not None:
+            _require(isinstance(research_scope, ResearchCaptureWriteScope),
+                     "research_scope_invalid")
+            root = _absolute_safe_path(output_root, "research_scope_output_absolute_required")
+            research_scope.validate()
+            scope_root = research_scope.root
+            _safe_path(scope_root)
+            _require(root != scope_root and root.is_relative_to(scope_root),
+                     "research_scope_escape")
+        elif read_only:
+            root = _absolute_safe_path(output_root, "readonly_root_absolute_required")
+        else:
+            raw = Path(output_root).absolute()
+            _safe_path(raw)
+            root = _resolve_path(raw)
+            allowed = (_resolve_path(Path(__file__).parents[1] / "output" / "qa"),
+                       _resolve_path(Path(tempfile.gettempdir())))
+            _require(any(root.is_relative_to(parent) and root != parent for parent in allowed),
+                     "isolated_output_required")
+
         self.output_root = root
+        self._research_scope = research_scope
+        self._read_only = read_only
+
+    def _validate_write_target(self) -> None:
+        _require(not self._read_only, "read_only_writer_forbidden")
+        _safe_path(self.output_root)
+        try:
+            current_root = _resolve_path(self.output_root)
+        except (OSError, RuntimeError) as exc:
+            raise RuleSampleCaptureError("writer_root_changed") from exc
+        _require(current_root == self.output_root, "writer_root_changed")
+        if self._research_scope is not None:
+            self._research_scope.validate()
+            scope_root = self._research_scope.root
+            _safe_path(scope_root)
+            _require(
+                self.output_root != scope_root
+                and self.output_root.is_relative_to(scope_root),
+                "research_scope_escape",
+            )
 
     def _free_bytes(self) -> int:
-        return shutil.disk_usage(self.output_root).free
+        return shutil.disk_usage(to_internal_io_path(self.output_root)).free
 
     def _inventory(self) -> tuple[int, int]:
         total = count = 0
-        entries = list(islice(self.output_root.iterdir(), MAX_CAPTURES + 2))
+        entries = [self.output_root / name
+                   for name in _directory_names(self.output_root, MAX_CAPTURES + 2)]
         _require(len(entries) <= MAX_CAPTURES + 1, "retention_entry_limit")
         for entry in entries:
             if entry.name == ".writer.lock":
@@ -375,20 +584,20 @@ class BoundedRuleResearchCaptureWriter:
             _require(count < MAX_CAPTURES and _SHA.fullmatch(entry.name) is not None,
                      "store_unknown_or_partial_entry")
             _safe_path(entry)
-            _require(entry.is_dir(), "store_entry_invalid")
-            files = list(islice(entry.iterdir(), 3))
+            _require(_path_is_dir(entry), "store_entry_invalid")
+            files = [entry / name for name in _directory_names(entry, 3)]
             _require(len(files) == 2 and {p.name for p in files} == {"capture.json", "receipt.json"},
                      "store_partial_entry")
             self._read_completed(entry)
-            total += sum(p.stat().st_size for p in files)
+            total += sum(_path_stat(path).st_size for path in files)
             count += 1
             _require(total <= MAX_RETAINED_BYTES, "retention_byte_limit")
         return count, total
 
     def _read_completed(self, directory: Path) -> dict[str, Any]:
         _safe_path(directory)
-        _require(directory.is_dir(), "store_entry_invalid")
-        files = list(islice(directory.iterdir(), 3))
+        _require(_path_is_dir(directory), "store_entry_invalid")
+        files = [directory / name for name in _directory_names(directory, 3)]
         _require(len(files) == 2 and {p.name for p in files} == {"capture.json", "receipt.json"},
                  "store_partial_entry")
         capture_raw = _read_file(directory / "capture.json", MAX_CAPTURE_BYTES)
@@ -413,6 +622,7 @@ class BoundedRuleResearchCaptureWriter:
         """單一 immutable capture 有界讀回，不建立目錄／鎖或讀 latest。"""
         _require(isinstance(identity_sha256, str) and _SHA.fullmatch(identity_sha256) is not None,
                  "capture_pin_invalid")
+        _safe_path(self.output_root)
         directory = self.output_root / identity_sha256
         receipt = self._read_completed(directory)
         body = self._decode_capture(_read_file(directory / "capture.json", MAX_CAPTURE_BYTES))
@@ -423,16 +633,17 @@ class BoundedRuleResearchCaptureWriter:
     def write(self, capture: VerifiedResearchCapture, *,
               revalidate: Callable[[], VerifiedResearchCapture]) -> dict[str, Any]:
         """重讀來源前後一致才發布；中斷殘件保留且下次 fail closed。"""
+        self._validate_write_target()
         body = capture.to_dict()
         identity = capture.identity_sha256
         _require(self._decode_capture(capture.body_json.encode("utf-8")) == body
                  and body.get("capture_identity_sha256") == identity, "capture_envelope_mismatch")
-        _safe_path(self.output_root)
-        self.output_root.mkdir(parents=True, exist_ok=True)
-        _safe_path(self.output_root)
+        self._validate_write_target()
+        _path_mkdir(self.output_root, parents=True, exist_ok=True)
+        self._validate_write_target()
         lock = self.output_root / ".writer.lock"
         try:
-            lock_handle = lock.open("xb")
+            lock_handle = _path_open(lock, "xb")
         except FileExistsError as exc:
             raise RuleSampleCaptureError("writer_busy") from exc
         try:
@@ -440,10 +651,11 @@ class BoundedRuleResearchCaptureWriter:
                 lock_handle.write(identity.encode("ascii"))
                 lock_handle.flush()
                 os.fsync(lock_handle.fileno())
+                self._validate_write_target()
                 count, retained = self._inventory()
                 _require(revalidate().identity_sha256 == identity, "source_revision_during_capture")
                 destination = self.output_root / identity
-                if destination.exists():
+                if _path_exists(destination):
                     receipt = self._read_completed(destination)
                     return {"status": "duplicate", "receipt": receipt,
                             "directory": str(destination)}
@@ -455,7 +667,8 @@ class BoundedRuleResearchCaptureWriter:
                 _require(retained + new_bytes <= MAX_RETAINED_BYTES, "retention_byte_limit")
                 _require(self._free_bytes() >= SAFETY_RESERVE_BYTES + 2 * new_bytes, "capacity_reserve")
                 staging = self.output_root / (".partial-" + uuid.uuid4().hex)
-                staging.mkdir()
+                self._validate_write_target()
+                _path_mkdir(staging)
                 _write_file(staging / "capture.json", raw)
                 _write_file(staging / "receipt.json", receipt_raw)
                 _require(_read_file(staging / "capture.json", MAX_CAPTURE_BYTES) == raw
@@ -463,19 +676,21 @@ class BoundedRuleResearchCaptureWriter:
                          "staged_readback_mismatch")
                 _require(revalidate().identity_sha256 == identity, "source_revision_during_capture")
                 _require(self._free_bytes() >= SAFETY_RESERVE_BYTES + new_bytes, "capacity_reserve")
-                _safe_path(self.output_root)
-                staging.rename(destination)
+                self._validate_write_target()
+                _path_rename(staging, destination)
                 saved = self._read_completed(destination)
                 return {"status": "published", "receipt": saved, "directory": str(destination)}
         finally:
             # 僅移除本次持有的臨時 lock；partial 與已發布證據均保留。
-            lock.unlink()
+            _path_unlink(lock)
 
     def capture_pinned(self, repository: DailyMarketSnapshotRepository, *,
             manifest_sha256: str, cohort_id: str, decision_date: date,
             as_of: datetime) -> dict[str, Any]:
         """以實際 UTC 觀測時鐘保存；仍不授自然排程／當時可得權限。"""
-        source_root = repository.output_root.absolute().resolve()
+        _require(not self._read_only, "read_only_writer_forbidden")
+        self._validate_write_target()
+        source_root = _resolve_path(repository.output_root.absolute())
         _require(not self.output_root.is_relative_to(source_root)
                  and not source_root.is_relative_to(self.output_root), "source_output_overlap")
         observed = datetime.now(timezone.utc)

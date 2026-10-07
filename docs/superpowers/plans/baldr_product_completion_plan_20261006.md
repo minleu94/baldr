@@ -18,9 +18,11 @@
 
 ### 0.1 M2 施工與真人回報（2026-10-07，未完成）
 
+本輪[工程 QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)保存新增受控研究根、Windows 長路徑失敗與修正及 H20 真讀取器旅程。受控根實際17股兩批產製／全域查詢／新程序唯讀重開已通過；中央受影響 capture／parent／scope／長路徑回歸80 passed、2 skipped。H20三日期不同的保存來源UI旅程2案例通過，模型contract仍為明示合成邊界，不授真fit或Native資格。正常UI產製、完整query收藏／比較、新technical保存版本與新candidate仍未完成；來源日期與盤中cutoff guard正在補強，不能沿既有局部綠燈標M2完成。
+
 使用者已授權繼續 Luna Max 分工、由中央審核。新增排他範圍：P01 producer 葉片為 `app_module/daily_market_universe_producer.py`／同名測試；query 葉片為既有 `daily_market_universe_run.py`／新 `test_daily_market_universe_run_query.py`；P02 葉片為 `decision_module/factors/selection_technical_rules.py`／`test_baldr_completion_p02_methods.py`。中央擁有新增 `app_module/daily_market_universe_selection.py`、`ui_qt/views/daily_market_universe_view.py`、其 UI 測試及既有每日研究頁接線。使用者回報的個人推薦歷史版本窄欄排版另釋出 `recommendation_view.py`／新版面測試給啟動契約 Luna；不與中央同檔並寫。
 
-- 多條件全域 AND／OR 與缺欄三態已由257碼、兩段真 parent writer 產物驗證；P02五項純 Decimal 規則20案例通過，但來源／保存新版本與 UI 尚未接線。中央完整母體頁到原 child 下鑽隔離案例通過；仍缺 producer 正常外部根、比較／收藏／重開完整 query、真 N 及候選版驗收。
+- 多條件全域 AND／OR 與缺欄三態已由257碼、兩段真 parent writer 產物驗證；P02五項純 Decimal 規則20案例通過，但來源／保存新版本與 UI 尚未接線。中央完整母體頁到原 child 下鑽隔離案例通過；producer 正常外部根已有具名工程閉環，但仍缺 UI 產製、比較／收藏／重開完整 query、真 N 及候選版驗收。
 - 全排除／零納入母體原 manifest 遺漏條件零計數，導致 reader 拒絕；writer／reader 現共用固定 source-clock 契約的條件 keys。v2／v3各300筆排除、兩段全域查詢與fresh reopen通過，中央連同原writer／reader重驗8 passed，排除300／未知0，未授真市場來源資格。producer的真納入17／257／1000與取消續跑另在驗證，不能由零納入案例宣稱完成。
 - 原 parent capture writer 的預設 guard 僅允 QA／Temp，不能以此限制當正常 OUTPUT_ROOT 產品完成；後續需明示受控研究根契約，保留原預設防護、來源隔離、資源上限與 immutable 保存。
 - 真人驗收先精確分來源：H20名單選2382→「研究選取股票」→個股「摘要」上方「第一眼先看五個問題」→「返回來源清單」。H20目前沒有已驗收藏入口，不能要求使用者找原排名或每日規則的收藏按鈕替代。現成M1呈現fixture不能從正常reader開H20，Native啟動／布局與canonical來源旅程分列。

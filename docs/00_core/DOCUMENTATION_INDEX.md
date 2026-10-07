@@ -38,3 +38,6 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 原本索引的日期化補充全文見 [歷史索引](../09_archive/DOCUMENTATION_INDEX_HISTORY_20261006.md)，舊入口紀錄見 [入口歷史](../09_archive/DOCUMENTATION_ENTRY_HISTORY_20261006.md)。[整理 manifest](../09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md) 保存 old→new、原 SHA 與恢復規則。
 
 `output/plans/` 與 `output/qa/` 是 ignored 本機需求／原始驗收證據，不因 ignored 即可刪。唯一 Danny Quant plan 原路徑 `output/plans/baldr_product_experience_plan_20261004.md` 保留原 bytes，另有本轮可還原快照；raw 失敗、JUnit 與 receipts 不重寫。正式摘要可放 QA，私人內容不能直接公開。
+
+
+[M2施工與工程QA（2026-10-07）](../06_qa/BALDR_COMPLETION_M2_20261007.md)：受控研究根、長路徑產製與新程序重開、技術來源／封裝局部驗證及H20三日期保存來源旅程。原失敗與synthetic模型邊界明列；完整UI與新technical版本／candidate仍在施工，不能當完整產品或Native接受收據。

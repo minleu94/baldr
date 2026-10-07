@@ -6,9 +6,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import json
+import os
 from pathlib import Path
+import stat
 from typing import Any
 from zoneinfo import ZoneInfo
+from app_module.personal_data_paths import to_internal_io_path
 
 from app_module.daily_market_method_contract import method_contracts_payload, method_contracts_sha256
 from app_module.daily_market_feature_snapshot import (
@@ -23,7 +26,7 @@ from app_module.daily_market_snapshot_producer import DailyMarketSnapshotInput, 
 from app_module.daily_market_snapshot_repository import DailyMarketSnapshotRepository
 from app_module.daily_market_snapshot_source import SQLiteDailyMarketSnapshotSource, _source_pin
 from app_module.rule_research_sample_capture import (
-    MAX_CAPTURE_BYTES, BoundedRuleResearchCaptureWriter, RuleSampleCaptureError,
+    MAX_CAPTURE_BYTES, BoundedRuleResearchCaptureWriter, ResearchCaptureWriteScope, RuleSampleCaptureError,
     _clock, _digest, _identity, _json, _read_file, _require, _safe_path, _write_file,
 )
 from app_module.rule_research_sample_readiness import read_saved_rule_sample_readiness
@@ -225,16 +228,26 @@ def _check_source_budget(root: Path, reserve_bytes: int = 0, reserve_entries: in
     _safe_path(root)
     _require(reserve_bytes <= MAX_PARENT_SOURCE_BYTES, "parent_retention_byte_limit")
     _require(reserve_entries <= 4096, "parent_retention_entry_limit")
-    if not root.exists():
+    if not os.path.exists(to_internal_io_path(root)):
         return
     total = count = 0
-    for path in root.rglob("*"):
-        _safe_path(path)
-        count += 1
-        _require(count + reserve_entries <= 4096, "parent_retention_entry_limit")
-        if path.is_file():
-            total += path.stat().st_size
-            _require(total + reserve_bytes <= MAX_PARENT_SOURCE_BYTES, "parent_retention_byte_limit")
+    directories = [root]
+    while directories:
+        current = directories.pop()
+        # 每一層的實際 I/O 路徑都重算前綴，避免短 root 下的深層長路徑漏件。
+        _safe_path(current)
+        with os.scandir(to_internal_io_path(current)) as entries:
+            for entry in entries:
+                path = current / entry.name
+                _safe_path(path)
+                count += 1
+                _require(count + reserve_entries <= 4096, "parent_retention_entry_limit")
+                info = os.stat(to_internal_io_path(path))
+                if stat.S_ISDIR(info.st_mode):
+                    directories.append(path)
+                elif stat.S_ISREG(info.st_mode):
+                    total += info.st_size
+                    _require(total + reserve_bytes <= MAX_PARENT_SOURCE_BYTES, "parent_retention_byte_limit")
     _require(total + reserve_bytes <= MAX_PARENT_SOURCE_BYTES, "parent_retention_byte_limit")
 
 
@@ -268,7 +281,7 @@ def _snapshot_repository(root: Path, body: dict[str, Any], batch: dict[str, Any]
 def read_parent_rule_sample_readiness(snapshot_root: str | Path, capture_root: str | Path, *, universe_path: str | Path,
                                      identity_sha256: str, contract_version: str | None = None) -> dict[str, Any]:
     """新程序只讀 parent→receipt→完整 child pins；不開原 DB 或 latest。"""
-    parent_writer = BoundedRuleResearchParentWriter(Path(capture_root) / "parents")
+    parent_writer = BoundedRuleResearchParentWriter(Path(capture_root) / "parents", read_only=True)
     package = parent_writer.read(identity_sha256)
     body = package["capture"]
     contract = _saved_contract(body)
@@ -286,7 +299,7 @@ def read_parent_rule_sample_readiness(snapshot_root: str | Path, capture_root: s
              and body["method_contracts_sha256"] == contract.method_contracts_sha256, "parent_method_changed")
     if contract.version == DAILY_MARKET_FEATURE_CONTRACT_VERSION:
         _require(method_contracts_sha256() == contract.method_contracts_sha256, "parent_method_changed")
-    child_writer = BoundedRuleResearchCaptureWriter(Path(capture_root) / "samples" / body["plan_sha256"])
+    child_writer = BoundedRuleResearchCaptureWriter(Path(capture_root) / "samples" / body["plan_sha256"], read_only=True)
     tallies: dict[str, Counter[str]] = {c["method_id"]: Counter() for c in body["method_contracts"].values()}
     covered = 0
     partial_artifact = False
@@ -341,8 +354,9 @@ def read_parent_rule_sample_readiness(snapshot_root: str | Path, capture_root: s
 def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Path,
         capture_root: str | Path, universe_path: str | Path, decision_cutoff: datetime,
         as_of: datetime | None = None, cancel_callback: Callable[[], bool] | None = None,
-        contract_version: str | None = None) -> dict[str, Any]:
-    """明示隔離小母體，一次只處理一批；不部署排程或寫正式 DB。"""
+        contract_version: str | None = None,
+        research_scope: ResearchCaptureWriteScope | None = None) -> dict[str, Any]:
+    """明示受控研究母體，一次只處理一批；不部署排程或寫來源 DB。"""
     contract = _contract(contract_version)
     include_bbands = contract.version == DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER
     cancel = cancel_callback or (lambda: False)
@@ -359,14 +373,22 @@ def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Pat
     source_binding = None
     plan = _plan(universe, cutoff_text, method_sha, source_binding, contract.version)
     batches = _batches(universe["value"], plan)
-    # 共用 writer 的既有隔離路徑政策；不建立 guard 目錄。
-    BoundedRuleResearchCaptureWriter(Path(snapshot_root) / "guard")
-    parent_writer = BoundedRuleResearchParentWriter(Path(capture_root) / "parents")
+    # 在任何 mkdir 或 lock 前驗證明示保存範圍；沒有 scope 時沿用隔離政策。
+    if research_scope is not None:
+        research_scope.validate()
+        _require(Path(db_path).is_absolute() and Path(db_path).resolve() == research_scope.source_database,
+                 "parent_research_scope_source_mismatch")
+    BoundedRuleResearchCaptureWriter(Path(snapshot_root) / "guard", research_scope=research_scope)
+    parent_writer = BoundedRuleResearchParentWriter(Path(capture_root) / "parents", research_scope=research_scope)
     root = Path(snapshot_root).absolute().resolve()
     capture_path = Path(capture_root).absolute().resolve()
     _require(not root.is_relative_to(capture_path) and not capture_path.is_relative_to(root), "source_output_overlap")
     _check_source_budget(root)
     _check_source_budget(capture_path)
+    if research_scope is not None:
+        research_scope.validate()
+        _require(root != research_scope.root and root.is_relative_to(research_scope.root),
+                 "parent_research_scope_output_outside_root")
     root.mkdir(parents=True, exist_ok=True)
     lock = root / ".parent.lock"
     try:
@@ -382,9 +404,11 @@ def produce_parent_rule_samples(*, db_path: str | Path, snapshot_root: str | Pat
                     source_binding = _source_binding(source)
                     plan = _plan(universe, cutoff_text, method_sha, source_binding, contract.version)
                     batches = _batches(universe["value"], plan)
-                    child_writer = BoundedRuleResearchCaptureWriter(capture_path / "samples" / plan)
+                    child_writer = BoundedRuleResearchCaptureWriter(capture_path / "samples" / plan, research_scope=research_scope)
                     def check() -> None:
                         _require(not cancel(), "parent_cancelled")
+                        if research_scope is not None:
+                            research_scope.validate()
                         _require(load_parent_universe(universe_path) == universe, "parent_universe_changed")
                         current = _contract(contract.version)
                         _require(current.method_contracts_sha256 == method_sha and current.method_contracts == methods,

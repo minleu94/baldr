@@ -19,10 +19,11 @@ import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import sqlite3
+import stat
 import tempfile
 import threading
 from types import SimpleNamespace
-from typing import Any, Mapping, Sequence
+from typing import Any, IO, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from app_module.daily_market_feature_snapshot import feature_contract_for_version
@@ -31,6 +32,11 @@ from app_module.rule_research_parent_capture import (
     BoundedRuleResearchParentWriter,
     RuleResearchParentCapture,
     read_parent_rule_sample_readiness,
+)
+from app_module.personal_data_paths import (
+    _strip_windows_io_prefix,
+    to_internal_io_path,
+    to_internal_sqlite_uri,
 )
 
 
@@ -80,6 +86,59 @@ class DailyMarketUniverseRunIncomplete(DailyMarketUniverseRunError):
     """仍有 included segment 缺件，不能發布 complete root。"""
 
 
+def _resolve_path(path: Path, *, strict: bool = False) -> Path:
+    """以 OS I/O 形式解析；回傳 identity 始終使用無 extended prefix 的 Path。"""
+
+    resolved = os.path.realpath(to_internal_io_path(path), strict=strict)
+    return Path(_strip_windows_io_prefix(resolved))
+
+
+def _path_exists(path: Path) -> bool:
+    io_path = to_internal_io_path(path)
+    return os.path.exists(io_path) or os.path.islink(io_path)
+
+
+def _path_stat(path: Path) -> os.stat_result:
+    return os.stat(to_internal_io_path(path))
+
+
+def _path_lstat(path: Path) -> os.stat_result:
+    return os.lstat(to_internal_io_path(path))
+
+
+def _path_is_file(path: Path) -> bool:
+    return os.path.isfile(to_internal_io_path(path))
+
+
+def _path_is_dir(path: Path) -> bool:
+    return os.path.isdir(to_internal_io_path(path))
+
+
+def _path_mkdir(
+    path: Path, *, parents: bool = False, exist_ok: bool = False
+) -> None:
+    if parents:
+        os.makedirs(to_internal_io_path(path), exist_ok=exist_ok)
+    else:
+        os.mkdir(to_internal_io_path(path))
+
+
+def _path_open(path: Path, mode: str) -> IO[Any]:
+    return open(to_internal_io_path(path), mode)
+
+
+def _path_replace(source: Path, destination: Path) -> None:
+    os.replace(to_internal_io_path(source), to_internal_io_path(destination))
+
+
+def _path_unlink(path: Path, *, missing_ok: bool = False) -> None:
+    try:
+        os.unlink(to_internal_io_path(path))
+    except FileNotFoundError:
+        if not missing_ok:
+            raise
+
+
 @dataclass(frozen=True, slots=True)
 class DailyMarketParentCaptureReference:
     """指向既有 parent capture 的唯讀參照；identity 由保存來源列提供。"""
@@ -91,9 +150,9 @@ class DailyMarketParentCaptureReference:
 
     def resolved(self) -> DailyMarketParentCaptureReference:
         return DailyMarketParentCaptureReference(
-            Path(self.snapshot_root).expanduser().resolve(),
-            Path(self.capture_root).expanduser().resolve(),
-            Path(self.universe_path).expanduser().resolve(),
+            _resolve_path(Path(self.snapshot_root).expanduser().absolute()),
+            _resolve_path(Path(self.capture_root).expanduser().absolute()),
+            _resolve_path(Path(self.universe_path).expanduser().absolute()),
             self.capture_identity_sha256,
         )
 
@@ -385,14 +444,14 @@ class DailyMarketUniverseRunWriter:
         self._lock_handle: Any = None
         self._staging_root = self.output_root / ".incomplete" / plan.generation_identity_sha256
         self._complete_root = self.output_root / "generations" / plan.generation_identity_sha256
-        if self._complete_root.exists():
+        if _path_exists(self._complete_root):
             raise DailyMarketUniverseRunError("generation_already_published")
         self._check_path_overlap()
-        self.output_root.mkdir(parents=True, exist_ok=True)
+        _path_mkdir(self.output_root, parents=True, exist_ok=True)
         _reject_symlink_chain(self.output_root)
         self._acquire_generation_lock()
         try:
-            self._staging_root.mkdir(parents=True, exist_ok=True)
+            _path_mkdir(self._staging_root, parents=True, exist_ok=True)
             self._segment_results: dict[int, dict[str, Any]] = {}
             self._published = False
             self._load_or_start_progress()
@@ -467,8 +526,8 @@ class DailyMarketUniverseRunWriter:
                 return dict(existing)
 
             segment_file = self._staging_root / result["projection_relpath"]
-            segment_file.parent.mkdir(parents=True, exist_ok=True)
-            if segment_file.exists():
+            _path_mkdir(segment_file.parent, parents=True, exist_ok=True)
+            if _path_exists(segment_file):
                 _verify_file_digest(segment_file, digest, DAILY_MARKET_UNIVERSE_RUN_MAX_SEGMENT_BYTES)
                 _existing_raw, existing_payload = _read_json_limited(
                     segment_file, DAILY_MARKET_UNIVERSE_RUN_MAX_SEGMENT_BYTES
@@ -490,7 +549,7 @@ class DailyMarketUniverseRunWriter:
         # the accepted request at its final publication check.
         with self._publication_gate:
             self._ensure_open()
-            if self._published or self._complete_root.exists():
+            if self._published or _path_exists(self._complete_root):
                 raise DailyMarketUniverseRunError("generation_already_published")
             self._cancel_event.set()
         with self._mutex:
@@ -505,7 +564,7 @@ class DailyMarketUniverseRunWriter:
 
         with self._mutex:
             self._ensure_open()
-            if self._published or self._complete_root.exists():
+            if self._published or _path_exists(self._complete_root):
                 raise DailyMarketUniverseRunError("generation_already_published")
             self._check_cancelled()
             pending = [
@@ -599,8 +658,8 @@ class DailyMarketUniverseRunWriter:
             receipt_raw = _canonical_json(receipt).encode("utf-8")
             _atomic_write_replace(self._staging_root / "complete.json", receipt_raw)
             self._check_cancelled()
-            self._complete_root.parent.mkdir(parents=True, exist_ok=True)
-            if self._complete_root.exists():
+            _path_mkdir(self._complete_root.parent, parents=True, exist_ok=True)
+            if _path_exists(self._complete_root):
                 raise DailyMarketUniverseRunError("generation_already_published")
             publication_cancelled = False
             with self._publication_gate:
@@ -609,10 +668,10 @@ class DailyMarketUniverseRunWriter:
                 ):
                     self._cancel_event.set()
                     publication_cancelled = True
-                elif self._complete_root.exists():
+                elif _path_exists(self._complete_root):
                     raise DailyMarketUniverseRunError("generation_already_published")
                 else:
-                    os.replace(self._staging_root, self._complete_root)
+                    _path_replace(self._staging_root, self._complete_root)
                     self._published = True
             if publication_cancelled:
                 self._save_progress("cancelled")
@@ -644,9 +703,9 @@ class DailyMarketUniverseRunWriter:
 
     def _acquire_generation_lock(self) -> None:
         lock_root = self.output_root / ".locks"
-        lock_root.mkdir(parents=True, exist_ok=True)
+        _path_mkdir(lock_root, parents=True, exist_ok=True)
         path = lock_root / f"{self.plan.generation_identity_sha256}.lock"
-        handle = path.open("a+b")
+        handle = _path_open(path, "a+b")
         if os.name == "nt":
             import msvcrt
 
@@ -677,7 +736,9 @@ class DailyMarketUniverseRunWriter:
     ) -> None:
         candidates: list[Path] = []
         if self.plan.source_clock is not None:
-            candidates.append(Path(self.plan.source_clock.source_binding["database"]).resolve())
+            candidates.append(
+                _resolve_path(Path(self.plan.source_clock.source_binding["database"]).absolute())
+            )
         if reference is not None:
             resolved = reference.resolved()
             candidates.extend((
@@ -728,7 +789,7 @@ class DailyMarketUniverseRunWriter:
     def _load_or_start_progress(self) -> None:
         progress_path = self._staging_root / "progress.json"
         plan_dict = self.plan.to_dict()
-        if progress_path.exists():
+        if _path_exists(progress_path):
             raw, body = _read_json_limited(progress_path, DAILY_MARKET_UNIVERSE_RUN_MAX_PLAN_BYTES)
             if _canonical_json(body).encode("utf-8") != raw:
                 raise DailyMarketUniverseRunError("progress_noncanonical")
@@ -949,12 +1010,16 @@ class DailyMarketUniverseRunWriter:
         return statuses
 
     def _build_index(self, index_path: Path) -> None:
-        fd, tmp_name = tempfile.mkstemp(prefix=".index-", suffix=".sqlite", dir=str(self._staging_root))
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=".i-",
+            suffix=".sqlite",
+            dir=to_internal_io_path(self._staging_root),
+        )
         os.close(fd)
-        tmp_path = Path(tmp_name)
+        tmp_path = Path(_strip_windows_io_prefix(tmp_name))
         connection: sqlite3.Connection | None = None
         try:
-            connection = sqlite3.connect(tmp_path)
+            connection = sqlite3.connect(to_internal_io_path(tmp_path))
             connection.execute("PRAGMA journal_mode=DELETE")
             connection.execute("PRAGMA synchronous=FULL")
             connection.create_collation("DECIMAL", _decimal_collation)
@@ -1001,22 +1066,22 @@ class DailyMarketUniverseRunWriter:
             connection.execute("PRAGMA optimize")
             connection.close()
             connection = None
-            if tmp_path.stat().st_size > DAILY_MARKET_UNIVERSE_RUN_MAX_INDEX_BYTES:
+            if _path_stat(tmp_path).st_size > DAILY_MARKET_UNIVERSE_RUN_MAX_INDEX_BYTES:
                 raise DailyMarketUniverseRunError("run_index_byte_limit")
-            with tmp_path.open("r+b") as handle:
+            with _path_open(tmp_path, "r+b") as handle:
                 os.fsync(handle.fileno())
-            if index_path.exists():
+            if _path_exists(index_path):
                 _verify_staging_index(index_path, insert_rows)
-                tmp_path.unlink()
+                _path_unlink(tmp_path)
             else:
-                os.replace(tmp_path, index_path)
+                _path_replace(tmp_path, index_path)
         except BaseException:
             try:
                 if connection is not None:
                     connection.close()
             except Exception:
                 pass
-            tmp_path.unlink(missing_ok=True)
+            _path_unlink(tmp_path, missing_ok=True)
             raise
 
 
@@ -1025,10 +1090,10 @@ class DailyMarketUniverseRunReader:
 
     def __init__(self, output_root: Path, generation_identity_sha256: str) -> None:
         identity = _require_sha(generation_identity_sha256, "generation_identity_sha256")
-        self.output_root = output_root.resolve()
+        self.output_root = _resolve_path(output_root)
         self.generation_identity_sha256 = identity
         self.run_root = self.output_root / "generations" / identity
-        if not self.run_root.is_dir():
+        if not _path_is_dir(self.run_root):
             raise DailyMarketUniverseRunError("complete_generation_missing")
         self.manifest, self.receipt, self.manifest_sha256 = _read_complete_generation(self.run_root, verify_index=True)
         self.plan = _validate_manifest_plan(self.manifest)
@@ -1411,20 +1476,21 @@ def list_completed_runs(
     cursor = None if after_generation_identity is None else _require_sha(
         after_generation_identity, "after_generation_identity"
     )
-    root = Path(output_root).expanduser().resolve()
+    root = _resolve_path(Path(output_root).expanduser().absolute())
     generations = root / "generations"
-    if not generations.is_dir():
+    if not _path_is_dir(generations):
         return DailyMarketUniverseRunListing((), None, False)
-    names = heapq.nsmallest(
-        limit + 1,
-        (
-            entry.name
-            for entry in os.scandir(generations)
-            if entry.is_dir(follow_symlinks=False)
-            and _SHA256_RE.fullmatch(entry.name)
-            and (cursor is None or entry.name > cursor)
-        ),
-    )
+    with os.scandir(to_internal_io_path(generations)) as entries:
+        names = heapq.nsmallest(
+            limit + 1,
+            (
+                entry.name
+                for entry in entries
+                if entry.is_dir(follow_symlinks=False)
+                and _SHA256_RE.fullmatch(entry.name)
+                and (cursor is None or entry.name > cursor)
+            ),
+        )
     has_more = len(names) > limit
     chosen = names[:limit]
     items = tuple(_listed_descriptor(generations / name, name) for name in chosen)
@@ -1458,7 +1524,7 @@ def _load_parent_context(reference: DailyMarketParentCaptureReference) -> dict[s
         raise DailyMarketUniverseRunError("parent_capture_identity_invalid")
     for path in (snapshot_root, capture_root, universe_path):
         _reject_symlink_chain(path)
-    parent_store = BoundedRuleResearchParentWriter(capture_root / "parents")
+    parent_store = BoundedRuleResearchParentWriter(capture_root / "parents", read_only=True)
     package = parent_store.read(ref.capture_identity_sha256)
     body = package.get("capture")
     receipt = package.get("receipt")
@@ -1943,7 +2009,7 @@ def _read_complete_generation(
             raise DailyMarketUniverseRunError("run_index_hash_mismatch")
     else:
         try:
-            stat = index_path.stat()
+            stat = _path_stat(index_path)
         except OSError as exc:
             raise DailyMarketUniverseRunError("run_index_missing") from exc
         if stat.st_nlink != 1 or stat.st_size != index["size_bytes"] or stat.st_size > DAILY_MARKET_UNIVERSE_RUN_MAX_INDEX_BYTES:
@@ -1983,12 +2049,12 @@ def _descriptor_from_complete(
 def _connect_readonly(path: Path) -> sqlite3.Connection:
     _reject_symlink_chain(path)
     try:
-        stat = path.stat()
+        file_stat = _path_stat(path)
     except OSError as exc:
         raise DailyMarketUniverseRunError("run_index_missing") from exc
-    if not path.is_file() or stat.st_nlink != 1 or stat.st_size > DAILY_MARKET_UNIVERSE_RUN_MAX_INDEX_BYTES:
+    if not _path_is_file(path) or file_stat.st_nlink != 1 or file_stat.st_size > DAILY_MARKET_UNIVERSE_RUN_MAX_INDEX_BYTES:
         raise DailyMarketUniverseRunError("run_index_budget_or_link")
-    uri = path.resolve().as_uri() + "?mode=ro"
+    uri = to_internal_sqlite_uri(path, "ro")
     connection = sqlite3.connect(uri, uri=True)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA query_only=ON")
@@ -2094,10 +2160,10 @@ def _resolve_generation_child(root: Path, value: Any, name: str) -> Path:
     """拒絕平台路徑語法、symlink 與解析後離開 generation 的參照。"""
 
     relpath = _required_relpath(value, name)
-    resolved_root = root.resolve()
+    resolved_root = _resolve_path(root)
     candidate = resolved_root / relpath
     _reject_symlink_chain(candidate)
-    resolved_candidate = candidate.resolve()
+    resolved_candidate = _resolve_path(candidate)
     if resolved_candidate == resolved_root or not resolved_candidate.is_relative_to(resolved_root):
         raise DailyMarketUniverseRunError(f"{name}_outside_generation")
     return resolved_candidate
@@ -2117,13 +2183,13 @@ def _sha256_bytes(raw: bytes) -> str:
 def _read_json_limited(path: Path, limit: int) -> tuple[bytes, Any]:
     _reject_symlink_chain(path)
     try:
-        stat = path.stat()
+        file_stat = _path_stat(path)
     except OSError as exc:
         raise DailyMarketUniverseRunError("run_file_missing") from exc
-    if not path.is_file() or stat.st_nlink != 1 or stat.st_size > limit:
+    if not _path_is_file(path) or file_stat.st_nlink != 1 or file_stat.st_size > limit:
         raise DailyMarketUniverseRunError("run_file_budget_or_link")
     try:
-        with path.open("rb") as handle:
+        with _path_open(path, "rb") as handle:
             raw = handle.read(limit + 1)
         if len(raw) > limit:
             raise DailyMarketUniverseRunError("run_file_budget_or_link")
@@ -2147,14 +2213,14 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def _hash_file(path: Path, limit: int) -> tuple[str, int]:
     _reject_symlink_chain(path)
     try:
-        stat = path.stat()
+        file_stat = _path_stat(path)
     except OSError as exc:
         raise DailyMarketUniverseRunError("run_file_missing") from exc
-    if not path.is_file() or stat.st_nlink != 1 or stat.st_size > limit:
+    if not _path_is_file(path) or file_stat.st_nlink != 1 or file_stat.st_size > limit:
         raise DailyMarketUniverseRunError("run_file_budget_or_link")
     digest = hashlib.sha256()
     size = 0
-    with path.open("rb") as handle:
+    with _path_open(path, "rb") as handle:
         while True:
             block = handle.read(1024 * 1024)
             if not block:
@@ -2173,31 +2239,33 @@ def _verify_file_digest(path: Path, expected_sha: str, limit: int) -> None:
 
 
 def _atomic_write_new(path: Path, raw: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists() or path.is_symlink():
+    _path_mkdir(path.parent, parents=True, exist_ok=True)
+    if _path_exists(path):
         raise DailyMarketUniverseRunError("immutable_run_file_exists")
     _atomic_write(path, raw, replace=False)
 
 
 def _atomic_write_replace(path: Path, raw: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _path_mkdir(path.parent, parents=True, exist_ok=True)
     _atomic_write(path, raw, replace=True)
 
 
 def _atomic_write(path: Path, raw: bytes, *, replace: bool) -> None:
     _reject_symlink_chain(path.parent)
-    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}-", suffix=".tmp", dir=str(path.parent))
-    temp = Path(temp_name)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=".u-", suffix=".tmp", dir=to_internal_io_path(path.parent)
+    )
+    temp = Path(_strip_windows_io_prefix(temp_name))
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(raw)
             handle.flush()
             os.fsync(handle.fileno())
-        if not replace and (path.exists() or path.is_symlink()):
+        if not replace and _path_exists(path):
             raise DailyMarketUniverseRunError("immutable_run_file_exists")
-        os.replace(temp, path)
+        _path_replace(temp, path)
     except BaseException:
-        temp.unlink(missing_ok=True)
+        _path_unlink(temp, missing_ok=True)
         raise
 
 
@@ -2206,7 +2274,7 @@ def _resolve_output_root(value: str | Path) -> Path:
         raise DailyMarketUniverseRunError("output_root_required")
     raw = Path(value).expanduser().absolute()
     _reject_symlink_chain(raw)
-    return raw.resolve()
+    return _resolve_path(raw)
 
 
 def _index_values(
@@ -2328,12 +2396,18 @@ def _verify_staging_index(path: Path, expected_rows: Sequence[tuple[Any, ...]]) 
 def _reject_symlink_chain(path: Path) -> None:
     absolute = path.expanduser().absolute()
     for item in (absolute, *absolute.parents):
-        if item.is_symlink():
+        try:
+            info = _path_lstat(item)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise DailyMarketUniverseRunError("run_path_unavailable") from exc
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
             raise DailyMarketUniverseRunError("run_symlink_refused")
 
 
 def _require_disjoint_paths(left: Path, right: Path, code: str) -> None:
-    a = left.expanduser().resolve()
-    b = right.expanduser().resolve()
+    a = _resolve_path(left.expanduser().absolute())
+    b = _resolve_path(right.expanduser().absolute())
     if a == b or a.is_relative_to(b) or b.is_relative_to(a):
         raise DailyMarketUniverseRunError(code)

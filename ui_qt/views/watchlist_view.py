@@ -46,10 +46,18 @@ from app_module.daily_market_research_bookmark import (
     ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA,
     decode_daily_market_research_bookmark,
 )
+from app_module.daily_market_technical_universe_v4_bookmark import (
+    DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SCHEMA,
+    DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE,
+    DailyMarketTechnicalUniverseV4Bookmark,
+)
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import create_scroll_area, ensure_visible_rows
 from ui_qt.widgets.table_style import apply_financial_table_style
+from ui_qt.widgets.technical_universe_bookmark_controls import (
+    DailyMarketTechnicalUniverseV4BookmarkControls,
+)
 from ui_qt.widgets.v5_research_summary import V5ResearchSummary
 
 
@@ -62,6 +70,7 @@ class WatchlistView(QWidget):
     stockAnalysisRequested = Signal(str)
     stockResearchRequested = Signal(object)
     latestResearchRequested = Signal(object)
+    technicalBookmarkStateReady = Signal(object)
     
     def __init__(
         self,
@@ -87,6 +96,7 @@ class WatchlistView(QWidget):
         self.analysis_service = WatchlistAnalysisService(config) if config and hasattr(config, "output_root") else None
         self._analysis_request_id = 0
         self._analysis_worker: TaskWorker | None = None
+        self._shutdown_started = False
         self._research_bookmark_restore_tokens: list[object] = []
         self._observation_review: WatchlistReviewState | None = None
         logger.info("[WatchlistView] watchlist_service 設置完成")
@@ -408,6 +418,20 @@ class WatchlistView(QWidget):
         batch_actions_layout.addStretch()
         next_actions_layout.addLayout(research_actions_layout)
         next_actions_layout.addLayout(batch_actions_layout)
+
+        technical_bookmark_group = QGroupBox("完整母體技術研究收藏")
+        technical_bookmark_group.setObjectName("watchlistTechnicalUniverseBookmarks")
+        technical_bookmark_layout = QVBoxLayout(technical_bookmark_group)
+        technical_bookmark_layout.setContentsMargins(8, 6, 8, 8)
+        self.technical_bookmark_controls = DailyMarketTechnicalUniverseV4BookmarkControls(
+            self.watchlist_service,
+            parent=technical_bookmark_group,
+        )
+        self.technical_bookmark_controls.stateReady.connect(
+            self.technicalBookmarkStateReady.emit
+        )
+        technical_bookmark_layout.addWidget(self.technical_bookmark_controls)
+        next_actions_layout.addWidget(technical_bookmark_group)
         candidate_layout.addWidget(next_actions_group)
 
         observation_group = QGroupBox("收藏理由與查看狀態")
@@ -778,6 +802,16 @@ class WatchlistView(QWidget):
             status.upgrade_available and not status.is_repository
         )
 
+    def _refresh_technical_bookmark_controls(self) -> None:
+        """只在服務明確提供 typed reopen API 時刷新完整母體收藏。"""
+
+        service_type = type(self.watchlist_service)
+        supports_typed_reopen = callable(
+            getattr(service_type, "get_technical_universe_research_bookmark_state", None)
+        )
+        if supports_typed_reopen:
+            self.technical_bookmark_controls.refresh_bookmarks()
+
     def _upgrade_watchlist_storage(self) -> None:
         """明示升級；個人模式先預覽路徑且失敗時禁止來源寫入。"""
 
@@ -873,9 +907,17 @@ class WatchlistView(QWidget):
                 if "source" not in df.columns:
                     df["source"] = ""
                 df["來源"] = [
-                    "每日研究收藏"
-                    if str(value or "").strip() == DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
-                    else str(value or "未標示")
+                    (
+                        "完整母體技術研究收藏"
+                        if str(value or "").strip()
+                        == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE
+                        else (
+                            "每日研究收藏"
+                            if str(value or "").strip()
+                            == DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+                            else str(value or "未標示")
+                        )
+                    )
                     for value in df["source"]
                 ]
                 if "research_bookmark" not in df.columns:
@@ -947,6 +989,7 @@ class WatchlistView(QWidget):
             self._set_watchlist_focus_summary(count=len(stocks) if stocks else 0)
             self._update_research_lab_button_state(len(stocks))
             self._refresh_storage_status()
+            self._refresh_technical_bookmark_controls()
             logger.info("[WatchlistView._load_watchlist] 載入完成")
             
         except Exception as e:
@@ -977,6 +1020,7 @@ class WatchlistView(QWidget):
                 )
                 self._update_research_lab_button_state(0)
                 self._refresh_storage_status()
+                self._refresh_technical_bookmark_controls()
                 logger.error("[WatchlistView._load_watchlist] 已顯示錯誤提示")
             except Exception as e2:
                 logger.error(f"[WatchlistView._load_watchlist] 顯示錯誤提示時也失敗: {e2}")
@@ -1132,10 +1176,10 @@ class WatchlistView(QWidget):
                         level="error",
                     )
                     return
-                bookmark_id = str(raw_bookmark.get("bookmark_id", "") or "").strip()
+                bookmark_id = self._exact_research_bookmark_id_for_row(row)
                 if not bookmark_id:
                     self._set_status_label(
-                        "選取列的每日研究書籤缺少精確 ID；拒絕以股票代碼移除整列。",
+                        "選取列的研究書籤身份或來源列不一致；拒絕以股票代碼移除整列。",
                         level="error",
                     )
                     return
@@ -1161,7 +1205,7 @@ class WatchlistView(QWidget):
             getattr(self.watchlist_service, "remove_research_bookmark", None)
         ):
             self._set_status_label(
-                "觀察清單服務不支援精確移除每日研究書籤；未移除任何列。",
+                "觀察清單服務不支援精確移除研究書籤；未移除任何列。",
                 level="error",
             )
             return
@@ -1267,13 +1311,120 @@ class WatchlistView(QWidget):
     
     def _clear_watchlist(self):
         """清空觀察清單"""
+        rows: list[Mapping[str, object]] | None = None
+        get_stocks = getattr(self.watchlist_service, "get_stocks", None)
+        if callable(get_stocks):
+            try:
+                raw_rows = list(get_stocks())
+                if any(not isinstance(row, Mapping) for row in raw_rows):
+                    raise TypeError("觀察清單列格式無效")
+                rows = [row for row in raw_rows if isinstance(row, Mapping)]
+            except Exception as error:
+                QMessageBox.critical(self, "錯誤", f"清空清單前無法核對來源列：\n{error}")
+                return
+
+        has_full_n_bookmark = bool(
+            rows is not None
+            and any(self._row_is_technical_universe_bookmark(row) for row in rows)
+        )
+        bookmark_ids: list[str] = []
+        ordinary_rows: list[tuple[str, str, str]] = []
+        if has_full_n_bookmark and rows is not None:
+            for row in rows:
+                if self._row_declares_research_bookmark(row):
+                    bookmark_id = self._exact_research_bookmark_id_for_row(row)
+                    if not bookmark_id:
+                        self._set_status_label(
+                            "候選池含無法核對的研究書籤；拒絕清空，避免按股票代碼刪除完整母體收藏。",
+                            level="error",
+                        )
+                        return
+                    if bookmark_id not in bookmark_ids:
+                        bookmark_ids.append(bookmark_id)
+                    continue
+                stock_code = str(
+                    row.get("stock_code", row.get("證券代號", "")) or ""
+                ).strip()
+                if not stock_code:
+                    self._set_status_label(
+                        "候選池含缺少股票代碼的一般列；拒絕清空完整母體收藏。",
+                        level="error",
+                    )
+                    return
+                source_value = row.get("source", row.get("來源", ""))
+                source = source_value.strip() if isinstance(source_value, str) else ""
+                source_id_value = row.get("source_id", "")
+                source_id = (
+                    source_id_value.strip()
+                    if isinstance(source_id_value, str)
+                    else ""
+                )
+                ordinary_rows.append((stock_code, source_id, source))
+
+            if bookmark_ids and not callable(
+                getattr(self.watchlist_service, "remove_research_bookmark", None)
+            ):
+                self._set_status_label(
+                    "觀察清單服務不支援依精確身份移除研究收藏；未清空候選池。",
+                    level="error",
+                )
+                return
+            if ordinary_rows and not callable(
+                getattr(self.watchlist_service, "remove_watchlist_item", None)
+            ):
+                self._set_status_label(
+                    "觀察清單服務無法精確定位一般列；未清空完整母體收藏。",
+                    level="error",
+                )
+                return
+
         reply = QMessageBox.question(
             self, "確認", 
-            "確定要清空整個候選池嗎？每日研究書籤也會一併移除；此操作無法復原。",
+            (
+                "確定要清空整個候選池嗎？完整母體收藏會按 payload identity 精確移除，"
+                "一般列也會逐列核對，不會按股票代碼刪除完整母體收藏。"
+                if has_full_n_bookmark
+                else "確定要清空整個候選池嗎？每日研究書籤也會一併移除；此操作無法復原。"
+            ),
             QMessageBox.Yes | QMessageBox.No
         )
         
         if reply != QMessageBox.Yes:
+            return
+
+        if has_full_n_bookmark:
+            try:
+                remove_bookmark = getattr(
+                    self.watchlist_service, "remove_research_bookmark"
+                )
+                remove_item = getattr(self.watchlist_service, "remove_watchlist_item")
+                removed_items = 0
+                for bookmark_id in bookmark_ids:
+                    result = remove_bookmark(bookmark_id)
+                    status = str(getattr(result, "status", "") or "")
+                    if status not in {"removed", "deleted", "success", "ok"} and not bool(
+                        getattr(result, "removed", False)
+                    ):
+                        raise RuntimeError(
+                            f"精確移除研究收藏失敗：{bookmark_id}（{status or 'unknown'}）"
+                        )
+                    removed_items += 1
+                for stock_code, source_id, source in ordinary_rows:
+                    result = remove_item(stock_code, source_id, source)
+                    if str(getattr(result, "status", "") or "") != "removed":
+                        raise RuntimeError(
+                            f"一般列身份已變動或無法精確移除：{stock_code}"
+                        )
+                    removed_items += 1
+                restore_available = bool(self._research_bookmark_restore_tokens)
+                self.restore_research_bookmark_btn.setEnabled(restore_available)
+                self.restore_research_bookmark_btn.setVisible(restore_available)
+                QMessageBox.information(self, "成功", f"已清空候選池，共精確移除 {removed_items} 個項目")
+                self._load_watchlist()
+                self.watchlistUpdated.emit()
+            except Exception as error:
+                self._load_watchlist()
+                QMessageBox.critical(self, "錯誤", f"清空清單未能完整完成：\n{error}")
             return
         
         try:
@@ -1308,6 +1459,23 @@ class WatchlistView(QWidget):
         row = self.stocks_model.getDataFrame().iloc[rows[0].row()]
         self._render_observation(row)
         code = str(row["證券代號"]).strip()
+        if self._row_is_technical_universe_bookmark(row):
+            self.stock_analysis_btn.setEnabled(False)
+            self.latest_research_btn.setEnabled(False)
+            self._set_source_choice_state(row)
+            self.analysis_context_label.setText(
+                "狀態：完整母體收藏｜決策日：未知｜資料日：未知｜來源：固定保存 pins"
+            )
+            self.analysis_text.setPlainText(
+                "完整母體五規則結果由下方收藏控制項沿原 query 與 receipt typed reopen；"
+                "不讀取 legacy 個股分析或最新來源。"
+            )
+            self._set_watchlist_focus_summary(
+                row=row,
+                status="完整母體收藏",
+                message="請使用下方收藏控制項重開固定來源。",
+            )
+            return
         source = row.get("source_id", "")
         legacy_source_id = source.strip() if isinstance(source, str) else ""
         identity = self._row_decision_identity(row, code)
@@ -1476,6 +1644,57 @@ class WatchlistView(QWidget):
             return not pd.isna(value)
         return True
 
+    @staticmethod
+    def _is_technical_universe_bookmark_payload(value: object) -> bool:
+        return (
+            isinstance(value, Mapping)
+            and value.get("schema_version")
+            == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SCHEMA
+        )
+
+    @classmethod
+    def _row_is_technical_universe_bookmark(cls, row: object) -> bool:
+        if not hasattr(row, "get"):
+            return False
+        source = str(row.get("source", row.get("來源", "")) or "").strip()
+        return (
+            source == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE
+            or cls._is_technical_universe_bookmark_payload(
+                row.get("research_bookmark")
+            )
+        )
+
+    @classmethod
+    def _exact_research_bookmark_id_for_row(cls, row: object) -> str:
+        """讀取列內既有的精確身份，不替 full-N payload 補舊欄位別名。"""
+
+        if not hasattr(row, "get"):
+            return ""
+        payload = row.get("research_bookmark")
+        if not isinstance(payload, Mapping):
+            return ""
+        if cls._is_technical_universe_bookmark_payload(payload):
+            try:
+                bookmark = DailyMarketTechnicalUniverseV4Bookmark.from_dict(payload)
+            except Exception:
+                return ""
+            code = str(row.get("證券代號", row.get("stock_code", "")) or "").strip()
+            source = str(row.get("source", row.get("來源", "")) or "").strip()
+            source_id = str(row.get("source_id", "") or "").strip()
+            if (
+                bookmark.stock_code != code
+                or source != DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE
+                or source_id != bookmark.bookmark_identity_sha256
+            ):
+                return ""
+            return bookmark.bookmark_identity_sha256
+        if (
+            str(row.get("source", row.get("來源", "")) or "").strip()
+            == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE
+        ):
+            return ""
+        return str(payload.get("bookmark_id", "") or "").strip()
+
     @classmethod
     def _row_declares_research_bookmark(cls, row: object) -> bool:
         if not hasattr(row, "get"):
@@ -1483,7 +1702,10 @@ class WatchlistView(QWidget):
         if cls._has_research_bookmark(row.get("research_bookmark")):
             return True
         source = str(row.get("source", row.get("來源", "")) or "").strip()
-        return source == DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
+        return source in {
+            DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE,
+            DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE,
+        }
 
     @classmethod
     def _research_bookmark_row_label(cls, row: object) -> str:
@@ -1491,6 +1713,8 @@ class WatchlistView(QWidget):
             return "書籤列格式錯誤；來源不可核驗"
         value = row.get("research_bookmark")
         if not cls._has_research_bookmark(value) and cls._row_declares_research_bookmark(row):
+            if cls._row_is_technical_universe_bookmark(row):
+                return "完整母體書籤內容缺失；來源不可核驗"
             return "書籤內容缺失；來源不可核驗"
         return cls._research_bookmark_label(value)
 
@@ -1513,6 +1737,17 @@ class WatchlistView(QWidget):
             return (
                 f"已收藏原排名｜{period}／{direction}｜第 {rank_context.selected_rank} 名｜"
                 f"決策日 {rank_context.decision_date}"
+            )
+        if schema == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SCHEMA:
+            try:
+                bookmark = DailyMarketTechnicalUniverseV4Bookmark.from_dict(value)
+                decision_date = bookmark.origin_query.decision_date.isoformat()
+            except Exception as exc:
+                code = str(getattr(exc, "code", "") or "").strip()
+                return f"完整母體書籤無效；來源不可核驗：{code or type(exc).__name__}"
+            return (
+                f"已收藏完整母體技術研究｜決策日 {decision_date}｜"
+                f"股票 {bookmark.stock_code}｜ID {bookmark.bookmark_identity_sha256[:12]}"
             )
         if schema != "daily-market-research-bookmark.v1":
             return f"書籤版本不支援：{schema or '未提供'}"
@@ -1551,6 +1786,12 @@ class WatchlistView(QWidget):
                 self._set_status_label(message, level=level)
 
         bookmark = row.get("research_bookmark") if hasattr(row, "get") else None
+        if self._row_is_technical_universe_bookmark(row):
+            fail(
+                "完整母體技術收藏需由下方收藏控制項 typed reopen；不會轉入舊每日研究或最新來源路徑。",
+                level="warning",
+            )
+            return None
         if not isinstance(bookmark, Mapping):
             fail(
                 "每日研究書籤內容缺失或格式錯誤；已拒絕下鑽，請勿改用手動來源。",
@@ -1635,6 +1876,8 @@ class WatchlistView(QWidget):
         bookmark: Mapping[str, object],
         expected_stock_code: str,
     ) -> bool:
+        if bookmark.get("schema_version") == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SCHEMA:
+            return False
         if not isinstance(context, ResearchStockContextDTO):
             return False
         if bookmark.get("schema_version") == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
@@ -1724,6 +1967,12 @@ class WatchlistView(QWidget):
     def _research_bookmark_detail(
         bookmark: object, context: ResearchStockContextDTO | None
     ) -> str:
+        if (
+            isinstance(bookmark, Mapping)
+            and bookmark.get("schema_version")
+            == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SCHEMA
+        ):
+            return "完整母體技術收藏需由下方 typed reopen 控制項重開；不轉入舊每日研究 context。"
         if context is None or not isinstance(bookmark, Mapping):
             return "書籤格式無效、不支援或已無法讀回；不會改用手動或最新來源。"
         if bookmark.get("schema_version") == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
@@ -1786,6 +2035,10 @@ class WatchlistView(QWidget):
             button.setEnabled(False)
             return
         code = str(row.get("證券代號", "") or "").strip()
+        if self._row_is_technical_universe_bookmark(row):
+            button.setVisible(False)
+            button.setEnabled(False)
+            return
         identity = self._row_decision_identity(row, code)
         needs_choice = bool(code) and not identity.is_linked
         button.setVisible(needs_choice)
@@ -2064,8 +2317,16 @@ class WatchlistView(QWidget):
                 )
 
     def closeEvent(self, event):
-        self._analysis_request_id += 1
+        self.begin_shutdown()
         super().closeEvent(event)
+
+    def begin_shutdown(self) -> bool:
+        """使舊分析結果失效並取消收藏控制項，不更動分析 worker 的既有流程。"""
+
+        if not self._shutdown_started:
+            self._shutdown_started = True
+            self._analysis_request_id += 1
+        return self.technical_bookmark_controls.begin_shutdown()
 
     def _open_stock_analysis(self, _checked=False):
         """以畫面排序後的選取列傳送股票代號與來源脈絡。"""
@@ -2077,6 +2338,12 @@ class WatchlistView(QWidget):
         frame = self.stocks_model.getDataFrame()
         row = frame.iloc[rows[0].row()]
         code = str(row["證券代號"]).strip()
+        if self._row_is_technical_universe_bookmark(row):
+            self._set_status_label(
+                "完整母體技術收藏請使用下方收藏控制項重開；已拒絕舊個股研究路徑。",
+                level="warning",
+            )
+            return
         if self._row_declares_research_bookmark(row):
             context = self._context_from_row_bookmark(row, code)
             if context is None:
@@ -2113,6 +2380,12 @@ class WatchlistView(QWidget):
         row, code = selected
         if not code:
             return False
+        if self._row_is_technical_universe_bookmark(row):
+            self._set_status_label(
+                "完整母體技術收藏固定於原保存來源；不提供改用最新來源的路徑。",
+                level="warning",
+            )
+            return False
         if self._row_declares_research_bookmark(row):
             context = self._context_from_row_bookmark(row, code)
             if context is None:
@@ -2144,6 +2417,8 @@ class WatchlistView(QWidget):
     def _bookmark_group_matches_context(
         bookmark: Mapping[str, object], context: ResearchStockContextDTO
     ) -> bool:
+        if bookmark.get("schema_version") == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SCHEMA:
+            return False
         if bookmark.get("schema_version") == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
             try:
                 decoded = decode_daily_market_research_bookmark(bookmark)

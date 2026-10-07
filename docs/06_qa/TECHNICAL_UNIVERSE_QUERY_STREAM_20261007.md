@@ -2,7 +2,7 @@
 
 本葉片沿既有完整母體 store 的逐段 verified-parent callback，直接消費同次嚴格核驗的 child snapshots。每段只留下股票代碼、排序值與精確 child artifact 引用；全域排序後只重開頁面涉及的 child，而不再次重開整個256股 parent。不同查詢仍重新核驗來源，沒有跨操作快取、latest fallback 或放寬 hash／來源／取消 guard。
 
-原 query 的来源／時鐘／方法／日期不符仍回傳 `technical_universe_v4_query_source_identity_mismatch`。完整 receipt 核驗成功且計數一致後才回傳頁面；callback 途中失敗不發布部分結果。策略判定沿原保存的五規則結果，排序使用 Decimal／整數等原精確型別，不新增金融 float 或讀未來行情。
+原 query 的來源／時鐘／方法／日期不符仍回傳 `technical_universe_v4_query_source_identity_mismatch`。完整 receipt 核驗成功且計數一致後才回傳頁面；callback 途中失敗不發布部分結果。策略判定沿原保存的五規則結果，排序使用 Decimal／整數等原精確型別，不新增金融 float 或讀未來行情。
 
 ## 驗證
 

@@ -672,3 +672,25 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 目前新增產製設定仍須將完整所選收據核驗移至背景，GUI只收有界輸入與明示未核驗metadata；比較主入口由原view owner接續，root負責共享詳情接線與驗收。H20／三策略／窄欄真人四項沿已提供的啟動檔驗，未收到回報前維持未驗。
 
 P09 收藏接續契約（來源調查後釋出）：現 `ResearchSessionStore` 明確只保存記憶體狀態，不是持久化儲存；現 `WatchlistService.add_research_bookmark` 使用既有不可變 payload、bookmark identity、revision／continuity及COW writer，但decoder只認每日 v1／原排名 v2。新五規則完整母體不得塞進舊source kind或把session當持久化完成。Luna先交獨立immutable full-N bookmark decoder／公開strict重開（原query、selected stock、原snapshot/source identity、捲動位置與比較集合）；中央後續擴充現watchlist decoder／COW caller及UI，不另建私人store。缺件與hash漂移明示拒絕、續跑之後舊收藏仍沿舊receipt，不借latest；建payload、真正持久化、UI收藏及新程序恢復分別驗收。
+
+### 2026-10-07 真人回饋後接續核對
+
+真人已回報：三個預設策略全股票有結果；c589 的 H20 十檔皆未知且 2382 研究按鈕停用；推薦理由空間、孤立標題編號及窄版個人模式排版仍不合格。因此前段「未收到真人回報」為歷史狀態，不能沿用為現在的接受結果。
+
+P05／P14 已固定 0f25b8c6 新候選：外部研究 storage 設定與完整未知診斷修正，Python/exe 合成設定讀取及一般同版隔離比較通過；原十股 canonical 打包核驗與真人重驗仍待。source-mode 2382 原 pin 可核驗不代表 exe 已通過。P13 版面已實際渲染／幾何回歸，仍缺新候選 Native 接受。
+
+P09 已中央驗真 producer／COW／新程序與實際收藏按鈕，再經實際 WatchlistView 重開按鈕、MainWindow handler 還原原 query／2382／比較籃；主視窗外層仍為隔離 route host，未聲稱完整初始化／Native。背景刷新通知丟失已補排隊，八項中央回歸通過。P01 逐段 verified-parent API 已提交 bf18c022；query 消費與 257 完整回歸仍在進行，尚未取得新非剖析延遲，1000／真N／冷暖p95要求維持。
+
+其餘 P03／P06–P08／P10–P12 與 P13 全用途接受、M3 出口仍沿上表 open。最新具名驗證與限制見 M2 QA、H20 frozen source root QA 與 recommendation reading layout QA；不以本輪真人缺陷修正縮小原 P00–P14 目標。
+
+接續更新：已提供 `0f25b8c6` 候選專用啟動檔，請真人驗推薦理由展開／孤立編號移除、窄視窗個人模式與2382研究按鈕；交付時明示原十股 canonical 打包核驗尚未通過，未以交付啟動檔宣告 P05 完成。P01 原固定257股 pins 的新單次非剖析查詢為8.198秒，原35.808秒；counts與頁面一致，但並行QA下的單次結果不取代冷暖／p95／1000／真N。正常初始化 MainWindow 收藏重開與完整257 UI 回歸另列進行中。
+
+正常初始化 MainWindow 收藏／重開／合作關閉已補驗：owner與中央各1 passed，真兩股保存來源、觀察清單刷新與原query／2382／比較籃還原，沒有假主視窗。原257跨段UI另執行，不用兩股折抵；候選／Native仍待。query leaf已中央保存74735ded，來源錯誤碼原257針對case修後通過。下一效能葉片先核snapshot語意驗證中重疊fingerprints成本，保持每次讀回嚴格核驗與原金融／未來函數規範。
+
+### P03 下一葉片的來源接點核對（2026-10-07，尚未實作）
+
+中央重核現碼後，既有月營收來源不是只能永久顯示未知：`RecommendationCurrentFundamentalProvider` 已有 readonly SQLite／原始版本核驗，`CurrentMonthlyRevenueReadResult` 帶同次 aware cutoff、前期 comparator 與比較 snapshot SHA；`CurrentObservedMonthlyRevenueInput` 區分 period、TWD monthly_flow、observed／source_available／available_at、原件與derived版本，current-observed 的 formal_pit_eligible 預設 False。F12 第一葉片應沿此來源建立 Decimal YoY 與完整前期證據，再接保存、全域排序與判讀，不能只拿單一因子值或回填可得日。缺基期、基期0、版本衝突、公告晚於截止與未知可得時間都須具名處理；同一輸入 prefix 後追加未來資料不得改變原結果。
+
+`FundamentalObservation`／`build_revenue_yoy_factor` 只有 available_date 是否缺失的投影檢查，不能單獨作當下截止合格證明。跨域新 adapter 必須明示 aware decision cutoff 與來源 scope，保存 domain period／as-of／available_at／coverage／單位／原件 pins；current-observed 不取得歷史 PIT 或正式交易資格。保存 schema／與既有五規則 source pins 的連接方式先由中央審核，舊 v4 bytes 與錯源拒絕契約保持。
+
+F08 的 `PortfolioChipService` 確有連續3日與500000股語意及估算／不可用事件 coverage，但它的 DTO 不提供已核 aware available_at，不能直接轉成歷史合格條件。F16／F17 的 `CurrentMarketStatusReader` 是已驗當下註記，明示 historical_replay_allowed=False；公告事件 effective／published／observed dates 分開，不把當下註記冒稱完整歷史事件庫。這些仍須各自完成資料取得／版本保存／正常更新入口與原§5、§9驗收，不由F12第一葉片取代。

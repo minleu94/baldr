@@ -1580,3 +1580,10 @@ v4 技術保存底層（2026-10-07 dev）：daily_market_technical_snapshot_v4_p
 完整母體 v4 查詢由 daily_market_technical_universe_v4_query 讀固定 store generation／plan／receipt pins，對全部完成分段做三態 AND／OR 與全域排序，再分頁；候選只留輕量排序鍵，不把完整母體列DTO當快取。stock reader固定原頁與原child下鑽；comparison reader保留每欄原query並strict重開。bookmark.v1是獨立technical-universe來源，沿WatchlistService既有JSON／COW儲存及revision；新kind不能轉成舊每日context，typed reopen回原query／個股／比較。UI完整收藏接線及性能仍施工。
 
 2026-10-07 逐段核驗 API：parent read_verified 沿同次 strict read 返回核驗批次；StoreReader.read_exact_with_verified_parent_callback 在 selected receipt prefix 每段核完身份／分母／來源／calculation 後同步交付，再釋放最多256股context。整個API成功前consumer只保留暫存；後段失敗或取消不得採用先前段結果。舊read/read_exact保持相容，沒有全N DTO cache。query採用與性能另驗，詳見 [逐段核驗QA](../06_qa/TECHNICAL_VERIFIED_PARENT_STREAM_20261007.md)。
+### 五規則完整母體的正常UI保存與重開（2026-10-07）
+
+`MainWindow → RecommendationView → DailyMarketResearchView` 掛載 `DailyMarketTechnicalUniverseV4View`，沿設定output root下的 `research_snapshots/technical_universe` 瀏覽完整來源。真TWStockConfig注入deferred production setup factory；設定核驗、產製與精確讀取在worker執行，GUI保留來源pins／query／頁碼／選取與比較籃。既有每日來源與此五規則完整來源各守原版本契約，不合併分母。
+
+完整來源個股及比較DTO分別交只讀詳情widget；比較返回帶原query與股票，背景嚴格還原。收藏payload由worker準備，主頁確認前後重核當前query與選股，再交既有WatchlistService/COW持久化。Watchlist的typed完整母體控制項背景嚴格重開原保存pins，經MainWindow導覽到原研究頁；不以舊每日或最新研究reader讀此kind，亦不自動重產製。原部分／歷史收據及source錯配／缺件保持明確拒絕。
+
+全域關閉凍結Recommendation與Watchlist pending generation，合作取消reader／producer，晚到結果不再導覽；controls忙碌時收到刷新通知合併成一次pending refresh。真257跨段UI及真MainWindow兩股保存／重開／shutdown均有工程驗證，詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。Native、新候選同版、完整資料域與效能 Gate 分列，未授金融或historical PIT資格。

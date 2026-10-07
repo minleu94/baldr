@@ -38,6 +38,12 @@ from app_module.daily_market_cohort_projection import (
 from app_module.daily_market_research_screener import DailyMarketResearchScreenRow
 from app_module.daily_research_source_selection import DailyResearchQuery
 from ui_qt.widgets.daily_research_source_selector import DailyResearchSourceSelector
+from ui_qt.views.daily_market_technical_universe_v4_view import DailyMarketTechnicalUniverseV4View
+from ui_qt.views.daily_market_technical_stock_v4_view import DailyMarketTechnicalStockV4View
+from app_module.daily_market_technical_universe_v4_stock import DailyMarketTechnicalUniverseV4Stock
+from app_module.daily_market_technical_universe_v4_comparison import DailyMarketTechnicalUniverseV4Comparison
+from app_module.daily_market_technical_universe_v4_bookmark import DailyMarketTechnicalUniverseV4Bookmark
+from ui_qt.views.daily_market_technical_comparison_v4_view import DailyMarketTechnicalComparisonV4View
 from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
     feature_contract_for_version,
@@ -165,6 +171,9 @@ class DailyMarketResearchView(QWidget):
         self._last_emitted_query: DailyResearchQuery | None = None
         self.source_selector: DailyResearchSourceSelector | None = None
         self.universe_view = None
+        self.technical_universe_view: DailyMarketTechnicalUniverseV4View | None = None
+        self._technical_stock_dialog: QDialog | None = None
+        self._technical_comparison_dialog: QDialog | None = None
         self._universe_origin: tuple[str, str, object] | None = None
         self._pending_universe_stock: tuple[object, str, DailyResearchQuery] | None = None
         self._build_ui()
@@ -193,6 +202,21 @@ class DailyMarketResearchView(QWidget):
                 self.universe_view.childSnapshotRequested.connect(self._accept_universe_stock)
                 self.universe_view.cancelRequested.connect(self.cancel_active_operation)
                 root.addWidget(self.universe_view)
+                from data_module.config import TWStockConfig
+                from ui_qt.widgets.daily_market_technical_v4_production_setup import (
+                    make_daily_market_technical_v4_deferred_setup_factory,
+                )
+                production_factory = (
+                    make_daily_market_technical_v4_deferred_setup_factory(config, parent=self)
+                    if isinstance(config, TWStockConfig) else None
+                )
+                self.technical_universe_view = DailyMarketTechnicalUniverseV4View(
+                    Path(output_root) / "research_snapshots" / "technical_universe", self,
+                    production_request_factory=production_factory)
+                self.technical_universe_view.stockSelected.connect(self._accept_technical_stock)
+                self.technical_universe_view.comparisonReady.connect(self._accept_technical_comparison)
+                self.technical_universe_view.bookmarkPrepared.connect(self._save_technical_bookmark)
+                root.addWidget(self.technical_universe_view)
             self.source_selector = DailyResearchSourceSelector(config,
                 snapshot_root=getattr(self.service, "snapshot_root", None), parent=self)
             self.source_selector.sourceLoaded.connect(self._accept_selected_source)
@@ -2428,6 +2452,125 @@ class DailyMarketResearchView(QWidget):
         self._return_query = None
         self._accept_snapshot(snapshot, sync_cutoff=True)
 
+    def _accept_technical_stock(self, value: object) -> None:
+        if self._shutting_down or not isinstance(value, tuple) or len(value) != 3:
+            return
+        query, row, stock = value
+        view = self.technical_universe_view
+        if (view is None or view.current_query != query
+                or not isinstance(stock, DailyMarketTechnicalUniverseV4Stock)
+                or stock.origin_query != query
+                or getattr(row, "snapshot_identity_sha256", None) != stock.snapshot.snapshot_identity_sha256):
+            return
+        if self._technical_stock_dialog is not None:
+            self._technical_stock_dialog.close()
+        dialog = QDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.setWindowTitle(f"{stock.snapshot.stock_code} 保存的五規則研究")
+        layout = QVBoxLayout(dialog)
+        details = DailyMarketTechnicalStockV4View(dialog)
+        details.show_stock(stock)
+        details.returnRequested.connect(lambda original: self._return_technical_stock(original, dialog))
+        layout.addWidget(details)
+        dialog.resize(800, 600)
+        self._technical_stock_dialog = dialog
+        dialog.destroyed.connect(lambda: self._clear_technical_dialog(dialog))
+        dialog.show()
+
+    def _accept_technical_comparison(self, value: object) -> None:
+        if self._shutting_down or not isinstance(value, DailyMarketTechnicalUniverseV4Comparison):
+            return
+        if self._technical_comparison_dialog is not None:
+            self._technical_comparison_dialog.close()
+        dialog = QDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.setWindowTitle("原保存五規則研究比較")
+        layout = QVBoxLayout(dialog)
+        details = DailyMarketTechnicalComparisonV4View(dialog)
+        details.show_comparison(value)
+        details.originRequested.connect(lambda origin: self._return_technical_comparison(origin, dialog))
+        layout.addWidget(details)
+        dialog.resize(900, 650)
+        self._technical_comparison_dialog = dialog
+        dialog.destroyed.connect(lambda: self._clear_technical_comparison_dialog(dialog))
+        dialog.show()
+
+    def _save_technical_bookmark(self, value: object) -> bool:
+        """只有原查詢與選股仍相符時，才確認並交既有收藏 writer 保存。"""
+        view = self.technical_universe_view
+        if (self._shutting_down or view is None
+                or not isinstance(value, DailyMarketTechnicalUniverseV4Bookmark)
+                or view.current_query != value.origin_query):
+            return False
+        selected = view.table.selectionModel().selectedRows()
+        if len(selected) != 1:
+            return False
+        item = view.table.item(selected[0].row(), 0)
+        row = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if (getattr(row, "stock_code", None) != value.selected_stock_code
+                or getattr(row, "snapshot_identity_sha256", None) != value.selected_snapshot_identity_sha256):
+            view.status.setText("收藏準備後選股已改變；請重新選取並收藏。")
+            return False
+        add_bookmark = getattr(self.watchlist_service, "add_research_bookmark", None)
+        if not callable(add_bookmark):
+            view.status.setText("目前入口沒有可用的觀察清單儲存服務。")
+            return False
+        callback = self.bookmark_confirmation_callback
+        accepted = bool(callback(value)) if callback is not None else (
+            QMessageBox.question(
+                self, "收藏原保存研究",
+                f"保存 {value.selected_stock_code} 的原查詢與 {len(value.comparison_selections)} 筆比較。\n"
+                f"決策日：{value.origin_query.decision_date}；頁碼：{value.origin_query.page_index + 1}。\n"
+                "收藏固定這個保存版本；重開不會換成新行情。",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) == QMessageBox.StandardButton.Yes
+        )
+        if not accepted or self._shutting_down or view.current_query != value.origin_query:
+            return False
+        current = view._selected_row()
+        if (current is None or current.stock_code != value.selected_stock_code
+                or current.snapshot_identity_sha256 != value.selected_snapshot_identity_sha256):
+            view.status.setText("確認期間來源或選股已改變；未保存收藏。")
+            return False
+        try:
+            result = add_bookmark(value)
+        except Exception as exc:
+            view.status.setText(f"收藏未保存：{exc}")
+            return False
+        if getattr(result, "status", None) not in {"added", "already_present"}:
+            view.status.setText(str(getattr(result, "message", "收藏保存失敗。")))
+            return False
+        self.bookmarkSaved.emit(result)
+        view.status.setText("已收藏原查詢與比較集合；可從觀察清單重開。")
+        return True
+
+    def _clear_technical_comparison_dialog(self, dialog: QDialog) -> None:
+        if self._technical_comparison_dialog is dialog:
+            self._technical_comparison_dialog = None
+
+    def _return_technical_comparison(self, origin: object, dialog: QDialog) -> None:
+        from app_module.daily_market_technical_universe_v4_query import DailyMarketTechnicalUniverseV4Query
+        if (self._shutting_down or self.technical_universe_view is None
+                or not isinstance(origin, tuple) or len(origin) != 2
+                or not isinstance(origin[0], DailyMarketTechnicalUniverseV4Query)
+                or not isinstance(origin[1], str)):
+            return
+        self.technical_universe_view.restore_origin(origin[0], origin[1])
+        dialog.close()
+
+    def _clear_technical_dialog(self, dialog: QDialog) -> None:
+        if self._technical_stock_dialog is dialog:
+            self._technical_stock_dialog = None
+
+    def _return_technical_stock(self, query: object, dialog: QDialog) -> None:
+        view = self.technical_universe_view
+        if view is None or view.current_query != query:
+            self.status_label.setText("原五規則查詢已改變；請回到名單確認來源。")
+            return
+        dialog.close()
+        view.table.setFocus()
+
     def _accept_universe_stock(self, value: object) -> None:
         """完整母體沿原 child 下鑽；原母體 query 留在來源頁，不縮成 child 分母。"""
         from app_module.daily_market_universe_selection import UniverseResearchQuery
@@ -3297,7 +3440,12 @@ class DailyMarketResearchView(QWidget):
         self._pending_universe_stock = None
         selector_done = self.source_selector is None or self.source_selector.begin_shutdown()
         universe_done = self.universe_view is None or self.universe_view.begin_shutdown()
-        selector_done = selector_done and universe_done
+        technical_done = self.technical_universe_view is None or self.technical_universe_view.begin_shutdown()
+        if self._technical_stock_dialog is not None:
+            self._technical_stock_dialog.close()
+        if self._technical_comparison_dialog is not None:
+            self._technical_comparison_dialog.close()
+        selector_done = selector_done and universe_done and technical_done
         if self._shutting_down:
             worker = self._worker
             return selector_done and (worker is None or not worker.isRunning())

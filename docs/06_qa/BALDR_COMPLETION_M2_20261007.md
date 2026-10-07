@@ -214,3 +214,54 @@ COW新增重驗首輪C:/t/fulln-watchlist-cow-root-20261007-a失敗：原convert
 COW收藏移除／復原矩陣中央追加：首輪5915 terminal1（1failed16passed13.00s）指出restore重試仍比payload未知名稱，已令外層身份統一用固定code顯示標籤，未改payload或COW guard。82287 terminal0：17passed20.74s（C:/t/fulln-watchlist-restore-root-20261007-b），移除只動具名ID、完整收藏內容復原、revision追加、第二次復原already_present且不增revision，新程序source讀回與旧來源兼容同run通過。跨257比較owner23951 terminal0：3passed592.10s；全N來源clock修正與deferred worker仍另驗，時間不授效能Gate。
 
 中央已讀owner原log：query20159排序單案terminal0，1passed423.34s（不是整份suite重跑）；9924其餘7case原通過仍保留首紅。bookmark25165 terminal0：3passed12.22s。當前query／bookmark兩模組與兩測試＋WatchlistService共5檔mypy0，parent Callable實檔import已核；新parent verified-context變更另由owner驗證，不據此完成fullN性能。
+
+正常shared每日入口已inject make_daily_market_technical_v4_deferred_setup_factory；view request/deferred union兼容，prepare_request在TaskWorker執行後才producer。中央80204 terminal0：107passed23.05s（C:/t/deferred-shared-entry-root-20261007-a，factory／workbench／真COW收藏與正常比較返回）；短source-clock cache跨pins清理＋worker取消不producer兩case中央2passed0.88s，4deselected不是完整套件（C:/t/deferred-clock-root-20261007-a）。跨clock呈現為純presentation合成pages，不授兩個新真generation旅程；真257比較3case證據沿23951，不因短測折抵性能。
+
+中央 shared _save_technical_bookmark已加型別／原query／所選股票snapshot guard，確認前與確認後皆核當前選股，沿原bookmark_confirmation_callback／QMessageBox與WatchlistService保存；只有added/already_present才發bookmarkSaved。root真COW保存fixture到正常DailyMarketResearchView回歸1039 terminal0：86passed19.28s（C:/t/fulln-bookmark-save-entry-root-20261007-a），接受原收藏already_present通知、拒絕確認不通知；此測試直接呼保存slot，完整按鈕worker準備Signal仍待owned leaf，不能宣告UI收藏閉環。全域mypy881檔0、compile通過，validator25通過4保護跳過。parent read_verified owner完整檔4passed10.49s，context API尚待中央審核接store/query，不宣告延遲改善。
+
+2026-10-07 收藏訊號中央接線：正常每日研究入口的 bookmarkPrepared 已連到 _save_technical_bookmark。中央測試改由真實 view Signal 送入原保存收藏，驗 added/already_present 通知及拒絕確認不通知；42855 terminal0：86 passed in 18.05s，隔離目錄 C:/t/fulln-bookmark-signal-root-20261007-a。全域 mypy 882 檔無錯誤、兩修改檔 py_compile 通過、更新頁 validator 25 通過／4 保護跳過。此證據驗 Signal 到持久化；完整按鈕 worker 到觀察清單重新開啟的正常主視窗旅程仍待整合，不宣告 P09 完成。
+
+2026-10-07 真人回饋：候選 H20 全列未知、2382 研究按鈕停用，原 H20 真人驗收未完成，不能以 synthetic 回歸折抵。三預設策略已產生全股票結果，理由閱讀與個人模式非全螢幕排版仍不合格。dev 增加理由展開／收合（520px 阅读區，沿原內容不重算）、移除孤立標題 4.、個人模式 layout 最低內容高度避免垂直控制項壓縮。22173 terminal0：版面＋workbench 88passed9.60s；全域 mypy882檔無錯誤、compile通過。待新候選 Native 畫面驗收，H20根因另查，不直接啟用無資格未知列。parent verified reader中央92376 terminal0：4passed12.12s，效能尚未完成。
+
+窄版追加幾何驗證尚未通過：800×700、歷史 status 真實長文字，18272 terminal1：1failed87passed13.19s。歷史讀取／回退按鈕 QRect 實際垂直重疊 2px，並非僅測試方向假設；保留失敗，後續 total minimum/size hint 修正單案仍失敗。前述88passed不含此新增重疊assert，不能視為窄版接受。歷史列判斷已從錯誤 config viewport 改用自身 result viewport，但容器實際分配仍需修復。
+
+窄版修復中央續驗：歷史 selector/actions nested layout 改獨立 QWidget 與 minimum constraint，結果 panel／current-page tab 尺寸保留實際 minimum／heightForWidth；800×700 status 長字與全部個人 controls QRect 重疊檢查通過。queued responsive 會在下一輪改viewport，表格scroll測試先完成五輪event/捲底，不放寬原五列／末列完整可見assert。全版面3passed5.55s；全域mypy882檔0。40559完整layout＋workbench結果另以tool output為準；失敗20138/36574/85179仍保留，不折抵Native驗收。
+
+收藏主路由中央接線：WatchlistView technicalBookmarkStateReady -> MainWindow._open_technical_bookmark_state；只接受 typed BookmarkState，轉原每日研究頁並呼 restore_bookmark_state，不讀latest。真source DB移除後、原query/COW收藏state經實際MainWindow handler還原2382及2檔比較籃；外層container為隔離SimpleNamespace，不聲稱完整MainWindow初始化／觀察清單按鈕旅程。29963 terminal0：86passed18.32s（C:/t/fulln-main-route-root-20261007-a），全域mypy882檔0、compile通過。H20 candidate固定ZIP來源核验邏輯與repo一致，仍需查frozen resource/root差異。40559 layout+workbench terminal0：88passed10.97s。
+
+實際收藏按鈕中央旅程21426 terminal0：1passed18.39s（C:/t/fulln-bookmark-button-root-20261007-a）。真2stock保存來源／已移除synthetic行情DB、正常DailyMarketResearchView bookmark_button.click -> worker strict準備 -> bookmarkPrepared ->確認 -> COW added -> strict state讀回原query/2382；既有原收藏already_present與取消不寫仍驗。尚未測完整MainWindow初始化與觀察清單控件開啟的端到端旅程。推薦閱讀修正已保存本機dev 9c5e8ee4，沒有新exe或main發布。
+
+觀察清單中央審核與驗證：85075 terminal0，view整合與controls共6passed22.24s（C:/t/watchlist-fulln-central-20261007-a），涵蓋真producer/COW收藏列表、typed reopen、exactID刪除／清空、取消／晚到／關閉。18663 terminal0：1passed20.00s（C:/t/fulln-watchlist-button-route-root-20261007-a），新增實際WatchlistView收藏重開button -> stateReady -> MainWindow handler ->原DailyView2382/2檔比較籃還原。外層仍隔離route host，不授完整MainWindow初始化或Native接受。中央另發現busy worker時刷新通知會丟棄，controls排隊刷新修補進行中。
+
+H20 exact read父路徑稳定性root修補：只比較directory lstat的dev/ino/mode/fileattrs身份，合法sibling create不因父mtime/size/nlink變更誤拒。目標檔原完整stat、single-link/no-reparse、boundedbytes、SHA仍保持。真操作測sibling新增接受原pin／父目錄替換拒絕／內容SHA變更拒絕，加完整capture suite共19passed0.82s（C:/t/h20-directory-identity-central-20261007-a）。首sandbox8failed11passed3.01s為臨時目錄更名、硬連結與長路徑WinError失敗，保留tool證據；不當作產品回歸通過。全域mypy882檔0、compile通過。新修補尚未candidate/native驗證，不能解讀為真人H20已通過。
+
+H20修復固定來源已提交 dev 0f25b8c6ee5143f4d3cd35f480cac5b21e08e2d9（8files）；Manual只stage本任務H20外部設定段cachedpatch，其他chat工作檔保留。68116中央terminal0：134passed2skipped6.61s，mypy882/compile/diffcheckpass。新build15682已啟動，output/packaging/build_0f25b8c6ee51_44e24c54、dist/candidate_0f25b8c6ee51_44e24c54；未完成、未驗證，不能真人交付或替換原exe。
+
+新候選build15682terminal0完成（dist/candidate_0f25b8c6ee51_44e24c54/baldr），來源0f25b8c6固定。新external config同版probe terminal0，receipt output/qa/h20_external_config_same_version_095999bd/receipt.json：Python/exe public get_ml_research_root／resolve＋exact JSON pin結果相等，original synthetic bytes/mtime unchanged，outside root與explicitmissingconfig拒絕。沒有patch allowed roots；此為合成exact JSON讀回，不是canonical H20 activation/model或Native UI接受。generalverify14941仍live待核。
+
+新general同版verify14941 terminal1：控制器第一筆中文print在cp1252環境UnicodeEncodeError，results兩模式皆空，未開始功能比較。失敗保留 output/qa/baldr_same_version_0f25b8c6ee51_5b8192e4/same_version_receipt.json。已用python -X utf8在新QA目錄重試，非修改candidate或沿用失敗收據。
+
+新general同版16027 terminal0：passed_isolated_fixture，receipt output/qa/baldr_same_version_0f25b8c6ee51_bddb640b/same_version_receipt.json，不能替代原H20 canonical名單驗收。新launcher start_h20_feedback_candidate_0f25b8c6.cmd/.ps1已建立並解析語法通過，未啟動；給child BALDR_ML_RESEARCH_STORAGE_CONFIG原existingconfig、BALDR_CONFIG與原officialcache。canonical10capture/exe probe尚待，未交真人。controls pending中央47327 terminal0：8passed21.41s；main新增watchlist_view到freeze關閉gate，真watchlist開啟->還原->取消gate根fixture＋workbench87599 terminal0：86passed15.38s，mypy882/compile0。query新callbackowner60827仍live待257完整回歸。
+
+UI封存前中央整合14783 terminal0：154passed44.65s（C:/t/fulln-ui-package-central-20261007-a），root真收藏按鈕／觀察清單重開／主路由／shutdown，加workbench85、controls8、watchlist2、UX03／navigation／layout58。同次source reader已為新query callback實作，正式full257query另60827待terminal；不可用小fixture替代。Manual本任務fullN施工段已整理成現行入口／設定／比較／收藏／錯誤／限制，保留其他chat段與已有H20段不變；完整MainWindow初始化由owner另驗。
+### 2026-10-07 原固定257來源查詢量測補記
+
+中央以原保存的257股合成來源、同一 query identity 與 pins bytes SHA，在更新後 query consumer 執行一次非剖析唯讀查詢，terminal exit 0。耗時 8.1980804 秒，原單次觀測為 35.8078331 秒；分母258、納入257、排除1、完成257、待處理0、缺原始資料1及頁面股票皆維持原結果。新 raw receipt 為 `output/qa/baldr_completion_m2_20261007/full_v4_query_stream_measurement_20261007.json`，舊 receipt 保留。
+
+這是同固定 pins 的單次工程觀測，當時仍有並行 QA；不是冷暖分組、30次互動 p95、1000股或真實全市場效能證據，不能宣告原效能 Gate 已通過。完整257查詢回歸曾有8 passed／1 failed，失敗是新 callback 的來源錯誤碼順序改變；修後小型真來源已驗原穩定錯誤碼，原257針對案例仍須取得 terminal 結果。
+
+候選啟動檔已交給真人自行點擊，三項驗收為推薦理由展開／標題編號、窄視窗個人模式，以及2382狀態與研究按鈕；交付時明示原十檔 canonical 打包核驗仍待。前段「未交真人」是歷史工程狀態，不能作為當前交付描述。當前全域 mypy 882 source files、0 error；兩則既有 untyped-body notes 保留。
+
+### 完整 MainWindow 收藏旅程補驗
+
+新 `test_ui_qt_main_fulln_bookmark_journey.py` 使用正常 `MainWindow()` 建構，不使用假視窗或 `__new__`。真兩股合成 SQLite→producer/store→正常每日研究來源刷新與讀取→選2382／9999比較→按收藏按鈕與確認callback→既有WatchlistService保存與刷新→觀察清單重開按鈕→主視窗自動回推薦／每日研究，原query、2382選取、兩股比較籃均相符。另用確定性barrier讓重開正在讀取時正常關閉，驗cancel callback與全域shutdown收尾，舊回呼不再發出導覽。
+
+owner 1 passed／5.22秒；中央重驗同檔1 passed／5.26秒、terminal0、basetemp `C:/t/fulln-main-window-central-20261007-a`。既有layout_helpers.py:380兩則disconnect RuntimeWarning保留。隔離資料／輸出／AppData／policy／activation／calendar／研究儲存設定與active root，拒絕socket.connect/connect_ex/create_connection；network_attempts為空。fixture與phase checkpoint保存在 `output/qa/main_fulln_bookmark_journey/run-*`，不清除失敗來源。
+
+這補上正常初始化主視窗證據，仍是兩股合成來源；跨257 UI、完整新程序與候選同版、Native以及完整P00–P14其他出口分列。查詢葉片已本機保存74735ded，原257來源錯誤碼針對case 1 passed／276.40秒，原失敗保留。
+
+完整257 UI中央 session19127 terminal0：7 passed／423.39秒；basetemp `C:/t/fulln-ui-stream-central-20261007-a`。涵蓋真257跨段完整來源清單／條件／分頁／原來源個股、跨頁比較籃與origin還原，以及診斷列禁止載入、clock cache清除、worker deferred setup／取消、舊factory相容及真保存收藏準備／恢復。Qt teardown明示未為清理而startup import main，保留原視窗，沒有列為完整MainWindow證據；完整MainWindow另由前述單檔驗。
+
+UI必跑update validator再驗：sandbox首次21 passed／3 failed／4 skips，根因為隔離TEMP祖先Path.resolve WinError5，原報告／累積log保存在 `output/qa/baldr_completion_m2_20261007/update_validator_sandbox_20261007_164222/`；原guard未改。全新短路徑隔離根重驗terminal0：25 passed／0 failed／4 protected skips，log `output/qa/baldr_completion_m2_20261007/update_validator_elevated_20261007_1642.log`。Workbench85含於先前中央154項整合；本輪882檔mypy與改動Python語法通過。
+
+真人點新cmd遇Windows PowerShell中文ParserError，尚未啟動exe：PS1原UTF-8無BOM被Windows PowerShell按系統碼頁讀取。原檔保留為 `.before_encoding_fix.ps1`；目前啟動檔改UTF-8 BOM，子程序環境使用兼容的EnvironmentVariables，新增ValidateOnly模式。中央以cmd實際指向的WindowsPowerShell/v1.0/powershell.exe執行原PS1 `-ValidateOnly`，terminal0，候選SHA、原日曆／研究設定存在與子程序設定均通過，沒有啟動exe。不以PowerShell7 parser通過代替真人launcher相容證據。

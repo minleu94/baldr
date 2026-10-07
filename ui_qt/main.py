@@ -1932,6 +1932,23 @@ class MainWindow(QMainWindow):
         daily = recommendation.daily_market_research_view
         daily.bookmarkSaved.connect(lambda *_args: watchlist._load_watchlist())
         watchlist.latestResearchRequested.connect(self._open_latest_bookmark_research)
+        watchlist.technicalBookmarkStateReady.connect(self._open_technical_bookmark_state)
+
+    def _open_technical_bookmark_state(self, value: object) -> None:
+        """還原觀察清單嚴格讀回的原技術研究收藏。"""
+        from app_module.daily_market_technical_universe_v4_bookmark import (
+            DailyMarketTechnicalUniverseV4BookmarkState,
+        )
+        if not isinstance(value, DailyMarketTechnicalUniverseV4BookmarkState):
+            return
+        recommendation = getattr(self, "recommendation_view", None)
+        daily = getattr(recommendation, "daily_market_research_view", None)
+        view = getattr(daily, "technical_universe_view", None)
+        if view is None or getattr(daily, "_shutting_down", True):
+            return
+        view.restore_bookmark_state(value)
+        self._select_main_workspace("recommendation")
+        recommendation.result_source_tabs.setCurrentWidget(daily)
 
     def _save_original_ranking_bookmark(self, value: object) -> None:
         """經使用者確認後，收藏報告目前 context 指向的原排名版本。"""
@@ -2320,7 +2337,7 @@ class MainWindow(QMainWindow):
     def _freeze_child_refresh_sources(self) -> None:
         """凍結有 pending generation 的子頁，避免取消後又補起新 worker。"""
 
-        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view"):
+        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view", "watchlist_view"):
             view = getattr(self, attribute, None)
             begin_shutdown = getattr(view, "begin_shutdown", None)
             if not callable(begin_shutdown):

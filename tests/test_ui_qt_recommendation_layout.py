@@ -85,8 +85,10 @@ def _assert_recommendation_table_geometry(view: RecommendationView, app: QApplic
     assert fifth_row_rect.isValid()
     assert table.viewport().rect().contains(fifth_row_rect)
 
-    table.verticalScrollBar().setValue(table.verticalScrollBar().maximum())
-    app.processEvents()
+    # queued responsive resize 可能再改變 viewport；完成幾何更新後才捲到底。
+    for _ in range(5):
+        app.processEvents()
+        table.verticalScrollBar().setValue(table.verticalScrollBar().maximum())
     twelfth_row = table.visualRect(table.model().index(11, 0))
     assert twelfth_row.isValid()
     assert table.viewport().rect().contains(twelfth_row)
@@ -200,6 +202,9 @@ def test_recommendation_result_scroll_and_five_rows_at_desktop_viewports() -> No
         result_scroll.setValue(result_scroll.maximum())
         app.processEvents()
         _assert_personal_controls_fit(view)
+        view.result_scroll.ensureWidgetVisible(view.personal_policy_history_combo)
+        for _ in range(5):
+            app.processEvents()
         for widget in (
             view.personal_source_database_input,
             view.personal_source_time_check_button,
@@ -264,4 +269,55 @@ def test_recommendation_layout_in_default_shell_with_184_pixel_navigation() -> N
             _capture_if_requested(shell, screenshot)
     finally:
         shell.close()
+        app.processEvents()
+
+def test_recommendation_reason_expansion_preserves_content() -> None:
+    app = _app()
+    view = RecommendationView(_RecommendationService(), _RegimeService())
+    try:
+        view.resize(800, 700)
+        view.show()
+        app.processEvents()
+        content = "保存的推薦理由與限制\n" * 30
+        view.detail_text.setPlainText(content)
+        view.detail_expand_button.click()
+        app.processEvents()
+        assert view.detail_text.height() >= 520
+        assert view.detail_text.toPlainText() == content
+        assert view.result_title_label.text() == "推薦結果與風險判讀"
+        view.detail_expand_button.click()
+        app.processEvents()
+        assert view.detail_text.toPlainText() == content
+        assert not view.detail_expand_button.isChecked()
+        view.personal_policy_history_status_label.setText(
+            "檢查 0 個封存項目，驗證 0 個較早版本。目前沒有可驗證的較早版本。"
+        )
+        view.personal_source_time_status_label.setText(
+            "預設不信任任何資料庫來源，個人校準保持停用；請明確檢查來源後再另行確認。"
+        )
+        view.result_scroll.ensureWidgetVisible(view.personal_policy_history_combo)
+        app.processEvents()
+        _assert_personal_controls_fit(view)
+        controls = (
+            view.personal_policy_history_combo,
+            view.personal_policy_history_refresh_button,
+            view.personal_policy_rollback_button,
+            view.personal_source_database_input,
+            view.personal_source_database_browse_button,
+            view.personal_source_time_check_button,
+            view.personal_candidate_combo,
+            view.personal_candidate_refresh_button,
+        )
+        for control in controls:
+            assert control.height() >= control.sizeHint().height()
+        for previous, following in zip(controls, controls[1:]):
+            previous_rect = QRect(previous.mapTo(view, QPoint(0, 0)), previous.size())
+            following_rect = QRect(following.mapTo(view, QPoint(0, 0)), following.size())
+            assert not previous_rect.intersects(following_rect), (previous.objectName(), following.objectName())
+        view.result_scroll.ensureWidgetVisible(view.personal_policy_history_combo)
+        for _ in range(5):
+            app.processEvents()
+        _capture_if_requested(view, "recommendation_800x700_personal_history.png")
+    finally:
+        view.close()
         app.processEvents()

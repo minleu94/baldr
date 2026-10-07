@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QHeaderView, QCheckBox, QSpinBox, QDoubleSpinBox,
     QComboBox, QLineEdit, QMessageBox, QSplitter, QScrollArea,
     QMenu, QDialog, QInputDialog, QToolButton, QFileDialog, QSizePolicy,
-    QTabWidget, QStyle,
+    QTabWidget, QStyle, QLayout,
 )
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QFont
@@ -107,6 +107,10 @@ class _CurrentPageSizeTabWidget(QTabWidget):
             return super().minimumSizeHint() if minimum else super().sizeHint()
 
         page_size = page.minimumSizeHint() if minimum else page.sizeHint()
+        page_size = page_size.expandedTo(page.minimumSize())
+        page_layout = page.layout()
+        if page_layout is not None and page_layout.hasHeightForWidth():
+            page_size.setHeight(max(page_size.height(), page_layout.totalHeightForWidth(max(1, page.width()))))
         tab_size = self.tabBar().sizeHint()
         margins = self.contentsMargins()
         frame = self.style().pixelMetric(
@@ -2727,7 +2731,7 @@ class RecommendationView(QWidget):
             return
         narrow = self.width() < 820
         result_narrow = narrow or self.result_scroll.viewport().width() < 900
-        history_narrow = self.config_scroll.viewport().width() < 560
+        history_narrow = result_narrow or self.result_scroll.viewport().width() < 560
         if (
             not force
             and narrow == self._recommendation_narrow
@@ -2748,6 +2752,17 @@ class RecommendationView(QWidget):
         self.result_scroll.setMinimumWidth(0)
         self._set_result_row_directions(result_narrow)
         self._set_personal_policy_history_direction(history_narrow)
+        policy_group = getattr(self, "personal_policy_group", None)
+        if policy_group is not None:
+            policy_layout = policy_group.layout()
+            policy_layout.invalidate()
+            required_height = max(
+                policy_layout.totalHeightForWidth(policy_group.width()),
+                policy_layout.totalMinimumSize().height(),
+                policy_layout.totalSizeHint().height(),
+            )
+            if required_height > 0:
+                policy_group.setMinimumHeight(required_height)
         self.result_panel.setMinimumWidth(0)
         self.result_panel.updateGeometry()
         if orientation_changed and narrow:
@@ -2781,9 +2796,10 @@ class RecommendationView(QWidget):
             row = getattr(self, layout_name, None)
             if row is not None:
                 row.setDirection(direction)
+                row.setSpacing(6)
 
     def _set_personal_policy_history_direction(self, narrow: bool) -> None:
-        """依左側設定欄寬度排列歷史選擇器與其操作按鈕。"""
+        """依歷史控制項所在結果欄寬度排列選擇器與操作按鈕。"""
 
         direction = QBoxLayout.TopToBottom if narrow else QBoxLayout.LeftToRight
         for layout_name in (
@@ -2794,6 +2810,7 @@ class RecommendationView(QWidget):
             row = getattr(self, layout_name, None)
             if row is not None:
                 row.setDirection(direction)
+                row.setSpacing(6)
 
     def _create_checkbox_with_tooltip(
         self,
@@ -3482,6 +3499,7 @@ class RecommendationView(QWidget):
         """創建結果面板"""
         panel = QWidget()
         layout = QVBoxLayout(panel)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         layout.setSpacing(10)
 
         context_header = QHBoxLayout()
@@ -3565,7 +3583,7 @@ class RecommendationView(QWidget):
         # 標題和控制欄
         title_layout = QHBoxLayout()
         self.result_title_layout = title_layout
-        title = QLabel("4. 推薦結果與風險判讀")
+        title = QLabel("推薦結果與風險判讀")
         self.result_title_label = title
         title_font = QFont()
         title_font.setPointSize(12)
@@ -3843,8 +3861,11 @@ class RecommendationView(QWidget):
         self._refresh_personal_model_assessment_controls()
 
         personal_policy_group = QGroupBox("個人推薦模式")
+        self.personal_policy_group = personal_policy_group
         personal_policy_group.setObjectName("personalRecommendationPolicyControls")
         personal_policy_layout = QVBoxLayout(personal_policy_group)
+        personal_policy_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        personal_policy_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         personal_policy_layout.setContentsMargins(8, 6, 8, 6)
         personal_policy_row = QHBoxLayout()
         self.personal_policy_row = personal_policy_row
@@ -3933,7 +3954,10 @@ class RecommendationView(QWidget):
         )
         history_selector_row.addWidget(self.personal_policy_history_label)
         history_selector_row.addWidget(self.personal_policy_history_combo, 1)
-        history_row.addLayout(history_selector_row, 1)
+        history_selector_host = QWidget()
+        history_selector_host.setLayout(history_selector_row)
+        history_selector_row.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        history_row.addWidget(history_selector_host, 1)
 
         history_actions_row = QBoxLayout(QBoxLayout.LeftToRight)
         history_actions_row.setContentsMargins(0, 0, 0, 0)
@@ -3982,7 +4006,10 @@ class RecommendationView(QWidget):
             self._rollback_to_selected_personal_policy
         )
         history_actions_row.addWidget(self.personal_policy_rollback_button)
-        history_row.addLayout(history_actions_row)
+        history_actions_host = QWidget()
+        history_actions_host.setLayout(history_actions_row)
+        history_actions_row.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
+        history_row.addWidget(history_actions_host)
         self.personal_policy_history_combo.currentTextChanged.connect(
             self._update_personal_policy_history_accessibility
         )
@@ -4165,11 +4192,16 @@ class RecommendationView(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
         detail_layout.addWidget(self.company_source_snapshot_label)
+        self.detail_expand_button = QPushButton("展開推薦理由")
+        self.detail_expand_button.setObjectName("recommendationReasonExpand")
+        self.detail_expand_button.setCheckable(True)
+        detail_layout.addWidget(self.detail_expand_button)
         self.detail_text = QTextEdit()
         self.detail_text.setReadOnly(True)
         self.detail_text.setMinimumHeight(140)
         self.detail_text.setPlaceholderText("選取推薦結果後，這裡會顯示分數拆解、策略傾向與風險提示。")
         detail_layout.addWidget(self.detail_text)
+        self.detail_expand_button.toggled.connect(self._set_recommendation_reason_expanded)
         detail_group.setLayout(detail_layout)
         result_splitter.addWidget(detail_group)
 
@@ -5412,7 +5444,7 @@ class RecommendationView(QWidget):
             self.result_title_label.setText(
                 "4. 篩選紀錄／未入選（僅研究，不代表推薦）"
                 if screening_rows
-                else "4. 推薦結果與風險判讀"
+                else "推薦結果與風險判讀"
             )
             self.save_result_btn.setText(
                 "保存篩選紀錄" if screening_rows else "保存推薦結果"
@@ -5471,7 +5503,7 @@ class RecommendationView(QWidget):
             return
 
         # 轉換為 DataFrame
-        self.result_title_label.setText("4. 推薦結果與風險判讀")
+        self.result_title_label.setText("推薦結果與風險判讀")
         self.save_result_btn.setText("保存推薦結果")
         ml_status = execution.ml_availability.status.value
         data = [
@@ -6643,7 +6675,7 @@ class RecommendationView(QWidget):
         self.result_title_label.setText(
             "4. 篩選紀錄／未入選（僅研究，不代表推薦）"
             if screening_only_rows
-            else "4. 推薦結果與風險判讀"
+            else "推薦結果與風險判讀"
         )
         self.save_result_btn.setText(
             "保存篩選紀錄" if screening_only_rows else "保存推薦結果"
@@ -8156,6 +8188,12 @@ class RecommendationView(QWidget):
             technical_descriptions=self.technical_descriptions,
             pattern_descriptions=self.pattern_descriptions,
         )
+
+    def _set_recommendation_reason_expanded(self, expanded: bool) -> None:
+        """展開既有理由的閱讀空間，不重新執行推薦。"""
+        self.detail_expand_button.setText("收合推薦理由" if expanded else "展開推薦理由")
+        self.detail_text.setMinimumHeight(520 if expanded else 140)
+        self.detail_text.updateGeometry()
 
     def _update_detail_text(self):
         """更新推薦理由詳情顯示"""

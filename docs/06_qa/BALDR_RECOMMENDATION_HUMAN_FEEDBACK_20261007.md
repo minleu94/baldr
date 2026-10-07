@@ -51,3 +51,12 @@
 前文「一般報告失敗不啟動H20」為修正前狀態；目前activeContextChanged直接對原保存cohort精確pins核驗，不等報告成功。個股研究上方新增「保存的個人 H20 研究預測」，顯gross、預測／來源／特徵日期與實際結果尚無已核驗結果；一般報告錯誤仍保留，H20資訊可獨立讀回。「重新核驗保存預測」明示重讀原來源；pointer變動返回保留原列表／排序／選取並拒絕新版本。H20收藏尚未實作。
 
 中央整合workbench／完整母體／H20旅程96 passed、validator25 passed／4 protected skips、mypy870檔通過；H20公開來源旅程使用真SQLite／保存reader，模型contract為明示未fit合成邊界。原Qt測試pump飢餓失敗已定位並保留，同一fixture改等待方式full route3.78s；未改production reader或放寬guard。完整證據見[M2 QA](BALDR_COMPLETION_M2_20261007.md)。原真人2382、三真策略、窄欄與新candidate／同版仍未驗，目前不用使用者用舊exe重驗。
+
+
+### 新候選同版與保存 H20 實際讀回（2026-10-07）
+
+候選版本 `2026.10.06+c589bc71e8f1`，固定 commit `c589bc71e8f19d947ad414675cb140432d75f90c`，exe `dist/candidate_c589bc71e8f1_8e967bc9/baldr/baldr.exe`，SHA-256 `3806b87099475e20a136062ba406aa78263fb05be064d79e632fdd65f97ef801`。原 exe／正式資料／私人設定／Task 未替換。共用設定與四用途／模型／H20呈現的固定 archive Python／exe 比較收據：`output/qa/baldr_same_version_c589bc71e8f1_fb047fce/same_version_receipt.json`，狀態 passed_isolated_fixture；其中 H20 呈現案例不是 canonical reader。
+
+另外重用原保留的隔離2382 source／activation／capture／manifest，以真正 public source reader、MainWindow methods 與 TaskWorker 走「原保存名單→2382→一般報告失敗→獨立 H20 摘要→重新核驗」；固定 archive Python 與 exe 結果逐值相等，收據 `output/qa/h20_candidate_saved_source_27b127de/receipt.json`。模型 verifier 仍為明示 synthetic contract，不是原真人模型核驗。首屏實際讀回 +12.34% 與決策10/06、來源10/05、特徵10/02，實際結果保持未核驗；不得把合成數值當真人2382預測。所有 fixture files bytes／size 不變，source DB／WAL 與 immutable artifacts mtime 不變；SQLite readonly 連線只更新 SHM mtime，原 bytes／size 不變，收據明列。先前sandbox拒絕Temp guard、controller編碼與過度嚴格SHM mtime失敗收據均保留，沒有放寬產品守衛。
+
+真人啟動新 helper `output/qa/baldr_completion_m2_20261007/start_h20_feedback_candidate.ps1` 核驗新 exe hash、向 child 提供原官方日曆及明確主機設定 JSON；尚未執行。Native真人2382、三個真策略、窄欄均待實測；H20收藏尚未實作，完整full-N v4新五規則與UI產製等仍在補完中。

@@ -631,3 +631,8 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 
 
 2026-10-07 H20回饋工程已接獨立保存摘要，原一般報告失敗依賴解除；來源指標變動返回保留原表／排序／選取，明示retry原來源及切股stale通過。中央96項UI、validator25 passed／4 protected skips、mypy870檔通過；Qt慢測為test pump飢餓，僅修等待、原失敗保留。真保存reader旅程的模型contract仍為合成邊界，不當原2382或Native通過；新固定候選與同版比較待整合，full-N五規則／query收藏比較／其餘P00–P14與M3仍未完成，見[M2 QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+### 2026-10-07 新候選驗證與接續邊界
+
+固定commit `c589bc71e8f19d947ad414675cb140432d75f90c`的新候選 `2026.10.06+c589bc71e8f1` 已建置，Python／exe同版隔離比較及真保存source的H20名單→2382→報告失敗仍獨立摘要→重新核驗逐值相等。模型verifier為合成契約，沒有核驗原私人2382或執行原三個真策略。原exe不替換；新helper只供使用者明示啟動。前文候選尚未包含獨立摘要為歷史施工狀態；当前Native四項重測沿Manual新候選章。H20收藏尚未實作，full-N v4 store／producer／query新葉片仍由Luna Max分工、中央審核，完整P00–P14與M2／M3範圍未縮小、未宣布完成。詳見[工程QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)。

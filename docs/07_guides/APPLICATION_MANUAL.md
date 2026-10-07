@@ -5336,3 +5336,11 @@ BBP01原parent producer／snapshot CLI已採入dev。隔離日常runtime與polic
 
 
 新候選真人啟動補充（2026-10-07）：檔案總管開啟 `C:\Projects\PythonProjects\technical_analysis\output\qa\baldr_completion_m2_20261007`，雙擊 `start_h20_feedback_candidate.cmd` 會呼上述PowerShell helper啟動 `2026.10.06+c589bc71e8f1`，帶原主機設定與官方日曆，不需自行下指令；helper沒有自動執行。依前節四項核2382首屏、原名單返回、三個全股票預設策略、非全螢幕歷史控制項。H20收藏不列驗收；最新dev的full-N施工尚未包含於該候選。
+
+### H20 打包版外部研究設定（2026-10-07）
+
+打包版需要使用原保存研究根目錄時，由啟動環境明示 `BALDR_ML_RESEARCH_STORAGE_CONFIG` 為既有 `ml_research_storage.json` 的絕對檔案路徑。檔案保持 `ml-research-storage.v1` schema，只有 `schema_version` 與 `active_root` 兩欄；來源根目錄仍須通過原安全邊界。此設定只選擇既有研究儲存位置，不訓練或啟用模型，也不改個人模式資格。
+
+未設定時維持原 repository 設定位置；明示設定不存在、空白、相對路徑、格式不符或不安全時停止讀取，不改讀其他根。打包資源內沒有機器專屬研究設定時，不應將未知列當作沒有預測。請先選取該列，在診斷區查看並複製完整原因，再核對明示設定與原保存檔案；研究按鈕仍只開啟已核驗來源。原檔／父路徑替換或 SHA 不符仍拒絕，同資料夾新增其他研究不再因父目錄時間改變而誤拒。
+
+新候選版仍需同版核驗與真人重驗；c589 原候選版不支援此新增設定。

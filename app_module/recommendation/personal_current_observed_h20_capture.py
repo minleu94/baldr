@@ -55,10 +55,15 @@ def _stat_key(info: os.stat_result) -> tuple[int, int, int, int, int]:
     return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_nlink
 
 
+def _directory_identity(info: os.stat_result) -> tuple[int, int, int, int]:
+    """核對父路徑身份；合法兄弟項目新增不改變原檔來源身份。"""
+    return info.st_dev, info.st_ino, info.st_mode, getattr(info, "st_file_attributes", 0)
+
+
 def read_pinned_json(path: Path, expected: str | None = None) -> dict[str, Any]:
     plain(path, file=True)
     before = path.stat()
-    ancestors = [(p, _stat_key(p.stat())) for p in path.parents]
+    ancestors = [(p, _directory_identity(p.lstat())) for p in path.parents]
     fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0))
     try:
         if _stat_key(os.fstat(fd)) != _stat_key(before) or before.st_size > MAX_BYTES:
@@ -68,7 +73,7 @@ def read_pinned_json(path: Path, expected: str | None = None) -> dict[str, Any]:
         plain(path, file=True)
         if (len(raw) != before.st_size or _stat_key(os.fstat(fd)) != _stat_key(before)
                 or _stat_key(path.stat()) != _stat_key(before)
-                or any(_stat_key(p.stat()) != key for p, key in ancestors)):
+                or any(_directory_identity(p.lstat()) != key for p, key in ancestors)):
             raise H20CaptureError("source_changed_during_read")
     finally:
         os.close(fd)

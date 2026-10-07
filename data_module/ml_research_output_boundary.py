@@ -22,6 +22,7 @@ LEGACY_ML_RESEARCH_ROOT = REPO_ROOT / "output" / "ml_research"
 # Kept as a compatibility name for callers that construct legacy pinned paths.
 APPROVED_ML_RESEARCH_ROOT = LEGACY_ML_RESEARCH_ROOT
 ML_RESEARCH_STORAGE_CONFIG_NAME = "ml_research_storage.json"
+ML_RESEARCH_STORAGE_CONFIG_ENV = "BALDR_ML_RESEARCH_STORAGE_CONFIG"
 ML_RESEARCH_STORAGE_SCHEMA_VERSION = "ml-research-storage.v1"
 _MAX_STORAGE_CONFIG_BYTES = 16 * 1024
 
@@ -33,10 +34,12 @@ class MLResearchOutputBoundaryError(ValueError):
 def get_ml_research_root(*, repository_root: Path | None = None) -> Path:
     """Return the active root for new research writes.
 
-    If ``<repository>/output/ml_research_storage.json`` is absent, the legacy
-    repository-local root remains active. If that configuration exists but is
-    malformed or unsafe, resolution fails closed instead of silently falling
-    back to a different root.
+    An explicit ``BALDR_ML_RESEARCH_STORAGE_CONFIG`` selects the bounded
+    storage configuration file. Otherwise the function reads
+    ``<repository>/output/ml_research_storage.json``. If the selected
+    configuration is absent by default, the legacy repository-local root
+    remains active; an explicitly selected missing file, or any malformed or
+    unsafe configuration, fails closed instead of silently falling back.
 
     The function only validates and resolves paths; it never creates them.
     """
@@ -125,11 +128,38 @@ def _legacy_root(repository_root: Path) -> Path:
 
 
 def _read_active_root_config(repository_root: Path) -> Path | None:
-    config_path = repository_root / "output" / ML_RESEARCH_STORAGE_CONFIG_NAME
-    _assert_no_reparse_aliases(config_path)
+    configured_path = os.environ.get(ML_RESEARCH_STORAGE_CONFIG_ENV)
+    explicit_config_path = configured_path is not None
+    if explicit_config_path:
+        if not configured_path or configured_path != configured_path.strip():
+            raise MLResearchOutputBoundaryError(
+                f"{ML_RESEARCH_STORAGE_CONFIG_ENV} must be a non-empty absolute path"
+            )
+        try:
+            candidate = Path(configured_path)
+        except (TypeError, ValueError, OSError) as exc:
+            raise MLResearchOutputBoundaryError(
+                f"{ML_RESEARCH_STORAGE_CONFIG_ENV} is not a valid path"
+            ) from exc
+        if not candidate.is_absolute():
+            raise MLResearchOutputBoundaryError(
+                f"{ML_RESEARCH_STORAGE_CONFIG_ENV} must be an absolute path"
+            )
+        config_path = _absolute_candidate(
+            candidate,
+            base=repository_root,
+            label=ML_RESEARCH_STORAGE_CONFIG_ENV,
+        )
+    else:
+        config_path = repository_root / "output" / ML_RESEARCH_STORAGE_CONFIG_NAME
+        _assert_no_reparse_aliases(config_path)
     try:
         info = config_path.lstat()
     except FileNotFoundError:
+        if explicit_config_path:
+            raise MLResearchOutputBoundaryError(
+                f"explicit {ML_RESEARCH_STORAGE_CONFIG_ENV} file does not exist"
+            ) from None
         return None
     except OSError as exc:
         raise MLResearchOutputBoundaryError(
@@ -474,7 +504,7 @@ def _assert_no_reparse_aliases(path: Path) -> None:
             info = current.lstat()
         except FileNotFoundError:
             break
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             raise MLResearchOutputBoundaryError(
                 f"research output path component cannot be inspected: {current}"
             ) from exc

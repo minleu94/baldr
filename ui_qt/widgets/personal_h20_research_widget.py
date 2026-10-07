@@ -4,8 +4,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QComboBox, QLabel, QPlainTextEdit, QPushButton,
+    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 from app_module.recommendation.personal_h20_research_cohort import (
@@ -36,10 +36,16 @@ class PersonalH20ResearchWidget(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setSortingEnabled(False)
+        self.diagnostic_text = QPlainTextEdit()
+        self.diagnostic_text.setObjectName("personalH20RowDiagnostic")
+        self.diagnostic_text.setReadOnly(True)
+        self.diagnostic_text.setPlaceholderText("選取一列可查看完整來源核驗原因與修復前置條件。")
+        self.diagnostic_text.setMaximumBlockCount(80)
         self.research_button = QPushButton("研究選取股票")
         self.research_button.setEnabled(False)
         layout = QVBoxLayout(self)
-        for widget in (self.summary_label, self.scope_label, self.limit_label, self.sort_combo, self.table, self.research_button):
+        for widget in (self.summary_label, self.scope_label, self.limit_label, self.sort_combo,
+                       self.table, self.diagnostic_text, self.research_button):
             layout.addWidget(widget)
         self.sort_combo.currentIndexChanged.connect(self._render)
         self.table.itemSelectionChanged.connect(self._selection_changed)
@@ -75,6 +81,7 @@ class PersonalH20ResearchWidget(QWidget):
         if self._closing or self._cohort is None:
             return
         self.table.clearSelection()
+        self.diagnostic_text.clear()
         rows = sort_personal_h20_research_rows(self._cohort, descending=self.sort_combo.currentIndex() == 0)
         self.table.setRowCount(len(rows))
         for index, row in enumerate(rows):
@@ -84,8 +91,10 @@ class PersonalH20ResearchWidget(QWidget):
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, self._selection(row))
+                item.setData(Qt.ItemDataRole.UserRole + 1, row)
                 item.setToolTip(f"sample {row.sample_id}\nprediction {row.prediction_id}\n"
-                    f"capture {row.capture_path}\nraw {row.capture_sha256}")
+                    f"capture {row.capture_path}\nraw {row.capture_sha256}\n"
+                    f"完整原因：{row.reason or '原 reader 未提供文字原因'}")
                 self.table.setItem(index, column, item)
         self.table.setCurrentItem(None)
         self.research_button.setEnabled(False)
@@ -110,9 +119,53 @@ class PersonalH20ResearchWidget(QWidget):
         return False
 
     def _selection_changed(self) -> None:
-        item = self.table.currentItem()
-        self.research_button.setEnabled(bool(self.table.selectedItems()) and item is not None
+        selected = self.table.selectedItems()
+        current = self.table.currentItem()
+        row_index = (
+            current.row() if current is not None else selected[0].row()
+        ) if selected else -1
+        item = self.table.item(row_index, 0) if row_index >= 0 else None
+        self.research_button.setEnabled(bool(selected) and item is not None
             and self._accepted(item.data(Qt.ItemDataRole.UserRole)))
+        row = item.data(Qt.ItemDataRole.UserRole + 1) if item is not None else None
+        self.diagnostic_text.setPlainText(
+            self._row_diagnostic(row) if isinstance(row, PersonalH20ResearchRow) else ""
+        )
+
+    @staticmethod
+    def _row_diagnostic(row: PersonalH20ResearchRow) -> str:
+        """呈現可複製的原保存 reader 原因與修復前置條件。"""
+        lines = [
+            f"股票：{row.symbol}",
+            f"狀態：{'原保存預測已核驗' if row.status == 'available' else '未知；研究操作停用'}",
+            f"決策日：{row.decision_date}",
+            f"來源日：{row.source_date or '未知'}",
+            f"特徵截至：{row.feature_as_of_date or '未知'}",
+            f"sample：{row.sample_id}",
+            f"prediction：{row.prediction_id}",
+            f"原 capture：{row.capture_path}",
+            f"capture SHA：{row.capture_sha256}",
+            "",
+            "原保存來源核驗原因：",
+            row.reason or "reader 未提供文字原因。",
+        ]
+        if row.status == "unknown":
+            lines.extend((
+                "",
+                "研究按鈕維持停用，直到這列以原 manifest 與原 capture pin 通過核驗。",
+                "修復前置條件：依上方完整原因修復或恢復它指出的原來源、設定或檔案；重讀同一保存版本並保持原 SHA。不可改指最新 cycle、借其他股票或重算值替代。",
+            ))
+            prefix = "current-observed immutable path is outside approved research roots:"
+            if row.reason.startswith(prefix):
+                field = row.reason[len(prefix):].strip() or "原始來源路徑"
+                lines.extend((
+                    "",
+                    f"來源定位：原 capture 所 pin 的 {field} 不在目前核准研究來源根內，或無法依目前路徑設定解析。",
+                    "具體前置條件：讓該保存版本的原檔在核准 current-observed research root 下可讀，並維持 capture 內記錄的原 SHA；若使用了不同儲存根，先修正該版本的核准根設定，再讀回原 capture。",
+                ))
+        else:
+            lines.extend(("", "研究操作只沿此列精確保存的原預測下鑽；自然結果仍須另外核驗。"))
+        return "\n".join(lines)
 
     def _request_item(self, item: QTableWidgetItem) -> None:
         selection = item.data(Qt.ItemDataRole.UserRole)
@@ -121,6 +174,9 @@ class PersonalH20ResearchWidget(QWidget):
 
     def _request_current(self) -> None:
         item = self.table.currentItem()
+        if item is None:
+            selected = self.table.selectedItems()
+            item = self.table.item(selected[0].row(), 0) if selected else None
         if item is not None and self.table.selectedItems():
             self._request_item(item)
 

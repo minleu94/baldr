@@ -84,6 +84,33 @@ def test_unknown_row_kept_not_actionable_and_all_unknown(tmp_path):
     qt.processEvents()
 
 
+def test_unknown_selection_shows_full_copyable_source_reason_and_prerequisites(tmp_path):
+    qt = app()
+    saved = saved_cohort(tmp_path)
+    full_reason = "current-observed immutable path is outside approved research roots: cycle_terminal_path"
+
+    def reader(*args, **kwargs):
+        raise ValueError(full_reason)
+
+    cohort = read_saved(saved, reader)
+    widget = PersonalH20ResearchWidget()
+    widget.set_cohort(cohort)
+    widget.table.selectRow(0)
+    qt.processEvents()
+
+    diagnostic = widget.diagnostic_text.toPlainText()
+    assert widget.diagnostic_text.isReadOnly()
+    assert full_reason in diagnostic
+    assert "cycle_terminal_path" in diagnostic
+    assert "原 capture 所 pin" in diagnostic
+    assert "維持 capture 內記錄的原 SHA" in diagnostic
+    assert "不可改指最新 cycle" in diagnostic
+    assert not widget.research_button.isEnabled()
+
+    widget.close()
+    qt.processEvents()
+
+
 def test_previous_cohort_callback_wrong_decision_and_closed_callback_refused(tmp_path):
     qt = app()
     cohort = read_saved(saved_cohort(tmp_path))

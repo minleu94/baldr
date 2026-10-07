@@ -7,6 +7,7 @@ import pytest
 
 from data_module.config import TWStockConfig
 from data_module.ml_research_output_boundary import (
+    ML_RESEARCH_STORAGE_CONFIG_ENV,
     ML_RESEARCH_STORAGE_SCHEMA_VERSION,
     MLResearchOutputBoundaryError,
     get_ml_research_root,
@@ -14,8 +15,30 @@ from data_module.ml_research_output_boundary import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_storage_config_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ML_RESEARCH_STORAGE_CONFIG_ENV, raising=False)
+
+
 def _write_config(repository: Path, active_root: str | Path, *, body: bytes | None = None) -> Path:
     config_path = repository / "output" / "ml_research_storage.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    if body is None:
+        body = json.dumps(
+            {
+                "schema_version": ML_RESEARCH_STORAGE_SCHEMA_VERSION,
+                "active_root": str(active_root),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    config_path.write_bytes(body)
+    return config_path
+
+
+def _write_config_path(
+    config_path: Path, active_root: str | Path, *, body: bytes | None = None
+) -> Path:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     if body is None:
         body = json.dumps(
@@ -88,6 +111,86 @@ def test_configured_root_is_only_write_root_while_legacy_pins_remain_readable(
             repository_root=repository,
             access="read",
         )
+
+
+def test_explicit_external_config_supports_frozen_repository_without_creating_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "frozen" / "_internal"
+    repository.mkdir(parents=True)
+    legacy = repository / "output" / "ml_research"
+    external_config = tmp_path / "user-config" / "ml_research_storage.json"
+    active = tmp_path / "user-data" / "FA_ML_Research"
+    _write_config_path(external_config, active)
+    monkeypatch.setenv(ML_RESEARCH_STORAGE_CONFIG_ENV, str(external_config))
+
+    assert get_ml_research_root(repository_root=repository) == active
+    assert resolve_ml_research_output_path(
+        legacy / "old" / "terminal.json",
+        repository_root=repository,
+        access="read",
+    ) == legacy / "old" / "terminal.json"
+    assert resolve_ml_research_output_path(
+        active / "current" / "terminal.json",
+        repository_root=repository,
+        access="read",
+    ) == active / "current" / "terminal.json"
+    assert resolve_ml_research_output_path(
+        active / "current" / "terminal.json",
+        repository_root=repository,
+        access="write",
+    ) == active / "current" / "terminal.json"
+    with pytest.raises(MLResearchOutputBoundaryError, match="writes must be"):
+        resolve_ml_research_output_path(
+            legacy / "new" / "terminal.json",
+            repository_root=repository,
+            access="write",
+        )
+    assert not active.exists()
+    assert not legacy.exists()
+
+
+@pytest.mark.parametrize("configured_path", ["", "   ", "relative/config.json"])
+def test_explicit_empty_or_relative_config_path_fails_without_default_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    configured_path: str,
+) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    default_active = tmp_path / "default-active"
+    _write_config(repository, default_active)
+    monkeypatch.setenv(ML_RESEARCH_STORAGE_CONFIG_ENV, configured_path)
+
+    with pytest.raises(MLResearchOutputBoundaryError, match="absolute path"):
+        get_ml_research_root(repository_root=repository)
+    assert not default_active.exists()
+
+
+def test_explicit_missing_or_invalid_external_config_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    default_active = tmp_path / "default-active"
+    _write_config(repository, default_active)
+    missing_config = tmp_path / "external" / "missing.json"
+    monkeypatch.setenv(ML_RESEARCH_STORAGE_CONFIG_ENV, str(missing_config))
+
+    with pytest.raises(MLResearchOutputBoundaryError, match="does not exist"):
+        get_ml_research_root(repository_root=repository)
+    assert not default_active.exists()
+
+    external_config = _write_config_path(
+        tmp_path / "external" / "invalid.json",
+        tmp_path / "safe-active",
+        body=b'{"schema_version":"wrong","active_root":"D:/ML"}',
+    )
+    monkeypatch.setenv(ML_RESEARCH_STORAGE_CONFIG_ENV, str(external_config))
+    with pytest.raises(MLResearchOutputBoundaryError, match="schema version"):
+        get_ml_research_root(repository_root=repository)
+    assert not default_active.exists()
+    assert not (tmp_path / "safe-active").exists()
 
 
 def test_current_observed_reader_resolves_exact_legacy_and_active_roots(

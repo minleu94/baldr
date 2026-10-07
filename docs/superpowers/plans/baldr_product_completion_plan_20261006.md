@@ -16,6 +16,16 @@
 
 目前無需額外決策才能完成M1。真正政策選擇仍只有§12的H20研究排序如何接配置情境；推薦沿使用者等權／明示目標情境，不能直接把毛報酬轉權重。正式資料、私人帳本、模型／Task、交易、push與發布保持原授權邊界。
 
+### 0.1 M2 施工與真人回報（2026-10-07，未完成）
+
+使用者已授權繼續 Luna Max 分工、由中央審核。新增排他範圍：P01 producer 葉片為 `app_module/daily_market_universe_producer.py`／同名測試；query 葉片為既有 `daily_market_universe_run.py`／新 `test_daily_market_universe_run_query.py`；P02 葉片為 `decision_module/factors/selection_technical_rules.py`／`test_baldr_completion_p02_methods.py`。中央擁有新增 `app_module/daily_market_universe_selection.py`、`ui_qt/views/daily_market_universe_view.py`、其 UI 測試及既有每日研究頁接線。使用者回報的個人推薦歷史版本窄欄排版另釋出 `recommendation_view.py`／新版面測試給啟動契約 Luna；不與中央同檔並寫。
+
+- 多條件全域 AND／OR 與缺欄三態已由257碼、兩段真 parent writer 產物驗證；P02五項純 Decimal 規則20案例通過，但來源／保存新版本與 UI 尚未接線。中央完整母體頁到原 child 下鑽隔離案例通過；仍缺 producer 正常外部根、比較／收藏／重開完整 query、真 N 及候選版驗收。
+- 原 parent capture writer 的預設 guard 僅允 QA／Temp，不能以此限制當正常 OUTPUT_ROOT 產品完成；後續需明示受控研究根契約，保留原預設防護、來源隔離、資源上限與 immutable 保存。
+- 真人驗收先精確分來源：H20名單選2382→「研究選取股票」→個股「摘要」上方「第一眼先看五個問題」→「返回來源清單」。H20目前沒有已驗收藏入口，不能要求使用者找原排名或每日規則的收藏按鈕替代。現成M1呈現fixture不能從正常reader開H20，Native啟動／布局與canonical來源旅程分列。
+- 使用者回報三個預設策略同時被官方日曆阻擋，及個人推薦歷史版本欄在窄視窗擠壓。中央已找到候選包預設日曆位於未打包的output；新增 `OFFICIAL_CALENDAR_CACHE_PATH` 共同設定與外部研究根日曆解析，未放寬官方cache hash／expiry／available-at。實際三策略與H20缺摘要仍待版號／来源核對及重驗，不能由路徑單測宣稱恢復。
+- 其他排程／Paper／Snapshot／Manual未提交變更由別的工作保留，不順手納入本包；原exe、main、原計畫、失敗QA及正式Task均保持原邊界。
+
 ## 1. 先回答：現在能做什麼，真正還缺什麼
 
 Baldr 已有可用的研究零件及數條有限閉環，但尚未形成完整的「看盤勢 → 選股 → 比較 → 個股 → 持倉情境 → 收藏追蹤」產品。優先補完使用者每天會走的路，再擴充條件與策略績效。自然結果等待成熟，與介面、接線、完整母體等可立即施工事項分開管理。

@@ -1079,9 +1079,13 @@ class DailyMarketUniverseRunReader:
         page: int = 0,
         page_size: int = 50,
         condition_key: str | None = None,
+        condition_keys: Sequence[str] | None = None,
+        combine_mode: str = "AND",
         state_filter: str = "all",
         stock_filter: str = "",
     ) -> DailyMarketUniverseRunPage:
+        if condition_keys is not None and condition_key is not None:
+            raise DailyMarketUniverseRunError("query_condition_conflict")
         if sort_key not in _SORT_COLUMNS:
             raise DailyMarketUniverseRunError("query_sort_invalid")
         if type(descending) is not bool:
@@ -1092,6 +1096,11 @@ class DailyMarketUniverseRunReader:
             raise DailyMarketUniverseRunError("query_page_invalid")
         if condition_key is not None and condition_key not in _CONDITION_COLUMNS:
             raise DailyMarketUniverseRunError("query_condition_invalid")
+        query_condition_keys: tuple[str, ...] | None = None
+        query_combine_mode = "AND"
+        if condition_keys is not None:
+            query_condition_keys = _normalize_query_condition_keys(condition_keys)
+            query_combine_mode = _normalize_query_combine_mode(combine_mode)
         allowed_states = _STATES | {"excluded", "processed", "pending", "all"}
         if state_filter not in allowed_states:
             raise DailyMarketUniverseRunError("query_state_invalid")
@@ -1099,7 +1108,24 @@ class DailyMarketUniverseRunReader:
             raise DailyMarketUniverseRunError("query_stock_filter_invalid")
         predicates: list[str] = []
         parameters: list[Any] = []
-        if condition_key is not None:
+        if query_condition_keys is not None:
+            condition_state_sql = _combined_condition_state_sql(
+                query_condition_keys,
+                query_combine_mode,
+                self._feature_condition_keys(),
+            )
+            if state_filter == "excluded":
+                predicates.append("is_excluded = 1")
+            elif state_filter == "processed":
+                predicates.append("processed = 1 AND is_excluded = 0")
+            elif state_filter == "pending":
+                predicates.append("processed = 0 AND is_excluded = 0")
+            elif state_filter in _STATES:
+                # 被排除的代碼不是條件未知候選，必須先排除再套三值條件。
+                predicates.append("is_excluded = 0")
+                predicates.append(f"({condition_state_sql}) = ?")
+                parameters.append(state_filter)
+        elif condition_key is not None:
             condition_column = _CONDITION_COLUMNS[condition_key]
             if state_filter == "excluded":
                 predicates.append("is_excluded = 1")
@@ -1129,6 +1155,9 @@ class DailyMarketUniverseRunReader:
             f"SELECT COUNT(*) FROM universe_members{where}", parameters
         ).fetchone()[0])
         column = _SORT_COLUMNS[sort_key]
+        if sort_key == "combined_state" and query_condition_keys is not None:
+            # 動態查詢排序沿當次三態；排除列不借索引內的舊組合狀態。
+            column = f"CASE WHEN is_excluded = 1 THEN NULL ELSE ({condition_state_sql}) END"
         direction = "DESC" if descending else "ASC"
         if sort_key == "stock_code":
             order = f"stock_code {direction}"
@@ -1140,10 +1169,36 @@ class DailyMarketUniverseRunReader:
             f"SELECT payload_json FROM universe_members{where} ORDER BY {order} LIMIT ? OFFSET ?",
             [*parameters, page_size, offset],
         ).fetchall()
-        decoded = tuple(json.loads(row[0]) for row in rows)
+        decoded_rows = [json.loads(row[0]) for row in rows]
+        if query_condition_keys is not None:
+            from app_module.daily_market_research_screener import evaluate_daily_market_conditions
+
+            for row in decoded_rows:
+                if row.get("included") is False:
+                    # 排除列保留母體狀態與原因，不算成條件未知候選。
+                    continue
+                raw_conditions = row.get("conditions")
+                conditions = raw_conditions if isinstance(raw_conditions, Mapping) else {}
+                evaluation = evaluate_daily_market_conditions(
+                    conditions,
+                    query_condition_keys,
+                    query_combine_mode,
+                    expected_decision_date=self.plan.decision_date,
+                )
+                row["combined_state"] = evaluation.combined_state
+                row["why"] = list(evaluation.why)
+                row["why_not"] = list(evaluation.why_not)
+        decoded = tuple(decoded_rows)
         return DailyMarketUniverseRunPage(
             self.generation_identity_sha256, decoded, total_count, filtered_count, page, page_size
         )
+
+    def _feature_condition_keys(self) -> frozenset[str]:
+        source_clock = self.plan.source_clock
+        if source_clock is None:
+            return frozenset()
+        contract = feature_contract_for_version(source_clock.feature_contract_version)
+        return frozenset(contract.condition_keys)
 
     def close(self) -> None:
         self._connection.close()
@@ -2190,6 +2245,51 @@ def _index_values(
         state_values["close_above_ma60"], state_values["close_above_bbands30_upper"],
         _canonical_json(payload),
     )
+
+
+def _normalize_query_condition_keys(values: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise DailyMarketUniverseRunError("query_condition_invalid")
+    keys = tuple(values)
+    if (
+        not keys
+        or len(keys) > len(_CONDITION_COLUMNS)
+        or any(not isinstance(key, str) or key not in _CONDITION_COLUMNS for key in keys)
+        or len(set(keys)) != len(keys)
+    ):
+        raise DailyMarketUniverseRunError("query_condition_invalid")
+    return keys
+
+
+def _normalize_query_combine_mode(value: str) -> str:
+    if not isinstance(value, str):
+        raise DailyMarketUniverseRunError("query_combine_mode_invalid")
+    mode = value.strip().upper()
+    if mode not in {"AND", "OR"}:
+        raise DailyMarketUniverseRunError("query_combine_mode_invalid")
+    return mode
+
+
+def _combined_condition_state_sql(
+    condition_keys: Sequence[str],
+    combine_mode: str,
+    feature_condition_keys: frozenset[str],
+) -> str:
+    """建立固定白名單欄位的三值組合式，供全域篩選先於分頁執行。"""
+
+    states = [
+        f"COALESCE({_CONDITION_COLUMNS[key]}, 'unknown')"
+        if key in feature_condition_keys
+        else "'unknown'"
+        for key in condition_keys
+    ]
+    if combine_mode == "AND":
+        no_match = " OR ".join(f"({state}) = 'no_match'" for state in states)
+        match = " AND ".join(f"({state}) = 'match'" for state in states)
+        return f"CASE WHEN ({no_match}) THEN 'no_match' WHEN ({match}) THEN 'match' ELSE 'unknown' END"
+    match = " OR ".join(f"({state}) = 'match'" for state in states)
+    no_match = " AND ".join(f"({state}) = 'no_match'" for state in states)
+    return f"CASE WHEN ({match}) THEN 'match' WHEN ({no_match}) THEN 'no_match' ELSE 'unknown' END"
 
 
 def _verify_staging_index(path: Path, expected_rows: Sequence[tuple[Any, ...]]) -> None:

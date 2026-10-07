@@ -1558,3 +1558,6 @@ exe、應用程式與主視窗使用原 app_icon.png；Windows AppUserModelID �
 ### 2026-10-07 M2 保存來源瀏覽增量（dev）
 
 DailyMarketResearchView 掛載 DailyMarketUniverseView；app_module.daily_market_universe_selection 將 exact generation／manifest pins 與完整 query 傳入既有完整 run reader，沿原 parent／child manifest 解回 VerifiedDailyMarketSnapshot。讀取在 TaskWorker 內建立／關閉 reader，Qt 不跨執行緒保存 SQLite connection；補充核驗結束後重核 query 再發 stockResearchRequested，返回仍指原完整母體。此增量沿既有 UI→Service→保存來源邊界，不查最新市場 DB、不產製快照；v4五規則保存底層與 full-N 正常 UI 尚未整合，不能當目標架構完成。詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+v4 技術保存底層（2026-10-07 dev）：daily_market_technical_snapshot_v4_producer 只接唯讀交易 finish 的窗口，封存到獨立 v4 batch；daily_market_technical_snapshot_v4_repository 以 exact manifest 核全部 bytes、clock、method、來源與規則語義；rule_research_technical_parent_capture_v4 以完整 bounded cohort／clock／窗口建 plan，typed verified batch 組成 append-only parent receipts。讀回不開市場 DB、不套目前計算 kernel，也不改舊 v2／v3保存。這仍是最多256納入的 bounded parent 底層，正常 caller／full-N聚合／UI五規則尚未完成，證據見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。

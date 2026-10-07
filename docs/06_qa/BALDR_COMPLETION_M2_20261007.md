@@ -92,3 +92,12 @@ SQL 使用與 Python 相同的完整日期解析器；NULL、空值、非法及�
 ## v4 repository／batch producer／parent 中央整合
 
 `v4_parent_repository_root_1.log`：92 passed、1 skipped in 72.48s；包含 source 26、read session 8、method 4、snapshot 27、repository／producer 24與 parent 4。Windows symlink 權限不足跳過一例，hardlink 拒絕仍實際執行。真 SQLite→一次 finish→16+1 stock batch→immutable parent→刪除測試自有 synthetic DB後新程序唯讀重開，並涵蓋取消續跑、錯 clock／cohort／date、語義與 bytes tamper、長路徑和舊新 schema 隔離。這只證有界底層保存鏈；正常 orchestration、v4 query 與完整市場聚合尚在下一包，不能把256股上限改稱 M2 全市場完成。
+
+
+### v4 保存底層 API 審核封存
+
+中央另執行 repository／batch producer／parent 三模組 mypy 與六個 changed Python py_compile，皆通過。batch API 接 finish 後窗口，不開來源 DB；保存於獨立 daily_market_technical_v4 store，manifest 最後發布並完整讀回。read_exact 必須給原 manifest 路徑，可核外部 bytes／cohort／clock／method／日期 pins。單股256KiB、artifact batch4MiB、manifest4MiB、retention64MiB；普通寫入僅 QA／Temp，正常根必須明示 ResearchCaptureWriteScope。Windows extended path 僅用於 I/O，保存身份仍 canonical。
+
+parent API 接全部完成窗口建 immutable plan，最多256納入／256排除、16股一批；start／record_verified_batch／mark_terminal／resume／complete 產生 append-only receipts。read 需原 plan identity、receipt identity 及 receipt bytes SHA，重驗 chain、全 child manifest 與逐股保存證據，不開 DB、不選 latest。取消保存 partial／cancelled，不能當完整；只有全 batch 核驗才 complete，全排除／空母體可真零完成。此256上限是有界 child parent 契約，不是市場母體或選股名單上限。正常 orchestration、full-N v4 aggregate 及 UI 尚未封存。
+
+本輪新增三模組與三測試，未修改舊 v2／v3 reader／writer 或資料格式；回滾可 git revert 本輪整合提交，先保護後續修改與新 consumer，相依新功能會不可用。原 artifact／partial／QA 及舊 reader 保留，不刪資料恢復乾淨。批次 scope 是 preflight 驗證，不能描述為每次 OS 寫入皆獨立重驗；後續正常 caller 仍需逐批檢查範圍。

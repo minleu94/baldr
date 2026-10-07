@@ -725,3 +725,6 @@ scripts/export_market_csv.py提供唯讀preview、caller保存接受的preview�
 ### 2026-10-07 完整保存母體瀏覽（dev）
 
 查每日研究完整來源 UI：ui_qt/views/daily_market_universe_view.py；完整 query／原 child 解析：app_module/daily_market_universe_selection.py；個股發出／返回／取消續接：ui_qt/views/daily_market_research_view.py。底層仍沿既有 daily_market_universe_run 與 parent repository。操作見[完整手冊](docs/07_guides/APPLICATION_MANUAL.md#2026-10-07-施工版完整保存母體瀏覽)，限制與88項UI回歸見[M2 QA](docs/06_qa/BALDR_COMPLETION_M2_20261007.md)。尚未代表新五規則full-N產製／收藏／比較或候選可用。
+
+
+v4技術保存底層：app_module/daily_market_technical_snapshot_v4_repository.py（exact manifest唯讀）、daily_market_technical_snapshot_v4_producer.py（finish窗口保存批次）、rule_research_technical_parent_capture_v4.py（immutable plan／append-only parent進度及明示續跑）。與舊v2／v3保存隔離，最多256納入是child parent邊界；full-N orchestration及UI尚未完成。中央92 passed／1權限skip及契約見[M2 QA](docs/06_qa/BALDR_COMPLETION_M2_20261007.md)。

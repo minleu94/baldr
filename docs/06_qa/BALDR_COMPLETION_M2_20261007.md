@@ -188,3 +188,11 @@ store歷史prefix／graph-head CAS最終凍結版，Luna全檔22439 exit0 **6 pa
 中央 producer session20564 已 terminal exit0，當前 store／parent reader 整合 **5 passed in 95.47s**，隔離根 `C:/t/full-producer-current-root-20261007-a`；取代上述仍執行狀態，不取代尚未完成的全 N UI／查詢與效能 Gate。
 
 保存研究比較 reader 新增於 `app_module/daily_market_technical_universe_v4_comparison.py`。各欄保留原查詢與完整來源 pins，逐原頁公開 strict reader 重開，只保留所選 rows；明示混合 cutoff／方法／來源時鐘，不計算交易或績效、不授 historical PIT。中央真兩股 producer 保存 fixture 移除自建行情 DB 後，驗證兩個原頁比較、五規則、原查詢保留、重複欄／跨頁錯選／取消拒絕，以及 manifest bytes 篡改拒絕。與個股／Qt 原來源返回同一測試 **1 passed in 8.29s**，session8537 exit0，隔離根 `C:/t/comparison-stock-root-20261007-c`；comparison mypy 1 file 0、兩檔 py_compile 通過。前兩次 sandbox 原生路徑 PermissionError setup／scope 失敗保留，不以其結果判定產品功能通過。此為 reader 完成證據，尚未有比較 UI、收藏比較或完整母體效能驗收。
+
+正常 TWStockConfig 每日研究入口已注入明示產製 factory；隔離讀取用設定外殼仍不提供產製能力。中央 session1863 exit0：必要更新工作台、factory、真保存個股比較三檔 102 passed in 15.06s（C:/t/technical-factory-entry-root-20261007-a）；全域 mypy 879 source files 0、shared entry py_compile 通過。更新頁 validator sandbox 首次 21通過／3失敗／4跳過（原生路徑 PermissionError），失敗報告另存 output/qa/fn4/update_tab_factory_entry_sandbox_failure_20261007.md；隔離非sandbox重驗25通過／0失敗／4保護性跳過。factory 正常入口構造專項仍待owner補驗；resume factory在GUI同步strict read可能昂貴，已列改進，不能宣告完整N操作與回應性完成。
+
+中央比較呈現 widget（daily_market_technical_comparison_v4_view.py）以原保存列並排五規則／日期／版本，顯示未知可得時間與口徑差異，原欄 query 返回 signal 不換最新。真兩股保存來源＋Qt 呈現／第二欄返回，session2892 exit0：1 passed in 10.43s，C:/t/comparison-view-root-20261007-a；全域 mypy880檔0、py_compile通過。此widget尚未接主入口選取比較，不能宣告比較完整旅程完成。factory owner正常TWStockConfig入口17 passed in3.87s；小型2股母體續跑strict讀cancelled0.032s／complete0.110s，不能支持全N回應性，已安排兩階段背景核驗。全query9924首輪terminal1：7passed／1failed804.50s，sort fixture實有兩筆null，原test僅預估一筆；owner保留首紅log，只重驗修正的真null-tail案例20159，產品query未改。
+
+比較呈現進一步依固定 rule key 對應五規則，不依 DTO tuple 的位置猜測；每格提示沿原保存 cutoff／feature date／版本／支持／反證／未知原因與原query pins。target mypy／compile通過。主入口比較basket交原view owner，待最後257 UI測試terminal後施工，避免改動live來源。factory兩階段契約已審核：GUI收有界設定與metadata未核驗摘要，worker才做canonical scope／selected exact qualification／request；取消至少在exact讀前後檢查，中途合作取消尚待reader接口。
+
+全母體Qt owner session56637最終terminal0：2 passed in414.15s（同一真257保存fixture背景旅程）；保留431.56s來源限制缺口首紅及404.56s OR fixture預估錯誤第二紅，不以本wall time宣告效能Gate。root比較widget選格可讀證據區、固定鍵對應與返回tuple(query,stock)通過真來源session66382：1passed8.84s。最後widget來源全域mypy880檔0、compile通過，validator25通過／4保護跳過；背景比較basket與deferred qualification仍施工。

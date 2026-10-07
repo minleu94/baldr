@@ -652,3 +652,23 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 查詢控件涵蓋五個具名技術方法、AND／OR、各方法狀態、股票篩選、排序與頁碼；先對所選 receipt 的全部已完成分段篩選／排序，再分頁。分母、排除、缺原始列、規則未知與待處理分列；partial 可瀏覽，但不顯示全量完成。清除條件、恢復 query、收藏與比較都固定來源版本。
 
 個股下鑽沿所選列的原分段 parent／child 引用，首屏顯示保存結論、日期與限制；返回保留來源、全部條件、排序、頁碼、選取及捲動位置。收藏與比較不得藉由重開改讀新行情或新版本。介面測試須走真 producer／store／query 保存來源，涵蓋257跨段極端值、取消續跑後舊版本、資料缺件、關閉／queued stale、重開與窄視窗；另跑既定 UI 強制三項及型態／語法檢查。1000／真N效能與新候選 Native 另列 Gate，不由合成257通過折抵。
+
+### 2026-10-07 全範圍接續核對（中央審核，未完成）
+
+此表對照原 §9 工作包出口，不把目前五規則施工縮成整份補完目標。工程證據集中於 [M2 QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)，真人固定候選仍為 c589，最新 dev 尚未包入。
+
+| 出口 | 當前可核成果 | 尚缺的完成證據／下一步 |
+|---|---|---|
+| P00／P14 共用入口與同版 | c589 固定來源 Python／exe、保存 H20 報告失敗仍有摘要；版本及主機設定明確 | 最新 full-N 正常 MainWindow 全旅程、新程序、固定候選同版與 Native；不能沿用舊候選證明新碼 |
+| P01 完整母體 | dev 646882a6 保存全N store／producer／catalog；真257分段、舊partial／cancelled固定收據、head CAS、缺件拒絕有測試 | 當前query排序重驗、UI final、1000與真N；首次索引與頁查分別量測，保留冷暖／資源基線 |
+| P02／P04 首批五規則選股 | 真保存五規則、全域條件／排序／分頁、原個股證據與返回；比較reader／widget小型真來源通過 | 正常入口比較basket、條件清除／恢復、原query收藏重開、窄窗與跨段完整旅程；其餘原條件仍未交付 |
+| P05 H20 摘要 | c589 真保存source旅程與報告失敗 retry隔離相等，合成模型邊界明示 | 原私人2382真人摘要／日期／預測與結果辨識；H5、分域缺件及原十股完整驗收不由合成折抵 |
+| P03／P07 擴充來源與策略 | 沿原事實adapter／家族盤點，不授未實現能力 | 可得日／官方事件／權證等具名來源交付與更新旅程；策略逐家族定版、prefix不變性、反證與保存，不用永久unknown結案 |
+| P06／P08 M3 | 原金融引擎／政策及8檔帳本上限保留；這輪未擅改核心計算 | 帳本身分、情境真保存、至少兩策略獨立績效／成本／歷史比較及新程序；不得將H20毛報酬直接當權重 |
+| P09／P10 | 原收藏／圖表與工作區流程保留 | full-N query／比較集合持久化與重開、首頁／日期一致性；不能找原每日收藏替代H20未有入口 |
+| P11／P12 | 自然成熟與實作可立即補項分開 | 證據進度可讀、原job terminal/status／deadline／timeout診斷；正式自然Task未驗仍open，不以fixture替代 |
+| P13 產品接受 | 定向回歸、更新工作台、validator、mypy與工程紀錄持續保存 | 四用途全旅程、完整異常矩陣、3–5位使用者30秒／2分鐘、原解析度與縮放、鍵盤與資源量測、Manual／權威狀態同步 |
+
+目前新增產製設定仍須將完整所選收據核驗移至背景，GUI只收有界輸入與明示未核驗metadata；比較主入口由原view owner接續，root負責共享詳情接線與驗收。H20／三策略／窄欄真人四項沿已提供的啟動檔驗，未收到回報前維持未驗。
+
+P09 收藏接續契約（來源調查後釋出）：現 `ResearchSessionStore` 明確只保存記憶體狀態，不是持久化儲存；現 `WatchlistService.add_research_bookmark` 使用既有不可變 payload、bookmark identity、revision／continuity及COW writer，但decoder只認每日 v1／原排名 v2。新五規則完整母體不得塞進舊source kind或把session當持久化完成。Luna先交獨立immutable full-N bookmark decoder／公開strict重開（原query、selected stock、原snapshot/source identity、捲動位置與比較集合）；中央後續擴充現watchlist decoder／COW caller及UI，不另建私人store。缺件與hash漂移明示拒絕、續跑之後舊收藏仍沿舊receipt，不借latest；建payload、真正持久化、UI收藏及新程序恢復分別驗收。

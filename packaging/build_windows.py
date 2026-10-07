@@ -19,6 +19,9 @@ from app_module.packaging_provenance import (
 
 
 def main() -> int:
+    # Windows 非 UTF-8 終端也須能輸出中文；避免建置完成後只因狀態文字失敗。
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--commit", required=True, help="已驗證的完整 40 字元來源 commit")
     parser.add_argument("--candidate", action="store_true", help="相容舊參數；現在一律建置獨立 candidate")

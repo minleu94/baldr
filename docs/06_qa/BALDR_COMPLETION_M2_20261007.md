@@ -49,6 +49,12 @@ SQL 使用與 Python 相同的完整日期解析器；NULL、空值、非法及�
 
 ## 仍須完成
 
-受控根的底層產製→完整 run→全域查詢→新程序重開已在具名隔離案例通過；接著仍須正常 UI 的產製入口、完整 query 的收藏／比較／返回，以及新 technical 保存版本。原 v2／v3 產物不可事後補欄或套新公式。新固定來源候選需另做 Python／exe 同版驗證，既有候選與正式 exe 保留。
+受控根的底層產製→完整 run→全域查詢→新程序重開已在具名隔離案例通過；接著仍須正常 UI 的產製入口、完整 query 的收藏／比較／返回，以及新 technical 保存版本。原 v2／v3 產物不可事後補欄或套新公式。新固定來源技術engine候選已完成下節真Python／exe同版probe；正常UI全流程candidate仍須另驗。既有候選與正式exe保留。
 
 目前未讀寫正式市場 DB、未更動私人模型／持倉、未觸發 Task、未交易，也未 push／更新 main／取代原 exe。真人驗收入口沿[推薦回饋 QA](BALDR_RECOMMENDATION_HUMAN_FEEDBACK_20261007.md)；目前不要求使用者重複驗尚未完成的 M2 流程。
+
+## 固定來源技術 adapter 的實際 exe 同版比較
+
+固定 `e5026b3a5afa2501da1f2d5956211d74130898e3` 新候選位於 `dist/candidate_e5026b3a5afa_abeea6de/baldr/baldr.exe`，52,502,536 bytes，SHA-256 `f6bbfb316e3db53787171722d49f369346d3827534c3e54d3021a3f1e9b879ef`。Python 使用同 commit archive，exe 使用實際 frozen kernel bytes與metadata；同一合成日線SQLite的65列窗口、排除未來列、計算身份及完整JSON逐值一致，來源SHA／mtime保持、網路禁止。收據 `output/qa/baldr_completion_m2_20261007/technical_same_version_b7fa6b8e/comparison.json`，SHA-256 `215633b406a3ace1d70ea7834a1d4de389521257ac19412318d497da3e755b70`。
+
+建置本身與建置收據已成功，CLI最後輸出中文時曾因host cp1252出UnicodeEncodeError；沒有重新build或覆寫候選，先核原receipt／exe hash再執行上述真同版比較。build_windows另補UTF-8輸出，原失敗保留。這份engine probe不證H20獨立panel、正常UI產製、v4保存或Native真人可用；各候選及原exe保留，未更新active delivery。

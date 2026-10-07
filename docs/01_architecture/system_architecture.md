@@ -1573,3 +1573,6 @@ v4 技術保存底層（2026-10-07 dev）：daily_market_technical_snapshot_v4_p
 
 
 2026-10-07 v4讀回去重：公開parent reader直接回其strict read已核包；snapshot.from_json語義核驗一次後canonical回轉，repo不再將同份immutable DTO重複轉換核驗。每次重新開啟仍讀真artifact並核bytes／size／identity／source-clock／method／date與layout；writer capture前後變動重驗保留。零child complete parent無repository root、排除清冊仍受核。中央67 passed／1 Windows symlink權限skip，17股同pins剖析13.781→1.969s只為診斷，詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+2026-10-07 v4個股保存讀回接點：daily_market_technical_universe_v4_stock 先重核原query當頁，沿固定full receipt／segment parent／child manifest回傳snapshot及origin query，不開來源DB／不選latest。DailyMarketTechnicalStockV4View只展示保存五規則與日期限制，返回signal維持原query；正常工作區接線仍在施工。catalog有界metadata inventory與strict selection分開，cursor綁raw bytes SHA。中央catalog／stock五項及個股Qt真來源一項通過；詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。

@@ -794,7 +794,10 @@ def _artifact_ref_to_dict(ref: object) -> dict[str, object]:
     return {key: getattr(ref, key) for key in required}
 
 
-def _batch_artifact_to_dict(artifact: object, plan: DailyMarketTechnicalParentPlanV4) -> dict[str, Any]:
+def _batch_artifact_to_dict(
+    artifact: object, plan: DailyMarketTechnicalParentPlanV4, *,
+    _already_read_exact: bool = False,
+) -> dict[str, Any]:
     from app_module.daily_market_technical_snapshot_v4_repository import (
         DailyMarketTechnicalBatchArtifactV4,
         DailyMarketTechnicalSnapshotV4Repository,
@@ -844,15 +847,19 @@ def _batch_artifact_to_dict(artifact: object, plan: DailyMarketTechnicalParentPl
         raise TechnicalParentCaptureV4Error("technical_parent_v4_child_path_invalid") from exc
     if str(canonical_manifest) != str(manifest_path) or str(canonical_root) != str(repository_root):
         raise TechnicalParentCaptureV4Error("technical_parent_v4_child_path_not_canonical")
-    repository = DailyMarketTechnicalSnapshotV4Repository(canonical_root)
-    verified = repository.read_exact(
-        canonical_manifest,
-        expected_manifest_sha256=artifact.manifest_sha256,
-        expected_cohort_identity_sha256=cohort.cohort_identity_sha256,
-        expected_source_clock_sha256=body["source_clock_identity_sha256"],
-        expected_method_contract_sha256=body["method_contracts_sha256"],
-        expected_decision_date=cohort.decision_date,
-    )
+    if _already_read_exact:
+        # 僅供reader剛完成同次read_exact後投影；writer仍重新讀檔核capture變動。
+        verified = artifact
+    else:
+        repository = DailyMarketTechnicalSnapshotV4Repository(canonical_root)
+        verified = repository.read_exact(
+            canonical_manifest,
+            expected_manifest_sha256=artifact.manifest_sha256,
+            expected_cohort_identity_sha256=cohort.cohort_identity_sha256,
+            expected_source_clock_sha256=body["source_clock_identity_sha256"],
+            expected_method_contract_sha256=body["method_contracts_sha256"],
+            expected_decision_date=cohort.decision_date,
+        )
     for key in (
         "manifest_path", "manifest_sha256", "generation_identity_sha256",
         "cohort_identity_sha256", "source_clock_identity_sha256", "method_contract_sha256",
@@ -1235,7 +1242,7 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
                 expected_method_contract_sha256=plan.to_dict()["method_contracts_sha256"],
                 expected_decision_date=plan.cohort.decision_date,
             )
-            actual = _batch_artifact_to_dict(verified, plan)
+            actual = _batch_artifact_to_dict(verified, plan, _already_read_exact=True)
             if actual != child:
                 raise TechnicalParentCaptureV4Error("technical_parent_v4_receipt_child_pin_mismatch")
 

@@ -158,3 +158,17 @@ parent API 接全部完成窗口建 immutable plan，最多256納入／256排除
 中央 pytest session 4314 已回 terminal exit 1：store／producer 十項 **9 passed／1 failed，667.83s**，隔離 basetemp `C:/t/fullv4-root-20261007-n` 保留。唯一失敗是 `test_full_plan_rejects_changed_method_contract_and_json_float_or_duplicate_keys`：實際拒絕浮點值，exception.code=`technical_universe_v4_float_forbidden`，但 exception 文字是 `1.5`，測試 regex `float_forbidden` 未匹配。交原 leaf owner 改用具名 code 斷言，不放寬 float 拒絕；尚未重驗通過。此程序載入的是歷史 receipt graph 修正前的 store，pytest 結束時工作檔已更新，trace 顯示的工作檔行文不能當同版證據；也不以此首輪結果證明新歷史 prefix／CAS 已通過。
 
 中央要求新增取消後續跑到 complete 仍可讀舊 receipt 的原 counts／refs，以及只移走後續 segment 的合成 parent 時，舊 prefix 仍可讀、complete pin 具名拒絕。版本 catalog 另須用 metadata bytes SHA 偵測同長度替換／mtime 還原造成的 stale cursor，語義解析只做 limit+1 列；全 inventory 掃描的100000 entries／64MiB成本需明示。這些為審核待修，不是完成結論。
+
+中央新增 `daily_market_technical_universe_v4_stock.py`：先重核原 query 當頁，再沿明示 store／segment parent／child manifest pins 返回 snapshot 與原 query，不讀最新版本、不開行情 DB。獨立兩股真 producer／store／query 測試在刪除自身合成 DB 後仍讀回2382原40列與五規則，非當頁9999及 immediate cancel拒絕，**1 passed in 4.60s**；隔離根 `C:/t/stock-v4-root-20261007-b`。首輪 fixture scope 缺 source_database 參數的失敗留在 `...-a`，未放寬product。跨257分段、child缺件／tamper及UI連續操作仍待後續新版本驗證。
+
+後續個股測試加入新程序讀回同 query／snapshot identity、manifest缺件與bytes改動拒絕並恢復，**1 passed in 8.46s**（`...-d`）。前輪 `...-c` 在測試直接用未轉換長路徑的 Path.read_bytes 失敗，保留；測試改用既有 to_internal_io_path，product守衛未更動。中央再整合 catalog／stock **5 passed in 17.67s**，session66845 terminal exit0，basetemp `C:/t/catalog-stock-root-20261007-a`；targeted mypy3檔0，stock兩檔py_compile通過。
+
+catalog每次明示100000 entries／64MiB metadata inventory掃描，plan／receipt raw bytes SHA納入cursor fingerprint；metadata逐列解析至limit+1，損壞來源保留具名診斷。四項真producer/store案例覆蓋空清單／empty cohort區分、complete／cancelled、長路徑、刪自身DB後strict重開與新程序、同長度改寫還原mtime仍stale、超預算不冒稱全量。此catalog不是257效能或全N UI通過；五規則view已分工施工，入口／比較／收藏及其他原計畫包仍未完成。
+
+中央新增 `DailyMarketTechnicalStockV4View` 個股詳情元件，顯示五規則三態、決策／截止／特徵日期、支持／反證／未知原因及可得時間未知限制，返回原 query signal 不重建條件。真兩股保存來源 offscreen Qt 展示與返回 **1 passed in 8.36s**（session68461 exit0，`C:/t/stock-ui-root-20261007-a`）；該測試同時覆蓋前述新程序／缺件／tamper。workbench **85 passed in 3.64s**，Update validator **25 passed／4 protected skips**，全域 mypy **876 files 0 issues**，元件與測試targeted mypy／py_compile通過。這是元件驗證，不代表每日研究入口已接好、800px像素驗收通過或Native交付；接線與完整旅程仍待驗。
+
+後續每日研究入口已掛五規則view及嚴格個股signal→詳情dialog→原query返回，關機亦合作取消新view工作。中央原sandbox回歸85 passed／3 fixture PermissionError errors保留；C:/t隔離重驗 **88 passed in 56.98s**（session54478 exit0），validator25 passed／4 protected skips，全域mypy877檔0。此回歸含舊完整母體流程，不替代正在執行的新257股五規則Qt旅程；正常產製factory尚未接，query收藏／比較仍未完成。
+
+目前257股固定來源profile（session39338 exit0）建立query17.258s，page含cProfile203.435s、717349037 calls、repository.read_exact199次、snapshot.from_json3079次；`.prof`及exact pins保存在 `output/qa/baldr_completion_m2_20261007/full_v4_query_current.prof`／`full_v4_query_current_pins.json`，probe同目錄。這不是無profile產品延遲。發現parent reader剛read_exact後投影helper又read_exact，中央改僅該同次reader投影使用已核artifact，writer預設capture變動重讀不變；四套回歸session7913仍執行，尚未列通過。後續需同pins重驗成本，不授效能Gate。
+
+上述四套中央回歸session7913其後terminal exit0，**18 passed in 52.23s**，包含真parent／正常producer／query／個股Qt讀回，隔離根 `C:/t/v4-once-read-root-20261007-a`。同保留257股來源的第二profile另存 `profile_full_v4_query_after.py`／`full_v4_query_after_pins.json`，session19963仍live；query.create目前量到7.592s，page尚未完成，不宣告整頁達標。正常產製setup factory已交Luna下一包，完整母體設定、截止與原receipt續跑須明示；收藏／比較、1000／真N與Native仍未驗完。

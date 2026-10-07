@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 import json
+import hashlib
 import shutil
 import sqlite3
 import subprocess
@@ -302,6 +303,21 @@ def test_zero_included_has_explicit_complete_state_without_child_or_no_match(
     assert completed.status == "complete"
     assert completed.to_dict()["batch_artifacts"] == []
     assert completed.to_dict()["repository_output_root"] is None
+    # 公開跨程序讀回入口也須接受真零child parent，不可建立None root的repository。
+    source_sha = hashlib.sha256(database.read_bytes()).hexdigest()
+    reopened = read_daily_market_technical_parent_capture_v4(
+        parent_root,
+        plan.identity_sha256,
+        completed.identity_sha256,
+        expected_plan_sha256=plan.content_sha256,
+        expected_receipt_sha256=completed.content_sha256,
+    )
+    assert reopened["plan"]["population_state"] == expected_state
+    assert reopened["plan"]["cohort"]["excluded_stock_codes"] == list(excluded)
+    assert reopened["receipt"]["status"] == "complete"
+    assert reopened["receipt"]["batch_artifacts"] == []
+    assert reopened["receipt"]["repository_output_root"] is None
+    assert hashlib.sha256(database.read_bytes()).hexdigest() == source_sha
 
 
 def test_cohort_and_plan_reject_duplicate_wrong_date_mixed_clock_and_rehashed_tamper(

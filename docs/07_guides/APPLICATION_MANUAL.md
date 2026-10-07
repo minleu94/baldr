@@ -5333,3 +5333,6 @@ BBP01原parent producer／snapshot CLI已採入dev。隔離日常runtime與polic
 這版真人重測四項：原H20名單2382下鑽後首屏「保存的個人 H20 研究預測」有數值／三日期／實際結果限制；返回原名單保留選取／排序；原三個預設策略逐一執行並確認成功或具名失敗；非全螢幕個人推薦保存版本／歷史／回退全文可讀可點。H20沒有收藏按鈕，不列此驗收。每日研究單批收藏仍沿前節原入口，完整母體query收藏與比較尚未接線。
 
 固定原碼與exe的隔離同版及真保存source讀取流程通過，模型contract為明示合成邊界；合成2382的+12.34%不代表原私人2382數值。真人原來源與三策略尚未驗，這版不代表完整full-N新五規則或M2完成。收據與限制見[真人回饋QA](../06_qa/BALDR_RECOMMENDATION_HUMAN_FEEDBACK_20261007.md)。
+
+
+新候選真人啟動補充（2026-10-07）：檔案總管開啟 `C:\Projects\PythonProjects\technical_analysis\output\qa\baldr_completion_m2_20261007`，雙擊 `start_h20_feedback_candidate.cmd` 會呼上述PowerShell helper啟動 `2026.10.06+c589bc71e8f1`，帶原主機設定與官方日曆，不需自行下指令；helper沒有自動執行。依前節四項核2382首屏、原名單返回、三個全股票預設策略、非全螢幕歷史控制項。H20收藏不列驗收；最新dev的full-N施工尚未包含於該候選。

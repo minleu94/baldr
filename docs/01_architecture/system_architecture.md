@@ -1570,3 +1570,6 @@ v4 技術保存底層（2026-10-07 dev）：daily_market_technical_snapshot_v4_p
 
 
 2026-10-07 v4固定parent查詢接續：`app_module/daily_market_technical_parent_v4_query.py`以明示plan／receipt identity＋bytes SHA重驗parent及原child五規則；canonical query、狀態AND／OR、Decimal全段排序與分頁分開於產製，不開DB／不寫入／不挑latest。覆蓋是單段256納入＋256排除，明示full_n_aggregation=False；full-N aggregate另在施工。缺raw與規則unknown分開計唯一股數，取消在真child批次前後；中央8例通過，詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+2026-10-07 v4讀回去重：公開parent reader直接回其strict read已核包；snapshot.from_json語義核驗一次後canonical回轉，repo不再將同份immutable DTO重複轉換核驗。每次重新開啟仍讀真artifact並核bytes／size／identity／source-clock／method／date與layout；writer capture前後變動重驗保留。零child complete parent無repository root、排除清冊仍受核。中央67 passed／1 Windows symlink權限skip，17股同pins剖析13.781→1.969s只為診斷，詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。

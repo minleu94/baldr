@@ -141,3 +141,14 @@ parent API 接全部完成窗口建 immutable plan，最多256納入／256排除
 中央修正兩個審核發現：取消檢查原本在真正child讀取前空跑，現改每批前後合作式檢查；有raw rows但規則unknown原先被混算missing，現missing只計raw_row_count=0，unknown_rule_count／unknown_rule_stock_codes另計唯一股票。固定parent初次strict核驗仍是同步邊界，取消不宣称可在任意單次I/O內搶占。
 
 中央真writer回歸 `8 passed in 118.44s`，raw `output/qa/baldr_completion_m2_20261007/parent_v4_query_root_2.log`，mypy兩檔0、py_compile通過。測試包含17股16+1、兩排除與一股缺raw、Decimal排序／null尾、AND／OR／filter-before-page、fixed partial receipt、新程序且刪除自身合成DB後讀回、tamper／異日期／版本／缺receipt拒絕；另外真reader spy驗第一child讀完取消後第二child不讀，真40列NULLprice股票unknown但missing=0。前輪7 passed與Luna6 passed及失敗QA全保留。Full-N store／producer／aggregate query尚在施工，完整M2／UI產製／query收藏比較／Native未完成。
+
+
+### v4 真讀回重驗成本與零child修正（2026-10-07）
+
+完整all-excluded parent有complete plan／receipt，但無child、repository_output_root=None；公開reader先前額外重驗時把None建為repository而拋TypeError。修正版保留plan／chain／complete語義，零child明示無root；兩個原empty／all-excluded案例新增公開reader讀回、排除清冊及source bytes不變斷言。parent／正常caller先行回歸9 passed，raw `output/qa/baldr_completion_m2_20261007/parent_v4_zero_child_root_1.log`。
+
+同一已保存17股／2child的cProfile發現public wrapper再次呼已完成的child verifier，且repository把from_json已核immutable snapshot再次to_dict／from_dict做語義重驗。現public wrapper直接回reader.read已核包；snapshot.from_json仍完整from_dict語義／identity核驗，再用immutable payload做canonical回轉比對；repo保留artifact bytes SHA／size、source／method／日期綁定與canonical layout，只去掉同份DTO二次轉換驗證。writer輸入artifact後再次讀檔以防capture期間變動的檢查保留；沒有新增全域可信cache，也不跳過每次重新開啟的真檔核驗。
+
+固定同一parent plan／receipt的公開read profile由13.781s、45,464,235 calls改為1.969s、6,927,994 calls；2child的read_exact呼叫8→4、snapshot語義核驗272→34。原與修正profile分別 `parent_v4_read_profile_17.log/.prof`、`parent_v4_read_profile_17_after.log/.prof`，都位於上述QA目錄。這是同機診斷含cProfile overhead／同時其他QA程序，不能當已達真N產品效能Gate。
+
+最新snapshot／repository／batchproducer／parent／normalcaller／query六套中央回歸 **67 passed／1 skipped，108.28s**，raw `v4_read_validation_root_1.log`；Windows無symlink建立權限skip，硬連結拒絕實際通過；targeted mypy4檔0、py_compile4檔通過。原錯誤raw與較早不同import版本的fullstore pytest保留；當前fullstore／producer／query／catalog仍在中央驗證與補完。Native待使用者四項，M2／M3與P00–P14未完成。

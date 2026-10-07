@@ -523,7 +523,8 @@ class DailyMarketTechnicalFeatureSnapshotV4:
                 raise ValueError("technical_snapshot_v4_duplicate_json_key") from exc
             raise ValueError("technical_snapshot_v4_invalid_json") from exc
         snapshot = cls.from_dict(payload)
-        if snapshot.to_json() != text:
+        # from_dict 已完整核驗語義與identity；同一個不可變結果只做格式回轉比對。
+        if _canonical_json(snapshot._payload()) != text:
             raise ValueError("technical_snapshot_v4_noncanonical_json")
         return snapshot
 

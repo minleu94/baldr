@@ -1221,6 +1221,10 @@ class BoundedDailyMarketTechnicalParentCaptureWriterV4:
     def _reverify_all_child_batches(self, plan: DailyMarketTechnicalParentPlanV4, receipt: Mapping[str, Any]) -> None:
         from app_module.daily_market_technical_snapshot_v4_repository import DailyMarketTechnicalSnapshotV4Repository
 
+        if not receipt["batch_artifacts"]:
+            if receipt["repository_output_root"] is not None:
+                raise TechnicalParentCaptureV4Error("technical_parent_v4_empty_child_root_mismatch")
+            return
         repository = DailyMarketTechnicalSnapshotV4Repository(receipt["repository_output_root"])
         for child in receipt["batch_artifacts"]:
             verified = repository.read_exact(
@@ -1490,9 +1494,5 @@ def read_daily_market_technical_parent_capture_v4(
         expected_plan_sha256=expected_plan_sha256,
         expected_receipt_sha256=expected_receipt_sha256,
     )
-    if package["receipt"]["status"] == "complete":
-        reader._reverify_all_child_batches(
-            DailyMarketTechnicalParentPlanV4.from_dict(package["plan"]),
-            package["receipt"],
-        )
+    # read 已核receipt chain／語義及每個原child；不再重讀同份已核包。
     return package

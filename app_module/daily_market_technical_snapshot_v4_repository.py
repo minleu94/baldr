@@ -18,7 +18,6 @@ from app_module.daily_market_technical_feature_snapshot_v4 import (
     DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_BYTES,
     DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_SCHEMA_V4,
     DailyMarketTechnicalFeatureSnapshotV4,
-    validate_daily_market_technical_feature_snapshot_v4,
 )
 from app_module.daily_market_technical_method_contract_v4 import (
     daily_market_technical_method_contract_v4_sha256,
@@ -332,9 +331,6 @@ class DailyMarketTechnicalSnapshotV4Repository:
                 _fail("technical_snapshot_v4_artifact_sha_mismatch")
             try:
                 snapshot = DailyMarketTechnicalFeatureSnapshotV4.from_json(artifact_raw)
-                snapshot = validate_daily_market_technical_feature_snapshot_v4(
-                    snapshot.to_dict()
-                )
             except (TypeError, ValueError) as exc:
                 reason = str(exc)
                 code = reason if reason.startswith("technical_snapshot_v4_") else (

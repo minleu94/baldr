@@ -737,3 +737,6 @@ H20原保存來源獨立摘要（dev）：ui_qt/main.py的_context_changed/read/
 
 
 2026-10-07 v4固定來源查詢：`app_module/daily_market_technical_parent_v4_query.py`／`tests/test_daily_market_technical_parent_v4_query.py` 提供canonical固定query、真parent／child讀回、五規則狀態與Decimal排序／分頁、逐批取消。單段上限256納入＋256排除，full-N另由新store／producer／aggregate query補完；中央8例與targeted mypy通過，不能由此宣稱完整選股器完成。
+
+
+2026-10-07 v4讀回修正：`daily_market_technical_feature_snapshot_v4.py`／`daily_market_technical_snapshot_v4_repository.py`／`rule_research_technical_parent_capture_v4.py`移除同一read內重複語義核驗，保留每次真檔pin與變動核驗；零child公開parent讀回可用。六套中央67 passed／1 Windows symlink權限skip，full-N各leaf及正常UI閉環仍待整合。

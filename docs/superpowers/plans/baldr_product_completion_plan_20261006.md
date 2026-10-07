@@ -639,3 +639,6 @@ P14是跨波次中央共用入口／建置驗收包，與P00／P13共享邏輯�
 
 
 2026-10-07 v4 bounded query已由中央審核保存，真17股16+1與partial／fresh reopen／tamper共8例通過；修正逐批取消與缺raw／規則unknown分離。這是完整full-N查詢需要的單段consumer，明示full_n_aggregation=False，不替代M2全域跨段排序／分頁／比較／收藏／UI閉環。Luna接續full-N store／producer／aggregate query，中央保留審核；證據見[M2 QA](../../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+2026-10-07 M2讀回補完：zero-child公開parent讀回修正、同一read重複核驗去除已由中央六套67 passed／1 Windows symlink權限skip核驗；同17股固定pins診斷13.781→1.969s，不代替257／1000／真N效能。full-N store／producer中央整合、跨段query、歷史metadata／精確舊receipt仍在推進；之後接正常UI產製／比較／收藏，完整範圍不縮小。

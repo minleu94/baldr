@@ -1567,3 +1567,6 @@ v4 技術保存底層（2026-10-07 dev）：daily_market_technical_snapshot_v4_p
 
 
 2026-10-07 H20原保存來源消費增量：MainWindow由activeContextChanged獨立發TaskWorker公開product reader，以原selection/reference/context pins與generation限定回呼；StockResearchWorkspace首屏卡不受一般report service成功依賴，同context cache可回投一般摘要。重新核驗只重讀原source，pointer漂移返回不換表格；原model inference／fit／Task及公開保存reader不改。中央96項UI回歸通過；candidate、Native、真模型品質仍未驗。細節見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+2026-10-07 v4固定parent查詢接續：`app_module/daily_market_technical_parent_v4_query.py`以明示plan／receipt identity＋bytes SHA重驗parent及原child五規則；canonical query、狀態AND／OR、Decimal全段排序與分頁分開於產製，不開DB／不寫入／不挑latest。覆蓋是單段256納入＋256排除，明示full_n_aggregation=False；full-N aggregate另在施工。缺raw與規則unknown分開計唯一股數，取消在真child批次前後；中央8例通過，詳見[M2 QA](../06_qa/BALDR_COMPLETION_M2_20261007.md)。

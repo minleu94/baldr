@@ -132,3 +132,12 @@ parent API 接全部完成窗口建 immutable plan，最多256納入／256排除
 另外重用原保留的隔離2382 source／activation／capture／manifest，以真正 public source reader、MainWindow methods 與 TaskWorker 走「原保存名單→2382→一般報告失敗→獨立 H20 摘要→重新核驗」；固定 archive Python 與 exe 結果逐值相等，收據 `output/qa/h20_candidate_saved_source_27b127de/receipt.json`。模型 verifier 仍為明示 synthetic contract，不是原真人模型核驗。首屏實際讀回 +12.34% 與決策10/06、來源10/05、特徵10/02，實際結果保持未核驗；不得把合成數值當真人2382預測。所有 fixture files bytes／size 不變，source DB／WAL 與 immutable artifacts mtime 不變；SQLite readonly 連線只更新 SHM mtime，原 bytes／size 不變，收據明列。先前sandbox拒絕Temp guard、controller編碼與過度嚴格SHM mtime失敗收據均保留，沒有放寬產品守衛。
 
 真人啟動新 helper `output/qa/baldr_completion_m2_20261007/start_h20_feedback_candidate.ps1` 核驗新 exe hash、向 child 提供原官方日曆及明確主機設定 JSON；尚未執行。Native真人2382、三個真策略、窄欄均待實測；H20收藏尚未實作，完整full-N v4新五規則與UI產製等仍在補完中。
+
+
+### v4 單段固定查詢中央審核（2026-10-07）
+
+新增 `app_module/daily_market_technical_parent_v4_query.py` 使用明示parent root、plan／receipt identity與兩份bytes SHA；真正parent strict reader及v4 repository重新核原child，canonical query可重開，不開原DB、不寫入、不挑latest。固定五規則狀態集合支援AND／OR、股票篩選、Decimal／日期／整數排序，升降序null置尾，股票碼stable tie-break，先篩選排序再分頁；partial的processed／pending和原排除理由保留。明示 `bounded_parent_v4`／`single_parent_segment`／`full_n_aggregation=False`，最多256納入＋256排除，不冒充完整母體。
+
+中央修正兩個審核發現：取消檢查原本在真正child讀取前空跑，現改每批前後合作式檢查；有raw rows但規則unknown原先被混算missing，現missing只計raw_row_count=0，unknown_rule_count／unknown_rule_stock_codes另計唯一股票。固定parent初次strict核驗仍是同步邊界，取消不宣称可在任意單次I/O內搶占。
+
+中央真writer回歸 `8 passed in 118.44s`，raw `output/qa/baldr_completion_m2_20261007/parent_v4_query_root_2.log`，mypy兩檔0、py_compile通過。測試包含17股16+1、兩排除與一股缺raw、Decimal排序／null尾、AND／OR／filter-before-page、fixed partial receipt、新程序且刪除自身合成DB後讀回、tamper／異日期／版本／缺receipt拒絕；另外真reader spy驗第一child讀完取消後第二child不讀，真40列NULLprice股票unknown但missing=0。前輪7 passed與Luna6 passed及失敗QA全保留。Full-N store／producer／aggregate query尚在施工，完整M2／UI產製／query收藏比較／Native未完成。

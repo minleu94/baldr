@@ -734,3 +734,6 @@ v4正常bounded產製入口：app_module/daily_market_technical_parent_v4_produc
 
 
 H20原保存來源獨立摘要（dev）：ui_qt/main.py的_context_changed/read/recheck/refresh cohort routes，ui_qt/views/stock_research_workspace.py首屏卡；公開product reader仍在app_module/recommendation/personal_h20_product_evidence.py未改。完整來源／失敗仍顯示／stale／retry／pointer漂移測試：tests/test_ui_qt_h20_saved_source_journey.py，UI panel測試：tests/test_ui_qt_personal_h20_workspace_panel.py。中央96案例與Native限制沿[M2 QA](docs/06_qa/BALDR_COMPLETION_M2_20261007.md)。
+
+
+2026-10-07 v4固定來源查詢：`app_module/daily_market_technical_parent_v4_query.py`／`tests/test_daily_market_technical_parent_v4_query.py` 提供canonical固定query、真parent／child讀回、五規則狀態與Decimal排序／分頁、逐批取消。單段上限256納入＋256排除，full-N另由新store／producer／aggregate query補完；中央8例與targeted mypy通過，不能由此宣稱完整選股器完成。

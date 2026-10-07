@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 import hashlib
@@ -19,7 +20,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import app_module.daily_market_technical_parent_v4_query as parent_query_module
-import app_module.daily_market_technical_universe_v4_query as universe_query_module
 from app_module.daily_market_technical_parent_v4_query import (
     DailyMarketTechnicalRuleStateFilterV4,
 )
@@ -190,6 +190,97 @@ def synthetic_full_store() -> Any:
         shutil.rmtree(cleanup_path)
 
 
+@pytest.fixture
+def synthetic_small_full_store() -> Any:
+    """建立 17 股真實 parent/store，覆蓋兩個 child artifact 的小型查詢。"""
+
+    temporary_root = Path(tempfile.gettempdir()).resolve(strict=True)
+    root = Path(tempfile.mkdtemp(prefix="uv4query-small-", dir=temporary_root)).resolve(strict=True)
+    stock_codes = tuple(f"S{index:04d}" for index in range(17))
+    excluded_codes = ("X9999",)
+    try:
+        database = root / "synthetic-prices.sqlite"
+        _write_source(database, (*stock_codes, *excluded_codes), missing_code="S0000")
+        scope = ResearchCaptureWriteScope(_long_configured_root(root), database)
+        cohort = DailyMarketTechnicalUniverseV4Cohort.create(
+            universe_id="synthetic-small-query-v4",
+            population_version="fixture-small-2026-10-06",
+            decision_date=_DECISION_DATE,
+            raw_stock_codes=(*stock_codes, *excluded_codes),
+            excluded_stock_codes=excluded_codes,
+            exclusion_reasons={"X9999": "隔離 fixture 的排除測試"},
+        )
+        segment_cohort = _segment_cohorts(cohort)[0]
+        parent_root = scope.root / "parents" / "segment-000001"
+        child_root = scope.root / "children" / "segment-000001"
+        parent_result = produce_daily_market_technical_parent_v4(
+            source_database=database,
+            cohort=segment_cohort,
+            decision_cutoff=datetime.combine(
+                _DECISION_DATE, time(16, 0), tzinfo=_TAIPEI
+            ),
+            child_output_root=child_root,
+            parent_root=parent_root,
+            research_scope=scope,
+        )
+        assert parent_result.status == "complete", parent_result.error_code
+        assert parent_result.plan is not None and parent_result.receipt is not None
+        plan = DailyMarketTechnicalUniverseV4Plan.build(
+            cohort,
+            source_clock=daily_market_technical_source_clock_v4_from_dict(
+                parent_result.plan.to_dict()["source_clock"]
+            ),
+        )
+        assert len(plan.segments) == 1
+        store_output_root = scope.root / "small-full-store"
+        writer = DailyMarketTechnicalUniverseV4StoreWriter(
+            store_output_root,
+            research_scope=scope,
+        )
+        initial = writer.start(plan)
+        reference = DailyMarketTechnicalUniverseV4ParentReceiptReference.create(
+            parent_root,
+            parent_plan_identity_sha256=parent_result.plan.identity_sha256,
+            parent_plan_sha256=parent_result.plan.content_sha256,
+            parent_receipt_identity_sha256=parent_result.receipt.identity_sha256,
+            parent_receipt_sha256=parent_result.receipt.content_sha256,
+        )
+        progress = writer.record_segment_parent(
+            plan.generation_identity_sha256,
+            plan.identity_sha256,
+            initial.identity_sha256,
+            expected_previous_receipt_sha256=initial.content_sha256,
+            segment_index=0,
+            parent_reference=reference,
+        )
+        complete = writer.complete(
+            plan.generation_identity_sha256,
+            plan.identity_sha256,
+            progress.identity_sha256,
+            expected_previous_receipt_sha256=progress.content_sha256,
+        )
+        assert complete.status == "complete"
+        plan_sha256 = hashlib.sha256(plan.to_json().encode("utf-8")).hexdigest()
+        database.unlink()
+        yield {
+            "temporary_root": root,
+            "database": database,
+            "scope": scope,
+            "plan": plan,
+            "store_output_root": store_output_root,
+            "plan_sha256": plan_sha256,
+            "complete": complete,
+            "writer": writer,
+        }
+    finally:
+        if root.parent != temporary_root:
+            raise AssertionError("technical_universe_v4_small_fixture_path_escape")
+        cleanup_path = str(root)
+        if sys.platform == "win32":
+            cleanup_path = "\\\\?\\" + cleanup_path
+        shutil.rmtree(cleanup_path)
+
+
 def _write_source(path: Path, stock_codes: tuple[str, ...], *, missing_code: str) -> None:
     connection = sqlite3.connect(to_internal_io_path(path))
     try:
@@ -313,6 +404,78 @@ def _receipt_path(fixture: dict[str, Any], receipt_identity_sha256: str) -> Path
         / "receipts"
         / f"{receipt_identity_sha256}.json"
     )
+
+
+def test_small_query_reuses_verified_batches_and_fresh_read_rejects_artifact_tamper(
+    synthetic_small_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = synthetic_small_full_store
+    query = _make_query(
+        fixture,
+        stock_filter=("S0016",),
+        sort_key="stock_code",
+        page_size=1,
+    )
+    original_reader = DailyMarketTechnicalSnapshotV4Repository.read_exact
+    manifest_reads: list[str] = []
+
+    def observed_child_read(self: Any, *args: Any, **kwargs: Any) -> Any:
+        manifest_reads.append(str(args[0]))
+        return original_reader(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        DailyMarketTechnicalSnapshotV4Repository,
+        "read_exact",
+        observed_child_read,
+    )
+    page = read_daily_market_technical_universe_v4_page(query)
+
+    assert tuple(row.stock_code for row in page.rows) == ("S0016",)
+    assert page.matching_count == 1
+    assert len(set(manifest_reads)) == 2
+    read_counts = Counter(manifest_reads)
+    assert sorted(read_counts.values()) == [1, 2]
+    selected_manifest = next(
+        manifest for manifest, count in read_counts.items() if count == 2
+    )
+    untouched_manifest = next(
+        manifest for manifest, count in read_counts.items() if count == 1
+    )
+    assert selected_manifest != untouched_manifest
+
+    manifest_path = to_internal_io_path(Path(untouched_manifest))
+    original_manifest = Path(manifest_path).read_bytes()
+    try:
+        Path(manifest_path).write_bytes(b'{"schema_version":"tampered"}')
+        manifest_reads.clear()
+        with pytest.raises(DailyMarketTechnicalUniverseV4QueryError):
+            read_daily_market_technical_universe_v4_page(query)
+        assert untouched_manifest in manifest_reads
+    finally:
+        Path(manifest_path).write_bytes(original_manifest)
+
+    wrong_method_payload = query.to_dict()
+    wrong_method_payload["method_contracts_sha256"] = "f" * 64
+    wrong_method_query = DailyMarketTechnicalUniverseV4Query.from_dict(
+        _resign_query(wrong_method_payload)
+    )
+    with pytest.raises(
+        DailyMarketTechnicalUniverseV4QueryError,
+        match="source_identity_mismatch",
+    ):
+        read_daily_market_technical_universe_v4_page(wrong_method_query)
+
+    wrong_date_payload = query.to_dict()
+    wrong_date_payload["decision_date"] = (_DECISION_DATE + timedelta(days=1)).isoformat()
+    wrong_date_query = DailyMarketTechnicalUniverseV4Query.from_dict(
+        _resign_query(wrong_date_payload)
+    )
+    with pytest.raises(
+        DailyMarketTechnicalUniverseV4QueryError,
+        match="source_identity_mismatch",
+    ):
+        read_daily_market_technical_universe_v4_page(wrong_date_query)
 
 
 def test_complete_full_n_query_roundtrips_counts_and_uses_only_saved_sources(
@@ -552,27 +715,11 @@ def test_cancel_stops_between_real_child_reads_within_full_n_segment(
     fixture = synthetic_full_store
     query = _make_query(fixture, page_size=1)
     original_reader = DailyMarketTechnicalSnapshotV4Repository.read_exact
-    original_loader = parent_query_module._load_verified_snapshots
-    original_parent_reader = universe_query_module.read_daily_market_technical_parent_capture_v4
-    loader_active = False
     child_reads: list[object] = []
-    parent_reads: list[str] = []
-
-    def observed_loader(package: Any, *, cancel_callback: Any = None) -> Any:
-        nonlocal loader_active
-        loader_active = True
-        return original_loader(package, cancel_callback=cancel_callback)
 
     def observed_child_read(self: Any, *args: Any, **kwargs: Any) -> Any:
-        verified = original_reader(self, *args, **kwargs)
-        if loader_active:
-            child_reads.append(args[0])
-        return verified
-
-    def observed_parent_read(*args: Any, **kwargs: Any) -> Any:
-        package = original_parent_reader(*args, **kwargs)
-        parent_reads.append(str(args[0]))
-        return package
+        child_reads.append(args[0])
+        return original_reader(self, *args, **kwargs)
 
     def reject_bounded_intermediate(*args: Any, **kwargs: Any) -> None:
         pytest.fail("full-N segment loader must not create/read a bounded query")
@@ -580,13 +727,7 @@ def test_cancel_stops_between_real_child_reads_within_full_n_segment(
     def cancel_after_one_verified_child() -> bool:
         return bool(child_reads)
 
-    monkeypatch.setattr(parent_query_module, "_load_verified_snapshots", observed_loader)
     monkeypatch.setattr(DailyMarketTechnicalSnapshotV4Repository, "read_exact", observed_child_read)
-    monkeypatch.setattr(
-        universe_query_module,
-        "read_daily_market_technical_parent_capture_v4",
-        observed_parent_read,
-    )
     monkeypatch.setattr(
         parent_query_module.DailyMarketTechnicalParentV4Query,
         "create",
@@ -606,7 +747,6 @@ def test_cancel_stops_between_real_child_reads_within_full_n_segment(
             cancel_callback=cancel_after_one_verified_child,
         )
     assert len(child_reads) == 1
-    assert len(parent_reads) == 1
 
 
 def test_stock_drilldown_binds_origin_page_and_rejects_missing_tampered_or_cancelled(

@@ -27,6 +27,33 @@ def _decimal_value(value: Any) -> Decimal | None:
     return parsed if parsed.is_finite() else None
 
 
+def screening_research_summary(row: Mapping[str, Any]) -> str:
+    """以已核驗篩選列解釋用途；不補推薦分數或改變策略門檻。"""
+    purpose = (
+        "這份紀錄用來查看本次策略在哪個條件停止，以及比較不同策略的條件。"
+        "個人 H20 的保存預測請在「個人模型選股研究」查看，兩者分開判讀。"
+    )
+    reason = row.get("原因代碼", "")
+    observed = _decimal_value(row.get("觀測值"))
+    required = _decimal_value(row.get("要求值"))
+    if (isinstance(reason, str) and reason in {
+                "liquidity_volume_ratio_below_min",
+                "量能未達本次策略的放量門檻（liquidity_volume_ratio_below_min）",
+            }
+            and row.get("原篩選狀態") == "skipped"
+            and observed is not None and required is not None
+            and observed < required):
+        return (
+            "本次未入選：成交量變化未達策略的放量門檻。\n"
+            f"相對本次成交量基準，觀測變化為 {observed:.2f}%；"
+            f"策略要求至少 {required:.2f}%。負值表示量縮。\n"
+            "此條件在策略打分前檢查，本次未產生推薦分數或排名。\n"
+            + purpose
+            + "\n下一步：核對策略條件與資料日期，再決定是否用另一策略研究。"
+        )
+    return "本次策略沒有產生入選結果。\n" + purpose
+
+
 def format_profile_weight(value: Any) -> str:
     if value is None:
         return "N/A"

@@ -328,13 +328,16 @@ def test_expanded_reason_shows_complete_score_table_and_document_end() -> None:
     app = _app()
     view = _new_view()
     recommendation = SimpleNamespace(
-        rule_score="65", total_score="65", indicator_score="60",
-        pattern_score="61", volume_score="62", threshold_mode="fixed",
+        rule_score="30", total_score="30", indicator_score="20",
+        pattern_score="25", volume_score="35", threshold_mode="fixed",
         ranking_method="ordinal", score_percentile_bp=7500,
-        eligible_universe_size=257,
+        eligible_universe_size=257, price_change="-4", regime_match=False,
     )
     html = view._generate_explain_panel(recommendation)
     html += "<p>完整理由與來源限制。</p>" * 90 + "<p>文件最後一行：不可省略。</p>"
+    html += view._generate_why_not(
+        recommendation, {"filters": {"price_change_min": "1", "price_change_max": "8"}},
+    )
     try:
         view.resize(800, 700)
         view.show()
@@ -344,6 +347,8 @@ def test_expanded_reason_shows_complete_score_table_and_document_end() -> None:
             app.processEvents()
         assert "分數拆解" in view.detail_text.toPlainText()
         assert "排名門檻" in view.detail_text.toPlainText()
+        assert "可能影響排名的因素" in view.detail_text.toPlainText()
+        assert "總分較低，可能排名較後" in view.detail_text.toPlainText()
         assert view.detail_text.height() >= view.detail_text.document().size().height()
         assert view.detail_text.verticalScrollBar().maximum() == 0
         cursor = view.detail_text.textCursor()

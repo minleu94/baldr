@@ -100,10 +100,8 @@ class _RecommendationReasonText(QTextEdit):
 
     def set_expanded(self, expanded: bool) -> None:
         self._expanded = expanded
-        self.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff if expanded
-            else Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
+        # 若 Native 字型或父版面限制高度，仍可捲到文件末尾。
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._sync_height()
 
     def _sync_height(self, *_args: object) -> None:
@@ -169,9 +167,11 @@ class _CurrentPageSizeTabWidget(QTabWidget):
 
 _SCREENING_STAGE_DISPLAY_LABELS = {
     "current_market_status_gate": "官方市場狀態",
+    "strategy_evaluation": "策略條件檢查",
 }
 _SCREENING_REASON_DISPLAY_LABELS = {
     "official_delisted": "已核驗下市／終止",
+    "liquidity_volume_ratio_below_min": "量能未達本次策略的放量門檻",
 }
 
 
@@ -5472,7 +5472,7 @@ class RecommendationView(QWidget):
             empty_message = recommendation_empty_state_message(execution)
             screening_rows = _screening_only_result_rows(execution)
             self.result_title_label.setText(
-                "4. 篩選紀錄／未入選（僅研究，不代表推薦）"
+                "篩選紀錄／未入選（僅研究，不代表推薦）"
                 if screening_rows
                 else "推薦結果與風險判讀"
             )
@@ -6703,7 +6703,7 @@ class RecommendationView(QWidget):
         )
         displayed_rows = rows or screening_only_rows
         self.result_title_label.setText(
-            "4. 篩選紀錄／未入選（僅研究，不代表推薦）"
+            "篩選紀錄／未入選（僅研究，不代表推薦）"
             if screening_only_rows
             else "推薦結果與風險判讀"
         )
@@ -8261,7 +8261,12 @@ class RecommendationView(QWidget):
 
             screening_record = df.iloc[row].get("紀錄類型", "")
             if screening_record == "篩選紀錄／未入選":
+                from ui_qt.views.recommendation.presenter import screening_research_summary
+
                 evidence_lines = [
+                    screening_research_summary(df.iloc[row].to_dict()),
+                    "",
+                    "原篩選證據：",
                     "篩選紀錄／未入選（僅供研究，不代表推薦）。",
                     f"標的：{df.iloc[row].get('證券代號', '')} "
                     f"{df.iloc[row].get('證券名稱', '')}",

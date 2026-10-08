@@ -252,3 +252,11 @@ Main 接續補上完整重驗後 restore_selection False 的終態 unavailable�
 
 新原Main QA protocol設計採精確 case runtime logs：正式/source roots仍優先拒絕，原061333的DATA_ROOT/logs/config.log四次r+b與FileHandler保持failed，不能用現行dev OUTPUT_ROOT路徑倒推原9bc。精確urllib3已拒IPv6 loopback能力bind另分類但保留aggregate network counter；新protocol gate只許可信碼的該類0或1、nonlocal=0，所有socket仍拒絕。先做合成負例與freeze，尚未啟任何新原件attempt、未改舊收據。兩個agent分別處理此guard與舊UI fixture，另一agent做純合成benchmark護欄；根端審核，不把設計或分工宣稱已驗。
 中央最終 Main 聯測 handle51537 terminal0：97 passed／1 skipped、57.87秒，39個 Qt destroyed signal disconnect warning 保留；包括7項新旅程及原保存來源、收藏、取消、關閉與明確重驗進度負例，未排除失敗測試。Main SHA E33D8AE8AAC0452DFBE86E8C6C9E6A5966C988AF9CCE840C6F3DD257E1C8C88B 與凍結相同。最後 workbench85 passed／2.95秒、validator25 passed／0 failed／4 protected skips、full-roots mypy897檔clean、5檔compile clean。證據 output/qa/h20_main_warm_view_root_20261008_a/root_final_union01.log、update_validator_final03.log；接受程序內 Main 整合，尚無新固定exe、原4GB來源或Native真人資格，不代表完整補完目標完成。
+
+### d9a115f67d2b 真人回饋的捲動與來源說明修正
+
+推薦理由展開保留自動高度與整頁捲動，另提供文字框高度受限時的垂直捲動；窄視窗測試使用實際 `_generate_why_not` 排名因素段落驗末行可達。篩選紀錄移除殘留編號4，量能早退原因轉成白話百分比與用途，原代碼、日期與 degraded 品質保留。決策層的比較仍是原成交量變化率與策略門檻，未改打分、基準或條件；展示只用 Decimal 格式化有限值，缺件不補值。H20 context 的個股報告 ML 額外明示獨立來源，上方保存 H20 可用／不可用仍由原 evidence 呈現，不把未扣成本20日預測當報告 ML 或 outcome。
+
+中央捲動／執行／呈現聯測 20 passed／7.08秒；個股報告全檔 native 56 passed／6.82秒（2個 Qt warnings 保留）。葉片先前 sandbox 全檔54 passed／2 failed 等不到 real-service 首屏，完整失敗保留；中央以全新 C:/t 原測試全檔通過，無排除、timeout 調高或 mock 服務替換。UI 強制 workbench85 passed、validator25 passed／0 failed／4 protected skips、full-roots mypy898檔clean、7檔compile通過。記錄分別保存在 output/qa/recommendation_readability_feedback_root_20261008_a/ 與 output/qa/h20_ml_partition_46f21c389b6841119e45532880ea4666/root_full_report_native01.log。validator 固定輸出在中央重跑前已另存 preimage；葉片更早的固定報告覆寫沒有前像，不宣稱還原。
+
+本段只接受上述開發來源修正；e97f01466f29 的固定建置及隔離同版比較已完成，但未含本次修正。原4GB H20、新版 Native／新程序與完整股票母體資格仍待，不能把測試通過視為完整產品補完或要求真人重驗舊候選。

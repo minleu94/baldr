@@ -2990,17 +2990,39 @@ class StockResearchReportView(QWidget):
         ml_layout = QVBoxLayout(ml_group)
         ml = report.ml
         ml_scope = getattr(ml, "scope_mode", "")
+        context = self.context
+        is_personal_h20_context = bool(
+            context is not None
+            and context.source_kind in {
+                "personal_h20_saved_cohort",
+                "personal_h20_research_bookmark",
+            }
+        )
         if ml_scope == "current_stock_research":
             ml_group.setTitle(f"當前ML研究（研究日：{report.as_of or '未提供'}）")
         elif ml_scope == "selected_saved_decision":
             ml_group.setTitle(
                 f"所選保存決策ML研究（模型事件日：{ml.event_date or '未提供'}）"
             )
+        if is_personal_h20_context:
+            ml_group.setTitle("個股報告 ML（與個人 H20 保存預測分開）")
         ml_group.setObjectName("stockResearchMLGroup")
         scope_label = {
             "current_stock_research": "當下個股獨立研究（不併入保存 Advice）",
             "selected_saved_decision": "精確選定的保存決策來源",
         }.get(ml_scope, "未提供／未識別")
+        if is_personal_h20_context:
+            scope_label = {
+                "current_stock_research": "個股報告 ML 的當下研究範圍",
+                "selected_saved_decision": "個股報告 ML 的保存決策範圍",
+            }.get(ml_scope, "個股報告 ML 範圍未提供")
+            separation_note = self._wrapped_label(
+                "本區只呈現個股報告 ML 的讀取結果，與上方個人 H20 保存預測分開核驗。"
+                "本區顯示「未提供」只代表沒有符合本區條件的報告 ML 估計；"
+                "H20 的來源狀態與數值請看上方保存 H20 區，本區不替代或否定它。"
+            )
+            separation_note.setObjectName("stockResearchMLH20Separation")
+            ml_layout.addWidget(separation_note)
         ml_layout.addWidget(self._wrapped_label(_ml_estimate_summary(ml)))
         audit_group = QGroupBox("資料稽核：模型身份、來源與原始診斷")
         audit_group.setObjectName("stockResearchMLAudit")

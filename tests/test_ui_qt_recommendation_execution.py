@@ -804,7 +804,7 @@ def test_screening_only_execution_saves_reopens_and_researches_exact_stock(
     assert frame["紀錄類型"].tolist() == ["篩選紀錄／未入選"] * 2
     assert frame["原因代碼"].tolist() == ["liquidity_below_minimum"] * 2
     assert view.current_execution is execution and not view.current_execution.items
-    assert view.result_title_label.text() == "4. 篩選紀錄／未入選（僅研究，不代表推薦）"
+    assert view.result_title_label.text() == "篩選紀錄／未入選（僅研究，不代表推薦）"
     assert view.save_result_btn.text() == "保存篩選紀錄"
     assert not view.add_to_watchlist_btn.isVisible()
     assert not view.send_to_backtest_btn.isVisible()

@@ -51,6 +51,7 @@ from ui_qt.views.stock_research_report_view import (
     _ml_estimate_summary,
     _current_h20_observation_allows,
 )
+from ui_qt.views.stock_research_workspace import StockResearchWorkspace
 
 
 def _app() -> QApplication:
@@ -110,6 +111,137 @@ def test_current_h20_uses_observation_clock_instead_of_price_cutoff() -> None:
         assert "模型資料暫時無法驗證" in view.personal_h20_label.text()
         assert "+6.84%" not in view.personal_h20_label.text()
         assert unavailable.reason == view.personal_h20_label.toolTip()
+    finally:
+        view.close()
+
+
+@pytest.mark.parametrize(
+    ("source_kind", "evidence_status"),
+    [
+        ("personal_h20_saved_cohort", "available"),
+        ("personal_h20_saved_cohort", "unavailable"),
+        ("personal_h20_research_bookmark", "unavailable"),
+    ],
+)
+def test_personal_h20_context_separates_report_ml_from_saved_prediction(
+    source_kind: str, evidence_status: str,
+) -> None:
+    from app_module.recommendation.personal_h20_product_evidence import (
+        PersonalH20ProductEvidence,
+    )
+
+    _app()
+    context = ResearchStockContextDTO(
+        stock_code="2382",
+        decision_date="2026-10-07",
+        data_date="2026-10-06",
+        source_snapshot_id="h20-cycle-20261007",
+        source_snapshot_hash="sha256:" + "a" * 64,
+        source_id="h20-prediction-2382",
+        source_kind=source_kind,
+        source_workspace="recommendation",
+    )
+    generic_ml = StockMLSnapshotDTO(
+        status="unavailable",
+        limitations=("此研究模型只支援當下觀測；歷史日期不具使用資格。",),
+    )
+    report = replace(_report_for("2382", "330"), ml=generic_ml)
+    if evidence_status == "available":
+        evidence = PersonalH20ProductEvidence(
+            stock_code="2382",
+            status="available",
+            reason="自然結果待核驗",
+            gross_return_bp=684,
+            decision_date="2026-10-07",
+            source_date="2026-10-06",
+            feature_date="2026-10-05",
+            observed_at="2026-10-06T16:42:07+00:00",
+            candidate_id="fixture-h20-candidate",
+            sample_id="fixture-h20-sample",
+            prediction_id="h20-prediction-2382",
+        )
+    else:
+        evidence = PersonalH20ProductEvidence(
+            stock_code="2382",
+            status="unavailable",
+            reason="fixture_h20_source_unavailable",
+        )
+
+    workspace = StockResearchWorkspace(SimpleNamespace())
+    try:
+        view = workspace.report_view
+        view.context = context
+        view._loaded_request_context = context
+        view._loaded_report = report
+        view._active_code = "2382"
+        view._render_decision(report)
+        workspace.set_personal_h20_saved_evidence(evidence, context=context)
+
+        group = view.findChild(QGroupBox, "stockResearchMLGroup")
+        assert group is not None
+        assert group.title() == "個股報告 ML（與個人 H20 保存預測分開）"
+        separation = group.findChild(QLabel, "stockResearchMLH20Separation")
+        assert separation is not None
+        assert "只呈現個股報告 ML" in separation.text()
+        assert "本區顯示「未提供」只代表" in separation.text()
+        assert "H20 的來源狀態與數值請看上方保存 H20 區" in separation.text()
+
+        identity_table = group.findChild(QTableView, "stockResearchMLIdentityTable")
+        assert identity_table is not None and identity_table.model() is not None
+        identity_rows = {
+            identity_table.model().data(identity_table.model().index(row, 0), Qt.DisplayRole):
+            identity_table.model().data(identity_table.model().index(row, 1), Qt.DisplayRole)
+            for row in range(identity_table.model().rowCount())
+        }
+        assert identity_rows["範圍"] == "個股報告 ML 範圍未提供"
+        assert "歷史日期不具使用資格" in " ".join(
+            label.text() for label in group.findChildren(QLabel)
+        )
+        assert "未提供合格估計值" in _ml_estimate_summary(generic_ml)
+        assert "估計所扣成本情境與數值未提供" in _ml_estimate_summary(generic_ml)
+        assert report.ml.predicted_benchmark_excess_return_bp == {}
+
+        saved_text = workspace.personal_h20_saved_summary.text()
+        if evidence_status == "available":
+            assert "（未扣成本）：+6.84%" in saved_text
+            assert "目前尚無已核驗結果" in saved_text
+        else:
+            assert "保存來源讀取失敗" in saved_text
+            assert "+6.84%" not in saved_text
+    finally:
+        workspace.close()
+
+
+def test_non_h20_report_ml_presentation_remains_unchanged() -> None:
+    _app()
+    context = ResearchStockContextDTO(
+        stock_code="2382",
+        source_kind="recommendation",
+        source_snapshot_id="saved-report-cycle",
+        source_snapshot_hash="sha256:" + "b" * 64,
+        ml_scope_mode="selected_saved_decision",
+    )
+    report = replace(
+        _report_for("2382", "330"),
+        ml=StockMLSnapshotDTO(
+            status="unavailable",
+            scope_mode="selected_saved_decision",
+            limitations=("一般報告 ML 的既有資格限制。",),
+        ),
+    )
+    view = StockResearchReportView(SimpleNamespace())
+    try:
+        view.context = context
+        view._loaded_report = report
+        view._active_code = "2382"
+        view._render_decision(report)
+        group = view.findChild(QGroupBox, "stockResearchMLGroup")
+        assert group is not None
+        assert group.title() == "所選保存決策ML研究（模型事件日：未提供）"
+        assert group.findChild(QLabel, "stockResearchMLH20Separation") is None
+        assert "一般報告 ML 的既有資格限制。" in " ".join(
+            label.text() for label in group.findChildren(QLabel)
+        )
     finally:
         view.close()
 

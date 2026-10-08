@@ -23,3 +23,7 @@ H20「空白」經真人補述確認為長時間讀取後才出現；雙擊2382�
 第二輪的文件高度與內層 QTextEdit 幾何通過，仍不足以證明外層結果頁可捲到完整內容。加強回歸後發現詳情群組的最低高度沒有隨文件成長，最後一行落在外層 viewport 之外。此失敗保留於 ignored recommendation_document_visible_end_20261007_b.log。詳情 layout 增加 SetMinimumSize，讓外層捲動範圍包含完整文件；加強回歸 1 項通過，中央檢視 460×700 末行畫面確認可見（recommendation_full_document_render_20261007_c）。這是開發工作檔修正，尚未打包或完成最新完整 UI 檢查，也不代表真人已接受。
 
 本輪接入 H20 operation-local session 與實際階段提示後，中央 session／cohort UI／版面／更新工作台組合回歸 106 項通過（11.32秒）；全域 mypy 887 檔通過，更新頁 validator 25通過／0失敗／4保護跳過，修改 runtime 檔 py_compile 通過。首輪 sandbox 7項因合成 activation 原子替換 WinError5失敗、99通過，原log保留；獨立短TEMP原生環境重跑後通過。尚待正常 MainWindow 下鑽、原十股載入時間與最新候選同版驗證，不能將上述測試秒數當作 H20實際載入秒數。
+
+## 2026-10-08 中央開發版畫面複核
+
+目前工作樹的全文與末行回歸單項 terminal exit0，1 passed in 2.43s。中央另直接檢視 ignored `output/qa/recommendation_current_render_20261008_a/` 的 460×700 首段與末行 PNG：分數拆解表、排名門檻及文件最後一行能由外層頁面捲動看到。此次未改 UI 程式，證據僅適用 offscreen 開發版；不取代新固定候選、Native 或真人閱讀接受。原 0f25 的真人未通過結果仍保留，不能把開發版畫面回歸寫成使用者已驗收。

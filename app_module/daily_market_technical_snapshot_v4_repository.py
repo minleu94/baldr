@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import date, datetime
 import hashlib
 import json
@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
+import weakref
 from typing import Any, NoReturn, cast
 
 from app_module.daily_market_technical_feature_snapshot_v4 import (
@@ -131,6 +132,43 @@ class DailyMarketTechnicalSnapshotV4ArtifactRef:
 
 
 @dataclass(frozen=True, slots=True)
+class _ValidatedSnapshotBatchManifestV4:
+    """一次完整 manifest 語義核驗後的精簡、不可變 metadata。"""
+
+    repository_output_root: Path
+    manifest_path: Path
+    manifest_sha256: str
+    generation_identity_sha256: str
+    cohort_identity_sha256: str
+    source_clock_identity_sha256: str
+    method_contract_sha256: str
+    decision_date: date
+    universe_id: str
+    population_version: str
+    included_stock_codes: tuple[str, ...]
+    excluded_stock_codes: tuple[str, ...]
+    exclusion_reasons: tuple[tuple[str, str], ...]
+    expected_stock_codes: tuple[str, ...]
+    expected_stock_set_sha256: str
+    artifact_refs: tuple[DailyMarketTechnicalSnapshotV4ArtifactRef, ...]
+    source_clock: DailyMarketTechnicalSourceClockV4
+    writer_version: str
+
+
+@dataclass(frozen=True, slots=True, eq=False, weakref_slot=True)
+class _VerifiedBatchSemanticProofV4:
+    """repository 發行的全 batch 語義證明；不保留任何 snapshot。"""
+
+    manifest: _ValidatedSnapshotBatchManifestV4
+    identity_sha256: str
+    payload_size_bytes: int
+    _origin_ref: weakref.ReferenceType[DailyMarketTechnicalBatchArtifactV4] = field(
+        repr=False, compare=False
+    )
+    _seal: object = field(repr=False, compare=False)
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class DailyMarketTechnicalBatchArtifactV4:
     """由 ``read_exact`` 驗證完成的不可變子批次保存結果。"""
 
@@ -155,6 +193,17 @@ class DailyMarketTechnicalBatchArtifactV4:
     writer_version: str
 
 
+_SEMANTIC_PROOF_SEAL = object()
+_ISSUED_SEMANTIC_PROOFS: weakref.WeakSet[_VerifiedBatchSemanticProofV4] = weakref.WeakSet()
+_ISSUED_BATCH_PROOFS: dict[
+    int,
+    tuple[
+        weakref.ReferenceType[DailyMarketTechnicalBatchArtifactV4],
+        _VerifiedBatchSemanticProofV4,
+    ],
+] = {}
+
+
 def canonical_v4_json_bytes(value: Any) -> bytes:
     """編碼不含換行的 canonical UTF-8 JSON。"""
 
@@ -174,6 +223,168 @@ def canonical_v4_json_bytes(value: Any) -> bytes:
 
 def sha256_bytes(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _artifact_ref_payload(ref: DailyMarketTechnicalSnapshotV4ArtifactRef) -> dict[str, object]:
+    return {
+        "stock_code": ref.stock_code,
+        "relative_path": ref.relative_path,
+        "byte_size": ref.byte_size,
+        "sha256": ref.sha256,
+        "snapshot_identity_sha256": ref.snapshot_identity_sha256,
+        "source_identity": ref.source_identity,
+        "raw_source_window_fingerprint_sha256": ref.raw_source_window_fingerprint_sha256,
+        "source_window_fingerprint_sha256": ref.source_window_fingerprint_sha256,
+        "calculation_identity_sha256": ref.calculation_identity_sha256,
+    }
+
+
+def _validated_manifest_proof_payload(
+    manifest: _ValidatedSnapshotBatchManifestV4,
+) -> dict[str, object]:
+    return {
+        "schema": "daily-market-technical-snapshot-v4-semantic-proof.v1",
+        "repository_output_root": str(manifest.repository_output_root),
+        "manifest_path": str(manifest.manifest_path),
+        "manifest_sha256": manifest.manifest_sha256,
+        "generation_identity_sha256": manifest.generation_identity_sha256,
+        "cohort_identity_sha256": manifest.cohort_identity_sha256,
+        "source_clock_identity_sha256": manifest.source_clock_identity_sha256,
+        "method_contract_sha256": manifest.method_contract_sha256,
+        "decision_date": manifest.decision_date.isoformat(),
+        "universe_id": manifest.universe_id,
+        "population_version": manifest.population_version,
+        "included_stock_codes": list(manifest.included_stock_codes),
+        "excluded_stock_codes": list(manifest.excluded_stock_codes),
+        "exclusion_reasons": [list(item) for item in manifest.exclusion_reasons],
+        "expected_stock_codes": list(manifest.expected_stock_codes),
+        "expected_stock_set_sha256": manifest.expected_stock_set_sha256,
+        "artifact_refs": [_artifact_ref_payload(ref) for ref in manifest.artifact_refs],
+        "source_clock": manifest.source_clock.to_dict(),
+        "writer_version": manifest.writer_version,
+    }
+
+
+def _batch_matches_validated_manifest(
+    batch: DailyMarketTechnicalBatchArtifactV4,
+    manifest: _ValidatedSnapshotBatchManifestV4,
+) -> bool:
+    return (
+        batch.repository_output_root == manifest.repository_output_root
+        and batch.manifest_path == manifest.manifest_path
+        and batch.manifest_sha256 == manifest.manifest_sha256
+        and batch.generation_identity_sha256 == manifest.generation_identity_sha256
+        and batch.cohort_identity_sha256 == manifest.cohort_identity_sha256
+        and batch.source_clock_identity_sha256 == manifest.source_clock_identity_sha256
+        and batch.method_contract_sha256 == manifest.method_contract_sha256
+        and batch.decision_date == manifest.decision_date
+        and batch.universe_id == manifest.universe_id
+        and batch.population_version == manifest.population_version
+        and batch.included_stock_codes == manifest.included_stock_codes
+        and batch.excluded_stock_codes == manifest.excluded_stock_codes
+        and batch.exclusion_reasons == manifest.exclusion_reasons
+        and batch.expected_stock_codes == manifest.expected_stock_codes
+        and batch.expected_stock_set_sha256 == manifest.expected_stock_set_sha256
+        and batch.artifact_refs == manifest.artifact_refs
+        and batch.source_clock == manifest.source_clock
+        and batch.writer_version == manifest.writer_version
+        and tuple(snapshot.stock_code for snapshot in batch.snapshots)
+        == manifest.expected_stock_codes
+        and len(batch.snapshots) == len(manifest.artifact_refs)
+    )
+
+
+def _verify_issued_semantic_proof(
+    proof: object,
+    *,
+    require_live_origin: bool,
+) -> _VerifiedBatchSemanticProofV4:
+    if (
+        type(proof) is not _VerifiedBatchSemanticProofV4
+        or proof not in _ISSUED_SEMANTIC_PROOFS
+        or proof._seal is not _SEMANTIC_PROOF_SEAL
+    ):
+        _fail("technical_snapshot_v4_semantic_proof_not_reader_issued")
+    payload = canonical_v4_json_bytes(_validated_manifest_proof_payload(proof.manifest))
+    if (
+        sha256_bytes(payload) != proof.identity_sha256
+        or len(payload) != proof.payload_size_bytes
+    ):
+        _fail("technical_snapshot_v4_semantic_proof_invalid")
+    if require_live_origin:
+        origin = proof._origin_ref()
+        registration = None if origin is None else _ISSUED_BATCH_PROOFS.get(id(origin))
+        if (
+            origin is None
+            or registration is None
+            or registration[0]() is not origin
+            or registration[1] is not proof
+            or not _batch_matches_validated_manifest(origin, proof.manifest)
+        ):
+            _fail("technical_snapshot_v4_semantic_proof_origin_mismatch")
+    return proof
+
+
+def _semantic_proof_for_verified_batch(
+    batch: DailyMarketTechnicalBatchArtifactV4,
+) -> _VerifiedBatchSemanticProofV4:
+    """僅從仍存活的原始 repository 結果取出同一批的語義證明。"""
+
+    if type(batch) is not DailyMarketTechnicalBatchArtifactV4:
+        _fail("technical_snapshot_v4_semantic_proof_origin_mismatch")
+    registration = _ISSUED_BATCH_PROOFS.get(id(batch))
+    if registration is None or registration[0]() is not batch:
+        _fail("technical_snapshot_v4_semantic_proof_origin_mismatch")
+    proof = _verify_issued_semantic_proof(registration[1], require_live_origin=True)
+    if proof._origin_ref() is not batch:
+        _fail("technical_snapshot_v4_semantic_proof_origin_mismatch")
+    return proof
+
+
+def _issue_semantic_proof(
+    batch: DailyMarketTechnicalBatchArtifactV4,
+    manifest: _ValidatedSnapshotBatchManifestV4,
+) -> _VerifiedBatchSemanticProofV4:
+    payload = canonical_v4_json_bytes(_validated_manifest_proof_payload(manifest))
+    batch_identity = id(batch)
+
+    def discard_batch_registration(
+        origin_ref: weakref.ReferenceType[DailyMarketTechnicalBatchArtifactV4],
+    ) -> None:
+        current = _ISSUED_BATCH_PROOFS.get(batch_identity)
+        if current is not None and current[0] is origin_ref:
+            _ISSUED_BATCH_PROOFS.pop(batch_identity, None)
+
+    origin_ref = weakref.ref(batch, discard_batch_registration)
+    proof = _VerifiedBatchSemanticProofV4(
+        manifest=manifest,
+        identity_sha256=sha256_bytes(payload),
+        payload_size_bytes=len(payload),
+        _origin_ref=origin_ref,
+        _seal=_SEMANTIC_PROOF_SEAL,
+    )
+    _ISSUED_SEMANTIC_PROOFS.add(proof)
+    _ISSUED_BATCH_PROOFS[batch_identity] = (origin_ref, proof)
+    return proof
+
+
+def _is_cancelled(cancel_callback: Callable[[], bool] | None) -> bool:
+    if cancel_callback is None:
+        return False
+    try:
+        cancelled = cancel_callback()
+    except Exception as exc:
+        raise DailyMarketTechnicalSnapshotV4RepositoryError(
+            "technical_snapshot_v4_cancel_check_failed", str(exc)
+        ) from exc
+    if type(cancelled) is not bool:
+        _fail("technical_snapshot_v4_cancel_callback_invalid")
+    return cancelled
+
+
+def _check_cancelled(cancel_callback: Callable[[], bool] | None) -> None:
+    if _is_cancelled(cancel_callback):
+        _fail("technical_snapshot_v4_read_cancelled")
 
 
 def generation_identity_sha256(
@@ -216,7 +427,7 @@ class DailyMarketTechnicalSnapshotV4Repository:
         self.output_root = _canonical_directory(output_root, must_exist=True)
         self.store_root = self.output_root / DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_STORE_DIRECTORY
 
-    def read_exact(
+    def _read_validated_manifest(
         self,
         manifest_path: str | Path,
         *,
@@ -225,9 +436,11 @@ class DailyMarketTechnicalSnapshotV4Repository:
         expected_source_clock_sha256: str | None = None,
         expected_method_contract_sha256: str | None = None,
         expected_decision_date: date | None = None,
-    ) -> DailyMarketTechnicalBatchArtifactV4:
-        """讀取指定 manifest、核對全部引用並回傳已驗證的逐股 snapshot。"""
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> _ValidatedSnapshotBatchManifestV4:
+        """重新讀取並完整驗證 manifest metadata，不解析 snapshot 內容。"""
 
+        _check_cancelled(cancel_callback)
         path = _canonical_file(manifest_path)
         if path.name != "manifest.json":
             _fail("technical_snapshot_v4_manifest_path_invalid")
@@ -237,6 +450,7 @@ class DailyMarketTechnicalSnapshotV4Repository:
         manifest_raw = _read_bounded_file(
             path, DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_MAX_MANIFEST_BYTES
         )
+        _check_cancelled(cancel_callback)
         manifest_sha = sha256_bytes(manifest_raw)
         if expected_manifest_sha256 is not None:
             _require_sha(expected_manifest_sha256, "technical_snapshot_v4_expected_manifest_sha_invalid")
@@ -312,45 +526,20 @@ class DailyMarketTechnicalSnapshotV4Repository:
         if not isinstance(refs_raw, list) or len(refs_raw) != len(expected_codes):
             _fail("technical_snapshot_v4_artifact_refs_invalid")
         refs: list[DailyMarketTechnicalSnapshotV4ArtifactRef] = []
-        snapshots: list[DailyMarketTechnicalFeatureSnapshotV4] = []
-        batch_root = path.parent
         for index, raw_ref in enumerate(refs_raw):
+            _check_cancelled(cancel_callback)
             ref = _parse_artifact_ref(raw_ref)
             if ref.stock_code != expected_codes[index]:
                 _fail("technical_snapshot_v4_artifact_refs_invalid")
             relative = _validate_artifact_relpath(ref.relative_path, ref.stock_code)
-            artifact_path = batch_root.joinpath(*relative.parts)
-            if not artifact_path.is_relative_to(batch_root):
+            artifact_path = path.parent.joinpath(*relative.parts)
+            if not artifact_path.is_relative_to(path.parent):
                 _fail("technical_snapshot_v4_artifact_path_invalid")
-            artifact_raw = _read_bounded_file(
-                artifact_path, DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_BYTES
-            )
-            if len(artifact_raw) != ref.byte_size:
-                _fail("technical_snapshot_v4_artifact_size_mismatch")
-            if sha256_bytes(artifact_raw) != ref.sha256:
-                _fail("technical_snapshot_v4_artifact_sha_mismatch")
-            try:
-                snapshot = DailyMarketTechnicalFeatureSnapshotV4.from_json(artifact_raw)
-            except (TypeError, ValueError) as exc:
-                reason = str(exc)
-                code = reason if reason.startswith("technical_snapshot_v4_") else (
-                    "technical_snapshot_v4_snapshot_invalid"
-                )
-                raise DailyMarketTechnicalSnapshotV4RepositoryError(code, reason) from exc
-            _validate_snapshot_binding(
-                snapshot,
-                ref=ref,
-                clock=clock,
-                clock_sha=clock_sha,
-                method_sha=method_sha,
-                decision_date=decision_date,
-            )
             refs.append(ref)
-            snapshots.append(snapshot)
 
-        _validate_attempt_layout(batch_root, expected_codes)
+        _check_cancelled(cancel_callback)
         reasons = cast(dict[str, str], cohort["exclusion_reason_map"])
-        return DailyMarketTechnicalBatchArtifactV4(
+        return _ValidatedSnapshotBatchManifestV4(
             repository_output_root=self.output_root,
             manifest_path=path,
             manifest_sha256=manifest_sha,
@@ -367,10 +556,133 @@ class DailyMarketTechnicalSnapshotV4Repository:
             expected_stock_codes=expected_codes,
             expected_stock_set_sha256=expected_set_sha,
             artifact_refs=tuple(refs),
-            snapshots=tuple(snapshots),
             source_clock=clock,
             writer_version=DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_WRITER_VERSION,
         )
+
+    def read_exact(
+        self,
+        manifest_path: str | Path,
+        *,
+        expected_manifest_sha256: str | None = None,
+        expected_cohort_identity_sha256: str | None = None,
+        expected_source_clock_sha256: str | None = None,
+        expected_method_contract_sha256: str | None = None,
+        expected_decision_date: date | None = None,
+    ) -> DailyMarketTechnicalBatchArtifactV4:
+        """讀取指定 manifest、核對全部引用並回傳已驗證的逐股 snapshot。"""
+
+        manifest = self._read_validated_manifest(
+            manifest_path,
+            expected_manifest_sha256=expected_manifest_sha256,
+            expected_cohort_identity_sha256=expected_cohort_identity_sha256,
+            expected_source_clock_sha256=expected_source_clock_sha256,
+            expected_method_contract_sha256=expected_method_contract_sha256,
+            expected_decision_date=expected_decision_date,
+        )
+        snapshots: list[DailyMarketTechnicalFeatureSnapshotV4] = []
+        batch_root = manifest.manifest_path.parent
+        for ref in manifest.artifact_refs:
+            relative = _validate_artifact_relpath(ref.relative_path, ref.stock_code)
+            artifact_path = batch_root.joinpath(*relative.parts)
+            artifact_raw = _read_bounded_file(
+                artifact_path, DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_BYTES
+            )
+            if len(artifact_raw) != ref.byte_size:
+                _fail("technical_snapshot_v4_artifact_size_mismatch")
+            if sha256_bytes(artifact_raw) != ref.sha256:
+                _fail("technical_snapshot_v4_artifact_sha_mismatch")
+            snapshot = _decode_and_validate_snapshot(artifact_raw, ref, manifest)
+            snapshots.append(snapshot)
+
+        _validate_attempt_layout(batch_root, manifest.expected_stock_codes)
+        batch = DailyMarketTechnicalBatchArtifactV4(
+            repository_output_root=manifest.repository_output_root,
+            manifest_path=manifest.manifest_path,
+            manifest_sha256=manifest.manifest_sha256,
+            generation_identity_sha256=manifest.generation_identity_sha256,
+            cohort_identity_sha256=manifest.cohort_identity_sha256,
+            source_clock_identity_sha256=manifest.source_clock_identity_sha256,
+            method_contract_sha256=manifest.method_contract_sha256,
+            decision_date=manifest.decision_date,
+            universe_id=manifest.universe_id,
+            population_version=manifest.population_version,
+            included_stock_codes=manifest.included_stock_codes,
+            excluded_stock_codes=manifest.excluded_stock_codes,
+            exclusion_reasons=manifest.exclusion_reasons,
+            expected_stock_codes=manifest.expected_stock_codes,
+            expected_stock_set_sha256=manifest.expected_stock_set_sha256,
+            artifact_refs=manifest.artifact_refs,
+            snapshots=tuple(snapshots),
+            source_clock=manifest.source_clock,
+            writer_version=manifest.writer_version,
+        )
+        _issue_semantic_proof(batch, manifest)
+        return batch
+
+    def read_selected_exact(
+        self,
+        proof: _VerifiedBatchSemanticProofV4,
+        *,
+        selected_stock_codes: Sequence[str],
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
+        """fresh 核完整 batch bytes/layout，只重解碼明示選取的 snapshot。"""
+
+        issued = _verify_issued_semantic_proof(proof, require_live_origin=False)
+        pinned = issued.manifest
+        if pinned.repository_output_root != self.output_root:
+            _fail("technical_snapshot_v4_semantic_proof_repository_mismatch")
+        codes = _normalize_selected_stock_codes(
+            selected_stock_codes, cancel_callback=cancel_callback
+        )
+        allowed_codes = set(pinned.expected_stock_codes)
+        if any(code not in allowed_codes for code in codes):
+            _fail("technical_snapshot_v4_selected_stock_not_in_batch")
+        current = self._read_validated_manifest(
+            pinned.manifest_path,
+            expected_manifest_sha256=pinned.manifest_sha256,
+            expected_cohort_identity_sha256=pinned.cohort_identity_sha256,
+            expected_source_clock_sha256=pinned.source_clock_identity_sha256,
+            expected_method_contract_sha256=pinned.method_contract_sha256,
+            expected_decision_date=pinned.decision_date,
+            cancel_callback=cancel_callback,
+        )
+        if current != pinned:
+            _fail("technical_snapshot_v4_semantic_proof_manifest_mismatch")
+
+        selected_set = set(codes)
+        selected_snapshots: dict[str, DailyMarketTechnicalFeatureSnapshotV4] = {}
+        batch_root = current.manifest_path.parent
+        for ref in current.artifact_refs:
+            _check_cancelled(cancel_callback)
+            relative = _validate_artifact_relpath(ref.relative_path, ref.stock_code)
+            artifact_path = batch_root.joinpath(*relative.parts)
+            if not artifact_path.is_relative_to(batch_root):
+                _fail("technical_snapshot_v4_artifact_path_invalid")
+            artifact_raw = _read_bounded_file(
+                artifact_path, DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_BYTES
+            )
+            _check_cancelled(cancel_callback)
+            if len(artifact_raw) != ref.byte_size:
+                _fail("technical_snapshot_v4_artifact_size_mismatch")
+            if sha256_bytes(artifact_raw) != ref.sha256:
+                _fail("technical_snapshot_v4_artifact_sha_mismatch")
+            if ref.stock_code not in selected_set:
+                continue
+            snapshot = _decode_and_validate_snapshot(artifact_raw, ref, current)
+            _check_cancelled(cancel_callback)
+            selected_snapshots[ref.stock_code] = snapshot
+
+        _validate_attempt_layout(
+            batch_root,
+            current.expected_stock_codes,
+            cancel_callback=cancel_callback,
+        )
+        _check_cancelled(cancel_callback)
+        if set(selected_snapshots) != selected_set:
+            _fail("technical_snapshot_v4_selected_stock_missing")
+        return tuple(selected_snapshots[code] for code in codes)
 
 
 def _validate_snapshot_binding(
@@ -404,6 +716,61 @@ def _validate_snapshot_binding(
         or snapshot.snapshot_identity_sha256 != ref.snapshot_identity_sha256
     ):
         _fail("technical_snapshot_v4_artifact_identity_mismatch")
+
+
+def _decode_and_validate_snapshot(
+    raw: bytes,
+    ref: DailyMarketTechnicalSnapshotV4ArtifactRef,
+    manifest: _ValidatedSnapshotBatchManifestV4,
+) -> DailyMarketTechnicalFeatureSnapshotV4:
+    try:
+        snapshot = DailyMarketTechnicalFeatureSnapshotV4.from_json(raw)
+    except (TypeError, ValueError) as exc:
+        reason = str(exc)
+        code = reason if reason.startswith("technical_snapshot_v4_") else (
+            "technical_snapshot_v4_snapshot_invalid"
+        )
+        raise DailyMarketTechnicalSnapshotV4RepositoryError(code, reason) from exc
+    _validate_snapshot_binding(
+        snapshot,
+        ref=ref,
+        clock=manifest.source_clock,
+        clock_sha=manifest.source_clock_identity_sha256,
+        method_sha=manifest.method_contract_sha256,
+        decision_date=manifest.decision_date,
+    )
+    return snapshot
+
+
+def _normalize_selected_stock_codes(
+    value: Sequence[str],
+    *,
+    cancel_callback: Callable[[], bool] | None,
+) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        _fail("technical_snapshot_v4_selected_stock_codes_invalid")
+    codes: list[str] = []
+    seen: set[str] = set()
+    try:
+        for code in value:
+            _check_cancelled(cancel_callback)
+            if len(codes) >= DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_MAX_COHORT_CODES:
+                _fail("technical_snapshot_v4_selected_stock_code_limit")
+            if not isinstance(code, str):
+                _fail("technical_snapshot_v4_selected_stock_codes_invalid")
+            _validate_stock_code(code)
+            if code in seen:
+                _fail("technical_snapshot_v4_selected_stock_duplicate_code")
+            seen.add(code)
+            codes.append(code)
+    except DailyMarketTechnicalSnapshotV4RepositoryError:
+        raise
+    except Exception as exc:
+        raise DailyMarketTechnicalSnapshotV4RepositoryError(
+            "technical_snapshot_v4_selected_stock_codes_invalid", str(exc)
+        ) from exc
+    _check_cancelled(cancel_callback)
+    return tuple(codes)
 
 
 def _parse_artifact_ref(value: object) -> DailyMarketTechnicalSnapshotV4ArtifactRef:
@@ -589,18 +956,35 @@ def _validate_manifest_location(path: Path, store_root: Path) -> None:
         _fail("technical_snapshot_v4_manifest_path_invalid")
 
 
-def _validate_attempt_layout(batch_root: Path, expected_codes: tuple[str, ...]) -> None:
-    files = _enumerate_files(batch_root, DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_MAX_FILES_PER_ATTEMPT)
+def _validate_attempt_layout(
+    batch_root: Path,
+    expected_codes: tuple[str, ...],
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> None:
+    _check_cancelled(cancel_callback)
+    files = _enumerate_files(
+        batch_root,
+        DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_MAX_FILES_PER_ATTEMPT,
+        cancel_callback=cancel_callback,
+    )
     expected = {"manifest.json"}
     expected.update(f"artifacts/{code}.json" for code in expected_codes)
     if set(files) != expected:
         _fail("technical_snapshot_v4_attempt_layout_invalid")
+    _check_cancelled(cancel_callback)
 
 
-def _enumerate_files(root: Path, max_files: int) -> dict[str, int]:
+def _enumerate_files(
+    root: Path,
+    max_files: int,
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> dict[str, int]:
     result: dict[str, int] = {}
     stack: list[tuple[Path, str]] = [(root, "")]
     while stack:
+        _check_cancelled(cancel_callback)
         current, prefix = stack.pop()
         _validate_existing_directory(current)
         try:
@@ -612,6 +996,7 @@ def _enumerate_files(root: Path, max_files: int) -> dict[str, int]:
         if len(entries) > max_files + 1:
             _fail("technical_snapshot_v4_attempt_layout_invalid")
         for entry in entries:
+            _check_cancelled(cancel_callback)
             child = current / entry.name
             relative = f"{prefix}{entry.name}"
             info = _lstat_optional(child)

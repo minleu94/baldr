@@ -12,6 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pandas as pd
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QFontMetrics, QTextCursor
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QBoxLayout, QHBoxLayout, QWidget
 
 from app_module.dtos import RegimeResultDTO
@@ -375,6 +376,155 @@ def test_expanded_reason_shows_complete_score_table_and_document_end() -> None:
         )
         assert view.result_scroll.viewport().rect().contains(last_visible)
         _capture_if_requested(view, "recommendation_full_document_end_460x700.png")
+    finally:
+        view.close()
+        app.processEvents()
+
+
+def test_expanded_reason_keyboard_reaches_document_end_in_narrow_view() -> None:
+    app = _app()
+    view = _new_view()
+    recommendation = SimpleNamespace(
+        rule_score="30", total_score="30", indicator_score="20",
+        pattern_score="25", volume_score="35", threshold_mode="fixed",
+        ranking_method="ordinal", score_percentile_bp=7500,
+        eligible_universe_size=257, price_change="-4", regime_match=False,
+    )
+    html = view._generate_explain_panel(recommendation)
+    html += "<p>完整理由與來源限制。</p>" * 90
+    html += view._generate_why_not(
+        recommendation, {"filters": {"price_change_min": "1", "price_change_max": "8"}},
+    )
+    html += "<p>可複製的理由文字。</p><p>鍵盤驗收最後一行：不可省略。</p>"
+    try:
+        view.resize(460, 700)
+        view.show()
+        view.detail_text.setHtml(html)
+        view.detail_expand_button.click()
+        for _ in range(6):
+            app.processEvents()
+
+        outer_bar = view.result_scroll.verticalScrollBar()
+        inner_bar = view.detail_text.verticalScrollBar()
+        assert outer_bar.maximum() > outer_bar.minimum()
+        assert inner_bar.maximum() == 0
+        assert outer_bar.value() == outer_bar.minimum()
+
+        # 讓唯讀理由區取得真實鍵盤焦點；鍵盤事件不得困在展開的文字元件內。
+        view.detail_text.setFocus(Qt.FocusReason.OtherFocusReason)
+        assert view.detail_text.hasFocus()
+        start_value = outer_bar.value()
+        QTest.keyClick(view.detail_text, Qt.Key.Key_PageDown)
+        app.processEvents()
+        page_down_value = outer_bar.value()
+        QTest.keyClick(view.detail_text, Qt.Key.Key_PageUp)
+        app.processEvents()
+        page_up_value = outer_bar.value()
+        QTest.keyClick(view.detail_text, Qt.Key.Key_End)
+        app.processEvents()
+        end_key_value = outer_bar.value()
+        QTest.keyClick(view.detail_text, Qt.Key.Key_Home)
+        app.processEvents()
+        home_key_value = outer_bar.value()
+        QTest.keyClick(
+            view.detail_text,
+            Qt.Key.Key_End,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        app.processEvents()
+        ctrl_end_value = outer_bar.value()
+        QTest.keyClick(view.detail_text, Qt.Key.Key_Home)
+        app.processEvents()
+        home_after_ctrl_end = outer_bar.value()
+
+        end_cursor = QTextCursor(view.detail_text.document())
+        end_cursor.movePosition(QTextCursor.MoveOperation.End)
+        end_in_outer = QRect()
+        page_down_to_visible: list[int] = []
+        for _ in range(24):
+            QTest.keyClick(view.detail_text, Qt.Key.Key_PageDown)
+            app.processEvents()
+            page_down_to_visible.append(outer_bar.value())
+            end_rect = view.detail_text.cursorRect(end_cursor)
+            end_in_outer = QRect(
+                view.detail_text.viewport().mapTo(
+                    view.result_scroll.viewport(), end_rect.topLeft()
+                ),
+                end_rect.size(),
+            )
+            if view.result_scroll.viewport().rect().contains(end_in_outer):
+                break
+
+        text = view.detail_text.toPlainText()
+        copied_phrase = "可複製的理由文字。"
+        copied_start = text.index(copied_phrase)
+        selection = QTextCursor(view.detail_text.document())
+        selection.setPosition(copied_start)
+        selection.setPosition(
+            copied_start + len(copied_phrase),
+            QTextCursor.MoveMode.KeepAnchor,
+        )
+        view.detail_text.setTextCursor(selection)
+        clipboard = app.clipboard()
+        previous_clipboard = clipboard.text()
+        try:
+            QTest.keyClick(
+                view.detail_text,
+                Qt.Key.Key_C,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+            copied_text = clipboard.text()
+        finally:
+            clipboard.setText(previous_clipboard)
+
+        diagnostics = (
+            f"focus={view.detail_text.hasFocus()}; "
+            f"outer={outer_bar.minimum()}..{outer_bar.maximum()}; "
+            f"inner={inner_bar.minimum()}..{inner_bar.maximum()}; "
+            f"start={start_value}; page_down={page_down_value}; "
+            f"page_up={page_up_value}; end={end_key_value}; "
+            f"home={home_key_value}; ctrl_end={ctrl_end_value}; "
+            f"home_after_ctrl_end={home_after_ctrl_end}; "
+            f"page_down_to_visible={page_down_to_visible}; "
+            f"end_rect={end_in_outer}; "
+            f"outer_viewport={view.result_scroll.viewport().rect()}"
+        )
+        assert page_down_value > start_value, diagnostics
+        assert page_up_value == start_value, diagnostics
+        assert end_key_value == outer_bar.maximum(), diagnostics
+        assert home_key_value == outer_bar.minimum(), diagnostics
+        assert ctrl_end_value == outer_bar.maximum(), diagnostics
+        assert home_after_ctrl_end == outer_bar.minimum(), diagnostics
+        assert page_down_to_visible, diagnostics
+        assert copied_text == copied_phrase, diagnostics
+        assert view.result_scroll.viewport().rect().contains(end_in_outer), diagnostics
+    finally:
+        view.close()
+        app.processEvents()
+
+
+def test_collapsed_reason_keeps_internal_keyboard_scrolling() -> None:
+    app = _app()
+    view = _new_view()
+    try:
+        view.resize(460, 700)
+        view.show()
+        view.detail_text.setPlainText("收合理由內容。\n" * 80)
+        app.processEvents()
+
+        inner_bar = view.detail_text.verticalScrollBar()
+        outer_bar = view.result_scroll.verticalScrollBar()
+        assert inner_bar.maximum() > inner_bar.minimum()
+        outer_start = outer_bar.value()
+        inner_start = inner_bar.value()
+        view.detail_text.setFocus(Qt.FocusReason.OtherFocusReason)
+        assert view.detail_text.hasFocus()
+
+        QTest.keyClick(view.detail_text, Qt.Key.Key_PageDown)
+        app.processEvents()
+
+        assert inner_bar.value() > inner_start
+        assert outer_bar.value() == outer_start
     finally:
         view.close()
         app.processEvents()

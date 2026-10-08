@@ -62,3 +62,23 @@ root已在每日研究條件頁新增價格來源view，個股／比較詳情各
 新隔離 attempt `output/qa/f07_fulln_price_main_new_process_20261008_a/attempt_32f961a8fa2141d7900cec900a6d3098`：pytest 1 failed／218.33秒。父 Main 33.032秒完成 S0250 主選及 S0256/S0250 比較籃的收藏保存、原詳情返回、取消與原生關閉；新 PID 23644（父43464）fresh reader 11.672秒完成原來源、query、page、股票與比較籃核驗。來源 inventory 前後 SHA256同為 `80d1f155698a94181564862da72c89dcef2822678c3187cb1d6f9277b2bc028a`，子程序網路嘗試為空。
 
 本輪失敗在 Main 還原後的捲動位置；保存位置為2，舊 trace沒有記錄實際還原值，不能補造差值。另以隔離 Qt 表格重現：隱藏頁面 scrollbar maximum為0，設2被限制為0；顯示後 maximum變2但 value仍0。產品目前先套收藏狀態再切換頁面，與此時序缺陷相符。正在補可見布局完成後的原頁限定還原及晚到／關閉保護；本輪不授完整自然流程接受，不以延長等待或移除捲動驗收替代修正。
+
+## 捲動修正中央完整回歸拒絕
+
+三項新增Qt測試通過後，中央執行完整價格view回歸，在既有第一項非同步 `restore_bookmark` 後發生 Windows原生access violation，exit1；隔離目錄 `C:/t/f07-scroll-root-full-view-20261008-a` 保留，中央收據 `output/qa/f07_scroll_root_gate_20261008_a/receipt.json` 綁定三檔前像SHA與失敗階段。此版本不能以新增測試通過授UI接受，正在排查queued還原／worker完成與事件重入。Workbench85 passed／4.09秒、validator25／0／4及full-roots mypy912檔clean只證明各自範圍；不抵銷此原生崩潰。完整257股自然旅程尚未在此捲動修正上重跑。
+
+縮小事件filter後，葉片同一既有案例與三項捲動測試通過；此結果尚未代替中央完整回歸。A原生崩潰、B後續WIP殘留欄位錯誤與C原生崩潰分開保留，B不能解釋A。中央又發現非同步時序缺口：TaskWorker.finished套用bookmark時，worker到native_thread_finished才釋放；queued捲動若先執行，目前會因worker仍存在清掉待辦。已要求改為等原native release後排一次還原，補刻意延後native釋放且非零scroll的真async測試。此修正未驗證前不授完整view或新程序接受。
+
+## native release 修正與共享後端驗證隔離
+
+修正後刻意延後原 worker native release 的非同步案例通過（1 passed／3.34秒，`output/qa/f07_scroll_release_race_20261008_a/async_test.log`）。中央靜態複核：待辦綁原 page、股票與 generation；worker 未退出時保留待辦，原 worker 的 `_release` 後才重新排程；晚到其他 worker 不釋放目前操作，使用者改選、取消或關閉清除待辦。只對三個穩定 Qt 元件安裝一次 event filter，不再次掛接動態子元件。
+
+後續完整 view 測試為7 failed／3 passed；七項失敗均在共享後端 WIP 的 `del artifact` 未定義，未進入 UI 驗證，不能宣稱完整 view 通過，也不能歸因為新捲動回歸。後端修改者已修正該路徑，原 selected-row materializer 回歸通過；跨段新測試首次因測試所選 child 沒有未選 sibling 而失敗，仍待修正 fixture 選頁後重驗。中央將在共享後端凍結後再做完整 UI、強制檢查與257股真 Main／新 PID 驗收，不以各葉片通過替代整合結果。
+
+## 修正後真257 Main／新程序有限接受
+
+唯一有效測試終態exit0，1 passed／145.37秒，原父300秒／子240秒期限保持。中央直接讀 `output/qa/f07_true257_main_20261008_c/pytest.log`、final receipt與原child receipt；旅程封套 `output/qa/f07_fulln_price_main_new_process_20261008_a/attempt_bd77f6c253864ac99bba1f6313a2c350`。258 declared／257 included／1 excluded／1 unknown price；主選S0250留在比較籃S0256/S0250，原query/page identity跨程序一致。child trace明示隱藏頁套用後scroll0／max0，顯示布局完成後scroll2／max2，原page5、選股及比較籃還原，bookmark identity `33b63351d80c68852830b31ebbbc3b2a475af1fd8143b016b7dd7a8e8bf30834`。
+
+parent／child皆無網路嘗試，關閉無剩餘worker，source inventory前後SHA同為 `b07046256818bb669c3cd5f3c4df27e73cd6f5e692a97f1509e946833c83c55c`。父流程到child啟動20.641秒，child完整流程30.125秒，這是單次合成旅程而非p95。兩條layout_helpers destroyed signal disconnect RuntimeWarning保留；前置錯誤路徑與sandbox WinError5未進入Main的嘗試亦保留，沒有延長期限或換第三股避開重疊。
+
+完整價格view10項及推薦layout6項已通過；即時同步scroll斷言改成有界Qt事件等待，仍核可見幾何、exact非零scroll、同query/page及不重新讀來源。此處授257股真保存來源的Main／新程序自然收藏旅程接受；正式全市場、完整1,000股效能、新版EXE與真人尚待。

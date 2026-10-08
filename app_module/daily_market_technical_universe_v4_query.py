@@ -27,6 +27,8 @@ from app_module.daily_market_technical_snapshot_v4_repository import (
     DailyMarketTechnicalBatchArtifactV4,
     DailyMarketTechnicalSnapshotV4Repository,
     DailyMarketTechnicalSnapshotV4RepositoryError,
+    _VerifiedBatchSemanticProofV4,
+    _semantic_proof_for_verified_batch,
 )
 from app_module.rule_research_technical_parent_capture_v4 import (
     DailyMarketTechnicalParentCaptureV4VerifiedRead,
@@ -803,6 +805,7 @@ class _ChildArtifactReference:
     source_clock_identity_sha256: str
     method_contract_sha256: str
     decision_date: date
+    semantic_proof: _VerifiedBatchSemanticProofV4 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -894,6 +897,11 @@ def _read_index_artifact_size(reference: _ChildArtifactReference) -> int:
     }))
 
 
+def _read_index_semantic_proof_size(reference: _ChildArtifactReference) -> int:
+    proof = reference.semantic_proof
+    return 0 if proof is None else proof.payload_size_bytes
+
+
 def _is_cancelled(callback: Callable[[], bool] | None) -> bool:
     if callback is None:
         return False
@@ -953,6 +961,7 @@ def _consume_verified_segment(
     cancel_callback: Callable[[], bool] | None,
     read_index_candidates: list[_ReadIndexCandidate] | None = None,
     index_byte_count: list[int] | None = None,
+    semantic_proof_byte_count: list[int] | None = None,
     max_index_bytes: int = DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES,
 ) -> None:
     """同次消費已核驗 parent context，只留下排序候選與 child pins。"""
@@ -1056,6 +1065,14 @@ def _consume_verified_segment(
             or verified.decision_date.isoformat() != query.decision_date.isoformat()
         ):
             _fail("technical_universe_v4_query_source_identity_mismatch")
+        semantic_proof: _VerifiedBatchSemanticProofV4 | None = None
+        if read_index_candidates is not None:
+            try:
+                semantic_proof = _semantic_proof_for_verified_batch(verified)
+            except DailyMarketTechnicalSnapshotV4RepositoryError as exc:
+                raise DailyMarketTechnicalUniverseV4QueryError(
+                    exc.code, str(exc)
+                ) from exc
         artifact_index = len(artifact_references)
         artifact_references.append(
             _ChildArtifactReference(
@@ -1067,13 +1084,17 @@ def _consume_verified_segment(
                 source_clock_identity_sha256=verified.source_clock_identity_sha256,
                 method_contract_sha256=verified.method_contract_sha256,
                 decision_date=verified.decision_date,
+                semantic_proof=semantic_proof,
             )
         )
         if read_index_candidates is not None:
-            if index_byte_count is None:
+            if index_byte_count is None or semantic_proof_byte_count is None:
                 _fail("technical_universe_v4_read_session_index_invalid")
             index_byte_count[0] += _read_index_artifact_size(artifact_references[-1])
-            if index_byte_count[0] > max_index_bytes:
+            semantic_proof_byte_count[0] += _read_index_semantic_proof_size(
+                artifact_references[-1]
+            )
+            if index_byte_count[0] + semantic_proof_byte_count[0] > max_index_bytes:
                 _fail("technical_universe_v4_read_session_index_limit")
         for snapshot in verified.snapshots:
             if snapshot.stock_code in seen_codes:
@@ -1114,13 +1135,14 @@ def _consume_verified_segment(
                     rules=tuple(compact_rules),
                 )
                 read_index_candidates.append(compact_candidate)
-                if index_byte_count is None:
+                if index_byte_count is None or semantic_proof_byte_count is None:
                     _fail("technical_universe_v4_read_session_index_invalid")
                 index_byte_count[0] += _read_index_candidate_size(compact_candidate)
                 if (
                     len(read_index_candidates)
                     > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS
-                    or index_byte_count[0] > max_index_bytes
+                    or index_byte_count[0] + semantic_proof_byte_count[0]
+                    > max_index_bytes
                 ):
                     _fail("technical_universe_v4_read_session_index_limit")
             if stock_filter and row.stock_code not in stock_filter:
@@ -2072,9 +2094,15 @@ class DailyMarketTechnicalUniverseV4ReadSession:
             reference = _read_session_artifact_reference(
                 self._artifact_references, artifact_index, selected_candidates
             )
-            artifact = _read_session_child_artifact(reference, cancel_callback)
-            snapshots = {item.stock_code: item for item in artifact.snapshots}
-            if len(snapshots) != len(artifact.snapshots):
+            artifact_snapshots = _read_session_child_snapshots(
+                reference,
+                selected_stock_codes=tuple(
+                    candidate.stock_code for candidate in selected_candidates
+                ),
+                cancel_callback=cancel_callback,
+            )
+            snapshots = {item.stock_code: item for item in artifact_snapshots}
+            if len(snapshots) != len(artifact_snapshots):
                 _fail("technical_universe_v4_query_duplicate_page_stock")
             for candidate in selected_candidates:
                 snapshot = snapshots.get(candidate.stock_code)
@@ -2343,11 +2371,17 @@ class DailyMarketTechnicalUniverseV4ReadSession:
             reference = _read_session_artifact_reference(
                 self._artifact_references, artifact_index, selected_candidates
             )
-            artifact = _read_session_child_artifact(reference, cancel_callback)
+            artifact_snapshots = _read_session_child_snapshots(
+                reference,
+                selected_stock_codes=tuple(
+                    candidate.stock_code for candidate in selected_candidates
+                ),
+                cancel_callback=cancel_callback,
+            )
             if _is_cancelled(cancel_callback):
                 _fail("technical_universe_v4_query_cancelled")
-            snapshots = {item.stock_code: item for item in artifact.snapshots}
-            if len(snapshots) != len(artifact.snapshots):
+            snapshots = {item.stock_code: item for item in artifact_snapshots}
+            if len(snapshots) != len(artifact_snapshots):
                 _fail("technical_universe_v4_query_duplicate_page_stock")
             for candidate in selected_candidates:
                 if _is_cancelled(cancel_callback):
@@ -2373,7 +2407,6 @@ class DailyMarketTechnicalUniverseV4ReadSession:
                     _fail("technical_universe_v4_query_duplicate_page_stock")
                 rows_by_code[candidate.stock_code] = row
             del snapshots
-            del artifact
 
         if len(rows_by_code) != len(requested_stock_codes):
             _fail("technical_universe_v4_query_page_rows_missing")
@@ -2464,9 +2497,13 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         reference = _read_session_artifact_reference(
             self._artifact_references, candidate.artifact_index, (candidate,)
         )
-        artifact = _read_session_child_artifact(reference, cancel_callback)
-        snapshots = {item.stock_code: item for item in artifact.snapshots}
-        if len(snapshots) != len(artifact.snapshots):
+        artifact_snapshots = _read_session_child_snapshots(
+            reference,
+            selected_stock_codes=(stock_code,),
+            cancel_callback=cancel_callback,
+        )
+        snapshots = {item.stock_code: item for item in artifact_snapshots}
+        if len(snapshots) != len(artifact_snapshots):
             _fail("technical_universe_v4_query_duplicate_page_stock")
         snapshot = snapshots.get(stock_code)
         if snapshot is None or (
@@ -2545,29 +2582,42 @@ def _read_session_artifact_reference(
     return reference
 
 
-def _read_session_child_artifact(
+def _read_session_child_snapshots(
     reference: _ChildArtifactReference,
+    *,
+    selected_stock_codes: Sequence[str],
     cancel_callback: Callable[[], bool] | None,
-) -> DailyMarketTechnicalBatchArtifactV4:
+) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
     if _is_cancelled(cancel_callback):
         _fail("technical_universe_v4_query_cancelled")
     try:
-        artifact = DailyMarketTechnicalSnapshotV4Repository(
+        repository = DailyMarketTechnicalSnapshotV4Repository(
             reference.repository_output_root
-        ).read_exact(
-            reference.manifest_path,
-            expected_manifest_sha256=reference.manifest_sha256,
-            expected_cohort_identity_sha256=reference.cohort_identity_sha256,
-            expected_source_clock_sha256=reference.source_clock_identity_sha256,
-            expected_method_contract_sha256=reference.method_contract_sha256,
-            expected_decision_date=reference.decision_date,
         )
+        if reference.semantic_proof is not None:
+            snapshots = repository.read_selected_exact(
+                reference.semantic_proof,
+                selected_stock_codes=selected_stock_codes,
+                cancel_callback=cancel_callback,
+            )
+        else:
+            artifact = repository.read_exact(
+                reference.manifest_path,
+                expected_manifest_sha256=reference.manifest_sha256,
+                expected_cohort_identity_sha256=reference.cohort_identity_sha256,
+                expected_source_clock_sha256=reference.source_clock_identity_sha256,
+                expected_method_contract_sha256=reference.method_contract_sha256,
+                expected_decision_date=reference.decision_date,
+            )
+            snapshots = artifact.snapshots
     except (DailyMarketTechnicalSnapshotV4RepositoryError, OSError, ValueError) as exc:
         code = getattr(exc, "code", "technical_universe_v4_query_child_read_failed")
+        if code == "technical_snapshot_v4_read_cancelled":
+            code = "technical_universe_v4_query_cancelled"
         raise DailyMarketTechnicalUniverseV4QueryError(str(code), str(exc)) from exc
     if _is_cancelled(cancel_callback):
         _fail("technical_universe_v4_query_cancelled")
-    return artifact
+    return tuple(snapshots)
 
 
 class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
@@ -2631,6 +2681,7 @@ class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
         self._parent_observations: list[_ReadSessionParentObservation] = []
         self._context_holder: list[_ReadSessionCollectionContext] = []
         self._index_byte_count = [0]
+        self._semantic_proof_byte_count = [0]
         self._bundle_pin: tuple[str, str, str] | None = None
         self._build_attempted = False
         self._built_session: DailyMarketTechnicalUniverseV4ReadSession | None = None
@@ -2671,6 +2722,7 @@ class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
                 cancel_callback=self.cancel_callback,
                 read_index_candidates=self._candidates,
                 index_byte_count=self._index_byte_count,
+                semantic_proof_byte_count=self._semantic_proof_byte_count,
                 max_index_bytes=self.max_index_bytes,
             )
             self._parent_observations.append(
@@ -2744,7 +2796,10 @@ class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
             ],
         }))
         self._index_byte_count[0] += metadata_bytes
-        if self._index_byte_count[0] > self.max_index_bytes:
+        if (
+            self._index_byte_count[0] + self._semantic_proof_byte_count[0]
+            > self.max_index_bytes
+        ):
             _fail("technical_universe_v4_read_session_index_limit")
         if self._is_cancelled():
             _fail("technical_universe_v4_query_cancelled")

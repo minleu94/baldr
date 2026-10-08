@@ -12,9 +12,10 @@ from typing import Any, cast
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QTableView
+from PySide6.QtWidgets import QApplication, QTabWidget, QTableView, QWidget
 
 from app_module.daily_market_technical_universe_price_bookmark_v1 import (
+    DailyMarketTechnicalUniversePriceBookmarkStateV1,
     DailyMarketTechnicalUniversePriceBookmarkV1,
     create_daily_market_technical_universe_price_bookmark_v1,
     read_daily_market_technical_universe_price_bookmark_v1,
@@ -50,6 +51,46 @@ def _wait(app: QApplication, predicate: Any, *, timeout_seconds: float = 90.0) -
             raise AssertionError("F07 價格視圖背景工作逾時")
         time.sleep(0.01)
     app.processEvents()
+
+
+def _scroll_bookmark_state(
+    store: dict[str, Any], *, stock_code: str, scroll_position: int
+) -> tuple[
+    DailyMarketTechnicalUniversePriceBookmarkV1,
+    DailyMarketTechnicalUniversePriceBookmarkStateV1,
+]:
+    session = _open_session(store)
+    query = session.create_query(unknown_price_policy="include")
+    result = session.execute(query)
+    page = result.read_page(result.create_page_request(0, page_size=4))
+    bookmark = create_daily_market_technical_universe_price_bookmark_v1(
+        query,
+        page,
+        stock_code,
+        scroll_position=scroll_position,
+    )
+    return bookmark, read_daily_market_technical_universe_price_bookmark_v1(bookmark)
+
+
+def _scroll_metrics(view: DailyMarketTechnicalUniversePriceV1View) -> dict[str, object]:
+    bar = view.table.verticalScrollBar()
+    viewport = view.table.viewport()
+    model = view.table.model()
+    page = view.current_page
+    return {
+        "value": int(bar.value()),
+        "minimum": int(bar.minimum()),
+        "maximum": int(bar.maximum()),
+        "viewport_width": int(viewport.width()),
+        "viewport_height": int(viewport.height()),
+        "table_width": int(view.table.width()),
+        "table_height": int(view.table.height()),
+        "table_visible": bool(view.table.isVisible()),
+        "view_visible": bool(view.isVisible()),
+        "row_count": int(model.rowCount()) if model is not None else 0,
+        "page_row_count": len(page.rows) if page is not None else 0,
+        "page_index": page.request.page_index if page is not None else None,
+    }
 
 
 def _entry_index(view: DailyMarketTechnicalUniversePriceV1View, status: str) -> int:
@@ -304,11 +345,25 @@ def test_restore_fresh_bookmark_state_reuses_issued_page_and_rejects_wrong_sourc
     app.processEvents()
 
     assert view.restore_bookmark_state(bookmark_state)
+    _wait(
+        app,
+        lambda: (
+            view._pending_bookmark_scroll_restore is None
+            and view.table.isVisible()
+            and view.table.viewport().width() > 0
+            and view.table.viewport().height() > 0
+            and view.table.verticalScrollBar().maximum() >= bookmark.scroll_position
+            and view.table.verticalScrollBar().value() == bookmark.scroll_position
+        ),
+        timeout_seconds=3.0,
+    )
     assert calls == 0
     assert view.current_query == query
     assert view.current_page is bookmark_state.selected.page
     current_row = view._selected_row()
     assert current_row is not None and current_row.technical_row.stock_code == "S0001"
+    assert bookmark.scroll_position > 0
+    assert view.table.verticalScrollBar().maximum() >= bookmark.scroll_position
     assert view.table.verticalScrollBar().value() == bookmark.scroll_position
     assert view._basket == list(bookmark.comparison_selections)
 
@@ -328,3 +383,260 @@ def test_restore_fresh_bookmark_state_reuses_issued_page_and_rejects_wrong_sourc
     assert calls == 0
     assert view.begin_shutdown() is True
     view.close()
+
+
+def test_async_bookmark_restore_keeps_scroll_until_native_worker_release(
+    app: QApplication,
+    exact_price_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bookmark, bookmark_state = _scroll_bookmark_state(
+        exact_price_store,
+        stock_code="S0001",
+        scroll_position=2,
+    )
+    host = QTabWidget()
+    view = DailyMarketTechnicalUniversePriceV1View(
+        exact_price_store["store_root"], parent=host
+    )
+    view.table.setFixedHeight(110)
+    host.addTab(QWidget(), "Watchlist")
+    host.addTab(view, "Price")
+    host.resize(800, 600)
+    host.show()
+    app.processEvents()
+    assert not view.table.isVisible()
+
+    held_releases: list[object] = []
+    native_release = view._release
+
+    def delay_ui_release(worker: object) -> None:
+        held_releases.append(worker)
+
+    monkeypatch.setattr(view, "_release", delay_ui_release)
+    assert view._start(
+        "測試非同步重開收藏",
+        lambda cancel_callback=None: bookmark_state,
+        view._apply_bookmark_state,
+        kind="bookmark_restore",
+    )
+
+    _wait(
+        app,
+        lambda: (
+            len(held_releases) == 1
+            and view.current_page is bookmark_state.selected.page
+            and view._pending_bookmark_scroll_restore is not None
+        ),
+        timeout_seconds=3.0,
+    )
+    assert view.busy
+    assert view.table.verticalScrollBar().value() == 0
+
+    # 先讓隱藏頁完成顯示與版面事件；worker release callback 仍被測試攔住。
+    host.setCurrentWidget(view)
+    _wait(
+        app,
+        lambda: (
+            view.table.isVisible()
+            and view.table.viewport().height() > 0
+            and view.table.verticalScrollBar().maximum() >= bookmark.scroll_position
+        ),
+        timeout_seconds=3.0,
+    )
+    QTest.qWait(30)
+    assert view.busy
+    assert view._pending_bookmark_scroll_restore is not None
+    assert view.table.verticalScrollBar().value() != bookmark.scroll_position
+
+    native_release(cast(Any, held_releases[0]))
+    _wait(
+        app,
+        lambda: (
+            not view.busy
+            and view._pending_bookmark_scroll_restore is None
+            and view.table.verticalScrollBar().value() == bookmark.scroll_position
+        ),
+        timeout_seconds=3.0,
+    )
+    assert view.table.verticalScrollBar().maximum() >= bookmark.scroll_position
+    assert view.table.verticalScrollBar().value() == bookmark.scroll_position
+    assert view.begin_shutdown() is True
+    host.close()
+
+
+def test_hidden_bookmark_restore_applies_scroll_after_tab_layout(
+    app: QApplication,
+    exact_price_store: dict[str, Any],
+) -> None:
+    bookmark, bookmark_state = _scroll_bookmark_state(
+        exact_price_store,
+        stock_code="S0001",
+        scroll_position=2,
+    )
+    host = QTabWidget()
+    view = DailyMarketTechnicalUniversePriceV1View(
+        exact_price_store["store_root"], parent=host
+    )
+    view.table.setFixedHeight(110)
+    placeholder = QWidget()
+    host.addTab(placeholder, "Watchlist")
+    host.addTab(view, "Price")
+    host.resize(800, 600)
+    host.show()
+    app.processEvents()
+    assert not view.table.isVisible()
+
+    assert view.restore_bookmark_state(bookmark_state)
+    hidden_bar = view.table.verticalScrollBar()
+    assert hidden_bar.maximum() == 0
+    assert hidden_bar.value() == 0
+    assert view._pending_bookmark_scroll_restore is not None
+
+    scroll_events: list[int] = []
+    hidden_bar.valueChanged.connect(scroll_events.append)
+    host.setCurrentWidget(view)
+    try:
+        _wait(
+            app,
+            lambda: (
+                view.table.isVisible()
+                and view._pending_bookmark_scroll_restore is None
+                and hidden_bar.value() == bookmark.scroll_position
+            ),
+            timeout_seconds=3.0,
+        )
+    except AssertionError as exc:
+        raise AssertionError(
+            "隱藏頁收藏捲動未在顯示後還原："
+            f"metrics={_scroll_metrics(view)}; "
+            f"pending={view._pending_bookmark_scroll_restore!r}; "
+            f"busy={view.busy}; generation={view._generation}; "
+            f"scroll_events={scroll_events}"
+        ) from exc
+    assert view.results_model.rowCount() == 4
+    assert hidden_bar.maximum() >= bookmark.scroll_position
+    assert hidden_bar.value() == bookmark.scroll_position
+    assert bookmark.scroll_position in scroll_events
+    assert view.table.viewport().width() > 0
+    assert view.table.viewport().height() > 0
+    assert view.begin_shutdown() is True
+    host.close()
+
+
+def test_zero_size_bookmark_restore_waits_for_resize_without_repeating(
+    app: QApplication,
+    exact_price_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bookmark, bookmark_state = _scroll_bookmark_state(
+        exact_price_store,
+        stock_code="S0001",
+        scroll_position=2,
+    )
+    host = QTabWidget()
+    view = DailyMarketTechnicalUniversePriceV1View(
+        exact_price_store["store_root"], parent=host
+    )
+    scheduled_runs = 0
+    original_scheduled_run = view._run_scheduled_bookmark_scroll_restore
+
+    def count_scheduled_run(expected: object) -> None:
+        nonlocal scheduled_runs
+        scheduled_runs += 1
+        original_scheduled_run(cast(Any, expected))
+
+    monkeypatch.setattr(
+        view,
+        "_run_scheduled_bookmark_scroll_restore",
+        count_scheduled_run,
+    )
+    placeholder = QWidget()
+    host.addTab(placeholder, "Watchlist")
+    host.addTab(view, "Price")
+    host.resize(520, 170)
+    host.show()
+    app.processEvents()
+
+    assert view.restore_bookmark_state(bookmark_state)
+    host.setCurrentWidget(view)
+    app.processEvents()
+    first_metrics = _scroll_metrics(view)
+    assert view.table.isVisible()
+    assert cast(int, first_metrics["viewport_height"]) <= 0
+    assert view._pending_bookmark_scroll_restore is not None
+
+    # 零尺寸狀態只等待下一個實際版面事件，不建立無限的零毫秒重試。
+    QTest.qWait(50)
+    assert view._pending_bookmark_scroll_restore is not None
+    assert scheduled_runs <= 16
+    assert int(view.table.verticalScrollBar().value()) != bookmark.scroll_position
+
+    view.table.setFixedHeight(110)
+    host.resize(800, 600)
+    _wait(
+        app,
+        lambda: (
+            view._pending_bookmark_scroll_restore is None
+            and view.table.viewport().height() > 0
+            and view.table.verticalScrollBar().value() == bookmark.scroll_position
+        ),
+        timeout_seconds=3.0,
+    )
+    metrics = _scroll_metrics(view)
+    assert cast(int, metrics["maximum"]) >= bookmark.scroll_position
+    assert cast(int, metrics["viewport_width"]) > 0
+    assert cast(int, metrics["viewport_height"]) > 0
+    assert view.begin_shutdown() is True
+    host.close()
+
+
+def test_pending_bookmark_scroll_is_cleared_by_selection_and_shutdown(
+    app: QApplication,
+    exact_price_store: dict[str, Any],
+) -> None:
+    bookmark, bookmark_state = _scroll_bookmark_state(
+        exact_price_store,
+        stock_code="S0001",
+        scroll_position=2,
+    )
+    host = QTabWidget()
+    view = DailyMarketTechnicalUniversePriceV1View(
+        exact_price_store["store_root"], parent=host
+    )
+    view.table.setFixedHeight(110)
+    placeholder = QWidget()
+    host.addTab(placeholder, "Watchlist")
+    host.addTab(view, "Price")
+    host.resize(800, 600)
+    host.show()
+    app.processEvents()
+
+    assert not view.table.isVisible()
+    assert view.restore_bookmark_state(bookmark_state)
+    assert view._pending_bookmark_scroll_restore is not None
+    assert view.select_stock_code("S0002")
+    assert view._pending_bookmark_scroll_restore is None
+    host.setCurrentWidget(view)
+    _wait(app, lambda: view.table.viewport().height() > 0, timeout_seconds=3.0)
+    selected = view._selected_row()
+    assert selected is not None and selected.technical_row.stock_code == "S0002"
+    assert view._pending_bookmark_scroll_restore is None
+    app.processEvents()
+    selected_scroll_after_layout = view.table.verticalScrollBar().value()
+    app.processEvents()
+    assert view.table.verticalScrollBar().value() == selected_scroll_after_layout
+
+    host.setCurrentWidget(placeholder)
+    app.processEvents()
+    assert view.restore_bookmark_state(bookmark_state)
+    assert view._pending_bookmark_scroll_restore is not None
+    assert view.begin_shutdown() is True
+    assert view._pending_bookmark_scroll_restore is None
+    host.setCurrentWidget(view)
+    _wait(app, lambda: view.table.viewport().height() > 0, timeout_seconds=3.0)
+    shutdown_scroll_after_layout = view.table.verticalScrollBar().value()
+    app.processEvents()
+    assert view.table.verticalScrollBar().value() == shutdown_scroll_after_layout
+    assert view._pending_bookmark_scroll_restore is None
+    host.close()

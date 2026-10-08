@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 from typing import Literal, cast
 
-from PySide6.QtCore import QModelIndex, Qt, Signal
+from PySide6.QtCore import QEvent, QModelIndex, QObject, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -140,6 +140,15 @@ class _QueuedOperation:
     operation: Callable[..., object]
     apply: Callable[[object], None]
     kind: str
+
+
+@dataclass(slots=True)
+class _PendingBookmarkScrollRestore:
+    page_identity_sha256: str
+    stock_code: str
+    scroll_position: int
+    generation: int
+    selection_restore_attempted: bool = False
 
 
 def _cancelled(cancel_callback: Callable[[], object] | None) -> bool:
@@ -415,6 +424,9 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._catalog_cursor: str | None = None
         self._rule_filters: dict[str, QComboBox] = {}
         self._basket: list[DailyMarketTechnicalUniversePriceSelectionV1] = []
+        self._pending_bookmark_scroll_restore: _PendingBookmarkScrollRestore | None = None
+        self._scroll_restore_filtered_widgets: tuple[QWidget, ...] = ()
+        self._scroll_restore_scheduled_for: _PendingBookmarkScrollRestore | None = None
         self._stock_filter_rejected_text: str | None = None
         self._drill_selection_code = ""
 
@@ -587,6 +599,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.table.selectionModel().selectionChanged.connect(self._set_enabled_state)
         self.table.selectionModel().currentChanged.connect(self._on_table_current_changed)
         self.table.doubleClicked.connect(self._on_row_activated)
+        self.table.verticalScrollBar().rangeChanged.connect(self._on_scroll_range_changed)
         root.addWidget(self.table, 1)
         self.status = QLabel("尚未載入已保存來源。")
         self.status.setObjectName("dailyMarketTechnicalPriceV1Status")
@@ -606,6 +619,66 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.clear_comparison_button.clicked.connect(self.clear_comparison)
         self.bookmark_button.clicked.connect(self.prepare_bookmark)
         self.sources.currentIndexChanged.connect(self._show_selected_metadata)
+
+        # 只在穩定的表格視窗與捲軸安裝一次 event filter；Qt 內部的暫存子元件
+        # 不逐一掛接，避免頁面切換／popup 建立時重複改動 QObject 事件鏈。
+        self._scroll_restore_filtered_widgets = (
+            self.table.viewport(),
+            self.table.verticalScrollBar(),
+            self.table.horizontalScrollBar(),
+        )
+        for widget in self._scroll_restore_filtered_widgets:
+            widget.installEventFilter(self)
+
+        for signal in (
+            self.sources.activated,
+            self.combine_mode.activated,
+            self.unknown_policy.activated,
+            self.page_size.activated,
+        ):
+            signal.connect(lambda *_args: self._clear_pending_bookmark_scroll_restore())
+        for line_edit in (
+            self.stock_filter,
+            self.eligible_stock_filter,
+            self.minimum,
+            self.maximum,
+        ):
+            line_edit.textEdited.connect(
+                lambda *_args: self._clear_pending_bookmark_scroll_restore()
+            )
+        for check_box in (
+            self.eligible_stock_filter_enabled,
+            self.minimum_inclusive,
+            self.maximum_inclusive,
+            self.descending,
+        ):
+            check_box.clicked.connect(
+                lambda *_args: self._clear_pending_bookmark_scroll_restore()
+            )
+        for button in (
+            self.refresh_sources_button,
+            self.more_sources_button,
+            self.load_source_button,
+            self.cancel_button,
+            self.apply_query_button,
+            self.previous_page_button,
+            self.next_page_button,
+            self.add_comparison_button,
+            self.run_comparison_button,
+            self.clear_comparison_button,
+            self.bookmark_button,
+        ):
+            button.clicked.connect(
+                lambda *_args: self._clear_pending_bookmark_scroll_restore()
+            )
+        self.table.clicked.connect(lambda *_args: self._clear_pending_bookmark_scroll_restore())
+        self.table.doubleClicked.connect(
+            lambda *_args: self._clear_pending_bookmark_scroll_restore()
+        )
+        for rule_filter in self._rule_filters.values():
+            rule_filter.activated.connect(
+                lambda *_args: self._clear_pending_bookmark_scroll_restore()
+            )
         self._set_enabled_state()
 
     def refresh_sources(self) -> None:
@@ -801,6 +874,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
     def restore_bookmark_state(self, state: DailyMarketTechnicalUniversePriceBookmarkStateV1) -> bool:
         """套用控制項同次 fresh read 的 issued 結果，不重新開來源。"""
 
+        self._clear_pending_bookmark_scroll_restore()
         if self._closing:
             self.status.setText("價格研究視圖正在關閉；未套用收藏。")
             return False
@@ -831,10 +905,14 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         index = self.results_model.index_for_stock(stock_code)
         if not index.isValid():
             return False
+        pending = self._pending_bookmark_scroll_restore
+        if pending is not None and stock_code != pending.stock_code:
+            self._clear_pending_bookmark_scroll_restore()
         self.table.setCurrentIndex(index)
         return True
 
     def cancel(self) -> None:
+        self._clear_pending_bookmark_scroll_restore()
         if self._worker is None:
             return
         self._generation += 1
@@ -846,6 +924,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
     def begin_shutdown(self) -> bool:
         """非阻塞地取消工作；True 僅表示 native worker 已停止。"""
 
+        self._clear_pending_bookmark_scroll_restore()
         self._closing = True
         self._generation += 1
         self._pending = None
@@ -973,6 +1052,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._set_enabled_state()
 
     def _apply_state(self, value: object, *, selected_code: str | None = None) -> bool:
+        self._clear_pending_bookmark_scroll_restore()
         if not isinstance(value, _PriceViewState):
             self.status.setText("價格查詢回傳格式不符；目前已核驗表格保留。")
             return False
@@ -1229,6 +1309,17 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.status.setText(f"已核驗 {value.stock_code} 的原價格來源 snapshot，可供外層開啟個股研究。")
 
     def _on_table_current_changed(self, current: QModelIndex, _previous: QModelIndex) -> None:
+        pending = self._pending_bookmark_scroll_restore
+        if pending is not None:
+            current_row = self.results_model.row_at(current.row()) if current.isValid() else None
+            current_code = (
+                current_row.technical_row.stock_code
+                if isinstance(current_row, DailyMarketTechnicalUniversePriceRowV1)
+                else ""
+            )
+            # 顯示隱藏頁時 Qt 可能短暫送出 invalid index；它不是使用者改選。
+            if current.isValid() and current_code != pending.stock_code:
+                self._clear_pending_bookmark_scroll_restore()
         worker = self._worker
         if worker is None or self._worker_kind != "stock" or self._closing:
             return
@@ -1266,6 +1357,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self._apply_bookmark_state_value(value)
 
     def _apply_bookmark_state_value(self, value: object) -> bool:
+        self._clear_pending_bookmark_scroll_restore()
         if not isinstance(value, DailyMarketTechnicalUniversePriceBookmarkStateV1):
             self.status.setText("收藏重開回傳格式不符；目前表格保留。")
             return False
@@ -1329,9 +1421,130 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         self.sources.setCurrentIndex(-1)
         self._basket = list(bookmark.comparison_selections)
         self._render_basket_label()
-        self.table.verticalScrollBar().setValue(bookmark.scroll_position)
+        self._queue_bookmark_scroll_restore(
+            page_identity_sha256=page.page_identity_sha256,
+            stock_code=bookmark.stock_code,
+            scroll_position=bookmark.scroll_position,
+        )
         self.status.setText("已套用同次 fresh exact 收藏結果與原比較錨點；沒有重新開來源，也沒有讀取 latest。")
         return True
+
+    def _queue_bookmark_scroll_restore(
+        self,
+        *,
+        page_identity_sha256: str,
+        stock_code: str,
+        scroll_position: int,
+    ) -> None:
+        self._pending_bookmark_scroll_restore = _PendingBookmarkScrollRestore(
+            page_identity_sha256=page_identity_sha256,
+            stock_code=stock_code,
+            scroll_position=scroll_position,
+            generation=self._generation,
+        )
+        self._schedule_bookmark_scroll_restore()
+
+    def _clear_pending_bookmark_scroll_restore(self) -> None:
+        self._pending_bookmark_scroll_restore = None
+        self._scroll_restore_scheduled_for = None
+
+    def _try_apply_bookmark_scroll_restore(self) -> None:
+        pending = self._pending_bookmark_scroll_restore
+        if pending is None:
+            return
+        if self._closing or pending.generation != self._generation:
+            self._clear_pending_bookmark_scroll_restore()
+            return
+        # TaskWorker.finished 先套用 fresh bookmark，但其 native thread 可能
+        # 尚未發出終態。保留 scroll 待辦，等 _release 確認 worker 已退出再排一次。
+        if self._worker is not None:
+            return
+        state = self._state
+        selected = self._selected_row()
+        if (
+            state is None
+            or state.page.page_identity_sha256 != pending.page_identity_sha256
+        ):
+            self._clear_pending_bookmark_scroll_restore()
+            return
+        if selected is None:
+            # QTableView 在隱藏頁重新 layout 時可能暫時丟失 current index；
+            # 只對仍存在於同一頁的收藏股票修復一次，再等待下一個事件回合。
+            index = self.results_model.index_for_stock(pending.stock_code)
+            if index.isValid() and not pending.selection_restore_attempted:
+                pending.selection_restore_attempted = True
+                self.table.setCurrentIndex(index)
+                self._schedule_bookmark_scroll_restore()
+            return
+        if selected.technical_row.stock_code != pending.stock_code:
+            self._clear_pending_bookmark_scroll_restore()
+            return
+        if not self.isVisible() or not self.table.isVisible():
+            return
+
+        viewport = self.table.viewport()
+        if viewport.width() <= 0 or viewport.height() <= 0:
+            # 零尺寸時保留待辦，等 Resize／LayoutRequest 再試，避免零毫秒忙迴圈。
+            return
+        scrollbar = self.table.verticalScrollBar()
+        self._clear_pending_bookmark_scroll_restore()
+        target = min(max(pending.scroll_position, scrollbar.minimum()), scrollbar.maximum())
+        scrollbar.setValue(target)
+
+    def _on_scroll_range_changed(self, _minimum: int, _maximum: int) -> None:
+        self._schedule_bookmark_scroll_restore()
+
+    def _schedule_bookmark_scroll_restore(self) -> None:
+        pending = self._pending_bookmark_scroll_restore
+        if pending is None:
+            return
+        if self._scroll_restore_scheduled_for is pending:
+            return
+        self._scroll_restore_scheduled_for = pending
+        QTimer.singleShot(
+            0,
+            lambda expected=pending: self._run_scheduled_bookmark_scroll_restore(expected),
+        )
+
+    def _run_scheduled_bookmark_scroll_restore(
+        self, expected: _PendingBookmarkScrollRestore
+    ) -> None:
+        if (
+            self._scroll_restore_scheduled_for is not expected
+            or self._pending_bookmark_scroll_restore is not expected
+        ):
+            return
+        self._scroll_restore_scheduled_for = None
+        self._try_apply_bookmark_scroll_restore()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if self._pending_bookmark_scroll_restore is not None:
+            event_type = event.type()
+            if event_type in {
+                QEvent.Type.MouseButtonPress,
+                QEvent.Type.MouseButtonDblClick,
+                QEvent.Type.Wheel,
+                QEvent.Type.KeyPress,
+            }:
+                self._clear_pending_bookmark_scroll_restore()
+            elif event_type in {
+                QEvent.Type.LayoutRequest,
+                QEvent.Type.Resize,
+                QEvent.Type.Show,
+                QEvent.Type.ShowToParent,
+            }:
+                self._schedule_bookmark_scroll_restore()
+        return super().eventFilter(watched, event)
+
+    def showEvent(self, event: object) -> None:  # noqa: N802 - Qt callback name.
+        super().showEvent(event)  # type: ignore[arg-type]
+        if self._pending_bookmark_scroll_restore is not None:
+            self._schedule_bookmark_scroll_restore()
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt callback name.
+        super().resizeEvent(event)  # type: ignore[arg-type]
+        if self._pending_bookmark_scroll_restore is not None:
+            self._schedule_bookmark_scroll_restore()
 
     def _render_basket_label(self) -> None:
         self.basket_label.setText(f"比較籃：{len(self._basket)} 欄（保留各自原 query/page/source）")
@@ -1359,6 +1572,7 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
         *,
         kind: str,
     ) -> bool:
+        self._clear_pending_bookmark_scroll_restore()
         if self._closing:
             return False
         self._generation += 1
@@ -1444,9 +1658,11 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             self._set_controls(self._state.query)
 
     def _release(self, worker: TaskWorker) -> None:
-        if self._worker is worker:
-            self._worker = None
-            self._worker_kind = ""
+        if self._worker is not worker:
+            worker.deleteLater()
+            return
+        self._worker = None
+        self._worker_kind = ""
         worker.deleteLater()
         if self._pending is not None and not self._closing:
             pending = self._pending
@@ -1454,6 +1670,8 @@ class DailyMarketTechnicalUniversePriceV1View(QWidget):
             self._launch(pending, self._generation)
         else:
             self._set_enabled_state()
+            if not self._closing and self._pending_bookmark_scroll_restore is not None:
+                self._schedule_bookmark_scroll_restore()
 
     def closeEvent(self, event: object) -> None:  # noqa: N802 - Qt callback name.
         self.begin_shutdown()

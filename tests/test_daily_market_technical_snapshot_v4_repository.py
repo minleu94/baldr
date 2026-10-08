@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+from dataclasses import replace as dataclass_replace
+import gc
 import hashlib
 import json
 import os
@@ -11,6 +13,7 @@ import sqlite3
 import subprocess
 import sys
 from typing import Any
+import weakref
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -23,6 +26,10 @@ from app_module.daily_market_technical_read_session import DailyMarketTechnicalR
 from app_module.daily_market_technical_snapshot_v4_producer import (
     write_daily_market_technical_snapshot_v4_batch,
 )
+from app_module.daily_market_technical_feature_snapshot_v4 import (
+    DailyMarketTechnicalFeatureSnapshotV4,
+)
+from app_module import daily_market_technical_snapshot_v4_repository as repository_module
 from app_module.daily_market_technical_snapshot_v4_repository import (
     DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_BATCH_MANIFEST_SCHEMA,
     DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_STORE_DIRECTORY,
@@ -162,6 +169,116 @@ def test_fresh_process_reads_exact_sixteen_stock_generation(tmp_path: Path) -> N
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == f"{artifact.generation_identity_sha256}|16"
+
+
+def test_verified_batch_proof_survives_batch_gc_and_freshly_checks_all_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_root, produced = _make_run(tmp_path, stock_count=16)
+    repository = DailyMarketTechnicalSnapshotV4Repository(output_root)
+    decode_calls = 0
+    original_from_json = DailyMarketTechnicalFeatureSnapshotV4.from_json
+
+    def count_from_json(
+        cls: type[DailyMarketTechnicalFeatureSnapshotV4],
+        raw: bytes | str,
+    ) -> DailyMarketTechnicalFeatureSnapshotV4:
+        nonlocal decode_calls
+        decode_calls += 1
+        return original_from_json(raw)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            DailyMarketTechnicalFeatureSnapshotV4,
+            "from_json",
+            classmethod(count_from_json),
+        )
+        batch = repository.read_exact(produced.manifest_path)
+        assert decode_calls == 16
+        proof = repository_module._semantic_proof_for_verified_batch(batch)
+        assert proof.payload_size_bytes > 0
+        assert not hasattr(proof, "snapshots")
+
+        replaced_batch = dataclass_replace(batch)
+        with pytest.raises(DailyMarketTechnicalSnapshotV4RepositoryError) as copied_batch:
+            repository_module._semantic_proof_for_verified_batch(replaced_batch)
+        assert copied_batch.value.code == "technical_snapshot_v4_semantic_proof_origin_mismatch"
+
+        replaced_proof = dataclass_replace(proof)
+        with pytest.raises(DailyMarketTechnicalSnapshotV4RepositoryError) as copied_proof:
+            repository.read_selected_exact(
+                replaced_proof,
+                selected_stock_codes=(produced.expected_stock_codes[0],),
+            )
+        assert copied_proof.value.code == "technical_snapshot_v4_semantic_proof_not_reader_issued"
+
+        batch_ref = weakref.ref(batch)
+        del replaced_batch
+        del batch
+        gc.collect()
+        assert batch_ref() is None
+
+        decode_calls = 0
+        selected_codes = (produced.expected_stock_codes[7], produced.expected_stock_codes[2])
+        selected = repository.read_selected_exact(
+            proof,
+            selected_stock_codes=selected_codes,
+        )
+        assert tuple(snapshot.stock_code for snapshot in selected) == selected_codes
+        assert decode_calls == len(selected_codes)
+
+        decode_calls = 0
+        assert repository.read_selected_exact(proof, selected_stock_codes=()) == ()
+        assert decode_calls == 0
+
+    sibling_ref = next(
+        ref for ref in proof.manifest.artifact_refs if ref.stock_code not in selected_codes
+    )
+    sibling_path = proof.manifest.manifest_path.parent.joinpath(
+        *Path(sibling_ref.relative_path).parts
+    )
+    original_bytes = _read_bytes(sibling_path)
+    original_stat = os.stat(to_internal_io_path(sibling_path))
+    try:
+        changed = bytes((original_bytes[0] ^ 1,)) + original_bytes[1:]
+        _write_bytes(sibling_path, changed)
+        os.utime(
+            to_internal_io_path(sibling_path),
+            ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+        )
+        with pytest.raises(DailyMarketTechnicalSnapshotV4RepositoryError) as tampered:
+            repository.read_selected_exact(
+                proof,
+                selected_stock_codes=(produced.expected_stock_codes[0],),
+            )
+        assert tampered.value.code == "technical_snapshot_v4_artifact_sha_mismatch"
+    finally:
+        _write_bytes(sibling_path, original_bytes)
+        os.utime(
+            to_internal_io_path(sibling_path),
+            ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+        )
+
+    original_bounded_read = repository_module._read_bounded_file
+    cancelled = False
+
+    def cancel_after_first_artifact(path: Path, max_bytes: int) -> bytes:
+        nonlocal cancelled
+        raw = original_bounded_read(path, max_bytes)
+        if path.parent.name == "artifacts":
+            cancelled = True
+        return raw
+
+    with monkeypatch.context() as patch:
+        patch.setattr(repository_module, "_read_bounded_file", cancel_after_first_artifact)
+        with pytest.raises(DailyMarketTechnicalSnapshotV4RepositoryError) as interrupted:
+            repository.read_selected_exact(
+                proof,
+                selected_stock_codes=(produced.expected_stock_codes[0],),
+                cancel_callback=lambda: cancelled,
+            )
+    assert interrupted.value.code == "technical_snapshot_v4_read_cancelled"
 
 
 def test_artifact_byte_tampering_and_missing_file_are_rejected(tmp_path: Path) -> None:

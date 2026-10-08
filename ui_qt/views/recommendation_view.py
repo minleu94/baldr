@@ -8,11 +8,11 @@ from PySide6.QtWidgets import (
     QPushButton, QTableView, QGroupBox, QProgressBar,
     QTextEdit, QHeaderView, QCheckBox, QSpinBox, QDoubleSpinBox,
     QComboBox, QLineEdit, QMessageBox, QSplitter, QScrollArea,
-    QMenu, QDialog, QInputDialog, QToolButton, QFileDialog, QSizePolicy,
+    QAbstractSlider, QMenu, QDialog, QInputDialog, QToolButton, QFileDialog, QSizePolicy,
     QTabWidget, QStyle, QLayout,
 )
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QFont, QResizeEvent, QTextOption
+from PySide6.QtGui import QFont, QKeyEvent, QResizeEvent, QTextOption
 from math import ceil
 import pandas as pd
 from copy import deepcopy
@@ -113,6 +113,44 @@ class _RecommendationReasonText(QTextEdit):
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._sync_height()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """展開全文時將閱讀導覽鍵交給外層頁面捲動。"""
+
+        if self._expanded and (
+            self.verticalScrollBar().maximum() == self.verticalScrollBar().minimum()
+        ):
+            key = event.key()
+            modifiers = event.modifiers()
+            action = None
+            if key == Qt.Key.Key_PageDown and modifiers == Qt.KeyboardModifier.NoModifier:
+                action = QAbstractSlider.SliderAction.SliderPageStepAdd
+            elif key == Qt.Key.Key_PageUp and modifiers == Qt.KeyboardModifier.NoModifier:
+                action = QAbstractSlider.SliderAction.SliderPageStepSub
+            elif key == Qt.Key.Key_Home and modifiers in (
+                Qt.KeyboardModifier.NoModifier,
+                Qt.KeyboardModifier.ControlModifier,
+            ):
+                action = QAbstractSlider.SliderAction.SliderToMinimum
+            elif key == Qt.Key.Key_End and modifiers in (
+                Qt.KeyboardModifier.NoModifier,
+                Qt.KeyboardModifier.ControlModifier,
+            ):
+                action = QAbstractSlider.SliderAction.SliderToMaximum
+
+            if action is not None:
+                parent = self.parentWidget()
+                while parent is not None and not isinstance(parent, QScrollArea):
+                    parent = parent.parentWidget()
+                if isinstance(parent, QScrollArea):
+                    outer_bar = parent.verticalScrollBar()
+                    if outer_bar.maximum() > outer_bar.minimum():
+                        outer_bar.triggerAction(action)
+                        event.accept()
+                        return
+
+        # 文字區尚可自行捲動、尚未展開，或找不到外層頁面時，維持 QTextEdit 原行為。
+        super().keyPressEvent(event)
 
 
 class _CurrentPageSizeTabWidget(QTabWidget):

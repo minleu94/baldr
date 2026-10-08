@@ -9,17 +9,22 @@ from decimal import Decimal
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import sqlite3
 import subprocess
 import sys
+import tarfile
 from typing import Any, cast, overload
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from app_module import daily_market_technical_universe_v4_query as query_module
+from app_module import daily_market_technical_snapshot_v4_repository as snapshot_repository_module
+from app_module.daily_market_technical_feature_snapshot_v4 import (
+    DailyMarketTechnicalFeatureSnapshotV4,
+)
 from app_module.daily_market_technical_parent_v4_query import (
     DailyMarketTechnicalParentV4Row,
     DailyMarketTechnicalRuleStateFilterV4,
@@ -76,6 +81,7 @@ _STOCK_CODES = tuple(f"S{index:04d}" for index in range(17))
 _EXCLUDED_CODES = ("X9999",)
 _MAIN_EXCLUDED_CODES = tuple(f"X{index:04d}" for index in range(257))
 _RATIO_SORT = "volume_ratio_20_including_current.ratio"
+_LEGACY_QUERY_READER_COMMIT = "3d0bea8160848626edab34c4ff03e968ee3610cd"
 
 
 def _canonical_sha256(payload: object) -> str:
@@ -779,14 +785,23 @@ def test_selection_stock_reads_each_page_artifact_once_and_checks_membership(
     )
     selection = read_session.select_stock_codes(query)
     target_code = selection.stock_codes[0]
-    original_read = query_module._read_session_child_artifact
+    original_read = query_module._read_session_child_snapshots
     observed_paths: list[Path] = []
 
-    def count_artifact_reads(reference: Any, cancel_callback: Any) -> Any:
+    def count_artifact_reads(
+        reference: Any,
+        *,
+        selected_stock_codes: Any,
+        cancel_callback: Any,
+    ) -> Any:
         observed_paths.append(reference.manifest_path)
-        return original_read(reference, cancel_callback)
+        return original_read(
+            reference,
+            selected_stock_codes=selected_stock_codes,
+            cancel_callback=cancel_callback,
+        )
 
-    monkeypatch.setattr(query_module, "_read_session_child_artifact", count_artifact_reads)
+    monkeypatch.setattr(query_module, "_read_session_child_snapshots", count_artifact_reads)
     page, stock = read_daily_market_technical_universe_v4_page_and_stock_from_session(
         query, target_code, read_session
     )
@@ -843,6 +858,28 @@ def test_selection_cancel_during_materialization_returns_no_partial_page(
             cancel_callback=lambda: cancelled,
         )
     assert interrupted.value.code == "technical_universe_v4_query_cancelled"
+
+
+def test_selected_rows_materializer_returns_from_verified_proof_path(
+    read_session: DailyMarketTechnicalUniverseV4ReadSession,
+) -> None:
+    selection = read_session.select_stock_codes(
+        read_session.create_query(sort_key="stock_code", page_size=4)
+    )
+    requested = (selection.stock_codes[1],)
+    selected_rows = read_session.materialize_selected_stock_codes(
+        selection,
+        explicit_stock_codes=requested,
+    )
+    expected_page = read_session.read_selection_page(
+        selection,
+        page_index=0,
+        page_size=4,
+    )
+    assert expected_page.page is not None
+    expected_row = next(row for row in expected_page.page.rows if row.stock_code == requested[0])
+    assert selected_rows.requested_stock_codes == requested
+    assert selected_rows.rows == (expected_row,)
 
 
 def test_session_selected_stock_reopens_exact_snapshot_and_cutoff(
@@ -961,6 +998,60 @@ def test_read_session_source_counts_is_frozen_and_does_not_rescan(
         counts.included_count = 999  # type: ignore[misc]
 
 
+def test_semantic_proof_keeps_legacy_source_and_query_identities_and_private_budget(
+    synthetic_read_session_source: dict[str, Any],
+    read_session: DailyMarketTechnicalUniverseV4ReadSession,
+) -> None:
+    fixture = synthetic_read_session_source
+    payload = query_module._read_session_source_payload(
+        root=read_session._root,
+        state=read_session._state,
+        plan_sha256=read_session._plan_sha256,
+        receipt_sha256=read_session._receipt_sha256,
+        artifact_references=read_session._artifact_references,
+        index_count=len(read_session._candidates),
+        index_bytes=read_session.index_bytes,
+    )
+    payload["missing_data_stock_codes"] = list(read_session._missing_data_stock_codes)
+    payload["unknown_rule_stock_codes"] = list(read_session._unknown_rule_stock_codes)
+    assert query_module._sha256_json(payload) == read_session.read_session_identity_sha256
+    assert payload["index_bytes"] == read_session.index_bytes
+    assert set(payload["child_artifacts"][0]) == {
+        "segment_index",
+        "repository_output_root",
+        "manifest_path",
+        "manifest_sha256",
+        "cohort_identity_sha256",
+        "source_clock_identity_sha256",
+        "method_contract_sha256",
+        "decision_date",
+    }
+    query = read_session.create_query(sort_key="stock_code", page_size=4)
+    pinned_query = DailyMarketTechnicalUniverseV4Query.create(
+        store_output_root=fixture["store_root"],
+        generation_identity_sha256=fixture["plan"].generation_identity_sha256,
+        plan_identity_sha256=fixture["plan"].identity_sha256,
+        plan_sha256=fixture["plan_sha256"],
+        receipt_identity_sha256=fixture["complete"].identity_sha256,
+        receipt_sha256=fixture["complete"].content_sha256,
+        sort_key="stock_code",
+        page_size=4,
+    )
+    assert query.to_dict() == pinned_query.to_dict()
+
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as private_budget:
+        open_daily_market_technical_universe_v4_read_session(
+            store_output_root=fixture["store_root"],
+            generation_identity_sha256=fixture["plan"].generation_identity_sha256,
+            plan_identity_sha256=fixture["plan"].identity_sha256,
+            plan_sha256=fixture["plan_sha256"],
+            receipt_identity_sha256=fixture["complete"].identity_sha256,
+            receipt_sha256=fixture["complete"].content_sha256,
+            max_index_bytes=read_session.index_bytes,
+        )
+    assert private_budget.value.code == "technical_universe_v4_read_session_index_limit"
+
+
 def test_session_rejects_source_mismatch_overflow_and_cancel_inside_parent_read(
     synthetic_read_session_source: dict[str, Any],
     read_session: DailyMarketTechnicalUniverseV4ReadSession,
@@ -1065,7 +1156,7 @@ def test_fresh_bookmark_revalidates_once_then_new_process_restores_strictly(
     selections = ((query, "S0001"), (query, "S0016"))
     original_reader = DailyMarketTechnicalUniverseV4StoreReader.read_exact_with_verified_parent_callback
     strict_revalidations = 0
-    original_child_reader = query_module._read_session_child_artifact
+    original_child_reader = query_module._read_session_child_snapshots
     child_manifest_reads: list[Path] = []
 
     def count_fresh_reads(self: Any, *args: Any, **kwargs: Any) -> Any:
@@ -1073,16 +1164,25 @@ def test_fresh_bookmark_revalidates_once_then_new_process_restores_strictly(
         strict_revalidations += 1
         return original_reader(self, *args, **kwargs)
 
-    def count_child_reads(reference: Any, cancel_callback: Any) -> Any:
+    def count_child_reads(
+        reference: Any,
+        *,
+        selected_stock_codes: Any,
+        cancel_callback: Any,
+    ) -> Any:
         child_manifest_reads.append(reference.manifest_path)
-        return original_child_reader(reference, cancel_callback)
+        return original_child_reader(
+            reference,
+            selected_stock_codes=selected_stock_codes,
+            cancel_callback=cancel_callback,
+        )
 
     monkeypatch.setattr(
         DailyMarketTechnicalUniverseV4StoreReader,
         "read_exact_with_verified_parent_callback",
         count_fresh_reads,
     )
-    monkeypatch.setattr(query_module, "_read_session_child_artifact", count_child_reads)
+    monkeypatch.setattr(query_module, "_read_session_child_snapshots", count_child_reads)
     bookmark = create_daily_market_technical_universe_v4_bookmark_fresh(
         query,
         "S0001",
@@ -1127,6 +1227,471 @@ def test_fresh_bookmark_revalidates_once_then_new_process_restores_strictly(
     }
 
 
+def test_3d_reader_query_and_bookmark_reopen_with_current_reader_in_new_process(
+    synthetic_read_session_source: dict[str, Any],
+    read_session: DailyMarketTechnicalUniverseV4ReadSession,
+    tmp_path: Path,
+) -> None:
+    """驗證固定 3d reader 的 canonical query/bookmark 可由新 reader 精確重開。"""
+
+    fixture = synthetic_read_session_source
+    repo_root = Path(__file__).resolve().parents[1]
+    legacy_root = tmp_path / "reader-3d-source"
+    legacy_root.mkdir()
+    archive_path = tmp_path / "reader-3d-packages.tar"
+    with archive_path.open("xb") as archive_stream:
+        archived = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "archive",
+                "--format=tar",
+                _LEGACY_QUERY_READER_COMMIT,
+                "app_module",
+                "decision_module",
+            ],
+            check=False,
+            stdout=archive_stream,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=60,
+        )
+    assert archived.returncode == 0, archived.stderr
+
+    with tarfile.open(archive_path, mode="r:") as archive:
+        for member in archive.getmembers():
+            member_path = PurePosixPath(member.name)
+            assert (
+                not member_path.is_absolute()
+                and member_path.parts
+                and member_path.parts[0] in {"app_module", "decision_module"}
+                and ".." not in member_path.parts
+            )
+            assert not (member.issym() or member.islnk() or member.isdev())
+            target_path = legacy_root.joinpath(*member_path.parts)
+            if member.isdir():
+                target_path.mkdir(parents=True, exist_ok=True)
+                continue
+            assert member.isfile()
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            member_stream = archive.extractfile(member)
+            assert member_stream is not None
+            with target_path.open("xb") as target_stream:
+                shutil.copyfileobj(member_stream, target_stream)
+            member_stream.close()
+
+    pins = {
+        "store_output_root": str(fixture["store_root"]),
+        "generation_identity_sha256": fixture["plan"].generation_identity_sha256,
+        "plan_identity_sha256": fixture["plan"].identity_sha256,
+        "plan_sha256": fixture["plan_sha256"],
+        "receipt_identity_sha256": fixture["complete"].identity_sha256,
+        "receipt_sha256": fixture["complete"].content_sha256,
+    }
+    pins_path = tmp_path / "exact-pins.json"
+    with pins_path.open("x", encoding="utf-8") as stream:
+        json.dump(pins, stream, sort_keys=True, separators=(",", ":"))
+    legacy_result_path = tmp_path / "legacy-reader-result.json"
+    legacy_script = "\n".join((
+        "import json, os, sys",
+        "from pathlib import Path",
+        "import app_module.daily_market_technical_universe_v4_bookmark as bookmark_module",
+        "import app_module.daily_market_technical_universe_v4_query as query_module",
+        "import app_module.daily_market_technical_snapshot_v4_repository as repository_module",
+        "import app_module.daily_market_technical_universe_v4_store as store_module",
+        "from app_module.daily_market_technical_universe_v4_bookmark import create_daily_market_technical_universe_v4_bookmark_fresh",
+        "pins=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))",
+        "session=query_module.open_daily_market_technical_universe_v4_read_session(**pins)",
+        "query=session.create_query(sort_key='stock_code',descending=False,page_index=0,page_size=17)",
+        "page=session.read_page(query)",
+        "bookmark=create_daily_market_technical_universe_v4_bookmark_fresh(query,'S0001',scroll_position=23)",
+        "result={'reader_commit':sys.argv[3],'pid':os.getpid(),'session_identity':session.read_session_identity_sha256,'query_json':query.to_json(),'bookmark_json':bookmark.to_json(),'page_stock_codes':[row.stock_code for row in page.rows],'page_complete':page.is_complete,'selected_snapshot_identity':bookmark.selected_snapshot_identity_sha256,'modules':{'query':query_module.__file__,'repository':repository_module.__file__,'store':store_module.__file__,'bookmark':bookmark_module.__file__}}",
+        "with Path(sys.argv[2]).open('x',encoding='utf-8') as stream: json.dump(result,stream,sort_keys=True,separators=(',',':'),ensure_ascii=False)",
+    ))
+    legacy_env = os.environ.copy()
+    legacy_env["PYTHONPATH"] = str(legacy_root)
+    legacy_env["PYTHONDONTWRITEBYTECODE"] = "1"
+    legacy_env["PYTHONUTF8"] = "1"
+    legacy_run = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            legacy_script,
+            str(pins_path),
+            str(legacy_result_path),
+            _LEGACY_QUERY_READER_COMMIT,
+        ],
+        cwd=legacy_root,
+        env=legacy_env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert legacy_run.returncode == 0, legacy_run.stderr
+    legacy_result = json.loads(legacy_result_path.read_text(encoding="utf-8"))
+    legacy_root_resolved = legacy_root.resolve(strict=True)
+    for origin in legacy_result["modules"].values():
+        assert Path(origin).resolve(strict=True).is_relative_to(legacy_root_resolved)
+    assert legacy_result["reader_commit"] == _LEGACY_QUERY_READER_COMMIT
+    assert legacy_result["pid"] != os.getpid()
+
+    current_query = read_session.create_query(
+        sort_key="stock_code",
+        descending=False,
+        page_index=0,
+        page_size=17,
+    )
+    current_page = read_session.read_page(current_query)
+    current_bookmark = create_daily_market_technical_universe_v4_bookmark_fresh(
+        current_query,
+        "S0001",
+        scroll_position=23,
+    )
+    assert legacy_result["session_identity"] == read_session.read_session_identity_sha256
+    assert legacy_result["query_json"] == current_query.to_json()
+    assert legacy_result["bookmark_json"] == current_bookmark.to_json()
+    assert legacy_result["page_stock_codes"] == [row.stock_code for row in current_page.rows]
+    assert legacy_result["page_complete"] is current_page.is_complete
+    assert legacy_result["selected_snapshot_identity"] == (
+        current_bookmark.selected_snapshot_identity_sha256
+    )
+
+    saved_bookmark_path = tmp_path / "saved-3d-bookmark.json"
+    with saved_bookmark_path.open("x", encoding="utf-8") as stream:
+        stream.write(legacy_result["bookmark_json"])
+    new_process_result_path = tmp_path / "current-reader-new-process-result.json"
+    current_script = "\n".join((
+        "import json, os, sys",
+        "from pathlib import Path",
+        "import app_module.daily_market_technical_universe_v4_bookmark as bookmark_module",
+        "import app_module.daily_market_technical_universe_v4_query as query_module",
+        "import app_module.daily_market_technical_snapshot_v4_repository as repository_module",
+        "import app_module.daily_market_technical_universe_v4_store as store_module",
+        "from app_module.daily_market_technical_universe_v4_bookmark import read_daily_market_technical_universe_v4_bookmark",
+        "bookmark_json=Path(sys.argv[1]).read_text(encoding='utf-8')",
+        "state=read_daily_market_technical_universe_v4_bookmark(bookmark_json)",
+        "result={'pid':os.getpid(),'bookmark_json':state.bookmark.to_json(),'query_json':state.bookmark.origin_query.to_json(),'bookmark_identity':state.bookmark.identity_sha256,'query_identity':state.bookmark.origin_query.query_identity_sha256,'selected_stock':state.selected_stock.snapshot.stock_code,'selected_snapshot_identity':state.selected_stock.snapshot.snapshot_identity_sha256,'page_stock_codes':[row.stock_code for row in state.origin_page.rows],'page_complete':state.origin_page.is_complete,'modules':{'query':query_module.__file__,'repository':repository_module.__file__,'store':store_module.__file__,'bookmark':bookmark_module.__file__}}",
+        "with Path(sys.argv[2]).open('x',encoding='utf-8') as stream: json.dump(result,stream,sort_keys=True,separators=(',',':'),ensure_ascii=False)",
+    ))
+    current_env = os.environ.copy()
+    current_env["PYTHONPATH"] = str(repo_root)
+    current_env["PYTHONDONTWRITEBYTECODE"] = "1"
+    current_env["PYTHONUTF8"] = "1"
+    current_run = subprocess.run(
+        [sys.executable, "-c", current_script, str(saved_bookmark_path), str(new_process_result_path)],
+        cwd=repo_root,
+        env=current_env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert current_run.returncode == 0, current_run.stderr
+    current_result = json.loads(new_process_result_path.read_text(encoding="utf-8"))
+    current_root_resolved = repo_root.resolve(strict=True)
+    for origin in current_result["modules"].values():
+        assert Path(origin).resolve(strict=True).is_relative_to(current_root_resolved)
+    assert current_result["pid"] != os.getpid()
+    assert current_result["bookmark_json"] == legacy_result["bookmark_json"]
+    assert current_result["query_json"] == legacy_result["query_json"]
+    assert current_result["bookmark_identity"] == current_bookmark.identity_sha256
+    assert current_result["query_identity"] == current_query.query_identity_sha256
+    assert current_result["selected_stock"] == "S0001"
+    assert current_result["selected_snapshot_identity"] == legacy_result[
+        "selected_snapshot_identity"
+    ]
+    assert current_result["page_stock_codes"] == legacy_result["page_stock_codes"]
+    assert current_result["page_complete"] is True
+    with (tmp_path / "cross-version-compatibility-receipt.json").open(
+        "x", encoding="utf-8"
+    ) as stream:
+        json.dump(
+            {
+                "legacy_reader_commit": _LEGACY_QUERY_READER_COMMIT,
+                "archive_sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+                "source_identity_matches": (
+                    legacy_result["session_identity"]
+                    == read_session.read_session_identity_sha256
+                ),
+                "query_json_sha256": hashlib.sha256(
+                    legacy_result["query_json"].encode("utf-8")
+                ).hexdigest(),
+                "bookmark_json_sha256": hashlib.sha256(
+                    legacy_result["bookmark_json"].encode("utf-8")
+                ).hexdigest(),
+                "legacy_modules_from_archive": legacy_result["modules"],
+                "current_modules_from_working_tree": current_result["modules"],
+                "new_process_restored_saved_bookmark": True,
+            },
+            stream,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+
+
+def test_3d_price_query_and_bookmark_reopen_with_current_reader_in_new_process(
+    synthetic_read_session_source: dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    """驗證固定 3d F07 價格收藏含 index bytes 仍可由新 reader 重開。"""
+
+    import app_module.daily_market_technical_universe_price_bookmark_v1 as price_bookmark_module
+    import app_module.daily_market_technical_universe_price_comparison_v1 as price_comparison_module
+    import app_module.daily_market_technical_universe_price_query_v1 as price_query_module
+    from app_module.daily_market_technical_universe_price_bookmark_v1 import (
+        create_daily_market_technical_universe_price_bookmark_v1,
+    )
+    from app_module.daily_market_technical_universe_price_comparison_v1 import (
+        DailyMarketTechnicalUniversePriceSelectionV1,
+    )
+    from app_module.daily_market_technical_universe_price_query_v1 import (
+        open_daily_market_technical_universe_price_read_session_v1,
+    )
+
+    fixture = synthetic_read_session_source
+    repo_root = Path(__file__).resolve().parents[1]
+    legacy_root = tmp_path / "price-reader-3d-source"
+    legacy_root.mkdir()
+    archive_path = tmp_path / "price-reader-3d-packages.tar"
+    with archive_path.open("xb") as archive_stream:
+        archived = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "archive",
+                "--format=tar",
+                _LEGACY_QUERY_READER_COMMIT,
+                "app_module",
+                "decision_module",
+            ],
+            check=False,
+            stdout=archive_stream,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=60,
+        )
+    assert archived.returncode == 0, archived.stderr
+    with tarfile.open(archive_path, mode="r:") as archive:
+        for member in archive.getmembers():
+            member_path = PurePosixPath(member.name)
+            assert (
+                not member_path.is_absolute()
+                and member_path.parts
+                and member_path.parts[0] in {"app_module", "decision_module"}
+                and ".." not in member_path.parts
+            )
+            assert not (member.issym() or member.islnk() or member.isdev())
+            target_path = legacy_root.joinpath(*member_path.parts)
+            if member.isdir():
+                target_path.mkdir(parents=True, exist_ok=True)
+                continue
+            assert member.isfile()
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            member_stream = archive.extractfile(member)
+            assert member_stream is not None
+            with target_path.open("xb") as target_stream:
+                shutil.copyfileobj(member_stream, target_stream)
+            member_stream.close()
+
+    pins = {
+        "store_output_root": str(fixture["store_root"]),
+        "generation_identity_sha256": fixture["plan"].generation_identity_sha256,
+        "plan_identity_sha256": fixture["plan"].identity_sha256,
+        "plan_sha256": fixture["plan_sha256"],
+        "receipt_identity_sha256": fixture["complete"].identity_sha256,
+        "receipt_sha256": fixture["complete"].content_sha256,
+    }
+    pins_path = tmp_path / "price-exact-pins.json"
+    with pins_path.open("x", encoding="utf-8") as stream:
+        json.dump(pins, stream, sort_keys=True, separators=(",", ":"))
+    legacy_result_path = tmp_path / "price-legacy-reader-result.json"
+    legacy_script = "\n".join((
+        "import json, os, sys",
+        "from pathlib import Path",
+        "import app_module.daily_market_technical_universe_price_bookmark_v1 as bookmark_module",
+        "import app_module.daily_market_technical_universe_price_comparison_v1 as comparison_module",
+        "import app_module.daily_market_technical_universe_price_query_v1 as query_module",
+        "from app_module.daily_market_technical_universe_price_bookmark_v1 import create_daily_market_technical_universe_price_bookmark_v1",
+        "from app_module.daily_market_technical_universe_price_comparison_v1 import DailyMarketTechnicalUniversePriceSelectionV1",
+        "from app_module.daily_market_technical_universe_price_query_v1 import open_daily_market_technical_universe_price_read_session_v1",
+        "pins=json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))",
+        "session=open_daily_market_technical_universe_price_read_session_v1(**pins)",
+        "query=session.create_query(unknown_price_policy='include',descending=False)",
+        "result=session.execute(query)",
+        "request=result.create_page_request(0,page_size=17)",
+        "page=result.read_page(request)",
+        "selected=DailyMarketTechnicalUniversePriceSelectionV1.from_page(query,page,'S0001')",
+        "comparison=DailyMarketTechnicalUniversePriceSelectionV1.from_page(query,page,'S0002')",
+        "bookmark=create_daily_market_technical_universe_price_bookmark_v1(query,page,'S0001',scroll_position=23,comparison_selections=(comparison,selected))",
+        "source_json=json.dumps(session.source.to_dict(),sort_keys=True,separators=(',',':'),ensure_ascii=False)",
+        "result_payload={'reader_commit':sys.argv[3],'pid':os.getpid(),'session_identity':session.read_session_identity_sha256,'source_json':source_json,'query_json':query.to_json(),'result_json':result.to_json(),'page_request_json':request.to_json(),'page_json':page.to_json(),'bookmark_json':bookmark.to_json(),'selected_stock':bookmark.selected.stock_code,'comparison_stocks':[item.stock_code for item in bookmark.comparison_selections],'page_codes':[row.technical_row.stock_code for row in page.rows],'page_complete':page.is_complete,'price_index_bytes':session.source.price_index_bytes,'modules':{'query':query_module.__file__,'bookmark':bookmark_module.__file__,'comparison':comparison_module.__file__}}",
+        "with Path(sys.argv[2]).open('x',encoding='utf-8') as stream: json.dump(result_payload,stream,sort_keys=True,separators=(',',':'),ensure_ascii=False)",
+    ))
+    legacy_env = os.environ.copy()
+    legacy_env["PYTHONPATH"] = str(legacy_root)
+    legacy_env["PYTHONDONTWRITEBYTECODE"] = "1"
+    legacy_env["PYTHONUTF8"] = "1"
+    legacy_run = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            legacy_script,
+            str(pins_path),
+            str(legacy_result_path),
+            _LEGACY_QUERY_READER_COMMIT,
+        ],
+        cwd=legacy_root,
+        env=legacy_env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert legacy_run.returncode == 0, legacy_run.stderr
+    legacy_result = json.loads(legacy_result_path.read_text(encoding="utf-8"))
+    legacy_root_resolved = legacy_root.resolve(strict=True)
+    for origin in legacy_result["modules"].values():
+        assert Path(origin).resolve(strict=True).is_relative_to(legacy_root_resolved)
+    assert legacy_result["reader_commit"] == _LEGACY_QUERY_READER_COMMIT
+    assert legacy_result["pid"] != os.getpid()
+    assert legacy_result["selected_stock"] == "S0001"
+    assert legacy_result["comparison_stocks"] == ["S0002", "S0001"]
+
+    current_session = open_daily_market_technical_universe_price_read_session_v1(**pins)
+    current_query = current_session.create_query(
+        unknown_price_policy="include",
+        descending=False,
+    )
+    current_result = current_session.execute(current_query)
+    current_request = current_result.create_page_request(0, page_size=17)
+    current_page = current_result.read_page(current_request)
+    current_selected = DailyMarketTechnicalUniversePriceSelectionV1.from_page(
+        current_query, current_page, "S0001"
+    )
+    current_comparison = DailyMarketTechnicalUniversePriceSelectionV1.from_page(
+        current_query, current_page, "S0002"
+    )
+    current_bookmark = create_daily_market_technical_universe_price_bookmark_v1(
+        current_query,
+        current_page,
+        "S0001",
+        scroll_position=23,
+        comparison_selections=(current_comparison, current_selected),
+    )
+    current_source_json = json.dumps(
+        current_session.source.to_dict(),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    assert legacy_result["session_identity"] == current_session.read_session_identity_sha256
+    assert legacy_result["source_json"] == current_source_json
+    assert legacy_result["price_index_bytes"] == current_session.source.price_index_bytes
+    assert legacy_result["query_json"] == current_query.to_json()
+    assert legacy_result["result_json"] == current_result.to_json()
+    assert legacy_result["page_request_json"] == current_request.to_json()
+    assert legacy_result["page_json"] == current_page.to_json()
+    assert legacy_result["bookmark_json"] == current_bookmark.to_json()
+    assert legacy_result["page_codes"] == [row.technical_row.stock_code for row in current_page.rows]
+    assert legacy_result["page_complete"] is current_page.is_complete
+
+    saved_bookmark_path = tmp_path / "saved-3d-price-bookmark.json"
+    with saved_bookmark_path.open("x", encoding="utf-8") as stream:
+        stream.write(legacy_result["bookmark_json"])
+    new_process_result_path = tmp_path / "current-price-reader-new-process-result.json"
+    current_script = "\n".join((
+        "import json, os, sys",
+        "from pathlib import Path",
+        "import app_module.daily_market_technical_universe_price_bookmark_v1 as bookmark_module",
+        "import app_module.daily_market_technical_universe_price_comparison_v1 as comparison_module",
+        "import app_module.daily_market_technical_universe_price_query_v1 as query_module",
+        "from app_module.daily_market_technical_universe_price_bookmark_v1 import read_daily_market_technical_universe_price_bookmark_v1",
+        "state=read_daily_market_technical_universe_price_bookmark_v1(Path(sys.argv[1]).read_text(encoding='utf-8'))",
+        "source_json=json.dumps(state.selected.session.source.to_dict(),sort_keys=True,separators=(',',':'),ensure_ascii=False)",
+        "result_payload={'pid':os.getpid(),'source_json':source_json,'query_json':state.selected.query.to_json(),'result_json':state.selected.result.to_json(),'page_request_json':state.selected.request.to_json(),'page_json':state.selected.page.to_json(),'bookmark_json':state.bookmark.to_json(),'bookmark_identity':state.bookmark.identity_sha256,'selected_stock':state.selected.selection.stock_code,'selected_snapshot_identity':state.selected.selection.snapshot_identity_sha256,'comparison_stocks':[item.stock_code for item in state.bookmark.comparison_selections],'comparison_states':None if state.comparison is None else [column.selection.stock_code for column in state.comparison.columns],'price_index_bytes':state.selected.session.source.price_index_bytes,'modules':{'query':query_module.__file__,'bookmark':bookmark_module.__file__,'comparison':comparison_module.__file__}}",
+        "with Path(sys.argv[2]).open('x',encoding='utf-8') as stream: json.dump(result_payload,stream,sort_keys=True,separators=(',',':'),ensure_ascii=False)",
+    ))
+    current_env = os.environ.copy()
+    current_env["PYTHONPATH"] = str(repo_root)
+    current_env["PYTHONDONTWRITEBYTECODE"] = "1"
+    current_env["PYTHONUTF8"] = "1"
+    current_run = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            current_script,
+            str(saved_bookmark_path),
+            str(new_process_result_path),
+        ],
+        cwd=repo_root,
+        env=current_env,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert current_run.returncode == 0, current_run.stderr
+    current_process_result = json.loads(
+        new_process_result_path.read_text(encoding="utf-8")
+    )
+    current_root_resolved = repo_root.resolve(strict=True)
+    for origin in current_process_result["modules"].values():
+        assert Path(origin).resolve(strict=True).is_relative_to(current_root_resolved)
+    assert current_process_result["pid"] != os.getpid()
+    assert current_process_result["source_json"] == legacy_result["source_json"]
+    assert current_process_result["price_index_bytes"] == legacy_result["price_index_bytes"]
+    assert current_process_result["query_json"] == legacy_result["query_json"]
+    assert current_process_result["result_json"] == legacy_result["result_json"]
+    assert current_process_result["page_request_json"] == legacy_result["page_request_json"]
+    assert current_process_result["page_json"] == legacy_result["page_json"]
+    assert current_process_result["bookmark_json"] == legacy_result["bookmark_json"]
+    assert current_process_result["selected_stock"] == "S0001"
+    assert current_process_result["comparison_stocks"] == ["S0002", "S0001"]
+    assert current_process_result["comparison_states"] == ["S0002", "S0001"]
+    with (tmp_path / "price-cross-version-compatibility-receipt.json").open(
+        "x", encoding="utf-8"
+    ) as stream:
+        json.dump(
+            {
+                "legacy_reader_commit": _LEGACY_QUERY_READER_COMMIT,
+                "archive_sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+                "source_identity_matches": (
+                    legacy_result["session_identity"]
+                    == current_session.read_session_identity_sha256
+                ),
+                "source_json_sha256": hashlib.sha256(
+                    legacy_result["source_json"].encode("utf-8")
+                ).hexdigest(),
+                "query_json_sha256": hashlib.sha256(
+                    legacy_result["query_json"].encode("utf-8")
+                ).hexdigest(),
+                "result_json_sha256": hashlib.sha256(
+                    legacy_result["result_json"].encode("utf-8")
+                ).hexdigest(),
+                "page_json_sha256": hashlib.sha256(
+                    legacy_result["page_json"].encode("utf-8")
+                ).hexdigest(),
+                "bookmark_json_sha256": hashlib.sha256(
+                    legacy_result["bookmark_json"].encode("utf-8")
+                ).hexdigest(),
+                "price_index_bytes": legacy_result["price_index_bytes"],
+                "selected_stock": legacy_result["selected_stock"],
+                "comparison_stocks": legacy_result["comparison_stocks"],
+                "legacy_modules_from_archive": legacy_result["modules"],
+                "current_modules_from_working_tree": current_process_result["modules"],
+                "new_process_restored_saved_price_bookmark": True,
+            },
+            stream,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+
+
 def test_selected_rows_materializer_preserves_requested_order_and_exact_source(
     synthetic_full_store: dict[str, Any],
     monkeypatch: pytest.MonkeyPatch,
@@ -1167,13 +1732,22 @@ def test_selected_rows_materializer_preserves_requested_order_and_exact_source(
         selection.stock_codes[0],
     )
     observed_artifacts: list[tuple[int, str]] = []
-    pristine_child_reader = query_module._read_session_child_artifact
+    pristine_child_reader = query_module._read_session_child_snapshots
 
-    def count_artifact_reads(reference: Any, cancel_callback: Any) -> Any:
+    def count_artifact_reads(
+        reference: Any,
+        *,
+        selected_stock_codes: Any,
+        cancel_callback: Any,
+    ) -> Any:
         observed_artifacts.append((reference.segment_index, str(reference.manifest_path)))
-        return pristine_child_reader(reference, cancel_callback)
+        return pristine_child_reader(
+            reference,
+            selected_stock_codes=selected_stock_codes,
+            cancel_callback=cancel_callback,
+        )
 
-    monkeypatch.setattr(query_module, "_read_session_child_artifact", count_artifact_reads)
+    monkeypatch.setattr(query_module, "_read_session_child_snapshots", count_artifact_reads)
     selected_rows = read_session.materialize_selected_stock_codes(
         selection, explicit_stock_codes=requested_codes
     )
@@ -1256,13 +1830,24 @@ def test_selected_rows_materializer_preserves_requested_order_and_exact_source(
 
     cancelled = False
 
-    def cancel_after_exact_artifact(reference: Any, cancel_callback: Any) -> Any:
+    def cancel_after_exact_artifact(
+        reference: Any,
+        *,
+        selected_stock_codes: Any,
+        cancel_callback: Any,
+    ) -> Any:
         nonlocal cancelled
-        artifact = pristine_child_reader(reference, cancel_callback)
+        artifact = pristine_child_reader(
+            reference,
+            selected_stock_codes=selected_stock_codes,
+            cancel_callback=cancel_callback,
+        )
         cancelled = True
         return artifact
 
-    monkeypatch.setattr(query_module, "_read_session_child_artifact", cancel_after_exact_artifact)
+    monkeypatch.setattr(
+        query_module, "_read_session_child_snapshots", cancel_after_exact_artifact
+    )
     with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as interrupted:
         read_session.materialize_selected_stock_codes(
             selection,
@@ -1270,6 +1855,149 @@ def test_selected_rows_materializer_preserves_requested_order_and_exact_source(
             cancel_callback=lambda: cancelled,
         )
     assert cancelled
+    assert interrupted.value.code == "technical_universe_v4_query_cancelled"
+
+
+def test_full_257_selection_freshly_hashes_segments_but_decodes_only_requested_page(
+    synthetic_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = synthetic_full_store
+    plan = fixture["plan"]
+    complete = fixture["complete"]
+    read_session = open_daily_market_technical_universe_v4_read_session(
+        store_output_root=fixture["store_output_root"],
+        generation_identity_sha256=plan.generation_identity_sha256,
+        plan_identity_sha256=plan.identity_sha256,
+        plan_sha256=fixture["plan_sha256"],
+        receipt_identity_sha256=complete.identity_sha256,
+        receipt_sha256=complete.content_sha256,
+    )
+    selection = read_session.select_stock_codes(
+        read_session.create_query(sort_key="stock_code", page_size=200)
+    )
+    assert len(selection.stock_codes) == 257
+
+    strict_query = DailyMarketTechnicalUniverseV4Query.create(
+        store_output_root=fixture["store_output_root"],
+        generation_identity_sha256=plan.generation_identity_sha256,
+        plan_identity_sha256=plan.identity_sha256,
+        plan_sha256=fixture["plan_sha256"],
+        receipt_identity_sha256=complete.identity_sha256,
+        receipt_sha256=complete.content_sha256,
+        sort_key="stock_code",
+        page_index=1,
+        page_size=200,
+    )
+    strict_page = read_daily_market_technical_universe_v4_page(strict_query)
+
+    decoded_codes: list[str] = []
+    artifact_paths: list[Path] = []
+    observed_references: list[Any] = []
+    original_from_json = DailyMarketTechnicalFeatureSnapshotV4.from_json
+    original_read_file = snapshot_repository_module._read_bounded_file
+    original_child_reader = query_module._read_session_child_snapshots
+
+    def count_from_json(
+        cls: type[DailyMarketTechnicalFeatureSnapshotV4],
+        raw: bytes | str,
+    ) -> DailyMarketTechnicalFeatureSnapshotV4:
+        snapshot = original_from_json(raw)
+        decoded_codes.append(snapshot.stock_code)
+        return snapshot
+
+    def count_artifact_bytes(path: Path, max_bytes: int) -> bytes:
+        raw = original_read_file(path, max_bytes)
+        if path.parent.name == "artifacts":
+            artifact_paths.append(path)
+        return raw
+
+    def observe_child_read(
+        reference: Any,
+        *,
+        selected_stock_codes: Sequence[str],
+        cancel_callback: Any = None,
+    ) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
+        observed_references.append(reference)
+        return original_child_reader(
+            reference,
+            selected_stock_codes=selected_stock_codes,
+            cancel_callback=cancel_callback,
+        )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            DailyMarketTechnicalFeatureSnapshotV4,
+            "from_json",
+            classmethod(count_from_json),
+        )
+        patch.setattr(snapshot_repository_module, "_read_bounded_file", count_artifact_bytes)
+        patch.setattr(query_module, "_read_session_child_snapshots", observe_child_read)
+        selection_page = read_session.read_selection_page(
+            selection, page_index=1, page_size=200
+        )
+
+    assert selection_page.page is not None
+    assert selection_page.page.to_dict() == strict_page.to_dict()
+    requested_codes = selection.stock_codes[200:257]
+    assert tuple(row.stock_code for row in selection_page.page.rows) == requested_codes
+    assert decoded_codes == list(requested_codes)
+    assert len(observed_references) == 5
+    assert tuple(reference.segment_index for reference in observed_references) == (0, 0, 0, 0, 1)
+    proofs = tuple(reference.semantic_proof for reference in observed_references)
+    assert all(proof is not None for proof in proofs)
+    assert tuple(len(proof.manifest.artifact_refs) for proof in proofs) == (16, 16, 16, 16, 1)
+    assert len(artifact_paths) == 65
+    assert len({str(path) for path in artifact_paths}) == 65
+
+    # 未選中的 sibling 仍須以本次 fresh byte hash 拒絕，即使 mtime 被復原。
+    first_proof = proofs[0]
+    selected_set = set(requested_codes)
+    unselected_ref = next(
+        ref for ref in first_proof.manifest.artifact_refs
+        if ref.stock_code not in selected_set
+    )
+    sibling_path = first_proof.manifest.manifest_path.parent / unselected_ref.relative_path
+    with open(to_internal_io_path(sibling_path), "rb") as reader:
+        original_bytes = reader.read()
+    original_stat = os.stat(to_internal_io_path(sibling_path))
+    try:
+        with open(to_internal_io_path(sibling_path), "wb") as writer:
+            writer.write(bytes((original_bytes[0] ^ 1,)) + original_bytes[1:])
+        os.utime(
+            to_internal_io_path(sibling_path),
+            ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+        )
+        with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as tampered:
+            read_session.read_selection_page(selection, page_index=1, page_size=200)
+        assert tampered.value.code == "technical_snapshot_v4_artifact_sha_mismatch"
+    finally:
+        with open(to_internal_io_path(sibling_path), "wb") as writer:
+            writer.write(original_bytes)
+        os.utime(
+            to_internal_io_path(sibling_path),
+            ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+        )
+
+    original_read_file = snapshot_repository_module._read_bounded_file
+    cancelled = False
+
+    def cancel_after_artifact_bytes(path: Path, max_bytes: int) -> bytes:
+        nonlocal cancelled
+        raw = original_read_file(path, max_bytes)
+        if path.parent.name == "artifacts":
+            cancelled = True
+        return raw
+
+    with monkeypatch.context() as patch:
+        patch.setattr(snapshot_repository_module, "_read_bounded_file", cancel_after_artifact_bytes)
+        with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as interrupted:
+            read_session.read_selection_page(
+                selection,
+                page_index=1,
+                page_size=200,
+                cancel_callback=lambda: cancelled,
+            )
     assert interrupted.value.code == "technical_universe_v4_query_cancelled"
 
 
@@ -1292,7 +2020,7 @@ def test_selected_rows_materializer_empty_and_bounded_input_validation(
 
     with monkeypatch.context() as patch:
         patch.setattr(query_module, "_read_selection_identity", count_identity)
-        patch.setattr(query_module, "_read_session_child_artifact", reject_empty_artifact_read)
+        patch.setattr(query_module, "_read_session_child_snapshots", reject_empty_artifact_read)
         empty = read_session.materialize_selected_stock_codes(
             selection, explicit_stock_codes=(), cancel_callback=lambda: False
         )

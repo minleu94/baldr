@@ -2,7 +2,7 @@
 
 日期：2026-10-08。此文件記錄 F02 後端整合的局部證據，不代表完整補完計畫、UI 或候選 EXE 已通過。
 
-收藏／比較及觀察清單 service 整合已完成中央回歸：21 passed、618.72 秒。Main／Watchlist 專用路由已接線，工作台與 namespace 回歸 88 passed；最小 Main mount／關閉回歸 10 passed。新 MA view 的完整來源旅程仍未接受，保存排序還原缺口正在修正；新增同來源條件重查回歸 session74431 執行中。以下分段保留各次失敗與接受範圍，不能把局部通過視為完整補完計畫完成。
+收藏／比較及觀察清單 service 整合已完成中央回歸：21 passed、618.72 秒。Main／Watchlist 專用路由已接線；最新最小路由／版面回歸8 passed、3.13秒。保存來源條件重查已通過，同來源單次真MAView載入14.391秒成功。完整來源操作旅程仍未接受，正在核對選取、返回、比較及保存狀態還原；先前逾時失敗保留。以下分段保留各次失敗與接受範圍，不能把局部通過視為完整補完計畫完成。
 
 正常 F17 bundle opener 與 query reopen 使用同一份保存的合成封套。四均線投影掛接於既有逐股驗證迴圈，只有來源驗證成功且 P01 session 發布後才建立 MA session；投影例外不得發布部分狀態。金融數值沿用既有證據計算，沒有新增裸 float 計算。原始窗口、特徵日與可用性註記保留；來源缺少 available_at，歷史 PIT 資格仍為 false。
 
@@ -147,4 +147,6 @@ attempt02（owner handle34433，終態exit1）首次 explicit exact open 呼叫�
 中央核讀診斷 attempt03 receipt SHA `118b6e72ac89cbede506c2cfeb7eb6baefd9a8afb1c5a366c769787609c2e663`：同一明示保存來源 native exact opener 成功8,625毫秒，total8,641毫秒，來源樹前後 SHA均 `0dc6f5dbe1cd9b505ff318777e1bd7fb82475c904c105f325d1c1a01f0cce274`。前次 sandbox attempt02 的立即 WinError5另保留，不能與 UI187秒混為同一錯誤。UI測試逾時後 finally 主動取消 worker，187秒外層讀取錯誤在取消後出現；最內錯誤碼仍未直接觀察。下一步比較單次真MAView與同步opener等待方式及背景CPU，查明8秒／187秒差異，不憑此診斷授完整UI操作通過。
 
 單次真MAView診斷 attempt04 已終態exit0，receipt SHA `ecfc93f2915f12ff841745d968b0baae823b86124ad2495ccb4cd66a441d044b`：catalog明示選取後載入成功，整輪14,391毫秒，bundle opener8,890毫秒、view task14,281毫秒，operation成功且workers_terminal=true；23,004次取消callback均未回true，來源manifest／tree前後一致。driver採processEvents加短sleep讓出CPU；純CPU thread對照確有qWait等待拖慢現象，但不能只靠此推定原180秒根因。此證據限單次載入，下一輪完整旅程須保留原180秒門檻並驗選取、返回、比較與還原；不以mini診斷代替完整接受。
+
+完整旅程 session37300 終態exit1（pytest45.40秒），封套 `output/qa/ma_saved_source_ui_journey_20261008_a/attempt_1791501997926071500_53008/journey_receipt.json`。已完成載入、翻頁與比較，fresh restore operation回報完成後，綜合assert失敗；兩view正常關閉、active_worker=false、manifest/tree前後相同。讀碼定位測試只計view的bundle opener，收藏reader走另一公開read-session入口，故未計fresh restore的第二次核驗；產品未因此判定有還原缺口。須統一底層exact-open計數及保存逐項actual／expected後重驗，原失敗不改判通過。
 

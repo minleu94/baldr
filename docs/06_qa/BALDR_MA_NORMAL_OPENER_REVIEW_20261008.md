@@ -164,3 +164,5 @@ attempt02（owner handle34433，終態exit1）首次 explicit exact open 呼叫�
 
 此新增證據補足上一節的consumer路由缺口，但Main以最小QMainWindow shell承載實際方法，尚不代表完整constructor、正式資料、候選EXE或真人流程通過。
 
+中央再清除四個MA固定來源環境變數，使用標準既有合成fixture，獨立一般環境複驗exit0：1 passed，159.65秒（含來源產製）。log `root_route_portable.log`，receipt `attempt_1791503503217397500_45548/route_receipt.json`。此驗證補足測試可攜性；固定來源複驗不產製，一般fixture路徑才建立全新合成來源，兩者均不操作原資料或正式排程。
+

@@ -704,3 +704,9 @@ H20原十股canonical同版讀回已通過，原2382 684bp／日期／widget exa
 P03來源副本契約已補 mandatory typed binding及NTFS hardlink物理隔離，中央source/provider/source-root/materialization79通過；仍未接portable copy root/updater、F08–F19完整規則與全N保存UI。P05原十股及2382原預測在固定d9 Python/exe一致，名單exe單次23.906秒、單股evidence18.812秒；完整Main雙擊總時間及冷暖/p95未驗。P09 H20收藏控制項中央9通過但尚未掛正式頁面，歷史read-session、保存與Main新process旅程進行中；不得驗收獨立控制項為完整收藏功能。P00/P14同一保存fullN query/bookmark固定d9 exact shared-store QA仍進行，前兩模式各自produce的semantic相似證據不滿足exact同版。
 
 新版啟動檔start_h20_feedback_candidate_d9a115f6.cmd已交真人，只驗完整推薦理由、原H20下鑽提示/摘要及返回選取；真人尚未回覆本輪接受結果。P01真市場效能、P02/P04完整條件、P06–P08/M3、P10–P12以及P13四用途Native矩陣仍維持原範圍，未由本輪修補折抵。
+
+### 2026-10-07 H20 收藏 Main 接線中央結果
+
+dev 133616b6 已接真Main保存操作；88e22ba6 再接觀察清單原H20收藏重開、獨立歷史摘要與精確收藏身份返回，保留原capture觀察時間。目前模型停用或契約不同不換原研究。來源重驗失敗清除預測，刪除／身份衝突不改選同股其他列；刷新覆寫缺漏提示的實際問題已修正。中央最後整組114通過、全域mypy891檔、更新頁25通過0失敗4保護跳過。這些是合成路由驗證，不是原私人來源、新程序或Native接受。
+
+新程序完整Main測試父端保存／關閉成功，子程序後續失敗曾被測試輸出解碼錯誤遮住；失敗保留並補UTF-8及階段時間再驗，不以啟動完成當重開完成。使用者已澄清0f25名單最後出現但非常慢、2382雙擊反應不明，P05/P13速度與可觀察進度仍未通過。固定d9完整母體 exact shared-store同版核驗仍在隔離fixture初始化審查，尚無資格。F17當下官方處置來源葉片中央合成17項通過，但TPEx真API schema、正常updater及保存UI接線仍缺；不拿查詢頁欄名或合成資料宣稱來源完成。P00–P14與M3維持原範圍。

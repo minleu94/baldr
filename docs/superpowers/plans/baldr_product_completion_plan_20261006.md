@@ -781,3 +781,7 @@ P10 來源資料日呈現補件已存 dev `3a72654e`：大盤頁缺值／非正�
 
 
 2026-10-08 P05 後續分區文案來源版：合法 H20 毛報酬與另一份個股 ML 報告缺值說明明確分開；root 完整個股 UI 57 passed、Workbench 85、validator 25、mypy 902 檔通過。沙箱真合成 service 等待失敗與 WinError 5 診斷／精確重驗保留，未放寬逾時；詳見 `docs/06_qa/H20_REPORT_ML_SEPARATION_COPY_20261008.md`。此修改不在 421bc 已交候選，完整個股來源缺件與一般研究入口繼續，不宣稱 P05 完成。
+
+2026-10-08 P05 來源路由再核：原生設定下市場 DB 與當下官方 pointer 的 metadata 存在，不足以證明各表合格，也不是私人 H20 來源身分。H20 保存 guard 尚未綁定同版本價格 payload，不能拿最新行情補原預測；詳 `docs/06_qa/H20_SAVED_AND_CURRENT_SOURCE_DIAGNOSIS_20261008.md`。目前補清楚的獨立現況研究入口與原 H20 保留／返回，原同版圖表、速度與完整個股研究仍各自待驗。未入選是篩選停止證據，-31.229…／50 在現有契約是量能變化百分比；既有說明 presenter 中央兩項通過，不改門檻或冒充股價報酬。
+
+固定 9d F17 standalone 旅程的 root attempt_7084cefbc11a 保持 failed：source Main 已啟動，QA 注入 startup controller 未重新 enable Main，真正推薦導航未切頁，最後在「結果頁籤顯示」逾時；正常 StartupController 有 enable 步驟。主視窗已安全關閉、workers 0、network 0，exe child 未啟動。接續只修 QA 正常啟動契約並先做小 fixture 正反例，不能以啟動成功授予 Native／不同 PID 收藏驗收。1,000 檔 source-only 冷暖 benchmark 尚未執行；Windows launcher／worker argv 契約補驗進行中，不沿用 producer 整體失敗封套宣稱效能通過。完整 P00–P14／M1–M3 範圍維持。

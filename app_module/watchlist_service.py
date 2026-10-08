@@ -40,6 +40,14 @@ from app_module.daily_market_technical_universe_v4_bookmark import (
     DailyMarketTechnicalUniverseV4Bookmark,
     DailyMarketTechnicalUniverseV4BookmarkError,
 )
+from app_module.recommendation.personal_h20_research_bookmark import (
+    PERSONAL_H20_RESEARCH_BOOKMARK_SCHEMA,
+    PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE,
+    PersonalH20ResearchBookmark,
+    PersonalH20ResearchBookmarkError,
+    PersonalH20ResearchBookmarkState,
+    read_personal_h20_research_bookmark,
+)
 from app_module.research_session.session_dtos import ResearchStockContextDTO
 from app_module.original_stock_ranking import OriginalStockRankingError
 from app_module.watchlist_review_state import (
@@ -51,16 +59,24 @@ from app_module.watchlist_review_state import (
 
 _RESEARCH_BOOKMARK_SOURCES = frozenset(
     {DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE, ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE,
-     DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE}
+     DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE,
+     PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE}
 )
 
 
-def decode_daily_market_research_bookmark(value: Any) -> DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark:
-    """既有儲存 caller 按固定 schema 分派，不把 full-N 塞成舊每日來源。"""
+def decode_daily_market_research_bookmark(
+    value: Any,
+) -> DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | PersonalH20ResearchBookmark:
+    """既有儲存 caller 按固定 schema 分派，不混用不同研究來源契約。"""
     if isinstance(value, dict) and value.get("schema_version") == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SCHEMA:
         try:
             return DailyMarketTechnicalUniverseV4Bookmark.from_dict(value)
         except DailyMarketTechnicalUniverseV4BookmarkError as exc:
+            raise DailyMarketResearchBookmarkError(exc.code, str(exc)) from exc
+    if isinstance(value, Mapping) and value.get("schema_version") == PERSONAL_H20_RESEARCH_BOOKMARK_SCHEMA:
+        try:
+            return PersonalH20ResearchBookmark.from_dict(value)
+        except PersonalH20ResearchBookmarkError as exc:
             raise DailyMarketResearchBookmarkError(exc.code, str(exc)) from exc
     return _decode_legacy_research_bookmark(value)
 
@@ -68,12 +84,14 @@ def decode_daily_market_research_bookmark(value: Any) -> DailyMarketResearchBook
 def _bookmark_payload_id(value: Any) -> Any:
     if not isinstance(value, dict):
         return None
-    if value.get("schema_version") == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SCHEMA:
+    if "bookmark_identity_sha256" in value:
         return value.get("bookmark_identity_sha256")
     return value.get("bookmark_id")
 
 
 def _bookmark_source(bookmark: Any) -> str:
+    if isinstance(bookmark, PersonalH20ResearchBookmark):
+        return PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE
     if isinstance(bookmark, DailyMarketTechnicalUniverseV4Bookmark):
         return DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE
     if isinstance(bookmark, OriginalStockRankingBookmark):
@@ -82,8 +100,8 @@ def _bookmark_source(bookmark: Any) -> str:
 
 
 def _bookmark_item_name(bookmark: Any) -> str:
-    """無保存名稱的 full-N 收藏用代碼作清單標籤，原 payload 仍保留未知空名。"""
-    if isinstance(bookmark, DailyMarketTechnicalUniverseV4Bookmark):
+    """沒有獨立名稱的 typed 收藏以股票代碼作清單標籤。"""
+    if isinstance(bookmark, (DailyMarketTechnicalUniverseV4Bookmark, PersonalH20ResearchBookmark)):
         return bookmark.stock_code
     return str(bookmark.stock_name)
 
@@ -143,10 +161,22 @@ class WatchlistItem:
         if "research_bookmark" in data and source == "manual":
             # 收藏 payload 即使損毀也留在自己的來源命名空間，不會重新解讀為 manual/Advice。
             raw_bookmark = data.get("research_bookmark")
+            bookmark_schema = (
+                raw_bookmark.get("schema_version")
+                if isinstance(raw_bookmark, dict)
+                else None
+            )
+            bookmark_source = (
+                raw_bookmark.get("source")
+                if isinstance(raw_bookmark, dict)
+                else None
+            )
             source = (
                 ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE
-                if isinstance(raw_bookmark, dict)
-                and raw_bookmark.get("schema_version") == "daily-market-research-bookmark.v2"
+                if bookmark_schema == "daily-market-research-bookmark.v2"
+                else PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE
+                if bookmark_schema == PERSONAL_H20_RESEARCH_BOOKMARK_SCHEMA
+                or bookmark_source == PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE
                 else DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE
             )
         known_fields = {
@@ -713,6 +743,41 @@ class WatchlistService:
             non_bookmark_codes.add(code)
         return frozenset(bookmark_ids)
 
+    @staticmethod
+    def _validate_personal_h20_bookmarks(payload: Any) -> None:
+        """在 JSON→COW 快速路徑前核 H20 schema 與外層列身份。"""
+
+        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+            return
+        bookmark_ids: set[str] = set()
+        for item in payload["items"]:
+            if not isinstance(item, dict):
+                continue
+            raw = item.get("research_bookmark")
+            schema = raw.get("schema_version") if isinstance(raw, dict) else None
+            bookmark_source = raw.get("source") if isinstance(raw, dict) else None
+            if (
+                item.get("source") != PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE
+                and schema != PERSONAL_H20_RESEARCH_BOOKMARK_SCHEMA
+                and bookmark_source != PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE
+            ):
+                continue
+            try:
+                bookmark = decode_daily_market_research_bookmark(raw)
+            except DailyMarketResearchBookmarkError as exc:
+                raise ValueError("H20 研究收藏 payload 無法驗證；未升級 JSON") from exc
+            if not isinstance(bookmark, PersonalH20ResearchBookmark):
+                raise ValueError("H20 研究收藏 schema 不符；未升級 JSON")
+            if (
+                item.get("source") != PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE
+                or item.get("source_id") != bookmark.bookmark_id
+                or item.get("stock_code") != bookmark.stock_code
+                or item.get("stock_name") != _bookmark_item_name(bookmark)
+                or bookmark.bookmark_id in bookmark_ids
+            ):
+                raise ValueError("H20 研究收藏身份與項目不符；未升級 JSON")
+            bookmark_ids.add(bookmark.bookmark_id)
+
     @classmethod
     def _verify_repository_payloads(
         cls,
@@ -846,11 +911,19 @@ class WatchlistService:
                 from data_module.watchlist_json_cow import convert_watchlist_json
                 from app_module.watchlist_cow_activation import activate_watchlist_sqlite
 
+                source_bytes = source.read_bytes()
+                source_payload = json.loads(source_bytes.decode("utf-8-sig"))
+                self._validate_personal_h20_bookmarks(source_payload)
+                if source.read_bytes() != source_bytes:
+                    raise RuntimeError("watchlist_h20_source_changed_during_preflight")
+
                 converted = convert_watchlist_json(source, target)
                 if converted.get("status") != "ready":
                     raise RuntimeError(
                         f"converter_validate_stage:{converted.get('error_code', 'blocked')}"
                     )
+                if converted.get("source_sha256") != hashlib.sha256(source_bytes).hexdigest():
+                    raise RuntimeError("watchlist_h20_source_changed_before_conversion")
                 activation_result = activate_watchlist_sqlite(source, target)
                 if activation_result.get("status") not in {"activated", "already_active"}:
                     raise RuntimeError(
@@ -1557,7 +1630,7 @@ class WatchlistService:
 
     def add_research_bookmark(
         self,
-        bookmark: DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | Dict[str, Any],
+        bookmark: DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | PersonalH20ResearchBookmark | Dict[str, Any],
         watchlist_id: str = "default",
         *,
         revision_id: str | None = None,
@@ -1567,7 +1640,7 @@ class WatchlistService:
 
         verified_bookmark = decode_daily_market_research_bookmark(
             bookmark.to_dict()
-            if isinstance(bookmark, (DailyMarketResearchBookmark, OriginalStockRankingBookmark, DailyMarketTechnicalUniverseV4Bookmark))
+            if isinstance(bookmark, (DailyMarketResearchBookmark, OriginalStockRankingBookmark, DailyMarketTechnicalUniverseV4Bookmark, PersonalH20ResearchBookmark))
             else bookmark
         )
         expected_source = _bookmark_source(verified_bookmark)
@@ -1649,7 +1722,11 @@ class WatchlistService:
         return DailyMarketResearchBookmarkMutationResult(
             status="added",
             code="bookmark_added",
-            message="已保存每日市場研究收藏。",
+            message=(
+                "已保存個人 H20 研究收藏。"
+                if isinstance(verified_bookmark, PersonalH20ResearchBookmark)
+                else "已保存每日市場研究收藏。"
+            ),
             bookmark_id=verified_bookmark.bookmark_id,
             watchlist_id=watchlist_id,
             revision=current.revision,
@@ -1683,7 +1760,7 @@ class WatchlistService:
         self,
         bookmark_id: str,
         watchlist_id: str = "default",
-    ) -> DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | None:
+    ) -> DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | PersonalH20ResearchBookmark | None:
         """讀取指定收藏身份；符合 ID 但格式錯誤的 payload 會拒絕讀取。"""
 
         identity = str(bookmark_id or "").strip()
@@ -1814,6 +1891,11 @@ class WatchlistService:
         """以 watchlist 來源重建 pinned context，不建立 Advice 身份。"""
 
         bookmark = self.get_research_bookmark(bookmark_id, watchlist_id)
+        if isinstance(bookmark, PersonalH20ResearchBookmark):
+            raise DailyMarketResearchBookmarkError(
+                "personal_h20_bookmark_typed_reopen_required",
+                "H20 收藏需明示個人模型設定與市場資料根，沿原 manifest 唯讀重開。",
+            )
         if isinstance(bookmark, DailyMarketTechnicalUniverseV4Bookmark):
             raise DailyMarketResearchBookmarkError(
                 "technical_universe_bookmark_typed_reopen_required",
@@ -1846,6 +1928,31 @@ class WatchlistService:
             )
         return read_daily_market_technical_universe_v4_bookmark(bookmark, cancel_callback=cancel_callback)
 
+    def get_personal_h20_research_bookmark_state(
+        self,
+        bookmark_id: str,
+        watchlist_id: str = "default",
+        *,
+        config_path: str | Path,
+        market_root: str | Path,
+        prediction_reader: Callable[..., Mapping[str, Any]],
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> PersonalH20ResearchBookmarkState:
+        """以明示設定與 root 沿收藏原 manifest 重開 H20；不查 current pointer。"""
+
+        bookmark = self.get_research_bookmark(bookmark_id, watchlist_id)
+        if not isinstance(bookmark, PersonalH20ResearchBookmark):
+            raise DailyMarketResearchBookmarkError(
+                "personal_h20_bookmark_required", "找不到指定的 H20 研究收藏。"
+            )
+        return read_personal_h20_research_bookmark(
+            bookmark,
+            config_path=Path(config_path),
+            market_root=Path(market_root),
+            prediction_reader=prediction_reader,
+            cancel_callback=cancel_callback,
+        )
+
     def remove_research_bookmark(
         self,
         bookmark_id: str,
@@ -1874,7 +1981,7 @@ class WatchlistService:
                 bookmark_id=identity,
                 watchlist_id=watchlist_id,
             )
-        matches: list[tuple[int, WatchlistItem, DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark]] = []
+        matches: list[tuple[int, WatchlistItem, DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | PersonalH20ResearchBookmark]] = []
         for index, item in enumerate(current.items):
             raw = item.research_bookmark
             if not isinstance(raw, dict) or _bookmark_payload_id(raw) != identity:

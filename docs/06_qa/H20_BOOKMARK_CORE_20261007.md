@@ -9,3 +9,9 @@
 Agent 三次測試目錄皆獨立保留。首輪 sandbox 在既有合成 capture 的 os.link 遇 WinError5；第二輪兩項測試斷言錯誤；第三輪修測後 12 passed。中央原始紀錄為本機排除檔 `output/qa/baldr_completion_m2_20261007/h20_bookmark_root_20261007_a.log`。
 
 本次是收藏核心，不是操作入口完成證據。COW 保存、H20 收藏按鈕、觀察清單重開與正常 MainWindow 的跨程序旅程仍需接線和驗證，不能以完整母體五規則收藏代替 H20 收藏。
+
+## 觀察清單 COW 接續
+
+WatchlistService 已接入 H20 獨立 schema／source／identity，沿既有 COW 保存、重複收藏、讀回與精確移除；同股手動項目及其他研究來源共存。generic context API 明示要求 typed H20 reopen，專用讀回必須提供 activation config、market root 與 prediction reader。JSON 快速升級在轉換前核 H20 payload 與外層股票／來源身份，並比對轉換 receipt 的來源 bytes SHA，損毀來源不能啟用 COW。
+
+中央與 H20 介面／推薦閱讀／既有 JSON COW／排名收藏一起驗 **60 passed in 11.60s**；新測試包含真正 JSON→COW→新程序原 manifest 重開、排序／捲動還原、同股不同來源、冪等、身份衝突、取消與來源檔不變。Agent 的五個 attempt 保留；中央首次 UI 合成 capture 在 sandbox os.link WinError5，獨立短 TEMP 提升回歸通過，未放寬正式來源 guard。H20 實際收藏按鈕及正常主視窗操作接線仍未完成。

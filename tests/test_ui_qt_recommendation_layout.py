@@ -5,12 +5,13 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pandas as pd
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QFontMetrics, QTextCursor
 from PySide6.QtWidgets import QApplication, QBoxLayout, QHBoxLayout, QWidget
 
 from app_module.dtos import RegimeResultDTO
@@ -318,6 +319,44 @@ def test_recommendation_reason_expansion_preserves_content() -> None:
         for _ in range(5):
             app.processEvents()
         _capture_if_requested(view, "recommendation_800x700_personal_history.png")
+    finally:
+        view.close()
+        app.processEvents()
+
+
+def test_expanded_reason_shows_complete_score_table_and_document_end() -> None:
+    app = _app()
+    view = _new_view()
+    recommendation = SimpleNamespace(
+        rule_score="65", total_score="65", indicator_score="60",
+        pattern_score="61", volume_score="62", threshold_mode="fixed",
+        ranking_method="ordinal", score_percentile_bp=7500,
+        eligible_universe_size=257,
+    )
+    html = view._generate_explain_panel(recommendation)
+    html += "<p>完整理由與來源限制。</p>" * 90 + "<p>文件最後一行：不可省略。</p>"
+    try:
+        view.resize(800, 700)
+        view.show()
+        view.detail_text.setHtml(html)
+        view.detail_expand_button.click()
+        for _ in range(6):
+            app.processEvents()
+        assert "分數拆解" in view.detail_text.toPlainText()
+        assert "排名門檻" in view.detail_text.toPlainText()
+        assert view.detail_text.height() >= view.detail_text.document().size().height()
+        assert view.detail_text.verticalScrollBar().maximum() == 0
+        cursor = view.detail_text.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        assert view.detail_text.viewport().rect().contains(view.detail_text.cursorRect(cursor))
+        assert view.result_scroll.verticalScrollBar().maximum() > 0
+        saved_text = view.detail_text.toPlainText()
+        view.resize(460, 700)
+        for _ in range(6):
+            app.processEvents()
+        assert view.detail_text.height() >= view.detail_text.document().size().height()
+        assert view.detail_text.toPlainText() == saved_text
+        _capture_if_requested(view, "recommendation_full_document_460x700.png")
     finally:
         view.close()
         app.processEvents()

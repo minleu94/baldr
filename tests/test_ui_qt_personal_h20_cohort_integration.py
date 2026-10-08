@@ -95,3 +95,27 @@ def test_main_discards_stale_changed_config_closing_and_failed_selection(tmp_pat
     assert window.personal_h20_research_widget._cohort is None
     panel.close()
     app.processEvents()
+
+
+def test_loading_status_and_cancel_preserve_unpublished_cohort(tmp_path, monkeypatch):
+    app, window, panel, cohort, selection, opened, messages = setup_window(tmp_path, monkeypatch)
+    window._refresh_personal_h20_cohort()
+    worker = window._personal_h20_cohort_worker
+    assert window._personal_h20_loading_timer.isActive()
+    assert "尚未完成" in window._personal_h20_loading_label.text()
+    window._personal_h20_read_started_at -= 8
+    window._personal_h20_loading_timer.timeout.emit()
+    assert "8 秒" in window._personal_h20_loading_label.text()
+    window._personal_h20_cancel_read_button.click()
+    assert not window._personal_h20_loading_timer.isActive()
+    assert "已要求取消" in window._personal_h20_loading_label.text()
+    worker.finished.emit((object(), cohort))
+    assert window.personal_h20_research_widget._cohort is None
+    assert not opened
+    window._refresh_personal_h20_cohort()
+    window._personal_h20_cohort_worker.finished.emit((object(), cohort))
+    assert "已核驗" in window._personal_h20_loading_label.text()
+    assert not window._personal_h20_loading_timer.isActive()
+    assert window.personal_h20_research_widget._cohort == cohort
+    panel.close()
+    app.processEvents()

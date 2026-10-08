@@ -12,7 +12,8 @@ from PySide6.QtWidgets import (
     QTabWidget, QStyle, QLayout,
 )
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QResizeEvent, QTextOption
+from math import ceil
 import pandas as pd
 from copy import deepcopy
 import hashlib
@@ -86,6 +87,34 @@ from ui_qt.views.recommendation.presenter import (
 )
 from ui_qt.status_vocabulary import status_detail, status_label
 from ui_qt.views.daily_market_research_view import DailyMarketResearchView
+
+
+class _RecommendationReasonText(QTextEdit):
+    """展開後依完整文件高度排版，交外層頁面捲動。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._expanded = False
+        self.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self.document().documentLayout().documentSizeChanged.connect(self._sync_height)
+
+    def set_expanded(self, expanded: bool) -> None:
+        self._expanded = expanded
+        self.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff if expanded
+            else Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self._sync_height()
+
+    def _sync_height(self, *_args: object) -> None:
+        height = max(520, ceil(self.document().size().height()) + 24) if self._expanded else 140
+        if self.minimumHeight() != height:
+            self.setMinimumHeight(height)
+            self.updateGeometry()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._sync_height()
 
 
 class _CurrentPageSizeTabWidget(QTabWidget):
@@ -4196,7 +4225,7 @@ class RecommendationView(QWidget):
         self.detail_expand_button.setObjectName("recommendationReasonExpand")
         self.detail_expand_button.setCheckable(True)
         detail_layout.addWidget(self.detail_expand_button)
-        self.detail_text = QTextEdit()
+        self.detail_text = _RecommendationReasonText()
         self.detail_text.setReadOnly(True)
         self.detail_text.setMinimumHeight(140)
         self.detail_text.setPlaceholderText("選取推薦結果後，這裡會顯示分數拆解、策略傾向與風險提示。")
@@ -8192,8 +8221,9 @@ class RecommendationView(QWidget):
     def _set_recommendation_reason_expanded(self, expanded: bool) -> None:
         """展開既有理由的閱讀空間，不重新執行推薦。"""
         self.detail_expand_button.setText("收合推薦理由" if expanded else "展開推薦理由")
-        self.detail_text.setMinimumHeight(520 if expanded else 140)
-        self.detail_text.updateGeometry()
+        self.detail_text.set_expanded(expanded)
+        self.result_panel.layout().activate()
+        self.result_source_tabs.updateGeometry()
 
     def _update_detail_text(self):
         """更新推薦理由詳情顯示"""

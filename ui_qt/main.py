@@ -150,7 +150,7 @@ from ui_qt.theme.fonts import (
 )
 from ui_qt.widgets.left_navigation import LeftNavigationWidget, NavigationItem
 from ui_qt.widgets.adaptive_workspace_stack import AdaptiveWorkspaceStack
-from ui_qt.widgets.layout_helpers import bounded_initial_window_geometry
+from ui_qt.widgets.layout_helpers import bounded_initial_window_geometry, set_scroll_content_constraints
 from ui_qt.widgets.text_sanitizer import sanitize_button_texts
 from ui_qt.main_window_coordinator import WORKSPACE_DEFINITIONS, resolve_workspace_key
 from ui_qt.runtime_composition import build_runtime_ui_composition
@@ -721,11 +721,43 @@ class MainWindow(QMainWindow):
         panel = QWidget(recommendation)
         layout = QVBoxLayout(panel)
         refresh = QPushButton("讀取每日已保存模型名單", panel)
+        loading_label = QLabel("尚未開始讀取保存的 H20 名單。", panel)
+        loading_label.setWordWrap(True)
+        cancel_read = QPushButton("取消名單讀取", panel)
+        cancel_read.setEnabled(False)
         widget = PersonalH20ResearchWidget(panel)
         layout.addWidget(refresh)
+        layout.addWidget(loading_label)
+        layout.addWidget(cancel_read)
         layout.addWidget(widget)
+        set_scroll_content_constraints(panel)
         self.personal_h20_research_widget = widget
         self.personal_h20_research_panel = panel
+        self._personal_h20_loading_label = loading_label
+        self._personal_h20_cancel_read_button = cancel_read
+        timer = QTimer(panel)
+        timer.setInterval(1000)
+        self._personal_h20_loading_timer = timer
+        def show_waiting() -> None:
+            if widget._closing or getattr(self, "_shutdown_close_requested", False):
+                timer.stop()
+                return
+            elapsed = int(time.monotonic() - self._personal_h20_read_started_at)
+            loading_label.setText(
+                f"正在核驗原保存來源，已等待 {elapsed} 秒。\n"
+                "目前尚未完成；大型來源庫核驗可能耗時。完成後才顯示可下鑽的原名單。"
+            )
+        timer.timeout.connect(show_waiting)
+        def cancel_loading() -> None:
+            self._personal_h20_cohort_generation += 1
+            worker = getattr(self, "_personal_h20_cohort_worker", None)
+            if worker is not None and worker.isRunning():
+                worker.cancel(wait=False)
+            timer.stop()
+            cancel_read.setEnabled(False)
+            widget.setEnabled(True)
+            loading_label.setText("已要求取消名單讀取；未套用尚未核驗完成的結果。")
+        cancel_read.clicked.connect(cancel_loading)
         self._personal_h20_cohort_generation = 0
         self._personal_h20_cohort_reference = None
         self._personal_h20_research_origin = None
@@ -767,6 +799,12 @@ class MainWindow(QMainWindow):
             previous.cancel(wait=False)
         market_root, config_path = self._personal_h20_configuration()
         widget.setEnabled(False)
+        self._personal_h20_read_started_at = time.monotonic()
+        loading_timer = getattr(self, "_personal_h20_loading_timer", None)
+        if loading_timer is not None:
+            self._personal_h20_loading_label.setText("正在核驗原保存來源，已等待 0 秒；尚未完成。")
+            self._personal_h20_cancel_read_button.setEnabled(True)
+            loading_timer.start()
         if selection is None:
             self._personal_h20_cohort_reference = None
             widget._cohort = None
@@ -783,6 +821,10 @@ class MainWindow(QMainWindow):
         def apply(result: object) -> None:
             if not current():
                 return
+            if loading_timer is not None:
+                loading_timer.stop()
+                self._personal_h20_cancel_read_button.setEnabled(False)
+                self._personal_h20_loading_label.setText("來源讀取已返回，正在核對名單與選取身份。")
             if not isinstance(result, tuple) or len(result) != 2:
                 widget.setEnabled(True)
                 widget.summary_label.setText("保存名單回傳格式無法核驗；原清單與選取已保留。")
@@ -804,6 +846,11 @@ class MainWindow(QMainWindow):
             self._personal_h20_cohort_reference = reference
             widget.set_cohort(cohort)
             widget.setEnabled(True)
+            if loading_timer is not None:
+                elapsed = int(time.monotonic() - self._personal_h20_read_started_at)
+                self._personal_h20_loading_label.setText(
+                    f"原保存名單已核驗：{len(cohort.rows)} 股，耗時 {elapsed} 秒。"
+                )
             if selection is None:
                 return
             if not isinstance(selection, PersonalH20ResearchSelection) or not widget.restore_selection(selection):
@@ -823,6 +870,10 @@ class MainWindow(QMainWindow):
             self._open_stock_research_context(context)
         def failed(message: str) -> None:
             if current():
+                if loading_timer is not None:
+                    loading_timer.stop()
+                    self._personal_h20_cancel_read_button.setEnabled(False)
+                    self._personal_h20_loading_label.setText("原保存名單讀取失敗；完整原因見下方提示。")
                 widget.setEnabled(True)
                 detail = str(message)[:300]
                 if selection is None:

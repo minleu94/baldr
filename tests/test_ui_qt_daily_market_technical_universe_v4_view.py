@@ -13,10 +13,15 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QTableView
 
 from app_module.daily_market_technical_parent_v4_query import (
     DailyMarketTechnicalParentV4Row,
+    DailyMarketTechnicalRuleStateFilterV4,
+    RuleState,
 )
 from app_module.daily_market_technical_universe_v4_query import (
     DailyMarketTechnicalUniverseV4Query,
@@ -188,6 +193,40 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert page.unknown_rule_count == 2
     assert page.matching_count == 257
     assert len(page.rows) == 50
+    assert isinstance(view.table, QTableView)
+    assert view.table.model() is view.results_model
+    assert view.table.isSortingEnabled() is False
+    assert view.results_model.rowCount() == len(page.rows)
+    assert view.results_model.columnCount() == 9
+    first_row = page.rows[0]
+    assert tuple(rule.key for rule in first_row.rules) == (
+        "ma5_20_golden_cross",
+        "kd_golden_cross",
+        "macd_golden_cross",
+        "volume_ratio_20_including_current",
+        "volume_ratio_5_including_current",
+    )
+    first_index = view.results_model.index(0, 0)
+    first_label = first_row.stock_code
+    if first_row.raw_row_count == 0:
+        first_label += "（缺資料）"
+    assert view.results_model.data(first_index, Qt.ItemDataRole.DisplayRole) == first_label
+    assert view.results_model.data(first_index, Qt.ItemDataRole.UserRole) is first_row
+    full_tooltip = view.results_model.data(first_index, Qt.ItemDataRole.ToolTipRole)
+    assert isinstance(full_tooltip, str)
+    assert f"來源 identity：{first_row.source_identity}" in full_tooltip
+    assert "資料可得時間未知；只供當下重述研究；不授歷史 PIT／可交易資格。" in full_tooltip
+    assert all(
+        view.table.indexWidget(view.results_model.index(row_index, column)) is None
+        for row_index in range(view.results_model.rowCount())
+        for column in range(view.results_model.columnCount())
+    )
+    assert view._select_stock_code(first_row.stock_code) is True
+    assert view._selected_row() is first_row
+    view._render_rows(page.rows[1:], selected_code=first_row.stock_code)
+    assert view._selected_row() is None
+    view._render_rows(page.rows, selected_code=first_row.stock_code)
+    assert view._selected_row() is first_row
     assert "此固定版本於 read-session 建立時通過 strict 核驗" in view.verified_pins.text()
     assert "不宣稱來源檔在核驗後未變" in view.verified_pins.text()
     assert query.generation_identity_sha256 in view.verified_pins.text()
@@ -199,6 +238,79 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert "只供當下重述研究" in view.verified_pins.text()
     assert "不授歷史 PIT／可交易資格" in view.verified_pins.text()
     assert "全市場宣稱：否" in view.summary.text()
+
+    # 每條規則可選任一非空三態組合；query 的 state tuple 以公開 canonical 順序往返。
+    first_rule_key = query.method_rule_keys[0]
+    first_rule_combo = view._rule_filters[first_rule_key]
+    state_sets: tuple[tuple[RuleState, ...], ...] = (
+        (),
+        ("match",),
+        ("no_match",),
+        ("unknown",),
+        ("match", "no_match"),
+        ("match", "unknown"),
+        ("no_match", "unknown"),
+        ("match", "no_match", "unknown"),
+    )
+    for states in state_sets:
+        filter_id = (
+            universe_view_module._RULE_STATE_FILTER_STATES_TO_ID.get(states)
+            if states
+            else universe_view_module._NO_STATE_FILTER
+        )
+        assert filter_id is not None
+        option_index = first_rule_combo.findData(filter_id)
+        assert option_index >= 0
+        first_rule_combo.setCurrentIndex(option_index)
+        selected_filters = view._selected_rule_state_filters()
+        expected_filters = (
+            (DailyMarketTechnicalRuleStateFilterV4.create(first_rule_key, states),)
+            if states
+            else ()
+        )
+        assert selected_filters == expected_filters
+
+    multi_state_filter = DailyMarketTechnicalRuleStateFilterV4.create(
+        first_rule_key, ("unknown", "match")
+    )
+    multi_state_query = DailyMarketTechnicalUniverseV4Query.create(
+        store_output_root=query.store_output_root,
+        generation_identity_sha256=query.generation_identity_sha256,
+        plan_identity_sha256=query.plan_identity_sha256,
+        plan_sha256=query.plan_sha256,
+        receipt_identity_sha256=query.receipt_identity_sha256,
+        receipt_sha256=query.receipt_sha256,
+        rule_state_filters=(multi_state_filter,),
+        combine_mode="OR",
+        stock_filter=("S0001", "S0002"),
+        sort_key=query.sort_key,
+        descending=True,
+        page_index=1,
+        page_size=25,
+    )
+    reopened_multi_state_query = DailyMarketTechnicalUniverseV4Query.from_json(
+        multi_state_query.to_json()
+    )
+    assert reopened_multi_state_query == multi_state_query
+    view._set_filter_controls(reopened_multi_state_query)
+    assert first_rule_combo.currentData() == "match|unknown"
+    assert view._selected_rule_state_filters() == reopened_multi_state_query.rule_state_filters
+    assert view.mode.currentData() == "OR"
+    assert view.stock_filter.text() == "S0001, S0002"
+    assert view.sort.currentData() == query.sort_key
+    assert view.descending.currentData() is True
+    assert view.page_size.currentData() == 25
+    view._set_filter_controls(query)
+
+    retained_page = view.current_page
+    retained_query = view.current_query
+    view.stock_filter.setText("S0001,,S0002")
+    view.apply_query()
+    assert "空欄位" in view.status.text()
+    assert view.current_page is retained_page
+    assert view.current_query is retained_query
+    assert view._worker is None
+    view.stock_filter.clear()
 
     read_session = view._read_session
     assert read_session is not None
@@ -288,7 +400,7 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
         and view.current_query.stock_filter == ("ZZZZ",),
     )
     assert view.current_page is None
-    assert view.table.rowCount() == 0
+    assert view.results_model.rowCount() == 0
     assert view.next_button.isEnabled() is False
     assert view.open_button.isEnabled() is False
     assert view.add_comparison_button.isEnabled() is False
@@ -759,3 +871,113 @@ def test_bookmark_button_prepares_and_restores_real_small_saved_state(
 
     view.close()
     assert view.begin_shutdown()
+
+
+def test_stock_filter_parser_covers_full_public_limit_without_silent_dropping() -> None:
+    codes = tuple(f"S{index:015d}" for index in range(100_000))
+    text = ", ".join(codes)
+    assert len(text) == universe_view_module._MAX_STOCK_FILTER_TEXT_LENGTH
+    assert DailyMarketTechnicalUniverseV4View._parse_stock_filter(text) == codes
+
+    for invalid in (
+        "2382,,9999",
+        ",2382",
+        "2382,",
+        "2382, 2382",
+        "2382, bad-code",
+    ):
+        with pytest.raises(ValueError):
+            DailyMarketTechnicalUniverseV4View._parse_stock_filter(invalid)
+    too_many_codes = ",".join((*codes, "T000000000000000"))
+    assert len(too_many_codes) < universe_view_module._MAX_STOCK_FILTER_TEXT_LENGTH
+    with pytest.raises(ValueError, match="100,000"):
+        DailyMarketTechnicalUniverseV4View._parse_stock_filter(
+            too_many_codes
+        )
+    assert DailyMarketTechnicalUniverseV4View._parse_stock_filter("  ") == ()
+
+
+def test_qlineedit_overflow_rejects_truncated_prefix_until_user_edits(
+    app: QApplication,
+    tmp_path: Path,
+    pinned_bookmark: dict[str, Any],
+) -> None:
+    saved = pinned_bookmark["bookmark"]
+    assert isinstance(saved, DailyMarketTechnicalUniverseV4Bookmark)
+    view = DailyMarketTechnicalUniverseV4View(saved.origin_query.store_output_root)
+    view.stock_filter.setMaxLength(5)
+    view.show()
+    app.processEvents()
+    view.stock_filter.setFocus()
+    QGuiApplication.clipboard().setText("238200")
+    QTest.keyClick(view.stock_filter, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
+    app.processEvents()
+
+    assert view.stock_filter.text() == "23820"
+    assert view._stock_filter_rejected_text == view.stock_filter.text()
+    view.apply_query()
+    assert "輸入超過欄位上限" in view.status.text()
+    assert view._worker is None
+
+    view.stock_filter.selectAll()
+    QTest.keyClick(view.stock_filter, Qt.Key.Key_Backspace)
+    app.processEvents()
+    assert view._stock_filter_rejected_text is None
+    view.stock_filter.setMaxLength(universe_view_module._MAX_STOCK_FILTER_TEXT_LENGTH)
+    view._set_filter_controls(saved.origin_query)
+    assert view._stock_filter_rejected_text is None
+    assert view.stock_filter.text() == ", ".join(saved.origin_query.stock_filter)
+
+    view.stock_filter.selectAll()
+    QTest.keyClicks(view.stock_filter, "2382")
+    app.processEvents()
+    assert view._stock_filter_rejected_text is None
+    view.apply_query()
+    assert "請先嚴格核驗" in view.status.text()
+    view.close()
+
+
+def test_each_rule_filter_roundtrips_all_canonical_state_combinations(
+    app: QApplication,
+    pinned_bookmark: dict[str, Any],
+) -> None:
+    saved = pinned_bookmark["bookmark"]
+    assert isinstance(saved, DailyMarketTechnicalUniverseV4Bookmark)
+    query = saved.origin_query
+    view = DailyMarketTechnicalUniverseV4View(query.store_output_root)
+    view._ensure_rule_filters(query.method_rule_keys)
+    state_sets: tuple[tuple[RuleState, ...], ...] = (
+        (),
+        ("match",),
+        ("no_match",),
+        ("unknown",),
+        ("match", "no_match"),
+        ("match", "unknown"),
+        ("no_match", "unknown"),
+        ("match", "no_match", "unknown"),
+    )
+
+    for rule_key, combo in view._rule_filters.items():
+        for states in state_sets:
+            filter_id = (
+                universe_view_module._RULE_STATE_FILTER_STATES_TO_ID.get(states)
+                if states
+                else universe_view_module._NO_STATE_FILTER
+            )
+            assert filter_id is not None
+            option_index = combo.findData(filter_id)
+            assert option_index >= 0
+            combo.setCurrentIndex(option_index)
+            expected = (
+                (DailyMarketTechnicalRuleStateFilterV4.create(rule_key, states),)
+                if states
+                else ()
+            )
+            assert view._selected_rule_state_filters() == expected
+            all_index = combo.findData(universe_view_module._NO_STATE_FILTER)
+            assert all_index >= 0
+            combo.setCurrentIndex(all_index)
+
+    view._set_filter_controls(query)
+    assert view._selected_rule_state_filters() == query.rule_state_filters
+    view.close()

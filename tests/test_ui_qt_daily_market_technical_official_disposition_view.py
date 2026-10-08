@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import threading
 import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -71,6 +75,8 @@ def _wait_for_idle(
 def _load_real_bundle(
     app: QApplication,
     fixture: Any,
+    *,
+    expected_population: int = 258,
 ) -> tuple[DailyMarketTechnicalOfficialDispositionView, DailyMarketTechnicalOfficialDispositionBundleCatalogEntryV1]:
     view = DailyMarketTechnicalOfficialDispositionView(fixture.bundle_root)
     view.refresh_catalog()
@@ -81,29 +87,132 @@ def _load_real_bundle(
     _wait_for_idle(app, view)
     assert view.current_result is not None
     assert view.current_page is not None
-    assert view.current_page.counts.population.declared_count == 258
-    assert view.current_result.counts.matching_count == 258
+    assert view.current_page.counts.population.declared_count == expected_population
+    assert view.current_result.counts.matching_count == expected_population
     return view, selectable[0]
 
 
-def _bookmark_with_unrepresentable_query(
+def _create_varied_technical_bundle(
+    bundle_fixture: Any,
+    *,
+    decision_cutoff: datetime,
+) -> Path:
+    """以正式 producer 和同一核驗 official pins 建立可區分技術狀態的合成來源。"""
+
+    from app_module.daily_market_technical_official_disposition_bundle_v1 import (
+        DailyMarketTechnicalOfficialDispositionBundleWriterV1,
+    )
+    from app_module.daily_market_technical_universe_v4_producer import (
+        DailyMarketTechnicalUniverseV4ProductionRequest,
+        produce_daily_market_technical_universe_v4,
+    )
+    from app_module.daily_market_technical_universe_v4_store import (
+        DailyMarketTechnicalUniverseV4Cohort,
+    )
+    from app_module.rule_research_sample_capture import ResearchCaptureWriteScope
+    from app_module.personal_data_paths import to_internal_io_path
+
+    attempt_root = bundle_fixture.qa_root / f"and-or-varied-{time.time_ns()}"
+    attempt_root.mkdir()
+    database = attempt_root / "daily_prices.sqlite"
+    stock_codes = bundle_fixture.included_codes[:4]
+    connection = sqlite3.connect(to_internal_io_path(database))
+    try:
+        with connection:
+            connection.execute(
+                "CREATE TABLE daily_prices ("
+                "日期 TEXT, 證券代號 TEXT, 開盤價 TEXT, 最高價 TEXT, 最低價 TEXT, "
+                "收盤價 TEXT, 成交股數 INTEGER)"
+            )
+            start_date = bundle_fixture.cohort.decision_date - timedelta(days=39)
+            rows: list[tuple[str, str, str, str, str, str, int]] = []
+            final_volumes = {
+                stock_codes[0]: 1_000,
+                stock_codes[1]: 1_000,
+                stock_codes[2]: 1_000_000,
+                stock_codes[3]: 1_000_000,
+            }
+            for stock_index, stock_code in enumerate(stock_codes):
+                for offset in range(40):
+                    if stock_index in {0, 2}:
+                        close = 100 + offset
+                    else:
+                        close = 139 - offset
+                        if offset == 39:
+                            close = 300
+                    volume = (
+                        final_volumes[stock_code]
+                        if offset == 39
+                        else 1_000
+                    )
+                    rows.append((
+                        (start_date + timedelta(days=offset)).isoformat(),
+                        stock_code,
+                        str(close),
+                        str(close + 1),
+                        str(close - 1),
+                        str(close),
+                        volume,
+                    ))
+            connection.executemany(
+                "INSERT INTO daily_prices VALUES (?,?,?,?,?,?,?)", rows
+            )
+    finally:
+        connection.close()
+
+    cohort = DailyMarketTechnicalUniverseV4Cohort.create(
+        universe_id="synthetic-f17-and-or-varied",
+        population_version=f"synthetic-{time.time_ns()}",
+        decision_date=bundle_fixture.cohort.decision_date,
+        raw_stock_codes=stock_codes,
+        excluded_stock_codes=(),
+        exclusion_reasons={},
+    )
+    scope = ResearchCaptureWriteScope(attempt_root / "technical-output", database)
+    store_root = scope.root / "technical-store"
+    produced = produce_daily_market_technical_universe_v4(
+        DailyMarketTechnicalUniverseV4ProductionRequest(
+            source_database=database,
+            cohort=cohort,
+            decision_cutoff=decision_cutoff,
+            store_output_root=store_root,
+            research_scope=scope,
+        )
+    )
+    assert produced.status == "complete", produced.to_dict()
+    assert produced.plan is not None and produced.receipt is not None
+    writer = DailyMarketTechnicalOfficialDispositionBundleWriterV1(
+        scope.root / "official-disposition-bundle-v1",
+        research_scope=scope,
+    )
+    writer.create_from_pins(
+        store_output_root=store_root,
+        generation_identity_sha256=cast(str, produced.generation_identity_sha256),
+        plan_identity_sha256=cast(str, produced.plan_identity_sha256),
+        expected_plan_sha256=cast(str, produced.plan_sha256),
+        receipt_identity_sha256=cast(str, produced.receipt_identity_sha256),
+        expected_receipt_sha256=cast(str, produced.receipt_content_sha256),
+        market_assignment_source_pin=bundle_fixture.market_pin,
+        official_disposal_source_pin=bundle_fixture.disposal_pin,
+    )
+    return Path(writer.output_root)
+
+
+def _query_with_rule_and_stock_filters(
     view: DailyMarketTechnicalOfficialDispositionView,
     *,
-    multiple_rule_states: bool,
-    multiple_stock_codes: bool,
-) -> DailyMarketTechnicalOfficialDispositionBookmarkV1:
+    rule_states: tuple[str, ...],
+    outer_stock_codes: tuple[str, ...],
+    inner_stock_codes: tuple[str, ...] = (),
+) -> DailyMarketTechnicalOfficialDispositionQueryV1:
     assert view.current_result is not None
-    assert view.current_request is not None
-    assert view._selected_row is not None
     base = view.current_result.query
     technical = base.technical_query
-    rule_filters = technical.rule_state_filters
-    if multiple_rule_states:
-        rule_filters = (
-            DailyMarketTechnicalRuleStateFilterV4.create(
-                technical.method_rule_keys[0], ("match", "unknown")
-            ),
-        )
+    rule_filters = (
+        DailyMarketTechnicalRuleStateFilterV4.create(
+            technical.method_rule_keys[0], cast(Any, rule_states)
+        ),
+    )
     rebuilt_technical = DailyMarketTechnicalUniverseV4Query.create(
         store_output_root=technical.store_output_root,
         generation_identity_sha256=technical.generation_identity_sha256,
@@ -113,18 +222,12 @@ def _bookmark_with_unrepresentable_query(
         receipt_sha256=technical.receipt_sha256,
         rule_state_filters=rule_filters,
         combine_mode=technical.combine_mode,
-        stock_filter=technical.stock_filter,
+        stock_filter=inner_stock_codes,
         sort_key=technical.sort_key,
         descending=technical.descending,
         page_index=technical.page_index,
         page_size=technical.page_size,
     )
-    if multiple_stock_codes:
-        stock_codes = tuple(sorted({view._selected_row.stock_code, "1001"}))
-        stock_mode = "explicit_codes"
-    else:
-        stock_codes = base.outer_stock_codes
-        stock_mode = base.outer_stock_filter_mode
     query = DailyMarketTechnicalOfficialDispositionQueryV1.create(
         technical_query=rebuilt_technical,
         decision_cutoff=base.decision_cutoff,
@@ -136,13 +239,46 @@ def _bookmark_with_unrepresentable_query(
         row_scope_filter=base.row_scope_filter,
         market_assignment_states=base.market_assignment_states,
         official_disposal_states=base.official_disposal_states,
-        outer_stock_filter_mode=cast(Any, stock_mode),
-        outer_stock_codes=stock_codes,
+        outer_stock_filter_mode="explicit_codes",
+        outer_stock_codes=outer_stock_codes,
         sort_clauses=base.sort_clauses,
+    )
+    return query
+
+
+def _bookmark_with_extended_query(
+    view: DailyMarketTechnicalOfficialDispositionView,
+    *,
+    inner_stock_codes: tuple[str, ...] = (),
+) -> DailyMarketTechnicalOfficialDispositionBookmarkV1:
+    assert view.current_request is not None
+    assert view._selected_row is not None
+    assert view._selected_row.technical_row is not None
+    base = view.current_result.query if view.current_result is not None else None
+    assert base is not None
+    technical = base.technical_query
+    selected_code = view._selected_row.stock_code
+    second_code = next(code for code in base.outer_stock_codes if code > selected_code)
+    selected_state = view._selected_row.technical_row.rule(
+        technical.method_rule_keys[0]
+    ).state
+    another_state = next(
+        state for state in ("match", "no_match", "unknown") if state != selected_state
+    )
+    selected_states = tuple(
+        state
+        for state in ("match", "no_match", "unknown")
+        if state in {selected_state, another_state}
+    )
+    query = _query_with_rule_and_stock_filters(
+        view,
+        rule_states=(selected_state, another_state),
+        outer_stock_codes=(selected_code, second_code),
+        inner_stock_codes=inner_stock_codes,
     )
     request = DailyMarketTechnicalOfficialDispositionPageRequestV1.create(
         query,
-        page_index=view.current_request.page_index,
+        page_index=0,
         page_size=view.current_request.page_size,
     )
     return DailyMarketTechnicalOfficialDispositionBookmarkV1.create(
@@ -354,15 +490,15 @@ def test_same_table_position_selects_new_page_row_after_navigation(
             )
         )
         assert "公式" not in table_rule_text
-        technical_cell = view.results_table.item(technical_index, 2)
-        assert technical_cell is not None and technical_cell.text() == table_rule_text
+        technical_cell = view.results_model.index(technical_index, 2)
+        assert technical_cell.isValid() and technical_cell.data() == table_rule_text
         first_page_row = view.current_page.rows[0]
-        first_item = view.results_table.item(0, 0)
-        assert first_item is not None
+        first_item = view.results_model.index(0, 0)
+        assert first_item.isValid()
         QTest.mouseClick(
             view.results_table.viewport(),
             Qt.MouseButton.LeftButton,
-            pos=view.results_table.visualItemRect(first_item).center(),
+            pos=view.results_table.visualRect(first_item).center(),
         )
         app.processEvents()
         assert view._selected_row is first_page_row
@@ -373,18 +509,18 @@ def test_same_table_position_selects_new_page_row_after_navigation(
         assert view.current_page.page_index == 5
         target_row = view.current_page.rows[0]
         assert target_row.stock_code != first_page_row.stock_code
-        assert view.results_table.currentRow() == -1
+        assert view.results_table.currentIndex().row() == -1
         excluded_row = view.current_page.rows[-1]
         assert excluded_row.technical_row is None
         assert view._technical_state_text(excluded_row) == "明示排除"
 
         # 跨頁後點同一個表格位置，必須綁到新頁列，不得沿用舊列或落成無選取。
-        target_item = view.results_table.item(0, 0)
-        assert target_item is not None
+        target_item = view.results_model.index(0, 0)
+        assert target_item.isValid()
         QTest.mouseClick(
             view.results_table.viewport(),
             Qt.MouseButton.LeftButton,
-            pos=view.results_table.visualItemRect(target_item).center(),
+            pos=view.results_table.visualRect(target_item).center(),
         )
         app.processEvents()
         assert view._selected_row is target_row
@@ -433,6 +569,75 @@ def test_missing_root_does_not_scan_and_empty_or_invalid_filters_are_rejected(
     first_field.setCurrentIndex(first_field.findData("stock_code"))
     second_field.setCurrentIndex(second_field.findData("stock_code"))
     with pytest.raises(ValueError, match="sort_duplicate"):
+        view._read_conditions()
+    view.close()
+
+
+def test_all_rule_state_combinations_and_bounded_multi_stock_parser(
+    app: QApplication,
+) -> None:
+    view = DailyMarketTechnicalOfficialDispositionView(None)
+    first_rule_key = next(iter(view.rule_state_boxes))
+    state_box = view.rule_state_boxes[first_rule_key]
+    view.rule_filter_enabled.setChecked(True)
+    assert tuple(
+        tuple(cast(Any, state_box.itemData(index)))
+        for index in range(1, state_box.count())
+    ) == view_module._RULE_STATE_SELECTIONS
+    assert state_box.itemData(0) == view_module._NO_RULE_STATE_FILTER
+    for selection in view_module._RULE_STATE_SELECTIONS:
+        state_box.setCurrentIndex(state_box.findData(selection))
+        filters = cast(tuple[DailyMarketTechnicalRuleStateFilterV4, ...],
+                       view._read_conditions()["rule_state_filters"])
+        assert len(filters) == 1
+        assert filters[0].rule_key == first_rule_key
+        assert filters[0].states == selection
+    view.rule_filter_enabled.setChecked(False)
+    state_box.setCurrentIndex(0)
+    assert state_box.currentData() == view_module._NO_RULE_STATE_FILTER
+    assert view._read_conditions()["rule_state_filters"] == ()
+
+    assert view_module._parse_stock_code_filter(
+        "2330  2317，1101,\t0050"
+    ) == ("0050", "1101", "2317", "2330")
+    for raw, reason in (
+        ("", "stock_code_required"),
+        (" \t ", "stock_code_required"),
+        ("2382,,2330", "stock_code_invalid"),
+        ("2382,", "stock_code_invalid"),
+        (",2382", "stock_code_invalid"),
+        ("2382, ,2330", "stock_code_invalid"),
+        ("2382,2382", "stock_code_duplicate"),
+        ("2382,23-3", "stock_code_invalid"),
+    ):
+        with pytest.raises(ValueError, match=reason):
+            view_module._parse_stock_code_filter(raw)
+
+    too_many_codes = ",".join(f"{index:06d}" for index in range(100_001))
+    with pytest.raises(ValueError, match="stock_code_limit"):
+        view_module._parse_stock_code_filter(too_many_codes)
+
+    max_code_count = view_module.DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS
+    max_input = ", ".join(f"A{index:015d}" for index in range(max_code_count))
+    assert len(max_input) == view_module._MAX_STOCK_FILTER_INPUT_CHARACTERS
+    parsed_max_input = view_module._parse_stock_code_filter(max_input)
+    assert len(parsed_max_input) == max_code_count
+    assert parsed_max_input[0] == "A000000000000000"
+    assert parsed_max_input[-1] == "A000000000099999"
+
+    assert view.stock_code_input.maxLength() == (
+        view_module._MAX_STOCK_FILTER_INPUT_CHARACTERS + 1
+    )
+    view.stock_filter_enabled.setChecked(True)
+    view.stock_code_input.setText(max_input)
+    assert view.stock_code_input.text() == max_input
+    assert not view.stock_code_input.input_was_truncated
+    conditions = view._read_conditions()
+    assert len(cast(tuple[str, ...], conditions["outer_stock_codes"])) == max_code_count
+
+    view.stock_code_input.setText(max_input + "  ")
+    assert view.stock_code_input.input_was_truncated
+    with pytest.raises(ValueError, match="stock_filter_size_limit"):
         view._read_conditions()
     view.close()
 
@@ -492,8 +697,16 @@ def test_zero_match_clears_rows_and_failed_source_switch_preserves_current_page(
     view, entry = _load_real_bundle(app, bundle_fixture)
     previous_result = view.current_result
     previous_query = previous_result.query.query_identity_sha256 if previous_result else None
+    previous_page = view.current_page
 
     view.stock_filter_enabled.setChecked(True)
+    view.stock_code_input.setText("1000,,1001")
+    view.apply_filters()
+    assert view.active_worker is None
+    assert view.current_result is previous_result
+    assert view.current_page is previous_page
+    assert "stock_code_invalid" in view.status_label.text()
+
     view.stock_code_input.setText("999999")
     view.apply_filters()
     _wait_for_idle(app, view)
@@ -501,7 +714,7 @@ def test_zero_match_clears_rows_and_failed_source_switch_preserves_current_page(
     assert view.current_page.counts.declared_count == 258
     assert view.current_page.counts.matching_count == 0
     assert view.current_page.rows == ()
-    assert view.results_table.rowCount() == 0
+    assert view.results_model.rowCount() == 0
     assert "0 筆符合" in view.page_label.text()
     zero_result = view.current_result
     assert zero_result is not None and zero_result.query.query_identity_sha256 != previous_query
@@ -524,6 +737,311 @@ def test_zero_match_clears_rows_and_failed_source_switch_preserves_current_page(
     assert view.current_result is preserved_result
     assert "synthetic_exact_source_drift" in view.status_label.text()
     view.close()
+
+
+def test_multistate_multistock_bookmark_roundtrip_and_inner_filter_atomic_reject(
+    app: QApplication,
+    bundle_fixture: Any,
+) -> None:
+    view, _entry = _load_real_bundle(app, bundle_fixture)
+    assert view.select_stock_code("1000")
+    assert view._selected_row is not None and view._selected_row.technical_row is not None
+    original_row_identity = view._selected_row.row_identity_sha256
+    assert view.current_page is not None
+    base_query = view.current_result.query if view.current_result is not None else None
+    assert base_query is not None
+    rule_key = base_query.technical_query.method_rule_keys[0]
+    selected_state = view._selected_row.technical_row.rule(rule_key).state
+    another_state = next(
+        state for state in ("match", "no_match", "unknown") if state != selected_state
+    )
+    selected_states = tuple(
+        state
+        for state in ("match", "no_match", "unknown")
+        if state in {selected_state, another_state}
+    )
+    original_query_identity = base_query.query_identity_sha256
+    selected_code = view._selected_row.stock_code
+    second_code = next(
+        row.stock_code for row in view.current_page.rows if row.stock_code > selected_code
+    )
+    view.rule_filter_enabled.setChecked(True)
+    view.rule_state_boxes[rule_key].setCurrentIndex(
+        view.rule_state_boxes[rule_key].findData(selected_states)
+    )
+    view.stock_filter_enabled.setChecked(True)
+    view.stock_code_input.setText(f"{second_code}， {selected_code}")
+    view.apply_filters()
+    _wait_for_idle(app, view)
+    assert view.current_result is not None
+    assert view.current_result.query.query_identity_sha256 != original_query_identity
+    assert view.current_result.query.technical_query.rule_state_filters[0].states == selected_states
+    assert view.select_stock_code(selected_code)
+    assert view._selected_row is not None
+    assert view.current_page is not None
+    assert view._selected_row.row_identity_sha256 != original_row_identity
+    view.add_selected_to_comparison()
+    current_result = view.current_result
+    current_page = view.current_page
+    current_selection = view._selected_row
+    captured: list[object] = []
+    view.bookmarkPrepared.connect(captured.append)
+    view.prepare_bookmark()
+    assert captured == []
+    assert "比較收藏需選 2–5 檔" in view.status_label.text()
+    assert view.current_result is current_result
+    assert view.current_page is current_page
+    assert view._selected_row is current_selection
+    assert len(view.comparison_basket) == 1
+    assert view.select_stock_code(second_code)
+    view.add_selected_to_comparison()
+    assert len(view.comparison_basket) == 2
+    assert view.select_stock_code(selected_code)
+    view.prepare_bookmark()
+    assert captured, view.status_label.text()
+    bookmark = cast(DailyMarketTechnicalOfficialDispositionBookmarkV1, captured[-1])
+    bookmarked_request = DailyMarketTechnicalOfficialDispositionPageRequestV1.from_json(
+        bookmark.origin_page_request_json
+    )
+    bookmarked_query = bookmarked_request.query
+    expected_codes = bookmarked_query.outer_stock_codes
+    expected_states = bookmarked_query.technical_query.rule_state_filters[0].states
+    assert len(expected_codes) == 2
+    assert len(expected_states) == 2
+
+    # 重現先前拒絕案例：套用不含此股票實際規則狀態的條件後，該股票不在新結果頁。
+    rejected_states: tuple[str, ...] = ("match", "unknown")
+    if selected_state in rejected_states:
+        rejected_states = (next(
+            state for state in ("match", "no_match", "unknown")
+            if state != selected_state
+        ),)
+    view.rule_state_boxes[rule_key].setCurrentIndex(
+        view.rule_state_boxes[rule_key].findData(rejected_states)
+    )
+    view.apply_filters()
+    _wait_for_idle(app, view)
+    assert view.current_page is not None
+    assert all(row.stock_code != selected_code for row in view.current_page.rows)
+    with pytest.raises(
+        ValueError, match="technical_official_view_saved_row_missing_or_changed"
+    ):
+        view_module._find_row(
+            view.current_page, selected_code, bookmark.selected_row_identity_sha256
+        )
+
+    restored = DailyMarketTechnicalOfficialDispositionView(bundle_fixture.bundle_root)
+    try:
+        restored.restore_bookmark(bookmark)
+        _wait_for_idle(app, restored)
+        assert restored.current_result is not None, restored.status_label.text()
+        assert (
+            restored.current_result.query.query_identity_sha256
+            == bookmarked_query.query_identity_sha256
+        )
+        assert restored.current_page is not None and restored.current_page.page_index == 0
+        assert restored._selected_row is not None
+        assert restored._selected_row.stock_code == "1000"
+        assert restored.rule_filter_enabled.isChecked()
+        rule_key = bookmarked_query.technical_query.method_rule_keys[0]
+        assert tuple(cast(Any, restored.rule_state_boxes[rule_key].currentData())) == expected_states
+        assert restored.stock_filter_enabled.isChecked()
+        assert restored.stock_code_input.text() == ", ".join(expected_codes)
+        restored_conditions = restored._read_conditions()
+        restored_filters = cast(
+            tuple[DailyMarketTechnicalRuleStateFilterV4, ...],
+            restored_conditions["rule_state_filters"],
+        )
+        assert restored_filters[0].states == expected_states
+        assert restored_conditions["outer_stock_codes"] == expected_codes
+
+        # 每一種非空狀態集合都能由同一個已核查來源查詢表示並回填控制項。
+        for selection in view_module._RULE_STATE_SELECTIONS:
+            query = _query_with_rule_and_stock_filters(
+                restored,
+                rule_states=selection,
+                outer_stock_codes=expected_codes,
+            )
+            restored._apply_query_controls(query)
+            assert tuple(cast(Any, restored.rule_state_boxes[rule_key].currentData())) == selection
+            restored_conditions = restored._read_conditions()
+            restored_filters = cast(
+                tuple[DailyMarketTechnicalRuleStateFilterV4, ...],
+                restored_conditions["rule_state_filters"],
+            )
+            assert restored_filters[0].states == selection
+            assert restored_conditions["outer_stock_codes"] == expected_codes
+            assert restored.stock_code_input.text() == ", ".join(expected_codes)
+
+        previous_result = restored.current_result
+        previous_page = restored.current_page
+        previous_controls = _controls_snapshot(restored)
+        previous_basket = restored.comparison_basket
+        unsupported = _bookmark_with_extended_query(
+            restored, inner_stock_codes=("1000",)
+        )
+        restored.restore_bookmark(unsupported)
+        assert restored.active_worker is None
+        assert restored.current_result is previous_result
+        assert restored.current_page is previous_page
+        assert _controls_snapshot(restored) == previous_controls
+        assert restored.comparison_basket == previous_basket
+        assert "inner_stock_filter_not_representable" in restored.status_label.text()
+    finally:
+        restored.close()
+    view.close()
+
+
+def test_real_and_or_conditions_sort_globally_before_paging(
+    app: QApplication,
+    bundle_fixture: Any,
+) -> None:
+    from app_module.daily_market_technical_universe_v4_store import (
+        DailyMarketTechnicalUniverseV4StoreReader,
+    )
+
+    verified_store = DailyMarketTechnicalUniverseV4StoreReader(
+        bundle_fixture.store_root
+    ).read_exact(
+        bundle_fixture.generation_identity_sha256,
+        bundle_fixture.plan_identity_sha256,
+        bundle_fixture.receipt_identity_sha256,
+        expected_receipt_sha256=bundle_fixture.expected_receipt_sha256,
+        expected_plan_sha256=bundle_fixture.expected_plan_sha256,
+    )
+    varied_bundle_root = _create_varied_technical_bundle(
+        bundle_fixture,
+        decision_cutoff=verified_store.plan.source_clock.decision_cutoff,
+    )
+    view, _entry = _load_real_bundle(
+        app,
+        SimpleNamespace(bundle_root=varied_bundle_root),
+        expected_population=4,
+    )
+    try:
+        result = view.current_result
+        first_page = view.current_page
+        assert result is not None and first_page is not None
+        all_rows: list[Any] = []
+        for page_index in range(first_page.page_count):
+            request = DailyMarketTechnicalOfficialDispositionPageRequestV1.create(
+                result.query,
+                page_index=page_index,
+                page_size=first_page.page_size,
+            )
+            page = result.read_page_request(request)
+            all_rows.extend(page.rows)
+        rule_keys = result.query.technical_query.method_rule_keys
+        states_by_code: dict[str, dict[str, str]] = {}
+        for row in all_rows:
+            if row.filter_evaluation.row_scope != "included_processed":
+                continue
+            assert row.technical_row is not None
+            states_by_code[row.stock_code] = {
+                rule_key: row.technical_row.rule(rule_key).state
+                for rule_key in rule_keys
+            }
+
+        candidate: tuple[
+            str, tuple[str, ...], str, tuple[str, ...], list[str], list[str]
+        ] | None = None
+        state_selections = cast(
+            tuple[tuple[str, ...], ...], view_module._RULE_STATE_SELECTIONS
+        )
+        for left_index, left_key in enumerate(rule_keys):
+            for right_key in rule_keys[left_index + 1 :]:
+                for left_states in state_selections:
+                    left_set = set(left_states)
+                    for right_states in state_selections:
+                        right_set = set(right_states)
+                        and_codes = [
+                            code
+                            for code, values in states_by_code.items()
+                            if values[left_key] in left_set
+                            and values[right_key] in right_set
+                        ]
+                        or_codes = [
+                            code
+                            for code, values in states_by_code.items()
+                            if values[left_key] in left_set
+                            or values[right_key] in right_set
+                        ]
+                        if len(and_codes) >= 2 and len(or_codes) > len(and_codes):
+                            candidate = (
+                                left_key,
+                                left_states,
+                                right_key,
+                                right_states,
+                                and_codes,
+                                or_codes,
+                            )
+                            break
+                    if candidate is not None:
+                        break
+                if candidate is not None:
+                    break
+            if candidate is not None:
+                break
+        assert candidate is not None, "合成真來源需有可區分 AND/OR 的已核規則狀態"
+        left_key, left_states, right_key, right_states, and_codes, or_codes = candidate
+        extra_code = next(code for code in or_codes if code not in and_codes)
+        selected_codes = (and_codes[0], and_codes[1], extra_code)
+
+        view.rule_filter_enabled.setChecked(True)
+        view.rule_state_boxes[left_key].setCurrentIndex(
+            view.rule_state_boxes[left_key].findData(left_states)
+        )
+        view.rule_state_boxes[right_key].setCurrentIndex(
+            view.rule_state_boxes[right_key].findData(right_states)
+        )
+        for scope, checkbox in view.scope_checks.items():
+            checkbox.setChecked(scope in {"included_processed", "excluded"})
+        view.stock_filter_enabled.setChecked(True)
+        view.stock_code_input.setText(
+            f"{selected_codes[2]}， {selected_codes[0]},\t{selected_codes[1]}"
+        )
+        view.page_size_box.setValue(1)
+        view.sort_rows[0][0].setCurrentIndex(
+            view.sort_rows[0][0].findData("stock_code")
+        )
+        view.sort_rows[0][1].setCurrentIndex(
+            view.sort_rows[0][1].findData("desc")
+        )
+        view.apply_filters()
+        _wait_for_idle(app, view)
+        and_result = view.current_result
+        assert and_result is not None
+        assert and_result.query.outer_stock_codes == tuple(sorted(selected_codes))
+        assert and_result.counts.matching_count == 2
+        assert view.current_page is not None and view.current_page.page_index == 0
+        and_first_code = view.current_page.rows[0].stock_code
+        view.navigate_page(1)
+        _wait_for_idle(app, view)
+        assert view.current_page is not None
+        and_second_code = view.current_page.rows[0].stock_code
+        assert (and_first_code, and_second_code) == tuple(sorted(and_codes, reverse=True))
+
+        view.combine_box.setCurrentIndex(view.combine_box.findData("OR"))
+        view.apply_filters()
+        _wait_for_idle(app, view)
+        or_result = view.current_result
+        assert or_result is not None
+        expected_or_codes = tuple(
+            sorted(set(or_codes).intersection(selected_codes), reverse=True)
+        )
+        assert or_result.counts.matching_count == len(expected_or_codes)
+        ordered_or_codes: list[str] = []
+        assert view.current_page is not None
+        assert view.current_page.page_count == len(expected_or_codes)
+        for page_index in range(len(expected_or_codes)):
+            if page_index:
+                view.navigate_page(page_index)
+                _wait_for_idle(app, view)
+            assert view.current_page is not None
+            ordered_or_codes.append(view.current_page.rows[0].stock_code)
+        assert ordered_or_codes == list(expected_or_codes)
+    finally:
+        view.close()
 
 
 def test_cancelled_late_exact_open_keeps_current_query_and_page(
@@ -578,37 +1096,6 @@ def test_invalid_bookmark_restore_is_atomic_and_close_cancels_late_worker(
     assert view.current_result is old_result
     assert view.current_page is old_page
     assert "收藏無效" in view.status_label.text()
-
-    assert view.select_stock_code("1000")
-    view.add_selected_to_comparison()
-    view.rule_filter_enabled.setChecked(True)
-    view.rule_state_boxes[next(iter(view.rule_state_boxes))].setCurrentIndex(1)
-    view.market_filter_enabled.setChecked(True)
-    view.market_checks["assigned_twse"].setChecked(True)
-    view.stock_filter_enabled.setChecked(True)
-    view.stock_code_input.setText("1000")
-    view.add_sort_clause()
-    view.sort_rows[0][0].setCurrentIndex(view.sort_rows[0][0].findData("stock_code"))
-    view.sort_rows[1][0].setCurrentIndex(view.sort_rows[1][0].findData("raw_row_count"))
-    controls_before = _controls_snapshot(view)
-    basket_before = view.comparison_basket
-
-    for multiple_rule_states, multiple_stock_codes, error_code in (
-        (True, False, "rule_filter_not_representable"),
-        (False, True, "stock_filter_not_representable"),
-    ):
-        unsupported = _bookmark_with_unrepresentable_query(
-            view,
-            multiple_rule_states=multiple_rule_states,
-            multiple_stock_codes=multiple_stock_codes,
-        )
-        view.restore_bookmark(unsupported)
-        assert view.active_worker is None
-        assert view.current_result is old_result
-        assert view.current_page is old_page
-        assert view.comparison_basket == basket_before
-        assert _controls_snapshot(view) == controls_before
-        assert error_code in view.status_label.text()
 
     entered = threading.Event()
     release = threading.Event()

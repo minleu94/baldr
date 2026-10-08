@@ -183,14 +183,14 @@ def test_actual_main_official_source_compare_save_and_watchlist_restore(bundle_f
         view.catalog_list.setCurrentRow(0)
         _wait_for(app, lambda: view.active_worker is None)
         assert view.current_result.counts.population.declared_count == 258
-        view.results_table.setCurrentCell(0, 0)
+        view.results_table.setCurrentIndex(view.results_model.index(0, 0))
         first_code = view.current_page.rows[0].stock_code
         assert view._selected_row is not None and view._selected_row.stock_code == first_code
         view.add_comparison_button.click()
         assert tuple(item.stock_code for item in view.comparison_basket) == (first_code,), view.status_label.text()
         view.next_page_button.click()
         _wait_for(app, lambda: view.active_worker is None)
-        view.results_table.setCurrentCell(0, 0)
+        view.results_table.setCurrentIndex(view.results_model.index(0, 0))
         selected_code = view.current_page.rows[0].stock_code
         assert view._selected_row is not None and view._selected_row.stock_code == selected_code
         view.add_comparison_button.click()

@@ -6,9 +6,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 import json
 from pathlib import Path
+import re
 from typing import Any, cast
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QModelIndex, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -18,8 +19,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
+    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -52,6 +52,7 @@ from app_module.daily_market_technical_universe_v4_producer import (
     produce_daily_market_technical_universe_v4,
 )
 from app_module.daily_market_technical_universe_v4_query import (
+    DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_SIZE,
     DailyMarketTechnicalUniverseV4Page,
     DailyMarketTechnicalUniverseV4Query,
     DailyMarketTechnicalUniverseV4ReadSelection,
@@ -59,11 +60,18 @@ from app_module.daily_market_technical_universe_v4_query import (
     DailyMarketTechnicalUniverseV4ReadSession,
     open_daily_market_technical_universe_v4_read_session,
 )
+from app_module.daily_market_technical_universe_v4_store import (
+    DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS,
+)
 from app_module.daily_market_technical_universe_v4_stock import (
     DailyMarketTechnicalUniverseV4Stock,
     read_daily_market_technical_universe_v4_stock_from_selection,
 )
 from ui_qt.workers.task_worker import TaskWorker
+from ui_qt.models.saved_research_page_table_model import (
+    SavedResearchPageTableModel,
+    SavedResearchTableRow,
+)
 from ui_qt.widgets.daily_market_technical_v4_production_setup import (
     DailyMarketTechnicalV4DeferredProductionSetup,
 )
@@ -75,6 +83,39 @@ _STATE_LABELS: dict[str, str] = {
     "unknown": "未知",
 }
 _STATE_VALUES: tuple[RuleState, ...] = ("match", "no_match", "unknown")
+_NO_STATE_FILTER = "all"
+_RULE_STATE_FILTER_OPTIONS: tuple[
+    tuple[str, str], ...
+] = (
+    ("不限制", _NO_STATE_FILTER),
+    ("符合", "match"),
+    ("不符合", "no_match"),
+    ("符合／不符合", "match|no_match"),
+    ("未知", "unknown"),
+    ("符合／未知", "match|unknown"),
+    ("不符合／未知", "no_match|unknown"),
+    ("全部狀態", "match|no_match|unknown"),
+)
+_RULE_STATE_FILTER_ID_TO_STATES: dict[str, tuple[RuleState, ...] | None] = {
+    _NO_STATE_FILTER: None,
+    "match": ("match",),
+    "no_match": ("no_match",),
+    "match|no_match": ("match", "no_match"),
+    "unknown": ("unknown",),
+    "match|unknown": ("match", "unknown"),
+    "no_match|unknown": ("no_match", "unknown"),
+    "match|no_match|unknown": ("match", "no_match", "unknown"),
+}
+_RULE_STATE_FILTER_STATES_TO_ID: dict[tuple[RuleState, ...], str] = {
+    states: filter_id
+    for filter_id, states in _RULE_STATE_FILTER_ID_TO_STATES.items()
+    if states is not None
+}
+_STOCK_CODE_RE = re.compile(r"^[A-Z0-9]{1,16}$")
+_MAX_STOCK_FILTER_TEXT_LENGTH = (
+    DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS * 16
+    + (DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS - 1) * 2
+)
 _RULE_LABELS: dict[str, str] = {
     "ma5_20_golden_cross": "MA5／MA20 金叉",
     "kd_golden_cross": "K／D 金叉",
@@ -741,6 +782,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self._catalog_page: DailyMarketTechnicalUniverseV4CatalogPage | None = None
         self._current_entry: DailyMarketTechnicalUniverseV4CatalogEntry | None = None
         self._rule_filters: dict[str, QComboBox] = {}
+        self._stock_filter_rejected_text: str | None = None
         self._comparison_basket: list[_ComparisonBasketItem] = []
 
         root = QVBoxLayout(self)
@@ -815,8 +857,10 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.stock_filter = QLineEdit()
         self.stock_filter.setObjectName("dailyMarketTechnicalUniverseV4StockFilter")
         self.stock_filter.setAccessibleName("依股票代碼篩選完整母體")
-        self.stock_filter.setPlaceholderText("股票代碼，可用逗號分隔；空白表示全部")
-        self.stock_filter.setMaxLength(4096)
+        self.stock_filter.setPlaceholderText("股票代碼，可用逗號分隔；最多 100,000 檔；空白表示全部")
+        self.stock_filter.setMaxLength(_MAX_STOCK_FILTER_TEXT_LENGTH)
+        self.stock_filter.inputRejected.connect(self._on_stock_filter_input_rejected)
+        self.stock_filter.textEdited.connect(self._on_stock_filter_text_edited)
         filter_layout.addWidget(QLabel("組合方式"), 0, 0)
         filter_layout.addWidget(self.mode, 0, 1)
         filter_layout.addWidget(QLabel("股票"), 0, 2)
@@ -860,19 +904,26 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
         root.addWidget(self.summary)
 
-        self.table = QTableWidget(0, 9)
+        self.table = QTableView()
         self.table.setObjectName("dailyMarketTechnicalUniverseV4Rows")
-        self.table.setHorizontalHeaderLabels([
-            "股票",
-            "決策日",
-            "最新特徵日",
-            "原始列數",
-            "MA5／20",
-            "K／D",
-            "MACD",
-            "量能比 20",
-            "量能比 5",
-        ])
+        self.results_model = SavedResearchPageTableModel[
+            DailyMarketTechnicalParentV4Row
+        ](
+            (
+                "股票",
+                "決策日",
+                "最新特徵日",
+                "原始列數",
+                "MA5／20",
+                "K／D",
+                "MACD",
+                "量能比 20",
+                "量能比 5",
+            ),
+            maximum_page_size=DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_SIZE,
+            parent=self.table,
+        )
+        self.table.setModel(self.results_model)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -938,7 +989,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.bookmark_button.clicked.connect(self.prepare_bookmark)
         self.cancel_button.clicked.connect(self.cancel)
         self.sources.currentIndexChanged.connect(self._show_selected_metadata)
-        self.table.cellDoubleClicked.connect(lambda _row, _column: self.open_selected_stock())
+        self.table.doubleClicked.connect(lambda _index: self.open_selected_stock())
         self._set_page_controls()
         if self.production_request_factory is None:
             self.produce_button.setEnabled(False)
@@ -1012,18 +1063,15 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         )
 
     def apply_query(self) -> None:
+        if self._stock_filter_rejected_text == self.stock_filter.text():
+            self.status.setText("股票代碼輸入超過欄位上限，未套用；請縮短清單後再試。")
+            return
         base = self._query
         if base is None:
             self.status.setText("請先嚴格核驗並讀取一筆保存來源。")
             return
         try:
-            filters: list[DailyMarketTechnicalRuleStateFilterV4] = []
-            for key, combo in self._rule_filters.items():
-                state = combo.currentData()
-                if state in _STATE_VALUES:
-                    filters.append(
-                        DailyMarketTechnicalRuleStateFilterV4.create(key, (cast(RuleState, state),))
-                    )
+            filters = self._selected_rule_state_filters()
             stock_codes = self._parse_stock_filter(self.stock_filter.text())
         except ValueError as exc:
             self.status.setText(f"查詢條件無效：{exc}")
@@ -1038,7 +1086,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
             "更新全域查詢",
             lambda cancel_callback=None: _read_query_page(
                 base,
-                rule_state_filters=tuple(filters),
+                rule_state_filters=filters,
                 combine_mode=combine_mode,
                 stock_filter=stock_codes,
                 sort_key=sort_key,
@@ -1327,16 +1375,12 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.compare_button.setEnabled(2 <= count <= 256 and not self._closing)
 
     def _select_stock_code(self, stock_code: str) -> bool:
-        for index in range(self.table.rowCount()):
-            item = self.table.item(index, 0)
-            if item is None:
-                continue
-            row = item.data(Qt.ItemDataRole.UserRole)
-            if isinstance(row, DailyMarketTechnicalParentV4Row) and row.stock_code == stock_code:
-                self.table.setCurrentCell(index, 0)
-                self.table.selectRow(index)
-                return True
-        return False
+        index = self.results_model.index_for_stock(stock_code)
+        if not index.isValid():
+            return False
+        self.table.setCurrentIndex(index)
+        self.table.selectRow(index.row())
+        return True
 
     def produce_new(self) -> None:
         self._start_production(None)
@@ -1614,8 +1658,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                 self._source_clock = None
             self._ensure_rule_filters(value.query.method_rule_keys)
             self._set_filter_controls(value.query)
-            self.table.clearContents()
-            self.table.setRowCount(0)
+            self._replace_table_page(())
             empty_lines = [
                 f"{value.query.universe_id}｜{value.query.population_version}｜"
                 f"決策日 {value.query.decision_date}",
@@ -1761,10 +1804,8 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
             combo = QComboBox()
             combo.setObjectName(f"dailyMarketTechnicalV4Filter_{key}")
             combo.setAccessibleName(f"{label_text}狀態篩選")
-            combo.addItem("不限制", "all")
-            combo.addItem("符合", "match")
-            combo.addItem("不符合", "no_match")
-            combo.addItem("未知", "unknown")
+            for option_label, filter_id in _RULE_STATE_FILTER_OPTIONS:
+                combo.addItem(option_label, filter_id)
             row, col = divmod(index, 2)
             self.rule_filter_layout.addWidget(label, row, col * 2)
             self.rule_filter_layout.addWidget(combo, row, col * 2 + 1)
@@ -1785,16 +1826,49 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
 
     def _set_filter_controls(self, query: DailyMarketTechnicalUniverseV4Query) -> None:
         self.mode.setCurrentIndex(self.mode.findData(query.combine_mode))
+        self._stock_filter_rejected_text = None
         self.stock_filter.setText(", ".join(query.stock_filter))
         self.sort.setCurrentIndex(self.sort.findData(query.sort_key))
         self.descending.setCurrentIndex(self.descending.findData(query.descending))
         self.page_size.setCurrentIndex(self.page_size.findData(query.page_size))
         states_by_key = {
-            item.rule_key: item.states[0] if len(item.states) == 1 else "all"
+            item.rule_key: item.states
             for item in query.rule_state_filters
         }
         for key, combo in self._rule_filters.items():
-            combo.setCurrentIndex(combo.findData(states_by_key.get(key, "all")))
+            states = states_by_key.get(key)
+            filter_id = _NO_STATE_FILTER
+            if states is not None:
+                filter_id = _RULE_STATE_FILTER_STATES_TO_ID.get(states, "")
+                if not filter_id:
+                    raise ValueError("daily_market_technical_universe_v4_filter_state_unavailable")
+            selected_index = combo.findData(filter_id)
+            if selected_index < 0:
+                raise ValueError("daily_market_technical_universe_v4_filter_state_unavailable")
+            combo.setCurrentIndex(selected_index)
+
+    def _selected_rule_state_filters(
+        self,
+    ) -> tuple[DailyMarketTechnicalRuleStateFilterV4, ...]:
+        filters: list[DailyMarketTechnicalRuleStateFilterV4] = []
+        for key, combo in self._rule_filters.items():
+            value = combo.currentData()
+            if not isinstance(value, str) or value not in _RULE_STATE_FILTER_ID_TO_STATES:
+                raise ValueError("規則狀態篩選格式無效")
+            states = _RULE_STATE_FILTER_ID_TO_STATES[value]
+            if states is None:
+                continue
+            if any(state not in _STATE_VALUES for state in states):
+                raise ValueError("規則狀態篩選格式無效")
+            filters.append(DailyMarketTechnicalRuleStateFilterV4.create(key, states))
+        return tuple(filters)
+
+    def _on_stock_filter_input_rejected(self) -> None:
+        self._stock_filter_rejected_text = self.stock_filter.text()
+
+    def _on_stock_filter_text_edited(self, text: str) -> None:
+        if self._stock_filter_rejected_text is not None and text != self._stock_filter_rejected_text:
+            self._stock_filter_rejected_text = None
 
     def _render_rows(
         self,
@@ -1802,19 +1876,19 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         *,
         selected_code: str | None = None,
     ) -> None:
-        self.table.clearContents()
-        self.table.setRowCount(len(rows))
-        for index, row in enumerate(rows):
-            first = QTableWidgetItem(row.stock_code)
-            first.setData(Qt.ItemDataRole.UserRole, row)
-            self.table.setItem(index, 0, first)
-            values = (
+        model_rows: list[SavedResearchTableRow[DailyMarketTechnicalParentV4Row]] = []
+        for row in rows:
+            if tuple(rule.key for rule in row.rules) != tuple(_RULE_LABELS):
+                raise ValueError("daily_market_technical_universe_v4_view_rule_set_mismatch")
+            stock_label = row.stock_code
+            if row.raw_row_count == 0:
+                stock_label += "（缺資料）"
+            cells = [
+                stock_label,
                 row.decision_date.isoformat(),
                 row.latest_feature_date.isoformat() if row.latest_feature_date else "未知",
                 str(row.raw_row_count),
-            )
-            for column, value in enumerate(values, start=1):
-                self.table.setItem(index, column, QTableWidgetItem(value))
+            ]
             tooltip_lines = [
                 f"股票：{row.stock_code}",
                 f"來源 identity：{row.source_identity}",
@@ -1822,11 +1896,11 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                 f"觀測前綴連續：{'是' if row.observed_prefix_contiguous else '否'}",
                 f"原始資料列：{row.raw_row_count}",
             ]
-            for rule_index, rule in enumerate(row.rules, start=4):
+            for rule in row.rules:
                 status = _STATE_LABELS.get(rule.state, "未知")
                 if rule.ratio is not None:
                     status += f"｜比率 {rule.ratio}"
-                cell = QTableWidgetItem(status)
+                cells.append(status)
                 detail = [
                     f"{_RULE_LABELS.get(rule.key, rule.key)}：{_STATE_LABELS.get(rule.state, '未知')}",
                     f"方法：{rule.method_id} {rule.version}",
@@ -1849,22 +1923,32 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                         ensure_ascii=False,
                         sort_keys=True,
                     ))
-                cell.setToolTip("\n".join(detail))
-                self.table.setItem(index, rule_index, cell)
                 tooltip_lines.extend(detail)
-            for column in range(self.table.columnCount()):
-                item = self.table.item(index, column)
-                if item is not None:
-                    item.setToolTip("\n".join(tooltip_lines))
-            if row.raw_row_count == 0:
-                for column in range(self.table.columnCount()):
-                    item = self.table.item(index, column)
-                    if item is not None:
-                        item.setText(f"{item.text()}（缺資料）" if column == 0 else item.text())
-            if selected_code == row.stock_code:
-                self.table.setCurrentCell(index, 0)
-                self.table.selectRow(index)
-        self.open_button.setEnabled(bool(rows) and not self._closing)
+            full_tooltip = "\n".join(tooltip_lines)
+            model_rows.append(
+                SavedResearchTableRow(
+                    stock_code=row.stock_code,
+                    source_row=row,
+                    cells=tuple(cells),
+                    tooltips=(full_tooltip,) * len(cells),
+                )
+            )
+        self._replace_table_page(tuple(model_rows), selected_code=selected_code)
+        self.open_button.setEnabled(bool(model_rows) and not self._closing)
+
+    def _replace_table_page(
+        self,
+        rows: tuple[SavedResearchTableRow[DailyMarketTechnicalParentV4Row], ...],
+        *,
+        selected_code: str | None = None,
+    ) -> None:
+        selection_model = self.table.selectionModel()
+        if selection_model is not None:
+            selection_model.clearSelection()
+        self.table.setCurrentIndex(QModelIndex())
+        self.results_model.replace_page(rows)
+        if selected_code is not None:
+            self._select_stock_code(selected_code)
 
     def _apply_filter_controls_for_query(self, query: DailyMarketTechnicalUniverseV4Query) -> None:
         self._ensure_rule_filters(query.method_rule_keys)
@@ -1904,10 +1988,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         selected = self.table.selectionModel().selectedRows()
         if len(selected) != 1:
             return None
-        item = self.table.item(selected[0].row(), 0)
-        if item is None:
-            return None
-        value = item.data(Qt.ItemDataRole.UserRole)
+        value = self.results_model.row_at(selected[0].row())
         return value if isinstance(value, DailyMarketTechnicalParentV4Row) else None
 
     def _emit_selected_stock(self, value: object) -> None:
@@ -1928,8 +2009,19 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
 
     @staticmethod
     def _parse_stock_filter(text: str) -> tuple[str, ...]:
+        if len(text) > _MAX_STOCK_FILTER_TEXT_LENGTH:
+            raise ValueError("股票代碼清單超出欄位上限")
+        if not text.strip():
+            return ()
         raw = text.replace("，", ",")
-        pieces = tuple(part.strip().upper() for part in raw.split(",") if part.strip())
+        parts = raw.split(",")
+        if any(not part.strip() for part in parts):
+            raise ValueError("股票代碼清單不可有空欄位")
+        pieces = tuple(part.strip().upper() for part in parts)
+        if len(pieces) > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS:
+            raise ValueError("股票代碼不可超過 100,000 檔")
+        if any(_STOCK_CODE_RE.fullmatch(code) is None for code in pieces):
+            raise ValueError("股票代碼須為 1 至 16 個英文字母或數字")
         if len(set(pieces)) != len(pieces):
             raise ValueError("股票代碼不可重複")
         return tuple(sorted(pieces))

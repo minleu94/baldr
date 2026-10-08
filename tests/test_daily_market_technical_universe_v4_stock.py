@@ -275,7 +275,7 @@ def test_saved_stock_reopens_without_database_and_rejects_other_page(tmp_path):
     details.return_button.click()
     app.processEvents()
     assert browser.current_query == query
-    assert browser.table.item(browser.table.currentRow(), 0).text() == "2382"
+    assert browser.table.currentIndex().data() == "2382"
     browser.comparisonReady.emit(comparison)
     comparison_dialog = daily._technical_comparison_dialog
     assert comparison_dialog is not None
@@ -290,7 +290,7 @@ def test_saved_stock_reopens_without_database_and_rejects_other_page(tmp_path):
         app.processEvents()
         time.sleep(0.01)
     assert browser.current_query == second_query
-    assert browser.table.item(browser.table.currentRow(), 0).text() == "9999"
+    assert browser.table.currentIndex().data() == "9999"
     while browser._worker is not None and time.monotonic() < deadline:
         app.processEvents()
         time.sleep(0.01)
@@ -313,7 +313,7 @@ def test_saved_stock_reopens_without_database_and_rejects_other_page(tmp_path):
     assert navigated == ["recommendation"]
     assert source_tabs.currentWidget() is daily
     assert browser.current_query == query
-    assert browser.table.item(browser.table.currentRow(), 0).text() == "2382"
+    assert browser.table.currentIndex().data() == "2382"
     assert len(browser._comparison_basket) == 2
     from ui_qt.views.watchlist_view import WatchlistView
     from PySide6.QtCore import Qt
@@ -340,7 +340,7 @@ def test_saved_stock_reopens_without_database_and_rejects_other_page(tmp_path):
         time.sleep(0.01)
     assert navigated == ["recommendation", "recommendation"]
     assert browser.current_query == query
-    assert browser.table.item(browser.table.currentRow(), 0).text() == "2382"
+    assert browser.table.currentIndex().data() == "2382"
     assert len(browser._comparison_basket) == 2
     route_host.watchlist_view = watchlist_view
     route_host._record_shutdown_message = lambda message: None

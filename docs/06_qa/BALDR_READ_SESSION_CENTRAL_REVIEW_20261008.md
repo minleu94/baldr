@@ -307,3 +307,13 @@ F17 root 設定前置：新增 `TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT` 共用
 新增 `SavedResearchPageTableModel` 與 immutable 文字列；只保存指定上限的一頁，Display／ToolTip 提供完整文字，UserRole／row_at保留原typed DTO身分。無效、重複代碼或超量頁面在reset前原子拒絕，不覆蓋原頁；換頁丟棄舊列，不執行來源IO、金融計算或可見頁局部排序。
 
 模型3項回歸通過、Workbench85 passed／3.19秒、full-roots mypy901檔clean、compile通過。validator sandbox離線同步3項失敗保留於 `output/qa/f17_main_host_root_20261008_a/validator_sandbox04_failed`；同契約native25 passed／0 failed／4 protected skips。兩個實際選股頁尚未改用此模型，沒有新增可見操作，不更新Manual為已完成；QTableView接線、完整查詢控制、新程序及Native驗收仍待。
+
+### P04 兩頁模型、查詢與新程序的來源版接受
+
+兩個實際保存研究頁接用 bounded 當頁模型與 QTableView，保留完整 tooltip／typed DTO、整份來源查詢後分頁、精確股票代碼選取及換頁清除。七種非空技術狀態組合與不限制、多代碼輸入、AND／OR、原條件收藏還原已接線；無效／重複／超量輸入原子拒絕，不裁成有效前綴。官方頁內嵌 technical_query.stock_filter 仍明示拒絕，不宣稱所有公開query形狀皆能還原。
+
+個人技術頁與股票consumer合併10項通過，官方頁完整11項通過。Root第一次Main／新程序合併4 passed／1 failed，舊斷言錯將Windows venv redirector launcher視為reporter；attempt_c686b7e56d保留failed。QA新增精確PID父子／執行檔身分核驗，先將新建程序放入本次kill-on-close Job再resume，逾時清理整棵本次程序樹。中央獨立4項短測通過；最終test SHA `75763b6c4b299683abc598a1444b21007af09007271848460ba527481a9ad41a`。
+
+Root session53945 terminal0：9 passed／301.60秒。attempt_4ca9a28eed parent29364、launcher3080、reporter49528／OS parent3080，child exit0；原查詢page5、選股1250及跨頁1000／1250比較保持，詳情返回與主視窗關閉完成。來源inventory前後同 `04e0cf2018b9e6081e0d88b0ce5840ff823ac7901a9a4f8001dc771d41e9913e`，收藏JSON原bytes前後相同，network attempts為0。舊Qt destroyed disconnect警告保留。最後workbench85 passed／3.13秒、validator25／0／4、full-roots mypy902檔clean、compile／scoped diff-check通過。
+
+只接受合成保存研究來源版與測試新程序閉環；此child仍使用pytest測試helper，不是standalone Native/exe資格。正常全市場產製、真N效能、完整23條件、四用途與真人、新固定候選仍待，不改完整P00–P14／M1–M3目標。

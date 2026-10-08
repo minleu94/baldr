@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QModelIndex, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -26,8 +26,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
+    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -44,6 +43,7 @@ from app_module.daily_market_technical_official_disposition_bookmark_v1 import (
     canonical_daily_market_technical_official_disposition_bookmark_json_v1,
 )
 from app_module.daily_market_technical_official_disposition_query_reader_v1 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_QUERY_READER_V1_MAX_PAGE_SIZE,
     DailyMarketTechnicalOfficialDispositionPageRequestV1,
     DailyMarketTechnicalOfficialDispositionQueryPageV1,
     DailyMarketTechnicalOfficialDispositionQueryResultRowV1,
@@ -52,8 +52,12 @@ from app_module.daily_market_technical_official_disposition_query_reader_v1 impo
     open_daily_market_technical_official_disposition_bundle_session_v1,
 )
 from app_module.daily_market_technical_official_disposition_query_v1 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_QUERY_V1_MAX_BYTES,
     DailyMarketTechnicalOfficialDispositionQueryV1,
     DailyMarketTechnicalOfficialDispositionSortClauseV1,
+)
+from app_module.daily_market_technical_universe_v4_store import (
+    DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS,
 )
 from app_module.daily_market_technical_parent_v4_query import (
     DailyMarketTechnicalRuleStateFilterV4,
@@ -61,11 +65,27 @@ from app_module.daily_market_technical_parent_v4_query import (
 from app_module.daily_market_technical_method_contract_v4 import (
     daily_market_technical_method_contract_v4_payload,
 )
+from ui_qt.models.saved_research_page_table_model import (
+    SavedResearchPageTableModel, SavedResearchTableRow,
+)
 from ui_qt.workers.task_worker import TaskWorker
 
 
 _STATE_VALUES = ("match", "no_match", "unknown")
 _STATE_LABELS = {"match": "符合", "no_match": "不符合", "unknown": "未知"}
+_NO_RULE_STATE_FILTER = "all"
+_RULE_STATE_SELECTIONS = (
+    ("match",),
+    ("no_match",),
+    ("unknown",),
+    ("match", "no_match"),
+    ("match", "unknown"),
+    ("no_match", "unknown"),
+    ("match", "no_match", "unknown"),
+)
+_MAX_STOCK_FILTER_INPUT_CHARACTERS = (
+    DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS * 18 - 2
+)
 _SCOPE_VALUES = ("included_processed", "included_pending", "excluded")
 _SCOPE_LABELS = {
     "included_processed": "納入且已處理",
@@ -143,8 +163,66 @@ _TECHNICAL_UNKNOWN_REASON_LABELS = {
     "source_available_after_decision_cutoff": "來源可用時間晚於決策截止時間。",
     "verified_availability_missing_timestamp": "來源標示已核可用，但缺少可用時間。",
 }
-_STOCK_CODE_RE = re.compile(r"^[A-Za-z0-9]{1,16}$")
+_STOCK_CODE_RE = re.compile(r"^[A-Z0-9]{1,16}$")
 _KEEPALIVE_WORKERS: set[TaskWorker] = set()
+
+
+def _parse_stock_code_filter(
+    raw: object,
+    *,
+    input_was_truncated: bool = False,
+) -> tuple[str, ...]:
+    if input_was_truncated:
+        raise ValueError("technical_official_view_stock_filter_size_limit")
+    if not isinstance(raw, str):
+        raise ValueError("technical_official_view_stock_code_invalid")
+    try:
+        if (
+            len(raw) > _MAX_STOCK_FILTER_INPUT_CHARACTERS
+            or len(raw.encode("utf-8"))
+            > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_QUERY_V1_MAX_BYTES
+        ):
+            raise ValueError("technical_official_view_stock_filter_size_limit")
+    except UnicodeError as exc:
+        raise ValueError("technical_official_view_stock_code_invalid") from exc
+    if not raw.strip():
+        raise ValueError("technical_official_view_stock_code_required")
+    comma_groups = re.split(r"[,，]", raw)
+    if any(not group.strip() for group in comma_groups):
+        raise ValueError("technical_official_view_stock_code_invalid")
+    codes = tuple(token for group in comma_groups for token in group.split())
+    if len(codes) > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS:
+        raise ValueError("technical_official_view_stock_code_limit")
+    if any(_STOCK_CODE_RE.fullmatch(code) is None for code in codes):
+        raise ValueError("technical_official_view_stock_code_invalid")
+    if len(set(codes)) != len(codes):
+        raise ValueError("technical_official_view_stock_code_duplicate")
+    return tuple(sorted(codes))
+
+
+class _StockCodeFilterLineEdit(QLineEdit):
+    """保留過長貼上的跡象，避免 QLineEdit 靜默截斷後套用代碼前綴。"""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._input_was_truncated = False
+        self.textChanged.connect(self._clear_overflow_after_edit)
+        self.inputRejected.connect(self._mark_overflow)
+
+    @property
+    def input_was_truncated(self) -> bool:
+        return self._input_was_truncated
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self._input_was_truncated = len(text) > self.maxLength()
+
+    def _mark_overflow(self) -> None:
+        self._input_was_truncated = True
+
+    def _clear_overflow_after_edit(self, text: str) -> None:
+        if len(text) < self.maxLength():
+            self._input_was_truncated = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -775,9 +853,10 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
             technical_layout.addWidget(label, index + 1, 0)
             box = QComboBox()
             box.setObjectName(f"ruleState_{key}")
-            box.addItem("不指定", "")
-            for state in _STATE_VALUES:
-                box.addItem(_STATE_LABELS[state], state)
+            box.addItem("不指定", _NO_RULE_STATE_FILTER)
+            for state_selection in _RULE_STATE_SELECTIONS:
+                label_text = "、".join(_STATE_LABELS[state] for state in state_selection)
+                box.addItem(label_text, state_selection)
             self.rule_state_boxes[key] = box
             technical_layout.addWidget(box, index + 1, 1)
             meaning = QLabel(_format_rule_contract_description(rule_contracts[key]))
@@ -820,8 +899,10 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
         filters.addWidget(official_box, 1, 0, 1, 3)
 
         self.stock_filter_enabled = QCheckBox("只查指定股票代碼")
-        self.stock_code_input = QLineEdit()
-        self.stock_code_input.setMaxLength(16)
+        self.stock_code_input = _StockCodeFilterLineEdit()
+        self.stock_code_input.setMaxLength(
+            _MAX_STOCK_FILTER_INPUT_CHARACTERS + 1
+        )
         self.stock_code_input.setObjectName("technicalOfficialStockCode")
         filters.addWidget(self.stock_filter_enabled, 2, 0)
         filters.addWidget(self.stock_code_input, 2, 1)
@@ -876,14 +957,22 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
         page_controls.addWidget(self.page_label)
         page_controls.addWidget(self.next_page_button)
         results_layout.addLayout(page_controls)
-        self.results_table = QTableWidget(0, 7)
-        self.results_table.setObjectName("technicalOfficialDispositionResults")
-        self.results_table.setHorizontalHeaderLabels(
-            ["代碼", "列範圍", "技術規則", "市場", "處置", "符合條件", "決策日期"]
+        self.results_table = QTableView()
+        self.results_model = SavedResearchPageTableModel[
+            DailyMarketTechnicalOfficialDispositionQueryResultRowV1
+        ](
+            ("代碼", "列範圍", "技術規則", "市場", "處置", "符合條件", "決策日期"),
+            maximum_page_size=DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_QUERY_READER_V1_MAX_PAGE_SIZE,
+            parent=self.results_table,
         )
+        self.results_table.setModel(self.results_model)
+        self.results_table.setSortingEnabled(False)
+        self.results_table.setObjectName("technicalOfficialDispositionResults")
         self.results_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.results_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.results_table.itemSelectionChanged.connect(self._table_selection_changed)
+        self.results_table.selectionModel().selectionChanged.connect(
+            lambda _selected, _deselected: self._table_selection_changed()
+        )
         results_layout.addWidget(self.results_table)
         row_actions = QHBoxLayout()
         self.detail_button = QPushButton("查看個股")
@@ -1284,9 +1373,15 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
         selected_states: list[DailyMarketTechnicalRuleStateFilterV4] = []
         for key, box in self.rule_state_boxes.items():
             value = box.currentData()
-            if value:
+            if value != _NO_RULE_STATE_FILTER:
+                if not isinstance(value, (tuple, list)):
+                    raise ValueError("technical_official_view_rule_state_selection_invalid")
+                if not value:
+                    raise ValueError("technical_official_view_rule_state_selection_invalid")
                 selected_states.append(
-                    DailyMarketTechnicalRuleStateFilterV4.create(key, (cast(Any, value),))
+                    DailyMarketTechnicalRuleStateFilterV4.create(
+                        key, cast(Sequence[Any], value)
+                    )
                 )
         if self.rule_filter_enabled.isChecked() and not selected_states:
             raise ValueError("technical_official_view_rule_state_required")
@@ -1307,11 +1402,11 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
         if not self.disposal_filter_enabled.isChecked() and disposal_states:
             raise ValueError("technical_official_view_disposal_filter_not_enabled")
         if self.stock_filter_enabled.isChecked():
-            stock_code = self.stock_code_input.text().strip()
-            if not _STOCK_CODE_RE.fullmatch(stock_code):
-                raise ValueError("technical_official_view_stock_code_required")
+            stock_codes = _parse_stock_code_filter(
+                self.stock_code_input.text(),
+                input_was_truncated=self.stock_code_input.input_was_truncated,
+            )
             stock_mode: Literal["all", "explicit_codes"] = "explicit_codes"
-            stock_codes = (stock_code,)
         else:
             if self.stock_code_input.text().strip():
                 raise ValueError("technical_official_view_stock_filter_not_enabled")
@@ -1486,19 +1581,14 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
         self._set_status("已讀取原研究條件的指定頁；來源版本與全域排序順序不變。")
 
     def _render_page(self) -> None:
-        # 換頁或重查時，先解除 QTableWidget 可能保留的舊 currentCell／選取列。
-        # 否則新頁同一個表格位置不會再送出 itemSelectionChanged，內部選取 DTO 會是 None。
-        self.results_table.blockSignals(True)
-        try:
-            self.results_table.clearSelection()
-            self.results_table.setCurrentCell(-1, -1)
-        finally:
-            self.results_table.blockSignals(False)
+        # reset 前清除 current index，跨頁同位置仍以新的公開 DTO 選取。
+        self.results_table.clearSelection()
+        self.results_table.setCurrentIndex(QModelIndex())
         self._selected_row = None
         page = self._page
         result = self._result
         if page is None or result is None:
-            self.results_table.setRowCount(0)
+            self.results_model.replace_page(())
             self.counts_label.setText("尚未核驗研究來源。")
             self.page_label.setText("第 0 / 0 頁")
             self.previous_page_button.setEnabled(False)
@@ -1518,8 +1608,8 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
             f"不符合 {combined_membership.unmatched}；來源覆蓋 {page.official_source_coverage_status}、"
             f"技術處理 {page.technical_processing_status}；current_only，官方 available_at 未知，非歷史 PIT。"
         )
-        self.results_table.setRowCount(len(page.rows))
-        for row_index, row in enumerate(page.rows):
+        table_rows: list[SavedResearchTableRow[DailyMarketTechnicalOfficialDispositionQueryResultRowV1]] = []
+        for row in page.rows:
             fact = row.fact_row.to_dict()
             market = fact.get("market_assignment", {})
             disposal = fact.get("official_disposal", {})
@@ -1535,8 +1625,8 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
                 if row.technical_row is not None
                 else str(result.query.technical_query.decision_date),
             )
-            for column, value in enumerate(values):
-                self.results_table.setItem(row_index, column, QTableWidgetItem(value))
+            table_rows.append(SavedResearchTableRow(row.stock_code, row, values, values))
+        self.results_model.replace_page(tuple(table_rows))
         if page.page_count == 0:
             self.page_label.setText("第 0 / 0 頁（0 筆符合）")
         else:
@@ -1568,23 +1658,19 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
         )
 
     def _table_selection_changed(self) -> None:
-        index = self.results_table.currentRow()
+        index = self.results_table.currentIndex()
         self._selected_row = (
-            self._page.rows[index]
-            if self._page is not None and 0 <= index < len(self._page.rows)
-            else None
+            self.results_model.row_at(index.row()) if index.isValid() else None
         )
 
     def select_stock_code(self, stock_code: str) -> bool:
-        if self._page is None:
+        index = self.results_model.index_for_stock(stock_code)
+        if not index.isValid():
             return False
-        for index, row in enumerate(self._page.rows):
-            if row.stock_code == stock_code:
-                self.results_table.setCurrentCell(index, 0)
-                self.results_table.selectRow(index)
-                self._selected_row = row
-                return True
-        return False
+        self.results_table.setCurrentIndex(index)
+        self.results_table.selectRow(index.row())
+        self._selected_row = self.results_model.row_at(index.row())
+        return True
 
     def _current_selection(self) -> DailyMarketTechnicalOfficialDispositionStockSelectionV1:
         if self._page is None or self._page_request is None or self._selected_row is None:
@@ -1691,6 +1777,11 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
         self._set_status("比較列已依同一研究條件與各自原結果頁重新核對。")
 
     def prepare_bookmark(self) -> None:
+        if len(self._basket) == 1:
+            self._set_status(
+                "比較收藏需選 2–5 檔；請再加入一檔，或清空比較籃後收藏目前查詢與選取股票。"
+            )
+            return
         try:
             selection = self._current_selection()
             bookmark = DailyMarketTechnicalOfficialDispositionBookmarkV1.create(
@@ -1755,10 +1846,14 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
 
     def _apply_query_controls(self, query: DailyMarketTechnicalOfficialDispositionQueryV1) -> None:
         _validate_ui_query_compatibility(query)
-        selected = {item.rule_key: item.states[0] for item in query.technical_query.rule_state_filters}
+        selected = {
+            item.rule_key: item.states for item in query.technical_query.rule_state_filters
+        }
         self.rule_filter_enabled.setChecked(bool(selected))
         for key, box in self.rule_state_boxes.items():
-            box.setCurrentIndex(box.findData(selected.get(key, "")))
+            box.setCurrentIndex(
+                box.findData(selected.get(key, _NO_RULE_STATE_FILTER))
+            )
         self.combine_box.setCurrentIndex(self.combine_box.findData(query.technical_query.combine_mode))
         for scope, box in self.scope_checks.items():
             box.setChecked(scope in query.row_scope_filter)
@@ -1772,7 +1867,7 @@ class DailyMarketTechnicalOfficialDispositionView(QWidget):
             box.setChecked(state in disposal)
         explicit = query.outer_stock_filter_mode == "explicit_codes"
         self.stock_filter_enabled.setChecked(explicit)
-        self.stock_code_input.setText(query.outer_stock_codes[0] if explicit and query.outer_stock_codes else "")
+        self.stock_code_input.setText(", ".join(query.outer_stock_codes) if explicit else "")
         for controls in tuple(self.sort_rows[1:]):
             self._remove_sort_clause_row(controls)
         for index, clause in enumerate(query.sort_clauses):
@@ -1804,9 +1899,9 @@ def _mapping_value(value: object, key: str) -> str:
 
 
 def _validate_ui_query_compatibility(query: DailyMarketTechnicalOfficialDispositionQueryV1) -> None:
-    if any(len(item.states) != 1 for item in query.technical_query.rule_state_filters):
-        raise ValueError("technical_official_view_bookmark_rule_filter_not_representable")
-    if query.outer_stock_filter_mode == "explicit_codes" and len(query.outer_stock_codes) != 1:
-        raise ValueError("technical_official_view_bookmark_stock_filter_not_representable")
     if len(query.sort_clauses) > 32:
         raise ValueError("technical_official_view_bookmark_sort_not_representable")
+    if query.technical_query.stock_filter:
+        raise ValueError(
+            "technical_official_view_bookmark_inner_stock_filter_not_representable"
+        )

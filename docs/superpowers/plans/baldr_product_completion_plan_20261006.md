@@ -744,3 +744,29 @@ P01 固定版本 ReadSession／selection 已存本機 dev `3b899160`，中央新
 F17 canonical query／membership-truth／多欄排序純層已存本機 dev `d4cdb500`，中央37測試、兩檔mypy與compile通過；補上technical row與rule決策日期、cutoff、feature及missing flag一致性。完整reader join、全部角色計數、來源回讀、正常更新、比較／收藏／UI仍未完成。H20 stage2a私有副本resolver的daily／capture／outcome中央46測試通過，四產品source型態檢查通過；UI名單、selected、收藏接線與多來源總容量限制仍施工，原4GB資料保護、2382下鑽速度、新程序與Native均未接受。
 
 驗證細節及未通過型態檢查見[中央讀取審核](../../06_qa/BALDR_READ_SESSION_CENTRAL_REVIEW_20261008.md)。真人啟動檔尚未交付，不要求重測舊0f25。完整P00–P14／M1–M3範圍維持，不以這些核心葉片抵銷其他工作包與驗收門檻。
+
+### 2026-10-08 Main 接線後的表格與跨程序驗收
+
+前節「F17 比較／收藏／UI 未接線」已由 dev `58f8420c` 的正常 Main 官方研究頁接線更新：真 258 列來源在同程序的跨頁雙股比較、個股返回、背景收藏及觀察清單重開已通過；固定同版候選基礎隔離驗證通過。這些證據不含完整 F17 Native 或關閉後新程序旅程。
+
+`c3f129ad` 新增只持有當頁 DTO 的共用 Qt table model；兩個實際保存研究頁已接成 QTableView，但合併包尚未提交或打包。個人技術研究頁的多狀態／多股票碼、真257股下鑽／返回及收藏 consumer 合併回歸10項通過；官方頁仍在核驗完整條件／收藏旅程。已定位比較籃僅1股不符合既有0或2–5股收藏契約，補具體操作提示，不放寬身份核驗。全 roots mypy901檔、workbench85項及validator25通過／0失敗／4保護跳過已重驗；完整 Main、新程序與固定候選仍須等最終內容凍結後重驗。
+
+新程序 root attempt03 於 child Main 啟動前被 `PYSIDE6_OPTION_PYTHON_ENUM` runtime 環境白名單擋下，1 passed／1 failed，不能標示跨程序通過。QA修正後仍須完整重驗，原失敗紀錄保留。H20 子程序診斷新增資訊與有界輸入，中央合成16項通過且實際 CreateProcess 0；原資料保護 gate 仍未通過。1,000 檔合成產製沿真人既有明確授權繼續：最新 root 隔離執行已建立合成資料庫並啟動真產製器，但首個 child snapshot 的 descriptor 寫入被 QA 防護拒絕；失敗封套保存，完整產製尚未通過。僅針對該固定 child writer 補精確防護驗證，不放寬任意 descriptor、不碰正式資料或排程，也不以 guard 自測代替產製完成。
+
+完整 P00–P14／M1–M3、23條件、正常產製、實際N效能、Native 與3–5真人接受仍沿原目標，不因本段有限進度改寫成功標準。
+
+### 2026-10-08 日期與啟動診斷接續
+
+P10 來源資料日呈現補件已存 dev `3a72654e`：大盤頁缺值／非正規日期／時間戳保持未知，決策工作台沿區塊原判讀日拒絕較晚來源，錯誤截止型別不拋出比較例外。兩頁與新日期反例45項通過、Workbench85項、validator25／0／4、全 roots mypy902檔通過；詳[日期呈現QA](../../06_qa/RESEARCH_SOURCE_DATE_PRESENTATION_20261008.md)。僅此日期補件，不授完整P10四用途／不同資料域與新程序資格。
+
+原十股新的單次診斷 `110913` 保持 failed，但有界 Popen telemetry 已定位到固定 b61 的 Git 建置身分探測。dev `9ad390b7` 改為來源根自身有 Git 標記才探測，封存仍嚴格核驗建置資訊；22項隔離回歸通過，詳[封存啟動QA](../../06_qa/BUILD_ARCHIVE_NO_GIT_PROBE_20261008.md)。未放行 QA Popen，也未將舊原件診斷改判。此次名單載入約18.8秒、2382摘要0.187秒、返回0.11秒，僅為單次QA量測；名單速度、完整個股資料及新候選／真人仍未接受。
+
+官方頁兩項真來源定向測試已通過，產品已凍結；完整葉片與 root Main／不同PID重開旅程正在實跑。當前新提交不包含尚未接受的兩頁P04變更，亦尚未產生新的真人啟動檔。
+
+### 2026-10-08 整合驗證與合成產製收尾
+
+官方頁完整葉片11項通過。Root Main／新程序合併實跑4 passed／1 failed：child旅程完成，但 Windows venv redirector 的實際 reporter PID 與 Popen launcher PID 不同，舊斷言失敗。保留整體失敗；QA補驗精確父子程序關係、執行檔身分及本次 Job Object 逾時清理，尚未據此授予完整新程序資格。
+
+上述QA補件中央短測4項通過後，session53945完整重跑9 passed／301.60秒；attempt_4ca9a28eed保留原來源、query、page5、選股1250及跨頁1000／1250比較，來源與收藏bytes前後一致，network為0。P04兩頁分頁模型與此合成來源版新程序閉環有限接受；standalone Native/exe、正常全市場與真人資格仍待。最後Workbench85、validator25／0／4、full-roots mypy902及compile／diff-check通過，詳中央QA與Manual來源版補充。
+
+真人授權的1,000檔隔離產製 attempt `C:/t/p01_b3mrz9_8` 已有完整產製器收據：四段完成、processed 1000、pending 0、included 1000、excluded 1。控制器在收尾讀取不存在的 `receipt.counts` 欄位失敗，整體封套仍為 failed，不能等同完整驗證通過。原失敗及產物保留；接續以獨立唯讀 public `read_exact` 核驗現有封存，另存證據，不覆寫原結果或重跑產製。正式資料與正式排程未納入此測試範圍。

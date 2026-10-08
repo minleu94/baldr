@@ -2517,8 +2517,7 @@ class DailyMarketResearchView(QWidget):
         selected = view.table.selectionModel().selectedRows()
         if len(selected) != 1:
             return False
-        item = view.table.item(selected[0].row(), 0)
-        row = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        row = view.results_model.row_at(selected[0].row())
         if (getattr(row, "stock_code", None) != value.selected_stock_code
                 or getattr(row, "snapshot_identity_sha256", None) != value.selected_snapshot_identity_sha256):
             view.status.setText("收藏準備後選股已改變；請重新選取並收藏。")

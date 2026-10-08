@@ -3,8 +3,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import date
+import hashlib
 import importlib
+import json
+import os
 from pathlib import Path
+import re
+import stat
 from typing import TYPE_CHECKING, Any
 
 from app_module.recommendation.personal_h20_activation import read_personal_h20_activation
@@ -12,9 +17,23 @@ from app_module.recommendation.personal_h20_read_session import (
     PersonalH20ReadProgress,
     PersonalH20ReadSession,
 )
+from app_module.recommendation.personal_h20_verified_cohort_view import (
+    PersonalH20VerifiedCohortView,
+    _issue_personal_h20_verified_cohort_view,
+    assert_personal_h20_verified_cohort_view,
+    project_personal_h20_verified_cohort_selection,
+)
 
 if TYPE_CHECKING:
     from data_module.pinned_sqlite_read_session import PinnedSQLiteReadSession
+    from app_module.recommendation.personal_h20_product_evidence import (
+        PersonalH20ProductEvidence,
+        PersonalH20ProductReference,
+    )
+    from app_module.recommendation.personal_h20_research_cohort import (
+        PersonalH20ResearchCohort,
+        PersonalH20ResearchSelection,
+    )
     from scripts.scheduled.personal_h20_sqlite_read_operation import (
         PersonalH20SQLiteReadOperation,
     )
@@ -28,6 +47,7 @@ SOURCE_PIN_KEYS = (
     "snapshot_receipt_path", "snapshot_receipt_sha256",
     "source_context_envelope_path", "source_context_envelope_sha256",
 )
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 def read_personal_h20_prediction(path: str | Path, *, root: Path, expected_sha256: str) -> Mapping[str, Any]:
@@ -202,8 +222,180 @@ def read_personal_h20_product_cohort(config_path: Path, *, market_root: Path,
     sqlite_read_root: Path | None = None,
     require_sqlite_copy: bool = False) -> tuple[Any, Any]:
     """同一操作分組核驗，仍逐列讀原 capture 並重讀完整分母終態。"""
+    result = _read_personal_h20_product_cohort_pipeline(
+        config_path,
+        market_root=market_root,
+        cancel_callback=cancel_callback,
+        progress_callback=progress_callback,
+        sqlite_read_root=sqlite_read_root,
+        require_sqlite_copy=require_sqlite_copy,
+        issue_verified_view=False,
+    )
+    if type(result) is not tuple or len(result) != 2:
+        raise RuntimeError("personal_h20_cohort_reader_result_invalid")
+    return result
+
+
+def read_personal_h20_verified_cohort_view(
+    config_path: Path,
+    *,
+    market_root: Path,
+    sqlite_read_root: Path,
+    cancel_callback: Callable[[], bool] | None = None,
+    progress_callback: Callable[[str], None] | None = None,
+) -> PersonalH20VerifiedCohortView:
+    """以唯讀副本完成完整母體後，簽發程序內 view。"""
+
+    result = _read_personal_h20_product_cohort_pipeline(
+        config_path,
+        market_root=market_root,
+        cancel_callback=cancel_callback,
+        progress_callback=progress_callback,
+        sqlite_read_root=sqlite_read_root,
+        require_sqlite_copy=True,
+        issue_verified_view=True,
+    )
+    if type(result) is not PersonalH20VerifiedCohortView:
+        raise RuntimeError("personal_h20_verified_view_result_invalid")
+    return result
+
+
+def validate_personal_h20_verified_cohort_view_reference(
+    view: PersonalH20VerifiedCohortView,
+    *,
+    config_path: Path,
+    market_root: Path,
+    sqlite_read_root: Path,
+) -> None:
+    """重讀小型 reference 並拒絕設定、根目錄或來源指標變更。"""
+
+    from app_module.recommendation.personal_h20_product_evidence import (
+        read_personal_h20_product_reference,
+    )
+
+    assert_personal_h20_verified_cohort_view(view)
+    before_roots = _personal_h20_view_context_identities(
+        config_path,
+        market_root=market_root,
+        personal_root=Path(view.reference.activation.personal_root),
+        sqlite_read_root=sqlite_read_root,
+    )
+    if before_roots != _personal_h20_view_context_from_view(view):
+        raise ValueError("personal_h20_verified_view_context_changed")
+    current = read_personal_h20_product_reference(config_path, market_root=market_root)
+    if current != view.reference:
+        raise ValueError("personal_h20_verified_view_reference_changed")
+    after_roots = _personal_h20_view_context_identities(
+        config_path,
+        market_root=market_root,
+        personal_root=Path(current.activation.personal_root),
+        sqlite_read_root=sqlite_read_root,
+    )
+    if after_roots != before_roots:
+        raise ValueError("personal_h20_verified_view_context_changed_during_read")
+
+
+def project_personal_h20_verified_cohort_selection_with_reference(
+    view: PersonalH20VerifiedCohortView,
+    selection: "PersonalH20ResearchSelection",
+    *,
+    config_path: Path,
+    market_root: Path,
+    sqlite_read_root: Path,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> "PersonalH20ProductEvidence":
+    """精確重讀 reference 後投影；不開 SQLite 或原 capture。"""
+
+    _poll_personal_h20_cancel(cancel_callback)
+    evidence = project_personal_h20_verified_cohort_selection(view, selection)
+    validate_personal_h20_verified_cohort_view_reference(
+        view,
+        config_path=config_path,
+        market_root=market_root,
+        sqlite_read_root=sqlite_read_root,
+    )
+    _poll_personal_h20_cancel(cancel_callback)
+    validate_personal_h20_verified_cohort_view_reference(
+        view,
+        config_path=config_path,
+        market_root=market_root,
+        sqlite_read_root=sqlite_read_root,
+    )
+    _poll_personal_h20_cancel(cancel_callback)
+    return evidence
+
+
+class _PersonalH20BindingProgressLedger:
+    """只收集本 hook 建立的 typed verifier 終態事件。"""
+
+    def __init__(self, consumer: Callable[[str], None] | None) -> None:
+        self._consumer = consumer
+        self._verified: dict[str, dict[int, str]] = {"source": {}, "contract": {}}
+        self._rechecked: dict[str, dict[int, str]] = {"source": {}, "contract": {}}
+
+    def __call__(self, event: PersonalH20ReadProgress) -> None:
+        if type(event) is not PersonalH20ReadProgress:
+            raise ValueError("personal_h20_progress_event_type_required")
+        if event.stage in {"source_group_verified", "contract_group_verified"}:
+            self._record(self._verified, event)
+        elif event.stage in {"source_group_rechecked", "contract_group_rechecked"}:
+            self._record(self._rechecked, event)
+        if self._consumer is not None:
+            self._consumer(_progress_message(event))
+
+    def terminal_identities(self, session: PersonalH20ReadSession) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        results: dict[str, tuple[str, ...]] = {}
+        for kind, count in (
+            ("source", session.source_group_count),
+            ("contract", session.contract_group_count),
+        ):
+            expected_indices = set(range(1, count + 1))
+            verified = self._verified[kind]
+            rechecked = self._rechecked[kind]
+            if (set(verified) != expected_indices
+                    or set(rechecked) != expected_indices
+                    or verified != rechecked):
+                raise ValueError("personal_h20_verified_view_binding_events_incomplete")
+            identities = tuple(verified[index] for index in range(1, count + 1))
+            if len(set(identities)) != len(identities):
+                raise ValueError("personal_h20_verified_view_binding_event_duplicate")
+            results[kind] = tuple(sorted(identities))
+        return results["source"], results["contract"]
+
+    @staticmethod
+    def _record(
+        destination: dict[str, dict[int, str]],
+        event: PersonalH20ReadProgress,
+    ) -> None:
+        expected_kind = event.stage.split("_", 1)[0]
+        if (event.verifier_kind != expected_kind
+                or type(event.group_index) is not int
+                or event.group_index < 1
+                or type(event.identity_sha256) is not str
+                or _SHA256.fullmatch(event.identity_sha256) is None):
+            raise ValueError("personal_h20_verified_view_binding_event_invalid")
+        bucket = destination[expected_kind]
+        if event.group_index in bucket:
+            raise ValueError("personal_h20_verified_view_binding_event_duplicate")
+        bucket[event.group_index] = event.identity_sha256
+
+
+def _read_personal_h20_product_cohort_pipeline(
+    config_path: Path,
+    *,
+    market_root: Path,
+    cancel_callback: Callable[[], bool] | None,
+    progress_callback: Callable[[str], None] | None,
+    sqlite_read_root: Path | None,
+    require_sqlite_copy: bool,
+    issue_verified_view: bool,
+) -> Any:
+    """兩個 public cohort API 共用單次讀取、終態與副本生命週期。"""
     from app_module.recommendation.personal_h20_product_evidence import read_personal_h20_product_reference
     from app_module.recommendation.personal_h20_research_cohort import read_personal_h20_research_cohort
+
+    if issue_verified_view and (not require_sqlite_copy or sqlite_read_root is None):
+        raise ValueError("personal_h20_verified_view_requires_sqlite_copy")
 
     operation = _open_personal_h20_sqlite_operation(
         sqlite_read_root=sqlite_read_root,
@@ -212,21 +404,29 @@ def read_personal_h20_product_cohort(config_path: Path, *, market_root: Path,
         progress_callback=progress_callback,
     )
     session: PersonalH20ReadSession | None = None
+    initial_context: tuple[str, str, str, str] | None = None
     try:
         ports = _personal_h20_read_ports(
             read_session_resolver=None if operation is None else operation.session_for,
         )
+        ledger = _PersonalH20BindingProgressLedger(progress_callback)
         session = PersonalH20ReadSession(
             source_verifier=ports["source_verifier"],
             contract_verifier=ports["contract_verifier"],
             cancel_callback=cancel_callback,
-            progress_callback=(
-                None if progress_callback is None
-                else lambda event: progress_callback(_progress_message(event))
-            ),
+            progress_callback=ledger,
         )
         session.report(stage="reference_read_started")
         reference = read_personal_h20_product_reference(config_path, market_root=market_root)
+        if issue_verified_view:
+            if sqlite_read_root is None:
+                raise ValueError("personal_h20_verified_view_requires_sqlite_copy")
+            initial_context = _personal_h20_view_context_identities(
+                config_path,
+                market_root=market_root,
+                personal_root=Path(reference.activation.personal_root),
+                sqlite_read_root=sqlite_read_root,
+            )
         session.report(stage="reference_read_verified")
 
         def read_pass(pass_name: str) -> Any:
@@ -270,17 +470,153 @@ def read_personal_h20_product_cohort(config_path: Path, *, market_root: Path,
             current_reference = read_personal_h20_product_reference(config_path, market_root=market_root)
             if current_reference != reference:
                 raise ValueError("personal_h20_cohort_reference_changed")
+            if issue_verified_view:
+                if sqlite_read_root is None or initial_context is None:
+                    raise ValueError("personal_h20_verified_view_context_required")
+                final_context = _personal_h20_view_context_identities(
+                    config_path,
+                    market_root=market_root,
+                    personal_root=Path(current_reference.activation.personal_root),
+                    sqlite_read_root=sqlite_read_root,
+                )
+                if final_context != initial_context:
+                    raise ValueError("personal_h20_verified_view_context_changed")
             session.report(stage="reference_rechecked", pass_name="terminal")
 
         session.finish(finalizer=finalizer)
+        source_binding_ids: tuple[str, ...] = ()
+        contract_binding_ids: tuple[str, ...] = ()
+        if issue_verified_view:
+            source_binding_ids, contract_binding_ids = ledger.terminal_identities(session)
+        sqlite_binding_ids: tuple[str, ...] = ()
         if operation is not None:
-            operation.finish()
+            bindings = operation.finish()
+            if issue_verified_view:
+                from data_module.pinned_sqlite_read_session import PinnedSQLiteReadBindingV1
+
+                if len(bindings) != operation.source_group_count or any(
+                    type(binding) is not PinnedSQLiteReadBindingV1 for binding in bindings
+                ):
+                    raise ValueError("personal_h20_verified_view_sqlite_bindings_invalid")
+                identities = tuple(binding.identity_sha256 for binding in bindings)
+                if any(type(identity) is not str or _SHA256.fullmatch(identity) is None
+                       for identity in identities):
+                    raise ValueError("personal_h20_verified_view_sqlite_binding_identity_invalid")
+                if len(set(identities)) != len(identities):
+                    raise ValueError("personal_h20_verified_view_sqlite_binding_duplicate")
+                sqlite_binding_ids = tuple(sorted(identities))
+        session.check_cancel()
+        if issue_verified_view:
+            if sqlite_read_root is None or initial_context is None:
+                raise ValueError("personal_h20_verified_view_context_required")
+            current_reference = read_personal_h20_product_reference(config_path, market_root=market_root)
+            if current_reference != reference:
+                raise ValueError("personal_h20_verified_view_reference_changed_after_finish")
+            final_context = _personal_h20_view_context_identities(
+                config_path,
+                market_root=market_root,
+                personal_root=Path(current_reference.activation.personal_root),
+                sqlite_read_root=sqlite_read_root,
+            )
+            if final_context != initial_context:
+                raise ValueError("personal_h20_verified_view_context_changed_after_finish")
+            view = _issue_personal_h20_verified_cohort_view(
+                reference=reference,
+                cohort=cohort,
+                source_binding_identity_sha256=source_binding_ids,
+                contract_binding_identity_sha256=contract_binding_ids,
+                sqlite_binding_identity_sha256=sqlite_binding_ids,
+                config_path_identity_sha256=initial_context[0],
+                market_root_identity_sha256=initial_context[1],
+                personal_root_identity_sha256=initial_context[2],
+                sqlite_read_root_identity_sha256=initial_context[3],
+            )
+            # 簽章計算也可能耗時；最後一次取消檢查必須發生在 view 完成後。
+            session.check_cancel()
+            return view
         return reference, cohort
     finally:
         if session is not None:
             session.close()
         if operation is not None:
             operation.close()
+
+
+def _personal_h20_view_context_identities(
+    config_path: Path,
+    *,
+    market_root: Path,
+    personal_root: Path,
+    sqlite_read_root: Path,
+) -> tuple[str, str, str, str]:
+    return (
+        _personal_h20_context_path_identity(config_path, directory=False),
+        _personal_h20_context_path_identity(market_root, directory=True),
+        _personal_h20_context_path_identity(personal_root, directory=True),
+        _personal_h20_context_path_identity(sqlite_read_root, directory=True),
+    )
+
+
+def _personal_h20_context_path_identity(path: Path, *, directory: bool) -> str:
+    requested = Path(path).expanduser()
+    if not requested.is_absolute() or ".." in requested.parts:
+        raise ValueError("personal_h20_verified_view_absolute_context_path_required")
+    try:
+        canonical = requested.resolve(strict=True)
+        lexical = Path(os.path.abspath(requested))
+        info = requested.lstat()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("personal_h20_verified_view_context_path_unavailable") from exc
+    attributes = int(getattr(info, "st_file_attributes", 0))
+    reparse_flag = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+    if (os.path.normcase(str(lexical)) != os.path.normcase(str(canonical))
+            or stat.S_ISLNK(info.st_mode)
+            or attributes & reparse_flag
+            or (directory and not stat.S_ISDIR(info.st_mode))
+            or (not directory and not stat.S_ISREG(info.st_mode))
+            or type(info.st_ino) is not int or info.st_ino <= 0
+            or type(info.st_dev) is not int
+            or (not directory and info.st_nlink != 1)):
+        raise ValueError("personal_h20_verified_view_context_path_identity_invalid")
+    identity = {
+        "path": os.path.normcase(str(canonical)),
+        "device": info.st_dev,
+        "inode": info.st_ino,
+        "mode": stat.S_IFMT(info.st_mode),
+        "attributes": attributes,
+        "nlink": None if directory else info.st_nlink,
+    }
+    raw = json.dumps(
+        identity,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _personal_h20_view_context_from_view(
+    view: PersonalH20VerifiedCohortView,
+) -> tuple[str, str, str, str]:
+    return (
+        view.config_path_identity_sha256,
+        view.market_root_identity_sha256,
+        view.personal_root_identity_sha256,
+        view.sqlite_read_root_identity_sha256,
+    )
+
+
+def _poll_personal_h20_cancel(
+    cancel_callback: Callable[[], bool] | None,
+) -> None:
+    if cancel_callback is None:
+        return
+    cancelled = cancel_callback()
+    if type(cancelled) is not bool:
+        raise ValueError("personal_h20_cancel_callback_must_return_bool")
+    if cancelled:
+        raise InterruptedError("personal_h20_verified_view_cancelled")
 
 
 def read_personal_h20_product_for_stock_with_session(

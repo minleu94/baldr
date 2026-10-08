@@ -22,3 +22,7 @@
 ## 尚未授予
 
 本次是來源版有限接線接受；新固定 EXE、同版比較及真人尚待。合成 1234 bp 不是使用者原 2382 的 684 bp；不能以此證明真人原資料的 20 秒已改善。原資料可得時間未知，圖表不授歷史 PIT、Advice、權重、勝率、收益或可交易資格。完整 P00–P14／M1–M3、正式全母體與每策略績效仍按原計畫補完。
+
+## 固定候選版隔離比較
+
+來源 commit bd5d2f86367ae8adb3d110f7e2b83fb829a620cf；候選 EXE `dist/candidate_bd5d2f86367a_3b730f86/baldr/baldr.exe`，SHA256 `94223f984597e2fe97d1b9f245166010d82f2dd813d566bbdd46ea8f27edae42`。UTF-8 同版隔離比較通過，收據 `output/qa/baldr_same_version_bd5d2f86367a_288681d8/same_version_receipt.json`；首次預設編碼失敗另存 `..._ee6a48c0`，未覆蓋。真人 helper `output/qa/recommendation_feedback_bd5d2f86367a_20261008_a/start_feedback_bd5d2f86367a.cmd` 已 ValidateOnly 通過，未啟動原始資料流程。原保存 SQLite 等待時間、實際視窗捲動與收藏重開仍待真人驗收；不宣告產品 p95 或全計畫完成。

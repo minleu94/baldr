@@ -88,7 +88,7 @@ def detect_build_identity(
 
 
 def _read_git_identity(root: Path) -> BuildIdentity | None:
-    if not root.is_dir() or shutil.which("git") is None:
+    if not root.is_dir() or not _has_git_marker(root) or shutil.which("git") is None:
         return None
 
     git_environment = os.environ.copy()

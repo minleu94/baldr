@@ -178,7 +178,7 @@ def test_untracked_source_snapshot_uses_verified_metadata(tmp_path: Path) -> Non
 
 
 def test_source_archive_inside_git_checkout_uses_same_metadata_as_frozen(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repository, ancestor_commit = _git_repository(tmp_path)
     source_root = repository / "output" / "packaging" / "build_candidate" / "source"
@@ -190,6 +190,11 @@ def test_source_archive_inside_git_checkout_uses_same_metadata_as_frozen(
         commit=source_commit,
         lock_hash=lock_hash,
     )
+
+    def reject_git_probe(*args: object, **kwargs: object) -> None:
+        raise AssertionError("固定來源封存沒有自己的 Git 標記，不應啟動子程序")
+
+    monkeypatch.setattr(build_identity_module.subprocess, "run", reject_git_probe)
 
     python_identity = detect_build_identity(repository_root=source_root, frozen=False)
     frozen_identity = detect_build_identity(repository_root=source_root, frozen=True)

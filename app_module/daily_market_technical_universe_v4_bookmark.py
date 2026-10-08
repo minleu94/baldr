@@ -11,6 +11,7 @@ from typing import Any, NoReturn, cast
 
 from app_module.daily_market_technical_universe_v4_comparison import (
     DailyMarketTechnicalUniverseV4Comparison,
+    DailyMarketTechnicalUniverseV4ComparisonColumn,
     DailyMarketTechnicalUniverseV4ComparisonError,
     read_daily_market_technical_universe_v4_comparison,
 )
@@ -19,12 +20,15 @@ from app_module.daily_market_technical_universe_v4_query import (
     DailyMarketTechnicalUniverseV4Page,
     DailyMarketTechnicalUniverseV4Query,
     DailyMarketTechnicalUniverseV4QueryError,
+    DailyMarketTechnicalUniverseV4ReadSession,
+    open_daily_market_technical_universe_v4_read_session,
     read_daily_market_technical_universe_v4_page,
 )
 from app_module.daily_market_technical_universe_v4_stock import (
     DailyMarketTechnicalUniverseV4Stock,
     DailyMarketTechnicalUniverseV4StockError,
     read_daily_market_technical_universe_v4_stock,
+    read_daily_market_technical_universe_v4_page_and_stock_from_session,
 )
 
 
@@ -577,6 +581,131 @@ def create_daily_market_technical_universe_v4_bookmark(
     if selections:
         _check_cancel(cancel_callback)
         comparison = _read_comparison(selections, cancel_callback)
+        persisted_comparisons = _comparison_pins(comparison, selections)
+    _check_cancel(cancel_callback)
+    return _new_bookmark(
+        query=query,
+        selected_stock_code=code,
+        selected_snapshot_identity_sha256=stock.snapshot.snapshot_identity_sha256,
+        selected_source_identity=stock.snapshot.source_identity,
+        scroll_position=scroll_position,
+        comparison_selections=persisted_comparisons,
+    )
+
+
+def _read_session_page(
+    session: DailyMarketTechnicalUniverseV4ReadSession,
+    query: DailyMarketTechnicalUniverseV4Query,
+    cancel_callback: Callable[[], bool] | None,
+) -> DailyMarketTechnicalUniverseV4Page:
+    try:
+        return session.read_page(query, cancel_callback=cancel_callback)
+    except DailyMarketTechnicalUniverseV4QueryError as exc:
+        _raise_reader_error(exc)
+
+
+def _read_session_comparison(
+    session: DailyMarketTechnicalUniverseV4ReadSession,
+    selections: tuple[tuple[DailyMarketTechnicalUniverseV4Query, str], ...],
+    cancel_callback: Callable[[], bool] | None,
+    *,
+    preloaded_pages: Mapping[str, DailyMarketTechnicalUniverseV4Page] | None = None,
+) -> DailyMarketTechnicalUniverseV4Comparison:
+    pages: dict[str, dict[str, object]] = {
+        identity: {row.stock_code: row for row in page.rows}
+        for identity, page in (preloaded_pages or {}).items()
+    }
+    columns: list[DailyMarketTechnicalUniverseV4ComparisonColumn] = []
+    for query, stock_code in selections:
+        _check_cancel(cancel_callback)
+        if not session.matches_source(query):
+            _fail("technical_universe_v4_bookmark_read_session_source_mismatch")
+        rows_by_code = pages.get(query.query_identity_sha256)
+        if rows_by_code is None:
+            page = _read_session_page(session, query, cancel_callback)
+            rows_by_code = {row.stock_code: row for row in page.rows}
+            pages[query.query_identity_sha256] = rows_by_code
+            del page
+        row = rows_by_code.get(stock_code)
+        if row is None:
+            _fail("technical_universe_v4_comparison_stock_not_in_origin_page")
+        columns.append(DailyMarketTechnicalUniverseV4ComparisonColumn(query, cast(Any, row)))
+    _check_cancel(cancel_callback)
+    return DailyMarketTechnicalUniverseV4Comparison(tuple(columns))
+
+
+def create_daily_market_technical_universe_v4_bookmark_fresh(
+    query: DailyMarketTechnicalUniverseV4Query,
+    selected_stock_code: str,
+    *,
+    scroll_position: int,
+    comparison_selections: Sequence[
+        tuple[DailyMarketTechnicalUniverseV4Query, str]
+    ] = (),
+    cancel_callback: Callable[[], bool] | None = None,
+    max_index_bytes: int | None = None,
+) -> DailyMarketTechnicalUniverseV4Bookmark:
+    """先重新 strict 核原完整來源，再以該次 session 建立收藏內容。"""
+
+    if not isinstance(query, DailyMarketTechnicalUniverseV4Query):
+        _fail("technical_universe_v4_bookmark_query_invalid")
+    code = _validate_stock_code(selected_stock_code)
+    if (
+        type(scroll_position) is not int
+        or not 0 <= scroll_position <= DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_MAX_SCROLL
+    ):
+        _fail("technical_universe_v4_bookmark_scroll_invalid")
+    selections = _parse_selection_requests(comparison_selections)
+    _check_cancel(cancel_callback)
+    session_kwargs: dict[str, Any] = {}
+    if max_index_bytes is not None:
+        session_kwargs["max_index_bytes"] = max_index_bytes
+    try:
+        session = open_daily_market_technical_universe_v4_read_session(
+            store_output_root=query.store_output_root,
+            generation_identity_sha256=query.generation_identity_sha256,
+            plan_identity_sha256=query.plan_identity_sha256,
+            plan_sha256=query.plan_sha256,
+            receipt_identity_sha256=query.receipt_identity_sha256,
+            receipt_sha256=query.receipt_sha256,
+            cancel_callback=cancel_callback,
+            **session_kwargs,
+        )
+    except DailyMarketTechnicalUniverseV4QueryError as exc:
+        _raise_reader_error(exc)
+    try:
+        page, stock = read_daily_market_technical_universe_v4_page_and_stock_from_session(
+            query,
+            code,
+            session,
+            cancel_callback=cancel_callback,
+        )
+    except DailyMarketTechnicalUniverseV4StockError as exc:
+        _raise_reader_error(exc)
+    row = next((item for item in page.rows if item.stock_code == code), None)
+    if row is None:
+        _fail("technical_universe_v4_bookmark_selected_stock_not_in_page")
+    _check_cancel(cancel_callback)
+    if (
+        stock.origin_query != query
+        or stock.snapshot.stock_code != row.stock_code
+        or stock.snapshot.snapshot_identity_sha256 != row.snapshot_identity_sha256
+        or stock.snapshot.source_identity != row.source_identity
+    ):
+        _fail("technical_universe_v4_bookmark_selected_stock_pin_mismatch")
+    persisted_comparisons: tuple[DailyMarketTechnicalUniverseV4BookmarkSelection, ...] = ()
+    if selections:
+        _check_cancel(cancel_callback)
+        if all(session.matches_source(item_query) for item_query, _stock_code in selections):
+            comparison = _read_session_comparison(
+                session,
+                selections,
+                cancel_callback,
+                preloaded_pages={query.query_identity_sha256: page},
+            )
+        else:
+            # 跨來源比較各自重新走原 strict reader，不借用本 session 的內容。
+            comparison = _read_comparison(selections, cancel_callback)
         persisted_comparisons = _comparison_pins(comparison, selections)
     _check_cancel(cancel_callback)
     return _new_bookmark(

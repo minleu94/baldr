@@ -7,7 +7,11 @@ from collections.abc import Callable
 from app_module.daily_market_technical_feature_snapshot_v4 import DailyMarketTechnicalFeatureSnapshotV4
 from app_module.daily_market_technical_snapshot_v4_repository import DailyMarketTechnicalSnapshotV4Repository
 from app_module.daily_market_technical_universe_v4_query import (
+    DailyMarketTechnicalUniverseV4Page,
+    DailyMarketTechnicalUniverseV4ReadSelection,
+    DailyMarketTechnicalUniverseV4ReadSession,
     DailyMarketTechnicalUniverseV4Query,
+    DailyMarketTechnicalUniverseV4QueryError,
     read_daily_market_technical_universe_v4_page,
 )
 from app_module.daily_market_technical_universe_v4_store import (
@@ -84,3 +88,76 @@ def read_daily_market_technical_universe_v4_stock(
                 return DailyMarketTechnicalUniverseV4Stock(query, index, reference, snapshot)
         break
     raise DailyMarketTechnicalUniverseV4StockError("technical_universe_v4_stock_snapshot_missing")
+
+
+def read_daily_market_technical_universe_v4_stock_from_session(
+    query: DailyMarketTechnicalUniverseV4Query,
+    stock_code: str,
+    session: DailyMarketTechnicalUniverseV4ReadSession,
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> DailyMarketTechnicalUniverseV4Stock:
+    """沿同次 full-N strict session 精確重開當頁個股的 child artifact。"""
+
+    _page, stock = read_daily_market_technical_universe_v4_page_and_stock_from_session(
+        query,
+        stock_code,
+        session,
+        cancel_callback=cancel_callback,
+    )
+    return stock
+
+
+def read_daily_market_technical_universe_v4_page_and_stock_from_session(
+    query: DailyMarketTechnicalUniverseV4Query,
+    stock_code: str,
+    session: DailyMarketTechnicalUniverseV4ReadSession,
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> tuple[DailyMarketTechnicalUniverseV4Page, DailyMarketTechnicalUniverseV4Stock]:
+    """同次 materialization 取得 origin page 與其指定股票。"""
+
+    if not isinstance(query, DailyMarketTechnicalUniverseV4Query):
+        raise DailyMarketTechnicalUniverseV4StockError("technical_universe_v4_query_invalid")
+    if not isinstance(session, DailyMarketTechnicalUniverseV4ReadSession):
+        raise DailyMarketTechnicalUniverseV4StockError("technical_universe_v4_read_session_invalid")
+    if not session.matches_source(query):
+        raise DailyMarketTechnicalUniverseV4StockError("technical_universe_v4_read_session_source_mismatch")
+    try:
+        page, segment_index, parent_reference, snapshot = session.read_page_and_stock_snapshot(
+            query,
+            stock_code,
+            cancel_callback=cancel_callback,
+        )
+    except DailyMarketTechnicalUniverseV4QueryError as exc:
+        raise DailyMarketTechnicalUniverseV4StockError(exc.code) from exc
+    stock = DailyMarketTechnicalUniverseV4Stock(query, segment_index, parent_reference, snapshot)
+    return page, stock
+
+
+def read_daily_market_technical_universe_v4_stock_from_selection(
+    selection: DailyMarketTechnicalUniverseV4ReadSelection,
+    stock_code: str,
+    session: DailyMarketTechnicalUniverseV4ReadSession,
+    *,
+    page_index: int,
+    page_size: int,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> DailyMarketTechnicalUniverseV4Stock:
+    """只讀固定 selection 指定頁內的股票，不重新排序全母體。"""
+
+    if not isinstance(selection, DailyMarketTechnicalUniverseV4ReadSelection):
+        raise DailyMarketTechnicalUniverseV4StockError("technical_universe_v4_read_selection_invalid")
+    if not isinstance(session, DailyMarketTechnicalUniverseV4ReadSession):
+        raise DailyMarketTechnicalUniverseV4StockError("technical_universe_v4_read_session_invalid")
+    try:
+        query, segment_index, parent_reference, snapshot = session.read_selection_stock_snapshot(
+            selection,
+            stock_code,
+            page_index=page_index,
+            page_size=page_size,
+            cancel_callback=cancel_callback,
+        )
+    except DailyMarketTechnicalUniverseV4QueryError as exc:
+        raise DailyMarketTechnicalUniverseV4StockError(exc.code) from exc
+    return DailyMarketTechnicalUniverseV4Stock(query, segment_index, parent_reference, snapshot)

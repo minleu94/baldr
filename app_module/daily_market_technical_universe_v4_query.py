@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace as dataclass_replace
 from datetime import date
 from decimal import Decimal
 import hashlib
@@ -19,6 +19,9 @@ from app_module.daily_market_technical_parent_v4_query import (
     _row_matches_state_filters,
     _row_sort_value,
 )
+from app_module.daily_market_technical_feature_snapshot_v4 import (
+    DailyMarketTechnicalFeatureSnapshotV4,
+)
 from app_module.daily_market_technical_snapshot_v4_repository import (
     DailyMarketTechnicalBatchArtifactV4,
     DailyMarketTechnicalSnapshotV4Repository,
@@ -33,6 +36,7 @@ from app_module.daily_market_technical_universe_v4_store import (
     DailyMarketTechnicalUniverseV4Counts,
     DailyMarketTechnicalUniverseV4StoreError,
     DailyMarketTechnicalUniverseV4StoreReader,
+    DailyMarketTechnicalUniverseV4ParentReceiptReference,
     DailyMarketTechnicalUniverseV4VerifiedState,
 )
 
@@ -44,12 +48,15 @@ DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_BYTES = 8 * 1024 * 1024
 DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_SIZE = 256
 DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_INDEX = 1_000_000
 DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_SCOPE = "declared_full_universe_v4"
+DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES = 64 * 1024 * 1024
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _STOCK_CODE_RE = re.compile(r"^[A-Z0-9]{1,16}$")
 _RULE_STATE_ORDER = ("match", "no_match", "unknown")
 _COMBINE_MODES = frozenset({"AND", "OR"})
 _STATUSES = frozenset({"partial", "cancelled", "failed", "complete"})
+_READ_SESSION_SEAL = object()
+_READ_SELECTION_SEAL = object()
 _QUERY_KEYS = frozenset({
     "schema_version",
     "store_output_root",
@@ -455,44 +462,24 @@ class DailyMarketTechnicalUniverseV4Query:
             plan_sha256=plan_sha256,
             receipt_identity_sha256=receipt_identity_sha256,
             receipt_sha256=receipt_sha256,
+            cancel_callback=cancel_callback,
         )
         if _is_cancelled(cancel_callback):
             _fail("technical_universe_v4_query_cancelled")
-        metadata = _state_metadata(state)
-        filters = _normalize_filters(rule_state_filters, tuple(metadata["method_rule_keys"]))
-        normalized_stocks = _normalize_stock_filter(stock_filter)
-        _validate_sort_key(sort_key, tuple(metadata["method_rule_keys"]))
-        body: dict[str, Any] = {
-            "schema_version": DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_SCHEMA,
-            "store_output_root": str(root),
-            "generation_identity_sha256": metadata["generation_identity_sha256"],
-            "plan_identity_sha256": metadata["plan_identity_sha256"],
-            "plan_sha256": plan_sha256,
-            "receipt_identity_sha256": metadata["receipt_identity_sha256"],
-            "receipt_sha256": receipt_sha256,
-            "receipt_status": metadata["receipt_status"],
-            "cohort_identity_sha256": metadata["cohort_identity_sha256"],
-            "source_clock_identity_sha256": metadata["source_clock_identity_sha256"],
-            "method_contracts_sha256": metadata["method_contracts_sha256"],
-            "universe_id": metadata["universe_id"],
-            "population_version": metadata["population_version"],
-            "decision_date": metadata["decision_date"],
-            "declared_count": metadata["declared_count"],
-            "included_count": metadata["included_count"],
-            "excluded_count": metadata["excluded_count"],
-            "segment_count": metadata["segment_count"],
-            "counts": state.counts.to_dict(),
-            "method_rule_keys": metadata["method_rule_keys"],
-            "state_filters": [item.to_dict() for item in filters],
-            "combine_mode": combine_mode,
-            "stock_filter": list(normalized_stocks),
-            "sort_key": sort_key,
-            "descending": descending,
-            "page_index": page_index,
-            "page_size": page_size,
-        }
-        body["query_identity_sha256"] = _sha256_json(body)
-        return cls.from_dict(body)
+        return _query_from_verified_state(
+            root=root,
+            state=state,
+            plan_sha256=plan_sha256,
+            receipt_sha256=receipt_sha256,
+            rule_state_filters=rule_state_filters,
+            combine_mode=combine_mode,
+            stock_filter=stock_filter,
+            sort_key=sort_key,
+            descending=descending,
+            page_index=page_index,
+            page_size=page_size,
+            cancel_callback=cancel_callback,
+        )
 
     @classmethod
     def from_dict(cls, value: object) -> DailyMarketTechnicalUniverseV4Query:
@@ -570,6 +557,67 @@ class DailyMarketTechnicalUniverseV4Query:
         return _canonical_json_bytes(self.to_dict()).decode("utf-8")
 
 
+def _query_from_verified_state(
+    *,
+    root: Path,
+    state: DailyMarketTechnicalUniverseV4VerifiedState,
+    plan_sha256: str,
+    receipt_sha256: str,
+    rule_state_filters: Sequence[DailyMarketTechnicalRuleStateFilterV4],
+    combine_mode: CombineMode,
+    stock_filter: Sequence[str],
+    sort_key: str,
+    descending: bool,
+    page_index: int,
+    page_size: int,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> DailyMarketTechnicalUniverseV4Query:
+    """由同次 strict reader state 組查詢，不另開第二次 store 讀取。"""
+
+    if _is_cancelled(cancel_callback):
+        _fail("technical_universe_v4_query_cancelled")
+    if combine_mode not in _COMBINE_MODES or type(descending) is not bool:
+        _fail("technical_universe_v4_query_conditions_invalid")
+    metadata = _state_metadata(state)
+    method_rule_keys = tuple(cast(list[str], metadata["method_rule_keys"]))
+    filters = _normalize_filters(rule_state_filters, method_rule_keys)
+    normalized_stocks = _normalize_stock_filter(stock_filter)
+    _validate_sort_key(sort_key, method_rule_keys)
+    body: dict[str, Any] = {
+        "schema_version": DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_SCHEMA,
+        "store_output_root": str(root),
+        "generation_identity_sha256": metadata["generation_identity_sha256"],
+        "plan_identity_sha256": metadata["plan_identity_sha256"],
+        "plan_sha256": plan_sha256,
+        "receipt_identity_sha256": metadata["receipt_identity_sha256"],
+        "receipt_sha256": receipt_sha256,
+        "receipt_status": metadata["receipt_status"],
+        "cohort_identity_sha256": metadata["cohort_identity_sha256"],
+        "source_clock_identity_sha256": metadata["source_clock_identity_sha256"],
+        "method_contracts_sha256": metadata["method_contracts_sha256"],
+        "universe_id": metadata["universe_id"],
+        "population_version": metadata["population_version"],
+        "decision_date": metadata["decision_date"],
+        "declared_count": metadata["declared_count"],
+        "included_count": metadata["included_count"],
+        "excluded_count": metadata["excluded_count"],
+        "segment_count": metadata["segment_count"],
+        "counts": state.counts.to_dict(),
+        "method_rule_keys": list(method_rule_keys),
+        "state_filters": [item.to_dict() for item in filters],
+        "combine_mode": combine_mode,
+        "stock_filter": list(normalized_stocks),
+        "sort_key": sort_key,
+        "descending": descending,
+        "page_index": page_index,
+        "page_size": page_size,
+    }
+    body["query_identity_sha256"] = _sha256_json(body)
+    if _is_cancelled(cancel_callback):
+        _fail("technical_universe_v4_query_cancelled")
+    return DailyMarketTechnicalUniverseV4Query.from_dict(body)
+
+
 def _normalize_stock_filter(value: Sequence[str]) -> tuple[str, ...]:
     if isinstance(value, (str, bytes)):
         _fail("technical_universe_v4_query_stock_filter_invalid")
@@ -582,6 +630,37 @@ def _normalize_stock_filter(value: Sequence[str]) -> tuple[str, ...]:
     if len(result) > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS:
         _fail("technical_universe_v4_query_stock_filter_invalid")
     return result
+
+
+def _normalize_selection_stock_filter(
+    value: Sequence[str] | None,
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> tuple[str, ...] | None:
+    """外層 eligibility 可排序正規化，但保留 None 與空 tuple 的差別。"""
+
+    if value is None:
+        return None
+    if isinstance(value, (str, bytes)):
+        _fail("technical_universe_v4_read_selection_eligibility_invalid")
+    try:
+        if len(value) > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS:
+            _fail("technical_universe_v4_read_selection_eligibility_invalid")
+        codes_list: list[str] = []
+        for code in value:
+            if _is_cancelled(cancel_callback):
+                _fail("technical_universe_v4_query_cancelled")
+            if not isinstance(code, str) or _STOCK_CODE_RE.fullmatch(code) is None:
+                _fail("technical_universe_v4_read_selection_eligibility_invalid")
+            codes_list.append(code)
+    except TypeError as exc:
+        raise DailyMarketTechnicalUniverseV4QueryError(
+            "technical_universe_v4_read_selection_eligibility_invalid"
+        ) from exc
+    codes = tuple(codes_list)
+    if len(set(codes)) != len(codes):
+        _fail("technical_universe_v4_read_selection_eligibility_invalid")
+    return tuple(sorted(codes))
 
 
 def _normalize_filters(
@@ -710,6 +789,7 @@ class _SortCandidate:
 class _ChildArtifactReference:
     """頁面重開單一 child batch 所需的精確、輕量引用。"""
 
+    segment_index: int
     repository_output_root: Path
     manifest_path: Path
     manifest_sha256: str
@@ -717,6 +797,95 @@ class _ChildArtifactReference:
     source_clock_identity_sha256: str
     method_contract_sha256: str
     decision_date: date
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadIndexRule:
+    state: RuleState
+    numerator: Decimal | None
+    denominator: Decimal | None
+    ratio: Decimal | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadIndexCandidate:
+    """全域篩選／排序需要的緊湊列，不保留原始 rows 或完整 snapshot。"""
+
+    stock_code: str
+    segment_index: int
+    artifact_index: int
+    snapshot_identity_sha256: str
+    source_identity: str
+    raw_row_count: int
+    latest_feature_date: date | None
+    rules: tuple[_ReadIndexRule, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadSessionCollectionContext:
+    source_clock_identity_sha256: str
+    method_contracts_sha256: str
+    method_rule_keys: tuple[str, ...]
+    universe_id: str
+    population_version: str
+    decision_date: date
+    rule_state_filters: tuple[DailyMarketTechnicalRuleStateFilterV4, ...] = ()
+    combine_mode: CombineMode = "AND"
+    stock_filter: tuple[str, ...] = ()
+    sort_key: str = "stock_code"
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadSessionParentObservation:
+    segment_index: int
+    parent_plan_identity_sha256: str
+    parent_plan_sha256: str
+    parent_receipt_identity_sha256: str
+    parent_receipt_sha256: str
+    cohort_identity_sha256: str
+    source_clock_identity_sha256: str
+    method_contracts_sha256: str
+    included_stock_codes: tuple[str, ...]
+
+
+def _read_index_rule_payload(rule: _ReadIndexRule) -> list[object]:
+    return [
+        rule.state,
+        str(rule.numerator) if rule.numerator is not None else None,
+        str(rule.denominator) if rule.denominator is not None else None,
+        str(rule.ratio) if rule.ratio is not None else None,
+    ]
+
+
+def _read_index_candidate_size(candidate: _ReadIndexCandidate) -> int:
+    payload = {
+        "stock_code": candidate.stock_code,
+        "segment_index": candidate.segment_index,
+        "artifact_index": candidate.artifact_index,
+        "snapshot_identity_sha256": candidate.snapshot_identity_sha256,
+        "source_identity": candidate.source_identity,
+        "raw_row_count": candidate.raw_row_count,
+        "latest_feature_date": (
+            candidate.latest_feature_date.isoformat()
+            if candidate.latest_feature_date is not None
+            else None
+        ),
+        "rules": [_read_index_rule_payload(rule) for rule in candidate.rules],
+    }
+    return len(_canonical_json_bytes(payload))
+
+
+def _read_index_artifact_size(reference: _ChildArtifactReference) -> int:
+    return len(_canonical_json_bytes({
+        "segment_index": reference.segment_index,
+        "repository_output_root": str(reference.repository_output_root),
+        "manifest_path": str(reference.manifest_path),
+        "manifest_sha256": reference.manifest_sha256,
+        "cohort_identity_sha256": reference.cohort_identity_sha256,
+        "source_clock_identity_sha256": reference.source_clock_identity_sha256,
+        "method_contract_sha256": reference.method_contract_sha256,
+        "decision_date": reference.decision_date.isoformat(),
+    }))
 
 
 def _is_cancelled(callback: Callable[[], bool] | None) -> bool:
@@ -734,11 +903,11 @@ def _is_cancelled(callback: Callable[[], bool] | None) -> bool:
 
 
 def _consume_verified_segment(
-    query: DailyMarketTechnicalUniverseV4Query,
+    query: DailyMarketTechnicalUniverseV4Query | _ReadSessionCollectionContext,
     *,
     segment_index: int,
     parent_read: DailyMarketTechnicalParentCaptureV4VerifiedRead,
-    candidates: list[_SortCandidate],
+    candidates: list[_SortCandidate] | None,
     artifact_references: list[_ChildArtifactReference],
     processed_codes: list[str],
     missing_data_codes: list[str],
@@ -746,6 +915,9 @@ def _consume_verified_segment(
     seen_codes: set[str],
     stock_filter: set[str],
     cancel_callback: Callable[[], bool] | None,
+    read_index_candidates: list[_ReadIndexCandidate] | None = None,
+    index_byte_count: list[int] | None = None,
+    max_index_bytes: int = DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES,
 ) -> None:
     """同次消費已核驗 parent context，只留下排序候選與 child pins。"""
 
@@ -851,6 +1023,7 @@ def _consume_verified_segment(
         artifact_index = len(artifact_references)
         artifact_references.append(
             _ChildArtifactReference(
+                segment_index=segment_index,
                 repository_output_root=verified.repository_output_root,
                 manifest_path=verified.manifest_path,
                 manifest_sha256=verified.manifest_sha256,
@@ -860,6 +1033,12 @@ def _consume_verified_segment(
                 decision_date=verified.decision_date,
             )
         )
+        if read_index_candidates is not None:
+            if index_byte_count is None:
+                _fail("technical_universe_v4_read_session_index_invalid")
+            index_byte_count[0] += _read_index_artifact_size(artifact_references[-1])
+            if index_byte_count[0] > max_index_bytes:
+                _fail("technical_universe_v4_read_session_index_limit")
         for snapshot in verified.snapshots:
             if snapshot.stock_code in seen_codes:
                 _fail("technical_universe_v4_query_duplicate_stock")
@@ -870,6 +1049,44 @@ def _consume_verified_segment(
                 missing_data_codes.append(row.stock_code)
             if any(rule.state == "unknown" for rule in row.rules):
                 unknown_rule_codes.append(row.stock_code)
+            if read_index_candidates is not None:
+                compact_rules: list[_ReadIndexRule] = []
+                for evidence in row.rules:
+                    if evidence.state not in _RULE_STATE_ORDER:
+                        _fail("technical_universe_v4_read_session_rule_invalid")
+                    for number in (evidence.numerator, evidence.denominator, evidence.ratio):
+                        if number is not None and (
+                            not isinstance(number, Decimal) or not number.is_finite()
+                        ):
+                            _fail("technical_universe_v4_read_session_decimal_invalid")
+                    compact_rules.append(
+                        _ReadIndexRule(
+                            state=cast(RuleState, evidence.state),
+                            numerator=evidence.numerator,
+                            denominator=evidence.denominator,
+                            ratio=evidence.ratio,
+                        )
+                    )
+                compact_candidate = _ReadIndexCandidate(
+                    stock_code=row.stock_code,
+                    segment_index=segment_index,
+                    artifact_index=artifact_index,
+                    snapshot_identity_sha256=snapshot.snapshot_identity_sha256,
+                    source_identity=snapshot.source_identity,
+                    raw_row_count=row.raw_row_count,
+                    latest_feature_date=row.latest_feature_date,
+                    rules=tuple(compact_rules),
+                )
+                read_index_candidates.append(compact_candidate)
+                if index_byte_count is None:
+                    _fail("technical_universe_v4_read_session_index_invalid")
+                index_byte_count[0] += _read_index_candidate_size(compact_candidate)
+                if (
+                    len(read_index_candidates)
+                    > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS
+                    or index_byte_count[0] > max_index_bytes
+                ):
+                    _fail("technical_universe_v4_read_session_index_limit")
             if stock_filter and row.stock_code not in stock_filter:
                 continue
             if not _row_matches_state_filters(row, query.rule_state_filters, query.combine_mode):
@@ -877,14 +1094,15 @@ def _consume_verified_segment(
             sort_value = _row_sort_value(row, query.sort_key)
             if sort_value is not None and not isinstance(sort_value, (str, int, date, Decimal)):
                 _fail("technical_universe_v4_query_sort_value_invalid")
-            candidates.append(
-                _SortCandidate(
-                    stock_code=row.stock_code,
-                    segment_index=segment_index,
-                    sort_value=cast(SortValue | None, sort_value),
-                    artifact_index=artifact_index,
+            if candidates is not None:
+                candidates.append(
+                    _SortCandidate(
+                        stock_code=row.stock_code,
+                        segment_index=segment_index,
+                        sort_value=cast(SortValue | None, sort_value),
+                        artifact_index=artifact_index,
+                    )
                 )
-            )
     if _is_cancelled(cancel_callback):
         _fail("technical_universe_v4_query_cancelled")
 
@@ -958,6 +1176,148 @@ class DailyMarketTechnicalUniverseV4Page:
             "exclusion_reasons": dict(self.exclusion_reasons),
             "rows": [row.to_dict() for row in self.rows],
         }
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMarketTechnicalUniverseV4ReadSelection:
+    """同一 read session 的固定查詢條件及完整排序代碼清單。"""
+
+    _query: DailyMarketTechnicalUniverseV4Query = field(repr=False)
+    _read_session_identity_sha256: str = field(repr=False)
+    _query_spec_identity_sha256: str = field(repr=False)
+    _eligibility_mode: Literal["unrestricted", "explicit"]
+    _eligible_stock_codes_sha256: str
+    _effective_stock_filter_sha256: str
+    _effective_stock_filter: tuple[str, ...] | None = field(repr=False)
+    _candidate_indexes: tuple[int, ...] = field(repr=False)
+    _candidate_indexes_sha256: str = field(repr=False)
+    stock_codes: tuple[str, ...]
+    _ordered_stock_codes_sha256: str = field(repr=False)
+    selection_identity_sha256: str
+    _seal: object = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self._seal is not _READ_SELECTION_SEAL:
+            _fail("technical_universe_v4_read_selection_not_reader_issued")
+        if (
+            not isinstance(self._query, DailyMarketTechnicalUniverseV4Query)
+            or self._eligibility_mode not in {"unrestricted", "explicit"}
+            or _SHA256_RE.fullmatch(self._read_session_identity_sha256) is None
+            or _SHA256_RE.fullmatch(self._query_spec_identity_sha256) is None
+            or _SHA256_RE.fullmatch(self._eligible_stock_codes_sha256) is None
+            or _SHA256_RE.fullmatch(self._effective_stock_filter_sha256) is None
+            or _SHA256_RE.fullmatch(self._candidate_indexes_sha256) is None
+            or _SHA256_RE.fullmatch(self._ordered_stock_codes_sha256) is None
+            or _SHA256_RE.fullmatch(self.selection_identity_sha256) is None
+            or self._query_spec_identity_sha256 != _query_selection_spec_identity(self._query)
+            or len(self._candidate_indexes) != len(self.stock_codes)
+            or len(set(self._candidate_indexes)) != len(self._candidate_indexes)
+            or len(self.stock_codes) > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS
+            or (
+                self._effective_stock_filter == ()
+                and (self._candidate_indexes or self.stock_codes)
+            )
+            or any(type(index) is not int or index < 0 for index in self._candidate_indexes)
+            or any(
+                not isinstance(code, str) or _STOCK_CODE_RE.fullmatch(code) is None
+                for code in self.stock_codes
+            )
+            or len(set(self.stock_codes)) != len(self.stock_codes)
+            or _sha256_json(list(self._candidate_indexes)) != self._candidate_indexes_sha256
+            or _sha256_json(list(self.stock_codes)) != self._ordered_stock_codes_sha256
+        ):
+            _fail("technical_universe_v4_read_selection_invalid")
+        effective_filter_payload: dict[str, object] = (
+            {"scope": "unrestricted"}
+            if self._effective_stock_filter is None
+            else {"scope": "explicit", "codes": list(self._effective_stock_filter)}
+        )
+        if _sha256_json(effective_filter_payload) != self._effective_stock_filter_sha256:
+            _fail("technical_universe_v4_read_selection_invalid")
+        if self._effective_stock_filter is not None:
+            try:
+                normalized = _normalize_stock_filter(self._effective_stock_filter)
+            except DailyMarketTechnicalUniverseV4QueryError as exc:
+                raise DailyMarketTechnicalUniverseV4QueryError(
+                    "technical_universe_v4_read_selection_invalid", str(exc)
+                ) from exc
+            if normalized != self._effective_stock_filter:
+                _fail("technical_universe_v4_read_selection_invalid")
+
+    @property
+    def matching_count(self) -> int:
+        return len(self.stock_codes)
+
+    @property
+    def has_explicit_empty_eligibility(self) -> bool:
+        return self._effective_stock_filter == ()
+
+
+def _query_selection_spec_identity(query: DailyMarketTechnicalUniverseV4Query) -> str:
+    payload = query.to_dict()
+    payload.pop("page_index", None)
+    payload.pop("page_size", None)
+    payload.pop("query_identity_sha256", None)
+    return _sha256_json(payload)
+
+
+def _read_selection_identity(selection: DailyMarketTechnicalUniverseV4ReadSelection) -> str:
+    body = {
+        "schema": "daily-market-technical-universe-read-selection.v1",
+        "read_session_identity_sha256": selection._read_session_identity_sha256,
+        "query_spec_identity_sha256": selection._query_spec_identity_sha256,
+        "eligibility_mode": selection._eligibility_mode,
+        "eligible_stock_codes_sha256": selection._eligible_stock_codes_sha256,
+        "effective_stock_filter_sha256": selection._effective_stock_filter_sha256,
+        "candidate_indexes_sha256": selection._candidate_indexes_sha256,
+        "stock_count": len(selection.stock_codes),
+        "ordered_stock_codes_sha256": selection._ordered_stock_codes_sha256,
+    }
+    return _sha256_json(body)
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMarketTechnicalUniverseV4ReadSelectionPage:
+    """固定 selection 的一頁；explicit-empty 不偽裝成 v4 空 stock_filter。"""
+
+    selection_identity_sha256: str
+    page_index: int
+    page_size: int
+    matching_count: int
+    page_count: int
+    page: DailyMarketTechnicalUniverseV4Page | None
+
+    def __post_init__(self) -> None:
+        if (
+            _SHA256_RE.fullmatch(self.selection_identity_sha256) is None
+            or type(self.page_index) is not int
+            or not 0 <= self.page_index <= DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_INDEX
+            or type(self.page_size) is not int
+            or not 1 <= self.page_size <= DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_SIZE
+            or type(self.matching_count) is not int
+            or self.matching_count < 0
+            or type(self.page_count) is not int
+            or self.page_count != (self.matching_count + self.page_size - 1) // self.page_size
+        ):
+            _fail("technical_universe_v4_read_selection_page_invalid")
+        if self.page is None:
+            if self.matching_count != 0 or self.page_count != 0:
+                _fail("technical_universe_v4_read_selection_page_invalid")
+        elif (
+            self.page.query.page_index != self.page_index
+            or self.page.query.page_size != self.page_size
+            or self.page.matching_count != self.matching_count
+            or self.page.page_count != self.page_count
+        ):
+            _fail("technical_universe_v4_read_selection_page_invalid")
+
+    @property
+    def rows(self) -> tuple[DailyMarketTechnicalParentV4Row, ...]:
+        return () if self.page is None else self.page.rows
+
+    @property
+    def is_explicit_empty(self) -> bool:
+        return self.page is None
 
 
 def read_daily_market_technical_universe_v4_page(
@@ -1126,4 +1486,965 @@ def read_daily_market_technical_universe_v4_page(
         missing_data_stock_codes=state.missing_data_stock_codes,
         unknown_rule_stock_codes=tuple(sorted(unknown_rule_codes)),
         exclusion_reasons=cohort.exclusion_reasons,
+    )
+
+
+def _read_session_collection_context(
+    parent_read: DailyMarketTechnicalParentCaptureV4VerifiedRead,
+) -> _ReadSessionCollectionContext:
+    package = parent_read.package
+    plan = package.get("plan")
+    if not isinstance(plan, Mapping):
+        _fail("technical_universe_v4_query_parent_invalid")
+    cohort = plan.get("cohort")
+    method = plan.get("method_contracts")
+    if not isinstance(cohort, Mapping) or not isinstance(method, Mapping):
+        _fail("technical_universe_v4_query_parent_invalid")
+    raw_rules = method.get("rules")
+    if not isinstance(raw_rules, list):
+        _fail("technical_universe_v4_query_method_rules_invalid")
+    keys: list[str] = []
+    for item in raw_rules:
+        if not isinstance(item, Mapping) or not isinstance(item.get("key"), str):
+            _fail("technical_universe_v4_query_method_rules_invalid")
+        keys.append(cast(str, item["key"]))
+    if len(keys) != 5 or len(set(keys)) != len(keys):
+        _fail("technical_universe_v4_query_method_rules_invalid")
+    clock_id = _require_sha(
+        plan.get("source_clock_identity_sha256"),
+        "technical_universe_v4_query_parent_invalid",
+    )
+    method_id = _require_sha(
+        plan.get("method_contracts_sha256"),
+        "technical_universe_v4_query_parent_invalid",
+    )
+    universe_id = _bounded_text(
+        cohort.get("universe_id"), 96, "technical_universe_v4_query_parent_invalid"
+    )
+    population_version = _bounded_text(
+        cohort.get("population_version"), 128, "technical_universe_v4_query_parent_invalid"
+    )
+    decision_day = _parse_date(
+        cohort.get("decision_date"), "technical_universe_v4_query_parent_invalid"
+    )
+    return _ReadSessionCollectionContext(
+        source_clock_identity_sha256=clock_id,
+        method_contracts_sha256=method_id,
+        method_rule_keys=tuple(keys),
+        universe_id=universe_id,
+        population_version=population_version,
+        decision_date=decision_day,
+    )
+
+
+def _read_session_parent_observation(
+    segment_index: int,
+    parent_read: DailyMarketTechnicalParentCaptureV4VerifiedRead,
+) -> _ReadSessionParentObservation:
+    package = parent_read.package
+    plan = package.get("plan")
+    receipt = package.get("receipt")
+    if not isinstance(plan, Mapping) or not isinstance(receipt, Mapping):
+        _fail("technical_universe_v4_query_parent_invalid")
+    cohort = plan.get("cohort")
+    if not isinstance(cohort, Mapping):
+        _fail("technical_universe_v4_query_parent_invalid")
+    included = cohort.get("included_stock_codes")
+    if not isinstance(included, list) or any(not isinstance(code, str) for code in included):
+        _fail("technical_universe_v4_query_parent_invalid")
+    return _ReadSessionParentObservation(
+        segment_index=segment_index,
+        parent_plan_identity_sha256=_require_sha(
+            plan.get("parent_plan_identity_sha256"),
+            "technical_universe_v4_query_parent_invalid",
+        ),
+        parent_plan_sha256=_require_sha(
+            package.get("plan_sha256"),
+            "technical_universe_v4_query_parent_invalid",
+        ),
+        parent_receipt_identity_sha256=_require_sha(
+            receipt.get("receipt_identity_sha256"),
+            "technical_universe_v4_query_parent_invalid",
+        ),
+        parent_receipt_sha256=_require_sha(
+            package.get("receipt_sha256"),
+            "technical_universe_v4_query_parent_invalid",
+        ),
+        cohort_identity_sha256=_require_sha(
+            cohort.get("cohort_identity_sha256"),
+            "technical_universe_v4_query_parent_invalid",
+        ),
+        source_clock_identity_sha256=_require_sha(
+            plan.get("source_clock_identity_sha256"),
+            "technical_universe_v4_query_parent_invalid",
+        ),
+        method_contracts_sha256=_require_sha(
+            plan.get("method_contracts_sha256"),
+            "technical_universe_v4_query_parent_invalid",
+        ),
+        included_stock_codes=tuple(cast(list[str], included)),
+    )
+
+
+def _validate_read_session_material(
+    *,
+    root: Path,
+    state: DailyMarketTechnicalUniverseV4VerifiedState,
+    callback_segments: Sequence[int],
+    parent_observations: Sequence[_ReadSessionParentObservation],
+    candidates: Sequence[_ReadIndexCandidate],
+    artifact_references: Sequence[_ChildArtifactReference],
+    processed_codes: Sequence[str],
+    missing_data_codes: Sequence[str],
+    unknown_rule_codes: Sequence[str],
+) -> None:
+    metadata = _state_metadata(state)
+    references = state.segment_parent_references
+    expected_indices = tuple(index for index, _reference in references)
+    if (
+        expected_indices != tuple(range(len(references)))
+        or tuple(callback_segments) != expected_indices
+        or tuple(item.segment_index for item in parent_observations) != expected_indices
+        or len(artifact_references) > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS
+    ):
+        _fail("technical_universe_v4_read_session_segment_mismatch")
+    plan_cohort = state.plan.cohort
+    included_codes = plan_cohort.included_stock_codes
+    if (
+        len(processed_codes) != state.counts.processed_count
+        or tuple(processed_codes) != included_codes[:len(processed_codes)]
+        or tuple(candidate.stock_code for candidate in candidates) != tuple(processed_codes)
+        or len(set(processed_codes)) != len(processed_codes)
+        or state.counts.pending_count != len(included_codes) - len(processed_codes)
+        or state.counts.missing_data_count != len(state.missing_data_stock_codes)
+        or tuple(missing_data_codes) != state.missing_data_stock_codes
+        or state.counts.processed_count + state.counts.pending_count != state.counts.included_count
+    ):
+        _fail("technical_universe_v4_query_counts_mismatch")
+    if any(
+        not 0 <= item.artifact_index < len(artifact_references)
+        or artifact_references[item.artifact_index].segment_index != item.segment_index
+        for item in candidates
+    ):
+        _fail("technical_universe_v4_read_session_artifact_mismatch")
+    if tuple(sorted(unknown_rule_codes)) != tuple(sorted(
+        candidate.stock_code
+        for candidate in candidates
+        if any(rule.state == "unknown" for rule in candidate.rules)
+    )):
+        _fail("technical_universe_v4_read_session_unknown_count_mismatch")
+    references_by_index = dict(references)
+    for observation in parent_observations:
+        reference = references_by_index.get(observation.segment_index)
+        if reference is None:
+            _fail("technical_universe_v4_read_session_parent_mismatch")
+        segment = state.plan.segment_cohort(observation.segment_index)
+        if (
+            observation.parent_plan_identity_sha256 != reference.parent_plan_identity_sha256
+            or observation.parent_plan_sha256 != reference.parent_plan_sha256
+            or observation.parent_receipt_identity_sha256 != reference.parent_receipt_identity_sha256
+            or observation.parent_receipt_sha256 != reference.parent_receipt_sha256
+            or observation.cohort_identity_sha256 != segment.cohort_identity_sha256
+            or observation.source_clock_identity_sha256 != metadata["source_clock_identity_sha256"]
+            or observation.method_contracts_sha256 != metadata["method_contracts_sha256"]
+            or observation.included_stock_codes != segment.included_stock_codes
+        ):
+            _fail("technical_universe_v4_read_session_parent_mismatch")
+    if state.receipt.status == "complete" and (
+        state.counts.pending_count != 0
+        or state.counts.processed_count != state.counts.included_count
+        or len(references) != len(state.plan.segments)
+    ):
+        _fail("technical_universe_v4_query_false_complete")
+
+
+def _read_session_source_payload(
+    *,
+    root: Path,
+    state: DailyMarketTechnicalUniverseV4VerifiedState,
+    plan_sha256: str,
+    receipt_sha256: str,
+    artifact_references: Sequence[_ChildArtifactReference],
+    index_count: int,
+    index_bytes: int,
+) -> dict[str, Any]:
+    metadata = _state_metadata(state)
+    return {
+        "schema": "daily-market-technical-universe-read-session.v1",
+        "store_output_root": str(root),
+        "generation_identity_sha256": state.plan.generation_identity_sha256,
+        "plan_identity_sha256": state.plan.identity_sha256,
+        "plan_sha256": plan_sha256,
+        "receipt_identity_sha256": state.receipt.identity_sha256,
+        "receipt_sha256": receipt_sha256,
+        "receipt_status": state.receipt.status,
+        "cohort_identity_sha256": state.plan.cohort.cohort_identity_sha256,
+        "source_clock_identity_sha256": metadata["source_clock_identity_sha256"],
+        "method_contracts_sha256": metadata["method_contracts_sha256"],
+        "calculation_identity_sha256": state.calculation_identity_sha256,
+        "counts": state.counts.to_dict(),
+        "segment_parent_references": [
+            {"segment_index": index, **reference.to_dict()}
+            for index, reference in state.segment_parent_references
+        ],
+        "child_artifacts": [
+            {
+                "segment_index": item.segment_index,
+                "repository_output_root": str(item.repository_output_root),
+                "manifest_path": str(item.manifest_path),
+                "manifest_sha256": item.manifest_sha256,
+                "cohort_identity_sha256": item.cohort_identity_sha256,
+                "source_clock_identity_sha256": item.source_clock_identity_sha256,
+                "method_contract_sha256": item.method_contract_sha256,
+                "decision_date": item.decision_date.isoformat(),
+            }
+            for item in artifact_references
+        ],
+        "index_stock_count": index_count,
+        "index_bytes": index_bytes,
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMarketTechnicalUniverseV4ReadSession:
+    """一次完整 strict read 建立的固定版本緊湊索引。
+
+    session 代表建立時讀到並核驗的版本；它不表示來源檔之後仍未變動。
+    index_bytes 是 canonical serialized payload 的預算，不代表 Python RSS 上限。
+    新操作可另開 session；頁面與個股讀取仍精確重開選中的 child artifact。
+    """
+
+    _root: Path = field(repr=False)
+    _state: DailyMarketTechnicalUniverseV4VerifiedState = field(repr=False)
+    _plan_sha256: str = field(repr=False)
+    _receipt_sha256: str = field(repr=False)
+    _candidates: tuple[_ReadIndexCandidate, ...] = field(repr=False)
+    _artifact_references: tuple[_ChildArtifactReference, ...] = field(repr=False)
+    _missing_data_stock_codes: tuple[str, ...] = field(repr=False)
+    _unknown_rule_stock_codes: tuple[str, ...] = field(repr=False)
+    index_bytes: int
+    read_session_identity_sha256: str
+    _seal: object = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self._seal is not _READ_SESSION_SEAL:
+            _fail("technical_universe_v4_read_session_not_reader_issued")
+        if (
+            len(self._candidates) > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS
+            or self.index_bytes < 0
+            or self.index_bytes > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES
+        ):
+            _fail("technical_universe_v4_read_session_index_invalid")
+
+    @property
+    def store_output_root(self) -> str:
+        return str(self._root)
+
+    @property
+    def index_stock_count(self) -> int:
+        return len(self._candidates)
+
+    @property
+    def receipt_identity_sha256(self) -> str:
+        return self._state.receipt.identity_sha256
+
+    def create_query(
+        self,
+        *,
+        rule_state_filters: Sequence[DailyMarketTechnicalRuleStateFilterV4] = (),
+        combine_mode: CombineMode = "AND",
+        stock_filter: Sequence[str] = (),
+        sort_key: str = "stock_code",
+        descending: bool = False,
+        page_index: int = 0,
+        page_size: int = 50,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketTechnicalUniverseV4Query:
+        return _query_from_verified_state(
+            root=self._root,
+            state=self._state,
+            plan_sha256=self._plan_sha256,
+            receipt_sha256=self._receipt_sha256,
+            rule_state_filters=rule_state_filters,
+            combine_mode=combine_mode,
+            stock_filter=stock_filter,
+            sort_key=sort_key,
+            descending=descending,
+            page_index=page_index,
+            page_size=page_size,
+            cancel_callback=cancel_callback,
+        )
+
+    def matches_source(self, query: DailyMarketTechnicalUniverseV4Query) -> bool:
+        if not isinstance(query, DailyMarketTechnicalUniverseV4Query):
+            return False
+        try:
+            _validate_query_matches_state(query, root=self._root, state=self._state)
+        except DailyMarketTechnicalUniverseV4QueryError:
+            return False
+        return query.plan_sha256 == self._plan_sha256 and query.receipt_sha256 == self._receipt_sha256
+
+    def read_page(
+        self,
+        query: DailyMarketTechnicalUniverseV4Query,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketTechnicalUniverseV4Page:
+        ordered = self._ordered_candidates(query, eligible_stock_codes=None, cancel_callback=cancel_callback)
+        matching_count = len(ordered)
+        page_count = (matching_count + query.page_size - 1) // query.page_size
+        start = query.page_index * query.page_size
+        page_candidates = tuple(
+            (candidate, value)
+            for _index, candidate, value in ordered[start:start + query.page_size]
+        )
+        page, _captured = self._materialize_page(
+            query,
+            page_candidates,
+            matching_count=matching_count,
+            page_count=page_count,
+            capture_stock_code=None,
+            cancel_callback=cancel_callback,
+        )
+        return page
+
+    def read_page_and_stock_snapshot(
+        self,
+        query: DailyMarketTechnicalUniverseV4Query,
+        stock_code: str,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> tuple[
+        DailyMarketTechnicalUniverseV4Page,
+        int,
+        DailyMarketTechnicalUniverseV4ParentReceiptReference,
+        DailyMarketTechnicalFeatureSnapshotV4,
+    ]:
+        """一次讀取 origin page，並從同一批驗證結果捕獲指定股票。"""
+
+        if not isinstance(stock_code, str) or _STOCK_CODE_RE.fullmatch(stock_code) is None:
+            _fail("technical_universe_v4_stock_code_invalid")
+        ordered = self._ordered_candidates(query, eligible_stock_codes=None, cancel_callback=cancel_callback)
+        matching_count = len(ordered)
+        page_count = (matching_count + query.page_size - 1) // query.page_size
+        start = query.page_index * query.page_size
+        page_candidates = tuple(
+            (candidate, value)
+            for _index, candidate, value in ordered[start:start + query.page_size]
+        )
+        selected_candidate = next(
+            (candidate for candidate, _value in page_candidates if candidate.stock_code == stock_code),
+            None,
+        )
+        if selected_candidate is None:
+            _fail("technical_universe_v4_stock_not_in_origin_page")
+        page, captured = self._materialize_page(
+            query,
+            page_candidates,
+            matching_count=matching_count,
+            page_count=page_count,
+            capture_stock_code=stock_code,
+            cancel_callback=cancel_callback,
+        )
+        selected_row = next((row for row in page.rows if row.stock_code == stock_code), None)
+        if selected_row is None or captured is None:
+            _fail("technical_universe_v4_stock_snapshot_missing")
+        candidate, snapshot = captured
+        if (
+            candidate != selected_candidate
+            or snapshot.snapshot_identity_sha256 != selected_row.snapshot_identity_sha256
+            or snapshot.source_identity != selected_row.source_identity
+        ):
+            _fail("technical_universe_v4_stock_snapshot_changed")
+        parent_reference = dict(self._state.segment_parent_references).get(candidate.segment_index)
+        if parent_reference is None:
+            _fail("technical_universe_v4_stock_parent_reference_missing")
+        if _is_cancelled(cancel_callback):
+            _fail("technical_universe_v4_query_cancelled")
+        return page, candidate.segment_index, parent_reference, snapshot
+
+    def _ordered_candidates(
+        self,
+        query: DailyMarketTechnicalUniverseV4Query,
+        *,
+        eligible_stock_codes: tuple[str, ...] | None,
+        cancel_callback: Callable[[], bool] | None,
+    ) -> list[tuple[int, _ReadIndexCandidate, SortValue | None]]:
+        if not isinstance(query, DailyMarketTechnicalUniverseV4Query):
+            _fail("technical_universe_v4_query_invalid")
+        if not self.matches_source(query):
+            _fail("technical_universe_v4_read_session_source_mismatch")
+        if _is_cancelled(cancel_callback):
+            _fail("technical_universe_v4_query_cancelled")
+        if eligible_stock_codes == ():
+            return []
+        stock_filter = set(query.stock_filter)
+        eligible_filter = (
+            None if eligible_stock_codes is None else set(eligible_stock_codes)
+        )
+        rule_indexes = {key: index for index, key in enumerate(query.method_rule_keys)}
+        matching: list[tuple[int, _ReadIndexCandidate, SortValue | None]] = []
+        for candidate_index, candidate in enumerate(self._candidates):
+            if _is_cancelled(cancel_callback):
+                _fail("technical_universe_v4_query_cancelled")
+            if stock_filter and candidate.stock_code not in stock_filter:
+                continue
+            if eligible_filter is not None and candidate.stock_code not in eligible_filter:
+                continue
+            selected = tuple(
+                candidate.rules[rule_indexes[item.rule_key]].state in item.states
+                for item in query.rule_state_filters
+            )
+            if selected and not (all(selected) if query.combine_mode == "AND" else any(selected)):
+                continue
+            value = _read_index_sort_value(candidate, query)
+            matching.append((candidate_index, candidate, value))
+        matching.sort(key=lambda item: item[1].stock_code)
+        null_candidates = [item for item in matching if item[2] is None]
+        valued_candidates = [item for item in matching if item[2] is not None]
+        valued_candidates.sort(key=lambda item: cast(SortValue, item[2]), reverse=query.descending)
+        null_candidates.sort(key=lambda item: item[1].stock_code)
+        ordered = valued_candidates + null_candidates
+        if _is_cancelled(cancel_callback):
+            _fail("technical_universe_v4_query_cancelled")
+        return ordered
+
+    def _materialize_page(
+        self,
+        query: DailyMarketTechnicalUniverseV4Query,
+        page_candidates: Sequence[tuple[_ReadIndexCandidate, SortValue | None]],
+        *,
+        matching_count: int,
+        page_count: int,
+        capture_stock_code: str | None,
+        cancel_callback: Callable[[], bool] | None,
+    ) -> tuple[
+        DailyMarketTechnicalUniverseV4Page,
+        tuple[_ReadIndexCandidate, DailyMarketTechnicalFeatureSnapshotV4] | None,
+    ]:
+        selected_by_artifact: dict[int, list[_ReadIndexCandidate]] = {}
+        for candidate, _value in page_candidates:
+            selected_by_artifact.setdefault(candidate.artifact_index, []).append(candidate)
+        page_rows: dict[str, DailyMarketTechnicalParentV4Row] = {}
+        captured: tuple[_ReadIndexCandidate, DailyMarketTechnicalFeatureSnapshotV4] | None = None
+        for artifact_index, selected_candidates in sorted(selected_by_artifact.items()):
+            if _is_cancelled(cancel_callback):
+                _fail("technical_universe_v4_query_cancelled")
+            reference = _read_session_artifact_reference(
+                self._artifact_references, artifact_index, selected_candidates
+            )
+            artifact = _read_session_child_artifact(reference, cancel_callback)
+            snapshots = {item.stock_code: item for item in artifact.snapshots}
+            if len(snapshots) != len(artifact.snapshots):
+                _fail("technical_universe_v4_query_duplicate_page_stock")
+            for candidate in selected_candidates:
+                snapshot = snapshots.get(candidate.stock_code)
+                if snapshot is None:
+                    _fail("technical_universe_v4_query_page_rows_missing")
+                row = _parent_query_module._make_row(snapshot)
+                if (
+                    snapshot.snapshot_identity_sha256 != candidate.snapshot_identity_sha256
+                    or snapshot.source_identity != candidate.source_identity
+                    or _row_sort_value(row, query.sort_key)
+                    != _read_index_sort_value(candidate, query)
+                ):
+                    _fail("technical_universe_v4_read_session_candidate_changed")
+                if row.stock_code in page_rows:
+                    _fail("technical_universe_v4_query_duplicate_page_stock")
+                page_rows[row.stock_code] = row
+                if capture_stock_code == candidate.stock_code:
+                    captured = (candidate, snapshot)
+        expected_codes = tuple(candidate.stock_code for candidate, _value in page_candidates)
+        if tuple(code for code in expected_codes if code not in page_rows) or set(page_rows) != set(expected_codes):
+            _fail("technical_universe_v4_query_page_rows_missing")
+        if capture_stock_code is not None and captured is None:
+            _fail("technical_universe_v4_stock_snapshot_missing")
+        if _is_cancelled(cancel_callback):
+            _fail("technical_universe_v4_query_cancelled")
+        rows = tuple(page_rows[code] for code in expected_codes)
+        cohort = self._state.plan.cohort
+        included_codes = cohort.included_stock_codes
+        processed_count = self._state.counts.processed_count
+        page = DailyMarketTechnicalUniverseV4Page(
+            query=query,
+            rows=rows,
+            counts=self._state.counts,
+            matching_count=matching_count,
+            page_count=page_count,
+            processed_segment_count=len(self._state.segment_parent_references),
+            pending_stock_codes=included_codes[processed_count:],
+            missing_data_stock_codes=self._missing_data_stock_codes,
+            unknown_rule_stock_codes=self._unknown_rule_stock_codes,
+            exclusion_reasons=cohort.exclusion_reasons,
+        )
+        return page, captured
+
+    def select_stock_codes(
+        self,
+        query: DailyMarketTechnicalUniverseV4Query,
+        *,
+        eligible_stock_codes: Sequence[str] | None = None,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketTechnicalUniverseV4ReadSelection:
+        """全域套用 query 與外層 eligibility 一次排序，回傳不含 raw history 的固定清單。"""
+
+        if not isinstance(query, DailyMarketTechnicalUniverseV4Query):
+            _fail("technical_universe_v4_query_invalid")
+        if not self.matches_source(query):
+            _fail("technical_universe_v4_read_session_source_mismatch")
+        if _is_cancelled(cancel_callback):
+            _fail("technical_universe_v4_query_cancelled")
+        normalized_eligible = _normalize_selection_stock_filter(
+            eligible_stock_codes, cancel_callback=cancel_callback
+        )
+        eligibility_mode: Literal["unrestricted", "explicit"] = (
+            "unrestricted" if normalized_eligible is None else "explicit"
+        )
+        eligible_digest = _sha256_json({
+            "mode": eligibility_mode,
+            "codes": None if normalized_eligible is None else list(normalized_eligible),
+        })
+        if normalized_eligible is None:
+            effective_stock_filter = query.stock_filter or None
+        elif query.stock_filter:
+            query_filter = set(query.stock_filter)
+            effective_stock_filter = tuple(
+                code for code in normalized_eligible if code in query_filter
+            )
+        else:
+            effective_stock_filter = normalized_eligible
+        ordered = self._ordered_candidates(
+            query,
+            eligible_stock_codes=effective_stock_filter,
+            cancel_callback=cancel_callback,
+        )
+        candidate_indexes = tuple(index for index, _candidate, _value in ordered)
+        stock_codes = tuple(candidate.stock_code for _index, candidate, _value in ordered)
+        effective_filter_payload: dict[str, object] = (
+            {"scope": "unrestricted"}
+            if effective_stock_filter is None
+            else {"scope": "explicit", "codes": list(effective_stock_filter)}
+        )
+        selection = DailyMarketTechnicalUniverseV4ReadSelection(
+            _query=query,
+            _read_session_identity_sha256=self.read_session_identity_sha256,
+            _query_spec_identity_sha256=_query_selection_spec_identity(query),
+            _eligibility_mode=eligibility_mode,
+            _eligible_stock_codes_sha256=eligible_digest,
+            _effective_stock_filter_sha256=_sha256_json(effective_filter_payload),
+            _effective_stock_filter=effective_stock_filter,
+            _candidate_indexes=candidate_indexes,
+            _candidate_indexes_sha256=_sha256_json(list(candidate_indexes)),
+            stock_codes=stock_codes,
+            _ordered_stock_codes_sha256=_sha256_json(list(stock_codes)),
+            selection_identity_sha256="0" * 64,
+            _seal=_READ_SELECTION_SEAL,
+        )
+        identity = _read_selection_identity(selection)
+        issued = dataclass_replace(selection, selection_identity_sha256=identity)
+        if _is_cancelled(cancel_callback):
+            _fail("technical_universe_v4_query_cancelled")
+        return issued
+
+    def _validate_selection(
+        self,
+        selection: DailyMarketTechnicalUniverseV4ReadSelection,
+    ) -> None:
+        if not isinstance(selection, DailyMarketTechnicalUniverseV4ReadSelection):
+            _fail("technical_universe_v4_read_selection_invalid")
+        if (
+            selection._seal is not _READ_SELECTION_SEAL
+            or selection._read_session_identity_sha256 != self.read_session_identity_sha256
+            or not self.matches_source(selection._query)
+            or _read_selection_identity(selection) != selection.selection_identity_sha256
+        ):
+            _fail("technical_universe_v4_read_selection_source_mismatch")
+
+    def _selection_page_query(
+        self,
+        selection: DailyMarketTechnicalUniverseV4ReadSelection,
+        *,
+        page_index: int,
+        page_size: int,
+        cancel_callback: Callable[[], bool] | None,
+    ) -> DailyMarketTechnicalUniverseV4Query:
+        original = selection._query
+        return _query_from_verified_state(
+            root=self._root,
+            state=self._state,
+            plan_sha256=self._plan_sha256,
+            receipt_sha256=self._receipt_sha256,
+            rule_state_filters=original.rule_state_filters,
+            combine_mode=original.combine_mode,
+            stock_filter=selection._effective_stock_filter or (),
+            sort_key=original.sort_key,
+            descending=original.descending,
+            page_index=page_index,
+            page_size=page_size,
+            cancel_callback=cancel_callback,
+        )
+
+    def read_selection_page(
+        self,
+        selection: DailyMarketTechnicalUniverseV4ReadSelection,
+        *,
+        page_index: int,
+        page_size: int,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketTechnicalUniverseV4ReadSelectionPage:
+        """切既有全域排序清單，僅精確重開該頁需要的 child artifact。"""
+
+        self._validate_selection(selection)
+        if (
+            type(page_index) is not int
+            or not 0 <= page_index <= DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_INDEX
+            or type(page_size) is not int
+            or not 1 <= page_size <= DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_SIZE
+        ):
+            _fail("technical_universe_v4_query_page_invalid")
+        if _is_cancelled(cancel_callback):
+            _fail("technical_universe_v4_query_cancelled")
+        matching_count = selection.matching_count
+        page_count = (matching_count + page_size - 1) // page_size
+        if selection._effective_stock_filter == ():
+            empty_page = DailyMarketTechnicalUniverseV4ReadSelectionPage(
+                selection_identity_sha256=selection.selection_identity_sha256,
+                page_index=page_index,
+                page_size=page_size,
+                matching_count=0,
+                page_count=0,
+                page=None,
+            )
+            if _is_cancelled(cancel_callback):
+                _fail("technical_universe_v4_query_cancelled")
+            return empty_page
+        query = self._selection_page_query(
+            selection,
+            page_index=page_index,
+            page_size=page_size,
+            cancel_callback=cancel_callback,
+        )
+        start = page_index * page_size
+        selected_indexes = selection._candidate_indexes[start:start + page_size]
+        for offset, index in enumerate(selected_indexes):
+            absolute_index = start + offset
+            if (
+                index >= len(self._candidates)
+                or absolute_index >= len(selection.stock_codes)
+                or self._candidates[index].stock_code != selection.stock_codes[absolute_index]
+            ):
+                _fail("technical_universe_v4_read_selection_candidate_mismatch")
+        page_candidates = tuple(
+            (self._candidates[index], None)
+            for index in selected_indexes
+        )
+        page, _captured = self._materialize_page(
+            query,
+            page_candidates,
+            matching_count=matching_count,
+            page_count=page_count,
+            capture_stock_code=None,
+            cancel_callback=cancel_callback,
+        )
+        return DailyMarketTechnicalUniverseV4ReadSelectionPage(
+            selection_identity_sha256=selection.selection_identity_sha256,
+            page_index=page_index,
+            page_size=page_size,
+            matching_count=matching_count,
+            page_count=page_count,
+            page=page,
+        )
+
+    def read_selection_stock_snapshot(
+        self,
+        selection: DailyMarketTechnicalUniverseV4ReadSelection,
+        stock_code: str,
+        *,
+        page_index: int,
+        page_size: int,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> tuple[
+        DailyMarketTechnicalUniverseV4Query,
+        int,
+        DailyMarketTechnicalUniverseV4ParentReceiptReference,
+        DailyMarketTechnicalFeatureSnapshotV4,
+    ]:
+        """只讀 selection 指定頁內個股的 exact artifact，不重新排序母體。"""
+
+        self._validate_selection(selection)
+        if not isinstance(stock_code, str) or _STOCK_CODE_RE.fullmatch(stock_code) is None:
+            _fail("technical_universe_v4_stock_code_invalid")
+        if (
+            type(page_index) is not int
+            or not 0 <= page_index <= DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_INDEX
+            or type(page_size) is not int
+            or not 1 <= page_size <= DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_SIZE
+        ):
+            _fail("technical_universe_v4_query_page_invalid")
+        start = page_index * page_size
+        selected_indexes = selection._candidate_indexes[start:start + page_size]
+        candidate_index: int | None = None
+        for offset, index in enumerate(selected_indexes):
+            absolute_index = start + offset
+            if (
+                index >= len(self._candidates)
+                or absolute_index >= len(selection.stock_codes)
+                or self._candidates[index].stock_code != selection.stock_codes[absolute_index]
+            ):
+                _fail("technical_universe_v4_read_selection_candidate_mismatch")
+            if selection.stock_codes[absolute_index] == stock_code:
+                candidate_index = index
+                break
+        if candidate_index is None:
+            _fail("technical_universe_v4_stock_not_in_origin_page")
+        if selection._effective_stock_filter == ():
+            _fail("technical_universe_v4_stock_not_in_origin_page")
+        query = self._selection_page_query(
+            selection,
+            page_index=page_index,
+            page_size=page_size,
+            cancel_callback=cancel_callback,
+        )
+        if _is_cancelled(cancel_callback):
+            _fail("technical_universe_v4_query_cancelled")
+        candidate = self._candidates[candidate_index]
+        reference = _read_session_artifact_reference(
+            self._artifact_references, candidate.artifact_index, (candidate,)
+        )
+        artifact = _read_session_child_artifact(reference, cancel_callback)
+        snapshots = {item.stock_code: item for item in artifact.snapshots}
+        if len(snapshots) != len(artifact.snapshots):
+            _fail("technical_universe_v4_query_duplicate_page_stock")
+        snapshot = snapshots.get(stock_code)
+        if snapshot is None or (
+            snapshot.snapshot_identity_sha256 != candidate.snapshot_identity_sha256
+            or snapshot.source_identity != candidate.source_identity
+        ):
+            _fail("technical_universe_v4_stock_snapshot_changed")
+        row = _parent_query_module._make_row(snapshot)
+        if (
+            (query.stock_filter and stock_code not in query.stock_filter)
+            or not _row_matches_state_filters(row, query.rule_state_filters, query.combine_mode)
+            or _row_sort_value(row, query.sort_key) != _read_index_sort_value(candidate, query)
+        ):
+            _fail("technical_universe_v4_read_session_candidate_changed")
+        parent_reference = dict(self._state.segment_parent_references).get(candidate.segment_index)
+        if parent_reference is None:
+            _fail("technical_universe_v4_stock_parent_reference_missing")
+        if _is_cancelled(cancel_callback):
+            _fail("technical_universe_v4_query_cancelled")
+        return query, candidate.segment_index, parent_reference, snapshot
+
+    def read_stock_snapshot(
+        self,
+        query: DailyMarketTechnicalUniverseV4Query,
+        stock_code: str,
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> tuple[int, DailyMarketTechnicalUniverseV4ParentReceiptReference, DailyMarketTechnicalFeatureSnapshotV4]:
+        """原查詢當頁只讀一次各 child artifact，並捕獲所選股票。"""
+
+        _page, segment_index, parent_reference, snapshot = self.read_page_and_stock_snapshot(
+            query, stock_code, cancel_callback=cancel_callback
+        )
+        return segment_index, parent_reference, snapshot
+
+def _read_index_sort_value(
+    candidate: _ReadIndexCandidate,
+    query: DailyMarketTechnicalUniverseV4Query,
+) -> SortValue | None:
+    sort_key = query.sort_key
+    if sort_key == "stock_code":
+        return candidate.stock_code
+    if sort_key == "decision_date":
+        return query.decision_date
+    if sort_key == "latest_feature_date":
+        return candidate.latest_feature_date
+    if sort_key == "raw_row_count":
+        return candidate.raw_row_count
+    rule_key, field_name = sort_key.rsplit(".", 1)
+    try:
+        rule = candidate.rules[query.method_rule_keys.index(rule_key)]
+    except (ValueError, IndexError) as exc:
+        raise DailyMarketTechnicalUniverseV4QueryError(
+            "technical_universe_v4_query_sort_key_invalid"
+        ) from exc
+    value = getattr(rule, field_name)
+    if value is not None and not isinstance(value, Decimal):
+        _fail("technical_universe_v4_query_sort_value_invalid")
+    return cast(Decimal | None, value)
+
+
+def _read_session_artifact_reference(
+    references: Sequence[_ChildArtifactReference],
+    artifact_index: int,
+    candidates: Sequence[_ReadIndexCandidate],
+) -> _ChildArtifactReference:
+    if not 0 <= artifact_index < len(references):
+        _fail("technical_universe_v4_query_page_reference_missing")
+    reference = references[artifact_index]
+    if any(
+        candidate.artifact_index != artifact_index
+        or candidate.segment_index != reference.segment_index
+        for candidate in candidates
+    ):
+        _fail("technical_universe_v4_read_session_artifact_mismatch")
+    return reference
+
+
+def _read_session_child_artifact(
+    reference: _ChildArtifactReference,
+    cancel_callback: Callable[[], bool] | None,
+) -> DailyMarketTechnicalBatchArtifactV4:
+    if _is_cancelled(cancel_callback):
+        _fail("technical_universe_v4_query_cancelled")
+    try:
+        artifact = DailyMarketTechnicalSnapshotV4Repository(
+            reference.repository_output_root
+        ).read_exact(
+            reference.manifest_path,
+            expected_manifest_sha256=reference.manifest_sha256,
+            expected_cohort_identity_sha256=reference.cohort_identity_sha256,
+            expected_source_clock_sha256=reference.source_clock_identity_sha256,
+            expected_method_contract_sha256=reference.method_contract_sha256,
+            expected_decision_date=reference.decision_date,
+        )
+    except (DailyMarketTechnicalSnapshotV4RepositoryError, OSError, ValueError) as exc:
+        code = getattr(exc, "code", "technical_universe_v4_query_child_read_failed")
+        raise DailyMarketTechnicalUniverseV4QueryError(str(code), str(exc)) from exc
+    if _is_cancelled(cancel_callback):
+        _fail("technical_universe_v4_query_cancelled")
+    return artifact
+
+
+def open_daily_market_technical_universe_v4_read_session(
+    *,
+    store_output_root: str | Path,
+    generation_identity_sha256: str,
+    plan_identity_sha256: str,
+    plan_sha256: str,
+    receipt_identity_sha256: str,
+    receipt_sha256: str,
+    cancel_callback: Callable[[], bool] | None = None,
+    max_index_bytes: int = DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES,
+) -> DailyMarketTechnicalUniverseV4ReadSession:
+    """一次完成原 strict reader 核驗並建立有界、不可變的完整母體索引。"""
+
+    if (
+        type(max_index_bytes) is not int
+        or max_index_bytes <= 0
+        or max_index_bytes > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES
+    ):
+        _fail("technical_universe_v4_read_session_index_limit_invalid")
+    if _is_cancelled(cancel_callback):
+        _fail("technical_universe_v4_query_cancelled")
+    candidates: list[_ReadIndexCandidate] = []
+    artifact_references: list[_ChildArtifactReference] = []
+    processed_codes: list[str] = []
+    missing_data_codes: list[str] = []
+    unknown_rule_codes: list[str] = []
+    seen_codes: set[str] = set()
+    callback_segments: list[int] = []
+    parent_observations: list[_ReadSessionParentObservation] = []
+    context_holder: list[_ReadSessionCollectionContext] = []
+    index_byte_count = [0]
+
+    def consume_verified_segment(
+        segment_index: int,
+        parent_read: DailyMarketTechnicalParentCaptureV4VerifiedRead,
+    ) -> None:
+        if segment_index != len(callback_segments):
+            _fail("technical_universe_v4_query_segment_order_invalid")
+        try:
+            context = _read_session_collection_context(parent_read)
+            if context_holder and context_holder[0] != context:
+                _fail("technical_universe_v4_read_session_cross_segment_source_mismatch")
+            if not context_holder:
+                context_holder.append(context)
+            _consume_verified_segment(
+                context,
+                segment_index=segment_index,
+                parent_read=parent_read,
+                candidates=None,
+                artifact_references=artifact_references,
+                processed_codes=processed_codes,
+                missing_data_codes=missing_data_codes,
+                unknown_rule_codes=unknown_rule_codes,
+                seen_codes=seen_codes,
+                stock_filter=set(),
+                cancel_callback=cancel_callback,
+                read_index_candidates=candidates,
+                index_byte_count=index_byte_count,
+                max_index_bytes=max_index_bytes,
+            )
+            parent_observations.append(
+                _read_session_parent_observation(segment_index, parent_read)
+            )
+        except DailyMarketTechnicalUniverseV4QueryError as exc:
+            raise DailyMarketTechnicalUniverseV4StoreError(exc.code, str(exc)) from exc
+        callback_segments.append(segment_index)
+
+    root, state = _read_exact_store_state(
+        store_output_root=store_output_root,
+        generation_identity_sha256=generation_identity_sha256,
+        plan_identity_sha256=plan_identity_sha256,
+        plan_sha256=plan_sha256,
+        receipt_identity_sha256=receipt_identity_sha256,
+        receipt_sha256=receipt_sha256,
+        parent_verified_callback=consume_verified_segment,
+        cancel_callback=cancel_callback,
+    )
+    if _is_cancelled(cancel_callback):
+        _fail("technical_universe_v4_query_cancelled")
+    _validate_read_session_material(
+        root=root,
+        state=state,
+        callback_segments=callback_segments,
+        parent_observations=parent_observations,
+        candidates=candidates,
+        artifact_references=artifact_references,
+        processed_codes=processed_codes,
+        missing_data_codes=missing_data_codes,
+        unknown_rule_codes=unknown_rule_codes,
+    )
+    metadata_bytes = len(_canonical_json_bytes({
+        "counts": state.counts.to_dict(),
+        "missing_data_stock_codes": list(state.missing_data_stock_codes),
+        "unknown_rule_stock_codes": sorted(unknown_rule_codes),
+        "parent_references": [
+            {"segment_index": index, **reference.to_dict()}
+            for index, reference in state.segment_parent_references
+        ],
+    }))
+    index_byte_count[0] += metadata_bytes
+    if index_byte_count[0] > max_index_bytes:
+        _fail("technical_universe_v4_read_session_index_limit")
+    if _is_cancelled(cancel_callback):
+        _fail("technical_universe_v4_query_cancelled")
+    source_payload = _read_session_source_payload(
+        root=root,
+        state=state,
+        plan_sha256=plan_sha256,
+        receipt_sha256=receipt_sha256,
+        artifact_references=artifact_references,
+        index_count=len(candidates),
+        index_bytes=index_byte_count[0],
+    )
+    source_payload["missing_data_stock_codes"] = list(state.missing_data_stock_codes)
+    source_payload["unknown_rule_stock_codes"] = sorted(unknown_rule_codes)
+    session_identity = _sha256_json(source_payload)
+    if _is_cancelled(cancel_callback):
+        _fail("technical_universe_v4_query_cancelled")
+    return DailyMarketTechnicalUniverseV4ReadSession(
+        _root=root,
+        _state=state,
+        _plan_sha256=plan_sha256,
+        _receipt_sha256=receipt_sha256,
+        _candidates=tuple(candidates),
+        _artifact_references=tuple(artifact_references),
+        _missing_data_stock_codes=state.missing_data_stock_codes,
+        _unknown_rule_stock_codes=tuple(sorted(unknown_rule_codes)),
+        index_bytes=index_byte_count[0],
+        read_session_identity_sha256=session_identity,
+        _seal=_READ_SESSION_SEAL,
     )

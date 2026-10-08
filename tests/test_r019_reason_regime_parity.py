@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -14,6 +15,7 @@ import pytest
 
 from app_module.recommendation.execute import execute_recommendation
 from app_module.recommendation.body_result import RecommendationBodyResult
+from app_module.recommendation.codec import decode_execution, encode_execution
 from app_module.recommendation.input_preparation import PreparedRecommendationMarket
 from app_module.recommendation_service import RecommendationService
 from data_module.config import TWStockConfig
@@ -182,7 +184,7 @@ def _build_service(
     formatted_inputs: list[list[dict[str, object]]] = []
 
     def capture_formatter_input(
-        reasons: list[dict[str, object]], max_reasons: int = 4
+        reasons: list[dict[str, object]], max_reasons: int | None = 4
     ) -> str:
         formatted_inputs.append([dict(reason) for reason in reasons])
         return formatter(reasons, max_reasons=max_reasons)
@@ -355,7 +357,7 @@ def test_industry_reason_legacy_text_tags_order_and_source_reads(
     assert execution.decision is body.decision
 
 
-def test_industry_reason_keeps_legacy_half_cent_format_and_three_row_truncate(
+def test_service_keeps_all_saved_reasons_and_three_reason_legacy_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -363,33 +365,57 @@ def test_industry_reason_keeps_legacy_half_cent_format_and_three_row_truncate(
         {"tag": "理由甲", "evidence": "a", "score_contrib": 1},
         {"tag": "理由乙", "evidence": "b", "score_contrib": -1},
         {"tag": "理由丙", "evidence": "c", "score_contrib": 0},
+        {"tag": "理由丁", "evidence": "d", "score_contrib": 2},
+        {"tag": "理由戊", "evidence": "e", "score_contrib": 0},
     )
     service, _mapper, _pit_reader, _reads, captures = _build_service(
         tmp_path,
-        industry_percent="2.675%",
+        industry_percent="1.50%",
         base_reasons=base_reasons,
     )
     _order, formatted_inputs = captures
     execution, body, capture = _run(
-        service, monkeypatch, result_id="r019-reason-2675-three"
+        service,
+        monkeypatch,
+        result_id="r019-reason-explicit-cutoff-full",
+        explicit_cutoff=True,
     )
 
-    expected_text = "理由甲+、理由乙-、理由丙"
-    expected_tags = ("理由甲", "理由乙", "理由丙", "半導體業指數上漲")
+    expected_summary = "理由甲+、理由乙-、理由丙"
+    expected_detail = "理由甲+、理由乙-、理由丙、理由丁+、理由戊"
+    expected_tags = ("理由甲", "理由乙", "理由丙", "理由丁", "理由戊")
     reason_rows = formatted_inputs[0]
-    assert reason_rows == [
-        *base_reasons,
-        {
-            "tag": "半導體業指數上漲",
-            "evidence": "半導體業類指數漲幅 2.67%",
-            "score_contrib": 1.3375,
-        },
-    ]
-    assert len(reason_rows) == 4
-    assert capture["legacy_recommendations"][0].recommendation_reasons == expected_text
-    assert execution.decision.items[0].reason_text == expected_text  # type: ignore[union-attr]
+    assert len(formatted_inputs) == 1
+    assert reason_rows == list(base_reasons)
+    assert len(reason_rows) == 5
+    assert execution.status.value == "completed"
+    assert len(execution.decision.items) == 1  # type: ignore[union-attr]
+    assert capture["legacy_recommendations"][0].recommendation_reasons == expected_detail
+    assert execution.decision.items[0].reason_text == expected_detail  # type: ignore[union-attr]
     assert execution.decision.items[0].reasons == expected_tags  # type: ignore[union-attr]
-    assert body.legacy_recommendations[0].field_value("recommendation_reasons") == expected_text
+    assert body.legacy_recommendations[0].field_value("recommendation_reasons") == expected_detail
+
+    # 新保存版本與舊版截短文字都經公開 sealed codec 重開，保留原始 tag。
+    current_payload = encode_execution(execution)
+    current_replay = decode_execution(current_payload)
+    assert encode_execution(current_replay) == current_payload
+    assert current_replay.decision is not None
+    assert current_replay.decision.items[0].reason_text == expected_detail
+    assert current_replay.decision.items[0].reasons == expected_tags
+
+    historical_item = replace(
+        current_replay.decision.items[0], reason_text=expected_summary
+    )
+    historical_batch = replace(
+        current_replay.decision, items=(historical_item,)
+    )
+    historical_execution = replace(current_replay, decision=historical_batch)
+    historical_payload = encode_execution(historical_execution)
+    historical_replay = decode_execution(historical_payload)
+    assert encode_execution(historical_replay) == historical_payload
+    assert historical_replay.decision is not None
+    assert historical_replay.decision.items[0].reason_text == expected_summary
+    assert historical_replay.decision.items[0].reasons == expected_tags
 
 
 def test_explicit_cutoff_uses_pit_filter_without_current_industry_fallback(

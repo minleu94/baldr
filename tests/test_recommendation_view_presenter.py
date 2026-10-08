@@ -1,3 +1,6 @@
+from datetime import date
+from decimal import Decimal
+
 from ui_qt.views.recommendation.presenter import (
     format_profile_filter_value,
     format_profile_weight,
@@ -12,7 +15,9 @@ from ui_qt.views.recommendation.recommendation_metadata import (
     TECHNICAL_DESCRIPTIONS,
 )
 from app_module.dtos import RecommendationDTO
-from decision_module.recommendation.contracts import RecommendationItem
+from data_module.contracts.market import SourceRef
+from decision_module.recommendation.contracts import FactorContribution, RecommendationItem
+from decision_module.reason_engine import ReasonEngine
 from ui_qt.views.recommendation.presenter import recommendation_item_to_view_row
 
 
@@ -54,7 +59,7 @@ def test_recommendation_reason_presenter_preserves_highlights_and_trace() -> Non
         pattern_descriptions=PATTERN_DESCRIPTIONS,
     )
 
-    assert "推薦理由" in html
+    assert "表格摘要" in html
     assert "觸發來源" in html
     assert "技術指標" in html
     assert "圖形訊號" in html
@@ -66,8 +71,25 @@ def test_recommendation_reason_presenter_handles_empty_and_single_reason() -> No
     assert format_recommendation_reason(
         "", technical_descriptions={}, pattern_descriptions={}
     ) == "無推薦理由"
-    assert "推薦理由：</b>單一理由" in format_recommendation_reason(
+    assert "表格摘要：</b>單一理由" in format_recommendation_reason(
         "單一理由", technical_descriptions={}, pattern_descriptions={}
+    )
+
+
+def test_reason_formatter_can_keep_all_saved_reasons_without_changing_default_limit() -> None:
+    engine = ReasonEngine()
+    reasons = [
+        {"tag": "理由甲", "score_contrib": 1},
+        {"tag": "理由乙", "score_contrib": -1},
+        {"tag": "理由丙", "score_contrib": 0},
+        {"tag": "理由丁", "score_contrib": 2},
+        {"tag": "理由戊", "score_contrib": 0},
+    ]
+
+    assert engine.format_reason_text(reasons) == "理由甲+、理由乙-、理由丙、理由丁+"
+    assert engine.format_reason_text(reasons, max_reasons=3) == "理由甲+、理由乙-、理由丙"
+    assert engine.format_reason_text(reasons, max_reasons=None) == (
+        "理由甲+、理由乙-、理由丙、理由丁+、理由戊"
     )
 
 
@@ -158,6 +180,93 @@ def test_typed_unknown_fields_do_not_claim_low_risk_or_all_conditions_passed() -
     assert "各項指標表現良好" not in explain
     assert "分數或篩選資料不足，無法判定排名疑慮" in why_not
     assert "所有條件均符合" not in why_not
+    assert "保存的推薦理由文字（舊紀錄若已截短，無法回推）：" in explain
+    assert "未知（保存項目未提供）" in explain
+    assert "逐因子貢獻（本次結果提供）：" in explain
+    assert "未知（本次結果未提供）" in explain
+    assert "排名：未知" in explain
+    assert "合格母體日期：未知" in explain
+
+
+def test_explain_panel_shows_only_saved_factor_and_ranking_facts_and_keeps_table_summary_short() -> None:
+    item = RecommendationItem(
+        stock_code="2330",
+        reason_text="理由甲+、理由乙-、理由丙、理由丁+",
+        reasons=("理由甲", "理由乙", "理由丙", "理由丁"),
+        factor_contributions=(
+            FactorContribution(
+                "momentum<&",
+                Decimal("1.2500"),
+                "rule-score<&",
+                "v1<&",
+                (SourceRef("daily-prices<&", "rev<&", "snapshot<&"),),
+            ),
+        ),
+        rank=7,
+        eligible_universe_date=date(2026, 5, 20),
+    )
+
+    html = generate_explain_panel(item)
+    row = recommendation_item_to_view_row(item, ml_status="not_requested")
+
+    assert "理由丁+" in html
+    assert "momentum&lt;&amp;：1.2500 rule-score&lt;&amp;；因子版本 v1&lt;&amp;" in html
+    assert "daily-prices&lt;&amp;（版本 rev&lt;&amp;；快照 snapshot&lt;&amp;）" in html
+    assert "排名：7" in html
+    assert "合格母體日期：2026-05-20" in html
+    assert row["推薦理由"] == "理由甲+、理由乙-、理由丙"
+
+
+def test_table_reason_summary_uses_saved_tags_when_tag_contains_separator() -> None:
+    item = RecommendationItem(
+        stock_code="2330",
+        reason_text="RSI、KD+、理由乙-、理由丙、理由丁+",
+        reasons=("RSI、KD", "理由乙", "理由丙", "理由丁"),
+    )
+
+    row = recommendation_item_to_view_row(item, ml_status="not_requested")
+
+    assert row["推薦理由"] == "RSI、KD+、理由乙-、理由丙"
+
+
+def test_historical_short_reason_text_is_not_expanded_from_missing_tags() -> None:
+    item = RecommendationItem(
+        stock_code="2330",
+        reason_text="理由甲、理由乙、理由丙",
+    )
+
+    row = recommendation_item_to_view_row(item, ml_status="not_requested")
+    explain = generate_explain_panel(item)
+
+    assert row["推薦理由"] == item.reason_text
+    assert "舊紀錄若已截短，無法回推" in explain
+
+
+def test_table_can_show_only_saved_tags_when_legacy_reason_text_is_missing() -> None:
+    item = RecommendationItem(
+        stock_code="2330",
+        reasons=("理由甲", "理由乙", "理由丙", "理由丁"),
+    )
+
+    row = recommendation_item_to_view_row(item, ml_status="not_requested")
+
+    assert row["推薦理由"] == "理由甲、理由乙、理由丙"
+
+
+def test_historical_full_tags_remain_visible_when_saved_reason_text_was_shortened() -> None:
+    item = RecommendationItem(
+        stock_code="2330",
+        reason_text="理由甲+、理由乙-、理由丙",
+        reasons=("理由甲", "理由乙", "理由丙", "理由丁", "理由戊"),
+    )
+
+    explain = generate_explain_panel(item)
+
+    assert "保存的推薦理由文字（舊紀錄若已截短，無法回推）" in explain
+    assert "理由甲+、理由乙-、理由丙" in explain
+    assert "另有保存的理由標籤（未保存貢獻符號）" in explain
+    assert "理由丁" in explain
+    assert "理由戊" in explain
 
 
 def test_missing_filter_thresholds_are_not_assumed_as_positive_evidence() -> None:

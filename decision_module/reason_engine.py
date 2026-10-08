@@ -482,12 +482,14 @@ class ReasonEngine:
         
         return reasons
     
-    def format_reason_text(self, reasons: List[Dict], max_reasons: int = 4) -> str:
+    def format_reason_text(
+        self, reasons: List[Dict], max_reasons: int | None = 4
+    ) -> str:
         """格式化理由文字（用於UI顯示）
         
         Args:
             reasons: 理由列表
-            max_reasons: 最多顯示幾個理由
+            max_reasons: 最多顯示幾個理由；None 表示保留全部理由
             
         Returns:
             str: 格式化的理由文字
@@ -495,8 +497,8 @@ class ReasonEngine:
         if len(reasons) == 0:
             return "符合策略條件"
         
-        # 只顯示前N個最有貢獻的理由
-        top_reasons = reasons[:max_reasons]
+        # 詳情可明示保留全部保存理由；既有整數上限行為維持不變。
+        top_reasons = reasons if max_reasons is None else reasons[:max_reasons]
         
         reason_texts = []
         for reason in top_reasons:

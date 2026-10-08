@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Mapping, Optional, Sequence
 from typing import Any
@@ -254,7 +256,7 @@ def format_recommendation_reason(
 
         # 組合為 HTML 格式
         html_text = "<div style='line-height: 1.6;'>"
-        html_text += "<p style='margin: 5px 0;'><b>推薦理由：</b></p>"
+        html_text += "<p style='margin: 5px 0;'><b>表格摘要：</b></p>"
 
         # 顯示觸發來源（可反推線索）
         if triggered_indicators or triggered_patterns:
@@ -278,7 +280,7 @@ def format_recommendation_reason(
     else:
         # 單一理由，直接格式化
         html_text = "<div style='line-height: 1.6;'>"
-        html_text += f"<p style='margin: 5px 0;'><b>推薦理由：</b>{formatted_text}</p>"
+        html_text += f"<p style='margin: 5px 0;'><b>表格摘要：</b>{formatted_text}</p>"
         html_text += "</div>"
         return html_text
 
@@ -290,6 +292,39 @@ def ranking_value_label(kind: str, value: Any) -> str:
         "ranking_method": {"nearest_rank": "最近名次法"},
     }
     return mappings.get(kind, {}).get(text, text or "未設定")
+
+
+def _table_reason_summary(item: Any) -> str:
+    """依保存的結構化理由項目產生表格前三項；不猜測文字分隔符。"""
+    reason_text = getattr(item, "reason_text", None)
+    if not isinstance(reason_text, str):
+        reason_text = getattr(item, "recommendation_reasons", "")
+    reasons = getattr(item, "reasons", ())
+    if type(reasons) not in (tuple, list) or any(
+        type(reason) is not str or not reason for reason in reasons
+    ):
+        reasons = ()
+    if not isinstance(reason_text, str):
+        reason_text = ""
+    if not reason_text:
+        return "、".join(reasons[:3])
+    if len(reasons) <= 3:
+        return reason_text
+
+    # 分隔符也可能出現在 tag 內；逐一核對保存的 tag 才能安全切摘要。
+    position = 0
+    for index, reason in enumerate(reasons[:3]):
+        if not reason_text.startswith(reason, position):
+            return reason_text
+        position += len(reason)
+        if position < len(reason_text) and reason_text[position] in "+-":
+            position += 1
+        if index < 2:
+            if not reason_text.startswith("、", position):
+                return reason_text
+            position += 1
+    # 若舊保存列已只有三項，保留原文，不補造無法回推的理由。
+    return reason_text[:position]
 
 
 def recommendation_item_to_view_row(
@@ -346,7 +381,7 @@ def recommendation_item_to_view_row(
         "指標分": item.indicator_score,
         "圖形分": item.pattern_score,
         "成交量分": item.volume_score,
-        "推薦理由": item.reason_text or "",
+        "推薦理由": _table_reason_summary(item),
         "產業": item.industry or "",
         "Regime匹配": (
             "是" if item.regime_match is True
@@ -471,6 +506,24 @@ def _score_text(value: Any) -> str:
     return f"{numeric:.1f}" if numeric is not None else "未知"
 
 
+def _reason_text_tag_count(reason_text: str, tags: tuple[str, ...]) -> int:
+    """回報保存文字能依序核對到幾個原始 tag，不拆解 tag 內分隔符。"""
+    position = 0
+    matched = 0
+    for index, tag in enumerate(tags):
+        if not reason_text.startswith(tag, position):
+            return matched
+        position += len(tag)
+        if position < len(reason_text) and reason_text[position] in "+-":
+            position += 1
+        matched += 1
+        if index < len(tags) - 1:
+            if not reason_text.startswith("、", position):
+                return matched
+            position += 1
+    return matched
+
+
 def generate_explain_panel(recommendation: Any) -> str:
     """生成 Explain 面板 v1：推薦分數拆解 + 風險點（Phase 3.3）
 
@@ -559,13 +612,86 @@ def generate_explain_panel(recommendation: Any) -> str:
 
     html_text += "</table>"
 
+    # 這裡只呈現當次保存的完整理由，不從目前行情重建理由。
+    reason_text = getattr(recommendation, "reason_text", None)
+    if isinstance(reason_text, str) and reason_text.strip():
+        full_reason_text = html.escape(reason_text)
+    else:
+        full_reason_text = "未知（保存項目未提供）"
+    html_text += (
+        "<p style='margin: 10px 0 5px 0;'><b>保存的推薦理由文字（舊紀錄若已截短，無法回推）：</b></p>"
+        f"<p style='margin: 5px 0;'>{full_reason_text}</p>"
+    )
+
+    saved_reason_tags = getattr(recommendation, "reasons", ())
+    if type(saved_reason_tags) not in (tuple, list) or any(
+        type(tag) is not str or not tag for tag in saved_reason_tags
+    ):
+        saved_reason_tags = ()
+    else:
+        saved_reason_tags = tuple(saved_reason_tags)
+    represented_tag_count = (
+        _reason_text_tag_count(reason_text, saved_reason_tags)
+        if isinstance(reason_text, str)
+        else 0
+    )
+    remaining_saved_tags = saved_reason_tags[represented_tag_count:]
+    if remaining_saved_tags:
+        html_text += (
+            "<p style='margin: 5px 0;'><b>另有保存的理由標籤（未保存貢獻符號）：</b></p>"
+            "<ul style='margin: 5px 0; padding-left: 20px;'>"
+        )
+        for tag in remaining_saved_tags:
+            html_text += f"<li>{html.escape(tag)}</li>"
+        html_text += "</ul>"
+
+    # 逐因子欄位只接受 sealed item 已提供的事實，不推導缺失貢獻。
+    factor_contributions = getattr(recommendation, "factor_contributions", ())
+    html_text += (
+        "<p style='margin: 10px 0 5px 0;'><b>逐因子貢獻（本次結果提供）：</b></p>"
+    )
+    if factor_contributions:
+        html_text += "<ul style='margin: 5px 0; padding-left: 20px;'>"
+        for contribution in factor_contributions:
+            factor_id = html.escape(str(getattr(contribution, "factor_id", "未知")))
+            value = getattr(contribution, "value", None)
+            value_text = "未知" if value is None else html.escape(str(value))
+            unit = html.escape(str(getattr(contribution, "unit", "未知")))
+            version = html.escape(str(getattr(contribution, "version", "未知")))
+            source_refs = getattr(contribution, "source_refs", ())
+            source_texts = []
+            for source_ref in source_refs:
+                source_id = html.escape(str(getattr(source_ref, "source_id", "未知")))
+                revision = html.escape(str(getattr(source_ref, "revision", "未知")))
+                snapshot_id = getattr(source_ref, "snapshot_id", None)
+                source_text = f"{source_id}（版本 {revision}"
+                if snapshot_id:
+                    source_text += f"；快照 {html.escape(str(snapshot_id))}"
+                source_texts.append(source_text + "）")
+            sources_label = "、".join(source_texts) or "未提供來源參照"
+            html_text += (
+                f"<li>{factor_id}：{value_text} {unit}；因子版本 {version}；"
+                f"來源：{sources_label}</li>"
+            )
+        html_text += "</ul>"
+    else:
+        html_text += "<p style='margin: 5px 0;'>未知（本次結果未提供）</p>"
+
     html_text += "<p style='margin: 10px 0 5px 0;'><b>排名門檻：</b></p>"
     html_text += "<ul style='margin: 5px 0; padding-left: 20px;'>"
     threshold_mode = getattr(recommendation, "threshold_mode", None)
     ranking_method = getattr(recommendation, "ranking_method", None)
     score_percentile_bp = getattr(recommendation, "score_percentile_bp", None)
     eligible_universe_size = getattr(recommendation, "eligible_universe_size", None)
+    rank = getattr(recommendation, "rank", None)
+    eligible_universe_date = getattr(recommendation, "eligible_universe_date", None)
     html_text += f"<li>門檻模式：{ranking_value_label('threshold_mode', threshold_mode)}</li>"
+    html_text += f"<li>排名：{rank if rank is not None else '未知'}</li>"
+    if type(eligible_universe_date) is date:
+        eligible_date_text = eligible_universe_date.isoformat()
+    else:
+        eligible_date_text = "未知"
+    html_text += f"<li>合格母體日期：{html.escape(eligible_date_text)}</li>"
     if ranking_method:
         html_text += f"<li>排名方法：{ranking_value_label('ranking_method', ranking_method)}</li>"
     if score_percentile_bp is not None:

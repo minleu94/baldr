@@ -6,6 +6,8 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from datetime import date
+from decimal import Decimal
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -16,8 +18,11 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QBoxLayout, QHBoxLayout, QWidget
 
 from app_module.dtos import RegimeResultDTO
+from data_module.contracts.market import SourceRef
+from decision_module.recommendation.contracts import FactorContribution, RecommendationItem
 from ui_qt.models.pandas_table_model import PandasTableModel
 from ui_qt.main import apply_app_theme
+from ui_qt.views.recommendation.presenter import recommendation_item_to_view_row
 from ui_qt.views.recommendation_view import RecommendationView
 
 
@@ -404,6 +409,58 @@ def test_recommendation_result_scroll_and_five_rows_at_desktop_viewports() -> No
         assert view.personal_source_database_label.wordWrap()
         assert view.personal_source_time_trust_note.wordWrap()
         assert view.result_scroll.verticalScrollBar().maximum() > 0
+    finally:
+        view.close()
+        app.processEvents()
+
+
+def test_selected_recommendation_view_shows_full_saved_reasons_and_table_summary() -> None:
+    app = _app()
+    view = _new_view()
+    item = RecommendationItem(
+        stock_code="2330",
+        stock_name="台積電",
+        reason_text="理由甲+、理由乙-、理由丙、理由丁+、理由戊",
+        reasons=("理由甲", "理由乙", "理由丙", "理由丁", "理由戊"),
+        factor_contributions=(
+            FactorContribution(
+                factor_id="保存動能",
+                value=Decimal("12.5000"),
+                unit="rule-score",
+                version="saved-v1",
+                source_refs=(SourceRef("saved-rule", "rev-1", "snapshot-1"),),
+            ),
+        ),
+        rank=4,
+        eligible_universe_date=date(2026, 5, 20),
+    )
+    view.current_execution = SimpleNamespace(items=(item,))
+    view.current_config = None
+    # 此測試驗證選列展示保存內容，不需要建立額外研究上下文來源。
+    view.research_context_label = None
+    view.recommendations_model = PandasTableModel(
+        pd.DataFrame(
+            [recommendation_item_to_view_row(item, ml_status="not_requested")]
+        )
+    )
+    view.results_table.setModel(view.recommendations_model)
+    view.show()
+
+    try:
+        view.results_table.selectRow(0)
+        view._update_detail_text()
+        app.processEvents()
+
+        detail = view.detail_text.toPlainText()
+        assert "保存的推薦理由文字" in detail
+        for saved_reason in ("理由甲+", "理由乙-", "理由丙", "理由丁+", "理由戊"):
+            assert saved_reason in detail
+        assert "保存動能：12.5000 rule-score" in detail
+        assert "排名：4" in detail
+        assert "合格母體日期：2026-05-20" in detail
+        assert "表格摘要：" in detail
+        assert "理由甲+、理由乙-、理由丙" in detail
+        assert "理由丁+、理由戊" not in detail.split("表格摘要：", 1)[1]
     finally:
         view.close()
         app.processEvents()

@@ -3930,7 +3930,9 @@ class RecommendationService:
                                             )
                                         )
 
-                    reason_text = self.reason_engine.format_reason_text(reasons, max_reasons=3)
+                    reason_text = self.reason_engine.format_reason_text(
+                        reasons, max_reasons=None
+                    )
 
                     # 使用 FinalScore（含 Regime Match Factor）作為排序依據
                     final_score = latest_row.get(
@@ -4076,7 +4078,7 @@ class RecommendationService:
                         indicator_score=legacy_indicator_score,
                         pattern_score=legacy_pattern_score,
                         volume_score=legacy_volume_score,
-                        recommendation_reasons=canonical_item.reason_text or "",
+                        recommendation_reasons=reason_text,
                         industry=canonical_item.industry or "",
                         regime_match=cast(bool, canonical_item.regime_match),
                     )

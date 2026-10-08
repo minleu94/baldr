@@ -1,27 +1,29 @@
 # QA 相關文檔目錄
 
-- [B03 Update／Runtime 呈現](BALDR_B03_UPDATE_RUNTIME_20261006.md)：原 DTO 白話影響、未知日期與收合；中央重型 union 尚待穩定版。
-- [B04 保存來源與私人收藏](BALDR_B04_SELECTION_WATCHLIST_20261006.md)：exact selection、CAS 理由／查看狀態及同源 revision。
-- [B05 原生圖／原紀錄 reader](BALDR_B05_CHART_INCREMENT_20261006.md)：marker 原來源 custody、aware clock 與 account kind；main 注入仍待。
-- [B06 三帳摘要](BALDR_B06_PORTFOLIO_SUMMARY_20261006.md)：日期／缺件／同帳服務注入防 fallback。
-- [B10 私人覆盤與週報 history](BALDR_B10_PRIVATE_REVIEW_20261006.md)、[notes 備份](BALDR_B10_NOTES_BACKUP_20261006.md)：私人寫入／市場只讀分離及隔離 create-only。
-- [B12 隔離 runtime](BALDR_B12_DAILY_RUNTIME_20261006.md)：原深路徑失敗／修正、103 unique 與 exit-code 增量分開；不授正式 Task／來源資格。
+> 本頁提供 QA 證據閱讀路徑，不取代目前狀態、操作手冊或原始驗收收據。日期化報告只描述各自時點與範圍；判讀目前狀態請以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準。不同日期或範圍的報告不得只因主題相同而視為重複。
 
-目前狀態依 PROJECT_SNAPSHOT，操作依完整 Manual；lane focused 不能代替中央 mandatory UI union。
+## 閱讀方式
 
-- [UX16／UX18 固定方法與 UX13 共用母體盤勢收據](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：兩條既有觀察、方法／參數／日期／hash 拒絕、舊 schema 明確更新、具名母體盤勢／值排序與真實兩股閉環；整體 UX13／18／19 仍 partial。
+1. 先讀 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 確認目前狀態與未完成項目。
+2. 依下方「近期證據入口」選擇主題；入口文件通常提供範圍與後續收據。
+3. 需要操作流程時讀 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)；需要完整文件分類時讀 [DOCUMENTATION_INDEX](../00_core/DOCUMENTATION_INDEX.md)。
+4. 點閱日期化 QA 原文核對命令、結果、限制與接受邊界；不要把報告中的歷史「下一步」當作目前待辦。
 
-- [V3.3 Engineering Closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)：15 capability、lineage verifier、operations handoff 與 external-only 清單。
-- [V4 每日自然證據運行閉環 QA Handoff](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md)：scheduler、progress receipt、cohort identity、Paper ledger、自然成熟與外部阻塞的交接證據。
+## 主題導覽
 
-> **QA 驗證和問題文檔**
+| 主題 | 建議入口與閱讀順序 | 判讀邊界 |
+|---|---|---|
+| 目前產品補完 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) → [補完範圍再核對（10/08）](BALDR_COMPLETION_GAP_REVIEW_20261008.md) → 近期各包收據 | 工程項目已接線不代表全母體、Native、真人或自然資格已完成。 |
+| 個股研究 H20 | [H20 gross model 契約](BALDR_A02_H20_GROSS_MODEL_20261006.md) → [研究 cohort](BALDR_H20_RESEARCH_COHORT_20261007.md) → [單次操作核驗](H20_READ_OPERATION_SESSION_20261007.md) → [固定候選](BALDR_H20_CURRENT_CANDIDATE_93F9C57D_20261008.md) | gross 回報、canonical 機率品質、一般報告完整度與真人／Native 驗收分開判讀。 |
+| UX 研究工作台 | [來源與方法入口](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md) → [UX24 有限工程封存](UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md) → [UX21 Forward Outcome](UX21_FORWARD_OUTCOME_20261006.md)、[UX09 歷史索引](UX09_HISTORY_INDEX_AND_RECOVERY_20261005.md) | 單張收據只覆蓋其標示的 UX 卡與階段；不能推成 UX 全體完成。 |
+| R026 與 ML Shadow | [R031 closeout](R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) → [R026 exact allowlist](ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md) → [source revision aggregate](R026_SOURCE_REVISION_EVIDENCE_AGGREGATE_20260925.md) | bounded `ACCEPTED_SCOPE` 不代表整個 R026、TMP-ML-01 或 ML production 完成。 |
+| Windows 排程與營運 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) → [排程稽核（10/06）](BALDR_SCHEDULE_AUDIT_20261006.md) → [排程運維指南](../07_guides/SCHEDULE_OPERATIONS_AND_MIGRATION.md) | 日期化排程收據必須按當日 task、時鐘、來源與自然結果分開；目前狀態以 Snapshot 為準。 |
+| WP、Task Loop、Prospective | [WP5 缺口診斷](WP5_HEAD_GAP_AND_PENDING_DIAGNOSIS_20260929.md) → [Task Loop 01](TASK_LOOP_01_HANDOFF.md)／[08](TASK_LOOP_08_HANDOFF.md)；Prospective 先讀[方向](PROSPECTIVE_FORMAL_RESTART_DIRECTION_2026_08_19.md)，再讀[週報](PROSPECTIVE_FORMAL_RESTART_WEEKLY_UPDATE_2026_08_25.md) | 限定測試通過、方向核准、clock staging 與成熟 evidence 是不同狀態；這些歷史文件不提供目前待辦。 |
+| 版本與長期證據 | [V1.1–V2.0 歷史路線](../00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md) → [V2.1–V4.0 maturity](../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)；QA 收據看 [V3.3 closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md) 與 [V4 daily evidence handoff](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md) | 工程 closeout 與成熟度、正式證據或投資有效性不可互相替代。 |
 
-本目錄包含所有 QA 相關的文檔。
-
-日期化的 QA 報告保存當次輸入、命令、結果與接受邊界；不同日期或不同範圍的報告即使主題相同，也不能當作重複檔案刪除。查目前狀態請讀 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，不要把歷史報告的「下一步」當成目前待辦。
+本表是主題閱讀路徑，不是合併／刪除清單。主題內的原始收據仍各自保存其輸入、結果、失敗與驗收範圍；數量或檔名前綴不構成重複證據判定。
 
 ## 近期證據入口（依主題）
-
 - [UX16來源契約／UX18日特徵consumer／UX19隔離閉環／UX04與UX05日常同源flow與UX02 Native中文](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：唯讀API／CLI、既有close／MA共用三態與實際個股接線、scoped hash／時鐘／資格未知、四用途代表畫面及工程／證據依賴。
 
 | 要查的內容 | 證據入口 |
@@ -42,6 +44,21 @@
 | 文檔重複的取捨與保留理由 | [文檔整理審查](DOCUMENTATION_CONSOLIDATION_20260927.md) |
 
 完整文件分類見 [文檔索引](../00_core/DOCUMENTATION_INDEX.md)；本頁只提供閱讀路徑，不重新維護各報告的驗收數字。
+
+## 產品補完與工作區增量收據
+
+- [B03 Update／Runtime 呈現](BALDR_B03_UPDATE_RUNTIME_20261006.md)：原 DTO 白話影響、未知日期與收合；中央重型 union 尚待穩定版。
+- [B04 保存來源與私人收藏](BALDR_B04_SELECTION_WATCHLIST_20261006.md)：exact selection、CAS 理由／查看狀態及同源 revision。
+- [B05 原生圖／原紀錄 reader](BALDR_B05_CHART_INCREMENT_20261006.md)：marker 原來源 custody、aware clock 與 account kind；main 注入仍待。
+- [B06 三帳摘要](BALDR_B06_PORTFOLIO_SUMMARY_20261006.md)：日期／缺件／同帳服務注入防 fallback。
+- [B10 私人覆盤與週報 history](BALDR_B10_PRIVATE_REVIEW_20261006.md)、[notes 備份](BALDR_B10_NOTES_BACKUP_20261006.md)：私人寫入／市場只讀分離及隔離 create-only。
+- [B12 隔離 runtime](BALDR_B12_DAILY_RUNTIME_20261006.md)：原深路徑失敗／修正、103 unique 與 exit-code 增量分開；不授正式 Task／來源資格。
+
+目前狀態依 PROJECT_SNAPSHOT，操作依完整 Manual；lane focused 不能代替中央 mandatory UI union。
+
+- [UX16／UX18 固定方法與 UX13 共用母體盤勢收據](UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)：兩條既有觀察、方法／參數／日期／hash 拒絕、舊 schema 明確更新、具名母體盤勢／值排序與真實兩股閉環；整體 UX13／18／19 仍 partial。
+
+## 早期 QA、測試路由與文件稽核
 
 ## 📄 文檔列表
 
@@ -78,9 +95,11 @@
 - `../03_data/` - 數據相關文檔
 - `../09_archive/` - 已過時但仍有追溯價值的歷史文檔
 
+## 2026-10-03 資料收尾後續驗證
 
 2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。
 
+## 2026-10-05 研究保存、排名與 UX 收據
 
 ## 2026-10-05 收藏原研究
 
@@ -137,3 +156,10 @@
 
 
 - [UX21 Forward Outcome](UX21_FORWARD_OUTCOME_20261006.md)：lane採納、exact保存母體consumer／H5/10/20畫面、完整分母、成本／缺件／pending與cancel/stale/new-process限定驗收；整項partial，非自然或正式交易資格。
+
+## 歷史工程與證據閉環參考
+
+- [V3.3 Engineering Closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)：15 capability、lineage verifier、operations handoff 與 external-only 清單。
+- [V4 每日自然證據運行閉環 QA Handoff](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md)：scheduler、progress receipt、cohort identity、Paper ledger、自然成熟與外部阻塞的交接證據。
+
+完整文件分類見 [文檔索引](../00_core/DOCUMENTATION_INDEX.md)。本頁是導覽，不重新維護各報告的驗收數字；QA 原文與現有路徑均保留。

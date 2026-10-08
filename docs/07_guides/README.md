@@ -9,7 +9,7 @@
 ### 1. 核心使用與上手
 - **[APPLICATION_MANUAL.md](APPLICATION_MANUAL.md)**
   - 目前 PySide6 UI 的完整操作手冊（SSOT）
-  - 涵蓋 8 個頂層工作區、跨工作區流程、參數設定、結果判讀、安全限制與排錯
+  - 涵蓋目前 9 個頂層工作區、跨工作區流程、參數設定、結果判讀、安全限制與排錯
 - **[APPLICATION_MANUAL_SUPPLEMENTS.md](APPLICATION_MANUAL_SUPPLEMENTS.md)**
   - 操作手冊附冊：保留日期化操作補充、進階研究 CLI、排程與受控維運；與主手冊共同維護，不另作目前狀態權威
 - **[QUICK_START.md](QUICK_START.md)**
@@ -42,6 +42,14 @@
   - ML Shadow 單日推論操作 Runbook，說明 `scripts/run_ml_shadow_inference.py` 契約驗證與 rollback 模擬
 - **[PIT_HISTORICAL_DATA_REPAIR_RUNBOOK.md](PIT_HISTORICAL_DATA_REPAIR_RUNBOOK.md)**
   - PIT 歷史資料修復 Runbook，說明月營收、季度財報 availability mapping 與 coverage audit
+
+### 5. Windows 發布、排程搬機與歷史修復
+- **[PORTABLE_WINDOWS.md](PORTABLE_WINDOWS.md)**
+  - 可攜 Windows 版的資料夾要求、首次啟動、設定位置與已驗／未驗邊界
+- **[SCHEDULE_OPERATIONS_AND_MIGRATION.md](SCHEDULE_OPERATIONS_AND_MIGRATION.md)**
+  - Windows Task Scheduler 與 Codex 排程用途、搬機前提及受控驗收；私人任務清冊不在此文件
+- **[PHASE3C_CANDIDATE_REPAIR_RUNBOOK.md](PHASE3C_CANDIDATE_REPAIR_RUNBOOK.md)**
+  - 2026-09-11 candidate DB 的隔離法人資料修復歷史 runbook；不適用於正式資料庫或目前日常操作
 
 ## 🔗 相關目錄
 

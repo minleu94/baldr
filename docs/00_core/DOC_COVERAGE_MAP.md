@@ -1,5 +1,13 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 文件入口整理首批
+
+整理範圍限定為閱讀路徑，不改系統狀態、產品方向、操作流程或 QA 原始收據：`docs/README.md` 明確標示 2026-10-06 全文件目錄是歷史快照；`docs/01_architecture/README.md` 增加大型現況架構主文的按節速讀路徑，`system_architecture.md` 頂端新增正文錨點與現況入口；`docs/06_qa/README.md` 按主題連到既有綜整與重要收據，並明示各驗收邊界；`docs/07_guides/README.md` 校正 Manual 為 9 個頂層工作區，並補列可攜、排程搬機與 Phase3C candidate 專項指南。架構、QA 與指南專區入口原已由全域文件索引導覽；docs 根入口維持在 `docs/README.md`。不新增文件或改變目錄歸屬，故本批不搬移檔案，也不改 Snapshot／Roadmap／Architecture 主文內容／Manual。後續歸檔須另以逐檔引用清冊同步 Index、所在目錄 README、Archive README 及恢復／coverage 記錄；日期或檔名本身不能作為搬移依據。
+
+## 2026-10-08 V4 計畫歷史歸檔
+
+將 `docs/00_core/V4_COMPLETION_PLAN_2026_09_07.md` 的原文完整移至 [`docs/09_archive/V4_COMPLETION_PLAN_2026_09_07_HISTORY.md`](../09_archive/V4_COMPLETION_PLAN_2026_09_07_HISTORY.md)，保存原 bytes；封存 SHA-256：`C812B1A98B68968DE3D17DA1EFEE232787778C95DFD5D2C66D92BC7557DBE005`。原文最後記錄截至 2026-09-10 仍為「進行中」，不得解讀為目前狀態或已完成。舊核心位置保留短導引，維持日期化 catalog 與歷史快照中的連結；全庫 10 處舊路徑引用皆落在歷史／快照文件。README 已同步，現況仍以 Snapshot 與 V2.1–V4.0 成熟度階梯為準。未變更 `DOCUMENTATION_INDEX.md`：本次查核未找到該索引對此計畫的引用；索引目前另有未提交編輯，避免觸碰。
+
 ## 2026-10-06 原計畫首波coverage
 
 Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁四用途／當下搜尋／大盤刷新／個股摘要操作與限制；Snapshot目前摘要、現行Architecture、Index與QA routing對應[首波QA](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。原plan只append、prefix保持；沒有方向／maturity／6M gate變更，相關roadmap不擴改。B08/B02工程與B09/B10 caller未完成不寫done；後續依真交付更新來源／步驟／排錯。歷史QA收據保留原policy／失敗，不回寫為成功。
@@ -37,7 +45,7 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 | 系統架構、模組邊界、資料流 | `docs/01_architecture/system_architecture.md` | 架構描述衝突時，以系統架構文件為準。 |
 | 理想目標架構與 Current → Target 演進 | `docs/01_architecture/target_system_architecture.md` | Target capability 不代表目前已實作；現況仍回到 system architecture。 |
 | North Star、Bounded Advice、Evidence、Success Levels、Non-goals | `docs/01_architecture/system_vision_specification.md` | 不保存詳細 implementation checklist 或完成流水帳。 |
-| 目前使用者完整操作流程 | `docs/07_guides/APPLICATION_MANUAL.md` | 8 個頂層工作區、跨工作區流程、安全限制與排錯以本手冊為準；較長的操作補充與受控維運保存在同屬手冊的 `APPLICATION_MANUAL_SUPPLEMENTS.md`，涉及該入口時同步檢查附冊。 |
+| 目前使用者完整操作流程 | `docs/07_guides/APPLICATION_MANUAL.md` | 9 個頂層工作區、跨工作區流程、安全限制與排錯以本手冊為準；較長的操作補充與受控維運保存在同屬手冊的 `APPLICATION_MANUAL_SUPPLEMENTS.md`，涉及該入口時同步檢查附冊。 |
 | 文檔位置與分類 | `docs/00_core/DOCUMENTATION_INDEX.md` | 只作導航，不取代狀態或架構權威。 |
 | 文檔生命週期與歸檔規則 | `docs/00_core/DOCUMENTATION_STRUCTURE.md` | 刪除、搬移、歸檔 Markdown 前必須參考。 |
 | 歷史 Phase、舊 Done、舊 Roadmap current section | `docs/09_archive/DEVELOPMENT_ROADMAP_LEGACY_2026_06.md` | 只作追溯，不作目前狀態依據。 |

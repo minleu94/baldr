@@ -1,5 +1,7 @@
 # 系統架構
 
+> **閱讀入口**：本文件包含架構主文與日期化增量。要理解系統定位、分層與模組責任，請從[第 1 節：系統定位](#1-系統定位)開始；要確認目前完成度與阻礙，先看[PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。前後日期記錄只保留各次變更脈絡，不取代 Snapshot 或下方架構主文。
+
 ## Windows 可攜 composition（2026-10-06）
 
 補完首波把Python script／`-m`／frozen入口統一經 `baldr_launcher`：`application_bootstrap`純解析設定，明確apply後注入 `MainWindow`；資源、runtime與ML registry根分開，不再替換全域project_root、registry constructor或視窗類別。`build_identity`從mutable Git讀HEAD／dirty，固定來源快照與frozen讀相同metadata／依賴鎖／資源雜湊。中央以Git archive固定commit、精確依賴鎖建立獨立candidate，現有交付保留；4b40788b同版candidate已通過隔離fixture比較。P05 `stock_research_product_summary`只投影原report/H20，不增加金融或推論owner；P01 run/query合併底層已經6案例及mypy驗收，consumer／全母體UI尚未接線。實際交付範圍與未驗事項見補完計畫和具名QA，不因架構接線宣稱全產品完成。

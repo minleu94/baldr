@@ -24,6 +24,19 @@
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
   - 不代表 target-only package 或能力目前已實作
 
+## 目前架構速讀
+
+`system_architecture.md` 同時保存架構主文與日期化增量，篇幅很長。先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判斷目前狀態，再按問題讀主文：
+
+| 要理解的內容 | 主文位置 |
+|---|---|
+| 系統定位與整體分層 | 第 1–2 節 |
+| UI、Application、Decision、Backtest、Portfolio | 第 3–7 節 |
+| 資料、券商分點與 Runtime | 第 8–10 節 |
+| 保存治理、匯出、文件架構、高風險修改與驗證 | 第 11–15 節 |
+
+主文前段與第 15 節之後另有日期化增量紀錄。它們保存當時的架構變更與限制，不是按時間排序的目前狀態摘要；目前完成度看 Snapshot，具體驗收看對應 QA 收據。
+
 ## ML 架構閱讀順序
 
 1. 先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 確認日期化現況，再看 [目前系統架構](system_architecture.md) 中的「ML 路線與狀態判讀」。

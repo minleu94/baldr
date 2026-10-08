@@ -25,6 +25,7 @@
 - **`VERSION_ROADMAP_V2_1_TO_V4_0.md`**
   - V2.0 之後的長期產品成熟度與版本階梯
   - V2.x 聚焦 Daily Advice / Evidence / Data / Portfolio foundation；V3.x 聚焦 effectiveness / pruning / ML shadow；V4.0 需長期 evidence 支持
+  - 2026-09-07 的 V4 執行計畫已移至 [`09_archive`](../09_archive/V4_COMPLETION_PLAN_2026_09_07_HISTORY.md)；封存內容截至 2026-09-10 仍標示進行中，舊核心路徑僅作導引
 
 - **`DEVELOPMENT_ROADMAP.md`**
   - Roadmap Hub

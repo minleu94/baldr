@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
@@ -33,6 +33,8 @@ from app_module.daily_market_technical_official_disposition_query_v1 import (
     DailyMarketTechnicalOfficialDispositionQueryV1,
     DailyMarketTechnicalOfficialDispositionQueryV1Error,
     DailyMarketTechnicalOfficialDispositionSortValueV1,
+    DailyMarketTechnicalOfficialDispositionSortClauseV1,
+    RowScope,
     evaluate_f17_membership_v1,
     normalize_daily_market_technical_official_source_pin_identity_sha256,
     project_daily_market_technical_official_disposition_sort_key_v1,
@@ -1056,6 +1058,63 @@ class DailyMarketTechnicalOfficialDispositionReadSessionV1:
         value = getattr(selection, "query_spec_identity_sha256", None)
         return value if isinstance(value, str) else ""
 
+    def with_conditions(
+        self,
+        *,
+        row_scope_filter: Sequence[RowScope],
+        rule_state_filters: Sequence[DailyMarketTechnicalRuleStateFilterV4] = (),
+        combine_mode: Literal["AND", "OR"] = "AND",
+        market_assignment_states: Sequence[str] = (),
+        official_disposal_states: Sequence[str] = (),
+        outer_stock_filter_mode: Literal["all", "explicit_codes"] = "all",
+        outer_stock_codes: Sequence[str] = (),
+        sort_clauses: Sequence[DailyMarketTechnicalOfficialDispositionSortClauseV1] = (),
+        cancel_callback: Callable[[], object] | None = None,
+    ) -> DailyMarketTechnicalOfficialDispositionReadSessionV1:
+        """修改研究條件但沿用原完整核驗來源；明確重驗須另開 exact session。"""
+        _validate_cancel_callback(cancel_callback)
+        _check_cancel(cancel_callback)
+        self.__post_init__()
+        _validate_bundle_query_relationship(self.query, self._bundle_state)
+        try:
+            technical_query = self._technical_session.create_query(
+                rule_state_filters=rule_state_filters,
+                combine_mode=combine_mode,
+                stock_filter=(),
+                sort_key="stock_code",
+                descending=False,
+                page_index=0,
+                page_size=1,
+                cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+            )
+            query = DailyMarketTechnicalOfficialDispositionQueryV1.create(
+                technical_query=technical_query,
+                decision_cutoff=self.query.decision_cutoff,
+                bundle_output_root=self.query.bundle_output_root,
+                bundle_identity_sha256=self.query.bundle_identity_sha256,
+                expected_manifest_sha256=self.query.expected_manifest_sha256,
+                market_assignment_pin_identity_sha256=self.query.market_assignment_pin_identity_sha256,
+                official_disposal_pin_identity_sha256=self.query.official_disposal_pin_identity_sha256,
+                row_scope_filter=row_scope_filter,
+                market_assignment_states=market_assignment_states,
+                official_disposal_states=official_disposal_states,
+                outer_stock_filter_mode=outer_stock_filter_mode,
+                outer_stock_codes=outer_stock_codes,
+                sort_clauses=sort_clauses,
+            )
+        except (DailyMarketTechnicalUniverseV4QueryError,
+                DailyMarketTechnicalOfficialDispositionQueryV1Error) as exc:
+            _check_source_error_cancelled(exc)
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_research_conditions_invalid"
+            ) from exc
+        _validate_bundle_query_relationship(query, self._bundle_state)
+        if not self._technical_session.matches_source(query.technical_query):
+            _fail("p01_base_query_source_mismatch")
+        session = replace(self, query=query)
+        _check_cancel(cancel_callback)
+        return session
+
     def execute(
         self,
         *,
@@ -1866,16 +1925,10 @@ def _validate_bundle_query_relationship(
     return technical, manifest
 
 
-def _open_base_selection(
-    query: DailyMarketTechnicalOfficialDispositionQueryV1,
+def _open_technical_session(
     technical: Mapping[str, object],
     cancel_callback: Callable[[], object] | None,
-) -> tuple[
-    DailyMarketTechnicalUniverseV4ReadSession,
-    DailyMarketTechnicalUniverseV4Query,
-    DailyMarketTechnicalUniverseV4ReadSelection,
-    str,
-]:
+) -> DailyMarketTechnicalUniverseV4ReadSession:
     required = (
         "output_root", "generation_identity_sha256", "plan_identity_sha256", "plan_sha256",
         "receipt_identity_sha256", "receipt_sha256",
@@ -1884,7 +1937,7 @@ def _open_base_selection(
         _fail("technical_store_descriptor_invalid")
     _check_cancel(cancel_callback)
     try:
-        read_session = open_daily_market_technical_universe_v4_read_session(
+        return open_daily_market_technical_universe_v4_read_session(
             store_output_root=cast(str, technical["output_root"]),
             generation_identity_sha256=cast(str, technical["generation_identity_sha256"]),
             plan_identity_sha256=cast(str, technical["plan_identity_sha256"]),
@@ -1893,6 +1946,33 @@ def _open_base_selection(
             receipt_sha256=cast(str, technical["receipt_sha256"]),
             cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
         )
+    except DailyMarketTechnicalUniverseV4StoreError as exc:
+        _check_source_error_cancelled(exc)
+        raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+            "technical_official_query_reader_v1_p01_exact_open_failed"
+        ) from exc
+
+
+def _open_base_selection(
+    query: DailyMarketTechnicalOfficialDispositionQueryV1,
+    technical: Mapping[str, object],
+    cancel_callback: Callable[[], object] | None,
+    *,
+    preloaded_session: DailyMarketTechnicalUniverseV4ReadSession | None = None,
+) -> tuple[
+    DailyMarketTechnicalUniverseV4ReadSession,
+    DailyMarketTechnicalUniverseV4Query,
+    DailyMarketTechnicalUniverseV4ReadSelection,
+    str,
+]:
+    _check_cancel(cancel_callback)
+    read_session = (
+        _open_technical_session(technical, cancel_callback)
+        if preloaded_session is None else preloaded_session
+    )
+    if not read_session.matches_source(query.technical_query):
+        _fail("p01_base_query_source_mismatch")
+    try:
         base_query = read_session.create_query(
             rule_state_filters=(),
             combine_mode="AND",
@@ -1958,12 +2038,24 @@ def open_daily_market_technical_official_disposition_read_session_v1(
         raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
             f"technical_official_query_reader_v1_bundle_exact_read_failed:{exc.code}"
         ) from exc
+    return _issue_session_from_verified_bundle(parsed_query, bundle_state, cancel_callback)
+
+
+def _issue_session_from_verified_bundle(
+    parsed_query: DailyMarketTechnicalOfficialDispositionQueryV1,
+    bundle_state: DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1,
+    cancel_callback: Callable[[], object] | None,
+    *,
+    preloaded_session: DailyMarketTechnicalUniverseV4ReadSession | None = None,
+) -> DailyMarketTechnicalOfficialDispositionReadSessionV1:
+    """共用發行邊界；factory 沿用同次完整核驗，避免重開來源。"""
     technical, manifest = _validate_bundle_query_relationship(parsed_query, bundle_state)
     _check_cancel(cancel_callback)
     technical_session, base_query, selection, query_spec_identity = _open_base_selection(
         parsed_query,
         technical,
         cancel_callback,
+        preloaded_session=preloaded_session,
     )
     if (
         technical_session.store_output_root != str(Path(cast(str, technical["output_root"])))
@@ -1988,6 +2080,88 @@ def open_daily_market_technical_official_disposition_read_session_v1(
     )
     _check_cancel(cancel_callback)
     return session
+
+
+def open_daily_market_technical_official_disposition_bundle_session_v1(
+    *,
+    bundle_output_root: str | Path,
+    bundle_identity_sha256: str,
+    expected_manifest_sha256: str,
+    row_scope_filter: Sequence[RowScope],
+    rule_state_filters: Sequence[DailyMarketTechnicalRuleStateFilterV4] = (),
+    combine_mode: Literal["AND", "OR"] = "AND",
+    market_assignment_states: Sequence[str] = (),
+    official_disposal_states: Sequence[str] = (),
+    outer_stock_filter_mode: Literal["all", "explicit_codes"] = "all",
+    outer_stock_codes: Sequence[str] = (),
+    sort_clauses: Sequence[DailyMarketTechnicalOfficialDispositionSortClauseV1] = (),
+    cancel_callback: Callable[[], object] | None = None,
+) -> DailyMarketTechnicalOfficialDispositionReadSessionV1:
+    """由明示保存 bundle 核驗來源並建 query；不使用 latest 或現在時鐘。"""
+    _validate_cancel_callback(cancel_callback)
+    _check_cancel(cancel_callback)
+    try:
+        bundle_state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(
+            bundle_output_root
+        ).read_exact(
+            bundle_identity_sha256,
+            expected_manifest_sha256=expected_manifest_sha256,
+            cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+        )
+    except DailyMarketTechnicalOfficialDispositionBundleError as exc:
+        _check_source_error_cancelled(exc)
+        raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+            f"technical_official_query_reader_v1_bundle_exact_read_failed:{exc.code}"
+        ) from exc
+    manifest = _mapping(bundle_state.manifest, "bundle_manifest_invalid")
+    technical = _mapping(manifest.get("technical_store"), "technical_store_descriptor_invalid")
+    pins = _mapping(manifest.get("source_pins"), "source_pins_invalid")
+    try:
+        clock = daily_market_technical_source_clock_v4_from_dict(technical.get("source_clock"))
+        market_pin = CurrentMarketAssignmentSourcePinV1.from_dict(pins.get("market_assignment"))
+        disposal_pin = CurrentOfficialDisposalSourcePinV1.from_dict(pins.get("official_disposal"))
+    except (DailyMarketTechnicalUniverseV4StoreError, CurrentMarketAssignmentError,
+            SelectionOfficialEventError, TypeError, ValueError) as exc:
+        raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+            "technical_official_query_reader_v1_bundle_source_descriptor_invalid"
+        ) from exc
+    _check_cancel(cancel_callback)
+    technical_session = _open_technical_session(technical, cancel_callback)
+    try:
+        technical_query = technical_session.create_query(
+            rule_state_filters=rule_state_filters,
+            combine_mode=combine_mode,
+            stock_filter=(),
+            sort_key="stock_code",
+            descending=False,
+            page_index=0,
+            page_size=1,
+            cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+        )
+        query = DailyMarketTechnicalOfficialDispositionQueryV1.create(
+            technical_query=technical_query,
+            decision_cutoff=clock.decision_cutoff,
+            bundle_output_root=bundle_state.reference.output_root,
+            bundle_identity_sha256=bundle_state.reference.bundle_identity_sha256,
+            expected_manifest_sha256=bundle_state.reference.manifest_sha256,
+            market_assignment_pin_identity_sha256=market_pin.identity_sha256,
+            official_disposal_pin_identity_sha256=disposal_pin.identity_sha256,
+            row_scope_filter=row_scope_filter,
+            market_assignment_states=market_assignment_states,
+            official_disposal_states=official_disposal_states,
+            outer_stock_filter_mode=outer_stock_filter_mode,
+            outer_stock_codes=outer_stock_codes,
+            sort_clauses=sort_clauses,
+        )
+    except (DailyMarketTechnicalUniverseV4QueryError,
+            DailyMarketTechnicalOfficialDispositionQueryV1Error) as exc:
+        _check_source_error_cancelled(exc)
+        raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+            "technical_official_query_reader_v1_research_conditions_invalid"
+        ) from exc
+    return _issue_session_from_verified_bundle(
+        query, bundle_state, cancel_callback, preloaded_session=technical_session
+    )
 
 
 def read_daily_market_technical_official_disposition_page_v1(

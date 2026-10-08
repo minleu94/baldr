@@ -119,6 +119,7 @@ from ui_qt.views.update_view import UpdateView
 from ui_qt.views.backtest_view import BacktestView
 from ui_qt.views.watchlist_view import WatchlistView
 from ui_qt.views.stock_research_workspace import StockResearchWorkspace
+from ui_qt.views.stock_research_report_view import StockResearchReportDialog
 from ui_qt.widgets.session_context_strip import SessionContextStrip
 from ui_qt.views.smart_money.smart_money_flow_view import SmartMoneyFlowView
 from app_module.broker_flow_service import BrokerFlowService
@@ -1427,6 +1428,7 @@ class MainWindow(QMainWindow):
         self._shutdown_close_started_monotonic: float | None = None
         self._shutdown_close_last_blockers: tuple[str, ...] = ()
         self._shutdown_close_last_diagnostic_monotonic: float | None = None
+        self._personal_h20_current_research_dialogs: dict[tuple[str, ...], StockResearchReportDialog] = {}
         self._shutdown_close_timer = QTimer(self)
         self._shutdown_close_timer.setInterval(100)
         self._shutdown_close_timer.timeout.connect(self._poll_shutdown_close)
@@ -2691,6 +2693,12 @@ class MainWindow(QMainWindow):
 
     def _open_latest_bookmark_research(self, value: object) -> None:
         context = self._coerce_stock_research_context(value)
+        if context is not None and context.source_kind in {
+            "personal_h20_saved_cohort",
+            "personal_h20_research_bookmark",
+        }:
+            self._open_personal_h20_current_research(context)
+            return
         if context is not None and (
             context.rank_context is not None
             or context.source_kind == "explicit_latest_stock_research"
@@ -2713,6 +2721,161 @@ class MainWindow(QMainWindow):
         opener(context)
         self._select_main_workspace("recommendation")
         recommendation.result_source_tabs.setCurrentWidget(daily)
+
+    def _open_personal_h20_current_research(
+        self, context: ResearchStockContextDTO
+    ) -> None:
+        """為已核驗的 H20 摘要另開一般現況報告，不改寫原研究工作區。"""
+
+        if getattr(self, "_shutdown_close_requested", False):
+            return
+        workspace = getattr(self, "stock_research_workspace", None)
+        service = getattr(self, "stock_research_report_service", None)
+        if workspace is None or service is None:
+            self.statusBar().showMessage("目前個股研究視窗尚未就緒；原 H20 報告保持不變。")
+            return
+        report_view = workspace.report_view
+        report = report_view._loaded_report
+        if (
+            report_view._closing
+            or report_view.context != context
+            or report_view._loaded_request_context != context
+            or report is None
+            or report.stock_code != context.stock_code
+            or report.research_context.get("source_kind") != context.source_kind
+        ):
+            self.statusBar().showMessage(
+                "原 H20 報告已變更或尚未完成核驗；未開啟另一份行情報告。"
+            )
+            return
+
+        if context.source_kind == "personal_h20_saved_cohort":
+            origin = self._personal_h20_saved_origin_for_context(context)
+            evidence = getattr(self, "_personal_h20_saved_evidence", None)
+            from app_module.recommendation.personal_h20_verified_cohort_view import (
+                PersonalH20VerifiedCohortView,
+                assert_personal_h20_verified_cohort_view,
+                project_personal_h20_verified_cohort_selection,
+            )
+
+            cohort_view = getattr(self, "_personal_h20_origin_view", None)
+            if (
+                origin is None
+                or getattr(self, "_personal_h20_saved_context", None) != context
+                or getattr(self, "_personal_h20_saved_reference", None) != origin[1]
+                or type(cohort_view) is not PersonalH20VerifiedCohortView
+                or cohort_view is not getattr(self, "_personal_h20_cohort_view", None)
+                or cohort_view.reference != origin[1]
+            ):
+                self.statusBar().showMessage(
+                    "原 H20 名單或來源設定已變更；請重新核驗名單後再開目前資料。"
+                )
+                return
+            try:
+                assert_personal_h20_verified_cohort_view(cohort_view)
+                projected = project_personal_h20_verified_cohort_selection(
+                    cohort_view, origin[0]
+                )
+                if projected != evidence:
+                    raise ValueError("saved_h20_view_evidence_mismatch")
+                market_root, config_path = self._personal_h20_configuration()
+                sqlite_read_root = self._personal_h20_sqlite_read_root()
+                if sqlite_read_root is None:
+                    raise ValueError("saved_h20_sqlite_read_root_unavailable")
+                from scripts.scheduled.personal_h20_daily_hook import (
+                    project_personal_h20_verified_cohort_selection_with_reference,
+                )
+
+                reference_checked = project_personal_h20_verified_cohort_selection_with_reference(
+                    cohort_view,
+                    origin[0],
+                    config_path=config_path,
+                    market_root=market_root,
+                    sqlite_read_root=sqlite_read_root,
+                )
+                if reference_checked != evidence:
+                    raise ValueError("saved_h20_reference_recheck_evidence_mismatch")
+            except (OSError, TypeError, ValueError) as exc:
+                self.statusBar().showMessage(
+                    "原 H20 來源或設定已變更；未開啟目前行情報告。"
+                )
+                return
+        elif context.source_kind == "personal_h20_research_bookmark":
+            origin = self._personal_h20_bookmark_origin_for_context(context)
+            evidence = getattr(self, "_personal_h20_bookmark_evidence", None)
+            if origin is None:
+                self.statusBar().showMessage(
+                    "原 H20 收藏或來源設定已變更；未開啟目前行情報告。"
+                )
+                return
+        else:
+            return
+
+        from app_module.recommendation.personal_h20_product_evidence import (
+            PersonalH20ProductEvidence,
+        )
+
+        if (
+            not isinstance(evidence, PersonalH20ProductEvidence)
+            or evidence.stock_code != context.stock_code
+            or evidence.status != "available"
+            or evidence.gross_return_bp is None
+            or report_view._personal_h20_evidence != evidence
+        ):
+            self.statusBar().showMessage(
+                "這筆 H20 預測尚未核驗為可用；目前行情入口保持停用。"
+            )
+            return
+
+        key = (
+            context.source_kind,
+            context.stock_code,
+            context.source_id,
+            context.source_snapshot_id,
+            context.source_snapshot_hash,
+        )
+        existing = self._personal_h20_current_research_dialogs.get(key)
+        if existing is not None:
+            try:
+                existing.show()
+                existing.raise_()
+                existing.activateWindow()
+                return
+            except RuntimeError:
+                self._personal_h20_current_research_dialogs.pop(key, None)
+
+        # 重新建構乾淨 context；不複製 H20 預測、capture、來源 pin 或原日期。
+        current_context = ResearchStockContextDTO(
+            stock_code=context.stock_code,
+            stock_name=context.stock_name,
+            source_kind="explicit_latest_stock_research",
+            source_label="目前個股行情與資料（與保存 H20 分開）",
+            source_workspace="stock_research",
+            ml_scope_mode="current_stock_research",
+        )
+        dialog = StockResearchReportDialog(
+            service,
+            current_context,
+            stock_codes=(context.stock_code,),
+            current_research_notice=(
+                "此視窗讀取目前一般個股研究來源。原保存 H20 沒有綁定同版本價格／技術圖表；"
+                "本視窗不補寫或改變 H20 預測，關閉後返回原 H20 報告。"
+            ),
+            parent=self,
+        )
+        self._personal_h20_current_research_dialogs[key] = dialog
+
+        def forget_dialog(_destroyed: object = None) -> None:
+            if self._personal_h20_current_research_dialogs.get(key) is dialog:
+                self._personal_h20_current_research_dialogs.pop(key, None)
+
+        dialog.destroyed.connect(forget_dialog)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        self.statusBar().showMessage(
+            f"已另開 {context.stock_code} 目前行情；原保存 H20 報告保持不變。"
+        )
 
     def _resolve_research_bookmark_stock(
         self, context: ResearchStockContextDTO, stock_code: str,
@@ -3177,6 +3340,14 @@ class MainWindow(QMainWindow):
             request_report_close = getattr(research_workspace, "request_close", None)
             if callable(request_report_close):
                 request_report_close()
+            for dialog in tuple(
+                getattr(self, "_personal_h20_current_research_dialogs", {}).values()
+            ):
+                try:
+                    dialog.close()
+                except RuntimeError:
+                    # 對話框可能已在 Qt 延後刪除佇列中；全域 worker 清理仍會等待。
+                    continue
             # MainWindow 的 closeEvent 不會可靠地逐一傳遞到子 QWidget；
             # _freeze_child_refresh_sources 已撤銷 Portfolio／每日決策頁的
             # pending generation，避免全域取消目前一輪後又補起下一輪。

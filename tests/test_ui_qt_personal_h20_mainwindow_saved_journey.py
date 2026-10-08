@@ -22,7 +22,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
 from ui_qt.main import MainWindow, _drain_qt_deferred_deletes
 from ui_qt.workers.task_worker import TaskWorker
@@ -475,6 +475,222 @@ def test_actual_mainwindow_h20_double_click_summary_return_recheck_and_source_dr
         if mutated_source_path.exists():
             mutated_source_path.write_bytes(original_source_bytes)
         _close_mainwindow(app, window)
+
+
+def test_h20_current_market_opens_separate_dialog_and_returns_to_exact_saved_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mode: dict[str, Any] = {}
+    app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch, source_mode=mode
+    )
+    source_database = Path(saved["snapshot_database"])
+    source_bytes = source_database.read_bytes()
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        _double_click_selected_h20_row(app, window, widget)
+        workspace = window.stock_research_workspace
+        assert workspace is not None
+        report_view = workspace.report_view
+        _wait_for(
+            app,
+            lambda: getattr(workspace.personal_h20_saved_evidence, "status", None) == "available"
+            and getattr(window, "_personal_h20_worker", None) is None
+            and not workspace.personal_h20_saved_busy,
+        )
+
+        original_context = report_view.context
+        original_report = report_view._loaded_report
+        original_evidence = workspace.personal_h20_saved_evidence
+        original_view = window._personal_h20_cohort_view
+        original_origin = window._personal_h20_research_origin
+        assert original_context is not None and original_report is not None
+        assert original_evidence is not None and original_evidence.gross_return_bp == 1234
+        assert original_report.price_points == ()
+        assert mode.get("_cohort_operation_count") == 1
+
+        action = report_view.open_latest_rank_research_button
+        assert action.text() == "查看目前個股行情與資料（獨立研究）"
+        assert action.isEnabled()
+        action.click()
+        _wait_for(
+            app,
+            lambda: bool(window._personal_h20_current_research_dialogs)
+            and next(iter(window._personal_h20_current_research_dialogs.values())).report_view._loaded_report
+            is not None,
+        )
+
+        dialog = next(iter(window._personal_h20_current_research_dialogs.values()))
+        current_view = dialog.report_view
+        current_context = current_view.context
+        current_report = current_view._loaded_report
+        assert not dialog.isModal()
+        assert dialog.windowTitle().startswith("目前個股行情與資料（獨立研究）｜2382")
+        notice = dialog.findChild(QLabel, "stockResearchIndependentCurrentNotice")
+        assert notice is not None and "原保存 H20" in notice.text()
+        assert current_context is not None and current_report is not None
+        assert current_context.stock_code == "2382"
+        assert current_context.source_kind == "explicit_latest_stock_research"
+        assert current_context.ml_scope_mode == "current_stock_research"
+        assert current_context.source_workspace == "stock_research"
+        for field_name in (
+            "decision_date", "data_date", "result_id", "identity_status",
+            "source_snapshot_id", "source_snapshot_hash", "profile_id", "profile_version",
+            "source_id", "source_version", "mapping_source_id", "mapping_version",
+            "mapping_observed_date",
+        ):
+            assert getattr(current_context, field_name) == ""
+        assert current_report.price_points
+        assert max(point.data_date for point in current_report.price_points) == "2026-10-05"
+        assert current_report.as_of != original_evidence.decision_date
+        assert current_view._personal_h20_evidence is None
+        assert "12.34%" not in current_view.personal_h20_label.text()
+
+        assert workspace.report_view is report_view
+        assert report_view.context == original_context
+        assert report_view._loaded_request_context == original_context
+        assert report_view._loaded_report is original_report
+        assert workspace.personal_h20_saved_evidence == original_evidence
+        assert report_view._personal_h20_evidence == original_evidence
+        assert window._personal_h20_cohort_view is original_view
+        assert window._personal_h20_research_origin == original_origin
+        assert mode.get("_cohort_operation_count") == 1
+        assert mode.get("_warm_projection_count") == 2
+        assert mode.get("_product_operation_count", 0) == 0
+        assert network_attempts == []
+
+        current_view.return_button.click()
+        _wait_for(app, lambda: not window._personal_h20_current_research_dialogs)
+        assert report_view.context == original_context
+        assert report_view._loaded_report is original_report
+        assert workspace.personal_h20_saved_evidence == original_evidence
+        assert window._personal_h20_cohort_view is original_view
+        assert window._personal_h20_research_origin == original_origin
+        assert mode.get("_cohort_operation_count") == 1
+        assert source_database.read_bytes() == source_bytes
+    finally:
+        _close_mainwindow(app, window)
+
+
+def test_h20_current_market_dialog_refuses_stale_market_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch
+    )
+    source_database = Path(saved["snapshot_database"])
+    source_bytes = source_database.read_bytes()
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        _double_click_selected_h20_row(app, window, widget)
+        workspace = window.stock_research_workspace
+        assert workspace is not None
+        report_view = workspace.report_view
+        _wait_for(
+            app,
+            lambda: getattr(workspace.personal_h20_saved_evidence, "status", None) == "available"
+            and getattr(window, "_personal_h20_worker", None) is None,
+        )
+        original_report = report_view._loaded_report
+        original_evidence = workspace.personal_h20_saved_evidence
+        original_configuration = window._personal_h20_configuration
+        monkeypatch.setattr(
+            window,
+            "_personal_h20_configuration",
+            lambda: (Path(saved["market_root"]) / "stale-root", original_configuration()[1]),
+        )
+
+        action = report_view.open_latest_rank_research_button
+        assert action.isEnabled()
+        action.click()
+        app.processEvents()
+
+        assert window._personal_h20_current_research_dialogs == {}
+        assert "來源設定已變更" in window.statusBar().currentMessage()
+        assert report_view._loaded_report is original_report
+        assert workspace.personal_h20_saved_evidence == original_evidence
+        assert report_view._personal_h20_evidence == original_evidence
+        assert network_attempts == []
+    finally:
+        _close_mainwindow(app, window)
+    assert source_database.read_bytes() == source_bytes
+
+
+def test_main_shutdown_cancels_and_waits_for_h20_current_research_dialog_worker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app_module.stock_research_report_service import StockResearchReportCancelled
+
+    app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch
+    )
+    source_bytes = Path(saved["snapshot_database"]).read_bytes()
+    entered = threading.Event()
+    release = threading.Event()
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        _double_click_selected_h20_row(app, window, widget)
+        workspace = window.stock_research_workspace
+        assert workspace is not None
+        _wait_for(
+            app,
+            lambda: getattr(workspace.personal_h20_saved_evidence, "status", None) == "available"
+            and getattr(window, "_personal_h20_worker", None) is None,
+        )
+
+        service = window.stock_research_report_service
+        original_read = service.read_report
+
+        def held_read(
+            stock_code: str,
+            *,
+            as_of_date: Any = None,
+            context: Any = None,
+            cancel_callback: Any = None,
+        ) -> Any:
+            entered.set()
+            while True:
+                if callable(cancel_callback) and cancel_callback():
+                    raise StockResearchReportCancelled("synthetic_current_report_cancelled")
+                if release.wait(0.01):
+                    break
+            return original_read(
+                stock_code,
+                as_of_date=as_of_date,
+                context=context,
+                cancel_callback=cancel_callback,
+            )
+
+        monkeypatch.setattr(service, "read_report", held_read)
+        workspace.report_view.open_latest_rank_research_button.click()
+        _wait_for(app, entered.is_set)
+        dialog = next(iter(window._personal_h20_current_research_dialogs.values()))
+        worker = dialog.report_view._active_worker
+        assert worker is not None and worker.isRunning()
+        worker_finished = threading.Event()
+        worker.native_thread_finished.connect(lambda: worker_finished.set())
+
+        window.close()
+        _wait_for(app, worker.is_cancel_requested)
+        assert window.isVisible()
+        assert dialog.report_view._closing
+        release.set()
+        _wait_for(app, lambda: not window.isVisible(), timeout_seconds=45.0)
+        assert worker_finished.is_set()
+        assert network_attempts == []
+    finally:
+        release.set()
+        _close_mainwindow(app, window)
+    assert Path(saved["snapshot_database"]).read_bytes() == source_bytes
 
 
 def test_actual_mainwindow_h20_loading_is_visible_singleflight_and_reports_exact_counts(

@@ -1882,6 +1882,22 @@ class StockResearchReportView(QWidget):
             return False
         if context.rank_context is not None:
             self.latestResearchRequested.emit(context)
+        elif (
+            context.source_kind
+            in {"personal_h20_saved_cohort", "personal_h20_research_bookmark"}
+            and self._loaded_report is not None
+            and self._loaded_request_context == context
+        ):
+            evidence = self._personal_h20_evidence
+            if (
+                evidence is None
+                or evidence.status != "available"
+                or evidence.stock_code != context.stock_code
+                or evidence.gross_return_bp is None
+            ):
+                return False
+            # H20 來源仍由 host 以原 context 核身；host 另開乾淨的現況 context。
+            self.latestResearchRequested.emit(context)
         elif self._loaded_report is not None and technical_history_saved_scope_limitation(self._loaded_report.research_context) is not None:
             self.latestResearchRequested.emit(ResearchStockContextDTO(
                 stock_code=context.stock_code, stock_name=context.stock_name,
@@ -1899,9 +1915,43 @@ class StockResearchReportView(QWidget):
         ranking = report.original_ranking if report is not None else None
         missing_saved_chart = bool(report is not None and not report.saved_technical_chart_json
                                   and technical_history_saved_scope_limitation(report.research_context) is not None)
+        report_source_kind = (
+            str(report.research_context.get("source_kind", "") or "")
+            if report is not None
+            else ""
+        )
+        context_source_kind = str(getattr(context, "source_kind", "") or "")
+        is_personal_h20_saved = context_source_kind in {
+            "personal_h20_saved_cohort",
+            "personal_h20_research_bookmark",
+        } and report_source_kind == context_source_kind
+        h20_estimate_available = bool(
+            is_personal_h20_saved
+            and self._personal_h20_evidence is not None
+            and self._personal_h20_evidence.status == "available"
+            and self._personal_h20_evidence.stock_code == getattr(context, "stock_code", None)
+            and self._personal_h20_evidence.gross_return_bp is not None
+        )
         self.original_ranking_label.setVisible(is_rank_context)
         self.favorite_original_ranking_button.setVisible(is_rank_context)
         self.open_latest_rank_research_button.setVisible(is_rank_context or missing_saved_chart)
+        if is_personal_h20_saved:
+            self.open_latest_rank_research_button.setText(
+                "查看目前個股行情與資料（獨立研究）"
+            )
+            self.open_latest_rank_research_button.setAccessibleName(
+                "查看目前個股行情與資料（獨立研究）"
+            )
+            self.open_latest_rank_research_button.setToolTip(
+                "原保存 H20 沒有綁定同版本價格／技術圖表。僅在 H20 預測已核驗可用時，"
+                "另開目前一般個股研究；不修改原保存內容。"
+            )
+        else:
+            self.open_latest_rank_research_button.setText("另開最新研究")
+            self.open_latest_rank_research_button.setAccessibleName("另開最新研究")
+            self.open_latest_rank_research_button.setToolTip(
+                "以新 context 開啟當下個股研究；不變更或覆蓋原保存來源。"
+            )
         available = bool(
             is_rank_context
             and report is not None
@@ -1918,7 +1968,9 @@ class StockResearchReportView(QWidget):
             available and not self._closing
         )
         self.open_latest_rank_research_button.setEnabled(
-            (is_rank_context or missing_saved_chart) and not self._closing
+            (is_rank_context or missing_saved_chart)
+            and (not is_personal_h20_saved or h20_estimate_available)
+            and not self._closing
         )
         if not is_rank_context:
             self.original_ranking_label.clear()
@@ -2122,11 +2174,13 @@ class StockResearchReportView(QWidget):
                 "個人 H20 模型：模型資料暫時無法驗證；查看提示中的來源診斷，重新載入可重試。"
             )
             self.personal_h20_label.setToolTip(evidence.reason)
+            self._sync_original_rank_actions()
             return
         self.personal_h20_label.setToolTip("")
         self.personal_h20_label.setText(personal_h20_product_text(evidence))
         self._personal_h20_evidence = evidence
         self._render_product_summary(self._loaded_report)
+        self._sync_original_rank_actions()
 
     def _on_report_tab_changed(self, index: int) -> None:
         """只在使用者進入分頁時繪製有限內容，不重讀 service。"""
@@ -2377,7 +2431,18 @@ class StockResearchReportView(QWidget):
             if report.saved_technical_chart_json:
                 layout.addWidget(self._wrapped_label("使用原保存版本的價格與MA20／MA60；不讀最新資料補圖。價格未校正，來源可得時間未知不代表PIT。"))
             else:
-                panel = self._missing_panel("這筆保存結果沒有可核驗的同版價格／MA圖表；保留缺件，不借今天資料。可使用「另開最新研究」獨立查看現況。")
+                is_personal_h20 = report.research_context.get("source_kind") in {
+                    "personal_h20_saved_cohort",
+                    "personal_h20_research_bookmark",
+                }
+                missing_text = (
+                    "這筆保存的 H20 結果沒有綁定同版本價格／技術圖表；此處保留缺件，"
+                    "不混入目前行情。上方 H20 狀態仍依原保存證據顯示；可另開目前個股資料，"
+                    "那是不同來源的獨立研究。"
+                    if is_personal_h20
+                    else "這筆保存結果沒有可核驗的同版價格／MA圖表；保留缺件，不借今天資料。可使用「另開最新研究」獨立查看現況。"
+                )
+                panel = self._missing_panel(missing_text)
                 panel.setObjectName("stockResearchSavedChartMissing")
                 layout.addWidget(panel)
 
@@ -3552,15 +3617,27 @@ class StockResearchReportDialog(QDialog):
         stock_codes: Sequence[str] = (),
         journey_service: DecisionOutcomeJourneyService | None = None,
         continuity_controller: DecisionContinuityController | None = None,
+        current_research_notice: str | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.setModal(False)
-        self.setWindowTitle(f"個股研究報告｜{context.stock_code}")
+        self._title_prefix = (
+            "目前個股行情與資料（獨立研究）"
+            if current_research_notice is not None
+            else "個股研究報告"
+        )
+        self.setWindowTitle(f"{self._title_prefix}｜{context.stock_code}")
         self.setMinimumSize(360, 280)
         self.resize(1120, 760)
         layout = QVBoxLayout(self)
+        if current_research_notice is not None:
+            notice = QLabel(current_research_notice, self)
+            notice.setObjectName("stockResearchIndependentCurrentNotice")
+            notice.setWordWrap(True)
+            notice.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            layout.addWidget(notice)
         self.dialog_tabs = QTabWidget()
         self.dialog_tabs.setObjectName("stockResearchDialogTabs")
         self.dialog_tabs.setDocumentMode(True)
@@ -3571,6 +3648,12 @@ class StockResearchReportDialog(QDialog):
             parent=self,
         )
         self.report_view.activeStockChanged.connect(self._on_report_stock_changed)
+        if current_research_notice is not None:
+            self.report_view.return_button.setText("關閉並返回原 H20 報告")
+            self.report_view.return_button.setAccessibleName("關閉並返回原 H20 報告")
+            self.report_view.return_button.setToolTip(
+                "關閉這份目前行情的獨立研究；原保存 H20 報告與來源保持不變。"
+            )
         self.report_view.activeContextChanged.connect(self._on_report_context_changed)
         self.dialog_tabs.addTab(self.report_view, "個股研究報告")
         self.journey_view: DecisionOutcomeJourneyWidget | None = None
@@ -3595,7 +3678,7 @@ class StockResearchReportDialog(QDialog):
         *,
         stock_codes: Sequence[str] | None = None,
     ) -> None:
-        self.setWindowTitle(f"個股研究報告｜{context.stock_code}")
+        self.setWindowTitle(f"{self._title_prefix}｜{context.stock_code}")
         if stock_codes is not None:
             self.report_view.set_stock_codes(stock_codes)
         self.report_view.set_context(context)
@@ -3605,7 +3688,7 @@ class StockResearchReportDialog(QDialog):
 
         code = str(stock_code).strip()
         if code:
-            self.setWindowTitle(f"個股研究報告｜{code}")
+            self.setWindowTitle(f"{self._title_prefix}｜{code}")
 
     def _on_report_context_changed(
         self,

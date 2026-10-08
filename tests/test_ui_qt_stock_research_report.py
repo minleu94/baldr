@@ -427,6 +427,68 @@ def test_report_view_reads_real_service_and_renders_missing_ml(tmp_path: Path) -
     view.close()
 
 
+def test_h20_saved_report_keeps_current_sqlite_prices_out_of_saved_sections(
+    tmp_path: Path,
+) -> None:
+    service = _real_service(tmp_path)
+    with sqlite3.connect(Path(getattr(service.config, "db_file"))) as connection:
+        connection.execute(
+            "INSERT INTO daily_prices VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("2026-09-08", "2382", "廣達", "99", "102", "98", "100", 1000, "100000", "1"),
+        )
+    context = ResearchStockContextDTO(
+        stock_code="2382",
+        stock_name="廣達",
+        decision_date="2026-09-08",
+        data_date="2026-09-08",
+        source_snapshot_id="saved-h20-cycle",
+        source_snapshot_hash="saved-h20-manifest-pin",
+        source_id="saved-h20-prediction",
+        source_version="saved-h20-contract",
+        source_kind="personal_h20_saved_cohort",
+        source_workspace="recommendation",
+    )
+
+    report = service.read_report("2382", context=context)
+
+    sections = {section.section_id: section for section in report.sections}
+    assert report.price_points == ()
+    assert report.technical is None
+    assert sections["price"].status == "missing"
+    assert sections["technical"].status == "missing"
+    assert "H20" in sections["price"].summary
+    assert "同版本價格／技術圖表" in sections["price"].summary
+    assert "不以另一份行情來源補入" in sections["technical"].summary
+    assert not any("價格：" in error or "技術指標：" in error for error in report.limitations)
+
+
+def test_h20_current_market_action_stays_disabled_when_saved_estimate_is_unknown(
+    tmp_path: Path,
+) -> None:
+    _app()
+    context = ResearchStockContextDTO(
+        stock_code="2382",
+        source_kind="personal_h20_saved_cohort",
+        source_workspace="recommendation",
+    )
+    report = StockResearchReportDTO(
+        stock_code="2382",
+        research_context={"source_kind": "personal_h20_saved_cohort"},
+    )
+    view = StockResearchReportView(_real_service(tmp_path))
+    try:
+        view.context = context
+        view._loaded_request_context = context
+        view._loaded_report = report
+        view._sync_original_rank_actions()
+        assert not view.open_latest_rank_research_button.isHidden()
+        assert view.open_latest_rank_research_button.text() == "查看目前個股行情與資料（獨立研究）"
+        assert not view.open_latest_rank_research_button.isEnabled()
+        assert view.request_latest_research() is False
+    finally:
+        view.close()
+
+
 def test_market_status_and_position_quote_dates_render_separately(tmp_path: Path) -> None:
     view = StockResearchReportView(_real_service(tmp_path))
     view._render_market_status(

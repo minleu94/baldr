@@ -298,8 +298,26 @@ class StockResearchReportReadService:
         price_points: tuple[StockPricePointDTO, ...] = ()
         saved_chart = None
         saved_chart_json = ""
-        saved_chart_scope = (technical_history_saved_scope_limitation(context_map) is not None
-                             or context_map.get("source_kind") == "recommendation")
+        saved_scope_limitation = technical_history_saved_scope_limitation(context_map)
+        personal_h20_saved_scope = (
+            context_map.get("source_kind")
+            in {"personal_h20_saved_cohort", "personal_h20_research_bookmark"}
+            and saved_scope_limitation is not None
+        )
+        saved_chart_scope = (
+            saved_scope_limitation is not None
+            or context_map.get("source_kind") == "recommendation"
+        )
+        saved_chart_missing_reason = (
+            "這筆個人 H20 保存結果未綁定同版本價格／技術圖表；本報告不以另一份行情來源補入。"
+            if personal_h20_saved_scope
+            else "找不到不晚於查詢日的價格資料；請從「數據更新」檢查行情來源。"
+        )
+        saved_technical_missing_reason = (
+            "這筆個人 H20 保存結果未綁定同版本技術資料；本報告不以另一份行情來源補入。"
+            if personal_h20_saved_scope
+            else "找不到不晚於查詢日的技術指標；請先更新技術資料。"
+        )
         if is_daily_research_snapshot or is_rank_research_context:
             try:
                 self._check_cancel(cancel_callback)
@@ -437,7 +455,7 @@ class StockResearchReportReadService:
                     "價格",
                     len(price_points),
                     price_source,
-                    missing_reason="找不到不晚於查詢日的價格資料；請從「數據更新」檢查行情來源。",
+                    missing_reason=saved_chart_missing_reason,
                 )
             )
 
@@ -477,11 +495,15 @@ class StockResearchReportReadService:
                     "技術指標",
                     len(technical.indicators) if technical is not None else 0,
                     technical_source,
-                    missing_reason="找不到不晚於查詢日的技術指標；請先更新技術資料。",
+                    missing_reason=saved_technical_missing_reason,
                 )
             )
 
-        saved_history_limitation = technical_history_saved_scope_limitation(context_map)
+        saved_history_limitation = (
+            "這筆個人 H20 保存結果未綁定同版本技術歷史；本報告不以另一份行情來源補入。"
+            if personal_h20_saved_scope
+            else saved_scope_limitation
+        )
         if saved_chart is not None:
             technical_history = saved_chart.technical_history
         elif saved_chart_scope:

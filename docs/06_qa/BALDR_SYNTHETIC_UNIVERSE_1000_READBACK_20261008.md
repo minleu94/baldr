@@ -79,3 +79,9 @@ session63774 已 terminal exit1，新 case `C:/t/p01_yyz7kyi8`。固定 controll
 完整結果與逐筆資料保存於該case的benchmark_result.json與各worker檔；大檔只能解析必要欄位，不能整檔輸出。中央另獨立核sample／nearest-rank／Job清理證據，該補審結論尚待。效能失敗已解除重測互斥，價格query的真257跨段功能回歸可接續；不以本矩陣授Native或正式版接受。
 
 補審完成：事件檔150筆（每類30）重算的最近秩p95與controller一致，冷5 PID各自不同；六個worker sampler有效／無錯誤／已關閉，Job清理均驗零殘留。controller／recovery report前後一致；原result SHA256 `fcb10a761c73cd6551f624d27c449b8a37966b174bee825ec73f0f5b6c8efaaa`，有界review SHA256 `e343d3c392cff5700a18f41ae01250aa7669e4b7997fb05ebc17ac66b0e21ff9`，保存在原QA目錄root_matrix_yyz7kyi8_review.json。完整矩陣的資料核驗與效能未達標均已確認，沒有重跑或改寫原樣本。
+
+## acd18a1e 翻頁剖析首次啟動失敗（2026-10-08）
+
+中央啟動單次診斷，session11338 終態 exit1；新隔離 attempt `C:/t/p01_uhaqbi84`，收據 SHA256 `d806a816327d2dced7047cd69f6a074cd24d3606ae77c8cb3aa4e03ab73f7c0b`。supervisor SHA `c9eb3e303ffb7cb694d6eb03756ed8a35376f257a94e5d212ecdd1e61aa94091`、profile SHA `705b2f1f3137a36e70d0b99c9bbfec0533fc1186e0c76a59e46ead6864f3a3d9`；固定 controller/helper 未改。Popen 在建立 stdin pipe 的 `io.open(3, 'wb')` 被 parent metadata guard 拒絕，尚未取得 child PID／Job／profile result；cleanup 證據為 unknown，不能授零殘留或真 Job 驗證。source 起訖與全部固定輸入 pins 一致，保留拒絕計數1與失敗封套。
+
+此結果未產生效能樣本，不能替代最新 acd18a1e 完整矩陣的三項暖操作失敗。下一步只修 QA supervisor 的精確 pipe 初始化契約並補自測，不修改固定 controller/helper，不放行任意數字 descriptor 寫入，也不重跑整個冷暖矩陣。

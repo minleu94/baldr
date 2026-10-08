@@ -35,3 +35,5 @@ QA 控制器的 PriorityClass 原誤用指標大小，已依 [Microsoft 結構�
 中央最新 frozen attempt `20261008T204457Z_39088d9d4967` 已進真正 Main，觀察清單雙擊還原保存的 257 股來源、第 6 頁、S0250、跨頁比較與捲動值 2；SQLite 拒絕為 0，僅三次 case-local runtime 連線。整體仍 exit 1：QA 錯以 producer 模組載入判斷產製器執行，並攔到 urllib3 匯入時的 IPv6 能力探測。原 network 拒絕計數 1 必須保留；不能放行 socket 或清除事件來換通過。候選、原 COW 與合成來源 pins 起訖不變。下一步是審核精確產製入口執行防護與已拒絕依賴探測的分類，不授 frozen 完整接受。
 
 原 H20 摘要接線的來源核對：固定 source.zip 與工作樹的 `ui_qt/main.py`、`stock_research_report_view.py` 位元組一致；`stock_research_workspace.py` 正規化行尾後內容一致，位元組差異僅行尾，未因此改寫來源或 archive。中央新隔離測試 `test_ui_qt_personal_h20_workspace_panel.py` 與 `test_stock_research_product_summary.py` 共 15 passed（2.60 秒），basetemp `output/qa/h20_summary_root_review_20261008_a`。這證明摘要契約及 UI 投影，不證明原來源等待時間、frozen 原 H20 下鑽或真人可讀性；新啟動 helper 的 gate 仍關閉。
+
+窄視窗來源版視覺補驗：`test_ui_qt_recommendation_layout.py` 的完整分數表／文件末段及展開理由兩個案例通過（2 passed、7 deselected，3.02 秒）。中央實際讀取 `output/qa/recommendation_visual_root_20261008_a/recommendation_full_document_end_460x700.png` 與 `recommendation_800x700_personal_history.png`：理由末段可捲至結果 viewport，保存版本／歷史／回退與 DB 選擇控制項各自佔完整列，沒有原回報的垂直擠壓。畫面為合成來源版，仍有整頁捲動；不授 frozen 原資料或真人驗收，不將 offscreen 畫面冒充真人操作結果。

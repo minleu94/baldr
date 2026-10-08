@@ -469,3 +469,107 @@ def test_callback_return_must_be_exact_bool(source_and_private_roots: tuple[Path
     with pytest.raises(PinnedSQLiteReadSessionError, match="cancel_callback_not_bool"):
         _open(database, private_root, expected_sha, cancel_callback=lambda: 0)  # type: ignore[arg-type]
     assert list(private_root.iterdir()) == []
+
+
+def test_private_directory_permission_denied_fails_after_one_attempt(
+    source_and_private_roots: tuple[Path, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database, private_root, expected_sha = source_and_private_roots
+    before = database.stat()
+    calls: list[Path] = []
+    real_mkdir = os.mkdir
+
+    def denied(path: object, mode: int = 0o777, *, dir_fd: int | None = None) -> None:
+        target = Path(os.fsdecode(cast(os.PathLike[str], path)))
+        if target.parent == private_root:
+            calls.append(target)
+            raise PermissionError("合成私有根權限拒絕")
+        real_mkdir(cast(str, path), mode, dir_fd=dir_fd)
+
+    def forbidden_connect(*args: object, **kwargs: object) -> sqlite3.Connection:
+        raise AssertionError("權限失敗前不得連 SQLite")
+
+    monkeypatch.setattr(pinned_reader.os, "mkdir", denied)
+    monkeypatch.setattr(pinned_reader.sqlite3, "connect", forbidden_connect)
+    with pytest.raises(PinnedSQLiteReadSessionError, match="private_directory_create_failed"):
+        _open(database, private_root, expected_sha)
+    assert len(calls) == 1
+    assert database.stat() == before
+    assert _file_sha256(database) == expected_sha
+    assert list(private_root.iterdir()) == []
+
+
+def test_private_directory_collision_has_a_hard_limit_and_preserves_existing_files(
+    source_and_private_roots: tuple[Path, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database, private_root, expected_sha = source_and_private_roots
+    existing = private_root / ("pinned-sqlite-" + "a" * 32)
+    existing.mkdir()
+    sentinel = existing / "unrelated.txt"
+    sentinel.write_bytes(b"preserve-existing")
+    calls = 0
+    real_mkdir = os.mkdir
+
+    def counted(path: object, mode: int = 0o777, *, dir_fd: int | None = None) -> None:
+        nonlocal calls
+        if Path(os.fsdecode(cast(os.PathLike[str], path))) == existing:
+            calls += 1
+        real_mkdir(cast(str, path), mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(pinned_reader.secrets, "token_hex", lambda _size: "a" * 32)
+    monkeypatch.setattr(pinned_reader.os, "mkdir", counted)
+    with pytest.raises(PinnedSQLiteReadSessionError, match="private_directory_collision_limit"):
+        _open(database, private_root, expected_sha)
+    assert calls == pinned_reader.MAX_READER_DIRECTORY_ATTEMPTS == 32
+    assert sentinel.read_bytes() == b"preserve-existing"
+    assert list(private_root.iterdir()) == [existing]
+    assert _file_sha256(database) == expected_sha
+
+
+def test_private_directory_collision_can_be_cancelled_between_attempts(
+    source_and_private_roots: tuple[Path, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database, private_root, expected_sha = source_and_private_roots
+    cancelled = False
+    calls = 0
+    real_mkdir = os.mkdir
+
+    def collision(path: object, mode: int = 0o777, *, dir_fd: int | None = None) -> None:
+        nonlocal cancelled, calls
+        target = Path(os.fsdecode(cast(os.PathLike[str], path)))
+        if target.parent == private_root:
+            calls += 1
+            cancelled = True
+            raise FileExistsError("合成名稱碰撞")
+        real_mkdir(cast(str, path), mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(pinned_reader.os, "mkdir", collision)
+    with pytest.raises(PinnedSQLiteReadSessionCancelled):
+        _open(database, private_root, expected_sha, cancel_callback=lambda: cancelled)
+    assert calls == 1
+    assert list(private_root.iterdir()) == []
+    assert _file_sha256(database) == expected_sha
+
+
+def test_private_directory_collision_then_success_preserves_other_directory(
+    source_and_private_roots: tuple[Path, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database, private_root, expected_sha = source_and_private_roots
+    existing = private_root / ("pinned-sqlite-" + "a" * 32)
+    existing.mkdir()
+    sentinel = existing / "unrelated.txt"
+    sentinel.write_bytes(b"preserve-existing")
+    names = iter(("a" * 32, "b" * 32))
+    monkeypatch.setattr(pinned_reader.secrets, "token_hex", lambda _size: next(names))
+    session = _open(database, private_root, expected_sha)
+    assert Path(session.reader_database_path).parent.name == "pinned-sqlite-" + "b" * 32
+    assert session.connection.execute("SELECT COUNT(*) FROM saved_values").fetchone() == (3,)
+    binding = session.finish()
+    assert binding.original_main_sha256 == expected_sha
+    assert binding.reader_copy_sha256 == expected_sha
+    assert list(private_root.iterdir()) == [existing]
+    assert sentinel.read_bytes() == b"preserve-existing"

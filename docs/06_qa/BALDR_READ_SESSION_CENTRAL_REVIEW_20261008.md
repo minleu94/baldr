@@ -184,3 +184,11 @@ F17 owner另以保存257＋1 synthetic bundle回報完整查詢、fresh-process 
 相同 `eb98e8d9` 工作樹既有推薦版面四項測試，在各自新程序以 `QT_QPA_PLATFORM=offscreen`、`QT_SCALE_FACTOR=1.25／1.5／2` 執行；各組4 passed（5.69／6.42／6.89秒），handle73455與27126均再確認terminal exit0，125%命令直接terminal exit0。覆蓋1366×768／1400×800 shell的184px導航、窄版個人控制項、理由展開與完整分數表／排名門檻／文件末行，原測試條件未改。截圖保存於 `output/qa/recommendation_dpi_{125,150,200}_root_20261008_a/`；中央目視100%與200%的460×700圖，分數四列、排名四項及風險段落均完整。
 
 這是有主題的Qt合成版面與縮放渲染，沒有原策略結果、真Main原來源旅程或Windows Native真人操作，不能替代P13全部解析度／鍵盤／使用者接受。原可用exe及main保持不變，新候選未交付。
+
+### H20 私有目錄建立的取消與權限修正
+
+中央核對CPython 3.11的Windows `tempfile.mkdtemp` 分支：parent存在且os.access回可寫時，PermissionError最多重試TMP_MAX（一百萬），與上述guard拒絕證據吻合。產品低層改用128-bit隨機名稱及原子os.mkdir(0o700)，只對FileExistsError最多重試32次，每次先poll取消並核私有根祖先；PermissionError及其他OSError立即回原具名建立失敗。成功仍沿原目錄身分、副本核驗、單次SQLite交易與身份匹配清理，不降低來源保護。碰撞目錄不屬本操作，不刪除。
+
+完整低層合成回歸 **21 passed／1平台skip、0.56秒**；新增真權限拒絕一次即止、真既有目錄32次碰撞上限、碰撞間取消與第二候選成功後保留他人目錄，均核原資料不變。相鄰H20 operation／capacity／read-session **33 passed／2.93秒**，兩檔mypy／compile通過。先前sandbox跑出18 passed／2 failed／2 skipped，兩個失敗是合成檔案／祖先改名受sandbox拒絕；原結果保留，未改測試跳過條件，改在唯一短QA根做同一完整回歸。最終source SHA `ACF14DAAA7B6AC55525C8247DCE39C910156CD18DBC755C6939DE09E51AC7ABB`、test `97FE10F408FB3B281127C6FDD427E8BE63AF002C99CA0DCC3B362BBC49EC3E2E`。
+
+未來函數自查：只改操作目錄建立，不改來源資料、時鐘、金融計算或query資格。QA guard私有根allowlist仍須獨立修正，否則只會更快失敗，不能把本包合成通過當成原4GB／十股／2382旅程完成。固定候選7b的失敗原封保留；新版尚未建置或交付。

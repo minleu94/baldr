@@ -8,10 +8,10 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import sqlite3
 import stat
-import tempfile
 from typing import Callable, Literal
 
 
@@ -30,6 +30,7 @@ MAX_SCHEMA_OBJECTS = 100_000
 MAX_SCHEMA_SQL_BYTES = 256 * 1024
 MAX_SCHEMA_TOTAL_BYTES = 16 * 1024 * 1024
 MIN_READER_RESERVE_BYTES = 8 * 1024 * 1024
+MAX_READER_DIRECTORY_ATTEMPTS = 32
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _WINDOWS_REPARSE_POINT = 0x400
 _SOURCE_ROLES: tuple[SQLiteFileRole, ...] = ("main", "wal", "shm", "rollback_journal")
@@ -558,12 +559,24 @@ class PinnedSQLiteReadSession:
         private = self._private_root
         if private is None:
             raise PinnedSQLiteReadSessionError("sqlite_read_session_private_root_missing")
-        self._assert_private_root_unchanged()
-        try:
-            name = tempfile.mkdtemp(prefix="pinned-sqlite-", dir=str(private))
-        except OSError as exc:
-            raise PinnedSQLiteReadSessionError("sqlite_read_session_private_directory_create_failed") from exc
-        directory = Path(name)
+        # Windows tempfile 會把某些權限拒絕當成碰撞重試；這裡只重試確實的名稱碰撞。
+        for _attempt in range(MAX_READER_DIRECTORY_ATTEMPTS):
+            self._poll_cancel()
+            self._assert_private_root_unchanged()
+            directory = private / f"pinned-sqlite-{secrets.token_hex(16)}"
+            try:
+                os.mkdir(directory, 0o700)
+            except FileExistsError:
+                continue
+            except OSError as exc:
+                raise PinnedSQLiteReadSessionError(
+                    "sqlite_read_session_private_directory_create_failed"
+                ) from exc
+            break
+        else:
+            raise PinnedSQLiteReadSessionError(
+                "sqlite_read_session_private_directory_collision_limit"
+            )
         self._reader_directory = directory
         chain = _directory_identity_chain(directory, include_leaf=True)
         self._reader_directory_chain_start = chain

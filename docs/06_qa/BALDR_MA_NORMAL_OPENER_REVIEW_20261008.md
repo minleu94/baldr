@@ -2,7 +2,7 @@
 
 日期：2026-10-08。此文件記錄 F02 後端整合的局部證據，不代表完整補完計畫、UI 或候選 EXE 已通過。
 
-收藏／比較及觀察清單 service 整合已完成中央回歸：21 passed、618.72 秒。Main／Watchlist 專用路由已接線；最新最小路由／版面回歸8 passed、3.13秒。保存來源條件重查已通過，同來源單次真MAView載入14.391秒成功。完整來源操作旅程仍未接受，正在核對選取、返回、比較及保存狀態還原；先前逾時失敗保留。以下分段保留各次失敗與接受範圍，不能把局部通過視為完整補完計畫完成。
+收藏／比較及觀察清單 service 整合已完成中央回歸：21 passed、618.72秒。真MAView保存來源完整操作旅程及Main／Watchlist實際方法的收藏持久保存、專用signal與fresh restore已通過中央獨立複驗。Main方法測試使用最小QMainWindow shell，完整Main startup仍待驗證；原H20、候選EXE、全母體效能與真人驗收仍未完成。以下分段保留各次失敗及其接受範圍。
 
 正常 F17 bundle opener 與 query reopen 使用同一份保存的合成封套。四均線投影掛接於既有逐股驗證迴圈，只有來源驗證成功且 P01 session 發布後才建立 MA session；投影例外不得發布部分狀態。金融數值沿用既有證據計算，沒有新增裸 float 計算。原始窗口、特徵日與可用性註記保留；來源缺少 available_at，歷史 PIT 資格仍為 false。
 
@@ -149,4 +149,18 @@ attempt02（owner handle34433，終態exit1）首次 explicit exact open 呼叫�
 單次真MAView診斷 attempt04 已終態exit0，receipt SHA `ecfc93f2915f12ff841745d968b0baae823b86124ad2495ccb4cd66a441d044b`：catalog明示選取後載入成功，整輪14,391毫秒，bundle opener8,890毫秒、view task14,281毫秒，operation成功且workers_terminal=true；23,004次取消callback均未回true，來源manifest／tree前後一致。driver採processEvents加短sleep讓出CPU；純CPU thread對照確有qWait等待拖慢現象，但不能只靠此推定原180秒根因。此證據限單次載入，下一輪完整旅程須保留原180秒門檻並驗選取、返回、比較與還原；不以mini診斷代替完整接受。
 
 完整旅程 session37300 終態exit1（pytest45.40秒），封套 `output/qa/ma_saved_source_ui_journey_20261008_a/attempt_1791501997926071500_53008/journey_receipt.json`。已完成載入、翻頁與比較，fresh restore operation回報完成後，綜合assert失敗；兩view正常關閉、active_worker=false、manifest/tree前後相同。讀碼定位測試只計view的bundle opener，收藏reader走另一公開read-session入口，故未計fresh restore的第二次核驗；產品未因此判定有還原缺口。須統一底層exact-open計數及保存逐項actual／expected後重驗，原失敗不改判通過。
+
+後續封套 `attempt_1791502337207545400_38344` 已逐項驗出fresh restore成功：same query JSON／page index1／page request identity／selected1100／兩筆basket identities／context模式一致，BundleReader實際exact read共2次（normal與restore各1）。仍overall failed：同源條件重查operation回True，產品kind為「沿原保存來源重新全域查詢」，測試誤寫「重新全母體查詢」而拒絕。此為具體oracle文字不一致，須修正後繼續驗重查結果與完整收尾，不能把overall failed改判整體通過。合成1100與原H20的2382驗收互不替代。
+
+修正oracle後，owner完整view旅程exit0、1 passed／62.94秒，receipt SHA `3c12013e76a823241ef01c1653968485681ff08157874f65f1dca822304be5cb`。中央獨立session24403亦exit0、1 passed／65.64秒，receipt `attempt_1791502558711345400_17956/journey_receipt.json` SHA `2e97784a0ee682675720b4c6883cbaa9b615bfde25c3f3350c1c72c3c332281f`，log `root_full_journey.log`。兩輪同固定來源，選列／跨頁／比較／bookmark JSON fresh restore／同來源重查均通過；底層exact read正好2次，同來源重查不重開，兩view已close且無active worker，來源manifest/tree前後一致。測試SHA `c3219bc70910c305e26ff8705c652374de94ed679fd1ef775c59a083dd847b97`。
+
+此接受限真MAView的保存來源流程；bookmark JSON fresh restore並非觀察清單實際持久保存／主視窗signal路由，後者仍需獨立consumer整合驗證。也不授原H20、候選EXE、全母體效能p95或完整M2／補完計畫完成。
+
+## Main／Watchlist收藏持久保存與專用路由複驗
+
+新測試 `tests/test_ui_qt_ma_bookmark_main_route.py` SHA `e03743bfdc7d2490dfb550af0fabf68ac69d5173c4368a749549a1221b4af757`，中央獨立native複驗exit0：1 passed，73.82秒。log為 `output/qa/ma_bookmark_main_route_20261008_a/root_route_review_native.log`，receipt為同目錄 `attempt_1791503191720740100_22232/route_receipt.json`。先前sandbox catalog_root_invalid失敗保留，沒有修改來源或放寬產品核驗。
+
+測試使用固定已保存合成bundle，不重新產製。真MAView準備收藏後，由實際Main方法啟動worker保存到隔離WatchlistService；觀察清單選取真列並按研究按鈕，由MA專用signal呼叫實際Main重開方法。初讀與fresh restore各exact read一次，保存沒有重讀；query/page、股票1100與跨頁比較1000/1100保持一致，沒有generic fallback，來源前後相同且workers終止。
+
+此新增證據補足上一節的consumer路由缺口，但Main以最小QMainWindow shell承載實際方法，尚不代表完整constructor、正式資料、候選EXE或真人流程通過。
 

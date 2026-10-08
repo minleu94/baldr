@@ -698,3 +698,9 @@ F08 的 `PortfolioChipService` 確有連續3日與500000股語意及估算／不
 來源再核：`comparison_snapshot_sha256` 是optional，materialized同報告comparator通常沒有此CSV hash；不能要求它冒充必有的原件pin。F12保存必有current與comparator的原HTML SHA／source version，CSV SHA若有則另欄記錄。local_verified_observation的available_at是當次核驗observed_at，不等於官方公告時間。新source session保持data layer獨立，以一個唯讀BEGIN與固定aware cutoff讀完整明示codes，再核main/WAL metadata及bytes SHA、schema與原HTML/CSV；finish成功前不交producer完整成果。舊provider兩個SQL callsite可經明示read_session重用同連線，原default行為與原件／revision語意不變；資料更新先重用既有MOPS fetch→current-only plan/apply鏈，不重造harvester或直接寫正式歷史表。
 
 H20原十股canonical同版讀回已通過，原2382 684bp／日期／widget exact selection兩模式相等；這補上原保存資料的打包核驗，不取代完整個股／Native。H20收藏core葉片另釋出，獨立schema與source kind，原manifest SHA＋selected capture pins＋排序／scroll保存，使用明示approved root/scope直接重開原manifest，不讀latest pointer。原activation revision/model作provenance，當前revision變更不能偷換來源；狀態須明示歷史／停用／未知，不授當前模型或交易資格。未知列不能新建可研究收藏，已收藏capture遺失可保留原名單診斷與停用研究；共享COW/UI接線仍由中央後續驗收，完整P05/P09尚未完成。
+
+### 2026-10-07 d9 後中央接續資格
+
+P03來源副本契約已補 mandatory typed binding及NTFS hardlink物理隔離，中央source/provider/source-root/materialization79通過；仍未接portable copy root/updater、F08–F19完整規則與全N保存UI。P05原十股及2382原預測在固定d9 Python/exe一致，名單exe單次23.906秒、單股evidence18.812秒；完整Main雙擊總時間及冷暖/p95未驗。P09 H20收藏控制項中央9通過但尚未掛正式頁面，歷史read-session、保存與Main新process旅程進行中；不得驗收獨立控制項為完整收藏功能。P00/P14同一保存fullN query/bookmark固定d9 exact shared-store QA仍進行，前兩模式各自produce的semantic相似證據不滿足exact同版。
+
+新版啟動檔start_h20_feedback_candidate_d9a115f6.cmd已交真人，只驗完整推薦理由、原H20下鑽提示/摘要及返回選取；真人尚未回覆本輪接受結果。P01真市場效能、P02/P04完整條件、P06–P08/M3、P10–P12以及P13四用途Native矩陣仍維持原範圍，未由本輪修補折抵。

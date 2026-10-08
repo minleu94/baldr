@@ -7,7 +7,7 @@ run.  No database schema or row is created or updated here.
 
 from __future__ import annotations
 
-from contextlib import closing
+from contextlib import closing, contextmanager
 import csv
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -16,7 +16,7 @@ from hashlib import sha256
 from pathlib import Path
 import re
 import sqlite3
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 from zoneinfo import ZoneInfo
 
 from data_module.current_fundamental_snapshots import (
@@ -283,6 +283,7 @@ class RecommendationCurrentFundamentalProvider:
         *,
         stock_code: str,
         cutoff_at: datetime,
+        read_session_connection: sqlite3.Connection | None = None,
     ) -> CurrentMonthlyRevenueReadResult:
         cutoff = _require_aware_utc(cutoff_at, "cutoff_at")
         code = _validate_stock_code(stock_code)
@@ -295,11 +296,11 @@ class RecommendationCurrentFundamentalProvider:
                 diagnostics=("current_fundamental_database_missing",),
             )
 
+        if read_session_connection is not None:
+            self._validate_read_session_connection(read_session_connection)
+
         try:
-            uri = f"{self.db_file.as_uri()}?mode=ro"
-            with closing(sqlite3.connect(uri, uri=True)) as connection:
-                connection.execute("PRAGMA query_only=ON")
-                connection.row_factory = sqlite3.Row
+            with self._monthly_read_connection(read_session_connection) as connection:
                 rows = connection.execute(
                     f"SELECT * FROM {CURRENT_FUNDAMENTAL_TABLE} "
                     "WHERE stock_code=? AND kind='monthly_revenue' AND item_code='revenue' "
@@ -476,7 +477,11 @@ class RecommendationCurrentFundamentalProvider:
             comparison_baseline,
             comparison_diagnostics,
             diagnostic_comparator_row_count,
-        ) = self._read_materialized_yoy_baseline(latest_observation, cutoff)
+        ) = self._read_materialized_yoy_baseline(
+            latest_observation,
+            cutoff,
+            connection=read_session_connection,
+        )
         comparison_csv_hash: str | None = None
         if comparison_baseline is None and comparison_diagnostics == (
             "current_monthly_revenue_yoy_comparator_missing",
@@ -488,7 +493,10 @@ class RecommendationCurrentFundamentalProvider:
                 comparison_baseline,
                 comparison_csv_hash,
                 raw_pair_diagnostics,
-            ) = self._same_report_yoy_baseline(latest_observation)
+            ) = self._same_report_yoy_baseline(
+                latest_observation,
+                use_instance_cache=read_session_connection is None,
+            )
             comparison_diagnostics = (
                 (
                     "current_monthly_revenue_yoy_comparator_materialization_missing;"
@@ -521,15 +529,14 @@ class RecommendationCurrentFundamentalProvider:
         self,
         current: CurrentObservedMonthlyRevenueInput,
         cutoff: datetime,
+        *,
+        connection: sqlite3.Connection | None = None,
     ) -> tuple[CurrentObservedMonthlyRevenueInput | None, tuple[str, ...], int]:
         year_text, month_text = current.period.split("-")
         prior_period = f"{int(year_text) - 1:04d}-{month_text}"
         try:
-            uri = f"{self.db_file.as_uri()}?mode=ro"
-            with closing(sqlite3.connect(uri, uri=True)) as connection:
-                connection.execute("PRAGMA query_only=ON")
-                connection.row_factory = sqlite3.Row
-                rows = connection.execute(
+            with self._monthly_read_connection(connection) as read_connection:
+                rows = read_connection.execute(
                     f"SELECT * FROM {CURRENT_FUNDAMENTAL_TABLE} "
                     "WHERE stock_code=? AND kind='monthly_revenue' "
                     "AND period=? AND item_code=?",
@@ -639,9 +646,49 @@ class RecommendationCurrentFundamentalProvider:
             diagnostic_comparator_row_count,
         )
 
+    @contextmanager
+    def _monthly_read_connection(
+        self,
+        read_session_connection: sqlite3.Connection | None,
+    ) -> Iterator[sqlite3.Connection]:
+        if read_session_connection is not None:
+            yield read_session_connection
+            return
+        uri = f"{self.db_file.as_uri()}?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True)) as connection:
+            connection.execute("PRAGMA query_only=ON")
+            connection.row_factory = sqlite3.Row
+            yield connection
+
+    def _validate_read_session_connection(
+        self,
+        connection: sqlite3.Connection,
+    ) -> None:
+        if not connection.in_transaction:
+            raise ValueError("read_session_connection must hold an active read transaction")
+        try:
+            query_only = int(connection.execute("PRAGMA query_only").fetchone()[0])
+            database_rows = connection.execute("PRAGMA database_list").fetchall()
+        except sqlite3.Error as exc:
+            raise ValueError("read_session_connection cannot be verified") from exc
+        main_path = next(
+            (
+                Path(str(row[2])).resolve(strict=False)
+                for row in database_rows
+                if row[1] == "main"
+            ),
+            None,
+        )
+        if query_only != 1:
+            raise ValueError("read_session_connection must be query_only")
+        if main_path != self.db_file.resolve(strict=False):
+            raise ValueError("read_session_connection database does not match provider")
+
     def _same_report_yoy_baseline(
         self,
         current: CurrentObservedMonthlyRevenueInput,
+        *,
+        use_instance_cache: bool = True,
     ) -> tuple[
         CurrentObservedMonthlyRevenueInput | None,
         str | None,
@@ -663,7 +710,11 @@ class RecommendationCurrentFundamentalProvider:
             return None, None, ("current_monthly_revenue_comparison_raw_identity_invalid",)
 
         cache_key = (current.market, current.period, current.raw_source_version)
-        cached = self._verified_monthly_capture_cache.get(cache_key)
+        cached = (
+            self._verified_monthly_capture_cache.get(cache_key)
+            if use_instance_cache
+            else None
+        )
         if cached is None:
             cached = self._read_verified_monthly_capture(
                 market=current.market,
@@ -671,7 +722,8 @@ class RecommendationCurrentFundamentalProvider:
                 raw_source_version=current.raw_source_version,
                 expected_raw_sha256=current.raw_source_sha256,
             )
-            self._verified_monthly_capture_cache[cache_key] = cached
+            if use_instance_cache:
+                self._verified_monthly_capture_cache[cache_key] = cached
         parsed_by_code, snapshot_csv_sha256, diagnostics = cached
         if diagnostics:
             return None, None, diagnostics

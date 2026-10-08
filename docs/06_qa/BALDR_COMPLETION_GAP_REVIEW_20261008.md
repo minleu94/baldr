@@ -54,3 +54,4 @@ F17 最新封套的 source parent 另確認 catalog 更新成功且只有一筆�
 ## 更新記錄
 
 - 2026-10-08：對照使用者回報與目前程式，保留全條件缺口、H20 同版圖表與速度驗收，記錄 F17 失敗及隔離效能驗證的範圍。
+- 2026-10-08 接續：root 審查並重跑監督失敗契約 5 項通過；控制器 `5e906b4d…` 的新隔離 session 14029 為 exit 1，封套 `C:/t/p01_30udafr3/input_integrity_failure.json` 在首個 cold worker 後停止。完整 traceback 證明 Popen 使用 `DEVNULL` 時開啟 Windows `nul` 裝置被 C63 寫入 guard 拒絕；不是股票引擎錯誤，沒有有效延遲樣本。待改用該全新 attempt 的空 regular-file 標準輸入，不放寬原 guard。原 `C:/t/p01_4jr3cl29` 失敗仍保留。

@@ -789,3 +789,9 @@ P10 來源資料日呈現補件已存 dev `3a72654e`：大盤頁缺值／非正�
 2026-10-08 P05 獨立目前行情入口中央有限接受：真 Main 保留原 H20，另開乾淨 context 的目前研究視窗，未知／stale 設定拒絕與關閉等待均驗；root 完整65項、Workbench85、validator25／0／4、mypy902通過，詳 `docs/06_qa/H20_INDEPENDENT_CURRENT_RESEARCH_20261008.md`。新候選待打包；原H20同版圖表、原資料保護、真人20秒延遲與完整資料脈絡仍未接受。固定9d F17 root attempt_65553f982fd0已成功切到推薦工作區，但在來源清單更新逾時，仍未啟動exe child；接續加有界診斷，不放寬來源／筆數或Native gate。1,000檔benchmark初次在worker前因QA report欄位映射不符失敗；保留原report SHA與失敗後修精確schema，冷暖實跑已啟動，尚無完成結果。
 
 2026-10-08 固定93f9候選已交真人入口：root build23720與same-version52656皆exit0，隔離比較passed_isolated_fixture。新helper只ValidateOnly核驗，沒有自動開真人設定；真人主要驗整頁理由末段與2382獨立行情／原H20保留，詳 `docs/06_qa/BALDR_H20_CURRENT_CANDIDATE_93F9C57D_20261008.md`。1,000檔benchmark第二次仍在worker前失敗：source-only proof誤送release-specific pyc gate；保留C63/helper/archive/report，接續改用既有archive-specific精確4097/106/0pyc/runtime pin檢查，不造BUILD_INFO或降低正式gate。尚未取得冷暖矩陣；F17正在一次有界catalog診斷，兩者不授Native、效能或完整計畫接受。
+
+2026-10-08 補完範圍再次對照：F01–F23 逐項缺口已整理於 [完整缺口審查](../../06_qa/BALDR_COMPLETION_GAP_REVIEW_20261008.md)，不把五項技術規則／保存 F17 頁代替完整選股器。原 H20 capture 確有價格邏輯列彙總雜湊，但 MA20／MA60 不在原輸入雜湊範圍；同次副本終態後簽發有界 OHLCV 圖表及分開摘要的接線進行中，詳 [圖表契約審查](../../06_qa/H20_BOUND_CHART_CONTRACT_REVIEW_20261008.md)，未授圖表／速度接受。
+
+F17 root attempt_116cdedcf554 已讀出一筆 catalog，選版後完整 exact-open／query 背景工作在300秒總期限內未完成，仍為 failed；exe child 未啟動。靜態找到同次 factory 重複 strict source read 與每頁重驗完整 plan 的成本候選，待有界階段計時證明，不先降低核驗或延長總期限。
+
+1,000檔 benchmark root92712 terminal1：五冷一暖在 worker 前被例外 handler 遮蔽原錯誤，無有效延遲樣本。root 審查5e906b4d控制器後，合成監督契約5項通過；新 root14029／`C:/t/p01_30udafr3` 在首個 cold 後立即停止，完整 traceback 證明 Windows NUL 標準輸入被原 C63 guard 拒絕。archive、合成DB、封存、report及controller前後比對相同，未啟動產製器或 benchmark worker；只修 QA own-attempt 空輸入檔，不放寬來源保護。原失敗封套保留，完整 P00–P14／M1–M3、正式全市場、Native、真人與效能接受仍維持原範圍。

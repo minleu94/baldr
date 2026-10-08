@@ -1741,6 +1741,12 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         return str(self._root)
 
     @property
+    def source_counts(self) -> DailyMarketTechnicalUniverseV4Counts:
+        """回傳 strict read 已核驗的母體計數，不重新讀取來源。"""
+
+        return self._state.counts
+
+    @property
     def index_stock_count(self) -> int:
         return len(self._candidates)
 

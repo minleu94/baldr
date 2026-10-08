@@ -76,3 +76,9 @@ F17 full join設計已中央讀取 `output/qa/f17_full_join_query_design_2026100
 ### H20 capacity 葉片中央結果
 
 容量cap已綁每次預留source_size，原來源預留後增長會在低層copy上限拒絕；取消／錯誤釋放預留，重入另一來源按剩餘預算計算。同identity只計一次，distinct groups／總copy bytes各自有界。中央合併capacity、operation、daily、capture、outcome回歸 **53 passed / 2.93秒、exit 0**；兩檔 `mypy --explicit-package-bases`（沒有skip imports或ignore）通過，SHA與owner凍結值一致。已讀真合成SQLite progress重入＋來源增長反例，其私有copies清理通過。UI明示50來源groups與64GiB總預算；這是容量／生命週期證據，不是4GB原件保護或效能通過。已釋出下一步UI安全接線，原件尚不重讀。
+
+P01 `source_counts` getter 已實作為直接回傳 strict verified state 的 immutable counts，不重新掃描。代理 targeted run_003 已 terminal exit1：denominator 新測試通過，但 no-rescan 測試把 monkeypatch 放在 frozen/slotted instance，導致測試設定與teardown失敗；原失敗保留於 ignored run_003 log。代理改在 class method instrument後另開run_004，不能沿用此輪作getter全部通過或拿測試錯誤改產品immutable契約。root 尚待凍結版本中央驗證。
+
+### P01 source_counts 新版中央回歸
+
+代理run_004兩個定向測試實際terminal exit0（2 passed／9.62秒），query/test凍結後中央使用獨立OS TEMP完整回歸，root session73118 **15 passed／49.72秒、exit0**；兩檔mypy通過、SHA凍結吻合。計數parity涵蓋真synthetic空母體、全排除與cancelled receipt，getter immutable/no-rescan測試在class instrument後通過；原run_003失敗仍保留。這只補計數公共介面，UI零結果／freshreload測試與實際市場效能尚未驗收，不沿用核心結果宣稱產品完成。

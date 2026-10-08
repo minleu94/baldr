@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from dataclasses import replace as dataclass_replace
+from dataclasses import FrozenInstanceError, replace as dataclass_replace
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 import hashlib
@@ -50,6 +50,7 @@ from app_module.daily_market_technical_universe_v4_stock import (
 )
 from app_module.daily_market_technical_universe_v4_store import (
     DailyMarketTechnicalUniverseV4Cohort,
+    DailyMarketTechnicalUniverseV4Counts,
     DailyMarketTechnicalUniverseV4ParentReceiptReference,
     DailyMarketTechnicalUniverseV4Plan,
     DailyMarketTechnicalUniverseV4StoreReader,
@@ -859,6 +860,17 @@ def test_empty_excluded_and_partial_receipts_keep_their_exact_denominators(
     assert empty_page.query.declared_count == 0
     assert empty_page.query.segment_count == 0
     assert empty_page.rows == ()
+    assert isinstance(empty.source_counts, DailyMarketTechnicalUniverseV4Counts)
+    assert empty.source_counts == empty_page.counts
+    assert empty.source_counts.to_dict() == {
+        "declared_count": 0,
+        "included_count": 0,
+        "excluded_count": 0,
+        "processed_count": 0,
+        "pending_count": 0,
+        "missing_data_count": 0,
+        "missing_data_pending_count": 0,
+    }
 
     excluded = _open_case_session(fixture["excluded_only"])
     excluded_page = excluded.read_page(excluded.create_query())
@@ -869,6 +881,17 @@ def test_empty_excluded_and_partial_receipts_keep_their_exact_denominators(
     assert excluded_page.query.excluded_count == 1
     assert excluded_page.processed_segment_count == 1
     assert excluded_page.exclusion_reasons == (("X9999", "明示排除的完整母體成員"),)
+    assert isinstance(excluded.source_counts, DailyMarketTechnicalUniverseV4Counts)
+    assert excluded.source_counts == excluded_page.counts
+    assert excluded.source_counts.to_dict() == {
+        "declared_count": 1,
+        "included_count": 0,
+        "excluded_count": 1,
+        "processed_count": 0,
+        "pending_count": 0,
+        "missing_data_count": 0,
+        "missing_data_pending_count": 0,
+    }
 
     partial = _open_case_session(fixture["partial"])
     partial_page = partial.read_page(partial.create_query())
@@ -880,6 +903,46 @@ def test_empty_excluded_and_partial_receipts_keep_their_exact_denominators(
     assert partial_page.counts.pending_count == 0
     assert partial_page.pending_stock_codes == ()
     assert tuple(row.stock_code for row in partial_page.rows) == _STOCK_CODES[:50]
+    assert isinstance(partial.source_counts, DailyMarketTechnicalUniverseV4Counts)
+    assert partial.source_counts == partial_page.counts
+    assert partial.source_counts.to_dict() == {
+        "declared_count": 274,
+        "included_count": 17,
+        "excluded_count": 257,
+        "processed_count": 17,
+        "pending_count": 0,
+        "missing_data_count": 1,
+        "missing_data_pending_count": 0,
+    }
+
+
+def test_read_session_source_counts_is_frozen_and_does_not_rescan(
+    read_session: DailyMarketTechnicalUniverseV4ReadSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = DailyMarketTechnicalUniverseV4Counts(
+        declared_count=274,
+        included_count=17,
+        excluded_count=257,
+        processed_count=17,
+        pending_count=0,
+        missing_data_count=1,
+        missing_data_pending_count=0,
+    )
+
+    def unexpected_candidate_scan(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("讀取已核驗母體計數不應再次掃描候選")
+
+    monkeypatch.setattr(
+        DailyMarketTechnicalUniverseV4ReadSession,
+        "_ordered_candidates",
+        unexpected_candidate_scan,
+    )
+    counts = read_session.source_counts
+    assert counts == expected
+    assert isinstance(counts, DailyMarketTechnicalUniverseV4Counts)
+    with pytest.raises(FrozenInstanceError):
+        counts.included_count = 999  # type: ignore[misc]
 
 
 def test_session_rejects_source_mismatch_overflow_and_cancel_inside_parent_read(

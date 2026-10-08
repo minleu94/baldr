@@ -13,3 +13,7 @@
 新收據 `output/qa/h20_named_source_inventory_20261008_b/attempt_01/inventory.json` SHA `63807dceecb8e6533e05705cf6f4206fc22e33ae3012eadf10d9c1a908030f57`：34個明示檔案共8,119,597,120 bytes，前後檔案身分一致。盤點沒有 SQLite 連線或資料庫複製，未掃描 DATA_ROOT。歷史10/7名單、10個capture與明示H20 snapshot main SHA吻合；日曆及市場資料庫指紋屬此次新盤點，不冒充歷史證據。
 
 市場 DB 的 WAL 為1,021,792 bytes，不能把只複製main的結果當一致快照。後續先用隔離合成非空WAL驗證安全讀取方案，尚未批准原市場DB快照或H20 Main執行。盤點程序exit1的終態診斷已另存：完整盤點落盤後，wrapper將預期的SystemExit(2)捕為例外；原failure與收據均保留，沒有以重跑覆寫失敗。
+
+中央另以固定commit原始blob及9個明示overlay複核22個必要來源檔，全部符合草稿pins；工作樹與這些建置輸入的universal-newline bytes一致。收據為 `output/qa/h20_root_dependency_inventory_20261008_a/source_input_recheck_1791503769272655800.json`。Windows CRLF與Git blob LF的raw SHA差異分開保留，不把工作樹raw SHA冒充archive內容SHA。此證據仍不是啟動核准。
+
+實際啟動參數還有獨立缺口：固定supervisor僅替換四種attempt目錄placeholder，不自動補child必要環境參數。建置格式測試只驗兩個模式flags，不能授予完整Main啟動契約。正式template必須逐項核對child的_required參數、隔離輸出／暫存／private root、runtime allowlist、copy budget及明示helper路徑與SHA，並指向immutable source，完成後才能核准啟動。

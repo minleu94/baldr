@@ -381,6 +381,7 @@ flowchart LR
 - **Persistent artifacts**：model、dataset、prediction、calibration、drift、rollback metadata。
 - **Failure / degraded**：停止 shadow / rollback，不 fallback 成無版本輸出。
 - **Current status**：`CANDIDATE`；已具備 shadow-only 的每日 bounded replay／training、frozen challenger、Asia/Taipei trading-day capture、自然 maturity、active monitor、authority receipt 與 fail-closed rollback／consumer lineage reload。既有 daily policy 內的 candidate adoption／rollback 可自動執行；正式 DB／Advice 仍不受影響。正式 production source contract、可追溯 liquidity cost 與足量成熟 forward evidence 尚未滿足。
+- **狀態範圍**：此處的 `CANDIDATE` 指全域 Recommendation ML Shadow Layer，不代表當下必有 active candidate/model，也不涵蓋 Personal H20 Gross。每日 shadow policy 內部的 candidate adoption／rollback，不是正式 Advice promotion；逐日現況必須回查 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與最新 QA 收據。Personal H20 是個股研究頁的獨立唯讀投影，不改寫本層的 formal gate。
 - **Target status**：Champion / Challenger governed layer。
 - **修改正式決策**：Gate 前否；Gate 後只能經 versioned adapter。
 

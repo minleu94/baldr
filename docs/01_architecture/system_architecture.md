@@ -8,6 +8,19 @@
 
 > **2026-10-06 現況判讀入口**：現行啟用／收據與下一自然排程見 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)。本頁日期化 caller／工程段落保留各自 fixed-head 的架構證據；早期 U1/U2 pending／私人未啟用／舊邊界問題不能覆蓋後來具名接受。H20 gross consumer 與 canonical 機率 head 分域，自然 10 pending／0 成熟，Native 真人／下一 Task 未驗；目標分冊不自動代表 current。資料根與冷封存依 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)，不得從架構整理取得資料清理或模型 promotion 權限。
 
+## ML 路線與狀態判讀
+
+本專案有數條用途不同的 ML 路線；`CANDIDATE`、`shadow` 或模型 consumer 已接線，不能單獨推論其他路線也已啟用，更不能推論正式 Recommendation 或 Portfolio 已採用模型。動態資格以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 和各路線最新的 QA 收據為準。
+
+| 路線 | 用途與目前邊界 | 主要狀態依據 |
+|---|---|---|
+| 全域 Recommendation ML Shadow | 研究 challenger、校準、風險訊號與 shadow 比較。仍受 formal input、自然成熟證據與 promotion gate 約束；不能由此推論 `ScoringEngine` 已使用 ML。 | [Target ML Shadow Layer](target_system_architecture.md#1011-ml-shadow-layer)、[Gate 7 ML QA](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) |
+| Gate 7 Portfolio Allocation ML | 獨立的投組配置模型研究與訓練 artifact；其 OOF／訓練結果屬 research evidence，不等於 Formal OOS、正式 alpha 或生產配置。 | [Gate 7 ML QA](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) |
+| Personal H20 Gross | 個股研究頁的個人模型唯讀投影。gross 排序、報酬 head 與 canonical 機率 head 必須分開判讀；它不授予全域 Recommendation／Portfolio ML 資格。 | [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[Personal H20 整合 QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md) |
+| 通用 `MLAnalyzer` | `analysis_module/ml_analysis/` 中的通用模型分析程式屬另一程式入口；其存在不等於以上任一治理路線已採用該模型。 | [MLAnalyzer 原始碼](../../analysis_module/ml_analysis/ml_analyzer.py) |
+
+`Rule-only` 是目前正式決策路徑的基線／失效保護語意，不應表述成「Rule 永遠是 Champion」；既有 shadow policy 內的 candidate adoption／rollback 也不等於正式 Promotion。不同路線的模型、資料、證據與消費者不可互相代替。
+
 ## 2026-10-06 個人 H20 原模型讀取增量
 
 `H20GrossModelContract` 與 `PersonalH20GrossInference` 沿原 artifact loader 的 captured-manifest／same-bytes decode。受控 composition 注入原 `read_recommendation_training_lineage`，模型 final-fold training_as_of 與 merged-lineage cutoff 分域；candidate.training_cutoff 精確綁後者，兩者不得晚於決策日。原中文 lineage canonical bytes 語義保持。中央 preflight 只讀可信 fit receipt 的 raw pin→原 sidecars→原 verifier→typed contract，不重造 lineage、不載 artifact或啟 Task。

@@ -24,6 +24,15 @@
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
   - 不代表 target-only package 或能力目前已實作
 
+## ML 架構閱讀順序
+
+1. 先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 確認日期化現況，再看 [目前系統架構](system_architecture.md) 中的「ML 路線與狀態判讀」。
+2. [目標架構 ML Shadow Layer](target_system_architecture.md#1011-ml-shadow-layer) 描述全域 Recommendation ML 的設計邊界，不作為 active model 或目前資格的證據。
+3. [Gate 7 ML Shadow Engineering](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 記錄投組配置 ML 的研究訓練與 Formal gate；[Personal H20 整合 QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md) 記錄個股研究 H20 投影範圍。
+4. [ASTRA Engineering Closeout（2026-10-03）](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md) 是特定日期的歷史執行記錄；只用來追溯當時狀態，不覆蓋較新的 Snapshot／QA。
+
+以上 QA 檔保留原日期與證據用途，不因狀態更新而搬入 Archive 或改名。閱讀時要區分 Recommendation Shadow、Portfolio Allocation Research 與 Personal H20，避免把模型訓練、consumer 接線或研究頁投影說成正式選股已使用 ML。
+
 - **`system_vision_specification.md`**
   - North Star、Bounded Advice、Evidence Requirements、Success Levels 與 Non-goals
 

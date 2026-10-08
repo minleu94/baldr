@@ -194,6 +194,19 @@ def _require_sha256(value: object, code: str) -> str:
     return value
 
 
+def normalize_daily_market_technical_official_source_pin_identity_sha256(
+    value: object,
+) -> str:
+    """將官方 source pin 的裸摘要或精確 `sha256:` 形式正規化為裸摘要。"""
+
+    if isinstance(value, str):
+        if _SHA256_RE.fullmatch(value) is not None:
+            return value
+        if value.startswith("sha256:") and _SHA256_RE.fullmatch(value[len("sha256:"):]) is not None:
+            return value[len("sha256:"):]
+    _fail("technical_official_query_v1_source_pin_identity_invalid")
+
+
 def _canonical_absolute_path(value: object) -> str:
     text = _require_text(value, "technical_official_query_v1_bundle_root_invalid", maximum=4096)
     path = Path(text)
@@ -371,6 +384,12 @@ class DailyMarketTechnicalOfficialDispositionQueryV1:
         cutoff = decision_cutoff
         if cutoff.tzinfo is None or cutoff.utcoffset() is None:
             _fail("technical_official_query_v1_cutoff_invalid")
+        market_pin_identity = normalize_daily_market_technical_official_source_pin_identity_sha256(
+            market_assignment_pin_identity_sha256
+        )
+        disposal_pin_identity = normalize_daily_market_technical_official_source_pin_identity_sha256(
+            official_disposal_pin_identity_sha256
+        )
         normalized_scopes = _normalize_choice_sequence(
             row_scope_filter,
             cast(tuple[str, ...], _ROW_SCOPE_ORDER),
@@ -418,8 +437,8 @@ class DailyMarketTechnicalOfficialDispositionQueryV1:
             bundle_output_root=str(bundle_output_root),
             bundle_identity_sha256=bundle_identity_sha256,
             expected_manifest_sha256=expected_manifest_sha256,
-            market_assignment_pin_identity_sha256=market_assignment_pin_identity_sha256,
-            official_disposal_pin_identity_sha256=official_disposal_pin_identity_sha256,
+            market_assignment_pin_identity_sha256=market_pin_identity,
+            official_disposal_pin_identity_sha256=disposal_pin_identity,
             row_scope_filter=normalized_scopes,
             market_assignment_states=normalized_market,
             official_disposal_states=normalized_disposal,
@@ -433,8 +452,8 @@ class DailyMarketTechnicalOfficialDispositionQueryV1:
             bundle_output_root=str(bundle_output_root),
             bundle_identity_sha256=bundle_identity_sha256,
             expected_manifest_sha256=expected_manifest_sha256,
-            market_assignment_pin_identity_sha256=market_assignment_pin_identity_sha256,
-            official_disposal_pin_identity_sha256=official_disposal_pin_identity_sha256,
+            market_assignment_pin_identity_sha256=market_pin_identity,
+            official_disposal_pin_identity_sha256=disposal_pin_identity,
             row_scope_filter=cast(tuple[RowScope, ...], normalized_scopes),
             market_assignment_states=normalized_market,
             official_disposal_states=normalized_disposal,
@@ -790,10 +809,18 @@ def _validate_observation_scope(
         or observation.get("official_available_at") is not None
     ):
         _fail("technical_official_query_v1_observation_scope_invalid")
-    pin = observation.get("source_pin_identity_sha256")
-    if pin is None:
-        pin = observation.get("source_pin_sha256")
-    if pin != expected_pin_sha256:
+    aliases = tuple(
+        normalize_daily_market_technical_official_source_pin_identity_sha256(
+            observation[key]
+        )
+        for key in ("source_pin_identity_sha256", "source_pin_sha256")
+        if key in observation
+    )
+    if not aliases:
+        _fail("technical_official_query_v1_observation_pin_mismatch")
+    if len(set(aliases)) > 1:
+        _fail("technical_official_query_v1_observation_pin_alias_conflict")
+    if aliases[0] != expected_pin_sha256:
         _fail("technical_official_query_v1_observation_pin_mismatch")
 
 

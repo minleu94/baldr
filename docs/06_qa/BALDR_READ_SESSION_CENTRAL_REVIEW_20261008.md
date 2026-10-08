@@ -141,3 +141,12 @@ UI強制作業：workbench **85 passed／4.30秒**；原生更新頁validator **
 H20 比較只涵蓋呈現 fixture，推薦只涵蓋 synthetic execution display；canonical 保存推薦 nofollow 限制、原十股來源／4GB安全副本、完整母體 Main／新程序、Native 真人與效能仍未驗收。原交付 exe SHA256 `ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e`、main `305635642ecdf5f1331a24a0c81566d07f36cb0d` 於建置前後均核對不變。
 
 H20 新 ignored controller 的中央靜態審查另發現兩項來源初始 pin／preflight 時限落差，以及 shutdown 未終態仍可能維持 passed 的測試判定缺口，已交 owner 修正；尚未授權啟動原來源旅程。真人先不重測 0f25；新候選未交付。
+
+
+### F17 原始 source pin 格式接線
+
+真 257 bundle fixture 揭露 source pin identity 使用 `sha256:<64hex>`，原 query 的 canonical 欄位只接受裸64hex，並直接比較 fact pin，故原 codec fixture 通過不足以證明真來源可查。最小修正提供公開正規化函式：create 對兩個官方 source pin 正規化為裸摘要，來源 observation／reader 比較使用同一規則；僅接受裸 lowercase64hex 或精確 `sha256:` 前綴。JSON decoder 維持 canonical 裸摘要，裸／前綴 create 的 query identity 與 to_dict 完全相同。兩個 alias 同時存在卻不一致會拒絕，錯 digest／前綴／大寫／空白亦拒絕；不改原 bundle 或 source pin。
+
+owner 最終55 passed／1.36秒；中央相同凍結版本獨立 **55 passed／0.95秒**、兩檔 mypy／compile通過。source SHA256 `A8213541A6CD8C2C72B363EB92436E66228E44CD721E6EF18DCBB0F99715AEA4`，test `94C28D0A4C965DCE2E35A68522872F882E3C00AABEF4C0830E6FD29052CC3A55`。既有未知狀態測試原條件保留。未來函數自查：本變更只處理同一來源 identity 表示，未放寬 decision cutoff、current-only／PIT 或原檔核驗，沒有新 float。真完整母體 joined reader 的 integration 仍在進行，尚未接受。
+
+H20 QA controller 補上初始 external pins、45秒 preflight／420秒 total 與 child/controller shutdown條件後，中央唯一 canonical attempt `20261008T050909Z_885ee9c75df1` terminal exit1；在 private source tree 解壓深層 docs 時超過 Windows 長路徑界線，尚未讀原來源 inputs、啟 Main 或連 SQLite。失敗收據／partial QA snapshot保留，不延長timeout、不改產品guard。下一版 build-archive probe 改驗同一候選原固定 build source tree 的 archive bytes與metadata，禁止任何 source tree寫入，避免把同一來源另解壓至更長QA路徑；原十股／真雙擊／三操作／正常關閉資格不縮減。

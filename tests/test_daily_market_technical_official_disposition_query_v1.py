@@ -28,6 +28,7 @@ from app_module.daily_market_technical_official_disposition_query_v1 import (
     DailyMarketTechnicalOfficialDispositionSortClauseV1,
     DailyMarketTechnicalOfficialDispositionSortValueV1,
     evaluate_f17_membership_v1,
+    normalize_daily_market_technical_official_source_pin_identity_sha256,
     project_daily_market_technical_official_disposition_sort_key_v1,
     sort_daily_market_technical_official_disposition_sort_keys_v1,
     sort_joined_rows_v1,
@@ -979,3 +980,93 @@ def test_compact_sort_cancel_callbacks_are_strict_and_cooperative() -> None:
         )
     assert return_cancel.value.code == "technical_official_query_v1_compact_sort_cancelled"
     assert return_checks == 10
+
+
+def test_create_normalizes_exact_prefixed_source_pin_and_preserves_query_identity() -> None:
+    bare = _query()
+    prefixed = DailyMarketTechnicalOfficialDispositionQueryV1.create(
+        technical_query=bare.technical_query,
+        decision_cutoff=bare.decision_cutoff,
+        bundle_output_root=bare.bundle_output_root,
+        bundle_identity_sha256=bare.bundle_identity_sha256,
+        expected_manifest_sha256=bare.expected_manifest_sha256,
+        market_assignment_pin_identity_sha256=f"sha256:{bare.market_assignment_pin_identity_sha256}",
+        official_disposal_pin_identity_sha256=f"sha256:{bare.official_disposal_pin_identity_sha256}",
+        row_scope_filter=bare.row_scope_filter,
+        market_assignment_states=bare.market_assignment_states,
+        official_disposal_states=bare.official_disposal_states,
+        outer_stock_filter_mode=bare.outer_stock_filter_mode,
+        outer_stock_codes=bare.outer_stock_codes,
+        sort_clauses=bare.sort_clauses,
+    )
+    assert prefixed.query_identity_sha256 == bare.query_identity_sha256
+    assert prefixed.market_assignment_pin_identity_sha256 == bare.market_assignment_pin_identity_sha256
+    assert prefixed.official_disposal_pin_identity_sha256 == bare.official_disposal_pin_identity_sha256
+    assert prefixed.to_dict() == bare.to_dict()
+
+
+def test_source_pin_style_fact_is_accepted_and_conflicting_alias_is_rejected() -> None:
+    query = _query(
+        market_states=("assigned_twse",),
+        disposal_states=("reported_active",),
+    )
+    fact = _fact_row(
+        "2330",
+        market_pin_identity=f"sha256:{query.market_assignment_pin_identity_sha256}",
+        disposal_pin_identity=f"sha256:{query.official_disposal_pin_identity_sha256}",
+    )
+    accepted = evaluate_f17_membership_v1(query, fact)
+    assert accepted.market_assignment_truth == "match"
+    assert accepted.official_disposal_truth == "match"
+
+    body = fact.to_dict()
+    market = cast(dict[str, object], body["market_assignment"])
+    market["source_pin_sha256"] = f"sha256:{'a' * 64}"
+    conflicting = DailyMarketTechnicalOfficialDispositionFactRowV1(
+        body_json=_canonical(body),
+        stock_code=fact.stock_code,
+        cohort_role=fact.cohort_role,
+    )
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as error:
+        evaluate_f17_membership_v1(query, conflicting)
+    assert error.value.code == "technical_official_query_v1_observation_pin_alias_conflict"
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "sha512:" + "a" * 64,
+        "sha256:" + "A" * 64,
+        "sha256:" + "a" * 63,
+        "sha256: " + "a" * 64,
+        "A" * 64,
+        " a" * 32,
+    ),
+)
+def test_source_pin_identity_normalizer_rejects_noncanonical_spellings(value: str) -> None:
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as error:
+        normalize_daily_market_technical_official_source_pin_identity_sha256(value)
+    assert error.value.code == "technical_official_query_v1_source_pin_identity_invalid"
+
+
+def test_query_json_rejects_prefixed_pin_even_though_create_accepts_it() -> None:
+    query = _query()
+    payload = query.to_dict()
+    payload["market_assignment_pin_identity_sha256"] = (
+        f"sha256:{query.market_assignment_pin_identity_sha256}"
+    )
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as error:
+        DailyMarketTechnicalOfficialDispositionQueryV1.from_json(_canonical(payload))
+    assert error.value.code == "technical_official_query_v1_market_pin_invalid"
+
+
+def test_source_fact_with_other_normalized_pin_is_rejected() -> None:
+    query = _query()
+    fact = _fact_row(
+        "2330",
+        market_pin_identity=f"sha256:{'a' * 64}",
+        disposal_pin_identity=f"sha256:{query.official_disposal_pin_identity_sha256}",
+    )
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as error:
+        evaluate_f17_membership_v1(query, fact)
+    assert error.value.code == "technical_official_query_v1_observation_pin_mismatch"

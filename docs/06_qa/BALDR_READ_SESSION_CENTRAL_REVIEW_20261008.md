@@ -234,3 +234,4 @@ trace shutdown worker0／windowFalse；controller 失敗 payload 的 shutdown_co
 F17 reader owner 最終 24 passed／334.11 秒、mypy／compile 通過，兩檔 freeze SHA 分別為 90CB1E0616F743A1B87FCE0D3AE07905B8A6BFC45F4B9BA18AB98B199BC50F25、D481E5C28BC4E6865A7692413225C4D87E615AF73DC59CBF7C802DECC140E76D。中央確認 per-result／page seal 綁定完整排序、counts、session 與封套，四個公開入口在 DTO 建構後保留最後取消 poll；尚待中央獨立全套終態，不把 owner 綠燈寫成中央接受。
 
 中央首次 sandbox 全套 5 passed／19 setup errors（synthetic SQLite 路徑 realpath WinError5，未修改測試或產品）。原錯誤保留，改以同一完整測試在具名 QA 根 native 重驗，handle18443 目前 live，log 為 output/qa/f17_query_reader_final_gate_20261008_a/root_reader_full_native.log。未開正式 DB、未重啟終態失敗的 H20 attempt。
+中央 F17 reader 獨立完整 native 重驗 handle18443 已 terminal exit0：24 passed／345.35秒；freeze SHA 驗前驗後保持 90CB1E...F25／D481E5...76D，完整 log 保存在同 root_reader_full_native.log。中央只接受 query reader 的完整 join／selected page／封套及最後取消守衛；F17正常 Main 操作、實際N與 Native 效能仍未驗，未把本包接受寫成完整產品完成。

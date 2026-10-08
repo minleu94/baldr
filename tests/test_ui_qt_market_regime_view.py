@@ -34,6 +34,27 @@ class FakeRegimeService:
         return {"technical": {}, "patterns": {}, "signals": {}}
 
 
+def test_market_source_date_invalid_value_is_unknown_in_visible_summary():
+    class InvalidDateService(FakeRegimeService):
+        def detect_regime(self):
+            result = super().detect_regime()
+            result.details["date"] = "<b>2026-06-13</b>"
+            return result
+
+    application = app()
+    view = MarketRegimeView(InvalidDateService())
+    try:
+        view._detect_regime()
+        application.processEvents()
+        assert "資料日期：未知" in view.layer1_confidence.text()
+        assert "2026-06-13" not in view.layer1_confidence.text()
+        assert "資料日未知" in view.market_risk_label.text()
+        assert "Trend" == view.regime_service.detect_regime().regime
+    finally:
+        view.close()
+        application.processEvents()
+
+
 class FullMatchRegimeService:
     def detect_regime(self):
         return RegimeResultDTO(

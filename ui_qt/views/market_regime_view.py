@@ -16,6 +16,7 @@ from html import escape
 from app_module.regime_service import RegimeService
 from app_module.dtos import RegimeResultDTO
 from ui_qt.theme import MIDNIGHT_ANALYST
+from ui_qt.research_date_presentation import source_data_date_text
 from ui_qt.widgets.info_button import InfoButton
 from ui_qt.widgets.layout_helpers import create_scroll_area
 from ui_qt.shared_market_research_consumer import (
@@ -438,7 +439,7 @@ class MarketRegimeView(QWidget):
                 "風險與限制：規則匹配度不是勝率；此分類只描述原資料的規則狀態，"
                 "不代表個股安全、未來方向或交易資格。"
             )
-            if not regime_result.details.get("date"):
+            if source_data_date_text(regime_result.details.get("date")) == "未知":
                 self.market_risk_label.setText(
                     self.market_risk_label.text() + " 資料日未知，請先核對來源。"
                 )
@@ -532,7 +533,7 @@ class MarketRegimeView(QWidget):
         
         # 規則匹配度顯示：緊貼市場狀態，避免被誤讀為未來勝率。
         # 格式：(資料日期：2026-05-12 | 規則匹配度 82% 高)
-        date_str = regime_result.details.get('date', '未知日期')
+        date_str = source_data_date_text(regime_result.details.get('date'))
         confidence_text = (
             f"<span style='color: {conf_color};'>"
             f"（資料日期：{date_str} | 規則匹配度 {confidence_pct:.0f}% {conf_level}）</span>"

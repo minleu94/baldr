@@ -31,6 +31,7 @@ from app_module.research_session import ResearchStockContextDTO
 from data_module.market_session_policy import resolve_project_market_session_boundary
 from ui_qt.theme import MIDNIGHT_ANALYST
 from ui_qt.status_vocabulary import status_detail, status_label
+from ui_qt.research_date_presentation import source_data_date_text
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.theme_widgets import (
     CollapsibleSectionPanel,
@@ -57,17 +58,9 @@ def _market_regime_source_data_date(section: Any) -> str:
     if not isinstance(raw_value, str):
         return "未知"
     section_as_of_date = getattr(section, "as_of_date", None)
-    try:
-        parsed = date.fromisoformat(raw_value)
-    except ValueError:
+    if type(section_as_of_date) is not date:
         return "未知"
-    if (
-        parsed.isoformat() != raw_value
-        or not isinstance(section_as_of_date, date)
-        or parsed > section_as_of_date
-    ):
-        return "未知"
-    return raw_value
+    return source_data_date_text(raw_value, cutoff=section_as_of_date)
 
 
 class DecisionDeskView(QWidget):

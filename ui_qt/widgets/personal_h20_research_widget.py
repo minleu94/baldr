@@ -16,11 +16,13 @@ from app_module.recommendation.personal_h20_research_cohort import (
 
 class PersonalH20ResearchWidget(QWidget):
     researchRequested = Signal(object)
+    bookmarkRequested = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._cohort: PersonalH20ResearchCohort | None = None
         self._closing = False
+        self._bookmark_busy = False
         self.summary_label = QLabel("請讀取明確指定的原保存 H20 manifest。")
         self.summary_label.setWordWrap(True)
         self.scope_label = QLabel("尚無已核保存母體")
@@ -43,14 +45,21 @@ class PersonalH20ResearchWidget(QWidget):
         self.diagnostic_text.setMaximumBlockCount(80)
         self.research_button = QPushButton("研究選取股票")
         self.research_button.setEnabled(False)
+        self.bookmark_button = QPushButton("收藏原保存 H20 研究")
+        self.bookmark_button.setAccessibleName("收藏所選原保存 H20 研究")
+        self.bookmark_button.setEnabled(False)
+        self.bookmark_status_label = QLabel("收藏會保存此版本的來源身份；不保存交易建議或重新計算預測。")
+        self.bookmark_status_label.setWordWrap(True)
         layout = QVBoxLayout(self)
         for widget in (self.summary_label, self.scope_label, self.limit_label, self.sort_combo,
-                       self.table, self.diagnostic_text, self.research_button):
+                       self.table, self.diagnostic_text, self.research_button, self.bookmark_button,
+                       self.bookmark_status_label):
             layout.addWidget(widget)
         self.sort_combo.currentIndexChanged.connect(self._render)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.itemDoubleClicked.connect(self._request_item)
         self.research_button.clicked.connect(self._request_current)
+        self.bookmark_button.clicked.connect(self._request_bookmark)
 
     def set_cohort(self, cohort: PersonalH20ResearchCohort) -> None:
         if self._closing:
@@ -98,6 +107,7 @@ class PersonalH20ResearchWidget(QWidget):
                 self.table.setItem(index, column, item)
         self.table.setCurrentItem(None)
         self.research_button.setEnabled(False)
+        self.bookmark_button.setEnabled(False)
 
     def _accepted(self, selection: object) -> bool:
         return (not self._closing and self._cohort is not None
@@ -109,6 +119,7 @@ class PersonalH20ResearchWidget(QWidget):
         self.table.setCurrentItem(None)
         if not self._accepted(selection):
             self.research_button.setEnabled(False)
+            self.bookmark_button.setEnabled(False)
             return False
         for index in range(self.table.rowCount()):
             item = self.table.item(index, 0)
@@ -127,6 +138,7 @@ class PersonalH20ResearchWidget(QWidget):
         item = self.table.item(row_index, 0) if row_index >= 0 else None
         self.research_button.setEnabled(bool(selected) and item is not None
             and self._accepted(item.data(Qt.ItemDataRole.UserRole)))
+        self.bookmark_button.setEnabled(self.research_button.isEnabled() and not self._bookmark_busy)
         row = item.data(Qt.ItemDataRole.UserRole + 1) if item is not None else None
         self.diagnostic_text.setPlainText(
             self._row_diagnostic(row) if isinstance(row, PersonalH20ResearchRow) else ""
@@ -180,9 +192,23 @@ class PersonalH20ResearchWidget(QWidget):
         if item is not None and self.table.selectedItems():
             self._request_item(item)
 
+    def _request_bookmark(self) -> None:
+        if self._bookmark_busy:
+            return
+        item = self.table.currentItem()
+        if item is not None and self.table.selectedItems():
+            selection = item.data(Qt.ItemDataRole.UserRole)
+            if self._accepted(selection):
+                self.bookmarkRequested.emit(selection)
+
+    def set_bookmark_busy(self, busy: bool) -> None:
+        self._bookmark_busy = busy
+        self._selection_changed()
+
     def closeEvent(self, event: QCloseEvent) -> None:
         self._closing = True
         self._cohort = None
         self.table.clearSelection()
         self.research_button.setEnabled(False)
+        self.bookmark_button.setEnabled(False)
         super().closeEvent(event)

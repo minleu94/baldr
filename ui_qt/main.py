@@ -761,10 +761,105 @@ class MainWindow(QMainWindow):
         self._personal_h20_research_origin = None
         refresh.clicked.connect(lambda: self._refresh_personal_h20_cohort())
         widget.researchRequested.connect(self._request_personal_h20_research)
+        widget.bookmarkRequested.connect(self._save_personal_h20_research)
         tabs = recommendation.result_source_tabs
         tabs.addTab(panel, "個人模型選股研究（H20毛報酬）")
         tabs.currentChanged.connect(lambda _index:
             self._refresh_personal_h20_cohort() if tabs.currentWidget() is panel else None)
+
+    def _save_personal_h20_research(self, selection: object) -> None:
+        """先背景重驗原版本，再以不可取消的短 COW 寫入保存收藏。"""
+        from app_module.recommendation.personal_h20_product_evidence import PersonalH20ProductReference
+        from app_module.recommendation.personal_h20_research_bookmark import PersonalH20ResearchBookmark
+        from app_module.recommendation.personal_h20_research_cohort import PersonalH20ResearchSelection
+        from app_module.daily_market_research_bookmark import DailyMarketResearchBookmarkMutationResult
+        from scripts.scheduled.personal_h20_bookmark_prepare import prepare_personal_h20_research_bookmark
+        from ui_qt.workers.task_worker import TaskWorker
+
+        widget = getattr(self, "personal_h20_research_widget", None)
+        reference = getattr(self, "_personal_h20_cohort_reference", None)
+        previous = getattr(self, "_personal_h20_bookmark_worker", None)
+        if (widget is None or widget._closing or getattr(self, "_shutdown_close_requested", False)
+                or not widget.isEnabled() or not isinstance(selection, PersonalH20ResearchSelection)
+                or not widget._accepted(selection) or not isinstance(reference, PersonalH20ProductReference)
+                or (previous is not None and previous.isRunning())):
+            return
+        market_root, config_path = self._personal_h20_configuration()
+        service = self.watchlist_service
+        if not callable(getattr(service, "add_research_bookmark", None)):
+            widget.bookmark_status_label.setText("個人觀察清單來源不可用；未保存收藏。")
+            return
+        widget.set_bookmark_busy(True)
+        widget.bookmark_status_label.setText("正在重新核驗原保存版本；尚未寫入收藏。")
+
+        def current() -> bool:
+            item = widget.table.currentItem()
+            try:
+                configured = self._personal_h20_configuration() == (market_root, config_path)
+            except (OSError, TypeError, ValueError):
+                configured = False
+            return (not widget._closing and not getattr(self, "_shutdown_close_requested", False)
+                and configured
+                and getattr(self, "_personal_h20_cohort_reference", None) == reference
+                and item is not None and item.data(Qt.ItemDataRole.UserRole) == selection
+                and bool(widget.table.selectedItems()) and widget._accepted(selection))
+
+        def cleanup(worker: Any) -> None:
+            if getattr(self, "_personal_h20_bookmark_worker", None) is worker:
+                self._personal_h20_bookmark_worker = None
+                if not widget._closing:
+                    widget.set_bookmark_busy(False)
+
+        def prepared(value: object) -> None:
+            if not current():
+                if not widget._closing and not getattr(self, "_shutdown_close_requested", False):
+                    widget.bookmark_status_label.setText("選取或來源已變動；未寫入收藏，請重新選取。")
+                return
+            if not isinstance(value, PersonalH20ResearchBookmark) or value.selected_row != selection:
+                widget.bookmark_status_label.setText("收藏準備結果無法核驗；未寫入。")
+                return
+            widget.bookmark_status_label.setText("原版本已核驗，正在保存收藏；寫入送出後會安全完成。")
+            mutation = TaskWorker(service.add_research_bookmark, value)
+            self._personal_h20_bookmark_worker = mutation
+
+            def saved(result: object) -> None:
+                if widget._closing or getattr(self, "_shutdown_close_requested", False):
+                    return
+                if (not isinstance(result, DailyMarketResearchBookmarkMutationResult)
+                        or result.bookmark_id != value.bookmark_id):
+                    widget.bookmark_status_label.setText("保存結果無法核驗；請重新整理觀察清單確認。")
+                    return
+                widget.bookmark_status_label.setText(
+                    f"{value.stock_code}：{result.message}。"
+                )
+                if result.status in {"added", "already_present"}:
+                    refresh = getattr(getattr(self, "watchlist_view", None), "_load_watchlist", None)
+                    if callable(refresh):
+                        refresh()
+
+            mutation.finished.connect(saved)
+            mutation.error.connect(lambda message: widget.bookmark_status_label.setText(
+                "保存失敗：" + str(message)[:300]) if not widget._closing
+                and not getattr(self, "_shutdown_close_requested", False) else None)
+            mutation.native_thread_finished.connect(lambda: cleanup(mutation))
+            mutation.native_thread_finished.connect(mutation.deleteLater)
+            mutation.start()
+
+        worker = TaskWorker(prepare_personal_h20_research_bookmark, config_path,
+            market_root=market_root, expected_reference=reference, selection=selection,
+            sort_descending=widget.sort_combo.currentIndex() == 0,
+            scroll_position=widget.table.verticalScrollBar().value(),
+            progress_callback=lambda message: worker.progress.emit(message, 0))
+        self._personal_h20_bookmark_worker = worker
+        worker.progress.connect(lambda message, _percent: widget.bookmark_status_label.setText(
+            "正在核驗收藏來源：" + message) if current() else None)
+        worker.finished.connect(prepared)
+        worker.error.connect(lambda message: widget.bookmark_status_label.setText(
+            "未保存收藏：" + str(message)[:300]) if not widget._closing
+            and not getattr(self, "_shutdown_close_requested", False) else None)
+        worker.native_thread_finished.connect(lambda: cleanup(worker))
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
 
     def _request_personal_h20_research(self, selection: object) -> None:
         from app_module.recommendation.personal_h20_research_cohort import PersonalH20ResearchSelection

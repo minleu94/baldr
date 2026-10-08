@@ -51,6 +51,8 @@ Parent／child 各自從 exact bundle 正常 opener 讀入，MA projection 都�
 
 審查另發現兩處取消邊界：多欄排序的 partition／各欄排序前後須檢查取消；public page API 須在全結果錨點重核與 JSON 工作前先驗取消。目前已交回窄修，尚未修完，不得以既有 16 項測試授予這兩項接受。
 
+取消窄修後中央已直接核程式並獨立執行新增契約測試：18 passed，2.89 秒，basetemp `output/qa/ma_composite_cancel_root_20261008_a`。多欄 partition 每 256 筆、股票碼排序及各欄排序前後均檢查取消；public `read_page`／`read_page_request` 在 request／結果錨點作業前先拒絕已取消或無效 callback。這更新上一段的兩項局部待修狀態，完整新增複合查詢接線仍待 257 股驗收。
+
 既有 F17 完整回歸已由中央取得終態：27 passed，352.22 秒，session 26101、exit 0。命令 `.venv/Scripts/python.exe -X utf8 -B -m pytest tests/test_daily_market_technical_official_disposition_query_reader_v1.py -q -o addopts= -p no:cacheprovider --basetemp=output/qa/ma_composite_f17_regression_20261008_b`；涵蓋原 257 股 join／排序／分頁、正常 factory、來源漂移、取消與新 PID 重開，不能折抵新增複合群組的完整母體驗收。前一 sandbox attempt 因 extended-path WinError 5 造成 fixture setup 失敗（5 passed、22 errors），保留失敗，沒有修改產品避開路徑驗證。
 
 ## 回滾與範圍

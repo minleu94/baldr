@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import gc
 import os
+import warnings
+from weakref import ref
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -229,6 +232,36 @@ def test_pending_measure_is_discarded_when_view_is_deferred_deleted():
             view.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             app.processEvents()
+
+
+def test_destroyed_callback_does_not_warn_or_retain_visible_rows_state():
+    app = _app()
+    view = QTableView()
+    ensure_visible_rows(view, 5)
+    state = getattr(view, "_layout_helpers_visible_rows_controller")
+    dispatcher = getattr(app, "_layout_helpers_visible_rows_dispatcher")
+    state_ref = ref(state)
+
+    state.schedule_measure()
+    assert state._scheduled
+    # 模擬 QObject 已先移除正在銷毀的 sender connection，再進入清理回呼。
+    view.destroyed.disconnect(state._destroyed_callback)
+
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always", RuntimeWarning)
+        state._on_view_destroyed()
+        app.processEvents()
+
+    assert state.disposed
+    assert not state._scheduled
+    assert not dispatcher._pending
+    assert not [warning for warning in captured if issubclass(warning.category, RuntimeWarning)]
+
+    state = None
+    view = None
+    gc.collect()
+    app.processEvents()
+    assert state_ref() is None
 
 
 def test_model_replacement_disconnects_old_model_and_keeps_new_model_resize_reactive():

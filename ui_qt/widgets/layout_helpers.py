@@ -543,6 +543,16 @@ class _VisibleRowsState:
             self.dispose()
 
     def _on_view_destroyed(self, *_args: object) -> None:
+        # 此時 sender 正發送 destroyed；Qt 可能已移除該連線，勿在清理時再斷一次。
+        destroyed_callback = self._destroyed_callback
+        self._view_signal_connections = [
+            connection
+            for connection in self._view_signal_connections
+            if not (
+                connection[1] == "destroyed"
+                and connection[2] is destroyed_callback
+            )
+        ]
         self.dispose()
 
     def dispose(self, view_hint: QObject | None = None) -> None:

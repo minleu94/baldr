@@ -141,6 +141,180 @@ def _assert_personal_controls_fit(view: RecommendationView) -> None:
             assert label.height() >= expected_height
 
 
+def _personal_panel_controls(view: RecommendationView) -> tuple[QWidget, ...]:
+    """回傳展開後需要逐一可捲達的個人研究控制項。"""
+
+    return (
+        view.personal_research_toggle,
+        view.personal_prediction_capture_status_label,
+        view.personal_prediction_capture_retry_button,
+        view.personal_model_assessment_intro_label,
+        view.personal_model_assessment_capture_path,
+        view.personal_model_assessment_capture_button,
+        view.personal_model_assessment_summary_path,
+        view.personal_model_assessment_summary_button,
+        view.personal_model_assessment_read_button,
+        view.personal_model_assessment_status_label,
+        view.personal_model_assessment_details,
+        view.personal_model_assessment_safety_label,
+        view.personal_policy_mode_combo,
+        view.personal_policy_confirm_button,
+        view.personal_policy_status_label,
+        view.personal_policy_history_label,
+        view.personal_policy_history_combo,
+        view.personal_policy_history_refresh_button,
+        view.personal_policy_rollback_button,
+        view.personal_policy_history_status_label,
+        view.personal_source_database_label,
+        view.personal_source_database_input,
+        view.personal_source_database_browse_button,
+        view.personal_source_time_check_button,
+        view.personal_source_time_trust_checkbox,
+        view.personal_source_time_trust_note,
+        view.personal_source_time_status_label,
+        view.personal_candidate_combo,
+        view.personal_candidate_refresh_button,
+        view.personal_candidate_status_label,
+    )
+
+
+def _assert_personal_controls_scroll_reachable(
+    view: RecommendationView, app: QApplication
+) -> None:
+    assert view.personal_research_toggle.isChecked()
+    assert not view.personal_capture_widget.isHidden()
+    assert not view.personal_assessment_group.isHidden()
+    assert not view.personal_policy_group.isHidden()
+    assert view.result_scroll.verticalScrollBar().maximum() > 0
+
+    for widget in _personal_panel_controls(view):
+        if widget.isHidden():
+            continue
+        view.result_scroll.ensureWidgetVisible(widget)
+        app.processEvents()
+        for axis_name, scrollbar, start_attr, extent_attr, viewport_extent in (
+            (
+                "vertical",
+                view.result_scroll.verticalScrollBar(),
+                "top",
+                "height",
+                view.result_scroll.viewport().height(),
+            ),
+            (
+                "horizontal",
+                view.result_scroll.horizontalScrollBar(),
+                "left",
+                "width",
+                view.result_scroll.viewport().width(),
+            ),
+        ):
+            top_left = widget.mapTo(view.result_scroll.viewport(), QPoint(0, 0))
+            widget_rect = QRect(top_left, widget.size())
+            start = getattr(widget_rect, start_attr)()
+            target_extent = getattr(widget_rect, extent_attr)()
+            end = start + target_extent
+            if target_extent <= viewport_extent:
+                delta = start if start < 0 else end - viewport_extent if end > viewport_extent else 0
+                if delta:
+                    scrollbar.setValue(scrollbar.value() + delta)
+                    app.processEvents()
+                top_left = widget.mapTo(view.result_scroll.viewport(), QPoint(0, 0))
+                widget_rect = QRect(top_left, widget.size())
+                start = getattr(widget_rect, start_attr)()
+                end = start + target_extent
+                assert start >= 0 and end <= viewport_extent, (
+                    widget.objectName() or widget.accessibleName(),
+                    axis_name,
+                    widget_rect,
+                    view.result_scroll.viewport().rect(),
+                    scrollbar.value(),
+                    scrollbar.maximum(),
+                )
+                continue
+
+            # 寬於 viewport 的區塊以捲動兩端證明全文可逐段讀取。
+            scrollbar.setValue(scrollbar.value() + start)
+            app.processEvents()
+            top_left = widget.mapTo(view.result_scroll.viewport(), QPoint(0, 0))
+            widget_rect = QRect(top_left, widget.size())
+            leading = getattr(widget_rect, start_attr)()
+            assert 0 <= leading < viewport_extent, (
+                widget.objectName() or widget.accessibleName(),
+                axis_name,
+                "leading",
+                widget_rect,
+                view.result_scroll.viewport().rect(),
+                scrollbar.value(),
+                scrollbar.maximum(),
+            )
+
+            trailing_end = leading + getattr(widget_rect, extent_attr)()
+            scrollbar.setValue(scrollbar.value() + trailing_end - viewport_extent)
+            app.processEvents()
+            top_left = widget.mapTo(view.result_scroll.viewport(), QPoint(0, 0))
+            widget_rect = QRect(top_left, widget.size())
+            leading = getattr(widget_rect, start_attr)()
+            trailing_end = leading + getattr(widget_rect, extent_attr)()
+            assert leading < viewport_extent and trailing_end <= viewport_extent, (
+                widget.objectName() or widget.accessibleName(),
+                axis_name,
+                "trailing",
+                widget_rect,
+                view.result_scroll.viewport().rect(),
+                scrollbar.value(),
+                scrollbar.maximum(),
+            )
+        required_height = (
+            widget.heightForWidth(widget.width())
+            if widget.hasHeightForWidth()
+            else widget.sizeHint().height()
+        )
+        assert required_height <= 0 or widget.height() >= required_height, (
+            widget.objectName() or widget.accessibleName(),
+            widget.size(),
+            widget.sizeHint(),
+            required_height,
+        )
+
+
+def _assert_layout_widgets_do_not_overlap(view: RecommendationView, layout) -> None:
+    visible_widgets = []
+    for index in range(layout.count()):
+        widget = layout.itemAt(index).widget()
+        if widget is None or widget.isHidden() or widget.width() <= 0 or widget.height() <= 0:
+            continue
+        rect = QRect(widget.mapTo(view, QPoint(0, 0)), widget.size())
+        visible_widgets.append((widget, rect))
+    for index, (previous, previous_rect) in enumerate(visible_widgets):
+        for following, following_rect in visible_widgets[index + 1 :]:
+            assert not previous_rect.intersects(following_rect), (
+                previous.objectName()
+                or previous.accessibleName()
+                or getattr(previous, "text", lambda: "")(),
+                following.objectName()
+                or following.accessibleName()
+                or getattr(following, "text", lambda: "")(),
+                previous_rect,
+                following_rect,
+            )
+
+
+def _assert_personal_layouts_do_not_overlap(view: RecommendationView) -> None:
+    for layout in (
+        view.personal_capture_row,
+        view.assessment_capture_path_row,
+        view.assessment_summary_path_row,
+        view.assessment_action_row,
+        view.personal_policy_row,
+        view.personal_policy_history_row,
+        view.personal_policy_history_selector_row,
+        view.personal_policy_history_actions_row,
+        view.personal_source_path_row,
+        view.personal_candidate_row,
+    ):
+        _assert_layout_widgets_do_not_overlap(view, layout)
+
+
 def _new_view() -> RecommendationView:
     return RecommendationView(
         recommendation_service=_RecommendationService(),
@@ -269,6 +443,114 @@ def test_recommendation_layout_in_default_shell_with_184_pixel_navigation() -> N
             _assert_recommendation_table_geometry(view, app)
             _assert_personal_controls_fit(view)
             _capture_if_requested(shell, screenshot)
+    finally:
+        shell.close()
+        app.processEvents()
+
+
+def test_personal_research_controls_are_scroll_reachable_at_390x844() -> None:
+    app = _app()
+    view = _new_view()
+    _attach_layout_fixture(view)
+    view.resize(390, 844)
+    view.personal_research_toggle.setChecked(True)
+    view.show()
+
+    try:
+        for _ in range(5):
+            app.processEvents()
+        assert view.width() == 390
+        assert view.main_splitter.orientation() == Qt.Orientation.Vertical
+        assert view.personal_policy_history_row.direction() == (
+            QBoxLayout.Direction.TopToBottom
+        )
+        assert view.assessment_capture_path_row.direction() == (
+            QBoxLayout.Direction.TopToBottom
+        )
+        assert view.personal_source_path_row.direction() == (
+            QBoxLayout.Direction.TopToBottom
+        )
+        _assert_personal_controls_fit(view)
+        _assert_personal_layouts_do_not_overlap(view)
+        _assert_personal_controls_scroll_reachable(view, app)
+    finally:
+        view.close()
+        app.processEvents()
+
+
+def test_personal_research_controls_are_scroll_reachable_with_narrow_navigation() -> None:
+    app = _app()
+    shell = QWidget()
+    shell.setObjectName("recommendationNarrowNavigationShellFixture")
+    shell_layout = QHBoxLayout(shell)
+    shell_layout.setContentsMargins(0, 0, 0, 0)
+    shell_layout.setSpacing(0)
+    navigation = QWidget(shell)
+    navigation.setObjectName("narrowNavigationWidthFixture")
+    navigation.setFixedWidth(184)
+    shell_layout.addWidget(navigation)
+
+    view = _new_view()
+    _attach_layout_fixture(view)
+    shell_layout.addWidget(view, 1)
+    view.personal_research_toggle.setChecked(True)
+    shell.resize(390, 844)
+    shell.show()
+
+    try:
+        for _ in range(5):
+            app.processEvents()
+        assert navigation.width() == 184
+        assert view.width() == 206
+        assert view.main_splitter.orientation() == Qt.Orientation.Vertical
+        assert view.personal_policy_history_row.direction() == (
+            QBoxLayout.Direction.TopToBottom
+        )
+        assert view.assessment_capture_path_row.direction() == (
+            QBoxLayout.Direction.TopToBottom
+        )
+        assert view.personal_source_path_row.direction() == (
+            QBoxLayout.Direction.TopToBottom
+        )
+        _assert_personal_controls_fit(view)
+        _assert_personal_layouts_do_not_overlap(view)
+        _assert_personal_controls_scroll_reachable(view, app)
+    finally:
+        shell.close()
+        app.processEvents()
+
+
+def test_personal_research_controls_fit_shells_with_standard_navigation() -> None:
+    app = _app()
+    shell = QWidget()
+    shell.setObjectName("recommendationStandardNavigationShellFixture")
+    shell_layout = QHBoxLayout(shell)
+    shell_layout.setContentsMargins(0, 0, 0, 0)
+    shell_layout.setSpacing(0)
+    navigation = QWidget(shell)
+    navigation.setObjectName("standardNavigationWidthFixture")
+    navigation.setFixedWidth(184)
+    shell_layout.addWidget(navigation)
+
+    view = _new_view()
+    _attach_layout_fixture(view)
+    shell_layout.addWidget(view, 1)
+    view.personal_research_toggle.setChecked(True)
+    shell.show()
+
+    try:
+        for shell_width in (760, 900):
+            shell.resize(shell_width, 900)
+            for _ in range(5):
+                app.processEvents()
+            assert navigation.width() == 184
+            assert view.width() == shell_width - 184
+            assert view.personal_policy_history_row.direction() == (
+                QBoxLayout.Direction.TopToBottom
+            )
+            _assert_personal_controls_fit(view)
+            _assert_personal_layouts_do_not_overlap(view)
+            _assert_personal_controls_scroll_reachable(view, app)
     finally:
         shell.close()
         app.processEvents()

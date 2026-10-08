@@ -7,6 +7,7 @@
 ## 已核對的證據
 
 - Root 原始 row observer 測試：2 passed，10.57 秒。覆蓋原始 row 只消費一次、包含空 segment 的 begin/end，以及例外不發布部分 session。
+- 後續新增逐股取消案例：3 passed，8.68 秒，程序 session 93314、exit 0。第二檔投影提出取消後立即停止，begin 有記錄而 end 未完成，built/published session 均為 None。首輪把取消錯誤誤期待為一般 callback 失敗；修正後發現原迴圈要到 16 檔批次結束才停。P01 現於 observer 回傳後檢查取消，保留既有具名錯誤。兩次失敗 QA 目錄保留；source mypy 通過。此變更不影響未掛 observer 的迴圈。
 - Root 未掛 observer 的 P01 相容性測試：1 passed，11.80 秒。
 - Root F17 原有 canonical page request 與具名取消錯誤正規化：5 passed，0.73 秒。此範圍沒有建立新來源 fixture，不代替完整 F17 旅程。
 - 正常入口 attempt03：257 檔納入、1 檔排除、6 頁；兩檔 unknown 子集以股票代碼降序得到 1001、1000，各一頁。從同次 exact P01 session 讀回兩檔 snapshot，重建證據的 state、reason、evidence identity、raw window 與 snapshot identity 均相符。

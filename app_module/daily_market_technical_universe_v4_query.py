@@ -14,6 +14,9 @@ import re
 from typing import Any, Literal, NoReturn, cast
 
 from app_module import daily_market_technical_parent_v4_query as _parent_query_module
+from app_module.daily_market_technical_verified_projection_v1 import (
+    DailyMarketTechnicalVerifiedProjectionV1,
+)
 from app_module.daily_market_technical_parent_v4_query import (
     DailyMarketTechnicalParentV4Row,
     DailyMarketTechnicalRuleStateFilterV4,
@@ -963,6 +966,7 @@ def _consume_verified_segment(
     index_byte_count: list[int] | None = None,
     semantic_proof_byte_count: list[int] | None = None,
     max_index_bytes: int = DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES,
+    verified_projection: DailyMarketTechnicalVerifiedProjectionV1 | None = None,
 ) -> None:
     """同次消費已核驗 parent context，只留下排序候選與 child pins。"""
 
@@ -1102,6 +1106,10 @@ def _consume_verified_segment(
             seen_codes.add(snapshot.stock_code)
             processed_codes.append(snapshot.stock_code)
             row = _parent_query_module._make_row(snapshot)
+            if verified_projection is not None:
+                verified_projection.consume_verified_snapshot(segment_index, snapshot, row)
+                if _is_cancelled(cancel_callback):
+                    _fail("technical_universe_v4_query_cancelled")
             if row.raw_row_count == 0:
                 missing_data_codes.append(row.stock_code)
             if any(rule.state == "unknown" for rule in row.rules):
@@ -2686,6 +2694,26 @@ class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
         self._build_attempted = False
         self._built_session: DailyMarketTechnicalUniverseV4ReadSession | None = None
         self._published_session: DailyMarketTechnicalUniverseV4ReadSession | None = None
+        self._verified_projection: DailyMarketTechnicalVerifiedProjectionV1 | None = None
+
+    def bind_verified_projection(
+        self, projection: DailyMarketTechnicalVerifiedProjectionV1,
+    ) -> None:
+        """完整來源讀取開始前，單次註冊同迴圈的投影觀察者。"""
+        if (
+            self._verified_projection is not None
+            or self._bundle_pin is not None
+            or self._callback_segments
+            or self._build_attempted
+        ):
+            _fail("technical_universe_v4_read_projection_already_started")
+        if not all(callable(getattr(projection, method, None)) for method in (
+            "begin_verified_parent", "consume_verified_snapshot", "end_verified_parent",
+        )):
+            _fail("technical_universe_v4_read_projection_invalid")
+        if self._is_cancelled():
+            _fail("technical_universe_v4_query_cancelled")
+        self._verified_projection = projection
 
     @property
     def verified_session(self) -> DailyMarketTechnicalUniverseV4ReadSession | None:
@@ -2708,6 +2736,8 @@ class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
                 _fail("technical_universe_v4_read_session_cross_segment_source_mismatch")
             if not self._context_holder:
                 self._context_holder.append(context)
+            if self._verified_projection is not None:
+                self._verified_projection.begin_verified_parent(segment_index, parent_read)
             _consume_verified_segment(
                 context,
                 segment_index=segment_index,
@@ -2724,7 +2754,10 @@ class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
                 index_byte_count=self._index_byte_count,
                 semantic_proof_byte_count=self._semantic_proof_byte_count,
                 max_index_bytes=self.max_index_bytes,
+                verified_projection=self._verified_projection,
             )
+            if self._verified_projection is not None:
+                self._verified_projection.end_verified_parent(segment_index, parent_read)
             self._parent_observations.append(
                 _read_session_parent_observation(segment_index, parent_read)
             )

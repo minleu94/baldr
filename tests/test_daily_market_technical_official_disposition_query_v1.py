@@ -1070,3 +1070,77 @@ def test_source_fact_with_other_normalized_pin_is_rejected() -> None:
     with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as error:
         evaluate_f17_membership_v1(query, fact)
     assert error.value.code == "technical_official_query_v1_observation_pin_mismatch"
+
+
+def test_source_timestamps_accept_exact_microsecond_serializer_form() -> None:
+    query = _query()
+    fact = _fact_row(
+        "2330",
+        events=[{
+            "announcement_date": "2026-10-07",
+            "effective_from": "2026-10-08",
+            "effective_to": "2026-10-08",
+            "observed_at": "2026-10-07T07:55:00.000000+00:00",
+        }],
+    )
+    payload = fact.to_dict()
+    market = cast(dict[str, object], payload["market_assignment"])
+    disposal = cast(dict[str, object], payload["official_disposal"])
+    market["cutoff_at"] = "2026-10-07T08:00:00.000000+00:00"
+    market["snapshot_observed_at"] = "2026-10-07T07:50:00.000000+00:00"
+    market["pointer_published_at"] = "2026-10-07T07:55:00.000000+00:00"
+    disposal["observed_at"] = "2026-10-07T07:50:00.000000+00:00"
+    captures = cast(list[dict[str, object]], disposal["source_capture_dates_by_id"])
+    captures[0]["captured_at"] = "2026-10-07T07:52:00.000000+00:00"
+    evidence = DailyMarketTechnicalOfficialDispositionFactRowV1(
+        body_json=_canonical(payload),
+        stock_code=fact.stock_code,
+        cohort_role=fact.cohort_role,
+    )
+
+    result = evaluate_f17_membership_v1(query, evidence)
+
+    assert result.market_assignment_match is True
+    assert result.official_disposal_match is True
+
+
+def test_source_timestamp_after_cutoff_by_one_microsecond_is_rejected() -> None:
+    query = _query()
+    fact = _fact_row(
+        "2330",
+        snapshot_observed_at="2026-10-07T08:00:00.000001+00:00",
+    )
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as error:
+        evaluate_f17_membership_v1(query, fact)
+    assert error.value.code == "technical_official_query_v1_future_market_evidence"
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "2026-10-07T08:00:00Z",
+        "2026-10-07 08:00:00+00:00",
+        "2026-10-07T08:00:00",
+        "2026-10-07T08:00:00.0000000+00:00",
+    ),
+)
+def test_source_timestamp_parser_rejects_noncanonical_iso_spellings(value: str) -> None:
+    query = _query()
+    fact = _fact_row("2330", market_cutoff_at=value)
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as error:
+        evaluate_f17_membership_v1(query, fact)
+    assert error.value.code == "technical_official_query_v1_market_cutoff_invalid"
+
+
+def test_query_json_decision_cutoff_keeps_original_canonical_format() -> None:
+    query = _query()
+    payload = query.to_dict()
+    payload["decision_cutoff"] = "2026-10-07T16:00:00.000000+08:00"
+    identity_body = {
+        key: value for key, value in payload.items() if key != "query_identity_sha256"
+    }
+    payload["query_identity_sha256"] = _sha(identity_body)
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as error:
+        DailyMarketTechnicalOfficialDispositionQueryV1.from_json(_canonical(payload))
+    assert error.value.code == "technical_official_query_v1_cutoff_invalid"

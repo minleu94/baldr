@@ -161,3 +161,12 @@ DTO schema 為 `daily-market-technical-universe-v4-selected-rows.v1`，綁 read-
 owner run_004 2 passed／146.59秒；中央獨立完整核心 **17 passed／212.35秒、handle32107 terminal exit0**，兩檔 mypy／compile／SHA核對通過。fixture 使用唯一短TEMP父目錄與pytest子目錄，不相等；真257＋1跨segment任意順序、artifact計數、digest與原列parity、來源篡改及取消矩陣均驗。owner run_001取消測試閉包遞迴、run_002錯node、run_003 TEMP與basetemp相同致fixture根消失的原始失敗均保留，未放寬來源guard。
 
 每次仍有 **O(N) selection 完整性雜湊**，DTO建構也重新驗rows digest；有界256輸出不代表只有256列成本。上述212秒含fixture產製，不作warm p95或RSS證據。未來函數自查：只重開當時保存的同來源快照，原decision／source時鐘及snapshot pins不放寬；沒有新金融float。F17全母體join／UI、1000與實際N效能、完整P00–P14／M3仍未完成。
+
+
+### F17 真來源時間字串接縫中央接受
+
+真258列bundle使用官方reader輸出的 `2026-10-07T08:00:00.000000+00:00`；原codec的自動isoformat roundtrip省略零微秒，導致完整execute拒絕market_cutoff_invalid。新增 source-only parser精確接受auto或microseconds兩種aware字串，涵蓋來源cutoff、snapshot／pointer、observed、capture／event與排序時間；query JSON decision_cutoff維持原canonical規則，保存fact bytes與其identity不改。
+
+source SHA256 `7BD592E5FD68A5BEF742AEC5BF85903626D20604B52C3C6FE804CACADAC542F8`、test `6E8C77D0429EAA66EE3E1F1D8C420A9F36C2FAB10FD290A0B5F433A12F7D7323`；owner **62 passed／0.80秒**，中央相同SHA獨立 **62 passed／0.87秒**，兩檔mypy／compile通過。正式來源microseconds各欄位、cutoff後1微秒拒絕、Z／空白／naive／7位小數拒絕，以及query JSON仍拒絕非canonical零微秒均有具體反例。未來函數自查：時區aware與決策時點比較原封保留，不將來源時間進位或推後；沒有新金融float。
+
+新joined reader attempt03原始1 passed／4 failed／220.12秒保留；三個execute因上述來源格式失敗，一個取消測試洩漏下層cancel code。reader目前沿已保存真synthetic bundle續驗，未驗完整join、來源篡改／role矩陣、UI與新程序，不以本codec62通過替代其驗收。

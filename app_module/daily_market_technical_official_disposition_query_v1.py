@@ -232,6 +232,23 @@ def _parse_aware_datetime(value: object, code: str) -> datetime:
     return parsed
 
 
+def _parse_source_aware_datetime(value: object, code: str) -> datetime:
+    """解析來源序列化器使用的兩種精確 aware ISO 格式。"""
+    if not isinstance(value, str) or len(value) > 128:
+        _fail(code)
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise DailyMarketTechnicalOfficialDispositionQueryV1Error(code) from exc
+    if (
+        parsed.tzinfo is None
+        or parsed.utcoffset() is None
+        or value not in {parsed.isoformat(), parsed.isoformat(timespec="microseconds")}
+    ):
+        _fail(code)
+    return parsed
+
+
 def _parse_date(value: object, code: str) -> date:
     if not isinstance(value, str):
         _fail(code)
@@ -776,15 +793,15 @@ def _fact_payload(
     if market_state not in _MARKET_STATE_ORDER or disposal_state not in _DISPOSAL_STATE_ORDER:
         _fail("technical_official_query_v1_fact_row_state_invalid")
     cutoff = query.decision_cutoff
-    market_cutoff = _parse_aware_datetime(
+    market_cutoff = _parse_source_aware_datetime(
         market.get("cutoff_at"), "technical_official_query_v1_market_cutoff_invalid"
     )
     if market_cutoff != cutoff:
         _fail("technical_official_query_v1_market_cutoff_mismatch")
-    snapshot_time = _parse_aware_datetime(
+    snapshot_time = _parse_source_aware_datetime(
         market.get("snapshot_observed_at"), "technical_official_query_v1_market_observation_time_invalid"
     )
-    pointer_time = _parse_aware_datetime(
+    pointer_time = _parse_source_aware_datetime(
         market.get("pointer_published_at"), "technical_official_query_v1_market_pointer_time_invalid"
     )
     if snapshot_time > cutoff or pointer_time > cutoff:
@@ -827,7 +844,7 @@ def _validate_observation_scope(
 def _validate_optional_observed_at(value: object, cutoff: datetime) -> datetime | None:
     if value is None:
         return None
-    parsed = _parse_aware_datetime(value, "technical_official_query_v1_observed_at_invalid")
+    parsed = _parse_source_aware_datetime(value, "technical_official_query_v1_observed_at_invalid")
     if parsed > cutoff:
         _fail("technical_official_query_v1_future_observation")
     return parsed
@@ -847,7 +864,7 @@ def _validate_disposal_evidence(disposal: Mapping[str, object], cutoff: datetime
     for item in captures:
         if not isinstance(item, Mapping):
             _fail("technical_official_query_v1_disposal_capture_dates_invalid")
-        captured_at = _parse_aware_datetime(
+        captured_at = _parse_source_aware_datetime(
             item.get("captured_at"), "technical_official_query_v1_capture_time_invalid"
         )
         if captured_at > cutoff:
@@ -873,7 +890,7 @@ def _validate_disposal_evidence(disposal: Mapping[str, object], cutoff: datetime
         effective_to = _parse_date(
             event.get("effective_to"), "technical_official_query_v1_effective_date_invalid"
         )
-        observed_at = _parse_aware_datetime(
+        observed_at = _parse_source_aware_datetime(
             event.get("observed_at"), "technical_official_query_v1_event_observed_at_invalid"
         )
         if effective_to < effective_from:
@@ -1202,7 +1219,7 @@ def _sort_value_for_row(
 def _sort_datetime(value: object) -> datetime | None:
     if value is None:
         return None
-    parsed = _parse_aware_datetime(value, "technical_official_query_v1_sort_time_invalid")
+    parsed = _parse_source_aware_datetime(value, "technical_official_query_v1_sort_time_invalid")
     return parsed.astimezone(timezone.utc)
 
 

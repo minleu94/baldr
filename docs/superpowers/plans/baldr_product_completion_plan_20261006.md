@@ -726,3 +726,5 @@ dev 133616b6 已接真Main保存操作；88e22ba6 再接觀察清單原H20收藏
 F17 接完整母體前所需的現況市場歸屬 reader 已完成中央審核，三份既有官方名錄 raw／時間／schema／exact pins 與完整性回歸共12項通過。缺擷取時間拒絕、空名錄不得指派市場，不以無關來源 partial_failure 永久封鎖完整三名錄。這仍是 current-only 來源葉片，兩份 TPEx 真原件缺件與完整保存／query／更新／UI 出口尚未完成，見[市場歸屬 QA](../../06_qa/SELECTION_MARKET_ASSIGNMENTS_20261007.md)。
 
 H20 返回跨推薦結果分頁會排兩次完整重讀，中央實際Qt signal回歸已重現並修成一次帶原selection的核驗；一般分頁切換仍核驗。路由4項、真Main合成下鑽／收藏鄰近6項、workbench85項、validator25/0/4及mypy892通過，見[返回重讀QA](../../06_qa/H20_RETURN_SINGLE_REFRESH_20261007.md)。此修改尚不在固定c611，未宣稱原十股載入或2382速度已通過。
+
+固定c611正常設定的完整母體同版Main已由中央逐值審核通過：真產製一次257納入＋1排除，Python/exe exact同store/query/rows/basket/bookmark/reopen，source/store inventory不變、network/guard/modal錯誤零；詳[固定候選QA](../../06_qa/BALDR_C611_CANDIDATE_20261007.md)。這補上上述同版缺口，但strict query約10.5秒、save約27秒不是P01效能接受，1000／實際N／冷暖p95與新程序仍缺。原十股Main已成功看到2382的684bp／日期與返回，但原snapshot SHM mtime被SQLite RO讀取改變，使原件保護gate未通過；已停直接原庫重讀，先處理受界reader方案再推速度與新版真人接受。P00–P14／M3完整範圍維持。

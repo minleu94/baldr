@@ -16,6 +16,7 @@ _PORTABLE_KEYS = frozenset(
         "OUTPUT_ROOT",
         "TECHNICAL_UNIVERSE_READ_ROOT",
         "FUNDAMENTAL_READ_SNAPSHOT_ROOT",
+        "PERSONAL_H20_SQLITE_READ_ROOT",
         "RESEARCH_STATE_ROOT",
         "OFFICIAL_CALENDAR_CACHE_PATH",
         "PERSONAL_DATA_ROOT",
@@ -96,7 +97,11 @@ def resolve_application_settings(
     environment_values: dict[str, str] = {}
     for key in sorted(_PORTABLE_KEYS):
         value = _optional_environment_text(source, key)
-        if key in {"TECHNICAL_UNIVERSE_READ_ROOT", "FUNDAMENTAL_READ_SNAPSHOT_ROOT"} and key in source and value is None:
+        if key in {
+            "TECHNICAL_UNIVERSE_READ_ROOT",
+            "FUNDAMENTAL_READ_SNAPSHOT_ROOT",
+            "PERSONAL_H20_SQLITE_READ_ROOT",
+        } and key in source and value is None:
             raise ValueError(f"{key} 必須是非空絕對路徑")
         if value is not None:
             _validate_setting(key, value, origin="環境變數")
@@ -165,6 +170,11 @@ def resolve_application_settings(
             _is_same_or_child(Path(fundamental_root), bundle) for bundle in bundle_roots
         ):
             raise ValueError("FUNDAMENTAL_READ_SNAPSHOT_ROOT 必須位於 frozen 程式包之外")
+        h20_read_root = effective.get("PERSONAL_H20_SQLITE_READ_ROOT")
+        if h20_read_root is not None and any(
+            _is_same_or_child(Path(h20_read_root), bundle) for bundle in bundle_roots
+        ):
+            raise ValueError("PERSONAL_H20_SQLITE_READ_ROOT 必須位於 frozen 程式包之外")
         for name, path in (
             ("DATA_ROOT", data_root),
             ("OUTPUT_ROOT", output_root),
@@ -224,6 +234,11 @@ def apply_application_settings(settings: ApplicationSettings) -> None:
         None if fundamental_root is None
         else _absolute_environment_path("FUNDAMENTAL_READ_SNAPSHOT_ROOT", fundamental_root)
     )
+    h20_read_root_value = environment.get("PERSONAL_H20_SQLITE_READ_ROOT")
+    h20_read_root = (
+        None if h20_read_root_value is None
+        else _absolute_environment_path("PERSONAL_H20_SQLITE_READ_ROOT", h20_read_root_value)
+    )
 
     if bool(getattr(sys, "frozen", False)):
         bundles = _frozen_bundle_roots(_canonical_path(settings.resource_root))
@@ -234,6 +249,10 @@ def apply_application_settings(settings: ApplicationSettings) -> None:
             _is_same_or_child(fundamental_path, bundle) for bundle in bundles
         ):
             raise ValueError("FUNDAMENTAL_READ_SNAPSHOT_ROOT 必須位於 frozen 程式包之外")
+        if h20_read_root is not None and any(
+            _is_same_or_child(h20_read_root, bundle) for bundle in bundles
+        ):
+            raise ValueError("PERSONAL_H20_SQLITE_READ_ROOT 必須位於 frozen 程式包之外")
         for name, path in (
             ("DATA_ROOT", data_root),
             ("OUTPUT_ROOT", output_root),

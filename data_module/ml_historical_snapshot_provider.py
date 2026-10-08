@@ -18,6 +18,10 @@ from data_module.ml_daily_price_revision_gate import (
     VerifiedCurrentRestatedSourceContext,
     check_daily_price_source_revision,
 )
+from data_module.pinned_sqlite_read_session import (
+    PinnedSQLiteReadSession,
+    SQLiteFilePinV1,
+)
 
 
 _SOURCE_TABLES = (
@@ -40,6 +44,42 @@ HISTORICAL_SNAPSHOT_PROVIDER_CONTRACT_ID_V1 = (
 )
 _DAILY_PRICE_DATE_COLUMN = "\u65e5\u671f"
 _DAILY_PRICE_SYMBOL_COLUMN = "\u8b49\u5238\u4ee3\u865f"
+
+
+@dataclass(frozen=True, slots=True)
+class _PinnedSQLiteSourceStat:
+    """以原始主檔 pin 提供舊 fingerprint 欄位，絕不 stat/open 原 DB。"""
+
+    st_size: int
+    st_mtime_ns: int
+
+
+def _current_observed_session_source_pin(
+    session: PinnedSQLiteReadSession,
+    *,
+    expected_database_path: Path,
+    expected_database_sha256: str,
+) -> SQLiteFilePinV1:
+    if type(session) is not PinnedSQLiteReadSession:
+        raise TypeError("read_session 必須是 PinnedSQLiteReadSession")
+    pins = session.source_file_group_start
+    if type(pins) is not tuple or not pins:
+        raise ValueError("pinned SQLite source file group is unavailable")
+    source_pin = pins[0]
+    if type(source_pin) is not SQLiteFilePinV1 or source_pin.role != "main":
+        raise ValueError("pinned SQLite source main-file pin is invalid")
+    if not source_pin.present or source_pin.sha256 is None:
+        raise ValueError("pinned SQLite source main file is absent")
+    if Path(source_pin.path).resolve() != expected_database_path.resolve():
+        raise ValueError("pinned SQLite source path differs from provider")
+    if source_pin.sha256 != expected_database_sha256.removeprefix("sha256:"):
+        raise ValueError("pinned SQLite source bytes differ from source context")
+    connection = session.connection
+    if not connection.in_transaction:
+        raise RuntimeError("pinned SQLite read session has no active transaction")
+    if type(source_pin.size_bytes) is not int or type(source_pin.mtime_ns) is not int:
+        raise ValueError("pinned SQLite source stat is incomplete")
+    return source_pin
 
 
 def _schema_digest(table_columns: tuple[tuple[str, tuple[str, ...]], ...]) -> str:
@@ -378,6 +418,7 @@ class MLHistoricalSnapshotProvider:
         source_context_envelope_path: str | Path,
         source_context_envelope_sha256: str,
         industry_index_names: tuple[str, ...] = (),
+        read_session: PinnedSQLiteReadSession | None = None,
     ) -> CurrentObservedRawSnapshot:
         """Read a bounded current-restated vector from an exact frozen snapshot.
 
@@ -423,18 +464,47 @@ class MLHistoricalSnapshotProvider:
             raise ValueError("current-observed decision date differs from Taipei observation date")
         if expected_as_of >= decision.isoformat():
             raise ValueError("G9 current-observed feature date must precede decision date")
-        database_sha_before = _sha256_path(self.database_path)
         expected_snapshot_sha = str(source_context.snapshot_database_sha256)
-        if database_sha_before != expected_snapshot_sha.removeprefix("sha256:"):
-            raise ValueError("current-observed snapshot bytes differ from source context")
+        if read_session is None:
+            database_sha_before = _sha256_path(self.database_path)
+            if database_sha_before != expected_snapshot_sha.removeprefix("sha256:"):
+                raise ValueError("current-observed snapshot bytes differ from source context")
+        else:
+            source_pin = _current_observed_session_source_pin(
+                read_session,
+                expected_database_path=self.database_path,
+                expected_database_sha256=expected_snapshot_sha,
+            )
 
         normalized_symbols = _normalized_texts(symbols, field_name="symbols")
         if not normalized_symbols or len(normalized_symbols) > 16:
             raise ValueError("current-observed symbol scope must contain 1..16 symbols")
         if tuple(sorted(set(normalized_symbols))) != normalized_symbols:
             raise ValueError("current-observed symbol scope must be unique and sorted")
-        connection = self._connect()
-        with closing(connection):
+        if read_session is None:
+            connection = self._connect()
+            with closing(connection):
+                current_snapshot = self._load_on_connection(
+                    connection,
+                    decision_date=decision.isoformat(),
+                    history_start_date=history_start_date,
+                    symbols=normalized_symbols,
+                    industry_index_names=industry_index_names,
+                    current_restated_context=source_context,
+                    current_feature_as_of_date=expected_as_of,
+                    cycle_id=cycle_id,
+                    cycle_terminal_path=str(Path(cycle_terminal_path).resolve()),
+                    cycle_terminal_sha256=cycle_terminal_sha256,
+                    source_context_envelope_path=str(Path(source_context_envelope_path).resolve()),
+                    source_context_envelope_sha256=source_context_envelope_sha256,
+                )
+            database_sha_after = _sha256_path(self.database_path)
+            if database_sha_after != database_sha_before:
+                raise RuntimeError("frozen current-observed snapshot changed during vector load")
+        else:
+            connection = read_session.connection
+            if not connection.in_transaction:
+                raise RuntimeError("pinned SQLite read session has no active transaction")
             current_snapshot = self._load_on_connection(
                 connection,
                 decision_date=decision.isoformat(),
@@ -448,10 +518,12 @@ class MLHistoricalSnapshotProvider:
                 cycle_terminal_sha256=cycle_terminal_sha256,
                 source_context_envelope_path=str(Path(source_context_envelope_path).resolve()),
                 source_context_envelope_sha256=source_context_envelope_sha256,
+                managed_transaction=False,
+                source_stat_override=_PinnedSQLiteSourceStat(
+                    st_size=cast(int, source_pin.size_bytes),
+                    st_mtime_ns=cast(int, source_pin.mtime_ns),
+                ),
             )
-        database_sha_after = _sha256_path(self.database_path)
-        if database_sha_after != database_sha_before:
-            raise RuntimeError("frozen current-observed snapshot changed during vector load")
         if not isinstance(current_snapshot, CurrentObservedRawSnapshot):
             raise RuntimeError("current-observed reader did not return its typed current snapshot")
         if current_snapshot.feature_as_of_date != expected_as_of:
@@ -476,6 +548,8 @@ class MLHistoricalSnapshotProvider:
         cycle_terminal_sha256: str | None = None,
         source_context_envelope_path: str | None = None,
         source_context_envelope_sha256: str | None = None,
+        managed_transaction: bool = True,
+        source_stat_override: os.stat_result | "_PinnedSQLiteSourceStat" | None = None,
     ) -> HistoricalRawSnapshot | CurrentObservedRawSnapshot:
         decision = _compact_date(decision_date)
         history_start = _compact_date(history_start_date)
@@ -494,6 +568,8 @@ class MLHistoricalSnapshotProvider:
                 )
             ),
             changed_message="historical SQLite source changed during snapshot load",
+            managed_transaction=managed_transaction,
+            source_stat_override=source_stat_override,
         ) as source_stat_before:
             schema = self._validate_schema(connection)
             symbol_clause = _placeholders(normalized_symbols)
@@ -596,15 +672,16 @@ class MLHistoricalSnapshotProvider:
                 connection.execute('SELECT 1 FROM industry_indices WHERE 0').fetchall()
             query_count += 1
 
-        source_stat_after = self.database_path.stat()
-        if (
-            source_stat_after.st_size,
-            source_stat_after.st_mtime_ns,
-        ) != (
-            source_stat_before.st_size,
-            source_stat_before.st_mtime_ns,
-        ):
-            raise RuntimeError("historical SQLite source changed during snapshot load")
+        if managed_transaction:
+            source_stat_after = self.database_path.stat()
+            if (
+                source_stat_after.st_size,
+                source_stat_after.st_mtime_ns,
+            ) != (
+                source_stat_before.st_size,
+                source_stat_before.st_mtime_ns,
+            ):
+                raise RuntimeError("historical SQLite source changed during snapshot load")
         if current_restated_context is not None:
             if (
                 not cycle_id
@@ -774,8 +851,22 @@ class MLHistoricalSnapshotProvider:
         *,
         changed_message: str,
         before_begin: Callable[[], object] | None = None,
-    ) -> Iterator[os.stat_result]:
+        managed_transaction: bool = True,
+        source_stat_override: os.stat_result | "_PinnedSQLiteSourceStat" | None = None,
+    ) -> Iterator[os.stat_result | "_PinnedSQLiteSourceStat"]:
         """Run provider reads against one SQLite snapshot and detect other commits."""
+
+        if not managed_transaction:
+            if before_begin is not None:
+                raise ValueError("caller-managed SQLite transaction cannot run before_begin")
+            if source_stat_override is None:
+                raise ValueError("caller-managed SQLite transaction requires pinned source stat")
+            if not connection.in_transaction:
+                raise RuntimeError("caller-managed SQLite transaction is not active")
+            yield source_stat_override
+            return
+        if source_stat_override is not None:
+            raise ValueError("managed SQLite transaction cannot use pinned source stat")
 
         data_version_before = self._data_version(connection)
         source_stat_before = self.database_path.stat()

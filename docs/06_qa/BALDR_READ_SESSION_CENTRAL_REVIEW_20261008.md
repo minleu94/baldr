@@ -130,3 +130,14 @@ UI強制作業：workbench **85 passed／4.30秒**；原生更新頁validator **
 成功零結果清空舊頁、保留strict session已核完整母體counts、停用當頁研究／收藏；恢復條件仍保留原OR/rule篩選。明示load/reload建立fresh strict session，來源篡改拒絕後保持舊state；相同來源篩選、暖翻頁與個股操作沿既有selection，不重掃來源／重排全母體。Windows長路徑比對沿公開reader canonical root與same-source契約，不裸resolve。測試原失敗與fixture-only extended-path bytes修正均保留於ignored QA。
 
 這些耗時包含fixture產製，不是UI頁面延遲。1000／實際N／冷暖p95、最新版正常Main／固定候選／新程序與Native仍待；F17 rows-only materializer尚未實作，不能用本UI接線通過宣稱F17 join完成。
+
+
+### 固定 7b 候選建置與同版隔離比較
+
+來源 commit `7b21e0d4076bee10dbd32855542100cb00f17487` 的獨立建置 root handle74749 terminal exit0。候選 exe 為 `dist/candidate_7b21e0d4076b_98fff903/baldr/baldr.exe`，53,308,626 bytes，SHA256 `13f979cc2b44096bcbeed470f6e3cd510b21f3b09ffafed26b0b79b3365562b8`；固定 source archive SHA256 `81167d43b3625d684097ebfc869328464245313d4c58b074087faae87ab08beb`。建置只使用 commit archive，未包含 materializer／F17 reader WIP。BUILD_INFO 保留 built_not_validated，不覆寫建置事實。
+
+首次同版比較 handle88943 在啟動 probe 前因終端中文編碼 UnicodeEncodeError 失敗，兩種入口 results 均空；失敗收據 `output/qa/baldr_same_version_7b21e0d4076b_3480e22c/same_version_receipt.json` 保留。僅設定 parent PYTHONIOENCODING=utf-8 後，以同一候選另開 QA attempt，handle34241 terminal exit0；中央讀回 `output/qa/baldr_same_version_7b21e0d4076b_0294cc33/same_version_receipt.json` 為 passed_isolated_fixture。兩種入口 launch、journey、model、h20、invalid_config 的可觀察結果一致；直接 Qt script／module 入口亦一致。
+
+H20 比較只涵蓋呈現 fixture，推薦只涵蓋 synthetic execution display；canonical 保存推薦 nofollow 限制、原十股來源／4GB安全副本、完整母體 Main／新程序、Native 真人與效能仍未驗收。原交付 exe SHA256 `ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e`、main `305635642ecdf5f1331a24a0c81566d07f36cb0d` 於建置前後均核對不變。
+
+H20 新 ignored controller 的中央靜態審查另發現兩項來源初始 pin／preflight 時限落差，以及 shutdown 未終態仍可能維持 passed 的測試判定缺口，已交 owner 修正；尚未授權啟動原來源旅程。真人先不重測 0f25；新候選未交付。

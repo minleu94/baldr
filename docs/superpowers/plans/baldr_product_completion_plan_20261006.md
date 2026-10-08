@@ -732,3 +732,7 @@ H20 返回跨推薦結果分頁會排兩次完整重讀，中央實際Qt signal�
 ### 2026-10-08 H20 私有副本低層資格
 
 新增單次 pinned SQLite copy session，中央合成17通過／1平台跳過、兩檔mypy及compile通過；hardlink與關閉後副本置換拒絕均實測，詳 [副本讀取QA](../../06_qa/PINNED_SQLITE_READ_SESSION_20261008.md)。這只完成來源隔離低層，尚未接正常config／provider／feature與entry replay／Main；原十股保護、4GB耗時、2382下鑽與收藏新程序候選仍未接受，不替代前節原SHM失敗證據。完整P00–P14與M3範圍維持。
+
+### 2026-10-08 F17 完整母體事實保存葉片
+
+獨立 sidecar 固定原技術receipt與市場／處置exact pins，完整保存257納入＋1排除的258列；中央22通過／1平台跳過、兩檔mypy與compile通過，詳 [F17全母體保存QA](../../06_qa/F17_FULL_N_FACT_BUNDLE_20261008.md)。projection complete仍與官方coverage分開，current_only不授PIT，late來源不能改舊cutoff。正常更新、F17全母體篩選／比較／收藏與UI仍待接線，未授P03或整份P00–P14／M3接受。

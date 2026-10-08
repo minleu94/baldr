@@ -31,3 +31,11 @@
 原產製控制器C63在產製完成後誤用不存在的receipt.counts，原結果仍為failed／checks空。第一補驗最後輸出因Windows audit預設O_NOINHERIT旗標被誤拒；窄修後第二補驗保存failed，錯誤為報告使用不存在的Plan日期／方法屬性。新helper改由已驗證的Plan.to_dict取值，先通過純型別／API自檢，再完成本次完整讀回。所有舊失敗保留，沒有重跑producer或改判舊結果。
 
 本結果只接受固定來源的合成產物與獨立讀回，不授予原控制器整體成功、正式來源／歷史PIT、實際市場N、效能、MainWindow、Native／exe或真人資格。冷5／暖30效能與正常資料產製仍須分別完成，完整P00–P14／M1–M3目標不變。
+
+## Source-only benchmark 守衛中央補驗（2026-10-08）
+
+root 獨立執行 parent／worker 組合自測，exit 0；新 case `C:/t/p01_hgz9tl64`，log `output/qa/p01_b3mrz9_8_source_benchmark_20261008_a/root_guard_composition_20261008_a.log`。固定 controller SHA256 `79f402906920754e5a5f97c4691d34a20983f0b260a3639dd2d958929c9955dc`，selftest SHA256 `784cf2ffc51f7c4f05c94272e29b8c3c426c3dc605a581d9fb939c088ce6a510`；C63 helper 未變。
+
+六個合成 worker 成功，六個錯誤啟動反例拒絕；network／SQLite 都為 0。實際 parent guard 的拒絕被 fake worker 吞下並回傳 passed 後，after-worker gate 仍拒絕；下一次 before-launch gate 不呼叫 launch，failure envelope 保留有界 denial snapshot。來源與 protected sentinel 前後 SHA 一致，沒有產品 API、模型、產製器或 benchmark 執行。
+
+本項只接受 QA 守衛組合與立即停跑契約，不授予正式 worker 或冷暖效能接受。中央 F17 回歸仍執行中，完整冷 5／暖 30 矩陣須等其他重測停止後單獨執行；原失敗 attempts 不覆寫。

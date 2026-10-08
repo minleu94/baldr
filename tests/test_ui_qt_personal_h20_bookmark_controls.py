@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import time
+from dataclasses import replace
 from types import SimpleNamespace
 import threading
 from typing import Any, cast
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from app_module.daily_market_research_bookmark import DailyMarketResearchBookmarkRestoreToken
 from app_module.recommendation.personal_h20_research_bookmark import (
     PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE,
+    PersonalH20ResearchBookmark,
     PersonalH20ResearchBookmarkState,
     create_personal_h20_research_bookmark,
 )
@@ -113,18 +115,65 @@ def _entry_for(widget: PersonalH20BookmarkControls, bookmark_id: str) -> int:
     raise AssertionError(f"找不到指定 H20 bookmark：{bookmark_id}")
 
 
+def _current_bookmark_id(widget: PersonalH20BookmarkControls) -> str | None:
+    entry = widget._current_entry()
+    return entry.bookmark_id if entry is not None else None
+
+
+def _record_confirmation(
+    confirmations: list[tuple[str, str]], code: str, identity: str
+) -> bool:
+    confirmations.append((code, identity))
+    return True
+
+
 def _widget(
     service: WatchlistService,
     fixture: dict[str, Any],
     *,
     confirm_remove=None,
+    bookmark_state_reader=None,
 ) -> PersonalH20BookmarkControls:
     return PersonalH20BookmarkControls(
         service,
         config_path=fixture["activation"].config_path,
         market_root=fixture["market_root"],
-        prediction_reader=public_reader,
+        prediction_reader=public_reader if bookmark_state_reader is None else None,
+        bookmark_state_reader=bookmark_state_reader,
         confirm_remove=confirm_remove,
+    )
+
+
+def _install_synthetic_h20_ports(monkeypatch, calls: dict[str, int] | None = None) -> None:
+    from copy import deepcopy
+    from scripts.scheduled import run_personal_current_observed_h20_daily as runner
+
+    counts = calls if calls is not None else {"source": 0, "contract": 0}
+
+    def source_verifier(binding):
+        counts["source"] += 1
+        return deepcopy(binding)
+
+    def contract_verifier(binding):
+        counts["contract"] += 1
+        return deepcopy(binding)
+
+    monkeypatch.setattr(runner, "personal_current_observed_h20_read_ports", lambda: {
+        "source_verifier": source_verifier,
+        "contract_verifier": contract_verifier,
+    })
+
+
+def _session_bookmark_reader(bookmark, *, config_path, market_root, cancel_callback=None):
+    from scripts.scheduled.personal_h20_bookmark_read_session import (
+        read_personal_h20_research_bookmark_with_session,
+    )
+
+    return read_personal_h20_research_bookmark_with_session(
+        bookmark,
+        config_path=config_path,
+        market_root=market_root,
+        cancel_callback=cancel_callback,
     )
 
 
@@ -279,6 +328,9 @@ def test_every_duplicate_identity_row_is_visible_and_inert(
             widget.bookmarks.setCurrentRow(row)
             assert not widget.open_button.isEnabled()
             assert not widget.remove_button.isEnabled()
+        assert widget.restore_selection(fixture["bookmark"].bookmark_id) == "rejected"
+        assert widget.bookmarks.currentRow() == -1
+        assert "多筆或衝突" in widget.diagnostic_text.toPlainText()
     finally:
         _close_widget(app, widget)
 
@@ -363,7 +415,9 @@ def test_remove_is_exact_cow_preserves_other_same_stock_item_and_restore_token(
     widget = _widget(
         cast(WatchlistService, wrapper),
         fixture,
-        confirm_remove=lambda code, identity: confirmations.append((code, identity)) or True,
+        confirm_remove=lambda code, identity: _record_confirmation(
+            confirmations, code, identity
+        ),
     )
     widget.show()
     try:
@@ -445,7 +499,7 @@ def test_pending_refresh_coalesces_after_exact_reopen_and_preserves_selection(
         assert emitted[0].bookmark.bookmark_id == fixture["bookmark"].bookmark_id
         assert widget.bookmarks.count() == 2
         selected = widget.bookmarks.currentItem().data(Qt.ItemDataRole.UserRole)
-        assert selected.bookmark_id == fixture["bookmark"].bookmark_id
+        assert getattr(selected, "bookmark_id", None) == fixture["bookmark"].bookmark_id
         assert service.get_research_bookmark(fixture["bookmark"].bookmark_id) == fixture["bookmark"]
     finally:
         release.set()
@@ -463,6 +517,7 @@ def test_selection_change_drops_late_exact_reopen_without_substitution(
         include_second_h20=True,
     )
     assert second is not None
+    second_bookmark = cast(PersonalH20ResearchBookmark, second)
     entered = threading.Event()
     release = threading.Event()
     wrapper = _BlockingWatchlistService(
@@ -478,7 +533,7 @@ def test_selection_change_drops_late_exact_reopen_without_substitution(
         widget.refresh_bookmarks()
         _wait_for(app, lambda: widget._worker is None)
         first_row = _entry_for(widget, fixture["bookmark"].bookmark_id)
-        second_row = _entry_for(widget, second.bookmark_id)
+        second_row = _entry_for(widget, second_bookmark.bookmark_id)
         widget.bookmarks.setCurrentRow(first_row)
         widget.open_selected()
         _wait_for(app, entered.is_set)
@@ -489,9 +544,9 @@ def test_selection_change_drops_late_exact_reopen_without_substitution(
         assert emitted == []
         assert "選取已變更" in widget.status_label.text()
         selected = widget.bookmarks.currentItem().data(Qt.ItemDataRole.UserRole)
-        assert selected.bookmark_id == second.bookmark_id
+        assert getattr(selected, "bookmark_id", None) == second_bookmark.bookmark_id
         assert service.get_research_bookmark(fixture["bookmark"].bookmark_id) == fixture["bookmark"]
-        assert service.get_research_bookmark(second.bookmark_id) == second
+        assert service.get_research_bookmark(second_bookmark.bookmark_id) == second_bookmark
     finally:
         release.set()
         _close_widget(app, widget)
@@ -558,4 +613,326 @@ def test_layout_remains_usable_at_narrow_width(app: QApplication, tmp_path: Path
             assert widget.rect().contains(control.geometry())
             assert control.width() > 100
     finally:
+        _close_widget(app, widget)
+
+
+def test_typed_state_reader_uses_real_bookmark_session_and_exact_bookmark_identity(
+    app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, fixture, _second = _make_watchlist(tmp_path, include_invalid=False)
+    calls = {"source": 0, "contract": 0}
+    _install_synthetic_h20_ports(monkeypatch, calls)
+    received: list[dict[str, Any]] = []
+
+    def reader(bookmark, *, config_path, market_root, cancel_callback=None):
+        received.append(bookmark.to_dict())
+        return _session_bookmark_reader(
+            bookmark,
+            config_path=config_path,
+            market_root=market_root,
+            cancel_callback=cancel_callback,
+        )
+
+    widget = _widget(service, fixture, bookmark_state_reader=reader)
+    emitted: list[object] = []
+    widget.stateReady.connect(emitted.append)
+    widget.show()
+    try:
+        widget.refresh_bookmarks()
+        _wait_for(app, lambda: widget._worker is None)
+        widget.bookmarks.setCurrentRow(_entry_for(widget, fixture["bookmark"].bookmark_id))
+        widget.open_selected()
+        _wait_for(app, lambda: widget._worker is None)
+
+        assert len(emitted) == 1
+        state = emitted[0]
+        assert isinstance(state, PersonalH20ResearchBookmarkState)
+        assert state.bookmark.to_dict() == fixture["bookmark"].to_dict()
+        assert state.cohort.manifest_sha256 == fixture["manifest_sha256"]
+        assert state.selected_row.symbol == fixture["selection"].symbol
+        assert state.selected_row.gross_return_bp == 684
+        assert received == [fixture["bookmark"].to_dict()]
+        # 使用原 capture validator 與 synthetic verifier；不改寫私人 fixture。
+        assert calls == {"source": 6, "contract": 2}
+        assert service.get_research_bookmark(fixture["bookmark"].bookmark_id) == fixture["bookmark"]
+    finally:
+        _close_widget(app, widget)
+
+
+@pytest.mark.parametrize("bad_result", ["wrong_type", "different_bookmark"])
+def test_typed_state_reader_rejects_wrong_type_or_full_bookmark_identity(
+    app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_result: str,
+) -> None:
+    service, fixture, _second = _make_watchlist(tmp_path, include_invalid=False)
+    _install_synthetic_h20_ports(monkeypatch)
+
+    def reader(bookmark, *, config_path, market_root, cancel_callback=None):
+        state = _session_bookmark_reader(
+            bookmark,
+            config_path=config_path,
+            market_root=market_root,
+            cancel_callback=cancel_callback,
+        )
+        if bad_result == "wrong_type":
+            return object()
+        different_bookmark = create_personal_h20_research_bookmark(
+            fixture["reference"],
+            fixture["cohort"],
+            fixture["selection"],
+            sort_descending=True,
+            scroll_position=fixture["bookmark"].scroll_position + 1,
+        )
+        assert different_bookmark.bookmark_id != bookmark.bookmark_id
+        return replace(state, bookmark=different_bookmark)
+
+    widget = _widget(service, fixture, bookmark_state_reader=reader)
+    emitted: list[object] = []
+    widget.stateReady.connect(emitted.append)
+    widget.show()
+    try:
+        widget.refresh_bookmarks()
+        _wait_for(app, lambda: widget._worker is None)
+        widget.bookmarks.setCurrentRow(_entry_for(widget, fixture["bookmark"].bookmark_id))
+        widget.open_selected()
+        _wait_for(app, lambda: widget._worker is None)
+
+        assert emitted == []
+        assert "personal_h20_bookmark_reopened_state_identity_mismatch" in widget.diagnostic_text.toPlainText()
+    finally:
+        _close_widget(app, widget)
+
+
+def test_typed_reader_cannot_return_after_watchlist_bookmark_was_removed(
+    app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, fixture, _second = _make_watchlist(tmp_path, include_invalid=False)
+    _install_synthetic_h20_ports(monkeypatch)
+
+    def reader(bookmark, *, config_path, market_root, cancel_callback=None):
+        state = _session_bookmark_reader(
+            bookmark,
+            config_path=config_path,
+            market_root=market_root,
+            cancel_callback=cancel_callback,
+        )
+        service.remove_research_bookmark(bookmark.bookmark_id)
+        return state
+
+    widget = _widget(service, fixture, bookmark_state_reader=reader)
+    emitted: list[object] = []
+    widget.stateReady.connect(emitted.append)
+    widget.show()
+    try:
+        widget.refresh_bookmarks()
+        _wait_for(app, lambda: widget._worker is None)
+        widget.bookmarks.setCurrentRow(_entry_for(widget, fixture["bookmark"].bookmark_id))
+        widget.open_selected()
+        _wait_for(app, lambda: widget._worker is None)
+
+        assert emitted == []
+        assert "personal_h20_bookmark_changed_during_read" in widget.diagnostic_text.toPlainText()
+    finally:
+        _close_widget(app, widget)
+
+
+def test_restore_selection_rejects_missing_target_without_fallback(
+    app: QApplication,
+    tmp_path: Path,
+) -> None:
+    service, fixture, _second = _make_watchlist(tmp_path, include_invalid=False)
+    widget = _widget(service, fixture)
+    widget.show()
+    try:
+        widget.refresh_bookmarks()
+        _wait_for(app, lambda: widget._worker is None)
+        missing = "sha256:" + "f" * 64
+
+        assert widget.restore_selection(missing) == "rejected"
+        assert widget.bookmarks.currentRow() == -1
+        assert "未改選其他列" in widget.diagnostic_text.toPlainText()
+        assert widget.restore_selection(fixture["bookmark"].bookmark_id) == "selected"
+        selected = widget._current_entry()
+        assert selected is not None and selected.bookmark_id == fixture["bookmark"].bookmark_id
+    finally:
+        _close_widget(app, widget)
+
+
+def test_restore_selection_is_queued_across_open_then_refresh_and_uses_exact_id(
+    app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, fixture, second = _make_watchlist(
+        tmp_path,
+        include_invalid=False,
+        include_same_stock_manual=False,
+        include_second_h20=True,
+    )
+    assert second is not None
+    second_bookmark = cast(PersonalH20ResearchBookmark, second)
+    _install_synthetic_h20_ports(monkeypatch)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def reader(bookmark, *, config_path, market_root, cancel_callback=None):
+        if bookmark.bookmark_id == fixture["bookmark"].bookmark_id:
+            entered.set()
+            if not release.wait(timeout=20):
+                raise AssertionError("測試 H20 session barrier 未釋放")
+        return _session_bookmark_reader(
+            bookmark,
+            config_path=config_path,
+            market_root=market_root,
+            cancel_callback=cancel_callback,
+        )
+
+    widget = _widget(service, fixture, bookmark_state_reader=reader)
+    emitted: list[object] = []
+    widget.stateReady.connect(emitted.append)
+    widget.show()
+    try:
+        widget.refresh_bookmarks()
+        _wait_for(app, lambda: widget._worker is None)
+        assert widget.restore_selection(fixture["bookmark"].bookmark_id) == "selected"
+        widget.open_selected()
+        _wait_for(app, entered.is_set)
+        widget.refresh_bookmarks()
+        assert widget._refresh_pending
+        assert widget.restore_selection(second_bookmark.bookmark_id) == "queued"
+        assert _current_bookmark_id(widget) == fixture["bookmark"].bookmark_id
+
+        release.set()
+        _wait_for(
+            app,
+            lambda: widget._worker is None
+            and widget.bookmarks.count() == 2
+            and _current_bookmark_id(widget) == second_bookmark.bookmark_id,
+        )
+        assert len(emitted) == 1
+        assert isinstance(emitted[0], PersonalH20ResearchBookmarkState)
+        assert emitted[0].bookmark.bookmark_id == fixture["bookmark"].bookmark_id
+        assert _current_bookmark_id(widget) == second_bookmark.bookmark_id
+    finally:
+        release.set()
+        _close_widget(app, widget)
+
+
+def test_cancelled_open_discards_queued_restore_and_refresh(
+    app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, fixture, second = _make_watchlist(
+        tmp_path,
+        include_invalid=False,
+        include_same_stock_manual=False,
+        include_second_h20=True,
+    )
+    assert second is not None
+    second_bookmark = cast(PersonalH20ResearchBookmark, second)
+    _install_synthetic_h20_ports(monkeypatch)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def reader(bookmark, *, config_path, market_root, cancel_callback=None):
+        entered.set()
+        if not release.wait(timeout=20):
+            raise AssertionError("測試 H20 session barrier 未釋放")
+        return _session_bookmark_reader(
+            bookmark,
+            config_path=config_path,
+            market_root=market_root,
+            cancel_callback=cancel_callback,
+        )
+
+    stock_reads = 0
+    original_get_stocks = service.get_stocks
+
+    def counted_get_stocks(*args, **kwargs):
+        nonlocal stock_reads
+        stock_reads += 1
+        return original_get_stocks(*args, **kwargs)
+
+    monkeypatch.setattr(service, "get_stocks", counted_get_stocks)
+    widget = _widget(service, fixture, bookmark_state_reader=reader)
+    widget.show()
+    try:
+        widget.refresh_bookmarks()
+        _wait_for(app, lambda: widget._worker is None)
+        assert stock_reads == 1
+        assert widget.restore_selection(fixture["bookmark"].bookmark_id) == "selected"
+        widget.open_selected()
+        _wait_for(app, entered.is_set)
+        widget.refresh_bookmarks()
+        assert widget._refresh_pending
+        assert widget.restore_selection(second_bookmark.bookmark_id) == "queued"
+
+        widget.cancel()
+        assert not widget._refresh_pending
+        assert widget._restore_selection_id == ""
+        release.set()
+        _wait_for(app, lambda: widget._worker is None)
+
+        assert stock_reads == 1
+        assert _current_bookmark_id(widget) == fixture["bookmark"].bookmark_id
+        assert widget._restore_selection_id == ""
+    finally:
+        release.set()
+        _close_widget(app, widget)
+
+
+@pytest.mark.parametrize("shutdown", [False, True])
+def test_typed_reader_cancel_or_close_drops_late_session_result(
+    app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    shutdown: bool,
+) -> None:
+    service, fixture, _second = _make_watchlist(tmp_path, include_invalid=False)
+    _install_synthetic_h20_ports(monkeypatch)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def reader(bookmark, *, config_path, market_root, cancel_callback=None):
+        entered.set()
+        if not release.wait(timeout=20):
+            raise AssertionError("測試 H20 session barrier 未釋放")
+        return _session_bookmark_reader(
+            bookmark,
+            config_path=config_path,
+            market_root=market_root,
+            cancel_callback=cancel_callback,
+        )
+
+    widget = _widget(service, fixture, bookmark_state_reader=reader)
+    emitted: list[object] = []
+    widget.stateReady.connect(emitted.append)
+    widget.show()
+    try:
+        widget.refresh_bookmarks()
+        _wait_for(app, lambda: widget._worker is None)
+        widget.bookmarks.setCurrentRow(_entry_for(widget, fixture["bookmark"].bookmark_id))
+        widget.open_selected()
+        _wait_for(app, entered.is_set)
+        if shutdown:
+            widget.close()
+        else:
+            widget.cancel()
+        release.set()
+        _wait_for(app, lambda: widget._worker is None)
+
+        assert emitted == []
+        if shutdown:
+            assert widget._closing
+        else:
+            assert "已取消讀取" in widget.status_label.text()
+    finally:
+        release.set()
         _close_widget(app, widget)

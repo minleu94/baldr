@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QCloseEvent
@@ -33,6 +33,10 @@ from app_module.recommendation.personal_h20_research_bookmark import (
 )
 from app_module.watchlist_service import WatchlistService
 from ui_qt.workers.task_worker import TaskWorker
+
+
+PersonalH20BookmarkStateReader = Callable[..., PersonalH20ResearchBookmarkState]
+SelectionRestoreResult = Literal["selected", "queued", "rejected"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,30 +230,80 @@ def _read_personal_h20_bookmark_state(
     watchlist_id: str,
     config_path: Path,
     market_root: Path,
-    prediction_reader: Callable[..., Mapping[str, Any]],
+    prediction_reader: Callable[..., Mapping[str, Any]] | None,
+    bookmark_state_reader: PersonalH20BookmarkStateReader | None,
     *,
     cancel_callback: Callable[[], bool] | None = None,
 ) -> PersonalH20ResearchBookmarkState:
     _check_cancel(cancel_callback)
-    state = service.get_personal_h20_research_bookmark_state(
-        bookmark_id,
-        watchlist_id,
-        config_path=config_path,
-        market_root=market_root,
-        prediction_reader=prediction_reader,
-        cancel_callback=cancel_callback,
-    )
-    _check_cancel(cancel_callback)
+    bookmark = service.get_research_bookmark(bookmark_id, watchlist_id)
     if (
-        not isinstance(state, PersonalH20ResearchBookmarkState)
-        or state.bookmark.bookmark_id != bookmark_id
-        or state.bookmark.selected_row.symbol != state.selected_row.symbol
-        or state.bookmark.selected_row.sample_id != state.selected_row.sample_id
-        or state.bookmark.selected_row.prediction_id != state.selected_row.prediction_id
-        or state.bookmark.selected_row.capture_sha256 != state.selected_row.capture_sha256
+        not isinstance(bookmark, PersonalH20ResearchBookmark)
+        or bookmark.bookmark_id != bookmark_id
     ):
+        raise ValueError("personal_h20_bookmark_exact_identity_required")
+    original_payload = bookmark.to_dict()
+    if bookmark_state_reader is not None:
+        state = bookmark_state_reader(
+            bookmark,
+            config_path=config_path,
+            market_root=market_root,
+            cancel_callback=cancel_callback,
+        )
+    else:
+        if not callable(prediction_reader):
+            raise ValueError("personal_h20_bookmark_public_prediction_reader_required")
+        state = service.get_personal_h20_research_bookmark_state(
+            bookmark_id,
+            watchlist_id,
+            config_path=config_path,
+            market_root=market_root,
+            prediction_reader=prediction_reader,
+            cancel_callback=cancel_callback,
+        )
+    _check_cancel(cancel_callback)
+    if not _state_matches_bookmark(state, bookmark, original_payload):
         raise ValueError("personal_h20_bookmark_reopened_state_identity_mismatch")
+    latest_exact = service.get_research_bookmark(bookmark_id, watchlist_id)
+    if (
+        not isinstance(latest_exact, PersonalH20ResearchBookmark)
+        or latest_exact.to_dict() != original_payload
+    ):
+        raise ValueError("personal_h20_bookmark_changed_during_read")
+    _check_cancel(cancel_callback)
     return state
+
+
+def _state_matches_bookmark(
+    state: object,
+    bookmark: PersonalH20ResearchBookmark,
+    bookmark_payload: Mapping[str, Any],
+) -> bool:
+    if not isinstance(state, PersonalH20ResearchBookmarkState):
+        return False
+    if state.bookmark.to_dict() != dict(bookmark_payload):
+        return False
+    cohort = state.cohort
+    if (
+        cohort.manifest_sha256 != bookmark.manifest_sha256
+        or cohort.candidate_id != bookmark.source_candidate_id
+        or cohort.contract_hash != bookmark.source_contract_hash
+        or cohort.cycle_id != bookmark.cycle_id
+        or cohort.decision_date != bookmark.decision_date
+    ):
+        return False
+    matching_rows = tuple(
+        row for row in cohort.rows if row.symbol == bookmark.selected_row.symbol
+    )
+    if len(matching_rows) != 1 or state.selected_row != matching_rows[0]:
+        return False
+    selected = state.selected_row
+    return (
+        selected.symbol == bookmark.selected_row.symbol
+        and selected.sample_id == bookmark.selected_row.sample_id
+        and selected.prediction_id == bookmark.selected_row.prediction_id
+        and selected.capture_sha256 == bookmark.selected_row.capture_sha256
+    )
 
 
 def _remove_personal_h20_bookmark(
@@ -291,19 +345,23 @@ class PersonalH20BookmarkControls(QWidget):
         *,
         config_path: str | Path,
         market_root: str | Path,
-        prediction_reader: Callable[..., Mapping[str, Any]],
+        prediction_reader: Callable[..., Mapping[str, Any]] | None = None,
+        bookmark_state_reader: PersonalH20BookmarkStateReader | None = None,
         watchlist_id: str = "default",
         confirm_remove: Callable[[str, str], bool] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        if not callable(prediction_reader):
+        if bookmark_state_reader is not None and not callable(bookmark_state_reader):
+            raise TypeError("personal_h20_bookmark_typed_state_reader_required")
+        if bookmark_state_reader is None and not callable(prediction_reader):
             raise TypeError("personal_h20_bookmark_public_prediction_reader_required")
         self.watchlist_service = watchlist_service
         self.watchlist_id = watchlist_id
         self.config_path = Path(config_path)
         self.market_root = Path(market_root)
         self.prediction_reader = prediction_reader
+        self.bookmark_state_reader = bookmark_state_reader
         self._confirm_remove_callback = confirm_remove
         self._generation = 0
         self._active_generation = 0
@@ -312,6 +370,8 @@ class PersonalH20BookmarkControls(QWidget):
         self._opening_selection_generation = 0
         self._operation = ""
         self._refresh_pending = False
+        self._restore_selection_id = ""
+        self._has_loaded_list = False
         self._worker: TaskWorker | None = None
         self._closing = False
         self._last_restore_token: DailyMarketResearchBookmarkRestoreToken | None = None
@@ -423,6 +483,7 @@ class PersonalH20BookmarkControls(QWidget):
             self.config_path,
             self.market_root,
             self.prediction_reader,
+            self.bookmark_state_reader,
         )
         self._start_worker(worker, "open")
         self.status_label.setText("正在背景沿固定原 manifest 核驗所選 H20 收藏…")
@@ -432,6 +493,7 @@ class PersonalH20BookmarkControls(QWidget):
 
         if not self._can_start():
             return
+
         entry = self._current_entry()
         if entry is None:
             self.status_label.setText("請先選取一筆個人 H20 收藏。")
@@ -456,6 +518,40 @@ class PersonalH20BookmarkControls(QWidget):
         self._refresh_pending = True
         self._start_worker(worker, "remove")
         self.status_label.setText("移除已送出，正在保存觀察清單 COW 變更…")
+
+    def restore_selection(self, bookmark_id: str) -> SelectionRestoreResult:
+        """精確恢復收藏選取；回傳 selected、queued 或 rejected。"""
+
+        if self._closing:
+            return "rejected"
+        if (
+            type(bookmark_id) is not str
+            or not bookmark_id
+            or bookmark_id != bookmark_id.strip()
+        ):
+            self.bookmarks.setCurrentRow(-1)
+            self.status_label.setText("拒絕恢復收藏選取：bookmark_id 格式無效。")
+            self.diagnostic_text.setPlainText("personal_h20_bookmark_restore_identity_invalid")
+            self._refresh_controls()
+            return "rejected"
+        if self._worker is not None:
+            if self._operation == "list" or self._refresh_pending:
+                self._restore_selection_id = bookmark_id
+                self.status_label.setText("已排定精確收藏選取；列表刷新後會核對身份再選取。")
+                return "queued"
+            self.status_label.setText("目前背景工作尚未完成；未變更收藏選取。")
+            return "rejected"
+        if not self._has_loaded_list:
+            self._restore_selection_id = bookmark_id
+            self.refresh_bookmarks()
+            if self._worker is None:
+                self._restore_selection_id = ""
+                return "rejected"
+            self.status_label.setText("已排定精確收藏選取；列表讀取完成後會核對身份。")
+            return "queued"
+        if self._apply_exact_selection(bookmark_id):
+            return "selected"
+        return "rejected"
 
     def _confirm_remove(self, entry: _PersonalH20BookmarkEntry) -> bool:
         callback = self._confirm_remove_callback
@@ -482,11 +578,12 @@ class PersonalH20BookmarkControls(QWidget):
     def cancel(self) -> None:
         """取消讀取工作；已送出的 COW 移除不能中途撤回。"""
 
-        self._refresh_pending = False
         if self._operation == "remove" and self._worker is not None:
             self.status_label.setText("移除已送出，正在保存；此 COW 寫入不能中途取消。")
             self._refresh_controls()
             return
+        self._refresh_pending = False
+        self._restore_selection_id = ""
         if self._worker is not None:
             self._generation += 1
             self._worker.cancel(cooperative=True, wait=False)
@@ -499,6 +596,7 @@ class PersonalH20BookmarkControls(QWidget):
         self._closing = True
         self._generation += 1
         self._refresh_pending = False
+        self._restore_selection_id = ""
         if self._worker is not None and self._operation != "remove":
             self._worker.cancel(cooperative=True, wait=False)
         self._refresh_controls()
@@ -642,7 +740,12 @@ class PersonalH20BookmarkControls(QWidget):
             if selected is not None and selected.bookmark is not None and not selected.error_code
             else ""
         )
+        restore_id = self._restore_selection_id or selected_id
+        # 返回要求必須沿合併刷新鏈保持到最後一次，不能被下一次空列表
+        # 摘要覆蓋「原收藏已缺漏」的確切拒絕原因。取消會另行清除此要求。
+        self._restore_selection_id = restore_id if self._refresh_pending else ""
         self.bookmarks.clear()
+        self.bookmarks.setCurrentRow(-1)
         for entry in entries:
             item = QListWidgetItem(entry.label, self.bookmarks)
             item.setData(Qt.ItemDataRole.UserRole, entry)
@@ -654,14 +757,8 @@ class PersonalH20BookmarkControls(QWidget):
                 )
             if entry.error_code:
                 item.setForeground(Qt.GlobalColor.darkRed)
-        if selected_id:
-            matching = [
-                row_index
-                for row_index, entry in enumerate(entries)
-                if entry.bookmark_id == selected_id and entry.bookmark is not None
-            ]
-            if len(matching) == 1:
-                self.bookmarks.setCurrentRow(matching[0])
+        self._has_loaded_list = True
+        selection_restored = self._apply_exact_selection(restore_id) if restore_id else True
         if entries:
             invalid_count = sum(bool(entry.error_code) for entry in entries)
             self.status_label.setText(
@@ -669,7 +766,55 @@ class PersonalH20BookmarkControls(QWidget):
             )
         else:
             self.status_label.setText("此觀察清單沒有個人 H20 研究收藏。")
+        if restore_id and not selection_restored:
+            # _apply_exact_selection 已留下確切拒絕原因；列表摘要不覆蓋它。
+            self.status_label.setText(self._restore_rejection_status(restore_id))
         self._refresh_controls()
+
+    def _apply_exact_selection(self, bookmark_id: str) -> bool:
+        matches: list[tuple[int, _PersonalH20BookmarkEntry]] = []
+        for row_index in range(self.bookmarks.count()):
+            item = self.bookmarks.item(row_index)
+            entry = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+            if isinstance(entry, _PersonalH20BookmarkEntry) and entry.bookmark_id == bookmark_id:
+                matches.append((row_index, entry))
+        if (
+            len(matches) == 1
+            and matches[0][1].bookmark is not None
+            and not matches[0][1].error_code
+        ):
+            self.bookmarks.setCurrentRow(matches[0][0])
+            return True
+
+        self.bookmarks.setCurrentRow(-1)
+        if not matches:
+            code = "personal_h20_bookmark_restore_target_missing"
+            detail = f"找不到指定收藏身份 {bookmark_id}。"
+        elif len(matches) > 1:
+            code = "personal_h20_bookmark_restore_target_ambiguous"
+            detail = f"收藏身份 {bookmark_id} 對應多筆或衝突列，拒絕選取。"
+        else:
+            entry = matches[0][1]
+            code = entry.error_code or "personal_h20_bookmark_restore_target_invalid"
+            detail = entry.error_detail or "指定收藏列未通過身份核驗。"
+        self.diagnostic_text.setPlainText(
+            f"拒絕恢復收藏選取：{detail}\n未改選其他列。\n拒絕代碼：{code}"
+        )
+        self._refresh_controls()
+        return False
+
+    def _restore_rejection_status(self, bookmark_id: str) -> str:
+        matches = [
+            item.data(Qt.ItemDataRole.UserRole)
+            for row in range(self.bookmarks.count())
+            if (item := self.bookmarks.item(row)) is not None
+            and getattr(item.data(Qt.ItemDataRole.UserRole), "bookmark_id", None) == bookmark_id
+        ]
+        if not matches:
+            return "列表已更新，但找不到指定收藏；沒有改選其他列。"
+        if len(matches) > 1:
+            return "列表已有重複或衝突身份；拒絕選取，也沒有改選其他列。"
+        return "指定收藏列未通過核驗；拒絕選取，也沒有改選其他列。"
 
     @Slot(str)
     def _on_worker_error(self, message: str) -> None:

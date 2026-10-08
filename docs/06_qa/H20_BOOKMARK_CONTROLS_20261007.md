@@ -21,3 +21,15 @@ MainWindow 的 H20 原名單新增「收藏原保存 H20 研究」，先在 Task
 回滾前像在output/qa/h20_save_route_preimage_20261007_a，僅保存本輪Main/widget前像與rollback.md。所有合成fixtures保留；不動原exe、正式來源或其他聊天dirty修改。完整H20收藏新process UI重開/返回、Native接受及其他P00–P14仍未完成。
 
 設定失效拒絕再驗：final唯一TEMP C:/t/h20-save-final-20261007-e，五項真Main保存旅程通過（12.96秒）。新增configuration getter失效時current guard fail-closed；原選取仍存在也不寫入，關窗不發布晚到提示。
+
+## 觀察清單重開與精確返回接線
+
+dev MainWindow 已掛入專用 H20 收藏控制項，使用獨立歷史 read session。摘要只投影原收藏已核驗 typed state，保留 capture 的 observed_at；目前模型停用或契約改變仍可顯示原保存預測並另示狀態。重開不重讀 current product reference；明示重新核驗沿原收藏 pins，失敗清除舊可用值。
+
+返回依精確 bookmark_id 還原。中央發現頁面入口刷新與排隊刷新會覆寫「原收藏已不存在」提示，已修正刷新鏈保留原 identity 到最後一輪；不存在或衝突時不改選同股其他列。關窗同時要求兩組收藏背景工作安全收尾。
+
+中央 projector/cohort/history session 49 項通過（11.01秒）；Watchlist 相鄰回歸9項通過（6.48秒）。首輪 Main reopen 2通過1失敗為測試在已有同股收藏時新增手動列被既有去重規則拒絕，改為先刪原收藏再新增；原失敗 fixture 保留。其後含工作台的整組111通過1失敗，揭露上述提示覆寫問題；修正後 Main reopen 4項與controls18項，共22通過（21.29秒）。測試包含目前模型停用、真按鈕重開/返回、原收藏刪除而同股其他列仍存在、來源漂移後清除預測，不以合成 +12.34% 代替原2382的實際 +6.84%。
+
+全域 mypy 891檔通過，兩則既有untyped notes；更新頁合成原生驗證25通過0失敗4保護跳過，報告 output/qa/h20_reopen_update_native_20261007_d/VALIDATION_REPORT.md。回滾前像在 output/qa/h20_bookmark_route_preimage_20261007_a。新程序真Main旅程、固定候選與Native仍待驗；使用者回報0f25名單最終有出現但非常慢、雙擊2382反應不明，仍列未通過，不以單元測試折抵。
+
+最後修正後整組重跑114項通過（26.62秒），唯一TEMP C:/t/h20-route-final-20261007-e，含強制工作台85項、Main reopen4項、controls18項、projector7項；保留12則既有 FutureWarning／Qt disconnect warnings。語法檢查及全域mypy891檔再驗通過。這些是合成路由證據，未宣稱真來源載入速度改善或完整P00–P14完成。

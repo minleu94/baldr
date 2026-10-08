@@ -386,10 +386,139 @@ class MainWindow(QMainWindow):
         self._personal_h20_saved_context = None
         self._personal_h20_saved_reference = None
         self._personal_h20_saved_evidence = None
+        self._personal_h20_bookmark_evidence = None
         workspace = getattr(self, "stock_research_workspace", None)
         if workspace is not None:
             workspace.report_view.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
             workspace.clear_personal_h20_saved_summary()
+
+    def _open_personal_h20_bookmark_state(self, value: object) -> None:
+        """只沿收藏控制項已核的原版本開啟歷史研究。"""
+        from app_module.recommendation.personal_h20_research_bookmark import PersonalH20ResearchBookmarkState
+        from app_module.recommendation.personal_h20_bookmark_product_evidence import project_personal_h20_bookmark_product_evidence
+
+        if not isinstance(value, PersonalH20ResearchBookmarkState) or getattr(self, "_shutdown_close_requested", False):
+            return
+        try:
+            project_personal_h20_bookmark_product_evidence(value)
+            market_root, config_path = self._personal_h20_configuration()
+        except (OSError, TypeError, ValueError) as exc:
+            self.statusBar().showMessage("原 H20 收藏無法核驗：" + str(exc)[:300])
+            return
+        bookmark, row = value.bookmark, value.selected_row
+        context = ResearchStockContextDTO(
+            stock_code=row.symbol, decision_date=bookmark.decision_date,
+            data_date=row.source_date or "", result_id="", identity_status="personal_research_only",
+            source_snapshot_id=bookmark.cycle_id, source_snapshot_hash=bookmark.manifest_sha256,
+            profile_id=bookmark.source_candidate_id, source_id=bookmark.bookmark_id,
+            source_version=bookmark.source_contract_hash, source_kind="personal_h20_research_bookmark",
+            source_label="原版本個人 H20 研究收藏；效果與自然結果尚待核驗", source_workspace="watchlist",
+        )
+        self._personal_h20_bookmark_origin = (context, value, market_root, config_path)
+        self._open_stock_research_context(context)
+
+    def _personal_h20_bookmark_origin_for_context(self, context: object) -> tuple[Any, ...] | None:
+        from app_module.recommendation.personal_h20_research_bookmark import PersonalH20ResearchBookmarkState
+
+        origin = getattr(self, "_personal_h20_bookmark_origin", None)
+        if (getattr(context, "source_kind", None) != "personal_h20_research_bookmark"
+                or not isinstance(origin, tuple) or len(origin) != 4 or origin[0] != context
+                or not isinstance(origin[1], PersonalH20ResearchBookmarkState)):
+            return None
+        bookmark = origin[1].bookmark
+        try:
+            configured = self._personal_h20_configuration() == (origin[2], origin[3])
+        except (OSError, TypeError, ValueError):
+            configured = False
+        if (not configured or getattr(context, "source_workspace", None) != "watchlist"
+                or getattr(context, "stock_code", None) != bookmark.stock_code
+                or getattr(context, "source_id", None) != bookmark.bookmark_id
+                or getattr(context, "source_snapshot_hash", None) != bookmark.manifest_sha256
+                or getattr(context, "source_snapshot_id", None) != bookmark.cycle_id
+                or getattr(context, "source_version", None) != bookmark.source_contract_hash
+                or getattr(context, "profile_id", None) != bookmark.source_candidate_id
+                or getattr(context, "decision_date", None) != bookmark.decision_date):
+            return None
+        return origin
+
+    def _handle_personal_h20_bookmark_context(self, context: object, *, force: bool = False) -> None:
+        """收藏摘要與報告獨立；重驗只讀原 bookmark，不碰 current reference。"""
+        from app_module.recommendation.personal_h20_research_bookmark import PersonalH20ResearchBookmarkState
+        from app_module.recommendation.personal_h20_bookmark_product_evidence import project_personal_h20_bookmark_product_evidence
+        from app_module.recommendation.personal_h20_product_evidence import PersonalH20ProductEvidence
+        from scripts.scheduled.personal_h20_bookmark_read_session import read_personal_h20_research_bookmark_with_session
+        from ui_qt.workers.task_worker import TaskWorker
+
+        workspace = getattr(self, "stock_research_workspace", None)
+        if workspace is None:
+            return
+        origin = self._personal_h20_bookmark_origin_for_context(context)
+        if origin is None:
+            self._clear_personal_h20_product()
+            workspace.set_personal_h20_saved_evidence(PersonalH20ProductEvidence(
+                stock_code=str(getattr(context, "stock_code", "") or "unknown"), status="unavailable",
+                reason="personal_h20_bookmark_origin_identity_mismatch"), context=context, retry_allowed=False)
+            return
+        if getattr(self, "_shutdown_close_requested", False) or workspace.report_view._closing:
+            return
+        _context, state, market_root, config_path = origin
+        bookmark = state.bookmark
+        self._clear_personal_h20_product()
+        generation = self._personal_h20_generation
+
+        def current() -> bool:
+            latest_origin = self._personal_h20_bookmark_origin_for_context(context)
+            return (generation == self._personal_h20_generation
+                and not getattr(self, "_shutdown_close_requested", False)
+                and not workspace.report_view._closing and workspace.report_view.context == context
+                and latest_origin is not None and latest_origin[1].bookmark.to_dict() == bookmark.to_dict())
+
+        def publish(value: object) -> None:
+            if not current():
+                return
+            if isinstance(value, PersonalH20ResearchBookmarkState):
+                try:
+                    if value.bookmark.to_dict() != bookmark.to_dict():
+                        raise ValueError("personal_h20_bookmark_recheck_identity_mismatch")
+                    evidence = project_personal_h20_bookmark_product_evidence(value)
+                except (TypeError, ValueError) as exc:
+                    evidence = PersonalH20ProductEvidence(bookmark.stock_code, "unavailable", str(exc))
+                else:
+                    self._personal_h20_bookmark_origin = (context, value, market_root, config_path)
+            elif isinstance(value, PersonalH20ProductEvidence) and value.stock_code == bookmark.stock_code:
+                evidence = value
+            else:
+                evidence = PersonalH20ProductEvidence(bookmark.stock_code, "unavailable", "personal_h20_bookmark_reader_invalid_state")
+            self._personal_h20_bookmark_evidence = evidence
+            workspace.set_personal_h20_saved_evidence(evidence, context=context)
+            if evidence.status == "available":
+                workspace.personal_h20_saved_summary.setText(
+                    workspace.personal_h20_saved_summary.text() + "\n原保存研究收藏：" + evidence.reason)
+            view = workspace.report_view
+            if view._loaded_report is not None and view._loaded_request_context == context:
+                view.set_personal_h20_evidence(evidence)
+
+        if not force:
+            publish(state)
+            return
+        workspace.show_personal_h20_saved_loading(context, feature_date=state.selected_row.feature_as_of_date or "")
+        workspace.set_personal_h20_saved_busy(True)
+        worker = TaskWorker(read_personal_h20_research_bookmark_with_session, bookmark,
+            config_path=config_path, market_root=market_root,
+            progress_callback=lambda message: worker.progress.emit(message, 0))
+        self._personal_h20_worker = worker
+        worker.progress.connect(lambda message, _percent: workspace.personal_h20_saved_summary.setText(
+            "正在重驗原收藏：" + message) if current() else None)
+        worker.finished.connect(publish)
+        worker.error.connect(lambda message: publish(PersonalH20ProductEvidence(
+            bookmark.stock_code, "unavailable", str(message).splitlines()[0][:300] or "personal_h20_bookmark_recheck_failed")))
+        def cleanup() -> None:
+            if getattr(self, "_personal_h20_worker", None) is worker:
+                self._personal_h20_worker = None
+                workspace.set_personal_h20_saved_busy(False)
+        worker.native_thread_finished.connect(cleanup)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
 
     def _personal_h20_saved_origin_for_context(self, context: object) -> tuple[object, object] | None:
         """只接受目前已核驗母體中精確選取的保存 H20 列。"""
@@ -473,6 +602,9 @@ class MainWindow(QMainWindow):
 
     def _handle_personal_h20_context_changed(self, context: object, *, force: bool = False) -> None:
         """對精確保存 H20 下鑽獨立讀取；報告分域成功與否不影響此路徑。"""
+        if getattr(context, "source_kind", None) == "personal_h20_research_bookmark":
+            self._handle_personal_h20_bookmark_context(context, force=force)
+            return
 
         workspace = getattr(self, "stock_research_workspace", None)
         if workspace is None or getattr(context, "source_kind", None) != "personal_h20_saved_cohort":
@@ -522,6 +654,9 @@ class MainWindow(QMainWindow):
 
         workspace = getattr(self, "stock_research_workspace", None)
         context = getattr(getattr(workspace, "report_view", None), "context", None)
+        if getattr(context, "source_kind", None) == "personal_h20_research_bookmark":
+            self._handle_personal_h20_bookmark_context(context, force=True)
+            return
         if (workspace is None or context is None
                 or getattr(context, "source_kind", None) != "personal_h20_saved_cohort"
                 or self._personal_h20_saved_origin_for_context(context) is None):
@@ -646,6 +781,11 @@ class MainWindow(QMainWindow):
         context = view._loaded_request_context
         if context is None or view._loaded_report is not report or context.stock_code != report.stock_code:
             self._clear_personal_h20_product()
+            return
+        if context.source_kind == "personal_h20_research_bookmark":
+            evidence = getattr(self, "_personal_h20_bookmark_evidence", None)
+            if evidence is not None and self._personal_h20_bookmark_origin_for_context(context) is not None:
+                view.set_personal_h20_evidence(evidence)
             return
         if context.source_kind == "personal_h20_saved_cohort":
             origin = self._personal_h20_saved_origin_for_context(context)
@@ -1676,6 +1816,15 @@ class MainWindow(QMainWindow):
                             )
                         )
                     self.watchlist_view = watchlist
+                    from scripts.scheduled.personal_h20_bookmark_read_session import (
+                        read_personal_h20_research_bookmark_with_session,
+                    )
+                    h20_market_root, h20_config_path = self._personal_h20_configuration()
+                    watchlist.configure_personal_h20_bookmarks(
+                        config_path=h20_config_path, market_root=h20_market_root,
+                        bookmark_state_reader=read_personal_h20_research_bookmark_with_session,
+                    )
+                    watchlist.personalH20BookmarkStateReady.connect(self._open_personal_h20_bookmark_state)
                     self._connect_research_bookmark_routes(recommendation, watchlist)
                     if hasattr(watchlist, "stockResearchRequested"):
                         watchlist.stockResearchRequested.connect(
@@ -2322,6 +2471,21 @@ class MainWindow(QMainWindow):
         else:
             context = self._coerce_stock_research_context(value)
         if context is None or not context.source_workspace:
+            return
+        if context.source_kind == "personal_h20_research_bookmark":
+            origin = self._personal_h20_bookmark_origin_for_context(context)
+            controls = getattr(getattr(self, "watchlist_view", None), "personal_h20_bookmark_controls", None)
+            if origin is None or controls is None:
+                self.statusBar().showMessage("原 H20 收藏身份無法定位；未選取同股其他收藏。")
+                return
+            self._select_main_workspace("watchlist")
+            if controls._worker is None:
+                controls.refresh_bookmarks()
+            restored = controls.restore_selection(origin[1].bookmark.bookmark_id)
+            if restored == "queued":
+                self.statusBar().showMessage("正在重新整理收藏，完成後核對原 H20 收藏選取。")
+            elif restored != "selected":
+                self.statusBar().showMessage("原 H20 收藏已缺漏或衝突；未用同股其他來源替代。")
             return
         if context.source_kind == "personal_h20_saved_cohort":
             origin = getattr(self, "_personal_h20_research_origin", None)

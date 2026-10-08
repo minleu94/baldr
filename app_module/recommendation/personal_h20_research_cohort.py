@@ -26,6 +26,7 @@ class PersonalH20ResearchRow:
     prediction_id: str
     capture_path: str
     capture_sha256: str
+    observed_at: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +142,7 @@ def read_personal_h20_research_cohort(
             raise ValueError("personal_h20_research_original_capture_scope_mismatch")
         rows.append(PersonalH20ResearchRow(pin["symbol"], "available", evidence.reason,
             evidence.gross_return_bp, decision, evidence.source_date, evidence.feature_date,
-            pin["sample_id"], pin["prediction_id"], pin["path"], pin["raw_sha256"]))
+            pin["sample_id"], pin["prediction_id"], pin["path"], pin["raw_sha256"], evidence.observed_at))
     if (_manifest_bytes(file, store, expected_sha256) != raw
             or _stat_stability_key(file.stat()) != original_stat):
         raise ValueError("personal_h20_research_manifest_changed_during_read")

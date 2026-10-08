@@ -5,6 +5,7 @@
 
 from collections.abc import Mapping
 import json
+from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QBoxLayout, QLabel,
@@ -58,6 +59,7 @@ from ui_qt.widgets.table_style import apply_financial_table_style
 from ui_qt.widgets.technical_universe_bookmark_controls import (
     DailyMarketTechnicalUniverseV4BookmarkControls,
 )
+from ui_qt.widgets.personal_h20_bookmark_controls import PersonalH20BookmarkControls
 from ui_qt.widgets.v5_research_summary import V5ResearchSummary
 
 
@@ -71,6 +73,7 @@ class WatchlistView(QWidget):
     stockResearchRequested = Signal(object)
     latestResearchRequested = Signal(object)
     technicalBookmarkStateReady = Signal(object)
+    personalH20BookmarkStateReady = Signal(object)
     
     def __init__(
         self,
@@ -97,6 +100,7 @@ class WatchlistView(QWidget):
         self._analysis_request_id = 0
         self._analysis_worker: TaskWorker | None = None
         self._shutdown_started = False
+        self.personal_h20_bookmark_controls: PersonalH20BookmarkControls | None = None
         self._research_bookmark_restore_tokens: list[object] = []
         self._observation_review: WatchlistReviewState | None = None
         logger.info("[WatchlistView] watchlist_service 設置完成")
@@ -432,6 +436,13 @@ class WatchlistView(QWidget):
         )
         technical_bookmark_layout.addWidget(self.technical_bookmark_controls)
         next_actions_layout.addWidget(technical_bookmark_group)
+        self.personal_h20_bookmark_group = QGroupBox("個人 H20 原保存研究收藏")
+        self.personal_h20_bookmark_group.setObjectName("watchlistPersonalH20Bookmarks")
+        self._personal_h20_bookmark_layout = QVBoxLayout(self.personal_h20_bookmark_group)
+        self._personal_h20_bookmark_hint = QLabel("尚未指定個人研究設定。")
+        self._personal_h20_bookmark_hint.setWordWrap(True)
+        self._personal_h20_bookmark_layout.addWidget(self._personal_h20_bookmark_hint)
+        next_actions_layout.addWidget(self.personal_h20_bookmark_group)
         candidate_layout.addWidget(next_actions_group)
 
         observation_group = QGroupBox("收藏理由與查看狀態")
@@ -811,6 +822,27 @@ class WatchlistView(QWidget):
         )
         if supports_typed_reopen:
             self.technical_bookmark_controls.refresh_bookmarks()
+        h20_controls = self.personal_h20_bookmark_controls
+        if h20_controls is not None:
+            h20_controls.refresh_bookmarks()
+
+    def configure_personal_h20_bookmarks(
+        self, *, config_path: Path, market_root: Path, bookmark_state_reader,
+    ) -> None:
+        """以明示個人設定及原版本 session reader 掛入 H20 收藏。"""
+        from ui_qt.widgets.personal_h20_bookmark_controls import PersonalH20BookmarkControls
+
+        if self.personal_h20_bookmark_controls is not None:
+            raise ValueError("personal_h20_bookmark_controls_already_configured")
+        controls = PersonalH20BookmarkControls(
+            self.watchlist_service, config_path=config_path, market_root=market_root,
+            bookmark_state_reader=bookmark_state_reader, parent=self.personal_h20_bookmark_group,
+        )
+        controls.stateReady.connect(self.personalH20BookmarkStateReady.emit)
+        self.personal_h20_bookmark_controls = controls
+        self._personal_h20_bookmark_hint.hide()
+        self._personal_h20_bookmark_layout.addWidget(controls)
+        controls.refresh_bookmarks()
 
     def _upgrade_watchlist_storage(self) -> None:
         """明示升級；個人模式先預覽路徑且失敗時禁止來源寫入。"""
@@ -2326,7 +2358,10 @@ class WatchlistView(QWidget):
         if not self._shutdown_started:
             self._shutdown_started = True
             self._analysis_request_id += 1
-        return self.technical_bookmark_controls.begin_shutdown()
+        technical_finished = self.technical_bookmark_controls.begin_shutdown()
+        controls = self.personal_h20_bookmark_controls
+        h20_finished = controls.begin_shutdown() if controls is not None else True
+        return technical_finished and h20_finished
 
     def _open_stock_analysis(self, _checked=False):
         """以畫面排序後的選取列傳送股票代號與來源脈絡。"""

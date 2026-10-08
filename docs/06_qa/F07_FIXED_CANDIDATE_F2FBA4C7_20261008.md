@@ -1,0 +1,11 @@
+# 價格研究固定候選f2fba4c7（專項Native與真人待驗）
+
+固定來源提交 `f2fba4c735acd38cbf673963930dee260caddeb0`，建置只取Git archive，不包含其他聊天的未提交排程／資料修改。來源版接受範圍與各輪失敗保存在 [F07查詢契約](F07_PRICE_QUERY_CONTRACT_20261008.md)。
+
+建置成功：候選 `dist/candidate_f2fba4c735ac_844ab7ab/baldr/baldr.exe`，53,681,752 bytes，SHA256 `15bca562d6be9ff16ca447044f1a2afef6635844748857eb74fd2a55fcea9205`。原來源archive `output/packaging/build_f2fba4c735ac_844ab7ab/source.zip`，SHA256 `70f7d5a4216dcb0f5c679b00307c126e544806f77c2af527bf11eca377c5928a`。中央已獨立讀回兩個SHA，並核同版收據的source commit及status。候選未簽章，BUILD_INFO仍為built_not_validated，不改寫發布狀態。
+
+既有同版隔離比較exit0：`output/qa/baldr_same_version_f2fba4c735ac_b5fcbc94/same_version_receipt.json` 為 `passed_isolated_fixture`。其範圍是既有launch／journey／model／H20合成呈現及直接Qt入口，不包含新價格研究專項旅程。H20是presentation-only fixture，不是原2382保存來源或速度驗收。
+
+資料、輸出、研究與Watchlist均在本次新合成case內；測試回報provider網路未允許、未使用正式市場DB。此次launcher額外清除兩個可能繼承外部路徑的 `TECHNICAL_UNIVERSE_READ_ROOT`／`TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT`，其他原runner環境與契約不變。沒有啟動正式排程、真人私有來源或改寫原資料。
+
+後續須完成真Main與不同PID的257跨段價格來源旅程，再補同版EXE專項對照；目前不交付新的真人啟動helper，也不能將基礎同版比較改稱F07完整Native通過。現有四類1,000檔暖互動效能未達標仍有效。完整P00–P14／M1–M3及F01–F23沿原計畫推進。

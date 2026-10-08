@@ -50,3 +50,15 @@ F17 新查詢純層中央 **24 passed / 0.69 秒，exit 0**。驗證 canonical c
 中央四個 H20 stage2a 產品 source 使用 `mypy --explicit-package-bases` 結果 **Success: no issues found in 4 source files，exit 0**。UI 的實際入口確認為 `scripts/scheduled/personal_h20_daily_hook.py`：cohort 與 selected reader 目前只有 `PersonalH20ReadSession` 的分組驗證，尚未建立 `PersonalH20SQLiteReadOperation`。因此必須把私有 copy resolver 接入 ports，並在既有 reference/capture/source 終態核驗之後、回傳 UI 結果之前完成 copy/source file-group finish；單接 scheduled daily CLI 不能證明 UI 已保護原始 SQLite。
 
 中央追加 UI call graph 發現收藏重開 `scripts/scheduled/personal_h20_bookmark_read_session.py::_read_ports` 同樣取得未綁 resolver 的來源 verifier，不能漏接；daily hook standalone prediction/manifest reader 及 natural hook／batch ports 也列入漏口盤點。設計必須區分 UI 的安全讀取與既有 scheduled 預設相容路徑，確保 fresh 收藏／新程序重開每次完成自己的私有副本與原來源終態核驗，不以名單或單股測試代替收藏證據。
+
+## F17 列級 guard 補修中央驗證
+
+純排序在接收技術列時，新增 decision_date、feature/previous 日期、cutoff、股票／source scope、snapshot/source-window SHA、rule keys與missing flag一致性檢查；pending／excluded 不得帶 processed technical row。中央對照既有 feature_snapshot_v4 的 lookahead 與 current-only `available_at_unknown` 契約，並獨立重跑 **37 passed / 0.71 秒、exit 0**、兩檔 mypy clean。reader issuer／generation／receipt／artifact exact pins 仍待 full join 層證明，不能由公開 DTO 格式檢查替代。
+
+H20 stage2b 接線設計已經中央讀取，授權受控 UI hook／bookmark／Main 接線；代理先逐檔 dirty/preimage，保存 stage2a transport 差異，不重置其他 owner 檔。natural outcome batch 的逐列 publisher 終態語意仍是後續獨立接線項目，不能由 UI wrapper 通過推論 scheduled 全部安全。
+
+## P01 UI 接線中的中央審核修正
+
+中央讀取尚在實作的 view diff，發現 `load_selected` 的「嚴格核驗來源」傳入先前 `_read_session`；相同 catalog pins 會重用舊索引，不能證明明示重新載入當下來源未變。已要求 owner 將 load/reload 改為 fresh strict session，保留篩選、暖翻頁、同操作下鑽／返回的固定版本 cache。需新增非當頁 child 或 receipt 變動後重新 load 的拒絕反例；失敗時保留舊畫面，但不得發布新成功。此 WIP 尚未凍結或中央驗收。
+
+P01 UI WIP 第二項中央修正：`_apply_query_result` 遇到成功的 empty selection（`page=None`）原先仍保留舊股票頁與cache，會讓新條件零結果和失敗混淆。已要求 owner 用 reader-issued query／selection呈現0列與新條件，清空表格、停用當前列下鑽／收藏，但保留來源session供修改條件重查；不得偽造v4Page。讀取失敗才保留舊可見state。要求真fixture零符合及恢復查詢反例；尚未宣稱補修通過。

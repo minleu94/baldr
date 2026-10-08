@@ -2722,6 +2722,14 @@ class RecommendationView(QWidget):
             if view is not None:
                 view.on_first_open()
 
+    def ensure_result_widget_visible(self, widget: QWidget) -> bool:
+        """讓結果頁內指定狀態元件進入外層捲動區的可視範圍。"""
+
+        if not isinstance(widget, QWidget) or not self.result_source_tabs.isAncestorOf(widget):
+            return False
+        self.result_scroll.ensureWidgetVisible(widget, 0, 0)
+        return True
+
     def research_snapshot_stock_codes(self) -> tuple[str, ...]:
         """讓主程式的個股下一檔沿用目前已核驗研究 cohort。"""
 

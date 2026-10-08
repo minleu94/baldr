@@ -770,3 +770,8 @@ P10 來源資料日呈現補件已存 dev `3a72654e`：大盤頁缺值／非正�
 上述QA補件中央短測4項通過後，session53945完整重跑9 passed／301.60秒；attempt_4ca9a28eed保留原來源、query、page5、選股1250及跨頁1000／1250比較，來源與收藏bytes前後一致，network為0。P04兩頁分頁模型與此合成來源版新程序閉環有限接受；standalone Native/exe、正常全市場與真人資格仍待。最後Workbench85、validator25／0／4、full-roots mypy902及compile／diff-check通過，詳中央QA與Manual來源版補充。
 
 真人授權的1,000檔隔離產製 attempt `C:/t/p01_b3mrz9_8` 已有完整產製器收據：四段完成、processed 1000、pending 0、included 1000、excluded 1。控制器在收尾讀取不存在的 `receipt.counts` 欄位失敗，整體封套仍為 failed，不能等同完整驗證通過。原失敗及產物保留；接續以獨立唯讀 public `read_exact` 核驗現有封存，另存證據，不覆寫原結果或重跑產製。正式資料與正式排程未納入此測試範圍。
+
+中央獨立補驗session82282已terminal0／verified：public exact reader核對同一完整四段，來源、合成DB、封存tree與原封套前後身分一致；補驗SQL／網路／子程序／被拒寫入皆0。原產製控制器與前兩次補驗失敗保持原判定，沒有重跑producer。詳[1,000檔產物讀回QA](../../06_qa/BALDR_SYNTHETIC_UNIVERSE_1000_READBACK_20261008.md)。只授固定Git來源合成產物與獨立讀回，不授原controller整體成功、正式N／PIT／效能或exe資格；冷5暖30、正常資料與真人仍待。
+
+
+2026-10-08 H20 等待補件中央驗證：真 Main／TaskWorker／保存來源旅程合併 12 項通過，Workbench 85 項、validator 25 項與 mypy 902 檔通過。首次等待提示可見、取消直到原生收尾才解鎖、未知列保留並停用研究；詳見 `docs/06_qa/H20_VISIBLE_LOADING_SINGLEFLIGHT_20261008.md`。這是來源版驗證，固定候選與真人驗收仍待，不宣稱讀取加速或完整產品補完。

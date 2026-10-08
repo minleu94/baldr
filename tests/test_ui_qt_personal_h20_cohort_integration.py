@@ -1,186 +1,415 @@
-"""中央產品 mount、背景generation與exact下鑽返回；不啟真模型或資料。"""
-from dataclasses import replace
-from types import SimpleNamespace, MethodType
+"""真 MainWindow 的 H20 名單、下鑽、取消與精確返回整合測試。
 
-from PySide6.QtWidgets import QTabWidget, QWidget
+所有來源均由隔離合成 fixture 建立，沿產品 public reader 與 typed sealed view；
+不以 tuple/object 假造核驗結果，也不讀正式資料或啟動模型。
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import threading
+from typing import Any
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6")
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QWidget
+
 from app_module.recommendation.personal_h20_research_cohort import (
-    PersonalH20ResearchCohort, PersonalH20ResearchRow, PersonalH20ResearchSelection,
+    PersonalH20ResearchSelection,
 )
-from ui_qt.main import MainWindow
-from tests.test_ui_qt_stock_research_report import _app
+from app_module.recommendation.personal_h20_verified_cohort_view import (
+    PersonalH20VerifiedCohortView,
+)
+from tests.test_ui_qt_personal_h20_mainwindow_saved_journey import (
+    _close_mainwindow,
+    _double_click_selected_h20_row,
+    _load_h20_list,
+    _prepare_saved_h20_mainwindow,
+    _wait_for,
+)
 
 
-class Signal:
-    def __init__(self): self.callbacks = []
-    def connect(self, callback): self.callbacks.append(callback)
-    def emit(self, *args):
-        for callback in self.callbacks: callback(*args)
+def _selected_h20_selection(widget: Any) -> PersonalH20ResearchSelection:
+    row_index = widget.table.currentRow()
+    if row_index < 0:
+        selected = widget.table.selectedItems()
+        row_index = selected[0].row() if selected else 0
+    item = widget.table.item(row_index, 0)
+    assert item is not None
+    selection = item.data(Qt.ItemDataRole.UserRole)
+    assert type(selection) is PersonalH20ResearchSelection
+    return selection
 
 
-class Worker:
-    def __init__(self, fn, *args, **kwargs):
-        self.fn, self.args, self.kwargs = fn, args, kwargs
-        self.finished, self.error, self.native_thread_finished = Signal(), Signal(), Signal()
-        self.progress = Signal()
-    def start(self): pass
-    def isRunning(self): return True
-    def cancel(self, **kwargs): pass
-    def deleteLater(self): pass
+def _wait_for_cohort_worker(app: Any, window: Any) -> None:
+    _wait_for(
+        app,
+        lambda: getattr(window, "_personal_h20_cohort_worker", None) is None,
+        timeout_seconds=90.0,
+    )
 
 
-class WindowStub(SimpleNamespace):
-    """Qt 對 bound method 接收者保存 weak reference。"""
+def test_main_mount_exact_drilldown_and_return_reuses_verified_view(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mode: dict[str, Any] = {}
+    app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch, source_mode=mode
+    )
+    source_path = Path(saved["snapshot_database"])
+    source_bytes = source_path.read_bytes()
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        assert type(window._personal_h20_cohort_view) is PersonalH20VerifiedCohortView
+        assert mode.get("_cohort_operation_count") == 1
+        assert widget.summary_label.text().startswith("已保存 H20 研究母體：1 列")
+
+        signals = _double_click_selected_h20_row(app, window, widget)
+        workspace = window.stock_research_workspace
+        assert workspace is not None
+        report_view = workspace.report_view
+        _wait_for(
+            app,
+            lambda: getattr(report_view.context, "source_kind", None)
+            == "personal_h20_saved_cohort"
+            and getattr(workspace.personal_h20_saved_evidence, "status", None)
+            == "available"
+            and getattr(window, "_personal_h20_worker", None) is None
+            and not workspace.personal_h20_saved_busy,
+        )
+        evidence = workspace.personal_h20_saved_evidence
+        assert evidence is not None
+        assert signals["research_requested"]
+        assert evidence.stock_code == "2382"
+        assert evidence.gross_return_bp == 1234
+        assert "+12.34%" in workspace.personal_h20_saved_summary.text()
+        assert mode.get("_cohort_operation_count") == 1
+        assert mode.get("_product_operation_count", 0) == 0
+
+        selection = window._personal_h20_research_origin[1]
+        report_view.return_button.click()
+        _wait_for(
+            app,
+            lambda: getattr(window, "_personal_h20_return_worker", None) is None
+            and window.recommendation_view.result_source_tabs.currentWidget()
+            is window.personal_h20_research_panel
+            and widget.isEnabled()
+            and bool(widget.table.selectedItems()),
+        )
+        row_index = widget.table.currentRow()
+        item = widget.table.item(row_index, 0)
+        assert item is not None and item.text() == "2382"
+        assert item.data(Qt.ItemDataRole.UserRole) == selection
+        assert mode.get("_cohort_operation_count") == 1
+        assert mode.get("_warm_projection_count") == 2
+        assert network_attempts == []
+    finally:
+        _close_mainwindow(app, window)
+    assert source_path.read_bytes() == source_bytes
 
 
-def setup_window(tmp_path, monkeypatch):
-    import ui_qt.workers.task_worker as workers
-    monkeypatch.setattr(workers, "TaskWorker", Worker)
-    app = _app()
-    recommendation = QWidget()
-    recommendation.result_source_tabs = QTabWidget(recommendation)
-    messages, opened, workspaces = [], [], []
-    window = WindowStub(config=SimpleNamespace(data_root=tmp_path),
-        recommendation_view=recommendation, _shutdown_close_requested=False,
-        statusBar=lambda: SimpleNamespace(showMessage=messages.append),
-        _coerce_stock_research_context=lambda value: value,
-        _open_stock_research_context=opened.append, _select_main_workspace=workspaces.append)
-    for name in ("_personal_h20_configuration", "_refresh_personal_h20_cohort", "_request_personal_h20_research", "_save_personal_h20_research"):
-        setattr(window, name, MethodType(getattr(MainWindow, name), window))
-    MainWindow._mount_personal_h20_research(window, recommendation)
-    row = PersonalH20ResearchRow("2330", "available", "", 123, "2026-10-07", "2026-10-06", "2026-10-05",
-        "sample", "prediction", str(tmp_path / "capture.json"), "sha256:" + "a" * 64)
-    cohort = PersonalH20ResearchCohort(str(tmp_path / "manifest.json"), "sha256:" + "b" * 64,
-        "candidate", "sha256:" + "c" * 64, "cycle", row.decision_date, (row.symbol,), (row,))
-    selection = PersonalH20ResearchSelection(cohort.manifest_sha256, cohort.candidate_id, cohort.contract_hash,
-        cohort.cycle_id, row.symbol, row.sample_id, row.prediction_id, row.capture_sha256)
-    return app, window, recommendation, cohort, selection, opened, messages
+def test_stale_configuration_and_missing_capture_never_publish_old_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    mode: dict[str, Any] = {"block_cohort_operation_before": 2}
+    app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path,
+        monkeypatch,
+        source_mode=mode,
+        source_entered=entered,
+        source_release=release,
+    )
+    snapshot_path = Path(saved["snapshot_database"])
+    snapshot_before = snapshot_path.read_bytes()
+    capture_path = Path(saved["saved_capture"]["path"])
+    capture_bytes = capture_path.read_bytes()
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        original_view = window._personal_h20_cohort_view
+        original_cohort = widget._cohort
+        assert type(original_view) is PersonalH20VerifiedCohortView
+
+        window._personal_h20_refresh_button.click()
+        _wait_for(app, entered.is_set)
+        worker = window._personal_h20_cohort_worker
+        assert worker is not None and worker.isRunning()
+        monkeypatch.setenv(
+            "PERSONAL_H20_ACTIVATION_CONFIG", str(tmp_path / "changed-activation.json")
+        )
+        release.set()
+        _wait_for_cohort_worker(app, window)
+        assert window._personal_h20_cohort_view is original_view
+        assert widget._cohort is original_cohort
+        assert "過期" in window._personal_h20_loading_label.text()
+        assert mode.get("_cohort_operation_count") == 2
+
+        # 恢復設定後先用當次已核 view 正常下鑽，再刪除合成 capture，明確要求
+        # 完整重核並嘗試恢復原選取；reader 應保留未知列且拒絕研究選取。
+        monkeypatch.setenv(
+            "PERSONAL_H20_ACTIVATION_CONFIG", str(saved["activation"].config_path)
+        )
+        signals = _double_click_selected_h20_row(app, window, widget)
+        assert signals["research_requested"]
+        workspace = window.stock_research_workspace
+        assert workspace is not None
+        _wait_for(
+            app,
+            lambda: getattr(workspace.personal_h20_saved_evidence, "status", None)
+            == "available"
+            and getattr(window, "_personal_h20_worker", None) is None
+            and not workspace.personal_h20_saved_busy,
+        )
+        selection = window._personal_h20_research_origin[1]
+        capture_path.unlink()
+        window._refresh_personal_h20_cohort(selection, open_research=True)
+        _wait_for(
+            app,
+            lambda: getattr(window, "_personal_h20_cohort_worker", None) is None
+            and getattr(workspace.personal_h20_saved_evidence, "status", None)
+            == "unavailable"
+            and not workspace.personal_h20_saved_busy,
+        )
+        evidence = workspace.personal_h20_saved_evidence
+        assert evidence is not None and evidence.reason
+        assert widget._cohort is not None and widget._cohort.rows[0].status == "unknown"
+        assert "+12.34%" not in workspace.personal_h20_saved_summary.text()
+        assert mode.get("_cohort_operation_count") == 3
+        assert network_attempts == []
+    finally:
+        release.set()
+        if capture_path.parent.is_dir() and not capture_path.exists():
+            capture_path.write_bytes(capture_bytes)
+        _close_mainwindow(app, window)
+    assert snapshot_path.read_bytes() == snapshot_before
 
 
-def test_main_mount_verified_cohort_exact_drilldown_and_return(tmp_path, monkeypatch):
-    app, window, panel, cohort, selection, opened, messages = setup_window(tmp_path, monkeypatch)
-    assert panel.result_source_tabs.tabText(0) == "個人模型選股研究（H20毛報酬）"
-    window._refresh_personal_h20_cohort()
-    reference = object()
-    window._personal_h20_cohort_worker.finished.emit((reference, cohort))
-    original_worker = window._personal_h20_cohort_worker
-    original_generation = window._personal_h20_cohort_generation
-    window._request_personal_h20_research(selection)
-    assert window._personal_h20_cohort_worker is original_worker
-    assert window._personal_h20_cohort_generation == original_generation
-    assert len(opened) == 1
-    context = opened[0]
-    assert context.result_id == "" and context.source_id == "prediction"
-    assert context.source_snapshot_hash == cohort.manifest_sha256
-    assert (context.decision_date, context.data_date) == ("2026-10-07", "2026-10-06")
-    assert context.ml_scope_mode == ""
-    MainWindow._return_to_research_source(window, context)
-    window._personal_h20_cohort_worker.finished.emit((reference, cohort))
-    assert window.personal_h20_research_widget.restore_selection(selection)
-    assert not messages
-    panel.close()
-    app.processEvents()
+def test_cancel_waits_for_native_cohort_reader_and_allows_retry_after_finish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    mode: dict[str, Any] = {"block_cohort_operation_before": 2}
+    app, window, _saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path,
+        monkeypatch,
+        source_mode=mode,
+        source_entered=entered,
+        source_release=release,
+    )
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        original_view = window._personal_h20_cohort_view
+        selection = _selected_h20_selection(widget)
+
+        window._personal_h20_refresh_button.click()
+        _wait_for(app, entered.is_set)
+        worker = window._personal_h20_cohort_worker
+        assert worker is not None and worker.isRunning()
+        assert widget.isEnabled() is False
+        assert window._personal_h20_refresh_button.isEnabled() is False
+
+        # busy期間的重複 refresh 和下鑽請求都不可建立第二個 operation。
+        window._refresh_personal_h20_cohort()
+        window._request_personal_h20_research(selection)
+        assert window._personal_h20_cohort_worker is worker
+        assert mode.get("_cohort_operation_count") == 2
+        assert window._personal_h20_research_origin is None
+
+        window._personal_h20_cancel_read_button.click()
+        assert worker.is_cancel_requested()
+        assert worker.isRunning()
+        assert widget.isEnabled() is False
+        assert window._personal_h20_refresh_button.isEnabled() is False
+        assert "已送出取消" in window._personal_h20_loading_label.text()
+        assert window._personal_h20_cohort_view is original_view
+
+        release.set()
+        _wait_for_cohort_worker(app, window)
+        assert window._personal_h20_cohort_view is original_view
+        assert widget._cohort is original_view.cohort
+        assert "名單讀取已取消" in window._personal_h20_loading_label.text()
+        assert widget.isEnabled() and window._personal_h20_refresh_button.isEnabled()
+
+        window._personal_h20_refresh_button.click()
+        _wait_for(
+            app,
+            lambda: getattr(window, "_personal_h20_cohort_worker", None) is None
+            and window._personal_h20_cohort_view is not original_view,
+        )
+        assert type(window._personal_h20_cohort_view) is PersonalH20VerifiedCohortView
+        assert mode.get("_cohort_operation_count") == 3
+        assert network_attempts == []
+    finally:
+        release.set()
+        _close_mainwindow(app, window)
 
 
-def test_main_discards_stale_changed_config_closing_and_failed_selection(tmp_path, monkeypatch):
-    app, window, panel, cohort, selection, opened, messages = setup_window(tmp_path, monkeypatch)
-    window._refresh_personal_h20_cohort()
-    first = window._personal_h20_cohort_worker
-    window._refresh_personal_h20_cohort()
-    first.finished.emit((object(), cohort))
-    assert window.personal_h20_research_widget._cohort is None
-    current = window._personal_h20_cohort_worker
-    monkeypatch.setenv("PERSONAL_H20_ACTIVATION_CONFIG", str(tmp_path / "other.json"))
-    current.finished.emit((object(), cohort))
-    assert window.personal_h20_research_widget._cohort is None
-    monkeypatch.delenv("PERSONAL_H20_ACTIVATION_CONFIG")
-    window._refresh_personal_h20_cohort(selection, open_research=True)
-    window._personal_h20_cohort_worker.finished.emit((object(), replace(cohort, cycle_id="different")))
-    assert not opened and messages
-    window._refresh_personal_h20_cohort()
-    window._shutdown_close_requested = True
-    window._personal_h20_cohort_worker.finished.emit((object(), cohort))
-    assert window.personal_h20_research_widget._cohort is None
-    panel.close()
-    app.processEvents()
+def test_close_during_cohort_read_discards_result_until_worker_finishes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    mode: dict[str, Any] = {"block_cohort_operation_before": 2}
+    app, window, _saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path,
+        monkeypatch,
+        source_mode=mode,
+        source_entered=entered,
+        source_release=release,
+    )
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        original_view = window._personal_h20_cohort_view
+
+        window._personal_h20_refresh_button.click()
+        _wait_for(app, entered.is_set)
+        worker = window._personal_h20_cohort_worker
+        assert worker is not None and worker.isRunning()
+        window.close()
+        _wait_for(app, worker.is_cancel_requested)
+        release.set()
+        _wait_for(app, lambda: not window.isVisible())
+        _wait_for(app, lambda: getattr(window, "_personal_h20_cohort_worker", None) is None)
+        assert window._personal_h20_cohort_view is original_view
+        assert widget._cohort is original_view.cohort
+        assert mode.get("_cohort_operation_count") == 2
+        assert network_attempts == []
+    finally:
+        release.set()
+        _close_mainwindow(app, window)
 
 
-def test_loading_status_and_cancel_preserve_unpublished_cohort(tmp_path, monkeypatch):
-    app, window, panel, cohort, selection, opened, messages = setup_window(tmp_path, monkeypatch)
-    window._refresh_personal_h20_cohort()
-    worker = window._personal_h20_cohort_worker
-    assert window._personal_h20_loading_timer.isActive()
-    assert "尚未完成" in window._personal_h20_loading_label.text()
-    window._personal_h20_read_started_at -= 8
-    window._personal_h20_loading_timer.timeout.emit()
-    assert "8 秒" in window._personal_h20_loading_label.text()
-    worker.progress.emit("來源組 1：重核共同來源", 0)
-    assert "來源組 1" in window._personal_h20_loading_label.text()
-    window._personal_h20_cancel_read_button.click()
-    assert not window._personal_h20_loading_timer.isActive()
-    assert "已要求取消" in window._personal_h20_loading_label.text()
-    worker.progress.emit("晚到來源訊息", 0)
-    assert "晚到" not in window._personal_h20_loading_label.text()
-    worker.finished.emit((object(), cohort))
-    assert window.personal_h20_research_widget._cohort is None
-    assert not opened
-    window._refresh_personal_h20_cohort()
-    window._personal_h20_cohort_worker.finished.emit((object(), cohort))
-    assert "已核驗" in window._personal_h20_loading_label.text()
-    assert not window._personal_h20_loading_timer.isActive()
-    assert window.personal_h20_research_widget._cohort == cohort
-    panel.close()
-    app.processEvents()
+def test_return_from_other_result_tab_restores_exact_h20_selection_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mode: dict[str, Any] = {}
+    app, window, _saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch, source_mode=mode
+    )
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        _double_click_selected_h20_row(app, window, widget)
+        workspace = window.stock_research_workspace
+        assert workspace is not None
+        report_view = workspace.report_view
+        _wait_for(
+            app,
+            lambda: getattr(report_view.context, "source_kind", None)
+            == "personal_h20_saved_cohort"
+            and getattr(window, "_personal_h20_worker", None) is None
+            and not workspace.personal_h20_saved_busy,
+        )
+        selection = window._personal_h20_research_origin[1]
+
+        tabs = window.recommendation_view.result_source_tabs
+        other_result = QWidget(window.recommendation_view)
+        other_index = tabs.addTab(other_result, "其他研究結果")
+        tabs.setCurrentIndex(other_index)
+        app.processEvents()
+        assert tabs.currentWidget() is other_result
+        assert mode.get("_cohort_operation_count") == 1
+
+        report_view.return_button.click()
+        _wait_for(
+            app,
+            lambda: getattr(window, "_personal_h20_return_worker", None) is None
+            and widget.isEnabled()
+            and bool(widget.table.selectedItems()),
+        )
+        assert tabs.currentWidget() is window.personal_h20_research_panel
+        item = widget.table.item(widget.table.currentRow(), 0)
+        assert item is not None and item.text() == "2382"
+        assert item.data(Qt.ItemDataRole.UserRole) == selection
+        assert mode.get("_cohort_operation_count") == 1
+        assert mode.get("_warm_projection_count") == 2
+        assert network_attempts == []
+    finally:
+        _close_mainwindow(app, window)
 
 
-def test_return_from_other_result_tab_starts_one_exact_cohort_read(tmp_path, monkeypatch):
-    """返回的真 Qt tab signal 不應另排未帶原 selection 的完整重讀。"""
-    app, window, panel, cohort, selection, opened, messages = setup_window(tmp_path, monkeypatch)
-    window._refresh_personal_h20_cohort()
-    reference = object()
-    window._personal_h20_cohort_worker.finished.emit((reference, cohort))
-    window._request_personal_h20_research(selection)
-    context = opened[0]
-    other_panel = QWidget()
-    panel.result_source_tabs.addTab(other_panel, "推薦結果")
-    panel.result_source_tabs.setCurrentWidget(other_panel)
-    generation_before = window._personal_h20_cohort_generation
+def test_busy_unknown_missing_reference_and_shutdown_keep_research_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mode: dict[str, Any] = {}
+    app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch, source_mode=mode
+    )
+    capture_path = Path(saved["saved_capture"]["path"])
+    capture_bytes = capture_path.read_bytes()
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        valid_selection = _selected_h20_selection(widget)
 
-    MainWindow._return_to_research_source(window, context)
+        widget.setEnabled(False)
+        window._request_personal_h20_research(valid_selection)
+        assert window._personal_h20_research_origin is None
+        widget.setEnabled(True)
 
-    assert panel.result_source_tabs.currentWidget() is window.personal_h20_research_panel
-    assert window._personal_h20_cohort_generation == generation_before + 1
-    window._personal_h20_cohort_worker.finished.emit((reference, cohort))
-    assert window.personal_h20_research_widget.restore_selection(selection)
-    assert window.personal_h20_research_widget._cohort == cohort
-    assert not messages
-    # 一般使用者切換回H20仍保留原自動核驗入口。
-    panel.result_source_tabs.setCurrentWidget(other_panel)
-    before_user_switch = window._personal_h20_cohort_generation
-    panel.result_source_tabs.setCurrentWidget(window.personal_h20_research_panel)
-    assert window._personal_h20_cohort_generation == before_user_switch + 1
-    panel.close()
-    app.processEvents()
+        reference = window._personal_h20_cohort_reference
+        window._personal_h20_cohort_reference = None
+        window._request_personal_h20_research(valid_selection)
+        assert window._personal_h20_research_origin is None
+        window._personal_h20_cohort_reference = reference
 
+        window._shutdown_close_requested = True
+        window._request_personal_h20_research(valid_selection)
+        assert window._personal_h20_research_origin is None
+        window._shutdown_close_requested = False
 
-def test_direct_drill_refuses_busy_unknown_missing_reference_and_shutdown(tmp_path, monkeypatch):
-    app, window, panel, cohort, selection, opened, messages = setup_window(tmp_path, monkeypatch)
-    window._refresh_personal_h20_cohort()
-    window._personal_h20_cohort_worker.finished.emit((object(), cohort))
-    widget = window.personal_h20_research_widget
-    widget.setEnabled(False)
-    window._request_personal_h20_research(selection)
-    assert not opened
-    widget.setEnabled(True)
-    window._personal_h20_cohort_reference = None
-    window._request_personal_h20_research(selection)
-    assert not opened
-    window._personal_h20_cohort_reference = object()
-    widget.set_cohort(replace(cohort, rows=(replace(cohort.rows[0], status="unknown", gross_return_bp=None),)))
-    window._request_personal_h20_research(selection)
-    assert not opened
-    widget.set_cohort(cohort)
-    window._shutdown_close_requested = True
-    window._request_personal_h20_research(selection)
-    assert not opened
-    panel.close()
-    app.processEvents()
+        # 刪除隔離 fixture 的 exact capture 後重新走完整 public reader；未知列
+        # 仍保留在分母與表格，但選取研究與 bookmark 操作均停用。
+        capture_path.unlink()
+        original_view = window._personal_h20_cohort_view
+        window._personal_h20_refresh_button.click()
+        _wait_for(
+            app,
+            lambda: getattr(window, "_personal_h20_cohort_worker", None) is None
+            and getattr(window, "_personal_h20_cohort_view", None)
+            is not None
+            and window._personal_h20_cohort_view is not original_view,
+        )
+        cohort = widget._cohort
+        assert cohort is not None and len(cohort.rows) == 1
+        assert cohort.rows[0].status == "unknown"
+        assert cohort.rows[0].reason
+        assert "可研究 0 列" in widget.summary_label.text()
+        assert "未知 1 列" in widget.summary_label.text()
+        assert "可研究 0 列、未知 1 列" in window._personal_h20_loading_label.text()
+
+        widget.table.selectRow(0)
+        app.processEvents()
+        unknown_selection = _selected_h20_selection(widget)
+        assert widget.research_button.isEnabled() is False
+        assert widget.bookmark_button.isEnabled() is False
+        window._request_personal_h20_research(unknown_selection)
+        assert window._personal_h20_research_origin is None
+        assert mode.get("_cohort_operation_count") == 2
+        assert network_attempts == []
+    finally:
+        if capture_path.parent.is_dir() and not capture_path.exists():
+            capture_path.write_bytes(capture_bytes)
+        _close_mainwindow(app, window)

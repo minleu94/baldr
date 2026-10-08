@@ -20,7 +20,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -475,6 +475,131 @@ def test_actual_mainwindow_h20_double_click_summary_return_recheck_and_source_dr
         if mutated_source_path.exists():
             mutated_source_path.write_bytes(original_source_bytes)
         _close_mainwindow(app, window)
+
+
+def test_actual_mainwindow_h20_loading_is_visible_singleflight_and_reports_exact_counts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    mode: dict[str, Any] = {"block_cohort_operation_before": 1}
+    app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path,
+        monkeypatch,
+        source_mode=mode,
+        source_entered=entered,
+        source_release=release,
+    )
+    source_bytes = Path(saved["snapshot_database"]).read_bytes()
+    try:
+        window.show()
+        app.processEvents()
+        window.left_navigation.button_for_key("recommendation").click()
+        app.processEvents()
+
+        recommendation = window.recommendation_view
+        tabs = recommendation.result_source_tabs
+        panel = window.personal_h20_research_panel
+        widget = window.personal_h20_research_widget
+        scroll = recommendation.result_scroll
+        widget.setMinimumHeight(max(widget.minimumHeight(), scroll.viewport().height() * 2))
+        tabs.setCurrentIndex(0)
+        app.processEvents()
+        assert scroll.verticalScrollBar().maximum() > 0
+        scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
+        app.processEvents()
+        assert scroll.verticalScrollBar().value() == scroll.verticalScrollBar().maximum()
+        tab_index = tabs.indexOf(panel)
+        assert tab_index >= 0
+        QTest.mouseClick(
+            tabs.tabBar(),
+            Qt.MouseButton.LeftButton,
+            pos=tabs.tabBar().tabRect(tab_index).center(),
+        )
+
+        _wait_for(app, entered.is_set)
+        worker = getattr(window, "_personal_h20_cohort_worker", None)
+        assert worker is not None and worker.isRunning()
+        assert getattr(window, "_personal_h20_read_phase", "") != "準備原保存名單"
+        assert widget._cohort is None and not widget.isEnabled()
+        assert not window._personal_h20_refresh_button.isEnabled()
+        assert window._personal_h20_cancel_read_button.isEnabled()
+
+        loading_label = window._personal_h20_loading_label
+        assert loading_label.isVisibleTo(window)
+        label_top_left = loading_label.mapTo(scroll.viewport(), QPoint(0, 0))
+        assert scroll.viewport().rect().intersects(
+            loading_label.rect().translated(label_top_left)
+        )
+        assert "目前階段：" in loading_label.text()
+        assert "尚未完成" in loading_label.text()
+
+        # 真實重新切回 H20 會再次觸發 tab handler；它必須沿用唯一進行中的讀取。
+        scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
+        assert scroll.verticalScrollBar().maximum() > 0
+        tabs.setCurrentIndex(0)
+        app.processEvents()
+        tabs.setCurrentWidget(panel)
+        app.processEvents()
+        assert getattr(window, "_personal_h20_cohort_worker", None) is worker
+        assert mode.get("_cohort_operation_count") == 1
+        assert scroll.viewport().rect().intersects(
+            loading_label.rect().translated(loading_label.mapTo(scroll.viewport(), QPoint(0, 0)))
+        )
+        assert not window._personal_h20_refresh_button.isEnabled()
+
+        # 取消只送出合作式請求；在 native thread 終結前不可開始第二次讀取。
+        window._personal_h20_cancel_read_button.click()
+        assert worker.is_cancel_requested()
+        assert not widget.isEnabled()
+        assert not window._personal_h20_refresh_button.isEnabled()
+        assert "已送出取消" in loading_label.text()
+        assert worker.isRunning()
+        release.set()
+        _wait_for(
+            app,
+            lambda: getattr(window, "_personal_h20_cohort_worker", None) is None,
+            timeout_seconds=45.0,
+        )
+        assert widget._cohort is None
+        assert "名單讀取已取消" in loading_label.text()
+        assert widget.isEnabled() and window._personal_h20_refresh_button.isEnabled()
+        assert mode.get("_cohort_operation_count") == 1
+
+        # 取消收尾後重新啟動一次完整公開讀取，驗證總數與狀態分列後才可下鑽。
+        entered.clear()
+        release.set()
+        window._personal_h20_refresh_button.click()
+        _wait_for(
+            app,
+            lambda: getattr(window, "_personal_h20_cohort_worker", None) is None
+            and widget._cohort is not None,
+        )
+        assert mode.get("_cohort_operation_count") == 2
+        assert "1 列；可研究 1 列、未知 0 列" in loading_label.text()
+        assert "可研究 1 列｜未知 0 列" in widget.summary_label.text()
+        assert widget.research_button.isEnabled() is False
+        assert widget.table.rowCount() == 1
+
+        signals = _double_click_selected_h20_row(app, window, widget)
+        assert signals["research_requested"]
+        workspace = window.stock_research_workspace
+        assert workspace is not None
+        _wait_for(
+            app,
+            lambda: getattr(workspace.personal_h20_saved_evidence, "status", None) == "available"
+            and getattr(window, "_personal_h20_worker", None) is None
+            and not workspace.personal_h20_saved_busy,
+        )
+        assert mode.get("_cohort_operation_count") == 2
+        assert mode.get("_warm_projection_count") == 1
+        assert mode.get("_product_operation_count", 0) == 0
+        assert network_attempts == []
+    finally:
+        release.set()
+        _close_mainwindow(app, window)
+    assert Path(saved["snapshot_database"]).read_bytes() == source_bytes
 
 
 def test_actual_mainwindow_close_cancels_saved_h20_drilldown_without_publish(

@@ -192,3 +192,21 @@ F17 owner另以保存257＋1 synthetic bundle回報完整查詢、fresh-process 
 完整低層合成回歸 **21 passed／1平台skip、0.56秒**；新增真權限拒絕一次即止、真既有目錄32次碰撞上限、碰撞間取消與第二候選成功後保留他人目錄，均核原資料不變。相鄰H20 operation／capacity／read-session **33 passed／2.93秒**，兩檔mypy／compile通過。先前sandbox跑出18 passed／2 failed／2 skipped，兩個失敗是合成檔案／祖先改名受sandbox拒絕；原結果保留，未改測試跳過條件，改在唯一短QA根做同一完整回歸。最終source SHA `ACF14DAAA7B6AC55525C8247DCE39C910156CD18DBC755C6939DE09E51AC7ABB`、test `97FE10F408FB3B281127C6FDD427E8BE63AF002C99CA0DCC3B362BBC49EC3E2E`。
 
 未來函數自查：只改操作目錄建立，不改來源資料、時鐘、金融計算或query資格。QA guard私有根allowlist仍須獨立修正，否則只會更快失敗，不能把本包合成通過當成原4GB／十股／2382旅程完成。固定候選7b的失敗原封保留；新版尚未建置或交付。
+
+接續固定建置已完成：`9bc1cbfb67b2d967b6ddc621cc873493ea3e4d76`，version `2026.10.06+9bc1cbfb67b2`，候選53313675 bytes／SHA `ee69d02860ca0e21a5221fdc62266850c6ba06f5eff5c042878c90cf78c9b46b`，archive SHA `aacbff70626ce3aa786b9fc0cddb7006204a685bdcb38549a5a93079e1be473d`，依賴鎖維持 `b1a3bb4bd03246c025f09bca3658104aff6c676983c878f46d118cec992df743`。handle38522 terminal0。handle48821 terminal0，`output/qa/baldr_same_version_9bc1cbfb67b2_b8470ae3/same_version_receipt.json` 為passed_isolated_fixture；中央另讀回逐值比對，僅排除已明示resource_root／bundle_root、frozen形態及screenshot路徑後兩模式相等。直接Qt script／module入口一致。BUILD_INFO仍為built_not_validated，不改其原建置收據。
+
+這不是原十股Main／新程序／frozen原來源或Native接受；guard合成修正仍施工，尚未啟動新原來源attempt。原exe再次核SHA `ab0c72ef1c98f906e3d7ef14d440490ea4bf238aa53f959597636ddc2b1b263e` 不變，main不變、仍僅dev/main及一worktree。真人啟動檔未交付，舊版不要求重測。
+
+### 9bc 原來源旅程：功能到達、終態保護仍失敗
+
+接續 attempt `20261008T055011Z_26637f6d8e01` 已 terminal exit1，controller 130.953秒、Main child 96.344秒，沒有逾時或仍執行程序。固定9bc archive／build來源，guard selftest及來源準備通過。初始十股均 available，2382為684bp，決策2026-10-07／來源2026-10-06／特徵2026-10-05；真Qt double click啟動單股worker且未另加cohort worker，獨立H20摘要顯示相同值及日期；返回同manifest並選取2382。
+
+trace顯示初始名單操作31.797秒，另計constructor6.391秒；double click至首次H20摘要26.421秒；返回26.469秒。這些單次觀察不能當p95或速度合格。三次操作各複製4,054,339,584 bytes，副本均closed_and_removed；各次原件main／WAL／SHM／journal的開始與完成pins相等，controller原輸入及source逐值前後相等，source_inputs_unchanged／source_archive_unchanged皆true。
+
+最終因原guard記錄mkdir拒絕2次、寫入拒絕3次、網路拒絕1次而回 `canonical_main_readonly_boundary_violation`，尚待查明來源，沒有放寬或忽略計數。原件SQLite連線、source_write_denied、prediction／training皆零。trace曾到shutdown_complete（worker0／window不可見），但失敗分支未回傳成功payload，controller的shutdown_complete為false且其他shutdown欄null；兩者分開保留，不宣稱終態正常關閉Gate已通過。此candidate未交付真人驗收；人回報0f25名單遲現且雙擊2382無法確認成功，舊版不要求重測。
+
+中央接續只讀診斷確認，055011拒絕事件只保留counter；path hashes未序列化、network args丟棄，不能歸因到某個產品目錄或模組。已要求在ignored QA新增有界匿名事件（API／path hash／callsite／boundary class），完整保留原deny與終態gate、原attempt不覆寫；先驗合成guard，不直接重跑原件。
+
+F17 bundle final owner回報39 passed／1 skip、reader10 passed；中央核bundle source `F5BF6B6288987C9B9D4EE90160184D68C3662196FFF02AE4C04512E2C7A7EFE7` 與test `89D3D7F3E51512BCA0BC0E183EB2B4063180C9EDF6AD7FDD704BC3F3A219481C`，獨立完整回歸handle59878已啟動、尚未終態。reader中央另發現execute及page constructor後仍缺最後取消poll，要求決定性最後barrier補驗；四檔尚未中央接受，不混用前版通過數量。
+
+1000＋1 synthetic engine benchmark controller靜態審查發現resolve後才核reparse會遺失輸入alias、SQLite只限case而非exact fixture、metadata commit不能單獨證固定來源，以及現存pyc執行隔離缺口；已要求改正並先做純guard合成selftest。尚未執行producer或benchmark；actual N仍unknown，engine測量不替代Main／exe／Native速度資格。

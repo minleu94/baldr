@@ -14,7 +14,7 @@ import re
 import shutil
 import stat
 import threading
-from typing import Any, Literal, NoReturn, cast
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -50,6 +50,11 @@ from data_module.selection_official_events import (
     CurrentOfficialDisposalObservationV1,
     SelectionOfficialEventError,
 )
+
+if TYPE_CHECKING:
+    from app_module.daily_market_technical_universe_v4_query import (
+        DailyMarketTechnicalUniverseV4ReadSessionBuilder,
+    )
 
 
 DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_SCHEMA_V1 = (
@@ -1282,13 +1287,27 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
         *,
         expected_manifest_sha256: str,
         cancel_callback: Callable[[], bool] | None = None,
+        technical_read_session_builder: DailyMarketTechnicalUniverseV4ReadSessionBuilder | None = None,
     ) -> DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1:
         _validate_cancel_callback(cancel_callback)
         identity = _require_sha256(bundle_identity_sha256, "bundle_identity_invalid")
         expected_manifest = _require_sha256(expected_manifest_sha256, "expected_manifest_sha_invalid")
+        if technical_read_session_builder is not None:
+            from app_module.daily_market_technical_universe_v4_query import (
+                DailyMarketTechnicalUniverseV4ReadSessionBuilder,
+            )
+
+            if type(technical_read_session_builder) is not DailyMarketTechnicalUniverseV4ReadSessionBuilder:
+                _fail("technical_read_session_builder_invalid")
         manifest_path = self.output_root / "manifests" / f"{identity}.json"
         try:
             _check_read_cancel(cancel_callback)
+            if technical_read_session_builder is not None:
+                technical_read_session_builder._bind_to_verified_bundle(
+                    bundle_output_root=self.output_root,
+                    bundle_identity_sha256=identity,
+                    expected_manifest_sha256=expected_manifest,
+                )
             raw = _read_bounded_regular_file(
                 manifest_path,
                 DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_MANIFEST_BYTES,
@@ -1299,7 +1318,12 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
             manifest = _strict_json_object(raw, "manifest_json_invalid")
             _validate_manifest_header(manifest, expected_identity=identity)
             shard_payloads, row_locators = self._read_all_shards(manifest, cancel_callback)
-            verified = self._verify_exact_sources_and_rows(manifest, shard_payloads, cancel_callback)
+            verified = self._verify_exact_sources_and_rows(
+                manifest,
+                shard_payloads,
+                cancel_callback,
+                technical_read_session_builder=technical_read_session_builder,
+            )
             if verified.row_count != manifest["row_count"]:
                 _fail("verified_row_count_mismatch")
             reference = DailyMarketTechnicalOfficialDispositionBundleReferenceV1(
@@ -1331,6 +1355,17 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
                 _seal=_VERIFIED_STATE_SEAL,
             )
             _check_read_cancel(cancel_callback)
+            if technical_read_session_builder is not None:
+                if verified.store_output_root is None or verified.store_state is None:
+                    _fail("technical_read_session_store_state_missing")
+                technical_session = technical_read_session_builder.build_verified_session(
+                    root=verified.store_output_root,
+                    state=verified.store_state,
+                )
+                _check_read_cancel(cancel_callback)
+                technical_read_session_builder._publish_verified_bundle_session(
+                    technical_session
+                )
             return state
         except DailyMarketTechnicalOfficialDispositionBundleError:
             raise
@@ -1432,6 +1467,8 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
         manifest: Mapping[str, object],
         shard_payloads: tuple[bytes, ...],
         cancel_callback: Callable[[], bool] | None,
+        *,
+        technical_read_session_builder: DailyMarketTechnicalUniverseV4ReadSessionBuilder | None = None,
     ) -> "_ExactBundleVerification":
         store_descriptor_value = manifest["technical_store"]
         pins_value = manifest["source_pins"]
@@ -1464,6 +1501,11 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
                 receipt_id,
                 expected_receipt_sha256=receipt_sha,
                 expected_plan_sha256=plan_sha,
+                parent_verified_callback=(
+                    technical_read_session_builder.consume_verified_parent
+                    if technical_read_session_builder is not None
+                    else None
+                ),
                 cancel_callback=lambda: _callback_true(cancel_callback),
             )
             clock = store_state.plan.source_clock
@@ -1579,13 +1621,20 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
         expected_status = "complete" if not computed_coverage["incomplete_reasons"] else "partial"
         if manifest["source_coverage_status"] != expected_status:
             _fail("source_coverage_status_mismatch")
-        return _ExactBundleVerification(verified_count, store_state.receipt.status)
+        return _ExactBundleVerification(
+            verified_count,
+            store_state.receipt.status,
+            store_reader.output_root,
+            store_state,
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class _ExactBundleVerification:
     row_count: int
     technical_receipt_status: str
+    store_output_root: Path | None = None
+    store_state: DailyMarketTechnicalUniverseV4VerifiedState | None = None
 
 
 def _store_descriptor(

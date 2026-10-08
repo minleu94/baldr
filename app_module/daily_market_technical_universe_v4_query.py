@@ -2570,6 +2570,235 @@ def _read_session_child_artifact(
     return artifact
 
 
+class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
+    """收集同一次 StoreReader exact callback，完成後才建立 P01 固定 session。"""
+
+    def __init__(
+        self,
+        *,
+        store_output_root: str | Path,
+        generation_identity_sha256: str,
+        plan_identity_sha256: str,
+        plan_sha256: str,
+        receipt_identity_sha256: str,
+        receipt_sha256: str,
+        cancel_callback: Callable[[], bool] | None = None,
+        max_index_bytes: int = DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES,
+    ) -> None:
+        if (
+            type(max_index_bytes) is not int
+            or max_index_bytes <= 0
+            or max_index_bytes > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES
+        ):
+            _fail("technical_universe_v4_read_session_index_limit_invalid")
+        if _is_cancelled(cancel_callback):
+            _fail("technical_universe_v4_query_cancelled")
+        raw_store_root = _absolute_path_text(
+            str(store_output_root), "technical_universe_v4_read_session_root_invalid"
+        )
+        try:
+            # 採用 StoreReader 的公開 root 正規形式，避免長路徑顯示差異被誤判。
+            canonical_reader = DailyMarketTechnicalUniverseV4StoreReader(raw_store_root)
+        except (DailyMarketTechnicalUniverseV4StoreError, OSError, ValueError) as exc:
+            code = getattr(exc, "code", "technical_universe_v4_read_session_root_invalid")
+            raise DailyMarketTechnicalUniverseV4QueryError(str(code), str(exc)) from exc
+        self.store_output_root = _absolute_path_text(
+            str(canonical_reader.output_root),
+            "technical_universe_v4_read_session_root_invalid",
+        )
+        self.generation_identity_sha256 = _require_sha(
+            generation_identity_sha256, "technical_universe_v4_read_pin_invalid"
+        )
+        self.plan_identity_sha256 = _require_sha(
+            plan_identity_sha256, "technical_universe_v4_read_pin_invalid"
+        )
+        self.plan_sha256 = _require_sha(plan_sha256, "technical_universe_v4_read_pin_invalid")
+        self.receipt_identity_sha256 = _require_sha(
+            receipt_identity_sha256, "technical_universe_v4_read_pin_invalid"
+        )
+        self.receipt_sha256 = _require_sha(
+            receipt_sha256, "technical_universe_v4_read_pin_invalid"
+        )
+        self.cancel_callback = cancel_callback
+        self.max_index_bytes = max_index_bytes
+        self._candidates: list[_ReadIndexCandidate] = []
+        self._artifact_references: list[_ChildArtifactReference] = []
+        self._processed_codes: list[str] = []
+        self._missing_data_codes: list[str] = []
+        self._unknown_rule_codes: list[str] = []
+        self._seen_codes: set[str] = set()
+        self._callback_segments: list[int] = []
+        self._parent_observations: list[_ReadSessionParentObservation] = []
+        self._context_holder: list[_ReadSessionCollectionContext] = []
+        self._index_byte_count = [0]
+        self._bundle_pin: tuple[str, str, str] | None = None
+        self._build_attempted = False
+        self._built_session: DailyMarketTechnicalUniverseV4ReadSession | None = None
+        self._published_session: DailyMarketTechnicalUniverseV4ReadSession | None = None
+
+    @property
+    def verified_session(self) -> DailyMarketTechnicalUniverseV4ReadSession | None:
+        """只有 BundleReader 完整 exact 成功後才可讀取此值。"""
+
+        return self._published_session
+
+    def consume_verified_parent(
+        self,
+        segment_index: int,
+        parent_read: DailyMarketTechnicalParentCaptureV4VerifiedRead,
+    ) -> None:
+        if self._build_attempted or self._is_cancelled():
+            _fail("technical_universe_v4_query_cancelled")
+        if segment_index != len(self._callback_segments):
+            _fail("technical_universe_v4_query_segment_order_invalid")
+        try:
+            context = _read_session_collection_context(parent_read)
+            if self._context_holder and self._context_holder[0] != context:
+                _fail("technical_universe_v4_read_session_cross_segment_source_mismatch")
+            if not self._context_holder:
+                self._context_holder.append(context)
+            _consume_verified_segment(
+                context,
+                segment_index=segment_index,
+                parent_read=parent_read,
+                candidates=None,
+                artifact_references=self._artifact_references,
+                processed_codes=self._processed_codes,
+                missing_data_codes=self._missing_data_codes,
+                unknown_rule_codes=self._unknown_rule_codes,
+                seen_codes=self._seen_codes,
+                stock_filter=set(),
+                cancel_callback=self.cancel_callback,
+                read_index_candidates=self._candidates,
+                index_byte_count=self._index_byte_count,
+                max_index_bytes=self.max_index_bytes,
+            )
+            self._parent_observations.append(
+                _read_session_parent_observation(segment_index, parent_read)
+            )
+        except DailyMarketTechnicalUniverseV4QueryError as exc:
+            raise DailyMarketTechnicalUniverseV4StoreError(exc.code, str(exc)) from exc
+        self._callback_segments.append(segment_index)
+
+    def _bind_to_verified_bundle(
+        self,
+        *,
+        bundle_output_root: str | Path,
+        bundle_identity_sha256: str,
+        expected_manifest_sha256: str,
+    ) -> None:
+        if self._bundle_pin is not None or self._build_attempted:
+            _fail("technical_universe_v4_read_session_builder_already_bound")
+        root = _absolute_path_text(
+            str(bundle_output_root), "technical_universe_v4_read_session_bundle_root_invalid"
+        )
+        identity = _require_sha(
+            bundle_identity_sha256, "technical_universe_v4_read_session_bundle_pin_invalid"
+        )
+        manifest_sha = _require_sha(
+            expected_manifest_sha256, "technical_universe_v4_read_session_bundle_pin_invalid"
+        )
+        self._bundle_pin = (root, identity, manifest_sha)
+
+    def build_verified_session(
+        self,
+        *,
+        root: Path,
+        state: DailyMarketTechnicalUniverseV4VerifiedState,
+    ) -> DailyMarketTechnicalUniverseV4ReadSession:
+        if self._build_attempted:
+            _fail("technical_universe_v4_read_session_builder_already_finished")
+        self._build_attempted = True
+        if self._is_cancelled():
+            _fail("technical_universe_v4_query_cancelled")
+        if not isinstance(root, Path) or str(root) != self.store_output_root:
+            _fail("technical_universe_v4_read_session_root_mismatch")
+        if type(state) is not DailyMarketTechnicalUniverseV4VerifiedState:
+            _fail("technical_universe_v4_read_session_store_state_invalid")
+        if (
+            state.plan.generation_identity_sha256 != self.generation_identity_sha256
+            or state.plan.identity_sha256 != self.plan_identity_sha256
+            or _sha256_bytes(state.plan.to_json().encode("utf-8")) != self.plan_sha256
+            or state.receipt.identity_sha256 != self.receipt_identity_sha256
+            or _sha256_bytes(state.receipt.to_json().encode("utf-8")) != self.receipt_sha256
+        ):
+            _fail("technical_universe_v4_read_session_store_pin_mismatch")
+        _validate_read_session_material(
+            root=root,
+            state=state,
+            callback_segments=self._callback_segments,
+            parent_observations=self._parent_observations,
+            candidates=self._candidates,
+            artifact_references=self._artifact_references,
+            processed_codes=self._processed_codes,
+            missing_data_codes=self._missing_data_codes,
+            unknown_rule_codes=self._unknown_rule_codes,
+        )
+        metadata_bytes = len(_canonical_json_bytes({
+            "counts": state.counts.to_dict(),
+            "missing_data_stock_codes": list(state.missing_data_stock_codes),
+            "unknown_rule_stock_codes": sorted(self._unknown_rule_codes),
+            "parent_references": [
+                {"segment_index": index, **reference.to_dict()}
+                for index, reference in state.segment_parent_references
+            ],
+        }))
+        self._index_byte_count[0] += metadata_bytes
+        if self._index_byte_count[0] > self.max_index_bytes:
+            _fail("technical_universe_v4_read_session_index_limit")
+        if self._is_cancelled():
+            _fail("technical_universe_v4_query_cancelled")
+        source_payload = _read_session_source_payload(
+            root=root,
+            state=state,
+            plan_sha256=self.plan_sha256,
+            receipt_sha256=self.receipt_sha256,
+            artifact_references=self._artifact_references,
+            index_count=len(self._candidates),
+            index_bytes=self._index_byte_count[0],
+        )
+        source_payload["missing_data_stock_codes"] = list(state.missing_data_stock_codes)
+        source_payload["unknown_rule_stock_codes"] = sorted(self._unknown_rule_codes)
+        session_identity = _sha256_json(source_payload)
+        if self._is_cancelled():
+            _fail("technical_universe_v4_query_cancelled")
+        session = DailyMarketTechnicalUniverseV4ReadSession(
+            _root=root,
+            _state=state,
+            _plan_sha256=self.plan_sha256,
+            _receipt_sha256=self.receipt_sha256,
+            _candidates=tuple(self._candidates),
+            _artifact_references=tuple(self._artifact_references),
+            _missing_data_stock_codes=state.missing_data_stock_codes,
+            _unknown_rule_stock_codes=tuple(sorted(self._unknown_rule_codes)),
+            index_bytes=self._index_byte_count[0],
+            read_session_identity_sha256=session_identity,
+            _seal=_READ_SESSION_SEAL,
+        )
+        if self._is_cancelled():
+            _fail("technical_universe_v4_query_cancelled")
+        self._built_session = session
+        return session
+
+    def _publish_verified_bundle_session(
+        self,
+        session: DailyMarketTechnicalUniverseV4ReadSession,
+    ) -> None:
+        if (
+            self._bundle_pin is None
+            or self._built_session is not session
+            or type(session) is not DailyMarketTechnicalUniverseV4ReadSession
+            or self._published_session is not None
+        ):
+            _fail("technical_universe_v4_read_session_bundle_publication_invalid")
+        if self._is_cancelled():
+            _fail("technical_universe_v4_query_cancelled")
+        self._published_session = session
+
+    def _is_cancelled(self) -> bool:
+        return _is_cancelled(self.cancel_callback)
+
+
 def open_daily_market_technical_universe_v4_read_session(
     *,
     store_output_root: str | Path,
@@ -2583,60 +2812,16 @@ def open_daily_market_technical_universe_v4_read_session(
 ) -> DailyMarketTechnicalUniverseV4ReadSession:
     """一次完成原 strict reader 核驗並建立有界、不可變的完整母體索引。"""
 
-    if (
-        type(max_index_bytes) is not int
-        or max_index_bytes <= 0
-        or max_index_bytes > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES
-    ):
-        _fail("technical_universe_v4_read_session_index_limit_invalid")
-    if _is_cancelled(cancel_callback):
-        _fail("technical_universe_v4_query_cancelled")
-    candidates: list[_ReadIndexCandidate] = []
-    artifact_references: list[_ChildArtifactReference] = []
-    processed_codes: list[str] = []
-    missing_data_codes: list[str] = []
-    unknown_rule_codes: list[str] = []
-    seen_codes: set[str] = set()
-    callback_segments: list[int] = []
-    parent_observations: list[_ReadSessionParentObservation] = []
-    context_holder: list[_ReadSessionCollectionContext] = []
-    index_byte_count = [0]
-
-    def consume_verified_segment(
-        segment_index: int,
-        parent_read: DailyMarketTechnicalParentCaptureV4VerifiedRead,
-    ) -> None:
-        if segment_index != len(callback_segments):
-            _fail("technical_universe_v4_query_segment_order_invalid")
-        try:
-            context = _read_session_collection_context(parent_read)
-            if context_holder and context_holder[0] != context:
-                _fail("technical_universe_v4_read_session_cross_segment_source_mismatch")
-            if not context_holder:
-                context_holder.append(context)
-            _consume_verified_segment(
-                context,
-                segment_index=segment_index,
-                parent_read=parent_read,
-                candidates=None,
-                artifact_references=artifact_references,
-                processed_codes=processed_codes,
-                missing_data_codes=missing_data_codes,
-                unknown_rule_codes=unknown_rule_codes,
-                seen_codes=seen_codes,
-                stock_filter=set(),
-                cancel_callback=cancel_callback,
-                read_index_candidates=candidates,
-                index_byte_count=index_byte_count,
-                max_index_bytes=max_index_bytes,
-            )
-            parent_observations.append(
-                _read_session_parent_observation(segment_index, parent_read)
-            )
-        except DailyMarketTechnicalUniverseV4QueryError as exc:
-            raise DailyMarketTechnicalUniverseV4StoreError(exc.code, str(exc)) from exc
-        callback_segments.append(segment_index)
-
+    builder = DailyMarketTechnicalUniverseV4ReadSessionBuilder(
+        store_output_root=store_output_root,
+        generation_identity_sha256=generation_identity_sha256,
+        plan_identity_sha256=plan_identity_sha256,
+        plan_sha256=plan_sha256,
+        receipt_identity_sha256=receipt_identity_sha256,
+        receipt_sha256=receipt_sha256,
+        cancel_callback=cancel_callback,
+        max_index_bytes=max_index_bytes,
+    )
     root, state = _read_exact_store_state(
         store_output_root=store_output_root,
         generation_identity_sha256=generation_identity_sha256,
@@ -2644,60 +2829,7 @@ def open_daily_market_technical_universe_v4_read_session(
         plan_sha256=plan_sha256,
         receipt_identity_sha256=receipt_identity_sha256,
         receipt_sha256=receipt_sha256,
-        parent_verified_callback=consume_verified_segment,
+        parent_verified_callback=builder.consume_verified_parent,
         cancel_callback=cancel_callback,
     )
-    if _is_cancelled(cancel_callback):
-        _fail("technical_universe_v4_query_cancelled")
-    _validate_read_session_material(
-        root=root,
-        state=state,
-        callback_segments=callback_segments,
-        parent_observations=parent_observations,
-        candidates=candidates,
-        artifact_references=artifact_references,
-        processed_codes=processed_codes,
-        missing_data_codes=missing_data_codes,
-        unknown_rule_codes=unknown_rule_codes,
-    )
-    metadata_bytes = len(_canonical_json_bytes({
-        "counts": state.counts.to_dict(),
-        "missing_data_stock_codes": list(state.missing_data_stock_codes),
-        "unknown_rule_stock_codes": sorted(unknown_rule_codes),
-        "parent_references": [
-            {"segment_index": index, **reference.to_dict()}
-            for index, reference in state.segment_parent_references
-        ],
-    }))
-    index_byte_count[0] += metadata_bytes
-    if index_byte_count[0] > max_index_bytes:
-        _fail("technical_universe_v4_read_session_index_limit")
-    if _is_cancelled(cancel_callback):
-        _fail("technical_universe_v4_query_cancelled")
-    source_payload = _read_session_source_payload(
-        root=root,
-        state=state,
-        plan_sha256=plan_sha256,
-        receipt_sha256=receipt_sha256,
-        artifact_references=artifact_references,
-        index_count=len(candidates),
-        index_bytes=index_byte_count[0],
-    )
-    source_payload["missing_data_stock_codes"] = list(state.missing_data_stock_codes)
-    source_payload["unknown_rule_stock_codes"] = sorted(unknown_rule_codes)
-    session_identity = _sha256_json(source_payload)
-    if _is_cancelled(cancel_callback):
-        _fail("technical_universe_v4_query_cancelled")
-    return DailyMarketTechnicalUniverseV4ReadSession(
-        _root=root,
-        _state=state,
-        _plan_sha256=plan_sha256,
-        _receipt_sha256=receipt_sha256,
-        _candidates=tuple(candidates),
-        _artifact_references=tuple(artifact_references),
-        _missing_data_stock_codes=state.missing_data_stock_codes,
-        _unknown_rule_stock_codes=tuple(sorted(unknown_rule_codes)),
-        index_bytes=index_byte_count[0],
-        read_session_identity_sha256=session_identity,
-        _seal=_READ_SESSION_SEAL,
-    )
+    return builder.build_verified_session(root=root, state=state)

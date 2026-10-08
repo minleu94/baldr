@@ -16,6 +16,7 @@ from app_module.daily_market_technical_official_disposition_bundle_v1 import (
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_BYTES,
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_ROW_BYTES,
     DailyMarketTechnicalOfficialDispositionBundleError,
+    DailyMarketTechnicalOfficialDispositionBundleManifestMetadataV1,
     DailyMarketTechnicalOfficialDispositionBundleReaderV1,
     DailyMarketTechnicalOfficialDispositionBundleReferenceV1,
     DailyMarketTechnicalOfficialDispositionBundleSelectedRowsV1,
@@ -53,7 +54,7 @@ from app_module.daily_market_technical_universe_v4_query import (
     DailyMarketTechnicalUniverseV4ReadSelection,
     DailyMarketTechnicalUniverseV4ReadSelectionPage,
     DailyMarketTechnicalUniverseV4ReadSession,
-    open_daily_market_technical_universe_v4_read_session,
+    DailyMarketTechnicalUniverseV4ReadSessionBuilder,
 )
 from app_module.daily_market_technical_universe_v4_store import (
     DailyMarketTechnicalUniverseV4StoreError,
@@ -1925,37 +1926,42 @@ def _validate_bundle_query_relationship(
     return technical, manifest
 
 
-def _open_technical_session(
-    technical: Mapping[str, object],
+def _technical_session_builder_from_manifest_metadata(
+    metadata: DailyMarketTechnicalOfficialDispositionBundleManifestMetadataV1,
     cancel_callback: Callable[[], object] | None,
-) -> DailyMarketTechnicalUniverseV4ReadSession:
-    required = (
-        "output_root", "generation_identity_sha256", "plan_identity_sha256", "plan_sha256",
-        "receipt_identity_sha256", "receipt_sha256",
-    )
-    if any(not isinstance(technical.get(key), str) for key in required):
-        _fail("technical_store_descriptor_invalid")
+) -> DailyMarketTechnicalUniverseV4ReadSessionBuilder:
+    if metadata.metadata_state != "metadata_unverified":
+        _fail("bundle_manifest_metadata_state_invalid")
     _check_cancel(cancel_callback)
-    try:
-        return open_daily_market_technical_universe_v4_read_session(
-            store_output_root=cast(str, technical["output_root"]),
-            generation_identity_sha256=cast(str, technical["generation_identity_sha256"]),
-            plan_identity_sha256=cast(str, technical["plan_identity_sha256"]),
-            plan_sha256=cast(str, technical["plan_sha256"]),
-            receipt_identity_sha256=cast(str, technical["receipt_identity_sha256"]),
-            receipt_sha256=cast(str, technical["receipt_sha256"]),
-            cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
-        )
-    except DailyMarketTechnicalUniverseV4StoreError as exc:
-        _check_source_error_cancelled(exc)
-        raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
-            "technical_official_query_reader_v1_p01_exact_open_failed"
-        ) from exc
+    return DailyMarketTechnicalUniverseV4ReadSessionBuilder(
+        store_output_root=metadata.technical_store_output_root_label,
+        generation_identity_sha256=metadata.technical_generation_identity_sha256,
+        plan_identity_sha256=metadata.technical_plan_identity_sha256,
+        plan_sha256=metadata.technical_plan_sha256,
+        receipt_identity_sha256=metadata.technical_receipt_identity_sha256,
+        receipt_sha256=metadata.technical_receipt_sha256,
+        cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+    )
+
+
+def _technical_session_builder_from_query(
+    query: DailyMarketTechnicalUniverseV4Query,
+    cancel_callback: Callable[[], object] | None,
+) -> DailyMarketTechnicalUniverseV4ReadSessionBuilder:
+    _check_cancel(cancel_callback)
+    return DailyMarketTechnicalUniverseV4ReadSessionBuilder(
+        store_output_root=query.store_output_root,
+        generation_identity_sha256=query.generation_identity_sha256,
+        plan_identity_sha256=query.plan_identity_sha256,
+        plan_sha256=query.plan_sha256,
+        receipt_identity_sha256=query.receipt_identity_sha256,
+        receipt_sha256=query.receipt_sha256,
+        cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+    )
 
 
 def _open_base_selection(
     query: DailyMarketTechnicalOfficialDispositionQueryV1,
-    technical: Mapping[str, object],
     cancel_callback: Callable[[], object] | None,
     *,
     preloaded_session: DailyMarketTechnicalUniverseV4ReadSession | None = None,
@@ -1966,10 +1972,9 @@ def _open_base_selection(
     str,
 ]:
     _check_cancel(cancel_callback)
-    read_session = (
-        _open_technical_session(technical, cancel_callback)
-        if preloaded_session is None else preloaded_session
-    )
+    if preloaded_session is None:
+        _fail("p01_verified_session_required")
+    read_session = preloaded_session
     if not read_session.matches_source(query.technical_query):
         _fail("p01_base_query_source_mismatch")
     try:
@@ -2025,20 +2030,34 @@ def open_daily_market_technical_official_disposition_read_session_v1(
     _validate_cancel_callback(cancel_callback)
     parsed_query = _parse_query(query)
     _check_cancel(cancel_callback)
+    technical_builder = _technical_session_builder_from_query(
+        parsed_query.technical_query,
+        cancel_callback,
+    )
+    bundle_reader = DailyMarketTechnicalOfficialDispositionBundleReaderV1(
+        parsed_query.bundle_output_root
+    )
     try:
-        bundle_state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(
-            parsed_query.bundle_output_root
-        ).read_exact(
+        bundle_state = bundle_reader.read_exact(
             parsed_query.bundle_identity_sha256,
             expected_manifest_sha256=parsed_query.expected_manifest_sha256,
             cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+            technical_read_session_builder=technical_builder,
         )
     except DailyMarketTechnicalOfficialDispositionBundleError as exc:
         _check_source_error_cancelled(exc)
         raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
             f"technical_official_query_reader_v1_bundle_exact_read_failed:{exc.code}"
         ) from exc
-    return _issue_session_from_verified_bundle(parsed_query, bundle_state, cancel_callback)
+    preloaded_session = technical_builder.verified_session
+    if preloaded_session is None:
+        _fail("p01_verified_session_not_issued")
+    return _issue_session_from_verified_bundle(
+        parsed_query,
+        bundle_state,
+        cancel_callback,
+        preloaded_session=preloaded_session,
+    )
 
 
 def _issue_session_from_verified_bundle(
@@ -2053,7 +2072,6 @@ def _issue_session_from_verified_bundle(
     _check_cancel(cancel_callback)
     technical_session, base_query, selection, query_spec_identity = _open_base_selection(
         parsed_query,
-        technical,
         cancel_callback,
         preloaded_session=preloaded_session,
     )
@@ -2100,13 +2118,30 @@ def open_daily_market_technical_official_disposition_bundle_session_v1(
     """由明示保存 bundle 核驗來源並建 query；不使用 latest 或現在時鐘。"""
     _validate_cancel_callback(cancel_callback)
     _check_cancel(cancel_callback)
+    bundle_reader = DailyMarketTechnicalOfficialDispositionBundleReaderV1(
+        bundle_output_root
+    )
     try:
-        bundle_state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(
-            bundle_output_root
-        ).read_exact(
+        metadata = bundle_reader.read_manifest_metadata(
             bundle_identity_sha256,
             expected_manifest_sha256=expected_manifest_sha256,
             cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+        )
+        if (
+            metadata.output_root != str(bundle_reader.output_root)
+            or metadata.bundle_identity_sha256 != bundle_identity_sha256
+            or metadata.manifest_sha256 != expected_manifest_sha256
+        ):
+            _fail("bundle_manifest_metadata_pin_mismatch")
+        technical_builder = _technical_session_builder_from_manifest_metadata(
+            metadata,
+            cancel_callback,
+        )
+        bundle_state = bundle_reader.read_exact(
+            bundle_identity_sha256,
+            expected_manifest_sha256=expected_manifest_sha256,
+            cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+            technical_read_session_builder=technical_builder,
         )
     except DailyMarketTechnicalOfficialDispositionBundleError as exc:
         _check_source_error_cancelled(exc)
@@ -2126,7 +2161,9 @@ def open_daily_market_technical_official_disposition_bundle_session_v1(
             "technical_official_query_reader_v1_bundle_source_descriptor_invalid"
         ) from exc
     _check_cancel(cancel_callback)
-    technical_session = _open_technical_session(technical, cancel_callback)
+    technical_session = technical_builder.verified_session
+    if technical_session is None:
+        _fail("p01_verified_session_not_issued")
     try:
         technical_query = technical_session.create_query(
             rule_state_filters=rule_state_filters,

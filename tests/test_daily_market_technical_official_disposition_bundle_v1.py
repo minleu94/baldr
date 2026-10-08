@@ -106,6 +106,7 @@ class _BundleFixture:
     disposal_pin: Any
     bundle_root: Path
     reference: DailyMarketTechnicalOfficialDispositionBundleReferenceV1
+    verified_state: DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1
     writer: DailyMarketTechnicalOfficialDispositionBundleWriterV1
     original_signatures: tuple[tuple[str, tuple[tuple[str, int, int, str], ...]], ...]
 
@@ -223,6 +224,7 @@ def bundle_fixture() -> Iterator[_BundleFixture]:
         disposal_pin=disposal_pin,
         bundle_root=bundle_root,
         reference=reference,
+        verified_state=reopened,
         writer=writer,
         original_signatures=original_signatures,
     )

@@ -30,6 +30,8 @@ from app_module.daily_market_technical_universe_v4_query import (
     DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_SCOPE,
     DailyMarketTechnicalUniverseV4Query,
     DailyMarketTechnicalUniverseV4QueryError,
+    DailyMarketTechnicalUniverseV4ReadSessionBuilder,
+    open_daily_market_technical_universe_v4_read_session,
     read_daily_market_technical_universe_v4_page,
 )
 from app_module.daily_market_technical_universe_v4_store import (
@@ -476,6 +478,119 @@ def test_small_query_reuses_verified_batches_and_fresh_read_rejects_artifact_tam
         match="source_identity_mismatch",
     ):
         read_daily_market_technical_universe_v4_page(wrong_date_query)
+
+
+def test_typed_read_session_builder_requires_complete_same_read_callback(
+    synthetic_small_full_store: dict[str, Any],
+) -> None:
+    fixture = synthetic_small_full_store
+    plan = fixture["plan"]
+    complete = fixture["complete"]
+    pins = {
+        "store_output_root": fixture["store_output_root"],
+        "generation_identity_sha256": plan.generation_identity_sha256,
+        "plan_identity_sha256": plan.identity_sha256,
+        "plan_sha256": fixture["plan_sha256"],
+        "receipt_identity_sha256": complete.identity_sha256,
+        "receipt_sha256": complete.content_sha256,
+    }
+    builder = DailyMarketTechnicalUniverseV4ReadSessionBuilder(**pins)
+    reader = DailyMarketTechnicalUniverseV4StoreReader(fixture["store_output_root"])
+    state = reader.read_exact_with_verified_parent_callback(
+        plan.generation_identity_sha256,
+        plan.identity_sha256,
+        complete.identity_sha256,
+        expected_receipt_sha256=complete.content_sha256,
+        expected_plan_sha256=fixture["plan_sha256"],
+        parent_verified_callback=builder.consume_verified_parent,
+    )
+    assert isinstance(reader.output_root, Path)
+    assert builder.store_output_root == str(reader.output_root)
+    built_session = builder.build_verified_session(root=reader.output_root, state=state)
+    public_session = open_daily_market_technical_universe_v4_read_session(**pins)
+
+    built_query = built_session.create_query(sort_key="stock_code", page_size=32)
+    public_query = public_session.create_query(sort_key="stock_code", page_size=32)
+    assert built_session.read_session_identity_sha256 == public_session.read_session_identity_sha256
+    assert built_session.source_counts == state.counts
+    assert built_session.read_page(built_query).to_dict() == public_session.read_page(public_query).to_dict()
+    assert builder.verified_session is None
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as reuse_error:
+        builder.build_verified_session(root=reader.output_root, state=state)
+    assert reuse_error.value.code == "technical_universe_v4_read_session_builder_already_finished"
+
+    no_callback_builder = DailyMarketTechnicalUniverseV4ReadSessionBuilder(**pins)
+    uncollected_state = reader.read_exact(
+        plan.generation_identity_sha256,
+        plan.identity_sha256,
+        complete.identity_sha256,
+        expected_receipt_sha256=complete.content_sha256,
+        expected_plan_sha256=fixture["plan_sha256"],
+    )
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as error:
+        no_callback_builder.build_verified_session(root=reader.output_root, state=uncollected_state)
+    assert error.value.code == "technical_universe_v4_read_session_segment_mismatch"
+    assert no_callback_builder.verified_session is None
+
+    wrong_pin_builder = DailyMarketTechnicalUniverseV4ReadSessionBuilder(
+        **{**pins, "receipt_sha256": "0" * 64}
+    )
+    wrong_pin_state = reader.read_exact_with_verified_parent_callback(
+        plan.generation_identity_sha256,
+        plan.identity_sha256,
+        complete.identity_sha256,
+        expected_receipt_sha256=complete.content_sha256,
+        expected_plan_sha256=fixture["plan_sha256"],
+        parent_verified_callback=wrong_pin_builder.consume_verified_parent,
+    )
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as pin_error:
+        wrong_pin_builder.build_verified_session(root=reader.output_root, state=wrong_pin_state)
+    assert pin_error.value.code == "technical_universe_v4_read_session_store_pin_mismatch"
+    assert wrong_pin_builder.verified_session is None
+
+    rebind_builder = DailyMarketTechnicalUniverseV4ReadSessionBuilder(**pins)
+    rebind_builder._bind_to_verified_bundle(
+        bundle_output_root=fixture["store_output_root"],
+        bundle_identity_sha256="a" * 64,
+        expected_manifest_sha256="b" * 64,
+    )
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as rebind_error:
+        rebind_builder._bind_to_verified_bundle(
+            bundle_output_root=fixture["store_output_root"],
+            bundle_identity_sha256="c" * 64,
+            expected_manifest_sha256="d" * 64,
+        )
+    assert rebind_error.value.code == "technical_universe_v4_read_session_builder_already_bound"
+
+
+def test_cancelled_read_session_builder_does_not_canonicalize_or_construct_reader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    construction_attempts: list[str] = []
+
+    def reject_reader_construction(self: Any, root: str | Path) -> None:
+        construction_attempts.append(str(root))
+        raise AssertionError("StoreReader must not be constructed after cancellation")
+
+    monkeypatch.setattr(
+        DailyMarketTechnicalUniverseV4StoreReader,
+        "__init__",
+        reject_reader_construction,
+    )
+    missing_root = tmp_path / "root-that-does-not-exist"
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as error:
+        DailyMarketTechnicalUniverseV4ReadSessionBuilder(
+            store_output_root=missing_root,
+            generation_identity_sha256="1" * 64,
+            plan_identity_sha256="2" * 64,
+            plan_sha256="3" * 64,
+            receipt_identity_sha256="4" * 64,
+            receipt_sha256="5" * 64,
+            cancel_callback=lambda: True,
+        )
+    assert error.value.code == "technical_universe_v4_query_cancelled"
+    assert construction_attempts == []
 
 
 def test_complete_full_n_query_roundtrips_counts_and_uses_only_saved_sources(

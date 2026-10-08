@@ -6,9 +6,11 @@ from dataclasses import replace
 from datetime import datetime
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from typing import Any, Callable, cast
+from uuid import uuid4
 
 import pytest
 
@@ -21,18 +23,28 @@ from app_module.daily_market_technical_official_disposition_query_reader_v1 impo
     DailyMarketTechnicalOfficialDispositionReadSessionV1,
     DailyMarketTechnicalOfficialDispositionVerifiedQueryResultV1,
     _check_source_error_cancelled,
+    _issue_session_from_verified_bundle,
+    open_daily_market_technical_official_disposition_bundle_session_v1,
     open_daily_market_technical_official_disposition_read_session_v1,
     read_daily_market_technical_official_disposition_page_v1,
 )
 from app_module.daily_market_technical_official_disposition_bundle_v1 import (
+    DailyMarketTechnicalOfficialDispositionBundleCancelled,
+    DailyMarketTechnicalOfficialDispositionBundleError,
+    DailyMarketTechnicalOfficialDispositionBundleReaderV1,
     DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1,
 )
 from app_module.daily_market_technical_official_disposition_query_v1 import (
     DailyMarketTechnicalOfficialDispositionSortClauseV1,
 )
 from app_module.daily_market_technical_universe_v4_query import (
+    DailyMarketTechnicalUniverseV4ReadSessionBuilder,
     DailyMarketTechnicalUniverseV4QueryError,
     open_daily_market_technical_universe_v4_read_session,
+)
+from app_module.daily_market_technical_universe_v4_store import DailyMarketTechnicalUniverseV4StoreReader
+from app_module.rule_research_technical_parent_capture_v4 import (
+    BoundedDailyMarketTechnicalParentCaptureWriterV4,
 )
 
 from test_daily_market_technical_official_disposition_bundle_v1 import (  # type: ignore[import-not-found]
@@ -86,9 +98,9 @@ def test_only_named_source_cancel_errors_are_normalized(
 
 
 @pytest.fixture(scope="module")
-def exact_query(bundle_fixture: Any) -> DailyMarketTechnicalOfficialDispositionQueryV1:
+def exact_p01_session(bundle_fixture: Any) -> Any:
     fixture = bundle_fixture
-    technical_session = open_daily_market_technical_universe_v4_read_session(
+    return open_daily_market_technical_universe_v4_read_session(
         store_output_root=fixture.store_root,
         generation_identity_sha256=fixture.generation_identity_sha256,
         plan_identity_sha256=fixture.plan_identity_sha256,
@@ -96,7 +108,15 @@ def exact_query(bundle_fixture: Any) -> DailyMarketTechnicalOfficialDispositionQ
         receipt_identity_sha256=fixture.receipt_identity_sha256,
         receipt_sha256=fixture.expected_receipt_sha256,
     )
-    technical_query = technical_session.create_query(
+
+
+@pytest.fixture(scope="module")
+def exact_query(
+    bundle_fixture: Any,
+    exact_p01_session: Any,
+) -> DailyMarketTechnicalOfficialDispositionQueryV1:
+    fixture = bundle_fixture
+    technical_query = exact_p01_session.create_query(
         rule_state_filters=(),
         combine_mode="AND",
         stock_filter=(),
@@ -187,6 +207,171 @@ def test_real_257_cross_segment_join_sort_and_page_uses_exact_rows_materializer(
     assert fixture.original_signatures == tuple(
         (path, _tree_signature(Path(path))) for path, _ in fixture.original_signatures
     )
+
+
+def test_bundle_factory_reuses_one_verified_store_graph_and_matches_dual_read_oracle(
+    bundle_fixture: Any,
+    exact_p01_session: Any,
+    exact_query: DailyMarketTechnicalOfficialDispositionQueryV1,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = bundle_fixture
+    oracle_session = _issue_session_from_verified_bundle(
+        exact_query,
+        fixture.verified_state,
+        None,
+        preloaded_session=exact_p01_session,
+    )
+    oracle_result = oracle_session.execute()
+
+    store_read_calls: list[tuple[object, ...]] = []
+    parent_read_roots: list[str] = []
+    original_store_read = DailyMarketTechnicalUniverseV4StoreReader.read_exact_with_verified_parent_callback
+    original_parent_read = BoundedDailyMarketTechnicalParentCaptureWriterV4.read_verified
+
+    def tracked_store_read(self: Any, *args: Any, **kwargs: Any) -> Any:
+        store_read_calls.append(tuple(args[:3]))
+        return original_store_read(self, *args, **kwargs)
+
+    def tracked_parent_read(self: Any, *args: Any, **kwargs: Any) -> Any:
+        parent_read_roots.append(str(self.output_root))
+        return original_parent_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        DailyMarketTechnicalUniverseV4StoreReader,
+        "read_exact_with_verified_parent_callback",
+        tracked_store_read,
+    )
+    monkeypatch.setattr(
+        BoundedDailyMarketTechnicalParentCaptureWriterV4,
+        "read_verified",
+        tracked_parent_read,
+    )
+    session = open_daily_market_technical_official_disposition_bundle_session_v1(
+        bundle_output_root=fixture.bundle_root,
+        bundle_identity_sha256=fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+        row_scope_filter=exact_query.row_scope_filter,
+        rule_state_filters=exact_query.technical_query.rule_state_filters,
+        combine_mode=exact_query.technical_query.combine_mode,
+        market_assignment_states=exact_query.market_assignment_states,
+        official_disposal_states=exact_query.official_disposal_states,
+        outer_stock_filter_mode=exact_query.outer_stock_filter_mode,
+        outer_stock_codes=exact_query.outer_stock_codes,
+        sort_clauses=exact_query.sort_clauses,
+    )
+    assert session.query.query_identity_sha256 == exact_query.query_identity_sha256
+    result = session.execute()
+
+    def collect_all_rows(
+        value: DailyMarketTechnicalOfficialDispositionVerifiedQueryResultV1,
+        query: DailyMarketTechnicalOfficialDispositionQueryV1,
+    ) -> tuple[dict[str, object], ...]:
+        rows: list[dict[str, object]] = []
+        page_index = 0
+        while True:
+            request = DailyMarketTechnicalOfficialDispositionPageRequestV1.create(
+                query,
+                page_index=page_index,
+                page_size=256,
+            )
+            page = value.read_page_request(request)
+            rows.extend(row.to_dict() for row in page.rows)
+            if page_index + 1 >= page.page_count:
+                return tuple(rows)
+            page_index += 1
+
+    assert collect_all_rows(result, session.query) == collect_all_rows(oracle_result, exact_query)
+    assert result.counts == oracle_result.counts
+    assert len(store_read_calls) == 1
+    assert store_read_calls[0] == (
+        fixture.generation_identity_sha256,
+        fixture.plan_identity_sha256,
+        fixture.receipt_identity_sha256,
+    )
+    assert tuple(parent_read_roots) == tuple(str(path) for path in fixture.parent_roots)
+    assert fixture.original_signatures == tuple(
+        (path, _tree_signature(Path(path))) for path, _ in fixture.original_signatures
+    )
+
+
+def test_bundle_manifest_candidate_drift_never_issues_preloaded_session(
+    bundle_fixture: Any,
+) -> None:
+    fixture = bundle_fixture
+    metadata = DailyMarketTechnicalOfficialDispositionBundleReaderV1(
+        fixture.bundle_root
+    ).read_manifest_metadata(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+    assert metadata.metadata_state == "metadata_unverified"
+    builder = DailyMarketTechnicalUniverseV4ReadSessionBuilder(
+        store_output_root=metadata.technical_store_output_root_label,
+        generation_identity_sha256=metadata.technical_generation_identity_sha256,
+        plan_identity_sha256=metadata.technical_plan_identity_sha256,
+        plan_sha256=metadata.technical_plan_sha256,
+        receipt_identity_sha256=metadata.technical_receipt_identity_sha256,
+        receipt_sha256=metadata.technical_receipt_sha256,
+    )
+    drift_root = fixture.qa_root / f"bundle-manifest-drift-{uuid4().hex}"
+    shutil.copytree(fixture.bundle_root, drift_root)
+    manifest_path = drift_root / fixture.reference.manifest_relative_path
+    original = manifest_path.read_bytes()
+    manifest_path.write_bytes(original + b" ")
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError) as error:
+        DailyMarketTechnicalOfficialDispositionBundleReaderV1(drift_root).read_exact(
+            fixture.reference.bundle_identity_sha256,
+            expected_manifest_sha256=fixture.reference.manifest_sha256,
+            technical_read_session_builder=builder,
+        )
+    assert error.value.code == "manifest_bytes_sha_mismatch"
+    assert builder.verified_session is None
+
+
+def test_bundle_cancel_after_session_construction_does_not_publish_session(
+    bundle_fixture: Any,
+    exact_query: DailyMarketTechnicalOfficialDispositionQueryV1,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = bundle_fixture
+    cancelled = [False]
+    technical = exact_query.technical_query
+    builder = DailyMarketTechnicalUniverseV4ReadSessionBuilder(
+        store_output_root=technical.store_output_root,
+        generation_identity_sha256=technical.generation_identity_sha256,
+        plan_identity_sha256=technical.plan_identity_sha256,
+        plan_sha256=technical.plan_sha256,
+        receipt_identity_sha256=technical.receipt_identity_sha256,
+        receipt_sha256=technical.receipt_sha256,
+        cancel_callback=lambda: cancelled[0],
+    )
+    original_build = DailyMarketTechnicalUniverseV4ReadSessionBuilder.build_verified_session
+
+    def build_then_cancel(
+        self: DailyMarketTechnicalUniverseV4ReadSessionBuilder,
+        *,
+        root: Path,
+        state: Any,
+    ) -> Any:
+        session = original_build(self, root=root, state=state)
+        cancelled[0] = True
+        return session
+
+    monkeypatch.setattr(
+        DailyMarketTechnicalUniverseV4ReadSessionBuilder,
+        "build_verified_session",
+        build_then_cancel,
+    )
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleCancelled) as error:
+        DailyMarketTechnicalOfficialDispositionBundleReaderV1(fixture.bundle_root).read_exact(
+            fixture.reference.bundle_identity_sha256,
+            expected_manifest_sha256=fixture.reference.manifest_sha256,
+            cancel_callback=lambda: cancelled[0],
+            technical_read_session_builder=builder,
+        )
+    assert error.value.code == "cancelled_before_publish"
+    assert builder.verified_session is None
 
 
 def test_warm_page_reads_only_selected_bundle_rows_without_legacy_prefix_scan(

@@ -39,3 +39,11 @@ root 獨立執行 parent／worker 組合自測，exit 0；新 case `C:/t/p01_hgz
 六個合成 worker 成功，六個錯誤啟動反例拒絕；network／SQLite 都為 0。實際 parent guard 的拒絕被 fake worker 吞下並回傳 passed 後，after-worker gate 仍拒絕；下一次 before-launch gate 不呼叫 launch，failure envelope 保留有界 denial snapshot。來源與 protected sentinel 前後 SHA 一致，沒有產品 API、模型、產製器或 benchmark 執行。
 
 本項只接受 QA 守衛組合與立即停跑契約，不授予正式 worker 或冷暖效能接受。中央 F17 回歸仍執行中，完整冷 5／暖 30 矩陣須等其他重測停止後單獨執行；原失敗 attempts 不覆寫。
+
+## 首個真 worker 與 parent 收據失敗（2026-10-08）
+
+root session 16749 terminal exit 1；新 attempt `C:/t/p01_yyuuqth0`，controller SHA 79f402906920754e5a5f97c4691d34a20983f0b260a3639dd2d958929c9955dc。cold_01 真 worker completed／passed，原結果與 events 留存：declared 1001、included／processed 1000、excluded 1、pending 0、missing 1；第一頁 50 列、matching 1000。worker 的 source archive／合成 DB／sealed store 前後一致，network／SQL／子程序皆無。
+
+該單次 cold 的引擎 strict-open 15.7664812 秒、query／selection 0.1004507 秒、首頁 materialize 0.7595453 秒，合計 16.6285502 秒；controller launch-to-page 68.419395 秒另含啟動等成本。這是一筆 cold 樣本，不是完整矩陣或 p95，不授予 300ms 接受。
+
+parent 在 `_run_child` 寫 resource summary 時仍呼叫原 C63 `_write_json_new`，該 helper 先呼叫 case root `mkdir(exist_ok=True)`，被新 parent guard 拒絕。完整 traceback 留在 cold_01.controller_failure.json；after-worker gate 即刻停跑，沒有 cold_02／warm。outer failure 未保留 local Job 清理狀態，因此 cleanup 為 unknown，不能聲稱零殘留；原 resource samples 與 worker passed 結果不覆寫。修正僅限 parent 寫入改走 exact exclusive wrapper，並補實際 `_run_child` 合成旅程及 metadata 失敗清理證據。root 有界診斷另存 `output/qa/p01_b3mrz9_8_source_benchmark_20261008_a/root_yyuuqth0_diagnosis.json`。

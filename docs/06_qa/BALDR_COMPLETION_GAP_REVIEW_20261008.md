@@ -60,3 +60,5 @@ F17 最新封套的 source parent 另確認 catalog 更新成功且只有一筆�
 - 2026-10-08 標準輸入修正後：root 審查 `5f3f8e53…` 並重跑 7 項契約通過，包含真實合成 worker 讀空輸入 EOF 與 Job 清理；新 session74142／`C:/t/p01_z1brdyqa` 仍為 exit1，首個 cold 後停止。真 C63 audit 對所有 `subprocess.Popen` 無條件拒絕，與 parent 的六個精確 worker 啟動許可無法在同一 interpreter 組合；交換 hook 順序也不能解決。接續改為 parent 專用、精確 QA metadata 寫入與啟動守衛，worker 繼續原 C63 全保護及禁止子程序。須以真 C63 worker／真 parent guard 的隔離組合測試核對，不能以先前 synthetic guard 自測宣稱完整矩陣可跑；冷暖效能仍無有效樣本。
 
 - 2026-10-08 中央審查補記：H20 固定 bd5d2f86367a 的隔離 Python／EXE 比較通過並交真人，捲動與原保存來源等待仍未接受。F17 單次核驗 builder 尚待中央完整回歸；已要求保留來源工作前的取消拒絕。source-only benchmark parent guard 的 denial 只在整體收尾檢查不足以證立即停跑，已要求每個 launch 前／worker 後檢查；本輪沒有新的效能樣本。
+
+- 2026-10-08 F17 單次圖核驗中央 46 項回歸通過，來源修改本機 commit `330b98f416f718c601c96edb31e6cb9823a3b150`，固定 EXE 建置進行中，Native／效能仍待。1,000 檔 attempt `C:/t/p01_yyuuqth0` 首個真 worker 完整讀回並產生頁面，但 parent metadata helper 多餘 mkdir 被 guard 拒絕，整體 exit1，矩陣停跑且 cleanup unknown；不授 p95。F07 明示數值價格區間與全域排序已分配新版本 query 設計，不改舊 v4 保存契約或以最新資料補值。

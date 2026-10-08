@@ -170,3 +170,17 @@ owner run_004 2 passed／146.59秒；中央獨立完整核心 **17 passed／212.
 source SHA256 `7BD592E5FD68A5BEF742AEC5BF85903626D20604B52C3C6FE804CACADAC542F8`、test `6E8C77D0429EAA66EE3E1F1D8C420A9F36C2FAB10FD290A0B5F433A12F7D7323`；owner **62 passed／0.80秒**，中央相同SHA獨立 **62 passed／0.87秒**，兩檔mypy／compile通過。正式來源microseconds各欄位、cutoff後1微秒拒絕、Z／空白／naive／7位小數拒絕，以及query JSON仍拒絕非canonical零微秒均有具體反例。未來函數自查：時區aware與決策時點比較原封保留，不將來源時間進位或推後；沒有新金融float。
 
 新joined reader attempt03原始1 passed／4 failed／220.12秒保留；三個execute因上述來源格式失敗，一個取消測試洩漏下層cancel code。reader目前沿已保存真synthetic bundle續驗，未驗完整join、來源篡改／role矩陣、UI與新程序，不以本codec62通過替代其驗收。
+
+### H20 固定候選原來源旅程失敗紀錄
+
+固定 `7b21e0d4076bee10dbd32855542100cb00f17487` 的原來源 attempt `20261008T052004Z_049609b8374d`，中央 handle34508 已 terminal exit1，總耗時258.844秒。來源準備與 guard selftest 通過；真 Main 啟動後在初始名單階段逾時，未進入2382下鑽或返回。最後來源雜湊進度停在 main／SHM pins完成；copy reserved 為4,054,339,584 bytes，但 copy total為零、沒有完成操作收據。原 guard記錄996,296次 mkdir拒絕，正在調查其與私有副本目錄建立的關係，尚不能將測試guard造成的等待歸因於產品本身。
+
+中央逐值核對 pinned_inputs_before／after及 source_before／after相等，source_inputs_unchanged為true；原SQLite連線為零。child exit code3221226505、shutdown_complete為false，故來源保護結果不能替代正常worker關閉或功能驗收。原收據／trace保留，沒有重設時限、重測覆蓋失敗或交付此候選供真人驗收。人回報舊0f25名單長時間後出現、2382雙擊反應慢並已關閉，目前不要求人重測舊版。
+
+F17 owner另以保存257＋1 synthetic bundle回報完整查詢、fresh-process exact reopen及篩選的定向證據；中央靜態審查仍發現暖頁為尋找facts從首列重掃。已要求公開有界selected-rows API與一次建置的locator，沒有private shard存取或全量fallback；reader仍未中央接受。實際N／效能與完整P00–P14驗收持續開放。
+
+### 推薦理由縮放矩陣補驗
+
+相同 `eb98e8d9` 工作樹既有推薦版面四項測試，在各自新程序以 `QT_QPA_PLATFORM=offscreen`、`QT_SCALE_FACTOR=1.25／1.5／2` 執行；各組4 passed（5.69／6.42／6.89秒），handle73455與27126均再確認terminal exit0，125%命令直接terminal exit0。覆蓋1366×768／1400×800 shell的184px導航、窄版個人控制項、理由展開與完整分數表／排名門檻／文件末行，原測試條件未改。截圖保存於 `output/qa/recommendation_dpi_{125,150,200}_root_20261008_a/`；中央目視100%與200%的460×700圖，分數四列、排名四項及風險段落均完整。
+
+這是有主題的Qt合成版面與縮放渲染，沒有原策略結果、真Main原來源旅程或Windows Native真人操作，不能替代P13全部解析度／鍵盤／使用者接受。原可用exe及main保持不變，新候選未交付。

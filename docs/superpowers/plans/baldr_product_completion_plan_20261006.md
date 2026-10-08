@@ -775,3 +775,6 @@ P10 來源資料日呈現補件已存 dev `3a72654e`：大盤頁缺值／非正�
 
 
 2026-10-08 H20 等待補件中央驗證：真 Main／TaskWorker／保存來源旅程合併 12 項通過，Workbench 85 項、validator 25 項與 mypy 902 檔通過。首次等待提示可見、取消直到原生收尾才解鎖、未知列保留並停用研究；詳見 `docs/06_qa/H20_VISIBLE_LOADING_SINGLEFLIGHT_20261008.md`。這是來源版驗證，固定候選與真人驗收仍待，不宣稱讀取加速或完整產品補完。
+
+
+2026-10-08 固定候選 `421bc973a891` 已建置並通過隔離同版 Python／exe 比較（root 57076 exit 0，`passed_isolated_fixture`）。真人啟動 helper 已核 SHA／路徑，尚未自動啟動或收到真人接受；理由整頁捲到底、非全螢幕控制項、H20 等待／取消／2382 返回為本次三項檢查。詳見 `docs/06_qa/BALDR_H20_LOADING_CANDIDATE_421BC973_20261008.md`；H20／ruleML 判讀、完整個股脈絡、完整 P00–P14／M1–M3 繼續，不以候選比較折抵全部出口。

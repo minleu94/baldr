@@ -621,7 +621,7 @@ def _trace_saved_h20_route(
         def __init__(self, task_function: Any, *args: Any, **kwargs: Any) -> None:
             super().__init__(task_function, *args, **kwargs)
             task_name = getattr(task_function, "__name__", type(task_function).__name__)
-            if task_name == "read_personal_h20_product_for_stock":
+            if task_name in {"read_personal_h20_product_for_stock", "read_personal_h20_product_for_stock_with_session"}:
                 trace("worker_created", task_name)
                 self.finished.connect(lambda result: trace(
                     "worker_result_signal", str(getattr(result, "status", "unknown"))
@@ -633,7 +633,7 @@ def _trace_saved_h20_route(
 
         def start(self, *args: Any, **kwargs: Any) -> None:
             task_name = getattr(self.task_function, "__name__", type(self.task_function).__name__)
-            if task_name == "read_personal_h20_product_for_stock":
+            if task_name in {"read_personal_h20_product_for_stock", "read_personal_h20_product_for_stock_with_session"}:
                 trace("worker_start", task_name)
             super().start(*args, **kwargs)
 
@@ -801,6 +801,7 @@ def test_changed_saved_h20_reference_preserves_original_cohort_and_selection(
             self.kwargs = kwargs
             self.finished = Signal()
             self.error = Signal()
+            self.progress = Signal()
             self.native_thread_finished = Signal()
             type(self).latest = self
 

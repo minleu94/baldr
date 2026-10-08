@@ -17,3 +17,9 @@ dev 增加理由展開／收合，展開保留 520px 閱讀空間，沿同一份
 H20「空白」經真人補述確認為長時間讀取後才出現；雙擊2382再次等待，尚未證明可下鑽。原十股公開讀回約93秒，每列重驗同一大型來源庫。新增分頁等待秒數／完成耗時／失敗與取消提示，取消提高generation防止晚到覆寫；提示不是效能修復。共用來源核驗仍需另行實作與原來源、同版和正常MainWindow驗證。
 
 中央組合回歸60項通過，更新工作台85項通過，全域mypy885檔通過，py_compile通過。UI首次 sandbox 合成capture硬連結WinError5的完整失敗log保留，唯一短TEMP提升後通過，不改來源安全邊界。這些結果不取代真人的速度／可下鑽接受。
+
+## 外層結果頁的末行可達性補查
+
+第二輪的文件高度與內層 QTextEdit 幾何通過，仍不足以證明外層結果頁可捲到完整內容。加強回歸後發現詳情群組的最低高度沒有隨文件成長，最後一行落在外層 viewport 之外。此失敗保留於 ignored recommendation_document_visible_end_20261007_b.log。詳情 layout 增加 SetMinimumSize，讓外層捲動範圍包含完整文件；加強回歸 1 項通過，中央檢視 460×700 末行畫面確認可見（recommendation_full_document_render_20261007_c）。這是開發工作檔修正，尚未打包或完成最新完整 UI 檢查，也不代表真人已接受。
+
+本輪接入 H20 operation-local session 與實際階段提示後，中央 session／cohort UI／版面／更新工作台組合回歸 106 項通過（11.32秒）；全域 mypy 887 檔通過，更新頁 validator 25通過／0失敗／4保護跳過，修改 runtime 檔 py_compile 通過。首輪 sandbox 7項因合成 activation 原子替換 WinError5失敗、99通過，原log保留；獨立短TEMP原生環境重跑後通過。尚待正常 MainWindow 下鑽、原十股載入時間與最新候選同版驗證，不能將上述測試秒數當作 H20實際載入秒數。

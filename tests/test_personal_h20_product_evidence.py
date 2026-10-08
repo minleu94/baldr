@@ -99,7 +99,13 @@ def test_cohort_reference_preserves_original_pins_and_readonly_bytes(tmp_path):
 def test_background_cohort_reads_original_full_manifest_and_rejects_pointer_change(tmp_path, monkeypatch):
     from scripts.scheduled import personal_h20_daily_hook as hook
     activation, _, daily, reader = _store(tmp_path)
-    monkeypatch.setattr(hook, "read_personal_h20_prediction", reader)
+    from copy import deepcopy
+    monkeypatch.setattr(hook, "_personal_h20_read_ports", lambda: {
+        "source_verifier": deepcopy, "contract_verifier": deepcopy,
+    })
+    monkeypatch.setattr(hook, "_read_personal_h20_prediction_with_verifiers",
+        lambda path, *, root, expected_sha256, source_verifier, contract_verifier:
+            reader(path, root=root, expected_sha256=expected_sha256))
     reference, cohort = hook.read_personal_h20_product_cohort(activation.config_path,
         market_root=Path(activation.market_root))
     assert cohort.symbols == ("2330",) and cohort.rows[0].gross_return_bp == 123
@@ -111,7 +117,9 @@ def test_background_cohort_reads_original_full_manifest_and_rejects_pointer_chan
         body["cycle_id"] = "changed-cycle"
         pointer.write_text(json.dumps(body), encoding="utf-8")
         return result
-    monkeypatch.setattr(hook, "read_personal_h20_prediction", changed_reader)
+    monkeypatch.setattr(hook, "_read_personal_h20_prediction_with_verifiers",
+        lambda path, *, root, expected_sha256, source_verifier, contract_verifier:
+            changed_reader(path, root=root, expected_sha256=expected_sha256))
     with pytest.raises(ValueError, match="cohort_reference_changed"):
         hook.read_personal_h20_product_cohort(activation.config_path, market_root=Path(activation.market_root))
 

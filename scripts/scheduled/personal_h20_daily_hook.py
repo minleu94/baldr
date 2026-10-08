@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from app_module.recommendation.personal_h20_activation import read_personal_h20_activation
+from app_module.recommendation.personal_h20_read_session import (
+    PersonalH20ReadProgress,
+    PersonalH20ReadSession,
+)
 
 SOURCE_PIN_KEYS = (
     "cycle_id", "raw_run_id", "cycle_source_date",
@@ -20,12 +24,77 @@ SOURCE_PIN_KEYS = (
 
 def read_personal_h20_prediction(path: str | Path, *, root: Path, expected_sha256: str) -> Mapping[str, Any]:
     """公開CLI composition接原App reader；App/Qt不用import ML。"""
+    ports = _personal_h20_read_ports()
+    return _read_personal_h20_prediction_with_verifiers(
+        path,
+        root=root,
+        expected_sha256=expected_sha256,
+        source_verifier=ports["source_verifier"],
+        contract_verifier=ports["contract_verifier"],
+    )
+
+
+def _personal_h20_read_ports() -> Mapping[str, Callable[..., Any]]:
     module = importlib.import_module("scripts.scheduled.run_personal_current_observed_h20_daily")
     ports = getattr(module, "personal_current_observed_h20_read_ports")()
+    if (not isinstance(ports, Mapping)
+            or not callable(ports.get("source_verifier"))
+            or not callable(ports.get("contract_verifier"))):
+        raise ValueError("personal_h20_public_read_ports_required")
+    return ports
+
+
+def _read_personal_h20_prediction_with_verifiers(
+    path: str | Path,
+    *,
+    root: Path,
+    expected_sha256: str,
+    source_verifier: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+    contract_verifier: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+) -> Mapping[str, Any]:
     capture_module = importlib.import_module("app_module.recommendation.personal_current_observed_h20_capture")
     return getattr(capture_module, "read_personal_current_observed_h20_capture")(
         path, root=root, expected_sha256=expected_sha256,
-        source_verifier=ports["source_verifier"], contract_verifier=ports["contract_verifier"])
+        source_verifier=source_verifier, contract_verifier=contract_verifier)
+
+
+def _progress_message(event: PersonalH20ReadProgress) -> str:
+    identity = ("" if event.identity_sha256 is None
+                else "（" + event.identity_sha256[:12] + "）")
+    if event.row_index is not None and event.stage in {
+        "capture_read_started",
+        "capture_read_verified",
+    }:
+        pass_text = "終態重讀" if event.pass_name == "terminal" else "讀取"
+        stock = "" if event.stock_code is None else f" {event.stock_code}"
+        state = "完成" if event.stage == "capture_read_verified" else "進行中"
+        return f"H20 {pass_text}已保存第 {event.row_index} 列{stock}：{state}"
+    if event.verifier_kind is not None:
+        label = "來源" if event.verifier_kind == "source" else "模型合約"
+        index = "" if event.group_index is None else f"第 {event.group_index} 組"
+        total = "" if event.group_total is None else f"／共 {event.group_total} 組"
+        if event.stage.endswith("reused"):
+            return f"H20 共用本次已核驗的{label}{index}{identity}"
+        if event.stage.endswith("recheck_started"):
+            return f"H20 終態重驗{label}{index}{total}{identity}"
+        if event.stage.endswith("rechecked"):
+            return f"H20 已完成終態重驗{label}{index}{total}{identity}"
+        if event.stage.endswith("started"):
+            return f"H20 正在核驗{label}{index}{identity}"
+        return f"H20 已核驗{label}{index}{identity}"
+    if event.stage == "reference_read_started":
+        return "H20 正在讀取固定的個人研究來源"
+    if event.stage == "reference_read_verified":
+        return "H20 已核對固定來源指標與 manifest pin"
+    if event.stage == "manifest_read_started":
+        label = "終態重讀原 manifest 與全部 capture pins" if event.pass_name == "terminal" else "讀取原 manifest 與全部 capture pins"
+        return f"H20 正在{label}"
+    if event.stage == "manifest_read_complete":
+        label = "終態重讀" if event.pass_name == "terminal" else "讀取"
+        return f"H20 {label}完成，共驗證 {event.row_index or 0} 列 pin"
+    if event.stage == "reference_rechecked":
+        return "H20 已完成 activation/reference 終態重驗"
+    return "H20 正在完成保存來源終態重驗"
 
 
 def read_personal_h20_daily_receipt(path: str | Path, *, root: Path, expected_sha256: str,
@@ -37,26 +106,191 @@ def read_personal_h20_daily_receipt(path: str | Path, *, root: Path, expected_sh
 
 
 def read_personal_h20_product_cohort(config_path: Path, *, market_root: Path,
-    cancel_callback: Callable[[], bool] | None = None) -> tuple[Any, Any]:
-    """背景載入原完整母體；設定／指標在讀取中變更即拒絕。"""
+    cancel_callback: Callable[[], bool] | None = None,
+    progress_callback: Callable[[str], None] | None = None) -> tuple[Any, Any]:
+    """同一操作分組核驗，仍逐列讀原 capture 並重讀完整分母終態。"""
     from app_module.recommendation.personal_h20_product_evidence import read_personal_h20_product_reference
     from app_module.recommendation.personal_h20_research_cohort import read_personal_h20_research_cohort
 
-    reference = read_personal_h20_product_reference(config_path, market_root=market_root)
-    def reader(path: str | Path, *, root: Path, expected_sha256: str) -> Mapping[str, Any]:
-        if cancel_callback is not None and cancel_callback():
-            raise InterruptedError("personal_h20_cohort_cancelled")
-        return read_personal_h20_prediction(path, root=root, expected_sha256=expected_sha256)
-    cohort = read_personal_h20_research_cohort(reference.manifest_path,
-        root=Path(reference.activation.personal_root), expected_sha256=reference.manifest_sha256,
-        prediction_reader=reader)
-    if (cohort.candidate_id != reference.activation.candidate_id
-            or cohort.contract_hash != reference.activation.model_contract_hash
-            or cohort.cycle_id != reference.cycle_id or cohort.decision_date != reference.decision_date
-            or read_personal_h20_product_reference(config_path, market_root=market_root) != reference
-            or (cancel_callback is not None and cancel_callback())):
-        raise ValueError("personal_h20_cohort_reference_changed")
-    return reference, cohort
+    ports = _personal_h20_read_ports()
+    session = PersonalH20ReadSession(
+        source_verifier=ports["source_verifier"],
+        contract_verifier=ports["contract_verifier"],
+        cancel_callback=cancel_callback,
+        progress_callback=(
+            None if progress_callback is None
+            else lambda event: progress_callback(_progress_message(event))
+        ),
+    )
+    try:
+        session.report(stage="reference_read_started")
+        reference = read_personal_h20_product_reference(config_path, market_root=market_root)
+        session.report(stage="reference_read_verified")
+
+        def read_pass(pass_name: str) -> Any:
+            row_index = 0
+
+            def reader(path: str | Path, *, root: Path, expected_sha256: str) -> Mapping[str, Any]:
+                nonlocal row_index
+                row_index += 1
+                session.report(stage="capture_read_started", row_index=row_index, pass_name=pass_name)
+                capture = _read_personal_h20_prediction_with_verifiers(
+                    path,
+                    root=root,
+                    expected_sha256=expected_sha256,
+                    source_verifier=session.verify_source,
+                    contract_verifier=session.verify_contract,
+                )
+                session.report(stage="capture_read_verified", row_index=row_index, pass_name=pass_name)
+                return capture
+
+            session.report(stage="manifest_read_started", pass_name=pass_name)
+            result = read_personal_h20_research_cohort(
+                reference.manifest_path,
+                root=Path(reference.activation.personal_root),
+                expected_sha256=reference.manifest_sha256,
+                prediction_reader=reader,
+            )
+            session.raise_if_progress_failed()
+            session.report(
+                stage="manifest_read_complete",
+                row_index=row_index,
+                pass_name=pass_name,
+            )
+            return result
+
+        cohort = read_pass("initial")
+
+        def finalizer() -> None:
+            final_cohort = read_pass("terminal")
+            if final_cohort != cohort:
+                raise ValueError("personal_h20_cohort_changed_during_terminal_read")
+            current_reference = read_personal_h20_product_reference(config_path, market_root=market_root)
+            if current_reference != reference:
+                raise ValueError("personal_h20_cohort_reference_changed")
+            session.report(stage="reference_rechecked", pass_name="terminal")
+
+        session.finish(finalizer=finalizer)
+        return reference, cohort
+    finally:
+        session.close()
+
+
+def read_personal_h20_product_for_stock_with_session(
+    config_path: Path,
+    *,
+    stock_code: str,
+    market_root: Path,
+    expected_reference: Any | None = None,
+    cancel_callback: Callable[[], bool] | None = None,
+    progress_callback: Callable[[str], None] | None = None,
+) -> Any:
+    """以單一 operation session 核原 manifest、選中 capture 與來源 pin。"""
+    from app_module.recommendation.personal_h20_product_evidence import (
+        read_personal_h20_daily_manifest,
+        read_personal_h20_product_for_stock as read_product_for_stock,
+        read_personal_h20_product_reference,
+    )
+
+    ports = _personal_h20_read_ports()
+    session = PersonalH20ReadSession(
+        source_verifier=ports["source_verifier"],
+        contract_verifier=ports["contract_verifier"],
+        cancel_callback=cancel_callback,
+        progress_callback=(
+            None if progress_callback is None
+            else lambda event: progress_callback(_progress_message(event))
+        ),
+    )
+    try:
+        session.report(stage="reference_read_started", stock_code=stock_code)
+        reference = read_personal_h20_product_reference(config_path, market_root=market_root)
+        if expected_reference is not None and reference != expected_reference:
+            raise ValueError("personal_h20_selected_reference_changed")
+        session.report(stage="reference_read_verified", stock_code=stock_code)
+
+        row_index = 0
+
+        def reader(path: str | Path, *, root: Path, expected_sha256: str) -> Mapping[str, Any]:
+            nonlocal row_index
+            row_index += 1
+            session.report(
+                stage="capture_read_started",
+                row_index=row_index,
+                pass_name="initial",
+                stock_code=stock_code,
+            )
+            capture = _read_personal_h20_prediction_with_verifiers(
+                path,
+                root=root,
+                expected_sha256=expected_sha256,
+                source_verifier=session.verify_source,
+                contract_verifier=session.verify_contract,
+            )
+            session.report(
+                stage="capture_read_verified",
+                row_index=row_index,
+                pass_name="initial",
+                stock_code=stock_code,
+            )
+            return capture
+
+        first_manifest: Mapping[str, Any] | None = None
+
+        def daily_reader(path: str | Path, *, root: Path, expected_sha256: str,
+                         selected_stock: str | None = None) -> Mapping[str, Any]:
+            nonlocal first_manifest
+            body = read_personal_h20_daily_manifest(
+                path,
+                root=root,
+                expected_sha256=expected_sha256,
+                selected_stock=selected_stock,
+                prediction_reader=reader,
+            )
+            if first_manifest is None:
+                first_manifest = body
+            return body
+
+        evidence = read_product_for_stock(
+            config_path,
+            stock_code=stock_code,
+            market_root=market_root,
+            daily_reader=daily_reader,
+            prediction_reader=reader,
+            expected_reference=reference,
+        )
+        session.raise_if_progress_failed()
+
+        def finalizer() -> None:
+            session.report(
+                stage="manifest_read_started",
+                pass_name="terminal",
+                stock_code=stock_code,
+            )
+            final_manifest = read_personal_h20_daily_manifest(
+                reference.manifest_path,
+                root=Path(reference.activation.personal_root),
+                expected_sha256=reference.manifest_sha256,
+                selected_stock=stock_code,
+                prediction_reader=reader,
+            )
+            if first_manifest is not None and final_manifest != first_manifest:
+                raise ValueError("personal_h20_selected_manifest_changed_during_read")
+            session.report(
+                stage="manifest_read_complete",
+                row_index=row_index,
+                pass_name="terminal",
+                stock_code=stock_code,
+            )
+            current_reference = read_personal_h20_product_reference(config_path, market_root=market_root)
+            if current_reference != reference:
+                raise ValueError("personal_h20_selected_reference_changed")
+            session.report(stage="reference_rechecked", pass_name="terminal", stock_code=stock_code)
+
+        session.finish(finalizer=finalizer)
+        return evidence
+    finally:
+        session.close()
 
 
 def run_personal_h20_for_current_cycle(

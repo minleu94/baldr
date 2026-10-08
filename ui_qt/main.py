@@ -539,11 +539,9 @@ class MainWindow(QMainWindow):
     ) -> None:
         from app_module.recommendation.personal_h20_product_evidence import (
             PersonalH20ProductEvidence,
-            read_personal_h20_product_for_stock,
         )
         from scripts.scheduled.personal_h20_daily_hook import (
-            read_personal_h20_daily_receipt,
-            read_personal_h20_prediction,
+            read_personal_h20_product_for_stock_with_session,
         )
         from ui_qt.workers.task_worker import TaskWorker
 
@@ -609,12 +607,10 @@ class MainWindow(QMainWindow):
                 view.set_personal_h20_evidence(evidence)
 
         worker = TaskWorker(
-            read_personal_h20_product_for_stock,
+            read_personal_h20_product_for_stock_with_session,
             config_path,
             stock_code=stock_code,
             market_root=market_root,
-            daily_reader=read_personal_h20_daily_receipt,
-            prediction_reader=read_personal_h20_prediction,
             expected_reference=reference,
         )
         self._personal_h20_worker = worker
@@ -637,10 +633,10 @@ class MainWindow(QMainWindow):
     def _load_personal_h20_product(self, report: object) -> None:
         from app_module.stock_research_report_dtos import StockResearchReportDTO
         from app_module.recommendation.personal_h20_product_evidence import (
-            PersonalH20ProductEvidence, read_personal_h20_product_for_stock,
+            PersonalH20ProductEvidence,
         )
         from ui_qt.workers.task_worker import TaskWorker
-        from scripts.scheduled.personal_h20_daily_hook import read_personal_h20_daily_receipt, read_personal_h20_prediction
+        from scripts.scheduled.personal_h20_daily_hook import read_personal_h20_product_for_stock_with_session
 
         workspace = getattr(self, "stock_research_workspace", None)
         if workspace is None or not isinstance(report, StockResearchReportDTO):
@@ -678,9 +674,8 @@ class MainWindow(QMainWindow):
             if origin is None or origin[0] != context:
                 return
             expected_reference = origin[2]
-        worker = TaskWorker(read_personal_h20_product_for_stock, config_path,
+        worker = TaskWorker(read_personal_h20_product_for_stock_with_session, config_path,
             stock_code=report.stock_code, market_root=market_root,
-            daily_reader=read_personal_h20_daily_receipt, prediction_reader=read_personal_h20_prediction,
             expected_reference=expected_reference)
         self._personal_h20_worker = worker
 
@@ -745,10 +740,13 @@ class MainWindow(QMainWindow):
             elapsed = int(time.monotonic() - self._personal_h20_read_started_at)
             loading_label.setText(
                 f"正在核驗原保存來源，已等待 {elapsed} 秒。\n"
+                f"目前階段：{getattr(self, '_personal_h20_read_phase', '準備原保存名單')}。\n"
                 "目前尚未完成；大型來源庫核驗可能耗時。完成後才顯示可下鑽的原名單。"
             )
         timer.timeout.connect(show_waiting)
         def cancel_loading() -> None:
+            if widget._closing or getattr(self, "_shutdown_close_requested", False):
+                return
             self._personal_h20_cohort_generation += 1
             worker = getattr(self, "_personal_h20_cohort_worker", None)
             if worker is not None and worker.isRunning():
@@ -800,6 +798,7 @@ class MainWindow(QMainWindow):
         market_root, config_path = self._personal_h20_configuration()
         widget.setEnabled(False)
         self._personal_h20_read_started_at = time.monotonic()
+        self._personal_h20_read_phase = "準備原保存名單"
         loading_timer = getattr(self, "_personal_h20_loading_timer", None)
         if loading_timer is not None:
             self._personal_h20_loading_label.setText("正在核驗原保存來源，已等待 0 秒；尚未完成。")
@@ -812,12 +811,21 @@ class MainWindow(QMainWindow):
             widget.summary_label.setText("正在唯讀核驗原完整模型名單、預測與來源 pins…")
         else:
             widget.summary_label.setText("正在核對所選保存名單版本；完成前保留原清單與選取…")
-        worker = TaskWorker(read_personal_h20_product_cohort, config_path, market_root=market_root)
+        worker = TaskWorker(
+            read_personal_h20_product_cohort, config_path, market_root=market_root,
+            progress_callback=lambda message: worker.progress.emit(message, 0),
+        )
         self._personal_h20_cohort_worker = worker
         def current() -> bool:
             return (generation == self._personal_h20_cohort_generation and not widget._closing
                 and not getattr(self, "_shutdown_close_requested", False)
                 and self._personal_h20_configuration() == (market_root, config_path))
+        def progress(message: str, _percentage: int) -> None:
+            if current():
+                self._personal_h20_read_phase = message
+                if loading_timer is not None:
+                    loading_timer.timeout.emit()
+        worker.progress.connect(progress)
         def apply(result: object) -> None:
             if not current():
                 return

@@ -356,7 +356,20 @@ def test_expanded_reason_shows_complete_score_table_and_document_end() -> None:
             app.processEvents()
         assert view.detail_text.height() >= view.detail_text.document().size().height()
         assert view.detail_text.toPlainText() == saved_text
+        top = view.detail_text.mapTo(view.result_source_tabs, QPoint(0, 0)).y()
+        view.result_scroll.verticalScrollBar().setValue(top)
+        app.processEvents()
         _capture_if_requested(view, "recommendation_full_document_460x700.png")
+        last_rect = view.detail_text.cursorRect(cursor)
+        last_top = view.detail_text.viewport().mapTo(view.result_source_tabs, last_rect.topLeft()).y()
+        view.result_scroll.verticalScrollBar().setValue(last_top)
+        app.processEvents()
+        last_visible = QRect(
+            view.detail_text.viewport().mapTo(view.result_scroll.viewport(), last_rect.topLeft()),
+            last_rect.size(),
+        )
+        assert view.result_scroll.viewport().rect().contains(last_visible)
+        _capture_if_requested(view, "recommendation_full_document_end_460x700.png")
     finally:
         view.close()
         app.processEvents()

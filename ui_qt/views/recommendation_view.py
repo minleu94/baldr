@@ -4232,6 +4232,7 @@ class RecommendationView(QWidget):
         detail_layout.addWidget(self.detail_text)
         self.detail_expand_button.toggled.connect(self._set_recommendation_reason_expanded)
         detail_group.setLayout(detail_layout)
+        detail_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         result_splitter.addWidget(detail_group)
 
         # 設置分割器比例（上面70%，下面30%）

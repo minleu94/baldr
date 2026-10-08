@@ -21,6 +21,7 @@ class Worker:
     def __init__(self, fn, *args, **kwargs):
         self.fn, self.args, self.kwargs = fn, args, kwargs
         self.finished, self.error, self.native_thread_finished = Signal(), Signal(), Signal()
+        self.progress = Signal()
     def start(self): pass
     def isRunning(self): return True
     def cancel(self, **kwargs): pass
@@ -106,9 +107,13 @@ def test_loading_status_and_cancel_preserve_unpublished_cohort(tmp_path, monkeyp
     window._personal_h20_read_started_at -= 8
     window._personal_h20_loading_timer.timeout.emit()
     assert "8 秒" in window._personal_h20_loading_label.text()
+    worker.progress.emit("來源組 1：重核共同來源", 0)
+    assert "來源組 1" in window._personal_h20_loading_label.text()
     window._personal_h20_cancel_read_button.click()
     assert not window._personal_h20_loading_timer.isActive()
     assert "已要求取消" in window._personal_h20_loading_label.text()
+    worker.progress.emit("晚到來源訊息", 0)
+    assert "晚到" not in window._personal_h20_loading_label.text()
     worker.finished.emit((object(), cohort))
     assert window.personal_h20_research_widget._cohort is None
     assert not opened

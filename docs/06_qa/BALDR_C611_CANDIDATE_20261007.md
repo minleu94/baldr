@@ -20,3 +20,9 @@ BUILD_INFO 保持 immutable built_not_validated，驗證收據另存，不覆寫
 H20 Main 首次完整 attempt `output/qa/h20_main_canonical_design_20261007_a/attempts/20261008T022030Z_27782a316737/controller_receipt.json` terminal exit 1、18.234秒；未到名單或2382，下鑽速度仍沒有新量測。下一輪只允唯一QA case的明示app-local runtime SQLite，原H20 snapshot必須mode=ro／query_only，正式market DB與任何原來源寫入仍拒絕。不能把runtime必要DDL計數冒稱所有SQLite零寫入。
 
 後續本地 `1e0e28ae` 市場歸屬來源提交不在此固定候選，不重建或修改c611的BUILD_INFO；其中央12項與892檔mypy資格另見市場歸屬QA，也未接完整篩選UI。
+
+後續原H20 Main attempt `20261008T022925Z_9cdc4b7c3ea1` 已terminal exit1：Main建構約4.3秒，初讀10列約54秒後遇 `personal_h20_cohort_changed_during_terminal_read`，未到2382雙擊。SQLite紀錄顯示原source連線0、正式market拒絕3次、另10次對同一原快照的拒絕；中央與分工核對確定該快照是storage config active_root內的exact pin，QA ancestry卻誤要求DATA_ROOT，為測試護欄的根誤用。source/archive inventory不變。原54秒含被拒source的處理，不是成功名單或產品速度證據；修正QA根綁定後另開attempt，不放寬產品finalizer、manifest或來源核驗。
+
+完整母體同版 attempt `baldr_fulln_read_root_257_20261007_f759d97f` 真產製與exact讀回封存已成功，但Python Main因私有COW fixture來源位置與真正OUTPUT_ROOT不一致而未完成啟動。已安全中止並保留日誌，不dismiss來源錯誤冒稱通過；fixture-only預檢與新唯一attempt仍待驗。source readonly attribute不是strict resolve失敗原因：普通／readonly檔在sandbox均拒、elevated均成功；保留原readonlyattribute與全部guard。
+
+`9934f8a8` 已另外修正H20跨結果分頁返回的雙重讀排程，相關路由及Main合成回歸通過；此固定c611依然不包含，不以後續dev狀態修改候選身份。

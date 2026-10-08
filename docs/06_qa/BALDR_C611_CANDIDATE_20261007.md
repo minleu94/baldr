@@ -26,3 +26,7 @@ H20 Main 首次完整 attempt `output/qa/h20_main_canonical_design_20261007_a/at
 完整母體同版 attempt `baldr_fulln_read_root_257_20261007_f759d97f` 真產製與exact讀回封存已成功，但Python Main因私有COW fixture來源位置與真正OUTPUT_ROOT不一致而未完成啟動。已安全中止並保留日誌，不dismiss來源錯誤冒稱通過；fixture-only預檢與新唯一attempt仍待驗。source readonly attribute不是strict resolve失敗原因：普通／readonly檔在sandbox均拒、elevated均成功；保留原readonlyattribute與全部guard。
 
 `9934f8a8` 已另外修正H20跨結果分頁返回的雙重讀排程，相關路由及Main合成回歸通過；此固定c611依然不包含，不以後續dev狀態修改候選身份。
+
+修正QA source ancestry後，唯一原件 Main attempt `20261008T023759Z_2009ff15e64a` 已完成10/10 available名單、真Qt雙擊2382、原預測684bp與三日期首屏、返回同manifest／2382及零worker關閉。單次受guard量測：Main建構6.500秒、初始名單16.734秒、雙擊前置完整名單重讀16.609秒、個股證據worker16.312秒、雙擊至摘要32.937秒、返回16.625秒。這些僅是該次操作觀測，不是p95／Native或產品速度接受。
+
+該attempt仍terminal exit1、不得授原件保護或完整旅程通過：最後命中 `canonical_main_readonly_boundary_violation`，原snapshot `-shm` 的mtime變動（32KiB、SHA不變）；main DB及其餘原件bytes不變，另有mkdir/write guard拒絕待分類。SQLite mode=ro/query_only不能據此宣稱source metadata全不變。已停止再直接SQLite開啟原快照，不將變動後新baseline當作修好；下一步先唯讀檢查WAL依賴並評估受界隔離reader／明示sealed-only方案。不可直接加immutable=1忽略WAL、checkpoint原件或放寬full-stat驗收。

@@ -214,3 +214,11 @@ F17 bundle final owner回報39 passed／1 skip、reader10 passed；中央核bund
 reader中央另發現VerifiedQueryResult只以全域seal與欄位形狀核驗，標準dataclasses.replace可能替換排序keys而保留原operation／ordered digest；已要求真fixture重現及per-result身份seal、完整operation／排序／counts／session binding負例，尚未接受。benchmark QA controller現場preimage與先前923A回報不一致，現檔另作未審基線重新審查；缺舊bytes不據此猜測diff或採相同資格。
 
 中央bundle完整回歸handle59878已terminal exit0：39 passed／1 skipped、276.35秒，兩檔驗前驗後SHA與上列freeze相等；兩檔mypy及compile通過，root收據 `output/qa/f17_selected_fact_index_20261008_a/root_bundle_final_receipt_20261008.json`。本次採入只限bundle有界selected rows與終態取消核驗；query reader兩檔仍施工，F17正常更新／篩選／比較／收藏／UI與實際N接受仍缺，不能以此39項折抵。
+
+### H20 進度通知交付合併（中央）
+
+原9bc旅程的worker_progress共46,631個trace事件；低層原來每1MiB回報，Main每次進度會重查configuration並刷新label。中央只在scheduled UI composition合併顯示通知：同階段、同total且進度未跨整數百分比時不重發；階段改變、計數重新開始或total完成仍交付。底層hash/copy/finish及每chunk取消poll完全不變。訊息改白話階段，控制用0/1不標為位元組；不授全程百分比完成或效能資格。
+
+最終五檔affected（hook/read-session/SQLite operation/capacity/Main合成接線）**50 passed／11.13秒**，含4GB大小三階段的11,000+通知合成、每階段起訖保留、同size新來源重啟、callback失敗仍中止與控制階段單位。workbench85 passed／3.11秒；validator原sandbox21 passed／3 failed／4 skipped（WinError5導致daily SQLite同步失敗）原報告保留，唯一短合成根native同命令25 passed／0 failed／4 protected skips。full-roots mypy896檔通過，hook單檔mypy及兩檔compile通過。
+
+包含test檔的targeted mypy另被其既有fixture匯入tests/test_ui_qt_stock_research_report.py帶出46既有型態錯誤，該run保留，不改無關test或聲稱兩檔型態全綠；正常產品roots及hook通過如上。更早文字改前46測試綠燈不替代本次50項最終驗證。原4GB／Main／Native速度、新候選與完整P00–P14仍未接受；沒有直接連原件或改金融/模型/決策時鐘。rollback/preimages／failed與native validator報告在 `output/qa/h20_progress_delivery_root_20261008_a/`。

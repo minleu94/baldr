@@ -81,11 +81,37 @@ def _open_personal_h20_sqlite_operation(
         PersonalH20SQLiteReadOperation,
     )
 
+    last_progress: tuple[str, int, int, int] | None = None
+
     def copy_progress(stage: str, current: int, total: int) -> None:
+        nonlocal last_progress
         if progress_callback is not None:
-            progress_callback(
-                f"H20 正在建立唯讀 SQLite 副本：{stage}，已核對 {current}/{total} 位元組。"
-            )
+            # 每個來源仍逐區塊核驗與檢查取消；只將顯示通知合併到整數百分比。
+            # 階段切換、重新開始及最後位元組必須即時交付。
+            percent = current * 100 // total if total > 0 else 0
+            previous = last_progress
+            last_progress = (stage, total, current, percent)
+            if (previous is not None and previous[0] == stage and previous[1] == total
+                    and current >= previous[2] and percent == previous[3]
+                    and current != total):
+                return
+            labels = {
+                "copy_snapshot_bytes": "建立安全副本",
+                "verify_private_copy_bytes": "核驗副本內容",
+                "open_private_reader": "準備讀取副本",
+                "reader_transaction_ready": "唯讀來源已就緒",
+            }
+            is_bytes = stage in {"copy_snapshot_bytes", "verify_private_copy_bytes"}
+            if stage.startswith("pin_source_file_group"):
+                label = "核驗原封存資料"
+                is_bytes = stage != "pin_source_file_group"
+            elif stage.startswith("finish_source_revalidation"):
+                label = "確認原封存資料未變"
+                is_bytes = stage != "finish_source_revalidation"
+            else:
+                label = labels.get(stage, "核驗保存來源")
+            detail = f"，已核對 {current}/{total} 位元組" if is_bytes else ""
+            progress_callback(f"H20 正在核驗保存來源（唯讀 SQLite 副本）：{label}{detail}。")
 
     operation = PersonalH20SQLiteReadOperation(
         private_root=sqlite_read_root,

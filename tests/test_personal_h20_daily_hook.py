@@ -157,3 +157,80 @@ def test_completed_hook_publishes_only_verified_full_scope_and_failure_preserves
         prediction_reader=reader, daily_reader=reader)
     assert failed["effective_model_run"] is False
     assert (pointer.read_bytes(), pointer.stat().st_mtime_ns) == before
+
+
+def _copy_progress_port(tmp_path, monkeypatch, consumer):
+    from scripts.scheduled import personal_h20_sqlite_read_operation as operations
+
+    ports = {}
+
+    def operation(**kwargs):
+        ports.update(kwargs)
+        return SimpleNamespace(__enter__=lambda: None, close=lambda: None)
+
+    monkeypatch.setattr(operations, "PersonalH20SQLiteReadOperation", operation)
+    hook._open_personal_h20_sqlite_operation(
+        sqlite_read_root=tmp_path, require_sqlite_copy=True,
+        cancel_callback=None, progress_callback=consumer,
+    )
+    return ports["progress_callback"]
+
+
+def test_large_copy_display_is_bounded_and_keeps_stage_and_final_bytes(tmp_path, monkeypatch):
+    messages = []
+    progress = _copy_progress_port(tmp_path, monkeypatch, messages.append)
+    messages.clear()
+    total = 4_054_339_584
+    chunk = 1_048_576
+    raw_events = 0
+    stages = (("pin_source_file_group_main", "核驗原封存資料"),
+              ("copy_snapshot_bytes", "建立安全副本"),
+              ("finish_source_revalidation_main", "確認原封存資料未變"))
+    for stage, _label in stages:
+        progress(stage, 0, total)
+        raw_events += 1
+        for current in range(chunk, total, chunk):
+            progress(stage, current, total)
+            raw_events += 1
+        progress(stage, total, total)
+        raw_events += 1
+        assert messages[-1].endswith(f"{total}/{total} 位元組。")
+    assert raw_events > 11_000
+    assert len(messages) <= 3 * 102
+    for stage, label in stages:
+        assert any(f"{label}，已核對 0/{total}" in message for message in messages)
+        assert any(f"{label}，已核對 {total}/{total}" in message for message in messages)
+        assert not any(stage in message for message in messages)
+
+
+def test_copy_progress_same_size_new_source_restart_is_visible(tmp_path, monkeypatch):
+    messages = []
+    progress = _copy_progress_port(tmp_path, monkeypatch, messages.append)
+    messages.clear()
+    for current in (0, 50, 100, 0, 1, 100):
+        progress("copy_snapshot_bytes", current, 100)
+    assert len(messages) == 6
+    assert sum("已核對 0/100" in message for message in messages) == 2
+    assert messages[-1].endswith("100/100 位元組。")
+
+
+def test_delivered_copy_progress_failure_still_aborts_read(tmp_path, monkeypatch):
+    def broken_consumer(message):
+        if "建立安全副本" in message:
+            raise RuntimeError("display channel failed")
+
+    progress = _copy_progress_port(tmp_path, monkeypatch, broken_consumer)
+    with pytest.raises(RuntimeError, match="display channel failed"):
+        progress("copy_snapshot_bytes", 0, 4_054_339_584)
+
+
+def test_reader_control_stages_do_not_claim_byte_measurements(tmp_path, monkeypatch):
+    messages = []
+    progress = _copy_progress_port(tmp_path, monkeypatch, messages.append)
+    messages.clear()
+    for stage in ("pin_source_file_group", "open_private_reader", "reader_transaction_ready",
+                  "finish_source_revalidation"):
+        progress(stage, 0, 1)
+    assert len(messages) == 4
+    assert all("位元組" not in message and "0/1" not in message for message in messages)
+    assert any("唯讀來源已就緒" in message for message in messages)

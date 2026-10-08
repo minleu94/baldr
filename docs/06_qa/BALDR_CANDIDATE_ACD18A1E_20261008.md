@@ -2,6 +2,8 @@
 
 ## Frozen 專項最新狀態（2026-10-08）
 
+QtTest 替代已限定修改本機 QA child，SHA `95244a5f2f2457ce9763fb7cf1988fca5635c704bb50b61a4797bc074d3b3af1`；使用 `QMouseEvent` 與 `QApplication.sendEvent` 投遞 press／release／double-click／release。中央獨立 `--event-self-test` exit 0，真實 QTableWidget 恰收到一次 `(0,0)` 雙擊；代理 compile exit 0，三處 QtTest 引用移除。沒有修改候選、產品 handler 或觸發 signal 代替事件。原失敗與前像／diff／log 保留在 `output/qa/f07_human_acceptance_draft_20261008_a/preimage_event_adapter/`。完整 EXE 旅程暫待 1,000 檔效能獨占窗口結束，這個 source Qt 自測不授 frozen／真人通過。
+
 保留所有失敗封套。`attempt_20261008T195853Z_60d27b03aa6b` 已通過精確 PATH，因 CWD 位於 repo 被拒；新增 `C:/t` 的一次性 CWD 後，`attempt_20261008T200003Z_ea95a6ca2553` 揭示另一個互斥 QA 條件仍要求 CWD 等於 repo 內 runtime。控制器及 child 現改為精確比對本次非 repo CWD 的 device／inode／mode；資料與可寫 runtime 根不變，不授 CWD 寫入權限，保留 QA 目錄。
 
 實際 controller 自測 exit 0，精確五段 PATH、缺段／多段／換序／traversal、repo 內 frozen 根及工作樹模組拒絕、Job ABI 與錯誤來源 pins 共 18 個結果通過；兩個 QA Python compile 通過。接續唯一 attempt `attempt_20261008T200624Z_32ae6e87635d` 通過環境、CWD、407 節點來源與 COW 前置核驗；child PID 41896 在 1.671 秒內 exit 1，錯誤為候選未打包 `PySide6.QtTest`。此錯誤發生於 Main 前，沒有 UI 驗收證據。

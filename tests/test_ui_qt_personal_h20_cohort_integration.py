@@ -62,9 +62,11 @@ def test_main_mount_verified_cohort_exact_drilldown_and_return(tmp_path, monkeyp
     window._refresh_personal_h20_cohort()
     reference = object()
     window._personal_h20_cohort_worker.finished.emit((reference, cohort))
+    original_worker = window._personal_h20_cohort_worker
+    original_generation = window._personal_h20_cohort_generation
     window._request_personal_h20_research(selection)
-    assert not opened
-    window._personal_h20_cohort_worker.finished.emit((reference, cohort))
+    assert window._personal_h20_cohort_worker is original_worker
+    assert window._personal_h20_cohort_generation == original_generation
     assert len(opened) == 1
     context = opened[0]
     assert context.result_id == "" and context.source_id == "prediction"
@@ -137,7 +139,6 @@ def test_return_from_other_result_tab_starts_one_exact_cohort_read(tmp_path, mon
     reference = object()
     window._personal_h20_cohort_worker.finished.emit((reference, cohort))
     window._request_personal_h20_research(selection)
-    window._personal_h20_cohort_worker.finished.emit((reference, cohort))
     context = opened[0]
     other_panel = QWidget()
     panel.result_source_tabs.addTab(other_panel, "推薦結果")
@@ -157,5 +158,29 @@ def test_return_from_other_result_tab_starts_one_exact_cohort_read(tmp_path, mon
     before_user_switch = window._personal_h20_cohort_generation
     panel.result_source_tabs.setCurrentWidget(window.personal_h20_research_panel)
     assert window._personal_h20_cohort_generation == before_user_switch + 1
+    panel.close()
+    app.processEvents()
+
+
+def test_direct_drill_refuses_busy_unknown_missing_reference_and_shutdown(tmp_path, monkeypatch):
+    app, window, panel, cohort, selection, opened, messages = setup_window(tmp_path, monkeypatch)
+    window._refresh_personal_h20_cohort()
+    window._personal_h20_cohort_worker.finished.emit((object(), cohort))
+    widget = window.personal_h20_research_widget
+    widget.setEnabled(False)
+    window._request_personal_h20_research(selection)
+    assert not opened
+    widget.setEnabled(True)
+    window._personal_h20_cohort_reference = None
+    window._request_personal_h20_research(selection)
+    assert not opened
+    window._personal_h20_cohort_reference = object()
+    widget.set_cohort(replace(cohort, rows=(replace(cohort.rows[0], status="unknown", gross_return_bp=None),)))
+    window._request_personal_h20_research(selection)
+    assert not opened
+    widget.set_cohort(cohort)
+    window._shutdown_close_requested = True
+    window._request_personal_h20_research(selection)
+    assert not opened
     panel.close()
     app.processEvents()

@@ -1006,7 +1006,25 @@ class MainWindow(QMainWindow):
         widget = getattr(self, "personal_h20_research_widget", None)
         if (isinstance(selection, PersonalH20ResearchSelection) and widget is not None
                 and widget.isEnabled() and widget.restore_selection(selection)):
-            self._refresh_personal_h20_cohort(selection, open_research=True)
+            cohort = widget._cohort
+            reference = getattr(self, "_personal_h20_cohort_reference", None)
+            if (cohort is None or reference is None
+                    or getattr(self, "_shutdown_close_requested", False)):
+                return
+            row = next((item for item in cohort.rows if item.symbol == selection.symbol), None)
+            if row is None or row.status != "available":
+                return
+            # 名單已核的身份只用來定位原來源；個股 reader 仍重新核 manifest、
+            # capture 和終態來源，未完成前顯示 loading，不沿用 RAM 預測冒充成功。
+            context = ResearchStockContextDTO(stock_code=row.symbol, decision_date=row.decision_date,
+                data_date=row.source_date or "", result_id="", identity_status="personal_research_only",
+                source_snapshot_id=cohort.cycle_id, source_snapshot_hash=cohort.manifest_sha256,
+                profile_id=cohort.candidate_id, source_id=row.prediction_id,
+                source_version=cohort.contract_hash, source_kind="personal_h20_saved_cohort",
+                source_label="已保存個人 H20 毛報酬模型研究；效果未成熟",
+                source_workspace="recommendation")
+            self._personal_h20_research_origin = (context, selection, reference)
+            self._open_stock_research_context(context)
 
     def _refresh_personal_h20_cohort(self, selection: object = None, *, open_research: bool = False) -> None:
         from app_module.recommendation.personal_h20_research_cohort import (

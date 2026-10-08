@@ -698,6 +698,7 @@ class _MainWindowJourneyHarness(QMainWindow):
             "_personal_h20_configuration",
             "_refresh_personal_h20_cohort",
             "_request_personal_h20_research",
+            "_save_personal_h20_research",
             "_coerce_stock_research_context",
             "_stock_codes_for_research_context",
         ):

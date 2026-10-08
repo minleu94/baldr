@@ -35,6 +35,14 @@
 
 接入前需補反例：OR 不納入 excluded／pending、未知條件不冒充命中、改變市場範圍不混來源、同值排序穩定、跨段完整母體先排序後分頁、舊 JSON bytes／identities 保留、未知字段拒絕，以及新收藏在另一程序 exact 重開。這是待實作合約，不是 UI 接入完成證據。
 
+## 新程序完整母體補驗（2026-10-08）
+
+中央直接讀取 `output/qa/f02_ma_fresh_pid_20261008_a/attempts/attempt_20261008T130612_4a7f6073db55/parent_receipt.json` 與 `child-output/child_report.json`，SHA256 分別為 `372b6d9b982184f844043944fd666b50b05d7ae211de43147e993e9d5be92fb9`、`07200b7d7c54cf48be98dc3c0c57535af643c15bcf545b70f9a26f30d6679efe`。兩者 status passed、child exit 0，27.094 秒內完成既定 300 秒期限；parent PID 8888，Windows redirector PID 41184，reporter child PID 40784。
+
+Parent／child 各自從 exact bundle 正常 opener 讀入，MA projection 都為 257 次、分段 `[256,1]`，後續查詢沒有重投影。Unknown 查詢兩股全域降冪為 `1001,1000`、分兩頁；完整查詢 257 股分六頁，末頁 `1250..1256`，兩程序的結果、頁面及證據 identities 相符。原來源 inventory SHA 起訖同為 `a5b500d147700b311ac427c477480a6304272ad26cd901617d512b87969255be`；兩程序的網路、SQLite、越界路徑與未授權程序嘗試均為零。
+
+首次 attempt 的 NUL stdin 防護失敗仍保留；QA 改用 attempt 內零位元組檔案的唯讀 handle，並先以真實 suspended Job 執行固定 Python probe。沒有放寬 NUL 路徑或程序白名單。此補驗證明來源版正常 opener 的新 PID exact 重建；`source_available_at` 仍 null、availability unknown、historical PIT false，尚不證明 MA UI／收藏接入、正式來源資格或候選 EXE 通過。
+
 ## 回滾與範圍
 
 本次產品變更限定 projection protocol、P01 builder observer、F17 opener 與 MA query 模組及對應測試；既有 raw QA 封套不修改。回滾應以保存的各檔前像逐一還原本任務變更，先確認沒有其他人後續修改，不執行全工作樹還原。操作手冊須在正常 UI 接入完成時同步入口、條件意義、unknown 與 PIT 限制。

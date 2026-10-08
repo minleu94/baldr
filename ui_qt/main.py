@@ -1933,6 +1933,7 @@ class MainWindow(QMainWindow):
                     self._open_stock_research_context
                 )
             self.recommendation_view = recommendation
+            self._mount_technical_official_research(recommendation)
             self._mount_personal_h20_research(recommendation)
             self._connect_daily_market_cohort_view(recommendation, market_tabs)
             print("[MainWindow] 推薦分析視圖創建成功")
@@ -2343,6 +2344,105 @@ class MainWindow(QMainWindow):
         )
         self._select_main_workspace("stock_research")
 
+    def _mount_technical_official_research(self, recommendation) -> None:
+        """官方對照使用獨立來源分頁，未指定來源不自動讀取或建立。"""
+        from ui_qt.views.daily_market_technical_official_disposition_view import (
+            DailyMarketTechnicalOfficialDispositionView,
+        )
+        view = DailyMarketTechnicalOfficialDispositionView(
+            getattr(self.config, "technical_official_disposition_read_root", None),
+            parent=recommendation,
+        )
+        self.technical_official_research_view = view
+        recommendation.result_source_tabs.addTab(view, "官方市場／處置研究")
+        view.bookmark_button.setText("收藏原研究")
+        view.bookmarkPrepared.connect(self._save_technical_official_bookmark)
+        view.comparisonReady.connect(self._show_technical_official_comparison)
+
+    def _show_technical_official_comparison(self, value: object) -> None:
+        """並列同來源已核事實，保留原結果頁與各股獨立捲動。"""
+        from PySide6.QtWidgets import QDialog, QGroupBox, QScrollArea, QTextEdit
+        from ui_qt.views.daily_market_technical_official_disposition_view import (
+            DailyMarketTechnicalOfficialDispositionComparisonV1,
+            format_technical_official_research_row_v1,
+        )
+        if type(value) is not DailyMarketTechnicalOfficialDispositionComparisonV1:
+            return
+        view = getattr(self, "technical_official_research_view", None)
+        result = getattr(view, "current_result", None)
+        if result is None or result.query.query_identity_sha256 != value.query_identity_sha256:
+            return
+        if getattr(self, "_shutdown_close_requested", False):
+            return
+        previous = getattr(self, "_technical_official_comparison_dialog", None)
+        if previous is not None:
+            previous.close()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("原研究股票比較")
+        layout = QVBoxLayout(dialog)
+        hint = QLabel("比較沿用同一份已核來源與條件；未知資料保持未知，不產生推薦或買賣指令。")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        columns = QWidget()
+        column_layout = QHBoxLayout(columns)
+        for selection in value.items:
+            group = QGroupBox(selection.stock_code)
+            group.setMinimumWidth(220)
+            content = QVBoxLayout(group)
+            facts = QTextEdit()
+            facts.setReadOnly(True)
+            facts.setPlainText(format_technical_official_research_row_v1(selection.row))
+            content.addWidget(facts)
+            column_layout.addWidget(group)
+        scroll.setWidget(columns)
+        layout.addWidget(scroll, 1)
+        close = QPushButton("關閉比較，返回原研究")
+        close.clicked.connect(dialog.close)
+        layout.addWidget(close)
+        dialog.resize(1100, 700)
+        self._technical_official_comparison_dialog = dialog
+        dialog.show()
+
+    def _save_technical_official_bookmark(self, value: object) -> None:
+        """保存原查詢收藏；成功後刷新觀察清單，不產生最新研究。"""
+        from app_module.daily_market_technical_official_disposition_bookmark_v1 import (
+            DailyMarketTechnicalOfficialDispositionBookmarkV1,
+        )
+        from ui_qt.workers.task_worker import TaskWorker
+        if type(value) is not DailyMarketTechnicalOfficialDispositionBookmarkV1:
+            return
+        service = getattr(self, "watchlist_service", None)
+        if service is None or getattr(self, "_shutdown_close_requested", False):
+            return
+        view = self.technical_official_research_view
+        worker = TaskWorker(service.add_research_bookmark, value)
+        workers = getattr(self, "_technical_official_bookmark_workers", None)
+        if workers is None:
+            workers = set()
+            self._technical_official_bookmark_workers = workers
+        workers.add(worker)
+        view.bookmark_button.setEnabled(False)
+        def completed(result: object) -> None:
+            if getattr(self, "_shutdown_close_requested", False):
+                return
+            view.bookmark_button.setEnabled(True)
+            message = f"股票 {value.stock_code} 的原研究收藏：{getattr(result, 'message', '收藏結果未提供')}"
+            view.status_label.setText(message)
+            self.statusBar().showMessage(message)
+            watchlist = getattr(self, "watchlist_view", None)
+            refresh = getattr(watchlist, "_load_watchlist", None)
+            if callable(refresh):
+                refresh()
+        worker.finished.connect(completed)
+        worker.error.connect(lambda message: self.statusBar().showMessage(f"收藏失敗：{message}"))
+        worker.native_thread_finished.connect(lambda: view.bookmark_button.setEnabled(True))
+        worker.native_thread_finished.connect(lambda: workers.discard(worker))
+        worker.native_thread_finished.connect(worker.deleteLater)
+        # 本視窗強引用保留到原生終態；全域registry供Main關閉gate核對。
+        worker.start()
+
     def _connect_daily_market_cohort_view(self, recommendation, market_tabs) -> None:
         """盤勢讀名單的同一 verified snapshot，不另啟日期不同的計算。"""
 
@@ -2378,6 +2478,23 @@ class MainWindow(QMainWindow):
         daily.bookmarkSaved.connect(lambda *_args: watchlist._load_watchlist())
         watchlist.latestResearchRequested.connect(self._open_latest_bookmark_research)
         watchlist.technicalBookmarkStateReady.connect(self._open_technical_bookmark_state)
+        watchlist.technicalOfficialBookmarkReady.connect(self._open_technical_official_bookmark)
+
+    def _open_technical_official_bookmark(self, value: object) -> None:
+        """原query fresh重開，不轉成一般報告或最新來源。"""
+        from app_module.daily_market_technical_official_disposition_bookmark_v1 import (
+            DailyMarketTechnicalOfficialDispositionBookmarkV1,
+        )
+        if type(value) is not DailyMarketTechnicalOfficialDispositionBookmarkV1:
+            return
+        if getattr(self, "_shutdown_close_requested", False):
+            return
+        view = getattr(self, "technical_official_research_view", None)
+        if view is None:
+            return
+        view.restore_bookmark(value)
+        self._select_main_workspace("recommendation")
+        self.recommendation_view.result_source_tabs.setCurrentWidget(view)
 
     def _open_technical_bookmark_state(self, value: object) -> None:
         """還原觀察清單嚴格讀回的原技術研究收藏。"""
@@ -2866,7 +2983,7 @@ class MainWindow(QMainWindow):
     def _freeze_child_refresh_sources(self) -> None:
         """凍結有 pending generation 的子頁，避免取消後又補起新 worker。"""
 
-        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view", "watchlist_view"):
+        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view", "watchlist_view", "technical_official_research_view"):
             view = getattr(self, attribute, None)
             begin_shutdown = getattr(view, "begin_shutdown", None)
             if not callable(begin_shutdown):

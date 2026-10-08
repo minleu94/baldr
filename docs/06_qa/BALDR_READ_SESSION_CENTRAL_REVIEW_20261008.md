@@ -289,3 +289,15 @@ F17 root 設定前置：新增 `TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT` 共用
 中央真258 fixture與既有H20收藏完整聯測3 passed／135.66秒，既有daily/rank/JSON/COW四套件22 passed／4.51秒；兩個既有Qt disconnect warnings保留。首輪非canonical JSON失敗已改用契約公開編碼函式；第二輪測試誤比中文message而非error.code，只修測試，兩次失敗log保留。product/test compile與mypy通過。
 
 全新Python PID21956從保存JSON建立服務，再以原query公開factory完整核驗及read_page_request成功：258 declared／258 matching、選取合成代碼1000及row identity一致、query identity一致、保存JSON bytes SHA不變。證據 `output/qa/f17_watchlist_root_20261008_a/fresh_process_readback01.log`。此為合成封套與服務新程序資格，沒有Main、native exe、跨頁比較新程序或正式來源資格；UI入口與原返回接線仍待。
+
+### F17 主程式保存研究旅程的有限接受
+
+推薦分析新增獨立「官方市場／處置研究」來源分頁；明示既有保存資料夾後只列來源資訊，選取原版本才核驗。全域條件與排序沿同次已核來源，詳情與2–5股跨頁比較使用同一公開白話formatter，原稽核JSON預設收合。收藏背景保存原typed query／列／比較頁錨點；觀察清單嚴格按schema重開原來源，不轉成一般最新報告。Main強引用收藏worker至原生終態，關閉gate包含此來源頁。
+
+中央真258檔Main旅程初次1 failed／134.55秒，抓到翻頁後Qt保留同一格選取而內部DTO已清空；原失敗未刪。葉片另以真QTest重現兩次紅測（132.48秒／131.51秒），修正重繪清除舊current／selection並同步公開selector，表格技術規則名稱一併轉中文。完整葉片8 passed／213.32秒，view SHA `FFDB5ADC2DE3A25928C6228A8AF19924CDADDC1A31CD2B944A1B2F552952EFBB`。
+
+中央重跑Main handle43943 terminal0：1 passed／161.49秒，涵蓋原來源清單、全258分母、同位置跨頁兩股、實際比較對話框、詳情返回、背景收藏及觀察清單原query／頁／選股／basket重開，network attempts為0。日誌 `output/qa/f17_main_host_root_20261008_a/main_journey02.log`；兩個既有Qt disconnect warnings保留。既有Main完整母體收藏及原生關閉聯測23 passed／1既有skip／4.97秒（兩個Qt warnings）。最後workbench85 passed／3.17秒、validator25 passed／0 failed／4 protected skips、full-roots mypy900檔clean、6檔compile通過；固定報告前像於validator_preimage03保存。完整Manual僅追加本入口，保留其他聊天原前綴變更。
+
+提交前只移除view檔尾多餘空白行，AST前後完全相同並重新compile；最後SHA為 `824e4eafd8574cc847ef28a9132b276aba45bdd3b156e18e5b91df6c539117e2`，原驗收前像另存，不重寫既有測試日誌。
+
+本次只接受同程序合成保存研究UI／Main閉環。兩頁仍使用QTableWidget，原計畫的QAbstractTableModel分頁尚待；完整公開query的多狀態／多股條件仍超出目前UI可表示範圍且嚴格拒絕還原，不能宣稱完整選股器。正常來源產製、真市場完整N、冷暖/p95、新程序完整UI、固定exe與真人四用途仍未完成，不替代P00–P14／M1–M3其餘需求。所呈現均為固定保存事實，未新增金融計算／策略門檻，decision cutoff與特徵日期沿原保存內容，不讀未來資料或授PIT／Advice資格。

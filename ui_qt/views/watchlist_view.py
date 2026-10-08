@@ -26,6 +26,10 @@ from typing import List, Dict, Optional
 
 from ui_qt.models.pandas_table_model import PandasTableModel
 from app_module.watchlist_service import WatchlistService, WatchlistStorageStatus
+from app_module.daily_market_technical_official_disposition_bookmark_v1 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_RESEARCH_BOOKMARK_SOURCE,
+    DailyMarketTechnicalOfficialDispositionBookmarkV1,
+)
 from app_module.watchlist_review_state import WatchlistReviewSourceIdentity, WatchlistReviewState
 from app_module.dtos.decision_continuity_dtos import (
     DecisionIdentity,
@@ -74,6 +78,7 @@ class WatchlistView(QWidget):
     latestResearchRequested = Signal(object)
     technicalBookmarkStateReady = Signal(object)
     personalH20BookmarkStateReady = Signal(object)
+    technicalOfficialBookmarkReady = Signal(object)
     
     def __init__(
         self,
@@ -1702,6 +1707,20 @@ class WatchlistView(QWidget):
 
     @classmethod
     def _exact_research_bookmark_id_for_row(cls, row: object) -> str:
+        if cls._row_is_technical_official_bookmark(row):
+            try:
+                from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved
+                bookmark = decode_saved(row.get("research_bookmark"))
+                if (
+                    isinstance(bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1)
+                    and bookmark.stock_code == str(row.get("證券代號", row.get("stock_code", ""))).strip()
+                    and row.get("source") == bookmark.source
+                    and row.get("source_id") == bookmark.bookmark_id
+                ):
+                    return bookmark.bookmark_id
+            except (TypeError, ValueError):
+                pass
+            return ""
         """讀取列內既有的精確身份，不替 full-N payload 補舊欄位別名。"""
 
         if not hasattr(row, "get"):
@@ -1741,7 +1760,18 @@ class WatchlistView(QWidget):
         return source in {
             DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE,
             DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE,
+            DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_RESEARCH_BOOKMARK_SOURCE,
         }
+
+    @staticmethod
+    def _row_is_technical_official_bookmark(row: object) -> bool:
+        if not hasattr(row, "get"):
+            return False
+        raw = row.get("research_bookmark")
+        return (
+            row.get("source") == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_RESEARCH_BOOKMARK_SOURCE
+            or isinstance(raw, dict) and raw.get("schema_version") == "daily-market-technical-official-disposition-bookmark.v1"
+        )
 
     @classmethod
     def _research_bookmark_row_label(cls, row: object) -> str:
@@ -1761,6 +1791,15 @@ class WatchlistView(QWidget):
         if not isinstance(value, Mapping):
             return "書籤格式錯誤；來源不可核驗"
         schema = str(value.get("schema_version", "") or "").strip()
+        if schema == "daily-market-technical-official-disposition-bookmark.v1":
+            try:
+                from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved
+                bookmark = decode_saved(value)
+                if not isinstance(bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1):
+                    raise ValueError("官方對照收藏類型不符")
+                return f"已收藏官方市場／處置研究｜股票 {bookmark.stock_code}｜固定原來源"
+            except (TypeError, ValueError):
+                return "官方對照收藏無效；來源不可核驗"
         if schema == ORIGINAL_STOCK_RANKING_BOOKMARK_SCHEMA:
             try:
                 decoded = decode_daily_market_research_bookmark(value)
@@ -2377,6 +2416,21 @@ class WatchlistView(QWidget):
         frame = self.stocks_model.getDataFrame()
         row = frame.iloc[rows[0].row()]
         code = str(row["證券代號"]).strip()
+        if self._row_is_technical_official_bookmark(row):
+            try:
+                from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved
+                bookmark = decode_saved(row.get("research_bookmark"))
+                if (not isinstance(bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1)
+                        or bookmark.stock_code != code
+                        or row.get("source") != bookmark.source
+                        or row.get("source_id") != bookmark.bookmark_id):
+                    raise ValueError("官方對照收藏與選取股票不符")
+            except (TypeError, ValueError) as exc:
+                self._set_status_label(f"官方對照收藏無法核驗：{exc}", level="warning")
+                return
+            self.technicalOfficialBookmarkReady.emit(bookmark)
+            self._set_status_label("已要求核驗原官方對照收藏；完成前不替換原研究。", level="info")
+            return
         if self._row_is_technical_universe_bookmark(row):
             self._set_status_label(
                 "完整母體技術收藏請使用下方收藏控制項重開；已拒絕舊個股研究路徑。",

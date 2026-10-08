@@ -58,3 +58,5 @@ F17 最新封套的 source parent 另確認 catalog 更新成功且只有一筆�
 - 2026-10-08：對照使用者回報與目前程式，保留全條件缺口、H20 同版圖表與速度驗收，記錄 F17 失敗及隔離效能驗證的範圍。
 - 2026-10-08 接續：root 審查並重跑監督失敗契約 5 項通過；控制器 `5e906b4d…` 的新隔離 session 14029 為 exit 1，封套 `C:/t/p01_30udafr3/input_integrity_failure.json` 在首個 cold worker 後停止。完整 traceback 證明 Popen 使用 `DEVNULL` 時開啟 Windows `nul` 裝置被 C63 寫入 guard 拒絕；不是股票引擎錯誤，沒有有效延遲樣本。待改用該全新 attempt 的空 regular-file 標準輸入，不放寬原 guard。原 `C:/t/p01_4jr3cl29` 失敗仍保留。
 - 2026-10-08 標準輸入修正後：root 審查 `5f3f8e53…` 並重跑 7 項契約通過，包含真實合成 worker 讀空輸入 EOF 與 Job 清理；新 session74142／`C:/t/p01_z1brdyqa` 仍為 exit1，首個 cold 後停止。真 C63 audit 對所有 `subprocess.Popen` 無條件拒絕，與 parent 的六個精確 worker 啟動許可無法在同一 interpreter 組合；交換 hook 順序也不能解決。接續改為 parent 專用、精確 QA metadata 寫入與啟動守衛，worker 繼續原 C63 全保護及禁止子程序。須以真 C63 worker／真 parent guard 的隔離組合測試核對，不能以先前 synthetic guard 自測宣稱完整矩陣可跑；冷暖效能仍無有效樣本。
+
+- 2026-10-08 中央審查補記：H20 固定 bd5d2f86367a 的隔離 Python／EXE 比較通過並交真人，捲動與原保存來源等待仍未接受。F17 單次核驗 builder 尚待中央完整回歸；已要求保留來源工作前的取消拒絕。source-only benchmark parent guard 的 denial 只在整體收尾檢查不足以證立即停跑，已要求每個 launch 前／worker 後檢查；本輪沒有新的效能樣本。

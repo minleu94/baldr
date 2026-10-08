@@ -799,3 +799,5 @@ F17 root attempt_116cdedcf554 已讀出一筆 catalog，選版後完整 exact-op
 2026-10-08 H20 同次來源 OHLCV 接線中央有限接受：完整相關回歸 149 項通過，新程序測試補正 observer／resolver 與 Windows URI guard 後單例通過；原 SQLite SQL 連線 0，私有副本來源／副本 pins 一致並清理。Workbench85、validator25／0／4、mypy903、語法檢查通過。詳 [同次來源圖表接線審查](../../06_qa/H20_BOUND_CHART_INTEGRATION_20261008.md)。新固定 EXE／真人仍待，不以合成 1234 bp 代替原 684 bp 或宣稱 20 秒已改善。
 
 F17 最新 stage attempt_5e851f27208e 已定位 bundle exact 143.357 秒、再次 P01 open 121.005 秒取消，未進入 execute／page或 frozen child；root 核對現有程式確有同圖重讀。P01 builder／Bundle callback／兩個 F17 reader 入口的單次完整核驗整合已分配至 universe 葉片；保持預設 API、來源 pins、完整 cohort／count／clock／method、終態及取消拒絕，不加入跨操作快取或 skip_verify。該葉片仍待中央審查，不能折抵正式來源／Native／效能門檻。
+
+2026-10-08 固定 H20 候選 bd5d2f86367a 已完成 build 與 UTF-8 Python／EXE 同版隔離比較（收據 `baldr_same_version_bd5d2f86367a_288681d8`）；真人入口與三段驗收說明已交付，原來源未自動啟動。這取代上一段的「新固定 EXE 待」狀態，真人捲動、原 684 bp／同份來源圖表與等待時間仍待，不授完整補完或速度資格。F17 單圖核驗葉片中央審查另發現取消應早於 root 路徑工作；1,000 檔測試 parent 寫入拒絕須立即停止矩陣而不能只在末尾統計。兩項已交原代理修正，未啟動新的效能矩陣。

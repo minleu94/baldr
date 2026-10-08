@@ -2059,6 +2059,23 @@ def _canonical_json(value: object) -> str:
 
 
 def _reject_float_tree(value: object) -> None:
+    value_type = type(value)
+    if value_type is float:
+        raise ValueError("technical_snapshot_v4_json_float_forbidden")
+    if value_type is str or value_type is int or value_type is bool or value is None:
+        return
+    if value_type is dict:
+        for key, item in cast(dict[object, object], value).items():
+            if type(key) is not str and not isinstance(key, str):
+                raise ValueError("technical_snapshot_v4_json_key_invalid")
+            _reject_float_tree(item)
+        return
+    if value_type is list or value_type is tuple:
+        for item in cast(Sequence[object], value):
+            _reject_float_tree(item)
+        return
+
+    # 子類與自訂容器沿用原本的 isinstance 語意，包含 float 子類和 Mapping 子類。
     if isinstance(value, float):
         raise ValueError("technical_snapshot_v4_json_float_forbidden")
     if isinstance(value, Mapping):

@@ -113,3 +113,9 @@ child 在 strict-open 的 canonical file 讀取路徑失敗：固定 reader 先�
 同一 strict session 的全域結果為1,000檔、20頁；剖析只涵蓋第10頁、每頁50檔的一次 `read_selection_page`，strict-open、query、selection、首頁與來源雜湊在區間外。cProfile 下 wall time 為2.4137689秒，CPU delta 約2.390625秒，讀取4,858,624 bytes、136次，寫入零。累積時間主要落在 `_materialize_page`（2.1316743秒）、`read_selected_exact`（2.0913607秒）與50次快照解碼驗證（1.5718086秒）；canonical JSON、float tree 檢查與保存規則語意核驗是其中的重複工作。累積時間互相包含，不能加總。
 
 此為單次有 instrumentation 的瓶頸診斷，不能作為300ms／p95、MainWindow、EXE、正式全市場或真人操作接受。既有完整矩陣的換頁／篩選／排序失敗維持有效；下一步評估同 session 內已核驗不可變資料的重複驗證成本，任何優化仍須維持內容、來源身分、取消與異動拒絕契約。
+
+## JSON 基本型別等價快速路徑複驗
+
+工作樹 feature snapshot 的 `_reject_float_tree` 對精確 built-in JSON 基本型別／dict／list／tuple 增加快速分派；所有 float、非字串 key、子類與自訂 Mapping 仍沿原拒絕／遞迴語意。不修改 public from_dict／from_json／canonical、來源核驗或金融計算，也未採用快取或 unchecked 解碼。source SHA `7d05920a54f8398b52230c9cd3530c647c9ebfad9e56a78112775c28b2a9cc1d`、test SHA `47f8f5b71c9aaf6373a190977e6757cb0dfd8a9a8366238a12b57625410b915c`；preimage保存於 `output/qa/feature_snapshot_float_fastpath_20261008_a/`。
+
+owner 的31項 public 快照測試原生執行通過（3.94秒）；中央獨立新隔離重跑同模組31 passed（3.64秒），log `root_public_module_native.log`。中央另由固定 preimage AST 只抽出原 helper，與新 helper 對103個基本型別、巢狀、MappingProxy／UserDict／子類／非法key案例比對接受及錯誤型別／文字，全數等價；不載入舊模組、不讀原資料或開SQLite。固定純合成tree的20次helper診斷為舊19,845,300ns、新10,091,300ns，只能說該次helper成本降低，不能推論換頁／篩選／排序p95或300ms已達標。固定archive與原矩陣保持不變，工作樹新版完整操作效能仍待驗。

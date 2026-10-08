@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import MappingProxyType
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
@@ -269,6 +270,44 @@ def test_snapshot_rejects_json_float_duplicate_keys_and_oversize_payload(
 
     with pytest.raises(ValueError, match="technical_snapshot_v4_byte_limit"):
         _enforce_json_size({"oversized": "x" * DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_BYTES})
+
+
+def test_reject_float_tree_fast_path_preserves_container_and_float_subclass_contracts() -> None:
+    class FloatSubclass(float):
+        pass
+
+    class ListSubclass(list):
+        pass
+
+    class TupleSubclass(tuple):
+        pass
+
+    class StringSubclass(str):
+        pass
+
+    valid_payload = {
+        "nested": [1, True, None, "text", {StringSubclass("key"): 2}],
+        "tuple_values": (False, 3),
+    }
+    snapshot_module._reject_float_tree(valid_payload)
+
+    with pytest.raises(ValueError, match="technical_snapshot_v4_json_float_forbidden"):
+        snapshot_module._reject_float_tree({"value": 1.25})
+    with pytest.raises(ValueError, match="technical_snapshot_v4_json_float_forbidden"):
+        snapshot_module._reject_float_tree({"value": FloatSubclass(1.25)})
+    with pytest.raises(ValueError, match="technical_snapshot_v4_json_float_forbidden"):
+        snapshot_module._reject_float_tree(ListSubclass([FloatSubclass(1.25)]))
+    with pytest.raises(ValueError, match="technical_snapshot_v4_json_float_forbidden"):
+        snapshot_module._reject_float_tree(TupleSubclass((1.25,)))
+    with pytest.raises(ValueError, match="technical_snapshot_v4_json_float_forbidden"):
+        snapshot_module._reject_float_tree(MappingProxyType({"nested": 1.25}))
+    with pytest.raises(ValueError, match="technical_snapshot_v4_json_key_invalid"):
+        snapshot_module._reject_float_tree({1: "non-string key"})
+    with pytest.raises(ValueError, match="technical_snapshot_v4_json_key_invalid"):
+        snapshot_module._reject_float_tree(MappingProxyType({1: "non-string key"}))
+
+    encoded = snapshot_module._canonical_json({"nested": [1, True, None, "text"]})
+    assert encoded == '{"nested":[1,true,null,"text"]}'
 
 
 @pytest.mark.parametrize(

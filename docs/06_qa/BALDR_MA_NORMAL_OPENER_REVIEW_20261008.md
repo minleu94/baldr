@@ -91,3 +91,42 @@ Main 接線施工後，中央另核收藏 worker 的錯誤與原生終態 callba
 中央直接檢視新 view 發現 `_read_conditions()` 仍無條件建立 neutral F17 sort，而 `_apply_query_controls()` 未保存原 F17 sort；此外空 MA sort 被控制項的預設 stock_code clause 取代。這會使收藏重開後即使只改另一項條件，仍悄悄改動保存查詢的排序內容與 identity。
 
 已交回 view owner 修正：新來源可明示初始化預設，但還原必須保存完整 typed 排序（包含空 tuple）；在使用者未明示修改排序前，條件重查沿保存值。須補非預設 F17 sort、空排序與改其他條件後排序不變的測試。後端 API 的完整參數契約不能替代畫面實際傳參驗證。
+
+契約補核更正：F17 codec 明示合法 query 的排序不可為空；MA factory 將空輸入正規化為股票碼升冪。因此上述「保存空 tuple」不能套用於已核合法收藏，亦不應擴充 schema 或製造非法收藏來測試。實際要求是完整保留合法非預設排序；非法空 payload 應拒絕，factory 的既有正規化契約維持。非預設排序還原後不得被 UI neutral 預設取代的缺口仍須修正與驗證。
+## 同來源條件重查新增測試失敗（2026-10-08）
+
+中央 session74431 終態 exit1：11 passed、1 failed，259.56 秒；新隔離目錄 `C:/t/root-ma-requery-20261008-c`，log `output/qa/ma_watchlist_ui_root_20261008_a/bookmark_requery_attempt03.log`。直接核 traceback：新增測試要求 `stock_code desc`，被既有 MA `stock_code_tiebreak_invalid` 契約拒絕；股票碼 tie-break 必須升冪。
+
+已交回測試 owner 改為合法非股票欄位降冪及末尾股票碼升冪，另保留非法方向拒絕驗證，不放寬產品排序規則。此失敗尚未證明新重查情境通過，須修正測試後重驗。前兩次 attempt 僅 fixture／plugin 模組載入失敗，未進產品執行；原 log 保留。
+## 窄窗幾何通過與 nested F17 排序審查更正
+
+中央直接執行新 UI 定向測試，exit1：2 passed、1 failed，3.54 秒；log `output/qa/ma_watchlist_ui_root_20261008_a/geometry_root_attempt01.log`。460／800 像素寬度的無來源真 view 幾何、控制項完整可見及詳情／稽核末段可達兩項通過；尚未授真來源或真人接受。
+
+第三項在建測試 query 時即被 `nested_f17_sort_or_page_not_neutral` 拒絕，尚未呼叫 view。中央再核 MA codec 的 `_parse_f17_query`：複合查詢明示 nested F17 只用股票碼升冪、技術 neutral order、頁0／size1；有效全域排序位於 MA 外層。因此先前要求「保存非 neutral F17 sort」套用了不適用的 F17 單獨查詢契約，撤回該要求；view 使用 neutral F17 本身符合 MA 契約，不應為該測試擴 schema。
+
+正確驗收改為合法 neutral F17 不變、合法非預設 MA 外層排序在還原及改其他條件後保持完整；非 neutral nested query 應保留拒絕負例。已交回測試 owner 修正，這項失敗不視為產品排序接受或回歸。
+更新 UI／API 後，中央全專案 mypy 重新執行 exit0，918 個來源檔案無錯誤，log `output/qa/ma_watchlist_ui_root_20261008_a/mypy_full_attempt02.log`。直接檢視窄窗 detail 截圖尚未看到末段 sentinel，已要求將 inner cursor 位置映到 outer scroll viewport 一併驗證並重拍；不能只以內文編輯器自身的可見範圍授整頁末段視覺接受。
+## 正式字型／主題下的窄窗失敗
+
+中央發現早期 offscreen 截圖未套 Main 的 `apply_app_theme`，中文字呈方框。使用既有主題與 Windows 中文字型重驗新 UI 4項（session16437，exit1）：3 passed、460px 1 failed，4.08 秒；460px 水平捲軸 maximum 為6，違反無水平裁切要求。log `output/qa/ma_watchlist_ui_root_20261008_a/themed_geometry_attempt01.log`。
+
+因此無主題幾何通過不能授正式 UI 窄窗接受。已解除 view owner 的 UI leaf 凍結，只修該 view 的響應布局並要求測試使用正式主題，不縮字、不放寬斷言、不修改共用主題。中文字型由既有 `ui_qt.theme.fonts` 載入，不下載或替換產品字型。須修正後以正式字型核控制項、末段與截圖。
+## 條件重查第二次定向終態（仍未接受）
+
+中央 session30762 終態 exit1：1 passed、1 failed、11 deselected，232.11 秒，log `output/qa/ma_watchlist_ui_root_20261008_a/bookmark_requery_attempt04.log`。非法股票碼降冪拒絕測試通過；合法重查已完成 conditioned query 執行、來源 pins 不變及新 query／operation identity 的斷言，但可見筆數為0，測試預期1，故完整情境仍失敗。
+
+已要求先對照原已保存 1001 技術規則事實：MA unknown 不等於 MA5／MA20 金叉規則 unknown。須以獨立原規則狀態設定有明確預期的符合／不符兩個重查情境，不直接把預期改0、不弱化 AND 或 unknown 政策。只有原事實與回傳結果都核對後才可接受重查行為。
+
+## 正式主題窄窗修正中央複驗
+
+view owner 僅將頁面左右內距設為5px，保留原上下內距；未縮字、未放寬幾何斷言或修改共用主題。view SHA `eb5a63fe3787782fb469b9658e8f66cd6b2d5bf44bdf764fa42ade64cf425716`、presenter SHA `509bf53b5470f338db9541ca201ba6c85082168eeb0a9073f978128c1a6ae903`、test SHA `647a9ec65abd185fae38bbebd615b2dd99f4eae57eb706b62fc44341560cb7d9`。測試 fixture 使用正式 Main theme；460／800 水平捲軸 maximum 為0，控制項完整可達，inner 文件末段映至 outer viewport 核對。
+
+中央獨立重跑新 view／最小 Main 接線／Watchlist 路由共8 passed（3.53秒），log `output/qa/ma_watchlist_ui_root_20261008_a/themed_geometry_root_attempt02.log`；同時實際檢視 `output/qa/ma_official_view_render_20261008_b/detail_end_same_fixture_460.png`，中文可讀且 `DETAIL-END-SENTINEL` 完整出現在外層 viewport，沒有水平捲軸。460截圖 SHA `753a9f5ccd764a290b98d394d4c88f96c0aedaee78298aad63b30249299dd`。此接受限正式主題下無來源 view 幾何與路由，仍未證明保存來源載入／條件重查／跨頁收藏的完整 UI journey，也不授真人接受。
+
+同版修正後專案強制作業完成：update workbench 85 passed（4.27秒）；隔離 update validator 25通過／0失敗／4跳過；全專案 mypy 918檔案無錯誤；本次 Main／Watchlist／MA view／presenter／service／bookmark／comparison 的 py_compile 通過。新 log 名稱分別為 `workbench_geometry_attempt03.log`、`update_validator_geometry_native_attempt03.log`、`mypy_geometry_attempt03.log`，保存在同一中央 QA 目錄。validator 原生隔離執行沿用已查明的 sandbox WinError5 排除方式，未碰原始資料或正式排程。
+
+## 條件重查保存事實與計數口徑補核
+
+owner 以原保留 bundle exact-open 核1001的五項技術規則皆為 `no_match`，MA狀態為 `unknown`。session55998 終態 exit1（200.47秒），log `output/qa/ma_requery_rule_expectation_20261008_a/requery_attempt02.log`：同來源 no_match 正向查詢為1筆、改要求 match 反向查詢為0筆，query／operation／來源／單次opener斷言已通過；最後將 `ma_truth_counts[unknown]` 預期為1的斷言失敗，實際為257。
+
+中央獨立核 reader:1456–1462：technical／MA／composite 真值分布對完整宣告母體累加，只有 eligible 分布位於 hard-eligible 分支；Counts 的建構核驗同樣要求前三者合計 declared，而 eligible 合計 hard_eligible。故本次為測試口徑錯誤，不應改產品計數。修正測試須同時驗完整MA分布與基準相同、hard_eligible為1，以及正向eligible unknown為1／反向eligible no_match為1、visible為0。修後完整案例仍待新一次終態，不以部分斷言通過授完整重查接受。

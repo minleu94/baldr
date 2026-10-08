@@ -100,3 +100,16 @@ session63774 已 terminal exit1，新 case `C:/t/p01_yyz7kyi8`。固定 controll
 child 在 strict-open 的 canonical file 讀取路徑失敗：固定 reader 先以唯讀旗標 `os.open`，再以 `os.fdopen(descriptor, "rb")` 包裝；profile 套用的 parent metadata guard 對 `fdopen` 全面拒絕，因此尚未產生 pstats 或效能樣本。完整 traceback 保存在 `warm_01.result.json`。這證明 QA 守衛與合法唯讀路徑衝突，不能當作產品效能結果或來源讀取通過。
 
 後續修正範圍限定 profile 的精確唯讀 descriptor 契約與自測：核固定 reader caller、精確來源路徑、唯讀 open 旗標、原生 handle 身分及單次 token；其他 descriptor、寫入與 dup 仍拒絕。固定 controller、helper、archive、report、sealed store 與來源核驗條件保持固定。修正後先由中央審查 guard-only 自測，再排程單次診斷，不重跑完整矩陣以取代既有失敗樣本。
+## 唯讀 FD 修正中央自測通過（未產生效能樣本）
+
+中央獨立執行修正後 supervisor 的 guard-only selftest，exit0，attempt `C:/t/p01_bn16b_nj`；profile SHA `e319106d6b11faa68ecbb9b4d2e3e2b7f2f8ea535117a9721dcf29babbf269a1`、supervisor SHA `da91825dde487b7c538699cccfd49b2bd75a0881396853b9ff62c9bebebe25e1`。固定 reader 實際讀一份合成檔案；20 個負例拒絕，包含同 code/globals 但不同 frame path 不可消耗另一檔案 token、錯 caller／mode／flags、重用 token、descriptor 寫入與 dup。SQLite／worker／實際 child launch 為零，controller/helper pins 不變。
+
+此接受限診斷守衛自測，不能替代固定來源 strict-open、pstats 或效能門檻。單次真 profile 尚待 MA 定向重測終態後單獨排程；原失敗封套與完整矩陣三類效能失敗仍保留。中央 log 為 `output/qa/p01_acd18a1e_page_flip_profile_20261008_a/root_readonly_fd_guard_selftest_20261008_a.log`。
+
+## 固定來源單次換頁剖析完成（僅診斷）
+
+中央 session63334 終態 exit0，attempt `C:/t/p01_gjr_ufhk`。parent 收據 SHA256 `ea6231b6b11078d579c8c3095044b57cd7f768ea9e0cb0a5df65e850b2ef5bcd`，child 收據 SHA256 `a7ac33a48325569199c5cf9d1d86814a0d03fb19281699a5c0bd7ee759e519f3`；profile／supervisor 為上節相同 pins。中央核對來源與固定輸入起訖一致、三角色 Job 身分、清理零 owned 殘留、parent 寫入守衛及 child SQLite／網路／巢狀程序操作皆為零。parent 原收據保留 `candidate_requires_postwrite_guard_reconciliation` 中間狀態；同次 terminal log 的寫入後 reconciliation 為通過，最終結果 `passed_diagnostic_only`，未改寫原收據。
+
+同一 strict session 的全域結果為1,000檔、20頁；剖析只涵蓋第10頁、每頁50檔的一次 `read_selection_page`，strict-open、query、selection、首頁與來源雜湊在區間外。cProfile 下 wall time 為2.4137689秒，CPU delta 約2.390625秒，讀取4,858,624 bytes、136次，寫入零。累積時間主要落在 `_materialize_page`（2.1316743秒）、`read_selected_exact`（2.0913607秒）與50次快照解碼驗證（1.5718086秒）；canonical JSON、float tree 檢查與保存規則語意核驗是其中的重複工作。累積時間互相包含，不能加總。
+
+此為單次有 instrumentation 的瓶頸診斷，不能作為300ms／p95、MainWindow、EXE、正式全市場或真人操作接受。既有完整矩陣的換頁／篩選／排序失敗維持有效；下一步評估同 session 內已核驗不可變資料的重複驗證成本，任何優化仍須維持內容、來源身分、取消與異動拒絕契約。

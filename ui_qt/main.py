@@ -2610,7 +2610,27 @@ class MainWindow(QMainWindow):
         daily.bookmarkSaved.connect(lambda *_args: watchlist._load_watchlist())
         watchlist.latestResearchRequested.connect(self._open_latest_bookmark_research)
         watchlist.technicalBookmarkStateReady.connect(self._open_technical_bookmark_state)
+        watchlist.technicalPriceBookmarkStateReady.connect(self._open_price_bookmark_state)
         watchlist.technicalOfficialBookmarkReady.connect(self._open_technical_official_bookmark)
+
+    def _open_price_bookmark_state(self, value: object) -> None:
+        """交接同次收藏核驗的價格頁，不再重開第二遍來源。"""
+        from app_module.daily_market_technical_universe_price_bookmark_v1 import (
+            DailyMarketTechnicalUniversePriceBookmarkStateV1,
+        )
+        if (type(value) is not DailyMarketTechnicalUniversePriceBookmarkStateV1
+                or getattr(self, "_shutdown_close_requested", False)):
+            return
+        recommendation = getattr(self, "recommendation_view", None)
+        daily = getattr(recommendation, "daily_market_research_view", None)
+        view = getattr(daily, "technical_price_view", None)
+        if view is None or getattr(daily, "_shutting_down", True):
+            return
+        if not view.restore_bookmark_state(value):
+            self.statusBar().showMessage("價格研究頁尚忙或來源不符；原表格保留，請稍後重新核驗收藏。")
+            return
+        self._select_main_workspace("recommendation")
+        recommendation.result_source_tabs.setCurrentWidget(daily)
 
     def _open_technical_official_bookmark(self, value: object) -> None:
         """原query fresh重開，不轉成一般報告或最新來源。"""

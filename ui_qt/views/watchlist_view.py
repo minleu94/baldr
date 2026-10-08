@@ -26,6 +26,12 @@ from typing import List, Dict, Optional
 
 from ui_qt.models.pandas_table_model import PandasTableModel
 from app_module.watchlist_service import WatchlistService, WatchlistStorageStatus
+from app_module.watchlist_service import TECHNICAL_UNIVERSE_PRICE_BOOKMARK_SOURCE
+from app_module.daily_market_technical_universe_price_bookmark_v1 import (
+    DAILY_MARKET_TECHNICAL_UNIVERSE_PRICE_BOOKMARK_V1_SCHEMA,
+    DailyMarketTechnicalUniversePriceBookmarkV1,
+)
+from ui_qt.widgets.daily_market_technical_price_bookmark_controls_v1 import DailyMarketTechnicalPriceBookmarkControlsV1
 from app_module.daily_market_technical_official_disposition_bookmark_v1 import (
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_RESEARCH_BOOKMARK_SOURCE,
     DailyMarketTechnicalOfficialDispositionBookmarkV1,
@@ -77,6 +83,7 @@ class WatchlistView(QWidget):
     stockResearchRequested = Signal(object)
     latestResearchRequested = Signal(object)
     technicalBookmarkStateReady = Signal(object)
+    technicalPriceBookmarkStateReady = Signal(object)
     personalH20BookmarkStateReady = Signal(object)
     technicalOfficialBookmarkReady = Signal(object)
     
@@ -441,6 +448,15 @@ class WatchlistView(QWidget):
         )
         technical_bookmark_layout.addWidget(self.technical_bookmark_controls)
         next_actions_layout.addWidget(technical_bookmark_group)
+        price_bookmark_group = QGroupBox("原價格條件研究收藏")
+        price_bookmark_group.setObjectName("watchlistTechnicalPriceBookmarks")
+        price_bookmark_layout = QVBoxLayout(price_bookmark_group)
+        self.price_bookmark_controls = DailyMarketTechnicalPriceBookmarkControlsV1(
+            self.watchlist_service, parent=price_bookmark_group,
+        )
+        self.price_bookmark_controls.stateReady.connect(self.technicalPriceBookmarkStateReady.emit)
+        price_bookmark_layout.addWidget(self.price_bookmark_controls)
+        next_actions_layout.addWidget(price_bookmark_group)
         self.personal_h20_bookmark_group = QGroupBox("個人 H20 原保存研究收藏")
         self.personal_h20_bookmark_group.setObjectName("watchlistPersonalH20Bookmarks")
         self._personal_h20_bookmark_layout = QVBoxLayout(self.personal_h20_bookmark_group)
@@ -827,6 +843,8 @@ class WatchlistView(QWidget):
         )
         if supports_typed_reopen:
             self.technical_bookmark_controls.refresh_bookmarks()
+        if callable(getattr(service_type, "get_research_bookmark", None)):
+            self.price_bookmark_controls.refresh_bookmarks()
         h20_controls = self.personal_h20_bookmark_controls
         if h20_controls is not None:
             h20_controls.refresh_bookmarks()
@@ -1773,6 +1791,16 @@ class WatchlistView(QWidget):
             or isinstance(raw, dict) and raw.get("schema_version") == "daily-market-technical-official-disposition-bookmark.v1"
         )
 
+    @staticmethod
+    def _row_is_price_bookmark(row: object) -> bool:
+        if not hasattr(row, "get"):
+            return False
+        raw = row.get("research_bookmark")
+        return (
+            row.get("source") == TECHNICAL_UNIVERSE_PRICE_BOOKMARK_SOURCE
+            or isinstance(raw, dict) and raw.get("schema_version") == DAILY_MARKET_TECHNICAL_UNIVERSE_PRICE_BOOKMARK_V1_SCHEMA
+        )
+
     @classmethod
     def _research_bookmark_row_label(cls, row: object) -> str:
         if not hasattr(row, "get"):
@@ -1812,6 +1840,16 @@ class WatchlistView(QWidget):
             return (
                 f"已收藏原排名｜{period}／{direction}｜第 {rank_context.selected_rank} 名｜"
                 f"決策日 {rank_context.decision_date}"
+            )
+        if schema == DAILY_MARKET_TECHNICAL_UNIVERSE_PRICE_BOOKMARK_V1_SCHEMA:
+            try:
+                price_bookmark = DailyMarketTechnicalUniversePriceBookmarkV1.from_dict(value)
+            except (TypeError, ValueError):
+                return "價格研究收藏無效；原來源不可核驗"
+            return (
+                f"已收藏原價格條件研究｜股票 {price_bookmark.stock_code}｜"
+                f"價格日 {price_bookmark.selected.observation_date or '未知'}｜"
+                f"ID {price_bookmark.bookmark_id[:12]}"
             )
         if schema == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SCHEMA:
             try:
@@ -2402,9 +2440,10 @@ class WatchlistView(QWidget):
             self._shutdown_started = True
             self._analysis_request_id += 1
         technical_finished = self.technical_bookmark_controls.begin_shutdown()
+        price_finished = self.price_bookmark_controls.begin_shutdown()
         controls = self.personal_h20_bookmark_controls
         h20_finished = controls.begin_shutdown() if controls is not None else True
-        return technical_finished and h20_finished
+        return technical_finished and h20_finished and price_finished
 
     def _open_stock_analysis(self, _checked=False):
         """以畫面排序後的選取列傳送股票代號與來源脈絡。"""
@@ -2416,6 +2455,16 @@ class WatchlistView(QWidget):
         frame = self.stocks_model.getDataFrame()
         row = frame.iloc[rows[0].row()]
         code = str(row["證券代號"]).strip()
+        if self._row_is_price_bookmark(row):
+            identity = str(row.get("source_id", "")).strip()
+            selected_status = self.price_bookmark_controls.open_bookmark(identity)
+            if selected_status == "started":
+                self._set_status_label("正在核驗原價格條件收藏；完成後開啟原查詢。", level="info")
+            elif selected_status == "queued":
+                self._set_status_label("正在等待原價格收藏讀取；完成後會自動核驗並開啟指定收藏。", level="info")
+            else:
+                self._set_status_label("原價格收藏尚不可重開，請查看下方收藏診斷。", level="warning")
+            return
         if self._row_is_technical_official_bookmark(row):
             try:
                 from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved

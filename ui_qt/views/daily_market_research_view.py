@@ -44,6 +44,15 @@ from app_module.daily_market_technical_universe_v4_stock import DailyMarketTechn
 from app_module.daily_market_technical_universe_v4_comparison import DailyMarketTechnicalUniverseV4Comparison
 from app_module.daily_market_technical_universe_v4_bookmark import DailyMarketTechnicalUniverseV4Bookmark
 from ui_qt.views.daily_market_technical_comparison_v4_view import DailyMarketTechnicalComparisonV4View
+from ui_qt.views.daily_market_technical_universe_price_view_v1 import DailyMarketTechnicalUniversePriceV1View
+from app_module.daily_market_technical_universe_price_query_v1 import DailyMarketTechnicalUniversePriceStockV1
+from app_module.daily_market_technical_universe_price_comparison_v1 import (
+    DailyMarketTechnicalUniversePriceSelectionV1,
+    DailyMarketTechnicalUniversePriceComparisonV1,
+)
+from app_module.daily_market_technical_universe_price_bookmark_v1 import DailyMarketTechnicalUniversePriceBookmarkV1
+from ui_qt.views.daily_market_technical_price_stock_v1_view import DailyMarketTechnicalPriceStockV1View
+from ui_qt.views.daily_market_technical_price_comparison_v1_view import DailyMarketTechnicalPriceComparisonV1View
 from app_module.daily_market_feature_snapshot import (
     DAILY_MARKET_FEATURE_CONTRACT_VERSION_BBANDS30_UPPER,
     feature_contract_for_version,
@@ -172,6 +181,9 @@ class DailyMarketResearchView(QWidget):
         self.source_selector: DailyResearchSourceSelector | None = None
         self.universe_view = None
         self.technical_universe_view: DailyMarketTechnicalUniverseV4View | None = None
+        self.technical_price_view: DailyMarketTechnicalUniversePriceV1View | None = None
+        self._price_stock_dialog: QDialog | None = None
+        self._price_comparison_dialog: QDialog | None = None
         self._technical_stock_dialog: QDialog | None = None
         self._technical_comparison_dialog: QDialog | None = None
         self._universe_origin: tuple[str, str, object] | None = None
@@ -229,6 +241,11 @@ class DailyMarketResearchView(QWidget):
                 self.technical_universe_view.comparisonReady.connect(self._accept_technical_comparison)
                 self.technical_universe_view.bookmarkPrepared.connect(self._save_technical_bookmark)
                 root.addWidget(self.technical_universe_view)
+                self.technical_price_view = DailyMarketTechnicalUniversePriceV1View(store_root, self)
+                self.technical_price_view.stockSelected.connect(self._accept_price_stock)
+                self.technical_price_view.comparisonReady.connect(self._accept_price_comparison)
+                self.technical_price_view.bookmarkPrepared.connect(self._save_price_bookmark)
+                root.addWidget(self.technical_price_view)
             self.source_selector = DailyResearchSourceSelector(config,
                 snapshot_root=getattr(self.service, "snapshot_root", None), parent=self)
             self.source_selector.sourceLoaded.connect(self._accept_selected_source)
@@ -2489,6 +2506,123 @@ class DailyMarketResearchView(QWidget):
         dialog.destroyed.connect(lambda: self._clear_technical_dialog(dialog))
         dialog.show()
 
+    def _accept_price_stock(self, stock: object, origin: object) -> None:
+        view = self.technical_price_view
+        if (self._shutting_down or view is None
+                or not isinstance(stock, DailyMarketTechnicalUniversePriceStockV1)
+                or not isinstance(origin, DailyMarketTechnicalUniversePriceSelectionV1)
+                or view.current_query != origin.query
+                or view.current_page is None
+                or view.current_page.page_identity_sha256 != origin.page_identity_sha256):
+            return
+        details = DailyMarketTechnicalPriceStockV1View(self)
+        try:
+            details.show_stock(stock, origin)
+        except (TypeError, ValueError) as exc:
+            details.deleteLater()
+            view.status.setText(f"原價格研究來源不一致，未開啟個股：{exc}")
+            return
+        if self._price_stock_dialog is not None:
+            self._price_stock_dialog.close()
+        dialog = QDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.setWindowTitle(f"{origin.stock_code} 原價格條件研究")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(details)
+        details.returnRequested.connect(lambda selection: self._return_price_origin(selection, dialog))
+        dialog.resize(850, 650)
+        self._price_stock_dialog = dialog
+        dialog.destroyed.connect(lambda: self._clear_price_dialog(dialog, comparison=False))
+        dialog.show()
+
+    def _accept_price_comparison(self, value: object) -> None:
+        if self._shutting_down or not isinstance(value, DailyMarketTechnicalUniversePriceComparisonV1):
+            return
+        details = DailyMarketTechnicalPriceComparisonV1View(self)
+        try:
+            details.show_comparison(value)
+        except (TypeError, ValueError) as exc:
+            details.deleteLater()
+            if self.technical_price_view is not None:
+                self.technical_price_view.status.setText(f"價格比較未接受：{exc}")
+            return
+        if self._price_comparison_dialog is not None:
+            self._price_comparison_dialog.close()
+        dialog = QDialog(self)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.setWindowTitle("原價格條件研究比較")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(details)
+        details.originRequested.connect(lambda selection: self._return_price_origin(selection, dialog))
+        dialog.resize(950, 650)
+        self._price_comparison_dialog = dialog
+        dialog.destroyed.connect(lambda: self._clear_price_dialog(dialog, comparison=True))
+        dialog.show()
+
+    def _return_price_origin(self, selection: object, dialog: QDialog) -> None:
+        view = self.technical_price_view
+        if (self._shutting_down or view is None
+                or not isinstance(selection, DailyMarketTechnicalUniversePriceSelectionV1)):
+            return
+        if view.restore_origin(selection):
+            dialog.close()
+
+    def _clear_price_dialog(self, dialog: QDialog, *, comparison: bool) -> None:
+        name = "_price_comparison_dialog" if comparison else "_price_stock_dialog"
+        if getattr(self, name) is dialog:
+            setattr(self, name, None)
+
+    def _price_bookmark_matches_selection(self, value: DailyMarketTechnicalUniversePriceBookmarkV1) -> bool:
+        view = self.technical_price_view
+        if self._shutting_down or view is None or view.current_query is None or view.current_page is None:
+            return False
+        index = view.table.currentIndex()
+        row = view.results_model.row_at(index.row()) if index.isValid() else None
+        if getattr(getattr(row, "technical_row", None), "stock_code", None) != value.stock_code:
+            return False
+        try:
+            selected = DailyMarketTechnicalUniversePriceSelectionV1.from_page(
+                view.current_query, view.current_page, value.stock_code,
+            )
+            return selected.to_dict() == value.selected.to_dict()
+        except (TypeError, ValueError):
+            return False
+
+    def _save_price_bookmark(self, value: object) -> bool:
+        view = self.technical_price_view
+        if (view is None or not isinstance(value, DailyMarketTechnicalUniversePriceBookmarkV1)
+                or not self._price_bookmark_matches_selection(value)):
+            return False
+        add_bookmark = getattr(self.watchlist_service, "add_research_bookmark", None)
+        if not callable(add_bookmark):
+            view.status.setText("目前沒有可用的觀察清單儲存服務。")
+            return False
+        callback = self.bookmark_confirmation_callback
+        accepted = bool(callback(value)) if callback is not None else (
+            QMessageBox.question(
+                self, "收藏原價格條件研究",
+                f"保存 {value.stock_code} 的原價格條件、頁面與比較集合？\n"
+                f"價格觀測日：{value.selected.observation_date or '未知'}。\n"
+                "重開會重新核驗同份保存來源。",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) == QMessageBox.StandardButton.Yes
+        )
+        if not accepted or not self._price_bookmark_matches_selection(value):
+            view.status.setText("收藏未保存；若來源或選取已改變，請重新選取。")
+            return False
+        try:
+            result = add_bookmark(value)
+        except Exception as exc:
+            view.status.setText(f"價格研究收藏未保存：{exc}")
+            return False
+        if getattr(result, "status", None) not in {"added", "already_present"}:
+            view.status.setText(str(getattr(result, "message", "收藏保存失敗。")))
+            return False
+        self.bookmarkSaved.emit(result)
+        view.status.setText("已收藏原價格條件研究；可在觀察清單重新核驗並開啟。")
+        return True
+
     def _accept_technical_comparison(self, value: object) -> None:
         if self._shutting_down or not isinstance(value, DailyMarketTechnicalUniverseV4Comparison):
             return
@@ -3452,11 +3586,16 @@ class DailyMarketResearchView(QWidget):
         selector_done = self.source_selector is None or self.source_selector.begin_shutdown()
         universe_done = self.universe_view is None or self.universe_view.begin_shutdown()
         technical_done = self.technical_universe_view is None or self.technical_universe_view.begin_shutdown()
+        price_done = self.technical_price_view is None or self.technical_price_view.begin_shutdown()
+        if self._price_stock_dialog is not None:
+            self._price_stock_dialog.close()
+        if self._price_comparison_dialog is not None:
+            self._price_comparison_dialog.close()
         if self._technical_stock_dialog is not None:
             self._technical_stock_dialog.close()
         if self._technical_comparison_dialog is not None:
             self._technical_comparison_dialog.close()
-        selector_done = selector_done and universe_done and technical_done
+        selector_done = selector_done and universe_done and technical_done and price_done
         if self._shutting_down:
             worker = self._worker
             return selector_done and (worker is None or not worker.isRunning())

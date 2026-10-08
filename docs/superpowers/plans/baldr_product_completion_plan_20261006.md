@@ -801,3 +801,9 @@ F17 root attempt_116cdedcf554 已讀出一筆 catalog，選版後完整 exact-op
 F17 最新 stage attempt_5e851f27208e 已定位 bundle exact 143.357 秒、再次 P01 open 121.005 秒取消，未進入 execute／page或 frozen child；root 核對現有程式確有同圖重讀。P01 builder／Bundle callback／兩個 F17 reader 入口的單次完整核驗整合已分配至 universe 葉片；保持預設 API、來源 pins、完整 cohort／count／clock／method、終態及取消拒絕，不加入跨操作快取或 skip_verify。該葉片仍待中央審查，不能折抵正式來源／Native／效能門檻。
 
 2026-10-08 固定 H20 候選 bd5d2f86367a 已完成 build 與 UTF-8 Python／EXE 同版隔離比較（收據 `baldr_same_version_bd5d2f86367a_288681d8`）；真人入口與三段驗收說明已交付，原來源未自動啟動。這取代上一段的「新固定 EXE 待」狀態，真人捲動、原 684 bp／同份來源圖表與等待時間仍待，不授完整補完或速度資格。F17 單圖核驗葉片中央審查另發現取消應早於 root 路徑工作；1,000 檔測試 parent 寫入拒絕須立即停止矩陣而不能只在末尾統計。兩項已交原代理修正，未啟動新的效能矩陣。
+
+### 2026-10-08 完整合成效能與價格研究接續
+
+F17 單圖核驗後端已存 dev `330b98f416f7`；同版隔離候選通過基礎比較，但 Native 完整旅程仍失敗：bundle／execute／page 的讀取時間未達門檻，沒有授予 EXE 或真人資格。真人授權的固定1,000檔合成來源已完成五冷、一暖、五類暖操作各30次的完整矩陣；worker及來源保護通過，四類300毫秒效能門檻失敗，整體exit1。詳[完整合成讀回及效能QA](../../06_qa/BALDR_SYNTHETIC_UNIVERSE_1000_READBACK_20261008.md)。不改期限、母體或來源核驗來換通過，後續沿固定來源定位並修正實際成本。
+
+F07 明示Decimal價格區間／未知政策／完整母體排序後分頁的來源版已通過真257股跨段後端核驗，收藏儲存增加獨立namespace與COW前檢。中央新隔離驗證24項通過，涵蓋JSON→SQLite啟用、移除還原、不同PID精確重開及五種壞收藏拒絕；原JSON與合成研究來源身分未改動。主UI已接原價格個股／比較／返回及確認前後選取核對；觀察清單雙擊改為精確ID排隊自動開啟，正補晚到回呼與取消／關閉整合驗證。詳[F07價格查詢契約及接受範圍](../../06_qa/F07_PRICE_QUERY_CONTRACT_20261008.md)。尚未打包、Native或真人接受，不能把此單項當成完整P00–P14／M1–M3或F01–F23完成。

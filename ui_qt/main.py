@@ -390,6 +390,9 @@ class MainWindow(QMainWindow):
         self._personal_h20_bookmark_evidence = None
         workspace = getattr(self, "stock_research_workspace", None)
         if workspace is not None:
+            clear_chart = getattr(workspace.report_view, "clear_personal_h20_price_chart", None)
+            if callable(clear_chart):
+                clear_chart()
             workspace.report_view.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
             workspace.clear_personal_h20_saved_summary()
 
@@ -447,7 +450,14 @@ class MainWindow(QMainWindow):
         from app_module.recommendation.personal_h20_research_bookmark import PersonalH20ResearchBookmarkState
         from app_module.recommendation.personal_h20_bookmark_product_evidence import project_personal_h20_bookmark_product_evidence
         from app_module.recommendation.personal_h20_product_evidence import PersonalH20ProductEvidence
-        from scripts.scheduled.personal_h20_bookmark_read_session import read_personal_h20_research_bookmark_with_session
+        from app_module.recommendation.personal_h20_price_chart import (
+            PersonalH20BookmarkVerifiedViewV1,
+            personal_h20_bookmark_identity_sha256,
+            project_personal_h20_bookmark_price_chart,
+        )
+        from scripts.scheduled.personal_h20_bookmark_read_session import (
+            read_personal_h20_research_bookmark_view_with_session,
+        )
         from ui_qt.workers.task_worker import TaskWorker
 
         workspace = getattr(self, "stock_research_workspace", None)
@@ -479,7 +489,34 @@ class MainWindow(QMainWindow):
         def publish(value: object) -> None:
             if not current():
                 return
-            if isinstance(value, PersonalH20ResearchBookmarkState):
+            view = workspace.report_view
+            chart_projection = None
+            chart_reason_code: str | None = None
+            if type(value) is PersonalH20BookmarkVerifiedViewV1:
+                checked_state = value.state
+                try:
+                    if type(checked_state) is not PersonalH20ResearchBookmarkState:
+                        raise ValueError("personal_h20_bookmark_recheck_state_invalid")
+                    if checked_state.bookmark.to_dict() != bookmark.to_dict():
+                        raise ValueError("personal_h20_bookmark_recheck_identity_mismatch")
+                    evidence = project_personal_h20_bookmark_product_evidence(checked_state)
+                except (TypeError, ValueError) as exc:
+                    evidence = PersonalH20ProductEvidence(bookmark.stock_code, "unavailable", str(exc))
+                else:
+                    self._personal_h20_bookmark_origin = (context, checked_state, market_root, config_path)
+                    try:
+                        chart_projection = project_personal_h20_bookmark_price_chart(
+                            checked_state,
+                            value.price_chart,
+                            stock_code=bookmark.stock_code,
+                        )
+                    except (TypeError, ValueError):
+                        # 圖表旁路失敗不得改變已核收藏 evidence。
+                        chart_projection = None
+                        chart_reason_code = value.price_chart_reason_code or "chart_observer_failed"
+                    else:
+                        chart_reason_code = value.price_chart_reason_code
+            elif isinstance(value, PersonalH20ResearchBookmarkState):
                 try:
                     if value.bookmark.to_dict() != bookmark.to_dict():
                         raise ValueError("personal_h20_bookmark_recheck_identity_mismatch")
@@ -494,21 +531,31 @@ class MainWindow(QMainWindow):
                 evidence = PersonalH20ProductEvidence(bookmark.stock_code, "unavailable", "personal_h20_bookmark_reader_invalid_state")
             self._personal_h20_bookmark_evidence = evidence
             workspace.set_personal_h20_saved_evidence(evidence, context=context)
+            if (view._loaded_report is not None
+                    and view._loaded_report.stock_code == bookmark.stock_code
+                    and view._loaded_request_context == context
+                    and view.context == context):
+                view.set_personal_h20_evidence(evidence)
+            if type(value) is PersonalH20BookmarkVerifiedViewV1:
+                view.set_personal_h20_price_chart(
+                    chart_projection,
+                    context=context,
+                    expected_capture_sha256=bookmark.selected_row.capture_sha256,
+                    expected_origin_identity_sha256=personal_h20_bookmark_identity_sha256(bookmark),
+                    reason_code=chart_reason_code,
+                )
             if evidence.status == "available":
                 workspace.personal_h20_saved_summary.setText(
                     workspace.personal_h20_saved_summary.text() + "\n原保存研究收藏：" + evidence.reason)
-            view = workspace.report_view
-            if view._loaded_report is not None and view._loaded_request_context == context:
-                view.set_personal_h20_evidence(evidence)
 
         if not force:
             publish(state)
             return
         workspace.show_personal_h20_saved_loading(context, feature_date=state.selected_row.feature_as_of_date or "")
         workspace.set_personal_h20_saved_busy(True)
-        worker = TaskWorker(read_personal_h20_research_bookmark_with_session, bookmark,
+        worker = TaskWorker(read_personal_h20_research_bookmark_view_with_session, bookmark,
             config_path=config_path, market_root=market_root,
-            sqlite_read_root=sqlite_read_root, require_sqlite_copy=True,
+            sqlite_read_root=sqlite_read_root,
             progress_callback=lambda message: worker.progress.emit(message, 0))
         self._personal_h20_worker = worker
         worker.progress.connect(lambda message, _percent: workspace.personal_h20_saved_summary.setText(
@@ -687,10 +734,14 @@ class MainWindow(QMainWindow):
         )
         from scripts.scheduled.personal_h20_daily_hook import (
             read_personal_h20_product_for_stock_with_session,
-            project_personal_h20_verified_cohort_selection_with_reference,
+            project_personal_h20_verified_cohort_selection_with_chart_reference,
         )
         from app_module.recommendation.personal_h20_verified_cohort_view import (
             PersonalH20VerifiedCohortView,
+        )
+        from app_module.recommendation.personal_h20_price_chart import (
+            PersonalH20SelectedProductProjectionV1,
+            personal_h20_reference_identity_sha256,
         )
         from ui_qt.workers.task_worker import TaskWorker
 
@@ -759,23 +810,37 @@ class MainWindow(QMainWindow):
         def publish(value: object) -> None:
             if not current():
                 return
+            price_chart_projection = None
+            if type(value) is PersonalH20SelectedProductProjectionV1:
+                price_chart_projection = value.price_chart
+                value = value.evidence
             evidence = checked_evidence(value)
             self._personal_h20_saved_evidence = evidence
             workspace.set_personal_h20_saved_evidence(evidence, context=context)
+            view.set_personal_h20_evidence(evidence)
+            if use_verified_view:
+                chart_reason_code = (
+                    None if price_chart_projection is not None
+                    else getattr(getattr(cohort_view, "price_chart", None), "reason_code", None)
+                    or "chart_observer_failed"
+                )
+                workspace.report_view.set_personal_h20_price_chart(
+                    price_chart_projection,
+                    context=context,
+                    expected_capture_sha256=selection.capture_sha256,
+                    expected_origin_identity_sha256=personal_h20_reference_identity_sha256(reference),
+                    reason_code=chart_reason_code,
+                )
             if use_verified_view and evidence.status == "available":
                 workspace.personal_h20_saved_summary.setText(
                     workspace.personal_h20_saved_summary.text()
                     + f"\n沿用完整名單核驗（UTC）：{cohort_view.completed_at_utc.isoformat()}；來源未持續監測。"
                 )
             workspace.set_personal_h20_saved_busy(True)
-            report = view._loaded_report
-            if (report is not None and report.stock_code == stock_code
-                    and view._loaded_request_context == context):
-                view.set_personal_h20_evidence(evidence)
 
         if use_verified_view:
             worker = TaskWorker(
-                project_personal_h20_verified_cohort_selection_with_reference,
+                project_personal_h20_verified_cohort_selection_with_chart_reference,
                 cohort_view, selection, config_path=config_path,
                 market_root=market_root, sqlite_read_root=sqlite_read_root,
             )

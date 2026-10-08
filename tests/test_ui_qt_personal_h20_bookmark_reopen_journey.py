@@ -56,6 +56,16 @@ def test_actual_mainwindow_reopens_original_h20_bookmark_and_returns_exactly(tmp
         assert "+12.34%" in workspace.personal_h20_saved_summary.text()
         if disabled:
             assert "目前個人模型停用" in workspace.personal_h20_saved_summary.text()
+
+        # 再次收到同一個已核 bookmark state 時，已載入的精確報告也要更新摘要。
+        report_view = workspace.report_view
+        _wait_for(app, lambda: report_view._loaded_report is not None
+            and report_view._loaded_request_context == report_view.context)
+        report_view._personal_h20_evidence = None
+        window._handle_personal_h20_bookmark_context(report_view.context)
+        assert report_view._personal_h20_evidence is not None
+        assert report_view._personal_h20_evidence.status == "available"
+        assert report_view._personal_h20_evidence.gross_return_bp == 1234
         workspace.report_view.return_button.click()
         _wait_for(app, lambda: controls._worker is None)
         entry = controls.bookmarks.currentItem()

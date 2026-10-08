@@ -795,3 +795,7 @@ P10 來源資料日呈現補件已存 dev `3a72654e`：大盤頁缺值／非正�
 F17 root attempt_116cdedcf554 已讀出一筆 catalog，選版後完整 exact-open／query 背景工作在300秒總期限內未完成，仍為 failed；exe child 未啟動。靜態找到同次 factory 重複 strict source read 與每頁重驗完整 plan 的成本候選，待有界階段計時證明，不先降低核驗或延長總期限。
 
 1,000檔 benchmark root92712 terminal1：五冷一暖在 worker 前被例外 handler 遮蔽原錯誤，無有效延遲樣本。root 審查5e906b4d控制器後，合成監督契約5項通過；新 root14029／`C:/t/p01_30udafr3` 在首個 cold 後立即停止，完整 traceback 證明 Windows NUL 標準輸入被原 C63 guard 拒絕。archive、合成DB、封存、report及controller前後比對相同，未啟動產製器或 benchmark worker；只修 QA own-attempt 空輸入檔，不放寬來源保護。原失敗封套保留，完整 P00–P14／M1–M3、正式全市場、Native、真人與效能接受仍維持原範圍。
+
+2026-10-08 H20 同次來源 OHLCV 接線中央有限接受：完整相關回歸 149 項通過，新程序測試補正 observer／resolver 與 Windows URI guard 後單例通過；原 SQLite SQL 連線 0，私有副本來源／副本 pins 一致並清理。Workbench85、validator25／0／4、mypy903、語法檢查通過。詳 [同次來源圖表接線審查](../../06_qa/H20_BOUND_CHART_INTEGRATION_20261008.md)。新固定 EXE／真人仍待，不以合成 1234 bp 代替原 684 bp 或宣稱 20 秒已改善。
+
+F17 最新 stage attempt_5e851f27208e 已定位 bundle exact 143.357 秒、再次 P01 open 121.005 秒取消，未進入 execute／page或 frozen child；root 核對現有程式確有同圖重讀。P01 builder／Bundle callback／兩個 F17 reader 入口的單次完整核驗整合已分配至 universe 葉片；保持預設 API、來源 pins、完整 cohort／count／clock／method、終態及取消拒絕，不加入跨操作快取或 skip_verify。該葉片仍待中央審查，不能折抵正式來源／Native／效能門檻。

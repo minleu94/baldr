@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 from typing import Any, Callable, Mapping
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 import pytest
 
@@ -274,15 +274,19 @@ def _verify_contract_from_pins(descriptor: Mapping[str, Any]):
 
 def _deny_network_and_source_sql_writes(
     source_database: Path,
+    *,
+    private_read_root: Path,
+    private_read_paths: set[Path],
 ) -> tuple[Callable[[], None], Callable[..., Any], dict[str, int]]:
-    """阻擋網路，並強制原 snapshot SQLite 只能以 read-only/query-only 開啟。"""
+    """阻擋網路，並核對原 snapshot 與隔離 reader 的唯讀連線。"""
 
     original_connect = sqlite3.connect
     original_socket_connect = socket.socket.connect
     original_socket_connect_ex = socket.socket.connect_ex
     original_create_connection = socket.create_connection
-    counts = {"source_readonly_connections": 0, "network_attempts": 0}
+    counts = {"source_readonly_connections": 0, "private_readonly_connections": 0, "network_attempts": 0}
     target = os.path.normcase(str(source_database.resolve()))
+    private_root = private_read_root.resolve(strict=True)
 
     def deny_network(*_args: object, **_kwargs: object) -> Any:
         counts["network_attempts"] += 1
@@ -297,9 +301,11 @@ def _deny_network_and_source_sql_writes(
                 return Path(rendered).resolve(), ""
             except (OSError, ValueError):
                 return None, ""
-        payload = rendered[5:]
-        path_text, _, query = payload.partition("?")
-        path_text = unquote(path_text)
+        uri = urlsplit(rendered)
+        path_text = unquote(uri.path)
+        query = uri.query
+        if uri.netloc and uri.netloc.casefold() != "localhost":
+            path_text = f"//{uri.netloc}{path_text}"
         if len(path_text) >= 3 and path_text[0] == "/" and path_text[2] == ":":
             path_text = path_text[1:]
         try:
@@ -325,7 +331,8 @@ def _deny_network_and_source_sql_writes(
     def guarded_connect(database: Any, *args: Any, **kwargs: Any):
         resolved, query = source_path(database)
         is_source = resolved is not None and os.path.normcase(str(resolved)) == target
-        if not is_source:
+        is_private = resolved is not None and resolved.is_relative_to(private_root)
+        if not is_source and not is_private:
             return original_connect(database, *args, **kwargs)
         if "mode=ro" not in query or kwargs.get("uri") is not True:
             raise AssertionError("original H20 source SQLite must be opened with URI mode=ro")
@@ -342,7 +349,12 @@ def _deny_network_and_source_sql_writes(
             return sqlite3.SQLITE_OK
 
         connection.set_authorizer(deny_sql_write)
-        counts["source_readonly_connections"] += 1
+        if is_source:
+            counts["source_readonly_connections"] += 1
+        else:
+            assert resolved is not None
+            private_read_paths.add(resolved)
+            counts["private_readonly_connections"] += 1
         return connection
 
     setattr(socket.socket, "connect", deny_network)
@@ -446,11 +458,38 @@ def _fresh_process_reopen_impl(descriptor_path: str, lifecycle: dict[str, Any]) 
         or storage_config_body.get("active_root") != descriptor["research_output_root"]
     ):
         raise AssertionError("child ML research storage config does not select exact fixture root")
-    restore_guards, _deny_network, guard_counts = _deny_network_and_source_sql_writes(source_database)
+    private_read_root = Path(os.environ["PERSONAL_H20_SQLITE_READ_ROOT"]).resolve(strict=True)
+    if not private_read_root.is_relative_to(Path(descriptor_path).resolve().parent):
+        raise AssertionError("private H20 reader root escaped this synthetic test case")
+    private_read_paths: set[Path] = set()
+    restore_guards, _deny_network, guard_counts = _deny_network_and_source_sql_writes(
+        source_database,
+        private_read_root=private_read_root,
+        private_read_paths=private_read_paths,
+    )
     lifecycle["restore_guards"] = restore_guards
     actual_source_port = runner._source_port
+    from scripts.scheduled.personal_h20_sqlite_read_operation import PersonalH20SQLiteReadOperation
+    from data_module.pinned_sqlite_read_session import PinnedSQLiteReadBindingV1
 
-    def source_verifier(binding: Mapping[str, Any]) -> Mapping[str, Any]:
+    original_operation_finish = PersonalH20SQLiteReadOperation.finish
+    private_bindings: list[PinnedSQLiteReadBindingV1] = []
+
+    def observed_operation_finish(self):
+        bindings = original_operation_finish(self)
+        if any(type(binding) is not PinnedSQLiteReadBindingV1 for binding in bindings):
+            raise AssertionError("private H20 operation did not issue typed SQLite bindings")
+        private_bindings.extend(bindings)
+        return bindings
+
+    PersonalH20SQLiteReadOperation.finish = observed_operation_finish
+
+    def source_verifier(
+        binding: Mapping[str, Any],
+        *,
+        read_session_resolver: Any = None,
+        raw_snapshot_observer: Any = None,
+    ) -> Mapping[str, Any]:
         trace(
             "source_verifier_started",
             json.dumps(
@@ -465,7 +504,11 @@ def _fresh_process_reopen_impl(descriptor_path: str, lifecycle: dict[str, Any]) 
             ),
         )
         try:
-            result = actual_source_port(binding)
+            result = actual_source_port(
+                binding,
+                read_session_resolver=read_session_resolver,
+                raw_snapshot_observer=raw_snapshot_observer,
+            )
         except BaseException as exc:
             trace("source_verifier_failed", f"{type(exc).__name__}: {exc!r}")
             raise
@@ -484,10 +527,20 @@ def _fresh_process_reopen_impl(descriptor_path: str, lifecycle: dict[str, Any]) 
         trace("contract_verifier_completed")
         return result
 
-    runner.personal_current_observed_h20_read_ports = lambda: {
-        "source_verifier": source_verifier,
-        "contract_verifier": observed_contract_verifier,
-    }
+    def public_ports(*, read_session_resolver=None, raw_snapshot_observer=None):
+        def bound_source_verifier(binding: Mapping[str, Any]) -> Mapping[str, Any]:
+            return source_verifier(
+                binding,
+                read_session_resolver=read_session_resolver,
+                raw_snapshot_observer=raw_snapshot_observer,
+            )
+
+        return {
+            "source_verifier": bound_source_verifier,
+            "contract_verifier": observed_contract_verifier,
+        }
+
+    runner.personal_current_observed_h20_read_ports = public_ports
 
     import app_module.recommendation.personal_h20_product_evidence as product_evidence_module
 
@@ -639,8 +692,30 @@ def _fresh_process_reopen_impl(descriptor_path: str, lifecycle: dict[str, Any]) 
         raise AssertionError("saved summary tooltip lost the original observed_at value")
     if latest_reference_calls:
         raise AssertionError(f"bookmark route consulted the current pointer: {latest_reference_calls!r}")
-    if guard_counts["source_readonly_connections"] < 1:
-        raise AssertionError("the real H20 source verifier did not open the pinned SQLite read-only")
+    if guard_counts["source_readonly_connections"] != 0:
+        raise AssertionError("the private H20 journey unexpectedly opened the original SQLite")
+    trace("private_reader_verification", json.dumps({
+        "private_readonly_connections": guard_counts["private_readonly_connections"],
+        "binding_count": len(private_bindings),
+        "private_reader_path_count": len(private_read_paths),
+    }, sort_keys=True))
+    if guard_counts["private_readonly_connections"] < 1 or len(private_bindings) != 1:
+        raise AssertionError("the real H20 verifier did not read one pinned private SQLite copy")
+    binding = private_bindings[0]
+    expected_source_sha = next(
+        item["sha256"] for item in expected_inventory
+        if Path(item["path"]).resolve() == source_database.resolve()
+    )
+    if (
+        Path(binding.original_database_path).resolve() != source_database.resolve()
+        or binding.original_main_sha256 != expected_source_sha
+        or binding.reader_copy_sha256 != expected_source_sha
+        or binding.source_file_group_start != binding.source_file_group_finish
+        or binding.reader_copy_lifecycle != "closed_and_removed"
+        or private_read_paths != {Path(binding.reader_database_path)}
+        or Path(binding.reader_database_path).exists()
+    ):
+        raise AssertionError("private reader copy did not preserve exact source pins and cleanup")
     if guard_counts["network_attempts"] != 0:
         raise AssertionError("network access was attempted")
 
@@ -683,6 +758,8 @@ def _fresh_process_reopen_impl(descriptor_path: str, lifecycle: dict[str, Any]) 
         "sort_descending": state.bookmark.sort_descending,
         "scroll_position": state.bookmark.scroll_position,
         "source_readonly_connections": guard_counts["source_readonly_connections"],
+        "private_readonly_connections": guard_counts["private_readonly_connections"],
+        "private_sqlite_binding_identity_sha256": binding.identity_sha256,
         "network_attempts": guard_counts["network_attempts"],
         "current_reference_reads": latest_reference_calls,
         "source_inventory_unchanged": True,
@@ -896,7 +973,9 @@ def test_saved_h20_bookmark_reopens_in_new_mainwindow_process(
         assert receipt["observed_at"] == capture_body["observed_at"]
         assert receipt["sort_descending"] is bookmark.sort_descending
         assert receipt["scroll_position"] == bookmark.scroll_position
-        assert receipt["source_readonly_connections"] >= 1
+        assert receipt["source_readonly_connections"] == 0
+        assert receipt["private_readonly_connections"] >= 1
+        assert len(receipt["private_sqlite_binding_identity_sha256"]) == 64
         assert receipt["network_attempts"] == 0
         assert receipt["current_reference_reads"] == []
         assert receipt["source_inventory_unchanged"] is True

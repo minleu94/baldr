@@ -21,6 +21,12 @@ from app_module.recommendation.personal_h20_research_cohort import (
     PersonalH20ResearchRow,
     PersonalH20ResearchSelection,
 )
+from app_module.recommendation.personal_h20_price_chart import (
+    PersonalH20VerifiedPriceChartV1,
+    assert_personal_h20_price_chart,
+    personal_h20_price_chart_identity_sha256,
+    personal_h20_reference_identity_sha256,
+)
 
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -65,6 +71,7 @@ class PersonalH20VerifiedCohortView:
     market_root_identity_sha256: str
     personal_root_identity_sha256: str
     sqlite_read_root_identity_sha256: str
+    price_chart: PersonalH20VerifiedPriceChartV1 | None
     _seal: bytes = field(repr=False, compare=False)
 
     def __init__(self, *_args: object, **_kwargs: object) -> None:
@@ -117,6 +124,12 @@ def assert_personal_h20_verified_cohort_view(
     if view.row_pins != _row_pins(view.cohort):
         raise ValueError("personal_h20_verified_view_row_pins_mismatch")
     _validate_reference_and_cohort(view.reference, view.cohort)
+    if view.price_chart is not None:
+        assert_personal_h20_price_chart(
+            view.price_chart,
+            view.cohort,
+            reference_identity_sha256=personal_h20_reference_identity_sha256(view.reference),
+        )
     expected = _view_seal(view)
     if not isinstance(view._seal, bytes) or not hmac.compare_digest(view._seal, expected):
         raise ValueError("personal_h20_verified_view_seal_mismatch")
@@ -161,10 +174,17 @@ def _issue_personal_h20_verified_cohort_view(
     market_root_identity_sha256: str,
     personal_root_identity_sha256: str,
     sqlite_read_root_identity_sha256: str,
+    price_chart: PersonalH20VerifiedPriceChartV1 | None = None,
 ) -> PersonalH20VerifiedCohortView:
     """只供 scheduled reader 在所有終態守衛成功後簽發。"""
 
     _validate_reference_and_cohort(reference, cohort)
+    if price_chart is not None:
+        assert_personal_h20_price_chart(
+            price_chart,
+            cohort,
+            reference_identity_sha256=personal_h20_reference_identity_sha256(reference),
+        )
     if any(type(values) is not tuple for values in (
         source_binding_identity_sha256,
         contract_binding_identity_sha256,
@@ -207,6 +227,7 @@ def _issue_personal_h20_verified_cohort_view(
         "market_root_identity_sha256": market_root_identity_sha256,
         "personal_root_identity_sha256": personal_root_identity_sha256,
         "sqlite_read_root_identity_sha256": sqlite_read_root_identity_sha256,
+        "price_chart": price_chart,
     }
     for name, attribute_value in attributes.items():
         object.__setattr__(view, name, attribute_value)
@@ -257,6 +278,10 @@ def _view_payload(view: PersonalH20VerifiedCohortView) -> dict[str, object]:
         "market_root_identity_sha256": view.market_root_identity_sha256,
         "personal_root_identity_sha256": view.personal_root_identity_sha256,
         "sqlite_read_root_identity_sha256": view.sqlite_read_root_identity_sha256,
+        "price_chart_identity_sha256": (
+            None if view.price_chart is None
+            else personal_h20_price_chart_identity_sha256(view.price_chart)
+        ),
     }
 
 

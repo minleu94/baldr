@@ -98,8 +98,8 @@ def test_available_h20_summary_keeps_dates_cohort_holdings_and_h5_separate() -> 
     assert "未扣成本" in summary.risks
     assert "待檢視" in summary.holding_relation
     assert "比較同份 H20 候選" in summary.next_step
-    assert any("資料完整度" in line and "基本面" in line for line in summary.status_lines)
-    assert any("資料時效" in line and "基本面" in line for line in summary.status_lines)
+    assert any("一般個股報告資料完整度" in line and "基本面" in line for line in summary.status_lines)
+    assert any("一般個股報告資料時效" in line and "基本面" in line for line in summary.status_lines)
     assert any("2026-10-07" in line and "2026-10-06" in line and "2026-10-05" in line
                for line in summary.status_lines)
     assert any("成熟" in line and "entry" in line for line in summary.status_lines)
@@ -110,6 +110,26 @@ def test_available_h20_summary_keeps_dates_cohort_holdings_and_h5_separate() -> 
     assert any("H20 原始身分" in note and "sample-2382" in note for note in summary.advanced_notes)
     assert any("H20 同份候選名次與母體分母不在" in note for note in summary.advanced_notes)
     assert not any("SHA" in line or "sha256:" in line for line in summary.status_lines)
+
+
+@pytest.mark.parametrize("source_kind", ["personal_h20_saved_cohort", "personal_h20_research_bookmark"])
+def test_h20_sources_separate_generic_report_completeness_and_freshness(source_kind: str) -> None:
+    report = _saved_h20_report()
+    context = dict(report.research_context)
+    context["source_kind"] = source_kind
+    if source_kind == "personal_h20_research_bookmark":
+        context["source_id"] = "bookmark-2382"
+
+    summary = build_stock_research_product_summary(
+        replace(report, research_context=context),
+        _h20(),
+    )
+
+    assert summary.status_lines[0].startswith("一般個股報告資料完整度：")
+    assert summary.status_lines[1].startswith("一般個股報告資料時效：")
+    assert "基本面部分可用或已標記過期" in summary.status_lines[0]
+    assert "基本面原來源標記過期" in summary.status_lines[1]
+    assert any("H20 價格來源：尚無同次終態核驗" in line for line in summary.status_lines)
 
 
 def test_missing_model_and_report_data_remain_distinct_from_zero_or_maturity() -> None:

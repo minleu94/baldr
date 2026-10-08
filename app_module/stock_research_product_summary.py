@@ -8,6 +8,10 @@ from typing import Mapping
 from app_module.recommendation.personal_h20_product_evidence import (
     PersonalH20ProductEvidence,
 )
+from app_module.recommendation.personal_h20_price_chart import (
+    PersonalH20PriceChartProjectionV1,
+    assert_personal_h20_price_chart_projection_binding,
+)
 from app_module.research_result_presentation import (
     research_limitation_text,
     research_risk_text,
@@ -48,6 +52,8 @@ class ProductResearchSummary:
 def build_stock_research_product_summary(
     report: StockResearchReportDTO,
     h20: PersonalH20ProductEvidence | None = None,
+    *,
+    h20_price_chart: PersonalH20PriceChartProjectionV1 | None = None,
 ) -> ProductResearchSummary:
     """只投影報告與原 H20 讀回欄位，不重算或補造研究結果。"""
 
@@ -57,9 +63,20 @@ def build_stock_research_product_summary(
         raise TypeError("h20 必須是 PersonalH20ProductEvidence 或 None")
     if h20 is not None and h20.stock_code != report.stock_code:
         raise ValueError("H20 股票代碼與個股報告不一致")
-
     context = report.research_context
     source_kind = _context_value(context, "source_kind")
+    if h20_price_chart is not None:
+        if type(h20_price_chart) is not PersonalH20PriceChartProjectionV1:
+            raise TypeError("h20_price_chart 必須是核驗過的個人 H20 價格圖投影")
+        if h20 is None or h20.status != _AVAILABLE_H20_STATUS:
+            raise ValueError("H20 價格圖須有同列可用的 H20 保存估計")
+        _validate_h20_price_chart_binding(
+            report,
+            h20,
+            h20_price_chart,
+            source_kind=source_kind,
+        )
+
     source_relation = _h20_source_relation(report, h20, source_kind)
     if h20 is not None and h20.status == _AVAILABLE_H20_STATUS:
         _validate_saved_h20_cohort_identity(report, h20, source_kind)
@@ -70,8 +87,72 @@ def build_stock_research_product_summary(
         risks=_risks(report, h20),
         holding_relation=_holding_relation(report),
         next_step=_next_step(report, h20, source_relation),
-        status_lines=_status_lines(report, h20, source_relation),
+        status_lines=_status_lines(report, h20, source_relation, h20_price_chart),
         advanced_notes=_advanced_notes(report, h20),
+    )
+
+
+def _validate_h20_price_chart_binding(
+    report: StockResearchReportDTO,
+    h20: PersonalH20ProductEvidence,
+    chart: PersonalH20PriceChartProjectionV1,
+    *,
+    source_kind: str,
+) -> None:
+    """只讓同一已保存 H20 列與來源脈絡使用程序內簽發的圖表。"""
+
+    context = report.research_context
+    if (
+        h20.stock_code != report.stock_code
+        or not h20.candidate_id
+        or not h20.sample_id
+        or not h20.prediction_id
+        or not h20.decision_date
+        or not h20.source_date
+        or not h20.feature_date
+    ):
+        raise ValueError("H20 價格圖的保存列身分不足")
+    if source_kind == "personal_h20_saved_cohort":
+        expected_source_id = h20.prediction_id
+        expected_origin_id = None
+    elif source_kind == "personal_h20_research_bookmark":
+        expected_source_id = _context_value(context, "source_id")
+        expected_origin_id = expected_source_id
+        if not expected_source_id:
+            raise ValueError("H20 收藏價格圖缺少原 bookmark 身分")
+    else:
+        raise ValueError("H20 價格圖不可用於一般或目前行情報告")
+
+    expected_context = {
+        "stock_code": h20.stock_code,
+        "profile_id": h20.candidate_id,
+        "source_version": _context_value(context, "source_version"),
+        "source_snapshot_id": chart.cycle_id,
+        "decision_date": h20.decision_date,
+        "data_date": h20.source_date,
+        "source_id": expected_source_id,
+    }
+    for key, expected in expected_context.items():
+        actual = _context_value(context, key)
+        if not actual or actual != expected:
+            raise ValueError(f"H20 價格圖的 {key} 與目前保存來源不一致")
+    assert_personal_h20_price_chart_projection_binding(
+        chart,
+        stock_code=report.stock_code,
+        source_kind=source_kind,
+        manifest_sha256=_context_value(context, "source_snapshot_hash"),
+        decision_date=h20.decision_date,
+        candidate_id=h20.candidate_id,
+        contract_hash=_context_value(context, "source_version"),
+        cycle_id=_context_value(context, "source_snapshot_id"),
+        sample_id=h20.sample_id,
+        prediction_id=h20.prediction_id,
+        source_date=h20.source_date,
+        feature_as_of_date=h20.feature_date,
+        # capture SHA 由不可序列化 issuer 投影從同列 reader 終態固定；H20 DTO
+        # 不複製 capture pin，Main 的 setter 另以原 selection/bookmark row 重核。
+        capture_sha256=chart.capture_sha256,
+        origin_identity_sha256=expected_origin_id,
     )
 
 
@@ -144,15 +225,53 @@ def _status_lines(
     report: StockResearchReportDTO,
     h20: PersonalH20ProductEvidence | None,
     source_relation: str,
+    h20_price_chart: PersonalH20PriceChartProjectionV1 | None,
 ) -> tuple[str, ...]:
-    return (
-        _data_completeness_line(report),
-        _freshness_line(report),
+    source_kind = _context_value(report.research_context, "source_kind")
+    saved_h20 = source_kind in {_SAVED_H20_COHORT_SOURCE, "personal_h20_research_bookmark"}
+    report_scope_label = "一般個股報告" if saved_h20 else ""
+    lines = (
+        report_scope_label + _data_completeness_line(report),
+        report_scope_label + _freshness_line(report),
         _h20_availability_line(h20),
         _h20_dates_line(h20),
         _natural_result_line(h20),
         _usage_line(h20, source_relation),
     )
+    if saved_h20:
+        return (*lines, _h20_price_chart_line(h20_price_chart))
+    return lines
+
+
+def _h20_price_chart_line(
+    chart: PersonalH20PriceChartProjectionV1 | None,
+) -> str:
+    if chart is None:
+        return (
+            "H20 價格來源：尚無同次終態核驗的 OHLCV 圖表；保留缺件，"
+            "不以其他報告或目前行情補入。"
+        )
+    if chart.status == "available":
+        first = chart.points[0].trading_date if chart.points else "未知"
+        last = chart.points[-1].trading_date if chart.points else "未知"
+        return (
+            f"H20 價格來源：同次原快照 OHLCV 已核驗，涵蓋 {first} 至 {last}；"
+            "資料可得時間未知，只供保存來源重述，不授歷史 PIT 或可交易資格。"
+        )
+    reason = {
+        "daily_prices_empty": "原快照沒有符合範圍的價格列",
+        "daily_prices_date_out_of_range": "原快照日期超出保存視窗",
+        "daily_prices_hash_mismatch": "原快照價格列與 capture 的邏輯 hash 不一致",
+        "daily_prices_invalid": "原快照價格資料不完整或格式不符",
+        "daily_prices_ohlc_missing": "原快照 OHLC 缺欄",
+        "daily_prices_ohlc_inconsistent": "原快照 OHLC 範圍不一致",
+        "chart_capacity_exceeded": "原快照價格圖超出 bounded 投影容量",
+        "source_initial_terminal_changed": "來源初讀與終態重讀不一致",
+        "capture_binding_mismatch": "capture 與 H20 保存來源無法對應",
+        "capture_observer_missing": "同次來源價格讀取未完整記錄",
+        "h20_row_unknown": "此 H20 列本身仍未知",
+    }.get(chart.reason_code, "原保存來源未能核驗價格圖")
+    return f"H20 價格來源：{reason}；保留缺件，不以其他行情補入。"
 
 
 def _data_completeness_line(report: StockResearchReportDTO) -> str:

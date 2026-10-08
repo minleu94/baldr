@@ -23,6 +23,7 @@ from app_module.recommendation.personal_current_observed_h20_capture import (
 from app_module.recommendation.personal_current_observed_h20_outcome import (
     project_personal_current_observed_h20_outcome,
 )
+from app_module.recommendation.personal_h20_price_chart import RawCurrentObservedObserver
 
 SQLiteReadSessionResolver = Callable[[Path, str], PinnedSQLiteReadSession]
 
@@ -40,6 +41,7 @@ def _source_port(
     binding: Mapping[str, Any],
     *,
     read_session_resolver: SQLiteReadSessionResolver | None = None,
+    raw_snapshot_observer: RawCurrentObservedObserver | None = None,
 ) -> Mapping[str, Any]:
     from ml_module.recommendation_calibration_evidence import load_current_observed_context_from_pinned_snapshot
     from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
@@ -102,7 +104,17 @@ def _source_port(
     result = {**binding, "source_fingerprint": raw.source_fingerprint,
         "feature_rows_by_symbol": {row.symbol: {**asdict(row), "row_sha256": row.row_sha256,
             "local_current_observed_at": row.local_current_observed_at.isoformat()} for row in rows}}
-    return json.loads(encoded(result))
+    verified_result = json.loads(encoded(result))
+    if raw_snapshot_observer is not None:
+        try:
+            raw_snapshot_observer.observe(binding, raw, verified_result)
+        except Exception:
+            try:
+                raw_snapshot_observer.reject("chart_observer_failed")
+            except Exception:
+                # 圖表是 sideband；其 observer 失敗不能改變原 verifier 回傳值。
+                pass
+    return verified_result
 
 
 def _predictor(contract_binding: Mapping[str, Any], source: Mapping[str, Any]) -> Callable[[str], Mapping[str, Any]]:
@@ -162,14 +174,19 @@ def _outcome_port(
 def personal_current_observed_h20_read_ports(
     *,
     read_session_resolver: SQLiteReadSessionResolver | None = None,
+    raw_snapshot_observer: RawCurrentObservedObserver | None = None,
 ) -> dict[str, Callable[..., Any]]:
     """中央 composition 注入產品 reader 的原驗證 ports；App 不匯入 ML。"""
-    if read_session_resolver is None:
+    if read_session_resolver is None and raw_snapshot_observer is None:
         return {"source_verifier": _source_port, "contract_verifier": _contract_port,
                 "input_capture_verifier": _input_port, "outcome_verifier": _outcome_port}
 
     def source_verifier(binding: Mapping[str, Any]) -> Mapping[str, Any]:
-        return _source_port(binding, read_session_resolver=read_session_resolver)
+        return _source_port(
+            binding,
+            read_session_resolver=read_session_resolver,
+            raw_snapshot_observer=raw_snapshot_observer,
+        )
 
     def input_capture_verifier(path: Path, pin: str) -> Mapping[str, Any]:
         return _input_port(path, pin, read_session_resolver=read_session_resolver)

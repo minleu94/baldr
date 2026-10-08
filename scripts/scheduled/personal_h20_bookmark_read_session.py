@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, TypeAlias, cast
+from typing import Any, Literal, TypeAlias, cast
 
 from app_module.recommendation.personal_current_observed_h20_capture import (
     read_personal_current_observed_h20_capture,
@@ -21,6 +21,12 @@ from app_module.recommendation.personal_h20_research_bookmark import (
     PersonalH20ResearchBookmarkState,
     _read_activation_snapshot,
     read_personal_h20_research_bookmark,
+)
+from app_module.recommendation.personal_h20_price_chart import (
+    PersonalH20BookmarkVerifiedViewV1,
+    PersonalH20PriceChartCollector,
+    RawCurrentObservedObserver,
+    personal_h20_bookmark_identity_sha256,
 )
 from scripts.scheduled import run_personal_current_observed_h20_daily
 
@@ -85,13 +91,20 @@ def _progress_message(event: PersonalH20ReadProgress) -> str:
 def _read_ports(
     *,
     read_session_resolver: Callable[..., Any] | None = None,
+    raw_snapshot_observer: RawCurrentObservedObserver | None = None,
 ) -> tuple[Verifier, Verifier]:
-    if read_session_resolver is None:
-        ports = run_personal_current_observed_h20_daily.personal_current_observed_h20_read_ports()
-    else:
+    factory = run_personal_current_observed_h20_daily.personal_current_observed_h20_read_ports
+    if read_session_resolver is not None and raw_snapshot_observer is not None:
         ports = run_personal_current_observed_h20_daily.personal_current_observed_h20_read_ports(
             read_session_resolver=read_session_resolver,
+            raw_snapshot_observer=raw_snapshot_observer,
         )
+    elif read_session_resolver is not None:
+        ports = factory(read_session_resolver=read_session_resolver)
+    elif raw_snapshot_observer is not None:
+        ports = factory(raw_snapshot_observer=raw_snapshot_observer)
+    else:
+        ports = factory()
     if (not isinstance(ports, Mapping)
             or not callable(ports.get("source_verifier"))
             or not callable(ports.get("contract_verifier"))):
@@ -114,12 +127,68 @@ def read_personal_h20_research_bookmark_with_session(
     每次呼叫建立獨立 session。初讀與終態重讀都走既有 bookmark public
     reader；session 只分組來源與合約 verifier，不保存任何跨操作快取。
     """
+    result = _read_personal_h20_research_bookmark_operation(
+        bookmark,
+        config_path=config_path,
+        market_root=market_root,
+        cancel_callback=cancel_callback,
+        progress_callback=progress_callback,
+        sqlite_read_root=sqlite_read_root,
+        require_sqlite_copy=require_sqlite_copy,
+        issue_price_chart=False,
+    )
+    if type(result) is not PersonalH20ResearchBookmarkState:
+        raise PersonalH20ReadSessionError("personal_h20_bookmark_state_result_invalid")
+    return result
+
+
+def read_personal_h20_research_bookmark_view_with_session(
+    bookmark: BookmarkInput,
+    *,
+    config_path: Path,
+    market_root: Path,
+    sqlite_read_root: Path,
+    cancel_callback: Callable[[], bool] | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> PersonalH20BookmarkVerifiedViewV1:
+    """以全新唯讀副本重讀精確收藏，並在同次終態後簽發圖表 view。"""
+
+    result = _read_personal_h20_research_bookmark_operation(
+        bookmark,
+        config_path=config_path,
+        market_root=market_root,
+        cancel_callback=cancel_callback,
+        progress_callback=progress_callback,
+        sqlite_read_root=sqlite_read_root,
+        require_sqlite_copy=True,
+        issue_price_chart=True,
+    )
+    if type(result) is not PersonalH20BookmarkVerifiedViewV1:
+        raise PersonalH20ReadSessionError("personal_h20_bookmark_view_result_invalid")
+    return result
+
+
+def _read_personal_h20_research_bookmark_operation(
+    bookmark: BookmarkInput,
+    *,
+    config_path: Path,
+    market_root: Path,
+    cancel_callback: Callable[[], bool] | None,
+    progress_callback: ProgressCallback | None,
+    sqlite_read_root: Path | None,
+    require_sqlite_copy: bool,
+    issue_price_chart: bool,
+) -> PersonalH20ResearchBookmarkState | PersonalH20BookmarkVerifiedViewV1:
     saved_bookmark = _freeze_bookmark(bookmark)
     config = Path(config_path)
     market = Path(market_root)
     from scripts.scheduled.personal_h20_daily_hook import (
         _open_personal_h20_sqlite_operation,
+        _PersonalH20BindingProgressLedger,
     )
+
+    if issue_price_chart and (not require_sqlite_copy or sqlite_read_root is None):
+        raise PersonalH20ReadSessionError("personal_h20_bookmark_chart_requires_sqlite_copy")
 
     operation = _open_personal_h20_sqlite_operation(
         sqlite_read_root=sqlite_read_root,
@@ -128,24 +197,31 @@ def read_personal_h20_research_bookmark_with_session(
         progress_callback=progress_callback,
     )
     session: PersonalH20ReadSession | None = None
+    chart_collector = PersonalH20PriceChartCollector() if issue_price_chart else None
     try:
         source_verifier, contract_verifier = _read_ports(
             read_session_resolver=None if operation is None else operation.session_for,
+            raw_snapshot_observer=chart_collector,
         )
+        ledger = _PersonalH20BindingProgressLedger(None) if issue_price_chart else None
+
+        def progress_event(event: PersonalH20ReadProgress) -> None:
+            if ledger is not None:
+                ledger(event)
+            if progress_callback is not None:
+                progress_callback(_progress_message(event))
+
         session = PersonalH20ReadSession(
             source_verifier=source_verifier,
             contract_verifier=contract_verifier,
             cancel_callback=cancel_callback,
-            progress_callback=(
-                None if progress_callback is None
-                else lambda event: progress_callback(_progress_message(event))
-            ),
+            progress_callback=progress_event if ledger is not None or progress_callback is not None else None,
         )
         session.report(stage="activation_snapshot_started", pass_name="initial")
         activation_before, activation_bytes_before = _read_activation_snapshot(config)
         session.report(stage="activation_snapshot_verified", pass_name="initial")
 
-        def read_pass(pass_name: str) -> PersonalH20ResearchBookmarkState:
+        def read_pass(pass_name: Literal["initial", "terminal"]) -> PersonalH20ResearchBookmarkState:
             row_index = 0
 
             def prediction_reader(
@@ -178,6 +254,12 @@ def read_personal_h20_research_bookmark_with_session(
                         pass_name=pass_name,
                     )
                     raise
+                if chart_collector is not None:
+                    chart_collector.link_capture(
+                        capture,
+                        expected_sha256=expected_sha256,
+                        pass_name=pass_name,
+                    )
                 session.report(
                     stage="capture_read_verified",
                     row_index=row_index,
@@ -225,11 +307,60 @@ def read_personal_h20_research_bookmark_with_session(
             session.report(stage="bookmark_session_complete", pass_name="terminal")
 
         session.finish(finalizer=finalizer)
+        sqlite_binding_ids: tuple[str, ...] = ()
         if operation is not None:
-            operation.finish()
+            bindings = operation.finish()
+            if issue_price_chart:
+                from data_module.pinned_sqlite_read_session import PinnedSQLiteReadBindingV1
+
+                if len(bindings) != operation.source_group_count or any(
+                    type(binding) is not PinnedSQLiteReadBindingV1 for binding in bindings
+                ):
+                    raise PersonalH20ReadSessionError(
+                        "personal_h20_bookmark_sqlite_bindings_invalid"
+                    )
+                identities = tuple(binding.identity_sha256 for binding in bindings)
+                if (not identities or any(type(value) is not str or len(value) != 64
+                                          or any(char not in "0123456789abcdef" for char in value)
+                                          for value in identities)
+                        or len(set(identities)) != len(identities)):
+                    raise PersonalH20ReadSessionError(
+                        "personal_h20_bookmark_sqlite_binding_identity_invalid"
+                    )
+                sqlite_binding_ids = tuple(sorted(identities))
         if terminal_state is None:
             raise PersonalH20ReadSessionError("personal_h20_bookmark_terminal_state_missing")
-        return terminal_state
+        session.check_cancel()
+        if not issue_price_chart:
+            return terminal_state
+        if ledger is None or chart_collector is None:
+            raise PersonalH20ReadSessionError("personal_h20_bookmark_chart_collector_missing")
+        source_binding_ids, contract_binding_ids = ledger.terminal_identities(session)
+        price_chart = None
+        chart_reason_code: str | None = None
+        try:
+            price_chart = chart_collector.issue(
+                terminal_state.cohort,
+                source_binding_identity_sha256=source_binding_ids,
+                contract_binding_identity_sha256=contract_binding_ids,
+                sqlite_binding_identity_sha256=sqlite_binding_ids,
+                bookmark_identity_sha256=personal_h20_bookmark_identity_sha256(saved_bookmark),
+            )
+        except Exception as exc:
+            # 價格圖是旁路投影；不能讓其容量或觀察失敗抹掉已核收藏 evidence。
+            candidate_reason = str(exc).split(":", 1)[0].strip()
+            chart_reason_code = (
+                "chart_capacity_exceeded"
+                if candidate_reason == "chart_capacity_exceeded"
+                else "chart_observer_failed"
+            )
+        result = PersonalH20BookmarkVerifiedViewV1(
+            state=terminal_state,
+            price_chart=price_chart,
+            price_chart_reason_code=chart_reason_code,
+        )
+        session.check_cancel()
+        return result
     finally:
         if session is not None:
             session.close()

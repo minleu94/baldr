@@ -16,14 +16,15 @@ def _install_real_h20_ports(saved: Mapping[str, Any], monkeypatch: pytest.Monkey
     actual_source_port = runner._source_port
     contract_verifier = saved["contract_fixture"]["verifier"]
 
-    def public_ports(*, read_session_resolver=None):
-        if read_session_resolver is None:
+    def public_ports(*, read_session_resolver=None, raw_snapshot_observer=None):
+        if read_session_resolver is None and raw_snapshot_observer is None:
             source_verifier = actual_source_port
         else:
             def source_verifier(binding: Mapping[str, Any]) -> Mapping[str, Any]:
                 return actual_source_port(
                     binding,
                     read_session_resolver=read_session_resolver,
+                    raw_snapshot_observer=raw_snapshot_observer,
                 )
 
         return {

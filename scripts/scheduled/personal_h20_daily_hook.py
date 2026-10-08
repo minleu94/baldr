@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import re
 import stat
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from app_module.recommendation.personal_h20_activation import read_personal_h20_activation
 from app_module.recommendation.personal_h20_read_session import (
@@ -22,6 +22,14 @@ from app_module.recommendation.personal_h20_verified_cohort_view import (
     _issue_personal_h20_verified_cohort_view,
     assert_personal_h20_verified_cohort_view,
     project_personal_h20_verified_cohort_selection,
+)
+from app_module.recommendation.personal_h20_price_chart import (
+    PersonalH20PriceChartCollector,
+    PersonalH20VerifiedPriceChartV1,
+    PersonalH20SelectedProductProjectionV1,
+    RawCurrentObservedObserver,
+    personal_h20_reference_identity_sha256,
+    project_personal_h20_verified_cohort_price_chart,
 )
 
 if TYPE_CHECKING:
@@ -65,14 +73,16 @@ def read_personal_h20_prediction(path: str | Path, *, root: Path, expected_sha25
 def _personal_h20_read_ports(
     *,
     read_session_resolver: SQLiteReadSessionResolver | None = None,
+    raw_snapshot_observer: RawCurrentObservedObserver | None = None,
 ) -> Mapping[str, Callable[..., Any]]:
     module = importlib.import_module("scripts.scheduled.run_personal_current_observed_h20_daily")
     factory = getattr(module, "personal_current_observed_h20_read_ports")
-    ports = (
-        factory()
-        if read_session_resolver is None
-        else factory(read_session_resolver=read_session_resolver)
-    )
+    options: dict[str, object] = {}
+    if read_session_resolver is not None:
+        options["read_session_resolver"] = read_session_resolver
+    if raw_snapshot_observer is not None:
+        options["raw_snapshot_observer"] = raw_snapshot_observer
+    ports = factory(**options)
     if (not isinstance(ports, Mapping)
             or not callable(ports.get("source_verifier"))
             or not callable(ports.get("contract_verifier"))):
@@ -325,6 +335,32 @@ def project_personal_h20_verified_cohort_selection_with_reference(
     return evidence
 
 
+def project_personal_h20_verified_cohort_selection_with_chart_reference(
+    view: PersonalH20VerifiedCohortView,
+    selection: "PersonalH20ResearchSelection",
+    *,
+    config_path: Path,
+    market_root: Path,
+    sqlite_read_root: Path,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> PersonalH20SelectedProductProjectionV1:
+    """同一 view 完成 reference 重核後，純記憶體投影 H20 與 OHLCV。"""
+    evidence = project_personal_h20_verified_cohort_selection_with_reference(
+        view,
+        selection,
+        config_path=config_path,
+        market_root=market_root,
+        sqlite_read_root=sqlite_read_root,
+        cancel_callback=cancel_callback,
+    )
+    price_chart = project_personal_h20_verified_cohort_price_chart(view, selection)
+    _poll_personal_h20_cancel(cancel_callback)
+    return PersonalH20SelectedProductProjectionV1(
+        evidence=evidence,
+        price_chart=price_chart,
+    )
+
+
 class _PersonalH20BindingProgressLedger:
     """只收集本 hook 建立的 typed verifier 終態事件。"""
 
@@ -404,10 +440,12 @@ def _read_personal_h20_product_cohort_pipeline(
         progress_callback=progress_callback,
     )
     session: PersonalH20ReadSession | None = None
+    chart_collector = PersonalH20PriceChartCollector() if issue_verified_view else None
     initial_context: tuple[str, str, str, str] | None = None
     try:
         ports = _personal_h20_read_ports(
             read_session_resolver=None if operation is None else operation.session_for,
+            raw_snapshot_observer=chart_collector,
         )
         ledger = _PersonalH20BindingProgressLedger(progress_callback)
         session = PersonalH20ReadSession(
@@ -429,7 +467,7 @@ def _read_personal_h20_product_cohort_pipeline(
             )
         session.report(stage="reference_read_verified")
 
-        def read_pass(pass_name: str) -> Any:
+        def read_pass(pass_name: Literal["initial", "terminal"]) -> Any:
             row_index = 0
 
             def reader(path: str | Path, *, root: Path, expected_sha256: str) -> Mapping[str, Any]:
@@ -443,6 +481,12 @@ def _read_personal_h20_product_cohort_pipeline(
                     source_verifier=session.verify_source,
                     contract_verifier=session.verify_contract,
                 )
+                if chart_collector is not None:
+                    chart_collector.link_capture(
+                        capture,
+                        expected_sha256=expected_sha256,
+                        pass_name=pass_name,
+                    )
                 session.report(stage="capture_read_verified", row_index=row_index, pass_name=pass_name)
                 return capture
 
@@ -520,6 +564,19 @@ def _read_personal_h20_product_cohort_pipeline(
             )
             if final_context != initial_context:
                 raise ValueError("personal_h20_verified_view_context_changed_after_finish")
+            price_chart: PersonalH20VerifiedPriceChartV1 | None = None
+            if chart_collector is not None:
+                try:
+                    price_chart = chart_collector.issue(
+                        cohort,
+                        source_binding_identity_sha256=source_binding_ids,
+                        contract_binding_identity_sha256=contract_binding_ids,
+                        sqlite_binding_identity_sha256=sqlite_binding_ids,
+                        reference_identity_sha256=personal_h20_reference_identity_sha256(reference),
+                    )
+                except Exception:
+                    # 圖表為旁路投影；失敗時保留原已核 H20 名單，不改其 row status。
+                    price_chart = None
             view = _issue_personal_h20_verified_cohort_view(
                 reference=reference,
                 cohort=cohort,
@@ -530,6 +587,7 @@ def _read_personal_h20_product_cohort_pipeline(
                 market_root_identity_sha256=initial_context[1],
                 personal_root_identity_sha256=initial_context[2],
                 sqlite_read_root_identity_sha256=initial_context[3],
+                price_chart=price_chart,
             )
             # 簽章計算也可能耗時；最後一次取消檢查必須發生在 view 完成後。
             session.check_cancel()

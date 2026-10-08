@@ -225,7 +225,7 @@ def _prepare_saved_h20_mainwindow(
     contract_verifier = saved["contract_fixture"]["verifier"]
     snapshot_database = Path(saved["snapshot_database"])
 
-    def read_ports(*, read_session_resolver=None):
+    def read_ports(*, read_session_resolver=None, raw_snapshot_observer=None):
         def source_verifier(binding: Any) -> Any:
             task_name = getattr(task_context, "task_name", "")
             is_product_read = task_name == "read_personal_h20_product_for_stock_with_session"
@@ -264,13 +264,15 @@ def _prepare_saved_h20_mainwindow(
                 if (should_drift_product or should_drift_cohort) and not mode.get("source_mutated"):
                     snapshot_database.write_bytes(snapshot_database.read_bytes() + b" ")
                     mode["source_mutated"] = True
-            if read_session_resolver is None:
+            verifier_options: dict[str, Any] = {}
+            if read_session_resolver is not None:
+                verifier_options["read_session_resolver"] = read_session_resolver
+            if raw_snapshot_observer is not None:
+                verifier_options["raw_snapshot_observer"] = raw_snapshot_observer
+            if not verifier_options:
                 result = base_source_verifier(binding)
             else:
-                result = base_source_verifier(
-                    binding,
-                    read_session_resolver=read_session_resolver,
-                )
+                result = base_source_verifier(binding, **verifier_options)
             if (
                 (
                     is_product_read
@@ -413,6 +415,15 @@ def test_actual_mainwindow_h20_double_click_summary_return_recheck_and_source_dr
         assert double_click_signals["research_requested"]
         assert evidence.stock_code == "2382"
         assert evidence.gross_return_bp == 1234
+        from app_module.recommendation.personal_h20_price_chart import (
+            PersonalH20PriceChartProjectionV1,
+        )
+        chart_projection = report_view._personal_h20_price_chart_projection
+        assert type(chart_projection) is PersonalH20PriceChartProjectionV1
+        assert chart_projection.status == "available"
+        assert chart_projection.capture_sha256 == widget._cohort.rows[0].capture_sha256
+        assert report_view.personal_h20_price_chart_group.isVisible()
+        assert report_view.personal_h20_price_table.model().rowCount() > 0
         assert mode.get("_warm_projection_count") == 1
         assert mode.get("_product_operation_count", 0) == 0
         reference = getattr(window, "_personal_h20_saved_reference", None)

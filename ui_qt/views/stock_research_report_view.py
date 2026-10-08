@@ -48,6 +48,10 @@ from app_module.research_session import (
 )
 from app_module.recommendation.personal_h20_product_evidence import PersonalH20ProductEvidence
 from app_module.stock_research_product_summary import build_stock_research_product_summary
+from app_module.recommendation.personal_h20_price_chart import (
+    PersonalH20PriceChartProjectionV1,
+    assert_personal_h20_price_chart_projection_binding,
+)
 from app_module.stock_research_report_dtos import (
     ReportSectionStatus,
     StockAdviceSnapshotDTO,
@@ -794,6 +798,8 @@ class StockResearchReportView(QWidget):
 
         self._summary_values: dict[str, QLabel] = {}
         self._personal_h20_evidence: PersonalH20ProductEvidence | None = None
+        self._personal_h20_price_chart_projection: PersonalH20PriceChartProjectionV1 | None = None
+        self._personal_h20_price_chart_reason_code: str | None = None
         self._build_summary_shell()
         self._render_context_path()
         QWidget.setTabOrder(self.stock_search, self.load_button)
@@ -833,6 +839,30 @@ class StockResearchReportView(QWidget):
             "摘要只整理報告 DTO 已提供的證據；完整來源、代碼與歷史請開啟進階內容。"
         )
         layout.addWidget(self.summary_focus)
+        self.personal_h20_price_chart_group = QGroupBox("原保存 H20 價格圖")
+        self.personal_h20_price_chart_group.setObjectName("stockResearchPersonalH20PriceChart")
+        h20_chart_layout = QVBoxLayout(self.personal_h20_price_chart_group)
+        self.personal_h20_price_chart_status = self._wrapped_label(
+            "此來源尚未載入同次核驗的 OHLCV 價格資料。"
+        )
+        self.personal_h20_price_chart_status.setObjectName(
+            "stockResearchPersonalH20PriceChartStatus"
+        )
+        h20_chart_layout.addWidget(self.personal_h20_price_chart_status)
+        # 原保存來源尚未簽發圖表時不建立空圖，避免一般報告的圖表查找命中此空元件。
+        self.personal_h20_price_chart_widget: StockPriceChartWidget | None = None
+        self.personal_h20_price_table = QTableView()
+        self.personal_h20_price_table.setObjectName("stockResearchPersonalH20PriceTable")
+        self.personal_h20_price_table.setAccessibleName("原保存 H20 OHLCV 明細")
+        apply_financial_table_style(self.personal_h20_price_table)
+        self.personal_h20_price_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.personal_h20_price_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.personal_h20_price_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        ensure_visible_rows(self.personal_h20_price_table, 5)
+        self.personal_h20_price_table.setMinimumHeight(180)
+        h20_chart_layout.addWidget(self.personal_h20_price_table)
+        self.personal_h20_price_chart_group.hide()
+        layout.addWidget(self.personal_h20_price_chart_group)
         self.personal_h20_label = QLabel("個人 H20 模型：等待受驗預測")
         self.personal_h20_label.setObjectName("stockResearchPersonalH20")
         self.personal_h20_label.setWordWrap(True)
@@ -1745,6 +1775,7 @@ class StockResearchReportView(QWidget):
         """跨股票切換時清掉可見舊頁，避免新代碼下殘留舊 DTO。"""
 
         self._personal_h20_evidence = None
+        self.clear_personal_h20_price_chart()
         self.personal_h20_label.setToolTip("")
         self.personal_h20_label.setText("個人 H20 模型：等待此股受驗預測")
         self._chart_viewport = ChartViewportState()
@@ -2099,7 +2130,11 @@ class StockResearchReportView(QWidget):
         """首屏同步來源可用性與操作；原始 pins 留於進階明細。"""
         refusal = ""
         try:
-            summary = build_stock_research_product_summary(report, self._personal_h20_evidence)
+            summary = build_stock_research_product_summary(
+                report,
+                self._personal_h20_evidence,
+                h20_price_chart=self._current_h20_price_chart_projection(report),
+            )
         except (TypeError, ValueError) as exc:
             self._personal_h20_evidence = None
             refusal = str(exc)
@@ -2141,11 +2176,45 @@ class StockResearchReportView(QWidget):
         from app_module.recommendation.personal_h20_product_evidence import (
             PersonalH20ProductEvidence, personal_h20_product_text,
         )
-        if (not isinstance(evidence, PersonalH20ProductEvidence) or self._loaded_report is None
-                or evidence.stock_code != self._loaded_report.stock_code):
+        if not isinstance(evidence, PersonalH20ProductEvidence):
             return
         context = self._loaded_request_context or self.context
+        if context is None or evidence.stock_code != context.stock_code:
+            return
         if self._loaded_request_context is not None and self.context != self._loaded_request_context:
+            return
+        is_saved_h20 = context.source_kind in {
+            "personal_h20_saved_cohort",
+            "personal_h20_research_bookmark",
+        }
+        if is_saved_h20:
+            if evidence.status == "available":
+                expected_source = (
+                    evidence.prediction_id
+                    if context.source_kind == "personal_h20_saved_cohort"
+                    else context.source_id
+                )
+                if (
+                    evidence.candidate_id != context.profile_id
+                    or evidence.decision_date != context.decision_date
+                    or evidence.source_date != context.data_date
+                    or context.source_id != expected_source
+                ):
+                    return
+                try:
+                    observed_at = datetime.fromisoformat(evidence.observed_at or "")
+                except ValueError:
+                    return
+                if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+                    return
+                if observed_at > datetime.now(timezone.utc):
+                    return
+            self._personal_h20_evidence = evidence
+            self.personal_h20_label.setToolTip(evidence.reason)
+            self.personal_h20_label.setText(personal_h20_product_text(evidence))
+            if self._loaded_report is None:
+                return
+        elif self._loaded_report is None or evidence.stock_code != self._loaded_report.stock_code:
             return
         cutoff = _stock_chart_cutoff_date(self._loaded_report, context)
         if evidence.status == "available":
@@ -2181,6 +2250,254 @@ class StockResearchReportView(QWidget):
         self._personal_h20_evidence = evidence
         self._render_product_summary(self._loaded_report)
         self._sync_original_rank_actions()
+
+    def set_personal_h20_price_chart(
+        self,
+        projection: object,
+        *,
+        context: ResearchStockContextDTO,
+        expected_capture_sha256: str | None = None,
+        expected_origin_identity_sha256: str | None = None,
+        reason_code: str | None = None,
+    ) -> bool:
+        """顯示由 H20 verified view 純投影的同次來源價格；不讀報告服務。"""
+
+        if (self.context != context
+                or context.source_kind not in {
+                    "personal_h20_saved_cohort",
+                    "personal_h20_research_bookmark",
+                }
+                or self._loaded_request_context not in (None, context)):
+            return False
+        if projection is None:
+            self._personal_h20_price_chart_projection = None
+            self._personal_h20_price_chart_reason_code = reason_code
+            self._render_personal_h20_price_chart(None, context, reason_code=reason_code)
+            return True
+        if type(projection) is not PersonalH20PriceChartProjectionV1:
+            return False
+        evidence = self._personal_h20_evidence
+        if (
+            evidence is None
+            or evidence.status != "available"
+            or expected_capture_sha256 is None
+            or expected_origin_identity_sha256 is None
+        ):
+            return False
+        try:
+            assert_personal_h20_price_chart_projection_binding(
+                projection,
+                stock_code=context.stock_code,
+                source_kind=context.source_kind,
+                manifest_sha256=context.source_snapshot_hash,
+                decision_date=context.decision_date,
+                candidate_id=evidence.candidate_id or "",
+                contract_hash=context.source_version,
+                cycle_id=context.source_snapshot_id,
+                sample_id=evidence.sample_id or "",
+                prediction_id=evidence.prediction_id or "",
+                source_date=evidence.source_date,
+                feature_as_of_date=evidence.feature_date,
+                capture_sha256=expected_capture_sha256,
+                origin_identity_sha256=expected_origin_identity_sha256,
+            )
+        except (TypeError, ValueError):
+            return False
+        self._personal_h20_price_chart_reason_code = None
+        self._personal_h20_price_chart_projection = projection
+        self._render_personal_h20_price_chart(projection, context, reason_code=None)
+        report = self._loaded_report
+        if (report is not None and report.stock_code == context.stock_code
+                and self._loaded_request_context == context):
+            self._render_product_summary(report)
+        return True
+
+    def clear_personal_h20_price_chart(self) -> None:
+        """清除切換或取消操作前的 H20 同次來源圖，避免舊圖殘留。"""
+
+        self._personal_h20_price_chart_projection = None
+        self._personal_h20_price_chart_reason_code = None
+        self.personal_h20_price_chart_group.hide()
+        self._remove_personal_h20_price_chart_widget()
+        self.personal_h20_price_chart_status.setToolTip("")
+        self.personal_h20_price_table.setModel(
+            StockReportTableModel(("資料日", "開盤", "最高", "最低", "收盤", "成交量"), (), self.personal_h20_price_table)
+        )
+
+    def _remove_personal_h20_price_chart_widget(self) -> None:
+        chart = self.personal_h20_price_chart_widget
+        if chart is None:
+            return
+        layout = self.personal_h20_price_chart_group.layout()
+        if layout is not None:
+            layout.removeWidget(chart)
+        chart.hide()
+        chart.setParent(None)
+        chart.deleteLater()
+        self.personal_h20_price_chart_widget = None
+
+    def _current_h20_price_chart_projection(
+        self,
+        report: StockResearchReportDTO,
+    ) -> PersonalH20PriceChartProjectionV1 | None:
+        context = self._loaded_request_context or self.context
+        projection = self._personal_h20_price_chart_projection
+        if (projection is None or context is None
+                or context.source_kind not in {
+                    "personal_h20_saved_cohort",
+                    "personal_h20_research_bookmark",
+                }
+                or context.stock_code != report.stock_code
+                or projection.stock_code != report.stock_code
+                or projection.manifest_sha256 != context.source_snapshot_hash
+                or projection.decision_date != context.decision_date):
+            return None
+        evidence = self._personal_h20_evidence
+        if evidence is None or evidence.status != "available":
+            return None
+        try:
+            assert_personal_h20_price_chart_projection_binding(
+                projection,
+                stock_code=context.stock_code,
+                source_kind=context.source_kind,
+                manifest_sha256=context.source_snapshot_hash,
+                decision_date=context.decision_date,
+                candidate_id=evidence.candidate_id or "",
+                contract_hash=context.source_version,
+                cycle_id=context.source_snapshot_id,
+                sample_id=evidence.sample_id or "",
+                prediction_id=evidence.prediction_id or "",
+                source_date=evidence.source_date,
+                feature_as_of_date=evidence.feature_date,
+                capture_sha256=projection.capture_sha256,
+                origin_identity_sha256=(
+                    context.source_id
+                    if context.source_kind == "personal_h20_research_bookmark"
+                    else None
+                ),
+            )
+        except (TypeError, ValueError):
+            return None
+        return projection
+
+    def _render_personal_h20_price_chart(
+        self,
+        projection: PersonalH20PriceChartProjectionV1 | None,
+        context: ResearchStockContextDTO,
+        *,
+        reason_code: str | None,
+    ) -> None:
+        is_saved_h20 = context.source_kind in {
+            "personal_h20_saved_cohort",
+            "personal_h20_research_bookmark",
+        }
+        self.personal_h20_price_chart_group.setVisible(is_saved_h20)
+        if not is_saved_h20:
+            return
+        if projection is None:
+            self._remove_personal_h20_price_chart_widget()
+            self.personal_h20_price_chart_status.setToolTip("")
+            self.personal_h20_price_table.setModel(
+                StockReportTableModel(
+                    ("資料日", "開盤", "最高", "最低", "收盤", "成交量"),
+                    (),
+                    self.personal_h20_price_table,
+                )
+            )
+            reason = {
+                "chart_capacity_exceeded": "價格圖超出受限顯示容量",
+                "chart_observer_failed": "價格旁路讀取未能完整核驗",
+            }.get(reason_code or "", "尚無同次終態核驗的 H20 OHLCV 價格")
+            self.personal_h20_price_chart_status.setText(
+                f"{reason}；保留缺件，不混入其他報告或目前行情。"
+                "MA20／MA60 未由此來源提供，本頁不重算。"
+            )
+            return
+        if projection.status != "available" or not projection.points:
+            self._remove_personal_h20_price_chart_widget()
+            self.personal_h20_price_chart_status.setToolTip("")
+            self.personal_h20_price_table.setModel(
+                StockReportTableModel(
+                    ("資料日", "開盤", "最高", "最低", "收盤", "成交量"),
+                    (),
+                    self.personal_h20_price_table,
+                )
+            )
+            self.personal_h20_price_chart_status.setText(
+                "H20 價格來源仍未知或未完整核驗；此圖保留缺件。"
+                "資料可得時間未知；不授歷史 PIT 或可交易資格。"
+            )
+            return
+        points = tuple(
+            StockPricePointDTO(
+                data_date=point.trading_date,
+                open_price=point.open_price,
+                high_price=point.high_price,
+                low_price=point.low_price,
+                close_price=point.close_price,
+                volume=point.volume,
+                source_id="personal_h20_saved_source",
+                source_snapshot_hash=projection.manifest_sha256,
+                quality="research_only",
+            )
+            for point in projection.points
+        )
+        first_date = points[0].data_date
+        last_date = points[-1].data_date
+        available_status = (
+            f"H20 同次來源 OHLCV：{first_date} 至 {last_date}，共 {len(points)} 列。"
+            "資料可得時間未知；只供保存來源重述，不授歷史 PIT 或可交易資格。"
+            "成交量沿來源正規化；MA20／MA60 未核驗，不重算。"
+        )
+        rows = tuple(
+            (
+                point.data_date,
+                _chart_exact_decimal_text(point.open_price),
+                _chart_exact_decimal_text(point.high_price),
+                _chart_exact_decimal_text(point.low_price),
+                _chart_exact_decimal_text(point.close_price),
+                _chart_integer_text(point.volume),
+            )
+            for point in points
+        )
+        self.personal_h20_price_table.setModel(
+            StockReportTableModel(
+                ("資料日", "開盤", "最高", "最低", "收盤", "成交量"),
+                rows,
+                self.personal_h20_price_table,
+                numeric_columns=(1, 2, 3, 4, 5),
+            )
+        )
+        self.personal_h20_price_chart_status.setText(available_status)
+        self.personal_h20_price_chart_status.setToolTip("")
+        chart = self.personal_h20_price_chart_widget
+        try:
+            if chart is None:
+                chart = StockPriceChartWidget()
+                chart.setObjectName("stockResearchPersonalH20PriceChartWidget")
+            chart.set_points(points)
+            if self.personal_h20_price_chart_widget is None:
+                layout = self.personal_h20_price_chart_group.layout()
+                if layout is None:
+                    raise RuntimeError("personal_h20_price_chart_layout_unavailable")
+                layout.addWidget(chart)
+                self.personal_h20_price_chart_widget = chart
+            chart.show()
+        except Exception as exc:
+            if chart is not None:
+                layout = self.personal_h20_price_chart_group.layout()
+                if layout is not None:
+                    layout.removeWidget(chart)
+                chart.hide()
+                chart.setParent(None)
+                chart.deleteLater()
+            self.personal_h20_price_chart_widget = None
+            self.personal_h20_price_chart_status.setText(
+                available_status + "原生圖表無法呈現；下方仍保留同次來源精確 OHLCV 資料。"
+            )
+            self.personal_h20_price_chart_status.setToolTip(
+                str(exc).splitlines()[0][:300] if str(exc) else "H20 圖表初始化失敗"
+            )
 
     def _on_report_tab_changed(self, index: int) -> None:
         """只在使用者進入分頁時繪製有限內容，不重讀 service。"""

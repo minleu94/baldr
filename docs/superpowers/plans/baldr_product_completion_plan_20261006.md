@@ -821,3 +821,5 @@ F02 MA query 與 P01/F17 同迴圈投影目前為後端局部接受：中央完�
 2026-10-08 終態更新：新固定 acd reader 的完整 1,000 檔矩陣已結束，五類暖操作各 30 次；單股與 16 股跨段物化 p95 達標，翻頁 813.5101 ms、篩選 1208.0899 ms、排序 879.3598 ms 仍未達 300 ms，整體失敗，詳[完整合成讀回及效能 QA](../../06_qa/BALDR_SYNTHETIC_UNIVERSE_1000_READBACK_20261008.md)。來源與防護驗證通過不折抵效能資格。後續只對固定來源進行受控診斷，保留所有原矩陣封套。
 
 F07 frozen 新 attempt `20261008T204457Z_39088d9d4967` 已進入真正 Main，從觀察清單雙擊精確收藏並還原完整 257 股查詢、第 6 頁、S0250、跨頁比較及捲動值 2。整體仍失敗：QA 以 producer 模組載入判定產製器執行，以及 urllib3 IPv6 能力探測遭 socket 防護拒絕；兩項須先核原始碼與執行邊界，不能直接放寬防護或宣稱 frozen 接受。隔離 runtime SQLite 僅兩個精確路徑、來源 SQL 零連線；候選、保存 COW 與合成來源起訖 pins 不變。新版真人入口仍未交付，暫不要求真人重驗。
+
+2026-10-08 平行接續 ownership：`universe_run` 唯寫新增 `app_module/daily_market_technical_official_disposition_ma_bookmark_v1.py`、`app_module/daily_market_technical_official_disposition_ma_comparison_v1.py` 及相應兩個測試檔，補保存 MA 複合 query／獨立 page request、選取列及跨頁比較的 exact 讀回。已凍結的 MA query／reader／測試三檔保持原 bytes；`watchlist_service.py`、`watchlist_view.py`、`ui_qt/main.py` 與官方研究 view 的共享產品接線暫不交代理修改，由 root 後續審核並釋出。此為工作分配，不表示 MA 收藏、正常 UI 或完整 M2 已完成；EXE/H20、效能診斷與此純 app 葉片可獨立平行。

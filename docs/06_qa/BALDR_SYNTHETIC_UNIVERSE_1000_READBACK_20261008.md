@@ -85,3 +85,7 @@ session63774 已 terminal exit1，新 case `C:/t/p01_yyz7kyi8`。固定 controll
 中央啟動單次診斷，session11338 終態 exit1；新隔離 attempt `C:/t/p01_uhaqbi84`，收據 SHA256 `d806a816327d2dced7047cd69f6a074cd24d3606ae77c8cb3aa4e03ab73f7c0b`。supervisor SHA `c9eb3e303ffb7cb694d6eb03756ed8a35376f257a94e5d212ecdd1e61aa94091`、profile SHA `705b2f1f3137a36e70d0b99c9bbfec0533fc1186e0c76a59e46ead6864f3a3d9`；固定 controller/helper 未改。Popen 在建立 stdin pipe 的 `io.open(3, 'wb')` 被 parent metadata guard 拒絕，尚未取得 child PID／Job／profile result；cleanup 證據為 unknown，不能授零殘留或真 Job 驗證。source 起訖與全部固定輸入 pins 一致，保留拒絕計數1與失敗封套。
 
 此結果未產生效能樣本，不能替代最新 acd18a1e 完整矩陣的三項暖操作失敗。下一步只修 QA supervisor 的精確 pipe 初始化契約並補自測，不修改固定 controller/helper，不放行任意數字 descriptor 寫入，也不重跑整個冷暖矩陣。
+
+標準輸入改為 `stdin=None` 後，中央獨立 guard-only 自測 exit0（`C:/t/p01_tfj5381x`）；readonly numeric pipe audit 事件通過，write 事件仍拒絕，沒有放行 descriptor 寫入。supervisor 新 SHA `11e0c13f9f7456bf040bf13e732a53fb6db9e87806351531511ef36aba87da0c`，profile/controller/helper 不變。
+
+新單次診斷 session74526 終態 exit1（`C:/t/p01_6zm2rnit`），收據 SHA `01b61eb6e07f68f5a4e83714624fa07611debb378a82a14ec144f848f4602311`。parent exact-launch 與 metadata guards 通過，拒絕數0；Job 觀察到三個 PID，超過 QA sampler 的兩個上限而停止。Job 已終止／關閉，實際證明零 owned 殘留，來源與全部固定 pins 起訖一致；尚無 profile 結果。接續核對 venv launcher 鏈的三個 process identity／image／commandline，再修正 QA sampler；不能僅放寬數量或把本次診斷當效能接受。

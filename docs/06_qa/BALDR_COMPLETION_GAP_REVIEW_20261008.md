@@ -21,7 +21,7 @@ P01 技術 v4 的契約上限為 100,000 檔，每頁上限 256；目前接受�
 | F04 MACD | 已接 12/26/9 交叉。 |
 | F05 量能 | 已接具名 20 日／5 日含當日比率；舊策略口徑須分開。 |
 | F06 波動收斂 | 缺完整窗口、基準與突破條件。 |
-| F07 價格區間／排序 | 未接 close 數值區間與價格排序。 |
+| F07 價格區間／排序 | 已有獨立 v1 Decimal 收盤價範圍／全域排序、分頁／比較／收藏與來源版 257 股 Main／新程序讀回；固定 EXE 已還原保存狀態，但完整守衛／收尾及真人接受仍未通過。 |
 | F08 分點、F09 法人連買 | 有原料／既有服務，缺保存全母體事實及可得時間契約。 |
 | F10 權證 | 缺標的關係與掛牌／到期／終止來源契約。 |
 | F11 基本面、F12 月營收 | F12 有獨立 Decimal 事實與測試；未併入完整母體 query／UI。 |
@@ -41,7 +41,7 @@ P01 技術 v4 的契約上限為 100,000 檔，每頁上限 256；目前接受�
 
 1. H20 綁定 OHLCV 圖表：沿同次 private copy 核驗的原 logical-row hashes 投影，初讀／終態一致後才簽發程序內 view；不重開來源、不改原 capture，不用 latest 補值。摘要需分列原 H20 圖表與一般報告完整度。
 2. F17 正常來源閉環：先核實既有 updater 的公開 raw capture／exact pins 出口，再以明示 pins 產製保存 bundle，正常 catalog 選版、比較／收藏、新程序 exact reopen；取消／失敗不得發布。
-3. F02／F06／F07 需新版本技術事實契約，其他資料域需各自可得時間與完整母體接線；不得直接把舊 v4 五規則宣稱為全條件完成。
+3. F02 的排列後端需完成複合 query／UI／收藏；MA20 上彎及 F06 仍需明示版本化事實契約。F07 已有獨立價格 v1，但完整 EXE／真人接受仍待。其他資料域需各自可得時間與完整母體接線；不得直接把舊 v4 五規則宣稱為全條件完成。
 
 F17 目前仍是 `current_only`、`official_available_at=None`、`historical_pit_eligible=false`；source coverage 與 projection completeness 必須分開。最新獨立程式封套 `output/qa/f17_native_same_source_20261008_a/attempt_116cdedcf554/controller_receipt.json` 為 `failed_preserved_attempt`，總 deadline 300 秒，source parent 未完成，因此尚未啟動 frozen child；不能授予 Native、真人、效能或正式來源接受。
 

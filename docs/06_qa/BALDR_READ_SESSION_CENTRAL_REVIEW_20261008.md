@@ -62,3 +62,17 @@ H20 stage2b 接線設計已經中央讀取，授權受控 UI hook／bookmark／M
 中央讀取尚在實作的 view diff，發現 `load_selected` 的「嚴格核驗來源」傳入先前 `_read_session`；相同 catalog pins 會重用舊索引，不能證明明示重新載入當下來源未變。已要求 owner 將 load/reload 改為 fresh strict session，保留篩選、暖翻頁、同操作下鑽／返回的固定版本 cache。需新增非當頁 child 或 receipt 變動後重新 load 的拒絕反例；失敗時保留舊畫面，但不得發布新成功。此 WIP 尚未凍結或中央驗收。
 
 P01 UI WIP 第二項中央修正：`_apply_query_result` 遇到成功的 empty selection（`page=None`）原先仍保留舊股票頁與cache，會讓新條件零結果和失敗混淆。已要求 owner 用 reader-issued query／selection呈現0列與新條件，清空表格、停用當前列下鑽／收藏，但保留來源session供修改條件重查；不得偽造v4Page。讀取失敗才保留舊可見state。要求真fixture零符合及恢復查詢反例；尚未宣稱補修通過。
+
+### 接線中容量與空結果證據的中央修正
+
+H20 capacity WIP 的每份 copy 上限大於所預留 main size；progress callback 重入再開其他來源，加上原來源 preflight 後增長，可能在終態拒絕前超過總預算峰值。已要求把每份 copy hard cap 綁本次預留容量，或完整預留該 hard cap，並加入反例；尚未宣稱修復通過。
+
+P01 empty result WIP 使用 catalog entry.counts 補母體計數；catalog metadata 未獨立驗證，不能當作 strict source counts。已要求 owner 只用同來源已核 page counts 或公開 session typed counts，缺失時明示未核 metadata／計數未知，不假造全母體 page 或空資料證據。
+
+P01 empty 計數解法已核定：ReadSession 原本持有 strict verified immutable state.counts，新增唯讀公開 `source_counts` getter 即可提供完整來源母體計數；不用由清冊metadata退讓，也不額外全母體重讀或暴露private state。已授權 core owner 在query.py與owned core test做此必要UI seam，先保存3b899160基線preimage，並補空／全排除／partial parity。核心變更後必須重跑新版本驗證，不沿用先前14／13項綠燈。UI成功零結果保存此已核counts且清空舊列，完整母體口徑與未知限制不改。
+
+F17 full join設計已中央讀取 `output/qa/f17_full_join_query_design_20261007_a/DESIGN.md`；query/bundle/P01 exact pins、完整declared角色、membership與truth分母、排序後分頁、freshprocess／收藏新schema要求對齊。仍需補兩個公開接線契約：頁面materializer只回最多256 typed rows而不保留full snapshots；個股另沿exact公共讀取。compact sort須用公開scalar projector／compact排序API，不能存全N joined DTO或import私有helper冒稱輕量。bundle verifiedstate保存shard bytes的成本也須列入RSS。已要求owner修設計；沒有將設計視為reader或UI實作。
+
+### H20 capacity 葉片中央結果
+
+容量cap已綁每次預留source_size，原來源預留後增長會在低層copy上限拒絕；取消／錯誤釋放預留，重入另一來源按剩餘預算計算。同identity只計一次，distinct groups／總copy bytes各自有界。中央合併capacity、operation、daily、capture、outcome回歸 **53 passed / 2.93秒、exit 0**；兩檔 `mypy --explicit-package-bases`（沒有skip imports或ignore）通過，SHA與owner凍結值一致。已讀真合成SQLite progress重入＋來源增長反例，其私有copies清理通過。UI明示50來源groups與64GiB總預算；這是容量／生命週期證據，不是4GB原件保護或效能通過。已釋出下一步UI安全接線，原件尚不重讀。

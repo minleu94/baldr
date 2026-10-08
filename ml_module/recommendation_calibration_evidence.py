@@ -17,7 +17,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -58,6 +58,10 @@ from data_module.ml_research_output_boundary import (
 from data_module.current_observed_capacity_eligibility import (
     classify_current_observed_raw_status,
     current_stock_research_capacity_passed,
+)
+from data_module.pinned_sqlite_read_session import (
+    PinnedSQLiteReadSession,
+    SQLiteFilePinV1,
 )
 
 
@@ -1935,6 +1939,7 @@ def _verify_source_contract_binding(
     capture_rows: Sequence[Mapping[str, Any]] | None = None,
     capture_at: str | None = None,
     source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
+    read_session_resolver: Callable[[Path, str], PinnedSQLiteReadSession] | None = None,
 ) -> Mapping[str, Any]:
     """Verify a capture's immutable prospective-input source binding."""
 
@@ -1950,7 +1955,10 @@ def _verify_source_contract_binding(
             capture_rows=capture_rows,
             capture_at=capture_at,
             source_binding_verifier=source_binding_verifier,
+            read_session_resolver=read_session_resolver,
         )
+    if read_session_resolver is not None:
+        raise ValueError("pinned SQLite session is only supported for current-observed source bindings")
     if not isinstance(binding, Mapping):
         raise ValueError("capture source contract binding is invalid")
     if binding.get("schema_version") != "recommendation-calibration-capture-source-binding.v1":
@@ -2100,6 +2108,7 @@ def _verify_current_observed_source_contract_binding(
     capture_rows: Sequence[Mapping[str, Any]] | None,
     capture_at: str | None,
     source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
+    read_session_resolver: Callable[[Path, str], PinnedSQLiteReadSession] | None = None,
 ) -> Mapping[str, Any]:
     """Verify the separately-scoped current-observed research lane.
 
@@ -2256,7 +2265,8 @@ def _verify_current_observed_source_contract_binding(
     ):
         raise ValueError("current-observed entry observation identity or flags are invalid")
     if entry_observation.get("status") == "captured":
-        _verify_current_observed_entry_observation(snapshot, entry_observation)
+        if read_session_resolver is None:
+            _verify_current_observed_entry_observation(snapshot, entry_observation)
     elif entry_observation.get("status") not in {"pending", "blocked"}:
         raise ValueError("current-observed entry observation status is invalid")
 
@@ -2432,6 +2442,7 @@ def _verify_current_observed_source_contract_binding(
 
         context = load_current_observed_context_from_pinned_snapshot(
             snapshot,
+            read_session_resolver=read_session_resolver,
         )
         if (
             Path(str(context.snapshot_database_path)).resolve()
@@ -2444,6 +2455,17 @@ def _verify_current_observed_source_contract_binding(
             != _normalized_sha256_hex(snapshot.get("snapshot_receipt_sha256"))
         ):
             raise ValueError("current-observed source context pins mismatch")
+        read_session = (
+            _current_observed_read_session(snapshot, read_session_resolver)
+            if read_session_resolver is not None
+            else None
+        )
+        if entry_observation.get("status") == "captured" and read_session is not None:
+            _verify_current_observed_entry_observation(
+                snapshot,
+                entry_observation,
+                read_session=read_session,
+            )
         expected_rows = {str(row.get("symbol")): row for row in rows if isinstance(row, Mapping)}
         if set(expected_rows) != set(contract_symbols):
             raise ValueError("current-observed feature rows have incomplete symbol coverage")
@@ -2478,6 +2500,7 @@ def _verify_current_observed_source_contract_binding(
                     "sha256:"
                     + str(_normalized_sha256_hex(snapshot.get("source_context_envelope_sha256")))
                 ),
+                read_session=read_session,
             )
             actual_table_hashes = dict(raw_snapshot.source_rows_sha256_by_table)
             _require_same_source_row_hashes(expected_table_hashes, actual_table_hashes)
@@ -2506,6 +2529,8 @@ def _verify_current_observed_source_contract_binding(
                     or row.get("row_sha256") != computed.row_sha256
                 ):
                     raise ValueError("current-observed feature rows changed since capture")
+    except InterruptedError:
+        raise
     except (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error) as exc:
         raise ValueError(f"current-observed snapshot revalidation failed: {exc}") from exc
 
@@ -2551,6 +2576,7 @@ def verify_current_observed_input_capture(
     *,
     expected_sha256: str | None = None,
     source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
+    read_session_resolver: Callable[[Path, str], PinnedSQLiteReadSession] | None = None,
 ) -> Mapping[str, Any]:
     """Verify a no-model current-observed feature/entry capture.
 
@@ -2633,6 +2659,7 @@ def verify_current_observed_input_capture(
         capture_rows=rows,
         capture_at=str(payload.get("captured_at")),
         source_binding_verifier=source_binding_verifier,
+        read_session_resolver=read_session_resolver,
     )
     snapshot = binding.get("current_observed_feature_snapshot")
     if not isinstance(snapshot, Mapping):
@@ -3035,8 +3062,53 @@ def verify_current_observed_cycle_reuse(
     return result
 
 
+def _validate_current_observed_read_session(
+    snapshot: Mapping[str, Any],
+    read_session: PinnedSQLiteReadSession,
+) -> None:
+    if type(read_session) is not PinnedSQLiteReadSession:
+        raise TypeError("current-observed pinned read session has an unsupported type")
+    source_path_text = snapshot.get("snapshot_database_path")
+    source_sha = _normalized_sha256_hex(snapshot.get("snapshot_database_sha256"))
+    if type(source_path_text) is not str or not Path(source_path_text).is_absolute() or source_sha is None:
+        raise ValueError("current-observed snapshot database identity is invalid")
+    expected_path = Path(source_path_text).resolve(strict=True)
+    pins = read_session.source_file_group_start
+    if type(pins) is not tuple or not pins:
+        raise ValueError("current-observed pinned source file group is unavailable")
+    main_pin = pins[0]
+    if (
+        type(main_pin) is not SQLiteFilePinV1
+        or main_pin.role != "main"
+        or not main_pin.present
+        or main_pin.sha256 != source_sha
+        or Path(main_pin.path).resolve(strict=True) != expected_path
+    ):
+        raise ValueError("current-observed pinned source identity differs from snapshot")
+    if not read_session.connection.in_transaction:
+        raise ValueError("current-observed pinned SQLite transaction is not active")
+
+
+def _current_observed_read_session(
+    snapshot: Mapping[str, Any],
+    resolver: Callable[[Path, str], PinnedSQLiteReadSession],
+) -> PinnedSQLiteReadSession:
+    source_path_text = snapshot.get("snapshot_database_path")
+    source_sha = _normalized_sha256_hex(snapshot.get("snapshot_database_sha256"))
+    if type(source_path_text) is not str or source_sha is None:
+        raise ValueError("current-observed snapshot database identity is invalid")
+    source_path = Path(source_path_text)
+    if not source_path.is_absolute():
+        raise ValueError("current-observed snapshot database path is not absolute")
+    session = resolver(source_path, source_sha)
+    _validate_current_observed_read_session(snapshot, session)
+    return session
+
+
 def load_current_observed_context_from_pinned_snapshot(
     snapshot: Mapping[str, Any],
+    *,
+    read_session_resolver: Callable[[Path, str], PinnedSQLiteReadSession] | None = None,
 ) -> Any:
     """Rehydrate G9 context from immutable G6 snapshot pins without rereading D.
 
@@ -3053,7 +3125,13 @@ def load_current_observed_context_from_pinned_snapshot(
     research_roots = _current_observed_research_roots()
     repository_root = Path(_CURRENT_OBSERVED_RESEARCH_ROOT).parents[1]
 
-    def pinned_path(field: str, digest_field: str, *, max_bytes: int | None) -> tuple[Path, bytes | None]:
+    def pinned_path(
+        field: str,
+        digest_field: str,
+        *,
+        max_bytes: int | None,
+        defer_snapshot_database_hash: bool = False,
+    ) -> tuple[Path, bytes | None]:
         value = snapshot.get(field)
         expected = snapshot.get(digest_field)
         if type(value) is not str or not value.strip() or type(expected) is not str:
@@ -3085,6 +3163,8 @@ def load_current_observed_context_from_pinned_snapshot(
         if max_bytes is not None and before.st_size > max_bytes:
             raise ValueError(f"current-observed immutable file exceeds its bound: {field}")
         if max_bytes is None:
+            if defer_snapshot_database_hash:
+                return path, None
             actual = _sha256_file(path)
             after = path.stat()
             if (
@@ -3141,7 +3221,10 @@ def load_current_observed_context_from_pinned_snapshot(
         max_bytes=4 * 1024 * 1024,
     )
     database_path, _ = pinned_path(
-        "snapshot_database_path", "snapshot_database_sha256", max_bytes=None
+        "snapshot_database_path",
+        "snapshot_database_sha256",
+        max_bytes=None,
+        defer_snapshot_database_hash=read_session_resolver is not None,
     )
     assert terminal_bytes is not None and receipt_bytes is not None and context_bytes is not None
 
@@ -3384,12 +3467,16 @@ def load_current_observed_context_from_pinned_snapshot(
 
     if _source_context_plain_payload(context) != context_payload:
         raise ValueError("current-observed typed source context does not round-trip exactly")
+    if read_session_resolver is not None:
+        _current_observed_read_session(snapshot, read_session_resolver)
     return context
 
 
 def _verify_current_observed_entry_observation(
     snapshot: Mapping[str, Any],
     observation: Mapping[str, Any],
+    *,
+    read_session: PinnedSQLiteReadSession | None = None,
 ) -> None:
     decision_text = str(snapshot.get("decision_date") or "")[:10]
     if str(snapshot.get("cycle_source_date") or "")[:10] != decision_text:
@@ -3421,16 +3508,22 @@ def _verify_current_observed_entry_observation(
         raise ValueError("entry observation symbol scope is incomplete")
     database_path = Path(str(snapshot.get("snapshot_database_path") or "")).resolve(strict=True)
     expected_database_hash = _normalized_sha256_hex(snapshot.get("snapshot_database_sha256"))
-    if (
+    if expected_database_hash is None:
+        raise ValueError("entry observation source database hash is invalid")
+    if read_session is None and (
         database_path.is_symlink()
-        or expected_database_hash is None
         or _normalized_sha256_hex(_sha256_file(database_path)) != expected_database_hash
     ):
         raise ValueError("entry observation source database hash mismatch")
+    if read_session is not None:
+        _validate_current_observed_read_session(snapshot, read_session)
     try:
-        connection = sqlite3.connect(database_path.as_uri() + "?mode=ro", uri=True, timeout=10)
+        connection = (
+            read_session.connection
+            if read_session is not None
+            else sqlite3.connect(database_path.as_uri() + "?mode=ro", uri=True, timeout=10)
+        )
         try:
-            connection.execute("PRAGMA query_only=ON")
             for symbol in sorted(str(item) for item in symbols):
                 _verify_one_current_observed_entry_pin(
                     connection,
@@ -3455,10 +3548,13 @@ def _verify_current_observed_entry_observation(
                 session_proof_sha256=session_proof_sha256,
             )
         finally:
-            connection.close()
+            if read_session is None:
+                connection.close()
+    except InterruptedError:
+        raise
     except (OSError, sqlite3.Error, TypeError, ValueError, InvalidOperation) as exc:
         raise ValueError(f"entry observation source row revalidation failed: {exc}") from exc
-    if _normalized_sha256_hex(_sha256_file(database_path)) != expected_database_hash:
+    if read_session is None and _normalized_sha256_hex(_sha256_file(database_path)) != expected_database_hash:
         raise ValueError("entry observation source database changed during verification")
 
 

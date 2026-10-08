@@ -18,11 +18,12 @@ import os
 from pathlib import Path
 import sqlite3
 import stat
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
 
 from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
 from data_module.natural_maturity_session_resolver import NaturalMaturitySessionResolver
+from data_module.pinned_sqlite_read_session import PinnedSQLiteReadSession
 from ml_module.current_observed_feature_snapshot_composer import ScheduledSnapshotSourceBindingVerifier
 
 from ml_module.recommendation_calibration_evidence import (
@@ -616,10 +617,14 @@ class RecommendationNaturalOutcomeService:
                 verify_current_observed_input_capture,
             )
 
+            capture_verification_options: dict[str, Any] = {
+                "expected_sha256": capture_file_sha256,
+            }
+            if source_binding_verifier is not None:
+                capture_verification_options["source_binding_verifier"] = source_binding_verifier
             capture_value = verify_current_observed_input_capture(
                 capture_file,
-                expected_sha256=capture_file_sha256,
-                source_binding_verifier=source_binding_verifier,
+                **capture_verification_options,
             )
             if not isinstance(capture_value, Mapping):
                 raise ValueError("current-observed input capture verifier returned no payload")
@@ -984,6 +989,7 @@ class RecommendationNaturalOutcomeService:
         evaluation_at: datetime,
         expected_session_proof: Mapping[str, Any] | None = None,
         source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
+        read_session_resolver: Callable[[Path, str], PinnedSQLiteReadSession] | None = None,
     ) -> "_CurrentObservedOutcomeSource":
         source_gate = _source_contract_gate(required_source_contract)
         if source_gate is not None and source_gate[0] is not True:
@@ -1031,6 +1037,9 @@ class RecommendationNaturalOutcomeService:
             raise _CurrentObservedOutcomePending("later_current_observation_does_not_follow_capture")
 
         source_binding = _current_outcome_source_binding(contract, receipt, snapshot)
+        source_binding_options: dict[str, Any] = {}
+        if read_session_resolver is not None:
+            source_binding_options["read_session_resolver"] = read_session_resolver
         _verify_source_contract_binding(
             source_binding,
             require_ready=True,
@@ -1042,12 +1051,19 @@ class RecommendationNaturalOutcomeService:
             ),
             capture_at=str(snapshot.get("observed_at") or ""),
             source_binding_verifier=source_binding_verifier,
+            **source_binding_options,
         )
         from ml_module.recommendation_calibration_evidence import (
             load_current_observed_context_from_pinned_snapshot,
         )
 
-        context = load_current_observed_context_from_pinned_snapshot(snapshot)
+        if read_session_resolver is None:
+            context = load_current_observed_context_from_pinned_snapshot(snapshot)
+        else:
+            context = load_current_observed_context_from_pinned_snapshot(
+                snapshot,
+                read_session_resolver=read_session_resolver,
+            )
         database_path = Path(str(snapshot.get("snapshot_database_path") or "")).resolve(strict=True)
         database_sha256 = str(snapshot.get("snapshot_database_sha256") or "")
         if (
@@ -1058,6 +1074,11 @@ class RecommendationNaturalOutcomeService:
             != Path(str(snapshot.get("snapshot_receipt_path") or "")).resolve()
         ):
             raise ValueError("later current-observed context pins differ from snapshot")
+        read_session = (
+            read_session_resolver(database_path, database_sha256)
+            if read_session_resolver is not None
+            else None
+        )
         symbols = tuple(
             sorted(
                 str(row.get("symbol") or "")
@@ -1097,6 +1118,7 @@ class RecommendationNaturalOutcomeService:
                 cycle_terminal_sha256=str(snapshot.get("cycle_terminal_sha256") or ""),
                 source_context_envelope_path=str(snapshot.get("source_context_envelope_path") or ""),
                 source_context_envelope_sha256=str(snapshot.get("source_context_envelope_sha256") or ""),
+                read_session=read_session,
             )
             table_hashes = dict(raw_snapshot.source_rows_sha256_by_table)
             if (
@@ -5011,6 +5033,7 @@ def verify_current_observed_outcome_receipt(
     expected_sha256: str | None = None,
     capture_path: str | Path | None = None,
     source_binding_verifier: ScheduledSnapshotSourceBindingVerifier | None = None,
+    read_session_resolver: Callable[[Path, str], PinnedSQLiteReadSession] | None = None,
 ) -> Mapping[str, Any]:
     """Re-verify a current-only outcome receipt and return its frozen rows.
 
@@ -5079,11 +5102,14 @@ def verify_current_observed_outcome_receipt(
 
     from ml_module.recommendation_calibration_evidence import verify_current_observed_input_capture
 
-    capture_value = verify_current_observed_input_capture(
-        capture_file,
-        expected_sha256=capture_sha256,
-        source_binding_verifier=source_binding_verifier,
-    )
+    capture_options: dict[str, Any] = {
+        "expected_sha256": capture_sha256,
+    }
+    if source_binding_verifier is not None:
+        capture_options["source_binding_verifier"] = source_binding_verifier
+    if read_session_resolver is not None:
+        capture_options["read_session_resolver"] = read_session_resolver
+    capture_value = verify_current_observed_input_capture(capture_file, **capture_options)
     if not isinstance(capture_value, Mapping):
         raise ValueError("current-observed input capture verifier returned no payload")
     capture = dict(capture_value)
@@ -5191,12 +5217,17 @@ def verify_current_observed_outcome_receipt(
     database_path = Path(str(feature_snapshot_value.get("snapshot_database_path") or "")).resolve(strict=True)
     provider = MLHistoricalSnapshotProvider(database_path)
     service = RecommendationNaturalOutcomeService(provider)
+    source_options: dict[str, Any] = {
+        "required_source_contract": audit,
+        "capture": capture,
+        "evaluation_at": evaluation_at,
+        "expected_session_proof": resolver_proof,
+        "source_binding_verifier": source_binding_verifier,
+    }
+    if read_session_resolver is not None:
+        source_options["read_session_resolver"] = read_session_resolver
     source = service._load_current_observed_outcome_source(
-        required_source_contract=audit,
-        capture=capture,
-        evaluation_at=evaluation_at,
-        expected_session_proof=resolver_proof,
-        source_binding_verifier=source_binding_verifier,
+        **source_options,
     )
     if _hash_payload(source.to_receipt_dict()) != _hash_payload(dict(current_snapshot)):
         raise ValueError("current-observed outcome source snapshot proof changed")

@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from data_module.pinned_sqlite_read_session import PinnedSQLiteReadSession
+
 from app_module.recommendation.personal_current_observed_h20_capture import (
     H20CaptureError, Verifier, capture_personal_current_observed_h20_prediction,
     digest, encoded, plain, read_pinned_json, read_personal_current_observed_h20_capture,
@@ -21,6 +23,8 @@ from app_module.recommendation.personal_current_observed_h20_capture import (
 from app_module.recommendation.personal_current_observed_h20_outcome import (
     project_personal_current_observed_h20_outcome,
 )
+
+SQLiteReadSessionResolver = Callable[[Path, str], PinnedSQLiteReadSession]
 
 
 def _contract_port(binding: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -32,7 +36,11 @@ def _contract_port(binding: Mapping[str, Any]) -> Mapping[str, Any]:
             "fit_receipt_path": binding["fit_receipt_path"], "fit_receipt_sha256": binding["fit_receipt_sha256"]}))
 
 
-def _source_port(binding: Mapping[str, Any]) -> Mapping[str, Any]:
+def _source_port(
+    binding: Mapping[str, Any],
+    *,
+    read_session_resolver: SQLiteReadSessionResolver | None = None,
+) -> Mapping[str, Any]:
     from ml_module.recommendation_calibration_evidence import load_current_observed_context_from_pinned_snapshot
     from data_module.ml_historical_snapshot_provider import MLHistoricalSnapshotProvider
     from ml_module.historical_feature_builder import HistoricalFeatureBuilder
@@ -52,17 +60,41 @@ def _source_port(binding: Mapping[str, Any]) -> Mapping[str, Any]:
             or sorted(terminal.get("current_symbols", [])) != binding["symbols"]):
         raise H20CaptureError("exact_completed_nonfuture_cohort_required")
     # 原 public loader 核 cycle completion、snapshot／envelope 與 terminal 相同 run。
-    context = load_current_observed_context_from_pinned_snapshot(pins)
+    if read_session_resolver is None:
+        context = load_current_observed_context_from_pinned_snapshot(pins)
+    else:
+        context = load_current_observed_context_from_pinned_snapshot(
+            pins,
+            read_session_resolver=read_session_resolver,
+        )
     if not terminal or observation.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat() != binding["decision_date"]:
         raise H20CaptureError("same_day_real_observation_required")
+    read_session = (
+        read_session_resolver(
+            Path(context.snapshot_database_path),
+            str(context.snapshot_database_sha256),
+        )
+        if read_session_resolver is not None
+        else None
+    )
+    provider_options: dict[str, Any] = {
+        "decision_date": binding["decision_date"],
+        "history_start_date": binding["history_start_date"],
+        "symbols": tuple(binding["symbols"]),
+        "source_context": context,
+        "local_current_observed_at": observation,
+        "expected_feature_as_of_date": binding["feature_as_of_date"],
+        "cycle_id": pins["cycle_id"],
+        "cycle_terminal_path": pins["cycle_terminal_path"],
+        "cycle_terminal_sha256": pins["cycle_terminal_sha256"],
+        "source_context_envelope_path": pins["source_context_envelope_path"],
+        "source_context_envelope_sha256": "sha256:" + pins["source_context_envelope_sha256"].removeprefix("sha256:"),
+    }
+    if read_session is not None:
+        provider_options["read_session"] = read_session
     raw = MLHistoricalSnapshotProvider(Path(context.snapshot_database_path)).load_current_observed(
-        decision_date=binding["decision_date"], history_start_date=binding["history_start_date"],
-        symbols=tuple(binding["symbols"]), source_context=context,
-        local_current_observed_at=observation, expected_feature_as_of_date=binding["feature_as_of_date"],
-        cycle_id=pins["cycle_id"], cycle_terminal_path=pins["cycle_terminal_path"],
-        cycle_terminal_sha256=pins["cycle_terminal_sha256"],
-        source_context_envelope_path=pins["source_context_envelope_path"],
-        source_context_envelope_sha256="sha256:" + pins["source_context_envelope_sha256"].removeprefix("sha256:"))
+        **provider_options,
+    )
     rows = HistoricalFeatureBuilder(CORE_LONG_HISTORY_FEATURE_REGISTRY).compute_current_observed(
         raw, industry_index_name_by_symbol={})
     if sorted(row.symbol for row in rows) != binding["symbols"]:
@@ -93,18 +125,38 @@ def _predictor(contract_binding: Mapping[str, Any], source: Mapping[str, Any]) -
     return predict
 
 
-def _input_port(path: Path, pin: str) -> Mapping[str, Any]:
+def _input_port(
+    path: Path,
+    pin: str,
+    *,
+    read_session_resolver: SQLiteReadSessionResolver | None = None,
+) -> Mapping[str, Any]:
     from ml_module.recommendation_calibration_evidence import verify_current_observed_input_capture
     from app_module.recommendation.scheduled_snapshot_source_custody import verify_scheduled_snapshot_source_binding_artifacts
-    return verify_current_observed_input_capture(path, expected_sha256=pin,
-        source_binding_verifier=verify_scheduled_snapshot_source_binding_artifacts)
+    options: dict[str, Any] = {
+        "expected_sha256": pin,
+        "source_binding_verifier": verify_scheduled_snapshot_source_binding_artifacts,
+    }
+    if read_session_resolver is not None:
+        options["read_session_resolver"] = read_session_resolver
+    return verify_current_observed_input_capture(path, **options)
 
 
-def _outcome_port(path: Path, pin: str) -> Mapping[str, Any]:
+def _outcome_port(
+    path: Path,
+    pin: str,
+    *,
+    read_session_resolver: SQLiteReadSessionResolver | None = None,
+) -> Mapping[str, Any]:
     from ml_module.recommendation_natural_outcome_service import verify_current_observed_outcome_receipt
     from app_module.recommendation.scheduled_snapshot_source_custody import verify_scheduled_snapshot_source_binding_artifacts
-    return verify_current_observed_outcome_receipt(path, expected_sha256=pin,
-        source_binding_verifier=verify_scheduled_snapshot_source_binding_artifacts)
+    options: dict[str, Any] = {
+        "expected_sha256": pin,
+        "source_binding_verifier": verify_scheduled_snapshot_source_binding_artifacts,
+    }
+    if read_session_resolver is not None:
+        options["read_session_resolver"] = read_session_resolver
+    return verify_current_observed_outcome_receipt(path, **options)
 
 
 def personal_current_observed_h20_read_ports() -> dict[str, Callable[..., Any]]:
@@ -117,7 +169,8 @@ def run_personal_current_observed_h20_daily(*, request: Mapping[str, Any], recei
         gross_fit_receipt: str | Path, expected_fit_receipt_sha256: str,
         cancelled: Callable[[], bool] | None = None, source_verifier: Verifier | None = None,
         contract_verifier: Verifier | None = None,
-        predictor_factory: Callable[[Mapping[str, Any], Mapping[str, Any]], Callable[[str], Mapping[str, Any]]] | None = None) -> dict[str, Any]:
+        predictor_factory: Callable[[Mapping[str, Any], Mapping[str, Any]], Callable[[str], Mapping[str, Any]]] | None = None,
+        sqlite_read_root: str | Path | None = None) -> dict[str, Any]:
     """保存每列後即讀回；失敗／取消回傳部分收據，下次沿同 identity 重試。"""
     root = Path(receipt_root)
     plain(root)
@@ -136,46 +189,103 @@ def run_personal_current_observed_h20_daily(*, request: Mapping[str, Any], recei
     if "observed_at" in pins:
         raise H20CaptureError("caller_cannot_backdate_pins")
     pins["observed_at"] = observed.isoformat()
-    source_port = source_verifier or _source_port
-    contract_port = contract_verifier or _contract_port
-    contract = dict(contract_port({"fit_receipt_path": str(gross_fit_receipt),
-        "fit_receipt_sha256": expected_fit_receipt_sha256}))
-    source = dict(source_port({"cycle_id": pins["cycle_id"],
-        "cycle_terminal_sha256": pins["cycle_terminal_sha256"], "pins": pins,
-        "decision_date": observed.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat(),
-        "data_root": request["data_root"], "history_start_date": request["history_start_date"],
-        "feature_as_of_date": request["expected_feature_as_of_date"], "symbols": symbols}))
-    predict = (predictor_factory or _predictor)(contract, source)
-    result: dict[str, Any] = {"schema_version": "personal-current-observed-h20-daily-receipt.v1",
-        "status": "completed", "captures": [], "outcomes": [], "cycle_id": pins["cycle_id"],
-        "candidate_id": contract["candidate_id"], "contract_hash": contract["contract_hash"],
-        "observed_at": observed.isoformat(), "fit_performed": False, "task_changed": False,
-        "decision_date": source["decision_date"], "cycle_source_date": pins.get("cycle_source_date"),
-        "feature_as_of_date": source["feature_as_of_date"],
-        "historical_pit_eligible": False, "formal_training_allowed": False, "production_action_allowed": False}
+    configured_read_root: str | Path | None = sqlite_read_root
+    if configured_read_root is None and source_verifier is None:
+        from data_module.config import TWStockConfig
+
+        configured_read_root = TWStockConfig().personal_h20_sqlite_read_root
+    if configured_read_root is not None and source_verifier is not None:
+        raise H20CaptureError("pinned_sqlite_read_operation_requires_public_source_verifier")
+
+    operation: Any | None = None
+    if configured_read_root is not None:
+        from scripts.scheduled.personal_h20_sqlite_read_operation import (
+            PersonalH20SQLiteReadOperation,
+        )
+
+        operation = PersonalH20SQLiteReadOperation(
+            private_root=configured_read_root,
+            cancel_callback=cancelled,
+        )
+        operation.__enter__()
     try:
-        for symbol in symbols:
-            if cancelled is not None and cancelled():
-                raise InterruptedError("cancelled_between_saved_rows")
-            def original_prediction() -> Mapping[str, Any]:
-                return predict(symbol)
-            saved = capture_personal_current_observed_h20_prediction(root=root, source_binding=source,
-                contract_binding=contract, symbol=symbol, source_verifier=source_port,
-                contract_verifier=contract_port, predictor=original_prediction, cancelled=cancelled)
-            result["captures"].append(saved)
-            selection = dict(request.get("natural_outcome", {}))
-            result["outcomes"].append(project_personal_current_observed_h20_outcome(
-                prediction_path=saved["path"], prediction_sha256=saved["raw_sha256"], root=root,
-                source_verifier=source_port, contract_verifier=contract_port,
-                input_capture_path=selection.get("input_capture_path"),
-                input_capture_sha256=selection.get("input_capture_sha256"), input_capture_verifier=_input_port,
-                outcome_path=selection.get("outcome_path"), outcome_sha256=selection.get("outcome_sha256"),
-                outcome_verifier=_outcome_port))
-    except (KeyboardInterrupt, InterruptedError) as exc:
-        result.update(status="cancelled", reason=str(exc))
-    except Exception as exc:
-        result.update(status="failed", error_type=type(exc).__name__, reason=str(exc))
-    return result
+        contract_port = contract_verifier or _contract_port
+        contract = dict(contract_port({"fit_receipt_path": str(gross_fit_receipt),
+            "fit_receipt_sha256": expected_fit_receipt_sha256}))
+        if operation is None:
+            source_port: Verifier = source_verifier or _source_port
+            input_port: Callable[[Path, str], Mapping[str, Any]] = _input_port
+            outcome_port: Callable[[Path, str], Mapping[str, Any]] = _outcome_port
+        else:
+            def source_port(binding: Mapping[str, Any]) -> Mapping[str, Any]:
+                return _source_port(
+                    binding,
+                    read_session_resolver=operation.session_for,
+                )
+
+            def input_port(path: Path, pin: str) -> Mapping[str, Any]:
+                return _input_port(
+                    path,
+                    pin,
+                    read_session_resolver=operation.session_for,
+                )
+
+            def outcome_port(path: Path, pin: str) -> Mapping[str, Any]:
+                return _outcome_port(
+                    path,
+                    pin,
+                    read_session_resolver=operation.session_for,
+                )
+
+        source = dict(source_port({"cycle_id": pins["cycle_id"],
+            "cycle_terminal_sha256": pins["cycle_terminal_sha256"], "pins": pins,
+            "decision_date": observed.astimezone(ZoneInfo("Asia/Taipei")).date().isoformat(),
+            "data_root": request["data_root"], "history_start_date": request["history_start_date"],
+            "feature_as_of_date": request["expected_feature_as_of_date"], "symbols": symbols}))
+        predict = (predictor_factory or _predictor)(contract, source)
+        result: dict[str, Any] = {"schema_version": "personal-current-observed-h20-daily-receipt.v1",
+            "status": "completed", "captures": [], "outcomes": [], "cycle_id": pins["cycle_id"],
+            "candidate_id": contract["candidate_id"], "contract_hash": contract["contract_hash"],
+            "observed_at": observed.isoformat(), "fit_performed": False, "task_changed": False,
+            "decision_date": source["decision_date"], "cycle_source_date": pins.get("cycle_source_date"),
+            "feature_as_of_date": source["feature_as_of_date"],
+            "historical_pit_eligible": False, "formal_training_allowed": False, "production_action_allowed": False}
+        try:
+            for symbol in symbols:
+                if cancelled is not None and cancelled():
+                    raise InterruptedError("cancelled_between_saved_rows")
+                def original_prediction() -> Mapping[str, Any]:
+                    return predict(symbol)
+                saved = capture_personal_current_observed_h20_prediction(root=root, source_binding=source,
+                    contract_binding=contract, symbol=symbol, source_verifier=source_port,
+                    contract_verifier=contract_port, predictor=original_prediction, cancelled=cancelled)
+                result["captures"].append(saved)
+                selection = dict(request.get("natural_outcome", {}))
+                result["outcomes"].append(project_personal_current_observed_h20_outcome(
+                    prediction_path=saved["path"], prediction_sha256=saved["raw_sha256"], root=root,
+                    source_verifier=source_port, contract_verifier=contract_port,
+                    input_capture_path=selection.get("input_capture_path"),
+                    input_capture_sha256=selection.get("input_capture_sha256"), input_capture_verifier=input_port,
+                    outcome_path=selection.get("outcome_path"), outcome_sha256=selection.get("outcome_sha256"),
+                    outcome_verifier=outcome_port))
+        except (KeyboardInterrupt, InterruptedError) as exc:
+            result.update(status="cancelled", reason=str(exc))
+        except Exception as exc:
+            result.update(status="failed", error_type=type(exc).__name__, reason=str(exc))
+        if operation is not None:
+            if result["status"] == "completed":
+                try:
+                    operation.finish()
+                except InterruptedError as exc:
+                    result.update(status="cancelled", reason=str(exc))
+                except Exception as exc:
+                    result.update(status="failed", error_type=type(exc).__name__, reason=str(exc))
+            else:
+                operation.close()
+        return result
+    finally:
+        if operation is not None:
+            operation.close()
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -144,3 +144,7 @@ attempt02（owner handle34433，終態exit1）首次 explicit exact open 呼叫�
 
 現有外層錯誤沒有保存底層 StoreError.code，不能據此判定來源損壞。後續僅針對同保存來源的單次 exact opener 做有界診斷，保留遞迴 cause／cause_code 與取消時間；須區分測試逾時誘發取消和真正讀取錯誤。禁止以延長 timeout、重產來源或重跑完整 UI 旅程替代根因分析。此補驗不授整體操作旅程接受。
 
+中央核讀診斷 attempt03 receipt SHA `118b6e72ac89cbede506c2cfeb7eb6baefd9a8afb1c5a366c769787609c2e663`：同一明示保存來源 native exact opener 成功8,625毫秒，total8,641毫秒，來源樹前後 SHA均 `0dc6f5dbe1cd9b505ff318777e1bd7fb82475c904c105f325d1c1a01f0cce274`。前次 sandbox attempt02 的立即 WinError5另保留，不能與 UI187秒混為同一錯誤。UI測試逾時後 finally 主動取消 worker，187秒外層讀取錯誤在取消後出現；最內錯誤碼仍未直接觀察。下一步比較單次真MAView與同步opener等待方式及背景CPU，查明8秒／187秒差異，不憑此診斷授完整UI操作通過。
+
+單次真MAView診斷 attempt04 已終態exit0，receipt SHA `ecfc93f2915f12ff841745d968b0baae823b86124ad2495ccb4cd66a441d044b`：catalog明示選取後載入成功，整輪14,391毫秒，bundle opener8,890毫秒、view task14,281毫秒，operation成功且workers_terminal=true；23,004次取消callback均未回true，來源manifest／tree前後一致。driver採processEvents加短sleep讓出CPU；純CPU thread對照確有qWait等待拖慢現象，但不能只靠此推定原180秒根因。此證據限單次載入，下一輪完整旅程須保留原180秒門檻並驗選取、返回、比較與還原；不以mini診斷代替完整接受。
+

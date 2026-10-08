@@ -49,3 +49,15 @@ QA 控制器的 PriorityClass 原誤用指標大小，已依 [Microsoft 結構�
 中央補核正式主題的源碼版推薦理由（2026-10-08）：以 `ui_qt.main.apply_app_theme` 初始化同一 QApplication，Microsoft JhengHei，定向案例 `expanded_reason or reason_expansion` 為3 passed／6 deselected（2.64秒）。涵蓋展開／收合保留內容、完整分數表與排名因素、460寬度末段在外層 viewport 可達，以及真實焦點下 End／Home／PageDown／PageUp 導覽。中央實際檢視 `output/qa/recommendation_themed_scroll_root_20261008_a/recommendation_full_document_460x700.png` 與末段截圖，中文可讀，表格及排名門檻完整；末段可以捲到，但整頁仍採外層捲動。不是以文字存在於 document 取代可見性驗證。
 
 固定 source.zip SHA仍為 `d5f814add5fddf1eb012fef885e82b0281d89a7a858e665fc989925b47270b6f`；其中 `ui_qt/views/recommendation_view.py` SHA `5f0faa96f246c62c7693e1771d538d88b72ae95a6544208d74b14650ed16edd5` 與本次測試工作樹位元組一致。測試檔本身與 archive 不同，因此本補驗僅授源碼版主題／捲動契約，不授 fixed EXE 同畫面的實際操作或原來源真人接受。啟動 gate 不因此開啟。
+
+## H20 外層 Job 監督器合成複驗（真來源未啟動）
+
+推薦理由完整保存修正已由中央獨立複驗：service／reason engine 保留全部理由，表格前三項摘要只在 presenter 產生，canonical item 與 DTO 保存文字保持相同。舊短文字另存的完整 tags 可讀；分隔符存在於 tag 內不誤切，不補推符號或未提供的因子。定向20 passed（3.14秒）、更新工作台85 passed（3.39秒）、全域 mypy 918檔無錯誤。更新頁驗證器兩次沙箱執行為21通過／3失敗／4跳過，保留 WinError 5 紀錄；全新隔離暫存目錄 native 複驗為25通過／0失敗／4跳過。收據位於 `output/qa/recommendation_complete_reasons_20261008_final_targeted_e/root_*.log`。這是工作樹源碼驗證，尚不授候選 EXE／原來源真人接受。
+
+新 QA supervisor `output/qa/h20_stage_journey_supervisor_20261008_a/external_job_supervisor_h20.py` SHA `136295b41f9f73dfcf81e7c18a5cddba551459fc543fe4c281c211914a0a7d92`。owner 合成 success／timeout 收據分別 SHA `5d77bf3df681763f0fdbdd8a0890afbf06a23c143f016792d8770574726bf32c`、`61658970c7b89edc375fa2a7bc6fee8872ba37a29e43bbe7813ceb596bdd14eb`；中央直接核三固定程序角色、Job空、逾時主錯誤與清理，11項終態分類合成案例通過。這些均未啟Main、SQLite、來源複製或producer，不能授原H20旅程接受。
+
+中央同版獨立 native success 複驗終態exit1，attempt `C:/t/h20-journey-20261008T230855Z-b3db441e9b2d`、receipt SHA `550eeed6ea4a0d4154acecf4929c626262eb121bc1da0d94763acd75c92b7d47`。child成功且退出0，三角色曾完整核驗、Job清理0殘留、support source pins一致；但最後採樣時base Python已讀parent／creation後退出，executable／cmdline分別拋NoSuchProcess，P01因此產生缺身分及派生unknown image，現有分類器未涵蓋此部分欄位退出競態，故整體仍失敗。原失敗log保留為 `root_synthetic_success.log`，不能只以child成功或Job空改判通過。
+
+修正限精確NoSuchProcess、缺欄位對應、已知且唯一歷史身分、仍可讀欄位完全相同、launcher終態及Job空；真正陌生image／PID、AccessDenied、不同creation／parent／argv仍拒絕。須先補合成部分欄位退出與混合錯誤案例，再重驗。真H20 source manifest／launch-input尚未凍結、啟動gate維持關閉；固定候選ACD本身未因QA supervisor變更而更新。
+
+後續修正 supervisor SHA `ec3d5118c40c9d1c8183bdd88b6eb3ee83e73cede2d33765ca4f55b30483d0c3`，中央獨立 native success／timeout 都終態exit0。success attempt `C:/t/h20-journey-20261008T231533Z-3b0e043fa645` receipt SHA `7184cbd73de6de78ce0fce45586b22420b77982108d27f1db536655f29cfe9ac`，三固定角色、清理無殘留、support pins一致；timeout attempt `C:/t/h20-journey-20261008T231546Z-67f31f922ab2` SHA `5d186db542357672e6fae30c421b975b2a634e390f05ffaa4a9ca1cc01bdea74`，原 TimeoutError 保留、child returncode1、cleanup complete。15項分類案例包含 partial-field NoSuchProcess 正例及 mixed AccessDenied／陌生 image 負例。仍限合成程序收尾，原136版本失敗保留；不授 Main／SQLite／原H20來源驗收。

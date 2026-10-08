@@ -130,3 +130,17 @@ view owner 僅將頁面左右內距設為5px，保留原上下內距；未縮字
 owner 以原保留 bundle exact-open 核1001的五項技術規則皆為 `no_match`，MA狀態為 `unknown`。session55998 終態 exit1（200.47秒），log `output/qa/ma_requery_rule_expectation_20261008_a/requery_attempt02.log`：同來源 no_match 正向查詢為1筆、改要求 match 反向查詢為0筆，query／operation／來源／單次opener斷言已通過；最後將 `ma_truth_counts[unknown]` 預期為1的斷言失敗，實際為257。
 
 中央獨立核 reader:1456–1462：technical／MA／composite 真值分布對完整宣告母體累加，只有 eligible 分布位於 hard-eligible 分支；Counts 的建構核驗同樣要求前三者合計 declared，而 eligible 合計 hard_eligible。故本次為測試口徑錯誤，不應改產品計數。修正測試須同時驗完整MA分布與基準相同、hard_eligible為1，以及正向eligible unknown為1／反向eligible no_match為1、visible為0。修後完整案例仍待新一次終態，不以部分斷言通過授完整重查接受。
+
+## 保存合成來源的重查案例通過
+
+owner 重用 session55998 保留的 sealed bundle，未再產製來源；helper 新 attempt02 handle95482 終態 exit0，31,466ms。固定 bundle identity `b59b1c4703f63d38bdcd93d4bc870f0d37f2f6203896ea9bc2ba98e0d04b80af`，manifest SHA `179d2f4efdace2b33a49c91a0d95d4ccd4766b6a82efbf3fbcff238dbb9e8424`。中央獨立讀 receipt，SHA `088772cb72957160de84f1a227599a97c16d5d2696bc70a094a6dca68cdd12ca`，status passed；七項合成來源根（DB bytes、store、兩parent、market／disposal capture、bundle）的前後inventory相同，SHA `0dc6f5dbe1cd9b505ff318777e1bd7fb82475c904c105f325d1c1a01f0cce274`。helper在同公開 exact opener／query API 執行原修正案例；test SHA `346b542680f700e371dac3bdc18c65f4fe3e75a73144bdeaf2c388162a3e2c00`。
+
+正向／反向保存規則條件、單次restore opener後同session重查、來源pins、新query／operation、hard eligibility與完整母體／eligible計數口徑均通過。producer未呼叫是 helper靜態call-path限定，receipt未冒充runtime觀察計數；SQLite只作來源bytes核驗。第一次helper因手抄manifest pin錯誤在preflight失敗，保存原紀錄並由中央 Get-FileHash核正64碼，未放寬pin。此接受限保存來源的backend重查案例，真UI journey仍待驗，原錯誤oracle與其他失敗封套均保留。
+# 實際操作旅程補驗：讀取尚未通過（2026-10-08）
+
+新版旅程測試使用四個明示環境欄位注入已保存的合成 bundle；未注入時使用既有真實 fixture 工廠。operation 事件索引在點擊前保存，清理或來源核驗失敗會使測試失敗，不以 pytest 綠燈遮蓋失敗 receipt。
+
+attempt02（owner handle34433，終態exit1）首次 explicit exact open 呼叫一次。測試180秒等候先逾時，bundle-session factory 約187,531毫秒後拋 `technical_official_query_reader_v1_bundle_exact_read_failed:technical_store_exact_read_failed`。取消後原生 worker 已收尾、view 已關閉，保存 manifest／完整來源樹前後 SHA 相同，fixture producer 未呼叫。記錄在 `output/qa/ma_saved_source_ui_journey_20261008_a/attempt02.log` 及其獨立 attempt 的 `journey_receipt.json`。
+
+現有外層錯誤沒有保存底層 StoreError.code，不能據此判定來源損壞。後續僅針對同保存來源的單次 exact opener 做有界診斷，保留遞迴 cause／cause_code 與取消時間；須區分測試逾時誘發取消和真正讀取錯誤。禁止以延長 timeout、重產來源或重跑完整 UI 旅程替代根因分析。此補驗不授整體操作旅程接受。
+

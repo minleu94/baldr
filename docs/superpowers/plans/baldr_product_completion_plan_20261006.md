@@ -710,3 +710,15 @@ P03來源副本契約已補 mandatory typed binding及NTFS hardlink物理隔離�
 dev 133616b6 已接真Main保存操作；88e22ba6 再接觀察清單原H20收藏重開、獨立歷史摘要與精確收藏身份返回，保留原capture觀察時間。目前模型停用或契約不同不換原研究。來源重驗失敗清除預測，刪除／身份衝突不改選同股其他列；刷新覆寫缺漏提示的實際問題已修正。中央最後整組114通過、全域mypy891檔、更新頁25通過0失敗4保護跳過。這些是合成路由驗證，不是原私人來源、新程序或Native接受。
 
 新程序完整Main測試父端保存／關閉成功，子程序後續失敗曾被測試輸出解碼錯誤遮住；失敗保留並補UTF-8及階段時間再驗，不以啟動完成當重開完成。使用者已澄清0f25名單最後出現但非常慢、2382雙擊反應不明，P05/P13速度與可觀察進度仍未通過。固定d9完整母體 exact shared-store同版核驗仍在隔離fixture初始化審查，尚無資格。F17當下官方處置來源葉片中央合成17項通過，但TPEx真API schema、正常updater及保存UI接線仍缺；不拿查詢頁欄名或合成資料宣稱來源完成。P00–P14與M3維持原範圍。
+
+### 2026-10-07 最新中央證據與仍開放出口
+
+上節新程序失敗為歷史。`9e57b905` 已完成真 Main 父端保存／關閉→不同 PID 子端重開原 H20 收藏／原摘要／返回同一收藏，中央合成旅程 1 passed（8.62 秒）；source inventory 不變、SQLite mode=ro/query_only、network 與 current pointer 存取皆零。這證明工程重開路由，未證原十股及 Native 體感。
+
+`1c46410f` 將 `TECHNICAL_UNIVERSE_READ_ROOT` 正常設定接進真 browser，外部保存根只讀，OUTPUT/runtime 分離；完整正常 Main 257+1→個股→返回→比較→query 收藏重開已由中央獨立驗證 1 passed（170.08 秒，含真產製）；source/store inventory 起訖相同、network零，見[正常 Main QA](../../06_qa/TECHNICAL_READ_ROOT_MAIN_JOURNEY_20261007.md)。固定 d9 的 browser root override 診斷不合正常配置出口，新候選將移除此覆寫，兩模式讀同一 sealed store，而非各自產製相似版本。新程序、同版exe、實際市場與效能仍缺。
+
+`8faf3410` 修正同 PersonalWatchlistService 實例讀寫 marker 自身碰撞：本地執行緒排隊後仍逐次通過原 COW guard；另一實例及同執行緒巢狀操作仍拒絕。中央 103 service/config 與 90 UI/H20 重開通過、全域 mypy891、validator25/0/4。此包另接 F12 明示副本根及正常 session，但 updater／完整保存及 UI 篩選尚未交付，見[基本面設定 QA](../../06_qa/FUNDAMENTAL_SNAPSHOT_CONFIG_20261007.md)。
+
+`c4f0d126` 的 F17 官方當下處置來源已核 TPEx 原 Swagger 與10/4真回應29/29列，中央29測試通過；兩入口對單次 UTC cutoff 拒絕整組自洽未來來源，原 observed/announcement/effective 分域、current-only/unknown available-at/歷史PIT false 不變。上節「真 API schema 尚未核」為歷史，正常更新／完整保存／條件與 UI 接線仍缺，見[官方處置 QA](../../06_qa/SELECTION_OFFICIAL_DISPOSAL_SOURCE_20261007.md)。
+
+原使用者 0f25 延遲／2382雙擊與新 d9 真人接受仍未通過。新固定候選、Python/exe正常 Main同 store/query/bookmark、新程序/Native與冷暖/p95仍各自驗收。P01 1000與實際N效能、P02/P04其餘條件、P03/F08–F19、P06–P08/M3、P10–P12及P13完整矩陣仍沿原範圍，不由以上有限綠燈折抵。

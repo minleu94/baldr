@@ -694,3 +694,7 @@ P09 已中央驗真 producer／COW／新程序與實際收藏按鈕，再經實�
 `FundamentalObservation`／`build_revenue_yoy_factor` 只有 available_date 是否缺失的投影檢查，不能單獨作當下截止合格證明。跨域新 adapter 必須明示 aware decision cutoff 與來源 scope，保存 domain period／as-of／available_at／coverage／單位／原件 pins；current-observed 不取得歷史 PIT 或正式交易資格。保存 schema／與既有五規則 source pins 的連接方式先由中央審核，舊 v4 bytes 與錯源拒絕契約保持。
 
 F08 的 `PortfolioChipService` 確有連續3日與500000股語意及估算／不可用事件 coverage，但它的 DTO 不提供已核 aware available_at，不能直接轉成歷史合格條件。F16／F17 的 `CurrentMarketStatusReader` 是已驗當下註記，明示 historical_replay_allowed=False；公告事件 effective／published／observed dates 分開，不把當下註記冒稱完整歷史事件庫。這些仍須各自完成資料取得／版本保存／正常更新入口與原§5、§9驗收，不由F12第一葉片取代。
+
+來源再核：`comparison_snapshot_sha256` 是optional，materialized同報告comparator通常沒有此CSV hash；不能要求它冒充必有的原件pin。F12保存必有current與comparator的原HTML SHA／source version，CSV SHA若有則另欄記錄。local_verified_observation的available_at是當次核驗observed_at，不等於官方公告時間。新source session保持data layer獨立，以一個唯讀BEGIN與固定aware cutoff讀完整明示codes，再核main/WAL metadata及bytes SHA、schema與原HTML/CSV；finish成功前不交producer完整成果。舊provider兩個SQL callsite可經明示read_session重用同連線，原default行為與原件／revision語意不變；資料更新先重用既有MOPS fetch→current-only plan/apply鏈，不重造harvester或直接寫正式歷史表。
+
+H20原十股canonical同版讀回已通過，原2382 684bp／日期／widget exact selection兩模式相等；這補上原保存資料的打包核驗，不取代完整個股／Native。H20收藏core葉片另釋出，獨立schema與source kind，原manifest SHA＋selected capture pins＋排序／scroll保存，使用明示approved root/scope直接重開原manifest，不讀latest pointer。原activation revision/model作provenance，當前revision變更不能偷換來源；狀態須明示歷史／停用／未知，不授當前模型或交易資格。未知列不能新建可研究收藏，已收藏capture遺失可保留原名單診斷與停用研究；共享COW/UI接線仍由中央後續驗收，完整P05/P09尚未完成。

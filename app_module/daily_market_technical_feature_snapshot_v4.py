@@ -314,6 +314,37 @@ class DailyMarketTechnicalRuleEvidenceV4:
 
 
 @dataclass(frozen=True, slots=True)
+class _ValidatedSnapshotParts:
+    """單次驗證產生的 typed parts；只在目前 parser 呼叫內傳遞。"""
+
+    stock_code: str
+    decision_date: date
+    decision_cutoff: datetime
+    source_clock_json: str
+    source_clock_sha256: str
+    source_id: str
+    source_identity: str
+    schema_identity_sha256: str
+    source_pin_sha256: str
+    cutoff_guard_version: str
+    raw_source_window_fingerprint_sha256: str
+    source_window_fingerprint_sha256: str
+    calculation_identity_sha256: str
+    calculation_version: str
+    talib_version: str
+    calculation_binding_json: str
+    availability_status: Literal["unknown"]
+    observed_prefix_contiguous: bool
+    rows: tuple[DailyMarketTechnicalSourceRow, ...]
+    session_pins: tuple[TechnicalSessionPinV4, ...]
+    feature_sessions: tuple[TechnicalObservedSession, ...]
+    feature_session_fingerprints: tuple[str, ...]
+    rules: tuple[DailyMarketTechnicalRuleEvidenceV4, ...]
+    method_contracts_sha256: str
+    snapshot_identity_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class DailyMarketTechnicalFeatureSnapshotV4:
     """固定來源時計、120列原料、最近兩日指標與五條方法結果。"""
 
@@ -467,35 +498,44 @@ class DailyMarketTechnicalFeatureSnapshotV4:
 
     @classmethod
     def from_dict(cls, payload: object) -> DailyMarketTechnicalFeatureSnapshotV4:
+        snapshot, _validated_parts = cls._from_dict_with_validated_parts(payload)
+        return snapshot
+
+    @classmethod
+    def _from_dict_with_validated_parts(
+        cls,
+        payload: object,
+    ) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, _ValidatedSnapshotParts]:
         if not isinstance(payload, Mapping):
             raise ValueError("technical_snapshot_v4_invalid")
-        _validate_snapshot_payload(payload, verify_identity=True)
-        return cls(
-            stock_code=cast(str, payload["stock_code"]),
-            decision_date=date.fromisoformat(cast(str, payload["decision_date"])),
-            decision_cutoff=datetime.fromisoformat(cast(str, payload["decision_cutoff"])),
-            source_clock_json=_canonical_json(cast(Mapping[str, Any], payload["source_clock"])),
-            source_clock_sha256=cast(str, payload["source_clock_sha256"]),
-            source_id=cast(str, payload["source_id"]),
-            source_identity=cast(str, payload["source_identity"]),
-            schema_identity_sha256=cast(str, payload["schema_identity_sha256"]),
-            source_pin_sha256=cast(str, payload["source_pin_sha256"]),
-            cutoff_guard_version=cast(str, payload["cutoff_guard_version"]),
-            raw_source_window_fingerprint_sha256=cast(str, payload["raw_source_window_fingerprint_sha256"]),
-            source_window_fingerprint_sha256=cast(str, payload["source_window_fingerprint_sha256"]),
-            calculation_identity_sha256=cast(str, cast(Mapping[str, Any], payload["calculation"])["identity_sha256"]),
-            calculation_version=cast(str, cast(Mapping[str, Any], payload["calculation"])["method_version"]),
-            talib_version=cast(str, cast(Mapping[str, Any], payload["calculation"])["talib_version"]),
-            calculation_binding_json=_canonical_json(cast(Mapping[str, Any], payload["calculation"])["binding"]),
-            availability_status="unknown",
-            observed_prefix_contiguous=cast(bool, payload["observed_prefix_contiguous"]),
-            rows=tuple(_row_from_dict(item) for item in cast(list[Any], payload["raw_rows"])),
-            session_pins=tuple(_session_pin_from_dict(item) for item in cast(list[Any], payload["session_pins"])),
-            feature_sessions=tuple(_session_from_dict(item) for item in cast(list[Any], payload["feature_sessions"])),
-            rules=tuple(_rule_from_dict(item) for item in cast(list[Any], payload["rules"])),
-            method_contracts_sha256=cast(str, payload["method_contracts_sha256"]),
-            snapshot_identity_sha256=cast(str, payload["snapshot_identity_sha256"]),
+        validated_parts = _validate_snapshot_payload(payload, verify_identity=True)
+        snapshot = cls(
+            stock_code=validated_parts.stock_code,
+            decision_date=validated_parts.decision_date,
+            decision_cutoff=validated_parts.decision_cutoff,
+            source_clock_json=validated_parts.source_clock_json,
+            source_clock_sha256=validated_parts.source_clock_sha256,
+            source_id=validated_parts.source_id,
+            source_identity=validated_parts.source_identity,
+            schema_identity_sha256=validated_parts.schema_identity_sha256,
+            source_pin_sha256=validated_parts.source_pin_sha256,
+            cutoff_guard_version=validated_parts.cutoff_guard_version,
+            raw_source_window_fingerprint_sha256=validated_parts.raw_source_window_fingerprint_sha256,
+            source_window_fingerprint_sha256=validated_parts.source_window_fingerprint_sha256,
+            calculation_identity_sha256=validated_parts.calculation_identity_sha256,
+            calculation_version=validated_parts.calculation_version,
+            talib_version=validated_parts.talib_version,
+            calculation_binding_json=validated_parts.calculation_binding_json,
+            availability_status=validated_parts.availability_status,
+            observed_prefix_contiguous=validated_parts.observed_prefix_contiguous,
+            rows=validated_parts.rows,
+            session_pins=validated_parts.session_pins,
+            feature_sessions=validated_parts.feature_sessions,
+            rules=validated_parts.rules,
+            method_contracts_sha256=validated_parts.method_contracts_sha256,
+            snapshot_identity_sha256=validated_parts.snapshot_identity_sha256,
         )
+        return snapshot, validated_parts
 
     @classmethod
     def from_json(cls, raw: bytes | str) -> DailyMarketTechnicalFeatureSnapshotV4:
@@ -522,13 +562,39 @@ class DailyMarketTechnicalFeatureSnapshotV4:
             if "duplicate_json_key" in str(exc):
                 raise ValueError("technical_snapshot_v4_duplicate_json_key") from exc
             raise ValueError("technical_snapshot_v4_invalid_json") from exc
-        snapshot = cls.from_dict(payload)
+        snapshot, validated_parts = cls._from_dict_with_validated_parts(payload)
         # from_dict 已完整核驗語義與identity；同一個不可變結果只做格式回轉比對。
-        if _canonical_json(snapshot._payload()) != text:
+        if _canonical_json(snapshot._payload(validated_parts=validated_parts)) != text:
             raise ValueError("technical_snapshot_v4_noncanonical_json")
         return snapshot
 
-    def _payload(self) -> dict[str, object]:
+    def _payload(
+        self,
+        *,
+        validated_parts: _ValidatedSnapshotParts | None = None,
+    ) -> dict[str, object]:
+        if validated_parts is None:
+            feature_sessions_payload = [
+                _session_to_dict(item) for item in self.feature_sessions
+            ]
+        else:
+            if (
+                validated_parts.rows is not self.rows
+                or validated_parts.session_pins is not self.session_pins
+                or validated_parts.feature_sessions is not self.feature_sessions
+                or validated_parts.rules is not self.rules
+                or validated_parts.snapshot_identity_sha256 != self.snapshot_identity_sha256
+                or len(validated_parts.feature_session_fingerprints) != len(self.feature_sessions)
+            ):
+                raise ValueError("technical_snapshot_v4_validated_parts_mismatch")
+            feature_sessions_payload = [
+                _session_to_dict_with_verified_fingerprint(session, fingerprint)
+                for session, fingerprint in zip(
+                    self.feature_sessions,
+                    validated_parts.feature_session_fingerprints,
+                    strict=True,
+                )
+            ]
         return {
             "schema_version": DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_SCHEMA_V4,
             "snapshot_identity_sha256": self.snapshot_identity_sha256,
@@ -559,7 +625,7 @@ class DailyMarketTechnicalFeatureSnapshotV4:
             "observed_prefix_contiguous": self.observed_prefix_contiguous,
             "raw_rows": [row.to_dict() for row in self.rows],
             "session_pins": [item.to_dict() for item in self.session_pins],
-            "feature_sessions": [_session_to_dict(item) for item in self.feature_sessions],
+            "feature_sessions": feature_sessions_payload,
             "rules": [item.to_dict() for item in self.rules],
             "method_contracts": daily_market_technical_method_contract_v4_payload(),
             "method_contracts_sha256": self.method_contracts_sha256,
@@ -921,7 +987,11 @@ def _rule_evidence_from_result(
     )
 
 
-def _validate_snapshot_payload(payload: Mapping[str, Any], *, verify_identity: bool) -> None:
+def _validate_snapshot_payload(
+    payload: Mapping[str, Any],
+    *,
+    verify_identity: bool,
+) -> _ValidatedSnapshotParts:
     if set(payload) != _SNAPSHOT_KEYS or payload.get("schema_version") != DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_SCHEMA_V4:
         raise ValueError("technical_snapshot_v4_schema_invalid")
     _reject_float_tree(payload)
@@ -1080,18 +1150,27 @@ def _validate_snapshot_payload(payload: Mapping[str, Any], *, verify_identity: b
     raw_feature_sessions = payload.get("feature_sessions")
     if not isinstance(raw_feature_sessions, list) or len(raw_feature_sessions) > 2:
         raise ValueError("technical_snapshot_v4_feature_sessions_invalid")
-    feature_sessions = tuple(_session_from_dict(item) for item in raw_feature_sessions)
+    parsed_feature_sessions = tuple(
+        _session_from_dict(item) for item in raw_feature_sessions
+    )
+    feature_sessions = tuple(item[0] for item in parsed_feature_sessions)
+    feature_session_fingerprints = tuple(item[1] for item in parsed_feature_sessions)
     expected_recent = pins[-2:]
     if len(feature_sessions) != len(expected_recent):
         raise ValueError("technical_snapshot_v4_feature_session_count_mismatch")
-    for session, pin in zip(feature_sessions, expected_recent, strict=True):
+    for session, fingerprint, pin in zip(
+        feature_sessions,
+        feature_session_fingerprints,
+        expected_recent,
+        strict=True,
+    ):
         if (
             session.stock_code != payload["stock_code"]
             or session.source_identity != payload["source_identity"]
             or session.feature_date != pin.feature_date
             or session.source_fingerprint_sha256 != pin.source_fingerprint_sha256
             or session.pin_verified != pin.pin_verified
-            or technical_session_fingerprint_sha256(session) != pin.session_fingerprint_sha256
+            or fingerprint != pin.session_fingerprint_sha256
         ):
             raise ValueError("technical_snapshot_v4_feature_session_pin_mismatch")
         _validate_feature_session(session, decision_day)
@@ -1158,6 +1237,39 @@ def _validate_snapshot_payload(payload: Mapping[str, Any], *, verify_identity: b
         if not _is_sha256(claimed) or _identity_sha256(payload) != claimed:
             raise ValueError("technical_snapshot_v4_identity_mismatch")
     _enforce_json_size(payload)
+    return _ValidatedSnapshotParts(
+        stock_code=cast(str, payload["stock_code"]),
+        decision_date=decision_day,
+        decision_cutoff=cutoff,
+        source_clock_json=clock_json,
+        source_clock_sha256=clock_sha,
+        source_id=cast(str, source_id),
+        source_identity=cast(str, payload["source_identity"]),
+        schema_identity_sha256=cast(str, payload["schema_identity_sha256"]),
+        source_pin_sha256=cast(str, payload["source_pin_sha256"]),
+        cutoff_guard_version=cast(str, payload["cutoff_guard_version"]),
+        raw_source_window_fingerprint_sha256=cast(
+            str,
+            payload["raw_source_window_fingerprint_sha256"],
+        ),
+        source_window_fingerprint_sha256=cast(
+            str,
+            payload["source_window_fingerprint_sha256"],
+        ),
+        calculation_identity_sha256=cast(str, calc["identity_sha256"]),
+        calculation_version=cast(str, calc["method_version"]),
+        talib_version=cast(str, calc["talib_version"]),
+        calculation_binding_json=_canonical_json(calc["binding"]),
+        availability_status="unknown",
+        observed_prefix_contiguous=cast(bool, payload["observed_prefix_contiguous"]),
+        rows=rows,
+        session_pins=pins,
+        feature_sessions=feature_sessions,
+        feature_session_fingerprints=feature_session_fingerprints,
+        rules=parsed_rules,
+        method_contracts_sha256=cast(str, contract_sha),
+        snapshot_identity_sha256=cast(str, payload["snapshot_identity_sha256"]),
+    )
 
 
 def _validate_source_clock_payload(clock: Mapping[str, Any]) -> None:
@@ -1253,7 +1365,9 @@ def _session_pin_from_dict(value: object) -> TechnicalSessionPinV4:
     )
 
 
-def _session_from_dict(value: object) -> TechnicalObservedSession:
+def _session_from_dict(
+    value: object,
+) -> tuple[TechnicalObservedSession, str]:
     if not isinstance(value, Mapping) or set(value) != _SESSION_KEYS:
         raise ValueError("technical_snapshot_v4_session_fields_invalid")
     feature_date = _parse_iso_date(value.get("feature_date"), "feature_session.feature_date")
@@ -1271,9 +1385,10 @@ def _session_from_dict(value: object) -> TechnicalObservedSession:
         features=features,
         pin_verified=_require_bool(value.get("pin_verified"), "feature_session.pin_verified"),
     )
-    if technical_session_fingerprint_sha256(session) != _require_sha(value.get("session_fingerprint_sha256"), "session_fingerprint_sha256"):
+    fingerprint = technical_session_fingerprint_sha256(session)
+    if fingerprint != _require_sha(value.get("session_fingerprint_sha256"), "session_fingerprint_sha256"):
         raise ValueError("technical_snapshot_v4_session_fingerprint_mismatch")
-    return session
+    return session, fingerprint
 
 
 def _feature_from_dict(value: object) -> TechnicalFeatureEvidence:
@@ -1355,6 +1470,18 @@ def _validate_feature_value(key: str, value: Decimal) -> None:
 
 
 def _session_to_dict(session: TechnicalObservedSession) -> dict[str, object]:
+    return _session_to_dict_with_verified_fingerprint(
+        session,
+        technical_session_fingerprint_sha256(session),
+    )
+
+
+def _session_to_dict_with_verified_fingerprint(
+    session: TechnicalObservedSession,
+    fingerprint: str,
+) -> dict[str, object]:
+    """以同次 parser 已核 fingerprint 重建 session JSON。"""
+
     return {
         "stock_code": session.stock_code,
         "feature_date": session.feature_date.isoformat(),
@@ -1362,7 +1489,7 @@ def _session_to_dict(session: TechnicalObservedSession) -> dict[str, object]:
         "source_fingerprint_sha256": session.source_fingerprint_sha256,
         "pin_verified": session.pin_verified,
         "features": [_feature_to_dict(item) for item in session.features],
-        "session_fingerprint_sha256": technical_session_fingerprint_sha256(session),
+        "session_fingerprint_sha256": fingerprint,
     }
 
 

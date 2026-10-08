@@ -8,12 +8,15 @@ import hashlib
 import json
 import sqlite3
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 import pytest
 
+import app_module.daily_market_technical_feature_snapshot_v4 as snapshot_module
 from app_module.daily_market_technical_feature_snapshot_v4 import (
     DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_BYTES,
     DailyMarketTechnicalFeatureSnapshotV4,
@@ -419,3 +422,118 @@ def test_duplicate_observed_dates_preserve_distinct_pins_and_rule_references(
     assert snapshot.observed_prefix_contiguous is False
     restored = DailyMarketTechnicalFeatureSnapshotV4.from_json(snapshot.to_json())
     assert restored.to_json() == snapshot.to_json()
+
+
+def test_from_json_reuses_the_validated_typed_parts_once_per_decode(
+    short_temp: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _build_snapshot(short_temp, row_count=10)
+    encoded = snapshot.to_json()
+    calls = {
+        "rows": 0,
+        "pins": 0,
+        "sessions": 0,
+        "rules": 0,
+        "session_fingerprints": 0,
+    }
+    original_row = snapshot_module._row_from_dict
+    original_pin = snapshot_module._session_pin_from_dict
+    original_session = snapshot_module._session_from_dict
+    original_rule = snapshot_module._rule_from_dict
+    original_fingerprint = snapshot_module.technical_session_fingerprint_sha256
+
+    def count_row(value: object) -> Any:
+        calls["rows"] += 1
+        return original_row(value)
+
+    def count_pin(value: object) -> Any:
+        calls["pins"] += 1
+        return original_pin(value)
+
+    def count_session(value: object) -> Any:
+        calls["sessions"] += 1
+        return original_session(value)
+
+    def count_rule(value: object) -> Any:
+        calls["rules"] += 1
+        return original_rule(value)
+
+    def count_fingerprint(value: Any) -> str:
+        calls["session_fingerprints"] += 1
+        return original_fingerprint(value)
+
+    monkeypatch.setattr(snapshot_module, "_row_from_dict", count_row)
+    monkeypatch.setattr(snapshot_module, "_session_pin_from_dict", count_pin)
+    monkeypatch.setattr(snapshot_module, "_session_from_dict", count_session)
+    monkeypatch.setattr(snapshot_module, "_rule_from_dict", count_rule)
+    monkeypatch.setattr(
+        snapshot_module,
+        "technical_session_fingerprint_sha256",
+        count_fingerprint,
+    )
+
+    restored = DailyMarketTechnicalFeatureSnapshotV4.from_json(encoded)
+
+    assert calls == {
+        "rows": len(snapshot.rows),
+        "pins": len(snapshot.session_pins),
+        "sessions": len(snapshot.feature_sessions),
+        "rules": len(snapshot.rules),
+        "session_fingerprints": len(snapshot.feature_sessions),
+    }
+    assert restored.rows == snapshot.rows
+    assert restored.session_pins == snapshot.session_pins
+    assert restored.feature_sessions == snapshot.feature_sessions
+    assert tuple(item.to_dict() for item in restored.rules) == tuple(
+        item.to_dict() for item in snapshot.rules
+    )
+    assert restored.snapshot_identity_sha256 == snapshot.snapshot_identity_sha256
+
+
+def test_fresh_from_json_rejects_changed_session_after_valid_decode(
+    short_temp: Path,
+) -> None:
+    encoded = _build_snapshot(short_temp, row_count=10).to_json()
+    restored = DailyMarketTechnicalFeatureSnapshotV4.from_json(encoded)
+    assert restored.snapshot_identity_sha256
+
+    payload = json.loads(encoded)
+    payload["feature_sessions"][-1]["features"][0]["value"] = "123456"
+    _refresh_snapshot_identity(payload)
+    tampered = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="technical_snapshot_v4_session_fingerprint_mismatch",
+    ):
+        DailyMarketTechnicalFeatureSnapshotV4.from_json(tampered)
+
+
+def test_snapshot_cold_reopen_in_new_process_keeps_canonical_bytes(
+    short_temp: Path,
+) -> None:
+    encoded = _build_snapshot(short_temp, row_count=10).to_json()
+    script = "\n".join((
+        "import sys",
+        "from app_module.daily_market_technical_feature_snapshot_v4 import DailyMarketTechnicalFeatureSnapshotV4",
+        "snapshot = DailyMarketTechnicalFeatureSnapshotV4.from_json(sys.stdin.buffer.read().decode('utf-8'))",
+        "sys.stdout.buffer.write(snapshot.to_json().encode('utf-8'))",
+    ))
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        input=encoded.encode("utf-8"),
+        capture_output=True,
+        cwd=Path(__file__).resolve().parents[1],
+        timeout=60,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == encoded.encode("utf-8")

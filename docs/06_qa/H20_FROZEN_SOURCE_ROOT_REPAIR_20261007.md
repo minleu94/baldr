@@ -9,3 +9,12 @@
 中央 68116 terminal0：boundary、H20 widget、來源穩定性、完整 capture 與更新工作台共 **134 passed / 2 skipped in 6.61s**（`C:/t/h20-external-config-central-20261007-a`）。全域 mypy 882 檔無錯誤，diff check 通過。兩項 skip 屬平台連結能力；不授該能力驗收。首次 sandbox 原生檔案操作失敗與 agent 並行暫存祖先 mtime 競態失敗保留，最後測試沿修正後 reader 串行通過。
 
 尚待固定新 commit 打包、同版 exe/來源核驗及真人重驗，不能宣告 H20 真人驗收完成。
+## 原十股 canonical 同版讀回補驗
+
+固定0f25b8c6來源快照與exe沿原啟用設定、原manifest與十份capture，經公開 `read_personal_h20_product_cohort` 及原prediction reader完整讀回：Python／exe皆10/10 available，2382預估20交易日未扣成本毛報酬684bp（+6.84%），決策／來源／特徵日為2026-10-07／10-06／10-05。真H20 widget選2382後按鈕enabled，點一次發出完全相符的原 `PersonalH20ResearchSelection`。
+
+中央核讀QA controller/probe與終態收據，兩模式結果逐項一致；原manifest、十capture、snapshot DB/WAL/SHM前後bytes相同，candidate exe與source origins保持原hash。每模式10次SQLite連線均mode=ro且query_only=1；沒有SQL寫入、網路、predict或fit呼叫。QA僅對既有plain資料目錄的mkdir作不變更noop，實際輸出與日誌位於隔離QA根；沒有改原資料、模型、Task、storage config或正式交付。
+
+最終raw：`output/qa/h20canon_20261007/canonical_readonly_receipt.json`，SHA256 `34d25025e4ba2f89b83655802e0458e0f65778336fe78da26b5517532f4e5e28`，status=passed，兩模式總191.813秒；不是互動效能Gate。Python讀十份capture約92.7秒，原DB每列完整重驗的成本仍存在。此證據是原來源公開reader與widget選取，沒有完整個股報告／Native接受或自然成熟績效證據。
+
+前兩次QA guard分別漏建自身輸出目錄、誤擋安全PRAGMA query_only=ON，造成未知列；調校後未弱化正式來源／根／SHA契約。這兩次原receipt被runner替換，不能宣稱原失敗收據完整保留；`probe_attempt_history.json`只是終端事實重建摘要，已明確標記。後續每次probe必須獨立attempt目錄，禁止覆寫既有收據。

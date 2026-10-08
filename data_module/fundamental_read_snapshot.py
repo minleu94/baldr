@@ -12,9 +12,12 @@ import re
 import sqlite3
 import stat
 import struct
+import sys
 from threading import Event, Lock
 from typing import Callable, Literal, Sequence
 from uuid import uuid4
+
+from data_module.config import TWStockConfig
 
 from data_module.recommendation_current_fundamental_provider import (
     RecommendationCurrentFundamentalProvider,
@@ -348,6 +351,39 @@ class FundamentalReadSnapshotSession:
         self._publication_gate = Lock()
         self._state: Literal["open", "finished", "cancelled", "failed"] = "open"
         self._finished: FinishedFundamentalSnapshotReadCohort | None = None
+
+    @classmethod
+    def open_from_config(
+        cls,
+        config: TWStockConfig,
+        *,
+        stock_codes: Sequence[str],
+        cutoff_at: datetime,
+        provider: RecommendationCurrentFundamentalProvider | None = None,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> FundamentalReadSnapshotSession:
+        """正式配置的副本入口；不連線原庫、不使用隱含QA或正式輸出根。"""
+        if not isinstance(config, TWStockConfig):
+            raise TypeError("config 必須是 TWStockConfig")
+        root = config.fundamental_read_snapshot_root
+        if root is None:
+            raise FundamentalReadSnapshotError("fundamental_snapshot_root_not_configured")
+        _reject_reparse_components(root, allow_missing=True)
+        normalized = Path(os.path.abspath(root.expanduser()))
+        if any(_paths_overlap(normalized, Path(value).expanduser().resolve(strict=False))
+               for value in (config.data_root, config.output_root)):
+            raise FundamentalReadSnapshotError("fundamental_snapshot_root_overlaps_configured_data_or_output")
+        selected_provider = provider if provider is not None else RecommendationCurrentFundamentalProvider(
+            db_file=config.db_file, output_root=config.output_root,
+            calendar_cache_path=config.official_calendar_cache_path,
+        )
+        if not isinstance(selected_provider, RecommendationCurrentFundamentalProvider):
+            raise TypeError("provider 必須是 RecommendationCurrentFundamentalProvider")
+        if (selected_provider.db_file != config.db_file.expanduser().resolve(strict=False)
+                or selected_provider.output_root != config.output_root.expanduser().resolve(strict=False)):
+            raise FundamentalReadSnapshotError("fundamental_snapshot_provider_config_identity_mismatch")
+        return cls.open(selected_provider, snapshot_root=root, stock_codes=stock_codes,
+                        cutoff_at=cutoff_at, cancel_callback=cancel_callback)
 
     @classmethod
     def open(
@@ -918,6 +954,11 @@ def _validate_snapshot_root(
         provider.monthly_source_root,
         Path(os.environ.get("DATA_ROOT", "D:/Min/Python/Project/FA_Data")),
     ]
+    if bool(getattr(sys, "frozen", False)):
+        protected.append(Path(sys.executable).parent)
+        bundle_root = getattr(sys, "_MEIPASS", None)
+        if bundle_root is not None:
+            protected.append(Path(bundle_root))
     for protected_root in protected:
         normalized = Path(os.path.abspath(protected_root.expanduser()))
         if _paths_overlap(root, normalized):

@@ -5403,4 +5403,8 @@ H20 分頁新增獨立等待提示：開始讀取後顯示尚未完成及已等�
 
 需要讀取另一個已保存研究位置時，在portable設定JSON或啟動環境明示 `TECHNICAL_UNIVERSE_READ_ROOT`，值為包含原v4保存研究的絕對根目錄。`OUTPUT_ROOT`仍是目前程式的執行輸出位置。到「推薦分析→每日研究條件」的完整母體保存來源區，按「查詢保存版本」，選版本後「嚴格核驗並讀取」；原查詢、個股、比較與收藏都沿同一明示來源根及原pins，不改讀最新。此設定不建立或搬移研究檔案。
 
+dev 基本面副本 session 的設定入口為 `FUNDAMENTAL_READ_SNAPSHOT_ROOT`：在 portable JSON 或啟動環境指定獨立絕對目錄，不得與 `DATA_ROOT`、`OUTPUT_ROOT` 或 frozen 程式包重疊。設定本身不建立副本；明示 caller 開 session 時才複製來源，連線僅開隔離 reader copy，結果保留原來源 clock。未設定、空白、相對或來源身份不符會拒絕，不改開原庫。這是工程入口，尚非完整 UI 基本面功能；來源仍 current-only、availability unknown，不授歷史 PIT 資格。
+
+dev 個人收藏同一服務內的背景讀取與保存會依序執行，避免自身碰撞外部 marker lock。另一服務或程序正在操作時仍可顯示 `active_writer`；請等該操作結束，不刪 lock 或 activation 檔。此修正尚待新候選及原十檔 H20 載入／2382 下鑽真人驗證，不表示舊版延遲已通過。
+
 外部保存根僅供讀取，產製新研究與續跑按鈕停用；產製仍使用原預設來源位置與既有寫入範圍。未設定時維持 `OUTPUT_ROOT/research_snapshots/technical_universe`。明示空白、相對路徑或frozen程式包內路徑拒絕；來源不存在、缺件或核驗失敗會顯示原因，不回退其他根。不要搬移或改寫原收藏中的來源根來遷移版本。此配置的完整Main／新程序／打包版接受仍待驗。

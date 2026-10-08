@@ -15,6 +15,7 @@ _PORTABLE_KEYS = frozenset(
         "DATA_ROOT",
         "OUTPUT_ROOT",
         "TECHNICAL_UNIVERSE_READ_ROOT",
+        "FUNDAMENTAL_READ_SNAPSHOT_ROOT",
         "RESEARCH_STATE_ROOT",
         "OFFICIAL_CALENDAR_CACHE_PATH",
         "PERSONAL_DATA_ROOT",
@@ -95,8 +96,8 @@ def resolve_application_settings(
     environment_values: dict[str, str] = {}
     for key in sorted(_PORTABLE_KEYS):
         value = _optional_environment_text(source, key)
-        if key == "TECHNICAL_UNIVERSE_READ_ROOT" and key in source and value is None:
-            raise ValueError("TECHNICAL_UNIVERSE_READ_ROOT 必須是非空絕對路徑")
+        if key in {"TECHNICAL_UNIVERSE_READ_ROOT", "FUNDAMENTAL_READ_SNAPSHOT_ROOT"} and key in source and value is None:
+            raise ValueError(f"{key} 必須是非空絕對路徑")
         if value is not None:
             _validate_setting(key, value, origin="環境變數")
             environment_values[key] = _normalize_configured_path(key, value)
@@ -159,6 +160,11 @@ def resolve_application_settings(
             _is_same_or_child(Path(technical_root), bundle) for bundle in bundle_roots
         ):
             raise ValueError("TECHNICAL_UNIVERSE_READ_ROOT 必須位於 frozen 程式包之外")
+        fundamental_root = effective.get("FUNDAMENTAL_READ_SNAPSHOT_ROOT")
+        if fundamental_root is not None and any(
+            _is_same_or_child(Path(fundamental_root), bundle) for bundle in bundle_roots
+        ):
+            raise ValueError("FUNDAMENTAL_READ_SNAPSHOT_ROOT 必須位於 frozen 程式包之外")
         for name, path in (
             ("DATA_ROOT", data_root),
             ("OUTPUT_ROOT", output_root),
@@ -213,12 +219,21 @@ def apply_application_settings(settings: ApplicationSettings) -> None:
         None if technical_root is None
         else _absolute_environment_path("TECHNICAL_UNIVERSE_READ_ROOT", technical_root)
     )
+    fundamental_root = environment.get("FUNDAMENTAL_READ_SNAPSHOT_ROOT")
+    fundamental_path = (
+        None if fundamental_root is None
+        else _absolute_environment_path("FUNDAMENTAL_READ_SNAPSHOT_ROOT", fundamental_root)
+    )
 
     if bool(getattr(sys, "frozen", False)):
         bundles = _frozen_bundle_roots(_canonical_path(settings.resource_root))
         if technical_path is not None:
             if any(_is_same_or_child(technical_path, bundle) for bundle in bundles):
                 raise ValueError("TECHNICAL_UNIVERSE_READ_ROOT 必須位於 frozen 程式包之外")
+        if fundamental_path is not None and any(
+            _is_same_or_child(fundamental_path, bundle) for bundle in bundles
+        ):
+            raise ValueError("FUNDAMENTAL_READ_SNAPSHOT_ROOT 必須位於 frozen 程式包之外")
         for name, path in (
             ("DATA_ROOT", data_root),
             ("OUTPUT_ROOT", output_root),

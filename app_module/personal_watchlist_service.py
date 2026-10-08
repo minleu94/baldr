@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
+from threading import RLock
 from typing import Any, Iterator
 
 from app_module.personal_data_paths import (
@@ -76,6 +77,7 @@ class PersonalWatchlistService(WatchlistService):
 
     def __init__(self, config: Any) -> None:
         self.config = config
+        self._local_writer_lock = RLock()
         market_root = getattr(config, "data_root", None)
         if market_root is None:
             raise PersonalWatchlistSelectionError("personal mode requires config.data_root")
@@ -277,16 +279,18 @@ class PersonalWatchlistService(WatchlistService):
 
     @contextmanager
     def _writer_guard(self) -> Iterator[None]:
-        self._require_active_writer()
-        assert self.repository is not None
-        with watchlist_service_writer_guard(
-            self.canonical_repository_path,
-            expected_marker_sha256=self._storage_status.activation_marker_sha256,
-            activation_source_path=self.control_paths.source_path,
-            expected_target_path=self.repository.db_path,
-            control_paths=self.control_paths,
-        ):
-            yield
+        # 同一實例的背景讀取先排隊；外部與巢狀操作仍須通過原 marker 守衛。
+        with self._local_writer_lock:
+            self._require_active_writer()
+            assert self.repository is not None
+            with watchlist_service_writer_guard(
+                self.canonical_repository_path,
+                expected_marker_sha256=self._storage_status.activation_marker_sha256,
+                activation_source_path=self.control_paths.source_path,
+                expected_target_path=self.repository.db_path,
+                control_paths=self.control_paths,
+            ):
+                yield
 
     def _load_watchlist(self, watchlist_id: str):
         if self._storage_status.mode == "repository":

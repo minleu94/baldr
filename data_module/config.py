@@ -24,6 +24,16 @@ def _technical_universe_read_root_from_environment() -> Path | None:
     return Path(value)
 
 
+def _fundamental_read_snapshot_root_from_environment() -> Path | None:
+    name = "FUNDAMENTAL_READ_SNAPSHOT_ROOT"
+    if name not in os.environ:
+        return None
+    value = os.environ[name].strip()
+    if not value:
+        raise ValueError("FUNDAMENTAL_READ_SNAPSHOT_ROOT 必須是非空絕對路徑")
+    return Path(value)
+
+
 @dataclass
 class TWStockConfig:
     """台股數據分析核心配置"""
@@ -91,6 +101,11 @@ class TWStockConfig:
     # 外部已保存完整母體來源只供瀏覽；不建立來源目錄或擴大 producer 寫入範圍。
     technical_universe_read_root: Path | None = field(
         default_factory=_technical_universe_read_root_from_environment,
+        kw_only=True,
+    )
+    # 基本面唯讀操作先複製到明示隔離根；未設定時不得選用正式輸出或QA預設根。
+    fundamental_read_snapshot_root: Path | None = field(
+        default_factory=_fundamental_read_snapshot_root_from_environment,
         kw_only=True,
     )
 
@@ -163,6 +178,12 @@ class TWStockConfig:
             if not technical_root.is_absolute():
                 raise ValueError("TECHNICAL_UNIVERSE_READ_ROOT 必須是明示絕對路徑")
             self.technical_universe_read_root = technical_root.resolve(strict=False)
+        if self.fundamental_read_snapshot_root is not None:
+            snapshot_root = Path(self.fundamental_read_snapshot_root).expanduser()
+            if not snapshot_root.is_absolute():
+                raise ValueError("FUNDAMENTAL_READ_SNAPSHOT_ROOT 必須是明示絕對路徑")
+            # 不在設定解析時建立或resolve來源：操作入口會拒絕reparse與資料根重疊。
+            self.fundamental_read_snapshot_root = snapshot_root
         if self.personal_model_policy_path is not None:
             requested_policy = Path(self.personal_model_policy_path).expanduser()
             if not requested_policy.is_absolute():

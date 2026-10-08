@@ -210,3 +210,7 @@ trace顯示初始名單操作31.797秒，另計constructor6.391秒；double clic
 F17 bundle final owner回報39 passed／1 skip、reader10 passed；中央核bundle source `F5BF6B6288987C9B9D4EE90160184D68C3662196FFF02AE4C04512E2C7A7EFE7` 與test `89D3D7F3E51512BCA0BC0E183EB2B4063180C9EDF6AD7FDD704BC3F3A219481C`，獨立完整回歸handle59878已啟動、尚未終態。reader中央另發現execute及page constructor後仍缺最後取消poll，要求決定性最後barrier補驗；四檔尚未中央接受，不混用前版通過數量。
 
 1000＋1 synthetic engine benchmark controller靜態審查發現resolve後才核reparse會遺失輸入alias、SQLite只限case而非exact fixture、metadata commit不能單獨證固定來源，以及現存pyc執行隔離缺口；已要求改正並先做純guard合成selftest。尚未執行producer或benchmark；actual N仍unknown，engine測量不替代Main／exe／Native速度資格。
+
+reader中央另發現VerifiedQueryResult只以全域seal與欄位形狀核驗，標準dataclasses.replace可能替換排序keys而保留原operation／ordered digest；已要求真fixture重現及per-result身份seal、完整operation／排序／counts／session binding負例，尚未接受。benchmark QA controller現場preimage與先前923A回報不一致，現檔另作未審基線重新審查；缺舊bytes不據此猜測diff或採相同資格。
+
+中央bundle完整回歸handle59878已terminal exit0：39 passed／1 skipped、276.35秒，兩檔驗前驗後SHA與上列freeze相等；兩檔mypy及compile通過，root收據 `output/qa/f17_selected_fact_index_20261008_a/root_bundle_final_receipt_20261008.json`。本次採入只限bundle有界selected rows與終態取消核驗；query reader兩檔仍施工，F17正常更新／篩選／比較／收藏／UI與實際N接受仍缺，不能以此39項折抵。

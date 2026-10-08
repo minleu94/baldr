@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -64,6 +64,10 @@ DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_ROW_BYTES = 16 * 1024
 DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_ROWS_PER_SHARD = 256
 DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_PATH_CHARS = 4096
 DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_SHARDS = 391
+DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_SELECTED_CODES = 256
+DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_SELECTED_ROWS_SCHEMA_V1 = (
+    "daily-market-technical-official-disposition-selected-rows.v1"
+)
 
 _BUNDLE_ROOT_CHILDREN = frozenset({".attempts", "manifests", "objects"})
 _MANIFEST_KEYS = frozenset({
@@ -144,6 +148,9 @@ _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _STOCK_CODE_RE = re.compile(r"^[A-Z0-9]{1,16}$")
 _OFFICIAL_SYMBOL_RE = re.compile(r"^[0-9]{4,6}$")
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_VERIFIED_STATE_SEAL = object()
+_VERIFIED_STORAGE_SEAL = object()
+_SELECTED_ROWS_SEAL_ISSUER = object()
 
 
 class DailyMarketTechnicalOfficialDispositionBundleError(ValueError):
@@ -187,10 +194,230 @@ class DailyMarketTechnicalOfficialDispositionFactRowV1:
 
 
 @dataclass(frozen=True, slots=True)
+class _BundleRowLocatorV1:
+    stock_code: str
+    shard_index: int
+    byte_offset: int
+    line_length: int
+    line_sha256: str
+
+
+class _VerifiedBundleStorageV1:
+    """由 exact reader 發行的不可變分片與列位置索引。"""
+
+    output_root: Path
+    bundle_identity_sha256: str
+    manifest_relative_path: str
+    manifest_sha256: str
+    shard_payloads: tuple[bytes, ...]
+    row_locators: tuple[_BundleRowLocatorV1, ...]
+    index_identity_sha256: str
+    _seal: object
+    _locked: bool
+
+    __slots__ = (
+        "output_root",
+        "bundle_identity_sha256",
+        "manifest_relative_path",
+        "manifest_sha256",
+        "shard_payloads",
+        "row_locators",
+        "index_identity_sha256",
+        "_seal",
+        "_locked",
+    )
+
+    def __init__(
+        self,
+        *,
+        output_root: Path,
+        bundle_identity_sha256: str,
+        manifest_relative_path: str,
+        manifest_sha256: str,
+        shard_payloads: tuple[bytes, ...],
+        row_locators: tuple[_BundleRowLocatorV1, ...],
+        cancel_callback: Callable[[], bool] | None,
+        _issuer: object,
+    ) -> None:
+        if _issuer is not _VERIFIED_STORAGE_SEAL:
+            _fail("verified_storage_not_reader_issued")
+        _check_read_cancel(cancel_callback)
+        index_digest = sha256()
+        index_digest.update(_canonical_json({
+            "schema_version": "daily-market-technical-official-disposition-row-index.v1",
+            "output_root": str(output_root),
+            "bundle_identity_sha256": bundle_identity_sha256,
+            "manifest_relative_path": manifest_relative_path,
+            "manifest_sha256": manifest_sha256,
+            "shard_count": len(shard_payloads),
+            "row_count": len(row_locators),
+        }).encode("utf-8"))
+        for index, payload in enumerate(shard_payloads):
+            _check_read_cancel(cancel_callback)
+            index_digest.update(b"\n")
+            index_digest.update(_canonical_json({
+                "shard_index": index,
+                "size_bytes": len(payload),
+                "sha256": _sha256_bytes(payload),
+            }).encode("utf-8"))
+            _check_read_cancel(cancel_callback)
+        for index, item in enumerate(row_locators):
+            if index % 256 == 0:
+                _check_read_cancel(cancel_callback)
+            index_digest.update(_canonical_json({
+                "stock_code": item.stock_code,
+                "shard_index": item.shard_index,
+                "byte_offset": item.byte_offset,
+                "line_length": item.line_length,
+                "line_sha256": item.line_sha256,
+            }).encode("utf-8"))
+        _check_read_cancel(cancel_callback)
+        object.__setattr__(self, "output_root", output_root)
+        object.__setattr__(self, "bundle_identity_sha256", bundle_identity_sha256)
+        object.__setattr__(self, "manifest_relative_path", manifest_relative_path)
+        object.__setattr__(self, "manifest_sha256", manifest_sha256)
+        object.__setattr__(self, "shard_payloads", shard_payloads)
+        object.__setattr__(self, "row_locators", row_locators)
+        object.__setattr__(self, "index_identity_sha256", index_digest.hexdigest())
+        object.__setattr__(self, "_seal", _VERIFIED_STORAGE_SEAL)
+        object.__setattr__(self, "_locked", True)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_locked", False):
+            raise AttributeError("verified bundle storage is immutable")
+        object.__setattr__(self, name, value)
+
+    def validate_reference(
+        self,
+        reference: DailyMarketTechnicalOfficialDispositionBundleReferenceV1,
+    ) -> None:
+        if (
+            self._seal is not _VERIFIED_STORAGE_SEAL
+            or str(self.output_root) != reference.output_root
+            or self.bundle_identity_sha256 != reference.bundle_identity_sha256
+            or self.manifest_relative_path != reference.manifest_relative_path
+            or self.manifest_sha256 != reference.manifest_sha256
+            or len(self.row_locators) != reference.row_count
+            or len(self.shard_payloads) > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_SHARDS
+        ):
+            _fail("verified_storage_reference_mismatch")
+
+
+class _SelectedRowsSealV1:
+    __slots__ = ("identity_sha256", "_locked")
+
+    identity_sha256: str
+    _locked: bool
+
+    def __init__(self, identity_sha256: str, *, _issuer: object) -> None:
+        if _issuer is not _SELECTED_ROWS_SEAL_ISSUER:
+            _fail("selected_rows_not_reader_issued")
+        object.__setattr__(self, "identity_sha256", identity_sha256)
+        object.__setattr__(self, "_locked", True)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_locked", False):
+            raise AttributeError("selected rows seal is immutable")
+        object.__setattr__(self, name, value)
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMarketTechnicalOfficialDispositionBundleSelectedRowsV1:
+    """依 exact bundle pin 讀回的有界列；不包含完整母體 facts。"""
+
+    output_root: str
+    bundle_identity_sha256: str
+    manifest_relative_path: str
+    manifest_sha256: str
+    requested_stock_codes: tuple[str, ...]
+    ordered_stock_codes_sha256: str
+    rows: tuple[DailyMarketTechnicalOfficialDispositionFactRowV1, ...]
+    rows_identity_sha256: str
+    materialization_identity_sha256: str
+    _seal: _SelectedRowsSealV1
+
+    def __post_init__(self) -> None:
+        if type(self._seal) is not _SelectedRowsSealV1:
+            _fail("selected_rows_not_reader_issued")
+        if (
+            not 0 <= len(self.requested_stock_codes)
+            <= DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_SELECTED_CODES
+            or len(self.rows) != len(self.requested_stock_codes)
+            or tuple(row.stock_code for row in self.rows) != self.requested_stock_codes
+        ):
+            _fail("selected_rows_shape_invalid")
+        for value in (
+            self.bundle_identity_sha256,
+            self.manifest_sha256,
+            self.ordered_stock_codes_sha256,
+            self.rows_identity_sha256,
+            self.materialization_identity_sha256,
+        ):
+            _require_sha256(value, "selected_rows_identity_invalid")
+        if self.ordered_stock_codes_sha256 != _sha256_json(list(self.requested_stock_codes)):
+            _fail("selected_rows_ordered_codes_digest_mismatch")
+        row_payloads = [row.to_dict() for row in self.rows]
+        if self.rows_identity_sha256 != _sha256_json(row_payloads):
+            _fail("selected_rows_digest_mismatch")
+        expected_identity = _sha256_json({
+            "schema_version": "daily-market-technical-official-disposition-selected-rows.identity.v1",
+            "output_root": self.output_root,
+            "bundle_identity_sha256": self.bundle_identity_sha256,
+            "manifest_relative_path": self.manifest_relative_path,
+            "manifest_sha256": self.manifest_sha256,
+            "ordered_stock_codes_sha256": self.ordered_stock_codes_sha256,
+            "requested_count": len(self.requested_stock_codes),
+            "rows_identity_sha256": self.rows_identity_sha256,
+            "row_count": len(self.rows),
+        })
+        if (
+            self.materialization_identity_sha256 != expected_identity
+            or self._seal.identity_sha256 != expected_identity
+        ):
+            _fail("selected_rows_materialization_identity_mismatch")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_SELECTED_ROWS_SCHEMA_V1,
+            "output_root": self.output_root,
+            "bundle_identity_sha256": self.bundle_identity_sha256,
+            "manifest_relative_path": self.manifest_relative_path,
+            "manifest_sha256": self.manifest_sha256,
+            "requested_stock_codes": list(self.requested_stock_codes),
+            "ordered_stock_codes_sha256": self.ordered_stock_codes_sha256,
+            "rows": [row.to_dict() for row in self.rows],
+            "rows_identity_sha256": self.rows_identity_sha256,
+            "materialization_identity_sha256": self.materialization_identity_sha256,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1:
     reference: DailyMarketTechnicalOfficialDispositionBundleReferenceV1
     manifest_json: str
-    _shard_payloads: tuple[bytes, ...]
+    _storage: _VerifiedBundleStorageV1
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if self._seal is not _VERIFIED_STATE_SEAL or type(self._storage) is not _VerifiedBundleStorageV1:
+            _fail("verified_state_not_reader_issued")
+        self._storage.validate_reference(self.reference)
+        raw_manifest = self.manifest_json.encode("utf-8")
+        if _sha256_bytes(raw_manifest) != self.reference.manifest_sha256:
+            _fail("verified_state_manifest_digest_mismatch")
+        manifest = _strict_json_object(raw_manifest, "manifest_json_invalid")
+        _validate_manifest_header(manifest, expected_identity=self.reference.bundle_identity_sha256)
+        if (
+            manifest.get("row_count") != self.reference.row_count
+            or self.reference.manifest_relative_path
+            != f"manifests/{self.reference.bundle_identity_sha256}.json"
+        ):
+            _fail("verified_state_manifest_reference_mismatch")
+
+    @property
+    def _shard_payloads(self) -> tuple[bytes, ...]:
+        """保留舊讀取端的唯讀分片存取形狀。"""
+        return self._storage.shard_payloads
 
     @property
     def manifest(self) -> dict[str, object]:
@@ -216,6 +443,143 @@ class DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1:
                 payload = _strict_json_object(line[:-1], "row_json_invalid")
                 row = _row_from_payload(payload)
                 yield row
+
+    def read_selected_rows(
+        self,
+        explicit_stock_codes: Sequence[str],
+        *,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketTechnicalOfficialDispositionBundleSelectedRowsV1:
+        """以有界二分索引讀指定列；沒有全檔掃描 fallback。"""
+
+        _validate_cancel_callback(cancel_callback)
+        if self._seal is not _VERIFIED_STATE_SEAL:
+            _fail("verified_state_not_reader_issued")
+        self._storage.validate_reference(self.reference)
+        codes = _validate_selected_stock_codes(explicit_stock_codes, cancel_callback)
+        _check_read_cancel(cancel_callback)
+        manifest = self._read_pinned_manifest(cancel_callback)
+        if not codes:
+            selected = _selected_rows_result(self.reference, (), ())
+            _check_read_cancel(cancel_callback)
+            return selected
+
+        locators: list[_BundleRowLocatorV1] = []
+        for code in codes:
+            _check_read_cancel(cancel_callback)
+            locator = _find_row_locator(self._storage.row_locators, code)
+            if locator is None:
+                _fail("selected_stock_code_not_in_bundle")
+            locators.append(locator)
+
+        refs = manifest.get("row_shards")
+        if not isinstance(refs, list) or len(refs) != len(self._storage.shard_payloads):
+            _fail("selected_manifest_shard_list_invalid")
+        hit_payloads: dict[int, bytes] = {}
+        for locator in locators:
+            _check_read_cancel(cancel_callback)
+            if locator.shard_index not in hit_payloads:
+                reference = refs[locator.shard_index]
+                hit_payloads[locator.shard_index] = self._read_selected_shard(
+                    locator.shard_index,
+                    reference,
+                    cancel_callback,
+                )
+
+        rows: list[DailyMarketTechnicalOfficialDispositionFactRowV1] = []
+        for code, locator in zip(codes, locators, strict=True):
+            _check_read_cancel(cancel_callback)
+            raw = hit_payloads.get(locator.shard_index)
+            if raw is None:
+                _fail("selected_shard_not_loaded")
+            start = locator.byte_offset
+            end = start + locator.line_length
+            line = raw[start:end]
+            if (
+                len(line) != locator.line_length
+                or not line.endswith(b"\n")
+                or len(line) > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_ROW_BYTES + 1
+                or _sha256_bytes(line) != locator.line_sha256
+            ):
+                _fail("selected_row_bytes_sha_mismatch")
+            payload = _strict_json_object(line[:-1], "row_json_invalid")
+            row = _row_from_payload(payload)
+            if row.stock_code != code or row.stock_code != locator.stock_code:
+                _fail("selected_row_code_mismatch")
+            rows.append(row)
+            _check_read_cancel(cancel_callback)
+        _check_read_cancel(cancel_callback)
+        selected = _selected_rows_result(self.reference, codes, tuple(rows))
+        _check_read_cancel(cancel_callback)
+        return selected
+
+    def _read_pinned_manifest(
+        self,
+        cancel_callback: Callable[[], bool] | None,
+    ) -> dict[str, object]:
+        _check_read_cancel(cancel_callback)
+        root = self._storage.output_root
+        relative = self._storage.manifest_relative_path
+        if (
+            str(root) != self.reference.output_root
+            or relative != self.reference.manifest_relative_path
+        ):
+            _fail("selected_manifest_root_binding_mismatch")
+        path = _resolve_bundle_relative(root, relative, "selected_manifest_path_invalid")
+        raw = _read_bounded_regular_file(
+            path,
+            DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_MANIFEST_BYTES,
+            "selected_manifest_missing_or_invalid",
+        )
+        _check_read_cancel(cancel_callback)
+        if _sha256_bytes(raw) != self.reference.manifest_sha256:
+            _fail("selected_manifest_bytes_sha_mismatch")
+        if raw != self.manifest_json.encode("utf-8"):
+            _fail("selected_manifest_bytes_changed")
+        manifest = _strict_json_object(raw, "manifest_json_invalid")
+        _validate_manifest_header(manifest, expected_identity=self.reference.bundle_identity_sha256)
+        if manifest.get("row_count") != self.reference.row_count:
+            _fail("selected_manifest_row_count_mismatch")
+        return manifest
+
+    def _read_selected_shard(
+        self,
+        shard_index: int,
+        reference: object,
+        cancel_callback: Callable[[], bool] | None,
+    ) -> bytes:
+        _check_read_cancel(cancel_callback)
+        if not isinstance(reference, Mapping) or set(reference) != {
+            "shard_index", "relative_path", "sha256", "size_bytes",
+            "first_stock_code", "last_stock_code", "row_count",
+        }:
+            _fail("selected_shard_reference_invalid")
+        if type(reference.get("shard_index")) is not int or reference.get("shard_index") != shard_index:
+            _fail("selected_shard_order_invalid")
+        digest = _require_sha256(reference.get("sha256"), "selected_shard_hash_invalid")
+        relative = reference.get("relative_path")
+        if relative != f"objects/{digest}.jsonl":
+            _fail("selected_shard_content_address_invalid")
+        size = reference.get("size_bytes")
+        if (
+            type(size) is not int
+            or not 0 < size <= DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_SHARD_BYTES
+        ):
+            _fail("selected_shard_size_invalid")
+        path = _resolve_bundle_relative(
+            self._storage.output_root,
+            cast(str, relative),
+            "selected_shard_path_invalid",
+        )
+        raw = _read_bounded_regular_file(
+            path,
+            DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_SHARD_BYTES,
+            "selected_shard_missing_or_invalid",
+        )
+        _check_read_cancel(cancel_callback)
+        if len(raw) != size or _sha256_bytes(raw) != digest:
+            _fail("selected_shard_bytes_sha_mismatch")
+        return raw
 
 
 class DailyMarketTechnicalOfficialDispositionBundleWriterV1:
@@ -835,7 +1199,7 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
                 _fail("manifest_bytes_sha_mismatch")
             manifest = _strict_json_object(raw, "manifest_json_invalid")
             _validate_manifest_header(manifest, expected_identity=identity)
-            shard_payloads = self._read_all_shards(manifest, cancel_callback)
+            shard_payloads, row_locators = self._read_all_shards(manifest, cancel_callback)
             verified = self._verify_exact_sources_and_rows(manifest, shard_payloads, cancel_callback)
             if verified.row_count != manifest["row_count"]:
                 _fail("verified_row_count_mismatch")
@@ -851,11 +1215,24 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
                     Literal["complete", "partial"], manifest["source_coverage_status"]
                 ),
             )
-            return DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1(
+            storage = _VerifiedBundleStorageV1(
+                output_root=self.output_root,
+                bundle_identity_sha256=identity,
+                manifest_relative_path=reference.manifest_relative_path,
+                manifest_sha256=expected_manifest,
+                shard_payloads=shard_payloads,
+                row_locators=row_locators,
+                cancel_callback=cancel_callback,
+                _issuer=_VERIFIED_STORAGE_SEAL,
+            )
+            state = DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1(
                 reference=reference,
                 manifest_json=_canonical_json(manifest),
-                _shard_payloads=shard_payloads,
+                _storage=storage,
+                _seal=_VERIFIED_STATE_SEAL,
             )
+            _check_read_cancel(cancel_callback)
+            return state
         except DailyMarketTechnicalOfficialDispositionBundleError:
             raise
         except (
@@ -873,12 +1250,13 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
         self,
         manifest: Mapping[str, object],
         cancel_callback: Callable[[], bool] | None,
-    ) -> tuple[bytes, ...]:
+    ) -> tuple[tuple[bytes, ...], tuple[_BundleRowLocatorV1, ...]]:
         refs = manifest.get("row_shards")
         if not isinstance(refs, list) or len(refs) > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_SHARDS:
             _fail("shard_reference_list_invalid")
         total = 0
         result: list[bytes] = []
+        row_locators: list[_BundleRowLocatorV1] = []
         seen_codes: set[str] = set()
         previous_code: str | None = None
         total_rows = 0
@@ -914,6 +1292,7 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
             line_count = 0
             stream = BytesIO(raw)
             while True:
+                _check_read_cancel(cancel_callback)
                 line = stream.readline(DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_ROW_BYTES + 2)
                 if not line:
                     break
@@ -932,6 +1311,13 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
                 shard_last = code
                 line_count += 1
                 total_rows += 1
+                row_locators.append(_BundleRowLocatorV1(
+                    stock_code=code,
+                    shard_index=index,
+                    byte_offset=stream.tell() - len(line),
+                    line_length=len(line),
+                    line_sha256=_sha256_bytes(line),
+                ))
             if line_count != count or shard_first != value["first_stock_code"] or shard_last != value["last_stock_code"]:
                 _fail("shard_row_identity_mismatch")
             total += len(raw)
@@ -940,7 +1326,7 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
             result.append(raw)
         if total_rows != manifest.get("row_count"):
             _fail("manifest_row_count_mismatch")
-        return tuple(result)
+        return tuple(result), tuple(row_locators)
 
     def _verify_exact_sources_and_rows(
         self,
@@ -1583,6 +1969,90 @@ def _row_from_payload(payload: Mapping[str, object]) -> DailyMarketTechnicalOffi
         body_json=body,
         stock_code=code,
         cohort_role=cast(Literal["included", "excluded"], role),
+    )
+
+
+def _validate_selected_stock_codes(
+    value: Sequence[str],
+    cancel_callback: Callable[[], bool] | None,
+) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Sequence):
+        _fail("selected_stock_codes_invalid")
+    result: list[str] = []
+    seen: set[str] = set()
+    try:
+        iterator = iter(value)
+        while True:
+            _check_read_cancel(cancel_callback)
+            try:
+                code = next(iterator)
+            except StopIteration:
+                break
+            if len(result) >= DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_SELECTED_CODES:
+                _fail("selected_stock_codes_limit")
+            if not isinstance(code, str) or not _STOCK_CODE_RE.fullmatch(code):
+                _fail("selected_stock_code_invalid")
+            if code in seen:
+                _fail("selected_stock_code_duplicate")
+            seen.add(code)
+            result.append(code)
+    except DailyMarketTechnicalOfficialDispositionBundleError:
+        raise
+    except BaseException as error:
+        raise DailyMarketTechnicalOfficialDispositionBundleError(
+            "selected_stock_codes_iteration_failed",
+            cause_code=type(error).__name__,
+        ) from error
+    return tuple(result)
+
+
+def _find_row_locator(
+    locators: tuple[_BundleRowLocatorV1, ...],
+    stock_code: str,
+) -> _BundleRowLocatorV1 | None:
+    low = 0
+    high = len(locators)
+    while low < high:
+        middle = (low + high) // 2
+        candidate = locators[middle]
+        if candidate.stock_code < stock_code:
+            low = middle + 1
+        else:
+            high = middle
+    if low < len(locators) and locators[low].stock_code == stock_code:
+        return locators[low]
+    return None
+
+
+def _selected_rows_result(
+    reference: DailyMarketTechnicalOfficialDispositionBundleReferenceV1,
+    stock_codes: tuple[str, ...],
+    rows: tuple[DailyMarketTechnicalOfficialDispositionFactRowV1, ...],
+) -> DailyMarketTechnicalOfficialDispositionBundleSelectedRowsV1:
+    ordered_sha = _sha256_json(list(stock_codes))
+    rows_sha = _sha256_json([row.to_dict() for row in rows])
+    identity = _sha256_json({
+        "schema_version": "daily-market-technical-official-disposition-selected-rows.identity.v1",
+        "output_root": reference.output_root,
+        "bundle_identity_sha256": reference.bundle_identity_sha256,
+        "manifest_relative_path": reference.manifest_relative_path,
+        "manifest_sha256": reference.manifest_sha256,
+        "ordered_stock_codes_sha256": ordered_sha,
+        "requested_count": len(stock_codes),
+        "rows_identity_sha256": rows_sha,
+        "row_count": len(rows),
+    })
+    return DailyMarketTechnicalOfficialDispositionBundleSelectedRowsV1(
+        output_root=reference.output_root,
+        bundle_identity_sha256=reference.bundle_identity_sha256,
+        manifest_relative_path=reference.manifest_relative_path,
+        manifest_sha256=reference.manifest_sha256,
+        requested_stock_codes=stock_codes,
+        ordered_stock_codes_sha256=ordered_sha,
+        rows=rows,
+        rows_identity_sha256=rows_sha,
+        materialization_identity_sha256=identity,
+        _seal=_SelectedRowsSealV1(identity, _issuer=_SELECTED_ROWS_SEAL_ISSUER),
     )
 
 

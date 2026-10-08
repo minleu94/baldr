@@ -30,7 +30,9 @@ from app_module.daily_market_technical_official_disposition_bundle_v1 import (
     DailyMarketTechnicalOfficialDispositionBundleError,
     DailyMarketTechnicalOfficialDispositionBundleReaderV1,
     DailyMarketTechnicalOfficialDispositionBundleReferenceV1,
+    DailyMarketTechnicalOfficialDispositionBundleSelectedRowsV1,
     DailyMarketTechnicalOfficialDispositionBundleWriterV1,
+    DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1,
 )
 from app_module.daily_market_technical_universe_v4_producer import (
     DailyMarketTechnicalUniverseV4ProductionRequest,
@@ -318,6 +320,332 @@ print(f"{state.reference.row_count}|{rows[0].stock_code}|{rows[-1].stock_code}|{
         timeout=180,
     )
     assert reopened.stdout.strip() == "258|1000|9999|partial"
+
+
+def test_selected_rows_uses_locator_index_for_descending_cross_shard_page(
+    bundle_fixture: _BundleFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = bundle_fixture
+    state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(fixture.bundle_root).read_exact(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+    import app_module.daily_market_technical_official_disposition_bundle_v1 as bundle_module
+
+    decoded_codes: list[str] = []
+    original_decoder = bundle_module._row_from_payload
+
+    def counted_decoder(payload: Any) -> Any:
+        decoded = original_decoder(payload)
+        decoded_codes.append(decoded.stock_code)
+        return decoded
+
+    monkeypatch.setattr(bundle_module, "_row_from_payload", counted_decoder)
+    codes = (fixture.excluded_code, *reversed(fixture.included_codes[-19:]))
+    selected = state.read_selected_rows(codes)
+
+    assert type(selected) is DailyMarketTechnicalOfficialDispositionBundleSelectedRowsV1
+    assert selected.requested_stock_codes == codes
+    assert tuple(row.stock_code for row in selected.rows) == codes
+    assert decoded_codes == list(codes)
+    payload = selected.to_dict()
+    assert payload["bundle_identity_sha256"] == fixture.reference.bundle_identity_sha256
+    assert payload["manifest_sha256"] == fixture.reference.manifest_sha256
+    assert len(cast(list[object], payload["rows"])) == len(codes)
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError, match="selected_rows_shape_invalid"):
+        replace(selected, requested_stock_codes=tuple(reversed(codes)))
+
+
+def test_selected_rows_empty_request_rechecks_manifest_without_decoding_rows(
+    bundle_fixture: _BundleFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = bundle_fixture
+    state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(fixture.bundle_root).read_exact(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+    import app_module.daily_market_technical_official_disposition_bundle_v1 as bundle_module
+
+    def unexpected_decode(_payload: Any) -> Any:
+        raise AssertionError("empty selection must not decode a row")
+
+    monkeypatch.setattr(bundle_module, "_row_from_payload", unexpected_decode)
+    selected = state.read_selected_rows(())
+    assert selected.requested_stock_codes == ()
+    assert selected.rows == ()
+    assert selected.rows_identity_sha256 == hashlib.sha256(b"[]").hexdigest()
+
+
+@pytest.mark.parametrize(
+    ("codes", "expected_code"),
+    (
+        ("1000", "selected_stock_codes_invalid"),
+        (b"1000", "selected_stock_codes_invalid"),
+        (("1000", "1000"), "selected_stock_code_duplicate"),
+        (("bad/code",), "selected_stock_code_invalid"),
+        (("8888",), "selected_stock_code_not_in_bundle"),
+    ),
+)
+def test_selected_rows_rejects_invalid_or_nonmember_requests(
+    bundle_fixture: _BundleFixture,
+    codes: object,
+    expected_code: str,
+) -> None:
+    fixture = bundle_fixture
+    state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(fixture.bundle_root).read_exact(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError, match=expected_code):
+        state.read_selected_rows(cast(Any, codes))
+
+
+def test_selected_rows_rejects_more_than_256_even_if_sequence_length_lies(
+    bundle_fixture: _BundleFixture,
+) -> None:
+    fixture = bundle_fixture
+    state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(fixture.bundle_root).read_exact(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+
+    class LyingList(list[str]):
+        def __len__(self) -> int:
+            return 1
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError, match="selected_stock_codes_limit"):
+        state.read_selected_rows(LyingList(f"{1000 + index:04d}" for index in range(257)))
+
+
+def test_selected_rows_strict_cancel_and_state_replace_seals(
+    bundle_fixture: _BundleFixture,
+) -> None:
+    fixture = bundle_fixture
+    state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(fixture.bundle_root).read_exact(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleCancelled):
+        state.read_selected_rows((fixture.included_codes[0],), cancel_callback=lambda: True)
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError, match="cancel_callback_invalid"):
+        state.read_selected_rows((fixture.included_codes[0],), cancel_callback=cast(Any, lambda: 1))
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError, match="verified_storage_reference_mismatch"):
+        replace(state, reference=replace(state.reference, output_root=str(fixture.qa_root)))
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError, match="verified_state_manifest_digest_mismatch"):
+        replace(state, manifest_json=state.manifest_json + " ")
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError, match="verified_state_not_reader_issued"):
+        replace(state, _storage=cast(Any, object()))
+    with pytest.raises(AttributeError, match="immutable"):
+        state._storage.row_locators = ()  # type: ignore[misc]
+
+
+def test_selected_rows_cancels_between_real_shards_without_partial_result(
+    bundle_fixture: _BundleFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = bundle_fixture
+    state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(fixture.bundle_root).read_exact(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+    read_shards: list[int] = []
+    original_reader = state._read_selected_shard
+
+    def cancel_after_first_shard(
+        _state: DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1,
+        shard_index: int,
+        reference: object,
+        cancel_callback: Callable[[], bool] | None,
+    ) -> bytes:
+        raw = original_reader(shard_index, reference, cancel_callback)
+        read_shards.append(shard_index)
+        return raw
+
+    monkeypatch.setattr(
+        DailyMarketTechnicalOfficialDispositionBundleVerifiedStateV1,
+        "_read_selected_shard",
+        cancel_after_first_shard,
+    )
+    def cancel_after_hit_shard() -> bool:
+        return bool(read_shards)
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleCancelled):
+        state.read_selected_rows(
+            (fixture.excluded_code, fixture.included_codes[0]),
+            cancel_callback=cancel_after_hit_shard,
+        )
+    assert len(read_shards) == 1
+
+
+@pytest.mark.parametrize("empty_request", (False, True))
+def test_selected_rows_final_result_gate_polls_cancellation(
+    bundle_fixture: _BundleFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    empty_request: bool,
+) -> None:
+    fixture = bundle_fixture
+    state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(fixture.bundle_root).read_exact(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+    import app_module.daily_market_technical_official_disposition_bundle_v1 as bundle_module
+
+    cancelled = False
+    original_result_builder = bundle_module._selected_rows_result
+
+    def build_then_cancel(*args: Any, **kwargs: Any) -> Any:
+        nonlocal cancelled
+        result = original_result_builder(*args, **kwargs)
+        cancelled = True
+        return result
+
+    monkeypatch.setattr(bundle_module, "_selected_rows_result", build_then_cancel)
+    requested = () if empty_request else (fixture.included_codes[0],)
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleCancelled):
+        state.read_selected_rows(requested, cancel_callback=lambda: cancelled)
+
+
+@pytest.mark.parametrize(
+    ("final_callback_mode", "expected_code"),
+    (
+        ("cancel", "cancelled_before_publish"),
+        ("invalid", "cancel_callback_invalid"),
+        ("failed", "cancel_callback_failed"),
+    ),
+)
+def test_exact_read_storage_build_final_gate_preserves_callback_codes(
+    bundle_fixture: _BundleFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    final_callback_mode: str,
+    expected_code: str,
+) -> None:
+    fixture = bundle_fixture
+    import app_module.daily_market_technical_official_disposition_bundle_v1 as bundle_module
+
+    state: dict[str, str] = {"mode": "normal"}
+    original_init = bundle_module._VerifiedBundleStorageV1.__init__
+
+    def build_then_change_callback(self: Any, **kwargs: Any) -> None:
+        original_init(self, **kwargs)
+        state["mode"] = final_callback_mode
+
+    def callback() -> object:
+        mode = state["mode"]
+        if mode == "cancel":
+            return True
+        if mode == "invalid":
+            return 1
+        if mode == "failed":
+            raise RuntimeError("synthetic callback failure")
+        return False
+
+    monkeypatch.setattr(bundle_module._VerifiedBundleStorageV1, "__init__", build_then_change_callback)
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError) as error:
+        DailyMarketTechnicalOfficialDispositionBundleReaderV1(fixture.bundle_root).read_exact(
+            fixture.reference.bundle_identity_sha256,
+            expected_manifest_sha256=fixture.reference.manifest_sha256,
+            cancel_callback=cast(Any, callback),
+        )
+    assert error.value.code == expected_code
+
+
+def test_selected_rows_revalidates_manifest_and_only_selected_shards(
+    bundle_fixture: _BundleFixture,
+) -> None:
+    fixture = bundle_fixture
+    valid_attempt = fixture.qa_root / "selected-manifest-state"
+    valid_root = valid_attempt / "bundle"
+    shutil.copytree(fixture.bundle_root, valid_root)
+    state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(valid_root).read_exact(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+    manifest_path = valid_root / fixture.reference.manifest_relative_path
+    manifest_path.write_bytes(manifest_path.read_bytes() + b" ")
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError):
+        state.read_selected_rows((fixture.included_codes[0],))
+
+    shard_attempt = fixture.qa_root / "selected-shard-tamper"
+    shard_root = shard_attempt / "bundle"
+    shutil.copytree(fixture.bundle_root, shard_root)
+    shard_state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(shard_root).read_exact(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+    first_shard = cast(dict[str, object], cast(list[object], shard_state.manifest["row_shards"])[0])
+    shard_path = shard_root / cast(str, first_shard["relative_path"])
+    raw = bytearray(shard_path.read_bytes())
+    raw[-2] = ord(" ") if raw[-2] != ord(" ") else ord("\t")
+    shard_path.write_bytes(raw)
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError, match="selected_shard_bytes_sha_mismatch"):
+        shard_state.read_selected_rows((fixture.included_codes[0],))
+
+    other_shard_attempt = fixture.qa_root / "unselected-shard-drift"
+    other_shard_root = other_shard_attempt / "bundle"
+    shutil.copytree(fixture.bundle_root, other_shard_root)
+    other_shard_state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(other_shard_root).read_exact(
+        fixture.reference.bundle_identity_sha256,
+        expected_manifest_sha256=fixture.reference.manifest_sha256,
+    )
+    shard_refs = cast(list[object], other_shard_state.manifest["row_shards"])
+    other_shard = cast(dict[str, object], shard_refs[1])
+    other_path = other_shard_root / cast(str, other_shard["relative_path"])
+    other_raw = bytearray(other_path.read_bytes())
+    other_raw[-2] = ord(" ") if other_raw[-2] != ord(" ") else ord("\t")
+    other_path.write_bytes(other_raw)
+    selected = other_shard_state.read_selected_rows((fixture.included_codes[0],))
+    assert tuple(row.stock_code for row in selected.rows) == (fixture.included_codes[0],)
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionBundleError, match="shard_bytes_sha_mismatch"):
+        DailyMarketTechnicalOfficialDispositionBundleReaderV1(other_shard_root).read_exact(
+            fixture.reference.bundle_identity_sha256,
+            expected_manifest_sha256=fixture.reference.manifest_sha256,
+        )
+
+
+def test_selected_rows_fresh_process_reads_exact_cross_shard_codes(
+    bundle_fixture: _BundleFixture,
+) -> None:
+    fixture = bundle_fixture
+    codes = (fixture.excluded_code, *reversed(fixture.included_codes[-19:]))
+    script = r"""
+import json
+import sys
+from app_module.daily_market_technical_official_disposition_bundle_v1 import DailyMarketTechnicalOfficialDispositionBundleReaderV1
+state = DailyMarketTechnicalOfficialDispositionBundleReaderV1(sys.argv[1]).read_exact(
+    sys.argv[2], expected_manifest_sha256=sys.argv[3]
+)
+selected = state.read_selected_rows(tuple(json.loads(sys.argv[4])))
+print(json.dumps({
+    "codes": list(selected.requested_stock_codes),
+    "bundle": selected.bundle_identity_sha256,
+    "manifest": selected.manifest_sha256,
+    "identity": selected.materialization_identity_sha256,
+}, sort_keys=True))
+"""
+    reopened = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            script,
+            str(fixture.bundle_root),
+            fixture.reference.bundle_identity_sha256,
+            fixture.reference.manifest_sha256,
+            json.dumps(list(codes)),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    payload = json.loads(reopened.stdout.strip())
+    assert payload["codes"] == list(codes)
+    assert payload["bundle"] == fixture.reference.bundle_identity_sha256
+    assert payload["manifest"] == fixture.reference.manifest_sha256
+    assert len(payload["identity"]) == 64
 
 
 def test_later_market_capture_is_rejected_without_changing_technical_cutoff(

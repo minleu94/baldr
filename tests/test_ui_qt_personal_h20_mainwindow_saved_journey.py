@@ -1,0 +1,411 @@
+"""真 MainWindow 的隔離 H20 保存名單下鑽旅程。
+
+來源、candidate、artifact、lineage 與 capture 都由合成 fixture 建立；不訓練、
+不讀正式資料，也不代表正式模型資格。只替換 runner 的 verifier-port factory，
+產品 reader、cohort reader、TaskWorker、MainWindow 與 Qt 點擊路徑保持真實。
+"""
+
+from __future__ import annotations
+
+import os
+import json
+from pathlib import Path
+import socket
+import tempfile
+import threading
+import time
+from typing import Any
+
+import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+pytest.importorskip("PySide6")
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+
+from ui_qt.main import MainWindow, _drain_qt_deferred_deletes
+from ui_qt.workers.task_worker import TaskWorker
+
+
+def _configure_isolated_environment(
+    tmp_path: Path,
+    market_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, Path]:
+    from tests.test_ui_qt_main_fulln_bookmark_journey import _ISOLATED_ENVIRONMENT_KEYS
+
+    output_root = tmp_path / "output"
+    state_root = tmp_path / "research-state"
+    temp_root = tmp_path / "temporary"
+    local_root = tmp_path / "localapp"
+    roaming_root = tmp_path / "appdata"
+    active_ml_root = tmp_path / "ml-research-output"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
+
+    environment_keys = set(_ISOLATED_ENVIRONMENT_KEYS)
+    environment_keys.add("PHASE3C_CANDIDATE_DB_PATH")
+    for key in environment_keys:
+        monkeypatch.delenv(key, raising=False)
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("DATA_ROOT", str(market_root))
+    monkeypatch.setenv("OUTPUT_ROOT", str(output_root))
+    monkeypatch.setenv("RESEARCH_STATE_ROOT", str(state_root))
+    monkeypatch.setenv("TEMP", str(temp_root))
+    monkeypatch.setenv("TMP", str(temp_root))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_root))
+    monkeypatch.setenv("APPDATA", str(roaming_root))
+    monkeypatch.setenv("BALDR_CONFIG", str(tmp_path / "baldr-config.json"))
+    monkeypatch.setenv("PROFILE", "prod")
+    monkeypatch.setenv("PERSONAL_MODEL_POLICY_PATH", str(state_root / "personal-use-policy.json"))
+    monkeypatch.setenv("PHASE3C_CANDIDATE_DB_PATH", str(tmp_path / "candidate" / "candidate.sqlite"))
+    monkeypatch.setenv("OFFICIAL_CALENDAR_CACHE_PATH", str(market_root / "calendar-cache.json"))
+    monkeypatch.setenv("MPLCONFIGDIR", str(output_root / "application_state" / "matplotlib"))
+    monkeypatch.setenv("RECOMMENDATION_LEARNING_OUTPUT_ROOT", str(state_root / "recommendation-learning"))
+
+    storage_config = tmp_path / "ml-research-storage.json"
+    storage_config.write_text(
+        json.dumps(
+            {
+                "schema_version": "ml-research-storage.v1",
+                "active_root": str(active_ml_root),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BALDR_ML_RESEARCH_STORAGE_CONFIG", str(storage_config))
+    return output_root, temp_root
+
+
+def _install_network_deny(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    attempts: list[str] = []
+
+    def deny(*_args: object, **_kwargs: object) -> None:
+        attempts.append("socket connection attempted")
+        raise AssertionError("synthetic MainWindow H20 journey must not use provider network")
+
+    monkeypatch.setattr(socket.socket, "connect", deny)
+    monkeypatch.setattr(socket.socket, "connect_ex", deny)
+    monkeypatch.setattr(socket, "create_connection", deny)
+    return attempts
+
+
+def _wait_for(app: QApplication, predicate: Any, *, timeout_seconds: float = 90.0) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        app.processEvents()
+        if predicate():
+            return
+        time.sleep(0.01)
+    app.processEvents()
+    assert predicate(), "真 MainWindow H20 保存來源旅程逾時"
+
+
+def _double_click_selected_h20_row(app: QApplication, window: MainWindow, widget: Any) -> dict[str, list[Any]]:
+    matches = [
+        row for row in range(widget.table.rowCount())
+        if widget.table.item(row, 0) is not None and widget.table.item(row, 0).text() == "2382"
+    ]
+    assert len(matches) == 1
+    row = matches[0]
+    item = widget.table.item(row, 0)
+    assert item is not None
+    widget.table.scrollToItem(item)
+    widget.table.setCurrentItem(item)
+    widget.table.selectRow(row)
+    signals: dict[str, list[Any]] = {"item_double_clicked": [], "research_requested": []}
+    widget.table.itemDoubleClicked.connect(
+        lambda value: signals["item_double_clicked"].append(value.text())
+    )
+    widget.researchRequested.connect(
+        lambda value: signals["research_requested"].append(value)
+    )
+    window.recommendation_view.result_scroll.ensureWidgetVisible(widget.table)
+    app.processEvents()
+    position = widget.table.visualItemRect(item).center()
+    assert window.isVisible() and widget.isVisible() and widget.table.isVisible()
+    assert widget.table.viewport().rect().intersects(widget.table.visualItemRect(item)), (
+        f"2382 列未出現在 viewport：row={row}; rect={widget.table.visualItemRect(item)!r}; "
+        f"viewport={widget.table.viewport().rect()!r}; page={widget.parentWidget()!r}"
+    )
+    assert widget.research_button.isEnabled()
+    # Qt 的 double-click sequence 先經過真實 click，再由 QTest 送出 double-click。
+    # 只觀察訊號，不直接 emit 或呼叫 MainWindow handler。
+    QTest.mouseClick(widget.table.viewport(), Qt.MouseButton.LeftButton, pos=position)
+    app.processEvents()
+    QTest.mouseDClick(
+        widget.table.viewport(),
+        Qt.MouseButton.LeftButton,
+        pos=position,
+        delay=50,
+    )
+    app.processEvents()
+    assert signals["item_double_clicked"] == ["2382"], (
+        f"QTest 未送達表格 double-click：signals={signals!r}; "
+        f"current_row={widget.table.currentRow()}; "
+        f"selected_rows={[index.row() for index in widget.table.selectionModel().selectedRows()]!r}; "
+        f"research_enabled={widget.research_button.isEnabled()}; "
+        f"rect={widget.table.visualItemRect(item)!r}"
+    )
+    assert len(signals["research_requested"]) == 1, (
+        f"double-click 未產生 H20 research request：signals={signals!r}; "
+        f"diagnostic={widget.diagnostic_text.toPlainText()!r}"
+    )
+    # MainWindow 的真 handler 應在短時間內啟動 exact cohort refresh；若沒有，
+    # 這是 route wiring/selection 問題，無須等長時間來源核驗 timeout 才發現。
+    _wait_for(
+        app,
+        lambda: getattr(window, "_personal_h20_cohort_worker", None) is not None,
+        timeout_seconds=10.0,
+    )
+    cohort_worker = getattr(window, "_personal_h20_cohort_worker", None)
+    assert cohort_worker is not None, (
+        f"MainWindow 未接收已送出的 H20 selection：signals={signals!r}; "
+        f"origin={getattr(window, '_personal_h20_research_origin', None)!r}; "
+        f"status={window.statusBar().currentMessage()!r}"
+    )
+    return signals
+
+
+def _prepare_saved_h20_mainwindow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    source_mode: dict[str, bool] | None = None,
+    source_entered: threading.Event | None = None,
+    source_release: threading.Event | None = None,
+) -> tuple[QApplication, MainWindow, dict[str, Any], list[str], threading.local]:
+    import data_module.config as config_module
+    import scripts.scheduled.run_personal_current_observed_h20_daily as runner
+    import ui_qt.workers.task_worker as worker_module
+    from tests.test_ui_qt_h20_saved_source_journey import _build_saved_h20_store
+
+    fixture_root = tmp_path / "synthetic-h20-fixture"
+    market_root = fixture_root / "FA_Data"
+    _configure_isolated_environment(fixture_root, market_root, monkeypatch)
+    network_attempts = _install_network_deny(monkeypatch)
+
+    original_config_type = config_module.TWStockConfig
+    saved = _build_saved_h20_store(fixture_root, monkeypatch)
+    # 舊 fixture helper 暫時替換 module attribute 以建資料；真 MainWindow 恢復使用
+    # repository 的 TWStockConfig，並由隔離環境變數提供所有路徑。
+    monkeypatch.setattr(config_module, "TWStockConfig", original_config_type)
+    monkeypatch.setenv("PERSONAL_H20_ACTIVATION_CONFIG", str(saved["activation"].config_path))
+
+    task_context = threading.local()
+    mode = source_mode if source_mode is not None else {}
+    entered = source_entered if source_entered is not None else threading.Event()
+    release = source_release if source_release is not None else threading.Event()
+    base_source_verifier = saved["source_verifier"]
+    contract_verifier = saved["contract_fixture"]["verifier"]
+    snapshot_database = Path(saved["snapshot_database"])
+
+    def source_verifier(binding: Any) -> Any:
+        task_name = getattr(task_context, "task_name", "")
+        if task_name == "read_personal_h20_product_for_stock_with_session":
+            call_number = getattr(task_context, "source_call_number", 0) + 1
+            task_context.source_call_number = call_number
+            if mode.get("block_product_first_source") and call_number == 1:
+                entered.set()
+                if not release.wait(timeout=45):
+                    raise RuntimeError("fixture_h20_source_barrier_timeout")
+            if mode.get("drift_product_finish_source") and call_number == 2:
+                snapshot_database.write_bytes(snapshot_database.read_bytes() + b" ")
+                mode["source_mutated"] = True
+        return base_source_verifier(binding)
+
+    monkeypatch.setattr(
+        runner,
+        "personal_current_observed_h20_read_ports",
+        lambda: {
+            "source_verifier": source_verifier,
+            "contract_verifier": contract_verifier,
+        },
+    )
+
+    class OperationTaggedTaskWorker(TaskWorker):
+        def run(self) -> None:
+            task_context.task_name = getattr(
+                self.task_function, "__name__", type(self.task_function).__name__
+            )
+            task_context.source_call_number = 0
+            try:
+                super().run()
+            finally:
+                task_context.task_name = ""
+
+    monkeypatch.setattr(worker_module, "TaskWorker", OperationTaggedTaskWorker)
+
+    # 主個股服務也只看到相同隔離的合成 SQLite；H20 capture 的原始來源仍是
+    # fixture pin 指向的獨立 immutable snapshot。
+    config = original_config_type()
+    report_database = Path(config.db_file)
+    report_database.parent.mkdir(parents=True, exist_ok=True)
+    report_database.write_bytes(snapshot_database.read_bytes())
+
+    app = QApplication.instance() or QApplication([])
+    assert isinstance(app, QApplication)
+    window = MainWindow()
+    assert isinstance(window, MainWindow)
+    assert window.config.data_root.resolve() == Path(saved["market_root"]).resolve()
+    assert window.config.output_root.resolve() == (fixture_root / "output").resolve()
+    return app, window, saved, network_attempts, task_context
+
+
+def _load_h20_list(app: QApplication, window: MainWindow) -> Any:
+    window.left_navigation.button_for_key("recommendation").click()
+    widget = window.personal_h20_research_widget
+    panel = window.personal_h20_research_panel
+    window.recommendation_view.result_source_tabs.setCurrentWidget(panel)
+    _wait_for(
+        app,
+        lambda: getattr(window, "_personal_h20_cohort_worker", None) is None
+        and widget._cohort is not None,
+    )
+    assert widget.table.rowCount() == 1
+    first_item = widget.table.item(0, 0)
+    assert first_item is not None and first_item.text() == "2382"
+    return widget
+
+
+def _close_mainwindow(app: QApplication, window: MainWindow) -> None:
+    try:
+        if window.isVisible():
+            window.close()
+            _wait_for(app, lambda: not window.isVisible(), timeout_seconds=45.0)
+        _drain_qt_deferred_deletes(app, (window,))
+    except RuntimeError:
+        pass
+
+
+def test_actual_mainwindow_h20_double_click_summary_return_recheck_and_source_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mode: dict[str, bool] = {"drift_product_finish_source": False}
+    app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch, source_mode=mode
+    )
+    original_source_bytes = Path(saved["snapshot_database"]).read_bytes()
+    mutated_source_path = Path(saved["snapshot_database"])
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        assert widget._cohort.manifest_sha256 == saved["manifest_sha256"]
+
+        double_click_signals = _double_click_selected_h20_row(app, window, widget)
+        workspace = window.stock_research_workspace
+        assert workspace is not None
+        report_view = workspace.report_view
+        _wait_for(
+            app,
+            lambda: getattr(report_view.context, "source_kind", None) == "personal_h20_saved_cohort"
+            and getattr(workspace.personal_h20_saved_evidence, "status", None) == "available"
+            and getattr(window, "_personal_h20_worker", None) is None
+            and not workspace.personal_h20_saved_busy,
+        )
+        evidence = workspace.personal_h20_saved_evidence
+        assert evidence is not None
+        assert double_click_signals["research_requested"]
+        assert evidence.stock_code == "2382"
+        assert evidence.gross_return_bp == 1234
+        reference = getattr(window, "_personal_h20_saved_reference", None)
+        assert reference is not None and reference.manifest_sha256 == saved["manifest_sha256"]
+        assert "2382｜保存的個人 H20 研究預測（未扣成本）：+12.34%" in workspace.personal_h20_saved_summary.text()
+
+        first_evidence = evidence
+        assert workspace.personal_h20_saved_recheck_button.isEnabled()
+        workspace.personal_h20_saved_recheck_button.click()
+        _wait_for(
+            app,
+            lambda: getattr(window, "_personal_h20_worker", None) is None
+            and getattr(workspace.personal_h20_saved_evidence, "status", None) == "available"
+            and not workspace.personal_h20_saved_busy,
+        )
+        assert workspace.personal_h20_saved_evidence == first_evidence
+
+        origin = getattr(window, "_personal_h20_research_origin", None)
+        assert isinstance(origin, tuple) and len(origin) == 3
+        selection = origin[1]
+        report_view.return_button.click()
+        _wait_for(
+            app,
+            lambda: getattr(window, "_personal_h20_cohort_worker", None) is None
+            and widget._cohort is not None
+            and bool(widget.table.selectedItems()),
+        )
+        selected_row = widget.table.currentRow()
+        assert widget.table.item(selected_row, 0).text() == "2382"
+        assert widget.table.item(selected_row, 0).data(Qt.ItemDataRole.UserRole) == selection
+        assert widget.research_button.isEnabled()
+
+        # 明確重新核驗時，在本次 product worker 的 finish source verifier 前改變
+        # synthetic snapshot bytes；公開 reader 必須失敗並呈現 unavailable。
+        mode["drift_product_finish_source"] = True
+        window.left_navigation.button_for_key("stock_research").click()
+        app.processEvents()
+        assert workspace.personal_h20_saved_recheck_button.isEnabled()
+        workspace.personal_h20_saved_recheck_button.click()
+        _wait_for(
+            app,
+            lambda: mode.get("source_mutated", False)
+            and getattr(window, "_personal_h20_worker", None) is None
+            and getattr(workspace.personal_h20_saved_evidence, "status", None) == "unavailable"
+            and not workspace.personal_h20_saved_busy,
+        )
+        unavailable = workspace.personal_h20_saved_evidence
+        assert unavailable is not None and unavailable.reason
+        assert "+12.34%" not in workspace.personal_h20_saved_summary.text()
+        assert network_attempts == []
+    finally:
+        # 只回復這個 synthetic fixture；讀取操作全程未寫正式來源。
+        if mutated_source_path.exists():
+            mutated_source_path.write_bytes(original_source_bytes)
+        _close_mainwindow(app, window)
+
+
+def test_actual_mainwindow_close_cancels_saved_h20_drilldown_without_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mode: dict[str, bool] = {"block_product_first_source": True}
+    entered = threading.Event()
+    release = threading.Event()
+    app, window, _saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path,
+        monkeypatch,
+        source_mode=mode,
+        source_entered=entered,
+        source_release=release,
+    )
+    try:
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        double_click_signals = _double_click_selected_h20_row(app, window, widget)
+        assert double_click_signals["research_requested"]
+        _wait_for(
+            app,
+            entered.is_set,
+            timeout_seconds=90.0,
+        )
+        worker = getattr(window, "_personal_h20_worker", None)
+        assert worker is not None and worker.isRunning()
+
+        # 真 MainWindow 關閉會合作取消工作；先保持來源 verifier barrier，確認
+        # worker 收到取消後才釋放，避免把「剛好已完成」誤算成取消。
+        window.close()
+        _wait_for(app, lambda: worker.is_cancel_requested(), timeout_seconds=10.0)
+        release.set()
+        _wait_for(app, lambda: not window.isVisible(), timeout_seconds=45.0)
+        assert getattr(window, "_personal_h20_saved_evidence", None) is None
+        assert network_attempts == []
+    finally:
+        release.set()
+        _close_mainwindow(app, window)

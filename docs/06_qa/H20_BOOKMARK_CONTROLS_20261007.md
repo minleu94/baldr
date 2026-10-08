@@ -1,6 +1,6 @@
 # H20 收藏控制項葉片中央驗收
 
-此葉片新增 PersonalH20BookmarkControls 與專屬測試，尚未掛入正式觀察清單頁面，也未交付新的打包候選。現有 d9 真人驗收仍不包含收藏。
+本文件保留逐葉片驗收歷程。現dev已接Main保存與觀察清單重開／返回，並通過合成新程序旅程；原實際資料與新打包候選／Native仍待驗。固定d9真人驗收不包含收藏，下文最初獨立widget測試不代表當時已有完整入口。
 
 公開 WatchlistService 列出 typed H20 收藏，精確 identity 重開；錯誤與重複身份列全部可見且停用。原 manifest/capture 身份、當前模型停用或變更狀態分開呈現，不改讀 latest。來源重驗使用明示 prediction reader，背景 worker generation、選取改變與取消拒絕晚到結果；queued refresh 合併成一次。移除預設否確認，精確 COW mutation 開始後不冒稱可取消，保留 restore token。
 
@@ -37,3 +37,13 @@ dev MainWindow 已掛入專用 H20 收藏控制項，使用獨立歷史 read ses
 ### 新程序來源拒絕診斷接續
 
 新程序合成旅程 d attempt 的即時 trace 證明 Main 初始化約1.109秒、列表刷新約0.047秒；Open後初讀來源被拒，wrapper終態因缺 verified group再次拒絕，最後報state_changed。這不是來源核驗成功，也不是原私人資料速度證據，旅程仍失敗待修fixture與失敗收尾。wrapper現在保留所選列 initial/terminal reason，成功資格與終態拒絕維持原狀；中央新增原始來源時鐘拒絕回歸，12項通過（5.26秒，C:/t/h20-initial-rejection-20261007-a），來源bytes不變，定向typing與語法通過。未以增加timeout掩蓋失敗。
+
+### 合成真Main新程序旅程中央通過
+
+新增tests/test_ui_qt_personal_h20_bookmark_fresh_process.py，父程序真Main保存／COW／關閉後，另一PID沿同一私人收藏存放處及明示BALDR_ML_RESEARCH_STORAGE_CONFIG重開。使用真正_source_port與來源SQLite；模型合約使用明示合成文件pins及公開lineage／manifest核驗，不宣稱真模型資格。原路徑resolver與來源守衛未替換，兩pass fresh來源重驗；禁止網路、current product pointer、來源SQL寫入，父保存前後及子操作前後inventory均不變。
+
+Luna a–f失敗保留：輸出編碼遮蔽、fixture根只在父端替換而子端拒絕、inventory起點早於fixture設定完成、錯查不存在的Main欄位；d人工中止不是驗收結果，父／子PID事後均不存在。g首度通過後保留原收據，h再修測試guard typing與重複verifier耗時覆寫；新測試採失敗即收尾、逐階段即時trace，每次duration樣本／合計／次數及shutdown後總耗時分開保存。
+
+中央唯一C:/t/h20-fresh-root-20261007-a，1項通過（8.62秒），保留3則既有warnings。parent34856／child26732不同；完整child1.797秒，Main初始化0.937秒、列表刷新0.047秒、Open至摘要0.516秒、來源初讀／終態0.109+0.094秒、精確返回0.032秒、shutdown0.187秒。receipt及stage-trace.jsonl在該case的test_saved_h20_bookmark_reopen0。原2382的合成+1234bp、manifest/capture/observed_at、排序與scroll DTO、精確收藏ID與COW保持；來源唯讀連線2次、network/current pointer0。
+
+新test定向mypy --follow-imports=skip與語法通過。此證明小型合成新程序完整路由，不證明原十股／2382真資料速度、不宣稱p95或真模型資格；收藏排序／scroll DTO保持不代表還原了原H20 cohort widget。新增檔前像不存在，回滾只移除此test前先核其他引用；產品碼前像仍沿先前提交與隔離preimage。原候選不含新收藏入口，下一固定候選與Native仍待驗。

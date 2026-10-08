@@ -273,3 +273,5 @@ Main 接續補上完整重驗後 restore_selection False 的終態 unavailable�
 新增公開 exact bundle session factory，從使用者明示來源及原 manifest SHA 完整核驗後建立研究 query；決策 cutoff、技術 generation 與官方來源 pins 均沿用原保存內容，不採現在時鐘或 latest。bundle 與 P01 各開一次；`session.with_conditions(...)` 沿用同次已核來源，在完整母體重新篩選排序，不重新開來源，也不表示持續監測檔案。明確重驗與收藏 fresh restore 仍須另開 factory。
 
 中央完整新舊聯測34 passed／500.05秒，證據 `output/qa/f17_exact_session_factory_root_20261008_a/root_factory_warm_union03.log`；真258列公開 fixture 覆蓋末段頁、全域市場篩選、清除條件、source mismatch、錯誤 manifest 與發行後取消。前兩輪失敗與更正紀錄保留；未排除既有24項。兩檔 mypy 與 compile 通過。此為應用層接受，Main 入口、跨頁比較、收藏跨新程序、一般來源產製與真人旅程仍未完成，不代表全市場或 PIT 資格。
+
+F17 root 設定前置：新增 `TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT` 共用環境／portable JSON 解析，未設定保持 None；空字串、相對路徑與 frozen 包內來源拒絕，resolve 與 apply 均驗。設定層不建立保存來源。新舊 bootstrap 聯測28 passed／1.38秒、3檔mypy clean；log `output/qa/f17_read_root_root_20261008_a/bootstrap_union03.log`。首次新增測試錯用不存在的 environ 參數造成6 passed／1 failed，記錄與fixture保留，只更正測試呼叫。此設定尚待UI注入與完整旅程，不提供使用者操作完成資格。

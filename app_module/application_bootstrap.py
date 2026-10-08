@@ -15,6 +15,7 @@ _PORTABLE_KEYS = frozenset(
         "DATA_ROOT",
         "OUTPUT_ROOT",
         "TECHNICAL_UNIVERSE_READ_ROOT",
+        "TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT",
         "FUNDAMENTAL_READ_SNAPSHOT_ROOT",
         "PERSONAL_H20_SQLITE_READ_ROOT",
         "RESEARCH_STATE_ROOT",
@@ -99,6 +100,7 @@ def resolve_application_settings(
         value = _optional_environment_text(source, key)
         if key in {
             "TECHNICAL_UNIVERSE_READ_ROOT",
+            "TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT",
             "FUNDAMENTAL_READ_SNAPSHOT_ROOT",
             "PERSONAL_H20_SQLITE_READ_ROOT",
         } and key in source and value is None:
@@ -161,6 +163,11 @@ def resolve_application_settings(
         ):
             raise ValueError("OFFICIAL_CALENDAR_CACHE_PATH 必須位於 frozen 程式包之外")
         technical_root = effective.get("TECHNICAL_UNIVERSE_READ_ROOT")
+        official_root = effective.get("TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT")
+        if official_root is not None and any(
+            _is_same_or_child(Path(official_root), bundle) for bundle in bundle_roots
+        ):
+            raise ValueError("TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT 必須位於 frozen 程式包之外")
         if technical_root is not None and any(
             _is_same_or_child(Path(technical_root), bundle) for bundle in bundle_roots
         ):
@@ -225,6 +232,11 @@ def apply_application_settings(settings: ApplicationSettings) -> None:
     if runtime_root != _canonical_path(output_root / "application_state"):
         raise ValueError("runtime_state_root 必須位於 OUTPUT_ROOT/application_state")
     technical_root = environment.get("TECHNICAL_UNIVERSE_READ_ROOT")
+    official_root = environment.get("TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT")
+    official_path = (
+        None if official_root is None
+        else _absolute_environment_path("TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT", official_root)
+    )
     technical_path = (
         None if technical_root is None
         else _absolute_environment_path("TECHNICAL_UNIVERSE_READ_ROOT", technical_root)
@@ -242,6 +254,10 @@ def apply_application_settings(settings: ApplicationSettings) -> None:
 
     if bool(getattr(sys, "frozen", False)):
         bundles = _frozen_bundle_roots(_canonical_path(settings.resource_root))
+        if official_path is not None and any(
+            _is_same_or_child(official_path, bundle) for bundle in bundles
+        ):
+            raise ValueError("TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT 必須位於 frozen 程式包之外")
         if technical_path is not None:
             if any(_is_same_or_child(technical_path, bundle) for bundle in bundles):
                 raise ValueError("TECHNICAL_UNIVERSE_READ_ROOT 必須位於 frozen 程式包之外")

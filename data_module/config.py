@@ -24,6 +24,16 @@ def _technical_universe_read_root_from_environment() -> Path | None:
     return Path(value)
 
 
+def _technical_official_disposition_read_root_from_environment() -> Path | None:
+    name = "TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT"
+    if name not in os.environ:
+        return None
+    value = os.environ[name].strip()
+    if not value:
+        raise ValueError(f"{name} 必須是非空絕對路徑")
+    return Path(value)
+
+
 def _fundamental_read_snapshot_root_from_environment() -> Path | None:
     name = "FUNDAMENTAL_READ_SNAPSHOT_ROOT"
     if name not in os.environ:
@@ -113,6 +123,11 @@ class TWStockConfig:
         default_factory=_technical_universe_read_root_from_environment,
         kw_only=True,
     )
+    # 官方市場／處置保存來源必須明示；設定解析不建立或掃描來源。
+    technical_official_disposition_read_root: Path | None = field(
+        default_factory=_technical_official_disposition_read_root_from_environment,
+        kw_only=True,
+    )
     # 基本面唯讀操作先複製到明示隔離根；未設定時不得選用正式輸出或QA預設根。
     fundamental_read_snapshot_root: Path | None = field(
         default_factory=_fundamental_read_snapshot_root_from_environment,
@@ -188,6 +203,11 @@ class TWStockConfig:
     
     def __post_init__(self):
         """初始化衍生屬性"""
+        if self.technical_official_disposition_read_root is not None:
+            official_root = Path(self.technical_official_disposition_read_root).expanduser()
+            if not official_root.is_absolute():
+                raise ValueError("TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT 必須是明示絕對路徑")
+            self.technical_official_disposition_read_root = official_root
         if self.technical_universe_read_root is not None:
             technical_root = Path(self.technical_universe_read_root).expanduser()
             if not technical_root.is_absolute():

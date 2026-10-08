@@ -53,3 +53,13 @@ parent 在 `_run_child` 寫 resource summary 時仍呼叫原 C63 `_write_json_ne
 root 獨立 selftest exit0，case `C:/t/p01_ucayb301`，log `output/qa/p01_b3mrz9_8_source_benchmark_20261008_a/root_guard_finalization_20261008_b.log`。controller固定 SHA256 `38b4ea08f362908b84f9ab49799d728a646b38bec8f6eb9c9833e9e5792551ec`；真 `_run_child_preserving_failure` 在 worker passed result已保存後注入 resource-summary 錯誤，仍保留已驗 bootstrap/PID/create-time、7筆samples的path/hash/size/count與實際Job closed／零ownedprocess證據；原workerresult bytes不變，parentfailed且停止矩陣。沒有把未知樣本偽造為零，未重複嵌樣本明細。固定C63helper未改，network／SQL／producer／model／benchmark都沒有執行。
 
 這授予 QA finalization 契約有限接受，不能改寫原 `p01_yyuuqth0` cleanup unknown。root另啟新的完整1000檔source-only矩陣 session63774，目前執行中；其他代理測試／build／Native已暫停，原始資料及正式排程不在本矩陣範圍。結果未到前不授完整p95接受。
+
+## 完整冷暖矩陣終態（效能未通過）
+
+session63774 已 terminal exit1，新 case `C:/t/p01_yyz7kyi8`。固定 controller38b4、來源2897及既有合成store不變；五個獨立cold worker與一個warm worker均完成，parent guard拒絕數0。完整included／processed1000、declared1001、excluded1、pending0、missing1；來源archive、合成DB、sealed store前後一致，SQLite連線0，未啟動MainWindow／EXE／producer。這是固定來源引擎測試，不是2382或實際全市場UI驗收。
+
+冷啟動到首頁五筆68.385–69.021秒，最近秩p95為69.021087秒，含啟動及證據封裝成本。暖操作每類30筆的引擎p95如下：換頁0.8270295秒；篩選／selection／首頁5.1925273秒；全域排序／selection／首頁1.471302秒；單股materializer0.2235914秒；16股跨段materializer0.4444089秒。只有單股類達300ms門檻，其餘四類明確失敗，不刪慢樣本或放寬門檻。
+
+完整結果與逐筆資料保存於該case的benchmark_result.json與各worker檔；大檔只能解析必要欄位，不能整檔輸出。中央另獨立核sample／nearest-rank／Job清理證據，該補審結論尚待。效能失敗已解除重測互斥，價格query的真257跨段功能回歸可接續；不以本矩陣授Native或正式版接受。
+
+補審完成：事件檔150筆（每類30）重算的最近秩p95與controller一致，冷5 PID各自不同；六個worker sampler有效／無錯誤／已關閉，Job清理均驗零殘留。controller／recovery report前後一致；原result SHA256 `fcb10a761c73cd6551f624d27c449b8a37966b174bee825ec73f0f5b6c8efaaa`，有界review SHA256 `e343d3c392cff5700a18f41ae01250aa7669e4b7997fb05ebc17ac66b0e21ff9`，保存在原QA目錄root_matrix_yyz7kyi8_review.json。完整矩陣的資料核驗與效能未達標均已確認，沒有重跑或改寫原樣本。

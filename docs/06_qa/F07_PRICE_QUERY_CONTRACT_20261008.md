@@ -13,3 +13,13 @@ UI要求明示保存來源與價格條件，非全螢幕可閱讀／捲動；工
 葉片：universe負責新增price query模組與測試；h20_summary負責新增price view、bookmark、comparison三模組與配對測試。root負責獨立審查、既有Main／watchlist／COW路由、Manual與文件同步。所有檔案尚未接受，沒有新正式排程或原始SQL。
 
 驗收須含真跨256+1段母體的Decimal邊界／三態／全域排序、partial／excluded／pending、pin／child tamper與取消拒絕；視窗捲動、source/query原子切換、exact下鑽返回、價格收藏及不同程序重開、比較各欄pins。只通過DTO／小fixture不能授完整產品接受；Native／效能與完整F01–F23仍保留原門檻。
+
+## 後端葉片凍結與中央接線進度
+
+後端代理B輪真合成回歸6 passed／122.83秒，兩檔compile與mypy通過。真257股分兩個parent（256+1），declared258、included257、excluded1；歷史cancelled收據processed256／pending1／missing1／missing_pending1，resume完成後末段低價S0256全域排首，從價格頁下鑽確實取segment1，descending缺價S0000仍置尾。A輪兩個fixture／拒絕斷言錯誤保留，沒有改弱來源核驗。module SHA256 `41e449d2ea8eeefe3c710ba7d9562e537ac003ba12466469b6e3066cc72c01a3`；test `d00022b3e5129dca6999fc4bcac960a8e75d89264891b489b389e38ff800d7fb`。
+
+中央補上同次索引建立取消檢查的審查要求，並要求comparison／bookmark在Decimal展開前核精度／指數界限、深度拒絕，以及UI shutdown直到native worker終態才回完成。六個UI／bookmark／comparison葉片仍在重測，不授接受。
+
+root在既有watchlist_service新增獨立F07 schema分派／來源類別、typed保存與明確拒絕轉一般研究context；前像保存於output/qa/f07_root_integration_20261008_a/preimage。新增真來源收藏保存／去重／移除還原測試，並合併後端全檔作中央獨立回歸，session11434執行中。Main／每日研究頁／觀察清單可見路由、Manual與Native／跨程序重開仍未完成；本輪不交付新的真人版本。
+
+中央session11434已exit0：後端全檔加真收藏儲存整合7 passed／125.42秒，basetemp C:/t/f07_root_watchlist_20261008_a。Workbench85 passed；update validator A輪沙箱fixture同步失敗21／3／4已保存，B輪全新隔離TEMP25 passed／0 failed／4 skipped。full-roots mypy初次發現新schema union漏一處remove路徑型態，補完整後907檔clean；不是關閉檢查。root修改service／測試compile通過。中央另啟六檔葉片與舊官方／H20收藏回歸session18739，結果尚待；程式仍未stage／commit或打包。

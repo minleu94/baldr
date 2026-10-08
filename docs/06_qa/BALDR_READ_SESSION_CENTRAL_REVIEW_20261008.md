@@ -281,3 +281,11 @@ F17 root 設定前置：新增 `TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT` 共用
 `rule_research_sample_capture.py` 的 legacy feature contract、snapshot repository 與 consensus 依賴移至真正使用函式，TYPE_CHECKING 保留型別；原 validator、schema、時鐘及capture語意不變。fresh subprocess 公開 parent query／universe producer／query／store／capture scope 匯入組合不再預載 ML。中央核 source/test SHA 與最終diff；四套件60 passed／1既有skip、20.80秒，log `output/qa/rule_research_sample_capture_ml_boundary_20261008/union_shortpath.log`，compile/mypy通過。此前紅測與三個262–263字元Win32路徑失敗保留，短TEMP完整重跑而非排除負例。
 
 此修正尚未進原固定9bc來源，原1000 producer attempt仍失敗；須另建固定新來源並重新核驗，不能改舊封套或視作產製完成。ML deny、原始資料保護與禁止fit/predict均維持。
+
+### F17 收藏持久化服務與新程序讀回
+
+官方對照bookmark純契約不依賴Qt，完整綁原query、bundle、manifest、官方pins、所選列及各比較頁錨點；WatchlistService按schema嚴格分派，沿用修訂、去重、移除與restore token。一般ResearchStockContext路由拒絕此類收藏，必須由原query exact重新核驗，不假裝已開一般報告。
+
+中央真258 fixture與既有H20收藏完整聯測3 passed／135.66秒，既有daily/rank/JSON/COW四套件22 passed／4.51秒；兩個既有Qt disconnect warnings保留。首輪非canonical JSON失敗已改用契約公開編碼函式；第二輪測試誤比中文message而非error.code，只修測試，兩次失敗log保留。product/test compile與mypy通過。
+
+全新Python PID21956從保存JSON建立服務，再以原query公開factory完整核驗及read_page_request成功：258 declared／258 matching、選取合成代碼1000及row identity一致、query identity一致、保存JSON bytes SHA不變。證據 `output/qa/f17_watchlist_root_20261008_a/fresh_process_readback01.log`。此為合成封套與服務新程序資格，沒有Main、native exe、跨頁比較新程序或正式來源資格；UI入口與原返回接線仍待。

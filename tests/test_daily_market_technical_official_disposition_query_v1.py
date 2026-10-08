@@ -8,10 +8,11 @@ from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import pytest
 
+import app_module.daily_market_technical_official_disposition_query_v1 as query_module
 from app_module.daily_market_technical_feature_snapshot_v4 import (
     DailyMarketTechnicalRuleEvidenceV4,
 )
@@ -20,11 +21,15 @@ from app_module.daily_market_technical_official_disposition_bundle_v1 import (
 )
 from app_module.daily_market_technical_official_disposition_query_v1 import (
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_QUERY_V1_SCHEMA,
+    DailyMarketTechnicalOfficialDispositionCompactSortKeyV1,
     DailyMarketTechnicalOfficialDispositionJoinedRowV1,
     DailyMarketTechnicalOfficialDispositionQueryV1,
     DailyMarketTechnicalOfficialDispositionQueryV1Error,
     DailyMarketTechnicalOfficialDispositionSortClauseV1,
+    DailyMarketTechnicalOfficialDispositionSortValueV1,
     evaluate_f17_membership_v1,
+    project_daily_market_technical_official_disposition_sort_key_v1,
+    sort_daily_market_technical_official_disposition_sort_keys_v1,
     sort_joined_rows_v1,
 )
 from app_module.daily_market_technical_parent_v4_query import (
@@ -250,6 +255,84 @@ def _joined(fact: DailyMarketTechnicalOfficialDispositionFactRowV1, ratio: Decim
         fact_row=fact,
         technical_row=technical,
     )
+
+
+def _varied_sort_rows() -> tuple[DailyMarketTechnicalOfficialDispositionJoinedRowV1, ...]:
+    rows: list[DailyMarketTechnicalOfficialDispositionJoinedRowV1] = []
+    facts = (
+        _fact_row(
+            "0050",
+            market_state="assigned_twse",
+            disposal_state="reported_active",
+            snapshot_observed_at="2026-10-07T15:30:00+08:00",
+            disposal_observed_at="2026-10-07T15:35:00+08:00",
+        ),
+        _fact_row(
+            "1101",
+            market_state="assigned_tpex",
+            disposal_state="reported_upcoming",
+            snapshot_observed_at="2026-10-07T15:40:00+08:00",
+            disposal_observed_at="2026-10-07T15:45:00+08:00",
+            disposal_observed_date="2026-10-06",
+        ),
+        _fact_row(
+            "2330",
+            market_state="unknown",
+            disposal_state="unknown",
+            snapshot_observed_at="2026-10-07T15:50:00+08:00",
+            disposal_observed_at=None,
+            disposal_observed_date=None,
+        ),
+        _fact_row(
+            "3000",
+            technical_status="pending",
+            disposal_state="reported_elapsed_only",
+            snapshot_observed_at="2026-10-07T15:55:00+08:00",
+            disposal_observed_at="2026-10-07T15:56:00+08:00",
+        ),
+        _fact_row(
+            "9999",
+            role="excluded",
+            technical_status="excluded",
+            market_state="unknown",
+            disposal_state="unknown",
+            snapshot_observed_at="2026-10-07T15:58:00+08:00",
+            disposal_observed_at=None,
+            disposal_observed_date=None,
+        ),
+    )
+    for index, fact in enumerate(facts):
+        joined = _joined(fact, Decimal(str(9 + index * 10)))
+        if joined.technical_row is None:
+            rows.append(joined)
+            continue
+        feature_date = None if index == 2 else (
+            date(2026, 10, 6) if index == 1 else _DECISION_DATE
+        )
+        rules = tuple(
+            replace(
+                rule,
+                numerator=Decimal(str((index + 1) * 100 + rule_index)),
+                denominator=Decimal(str(10 + rule_index)),
+                ratio=(
+                    None if index == 2 and rule_index == 2
+                    else Decimal(str((index + 1) * 10 + rule_index))
+                ),
+                feature_date=feature_date,
+            )
+            for rule_index, rule in enumerate(joined.technical_row.rules)
+        )
+        rows.append(replace(
+            joined,
+            technical_row=replace(
+                joined.technical_row,
+                snapshot_identity_sha256=hashlib.sha256(f"snapshot-{index}".encode()).hexdigest(),
+                raw_row_count=20 + index * 10,
+                latest_feature_date=feature_date,
+                rules=rules,
+            ),
+        ))
+    return tuple(rows)
 
 
 def test_query_v1_canonical_roundtrip_keeps_exact_p01_query_and_pins() -> None:
@@ -598,3 +681,301 @@ def test_pending_or_excluded_fact_cannot_carry_technical_row(
     with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as raised:
         sort_joined_rows_v1(_query(), (invalid,))
     assert raised.value.code == expected_code
+
+
+def test_compact_sort_keys_match_existing_sort_for_every_supported_field_and_direction() -> None:
+    rows = _varied_sort_rows()
+    fields = (
+        "stock_code",
+        "decision_date",
+        "latest_feature_date",
+        "raw_row_count",
+        *(
+            f"{rule_key}.{metric}"
+            for rule_key in _RULE_KEYS
+            for metric in ("ratio", "numerator", "denominator")
+        ),
+        "market_assignment.state",
+        "market_assignment.snapshot_observed_at",
+        "official_disposal.state",
+        "official_disposal.observed_at",
+        "official_disposal.observed_date",
+    )
+
+    for field in fields:
+        for direction in ("asc", "desc"):
+            query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1(field, direction),))
+            projected = tuple(
+                project_daily_market_technical_official_disposition_sort_key_v1(query, row)
+                for row in rows
+            )
+            compact_order = sort_daily_market_technical_official_disposition_sort_keys_v1(
+                query, projected
+            )
+            expected = tuple(
+                row.fact_row.stock_code
+                for row in sort_joined_rows_v1(query, rows)
+            )
+            assert tuple(item.stock_code for item in compact_order) == expected, (field, direction)
+
+
+def test_compact_sort_keys_match_multiclause_parity_and_exact_extreme_decimals() -> None:
+    rows = _varied_sort_rows()
+    clauses = (
+        DailyMarketTechnicalOfficialDispositionSortClauseV1("r1.ratio", "desc"),
+        DailyMarketTechnicalOfficialDispositionSortClauseV1("market_assignment.state", "asc"),
+        DailyMarketTechnicalOfficialDispositionSortClauseV1("official_disposal.observed_date", "desc"),
+    )
+    query = _query(sort=clauses)
+    projected = tuple(
+        project_daily_market_technical_official_disposition_sort_key_v1(query, row)
+        for row in rows
+    )
+    compact_order = sort_daily_market_technical_official_disposition_sort_keys_v1(query, projected)
+
+    assert tuple(item.stock_code for item in compact_order) == tuple(
+        row.fact_row.stock_code for row in sort_joined_rows_v1(query, rows)
+    )
+
+    decimal_values = (
+        ("0050", Decimal("1E+60")),
+        ("1101", Decimal("1.0000000000000000000000000001")),
+        ("2330", Decimal("-1E-60")),
+        ("3000", None),
+    )
+    for direction, expected in (
+        (cast(Literal["asc", "desc"], "asc"), ("2330", "1101", "0050", "3000")),
+        (cast(Literal["asc", "desc"], "desc"), ("0050", "1101", "2330", "3000")),
+    ):
+        decimal_query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1("r1.ratio", direction),))
+        decimal_rows: list[DailyMarketTechnicalOfficialDispositionJoinedRowV1] = []
+        for code, numeric_value in decimal_values:
+            joined = _joined(_fact_row(code), numeric_value)
+            assert joined.technical_row is not None
+            decimal_rows.append(replace(
+                joined,
+                technical_row=replace(
+                    joined.technical_row,
+                    snapshot_identity_sha256=hashlib.sha256(code.encode("ascii")).hexdigest(),
+                ),
+            ))
+        decimal_keys = tuple(
+            project_daily_market_technical_official_disposition_sort_key_v1(decimal_query, row)
+            for row in decimal_rows
+        )
+        assert tuple(
+            item.stock_code
+            for item in sort_daily_market_technical_official_disposition_sort_keys_v1(
+                decimal_query, decimal_keys
+            )
+        ) == expected
+
+
+def test_compact_sort_projection_keeps_pins_and_ids_without_joined_rows_or_snapshots() -> None:
+    query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1("r1.ratio", "desc"),))
+    joined = _joined(_fact_row("2330"), Decimal("9"))
+
+    key = project_daily_market_technical_official_disposition_sort_key_v1(query, joined)
+    payload = key.to_dict()
+
+    assert joined.technical_row is not None
+    assert key.query_identity_sha256 == query.query_identity_sha256
+    assert key.fact_row_sha256 == hashlib.sha256(joined.fact_row.body_json.encode("utf-8")).hexdigest()
+    assert key.market_assignment_pin_identity_sha256 == query.market_assignment_pin_identity_sha256
+    assert key.official_disposal_pin_identity_sha256 == query.official_disposal_pin_identity_sha256
+    assert key.technical_snapshot_identity_sha256 == joined.technical_row.snapshot_identity_sha256
+    assert key.technical_source_identity == joined.technical_row.source_identity
+    assert "fact_row" not in payload and "technical_row" not in payload and "snapshot" not in payload
+    assert payload["sort_values"] == [{
+        "field": "r1.ratio",
+        "direction": "desc",
+        "sort_value": {"type": "decimal", "value": "9"},
+    }]
+
+    pending_query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1("r1.ratio", "asc"),))
+    pending = _joined(_fact_row("3000", technical_status="pending"))
+    pending_key = project_daily_market_technical_official_disposition_sort_key_v1(
+        pending_query, pending
+    )
+    assert pending_key.technical_snapshot_identity_sha256 is None
+    assert pending_key.technical_source_identity is None
+    assert pending_key.sort_values[0].value is None
+
+
+def test_compact_sort_rejects_query_clause_identity_and_duplicate_mismatch() -> None:
+    first_query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1("r1.ratio", "asc"),))
+    row = _joined(_fact_row("2330"))
+    key = project_daily_market_technical_official_disposition_sort_key_v1(first_query, row)
+    other_query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1("r1.ratio", "desc"),))
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as mismatch:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(other_query, (key,))
+    assert mismatch.value.code == "technical_official_query_v1_compact_sort_query_mismatch"
+
+    other_clause = replace(
+        key.sort_values[0],
+        field="official_disposal.state",
+    )
+    changed = replace(key, sort_values=(other_clause,))
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as clause_mismatch:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(first_query, (changed,))
+    assert clause_mismatch.value.code == "technical_official_query_v1_compact_sort_clause_mismatch"
+
+    changed_market_pin = replace(key, market_assignment_pin_identity_sha256="7" * 64)
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as market_pin_mismatch:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(
+            first_query, (changed_market_pin,)
+        )
+    assert market_pin_mismatch.value.code == "technical_official_query_v1_compact_sort_market_pin_mismatch"
+
+    changed_disposal_pin = replace(key, official_disposal_pin_identity_sha256="8" * 64)
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as disposal_pin_mismatch:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(
+            first_query, (changed_disposal_pin,)
+        )
+    assert disposal_pin_mismatch.value.code == "technical_official_query_v1_compact_sort_disposal_pin_mismatch"
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as duplicate:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(first_query, (key, key))
+    assert duplicate.value.code == "technical_official_query_v1_duplicate_stock"
+
+
+def test_compact_sort_revalidates_query_identity_and_scalar_types() -> None:
+    query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1("r1.ratio", "asc"),))
+    key = project_daily_market_technical_official_disposition_sort_key_v1(
+        query, _joined(_fact_row("2330"))
+    )
+    tampered_identity = replace(key, query_identity_sha256="0" * 64)
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as mismatch:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(query, (tampered_identity,))
+    assert mismatch.value.code == "technical_official_query_v1_compact_sort_query_mismatch"
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as invalid_type:
+        DailyMarketTechnicalOfficialDispositionSortValueV1(
+            field="raw_row_count",
+            direction="asc",
+            value=True,
+        )
+    assert invalid_type.value.code == "technical_official_query_v1_compact_sort_value_invalid"
+
+    future_query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1("latest_feature_date", "asc"),))
+    future_key = project_daily_market_technical_official_disposition_sort_key_v1(
+        future_query, _joined(_fact_row("1101"))
+    )
+    future_clause = replace(
+        future_key.sort_values[0],
+        value=date(2026, 10, 8),
+    )
+    future_key = replace(future_key, sort_values=(future_clause,))
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as future:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(future_query, (future_key,))
+    assert future.value.code == "technical_official_query_v1_compact_sort_future_feature_date"
+
+
+def test_compact_sort_projection_reuses_date_and_scope_guards() -> None:
+    query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1("r1.ratio", "asc"),))
+    joined = _joined(_fact_row("2330"))
+    assert joined.technical_row is not None
+    wrong_date = replace(
+        joined,
+        technical_row=replace(joined.technical_row, decision_date=date(2026, 10, 6)),
+    )
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as raised:
+        project_daily_market_technical_official_disposition_sort_key_v1(query, wrong_date)
+    assert raised.value.code == "technical_official_query_v1_technical_row_decision_date_mismatch"
+
+
+def test_compact_sort_enforces_count_and_canonical_serialized_budgets(monkeypatch: pytest.MonkeyPatch) -> None:
+    query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1("stock_code", "asc"),))
+    rows = _varied_sort_rows()
+    keys = tuple(project_daily_market_technical_official_disposition_sort_key_v1(query, row) for row in rows)
+
+    monkeypatch.setattr(query_module, "DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS", 4)
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as count_error:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(query, keys)
+    assert count_error.value.code == "technical_official_query_v1_stock_limit"
+
+    monkeypatch.setattr(
+        query_module,
+        "DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS",
+        100_000,
+    )
+    monkeypatch.setattr(
+        query_module,
+        "DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_COMPACT_SORT_MAX_BYTES",
+        1,
+    )
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as byte_error:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(query, keys)
+    assert byte_error.value.code == "technical_official_query_v1_compact_sort_byte_limit"
+
+
+def test_compact_sort_cancel_callbacks_are_strict_and_cooperative() -> None:
+    query = _query(sort=(DailyMarketTechnicalOfficialDispositionSortClauseV1("stock_code", "asc"),))
+    rows = _varied_sort_rows()[:3]
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as projection_cancel:
+        project_daily_market_technical_official_disposition_sort_key_v1(
+            query, rows[0], cancel_callback=lambda: True
+        )
+    assert projection_cancel.value.code == "technical_official_query_v1_compact_sort_cancelled"
+
+    projection_checks = 0
+
+    def cancel_after_projection() -> bool:
+        nonlocal projection_checks
+        projection_checks += 1
+        return projection_checks >= 2
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as late_projection_cancel:
+        project_daily_market_technical_official_disposition_sort_key_v1(
+            query, rows[0], cancel_callback=cancel_after_projection
+        )
+    assert late_projection_cancel.value.code == "technical_official_query_v1_compact_sort_cancelled"
+    assert projection_checks == 2
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as bad_bool:
+        project_daily_market_technical_official_disposition_sort_key_v1(
+            query, rows[0], cancel_callback=lambda: 1
+        )
+    assert bad_bool.value.code == "technical_official_query_v1_compact_sort_cancel_callback_invalid"
+
+    def failing_callback() -> object:
+        raise RuntimeError("synthetic cancellation probe failure")
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as callback_error:
+        project_daily_market_technical_official_disposition_sort_key_v1(
+            query, rows[0], cancel_callback=failing_callback
+        )
+    assert callback_error.value.code == "technical_official_query_v1_compact_sort_cancel_callback_failed"
+
+    keys = tuple(project_daily_market_technical_official_disposition_sort_key_v1(query, row) for row in rows)
+    sort_checks = 0
+
+    def cancel_during_sort() -> bool:
+        nonlocal sort_checks
+        sort_checks += 1
+        return sort_checks >= 8
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as sorting_cancel:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(
+            query, keys, cancel_callback=cancel_during_sort
+        )
+    assert sorting_cancel.value.code == "technical_official_query_v1_compact_sort_cancelled"
+    assert sort_checks == 8
+
+    return_checks = 0
+
+    def cancel_before_return() -> bool:
+        nonlocal return_checks
+        return_checks += 1
+        return return_checks >= 10
+
+    with pytest.raises(DailyMarketTechnicalOfficialDispositionQueryV1Error) as return_cancel:
+        sort_daily_market_technical_official_disposition_sort_keys_v1(
+            query, keys, cancel_callback=cancel_before_return
+        )
+    assert return_cancel.value.code == "technical_official_query_v1_compact_sort_cancelled"
+    assert return_checks == 10

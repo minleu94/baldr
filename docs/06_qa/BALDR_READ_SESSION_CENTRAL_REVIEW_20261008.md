@@ -82,3 +82,25 @@ P01 `source_counts` getter 已實作為直接回傳 strict verified state 的 im
 ### P01 source_counts 新版中央回歸
 
 代理run_004兩個定向測試實際terminal exit0（2 passed／9.62秒），query/test凍結後中央使用獨立OS TEMP完整回歸，root session73118 **15 passed／49.72秒、exit0**；兩檔mypy通過、SHA凍結吻合。計數parity涵蓋真synthetic空母體、全排除與cancelled receipt，getter immutable/no-rescan測試在class instrument後通過；原run_003失敗仍保留。這只補計數公共介面，UI零結果／freshreload測試與實際市場效能尚未驗收，不沿用核心結果宣稱產品完成。
+
+P01 UI真257股旅程新增instrumentation已中央讀取：保留原public reader，計冷strict open與selection、暖翻頁／stock操作，驗成功zero-result清空與恢復條件、tampered receipt後fresh reload失敗保留舊state。代理已回報run_005实际handle36788 live，尚無terminal驗證；root不重啟同fixture，也不把source/test改動視為通過。待UI凍結後中央另跑完整view與三項UI強制作業。
+
+H20 selected進度中央發現：Main僅connect `worker.progress`，普通TaskWorker只注入cancel，不自動注入progress；若未明示傳入hook回呼，實際讀取階段不會到label。已要求傳入progress_callback並測真訊息顯示；不以signal連線存在當進度功能通過。
+
+P01 UI run_005代理持有36788實際terminal exit1，1failed/1teardown error、120.57秒。起點catalog沒有complete列，尚未進入讀取快取旅程；teardown既有extended-path清理另失敗。owner將增加status assertion診斷與新的獨立TEMP子樹重驗，原failure保留，不改guard也不將此輪算UI通過。
+
+H20 收藏進度中央追加審核：`_on_open_progress` 原只檢查關閉與 operation，選取變更取消舊工作後的晚到進度仍可覆蓋取消提示。已要求沿 finished 相同的 worker identity、operation generation 與 selection generation 拒絕晚到訊息，並補反例。selected hook 的明示 callback 已接入 WIP，但仍待真來源與 Main 測試；使用者所述長時間不明等待與下鑽延遲沒有因此自動通過。
+
+中央讀取 P01 run_006 原始 traceback：來源清冊找到完整列，隨後 strict load 等待逾時，整個案例 240 秒、terminal exit1。原 predicate 同時等待 worker 結束與成功頁面，沒有輸出失敗 label，不能從這份證據判斷真正 reader 延遲。run_007 已讓錯誤狀態提早結束並輸出 label；owner 持有 16394 live handle，待終態，不延長 timeout 當作修復。
+
+H20 stage2b owner 原生 secure integration 為 2 passed／1 failed、17.25秒、handle67349 terminal exit1；中央已讀原始輸出。失敗位置是舊 `_double_click_selected_h20_row` helper 等候 `_personal_h20_cohort_worker`，與已改為直接 selected reader 的 f545 路由不符；真 double-click 與 researchRequested assertions 已先通過。已要求同步觀察 selected worker 與沒有額外 cohort 的預期，保留失敗後再跑完整旅程；不能用修改觀察條件取代來源或進度訊息的實際驗證。代理取消／換選取晚到進度兩參數通過，仍待中央凍結版本獨立驗證。
+
+F17 compact helper WIP 中央發現：sorter 對 key 的市場／官方處置來源 pin 只有 SHA 格式檢查，未與 query 兩個來源 pin 比較；公開 DTO 即使保持 query identity 不變仍可混入其他來源 pin。已要求逐 key 比較兩個 pin 並補各自漂移反例。代理已回報補修，最終 source/test 重跑與中央獨立驗證尚待；純 compact key 檢查仍不能替代 full-N reader 的來源、issuer、generation 與 artifact exact 核驗。
+
+### F17 compact helper 中央凍結驗證
+
+補修兩官方 pin 比較後，中央同凍結 SHA 完整 pure query 測試 **45 passed／0.83秒、exit0**，兩檔 mypy 通過，compile／diff-check 通過。先前中央兩檔 mypy 發現新測試 direction 為 str／Literal 不符；owner 僅補型別註記，保留案例及功能，該失敗不隱藏。source SHA `5A318037549556AD950DDCB4D2CC79440112DF8EC806E9ED3493E1645C3B53E1`，test SHA `87D2B2AA381BE771183531590EB42F8493458161585F4DD2E0729D72E0992A76`。
+
+已讀 scalar DTO 與 parity 測試：每個允許技術／官方排序欄位都有 asc／desc 對照原完整列排序，另驗多欄、精確極端 Decimal、null 置尾及穩定股票 tie-break；key 不保存 joined row／snapshot。每次最多100000項、canonical JSONL總量64MiB，這是序列化預算而非程序RSS上限。取消在投影、分批核驗、排序及回傳前檢查；reader exact驗證、完整joined reader／正常更新／UI／收藏及真N效能仍未完成。
+
+P01 run_007 已由 owner 實際 terminal exit1、128.11秒；中央已讀 status：完整 session／query 建立後，UI `_query_matches_entry` 裸 `Path.resolve(strict=True)` 無法處理長路徑而回 WinError3。已核定只改UI，使用同次 reader-issued session 的公開同源與canonical root契約，加上原entry exact pins；不縮fixture、不import私有helper、不弱化底層path guard。原257案例 run_008 handle76343 正在執行，尚未通過。

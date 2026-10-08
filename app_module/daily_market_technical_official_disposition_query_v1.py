@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
@@ -33,6 +33,8 @@ DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_QUERY_V1_SCHEMA = (
 DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_QUERY_V1_MAX_BYTES = 16 * 1024 * 1024
 DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_QUERY_V1_CANONICAL_PAGE_SIZE = 1
 DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_QUERY_V1_MAX_SORT_CLAUSES = 32
+DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_COMPACT_SORT_MAX_BYTES = 64 * 1024 * 1024
+_COMPACT_SORT_CANCEL_CHECK_INTERVAL = 256
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _STOCK_CODE_RE = re.compile(r"^[A-Z0-9]{1,16}$")
@@ -1175,3 +1177,387 @@ def _sort_datetime(value: object) -> datetime | None:
         return None
     parsed = _parse_aware_datetime(value, "technical_official_query_v1_sort_time_invalid")
     return parsed.astimezone(timezone.utc)
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMarketTechnicalOfficialDispositionSortValueV1:
+    """單一排序欄位及其型別化值；不保存來源列或 snapshot。"""
+
+    field: str
+    direction: SortDirection
+    value: SortValue | None
+
+    def __post_init__(self) -> None:
+        _require_text(
+            self.field,
+            "technical_official_query_v1_compact_sort_field_invalid",
+            maximum=128,
+        )
+        if not isinstance(self.direction, str) or self.direction not in {"asc", "desc"}:
+            _fail("technical_official_query_v1_compact_sort_direction_invalid")
+        value = self.value
+        if value is None:
+            return
+        if type(value) is str:
+            if not value or len(value) > 512:
+                _fail("technical_official_query_v1_compact_sort_value_invalid")
+        elif type(value) is int:
+            if value < 0:
+                _fail("technical_official_query_v1_compact_sort_value_invalid")
+        elif type(value) is Decimal:
+            if not value.is_finite() or len(str(value)) > 1024:
+                _fail("technical_official_query_v1_compact_sort_value_invalid")
+        elif type(value) is datetime:
+            if value.tzinfo is None or value.utcoffset() is None:
+                _fail("technical_official_query_v1_compact_sort_value_invalid")
+        elif type(value) is date:
+            pass
+        else:
+            _fail("technical_official_query_v1_compact_sort_value_invalid")
+
+    def to_dict(self) -> dict[str, object]:
+        value = self.value
+        if value is None:
+            encoded: dict[str, object] = {"type": "null", "value": None}
+        elif type(value) is str:
+            encoded = {"type": "str", "value": value}
+        elif type(value) is int:
+            encoded = {"type": "int", "value": value}
+        elif type(value) is Decimal:
+            encoded = {"type": "decimal", "value": str(value)}
+        elif type(value) is datetime:
+            encoded = {"type": "datetime", "value": value.isoformat()}
+        elif type(value) is date:
+            encoded = {"type": "date", "value": value.isoformat()}
+        else:
+            _fail("technical_official_query_v1_compact_sort_value_invalid")
+        return {"field": self.field, "direction": self.direction, "sort_value": encoded}
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMarketTechnicalOfficialDispositionCompactSortKeyV1:
+    """可排序的小型候選；精確來源仍須由上層 reader 核驗。"""
+
+    query_identity_sha256: str
+    stock_code: str
+    sort_values: tuple[DailyMarketTechnicalOfficialDispositionSortValueV1, ...]
+    fact_row_sha256: str
+    market_assignment_pin_identity_sha256: str
+    official_disposal_pin_identity_sha256: str
+    technical_snapshot_identity_sha256: str | None
+    technical_source_identity: str | None
+
+    def __post_init__(self) -> None:
+        _require_sha256(
+            self.query_identity_sha256,
+            "technical_official_query_v1_compact_sort_query_identity_invalid",
+        )
+        if not isinstance(self.stock_code, str) or _STOCK_CODE_RE.fullmatch(self.stock_code) is None:
+            _fail("technical_official_query_v1_compact_sort_stock_code_invalid")
+        if (
+            not isinstance(self.sort_values, tuple)
+            or not self.sort_values
+            or len(self.sort_values) > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_QUERY_V1_MAX_SORT_CLAUSES
+        ):
+            _fail("technical_official_query_v1_compact_sort_values_invalid")
+        if any(not isinstance(item, DailyMarketTechnicalOfficialDispositionSortValueV1) for item in self.sort_values):
+            _fail("technical_official_query_v1_compact_sort_values_invalid")
+        fields = tuple(item.field for item in self.sort_values)
+        if len(fields) != len(set(fields)):
+            _fail("technical_official_query_v1_compact_sort_values_invalid")
+        _require_sha256(
+            self.fact_row_sha256,
+            "technical_official_query_v1_compact_sort_fact_identity_invalid",
+        )
+        _require_sha256(
+            self.market_assignment_pin_identity_sha256,
+            "technical_official_query_v1_compact_sort_market_pin_invalid",
+        )
+        _require_sha256(
+            self.official_disposal_pin_identity_sha256,
+            "technical_official_query_v1_compact_sort_disposal_pin_invalid",
+        )
+        snapshot_identity = self.technical_snapshot_identity_sha256
+        source_identity = self.technical_source_identity
+        if (snapshot_identity is None) != (source_identity is None):
+            _fail("technical_official_query_v1_compact_sort_technical_identity_invalid")
+        if snapshot_identity is not None:
+            _require_sha256(
+                snapshot_identity,
+                "technical_official_query_v1_compact_sort_technical_identity_invalid",
+            )
+            _require_text(
+                source_identity,
+                "technical_official_query_v1_compact_sort_technical_identity_invalid",
+                maximum=512,
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": "daily-market-technical-official-disposition-sort-key.v1",
+            "query_identity_sha256": self.query_identity_sha256,
+            "stock_code": self.stock_code,
+            "sort_values": [item.to_dict() for item in self.sort_values],
+            "fact_row_sha256": self.fact_row_sha256,
+            "market_assignment_pin_identity_sha256": self.market_assignment_pin_identity_sha256,
+            "official_disposal_pin_identity_sha256": self.official_disposal_pin_identity_sha256,
+            "technical_snapshot_identity_sha256": self.technical_snapshot_identity_sha256,
+            "technical_source_identity": self.technical_source_identity,
+        }
+
+
+def _check_compact_sort_cancel(
+    cancel_callback: Callable[[], object] | None,
+) -> None:
+    if cancel_callback is None:
+        return
+    if not callable(cancel_callback):
+        _fail("technical_official_query_v1_compact_sort_cancel_callback_invalid")
+    try:
+        cancelled = cancel_callback()
+    except Exception as exc:
+        raise DailyMarketTechnicalOfficialDispositionQueryV1Error(
+            "technical_official_query_v1_compact_sort_cancel_callback_failed"
+        ) from exc
+    if type(cancelled) is not bool:
+        _fail("technical_official_query_v1_compact_sort_cancel_callback_invalid")
+    if cancelled:
+        _fail("technical_official_query_v1_compact_sort_cancelled")
+
+
+def project_daily_market_technical_official_disposition_sort_key_v1(
+    query: DailyMarketTechnicalOfficialDispositionQueryV1,
+    row: DailyMarketTechnicalOfficialDispositionJoinedRowV1,
+    *,
+    cancel_callback: Callable[[], object] | None = None,
+) -> DailyMarketTechnicalOfficialDispositionCompactSortKeyV1:
+    """驗單列可檢查欄位後投影 compact key；不替代 source reader 的 exact 驗證。"""
+
+    _check_compact_sort_cancel(cancel_callback)
+    if not isinstance(query, DailyMarketTechnicalOfficialDispositionQueryV1):
+        _fail("technical_official_query_v1_query_invalid")
+    if not isinstance(row, DailyMarketTechnicalOfficialDispositionJoinedRowV1):
+        _fail("technical_official_query_v1_sort_rows_invalid")
+    payload = _fact_payload(row.fact_row, query)
+    code = cast(str, payload["stock_code"])
+    _validate_joined_technical_row(
+        query,
+        fact_payload=payload,
+        technical_row=row.technical_row,
+    )
+    values: list[DailyMarketTechnicalOfficialDispositionSortValueV1] = []
+    for clause in query.sort_clauses:
+        value = _sort_value_for_row(
+            clause.field,
+            code=code,
+            payload=payload,
+            technical_row=row.technical_row,
+            decision_date=query.decision_date,
+            method_rule_keys=query.technical_query.method_rule_keys,
+        )
+        values.append(DailyMarketTechnicalOfficialDispositionSortValueV1(
+            field=clause.field,
+            direction=clause.direction,
+            value=value,
+        ))
+    projected = DailyMarketTechnicalOfficialDispositionCompactSortKeyV1(
+        query_identity_sha256=query.query_identity_sha256,
+        stock_code=code,
+        sort_values=tuple(values),
+        fact_row_sha256=hashlib.sha256(row.fact_row.body_json.encode("utf-8")).hexdigest(),
+        market_assignment_pin_identity_sha256=query.market_assignment_pin_identity_sha256,
+        official_disposal_pin_identity_sha256=query.official_disposal_pin_identity_sha256,
+        technical_snapshot_identity_sha256=(
+            row.technical_row.snapshot_identity_sha256 if row.technical_row is not None else None
+        ),
+        technical_source_identity=(
+            row.technical_row.source_identity if row.technical_row is not None else None
+        ),
+    )
+    _check_compact_sort_cancel(cancel_callback)
+    return projected
+
+
+def _validate_compact_sort_value_for_field(
+    field_name: str,
+    value: SortValue | None,
+    *,
+    method_rule_keys: Sequence[str],
+) -> None:
+    _validate_sort_fields((field_name,), method_rule_keys)
+    if value is None:
+        return
+    if field_name == "stock_code" or field_name in _MARKET_ASSIGNMENT_FIELDS | _OFFICIAL_DISPOSAL_FIELDS:
+        if field_name in {"market_assignment.snapshot_observed_at", "official_disposal.observed_at"}:
+            if type(value) is not datetime or value.tzinfo is not timezone.utc:
+                _fail("technical_official_query_v1_compact_sort_value_type_mismatch")
+        elif field_name == "official_disposal.observed_date":
+            if type(value) is not date:
+                _fail("technical_official_query_v1_compact_sort_value_type_mismatch")
+        elif type(value) is not str:
+            _fail("technical_official_query_v1_compact_sort_value_type_mismatch")
+        elif (
+            field_name == "market_assignment.state" and value not in _MARKET_STATE_ORDER[:-1]
+        ) or (
+            field_name == "official_disposal.state" and value not in _DISPOSAL_STATE_ORDER[:-1]
+        ):
+            _fail("technical_official_query_v1_compact_sort_value_invalid")
+        return
+    if field_name == "decision_date" or field_name == "latest_feature_date":
+        if type(value) is not date:
+            _fail("technical_official_query_v1_compact_sort_value_type_mismatch")
+        return
+    if field_name == "raw_row_count":
+        if type(value) is not int or value < 0:
+            _fail("technical_official_query_v1_compact_sort_value_type_mismatch")
+        return
+    if field_name.rsplit(".", 1)[-1] in {"ratio", "numerator", "denominator"}:
+        if type(value) is not Decimal or not value.is_finite():
+            _fail("technical_official_query_v1_compact_sort_value_type_mismatch")
+        return
+    _fail("technical_official_query_v1_compact_sort_value_type_mismatch")
+
+
+def sort_daily_market_technical_official_disposition_sort_keys_v1(
+    query: DailyMarketTechnicalOfficialDispositionQueryV1,
+    sort_keys: Sequence[DailyMarketTechnicalOfficialDispositionCompactSortKeyV1],
+    *,
+    cancel_callback: Callable[[], object] | None = None,
+) -> tuple[DailyMarketTechnicalOfficialDispositionCompactSortKeyV1, ...]:
+    """排序完整 compact key 集；不保存 joined rows，超預算或取消即失敗。"""
+
+    _check_compact_sort_cancel(cancel_callback)
+    if not isinstance(query, DailyMarketTechnicalOfficialDispositionQueryV1):
+        _fail("technical_official_query_v1_query_invalid")
+    if isinstance(sort_keys, (str, bytes)) or not isinstance(sort_keys, Sequence):
+        _fail("technical_official_query_v1_compact_sort_keys_invalid")
+    if len(sort_keys) > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS:
+        _fail("technical_official_query_v1_stock_limit")
+    bounded_keys: list[DailyMarketTechnicalOfficialDispositionCompactSortKeyV1] = []
+    for index, item in enumerate(sort_keys):
+        if index % _COMPACT_SORT_CANCEL_CHECK_INTERVAL == 0:
+            _check_compact_sort_cancel(cancel_callback)
+        bounded_keys.append(item)
+        if len(bounded_keys) > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS:
+            _fail("technical_official_query_v1_stock_limit")
+    materialized = bounded_keys
+    expected_signature = tuple((item.field, item.direction) for item in query.sort_clauses)
+    seen_codes: set[str] = set()
+    total_bytes = 0
+    for index, item in enumerate(materialized):
+        if index % _COMPACT_SORT_CANCEL_CHECK_INTERVAL == 0:
+            _check_compact_sort_cancel(cancel_callback)
+        if not isinstance(item, DailyMarketTechnicalOfficialDispositionCompactSortKeyV1):
+            _fail("technical_official_query_v1_compact_sort_keys_invalid")
+        validated_values: list[DailyMarketTechnicalOfficialDispositionSortValueV1] = []
+        if not isinstance(item.sort_values, tuple):
+            _fail("technical_official_query_v1_compact_sort_values_invalid")
+        for value in item.sort_values:
+            if not isinstance(value, DailyMarketTechnicalOfficialDispositionSortValueV1):
+                _fail("technical_official_query_v1_compact_sort_values_invalid")
+            validated_values.append(DailyMarketTechnicalOfficialDispositionSortValueV1(
+                field=value.field,
+                direction=value.direction,
+                value=value.value,
+            ))
+        item = DailyMarketTechnicalOfficialDispositionCompactSortKeyV1(
+            query_identity_sha256=item.query_identity_sha256,
+            stock_code=item.stock_code,
+            sort_values=tuple(validated_values),
+            fact_row_sha256=item.fact_row_sha256,
+            market_assignment_pin_identity_sha256=item.market_assignment_pin_identity_sha256,
+            official_disposal_pin_identity_sha256=item.official_disposal_pin_identity_sha256,
+            technical_snapshot_identity_sha256=item.technical_snapshot_identity_sha256,
+            technical_source_identity=item.technical_source_identity,
+        )
+        if item.query_identity_sha256 != query.query_identity_sha256:
+            _fail("technical_official_query_v1_compact_sort_query_mismatch")
+        if item.market_assignment_pin_identity_sha256 != query.market_assignment_pin_identity_sha256:
+            _fail("technical_official_query_v1_compact_sort_market_pin_mismatch")
+        if item.official_disposal_pin_identity_sha256 != query.official_disposal_pin_identity_sha256:
+            _fail("technical_official_query_v1_compact_sort_disposal_pin_mismatch")
+        if item.stock_code in seen_codes:
+            _fail("technical_official_query_v1_duplicate_stock")
+        seen_codes.add(item.stock_code)
+        signature = tuple((value.field, value.direction) for value in item.sort_values)
+        if signature != expected_signature:
+            _fail("technical_official_query_v1_compact_sort_clause_mismatch")
+        for clause_value in item.sort_values:
+            _validate_compact_sort_value_for_field(
+                clause_value.field,
+                clause_value.value,
+                method_rule_keys=query.technical_query.method_rule_keys,
+            )
+            if clause_value.field == "stock_code" and clause_value.value != item.stock_code:
+                _fail("technical_official_query_v1_compact_sort_value_identity_mismatch")
+            if clause_value.field == "decision_date" and clause_value.value != query.decision_date:
+                _fail("technical_official_query_v1_compact_sort_value_date_mismatch")
+            if (
+                clause_value.field == "latest_feature_date"
+                and clause_value.value is not None
+                and cast(date, clause_value.value) > query.decision_date
+            ):
+                _fail("technical_official_query_v1_compact_sort_future_feature_date")
+            if (
+                clause_value.field in {
+                    "market_assignment.snapshot_observed_at",
+                    "official_disposal.observed_at",
+                }
+                and clause_value.value is not None
+                and cast(datetime, clause_value.value) > query.decision_cutoff.astimezone(timezone.utc)
+            ):
+                _fail("technical_official_query_v1_compact_sort_future_observation")
+            if (
+                clause_value.field == "official_disposal.observed_date"
+                and clause_value.value is not None
+                and cast(date, clause_value.value) > query.decision_cutoff.astimezone(_TAIPEI).date()
+            ):
+                _fail("technical_official_query_v1_compact_sort_future_observation")
+        encoded_size = len(_canonical_json_bytes(item.to_dict())) + 1
+        total_bytes += encoded_size
+        if total_bytes > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_COMPACT_SORT_MAX_BYTES:
+            _fail("technical_official_query_v1_compact_sort_byte_limit")
+        materialized[index] = item
+    _check_compact_sort_cancel(cancel_callback)
+
+    stock_code_key_calls = 0
+
+    def checked_stock_code(item: DailyMarketTechnicalOfficialDispositionCompactSortKeyV1) -> str:
+        nonlocal stock_code_key_calls
+        if stock_code_key_calls % _COMPACT_SORT_CANCEL_CHECK_INTERVAL == 0:
+            _check_compact_sort_cancel(cancel_callback)
+        stock_code_key_calls += 1
+        return item.stock_code
+
+    ordered = materialized
+    ordered.sort(key=checked_stock_code)
+    for clause_index in range(len(expected_signature) - 1, -1, -1):
+        _check_compact_sort_cancel(cancel_callback)
+        clause = query.sort_clauses[clause_index]
+        known: list[DailyMarketTechnicalOfficialDispositionCompactSortKeyV1] = []
+        nulls: list[DailyMarketTechnicalOfficialDispositionCompactSortKeyV1] = []
+        for index, item in enumerate(ordered):
+            if index % _COMPACT_SORT_CANCEL_CHECK_INTERVAL == 0:
+                _check_compact_sort_cancel(cancel_callback)
+            sort_value = item.sort_values[clause_index].value
+            (nulls if sort_value is None else known).append(item)
+
+        value_key_calls = 0
+
+        def checked_value(item: DailyMarketTechnicalOfficialDispositionCompactSortKeyV1) -> SortValue:
+            nonlocal value_key_calls
+            if value_key_calls % _COMPACT_SORT_CANCEL_CHECK_INTERVAL == 0:
+                _check_compact_sort_cancel(cancel_callback)
+            value_key_calls += 1
+            sort_value = item.sort_values[clause_index].value
+            if sort_value is None:
+                _fail("technical_official_query_v1_compact_sort_value_invalid")
+            return sort_value
+
+        known.sort(key=checked_value, reverse=clause.direction == "desc")
+        known.extend(nulls)
+        ordered = known
+        _check_compact_sort_cancel(cancel_callback)
+    result = tuple(ordered)
+    _check_compact_sort_cancel(cancel_callback)
+    return result

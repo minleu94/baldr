@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Callable
 
 import pytest
@@ -117,6 +119,41 @@ def test_price_bookmark_roundtrips_and_fresh_reopens_grouped_source(
     assert tuple(column.selection.stock_code for column in state.comparison.columns) == ("S0002", "S0003")
     assert state.comparison.columns[-1].row.price_state == "unknown"
     assert state.bookmark.scroll_position == 37
+
+
+def test_price_bookmark_selected_in_comparison_roundtrips_and_fresh_reads(
+    exact_price_store: dict[str, Any],
+) -> None:
+    session = _open_session(exact_price_store)
+    query, page, selected = _selection_for(session, "S0001")
+    _, _, second = _selection_for(session, "S0002")
+    bookmark = create_daily_market_technical_universe_price_bookmark_v1(
+        query, page, "S0001", scroll_position=37,
+        comparison_selections=(second, selected),
+    )
+    decoded = DailyMarketTechnicalUniversePriceBookmarkV1.from_json(bookmark.to_json())
+    state = read_daily_market_technical_universe_price_bookmark_v1(decoded)
+    assert state.selected.selection == selected
+    assert state.comparison is not None
+    assert tuple(column.selection.stock_code for column in state.comparison.columns) == ("S0002", "S0001")
+    assert state.comparison.columns[1].selection == state.selected.selection
+    assert state.bookmark.scroll_position == 37
+
+    # 傳輸雜湊一致仍不容許同一選取錨點帶入互相矛盾的證據。
+    payload = selected.to_dict()
+    payload["raw_row_fingerprint_sha256"] = "0" * 64
+    body = {key: value for key, value in payload.items() if key != "selection_identity_sha256"}
+    payload["selection_identity_sha256"] = hashlib.sha256(
+        json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    conflicting = DailyMarketTechnicalUniversePriceSelectionV1.from_dict(payload)
+    assert conflicting.key == selected.key
+    with pytest.raises(DailyMarketTechnicalUniversePriceBookmarkV1Error) as conflict:
+        DailyMarketTechnicalUniversePriceBookmarkV1.create(
+            selected=selected, scroll_position=0,
+            comparison_selections=(second, conflicting),
+        )
+    assert conflict.value.code == "technical_universe_price_bookmark_selected_comparison_conflict"
 
 
 def test_price_bookmark_rejects_single_comparison_duplicate_and_identity_tamper(

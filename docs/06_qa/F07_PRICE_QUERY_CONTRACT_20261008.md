@@ -49,3 +49,16 @@ root已在每日研究條件頁新增價格來源view，個股／比較詳情各
 中央全新隔離 `output/qa/f07_root_final_ui_20261008_15292f34/pytest.log` 為21 passed／25.98秒，涵蓋價格view、收藏控制項、個股／比較詳情及真父頁→watchlist→Main路由。忙碌拒絕後須再次透過控制項建立新的讀取state；兩次明示開啟正好兩次來源opener，Main接手不重讀，也沒有重播前次state當成新操作。controls SHA256 `cbacd9677be17b6daf20b8621bc98186aae0ffdfcaee463c3dcf077bb5eeebbc`；整合test SHA256 `4b79b59db72f8b1c5f7560b6d81e484679a7fd40f38f2c829ea4e30237c616b0`。
 
 最終接線後Workbench85 passed／3.86秒，validator25 passed／0 failed／4 skipped（全新 `f07_root_validator_20261008_092fa357`），full-roots mypy910檔clean及修改來源compile通過。此處授來源版功能整合有限接受；未提交的新檔仍待集中保存，Native／同版EXE／全市場及真人尚未接受，四類合成效能門檻失敗仍有效。
+# 2026-10-08 主選股與比較籃重疊修正
+
+真 Main 驗證發現：主選 S0250 同時列在 S0256/S0250 比較籃時，收藏準備被 `technical_universe_price_bookmark_duplicate_selection` 拒絕。第三股替代流程不代表此自然操作路徑通過。
+
+修正後只禁止比較籃內重複；主選與籃內同一 key 必須完整 selection DTO 相同，矛盾證據以 `technical_universe_price_bookmark_selected_comparison_conflict` 拒絕。重新開啟時先對唯一選取錨點做 fresh reader 驗證，再按保存的比較籃順序組回；不移除使用者的籃內主選股，不放寬 reader qualification，也不改既有合法收藏的序列化格式與雜湊。
+
+根代理後端驗證：`tests/test_daily_market_technical_universe_price_bookmark_v1.py` 四項通過，3.99 秒，隔離目錄 `C:/t/f07-overlap-root-20261008-c`。涵蓋重疊收藏 JSON roundtrip、fresh read、籃內重複拒絕、同 key 重新計算傳輸雜湊後的矛盾證據拒絕，以及既有取消／身分驗證。第一次測試因父目錄不存在在 fixture 前失敗；第二次測試揭露 reader 仍拒絕重複，修正唯一選取讀回後第三次通過。真 Main／新 PID 自然流程仍待本輪獨立結果；f2fba4c7 候選 EXE 不包含此修正。
+
+## 真 Main／新 PID 自然流程追加結果（未通過）
+
+新隔離 attempt `output/qa/f07_fulln_price_main_new_process_20261008_a/attempt_32f961a8fa2141d7900cec900a6d3098`：pytest 1 failed／218.33秒。父 Main 33.032秒完成 S0250 主選及 S0256/S0250 比較籃的收藏保存、原詳情返回、取消與原生關閉；新 PID 23644（父43464）fresh reader 11.672秒完成原來源、query、page、股票與比較籃核驗。來源 inventory 前後 SHA256同為 `80d1f155698a94181564862da72c89dcef2822678c3187cb1d6f9277b2bc028a`，子程序網路嘗試為空。
+
+本輪失敗在 Main 還原後的捲動位置；保存位置為2，舊 trace沒有記錄實際還原值，不能補造差值。另以隔離 Qt 表格重現：隱藏頁面 scrollbar maximum為0，設2被限制為0；顯示後 maximum變2但 value仍0。產品目前先套收藏狀態再切換頁面，與此時序缺陷相符。正在補可見布局完成後的原頁限定還原及晚到／關閉保護；本輪不授完整自然流程接受，不以延長等待或移除捲動驗收替代修正。

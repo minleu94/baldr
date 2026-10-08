@@ -180,9 +180,12 @@ class DailyMarketTechnicalUniversePriceBookmarkV1:
             component_bytes += len(item.to_json().encode("utf-8"))
             if component_bytes > DAILY_MARKET_TECHNICAL_UNIVERSE_PRICE_BOOKMARK_V1_MAX_BYTES:
                 _fail("technical_universe_price_bookmark_byte_limit")
-        keys = tuple(item.key for item in items)
+        keys = tuple(item.key for item in self.comparison_selections)
         if len(set(keys)) != len(keys):
             _fail("technical_universe_price_bookmark_duplicate_selection")
+        for item in self.comparison_selections:
+            if item.key == self.selected.key and item.to_dict() != self.selected.to_dict():
+                _fail("technical_universe_price_bookmark_selected_comparison_conflict")
         body = _bookmark_body(
             selected=self.selected,
             scroll_position=self.scroll_position,
@@ -350,7 +353,9 @@ def read_daily_market_technical_universe_price_bookmark_v1(
             saved = DailyMarketTechnicalUniversePriceBookmarkV1.from_dict(bookmark.to_dict())
         else:
             _fail("technical_universe_price_bookmark_type_invalid")
-        selections = (saved.selected, *saved.comparison_selections)
+        selections = (saved.selected, *(
+            item for item in saved.comparison_selections if item.key != saved.selected.key
+        ))
         verified = read_daily_market_technical_universe_price_selections_v1(
             selections,
             cancel_callback=cancel_callback,
@@ -373,9 +378,10 @@ def read_daily_market_technical_universe_price_bookmark_v1(
         _fail("technical_universe_price_bookmark_state_incomplete")
     comparison = None
     if saved.comparison_selections:
+        verified_by_key = {item.selection.key: item for item in verified}
         columns = tuple(
-            DailyMarketTechnicalUniversePriceComparisonColumnV1(item)
-            for item in verified[1:]
+            DailyMarketTechnicalUniversePriceComparisonColumnV1(verified_by_key[item.key])
+            for item in saved.comparison_selections
         )
         comparison = DailyMarketTechnicalUniversePriceComparisonV1.create(columns)
         comparison.to_json()

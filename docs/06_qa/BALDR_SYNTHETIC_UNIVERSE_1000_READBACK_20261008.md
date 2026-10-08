@@ -1,5 +1,7 @@
 # 1,000 檔合成保存研究產製與獨立讀回
 
+最新單次診斷 session6599（`C:/t/p01_ou8p3n_6`）終態 exit1，完整 report 身分與八項來源 pins 通過後，strict-open 的合法唯讀 `fdopen` 被 QA 守衛拒絕；尚無 pstats／效能樣本。來源前後一致且 Job 已證明零 owned 殘留。下一步修正診斷工具的精確唯讀 descriptor 契約，詳見本文末段；既有完整矩陣的三項效能失敗仍有效。先前 session45903 的 report 映射失敗封套保留，不能覆寫為通過。
+
 ## 固定 acd 讀取器完整矩陣（2026-10-08，效能未通過）
 
 新 attempt `C:/t/p01_mc6g40xn` 僅沿固定 `acd18a1efcc045951defc00b79167035b6ec6f2d` archive 讀取原封存合成來源，未重跑 producer。中央直接讀 `benchmark_result.json`，SHA256 `5d0beaf0480c14b1cf009e67fdd54cb3c6c64f4714f5db999545187423554c74`；完整五冷／一暖／五類各 30 次樣本完成，整體 status failed、controller exit 1。下列為原嚴格 `<300ms` 的來源引擎 p95，不是 GUI 或 EXE 延遲。
@@ -89,3 +91,12 @@ session63774 已 terminal exit1，新 case `C:/t/p01_yyz7kyi8`。固定 controll
 標準輸入改為 `stdin=None` 後，中央獨立 guard-only 自測 exit0（`C:/t/p01_tfj5381x`）；readonly numeric pipe audit 事件通過，write 事件仍拒絕，沒有放行 descriptor 寫入。supervisor 新 SHA `11e0c13f9f7456bf040bf13e732a53fb6db9e87806351531511ef36aba87da0c`，profile/controller/helper 不變。
 
 新單次診斷 session74526 終態 exit1（`C:/t/p01_6zm2rnit`），收據 SHA `01b61eb6e07f68f5a4e83714624fa07611debb378a82a14ec144f848f4602311`。parent exact-launch 與 metadata guards 通過，拒絕數0；Job 觀察到三個 PID，超過 QA sampler 的兩個上限而停止。Job 已終止／關閉，實際證明零 owned 殘留，來源與全部固定 pins 起訖一致；尚無 profile 結果。接續核對 venv launcher 鏈的三個 process identity／image／commandline，再修正 QA sampler；不能僅放寬數量或把本次診斷當效能接受。
+
+中央於 2026-10-08 獨立審查並執行修正版 supervisor 的 guard-only 自測，attempt `C:/t/p01_gn8il8w8`、exit0；supervisor SHA `7e02a68c72915cb21201e63ba786cc9fc03b6c11670094e8a1bdac9a4a863e5f`，profile SHA 仍為 `705b2f1f3137a36e70d0b99c9bbfec0533fc1186e0c76a59e46ead6864f3a3d9`。合法三程序鏈合成正例通過；錯映像、SHA、父程序、原生 argv0、角色互換、第四個程序與非正規 conhost 路徑負例均拒絕。自測實際啟動子程序0、SQLite連線0、產品模組載入0；不是實際 profile 或效能接受。固定 conhost 起訖身份／SHA 一致，保留其系統硬連結數2的精確例外。base Python 原生命令核對固定 base image，venv `sys.executable`／prefix 契約另行核對，未放寬為任意 Python。下一次單次 profile 等 MA 定向測試終態後執行，避免重型測試互相干擾。
+## 翻頁診斷的唯讀 descriptor 守衛衝突（2026-10-08）
+
+中央單次診斷 session6599 終態 exit1，隔離 attempt `C:/t/p01_ou8p3n_6`；parent 收據 SHA256 `086eac8081ce7584798ea31a218bcd60568e2a7a90f3f20ea17a8b0a52af8f4a`。修正後 report 身分與完整八項來源 pins 已通過，child runtime PID24708 及三程序 Job 身分已核驗。來源前後一致、Job 清理零 owned 殘留，沒有 SQLite／網路／巢狀子程序操作。
+
+child 在 strict-open 的 canonical file 讀取路徑失敗：固定 reader 先以唯讀旗標 `os.open`，再以 `os.fdopen(descriptor, "rb")` 包裝；profile 套用的 parent metadata guard 對 `fdopen` 全面拒絕，因此尚未產生 pstats 或效能樣本。完整 traceback 保存在 `warm_01.result.json`。這證明 QA 守衛與合法唯讀路徑衝突，不能當作產品效能結果或來源讀取通過。
+
+後續修正範圍限定 profile 的精確唯讀 descriptor 契約與自測：核固定 reader caller、精確來源路徑、唯讀 open 旗標、原生 handle 身分及單次 token；其他 descriptor、寫入與 dup 仍拒絕。固定 controller、helper、archive、report、sealed store 與來源核驗條件保持固定。修正後先由中央審查 guard-only 自測，再排程單次診斷，不重跑完整矩陣以取代既有失敗樣本。

@@ -2,6 +2,8 @@
 
 日期：2026-10-08。此文件記錄 F02 後端整合的局部證據，不代表完整補完計畫、UI 或候選 EXE 已通過。
 
+收藏／比較及觀察清單 service 整合已完成中央回歸：21 passed、618.72 秒。Main／Watchlist 專用路由已接線，工作台與 namespace 回歸 88 passed；最小 Main mount／關閉回歸 10 passed。新 MA view 的完整來源旅程仍未接受，保存排序還原缺口正在修正；新增同來源條件重查回歸 session74431 執行中。以下分段保留各次失敗與接受範圍，不能把局部通過視為完整補完計畫完成。
+
 正常 F17 bundle opener 與 query reopen 使用同一份保存的合成封套。四均線投影掛接於既有逐股驗證迴圈，只有來源驗證成功且 P01 session 發布後才建立 MA session；投影例外不得發布部分狀態。金融數值沿用既有證據計算，沒有新增裸 float 計算。原始窗口、特徵日與可用性註記保留；來源缺少 available_at，歷史 PIT 資格仍為 false。
 
 ## 已核對的證據
@@ -58,3 +60,34 @@ Parent／child 各自從 exact bundle 正常 opener 讀入，MA projection 都�
 ## 回滾與範圍
 
 本次產品變更限定 projection protocol、P01 builder observer、F17 opener 與 MA query 模組及對應測試；既有 raw QA 封套不修改。回滾應以保存的各檔前像逐一還原本任務變更，先確認沒有其他人後續修改，不執行全工作樹還原。操作手冊須在正常 UI 接入完成時同步入口、條件意義、unknown 與 PIT 限制。
+
+## 收藏、比較與觀察清單整合回歸終態（2026-10-08）
+
+中央 session98850 終態 exit0，直接讀取 `output/qa/watchlist_ma_registration_20261008_a/pytest_full_integration_attempt01.log`：21 passed，618.72 秒。命令為 `.venv/Scripts/python.exe -m pytest tests/test_daily_market_technical_official_disposition_ma_comparison_v1.py tests/test_daily_market_technical_official_disposition_ma_bookmark_v1.py tests/test_watchlist_ma_bookmark_v1.py -q -o addopts= --basetemp C:/t/root-ma-integration-20261008-a`；使用全新隔離測試目錄。
+
+覆蓋跨頁比較、收藏 strict exact 重開、單次 opener／query 的公開 RestoreContext 翻頁、錯查詢／偽造／取消拒絕，以及觀察清單保存、重新載入、移除與恢復原 payload。無效或未知版本仍保留 MA namespace，不落入一般研究解碼。中央另核四個凍結 backend／test 檔案 SHA，均與送測值一致。
+
+此接受限定已測的後端與觀察清單 service；尚未證明新 MA 畫面、Main 接線、收藏重開後同來源改條件、複合 257 股完整矩陣或真人使用流程。接續追加公開 RestoreContext 的完整改條件 API，再整合新畫面並執行 UI 驗收；不以本次 21 項回歸宣告整個補完計畫完成。
+
+## 觀察清單專用路由施工與更新頁驗證（2026-10-08）
+
+觀察清單新增 MA 專用 namespace 辨識、收藏標籤、精確 ID 核對及 typed signal；損壞、缺失或未知版本不能退回一般個股研究。Main 的 signal 接收與 MA 畫面仍施工中，不能以 signal 存在授予完整 UI 接線接受。
+
+必要工作台回歸 85 passed，4.71 秒。更新頁驗證第一次 sandbox 執行為 21 通過、3 失敗、4 跳過；直接核 log 可見 isolated fixture 的 daily_prices 同步遇 WinError 5，後續 daily／technical availability 為 empty。保留該次 log，未修改產品或正式資料；使用腳本相同的全新隔離 fixture 在 native 環境重驗，exit0，25 通過、0 失敗、4 跳過。兩次 log 分別為 `output/qa/ma_watchlist_ui_root_20261008_a/update_validator.log` 與 `update_validator_native.log`。
+
+MA API 修改中的 RowScope 匯入錯誤使新增路由測試無法收集，並使全專案 mypy 在 918 個來源檔案中回報 1 error；已交由該 API owner 修正。此處記錄的是實際失敗，須修正後重新執行路由測試與型別檢查，不提前宣告通過。
+RowScope 匯入來源修正後，中央新增 MA 路由測試重驗 exit0：3 passed，覆蓋損壞 v1、未知 v9 及缺 payload 的 MA namespace 維持與精確 ID 拒絕。`watchlist_view.py` 與該測試 py_compile 通過；完整型別與真畫面重開仍須等 API／畫面凍結後驗證。
+Main 接線施工後，中央另核收藏 worker 的錯誤與原生終態 callback：主視窗進入關閉時不重新啟用按鈕或發布錯誤到畫面，強引用仍保留到原生終態。Main／Watchlist 語法及局部 mypy 通過；工作台加 MA 路由回歸為 88 passed，5.03 秒（session79613，exit0）。這些尚未涵蓋新 MA view 的真來源收藏重開與全專案最終型別；須待該 view/API 固定後補驗。
+
+## 收藏重開後修改條件的中央靜態審查
+
+中央直接檢視新增 `RestoreContext.execute_query_conditions`：完整 F17 硬條件、技術規則、F17 排序、MA 狀態、群組 AND／OR、unknown 政策及 MA 排序均為明示參數；序列有上限且禁止字串冒充序列。實作由原 exact session 建立 `conditioned` session，再由該 session 建立並執行新 MA query，不能沿原 session 執行而丟失新條件。
+
+回傳前核同來源 pins、MA session／index／source request／方法身分，並執行 result 錨點核驗及最終取消檢查；current-only、未知 official available_at 與 historical PIT false 不變。原收藏 state 未被替換，公開 API 不暴露來源 proof。此為靜態審查結論，新增真來源條件重查測試尚待執行，不能視為完整契約接受。
+中央新增最小 Main mount 接線測試，與既有 shutdown coordinator 回歸合跑 exit0；實際測試數以 `output/qa/ma_watchlist_ui_root_20261008_a/main_route_shutdown_attempt01.log` 保存。新測試建立 Qt 主視窗 harness 與真兩個研究 view，確認 MA 為獨立分頁、無來源時不啟 worker／讀取，以及 Main freeze gate 將 MA 設為關閉狀態。這沒有建立完整 MainWindow，也沒有替代真來源收藏旅程。
+
+## MA 畫面條件還原的後續缺口
+
+中央直接檢視新 view 發現 `_read_conditions()` 仍無條件建立 neutral F17 sort，而 `_apply_query_controls()` 未保存原 F17 sort；此外空 MA sort 被控制項的預設 stock_code clause 取代。這會使收藏重開後即使只改另一項條件，仍悄悄改動保存查詢的排序內容與 identity。
+
+已交回 view owner 修正：新來源可明示初始化預設，但還原必須保存完整 typed 排序（包含空 tuple）；在使用者未明示修改排序前，條件重查沿保存值。須補非預設 F17 sort、空排序與改其他條件後排序不變的測試。後端 API 的完整參數契約不能替代畫面實際傳參驗證。

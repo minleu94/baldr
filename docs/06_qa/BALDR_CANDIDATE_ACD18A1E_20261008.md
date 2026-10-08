@@ -1,0 +1,11 @@
+# 固定 acd18a1e 候選與接受範圍
+
+候選由固定 `acd18a1efcc045951defc00b79167035b6ec6f2d` source archive建置，dirty=false；路徑 `dist/candidate_acd18a1efcc0_56943844/baldr/baldr.exe`。中央直接核EXE大小53,722,333 bytes、SHA256 `7249e63836da09e0e9bfb900fd900a8c142fac76dbd8381ddc75815112bb3ded`。
+
+同版Python／EXE隔離probe終態exit0，收據 `output/qa/baldr_same_version_acd18a1efcc0_916a6a3a/same_version_receipt.json`，SHA `1026c3c2d60c46e610a86145491efe9c529f64cbf459e59c821af8a321d4ff77`，中央直接讀status=`passed_isolated_fixture`、正式市場DB未使用、provider網路未允許、真人未驗。launch、原journey／model／H20呈現fixture、Qt入口與無效設定拒絕在此probe範圍；不是原始H20、完整F07或全市場驗收。
+
+source.zip SHA `d5f814add5fddf1eb012fef885e82b0281d89a7a858e665fc989925b47270b6f`，BUILD_INFO SHA `d9c20eefc2a79fbf0327ae178725ff0ecfbb719d1f273ca3b5f36dfccff9c032`；buildlog `output/packaging/build_acd18a1efcc0_56943844/pyinstaller.log`。舊候選及來源檔未覆寫。
+
+包含已保存的來源選股解碼、價格收藏隱藏布局捲動與理由鍵盤閱讀。F07來源版真257 Main／新PID已通過，EXE專項仍待；不得把同版一般probe當F07 frozen旅程通過。不含後續f33c53e0的銷毀警告清理，亦不含施工中的MA全母體query與P01/F17投影接線；已保存MA evidence葉片是工程來源工具，不代表新MA條件已可使用。
+
+下一接受點：固定EXE以保存的同份257來源、exact收藏、比較籃與非零scroll重開，核所有runtime模組origin來自frozen archive，source inventory與關閉收尾，再準備明示設定的ASCII啟動helper及真人驗收步驟。此候選目前不標完整補完完成，不改正式排程、正式資料或安裝位置。

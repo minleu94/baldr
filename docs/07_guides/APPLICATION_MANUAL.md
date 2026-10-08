@@ -5459,3 +5459,7 @@ dev 個人收藏同一服務內的背景讀取與保存會依序執行，避免�
 H20 私有副本根存在卻無法建立操作目錄時，dev 會立即顯示建立失敗，避免 Windows 將權限拒絕反覆當成名稱碰撞。確實的名稱碰撞最多重試32次，重試之間可取消；不刪除已有目錄或繞過權限。遇到 `sqlite_read_session_private_directory_create_failed` 或 `sqlite_read_session_private_directory_collision_limit`，保留原因並檢查已明示副本根的可寫權限與可用空間，不修改原封存資料。此修正尚未包含已交付舊候選，不代表原來源載入速度已驗收。
 
 H20 載入或下鑽時，等待提示會顯示核驗原封存資料、建立安全副本、核驗副本內容及確認原來源未變等階段。位元組進度只在整數百分比變化、階段切換、重新開始與完成時更新；階段準備訊息不冒稱位元組量測。畫面更新合併不減少逐區塊來源核驗或取消檢查，也不代表整個操作已完成。此為dev的新接線，原4GB來源速度、新候選及真人接受仍需另驗。
+
+### 應用程式日誌與 H20 同次核驗檢視
+
+應用程式日誌位於 `OUTPUT_ROOT/application_state/logs`，包括 config.log、db_manager.log、data_loader.log。既有 `DATA_ROOT/logs` 保留原位置與內容，不會自動搬移或刪除。Runtime readiness 的 Logs 與可寫檢查使用新執行日誌目錄；DATA_ROOT 本身仍只檢查可讀能力。若日誌目錄不可寫，檢查會提示 attention，請修正輸出目錄權限。

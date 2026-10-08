@@ -12,8 +12,11 @@ from app_module.runtime_services.environment_readiness_service import (
 def test_environment_readiness_reports_existing_paths_without_writing(tmp_path: Path) -> None:
     data_root = tmp_path / "data"
     output_root = tmp_path / "output"
-    (data_root / "logs").mkdir(parents=True)
+    data_root.mkdir(parents=True)
+    logs = output_root / "application_state" / "logs"
+    logs.mkdir(parents=True)
     (output_root / "research_runs").mkdir(parents=True)
+    (logs / "config.log").write_text("existing log\n", encoding="utf-8")
     registry = output_root / "research_runs" / "research_runs.db"
     registry.write_bytes(b"placeholder")
 
@@ -26,6 +29,7 @@ def test_environment_readiness_reports_existing_paths_without_writing(tmp_path: 
     assert snapshot.overall_state == "ready"
     assert snapshot.side_effect_free is True
     assert snapshot.write_probe == "os.access_plus_existing_handle"
+    assert snapshot.log_root == str(logs)
     assert {item.key: item.status for item in snapshot.paths} == {
         "data_root": "ready",
         "output_root": "ready",
@@ -57,13 +61,15 @@ def test_environment_readiness_exposes_write_boundary_without_probe_file(
 ) -> None:
     data_root = tmp_path / "data"
     output_root = tmp_path / "output"
-    (data_root / "logs").mkdir(parents=True)
+    data_root.mkdir(parents=True)
+    logs = output_root / "application_state" / "logs"
+    logs.mkdir(parents=True)
     (output_root / "research_runs").mkdir(parents=True)
 
     real_access = readiness_module._access
 
     def fake_access(path: Path, mode: int) -> bool:
-        if mode == readiness_module.os.W_OK and path in {output_root, data_root / "logs"}:
+        if mode == readiness_module.os.W_OK and path in {output_root, logs}:
             return False
         return real_access(path, mode)
 
@@ -86,17 +92,30 @@ def test_environment_readiness_downgrades_existing_write_handle_denial(
 ) -> None:
     data_root = tmp_path / "data"
     output_root = tmp_path / "output"
-    logs = data_root / "logs"
+    old_logs = data_root / "logs"
+    old_logs.mkdir(parents=True)
+    old_config_log = old_logs / "config.log"
+    old_config_log.write_bytes(b"formal data-root log\n")
+    old_log_stat = old_config_log.stat()
+    old_log_signature = (
+        old_log_stat.st_size,
+        old_log_stat.st_mtime_ns,
+        old_log_stat.st_ctime_ns,
+        old_log_stat.st_ino,
+    )
+    logs = output_root / "application_state" / "logs"
     (output_root / "research_runs").mkdir(parents=True)
     logs.mkdir(parents=True)
     (logs / "config.log").write_text("existing\n", encoding="utf-8")
     (output_root / "research_runs" / "research_runs.db").write_bytes(b"db")
 
-    monkeypatch.setattr(
-        readiness_module,
-        "_probe_existing_write_handle",
-        lambda path: (False, f"{path.name}_write_handle_denied:PermissionError"),
-    )
+    probed_paths: list[Path] = []
+
+    def deny_existing_handle(path: Path) -> tuple[bool, str]:
+        probed_paths.append(path)
+        return False, f"{path.name}_write_handle_denied:PermissionError"
+
+    monkeypatch.setattr(readiness_module, "_probe_existing_write_handle", deny_existing_handle)
 
     snapshot = EnvironmentReadinessService(data_root, output_root).get_snapshot()
 
@@ -107,6 +126,18 @@ def test_environment_readiness_downgrades_existing_write_handle_denial(
     assert statuses["research_registry"].status == "attention"
     assert statuses["research_registry"].diagnostic == "research_runs.db_write_handle_denied:PermissionError"
     assert snapshot.write_probe == "os.access_plus_existing_handle"
+    assert set(probed_paths) == {
+        logs / "config.log",
+        output_root / "research_runs" / "research_runs.db",
+    }
+    assert old_config_log.read_bytes() == b"formal data-root log\n"
+    old_log_stat_after = old_config_log.stat()
+    assert (
+        old_log_stat_after.st_size,
+        old_log_stat_after.st_mtime_ns,
+        old_log_stat_after.st_ctime_ns,
+        old_log_stat_after.st_ino,
+    ) == old_log_signature
 
 
 def test_environment_write_probe_requires_confirmation_and_does_not_write(tmp_path: Path) -> None:

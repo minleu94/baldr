@@ -235,3 +235,13 @@ F17 reader owner 最終 24 passed／334.11 秒、mypy／compile 通過，兩檔 
 
 中央首次 sandbox 全套 5 passed／19 setup errors（synthetic SQLite 路徑 realpath WinError5，未修改測試或產品）。原錯誤保留，改以同一完整測試在具名 QA 根 native 重驗，handle18443 目前 live，log 為 output/qa/f17_query_reader_final_gate_20261008_a/root_reader_full_native.log。未開正式 DB、未重啟終態失敗的 H20 attempt。
 中央 F17 reader 獨立完整 native 重驗 handle18443 已 terminal exit0：24 passed／345.35秒；freeze SHA 驗前驗後保持 90CB1E...F25／D481E5...76D，完整 log 保存在同 root_reader_full_native.log。中央只接受 query reader 的完整 join／selected page／封套及最後取消守衛；F17正常 Main 操作、實際N與 Native 效能仍未驗，未把本包接受寫成完整產品完成。
+### Main 同次核驗檢視接線：首次合成旅程
+
+中央已修改 Main（尚未提交/接受），初讀接 reader-issued view；一般選股下鑽使用 exact-reference 小型 worker；返回保留原表並重核 reference；明確重驗重新跑完整 cohort。顯示完整核驗 UTC 時間，說明未持續監測來源。初讀/重讀失敗保留上次表，不發布部分新 view。原收藏準備與跨程序 reader 未改。
+
+新 tests/test_ui_qt_h20_verified_view_journey.py 使用 public reader、真合成 SQLite、既有 Main 實際方法與 Qt 真 click＋double click，通過 1 passed／3.52秒：完整來源 operation 次數依序為初讀1、雙擊1、返回1、明確重驗2；一般報告 clock 失敗時 H20 獨立摘要仍可用。workbench 85 passed／3.18秒。尚缺負例、完整 UI checks、新固定建置、原4GB Main與 Native/新程序資格，不能交付真人。
+
+前兩次隔離 setup 失敗分別是 sandbox realpath 拒絕、activation 根與應用目錄重疊；移到明示 C:/t 合成根後保留首次 Qt 雙擊序列失敗（14.86秒），該 run 只有 mouseDClick 未先 click。沿實際 QA controller 的 click→事件泵→double click 序列後通過；沒有放寬來源契約或提高 timeout。全部 log 與 Main preimage 位於 output/qa/h20_main_warm_view_root_20261008_a/。
+中央已完成 H20 leaf 獨立完整回歸 handle55851 terminal0：75 passed／1 skipped、12.71秒，原平台 skip 保留；Main review 的 force navigation晚到、return晚到與busy殘留已修正。新 Main完整旅程5 passed／8.74秒（handle97591 terminal0），包含3個設定/導航barrier負例與1個return晚到負例；後續又加摘要核驗UTC時間顯示，需最終重驗。尚未給Main最終接受/新建置/原來源資格。
+
+日誌 relocation 七檔中央靜態核對後，獨立七測試檔 native 49 passed／4.24秒；初sandbox46 passed／3 failed是 formal_runtime_config合成 binding os.replace WinError5，原log保留，不修改產品或測試排除。DATA_ROOT舊config.log bytes/stat不變、profile suffix、DBManager/DataLoader、readiness probe、CLI與fallback一致均覆蓋。原日誌無搬移；非正式資料操作。完整log/preimages位於 output/qa/runtime_log_relocation_20261007_a/。金融計算/策略/模型/來源時鐘未變。

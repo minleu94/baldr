@@ -3,6 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app_module.runtime_services.environment_readiness_service import (
+    EnvironmentReadinessService,
+)
+from app_module.runtime_services.runtime_controller import (
+    _unavailable_environment_snapshot,
+)
 from scripts.inspect_runtime_environment_readiness import main
 
 
@@ -12,8 +18,11 @@ def test_environment_readiness_cli_emits_json_without_creating_paths(
 ) -> None:
     data_root = tmp_path / "data"
     output_root = tmp_path / "output"
-    (data_root / "logs").mkdir(parents=True)
+    data_root.mkdir(parents=True)
+    logs = output_root / "application_state" / "logs"
+    logs.mkdir(parents=True)
     (output_root / "research_runs").mkdir(parents=True)
+    (logs / "config.log").write_bytes(b"existing runtime log\n")
     (output_root / "research_runs" / "research_runs.db").write_bytes(b"db")
 
     result = main(
@@ -30,6 +39,22 @@ def test_environment_readiness_cli_emits_json_without_creating_paths(
     assert payload["schema_version"] == "runtime-environment-readiness.v1"
     assert payload["overall_state"] == "ready"
     assert payload["side_effect_free"] is True
+    assert payload["log_root"] == str(logs)
+
+
+def test_runtime_readiness_failure_fallback_uses_output_log_root(tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    output_root = tmp_path / "output"
+    service = EnvironmentReadinessService(data_root, output_root)
+
+    snapshot = _unavailable_environment_snapshot(
+        service,
+        "environment_readiness_read_failed:OSError",
+    )
+
+    assert snapshot.data_root == str(data_root)
+    assert snapshot.output_root == str(output_root)
+    assert snapshot.log_root == str(output_root / "application_state" / "logs")
 
 
 def test_environment_readiness_cli_returns_attention_code_and_keeps_missing_root_missing(

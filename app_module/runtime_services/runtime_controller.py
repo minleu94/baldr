@@ -157,7 +157,7 @@ def _unavailable_environment_snapshot(
         observed_at=datetime.now(timezone.utc),
         data_root=str(data_root),
         output_root=str(output_root),
-        log_root=str(data_root / "logs"),
+        log_root=str(output_root / "application_state" / "logs"),
         research_registry=str(output_root / "research_runs" / "research_runs.db"),
         paths=(),
         diagnostics=(diagnostic,),

@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import data_module.data_loader as data_loader_module
 from analysis_module.technical_analysis.technical_indicators import (
@@ -36,6 +37,43 @@ def test_db_manager_console_handler_does_not_emit_info_startup_logs(tmp_path, mo
         for handler in logger.handlers:
             handler.close()
         logger.handlers[:] = original_handlers
+
+
+def test_db_manager_and_data_loader_logs_use_runtime_log_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("OUTPUT_ROOT", str(tmp_path / "output"))
+    monkeypatch.setenv("PROFILE", "prod")
+    config_logger = logging.getLogger("data_module.config")
+    db_logger = logging.getLogger("data_module.db_manager")
+    loader_logger = logging.getLogger("data_module.data_loader")
+    original_handlers = {
+        logger: list(logger.handlers)
+        for logger in (config_logger, db_logger, loader_logger)
+    }
+    for logger in original_handlers:
+        logger.handlers.clear()
+    try:
+        config = TWStockConfig()
+        DBManager(config)
+
+        monkeypatch.setattr(data_loader_module, "DBManager", lambda _config: object())
+        DataLoader(config)
+
+        assert {
+            Path(handler.baseFilename)
+            for handler in db_logger.handlers
+            if isinstance(handler, logging.FileHandler)
+        } == {config.log_dir / "db_manager.log"}
+        assert {
+            Path(handler.baseFilename)
+            for handler in loader_logger.handlers
+            if isinstance(handler, logging.FileHandler)
+        } == {config.log_dir / "data_loader.log"}
+    finally:
+        for logger in original_handlers:
+            for handler in logger.handlers:
+                handler.close()
+            logger.handlers[:] = original_handlers[logger]
 
 
 def test_db_manager_falls_back_when_log_file_cannot_be_opened(tmp_path, monkeypatch):

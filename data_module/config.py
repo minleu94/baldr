@@ -66,7 +66,7 @@ class TWStockConfig:
     tpex_daily_price_dir: Path = field(init=False)
     meta_data_dir: Path = field(init=False)
     technical_dir: Path = field(init=False)
-    log_dir: Path = field(init=False)  # 新增日誌目錄
+    log_dir: Path = field(init=False)  # 應用程式執行日誌目錄
     sqlite_dir: Path = field(init=False)  # SQLite 資料庫目錄
     db_file: Path = field(init=False)  # SQLite 資料庫檔案路徑
     research_run_db_file: Path = field(init=False)  # Research Run Registry SQLite 檔案
@@ -224,7 +224,7 @@ class TWStockConfig:
         self.tpex_daily_price_dir = self.data_dir / 'daily_price_tpex'
         self.meta_data_dir = self.data_dir / 'meta_data'
         self.technical_dir = self.data_dir / 'technical_analysis'
-        self.log_dir = self.data_dir / 'logs'
+        self.log_dir = self.output_root / 'application_state' / 'logs'
         self.sqlite_dir = self.data_dir / 'sqlite'
         self.db_file = self.sqlite_dir / 'twstock.db'
         from app_module.personal_store_selection import resolve_personal_store_selection
@@ -333,7 +333,7 @@ class TWStockConfig:
             self.meta_data_dir,
             self.technical_dir,
             self.backup_dir,
-            self.log_dir,  # 新增日誌目錄
+            self.log_dir,  # 應用程式執行日誌位於輸出根目錄
             self.sqlite_dir,  # SQLite 資料庫目錄
             self.research_run_db_file.parent,
             self.research_run_parquet_dir,

@@ -64,10 +64,12 @@ class EnvironmentReadinessService:
             _PathSpec(
                 key="log_root",
                 label="Logs",
-                path=self._data_root / "logs",
+                path=self._output_root / "application_state" / "logs",
                 kind="directory",
                 requires_write=True,
-                write_probe_path=self._data_root / "logs" / "config.log",
+                write_probe_path=(
+                    self._output_root / "application_state" / "logs" / "config.log"
+                ),
             ),
             _PathSpec(
                 key="research_registry",
@@ -100,7 +102,7 @@ class EnvironmentReadinessService:
             observed_at=_as_utc(self._now_provider()),
             data_root=str(self._data_root),
             output_root=str(self._output_root),
-            log_root=str(self._data_root / "logs"),
+            log_root=str(self._output_root / "application_state" / "logs"),
             research_registry=str(self._output_root / "research_runs" / "research_runs.db"),
             paths=statuses,
             diagnostics=diagnostics,

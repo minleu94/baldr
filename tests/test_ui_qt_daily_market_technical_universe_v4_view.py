@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import time
+import os
+from dataclasses import replace
+from functools import wraps
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from threading import Event, get_ident
@@ -17,6 +20,7 @@ from app_module.daily_market_technical_parent_v4_query import (
 )
 from app_module.daily_market_technical_universe_v4_query import (
     DailyMarketTechnicalUniverseV4Query,
+    DailyMarketTechnicalUniverseV4ReadSession,
 )
 from app_module.daily_market_technical_universe_v4_comparison import (
     DailyMarketTechnicalUniverseV4Comparison,
@@ -30,6 +34,7 @@ from app_module.daily_market_technical_universe_v4_producer import (
     DailyMarketTechnicalUniverseV4ProductionResult,
 )
 from app_module.daily_market_technical_universe_v4_store import (
+    DAILY_MARKET_TECHNICAL_UNIVERSE_V4_STORE_DIRECTORY,
     DailyMarketTechnicalUniverseV4Cohort,
     DailyMarketTechnicalUniverseV4Counts,
 )
@@ -53,7 +58,7 @@ def app() -> QApplication:
     instance = QApplication.instance()
     if instance is None:
         instance = QApplication([])
-    return instance
+    return cast(QApplication, instance)
 
 
 def _wait(app: QApplication, predicate: Any, *, timeout_seconds: float = 120.0) -> None:
@@ -74,11 +79,73 @@ def _entry_index(view: DailyMarketTechnicalUniverseV4View, status: str) -> int:
     return -1
 
 
+def _native_file_path(path: Path) -> str:
+    """以 Windows extended-length 路徑讀寫測試中的長路徑保存檔。"""
+    absolute = os.path.abspath(os.fspath(path))
+    if os.name != "nt" or absolute.startswith("\\\\?\\"):
+        return absolute
+    if absolute.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + absolute[2:]
+    return "\\\\?\\" + absolute
+
+
 def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldown(
     app: QApplication,
     synthetic_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture = synthetic_full_store
+    calls = {"strict_open": 0, "selection": 0, "selection_page": 0, "selected_stock": 0}
+    original_open = universe_view_module.open_daily_market_technical_universe_v4_read_session
+    original_select = DailyMarketTechnicalUniverseV4ReadSession.select_stock_codes
+    original_page = DailyMarketTechnicalUniverseV4ReadSession.read_selection_page
+    original_stock = DailyMarketTechnicalUniverseV4ReadSession.read_selection_stock_snapshot
+
+    @wraps(original_open)
+    def count_strict_open(**kwargs: Any) -> Any:
+        calls["strict_open"] += 1
+        return original_open(**kwargs)
+
+    @wraps(original_select)
+    def count_selection(
+        session: DailyMarketTechnicalUniverseV4ReadSession,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        calls["selection"] += 1
+        return original_select(session, *args, **kwargs)
+
+    @wraps(original_page)
+    def count_selection_page(
+        session: DailyMarketTechnicalUniverseV4ReadSession,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        calls["selection_page"] += 1
+        return original_page(session, *args, **kwargs)
+
+    @wraps(original_stock)
+    def count_selected_stock(
+        session: DailyMarketTechnicalUniverseV4ReadSession,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        calls["selected_stock"] += 1
+        return original_stock(session, *args, **kwargs)
+
+    monkeypatch.setattr(
+        universe_view_module,
+        "open_daily_market_technical_universe_v4_read_session",
+        count_strict_open,
+    )
+    monkeypatch.setattr(DailyMarketTechnicalUniverseV4ReadSession, "select_stock_codes", count_selection)
+    monkeypatch.setattr(DailyMarketTechnicalUniverseV4ReadSession, "read_selection_page", count_selection_page)
+    monkeypatch.setattr(
+        DailyMarketTechnicalUniverseV4ReadSession,
+        "read_selection_stock_snapshot",
+        count_selected_stock,
+    )
+
     view = DailyMarketTechnicalUniverseV4View(fixture["store_output_root"])
     view.show()
     selected_events: list[object] = []
@@ -89,7 +156,7 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     view.refresh_sources()
     _wait(app, lambda: view._worker is None)
     complete_index = _entry_index(view, "complete")
-    assert complete_index >= 0
+    assert complete_index >= 0, view.status.text()
     view.sources.setCurrentIndex(complete_index)
     entry = view.selected_source
     assert entry is not None and entry.is_selectable
@@ -97,7 +164,15 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert entry.population_state == "included"
 
     view.load_selected()
-    _wait(app, lambda: view._worker is None and view.current_page is not None)
+    _wait(
+        app,
+        lambda: view._worker is None
+        and (view.current_page is not None or "失敗：" in view.status.text()),
+    )
+    assert view.current_page is not None, view.status.text()
+    assert calls["strict_open"] == 1
+    assert calls["selection"] == 1
+    assert calls["selection_page"] == 1
     page = view.current_page
     query = view.current_query
     assert page is not None and query is not None
@@ -113,7 +188,8 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert page.unknown_rule_count == 2
     assert page.matching_count == 257
     assert len(page.rows) == 50
-    assert "來源已通過 strict 核驗" in view.verified_pins.text()
+    assert "此固定版本於 read-session 建立時通過 strict 核驗" in view.verified_pins.text()
+    assert "不宣稱來源檔在核驗後未變" in view.verified_pins.text()
     assert query.generation_identity_sha256 in view.verified_pins.text()
     assert query.plan_sha256 in view.verified_pins.text()
     assert query.receipt_sha256 in view.verified_pins.text()
@@ -123,6 +199,15 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert "只供當下重述研究" in view.verified_pins.text()
     assert "不授歷史 PIT／可交易資格" in view.verified_pins.text()
     assert "全市場宣稱：否" in view.summary.text()
+
+    read_session = view._read_session
+    assert read_session is not None
+    assert universe_view_module._query_matches_entry(query, read_session, entry)
+    altered_receipt_sha256 = "0" * 64
+    if altered_receipt_sha256 == entry.receipt_bytes_sha256:
+        altered_receipt_sha256 = "1" * 64
+    altered_entry = replace(entry, receipt_bytes_sha256=altered_receipt_sha256)
+    assert not universe_view_module._query_matches_entry(query, read_session, altered_entry)
 
     # 透過介面套用 OR 狀態篩選及全域排序。測試資料當日量能有一檔量能比 20
     # 符合；一般股票的量能比 5 不符合；零資料股票仍保留未知。
@@ -149,6 +234,8 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert view.current_query.descending is True
     final_page = view.current_page
     final_query = view.current_query
+    selection_calls_before_page_turn = calls["selection"]
+    strict_opens_before_page_turn = calls["strict_open"]
 
     view.next_button.click()
     _wait(app, lambda: view._worker is None and view.current_query is not None
@@ -156,6 +243,8 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert view.current_page is not None
     assert view.current_page.counts.processed_count == 257
     assert view.current_page.matching_count == 255
+    assert calls["strict_open"] == strict_opens_before_page_turn
+    assert calls["selection"] == selection_calls_before_page_turn
     second_page = view.current_page
     final_page = second_page
     final_query = view.current_query
@@ -179,12 +268,74 @@ def test_real_257_full_store_catalog_query_filters_pages_and_exact_stock_drilldo
     assert emitted_stock.origin_query == final_query
     assert emitted_stock.snapshot.stock_code == selected_row.stock_code
     assert emitted_stock.snapshot.snapshot_identity_sha256 == selected_row.snapshot_identity_sha256
+    assert calls["strict_open"] == strict_opens_before_page_turn
+    assert calls["selection"] == selection_calls_before_page_turn
+    assert calls["selected_stock"] == 1
 
     # 翻到第三頁後立即取消；第二頁的已核驗內容不得被晚到結果取代。
     view.next_button.click()
     view.cancel()
     _wait(app, lambda: view._worker is None)
     assert view.current_page is second_page
+
+    # 明示不存在的股票代碼會得到真實零符合結果，必須清空舊頁並保留已核母體計數。
+    view.stock_filter.setText("ZZZZ")
+    view.apply_query()
+    _wait(
+        app,
+        lambda: view._worker is None
+        and view.current_query is not None
+        and view.current_query.stock_filter == ("ZZZZ",),
+    )
+    assert view.current_page is None
+    assert view.table.rowCount() == 0
+    assert view.next_button.isEnabled() is False
+    assert view.open_button.isEnabled() is False
+    assert view.add_comparison_button.isEnabled() is False
+    assert view.bookmark_button.isEnabled() is False
+    assert "符合目前篩選 0 筆" in view.summary.text()
+    assert "已核驗母體計數：宣告 258、納入 257、排除 1" in view.summary.text()
+    assert "全市場宣稱：否" in view.summary.text()
+
+    view.stock_filter.clear()
+    view.apply_query()
+    _wait(app, lambda: view._worker is None and view.current_page is not None)
+    restored_page = view.current_page
+    restored_session = view._read_session
+    restored_selection = view._selection
+    assert restored_page is not None
+    assert restored_page.matching_count == 255
+    assert calls["strict_open"] == strict_opens_before_page_turn
+
+    # explicit reload 必須重新核驗整個保存版本；篡改非目前頁面依賴的 receipt
+    # 後應拒絕發布，原頁面與 session/selection 保留。
+    plan = fixture["plan"]
+    complete = fixture["complete"]
+    receipt_path = (
+        Path(fixture["store_output_root"])
+        / DAILY_MARKET_TECHNICAL_UNIVERSE_V4_STORE_DIRECTORY
+        / "generations"
+        / plan.generation_identity_sha256
+        / "receipts"
+        / f"{complete.identity_sha256}.json"
+    )
+    native_receipt_path = _native_file_path(receipt_path)
+    with open(native_receipt_path, "rb") as receipt_file:
+        receipt_bytes = receipt_file.read()
+    try:
+        with open(native_receipt_path, "wb") as receipt_file:
+            receipt_file.write(receipt_bytes + b" ")
+        view.load_selected()
+        _wait(app, lambda: view._worker is None)
+        assert "目前已核驗結果保留" in view.status.text()
+        assert view.current_page is restored_page
+        assert view._read_session is restored_session
+        assert view._selection is restored_selection
+        assert view.current_query is not None and view.current_query.stock_filter == ()
+        assert calls["strict_open"] == strict_opens_before_page_turn + 1
+    finally:
+        with open(native_receipt_path, "wb") as receipt_file:
+            receipt_file.write(receipt_bytes)
 
     view.close()
     assert view.begin_shutdown()
@@ -558,8 +709,9 @@ def test_bookmark_button_prepares_and_restores_real_small_saved_state(
     view.restore_bookmark_state(state)
     _wait(app, lambda: view._worker is None and view.current_query == saved.origin_query)
     assert view.current_page is state.origin_page
-    assert view._selected_row() is not None
-    assert view._selected_row().stock_code == saved.selected_stock_code
+    selected_row = view._selected_row()
+    assert selected_row is not None
+    assert selected_row.stock_code == saved.selected_stock_code
     assert len(view._comparison_basket) == len(saved.comparison_selections) == 2
     assert view.table.verticalScrollBar().value() == min(
         saved.scroll_position,

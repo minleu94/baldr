@@ -120,3 +120,13 @@ owner最終run_j **51 passed／37.38秒、exit0**。中央對凍結十個owned s
 UI強制作業：workbench **85 passed／4.30秒**；原生更新頁validator **25通過、0失敗、4跳過**；全域mypy **895 source files通過**。另七個production檔使用`--explicit-package-bases`且不略imports的mypy通過，十個owned Python檔compile、tracked diff-check通過。owner完整touched-set mypy仍有匯入既有`tests/test_ui_qt_h20_saved_source_journey.py`的22項型態錯誤；不把source檢查通過說成全部測試檔clean。九項warning是既有pct_change FutureWarning及Qt斷線RuntimeWarning，原輸出保留。
 
 這項驗證只核安全副本UI接線；原4GB來源保護、原十股／2382實際等待速度、固定新候選Python/exe、新程序及Native仍須另外通過。standalone與natural-outcome batch預設尚未改安全composition；不宣稱全部H20 SQLite路徑安全，完整P00–P14／M3亦維持未完成。
+
+### P01 UI read-session 中央接受範圍
+
+代理原257＋1完整旅程run_011 **1 passed／125.49秒**。中央獨立全view回歸handle71854 **7 passed／142.80秒、exit0**，含真完整保存來源、跨頁／原股、比較、收藏與恢復、取消、診斷清冊與worker設置；原source/test SHA分別為`77816FA0AB4A0059F8649664880CA0BCF035FA26FFF8E22EECEE25D0B893CFF1`／`460443AA5DD3AB34D7E7C83D75FE5EFC9265B3C5EC55C2EFEA04F2787AF986CD`。
+
+中央兩檔mypy另發現test既有QApplication.instance回傳QCoreApplication及重複_selected_row不能窄化的兩錯；僅補cast及同義非None local assertion，view無變。最終test SHA為`D85E81AEF215FA89ABDFFFEA0FF12A06D733F8D798CBFC8E85F6E05768EBFF83`，owner受影響bookmark案例1 passed／6.12秒，中央新版同案例 **1 passed／5.39秒**，兩檔mypy／compile通過；不稱原全7是在新test SHA上執行。UI強制85 workbench／validator25-0-4／mypy895均在同一最終production view上通過，沒有為純型別修正重造257來源。
+
+成功零結果清空舊頁、保留strict session已核完整母體counts、停用當頁研究／收藏；恢復條件仍保留原OR/rule篩選。明示load/reload建立fresh strict session，來源篡改拒絕後保持舊state；相同來源篩選、暖翻頁與個股操作沿既有selection，不重掃來源／重排全母體。Windows長路徑比對沿公開reader canonical root與same-source契約，不裸resolve。測試原失敗與fixture-only extended-path bytes修正均保留於ignored QA。
+
+這些耗時包含fixture產製，不是UI頁面延遲。1000／實際N／冷暖p95、最新版正常Main／固定候選／新程序與Native仍待；F17 rows-only materializer尚未實作，不能用本UI接線通過宣稱F17 join完成。

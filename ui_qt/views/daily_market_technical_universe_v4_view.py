@@ -39,7 +39,7 @@ from app_module.daily_market_technical_universe_v4_bookmark import (
     DailyMarketTechnicalUniverseV4Bookmark,
     DailyMarketTechnicalUniverseV4BookmarkError,
     DailyMarketTechnicalUniverseV4BookmarkState,
-    create_daily_market_technical_universe_v4_bookmark,
+    create_daily_market_technical_universe_v4_bookmark_fresh,
 )
 from app_module.daily_market_technical_universe_v4_comparison import (
     DailyMarketTechnicalUniverseV4Comparison,
@@ -54,11 +54,14 @@ from app_module.daily_market_technical_universe_v4_producer import (
 from app_module.daily_market_technical_universe_v4_query import (
     DailyMarketTechnicalUniverseV4Page,
     DailyMarketTechnicalUniverseV4Query,
-    read_daily_market_technical_universe_v4_page,
+    DailyMarketTechnicalUniverseV4ReadSelection,
+    DailyMarketTechnicalUniverseV4ReadSelectionPage,
+    DailyMarketTechnicalUniverseV4ReadSession,
+    open_daily_market_technical_universe_v4_read_session,
 )
 from app_module.daily_market_technical_universe_v4_stock import (
     DailyMarketTechnicalUniverseV4Stock,
-    read_daily_market_technical_universe_v4_stock,
+    read_daily_market_technical_universe_v4_stock_from_selection,
 )
 from ui_qt.workers.task_worker import TaskWorker
 from ui_qt.widgets.daily_market_technical_v4_production_setup import (
@@ -94,8 +97,16 @@ _RULE_SORT_LABELS: dict[str, str] = {
 
 @dataclass(frozen=True, slots=True)
 class _QueryReadResult:
-    page: DailyMarketTechnicalUniverseV4Page
+    query: DailyMarketTechnicalUniverseV4Query
+    read_session: DailyMarketTechnicalUniverseV4ReadSession
+    selection_query: DailyMarketTechnicalUniverseV4Query
+    selection: DailyMarketTechnicalUniverseV4ReadSelection
+    selection_page: DailyMarketTechnicalUniverseV4ReadSelectionPage
     source_clock: dict[str, object] | None = None
+
+    @property
+    def page(self) -> DailyMarketTechnicalUniverseV4Page | None:
+        return self.selection_page.page
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +132,9 @@ class _ComparisonTaskOutcome:
 class _OriginRestoreResult:
     page: DailyMarketTechnicalUniverseV4Page
     stock_code: str
+    read_session: DailyMarketTechnicalUniverseV4ReadSession
+    selection_query: DailyMarketTechnicalUniverseV4Query
+    selection: DailyMarketTechnicalUniverseV4ReadSelection
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,28 +185,29 @@ def _read_entry_page(
     if _cancelled(cancel_callback):
         raise ValueError("technical_universe_v4_query_cancelled")
 
-    query = DailyMarketTechnicalUniverseV4Query.create(
+    session = open_daily_market_technical_universe_v4_read_session(
         store_output_root=output_root,
         generation_identity_sha256=cast(str, entry.generation_identity_sha256),
         plan_identity_sha256=cast(str, entry.plan_identity_sha256),
         plan_sha256=cast(str, entry.plan_bytes_sha256),
         receipt_identity_sha256=cast(str, entry.receipt_identity_sha256),
         receipt_sha256=cast(str, entry.receipt_bytes_sha256),
-        page_size=50,
         cancel_callback=cancel_callback,
     )
-    if (
-        query.receipt_status != entry.source_status
-        or query.cohort_identity_sha256 != entry.cohort_identity_sha256
-        or query.source_clock_identity_sha256 != entry.source_clock_identity_sha256
-        or query.method_contracts_sha256 != entry.method_contracts_sha256
-    ):
+    query = session.create_query(page_size=50, cancel_callback=cancel_callback)
+    if not _query_matches_entry(query, session, entry):
         raise ValueError("technical_universe_v4_catalog_entry_identity_mismatch")
-    page = read_daily_market_technical_universe_v4_page(
+    selection = session.select_stock_codes(
         query,
         cancel_callback=cancel_callback,
     )
-    return _QueryReadResult(page=page)
+    return _read_selection_page_result(
+        session,
+        query,
+        selection,
+        query,
+        cancel_callback=cancel_callback,
+    )
 
 
 def _read_query_page(
@@ -205,17 +220,23 @@ def _read_query_page(
     descending: bool,
     page_index: int,
     page_size: int,
+    read_session: DailyMarketTechnicalUniverseV4ReadSession | None = None,
+    selection_query: DailyMarketTechnicalUniverseV4Query | None = None,
+    selection: DailyMarketTechnicalUniverseV4ReadSelection | None = None,
     cancel_callback: Callable[[], bool] | None = None,
 ) -> _QueryReadResult:
     if _cancelled(cancel_callback):
         raise ValueError("technical_universe_v4_query_cancelled")
-    query = DailyMarketTechnicalUniverseV4Query.create(
-        store_output_root=base.store_output_root,
-        generation_identity_sha256=base.generation_identity_sha256,
-        plan_identity_sha256=base.plan_identity_sha256,
-        plan_sha256=base.plan_sha256,
-        receipt_identity_sha256=base.receipt_identity_sha256,
-        receipt_sha256=base.receipt_sha256,
+    session = read_session
+    can_reuse_session = session is not None and session.matches_source(base)
+    if not can_reuse_session:
+        session = _open_read_session_for_query(base, cancel_callback=cancel_callback)
+        selection_query = None
+        selection = None
+    if session is None:
+        raise ValueError("technical_universe_v4_read_session_missing")
+    _query_from_session(session, base, cancel_callback=cancel_callback)
+    query = session.create_query(
         rule_state_filters=rule_state_filters,
         combine_mode=cast(Any, combine_mode),
         stock_filter=stock_filter,
@@ -225,28 +246,78 @@ def _read_query_page(
         page_size=page_size,
         cancel_callback=cancel_callback,
     )
-    page = read_daily_market_technical_universe_v4_page(
+    if (
+        selection is None
+        or selection_query is None
+        or not session.matches_source(selection_query)
+        or not _same_query_selection_spec(selection_query, query)
+    ):
+        selection_query = query
+        selection = session.select_stock_codes(
+            selection_query,
+            cancel_callback=cancel_callback,
+        )
+    else:
+        _query_from_session(session, selection_query, cancel_callback=cancel_callback)
+    return _read_selection_page_result(
+        session,
+        selection_query,
+        selection,
         query,
         cancel_callback=cancel_callback,
     )
-    return _QueryReadResult(page=page)
 
 
 def _read_selected_stock(
     query: DailyMarketTechnicalUniverseV4Query,
     row: DailyMarketTechnicalParentV4Row,
     *,
+    read_session: DailyMarketTechnicalUniverseV4ReadSession | None = None,
+    selection_query: DailyMarketTechnicalUniverseV4Query | None = None,
+    selection: DailyMarketTechnicalUniverseV4ReadSelection | None = None,
     cancel_callback: Callable[[], bool] | None = None,
 ) -> tuple[
     DailyMarketTechnicalUniverseV4Query,
     DailyMarketTechnicalParentV4Row,
     DailyMarketTechnicalUniverseV4Stock,
 ]:
-    stock = read_daily_market_technical_universe_v4_stock(
-        query,
+    session = read_session
+    can_reuse_session = session is not None and session.matches_source(query)
+    if not can_reuse_session:
+        session = _open_read_session_for_query(query, cancel_callback=cancel_callback)
+        selection_query = None
+        selection = None
+    if session is None:
+        raise ValueError("technical_universe_v4_read_session_missing")
+    exact_query = _query_from_session(session, query, cancel_callback=cancel_callback)
+    if (
+        selection is None
+        or selection_query is None
+        or not session.matches_source(selection_query)
+        or not _same_query_selection_spec(selection_query, exact_query)
+    ):
+        selection_query = exact_query
+        selection = session.select_stock_codes(
+            selection_query,
+            cancel_callback=cancel_callback,
+        )
+    else:
+        _query_from_session(session, selection_query, cancel_callback=cancel_callback)
+    stock = read_daily_market_technical_universe_v4_stock_from_selection(
+        selection,
         row.stock_code,
+        session,
+        page_index=query.page_index,
+        page_size=query.page_size,
         cancel_callback=cancel_callback,
     )
+    if (
+        stock.origin_query != query
+        or stock.snapshot.stock_code != row.stock_code
+        or stock.snapshot.snapshot_identity_sha256 != row.snapshot_identity_sha256
+        or stock.snapshot.source_identity != row.source_identity
+    ):
+        raise ValueError("technical_universe_v4_selected_stock_pin_mismatch")
     return query, row, stock
 
 
@@ -271,19 +342,164 @@ def _read_origin_page(
     query: DailyMarketTechnicalUniverseV4Query,
     stock_code: str,
     *,
+    read_session: DailyMarketTechnicalUniverseV4ReadSession | None = None,
+    selection_query: DailyMarketTechnicalUniverseV4Query | None = None,
+    selection: DailyMarketTechnicalUniverseV4ReadSelection | None = None,
     cancel_callback: Callable[[], bool] | None = None,
 ) -> _OriginRestoreResult:
     if _cancelled(cancel_callback):
         raise ValueError("technical_universe_v4_origin_restore_cancelled")
-    page = read_daily_market_technical_universe_v4_page(
-        query,
+    session = read_session
+    can_reuse_session = session is not None and session.matches_source(query)
+    if not can_reuse_session:
+        session = _open_read_session_for_query(query, cancel_callback=cancel_callback)
+        selection_query = None
+        selection = None
+    if session is None:
+        raise ValueError("technical_universe_v4_read_session_missing")
+    exact_query = _query_from_session(session, query, cancel_callback=cancel_callback)
+    if (
+        selection is None
+        or selection_query is None
+        or not session.matches_source(selection_query)
+        or not _same_query_selection_spec(selection_query, exact_query)
+    ):
+        selection_query = exact_query
+        selection = session.select_stock_codes(
+            selection_query,
+            cancel_callback=cancel_callback,
+        )
+    else:
+        _query_from_session(session, selection_query, cancel_callback=cancel_callback)
+    result = _read_selection_page_result(
+        session,
+        selection_query,
+        selection,
+        exact_query,
         cancel_callback=cancel_callback,
     )
+    page = result.page
+    if page is None:
+        raise ValueError("technical_universe_v4_origin_page_empty")
     if page.query != query or not any(row.stock_code == stock_code for row in page.rows):
         raise ValueError("technical_universe_v4_origin_stock_not_in_pinned_page")
     if _cancelled(cancel_callback):
         raise ValueError("technical_universe_v4_origin_restore_cancelled")
-    return _OriginRestoreResult(page=page, stock_code=stock_code)
+    return _OriginRestoreResult(
+        page=page,
+        stock_code=stock_code,
+        read_session=session,
+        selection_query=selection_query,
+        selection=selection,
+    )
+
+
+def _query_matches_entry(
+    query: DailyMarketTechnicalUniverseV4Query,
+    read_session: DailyMarketTechnicalUniverseV4ReadSession,
+    entry: DailyMarketTechnicalUniverseV4CatalogEntry,
+) -> bool:
+    return (
+        read_session.matches_source(query)
+        and Path(query.store_output_root) == Path(read_session.store_output_root)
+        and query.generation_identity_sha256 == entry.generation_identity_sha256
+        and query.plan_identity_sha256 == entry.plan_identity_sha256
+        and query.plan_sha256 == entry.plan_bytes_sha256
+        and query.receipt_identity_sha256 == entry.receipt_identity_sha256
+        and query.receipt_sha256 == entry.receipt_bytes_sha256
+        and query.receipt_status == entry.source_status
+        and query.cohort_identity_sha256 == entry.cohort_identity_sha256
+        and query.source_clock_identity_sha256 == entry.source_clock_identity_sha256
+        and query.method_contracts_sha256 == entry.method_contracts_sha256
+    )
+
+
+def _open_read_session_for_query(
+    query: DailyMarketTechnicalUniverseV4Query,
+    *,
+    cancel_callback: Callable[[], bool] | None,
+) -> DailyMarketTechnicalUniverseV4ReadSession:
+    return open_daily_market_technical_universe_v4_read_session(
+        store_output_root=query.store_output_root,
+        generation_identity_sha256=query.generation_identity_sha256,
+        plan_identity_sha256=query.plan_identity_sha256,
+        plan_sha256=query.plan_sha256,
+        receipt_identity_sha256=query.receipt_identity_sha256,
+        receipt_sha256=query.receipt_sha256,
+        cancel_callback=cancel_callback,
+    )
+
+
+def _query_from_session(
+    session: DailyMarketTechnicalUniverseV4ReadSession,
+    query: DailyMarketTechnicalUniverseV4Query,
+    *,
+    cancel_callback: Callable[[], bool] | None,
+) -> DailyMarketTechnicalUniverseV4Query:
+    rebuilt = session.create_query(
+        rule_state_filters=query.rule_state_filters,
+        combine_mode=cast(Any, query.combine_mode),
+        stock_filter=query.stock_filter,
+        sort_key=query.sort_key,
+        descending=query.descending,
+        page_index=query.page_index,
+        page_size=query.page_size,
+        cancel_callback=cancel_callback,
+    )
+    if rebuilt != query or not session.matches_source(query):
+        raise ValueError("technical_universe_v4_query_session_identity_mismatch")
+    return rebuilt
+
+
+def _same_query_selection_spec(
+    left: DailyMarketTechnicalUniverseV4Query,
+    right: DailyMarketTechnicalUniverseV4Query,
+) -> bool:
+    left_payload = left.to_dict()
+    right_payload = right.to_dict()
+    for payload in (left_payload, right_payload):
+        payload.pop("page_index", None)
+        payload.pop("page_size", None)
+        payload.pop("query_identity_sha256", None)
+    return left_payload == right_payload
+
+
+def _read_selection_page_result(
+    session: DailyMarketTechnicalUniverseV4ReadSession,
+    selection_query: DailyMarketTechnicalUniverseV4Query,
+    selection: DailyMarketTechnicalUniverseV4ReadSelection,
+    query: DailyMarketTechnicalUniverseV4Query,
+    *,
+    cancel_callback: Callable[[], bool] | None,
+) -> _QueryReadResult:
+    if (
+        not session.matches_source(selection_query)
+        or not session.matches_source(query)
+        or not _same_query_selection_spec(selection_query, query)
+    ):
+        raise ValueError("technical_universe_v4_read_selection_query_mismatch")
+    selection_page = session.read_selection_page(
+        selection,
+        page_index=query.page_index,
+        page_size=query.page_size,
+        cancel_callback=cancel_callback,
+    )
+    page = selection_page.page
+    if (
+        selection_page.selection_identity_sha256 != selection.selection_identity_sha256
+        or selection_page.page_index != query.page_index
+        or selection_page.page_size != query.page_size
+        or selection_page.matching_count != selection.matching_count
+        or (page is not None and page.query != query)
+    ):
+        raise ValueError("technical_universe_v4_read_selection_page_mismatch")
+    return _QueryReadResult(
+        query=query,
+        read_session=session,
+        selection_query=selection_query,
+        selection=selection,
+        selection_page=selection_page,
+    )
 
 
 def _validate_bookmark_state(
@@ -517,6 +733,9 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self._pending: _QueuedOperation | None = None
         self._query: DailyMarketTechnicalUniverseV4Query | None = None
         self._page: DailyMarketTechnicalUniverseV4Page | None = None
+        self._read_session: DailyMarketTechnicalUniverseV4ReadSession | None = None
+        self._selection_query: DailyMarketTechnicalUniverseV4Query | None = None
+        self._selection: DailyMarketTechnicalUniverseV4ReadSelection | None = None
         self._source_clock: dict[str, object] | None = None
         self._source_cursor: str | None = None
         self._catalog_page: DailyMarketTechnicalUniverseV4CatalogPage | None = None
@@ -775,13 +994,12 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         if entry is None or not entry.is_selectable:
             self.status.setText("請選擇一筆可讀取的保存版本；診斷列不能載入。")
             return
-
         def apply(value: object) -> None:
             if not isinstance(value, _QueryReadResult):
                 self.status.setText("嚴格來源查詢回傳格式不符；目前畫面保留。")
                 return
-            self._current_entry = entry
-            self._show_query_result(value)
+            if self._show_query_result(value):
+                self._current_entry = entry
 
         self._start(
             "嚴格核驗來源",
@@ -815,6 +1033,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         sort_key = str(self.sort.currentData())
         descending = bool(self.descending.currentData())
         page_size = int(self.page_size.currentData())
+        read_session = self._read_session
         self._start(
             "更新全域查詢",
             lambda cancel_callback=None: _read_query_page(
@@ -826,6 +1045,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                 descending=descending,
                 page_index=0,
                 page_size=page_size,
+                read_session=read_session,
                 cancel_callback=cancel_callback,
             ),
             self._apply_query_result,
@@ -839,6 +1059,9 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         next_index = base.page_index + delta
         if next_index < 0 or next_index >= page.page_count:
             return
+        read_session = self._read_session
+        selection_query = self._selection_query
+        selection = self._selection
         self._start(
             f"讀取第 {next_index + 1} 頁",
             lambda cancel_callback=None: _read_query_page(
@@ -850,6 +1073,9 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                 descending=base.descending,
                 page_index=next_index,
                 page_size=base.page_size,
+                read_session=read_session,
+                selection_query=selection_query,
+                selection=selection,
                 cancel_callback=cancel_callback,
             ),
             self._apply_query_result,
@@ -861,11 +1087,17 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         if query is None or row is None:
             self.status.setText("請選擇目前已核驗頁面的一檔股票。")
             return
+        read_session = self._read_session
+        selection_query = self._selection_query
+        selection = self._selection
         self._start(
             f"讀取 {row.stock_code} 原保存證據",
             lambda cancel_callback=None: _read_selected_stock(
                 query,
                 row,
+                read_session=read_session,
+                selection_query=selection_query,
+                selection=selection,
                 cancel_callback=cancel_callback,
             ),
             self._emit_selected_stock,
@@ -937,6 +1169,9 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         if not isinstance(query, DailyMarketTechnicalUniverseV4Query) or not isinstance(stock_code, str):
             self.status.setText("返回來源要求明確的原查詢與股票代碼。")
             return
+        read_session = self._read_session
+        selection_query = self._selection_query
+        selection = self._selection
 
         def apply(value: object) -> None:
             if not isinstance(value, _OriginRestoreResult):
@@ -949,16 +1184,19 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                 self.status.setText("原股票不在嚴格核驗的保存頁；目前表格保留。")
                 return
             self._current_entry = None
-            self._show_page(value.page)
-            if not self._select_stock_code(value.stock_code):
-                self.status.setText("原股票不在已核驗頁面；目前表格保留。")
-                return
+            self._show_page(
+                value.page,
+                read_session=value.read_session,
+                selection_query=value.selection_query,
+                selection=value.selection,
+                selected_stock_code=value.stock_code,
+            )
             self.source_pins.setText(
-                "目前表格依比較欄位的原 query pins 嚴格重開；"
+                "目前表格依本次已核驗保存版本返回，並重新核驗所選原 artifact；"
                 "上方 catalog metadata 選取只代表候選列，表格實際來源見下方 verified pins。"
             )
             self.status.setText(
-                f"已按原保存 query pins 返回 {value.stock_code}；沒有改讀其他保存版本。"
+                f"已依原保存 query pins 返回 {value.stock_code}；沒有改讀其他保存版本。"
             )
 
         self._start(
@@ -966,6 +1204,9 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
             lambda cancel_callback=None: _read_origin_page(
                 query,
                 stock_code,
+                read_session=read_session,
+                selection_query=selection_query,
+                selection=selection,
                 cancel_callback=cancel_callback,
             ),
             apply,
@@ -1003,7 +1244,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
 
         self._start(
             "準備原保存研究收藏",
-            lambda cancel_callback=None: create_daily_market_technical_universe_v4_bookmark(
+            lambda cancel_callback=None: create_daily_market_technical_universe_v4_bookmark_fresh(
                 query,
                 row.stock_code,
                 scroll_position=scroll_position,
@@ -1328,20 +1569,91 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
             f"宣告 {declared}／已處理 {processed}／待處理 {pending}｜metadata 未核"
         )
 
-    def _show_query_result(self, value: _QueryReadResult) -> None:
-        self._show_page(value.page, source_clock=value.source_clock)
+    def _show_query_result(self, value: _QueryReadResult) -> bool:
+        return self._apply_query_result(value, source_clock=value.source_clock)
 
-    def _apply_query_result(self, value: object) -> None:
+    def _apply_query_result(
+        self,
+        value: object,
+        *,
+        source_clock: dict[str, object] | None = None,
+    ) -> bool:
         if not isinstance(value, _QueryReadResult):
             self.status.setText("查詢回傳格式不符；目前已核驗結果保留。")
-            return
-        self._show_page(value.page)
+            return False
+        page = value.page
+        if (
+            not isinstance(value.query, DailyMarketTechnicalUniverseV4Query)
+            or not isinstance(value.read_session, DailyMarketTechnicalUniverseV4ReadSession)
+            or not isinstance(value.selection_query, DailyMarketTechnicalUniverseV4Query)
+            or not isinstance(value.selection, DailyMarketTechnicalUniverseV4ReadSelection)
+            or not isinstance(value.selection_page, DailyMarketTechnicalUniverseV4ReadSelectionPage)
+            or not value.read_session.matches_source(value.query)
+            or not value.read_session.matches_source(value.selection_query)
+            or not _same_query_selection_spec(value.selection_query, value.query)
+            or value.selection_page.selection_identity_sha256
+            != value.selection.selection_identity_sha256
+            or value.selection_page.matching_count != value.selection.matching_count
+            or (page is not None and page.query != value.query)
+        ):
+            self.status.setText("查詢來源或 selection pin 不符；目前已核驗結果保留。")
+            return False
+        if page is None or page.matching_count == 0:
+            previous_query = self._query
+            same_source = (
+                previous_query is not None
+                and self._same_source_pins(previous_query, value.query)
+            )
+            source_counts = value.read_session.source_counts
+            self._query = value.query
+            self._page = None
+            self._read_session = value.read_session
+            self._selection_query = value.selection_query
+            self._selection = value.selection
+            if not same_source:
+                self._source_clock = None
+            self._ensure_rule_filters(value.query.method_rule_keys)
+            self._set_filter_controls(value.query)
+            self.table.clearContents()
+            self.table.setRowCount(0)
+            empty_lines = [
+                f"{value.query.universe_id}｜{value.query.population_version}｜"
+                f"決策日 {value.query.decision_date}",
+            ]
+            empty_lines.append(
+                f"已核驗母體計數：宣告 {source_counts.declared_count}、納入 {source_counts.included_count}、"
+                f"排除 {source_counts.excluded_count}、已處理 {source_counts.processed_count}、"
+                f"待處理 {source_counts.pending_count}、缺資料 {source_counts.missing_data_count}。"
+            )
+            empty_lines.extend((
+                "符合目前篩選 0 筆；沒有可顯示頁面。",
+                "全市場宣稱：否。可修改條件後重新查詢；目前沒有可研究列。",
+            ))
+            self.summary.setText("\n".join(empty_lines))
+            self.verified_pins.setText(
+                self._verified_pin_text(value.query, self._source_clock)
+            )
+            self._set_page_controls()
+            self.status.setText("篩選完成：0 筆；可修改條件重新查詢。")
+            return True
+        self._show_page(
+            page,
+            source_clock=source_clock,
+            read_session=value.read_session,
+            selection_query=value.selection_query,
+            selection=value.selection,
+        )
+        return True
 
     def _show_page(
         self,
         page: DailyMarketTechnicalUniverseV4Page,
         *,
         source_clock: dict[str, object] | None = None,
+        read_session: DailyMarketTechnicalUniverseV4ReadSession | None = None,
+        selection_query: DailyMarketTechnicalUniverseV4Query | None = None,
+        selection: DailyMarketTechnicalUniverseV4ReadSelection | None = None,
+        selected_stock_code: str | None = None,
     ) -> None:
         previous_query = self._query
         same_source = (
@@ -1355,6 +1667,9 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
             selected_code = None
         self._query = page.query
         self._page = page
+        self._read_session = read_session
+        self._selection_query = selection_query
+        self._selection = selection
         if source_clock is not None:
             self._source_clock = source_clock
         elif not same_source:
@@ -1381,7 +1696,10 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
             )
         self.summary.setText("\n".join(pieces))
         self.verified_pins.setText(self._verified_pin_text(page.query, self._source_clock))
-        self._render_rows(page.rows, selected_code=selected_code)
+        self._render_rows(
+            page.rows,
+            selected_code=(selected_stock_code or selected_code),
+        )
         self._set_page_controls()
         self.status.setText(
             "全母體已先完成條件篩選與全域排序，再取目前頁；缺件與未知維持分開。"
@@ -1410,7 +1728,8 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         source_clock: dict[str, object] | None,
     ) -> str:
         lines = [
-            "來源已通過 strict 核驗；查詢固定使用以下保存 pin：",
+            "此固定版本於 read-session 建立時通過 strict 核驗；本頁 child artifact 依 pin 重讀。",
+            "此狀態不宣稱來源檔在核驗後未變；重新載入可再次完整 strict 核驗。",
             f"store root：{query.store_output_root}",
             f"generation：{query.generation_identity_sha256}",
             f"plan identity／bytes：{query.plan_identity_sha256}／{query.plan_sha256}",
@@ -1555,7 +1874,10 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         query = self._query
         page = self._page
         self.previous_button.setEnabled(
-            query is not None and query.page_index > 0 and not self._closing
+            query is not None
+            and page is not None
+            and query.page_index > 0
+            and not self._closing
         )
         self.next_button.setEnabled(
             query is not None

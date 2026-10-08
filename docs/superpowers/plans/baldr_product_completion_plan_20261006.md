@@ -722,3 +722,5 @@ dev 133616b6 已接真Main保存操作；88e22ba6 再接觀察清單原H20收藏
 `c4f0d126` 的 F17 官方當下處置來源已核 TPEx 原 Swagger 與10/4真回應29/29列，中央29測試通過；兩入口對單次 UTC cutoff 拒絕整組自洽未來來源，原 observed/announcement/effective 分域、current-only/unknown available-at/歷史PIT false 不變。上節「真 API schema 尚未核」為歷史，正常更新／完整保存／條件與 UI 接線仍缺，見[官方處置 QA](../../06_qa/SELECTION_OFFICIAL_DISPOSAL_SOURCE_20261007.md)。
 
 原使用者 0f25 延遲／2382雙擊與新 d9 真人接受仍未通過。新固定候選、Python/exe正常 Main同 store/query/bookmark、新程序/Native與冷暖/p95仍各自驗收。P01 1000與實際N效能、P02/P04其餘條件、P03/F08–F19、P06–P08/M3、P10–P12及P13完整矩陣仍沿原範圍，不由以上有限綠燈折抵。
+
+F17 接完整母體前所需的現況市場歸屬 reader 已完成中央審核，三份既有官方名錄 raw／時間／schema／exact pins 與完整性回歸共12項通過。缺擷取時間拒絕、空名錄不得指派市場，不以無關來源 partial_failure 永久封鎖完整三名錄。這仍是 current-only 來源葉片，兩份 TPEx 真原件缺件與完整保存／query／更新／UI 出口尚未完成，見[市場歸屬 QA](../../06_qa/SELECTION_MARKET_ASSIGNMENTS_20261007.md)。

@@ -778,3 +778,6 @@ P10 來源資料日呈現補件已存 dev `3a72654e`：大盤頁缺值／非正�
 
 
 2026-10-08 固定候選 `421bc973a891` 已建置並通過隔離同版 Python／exe 比較（root 57076 exit 0，`passed_isolated_fixture`）。真人啟動 helper 已核 SHA／路徑，尚未自動啟動或收到真人接受；理由整頁捲到底、非全螢幕控制項、H20 等待／取消／2382 返回為本次三項檢查。詳見 `docs/06_qa/BALDR_H20_LOADING_CANDIDATE_421BC973_20261008.md`；H20／ruleML 判讀、完整個股脈絡、完整 P00–P14／M1–M3 繼續，不以候選比較折抵全部出口。
+
+
+2026-10-08 P05 後續分區文案來源版：合法 H20 毛報酬與另一份個股 ML 報告缺值說明明確分開；root 完整個股 UI 57 passed、Workbench 85、validator 25、mypy 902 檔通過。沙箱真合成 service 等待失敗與 WinError 5 診斷／精確重驗保留，未放寬逾時；詳見 `docs/06_qa/H20_REPORT_ML_SEPARATION_COPY_20261008.md`。此修改不在 421bc 已交候選，完整個股來源缺件與一般研究入口繼續，不宣稱 P05 完成。

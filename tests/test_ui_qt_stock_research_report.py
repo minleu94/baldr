@@ -179,12 +179,23 @@ def test_personal_h20_context_separates_report_ml_from_saved_prediction(
 
         group = view.findChild(QGroupBox, "stockResearchMLGroup")
         assert group is not None
-        assert group.title() == "個股報告 ML（與個人 H20 保存預測分開）"
+        assert group.title() == "另一份個股 ML 報告（與上方 H20 毛報酬分開）"
         separation = group.findChild(QLabel, "stockResearchMLH20Separation")
         assert separation is not None
         assert "只呈現個股報告 ML" in separation.text()
         assert "本區顯示「未提供」只代表" in separation.text()
         assert "H20 的來源狀態與數值請看上方保存 H20 區" in separation.text()
+        report_ml_labels = [label.text() for label in group.findChildren(QLabel)]
+        assert any(
+            "另一份個股 ML 報告（與上方 H20 毛報酬分開）的估計" in text
+            and "未提供合格估計值" in text
+            for text in report_ml_labels
+        )
+        assert any(
+            "另一份個股 ML 報告（與上方 H20 毛報酬分開）沒有合格輸出" in text
+            and "請依上方保存 H20 區的來源狀態判讀" in text
+            for text in report_ml_labels
+        )
 
         identity_table = group.findChild(QTableView, "stockResearchMLIdentityTable")
         assert identity_table is not None and identity_table.model() is not None
@@ -199,6 +210,7 @@ def test_personal_h20_context_separates_report_ml_from_saved_prediction(
         )
         assert "未提供合格估計值" in _ml_estimate_summary(generic_ml)
         assert "估計所扣成本情境與數值未提供" in _ml_estimate_summary(generic_ml)
+        assert "另一份個股 ML 報告" not in _ml_estimate_summary(generic_ml)
         assert report.ml.predicted_benchmark_excess_return_bp == {}
 
         saved_text = workspace.personal_h20_saved_summary.text()
@@ -208,6 +220,68 @@ def test_personal_h20_context_separates_report_ml_from_saved_prediction(
         else:
             assert "保存來源讀取失敗" in saved_text
             assert "+6.84%" not in saved_text
+    finally:
+        workspace.close()
+
+
+def test_personal_h20_and_report_ml_estimate_remain_separate() -> None:
+    from app_module.recommendation.personal_h20_product_evidence import (
+        PersonalH20ProductEvidence,
+    )
+
+    _app()
+    context = ResearchStockContextDTO(
+        stock_code="2382",
+        decision_date="2026-10-07",
+        data_date="2026-10-06",
+        source_snapshot_id="h20-cycle-20261007",
+        source_snapshot_hash="sha256:" + "c" * 64,
+        source_id="h20-prediction-2382",
+        source_kind="personal_h20_saved_cohort",
+        source_workspace="recommendation",
+    )
+    report_ml = StockMLSnapshotDTO(
+        status="available",
+        target_metric="cost_adjusted_benchmark_excess_bp",
+        predicted_benchmark_excess_return_bp={"other_report_horizon": 51},
+        research_only=True,
+    )
+    report = replace(_report_for("2382", "330"), ml=report_ml)
+    evidence = PersonalH20ProductEvidence(
+        stock_code="2382",
+        status="available",
+        reason="自然結果待核驗",
+        gross_return_bp=684,
+        decision_date="2026-10-07",
+        source_date="2026-10-06",
+        feature_date="2026-10-05",
+        observed_at="2026-10-06T16:42:07+00:00",
+        candidate_id="fixture-h20-candidate",
+        sample_id="fixture-h20-sample",
+        prediction_id="h20-prediction-2382",
+    )
+    workspace = StockResearchWorkspace(SimpleNamespace())
+    try:
+        view = workspace.report_view
+        view.context = context
+        view._loaded_request_context = context
+        view._loaded_report = report
+        view._active_code = "2382"
+        view._render_decision(report)
+        workspace.set_personal_h20_saved_evidence(evidence, context=context)
+
+        group = view.findChild(QGroupBox, "stockResearchMLGroup")
+        assert group is not None
+        assert group.title() == "另一份個股 ML 報告（與上方 H20 毛報酬分開）"
+        labels = "\n".join(label.text() for label in group.findChildren(QLabel))
+        assert "另一份個股 ML 報告（與上方 H20 毛報酬分開）的估計" in labels
+        assert "other_report_horizon：+51 bp" in labels
+        assert "+6.84%" not in labels
+        assert "（未扣成本）：+6.84%" in workspace.personal_h20_saved_summary.text()
+        assert "目前尚無已核驗結果" in workspace.personal_h20_saved_summary.text()
+        assert report.ml.predicted_benchmark_excess_return_bp == {
+            "other_report_horizon": 51
+        }
     finally:
         workspace.close()
 

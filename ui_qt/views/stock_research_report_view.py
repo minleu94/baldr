@@ -3005,7 +3005,7 @@ class StockResearchReportView(QWidget):
                 f"所選保存決策ML研究（模型事件日：{ml.event_date or '未提供'}）"
             )
         if is_personal_h20_context:
-            ml_group.setTitle("個股報告 ML（與個人 H20 保存預測分開）")
+            ml_group.setTitle("另一份個股 ML 報告（與上方 H20 毛報酬分開）")
         ml_group.setObjectName("stockResearchMLGroup")
         scope_label = {
             "current_stock_research": "當下個股獨立研究（不併入保存 Advice）",
@@ -3023,7 +3023,9 @@ class StockResearchReportView(QWidget):
             )
             separation_note.setObjectName("stockResearchMLH20Separation")
             ml_layout.addWidget(separation_note)
-        ml_layout.addWidget(self._wrapped_label(_ml_estimate_summary(ml)))
+        ml_layout.addWidget(self._wrapped_label(
+            _ml_estimate_summary(ml, personal_h20_context=is_personal_h20_context)
+        ))
         audit_group = QGroupBox("資料稽核：模型身份、來源與原始診斷")
         audit_group.setObjectName("stockResearchMLAudit")
         audit_layout = QVBoxLayout(audit_group)
@@ -3115,7 +3117,13 @@ class StockResearchReportView(QWidget):
         if ml.explanations:
             audit_layout.addWidget(self._wrapped_label("可解釋輸出：" + _join_or_missing(ml.explanations, "未提供")))
         if ml.status in {"unavailable", "missing"}:
-            ml_layout.addWidget(self._missing_panel("目前沒有合格的個股 ML 研究輸出；不補造估計或機率。"))
+            missing_output_text = (
+                "另一份個股 ML 報告（與上方 H20 毛報酬分開）沒有合格輸出；"
+                "不補造估計或機率。請依上方保存 H20 區的來源狀態判讀。"
+                if is_personal_h20_context
+                else "目前沒有合格的個股 ML 研究輸出；不補造估計或機率。"
+            )
+            ml_layout.addWidget(self._missing_panel(missing_output_text))
         if ml.limitations:
             prefix = "ML 品質降級：" if ml.status == "degraded" else "ML 限制："
             ml_layout.addWidget(self._wrapped_label(prefix + "；".join(
@@ -4171,7 +4179,7 @@ def _report_limitations_text(report: StockResearchReportDTO) -> str:
     return text + ("；其餘限制保留於資料稽核。" if len(unique) > 3 else "")
 
 
-def _ml_estimate_summary(ml: object) -> str:
+def _ml_estimate_summary(ml: object, *, personal_h20_context: bool = False) -> str:
     predictions = getattr(ml, "predicted_benchmark_excess_return_bp", {}) or {}
     estimates = [f"{horizon}：{value:+d} bp" for horizon, value in predictions.items() if type(value) is int]
     estimate = "；".join(estimates[:3]) if estimates else "未提供合格估計值"
@@ -4202,8 +4210,12 @@ def _ml_estimate_summary(ml: object) -> str:
             f"本次模型假設總成本{percentages[0]}%（買進{percentages[1]}%、賣出{percentages[2]}%）；"
             "這是模型成本情境，不是你的實際交易成本。"
         )
+    estimate_heading = (
+        "另一份個股 ML 報告（與上方 H20 毛報酬分開）的估計"
+        if personal_h20_context else "研究估計"
+    )
     return (
-        f"研究估計（{cost_label}）：{estimate}。原始目標定義保留於稽核。"
+        f"{estimate_heading}（{cost_label}）：{estimate}。原始目標定義保留於稽核。"
         "基準名稱、期間的交易日／日曆日定義未提供。"
         f"{cost_context}"
         f"{qualification}；不是股價漲跌預測、獲利機率或已驗證收益。"

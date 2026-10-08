@@ -43,6 +43,16 @@ Parent／child 各自從 exact bundle 正常 opener 讀入，MA projection 都�
 
 首次 attempt 的 NUL stdin 防護失敗仍保留；QA 改用 attempt 內零位元組檔案的唯讀 handle，並先以真實 suspended Job 執行固定 Python probe。沒有放寬 NUL 路徑或程序白名單。此補驗證明來源版正常 opener 的新 PID exact 重建；`source_available_at` 仍 null、availability unknown、historical PIT false，尚不證明 MA UI／收藏接入、正式來源資格或候選 EXE 通過。
 
+## 新複合查詢的中央審查（尚未接受完整接線）
+
+新增 MA／F17 複合查詢將完整母體的硬限制、規則群組與 MA 三值判讀分開處理；全域排序後才物化選取頁。可見筆數 `visible_count` 與 predicate match／unknown／not_evaluated 分開，沒有啟用條件不代表每筆均命中規則；pending／excluded 維持 not_evaluated。舊 F17 query 與收藏 schema 不變。
+
+中央獨立小型契約驗證為 16 passed（0.69 秒），命令 `.venv/Scripts/python.exe -X utf8 -B -m pytest tests/test_daily_market_technical_official_disposition_ma_query_v1.py -q -o addopts= -p no:cacheprovider --basetemp=output/qa/ma_composite_root_review_20261008_a`。全專案 mypy 通過 914 個來源檔案。這些只證明契約與型別，完整 257 股複合 query／各群組真偽／六頁一致性／新收藏及 UI 仍未接受。
+
+審查另發現兩處取消邊界：多欄排序的 partition／各欄排序前後須檢查取消；public page API 須在全結果錨點重核與 JSON 工作前先驗取消。目前已交回窄修，尚未修完，不得以既有 16 項測試授予這兩項接受。
+
+既有 F17 完整回歸已由中央取得終態：27 passed，352.22 秒，session 26101、exit 0。命令 `.venv/Scripts/python.exe -X utf8 -B -m pytest tests/test_daily_market_technical_official_disposition_query_reader_v1.py -q -o addopts= -p no:cacheprovider --basetemp=output/qa/ma_composite_f17_regression_20261008_b`；涵蓋原 257 股 join／排序／分頁、正常 factory、來源漂移、取消與新 PID 重開，不能折抵新增複合群組的完整母體驗收。前一 sandbox attempt 因 extended-path WinError 5 造成 fixture setup 失敗（5 passed、22 errors），保留失敗，沒有修改產品避開路徑驗證。
+
 ## 回滾與範圍
 
 本次產品變更限定 projection protocol、P01 builder observer、F17 opener 與 MA query 模組及對應測試；既有 raw QA 封套不修改。回滾應以保存的各檔前像逐一還原本任務變更，先確認沒有其他人後續修改，不執行全工作樹還原。操作手冊須在正常 UI 接入完成時同步入口、條件意義、unknown 與 PIT 限制。

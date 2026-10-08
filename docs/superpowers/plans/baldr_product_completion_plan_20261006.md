@@ -736,3 +736,11 @@ H20 返回跨推薦結果分頁會排兩次完整重讀，中央實際Qt signal�
 ### 2026-10-08 F17 完整母體事實保存葉片
 
 獨立 sidecar 固定原技術receipt與市場／處置exact pins，完整保存257納入＋1排除的258列；中央22通過／1平台跳過、兩檔mypy與compile通過，詳 [F17全母體保存QA](../../06_qa/F17_FULL_N_FACT_BUNDLE_20261008.md)。projection complete仍與官方coverage分開，current_only不授PIT，late來源不能改舊cutoff。正常更新、F17全母體篩選／比較／收藏與UI仍待接線，未授P03或整份P00–P14／M3接受。
+
+### 2026-10-08 讀取核心審核與 UI 接線
+
+P01 固定版本 ReadSession／selection 已存本機 dev `3b899160`，中央新測試14通過、最新相鄰query／stock／bookmark回歸13通過（320.09秒含fixture產製）、四檔mypy通過。同操作分頁切已排序selection；fresh收藏重新strict核驗。UI快取接線仍在實作，中央已要求明示load完整fresh核驗與成功零結果清空舊股票；不能用底層通過宣稱實際N效能或新版畫面通過。
+
+F17 canonical query／membership-truth／多欄排序純層已存本機 dev `d4cdb500`，中央37測試、兩檔mypy與compile通過；補上technical row與rule決策日期、cutoff、feature及missing flag一致性。完整reader join、全部角色計數、來源回讀、正常更新、比較／收藏／UI仍未完成。H20 stage2a私有副本resolver的daily／capture／outcome中央46測試通過，四產品source型態檢查通過；UI名單、selected、收藏接線與多來源總容量限制仍施工，原4GB資料保護、2382下鑽速度、新程序與Native均未接受。
+
+驗證細節及未通過型態檢查見[中央讀取審核](../../06_qa/BALDR_READ_SESSION_CENTRAL_REVIEW_20261008.md)。真人啟動檔尚未交付，不要求重測舊0f25。完整P00–P14／M1–M3範圍維持，不以這些核心葉片抵銷其他工作包與驗收門檻。

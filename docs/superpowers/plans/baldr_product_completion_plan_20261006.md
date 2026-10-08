@@ -724,3 +724,5 @@ dev 133616b6 已接真Main保存操作；88e22ba6 再接觀察清單原H20收藏
 原使用者 0f25 延遲／2382雙擊與新 d9 真人接受仍未通過。新固定候選、Python/exe正常 Main同 store/query/bookmark、新程序/Native與冷暖/p95仍各自驗收。P01 1000與實際N效能、P02/P04其餘條件、P03/F08–F19、P06–P08/M3、P10–P12及P13完整矩陣仍沿原範圍，不由以上有限綠燈折抵。
 
 F17 接完整母體前所需的現況市場歸屬 reader 已完成中央審核，三份既有官方名錄 raw／時間／schema／exact pins 與完整性回歸共12項通過。缺擷取時間拒絕、空名錄不得指派市場，不以無關來源 partial_failure 永久封鎖完整三名錄。這仍是 current-only 來源葉片，兩份 TPEx 真原件缺件與完整保存／query／更新／UI 出口尚未完成，見[市場歸屬 QA](../../06_qa/SELECTION_MARKET_ASSIGNMENTS_20261007.md)。
+
+H20 返回跨推薦結果分頁會排兩次完整重讀，中央實際Qt signal回歸已重現並修成一次帶原selection的核驗；一般分頁切換仍核驗。路由4項、真Main合成下鑽／收藏鄰近6項、workbench85項、validator25/0/4及mypy892通過，見[返回重讀QA](../../06_qa/H20_RETURN_SINGLE_REFRESH_20261007.md)。此修改尚不在固定c611，未宣稱原十股載入或2382速度已通過。

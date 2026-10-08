@@ -65,7 +65,7 @@ from PySide6.QtWidgets import (
 )
 from typing import Dict, Any
 from collections.abc import Mapping
-from PySide6.QtCore import QCoreApplication, QEvent, QStandardPaths, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QSignalBlocker, QStandardPaths, Qt
 from PySide6.QtGui import QFont, QIcon
 
 from data_module.config import TWStockConfig
@@ -2493,7 +2493,10 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage("原模型選取身份不可用；不以股票字串返回其他名單。")
                 return
             self._select_main_workspace("recommendation")
-            self.recommendation_view.result_source_tabs.setCurrentWidget(self.personal_h20_research_panel)
+            # 返回已帶精確選取，避免 tab 自動刷新先排另一個完整來源重讀。
+            tabs = self.recommendation_view.result_source_tabs
+            with QSignalBlocker(tabs):
+                tabs.setCurrentWidget(self.personal_h20_research_panel)
             self._refresh_personal_h20_cohort(origin[1])
             return
         self._select_main_workspace(context.source_workspace)

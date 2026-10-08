@@ -28,6 +28,10 @@ class Worker:
     def deleteLater(self): pass
 
 
+class WindowStub(SimpleNamespace):
+    """Qt 對 bound method 接收者保存 weak reference。"""
+
+
 def setup_window(tmp_path, monkeypatch):
     import ui_qt.workers.task_worker as workers
     monkeypatch.setattr(workers, "TaskWorker", Worker)
@@ -35,12 +39,12 @@ def setup_window(tmp_path, monkeypatch):
     recommendation = QWidget()
     recommendation.result_source_tabs = QTabWidget(recommendation)
     messages, opened, workspaces = [], [], []
-    window = SimpleNamespace(config=SimpleNamespace(data_root=tmp_path),
+    window = WindowStub(config=SimpleNamespace(data_root=tmp_path),
         recommendation_view=recommendation, _shutdown_close_requested=False,
         statusBar=lambda: SimpleNamespace(showMessage=messages.append),
         _coerce_stock_research_context=lambda value: value,
         _open_stock_research_context=opened.append, _select_main_workspace=workspaces.append)
-    for name in ("_personal_h20_configuration", "_refresh_personal_h20_cohort", "_request_personal_h20_research"):
+    for name in ("_personal_h20_configuration", "_refresh_personal_h20_cohort", "_request_personal_h20_research", "_save_personal_h20_research"):
         setattr(window, name, MethodType(getattr(MainWindow, name), window))
     MainWindow._mount_personal_h20_research(window, recommendation)
     row = PersonalH20ResearchRow("2330", "available", "", 123, "2026-10-07", "2026-10-06", "2026-10-05",
@@ -122,5 +126,36 @@ def test_loading_status_and_cancel_preserve_unpublished_cohort(tmp_path, monkeyp
     assert "已核驗" in window._personal_h20_loading_label.text()
     assert not window._personal_h20_loading_timer.isActive()
     assert window.personal_h20_research_widget._cohort == cohort
+    panel.close()
+    app.processEvents()
+
+
+def test_return_from_other_result_tab_starts_one_exact_cohort_read(tmp_path, monkeypatch):
+    """返回的真 Qt tab signal 不應另排未帶原 selection 的完整重讀。"""
+    app, window, panel, cohort, selection, opened, messages = setup_window(tmp_path, monkeypatch)
+    window._refresh_personal_h20_cohort()
+    reference = object()
+    window._personal_h20_cohort_worker.finished.emit((reference, cohort))
+    window._request_personal_h20_research(selection)
+    window._personal_h20_cohort_worker.finished.emit((reference, cohort))
+    context = opened[0]
+    other_panel = QWidget()
+    panel.result_source_tabs.addTab(other_panel, "推薦結果")
+    panel.result_source_tabs.setCurrentWidget(other_panel)
+    generation_before = window._personal_h20_cohort_generation
+
+    MainWindow._return_to_research_source(window, context)
+
+    assert panel.result_source_tabs.currentWidget() is window.personal_h20_research_panel
+    assert window._personal_h20_cohort_generation == generation_before + 1
+    window._personal_h20_cohort_worker.finished.emit((reference, cohort))
+    assert window.personal_h20_research_widget.restore_selection(selection)
+    assert window.personal_h20_research_widget._cohort == cohort
+    assert not messages
+    # 一般使用者切換回H20仍保留原自動核驗入口。
+    panel.result_source_tabs.setCurrentWidget(other_panel)
+    before_user_switch = window._personal_h20_cohort_generation
+    panel.result_source_tabs.setCurrentWidget(window.personal_h20_research_panel)
+    assert window._personal_h20_cohort_generation == before_user_switch + 1
     panel.close()
     app.processEvents()

@@ -301,3 +301,9 @@ F17 root 設定前置：新增 `TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT` 共用
 提交前只移除view檔尾多餘空白行，AST前後完全相同並重新compile；最後SHA為 `824e4eafd8574cc847ef28a9132b276aba45bdd3b156e18e5b91df6c539117e2`，原驗收前像另存，不重寫既有測試日誌。
 
 本次只接受同程序合成保存研究UI／Main閉環。兩頁仍使用QTableWidget，原計畫的QAbstractTableModel分頁尚待；完整公開query的多狀態／多股條件仍超出目前UI可表示範圍且嚴格拒絕還原，不能宣稱完整選股器。正常來源產製、真市場完整N、冷暖/p95、新程序完整UI、固定exe與真人四用途仍未完成，不替代P00–P14／M1–M3其餘需求。所呈現均為固定保存事實，未新增金融計算／策略門檻，decision cutoff與特徵日期沿原保存內容，不讀未來資料或授PIT／Advice資格。
+
+### P04 共用當頁表格模型前置
+
+新增 `SavedResearchPageTableModel` 與 immutable 文字列；只保存指定上限的一頁，Display／ToolTip 提供完整文字，UserRole／row_at保留原typed DTO身分。無效、重複代碼或超量頁面在reset前原子拒絕，不覆蓋原頁；換頁丟棄舊列，不執行來源IO、金融計算或可見頁局部排序。
+
+模型3項回歸通過、Workbench85 passed／3.19秒、full-roots mypy901檔clean、compile通過。validator sandbox離線同步3項失敗保留於 `output/qa/f17_main_host_root_20261008_a/validator_sandbox04_failed`；同契約native25 passed／0 failed／4 protected skips。兩個實際選股頁尚未改用此模型，沒有新增可見操作，不更新Manual為已完成；QTableView接線、完整查詢控制、新程序及Native驗收仍待。

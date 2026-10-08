@@ -150,3 +150,14 @@ H20 新 ignored controller 的中央靜態審查另發現兩項來源初始 pin�
 owner 最終55 passed／1.36秒；中央相同凍結版本獨立 **55 passed／0.95秒**、兩檔 mypy／compile通過。source SHA256 `A8213541A6CD8C2C72B363EB92436E66228E44CD721E6EF18DCBB0F99715AEA4`，test `94C28D0A4C965DCE2E35A68522872F882E3C00AABEF4C0830E6FD29052CC3A55`。既有未知狀態測試原條件保留。未來函數自查：本變更只處理同一來源 identity 表示，未放寬 decision cutoff、current-only／PIT 或原檔核驗，沒有新 float。真完整母體 joined reader 的 integration 仍在進行，尚未接受。
 
 H20 QA controller 補上初始 external pins、45秒 preflight／420秒 total 與 child/controller shutdown條件後，中央唯一 canonical attempt `20261008T050909Z_885ee9c75df1` terminal exit1；在 private source tree 解壓深層 docs 時超過 Windows 長路徑界線，尚未讀原來源 inputs、啟 Main 或連 SQLite。失敗收據／partial QA snapshot保留，不延長timeout、不改產品guard。下一版 build-archive probe 改驗同一候選原固定 build source tree 的 archive bytes與metadata，禁止任何 source tree寫入，避免把同一來源另解壓至更長QA路徑；原十股／真雙擊／三操作／正常關閉資格不縮減。
+
+
+### P01 rows-only materializer 中央接受範圍
+
+`ReadSelection.query_spec_identity_sha256` 提供既有 query-spec digest；`ReadSession.materialize_selected_stock_codes(selection, explicit_stock_codes=..., cancel_callback=...)` 只回傳 reader-issued frozen `DailyMarketTechnicalUniverseV4SelectedRows`，不偽造查詢頁或保存 snapshots／parent references。明示序列最多256個不重複代碼，逐項檢查，即使 Sequence 虛報長度也不能繞過上限；只接受 stock_code 升冪 base selection，bisect 核會員身分，依 caller 順序精確重開所需 child artifact，每個 artifact 每次呼叫只讀一次。空批次仍完整核 selection 並檢查取消，child I/O 為零。跨session／篡改／nonmember／非bool取消回傳均拒絕；錯誤或取消不發布半份DTO。
+
+DTO schema 為 `daily-market-technical-universe-v4-selected-rows.v1`，綁 read-session、selection、query-spec identities；ordered-code SHA 是 canonical JSON list，rows SHA 是 canonical row.to_dict list，materialization envelope另綁 schema／三個來源identities／兩個SHA與兩個count。source SHA256 `CC259EC00351188AC5031AF4045B58BFAB7B3FE496FEDB4A837497F92778584E`，test `FC934CF74BFF319E6369FB1A52359AA5935D358380CE99B409F7740EF1B93FE3`。
+
+owner run_004 2 passed／146.59秒；中央獨立完整核心 **17 passed／212.35秒、handle32107 terminal exit0**，兩檔 mypy／compile／SHA核對通過。fixture 使用唯一短TEMP父目錄與pytest子目錄，不相等；真257＋1跨segment任意順序、artifact計數、digest與原列parity、來源篡改及取消矩陣均驗。owner run_001取消測試閉包遞迴、run_002錯node、run_003 TEMP與basetemp相同致fixture根消失的原始失敗均保留，未放寬來源guard。
+
+每次仍有 **O(N) selection 完整性雜湊**，DTO建構也重新驗rows digest；有界256輸出不代表只有256列成本。上述212秒含fixture產製，不作warm p95或RSS證據。未來函數自查：只重開當時保存的同來源快照，原decision／source時鐘及snapshot pins不放寬；沒有新金融float。F17全母體join／UI、1000與實際N效能、完整P00–P14／M3仍未完成。

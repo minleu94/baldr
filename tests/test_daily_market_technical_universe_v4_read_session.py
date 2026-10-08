@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from dataclasses import FrozenInstanceError, replace as dataclass_replace
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -14,13 +14,14 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-from typing import Any
+from typing import Any, cast, overload
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from app_module import daily_market_technical_universe_v4_query as query_module
 from app_module.daily_market_technical_parent_v4_query import (
+    DailyMarketTechnicalParentV4Row,
     DailyMarketTechnicalRuleStateFilterV4,
 )
 from app_module.daily_market_technical_parent_v4_producer import (
@@ -36,9 +37,12 @@ from app_module.daily_market_technical_universe_v4_bookmark import (
 )
 from app_module.daily_market_technical_universe_v4_query import (
     DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES,
+    DAILY_MARKET_TECHNICAL_UNIVERSE_V4_SELECTED_ROWS_MAX_CODES,
+    DAILY_MARKET_TECHNICAL_UNIVERSE_V4_SELECTED_ROWS_SCHEMA,
     DailyMarketTechnicalUniverseV4Query,
     DailyMarketTechnicalUniverseV4QueryError,
     DailyMarketTechnicalUniverseV4ReadSession,
+    DailyMarketTechnicalUniverseV4SelectedRows,
     open_daily_market_technical_universe_v4_read_session,
     read_daily_market_technical_universe_v4_page,
 )
@@ -62,6 +66,7 @@ from app_module.rule_research_sample_capture import ResearchCaptureWriteScope
 from app_module.rule_research_technical_parent_capture_v4 import (
     DailyMarketTechnicalCohortV4,
 )
+from tests.test_daily_market_technical_universe_v4_query import synthetic_full_store
 
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
@@ -71,6 +76,17 @@ _STOCK_CODES = tuple(f"S{index:04d}" for index in range(17))
 _EXCLUDED_CODES = ("X9999",)
 _MAIN_EXCLUDED_CODES = tuple(f"X{index:04d}" for index in range(257))
 _RATIO_SORT = "volume_ratio_20_including_current.ratio"
+
+
+def _canonical_sha256(payload: object) -> str:
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 @pytest.fixture(scope="module")
@@ -1109,3 +1125,239 @@ def test_fresh_bookmark_revalidates_once_then_new_process_restores_strictly(
         "comparisons": 2,
         "complete": True,
     }
+
+
+def test_selected_rows_materializer_preserves_requested_order_and_exact_source(
+    synthetic_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = synthetic_full_store
+    plan = fixture["plan"]
+    complete = fixture["complete"]
+    read_session = open_daily_market_technical_universe_v4_read_session(
+        store_output_root=fixture["store_output_root"],
+        generation_identity_sha256=plan.generation_identity_sha256,
+        plan_identity_sha256=plan.identity_sha256,
+        plan_sha256=fixture["plan_sha256"],
+        receipt_identity_sha256=complete.identity_sha256,
+        receipt_sha256=complete.content_sha256,
+    )
+    query = read_session.create_query(sort_key="stock_code", page_size=256)
+    selection = read_session.select_stock_codes(query)
+    assert len(selection.stock_codes) == 257
+    query_spec = query.to_dict()
+    query_spec.pop("page_index")
+    query_spec.pop("page_size")
+    query_spec.pop("query_identity_sha256")
+    expected_query_spec_sha256 = _canonical_sha256(query_spec)
+    assert selection.query_spec_identity_sha256 == expected_query_spec_sha256
+
+    expected_rows: dict[str, DailyMarketTechnicalParentV4Row] = {}
+    for page_index in range(2):
+        expected_page = read_session.read_selection_page(
+            selection, page_index=page_index, page_size=256
+        )
+        assert expected_page.page is not None
+        expected_rows.update((row.stock_code, row) for row in expected_page.rows)
+
+    # 交錯指定分段邊界與前段代碼，回傳列必須保持呼叫者提供的官方順序。
+    requested_codes = (
+        selection.stock_codes[256],
+        selection.stock_codes[255],
+        selection.stock_codes[0],
+    )
+    observed_artifacts: list[tuple[int, str]] = []
+    pristine_child_reader = query_module._read_session_child_artifact
+
+    def count_artifact_reads(reference: Any, cancel_callback: Any) -> Any:
+        observed_artifacts.append((reference.segment_index, str(reference.manifest_path)))
+        return pristine_child_reader(reference, cancel_callback)
+
+    monkeypatch.setattr(query_module, "_read_session_child_artifact", count_artifact_reads)
+    selected_rows = read_session.materialize_selected_stock_codes(
+        selection, explicit_stock_codes=requested_codes
+    )
+    assert isinstance(selected_rows, DailyMarketTechnicalUniverseV4SelectedRows)
+    assert selected_rows.read_session_identity_sha256 == read_session.read_session_identity_sha256
+    assert selected_rows.selection_identity_sha256 == selection.selection_identity_sha256
+    assert selected_rows.query_spec_identity_sha256 == expected_query_spec_sha256
+    assert selected_rows.requested_stock_codes == requested_codes
+    assert tuple(row.stock_code for row in selected_rows.rows) == requested_codes
+    assert selected_rows.rows == tuple(expected_rows[code] for code in requested_codes)
+    assert {segment_index for segment_index, _path in observed_artifacts} == {0, 1}
+    observed_paths = [path for _segment_index, path in observed_artifacts]
+    assert len(observed_paths) == len(set(observed_paths))
+    assert len(observed_paths) == 3
+    assert all(isinstance(row, DailyMarketTechnicalParentV4Row) for row in selected_rows.rows)
+    assert not hasattr(selected_rows, "snapshots")
+    assert not hasattr(selected_rows, "parent_references")
+
+    serialized = selected_rows.to_dict()
+    assert set(serialized) == {
+        "schema",
+        "read_session_identity_sha256",
+        "selection_identity_sha256",
+        "query_spec_identity_sha256",
+        "requested_stock_codes",
+        "ordered_stock_codes_sha256",
+        "rows",
+        "rows_identity_sha256",
+        "materialization_identity_sha256",
+    }
+    assert serialized["schema"] == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_SELECTED_ROWS_SCHEMA
+    assert serialized["requested_stock_codes"] == list(requested_codes)
+    expected_ordered_codes_sha256 = _canonical_sha256(list(requested_codes))
+    expected_rows_payload = [row.to_dict() for row in selected_rows.rows]
+    expected_rows_sha256 = _canonical_sha256(expected_rows_payload)
+    assert selected_rows.ordered_stock_codes_sha256 == expected_ordered_codes_sha256
+    assert selected_rows.rows_identity_sha256 == expected_rows_sha256
+    assert serialized["rows"] == expected_rows_payload
+    expected_materialization_payload = {
+        "schema": "daily-market-technical-universe-v4-selected-rows.identity.v1",
+        "read_session_identity_sha256": read_session.read_session_identity_sha256,
+        "selection_identity_sha256": selection.selection_identity_sha256,
+        "query_spec_identity_sha256": expected_query_spec_sha256,
+        "ordered_stock_codes_sha256": expected_ordered_codes_sha256,
+        "requested_count": len(requested_codes),
+        "rows_identity_sha256": expected_rows_sha256,
+        "row_count": len(requested_codes),
+    }
+    assert selected_rows.materialization_identity_sha256 == _canonical_sha256(
+        expected_materialization_payload
+    )
+    assert "_seal" not in serialized
+
+    partial_pin = fixture["partial_pin"]
+    partial_session = open_daily_market_technical_universe_v4_read_session(
+        store_output_root=fixture["store_output_root"],
+        generation_identity_sha256=plan.generation_identity_sha256,
+        plan_identity_sha256=plan.identity_sha256,
+        plan_sha256=fixture["plan_sha256"],
+        receipt_identity_sha256=partial_pin["receipt_identity_sha256"],
+        receipt_sha256=partial_pin["receipt_sha256"],
+    )
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as foreign_session:
+        partial_session.materialize_selected_stock_codes(
+            selection, explicit_stock_codes=requested_codes
+        )
+    assert foreign_session.value.code == "technical_universe_v4_read_selection_source_mismatch"
+
+    reference = read_session._artifact_references[0]
+    manifest_path = to_internal_io_path(reference.manifest_path)
+    original_manifest = Path(manifest_path).read_bytes()
+    try:
+        Path(manifest_path).write_bytes(b'{"schema_version":"tampered"}')
+        with pytest.raises(DailyMarketTechnicalUniverseV4QueryError):
+            read_session.materialize_selected_stock_codes(
+                selection, explicit_stock_codes=(selection.stock_codes[0],)
+            )
+    finally:
+        Path(manifest_path).write_bytes(original_manifest)
+
+    cancelled = False
+
+    def cancel_after_exact_artifact(reference: Any, cancel_callback: Any) -> Any:
+        nonlocal cancelled
+        artifact = pristine_child_reader(reference, cancel_callback)
+        cancelled = True
+        return artifact
+
+    monkeypatch.setattr(query_module, "_read_session_child_artifact", cancel_after_exact_artifact)
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as interrupted:
+        read_session.materialize_selected_stock_codes(
+            selection,
+            explicit_stock_codes=(selection.stock_codes[0],),
+            cancel_callback=lambda: cancelled,
+        )
+    assert cancelled
+    assert interrupted.value.code == "technical_universe_v4_query_cancelled"
+
+
+def test_selected_rows_materializer_empty_and_bounded_input_validation(
+    read_session: DailyMarketTechnicalUniverseV4ReadSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    query = read_session.create_query(sort_key="stock_code", page_size=17)
+    selection = read_session.select_stock_codes(query)
+    calls = {"identity": 0, "artifact": 0}
+    original_identity = query_module._read_selection_identity
+
+    def count_identity(item: Any) -> str:
+        calls["identity"] += 1
+        return original_identity(item)
+
+    def reject_empty_artifact_read(*_args: Any, **_kwargs: Any) -> Any:
+        calls["artifact"] += 1
+        raise AssertionError("空代碼批次不可讀 child artifact")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(query_module, "_read_selection_identity", count_identity)
+        patch.setattr(query_module, "_read_session_child_artifact", reject_empty_artifact_read)
+        empty = read_session.materialize_selected_stock_codes(
+            selection, explicit_stock_codes=(), cancel_callback=lambda: False
+        )
+    assert calls["identity"] >= 1
+    assert calls["artifact"] == 0
+    assert empty.requested_stock_codes == ()
+    assert empty.rows == ()
+    assert empty.to_dict()["rows"] == []
+
+    class LyingSequence(Sequence[str]):
+        len_calls = 0
+
+        def __len__(self) -> int:
+            self.len_calls += 1
+            return 0
+
+        @overload
+        def __getitem__(self, index: int) -> str:
+            ...
+
+        @overload
+        def __getitem__(self, index: slice) -> Sequence[str]:
+            ...
+
+        def __getitem__(self, index: int | slice) -> str | Sequence[str]:
+            if isinstance(index, slice):
+                return tuple(self[item] for item in range(*index.indices(257)))
+            if index >= DAILY_MARKET_TECHNICAL_UNIVERSE_V4_SELECTED_ROWS_MAX_CODES + 1:
+                raise IndexError
+            return f"S{index:04d}"
+
+    oversized = LyingSequence()
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as too_many:
+        read_session.materialize_selected_stock_codes(
+            selection, explicit_stock_codes=oversized
+        )
+    assert too_many.value.code == "technical_universe_v4_selected_rows_code_limit"
+    assert oversized.len_calls == 0
+
+    invalid_inputs: tuple[tuple[Any, str], ...] = (
+        (("S0001", "S0001"), "technical_universe_v4_selected_rows_duplicate_code"),
+        (("X9999",), "technical_universe_v4_selected_rows_code_not_in_selection"),
+        (("S0001", 1), "technical_universe_v4_selected_rows_codes_invalid"),
+        ("S0001", "technical_universe_v4_selected_rows_codes_invalid"),
+    )
+    for explicit_codes, expected_code in invalid_inputs:
+        with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as invalid:
+            read_session.materialize_selected_stock_codes(
+                selection, explicit_stock_codes=explicit_codes
+            )
+        assert invalid.value.code == expected_code
+
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as invalid_cancel:
+        read_session.materialize_selected_stock_codes(
+            selection,
+            explicit_stock_codes=(),
+            cancel_callback=cast(Any, lambda: 1),
+        )
+    assert invalid_cancel.value.code == "technical_universe_v4_query_cancel_callback_invalid"
+
+    reverse_selection = read_session.select_stock_codes(
+        read_session.create_query(sort_key="stock_code", descending=True, page_size=17)
+    )
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as wrong_base_order:
+        read_session.materialize_selected_stock_codes(
+            reverse_selection, explicit_stock_codes=(reverse_selection.stock_codes[0],)
+        )
+    assert wrong_base_order.value.code == "technical_universe_v4_selected_rows_base_order_invalid"

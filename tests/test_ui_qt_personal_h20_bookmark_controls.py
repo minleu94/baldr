@@ -552,6 +552,81 @@ def test_selection_change_drops_late_exact_reopen_without_substitution(
         _close_widget(app, widget)
 
 
+@pytest.mark.parametrize("invalidate_by_selection", (False, True))
+def test_late_open_progress_does_not_replace_cancel_or_selection_status(
+    app: QApplication,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalidate_by_selection: bool,
+) -> None:
+    service, fixture, second = _make_watchlist(
+        tmp_path,
+        include_invalid=False,
+        include_same_stock_manual=False,
+        include_second_h20=invalidate_by_selection,
+    )
+    if invalidate_by_selection:
+        assert second is not None
+    _install_synthetic_h20_ports(monkeypatch)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def reader(
+        bookmark,
+        *,
+        config_path,
+        market_root,
+        cancel_callback=None,
+    ):
+        entered.set()
+        if not release.wait(timeout=20):
+            raise AssertionError("測試 H20 progress barrier 未釋放")
+        return _session_bookmark_reader(
+            bookmark,
+            config_path=config_path,
+            market_root=market_root,
+            cancel_callback=cancel_callback,
+        )
+
+    widget = _widget(service, fixture, bookmark_state_reader=reader)
+    widget.show()
+    try:
+        widget.refresh_bookmarks()
+        _wait_for(app, lambda: widget._worker is None)
+        first_row = _entry_for(widget, fixture["bookmark"].bookmark_id)
+        widget.bookmarks.setCurrentRow(first_row)
+        widget.open_selected()
+        worker = widget._worker
+        assert worker is not None
+        _wait_for(app, entered.is_set)
+
+        if invalidate_by_selection:
+            assert second is not None
+            second_bookmark = cast(PersonalH20ResearchBookmark, second)
+            widget.bookmarks.setCurrentRow(
+                _entry_for(widget, second_bookmark.bookmark_id)
+            )
+            expected_status = "選取已變更；取消舊收藏重開並忽略晚到結果。"
+        else:
+            widget.cancel()
+            expected_status = "已取消讀取；晚到的舊結果會丟棄。"
+        assert widget.status_label.text() == expected_status
+
+        # 使用實際 TaskWorker progress 信號模擬已排入 GUI 的晚到通知。
+        worker.progress.emit("晚到的舊讀取進度", 0)
+        app.processEvents()
+        assert widget.status_label.text() == expected_status
+
+        release.set()
+        _wait_for(app, lambda: widget._worker is None)
+        app.processEvents()
+
+        assert widget.status_label.text() == expected_status
+    finally:
+        release.set()
+        _close_widget(app, widget)
+
+
 @pytest.mark.parametrize("shutdown", (False, True))
 def test_cancel_or_close_during_reopen_never_emits_late_state(
     app: QApplication,

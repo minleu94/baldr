@@ -21,6 +21,8 @@ def prepare_personal_h20_research_bookmark(
     scroll_position: int,
     cancel_callback: Callable[[], bool] | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    sqlite_read_root: Path | None = None,
+    require_sqlite_copy: bool = False,
 ) -> PersonalH20ResearchBookmark:
     """拒絕名單版本漂移；回傳原來源 immutable 收藏供另一步 COW 保存。"""
     if not isinstance(expected_reference, PersonalH20ProductReference):
@@ -29,7 +31,8 @@ def prepare_personal_h20_research_bookmark(
         raise TypeError("personal_h20_bookmark_selection_required")
     reference, cohort = read_personal_h20_product_cohort(
         config_path, market_root=market_root, cancel_callback=cancel_callback,
-        progress_callback=progress_callback,
+        progress_callback=progress_callback, sqlite_read_root=sqlite_read_root,
+        require_sqlite_copy=require_sqlite_copy,
     )
     if reference != expected_reference:
         raise ValueError("personal_h20_bookmark_source_changed_before_save")

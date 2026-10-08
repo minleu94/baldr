@@ -37,11 +37,13 @@ def _configure_isolated_environment(
 
     output_root = tmp_path / "output"
     state_root = tmp_path / "research-state"
+    h20_sqlite_read_root = tmp_path / "personal-h20-sqlite-read"
     temp_root = tmp_path / "temporary"
     local_root = tmp_path / "localapp"
     roaming_root = tmp_path / "appdata"
     active_ml_root = tmp_path / "ml-research-output"
     temp_root.mkdir(parents=True, exist_ok=True)
+    h20_sqlite_read_root.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
 
     environment_keys = set(_ISOLATED_ENVIRONMENT_KEYS)
@@ -64,6 +66,7 @@ def _configure_isolated_environment(
     monkeypatch.setenv("OFFICIAL_CALENDAR_CACHE_PATH", str(market_root / "calendar-cache.json"))
     monkeypatch.setenv("MPLCONFIGDIR", str(output_root / "application_state" / "matplotlib"))
     monkeypatch.setenv("RECOMMENDATION_LEARNING_OUTPUT_ROOT", str(state_root / "recommendation-learning"))
+    monkeypatch.setenv("PERSONAL_H20_SQLITE_READ_ROOT", str(h20_sqlite_read_root))
 
     storage_config = tmp_path / "ml-research-storage.json"
     storage_config.write_text(
@@ -156,19 +159,36 @@ def _double_click_selected_h20_row(app: QApplication, window: MainWindow, widget
         f"double-click 未產生 H20 research request：signals={signals!r}; "
         f"diagnostic={widget.diagnostic_text.toPlainText()!r}"
     )
-    # MainWindow 的真 handler 應在短時間內啟動 exact cohort refresh；若沒有，
-    # 這是 route wiring/selection 問題，無須等長時間來源核驗 timeout 才發現。
+    # 目前已核 cohort 的有效選取會直接開 exact 個股來源，不再先重讀全名單。
+    # 等到個股工作開始或完成，並確認沒有排入額外 cohort refresh。
+    selected = signals["research_requested"][0]
+    workspace = window.stock_research_workspace
+
+    def selected_route_started() -> bool:
+        origin = getattr(window, "_personal_h20_research_origin", None)
+        if not isinstance(origin, tuple) or len(origin) != 3 or workspace is None:
+            return False
+        return (
+            getattr(window, "_personal_h20_cohort_worker", None) is None
+            and origin[1] == selected
+            and (
+                getattr(window, "_personal_h20_worker", None) is not None
+                or workspace.personal_h20_saved_busy
+                or workspace.personal_h20_saved_evidence is not None
+            )
+        )
+
     _wait_for(
         app,
-        lambda: getattr(window, "_personal_h20_cohort_worker", None) is not None,
+        selected_route_started,
         timeout_seconds=10.0,
     )
-    cohort_worker = getattr(window, "_personal_h20_cohort_worker", None)
-    assert cohort_worker is not None, (
-        f"MainWindow 未接收已送出的 H20 selection：signals={signals!r}; "
-        f"origin={getattr(window, '_personal_h20_research_origin', None)!r}; "
+    assert getattr(window, "_personal_h20_cohort_worker", None) is None, (
+        f"點選已核 H20 股票不應重讀完整名單：signals={signals!r}; "
         f"status={window.statusBar().currentMessage()!r}"
     )
+    origin = getattr(window, "_personal_h20_research_origin", None)
+    assert isinstance(origin, tuple) and len(origin) == 3 and origin[1] == selected
     return signals
 
 
@@ -205,28 +225,42 @@ def _prepare_saved_h20_mainwindow(
     contract_verifier = saved["contract_fixture"]["verifier"]
     snapshot_database = Path(saved["snapshot_database"])
 
-    def source_verifier(binding: Any) -> Any:
-        task_name = getattr(task_context, "task_name", "")
-        if task_name == "read_personal_h20_product_for_stock_with_session":
-            call_number = getattr(task_context, "source_call_number", 0) + 1
-            task_context.source_call_number = call_number
-            if mode.get("block_product_first_source") and call_number == 1:
+    def read_ports(*, read_session_resolver=None):
+        def source_verifier(binding: Any) -> Any:
+            task_name = getattr(task_context, "task_name", "")
+            if task_name == "read_personal_h20_product_for_stock_with_session":
+                call_number = getattr(task_context, "source_call_number", 0) + 1
+                task_context.source_call_number = call_number
+                if mode.get("block_product_first_source") and call_number == 1:
+                    entered.set()
+                    if not release.wait(timeout=45):
+                        raise RuntimeError("fixture_h20_source_barrier_timeout")
+                if mode.get("drift_product_finish_source") and call_number == 2:
+                    snapshot_database.write_bytes(snapshot_database.read_bytes() + b" ")
+                    mode["source_mutated"] = True
+            if read_session_resolver is None:
+                result = base_source_verifier(binding)
+            else:
+                result = base_source_verifier(
+                    binding,
+                    read_session_resolver=read_session_resolver,
+                )
+            if (
+                task_name == "read_personal_h20_product_for_stock_with_session"
+                and mode.get("block_product_first_source_after")
+                and getattr(task_context, "source_call_number", 0) == 1
+            ):
                 entered.set()
                 if not release.wait(timeout=45):
                     raise RuntimeError("fixture_h20_source_barrier_timeout")
-            if mode.get("drift_product_finish_source") and call_number == 2:
-                snapshot_database.write_bytes(snapshot_database.read_bytes() + b" ")
-                mode["source_mutated"] = True
-        return base_source_verifier(binding)
+            return result
 
-    monkeypatch.setattr(
-        runner,
-        "personal_current_observed_h20_read_ports",
-        lambda: {
+        return {
             "source_verifier": source_verifier,
             "contract_verifier": contract_verifier,
-        },
-    )
+        }
+
+    monkeypatch.setattr(runner, "personal_current_observed_h20_read_ports", read_ports)
 
     class OperationTaggedTaskWorker(TaskWorker):
         def run(self) -> None:

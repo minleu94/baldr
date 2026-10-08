@@ -828,6 +828,7 @@ class WatchlistView(QWidget):
 
     def configure_personal_h20_bookmarks(
         self, *, config_path: Path, market_root: Path, bookmark_state_reader,
+        sqlite_read_root: Path | None = None, require_sqlite_copy: bool = False,
     ) -> None:
         """以明示個人設定及原版本 session reader 掛入 H20 收藏。"""
         from ui_qt.widgets.personal_h20_bookmark_controls import PersonalH20BookmarkControls
@@ -836,7 +837,10 @@ class WatchlistView(QWidget):
             raise ValueError("personal_h20_bookmark_controls_already_configured")
         controls = PersonalH20BookmarkControls(
             self.watchlist_service, config_path=config_path, market_root=market_root,
-            bookmark_state_reader=bookmark_state_reader, parent=self.personal_h20_bookmark_group,
+            bookmark_state_reader=bookmark_state_reader,
+            sqlite_read_root=sqlite_read_root,
+            require_sqlite_copy=require_sqlite_copy,
+            parent=self.personal_h20_bookmark_group,
         )
         controls.stateReady.connect(self.personalH20BookmarkStateReady.emit)
         self.personal_h20_bookmark_controls = controls

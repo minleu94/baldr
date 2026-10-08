@@ -104,3 +104,19 @@ F17 compact helper WIP 中央發現：sorter 對 key 的市場／官方處置來
 已讀 scalar DTO 與 parity 測試：每個允許技術／官方排序欄位都有 asc／desc 對照原完整列排序，另驗多欄、精確極端 Decimal、null 置尾及穩定股票 tie-break；key 不保存 joined row／snapshot。每次最多100000項、canonical JSONL總量64MiB，這是序列化預算而非程序RSS上限。取消在投影、分批核驗、排序及回傳前檢查；reader exact驗證、完整joined reader／正常更新／UI／收藏及真N效能仍未完成。
 
 P01 run_007 已由 owner 實際 terminal exit1、128.11秒；中央已讀 status：完整 session／query 建立後，UI `_query_matches_entry` 裸 `Path.resolve(strict=True)` 無法處理長路徑而回 WinError3。已核定只改UI，使用同次 reader-issued session 的公開同源與canonical root契約，加上原entry exact pins；不縮fixture、不import私有helper、不弱化底層path guard。原257案例 run_008 handle76343 正在執行，尚未通過。
+
+### H20 stage2b 相容性與後續接線審核
+
+代理 controls/readers run_e（78466 terminal exit1）的原始輸出實際為 **38 passed／8 failed、139.84秒**，不是先前訊息的46 passed另加8 failed。中央已對照raw及test diff，沒有刪案例。失敗為legacy custom reader不接受新增progress_callback；修為只有明示secure-copy路徑傳新參數，Main仍明示root、require=True與進度回呼，未降回原庫直讀。run_f為**46 passed／18.81秒**；最終首屏文字另改白話後，Main／secure integration run_h **5 passed／16.54秒**，合併run_i **51 passed／36.46秒**。owner之後補測試型態窄化，需以最終SHA再驗；中央尚未以這些代理結果宣布通過。
+
+P01 run_009（54178 terminal exit1）已走過長路徑載入、exact entry正反例、冷strict計數、暖頁／個股與零結果；恢復查詢預期錯寫257，原OR/rule條件沒有清除，實際及先前相同條件皆為255。中央已讀source對照，核定只修測試預期，保留全母體257／符合條件255的區別。run_010 handle49218已啟動；仍待完整終態，不能用部分assertions當整條通過。
+
+F17任意有序≤256列materializer設計已中央完整讀取；目前P01 `_validate_selection`會重算full-N selection identity，因此每batch成本還含O(N)完整性檢查，不能只宣稱O(B logN)。已要求保留完整性guards並如實列成本，實際1000／真N效能另驗。待目前UI凍結後，下一葉片提供公開rows-only批次與精確identity；不保留full snapshots、不import private index，也不以先加孤立DTO代替完整joined reader。
+
+### H20 stage2b 中央獨立驗證
+
+owner最終run_j **51 passed／37.38秒、exit0**。中央對凍結十個owned source/test逐一核SHA相等，獨立短OS TEMP執行五個測試檔，root handle75667 **51 passed／40.42秒、exit0**。真source port與source/input讀取保留，模型contract是合成邊界；cohort／selected／prepare／bookmark每操作各自一份私有copy，原SQLite connect guard、file-group hash/stat不變、semantic finish先於copy finish以及無網路均由合成案例驗證。Main真雙擊selected路由、進度到可見摘要、來源漂移／關閉取消，以及controls late-progress反例通過。
+
+UI強制作業：workbench **85 passed／4.30秒**；原生更新頁validator **25通過、0失敗、4跳過**；全域mypy **895 source files通過**。另七個production檔使用`--explicit-package-bases`且不略imports的mypy通過，十個owned Python檔compile、tracked diff-check通過。owner完整touched-set mypy仍有匯入既有`tests/test_ui_qt_h20_saved_source_journey.py`的22項型態錯誤；不把source檢查通過說成全部測試檔clean。九項warning是既有pct_change FutureWarning及Qt斷線RuntimeWarning，原輸出保留。
+
+這項驗證只核安全副本UI接線；原4GB來源保護、原十股／2382實際等待速度、固定新候選Python/exe、新程序及Native仍須另外通過。standalone與natural-outcome batch預設尚未改安全composition；不宣稱全部H20 SQLite路徑安全，完整P00–P14／M3亦維持未完成。

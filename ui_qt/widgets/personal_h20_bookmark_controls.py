@@ -234,6 +234,9 @@ def _read_personal_h20_bookmark_state(
     bookmark_state_reader: PersonalH20BookmarkStateReader | None,
     *,
     cancel_callback: Callable[[], bool] | None = None,
+    sqlite_read_root: Path | None = None,
+    require_sqlite_copy: bool = False,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> PersonalH20ResearchBookmarkState:
     _check_cancel(cancel_callback)
     bookmark = service.get_research_bookmark(bookmark_id, watchlist_id)
@@ -243,13 +246,24 @@ def _read_personal_h20_bookmark_state(
     ):
         raise ValueError("personal_h20_bookmark_exact_identity_required")
     original_payload = bookmark.to_dict()
+    if type(require_sqlite_copy) is not bool:
+        raise TypeError("personal_h20_sqlite_copy_requirement_must_be_bool")
+    if require_sqlite_copy and sqlite_read_root is None:
+        raise ValueError("personal_h20_sqlite_read_root_required")
+    if require_sqlite_copy and bookmark_state_reader is None:
+        raise ValueError("personal_h20_bookmark_secure_typed_reader_required")
     if bookmark_state_reader is not None:
-        state = bookmark_state_reader(
-            bookmark,
-            config_path=config_path,
-            market_root=market_root,
-            cancel_callback=cancel_callback,
-        )
+        reader_options: dict[str, Any] = {
+            "config_path": config_path,
+            "market_root": market_root,
+            "cancel_callback": cancel_callback,
+        }
+        if require_sqlite_copy and progress_callback is not None:
+            reader_options["progress_callback"] = progress_callback
+        if require_sqlite_copy:
+            reader_options["sqlite_read_root"] = sqlite_read_root
+            reader_options["require_sqlite_copy"] = True
+        state = bookmark_state_reader(bookmark, **reader_options)
     else:
         if not callable(prediction_reader):
             raise ValueError("personal_h20_bookmark_public_prediction_reader_required")
@@ -349,6 +363,8 @@ class PersonalH20BookmarkControls(QWidget):
         bookmark_state_reader: PersonalH20BookmarkStateReader | None = None,
         watchlist_id: str = "default",
         confirm_remove: Callable[[str, str], bool] | None = None,
+        sqlite_read_root: str | Path | None = None,
+        require_sqlite_copy: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -356,12 +372,18 @@ class PersonalH20BookmarkControls(QWidget):
             raise TypeError("personal_h20_bookmark_typed_state_reader_required")
         if bookmark_state_reader is None and not callable(prediction_reader):
             raise TypeError("personal_h20_bookmark_public_prediction_reader_required")
+        if type(require_sqlite_copy) is not bool:
+            raise TypeError("personal_h20_sqlite_copy_requirement_must_be_bool")
         self.watchlist_service = watchlist_service
         self.watchlist_id = watchlist_id
         self.config_path = Path(config_path)
         self.market_root = Path(market_root)
         self.prediction_reader = prediction_reader
         self.bookmark_state_reader = bookmark_state_reader
+        self.sqlite_read_root = (
+            None if sqlite_read_root is None else Path(sqlite_read_root)
+        )
+        self.require_sqlite_copy = require_sqlite_copy
         self._confirm_remove_callback = confirm_remove
         self._generation = 0
         self._active_generation = 0
@@ -484,7 +506,11 @@ class PersonalH20BookmarkControls(QWidget):
             self.market_root,
             self.prediction_reader,
             self.bookmark_state_reader,
+            sqlite_read_root=self.sqlite_read_root,
+            require_sqlite_copy=self.require_sqlite_copy,
+            progress_callback=lambda message: worker.progress.emit(message, 0),
         )
+        worker.progress.connect(self._on_open_progress)
         self._start_worker(worker, "open")
         self.status_label.setText("正在背景沿固定原 manifest 核驗所選 H20 收藏…")
 
@@ -626,6 +652,18 @@ class PersonalH20BookmarkControls(QWidget):
         worker.native_thread_finished.connect(self._on_worker_thread_finished)
         self._refresh_controls()
         worker.start()
+
+    def _on_open_progress(self, message: str, _percentage: int = 0) -> None:
+        worker = self.sender()
+        if (
+            worker is not self._worker
+            or self._closing
+            or self._operation != "open"
+            or self._active_generation != self._generation
+            or self._opening_selection_generation != self._selection_generation
+        ):
+            return
+        self.status_label.setText("正在背景重驗 H20 原收藏：" + str(message))
 
     def _current_entry(self) -> _PersonalH20BookmarkEntry | None:
         item = self.bookmarks.currentItem()

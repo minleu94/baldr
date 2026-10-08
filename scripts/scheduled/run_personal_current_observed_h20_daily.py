@@ -159,10 +159,26 @@ def _outcome_port(
     return verify_current_observed_outcome_receipt(path, **options)
 
 
-def personal_current_observed_h20_read_ports() -> dict[str, Callable[..., Any]]:
+def personal_current_observed_h20_read_ports(
+    *,
+    read_session_resolver: SQLiteReadSessionResolver | None = None,
+) -> dict[str, Callable[..., Any]]:
     """中央 composition 注入產品 reader 的原驗證 ports；App 不匯入 ML。"""
-    return {"source_verifier": _source_port, "contract_verifier": _contract_port,
-            "input_capture_verifier": _input_port, "outcome_verifier": _outcome_port}
+    if read_session_resolver is None:
+        return {"source_verifier": _source_port, "contract_verifier": _contract_port,
+                "input_capture_verifier": _input_port, "outcome_verifier": _outcome_port}
+
+    def source_verifier(binding: Mapping[str, Any]) -> Mapping[str, Any]:
+        return _source_port(binding, read_session_resolver=read_session_resolver)
+
+    def input_capture_verifier(path: Path, pin: str) -> Mapping[str, Any]:
+        return _input_port(path, pin, read_session_resolver=read_session_resolver)
+
+    def outcome_verifier(path: Path, pin: str) -> Mapping[str, Any]:
+        return _outcome_port(path, pin, read_session_resolver=read_session_resolver)
+
+    return {"source_verifier": source_verifier, "contract_verifier": _contract_port,
+            "input_capture_verifier": input_capture_verifier, "outcome_verifier": outcome_verifier}
 
 
 def run_personal_current_observed_h20_daily(*, request: Mapping[str, Any], receipt_root: str | Path,

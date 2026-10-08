@@ -463,6 +463,7 @@ class MainWindow(QMainWindow):
             return
         _context, state, market_root, config_path = origin
         bookmark = state.bookmark
+        sqlite_read_root = self._personal_h20_sqlite_read_root()
         self._clear_personal_h20_product()
         generation = self._personal_h20_generation
 
@@ -471,6 +472,7 @@ class MainWindow(QMainWindow):
             return (generation == self._personal_h20_generation
                 and not getattr(self, "_shutdown_close_requested", False)
                 and not workspace.report_view._closing and workspace.report_view.context == context
+                and self._personal_h20_sqlite_read_root() == sqlite_read_root
                 and latest_origin is not None and latest_origin[1].bookmark.to_dict() == bookmark.to_dict())
 
         def publish(value: object) -> None:
@@ -505,6 +507,7 @@ class MainWindow(QMainWindow):
         workspace.set_personal_h20_saved_busy(True)
         worker = TaskWorker(read_personal_h20_research_bookmark_with_session, bookmark,
             config_path=config_path, market_root=market_root,
+            sqlite_read_root=sqlite_read_root, require_sqlite_copy=True,
             progress_callback=lambda message: worker.progress.emit(message, 0))
         self._personal_h20_worker = worker
         worker.progress.connect(lambda message, _percent: workspace.personal_h20_saved_summary.setText(
@@ -684,6 +687,7 @@ class MainWindow(QMainWindow):
         view = workspace.report_view
         generation = self._personal_h20_generation
         stock_code = str(getattr(context, "stock_code", ""))
+        sqlite_read_root = self._personal_h20_sqlite_read_root()
         def current() -> bool:
             try:
                 configured = self._personal_h20_configuration() == (market_root, config_path)
@@ -697,6 +701,7 @@ class MainWindow(QMainWindow):
                 and self._personal_h20_saved_origin_for_context(context) == (selection, reference)
                 and getattr(self, "_personal_h20_saved_context", None) == context
                 and getattr(self, "_personal_h20_saved_reference", None) == reference
+                and self._personal_h20_sqlite_read_root() == sqlite_read_root
                 and configured
             )
 
@@ -747,9 +752,14 @@ class MainWindow(QMainWindow):
             stock_code=stock_code,
             market_root=market_root,
             expected_reference=reference,
+            sqlite_read_root=sqlite_read_root,
+            require_sqlite_copy=True,
+            progress_callback=lambda message: worker.progress.emit(message, 0),
         )
         self._personal_h20_worker = worker
         workspace.set_personal_h20_saved_busy(True)
+        worker.progress.connect(lambda message, _percent: workspace.personal_h20_saved_summary.setText(
+            "正在核驗所選保存來源：" + message) if current() else None)
         worker.finished.connect(publish)
         worker.error.connect(lambda message: publish(PersonalH20ProductEvidence(
             stock_code=stock_code,
@@ -806,6 +816,7 @@ class MainWindow(QMainWindow):
         self._clear_personal_h20_product()
         generation = self._personal_h20_generation
         market_root = Path(self.config.data_root)
+        sqlite_read_root = self._personal_h20_sqlite_read_root()
         configured = os.environ.get("PERSONAL_H20_ACTIVATION_CONFIG")
         config_path = Path(configured) if configured else market_root / "personal" / "recommendation_h20" / "activation.json"
         expected_reference = None
@@ -816,22 +827,28 @@ class MainWindow(QMainWindow):
             expected_reference = origin[2]
         worker = TaskWorker(read_personal_h20_product_for_stock_with_session, config_path,
             stock_code=report.stock_code, market_root=market_root,
-            expected_reference=expected_reference)
+            expected_reference=expected_reference,
+            sqlite_read_root=sqlite_read_root, require_sqlite_copy=True,
+            progress_callback=lambda message: worker.progress.emit(message, 0))
         self._personal_h20_worker = worker
 
+        def current() -> bool:
+            return (generation == self._personal_h20_generation and not view._closing
+                    and not getattr(self, "_shutdown_close_requested", False)
+                    and view._loaded_report is report and view._loaded_request_context == context
+                    and self._personal_h20_sqlite_read_root() == sqlite_read_root)
+
         def apply(result: object) -> None:
-            if (generation != self._personal_h20_generation or view._closing
-                    or getattr(self, "_shutdown_close_requested", False)
-                    or view._loaded_report is not report or view._loaded_request_context != context):
+            if not current():
                 return
             if isinstance(result, PersonalH20ProductEvidence):
                 view.set_personal_h20_evidence(result)
 
         worker.finished.connect(apply)
+        worker.progress.connect(lambda message, _percent: self.statusBar().showMessage(
+            "正在核驗 H20 保存來源：" + message) if current() else None)
         def failed(message: str) -> None:
-            if (generation != self._personal_h20_generation or view._closing
-                    or getattr(self, "_shutdown_close_requested", False)
-                    or view._loaded_report is not report or view._loaded_request_context != context):
+            if not current():
                 return
             view.set_personal_h20_evidence(PersonalH20ProductEvidence(
                 stock_code=report.stock_code, status="unavailable", reason=str(message)))
@@ -848,6 +865,12 @@ class MainWindow(QMainWindow):
         configured = os.environ.get("PERSONAL_H20_ACTIVATION_CONFIG")
         return market_root, (Path(configured) if configured else
             market_root / "personal" / "recommendation_h20" / "activation.json")
+
+    def _personal_h20_sqlite_read_root(self) -> Path | None:
+        """回傳 bootstrap 已驗證的 H20 私有副本根；不自行推測預設路徑。"""
+
+        configured = getattr(self.config, "personal_h20_sqlite_read_root", None)
+        return None if configured is None else Path(configured)
 
     def _mount_personal_h20_research(self, recommendation: Any) -> None:
         """既有推薦工作區掛入保存母體；選頁才唯讀載入。"""
@@ -925,6 +948,7 @@ class MainWindow(QMainWindow):
                 or (previous is not None and previous.isRunning())):
             return
         market_root, config_path = self._personal_h20_configuration()
+        sqlite_read_root = self._personal_h20_sqlite_read_root()
         service = self.watchlist_service
         if not callable(getattr(service, "add_research_bookmark", None)):
             widget.bookmark_status_label.setText("個人觀察清單來源不可用；未保存收藏。")
@@ -940,6 +964,7 @@ class MainWindow(QMainWindow):
                 configured = False
             return (not widget._closing and not getattr(self, "_shutdown_close_requested", False)
                 and configured
+                and self._personal_h20_sqlite_read_root() == sqlite_read_root
                 and getattr(self, "_personal_h20_cohort_reference", None) == reference
                 and item is not None and item.data(Qt.ItemDataRole.UserRole) == selection
                 and bool(widget.table.selectedItems()) and widget._accepted(selection))
@@ -989,6 +1014,7 @@ class MainWindow(QMainWindow):
             market_root=market_root, expected_reference=reference, selection=selection,
             sort_descending=widget.sort_combo.currentIndex() == 0,
             scroll_position=widget.table.verticalScrollBar().value(),
+            sqlite_read_root=sqlite_read_root, require_sqlite_copy=True,
             progress_callback=lambda message: worker.progress.emit(message, 0))
         self._personal_h20_bookmark_worker = worker
         worker.progress.connect(lambda message, _percent: widget.bookmark_status_label.setText(
@@ -1049,6 +1075,7 @@ class MainWindow(QMainWindow):
         if previous is not None and previous.isRunning():
             previous.cancel(wait=False)
         market_root, config_path = self._personal_h20_configuration()
+        sqlite_read_root = self._personal_h20_sqlite_read_root()
         widget.setEnabled(False)
         self._personal_h20_read_started_at = time.monotonic()
         self._personal_h20_read_phase = "準備原保存名單"
@@ -1066,13 +1093,15 @@ class MainWindow(QMainWindow):
             widget.summary_label.setText("正在核對所選保存名單版本；完成前保留原清單與選取…")
         worker = TaskWorker(
             read_personal_h20_product_cohort, config_path, market_root=market_root,
+            sqlite_read_root=sqlite_read_root, require_sqlite_copy=True,
             progress_callback=lambda message: worker.progress.emit(message, 0),
         )
         self._personal_h20_cohort_worker = worker
         def current() -> bool:
             return (generation == self._personal_h20_cohort_generation and not widget._closing
                 and not getattr(self, "_shutdown_close_requested", False)
-                and self._personal_h20_configuration() == (market_root, config_path))
+                and self._personal_h20_configuration() == (market_root, config_path)
+                and self._personal_h20_sqlite_read_root() == sqlite_read_root)
         def progress(message: str, _percentage: int) -> None:
             if current():
                 self._personal_h20_read_phase = message
@@ -1841,6 +1870,8 @@ class MainWindow(QMainWindow):
                     watchlist.configure_personal_h20_bookmarks(
                         config_path=h20_config_path, market_root=h20_market_root,
                         bookmark_state_reader=read_personal_h20_research_bookmark_with_session,
+                        sqlite_read_root=self._personal_h20_sqlite_read_root(),
+                        require_sqlite_copy=True,
                     )
                     watchlist.personalH20BookmarkStateReady.connect(self._open_personal_h20_bookmark_state)
                     self._connect_research_bookmark_routes(recommendation, watchlist)

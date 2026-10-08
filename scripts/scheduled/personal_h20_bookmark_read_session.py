@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeAlias, cast
 
 from app_module.recommendation.personal_current_observed_h20_capture import (
     read_personal_current_observed_h20_capture,
@@ -26,7 +26,7 @@ from scripts.scheduled import run_personal_current_observed_h20_daily
 
 
 ProgressCallback = Callable[[str], None]
-BookmarkInput = PersonalH20ResearchBookmark | Mapping[str, object] | bytes | str
+BookmarkInput: TypeAlias = PersonalH20ResearchBookmark | Mapping[str, object] | bytes | str
 
 
 def _freeze_bookmark(value: BookmarkInput) -> PersonalH20ResearchBookmark:
@@ -82,8 +82,16 @@ def _progress_message(event: PersonalH20ReadProgress) -> str:
     return "H20 正在完成收藏原來源重驗"
 
 
-def _read_ports() -> tuple[Verifier, Verifier]:
-    ports = run_personal_current_observed_h20_daily.personal_current_observed_h20_read_ports()
+def _read_ports(
+    *,
+    read_session_resolver: Callable[..., Any] | None = None,
+) -> tuple[Verifier, Verifier]:
+    if read_session_resolver is None:
+        ports = run_personal_current_observed_h20_daily.personal_current_observed_h20_read_ports()
+    else:
+        ports = run_personal_current_observed_h20_daily.personal_current_observed_h20_read_ports(
+            read_session_resolver=read_session_resolver,
+        )
     if (not isinstance(ports, Mapping)
             or not callable(ports.get("source_verifier"))
             or not callable(ports.get("contract_verifier"))):
@@ -98,6 +106,8 @@ def read_personal_h20_research_bookmark_with_session(
     market_root: Path,
     cancel_callback: Callable[[], bool] | None = None,
     progress_callback: ProgressCallback | None = None,
+    sqlite_read_root: Path | None = None,
+    require_sqlite_copy: bool = False,
 ) -> PersonalH20ResearchBookmarkState:
     """重開收藏保存的 manifest 與 captures，並在同操作內終態重驗。
 
@@ -105,19 +115,32 @@ def read_personal_h20_research_bookmark_with_session(
     reader；session 只分組來源與合約 verifier，不保存任何跨操作快取。
     """
     saved_bookmark = _freeze_bookmark(bookmark)
-    source_verifier, contract_verifier = _read_ports()
-    session = PersonalH20ReadSession(
-        source_verifier=source_verifier,
-        contract_verifier=contract_verifier,
-        cancel_callback=cancel_callback,
-        progress_callback=(
-            None if progress_callback is None
-            else lambda event: progress_callback(_progress_message(event))
-        ),
-    )
     config = Path(config_path)
     market = Path(market_root)
+    from scripts.scheduled.personal_h20_daily_hook import (
+        _open_personal_h20_sqlite_operation,
+    )
+
+    operation = _open_personal_h20_sqlite_operation(
+        sqlite_read_root=sqlite_read_root,
+        require_sqlite_copy=require_sqlite_copy,
+        cancel_callback=cancel_callback,
+        progress_callback=progress_callback,
+    )
+    session: PersonalH20ReadSession | None = None
     try:
+        source_verifier, contract_verifier = _read_ports(
+            read_session_resolver=None if operation is None else operation.session_for,
+        )
+        session = PersonalH20ReadSession(
+            source_verifier=source_verifier,
+            contract_verifier=contract_verifier,
+            cancel_callback=cancel_callback,
+            progress_callback=(
+                None if progress_callback is None
+                else lambda event: progress_callback(_progress_message(event))
+            ),
+        )
         session.report(stage="activation_snapshot_started", pass_name="initial")
         activation_before, activation_bytes_before = _read_activation_snapshot(config)
         session.report(stage="activation_snapshot_verified", pass_name="initial")
@@ -202,8 +225,13 @@ def read_personal_h20_research_bookmark_with_session(
             session.report(stage="bookmark_session_complete", pass_name="terminal")
 
         session.finish(finalizer=finalizer)
+        if operation is not None:
+            operation.finish()
         if terminal_state is None:
             raise PersonalH20ReadSessionError("personal_h20_bookmark_terminal_state_missing")
         return terminal_state
     finally:
-        session.close()
+        if session is not None:
+            session.close()
+        if operation is not None:
+            operation.close()

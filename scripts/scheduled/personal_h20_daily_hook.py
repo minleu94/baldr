@@ -5,13 +5,21 @@ from collections.abc import Callable, Mapping
 from datetime import date
 import importlib
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app_module.recommendation.personal_h20_activation import read_personal_h20_activation
 from app_module.recommendation.personal_h20_read_session import (
     PersonalH20ReadProgress,
     PersonalH20ReadSession,
 )
+
+if TYPE_CHECKING:
+    from data_module.pinned_sqlite_read_session import PinnedSQLiteReadSession
+    from scripts.scheduled.personal_h20_sqlite_read_operation import (
+        PersonalH20SQLiteReadOperation,
+    )
+
+SQLiteReadSessionResolver = Callable[[Path, str], "PinnedSQLiteReadSession"]
 
 SOURCE_PIN_KEYS = (
     "cycle_id", "raw_run_id", "cycle_source_date",
@@ -34,14 +42,71 @@ def read_personal_h20_prediction(path: str | Path, *, root: Path, expected_sha25
     )
 
 
-def _personal_h20_read_ports() -> Mapping[str, Callable[..., Any]]:
+def _personal_h20_read_ports(
+    *,
+    read_session_resolver: SQLiteReadSessionResolver | None = None,
+) -> Mapping[str, Callable[..., Any]]:
     module = importlib.import_module("scripts.scheduled.run_personal_current_observed_h20_daily")
-    ports = getattr(module, "personal_current_observed_h20_read_ports")()
+    factory = getattr(module, "personal_current_observed_h20_read_ports")
+    ports = (
+        factory()
+        if read_session_resolver is None
+        else factory(read_session_resolver=read_session_resolver)
+    )
     if (not isinstance(ports, Mapping)
             or not callable(ports.get("source_verifier"))
             or not callable(ports.get("contract_verifier"))):
         raise ValueError("personal_h20_public_read_ports_required")
     return ports
+
+
+def _open_personal_h20_sqlite_operation(
+    *,
+    sqlite_read_root: Path | None,
+    require_sqlite_copy: bool,
+    cancel_callback: Callable[[], bool] | None,
+    progress_callback: Callable[[str], None] | None,
+) -> "PersonalH20SQLiteReadOperation | None":
+    """建立單次 H20 UI 操作的明示副本 operation；不推測或建立私有根。"""
+
+    if type(require_sqlite_copy) is not bool:
+        raise TypeError("personal_h20_sqlite_copy_requirement_must_be_bool")
+    if sqlite_read_root is None and not require_sqlite_copy:
+        return None
+    if sqlite_read_root is None:
+        raise ValueError("personal_h20_sqlite_read_root_required")
+
+    from data_module.pinned_sqlite_read_session import MAX_COPY_BYTES_HARD_LIMIT
+    from scripts.scheduled.personal_h20_sqlite_read_operation import (
+        PersonalH20SQLiteReadOperation,
+    )
+
+    def copy_progress(stage: str, current: int, total: int) -> None:
+        if progress_callback is not None:
+            progress_callback(
+                f"H20 正在建立唯讀 SQLite 副本：{stage}，已核對 {current}/{total} 位元組。"
+            )
+
+    operation = PersonalH20SQLiteReadOperation(
+        private_root=sqlite_read_root,
+        max_source_groups=50,
+        max_total_copy_bytes=MAX_COPY_BYTES_HARD_LIMIT,
+        cancel_callback=cancel_callback,
+        progress_callback=copy_progress,
+    )
+    operation.__enter__()
+    try:
+        if progress_callback is not None:
+            progress_callback(
+                "H20 正在準備安全讀取保存來源；後續會顯示目前階段與複製進度。"
+            )
+    except BaseException as original_error:
+        try:
+            operation.close()
+        except BaseException as cleanup_error:
+            raise original_error from cleanup_error
+        raise
+    return operation
 
 
 def _read_personal_h20_prediction_with_verifiers(
@@ -107,22 +172,33 @@ def read_personal_h20_daily_receipt(path: str | Path, *, root: Path, expected_sh
 
 def read_personal_h20_product_cohort(config_path: Path, *, market_root: Path,
     cancel_callback: Callable[[], bool] | None = None,
-    progress_callback: Callable[[str], None] | None = None) -> tuple[Any, Any]:
+    progress_callback: Callable[[str], None] | None = None,
+    sqlite_read_root: Path | None = None,
+    require_sqlite_copy: bool = False) -> tuple[Any, Any]:
     """同一操作分組核驗，仍逐列讀原 capture 並重讀完整分母終態。"""
     from app_module.recommendation.personal_h20_product_evidence import read_personal_h20_product_reference
     from app_module.recommendation.personal_h20_research_cohort import read_personal_h20_research_cohort
 
-    ports = _personal_h20_read_ports()
-    session = PersonalH20ReadSession(
-        source_verifier=ports["source_verifier"],
-        contract_verifier=ports["contract_verifier"],
+    operation = _open_personal_h20_sqlite_operation(
+        sqlite_read_root=sqlite_read_root,
+        require_sqlite_copy=require_sqlite_copy,
         cancel_callback=cancel_callback,
-        progress_callback=(
-            None if progress_callback is None
-            else lambda event: progress_callback(_progress_message(event))
-        ),
+        progress_callback=progress_callback,
     )
+    session: PersonalH20ReadSession | None = None
     try:
+        ports = _personal_h20_read_ports(
+            read_session_resolver=None if operation is None else operation.session_for,
+        )
+        session = PersonalH20ReadSession(
+            source_verifier=ports["source_verifier"],
+            contract_verifier=ports["contract_verifier"],
+            cancel_callback=cancel_callback,
+            progress_callback=(
+                None if progress_callback is None
+                else lambda event: progress_callback(_progress_message(event))
+            ),
+        )
         session.report(stage="reference_read_started")
         reference = read_personal_h20_product_reference(config_path, market_root=market_root)
         session.report(stage="reference_read_verified")
@@ -171,9 +247,14 @@ def read_personal_h20_product_cohort(config_path: Path, *, market_root: Path,
             session.report(stage="reference_rechecked", pass_name="terminal")
 
         session.finish(finalizer=finalizer)
+        if operation is not None:
+            operation.finish()
         return reference, cohort
     finally:
-        session.close()
+        if session is not None:
+            session.close()
+        if operation is not None:
+            operation.close()
 
 
 def read_personal_h20_product_for_stock_with_session(
@@ -184,6 +265,8 @@ def read_personal_h20_product_for_stock_with_session(
     expected_reference: Any | None = None,
     cancel_callback: Callable[[], bool] | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    sqlite_read_root: Path | None = None,
+    require_sqlite_copy: bool = False,
 ) -> Any:
     """以單一 operation session 核原 manifest、選中 capture 與來源 pin。"""
     from app_module.recommendation.personal_h20_product_evidence import (
@@ -192,17 +275,26 @@ def read_personal_h20_product_for_stock_with_session(
         read_personal_h20_product_reference,
     )
 
-    ports = _personal_h20_read_ports()
-    session = PersonalH20ReadSession(
-        source_verifier=ports["source_verifier"],
-        contract_verifier=ports["contract_verifier"],
+    operation = _open_personal_h20_sqlite_operation(
+        sqlite_read_root=sqlite_read_root,
+        require_sqlite_copy=require_sqlite_copy,
         cancel_callback=cancel_callback,
-        progress_callback=(
-            None if progress_callback is None
-            else lambda event: progress_callback(_progress_message(event))
-        ),
+        progress_callback=progress_callback,
     )
+    session: PersonalH20ReadSession | None = None
     try:
+        ports = _personal_h20_read_ports(
+            read_session_resolver=None if operation is None else operation.session_for,
+        )
+        session = PersonalH20ReadSession(
+            source_verifier=ports["source_verifier"],
+            contract_verifier=ports["contract_verifier"],
+            cancel_callback=cancel_callback,
+            progress_callback=(
+                None if progress_callback is None
+                else lambda event: progress_callback(_progress_message(event))
+            ),
+        )
         session.report(stage="reference_read_started", stock_code=stock_code)
         reference = read_personal_h20_product_reference(config_path, market_root=market_root)
         if expected_reference is not None and reference != expected_reference:
@@ -288,9 +380,14 @@ def read_personal_h20_product_for_stock_with_session(
             session.report(stage="reference_rechecked", pass_name="terminal", stock_code=stock_code)
 
         session.finish(finalizer=finalizer)
+        if operation is not None:
+            operation.finish()
         return evidence
     finally:
-        session.close()
+        if session is not None:
+            session.close()
+        if operation is not None:
+            operation.close()
 
 
 def run_personal_h20_for_current_cycle(

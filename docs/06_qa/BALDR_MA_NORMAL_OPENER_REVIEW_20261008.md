@@ -10,6 +10,7 @@
 - 後續新增逐股取消案例：3 passed，8.68 秒，程序 session 93314、exit 0。第二檔投影提出取消後立即停止，begin 有記錄而 end 未完成，built/published session 均為 None。首輪把取消錯誤誤期待為一般 callback 失敗；修正後發現原迴圈要到 16 檔批次結束才停。P01 現於 observer 回傳後檢查取消，保留既有具名錯誤。兩次失敗 QA 目錄保留；source mypy 通過。此變更不影響未掛 observer 的迴圈。
 - Root 未掛 observer 的 P01 相容性測試：1 passed，11.80 秒。
 - Root F17 原有 canonical page request 與具名取消錯誤正規化：5 passed，0.73 秒。此範圍沒有建立新來源 fixture，不代替完整 F17 旅程。
+- Root 後續完整 F17 reader 回歸：27 passed，350.82 秒，session 50744、exit 0。命令為 `.venv/Scripts/python.exe -m pytest tests/test_daily_market_technical_official_disposition_query_reader_v1.py -q -o addopts= --basetemp=output/qa/f02_root_f17_regression_20261008_a`。覆蓋真 257 檔跨段 join／排序／分頁、正常 factory 與雙讀 oracle 一致、來源漂移拒絕、取消不發布、選取 materializer、壞 result/page 拒絕、最終回傳取消門、原 F17 新程序重開。這不等於新的 MA canonical request 已在另一程序驗收。
 - 正常入口 attempt03：257 檔納入、1 檔排除、6 頁；兩檔 unknown 子集以股票代碼降序得到 1001、1000，各一頁。從同次 exact P01 session 讀回兩檔 snapshot，重建證據的 state、reason、evidence identity、raw window 與 snapshot identity 均相符。
 - 同 session 的條件、排序、兩頁及恢復完整母體，投影計數保持 257；第二次 exact query reopen 後為 514。完整末頁為 1250–1256。兩次 MA index/session identities 相同，跨 segment 的 root 與 plan identity 替換被拒絕。
 - Root 已直接閱讀 attempt03 收據；三個整合來源檔 mypy 通過，四個來源／測試檔 py_compile 通過。
@@ -25,6 +26,14 @@
 2. 至少 60 個觀測交易時段的正向／反向來源證據與決策日界線。
 3. 正常 UI 條件、排序、分頁、返回及收藏流程；候選 EXE 必須另驗。
 4. 1,000 檔固定來源效能矩陣。上述秒數是個別測試耗時，不能視為 p95。
+
+## 正常查詢接入的審核要求
+
+目前 F17 canonical query 沒有 MA 條件；取得 `ma_alignment_session` 不能證明正常結果或收藏已保存 MA 篩選。接續須有版本化 composite request，綁原 F17 canonical query、同源 P01／MA session 與 index identities，完整保存條件、全域排序、分頁及選取。舊 F17 query／收藏必須沿舊 schema 解讀，不能偷偷補上 MA 條件或改變原 identity。
+
+中央直接檢查 F17 `execute`，現有流程對完整保存事實逐股 join P01，再計數、收集排序鍵、全域排序。MA 必須接入這個已核驗的完整迴圈，不能在已選結果或當頁表格做本地交集。cohort 排除、來源資格、row scope 與明示股票 eligibility 是外層限制；OR 只能作用於明示的規則群組，不能讓 MA 命中繞過母體或資格限制。三值 truth 與實際會員資格分別計數，unknown 不自動變成 match。
+
+接入前需補反例：OR 不納入 excluded／pending、未知條件不冒充命中、改變市場範圍不混來源、同值排序穩定、跨段完整母體先排序後分頁、舊 JSON bytes／identities 保留、未知字段拒絕，以及新收藏在另一程序 exact 重開。這是待實作合約，不是 UI 接入完成證據。
 
 ## 回滾與範圍
 

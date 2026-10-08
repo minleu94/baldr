@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Any, Literal, NoReturn, cast
 
 from app_module import daily_market_technical_universe_v4_query as _universe_query_module
+from app_module.daily_market_technical_universe_ma_alignment_query_v1 import (
+    DailyMarketTechnicalMaAlignmentReadSessionV1,
+    DailyMarketTechnicalMaAlignmentSourceRequestV1,
+    DailyMarketTechnicalMaAlignmentVerifiedCollectorV1,
+)
 from app_module.daily_market_technical_official_disposition_bundle_v1 import (
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_BYTES,
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_ROW_BYTES,
@@ -1032,6 +1037,14 @@ class DailyMarketTechnicalOfficialDispositionReadSessionV1:
     _technical_store_descriptor: Mapping[str, object]
     _manifest: Mapping[str, object]
     _seal: object
+    _ma_alignment_session: DailyMarketTechnicalMaAlignmentReadSessionV1 | None = field(
+        default=None, repr=False, compare=False,
+    )
+
+    @property
+    def ma_alignment_session(self) -> DailyMarketTechnicalMaAlignmentReadSessionV1 | None:
+        """同一次完整來源核驗發行的四均線工作階段。"""
+        return self._ma_alignment_session
 
     def __post_init__(self) -> None:
         if self._seal is not _SESSION_SEAL:
@@ -1050,6 +1063,15 @@ class DailyMarketTechnicalOfficialDispositionReadSessionV1:
             or not self._technical_session.matches_source(self._base_query)
         ):
             _fail("read_session_source_mismatch")
+        ma_session = self._ma_alignment_session
+        if ma_session is not None and (
+            type(ma_session) is not DailyMarketTechnicalMaAlignmentReadSessionV1
+            or ma_session._p01_session is not self._technical_session
+            or ma_session.source_request.bundle_output_root != self.bundle_reference.output_root
+            or ma_session.source_request.bundle_identity_sha256 != self.bundle_reference.bundle_identity_sha256
+            or ma_session.source_request.expected_manifest_sha256 != self.bundle_reference.manifest_sha256
+        ):
+            _fail("ma_projection_read_session_source_mismatch")
 
     @staticmethod
     def _selection_query_spec_identity(
@@ -2020,6 +2042,28 @@ def _open_base_selection(
     return read_session, base_query, selection, cast(str, query_spec_identity)
 
 
+def _bind_ma_projection(
+    builder: DailyMarketTechnicalUniverseV4ReadSessionBuilder,
+    metadata: DailyMarketTechnicalOfficialDispositionBundleManifestMetadataV1,
+    bundle_output_root: str,
+    bundle_identity_sha256: str,
+    expected_manifest_sha256: str,
+    cancel_callback: Callable[[], object] | None,
+) -> DailyMarketTechnicalMaAlignmentVerifiedCollectorV1:
+    request = DailyMarketTechnicalMaAlignmentSourceRequestV1.from_unverified_manifest_metadata(
+        metadata,
+        bundle_output_root=bundle_output_root,
+        bundle_identity_sha256=bundle_identity_sha256,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
+    collector = DailyMarketTechnicalMaAlignmentVerifiedCollectorV1(
+        request, cancel_callback=cancel_callback,
+    )
+    collector.bind_to_builder(builder)
+    builder.bind_verified_projection(collector)
+    return collector
+
+
 def open_daily_market_technical_official_disposition_read_session_v1(
     query: DailyMarketTechnicalOfficialDispositionQueryV1 | bytes | str,
     *,
@@ -2038,6 +2082,16 @@ def open_daily_market_technical_official_disposition_read_session_v1(
         parsed_query.bundle_output_root
     )
     try:
+        metadata = bundle_reader.read_manifest_metadata(
+            parsed_query.bundle_identity_sha256,
+            expected_manifest_sha256=parsed_query.expected_manifest_sha256,
+            cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+        )
+        ma_collector = _bind_ma_projection(
+            technical_builder, metadata, parsed_query.bundle_output_root,
+            parsed_query.bundle_identity_sha256, parsed_query.expected_manifest_sha256,
+            cancel_callback,
+        )
         bundle_state = bundle_reader.read_exact(
             parsed_query.bundle_identity_sha256,
             expected_manifest_sha256=parsed_query.expected_manifest_sha256,
@@ -2057,6 +2111,8 @@ def open_daily_market_technical_official_disposition_read_session_v1(
         bundle_state,
         cancel_callback,
         preloaded_session=preloaded_session,
+        ma_collector=ma_collector,
+        technical_builder=technical_builder,
     )
 
 
@@ -2066,6 +2122,8 @@ def _issue_session_from_verified_bundle(
     cancel_callback: Callable[[], object] | None,
     *,
     preloaded_session: DailyMarketTechnicalUniverseV4ReadSession | None = None,
+    ma_collector: DailyMarketTechnicalMaAlignmentVerifiedCollectorV1 | None = None,
+    technical_builder: DailyMarketTechnicalUniverseV4ReadSessionBuilder | None = None,
 ) -> DailyMarketTechnicalOfficialDispositionReadSessionV1:
     """共用發行邊界；factory 沿用同次完整核驗，避免重開來源。"""
     technical, manifest = _validate_bundle_query_relationship(parsed_query, bundle_state)
@@ -2082,6 +2140,14 @@ def _issue_session_from_verified_bundle(
     ):
         _fail("p01_session_identity_invalid")
     _check_cancel(cancel_callback)
+    if (ma_collector is None) != (technical_builder is None):
+        _fail("ma_projection_publication_input_invalid")
+    ma_session = None
+    if ma_collector is not None and technical_builder is not None:
+        ma_session = ma_collector.finalize_verified_publication(
+            technical_builder, bundle_state, base_query, selection,
+            cancel_callback=cancel_callback,
+        )
     session = DailyMarketTechnicalOfficialDispositionReadSessionV1(
         query=parsed_query,
         bundle_reference=bundle_state.reference,
@@ -2095,6 +2161,7 @@ def _issue_session_from_verified_bundle(
         _technical_store_descriptor=technical,
         _manifest=manifest,
         _seal=_SESSION_SEAL,
+        _ma_alignment_session=ma_session,
     )
     _check_cancel(cancel_callback)
     return session
@@ -2136,6 +2203,10 @@ def open_daily_market_technical_official_disposition_bundle_session_v1(
         technical_builder = _technical_session_builder_from_manifest_metadata(
             metadata,
             cancel_callback,
+        )
+        ma_collector = _bind_ma_projection(
+            technical_builder, metadata, str(bundle_reader.output_root),
+            bundle_identity_sha256, expected_manifest_sha256, cancel_callback,
         )
         bundle_state = bundle_reader.read_exact(
             bundle_identity_sha256,
@@ -2197,7 +2268,8 @@ def open_daily_market_technical_official_disposition_bundle_session_v1(
             "technical_official_query_reader_v1_research_conditions_invalid"
         ) from exc
     return _issue_session_from_verified_bundle(
-        query, bundle_state, cancel_callback, preloaded_session=technical_session
+        query, bundle_state, cancel_callback, preloaded_session=technical_session,
+        ma_collector=ma_collector, technical_builder=technical_builder,
     )
 
 

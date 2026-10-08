@@ -184,6 +184,24 @@ def test_capture_pin_changed_before_terminal_read_rejects_state(tmp_path, monkey
     assert calls == 6
 
 
+def test_initial_source_rejection_remains_visible_when_terminal_state_differs(tmp_path, monkeypatch):
+    fixture = _fixture(tmp_path)
+    before = _file_snapshot(fixture["private_root"])
+
+    def reject_source(_binding):
+        raise ValueError("synthetic_original_source_clock_rejected")
+
+    _install_ports(monkeypatch, source_verifier=reject_source)
+    with pytest.raises(PersonalH20ResearchBookmarkError) as failure:
+        _read(fixture)
+    message = str(failure.value)
+    assert "state_changed_during_read" in message
+    assert "initial_selected_reason=" in message
+    assert "synthetic_original_source_clock_rejected" in message
+    assert "terminal_selected_reason=" in message
+    assert _file_snapshot(fixture["private_root"]) == before
+
+
 def test_activation_bytes_changed_during_terminal_verification_rejects(tmp_path, monkeypatch):
     fixture = _fixture(tmp_path)
     activation = fixture["activation"]

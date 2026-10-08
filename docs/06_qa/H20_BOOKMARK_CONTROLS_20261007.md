@@ -33,3 +33,7 @@ dev MainWindow 已掛入專用 H20 收藏控制項，使用獨立歷史 read ses
 全域 mypy 891檔通過，兩則既有untyped notes；更新頁合成原生驗證25通過0失敗4保護跳過，報告 output/qa/h20_reopen_update_native_20261007_d/VALIDATION_REPORT.md。回滾前像在 output/qa/h20_bookmark_route_preimage_20261007_a。新程序真Main旅程、固定候選與Native仍待驗；使用者回報0f25名單最終有出現但非常慢、雙擊2382反應不明，仍列未通過，不以單元測試折抵。
 
 最後修正後整組重跑114項通過（26.62秒），唯一TEMP C:/t/h20-route-final-20261007-e，含強制工作台85項、Main reopen4項、controls18項、projector7項；保留12則既有 FutureWarning／Qt disconnect warnings。語法檢查及全域mypy891檔再驗通過。這些是合成路由證據，未宣稱真來源載入速度改善或完整P00–P14完成。
+
+### 新程序來源拒絕診斷接續
+
+新程序合成旅程 d attempt 的即時 trace 證明 Main 初始化約1.109秒、列表刷新約0.047秒；Open後初讀來源被拒，wrapper終態因缺 verified group再次拒絕，最後報state_changed。這不是來源核驗成功，也不是原私人資料速度證據，旅程仍失敗待修fixture與失敗收尾。wrapper現在保留所選列 initial/terminal reason，成功資格與終態拒絕維持原狀；中央新增原始來源時鐘拒絕回歸，12項通過（5.26秒，C:/t/h20-initial-rejection-20261007-a），來源bytes不變，定向typing與語法通過。未以增加timeout掩蓋失敗。

@@ -189,6 +189,8 @@ def read_personal_h20_research_bookmark_with_session(
             if terminal_state != first_state:
                 raise PersonalH20ResearchBookmarkError(
                     "personal_h20_bookmark_state_changed_during_read"
+                    f": initial_selected_reason={first_state.selected_row.reason[:300]}"
+                    f"; terminal_selected_reason={terminal_state.selected_row.reason[:300]}"
                 )
             activation_after, activation_bytes_after = _read_activation_snapshot(config)
             if activation_bytes_after != activation_bytes_before or activation_after != activation_before:

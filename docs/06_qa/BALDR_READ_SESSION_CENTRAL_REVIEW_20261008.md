@@ -260,3 +260,11 @@ Main 接續補上完整重驗後 restore_selection False 的終態 unavailable�
 中央捲動／執行／呈現聯測 20 passed／7.08秒；個股報告全檔 native 56 passed／6.82秒（2個 Qt warnings 保留）。葉片先前 sandbox 全檔54 passed／2 failed 等不到 real-service 首屏，完整失敗保留；中央以全新 C:/t 原測試全檔通過，無排除、timeout 調高或 mock 服務替換。UI 強制 workbench85 passed、validator25 passed／0 failed／4 protected skips、full-roots mypy898檔clean、7檔compile通過。記錄分別保存在 output/qa/recommendation_readability_feedback_root_20261008_a/ 與 output/qa/h20_ml_partition_46f21c389b6841119e45532880ea4666/root_full_report_native01.log。validator 固定輸出在中央重跑前已另存 preimage；葉片更早的固定報告覆寫沒有前像，不宣稱還原。
 
 本段只接受上述開發來源修正；e97f01466f29 的固定建置及隔離同版比較已完成，但未含本次修正。原4GB H20、新版 Native／新程序與完整股票母體資格仍待，不能把測試通過視為完整產品補完或要求真人重驗舊候選。
+
+### F17 保存來源清單的有限接受
+
+新增 `DailyMarketTechnicalOfficialDispositionBundleReaderV1.read_manifest_metadata(...)` 與 `DailyMarketTechnicalOfficialDispositionBundleCatalogV1(output_root).list_page(...)`。清單只核 manifest，候選固定標為 metadata_unverified，壞檔與不完整 inventory 具名顯示；不讀 sources、objects 或 row shards，不產 query/session、不授 PIT 或全市場資格。選取後必須持原 bundle identity 與 manifest bytes SHA 交 exact reader。預設每頁20、上限100；直接項目100000、累計manifest64MiB、單manifest8MiB是有界讀取預算，不把每頁上限當總股票上限。cursor綁原根、完整inventory及末路徑，漂移／不完整／取消均不發cursor，沒有latest選擇或自動建立來源。
+
+中央已核對變更範圍、metadata與exact資格邊界、取消終點與實際檔SHA；葉片原bundle＋catalog完整聯測55 passed／1既有Windows symlink權限skip、398.86秒，hardlink測試通過。log為 output/qa/f17_bundle_catalog_root_20261008_a/catalog-full-regression-01.log，SHA 575c293c5ff9b7073ed139362e17597b350a3606525d5e391d52c3d68870b8ad。bundle source SHA 62d83bb7111a3b94ee5c8c25338f683d5d081a1ee838fa8eafa411371e9e08c8；catalog SHA 519941e5ed0b6af63aae3c033e19754f436cc37c369def7435a62aef53306bfc；catalog test SHA 089843ce26564784528b3139eba87219af81fb97304b7f6b636d6b527d95a626。原bundle test未改；run01斷言失敗及run02/03前次結果保留。三檔compile與targeted mypy通過。
+
+此接受僅為來源清單葉片。exact bundle session factory正在中央獨立回歸，F17正常UI、原保存個股／比較／收藏／新程序及完整N效能均尚未完成；不能把55項測試當產品全旅程接受。

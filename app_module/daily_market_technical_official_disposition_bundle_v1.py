@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -16,6 +16,7 @@ import stat
 import threading
 from typing import Any, Literal, NoReturn, cast
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from app_module.daily_market_technical_method_contract_v4 import (
     daily_market_technical_method_contract_v4_sha256,
@@ -113,6 +114,19 @@ _SOURCE_INVENTORY_KEYS = frozenset({
     "market_assignment_root",
     "official_disposal_root",
 })
+_SOURCE_CLOCK_METADATA_KEYS = frozenset({
+    "database_path",
+    "source_id",
+    "schema_identity_sha256",
+    "source_file_pin",
+    "source_pin_sha256",
+    "decision_date",
+    "decision_cutoff",
+    "cutoff_guard_version",
+    "source_available_at",
+    "availability_status",
+    "historical_pit_eligible",
+})
 _COHORT_SUMMARY_KEYS = frozenset({
     "identity_sha256",
     "decision_date",
@@ -178,6 +192,40 @@ class DailyMarketTechnicalOfficialDispositionBundleReferenceV1:
     projection_status: Literal["complete"]
     technical_receipt_status: str
     source_coverage_status: Literal["complete", "partial"]
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMarketTechnicalOfficialDispositionBundleManifestMetadataV1:
+    """僅從 manifest 讀出的未核候選資料，不代表來源或分片已通過完整讀取。"""
+
+    output_root: str
+    bundle_identity_sha256: str
+    manifest_relative_path: str
+    manifest_sha256: str
+    row_count: int
+    decision_date_label: date
+    decision_cutoff_label: datetime
+    technical_store_output_root_label: str
+    technical_generation_identity_sha256: str
+    technical_plan_identity_sha256: str
+    technical_plan_sha256: str
+    technical_receipt_identity_sha256: str
+    technical_receipt_sha256: str
+    technical_receipt_status_label: str
+    cohort_identity_sha256: str
+    declared_count: int
+    included_count: int
+    excluded_count: int
+    source_clock_identity_sha256: str
+    method_contracts_sha256: str
+    market_assignment_pin_identity_sha256: str
+    official_disposal_pin_identity_sha256: str
+    source_coverage_status_label: Literal["complete", "partial"]
+    source_coverage_incomplete_reason_count: int
+    saved_scope_label: Literal["current_only"]
+    saved_historical_pit_eligible_label: Literal[False]
+    saved_official_available_at_label: None
+    metadata_state: Literal["metadata_unverified"] = "metadata_unverified"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1177,6 +1225,57 @@ class DailyMarketTechnicalOfficialDispositionBundleReaderV1:
             raise _wrapped_error("reader_root_invalid", error) from error
         self.output_root = canonical
 
+    def read_manifest_metadata(
+        self,
+        bundle_identity_sha256: str,
+        *,
+        expected_manifest_sha256: str | None = None,
+        cancel_callback: Callable[[], bool] | None = None,
+    ) -> DailyMarketTechnicalOfficialDispositionBundleManifestMetadataV1:
+        """只核讀指定 manifest；不開來源、技術 store、objects 或 row shards。
+
+        回傳值只適合供歷史候選清單顯示。使用者選取後仍須以 identity 與
+        manifest bytes SHA 呼叫 ``read_exact`` 完成所有來源與分片驗證。
+        """
+
+        _validate_cancel_callback(cancel_callback)
+        identity = _require_sha256(bundle_identity_sha256, "bundle_identity_invalid")
+        expected_manifest = (
+            _require_sha256(expected_manifest_sha256, "expected_manifest_sha_invalid")
+            if expected_manifest_sha256 is not None
+            else None
+        )
+        relative = f"manifests/{identity}.json"
+        manifest_path = self.output_root / "manifests" / f"{identity}.json"
+        try:
+            _check_read_cancel(cancel_callback)
+            raw = _read_bounded_regular_file(
+                manifest_path,
+                DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_MANIFEST_BYTES,
+                "manifest_metadata_missing_or_invalid",
+            )
+            _check_read_cancel(cancel_callback)
+            manifest_sha = _sha256_bytes(raw)
+            if expected_manifest is not None and manifest_sha != expected_manifest:
+                _fail("manifest_metadata_bytes_sha_mismatch")
+            manifest = _strict_json_object(raw, "manifest_metadata_json_invalid")
+            if _canonical_json(manifest).encode("utf-8") != raw:
+                _fail("manifest_metadata_not_canonical")
+            _validate_manifest_header(manifest, expected_identity=identity)
+            metadata = _manifest_metadata_from_payload(
+                output_root=self.output_root,
+                identity=identity,
+                relative_path=relative,
+                manifest_sha256=manifest_sha,
+                manifest=manifest,
+            )
+            _check_read_cancel(cancel_callback)
+            return metadata
+        except DailyMarketTechnicalOfficialDispositionBundleError:
+            raise
+        except (OSError, TypeError, ValueError, KeyError) as error:
+            raise _wrapped_error("manifest_metadata_invalid", error) from error
+
     def read_exact(
         self,
         bundle_identity_sha256: str,
@@ -1923,6 +2022,256 @@ def _validate_manifest_header(
     inventory = manifest.get("source_inventory")
     if not isinstance(inventory, Mapping) or set(inventory) != _SOURCE_INVENTORY_KEYS:
         _fail("manifest_source_inventory_invalid")
+
+
+def _manifest_metadata_from_payload(
+    *,
+    output_root: Path,
+    identity: str,
+    relative_path: str,
+    manifest_sha256: str,
+    manifest: Mapping[str, object],
+) -> DailyMarketTechnicalOfficialDispositionBundleManifestMetadataV1:
+    technical_value = manifest.get("technical_store")
+    if not isinstance(technical_value, Mapping) or set(technical_value) != _TECHNICAL_STORE_KEYS:
+        _fail("manifest_metadata_technical_store_invalid")
+    technical = cast(Mapping[str, object], technical_value)
+
+    cohort_value = manifest.get("cohort_summary")
+    if not isinstance(cohort_value, Mapping) or set(cohort_value) != _COHORT_SUMMARY_KEYS:
+        _fail("manifest_metadata_cohort_summary_invalid")
+    cohort = cast(Mapping[str, object], cohort_value)
+
+    coverage_value = manifest.get("source_coverage")
+    if not isinstance(coverage_value, Mapping) or set(coverage_value) != _SOURCE_COVERAGE_KEYS:
+        _fail("manifest_metadata_source_coverage_invalid")
+    coverage = cast(Mapping[str, object], coverage_value)
+    incomplete_reasons = coverage.get("incomplete_reasons")
+    if not isinstance(incomplete_reasons, list) or any(
+        not isinstance(reason, str) or not reason for reason in incomplete_reasons
+    ):
+        _fail("manifest_metadata_incomplete_reasons_invalid")
+
+    source_clock_value = technical.get("source_clock")
+    if not isinstance(source_clock_value, Mapping):
+        _fail("manifest_metadata_source_clock_invalid")
+    decision_date, decision_cutoff = _validate_manifest_source_clock_metadata(source_clock_value)
+
+    source_clock_identity = _require_sha256(
+        technical.get("source_clock_identity_sha256"),
+        "manifest_metadata_source_clock_identity_invalid",
+    )
+    if _sha256_json(dict(source_clock_value)) != source_clock_identity:
+        _fail("manifest_metadata_source_clock_identity_mismatch")
+
+    cohort_identity = _require_sha256(
+        technical.get("cohort_identity_sha256"),
+        "manifest_metadata_cohort_identity_invalid",
+    )
+    if cohort.get("identity_sha256") != cohort_identity:
+        _fail("manifest_metadata_cohort_identity_mismatch")
+
+    decision_date_text = cohort.get("decision_date")
+    if not isinstance(decision_date_text, str) or len(decision_date_text) != 10:
+        _fail("manifest_metadata_decision_date_invalid")
+    try:
+        cohort_decision_date = date.fromisoformat(decision_date_text)
+    except ValueError as error:
+        raise DailyMarketTechnicalOfficialDispositionBundleError(
+            "manifest_metadata_decision_date_invalid"
+        ) from error
+    if cohort_decision_date.isoformat() != decision_date_text:
+        _fail("manifest_metadata_decision_date_invalid")
+    if (
+        decision_date != cohort_decision_date
+        or technical.get("decision_date") != decision_date_text
+    ):
+        _fail("manifest_metadata_decision_date_mismatch")
+
+    counts_value = technical.get("counts")
+    try:
+        counts = DailyMarketTechnicalUniverseV4Counts.from_dict(counts_value)
+    except (DailyMarketTechnicalUniverseV4StoreError, TypeError, ValueError) as error:
+        raise _wrapped_error("manifest_metadata_counts_invalid", error) from error
+    declared_count = _nonnegative_metadata_int(
+        technical.get("declared_count"), "manifest_metadata_declared_count_invalid"
+    )
+    included_count = _nonnegative_metadata_int(
+        technical.get("included_count"), "manifest_metadata_included_count_invalid"
+    )
+    excluded_count = _nonnegative_metadata_int(
+        technical.get("excluded_count"), "manifest_metadata_excluded_count_invalid"
+    )
+    row_count = _nonnegative_metadata_int(
+        manifest.get("row_count"), "manifest_metadata_row_count_invalid"
+    )
+    if (
+        declared_count != included_count + excluded_count
+        or row_count != declared_count
+        or counts.declared_count != declared_count
+        or counts.included_count != included_count
+        or counts.excluded_count != excluded_count
+        or cohort.get("declared_count") != declared_count
+        or cohort.get("included_count") != included_count
+        or cohort.get("excluded_count") != excluded_count
+    ):
+        _fail("manifest_metadata_count_mismatch")
+
+    receipt_status = technical.get("receipt_status")
+    if receipt_status != "complete":
+        _fail("manifest_metadata_technical_receipt_not_complete")
+
+    pins_value = manifest.get("source_pins")
+    if not isinstance(pins_value, Mapping) or set(pins_value) != _SOURCE_PINS_KEYS:
+        _fail("manifest_metadata_source_pins_invalid")
+    try:
+        market_pin = CurrentMarketAssignmentSourcePinV1.from_dict(pins_value["market_assignment"])
+    except (CurrentMarketAssignmentError, TypeError, ValueError) as error:
+        raise _wrapped_error("manifest_metadata_market_pin_invalid", error) from error
+    try:
+        disposal_pin = CurrentOfficialDisposalSourcePinV1.from_dict(pins_value["official_disposal"])
+    except (SelectionOfficialEventError, TypeError, ValueError) as error:
+        raise _wrapped_error("manifest_metadata_disposal_pin_invalid", error) from error
+
+    coverage_status = manifest.get("source_coverage_status")
+    if coverage_status not in {"complete", "partial"}:
+        _fail("manifest_metadata_source_coverage_status_invalid")
+
+    technical_output_root = technical.get("output_root")
+    if (
+        not isinstance(technical_output_root, str)
+        or not technical_output_root
+        or len(technical_output_root) > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_PATH_CHARS
+    ):
+        _fail("manifest_metadata_technical_root_invalid")
+
+    return DailyMarketTechnicalOfficialDispositionBundleManifestMetadataV1(
+        output_root=str(output_root),
+        bundle_identity_sha256=identity,
+        manifest_relative_path=relative_path,
+        manifest_sha256=manifest_sha256,
+        row_count=row_count,
+        decision_date_label=cohort_decision_date,
+        decision_cutoff_label=decision_cutoff,
+        technical_store_output_root_label=technical_output_root,
+        technical_generation_identity_sha256=_require_sha256(
+            technical.get("generation_identity_sha256"),
+            "manifest_metadata_generation_identity_invalid",
+        ),
+        technical_plan_identity_sha256=_require_sha256(
+            technical.get("plan_identity_sha256"),
+            "manifest_metadata_plan_identity_invalid",
+        ),
+        technical_plan_sha256=_require_sha256(
+            technical.get("plan_sha256"),
+            "manifest_metadata_plan_sha_invalid",
+        ),
+        technical_receipt_identity_sha256=_require_sha256(
+            technical.get("receipt_identity_sha256"),
+            "manifest_metadata_receipt_identity_invalid",
+        ),
+        technical_receipt_sha256=_require_sha256(
+            technical.get("receipt_sha256"),
+            "manifest_metadata_receipt_sha_invalid",
+        ),
+        technical_receipt_status_label=cast(str, receipt_status),
+        cohort_identity_sha256=cohort_identity,
+        declared_count=declared_count,
+        included_count=included_count,
+        excluded_count=excluded_count,
+        source_clock_identity_sha256=source_clock_identity,
+        method_contracts_sha256=_require_sha256(
+            technical.get("method_contracts_sha256"),
+            "manifest_metadata_method_contract_invalid",
+        ),
+        market_assignment_pin_identity_sha256=market_pin.identity_sha256,
+        official_disposal_pin_identity_sha256=disposal_pin.identity_sha256,
+        source_coverage_status_label=cast(Literal["complete", "partial"], coverage_status),
+        source_coverage_incomplete_reason_count=len(incomplete_reasons),
+        saved_scope_label=cast(Literal["current_only"], manifest["scope"]),
+        saved_historical_pit_eligible_label=False,
+        saved_official_available_at_label=None,
+    )
+
+
+def _validate_manifest_source_clock_metadata(
+    payload: Mapping[str, object],
+) -> tuple[date, datetime]:
+    """驗證嵌入時鐘的純 JSON 身分，不解析或檢查它指向的資料庫路徑。"""
+
+    if set(payload) != _SOURCE_CLOCK_METADATA_KEYS:
+        _fail("manifest_metadata_source_clock_keys_invalid")
+    database_path = payload.get("database_path")
+    if (
+        not isinstance(database_path, str)
+        or not database_path
+        or len(database_path) > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_PATH_CHARS
+        or not Path(database_path).is_absolute()
+    ):
+        _fail("manifest_metadata_source_clock_database_path_invalid")
+    if payload.get("source_id") != "sqlite.daily_prices":
+        _fail("manifest_metadata_source_clock_source_invalid")
+    _require_sha256(
+        payload.get("schema_identity_sha256"),
+        "manifest_metadata_source_clock_schema_invalid",
+    )
+    raw_pin = payload.get("source_file_pin")
+    if not isinstance(raw_pin, list) or len(raw_pin) != 2:
+        _fail("manifest_metadata_source_clock_file_pin_invalid")
+    expected_paths = (database_path, f"{database_path}-wal")
+    for index, (item, expected_path) in enumerate(zip(raw_pin, expected_paths)):
+        if not isinstance(item, list) or not item or item[0] != expected_path:
+            _fail("manifest_metadata_source_clock_file_pin_invalid")
+        if index == 0 and len(item) != 5:
+            _fail("manifest_metadata_source_clock_file_pin_invalid")
+        if len(item) not in (1, 5):
+            _fail("manifest_metadata_source_clock_file_pin_invalid")
+        for value in item[1:]:
+            if type(value) is not int or value < 0:
+                _fail("manifest_metadata_source_clock_file_pin_invalid")
+    source_pin_sha = _require_sha256(
+        payload.get("source_pin_sha256"),
+        "manifest_metadata_source_clock_pin_sha_invalid",
+    )
+    if _sha256_json(raw_pin) != source_pin_sha:
+        _fail("manifest_metadata_source_clock_pin_sha_mismatch")
+
+    decision_date_text = payload.get("decision_date")
+    if not isinstance(decision_date_text, str) or len(decision_date_text) != 10:
+        _fail("manifest_metadata_source_clock_date_invalid")
+    try:
+        decision_date = date.fromisoformat(decision_date_text)
+    except ValueError as error:
+        raise DailyMarketTechnicalOfficialDispositionBundleError(
+            "manifest_metadata_source_clock_date_invalid"
+        ) from error
+    if decision_date.isoformat() != decision_date_text:
+        _fail("manifest_metadata_source_clock_date_invalid")
+    decision_cutoff_text = payload.get("decision_cutoff")
+    decision_cutoff = _parse_aware_datetime(
+        decision_cutoff_text,
+        "manifest_metadata_source_clock_cutoff_invalid",
+    )
+    if decision_cutoff.isoformat() != decision_cutoff_text:
+        _fail("manifest_metadata_source_clock_cutoff_invalid")
+    taipei_cutoff = decision_cutoff.astimezone(ZoneInfo("Asia/Taipei"))
+    if taipei_cutoff.date() != decision_date or taipei_cutoff.time() < time(16, 0):
+        _fail("manifest_metadata_source_clock_cutoff_mismatch")
+    if payload.get("cutoff_guard_version") != "daily-close-research-cutoff.v1":
+        _fail("manifest_metadata_source_clock_guard_unsupported")
+    if (
+        payload.get("source_available_at") is not None
+        or payload.get("availability_status") != "unknown"
+        or payload.get("historical_pit_eligible") is not False
+    ):
+        _fail("manifest_metadata_source_clock_availability_invalid")
+    return decision_date, decision_cutoff
+
+
+def _nonnegative_metadata_int(value: object, code: str) -> int:
+    if type(value) is not int or value < 0:
+        _fail(code)
+    return value
 
 
 def _row_from_payload(payload: Mapping[str, object]) -> DailyMarketTechnicalOfficialDispositionFactRowV1:

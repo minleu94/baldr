@@ -222,3 +222,15 @@ reader中央另發現VerifiedQueryResult只以全域seal與欄位形狀核驗，
 最終五檔affected（hook/read-session/SQLite operation/capacity/Main合成接線）**50 passed／11.13秒**，含4GB大小三階段的11,000+通知合成、每階段起訖保留、同size新來源重啟、callback失敗仍中止與控制階段單位。workbench85 passed／3.11秒；validator原sandbox21 passed／3 failed／4 skipped（WinError5導致daily SQLite同步失敗）原報告保留，唯一短合成根native同命令25 passed／0 failed／4 protected skips。full-roots mypy896檔通過，hook單檔mypy及兩檔compile通過。
 
 包含test檔的targeted mypy另被其既有fixture匯入tests/test_ui_qt_stock_research_report.py帶出46既有型態錯誤，該run保留，不改無關test或聲稱兩檔型態全綠；正常產品roots及hook通過如上。更早文字改前46測試綠燈不替代本次50項最終驗證。原4GB／Main／Native速度、新候選與完整P00–P14仍未接受；沒有直接連原件或改金融/模型/決策時鐘。rollback/preimages／failed與native validator報告在 `output/qa/h20_progress_delivery_root_20261008_a/`。
+
+### 匿名呼叫紀錄定位與 reader 中央重驗（續）
+
+固定 9bc 新 attempt `20261008T061333Z_4ea537785243` terminal exit1：controller 159.0 秒、child 120.328 秒，最終仍是 canonical_main_readonly_boundary_violation。初始十股 available，2382 684bp；初始 28.125 秒、double click 摘要 34.734 秒、返回原 manifest／2382 35.046 秒。這不是 p95，也不是進度合併 29c 或 warm view 修正的驗收。
+
+原輸入與 pinned inputs 前後相等、source_inputs_unchanged／source_archive_unchanged true。匿名事件將四次 market-root io.open 定位至 EnvironmentReadinessService._probe_existing_write_handle：DATA_ROOT/logs/config.log 的 r+b 開啟後即關閉，沒有寫入 bytes，並非市場 DB。FileHandler 同樣來自 TWStockConfig 的原日誌路徑。兩次 mkdir 是 TechnicalIndicators 建立 OUTPUT_ROOT/application_state/logs。socket.bind 由 urllib3._has_ipv6(::1) 執行 IPv6 loopback 能力探測；未据此授予外部網路能力，原拒絕及 gate 保留。後續設計將 runtime 日誌與 readiness 可寫探測放回輸出邊界；不搬移既存資料、不放寬正式來源寫入。
+
+trace shutdown worker0／windowFalse；controller 失敗 payload 的 shutdown_complete 仍 false，不能授予正常關閉 Gate。原始候選繼續不交付真人。
+
+F17 reader owner 最終 24 passed／334.11 秒、mypy／compile 通過，兩檔 freeze SHA 分別為 90CB1E0616F743A1B87FCE0D3AE07905B8A6BFC45F4B9BA18AB98B199BC50F25、D481E5C28BC4E6865A7692413225C4D87E615AF73DC59CBF7C802DECC140E76D。中央確認 per-result／page seal 綁定完整排序、counts、session 與封套，四個公開入口在 DTO 建構後保留最後取消 poll；尚待中央獨立全套終態，不把 owner 綠燈寫成中央接受。
+
+中央首次 sandbox 全套 5 passed／19 setup errors（synthetic SQLite 路徑 realpath WinError5，未修改測試或產品）。原錯誤保留，改以同一完整測試在具名 QA 根 native 重驗，handle18443 目前 live，log 為 output/qa/f17_query_reader_final_gate_20261008_a/root_reader_full_native.log。未開正式 DB、未重啟終態失敗的 H20 attempt。

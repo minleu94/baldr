@@ -17,17 +17,16 @@ import sqlite3
 import stat
 import tempfile
 import uuid
-from typing import Any, IO, Protocol
+from typing import TYPE_CHECKING, Any, IO, Protocol
 
-from app_module.daily_market_snapshot_repository import (
-    DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA, DailyMarketSnapshotRepository,
-    VerifiedDailyMarketSnapshot,
-)
-from app_module.daily_market_feature_snapshot import feature_contract_for_version
-from app_module.multi_method_research_consensus import (
-    adapt_daily_market_snapshot, build_multi_method_consensus,
-)
 from app_module.personal_data_paths import _strip_windows_io_prefix, to_internal_io_path
+
+if TYPE_CHECKING:
+    from app_module.daily_market_feature_snapshot import DailyMarketFeatureContract
+    from app_module.daily_market_snapshot_repository import (
+        DailyMarketSnapshotRepository,
+        VerifiedDailyMarketSnapshot,
+    )
 
 CAPTURE_SCHEMA = "rule-research-sample-capture.v1"
 RECEIPT_SCHEMA = "rule-research-sample-receipt.v1"
@@ -41,6 +40,14 @@ _POLICY = {"research_only": True, "historical_pit_eligible": False,
            "training_eligible": False, "selection_predicate": None,
            "selection_status": "unknown", "selected_count": 0,
            "availability_policy": "source_unknown_preserved_no_backfill"}
+
+
+def _feature_contract_for_version(version: str) -> DailyMarketFeatureContract:
+    """僅在 legacy capture 實際驗證或產生時載入舊版 feature 契約。"""
+
+    from app_module.daily_market_feature_snapshot import feature_contract_for_version
+
+    return feature_contract_for_version(version)
 
 
 class RuleSampleCaptureError(ValueError):
@@ -153,7 +160,7 @@ class RuleResearchCapture:
         _require(body.get("policy") == _POLICY, "capture_policy_mismatch")
         _require(body.get("capture_identity_sha256") == _identity(body), "capture_identity_mismatch")
         try:
-            contract = feature_contract_for_version(str(body.get("feature_contract_version") or ""))
+            contract = _feature_contract_for_version(str(body.get("feature_contract_version") or ""))
         except ValueError as exc:
             raise RuleSampleCaptureError("feature_version_mismatch") from exc
         _require(body.get("method_contracts") == contract.method_contracts
@@ -257,7 +264,7 @@ def _validate_saved_semantics(body: dict[str, Any]) -> None:
                  and type(body.get("population_count")) is int
                  and universe.get("population_count") == body["population_count"] == len(represented)
                  and body.get("population_status") == "declared_fixed_cohort", "capture_population_mismatch")
-    descriptor = feature_contract_for_version(str(body.get("feature_contract_version") or ""))
+    descriptor = _feature_contract_for_version(str(body.get("feature_contract_version") or ""))
     contracts = {c["method_id"]: c for c in descriptor.method_contracts.values()}
     for method_id, contract in contracts.items():
         rows = [r for r in body["rows"] if r["method_id"] == method_id]
@@ -276,6 +283,16 @@ def _validate_saved_semantics(body: dict[str, Any]) -> None:
 def build_rule_research_capture(snapshot: VerifiedDailyMarketSnapshot, *,
         as_of: datetime, observed_at: datetime) -> RuleResearchCapture:
     """純投影：只用已捕獲值；未知來源時鐘不從結果／發布時鐘補入。"""
+    from app_module.daily_market_snapshot_repository import (
+        DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA,
+        DailyMarketSnapshotRepository,
+        VerifiedDailyMarketSnapshot,
+    )
+    from app_module.multi_method_research_consensus import (
+        adapt_daily_market_snapshot,
+        build_multi_method_consensus,
+    )
+
     as_of_text, observed_text = _clock(as_of), _clock(observed_at)
     _require(observed_at >= as_of, "observation_before_as_of")
     _require(isinstance(snapshot, VerifiedDailyMarketSnapshot), "snapshot_type_invalid")
@@ -283,7 +300,7 @@ def build_rule_research_capture(snapshot: VerifiedDailyMarketSnapshot, *,
     _require(manifest.get("schema_version") == DAILY_MARKET_SNAPSHOT_MANIFEST_SCHEMA,
              "snapshot_version_mismatch")
     try:
-        feature_contract_for_version(str(manifest.get("feature_contract_version") or ""))
+        _feature_contract_for_version(str(manifest.get("feature_contract_version") or ""))
     except ValueError as exc:
         raise RuleSampleCaptureError("feature_version_mismatch") from exc
     _require(manifest.get("policy") == {"research_only": True, "historical_pit_eligible": False},

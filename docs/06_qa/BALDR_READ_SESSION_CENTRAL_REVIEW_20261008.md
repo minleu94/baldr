@@ -275,3 +275,9 @@ Main 接續補上完整重驗後 restore_selection False 的終態 unavailable�
 中央完整新舊聯測34 passed／500.05秒，證據 `output/qa/f17_exact_session_factory_root_20261008_a/root_factory_warm_union03.log`；真258列公開 fixture 覆蓋末段頁、全域市場篩選、清除條件、source mismatch、錯誤 manifest 與發行後取消。前兩輪失敗與更正紀錄保留；未排除既有24項。兩檔 mypy 與 compile 通過。此為應用層接受，Main 入口、跨頁比較、收藏跨新程序、一般來源產製與真人旅程仍未完成，不代表全市場或 PIT 資格。
 
 F17 root 設定前置：新增 `TECHNICAL_OFFICIAL_DISPOSITION_READ_ROOT` 共用環境／portable JSON 解析，未設定保持 None；空字串、相對路徑與 frozen 包內來源拒絕，resolve 與 apply 均驗。設定層不建立保存來源。新舊 bootstrap 聯測28 passed／1.38秒、3檔mypy clean；log `output/qa/f17_read_root_root_20261008_a/bootstrap_union03.log`。首次新增測試錯用不存在的 environ 參數造成6 passed／1 failed，記錄與fixture保留，只更正測試呼叫。此設定尚待UI注入與完整旅程，不提供使用者操作完成資格。
+
+### 技術研究匯入邊界修正
+
+`rule_research_sample_capture.py` 的 legacy feature contract、snapshot repository 與 consensus 依賴移至真正使用函式，TYPE_CHECKING 保留型別；原 validator、schema、時鐘及capture語意不變。fresh subprocess 公開 parent query／universe producer／query／store／capture scope 匯入組合不再預載 ML。中央核 source/test SHA 與最終diff；四套件60 passed／1既有skip、20.80秒，log `output/qa/rule_research_sample_capture_ml_boundary_20261008/union_shortpath.log`，compile/mypy通過。此前紅測與三個262–263字元Win32路徑失敗保留，短TEMP完整重跑而非排除負例。
+
+此修正尚未進原固定9bc來源，原1000 producer attempt仍失敗；須另建固定新來源並重新核驗，不能改舊封套或視作產製完成。ML deny、原始資料保護與禁止fit/predict均維持。

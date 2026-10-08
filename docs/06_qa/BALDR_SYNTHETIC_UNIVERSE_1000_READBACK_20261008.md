@@ -1,5 +1,21 @@
 # 1,000 檔合成保存研究產製與獨立讀回
 
+## 固定 acd 讀取器完整矩陣（2026-10-08，效能未通過）
+
+新 attempt `C:/t/p01_mc6g40xn` 僅沿固定 `acd18a1efcc045951defc00b79167035b6ec6f2d` archive 讀取原封存合成來源，未重跑 producer。中央直接讀 `benchmark_result.json`，SHA256 `5d0beaf0480c14b1cf009e67fdd54cb3c6c64f4714f5db999545187423554c74`；完整五冷／一暖／五類各 30 次樣本完成，整體 status failed、controller exit 1。下列為原嚴格 `<300ms` 的來源引擎 p95，不是 GUI 或 EXE 延遲。
+
+| 暖操作 | p95（毫秒） | 原門檻 |
+|---|---:|---|
+| 翻頁 | 813.5101 | 未通過 |
+| 篩選、全域選取及首頁 | 1208.0899 | 未通過 |
+| 全域排序、選取及首頁 | 879.3598 | 未通過 |
+| 單股 materializer | 73.0590 | 通過 |
+| 16 股跨段 materializer | 290.0902 | 通過 |
+
+中央另直接核五份 cold result：五個不同 PID 均處理完整 1,000 檔，首頁 50 股，query／page identities 相同。分母 declared 1001／included 1000／excluded 1／processed 1000／pending 0／missing 1；缺件仍保留。Cold launch-to-page p95 為 93.3948601 秒，不能當成暖操作或真人頁面 p95。來源 archive、DB、store、controller／helper／qualifier／receipt／原 report 的起訖 pins 相同；六個 audited worker launches 精確符合白名單，SQLite／網路為零，Main／EXE／producer 未啟動。
+
+中央讀 warm resource summary：worker exit 0、sampler valid／closed、3058 samples、無 sampler errors；Job closed、剩餘 owned PID 為空。舊完整矩陣及本次失敗封套都保留。相較舊矩陣的四類失敗，本次跨段 materializer 達標，但仍有三類效能缺口；不能授整體效能、正式市場 N 或 M2 完成。接續以同份來源的單次翻頁函式 profile 定位成本，不能略過 source hash／proof、縮母體或更改門檻來換通過。
+
 依使用者明確授權，在全新隔離目錄建立合成股票資料、執行產製器並保存測試封套。正式資料與正式排程不在此測試範圍。
 
 ## 有限接受結果

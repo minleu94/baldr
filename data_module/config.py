@@ -14,6 +14,16 @@ def _optional_env_path(name: str) -> Path | None:
     return Path(value) if value else None
 
 
+def _technical_universe_read_root_from_environment() -> Path | None:
+    name = "TECHNICAL_UNIVERSE_READ_ROOT"
+    if name not in os.environ:
+        return None
+    value = os.environ[name].strip()
+    if not value:
+        raise ValueError("TECHNICAL_UNIVERSE_READ_ROOT 必須是非空絕對路徑")
+    return Path(value)
+
+
 @dataclass
 class TWStockConfig:
     """台股數據分析核心配置"""
@@ -76,6 +86,11 @@ class TWStockConfig:
     # 官方日曆為外部唯讀證據；Python 與 exe 沿共同設定選同一保存根。
     official_calendar_cache_path: Path | None = field(
         default_factory=lambda: _optional_env_path("OFFICIAL_CALENDAR_CACHE_PATH"),
+        kw_only=True,
+    )
+    # 外部已保存完整母體來源只供瀏覽；不建立來源目錄或擴大 producer 寫入範圍。
+    technical_universe_read_root: Path | None = field(
+        default_factory=_technical_universe_read_root_from_environment,
         kw_only=True,
     )
 
@@ -143,6 +158,11 @@ class TWStockConfig:
     
     def __post_init__(self):
         """初始化衍生屬性"""
+        if self.technical_universe_read_root is not None:
+            technical_root = Path(self.technical_universe_read_root).expanduser()
+            if not technical_root.is_absolute():
+                raise ValueError("TECHNICAL_UNIVERSE_READ_ROOT 必須是明示絕對路徑")
+            self.technical_universe_read_root = technical_root.resolve(strict=False)
         if self.personal_model_policy_path is not None:
             requested_policy = Path(self.personal_model_policy_path).expanduser()
             if not requested_policy.is_absolute():

@@ -1,0 +1,13 @@
+# 完整母體保存研究讀取根接線
+
+背景：完整Main啟動會在OUTPUT_ROOT建立回測與registry資料庫；把兩模式整個OUTPUT_ROOT設成共用研究根，會把可寫執行資料與不可變保存來源混在一起。固定d9不支援獨立讀取根，窄QA root override僅為診斷，不授一般配置同版資格。
+
+dev新增明示 TECHNICAL_UNIVERSE_READ_ROOT，沿共用ApplicationBootstrap portable設定／環境快照、TWStockConfig、DailyMarketResearchView傳入真v4 browser。未設定時保留原OUTPUT_ROOT/research_snapshots/technical_universe與既有producer；設定為不同來源根時只讀瀏覽，產製及續跑停用，未擴ResearchCaptureWriteScope。query及收藏保留原canonical store root與原pins，不搬移、不重寫來源、不改讀latest。來源不存在時由原catalog/reader具名拒絕，不改用default根；設定不建立來源目錄。
+
+明示空白、相對路徑拒絕，frozen程式包內路徑在resolve與apply兩層拒絕。預設根仍可產製；明示同一預設根不改既有寫入入口。root本身為來源選擇，不代表來源SHA、母體或PIT資格通過。
+
+中央驗證：配置及瀏覽接線29項通過（2.44秒），含JSON／環境路由至真browser、不建立來源、空白／相對／bundle拒絕、預設producer保留與既有bootstrap回歸。強制工作台及相鄰每日研究／Main routing／production setup114項通過（6.66秒），唯一TEMP C:/t/technical-read-root-ui-20261007-a。全域mypy891檔通過（兩則既有untyped notes），新test定向typing與四檔語法通過。更新頁25通過0失敗4保護跳過，報告output/qa/technical_read_root_update_20261007_a/VALIDATION_REPORT.md。
+
+補上手工ApplicationSettings的apply層不可信root回歸後，31項通過（2.71秒）；相對根或bundle內根在建立runtime目錄前拒絕。所有來源測試均為合成。回滾前像與Manual局部patch保存在output/qa/technical_read_root_preimage_20261007_a，只涵蓋本任務乾淨前像。
+
+仍待：完整Main正常配置對同一保存query／bookmark的新程序與Python／exe同版資格、新固定候選、Native與完整市場效能。這次接線不取代P00–P14／M3原範圍，也不宣稱d9已取得新增配置能力。其他聊天dirty變更保留，原exe與正式來源未動。

@@ -210,9 +210,21 @@ class DailyMarketResearchView(QWidget):
                     make_daily_market_technical_v4_deferred_setup_factory(config, parent=self)
                     if isinstance(config, TWStockConfig) else None
                 )
+                default_store_root = Path(output_root) / "research_snapshots" / "technical_universe"
+                configured_read_root = getattr(config, "technical_universe_read_root", None)
+                store_root = Path(configured_read_root) if configured_read_root is not None else default_store_root
+                external_read_only = store_root.resolve(strict=False) != default_store_root.resolve(strict=False)
+                if external_read_only:
+                    production_factory = None
                 self.technical_universe_view = DailyMarketTechnicalUniverseV4View(
-                    Path(output_root) / "research_snapshots" / "technical_universe", self,
+                    store_root, self,
                     production_request_factory=production_factory)
+                if external_read_only:
+                    self.technical_universe_view.produce_button.setToolTip(
+                        "目前瀏覽明示的外部保存來源；此入口唯讀，不在來源目錄產製或續跑研究。")
+                    self.technical_universe_view.disclaimer.setText(
+                        self.technical_universe_view.disclaimer.text()
+                        + "\n目前使用明示外部保存來源；產製與續跑停用。")
                 self.technical_universe_view.stockSelected.connect(self._accept_technical_stock)
                 self.technical_universe_view.comparisonReady.connect(self._accept_technical_comparison)
                 self.technical_universe_view.bookmarkPrepared.connect(self._save_technical_bookmark)

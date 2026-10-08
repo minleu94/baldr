@@ -47,3 +47,9 @@ root session 16749 terminal exit 1；新 attempt `C:/t/p01_yyuuqth0`，controlle
 該單次 cold 的引擎 strict-open 15.7664812 秒、query／selection 0.1004507 秒、首頁 materialize 0.7595453 秒，合計 16.6285502 秒；controller launch-to-page 68.419395 秒另含啟動等成本。這是一筆 cold 樣本，不是完整矩陣或 p95，不授予 300ms 接受。
 
 parent 在 `_run_child` 寫 resource summary 時仍呼叫原 C63 `_write_json_new`，該 helper 先呼叫 case root `mkdir(exist_ok=True)`，被新 parent guard 拒絕。完整 traceback 留在 cold_01.controller_failure.json；after-worker gate 即刻停跑，沒有 cold_02／warm。outer failure 未保留 local Job 清理狀態，因此 cleanup 為 unknown，不能聲稱零殘留；原 resource samples 與 worker passed 結果不覆寫。修正僅限 parent 寫入改走 exact exclusive wrapper，並補實際 `_run_child` 合成旅程及 metadata 失敗清理證據。root 有界診斷另存 `output/qa/p01_b3mrz9_8_source_benchmark_20261008_a/root_yyuuqth0_diagnosis.json`。
+
+## Parent 最終保存錯誤中央補驗
+
+root 獨立 selftest exit0，case `C:/t/p01_ucayb301`，log `output/qa/p01_b3mrz9_8_source_benchmark_20261008_a/root_guard_finalization_20261008_b.log`。controller固定 SHA256 `38b4ea08f362908b84f9ab49799d728a646b38bec8f6eb9c9833e9e5792551ec`；真 `_run_child_preserving_failure` 在 worker passed result已保存後注入 resource-summary 錯誤，仍保留已驗 bootstrap/PID/create-time、7筆samples的path/hash/size/count與實際Job closed／零ownedprocess證據；原workerresult bytes不變，parentfailed且停止矩陣。沒有把未知樣本偽造為零，未重複嵌樣本明細。固定C63helper未改，network／SQL／producer／model／benchmark都沒有執行。
+
+這授予 QA finalization 契約有限接受，不能改寫原 `p01_yyuuqth0` cleanup unknown。root另啟新的完整1000檔source-only矩陣 session63774，目前執行中；其他代理測試／build／Native已暫停，原始資料及正式排程不在本矩陣範圍。結果未到前不授完整p95接受。

@@ -742,121 +742,77 @@ def test_changed_saved_h20_reference_preserves_original_cohort_and_selection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """下鑽或返回時若保存 pointer 已改變，保留原列表與選取。"""
+    """重新核驗讀到真新 reference 時，保留舊完整 view 與使用者選取。"""
 
-    from app_module.recommendation.personal_h20_research_cohort import (
-        PersonalH20ResearchCohort,
-        PersonalH20ResearchRow,
-        PersonalH20ResearchSelection,
+    from tests.test_ui_qt_personal_h20_mainwindow_saved_journey import (
+        _close_mainwindow,
+        _double_click_selected_h20_row,
+        _load_h20_list,
+        _prepare_saved_h20_mainwindow,
+        _wait_for,
     )
-    import ui_qt.workers.task_worker as worker_module
 
-    def row(symbol: str, gross_return_bp: int) -> PersonalH20ResearchRow:
-        return PersonalH20ResearchRow(
-            symbol=symbol,
-            status="available",
-            reason="",
-            gross_return_bp=gross_return_bp,
-            decision_date=DECISION_DATE,
-            source_date=SOURCE_DATE,
-            feature_as_of_date=FEATURE_DATE,
-            sample_id=f"sample-{symbol}",
-            prediction_id=f"prediction-{symbol}",
-            capture_path=str(tmp_path / f"capture-{symbol}.json"),
-            capture_sha256="sha256:" + ("a" if symbol == "2382" else "b") * 64,
-        )
-
-    def cohort(
-        manifest_hash: str,
-        symbols_and_returns: tuple[tuple[str, int], ...],
-    ) -> PersonalH20ResearchCohort:
-        rows = tuple(row(symbol, gross_return_bp) for symbol, gross_return_bp in symbols_and_returns)
-        symbols = tuple(sorted(item.symbol for item in rows))
-        return PersonalH20ResearchCohort(
-            manifest_path=str(tmp_path / "manifest.json"),
-            manifest_sha256=manifest_hash,
-            candidate_id="saved-candidate",
-            contract_hash="sha256:" + "c" * 64,
-            cycle_id="saved-cycle",
-            decision_date=DECISION_DATE,
-            symbols=symbols,
-            rows=rows,
-        )
-
-    class Signal:
-        def __init__(self) -> None:
-            self.callbacks: list[Any] = []
-
-        def connect(self, callback: Any) -> None:
-            self.callbacks.append(callback)
-
-        def emit(self, *args: Any) -> None:
-            for callback in tuple(self.callbacks):
-                callback(*args)
-
-    class CapturedWorker:
-        latest: "CapturedWorker | None" = None
-
-        def __init__(self, _function: Any, *args: Any, **kwargs: Any) -> None:
-            self.args = args
-            self.kwargs = kwargs
-            self.finished = Signal()
-            self.error = Signal()
-            self.progress = Signal()
-            self.native_thread_finished = Signal()
-            type(self).latest = self
-
-        def start(self) -> None:
-            return None
-
-        def isRunning(self) -> bool:
-            return False
-
-        def cancel(self, **_kwargs: Any) -> None:
-            return None
-
-        def deleteLater(self) -> None:
-            return None
-
-    monkeypatch.setattr(worker_module, "TaskWorker", CapturedWorker)
-    app = _app()
-    old_cohort = cohort("sha256:" + "1" * 64, (("2330", 500), ("2382", 1234)))
-    selected_row = next(item for item in old_cohort.rows if item.symbol == "2382")
-    selection = PersonalH20ResearchSelection(
-        manifest_sha256=old_cohort.manifest_sha256,
-        candidate_id=old_cohort.candidate_id,
-        contract_hash=old_cohort.contract_hash,
-        cycle_id=old_cohort.cycle_id,
-        symbol=selected_row.symbol,
-        sample_id=selected_row.sample_id,
-        prediction_id=selected_row.prediction_id,
-        capture_sha256=selected_row.capture_sha256,
+    app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch
     )
-    old_reference = object()
-    changed_reference = object()
-    changed_cohort = cohort("sha256:" + "2" * 64, (("2454", 900),))
-    window = _MainWindowJourneyHarness(
-        tmp_path,
-        _real_report_service(tmp_path / "unused-report.sqlite", tmp_path / "report-output"),
-    )
-    widget = window.personal_h20_research_widget
-    window._personal_h20_cohort_reference = old_reference
-    window._personal_h20_research_origin = (object(), selection, old_reference)
-    widget.set_cohort(old_cohort)
-    assert widget.restore_selection(selection)
-    before_symbols = tuple(widget.table.item(index, 0).text() for index in range(widget.table.rowCount()))
-    before_current_row = widget.table.currentRow()
-    before_selected_rows = tuple(index.row() for index in widget.table.selectionModel().selectedRows())
-
     try:
-        window._refresh_personal_h20_cohort(selection, open_research=True)
-        worker = CapturedWorker.latest
-        assert worker is not None
-        worker.finished.emit((changed_reference, changed_cohort))
-        worker.native_thread_finished.emit()
+        window.show()
+        app.processEvents()
+        widget = _load_h20_list(app, window)
+        old_view = window._personal_h20_cohort_view
+        old_reference = window._personal_h20_cohort_reference
+        old_cohort = widget._cohort
+        assert old_view is not None and old_reference == old_view.reference
+        assert old_cohort is old_view.cohort
 
-        assert widget._cohort is old_cohort
+        signals = _double_click_selected_h20_row(app, window, widget)
+        assert signals["research_requested"]
+        selection = signals["research_requested"][0]
+        workspace = window.stock_research_workspace
+        _wait_for(
+            app,
+            lambda: getattr(workspace.personal_h20_saved_evidence, "status", None) == "available"
+            and getattr(window, "_personal_h20_worker", None) is None
+            and not workspace.personal_h20_saved_busy,
+        )
+        before_symbols = tuple(
+            widget.table.item(index, 0).text() for index in range(widget.table.rowCount())
+        )
+        before_current_row = widget.table.currentRow()
+        before_selected_rows = tuple(
+            index.row() for index in widget.table.selectionModel().selectedRows()
+        )
+
+        # 以公開 CAS writer 更新隔離 activation/reference；第二次 reader 會簽發
+        # 真正完整核驗的新 view，而非手工拼接 reference 或 cohort。
+        changed_activation = replace(saved["activation"], revision=saved["activation"].revision + 1)
+        publish_personal_h20_activation(
+            changed_activation,
+            expected_revision=saved["activation"].revision,
+            execute=True,
+        )
+        publish_personal_h20_product_reference(
+            changed_activation,
+            receipt_path=str(saved["manifest_path"]),
+            receipt_sha256=saved["manifest_sha256"],
+            decision_date=DECISION_DATE,
+            cycle_id=str(saved["source_binding"]["cycle_id"]),
+        )
+
+        workspace.personal_h20_saved_recheck_button.click()
+        _wait_for(
+            app,
+            lambda: getattr(window, "_personal_h20_cohort_worker", None) is None
+            and getattr(workspace.personal_h20_saved_evidence, "status", None) == "unavailable"
+            and not workspace.personal_h20_saved_busy,
+        )
+
+        assert getattr(workspace.personal_h20_saved_evidence, "reason", None) == (
+            "saved_h20_full_recheck_reference_changed"
+        )
+        assert window._personal_h20_cohort_view is old_view
         assert window._personal_h20_cohort_reference is old_reference
+        assert widget._cohort is old_cohort
         assert tuple(widget.table.item(index, 0).text() for index in range(widget.table.rowCount())) == before_symbols
         assert widget.table.currentRow() == before_current_row
         assert tuple(index.row() for index in widget.table.selectionModel().selectedRows()) == before_selected_rows
@@ -864,9 +820,10 @@ def test_changed_saved_h20_reference_preserves_original_cohort_and_selection(
         assert widget.isEnabled()
         assert "版本已變動" in widget.summary_label.text()
         assert "未以新版本替代" in window.statusBar().currentMessage()
+        assert selection.symbol == "2382"
+        assert network_attempts == []
     finally:
-        window.close()
-        app.processEvents()
+        _close_mainwindow(app, window)
 
 
 def _real_report_service(database: Path, output_root: Path, *, fail_clock: bool = False) -> StockResearchReportReadService:
@@ -938,54 +895,66 @@ def test_h20_saved_source_2382_drilldown_reportloaded_worker_and_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = _app()
-    saved = _build_saved_h20_store(tmp_path, monkeypatch)
-    service = _real_report_service(
-        saved["snapshot_database"],
-        tmp_path / "isolated-report-output",
+    from tests.test_ui_qt_personal_h20_mainwindow_saved_journey import (
+        _close_mainwindow,
+        _double_click_selected_h20_row,
+        _load_h20_list,
+        _prepare_saved_h20_mainwindow,
+        _wait_for,
     )
-    window = _MainWindowJourneyHarness(saved["market_root"], service)
+
+    mode: dict[str, Any] = {}
+    app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch, source_mode=mode
+    )
     report_view = window.stock_research_workspace.report_view
     loaded: list[Any] = []
     failed: list[str] = []
-    trace = _trace_saved_h20_route(
-        window, report_view, app, tmp_path, monkeypatch, loaded, failed
-    )
+    report_view.reportLoaded.connect(loaded.append)
+    report_view.reportFailed.connect(failed.append)
 
-    import app_module.recommendation.personal_h20_product_evidence as product_module
+    import scripts.scheduled.personal_h20_daily_hook as daily_hook
 
-    product_reader_calls: list[str] = []
-    call_lock = threading.Lock()
-    original_product_reader = product_module.read_personal_h20_product_for_stock
+    projection_calls: list[tuple[Any, Any]] = []
+    product_source_calls: list[str] = []
+    original_projection = daily_hook.project_personal_h20_verified_cohort_selection_with_reference
+    original_product_reader = daily_hook.read_personal_h20_product_for_stock_with_session
+
+    @wraps(original_projection)
+    def observe_projection(view: Any, selection: Any, **kwargs: Any) -> Any:
+        projection_calls.append((view, selection))
+        return original_projection(view, selection, **kwargs)
 
     @wraps(original_product_reader)
     def observe_product_reader(*args: Any, **kwargs: Any) -> Any:
-        trace("reader_enter", str(kwargs["stock_code"]))
-        with call_lock:
-            product_reader_calls.append(str(kwargs["stock_code"]))
-        try:
-            result = original_product_reader(*args, **kwargs)
-        except BaseException as exc:
-            trace("reader_error", f"{type(exc).__name__}: {exc}")
-            raise
-        trace("reader_return", str(getattr(result, "status", "unknown")))
-        return result
+        product_source_calls.append(str(kwargs.get("stock_code", "")))
+        return original_product_reader(*args, **kwargs)
 
-    monkeypatch.setattr(product_module, "read_personal_h20_product_for_stock", observe_product_reader)
+    monkeypatch.setattr(
+        daily_hook,
+        "project_personal_h20_verified_cohort_selection_with_reference",
+        observe_projection,
+    )
+    monkeypatch.setattr(
+        daily_hook,
+        "read_personal_h20_product_for_stock_with_session",
+        observe_product_reader,
+    )
     window.show()
     app.processEvents()
     try:
-        _start_real_user_route(window)
-        _wait_until(lambda: bool(loaded) or bool(failed), timeout_ms=90_000)
+        widget = _load_h20_list(app, window)
+        verified_view = window._personal_h20_cohort_view
+        assert verified_view is not None
+        signals = _double_click_selected_h20_row(app, window, widget)
+        selection = signals["research_requested"][0]
+        _wait_for(app, lambda: bool(loaded) or bool(failed), timeout_seconds=90.0)
         assert loaded and not failed, failed[-1] if failed else "report_not_loaded"
-        _wait_for_saved_h20_read(
-            window,
-            report_view,
-            product_reader_calls,
-            lambda: bool(product_reader_calls)
-            and report_view._personal_h20_evidence is not None
-            and getattr(window, "_personal_h20_worker", None) is None,
-            timeout_ms=45_000,
+        _wait_for(
+            app,
+            lambda: report_view._personal_h20_evidence is not None
+            and getattr(window, "_personal_h20_worker", None) is None
+            and not window.stock_research_workspace.personal_h20_saved_busy,
         )
 
         context = report_view._loaded_request_context
@@ -1009,7 +978,11 @@ def test_h20_saved_source_2382_drilldown_reportloaded_worker_and_summary(
             FEATURE_DATE,
         )
         assert evidence.gross_return_bp == 1234
-        assert product_reader_calls == ["2382"]
+        assert projection_calls == [(verified_view, selection)]
+        assert mode.get("_cohort_operation_count") == 1
+        assert mode.get("_warm_projection_count") == 1
+        assert product_source_calls == []
+        assert mode.get("_product_operation_count", 0) == 0
         assert not failed
         assert context.data_date == evidence.source_date
         conclusion = report_view.summary_focus.conclusion_label
@@ -1027,7 +1000,7 @@ def test_h20_saved_source_2382_drilldown_reportloaded_worker_and_summary(
         assert "20 個交易日、未扣成本" in visible_limitations.text()
         assert "自然結果：預測可讀不代表結果已成熟" in visible_limitations.text()
         assert report_view.summary_focus.isVisible()
-        assert window._selected_workspace == "stock_research"
+        assert window.workspace_stack.currentWidget() is window.stock_research_workspace
         saved_panel = window.stock_research_workspace.personal_h20_saved_group
         saved_summary = window.stock_research_workspace.personal_h20_saved_summary
         assert saved_panel.isVisible()
@@ -1038,72 +1011,94 @@ def test_h20_saved_source_2382_drilldown_reportloaded_worker_and_summary(
         assert "1234 bp" not in saved_summary.text()
         assert evidence.candidate_id in saved_summary.toolTip()
     finally:
-        _close_harness(window)
+        _close_mainwindow(app, window)
 
 
 def test_report_service_failure_keeps_error_and_independently_shows_saved_h20(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = _app()
-    saved = _build_saved_h20_store(tmp_path, monkeypatch)
-    service = _real_report_service(
-        saved["snapshot_database"],
-        tmp_path / "isolated-report-output",
-        fail_clock=True,
+    from tests.test_ui_qt_personal_h20_mainwindow_saved_journey import (
+        _close_mainwindow,
+        _double_click_selected_h20_row,
+        _load_h20_list,
+        _prepare_saved_h20_mainwindow,
+        _wait_for,
     )
-    window = _MainWindowJourneyHarness(saved["market_root"], service)
+
+    mode: dict[str, Any] = {}
+    app, window, _saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch, source_mode=mode
+    )
+    def fail_report_clock() -> datetime:
+        raise RuntimeError("fixture_report_service_clock_failure")
+
+    window.stock_research_report_service.clock = fail_report_clock
     report_view = window.stock_research_workspace.report_view
     loaded: list[Any] = []
     failed: list[str] = []
-    trace = _trace_saved_h20_route(
-        window, report_view, app, tmp_path, monkeypatch, loaded, failed
-    )
+    report_view.reportLoaded.connect(loaded.append)
+    report_view.reportFailed.connect(failed.append)
 
-    import app_module.recommendation.personal_h20_product_evidence as product_module
+    import scripts.scheduled.personal_h20_daily_hook as daily_hook
 
-    product_reader_calls: list[str] = []
-    original_product_reader = product_module.read_personal_h20_product_for_stock
+    projection_calls: list[tuple[Any, Any]] = []
+    product_source_calls: list[str] = []
+    original_projection = daily_hook.project_personal_h20_verified_cohort_selection_with_reference
+    original_product_reader = daily_hook.read_personal_h20_product_for_stock_with_session
+
+    @wraps(original_projection)
+    def observe_projection(view: Any, selection: Any, **kwargs: Any) -> Any:
+        projection_calls.append((view, selection))
+        return original_projection(view, selection, **kwargs)
 
     @wraps(original_product_reader)
     def observe_product_reader(*args: Any, **kwargs: Any) -> Any:
-        trace("reader_enter", str(kwargs["stock_code"]))
-        product_reader_calls.append(str(kwargs["stock_code"]))
-        try:
-            result = original_product_reader(*args, **kwargs)
-        except BaseException as exc:
-            trace("reader_error", f"{type(exc).__name__}: {exc}")
-            raise
-        trace("reader_return", str(getattr(result, "status", "unknown")))
-        return result
+        product_source_calls.append(str(kwargs.get("stock_code", "")))
+        return original_product_reader(*args, **kwargs)
 
-    monkeypatch.setattr(product_module, "read_personal_h20_product_for_stock", observe_product_reader)
+    monkeypatch.setattr(
+        daily_hook,
+        "project_personal_h20_verified_cohort_selection_with_reference",
+        observe_projection,
+    )
+    monkeypatch.setattr(
+        daily_hook,
+        "read_personal_h20_product_for_stock_with_session",
+        observe_product_reader,
+    )
     window.show()
     app.processEvents()
     try:
-        _start_real_user_route(window)
-        _wait_until(lambda: bool(failed), timeout_ms=90_000)
+        widget = _load_h20_list(app, window)
+        verified_view = window._personal_h20_cohort_view
+        assert verified_view is not None
+        signals = _double_click_selected_h20_row(app, window, widget)
+        selection = signals["research_requested"][0]
+        _wait_for(app, lambda: bool(failed), timeout_seconds=90.0)
 
         assert not loaded
         assert "fixture_report_service_clock_failure" in failed[-1]
-        _wait_for_saved_h20_read(
-            window,
-            report_view,
-            product_reader_calls,
-            lambda: bool(product_reader_calls)
-            and window.stock_research_workspace.personal_h20_saved_evidence is not None
-            and getattr(window, "_personal_h20_worker", None) is None,
-            timeout_ms=45_000,
+        workspace = window.stock_research_workspace
+        _wait_for(
+            app,
+            lambda: workspace.personal_h20_saved_evidence is not None
+            and getattr(window, "_personal_h20_worker", None) is None
+            and not workspace.personal_h20_saved_busy,
         )
-        assert product_reader_calls == ["2382"]
+        assert projection_calls == [(verified_view, selection)]
+        assert mode.get("_cohort_operation_count") == 1
+        assert mode.get("_warm_projection_count") == 1
+        assert product_source_calls == []
+        assert mode.get("_product_operation_count", 0) == 0
         assert report_view.status_label.text().startswith("報告讀取失敗：")
         assert "fixture_report_service_clock_failure" in report_view.status_label.text()
         assert report_view.summary_focus.conclusion_label.text() == "結論：目前沒有可閱讀的個股報告。"
         assert "fixture_report_service_clock_failure" in report_view.summary_focus.reasons_label.text()
         assert "目前無法核驗本股" in report_view.personal_h20_label.text()
         assert "fixture_report_service_clock_failure" in report_view.summary_limitations_detail_label.text()
-        saved_panel = window.stock_research_workspace.personal_h20_saved_group
-        saved_summary = window.stock_research_workspace.personal_h20_saved_summary
+        saved_panel = workspace.personal_h20_saved_group
+        saved_summary = workspace.personal_h20_saved_summary
         assert saved_panel.isVisible()
         assert "2382｜保存的個人 H20 研究預測（未扣成本）：+12.34%" in saved_summary.text(), (
             f"saved_evidence={window.stock_research_workspace.personal_h20_saved_evidence!r}; "
@@ -1112,45 +1107,42 @@ def test_report_service_failure_keeps_error_and_independently_shows_saved_h20(
         assert "預測日 2026-10-06｜來源日 2026-10-05｜特徵截至 2026-10-02" in saved_summary.text()
         assert "實際結果：目前尚無已核驗結果；預測不等於實際報酬。" in saved_summary.text()
         assert "fixture_report_service_clock_failure" not in saved_summary.text()
+        assert network_attempts == []
     finally:
-        _close_harness(window)
+        _close_mainwindow(app, window)
 
 
 def test_saved_h20_worker_result_is_cancelled_and_stale_after_source_switch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = _app()
-    saved = _build_saved_h20_store(tmp_path, monkeypatch)
-    service = _real_report_service(
-        saved["snapshot_database"],
-        tmp_path / "isolated-report-output",
-        fail_clock=True,
+    from tests.test_ui_qt_personal_h20_mainwindow_saved_journey import (
+        _close_mainwindow,
+        _double_click_selected_h20_row,
+        _load_h20_list,
+        _prepare_saved_h20_mainwindow,
+        _wait_for,
     )
-    window = _MainWindowJourneyHarness(saved["market_root"], service)
-    report_view = window.stock_research_workspace.report_view
 
-    import app_module.recommendation.personal_h20_product_evidence as product_module
-
+    mode: dict[str, Any] = {"block_first_warm_projection": True}
     entered = threading.Event()
     release = threading.Event()
-    original_product_reader = product_module.read_personal_h20_product_for_stock
-    calls: list[str] = []
+    app, window, _saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path,
+        monkeypatch,
+        source_mode=mode,
+        source_entered=entered,
+        source_release=release,
+    )
+    report_view = window.stock_research_workspace.report_view
 
-    @wraps(original_product_reader)
-    def blocking_product_reader(*args: Any, **kwargs: Any) -> Any:
-        calls.append(str(kwargs["stock_code"]))
-        entered.set()
-        if not release.wait(30):
-            raise RuntimeError("test_reader_release_timeout")
-        return original_product_reader(*args, **kwargs)
-
-    monkeypatch.setattr(product_module, "read_personal_h20_product_for_stock", blocking_product_reader)
     window.show()
     app.processEvents()
     try:
-        _start_real_user_route(window)
-        _wait_until(entered.is_set, timeout_ms=90_000)
+        widget = _load_h20_list(app, window)
+        signals = _double_click_selected_h20_row(app, window, widget)
+        assert signals["research_requested"]
+        _wait_for(app, entered.is_set, timeout_seconds=90.0)
         assert window.stock_research_workspace.personal_h20_saved_group.isVisible()
         loading_text = window.stock_research_workspace.personal_h20_saved_summary.text()
         assert "2382｜正在核驗原保存的 H20 預測" in loading_text
@@ -1175,14 +1167,16 @@ def test_saved_h20_worker_result_is_cancelled_and_stale_after_source_switch(
         assert worker is not None and worker.is_cancel_requested()
 
         release.set()
-        _wait_until(lambda: getattr(window, "_personal_h20_worker", None) is None, timeout_ms=30_000)
+        _wait_for(app, lambda: getattr(window, "_personal_h20_worker", None) is None)
         app.processEvents()
-        assert calls == ["2382"]
+        assert mode.get("_warm_projection_count") == 1
+        assert mode.get("_product_operation_count", 0) == 0
         assert not window.stock_research_workspace.personal_h20_saved_group.isVisible()
         assert getattr(window, "_personal_h20_saved_evidence", None) is None
+        assert network_attempts == []
     finally:
         release.set()
-        _close_harness(window)
+        _close_mainwindow(app, window)
 
 
 
@@ -1191,63 +1185,91 @@ def test_saved_h20_reader_error_requires_explicit_retry_and_reuses_exact_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = _app()
-    saved = _build_saved_h20_store(tmp_path, monkeypatch)
-    service = _real_report_service(
-        saved["snapshot_database"],
-        tmp_path / "isolated-report-output",
-        fail_clock=True,
+    from tests.test_ui_qt_personal_h20_mainwindow_saved_journey import (
+        _close_mainwindow,
+        _double_click_selected_h20_row,
+        _load_h20_list,
+        _prepare_saved_h20_mainwindow,
+        _wait_for,
     )
-    window = _MainWindowJourneyHarness(saved["market_root"], service)
+
+    mode: dict[str, Any] = {}
+    app, window, _saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
+        tmp_path, monkeypatch, source_mode=mode
+    )
+    def fail_report_clock() -> datetime:
+        raise RuntimeError("fixture_report_service_clock_failure")
+
+    window.stock_research_report_service.clock = fail_report_clock
     report_view = window.stock_research_workspace.report_view
 
-    import app_module.recommendation.personal_h20_product_evidence as product_module
+    import scripts.scheduled.personal_h20_daily_hook as daily_hook
 
-    original_product_reader = product_module.read_personal_h20_product_for_stock
-    calls: list[dict[str, Any]] = []
+    original_projection = daily_hook.project_personal_h20_verified_cohort_selection_with_reference
+    calls: list[tuple[Any, Any]] = []
 
-    @wraps(original_product_reader)
-    def fail_once_then_read(*args: Any, **kwargs: Any) -> Any:
-        calls.append(dict(kwargs))
+    @wraps(original_projection)
+    def fail_once_then_read(view: Any, selection: Any, **kwargs: Any) -> Any:
+        calls.append((view, selection))
         if len(calls) == 1:
             raise RuntimeError("fixture_transient_h20_reader_failure")
-        return original_product_reader(*args, **kwargs)
+        return original_projection(view, selection, **kwargs)
 
-    monkeypatch.setattr(product_module, "read_personal_h20_product_for_stock", fail_once_then_read)
+    monkeypatch.setattr(
+        daily_hook,
+        "project_personal_h20_verified_cohort_selection_with_reference",
+        fail_once_then_read,
+    )
     window.show()
     app.processEvents()
     try:
-        _start_real_user_route(window)
-        _wait_until(
+        widget = _load_h20_list(app, window)
+        initial_view = window._personal_h20_cohort_view
+        assert initial_view is not None
+        signals = _double_click_selected_h20_row(app, window, widget)
+        selection = signals["research_requested"][0]
+        workspace = window.stock_research_workspace
+        _wait_for(
+            app,
             lambda: len(calls) == 1
-            and window.stock_research_workspace.personal_h20_saved_evidence is not None
+            and workspace.personal_h20_saved_evidence is not None
             and getattr(window, "_personal_h20_worker", None) is None,
-            timeout_ms=90_000,
         )
         assert report_view.status_label.text().startswith("報告讀取失敗：")
         assert "fixture_report_service_clock_failure" in report_view.status_label.text()
-        panel = window.stock_research_workspace
+        panel = workspace
         assert panel.personal_h20_saved_evidence.status == "unavailable"
         assert "保存來源讀取失敗" in panel.personal_h20_saved_summary.text()
         assert "fixture_transient_h20_reader_failure" in panel.personal_h20_saved_summary.toolTip()
         assert panel.personal_h20_saved_recheck_button.isEnabled()
-        first_reference = calls[0]["expected_reference"]
+        first_reference = window._personal_h20_cohort_reference
+        assert first_reference is initial_view.reference
+        assert calls[0] == (initial_view, selection)
 
         panel.personal_h20_saved_recheck_button.click()
-        assert panel.is_busy()
+        cohort_worker = getattr(window, "_personal_h20_cohort_worker", None)
+        assert cohort_worker is not None and cohort_worker.isRunning()
+        assert not window.personal_h20_research_widget.isEnabled()
         assert not panel.personal_h20_saved_recheck_button.isEnabled()
-        _wait_until(
+        _wait_for(
+            app,
             lambda: len(calls) == 2
             and panel.personal_h20_saved_evidence is not None
             and panel.personal_h20_saved_evidence.status == "available"
-            and getattr(window, "_personal_h20_worker", None) is None,
-            timeout_ms=90_000,
+            and getattr(window, "_personal_h20_cohort_worker", None) is None
+            and getattr(window, "_personal_h20_worker", None) is None
+            and not panel.personal_h20_saved_busy,
         )
-        assert calls[1]["expected_reference"] == first_reference
-        assert all(call["stock_code"] == "2382" for call in calls)
+        assert calls[0] == (initial_view, selection)
+        assert calls[1][1] == selection
+        assert calls[1][0] is window._personal_h20_cohort_view
+        assert calls[1][0].reference == first_reference
+        assert mode.get("_cohort_operation_count") == 2
+        assert mode.get("_product_operation_count", 0) == 0
         assert report_view.status_label.text().startswith("報告讀取失敗：")
         assert "fixture_report_service_clock_failure" in report_view.status_label.text()
         assert "2382｜保存的個人 H20 研究預測（未扣成本）：+12.34%" in panel.personal_h20_saved_summary.text()
         assert panel.personal_h20_saved_recheck_button.isEnabled()
+        assert network_attempts == []
     finally:
-        _close_harness(window)
+        _close_mainwindow(app, window)

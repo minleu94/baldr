@@ -196,7 +196,7 @@ def _prepare_saved_h20_mainwindow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    source_mode: dict[str, bool] | None = None,
+    source_mode: dict[str, Any] | None = None,
     source_entered: threading.Event | None = None,
     source_release: threading.Event | None = None,
 ) -> tuple[QApplication, MainWindow, dict[str, Any], list[str], threading.local]:
@@ -228,14 +228,40 @@ def _prepare_saved_h20_mainwindow(
     def read_ports(*, read_session_resolver=None):
         def source_verifier(binding: Any) -> Any:
             task_name = getattr(task_context, "task_name", "")
-            if task_name == "read_personal_h20_product_for_stock_with_session":
+            is_product_read = task_name == "read_personal_h20_product_for_stock_with_session"
+            is_cohort_read = task_name == "read_personal_h20_verified_cohort_view"
+            if is_product_read or is_cohort_read:
                 call_number = getattr(task_context, "source_call_number", 0) + 1
                 task_context.source_call_number = call_number
-                if mode.get("block_product_first_source") and call_number == 1:
+                should_block_before = (
+                    is_product_read
+                    and mode.get("block_product_first_source")
+                    and getattr(task_context, "product_operation_number", 0) == 1
+                    and call_number == 1
+                ) or (
+                    is_cohort_read
+                    and mode.get("block_cohort_operation_before")
+                    == getattr(task_context, "cohort_operation_number", 0)
+                    and call_number == 1
+                )
+                if should_block_before:
                     entered.set()
                     if not release.wait(timeout=45):
                         raise RuntimeError("fixture_h20_source_barrier_timeout")
-                if mode.get("drift_product_finish_source") and call_number == 2:
+                should_drift_product = (
+                    is_product_read
+                    and mode.get("drift_product_finish_source")
+                    and getattr(task_context, "product_operation_number", 0) == 1
+                    and call_number == 2
+                )
+                drift_cohort_operation = mode.get("drift_cohort_operation_number", 2)
+                should_drift_cohort = (
+                    is_cohort_read
+                    and mode.get("drift_cohort_finish_source")
+                    and getattr(task_context, "cohort_operation_number", 0) == drift_cohort_operation
+                    and call_number == 2
+                )
+                if (should_drift_product or should_drift_cohort) and not mode.get("source_mutated"):
                     snapshot_database.write_bytes(snapshot_database.read_bytes() + b" ")
                     mode["source_mutated"] = True
             if read_session_resolver is None:
@@ -246,10 +272,17 @@ def _prepare_saved_h20_mainwindow(
                     read_session_resolver=read_session_resolver,
                 )
             if (
-                task_name == "read_personal_h20_product_for_stock_with_session"
-                and mode.get("block_product_first_source_after")
-                and getattr(task_context, "source_call_number", 0) == 1
-            ):
+                (
+                    is_product_read
+                    and mode.get("block_product_first_source_after")
+                    and getattr(task_context, "product_operation_number", 0) == 1
+                )
+                or (
+                    is_cohort_read
+                    and mode.get("block_cohort_operation_after")
+                    == getattr(task_context, "cohort_operation_number", 0)
+                )
+            ) and getattr(task_context, "source_call_number", 0) == 1:
                 entered.set()
                 if not release.wait(timeout=45):
                     raise RuntimeError("fixture_h20_source_barrier_timeout")
@@ -262,12 +295,38 @@ def _prepare_saved_h20_mainwindow(
 
     monkeypatch.setattr(runner, "personal_current_observed_h20_read_ports", read_ports)
 
+    import scripts.scheduled.personal_h20_daily_hook as daily_hook
+
+    original_projection = daily_hook.project_personal_h20_verified_cohort_selection_with_reference
+
+    def observed_projection(*args: Any, **kwargs: Any) -> Any:
+        projection_number = int(mode.get("_warm_projection_count", 0)) + 1
+        mode["_warm_projection_count"] = projection_number
+        if mode.get("block_first_warm_projection") and projection_number == 1:
+            entered.set()
+            if not release.wait(timeout=45):
+                raise RuntimeError("fixture_h20_projection_barrier_timeout")
+        return original_projection(*args, **kwargs)
+
+    monkeypatch.setattr(
+        daily_hook,
+        "project_personal_h20_verified_cohort_selection_with_reference",
+        observed_projection,
+    )
+
     class OperationTaggedTaskWorker(TaskWorker):
         def run(self) -> None:
-            task_context.task_name = getattr(
-                self.task_function, "__name__", type(self.task_function).__name__
-            )
+            task_name = getattr(self.task_function, "__name__", type(self.task_function).__name__)
+            task_context.task_name = task_name
             task_context.source_call_number = 0
+            if task_name == "read_personal_h20_verified_cohort_view":
+                cohort_number = int(mode.get("_cohort_operation_count", 0)) + 1
+                mode["_cohort_operation_count"] = cohort_number
+                task_context.cohort_operation_number = cohort_number
+            elif task_name == "read_personal_h20_product_for_stock_with_session":
+                product_number = int(mode.get("_product_operation_count", 0)) + 1
+                mode["_product_operation_count"] = product_number
+                task_context.product_operation_number = product_number
             try:
                 super().run()
             finally:
@@ -321,7 +380,7 @@ def test_actual_mainwindow_h20_double_click_summary_return_recheck_and_source_dr
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mode: dict[str, bool] = {"drift_product_finish_source": False}
+    mode: dict[str, Any] = {"drift_cohort_finish_source": False}
     app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
         tmp_path, monkeypatch, source_mode=mode
     )
@@ -332,6 +391,11 @@ def test_actual_mainwindow_h20_double_click_summary_return_recheck_and_source_dr
         app.processEvents()
         widget = _load_h20_list(app, window)
         assert widget._cohort.manifest_sha256 == saved["manifest_sha256"]
+        from app_module.recommendation.personal_h20_verified_cohort_view import (
+            PersonalH20VerifiedCohortView,
+        )
+        assert type(window._personal_h20_cohort_view) is PersonalH20VerifiedCohortView
+        assert mode.get("_cohort_operation_count") == 1
 
         double_click_signals = _double_click_selected_h20_row(app, window, widget)
         workspace = window.stock_research_workspace
@@ -349,6 +413,8 @@ def test_actual_mainwindow_h20_double_click_summary_return_recheck_and_source_dr
         assert double_click_signals["research_requested"]
         assert evidence.stock_code == "2382"
         assert evidence.gross_return_bp == 1234
+        assert mode.get("_warm_projection_count") == 1
+        assert mode.get("_product_operation_count", 0) == 0
         reference = getattr(window, "_personal_h20_saved_reference", None)
         assert reference is not None and reference.manifest_sha256 == saved["manifest_sha256"]
         assert "2382｜保存的個人 H20 研究預測（未扣成本）：+12.34%" in workspace.personal_h20_saved_summary.text()
@@ -363,6 +429,9 @@ def test_actual_mainwindow_h20_double_click_summary_return_recheck_and_source_dr
             and not workspace.personal_h20_saved_busy,
         )
         assert workspace.personal_h20_saved_evidence == first_evidence
+        assert mode.get("_cohort_operation_count") == 2
+        assert mode.get("_warm_projection_count") == 2
+        assert mode.get("_product_operation_count", 0) == 0
 
         origin = getattr(window, "_personal_h20_research_origin", None)
         assert isinstance(origin, tuple) and len(origin) == 3
@@ -370,18 +439,22 @@ def test_actual_mainwindow_h20_double_click_summary_return_recheck_and_source_dr
         report_view.return_button.click()
         _wait_for(
             app,
-            lambda: getattr(window, "_personal_h20_cohort_worker", None) is None
+            lambda: getattr(window, "_personal_h20_return_worker", None) is None
+            and getattr(window, "_personal_h20_cohort_worker", None) is None
             and widget._cohort is not None
-            and bool(widget.table.selectedItems()),
+            and bool(widget.table.selectedItems())
+            and widget.isEnabled()
+            and widget.research_button.isEnabled(),
         )
         selected_row = widget.table.currentRow()
         assert widget.table.item(selected_row, 0).text() == "2382"
         assert widget.table.item(selected_row, 0).data(Qt.ItemDataRole.UserRole) == selection
         assert widget.research_button.isEnabled()
 
-        # 明確重新核驗時，在本次 product worker 的 finish source verifier 前改變
-        # synthetic snapshot bytes；公開 reader 必須失敗並呈現 unavailable。
-        mode["drift_product_finish_source"] = True
+        # 明確重新核驗會重讀完整 cohort；在第二次 cohort operation 的 finish
+        # source verifier 前改變 synthetic snapshot bytes，整體 view 必須拒絕發布。
+        mode["drift_cohort_operation_number"] = int(mode.get("_cohort_operation_count", 0)) + 1
+        mode["drift_cohort_finish_source"] = True
         window.left_navigation.button_for_key("stock_research").click()
         app.processEvents()
         assert workspace.personal_h20_saved_recheck_button.isEnabled()
@@ -408,7 +481,7 @@ def test_actual_mainwindow_close_cancels_saved_h20_drilldown_without_publish(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mode: dict[str, bool] = {"block_product_first_source": True}
+    mode: dict[str, Any] = {"block_first_warm_projection": True}
     entered = threading.Event()
     release = threading.Event()
     app, window, _saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(

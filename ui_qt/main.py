@@ -664,6 +664,12 @@ class MainWindow(QMainWindow):
                 or getattr(context, "source_kind", None) != "personal_h20_saved_cohort"
                 or self._personal_h20_saved_origin_for_context(context) is None):
             return
+        origin = self._personal_h20_saved_origin_for_context(context)
+        if getattr(self, "_personal_h20_origin_view", None) is not None and origin is not None:
+            self._clear_personal_h20_product()
+            workspace.show_personal_h20_saved_loading(context)
+            self._refresh_personal_h20_cohort(origin[0], open_research=True)
+            return
         self._handle_personal_h20_context_changed(context, force=True)
 
     def _start_personal_h20_saved_product_read(
@@ -680,6 +686,10 @@ class MainWindow(QMainWindow):
         )
         from scripts.scheduled.personal_h20_daily_hook import (
             read_personal_h20_product_for_stock_with_session,
+            project_personal_h20_verified_cohort_selection_with_reference,
+        )
+        from app_module.recommendation.personal_h20_verified_cohort_view import (
+            PersonalH20VerifiedCohortView,
         )
         from ui_qt.workers.task_worker import TaskWorker
 
@@ -688,6 +698,13 @@ class MainWindow(QMainWindow):
         generation = self._personal_h20_generation
         stock_code = str(getattr(context, "stock_code", ""))
         sqlite_read_root = self._personal_h20_sqlite_read_root()
+        cohort_view = getattr(self, "_personal_h20_origin_view", None)
+        use_verified_view = (
+            type(cohort_view) is PersonalH20VerifiedCohortView
+            and cohort_view is getattr(self, "_personal_h20_cohort_view", None)
+            and cohort_view.reference == reference
+            and sqlite_read_root is not None
+        )
         def current() -> bool:
             try:
                 configured = self._personal_h20_configuration() == (market_root, config_path)
@@ -703,6 +720,10 @@ class MainWindow(QMainWindow):
                 and getattr(self, "_personal_h20_saved_reference", None) == reference
                 and self._personal_h20_sqlite_read_root() == sqlite_read_root
                 and configured
+                and (not use_verified_view or (
+                    getattr(self, "_personal_h20_origin_view", None) is cohort_view
+                    and getattr(self, "_personal_h20_cohort_view", None) is cohort_view
+                ))
             )
 
         def checked_evidence(value: object) -> PersonalH20ProductEvidence:
@@ -740,22 +761,34 @@ class MainWindow(QMainWindow):
             evidence = checked_evidence(value)
             self._personal_h20_saved_evidence = evidence
             workspace.set_personal_h20_saved_evidence(evidence, context=context)
+            if use_verified_view and evidence.status == "available":
+                workspace.personal_h20_saved_summary.setText(
+                    workspace.personal_h20_saved_summary.text()
+                    + f"\n沿用完整名單核驗（UTC）：{cohort_view.completed_at_utc.isoformat()}；來源未持續監測。"
+                )
             workspace.set_personal_h20_saved_busy(True)
             report = view._loaded_report
             if (report is not None and report.stock_code == stock_code
                     and view._loaded_request_context == context):
                 view.set_personal_h20_evidence(evidence)
 
-        worker = TaskWorker(
-            read_personal_h20_product_for_stock_with_session,
-            config_path,
-            stock_code=stock_code,
-            market_root=market_root,
-            expected_reference=reference,
-            sqlite_read_root=sqlite_read_root,
-            require_sqlite_copy=True,
-            progress_callback=lambda message: worker.progress.emit(message, 0),
-        )
+        if use_verified_view:
+            worker = TaskWorker(
+                project_personal_h20_verified_cohort_selection_with_reference,
+                cohort_view, selection, config_path=config_path,
+                market_root=market_root, sqlite_read_root=sqlite_read_root,
+            )
+        else:
+            worker = TaskWorker(
+                read_personal_h20_product_for_stock_with_session,
+                config_path,
+                stock_code=stock_code,
+                market_root=market_root,
+                expected_reference=reference,
+                sqlite_read_root=sqlite_read_root,
+                require_sqlite_copy=True,
+                progress_callback=lambda message: worker.progress.emit(message, 0),
+            )
         self._personal_h20_worker = worker
         workspace.set_personal_h20_saved_busy(True)
         worker.progress.connect(lambda message, _percent: workspace.personal_h20_saved_summary.setText(
@@ -921,6 +954,8 @@ class MainWindow(QMainWindow):
         cancel_read.clicked.connect(cancel_loading)
         self._personal_h20_cohort_generation = 0
         self._personal_h20_cohort_reference = None
+        self._personal_h20_cohort_view = None
+        self._personal_h20_origin_view = None
         self._personal_h20_research_origin = None
         refresh.clicked.connect(lambda: self._refresh_personal_h20_cohort())
         widget.researchRequested.connect(self._request_personal_h20_research)
@@ -1040,8 +1075,7 @@ class MainWindow(QMainWindow):
             row = next((item for item in cohort.rows if item.symbol == selection.symbol), None)
             if row is None or row.status != "available":
                 return
-            # 名單已核的身份只用來定位原來源；個股 reader 仍重新核 manifest、
-            # capture 和終態來源，未完成前顯示 loading，不沿用 RAM 預測冒充成功。
+            # 同次完整核驗的 view 可供下鑽；reference 仍由背景 worker 重核。
             context = ResearchStockContextDTO(stock_code=row.symbol, decision_date=row.decision_date,
                 data_date=row.source_date or "", result_id="", identity_status="personal_research_only",
                 source_snapshot_id=cohort.cycle_id, source_snapshot_hash=cohort.manifest_sha256,
@@ -1050,13 +1084,17 @@ class MainWindow(QMainWindow):
                 source_label="已保存個人 H20 毛報酬模型研究；效果未成熟",
                 source_workspace="recommendation")
             self._personal_h20_research_origin = (context, selection, reference)
+            self._personal_h20_origin_view = getattr(self, "_personal_h20_cohort_view", None)
             self._open_stock_research_context(context)
 
     def _refresh_personal_h20_cohort(self, selection: object = None, *, open_research: bool = False) -> None:
         from app_module.recommendation.personal_h20_research_cohort import (
             PersonalH20ResearchCohort, PersonalH20ResearchSelection,
         )
-        from scripts.scheduled.personal_h20_daily_hook import read_personal_h20_product_cohort
+        from app_module.recommendation.personal_h20_verified_cohort_view import (
+            PersonalH20VerifiedCohortView, assert_personal_h20_verified_cohort_view,
+        )
+        from scripts.scheduled.personal_h20_daily_hook import read_personal_h20_verified_cohort_view
         from ui_qt.workers.task_worker import TaskWorker
 
         widget = getattr(self, "personal_h20_research_widget", None)
@@ -1064,6 +1102,10 @@ class MainWindow(QMainWindow):
             return
         self._personal_h20_cohort_generation += 1
         generation = self._personal_h20_cohort_generation
+        product_generation = getattr(self, "_personal_h20_generation", 0)
+        research_origin = getattr(self, "_personal_h20_research_origin", None)
+        report_view = getattr(getattr(self, "stock_research_workspace", None), "report_view", None)
+        research_context = getattr(report_view, "context", None)
         expected_reference = None
         if selection is not None:
             origin = getattr(self, "_personal_h20_research_origin", None)
@@ -1076,6 +1118,15 @@ class MainWindow(QMainWindow):
             previous.cancel(wait=False)
         market_root, config_path = self._personal_h20_configuration()
         sqlite_read_root = self._personal_h20_sqlite_read_root()
+        if sqlite_read_root is None:
+            widget.setEnabled(True)
+            loading_timer = getattr(self, "_personal_h20_loading_timer", None)
+            if loading_timer is not None:
+                loading_timer.stop()
+                self._personal_h20_cancel_read_button.setEnabled(False)
+                self._personal_h20_loading_label.setText("尚未設定安全副本目錄；本次讀取未開始。")
+            widget.summary_label.setText("尚未設定 H20 安全副本目錄；未開始讀取原來源。")
+            return
         widget.setEnabled(False)
         self._personal_h20_read_started_at = time.monotonic()
         self._personal_h20_read_phase = "準備原保存名單"
@@ -1085,45 +1136,73 @@ class MainWindow(QMainWindow):
             self._personal_h20_cancel_read_button.setEnabled(True)
             loading_timer.start()
         if selection is None:
-            self._personal_h20_cohort_reference = None
-            widget._cohort = None
-            widget.table.setRowCount(0)
-            widget.summary_label.setText("正在唯讀核驗原完整模型名單、預測與來源 pins…")
+            widget.summary_label.setText("正在完整核驗保存名單；完成前保留上次核驗結果，暫時不可下鑽。")
         else:
             widget.summary_label.setText("正在核對所選保存名單版本；完成前保留原清單與選取…")
         worker = TaskWorker(
-            read_personal_h20_product_cohort, config_path, market_root=market_root,
-            sqlite_read_root=sqlite_read_root, require_sqlite_copy=True,
+            read_personal_h20_verified_cohort_view, config_path, market_root=market_root,
+            sqlite_read_root=sqlite_read_root,
             progress_callback=lambda message: worker.progress.emit(message, 0),
         )
         self._personal_h20_cohort_worker = worker
+        outcome_delivered = False
         def current() -> bool:
             return (generation == self._personal_h20_cohort_generation and not widget._closing
                 and not getattr(self, "_shutdown_close_requested", False)
                 and self._personal_h20_configuration() == (market_root, config_path)
-                and self._personal_h20_sqlite_read_root() == sqlite_read_root)
+                and self._personal_h20_sqlite_read_root() == sqlite_read_root
+                and (not open_research or (
+                    getattr(self, "_personal_h20_generation", 0) == product_generation
+                    and getattr(self, "_personal_h20_research_origin", None) == research_origin
+                    and getattr(report_view, "context", None) == research_context
+                )))
         def progress(message: str, _percentage: int) -> None:
             if current():
                 self._personal_h20_read_phase = message
                 if loading_timer is not None:
                     loading_timer.timeout.emit()
         worker.progress.connect(progress)
+        def notify_recheck_failure(reason: str) -> None:
+            if not open_research or research_context is None or not current():
+                return
+            from app_module.recommendation.personal_h20_product_evidence import PersonalH20ProductEvidence
+            workspace = self.stock_research_workspace
+            evidence = PersonalH20ProductEvidence(
+                stock_code=str(getattr(research_context, "stock_code", "unknown")),
+                status="unavailable", reason=reason,
+            )
+            self._personal_h20_saved_context = research_context
+            self._personal_h20_saved_reference = expected_reference
+            self._personal_h20_saved_evidence = evidence
+            workspace.set_personal_h20_saved_evidence(evidence, context=research_context)
+            workspace.set_personal_h20_saved_busy(False)
         def apply(result: object) -> None:
+            nonlocal outcome_delivered
             if not current():
                 return
+            outcome_delivered = True
             if loading_timer is not None:
                 loading_timer.stop()
                 self._personal_h20_cancel_read_button.setEnabled(False)
                 self._personal_h20_loading_label.setText("來源讀取已返回，正在核對名單與選取身份。")
-            if not isinstance(result, tuple) or len(result) != 2:
+            if type(result) is not PersonalH20VerifiedCohortView:
                 widget.setEnabled(True)
                 widget.summary_label.setText("保存名單回傳格式無法核驗；原清單與選取已保留。")
+                notify_recheck_failure("saved_h20_full_recheck_invalid_view")
                 self.statusBar().showMessage("保存模型名單回傳格式無法核驗；未替換目前名單。")
                 return
-            reference, cohort = result
+            try:
+                assert_personal_h20_verified_cohort_view(result)
+            except (TypeError, ValueError):
+                widget.setEnabled(True)
+                widget.summary_label.setText("保存名單完整核驗身份無效；未替換上次結果。")
+                notify_recheck_failure("saved_h20_full_recheck_invalid_identity")
+                return
+            reference, cohort = result.reference, result.cohort
             if not isinstance(cohort, PersonalH20ResearchCohort):
                 widget.setEnabled(True)
                 widget.summary_label.setText("保存名單內容無法核驗；原清單與選取已保留。")
+                notify_recheck_failure("saved_h20_full_recheck_invalid_cohort")
                 self.statusBar().showMessage("保存模型名單內容無法核驗；未替換目前名單。")
                 return
             if selection is not None and (
@@ -1131,19 +1210,23 @@ class MainWindow(QMainWindow):
             ):
                 widget.setEnabled(True)
                 widget.summary_label.setText("原保存名單版本已變動；已保留原清單與選取，未開啟新版本。")
+                notify_recheck_failure("saved_h20_full_recheck_reference_changed")
                 self.statusBar().showMessage("原保存模型名單版本已變動；保留原清單與選取，未以新版本替代。")
                 return
             self._personal_h20_cohort_reference = reference
+            self._personal_h20_cohort_view = result
             widget.set_cohort(cohort)
             widget.setEnabled(True)
             if loading_timer is not None:
                 elapsed = int(time.monotonic() - self._personal_h20_read_started_at)
                 self._personal_h20_loading_label.setText(
-                    f"原保存名單已核驗：{len(cohort.rows)} 股，耗時 {elapsed} 秒。"
+                    f"原保存名單已核驗：{len(cohort.rows)} 股，耗時 {elapsed} 秒。\n"
+                    f"核驗完成時間（UTC）：{result.completed_at_utc.isoformat()}；下鑽沿用此次核驗，來源未持續監測。"
                 )
             if selection is None:
                 return
             if not isinstance(selection, PersonalH20ResearchSelection) or not widget.restore_selection(selection):
+                notify_recheck_failure("saved_h20_full_recheck_selection_restore_failed")
                 self.statusBar().showMessage("原模型／母體／日期／預測 pins 已變動或缺件；無法精確返回或下鑽。")
                 return
             if not open_research:
@@ -1157,27 +1240,37 @@ class MainWindow(QMainWindow):
                 source_label="已保存個人 H20 毛報酬模型研究；效果未成熟",
                 source_workspace="recommendation")
             self._personal_h20_research_origin = (context, selection, reference)
+            self._personal_h20_origin_view = result
             self._open_stock_research_context(context)
         def failed(message: str) -> None:
+            nonlocal outcome_delivered
             if current():
+                outcome_delivered = True
                 if loading_timer is not None:
                     loading_timer.stop()
                     self._personal_h20_cancel_read_button.setEnabled(False)
                     self._personal_h20_loading_label.setText("原保存名單讀取失敗；完整原因見下方提示。")
                 widget.setEnabled(True)
                 detail = str(message)[:300]
+                notify_recheck_failure(detail)
                 if selection is None:
-                    self._personal_h20_cohort_reference = None
-                    widget.summary_label.setText("模型名單待核驗／目前不可用：" + detail)
+                    widget.summary_label.setText("本次完整核驗失敗；上次名單若存在只代表上次完成時的結果：" + detail)
                     self.statusBar().showMessage("原保存模型名單無法核驗；不以其他日期或QA樣本代替。")
                 else:
                     widget.summary_label.setText("原保存名單重新核驗失敗；已保留原清單與選取：" + detail)
                     self.statusBar().showMessage("原保存模型名單重新核驗失敗；保留原清單與選取。")
         worker.finished.connect(apply)
         worker.error.connect(failed)
-        worker.native_thread_finished.connect(lambda:
-            setattr(self, "_personal_h20_cohort_worker", None)
-            if getattr(self, "_personal_h20_cohort_worker", None) is worker else None)
+        def cleanup() -> None:
+            if getattr(self, "_personal_h20_cohort_worker", None) is worker:
+                if not outcome_delivered and not widget._closing:
+                    widget.setEnabled(True)
+                    if loading_timer is not None:
+                        loading_timer.stop()
+                        self._personal_h20_cancel_read_button.setEnabled(False)
+                        self._personal_h20_loading_label.setText("本次讀取已過期或取消；未套用舊結果。")
+                self._personal_h20_cohort_worker = None
+        worker.native_thread_finished.connect(cleanup)
         worker.native_thread_finished.connect(worker.deleteLater)
         worker.start()
 
@@ -2511,6 +2604,71 @@ class MainWindow(QMainWindow):
         if snapshot is not None:
             self._return_to_research_source(snapshot)
 
+    def _return_to_verified_personal_h20_view(self, context: ResearchStockContextDTO) -> bool:
+        """同次檢視返回只重核小型 reference；不重建資料副本。"""
+        from app_module.recommendation.personal_h20_verified_cohort_view import PersonalH20VerifiedCohortView
+        from scripts.scheduled.personal_h20_daily_hook import project_personal_h20_verified_cohort_selection_with_reference
+        from ui_qt.workers.task_worker import TaskWorker
+
+        cohort_view = getattr(self, "_personal_h20_origin_view", None)
+        origin = getattr(self, "_personal_h20_research_origin", None)
+        widget = getattr(self, "personal_h20_research_widget", None)
+        sqlite_root = self._personal_h20_sqlite_read_root()
+        if (type(cohort_view) is not PersonalH20VerifiedCohortView
+                or cohort_view is not getattr(self, "_personal_h20_cohort_view", None)
+                or not isinstance(origin, tuple) or len(origin) != 3 or origin[0] != context
+                or origin[2] != cohort_view.reference or widget is None or sqlite_root is None):
+            return False
+        market_root, config_path = self._personal_h20_configuration()
+        generation = self._personal_h20_cohort_generation
+        product_generation = getattr(self, "_personal_h20_generation", 0)
+        report_view = getattr(getattr(self, "stock_research_workspace", None), "report_view", None)
+        previous = getattr(self, "_personal_h20_return_worker", None)
+        if previous is not None and previous.isRunning():
+            previous.cancel(wait=False)
+        worker = TaskWorker(
+            project_personal_h20_verified_cohort_selection_with_reference,
+            cohort_view, origin[1], config_path=config_path,
+            market_root=market_root, sqlite_read_root=sqlite_root,
+        )
+        self._personal_h20_return_worker = worker
+        widget.setEnabled(False)
+        self.statusBar().showMessage("正在核對原保存名單身份；沿用同次完整核驗結果。")
+        def current() -> bool:
+            return (not widget._closing and not getattr(self, "_shutdown_close_requested", False)
+                and getattr(self, "_personal_h20_return_worker", None) is worker
+                and generation == self._personal_h20_cohort_generation
+                and product_generation == getattr(self, "_personal_h20_generation", 0)
+                and getattr(report_view, "context", None) == context
+                and getattr(self, "_personal_h20_research_origin", None) == origin
+                and getattr(self, "_personal_h20_origin_view", None) is cohort_view
+                and getattr(self, "_personal_h20_cohort_view", None) is cohort_view
+                and self._personal_h20_configuration() == (market_root, config_path)
+                and self._personal_h20_sqlite_read_root() == sqlite_root)
+        def apply(_evidence: object) -> None:
+            if not current():
+                return
+            widget.setEnabled(True)
+            if widget.restore_selection(origin[1]):
+                self.statusBar().showMessage("已返回原保存名單與股票；沿用同次核驗，未重新複製來源。")
+            else:
+                self.statusBar().showMessage("原選取無法定位；未以同股其他版本替代。")
+        def failed(message: str) -> None:
+            if current():
+                widget.setEnabled(True)
+                widget.summary_label.setText("原名單身份重核失敗；上次結果未更新：" + str(message)[:300])
+        def cleanup() -> None:
+            if getattr(self, "_personal_h20_return_worker", None) is worker:
+                self._personal_h20_return_worker = None
+                if generation == self._personal_h20_cohort_generation and not widget._closing:
+                    widget.setEnabled(True)
+        worker.finished.connect(apply)
+        worker.error.connect(failed)
+        worker.native_thread_finished.connect(cleanup)
+        worker.native_thread_finished.connect(worker.deleteLater)
+        worker.start()
+        return True
+
     def _return_to_research_source(self, value: object) -> None:
         """由 status strip 返回建立目前上下文的頁面並定位原股票。"""
 
@@ -2546,7 +2704,8 @@ class MainWindow(QMainWindow):
             tabs = self.recommendation_view.result_source_tabs
             with QSignalBlocker(tabs):
                 tabs.setCurrentWidget(self.personal_h20_research_panel)
-            self._refresh_personal_h20_cohort(origin[1])
+            if not self._return_to_verified_personal_h20_view(context):
+                self._refresh_personal_h20_cohort(origin[1])
             return
         self._select_main_workspace(context.source_workspace)
         if context.source_workspace == "recommendation":

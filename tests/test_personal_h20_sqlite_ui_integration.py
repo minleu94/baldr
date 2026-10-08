@@ -231,7 +231,7 @@ def test_secure_h20_ui_reader_requires_explicit_private_root_before_public_ports
     assert calls == []
 
 
-def test_main_selected_h20_copy_progress_reaches_visible_summary(
+def test_main_selected_h20_warm_projection_and_full_recheck_show_copy_progress(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -247,7 +247,9 @@ def test_main_selected_h20_copy_progress_reaches_visible_summary(
 
     entered = Event()
     release = Event()
-    mode = {"block_product_first_source_after": True}
+    # 第一次完整名單讀取完成後，下鑽沿用 reader-issued view；只有明確
+    # recheck 才會再建立唯讀 SQLite 副本並顯示複製進度。
+    mode = {"block_cohort_operation_after": 2}
     app, window, saved, network_attempts, _task_context = _prepare_saved_h20_mainwindow(
         tmp_path,
         monkeypatch,
@@ -262,27 +264,49 @@ def test_main_selected_h20_copy_progress_reaches_visible_summary(
         window.show()
         app.processEvents()
         widget = _load_h20_list(app, window)
+        assert mode.get("_cohort_operation_count") == 1
         signals = _double_click_selected_h20_row(app, window, widget)
         assert signals["research_requested"]
-        _wait_for(app, entered.is_set)
         workspace = window.stock_research_workspace
         assert workspace is not None
-        _wait_for(
-            app,
-            lambda: "唯讀 SQLite 副本" in workspace.personal_h20_saved_summary.text(),
-            timeout_seconds=10.0,
-        )
-        release.set()
         _wait_for(
             app,
             lambda: getattr(workspace.personal_h20_saved_evidence, "status", None) == "available"
             and getattr(window, "_personal_h20_worker", None) is None
             and not workspace.personal_h20_saved_busy,
         )
+        # warm double-click 完成個股投影，沒有重讀 SQLite／來源，也沒有重讀母體。
+        assert mode.get("_warm_projection_count") == 1
+        assert mode.get("_product_operation_count", 0) == 0
+        assert mode.get("_cohort_operation_count") == 1
+
+        workspace.personal_h20_saved_recheck_button.click()
+        _wait_for(app, entered.is_set)
+        assert mode.get("_cohort_operation_count") == 2
+        assert mode.get("_product_operation_count", 0) == 0
+        _wait_for(
+            app,
+            lambda: "唯讀 SQLite 副本" in window._personal_h20_loading_label.text(),
+            timeout_seconds=15.0,
+        )
+        assert "未完成" in window._personal_h20_loading_label.text() or "已等待" in (
+            window._personal_h20_loading_label.text()
+        )
+        release.set()
+        _wait_for(
+            app,
+            lambda: getattr(workspace.personal_h20_saved_evidence, "status", None) == "available"
+            and getattr(window, "_personal_h20_worker", None) is None
+            and getattr(window, "_personal_h20_cohort_worker", None) is None
+            and not workspace.personal_h20_saved_busy,
+        )
         assert workspace is not None
         evidence = workspace.personal_h20_saved_evidence
         assert evidence is not None
         assert evidence.gross_return_bp == 1234
+        assert mode.get("_cohort_operation_count") == 2
+        assert mode.get("_warm_projection_count") == 2
+        assert mode.get("_product_operation_count", 0) == 0
         assert network_attempts == []
         assert _sqlite_file_group_pin(source) == before
     finally:

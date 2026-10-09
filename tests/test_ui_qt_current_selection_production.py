@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication
 import scripts.refresh_current_market_status_observation as capture_module
 import tests.test_selection_market_assignments as market_helpers
 import ui_qt.views.daily_market_technical_universe_v4_view as view_module
+import ui_qt.views.daily_market_technical_official_disposition_view as official_view_module
 from app_module.daily_market_technical_official_disposition_bundle_v1 import (
     DailyMarketTechnicalOfficialDispositionBundleError,
     DailyMarketTechnicalOfficialDispositionBundleReaderV1,
@@ -85,6 +86,38 @@ def test_actual_button_runs_worker_and_reports_saved_or_failed_bundle(
             reopened = DailyMarketTechnicalOfficialDispositionBundleReaderV1(reference.output_root).read_exact(
                 reference.bundle_identity_sha256, expected_manifest_sha256=reference.manifest_sha256)
             assert tuple(row.stock_code for row in reopened.iter_verified_rows()) == ("1101",)
+            # 沿 Manual 的實際資料夾與 catalog 入口接續，不直接塞來源 DTO。
+            official = official_view_module.DailyMarketTechnicalOfficialDispositionView(None)
+            selected: list[object] = []
+            bookmarks: list[object] = []
+            official.stockSelected.connect(selected.append)
+            official.bookmarkPrepared.connect(bookmarks.append)
+            monkeypatch.setattr(official_view_module.QFileDialog, "getExistingDirectory", lambda *_args: reference.output_root)
+            official.show()
+            try:
+                QTest.mouseClick(official.choose_root_button, Qt.MouseButton.LeftButton)
+                _wait(app, lambda: official.active_worker is None)
+                assert len(official._catalog_entries) == 1
+                official.catalog_list.setCurrentRow(0)
+                _wait(app, lambda: official.active_worker is None)
+                assert official.current_result is not None and official.current_page is not None
+                assert official.current_page.counts.population.declared_count == 1
+                assert official.current_page.historical_pit_eligible is False
+                assert official.select_stock_code("1101")
+                origin = official.current_request
+                QTest.mouseClick(official.detail_button, Qt.MouseButton.LeftButton)
+                assert len(selected) == 1 and selected[0].stock_code == "1101"
+                assert official.results_stack.currentIndex() == 1
+                QTest.mouseClick(official.back_button, Qt.MouseButton.LeftButton)
+                assert official.results_stack.currentIndex() == 0
+                assert official.current_request == origin
+                QTest.mouseClick(official.bookmark_button, Qt.MouseButton.LeftButton)
+                _wait(app, lambda: official.active_worker is None)
+                assert len(bookmarks) == 1 and bookmarks[0].selected_stock_code == "1101"
+            finally:
+                official.begin_shutdown()
+                _wait(app, lambda: official.active_worker is None)
+                official.close()
     finally:
         view.begin_shutdown()
         _wait(app, lambda: view._worker is None)

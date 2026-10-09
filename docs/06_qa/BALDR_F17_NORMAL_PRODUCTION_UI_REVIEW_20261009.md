@@ -21,3 +21,9 @@
 ## 未完成範圍
 
 同一候選完整 Main、原來源 H20 2382、全母體效能、跨程序聯合收藏與 EXE 同版接受仍未完成。本增量只接受上述 UI worker 與 backend 路由，未批准原始資料重建、正式排程或模型啟用；不宣告 F17、M2 或完整補完計畫完成。
+
+## 接續官方研究頁的獨立 Qt 旅程
+
+新增測試沿新產製的 reference，由「選擇保存來源資料夾」真正 Qt 按鈕進入既有官方研究頁；metadata catalog 列出新版本、選列觸發 strict query，讀回 1101 與明示一股分母。再以「查看個股」及「返回原結果頁」按鈕驗原 page request 未變，並以「準備原研究收藏」取得同股原來源 bookmark。同步／deferred 兩種 factory 正例均經過這個流程；來源 PITfalse 保持。
+
+日誌 `output/qa/f17_normal_capture_pair_20261009_a/normal_ui_journey_tests_a.log`：6 passed，6.46 秒。此為兩個獨立 Qt 視圖的同程序實際 worker／按鈕路由，沒有完整 Main、觀察清單 COW 保存、新程序收藏重開或真人可讀性測量；不得將準備 bookmark DTO 當成已保存收藏。只新增測試，未再次修改 UI source；先前強制 UI／validator／型別結果的範圍保持。

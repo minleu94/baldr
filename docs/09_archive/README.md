@@ -98,6 +98,10 @@
 
 - [V4 每日自然證據運行閉環 QA handoff（2026-09-12）](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12_HISTORY.md)：保存當日 scheduler、forward outcome、progress receipt、Paper ledger 與跨日證據交接。原收據明列 5／10／20／60 horizons 尚待自然成熟、benchmark 截止 2026-08-28、外部 fills CSV 缺件、saved checkout Scheduler／receipt freshness 待 owner 確認及 ACL warning；歸檔不表示這些 Gate 已解除。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。原 QA 路徑保留相容導引；bytes／SHA 見 [Coverage History Entry 127](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-127)。
 
+## 2026-10-09 1477 Native 取消、重試與讀回歷史 QA
+
+[完整驗收原文](NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005_HISTORY.md)記錄 2026-10-05 的 bounded Native 操作鏈：取消後以新 generation 重試、保存新結果、由新程序讀回，並驗證截止日、artifact 決策日、result/run identity 與 index hash 四種拒絕案例。原結果是未入選篩選紀錄，不是推薦成功；也不代表自然成熟、ML 正式資格、PIT 或交易資格。原 QA 路徑保留短導引，來源／Archive bytes 與引用追蹤見 [Coverage History Entry 132](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-132)。
+
 ## 2026-10-09 V4.2 Daily Recommendation Learning 9/13 歷史 QA
 
 - [每日推薦自動學習與受控調整 QA（2026-09-13）](V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13_HISTORY.md)：保存單一 learning task 註冊與 bounded CLI entrypoint 驗證，不代表 task 已執行、正式推薦權重變更、promotion 或 production evidence credit。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，工程邊界看 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留導引，bytes／SHA 見 [Coverage History Entry 105](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。

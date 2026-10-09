@@ -112,6 +112,7 @@
 - **2026-09 決策工作台與 continuity dated audits**：查 [Archive 專區](../09_archive/README.md#2026-10-08-decision-workbench-and-continuity-audit-history)；當時的 gap 與 next-increment 判讀不代表目前優先序，現在狀態回 Snapshot／Roadmap。
 - **Post-V1 Evidence Pipeline 已執行計畫／規格**：原文與 QA 收據分別收於 [Archive 歷史索引](../09_archive/README.md#2026-10-08-post-v1-engineering-plans-and-specs) 與 [QA 收據索引](../09_archive/README.md#post-v1-evidence-pipeline-qa)；Scheduler Approval 配對因測試內容依賴保留原文路徑。
 - **歷史流程與文件治理紀錄**：2026-09-27 branch/worktree 與文件整併紀錄、2026-09-21 legacy recommendation failure review、9/30 唯讀服務取消收據已移至 [Archive 歷史入口](../09_archive/README.md#qa-historical-process-failure-review-20261009)；10/06 全 repo 文檔整理驗收是固定 HEAD 的歷史快照，見[封存報告](../09_archive/DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md)，現行生命週期規則以 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md) 為準。首批歸檔判定見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)，R029 成對歸檔與 hash 見 [Entry 098](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)，取消 QA 的當次範圍與 SHA 見 [Entry 104](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-104)。
+- **1477 Native 取消、重試、保存與新程序讀回（2026-10-05，歷史）**：[封存驗收原文](../09_archive/NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005_HISTORY.md)保留 generation 2 取消、generation 3 重試、保存新身份、新程序讀回，以及來源日期、artifact 日期、run identity、index hash 四項拒絕。此收據只驗收單次 Native 操作鏈，不代表 ML 正式資格、PIT 或交易資格；原 QA 路徑留短導引。bytes／SHA 見 [Coverage History Entry 132](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-132)。
 
 ## 閱讀與歸檔規則
 

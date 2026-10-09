@@ -36,9 +36,9 @@ Post-Refactor 主線改為：
 6. Recommendation、Alert、Exit 與 Portfolio Advice 是否真的有效？
 7. 哪些資料、訊號、Profile 與工具應保留、降權、限制或退休？
 
-### 2.2 現況能力矩陣
+### 2.2 能力基線（截至 2026-09-17）
 
-| 能力 | 目前狀態 | 真正價值 | 尚不能宣稱 |
+| 能力 | 基線狀態 | 真正價值 | 尚不能宣稱 |
 |---|---|---|---|
 | SQLite-first、資料更新與 quality 狀態 | 已存在 | 可追溯的本地資料底座 | 資料完整即代表策略有效 |
 | Market Exploration / Daily Decision / Workbench | 已存在，Workbench 主要為 read-only | 提供市場、候選、警示與資料品質入口 | 已形成完整 Advice operating loop |
@@ -56,7 +56,7 @@ Post-Refactor 主線改為：
 | Gap | 對產品的影響 | 優先處置 | Done Definition |
 |---|---|---|---|
 | Recommendation Advice Contract 不完整 | 無法從分數轉成一致、可稽核建議 | Gate 1 | 每筆 advice 含 action、Why、Why Not、Risk、Evidence、資料日期、失效條件與可成交性 |
-| Portfolio Advice 不存在 | 推薦清單無法回答資金配置 | Gate 1 / 4 | 輸出 target/current/gap、risk budget、rebalance band 與 paper evidence |
+| 完整 Portfolio Advice 能力未成立 | 推薦清單尚不能提供經 policy 與 evidence 驗證的配置建議 | Gate 1：輸出契約；Gate 4：配置政策、sizing、成本後 evidence | Gate 1 定義 target/current/gap、action、理由／風險／證據與可成交性，並可進行 paper dry-run；Gate 4 建立版本化 risk budget、rebalance bands 與 candidate sizing，使用 paper portfolio 做成本後比較 |
 | Evidence operating loop 仍偏 read-only / dry-run | 無法持續驗證與修正 | Gate 2 | 形成 weekly review、action item、append-only evidence、backup/rollback/recovery 的真實節奏 |
 | P0 資料未正式接受 | 回測與持倉可信度受限 | Gate 3 | 每個來源通過 available-date、quality、license、missing 與 shadow acceptance Gate |
 | Signal / Gate / Alert 未做淘汰決策 | 系統只增不減、噪音累積 | Gate 5 | 有保留／限制／降權／退休決議與 evidence |
@@ -351,7 +351,7 @@ Owner 已選擇以 prospective-only 的受治理模擬持倉建立後續 Formal 
 
 ## 15. 六個月產品 Gate
 
-此表維護產品問題、能力、產品證據與非目標；工程交付與工程 Exit Criteria 只在 [6M Engineering Roadmap](ROADMAP_6M_ENGINEERING.md) 維護。產品 Gate 1 定義 Advice 輸出契約，Gate 4 才實作 Portfolio 配置政策、sizing 與 paper evidence；Gate 7 是否啟動 ML shadow 依 6M Roadmap 的條件決定。
+此表維護產品問題、能力、產品證據與非目標；工程交付與工程 Exit Criteria 只在 [6M Engineering Roadmap](ROADMAP_6M_ENGINEERING.md) 維護。Gate 1 定義 Recommendation／Portfolio Advice 輸出契約，並以 read-only／paper dry-run 核驗；Gate 4 才交付版本化 Portfolio policy、candidate sizing 與 paper portfolio 成本後 evidence。Gate 7 是否啟動 ML shadow 依 6M Roadmap 的條件決定。
 
 | Gate | Investment Question | Product Capability | Data Dependencies | 工程規格（6M） | Evidence Gate | Risks | Non-goals | Product Exit Criteria |
 |---|---|---|---|---|---|---|---|---|

@@ -428,8 +428,5 @@ Gate 7 只有在 Gate 5 於第六個月前產生可判讀 baseline 時，才可�
 
 ---
 
-## Gate 狀態校正（2026-07-12）
-> 2026-07-12 的 Gate 狀態校正已移至 [歷史紀錄](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準.
-
 ## 更新記錄
 > 日期化更新流水帳已移至 [6M Roadmap 歷史紀錄](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；本文件只保留現行 Gate 定義.

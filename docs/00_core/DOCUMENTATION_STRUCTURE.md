@@ -68,7 +68,7 @@
 | 目錄 | 放什麼 | 不放什麼 |
 |---|---|---|
 | `00_core/` | Snapshot、產品方向、6 個月工程路線、Roadmap Hub、版本成熟度、外部參考、舊項目移交、索引與文件治理規則 | 完整歷史 Done、單一功能的長篇操作教學 |
-| `01_architecture/` | 架構、資料流、依賴邊界、Runtime 規範 | 一次性 QA 記錄 |
+| `01_architecture/` | 架構、資料流、依賴邊界、Runtime 規範；保留與目標架構任務索引、驗收及回滾直接綁定的實作／審查報告 | 一般一次性 QA 收據（放 `06_qa/`）；`target_architecture_2026_09_22/REFACTOR_REPORTS/` 這類任務關聯報告不批次移出 |
 | `02_features/` | 使用者可見功能、UI、策略、回測、評分說明 | Phase 規劃草案 |
 | `03_data/` | 資料更新、資料流、資料重建、資料故障排除 | 券商分點專屬細節 |
 | `04_broker_branch/` | 券商分點資料、分點解析、籌碼資料更新 | 一般每日資料更新 |
@@ -156,4 +156,4 @@
 
 ## 六、更新記錄
 
-- 2026-10-09：收斂本文件為現行權威分工、資料夾歸屬、生命週期與整理檢查規則；逐批歸檔敘述移至 Coverage History，原第 4／6 節快照見 [Archive 歷史記錄](../09_archive/DOCUMENTATION_STRUCTURE_CHANGELOG_20261009_HISTORY.md)及 [Coverage History Entry 109](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-109)。
+- 2026-10-09：收斂本文件為現行權威分工、資料夾歸屬、生命週期與整理檢查規則；逐批歸檔敘述移至 Coverage History，原第 4／6 節快照見 [Archive 歷史記錄](../09_archive/DOCUMENTATION_STRUCTURE_CHANGELOG_20261009_HISTORY.md)及 [Coverage History Entry 109](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-109)。另明確保留與目標架構任務索引、驗收及回滾直接綁定的 `REFACTOR_REPORTS/`；一般一次性 QA 仍歸 `docs/06_qa/`。

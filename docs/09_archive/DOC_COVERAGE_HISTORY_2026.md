@@ -1646,3 +1646,18 @@ implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_
 | §9 的 2026-07-02 完成引言與項目清單 | 1,480 / `5a61a221f15df997ac6365b4cf38be3bcc320680701c1d3483eca0e3722f0bfc` | [原文摘錄](UI_DESIGN_SYSTEM_MIDNIGHT_ANALYST_MIGRATION_HISTORY_20260702.md) | 2,137 / `8ae9c57817982a75a4c71dd0724884e092340a2de85f1c011f9d1fd496a01aad` |
 
 來源整份原檔在本批前為 18,258 bytes，SHA-256 `b164b5452be857775c5742fc396b0f512f7a74e95f1cdf29cc7de98266a0b025`。此摘錄是日期化完成描述，不能推定目前所有 UI 工作區一致、現行設計規範已全部落實，或 UI QA 已全面通過。全 repo 精確內容與錨點搜尋未發現該清單的獨立 consumer；架構目錄 README 與 Archive README 已提供導覽。來源檔案位置不變，故不修改 DOC_COVERAGE_MAP；DOCUMENTATION_INDEX 有其他未提交工作，本批不觸碰。
+
+<a id="coverage-entry-161"></a>
+## 2026-10-09 封存 Daily Decision Desk 三份 6/15 歷史計畫
+
+將 Relative Strength／Liquidity Ranking、Risk Prompt Bridge 與 Watchlist Trigger 三份歷史 plan 原文逐位元組移至 `docs/09_archive/superpowers/plans/`；原路徑改為相容導引，保留舊鏈結與原標題。三個來源在本批前均為 tracked／clean，Archive 目的地原先不存在。
+
+| 原路徑 | Archive 原文 | 原件 bytes／SHA-256（工作樹原始位元組） | Archive bytes／SHA-256 | Git 正規化 LF bytes／SHA-256 |
+|---|---|---:|---:|---:|
+| [`docs/superpowers/plans/2026-06-15-decision-desk-relative-strength-liquidity-ranking.md`](../superpowers/plans/2026-06-15-decision-desk-relative-strength-liquidity-ranking.md) | [`2026-06-15-decision-desk-relative-strength-liquidity-ranking.md`](superpowers/plans/2026-06-15-decision-desk-relative-strength-liquidity-ranking.md) | 35,947 / `087D00424F5C328E1F17640FF663AA3BE51A8FC61A6EE5423BF6E717B31425DA` | 35,947 / `087D00424F5C328E1F17640FF663AA3BE51A8FC61A6EE5423BF6E717B31425DA` | 35,018 / `E02254D8DAAF2B2ED77B90C64DE2D9B7E159D18F08736D52ADBB6302FB77B386` |
+| [`docs/superpowers/plans/2026-06-15-decision-desk-risk-prompt-bridge.md`](../superpowers/plans/2026-06-15-decision-desk-risk-prompt-bridge.md) | [`2026-06-15-decision-desk-risk-prompt-bridge.md`](superpowers/plans/2026-06-15-decision-desk-risk-prompt-bridge.md) | 32,682 / `26F8CE423DB2AFD815FADDA7A63B6321D8EA48F60531585A12FC20BB58806E3B` | 32,682 / `26F8CE423DB2AFD815FADDA7A63B6321D8EA48F60531585A12FC20BB58806E3B` | 31,767 / `F3B2F17F38D92F126EAD1AD6F3F03AB3516042FE7070BC60B752B5FD700DE8D8` |
+| [`docs/superpowers/plans/2026-06-15-decision-desk-watchlist-trigger.md`](../superpowers/plans/2026-06-15-decision-desk-watchlist-trigger.md) | [`2026-06-15-decision-desk-watchlist-trigger.md`](superpowers/plans/2026-06-15-decision-desk-watchlist-trigger.md) | 26,001 / `07CB65B94B97CCA892BDB608FCF390779E5677440FFFF690C37420CEADE6D4F3` | 26,001 / `07CB65B94B97CCA892BDB608FCF390779E5677440FFFF690C37420CEADE6D4F3` | 25,282 / `2427877151BE306F0ED71717C90B77E82BA4044DA2D147F3230E1976B37EBE2E` |
+
+三份原 plan 分別保留 0/31、0/33、0/25 個 Step 核取狀態；這只描述 plan 原文，不推定程式實作、功能缺失、QA 通過或目前待辦。Full App QA 的 D-007、D-008、D-009 仍為「需確認」，分別要求人工確認低流動性／歷史不足提示、候選池真實狀態與 Portfolio 真實狀態。本批沒有修改 QA、Snapshot、Roadmap、Manual 或架構權威。
+
+精確檔名／錨點掃描未找到程式、測試、腳本、排程或設定將這三個 plan 路徑當作 consumer；舊路徑導引承接既有 Superpowers README、Manifest 與歷史 Catalog／Index 引用。現行操作與架構入口見 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [system architecture](../01_architecture/system_architecture.md)。頂層 [Documentation Index](../00_core/DOCUMENTATION_INDEX.md) 已提供 Superpowers README 與 Archive README 導覽，兩個子目錄入口均已更新；Index 同時有其他對話的未提交排程內容，本批保留原樣。權威邊界未改，不修改 DOC_COVERAGE_MAP；本批未執行程式測試。Archive 原文逐位元組保留，因此 staged diff check 對 Risk Prompt Bridge 的 EOF 空行及 Watchlist Trigger 原文空白行提示均屬來源既有 whitespace；未清理原件。

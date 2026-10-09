@@ -683,6 +683,13 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 
 - [2026-07-02 第一輪低風險 UI 遷移清單](UI_DESIGN_SYSTEM_MIDNIGHT_ANALYST_MIGRATION_HISTORY_20260702.md)：保存 UI 設計系統文件中的日期化遷移完成描述；它不代表目前全 UI 一致性或 QA 已全面通過。現行 theme 規格與尚保留的遷移邊界見[架構文件](../01_architecture/ui_design_system_midnight_analyst.md)。來源範圍與 bytes／SHA-256 見 [Coverage History Entry 160](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-160)。
 
+<a id="2026-10-09-daily-decision-desk-ranking-and-risk-prompt-plans"></a>
+## 2026-10-09 Daily Decision Desk 排序、風險提示與觀察清單歷史 plans
+
+- [Relative Strength／Liquidity Ranking 原文](superpowers/plans/2026-06-15-decision-desk-relative-strength-liquidity-ranking.md)、[Risk Prompt Bridge 原文](superpowers/plans/2026-06-15-decision-desk-risk-prompt-bridge.md)、[Watchlist Trigger 原文](superpowers/plans/2026-06-15-decision-desk-watchlist-trigger.md) 已移入 Archive；三個[原路徑](../superpowers/plans/)保留相容導引。原 plan 的 Step checklist 分別是 0/31、0/33、0/25；這是保存當時核取狀態，不代表實作已完成或未完成。
+- Full App QA 的 D-007、D-008、D-009 仍標示「需確認」，各自保留低流動性／歷史不足提示、候選池真實狀態、Portfolio 真實狀態的人工確認要求。本次沒有變更 QA 狀態。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，架構看 [system architecture](../01_architecture/system_architecture.md)。
+- 原路徑、Archive 位置、bytes／SHA-256 與正規化雜湊見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 及 [Coverage History Entry 161](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-161)。
+
 ## ⚠️ 注意
 
 這些文檔主要用於記錄歷史，日常使用時請參考：

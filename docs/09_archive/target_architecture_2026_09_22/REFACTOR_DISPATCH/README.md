@@ -1,6 +1,6 @@
 # 已結束的 Gemini dispatch／分析封包
 
-本目錄保存十四份已結束的 R-task dispatch／review 與 Wave 分析封包：原有三份 rework、兩份唯讀分析輸入，另含本批九份 Wave 1 implementation／review 歷史封包。它們只用於追溯當時任務範圍、假設與指示；不代表目前 task contract、正式 review 結論或新工作授權。舊架構目錄保留相容導引，接續既有引用。
+本目錄保存十六份已結束的 R-task dispatch／review 與 Wave 分析封包：原有三份 rework、兩份唯讀分析輸入，另含本批九份 Wave 1 implementation／review 歷史封包，以及本次封存的兩份已結束一次性 Gemini Wave prompt。它們只用於追溯當時任務範圍、假設與指示；不代表目前 task contract、正式 review 結論或新工作授權。舊架構目錄保留相容導引，接續既有引用。
 
 | 舊路徑 | 歷史原件 | 現行結果／限制 |
 |---|---|---|
@@ -19,5 +19,7 @@
 | docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_R006.md | [GEMINI_R006.md](GEMINI_R006.md) | R006 原 inventory／retention scope CLOSED；未知正式 binary 未 load／predict，RK-19 仍開。 |
 | docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REVIEW_R006.md | [GEMINI_REVIEW_R006.md](GEMINI_REVIEW_R006.md) | 保留 73 passed／1 個已知 shadow-boundary failure 及 RK-19 限制；不得概括為全通過。 |
 | docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_REVIEW_PROMPTS.md | [WAVE1_GEMINI_REVIEW_PROMPTS.md](WAVE1_GEMINI_REVIEW_PROMPTS.md) | R003／R005／R006 prompts 僅供追溯；已有 review 結果，不需重送或據此授權下一 wave。 |
+| docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_PROMPTS.md | [Wave 1 one-time prompts](WAVE1_GEMINI_PROMPTS.md) | 已結束；分析與 review 已有結果，不需重送；R006 未知正式 binary 仍依 RK-19 列管。 |
+| docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_PROMPTS.md | [Wave 2 one-time prompt](WAVE2_GEMINI_PROMPTS.md) | 唯讀預分析已結束；不代表正式 review 或 Wave 3 gate。 |
 
-既有五份來源原件 bytes／SHA-256 見 [Coverage History Entry 135](../../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-135)；本批九份原件與 Archive 副本雜湊、引用核對及處置依據見 [Coverage History Entry 147](../../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-147)。目前遷移狀態依 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與 R031 scoped evidence；144 份 `REFACTOR_REPORTS/` 驗收／回滾記錄仍保留原路徑。
+既有五份來源原件 bytes／SHA-256 見 [Coverage History Entry 135](../../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-135)；本批九份原件與 Archive 副本雜湊、引用核對及處置依據見 [Coverage History Entry 147](../../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-147)；新增兩份 Wave prompt 的原件與修正後 Archive hash 見 [Entry 153](../../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-153)。目前遷移狀態依 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md) 與 R031 scoped evidence；144 份 `REFACTOR_REPORTS/` 驗收／回滾記錄仍保留原路徑。

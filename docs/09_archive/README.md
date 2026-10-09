@@ -31,7 +31,7 @@
 
 - [2026-09-22 目標架構草案包](target_architecture_2026_09_22/README.md)：六份非 FINAL 草案已由同目錄的 `FINAL_*` 設計取代；Archive 保留決策追溯，原架構路徑留有相容導引。舊提案不代表目前實作或已完成狀態，開放中的遷移 Gate 仍看 FINAL migration sequence、Snapshot 與具名 QA。
 - 同一架構套件另保留[Wave 2 舊 R008 SHA checkpoint](target_architecture_2026_09_22/README.md#wave2-old-sha-checkpoint)：舊快照只適用原 SHA；現行 result_id 驗收與 Gate 狀態看原架構報告索引及 Coverage History Entry 129。
-- [已結束的架構 dispatch／分析封包](target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md)：十四份歷史 dispatch／review／Wave 分析材料；舊路徑保留相容導引，任務狀態以 R031 與原架構 reports 為準。R006 未知正式 binary 仍未 load／predict，RK-19 風險持續；來源 bytes／SHA 見 Coverage History Entries 135、147。
+- [已結束的架構 dispatch／分析封包](target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md)：十六份歷史 dispatch／review／Wave 分析材料；舊路徑保留相容導引，任務狀態以 R031 與原架構 reports 為準。R006 未知正式 binary 仍未 load／predict，RK-19 風險持續；來源 bytes／SHA 見 Coverage History Entries 135、147、153。
 
 - [Wave 1／Wave 2 pending／blocked 中間狀態報告](target_architecture_2026_09_22/REFACTOR_REPORTS/README.md)：四份歷史預檢已被後續正式 checkpoint 取代；整體遷移狀態仍看 PROJECT_SNAPSHOT。原件與引用核對見 [Coverage History Entry 139](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-139)。
 

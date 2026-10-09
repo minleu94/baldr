@@ -1533,3 +1533,18 @@ R031 對應狀態維持限定範圍：R002 ACCEPTED（固定輸出與排序不�
 V1.3 Evidence Operations plan 原有 11 項 checked、3 項 open（checkpoint commit、focused validation、branch commit/push）；Source Persistence plan 原有 29 項 checked、2 項 open（完整驗證／QA 更新、核心文件更新）。本批只改閱讀入口，不替原始 checkbox 補勾。Source Persistence 的 Why Not／Liquidity payload 為 partial；Forward Performance Dashboard UI、scheduler design、歷史 payload backfill、Live-vs-Research linkage 與 Signal Decay Monitor 等缺口仍依其 [QA 收據](POST_V1_EVIDENCE_SOURCE_PERSISTENCE_QA_2026_07_04.md) 判讀。V1.3 設計維持人工 review，production scheduler 與自動 lifecycle action 未因此啟用或獲准。
 
 原 QA 報告已在 Archive；`docs/06_qa/` 對應舊路徑是既有相容導引。本批更新四筆 manifest、Archive README 與 Superpowers README；歷史 Catalog／Index 與 plan 內舊路徑由相容導引承接。精確檔名引用盤點沒有程式、測試、腳本、排程或設定的固定路徑 reader／writer。現行狀態、操作與架構仍分別看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)、[system architecture](../01_architecture/system_architecture.md) 與 [Post-V1 QA 導覽](../06_qa/README.md)。DOC_COVERAGE_MAP 的權威邊界未變，因此不修改 Map、Snapshot、Manual 或 dirty 的 DOCUMENTATION_INDEX。
+
+
+<a id="coverage-entry-153"></a>
+## 2026-10-09 封存 Wave 1／Wave 2 一次性 Gemini prompt
+
+將已結束的一次性 Gemini prompt 原文複製至 `docs/09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/`，並將 `docs/01_architecture/.../REFACTOR_DISPATCH/` 原路徑改為相容導引。兩份來源在本批開始前均為 tracked／clean，封存目的地不存在。封存副本僅修正搬移後指向同目錄分析輸入的相對 Markdown 連結；因此 Archive bytes／SHA 與原件不同，差異只限連結目標。
+
+| 原路徑 | Archive 原件 | 原件 bytes／SHA-256 | 修正相對連結後 Archive bytes／SHA-256 |
+|---|---|---:|---:|
+| [`docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_PROMPTS.md`](../01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_PROMPTS.md) | [`WAVE1_GEMINI_PROMPTS.md`](target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_PROMPTS.md) | 3,117 / `4AAB180EC15FC2A8D30C953D900024ED8E8E0B15B15B30105BFCB8EE2C2F0FA8` | 3,048 / `F0352228D56BDB082F659E4C286C2D2422870A44EFA92CCFDFF7CDA24505FCE9` |
+| [`docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_PROMPTS.md`](../01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_PROMPTS.md) | [`WAVE2_GEMINI_PROMPTS.md`](target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_PROMPTS.md) | 1,655 / `DF95C01F28C2FA9799FEA98E55CE614B8C43D8F06C520E9FDF6D36B08AF07F4` | 1,586 / `6CC9036BE4EC41AD873D833805387ACF6F1DDBA607277545FC262EA41C7E1BEE` |
+
+This follow-up supersedes only the earlier decision to keep full prompt bodies at their live paths: the prior [Entry 147](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-147) and its supplemental note above remain unchanged as historical decisions. WAVE1 records completed analysis/review routing; the unknown formal R006 binary remains unloaded and RK-19 stays open. WAVE2 records a completed read-only R008 pre-analysis prompt, not a formal independent review or Wave 3 authorization. No task acceptance or migration Gate is upgraded.
+
+Exact filename search found the live Dispatch README, its archive README, this Archive route, historical Catalog/coverage snapshots, and a prior archived review prompt; no code, test, script, scheduler, or setting consumer was found. The live Dispatch README and both Archive navigation levels now point to the Archive originals. Historical Catalog and any uncommitted `DOCUMENTATION_INDEX.md` references remain reachable through the source-path stubs; the dirty Index was not modified. `DOC_COVERAGE_MAP` authority boundaries did not change, so this batch updates Coverage History/Archive navigation only and does not modify the Map or target architecture contract.

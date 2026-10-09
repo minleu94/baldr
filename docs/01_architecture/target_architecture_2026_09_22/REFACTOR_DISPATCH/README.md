@@ -2,7 +2,7 @@
 
 本目錄由 SOL orchestrator 維護。每個 wave 只有在 `REFACTOR_EXECUTION_ORDER.md` 的前置 task、review 與 checkpoint gate 全部通過後才能釋出。
 
-> 2026-10-09 生命週期整理：R003／R005／R006 回修 packet 與 Wave 1／Wave 2 唯讀分析輸入已先封存（Entry 135）；本批再封存 R002 review、R003／R005／R006 implementation 與 review packets、R004 review 及 Wave 1 review prompts（[Coverage History Entry 147](../../../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-147)）。舊路徑保留短導引。封包均為歷史材料，不代表目前待辦、正式驗收或新工作授權；R006 未知正式 binary 仍未 load／predict，RK-19 風險依 R031 列管。R008 review 仍依本索引與 Wave 2 checkpoint。
+> 2026-10-09 生命週期整理：R003／R005／R006 回修 packet 與 Wave 1／Wave 2 唯讀分析輸入已先封存（Entry 135）；本批再封存 R002 review、R003／R005／R006 implementation 與 review packets、R004 review 及 Wave 1 review prompts（[Coverage History Entry 147](../../../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-147)）。舊路徑保留短導引。封包均為歷史材料，不代表目前待辦、正式驗收或新工作授權；R006 未知正式 binary 仍未 load／predict，RK-19 風險依 R031 列管。R008 review 仍依本索引與 Wave 2 checkpoint。 後續的 [Wave 1／Wave 2 一次性 prompts](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md) 亦已封存（Coverage History Entry 153）；舊路徑只保留導引。
 
 每次釋出 wave 的固定順序：
 
@@ -14,10 +14,10 @@
 - `GEMINI_Rxxx.md`：Gemini implementation packet。
 - `GEMINI_REWORK_Rxxx.md`：SOL 審查為 `CHANGES_REQUIRED` 後，在原 task scope 內回修的完整 packet。
 - `GEMINI_REVIEW_Rxxx.md`：Gemini 對 Luna implementation 的獨立 review packet。
-- `WAVEx_GEMINI_PROMPTS.md`：該 wave 的可複製交接 prompt；review readiness 不等於要求 Gemini 提前審查未完成的 Luna diff。
+- `WAVEx_GEMINI_PROMPTS.md`：目前 wave 的可複製交接 prompt；一次性 prompt 結束後，完整原文移至 Archive，舊路徑只保留相容導引。Review readiness 不表示可提前審查尚未凍結的 Luna diff。
 - `GEMINI_WAVE1_PARALLEL_ANALYSIS.md`：已封存的一次性唯讀分析輸入；實際分析與正式 review 結果見 `REFACTOR_REPORTS/WAVE1_GEMINI_PARALLEL_ANALYSIS_REPORT.md` 與 `WAVE1_R003_R005_GEMINI_REVIEW.md`。
 - 已封存的 Wave 1 review prompts 僅供追溯：[封存原件](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_REVIEW_PROMPTS.md)。R003／R005／R006 review 已有結果，不需重送；R006 長測限制與 RK-19 依 R031 保留。
-- `GEMINI_WAVE2_PARALLEL_ANALYSIS.md` 與 `WAVE2_GEMINI_PROMPTS.md`：已完成的 R008 唯讀預分析封包與一次性提示；輸入封存、prompt 首段已標為歷史。結果看 R008 report／Wave 2 checkpoint；不是新 review，也不釋出 Wave 3。
+- `GEMINI_WAVE2_PARALLEL_ANALYSIS.md` 與已封存的 `WAVE2_GEMINI_PROMPTS.md`：R008 唯讀預分析輸入與一次性 prompt 均已結束；prompt 原文見 [Archive](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_PROMPTS.md)，舊路徑保留導引。結果看 R008 report／Wave 2 checkpoint；這不是正式 review，也不釋出 Wave 3。
 - `GEMINI_REVIEW_R008.md` 與 `WAVE2_GEMINI_REVIEW_PROMPTS.md`：R008 Luna 的 ML availability 回修與 SOL 重驗後，依最新九檔 SHA 凍結的正式唯讀獨立審查封包／prompt；Gemini 結果仍須由 SOL 核對才能進 Wave 2 checkpoint。
 
 未解鎖 task 不預先建立 packet，避免 dependency evidence、HEAD、dirty scope 或測試結果過時。Packet 本身不授權下一 wave。
@@ -54,7 +54,7 @@
 ### Wave／共用 packets
 - [已封存的 GEMINI_WAVE1_PARALLEL_ANALYSIS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_WAVE1_PARALLEL_ANALYSIS.md)
 - [已封存的 GEMINI_WAVE2_PARALLEL_ANALYSIS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_WAVE2_PARALLEL_ANALYSIS.md)
-- [WAVE1_GEMINI_PROMPTS.md](WAVE1_GEMINI_PROMPTS.md)
+- [已封存的 WAVE1_GEMINI_PROMPTS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_PROMPTS.md)（舊路徑保留相容導引；Wave 1 分析與 review 已完成，R006 未知正式 binary 風險仍依 RK-19 列管。）
 - [已封存的 WAVE1_GEMINI_REVIEW_PROMPTS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_REVIEW_PROMPTS.md)（歷史 prompt 不需重送；R006 限制依 R031。）
-- [WAVE2_GEMINI_PROMPTS.md](WAVE2_GEMINI_PROMPTS.md)
+- [已封存的 WAVE2_GEMINI_PROMPTS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_PROMPTS.md)（舊路徑保留相容導引；R008 唯讀預分析不等於正式 review 或 Wave 3 授權。）
 - [WAVE2_GEMINI_REVIEW_PROMPTS.md](WAVE2_GEMINI_REVIEW_PROMPTS.md)

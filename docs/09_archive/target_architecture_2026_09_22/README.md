@@ -17,7 +17,7 @@
 
 ## 2026-10-09 已結束的 dispatch／分析封包
 
-[十四份已結束的架構 dispatch／review／分析封包](REFACTOR_DISPATCH/README.md)已封存；來源目錄保留相容導引。歷史封包不改寫任務驗收；R006 未知正式 binary 仍未 load／predict，RK-19 風險依 R031 與具名 QA 判讀。原有五份 bytes／SHA 見 [Coverage History Entry 135](../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-135)，本批九份見 [Entry 147](../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-147)。
+[十六份已結束的架構 dispatch／review／分析封包](REFACTOR_DISPATCH/README.md)已封存；來源目錄保留相容導引。歷史封包不改寫任務驗收；R006 未知正式 binary 仍未 load／predict，RK-19 風險依 R031 與具名 QA 判讀。原有五份 bytes／SHA 見 [Coverage History Entry 135](../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-135)，本批九份見 [Entry 147](../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-147)，追加兩份一次性 prompt 見 [Entry 153](../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-153)。
 
 ## Wave 1／Wave 2 中間狀態歷史
 

@@ -1,9 +1,11 @@
-# Wave 2 Gemini 可複製 prompt
+# Wave 2 Gemini 可複製 prompt（歷史入口）
 
-> **2026-10-09 歷史提示：**R008 的一次性唯讀預分析已結束，不要重新執行本 prompt，也不要把它視為目前 review 或 Wave 3 授權。當時的分析輸入已移至 [Archive](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_WAVE2_PARALLEL_ANALYSIS.md)；R008 結果與目前 Wave 2 checkpoint 看 `REFACTOR_REPORTS/R008_IMPLEMENTATION_REPORT.md`、`REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md` 與 R031 任務報告索引。
+> 此一次性唯讀預分析 prompt 已結束，不要重跑。本頁只承接舊路徑；它不是正式 review，也不授權 Wave 3。
 
-Wave 2 僅釋出 R008（Luna Max 實作、Gemini 正式審查）。以下 prompt 讓 Gemini 與 Luna 同步做唯讀預分析；正式獨立審查要等 R008 產出且由 SOL 凍結 SHA／diff／tests 後，再交新的 review packet。R008 初始 worker 停手後，SOL 已將 parent package 窄 lazy-export 修正納入具名受控 scope；請 Gemini 一併讀 `REFACTOR_REPORTS/R008_SCOPE_ADDENDUM.md`。這份預分析不等於 R008 PASS，也不授權 Wave 3。
+- [封存的完整 prompt](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE2_GEMINI_PROMPTS.md)
+- [R008 implementation report](../REFACTOR_REPORTS/R008_IMPLEMENTATION_REPORT.md)
+- [Wave 2 result_id checkpoint](../REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md)
+- [R031 task report index](../../../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)
+- [目前遷移狀態](../../../00_core/PROJECT_SNAPSHOT.md)；架構契約看 [FINAL target architecture](../FINAL_TARGET_ARCHITECTURE.md)
 
-```text
-請在 C:\Projects\PythonProjects\technical_analysis 執行 Wave 2 的 R008「唯讀並行契約驗收風險分析」。完整讀取 docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_WAVE2_PARALLEL_ANALYSIS.md，依其中的角色、權威架構摘錄、既有行為、範圍、檢查表與輸出格式完成分析。這不是實作或正式 code review；不要編輯任何檔案，不要碰 R009 以後任務。請把分析結果直接回傳給我，最後一行只能是 ANALYSIS_STATUS: COMPLETE 或 ANALYSIS_STATUS: ARCHITECTURE_BLOCKER_CANDIDATE。Luna 的 R008 diff／測試凍結後，我會再提供正式審查封包。
-```
+正式獨立 review 與 R008 checkpoint 的範圍依上述現行結果判讀；舊預分析 prompt 不構成 reviewer 結論或 Wave 3 釋出條件。

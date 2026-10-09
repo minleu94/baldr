@@ -1583,3 +1583,17 @@ Windows 工作樹原件與 Archive 副本均為 CRLF。Git 將換行正規化為
 | [`docs/04_broker_branch/BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md`](../04_broker_branch/BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md) | [`BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md`](broker_branch/BROKER_BRANCH_TESTING_AND_TROUBLESHOOTING.md) | 14,277 / `4E32EECBB34AC3D9A99EF5791B10781CF049697F072E9B2BE99E3FBD4C7100B0` | 14,226 / `FFAB928E309DB91865575D9DF52794DB7F4E845C4566BADC5395E9F0D7587E05` |
 
 工作樹原件為 CRLF；Git 正規化為 LF 後，來源 HEAD blob 為 13,783 bytes、SHA-256 `52448A767240763D191868B49D875F71F4ED607C8F05FECF2FC96C6A8F05C17B`，Archive 暫存 blob 為 13,733 bytes、SHA-256 `1C303BD1012F9194EB957C6151BC292B717ACF1BD2476FEDA5DCD58C364DB5FD`。Canonical blob 的差異只包含上述四個相對連結改寫；原件中的空白行、Markdown 硬換行尾端空白與 EOF 空白行保留。Scoped `git diff --cached --check` 僅提示這些原文既有 whitespace，不存在其他診斷。
+
+<a id="coverage-entry-156"></a>
+## 2026-10-09 封存 V1.8 Portfolio Sandbox plan/spec
+
+將已完成開發階段的 V1.8 Portfolio Sandbox implementation plan 與 design spec 原文移至 `docs/09_archive/superpowers/{plans,specs}/`；原路徑改為短導引，承接歷史索引與舊路徑引用。兩個來源在本批開始前均為 tracked／clean，目的地原先不存在。歸檔副本逐位元組保留原文，沒有改寫相對連結或核取狀態。
+
+| 原路徑 | Archive 原文 | 原件 bytes／SHA-256 | Archive bytes／SHA-256 |
+|---|---|---:|---:|
+| [`docs/superpowers/plans/2026-07-05-v1-8-portfolio-sandbox.md`](../superpowers/plans/2026-07-05-v1-8-portfolio-sandbox.md) | [`2026-07-05-v1-8-portfolio-sandbox.md`](superpowers/plans/2026-07-05-v1-8-portfolio-sandbox.md) | 7,793 / `1A09D938943D33516BBC9451584E1E0CE46DCF44367EEC72AC062538D38B4312` | 7,793 / `1A09D938943D33516BBC9451584E1E0CE46DCF44367EEC72AC062538D38B4312` |
+| [`docs/superpowers/specs/2026-07-05-v1-8-portfolio-sandbox-design.md`](../superpowers/specs/2026-07-05-v1-8-portfolio-sandbox-design.md) | [`2026-07-05-v1-8-portfolio-sandbox-design.md`](superpowers/specs/2026-07-05-v1-8-portfolio-sandbox-design.md) | 2,850 / `40011436625D352D8AABECDBD1F577C1ED6FF3EA0212F419229B4E971719CE75` | 2,850 / `40011436625D352D8AABECDBD1F577C1ED6FF3EA0212F419229B4E971719CE75` |
+
+原 implementation plan 共 18 個 checkbox，其中 2 個已勾、16 個未勾。配套 [V1.8 QA closeout](V1_8_PORTFOLIO_SANDBOX_CLOSEOUT_2026_07_05.md) 另記錄 service／virtual trace／inspection CLI 等交付與 39 項測試通過。兩份文件的證據邊界不同，本批不替原 plan 補勾；QA 工程測試不等於投資有效性、Portfolio optimizer、UI、券商執行或 production readiness。
+
+精確檔名引用盤點找到目前 Superpowers 主題導覽、Archive README、plan/spec manifest、歷史 Catalog／Index 與 plan 內自我引用；未找到程式、測試、腳本、排程或設定把這兩個 Markdown 路徑當成 consumer。歷史 Catalog／Index 的舊路徑由相容導引承接，沒有改寫歷史快照。Superpowers README 的 Portfolio／Watchlist 導覽、Archive README 與 manifest 已指向新位置並保留 QA 與原 checklist 判讀。DOC_COVERAGE_MAP 的權威邊界未變，故不修改 Map、Snapshot、Manual 或 dirty 的 DOCUMENTATION_INDEX。 Archive 兩份原件的 EOF 空白行為來源原文的一部分並照原 bytes 保留；staged `git diff --check` 僅提示這兩個 preserved EOF blank lines，沒有其他 whitespace 診斷。

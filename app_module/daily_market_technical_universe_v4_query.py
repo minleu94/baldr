@@ -40,6 +40,8 @@ from app_module.daily_market_technical_universe_v4_store import (
     DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS,
     DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_SEGMENTS,
     DailyMarketTechnicalUniverseV4Counts,
+    DailyMarketTechnicalUniverseV4Plan,
+    DailyMarketTechnicalUniverseV4Receipt,
     DailyMarketTechnicalUniverseV4StoreError,
     DailyMarketTechnicalUniverseV4StoreReader,
     DailyMarketTechnicalUniverseV4ParentReceiptReference,
@@ -280,7 +282,11 @@ def _bounded_text(value: object, maximum: int, code: str) -> str:
 
 
 def _method_rule_keys(state: DailyMarketTechnicalUniverseV4VerifiedState) -> tuple[str, ...]:
-    method = state.plan.to_dict().get("method_contracts")
+    return _method_rule_keys_from_plan_payload(state.plan.to_dict())
+
+
+def _method_rule_keys_from_plan_payload(plan: Mapping[str, Any]) -> tuple[str, ...]:
+    method = plan.get("method_contracts")
     if not isinstance(method, Mapping):
         _fail("technical_universe_v4_query_method_rules_invalid")
     rules = method.get("rules")
@@ -298,27 +304,35 @@ def _method_rule_keys(state: DailyMarketTechnicalUniverseV4VerifiedState) -> tup
 
 def _state_metadata(
     state: DailyMarketTechnicalUniverseV4VerifiedState,
+    *,
+    source_metadata: _ReadSessionSourceMetadata | None = None,
 ) -> dict[str, Any]:
+    if source_metadata is not None:
+        if not source_metadata.matches_state(state):
+            _fail("technical_universe_v4_read_session_metadata_binding_mismatch")
+        return source_metadata.as_state_metadata()
     plan = state.plan.to_dict()
-    cohort = state.plan.cohort
+    cohort = cast(Mapping[str, Any], plan["cohort"])
+    receipt = state.receipt.to_dict()
     clock = plan.get("source_clock_identity_sha256")
     method = plan.get("method_contracts_sha256")
+    rule_keys = _method_rule_keys_from_plan_payload(plan)
     return {
-        "generation_identity_sha256": state.plan.generation_identity_sha256,
-        "plan_identity_sha256": state.plan.identity_sha256,
-        "receipt_identity_sha256": state.receipt.identity_sha256,
-        "receipt_status": state.receipt.status,
-        "cohort_identity_sha256": cohort.cohort_identity_sha256,
+        "generation_identity_sha256": plan["generation_identity_sha256"],
+        "plan_identity_sha256": plan["plan_identity_sha256"],
+        "receipt_identity_sha256": receipt["receipt_identity_sha256"],
+        "receipt_status": receipt["status"],
+        "cohort_identity_sha256": cohort["cohort_identity_sha256"],
         "source_clock_identity_sha256": clock,
         "method_contracts_sha256": method,
-        "universe_id": cohort.universe_id,
-        "population_version": cohort.population_version,
-        "decision_date": cohort.decision_date.isoformat(),
-        "declared_count": len(cohort.declared_stock_codes),
-        "included_count": len(cohort.included_stock_codes),
-        "excluded_count": len(cohort.excluded_stock_codes),
-        "segment_count": len(state.plan.segments),
-        "method_rule_keys": list(_method_rule_keys(state)),
+        "universe_id": cohort["universe_id"],
+        "population_version": cohort["population_version"],
+        "decision_date": cohort["decision_date"],
+        "declared_count": len(cast(Sequence[object], cohort["declared_stock_codes"])),
+        "included_count": len(cast(Sequence[object], cohort["included_stock_codes"])),
+        "excluded_count": len(cast(Sequence[object], cohort["excluded_stock_codes"])),
+        "segment_count": len(cast(Sequence[object], plan["segments"])),
+        "method_rule_keys": list(rule_keys),
     }
 
 
@@ -368,8 +382,9 @@ def _validate_query_matches_state(
     *,
     root: Path,
     state: DailyMarketTechnicalUniverseV4VerifiedState,
+    source_metadata: _ReadSessionSourceMetadata | None = None,
 ) -> None:
-    expected = _state_metadata(state)
+    expected = _state_metadata(state, source_metadata=source_metadata)
     if (
         str(root) != query.store_output_root
         or expected["generation_identity_sha256"] != query.generation_identity_sha256
@@ -572,6 +587,7 @@ def _query_from_verified_state(
     *,
     root: Path,
     state: DailyMarketTechnicalUniverseV4VerifiedState,
+    source_metadata: _ReadSessionSourceMetadata | None = None,
     plan_sha256: str,
     receipt_sha256: str,
     rule_state_filters: Sequence[DailyMarketTechnicalRuleStateFilterV4],
@@ -589,7 +605,7 @@ def _query_from_verified_state(
         _fail("technical_universe_v4_query_cancelled")
     if combine_mode not in _COMBINE_MODES or type(descending) is not bool:
         _fail("technical_universe_v4_query_conditions_invalid")
-    metadata = _state_metadata(state)
+    metadata = _state_metadata(state, source_metadata=source_metadata)
     method_rule_keys = tuple(cast(list[str], metadata["method_rule_keys"]))
     filters = _normalize_filters(rule_state_filters, method_rule_keys)
     normalized_stocks = _normalize_stock_filter(stock_filter)
@@ -858,6 +874,112 @@ class _ReadSessionParentObservation:
     source_clock_identity_sha256: str
     method_contracts_sha256: str
     included_stock_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadSessionSegmentMetadata:
+    segment_index: int
+    cohort_identity_sha256: str
+    included_stock_codes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadSessionSourceMetadata:
+    """同一 exact read session 已核驗的不可變來源摘要；不單獨授予來源資格。"""
+
+    owner_token: object
+    read_session_identity_sha256: str
+    root: Path
+    state_owner: DailyMarketTechnicalUniverseV4VerifiedState
+    plan_owner: DailyMarketTechnicalUniverseV4Plan
+    receipt_owner: DailyMarketTechnicalUniverseV4Receipt
+    plan_body_json: str
+    receipt_body_json: str
+    plan_sha256: str
+    receipt_sha256: str
+    counts_owner: DailyMarketTechnicalUniverseV4Counts
+    parent_references_owner: tuple[
+        tuple[int, DailyMarketTechnicalUniverseV4ParentReceiptReference], ...
+    ]
+    missing_data_codes_owner: tuple[str, ...]
+    calculation_identity_sha256: str | None
+    generation_identity_sha256: str
+    plan_identity_sha256: str
+    receipt_identity_sha256: str
+    receipt_status: StoreStatus
+    cohort_identity_sha256: str
+    source_clock_identity_sha256: str
+    method_contracts_sha256: str
+    universe_id: str
+    population_version: str
+    decision_date: date
+    declared_count: int
+    included_count: int
+    excluded_count: int
+    included_stock_codes: tuple[str, ...]
+    exclusion_reasons: tuple[tuple[str, str], ...]
+    segment_metadata: tuple[_ReadSessionSegmentMetadata, ...]
+    method_rule_keys: tuple[str, ...]
+    candidate_tuple_owner: tuple[_ReadIndexCandidate, ...] | None = None
+    artifact_reference_tuple_owner: tuple[_ChildArtifactReference, ...] | None = None
+    unknown_rule_codes_owner: tuple[str, ...] | None = None
+    index_bytes: int | None = None
+
+    def matches_state(self, state: DailyMarketTechnicalUniverseV4VerifiedState) -> bool:
+        return (
+            state is self.state_owner
+            and state.plan is self.plan_owner
+            and state.receipt is self.receipt_owner
+            and state.plan.body_json is self.plan_body_json
+            and state.receipt.body_json is self.receipt_body_json
+            and state.counts is self.counts_owner
+            and state.segment_parent_references is self.parent_references_owner
+            and state.missing_data_stock_codes is self.missing_data_codes_owner
+            and state.calculation_identity_sha256 == self.calculation_identity_sha256
+        )
+
+    def matches_session(self, session: DailyMarketTechnicalUniverseV4ReadSession) -> bool:
+        return (
+            session._source_metadata is self
+            and session._source_metadata_token is self.owner_token
+            and session._root is self.root
+            and session._state is self.state_owner
+            and self.matches_state(session._state)
+            and session._state.plan is self.plan_owner
+            and session._state.receipt is self.receipt_owner
+            and session._plan_sha256 == self.plan_sha256
+            and session._receipt_sha256 == self.receipt_sha256
+            and session.read_session_identity_sha256 == self.read_session_identity_sha256
+            and session.source_counts is self.counts_owner
+            and session._missing_data_stock_codes is self.missing_data_codes_owner
+            and self.candidate_tuple_owner is not None
+            and session._candidates is self.candidate_tuple_owner
+            and self.artifact_reference_tuple_owner is not None
+            and session._artifact_references is self.artifact_reference_tuple_owner
+            and self.unknown_rule_codes_owner is not None
+            and session._unknown_rule_stock_codes is self.unknown_rule_codes_owner
+            and self.index_bytes is not None
+            and session.index_bytes == self.index_bytes
+        )
+
+    def as_state_metadata(self) -> dict[str, Any]:
+        return {
+            "generation_identity_sha256": self.generation_identity_sha256,
+            "plan_identity_sha256": self.plan_identity_sha256,
+            "receipt_identity_sha256": self.receipt_identity_sha256,
+            "receipt_status": self.receipt_status,
+            "cohort_identity_sha256": self.cohort_identity_sha256,
+            "source_clock_identity_sha256": self.source_clock_identity_sha256,
+            "method_contracts_sha256": self.method_contracts_sha256,
+            "universe_id": self.universe_id,
+            "population_version": self.population_version,
+            "decision_date": self.decision_date.isoformat(),
+            "declared_count": self.declared_count,
+            "included_count": self.included_count,
+            "excluded_count": self.excluded_count,
+            "segment_count": len(self.segment_metadata),
+            "method_rule_keys": list(self.method_rule_keys),
+        }
 
 
 def _read_index_rule_payload(rule: _ReadIndexRule) -> list[object]:
@@ -1753,6 +1875,7 @@ def _validate_read_session_material(
     *,
     root: Path,
     state: DailyMarketTechnicalUniverseV4VerifiedState,
+    source_metadata: _ReadSessionSourceMetadata | None = None,
     callback_segments: Sequence[int],
     parent_observations: Sequence[_ReadSessionParentObservation],
     candidates: Sequence[_ReadIndexCandidate],
@@ -1761,7 +1884,7 @@ def _validate_read_session_material(
     missing_data_codes: Sequence[str],
     unknown_rule_codes: Sequence[str],
 ) -> None:
-    metadata = _state_metadata(state)
+    metadata = _state_metadata(state, source_metadata=source_metadata)
     references = state.segment_parent_references
     expected_indices = tuple(index for index, _reference in references)
     if (
@@ -1771,8 +1894,17 @@ def _validate_read_session_material(
         or len(artifact_references) > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_MAX_DECLARED_STOCKS
     ):
         _fail("technical_universe_v4_read_session_segment_mismatch")
-    plan_cohort = state.plan.cohort
-    included_codes = plan_cohort.included_stock_codes
+    if source_metadata is not None:
+        included_codes = source_metadata.included_stock_codes
+        segment_metadata = source_metadata.segment_metadata
+        expected_segment_count = len(segment_metadata)
+        receipt_status = source_metadata.receipt_status
+    else:
+        plan_cohort = state.plan.cohort
+        included_codes = plan_cohort.included_stock_codes
+        segment_metadata = ()
+        expected_segment_count = len(state.plan.segments)
+        receipt_status = cast(StoreStatus, state.receipt.status)
     if (
         len(processed_codes) != state.counts.processed_count
         or tuple(processed_codes) != included_codes[:len(processed_codes)]
@@ -1801,22 +1933,31 @@ def _validate_read_session_material(
         reference = references_by_index.get(observation.segment_index)
         if reference is None:
             _fail("technical_universe_v4_read_session_parent_mismatch")
-        segment = state.plan.segment_cohort(observation.segment_index)
+        if source_metadata is not None:
+            if not 0 <= observation.segment_index < len(segment_metadata):
+                _fail("technical_universe_v4_read_session_parent_mismatch")
+            segment_metadata_item = segment_metadata[observation.segment_index]
+            segment_cohort_identity_sha256 = segment_metadata_item.cohort_identity_sha256
+            segment_included_stock_codes = segment_metadata_item.included_stock_codes
+        else:
+            segment_cohort = state.plan.segment_cohort(observation.segment_index)
+            segment_cohort_identity_sha256 = segment_cohort.cohort_identity_sha256
+            segment_included_stock_codes = segment_cohort.included_stock_codes
         if (
             observation.parent_plan_identity_sha256 != reference.parent_plan_identity_sha256
             or observation.parent_plan_sha256 != reference.parent_plan_sha256
             or observation.parent_receipt_identity_sha256 != reference.parent_receipt_identity_sha256
             or observation.parent_receipt_sha256 != reference.parent_receipt_sha256
-            or observation.cohort_identity_sha256 != segment.cohort_identity_sha256
+            or observation.cohort_identity_sha256 != segment_cohort_identity_sha256
             or observation.source_clock_identity_sha256 != metadata["source_clock_identity_sha256"]
             or observation.method_contracts_sha256 != metadata["method_contracts_sha256"]
-            or observation.included_stock_codes != segment.included_stock_codes
+            or observation.included_stock_codes != segment_included_stock_codes
         ):
             _fail("technical_universe_v4_read_session_parent_mismatch")
-    if state.receipt.status == "complete" and (
+    if receipt_status == "complete" and (
         state.counts.pending_count != 0
         or state.counts.processed_count != state.counts.included_count
-        or len(references) != len(state.plan.segments)
+        or len(references) != expected_segment_count
     ):
         _fail("technical_universe_v4_query_false_complete")
 
@@ -1825,23 +1966,24 @@ def _read_session_source_payload(
     *,
     root: Path,
     state: DailyMarketTechnicalUniverseV4VerifiedState,
+    source_metadata: _ReadSessionSourceMetadata | None = None,
     plan_sha256: str,
     receipt_sha256: str,
     artifact_references: Sequence[_ChildArtifactReference],
     index_count: int,
     index_bytes: int,
 ) -> dict[str, Any]:
-    metadata = _state_metadata(state)
+    metadata = _state_metadata(state, source_metadata=source_metadata)
     return {
         "schema": "daily-market-technical-universe-read-session.v1",
         "store_output_root": str(root),
-        "generation_identity_sha256": state.plan.generation_identity_sha256,
-        "plan_identity_sha256": state.plan.identity_sha256,
+        "generation_identity_sha256": metadata["generation_identity_sha256"],
+        "plan_identity_sha256": metadata["plan_identity_sha256"],
         "plan_sha256": plan_sha256,
-        "receipt_identity_sha256": state.receipt.identity_sha256,
+        "receipt_identity_sha256": metadata["receipt_identity_sha256"],
         "receipt_sha256": receipt_sha256,
-        "receipt_status": state.receipt.status,
-        "cohort_identity_sha256": state.plan.cohort.cohort_identity_sha256,
+        "receipt_status": metadata["receipt_status"],
+        "cohort_identity_sha256": metadata["cohort_identity_sha256"],
         "source_clock_identity_sha256": metadata["source_clock_identity_sha256"],
         "method_contracts_sha256": metadata["method_contracts_sha256"],
         "calculation_identity_sha256": state.calculation_identity_sha256,
@@ -1868,6 +2010,69 @@ def _read_session_source_payload(
     }
 
 
+def _read_session_source_metadata_from_validated_payloads(
+    *,
+    root: Path,
+    state: DailyMarketTechnicalUniverseV4VerifiedState,
+    plan_payload: Mapping[str, Any],
+    receipt_payload: Mapping[str, Any],
+    plan_sha256: str,
+    receipt_sha256: str,
+    owner_token: object,
+) -> _ReadSessionSourceMetadata:
+    """建立 builder 私有摘要；呼叫前 plan/receipt payload 必須已嚴格驗證。"""
+
+    cohort = cast(Mapping[str, Any], plan_payload["cohort"])
+    included_codes = tuple(cast(Sequence[str], cohort["included_stock_codes"]))
+    exclusion_reasons_payload = cast(Mapping[str, str], cohort["exclusion_reasons"])
+    segment_payloads = cast(Sequence[Mapping[str, Any]], plan_payload["segments"])
+    segment_metadata = tuple(
+        _ReadSessionSegmentMetadata(
+            segment_index=index,
+            cohort_identity_sha256=cast(str, segment["cohort_identity_sha256"]),
+            included_stock_codes=included_codes[
+                cast(int, segment["included_start"]):cast(int, segment["included_stop"])
+            ],
+        )
+        for index, segment in enumerate(segment_payloads)
+    )
+    return _ReadSessionSourceMetadata(
+        owner_token=owner_token,
+        read_session_identity_sha256="",
+        root=root,
+        state_owner=state,
+        plan_owner=state.plan,
+        receipt_owner=state.receipt,
+        plan_body_json=state.plan.body_json,
+        receipt_body_json=state.receipt.body_json,
+        plan_sha256=plan_sha256,
+        receipt_sha256=receipt_sha256,
+        counts_owner=state.counts,
+        parent_references_owner=state.segment_parent_references,
+        missing_data_codes_owner=state.missing_data_stock_codes,
+        calculation_identity_sha256=state.calculation_identity_sha256,
+        generation_identity_sha256=cast(str, plan_payload["generation_identity_sha256"]),
+        plan_identity_sha256=cast(str, plan_payload["plan_identity_sha256"]),
+        receipt_identity_sha256=cast(str, receipt_payload["receipt_identity_sha256"]),
+        receipt_status=cast(StoreStatus, receipt_payload["status"]),
+        cohort_identity_sha256=cast(str, cohort["cohort_identity_sha256"]),
+        source_clock_identity_sha256=cast(str, plan_payload["source_clock_identity_sha256"]),
+        method_contracts_sha256=cast(str, plan_payload["method_contracts_sha256"]),
+        universe_id=cast(str, cohort["universe_id"]),
+        population_version=cast(str, cohort["population_version"]),
+        decision_date=_parse_date(
+            cohort["decision_date"], "technical_universe_v4_query_date_invalid"
+        ),
+        declared_count=len(cast(Sequence[object], cohort["declared_stock_codes"])),
+        included_count=len(included_codes),
+        excluded_count=len(cast(Sequence[object], cohort["excluded_stock_codes"])),
+        included_stock_codes=included_codes,
+        exclusion_reasons=tuple(sorted(exclusion_reasons_payload.items())),
+        segment_metadata=segment_metadata,
+        method_rule_keys=_method_rule_keys_from_plan_payload(plan_payload),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class DailyMarketTechnicalUniverseV4ReadSession:
     """一次完整 strict read 建立的固定版本緊湊索引。
@@ -1888,6 +2093,12 @@ class DailyMarketTechnicalUniverseV4ReadSession:
     index_bytes: int
     read_session_identity_sha256: str
     _seal: object = field(repr=False, compare=False)
+    _source_metadata_token: object | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _source_metadata: _ReadSessionSourceMetadata | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if self._seal is not _READ_SESSION_SEAL:
@@ -1898,6 +2109,21 @@ class DailyMarketTechnicalUniverseV4ReadSession:
             or self.index_bytes > DAILY_MARKET_TECHNICAL_UNIVERSE_V4_READ_SESSION_MAX_INDEX_BYTES
         ):
             _fail("technical_universe_v4_read_session_index_invalid")
+
+    def _source_metadata_for_use(self) -> _ReadSessionSourceMetadata | None:
+        metadata = self._source_metadata
+        token = self._source_metadata_token
+        if metadata is None and token is None:
+            # dataclasses.replace 不複製 init=False 的摘要；這類物件只走原嚴格路徑。
+            return None
+        if (
+            metadata is None
+            or token is None
+            or metadata.owner_token is not token
+            or not metadata.matches_session(self)
+        ):
+            _fail("technical_universe_v4_read_session_metadata_binding_mismatch")
+        return metadata
 
     @property
     def store_output_root(self) -> str:
@@ -1932,6 +2158,7 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         return _query_from_verified_state(
             root=self._root,
             state=self._state,
+            source_metadata=self._source_metadata_for_use(),
             plan_sha256=self._plan_sha256,
             receipt_sha256=self._receipt_sha256,
             rule_state_filters=rule_state_filters,
@@ -1948,7 +2175,12 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         if not isinstance(query, DailyMarketTechnicalUniverseV4Query):
             return False
         try:
-            _validate_query_matches_state(query, root=self._root, state=self._state)
+            _validate_query_matches_state(
+                query,
+                root=self._root,
+                state=self._state,
+                source_metadata=self._source_metadata_for_use(),
+            )
         except DailyMarketTechnicalUniverseV4QueryError:
             return False
         return query.plan_sha256 == self._plan_sha256 and query.receipt_sha256 == self._receipt_sha256
@@ -2137,8 +2369,14 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         if _is_cancelled(cancel_callback):
             _fail("technical_universe_v4_query_cancelled")
         rows = tuple(page_rows[code] for code in expected_codes)
-        cohort = self._state.plan.cohort
-        included_codes = cohort.included_stock_codes
+        source_metadata = self._source_metadata_for_use()
+        if source_metadata is None:
+            cohort = self._state.plan.cohort
+            included_codes = cohort.included_stock_codes
+            exclusion_reasons = cohort.exclusion_reasons
+        else:
+            included_codes = source_metadata.included_stock_codes
+            exclusion_reasons = source_metadata.exclusion_reasons
         processed_count = self._state.counts.processed_count
         page = DailyMarketTechnicalUniverseV4Page(
             query=query,
@@ -2150,7 +2388,7 @@ class DailyMarketTechnicalUniverseV4ReadSession:
             pending_stock_codes=included_codes[processed_count:],
             missing_data_stock_codes=self._missing_data_stock_codes,
             unknown_rule_stock_codes=self._unknown_rule_stock_codes,
-            exclusion_reasons=cohort.exclusion_reasons,
+            exclusion_reasons=exclusion_reasons,
         )
         return page, captured
 
@@ -2247,6 +2485,7 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         return _query_from_verified_state(
             root=self._root,
             state=self._state,
+            source_metadata=self._source_metadata_for_use(),
             plan_sha256=self._plan_sha256,
             receipt_sha256=self._receipt_sha256,
             rule_state_filters=original.rule_state_filters,
@@ -2800,17 +3039,32 @@ class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
             _fail("technical_universe_v4_read_session_root_mismatch")
         if type(state) is not DailyMarketTechnicalUniverseV4VerifiedState:
             _fail("technical_universe_v4_read_session_store_state_invalid")
+        plan_payload = state.plan.to_dict()
+        receipt_payload = state.receipt.to_dict()
+        plan_sha256 = _sha256_bytes(state.plan.body_json.encode("utf-8"))
+        receipt_sha256 = _sha256_bytes(state.receipt.body_json.encode("utf-8"))
         if (
-            state.plan.generation_identity_sha256 != self.generation_identity_sha256
-            or state.plan.identity_sha256 != self.plan_identity_sha256
-            or _sha256_bytes(state.plan.to_json().encode("utf-8")) != self.plan_sha256
-            or state.receipt.identity_sha256 != self.receipt_identity_sha256
-            or _sha256_bytes(state.receipt.to_json().encode("utf-8")) != self.receipt_sha256
+            plan_payload["generation_identity_sha256"] != self.generation_identity_sha256
+            or plan_payload["plan_identity_sha256"] != self.plan_identity_sha256
+            or plan_sha256 != self.plan_sha256
+            or receipt_payload["receipt_identity_sha256"] != self.receipt_identity_sha256
+            or receipt_sha256 != self.receipt_sha256
         ):
             _fail("technical_universe_v4_read_session_store_pin_mismatch")
+        metadata_token = object()
+        source_metadata = _read_session_source_metadata_from_validated_payloads(
+            root=root,
+            state=state,
+            plan_payload=plan_payload,
+            receipt_payload=receipt_payload,
+            plan_sha256=plan_sha256,
+            receipt_sha256=receipt_sha256,
+            owner_token=metadata_token,
+        )
         _validate_read_session_material(
             root=root,
             state=state,
+            source_metadata=source_metadata,
             callback_segments=self._callback_segments,
             parent_observations=self._parent_observations,
             candidates=self._candidates,
@@ -2839,6 +3093,7 @@ class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
         source_payload = _read_session_source_payload(
             root=root,
             state=state,
+            source_metadata=source_metadata,
             plan_sha256=self.plan_sha256,
             receipt_sha256=self.receipt_sha256,
             artifact_references=self._artifact_references,
@@ -2850,21 +3105,34 @@ class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
         session_identity = _sha256_json(source_payload)
         if self._is_cancelled():
             _fail("technical_universe_v4_query_cancelled")
+        candidate_tuple = tuple(self._candidates)
+        artifact_reference_tuple = tuple(self._artifact_references)
+        unknown_rule_codes_tuple = tuple(sorted(self._unknown_rule_codes))
+        source_metadata = dataclass_replace(
+            source_metadata,
+            read_session_identity_sha256=session_identity,
+            candidate_tuple_owner=candidate_tuple,
+            artifact_reference_tuple_owner=artifact_reference_tuple,
+            unknown_rule_codes_owner=unknown_rule_codes_tuple,
+            index_bytes=self._index_byte_count[0],
+        )
         session = DailyMarketTechnicalUniverseV4ReadSession(
             _root=root,
             _state=state,
             _plan_sha256=self.plan_sha256,
             _receipt_sha256=self.receipt_sha256,
-            _candidates=tuple(self._candidates),
-            _artifact_references=tuple(self._artifact_references),
+            _candidates=candidate_tuple,
+            _artifact_references=artifact_reference_tuple,
             _missing_data_stock_codes=state.missing_data_stock_codes,
-            _unknown_rule_stock_codes=tuple(sorted(self._unknown_rule_codes)),
+            _unknown_rule_stock_codes=unknown_rule_codes_tuple,
             index_bytes=self._index_byte_count[0],
             read_session_identity_sha256=session_identity,
             _seal=_READ_SESSION_SEAL,
         )
         if self._is_cancelled():
             _fail("technical_universe_v4_query_cancelled")
+        object.__setattr__(session, "_source_metadata_token", metadata_token)
+        object.__setattr__(session, "_source_metadata", source_metadata)
         self._built_session = session
         return session
 

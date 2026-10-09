@@ -839,17 +839,26 @@ def test_selection_cancel_during_materialization_returns_no_partial_page(
     query = read_session.create_query(sort_key="stock_code", page_size=17)
     selection = read_session.select_stock_codes(query)
     cancelled = False
-    original_read = DailyMarketTechnicalSnapshotV4Repository.read_exact
+    child_read_count = 0
+    original_read = query_module._read_session_child_snapshots
 
-    def cancel_after_exact_child(self: Any, *args: Any, **kwargs: Any) -> Any:
-        nonlocal cancelled
-        result = original_read(self, *args, **kwargs)
+    def cancel_after_exact_child(
+        reference: Any,
+        *,
+        selected_stock_codes: Any,
+        cancel_callback: Any,
+    ) -> Any:
+        nonlocal cancelled, child_read_count
+        result = original_read(
+            reference,
+            selected_stock_codes=selected_stock_codes,
+            cancel_callback=cancel_callback,
+        )
+        child_read_count += 1
         cancelled = True
         return result
 
-    monkeypatch.setattr(
-        DailyMarketTechnicalSnapshotV4Repository, "read_exact", cancel_after_exact_child
-    )
+    monkeypatch.setattr(query_module, "_read_session_child_snapshots", cancel_after_exact_child)
     with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as interrupted:
         read_session.read_selection_page(
             selection,
@@ -858,6 +867,7 @@ def test_selection_cancel_during_materialization_returns_no_partial_page(
             cancel_callback=lambda: cancelled,
         )
     assert interrupted.value.code == "technical_universe_v4_query_cancelled"
+    assert child_read_count == 1
 
 
 def test_selected_rows_materializer_returns_from_verified_proof_path(

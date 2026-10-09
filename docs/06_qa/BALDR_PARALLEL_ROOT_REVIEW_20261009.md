@@ -644,3 +644,254 @@ P01 v3 root獨立audit探針pass：已精確傳EXPECTED_PYTHON時audit四欄str/
 - Root 重算 supervisor18682415255318eb70e9ebecba2f0a891181bef02923b8370c11686638aed845／test982ff43fae69065204e998ef829b6a10dc2985f84d55fa04f423c5b52482bd66與freeze一致。第一次錯傳C:/t作fixture parent，owned-directory檢查即拒絕，未進fixture；拒絕紀錄保存，不弱化guard。
 - 改正為工具自有QA parent後，Root native獨立exit0，root_selftest_20261009_a/receipt.json：short parity、306leaf成功／舊helper WinError3、junction拒絕、primary與cleanup保留、foreign registry不覆蓋、原函式還原及sourcepins起訖相同。SQL／producer／target-entry／query0，並非完整查詢接受。
 - D仍指向已有C失敗attempt的targetroot；已要求新E僅retarget到全新同SHA fixedtarget，先最小diff/manifest與prelaunch。完整22cases加reopen不縮，尚未授新fullquery，不重跑有效provider或guard-only。
+
+### v6 完整分頁接線初審與 H7 收尾觀察校正
+
+- Root 讀 v6 WIP serializer及20頁loop：wrapper/inner exact type、metadata/query spec、inner payload rows與逐頁完整counts／4segments／50rows／orderedcodes核驗已接入公開API，cross-segment probe改真row。已要求final tests涵蓋非0page合法query身份與foreign spec／metadata／empty負例；尚未凍結或native，不將source等同通過。
+- Root 直接讀H7 focused d末項：keeper terminal hook先恢復builtin，固定E最後才組summary，因此最末aliases_after_router_cleanup_are_base_guard=False符合注入後置狀態；finish當下另有fixed guard identity觀察。已要求保留原欄false及scope說明，不修改fixedE、不要求已恢復builtin後仍是guard。Main proof與E no-Main proof分開維持。
+
+### F02 E retarget 中央審核／條件續驗授權
+
+- Root 獨立 diff D→E 僅TARGET_PATH一行，E supervisor2d9da0a7cb9b2871f8edd5fb8019eb3f2b4d42d30d0bdd16e031aaeddf89a966；fresh target僅84223B固定script。Owner首prelaunch因把6個inventory分類誤當8個protected paths拒絕，原封套保留；两parent在segments清冊範圍，分類與保護路徑不可混同。
+- 授final plan/manifest與新v2 prelaunch全true、sources/pins未變且freshroot只有同SHA target後ONE fullquery native：1200s/cleanup20/stream4MiB/精確三角色Job，producer0/bundlewriter1/SQLraw1scope5，完整22cases與canonical reopen、Decimal oracle及8roots前後核驗維持。靜態13/14欄仍標stale，實際22/23另核；不重跑provider或guard-only。
+- Root 讀 H7 focused e原log：1 passed／0.76秒；精確E接縫已通過，仍待final回歸／pins及Root重驗才授Main。此非原2382或EXE驗收。
+
+### H7 fixed 中央回歸重驗／測試順序限制
+
+- Root fixed四測26 passed／1.33秒／exit0，log root_final_regression_20261009_c.log。第一次JUnit輸出被fixed guard拒絕；第二次禁JUnit但industry fixture在守衛接縫之後建tmp遭拒，25pass/1error；第三次純fixture測試先跑、alias guard接縫最後跑才通過。保留三次結果，不弱化守衛；文件需明示順序，不能把未列順序的wildcard視為穩定命令。
+- H7 child0fe4fc2c0274bae7fa7bf21e7030a1c75365c7f00b32a8393e3c5308b7bf5026與manifest09502b34a4c18ca07f18e7ade6388bc7313c4ac94ae7d82ad04713efa741b4cd已讀回；準備新case/Main命令與全pins，Root核完再授ONE Main。原H20／EXE尚未接受。
+- F02 E owner已持唯一session94749 fullrun_001，沿同handle至terminal；Root不重啟或代poll。prelaunch002 owner報13checks全true、來源digest14be4377…93695；完整matrix尚待結果。
+
+### H7 全pins通過／Main續驗與 v6 DTO 中央重驗
+
+- Root 獨立核H7 manifest118 pin records／77 unique paths SHA+size全匹配，root_final_pins_20261009_a.json無failure。授固定H7 ONE Main：啟動前freshcase absent/pins維持、Main300/preparer120/cleanup20、原D資料禁讀寫、source strict、Watchlist COW與Job持續保護。尚待真Window／旅程／正常關閉，不以合成1234宣稱原684接受。
+- Root native fixed v6 DTO tests8 passed／0.86秒／exit0，JUnit root_v6_dto_20261009_a.xml；純測未執行20頁loop，不是完整1000 runtime接受。
+- Root 直接讀 E target failed/full_population_pages_and_oracles，先前normal_f17_exact_open phase已走過。source核target oracle只接受rules list，而產品_RULES為tuple／payload deepcopy保留tuple；正常typed contract遭QA誤拒，不代表rules缺失。已要求新immutable QA oracle候選按真tuple/list型別保持Decimal語義，先真payload正負例／diff/pins，原E與target保留不改，不重跑。
+
+### v6 fixed 完整20頁續驗授權
+
+- Root 重算controller2f19c3f309d27ea360c2be8931d7dd8f9d5625ffcb624cb20ce8a605584caeb9／manifestcf4a4b17804fafd1477938792d8aab2a08003ea400c67876fa83f8f9c8bfda94／test579e33b3b8458207db14d48430e4c511d284c1d0c2c444365ac8f89e92f008c7與freeze一致。讀完整20頁loop、1000唯一同序、page5真S00256及snapshot/source/date欄位，並核實pinned parent Row公開欄存在。
+- 授新static input preflight通過且sources/store/pins未變後ONE v6 native完整讀取：600s/cleanup10/reserve50、精確三角色Job/no breakaway、原D／SQL／network／producer禁止，20公開page讀取範圍不縮。owner持唯一handle至terminal，不重啟。成功後另接三操作30samples效能，仍非EXE／真人接受。
+
+### v6 static 源碼清冊額外bytecode處理
+
+- Root 讀 v6 static log：failed_preserved_preflight，controller／manifest仍匹配，network／SQL／subprocess0，未啟worker。Owner核出extraction4484對基線4465，多19個由其純DTOpytest產生的pyc；不能放寬清冊接受。
+- 已要求只搬精確19檔至自有QA留存，先核relativepath／size／SHA及來源根，保留原程式與基線inventory，不recursive刪資料。完整4465／contentSHA恢復後重做static，通過沿既有ONE v6 native授權；後續使用-B/PYTHONDONTWRITEBYTECODE。Root獨立DTO命令已用-B。
+
+### H7 初始化目錄守衛 source 核對／v6 static恢復
+
+- Root 直接讀fixed guard1010：既有plain directory且位於qa_root或精確existing_dirs時，Path.mkdir(exist_ok=True)只計noop；config.resolve_output_path344卻無條件mkdir。已要求新QA fixture在guard安裝／existing_dirs清點前預建精確synthetic output recommendation/runs，不改guard或wildcard，不寫原D。H7原失敗保留，MainWindow旅程仍未通過。
+- Root直接讀v6 static_preflight_aba5ff02347a：passed_static_inputs_only_not_runtime_qualified，controller2f19…caeb9／manifestcf4a…bfda94相符，network/SQL/subprocess0。Owner核原4465files/112dirs/0pyc及原store恢復；已沿既有ONE full20page授權接回native，尚待唯一handle與terminal。
+
+### P01 v6 完整讀取終態中央核驗／H7 fixture 診斷
+
+- Root 直接讀 C:/t/p01cur_rd_8b70c27f9c 的 supervisor_result.json 與 child_result.json：監督器 passed_p01_exact_read_only_not_performance_accepted、child passed／returncode0；完整20頁、每頁50筆、1000碼同序，跨段S00256位於page5／offset6。來源、資料庫與sealed store前後一致；Job已清空並完成收尾。這只證明完整讀取，不證效能或UI接受。
+- 下一效能候選保留原5個cold worker與1個warm worker、換頁／篩選／全域排序各30次及300ms門檻；篩選5-case與排序6-key schedule維持。Owner先交固定候選與差異供中央審核，尚未啟動效能矩陣。
+- H7 owner核兩個拒絕路徑為合成output/backtest/watchlists與output/recommendation/runs，fixture均未預建。新H8只精確補這兩個目錄並重算既有目錄清冊；不修改固定守衛或產品來源。H7主錯與次要收尾錯保留，MainWindow仍未完成建立。
+
+### F02 F 終態中央讀取與診斷缺口
+
+- Root 直接讀新target attempt_2d08229f318442ca/acceptance_receipt.json：failed_phase為full_population_pages_and_oracles，error_type為AssertionError，error為空。固定target的exception handler只保存type與str(exc)，沒有traceback；該phase內有多處逐股MA、Decimal ratio、state及missing-row bare assert，現有收據不能唯一定位失敗行。
+- 保留F唯一handle41683終態exit1及原收據，不重跑。下一候選只加合成資料的traceback／股碼／observed／expected診斷，不改oracle公式、期望集合、完整22cases或排序。正常來源開啟與先前list/tuple契約通過不可當本次完整矩陣通過。
+
+### P01 效能範圍 source 審查
+
+- Root 讀目前query.py的_matching_candidates與_materialize_page：全域篩選排序使用compact candidates；真正換頁仍依artifact讀取_selected child snapshots，重建row並核snapshot/source/sort identity。下一矩陣計時必須包含這條真materialization路徑，不能只量selection index。
+- 重讀artifact是否為主成本仍只是待驗假設，沒有profile證據。若完整p95仍超300ms，須用實測profile決定修改；不可為降耗省略來源變動與identity驗證。
+
+### F02 ratio 型別 source 證據
+
+- Root 讀MA query模組323–330：DailyMarketTechnicalMaAlignmentRuleFactV1.ratio為str或None，表示canonical Decimal字串；parser318也經_decimal_text保留字串。F target929直接傳此ratio給_assert_volume_ratio_matches_raw，而helper313將其直接與Decimal oracle結果比較。非空字串與Decimal不相等，因此這條QA比對存在確定的型別錯誤。
+- 原F收據沒有traceback，仍不能把這個source錯誤說成唯一實際失敗行。已要求owner核固定來源與實際DTO契約，再以嚴格型別／finite／canonical檢查後轉Decimal做相同oracle比較，新增真typed DTO正負例與bounded traceback；計算公式、精度、完整矩陣與期望集合不改。
+
+### H8 目錄補件中央原生重驗
+
+- H8 preparer497d4d8de1d51828bcf0da3a763eaebb2b36a46cdd5c206e5d0d4babe9f61533與test a49d6f6ba0e4ed224834185099f384ecc63a0a51fd6387ab27b77cf2cedf937e已固定；Root原生核SHA一致後在全新C:/t/h20-h8-root-outputdirs-20261009-a獨立跑industry schema檔，2 passed／1.85秒／exit0，-B及cacheprovider停用。
+- 新測試核12個精確output paths、全部父目錄、二次呼叫inode集合不變及_existing_directory_manifest精確清冊。Owner sandbox的Path.resolve WinError5失敗封套保留；原生通過只支持fixture目錄與schema，不支持installed guard no-op或Main旅程。摘要收據root_h8_outputdirs_20261009_a.json，完整候選仍待final static與manifest審核。
+
+### H8 final 中央核驗與唯一 Main 續驗授權
+
+- 第一份static因ast.unparse單引號與expected雙引號直接字串比較而false negative；原收據保留。修正為兩側ast.dump(include_attributes=False)，精確12paths與順序不變；新staticreceipt327b262aee67024fb5811b1bf6bb97d46a69220ac8f40ef39de4e33a17aae25d已中央直接讀8checks全passed。
+- H8 manifest daaef2fed9ab69299c291983e6f60ab12ae839100298b6ae9ba1a9eb0f949283；H7→H8清冊2b90624d8505c179ec3e872eb3ccbe69f484311aab49c0078b5d17761996727f、diff9d91b60bc91b4daa728b5cbfeba0e12672a5ce3a4ae6b8845029815727a8e8e5均中央核SHA。Root實讀13檔兩版共26筆SHA/size全匹配，僅preparer/static/test改變，其餘controller/child/guard10檔不變。
+- 授新case C:/t/h20dual_main_integration_candidate_20261009_h8，fresh path與final pins再核後ONE native Main：fixture120s/Main300s/cleanup20、原guard與原資料禁止、完整旅程與市場/H20收尾維持。Owner持唯一handle至terminal，不重跑已通純測。尚無Main或原2382/EXE接受。
+
+### F02 G ratio 與失敗診斷中央獨立測試
+
+- Root正常執行G test_failure_diagnostic.py（-Xutf8 -B -I）exit0；target4a6a6b8a9d8552d5ceb1c80bab080e999b08a9b8d08a53bf2099ca8fe3bf5091。真RuleFact數字字串正例、None及錯誤型別/finite/canonical/精度/不匹配負例通過；原formula/sort/expected/_run_case差異只增加failure hook的parity檢查通過。
+- 空訊息合成AssertionError的857bytes診斷保存function/line與1257、expected match、observed unknown；100k local截斷且16KiB上限核驗。這只證QA helper/DTO契約，未跑G full matrix，不能取代F原失敗或22cases/reopen接受。
+
+### F02 G final 差異核對與條件完整續驗
+
+- Root讀F→G supervisor diff，僅新target路徑與target SHA兩常數；實檔supervisor c4028dd9826a1eebd9dea266ed1b58fb76fd81a6578c0f3cdfe4e3ac51c5051b／diff a4f58088637187251aefe51ce1c7b54f0f5f5a9c96551a7ba2fb7eb9f02c9eac。初candidate manifest這兩個SHA含空格，已要求保存原manifest並由實檔機械重算所有SHA/size，格式及實檔一致才繼續。
+- final pins修正、8protected paths／6inventory categories新prelaunch全通過、fresh G root僅fixed target後，授ONE native fullquery：1200s/cleanup20/streams4MiB/exact三角色、producer0/bundlewriter1/SQLraw1scope5、22cases與canonical reopen／Decimal oracle／完整postflight維持。Owner唯一handle至terminal，不重跑已通純測；outer identity或qualification仍false則明示未接受，不能僅因target成功宣稱完整通過。
+
+### H8 Main 唯一終態與初始化漏件
+
+- Owner唯一handle4808已terminal exit1。Root直接讀controller_exit_code與synthetic_main_result：MainWindow._setup_ui→BacktestView→PresetService→resolve_output_path('backtest/presets')在fixed mkdir守衛被拒；mkdir_denied1／noop29，Main尚未建成，secondary router_cleanup_deferred_without_terminal_owner_proof保留。Start-Process後wrapper誤用唯讀$PID的WriteError另記，不當作產品主錯、不重啟。
+- Root讀fixed artifact PresetService48–49：constructor只resolve與mkdir，未寫preset。下一fixture須沿fixed Main/_setup_ui完整同步constructor盤點必要OUTPUT_ROOT具名目錄後補差集，不逐一猜測或開wildcard。其他literal backtest/versions、recommendation/profiles須核實實際初始化用途；optional ResearchRun schema拒絕若未阻Main則保留可見警告，不為其放寬守衛。
+
+### F02 G 新終態與 Root 型別判斷更正
+
+- G唯一handle26696已exit1，target attempt_38aa46b5101b4ae4。Root直接讀新diagnostic：code1000，_run_case1156→_assert_volume_ratio_matches_raw313→_canonical_rule_ratio_decimal323，volume_rule_ratio_dto_text_invalid。expected與observed序列化數值皆2.777777777777777777777777778；診斷未記exact runtime type，不以字串化顯示推斷型別。
+- Root撤回上方「此實際邊界存在確定字串/Decimal錯誤」的判斷：先前只讀compact RuleFact，但真F17外層ResultRow.technical_row（official_disposition_ma_query_v1:900）是DailyMarketTechnicalParentV4Row；其rule（parent_v4_query:889）回DailyMarketTechnicalRuleEvidenceV4，ratio（feature_snapshot_v4:273）為Decimal或None。G str-only parser基於錯DTO新增，造成新的QA拒絕；純compact DTO測試通過不能證明這條實際查詢邊界。
+- 保留G新失敗及原F空訊息失敗，下一候選按真ParentV4Row/evidence契約恢復Decimal或None比對、保留診斷，不放寬成兩種任意型別、不改原oracle公式。原F的bareassert仍未定位，不能把G新錯誤當原F原因。已向使用者更正並交owner真typed DTO測試。
+
+### F02 G 外層兩項 false 中央只讀診斷
+
+- Root直接讀G worker_marker.write_guard與固定supervisor：fdopen issued/consumed/audit皆0、denial0、capability inactive；full validator以allow_unused=False要求issued>0。此continuation不產製技術store，但外層沿全產製mode判unused writer不合格，原false保留。
+- MPL path精確綁該attempt/application_state/matplotlib，bound/env為true，plain_directory_exists=false；full分支要求plain目錄存在，因此false。沒有證據證明本條query曾需要matplotlib，不能把cache目錄缺失稱為source corruption；也不能直接將整體標pass。
+- 新supervisor若修正須獨立diff及負例審核：只對固定不產製技術store的continuation允許unused writer，仍核註冊來源/0denial/無active/producer0/store unchanged；MPL採精確synthetic空目錄或嚴格unused判讀，不接受foreign/reparse/env mismatch。不修改原G收據或放寬全部full mode。完整query成功仍待證。
+
+### H9 具名初始化目錄中央重驗
+
+- Root核fixed RecommendationView918與_create_profile_service2588→RecommendationProfileService188／_resolve_profile_dir588，確認recommendation/profiles在同步初始化鏈；BacktestView173的versions與H8實錯presets已核。H9只補這三個leaf，總15targets；既有12不變，不新增preset/profile檔案。
+- Root原生獨立核preparer d23c461766bd04fcee74c68537b8e8920dc3bf9faae5d1a253262e08aa6bf25b／test6bcb7226e2d7a1c0e138a1c9232dd9c891f3dc0c48b4bf81f676f8244a9c0a86後跑2tests，2 passed／0.82秒／exit0；新隔離basetemp C:/t/h20-h9-root-outputdirs-20261009-a、-B及cache停用，root_h9_outputdirs_20261009_a.json保存摘要。這仍只驗fixture/schema，final static及Main旅程待續。
+
+### H9 final 核驗與續驗／P01完整矩陣純契約
+
+- Root直接核H9 final清冊13個兩版files SHA共26筆全匹配、僅preparer/static/test變；delta a760a2e09317c3ad5defbcd0865734889d4801e4ebf7d79c02c758a36ea5f0bb、manifestd816e62599aa372cb56c8b3faea7a158486d04b20c43fbc1f870662a18fddc52、diff2f0ed1370704b342ac101c6cb00b7857b34cd318f9b92e386ba3265d9f59d51f實檔一致。static9/9直接核passed；授fresh H9 case與final pins再核後ONE native Main，fixture120/Main300/cleanup20，controller/child/guard不變，原限制與完整收尾維持。
+- P01矩陣controller e9bb7cefd786a11fca4d751a253a0619887c381405f7307f4c7d8f96bd5f47f9、aggregator3305f28669bac25124e65f2a29f1aa3eae4f1253c1fcc2f6e793543b441c5111、test4502ed2c5f99896a36abb64a28823067e6416c967f13bc8af81cb54b197ad489已固定。Root核三SHA後獨立13 passed／1.08秒／exit0，-B/cache停用。完整六角色、90samples/schedule/identity、24cold/30warm事件與PID重用／重播負例通過；尚未執行native/profile或建立效能接受。
+
+### H9 終態與 F02 H 獨立契約重驗
+
+- H9 ONE Main session 29025 已 exit 1；初始化與 UI setup 到達，首個 H20 list worker 以 personal_h20_cohort_changed_during_terminal_read 失敗。兩次 cohort 不相等但缺逐欄證據，不認定來源漂移；2382 下鑽、返回與收藏尚未執行。來源起訖一致，child Job 已清空；market keeper deferred 與 secondary cleanup 拒絕保留，不稱成功關閉。
+- Root 直接閱讀 F02 H 完整 G_to_H.diff，並獨立執行兩項 -X utf8 -B -I 自測，皆 exit 0。真實 ParentV4Row.rule() 的 Decimal|None 正例與型別／非有限／錯值負例通過；固定成功 continuation 的 unused fdopen、精確 MPL attempt 綁定與負例通過。僅授權只讀 prelaunch，完整 22 cases 與 canonical reopen 尚未驗證。
+- P01 frozen 矩陣發現自然零匹配的 explicit_empty 判讀與實際內層空 Page 契約矛盾，已交 owner 修正與新增真實 DTO 正反例；在完成修正與差異審核前不授權 native 效能矩陣。
+
+### P01 啟動與測量範圍中央續審
+
+- Root 續讀矩陣 worker、supervisor、warm operation/profile loop 與六角色 aggregator。首頁時間在 API 返回時記錄，序列化驗證不納入 API 耗時；warm 每類 30 samples 後另跑三項 profile，profile 不混入 p95。五 cold 與一 warm 仍各走完整 20 頁，三角色 Job、來源起訖對照及退出清空條件保留。
+- Profile 呼叫的 filter/sort/page 參數採 defaults 捕捉，未發現迴圈變數延遲綁定問題。自然零匹配與明示空股票範圍的 DTO 差異仍須新候選驗證；未以既有 13 tests 代替新契約或 native 效能接受。
+
+### P01 真型別空頁修正重驗／F02 H 啟動前核驗
+
+- P01 empty-page 修正區分 public wrapper 是否包含 inner Page；自然零匹配可保留真型別空 Page，明示空 wrapper 則必須無 inner Page 且零 counts/rows。Root 閱讀 validators 與固定 d12 Query/Page/ReadSelectionPage 測試，並獨立執行 20 passed／1.53 秒／exit 0；測試僅證 DTO 結構與序列化，reader-issued 形狀仍待 native。
+- Root 直接核最終 controller 7081657313c8f845152380b400735557519249d0b4dc19300ea66241a0d4ae98、aggregator 9437141ef1aec932e969288a6ab5b8f00f8f9af18f963bf5c64be9e9e122faaa、manifest 1d5d827858bf8c8119a144a2b88464b0284173c3e73d8cb72a3a0cdb8a3f951f。授只讀 preflight，尚未授六角色 native 效能矩陣。
+- F02 H prelaunch_003 exit 0；Root 直接核 JSON checks 全 true、24 manifest pins 匹配、六類來源起訖 digest 14be43778abc8c690196c8e35eab30a95fc5793611696356b0fb5a2166593695 不變、fresh target 僅預期 source、readonly forbidden calls 全零。編譯 pyc 已保存移出，bytes/hash/mtime 一致，不宣稱未核的 after file identity。
+- F02 full_query_001 在 worker 建立前因 supervisor_cwd_mismatch 停止；Root 先前指定 cwd H 有誤，固定 supervisor 實際要求 repo root（9845–9848）。原失敗封套保留，未啟 Job/worker；修正 cwd 後另授 ONE 真正 full query，保持固定 target/supervisor、22 cases/canonical reopen、1200 秒與既有 guards，不放寬 cwd predicate。完整結果尚待驗證。
+
+### P01 前兩個 cold 結果／F02 H 原始資格差異
+
+- Root直接讀 cold_01（C:/t/p01cur_rd_9d0c6626c8）及 cold_02（C:/t/p01cur_rd_ee0e3c9193）的 supervisor_result/child：皆 exact-read passed，1000選取、20頁各50列、完整代碼順序相符及S00256跨段證據；來源起訖不變，guard計數全零、Job cleanup完成且空。這不是三類warm p95或完整矩陣接受。第三角色CLI因owner抄錯SHA及漏role在parent驗證拒絕，未啟child；保存原工具輸出，修正後以機械hash及同一參數陣列接續，未重跑前兩角色。
+- F02 H真正完整查詢 session56338 exit1，target attempt_ba9e6d82d7c540f2 在stock1208 raw volume oracle expected Decimal1、typed rule ratioNone停止。Root直接核固定來源1208 artifact：volume5 unknown，原因 observed_sessions_missing／observed_prefix_not_contiguous／incomplete_volume_window:5，feature_dateNone、prefixFalse。source builder只以有效OHLC尾段生成sessions；rawvolume oracle未計窗口資格。此具體失敗已交owner核契約與獨立qualification oracle，不能只改預期counts求通過；H收據不回寫，完整22cases仍未完成。
+
+### 根目錄副本引用核對補充
+
+- Root 針對 app_module/decision_module/ui_qt/tests/scripts/analysis_module/backtest_module/portfolio_module/runtime 搜尋裸 reason_engine、recommendation_service imports，未找到引用；正式 UI 與 app service 明確引用 app_module.recommendation_service，資料 provider 引用 decision_module.reason_engine。另查 Python/spec 的動態匯入及檔名字串，只找到正式 package 路徑。
+- 原盤點顯示兩個根目錄副本 normalized bytes 與舊 a8c81bf5 正式版本相同；git 仍 untracked。此證據支持冗餘舊副本判斷，但不能證明建立者，也不包含外部使用者腳本。尚未移動／刪除根目錄副本，不覆寫正式模組。
+
+### Root 複核：P01 六程序效能矩陣與下一步（2026-10-09）
+
+Root 已直接讀取 `output/qa/p01_1000_current_runtime_matrix_20261009_a/matrix_report.json`，核對五個 cold 與一個 warm 程序、固定來源／資料庫／封存庫 pins、1,000 檔及 20 頁的順序摘要一致，六次 Job cleanup 均完成。這證明固定合成資料的 exact-read 正確性，不代表效能或使用者操作驗收通過。
+
+Warm 各 30 次測量：換頁 p95 998.100 ms、篩選連同第一頁 p95 1820.728 ms、全域排序連同第一頁 p95 1189.493 ms；三項皆未達原訂嚴格小於 300 ms。Cold 完成 exact-open 至 page0 的 p95 是 959.651 ms；啟動至 page0 的 p95 是 26.776 s，兩者不得混用。Profile 僅用於定位成本，不納入 p95。
+
+Root 授權隔離 QA 候選：reader-issued session 內、有容量及 bytes 上限的已驗證 immutable DTO 快取。每次操作仍重新驗 manifest、完整 layout、所有 artifact bytes／SHA 與取消條件；禁止跨操作 stat-only 捷徑。共享產品檔尚未變更，尚未產生可交付 EXE 或真人驗收要求。
+
+### Root 獨立純 oracle 複測：F02 I（2026-10-09）
+
+Root 執行 `.venv/Scripts/python.exe -X utf8 -B -I output/qa/f02_ma_composite_257_query_continuation_20261009_i_volume_window/oracle_selftest_launcher.py`，exit 0、1.916 秒。Launcher 在執行前後核對 target SHA256 `a49c9fcecaee0f6f96cfeaf2ceee7bbf39a7382ccc401940bd049fd204117785`。五群純 oracle 正負例通過，未開 SQLite、未執行產製器。原始 OHLC／日期尾段獨立導出 volume5 為 10 match／199 no_match／49 unknown；48 筆最新收盤價缺漏加上 1 筆全缺漏保持未知。原 10／247／1 計數不再當成合格預期值。MA 與 OR 維持 61／100／97；AND 為 10／199／49。這不是完整 native 查詢、UI 或效能驗收。
+
+Root 已核原 H supervisor 為 640755 bytes、SHA256 `d69c1265f87ec2588f513fcd5c103d910bb3f6de242b393e657ce05eb50da9da`，仍完整存在。I QA 目錄中的 H preimage 被工具誤截成 0 bytes，要求保留事故紀錄並從已核原件另存還原；不可將空 preimage 產生的整檔新增 diff 當成 H→I 差異證據。尚未授權 native I。
+
+### F02 I 完整查詢單次執行授權（2026-10-09）
+
+Root 已核 I target `a49c9fcecaee0f6f96cfeaf2ceee7bbf39a7382ccc401940bd049fd204117785`、supervisor `2c638f468c3d8215d51e68a837e9f0bf208e385c2440bc34776a1faf5256ce2a`、launcher 的 size／SHA 與 manifest 相符，verified supervisor diff 僅變更 target 路徑與 pin。保留原 22 個查詢案例及 canonical reopen；以 repo cwd、原 deadline／Job／來源與 SQL guards 核准一次隔離 full-query run。執行與 handle polling 由 bootstrap_identity 單一 owner 負責；失敗不得自動重啟。這項授權尚不是成功結果，也不是真人驗收入口。
+
+### F02 I 實際失敗及 J 契約修補（2026-10-09）
+
+I 單次 native session 58654 terminal exit 1；target `attempt_31ec24fc3dbd4200/acceptance_receipt.json` 的 phase 是 fixture_creation，錯誤為 SyntheticBundle 缺 raw_price_rows_by_code。Root 直接核 outer Job cleanup：job_closed／zero_owned_processes_proven 均 true，owned_pids_final_before_close 空。未進 22 查詢，不是產品 query 失敗。
+
+J 僅在 supervisor 同一次既有 SELECT 保留 OHLC 原始欄位、嚴格驗字串／整數型別、回傳 raw map並傳入 target dataclass；target保持 SHA `a49c9fcecaee0f6f96cfeaf2ceee7bbf39a7382ccc401940bd049fd204117785`。Root 已讀完整 I→J diff，獨立執行 `-X utf8 -B -I test_continuation_reader_bundle_contract.py` exit 0、1.218 秒，19,632 列／258 codes及型別、排序、會員、筆數負例通過；實際 SQLite／producer／writer／query 皆 0。Supervisor SHA `43f9a85cfb49dc41017bbc35720790c7290a3f13b8c55ce356bd169707131aea`。Root 核准固定 source pins與fresh root核驗後單次 J full-query；尚未有成功結果。
+
+### H20 診斷 B 實際失敗與接續邊界（2026-10-09）
+
+Root 直接讀 C:/t/h20_h9_cohort_diagnostic_20261009_b/cohort_diagnostic_receipt.json：primary_exception 為 fixed_sqlite_copy_entry_not_bound_before_guard，cohort_pass_count 0，diagnostic_complete false；尚未進 public pipeline。source_unchanged、fixture_unchanged、private_sqlite_clean 均 true。自測使用 bind→install，但真正入口使用 install→bind，屬 QA 初始化顺序缺口；要求共用最小初始化接點與真入口順序測試，不放寬 guard 或 cohort equality。B 失敗封套保留，新修補尚未核准重跑。
+
+P01 快取測試的同名 attempt06 log 曾被 Root 讀為 71.95 秒，後由 owner handle 23680 確認 terminal exit 0、9 passed／74.29 秒；兩者來源關聯未釐清，不合併宣稱唯一執行。只採用另存 owner_handle23680_terminal.log 與 terminal_receipt 的關聯結果。該結果僅驗證候選語義，不代表原 1,000 檔 p95 gate；outer page 提早拒絕／取消清快取的追加修補仍待測。
+
+### F02 J 查詢通過與 P01 定向驗證（2026-10-09）
+
+Root 已核 J 的 22 個案例分頁與獨立 oracle 相同，另有一次 canonical reopen；母體 declared 259／included 258／excluded 1，processed 258／pending 0／missing 1。來源不變、producer 0、guard denial／socket／subprocess 皆 0，Job 已關閉且無所屬程序。接受範圍僅為 query continuation；尚未證明正常 UI 下鑽、返回或新程序收藏恢復。原 target summary 的 execute count 13／14 為過時欄位，保留原收據，不冒稱為已核實的底層 23 次計數。
+
+P01 outerclear attempt03 由 owner handle 28414 終止 exit 0，1 passed／9 deselected／53.95 秒；Root 直接讀 log 與 receipt。foreign reader-issued selection 在 exact-read 前拒絕且清空快取；再次暖快取後，預先取消不增加 exact-read 次數且清空快取。前兩次 fixture／測試斷言失敗均保留。這仍不是固定 1,000 檔效能通過；下一步核對真實 DTO 容量與原效能矩陣。
+
+### H20 C 來源重核與正常 UI 缺口（2026-10-09）
+
+C public pipeline 在 reference read 的 Windows no-follow reader `os.fdopen(descriptor, "rb")` 被 QA guard 拒絕；未完成 cohort 核驗。原收據 source_after 為 null，因 postflight 的 os.scandir 同樣被 guard 拒絕，不能解讀為原始碼遭變更。Root 直接讀獨立唯讀 source_postflight：4,161 檔／77,229,228 bytes／inventory SHA `08c40cf85f136c8ddadfb95f7e5c5913e02c5fec84ddb8722f12e275da472771` 與固定來源相符。只授準備精確 callsite／handle-to-fd 身分的候選修補及自測，尚未授再次 pipeline 執行。
+
+Root 已核既有 full MainWindow 測試的收藏保存與 fresh restore 仍在同一 PID，不能代替正常關閉後新程序還原。下一候選須覆蓋真 Watchlist 入口、精確收藏 ID、原 query／page request／選取／跨頁比較籃及來源不變；不重跑已接受的 J 後端矩陣。根目錄六檔已重新唯讀盤點並另存 followup inventory，尚未搬移或刪除。
+
+### P01 固定來源容量診斷候選審查（2026-10-09）
+
+Root 已讀新 controller 與 v6 差異：保留全 1,000 股／20 頁原走讀，另於同一 reader-issued session 用候選快取讀第 0／10／19 頁，逐頁比對既有 payload hash，finally 關閉並核空快取。這三頁是 150 股工作集容量診斷，不納入 p95，也不能替代全 20 頁任意巡覽或原完整冷暖效能矩陣。
+
+候選初稿以 entries／bytes／raw rows 逐頁嚴格增加當接受條件，會把合法容量飽和或 eviction 誤判；已交 owner 改成核硬界限並記錄 eviction／working_set_fit，不提高上限。Root 再核 `_deep_object_size((cache_key, snapshot)) + 128`：32 MiB 指逐項 key 與 DTO 深層物件估算的總和，仍不含 OrderedDict 容器、proof 容器或整個程序 RSS，不能宣稱總程序 RAM 上限。README 的 hash 字串亦須由固定檔機械重算。候選仍待最終 pins 與 static preflight，尚未執行原店 native 讀取。
+
+Final candidate Root 核 controller `70595a01d531e58ae09fdaa9b4924cee67f6457a8dbffafc8c745bd7d209b88b`、cache module `c1eb5697358d051e4ed60a62bf4d02e778e3e0d4ecae757166f4749ef02a41a8`、manifest `3e20188368d89f0f64fcd94d0c75cdb47802ada4f9ae5f4b3df81ea8b9502cb3` 均與檔案相符。新增純量 metrics 不保留淘汰 DTO；容量不足記錄 false 並繼續結果核對。已授單次 static-input preflight，由 universe_run 擁有 handle；尚未授 native reader。
+
+Static owner handle 65050 terminal exit 0／31.7178753 秒。Root 直接讀 `static_preflight_e997721d1de4.json`：固定來源 4,465 檔／112 目錄／0 pyc、DB SHA、1,457 個 store entries 及 tree SHA 前後相同；network／SQLite／subprocess 計數 0，product imports／opener／worker 皆未執行。接受 static-input 範圍後授一次原 600 秒／Job3／來源防護的容量 native，由 owner handle 98346 執行；只讀原 store，20 baseline pages 加三頁容量診斷。終態與結果仍待，不授 p95 或 UI 資格。
+
+容量 native handle 98346 terminal exit 0，attempt `C:/t/p01cur_rd_b289cf84dd`。Root 直接核 child／supervisor：完整 20 頁順序一致，三個診斷頁 payload 與 baseline 相符；150 entries 的逐項估算為 22,306,284 bytes、5,960 raw rows，149 個 40-row 窗與一個空窗，eviction／over-limit／hit 皆 0，close 後 entries／bytes／rows 皆 0。來源／store 不變、Job 空且 cleanup completed、failures 空。這只證固定來源三頁工作集裝得下，尚未量快取命中的 p95，亦不證 80／120-row 窗容量。下一步沿原五 cold／一 warm 操作矩陣準備快取候選，不降低原門檻或來源核驗。
+
+Root 直接核現有 Main 測試 `_source_from_request`／`_source_roots_from_manifest` 的單一 attempt containment：J bundle 所在 attempt 與原 R 來源 attempt 不同，不能直接沿用單根測試設定。接續 QA 副本只允 manifest 根集合與已核 J protected paths 的九根精確相同，分別核 R／J 起訖 inventory，不改產品、原測試或來源位置。新候選仍须實作與驗證跨程序旅程，這不是正常 UI 已通過。
+
+### 原未入選文字判讀複核（2026-10-09）
+
+Root 核 evaluate 的原條件使用 `latest_volume_change_percent` 與 `volume_change_min_percent`，不是股價報酬或倍數；現有 presenter 明示 -31.23% 為量縮、50.00% 為策略放量門檻，篩選在打分前停止且不產生排名，與 H20 分開判讀。Root 執行 `tests/test_recommendation_screening_presenter.py`：2 passed／0.69 秒／exit 0，涵蓋使用者原數值及缺值、NaN、Infinity、觀測高於門檻的反例；並核 RecommendationView 已呼叫該 presenter。這是來源版純文字回歸，尚未證明新 EXE 或真人畫面。
+
+### H20 D 前置候選審查（2026-10-09）
+
+Root 讀 D 的精確 fd ledger methods，發現 `guarded_open_osfhandle` 使用 `type(path) is Path`；本機獨立 `python -I -B` 核 `type(Path()).__name__` 為 WindowsPath、`type(Path()) is Path` 為 false。此 predicate 會拒絕合法路徑，已交 owner 改用明確 Windows concrete type／既有 pinned path 身分，並以固定真 helper 正例證明。D 尚未凍結或 native 執行；不把候選原始碼存在當成通過。
+
+D 修正後 child `36d244477220908c627214a02a2762f62c706abb33beb6b2032b7b2dcacc0e8c`、runner `d393046778e130ba63d5a9db927ba2e74e9b5a4c39eeadac8e790200cfef5daf`。Owner 在 Root 最終明示授權前啟動 43394；Root 隨後實核同檔 pins／scope，准既有 handle 繼續，不回寫成事前核准。該 handle terminal exit 1，真 no-follow reader 已進 fdopen/read，但 QA adapter 使用未定義 `_stat_stability_key`，自測失敗。Root 直接核來源／fixture／H20 group 不變、fd ledger 空、Job closed／empty、cleanup errors 空。新 E 只修固定 queries helper 綁定，仍待審核，不重啟 D 或 pipeline。
+
+Root 已獨立執行 `source_resolver_contract.py`：6 tests／0.009 秒／exit 0，核 J receipt／manifest 與 AND include、OR include、OR only 三個 50-row 分頁案例；額外／缺漏／重複／錯根、reparse、路徑穿越、錯分頁及錯新 PID 契約均拒絕。這是純來源 resolver 證據，未啟 UI、SQL 或產製器；Main 與新程序旅程候選繼續。
+
+### H20 E 終態與 F 審查、P01 快取矩陣接續（2026-10-09）
+
+Root 直接讀 E child receipt `104895abca9f7396b2d0e35097d49f201fbab3c5d9198e911d6f625baafd803b`：六次真讀取與五種拒絕已完成，但 byte 計數用覆寫而非累加，activation／reference 實記 773／610，要求 3,092／1,220，故 exit 1。每次資料大小與 SHA 已核；來源及 fixture 不變、aliases 還原、fd ledger 空。這是 QA 計數缺陷，不能宣稱自測通過或原 H20 下鑽完成。
+
+Root 全讀 E→F 差異並重算兩檔 SHA：child `e0382a6d5e9185c6ef2e96a7cb489fae1ac3765a4ecdc847abd179f968ad7394`、runner `e74e39fdf240e6d35851150ec0004265cb6fdd32bb04da439742aed71c384b20`。F 改 byte 累加一行、隔離路徑與 pins，runner 加窄 AST 正負檢查；已授一次 120 秒／cleanup 20 秒的合成 fixture native selftest，由 h20_summary 持有原 handle 至終態。未授 Main 或 public cohort pipeline；D／E 原失敗保留。
+
+P01 cache matrix 原先截斷的 aggregator／static-input diff 已補讀，Root 獨立純契約測試 28 passed／1.56 秒／exit 0。保留原五 cold／一 warm、90 個操作樣本、嚴格 300 ms p95 與完整來源核驗；cold 不載快取，warm 無額外預熱，計數與關閉狀態交叉核對。已授固定 controller `d68c8f836de2288db273e814ac54d25c1a4fca019f7c2c7e2479c66c9e9a55be`、manifest `d4846316db254d604f568af5ea4e22bc68b793396ee3ee3e4dc7641a4f6716b7` 一次 static preflight，未授六角色 native matrix。快取仍為 QA 候選，正式產品效能未取得資格。
+
+F 終態 Root 直接核 parent／child 收據：child PID 29732、exit 0、completed／Job empty true、timeout false、cleanup errors 空；child 收據 SHA `44d1f269baec3ffcfcbe1ecc15c88f79d8cbe6c86a1b7e9ad79fb105d0b610f6`。實際 activation 4 次／3,092 bytes、reference 2 次／1,220 bytes，fdopen／close 各 6、audit 7 含一次合成 replay，五拒絕類別各一次。來源／fixture／H20 source group 不變，OS／SQLite／msvcrt aliases 還原、fd 及私有 entries 清空；Main 未啟動。接受固定讀取自測範圍，後續另建 public cohort pipeline 候選待審。
+
+P01 static owner 77858 terminal exit 0／25.776683 秒，receipt `static_preflight_066d9175835e.json` SHA `701b6f480a0b43dba25ccb46c8d6d3ca54c584ca87147f8ad59f5b4b4339b51f`。Root 直接核 source／DB／sealed store 起訖一致、failures 空、network／SQLite／subprocess 0。已授一次五 cold→一 warm native 序列，每 role 原 600 秒及 cleanup 10 秒不變；H20 pipeline 與 F02 Main 暫不啟 native，避免效能量測競爭。owner 在每角色終態與清理檢查後才能續啟，任何失敗即停續啟並保存。尚無 p95 成績或產品效能接受。
+
+### P01 快取完整矩陣終態與後續方向（2026-10-09）
+
+五 cold 與唯一 warm 均 terminal exit 0，Root 逐一直接讀六份 parent／child：每次完整 1,000 股／20 頁順序相同、source/store unchanged、guard 四計數 0、failures 空、Job 空且 cleanup completed；五 cold 均 loaded=false。Warm attempt `C:/t/p01cur_rd_345bf09a26` 的 90 樣本沒有失敗，但換頁 p95 **757.295 ms**、篩選 **905.318 ms**、全域排序 **403.136 ms**，皆未達嚴格 300 ms，故效能門檻仍失敗。彙總為 `output/qa/p01_1000_current_runtime_cache_matrix_20261009_a/aggregate_native_20261009.json`。Cold launch 到首頁中位 20.206 秒、p95 122.414 秒；保留 cold_02 大幅波動，不以重跑挑數或延長門檻排除。
+
+Warm wall 樣本 hits 3,512／misses 208／evictions 16；另三份 profile 共 130 hits，不混入 p95。最後 192 項／估算 28,606,684 bytes／7,640 raw rows，close 後三個 gauge 皆 0；估算不是整體 RSS。快取候選未整合正式產品。Root 實讀 profile：已驗 plan/cohort 的 to_dict／from_dict 與 `_state_metadata` 仍反覆語義重建，已交 owner 核 reader-owned immutable state 可重用邊界，先交最小實作設計；fresh manifest／artifact bytes SHA／layout／reparse／取消不得省略，亦不加入額外預熱。
+
+H20 G 的兩檔最小 diff 與 public pipeline 已由 Root 審查並重算 pins；計時矩陣結束後授唯一 native 診斷，child `bd2a26eec8706ae1235a3cbd7c17fcf99f15f7d7a8562f634c1d0ad91ca2f1a6`、runner `87e2fdf6b57b0b98344cc3f8b28a7946940523aa833605bc019002487b4abd3d`。固定合成 H9、一次私有 H20 copy、來源 SQL 0、120 秒／cleanup 20 秒；未授 Main 或原始資料。待收據核初始與終態 cohort 真差異，不能由候選存在推論下鑽完成。
+
+G 唯一執行 exit 1／約 2.17 秒，child receipt `7f61d5708eda7c75a7c3b83ad48cbf0cf99c5874299c245ef3ccb9a5dd27a3c3`。Root 直接核 traceback：首次 cohort 的 `_manifest_bytes`→fixed no-follow reader 被 QA callsite guard 拒絕，尚未讀 capture 或產生 cohort，不能判定原 cohort mismatch。來源 SQL／group open／private copy 全 0、Job 空且 closed、aliases 還原；fixture／H20 group 起訖一致。Pipeline finally 未停自身 audit，source postflight scandir 再被拒，原 source_after=null 保留。
+
+Root 另以固定 G 的 `_verify_source_snapshot` 唯讀重核；sandbox strict resolve WinError 5 後 native exit 0，4,161 檔／77,229,228 bytes／inventory `08c40cf85f136c8ddadfb95f7e5c5913e02c5fec84ddb8722f12e275da472771` 與固定基線相同，manifest／build／archive pins 相同，未啟 pipeline／SQL／Main。新 H 待審候選須一次列清完整 public pipeline 的已釘 manifest／capture 等 no-follow callsite、root、max_bytes 與次數，保留 fd token／foreign／mode／replay 拒絕，不採目錄泛放行；finally 沿 F 自測正確順序還原並停止自身 audit 後才來源重核。沒有授 H native。
+
+### 來源摘要回歸與 Main 測試清理修正（2026-10-09）
+
+正式 query 模組固定 SHA `166355640a95b7d7a39c62d5d4b0cf1013e81bf7859381d1132191457f5164fe`。Root 核實摘要僅綁定同次 reader-issued session 的不可變來源描述；clone 走嚴格驗證，owner／body／pins／token／候選及 artifact tuples 被替換時拒絕。增補測試固定 SHA `56fdf44c418b9a784df67cade3cfd46d8ba437bb97f02ba2ee98abd9ce17561c`，Root 直接讀測試與 `pytest_attempt05_native.log`：17 passed／13.68 秒。fast 與 strict clone 的 AND／OR、排序、完整 page DTO、selection identity 相同；一次成功讀頁後，selected artifact bytes 遭改但長度與 mtime 保持時，後續讀頁仍以 fresh SHA 拒絕，還原後結果相同。未新增較晚資料、變更策略或排名計算。這是定向正確性證據，未證明 1,000 檔效能達標；下一份效能候選須釘更新後 runtime，不沿用舊 source pins。
+
+Root 檢查原 Main QA runner 發現：`_drain_qt_deferred_deletes` 已刪除 C++ QObject，runner 隨後仍呼叫 `window.isVisible()`，finally 也會再碰失效 wrapper。保留 v1 SHA `6335579e5a0cb9a8d33d208bc43eb4e41e76f5dc32a9425ab7823464391038c5`，另建 v2 SHA `7b8882b89ae2a40bf9943fab5d04282ec93f220ec91501495fe59e3a29c75ca5`：drain 前收集終態，drain 後退休 state 內 wrapper，建構後立即登記 window 以處理設定中途失敗。Root 直接讀 helper 與假視窗 run_005 終態：五項生命週期斷言成立、SQL／socket／process 0、產品模組匯入 0、原件不變。此證據只覆蓋 QA 清理契約；完整 Main／收藏／新 PID 重開仍未執行，未授真人或 EXE 驗收資格。
+
+後續六個既有 read-session 回歸為 5 passed／1 failed，失敗的取消測試只攔截 `Repository.read_exact`，當前 semantic-proof 路徑呼叫 `read_selected_exact`，因此測試未觸發其取消旗標。原紅燈封套保留；新增測試在實際 `_read_session_child_snapshots` 完成一次真讀取後取消，確認沒有部分頁面、摘要未污染且取消後可重新正常讀頁。Root 直接讀新測試與 combined log，18 項新測試加五項既有回歸為 23 passed／46.19 秒；仍要求最小修正原測試攔截點後再核完整六項，不把排除紅燈當成全數回歸通過。
+
+Main v2 final manifest `7332d88e40f37ed86c46349150029a909696ef56ba74798e828f0d18506d504e` 已由 Root 機械核對 30 項 size／SHA 全相符，但純 preflight exit 1：`case_plan_membership_differs_from_pages`。Root 獨立核三組 pages 與 membership 各為 59／158／97 檔，集合相同、沒有重複；OR include 的頁面依多欄排序自 1010 開始，而 membership 自 1000 開始。候選把集合清單當成排序清單，plan 與旅程末尾各一處誤比；另建 v3 修兩處，固定 bindings／oracle／逐頁 exact order 不變。v2 及失敗 preflight 保留，完整 Main 尚未啟動。
+
+原 read-session 取消測試已保存前像並僅修改該單一測試：攔截真 child materialization，保留取消 code 及無部分頁面要求，另核真讀取一次。Root 全讀該 diff；owner session 32033 terminal exit 0，Root 直接讀 `combined_regression_cancel_fix_attempt01.log`：六項既有回歸加 18 項摘要測試共 24 passed／47.00 秒。原 5 pass／1 fail 與後續 23 pass 封套保留。正式 query SHA 未改，1,000 檔效能尚待新固定 runtime 的 source-only 矩陣；不套 QA DTO cache 或額外預熱冒稱正式速度。
+
+Main v3 放於獨立 `output/qa/f02_ma_normal_ui_fresh_pid_20261009_v3/`。Root 全讀 v2→v3 diff 並核 candidate `db4892a7a7334fd93f5d07a25ce82e3f85f123b05820d2b58014515451287a97`、manifest `678c2c39a857e0c59fed9511385d93447cbfc9fbbc7761023047479af60a0404` 及 30 pins 全相符。純契約正例接受原 OR 不同排序的同集合；missing／duplicate／foreign 拒絕，重排頁面仍由原固定 resolver 拒絕。首次 sandbox preflight 在 fixed synthetic DB 的 strict resolve 遭 WinError 5，保留 `pure_preflight_001`；同檔 native 純 preflight 尚待，不改 guard 或來源。完整 Main 未啟動。
+
+Main v3 native 純 preflight_002 終態 exit 0：Root 直接讀 stdout，membership 6、runtime guard **21**（更正 owner 的 22）、window retirement 5 項皆成立，真 SQL／子程序 0、30 pins 不變。授唯一完整 Main journey，`run_attempt_ac6ab71df13a4ade89b1c105280d859d` 約 2.3 秒後 exit 1。Root 直接核 stderr：匯入 Main 的 SciPy／NumPy 依賴在 `platform.machine()` 呼叫標準庫 `_syscmd_ver`，其 Popen 遭原 guard 拒絕；尚未建構 Main、執行 query 或啟收藏 child。程式 pins 起訖相同、SQLite events 空、guards 已還原。
+
+該 attempt 的來源 postflight 另因 generation 長路徑 WinError 3 未完成，原 source_unchanged=false 保留，不宣稱來源變更或來源不變。Root 查 `_tree_signature` 的 root 長度轉換，短 root 的 os.walk 長 descendant 仍用未轉換路徑。v4 待審修正只涵蓋 QA 長路徑 inventory 及標準庫平台探測的無子程序 fallback；禁止在 guard 前匯入產品或放行任意 shell。須先純契約及九根唯讀完整重核，未授 v4 Main。
+
+H20 H frozen child `c8d14e28ff5574686a5f37262af0e87937643a29384d7c7326dd8f4ba6c44cf1`／runner `641bb6c2ad18b2233464a3e06891fd19872103455f4e68155b5feb6de6ba6b72` 未啟動。Root 讀 G→H diff 與既有 `_install_trace`，發現 capture guard 把 prediction-reader callable 與 frame 比較，必為 false；manifest／capture chain 又未包含現存 traced／traced_reader wrappers，terminal read_pass 亦經 finalizer／session.finish。另建 I 精確綁定完整 initial／terminal 實際鏈並補純正反例，保留 H；不以任意跳 frame 放行，未授 I native。
+
+### 更新後效能候選的來源等價性（2026-10-09）
+
+新 source-only 效能候選沿固定 d12 archive 加唯一 query overlay，不啟用 QA DTO cache，維持五 cold／一 warm、90 筆真 API 操作樣本與嚴格 300 ms。Root 直接比較 archive query（133,817 bytes、CRLF、SHA `75e036c229a7eec50877e5300ad97a3d411a0929eb791a31ebb9354ec74d0e72`）與工作樹前像（130,894 bytes、LF、SHA `6a9c322c17267876250f8fd611463b9ecf5f1924d6d02d23e95fd5590a049509`）：正規化換行後完整 bytes 相同。Overlay 副本 SHA 仍為 `166355640a95b7d7a39c62d5d4b0cf1013e81bf7859381d1132191457f5164fe`，normalized diff SHA `323ed231ba27e4f0ae38ccd296305fb55a37187e81fd0b6c0ce6556b92d551b8` 與報告一致。因此 baseline 差別不是額外程式邏輯；新版完整 runtime 實樹、controller／manifest 尚在建立，尚無 static preflight、exact read 或新版 p95 結果。

@@ -1462,3 +1462,18 @@ R031 對應狀態維持限定範圍：R002 ACCEPTED（固定輸出與排序不�
 | [docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_R006.md](../01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_R006.md) | [GEMINI_R006.md](target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_R006.md) | 9,084 / 87b953c44cd8ce5bac7d8f803d2abd31009d581bd661eae9915c6de947b800f9 | 9,084 / 87b953c44cd8ce5bac7d8f803d2abd31009d581bd661eae9915c6de947b800f9 |
 | [docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REVIEW_R006.md](../01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REVIEW_R006.md) | [GEMINI_REVIEW_R006.md](target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REVIEW_R006.md) | 58,641 / de9d6d55549f4ff07692bebb05526d91fe414dce97bc7dcf3a98720b1e6a3d68 | 58,747 / 9fc0b817fff53ab4b21c6305879a4f843b9d5f13a9d348c63b69f6d4a3ab098e |
 | [docs/01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_REVIEW_PROMPTS.md](../01_architecture/target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_REVIEW_PROMPTS.md) | [WAVE1_GEMINI_REVIEW_PROMPTS.md](target_architecture_2026_09_22/REFACTOR_DISPATCH/WAVE1_GEMINI_REVIEW_PROMPTS.md) | 2,770 / adcd4759392d880a1efb159e0f69e897b04e8725c5dcb0f86b90be68cca60d9a | 2,755 / e4540001897c73a783d37fbb7cc18dea9333cd80797331a7fe80567b104a933f |
+
+<a id="coverage-entry-148"></a>
+## 2026-10-09 封存舊 Month 5 Fundamental 主序列備忘錄
+
+將 docs/superpowers/plans/2026-06-16-month5-fundamental-main-sequence.md 的歷史排序備忘錄逐位元組複製至 docs/09_archive/superpowers/plans/，先核對來源與副本相同，再把舊路徑改為相容導引。原路徑在本批開始前為 tracked／clean，Archive 目的地不存在；原文沒有 Markdown 相對連結。封存不代表其列出的五份子計畫全數完成，也不改寫任一子計畫的狀態或授權。
+
+來源 Windows 工作樹原件與 Archive 副本均為 3,807 bytes（CRLF），SHA-256 0a8446ce047b4f4bf6b4c067e11a94cfcf5e6922692e5bdd14b342dca576dbc9。Git HEAD 的 canonical LF blob 為 3,736 bytes，SHA-256 439ca77c2bc9313991385513a5382fd24c45fcd170d88ec9023ce262da4d5c5d；這是同一內容的換行正規化差異，沒有改寫 Archive 原件內容。
+
+這份 2026-06-16 memo 自述為 sequencing memo、不是 execution plan，且沒有自身的 checklist、Execution Summary 或具名 QA closeout。它列出的 availability entrypoint、SQLite migration、revenue factor pack、valuation data layer、abnormal diagnostics 五份子計畫仍分別保留於原路徑；本次不搬動或將其整組標成 Done。原文件中的「Month 5 Fundamental」是舊主題排序，與 [ROADMAP_6M_ENGINEERING 的現行 Month 5／Gate 5](../00_core/ROADMAP_6M_ENGINEERING.md)（signal effectiveness、ablation、pruning）不是同一套排序。現況與實作邊界看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[system architecture](../01_architecture/system_architecture.md)、[Fundamental Source Inventory](../03_data/FUNDAMENTAL_SOURCE_INVENTORY.md) 及 [QA 主題地圖](../06_qa/README.md)。
+
+全 repo 精確檔名搜尋只找到舊路徑被固定歷史 [Documentation Catalog](DOCUMENTATION_CATALOG_20261006_HISTORY.md)、[Documentation Index snapshot](DOCUMENTATION_INDEX_HISTORY_2026_09_27.md) 與 plan/spec manifest 引用；未找到程式、測試、腳本、排程或設定中的固定路徑 consumer。兩份歷史快照保留原文路徑，舊路徑相容導引承接連結。docs/superpowers/README.md、本 [Archive README](README.md)、plan/spec manifest 與本筆 History 已提供主題入口與逐檔追溯。DOCUMENTATION_INDEX.md 目前有其他工作中的修改，本批不改動；它既有的 Superpowers README 與 Archive README 導覽仍可到達上述新入口。Scoped authority／同步規則沒有改變，因此不修改 DOC_COVERAGE_MAP.md、Snapshot 或 Roadmap。
+
+| 原路徑 | Archive 原文 | 工作樹原件／Archive bytes／SHA-256 | Git HEAD canonical LF blob |
+|---|---|---:|---:|
+| [docs/superpowers/plans/2026-06-16-month5-fundamental-main-sequence.md](../superpowers/plans/2026-06-16-month5-fundamental-main-sequence.md) | [2026-06-16-month5-fundamental-main-sequence.md](superpowers/plans/2026-06-16-month5-fundamental-main-sequence.md) | 3,807 / 0a8446ce047b4f4bf6b4c067e11a94cfcf5e6922692e5bdd14b342dca576dbc9 | 3,736 / 439ca77c2bc9313991385513a5382fd24c45fcd170d88ec9023ce262da4d5c5d |

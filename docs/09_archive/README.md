@@ -167,6 +167,11 @@
 ## 2026-10-09 早期技術分析優化備忘錄
 
 - [技術分析模組優化文檔原文](TECHNICAL_ANALYSIS_OPTIMIZATIONS_HISTORY.md)：保留早期指標 API、回傳型態、資料路徑、形態與 ML 描述，僅供歷史追溯；其中 API／路徑與目前實作不符，不應當作現況或操作指引。現況看 [系統架構](../01_architecture/system_architecture.md)、[TechnicalAnalyzer](../../analysis_module/technical_analysis/technical_analyzer.py)、[TechnicalIndicatorCalculator](../../analysis_module/technical_analysis/technical_indicators.py)、[TWStockConfig](../../data_module/config.py) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊路徑保留短導引，原文 bytes／SHA 與引用盤點見 [Coverage History Entry 115](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-115)。
+## 2026-10-09 Month 5 Fundamental 主序列歷史備忘錄
+
+- [Month 5 Fundamental 主序列備忘錄原文](superpowers/plans/2026-06-16-month5-fundamental-main-sequence.md)：保存 2026-06-16 的五步基本面工作排序。原文自述為 sequencing memo，不是 execution plan。此處舊稱「Month 5 Fundamental」不等同 [6M Roadmap 現行 Month 5 / Gate 5](../00_core/ROADMAP_6M_ENGINEERING.md) 的 signal effectiveness、ablation 與 pruning 順序。
+- memo 列出的 [availability entrypoint](../superpowers/plans/2026-06-16-month5-availability-data-entrypoint.md)、[SQLite migration](../superpowers/plans/2026-06-16-month5-fundamental-sqlite-migration-v1.md)、[revenue factor pack](../superpowers/plans/2026-06-16-month5-revenue-factor-pack-v1.md)、[valuation data layer](../superpowers/plans/2026-06-16-month5-valuation-data-layer-v1.md) 與 [abnormal diagnostics](../superpowers/plans/2026-06-16-month5-abnormal-fundamental-diagnostics.md) 仍是各自獨立的歷史計畫；歸檔 memo 不替這五份文件判定完成或授權狀態。
+- 目前狀態與基本面實際邊界看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[system architecture](../01_architecture/system_architecture.md)、[Fundamental Source Inventory](../03_data/FUNDAMENTAL_SOURCE_INVENTORY.md) 與 [QA 主題地圖](../06_qa/README.md)。舊路徑導引與逐檔 bytes／SHA 見 [Coverage History Entry 148](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-148)。
 
 ## 2026-10-08 資料實作摘要
 

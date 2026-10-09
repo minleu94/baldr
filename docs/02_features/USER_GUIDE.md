@@ -109,8 +109,8 @@ ML 的 `continue_shadow` 只表示可繼續離線診斷；`formal_oos_allowed=fa
    - 所有可用的產業類別（按字母順序排列）
 
 ### 注意事項
-- 如果產業列表為空，請檢查 `data/meta_data/companies.csv` 是否正確載入
-- 產業類別來自 `companies.csv` 的 `industry_category` 欄位
+- 如果產業列表為空，請檢查 `TWStockConfig.meta_data_dir / "companies.csv"` 是否可讀；預設位置為 `DATA_ROOT/meta_data/companies.csv`。
+- `industry_category` 是目前公司分類來源，不代表歷史產業 membership 或 PIT 資格；歷史研究不得用當期分類回填。
 
 ---
 
@@ -743,6 +743,8 @@ Baseline 對比用於評估策略是否優於被動持有（Buy & Hold）基準�
 
 ## 策略回測 - Promote 機制（Phase 3.3b 新增）
 
+> **舊版流程快照**：以下固定門檻、交易次數條件與直接從回測結果按 Promote 的步驟，保留 Phase 3.3b／legacy 流程作追溯；不能當成新 Registry run 的通用升級條件。新 Registry run 的現行操作與 gate 判讀以[完整操作手冊 §9](../07_guides/APPLICATION_MANUAL.md)及其 Promote 排錯段落為準；保存結果本身不代表具備升級資格。
+
 ### 功能說明
 
 Promote 機制可以將通過驗證的回測結果升級為策略版本，並在推薦分析中使用。
@@ -850,7 +852,7 @@ A: 已優化！現在系統會：
 
 ### Q: 產業列表為空？
 A: 請檢查：
-- `data/meta_data/companies.csv` 是否存在
+- `TWStockConfig.meta_data_dir / "companies.csv"` 是否可讀（預設為 `DATA_ROOT/meta_data/companies.csv`）
 - 文件是否正確載入
 - 查看終端是否有錯誤訊息
 

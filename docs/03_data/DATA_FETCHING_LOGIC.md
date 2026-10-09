@@ -1,19 +1,20 @@
-# 股票數據獲取邏輯說明
+# 股票資料來源與擷取邏輯
 
-> 本文件保留早期 API／CSV 擷取實作說明及歷史命令，不能用來判定目前資料路徑或執行更新。現行操作與排錯請看[操作手冊第 4、12 節](../07_guides/APPLICATION_MANUAL.md#4-數據更新)；架構邊界請看[系統架構](../01_architecture/system_architecture.md)。
+> **文件範圍：**本文前段整理日常資料管線摘要；freshness／candidate 小節是 2026-10-03 的日期化紀錄，使用前應對照最新 Snapshot、操作手冊及程式碼。標示「歷史」的後段保留舊 API 範例、命令及排錯紀錄，只供追溯，不能作為目前操作或程式行為的依據。現行操作請看[每日資料更新指南](daily_data_update_guide.md)及[操作手冊第 4、12 節](../07_guides/APPLICATION_MANUAL.md#4-數據更新)；目前實作以程式碼與[系統架構](../01_architecture/system_architecture.md)為準。
 
 ## 📖 快速導航
 
-- **如何使用** → 查看 [使用方式](#使用方式) 章節
-- **遇到錯誤** → 查看 [錯誤排查指南](#錯誤排查指南) 章節
-- **邏輯詳情** → 查看 [獲取邏輯](#獲取邏輯update_20250828py) 章節
-- **相關文檔** → 查看 [相關文檔](#相關文檔) 章節
+- **目前操作** → [每日資料更新指南](daily_data_update_guide.md)及[操作手冊](../07_guides/APPLICATION_MANUAL.md)
+- **資料管線摘要與日期化邊界紀錄** → [日常資料管線摘要](#current-daily-pipeline)及[2026-10-03 freshness／candidate 紀錄](#current-freshness-candidate-boundary)
+- **目前擷取實作** → [`data_loader.py`](../../data_module/data_loader.py)及[`tpex_daily_price_source.py`](../../data_module/tpex_daily_price_source.py)
+- **舊版 API 範例與操作紀錄** → 本文件後段標示「歷史」的章節
 
-## 概述
+<a id="current-daily-pipeline"></a>
+## 現行日常資料管線
 
-本文檔說明用於獲取股票數據的核心邏輯（基於成功更新 0828 數據的實現），以及如何將此邏輯整合到主模組中。
+本節概述目前每日行情來源與儲存邊界；2025 年 API 範例及舊操作方式已在後文標為歷史資料。現行更新流程依前述操作手冊與每日更新指南執行。
 
-**重要提示：** 如果遇到 API 連接問題，請先查看 [錯誤排查指南](#錯誤排查指南)。
+**重要提示：**如果遇到 API 連接問題，請依[操作手冊第 12 節](../07_guides/APPLICATION_MANUAL.md#12-常見問題)排錯；本文件後段只保留舊版追溯筆記。
 
 日常每日股價管線現在包含兩個市場來源：
 
@@ -22,11 +23,15 @@
 
 SQLite 同步階段會讀取上述兩個目錄，依 `(證券代號, 日期)` upsert 到 `daily_prices`。TPEX 日價是市場資料層，只補市場行情，不修改 `companies.csv`、fundamental tables、技術指標計算邏輯或推薦分數。
 
-## 2026-10-03 當前 freshness／candidate 消費邊界
+<a id="current-freshness-candidate-boundary"></a>
+## 2026-10-03 Freshness／candidate 消費邊界紀錄
 
 本文件中以 `update_20250828.py` 為例的 HTTP 範例是資料抓取歷史說明；更新頁目前另有只讀 freshness receipt 與隔離 Phase3C candidate lane。consumer 會綁定來源根目錄、SQLite／Candidate DB、台北 04:30 cutoff 及實際來源期別；receipt 與當前查詢跨過 cutoff 時需重新 probe，不能由同日期或舊 `expected_wait` 自行推定 fresh。Candidate rows／checkpoint 必須按同 transaction 與自然鍵重試，取消保留已提交單位但不代表整個範圍成功。MOPS 中止時 raw HTML 可留作診斷，尚未完成的 candidate CSV 不發布。操作者請依[每日更新指南](daily_data_update_guide.md)與[Application Manual](../07_guides/APPLICATION_MANUAL.md)的 current 操作，不以本文件的舊範例替代受控 CLI／UI 契約。
 
-## 獲取邏輯（update_20250828.py）
+<a id="historical-twse-api"></a>
+## 歷史實作：TWSE API 範例（2025-08-28）
+
+以下範例描述當時的擷取方式；其中固定讀取 `tables[8]` 等細節已不代表目前實作。現況摘要請看下方「現行 TWSE 擷取行為」，完整行為以 `data_module/data_loader.py` 為準。
 
 ### 1. API 端點和參數
 
@@ -115,7 +120,7 @@ df.to_csv(daily_price_file, index=False, encoding='utf-8-sig')
 - 使用 `utf-8-sig` 編碼（支援 Excel 打開）
 - 不包含索引
 
-### 5. TPEX daily close quotes adapter
+## 現行 TPEX daily close quotes adapter
 
 TPEX 日常來源由 `data_module/tpex_daily_price_source.py` 處理：
 
@@ -127,7 +132,7 @@ TPEX 日常來源由 `data_module/tpex_daily_price_source.py` 處理：
 
 日常每日股價、快速更新、安全更新與背景補齊流程都會使用此 adapter 補缺少的 TPEX CSV，並由 SQLite sync 與 TWSE 一併 upsert 到 `daily_prices`。TPEX endpoint timeout 時應回報 warning，不應阻斷已成功的 TWSE 或其他同步步驟。
 
-## 與舊邏輯的差異
+## 現行 TWSE 擷取行為
 
 ### 舊邏輯（data_loader.py 的 download_from_api）
 
@@ -145,7 +150,9 @@ TPEX 日常來源由 `data_module/tpex_daily_price_source.py` 處理：
 5. **失敗處理：** 每日股價 batch 若回報 `failed_dates`，`UpdateService.update_daily()` 會回傳 `success=false`，避免快速 / 安全更新在個股日價缺漏時誤顯示完成。只有 `skipped_dates` 時會回傳成功並附警告，排程 status 為 `passed_with_warnings`。
 6. **欄位名稱：** 保持原始欄位名稱（與 notebook 一致）。
 
-## 更新到主模組
+## 歷史整合記錄（2025-08，已由後續程式更新取代）
+
+本節保留當時的整合紀錄；固定讀取 `tables[8]` 的描述已過時，請勿據此判定現行程式行為。
 
 已將新邏輯更新到 `data_module/data_loader.py` 的 `download_from_api` 方法中：
 
@@ -155,9 +162,11 @@ TPEX 日常來源由 `data_module/tpex_daily_price_source.py` 處理：
 - ✅ 保持原始欄位名稱
 - ✅ 處理數值欄位和漲跌符號
 
-## 使用方式
+## 舊版操作範例（僅供追溯）
 
-### 方法 1：批量更新多日數據（最推薦 ⭐⭐⭐）
+以下命令與 UI 說明是歷史操作紀錄，不保證符合目前 CLI／UI 契約。實際更新請依[每日資料更新指南](daily_data_update_guide.md)及[操作手冊](../07_guides/APPLICATION_MANUAL.md)。
+
+### 範例 1：批量更新多日數據
 
 ```bash
 # 更新從指定日期之後到今天的所有交易日
@@ -172,7 +181,7 @@ python scripts/batch_update_daily_data.py --start-date 2025-08-28 --delay-min 4 
 
 **詳細說明**：請參考 [HOW_TO_UPDATE_DAILY_DATA.md](HOW_TO_UPDATE_DAILY_DATA.md)
 
-### 方法 2：使用主模組腳本（推薦 ⭐⭐）
+### 範例 2：使用主模組腳本
 
 ```bash
 # 更新單日數據（只更新 daily_price）
@@ -199,7 +208,7 @@ if df is not None:
     print(f"成功獲取 {len(df)} 筆數據")
     print(f"數據已保存到: {config.daily_price_dir / '20250828.csv'}")
 else:
-    print("獲取數據失敗，請查看錯誤排查指南")
+    print("獲取數據失敗，請依現行操作手冊排錯")
 ```
 
 ### 方法 4：使用目前 PySide6 UI
@@ -211,7 +220,9 @@ else:
 
 在 UI 中選擇「數據更新」，日常可使用快速更新；需要完整 CSV 備份時使用安全更新。快速更新與安全更新預設補結束日前最近 10 個工作日；個別資料來源可從左側導覽設定日期範圍與手動下載。
 
-## 錯誤排查指南
+## 舊版錯誤排查筆記（僅供追溯）
+
+下列錯誤原因、API 回應與建議可能已變更；目前排錯請看[操作手冊第 12 節](../07_guides/APPLICATION_MANUAL.md#12-常見問題)。
 
 ### 🔴 常見錯誤及解決方案
 
@@ -282,7 +293,7 @@ KeyError: '證券代號'
 **解決方案：**
 - 確認使用正確的 API 參數（`type=ALL`）
 - 檢查 DataFrame 的欄位名稱
-- 參考 [獲取邏輯](#獲取邏輯update_20250828py) 章節確認欄位名稱
+- 參考[歷史 TWSE API 範例](#historical-twse-api)追溯當時的欄位處理方式；目前欄位判斷以程式碼為準
 
 ### 🔍 調試步驟
 
@@ -341,10 +352,10 @@ if file_path.exists():
 - **`scripts/merge_daily_data.py`** - 數據合併腳本
 
 ### 模組文檔
-- **`data_module/data_loader.py`** - 數據加載器（已更新為使用本文檔的邏輯）
+- **[`data_module/data_loader.py`](../../data_module/data_loader.py)** - 目前 TWSE 擷取實作；行為以程式碼為準，本文件僅提供摘要與歷史追溯
 - **`data_module/config.py`** - 配置管理
 
-## 延遲時間和請求優化
+## 舊版請求節流說明（僅供追溯）
 
 ### 為什麼需要延遲時間？
 
@@ -374,14 +385,16 @@ if file_path.exists():
    }
    ```
 
-### 當前實現狀態
+### 本文件撰寫時的實作記錄
 
 - ✅ `data_module/data_loader.py` 的 `download_from_api` - **已添加延遲和 Session**
 - ✅ `scripts/batch_update_daily_data.py` - **已添加延遲和 Session**
 - ✅ `scripts/update_daily_stock_data.py` - **已添加延遲和 Session**
 - ✅ `ui_qt/main.py` - **目前主要 PySide6 UI**
 
-## 注意事項
+## 舊版操作注意事項（僅供追溯）
+
+本節保留早期 CSV／合併流程注意事項；現行流程與資料保存邊界請依[每日資料更新指南](daily_data_update_guide.md)、[操作手冊](../07_guides/APPLICATION_MANUAL.md)及[系統架構](../01_architecture/system_architecture.md)。
 
 1. **API 穩定性：** 證交所 API 可能會變更，如果新邏輯失效，可以考慮：
    - 使用 UI 應用程式（已整合所有功能）

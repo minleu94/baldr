@@ -7,7 +7,7 @@
 - [每日更新快速指南](HOW_TO_UPDATE_DAILY_DATA.md)：一般每日更新入口。
 - [每日資料更新詳細指南](daily_data_update_guide.md)：資料源更新、capture／projection、結果判讀與更新流程。
 - [每日更新排錯](../07_guides/APPLICATION_MANUAL.md#12-常見問題)：目前故障排除入口；操作邊界見手冊第 4 節。
-- [資料獲取邏輯](DATA_FETCHING_LOGIC.md)：來源、請求及擷取邏輯；實際操作仍以操作手冊與最新程式行為為準。
+- [資料來源與擷取邏輯](DATA_FETCHING_LOGIC.md)：現行資料管線摘要、2026-10-03 日期化邊界紀錄及標明為歷史的 API／操作範例；實際操作與目前行為以操作手冊、每日更新指南及程式碼為準。
 
 ## 流程、重建與儲存
 

@@ -11,6 +11,9 @@ from data_module.selection_market_assignments import CurrentMarketAssignmentRead
 from data_module.selection_official_events import CurrentOfficialDisposalReader
 
 if TYPE_CHECKING:
+    from app_module.daily_market_technical_universe_v4_producer import (
+        DailyMarketTechnicalUniverseV4ProductionResult,
+    )
     from app_module.daily_market_technical_official_disposition_bundle_v1 import (
         DailyMarketTechnicalOfficialDispositionBundleReferenceV1,
         DailyMarketTechnicalOfficialDispositionBundleWriterV1,
@@ -104,5 +107,41 @@ def publish_current_selection_bundle(
         expected_receipt_sha256=expected_receipt_sha256,
         market_assignment_source_pin=pair.market.source_pin,
         official_disposal_source_pin=pair.disposal.source_pin,
+        cancel_callback=cancel_callback,
+    )
+
+
+def publish_completed_technical_selection_bundle(
+    writer: DailyMarketTechnicalOfficialDispositionBundleWriterV1,
+    *,
+    production_result: DailyMarketTechnicalUniverseV4ProductionResult,
+    pointer_path: str | Path,
+    store_output_root: str | Path,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> DailyMarketTechnicalOfficialDispositionBundleReferenceV1:
+    """完整技術產製才交付保存；來源截止時間沿原 plan，不重寫為現在。"""
+    from app_module.daily_market_technical_universe_v4_producer import (
+        DailyMarketTechnicalUniverseV4ProductionResult,
+    )
+
+    _check_cancel(cancel_callback)
+    if type(production_result) is not DailyMarketTechnicalUniverseV4ProductionResult:
+        raise CurrentSelectionSourcePairError("current_source_technical_result_type_invalid")
+    plan = production_result.plan
+    receipt = production_result.receipt
+    if (production_result.status != "complete" or plan is None or receipt is None
+            or receipt.status != "complete"):
+        raise CurrentSelectionSourcePairError("current_source_technical_result_incomplete")
+    # 這些 pins 由真正產製結果取出；下游 writer 仍須讀回並核驗 store 原件。
+    return publish_current_selection_bundle(
+        writer,
+        pointer_path=pointer_path,
+        cutoff_at=plan.source_clock.decision_cutoff,
+        store_output_root=store_output_root,
+        generation_identity_sha256=plan.generation_identity_sha256,
+        plan_identity_sha256=plan.identity_sha256,
+        expected_plan_sha256=production_result.plan_sha256 or "",
+        receipt_identity_sha256=receipt.identity_sha256,
+        expected_receipt_sha256=receipt.content_sha256,
         cancel_callback=cancel_callback,
     )

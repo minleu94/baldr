@@ -31,3 +31,10 @@ Root 重用 attempt03 已保存的合成技術母體（257 included＋1 excluded
 真接線抓到零微秒表示的實際相容問題：市場 reader 用 `.000000+00:00`、處置 reader 用 `+00:00`，原 pointer／snapshot SHA 相同卻被 adapter 誤拒絕。現改為原來源與版本 SHA 仍完全相同，兩個時間欄位則核 aware instant；沒有改 cutoff、reader 或 writer 的 gate。新增零微秒真 capture 案例後 9 passed／0.64 秒，日誌 `adapter_tests_d.log`；targeted mypy 與 compile 通過。
 
 前置探針失敗日誌 a–e 保留：完整 QA tree 深層 Windows 路徑、帶 `sha256:` 前綴的 raw pin 比較、上述時間誤拒絕，以及成功產製後 QA 收據錯用不存在的 `reference.to_dict()`。修正最後項為 dataclass `asdict`，在新獨立目錄重跑成功；未把只到產製或只到重開的部分結果冒稱完整 terminal 收據。
+# 完整技術產製結果接續 gate
+
+新增 `publish_completed_technical_selection_bundle()`，只接收真正 typed 技術產製結果；整體與 receipt 都必須 complete，plan／receipt 缺件、取消或失敗均在來源 I/O 與 writer 呼叫前拒絕。來源 cutoff 沿原 plan，保存 pins 由產製結果取出，下游既有 writer 仍須 exact read 驗證 store。
+
+合成回歸 13 passed（1.90 秒），日誌 `output/qa/f17_normal_capture_pair_20261009_a/complete_result_gate_b.log`。新增案例以真正單股技術產製器取得完整結果，驗證原 cutoff／plan／receipt pins 轉交；另外三種不完整結果均不發布。首次 sandbox 因 WinError 5 路徑 resolve 失敗，原測試目錄保留，改以全新 native 隔離目錄測試通過。
+
+此增量仍是 backend 轉交邊界，尚未串接 UI，新增單股案例沒有再次驗證完整 bundle writer 或 EXE；先前真正 writer 證據與本次證據範圍分開。

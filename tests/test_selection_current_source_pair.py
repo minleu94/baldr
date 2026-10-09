@@ -13,6 +13,7 @@ from app_module.selection_current_source_pair import (
     CurrentSelectionSourcePairError,
     open_current_selection_source_pair,
     publish_current_selection_bundle,
+    publish_completed_technical_selection_bundle,
 )
 from data_module.selection_official_events import CurrentOfficialDisposalReader
 from data_module.selection_market_assignments import CurrentMarketAssignmentError
@@ -117,3 +118,59 @@ def test_zero_microsecond_same_capture_is_not_mistaken_for_mixed_version(
     pair = open_current_selection_source_pair(pointer, cutoff_at=datetime.now(timezone.utc))
     assert pair.market.source_pin.pointer_published_at != pair.disposal.source_pin.pointer_published_at
     assert datetime.fromisoformat(pair.market.source_pin.pointer_published_at) == datetime.fromisoformat(pair.disposal.source_pin.pointer_published_at)
+
+
+@pytest.mark.parametrize("status", ["cancelled", "failed", "complete"])
+def test_incomplete_production_never_opens_sources_or_publishes(
+    tmp_path: Path, status: Any,
+) -> None:
+    from app_module.daily_market_technical_universe_v4_producer import (
+        DailyMarketTechnicalUniverseV4ProductionResult,
+    )
+    result = DailyMarketTechnicalUniverseV4ProductionResult(
+        status=status, step="fixture", plan=None, receipt=None,
+        error_code=None, cause_code=None, resumed=False,
+        calculation_identity_sha256=None, completed_segment_indices=(),
+        missing_data_stock_codes=(),
+    )
+    writer = Mock()
+    with pytest.raises(CurrentSelectionSourcePairError, match="result_incomplete"):
+        publish_completed_technical_selection_bundle(
+            writer, production_result=result, pointer_path=tmp_path / "missing.json",
+            store_output_root=tmp_path / "missing_store",
+        )
+    writer.create_from_pins.assert_not_called()
+
+
+def test_real_complete_producer_preserves_original_cutoff_and_exact_pins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app_module.selection_current_source_pair as adapter
+    from app_module.daily_market_technical_universe_v4_producer import (
+        produce_daily_market_technical_universe_v4,
+    )
+    from tests.test_daily_market_technical_universe_v4_producer import (
+        _write_source, _scope_and_store_root, _cohort, _request,
+    )
+    database = tmp_path / "synthetic.sqlite"
+    _write_source(database, ("1101",))
+    scope, store_root = _scope_and_store_root(tmp_path, database)
+    result = produce_daily_market_technical_universe_v4(
+        _request(database, _cohort(("1101",)), store_root, scope)
+    )
+    assert result.status == "complete"
+    assert result.plan is not None and result.receipt is not None
+    delegated = Mock()
+    monkeypatch.setattr(adapter, "publish_current_selection_bundle", delegated)
+    writer = Mock()
+    published = publish_completed_technical_selection_bundle(
+        writer, production_result=result, pointer_path=tmp_path / "pointer.json",
+        store_output_root=store_root,
+    )
+    assert published is delegated.return_value
+    args = delegated.call_args.kwargs
+    assert args["cutoff_at"] == result.plan.source_clock.decision_cutoff
+    assert args["expected_plan_sha256"] == result.plan_sha256
+    assert args["expected_receipt_sha256"] == result.receipt.content_sha256
+    assert args["generation_identity_sha256"] == result.plan.generation_identity_sha256
+    # 真產製器＋轉交契約；此案例不宣稱後續 bundle writer 或 UI 已接受。

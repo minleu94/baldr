@@ -18,8 +18,8 @@
 - [路徑隔離功能更新說明（v1.3.0，歷史）](../09_archive/PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md)
   - 保存 2024-10-16 舊版本的命令、預設與測試記錄；目前路徑規則依 `TWStockConfig`、系統架構與操作手冊判讀。
 
-- **`RUN_WITHOUT_VENV.md`**
-  - 不使用虛擬環境運行指南
+- [受限 System Python 備援](RUN_WITHOUT_VENV.md)
+  - 只供已配置相容 runtime 的本機解譯器；新環境與 PowerShell activation 問題依 [INSTALL_GUIDE](../07_guides/INSTALL_GUIDE.md) 使用 `.venv`，不執行無約束全域安裝。
 
 - **`MCP_YFINANCE_OPENMARKETS_PATCH_MEMO.md`**
   - openmarkets / yahoo-finance MCP 相容性修補備忘

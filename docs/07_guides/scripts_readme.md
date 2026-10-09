@@ -3,6 +3,8 @@
 ## 概述
 本目錄包含系統中獨立的腳本，主要用於數據更新、修復、合併以及參數優化等任務。這些腳本在系統架構中扮演重要角色，確保數據的完整性和系統的穩定性。
 
+下方 `python` 命令範例假設目前 shell 使用專案相容的 Python 3.11 `.venv`。Windows PowerShell 可直接使用：`.\.venv\Scripts\python.exe`，不必啟用環境；新環境安裝看 [INSTALL_GUIDE](INSTALL_GUIDE.md)。不要把未啟用環境時解析到的全域 Python 當成預設；受限備援條件見[System Python 備忘](../08_technical/RUN_WITHOUT_VENV.md)。
+
 ## 相關文檔
 - [系統架構文檔](../01_architecture/system_architecture.md) - 系統架構和模組說明
 - [早期資料收集架構藍圖（歷史）](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md) - 舊 API、CSV 與路徑設計追溯

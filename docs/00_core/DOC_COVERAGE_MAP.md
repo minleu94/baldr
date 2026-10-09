@@ -1,5 +1,13 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 Month 5 Fundamental inventory 歷史歸檔
+
+將 87,587-byte、510 行的 Month 5 基本面來源盤點移至 `docs/09_archive/`；原文最後更新記錄到 2026-08-12，且包含大量逐日研究／來源採集流水帳。原路徑改為短導引，指向現行 Snapshot、current architecture、來源審查、snapshot config 與 source acceptance QA；QA README 增加基本面／估值來源地圖。原文沒有需重設的本地相對連結，封存 bytes 與原件 SHA-256 相同。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/03_data/FUNDAMENTAL_SOURCE_INVENTORY.md | [FUNDAMENTAL_SOURCE_INVENTORY_HISTORY_20260812.md](../09_archive/FUNDAMENTAL_SOURCE_INVENTORY_HISTORY_20260812.md) | 87,587 / 337851783F76C0013771C3D70D88D26C1B8CAC184B1AFE9A114BCD8539D3302C | 87,587 / 337851783F76C0013771C3D70D88D26C1B8CAC184B1AFE9A114BCD8539D3302C |
+
 ## 2026-10-08 舊版 CSV 全量重建指南歸檔
 
 將 4,603-byte 舊版 `DATA_REBUILD_GUIDE.md` 移至 archive，原位置保留警示導引。原文直接建議 `--force-all` 重寫合併 CSV 與重算衍生資料，並使用固定個人路徑；它未反映目前受控來源／projection、資料修復與 QA 邊界。`data_audit_agent.md` 改指每日更新指南、current architecture 與具名 QA 收據，明確將舊全量命令列為歷史操作。封存只修正 1 個指向備份稽核的相對連結；其餘原文保留。來源 SHA-256 為 `1876E8FC64C825F4CF72CC29927FAA079BBC8DE04AB4B9E2D2DD8862905BCDAD`；更新連結後 archive 為 4,613 bytes，SHA-256 為 `558974868D100BBB71FC223DC4FBFB4860D3AF1A7F39D010FCD14CFCD3D1A443`。

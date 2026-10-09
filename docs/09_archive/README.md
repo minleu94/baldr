@@ -8,6 +8,7 @@
 
 ## 2026-10-08 資料實作摘要
 
+- [Month 5 Fundamental Source Inventory（截至 2026-08-12）](FUNDAMENTAL_SOURCE_INVENTORY_HISTORY_20260812.md)：保留基本面來源搜尋、available_date／PIT 缺口及候選工作歷史；目前狀態看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)，來源與接受判斷看 [近期基本面 QA](../06_qa/README.md) 及 current architecture。
 - [產業指數更新摘要](INDUSTRY_INDEX_UPDATE_SUMMARY_HISTORY.md)：保留舊 CSV／API 更新步驟；現行操作看 [每日資料更新指南](../03_data/daily_data_update_guide.md) 與 [操作手冊](../07_guides/APPLICATION_MANUAL.md)。
 - [合併與大盤指數實作摘要](MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md)：保留舊 merge、CSV 路徑及欄位假設；現行架構看 [system_architecture](../01_architecture/system_architecture.md)，操作看每日資料更新指南與操作手冊。
 - [SQLite 雙軌相容指南（2026-06-02）](SQLITE_STORAGE_GUIDE_HISTORY_20260602.md)：保留 v1.1 CSV-SSOT／SQLite-cache 描述、當時遷移步驟與效能聲稱；目前資料保存與同步邊界看 [system_architecture](../01_architecture/system_architecture.md)，操作看每日資料更新指南與操作手冊。

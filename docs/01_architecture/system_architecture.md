@@ -983,7 +983,7 @@ delete／pointer mutation 權限。
 QA 引用，刪除前應冷 archive，或至少建立 durable tombstone；不可改寫 append-only runbook
 的舊 ID／hash。所有刪除使用 exact literal target，禁止對 `release_v4` root 或 wildcard
 遞迴清除。2026-08-29 的一次性 cleanup custody 與 current pointer 基線見
-[ML Release v4 Storage Retention Cleanup](../06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)。
+[ML Release v4 Storage Retention Cleanup](../09_archive/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)。
 
 容量通過只解除 worker 啟動前置，不代表 Formal input、OOS、promotion、alpha、scheduler、
 technical production canary 或 broker order 通過。舊 status artifact 應保留作歷史，不能手改；

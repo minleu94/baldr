@@ -1845,7 +1845,7 @@ Immutable PIT／Direct／OOC 清理不是一般「刪暫存檔」。若 owner �
 2026-08-29 的 retained baseline 是 PIT／Direct／OOC 各 6 個完整 run；post-cleanup（歷史）
 inventory 於 `2026-08-28T23:48:53-07:00` 觀察到 D free=`440,561,684,480` bytes
 （約 410.31 GiB）、inventory=`headroom_ok`。完整 custody 見
-[ML Release v4 Storage Retention Cleanup](../06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)。
+[ML Release v4 Storage Retention Cleanup](../09_archive/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)。
 其中一個已刪 incomplete Direct ID 仍保留在兩份歷史 runbook，已用 tombstone 揭露；
 current pointers 與 retained chain 未受影響。
 

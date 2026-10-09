@@ -393,6 +393,14 @@ Healthcheck Batch 3 Recommendation Profile／Regime plan 經審核後留在 `doc
 |---|---|---|---|
 | docs/06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md | [PROGRAM_STATUS_REBASELINE_2026_08_29.md](../09_archive/PROGRAM_STATUS_REBASELINE_2026_08_29.md) | 15,546 / `8d21f040f9236344e67fecd43ced62cc80c38e775ebc058cbb85c982c301c636` | 15,602 / `10a6145483f79f7e695874719f45b8951a9019103a02ebd90705dd3e4daeb7df` |
 
+## 2026-10-08 ML Release v4 retention cleanup custody 歸檔
+
+將 2026-08-29 使用者授權的一次性 retention cleanup 收據移入 Archive。該報告記錄 release_v4 三個 artifact roots 的 exact scope、不可逆性、before／after inventory、current pointer／保留鏈及 tombstone；它是歷史 custody 證據，不提供目前容量或 run inventory。現行 retention policy 仍由 system architecture §11.1 定義，人工操作程序仍在 Application Manual Supplements；舊 QA 路徑保留短導引，供舊索引與 repository inventory 測試相容。原文沒有相對 Markdown 連結，封存副本保持 byte-exact。
+
+| 原路徑 | 歸檔路徑 | 原文 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md | [ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md](../09_archive/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md) | 13,921 / `642c6b025dee93d844332028b0e2c865cd558e2f903278cbfc49d657c7ecd878` | 13,921 / `642c6b025dee93d844332028b0e2c865cd558e2f903278cbfc49d657c7ecd878` |
+
 ## 2026-10-08 QA 導覽補充：Gate 2 與 Data Update 效能基線
 
 盤點 2026-07／08 剩餘長篇 QA 時，保留 [Gate 2 7/22 稽核](../06_qa/GATE_2_DATA_GOVERNANCE_CONSOLIDATION_AUDIT_2026_07_22.md)：唯讀稽核腳本仍固定輸出至該路徑，報告也明示不構成人工 Gate credit 或 production enablement。保留 [Data Update 8/28 效能基線](../06_qa/DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md)：Application Manual 直接引用，且報告內 bounded worker、單寫入者與 production opt-in 邊界仍需追溯。兩者均是日期化證據，不代表目前資料筆數、執行速度或 Gate 狀態；QA README 已補主題入口。

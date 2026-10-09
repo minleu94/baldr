@@ -44,3 +44,11 @@ Root 重用 attempt03 已保存的合成技術母體（257 included＋1 excluded
 合成回歸 13 passed（1.90 秒），日誌 `output/qa/f17_normal_capture_pair_20261009_a/complete_result_gate_b.log`。新增案例以真正單股技術產製器取得完整結果，驗證原 cutoff／plan／receipt pins 轉交；另外三種不完整結果均不發布。首次 sandbox 因 WinError 5 路徑 resolve 失敗，原測試目錄保留，改以全新 native 隔離目錄測試通過。
 
 此增量仍是 backend 轉交邊界，尚未串接 UI，新增單股案例沒有再次驗證完整 bundle writer 或 EXE；先前真正 writer 證據與本次證據範圍分開。
+
+## 固定來源經真正 writer 保存與重開
+
+新增獨立探針 `output/qa/f17_normal_capture_pair_20261009_a/root_fixed_pair_real_writer_probe.py`：exact 核讀原已保存的合成完整技術 plan／receipt，再固定成對來源；正常 updater 發布原 cutoff 後的新 pointer，重新讀 pointer 確實拒絕，但固定 pair 經未修改的真 writer 保存後，真 reader exact 重開成功。258 列股票順序與原件一致；原合成來源逐檔 SHA 與第二次 capture 後的來源逐檔 SHA 在 writer 起訖均一致。
+
+原生 terminal exit 0，收據 `output/qa/f17fixedpub_mg48geel/receipt.json`，日誌 `fixed_pair_real_writer_b.log`。首次 sandbox 路徑解析 WinError 5 日誌 a 保留。這是同程序 backend 合成案例，使用明示 frozen capture clock，重用已保存的 producer 輸出，沒有新執行 producer、網路擷取或原始行情 SQL；不宣稱逐欄新舊技術值比較、UI、跨程序或 EXE 驗收。來源 coverage 仍為 partial，未升格為 complete。
+
+另以獨立唯讀探針 `root_fixed_pair_readback_comparison.py` 比較新舊 258 列的 schema、股票、cohort role、排除原因、技術處理狀態與缺件標記，全部相同；完整 `technical_store` 保存 pins 相同，兩棵來源樹逐檔 SHA 起訖不變。terminal exit 0，收據 `fixed_pair_comparison_receipt.json`，日誌 `fixed_pair_comparison_a.log`。此比較覆蓋 bundle 保存的技術 projection 與指向來源，不是底層指標逐值比較。

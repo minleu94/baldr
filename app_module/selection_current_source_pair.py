@@ -12,6 +12,7 @@ from data_module.selection_official_events import CurrentOfficialDisposalReader
 
 if TYPE_CHECKING:
     from app_module.daily_market_technical_universe_v4_producer import (
+        DailyMarketTechnicalUniverseV4ProductionRequest,
         DailyMarketTechnicalUniverseV4ProductionResult,
     )
     from app_module.daily_market_technical_official_disposition_bundle_v1 import (
@@ -22,6 +23,48 @@ if TYPE_CHECKING:
 
 class CurrentSelectionSourcePairError(ValueError):
     """混版或未明示時序時，不交付部分來源。"""
+
+
+@dataclass(frozen=True)
+class CurrentSelectionProductionOutcome:
+    """保留真正產製狀態；未完成時不附保存 bundle。"""
+
+    technical_result: DailyMarketTechnicalUniverseV4ProductionResult
+    bundle_reference: DailyMarketTechnicalOfficialDispositionBundleReferenceV1 | None
+
+
+def produce_current_selection_bundle(
+    writer: DailyMarketTechnicalOfficialDispositionBundleWriterV1,
+    *,
+    production_request: DailyMarketTechnicalUniverseV4ProductionRequest,
+    pointer_path: str | Path,
+) -> CurrentSelectionProductionOutcome:
+    """背景先選定來源，再沿原 request 產製；取消／失敗不保存部分結果。
+
+    未來函數自查：只接受明示 request cutoff，雙來源在產製前核定；
+    不改寫原 cutoff、不取後來 pointer，不改計算、母體或來源可得時間。
+    """
+    from app_module.daily_market_technical_universe_v4_producer import (
+        DailyMarketTechnicalUniverseV4ProductionRequest,
+        produce_daily_market_technical_universe_v4,
+    )
+
+    if type(production_request) is not DailyMarketTechnicalUniverseV4ProductionRequest:
+        raise CurrentSelectionSourcePairError("current_source_technical_request_type_invalid")
+    cancel = production_request.cancel_callback
+    pair = open_current_selection_source_pair(
+        pointer_path, cutoff_at=production_request.decision_cutoff, cancel_callback=cancel,
+    )
+    _check_cancel(cancel)
+    result = produce_daily_market_technical_universe_v4(production_request)
+    if (result.status != "complete" or result.plan is None or result.receipt is None
+            or result.receipt.status != "complete"):
+        return CurrentSelectionProductionOutcome(result, None)
+    reference = publish_completed_technical_selection_bundle(
+        writer, production_result=result, store_output_root=production_request.store_output_root,
+        source_pair=pair, cancel_callback=cancel,
+    )
+    return CurrentSelectionProductionOutcome(result, reference)
 
 
 @dataclass(frozen=True)

@@ -14,6 +14,7 @@ from app_module.selection_current_source_pair import (
     open_current_selection_source_pair,
     publish_current_selection_bundle,
     publish_completed_technical_selection_bundle,
+    produce_current_selection_bundle,
 )
 from data_module.selection_official_events import CurrentOfficialDisposalReader
 from data_module.selection_market_assignments import CurrentMarketAssignmentError
@@ -217,3 +218,95 @@ def test_real_complete_producer_preserves_original_cutoff_and_exact_pins(
     assert args["expected_receipt_sha256"] == result.receipt.content_sha256
     assert args["generation_identity_sha256"] == result.plan.generation_identity_sha256
     # 真產製器＋轉交契約；此案例不宣稱後續 bundle writer 或 UI 已接受。
+
+
+def test_coordinator_freezes_sources_before_real_producer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app_module.daily_market_technical_universe_v4_producer as producer
+    from tests.test_daily_market_technical_universe_v4_producer import (
+        _write_source, _scope_and_store_root, _cohort, _request,
+    )
+    database = tmp_path / "synthetic.sqlite"
+    _write_source(database, ("1101",))
+    scope, store_root = _scope_and_store_root(tmp_path, database)
+    request = _request(database, _cohort(("1101",)), store_root, scope)
+    monkeypatch.setattr(_FrozenDateTime, "fixed_now", request.decision_cutoff - timedelta(seconds=2))
+    monkeypatch.setattr(capture_module, "datetime", _FrozenDateTime)
+    monkeypatch.setattr(market_test_helpers, "datetime", _FrozenDateTime)
+    capture_root = tmp_path / "capture"
+    capture_root.mkdir()
+    pointer = _create_capture(capture_root)
+    pair = open_current_selection_source_pair(pointer, cutoff_at=request.decision_cutoff)
+    real_produce = producer.produce_daily_market_technical_universe_v4
+
+    def advance_then_produce(received: Any) -> Any:
+        assert received is request
+        monkeypatch.setattr(_FrozenDateTime, "fixed_now", request.decision_cutoff + timedelta(seconds=2))
+        _create_capture(capture_root)
+        return real_produce(received)
+
+    monkeypatch.setattr(producer, "produce_daily_market_technical_universe_v4", advance_then_produce)
+    writer = Mock()
+    outcome = produce_current_selection_bundle(writer, production_request=request, pointer_path=pointer)
+    assert outcome.technical_result.status == "complete"
+    assert outcome.bundle_reference is writer.create_from_pins.return_value
+    assert writer.create_from_pins.call_args.kwargs["market_assignment_source_pin"] == pair.market.source_pin
+    assert writer.create_from_pins.call_args.kwargs["official_disposal_source_pin"] == pair.disposal.source_pin
+    with pytest.raises(CurrentMarketAssignmentError, match="pointer_after_cutoff"):
+        open_current_selection_source_pair(pointer, cutoff_at=request.decision_cutoff)
+
+
+@pytest.mark.parametrize("status", ["failed", "cancelled", "complete"])
+def test_coordinator_incomplete_production_preserves_result_without_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: Any,
+) -> None:
+    import app_module.daily_market_technical_universe_v4_producer as producer
+    from tests.test_daily_market_technical_universe_v4_producer import (
+        _write_source, _scope_and_store_root, _cohort, _request,
+    )
+    database = tmp_path / "synthetic.sqlite"
+    _write_source(database, ("1101",))
+    scope, store_root = _scope_and_store_root(tmp_path, database)
+    request = _request(database, _cohort(("1101",)), store_root, scope)
+    monkeypatch.setattr(_FrozenDateTime, "fixed_now", request.decision_cutoff - timedelta(seconds=2))
+    monkeypatch.setattr(capture_module, "datetime", _FrozenDateTime)
+    monkeypatch.setattr(market_test_helpers, "datetime", _FrozenDateTime)
+    pointer = _create_capture(tmp_path)
+    incomplete = producer.DailyMarketTechnicalUniverseV4ProductionResult(
+        status=status, step="fixture", plan=None, receipt=None, error_code=None,
+        cause_code=None, resumed=False, calculation_identity_sha256=None,
+        completed_segment_indices=(), missing_data_stock_codes=(),
+    )
+    run = Mock(return_value=incomplete)
+    monkeypatch.setattr(producer, "produce_daily_market_technical_universe_v4", run)
+    writer = Mock()
+    outcome = produce_current_selection_bundle(writer, production_request=request, pointer_path=pointer)
+    assert outcome.technical_result is incomplete
+    assert outcome.bundle_reference is None
+    writer.create_from_pins.assert_not_called()
+    run.assert_called_once_with(request)
+
+
+def test_coordinator_rejects_late_capture_before_producer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app_module.daily_market_technical_universe_v4_producer as producer
+    from tests.test_daily_market_technical_universe_v4_producer import (
+        _write_source, _scope_and_store_root, _cohort, _request,
+    )
+    database = tmp_path / "synthetic.sqlite"
+    _write_source(database, ("1101",))
+    scope, store_root = _scope_and_store_root(tmp_path, database)
+    request = _request(database, _cohort(("1101",)), store_root, scope)
+    monkeypatch.setattr(_FrozenDateTime, "fixed_now", request.decision_cutoff + timedelta(seconds=2))
+    monkeypatch.setattr(capture_module, "datetime", _FrozenDateTime)
+    monkeypatch.setattr(market_test_helpers, "datetime", _FrozenDateTime)
+    pointer = _create_capture(tmp_path)
+    run = Mock()
+    monkeypatch.setattr(producer, "produce_daily_market_technical_universe_v4", run)
+    writer = Mock()
+    with pytest.raises(CurrentMarketAssignmentError, match="pointer_after_cutoff"):
+        produce_current_selection_bundle(writer, production_request=request, pointer_path=pointer)
+    run.assert_not_called()
+    writer.create_from_pins.assert_not_called()

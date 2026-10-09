@@ -52,3 +52,9 @@ Root 重用 attempt03 已保存的合成技術母體（257 included＋1 excluded
 原生 terminal exit 0，收據 `output/qa/f17fixedpub_mg48geel/receipt.json`，日誌 `fixed_pair_real_writer_b.log`。首次 sandbox 路徑解析 WinError 5 日誌 a 保留。這是同程序 backend 合成案例，使用明示 frozen capture clock，重用已保存的 producer 輸出，沒有新執行 producer、網路擷取或原始行情 SQL；不宣稱逐欄新舊技術值比較、UI、跨程序或 EXE 驗收。來源 coverage 仍為 partial，未升格為 complete。
 
 另以獨立唯讀探針 `root_fixed_pair_readback_comparison.py` 比較新舊 258 列的 schema、股票、cohort role、排除原因、技術處理狀態與缺件標記，全部相同；完整 `technical_store` 保存 pins 相同，兩棵來源樹逐檔 SHA 起訖不變。terminal exit 0，收據 `fixed_pair_comparison_receipt.json`，日誌 `fixed_pair_comparison_a.log`。此比較覆蓋 bundle 保存的技術 projection 與指向來源，不是底層指標逐值比較。
+
+## 先固定來源再產製的協調入口
+
+新增 `produce_current_selection_bundle()`：使用真正 typed request 的明示 cutoff 與取消 callback，先核定成對來源，再呼叫既有真正技術產製器；只有完整 result／plan／receipt 才沿固定 pair 交給原 writer。取消、失敗與缺件原 result 保留，bundle 為 None，不發布部分結果。晚於 cutoff 的來源在產製器呼叫前拒絕。未改寫訊號、指標、母體、截止時間或來源資格。
+
+完整 pair／協調入口回歸 19 passed，日誌 `output/qa/f17_normal_capture_pair_20261009_a/coordinator_tests_c.log`。正例使用真正單股 producer，於產製呼叫前更新 pointer 到原 cutoff 後，仍轉交原來源 pins；晚來源拒絕案例驗 producer／writer 均未呼叫。協調入口 writer 在此回歸仍為 Mock，不能替代前節真正 writer 證據。targeted mypy 與兩檔 compile 通過。首次 sandbox 路徑解析失敗日誌 a 保留，native 全新目錄 b 為 18 passed，新增拒絕案例後 c 為 19 passed。此入口尚未串 UI、catalog 或收藏路由，不能宣告正常更新閉環完成。

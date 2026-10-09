@@ -24,6 +24,10 @@
 
 - [Coverage Map 整理前更新記錄與快速索引快照](DOC_COVERAGE_MAP_CHANGELOG_20261009_HISTORY.md)：保存精簡前的全部日期化變更與逐批索引；現行權威、同步矩陣與 DoD 回到 [`DOC_COVERAGE_MAP.md`](../00_core/DOC_COVERAGE_MAP.md)，逐批原路徑／目的地／雜湊回到 Coverage History。來源區塊與快照雜湊見 [Entry 111](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-111)。
 
+## 2026-10-09 備份保留稽核日期快照
+
+- [Backup Retention Audit（2026-07-06）](BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md)：保留當日 repo／FA_Data 備份來源、容量掃描與清理候選；其中 retention 規則摘要仍見每日資料更新指南，資產用途／恢復以較新的 [Storage Asset Register](../03_data/STORAGE_ASSET_REGISTER_20261006.md) 為準。歷史候選不構成目前搬移或刪除授權；原 QA／操作引用可經舊路徑短導引抵達。原件 bytes／SHA 與引用清單見 [Coverage History Entry 112](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-112)。
+
 <a id="2026-10-09-r029-retirement-preflight"></a>
 ## 2026-10-09 R029 retirement preflight 歷史
 

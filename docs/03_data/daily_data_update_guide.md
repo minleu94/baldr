@@ -138,7 +138,7 @@ UpdateService overview／detail 在 SQLite 缺失時會先停在 `unavailable`�
 
 除上述 HTTP 307 fallback 外，HTTP 錯誤、逾時、連線例外、JSON／表格解析失敗，或「查詢日期大於今日」與包含「查無資料」但非官方完整文案的回覆，仍會列入 `failed_dates`，並中止後續同步，避免 UI 將不完整資料誤認為已更新。每個查詢型別的 HTTP／API／transport 診斷會保留在批次結果中。排程請查看 `OUTPUT_ROOT/scheduled/data_update_quick/latest_status.json`：`passed_with_warnings` 代表有安全跳過日或 TPEX 警告；`failed` 則應同時查看當日 `*_data_update_quick.log` 與 `errors` 欄位。
 
-備份檔集中存放在 `meta_data/backup/`。為降低硬碟負擔，系統會在新備份成功後清理同一來源的舊備份：同一天只保留最新一份，且最多保留最新 5 個日期版本；清理範圍僅限備份目錄內「完全符合來源前綴 + 日期戳」的檔案，不會刪除正式資料，也不會讓一般 `twstock_*.db` 清掉 `twstock_fundamental_schema_*.db` 這類不同用途的標籤備份。備份來源與既有大檔清理候選見 [BACKUP_RETENTION_AUDIT_2026_07_06.md](BACKUP_RETENTION_AUDIT_2026_07_06.md)。
+備份檔集中存放在 `meta_data/backup/`。為降低硬碟負擔，系統會在新備份成功後清理同一來源的舊備份：同一天只保留最新一份，且最多保留最新 5 個日期版本；清理範圍僅限備份目錄內「完全符合來源前綴 + 日期戳」的檔案，不會刪除正式資料，也不會讓一般 `twstock_*.db` 清掉 `twstock_fundamental_schema_*.db` 這類不同用途的標籤備份。2026-07-06 備份來源與當時的大檔清理候選見[歷史稽核快照](../09_archive/BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md)；目前資產用途與恢復邊界看 [STORAGE_ASSET_REGISTER_20261006.md](STORAGE_ASSET_REGISTER_20261006.md)。
 
 ### CSV 欄位契約與週末交易日證據
 

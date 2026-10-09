@@ -985,3 +985,14 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 將 `DOC_COVERAGE_MAP.md` 原「更新記錄」與逐批快速索引抽離為[歷史快照](DOC_COVERAGE_MAP_CHANGELOG_20261009_HISTORY.md)，Map 本文保留現行權威邊界、文件同步矩陣、DoD 與指向完整 History 的入口。來源範圍是原文件自 `## 更新記錄` 至結尾，12,679 bytes，SHA-256 `75994B26F4A208414467B876021AEBC9D4F098C57FF5AC102E720EDDEE6A05DC`。快照保留全部文字與批次標題；為讓 Archive 內可導航，將 42 個 Coverage History 相對連結由舊路徑改為同目錄路徑。快照完整檔案為 12,604 bytes，SHA-256 `366109169DF07C8F84D058C377BB37894D25174E453B06EF7A79BE962B48FA0F`。
 
 原 Coverage Map Task Loop 01–07 quick-index heading 已無保留必要；唯一找到的 inbound link 位於 Archive README，已改指向 [Coverage History Entry 082](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-082)。根目錄結構規範同步釐清：每次歸檔更新 History 與 Archive README；只有現行權威／入口／同步規則變更時才更新 Map。沒有改動任何 Gate、QA 原件或其他任務的 dirty 文件。
+
+<a id="coverage-entry-112"></a>
+## 2026-10-09 歸檔 7/6 Backup Retention Audit 日期快照
+
+`BACKUP_RETENTION_AUDIT_2026_07_06.md` 記錄 2026-07-06 的 repo／FA_Data 備份來源與容量掃描，並於 8/29 補記 ML release_v4 immutable publication 的獨立處置邊界。它包含當日容量、既有大檔與待確認清理候選，不作目前資產狀態或清理授權。現行 retention 操作摘要留在 `daily_data_update_guide.md` 與 Application Manual；資料用途、容量時點及恢復入口看 `STORAGE_ASSET_REGISTER_20261006.md`。舊路徑保留短導引，接住 dirty Application Manual 與既有歷史記錄的連結；乾淨的資料目錄與每日更新指南已改連 Archive 原文。精確檔名搜尋沒有發現 Python、測試或機器 manifest reader。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/03_data/BACKUP_RETENTION_AUDIT_2026_07_06.md` | [BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md](BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md) | 10,269 / `F66C2864208C5D284552AF04D255516522023006C4ADA1DC3122B63E5C69147A` | 10,269 / `F66C2864208C5D284552AF04D255516522023006C4ADA1DC3122B63E5C69147A` |
+
+目前 retention 行為與使用方式以每日更新指南／Application Manual 為準；歷史清理候選仍須個別核對最新資產登記並取得明確授權。本 Entry 保存原件身分、引用相容性與現行替代入口，不把 7/6 容量數字當成目前狀態。

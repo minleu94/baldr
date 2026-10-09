@@ -16,7 +16,7 @@
 ## 來源資格、保留與資產盤點
 
 - [基本面來源盤點入口](FUNDAMENTAL_SOURCE_INVENTORY.md)：短導引連到目前狀態、現行架構及來源 QA；Month 5 詳細盤點已封存。
-- [備份保留稽核](BACKUP_RETENTION_AUDIT_2026_07_06.md)：保留策略及 2026-07-06 來源掃描；容量／檔案現況以更新的資產登記為準。
+- [備份保留稽核（歷史快照）](../09_archive/BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md)：保存 2026-07-06 的來源與容量盤點；現行保留行為看每日更新指南，資產用途／恢復看較新的資產登記。舊路徑保留導引。
 - [資料資產用途與恢復登記](STORAGE_ASSET_REGISTER_20261006.md)：2026-10-06 的用途、保留與恢復快照；不是即時容量清單。
 - [歷史測試資料集中清冊](HISTORICAL_TEST_QUARANTINE_20261006.md)：記錄 2026-10-06 提案及當時未執行狀態；不可據此推定資料已搬移。
 - [月營收公告日 mapping 範本](templates/monthly_revenue_availability.csv)：欄位範本，不是正式公告日資料。正式路徑由資產登記與操作手冊指示。

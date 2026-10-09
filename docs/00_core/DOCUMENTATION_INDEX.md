@@ -1,6 +1,6 @@
 # 文檔索引
 
-> 2026-10-06 整理。本頁維護閱讀與文件位置；目前狀態只看 Snapshot，日期化測試數字只看原 QA receipt。
+> 2026-10-09 更新。本頁維護閱讀與文件位置；目前狀態只看 Snapshot，日期化測試數字只看原 QA receipt。
 
 ## 權威入口
 
@@ -14,7 +14,7 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 | 目前與未來架構 | [目前架構](../01_architecture/system_architecture.md)、[FINAL 目標架構](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) |
 | 安裝與操作 | [安裝](../07_guides/INSTALL_GUIDE.md)、[快速開始](../07_guides/QUICK_START.md)、[完整 Manual](../07_guides/APPLICATION_MANUAL.md) |
 | 文件治理與全清單 | [結構規則](DOCUMENTATION_STRUCTURE.md)、[Coverage Map](DOC_COVERAGE_MAP.md)、[全文件目錄](DOCUMENTATION_CATALOG_20261006.md) |
-| 資料與保留恢復 | [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md) |
+| 資料、保留與恢復 | [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)、[C 槽冷封存終態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md) |
 | 知識圖與更新 | [Graphify 維護入口](DOCUMENTATION_GRAPH_GUIDE.md) |
 
 ## 領域導航
@@ -35,7 +35,7 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 ## 產品補完接續計畫
 
-[Baldr 產品補完接續計畫（2026-10-06）](../superpowers/plans/baldr_product_completion_plan_20261006.md)：對照唯一原始 Danny Quant 計畫、當前原碼與九個保留檔案，整理四用途、完整選股母體、ML／持倉研究、策略績效、排他分工及端到端驗收。使用者後續已授權 Luna Max 開發；工作區先提交為 `bf9207fb`，第 14 節追加 exe／Python 共用入口、設定與同版建置驗收。首波M1已交固定commit candidate並通過同版隔離比較，P01底層已驗但UI未接線；[首波QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)明列版本、失敗保留與未驗項，不代表全部功能完成；原計畫及既有 QA 證據均保留。
+[Baldr 產品補完接續計畫（2026-10-06）](../superpowers/plans/baldr_product_completion_plan_20261006.md)：此計畫維護完整 P00–P14／M1–M3／F01–F23 範圍與驗收依賴，不是完成證明。2026-10-09 本機 dev checkpoint `a48a86af` 是 WIP；恢復後的分工與初步結果見 [恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)，原暫停點與驗收界線見 [產品補完交接](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)。目前狀態以 Snapshot 為準，原計畫與 QA 收據保留。
 
 ## 歷史與原始證據
 

@@ -22,7 +22,9 @@ P01 路徑修正已保存本機 dev `f9ead461`／`30812082`，但最新固定千
 
 補完首波已按使用者授權完成 Luna Max 葉片分工並逐包本機提交。共用設定／版本（43案例）、H20白話投影（12案例）、中央入口／UI（34整合案例）與P01底層（6案例）通過；P01全母體UI仍未接線。固定來源 `4b40788bea9e74b5d5207d3d81b1e1c80394b7d6` 建置候選 `2026.10.06+4b40788bea9e`，Python／exe同設定隔離比較通過，已校正Matplotlib hook造成的快取路徑差異。詳見[首波QA](../06_qa/BALDR_COMPLETION_FIRST_WAVE_20261006.md)及[單一計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。現有exe／active_delivery保留；完整選股器、策略績效、Native真人與正式Task自然run均未因此完成。
 
-## 目前可用範圍
+## 2026-10-07 產品能力與成熟度基線（歷史快照）
+
+以下功能狀態、自然任務時間與成熟度數字只代表當時快照；目前產品補完與各項通過／失敗／未驗證界線，改由 2026-10-09 [交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)及其引用的 root review 判讀。
 
 主要 UI 為 PySide6 `ui_qt/main.py`。首頁四用途、原保存研究／收藏／圖表與精確返回、有界結果讀取及私人覆盤等已有有限工程驗證；完整操作與限制以 [Manual](../07_guides/APPLICATION_MANUAL.md) 為準。使用者已接受 U1 有限 BBANDS30 上軌比較與 U2 H20 gross；舊「等待答覆」段落是歷史，不能當目前阻擋。
 
@@ -43,13 +45,15 @@ H20 已實際啟用；原保存 10 股完整 cohort 的 gross 整數排序與 ex
 
 ## 工作區與資料保護
 
-僅 dev／main 兩本機分支，一個主要 worktree；本輪只 commit dev，不 push／main merge。42 個舊 checkout 的 refs／extras 已有恢復備份，見 [兩分支恢復 QA](../06_qa/BALDR_TWO_BRANCH_RECOVERY_20261007.md)。main 是受控使用版，不等同 dev 全部開發收據已公開。
+2026-10-09 本機 dev checkpoint 為 `a48a86afd4de0fd9a5f85e2dd09cf370ad42281b`；checkpoint 建立時位於 `dev`、工作樹乾淨且未 push。這是 WIP 交接，不代表產品完成；驗收界線與續接事項見 [交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)。42 個舊 checkout 的 refs／extras 恢復備份是 2026-10-07 收據，見 [兩分支恢復 QA](../06_qa/BALDR_TWO_BRANCH_RECOVERY_20261007.md)。main 是受控使用版，不等同 dev 全部開發收據已公開。
 
-市場根由 `TWStockConfig`／`DATA_ROOT` 決定；私人資料、模型／source lineage、原失敗 raw 與 immutable receipts 保留。cleanup terminal 只移除 4 個空 root 共 8 目錄、0 bytes；14 DB、三工具 root、2070 Temp root 與其餘 354 repo 暫存 root 全保留，沒有釋放候選 50.6 GiB。用途、容量時點與恢復規則見 [資料資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)。
+市場根由 `TWStockConfig`／`DATA_ROOT` 決定；私人資料、模型／source lineage、原失敗 raw 與 immutable receipts 保留。2026-10-06 repo-temp cleanup terminal 只移除 4 個空 root 共 8 目錄、0 bytes；當日清冊中的 14 DB、三工具 root、2070 Temp root、其餘 354 repo 暫存 root 與未釋放候選 50.6 GiB 是該次盤點／處置範圍，不是 10/09 冷封存後的即時清冊。用途、容量時點與恢復規則見 [資料資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)。
+
+2026-10-09 冷封存終態：第一批 6/6、第二批 28/28，共 34 個根、158,712 個檔案、198,246,544,124 logical bytes（約 184.62 GiB）；終態收據記為完成，34 個 C 槽原路徑均為目標相符的 Junction。兩批執行收據記錄全檔 SHA-256 核驗通過；[終態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)只核對收據及 Junction metadata，沒有重新計算全量 SHA。容量變化與 postflight 數值均是當時快照，不代表目前可用空間；正式 D 槽資料及既有 E 槽舊封存未改。
 
 ## 下一步與導航
 
-優先觀察下一次自然 Task 真實結果、Native 真人接受與尚存來源／模型品質資格；不以文件整理或 graphify 成功折抵 Gate。方向見 [Roadmap Hub](DEVELOPMENT_ROADMAP.md)，邊界見 [目前架構](../01_architecture/system_architecture.md)／[FINAL 目標架構](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)，完整文件清單與維護流程見 [文檔索引](DOCUMENTATION_INDEX.md)。
+產品補完已在 2026-10-09 本機 WIP checkpoint 後恢復開發；恢復基線、當輪分工及初步通過／失敗／未驗證界線見 [恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)。原 checkpoint 交接與未完成驗收仍見 [交接文件](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)及各具名 root review。checkpoint、局部測試或文件整理均不關閉 Gate。方向見 [Roadmap Hub](DEVELOPMENT_ROADMAP.md)，邊界見 [目前架構](../01_architecture/system_architecture.md)／[FINAL 目標架構](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)，完整文件清單與維護流程見 [文檔索引](DOCUMENTATION_INDEX.md)。
 
 其後已實際交付 Windows onedir `dist/baldr/baldr.exe`，需保留整個資料夾、不需 IDE／全域 Python。外部資料／輸出／私人設定分離，不內附 FA_Data 或個人模型。首次操作、SHA、已驗與未驗項見 [可攜指南](../07_guides/PORTABLE_WINDOWS.md)。D01 合法警告成功保留 last success、warning 與 freshness/date 診斷，Runtime 維持 guarded，不把未知／失敗變成功。main 保留既有完整 scheduler／模型／資料功能與必要文件；dev 保存內部 QA、規劃及打包 probe。本輪可逆本機 commit 同步 main，沒有 push；詳細收據見 [可攜 QA](../06_qa/BALDR_PORTABLE_WINDOWS_20261006.md)。上方文檔整理時的 branch／未同步狀態保留為該輪歷史。
 
@@ -70,4 +74,4 @@ H20 已實際啟用；原保存 10 股完整 cohort 的 gross 整數排序與 ex
 
 ## 2026-10-09 補完開發交接 checkpoint
 
-產品補完暫停點、未完成驗收與新對話續接請見 [BALDR_COMPLETION_HANDOFF_20261009](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)。本機 dev 保存 WIP，不代表發布或全產品驗收；文檔整理可依該交接範圍續接。
+原暫停點、未完成驗收及 checkpoint 界線見 [BALDR_COMPLETION_HANDOFF_20261009](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)；恢復後的基線與初步結果見 [BALDR_COMPLETION_RESUME_20261009](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)。兩份文件分別記錄停止與恢復時點，均不是發布或全產品驗收收據。

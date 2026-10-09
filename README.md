@@ -31,6 +31,7 @@ $env:OUTPUT_ROOT = Join-Path $env:LOCALAPPDATA "baldr\reports"
 - [目前狀態](docs/00_core/PROJECT_SNAPSHOT.md)
 - [文檔索引與全清單](docs/00_core/DOCUMENTATION_INDEX.md)
 - [資料資產用途與恢復](docs/03_data/STORAGE_ASSET_REGISTER_20261006.md)
+- [C 槽歷史 QA 冷封存終態對照](docs/06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)：兩批封存狀態、核對範圍與容量快照判讀。
 - [示例資料說明](examples/README.md)
 
 ## 開發與限制

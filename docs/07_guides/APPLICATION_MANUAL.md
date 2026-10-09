@@ -46,11 +46,11 @@ Sector 正式設定已移除當日官方分母不再包含的 8183 inactive over
 
 更新帶警告成功時，Timeline 顯示 partial 並保留成功時間、警告與來源日期；Runtime 顯示 guarded。只接受 producer 一致的合法 `passed_with_warnings`；失敗 step、errors、缺身份／日期、unknown／stale 或來源日期不一致仍按原 gate 拒絕或降級，不等於所有資料正常。
 
-## 現況判讀（2026-10-06 文檔整理）
+## 2026-10-06 文件整理時的有限驗收快照（歷史）
 
-目前已接受 U1 有限 BBANDS30 上軌比較與 U2 H20 gross；個人 H20 已啟用，保存 10 股完整 cohort／gross 排序／exact 返回驗收過。gross 報酬 head 與 canonical 機率 head 分開，Brier 2730 對 null 2500 未勝；工程可讀不代表模型品質合格。自然 10 pending／0 成熟，下一原 Task 2026-10-07 12:45 UTC／05:45 PDT 待真正自動 run，Native 真人易用性仍未驗。後文日期化「U1/U2 等答覆／尚未啟用」只描述當時範圍，現況以 [Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與具名收據為準；不改原步驟、guard 或原失敗證據。
+截至該次文件整理，已接受 U1 有限 BBANDS30 上軌比較與 U2 H20 gross；個人 H20 已啟用，保存 10 股完整 cohort／gross 排序／exact 返回驗收過。gross 報酬 head 與 canonical 機率 head 分開，Brier 2730 對 null 2500 未勝；工程可讀不代表模型品質合格。當時自然 10 pending／0 成熟，預定下一原 Task 為 2026-10-07 12:45 UTC／05:45 PDT，Native 真人易用性仍未驗。這些數字與時程只描述當時範圍；現況以 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[2026-10-09 原暫停交接](../06_qa/BALDR_COMPLETION_HANDOFF_20261009.md)、[恢復開發 QA](../06_qa/BALDR_COMPLETION_RESUME_20261009.md)與具名收據為準；不改原步驟、guard 或原失敗證據。
 
-資料 roots、冷封存／研究／備份用途與恢復界線見 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)。此段是首波開工前的文檔整理歷史，當時沒有改 Task、資料或模型；cleanup 只移 8 個空目錄、0 bytes。後續首波程式與candidate驗收以頁首及具名QA為準。
+資料 roots、冷封存／研究／備份用途與恢復界線見 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)；兩批 C 槽冷封存的終態與容量快照見[終態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)。此段是首波開工前的文檔整理歷史，當時沒有改 Task、資料或模型；cleanup 只移 8 個空目錄、0 bytes。後續首波程式與candidate驗收以頁首及具名QA為準。
 
 ## 發布使用者首次安裝補充
 
@@ -4435,7 +4435,7 @@ Forward 的 5／10／20／60 日結果以已驗證官方日曆的交易 session 
 
 `scripts/smoke_evidence_pipeline.py` 僅供隔離測試資料庫，無論 dry-run 或 confirm 都拒絕配置中的正式 DB 及其別名路徑；它使用相同 verified calendar 與實際日期，缺日曆不會產生假 READY。以 `--db-path <隔離DB>`、`--recommendation-result-id <該QA根的保存結果ID>`、`--decision-date <決策日>` 指定測試，並將 `--data-root`／`--output-root` 指向獨立 QA 目錄；先使用 `--dry-run`，再核對摘要中的日曆阻塞數與實際結果。
 
-`blocked_insufficient_storage` 是實際容量阻礙。研究 cycle 依 2026-10-05 使用者授權採中央 20 GiB reserve，另計來源 DB／WAL 快照上限、2 GiB 持久增量與 2 GiB 暫存；磁碟顯示仍有數百 GiB 不等於可通過。依 terminal 的 required／available bytes 排錯，可用空間須涵蓋完整工作用量加 reserve，不能只因磁碟尚有空間而跳過預算。專用目錄可使用 NTFS 標準壓縮繼承，但未量測的新資料不能套用舊壓縮率。停止 writer 後移除本次新增設定可回到舊預設；保留 D 槽產物及全部原始回執，先前 C 槽容量不足仍需處理。
+`blocked_insufficient_storage` 是實際容量阻礙。研究 cycle 依 2026-10-05 使用者授權採中央 20 GiB reserve，另計來源 DB／WAL 快照上限、2 GiB 持久增量與 2 GiB 暫存；磁碟顯示仍有數百 GiB 不等於可通過。依 terminal 的 required／available bytes 排錯，可用空間須涵蓋完整工作用量加 reserve，不能只因磁碟尚有空間而跳過預算。專用目錄可使用 NTFS 標準壓縮繼承，但未量測的新資料不能套用舊壓縮率。停止 writer 後移除本次新增設定可回到舊預設；保留 D 槽產物及全部原始回執。2026-10-09 兩批歷史 QA 冷封存的終態與容量操作快照見[終態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)；該快照不是目前可用容量，每次 cycle 仍須以當次 required／available bytes 判斷。
 
 外層正式 raw-PIT bootstrap 依 2026-10-05 使用者授權改為 20 GiB reserve、35 GiB 持久預算及 40 GiB 暫存，共 95 GiB。它因空間不足而停止時，正式歷史建置仍未完成。G9 只有在 raw 的錯誤類型、bootstrap stage、指定輸出根、整數容量帳及唯一 headroom blocker 都吻合時，才繼續核對獨立研究支線；仍須讀回 exact completed G6 terminal 的自身容量、來源、快照、模型及 registry 證據。重用則沿新 terminal 核驗原 completed terminal 與其原容量證據。任何 child failed、錯 hash、不同容量 stage、少於收據政策規定的 reserve 或缺少證明都不能接受；獨立研究成功不會把外層正式狀態改綠。
 

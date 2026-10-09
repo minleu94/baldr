@@ -396,6 +396,13 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將六份 2026-07 V2.4／V2.5 paper baselines、V3.0 automated readiness／engineering candidate／Week 1 manual validation，以及已明確標為 historical／superseded 的 7/30 V4.0 closeout 移至 [Archive 專區](../09_archive/README.md#2026-10-08-v2v3v4-dated-readiness-reports)。原 QA 路徑保留短導引；V3 readiness inspector 的 `Path.exists()` 相容檢查仍成立。版本成熟度正文改保留 Gate 與當日決議摘要，詳細樣本與 dated status 留在 Archive；V4 原文的跨目錄連結已修復，目前狀態仍由 Snapshot／現行 QA 決定。
 
+逐檔 Coverage 補記：Entry 050 的彙總明細未列出兩份 V2.4／V2.5 paper baseline 的來源位置與原件指紋；以下補齊其原 QA 路徑、Archive 原文、bytes 與 SHA-256。來源目錄保留的文件是相容導引，原件 bytes／hash 以 Archive 欄為準。
+
+| 原 QA 路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
+|---|---|---|
+| `docs/06_qa/V2_4_PAPER_BASELINE_2026_07_12.md` | [`V2_4_PAPER_BASELINE_2026_07_12.md`](V2_4_PAPER_BASELINE_2026_07_12.md) | 1,286 bytes / `5B13DF9F1BD49BA80C2AF3A51848D4E51CA850B0830634AFAB56E96400F51FF4` |
+| `docs/06_qa/V2_5_POSITION_HEALTH_BASELINE_2026_07_12.md` | [`V2_5_POSITION_HEALTH_BASELINE_2026_07_12.md`](V2_5_POSITION_HEALTH_BASELINE_2026_07_12.md) | 808 bytes / `4E2A6C6C02CE4ACFB273CA6575FE8D9CA6D7A7EC779AA081C8C2C63412AAF788` |
+
 <a id="coverage-entry-051"></a>
 ## 2026-10-08 Decision workbench／continuity audit 歷史歸檔
 

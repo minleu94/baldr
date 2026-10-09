@@ -291,7 +291,7 @@ Product-integration baseline 與 Codex automation inventory 的大型 JSON 伴�
 - [V2.3 P0 Sources Batch Principle Approval（2026-07-12）](V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md) 保存使用者核准 13 個 P0 source 的導入方向；下游 eligibility 當時仍為 `none`，不是來源接受或正式 ingestion 授權。
 - [V2.3 FinMind Candidate Source Audit（2026-07-12）](V2_3_FINMIND_CANDIDATE_SOURCE_AUDIT_2026_07_12.md) 保存當時帳戶權限與 dataset / available-date 限制；帳戶方案可能改變，不把歷史權限當成目前狀態。
 
-目前逐來源決議以 [P0 Source Acceptance Register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 與 [近期資料來源 QA](../06_qa/README.md) 為準；兩份原 QA 路徑保留相容導引。
+本節上述兩份歷史收據的原 QA 路徑保留相容導引。現行逐來源決議以 [P0 Source Acceptance Register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 與 [近期資料來源 QA](../06_qa/README.md) 為準。
 
 ### 2026-10-08 LUNA three-line integration history
 

@@ -2,7 +2,7 @@
 
 ## 2026-10-09 C 槽歷史封存更新
 
-使用者明確授權後，六批歷史 QA／備份／2026-10-02 研究快照已搬至 `E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009`，12,862 檔、148.06 logical GiB，逐檔 SHA-256 複驗通過，原位置改為 Junction。實際 C 可用空間淨增加約 90.67 GiB，postflight 約剩 204.06 GiB；E 約剩 205.86 GiB。既有冷封存、正式 D 槽來源、近期候選、dist 及排程未改。精確範圍、收據與回滾見 [C 槽歷史 QA 冷封存](C_DRIVE_QA_COLD_ARCHIVE_20261009.md)。下方 10/06 容量與原地保留狀態是歷史盤點，不作為本輪目前位置；嚴格拒絕 reparse point 的歷史重跑需先還原普通目錄。補完計畫仍暫停。
+第一批（6 個來源目錄）經使用者明確授權後，將歷史 QA／備份／2026-10-02 研究快照搬至 `E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009`，12,862 檔、148.06 logical GiB；執行收據記錄逐檔 SHA-256 核驗通過，原位置改為 Junction。該批操作期間 C 可用空間觀測增加約 90.67 GiB，當時 postflight 約剩 204.06 GiB；E 約剩 205.86 GiB。所列「近期候選、dist 及排程未改」只描述第一批範圍；第二批另搬移 28 個列名目錄，終態見下方與 [冷封存狀態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)。下方 10/06 容量與原地保留狀態是歷史盤點，不作為目前位置或容量；嚴格拒絕 reparse point 的歷史重跑需先還原普通目錄。補完計畫在該時點仍暫停。
 
 ## 2026-10-06 後續集中整理狀態
 
@@ -49,4 +49,6 @@
 
 ## 2026-10-09 第二批封存追加索引
 
-使用者針對精確清單授權後，28 個歷史 QA／備份與舊候選封裝已移至 `E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain`，原位置建立 Junction。145,850 個檔案、36.57 logical GiB，兩輪全檔 SHA-256 核驗通過；28 個連結目標及 27 個非空根抽樣讀回相符。釋放程序期間 C 可用空間淨增加約 32.08 GiB，postflight C 約剩 213.27 GiB、E 約剩 168.89 GiB。保留現行／回退版本、d9a115f67d2b 及含 Junction 測試案例的 integration_20261002。精確清單、收據與回滾見 [第二批封存說明](C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md)。本段為追加，不改寫前述歷史盤點；補完計畫仍暫停。
+使用者針對精確清單授權後，第二批 28 個歷史 QA／備份與舊候選封裝已移至 `E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain`，原位置建立 Junction。145,850 個檔案、36.57 logical GiB；執行收據記錄兩輪全檔 SHA-256 核驗通過，28 個連結目標及 27 個非空根抽樣讀回相符。釋放程序期間 C 可用空間觀測增加約 32.08 GiB，當時 postflight C 約剩 213.27 GiB、E 約剩 168.89 GiB。保留現行／回退版本、d9a115f67d2b 及含 Junction 測試案例的 integration_20261002。精確清單、收據與回滾見 [第二批封存說明](C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md)。
+
+兩批合計 34 個根、158,712 個檔案、198,246,544,124 logical bytes（約 184.62 GiB）。兩批原始執行收據記錄全檔 SHA-256 核驗完成；[終態對照](../06_qa/C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md)只核對收據與 Junction metadata，未重算全量 SHA。操作期間的 C／E 容量數值不是目前即時容量；本登記的原盤點仍保留其 10/06 歷史時點。

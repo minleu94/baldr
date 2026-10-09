@@ -7,7 +7,8 @@
 1. [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)：目前狀態、未成熟項目與阻礙。
 2. [10/08 產品補完缺口再核對](BALDR_COMPLETION_GAP_REVIEW_20261008.md)：近期補完範圍與缺口入口。
 3. [10/08 排程修復](BALDR_SCHEDULE_REPAIR_20261008.md)：近期排程修復的證據入口；查更早時點再讀 [9/30 排程修復](SCHEDULED_OPERATIONS_REPAIR_20260930.md)。
-4. 按下方主題地圖選擇索引；需要操作步驟時回到 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+4. [10/09 產品補完恢復開發基線](BALDR_COMPLETION_RESUME_20261009.md)：記錄 checkpoint 後的工作分工與首輪驗證；不是產品完成或發布收據。原暫停點見 [10/09 交接](BALDR_COMPLETION_HANDOFF_20261009.md)。
+5. 按下方主題地圖選擇索引；需要操作步驟時回到 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 
 <a id="主題地圖"></a>
 ## 主題地圖

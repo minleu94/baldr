@@ -6,6 +6,11 @@
 本目錄包含歷史記錄、總結報告等歸檔文檔。這些文檔主要用於記錄歷史，不影響日常使用。
 歸檔文件中的狀態、下一步、Phase 或完成度描述，若與 Snapshot、6M Roadmap、版本 Roadmap 或 Architecture 衝突，一律以 active authority 為準。
 
+## 2026-10-08 Coverage Map 歷史清冊
+
+- [逐批文件整理與歸檔沿革](DOC_COVERAGE_HISTORY_2026.md)：收錄 Coverage Map 移出的日期化批次記錄、原路徑／封存路徑與 hash 證據。
+- 現行權威邊界、文件同步矩陣與 DoD 仍由 [DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 維護；本清冊只供追溯。
+
 ## 2026-10-08 V1.5／V1.9 plan/spec history
 
 - [V1.5 Data Credibility plan](superpowers/plans/2026-07-04-v1-5-data-credibility.md) 與 [design spec](superpowers/specs/2026-07-04-v1-5-data-credibility-design.md)：保留完整原文；v1 closeout 範圍以 [QA 收據](V1_5_DATA_CREDIBILITY_CLOSEOUT_2026_07_04.md) 為準。原計畫未勾項目仍留作歷史，QA 未證明外部來源採用、調整後價格整合、ScoringEngine 或正式排程完成。
@@ -50,6 +55,7 @@
 - **V2.4／V2.5 paper baselines**：[V2.4](V2_4_PAPER_BASELINE_2026_07_12.md)、[V2.5 position health](V2_5_POSITION_HEALTH_BASELINE_2026_07_12.md)。
 - **V3.0 engineering readiness／manual validation**：[automated readiness](V3_0_AUTOMATED_READINESS_2026_07_12.md)、[engineering candidate manual validation](V3_0_ENGINEERING_CANDIDATE_MANUAL_VALIDATION_REPORT_2026_07_08.md)、[Week 1 manual validation](V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md)。
 - **V4.0 dated release freeze**：[operational production closeout report](V4_0_OPERATIONAL_PRODUCTION_CLOSEOUT_2026_07_30.md)。
+- **V2.4 paper-only approval decisions**：2026-07-12 的 [policy baseline 核准](V2_4_PAPER_POLICY_APPROVAL_2026_07_12_HISTORY.md) 與 [Portfolio Coach scope 開工核准](V2_4_SCOPE_APPROVAL_2026_07_12_HISTORY.md)；核准範圍限於工程與 paper／research simulation，沒有真實交易授權。舊 QA 路徑保留相容導引；目前唯讀操作邊界看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 與 [system architecture](../01_architecture/system_architecture.md)。
 
 ### 2026-10-08 Program Status Rebaseline snapshot
 
@@ -253,7 +259,7 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [V2.4 engineering readiness](V2_4_ENGINEERING_READINESS_2026_07_12.md)
 - [V2.5 engineering readiness](V2_5_ENGINEERING_READINESS_2026_07_12.md)
 
-These are completed, dated engineering/readiness records. Current source acceptance and policy/approval evidence remain in `docs/06_qa/`, including the V2.3 P0 source register and V2.2/V2.3/V2.4 approval packages.
+These are completed, dated engineering/readiness records. Current source acceptance and the V2.2/V2.3 approval packages remain in `docs/06_qa/`; the V2.4 policy/scope approvals are dated history in the Archive section above. Current paper-only execution controls are documented in the Application Manual and system architecture.
 
 ## 📄 文檔列表
 

@@ -42,8 +42,8 @@
   - 完整的文檔導航和分類
 
 - **`DOC_COVERAGE_MAP.md`**
-  - 文檔覆蓋矩陣與整理記錄
-  - 定義變更類型 → 必須更新的文件，也保留已封存內容、去向與原文證據
+  - 現行權威邊界、文件同步矩陣與 DoD
+  - 逐批整理／歸檔沿革另見 [Coverage History](../09_archive/DOC_COVERAGE_HISTORY_2026.md)
 
 - **`DOCUMENTATION_STRUCTURE.md`**
   - 文檔生命週期、歸檔與刪除規則

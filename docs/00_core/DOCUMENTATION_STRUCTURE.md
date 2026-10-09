@@ -98,6 +98,8 @@
 
 仍有追溯價值，但不應作為目前狀態依據。Historical 文件應放入 `09_archive/`，並在 README 中明確標註。
 
+`DOC_COVERAGE_MAP.md` 首屏維護目前的權威分工、必須同步文件與 DoD；完成批次的詳細搬移／覆蓋記錄放在 `docs/09_archive/DOC_COVERAGE_HISTORY_2026.md`。更新歸檔時兩處都要同步，並保留舊路徑、目的地、原始證據與目前替代入口。
+
 適合歸檔的內容：
 
 - 舊線性 Phase 的完整 Done 與 Exit Criteria。
@@ -180,6 +182,8 @@
 
 ## 六、更新記錄
 
+- 2026-10-08：將 V2.4 paper policy 與 Portfolio Coach scope 兩份 7/12 使用者核准收據移入 Archive，舊 QA 路徑保留短導引；明示核准僅涵蓋工程與 paper-only，不代表真實交易授權。
+- 2026-10-08：將 Coverage Map 的逐批整理／歸檔記錄移至 `DOC_COVERAGE_HISTORY_2026.md`，保留原批次內容與連結錨點；Coverage Map 首屏回到權威分工、同步矩陣與 DoD，並標出 First Wave ignored screenshot sidecar 限制。
 - 2026-10-08：將 Daily Investment Journey 與 synthetic-fixture MainWindow bounded acceptance 兩份日期化 QA 原文歸檔，原路徑留轉址；與 Increment B／C 一併補入 Early Journey 歷史入口，明示 open acceptance 範圍及本機 sidecar 未提交的限制。
 - 2026-10-08：將 Decision Continuity Increment B／C 兩份 9/14–15 bounded QA 原文歸檔，原 QA 路徑留短導引；更新 Early Journey 入口與 Coverage Map，明示完整跨頁 acceptance 仍開放、本機 screenshot／raw output sidecar 未隨封存提交。
 - 2026-10-08：將 V1.5 Data Credibility 與 V1.9 Read-only Agent MCP 的 2 組 plan/spec 原文依原層次封存，原路徑留短導引；manifest 記錄原始 bytes／SHA、具名 closeout QA 與未完成邊界，未勾選項目及 V1.9 pre-V2.0 後續驗收不推定完成。

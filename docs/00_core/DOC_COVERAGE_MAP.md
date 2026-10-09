@@ -292,6 +292,10 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將三份 2026-09-07 V4 data recovery、automated review 與 ML release 收據移至 Archive；原文保留，舊路徑改為短轉址，`V4_DATA_RECOVERY` 中指向 10/03 closeout 的相對連結改為 `../06_qa/` 明確路徑。QA／Archive README 與 Structure 同步；Snapshot 仍是現況權威，9/7 bounded evidence 不用來判斷目前 source／ML qualification。
 
+## 2026-10-08 Full App healthcheck QA 歷史歸檔
+
+將 2026-06-16 的早期 8-workspace Full App 人工 smoke 收據移至 Archive，原文保留、舊 QA 路徑改為短轉址；QA README 標明為歷史快照，Archive README 導向現行 Architecture／Manual。此報告不作目前 UI 操作或狀態依據。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

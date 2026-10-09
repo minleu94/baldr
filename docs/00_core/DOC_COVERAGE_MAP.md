@@ -420,6 +420,10 @@ Healthcheck Batch 3 Recommendation Profile／Regime plan 經審核後留在 `doc
 | docs/06_qa/V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md | [V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md](../09_archive/V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md) | 1,807 / `c5d8f2aa0c4beb69cc327f78c7b5f77b835705a98e2cf44500d42e0e3948402b` | 1,807 / `c5d8f2aa0c4beb69cc327f78c7b5f77b835705a98e2cf44500d42e0e3948402b` |
 | docs/06_qa/V2_3_FINMIND_CANDIDATE_SOURCE_AUDIT_2026_07_12.md | [V2_3_FINMIND_CANDIDATE_SOURCE_AUDIT_2026_07_12.md](../09_archive/V2_3_FINMIND_CANDIDATE_SOURCE_AUDIT_2026_07_12.md) | 4,206 / `e35e8187930f54986454f58d4fa9caa69284360f9cc93316a9e6ed1a20a5aba9` | 4,206 / `e35e8187930f54986454f58d4fa9caa69284360f9cc93316a9e6ed1a20a5aba9` |
 
+## 2026-10-08 Gate 7 前瞻計畫保留判定
+
+`PROSPECTIVE_FORMAL_SIMULATED_PORTFOLIO_EXECUTION_PLAN_2026_08_14.md` 雖為 8/14 日期化長文，仍由 Product Roadmap、Gate 2–7 Engineering Control Center 與 Gate 7 Engineering 引用為執行 SSOT；尚無後續文件完整取代其 prospective-only、frozen-candidate、clock、PIT 與 no-backfill 順序，因此保留在 QA。QA README 已補直接入口與相關方向／clock contract；歷史快照及被拒絕的 staging 仍由 Archive 導覽。
+
 ## 2026-10-08 QA 導覽補充：Gate 2 與 Data Update 效能基線
 
 盤點 2026-07／08 剩餘長篇 QA 時，保留 [Gate 2 7/22 稽核](../06_qa/GATE_2_DATA_GOVERNANCE_CONSOLIDATION_AUDIT_2026_07_22.md)：唯讀稽核腳本仍固定輸出至該路徑，報告也明示不構成人工 Gate credit 或 production enablement。保留 [Data Update 8/28 效能基線](../06_qa/DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md)：Application Manual 直接引用，且報告內 bounded worker、單寫入者與 production opt-in 邊界仍需追溯。兩者均是日期化證據，不代表目前資料筆數、執行速度或 Gate 狀態；QA README 已補主題入口。

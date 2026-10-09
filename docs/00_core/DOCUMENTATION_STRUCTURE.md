@@ -130,7 +130,7 @@
 - `output/`、`output/qa/` 與根目錄臨時資料樣本屬於本機執行產物，不應作為 Active 文件或乾淨 `main` 內容；需要保存結論時整理為 `docs/06_qa/` 摘要。
 - 一次性 QA debug／patch 收據先做生命週期與引用核對；有追溯價值者歸檔並保留原路徑轉址，不因為是一次性就刪除證據。只有確認屬本機臨時輸出、且不是原始資料或正式 QA 證據的產物，才可清理。
 - `docs/05_phases/` 保留歷史目錄 README 與舊路徑轉址；13 份 Phase／SOP 原文已依原層次移至 `docs/09_archive/`，舊引用可經轉址開啟原文。目前核實到的 Active 直接引用只有 `docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` 指向 `PHASE2_ARCHITECTURE.md`。歸檔內容中的「下一步」「進行中」「Phase Gate」不代表目前 roadmap。
-- `docs/06_qa/` 保存日期化驗證與調查證據；已結束的收據可在核對內容、現況權威與引用後移至 `docs/09_archive/`，原路徑以短轉址維持相容。2026-07 的 21 份 Post-V1 Evidence Pipeline 收據已集中歸檔；當時的 Scheduler SOP／待辦不作為目前操作權威。
+- `docs/06_qa/` 保存日期化驗證與調查證據；已結束的收據可在核對內容、現況權威與引用後移至 `docs/09_archive/`，原路徑以短轉址維持相容。2026-07 的 21 份 Post-V1 Evidence Pipeline 收據已集中歸檔；當時的 Scheduler SOP／待辦不作為目前操作權威。Gate 7 的 Prospective Formal Restart Direction、Simulated Portfolio Execution Plan 與 Decision-clock Contract 仍是目前方向／執行 SSOT／契約，不因檔名日期而歸檔；狀態仍以 Snapshot 判讀。
 - 2026-07-13 Broker Flow dashboard failed gate、後續 semantics scoped pass，以及 2026-07-07 readability polish closeout 已移入 `docs/09_archive/`；原 QA 路徑保留轉址，Broker Flow 的失敗與後續優化需成對閱讀。
 - R001 baseline、R006 ML ABI baseline 與 R020 deferred-threshold dated QA 已移至 `docs/09_archive/`；R031 task evidence index 保留為狀態導覽，R006 未知正式資產的未驗邊界仍由 dated addendum 承接，舊 QA 路徑保留轉址。
 - 三份 2026-09-08 V4 NEXT Formal／ML／Ops handoff 已移至 Archive；舊 QA 路徑保留轉址，9/30 Formal bootstrap repair 改為直接連到保留原文，其他目前狀態／操作回到 Snapshot／Manual。
@@ -173,6 +173,7 @@
 
 ## 六、更新記錄
 
+- 2026-10-08：依目前引用歸檔 Program Status、ML retention custody、8/30 readiness details 與 V2.3 source decisions；QA 導覽保留當前 Gate 7 execution SSOT，並明確區分有效契約、owner handoff 與歷史快照。
 - 2026-10-08：補齊 Scoped SSOT 的願景、產品、工程、現況、成熟度與歷史移交分工；將 Roadmap Hub 定義為純導覽，並說明版本成熟度不代表工程 Gate 順序。
 - 2026-10-08：依逐檔引用檢查修正 `05_phases/` 保留理由，明列目前唯一核實的 Active 直接引用；歷史文件仍須按引用、證據與追溯價值逐檔判讀。
 - 2026-10-08：將 13 份 Phase／SOP 原文按原相對層次歸檔，保留舊路徑轉址與唯一 Active Phase 2 架構引用；目前 Phase 目錄只保留索引與相容入口。

@@ -1217,3 +1217,14 @@ Archive 工作樹副本與移動前來源逐 byte 相同：20,061 bytes，SHA-25
 將 `system_architecture.md` 的 2026-10-06 P2／M03 區段中兩段純治理 inventory 與 Stage／UX／性能狀態改為收據導引；producer、custody、dataflow 及 M03 exception 契約仍留在架構主文。移除的資訊沒有刪除：完整數字與當日限制仍見 [QA integration receipt](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)、[closeout status](../06_qa/BALDR_CLOSEOUT_STATUS_20261006.md)、[ownership dispatch](../06_qa/BALDR_NEXT_OWNERSHIP_DISPATCH_20261006.md) 與 [Snapshot 歷史快照](PROJECT_SNAPSHOT_HISTORY_20261006.md)。架構 README 現在直接連至 QA integration receipt；架構段落也連至 QA 收據及 Snapshot 歷史快照。
 
 本次沒有移動或改名文件，亦未改變目前狀態、架構或 QA 權威分工：現況仍看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，模組與資料流契約看 [system_architecture.md](../01_architecture/system_architecture.md)，當日 QA 證據留在上述收據。[DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 的 Scoped SSOT 規則不變，因此不需修改 Coverage Map；沒有新增或搬移文件，也不需改動 DOCUMENTATION_INDEX 或 Archive README。此筆記錄是內容去重與追溯入口，不是 Gate 結案或能力升級。
+
+<a id="coverage-entry-131"></a>
+## 2026-10-09 封存 2026-10-06 全 repo 文檔整理驗收
+
+將 `docs/06_qa/DOCUMENTATION_REORGANIZATION_20261006.md` 封存至 `docs/09_archive/DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md`。原報告是固定於 2026-10-06 HEAD 的文件／Graphify 驗收快照，不是目前整理計畫；其中 owner／dynamic consumer／uniqueness／rebuild-cost unknown 及已過期的 2026-10-07 Next Task 原樣保留作歷史線索，不推定已解除或當作目前待辦。Archive 副本僅修正相對連結：Catalog 與 manifest 改為同目錄路徑，其餘相對來源仍可解析。
+
+全 repo 精確檔名搜尋確認唯一現行工作文件引用是 `docs/00_core/DOCUMENTATION_GRAPH_GUIDE.md`，已改連 Archive 原文並標明為歷史 snapshot；QA README 提供歷史入口。舊 QA 路徑保留短導引，接住歷史 Catalog 的連結。未發現程式、測試、腳本或固定 reader／writer 依賴；文件 Index 原本沒有此文件入口，故不需調整 Index。內容整理不改變權威分工：現行生命週期看 DOCUMENTATION_STRUCTURE／DOC_COVERAGE_MAP，目前狀態看 PROJECT_SNAPSHOT。DOC_COVERAGE_MAP 本身不收逐批歸檔歷史，權威邊界未變，因此不修改 Map。
+
+| 原 QA 路徑 | Archive 原文 | 原件 bytes / SHA-256 | Archive 副本 bytes / SHA-256 |
+|---|---|---:|---:|
+| `docs/06_qa/DOCUMENTATION_REORGANIZATION_20261006.md` | [`DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md`](DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md) | 7,804 / `A7CEA2BF31F3C69FDEC3C1FF18607D3BB01DD271076E722DB14B735228FD0FD4` | 7,776 / `BCD7E24FF54D3881702CAF0F72E8A9961644159003B85D0544D517DAC7837E9E` |

@@ -19,7 +19,7 @@
 5. 保存 input manifest、命令／工具版本、nodes／edges／communities、diagnostics／token cost、輸出位置與 unknown。圖譜不提升產品 Gate。
 6. 只 stage 本輪文檔／小型維護入口；新 graph JSON／HTML／cache／raw output 按 [Git exclusions](../agents/git_exclusions.md) 維持 ignored。
 
-本輪執行結果、剩餘限制與精確命令見 [整理驗收](../06_qa/DOCUMENTATION_REORGANIZATION_20261006.md)。圖譜若未完成，必須明列 blocker，不能用另一份自製圖冒稱完整 Graphify semantic build。
+2026-10-06 的整理結果、當時限制與精確命令見[歷史驗收原文](../09_archive/DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md)；它只代表該次 fixed HEAD snapshot。每輪仍須重新核對當前輸入、依賴與輸出。圖譜若未完成，必須明列 blocker，不能用另一份自製圖冒稱完整 Graphify semantic build。
 
 ## 本輪可重用的本機方法
 

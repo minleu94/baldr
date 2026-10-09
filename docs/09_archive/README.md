@@ -40,6 +40,7 @@
 ## 2026-10-09 文件治理規則與舊計畫索引
 
 - [DOCUMENTATION_STRUCTURE 原第 4／6 節整理決策與更新流水帳](DOCUMENTATION_STRUCTURE_CHANGELOG_20261009_HISTORY.md)：保存抽離前的原文區塊；現行生命週期規則回到 [`DOCUMENTATION_STRUCTURE.md`](../00_core/DOCUMENTATION_STRUCTURE.md)。原區塊與完整快照 bytes／SHA 見 [Coverage History Entry 109](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-109)。
+- [全 repo 文檔整理驗收（2026-10-06）](DOCUMENTATION_REORGANIZATION_20261006_HISTORY.md)：保存 fixed HEAD 的文件清點、Graphify 方法與當日 unknown；內文的文件數和 2026-10-07 下一 Task 都是歷史快照，不代表目前狀態。現行整理規則看 [`DOCUMENTATION_STRUCTURE.md`](../00_core/DOCUMENTATION_STRUCTURE.md)／[`DOC_COVERAGE_MAP.md`](../00_core/DOC_COVERAGE_MAP.md)，目前狀態看 [`PROJECT_SNAPSHOT.md`](../00_core/PROJECT_SNAPSHOT.md)；來源／Archive hash 與舊路徑承接見 [Coverage History Entry 131](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-131)。
 - 同一清冊補記既有的 [UI Qt roadmap audit](UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md)、[refactoring migration plan](REFACTORING_MIGRATION_PLAN_2025.md) 與 [safe refactoring report](SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md) 來源路徑及 SHA；這些都是歷史參考，不是目前計畫或狀態依據。
 
 ## 2026-10-09 平行工作流 plan／prompt 歷史

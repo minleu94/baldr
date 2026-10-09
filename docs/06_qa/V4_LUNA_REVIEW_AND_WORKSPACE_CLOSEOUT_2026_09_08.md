@@ -39,7 +39,7 @@
 
 ## 提交與清理
 
-已分批提交交接／檔案說明 `31efeaa3`、核心工程 `c8dc5a7d`（199檔）、個股介面 `9e25fc90`（10檔）。手冊、清冊與本整合摘要另以文件提交保存。output raw、DB及工具目錄沒有加入Git；保留main/dev與單一worktree。最終遠端ref／工作樹讀回保存於本機 `output/v4_next_root/git_final_closeout.json`，並在本輪終局回覆報告。清理具體檔數／容量由 `V4_WORKSPACE_CLEANUP_CLOSEOUT.md` 記錄。
+已分批提交交接／檔案說明 `31efeaa3`、核心工程 `c8dc5a7d`（199檔）、個股介面 `9e25fc90`（10檔）。手冊、清冊與本整合摘要另以文件提交保存。output raw、DB及工具目錄沒有加入Git；保留main/dev與單一worktree。最終遠端ref／工作樹讀回保存於本機 `output/v4_next_root/git_final_closeout.json`，並在本輪終局回覆報告。清理具體檔數／容量由[歷史清理收尾](../09_archive/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)記錄。
 
 Root逐筆核對第二批manifest的145個路徑均位於指定 `output/qa/full_app_healthcheck_tmp` 且已不存在，對應666,244 bytes，越界0。第一批2,324個快取加第二批145個暫存，共2,469檔、50,254,082 bytes；不以仍在生成的全目錄總數差異推算刪除量。
 

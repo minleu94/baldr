@@ -155,6 +155,13 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [V4 NEXT ML／Effectiveness handoff](V4_NEXT_ML_HANDOFF_2026_09_08_HISTORY.md)
 - [V4 NEXT Ops handoff](V4_NEXT_OPS_HANDOFF_2026_09_08_HISTORY.md)
 
+### 2026-10-08 V4 9/8 workspace cleanup receipts
+
+兩份 2026-09-08 工作區盤點與清理收尾記錄保留當日數字、路徑界線與實際清理限制；它們不是即時 inventory 或現行清理授權。逐檔 output manifest 當時留在 ignored 本機 `output/`，沒有提交或隨文件封存。原 QA 路徑保留短導引；目前檔案與清理規範須回核現行文件及 Git exclusion。
+
+- [工作區檔案盤點](WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)
+- [V4 工作區清理收尾](V4_WORKSPACE_CLEANUP_CLOSEOUT.md)
+
 - **歷史 Phase／SOP 原文（2026-10-08）**：[Phase 2 architecture](PHASE2_ARCHITECTURE.md)、[Phase 2 strategy library](PHASE2_STRATEGY_LIBRARY.md)、[Phase 2A data source audit](PHASE_2A_DATA_SOURCES_AUDIT.md)、[Phase 2.5 completion](PHASE2_5_COMPLETION_STATUS.md)、[Phase 3.3b research design](PHASE3_3B_RESEARCH_DESIGN.md)、[Epic 2 architecture](EPIC2_MVP2_ARCHITECTURE_DESIGN.md)、[Epic 2 checklist](EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md)、[Phase 4 portfolio design](PHASE4_PORTFOLIO_DESIGN.md)、[Phase 4 startup summary](PHASE4_STARTUP_SUMMARY.md)、[研究迭代 Playbook](phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md)、[指標判讀優先順序](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md)、[Benchmark 呈現](phase3_5_research/BENCHMARK_PRESENTATION.md)、[Phase 4 進入條件](phase3_5_research/PHASE4_ENTRY_CRITERIA.md)。原 `docs/05_phases/` 路徑保留轉址，原文未改寫；目前狀態不由歷史 Phase 文件判讀。
 
 ### Post-V1 Evidence Pipeline QA

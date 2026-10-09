@@ -102,8 +102,11 @@ def test_cancel_after_pair_open_never_calls_writer(tmp_path: Path) -> None:
     writer.create_from_pins.assert_not_called()
 
 
-def test_capture_published_after_decision_is_rejected(tmp_path: Path) -> None:
+def test_capture_published_after_decision_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cutoff = datetime.now(timezone.utc)
+    monkeypatch.setattr(_FrozenDateTime, "fixed_now", cutoff + timedelta(seconds=2))
+    monkeypatch.setattr(capture_module, "datetime", _FrozenDateTime)
+    monkeypatch.setattr(market_test_helpers, "datetime", _FrozenDateTime)
     pointer = _create_capture(tmp_path)
     with pytest.raises(CurrentMarketAssignmentError, match="pointer_after_cutoff"):
         open_current_selection_source_pair(pointer, cutoff_at=cutoff)

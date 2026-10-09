@@ -31,6 +31,7 @@ class CurrentSelectionProductionOutcome:
 
     technical_result: DailyMarketTechnicalUniverseV4ProductionResult
     bundle_reference: DailyMarketTechnicalOfficialDispositionBundleReferenceV1 | None
+    bundle_error_code: str | None = None
 
 
 def produce_current_selection_bundle(
@@ -48,6 +49,9 @@ def produce_current_selection_bundle(
         DailyMarketTechnicalUniverseV4ProductionRequest,
         produce_daily_market_technical_universe_v4,
     )
+    from app_module.daily_market_technical_official_disposition_bundle_v1 import (
+        DailyMarketTechnicalOfficialDispositionBundleError,
+    )
 
     if type(production_request) is not DailyMarketTechnicalUniverseV4ProductionRequest:
         raise CurrentSelectionSourcePairError("current_source_technical_request_type_invalid")
@@ -60,10 +64,15 @@ def produce_current_selection_bundle(
     if (result.status != "complete" or result.plan is None or result.receipt is None
             or result.receipt.status != "complete"):
         return CurrentSelectionProductionOutcome(result, None)
-    reference = publish_completed_technical_selection_bundle(
-        writer, production_result=result, store_output_root=production_request.store_output_root,
-        source_pair=pair, cancel_callback=cancel,
-    )
+    try:
+        reference = publish_completed_technical_selection_bundle(
+            writer, production_result=result, store_output_root=production_request.store_output_root,
+            source_pair=pair, cancel_callback=cancel,
+        )
+    except (DailyMarketTechnicalOfficialDispositionBundleError, CurrentSelectionSourcePairError, OSError) as exc:
+        # 已保存的技術收據仍可查閱；官方 bundle 失敗不能顯示為完整聯合產製。
+        code = getattr(exc, "code", None)
+        return CurrentSelectionProductionOutcome(result, None, code if isinstance(code, str) else str(exc))
     return CurrentSelectionProductionOutcome(result, reference)
 
 

@@ -13,6 +13,7 @@ from PySide6.QtCore import QModelIndex, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -50,6 +51,9 @@ from app_module.daily_market_technical_universe_v4_producer import (
     DailyMarketTechnicalUniverseV4ProductionRequest,
     DailyMarketTechnicalUniverseV4ProductionResult,
     produce_daily_market_technical_universe_v4,
+)
+from app_module.daily_market_technical_official_disposition_bundle_v1 import (
+    DailyMarketTechnicalOfficialDispositionBundleReferenceV1,
 )
 from app_module.daily_market_technical_universe_v4_query import (
     DAILY_MARKET_TECHNICAL_UNIVERSE_V4_QUERY_MAX_PAGE_SIZE,
@@ -155,6 +159,8 @@ class _ProductionTaskOutcome:
     result: DailyMarketTechnicalUniverseV4ProductionResult | None
     # 背景工作器看到明確的布林取消欄位時，會保留產製器回報的取消結果。
     cancelled: bool
+    official_bundle: DailyMarketTechnicalOfficialDispositionBundleReferenceV1 | None = None
+    official_error: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -650,15 +656,30 @@ def _produce(
     request: DailyMarketTechnicalUniverseV4ProductionRequest,
     *,
     cancel_callback: Callable[[], bool] | None = None,
+    official_pointer: Path | None = None,
 ) -> _ProductionTaskOutcome:
     original_callback = request.cancel_callback
 
     def is_cancelled() -> bool:
         return _cancelled(cancel_callback) or _cancelled(original_callback)
 
-    result = produce_daily_market_technical_universe_v4(
-        replace(request, cancel_callback=is_cancelled)
-    )
+    prepared = replace(request, cancel_callback=is_cancelled)
+    if official_pointer is not None:
+        from app_module.selection_current_source_pair import produce_current_selection_bundle
+        from app_module.daily_market_technical_official_disposition_bundle_v1 import (
+            DailyMarketTechnicalOfficialDispositionBundleWriterV1,
+        )
+        scope = prepared.research_scope
+        if scope is None:
+            raise ValueError("official_bundle_explicit_research_scope_required")
+        writer = DailyMarketTechnicalOfficialDispositionBundleWriterV1(
+            scope.root / "technical_official_disposition", research_scope=scope)
+        outcome = produce_current_selection_bundle(
+            writer, production_request=prepared, pointer_path=official_pointer)
+        return _ProductionTaskOutcome(
+            result=outcome.technical_result, cancelled=outcome.technical_result.status == "cancelled",
+            official_bundle=outcome.bundle_reference, official_error=outcome.bundle_error_code)
+    result = produce_daily_market_technical_universe_v4(prepared)
     return _ProductionTaskOutcome(result=result, cancelled=result.status == "cancelled")
 
 
@@ -716,6 +737,7 @@ def _prepare_deferred_and_produce(
     *,
     store_output_root: Path,
     cancel_callback: Callable[[], bool] | None = None,
+    official_pointer: Path | None = None,
 ) -> _ProductionTaskOutcome:
     if _cancelled(cancel_callback):
         return _ProductionTaskOutcome(result=None, cancelled=True)
@@ -732,7 +754,7 @@ def _prepare_deferred_and_produce(
     )
     if _cancelled(cancel_callback):
         return _ProductionTaskOutcome(result=None, cancelled=True)
-    return _produce(request, cancel_callback=cancel_callback)
+    return _produce(request, cancel_callback=cancel_callback, official_pointer=official_pointer)
 
 
 class DailyMarketTechnicalUniverseV4View(QWidget):
@@ -743,6 +765,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
     bookmarkPrepared = Signal(object)
     cancelRequested = Signal()
     productionFinished = Signal(object)
+    officialBundleProduced = Signal(object)
 
     @property
     def current_query(self) -> DailyMarketTechnicalUniverseV4Query | None:
@@ -829,6 +852,17 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         source_layout.addWidget(self.produce_button, 1, 2)
         source_layout.addWidget(self.resume_button, 1, 3)
         source_layout.addWidget(self.cancel_button, 1, 4)
+        self.produce_official_button = QPushButton("產製技術與官方來源研究")
+        self.produce_official_button.setObjectName("dailyMarketTechnicalUniverseV4ProduceOfficial")
+        self.produce_official_button.setAccessibleName("選取官方保存來源並產製新研究")
+        self.produce_official_button.setToolTip("先選取官方來源指標檔，再核對新研究母體與截止時間。")
+        source_layout.addWidget(self.produce_official_button, 2, 0, 1, 5)
+        self.official_publication_status = QLabel("官方聯合研究尚未產製。")
+        self.official_publication_status.setWordWrap(True)
+        self.official_publication_status.setTextFormat(Qt.TextFormat.PlainText)
+        self.official_publication_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.official_publication_status.setObjectName("dailyMarketTechnicalUniverseV4OfficialPublication")
+        source_layout.addWidget(self.official_publication_status, 3, 0, 1, 5)
         source_layout.setColumnStretch(0, 1)
         root.addWidget(source_group)
 
@@ -978,6 +1012,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self.more_sources_button.clicked.connect(lambda: self.refresh_sources(append=True))
         self.load_button.clicked.connect(self.load_selected)
         self.produce_button.clicked.connect(self.produce_new)
+        self.produce_official_button.clicked.connect(self.produce_with_official_sources)
         self.resume_button.clicked.connect(self.resume_selected)
         self.apply_button.clicked.connect(self.apply_query)
         self.previous_button.clicked.connect(lambda: self.change_page(-1))
@@ -993,6 +1028,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
         self._set_page_controls()
         if self.production_request_factory is None:
             self.produce_button.setEnabled(False)
+            self.produce_official_button.setEnabled(False)
             self.resume_button.setEnabled(False)
             self.produce_button.setToolTip("由每日研究入口提供明示 source／cohort／cutoff 請求後啟用。")
             self.resume_button.setToolTip("由每日研究入口提供原 source／cohort／cutoff 請求後啟用。")
@@ -1385,6 +1421,15 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
     def produce_new(self) -> None:
         self._start_production(None)
 
+    def produce_with_official_sources(self) -> None:
+        if self.production_request_factory is None or self._closing:
+            return
+        selected, _filter = QFileDialog.getOpenFileName(
+            self, "選取官方市場與處置來源指標", "", "官方來源指標 (*.json)")
+        if not selected:
+            return
+        self._start_production(None, official_pointer=Path(selected).absolute())
+
     def resume_selected(self) -> None:
         entry = self.selected_source
         if entry is None or not entry.is_selectable:
@@ -1395,6 +1440,8 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
     def _start_production(
         self,
         entry: DailyMarketTechnicalUniverseV4CatalogEntry | None,
+        *,
+        official_pointer: Path | None = None,
     ) -> None:
         factory = self.production_request_factory
         if factory is None:
@@ -1443,6 +1490,20 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                 return
             result = value.result
             self.productionFinished.emit(result)
+            if official_pointer is not None:
+                if value.official_bundle is not None:
+                    reference = value.official_bundle
+                    self.official_publication_status.setText(
+                        "官方聯合研究已保存；到「官方處置與市場對照研究」選擇下列保存來源資料夾，再更新來源清單：\n"
+                        + reference.output_root
+                        + f"\n保存列數：{reference.row_count}；來源涵蓋：{reference.source_coverage_status}；只供當下研究。")
+                    self.officialBundleProduced.emit(reference)
+                else:
+                    self.official_publication_status.setText(
+                        "官方聯合研究未完成；"
+                        + ("技術收據可另行查詢。" if result.receipt is not None else "未取得技術收據。")
+                        + "原因："
+                        + (value.official_error or result.error_code or result.status))
             self.status.setText(
                 f"產製狀態：{result.status}；步驟：{result.step}；"
                 f"已保存段：{len(result.completed_segment_indices)}；"
@@ -1460,6 +1521,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                     entry,
                     store_output_root=self.store_output_root,
                     cancel_callback=cancel_callback,
+                    official_pointer=official_pointer,
                 ),
                 apply,
                 kind="production",
@@ -1473,6 +1535,7 @@ class DailyMarketTechnicalUniverseV4View(QWidget):
                 lambda cancel_callback=None: _produce(
                     request,
                     cancel_callback=cancel_callback,
+                    official_pointer=official_pointer,
                 ),
                 apply,
                 kind="production",

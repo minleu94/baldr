@@ -1,6 +1,6 @@
 # Phase 2 架構設計文檔
 
-> **歷史判讀**：本文件保留為 Phase 2 策略架構設計追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前狀態請看 `../00_core/PROJECT_SNAPSHOT.md`；未來路線請看 `../00_core/ROADMAP_6M_ENGINEERING.md`；Post-V1 版本節奏請看 `../00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md`。
+> **歷史判讀**：本文件保留為 Phase 2 策略架構設計追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前狀態請看 `../00_core/PROJECT_SNAPSHOT.md`；未來路線請看 `../00_core/ROADMAP_6M_ENGINEERING.md`；V1.1–V2.0 歷史演進請看 [歸檔版本](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 
 ## 核心設計原則
 

@@ -1,6 +1,6 @@
 # Phase 4 進入條件（Gate）
 
-> **歷史判讀**：本文件保留為 Phase 4 entry gate 追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前 Portfolio 與 lifecycle 狀態請看 `../../00_core/PROJECT_SNAPSHOT.md` 與 `../../01_architecture/system_architecture.md`；Post-V1 版本節奏請看 `../../00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md`。
+> **歷史判讀**：本文件保留為 Phase 4 entry gate 追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前 Portfolio 與 lifecycle 狀態請看 `../../00_core/PROJECT_SNAPSHOT.md` 與 `../../01_architecture/system_architecture.md`；V1.1–V2.0 歷史演進請看 [歸檔版本](../../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 
 ## 概述
 

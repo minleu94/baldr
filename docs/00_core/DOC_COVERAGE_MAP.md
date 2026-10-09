@@ -1,5 +1,10 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 Phase 文件 V1.1–V2.0 歷史路徑校正
+
+13 份 docs/05_phases/ 歷史設計與研究 SOP 原先連到 docs/00_core/ 的舊版本路線導引頁，現改為直接連至 docs/09_archive/ 的 V1.1–V2.0 歷史原件。docs/05_phases/README.md 原本已直連封存原件，保持不變；舊核心路徑繼續保留導引，以承接其他舊引用。沒有改寫 Phase 正文或目前成熟度定義。
+
+
 ## 2026-10-08 Roadmap 空歷史章節收斂
 
 6M Roadmap 的 Gate 7 原有 8 個日期小節，各節只有同一個歷史歸檔連結；已合併為條件式 Gate 說明，補上 Gate 7 工程入口、Snapshot 與歷史流水帳。版本成熟度 Roadmap 的 6A 章節只含歷史交接導引，已收斂為第 7 節前的一則歷史提示。具體日期化紀錄仍完整保存在各自 archive；未變更 Gate 條件、版本成熟度標準或目前狀態。

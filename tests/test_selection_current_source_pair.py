@@ -310,3 +310,44 @@ def test_coordinator_rejects_late_capture_before_producer(
         produce_current_selection_bundle(writer, production_request=request, pointer_path=pointer)
     run.assert_not_called()
     writer.create_from_pins.assert_not_called()
+
+
+def test_coordinator_real_producer_writer_and_exact_reopen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hashlib import sha256
+    from app_module.daily_market_technical_official_disposition_bundle_v1 import (
+        DailyMarketTechnicalOfficialDispositionBundleWriterV1,
+        DailyMarketTechnicalOfficialDispositionBundleReaderV1,
+    )
+    from tests.test_daily_market_technical_universe_v4_producer import (
+        _write_source, _scope_and_store_root, _cohort, _request,
+    )
+    database = tmp_path / "synthetic.sqlite"
+    _write_source(database, ("1101",))
+    source_before = sha256(database.read_bytes()).hexdigest()
+    scope, store_root = _scope_and_store_root(tmp_path, database)
+    request = _request(database, _cohort(("1101",)), store_root, scope)
+    monkeypatch.setattr(_FrozenDateTime, "fixed_now", request.decision_cutoff - timedelta(seconds=2))
+    monkeypatch.setattr(capture_module, "datetime", _FrozenDateTime)
+    monkeypatch.setattr(market_test_helpers, "datetime", _FrozenDateTime)
+    capture_root = tmp_path / "capture"
+    capture_root.mkdir()
+    pointer = _create_capture(capture_root)
+    capture_before = {str(p.relative_to(capture_root)): sha256(p.read_bytes()).hexdigest()
+                      for p in capture_root.rglob("*") if p.is_file()}
+    pair = open_current_selection_source_pair(pointer, cutoff_at=request.decision_cutoff)
+    writer = DailyMarketTechnicalOfficialDispositionBundleWriterV1(scope.root / "bundle", research_scope=scope)
+    outcome = produce_current_selection_bundle(writer, production_request=request, pointer_path=pointer)
+    assert outcome.technical_result.status == "complete"
+    reference = outcome.bundle_reference
+    assert reference is not None
+    reopened = DailyMarketTechnicalOfficialDispositionBundleReaderV1(writer.output_root).read_exact(
+        reference.bundle_identity_sha256, expected_manifest_sha256=reference.manifest_sha256)
+    rows = tuple(reopened.iter_verified_rows())
+    assert len(rows) == 1 and rows[0].stock_code == "1101"
+    assert rows[0].to_dict()["technical_status"] == "processed"
+    assert reopened.manifest["source_pins"]["market_assignment"]["run_id"] == pair.market.source_pin.run_id
+    assert sha256(database.read_bytes()).hexdigest() == source_before
+    assert capture_before == {str(p.relative_to(capture_root)): sha256(p.read_bytes()).hexdigest()
+                              for p in capture_root.rglob("*") if p.is_file()}

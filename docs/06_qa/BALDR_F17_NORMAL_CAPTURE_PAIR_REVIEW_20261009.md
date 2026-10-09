@@ -58,3 +58,5 @@ Root 重用 attempt03 已保存的合成技術母體（257 included＋1 excluded
 新增 `produce_current_selection_bundle()`：使用真正 typed request 的明示 cutoff 與取消 callback，先核定成對來源，再呼叫既有真正技術產製器；只有完整 result／plan／receipt 才沿固定 pair 交給原 writer。取消、失敗與缺件原 result 保留，bundle 為 None，不發布部分結果。晚於 cutoff 的來源在產製器呼叫前拒絕。未改寫訊號、指標、母體、截止時間或來源資格。
 
 完整 pair／協調入口回歸 19 passed，日誌 `output/qa/f17_normal_capture_pair_20261009_a/coordinator_tests_c.log`。正例使用真正單股 producer，於產製呼叫前更新 pointer 到原 cutoff 後，仍轉交原來源 pins；晚來源拒絕案例驗 producer／writer 均未呼叫。協調入口 writer 在此回歸仍為 Mock，不能替代前節真正 writer 證據。targeted mypy 與兩檔 compile 通過。首次 sandbox 路徑解析失敗日誌 a 保留，native 全新目錄 b 為 18 passed，新增拒絕案例後 c 為 19 passed。此入口尚未串 UI、catalog 或收藏路由，不能宣告正常更新閉環完成。
+
+再新增真正單股 producer→真正 writer→真正 exact reader 的協調入口案例，完整回歸 20 passed，日誌 `coordinator_tests_d.log`。核對 1101 只有一列、處理狀態 processed、原固定市場來源 run ID、原合成資料庫 SHA 與全部 capture 檔案 SHA 起訖不變；compile 通過。此證據消除協調入口只驗 Mock writer 的缺口，仍限同程序合成 backend，不代替完整母體、跨程序、UI／收藏與 EXE 接受。

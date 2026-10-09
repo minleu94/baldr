@@ -445,7 +445,7 @@ readback 與跨程序 writer／reader；`9a9e778b` 另交付 5 檔 Qt 關閉修�
 `DeferredDelete` 收尾、busy 狀態只合作取消並單次關閉，實際 OS process exit 為 `0`。`TaskWorker／shutdown` 為 25 passed、
 Update UI 為 84 passed、Update Tab validator 為 25／0／4，全域 mypy 為 621 source files clean；
 `7e029933` continuity 證據見 [Decision Continuity Increment C QA](../06_qa/DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md)，
-`9a9e778b` teardown／OS exit 證據見 [Qt shutdown teardown QA](../06_qa/QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md)。
+`9a9e778b` teardown／OS exit 證據見 [Qt shutdown teardown QA](QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md)。
 
 本段只代表受控、隔離的工程與程序生命週期驗收，不宣稱自然 evidence 已成熟，也不宣稱已
 完整歸因使用者曾見的 memory-write popup；目前沒有把該 popup 的精確 PID／native stack

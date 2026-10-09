@@ -843,3 +843,14 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 |---|---|---|---|
 | `docs/06_qa/SCHEDULER_HEALTH_OBSERVABILITY_REPORT.md` | [Scheduler Health 8/27 快照](SCHEDULER_HEALTH_OBSERVABILITY_REPORT_20260827_HISTORY.md) | 2,022 / `4ACA8CCA59B0A8B0C2FF0B91DCC663C13FC31C7DBF3DAA23254DA006F5E49C3B` | 2,022 / `4ACA8CCA59B0A8B0C2FF0B91DCC663C13FC31C7DBF3DAA23254DA006F5E49C3B` |
 | `docs/06_qa/UX08_CHART_VIEWPORT_STATE_QA.md` | [UX08 controller handoff](UX08_CHART_VIEWPORT_STATE_QA_20261006_HISTORY.md) | 7,032 / `FB3E53ABFCADBC58D2772C26B3D05EC1FF464FFB92DBEE882DF0DC16D6AF61E9` | 7,041 / `EFB7BCF6AFC11EAF75003B74BC3CF2FBE6147FC9E37EE72FFDE66C151DB04E8F` |
+
+<a id="coverage-entry-100"></a>
+## 2026-10-09 歸檔 Qt MainWindow shutdown teardown bounded QA
+
+此文件保存 2026-09-15 對 production `MainWindow` 在 `QApplication.exec()` 返回後 Qt teardown hang 的 bounded 修復與驗收。修復收據有追溯價值，但已結束當日驗證，且沒有程式、測試、script、manifest 或 active QA README 固定讀取該 Markdown 路徑；唯一歷史交叉引用已改指 Archive。QA 舊路徑保留短導引，避免舊 Snapshot History 與 2026-10-06 歷史 Catalog 失效。歸檔不宣稱舊 memory-write popup 同根因，不結束仍在 QA 的 Native crash read-only follow-up，也不涵蓋 SQLite inspector 的獨立 worker wait 問題。 ignored `output/qa/` raw process receipts 未搬入或提交。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md` | [Qt MainWindow shutdown teardown 修正原文](QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md) | 5,269 / `94169D3CC7C5E10B8BF4DCB3723377526495816C2DAC858217BFAD6A6A07AE43` | 5,269 / `94169D3CC7C5E10B8BF4DCB3723377526495816C2DAC858217BFAD6A6A07AE43` |
+
+後續現況判讀看 Snapshot／最新 QA；[Native crash read-only follow-up](../06_qa/QT_NATIVE_CRASH_READONLY_FOLLOWUP_2026_09_15.md) 與 [SQLite inspector shutdown probe](../06_qa/QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md) 是不同故障範圍，不得以此 Entry 合併或結案。

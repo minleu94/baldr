@@ -31,6 +31,11 @@
 
 來源 `docs/06_qa/` 路徑保留短導引；原始 bytes／SHA 與其餘待覆核候選的處置見 [Coverage History Entry 097](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
 
+<a id="2026-10-09-qt-shutdown-teardown-bounded-qa"></a>
+## 2026-10-09 Qt MainWindow shutdown teardown bounded QA
+
+- [Qt MainWindow shutdown teardown 修正 QA（2026-09-15）](QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md)：保存 production MainWindow 在 `QApplication.exec()` 返回後的 Qt teardown hang 修正與 bounded 驗收。它沒有證明舊 memory-write popup 同根因，也沒有驗收仍在 QA 的 [Native crash read-only follow-up](../06_qa/QT_NATIVE_CRASH_READONLY_FOLLOWUP_2026_09_15.md) 或獨立 [SQLite inspector shutdown probe](../06_qa/QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md)。原 QA 路徑保留短導引；原文 bytes／SHA 與引用核對見 [Coverage History Entry 100](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-100)。
+
 ## 2026-10-08 V1.5／V1.9 plan/spec history
 
 - [V1.5 Data Credibility plan](superpowers/plans/2026-07-04-v1-5-data-credibility.md) 與 [design spec](superpowers/specs/2026-07-04-v1-5-data-credibility-design.md)：保留完整原文；v1 closeout 範圍以 [QA 收據](V1_5_DATA_CREDIBILITY_CLOSEOUT_2026_07_04.md) 為準。原計畫未勾項目仍留作歷史，QA 未證明外部來源採用、調整後價格整合、ScoringEngine 或正式排程完成。

@@ -18,3 +18,7 @@
 ## 尚待驗收
 
 以上證據屬工作樹源碼，沒有證明先前候選 EXE 已包含修正。新版需完成封裝及實際操作驗證，再讓使用者於非全螢幕選列、展開理由、捲到分數／排名因素末行；原 H20 名單及研究下鑽另有獨立 gate，不因本葉片通過而開啟。
+
+## 目前工作樹複驗
+
+Root 於接續工作重跑完整 `tests/test_ui_qt_recommendation_layout.py`：11 passed，27.84 秒，程序 exit 0。日誌保存於 `output/qa/f17_normal_capture_pair_20261009_a/recommendation_layout_current_a.log`。測試不只核文字存在：展開理由包含分數拆解、排名門檻與可能影響排名因素，窄窗下要求文件末行落在外層 viewport；實際鍵盤 PageDown／End／Ctrl+End 核對外層捲動與末行可見，收合時另驗內層捲動。個人模式控制項亦驗窄窗可達與不重疊。未修改 UI 或測試來源，尚不構成 EXE 或真人可讀性接受。

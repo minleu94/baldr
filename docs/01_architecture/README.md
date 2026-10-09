@@ -24,6 +24,7 @@
 - **`target_system_architecture.md`**
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
   - 不代表 target-only package 或能力目前已實作
+  - 日期化更新記錄移至[歷史摘錄](../09_archive/TARGET_SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202607_TO_202609.md)；本文件仍保留背景與治理邊界，當前狀態及實作設計分別看 Snapshot／FINAL_TARGET_ARCHITECTURE。
 
 ## 目前架構速讀
 

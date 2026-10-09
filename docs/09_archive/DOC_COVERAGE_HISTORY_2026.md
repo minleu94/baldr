@@ -1624,3 +1624,14 @@ implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_
 | §10–§11 合併原文 | 4,020 / `ef512a52e0d762e9a89953d979618796966f35cfadb9d3bd20e5cc5da33fb396` | 同上；摘錄中的兩節原文逐字保留 | 同上 |
 
 來源整份原檔在本批前為 31,848 bytes，SHA-256 `44bf6b943746364636f14750b94bbda86c8cc7e62eed1aeab26358656f29973f`。Entry 033 已將 §10 判為 2026-07-11 歷史切面；目前狀態與交付次序仍看 Snapshot 與 6M Roadmap。此次只確認這項歷史範圍，不代表外部 repo、外部資料源已重新查核或採用。全 repo 檔案級引用仍指向原核心文件，沒有發現 §10／§11 專屬錨點連結；原標題保留，Archive README 與本記錄補上新的歷史閱讀入口。DOC_COVERAGE_MAP 權威邊界未變；核心索引路徑也未變，未修改 dirty 的 `DOCUMENTATION_INDEX.md`、`PROJECT_SNAPSHOT.md` 或 `APPLICATION_MANUAL.md`。本批未執行程式測試。
+
+<a id="coverage-entry-159"></a>
+## 2026-10-09 封存 target_system_architecture 更新記錄
+
+只將 `docs/01_architecture/target_system_architecture.md` 的 `## 更新記錄` 區塊摘出至 `docs/09_archive/TARGET_SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202607_TO_202609.md`；來源文件與其目標領域背景、治理邊界仍留在原路徑。來源保留原標題作相容錨點，文件級連結無需改寫。
+
+| 來源範圍 | 原文 bytes／SHA-256 | Archive 原文摘錄 | Archive 檔案 bytes／SHA-256 |
+|---|---:|---|---:|
+| `target_system_architecture.md` 的 `## 更新記錄` 至 EOF | 1,385 / `c260137b41dbfbb473bfc5aee47085e044dd73aaefd7102e21686b8791b8fd02` | [更新記錄原文](TARGET_SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202607_TO_202609.md) | 2,215 / `7d47dc5108d5a5d533538e8b6d06502add28717132d92a26707d543d220222d0` |
+
+來源整份原檔在本批前為 37,123 bytes，SHA-256 `792d1bd93c5c9d8457eac7cd387f71cd69f87ee476ead5491d33bacf067c28f1`。更新記錄中的 R031 工程 closeout 保留 named blockers 與 compatibility owners，不代表整體 refactor、production 資料、scheduler、ML promotion 或所有目標能力通過；狀態依 [R031 closeout QA](../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)，目標實作設計依 FINAL_TARGET_ARCHITECTURE。全 repo 未找到 `target_system_architecture.md#更新記錄` 專屬引用；既有 `#1011-ml-shadow-layer` 連結不受影響，原標題保留供相容。`DOC_COVERAGE_MAP` 權威分工未改，因此不修改；文件位置不變，未修改 dirty 的 DOCUMENTATION_INDEX、PROJECT_SNAPSHOT 或 APPLICATION_MANUAL。Archive README、01_architecture README 與本 Coverage History 已補上歷史入口。本批未執行程式測試。

@@ -19,6 +19,9 @@
 
 [R003／R005／R006 回修指示與 Wave 1／Wave 2 唯讀分析輸入](REFACTOR_DISPATCH/README.md)已封存；來源目錄保留相容導引。這些歷史封包不改寫任務驗收；R006 未知正式 binary 的保留風險仍依 R031 與具名 QA 判讀。原件 bytes／SHA-256 與引用核對見 [Coverage History Entry 135](../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-135)。
 
+## Wave 1／Wave 2 中間狀態歷史
+
+[四份早期 pending／blocked／preflight 報告](REFACTOR_REPORTS/README.md)已封存並保留舊路徑導引。現行 Wave 1／2／3 狀態改看各自後續 checkpoint；這批 bounded PASS 不表示 C1、Wave 6 或整體架構遷移結案。來源 bytes／SHA、入站引用及 status supersession 依據見 [Coverage History Entry 139](../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-139)。
 <a id="wave2-old-sha-checkpoint"></a>
 ## Wave 2 舊 SHA 驗收快照
 

@@ -1322,3 +1322,20 @@ Archive 原件保留搬移前 Windows 工作樹 CRLF bytes。各原件正規化�
 - 實作歷史可由 commits `68c1c3438` 與 `e1c7d33a9` 追溯；目前行為說明見 [每日資料更新指南](../03_data/daily_data_update_guide.md) 及 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，相關回歸測試入口為 `tests/test_update_daily_output.py`、`tests/test_scheduled_data_update_runner.py`、`tests/test_scheduled_data_freshness_probe.py`、`tests/test_update_all_coordinator.py`。未找到具名 QA closeout，不以程式或文件存在代替正式驗收聲明。
 - 精確檔名入站引用為本清冊更新的 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 與固定歷史快照 [Documentation Catalog](DOCUMENTATION_CATALOG_20261006_HISTORY.md)；Catalog 保持原始歷史路徑，該連結由舊路徑 stub 承接。未找到程式、測試、腳本或設定中的固定路徑 consumer。`docs/superpowers/README.md` 已補上主題與封存狀態導覽。
 - `DOC_COVERAGE_MAP.md` 不變：權威分工與同步規則未改；本批原路徑、Archive 目的地、原件 bytes／SHA、效力限制與目前替代入口由 Coverage History 及 Archive README 追蹤。
+<a id="coverage-entry-139"></a>
+## 2026-10-09 封存 Wave 1／Wave 2 過期中間狀態報告
+
+將以下四份已被後續 checkpoint 取代的 preliminary／analysis intake／preflight 原文移至 `docs/09_archive/target_architecture_2026_09_22/REFACTOR_REPORTS/`；舊 `docs/01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/` 路徑保留短導引。Archive 原文逐位元組保留，並由 Archive Reports README 提供點擊式後續證據連結：
+
+| 原路徑檔案 | Bytes | SHA-256 |
+|---|---:|---|
+| `WAVE1_PRELIMINARY_CHECKPOINT.md` | 4,867 | `c081601e7dcf7b85aba9dbefb85913657a8024a82d695f7127f45b0a4e56006d` |
+| `WAVE1_GEMINI_PARALLEL_ANALYSIS_INTAKE.md` | 4,172 | `bbeca53dc065aa534af1186cb6dc36b61c49210ea8719419e1f231198f509a1e` |
+| `WAVE2_GEMINI_PARALLEL_ANALYSIS_INTAKE.md` | 3,322 | `6a1194dc0dc76eb74e38cf97c6e859d4c132344bd45c1e91772c629e3f711cf0` |
+| `WAVE2_LUNA_PARALLEL_GATE_PREFLIGHT.md` | 6,394 | `02b343201878d129e69459508c28bd85ef5a5ef20cb93ad9fd590989e9ea423e` |
+
+- Wave 1 兩份中間態記載的 pending／blocked，由 `WAVE1_CHECKPOINT.md` 與較新的 `WAVE1_R007_TZNAME_CHECKPOINT.md` PASS 取代。
+- Wave 2 Gemini intake 的 `READY_FOR_GEMINI_REVIEW`，由 `R008_SOL_FINAL_ACCEPTANCE.md`、`R008_SOL_RESULT_ID_ACCEPTANCE.md`、`WAVE2_RESULT_ID_CHECKPOINT.md` 的 PASS，以及 `WAVE2_BATCH_VALIDATION_PLAN.md` 的 `PASS_AFTER_RESULT_ID_ERRATUM` 取代；後者記載後續不再派送 Gemini。Luna preflight 的 `READY_EXCEPT_GEMINI` 已由 `R008_SOL_BATCH_AUDIT_DECISION.md` 明確標為過期，後續 `WAVE3_CHECKPOINT.md` 亦為 PASS。
+- 以上是 bounded task／wave 證據，不代表 C1、Wave 6 或整體目標架構遷移完成；總體狀態與開放 Gate 仍看 `PROJECT_SNAPSHOT.md` 及現行 FINAL／QA。
+- Hidden-inclusive 全 repo Markdown 精確檔名搜尋的 inbound refs（原行號）：Wave1 preliminary → `REFACTOR_REPORTS/README.md:206`、歷史 Catalog `:233`；Wave1 intake → `REFACTOR_DISPATCH/GEMINI_REVIEW_R003.md:9`、`GEMINI_REVIEW_R005.md:9`、`REFACTOR_REPORTS/README.md:204`、`WAVE1_GEMINI_PARALLEL_ANALYSIS_REPORT.md:3`、歷史 Catalog `:231`；Wave2 intake → `R008_GEMINI_STALE_REVIEW.md:5`、`REFACTOR_REPORTS/README.md:210`、歷史 Catalog `:240`；Wave2 Luna preflight → `R008_SOL_BATCH_AUDIT_DECISION.md:5`、`REFACTOR_REPORTS/README.md:211`、歷史 Catalog `:241`。舊 Catalog 保持歷史快照，所有來源路徑 stub 均保留導向。未找到程式、測試、腳本、排程或設定的固定路徑 consumer；候選文件本身沒有 Markdown 相對連結。
+- `REFACTOR_REPORTS/README.md` 現在把 current PASS checkpoint 放在 Wave 導覽入口，將四份中間態集中導向 Archive index；target architecture Archive README 與頂層 Archive README 也已加入口。Scoped authority 未變，因此不修改 `DOC_COVERAGE_MAP.md`。

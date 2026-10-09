@@ -1,0 +1,12 @@
+# Wave 1／Wave 2 中間狀態紀錄
+
+> 本索引整理早期 pending／blocked／preflight 快照；它們不代表目前 Gate 狀態。完整歷史原文保留在本目錄。Wave 1／2／3 的 bounded PASS 也不代表 C1、Wave 6 或整體架構遷移完成。
+
+| 歷史原文 | 當時描述 | 後續狀態依據 |
+|---|---|---|
+| [WAVE1_PRELIMINARY_CHECKPOINT.md](WAVE1_PRELIMINARY_CHECKPOINT.md) | R003／R005 審查待回、Wave 1 checkpoint 尚未封口 | [WAVE1_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_CHECKPOINT.md)、[WAVE1_R007_TZNAME_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_R007_TZNAME_CHECKPOINT.md) |
+| [WAVE1_GEMINI_PARALLEL_ANALYSIS_INTAKE.md](WAVE1_GEMINI_PARALLEL_ANALYSIS_INTAKE.md) | 分析基線上的 Gemini review pending／Wave 2 blocked | [WAVE1_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_CHECKPOINT.md)、[WAVE1_R007_TZNAME_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE1_R007_TZNAME_CHECKPOINT.md) |
+| [WAVE2_GEMINI_PARALLEL_ANALYSIS_INTAKE.md](WAVE2_GEMINI_PARALLEL_ANALYSIS_INTAKE.md) | R008 當時仍標 `READY_FOR_GEMINI_REVIEW` | [R008 SOL acceptance](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R008_SOL_FINAL_ACCEPTANCE.md)、[R008 result_id acceptance](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R008_SOL_RESULT_ID_ACCEPTANCE.md)、[WAVE2_RESULT_ID_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md)、[WAVE2_BATCH_VALIDATION_PLAN](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_BATCH_VALIDATION_PLAN.md) |
+| [WAVE2_LUNA_PARALLEL_GATE_PREFLIGHT.md](WAVE2_LUNA_PARALLEL_GATE_PREFLIGHT.md) | 當時 `READY_EXCEPT_GEMINI` 的獨立唯讀預檢 | [R008_SOL_BATCH_AUDIT_DECISION](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R008_SOL_BATCH_AUDIT_DECISION.md)、[WAVE2_RESULT_ID_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE2_RESULT_ID_CHECKPOINT.md)、[WAVE3_CHECKPOINT](../../../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/WAVE3_CHECKPOINT.md) |
+
+舊架構報告路徑保留短導引，其他 report 中的舊引用會先到 stub，再連回這裡的原文。整體工作狀態與仍開放 Gate 請看 [PROJECT_SNAPSHOT](../../../00_core/PROJECT_SNAPSHOT.md)。來源 bytes／SHA、完整 inbound Markdown 引用與封存範圍見 [Coverage History Entry 139](../../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-139)。

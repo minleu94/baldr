@@ -29,3 +29,11 @@ Root 實讀 C loader、差異檔與 plan，重算八個 candidate pins 都符合
 
 已要求 owner 保留這版 C 的前像與 manifest，修正 controller 固定 pin，增加 controller 常值與實際支援檔案的一致性小測，再重新發行 frozen manifest/plan。sibling import 小測本身不覆蓋此 controller 接線錯誤。
 
+# D 候選合成接縫審查（尚未放行 Main）
+
+後續 owner 已修正 runner 路徑及匯入、兩個 SQLite alias 指向同一 frozen guarded wrapper，以及 H20 source 與 runtime/output 的測試佈局。seam006 已讀市場與 H20 副本，但在合成 REAL 欄位與字串比對時失敗；失敗後 dispatcher 未 detach 導致 abort 次錯，完整接縫尚未通過。Root 已授權僅 QA row 正規化及先 detach 再 abort／保留主次錯誤修正，要求故障注入與正常清理證據。permit 的內部 inventory 登記並非 H20 資格證明；上層必須核驗真 typed active session、來源副本 pin、query_only、transaction 與實際 guard 建立生命週期，不能只傳入任意 counters。Main 仍未放行。
+
+Root 實際讀取 D helper、merged bridge 與 `run_frozen_guard_market_h20_seam.py`，確認副本和合併快照已改用兩個獨立目錄內的 `reader.sqlite`，目錄身分採凍結 guard 的穩定五欄格式。接縫腳本仍發現兩項前置阻擋：模組級 helper 引用的 `stat` 只在 `main()` 區域匯入，以及候選目錄 `parents[3]` 實際指向 `PythonProjects`；實際 repository 是 `parents[2]`。已通知 owner 修正。
+
+目前 permit 的 root inventory 要求只存在自身兩個目錄，還不能證明與同 root 的合法 H20 session 同時使用。驗收必須包含 H20 session 尚未關閉時的 market reader／verification，且合法 H20 目錄需有凍結 guard 的實際核准證據；不能以任意同名目錄放行。D Main 尚未執行，以上不代表完整研究旅程通過。
+

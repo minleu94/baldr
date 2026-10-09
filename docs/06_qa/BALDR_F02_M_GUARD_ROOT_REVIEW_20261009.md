@@ -34,3 +34,23 @@ Root 直接閱讀 `_new_outer_root`，確認 parent 必須存在，實際工作�
 Root 重算新計畫十項來源 pins 均符合，計畫 SHA 為 `e56bba33bb20816705dfaaf92fb5bc07ea25474aed2b08a5830f5d5949f9a486`。實際 outer attempt 為 `C:/t/f02_ma_composite_257_v4_7814c803bcb2`，owner 同一 handle 46956 終態 exit 1。
 
 Root 實讀 `supervisor_receipt.json` 與 `worker.stderr.log` 的原始 worker marker：status failed，fixture_creation 階段的 `bundle_create_failed`，第一個 guard denial 是 `bundle_link_writer_runtime_binding_changed`（1 次，detail 空）。尚未完成母體 oracle/composite；不得當作 AND/OR、排序或逐頁通過。Job 清理證據為 `empty_before_close`、job closed、zero owned processes proven；supervisor/target 起訖 pins 相等。下一步需定位哪個 runtime binding 在真 writer 路徑被拒絕，保留此失敗封套，不直接移除守衛或重啟原 attempt。
+
+## p 診斷版本的實際母體失敗
+
+Root 實讀 p 固定 writer seam：43 個 qualification checks 全通過，25 項預期拒絕，producer/worker 0，來源起訖一致；helper 失配測試記錄 inner `os_module_identity` 與 outer `path_helper_runtime_binding_matches`，finally 還原後 runtime true。完整母體計畫 SHA 為 `ca805474a1bd4921bd35f12867e09e4b9e9d17f9f9e40ab8ff958d93490318e1`，Root 重算十個來源 pins、確認 target-only 新目錄單檔與隔離 parent 後授權一次執行。
+
+實際 outer root `C:/t/f02_ma_composite_257_v4_c9aa2cc65e05` 的原始 receipt/worker marker 顯示 failed、worker returncode 1、Job empty 且 closed。仍在 fixture_creation，未完成 oracle；具名診斷這次明確指出 `bundle_read_guard.module_registry_identity` 失配，actual/expected 都是 module、identity false，caller 為固定 writer `_publish_objects`。
+
+Root 直接核對 supervisor `_run_fixed_target`：`runpy.run_path(..., run_name="__main__")`；固定 target 尾端以空 argv 呼叫 `_run_case()`。已要求 owner 在新候選以穩定具名 target 模組及核驗後的真正 `_run_case` 入口執行，保持 supervisor registry 與完整來源／code／globals 身分核驗，不修改 target bytes，也不刪除 module identity check。先驗真正 launcher 至 writer 的最小 seam，再核新的完整母體計畫；p 失敗封套保留。
+# q 候選清理流程審查與 r 完整矩陣追蹤（2026-10-09）
+
+## r 完整矩陣執行前核驗
+
+完整矩陣已實際啟動一次，由 owner 持有 session `23324`。Root 讀到 `C:/t/f02_ma_composite_257_v4_f2aafa0e9dd2/supervisor_started.json` 及 r target 唯一 `attempt_11b3a820d18542be/acceptance_receipt.json`；此時 receipt 為 `running/fixture_creation`。觀察尚無終態，不能判斷成功或重啟。外層收據依設計保存在 C:/t，不在 supervisor 原始碼 QA 目錄。
+
+Root 已讀 r 計畫與 source manifest（SHA `1bf21b473deea24e8469f4a0866ff104911c6f4db955951e83dc9fb2ed18c973`），獨立重算 27 筆來源／runtime pins，失配為 0；r target 只有固定 script，C:/t 是普通既有目錄。q→r 只有 TARGET_PATH 目錄字串差異，target bytes 未改。已授權 owner 依固定 argv 執行一次完整矩陣；來源 direct-import pins 需前後獨立比對，終態依原 oracle、原守衛及 Job empty／closed／zero-owned 證據驗收。此段僅是啟動前放行，不代表完整矩陣已通過。
+
+q 後續已修正 target argv 與 supervisor argv 的比較。Root 實讀唯一 native 自測的原 JSON、terminal exit 0 及 SHA `09ad4de8ea71a711f63af3fba0f09de577e44a939b70f0c39d686fecb7e7e0f6`，確認真固定 writer 在 runpy __main__ 路徑以 `bundle_read_guard/module_registry_identity` 拒絕、候選 nlink=1／既有目的檔不變；stable alias 路徑成功 readback、移除自身 alias 並還原 argv／保留 supervisor __main__。primary／foreign alias／argv 漂移負例也通過；producer、SQLite 及 worker 均為 0。凍結 q SHA `9f0d18a2c5de9fc73717a91ad6312a7f4fe769100af9f110872ad13b340a9b7c`，其 p→q 差異已讀取。接受的是 writer/loader seam；完整 257 矩陣仍需新唯一 target routing 計畫及執行證據。
+
+Root 讀取 q 候選的 `_cleanup_named_target_import`，確認它已保存 primary exception、外來 alias 並恢復 argv，但發現正常目標執行刻意設定的 `[TARGET_PATH]` 仍被拿來與原 supervisor argv 比較，會把正常清理誤判成 argv 漂移。已要求 owner 分離「目標執行期間的預期 argv」與「清理後應恢復的 supervisor argv」，並以真正 writer seam 驗證正常路徑及 primary／alias／argv 同時失敗路徑。此處是阻擋紀錄，並非 q 完整產製驗收。
+

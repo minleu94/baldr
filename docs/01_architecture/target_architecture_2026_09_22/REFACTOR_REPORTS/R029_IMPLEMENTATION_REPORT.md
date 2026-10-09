@@ -2,7 +2,7 @@
 
 **最終裁定：`ACCEPTED_WITH_RETAINED_COMPATIBILITY`（2026-09-25）。** 本輪完成有限 caller／alias inventory、retirement ledger 同步與有證據範圍的 gate 裁定。R029 不代表所有 compatibility facade 均已刪除；沒有執行破壞性 cleanup，沒有刪除 DTO、歷史 decoder、未知 serialized alias 或正式資料。
 
-權威狀態在 [FINAL_MIGRATION_SEQUENCE.md](../FINAL_MIGRATION_SEQUENCE.md)。逐項 caller 清冊與可重跑搜尋見 [R029 preflight inventory](../../../06_qa/R029_RETIREMENT_PREFLIGHT_INVENTORY_20260925.md)。較早 [R029 gate draft](../../../06_qa/R029_RETIREMENT_GATE_DRAFT_20260925.md) 是裁定前快照，不再作 current status。
+權威狀態在 [FINAL_MIGRATION_SEQUENCE.md](../FINAL_MIGRATION_SEQUENCE.md)。逐項 caller 清冊與可重跑搜尋見 [R029 preflight inventory](../../../09_archive/R029_RETIREMENT_PREFLIGHT_INVENTORY_20260925_HISTORY.md)。較早 [R029 gate draft](../../../09_archive/R029_RETIREMENT_GATE_DRAFT_20260925_HISTORY.md) 是裁定前快照，不再作 current status。
 
 ## Retirement 裁定
 

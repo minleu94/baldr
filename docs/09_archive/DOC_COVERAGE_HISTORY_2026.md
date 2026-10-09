@@ -823,3 +823,13 @@ Gemini 對 `docs/06_qa/` 根目錄 527 份 Markdown 提出 10 份 `ARCHIVE_CANDI
 - `V2_2_PHASE5_APPROVAL_REHEARSAL_PACKAGE_2026_07_07.md` 仍由 QA README 和 Application Manual 指引用於準備審核材料；內容明確是模擬預演，尚非正式 approval。
 
 因此這 7 份目前保留原文和原路徑；後續若解除文件依賴或釐清 SHA 差異，再以新的 coverage entry 記錄處置。此次覆核不等於完整重新分類其餘 517 份非候選文件，也不核實 ignored `output/` sidecars。
+
+<a id="coverage-entry-098"></a>
+## 2026-10-09 歸檔 R029 retirement gate 草稿與 preflight 清冊
+
+Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩份原件而先保留。本次先把兩個現行引用改指向 Archive，再將已標示 superseded 的 gate 草稿及 2026-09-25 唯讀 caller／alias 清冊成對歸檔；QA 原路徑保留導引。封存副本只調整搬移後失效的相對連結，正文證據與判斷原樣保留。來源 bytes／SHA 取自 tracked WAVE14 frozen manifest；該 manifest 作為歷史快照保持不變，不是 runtime reader。R029 的目前裁定仍以 implementation/acceptance report 與 FINAL_MIGRATION_SEQUENCE 為準；不得將有限 repository 搜尋擴大成外部 caller 零命中，也不推定 destructive cleanup 已授權。C2、C3/C4、R031 index、WP5 與 V2.2 rehearsal 五份其餘 Gemini 候選仍依 Entry 097 所列理由留在 QA；本次不是 527 份全量重分類。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256（WAVE14 frozen manifest） | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/R029_RETIREMENT_GATE_DRAFT_20260925.md` | [R029 gate 草稿原文](R029_RETIREMENT_GATE_DRAFT_20260925_HISTORY.md) | 8,988 / `70237418C12321496EA76B31C431767B796D5DC4B7ED6CE735AFD076007BA228` | 9,014 / `C7AB7B8A7843CEF6F44552A9FC9C5A5BC083FDD2ADBB6FF9ABEACDDB5251DC6B` |
+| `docs/06_qa/R029_RETIREMENT_PREFLIGHT_INVENTORY_20260925.md` | [R029 唯讀預檢原文](R029_RETIREMENT_PREFLIGHT_INVENTORY_20260925_HISTORY.md) | 17,042 / `CD6591348521FA9DECEE2E9AB9D9171038FEA766F7CCFAC2D8272BEEB8768F42` | 17,105 / `94D907E8B2DED67D1B056F4ED7B2660F89B8461C089FC750003C3D953B44EE16` |

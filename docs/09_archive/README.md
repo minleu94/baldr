@@ -11,6 +11,11 @@
 - [逐批文件整理與歸檔沿革](DOC_COVERAGE_HISTORY_2026.md)：收錄 Coverage Map 移出的日期化批次記錄、原路徑／封存路徑與 hash 證據。
 - 現行權威邊界、文件同步矩陣與 DoD 仍由 [DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 維護；本清冊只供追溯。
 
+<a id="2026-10-09-r029-retirement-preflight"></a>
+## 2026-10-09 R029 retirement preflight 歷史
+
+- [R029 retirement gate 草稿](R029_RETIREMENT_GATE_DRAFT_20260925_HISTORY.md) 與[唯讀 caller／alias 預檢清冊](R029_RETIREMENT_PREFLIGHT_INVENTORY_20260925_HISTORY.md)：保留 2026-09-25 裁定前狀態與當時有限搜尋證據，不代表目前 caller 完整性或 cleanup 授權。現行裁定看 [implementation/acceptance report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [FINAL_MIGRATION_SEQUENCE](../01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md)；原 QA 路徑保留相容導引，逐檔 bytes／SHA 見 [Coverage History Entry 098](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。
+
 <a id="qa-historical-process-failure-review-20261009"></a>
 ## 2026-10-09 QA 歷史流程與失效分析
 

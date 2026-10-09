@@ -410,6 +410,7 @@
 - 2026-10-09：明確 QA 收據歸檔條件：仍被 Gate、未解問題或工具固定路徑使用的文件留在 QA；純歷史收據只有解除活躍依賴並保留相容導引後才搬移。
 - 2026-10-09：核對 Gemini 提出的 10 份 QA 歸檔候選，只封存 3 份無活躍依賴的歷史紀錄；其餘 7 份因 tracked manifest 固定原 bytes／路徑或仍被現行入口引用而保留。詳見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
 - 2026-10-09：精簡 V2.1–V4.0 maturity spec 中重複的 7/12、8/30 status notes；歷史判讀仍由既有 Archive 提供，正文保留版本標準並以 Snapshot 表示現況。
+- 2026-10-09：修正 R029 active report／R031 index 對 gate 草稿與預檢清冊的引用後，將兩份已 superseded 的 dated preflight 成對歸檔；保留 QA 原路徑導引與 WAVE14 凍結 manifest。細節見 [Coverage History Entry 098](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。
 - 2026-08-30：補入 P0／Evidence／Paper／Formal／Runtime／Performance／Data Update refresh 文件，並把 UI 舊 readiness artifact marker、週末 freshness 語意與最新測試 inventory 納入 coverage。
 - 2026-09-10：補入 V4.1 A 線推薦機率校準的 QA handoff、Snapshot、Current architecture、Manual 與 Index；確認 20／5 outcome contract、walk-forward split、整數 bp calibration、read-only DB boundary 與自然 forward evidence 尚未成熟的 not-evaluable 狀態。chip／funding、industry、PIT theme 保持 deferred，沒有回填歷史 event。
 - 2026-09-12：補入 V4.1 A 線第二輪歷史研究與候選方法包的 QA handoff、Snapshot、Current architecture、Navigation、Manual、Runbook 與 Index；新增逐列 manifest、gap／candidate coverage、自然時間分類與 create-only frozen artifact，確認正式 DB 僅 query-only 讀取且沒有 promotion／formal writer 變更。
@@ -456,3 +457,7 @@
 ## 2026-10-09 覆核 QA 歸檔候選
 
 [完整批次紀錄與逐檔 SHA-256](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
+
+## 2026-10-09 歸檔 R029 gate 草稿與 preflight 清冊
+
+[成對歸檔紀錄與逐檔 SHA-256](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。

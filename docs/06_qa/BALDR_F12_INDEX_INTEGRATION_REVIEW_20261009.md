@@ -23,3 +23,11 @@ Root 另以真正合成 SQLite load 注入投影錯誤及投影／close 雙錯�
 新 reader 整檔 session `24856` 由 owner 回報 terminal 摘要為 6 failed／2 passed、209.02 秒；該次 pytest 輸出與來源起訖 pins 沒有落盤，無法提供 root 可重查的完整 traceback，故保留稽核缺口，不能授予接受。合成 basetemp `C:/t/f12_revenue_reader_20261009_a` 保留，後續修正須使用新封套並保存完整串流日誌與來源 pins。
 
 Root 靜態核對發現新 revenue source-pins 把沿用 MA 的原時區 cutoff 字串與 UTC cutoff 字串直接比較。MA request 由 `metadata.decision_cutoff_label.isoformat()` 建立，而 monthly cutoff 使用 UTC；即使同一 aware 時刻，兩種時區字串也可能不相同。已要求用保留的真合成 fixture 記錄實際值重現，僅在新 revenue 契約明示正規化，先驗 aware instant 一致，保留既有 MA request／identity；不得為了通過而把真正不同的 cutoff 改成相同。
+
+修正後 Root 獨立檢查 production cutoff helper：`2026-10-07T16:00:00+08:00` 與 `2026-10-07T08:00:00+00:00` 解析為同一時刻，相差一分鐘則不同；naive、無效字串、bool 及不符合 canonical ISO 的空格形式均拒絕。收據 `root_cutoff_helper_1791509868186656100.json`，共享 reader SHA 起訖為 `1f50cb364ab6c4aa0e913d6a10ec8e3c1820106e7e8dcc46f4f9c100efd09eb6`。只涵蓋純 helper 與本輪靜態修正，沒有 SQLite／完整 source join；保留合成母體重現與整檔驗收仍待。
+
+後續 attempt03 已取得完整 reader 整合結果：8 passed／218.14 秒、exit 0。Root 直接讀回 `output/qa/F12_REVENUE_READER_REPAIR_20261008_A/attempt03/pytest.log`、`terminal.json` 及實際 cutoff 收據，並重新雜湊來源與測試，分別符合 `fc9c3d089c703f2bc815d0ce02310916de49aa1ce35cdfa8336ca7e630dc8045`、`da303aeb5eaaed76b9f983c7af3098c368681fc1f290052c121af86e3c012171`。保留 attempt02 的 6 passed／2 failed 結果，未覆寫舊封套。
+
+Root 同時核對測試實際斷言：三個啟用條件組的 AND／OR 各涵蓋 include、exclude、only；25% 營收門檻另驗明確 no-match 對 AND／OR 的影響。排除列可依 row scope 瀏覽，但不被 unknown policy 納入，且頁面身分與結果封印相符；真正不完整 store 不能冒充合格完整 bundle。此證據限於該合成母體與條件分布，不推論全市場或 UI 接線完成。
+
+合成收據 `C:/t/f12_revenue_reader_repair_attempt03/test_active_or_query_is_global0/f12_cutoff_normalization_receipt.json` 的 DB、capture 起訖 pins 及頁面前後 source pins 逐項相同。索引整份核驗在 execute 為兩次，第一頁讀完累計三次；未逐列重掃。來源仍未具 PIT 資格。接續範圍為產品 UI、收藏序列化與跨程序 exact reopen；真人接受尚未開放。

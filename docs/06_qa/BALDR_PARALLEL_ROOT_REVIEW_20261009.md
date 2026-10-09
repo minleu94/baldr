@@ -219,3 +219,176 @@ Root 實讀 P01 `bind_verified_projection` 與 `consume_verified_parent`：只�
 ### F02 d 原生續驗終態（2026-10-09）
 
 Root 實讀 workspace terminal：d唯一續跑exit1，supervisor／target／input SHA 起訖一致；原owner handle77580已由owner確認terminal。outer `C:/t/f02_ma_composite_257_v4_76b046c19786` supervisor receipt status failed、worker_returncode1、continuation_input_unchanged true。實際 acceptance `d_target/attempt_0db15db4fdab4a49/acceptance_receipt.json` 顯示 fixture_creation 8390ms，原料唯讀19632 rows與真 StoreReader.read_exact 一次成功，producer/bundle writer為0，之後因 QA provider 讀取不存在的 VerifiedState.generation_identity_sha256 失敗。Root對照真DTO欄位確認generation必須沿plan取值；要求owner全面核plan/receipt API，另建e provider-only核驗後再審新完整run。原d不得重跑或修改收據，這不是產品full-N矩陣通過。
+
+### P03 現有同版來源轉接器再核（2026-10-09）
+
+Root 實讀 `app_module/selection_current_source_pair.py`（既有提交 `05ebabd6`）：normal coordinator 在真正 producer 前固定 market/disposal pair，下游 writer 沿原 plan cutoff/exact pins，非 complete 不發 bundle。pair 明示核 run/pointer/snapshot/manifest 同版，兩 reader datetime 格式以aware datetime 比對。不能沿用早期「缺 adapter」診斷；剩餘是完整 Main／EXE／正常來源閉環驗收。Root 新隔離根 `C:/t/p03-sourcepair-root-20261009-f` 重驗既有兩個實際 capture 測試，2 passed／0.50秒，證明 pointer 前進後已取 pair 保持原版、兩 reader 之間前進造成混版會拒絕。JUnit `output/qa/p03_sourcepair_root_20261009_f.xml`；18項未在此重跑，不授完整20項或UI/producer資格。
+
+### H20 F 子程序收尾與下一程序啟動條件（2026-10-09）
+
+Root 實讀新 F runner 已將 Job 的 terminate/wait_empty/close 移入 finally，分開保存 primary/cleanup errors，最終 passed gate 也要求 cleanup_complete。另發現 fixture→Main 分支只依 prepare exit0 與 manifest存在，未核prepare收尾完整；已要求只有prepare tree_empty／cleanup_complete、無primary/cleanup error、無timeout才啟Main。最後拒絕passed不足以代替失敗後不得啟下一程序。原 static preflight marker錯誤 receipt 已保留獨立 `_01_failed.json`；這仍不是完整 Main 執行證據。
+
+### P03 正常來源 coordinator 中央完整定向回歸（2026-10-09）
+
+為核實目前已存在的 normal adapter，Root 在新隔離根 `C:/t/p03-sourcepair-root-20261009-g` 執行整檔 `tests/test_selection_current_source_pair.py`：20 passed／5.52秒，JUnit實讀 tests20/errors0/failures0/skipped0。測試包括來源先固定再產製、pointer更新混版拒絕、晚於cutoff拒絕、cancel/non-bool拒絕與incomplete無發布。Root另實讀最後案例，確實呼叫真合成producer、真BundleWriter與BundleReader.read_exact，保存一股1101 processed且來源 DB／capture hash保持不變；不是以mock writer替代這個正例。當前source SHA `14D41AF43240915084CB493AB42E2060B34973972260DEE44B96FCBA18D44314`、test SHA `3F35FD8E56AFCCD13D739C109DD8F5BBB69C4C787A2657EAE43759762DAB3BA8`。接受此backend定向範圍；沒有全市場、完整Main／EXE、收藏新程序或自然排程資格。
+
+### H20 F 凍結候選一次完整 Main 授權（2026-10-09）
+
+Root 已讀 F 主要完整 diff／最終 manifest，actual三runtime SHA與清單完全一致：controller `4e356485f782a149ac11272a775c2c50e5ff309ac9b1be2b3e9b18c6d103ba12`、child `67911f64ab2943373baf917b4112d45af8ae3fb395021dce1e7e2ff8e5a7e115`、preparer `3b7b139366ed8c035df44fc0cf1ba8ccf0e7a0d9086f8f151fe5be3372c481d4`。Manifest `be4c68abdc08958fda1c2e947da256175f6934e67caf11e3028afb8a051cb191`、7個static checks通過；Root實算6個E固定依賴全部吻合、unique C:/t root不存在。已授權owner凍結後再核pins/root，唯一一次controller native Main；120秒fixture／300秒Main／20秒Job清理不變。fixture cleanup不合格不得啟Main；Main worker關閉證據／Job empty／來源起訖／H20-first清理為接受門檻。此授權不代表已啟動或通過，不授原十股/684bp、新程序收藏或EXE資格；此片bookmark是同Main新typed讀取，已改正名稱。原source BUILD_INFO approved_for_launch=false仍保留；本片是明示合成worktree QA，不當作原artifact正式launch接受。
+
+### H20 F 實測終態與重建來源下一步（2026-10-09）
+
+owner native handle56186 terminal exit1，未進fixture/Main；controller在full s3 tree核驗拒絕。Root另獨立以manifest檔名集合對照：expected4161、actual4163、missing0，extras為 `data_module/__pycache__/__init__.cpython-311.pyc` 與 `pinned_sqlite_read_session.cpython-311.pyc`。owner完整hash對照changed0；其來源診斷封套待中央回讀。Root未刪除、忽略或修改extras。F unique QA root已建立但case空，沒有資料庫／Main接受。下一G先評估從原已pin archive重建新隔離read tree，逐4161 size/SHA及22pin核對，保留原manifest/build/archive bytes；明示origin與reconstructed root，不能修改原snapshot_root或宣稱s3 unchanged。先審QA path adapter與純契約，未放行G Main。此拒絕是full tree新增cache，不是required22pin漂移；原source BUILD_INFO與F失敗保持不變。
+
+## F03 三路暫存協調器中央複核
+
+2026-10-09：Root 在全新 `C:/t/f03-group-root-20261009-a` 執行真 synthetic parent 定向測試，terminal exit 0，1 passed／13.63 秒；JUnit `output/qa/f03_group_root_20261009_a.xml` 為 1 test、0 failures／errors／skipped。正常 scoped mypy 兩檔 clean，py_compile exit 0。前後三檔 SHA 均吻合：source `0B0864D9017FAC0EFBC2E26F450EFA2C7A82C17D53AC1674B8B881D240B11AA2`、test `CEA9DE7218D61EF113E1C6F18A54ECC5B6E1948DFEF784036799AB0C7943EB5E`、QA `B52EC63CDEF22979B502C83B5D49B56E02756E3D01DC7D16AEA57C205C7C83D1`。
+
+已讀實際測試及故障矩陣：MA／KDJ／volatility 各 begin／consume／end 失敗及 callback 後取消均清空整組並永久失效；同一真 typed parent／snapshot／row 引用供三路處理。Root 要求修正無效 DTO finalize 呼叫的證據表述：其一般拒絕不能證明單一 finished 分支；finished、issued session 為 None 及 partial buffers 清空由獨立結構斷言支持。
+
+接受範圍僅為未核資格的單 parent 暫存 fan-out，不包含多 parent、完整母體、共同 prepare／seal、qualified index/query、UI 或 EXE。下一片須保留唯一 reader authority，完成全部 parent 與 counts 核驗後再共同發布，不能先發布 MA 後讓其他 member 失敗。
+
+## F02 e 實際 DTO 差異與下一片分工
+
+Root 已實讀 e `attempt_ef50a7bddb184cee/acceptance_receipt.json` 與 native terminal：exit 1；stdout SHA `fe2f79438c9d1d1037ce1cda607eafa1b28f0806f10f605b9ec0d7c68d9c8b6c`。真 StoreReader counts 為 declared_count／included_count／excluded_count／processed_count／pending_count／missing_data_count／missing_data_pending_count，值依序259／258／1／258／0／1／0；QA provider 卻比縮寫鍵，因而拒絕。Producer、bundle writer 與兩個 pointer reader 皆0，完整 query 尚未進入。第二 SQLite connection 仍須實際 call path 解釋，不能直接放寬 expected 次數。
+
+Root 已讀 `BALDR_F03_MULTI_PARENT_GROUP_PUBLICATION_PLAN_20261009.md`，接受完整 parent ledger、prepare 與共同私有 issuer 方向；先釋出新增測試／QA 的真多 parent 切片，不改 F02 仍依賴的共享產品 pins。MA／KDJ／F06／F17 shared publication 實作待固定來源驗證收尾後再分派，原全母體 query、UI、收藏 scope 保留。
+
+## 真人檢查草稿與隔離多 parent 前提
+
+Root 再核推薦 view SHA `5F0FAA96F246C62C7693E1771D538D88B72AE95A6544208D74B14650ED16EDD5`、layout test SHA `61E4ECAF7F4E339798C73950808D5CB17B4F03B9A23B8C1B73DF48C33C340701` 與先前完整11pass證據一致，沒有無故重跑。真人草稿補上理由文字焦點內 PageDown／End，以及正常關閉後使用同一已提供啟動檔重開 H20 收藏；仍明示現在沒有新入口，不要求使用者先驗。
+
+Root 已實讀 `synthetic_full_store` fixture：真 SQLite／兩個真 parent、257 included／1 excluded，segment 為256+1，包含 cancelled→resume→complete receipt chain。該 fixture用 tempfile而非pytest tmp_path，下一 native測試須明設全新短TEMP/TMP、保留外部封套；fixture自己的合成DB刪除不作用正式來源，source讀回能力由已保存capture證明。這片不替代1000檔p95或共同seal。
+
+## H20 G2 固定 archive 重建中央逐檔核驗
+
+Root 以 native唯讀命令逐檔計算 `C:/t/h20gsrc_20261009_b/artifact/source` 的size／SHA，對照原 s3 manifest：expected4161／actual4161、77,229,228 bytes、missing0／extra0／changed0，完全相等，terminal exit0。另已讀 G2 archive reconstruction run receipt：synthetic ZIP tests exit0、fixed reconstruction exit0、Main／SQLite／original data皆未啟動。此核驗僅接受重建來源內容，不授 Main 或 EXE 驗收。
+
+同時實讀 G2 第一次 static receipt，`candidate_and_fixed_dependencies` 為 FileNotFoundError，其餘來源22pins／E清理證據通過。仍須新 immutable candidate manifest／diff及修正後前置檢查，再由中央審核完整 Main；原 static失敗及G1長路徑失敗保留。
+
+## 多 parent 故障注入的中央審查修正
+
+Root 實讀新 multiparent test 與 group consume順序。第二parent的 volatility callback前，MA及KDJ已各增加S0256，因此當下應是MA/KDJ257、volatility256，group已完成數仍256／1parent。原測試在預定RuntimeError前assert三路均256，會先出AssertionError而未命中預定故障。已要求owner沿既有live handle77015觀察到終態、不修改live source，再修正注入前提並以新attempt驗證；須確認真指定RuntimeError原因及全部首段256筆暫存清空。這是測試前提缺陷，尚未據此認定產品功能失敗或多parent通過。
+
+## H20 G2 完整 synthetic Main 單次核准
+
+Root 已審G2候選差異，並另比F→G2 controller，確認僅明示origin metadata與重建physical read root、完整內容／來源封套before-after；child維持`67911f64ab2943373baf917b4112d45af8ae3fb395021dce1e7e2ff8e5a7e115`、preparer維持`3b7b139366ed8c035df44fc0cf1ba8ccf0e7a0d9086f8f151fe5be3372c481d4`。中央實核四候選檔SHA均與manifest相符，manifest `de29a7a280a37a1bc4fba621fb018a81a5aad46d4f80b61d380dcab1bd6827db`、diff `9e806b4b71c8ec980308d6693407137b62839173c95377236a162b3cf5ebd819`、static02 receipt `363ee967df547fa31e544e83b57d3026ffbe4eb0ddff1f6be777f2cb9de087d8`。Static status passed、Main/preparer false，新`C:/t/h20dual_main_integration_candidate_20261009_g2`不存在。
+
+結合中央完整4161逐檔相等證據，釋出一次frozen G2完整synthetic Main run，限新scope、原timeout／Jobcleanup與Ekeeperguard保留，owner追唯一handle到terminal。不授原H20/EXE/真人launch資格；synthetic1234bp與same-process fresh read仍分開判讀。尚未取得本次run結果。
+
+## F02 F 候選 WIP 連線上界審查
+
+Root 讀F候選 WIP，counts已改真七個*_count鍵，但role validator暫為raw==1／scope>=1，guard的expected_connections預設None時亦接受source>=2。已要求各模式明示精確role counts與固定callsite上界；provider-only須raw1+scope1，第三次或同role2次不可通過marker或terminal。若fullrun真bundlewriter另作scope檢核，須先給實際callpath及mode-specific精確數量，不用無界最低數取代。候選尚未凍結或核准native/fullrun。
+
+多parent attempt b實際terminal1，2passed／1failed／176.36秒。Root讀log確認injection={}，未打到預定故障，符合先前review；原輸出保留，新修正只改測試前提，不改producer或產品。
+
+## H20 G2 完整嘗試終態中央核實
+
+Root 實讀controller_receipt／launcher_exit與fixture stderr：launcher terminal1；preparer在601行guard_existing_directories列舉使用未定義output_root，NameError，exit1。fixture Job cleanup complete=true／tree empty=true／cleanup errors=[]，Main launch gate=false、child_pid=null、result不存在。controller的child_exit_code=1是未啟動失敗狀態，不能解讀為已跑Main。source artifact／origin before-after均true。已交派新H副本先做四支script undefined-name完整核查及standalone preparer驗證；不改G2、s3或重用已建立scope。
+
+## 多 parent c 針對性重驗的證據界線
+
+Root 已實讀c log：1passed／2deselected／132.12秒，owner確認handle61040terminal。該版測試SHA `53E3AEA041AE4880AE82343BBFE12525E013F4D06D587B1BF0E4CC3AB5B34630` 已核第二parent當下partial counts=(257,257,256)、首段完成數256／1parent與全組清空；但只有callback_failed一般碼，尚未assert原cause型別／訊息。Root要求補明原cause為RuntimeError及指定injected_second_parent_volatility_failure後凍結，中央再跑完整3項。c不冒稱新增cause assertion或整套驗收通過。
+
+## 固定版多 parent 中央全套啟動
+
+Root核測試SHA `BDB0453BF24199A4685A41A6B3CB5434006B4928F0A3F3E27D82A9834796CF74`包含精確RuntimeError cause斷言後，以全新TEMP/TMP `C:/t/f03-multiparent-root-20261009-a-temp`、basetemp `C:/t/f03-multiparent-root-20261009-a-pytest` 啟動完整3項native測試，JUnit預定`output/qa/f03_multiparent_root_20261009_a.xml`。唯一root handle34772，第一次poll仍live，尚無結果。不重啟或重用scope。
+
+空出的subagent已接派獨立QA效能profiler候選：先讀原1000檔frozen controller/recovery pins、保留完整page/filter/global-sort操作，不改產品／來源／store、不重產1000。靜態候選經中央審核後才執行profile；原300ms gate與未完成EXE/真人驗收保持不變。
+
+## F候選精確模式成功出口複核（尚未凍結）
+
+Root再讀F WIP：role validator現在要求明示expected_attempts，各role attempts/allowed/opened皆相等且精確等於預期；worker provider-only與parent terminal validator已分別傳入provider-only或full模式固定callsite counts，舊expected_connections預設無界路徑已移除。仍需凍結diff、純負向契約與native provider-only證據才核准完整query；不能因WIP閱讀視為驗收通過。
+
+## F02 F 凍結純契約中央重驗
+
+Root實核supervisor SHA `3c8552b84422ec47abcc14cd81108a5f25ac5676b64196092ef937c6c6f0777b`，獨立執行`--self-test-continuation-sqlite-callsite-contract` terminal0。兩模式精確raw1/scope1與raw1/scope5通過；8個次數／登記負例、12個真public count DTO schema正負例全true，產品module未import／SQLite0／producer0；DTO source SHA `16cac8d2640f34f0ffe0de667573025d5f95438d8c1ed941709fb49831d52c2d`符合固定pin。接受純契約，不等同native provider或完整query通過。下一步凍結diff/manifest審核後單次provider-onlynative，不重複已通過純自測。
+
+## F02 F 單次 provider-only native 核准
+
+Root已審F manifest及diff（含DTO真鍵、精確caller route、來源pin、URI selftest正例在guard外／unknown caller在guard內拒絕），manifest `4172eb73b0f971bf16966f6511150d1bb9928a695a7e648cbdc33fab5029337e`、diff `bd3aec55de3c46d9169bb6819f4f6bd05acc431971a42982ba04765273d4ef48`中央實核相符。Candidate／preimage／固定target／inputmanifest／四產品source pins逐一實核match；F_target只有固定target檔，尚無attempt。
+
+結合root純contract terminal0，釋出一次frozen F provider-only native：新scope、raw1+scope1、producer/bundlewriter/query0、sentinel與wrapper還原、六root inputs before-after與Job空樹。owner追唯一handle到terminal，不重啟；完整query matrix仍待native證據中央審核後另行釋出。
+
+## F02 F provider-only 失敗定位與 G 候選分工
+
+Owner 回報唯一 native preflight terminal exit1：外層 `C:/t/f02_ma_composite_257_v4_097d4faa5c08`、target `attempt_9cde26d6219d4cc3`。raw role 1、scope role 0、unknown caller 拒絕1；未通過，不釋出 full query。依固定來源呼叫順序定位 scope constructor 的 dataclass generated `__init__` frame 未納入精確鏈；收據未保存 stack，不能稱為直接 traceback 證明。Root 接派全新 G 候選註冊並重驗 init function/code/globals/class 身分，補純正負契約；沒有核准重跑 native 或放寬原來源守衛。
+
+## 原 1,000 檔三操作 profiler 純契約中央重驗
+
+Root 獨立執行 `profile_candidate_selftest.py` terminal0，child `38df4564dd0fcd6f5c12c63617f538c2b0ae815aa65397e8365e21e5a58a5237`、supervisor `8f3fefef8fc39f2ddfdb486111aff39d4a1f04ec9ca5d9e5810dcea3938926a2`。固定 runtime acd18a1e 與 producer 2897 分開；page／完整 filter selection+page／完整 sort selection+page 三操作均列入，原 failed p95 保留。未啟 runtime、DB、store 或 producer；純契約通過不代表實際剖析或效能改善，native 仍待完整差異與隔離流程審核。
+## H20 H 前置產製及 1,000 檔診斷單次接派
+
+Root 實讀 H static05 receipt passed／execution exit0，四檔 SHA 與 manifest `7f9ff3bce7741edfe0f31a61faf015f3b2d59131054e5ee657e29313087276f1` 相符。審過 strict preparer-only branch：Main pid／exit保持None、無result，需完整fixture路徑／來源檔pin／來源樹前後一致與Job cleanup。已釋出一次新短root preparer-only native，E guard／keeper未安裝不得計為驗過；尚未釋出完整Main或真人入口。
+
+Root 實核 profiler manifest `41ac6a08d7202f874772246cf49e88cddd6baf7ad121382293c76416f4f585a8`、child diff `24fe4191e5d5f789d489c9e3fa5bff3855cfe835b05f5101119b54dc04272aa3`、supervisor diff `905aaf18342c5dd613ead256355743274f4a6dd30d3b4c058e68903b325a5e55`。三操作包含完整selection+page，原guard／source pins／Job deadline保持；接派固定child38df4564與supervisor8f3fefef唯一native診斷，新private root、600秒／10秒清理，不重跑producer或benchmark。等待實際結果，單筆cProfile不得取代原30樣本p95失敗。
+## 原 1,000 檔 native 診斷已啟動
+
+Owner唯一session `28999`；root透過唯讀native CIM實見Python程序 `22232 → 56184`，對應新 full_operation_profile 候選。stdout安靜不作terminal判定，owner持續輪詢同一handle，沒有重啟。結果仍未核為passed，原p95失敗保持。
+## H20 H preparer-only 實際終態中央初讀
+
+唯一owner handle57455 terminal exit1，未重跑。Root實讀controller：fixture_prepare_exit_code=0、cleanup_complete=true、tree_empty=true、primary_error=null，來源artifact前後一致；Main pid=null。失敗由新validator回報 `preparer_only_source_sha_field_mismatch:manifest_path`。Root實讀required_source_pins把保存的manifest_sha256與raw file SHA直接比較，接派owner核其原保存契約是否canonical identity；不得改fixture值迎合validator。前置產製程序成功不等於整體驗收通過，保留failed狀態待精確修正。
+## H20 H 表示法錯誤定位及 H2 接派
+
+Owner定位保存manifest_sha256/capture_sha256為 `sha256:<64位hex>`，raw file pin為無prefix的64位hex；preparer既有 `_unpadded_sha256` 明確驗此格式後比檔案SHA，root實讀該helper確認。H新增controller直接比較兩種表示法而failed，不是來源漂移或preparer缺資料。接派全新H2僅做嚴格canonicalizer及純正負例，保持保存來源欄位、file identity、source group及全部hash守衛。尚未批准新native重跑。
+## 1,000 檔剖析已進實際 runtime
+
+Root唯讀native CIM與 `C:/t/p01_7mgftjof/phase_times.jsonl` 實核：固定acd18 source import完成，source pin365cd8吻合；1000檔selection與page0 baseline已ready（50列、20頁，setup27.9128313秒）。child 56928→40800仍live；這是setup階段實證，不是三操作cProfile結果或原延遲gate通過。Owner沿唯一handle28999追蹤，不重啟。
+## F02 G 純 stack oracle 修正
+
+Root實讀generated-init角色判斷及純合成鏈：精確post_init→registered_init→make_bundle保留；owner007診斷六個frame identity全true、helper分類research_scope_validation。純測試卻把dataclass init的None回傳值當role，造成假失敗。接派僅修oracle：從當次helper記錄取實際role，另assert init回傳None；不改classifier或allowlist，native未釋出。
+## F02 G 中央純契約通過及唯一 provider-only 接派
+
+Root實讀F→G runtime diff並獨立執行purecontract terminal0；固定supervisor `cb5f92b6312ef9f32bb82a1e157467f153439cbe573430b4845f4cdb636f696b`，新增generated init identity registration／live recheck與精確六段chain，raw與bundle validate路徑保留。三路正例、init/code/globals/module/qualname替換、wrongparent、unknowncaller、額外次數負例全true，產品import／SQLite／producer0。接派唯一新G provider-only native，須先核target/productpins、raw1+scope1、完整輸入前後一致／Jobempty；未釋出fullquery。
+
+H2修正版root實核manifest063701／diff0866／controller09b2全部吻合，只有嚴格sha256表示法比較helper與純測試新增；已接派唯一新preparer-only，owner handle72261 live，沒有Main啟動資格。
+## H2 前置產製中央接受，接完整 synthetic Main
+
+Root實讀raw receipt `d045b824ac9e0671d2f532532c975f9ff7290727076d7fe1cd5a9672b2ad8e2c`，status passed_synthetic_preparer_only、exit0、Job cleanup/treeempty true、sourceartifact及fixed_e_runtime_dependencies前後一致，runner09b2固定。Eguard/keeperfalse、Mainfalse，故只接受preparer。接派同固定四檔唯一新shortroot full synthetic Main，owner追同handle到terminal；不提供EXE或真人入口。
+
+G native未啟動：原TARGET_PATH仍Ftarget且已有failed attempt，守衛正確拒絕。接派新G2僅複製同ca866固定target到全新sibling root並retarget，保留原attempt；不得放寬無舊attempt限制，待新diff/hash核對後再執行。
+## 效能剖析原始資料中央初讀與 Current 對照
+
+Root實讀raw child：三操作profilewall page3.0905377s／filter2.0716593s（6matches）／sort3.9429145s；inclusive耗時集中read_selection_page、_materialize_page、_read_session_child_snapshots、read_selected_exact，exclusive包含遞迴float-tree／isinstance／canonical JSON。整體supervisor因launcherPID56928身分NoSuchProcess而failed，保留failed，不拿childpass替代。這些有cProfile負擔的單樣本不是p95改善證據。
+
+Root比對current與acd18 frozen：current feature float-tree已有exact-type fastpath，git log來源7254bd8f；另有dd99fa5b單次解析、31f1fed4重複驗證修正。已接派owner先對照這些既有成果及query分支，再提current下一個熱點修正，避免重複實作已落地優化。尚未改產品source pins或重跑性能矩陣。
+
+Root實核G2 supervisor f0a6263d／diff ae629ce3／target ca8663ad，one-line retarget與新target僅腳本無attempt；接派唯一provider-only，不改守衛、不釋出fullquery。
+
+
+H2 full synthetic唯一handle65802 terminal1，root實讀child stderr首錯synthetic_market_wal_keeper_not_attempt_sibling（L1752），位於keeper啟動／MainWindow建構之前；controller main_started只表childlaunch。fixture成功、child清理空樹／來源保持一致；接派窄幅新候選核固定keeper sibling layout，不刪守衛、不重跑。G2 provider唯一handle7015也terminal1，owner正核首錯，fullquery未釋出。
+
+## 最新失敗邊界精確定位
+
+Root解析G2原worker.stderr：error為 `continuation_source_pin_value_mismatch:market:pointer_sha256`，兩次預期來源SQLite均已allowed/opened；因此generated-init守衛已跨過，失敗在typed pointer DTO與QA固定值的比對。接派核canonical prefix／file hash契約，不改固定source或產品；Jobempty/inputunchanged不替代provider pass。
+
+H2完整run仍未建MainWindow：root實讀controller env keeper指fixed E原件，child先_load_exact再核parent==ATTEMPT，故pre-Main拒絕。核准H3窄幅準備固定6e0b keeper完整bytes sibling，controller仍核Eorigin並另核新sibling、childparentguard保留；靜態先核keeper內部路徑限制，避免可預見缺件。尚未核准新Mainrun。
+
+Root初讀H3 WIP local dependency核驗：兩個固定E sibling皆plainfile/nlink1/SHA及fileidentity記錄、原Esource核驗；runtime前後完整列表相等列入兩modegate。尚待frozendiff/hash與必要static結果，不把WIP視為Main接受。
+
+## F02 typed pointer 格式完整定位
+
+Owner核市場raw pointer SHA9cb685及處置be6ee3與固定inventory一致，兩typed reader的pointer_sha256皆為 `sha256:<raw>`；QA兩expected常數漏prefix，snapshot／manifest既有expected則已prefixed。兩邊run_id/scope/current_only/historical=false亦吻合。接派新H僅兩常數補prefix＋新同bytes targetroot，保持strict equality，不剝除prefix或改source；尚未釋出native。現版1,000檔source archive開始於獨立QA目錄，未視為性能結果。
+
+Root實核H3 keeper6e0b/helper22d08兩個sibling bytes SHA與E固定值吻合；初讀localcopy negative覆蓋tamper/missing/hardlink與env parentguard。Root初讀F02 H兩expectedcanonical pointer與purepincontract正負結果，待finaldiff/hash交付再釋出native，不重做完整guard自測。
+
+
+Root獨立執行F02 H purepincontract terminal0，supervisor69f0a37f，兩canonical pointer正例及八欄位負例均通過，無productimport/SQLite/producer；待frozendiff/targetinventory。Root初讀current source preparer發現helper import後才驗SHA，接派改為先驗固定bytes再載入，archive固定HEAD及新runtime qualification區別維持。
+
+
+Root實核F02 H 三行diff（兩canonical pointer＋新target）及supervisor69f0／diffcf349／manifest33a5／targetca866全部吻合，新target僅單檔無attempt。結合root purepin terminal0接派唯一H provider-only native，raw1scope1／source六root保持／Jobempty；fullquery未釋出。
+
+
+Root實讀H3 native focused stdout：5passed／0skip／0.58s及manifest9c566／diff707f相符，接派唯一H3fullsyntheticMain，新run-copy七檔及兩localfixedbytes保持，尚待實際handle/終態。Current source attempt04檔案映射在declaredroot上層造成拒絕，失敗保存；接派執行前純prefixmapping與Windows長路徑檢查，使用短root避免已知限制。
+
+
+H3 full唯一handle89123 terminal1，root實讀keeper schema必需10表／preparer只有9表，缺industry_indices，MainWindow未建。source/E/localdependency前後一致、Jobempty不等於Mainpass。接派H4僅補synthetic schema並一次核keeper後續fixture欄位SQL；keeper/guard不改，原資料不碰。F02 H唯一74484 terminal1，root實讀segmentroots_mismatch；raw1scope1已成功、source六root保持，完整query仍未執行。
+
+
+Root獨立核current d12 archive SHA與manifest一致、4465檔／80182012 bytes；manifest SHA2ee9807。Repository rawSHA archivecc3e66與原frozen85a8ce不同但gitdiffnone，接派核LF/CRLF及全部critical actualbytes pins，不把semantic相同稱raw相同。H4盤點keeper後續所有fixturechecks完畢，industry_indices六欄PK/index空表為必要最窄補件，不造資料或資格。
+
+
+Root獨立bytecompare確認d12 archive repository與原frozen差異僅CRLF（新1363行CRLF／原0），LFnormalized bytes完全相等；actualrawSHA仍各自固定不能互換。Root初讀H4 industry_indices六欄／複合PK／日期index空表及query_only schema讀回、rowcount0/DBbeforeafterpins核驗，未新增金融計算或產業資料；待必要測試與frozenhash。
+
+
+H4 root獨立schema native1passed0.53s（sandboxWin5failed保留），manifest2a7f49／diffef2e7e與八檔actualSHA全match，接派唯一fullMain，未新EXE。Current d12 exactread設計root接受三身份／完整1000counts／actualarchivepins，已接派實作QA controller+有界Job，不以靜態相容或P01opener冒稱F17資格。

@@ -4,6 +4,8 @@
 > 範圍：PySide6 主 UI（`ui_qt/main.py`）目前 8 個頂層工作區與其子分頁 / 主要操作。
 > 原則：本檔只記錄人工驗證結果與觀察，不直接提出或執行修復。
 
+> **歷史基線提示**：本文件於 2026-06-16 盤點 8 個頂層工作區，數量只代表當時介面。現行 [系統架構](../01_architecture/system_architecture.md)記錄 9 個工作區；目前操作步驟與結果判讀請以 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md) 為準，本檔只作早期人工 smoke test 收據。
+
 ## 使用方式
 
 每一項請依實際操作填入：

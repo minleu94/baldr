@@ -1,5 +1,7 @@
 # V4 機器證據解卡紀錄（2026-09-07）
 
+> **閱讀導覽**：本報告只驗證 P0 source acceptance 的 bounded machine-evidence caller；其結果不繞過 13-source owner review，也不把 `pending_human_review` 改成核准。這是當日工程證據，不等於正式來源資格或目前狀態；目前判讀以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 和現行來源契約為準。
+
 ## 範圍與 owner
 
 本次選定 P0 source acceptance 作為一個可客觀裁決的入口。既有

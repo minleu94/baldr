@@ -55,6 +55,10 @@
 | `docs/06_qa/V2_4_ENGINEERING_READINESS_2026_07_12.md` | [`V2_4_ENGINEERING_READINESS_2026_07_12.md`](../09_archive/V2_4_ENGINEERING_READINESS_2026_07_12.md) | `0B25ACE761E232A8EE696595166264F129D7282113E4242E1EDCEE76F56F8633` |
 | `docs/06_qa/V2_5_ENGINEERING_READINESS_2026_07_12.md` | [`V2_5_ENGINEERING_READINESS_2026_07_12.md`](../09_archive/V2_5_ENGINEERING_READINESS_2026_07_12.md) | `18848A5862A7C58EC86AFD1D5FCC695BC808C13BB722CDAA76256D50F2B25000` |
 
+## 2026-10-08 QA 巨型報告導讀卡
+
+對 [V4 data recovery（2026-09-07）](../06_qa/V4_DATA_RECOVERY_2026_09_07.md) 補上當日 scope、唯讀與未 apply 邊界，並連到 Snapshot 與後續 data closeout；對 [V4 automated review（2026-09-07）](../06_qa/V4_AUTOMATED_REVIEW_2026_09_07.md) 明示 machine evidence 不取代 owner acceptance；對 [Full App healthcheck（2026-06-16）](../06_qa/FULL_APP_HEALTHCHECK_2026_06_16.md) 標出舊 8-workspace 基線並連到現行 9-workspace 架構與 Manual。只增加閱讀提示，不重寫原驗收內容或數字。
+
 ## 2026-10-08 核心入口歷史內容瘦身
 
 | 原路徑 | 封存路徑 | 原文 SHA-256 | 處置 |

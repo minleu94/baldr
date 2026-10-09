@@ -1,5 +1,7 @@
 # V4 資料恢復紀錄（2026-09-07）
 
+> **閱讀導覽**：本報告記錄當日基本面資料更新路徑盤點、官方月營收／季報 bounded 擷取與隔離候選物化；正式資料根目錄與 SQLite 僅唯讀，正式 apply／backfill 未執行。這是 9/7 的資料工作紀錄，不代表目前來源覆蓋或待辦；現況以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，後續資料收尾見 [10/03 data closeout](FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md)。
+
 ## 範圍與安全邊界
 
 本輪處理基本面資料更新路徑的盤點，以及官方月營收與季度財報的 bounded 抓取、驗證、隔離候選物化。正式資料根目錄依 `TWStockConfig` 為 `D:/Min/Python/Project/FA_Data`；本輪對該根目錄與正式 SQLite 只做唯讀查詢，沒有改寫原始 CSV、availability mapping 或正式 DB，也沒有執行正式 backfill。1849 筆月營收明確 accepted scope 已由 coordinator 在 repo 隔離雙根驗證；季度候選同樣只留在隔離 output；正式 D 槽 apply 未執行。季度 SQLite materializer 另外要求 TEMP／repo output 受控路徑與 research-only marker，避免呼叫端誤把隔離入口指向正式 DB。

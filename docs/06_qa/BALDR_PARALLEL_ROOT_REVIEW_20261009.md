@@ -65,3 +65,24 @@ Root 已再核目前推薦 view 與 layout test SHA，分別仍為 `5F0FAA96F246
 Root 補驗 H20 未知列的兩個現有案例：`pytest tests/test_ui_qt_personal_h20_research_widget.py -k unknown -q -o addopts=`。首次 sandbox 執行在合成 capture 的 `os.link` 遇 WinError 5，兩項均尚未進入 UI 斷言，不視為產品結論。改用新的 native 隔離目錄 `C:/t/h20_unknown_root_20261009_7c41`，同兩項測試 `2 passed, 11 deselected in 2.13s`，terminal exit 0；JUnit 保存於 `output/qa/h20_unknown_root_20261009_7c41.xml`。覆蓋未知列禁止下鑽、完整可複製來源原因與恢復原 pin 的前置條件；不覆蓋原 2382 的來源修復、效能、Main 或 EXE。
 
 真人草稿入口名稱亦已對照目前原碼：「研究選取股票」、「摘要」、「返回來源清單」、「收藏此原排名研究」、「個人 H20 原保存研究收藏」、「重新整理收藏」、「重開所選 H20 研究」均有實際控制項。H20 表格的可下鑽狀態是「可核原預測」；「未知」列會顯示可複製核驗原因且停用研究按鈕。未來啟動候選應先由工程驗證原 2382 列可核，不能把未知列停用交由真人反覆點擊排錯。
+
+
+### F06 複合查詢首次排序契約審查
+
+Root 已直接閱讀新查詢 DTO 的硬資格、三群 truth 與全域排序 helper；硬資格失敗會產生 not_evaluated 並拒絕 predicate match，不能由 OR 或 unknown include 升格。null 值在升冪／降冪皆置尾端，穩定排序以股票代碼升冪作最終同分依據。這是尚未凍結來源的靜態審查，不代表 reader-issued 結果或 full-N 驗收。
+
+已要求 owner 補查三項：排序欄位須綁定允許型別，避免數值欄全部字串而以字典序排序；100,000 列乘 33 欄與每值 256 bytes 的局部界限仍容許大量中間投影，須提供總位元組預算；超長整數轉字串的拒絕須回傳穩定領域錯誤。F03 KDJ 尚未納入此三群 DTO，完整 MA／KDJ／波動整合責任保留，不能宣稱原選股器範圍完成。
+
+
+### H20-first 第五次前置失敗的 API 證據
+
+Root 已直接閱讀 `C:/t/h20dual_h20first_20261009_success_74a2dd39/output/router_cleanup_seam_receipt.json`，其 failure 為 `market_operation_source_group_not_exact_keeper_pin`，並保存 `wal_keeper_close_deferred_without_terminal_router_proof` 次要清理錯誤；此 case 不能算完整收尾通過。固定 neutral helper 的 `CopiedWalGroup.__init__` 實際保存 `source_start`，原 child 卻讀取不存在的 `source_pins`，造成 None 與預期 tuple 比對失敗。Root 已核 helper 原始碼欄位，這項證據支持 API 名稱不匹配；尚不能由此宣稱原來源曾異動或型別載入不一致。
+
+Owner 下一步須保存事件時點的實際 canonical pins、修正為固定 helper 現有 API，並驗半安裝故障的 partial abort；不能偽造 Main shutdown flag，也不能以程序退出替代 reader／permit／private copy／keeper 清理證據。完整 Main 與新 EXE 仍未驗，沒有新增真人入口。
+
+
+### F06 複合查詢凍結來源 Root 重驗
+
+新 request/predicate/unqualified sort 切片已完成上述排序型別、64 MiB 投影預算及超長整數穩定拒絕補強。Root 使用凍結來源獨立重驗配對測試，結果 23 passed／0.82 秒；兩檔 scoped mypy clean。來源 SHA `5D99A71C789523A04AF6EA5B9AF44EF3FDACB47FE4B0F9F7D9FD0A7E9A9637A8`、測試 SHA `F0DA1B257CF03FEB809186FF1EE54C7BCE07EB3F6FC7F345FDA8AD89CC365970`、契約 SHA `1376C0408D874E9D0AFF835949A81E4ADC3A5F82EFB321E2D1C1CE25AF7B1B98` 均與 owner 凍結值吻合。Root 本次 pytest 命令指定的封套位置為 `output/qa/f06_root_query_20261009_r1.xml`；Root 已另讀該 JUnit 封套，確認 tests=23、errors=0、failures=0、skipped=0；py_compile 亦 exit 0。
+
+這些證據只核純請求／判斷／排序契約，不包含 reader qualification、全母體 sealed result/page、F03 KDJ、UI 或 EXE。代理已接續 F03 KDJ 查詢契約，完整原計畫與真人驗收仍未完成。

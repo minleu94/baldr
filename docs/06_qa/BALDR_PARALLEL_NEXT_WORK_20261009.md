@@ -19,8 +19,15 @@
 
 Root 已對照目前 UI：`DailyMarketTechnicalUniverseV4View` 有背景產製入口及 `productionFinished` 訊號；`DailyMarketTechnicalV4DeferredProductionSetup.prepare_request()` 會固定母體、來源資料庫與決策截止時間。這是技術母體的入口，尚未自動完成官方市場／處置來源的 bundle 產製。官方處置 view 目前是保存研究的讀取入口。
 
-已完成的 `selection_current_source_pair.publish_current_selection_bundle()` 可以沿既有 writer 保存同版雙來源，但正式 UI 還沒有串接此 adapter。下一步需由完整技術產製結果取得 generation、plan、receipt 的身分與 bytes SHA，再於背景任務交給 adapter；取消、失敗或 partial 結果不得觸發 bundle 保存。不能只因 `productionFinished` 發出就當作完整來源已具備。
+目前 `selection_current_source_pair.produce_current_selection_bundle()` 已由技術研究頁「產製技術與官方來源研究」背景入口接續。真正 producer 完整結果取得 generation、plan、receipt 的身分與 bytes SHA，再交原 writer 保存固定雙來源；取消、失敗或 partial 結果不得當作聯合保存成功。實際驗證與限制見 `BALDR_F17_NORMAL_PRODUCTION_UI_REVIEW_20261009.md`。同一候選完整 Main 與 EXE 仍待接受。
 
 來源時間必須與技術研究同組核驗。既有 bundle writer 要求市場來源的 cutoff 與技術 plan cutoff 相同，來源觀測與發布不能晚於截止時間。因此「今天抓新來源，再附到昨天研究」會被正確拒絕；不得改舊 cutoff 或在測試外凍結現在時間來通過。正式新研究流程需先準備相容來源，再以明示截止時間產製技術母體；讀舊研究則沿原保存來源重開。
 
 UI 接續驗收至少需真正背景產製→完整 bundle→catalog 列出→下鑽→返回→收藏→新程序重開；另驗取消、partial、來源時間不相容與指標移動。backend 合成 writer 的成功不能替代此流程或 EXE 同版接受。
+
+## 本輪接續紀錄
+
+- F17：真正 Qt 產製、catalog、下鑽、返回、收藏 DTO 已有合成驗證；服務保存至隔離觀察清單 repository 後，獨立 Python／Qt 程序嚴格重開同版研究的六項測試通過（10.18 秒，提交 `50a35277`）。沒有完整 Main 觀察清單按鈕、原 H20 或真人接受證據。
+- F12：獨立審查找到 archived finish 的歷史 provider clone 仍解析原路徑，已交 owner 窄修正並加入路徑探測與最後來源變動回歸；既有通過不能折抵這個缺口。
+- H20：合成 Main attempt o 保留失敗，verifier 的 SHA 前綴格式不一致已定位；agent 準備新 bootstrap 與正負驗證，尚未重新執行 Main。
+- F02：guard-only 新版本仍在隔離測試；scope 可對本次合成空 DB 做真唯讀驗證，須分別記錄 scope、來源 reader 與 producer 的連線／呼叫數，不能宣稱總 SQLite 連線為零。

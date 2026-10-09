@@ -484,6 +484,12 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 `docs/superpowers/plans/`、`specs/` 與 `prompts/` 中的大多數既有文件是歷史追溯資料；唯一目前明確列為進行中的例外是 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。[Superpowers README](../superpowers/README.md) 是該目錄的生命週期入口；原路徑、目的地、日期、QA evidence、bytes／SHA 與現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。已移動原文的 bytes 保存在 Archive，原始目錄保留短導引；未移動項目仍保留原路徑。計畫結果以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
 
+### 2026-10-09 Data Update／Research Lab 舊計畫與規格
+
+- Data Update Workbench 的[計畫原文](superpowers/plans/2026-05-20-data-update-workbench.md)與[設計 spec](superpowers/specs/2026-05-20-data-update-workbench-design.md)保留 2026-05 的工作台方向；plan 的 24 項工程核取均未勾。原頂層 Tab 方向已由後續市場探索入口取代；封存不表示完整實作或重新授權工作。
+- Research Lab Workbench V1 的[計畫](superpowers/plans/2026-06-04-research-lab-workbench-v1.md)與[設計 spec](superpowers/specs/2026-06-04-research-lab-workbench-v1-design.md)，以及 workflow redesign 的[計畫](superpowers/plans/2026-06-04-research-lab-workflow-redesign.md)與[設計 spec](superpowers/specs/2026-06-04-research-lab-workflow-redesign.md)保留初始設計脈絡；兩份 plan 的 35／55 項核取均未勾。歸檔不宣告完成，也不把原 plan 轉成現行待辦。
+- 原路徑保留相容導引，六份原件 bytes／SHA 與路徑引用見 [Superpowers plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 及 [Coverage History Entry 140](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-140)。目前狀態／優先序看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)，操作與架構看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)／[system architecture](../01_architecture/system_architecture.md)。
+
 ### 2026-10-09 Research Run Registry Month 1 schema 設計
 
 - [Research Run Registry 設計規格（2026-06-14）](RESEARCH_RUN_REGISTRY_SPEC_2026_06_14_HISTORY.md)：保存 Month 1 提出的欄位、儲存方式與 API 草案。提案中的 `delete_run()` 與獨立績效欄位不等於目前 repository/service 契約；現況以 [系統架構](../01_architecture/system_architecture.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md) 與現行程式碼為準。功能目錄的舊路徑留相容導引，來源 bytes／SHA 與引用核對見 [Coverage History Entry 137](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-137)。

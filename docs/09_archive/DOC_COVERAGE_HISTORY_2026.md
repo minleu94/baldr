@@ -1339,3 +1339,21 @@ Archive 原件保留搬移前 Windows 工作樹 CRLF bytes。各原件正規化�
 - 以上是 bounded task／wave 證據，不代表 C1、Wave 6 或整體目標架構遷移完成；總體狀態與開放 Gate 仍看 `PROJECT_SNAPSHOT.md` 及現行 FINAL／QA。
 - Hidden-inclusive 全 repo Markdown 精確檔名搜尋的 inbound refs（原行號）：Wave1 preliminary → `REFACTOR_REPORTS/README.md:206`、歷史 Catalog `:233`；Wave1 intake → `REFACTOR_DISPATCH/GEMINI_REVIEW_R003.md:9`、`GEMINI_REVIEW_R005.md:9`、`REFACTOR_REPORTS/README.md:204`、`WAVE1_GEMINI_PARALLEL_ANALYSIS_REPORT.md:3`、歷史 Catalog `:231`；Wave2 intake → `R008_GEMINI_STALE_REVIEW.md:5`、`REFACTOR_REPORTS/README.md:210`、歷史 Catalog `:240`；Wave2 Luna preflight → `R008_SOL_BATCH_AUDIT_DECISION.md:5`、`REFACTOR_REPORTS/README.md:211`、歷史 Catalog `:241`。舊 Catalog 保持歷史快照，所有來源路徑 stub 均保留導向。未找到程式、測試、腳本、排程或設定的固定路徑 consumer；候選文件本身沒有 Markdown 相對連結。
 - `REFACTOR_REPORTS/README.md` 現在把 current PASS checkpoint 放在 Wave 導覽入口，將四份中間態集中導向 Archive index；target architecture Archive README 與頂層 Archive README 也已加入口。Scoped authority 未變，因此不修改 `DOC_COVERAGE_MAP.md`。
+
+<a id="coverage-entry-140"></a>
+## 2026-10-09 封存 Data Update／Research Lab 歷史 plan/spec
+
+將 Data Update Workbench 與 Research Lab 的三組歷史 plan/spec 原文移至 `docs/09_archive/superpowers/{plans,specs}/`；原路徑保留相容導引。Superpowers README 將其列作歷史追溯材料，唯一明確進行中的 plan 仍是 Baldr 產品補完計畫。Plan 的 24／35／55 項工程核取均未勾；此批只整理文件入口，不宣告相關功能完成、不保留其為現行待辦，也不改寫 QA 結論。未找到上述 plan/spec 的具名 QA closeout。原始設計內容與所有核取狀態逐位元組保留。
+
+全 repo 精確檔名搜尋發現 Superpowers README、Archive README、manifest、Coverage History Entry 140、固定歷史 Documentation Catalog／Documentation Index，以及 workflow redesign plan/spec 內部連結；現行 README 已連 Archive 原件，歷史清冊保留原路徑，皆由舊路徑 stub 承接。Workflow plan 的相對 spec／self links 在 Archive plans/specs 平行目錄保留可解析。未找到程式、測試、腳本、排程或設定的固定路徑 consumer。現行狀態與優先序看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)／Roadmap；操作與 UI 行為看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)、[system architecture](../01_architecture/system_architecture.md) 與 [QA 導覽](../06_qa/README.md)。`DOCUMENTATION_INDEX` 已透過 Superpowers README 導航到該區；權威邊界未變，所以 `DOC_COVERAGE_MAP` 不需調整。
+
+六份 Archive 副本均由原始工作樹檔案逐 byte 複製，hash 與歸檔前原始 bytes 一致：
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
+|---|---|---:|
+| [`docs/superpowers/plans/2026-05-20-data-update-workbench.md`](../superpowers/plans/2026-05-20-data-update-workbench.md) | [`2026-05-20-data-update-workbench.md](superpowers/plans/2026-05-20-data-update-workbench.md) | 19233 / `d20bbeef2225905f000a35c9390faf1b76c56db5e1fc4afa903671a60019d210` |
+| [`docs/superpowers/specs/2026-05-20-data-update-workbench-design.md`](../superpowers/specs/2026-05-20-data-update-workbench-design.md) | [`2026-05-20-data-update-workbench-design.md](superpowers/specs/2026-05-20-data-update-workbench-design.md) | 6344 / `c5a6b1d8b9dd11c3755163e7667a408001ce341cb57bb4572588dbf6053fb599` |
+| [`docs/superpowers/plans/2026-06-04-research-lab-workbench-v1.md`](../superpowers/plans/2026-06-04-research-lab-workbench-v1.md) | [`2026-06-04-research-lab-workbench-v1.md](superpowers/plans/2026-06-04-research-lab-workbench-v1.md) | 19222 / `c6615d59bda40fa7307f0c1c15b777063e76e71291f766c399ba4c429f5fd95d` |
+| [`docs/superpowers/specs/2026-06-04-research-lab-workbench-v1-design.md`](../superpowers/specs/2026-06-04-research-lab-workbench-v1-design.md) | [`2026-06-04-research-lab-workbench-v1-design.md](superpowers/specs/2026-06-04-research-lab-workbench-v1-design.md) | 9073 / `ba0d191105ee4bb75b43162b0b0f03fdf76329fa62f0aaa4b4c999b75d0a6d07` |
+| [`docs/superpowers/plans/2026-06-04-research-lab-workflow-redesign.md`](../superpowers/plans/2026-06-04-research-lab-workflow-redesign.md) | [`2026-06-04-research-lab-workflow-redesign.md](superpowers/plans/2026-06-04-research-lab-workflow-redesign.md) | 33973 / `1c85032b63a6a0a9a6887a239e06872878e16c292f4c883ee62332b8bbfacee1` |
+| [`docs/superpowers/specs/2026-06-04-research-lab-workflow-redesign.md`](../superpowers/specs/2026-06-04-research-lab-workflow-redesign.md) | [`2026-06-04-research-lab-workflow-redesign.md](superpowers/specs/2026-06-04-research-lab-workflow-redesign.md) | 10072 / `f661fc7834d77e0ba0d09b59d3f4526dc2c2fa3bff35cb8e0461ca01692ff731` |

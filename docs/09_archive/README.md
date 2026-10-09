@@ -287,7 +287,7 @@ These are completed, dated engineering/readiness records. Current source accepta
   - 早期架構違規處理政策備忘；2026-06-24 自 `docs/00_core/` 歸檔。目前架構邊界與高風險契約以 `docs/01_architecture/system_architecture.md` 為準。
 
 - **`MASTER_GOAL_PLAYBOOK_2026_09_06.md`**
-  - 2026-09-06 八卡任務拆解手冊（TASK-01～TASK-08）；八卡已全數交付驗收（見 `docs/06_qa/TASK_LOOP_01_HANDOFF.md` ~ `08_HANDOFF.md`），歷史任務指派歸檔。
+  - 2026-09-06 八卡任務拆解手冊（TASK-01～TASK-08）；01–07 的逐卡 bounded 工程交接見[歷史封存組](#2026-10-08-task-loop-01-07-historical-handoffs)，08-B 中央整合收據仍在 `docs/06_qa/TASK_LOOP_08_HANDOFF.md`。逐卡與中央工程整合不代表正式來源接受、自然前瞻、真實 Paper fills、具名 Formal review 或 V4 closeout 完成。
 
 - **`LUNA_PARALLEL_PLAN_2026_09_07.md`**
   - 2026-09-07 Luna 三線平行規劃伴隨文件；該輪三線已於 2026-09-08 結案（見 `docs/09_archive/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md`）。
@@ -369,6 +369,18 @@ Month 3 closure audit 與 8 份核取項目全完成、各有 implementation com
 - [整理前 DOCUMENTATION_INDEX](DOCUMENTATION_INDEX_HISTORY_20261006.md)
 - [整理前 docs README 與索引前言](DOCUMENTATION_ENTRY_HISTORY_20261006.md)
 - [文件重新整理 mapping 與處置清冊](DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)
+
+## 2026-10-08 Task Loop 01-07 historical handoffs
+
+七份逐卡 handoff 記錄各自的 bounded 工程範圍、驗收與限制。08-B 後續完成中央整合並逐卡覆核；因此 01–07 移至 Archive，中央整合與外部 Gate 殘餘邊界仍由 QA 的 [TASK_LOOP_08_HANDOFF](../06_qa/TASK_LOOP_08_HANDOFF.md) 說明。這批歸檔只整理歷史證據，不把正式來源接受、PIT／自然前瞻、真實 Paper fills、具名 review 或 V4 maturity 標示為完成。舊 QA 路徑保留短轉址；原文 bytes 與 SHA-256 見 [DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md#2026-10-08-封存-task-loop-01-07-handoff)。
+
+- [TASK_LOOP_01_HANDOFF.md](TASK_LOOP_01_HANDOFF.md)
+- [TASK_LOOP_02_HANDOFF.md](TASK_LOOP_02_HANDOFF.md)
+- [TASK_LOOP_03_HANDOFF.md](TASK_LOOP_03_HANDOFF.md)
+- [TASK_LOOP_04_HANDOFF.md](TASK_LOOP_04_HANDOFF.md)
+- [TASK_LOOP_05_HANDOFF.md](TASK_LOOP_05_HANDOFF.md)
+- [TASK_LOOP_06_HANDOFF.md](TASK_LOOP_06_HANDOFF.md)
+- [TASK_LOOP_07_HANDOFF.md](TASK_LOOP_07_HANDOFF.md)
 
 ## ⚠️ 注意
 

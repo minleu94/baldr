@@ -14,7 +14,7 @@
 
 - **[2026-09-22 重構實作 DAG](target_architecture_2026_09_22/REFACTOR_IMPLEMENTATION_DAG.md)**
   - 31 個具依賴、驗收與回滾契約的任務；另含[任務規格索引](target_architecture_2026_09_22/REFACTOR_TASKS/README.md)、[執行波次](target_architecture_2026_09_22/REFACTOR_EXECUTION_ORDER.md)、[驗證矩陣](target_architecture_2026_09_22/REFACTOR_VALIDATION_MATRIX.md)與[風險登錄](target_architecture_2026_09_22/REFACTOR_RISK_REGISTER.md)
-  - 保存任務的依賴、驗收與回滾契約；各任務結果見 [實作報告](target_architecture_2026_09_22/REFACTOR_REPORTS/)。R031 有限工程範圍已完成並保留具名限制，R027 仍為 `INCONCLUSIVE`、R028 仍為 `BLOCKED`；見 [R031 closeout](../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md)。不代表整體重構或正式產品核准。
+  - 保存任務的依賴、驗收與回滾契約；各任務結果見 [實作報告](target_architecture_2026_09_22/REFACTOR_REPORTS/)。R027 的 versioned logical-time revision 與 R028 scoped production migration 已接受；原 R027 strict verdict 仍為 `INCONCLUSIVE`。詳見 [R031 closeout](../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 與 [R027 acceptance revision](../06_qa/R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md)。這些 scoped acceptance 不代表整體重構或正式產品核准。
 
 - **`system_architecture.md`**
   - 系統的技術架構說明

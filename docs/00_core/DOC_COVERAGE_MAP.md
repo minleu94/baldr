@@ -296,6 +296,10 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將 2026-06-16 的早期 8-workspace Full App 人工 smoke 收據移至 Archive，原文保留、舊 QA 路徑改為短轉址；QA README 標明為歷史快照，Archive README 導向現行 Architecture／Manual。此報告不作目前 UI 操作或狀態依據。
 
+## 2026-10-08 Broker Flow 與 UI readability QA 歷史歸檔
+
+將 2026-07-13 Broker Flow dashboard performance 原始 failed gate（732,020 rows／178 dates／51 branches／2,115 codes）與後續 semantics scoped pass 成對移至 Archive；另將 2026-07-07 readability polish closeout 移入 Archive。原文：[dashboard failed gate](../09_archive/BROKER_FLOW_SQLITE_DASHBOARD_PERFORMANCE_2026_07_15.md) → [semantics scoped pass](../09_archive/BROKER_FLOW_SEMANTIC_OPTIMIZATION_2026_07_15.md)，以及 [readability polish closeout](../09_archive/UI_UX_READABILITY_POLISH_CLOSEOUT_2026_07_07.md)。三份原文以 SHA-256 核對 byte-preserved，舊 QA 路徑改為短轉址；QA／Archive README、Structure 同步。後續語意優化不改寫前一 dashboard gate，readability closeout 的 formal-data 等候數只代表當時快照；目前狀態看 Snapshot，操作看 Manual，架構看 system architecture。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

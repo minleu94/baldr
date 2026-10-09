@@ -18,6 +18,11 @@
 
 ## 2026-10-08 歸檔
 
+### 2026-07 Broker Flow and UI closeout
+
+- **Broker Flow dashboard 效能鏈**：[原始 dashboard failed gate](BROKER_FLOW_SQLITE_DASHBOARD_PERFORMANCE_2026_07_15.md) → [後續 semantics scoped pass](BROKER_FLOW_SEMANTIC_OPTIMIZATION_2026_07_15.md)。保留原始完整母體與失敗數據，以及後續針對語意批次的優化證據；後者不改寫前一 gate，也不代表目前整體效能資格。
+- **Readability polish closeout**：[UI / UX 收據（2026-07-07）](UI_UX_READABILITY_POLISH_CLOSEOUT_2026_07_07.md)。保存當時 bounded UI slice 與 formal-data waits；目前 UI 行為看 [system architecture](../01_architecture/system_architecture.md)、操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)、目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。原 QA 路徑保留短轉址。
+
 - **歷史 Phase／SOP 原文（2026-10-08）**：[Phase 2 architecture](PHASE2_ARCHITECTURE.md)、[Phase 2 strategy library](PHASE2_STRATEGY_LIBRARY.md)、[Phase 2A data source audit](PHASE_2A_DATA_SOURCES_AUDIT.md)、[Phase 2.5 completion](PHASE2_5_COMPLETION_STATUS.md)、[Phase 3.3b research design](PHASE3_3B_RESEARCH_DESIGN.md)、[Epic 2 architecture](EPIC2_MVP2_ARCHITECTURE_DESIGN.md)、[Epic 2 checklist](EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md)、[Phase 4 portfolio design](PHASE4_PORTFOLIO_DESIGN.md)、[Phase 4 startup summary](PHASE4_STARTUP_SUMMARY.md)、[研究迭代 Playbook](phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md)、[指標判讀優先順序](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md)、[Benchmark 呈現](phase3_5_research/BENCHMARK_PRESENTATION.md)、[Phase 4 進入條件](phase3_5_research/PHASE4_ENTRY_CRITERIA.md)。原 `docs/05_phases/` 路徑保留轉址，原文未改寫；目前狀態不由歷史 Phase 文件判讀。
 
 ### Post-V1 Evidence Pipeline QA

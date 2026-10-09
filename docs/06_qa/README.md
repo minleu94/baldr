@@ -60,8 +60,10 @@
 - **歷史工程閉環**：[V3.3 Engineering closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)、[V4 daily evidence handoff](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md)。V1.5–V2.0 milestone QA 見[歷史專區](../09_archive/README.md#v15v20-qa-milestones)；V2.1–V2.5 readiness／closeout 見[第二歷史專區](../09_archive/README.md#v21v25-historical-readiness-and-closeout)；Program Readiness 與測試資產舊稽核亦已歸檔。P0 source register 及 approval 收據仍留在本目錄；歷史 roadmap 見[歸檔版本史](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 - **V4 9/7 bounded release／data QA（歷史）**：當日三份收據見 [Archive 專區](../09_archive/README.md#v4-2026-09-07-bounded-evidence)；資料後續收尾見 [10/03 closeout](FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md)，現況仍看 Snapshot。
 - **Post-V1 Evidence Pipeline（2026-07，歷史）**：當時的 event store、forward outcome、review 與 scheduler 收據已集中於 [Archive 專區](../09_archive/README.md#post-v1-evidence-pipeline-qa)；目前狀態看 Snapshot，操作看 Manual 與最新排程 QA。
+- **Broker Flow 效能歷史收據（2026-07）**：[原始 dashboard failed gate → 後續 semantics scoped pass](../09_archive/README.md#2026-07-broker-flow-and-ui-closeout)；兩份收據保留各自的母體、測量與 gate 範圍。
 
 - **Workbench 歷史 UI closeout**：[左側主導覽 IA（2026-07-07）](../09_archive/WORKBENCH_LEFT_NAVIGATION_IA_CLOSEOUT_2026_07_07_HISTORY.md)、[視覺層級 polish（2026-07-07）](../09_archive/WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md)：保留當時 UI 與測試證據，不作目前狀態依據；現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+- **Readability polish closeout（2026-07-07，歷史）**：[Archive 原文](../09_archive/README.md#2026-07-broker-flow-and-ui-closeout)；當時 formal-data waits 是該次快照，現況看 Snapshot／Manual。
 
 ## 閱讀與歸檔規則
 

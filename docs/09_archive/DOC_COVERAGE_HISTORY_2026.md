@@ -1118,3 +1118,10 @@ Archive 兩份原件與其歸檔前 `docs/06_qa/` bytes／SHA-256 相同，QA �
 | `docs/06_qa/V4_TDCC_DATA_COMPLETION_20260909.md` | [`V4_TDCC_DATA_COMPLETION_20260909_HISTORY.md`](V4_TDCC_DATA_COMPLETION_20260909_HISTORY.md) | 5,259 / `5001B1B9F2DBBA42EF17C8246A1481682A0B5F2E58E89F700DA98B3821AF3093` |
 
 目前狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，閱讀路徑由 [QA README Data Governance 與來源](../06_qa/README.md#主題地圖) 承接。較新 closeout、正式修復與 9/21 incident 是後續證據；不因此改判 9/9 收據當日的限制。權威分工未變，不需修改 DOC_COVERAGE_MAP 或已有其他對話未提交變更的 DOCUMENTATION_INDEX。
+
+<a id="coverage-entry-122"></a>
+## 2026-10-09 保留 Data Completion 總驗收的 QA 原路徑
+
+Entry 121 封存三份 2026-09-09 收據後，進一步檢查被 Git 忽略、不可提交的 `docs/agents/shared_state/handoff_log.md:407`，發現跨 Agent 交接仍以 `docs/06_qa/DATA_COMPLETION_2026_09_09.md` 指向每日 quick 管線與來源缺口證據。依 `git_exclusions.md`，handoff log 可能含進行中工作，故本次沒有修改或提交該檔；為保持該入口可直接讀取，已將完整總驗收原文從 Archive 副本逐 byte 恢復至 QA 原路徑。QA 原件與 Archive 快照同為 3,730 bytes、SHA-256 `60EB28DCFC788C42F37992B2C0AE64EC5B428386ACCAE1363343EBA87E18F2E4`。Entry 121 的 hash 與來源記錄仍有效，但其「三份 QA 路徑皆改為導引」的生命週期結論由本 Entry supersede。
+
+`V4_DATA_COMPLETION_FLOWS_HANDOFF_20260909.md` 與 `V4_TDCC_DATA_COMPLETION_20260909.md` 沒有此交接 log 的引用，舊路徑維持相容導引、Archive 保存完整原文。`output/data_completion_20260909/` 是 sidecar 輸出位置而不是 QA 文件固定 writer；程式預設輸出根未改，ignored raw／candidate／manifest／backup 仍不在 repo。QA README 與 DOCUMENTATION_INDEX 已列出保留的總驗收入口及 flows／TDCC 封存專區，Archive README 明示總驗收 Archive 副本為凍結快照。沒有改變文件權威分工；DOC_COVERAGE_MAP 不需改動。

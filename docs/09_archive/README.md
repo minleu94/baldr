@@ -13,9 +13,9 @@
 <a id="data-completion-20260909"></a>
 ## 2026-10-09 Data Completion 9/9 歷史 QA
 
-- [正式資料補齊驗收](DATA_COMPLETION_2026_09_09_HISTORY.md)、[V4 flows 交接](V4_DATA_COMPLETION_FLOWS_HANDOFF_20260909_HISTORY.md)、[V4 TDCC 補齊收據](V4_TDCC_DATA_COMPLETION_20260909_HISTORY.md)：保存 2026-09-09 的 bounded 補資料與讀回證據。法人／信用資料的 `available_date` 為 `NULL`，不授予歷史 PIT／ML credit；當時月營收未全市場公告，財報亦有缺項。不可據此宣稱完整歷史、正式 source admission 或每日自動刷新。
+- [正式資料補齊驗收快照](DATA_COMPLETION_2026_09_09_HISTORY.md)、[V4 flows 交接](V4_DATA_COMPLETION_FLOWS_HANDOFF_20260909_HISTORY.md)、[V4 TDCC 補齊收據](V4_TDCC_DATA_COMPLETION_20260909_HISTORY.md)：保存 2026-09-09 的 bounded 補資料與讀回證據。總驗收全文因既有跨 Agent 交接仍保留在 [QA 原路徑](../06_qa/DATA_COMPLETION_2026_09_09.md)，這裡是逐 byte 相同的凍結副本；flows 與 TDCC 原文則移至 Archive，舊 QA 路徑保留導引。法人／信用資料的 `available_date` 為 `NULL`，不授予歷史 PIT／ML credit；當時月營收未全市場公告，財報亦有缺項。不可據此宣稱完整歷史、正式 source admission 或每日自動刷新。
 - `output/data_completion_20260909/` 的本機 raw、candidate、manifest、backup 與讀回 sidecar 屬 Git 忽略的 output，沒有封存在 repository。`data_module/institutional_credit_flows_service.py` 與 `scripts/capture_tdcc_shareholding_candidate.py` 仍將此目錄作為預設輸出位置；本次只歸檔文件，不移動或改寫 sidecar。
-- 目前狀態與來源治理看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[QA Data Governance 導覽](../06_qa/README.md#主題地圖)及較新的 [個股研究資料事件調查（9/21）](../06_qa/STOCK_RESEARCH_DATA_INCIDENT_2026_09_21.md)。逐檔 bytes／SHA 與原路徑引用處置見 [Coverage History Entry 121](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-121)。
+- 目前狀態與來源治理看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[QA Data Governance 導覽](../06_qa/README.md#主題地圖)及較新的 [個股研究資料事件調查（9/21）](../06_qa/STOCK_RESEARCH_DATA_INCIDENT_2026_09_21.md)。逐檔 bytes／SHA 見 [Coverage History Entry 121](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-121)；總驗收原路徑保留的修正見 [Entry 122](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-122)。
 
 ## 2026-10-08 Coverage Map 歷史清冊
 

@@ -43,6 +43,8 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 [ML allocation Formal input readiness（2026-09-20，事件前快照）](../09_archive/ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md)：保存 9/21 前的 candidate-only 設定與當時缺件，不是 9/21 實際驗收；目前 Gate／狀態看 Snapshot、Gate 7 與 External Validation Register。原 QA 路徑保留導引，bytes/hash 見 [Coverage History Entry 102](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-102)。
 
+[排程與週資料受託審查（2026-09-14，歷史）](../09_archive/SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14_HISTORY.md)：保存 `reviewed_with_follow_up` 與未通過正式採認的當日結論，不代表目前 scheduler 狀態或 CSV／SQLite 全量一致；現況看 Snapshot／近期排程 QA。原 QA 路徑保留導引，bytes/hash 見 [Coverage History Entry 103](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-103)。
+
 `output/plans/` 與 `output/qa/` 是 ignored 本機需求／原始驗收證據，不因 ignored 即可刪。唯一 Danny Quant plan 原路徑 `output/plans/baldr_product_experience_plan_20261004.md` 保留原 bytes，另有本轮可還原快照；raw 失敗、JUnit 與 receipts 不重寫。正式摘要可放 QA，私人內容不能直接公開。
 
 

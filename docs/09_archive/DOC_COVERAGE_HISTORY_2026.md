@@ -872,3 +872,16 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
 |---|---|---|---|
 | `docs/06_qa/ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md` | [ML allocation Formal input readiness 歷史原文](ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md) | 6,938 / `CCD8D60D87321A346616A3C9D44CD7E49DA01302DE758139063EB9B334FE2518` | 6,938 / `CCD8D60D87321A346616A3C9D44CD7E49DA01302DE758139063EB9B334FE2518` |
+
+<a id="coverage-entry-103"></a>
+## 2026-10-09 歸檔 9/14 排程與週資料受託審查
+
+這是 2026-09-14 對 9/7–9/13 週收集與相關排程證據的一次性具名審查，決定為 `reviewed_with_follow_up`，正式採認未通過。原文包含當時的來源身分與宣告 hash、SQLite read-only／`quick_check` 結果、warning 分類修正及持倉證據；它明確沒有證明整週 quality／coverage／PIT／逐來源 acceptance，也沒有把 SQLite quick check 擴大成 CSV／SQLite 全量一致、將 1418 警告解讀為真實持倉或出場指令，或生成建議／回填歷史 thesis。不得以此日期快照表示目前 scheduler 狀態。
+
+精確檔名 inbound 僅為 2026-10-06 歷史 Catalog。該歷史連結由 QA 舊路徑短導引承接；程式、測試與固定輸出工具不讀取這份 Markdown。現況回到 Snapshot 與較新的排程 QA。raw log／正式資料未因本次歸檔搬動或重寫。
+
+| 原路徑 | 封存路徑 | 原工作樹 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14.md` | [9/14 排程與週資料受託審查原文](SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14_HISTORY.md) | 2,782 / `B6F80C08F8C516958C8564491DB667105678C8EFDECDC592C75041E18020C0B3` | 2,782 / `B6F80C08F8C516958C8564491DB667105678C8EFDECDC592C75041E18020C0B3` |
+
+歷史 Catalog 連結仍可經原 QA 路徑導引到達原文。較新的 scheduler 記錄不會改寫 9/14 的失敗與限制；目前狀態以 Snapshot／近期排程 QA 為準。

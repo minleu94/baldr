@@ -31,7 +31,7 @@
 |---|---|
 | 四用途整合、來源／ML/UI 的限界收尾 | [Astra engineering closeout（10/03–05）](ASTRA_ENGINEERING_CLOSEOUT_20261003.md) |
 | Windows、資料、ML 與原生 UI 的三階段整合修復 | [Integration repair acceptance（10/02–03）](INTEGRATION_REPAIR_ACCEPTANCE_20261002.md) |
-| 指定時點的排程修復、失敗與後續補充 | [Scheduled operations repair（9/30）](SCHEDULED_OPERATIONS_REPAIR_20260930.md)；目前看 [10/08 排程修復](BALDR_SCHEDULE_REPAIR_20261008.md) |
+| 指定時點的排程修復、失敗與後續補充 | [9/14 週資料受託審查歷史](../09_archive/README.md#2026-10-09-914-排程與週資料受託審查歷史) → [Scheduled operations repair（9/30）](SCHEDULED_OPERATIONS_REPAIR_20260930.md)；目前看 [10/08 排程修復](BALDR_SCHEDULE_REPAIR_20261008.md) |
 | 舊 ML program readiness 稽核與後續修正 | [8/27 稽核](../09_archive/PROGRAM_READINESS_AUDIT_2026_08_27.md) → [8/28 更新](../09_archive/PROGRAM_READINESS_AUDIT_2026_08_28.md)；只作歷史底冊，現況看 Snapshot |
 | 2026-09-15／16 source、clock 與機率學習審計 | [Archive 專區](../09_archive/README.md#2026-10-08-source-clock-and-probability-learning-audits)；要找目前 PIT／ML 狀態，回到本頁相應主題與 Snapshot |
 | BALDR 9/25–26 整合與 readiness 日期快照 | [Archive 專區](../09_archive/README.md#2026-10-08-baldr-september-integration-closeout-and-readiness-history)；目前產品／排程／ML 狀態看 Snapshot 與近期收據 |

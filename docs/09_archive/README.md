@@ -46,6 +46,10 @@
 
 - [ML allocation Formal input readiness（2026-09-20）](ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md)：保存 9/21 自然日之前的 candidate runtime wiring、source pins 與當時缺件；沒有執行 validator、writer 或 scheduler，也不是 9/21 的實際驗收。同期 Natural Shadow weekly receipts 屬不同 lane，不能替代這份 Formal candidate snapshot。原 QA 路徑保留相容導引；目前 Gate／狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 與 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)，逐檔 bytes／SHA 見 [Coverage History Entry 102](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-102)。
 
+## 2026-10-09 9/14 排程與週資料受託審查歷史
+
+- [排程與週資料受託審查（2026-09-14）](SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14_HISTORY.md)：單次 `reviewed_with_follow_up` 記錄，正式採認未通過；保留 SQLite read-only 檢查與 warning／持倉證據的日期範圍，不代表 CSV／SQLite 全量一致、目前 scheduler 狀態或出場建議。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與近期排程 QA。原 QA 路徑保留相容導引，bytes／SHA 見 [Coverage History Entry 103](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-103)。
+
 ## 2026-10-08 V1.5／V1.9 plan/spec history
 
 - [V1.5 Data Credibility plan](superpowers/plans/2026-07-04-v1-5-data-credibility.md) 與 [design spec](superpowers/specs/2026-07-04-v1-5-data-credibility-design.md)：保留完整原文；v1 closeout 範圍以 [QA 收據](V1_5_DATA_CREDIBILITY_CLOSEOUT_2026_07_04.md) 為準。原計畫未勾項目仍留作歷史，QA 未證明外部來源採用、調整後價格整合、ScoringEngine 或正式排程完成。

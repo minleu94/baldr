@@ -204,10 +204,7 @@ V4.0 仍不代表：
 - 免人工審核。
 - 所有市場環境都有效。
 
-## 6A. 2026-09-15 工程／產品版本分流
-
-> 此為 2026-09-15 的工程交接與當時下一步，已移至[歷史交接紀錄](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)。
-> 目前狀態與優先順序請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md)；本文件後續章節只用於理解版本成熟度標準。
+> **歷史交接（2026-09-15）**：當時的工程分流與下一步見[歸檔紀錄](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)；本 Roadmap 只定義成熟度標準，目前進度與優先順序以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準。
 
 ## 7. 版本 Promotion / Demotion 規則
 

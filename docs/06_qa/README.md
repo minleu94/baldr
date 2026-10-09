@@ -47,6 +47,8 @@
 - **早期產品 QA**：[Recommendation Tab issues](QA_RECOMMENDATION_TAB_ISSUES.md)、[Recommendation Tab summary](QA_RECOMMENDATION_TAB_SUMMARY.md)、[Update Tab issues](QA_UPDATE_TAB_ISSUES.md)、[Update Tab summary](QA_UPDATE_TAB_SUMMARY.md)。
 - **歷史工程閉環**：[V3.3 Engineering closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)、[V4 daily evidence handoff](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md)。V1.5–V2.0 milestone QA 見[歷史專區](../09_archive/README.md#v15v20-qa-milestones)；V2.1–V2.5 readiness／closeout 見[第二歷史專區](../09_archive/README.md#v21v25-historical-readiness-and-closeout)；Program Readiness 與測試資產舊稽核亦已歸檔。P0 source register 及 approval 收據仍留在本目錄；歷史 roadmap 見[歸檔版本史](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 
+- **Workbench 歷史 UI closeout**：[左側主導覽 IA（2026-07-07）](../09_archive/WORKBENCH_LEFT_NAVIGATION_IA_CLOSEOUT_2026_07_07_HISTORY.md)、[視覺層級 polish（2026-07-07）](../09_archive/WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md)：保留當時 UI 與測試證據，不作目前狀態依據；現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+
 ## 閱讀與歸檔規則
 
 - QA 原文保存當時輸入、失敗、結果、回滾與接受邊界；入口摘要只供導覽，不改寫證據結論。

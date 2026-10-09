@@ -1,5 +1,19 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 Roadmap 空歷史章節收斂
+
+6M Roadmap 的 Gate 7 原有 8 個日期小節，各節只有同一個歷史歸檔連結；已合併為條件式 Gate 說明，補上 Gate 7 工程入口、Snapshot 與歷史流水帳。版本成熟度 Roadmap 的 6A 章節只含歷史交接導引，已收斂為第 7 節前的一則歷史提示。具體日期化紀錄仍完整保存在各自 archive；未變更 Gate 條件、版本成熟度標準或目前狀態。
+
+
+## 2026-10-08 Workbench 歷史 UI closeout 歸檔
+
+將兩份 2026-07-07 一次性 Workbench UI closeout 原文移至 docs/09_archive/，原 QA 路徑保留導引頁。SHA-256 與大小核對搬移前原件；舊靜態 Catalog 與歷史索引仍可由導引頁到達原文。QA README 與 Archive README 已新增分類入口；目前操作看 Manual、目前狀態看 Snapshot。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes | SHA-256 | 歸檔理由 |
+|---|---|---:|---|---|
+| docs/06_qa/WORKBENCH_LEFT_NAVIGATION_IA_CLOSEOUT_2026_07_07.md | [WORKBENCH_LEFT_NAVIGATION_IA_CLOSEOUT_2026_07_07_HISTORY.md](../09_archive/WORKBENCH_LEFT_NAVIGATION_IA_CLOSEOUT_2026_07_07_HISTORY.md) | 2,881 | 5B436C77E20D3558C062894517DFB9DD4ECBF5317364DB20D82AAD7A52979DE0 | 單次導覽 IA closeout；現況由 Manual、Snapshot 與近期 QA 承接，歷史測試結果保留原文。 |
+| docs/06_qa/WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07.md | [WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md](../09_archive/WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md) | 3,568 | 2EE487D1544D9EBA4CD9972AD51F4896A6F0E2179AD8C4039EF09BB19CE4EA9B | 單次視覺層級 polish closeout；保留當時 UI 邊界與驗收收據，不代表目前 Gate 狀態。
+
 ## 2026-10-08 歸檔三份一次性 QA 收據
 
 將已完成的文件治理稽核、V2.0 非排程 closeout 與 ML Shadow 工程操作 closeout 移入 `docs/09_archive/`；內容各保留原文與原路徑轉址。下表 SHA-256 為搬移前工作樹原件；歷史 `DOCUMENTATION_CATALOG_20261006.md` 與既有 archive/history 引用繼續由轉址承接。QA README、Archive README 已新增分類入口；Superpowers README 的 push 前稽核連結改為直達歸檔副本。現況以 Snapshot、現行 Runbook 與具名最新 QA 為準。

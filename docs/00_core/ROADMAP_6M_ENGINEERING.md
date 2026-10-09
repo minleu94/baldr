@@ -402,29 +402,7 @@ TotalScore、component、gate、alert 與 Profile 中，哪些真正有貢獻，
 
 ## 11. Gate 7：ML Shadow Layer（條件式）
 
-### 2026-08-19 Prospective restart execution lock
-> 詳細歷史狀態與驗收紀錄已移至[歸檔](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準.
-
-### 2026-08-25 activation-day pre-open status
-> 詳細歷史狀態與驗收紀錄已移至[歸檔](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準.
-
-### 2026-08-28 owner handoff preparation
-> 詳細歷史狀態與驗收紀錄已移至[歸檔](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準.
-
-### 2026-08-30 current Gate rebaseline
-> 詳細歷史狀態與驗收紀錄已移至[歸檔](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準.
-
-### 2026-09-13 V4.2 每日推薦 calibration shadow／custody observation
-> 詳細歷史狀態與驗收紀錄已移至[歸檔](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準.
-
-### 2026-09-14 Decision Workbench integration track（V4.1／V4.2 → V5／V6）
-> 詳細歷史狀態與驗收紀錄已移至[歸檔](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準.
-
-### 2026-09-17 C 線個人化真實來源接線 handoff（working tree）
-> 詳細歷史狀態與驗收紀錄已移至[歸檔](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準.
-
-### 2026-09-15 Current → Next（基線 `0219d709`）
-> 詳細歷史狀態與驗收紀錄已移至[歸檔](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)；目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準.
+Gate 7 只有在 Gate 5 於第六個月前產生可判讀 baseline 時，才可啟動 shadow experiment；readiness scaffold 不構成啟動許可，也不承諾 production 上線。工程入口與限制見 [Gate 7 ML Shadow Engineering](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，目前狀態以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準。日期化 handoff 與驗收觀測已集中於[歷史流水帳](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)。
 
 ## 12. 跨 Gate 驗證規則
 

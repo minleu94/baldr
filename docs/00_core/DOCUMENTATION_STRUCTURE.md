@@ -1,6 +1,6 @@
 # 文檔結構與維護規則
 
-> **最後更新**：2026-10-08
+> **最後更新**：2026-10-09
 > **用途**：定義 `docs/` 內每個資料夾的歸屬、文件生命週期、刪除/歸檔規則。
 
 > **2026-10-06 維護補充**：[全文件目錄歷史快照](../09_archive/DOCUMENTATION_CATALOG_20261006_HISTORY.md)涵蓋 tracked root／docs／module 說明；[整理 manifest](../09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md)保存全文封存與原 bytes 恢復。ignored 的 plan／QA 不等同 cache；唯一需求先核 byte backup，失敗 raw 不改寫。資料保留看[資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)，graph 更新看[維護入口](DOCUMENTATION_GRAPH_GUIDE.md)。
@@ -106,6 +106,15 @@
 - 已執行完畢的 Next Action Plan。
 - 舊 Roadmap current section。
 - 過期但仍有決策脈絡價值的調查或提案。
+
+### QA evidence retention
+
+`docs/06_qa/` 保存具時間與範圍的驗收證據；日期、完成標籤或文件長度本身不決定歸檔。以下任一情況成立時，原文留在 QA：
+
+- 仍被 Gate、開放問題／重驗、Roadmap、Manual、測試、腳本或固定輸出路徑引用。
+- 它是目前有效的 scoped contract、唯一證據入口，或尚未被後續證據取代的最新驗收。
+
+只有在 owner／Gate 已結案、未解事項與替代入口已交代、活躍路徑依賴已解除或保留相容入口後，才把純歷史收據移到 Archive。保留舊路徑短導引；Coverage History 記錄原路徑、封存位置、原件 bytes／hash、當時效力與目前替代入口。若產生器仍會寫入固定 QA 路徑，先處理 writer／consumer 契約，不能直接以 redirect 取代原件。
 
 ### Delete
 
@@ -218,6 +227,7 @@
 - 2026-10-09：將七段 10/05–06 Daily Market Research snapshot、cohort、method、pinned route 與 chart 增量移入架構更新歷史；來源／讀回／未知資格邊界濃縮至 §8，原標題保留導引並更新 README／Coverage Map。
 - 2026-10-09：將 10/06 homepage／personal IO dated increment 歸入架構歷史；首頁 DTO routing 與 personal store/account identity 契約整理至 §§3、11，保留舊 heading 導引、原文及 coverage 記錄。
 - 2026-10-09：將 9/29 operational custody 固定時間／inventory／接線快照移入架構更新歷史；lane source／receipt 隔離的長期規則留在 §10，舊標題保留導引並補齊 README／Coverage Map。
+- 2026-10-09：補充 QA evidence retention 規則：按 Gate／未解項／固定路徑／替代證據判斷 QA 原件是否保留，不能只按日期或完成標籤歸檔；同步 QA README 與 Coverage Map。
 - 2026-10-08：將四份早期 Recommendation／Update Tab QA 問題盤點與摘要移至 Archive，保留 byte-identical 原件、相容導引及現況判讀界線；同步 QA／Archive README 與 coverage map。
 - 2026-10-08：將回測 Lab 過期 checklist／FAQ 歸檔並保留舊路徑導引；快速參考改指操作手冊，功能目錄與 coverage map 同步現行入口。
 - 2026-10-08：將 V3 ML readiness 與兩組 UI readability polish 的已結案 plan/spec 配對歸檔；ML 原件明定僅研究／closeout readiness，不代表 production ML。

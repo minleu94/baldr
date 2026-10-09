@@ -89,6 +89,7 @@
 ## 閱讀與歸檔規則
 
 - QA 原文保存當時輸入、失敗、結果、回滾與接受邊界；入口摘要只供導覽，不改寫證據結論。
+- **生命週期**：日期或「完成」標籤不代表可搬移。仍有未解 Gate／重驗、活躍文件引用、測試／腳本依賴或固定輸出路徑的收據留在本目錄；只有結案、替代入口明確且依賴解除後才歸檔，保留舊路徑導引與原件 bytes／hash。詳見 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md#qa-evidence-retention)。
 - 超長報告先讀標題、開頭的範圍／結論及本頁入口，再依問題查原始章節；不要把整份 terminal dump 當成目前狀態。
 - JSON 收據與 `project_status_2026_08_14/` 是機器或報告伴隨物，應與對應說明文件一起判讀；不要只憑檔名把它們當作獨立產品文件。
 - 歷史 archive 的定位與規則見 [docs/09_archive README](../09_archive/README.md)；完整文件分類見 [DOCUMENTATION_INDEX](../00_core/DOCUMENTATION_INDEX.md)。

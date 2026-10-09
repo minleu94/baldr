@@ -24,7 +24,7 @@
 | North Star、Bounded Advice、Evidence、Success Levels、Non-goals | `docs/01_architecture/system_vision_specification.md` | 不保存詳細 implementation checklist 或完成流水帳。 |
 | 目前使用者完整操作流程 | `docs/07_guides/APPLICATION_MANUAL.md` | 9 個頂層工作區、跨工作區流程、安全限制與排錯以本手冊為準；較長的操作補充與受控維運保存在同屬手冊的 `APPLICATION_MANUAL_SUPPLEMENTS.md`，涉及該入口時同步檢查附冊。 |
 | 文檔位置與分類 | `docs/00_core/DOCUMENTATION_INDEX.md` | 只作導航，不取代狀態或架構權威。 |
-| 文檔生命週期與歸檔規則 | `docs/00_core/DOCUMENTATION_STRUCTURE.md` | 刪除、搬移、歸檔 Markdown 前必須參考。 |
+| 文檔生命週期與歸檔規則 | `docs/00_core/DOCUMENTATION_STRUCTURE.md`；QA 收據專項入口見 `docs/06_qa/README.md` | 日期或完成標籤不能單獨作為 QA 歸檔依據；必須核對未解 Gate、引用路徑、固定輸出位置與替代證據。 |
 | 歷史 Phase、舊 Done、舊 Roadmap current section | `docs/09_archive/DEVELOPMENT_ROADMAP_LEGACY_2026_06.md` | 只作追溯，不作目前狀態依據。 |
 
 其他專項文件權威：
@@ -407,6 +407,7 @@
 - 2026-10-09：將七段 UX21／UX08／UX13／UX18／UX19 日期化 research snapshot 增量從 Architecture 前置區移入歷史檔；Immutable source、cohort、method、pinned read、unknown／PIT 與 saved chart 契約濃縮於 §8。細節見 [Coverage History Entry 094](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-094)。
 - 2026-10-09：將 10/06 homepage wiring 與 private review dated increments 移入架構更新歷史；首頁 routing 和 personal store／account identity 契約整理至 §§3、11。細節見 [Coverage History Entry 095](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-095)。
 - 2026-10-09：將 2026-09-29 排程 operational custody dated slice 歸檔；各 lane source／release pins、同次 terminal receipt 與不可跨 lane 授權規則保留於 Architecture §10。細節見 [Coverage History Entry 096](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-096)。
+- 2026-10-09：明確 QA 收據歸檔條件：仍被 Gate、未解問題或工具固定路徑使用的文件留在 QA；純歷史收據只有解除活躍依賴並保留相容導引後才搬移。
 - 2026-08-30：補入 P0／Evidence／Paper／Formal／Runtime／Performance／Data Update refresh 文件，並把 UI 舊 readiness artifact marker、週末 freshness 語意與最新測試 inventory 納入 coverage。
 - 2026-09-10：補入 V4.1 A 線推薦機率校準的 QA handoff、Snapshot、Current architecture、Manual 與 Index；確認 20／5 outcome contract、walk-forward split、整數 bp calibration、read-only DB boundary 與自然 forward evidence 尚未成熟的 not-evaluable 狀態。chip／funding、industry、PIT theme 保持 deferred，沒有回填歷史 event。
 - 2026-09-12：補入 V4.1 A 線第二輪歷史研究與候選方法包的 QA handoff、Snapshot、Current architecture、Navigation、Manual、Runbook 與 Index；新增逐列 manifest、gap／candidate coverage、自然時間分類與 create-only frozen artifact，確認正式 DB 僅 query-only 讀取且沒有 promotion／formal writer 變更。

@@ -270,9 +270,11 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 在 [QA README](../06_qa/README.md) 新增 5 條近期閱讀路徑，為 25 份 2026-10-06 至 10-09 tracked 收據補上直達入口；原始收據不搬移、不重寫，索引只標示主題與來源，不宣稱目前狀態。F02 saved-feature gap 收據暫緩加入此索引，待其未追蹤的同主題 review 工作收束後再一起核對路由。未修改 dirty `DOCUMENTATION_INDEX.md`、`PROJECT_SNAPSHOT.md` 或 `APPLICATION_MANUAL.md`。
 
-`docs/05_phases/README.md` 的狀態導覽同步改為 Snapshot 管目前狀態、6M Roadmap 管工程順序、Roadmap Hub 僅導覽；沒有移動 Phase 原文或改寫歷史 gate。
+`docs/05_phases/README.md` 的首次狀態導覽改為 Snapshot 管目前狀態、6M Roadmap 管工程順序、Roadmap Hub 僅導覽；當時尚未搬動 Phase 原文。後續逐檔生命週期核對及歸檔結果見下文。
 
-Phase 目錄逐檔導覽已補上可點文件路徑；`phase3_5_research/README.md` 改為純歷史索引，移除現行操作步驟；功能目錄改連 Phase README，Structure 改為精確描述目前已核實的唯一 Active 直接引用。未搬移 Phase 原文，未改動 dirty Index、Snapshot 或 Manual。
+隨後將 13 份 Historical Phase／SOP 原文按原相對層次移入 `docs/09_archive/`，內容 bytes 不改；各原路徑改為短轉址，維持 Phase 2 strategy spec 及舊清冊的入口。Phase root／SOP README 改連 archive 原文，Archive README 新增清單，Structure 更新歸屬；唯一直接 Active 引用仍經舊路徑導向 `PHASE2_ARCHITECTURE.md` 原文。未編輯 dirty Index、Snapshot 或 Manual。
+
+首次整理 Phase 導覽時，逐檔路徑已補齊，`phase3_5_research/README.md` 改為純歷史索引，功能目錄改連 Phase README；該階段尚未搬移原文。後續逐檔生命週期核對與 13 份原文歸檔結果見上文；整段整理均未改動 dirty Index、Snapshot 或 Manual。
 
 `system_architecture.md` 的 F4 Watchlist COW 日期增量已收斂為 QA 導覽；穩定儲存、格式相容與正式 apply 邊界歸入 §4／§8／§11。四份 2026-10-05 原 QA 收據保留原文並由架構 README、QA README 建立主題入口；明確區分隔離工程驗證與正式資料轉換／啟用批准，沒有聲稱已套用正式 store。
 

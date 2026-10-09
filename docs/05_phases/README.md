@@ -12,22 +12,22 @@
 - 架構與模組邊界看 `../01_architecture/system_architecture.md`。
 - 實際操作方式看 `../07_guides/APPLICATION_MANUAL.md`。
 
-本目錄作為逐檔判讀的歷史資料入口保留。目前核實到的 Active 文件直接引用只有 [`STRATEGY_DESIGN_SPECIFICATION.md`](../02_features/STRATEGY_DESIGN_SPECIFICATION.md) 連到 [`PHASE2_ARCHITECTURE.md`](PHASE2_ARCHITECTURE.md)。其餘文件暫留供追溯，是否搬入 `09_archive/` 依各文件的引用、證據與歷史價值逐檔判斷；沒有直接連結不等於可以刪除。原文中的下一步、進行中、Gate 或階段描述若與核心權威文件衝突，以核心權威文件為準。
+本目錄保留導覽 README 與舊路徑轉址；13 份 Phase／SOP 原文已依原目錄層次移入 [`docs/09_archive/`](../09_archive/README.md)。目前核實到的 Active 文件直接引用只有 [`STRATEGY_DESIGN_SPECIFICATION.md`](../02_features/STRATEGY_DESIGN_SPECIFICATION.md) 連到 [`PHASE2_ARCHITECTURE.md`](../09_archive/PHASE2_ARCHITECTURE.md)，舊路徑轉址會導向歸檔原文。其他原文依追溯價值保留；沒有直接連結不等於可以刪除。歸檔內容中的下一步、進行中、Gate 或階段描述若與核心權威文件衝突，以核心權威文件為準。
 
 ## 文檔列表與目前處置
 
 | 文件 | 目前處置 | 用途 |
 |---|---|---|
-| [PHASE2_ARCHITECTURE.md](PHASE2_ARCHITECTURE.md) | 保留為 Historical / Reference | Phase 2 策略架構設計追溯；目前有一筆 Active 直接引用。 |
-| [PHASE2_STRATEGY_LIBRARY.md](PHASE2_STRATEGY_LIBRARY.md) | 保留為 Historical / Reference | Phase 2 策略資料庫設計追溯。 |
-| [PHASE_2A_DATA_SOURCES_AUDIT.md](PHASE_2A_DATA_SOURCES_AUDIT.md) | 保留為 Historical / Reference | CSV-first 到 DB-first 過渡盤點；目前資料架構以 [system architecture](../01_architecture/system_architecture.md) 與 `../03_data/` 文件為準。 |
-| [PHASE2_5_COMPLETION_STATUS.md](PHASE2_5_COMPLETION_STATUS.md) | 保留為 Historical / Reference | Phase 2.5 完成狀態追溯；fixed / quantile 現況以 Snapshot、6M Roadmap 與 QA 報告為準。 |
-| [PHASE3_3B_RESEARCH_DESIGN.md](PHASE3_3B_RESEARCH_DESIGN.md) | 保留為 Historical / Reference | Research Lab / Promote 早期設計脈絡；目前 Research Run Registry / lifecycle gate 以核心文件與架構文件為準。 |
-| [EPIC2_MVP2_ARCHITECTURE_DESIGN.md](EPIC2_MVP2_ARCHITECTURE_DESIGN.md) | 保留為 Historical / Reference | 過擬合風險提示早期架構設計。 |
-| [EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md](EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md) | 保留為 Historical / Reference | 過擬合風險提示實作 checklist 追溯。 |
-| [PHASE4_PORTFOLIO_DESIGN.md](PHASE4_PORTFOLIO_DESIGN.md) | 保留為 Historical / Reference | Portfolio MVP 初始設計；目前 Portfolio / lifecycle 狀態以 Snapshot、Architecture 與 Manual 為準。 |
-| [PHASE4_STARTUP_SUMMARY.md](PHASE4_STARTUP_SUMMARY.md) | 保留為 Historical / Reference | Phase 4 啟動摘要追溯。 |
-| [phase3_5_research/README.md](phase3_5_research/README.md) | 保留為 Historical SOP / Reference | 研究流程、指標判讀與 Phase 4 entry gate 的歷史文件目錄；若要成為日常操作規範，需另行改寫到 `../07_guides/` 或 `../02_features/`。 |
+| [PHASE2_ARCHITECTURE.md](../09_archive/PHASE2_ARCHITECTURE.md) | 已歸檔；舊路徑保留轉址 | Phase 2 策略架構設計追溯；目前有一筆 Active 引用經轉址連至原文。 |
+| [PHASE2_STRATEGY_LIBRARY.md](../09_archive/PHASE2_STRATEGY_LIBRARY.md) | 已歸檔；舊路徑保留轉址 | Phase 2 策略資料庫設計追溯。 |
+| [PHASE_2A_DATA_SOURCES_AUDIT.md](../09_archive/PHASE_2A_DATA_SOURCES_AUDIT.md) | 已歸檔；舊路徑保留轉址 | CSV-first 到 DB-first 過渡盤點；目前資料架構以 [system architecture](../01_architecture/system_architecture.md) 與 `../03_data/` 文件為準。 |
+| [PHASE2_5_COMPLETION_STATUS.md](../09_archive/PHASE2_5_COMPLETION_STATUS.md) | 已歸檔；舊路徑保留轉址 | Phase 2.5 完成狀態追溯；fixed / quantile 現況以 Snapshot、6M Roadmap 與 QA 報告為準。 |
+| [PHASE3_3B_RESEARCH_DESIGN.md](../09_archive/PHASE3_3B_RESEARCH_DESIGN.md) | 已歸檔；舊路徑保留轉址 | Research Lab / Promote 早期設計脈絡；目前 Research Run Registry / lifecycle gate 以核心文件與架構文件為準。 |
+| [EPIC2_MVP2_ARCHITECTURE_DESIGN.md](../09_archive/EPIC2_MVP2_ARCHITECTURE_DESIGN.md) | 已歸檔；舊路徑保留轉址 | 過擬合風險提示早期架構設計。 |
+| [EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md](../09_archive/EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md) | 已歸檔；舊路徑保留轉址 | 過擬合風險提示實作 checklist 追溯。 |
+| [PHASE4_PORTFOLIO_DESIGN.md](../09_archive/PHASE4_PORTFOLIO_DESIGN.md) | 已歸檔；舊路徑保留轉址 | Portfolio MVP 初始設計；目前 Portfolio / lifecycle 狀態以 Snapshot、Architecture 與 Manual 為準。 |
+| [PHASE4_STARTUP_SUMMARY.md](../09_archive/PHASE4_STARTUP_SUMMARY.md) | 已歸檔；舊路徑保留轉址 | Phase 4 啟動摘要追溯。 |
+| [phase3_5_research/README.md](phase3_5_research/README.md) | 保留為歷史索引；子文件已歸檔 | 研究流程、指標判讀與 Phase 4 entry gate 的歷史文件地圖。 |
 
 已歸檔的相關文件：
 
@@ -36,10 +36,10 @@
 ## 📁 子目錄
 
 - [phase3_5_research/README.md](phase3_5_research/README.md) - Phase 3.5 歷史文件索引
-  - [RESEARCH_ITERATION_PLAYBOOK.md](phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md) - 研究迭代流程的歷史設計
-  - [METRIC_INTERPRETATION_PRIORITY.md](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md) - 指標判讀優先順序的歷史設計
-  - [BENCHMARK_PRESENTATION.md](phase3_5_research/BENCHMARK_PRESENTATION.md) - 回測 Benchmark 呈現的歷史設計
-  - [PHASE4_ENTRY_CRITERIA.md](phase3_5_research/PHASE4_ENTRY_CRITERIA.md) - Phase 4 進入條件的歷史紀錄
+- [RESEARCH_ITERATION_PLAYBOOK.md](../09_archive/phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md) - 研究迭代流程的歷史設計
+- [METRIC_INTERPRETATION_PRIORITY.md](../09_archive/phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md) - 指標判讀優先順序的歷史設計
+- [BENCHMARK_PRESENTATION.md](../09_archive/phase3_5_research/BENCHMARK_PRESENTATION.md) - 回測 Benchmark 呈現的歷史設計
+- [PHASE4_ENTRY_CRITERIA.md](../09_archive/phase3_5_research/PHASE4_ENTRY_CRITERIA.md) - Phase 4 進入條件的歷史紀錄
 
 ## 狀態判讀
 
@@ -61,4 +61,4 @@
 
 - 2026-07-03：將本目錄重新定位為 Historical / Reference；保留文件但明確標示不作目前 roadmap、完成狀態或下一步依據。
 - 2026-10-08：更新 Scoped SSOT 入口說明，將 Roadmap Hub 標為純導覽，不再描述它維護 Next 摘要。
-- 2026-10-08：列出已核實的 Active 直接引用，並為 Phase 文件與子目錄建立可點選入口；未移動或改寫歷史原文。
+- 2026-10-08：將 13 份 Phase／SOP 原文移入 Archive，保留舊路徑轉址與原層次；本頁改連歸檔原文並保留唯一 Active 引用的相容路徑。

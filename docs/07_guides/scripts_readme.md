@@ -12,7 +12,7 @@
 
 ## 資料路徑與設定
 
-使用 `TWStockConfig` 的腳本以 `DATA_ROOT`、`OUTPUT_ROOT` 與 `PROFILE` 解析資料和輸出位置；個別入口是否支援命令列覆蓋，請查看該腳本的 `--help`。不要使用舊文件中的 `TWSTOCK_DATA_DIR` 或直接在建構後改寫衍生欄位 `base_dir`。
+使用 `TWStockConfig` 的腳本以 `DATA_ROOT`、`OUTPUT_ROOT` 與 `PROFILE` 解析資料和輸出位置；命令列覆蓋須逐一確認該腳本是否支援。`update_all_data.py` 與 `update_stock_data.py` 目前先後解析共用設定與腳本參數，命令列參數互相衝突，請不要照下方舊範例執行，也不要假設所有入口都支援 `--dry-run`。不要使用舊文件中的 `TWSTOCK_DATA_DIR` 或直接在建構後改寫衍生欄位 `base_dir`。
 
 完整環境設定與隔離操作請看 [Application Manual](APPLICATION_MANUAL.md)；資料來源與輸出位置看 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md) 及 [daily data update guide](../03_data/daily_data_update_guide.md)。目前設定欄位定義見 [TWStockConfig](../../data_module/config.py)。
 
@@ -54,61 +54,28 @@
 - **詳細說明**：請參考 [HOW_TO_UPDATE_DAILY_DATA.md](../03_data/HOW_TO_UPDATE_DAILY_DATA.md)
 
 #### `update_all_data.py`
-- **功能**：更新所有數據，包括市場指數、產業指數和每日價格數據
-- **使用範例**：
-  ```bash
-  # 生產模式 - 更新最近30天的數據
-  python scripts/update_all_data.py --days 30
-  
-  # 更新指定日期範圍的數據
-  python scripts/update_all_data.py --start 2023-01-01 --end 2023-01-31
-  
-  # 更新所有數據（從2014年起）
-  python scripts/update_all_data.py --all
-  
-  # 測試模式 - 使用隔離路徑
-  python scripts/update_all_data.py --profile test --data-root ./test_data --output-root ./test_output --dry-run
-  
-  # 環境變量覆蓋模式
-  export DATA_ROOT=./sandbox_data
-  export OUTPUT_ROOT=./sandbox_output
-  export PROFILE=test
-  python scripts/update_all_data.py --dry-run
-  ```
+- **用途**：舊式全資料更新入口，範圍包含市場指數、產業指數與每日價格。
+- **目前狀態**：CLI 參數解析衝突。入口先呼叫 `TWStockConfig.from_args()`，再建立自己的 parser；`--days`、`--start`、`--end`、`--check`、`--all` 會先被共用 parser 拒絕，共用設定參數也會再被腳本 parser 拒絕。舊範例不可用；未修正 parser 前，日常更新請走 UI 指南。
 
 #### `update_stock_data.py`
-- **功能**：更新股票數據
-- **使用範例**：
-  ```bash
-  # 生產模式
-  python scripts/update_stock_data.py
-  
-  # 測試模式
-  python scripts/update_stock_data.py --profile test --data-root ./test_data --output-root ./test_output --dry-run
-  ```
+- **用途**：舊式股票資料更新入口。
+- **目前狀態**：與 `update_all_data.py` 有相同的共用設定／腳本參數解析衝突；`--date`、`--start-date`、`--end-date`、`--schedule`、`--batch` 等腳本參數會在共用 parser 階段被拒絕。單日命令列入口請看下方 `update_daily_stock_data.py` 與[每日更新指南](../03_data/HOW_TO_UPDATE_DAILY_DATA.md)。
 
 ### 2. 數據修復腳本
 
 #### `fix_market_index.py`
-- **功能**：修復市場指數數據中的問題
-- **使用範例**：
-  ```bash
-  python scripts/fix_market_index.py --report --backup
-  ```
+- **功能**：直接執行市場指數修復；目前沒有 `--report` 或 `--backup` CLI 參數，也不是唯讀檢查入口。不要照舊的 `--report --backup` 範例執行。
 
 #### `fix_industry_index.py`
-- **功能**：修復產業指數數據中的問題
-- **使用範例**：
-  ```bash
-  python scripts/fix_industry_index.py --report --backup
-  ```
+- **功能**：直接執行產業指數修復；目前沒有 `--report` 或 `--backup` CLI 參數，也不是唯讀檢查入口。不要照舊的 `--report --backup` 範例執行。
 
 #### `merge_daily_data.py`
 - **功能**：合併每日價格數據
 - **使用範例**：
   ```bash
-  python scripts/merge_daily_data.py --report --compress
+  python scripts/merge_daily_data.py
   ```
+- **注意**：目前唯一宣告的選用參數是 `--force-all`，會強制重新合併全部資料；`--report` 與 `--compress` 不受支援。
 
 ### 3. 技術指標計算腳本
 
@@ -174,30 +141,11 @@
 - `audit_document_encoding.py` - 文件 UTF-8 / mojibake 稽核
 - `market_date_range.py` - 日期範圍管理
 
-## 腳本執行順序建議
+## 日常操作與維修入口
 
-### 日常數據更新流程（推薦）
+日常資料更新以[每日更新指南](../03_data/HOW_TO_UPDATE_DAILY_DATA.md)為入口；該指南說明目前 UI 流程與經核對的 CLI 替代方式。本頁只列開發／維修腳本，不定義額外的「更新 → 合併 → 重算」固定串接順序，避免重複執行 UI 已整合的 SQLite 同步與技術指標增量更新。
 
-**方式 1：批量更新（推薦）**
-1. **批量更新每日數據**：`batch_update_daily_data.py --start-date YYYY-MM-DD`
-2. **合併數據**：`merge_daily_data.py`
-3. **計算指標**：`calculate_technical_indicators.py`
-
-**方式 2：單日更新**
-1. **更新單日數據**：`update_daily_stock_data.py --date YYYY-MM-DD`
-2. **合併數據**：`merge_daily_data.py`
-3. **計算指標**：`calculate_technical_indicators.py`
-
-**方式 3：全面更新（舊方式）**
-1. **更新數據**：`update_all_data.py`
-2. **檢查數據**：`fix_market_index.py` 和 `fix_industry_index.py`（如有問題）
-3. **合併數據**：`merge_daily_data.py`
-4. **計算指標**：`calculate_technical_indicators.py`
-
-### 數據修復流程
-1. **檢查問題**：運行修復腳本檢查數據問題
-2. **修復數據**：執行相應的修復腳本
-3. **驗證修復**：重新運行數據更新腳本驗證
+資料修復前先查看對應 QA、資料來源與實際腳本行為。`fix_market_index.py` 和 `fix_industry_index.py` 是直接執行修復的入口，不支援 report-only；不可把它們當成檢查命令。需要只讀診斷時，使用對應的狀態檢查或 QA 工具。
 
 ## 注意事項
 

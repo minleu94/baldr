@@ -171,7 +171,7 @@ python scripts/update_daily_stock_data.py --date 2025-08-29 --merge
 ## 文件命名格式
 
 - **正確格式**：`YYYYMMDD.csv`（如 `20250829.csv`）
-- **存儲位置**：`D:/Min/Python/Project/FA_Data/daily_price/`
+- **預設儲存位置**：`D:/Min/Python/Project/FA_Data/daily_price/`；若設定 `DATA_ROOT`，實際位置為 `<DATA_ROOT>/daily_price/`。路徑衍生方式以 [`TWStockConfig.daily_price_dir`](../../data_module/config.py) 為準。
 - **主模組會自動轉換**：`2025-08-29` → `20250829.csv`
 
 ## 舊版 CLI／CSV 問題排查（歷史參考）

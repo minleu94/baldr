@@ -116,6 +116,14 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [R006 ML ABI baseline](REFACTOR_ML_ABI_BASELINE_R006_20260922_HISTORY.md)：原 inventory／retention scope 已關閉；未知 formal artifact 仍未載入或預測，細節見 [R006 dated addendum](../06_qa/R006_UNKNOWN_ARTIFACT_RETENTION_ADDENDUM_20260927.md)。
 - [R020 post-score deferred-threshold QA](R020_POST_SCORE_DEFERRED_THRESHOLD_STAGES_20260925_HISTORY.md)：2026-09-25 的 dated review；bounded R005 replay／recovery disposition 及範圍見 [R031 task index](../06_qa/R031_TASK_REPORT_INDEX_DRAFT_20260925.md)。三個 QA 原路徑保留短轉址；封存不擴大 task 的驗收範圍。
 
+### 2026-10-08 V4 Data, Direct and stock-research handoff history
+
+三份 2026-09-08 owner handoff 保存當時的資料更新 freshness／calendar evidence、Direct capacity gate／年度 consumer readback、個股研究報告 UI 與 source coverage 驗收。它們的日期數字與 next step 不代表目前狀態；後續資料收尾見 [10/03 data closeout](../06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md)，現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，ML／Direct 狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準。舊 QA 路徑保留相容導引。
+
+- [V4 Data freshness handoff（9/8）](V4_DATA_FRESHNESS_HANDOFF.md)：保留 source matrix、官方交易日曆修補與當時月營收／季報 blocker。
+- [V4 Direct／OOC／Release handoff（9/8）](V4_DIRECT_RELEASE_HANDOFF.md)：保留 Direct capacity gate、2014–2020 readback 與 release preflight 邊界。
+- [V4 Stock Research Report handoff（9/8）](V4_STOCK_RESEARCH_REPORT_HANDOFF.md)：保留當時 UI／source coverage／操作與驗收證據。
+
 ### 2026-10-08 V4 NEXT handoff history
 
 2026-09-08 的 Formal／Paper、ML／Effectiveness 與 Operations handoff 保存當時的 owner scope、證據與 rollback；內文的 Next 項目不代表目前授權或待辦。Formal 的 9/30 後續讀回見 [scheduler bootstrap repair](../06_qa/SCHEDULER_FORMAL_BOOTSTRAP_REPAIR_20260930.md)，目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。

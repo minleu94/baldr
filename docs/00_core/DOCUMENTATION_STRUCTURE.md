@@ -147,6 +147,7 @@
 - 四份 2026-09-15／16 PIT source discovery、daily source design、probability-learning audit 與 decision/evidence clock QA 已歸檔；後續 reader／caller acceptance QA 與目前狀態入口仍保留，舊 QA 路徑以短導引承接引用。
 - Continuity Review pre-R1 gap audit 已由後續 R1 Workbench QA 取代並歸檔；R1 驗收原件與仍未完成 full-source cross-page acceptance 的計畫留在 QA，避免把 pre-R1 gap 或 acceptance checklist 誤標為目前完成狀態。
 - 五份 BALDR 2026-09-25／26 整合、scheduler、readiness 與技術修補 closeout 收據及兩份已執行 request／inventory JSON 已歸檔；QA 舊路徑保留導引，本機 ignored inventory／baseline sidecars 留在 QA，並明示乾淨 checkout 不一定包含。
+- 三份 V4 2026-09-08 Data freshness、Direct／OOC／Release、Stock Research handoff 已歸檔；當日數字與 next step 不作目前操作或 Gate 狀態，QA 路徑保留轉址，入口改導向 10/03 data closeout、Manual、Snapshot 與近期 H20 QA。
 - 2026-09-07 的三份 V4 bounded data／machine／ML QA 亦已歸檔；仍以 Snapshot 與較新的專題收據判讀目前狀態，不將單日 release evidence 當成現行資格結論。
 - `FULL_APP_HEALTHCHECK_2026_06_16.md` 已歸檔為早期 UI smoke 快照；現行架構與操作分別看 system architecture 和 Application Manual，舊 QA 路徑保留轉址。
 - 若要採用歸檔 Phase SOP 中的操作內容，先依目前程式與 `docs/07_guides/APPLICATION_MANUAL.md` 核對並另行改寫；不要直接把歷史 Phase gate 重新當成目前規範。
@@ -196,6 +197,7 @@
 - 2026-10-08：將 2026-09-15／16 PIT source discovery、daily source design、probability-learning audit 與 decision/evidence clock QA 歸檔；保留 QA 舊路徑轉址，後續 acceptance QA 與現況入口仍留在 QA／Snapshot。
 - 2026-10-08：以 R1 Workbench QA 對照並歸檔 pre-R1 continuity gap audit；Cross-page Journey acceptance plan 與 V6 personalization detailed contract 仍保留於 QA，README 補上直接入口和未完成邊界。
 - 2026-10-08：將 BALDR 9/25–26 已完成的整合／scheduler／evidence readiness／technical QA 收據與已套用 prompt request 歸檔；兩個 ignored local baseline／inventory sidecars 不移動、不提交，歸檔導覽明示其僅在本機可得。
+- 2026-10-08：歸檔三份 9/8 V4 Data／Direct／Stock Research owner handoff；保留原 QA 路徑導引，資料、Direct／ML、操作與個股研究導覽改指向目前權威及後續 closeout。
 - 2026-10-08：將 13 份已完成 Post-V1 plan/spec 原文依 plans／specs 層次封存；以原路徑短導引、manifest bytes／SHA 與 Q1–Q8 QA links 保留追溯，Scheduler Approval pair 留在來源路徑供內容測試檢查。
 - 2026-10-08：封存已結案 Month 2 parameter／run storage plan，修正既有 manifest bytes／SHA 不符原件的列，保留來源路徑導引並明示最終完成證據已取代早期「等待核准」快照。
 - 2026-10-08：封存 Month 3 Factor Layer 的兩份實施計畫與配套設計規格；保留原路徑轉址及 plan/spec bytes／SHA，並明示原計畫中的提交核准核取方塊仍未勾選。

@@ -11,6 +11,7 @@
 - [V4 完成計畫（2026-09-07）](V4_COMPLETION_PLAN_2026_09_07_HISTORY.md)：保留截至 2026-09-10 仍標示「進行中」的計畫與執行紀錄；這是當時狀態，不表示目前 V4 完成度。舊核心路徑保留導引頁。
 - [V1.1–V2.0 歷史版本路線](VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)：保留已完成版本的歷史演進；工程優先順序與目前狀態看 Snapshot／6M Roadmap。
 - [V1.5–V2.0 里程碑 QA](#v15v20-qa-milestones)：將已結束的早期版本收尾與 V1 release checklist 集中歸檔；舊 `docs/06_qa/` 路徑留有轉址頁，既有目錄／歷史連結仍可開啟。
+- [V2.1–V2.5 readiness／closeout 歷史](#v21v25-historical-readiness-and-closeout)：集中已結束的工程準備度與 closeout 報告；來源資格與 policy／approval 原件仍留在 QA。
 - [舊 AI Context Pack（截至 2026-08-30）](AI_CONTEXT_PACK_HISTORY_20260830.md)：封存過期狀態包；目前 Agent／開發者入口改看根目錄 `AGENT_CONTEXT.md`。
 - [6M Roadmap 歷史狀態與更新流水帳（2026-07 至 2026-09）](ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)：保存首屏補記、單輪 handoff、Gate 7 狀態、Gate 校正與變更記錄；Gate 定義仍在核心 Roadmap。
 - [產品 Roadmap 歷史狀態與行動草案（2026-07 至 2026-09）](PRODUCT_ROADMAP_STATUS_HISTORY_20260712_TO_20260917.md)：保存當時的工程／handoff 狀態與原始 30／60／90 日行動草案，不承擔產品方向或目前狀態權威。
@@ -31,6 +32,16 @@
 - [V1 Release checklist](V1_RELEASE_CHECKLIST_2026_06_30.md)
 - [V2.0 Workbench Phase 1 closeout](V2_0_WORKBENCH_PHASE1_CLOSEOUT_2026_07_06.md)
 - [V2.0 read-only source adapter closeout](V2_0_WORKBENCH_READ_ONLY_SOURCE_ADAPTER_CLOSEOUT_2026_07_06.md)
+
+### V2.1–V2.5 historical readiness and closeout
+
+- [V2.1 engineering readiness](V2_1_ENGINEERING_READINESS_2026_07_12.md) · [V2.1 formal closeout](V2_1_FORMAL_CLOSEOUT_2026_07_12.md) · [V2.1 Workbench Phase 2](V2_1_WORKBENCH_PHASE2_CLOSEOUT_2026_07_07.md)
+- [V2.2 engineering readiness](V2_2_ENGINEERING_READINESS_2026_07_12.md) · [Evidence operating loop check](V2_2_EVIDENCE_OPERATING_LOOP_READONLY_CHECK_2026_07_07.md) · [simulated phase progress QA](V2_2_SIMULATED_PHASE_PROGRESS_QA_2026_07_07.md) · [Week 1 review](V2_2_WEEK1_REVIEW_2026_07_12.md)
+- [V2.3 engineering readiness](V2_3_ENGINEERING_READINESS_2026_07_12.md) · [official source evidence pass](V2_3_OFFICIAL_SOURCE_EVIDENCE_PASS_2026_07_12.md)
+- [V2.4 engineering readiness](V2_4_ENGINEERING_READINESS_2026_07_12.md)
+- [V2.5 engineering readiness](V2_5_ENGINEERING_READINESS_2026_07_12.md)
+
+These are completed, dated engineering/readiness records. Current source acceptance and policy/approval evidence remain in `docs/06_qa/`, including the V2.3 P0 source register and V2.2/V2.3/V2.4 approval packages.
 
 ## 📄 文檔列表
 

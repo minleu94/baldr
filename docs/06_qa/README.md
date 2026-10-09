@@ -45,7 +45,7 @@
 - **技術分析與圖表**：[BBANDS 上軌入口](BALDR_A01_BBANDS_UPPER_20261006.md)、[每日 BBANDS](BALDR_DAILY_BBANDS_CENTRAL_20261007.md)、[H20 圖表契約](H20_BOUND_CHART_CONTRACT_REVIEW_20261008.md)。
 - **測試路由與人工驗收**：[Feature-to-test routing matrix](FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)、[test inventory healthcheck classification](TEST_INVENTORY_HEALTHCHECK_CLASSIFICATION_2026_06_23.md)、[歷史 V1 release checklist](../09_archive/V1_RELEASE_CHECKLIST_2026_06_30.md)。
 - **早期產品 QA**：[Recommendation Tab issues](QA_RECOMMENDATION_TAB_ISSUES.md)、[Recommendation Tab summary](QA_RECOMMENDATION_TAB_SUMMARY.md)、[Update Tab issues](QA_UPDATE_TAB_ISSUES.md)、[Update Tab summary](QA_UPDATE_TAB_SUMMARY.md)。
-- **歷史工程閉環**：[V3.3 Engineering closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)、[V4 daily evidence handoff](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md)。V1.5–V2.0 milestone QA 已整理至[歷史專區](../09_archive/README.md#v15v20-qa-milestones)；歷史 roadmap 見[歸檔版本史](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
+- **歷史工程閉環**：[V3.3 Engineering closeout](V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)、[V4 daily evidence handoff](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md)。V1.5–V2.0 milestone QA 與部分 V2.1–V2.5 readiness／closeout 已整理至[歷史專區](../09_archive/README.md#v15v20-qa-milestones)；P0 source register 及 approval 收據仍留在本目錄；歷史 roadmap 見[歸檔版本史](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 
 ## 閱讀與歸檔規則
 

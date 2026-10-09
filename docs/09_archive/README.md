@@ -31,6 +31,8 @@
 
 來源 `docs/06_qa/` 路徑保留短導引；原始 bytes／SHA 與其餘待覆核候選的處置見 [Coverage History Entry 097](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
 
+- [唯讀服務合作式取消 QA（2026-09-30）](READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md)：保留當次 cancellation suites 19 passed，以及另一組 service contracts 125 passed／1 failed 的原始分層結果。V5 readability acceptance 另有 fixture 調整後的通過收據，不改寫 9/30 結果。raw pytest logs 位於 ignored `output/qa/ui_shutdown_20260930/`，沒有封存進 repository；現行行為看 [`sqlite_read_only.py`](../../app_module/sqlite_read_only.py) 與 [取消回歸測試](../../tests/test_read_only_service_cancellation.py)。QA 舊路徑保留導引，逐檔 bytes／SHA 見 [Coverage History Entry 104](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-104)。
+
 <a id="2026-10-09-qt-shutdown-teardown-bounded-qa"></a>
 ## 2026-10-09 Qt MainWindow shutdown teardown bounded QA
 

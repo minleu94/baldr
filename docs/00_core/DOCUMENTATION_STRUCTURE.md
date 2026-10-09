@@ -167,6 +167,7 @@
 - `POSITION_HEALTH_SOURCE_PROVIDER_CALENDAR_CACHE_ISOLATION_QA_2026_09_15.md` 的測試 calendar cache 隔離收據已歸檔；原 QA 路徑保留短導引，測試仍以 isolated `tmp_path` fixture 為現行依據，不將單次測試修復擴大解讀成 Position Health 正式 Gate 結案。
 - `ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md` 的 9/20 event-before candidate-only Formal 快照已歸檔；原 QA 路徑保留短導引，明確標示它不是 9/21 實際驗收，現況回到 Snapshot／Gate 7／External Validation Register。
 - `SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14.md` 的 9/14 週資料與排程受託審查已歸檔；原 QA 路徑保留短導引，標明 `reviewed_with_follow_up` 未通過正式採認，現況回到 Snapshot／近期排程 QA。
+- `READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md` 已封存為日期化回歸收據；舊 QA 路徑承接兩份歷史索引，保留當次 125 passed／1 failed 與後續 fixture 語意驗證，不把原始報告改寫成全綠。當日 ignored raw logs 未隨 Archive 提交。
 - 若要採用歸檔 Phase SOP 中的操作內容，先依目前程式與 `docs/07_guides/APPLICATION_MANUAL.md` 核對並另行改寫；不要直接把歷史 Phase gate 重新當成目前規範。
 - `docs/superpowers/` 是 plan／spec／prompt 歷史追溯區；README 導覽與 165 項 manifest 區分現行 Baldr 計畫、留在原路徑的歷史文件、以及已封存原文／舊路徑轉址。13 份具完成 QA 證據的 Post-V1 plan/spec、1 份 Month 2 結案 plan、4 份 Month 3 Factor Layer 計畫與 1 份設計規格，以及 1 份 Month 4 closure plan、1 份已結案 Safe Refactor continuation plan、9 份 Month 3 Portfolio Replay implementation plans 與 1 份 Month 3 closure audit、3 份已結案 V3 ML／UI polish plans 與 3 份配套 design specs、1 份 TPEX daily-price backfill plan、1 組金融 float boundary plan/spec、1 份文件 Roadmap rebaseline plan、1 組 Legacy Test Governance plan/spec 已封存；weight/exposure plan 保留最後 diff／stage 核取項目未勾的原始狀態。Scheduler Approval pair 因測試內容依賴、Healthcheck Batch 3 plan 因原人工 QA 仍留有待重測項目而保留原文。
 - `docs/06_qa/UI_QT_DEVELOPMENT_ROADMAP_AUDIT.md` 已因 2026-05-19 舊狀態容易誤導而歸檔為 `docs/09_archive/UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`。
@@ -234,6 +235,7 @@
 - 2026-10-09：將 10/06 homepage／personal IO dated increment 歸入架構歷史；首頁 DTO routing 與 personal store/account identity 契約整理至 §§3、11，保留舊 heading 導引、原文及 coverage 記錄。
 - 2026-10-09：將 9/29 operational custody 固定時間／inventory／接線快照移入架構更新歷史；lane source／receipt 隔離的長期規則留在 §10，舊標題保留導引並補齊 README／Coverage Map。
 - 2026-10-09：將 9/14 排程與週資料受託審查移入 Archive，原 QA 路徑保留短導引；明示當時未通過正式採認，更新 QA／Archive 導覽、Coverage Map、History 與 Index。
+- 2026-10-09：將 9/30 唯讀服務取消 QA 移入 Archive；保留歷史 Catalog／Index 透過舊路徑導引的可達性，並明示當次 failed case、後續獨立通過收據及 ignored raw log 邊界。
 - 2026-10-09：補充 QA evidence retention 規則：按 Gate／未解項／固定路徑／替代證據判斷 QA 原件是否保留，不能只按日期或完成標籤歸檔；同步 QA README 與 Coverage Map。
 - 2026-10-09：覆核 QA 生命週期清冊的 10 份歸檔候選：僅移動 3 份無活躍依賴的歷史流程／失效紀錄；對保留原路徑、保留原 bytes 的判定與 coverage 見 Entry 097。
 - 2026-10-09：移除 Version Roadmap 內重複的 7/12、8/30 狀態註記及已封存的單次驗收摘要；保留 maturity criteria，現況／歷史入口改由 Snapshot／Archive 導覽。

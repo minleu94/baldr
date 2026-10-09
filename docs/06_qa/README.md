@@ -85,7 +85,7 @@
 - **2026-08 前瞻正式時鐘歷史**：查 [Archive 專區](../09_archive/README.md#2026-10-08-prospective-formal-clock-history)；目前重啟方向與決策時鐘契約仍留在此目錄，歷史 activation、staging 與失敗收據不授權重啟或發布。
 - **2026-09 決策工作台與 continuity dated audits**：查 [Archive 專區](../09_archive/README.md#2026-10-08-decision-workbench-and-continuity-audit-history)；當時的 gap 與 next-increment 判讀不代表目前優先序，現在狀態回 Snapshot／Roadmap。
 - **Post-V1 Evidence Pipeline 已執行計畫／規格**：原文與 QA 收據分別收於 [Archive 歷史索引](../09_archive/README.md#2026-10-08-post-v1-engineering-plans-and-specs) 與 [QA 收據索引](../09_archive/README.md#post-v1-evidence-pipeline-qa)；Scheduler Approval 配對因測試內容依賴保留原文路徑。
-- **歷史流程與文件治理紀錄**：2026-09-27 branch/worktree 與文件整併紀錄、2026-09-21 legacy recommendation failure review 已移至 [Archive 歷史入口](../09_archive/README.md#qa-historical-process-failure-review-20261009)；首批歸檔判定見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)，R029 成對歸檔與 hash 見 [Entry 098](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。
+- **歷史流程與文件治理紀錄**：2026-09-27 branch/worktree 與文件整併紀錄、2026-09-21 legacy recommendation failure review、9/30 唯讀服務取消收據已移至 [Archive 歷史入口](../09_archive/README.md#qa-historical-process-failure-review-20261009)；首批歸檔判定見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)，R029 成對歸檔與 hash 見 [Entry 098](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)，取消 QA 的當次範圍與 SHA 見 [Entry 104](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-104)。
 
 ## 閱讀與歸檔規則
 

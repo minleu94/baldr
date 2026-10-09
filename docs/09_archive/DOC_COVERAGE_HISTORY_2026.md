@@ -885,3 +885,16 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/06_qa/SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14.md` | [9/14 排程與週資料受託審查原文](SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14_HISTORY.md) | 2,782 / `B6F80C08F8C516958C8564491DB667105678C8EFDECDC592C75041E18020C0B3` | 2,782 / `B6F80C08F8C516958C8564491DB667105678C8EFDECDC592C75041E18020C0B3` |
 
 歷史 Catalog 連結仍可經原 QA 路徑導引到達原文。較新的 scheduler 記錄不會改寫 9/14 的失敗與限制；目前狀態以 Snapshot／近期排程 QA 為準。
+
+<a id="coverage-entry-104"></a>
+## 2026-10-09 歸檔 9/30 唯讀服務合作式取消 QA
+
+此文件是 2026-09-30 的唯讀服務取消與 repository contract 驗證收據。原始報告分別記錄 cancellation／repository contract suites 19 passed，以及其他 service contracts 125 passed、1 failed；失敗是當時 `test_workbench_source_service_reads_real_read_only_sources` 的 fixture 與 strict legacy reader 契約不符，沒有放寬 fail-closed 檢查。V5 readability acceptance 收據另記錄該測試採用精準 seeded portfolio alert 契約後的通過結果；此處保留兩份日期與範圍，不把 9/30 報告改寫為全綠，也不以舊結果宣稱目前 pytest 狀態。
+
+原報告中的驗證 logs 位於 ignored `output/qa/ui_shutdown_20260930/`，未隨 repository 封存。唯讀連線合作式取消與回歸契約仍由 `app_module/sqlite_read_only.py`、`tests/test_read_only_service_cancellation.py` 承載；歸檔只移動日期化報告，不改程式、測試、正式資料或 raw output。精確檔名的兩個 inbound links 都在歷史 Catalog／Index，原 QA 路徑 stub 保持可達；目前沒有程式、測試或 manifest 固定讀取該 Markdown 路徑。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md` | [唯讀服務合作式取消 QA 原文](READ_ONLY_SERVICE_CANCELLATION_QA_20260930.md) | 1,839 / `22E6A124C41D61B24C07C6B9467965B58B6B55FB4E1F91B31F1DA53A59A744CD` | 1,839 / `22E6A124C41D61B24C07C6B9467965B58B6B55FB4E1F91B31F1DA53A59A744CD` |
+
+現況回到當前程式與測試契約；ignored raw logs 不在乾淨 checkout 中，不能宣稱本次歸檔後仍可重現原執行輸出。

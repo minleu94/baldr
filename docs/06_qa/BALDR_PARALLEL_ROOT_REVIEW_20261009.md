@@ -595,3 +595,52 @@ P01 v3 root獨立audit探針pass：已精確傳EXPECTED_PYTHON時audit四欄str/
 
 - Root 讀 controller 的三角色 snapshot／worker parentchain 接線：使用固定 parentchain v3 helper，收實際 supervisor_identity_before，完整歷史須有真三角色完整 snapshot；不以 stale PID 當完成。尚未凍結或執行 native。
 - 初審發現每 0.05 秒保存一次 snapshot、超過 512 即 fail，可能約 25.6 秒便被診斷容量中止。已要求 owner 對照操作 deadline，必要時採有界首尾或變化紀錄並保存完整計數，不能讓診斷容量縮短完整 1000 檔操作；process identity/history 判斷仍須維持。final manifest 必須更新舊 v4 schema／controller pin，先測試再審。
+
+### v5 有界診斷與 H7 接縫斷言讀回
+
+- Root 直接讀 v5 接線：每次 PID 身分仍驗證，診斷改為最近 64 筆、總筆數與 SHA-256 commitment，不再因 512 筆上限提前中止；commitment 無法還原丟棄內容，不能宣稱完整原始採樣可重建。已要求完整角色紀錄、首個完整 snapshot 與錯誤樣本另保存，並補真 fixed v3 helper 的 v5 adapter 正負例。候選仍 WIP，未授 native。
+- Root 讀 H7 新 E seam test，包含 loader/install 各一次、installer 還原早於 binding、market operation 真 guard connection、router finish 兩 alias 同 guard、terminal proof 後還原 builtin 等斷言；這是 source 範圍確認，尚非 final 測試通過。
+- Root 讀 H7 static_preflight_native_07 原收據：exit1 對應 h7_alias_binding_not_after_fixed_installer_call，fixed pins 等其他項通過。Owner 正修 checker 字串誤命中函式名稱，改用 AST 分辨真正 installer 呼叫；原失敗收據保留，Main 未啟動。
+
+### v5 真接線負例與 H7 terminal 呼叫核對
+
+- Root 讀 v5 新三角色／worker chain 測試，發現 synthetic worker.grandparent_supervisor 與 expected supervisor 共用 dict；deepcopy 整組仍保留 alias，變異可能同步污染預期值。已要求分離來源，owner 回報以獨立副本修正且 9 項通過；待 final freeze 後 Root 獨立重驗，不以 owner 回報替代驗收。
+- Root 直接核 H7 child 888–925：getattr(router, verify_terminal) 經 callable 核驗後實際呼叫區域 verify_terminal()，再核 market snapshot、H20 permits/readers、keeper 與真 shutdown。舊 static 的 router.verify_terminal 字串不是此接線的正確識別；已要求 AST 檢查真呼叫，而非只接受名字存在。尚未授 Main。
+
+### H7 前置檢查通過與回歸失敗接續
+
+- Root 直接讀 static_preflight_native_09：passed、7 項 checks 全真。讀 candidate diff，loader 只包裝 installer；固定 caller 成功 install 後恢復原 installer 身分，再綁兩個 guard aliases，terminal proof 才允許還原。此仍非 Main 下鑽證據。
+- Owner 回報五檔回歸 34 passed／2 failed：舊精確 inventory 尚預期 11 而 H7 為 13；真 E callsite fixture 沿用 H7 環境 root，遭 E 精確 marker 拒絕。已要求只修 test context／exact inventory，保留缺件、多餘檔案拒絕，finally 還原環境；不放寬 runtime root、不改固定 E。原 log/JUnit 保留，final freeze 後 Root 重驗。
+
+### P01 v5 fixed 中央重驗與完整讀取續驗授權
+
+- Root native 獨立純測 10 passed／0.64 秒／exit0，JUnit root_v5_contract_20261009_a.xml。實算 controller 765a194dc43ce8169761ac39a375ba50d28d7cec143d577d019b5fd810067251、manifest 1b9f160a5222825cee2d6fc29522653bf82140f57c5717f7bc0b5b6ca583a9c7、test e8e0dfaa129f1bc130f3f96b30d0e589b0046e737bc4a25e7f7bfd13a11ebe95 與 owner freeze 一致。
+- Root 讀 v4→v5 diff 的實際父鏈、Job 三角色讀回、逐次 sampler／完整 history、child 與 actual Job 身分比較。授新 static-input preflight 通過、來源/store/pins 未變更後 ONE 完整1000 exact-read；600 秒總期限、cleanup10、reserve50、精確三角色 cap3／no breakaway、禁止原D資料與網路／SQLite／producer維持。owner持有唯一handle至terminal，不重啟。
+- 純測不是 runtime 接受。完整讀取後仍須三操作30samples效能，不以10 tests或exact-read取代原 p95 gate；Main／新EXE／真人驗收尚未通過。
+
+### F02 D helper 替換中央初審
+
+- Root 讀新 D install／restore／finally source：只替換精確 imported test helper，核 source/code/globals 與 renderer 身分，還原捕獲 module 不覆蓋 foreign registry；primary 與 cleanup 同時失敗以 group 保留兩者。尚未凍結，不授完整查詢。
+- 已要求補 module registry drift 拒絕且保留 foreign registry、entrypoint primary 加 restore failure 組合測試；既有測試含短路徑逐欄 parity、306 子路徑、junction、callable drift 與 source-code 拒絕。Owner 自測發現新增 helper SHA 常數筆誤，原 helper／fixed target 未變，失敗封套保留後僅修 D 常數。
+
+### P01 v5 真完整讀取 terminal／serializer 缺陷
+
+- Root 直接讀唯一 attempt C:/t/p01cur_rd_d42940bf11 的 child_result 與 native log：exit1／failed_preserved_attempt，來源與store before/after unchanged、Job cleanup completed/empty。Child guard denied_write/network/sqlite/subprocess 均0。full-population query matching_count=1000；尚未完成分頁驗證。
+- Raw traceback 指 controller1739 的 page.to_dict() AttributeError。Root 核 pinned d12 query1352：ReadSelectionPage 是 frozen slots DTO，公開 selection/page metadata 與內部 page，沒有 to_dict。已要求新 v6 QA serializer 按真DTO明示封套，保存完整內頁row/query identity及explicit-empty語義，原v5／產品不改；先真DTO測試、diff/pins，再審新native，不把1000matching當20pages已驗。
+- Root 同時核固定 E router595先捕 base_guard_connect、716後捕 scoped runtime_guard_connect，兩者不必同物件；H7 觀察斷言應驗 binding 對baseguard及outer aliases／finish回base，不將runtimeguard錯當base。僅修QA test，固定E不變。
+
+### H7 seam 終態證據範圍與 v6 serializer 核對
+
+- Root 直接讀 H7 diagnostic02：guard identity 布林已符合，接續被 sqlite_owner_terminal_proof_invalid 拒絕。固定 E router 初值 _main_shutdown_complete=False，真 Main shutdown 路徑才設True；E-only seam 不可憑空當 Main 終態。已要求 owner 查各 proof 項，不塞假shutdown flag、不降低 H7 Main proof；E-only若用獨立終態證據須明列作用範圍及Main欠缺拒絕負例。
+- Root 讀 pinned d12 內層 DailyMarketTechnicalUniverseV4Page.to_dict，具query、counts、頁面與完整row序列化；v6可明示ReadSelectionPage envelope再帶inner payload，explicit-empty 保持null。owner已確認僅QA假設錯誤，正準備真DTO正／empty／tamper tests與固定候選；未授第二native。
+
+### v5 分頁範圍中央補查與 H7 計數校正
+
+- Root 再讀 v5 worker1739後，發現 counts／processed_segment_count／query／is_complete 也錯讀wrapper而非inner page；v6需完整適配真DTO，不僅修to_dict。原v5只讀page0並驗page_count20、selection含S00256，不能宣稱20頁或跨段row已實讀。已要求v6遍歷20頁各50rows，精確ordered1000代碼與真S00256 row，全頁時長與page0測量分開；不允新增SQL／producer，待diff/tests/freeze再審native。
+- H7 owner核固定E private_build_connector走raw private connector，D9 guard sqlite_connections=0符合隔離路徑。Root撤回先前要求該counter>0的錯誤測試條件；改以實際private operation counts／marker rows／terminal cleanup核連通，sourceSQL0與未知路由拒絕維持。這仍是E seam，不是Main接受。
+
+### F02 D fixed 長路徑中央重驗
+
+- Root 重算 supervisor18682415255318eb70e9ebecba2f0a891181bef02923b8370c11686638aed845／test982ff43fae69065204e998ef829b6a10dc2985f84d55fa04f423c5b52482bd66與freeze一致。第一次錯傳C:/t作fixture parent，owned-directory檢查即拒絕，未進fixture；拒絕紀錄保存，不弱化guard。
+- 改正為工具自有QA parent後，Root native獨立exit0，root_selftest_20261009_a/receipt.json：short parity、306leaf成功／舊helper WinError3、junction拒絕、primary與cleanup保留、foreign registry不覆蓋、原函式還原及sourcepins起訖相同。SQL／producer／target-entry／query0，並非完整查詢接受。
+- D仍指向已有C失敗attempt的targetroot；已要求新E僅retarget到全新同SHA fixedtarget，先最小diff/manifest與prelaunch。完整22cases加reopen不縮，尚未授新fullquery，不重跑有效provider或guard-only。

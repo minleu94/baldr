@@ -418,11 +418,13 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 
 - [V1.5 Data Credibility closeout](V1_5_DATA_CREDIBILITY_CLOSEOUT_2026_07_04.md)
 - [V1.6 Cross-sectional Factor Pipeline closeout](V1_6_CROSS_SECTIONAL_FACTOR_PIPELINE_CLOSEOUT_2026_07_05.md)
+- [V1.6 Cross-sectional Factor Pipeline implementation plan（原 checklist 0/23）](superpowers/plans/2026-07-05-v1-6-cross-sectional-factor-pipeline.md) · [design spec](superpowers/specs/2026-07-05-v1-6-cross-sectional-factor-pipeline-design.md)
 - [V1.7 Negative Evidence closeout](V1_7_NEGATIVE_EVIDENCE_CLOSEOUT_2026_07_05.md)
 - [V1.8 Portfolio Sandbox closeout](V1_8_PORTFOLIO_SANDBOX_CLOSEOUT_2026_07_05.md)
 - [V1.8 Portfolio Sandbox implementation plan（原 checklist 2/18 已勾）](superpowers/plans/2026-07-05-v1-8-portfolio-sandbox.md) · [design spec](superpowers/specs/2026-07-05-v1-8-portfolio-sandbox-design.md)
 
 原 plan checklist 狀態保留；QA closeout 另記錄 39 項測試通過。兩者不代表投資有效性或正式推薦／券商整合。
+- V1.6 原 plan checklist 0/23；closeout QA 獨立記錄 15 項工程測試通過。QA 不代表原 plan 完成，也不代表 ScoringEngine 接入、外部資料 ingestion、production scheduler 或投資有效性。
 - [V1.9 Read-only Agent MCP closeout](V1_9_READ_ONLY_AGENT_MCP_CLOSEOUT_2026_07_06.md)
 - [V1 Release checklist](V1_RELEASE_CHECKLIST_2026_06_30.md)
 - [V2.0 Workbench Phase 1 closeout](V2_0_WORKBENCH_PHASE1_CLOSEOUT_2026_07_06.md)

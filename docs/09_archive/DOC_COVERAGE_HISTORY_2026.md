@@ -1597,3 +1597,17 @@ Windows 工作樹原件與 Archive 副本均為 CRLF。Git 將換行正規化為
 原 implementation plan 共 18 個 checkbox，其中 2 個已勾、16 個未勾。配套 [V1.8 QA closeout](V1_8_PORTFOLIO_SANDBOX_CLOSEOUT_2026_07_05.md) 另記錄 service／virtual trace／inspection CLI 等交付與 39 項測試通過。兩份文件的證據邊界不同，本批不替原 plan 補勾；QA 工程測試不等於投資有效性、Portfolio optimizer、UI、券商執行或 production readiness。
 
 精確檔名引用盤點找到目前 Superpowers 主題導覽、Archive README、plan/spec manifest、歷史 Catalog／Index 與 plan 內自我引用；未找到程式、測試、腳本、排程或設定把這兩個 Markdown 路徑當成 consumer。歷史 Catalog／Index 的舊路徑由相容導引承接，沒有改寫歷史快照。Superpowers README 的 Portfolio／Watchlist 導覽、Archive README 與 manifest 已指向新位置並保留 QA 與原 checklist 判讀。DOC_COVERAGE_MAP 的權威邊界未變，故不修改 Map、Snapshot、Manual 或 dirty 的 DOCUMENTATION_INDEX。 Archive 兩份原件的 EOF 空白行為來源原文的一部分並照原 bytes 保留；staged `git diff --check` 僅提示這兩個 preserved EOF blank lines，沒有其他 whitespace 診斷。
+
+<a id="coverage-entry-157"></a>
+## 2026-10-09 封存 V1.6 Cross-sectional Factor Pipeline plan/spec
+
+將 V1.6 Cross-sectional Factor Pipeline 的 implementation plan 與 design spec 原文移至 `docs/09_archive/superpowers/{plans,specs}/`；來源原路徑改為相容導引，舊引用仍能前往封存原文。兩份來源在本批開始前均為 tracked／clean，Archive 目的地原先不存在。封存原件逐位元組保留來源內容與核取狀態。
+
+| 原路徑 | Archive 原文 | 原件 bytes／SHA-256 | Archive bytes／SHA-256 |
+|---|---|---:|---:|
+| [`docs/superpowers/plans/2026-07-05-v1-6-cross-sectional-factor-pipeline.md`](../superpowers/plans/2026-07-05-v1-6-cross-sectional-factor-pipeline.md) | [`2026-07-05-v1-6-cross-sectional-factor-pipeline.md`](superpowers/plans/2026-07-05-v1-6-cross-sectional-factor-pipeline.md) | 12,687 / `ccea84b37a9c4e6dc7f9a000673c230162435d44a37df1490e3d70aaf6aa14ae` | 12,687 / `ccea84b37a9c4e6dc7f9a000673c230162435d44a37df1490e3d70aaf6aa14ae` |
+| [`docs/superpowers/specs/2026-07-05-v1-6-cross-sectional-factor-pipeline-design.md`](../superpowers/specs/2026-07-05-v1-6-cross-sectional-factor-pipeline-design.md) | [`2026-07-05-v1-6-cross-sectional-factor-pipeline-design.md`](superpowers/specs/2026-07-05-v1-6-cross-sectional-factor-pipeline-design.md) | 7,669 / `f0717e8a109fd4a23a69f9aec917f72a97bd8fd30c72d020c8369e4565f28c37` | 7,669 / `f0717e8a109fd4a23a69f9aec917f72a97bd8fd30c72d020c8369e4565f28c37` |
+
+implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_SECTIONAL_FACTOR_PIPELINE_CLOSEOUT_2026_07_05.md) 獨立記錄 2026-07-05 有 15 項工程測試通過；不替原 plan 補勾，也不把工程測試擴張為 ScoringEngine 接入、推薦權重變更、外部資料 ingestion、production scheduler 或投資有效性。現況與優先序仍以 Snapshot／Roadmap 為準。
+
+精確檔名搜尋在 source plan/spec 以外未找到程式、測試、腳本、排程或設定 consumer；歷史導覽與 manifest 已更新，其他舊路徑引用由相容導引承接。Superpowers README、Archive README、plan/spec manifest 與本 Coverage History 已同步；DOC_COVERAGE_MAP 權威邊界沒有改變，因此未修改 Map。dirty 的 `DOCUMENTATION_INDEX.md`、`PROJECT_SNAPSHOT.md` 與 `APPLICATION_MANUAL.md` 未觸碰。未執行程式測試；本批僅整理文件位置與導覽。

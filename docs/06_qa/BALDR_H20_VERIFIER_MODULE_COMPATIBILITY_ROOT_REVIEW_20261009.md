@@ -33,3 +33,13 @@ Root 已實際對 `attempts/synthetic_main_case_contract_20261008_q/q_prelaunch_
 已授權 owner 只啟動一次此 exact q controller，並由 owner 追蹤原 handle 與保存程序清理、來源起訖、完整 stdout/stderr 及實際 Main 旅程結果。這是隔離合成執行授權，不是正式資料讀取或產品驗收通過。
 
 收據歷史證據欄的 `root_regression.log` 並非 root 產生的檔案；實際複驗證據是工具回傳的 `13 passed in 0.70s`、exit 0。已要求 owner 在新 execution receipt 追加更正，不覆寫執行前 immutable 收據。
+
+## 原生 r 的實際結果與下一步
+
+q 在建立 case 前因 sandbox 對 `C:/` 的實體解析遭遇 WinError 5 而停止；沒有進入 preparer 或 Main。r 使用相同三檔的新封套，root 再核 34 項 pins 全數相符，且確認新 case 不存在後，授權一次原生隔離執行。有效 r v2 收據 SHA-256 為 `0eeb7041cc2252643bc90b0f0cf37834fcb684f870ec4181c60d8db9a8e50dd3`；原誤寫為路徑字串的收據保留，不能作驗證證據。
+
+r 的 controller/child 已以 exit 1 終止。Root 直接閱讀 child 輸出與 `C:/t/h20dual_synthetic_main_case_contract_20261008_r/case/output/synthetic_main_result.json`：完整模組 verifier 通過，23 項模組保留並核對，`ui_qt.main` 實際來源 SHA 正確，清單與相容 helper 還原。但這只是 Main 模組載入，尚未開始名單、下鑽、返回或收藏旅程。
+
+首錯為 market bridge 的 `nonempty_wal_required`；後置 `synthetic_h20_operation_count_not_three` 是該次未建立操作所衍生的失敗，不能取代首錯。合成來源 copy 與 SQLite 連線計數為零。原始 guard 另記錄一次 urllib3 本機 loopback 探測拒絕與三次 platform devnull 寫入拒絕，不能宣稱所有 guard denial 為零。
+
+Root 對照固定 preparer 發現：`_create_independent_market_fixture()` 未設定 WAL journal，commit/close 後唯讀核對，並明確要求 WAL/SHM 不存在。因此現有合成 market fixture 與非空 WAL bridge 契約不相容。下一步由 owner 建立新的 fixture 候選與真實 WAL 生命週期證據，核對 DB/WAL/SHM 三元來源、持活連線、checkpoint 及程序清理，不放寬原 helper 或偽造 WAL bytes；修正經審查前不啟動下一次 Main。

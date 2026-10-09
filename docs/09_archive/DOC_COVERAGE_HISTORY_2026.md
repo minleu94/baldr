@@ -1411,3 +1411,18 @@ Full App healthcheck 與現行 QA coverage mapping 仍將 BACKTEST-ISSUE-013／0
 | 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
 |---|---|---:|
 | [`docs/superpowers/plans/2026-05-19-optimize-ui-qt-charts.md`](../superpowers/plans/2026-05-19-optimize-ui-qt-charts.md) | [`2026-05-19-optimize-ui-qt-charts.md`](superpowers/plans/2026-05-19-optimize-ui-qt-charts.md) | 2,260 / `63edaf565c22b7583e2ed782b3d0274091901b146daa238131969fd23a251c33` |
+
+<a id="coverage-entry-145"></a>
+## 2026-10-09 封存 Healthcheck Batch 6 Regime／Research Lab 歷史 plan
+
+將 `docs/superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md` 逐位元組複製至 `docs/09_archive/superpowers/plans/`；原路徑改為相容導引。來源與 Archive 原文均為 12,508 bytes，SHA-256 `82a96e5a0756a2de6d18377cf3dca8fbb594fab3ec2278fe9ddef7ba6f8c3e90`，封存副本已在覆寫原路徑前核對一致。
+
+計畫 Execution Log 記錄 Task 1–4 執行及 Research Lab 首次載入、推薦回放／策略研究提示、Regime 文案與文件 closeout。Verification Result 記錄當時的 25／2／6 個 focused tests、compile 與 financial float guard、35 個 Update-view tests、QA 24 passed／0 failed／4 skipped，以及 mypy 214 個 source files clean。原文同時保留 12 個 TDD／verification 步驟未勾；這些歷史結果不證明目前版本已重跑，也不將人工驗收清單補勾。
+
+`MARKET-ISSUE-002` 最後可追到的 Full App healthcheck 記錄是「已修正待驗證／待使用者驗證」；本次未找到較新的 issue-specific 使用者重測 closeout。這是最後記錄而非目前即時狀態，需依當前 UI／Manual 重新確認，不能宣稱已通過或仍未修正。`UPDATE-ISSUE-013／014` 在舊計畫中列為 scope 外後續設計，不因此建立目前優先序或授權。
+
+精確檔名搜尋找到 plan/spec manifest 與固定歷史 Documentation Index／Catalog；未找到程式、測試、腳本、設定或排程中的固定路徑 consumer。來源計畫無內部相對 Markdown 連結；相容導引承接舊索引連結。`docs/superpowers/README.md`、Archive README 與 manifest 已補入口。`DOCUMENTATION_INDEX.md` 工作樹版本有其他進行中修改，本批未觸碰。現行 Regime 架構界線看 [system architecture](../01_architecture/system_architecture.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，QA 原收據看 [Full App healthcheck](FULL_APP_HEALTHCHECK_2026_06_16.md)，目前狀態與優先序看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)。`DOC_COVERAGE_MAP.md` 的權威邊界與同步規則未變，因此不修改 Map；逐批來源／目的地、原始效力、SHA 與替代入口由本 Entry、[Archive README](README.md#2026-10-09-healthcheck-batch6-regime-research-lab-plan)、[Superpowers README](../superpowers/README.md) 與 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 追蹤。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
+|---|---|---:|
+| [`docs/superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md`](../superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md) | [`2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md`](superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md) | 12,508 / `82a96e5a0756a2de6d18377cf3dca8fbb594fab3ec2278fe9ddef7ba6f8c3e90` |

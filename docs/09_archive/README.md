@@ -619,6 +619,13 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 - [TASK_LOOP_06_HANDOFF.md](TASK_LOOP_06_HANDOFF.md)
 - [TASK_LOOP_07_HANDOFF.md](TASK_LOOP_07_HANDOFF.md)
 
+<a id="2026-10-09-healthcheck-batch6-regime-research-lab-plan"></a>
+## 2026-10-09 Healthcheck Batch 6 Regime／Research Lab plan
+
+- [2026-06-23 Batch 6 plan 原文](superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md) 已移至 Archive；[原路徑](../superpowers/plans/2026-06-23-healthcheck-batch6-closeout-regime-researchlab.md)保留相容導引。原 Execution Log／Verification Result 記錄 Task 1–4 與當時的測試結果；12 個 TDD／verification 步驟仍未勾，原文照存，不推定整體或人工驗收完成。
+- `MARKET-ISSUE-002` 最後一筆 Full App healthcheck 記錄仍為「已修正待驗證／待使用者驗證」；本次未找到較新的 issue-specific 使用者重測 closeout。此為歷史狀態，今天的實際判讀應回到 [Application Manual](../07_guides/APPLICATION_MANUAL.md)、[system architecture](../01_architecture/system_architecture.md) 與目前 QA，不以舊 plan 建立新優先序。
+- 原件 bytes／SHA、引用查核、狀態差異及替代入口見 [Coverage History Entry 145](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-145)；原路徑與 Archive 位置見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
 <a id="2026-10-09-backtest-chart-plan"></a>
 ## 2026-10-09 回測 fast renderer 歷史 plan
 

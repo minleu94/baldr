@@ -1,5 +1,16 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 封存早期 Recommendation／Update Tab QA
+
+將四份早期產品 Tab QA 問題盤點與摘要移至 Archive。內容引用舊 `ui_app` 路徑，含當時的零推薦結果、測試數字及待覆驗事項，不能作為目前實作或驗收結論。原文逐位元組保留；QA 原路徑留下短導引，QA README 改連歷史專區，Archive README 說明現況判讀界線。歷史 troubleshooting 的單一引用改為直達 Archive。現行操作與排錯看 Application Manual，測試範圍看 Feature-to-test routing matrix。DOCUMENTATION_INDEX 目前有其他工作未提交的修改，本批未觸碰該檔；舊路徑仍由相容導引承接。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/06_qa/QA_RECOMMENDATION_TAB_ISSUES.md | [QA_RECOMMENDATION_TAB_ISSUES.md](../09_archive/QA_RECOMMENDATION_TAB_ISSUES.md) | 6,942 / `4B5C1A70EBEBBDCF3BE21B2601A95FA84BAFDF899C6E9D217DAF8E193512B965` | 6,942 / `4B5C1A70EBEBBDCF3BE21B2601A95FA84BAFDF899C6E9D217DAF8E193512B965` |
+| docs/06_qa/QA_RECOMMENDATION_TAB_SUMMARY.md | [QA_RECOMMENDATION_TAB_SUMMARY.md](../09_archive/QA_RECOMMENDATION_TAB_SUMMARY.md) | 5,256 / `2683F9C83789DAC3C47C97DA9C304469F1F65DC9FD2FF062609F4DA6A627CC45` | 5,256 / `2683F9C83789DAC3C47C97DA9C304469F1F65DC9FD2FF062609F4DA6A627CC45` |
+| docs/06_qa/QA_UPDATE_TAB_ISSUES.md | [QA_UPDATE_TAB_ISSUES.md](../09_archive/QA_UPDATE_TAB_ISSUES.md) | 6,381 / `9DA7428730F390660A569ACB9DECA9D4E3318A3AB6DB59C7072A822EA8105412` | 6,381 / `9DA7428730F390660A569ACB9DECA9D4E3318A3AB6DB59C7072A822EA8105412` |
+| docs/06_qa/QA_UPDATE_TAB_SUMMARY.md | [QA_UPDATE_TAB_SUMMARY.md](../09_archive/QA_UPDATE_TAB_SUMMARY.md) | 4,825 / `F2B669DA95A07B71506BB91D3637058BB56361736BE1457AE52FBEA1E1AF89A5` | 4,825 / `F2B669DA95A07B71506BB91D3637058BB56361736BE1457AE52FBEA1E1AF89A5` |
+
 ## 2026-10-08 封存舊版每日更新故障排除指南
 
 將包含過時 log／資料路徑、CLI 命令及可能資料清理建議的每日更新故障排除指南原文保留於 archive；舊路徑改為短導引，指向目前操作手冊第 4 節（更新操作與安全限制）及第 12 節（常見問題）。README、快速參考、每日更新指南與資料獲取文件的現行入口已改指 Manual；每日更新詳細指南則明確標示早期 CSV／CLI 範例為歷史參考，保留 2026 freshness／隔離補充與券商分點說明。未執行舊命令；封存副本只重設兩個跨目錄相對連結並清除尾端空白。

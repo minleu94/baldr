@@ -96,6 +96,13 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - **Healthcheck／PIT／project audit**：[Full App agent closeout](FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md)、[PIT historical data repair](PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md)、[PROJECT_SNAPSHOT audit](PROJECT_SNAPSHOT_AUDIT_2026_07_12.md)、[shim removal audit](SHIM_LEGACY_REMOVAL_AUDIT_2026-07-12.md)。目前測試覆蓋看 [Full App coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)，目前狀態看 Snapshot。
 - **文件治理／執行藍圖**：[Gemini documentation adjudication](GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md)、[Superpowers date audit](SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md)、[system execution blueprint closeout](SYSTEM_EXECUTION_BLUEPRINT_CLOSEOUT_2026_07_15.md)。目前文檔生命週期看 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md)，目前架構看 [system_architecture](../01_architecture/system_architecture.md)。原 QA 路徑保留短轉址。
 
+### 2026-10-08 Early Recommendation and Update Tab QA
+
+四份早期產品 QA 問題盤點與摘要記錄推薦分析、數據更新 Tab 的舊程式路徑、測試快照及當時待覆驗事項。推薦分析摘要曾記錄所有測試配置皆回傳 0 筆推薦，因此不能把它解讀成目前已驗收或已修復；數據更新摘要中的測試數字也只屬當時結果。現行操作與排錯看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，測試範圍看 [Feature-to-test routing matrix](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)。四份原文逐位元組保留，QA 原路徑提供相容導引。
+
+- [Recommendation Tab issues](QA_RECOMMENDATION_TAB_ISSUES.md) · [Recommendation Tab summary](QA_RECOMMENDATION_TAB_SUMMARY.md)
+- [Update Tab issues](QA_UPDATE_TAB_ISSUES.md) · [Update Tab summary](QA_UPDATE_TAB_SUMMARY.md)
+
 ### 2026-10-08 Source, clock and probability-learning audits
 
 以下文件保存已完成的 2026-09-15／16 discovery、read-only source design 與有界機率學習 audit。來源／caller 的後續驗收仍留在 QA；clock 與 ML 原文中的日期狀態及當時建議只供追溯，現況回到 Snapshot、Manual 與 QA 主題地圖。原 QA 路徑保留短轉址。

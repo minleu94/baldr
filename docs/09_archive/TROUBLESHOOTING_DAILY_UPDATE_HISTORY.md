@@ -415,7 +415,7 @@ print(f"元數據目錄: {config.meta_data_dir}")
 ## 📚 相關文檔
 
 - **[如何更新每日數據](../03_data/HOW_TO_UPDATE_DAILY_DATA.md)** - 更新流程說明
-- **[數據更新 Tab QA 問題](../06_qa/QA_UPDATE_TAB_ISSUES.md)** - 已知問題清單
+- **[數據更新 Tab QA 問題（歷史）](QA_UPDATE_TAB_ISSUES.md)** - 早期問題盤點；現行操作與排錯請看 Application Manual。
 - **[數據獲取邏輯](../03_data/DATA_FETCHING_LOGIC.md)** - API 使用說明
 - **[數據更新 Tab 驗證腳本](../../scripts/qa_validate_update_tab.py)** - 自動驗證腳本
 

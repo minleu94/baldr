@@ -1002,6 +1002,14 @@ Task Loop 01–07 的個別 bounded 工程 handoff 已由 08-B 中央整合收�
 |---|---|---|---|
 | `docs/01_architecture/system_architecture.md`：9/30 排程資料流與 lane 邊界歷史切片 | [SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md) | 1,819 / `2387859BF9C521B2DEA750984AC42813789360F4D78A4CE016866486E9525F06` | 1,819 / `2387859BF9C521B2DEA750984AC42813789360F4D78A4CE016866486E9525F06` |
 
+## 2026-10-08 歸檔 9/26 工作區分批提交驗證
+
+`WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926.md` 記錄特定 branch／dirty worktree 的 focused 驗證及本機暫存處置，不是 repository-wide pytest、正式資料或排程驗收。原文逐位元組移入 Archive，QA 舊路徑留短導引，歷史 Catalog 的連結可繼續解析；QA／Archive README 與 Coverage Map 同步。
+
+| 原路徑 | 歸檔路徑 | 原文 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/06_qa/WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926.md | [WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md](../09_archive/WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md) | 3,052 / `6631971283C47FBEAEEAACBFBE0D10920655C9814ABFC5AAF4A78B28A3289C27` | 3,052 / `6631971283C47FBEAEEAACBFBE0D10920655C9814ABFC5AAF4A78B28A3289C27` |
+
 ## 2026-10-08 精簡架構主文的 9/27 邊界／資源 lifecycle 記錄
 
 system_architecture 主文原 9/27 區塊的逐次 gate verdict、舊 attempt／hash、測試數與提交前快照移入既有[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)；舊兩個標題保留短導引。刪改前逐位元組切片為 5,213 bytes／SHA-256 `F461DB846416E016DAFC86B2979F19287B13D5687084F2DA552F9CD30561FDD3`；歸檔副本只把 R028 實作報告的相對連結改為 Archive 位置，切片為 5,232 bytes／SHA-256 `1BF065E4319DF5EBB9A363A7A8C3AB8B9C77AA1065D354B14D76ACA1D037A566`。TechnicalIndicatorJob 單一 orchestration owner、IndustryMapper provider injection／fail-closed 語意、DBManager connection close 與 ML app initialization 前置條件改留在架構第 4、8、11 節；R027 原 strict `INCONCLUSIVE` 與後續 versioned logical-time revision 分開保留。當期驗收依各自 QA，現況看 Snapshot；架構目錄與 Archive README 已同步。

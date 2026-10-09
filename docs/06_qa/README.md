@@ -74,6 +74,7 @@
 - **V4 9/8 Formal／ML／Ops handoffs（歷史）**：三份 owner handoff 已移入 [Archive 專區](../09_archive/README.md#2026-10-08-v4-next-handoff-history)；Formal bootstrap 的後續讀回見 [9/30 repair](SCHEDULER_FORMAL_BOOTSTRAP_REPAIR_20260930.md)，目前排程狀態看 Snapshot／近期 QA，操作看 Manual。
 - **V4 9/8 Data／Direct／Stock Research handoffs（歷史）**：三份詳細 handoff 已移至 [Archive 專區](../09_archive/README.md#2026-10-08-v4-data-direct-and-stock-research-handoff-history)；資料後續看 [10/03 closeout](FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md)，個股報告操作看 Manual／H20 QA，ML／Direct 狀態看 Snapshot。
 - **V4 9/8 工作區清理（歷史）**：[當日檔案盤點](../09_archive/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)與[清理收尾](../09_archive/V4_WORKSPACE_CLEANUP_CLOSEOUT.md)已移入 Archive；本機 `output/` 的逐檔 manifest 沒有提交，不隨封存文件提供。當日容量不是目前 inventory，清理原始 QA 暫存也沒有 bytes backup。
+- **9/26 工作區分批提交驗證（歷史）**：[完整收據](../09_archive/WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md)保留當日分支、focused 測試與工具處置；該次結果不是 repository-wide pytest、正式資料或排程驗收，也不代表目前工作區狀態。
 - **Post-V1 Evidence Pipeline（2026-07，歷史）**：當時的 event store、forward outcome、review 與 scheduler 收據已集中於 [Archive 專區](../09_archive/README.md#post-v1-evidence-pipeline-qa)；目前狀態看 Snapshot，操作看 Manual 與最新排程 QA。
 - **Broker Flow 效能歷史收據（2026-07）**：[原始 dashboard failed gate → 後續 semantics scoped pass](../09_archive/README.md#2026-07-broker-flow-and-ui-closeout)；兩份收據保留各自的母體、測量與 gate 範圍。
 

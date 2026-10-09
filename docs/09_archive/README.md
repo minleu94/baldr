@@ -162,6 +162,12 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [工作區檔案盤點](WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)
 - [V4 工作區清理收尾](V4_WORKSPACE_CLEANUP_CLOSEOUT.md)
 
+### 2026-10-08 workspace commit validation history
+
+2026-09-26 的分批提交驗證是特定 HEAD／dirty worktree 的工程快照；報告明示 focused routes 和廣域 mypy 結果，不代表全 repository pytest、正式資料或排程驗收。root `.tmp_*`／`.obsidian` 忽略規則與 fixture 調整保留為當日處置證據；現況以 Snapshot、最新 Git state 與 git exclusions 為準。歷史 Catalog 的 QA 原路徑由短導引承接。
+
+- [2026-09-26 工作區分批提交驗證](WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md)
+
 - **歷史 Phase／SOP 原文（2026-10-08）**：[Phase 2 architecture](PHASE2_ARCHITECTURE.md)、[Phase 2 strategy library](PHASE2_STRATEGY_LIBRARY.md)、[Phase 2A data source audit](PHASE_2A_DATA_SOURCES_AUDIT.md)、[Phase 2.5 completion](PHASE2_5_COMPLETION_STATUS.md)、[Phase 3.3b research design](PHASE3_3B_RESEARCH_DESIGN.md)、[Epic 2 architecture](EPIC2_MVP2_ARCHITECTURE_DESIGN.md)、[Epic 2 checklist](EPIC2_MVP2_IMPLEMENTATION_CHECKLIST.md)、[Phase 4 portfolio design](PHASE4_PORTFOLIO_DESIGN.md)、[Phase 4 startup summary](PHASE4_STARTUP_SUMMARY.md)、[研究迭代 Playbook](phase3_5_research/RESEARCH_ITERATION_PLAYBOOK.md)、[指標判讀優先順序](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md)、[Benchmark 呈現](phase3_5_research/BENCHMARK_PRESENTATION.md)、[Phase 4 進入條件](phase3_5_research/PHASE4_ENTRY_CRITERIA.md)。原 `docs/05_phases/` 路徑保留轉址，原文未改寫；目前狀態不由歷史 Phase 文件判讀。
 
 ### Post-V1 Evidence Pipeline QA

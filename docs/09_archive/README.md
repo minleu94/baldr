@@ -250,6 +250,16 @@ Factor Layer v1 的 [設計規格](superpowers/specs/2026-06-14-month-3-factor-l
 ### 2026-10-08 Safe Refactor continuation plan
 
 [Safe Refactor continuation plan 原文](superpowers/plans/2026-07-11-safe-refactor-continuation.md) 已結案並移至 Archive；[舊路徑](../superpowers/plans/2026-07-11-safe-refactor-continuation.md) 保留導引。核准、shim／legacy removal audit、release healthcheck 與測試收據見 [原始 QA audit](../06_qa/SHIM_LEGACY_REMOVAL_AUDIT_2026-07-12.md) 和 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；目前架構以 system architecture 為準。
+### 2026-10-08 Month 3 Portfolio Replay history
+
+Month 3 closure audit 與 8 份核取項目全完成、各有 implementation commit 的 Portfolio Replay 計畫原文已歸檔：
+
+- [Month 3 closure audit](superpowers/plans/2026-06-15-month3-closure-audit.md)
+- [Cash-constrained orders](superpowers/plans/2026-06-15-portfolio-replay-cash-constrained-orders.md)、[cash ledger](superpowers/plans/2026-06-15-portfolio-replay-cash-ledger.md)、[credibility manifest](superpowers/plans/2026-06-15-portfolio-replay-credibility-manifest.md)
+- [Execution costs](superpowers/plans/2026-06-15-portfolio-replay-execution-costs.md)、[gap-risk labels](superpowers/plans/2026-06-15-portfolio-replay-gap-risk-labels.md)、[liquidity gate](superpowers/plans/2026-06-15-portfolio-replay-liquidity-gate.md)
+- [Lot sizing](superpowers/plans/2026-06-15-portfolio-replay-lot-sizing.md)、[unfilled orders](superpowers/plans/2026-06-15-portfolio-replay-unfilled-orders.md)
+
+[Portfolio Replay weight/exposure plan](../superpowers/plans/2026-06-15-portfolio-replay-weight-exposure.md) 保留在原路徑，因尚有一個未勾選項目；本批不推定它已完成或仍在執行。Archive manifest 逐檔記錄來源路徑、commit、bytes 與 SHA。現況仍看 Snapshot、Architecture、Manual 與具名 QA.
 ## 2026-10-06 治理入口整理原文快照
 
 下列全文快照保存此次入口與狀態文案整理前的原始 tracked bytes；改寫後的目前入口仍以各自現行文件為準：

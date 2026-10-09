@@ -12,6 +12,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
+import sys
 import weakref
 from typing import Any, NoReturn, cast
 
@@ -19,6 +20,7 @@ from app_module.daily_market_technical_feature_snapshot_v4 import (
     DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_BYTES,
     DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_SCHEMA_V4,
     DailyMarketTechnicalFeatureSnapshotV4,
+    _rehydrate_snapshot_from_reader_issued_bytes,
 )
 from app_module.daily_market_technical_method_contract_v4 import (
     daily_market_technical_method_contract_v4_sha256,
@@ -168,6 +170,21 @@ class _VerifiedBatchSemanticProofV4:
     _seal: object = field(repr=False, compare=False)
 
 
+@dataclass(frozen=True, slots=True, eq=False, weakref_slot=True)
+class _P01SemanticRehydrationCapabilityV4:
+    """同一 reader-issued P01 session 的私有 typed 解碼能力。"""
+
+    _session_ref: weakref.ReferenceType[object] = field(repr=False, compare=False)
+    _session_owner_token: object = field(repr=False, compare=False)
+    read_session_identity_sha256: str
+    semantic_proof: _VerifiedBatchSemanticProofV4 = field(repr=False, compare=False)
+    reference_identity_sha256: str
+    _seal: object = field(repr=False, compare=False)
+    _reference_ref: weakref.ReferenceType[object] | None = field(
+        default=None, repr=False, compare=False
+    )
+
+
 @dataclass(frozen=True, slots=True, weakref_slot=True)
 class DailyMarketTechnicalBatchArtifactV4:
     """由 ``read_exact`` 驗證完成的不可變子批次保存結果。"""
@@ -194,7 +211,11 @@ class DailyMarketTechnicalBatchArtifactV4:
 
 
 _SEMANTIC_PROOF_SEAL = object()
+_P01_REHYDRATION_SEAL = object()
 _ISSUED_SEMANTIC_PROOFS: weakref.WeakSet[_VerifiedBatchSemanticProofV4] = weakref.WeakSet()
+_ISSUED_P01_REHYDRATION_CAPABILITIES: weakref.WeakSet[
+    _P01SemanticRehydrationCapabilityV4
+] = weakref.WeakSet()
 _ISSUED_BATCH_PROOFS: dict[
     int,
     tuple[
@@ -366,6 +387,188 @@ def _issue_semantic_proof(
     _ISSUED_SEMANTIC_PROOFS.add(proof)
     _ISSUED_BATCH_PROOFS[batch_identity] = (origin_ref, proof)
     return proof
+
+
+def _p01_rehydration_reference_identity(
+    reference: object,
+    proof: _VerifiedBatchSemanticProofV4,
+) -> str:
+    pinned = proof.manifest
+    segment_index = getattr(reference, "segment_index", None)
+    repository_output_root = getattr(reference, "repository_output_root", None)
+    manifest_path = getattr(reference, "manifest_path", None)
+    manifest_sha256 = getattr(reference, "manifest_sha256", None)
+    cohort_identity_sha256 = getattr(reference, "cohort_identity_sha256", None)
+    source_clock_identity_sha256 = getattr(
+        reference, "source_clock_identity_sha256", None
+    )
+    method_contract_sha256 = getattr(reference, "method_contract_sha256", None)
+    decision_date = getattr(reference, "decision_date", None)
+    if (
+        type(segment_index) is not int
+        or segment_index < 0
+        or not isinstance(repository_output_root, Path)
+        or not isinstance(manifest_path, Path)
+        or repository_output_root != pinned.repository_output_root
+        or manifest_path != pinned.manifest_path
+        or manifest_sha256 != pinned.manifest_sha256
+        or cohort_identity_sha256 != pinned.cohort_identity_sha256
+        or source_clock_identity_sha256 != pinned.source_clock_identity_sha256
+        or method_contract_sha256 != pinned.method_contract_sha256
+        or decision_date != pinned.decision_date
+        or getattr(reference, "semantic_proof", None) is not proof
+    ):
+        _fail("technical_snapshot_v4_p01_rehydration_reference_mismatch")
+    payload = {
+        "schema": "daily-market-technical-p01-rehydration-reference.v1",
+        "segment_index": segment_index,
+        "repository_output_root": str(repository_output_root),
+        "manifest_path": str(manifest_path),
+        "manifest_sha256": manifest_sha256,
+        "cohort_identity_sha256": cohort_identity_sha256,
+        "source_clock_identity_sha256": source_clock_identity_sha256,
+        "method_contract_sha256": method_contract_sha256,
+        "decision_date": decision_date.isoformat(),
+        "semantic_proof_identity_sha256": proof.identity_sha256,
+    }
+    return sha256_bytes(canonical_v4_json_bytes(payload))
+
+
+def _issue_p01_semantic_rehydration_capability(
+    *,
+    session: object,
+    reference: object,
+    proof: _VerifiedBatchSemanticProofV4,
+) -> _P01SemanticRehydrationCapabilityV4:
+    """只在已完成來源 metadata 綁定的 P01 session 上發行私有能力。"""
+
+    issued_proof = _verify_issued_semantic_proof(proof, require_live_origin=False)
+    metadata = getattr(session, "_source_metadata", None)
+    owner_token = getattr(session, "_source_metadata_token", None)
+    session_identity = getattr(session, "read_session_identity_sha256", None)
+    matcher = getattr(metadata, "matches_session", None)
+    query_module = sys.modules.get(
+        "app_module.daily_market_technical_universe_v4_query"
+    )
+    expected_session_type = getattr(
+        query_module, "DailyMarketTechnicalUniverseV4ReadSession", None
+    )
+    if (
+        expected_session_type is None
+        or type(session) is not expected_session_type
+        or metadata is None
+        or owner_token is None
+        or not callable(matcher)
+        or not matcher(session)
+        or getattr(metadata, "owner_token", None) is not owner_token
+        or type(session_identity) is not str
+        or not _SHA256_RE.fullmatch(session_identity)
+        or getattr(reference, "semantic_proof", None) is not issued_proof
+        or not any(
+            item is reference
+            for item in cast(Sequence[object], getattr(session, "_artifact_references", ()))
+        )
+    ):
+        _fail("technical_snapshot_v4_p01_rehydration_session_not_issued")
+    reference_identity = _p01_rehydration_reference_identity(reference, issued_proof)
+    try:
+        session_ref = weakref.ref(session)
+    except TypeError as exc:
+        raise DailyMarketTechnicalSnapshotV4RepositoryError(
+            "technical_snapshot_v4_p01_rehydration_session_not_weakrefable"
+        ) from exc
+    capability = _P01SemanticRehydrationCapabilityV4(
+        _session_ref=session_ref,
+        _session_owner_token=owner_token,
+        read_session_identity_sha256=session_identity,
+        semantic_proof=issued_proof,
+        reference_identity_sha256=reference_identity,
+        _seal=_P01_REHYDRATION_SEAL,
+    )
+    _ISSUED_P01_REHYDRATION_CAPABILITIES.add(capability)
+    return capability
+
+
+def _bind_p01_semantic_rehydration_reference(
+    *,
+    capability: _P01SemanticRehydrationCapabilityV4,
+    session: object,
+    original_reference: object,
+    issued_reference: object,
+    proof: _VerifiedBatchSemanticProofV4,
+) -> None:
+    """一次綁定 capability 最終發行的 reference 物件身分。"""
+
+    if (
+        type(capability) is not _P01SemanticRehydrationCapabilityV4
+        or capability not in _ISSUED_P01_REHYDRATION_CAPABILITIES
+        or capability._seal is not _P01_REHYDRATION_SEAL
+        or capability._reference_ref is not None
+        or capability._session_ref() is not session
+        or capability.semantic_proof is not proof
+        or getattr(issued_reference, "_rehydration_capability", None) is not capability
+        or getattr(original_reference, "semantic_proof", None) is not proof
+        or not any(
+            item is original_reference
+            for item in cast(Sequence[object], getattr(session, "_artifact_references", ()))
+        )
+        or _p01_rehydration_reference_identity(original_reference, proof)
+        != capability.reference_identity_sha256
+        or _p01_rehydration_reference_identity(issued_reference, proof)
+        != capability.reference_identity_sha256
+    ):
+        _fail("technical_snapshot_v4_p01_rehydration_binding_mismatch")
+    try:
+        issued_reference_ref = weakref.ref(issued_reference)
+    except TypeError as exc:
+        raise DailyMarketTechnicalSnapshotV4RepositoryError(
+            "technical_snapshot_v4_p01_rehydration_reference_not_weakrefable"
+        ) from exc
+    object.__setattr__(capability, "_reference_ref", issued_reference_ref)
+
+
+def _verify_p01_semantic_rehydration_capability(
+    *,
+    capability: object,
+    session: object,
+    reference: object,
+    proof: _VerifiedBatchSemanticProofV4,
+) -> _P01SemanticRehydrationCapabilityV4:
+    if type(capability) is not _P01SemanticRehydrationCapabilityV4:
+        _fail("technical_snapshot_v4_p01_rehydration_capability_invalid")
+    issued_capability = cast(_P01SemanticRehydrationCapabilityV4, capability)
+    if (
+        issued_capability not in _ISSUED_P01_REHYDRATION_CAPABILITIES
+        or issued_capability._seal is not _P01_REHYDRATION_SEAL
+        or issued_capability._session_ref() is not session
+        or issued_capability._reference_ref is None
+        or issued_capability._reference_ref() is not reference
+        or issued_capability.semantic_proof is not proof
+    ):
+        _fail("technical_snapshot_v4_p01_rehydration_capability_invalid")
+    metadata = getattr(session, "_source_metadata", None)
+    owner_token = getattr(session, "_source_metadata_token", None)
+    matcher = getattr(metadata, "matches_session", None)
+    session_identity = getattr(session, "read_session_identity_sha256", None)
+    if (
+        metadata is None
+        or owner_token is not issued_capability._session_owner_token
+        or getattr(metadata, "owner_token", None) is not owner_token
+        or not callable(matcher)
+        or not matcher(session)
+        or session_identity != issued_capability.read_session_identity_sha256
+        or getattr(reference, "_rehydration_capability", None) is not issued_capability
+        or getattr(reference, "semantic_proof", None) is not proof
+        or not any(
+            item is reference
+            for item in cast(Sequence[object], getattr(session, "_artifact_references", ()))
+        )
+        or _p01_rehydration_reference_identity(reference, proof)
+        != issued_capability.reference_identity_sha256
+    ):
+        _fail("technical_snapshot_v4_p01_rehydration_binding_mismatch")
+    _verify_issued_semantic_proof(proof, require_live_origin=False)
+    return issued_capability
 
 
 def _is_cancelled(cancel_callback: Callable[[], bool] | None) -> bool:
@@ -629,6 +832,50 @@ class DailyMarketTechnicalSnapshotV4Repository:
     ) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
         """fresh 核完整 batch bytes/layout，只重解碼明示選取的 snapshot。"""
 
+        return self._read_selected_exact_impl(
+            proof,
+            selected_stock_codes=selected_stock_codes,
+            cancel_callback=cancel_callback,
+            p01_session_context=None,
+        )
+
+    def _read_selected_exact_for_p01_session(
+        self,
+        proof: _VerifiedBatchSemanticProofV4,
+        *,
+        selected_stock_codes: Sequence[str],
+        cancel_callback: Callable[[], bool] | None,
+        session: object,
+        reference: object,
+        capability: object,
+    ) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
+        """P01 私有路徑；能力綁定同一已發行 session，不供一般 caller 選擇。"""
+
+        verified_capability = _verify_p01_semantic_rehydration_capability(
+            capability=capability,
+            session=session,
+            reference=reference,
+            proof=proof,
+        )
+        return self._read_selected_exact_impl(
+            proof,
+            selected_stock_codes=selected_stock_codes,
+            cancel_callback=cancel_callback,
+            p01_session_context=(verified_capability, session, reference),
+        )
+
+    def _read_selected_exact_impl(
+        self,
+        proof: _VerifiedBatchSemanticProofV4,
+        *,
+        selected_stock_codes: Sequence[str],
+        cancel_callback: Callable[[], bool] | None,
+        p01_session_context: tuple[
+            _P01SemanticRehydrationCapabilityV4, object, object
+        ] | None,
+    ) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
+        """共同 fresh-read 核心；一般 API 不會取得 P01 context。"""
+
         issued = _verify_issued_semantic_proof(proof, require_live_origin=False)
         pinned = issued.manifest
         if pinned.repository_output_root != self.output_root:
@@ -670,7 +917,21 @@ class DailyMarketTechnicalSnapshotV4Repository:
                 _fail("technical_snapshot_v4_artifact_sha_mismatch")
             if ref.stock_code not in selected_set:
                 continue
-            snapshot = _decode_and_validate_snapshot(artifact_raw, ref, current)
+            if p01_session_context is None:
+                snapshot = _decode_and_validate_snapshot(artifact_raw, ref, current)
+            else:
+                capability, session, reference = p01_session_context
+                _verify_p01_semantic_rehydration_capability(
+                    capability=capability,
+                    session=session,
+                    reference=reference,
+                    proof=issued,
+                )
+                if _p01_rehydration_reference_identity(reference, issued) != (
+                    capability.reference_identity_sha256
+                ):
+                    _fail("technical_snapshot_v4_p01_rehydration_binding_mismatch")
+                snapshot = _decode_reader_issued_snapshot(artifact_raw, ref, current)
             _check_cancelled(cancel_callback)
             selected_snapshots[ref.stock_code] = snapshot
 
@@ -725,6 +986,32 @@ def _decode_and_validate_snapshot(
 ) -> DailyMarketTechnicalFeatureSnapshotV4:
     try:
         snapshot = DailyMarketTechnicalFeatureSnapshotV4.from_json(raw)
+    except (TypeError, ValueError) as exc:
+        reason = str(exc)
+        code = reason if reason.startswith("technical_snapshot_v4_") else (
+            "technical_snapshot_v4_snapshot_invalid"
+        )
+        raise DailyMarketTechnicalSnapshotV4RepositoryError(code, reason) from exc
+    _validate_snapshot_binding(
+        snapshot,
+        ref=ref,
+        clock=manifest.source_clock,
+        clock_sha=manifest.source_clock_identity_sha256,
+        method_sha=manifest.method_contract_sha256,
+        decision_date=manifest.decision_date,
+    )
+    return snapshot
+
+
+def _decode_reader_issued_snapshot(
+    raw: bytes,
+    ref: DailyMarketTechnicalSnapshotV4ArtifactRef,
+    manifest: _ValidatedSnapshotBatchManifestV4,
+) -> DailyMarketTechnicalFeatureSnapshotV4:
+    """只在 proof 與本次 fresh artifact SHA 已核對後還原 DTO。"""
+
+    try:
+        snapshot = _rehydrate_snapshot_from_reader_issued_bytes(raw)
     except (TypeError, ValueError) as exc:
         reason = str(exc)
         code = reason if reason.startswith("technical_snapshot_v4_") else (

@@ -10,7 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from typing import Any, Literal, Protocol, TypeAlias, cast
+from typing import Any, Literal, NoReturn, Protocol, TypeAlias, cast
 from zoneinfo import ZoneInfo
 
 from app_module.daily_market_technical_method_contract_v4 import (
@@ -631,6 +631,214 @@ class DailyMarketTechnicalFeatureSnapshotV4:
             "method_contracts_sha256": self.method_contracts_sha256,
             "policy": dict(_POLICY),
         }
+
+
+
+def _rehydrate_snapshot_from_reader_issued_bytes(
+    raw: bytes,
+) -> DailyMarketTechnicalFeatureSnapshotV4:
+    """只把已由 repository proof 核過相同 SHA 的 bytes 還原成 immutable DTO。
+
+    這不是一般 parser：呼叫端必須先以同一 reader-issued semantic proof 核對
+    manifest 與每個 artifact 的完整 bytes/SHA。一般外部資料仍必須走
+    ``from_json``，本函式不自行授予或判定來源資格。
+    """
+
+    if not isinstance(raw, bytes):
+        raise TypeError("reader-issued snapshot bytes 必須是 bytes")
+    if len(raw) > DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_BYTES:
+        raise ValueError("technical_snapshot_v4_byte_limit")
+
+    def reject_json_float(value: str) -> NoReturn:
+        del value
+        raise ValueError("technical_snapshot_v4_float_invalid")
+
+    try:
+        payload = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+            parse_float=reject_json_float,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ValueError("technical_snapshot_v4_invalid_json") from exc
+    if (
+        not isinstance(payload, Mapping)
+        or set(payload) != _SNAPSHOT_KEYS
+        or payload.get("schema_version") != DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_SCHEMA_V4
+    ):
+        raise ValueError("technical_snapshot_v4_schema_invalid")
+
+    # Proof 綁定的是已 strict 驗證的原始 bytes；此處只解析成不可變型別，
+    # 不再重算 rows/session fingerprints、rule semantics 與完整 identity。
+    clock = payload.get("source_clock")
+    calculation = payload.get("calculation")
+    availability = payload.get("availability")
+    if not isinstance(clock, Mapping) or not isinstance(calculation, Mapping):
+        raise ValueError("technical_snapshot_v4_reader_issued_shape_invalid")
+    if not isinstance(availability, Mapping):
+        raise ValueError("technical_snapshot_v4_reader_issued_shape_invalid")
+
+    raw_rows = payload.get("raw_rows")
+    raw_pins = payload.get("session_pins")
+    raw_sessions = payload.get("feature_sessions")
+    raw_rules = payload.get("rules")
+    if not all(isinstance(items, list) for items in (raw_rows, raw_pins, raw_sessions, raw_rules)):
+        raise ValueError("technical_snapshot_v4_reader_issued_shape_invalid")
+    if (
+        len(cast(list[object], raw_rows)) > DAILY_MARKET_TECHNICAL_SOURCE_MAX_ROWS
+        or len(cast(list[object], raw_pins)) > DAILY_MARKET_TECHNICAL_SOURCE_MAX_ROWS
+        or len(cast(list[object], raw_sessions)) > 2
+    ):
+        raise ValueError("technical_snapshot_v4_reader_issued_limit_invalid")
+
+    rows = tuple(
+        _rehydrate_row_from_reader_issued_payload(item)
+        for item in cast(list[object], raw_rows)
+    )
+    pins = tuple(
+        _session_pin_from_dict(item)
+        for item in cast(list[object], raw_pins)
+    )
+    sessions = tuple(
+        _rehydrate_session_from_reader_issued_payload(item)
+        for item in cast(list[object], raw_sessions)
+    )
+    rules = tuple(_rule_from_dict(item) for item in cast(list[object], raw_rules))
+
+    return DailyMarketTechnicalFeatureSnapshotV4(
+        stock_code=_require_bounded_text(
+            payload.get("stock_code"),
+            DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_STOCK_CODE_CHARS,
+            "stock_code",
+        ),
+        decision_date=_parse_iso_date(payload.get("decision_date"), "decision_date"),
+        decision_cutoff=_parse_aware_datetime(
+            payload.get("decision_cutoff"), "decision_cutoff"
+        ),
+        source_clock_json=_canonical_json(clock),
+        source_clock_sha256=_require_sha(
+            payload.get("source_clock_sha256"), "source_clock_sha256"
+        ),
+        source_id=_require_bounded_text(payload.get("source_id"), 128, "source_id"),
+        source_identity=_require_bounded_text(
+            payload.get("source_identity"), 4096, "source_identity"
+        ),
+        schema_identity_sha256=_require_sha(
+            payload.get("schema_identity_sha256"), "schema_identity_sha256"
+        ),
+        source_pin_sha256=_require_sha(payload.get("source_pin_sha256"), "source_pin_sha256"),
+        cutoff_guard_version=_require_bounded_text(
+            payload.get("cutoff_guard_version"), 128, "cutoff_guard_version"
+        ),
+        raw_source_window_fingerprint_sha256=_require_sha(
+            payload.get("raw_source_window_fingerprint_sha256"),
+            "raw_source_window_fingerprint_sha256",
+        ),
+        source_window_fingerprint_sha256=_require_sha(
+            payload.get("source_window_fingerprint_sha256"),
+            "source_window_fingerprint_sha256",
+        ),
+        calculation_identity_sha256=_require_sha(
+            calculation.get("identity_sha256"), "calculation.identity_sha256"
+        ),
+        calculation_version=_require_bounded_text(
+            calculation.get("method_version"), 128, "calculation.method_version"
+        ),
+        talib_version=_require_bounded_text(
+            calculation.get("talib_version"), 128, "calculation.talib_version"
+        ),
+        calculation_binding_json=_canonical_json(calculation.get("binding")),
+        availability_status="unknown",
+        observed_prefix_contiguous=_require_bool(
+            payload.get("observed_prefix_contiguous"), "observed_prefix_contiguous"
+        ),
+        rows=rows,
+        session_pins=pins,
+        feature_sessions=sessions,
+        rules=rules,
+        method_contracts_sha256=_require_sha(
+            payload.get("method_contracts_sha256"), "method_contracts_sha256"
+        ),
+        snapshot_identity_sha256=_require_sha(
+            payload.get("snapshot_identity_sha256"), "snapshot_identity_sha256"
+        ),
+    )
+
+
+def _rehydrate_row_from_reader_issued_payload(
+    value: object,
+) -> DailyMarketTechnicalSourceRow:
+    if not isinstance(value, Mapping) or set(value) != _ROW_KEYS:
+        raise ValueError("technical_snapshot_v4_raw_row_fields_invalid")
+    raw_values = value.get("raw_values")
+    if not isinstance(raw_values, Mapping) or set(raw_values) != set(_ROW_RAW_KEYS):
+        raise ValueError("technical_snapshot_v4_raw_values_invalid")
+    pairs: list[tuple[str, str]] = []
+    for key in _ROW_RAW_KEYS:
+        token = raw_values.get(key)
+        if not isinstance(token, str):
+            raise ValueError("technical_snapshot_v4_raw_token_invalid")
+        pairs.append((key, token))
+    feature_date_value = value.get("feature_date")
+    return DailyMarketTechnicalSourceRow(
+        raw_date=_require_bounded_text(value.get("raw_date"), 64, "raw_date"),
+        feature_date=(
+            None
+            if feature_date_value is None
+            else _parse_iso_date(feature_date_value, "raw_row.feature_date")
+        ),
+        stock_code=_require_bounded_text(
+            value.get("stock_code"),
+            DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_STOCK_CODE_CHARS,
+            "raw_row.stock_code",
+        ),
+        open_price=_parse_decimal(value.get("open_price"), "open_price"),
+        high_price=_parse_decimal(value.get("high_price"), "high_price"),
+        low_price=_parse_decimal(value.get("low_price"), "low_price"),
+        close_price=_parse_decimal(value.get("close_price"), "close_price"),
+        volume_shares=_parse_decimal(value.get("volume_shares"), "volume_shares"),
+        raw_values=tuple(pairs),
+        row_fingerprint_sha256=_require_sha(
+            value.get("row_fingerprint_sha256"), "row_fingerprint_sha256"
+        ),
+        ohlc_valid=_require_bool(value.get("ohlc_valid"), "ohlc_valid"),
+        volume_valid=_require_bool(value.get("volume_valid"), "volume_valid"),
+        invalid_reasons=_parse_text_tuple(
+            value.get("invalid_reasons"), max_count=8, max_bytes=128
+        ),
+    )
+
+
+def _rehydrate_session_from_reader_issued_payload(
+    value: object,
+) -> TechnicalObservedSession:
+    if not isinstance(value, Mapping) or set(value) != _SESSION_KEYS:
+        raise ValueError("technical_snapshot_v4_session_fields_invalid")
+    raw_features = value.get("features")
+    if not isinstance(raw_features, list) or tuple(
+        item.get("key") for item in raw_features if isinstance(item, Mapping)
+    ) != DAILY_MARKET_TECHNICAL_FEATURE_KEYS_V4:
+        raise ValueError("technical_snapshot_v4_session_feature_keys_invalid")
+    return TechnicalObservedSession(
+        stock_code=_require_bounded_text(
+            value.get("stock_code"),
+            DAILY_MARKET_TECHNICAL_FEATURE_SNAPSHOT_MAX_STOCK_CODE_CHARS,
+            "feature_session.stock_code",
+        ),
+        feature_date=_parse_iso_date(
+            value.get("feature_date"), "feature_session.feature_date"
+        ),
+        source_identity=_require_bounded_text(
+            value.get("source_identity"), 4096, "feature_session.source_identity"
+        ),
+        source_fingerprint_sha256=_require_sha(
+            value.get("source_fingerprint_sha256"),
+            "feature_session.source_fingerprint_sha256",
+        ),
+        features=tuple(_feature_from_dict(item) for item in raw_features),
+        pin_verified=_require_bool(value.get("pin_verified"), "feature_session.pin_verified"),
+    )
 
 
 def build_daily_market_technical_feature_snapshot_v4(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from collections.abc import Callable, Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace as dataclass_replace
 from datetime import date
 from decimal import Decimal
@@ -31,6 +32,9 @@ from app_module.daily_market_technical_snapshot_v4_repository import (
     DailyMarketTechnicalSnapshotV4Repository,
     DailyMarketTechnicalSnapshotV4RepositoryError,
     _VerifiedBatchSemanticProofV4,
+    _P01SemanticRehydrationCapabilityV4,
+    _bind_p01_semantic_rehydration_reference,
+    _issue_p01_semantic_rehydration_capability,
     _semantic_proof_for_verified_batch,
 )
 from app_module.rule_research_technical_parent_capture_v4 import (
@@ -812,7 +816,7 @@ class _SortCandidate:
     artifact_index: int
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class _ChildArtifactReference:
     """頁面重開單一 child batch 所需的精確、輕量引用。"""
 
@@ -825,6 +829,22 @@ class _ChildArtifactReference:
     method_contract_sha256: str
     decision_date: date
     semantic_proof: _VerifiedBatchSemanticProofV4 | None = None
+    _rehydration_capability: _P01SemanticRehydrationCapabilityV4 | None = field(
+        default=None, repr=False, compare=False
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _P01RehydrationCallContext:
+    session: DailyMarketTechnicalUniverseV4ReadSession
+    reference: _ChildArtifactReference
+    owner_token: object
+    read_session_identity_sha256: str
+
+
+_P01_REHYDRATION_CALL_CONTEXT: ContextVar[_P01RehydrationCallContext | None] = (
+    ContextVar("p01_semantic_rehydration_call_context", default=None)
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -2073,7 +2093,7 @@ def _read_session_source_metadata_from_validated_payloads(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class DailyMarketTechnicalUniverseV4ReadSession:
     """一次完整 strict read 建立的固定版本緊湊索引。
 
@@ -2334,7 +2354,8 @@ class DailyMarketTechnicalUniverseV4ReadSession:
             reference = _read_session_artifact_reference(
                 self._artifact_references, artifact_index, selected_candidates
             )
-            artifact_snapshots = _read_session_child_snapshots(
+            artifact_snapshots = _read_session_child_snapshots_for_session(
+                self,
                 reference,
                 selected_stock_codes=tuple(
                     candidate.stock_code for candidate in selected_candidates
@@ -2618,7 +2639,8 @@ class DailyMarketTechnicalUniverseV4ReadSession:
             reference = _read_session_artifact_reference(
                 self._artifact_references, artifact_index, selected_candidates
             )
-            artifact_snapshots = _read_session_child_snapshots(
+            artifact_snapshots = _read_session_child_snapshots_for_session(
+                self,
                 reference,
                 selected_stock_codes=tuple(
                     candidate.stock_code for candidate in selected_candidates
@@ -2744,7 +2766,8 @@ class DailyMarketTechnicalUniverseV4ReadSession:
         reference = _read_session_artifact_reference(
             self._artifact_references, candidate.artifact_index, (candidate,)
         )
-        artifact_snapshots = _read_session_child_snapshots(
+        artifact_snapshots = _read_session_child_snapshots_for_session(
+            self,
             reference,
             selected_stock_codes=(stock_code,),
             cancel_callback=cancel_callback,
@@ -2829,11 +2852,72 @@ def _read_session_artifact_reference(
     return reference
 
 
+def _read_session_child_snapshots_for_session(
+    session: DailyMarketTechnicalUniverseV4ReadSession,
+    reference: _ChildArtifactReference,
+    *,
+    selected_stock_codes: Sequence[str],
+    cancel_callback: Callable[[], bool] | None,
+) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
+    """在同步 helper 呼叫期間綁定當前 P01 session，無 metadata 時走 strict 路徑。"""
+
+    source_metadata = session._source_metadata_for_use()
+    if source_metadata is None:
+        # 嚴格 clone 即使在 fast session 的回呼中重入，也不能借用外層 ContextVar。
+        token = _P01_REHYDRATION_CALL_CONTEXT.set(None)
+        try:
+            return _read_session_child_snapshots(
+                reference,
+                selected_stock_codes=selected_stock_codes,
+                cancel_callback=cancel_callback,
+            )
+        finally:
+            _P01_REHYDRATION_CALL_CONTEXT.reset(token)
+    if not any(item is reference for item in session._artifact_references):
+        _fail("technical_universe_v4_read_session_artifact_reference_mismatch")
+    context = _P01RehydrationCallContext(
+        session=session,
+        reference=reference,
+        owner_token=source_metadata.owner_token,
+        read_session_identity_sha256=session.read_session_identity_sha256,
+    )
+    token = _P01_REHYDRATION_CALL_CONTEXT.set(context)
+    try:
+        return _read_session_child_snapshots(
+            reference,
+            selected_stock_codes=selected_stock_codes,
+            cancel_callback=cancel_callback,
+        )
+    finally:
+        _P01_REHYDRATION_CALL_CONTEXT.reset(token)
+
+
 def _read_session_child_snapshots(
     reference: _ChildArtifactReference,
     *,
     selected_stock_codes: Sequence[str],
     cancel_callback: Callable[[], bool] | None,
+) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
+    # 將一次性授權捕獲為區域值，外部 cancel callback 執行時不留 ambient capability。
+    context = _P01_REHYDRATION_CALL_CONTEXT.get()
+    token = _P01_REHYDRATION_CALL_CONTEXT.set(None)
+    try:
+        return _read_session_child_snapshots_impl(
+            reference,
+            selected_stock_codes=selected_stock_codes,
+            cancel_callback=cancel_callback,
+            p01_context=context,
+        )
+    finally:
+        _P01_REHYDRATION_CALL_CONTEXT.reset(token)
+
+
+def _read_session_child_snapshots_impl(
+    reference: _ChildArtifactReference,
+    *,
+    selected_stock_codes: Sequence[str],
+    cancel_callback: Callable[[], bool] | None,
+    p01_context: _P01RehydrationCallContext | None,
 ) -> tuple[DailyMarketTechnicalFeatureSnapshotV4, ...]:
     if _is_cancelled(cancel_callback):
         _fail("technical_universe_v4_query_cancelled")
@@ -2842,11 +2926,38 @@ def _read_session_child_snapshots(
             reference.repository_output_root
         )
         if reference.semantic_proof is not None:
-            snapshots = repository.read_selected_exact(
-                reference.semantic_proof,
-                selected_stock_codes=selected_stock_codes,
-                cancel_callback=cancel_callback,
-            )
+            context = p01_context
+            capability = reference._rehydration_capability
+            if context is not None:
+                if context.reference is not reference:
+                    _fail("technical_universe_v4_read_session_artifact_reference_mismatch")
+                metadata = context.session._source_metadata_for_use()
+                if (
+                    metadata is None
+                    or metadata.owner_token is not context.owner_token
+                    or context.session.read_session_identity_sha256
+                    != context.read_session_identity_sha256
+                    or not any(
+                        item is reference
+                        for item in context.session._artifact_references
+                    )
+                ):
+                    _fail("technical_universe_v4_read_session_metadata_binding_mismatch")
+            if context is not None and capability is not None:
+                snapshots = repository._read_selected_exact_for_p01_session(
+                    reference.semantic_proof,
+                    selected_stock_codes=selected_stock_codes,
+                    cancel_callback=cancel_callback,
+                    session=context.session,
+                    reference=reference,
+                    capability=capability,
+                )
+            else:
+                snapshots = repository.read_selected_exact(
+                    reference.semantic_proof,
+                    selected_stock_codes=selected_stock_codes,
+                    cancel_callback=cancel_callback,
+                )
         else:
             artifact = repository.read_exact(
                 reference.manifest_path,
@@ -3133,6 +3244,53 @@ class DailyMarketTechnicalUniverseV4ReadSessionBuilder:
             _fail("technical_universe_v4_query_cancelled")
         object.__setattr__(session, "_source_metadata_token", metadata_token)
         object.__setattr__(session, "_source_metadata", source_metadata)
+        rehydration_references: list[_ChildArtifactReference] = []
+        for reference in artifact_reference_tuple:
+            if self._is_cancelled():
+                _fail("technical_universe_v4_query_cancelled")
+            proof = reference.semantic_proof
+            if proof is None:
+                rehydration_references.append(reference)
+                continue
+            try:
+                capability = _issue_p01_semantic_rehydration_capability(
+                    session=session,
+                    reference=reference,
+                    proof=proof,
+                )
+                issued_reference = dataclass_replace(
+                    reference,
+                    _rehydration_capability=capability,
+                )
+                _bind_p01_semantic_rehydration_reference(
+                    capability=capability,
+                    session=session,
+                    original_reference=reference,
+                    issued_reference=issued_reference,
+                    proof=proof,
+                )
+            except DailyMarketTechnicalSnapshotV4RepositoryError as exc:
+                raise DailyMarketTechnicalUniverseV4QueryError(
+                    exc.code, str(exc)
+                ) from exc
+            rehydration_references.append(issued_reference)
+        if len(rehydration_references) != len(artifact_reference_tuple):
+            _fail("technical_universe_v4_read_session_artifact_reference_mismatch")
+        issued_reference_tuple = tuple(rehydration_references)
+        if any(
+            issued is not original
+            for issued, original in zip(
+                issued_reference_tuple, artifact_reference_tuple, strict=True
+            )
+        ):
+            source_metadata = dataclass_replace(
+                source_metadata,
+                artifact_reference_tuple_owner=issued_reference_tuple,
+            )
+            object.__setattr__(session, "_artifact_references", issued_reference_tuple)
+            object.__setattr__(session, "_source_metadata", source_metadata)
+        if self._is_cancelled():
+            _fail("technical_universe_v4_query_cancelled")
         self._built_session = session
         return session
 

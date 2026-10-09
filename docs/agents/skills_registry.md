@@ -27,7 +27,7 @@
 9. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時）
 10. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`（涉及舊工作承接或 Phase Gate 時）
 11. `docs/01_architecture/system_architecture.md`（涉及目前架構、模組邊界或資料流時）
-12. `docs/01_architecture/target_system_architecture.md`（涉及未來架構或領域邊界時）
+12. `docs/01_architecture/target_system_architecture.md`（目標領域背景與演進導覽）及 `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`（涉及目標實作設計時）
 13. `docs/07_guides/README.md` 的操作手冊章節地圖與 `APPLICATION_MANUAL.md` 相關章節（涉及 UI、使用流程、參數、結果判讀或安全限制時）
 14. 與任務對應的 Agent 權威文件：
    - 架構判斷：`docs/agents/tech_lead.md`
@@ -98,7 +98,7 @@
 - 不得覆寫使用者、Codex、Antigravity 或其他 Agent 的未提交變更。
 - 不得擴張未被要求的 scope。
 - 修改功能時必須檢查文檔同步需求。
-- 文件判讀採 Scoped SSOT：目前狀態看 Snapshot，產品方向看 Product Roadmap，未來工程路線看 6M Roadmap，V2.1+ maturity 看 V2.1-V4.0 Roadmap，舊工作承接看 Legacy Carryover，目前／目標架構看 system / target architecture，操作看 Application Manual，歷史看 archive。
+- 文件判讀採 Scoped SSOT：目前狀態看 Snapshot，產品方向看 Product Roadmap，未來工程路線看 6M Roadmap，V2.1+ maturity 看 V2.1-V4.0 Roadmap，舊工作承接看 Legacy Carryover，目前架構看 system architecture，目標領域背景看 target system architecture，目標實作設計看 FINAL_TARGET_ARCHITECTURE，操作看 Application Manual，歷史看 archive。
 - 使用者可見流程、參數、結果判讀或安全限制改變時，必須同步 Application Manual。
 - Stage / commit 前必須先讀 `docs/agents/git_exclusions.md`。
 - 涉及量化核心計算時，嚴禁新增裸 `float`。

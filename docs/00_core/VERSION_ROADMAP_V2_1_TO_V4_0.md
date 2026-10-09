@@ -27,7 +27,8 @@
 | 六個月工程交付 | `ROADMAP_6M_ENGINEERING.md` |
 | North Star / Evidence / Success Levels | `system_vision_specification.md` |
 | Current Architecture | `system_architecture.md` |
-| Target Architecture | `target_system_architecture.md` |
+| Target Architecture Background | `../01_architecture/target_system_architecture.md` |
+| Target Implementation Design Authority | `../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md` |
 | 本文件 | V2.1-V4.0 maturity mapping |
 
 ## 3. 版本階梯總覽

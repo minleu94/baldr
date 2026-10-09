@@ -17,7 +17,7 @@
 9. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期產品成熟度階梯（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
 10. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交與 Gate（涉及舊工作承接、Phase 或優先順序時必讀）
 11. `docs/01_architecture/system_architecture.md` - 現有系統架構（涉及架構、模組邊界或資料流時必讀）
-12. `docs/01_architecture/target_system_architecture.md` - 理想目標架構（涉及未來架構、領域邊界或 Current → Target 演進時必讀）
+12. `docs/01_architecture/target_system_architecture.md` - 目標領域背景與演進導覽；涉及目標實作設計時並讀 `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`（目標實作設計唯一權威）
 13. `docs/agents/skills_registry.md` - Codex / Antigravity 共用的角色選擇與協作入口
 14. `docs/07_guides/README.md` 的「操作手冊章節地圖」與 `APPLICATION_MANUAL.md` 中和任務相關的章節（涉及 UI、使用流程、參數、結果判讀或安全限制時必讀）；跨工作區任務讀取涉及的各章，日期化補充只讀相關部分
 15. 與任務對應的 Agent 文件：
@@ -47,7 +47,7 @@
 - 實作任何策略、回測、推薦或績效邏輯前，必須先做未來函數（Look-ahead bias）自查，確認訊號、特徵、篩選、標準化、停損停利與 benchmark 都只使用決策當下可取得的資料。
 - 修改功能時同步更新相關文檔。
 - 使用者可見功能變更時，完整 Manual 必須同步入口、操作步驟、參數意義、結果判讀、安全限制與排錯。
-- 文件判讀採 Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，長期 maturity 看 `VERSION_ROADMAP_V2_1_TO_V4_0.md`，外部參考看 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`，舊工作承接看 `LEGACY_ROADMAP_CARRYOVER.md`，目前／目標架構分別看 `system_architecture.md` / `target_system_architecture.md`，操作看 `APPLICATION_MANUAL.md`，歷史看 `docs/09_archive/`。
+- 文件判讀採 Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，長期 maturity 看 `VERSION_ROADMAP_V2_1_TO_V4_0.md`，外部參考看 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`，舊工作承接看 `LEGACY_ROADMAP_CARRYOVER.md`，目前架構看 `system_architecture.md`，目標領域背景看 `target_system_architecture.md`，目標實作設計看 `target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`，操作看 `APPLICATION_MANUAL.md`，歷史看 `docs/09_archive/`。
 - Stage / commit 前先看 `docs/agents/git_exclusions.md`，不要把本機暫存、工具輸出或非本任務 QA output 順手提交。
 - 優先遵循既有架構與測試方式。
 - 不要覆寫使用者或其他 agent 的未提交變更。

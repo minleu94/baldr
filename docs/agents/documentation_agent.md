@@ -28,7 +28,8 @@
 - **`docs/00_core/DEVELOPMENT_ROADMAP.md`** - Roadmap Hub（權威文件入口）
 - **`docs/00_core/DOCUMENTATION_INDEX.md`** - 文檔索引（文檔位置的 scoped authority）
 - **`docs/01_architecture/system_architecture.md`** - 系統架構（架構與模組邊界的 scoped authority）
-- **`docs/01_architecture/target_system_architecture.md`** - 理想目標架構；不得作為目前完成狀態依據
+- **`docs/01_architecture/target_system_architecture.md`** - 目標領域背景與演進導覽；不得作為目前完成狀態依據
+- **`docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`** - 目標實作設計唯一權威
 - **`docs/07_guides/APPLICATION_MANUAL.md`** - 目前 9 個工作區與跨工作區操作的使用者權威
 - **`PROJECT_NAVIGATION.md`** - 專案導航（開發者功能導航）
 

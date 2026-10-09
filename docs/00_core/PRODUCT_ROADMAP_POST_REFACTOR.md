@@ -457,7 +457,7 @@ Owner 已選擇以 prospective-only 的受治理模擬持倉建立後續 Formal 
 | `ROADMAP_6M_ENGINEERING.md` | 未來六個月工程交付、依賴、測試與 Exit Criteria。 |
 | `system_vision_specification.md` | North Star、Product Principles、Bounded Advice、Evidence Requirement、Success Levels、Non-goals。 |
 | `system_architecture.md` | 目前真實架構。 |
-| `target_system_architecture.md` | Current → Transitional → Target 的理想架構與治理邊界。 |
+| `target_system_architecture.md` | Current → Transitional → Target 的目標領域背景與治理邊界導覽；目標實作設計決策見 [`FINAL_TARGET_ARCHITECTURE.md`](../01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)。 |
 | [`../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md) | V1.1 至 V2.0 已完成歷史版本與形成過程；不作目前工程順序。 |
 | `VERSION_ROADMAP_V2_1_TO_V4_0.md` | 長期產品成熟度與版本階梯。 |
 | `SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md` | 已完成行為不變重構的歷史執行與 rollback companion，位於 `docs/09_archive/`。 |

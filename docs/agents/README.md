@@ -64,7 +64,7 @@
 - 目前可見 UI 功能包含：數據更新工作台、市場觀察（大盤/強弱股/強弱產業/主力流向）、策略回測、推薦分析、觀察清單、持倉管理與 Runtime Observatory。
 - 推薦組合回測 MVP 已完成：推薦 Tab 可把 Profile/Config 送到回測 Tab，由回測頁在歷史日期重播推薦邏輯，評估整組推薦組合而不是只回測當下股票清單。
 - Strategy & Scoring Governance 增量 A / B 已完成機制回歸；真實股票池 fixed / quantile walk-forward 實證仍是 P0，quantile 維持 opt-in。
-- 文件治理採 Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，V2.1+ maturity 看 `VERSION_ROADMAP_V2_1_TO_V4_0.md`，外部參考看 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`，舊工作承接看 `LEGACY_ROADMAP_CARRYOVER.md`，目前／目標架構看 `system_architecture.md` / `target_system_architecture.md`，操作看 `APPLICATION_MANUAL.md`，歷史看 `09_archive/`。
+- 文件治理採 Scoped SSOT：目前狀態看 `PROJECT_SNAPSHOT.md`，產品方向看 `PRODUCT_ROADMAP_POST_REFACTOR.md`，未來 6 個月工程看 `ROADMAP_6M_ENGINEERING.md`，V2.1+ maturity 看 `VERSION_ROADMAP_V2_1_TO_V4_0.md`，外部參考看 `EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`，舊工作承接看 `LEGACY_ROADMAP_CARRYOVER.md`，目前架構看 `system_architecture.md`，目標領域背景看 `target_system_architecture.md`，目標實作設計看 `target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`，操作看 `APPLICATION_MANUAL.md`，歷史看 `09_archive/`。
 - 處理推薦 replay / backtest 日期時，必須留意台股資料 `日期` 欄可能是數字型 `YYYYMMDD`，請使用共用解析工具避免誤判成 1970 epoch。
 - 資料位置由 `data_module/config.py` 的 `TWStockConfig` 管理；正式資料根目錄預設為 `D:/Min/Python/Project/FA_Data`，可由 `DATA_ROOT` 覆蓋。
 - repo 內沒有固定的正式 `data/` 目錄時，不代表資料不存在；Agent 必須先查設定，不可憑相對路徑推斷。
@@ -98,7 +98,8 @@
 - `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期版本階梯（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
 - `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交矩陣（涉及舊工作承接、Phase Gate 或優先順序時必讀）
 - `docs/01_architecture/system_architecture.md` - 系統架構（涉及架構、模組邊界或資料流時必讀）
-- `docs/01_architecture/target_system_architecture.md` - 理想目標架構（涉及未來架構或領域邊界時必讀）
+- `docs/01_architecture/target_system_architecture.md` - 目標領域背景與演進導覽（涉及未來架構或領域邊界時必讀）
+- `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md` - 目標實作設計唯一權威（涉及目標 package、契約、依賴或遷移設計時必讀）
 - `docs/00_core/DOCUMENTATION_INDEX.md` - 文檔索引（只用來定位文件入口，不作為事實來源）
 
 #### Documentation Agent 補充必讀
@@ -111,7 +112,8 @@
 - `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期版本階梯（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
 - `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交矩陣
 - `docs/01_architecture/system_architecture.md` - 系統架構
-- `docs/01_architecture/target_system_architecture.md` - 目標系統架構
+- `docs/01_architecture/target_system_architecture.md` - 目標領域背景與演進導覽
+- `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md` - 目標實作設計唯一權威
 - `docs/07_guides/README.md` 的操作手冊章節地圖與 `APPLICATION_MANUAL.md` 相關章節（依任務讀取；跨工作區任務讀取涉及章節）
 - 本次變更涉及的檔案（由使用者提供，或由 Agent 提出需求）
 

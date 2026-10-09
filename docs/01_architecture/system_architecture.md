@@ -270,7 +270,7 @@ full-market OOC + 4+ Meta OOF folds
 > **工程補充**：Advice 已是 CURRENT bounded/read-only；Portfolio 與 Position Health/Exit 是 CURRENT_ENGINEERING proposal/paper；P0 adapters 與 ML 固定 candidate/shadow。跨 repository 由 `artifact_lineage_verifier.py` 唯讀驗證，外部 Gate 仍以 `EngineeringGateRegistry` 為 SSOT。
 > **跨流整合邊界**：`app_module/system_execution_blueprint_adapters.py` 只以中立 DTO／JSON composition 聚合 A～F 已有輸出，不讓 app/runtime 反向 import `ml`，也不改 `Recommendation`、Score、Advice、Portfolio 或 Exit domain。`scripts/verify_system_execution_blueprint.py` 是 fail-closed 的純 JSON verifier；它只驗證輸入契約與狀態，不觸發資料寫入、scheduler、promotion 或 production action。
 > **定位**：本文件是目前模組邊界、依賴方向、資料流與高風險技術契約的架構權威。歷史遷移過程不在本文件維護。
-> **Target companion**：理想目標架構、Current → Transitional → Target 演進與尚未存在的領域邊界見 [target_system_architecture.md](target_system_architecture.md)；該文件不代表目前已實作，也不授權立即建立新 package。
+> **Target companion**：目標領域背景、Current → Transitional → Target 演進與尚未存在的領域邊界見 [target_system_architecture.md](target_system_architecture.md)；目標 package、契約、依賴與遷移設計以 [FINAL_TARGET_ARCHITECTURE](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) 為唯一設計權威。目標文件不代表目前已實作，也不授權立即建立新 package。
 
 ## 1. 系統定位
 
@@ -1101,7 +1101,8 @@ Current Result DTO / Run Metadata
 | 外部參考與 V1.5-V2.0 版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` |
 | 舊 Roadmap 移交 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` |
 | 架構 | 本文件 |
-| 目標架構 | `docs/01_architecture/target_system_architecture.md` |
+| 目標架構背景 | `docs/01_architecture/target_system_architecture.md` |
+| 目標實作設計權威 | `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md` |
 | Post-Refactor 產品方向 | `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` |
 | 使用方式 | `docs/07_guides/APPLICATION_MANUAL.md` |
 | 文件導航 | `docs/00_core/DOCUMENTATION_INDEX.md` |

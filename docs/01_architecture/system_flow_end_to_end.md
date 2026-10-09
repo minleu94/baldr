@@ -4,5 +4,6 @@ This legacy end-to-end flow blueprint describes former modules, paths, and propo
 
 - [Archived full blueprint](../09_archive/SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md)
 - [Current system architecture](system_architecture.md)
-- [Target architecture](target_system_architecture.md)
+- [Target architecture background](target_system_architecture.md)
+- [Target implementation design authority](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md)
 - [Current UI operations manual](../07_guides/APPLICATION_MANUAL.md)

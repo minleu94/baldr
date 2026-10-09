@@ -60,7 +60,7 @@ Evidence rehearsal 的唯讀工程預演底座已收口為 `engineering_rehearsa
 
 2026-07-13 跨工作流工程整合入口為 `app_module/system_execution_blueprint_adapters.py`，純 JSON 驗證入口為 `scripts/verify_system_execution_blueprint.py`。兩者只組合／驗證 Evidence、PIT／source、ML shadow、dashboard 與 latency 的既有輸出，不改 Recommendation、Score、Advice、Portfolio 或 Exit。任一契約失敗時回到原 owner 修正；禁止在整合層補值、放寬 Gate 或把 `degraded` 改成 ready。
 
-目前 roadmap 判讀已從舊線性 Phase 轉為 Scoped SSOT + Post-V1 版本節奏：目前狀態看 `docs/00_core/PROJECT_SNAPSHOT.md`，產品方向看 `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`，未來工程路線看 `docs/00_core/ROADMAP_6M_ENGINEERING.md`，目前／目標架構分別看 `docs/01_architecture/system_architecture.md` / `docs/01_architecture/target_system_architecture.md`；V1.1 至 V2.0 歷史節奏、V2.1 至 V4.0 長期成熟度與外部參考則依任務再讀對應 companion。`docs/05_phases/` 僅保留為歷史 Phase / 設計追溯，不作目前 roadmap。
+目前 roadmap 判讀已從舊線性 Phase 轉為 Scoped SSOT + Post-V1 版本節奏：目前狀態看 `docs/00_core/PROJECT_SNAPSHOT.md`，產品方向看 `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`，未來工程路線看 `docs/00_core/ROADMAP_6M_ENGINEERING.md`，目前架構看 `docs/01_architecture/system_architecture.md`，目標領域背景看 `docs/01_architecture/target_system_architecture.md`，目標實作設計看 `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`；V1.1 至 V2.0 歷史節奏、V2.1 至 V4.0 長期成熟度與外部參考則依任務再讀對應 companion。`docs/05_phases/` 僅保留為歷史 Phase / 設計追溯，不作目前 roadmap。
 
 ---
 
@@ -556,7 +556,7 @@ python ui_qt/main.py
 - **目前狀態快照**：`docs/00_core/PROJECT_SNAPSHOT.md`
 - **產品方向**：`docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`
 - **6 個月工程路線**：`docs/00_core/ROADMAP_6M_ENGINEERING.md`
-- **目前／目標架構**：`docs/01_architecture/system_architecture.md` / `docs/01_architecture/target_system_architecture.md`
+- **目前架構／目標架構**：目前實況看 `docs/01_architecture/system_architecture.md`；目標背景看 `docs/01_architecture/target_system_architecture.md`，實作設計決策看 `docs/01_architecture/target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md`
 - **V1.1 至 V2.0 歷史版本**：`docs/09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`
 - **V2.1 至 V4.0 長期版號階梯**：`docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`
 - **baldr 產品北極星**：`docs/01_architecture/system_vision_specification.md`

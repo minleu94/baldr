@@ -21,7 +21,7 @@
 | Task Loop 01–08 | [01](TASK_LOOP_01_HANDOFF.md) → [02](TASK_LOOP_02_HANDOFF.md) → [03](TASK_LOOP_03_HANDOFF.md) → [04](TASK_LOOP_04_HANDOFF.md) → [05](TASK_LOOP_05_HANDOFF.md) → [06](TASK_LOOP_06_HANDOFF.md) → [07](TASK_LOOP_07_HANDOFF.md) → [08](TASK_LOOP_08_HANDOFF.md) | 連續交接紀錄；讀取單張時保留其原始前置條件與交接邊界。 |
 | ML Shadow 與前瞻證據 | [Gate 7 工程入口](GATE_7_ML_SHADOW_ENGINEERING.md) → [R026 ML boundary](ML_SHADOW_BOUNDARY_R026_EXACT_ALLOWLIST_QA_20260925.md) → [V4 daily evidence loop](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md) → [Prospective restart direction](PROSPECTIVE_FORMAL_RESTART_DIRECTION_2026_08_19.md) → [8/18–8/28 clock 歷史收據](../09_archive/README.md#2026-10-08-prospective-formal-clock-history) → [被拒絕的 V2 staging 歷史](../09_archive/PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V2_STAGING_HISTORY.md) | Shadow、engineering readiness、成熟度與正式 OOS／投資有效性是不同狀態；歷史 clock 收據只保留當時事件，V2 staging 仍是被拒絕的歷史，不代表目前狀態。 |
 | V2–V4 maturity 歷史收據 | [Archive 專區](../09_archive/README.md#2026-10-08-v2v3v4-dated-readiness-reports) | 日期化 baseline、readiness 與 closeout；不代表目前版本成熟度或投資有效性，現況看 Snapshot。 |
-| Data Governance 與來源 | [10/03 data closeout](FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md) → [正式資料修復](FORMAL_DATA_REPAIR_2026_09_23.md) → [PIT taxonomy daily source](PIT_TAXONOMY_DAILY_SOURCE_QA_2026_09_15.md) → [產業來源驗收](PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md) | source coverage、publication、PIT eligibility 與正式訓練資格不可混為一談。 |
+| Data Governance 與來源 | [10/03 data closeout](FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md) → [正式資料修復](FORMAL_DATA_REPAIR_2026_09_23.md) → [PIT taxonomy daily source](PIT_TAXONOMY_DAILY_SOURCE_QA_2026_09_15.md) → [產業來源驗收](PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md) → [Gate 2 7/22 歷史基線](GATE_2_DATA_GOVERNANCE_CONSOLIDATION_AUDIT_2026_07_22.md) | source coverage、publication、PIT eligibility 與正式訓練資格不可混為一談；Gate 2 報告是唯讀日期快照，明確不構成人工 credit 或 production enablement。 |
 
 ## 近期與跨主題收據
 
@@ -53,6 +53,7 @@
 ## 其他常用路徑
 
 - **排程與自動化**：[10/08 修復](BALDR_SCHEDULE_REPAIR_20261008.md) → [10/07 修復](BALDR_SCHEDULE_REPAIR_20261007.md) → [10/06 稽核](BALDR_SCHEDULE_AUDIT_20261006.md)；需要歷史初始狀況再讀 [9/30 收據](SCHEDULED_OPERATIONS_REPAIR_20260930.md)。
+- **Data Update 效能基線**：[2026-08-28 量測與平行化邊界](DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md)；目前操作見 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。基線明示 production workers／併發尚未由該次 probe 授權，後續使用前須查現行 Snapshot 與排程 QA。
 - **投資組合與 Paper**：[三帳摘要](BALDR_B06_PORTFOLIO_SUMMARY_20261006.md)、[個人 Paper producers](BALDR_PERSONAL_PAPER_PRODUCERS_20261006.md)、[個人 Paper ledgers](BALDR_PERSONAL_PAPER_LEDGERS_20261006.md)。
 - **Watchlist 儲存與 COW 遷移（F4，2026-10-05）**：[revision retention](F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md) → [SQLite COW](F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md) → [Legacy JSON COW](F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md) → [整合／容量驗收](F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)。這組隔離工程收據與正式資料 apply／activation 分開判讀，也不同於後續 B02 個人儲存工作包。
 - **技術分析與圖表**：[BBANDS 上軌入口](BALDR_A01_BBANDS_UPPER_20261006.md)、[每日 BBANDS](BALDR_DAILY_BBANDS_CENTRAL_20261007.md)、[H20 圖表契約](H20_BOUND_CHART_CONTRACT_REVIEW_20261008.md)。

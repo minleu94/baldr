@@ -385,6 +385,10 @@ Month 3 closure audit 與 8 份全部勾選完成且具 implementation commit �
 
 Healthcheck Batch 3 Recommendation Profile／Regime plan 經審核後留在 `docs/superpowers/plans/`：實作 commit `a0e07273c` 已存在，但原始 Full App healthcheck 中 R-002–R-005 與 RECOMMEND-ISSUE-001–004／008 仍記為「已修正待驗證」。由於找不到使用者重測結案證據，本輪不把它當成完全結案的 plan 歸檔；README 已連到目前 Manual、Architecture 與歷史 QA 收據。
 
+## 2026-10-08 QA 導覽補充：Gate 2 與 Data Update 效能基線
+
+盤點 2026-07／08 剩餘長篇 QA 時，保留 [Gate 2 7/22 稽核](../06_qa/GATE_2_DATA_GOVERNANCE_CONSOLIDATION_AUDIT_2026_07_22.md)：唯讀稽核腳本仍固定輸出至該路徑，報告也明示不構成人工 Gate credit 或 production enablement。保留 [Data Update 8/28 效能基線](../06_qa/DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md)：Application Manual 直接引用，且報告內 bounded worker、單寫入者與 production opt-in 邊界仍需追溯。兩者均是日期化證據，不代表目前資料筆數、執行速度或 Gate 狀態；QA README 已補主題入口。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

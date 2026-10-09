@@ -1287,3 +1287,15 @@ Archive 原件保留搬移前 Windows 工作樹 CRLF bytes。各原件正規化�
 舊 `GEMINI_REWORK_R003/R005/R006.md` 路徑亦由 `WAVE1_GEMINI_PROMPTS.md` 的歷史 prompt 引用；該檔已明確標示不得再使用，舊路徑短導引可展開至全文。`GEMINI_WAVE2_PARALLEL_ANALYSIS.md` 的一次性 prompt 引用同樣經短導引連到原件。封存只移動輸入封包，不改寫輸出報告或 Gate 狀態。
 
 補充：原 `WAVE1_GEMINI_PROMPTS.md` 與 `WAVE2_GEMINI_PROMPTS.md` 仍保存一次性 prompt 正文；兩檔開頭現已標明已結束、不得重跑，並連到封存輸入與實際結果，避免歷史提示被誤讀為目前任務。
+
+<a id="coverage-entry-136"></a>
+## 2026-10-09 封存 Post-V1 Scheduler Approval plan/spec
+
+將已完成工程核取清單的 Scheduler Approval plan/spec 原文移至 `docs/09_archive/superpowers/{plans,specs}/`；原路徑保留短導引，導向封存原文、配套 QA checklist 與目前狀態／操作權威。Plan 內 17/17 個工程項目已勾選，但設計仍限定 `production_scheduler_allowed=false`，readiness 最高為 `ready_for_manual_confirm`；正式排程未核准／未啟用，且 multi-day dry-run、人工 UI smoke 等 Gate 分開判讀。
+
+兩份 Archive 副本皆由 tracked、乾淨的來源文件逐 byte 複製，bytes 與 SHA-256 完全相同。`tests/test_production_scheduler_approval_checklist.py` 的兩個 plan/spec 讀取路徑已改為 Archive 原件；既有 CHECKLIST 路徑原已讀 Archive。只改測試輸入路徑，沒有改斷言。全 repo 精確路徑檢查另找到 `DOCUMENTATION_INDEX_HISTORY_2026_09_27.md`、`DOCUMENTATION_CATALOG_20261006_HISTORY.md` 與日期稽核中的歷史來源路徑引用；來源 stub 保持這些舊連結可讀。原 plan 的自我路徑記錄亦完整保留在 Archive 原文。Superpowers README、Archive README 與 manifest 已同步。DOCUMENTATION_INDEX 目前由其他工作修改，本次不碰；它原已連到 Archive README 與 Superpowers README。文件權威邊界未變，不修改 DOC_COVERAGE_MAP 或 PROJECT_SNAPSHOT。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
+|---|---|---:|
+| `docs/superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md` | [`2026-07-07-post-v1-production-scheduler-approval.md`](superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md) | 2,722 / `4E0AE1955D4B9886CFB14DEF1B650A54EBF06102D2C2177229432E4894C73018` |
+| `docs/superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md` | [`2026-07-07-post-v1-production-scheduler-approval-design.md`](superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md) | 1,997 / `1CD354791EABC256F924729E3D2912326D20A0810B06F1A4524132CECA005B29` |

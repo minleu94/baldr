@@ -36,8 +36,8 @@ def test_approval_checklist_exists_and_contains_required_sections() -> None:
 def test_approval_docs_do_not_enable_scheduler_or_use_forbidden_language() -> None:
     paths = [
         CHECKLIST,
-        Path("docs/superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md"),
-        Path("docs/superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md"),
+        Path("docs/09_archive/superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md"),
+        Path("docs/09_archive/superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md"),
     ]
     for path in paths:
         text = path.read_text(encoding="utf-8")

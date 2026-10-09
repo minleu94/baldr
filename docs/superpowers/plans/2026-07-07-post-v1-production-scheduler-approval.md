@@ -1,62 +1,15 @@
-# Production Scheduler Approval Implementation Plan
+# 歷史計畫路徑：Post-V1 Production Scheduler Approval
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> 本頁是原路徑導引；完整原文已保存在 Archive。
 
-**Goal:** 建立 working-copy DB smoke、scheduler readiness evaluator 與 production scheduler approval checklist。
+原計畫中的 17/17 個工程項目已勾選，範圍涵蓋 working-copy smoke、readiness evaluator 與人工 approval checklist。這不代表正式排程已核准或啟用；設計仍固定 `production_scheduler_allowed=false`。
 
-**Architecture:** 使用既有 `EvidencePipelineRunner` 執行 confirm smoke，但只寫 working-copy DB。新增 readiness evaluator 讀取 source coverage / smoke report / dashboard availability，並固定 `production_scheduler_allowed=false`。
+- [封存 plan 原文](../../09_archive/superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md)
+- [配套 design spec](../../09_archive/superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md)
+- [Approval checklist](../../09_archive/POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md)
+- 目前狀態：[Project Snapshot](../../00_core/PROJECT_SNAPSHOT.md)；操作：[Application Manual](../../07_guides/APPLICATION_MANUAL.md)
+- 測試消費點：[test_production_scheduler_approval_checklist.py](../../../tests/test_production_scheduler_approval_checklist.py) 直接讀取 Archive 原件。
 
-**Tech Stack:** Python argparse、SQLite、`shutil.copy2`、dataclass-like JSON summaries、pytest。
+原件：2,722 bytes；SHA-256 `4e0ae1955d4b9886cfb14def1b650a54ebf06102d2c2177229432e4894c73018`。
 
----
-
-### Task 1: Working-copy Smoke Script
-
-**Files:**
-- Create: `scripts/smoke_evidence_pipeline_working_copy.py`
-- Test: `tests/test_evidence_pipeline_working_copy_smoke.py`
-
-- [x] Copy source DB to working-copy DB when needed.
-- [x] Reject identical source and working-copy paths.
-- [x] Run repeat confirm through `EvidencePipelineRunner`.
-- [x] Report event / outcome counts and idempotency check.
-- [x] Keep source DB read-only.
-
-### Task 2: Scheduler Readiness Evaluator
-
-**Files:**
-- Create: `app_module/evidence_scheduler_readiness.py`
-- Create: `scripts/evaluate_evidence_scheduler_readiness.py`
-- Test: `tests/test_evidence_scheduler_readiness.py`
-
-- [x] Evaluate source coverage and smoke report status.
-- [x] Return readiness no higher than `ready_for_manual_confirm`.
-- [x] Keep `production_scheduler_allowed=false`.
-- [x] Emit JSON from CLI.
-
-### Task 3: Approval Checklist
-
-**Files:**
-- Create: `docs/06_qa/POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md`
-- Create: `docs/superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md`
-- Create: `docs/superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md`
-- Test: `tests/test_production_scheduler_approval_checklist.py`
-
-- [x] Document preconditions.
-- [x] Document manual approval steps.
-- [x] Document future schedule design without enabling it.
-- [x] Document rollback / recovery notes.
-- [x] Document explicit non-goals.
-
-### Task 4: Core Docs and QA
-
-**Files:**
-- Modify: `docs/00_core/DOCUMENTATION_INDEX.md`
-- Modify: `docs/00_core/PROJECT_SNAPSHOT.md`
-- Modify: `docs/00_core/ROADMAP_6M_ENGINEERING.md`
-- Modify: `docs/01_architecture/system_vision_specification.md`
-- Modify: `docs/07_guides/APPLICATION_MANUAL.md`
-
-- [x] Mark working-copy smoke / approval checklist v1 complete.
-- [x] Keep production scheduler marked as not enabled.
-- [x] Record verification commands and results.
+逐檔歸檔、依賴與 Coverage 追蹤見 [Coverage History Entry 136](../../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-136)。

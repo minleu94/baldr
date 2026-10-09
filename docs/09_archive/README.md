@@ -480,11 +480,16 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 ### 2026-10-08 Post-V1 engineering plans and specs
 
-13 份有完成計畫及具名 QA 收據的 Post-V1 plan/spec 原文已依原子目錄層次移至 `superpowers/plans/` 與 `superpowers/specs/`，舊路徑保留短導引。完整對應及雜湊見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；執行結果見 [Post-V1 Evidence Pipeline QA](#post-v1-evidence-pipeline-qa)。Scheduler Approval plan/spec 配對仍保留原路徑，因既有測試會讀取它們的實際內容。
+13 份有完成計畫及具名 QA 收據的 Post-V1 plan/spec 原文已依原子目錄層次移至 `superpowers/plans/` 與 `superpowers/specs/`，舊路徑保留短導引。完整對應及雜湊見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；執行結果見 [Post-V1 Evidence Pipeline QA](#post-v1-evidence-pipeline-qa)。2026-07-07 Scheduler Approval plan/spec 配對於 2026-10-09 封存；測試現讀取 Archive 原件，不代表正式排程已核准或啟用。
 
 ### 2026-10-09 Post-V1 Evidence Review Dashboards plan/spec
 
 [7/11 dashboard plan 原文](superpowers/plans/2026-07-11-post-v1-evidence-review-dashboards.md) 與[設計 spec 原文](superpowers/specs/2026-07-11-post-v1-evidence-review-dashboards-design.md) 已移至 Archive，`docs/superpowers/` 原路徑保留短導引。工程實作及對應測試由[具名 QA 收據](POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md)記錄；[7/12 人工 UI smoke checklist](POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md) 的結果表仍空白，multi-day dry-run 與 production scheduler approval 是分開的開放 Gate。本次歸檔不代表這些 Gate 已完成；原件 bytes／SHA 與生命週期判讀見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+<a id="2026-10-09-post-v1-scheduler-approval-plan-spec"></a>
+### 2026-10-09 Post-V1 Scheduler Approval plan/spec
+
+[7/7 plan 原文](superpowers/plans/2026-07-07-post-v1-production-scheduler-approval.md) 與[design spec 原文](superpowers/specs/2026-07-07-post-v1-production-scheduler-approval-design.md) 已移至 Archive，`docs/superpowers/` 原路徑保留短導引。Plan 內 17/17 個工程項目已勾選；其工作範圍是 working-copy smoke、readiness evaluator 與人工 approval checklist。正式排程仍未核准、未啟用，readiness 仍受 `production_scheduler_allowed=false` 限制；multi-day dry-run 與人工 UI smoke 等 Gate 分開判讀。測試已改為直接讀取 Archive 原件，未改斷言；bytes／SHA 與引用路徑見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 及 [Coverage History Entry 136](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-136)。
 
 ### 2026-10-08 Month 2 Registry／storage plan
 

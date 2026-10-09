@@ -312,6 +312,10 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將 12 份已完成或日期化的工程／審核收據集中於 [Archive 專區](../09_archive/README.md#2026-10-08-early-qa-closeouts)，原 QA 路徑保留短轉址。三份原文內的同層連結已改指留在 QA 的 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)、[Full App coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md) 與 Runbook／現行契約。Archive 項目涵蓋 Evidence Rehearsal、Gate 1 Advice、pure-engineering Gate 2–7、歷史 ML Shadow、PIT repair、Snapshot／shim／Superpowers audits 與 execution blueprint；其中 pure-engineering closeout 不等同 external validation 或目前 Gate 通過。現行操作與狀態仍分別以 Manual／Runbook 與 Snapshot 為準。
 
+## 2026-10-08 資料來源與 owner receipt 歷史歸檔
+
+將六份日期化的 display refresh、formal data reconciliation、owner readiness、P0 license／MOPS 與 TWSE T86 candidate-pilot receipts 移至 [Archive 專區](../09_archive/README.md#2026-10-08-data-and-source-owner-receipts)，原 QA 路徑保留短轉址。原始授權、provenance、coverage 與 pilot 限制仍完整保留；source capture 或歷史 owner packet 不作目前採納／production approval 證據。目前 P0 handoff 仍看 [P0 evidence refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)，總狀態看 Snapshot。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

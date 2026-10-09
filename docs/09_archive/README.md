@@ -18,6 +18,11 @@
 
 ## 2026-10-08 歸檔
 
+### 2026-10-08 Data and source-owner receipts
+
+- **資料／介面快照**：[Data Update display refresh（8/30）](DATA_UPDATE_DISPLAY_REFRESH_2026_08_30.md)、[Formal data reconciliation（8/06）](FORMAL_DATA_RECONCILIATION_2026_08_06.md)。這些是當日觀察，不是目前資料可得性或正式完成結論。
+- **Source／owner bounded evidence**：[Owner production readiness（8/06）](OWNER_PRODUCTION_READINESS_2026_08_06.md)、[P0 license capture（8/28）](P0_LICENSE_EVIDENCE_CAPTURE_2026_08_28.md)、[P0 MOPS owner packet（8/28）](P0_MOPS_OWNER_PACKET_REFRESH_2026_08_28.md)、[TWSE T86 20-day pilot](TWSE_T86_20_DAY_CANDIDATE_PILOT_2026_07.md)。保留原授權、provenance、coverage 與 pilot 邊界；較新的 P0 handoff 見 [8/30 evidence refresh](../06_qa/P0_EVIDENCE_REFRESH_2026_08_30.md)，目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。
+
 ### 2026-10-08 Early QA closeouts
 
 - **Evidence Rehearsal**：[工程 closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md) → [real E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)。現行操作步驟仍以 [Evidence Rehearsal Runbook](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md) 為準。

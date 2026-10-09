@@ -135,6 +135,7 @@
 - R001 baseline、R006 ML ABI baseline 與 R020 deferred-threshold dated QA 已移至 `docs/09_archive/`；R031 task evidence index 保留為狀態導覽，R006 未知正式資產的未驗邊界仍由 dated addendum 承接，舊 QA 路徑保留轉址。
 - 三份 2026-09-08 V4 NEXT Formal／ML／Ops handoff 已移至 Archive；舊 QA 路徑保留轉址，9/30 Formal bootstrap repair 改為直接連到保留原文，其他目前狀態／操作回到 Snapshot／Manual。
 - 12 份早期一次性 QA／工程 closeout／治理 audit 已移至 Archive；Evidence Rehearsal Runbook、Full App coverage mapping、External Validation Register 等現行契約入口留在原位，舊路徑轉址承接仍存活的歷史引用。
+- 六份 2026-07／08 資料來源、license、owner 與 display refresh receipt 已歸檔；pilot／授權／來源限制照原文保存，現行 P0 handoff 與 Snapshot 留在 QA／core。
 - 2026-09-07 的三份 V4 bounded data／machine／ML QA 亦已歸檔；仍以 Snapshot 與較新的專題收據判讀目前狀態，不將單日 release evidence 當成現行資格結論。
 - `FULL_APP_HEALTHCHECK_2026_06_16.md` 已歸檔為早期 UI smoke 快照；現行架構與操作分別看 system architecture 和 Application Manual，舊 QA 路徑保留轉址。
 - 若要採用歸檔 Phase SOP 中的操作內容，先依目前程式與 `docs/07_guides/APPLICATION_MANUAL.md` 核對並另行改寫；不要直接把歷史 Phase gate 重新當成目前規範。
@@ -175,6 +176,7 @@
 - 2026-10-08：歸檔 R001、R006、R020 三份已具結案或 dated-snapshot 定位的 QA 原文；以 R031 task evidence index 導覽處置，保留舊 QA 路徑與 R006 unknown-artifact addendum。
 - 2026-10-08：歸檔 2026-09-08 V4 NEXT Formal／ML／Ops handoff；將仍引用精確 Formal handoff 章節的 9/30 repair 連結更新至封存原文，其餘歷史引用由舊路徑轉址承接。
 - 2026-10-08：將 12 份已完成或日期化的早期 QA／audit 歸檔，修復 Evidence Rehearsal、Full App coverage、External Validation Register 三條原文相對連結，保留現行操作／Gate 狀態入口。
+- 2026-10-08：歸檔六份日期化資料／source-owner receipt，保留來源與授權邊界，並從 QA／Archive 導覽指向仍有效的 P0 handoff 與 Snapshot。
 - 2026-07-12：完成全 docs 位置稽核，將 Agent workflow、Shim removal audit 與兩份已完成重構文件分別移至 `agents/`、`06_qa/`、`09_archive/`，並同步所有 Active 引用與目錄 README。
 - 2026-07-06：完成 push 前 docs 結構稽核後補上 `superpowers/` folder ownership、歸檔舊 UI Qt roadmap audit，並將 MCP patch memo 移至技術文件。
 - 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 作為 V2.0 之後長期版本階梯 companion，納入核心入口與文件權威層級。

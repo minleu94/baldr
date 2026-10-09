@@ -749,3 +749,22 @@ system_architecture 主文原 9/27 區塊的逐次 gate verdict、舊 attempt／
 | 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
 |---|---|---|---|
 | `docs/superpowers/plans/2026-06-15-portfolio-replay-weight-exposure.md` | [原始 plan](superpowers/plans/2026-06-15-portfolio-replay-weight-exposure.md) | 14,756 / `77F3D4F33BB7E96F68F785B0DDA5EBCDA6C65DD927C358DC018BABC2A452BF42` | 14,756 / `77F3D4F33BB7E96F68F785B0DDA5EBCDA6C65DD927C358DC018BABC2A452BF42` |
+
+<a id="coverage-entry-092"></a>
+## 2026-10-09 整理 Personal H20 架構 dated increment
+
+原 `system_architecture.md` 的 2026-10-06 Personal H20 段落同時包含 artifact／lineage 身分契約與「daily composition 尚未完成」的當日狀態。將穩定契約抽至架構 §11；原段落 1,007 bytes 原文保存在[架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#system-architecture-h20-20261006)，原 heading 留短導引以保留舊連結。10/06 pending 狀態不再當作現況，後續 consumer 收據與目前 Snapshot／最新 QA 承接狀態判讀。架構 README、Archive README、Coverage Map 與 DOCUMENTATION_STRUCTURE 已同步。
+
+| 原路徑標題 | 歷史原文位置 | 原文 bytes / SHA-256 |
+|---|---|---|
+| `docs/01_architecture/system_architecture.md#2026-10-06-個人-h20-原模型讀取增量` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#system-architecture-h20-20261006) | 1,007 / `079BC32C94540C02B2699D2463DB2002B53615B7DD6394BD0DCEBD95BAC4FC56` |
+
+<a id="coverage-entry-093"></a>
+## 2026-10-09 整理 ML source custody 與 loader 架構增量
+
+原 system architecture 10/06 兩段 ML source custody、session proof／publisher loader 同時混有穩定責任契約與日期化 guard／測試收據。reader port 注入、同一來源鏈傳遞、資料層 session resolver owner、read-only query 不載模型及 publisher 明示 loader injection 等契約已抽至 §11；原驗收全文保存在[架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，兩個 source heading 保留導引。日期化 QA 結果不視為目前 qualification；目前狀態看 Snapshot 與最新 QA。架構 README、Archive README、Coverage Map、DOCUMENTATION_STRUCTURE 已同步。
+
+| 原路徑標題 | 歷史原文位置 | 原文 bytes / SHA-256 |
+|---|---|---|
+| `docs/01_architecture/system_architecture.md#2026-10-06-ml-source-custody依賴方向閉合` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#architecture-ml-source-custody-20261006) | 1,367 / `0D01FC896B1AB6E0AA6917B0A18248F3DB469463CD773B8FA40A500A71D8E08C` |
+| `docs/01_architecture/system_architecture.md#2026-10-06-session-proof-與-publisher-loader-邊界` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#architecture-session-proof-publisher-loader-20261006) | 894 / `70969E2BA6A04F0B2AAAA10F0678C72C0703B121AD840811EC4F3DA35A77B25A` |

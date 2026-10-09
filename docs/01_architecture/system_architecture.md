@@ -39,20 +39,12 @@
 
 ## 2026-10-06 ML source custody依賴方向閉合
 
-M01 `47873e1d→5cc54631`、二次source補正 `ff7adffe→a5304f1c` 已採。原saved artifact／index／stdout reader AST除pure cohort validation保留在ML wrapper外相同。缺port／非callable／returned verified flag拒絕，scheduled script注入原App reader；capture、fit receipt、outcome builder、receipt readback與二次source binding傳遞同port。v1、金融公式、時序、custody及false資格不變。
-
-中央M01 53 passed／1 Windows symlink skip／1 真fit deselected（7.13s）；相鄰原v2 batch15 passed（0.76s）；CLI＋原dependency boundary55 passed（13.95s）。6 source mypy、9 files compile通過。各subset不累加成完整App數量。guard678/0 exit0；原global零違例assert未改，只有 `a0abe901` 將過時CLI六歷史違例期望收緊為main0／zero，原負例保留。raw／blobs見 `output/qa/m01_central_acceptance_20261006.json`。
-
-9 Stage仍1 done／8 partial／0 pending，24 UX仍2 done／22 partial／0 pending；七項有限closed UX03/04/05/06/09/15/17保留。partial混合後續增量、規格、外部資格與真人接受，不能全部稱為未修工程。歷史raw／失敗與唯一plan前綴保留；無push/mainmerge、真DBwrite、migration、Task、ACL、Native、fit或清理。
-
-`docs/06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md`
+本標題保留舊連結。ML lineage reader 的明示注入、同一 source port 傳遞及 fail-closed 契約已抽至[第 11 節](#ml-lineage-reader-dependency-boundary)；日期化驗收、guard 數字與 raw 路徑全文見[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#architecture-ml-source-custody-20261006)及[10/06 engineering delta QA](../06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md)。
 
 
 ## 2026-10-06 session proof 與 publisher loader 邊界
 
-原 natural maturity session proof verifier 經 data_module/recommendation_natural_maturity_proof.py → 原 NaturalMaturitySessionResolver；App personalization 不再直接 import ML evidence wrapper，20 session／cutoff／calendar／market custody 不變。完整 personalization 仍有其他既有 allowed training imports，不宣稱全面冷載入隔離。
-
-CurrentRestatedMLRunRegistry readonly 查詢無 loader；publish_current_restated_stock_research_run 新 keyword-only model_loader，缺件前置拒絕。原 scheduled current_stock_research_cycle 在 script composition 明示注入原 ML loader；不在 App 偷移 dynamic import。原 bundle／manifest／sidecar hash checks 與 source/account/PIT 資格不變。中央20 focused 通過，guard677/3仍 FAIL，剩 M01 H1–H3；原重型 union 不冒稱涵蓋新 head。
+本標題保留舊連結。自然成熟 session proof 與 current-restated registry loader 的穩定依賴方向、唯讀查詢與明示 loader 注入契約已抽至[第 11 節](#natural-maturity-proof-and-model-loader-boundary)；日期化驗收及原始限制見[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#architecture-session-proof-publisher-loader-20261006)與[10/06 final union QA](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md)。
 
 
 ## 2026-10-06 第二波來源與私人審查邊界
@@ -892,6 +884,16 @@ Smart Money 語意層沿用上述資料品質契約：observed / estimated 可�
 ### Personal H20 artifact and lineage boundary
 
 個人 H20 gross reader 沿用 captured manifest 與同一份已核驗 bytes 解碼；受控 composition 注入原 training-lineage reader。模型 final-fold `training_as_of` 與 merged-lineage cutoff 是不同時鐘，`candidate.training_cutoff` 綁定後者，兩者均不得晚於決策日；lineage canonical bytes 保留原序列化語意。Fit-receipt preflight 依 raw pin → 原 sidecars → 原 verifier → typed contract 核驗，不重造 lineage、不載入 artifact、不啟動 Task。此為來源／模型身分契約，不授予模型成熟、全域 promotion 或正式推薦資格；具名證據見[個人 H20 整合 QA](../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md)。
+
+<a id="ml-lineage-reader-dependency-boundary"></a>
+### ML lineage reader dependency boundary
+
+原 saved artifact／index／stdout lineage reader 維持既有 owner；受控 composition 明示注入原 lineage reader，並沿 capture、fit receipt、outcome builder、receipt readback 與 source rebinding 傳遞同一 source port。缺少 port、port 不可呼叫或驗證失敗即拒絕，不暗中改讀其他來源。這是 ML source custody 邊界，不把局部 source review 或 dated regression 數字擴張為整個 App 的驗收；原始驗收見 [BALDR engineering delta](../06_qa/BALDR_ENGINEERING_DECISION_DELTA_20261006.md)。
+
+<a id="natural-maturity-proof-and-model-loader-boundary"></a>
+### Natural-maturity proof and model-loader boundary
+
+20-session natural-maturity proof 由 data-owned `NaturalMaturitySessionResolver` 持有 calendar／market／cutoff 驗證；ML 舊入口只委派該 resolver。這不代表 personalization 沒有其他既有 training imports。`CurrentRestatedMLRunRegistry` 的唯讀查詢不載入模型；發布必須明示注入 model loader，scheduled composition 負責傳入原 loader，未注入時 fail closed。這些依賴方向只界定來源與載入責任，不授予模型成熟或 promotion 資格；具名驗收見 [BALDR final union QA](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md)。
 
 ### Technical-universe provenance boundary
 

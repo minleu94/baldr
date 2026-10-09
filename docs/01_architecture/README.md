@@ -19,7 +19,7 @@
 - **`system_architecture.md`**
   - 系統的技術架構說明
   - 模組結構、數據流程、技術細節
-  - 架構主文為第 1–15 節；仍有效的 orchestration、SQLite connection、ML initialization 與 Personal H20 artifact／lineage 契約已抽回第 4、8、11 節。原第 16 節逐次更新、9/27 邊界／資源 lifecycle 收據與 10/06 Personal H20 當日狀態已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，主文保留舊標題導引；其餘未歸檔的日期段落仍可能含有尚未濃縮的 scoped contract，狀態不可依段落日期或先後順序推斷。
+  - 架構主文為第 1–15 節；仍有效的 orchestration、SQLite connection、ML initialization、Personal H20 artifact／lineage、ML reader custody 與 model-loader 契約已抽回第 4、8、11 節。原第 16 節逐次更新、9/27 邊界／資源 lifecycle 收據與 10/06 H20／ML dated status 已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，主文保留舊標題導引；其餘未歸檔的日期段落仍可能含有尚未濃縮的 scoped contract，狀態不可依段落日期或先後順序推斷。
 
 - **`target_system_architecture.md`**
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
@@ -42,7 +42,7 @@
 ## ML 架構閱讀順序
 
 1. 先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 確認現況，再看 [目前系統架構](system_architecture.md) 中的「ML 路線與狀態判讀」。
-2. Personal H20 的 artifact／lineage 身分界線見 [系統架構第 11 節](system_architecture.md#personal-h20-artifact-and-lineage-boundary)；10/06 原模型讀取增量已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#system-architecture-h20-20261006)，其當日狀態不代表目前接線。
+2. Personal H20 artifact／lineage 身分見[第 11 節](system_architecture.md#personal-h20-artifact-and-lineage-boundary)；ML source custody 見[同節](system_architecture.md#ml-lineage-reader-dependency-boundary)，自然成熟 proof owner 與 model-loader 分工見[同節](system_architecture.md#natural-maturity-proof-and-model-loader-boundary)。10/06 原模型讀取與 loader 增量已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，其當日狀態不代表目前接線。
 3. [目標架構 ML Shadow Layer](target_system_architecture.md#1011-ml-shadow-layer) 描述全域 Recommendation ML 的設計邊界，不作為 active model 或目前資格的證據。
 4. [Gate 7 ML Shadow Engineering](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 記錄投組配置 ML 的研究訓練與 Formal gate；[Personal H20 整合 QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md) 記錄個股研究 H20 投影範圍。
 5. [ASTRA Engineering Closeout（2026-10-03）](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md) 是特定日期的歷史執行記錄；只用來追溯當時狀態，不覆蓋較新的 Snapshot／QA。

@@ -1,4 +1,4 @@
-﻿# 資料對比/驗證 Agent
+# 資料對比/驗證 Agent
 
 > **負責資料完整性驗證、一致性檢查、品質評估的 AI Agent**
 
@@ -310,7 +310,7 @@ SQLite 資料：`{DATA_ROOT}/sqlite/twstock.db` 的 `technical_indicators`
 ## 📚 參考資源
 
 - **共用上下文**：[shared_context.md](./shared_context.md)
-- **資料架構文檔**：`docs/01_architecture/data_collection_architecture.md`
+- **現行資料架構**：[系統架構](../01_architecture/system_architecture.md) 與 [資料獲取邏輯](../03_data/DATA_FETCHING_LOGIC.md)；早期設計見[歸檔藍圖](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md)。
 - **資料更新指南**：`docs/03_data/daily_data_update_guide.md`
 - **資料重建指南**：`docs/03_data/DATA_REBUILD_GUIDE.md`
 - **設定來源**：`data_module/config.py`

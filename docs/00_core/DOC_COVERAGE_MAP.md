@@ -1,5 +1,14 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 早期資料收集架構歸檔
+
+將 2026-06 的 496 行資料收集藍圖移至 docs/09_archive/；原 2026-10-03 freshness 補記與 2026-06-11 券商 E/B 契約均保留。它們的目前適用結論分別由 Integration Repair QA／Manual，以及 system_architecture §9／DATA_FETCHING_LOGIC 承接。舊架構路徑保留導引，現行 README、資料操作指南、Agent 參考與本 Coverage Map 均已改指現況或標示歷史。原文 14 個本地連結均有效，僅重設 1 個 system_architecture 同層連結。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/01_architecture/data_collection_architecture.md | [DATA_COLLECTION_ARCHITECTURE_HISTORY.md](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md) | 20,394 / AF8407BA1DDF1412764436F3C80675E942136BA6B83C58A449A1FB72E971876B | 20,413 / 02AB755F5C4772E60B8B55466F85703C2A370A8FAE74F32BAF2AB354423E4883 |
+
+
 ## 2026-10-08 全文件目錄快照歸檔
 
 將 2026-10-06 的 1,133 行 tracked-file Catalog 從 00_core 移至 09_archive，舊核心路徑保留轉址。封存副本只調整 16 個同層核心文件連結與 1 個自我連結；原有 1,022 個本地 Markdown 連結已全部解析通過。docs/README、PROJECT_NAVIGATION、DOCUMENTATION_STRUCTURE、DOCUMENTATION_GRAPH_GUIDE、舊次整理 Manifest 與 QA 收據已改指歸檔副本；現行 DOCUMENTATION_INDEX 的既有舊路徑由轉址承接。Catalog 的日期、清點範圍及其餘內容保持不變。
@@ -344,7 +353,9 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 - 資料流程變更
 
 **必須更新（Must）：**
-- `docs/01_architecture/data_collection_architecture.md` - 資料收集架構（如資料架構變更）
+- docs/01_architecture/system_architecture.md - 現行系統資料流與資料層架構（架構變更時）
+- docs/03_data/DATA_FETCHING_LOGIC.md - 現行來源、欄位與獲取邏輯
+- docs/03_data/daily_data_update_guide.md - 使用者更新流程（流程變更時）
 - `docs/03_data/DATA_FETCHING_LOGIC.md` - 資料獲取邏輯（如資料獲取邏輯變更）
 - `docs/03_data/daily_data_update_guide.md` - 每日資料更新指南（如更新流程變更）
 

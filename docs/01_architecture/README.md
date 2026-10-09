@@ -53,9 +53,9 @@
 - **[舊端到端流程藍圖（歷史）](../09_archive/SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md)**
   - 舊模組、資料路徑與建議新增元件僅供架構演進追溯；目前系統流程以 `system_architecture.md` 為準，UI 操作以 `../07_guides/APPLICATION_MANUAL.md` 為準。原路徑保留轉址，接住歷史 catalog 與計畫引用。
 
-- **`data_collection_architecture.md`**
-  - 數據收集系統的架構
-  - API 端點、數據更新流程、數據存儲結構
+- **[資料收集架構歷史藍圖](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md)**
+  - 早期 API、CSV、檔案路徑與更新流程設計，作為歷史參考。
+  - 現行系統資料流看 [system_architecture](system_architecture.md)；操作看 [docs/03_data README](../03_data/README.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。原路徑保留導引。
 
 - **`runtime_observatory_rules.md`**
   - Runtime Subsystem、DTO、UI bridge 與依賴方向治理規範

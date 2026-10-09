@@ -47,6 +47,6 @@
 
 ## 🔗 相關目錄
 
-- `../01_architecture/data_collection_architecture.md` - 數據收集架構
+- [早期資料收集架構藍圖（歷史）](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md) - 追溯舊 API、CSV 與路徑，不作現行操作依據。
 - `../07_guides/` - 指南文檔
 

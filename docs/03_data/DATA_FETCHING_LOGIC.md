@@ -323,14 +323,14 @@ if file_path.exists():
 
 1. 查看 `TROUBLESHOOTING_DAILY_UPDATE.md` - 每日股票更新故障排除指南
 2. 查看 `../00_core/PROJECT_SNAPSHOT.md` - 目前狀態、已知風險與優先事項
-3. 查看 `../01_architecture/data_collection_architecture.md` - 數據收集架構說明
+3. 現行跨模組資料流請看 [system_architecture.md](../01_architecture/system_architecture.md)；早期 API／CSV 設計見[歷史藍圖](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md)。
 
 ## 相關文檔
 
 ### 主要文檔
 - **`TROUBLESHOOTING_DAILY_UPDATE.md`** - 每日股票更新故障排除指南（包含 API 連接問題解決方案）
 - **`../00_core/PROJECT_SNAPSHOT.md`** - 目前狀態、已知風險與優先事項
-- **`../01_architecture/data_collection_architecture.md`** - 數據收集架構說明
+- **[歷史資料收集架構藍圖](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md)** - 早期 API、CSV 與儲存路徑設計；現行流程以本文件及 [system_architecture.md](../01_architecture/system_architecture.md) 為準。
 
 ### 腳本文檔
 - **`scripts/batch_update_daily_data.py`** - 批量更新腳本（推薦使用）

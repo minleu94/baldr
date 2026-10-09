@@ -25,3 +25,11 @@
 ## 下一個驗證範圍
 
 本修正可進入下一次隔離 Main 封套的準備。執行前仍須重新核對 controller、preparer、child 三檔與完整 dependency 雜湊，確認新 attempt 目錄未存在。Main 的實際載入、H20 名單、下鑽、返回與收藏重開須由該次執行另行證明；目前不要求使用者重驗舊 EXE。
+
+## q 執行前複核
+
+Root 已實際對 `attempts/synthetic_main_case_contract_20261008_q/q_prelaunch_hash_receipt.json` 所列三個目的腳本、22 個固定來源依賴、4 個 artifact 與 5 個外部 runtime 依賴重新計算 SHA-256，共 34 項均相符。收據 SHA-256 為 `b27705e115d3738c5f0cb226119bae5eeba846b2658bce103d238656ced0ab87`；新 case 路徑 `C:/t/h20dual_synthetic_main_case_contract_20261008_q` 的實際 `Test-Path` 為 false。
+
+已授權 owner 只啟動一次此 exact q controller，並由 owner 追蹤原 handle 與保存程序清理、來源起訖、完整 stdout/stderr 及實際 Main 旅程結果。這是隔離合成執行授權，不是正式資料讀取或產品驗收通過。
+
+收據歷史證據欄的 `root_regression.log` 並非 root 產生的檔案；實際複驗證據是工具回傳的 `13 passed in 0.70s`、exit 0。已要求 owner 在新 execution receipt 追加更正，不覆寫執行前 immutable 收據。

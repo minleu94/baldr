@@ -28,6 +28,6 @@ UI 接續驗收至少需真正背景產製→完整 bundle→catalog 列出→�
 ## 本輪接續紀錄
 
 - F17：真正 Qt 產製、catalog、下鑽、返回、收藏 DTO 已有合成驗證；服務保存至隔離觀察清單 repository 後，獨立 Python／Qt 程序嚴格重開同版研究的六項測試通過（10.18 秒，提交 `50a35277`）。沒有完整 Main 觀察清單按鈕、原 H20 或真人接受證據。
-- F12：獨立審查找到 archived finish 的歷史 provider clone 仍解析原路徑，已交 owner 窄修正並加入路徑探測與最後來源變動回歸；既有通過不能折抵這個缺口。
-- H20：合成 Main attempt o 保留失敗，verifier 的 SHA 前綴格式不一致已定位；agent 準備新 bootstrap 與正負驗證，尚未重新執行 Main。
-- F02：guard-only 新版本仍在隔離測試；scope 可對本次合成空 DB 做真唯讀驗證，須分別記錄 scope、來源 reader 與 producer 的連線／呼叫數，不能宣稱總 SQLite 連線為零。
+- F12：archived finish 歷史路徑解析缺口已修正並提交 `f6dd33b3`；backend 最終 61 項通過、1 項因 Windows 檔案 symlink 權限跳過。Root 的 index/query 相容測試另有 9 項通過，但整批耗時 139.10 秒不是效能達標證據。owner 正在接續真正兩來源原子重開 adapter；root 預審已要求修正 WindowsPath 型別拒絕與取消前仍建立 operation 目錄，owner 已回報修正，實際正負旅程尚待驗證。
+- H20：合成 Main attempt p 在 verifier 錯誤模組名稱階段失敗，未進入 Main；錯名來自 dual child extras。新 b 相容層保留全部 23 個驗證項，root 已讀 diff 並在隔離原生環境複驗 13 項通過（0.70 秒）；見 `BALDR_H20_VERIFIER_MODULE_COMPATIBILITY_ROOT_REVIEW_20261009.md`。下一次 q 封套準備中，三檔及 dependency 雜湊未完成 root 複核前不執行 Main。
+- F02：l guard-only 已有獨立真實執行證據，但記憶體 probe 確認 mutable object/manifest budget 各增加 1 byte 仍被接受，是實際缺陷。owner 正在新 m 候選釘住硬上限並補 path-only 與 binding mutation 負例，未放行 full producer。scope 可對本次合成空 DB 做真唯讀驗證，須分別記錄 scope、來源 reader 與 producer 的連線／呼叫數，不能宣稱總 SQLite 連線為零。

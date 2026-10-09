@@ -270,6 +270,14 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 在 [QA README](../06_qa/README.md) 新增 5 條近期閱讀路徑，為 25 份 2026-10-06 至 10-09 tracked 收據補上直達入口；原始收據不搬移、不重寫，索引只標示主題與來源，不宣稱目前狀態。F02 saved-feature gap 收據暫緩加入此索引，待其未追蹤的同主題 review 工作收束後再一起核對路由。未修改 dirty `DOCUMENTATION_INDEX.md`、`PROJECT_SNAPSHOT.md` 或 `APPLICATION_MANUAL.md`。
 
+`docs/05_phases/README.md` 的狀態導覽同步改為 Snapshot 管目前狀態、6M Roadmap 管工程順序、Roadmap Hub 僅導覽；沒有移動 Phase 原文或改寫歷史 gate。
+
+Phase 目錄逐檔導覽已補上可點文件路徑；`phase3_5_research/README.md` 改為純歷史索引，移除現行操作步驟；功能目錄改連 Phase README，Structure 改為精確描述目前已核實的唯一 Active 直接引用。未搬移 Phase 原文，未改動 dirty Index、Snapshot 或 Manual。
+
+`system_architecture.md` 的 F4 Watchlist COW 日期增量已收斂為 QA 導覽；穩定儲存、格式相容與正式 apply 邊界歸入 §4／§8／§11。四份 2026-10-05 原 QA 收據保留原文並由架構 README、QA README 建立主題入口；明確區分隔離工程驗證與正式資料轉換／啟用批准，沒有聲稱已套用正式 store。
+
+`docs/superpowers/README.md` 新增主題閱讀入口，按 Research Lab、scoring、ML、valuation、Portfolio／Watchlist、資料更新／UI 導向現行權威與少量歷史 plan/spec；保留 165 項 manifest，不推定完成狀態。另明示舊外部證據授權、任務 prompts 及日期稽核的 Next Action 只能作歷史追溯，避免被搜尋後誤當現行指令。未移動或改寫 superpowers 原文件。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

@@ -35,6 +35,7 @@
 | UI、Application、Decision、Backtest、Portfolio | 第 3–7 節 |
 | 資料、券商分點與 Runtime | 第 8–10 節 |
 | 保存治理、匯出、文件架構、高風險修改與驗證 | 第 11–15 節 |
+| Watchlist／bookmark 保存與 COW 遷移 | 第 4、8、11 節；操作與批准狀態看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) |
 
 主文後仍有日期化架構增量；它們保存當時的架構變更與限制，不是按時間排序的目前狀態摘要。第 16 節舊更新流水帳已移至 [歸檔](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)。目前完成度看 Snapshot，具體驗收看對應 QA 收據。
 

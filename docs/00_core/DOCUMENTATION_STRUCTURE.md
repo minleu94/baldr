@@ -129,7 +129,7 @@
 - `09_archive/` 保留歷史文件，但 Active 文件不應依賴 archive 內容判斷目前狀態。
 - `output/`、`output/qa/` 與根目錄臨時資料樣本屬於本機執行產物，不應作為 Active 文件或乾淨 `main` 內容；需要保存結論時整理為 `docs/06_qa/` 摘要。
 - 一次性 QA debug / patch 文件可刪除，保留 summary / issues / audit 類文件即可。
-- `docs/05_phases/` 維持原位置作為歷史 Phase / 設計追溯區，不整包搬入 archive，原因是仍有 Active 專項文件引用其設計脈絡；但每個入口必須明確標示 Historical / Reference，不得把其中的「下一步」「進行中」「Phase Gate」當作目前 roadmap。
+- `docs/05_phases/` 作為歷史 Phase / 設計追溯區逐檔管理，不以整個子樹有多筆 Active 引用作保留理由。目前核實到的 Active 直接引用只有 `docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` 指向 `PHASE2_ARCHITECTURE.md`；其餘文件暫留供逐檔判讀，入口須標示 Historical / Reference，不得把其中的「下一步」「進行中」「Phase Gate」當作目前 roadmap。沒有直接引用不等於可刪除。
 - 若未來要進一步整理 `docs/05_phases/`，優先做「分批搬移 + redirect README + Index 修正」，不要直接刪除；Phase 3.5 SOP 若仍有操作價值，應先改寫到 `docs/02_features/` 或 `docs/07_guides/`，再把原文件歸檔。
 - `docs/superpowers/` 保留為 spec / plan 追溯區；新增 `README.md` 作為資料夾邊界，避免大量 plan / spec 被誤讀成目前 roadmap。
 - `docs/06_qa/UI_QT_DEVELOPMENT_ROADMAP_AUDIT.md` 已因 2026-05-19 舊狀態容易誤導而歸檔為 `docs/09_archive/UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`。
@@ -159,6 +159,7 @@
 ## 六、更新記錄
 
 - 2026-10-08：補齊 Scoped SSOT 的願景、產品、工程、現況、成熟度與歷史移交分工；將 Roadmap Hub 定義為純導覽，並說明版本成熟度不代表工程 Gate 順序。
+- 2026-10-08：依逐檔引用檢查修正 `05_phases/` 保留理由，明列目前唯一核實的 Active 直接引用；歷史文件仍須按引用、證據與追溯價值逐檔判讀。
 - 2026-07-12：完成全 docs 位置稽核，將 Agent workflow、Shim removal audit 與兩份已完成重構文件分別移至 `agents/`、`06_qa/`、`09_archive/`，並同步所有 Active 引用與目錄 README。
 - 2026-07-06：完成 push 前 docs 結構稽核後補上 `superpowers/` folder ownership、歸檔舊 UI Qt roadmap audit，並將 MCP patch memo 移至技術文件。
 - 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 作為 V2.0 之後長期版本階梯 companion，納入核心入口與文件權威層級。

@@ -42,6 +42,6 @@
 ## 🔗 相關目錄
 
 - `../00_core/` - 核心文檔
-- `../05_phases/` - Phase 相關文檔
+- [歷史 Phase 文件目錄](../05_phases/README.md)
 - `../strategies/` - 策略文檔
 

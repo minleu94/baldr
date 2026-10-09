@@ -19,6 +19,24 @@
 | `plans/` | 實作計畫、工作拆分、驗收 gate 與文件同步清單 | 除非 Snapshot／Index 明確接續，否則視為歷史 execution trace；計畫本身不代表目前優先順序。 |
 | `prompts/` | 一次性工作拆分與 handoff prompt | 歷史指派紀錄；不能直接當成現行工作授權。 |
 
+## 主題閱讀入口
+
+先依序看 [目前狀態](../00_core/PROJECT_SNAPSHOT.md)、對應的 scoped authority 與 [QA 主題地圖](../06_qa/README.md)，再按需要回查下表中的歷史 plan／spec。下表只降低找文件的成本，不代表其中計畫仍有效、已完成或獲得目前授權；完整 165 份歷史路徑及雜湊仍以 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 為準。
+
+| 主題 | 目前閱讀入口 | 可選的歷史 plan／spec | 判讀提示 |
+|---|---|---|---|
+| 研究 Lab 與 Registry | [Application Manual](../07_guides/APPLICATION_MANUAL.md)、[目前架構](../01_architecture/system_architecture.md)、[QA 主題地圖](../06_qa/README.md) | [Research Lab workbench plan](plans/2026-06-04-research-lab-workbench-v1.md)、[workflow redesign plan](plans/2026-06-04-research-lab-workflow-redesign.md)、[同名 redesign spec](specs/2026-06-04-research-lab-workflow-redesign.md)；另有[Registry 設計規格](../02_features/RESEARCH_RUN_REGISTRY_SPEC.md) | plan 與 spec 分開保存；同名不代表內容重複，現行行為看 Manual、Architecture 與具名 QA。 |
+| 策略評分與推薦 | [Score Explanation](../02_features/SCORE_EXPLANATION.md)、[Strategy Design Specification](../02_features/STRATEGY_DESIGN_SPECIFICATION.md)、[目前架構](../01_architecture/system_architecture.md) | [總治理 plan](plans/2026-06-13-strategy-scoring-governance.md)、[Backtest 切片](plans/2026-06-13-strategy-scoring-governance-a-backtest.md)、[Recommendation 切片](plans/2026-06-13-strategy-scoring-governance-b-recommendation.md)、[治理 spec](specs/2026-06-13-strategy-scoring-governance-design.md) | 文件只保留設計脈絡；是否進入正式評分或推薦，以現行實作與 QA 核對。 |
+| ML 與前瞻證據 | [Architecture ML 閱讀路徑](../01_architecture/README.md)、[ML／Shadow QA 主題地圖](../06_qa/README.md) | [Historical ML Shadow MVP plan](plans/2026-07-13-historical-ml-shadow-mvp.md)、[外部證據主計畫](plans/2026-07-13-external-evidence-investment-validation-master-plan.md)、[外部證據 spec](specs/2026-07-13-external-evidence-investment-validation-design.md) | 7 月主計畫內的 Wave 授權文字是歷史記錄，不是目前任務授權；狀態及 Gate 看 Snapshot／現行登記。 |
+| 基本面與估值 | [Fundamental Source Inventory](../03_data/FUNDAMENTAL_SOURCE_INVENTORY.md)、[目前架構](../01_architecture/system_architecture.md)、[QA 主題地圖](../06_qa/README.md) | [估值資料層 plan](plans/2026-06-16-month5-valuation-data-layer-v1.md)、[估值呈現政策 plan](plans/2026-06-16-month5-valuation-presentation-policy.md) | 歷史計畫不代表資料覆蓋、PIT 可得性或估值已納入正式評分；依現行資料與 scoring contract 判讀。 |
+| Portfolio 與 Watchlist | [Application Manual](../07_guides/APPLICATION_MANUAL.md)、[保存治理架構](../01_architecture/system_architecture.md)、[F4 Watchlist COW QA](../06_qa/README.md) | [Recommendation Portfolio optimization plan](plans/2026-05-26-recommendation-portfolio-optimization.md)、[Watchlist Trigger plan](plans/2026-06-15-decision-desk-watchlist-trigger.md) | 區分每日研究提示、Portfolio 政策與使用者 Watchlist 儲存；歷史轉換工程不等於已套用正式資料。 |
+| 資料更新與 UI 工作台 | [Application Manual](../07_guides/APPLICATION_MANUAL.md)、[UX／產品 QA 主題地圖](../06_qa/README.md) | [Data Update Workbench plan](plans/2026-05-20-data-update-workbench.md)、[設計 spec](specs/2026-05-20-data-update-workbench-design.md)、[非破壞 healthcheck runner](plans/2026-06-23-non-destructive-release-healthcheck-runner.md) | 操作以 Manual 為準；日期化 plan 和 healthcheck 分別代表設計、工程或驗收，不互相替代。 |
+
+下列歷史內容特別容易被搜尋後誤用，引用時先回到本 README 確認生命週期：
+
+- [平行工作流啟動 prompts](prompts/2026-07-13-parallel-workstream-start-prompts.md) 是過去的任務分派文字，不能直接貼上當成目前授權。
+- [Plan/spec 日期與狀態稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md) 是 7 月稽核收據；其中的 `Next Action` 保留當時結論，不是目前待辦。
+
 ## 維護規則
 
 - 目前已存在的 plan/spec/prompt 原 bytes 與原路徑保留；本輪不搬檔、不改其正文。位置、日期標籤、生命週期判讀與現行權威替代關係逐檔列在 [`../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md`](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。

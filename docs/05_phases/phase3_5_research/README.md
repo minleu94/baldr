@@ -1,42 +1,27 @@
-# Phase 3.5 研究 SOP 文檔
+# Phase 3.5 研究文件索引（歷史）
 
-> **歷史判讀**：本目錄保留為 Phase 3.5 研究 SOP 追溯，不作為目前 roadmap、目前完成狀態或下一步優先順序依據。目前操作請看 `../../07_guides/APPLICATION_MANUAL.md`；目前狀態請看 `../../00_core/PROJECT_SNAPSHOT.md`；V1.1–V2.0 歷史演進請看 [歸檔版本](../../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
+> **歷史判讀**：本目錄保存 Phase 3.5 時期的研究流程、指標判讀、Benchmark 呈現與 Phase 4 進入條件。這些文件記錄當時的設計與判斷，不是目前操作程序、roadmap、完成狀態或下一步依據。現在的操作方式請看 [Application Manual](../../07_guides/APPLICATION_MANUAL.md)，目前狀態請看 [Project Snapshot](../../00_core/PROJECT_SNAPSHOT.md)。
 
-## 概述
+## 文件範圍
 
-Phase 3.5（Readiness）的目標是將已完成的 Phase 3 研究閉環轉化為可穩定實際使用的操作流程與判讀標準，作為進入 Phase 4（持倉管理）的前置 Gate。
+Phase 3.5（Readiness）曾以研究操作準備度及 Phase 4 前置條件為主題。下列原文件保留該時期的準則與脈絡；其中的門檻或 Gate 不應直接套用為目前資格判定。
 
-## 文檔結構
+## 歷史文件
 
-1. **[研究迭代 SOP (Iteration Playbook)](RESEARCH_ITERATION_PLAYBOOK.md)**
-   - 固定研究順序
-   - 每一步的指標與判斷標準
-   - 退回調整條件
+| 文件 | 保存內容 |
+|---|---|
+| [研究迭代 Playbook](RESEARCH_ITERATION_PLAYBOOK.md) | 當時的研究順序、指標判斷與退回調整條件。 |
+| [指標判讀優先順序](METRIC_INTERPRETATION_PRIORITY.md) | 當時的 primary / secondary 指標分工與樣本提示。 |
+| [Benchmark 呈現](BENCHMARK_PRESENTATION.md) | 當時的基準正規化、數值呈現與解讀方式。 |
+| [Phase 4 進入條件](PHASE4_ENTRY_CRITERIA.md) | Phase 4 啟動前條件及其當時核對紀錄。 |
 
-2. **[指標判讀優先順序](METRIC_INTERPRETATION_PRIORITY.md)**
-   - Primary 指標（決策用）
-   - Secondary 指標（輔助解釋）
-   - 樣本不足提示標準
+## 判讀入口
 
-3. **[回測 Benchmark 對標呈現方式](BENCHMARK_PRESENTATION.md)**
-   - Benchmark normalize 方案
-   - 原始數值顯示方式
-   - 解讀說明
+- 目前操作與結果判讀：[Application Manual](../../07_guides/APPLICATION_MANUAL.md)。
+- 目前狀態與優先事項：[Project Snapshot](../../00_core/PROJECT_SNAPSHOT.md)。
+- 目前架構與 Research Run Registry 邊界：[System Architecture](../../01_architecture/system_architecture.md)。
 
-4. **[Phase 4 進入條件 (Gate)](PHASE4_ENTRY_CRITERIA.md)**
-   - Phase 3 必須完成的事項
-   - 進入 Phase 4 的條件清單
+## 更新記錄
 
-## 使用指南
-
-1. **首次使用**：請先閱讀「研究迭代 SOP」，了解完整的研究流程
-2. **日常使用**：參考「指標判讀優先順序」快速判斷回測結果
-3. **Benchmark 解讀**：參考「回測 Benchmark 對標呈現方式」正確理解基準對比
-4. **準備進入 Phase 4**：檢查「Phase 4 進入條件」是否全部滿足
-
----
-
-**文檔版本**：v1.0  
-**最後更新**：2026-01-02  
-**適用階段**：Phase 3.5 (Readiness)
+- 2026-10-08：將 README 改為歷史索引，移除會被誤認為目前操作流程或未完成 Gate 的指示；保留四份歷史原文。
 

@@ -493,7 +493,7 @@ Application Services / DTO / Repository
 - 更新的 [update_loop_dtos.py](../../app_module/dtos/update_loop_dtos.py) 保留來源、實際日期、quality、warnings、candidate 與 read mode；UpdateService 的 status／overview／detail 查詢不寫 manifest，不建 schema。離線落地維持 broker 四欄身份鍵與指標父程序單一寫入者。
 - 市場的 [market_loop_dtos.py](../../app_module/dtos/market_loop_dtos.py) 統一 `decision_date`／`effective_date` 與來源品質。ScreeningService 先以決策日裁切再排名；既有 tuple／DataFrame API 保留相容。較舊有效日期降級，未知或未來資料不補零；Regime 匹配度不代表勝率。
 - 推薦的 [RecommendationService](../../app_module/recommendation_service.py) 先凍結行情／可得日再評分，以 query-only 讀 SQLite，產出 `recommendation-context.v1`。RecommendationResultDTO 相容保存設定、Profile、行情與實際基本面指紋、母體及 Why Not；已啟用技術因子缺值不使用中性預設。歷史產業 membership 缺 PIT 證據時明確拒用；fixed 仍預設、quantile 仍 opt-in。
-- 候選池的 [WatchlistService](../../app_module/watchlist_service.py) 提供 UI 股票名稱查詢與可注入的 SQLite 副本 repository；預設正式 JSON 未切換，損毀保留原檔並回報錯誤。`added_at` 截止不等於完整歷史 membership；Trigger 仍是日資料研究提示。
+- 候選池的 [WatchlistService](../../app_module/watchlist_service.py) 提供 UI 股票名稱查詢、JSON／SQLite repository 與明示轉換流程；讀取不隱式遷移或啟用 store，損毀時保留原件並回報錯誤。`added_at` 截止不等於完整歷史 membership；Trigger 仍是日資料研究提示。保存格式與轉換邊界見 §8、§11。
 - [DecisionDeskSnapshot](../../app_module/decision_desk_dtos.py) 的 additive `recommendations`／`source_lineage` 保存已存推薦與候選 ledger 的日期、品質與 hash。App provider 不重算推薦或帳務；缺行情的候選帳本為 blocked。完整 loop payload 保存在既有 snapshot schema 的 metadata，`generated_at` 不參與身份 hash；08-B 已注入保存推薦 provider，Workbench 重載也保留新增推薦與來源鏈；其他既有 typed section 的完整 hydration 限制仍保留。
 
 | 領域 | 主要元件 |
@@ -812,6 +812,10 @@ db_file    -> <DATA_ROOT>/sqlite/twstock.db
 
 不得在新程式中硬編碼正式資料根目錄。
 
+### Watchlist 與市場資料庫的儲存邊界
+
+Watchlist／bookmark 是使用者保存狀態，不等同市場 `twstock.db`、研究快照或 producer 輸出。資料路徑與格式依現有設定／selector 判定；個人 store root／mode 和 converter activation 必須明示選擇。一般讀取不得建立缺失 store、轉換來源或切換 activation。格式相容、copy-on-write（COW）與正式套用限制見 §11；目前操作與批准狀態以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 和 Snapshot 為準。
+
 ### Immutable technical-universe source
 
 完整母體 v4 保存於獨立來源，immutable manifest／receipt 綁定來源時點、方法、規則、scope 與原始 bytes；strict read 依 generation、plan、receipt pins 驗回原件。每個 parent segment 最多 256 檔股票，這是保存分段限制，不是產品 universe 上限。全域查詢跨所有已完成分段執行條件篩選與排序，再套用分頁；不能先分頁再做全域排序。
@@ -929,6 +933,12 @@ Smart Money 語意層沿用上述資料品質契約：observed / estimated 可�
 ### Technical-universe provenance boundary
 
 完整母體 v4 是獨立的 immutable research source kind，不與舊每日來源混用。個股、比較與 bookmark 都保留原 query 及來源 pins；strict reopen 不挑 latest、不重算，也不把 partial／tampered／source-mismatched receipt 當完整結果。保存或展示本身不授予 PIT、ScoringEngine、正式推薦或模型訓練資格；這些資格仍須走各自的資料與產品 Gate。
+
+### Watchlist revision storage 與 COW migration boundary
+
+Watchlist v3 `watchlist-item-events.v1` 以 immutable item 與 sparse events 保存 revision；既有 v1／v2 與 bookmark 格式可讀，讀取不隱式升級。遷移使用 source／target 分離的 COW converter，保留原 payload、hash、IDs、metadata 與順序；marker、CAS／鎖及 rollback audit 用來阻止並行寫入或錯誤來源切換。容量未知／不足、schema／hash／reference／source identity 不一致時必須 fail closed。
+
+隔離工程驗證不等於已將正式使用者資料套用轉換或啟用新 store。正式 apply／activation 必須另行明示批准，重新核對來源、writer 時段與當下容量；回滾保留來源、target 新 revision 與 audit，不自動合併或刪除。操作程序看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。日期化範圍與證據分別見 [revision retention](../06_qa/F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md)、[SQLite COW](../06_qa/F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md)、[Legacy JSON COW](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md) 與 [整合／容量驗收](../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)。這些收據的隔離範圍與目前批准狀態分開判讀。
 
 目前保存能力包括：
 
@@ -1311,48 +1321,21 @@ MainWindow 公開 optional `daily_market_snapshot_root`／`daily_market_snapshot
 F4 實際跨頁、新程序回看與總資源驗收以 [F4 詳細收據](../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md) 的逐項結果為準；配置接線不授正式排程或自然資格。
 
 
-## 2026-10-05 F4 項目 revision 儲存與長留存實測（最新）
+## 2026-10-05 F4 項目 revision 儲存與長留存實測
 
-新／空庫採 schema3 `watchlist-item-events.v1`，不可變item＋稀疏events取代每版完整清單；舊v1/v2與兩種bookmark可讀，禁止初始化隱升級。4MiB payload／32MiB DB／64MiB scan／4096rows不變，容量未知／不足及schema/hash/refs/sourcehash不一致拒絕；歷史完整payload hash由有界增量replay另驗。
+> **歷史 QA 導覽**：本輪 schema、容量與長留存實測細節保留於 [F4 revision retention 收據](../06_qa/F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md) 及 [整合／容量驗收](../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)。穩定儲存契約見 §11 的 Watchlist revision storage；本段不代表目前正式 store 已切換。
 
-受控同日期3股×120列，實際發布／收藏250次，20／120／250總實體留存781,365／3,887,695／7,912,388 B；250時Watchlist DB4,145,152 B、聚合payload2,600,012 B、全治理掃描6,202,133 B。三節點capacity／scan／references及全部250歷史回放通過，actual v3 offscreen MainWindow三程序讀回通過。39項統一路由＋最後新增sourcehash拒絕1案共40 distinct有通過證據；mypy791、最後單點module mypy、6檔compile與精度／未來函數guard通過。
+## 2026-10-05 F4 SQLite COW converter 與明示 activation
 
-新隔離v3長留存限制已修，舊格式歷史估算不回寫；**正式v1/v2 COW converter／activation切換尚未實作及核准**。本批僅readonly dry-run，原DBbytes不變；不得把正式部署未做寫成等自然成熟，F4不能全關閉。F1差1.38pp交父層、F2/F3 A/A不重開，新Native／真人／自然資格另列；不清理、不push、不改其他owner。
-
-目前新增 `data_module/watchlist_item_storage.py`；repository負責交易/CAS與capacity，service只偵測嚴格v2/v3，governance掃unique bookmark pins。inventory驗refs/chain/current，iterator串流驗full歷史hash，不把治理完整當作全部歷史payload hash已重播。
-
-[完整收據與 COW 剩餘工程](../06_qa/F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md)
-
-
-## 2026-10-05 F4 SQLite COW converter 與明示 activation（最新）
-
-SQLite v1/v2→獨立v3 COW converter、CLI dry-run/convert/activation-preview/activate/status/rollback、fresh-service pointer與錯marker拒寫、bounded governance audit接線已實作並完成隔離驗證；取代前批「converter尚待工程」狀態。lexical codec保留逐版raw payload/hash、IDs/metadata/timestamps/source/order，v1缺歷史只標synthetic baseline。原4MiB/32MiB/64MiB/4096上限不變，取消、容量未知/不足、bad rows/schema、concurrent writer及身份錯誤failclosed。
-
-限定路由 70 passed，mypy 793 source files + CLI 1 source file pass，11檔compile及精度/未來函數guard通過。已許可舊20-session fixture副本由CLI新程序完成轉換、啟用讀回、target r21追加、rollback回source r20；target r21、雙DB/audit保留，不自動合併。原fixture及17份已接受immutable pins保持相同；無producer重跑、正式資料套用、Native、清理或push。
-
-本批COW實作工程關閉；正式使用者apply另行核准。預設canonical SQLite不存在、legacy default.json存在，實際store/mode/override仍待父層確認；沒有初始化缺失DB或讀真實JSON。F1差1.38pp交父層方向，F2/F3 A/A不重開；新Native/真人/自然資格分列，不能把部署批准寫成等自然成熟。
-
-[逐項COW驗證、操作與正式部署邊界](../06_qa/F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md)
-
-COW converter位於data_module/watchlist_sqlite_cow.py，import-only lexical codec/replay沿watchlist_item_storage.py，repository current讀回原raw JSON。app_module/watchlist_cow_activation.py管理明示pointer/immutable rollback audit及held SQLite locks；WatchlistService沿同一marker lock守住fresh/stale writer。governance辨識metadata並共用pure inventory lineage helper，不在resolve重播全部歷史或重hash持續變動target。
-
+> **歷史 QA 導覽**：SQLite converter 的隔離工程驗證見 [F4 SQLite COW 收據](../06_qa/F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md)。隔離驗證不代表正式使用者資料已 apply／activation；目前批准狀態以 Snapshot 與 Manual 為準。
 
 ### 最終容量守衛收尾（2026-10-05）
 
-啟用與回退發布 audit／marker 前重新核對當下中央 reserve；容量未知／不足具名拒絕並保留原指標、雙庫與內容。最終限定路由72 passed（focused_root_05.log；另有pytest cache唯讀警告），mypy793及CLI1通過，11檔compile／7產品檔精度與未來函數AST守衛0違規。14個獨立程序實際CLI回放全部exit0、隔離guard0違規，17份immutable來源及原20-session fixture SHA不變。最終case為output/qa/f4_cow_converter_activation_20261005/cli-roundtrip/run-615b305783f9；原失敗與中間收據保留，不替換為自然或正式驗收。
+容量守衛與逐項結果保留於上述 [SQLite COW 收據](../06_qa/F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md) 和 [整合／容量驗收](../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)；歷史 case、bytes 與測試數字不在架構主文重複維護。
 
+## 2026-10-05 Legacy JSON v1 COW 與明示切換
 
-## 2026-10-05 Legacy JSON v1 COW 與明示切換（最新）
-
-實際一般啟動沿 legacy JSON v1；本批補齊單一 JSON→獨立 SQLite v3 converter、原升級按鈕的 convert／核對／activate、新程序 discovery、source-aware writer 與 rollback，不建立缺失 canonical。多份 JSON、已有 canonical 歧義、錯來源／marker、容量／版本／型態／編碼與並發 writer 具名拒絕。來源 raw bytes 與合法未知巢狀欄位保留，opaque history 不臆造 ledger；JSON 無版本鏈只建明示 synthetic baseline。回退回 JSON，保留 target 新 revision、雙來源和 audit，不自動合併。既有 SQLite COW 路徑沿原契約。
-
-限定統一路由 113 passed，Workbench85、validator25／4skip、mypy 794及CLI1、12檔compile與6產品檔精度／未來函數AST守衛0違規。14個隔離新程序完成 JSON CLI轉換／啟用／追加／回退，來源 bytes unchanged、target r2保留、canonical未建立；合成 JSON 起點20／120／250次保存之總留存 181,902／444,060／816,793 B，未冒稱自然來源／全書籤負載增長。17份已接受immutable來源SHA及正式JSONsize／mtime保持，正式資料未套用。
-
-正式來源 `D:/Min/Python/Project/FA_Data/output/watchlist/default.json` 為1948B；候選 `watchlists.v3-cow.sqlite`、marker `default.json.cow-active.json` 與 canonical `watchlists.db` 仍不存在。本批不讀原 JSON 內容／不初始化缺失 DB。真正apply另由父層／使用者確認單來源、writer時段、當下容量與明示批准，再按Manual dry-run→convert→preview→activate→新程序讀回；rollback保留雙來源／新內容。PID39400／41588無原PID/starttime owner收據，保留未停止，不能當writer已停止的證據。
-
-F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚未批准；F2／F3 A/A不重開。UX07未啟動，新Native／真人／自然資格另列。原整份計畫階段done1／partial5／pending3、UX done2／partial14／pending8保持，有限工程完成不等於整份產品計畫完成。沒有清理、producer／ML重跑、Native或push；其他對話檔案保留排除。
-
-[JSON路徑逐項驗證與正式批准邊界](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)
+> **歷史 QA 導覽**：JSON 到 SQLite 的隔離轉換、讀回、追加與回滾證據見 [F4 Legacy JSON COW 收據](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)。正式 apply／activation 未由該工程驗證授權；目前操作與批准狀態以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準。
 
 
 ## 2026-10-06 個人觀察清單 App 邊界

@@ -174,3 +174,5 @@ attempt02（owner handle34433，終態exit1）首次 explicit exact open 呼叫�
 
 前三次測試側失敗分別為應用根應在repo外的矛盾、Windows長路徑解析及tree pin遺漏technical database，收據原樣保留。修正後固定已生成的同一bundle進行重驗，沒有每次重產。此接受是同程序完整合成Main旅程；仍不授新程序／新EXE、原H20、F02複合矩陣、效能p95或整個補完計畫完成。
 
+中央另以一般 pytest 環境、不提供四項固定來源 pins，獨立複驗完整 Main 測試：session 55697 terminal exit 0，2 passed／165.35 秒（包含全新合成來源建立）。收據 `output/qa/ma_bookmark_main_startup_20261008_a/attempt_1791505227381209400_22756/main_startup_receipt.json` SHA `a244d893d41348179374b95a0db6d06b5f1c1f32ba6c7be7c12e6d9a2c01957e`，`source_origin=fresh_unique_bundle_fixture`，Main 旅程耗時 36.453 秒。來源 inventory 前後 SHA 同為 `0370adad1811b3b5ef872ac1671c9fb96981e65e6f8205fd710fdafc81ef3c48`，exact read 2 次，startup/open/save/typed fresh restore 通過、網路嘗試空、正常關閉且原生 workers 終止。這補足完整 Main 測試的一般合成 fixture 路由；不代表正式股票來源、新 EXE 或人工作業接受。
+

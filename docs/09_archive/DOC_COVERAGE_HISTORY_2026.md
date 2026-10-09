@@ -1103,3 +1103,18 @@ Entry 041 將 21 份 Post-V1 收據的 QA 原路徑一律改成短導引；逐�
 | `docs/06_qa/DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14.md` | [`DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md`](DAILY_BANKTAIWAN_OPERATIONAL_2026_09_14_HISTORY.md) | 10,393 / `0145B5BB48B0C87C3A8E0FC0AF6978D53041C12F8E873D20CDCA99FF79E5AB11` |
 
 Archive 兩份原件與其歸檔前 `docs/06_qa/` bytes／SHA-256 相同，QA 原路徑改為連到 Archive 原文的繁中導引。全庫精確檔名引用只發現根目錄 `GEMINI_EXTERNAL_DATA_AUDIT_REVIEW.md` 的成本論據仍需保留，已改連封存原文；未發現 Python、測試、腳本或固定輸出路徑 consumer。QA README、Archive README、DOCUMENTATION_INDEX 與根目錄引用已同步，Coverage Map 權威邊界不變。現況與資格回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 及近期 QA；日常操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
+
+<a id="coverage-entry-121"></a>
+## 2026-10-09 封存 9/9 Data Completion bounded QA 收據
+
+本批保存 2026-09-09 的資料補齊、flows 交接與 TDCC 候選資料收據。它們記錄當日有限批次與讀回，不證明歷史 PIT、全市場完整、正式來源接受或每日自動刷新：法人／信用資料 `available_date=NULL`；8 月營收仍在公告期間；季度財報有現金流與 TDR 缺項。該批不再是目前狀態入口。
+
+三份 Archive 原件與歸檔前 QA 原件逐 byte 相同；舊 QA 路徑改為繁中相容導引。全庫精確檔名檢查另外找到兩份歷史文件仍連向原 QA 路徑，分別是 `PROJECT_SNAPSHOT_HISTORY_2026_09_27.md` 與 `DOCUMENTATION_CATALOG_20261006_HISTORY.md`；保留導引使這些歷史連結仍可達。根目錄 `GEMINI_EXTERNAL_DATA_AUDIT_REVIEW.md` 的 TDCC 佐證連結已更新至 Archive 原文，較新資料狀態連至 9/21 incident。未找到程式、測試或腳本讀取這三個 QA 報告的固定路徑。程式仍將 `output/data_completion_20260909/flows` 與 `output/data_completion_20260909/tdcc` 作為預設輸出；本批沒有移動或提交 Git 忽略的 raw／candidate／manifest／backup sidecar。
+
+| 原 QA 路徑 | Archive 原件 | bytes / SHA-256 |
+|---|---|---|
+| `docs/06_qa/DATA_COMPLETION_2026_09_09.md` | [`DATA_COMPLETION_2026_09_09_HISTORY.md`](DATA_COMPLETION_2026_09_09_HISTORY.md) | 3,730 / `60EB28DCFC788C42F37992B2C0AE64EC5B428386ACCAE1363343EBA87E18F2E4` |
+| `docs/06_qa/V4_DATA_COMPLETION_FLOWS_HANDOFF_20260909.md` | [`V4_DATA_COMPLETION_FLOWS_HANDOFF_20260909_HISTORY.md`](V4_DATA_COMPLETION_FLOWS_HANDOFF_20260909_HISTORY.md) | 5,603 / `C98EFD0BAC96C5074628662F9FC7AC9073CD1D2BE2056B870DC81F80A6A8CD41` |
+| `docs/06_qa/V4_TDCC_DATA_COMPLETION_20260909.md` | [`V4_TDCC_DATA_COMPLETION_20260909_HISTORY.md`](V4_TDCC_DATA_COMPLETION_20260909_HISTORY.md) | 5,259 / `5001B1B9F2DBBA42EF17C8246A1481682A0B5F2E58E89F700DA98B3821AF3093` |
+
+目前狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，閱讀路徑由 [QA README Data Governance 與來源](../06_qa/README.md#主題地圖) 承接。較新 closeout、正式修復與 9/21 incident 是後續證據；不因此改判 9/9 收據當日的限制。權威分工未變，不需修改 DOC_COVERAGE_MAP 或已有其他對話未提交變更的 DOCUMENTATION_INDEX。

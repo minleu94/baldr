@@ -180,6 +180,7 @@
 
 ## 六、更新記錄
 
+- 2026-10-08：將 V1.5 Data Credibility 與 V1.9 Read-only Agent MCP 的 2 組 plan/spec 原文依原層次封存，原路徑留短導引；manifest 記錄原始 bytes／SHA、具名 closeout QA 與未完成邊界，未勾選項目及 V1.9 pre-V2.0 後續驗收不推定完成。
 - 2026-10-08：歸檔 LUNA A／C handoff 與整合 closeout；因 inventory 工具直接讀取原文而保留 LUNA B handoff／Project Consolidation Review，QA 地圖標示兩者界線並直達 Archive 收據。
 - 2026-10-08：依目前引用歸檔 Program Status、ML retention custody、8/30 readiness details 與 V2.3 source decisions；QA 導覽保留當前 Gate 7 execution SSOT，並明確區分有效契約、owner handoff 與歷史快照。
 - 2026-10-08：補齊 Scoped SSOT 的願景、產品、工程、現況、成熟度與歷史移交分工；將 Roadmap Hub 定義為純導覽，並說明版本成熟度不代表工程 Gate 順序。

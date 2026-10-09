@@ -6,6 +6,12 @@
 本目錄包含歷史記錄、總結報告等歸檔文檔。這些文檔主要用於記錄歷史，不影響日常使用。
 歸檔文件中的狀態、下一步、Phase 或完成度描述，若與 Snapshot、6M Roadmap、版本 Roadmap 或 Architecture 衝突，一律以 active authority 為準。
 
+## 2026-10-08 V1.5／V1.9 plan/spec history
+
+- [V1.5 Data Credibility plan](superpowers/plans/2026-07-04-v1-5-data-credibility.md) 與 [design spec](superpowers/specs/2026-07-04-v1-5-data-credibility-design.md)：保留完整原文；v1 closeout 範圍以 [QA 收據](V1_5_DATA_CREDIBILITY_CLOSEOUT_2026_07_04.md) 為準。原計畫未勾項目仍留作歷史，QA 未證明外部來源採用、調整後價格整合、ScoringEngine 或正式排程完成。
+- [V1.9 Read-only Agent MCP plan](superpowers/plans/2026-07-06-v1-9-read-only-agent-mcp.md) 與 [design spec](superpowers/specs/2026-07-06-v1-9-read-only-agent-mcp-design.md)：唯讀 v1 closeout 依 [QA 收據](V1_9_READ_ONLY_AGENT_MCP_CLOSEOUT_2026_07_06.md) 判讀；計畫留有未勾項目，weekly evidence、人工 UI smoke、多日 dry-run、真實 workflow sample 等不視為由該 closeout 自動完成。歷史文件不授權 production scheduler 或寫入。
+- 四份 `docs/superpowers/` 原位置保留短導引；目前狀態與架構分別看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 及 [system architecture](../01_architecture/system_architecture.md)。bytes、SHA-256、old→new 路徑與生命週期判讀見 [plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
 ## 2026-10-08 資料實作摘要
 
 - [Month 5 Fundamental Source Inventory（截至 2026-08-12）](FUNDAMENTAL_SOURCE_INVENTORY_HISTORY_20260812.md)：保留基本面來源搜尋、available_date／PIT 缺口及候選工作歷史；目前狀態看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)，來源與接受判斷看 [近期基本面 QA](../06_qa/README.md) 及 current architecture。

@@ -1010,6 +1010,17 @@ Task Loop 01–07 的個別 bounded 工程 handoff 已由 08-B 中央整合收�
 |---|---|---|---|
 | docs/06_qa/WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926.md | [WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md](../09_archive/WORKSPACE_BATCHED_COMMIT_VALIDATION_20260926_HISTORY.md) | 3,052 / `6631971283C47FBEAEEAACBFBE0D10920655C9814ABFC5AAF4A78B28A3289C27` | 3,052 / `6631971283C47FBEAEEAACBFBE0D10920655C9814ABFC5AAF4A78B28A3289C27` |
 
+## 2026-10-08 封存 V1.5／V1.9 plan/spec
+
+四份已完成 v1 closeout 的 plan/spec 原文依 plans／specs 層次移入 Archive，原路徑留下短導引。歸檔不抹除 plan 中未勾選的項目，也不擴張 QA closeout 範圍：V1.5 未證明外部來源採用、調整後價格整合、ScoringEngine 或正式排程完成；V1.9 的 weekly evidence、人工 UI smoke、多日 dry-run、真實 workflow sample 等後續驗收另行判讀，且不授權 production scheduler／寫入。README、manifest 及目錄導覽已同步；目前狀態回到 Snapshot 與 Architecture。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/superpowers/plans/2026-07-04-v1-5-data-credibility.md | [封存 plan](../09_archive/superpowers/plans/2026-07-04-v1-5-data-credibility.md) | 9,499 / `A815A967D0A235310B06D7C28D5E92D87B43413A4FE1AE8830B0BF4225DFA3A4` | 9,499 / `A815A967D0A235310B06D7C28D5E92D87B43413A4FE1AE8830B0BF4225DFA3A4` |
+| docs/superpowers/specs/2026-07-04-v1-5-data-credibility-design.md | [封存 spec](../09_archive/superpowers/specs/2026-07-04-v1-5-data-credibility-design.md) | 7,107 / `1BFCE924CF85000980F573804A915CBE711E20104A84C5E249E77BBAE16CD6E7` | 7,107 / `1BFCE924CF85000980F573804A915CBE711E20104A84C5E249E77BBAE16CD6E7` |
+| docs/superpowers/plans/2026-07-06-v1-9-read-only-agent-mcp.md | [封存 plan](../09_archive/superpowers/plans/2026-07-06-v1-9-read-only-agent-mcp.md) | 5,257 / `6AED326DC32722347662913DC9D1904A0DFCA6C0655667B7DA588AD5F10009C6` | 5,257 / `6AED326DC32722347662913DC9D1904A0DFCA6C0655667B7DA588AD5F10009C6` |
+| docs/superpowers/specs/2026-07-06-v1-9-read-only-agent-mcp-design.md | [封存 spec](../09_archive/superpowers/specs/2026-07-06-v1-9-read-only-agent-mcp-design.md) | 3,478 / `FAFC479E9F2B4F942F30A3151EAFFB002E17490DE651F014B314EEE0A9294544` | 3,478 / `FAFC479E9F2B4F942F30A3151EAFFB002E17490DE651F014B314EEE0A9294544` |
+
 ## 2026-10-08 精簡架構主文的 9/27 邊界／資源 lifecycle 記錄
 
 system_architecture 主文原 9/27 區塊的逐次 gate verdict、舊 attempt／hash、測試數與提交前快照移入既有[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)；舊兩個標題保留短導引。刪改前逐位元組切片為 5,213 bytes／SHA-256 `F461DB846416E016DAFC86B2979F19287B13D5687084F2DA552F9CD30561FDD3`；歸檔副本只把 R028 實作報告的相對連結改為 Archive 位置，切片為 5,232 bytes／SHA-256 `1BF065E4319DF5EBB9A363A7A8C3AB8B9C77AA1065D354B14D76ACA1D037A566`。TechnicalIndicatorJob 單一 orchestration owner、IndustryMapper provider injection／fail-closed 語意、DBManager connection close 與 ML app initialization 前置條件改留在架構第 4、8、11 節；R027 原 strict `INCONCLUSIVE` 與後續 versioned logical-time revision 分開保留。當期驗收依各自 QA，現況看 Snapshot；架構目錄與 Archive README 已同步。

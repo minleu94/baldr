@@ -133,6 +133,7 @@
 - `docs/06_qa/` 保存日期化驗證與調查證據；已結束的收據可在核對內容、現況權威與引用後移至 `docs/09_archive/`，原路徑以短轉址維持相容。2026-07 的 21 份 Post-V1 Evidence Pipeline 收據已集中歸檔；當時的 Scheduler SOP／待辦不作為目前操作權威。
 - 2026-07-13 Broker Flow dashboard failed gate、後續 semantics scoped pass，以及 2026-07-07 readability polish closeout 已移入 `docs/09_archive/`；原 QA 路徑保留轉址，Broker Flow 的失敗與後續優化需成對閱讀。
 - R001 baseline、R006 ML ABI baseline 與 R020 deferred-threshold dated QA 已移至 `docs/09_archive/`；R031 task evidence index 保留為狀態導覽，R006 未知正式資產的未驗邊界仍由 dated addendum 承接，舊 QA 路徑保留轉址。
+- 三份 2026-09-08 V4 NEXT Formal／ML／Ops handoff 已移至 Archive；舊 QA 路徑保留轉址，9/30 Formal bootstrap repair 改為直接連到保留原文，其他目前狀態／操作回到 Snapshot／Manual。
 - 2026-09-07 的三份 V4 bounded data／machine／ML QA 亦已歸檔；仍以 Snapshot 與較新的專題收據判讀目前狀態，不將單日 release evidence 當成現行資格結論。
 - `FULL_APP_HEALTHCHECK_2026_06_16.md` 已歸檔為早期 UI smoke 快照；現行架構與操作分別看 system architecture 和 Application Manual，舊 QA 路徑保留轉址。
 - 若要採用歸檔 Phase SOP 中的操作內容，先依目前程式與 `docs/07_guides/APPLICATION_MANUAL.md` 核對並另行改寫；不要直接把歷史 Phase gate 重新當成目前規範。
@@ -171,6 +172,7 @@
 - 2026-10-08：歸檔 2026-06-16 全 UI healthcheck 快照，保留原文與 QA 舊路徑轉址，現行操作路由至 Architecture／Manual。
 - 2026-10-08：將兩份 Broker Flow 效能收據成對歸檔，並歸檔 2026-07-07 readability polish closeout；保留原文 hash、失敗→修正脈絡與 QA 舊路徑轉址。
 - 2026-10-08：歸檔 R001、R006、R020 三份已具結案或 dated-snapshot 定位的 QA 原文；以 R031 task evidence index 導覽處置，保留舊 QA 路徑與 R006 unknown-artifact addendum。
+- 2026-10-08：歸檔 2026-09-08 V4 NEXT Formal／ML／Ops handoff；將仍引用精確 Formal handoff 章節的 9/30 repair 連結更新至封存原文，其餘歷史引用由舊路徑轉址承接。
 - 2026-07-12：完成全 docs 位置稽核，將 Agent workflow、Shim removal audit 與兩份已完成重構文件分別移至 `agents/`、`06_qa/`、`09_archive/`，並同步所有 Active 引用與目錄 README。
 - 2026-07-06：完成 push 前 docs 結構稽核後補上 `superpowers/` folder ownership、歸檔舊 UI Qt roadmap audit，並將 MCP patch memo 移至技術文件。
 - 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 作為 V2.0 之後長期版本階梯 companion，納入核心入口與文件權威層級。

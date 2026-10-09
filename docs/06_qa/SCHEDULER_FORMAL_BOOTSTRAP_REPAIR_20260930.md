@@ -7,7 +7,7 @@
 
 自然排程於 07:00:29 讀取既有 split candidate 時，因 late source-config proof 尚不存在而保留 `blocked` 收據；該次沒有網路請求或新 attempt。07:12:56–07:13:19 以原 saved config bytes 建立獨立、hash-addressed late proof；07:19:23–07:19:49 再以真實時鐘執行同日 research-only reuse，完整驗證既有 archive、denominator、Rule tuple、taxonomy bundle、capture attempt/raw custody 與 config proof。重用狀態為 `machine_verified_candidate`，但 `formal_consumer_compatible=false`、`formal_credit=false`、`rule_scope_compatible=false`；此結果是獨立人工 CLI receipt，不回寫或改稱 07:00 自然排程成功。
 
-同日重用只允許同一台北自然日、真實時間早於 08:30 cutoff 且完整來源驗證通過；跨日不得拿舊 candidate 冒充新日資料。`same_candidate_reuse_prohibited=true` 的 rolling-contract 語意是禁止跨日替代新日 candidate；同日唯讀 research 重驗不修改該旗標，也不授予 Formal consumer 資格。此邊界依據 [`_rolling_contract`](../../scripts/build_formal_9_9_candidate_runtime_config.py) 與 [V4 next-formal handoff，第 216–220 行](V4_NEXT_FORMAL_HANDOFF_2026_09_08.md)。
+同日重用只允許同一台北自然日、真實時間早於 08:30 cutoff 且完整來源驗證通過；跨日不得拿舊 candidate 冒充新日資料。`same_candidate_reuse_prohibited=true` 的 rolling-contract 語意是禁止跨日替代新日 candidate；同日唯讀 research 重驗不修改該旗標，也不授予 Formal consumer 資格。此邊界依據 [`_rolling_contract`](../../scripts/build_formal_9_9_candidate_runtime_config.py) 與 [V4 next-formal handoff，第 216–220 行](../09_archive/V4_NEXT_FORMAL_HANDOFF_2026_09_08_HISTORY.md)。
 
 ## 結論
 

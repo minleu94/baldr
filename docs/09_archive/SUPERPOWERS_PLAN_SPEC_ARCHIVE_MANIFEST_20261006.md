@@ -1,12 +1,12 @@
 # Superpowers plan/spec 歷史封存與路徑清冊
 
 > 建立日期：2026-10-06
-> 範圍：tracked `docs/superpowers/plans/`、`specs/`、`prompts/`。本檔記錄原路徑、日期標籤、生命週期與回溯入口；不替代產品狀態或驗收收據。
+> 範圍：tracked `docs/superpowers/plans/`、`specs/`、`prompts/` 中的歷史追溯文件。本清冊明確排除唯一現行進行中的 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)；本檔記錄歷史文件的原路徑、日期標籤、生命週期與回溯入口，不替代產品狀態或驗收收據。
 
 ## 封存規則
 
 - 本輪保留下列文件的原路徑和原 bytes，未搬移、改寫或刪除其正文；因此每筆 old → new mapping 都是原路徑 → 同一原路徑。Git 仍保留歷史版本，表內 SHA-256／byte 數供日後核對目前封存副本。
-- 日期是 filename milestone/date label，不代表建立日或完成日。狀態統一記為「歷史追溯；本清冊不推定執行完成／未完成」。
+- 日期是 filename milestone/date label，不代表建立日或完成日。表內歷史文件的狀態統一記為「歷史追溯；本清冊不推定執行完成／未完成」；進行中計畫依 `docs/superpowers/README.md` 的生命週期入口判讀。
 - 「現行替代權威」只替代目前狀態、優先順序與版本方向的判讀；不表示原設計內容本身已被證明過時或已執行。實際結果看具名 QA 收據或 `git log --follow -- <path>`。
 - QA 原始驗收證據仍在 `docs/06_qa/`，本清冊只連結已有的 tracked Markdown 引用，不改寫或重述驗收結果。
 
@@ -15,7 +15,8 @@
 - [目前狀態](../00_core/PROJECT_SNAPSHOT.md)
 - [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md)
 - [未來 6 個月工程路線](../00_core/ROADMAP_6M_ENGINEERING.md)
-- [版本方向](../00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md) 與 [V2.1–V4.0](../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)
+- [V1.1–V2.0 已完成歷史演進](VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)；[V2.1–V4.0 現行成熟度標準](../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)
+- [目前唯一進行中的計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)；生命週期入口見 [Superpowers README](../superpowers/README.md)
 - [舊 plan/spec 日期與狀態稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md)
 
 ## 原路徑與生命週期清單
@@ -188,4 +189,4 @@
 | spec | [`docs/superpowers/specs/2026-07-14-daily-update-non-trading-day-recovery-design.md`](../superpowers/specs/2026-07-14-daily-update-non-trading-day-recovery-design.md) → 同原路徑 | 2026-07-14 | 歷史追溯；不推定完成狀態 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 未找到具名 QA 引用時以 `git log --follow` 追溯 | 2982 | `ac426572101845d39f8437aadcea042d3f3d9818730a9452d5d7fb14858c6319` |
 | spec | [`docs/superpowers/specs/2026-07-14-development-dataset-v0-1-corporate-action-coverage-design.md`](../superpowers/specs/2026-07-14-development-dataset-v0-1-corporate-action-coverage-design.md) → 同原路徑 | 2026-07-14 | 歷史追溯；不推定完成狀態 | [Snapshot](../00_core/PROJECT_SNAPSHOT.md) / [Roadmap Hub](../00_core/DEVELOPMENT_ROADMAP.md) / [6M](../00_core/ROADMAP_6M_ENGINEERING.md) | [日期與判讀稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md); 未找到具名 QA 引用時以 `git log --follow` 追溯 | 8290 | `70866774c84a513e95953f95cc57d5529a0cb7ab45a9d0c1601907fa1c3ef47e` |
 
-清冊由 `git ls-files` 對照目前工作樹產生，共 165 個 tracked 文件：plan 110、spec 53、prompt 2。
+本表列出 165 份歷史追溯文件：plan 110、spec 53、prompt 2；不含唯一現行進行中的 Baldr 產品補完計畫。文件是否仍在執行，以 [Superpowers README](../superpowers/README.md)、目前 Snapshot 與對應 QA 為準。

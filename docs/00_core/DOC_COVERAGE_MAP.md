@@ -1,5 +1,9 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 Superpowers 清冊生命週期校正
+
+修正 `docs/09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md` 的適用範圍與導覽：165 筆清冊記錄明確限定為歷史追溯文件，排除唯一現行進行中的 `docs/superpowers/plans/baldr_product_completion_plan_20261006.md`；補上該計畫與 `docs/superpowers/README.md` 的生命週期連結，並將版本入口分開指向 V1.1–V2.0 歷史與 V2.1–V4.0 現行成熟度標準。同步修正 Archive README 將整個 Superpowers 目錄一概描述為歷史文件的句子。沒有改動 165 筆清冊資料列、歷史 plan/spec/prompt 原文或進行中計畫正文。
+
 ## 2026-10-08 文件入口整理首批
 
 整理範圍限定為閱讀路徑，不改系統狀態、產品方向、操作流程或 QA 原始收據：`docs/README.md` 明確標示 2026-10-06 全文件目錄是歷史快照；`docs/01_architecture/README.md` 增加大型現況架構主文的按節速讀路徑，`system_architecture.md` 頂端新增正文錨點與現況入口；`docs/06_qa/README.md` 按主題連到既有綜整與重要收據，並明示各驗收邊界；`docs/07_guides/README.md` 校正 Manual 為 9 個頂層工作區，並補列可攜、排程搬機與 Phase3C candidate 專項指南。架構、QA 與指南專區入口原已由全域文件索引導覽；docs 根入口維持在 `docs/README.md`。不新增文件或改變目錄歸屬，故本批不搬移檔案，也不改 Snapshot／Roadmap／Architecture 主文內容／Manual。後續歸檔須另以逐檔引用清冊同步 Index、所在目錄 README、Archive README 及恢復／coverage 記錄；日期或檔名本身不能作為搬移依據。

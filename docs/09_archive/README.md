@@ -129,7 +129,7 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 ## 開發計畫與規格追溯
 
-`docs/superpowers/plans/`、`specs/` 與 `prompts/` 中既有文件已統一標記為歷史追溯資料。它們的原 bytes 和舊路徑保留，避免打斷既有 QA 收據、phase 文件與其他 plan/spec 內的交叉引用；位置與日期、狀態判讀、現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。這項整理不代表各計畫均已完成；結果仍以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
+`docs/superpowers/plans/`、`specs/` 與 `prompts/` 中的大多數既有文件是歷史追溯資料；唯一目前明確列為進行中的例外是 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。[Superpowers README](../superpowers/README.md) 是該目錄的生命週期入口；歷史文件的位置與日期、狀態判讀、現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。原 bytes 和舊路徑均保留，以免打斷既有 QA 收據、phase 文件與交叉引用；計畫結果仍以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
 
 ## 2026-10-06 治理入口整理原文快照
 

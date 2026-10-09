@@ -5,6 +5,8 @@
 
 本段為下列歷史 attempt 狀態的最新補記，不覆蓋原失敗封套。三個子代理名額均已分配；Root 負責凍結來源審查、獨立測試及共用入口整合。
 
+最新接續：H20 E 四個 native no-Main 清理案例已由 Root 獨立通過，F controller 正接同一 frozen E 並補 Main worker／Job 終態要求；F02 c／d continuation 均失敗且終態，owner 正對照實際 VerifiedState API，先準備 provider-only 原來源核驗，沒有新 fullrun 授權；F06 collector `6bf71603` 已中央11項通過，owner 已獲准新增固定 MA→KDJ→volatility observer group v2／測試／文件，保留舊共享入口，尚不發行來源資格。下列較早 attempt 說明保留為歷史，不代表仍有 live process。
+
 - H20 owner：修正 QA child 讀取固定 `CopiedWalGroup.source_start` 的 API 名稱，補半安裝故障的受控 abort，再以新隔離合成根跑 H20-first 正例及主要錯誤／次要清理錯誤案例。只有實際 reader、permit、私有副本與 keeper 收尾通過後，才審完整 Main 啟動；不得以無 Main seam 的零 worker 數代替 Main shutdown。
 - F02 owner：完成 query_continuation_only 的不可變候選與啟動計畫，沿原固定 oracle 執行完整母體矩陣。舊產製失敗封套、來源唯讀能力及起訖 pins 保留；不能將只讀重開診斷當完整 query 驗收。
 - F03／F06 owner：F06 Decimal leaf `8816644c` 已核13項；波動請求／predicate／未核排序契約 `4a1ead28` 已核23項。KDJ 純查詢契約已於 `a56a5cff` 保存，Root 重驗18項通過；現在接續F06有界collector與三投影原子publication方案，不修改共享 reader。後續統一選股器必須同次 exact read 投影 MA、KDJ、波動，單一外層 AND/OR/unknown 與全域排序／分頁，不能以各查詢交集替代。

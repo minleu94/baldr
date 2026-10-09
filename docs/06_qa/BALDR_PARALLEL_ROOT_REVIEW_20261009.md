@@ -177,3 +177,45 @@ Root 獨立重驗18 passed／0.97秒，實讀JUnit tests18/errors0/failures0；�
 Root實讀004225完整receipt，SHA `ff6405437777675a0e8ebc6bdfb319646009150b09e53391672ff6150d8bd822`。事件依序H20 cleanup begin→session finish begin/complete→permit release→H20 end→market finish begin/complete；H20清理時兩alias仍outer router，市場finish前切runtime guard，結束還原baseguard。3/3 private directories、permit1/1、private root empty、legacy scope passed、keeper close passed；市場/H20來源operation pins起訖相同、市場應用source SQL=0、keeper active pins不變及rollback均經Root逐值核對。
 
 合成H20值1234 bp、三筆合成市場價格，不是原684 bp。main_entered=false，零worker是未建Main，不提供真正Main shutdown資格。接受此正例封套事實；故障／retry／partial abort仍待，不能放行新Main或EXE。
+
+
+### H20 故障重試與主要錯誤封套 Root 核對
+
+Root實讀retry_v3_004428 receipt SHA `38dc7fe6c94e0438278bdc501a8578bdc2ca7dd9be4471432270c7e4d2c884ab`：失敗快照保留同一注入exception物件、H20 active／permit1、outer router兩alias、market attached且未finished，第二輪真finish後3/3目錄與permit1/1釋放。注入事件已明示為QA marker，不是Main生命週期事件。primary_failure_004441 receipt SHA `5d199e2615ad83cfd2da7ec289bfd0c7b18bf54652d5c456c997598fa4b2d1b1`亦保存主要錯誤、次要清理錯誤並完整收尾。
+
+partial_install_004441仍failed（partial_install_abort_contract_failed），不能由copy已刪除和alias已還原當作整例pass；owner接續同版counter契約，原封套保留。Root另直接執行counter-contract-selftest，12/12正負檢查exit0；這是current QA runner的純記憶體檢查，不代frozen Main或原來源。
+
+F02 c outer receipt經Root實讀：worker_returncode1、continuation_input_unchanged true、job_closed true／empty_before_close／zero_owned_processes_proven true／cleanup_budget_exhausted false。原query仍未執行通過；d只有生成與純合成guard正負授權，尚未放行新完整run。
+
+
+### H20 同版凍結四情境 Root 獨立重驗
+
+Root使用同一runner A840D2D7...51FBF3及child F6CD9750...D8645E，在四個新native roots 獨立執行success／primary-failure／partial-install-failure／h20-finish-failure-retry，皆exit0；runner起訖SHA相同。完整stdout/stderr與逐receipt SHA核對保存在output/qa/h20_root_frozen_seams_20261009_a/root_receipt_review.json。Root逐例另核no Main、private root empty與keeper passed；三個完整共存案例3/3目錄、permit1/1、兩來源起訖pins一致，partial案例counter／alias／原install error亦通過。
+
+四例清理接縫現可接受，owner接續同版frozen依賴manifest與完整合成Main啟動計畫，仍需root預審才run；原684bp／十股／效能／EXE未因此接受。
+
+### F06 collector 初次 root 原始碼審查（2026-10-09）
+
+審查候選 SHA `A5923BD173FE81B01A3B6D57B9CD1E1A9AAE503A22E727DC9DA3150628F526B9`，未接受為整合完成。讀取完整 collector 與合成測試後，要求 owner 修正三項：consume/end 的 segment index 必須拒絕 bool；custom index byte budget 必須檢查加入 identity 的最終 payload；直接建立或一致重算 hash 的 index 仍須逐 entry 核對 request 的 clock/date/cutoff，不能只驗排序與數量。owner 的 8 個測試通過僅代表原 bounded skeleton；root 尚未批准該候選。修正由既有 subagent 負責，不改其他線 frozen runtime。完整四路同次 observer／原子發布仍待後續整合。
+
+### F02 continuation d root 審查與一次續跑授權（2026-10-09）
+
+Root 讀取 c→d scoped diff、guard selftest 的實際 stdout 與 terminal，重算 supervisor `8fd863d5211c51b212c7b13a38b2ea255acff30b7504129c5aae551ff5d9c2a4`、diff `301c4fa03909f32405670f2af02598a272fa4ea2250123aeef3ec2e5bf1bd041`、stdout `df89f78cec5403238ba2697d74403b5b9c4d76f5eccd86febb895080c05b40d1` 均一致。原 c 不變。d 僅將 continuation 固定 source URI 與 local URI 解析分支分開，仍保留 source SHA/size/single-link/WAL-SHM absent、exact kwargs、query_only 與 ATTACH/DETACH deny。實際 guard-only exit0、唯讀正例1、負例13、source pins unchanged、local DB absent；不代表 query continuation 通過。已授權 owner 在來源及產品 pins actual preflight 一致後，對同 frozen d 執行唯一一次 native continuation；原 deadline、Job 與隔離規範不變。owner 管理其 live handle；完整驗收與 terminal receipt 仍待回讀。
+
+### H20 Main 收尾接線追加審查（2026-10-09）
+
+Root 讀取 E `synthetic_main_child.py` 的 `_journey` finally：Main 關閉後輪詢 visible/running/native_finished，無 shutdown error 才設定 router 的 Main terminal flag；E router.finish 會先要求 owner terminal proof，再關 H20，H20/permit 未終態即保持 market router 並延後清理。已要求 F controller 候選核查 journey 前失敗及已刪除 Qt worker wrapper 的例外保存，避免 primary 被清理例外遮蔽，並區分尚未進 Main 的明示 no-Main proof 與已進 Main但worker未知的 deferred 狀態。這是實際原始碼審查，不授予 Main runtime 通過。
+
+### F06 修正版 collector root 獨立驗證（2026-10-09）
+
+模組 `61E3E4D0993C0F405006ADEFE496004C67F7EBEEBD950241F0BDD573FA069E9E`、測試 `A1A02B15E88330FADA5450B86CB9A435B66C33C332DA7DE345AC6071087B1F69` 已由 root native 新隔離根 `C:/t/f06-volatility-root-review-20261009-a` 執行：11 passed／1.29 秒，JUnit `output/qa/f06_volatility_root_collector_20261009_a.xml` 實讀 tests11/errors0/failures0/skipped0，起訖 hash 一致。正常 scoped mypy 兩檔 clean、py_compile exit0；另 follow-imports=skip 模式產生18個跨模組型別 attr 錯誤，不以該模式宣稱乾淨。三項審查缺口已補 strict bool 拒絕、final identity bytes 自訂上限、一致 rehash 後仍逐 entry 核 request 日期/cutoff/clock。接受 bounded unqualified collector 切片；尚不代表四路原子發行、full-N、F06收斂突破或 UI 完成。
+
+### 四路同次觀察與原子發布邊界核查（2026-10-09）
+
+Root 實讀 P01 `bind_verified_projection` 與 `consume_verified_parent`：只有單一 observer slot，原 snapshot→parent row 迴圈可逐列呼叫，同 segment begin/end 都在原來源核驗路徑。F17 `_publish_session` 目前先 finalize MA、建立 session、最後檢查取消。因此新四路整合不能僅依次呼叫每個 member 的現有 finalize；必須先備妥全部不可變候選、驗來源與完整分母、最後取消檢查後由單一 publication authority 發行，任一 member 失敗時全部保持不可讀／永久 poison。builder 對 callback 的 catch 範圍亦不能當作任意異常已毒化的證據。已將此實際接點與失敗要求交 owner 的下一片方案，保持舊 MA-only 路徑成本與功能；未修改 shared reader／builder。
+
+已接受 F06 三檔切片保存於本機 dev `6bf71603`，不推送，不包含其他未提交內容。
+
+### F02 d 原生續驗終態（2026-10-09）
+
+Root 實讀 workspace terminal：d唯一續跑exit1，supervisor／target／input SHA 起訖一致；原owner handle77580已由owner確認terminal。outer `C:/t/f02_ma_composite_257_v4_76b046c19786` supervisor receipt status failed、worker_returncode1、continuation_input_unchanged true。實際 acceptance `d_target/attempt_0db15db4fdab4a49/acceptance_receipt.json` 顯示 fixture_creation 8390ms，原料唯讀19632 rows與真 StoreReader.read_exact 一次成功，producer/bundle writer為0，之後因 QA provider 讀取不存在的 VerifiedState.generation_identity_sha256 失敗。Root對照真DTO欄位確認generation必須沿plan取值；要求owner全面核plan/receipt API，另建e provider-only核驗後再審新完整run。原d不得重跑或修改收據，這不是產品full-N矩陣通過。

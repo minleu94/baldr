@@ -70,3 +70,7 @@ F17 最新封套的 source parent 另確認 catalog 更新成功且只有一筆�
 - 2026-10-08 中央審查補記：H20 固定 bd5d2f86367a 的隔離 Python／EXE 比較通過並交真人，捲動與原保存來源等待仍未接受。F17 單次核驗 builder 尚待中央完整回歸；已要求保留來源工作前的取消拒絕。source-only benchmark parent guard 的 denial 只在整體收尾檢查不足以證立即停跑，已要求每個 launch 前／worker 後檢查；本輪沒有新的效能樣本。
 
 - 2026-10-08 F17 單次圖核驗中央 46 項回歸通過，來源修改本機 commit `330b98f416f718c601c96edb31e6cb9823a3b150`，固定 EXE 建置進行中，Native／效能仍待。1,000 檔 attempt `C:/t/p01_yyuuqth0` 首個真 worker 完整讀回並產生頁面，但 parent metadata helper 多餘 mkdir 被 guard 拒絕，整體 exit1，矩陣停跑且 cleanup unknown；不授 p95。F07 明示數值價格區間與全域排序已分配新版本 query 設計，不改舊 v4 保存契約或以最新資料補值。
+
+- 2026-10-09 最新 root 審查：H20 同一凍結 E child／runner 的四個 native 清理案例（正例、主要錯誤、半安裝失敗、H20 finish 失敗後重試）均 exit0，詳見 `BALDR_PARALLEL_ROOT_REVIEW_20261009.md`。這些明示沒有進入 Main，不替代完整視窗旅程；原 controller 仍引用 D 元件且未明示 E keeper 環境依賴，因此另建 F 接線候選，原 D／E 封套保持不變。原 2382 的 684 bp／20 秒與真人接受仍未通過。
+- 2026-10-09 F02 continuation c terminal exit1：來源存取前解析不存在的 local DB URI 觸發拒絕，尚未執行完整 query 矩陣。d 僅修正分支次序，root 核實 guard-only 唯讀正例及13負例、來源未變，已授權相同 frozen d 在 actual source/product preflight 通過後唯一一次 continuation；未授予 producer、1,000 檔效能或全產品完成。
+- 2026-10-09 F03／F06：KDJ raw leaf、bounded collector、query 契約以及 BB30／ATR14-SMA raw leaf、query 契約已有中央定向證據。F06 collector 初次審查另發現 strict segment 型別、final payload byte budget 與 index/request 同源語意缺口，正在修正。MA／KDJ／volatility 與 F17 parent row 的同次觀察及原子發布尚未整合；不能將這些 bounded unqualified 切片宣稱為完整 KDJ、波動收斂／突破或 full-N UI 完成。

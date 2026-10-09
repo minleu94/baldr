@@ -308,6 +308,10 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將 2026-09-08 的 [Formal／Paper](../09_archive/V4_NEXT_FORMAL_HANDOFF_2026_09_08_HISTORY.md)、[ML／Effectiveness](../09_archive/V4_NEXT_ML_HANDOFF_2026_09_08_HISTORY.md)、[Operations](../09_archive/V4_NEXT_OPS_HANDOFF_2026_09_08_HISTORY.md) 三份日期化 owner handoff 原文移至 Archive。原 QA 路徑保留轉址；`SCHEDULER_FORMAL_BOOTSTRAP_REPAIR_20260930` 需要精確引用 Formal handoff 的 216–220 行，因此已改連封存原文。QA／Archive README 與 Structure 同步；目前狀態看 Snapshot，操作看 Manual，歷史 Next 不作為現行授權。
 
+## 2026-10-08 Early QA／工程 closeout 歷史歸檔
+
+將 12 份已完成或日期化的工程／審核收據集中於 [Archive 專區](../09_archive/README.md#2026-10-08-early-qa-closeouts)，原 QA 路徑保留短轉址。三份原文內的同層連結已改指留在 QA 的 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)、[Full App coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md) 與 Runbook／現行契約。Archive 項目涵蓋 Evidence Rehearsal、Gate 1 Advice、pure-engineering Gate 2–7、歷史 ML Shadow、PIT repair、Snapshot／shim／Superpowers audits 與 execution blueprint；其中 pure-engineering closeout 不等同 external validation 或目前 Gate 通過。現行操作與狀態仍分別以 Manual／Runbook 與 Snapshot 為準。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

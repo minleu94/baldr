@@ -18,6 +18,13 @@
 
 ## 2026-10-08 歸檔
 
+### 2026-10-08 Early QA closeouts
+
+- **Evidence Rehearsal**：[工程 closeout](EVIDENCE_REHEARSAL_ENGINEERING_CLOSEOUT_2026_07_14.md) → [real E2E closeout](EVIDENCE_REHEARSAL_REAL_E2E_CLOSEOUT_2026_07_13.md)。現行操作步驟仍以 [Evidence Rehearsal Runbook](../07_guides/EVIDENCE_REHEARSAL_RUNBOOK.md) 為準。
+- **Gate／ML bounded closeouts**：[Gate 1 Advice](GATE_1_ADVICE_CLOSEOUT_2026_07_12.md)、[Gate 2–7 pure engineering](GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md)（External Register／Control Center 的舊引用由轉址承接）、[historical ML Shadow MVP](HISTORICAL_ML_SHADOW_MVP_CLOSEOUT_2026_07_15.md)。pure-engineering 收據不等於目前 external qualification；狀態回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)。
+- **Healthcheck／PIT／project audit**：[Full App agent closeout](FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md)、[PIT historical data repair](PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md)、[PROJECT_SNAPSHOT audit](PROJECT_SNAPSHOT_AUDIT_2026_07_12.md)、[shim removal audit](SHIM_LEGACY_REMOVAL_AUDIT_2026-07-12.md)。目前測試覆蓋看 [Full App coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)，目前狀態看 Snapshot。
+- **文件治理／執行藍圖**：[Gemini documentation adjudication](GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md)、[Superpowers date audit](SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md)、[system execution blueprint closeout](SYSTEM_EXECUTION_BLUEPRINT_CLOSEOUT_2026_07_15.md)。目前文檔生命週期看 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md)，目前架構看 [system_architecture](../01_architecture/system_architecture.md)。原 QA 路徑保留短轉址。
+
 ### 2026-07 Broker Flow and UI closeout
 
 - **Broker Flow dashboard 效能鏈**：[原始 dashboard failed gate](BROKER_FLOW_SQLITE_DASHBOARD_PERFORMANCE_2026_07_15.md) → [後續 semantics scoped pass](BROKER_FLOW_SEMANTIC_OPTIMIZATION_2026_07_15.md)。保留原始完整母體與失敗數據，以及後續針對語意批次的優化證據；後者不改寫前一 gate，也不代表目前整體效能資格。

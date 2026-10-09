@@ -65,6 +65,7 @@
 
 - **Workbench 歷史 UI closeout**：[左側主導覽 IA（2026-07-07）](../09_archive/WORKBENCH_LEFT_NAVIGATION_IA_CLOSEOUT_2026_07_07_HISTORY.md)、[視覺層級 polish（2026-07-07）](../09_archive/WORKBENCH_VISUAL_HIERARCHY_POLISH_CLOSEOUT_2026_07_07_HISTORY.md)：保留當時 UI 與測試證據，不作目前狀態依據；現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 - **Readability polish closeout（2026-07-07，歷史）**：[Archive 原文](../09_archive/README.md#2026-07-broker-flow-and-ui-closeout)；當時 formal-data waits 是該次快照，現況看 Snapshot／Manual。
+- **2026-06／07 一次性 QA、工程 closeout 與 audit**：依主題於 [Archive 專區](../09_archive/README.md#2026-10-08-early-qa-closeouts)查找；Evidence Rehearsal runbook、Full App coverage mapping、External Validation Register 與現行狀態文件仍留在目前入口。
 
 ## 閱讀與歸檔規則
 

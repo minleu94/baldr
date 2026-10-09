@@ -29,6 +29,12 @@
 
 - **基本面與資料快照**：[選股基本面副本 session](SELECTION_FUNDAMENTAL_COPY_SESSION_20261007.md)、[月營收 YoY](SELECTION_MONTHLY_REVENUE_YOY_20261007.md)、[Snapshot typed parts reuse](SNAPSHOT_TYPED_PARTS_REUSE_20261007.md)。
 
+### 2026-09 來源、PIT 與 read-model bounded 收據
+
+- **候選來源與技術發布**：[修復來源後的 candidate model QA](REPAIRED_SOURCE_MODEL_CANDIDATE_QA_2026_09_23.md) → [TPEX 背景技術發布 QA](TPEX_BACKGROUND_TECHNICAL_PUBLICATION_2026_09_20.md)。前者建立 candidate 不代表取得模型啟用資格；後者的正例只在 QA snapshot，未寫入正式資料庫，也不提供自然驗證或排程 credit。
+- **PIT termination evidence leaf**：[8183 termination research proof](PIT_8183_TERMINATION_EVIDENCE_RESEARCH_20261001.md)。它只證明指定 cutoff 的 `eligible=false` research-only 狀態，不是 taxonomy bundle、正式分類或 historical PIT／formal credit。
+- **V4 read-model／Research Shadow**：[Effectiveness read-model QA](V4_EFFECTIVENESS_READ_MODEL_2026_09_08.md) → [ML Research Shadow integration QA](V4_ML_RESEARCH_SHADOW_INTEGRATION_2026_09_07.md)。這些是有界 read-model／唯讀整合收據，不代表 V4 投資成效已驗收或模型取得正式資格。
+
 ## 其他常用路徑
 
 - **2026-07／08 日期化資料與 owner 收據**：查 [Archive 專區](../09_archive/README.md#2026-10-08-data-and-source-owner-receipts)；source pilot、license capture、owner packet 與 data reconciliation 保留原始限制，不代表目前來源採納或 production approval。

@@ -44,6 +44,16 @@ Root 實讀 p 固定 writer seam：43 個 qualification checks 全通過，25 �
 Root 直接核對 supervisor `_run_fixed_target`：`runpy.run_path(..., run_name="__main__")`；固定 target 尾端以空 argv 呼叫 `_run_case()`。已要求 owner 在新候選以穩定具名 target 模組及核驗後的真正 `_run_case` 入口執行，保持 supervisor registry 與完整來源／code／globals 身分核驗，不修改 target bytes，也不刪除 module identity check。先驗真正 launcher 至 writer 的最小 seam，再核新的完整母體計畫；p 失敗封套保留。
 # q 候選清理流程審查與 r 完整矩陣追蹤（2026-10-09）
 
+## r 終態與長路徑診斷
+
+Owner 最新有效 public StoreReader exact 重開成功（5.704 秒）：宣告 259、納入 258、排除 1、處理 258、pending 0、缺資料 1，terminal store receipt 是 complete。此前 raw plan read 與漏掉 research_snapshots/full-technical-store 的 output_root 均屬診斷命令錯誤，不能當產品缺陷。完整重開不重現 WinError 5；仍須實讀新收據與定位原 fixture_creation 的普通 generation path API。保存完整不代表原 full run 或剩餘 AND／OR／排序／逐頁 oracle 已通過。
+
+後續核對更新：Owner 對同一長度 manifest 再驗 extended strict realpath 及 handle final path 均成功，單一 segment parent reader exact 重開亦成功。前述 WinError 5 並非已證明可穩定重現的超長路徑缺陷；必須區分實際 path、guard 與 sandbox/native 執行上下文。Root 已授權一次完整 public StoreReader 唯讀重開以保存真正 traceback／pins，不先修改產品，也不重跑 producer。
+
+同一 session 23324 已終態 exit 1，target receipt 為 failed／fixture_creation，原錯誤是 generation directory 的 WinError 3；尚未跑完 oracle，不能視為母體通過。原 receipt 沒有 traceback。Owner 後續對同份失敗合成 store 做唯讀 public read_exact 重開，另定位 550 字元 batch manifest 在 `_resolve_path` 的 extended `os.path.realpath(..., strict=True)` 遇 WinError 5；這是後續診斷的 callsite，不能冒稱原始失敗的 stack。Store 六檔 inventory 與 synthetic DB 起訖 SHA 一致。
+
+已交 owner 評估保留 strict canonical／reparse 驗證的最小修正與 bounded 原始 callsite 診斷；不得直接降成 strict=False、縮短 QA 路徑掩蓋問題、移除守衛或未經審查再跑完整 producer。此項仍可推進，不需要真人補件。
+
 ## r 完整矩陣執行前核驗
 
 完整矩陣已實際啟動一次，由 owner 持有 session `23324`。Root 讀到 `C:/t/f02_ma_composite_257_v4_f2aafa0e9dd2/supervisor_started.json` 及 r target 唯一 `attempt_11b3a820d18542be/acceptance_receipt.json`；此時 receipt 為 `running/fixture_creation`。觀察尚無終態，不能判斷成功或重啟。外層收據依設計保存在 C:/t，不在 supervisor 原始碼 QA 目錄。

@@ -1,6 +1,6 @@
 # 系統架構更新記錄（2026-06 至 2026-10）
 
-> 原 system_architecture 的日期化歷史切片與第 16 節更新流水帳；僅作歷史追溯。2026-10-05／06 的 Personal H20、ML source custody、session proof／publisher loader、daily research snapshot／chart、private store 與 homepage 增量全文亦保留於此。現行架構契約請看 system_architecture，目前狀態請看 PROJECT_SNAPSHOT。
+> 原 system_architecture 的日期化歷史切片與第 16 節更新流水帳；僅作歷史追溯，含 2026-09-29 排程 operational custody 切片。2026-10-05／06 的 Personal H20、ML source custody、session proof／publisher loader、daily research snapshot／chart、private store 與 homepage 增量全文亦保留於此。現行架構契約請看 system_architecture，目前狀態請看 PROJECT_SNAPSHOT。
 
 > 以下保留 system_architecture 於 2026-09-27 記下的決策與驗收快照；日期化 verdict 以文中 QA 收據為準，現況以 PROJECT_SNAPSHOT 為準。原 R027 strict INCONCLUSIVE 與之後的 versioned logical-time revision 是兩個獨立判定。
 
@@ -250,3 +250,21 @@ B12 typed calendar／terminal 來源 pins → strict request codec → subproces
 首頁四用途沿既有callbacks到原工作區，股號搜尋建立明示當下`ResearchStockContextDTO`，原保存候選保留原exact context；沒有新dashboard／domain計算／全域狀態平台。大盤只翻譯原DTO分類與明示布林條件，缺件保持unknown，刷新不重置收合。個股focus summary沿原change／section status，與ML限制併列，不升模型資格。
 
 `personal_data_paths`保留canonical path給containment／equality／hash／receipt，只在Windows OS IO使用UTF16門檻extended renderer；SQLite URI只ro/rw，不授writer／migration。links/hardlinks與device namespace守衛保留。registry exact symbols僅DTO／transition policy，reader仍sidecar-free一致snapshot；舊8ML boundary未解，不稱架構全通過。[範圍與驗證](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。
+
+<a id="scheduled-operational-custody-20260929"></a>
+
+## 排程來源與 operational custody（2026-09-29）
+
+Windows query 與 registration inspector 共用同一受測 21 項 inventory，包含 legacy learning
+及 BankTaiwan；readiness 不等於業務成功。Scheduled Evidence 從同日 snapshot status
+取得精確 result ID，經 canonical query/hash/clock 重驗後交給 importer 與 coverage，不
+混用 formal／shadow latest；缺件在 pipeline 啟動前拒絕，child 受 600 秒 timeout 約束。
+Learning orchestration 已驗證的同日 formal technical receipt 直接重用，不重啟 updater
+覆寫主排程 latest；其餘 learning source-time／custody gate 不變。
+
+PIT 盤前 CMD 接到版本化官方 taxonomy source config，archive／denominator 完成後重讀
+clock，taxonomy 失敗傳遞非零。盤後 history 限明確 coverage scope，舊檔保留但不消費，
+日曆只用既有 hash-bound cache；範圍內 source readback、cutoff、license 與 formal
+publication gate 仍完整保留。官方現在取得的來源不反向提供歷史 availability。
+ML forward 等候階段另保存 per-run heartbeat/state；與 business status 分離、無 forward
+credit。這些接線／觀測修正不包含新模型、thesis、Paper 舊成交、formal approval 或 broker。

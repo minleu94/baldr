@@ -139,19 +139,7 @@ Paper seed、使用者宣告持倉與正式成交是不同來源身份。機器�
 
 ## 排程來源與 operational custody（2026-09-29）
 
-Windows query 與 registration inspector 共用同一受測 21 項 inventory，包含 legacy learning
-及 BankTaiwan；readiness 不等於業務成功。Scheduled Evidence 從同日 snapshot status
-取得精確 result ID，經 canonical query/hash/clock 重驗後交給 importer 與 coverage，不
-混用 formal／shadow latest；缺件在 pipeline 啟動前拒絕，child 受 600 秒 timeout 約束。
-Learning orchestration 已驗證的同日 formal technical receipt 直接重用，不重啟 updater
-覆寫主排程 latest；其餘 learning source-time／custody gate 不變。
-
-PIT 盤前 CMD 接到版本化官方 taxonomy source config，archive／denominator 完成後重讀
-clock，taxonomy 失敗傳遞非零。盤後 history 限明確 coverage scope，舊檔保留但不消費，
-日曆只用既有 hash-bound cache；範圍內 source readback、cutoff、license 與 formal
-publication gate 仍完整保留。官方現在取得的來源不反向提供歷史 availability。
-ML forward 等候階段另保存 per-run heartbeat/state；與 business status 分離、無 forward
-credit。這些接線／觀測修正不包含新模型、thesis、Paper 舊成交、formal approval 或 broker。
+本段保留舊連結。現行各 lane 必須綁定自身 source／release pins 與同次 terminal receipt、不得跨 lane 授權的架構契約見[第 10 節](#排程來源-identity-與-lane-隔離)；本段當日 inventory、receipt 與接線收據原文移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#scheduled-operational-custody-20260929)，執行現況看 Snapshot／Manual 與最新 QA。
 
 ## 9/30 排程資料流與 lane 邊界（歷史架構切片）
 

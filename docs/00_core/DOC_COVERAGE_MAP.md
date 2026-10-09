@@ -406,6 +406,7 @@
 - 2026-10-09：整理 Architecture 10/06 ML source custody 與 session proof／publisher loader 增量：穩定依賴方向契約移入 §11，guard／測試狀態保留在 QA／Archive，兩個舊標題維持導引。細節見 [Coverage History Entry 093](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-093)。
 - 2026-10-09：將七段 UX21／UX08／UX13／UX18／UX19 日期化 research snapshot 增量從 Architecture 前置區移入歷史檔；Immutable source、cohort、method、pinned read、unknown／PIT 與 saved chart 契約濃縮於 §8。細節見 [Coverage History Entry 094](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-094)。
 - 2026-10-09：將 10/06 homepage wiring 與 private review dated increments 移入架構更新歷史；首頁 routing 和 personal store／account identity 契約整理至 §§3、11。細節見 [Coverage History Entry 095](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-095)。
+- 2026-10-09：將 2026-09-29 排程 operational custody dated slice 歸檔；各 lane source／release pins、同次 terminal receipt 與不可跨 lane 授權規則保留於 Architecture §10。細節見 [Coverage History Entry 096](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-096)。
 - 2026-08-30：補入 P0／Evidence／Paper／Formal／Runtime／Performance／Data Update refresh 文件，並把 UI 舊 readiness artifact marker、週末 freshness 語意與最新測試 inventory 納入 coverage。
 - 2026-09-10：補入 V4.1 A 線推薦機率校準的 QA handoff、Snapshot、Current architecture、Manual 與 Index；確認 20／5 outcome contract、walk-forward split、整數 bp calibration、read-only DB boundary 與自然 forward evidence 尚未成熟的 not-evaluable 狀態。chip／funding、industry、PIT theme 保持 deferred，沒有回填歷史 event。
 - 2026-09-12：補入 V4.1 A 線第二輪歷史研究與候選方法包的 QA handoff、Snapshot、Current architecture、Navigation、Manual、Runbook 與 Index；新增逐列 manifest、gap／candidate coverage、自然時間分類與 create-only frozen artifact，確認正式 DB 僅 query-only 讀取且沒有 promotion／formal writer 變更。
@@ -444,3 +445,7 @@
 ## 2026-10-09 整理 Homepage 與 personal store 架構增量
 
 [完整批次紀錄](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-095)。
+
+## 2026-10-09 歸檔 9/29 排程 operational custody 切片
+
+[完整批次紀錄](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-096)。

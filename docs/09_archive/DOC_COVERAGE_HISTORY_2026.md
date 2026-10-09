@@ -793,3 +793,12 @@ system_architecture 主文原 9/27 區塊的逐次 gate verdict、舊 attempt／
 |---|---|---|
 | `docs/01_architecture/system_architecture.md#2026-10-06-第二波來源與私人審查邊界` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#private-store-routing-20261006) | 2,444 / `F910A44CEF8CD5BFFA1FE90B1B1CC764F6E3438D94E4E0790A97EB1938E60BD9` |
 | `docs/01_architecture/system_architecture.md#2026-10-06-首頁接線與personal-io邊界` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#homepage-wiring-20261006) | 1,525 / `50312F5CFA65D3473D38A88CA1F58551CD9C4B772BDED60A42A6CC2AADC88F86` |
+
+<a id="coverage-entry-096"></a>
+## 2026-10-09 歸檔 9/29 排程 operational custody 切片
+
+將 system architecture 中 2026-09-29 排程 inventory、同日 source／receipt 綁定、timeout 與當日 taxonomy／forward lane 接線紀錄移至架構更新歷史；原標題保留導引。長期規則仍由 §10 定義：各 lane 綁定自身 source／release pins 與同次 terminal receipt，不以 readiness 或其他 lane 的 latest 授權跨 lane 消費。細節是日期化 execution receipt，不代表目前排程健康或業務成功；現況回到 Snapshot、Manual 與最新 QA。Architecture／Archive README、Coverage Map 與 DOCUMENTATION_STRUCTURE 已同步。
+
+| 原路徑標題 | 歷史原文位置 | 原文 bytes / SHA-256 |
+|---|---|---|
+| `docs/01_architecture/system_architecture.md#排程來源與-operational-custody-2026-09-29` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#scheduled-operational-custody-20260929) | 1,267 / `52EBADB21E43430B5D9E14D244D572B549E2B2FFC106488C05F89C33343ED96A` |

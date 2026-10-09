@@ -20,3 +20,11 @@ Root 獨立執行 `output/qa/h20_wal_market_bridge_20261009_a/test_wal_merged_ma
 凍結 adapter SHA `0de4a00d94746da5d9027fe0c870d11cd684822b745569a6864d623f609a37f2`；test SHA `219da364967616861b6e6273a60ea1a3c74b39d47346c50399ea92e4ce975b10`。
 
 此 adapter 仍委派原合成 WAL helper，其 `create_merged_snapshot()` 核驗查詢寫死 `market_prices`。所以六項通過不能證明實際 twstock schema 相容。下一個必要候選須移除測試專屬 row oracle，以通用 backup／integrity／schema 核驗與應用 logical-row 核驗分層，並用完全不存在 `market_prices` 的合成市場資料驗證。未啟動 Main／EXE、未連線原始資料庫，也未授予原始 H20 完整旅程接受。
+
+## 通用 WAL helper 與橋接複驗
+
+另建 `output/qa/h20_wal_market_bridge_20261009_b/`，保留 a 的凍結版本。b helper 移除應用資料表專屬查詢，核對整庫 backup、integrity、完整 schema 與原 main/WAL；應用列核驗由消費端負責。backup 加入 progress callback 取消與 monotonic deadline。
+
+Owner 8 passed／1.28 秒；Root 獨立 native 執行 `test_wal_merged_market_bridge_neutral_qa.py`，terminal exit 0、8 passed／1.47 秒。八份 Root 收據為 `attempts/*_20261009T002916Z_*/receipt.json` 加 `backup_deadline_20261009T002917Z_b5d78227132b/receipt.json`；逐份確認成功正／負案例、來源 SQLite 連線 0、操作副本已清理。覆蓋沒有 `market_prices` 的五表合成市場 schema、備份途中取消與 deadline，以及 a 的連線、SQL、執行緒與來源變動限制。
+
+凍結 SHA256：helper `0480f1ced50d05481a62d6e19c636d259ee23976289162d40076a96d66783bb4`；bridge `73bf9294f6d74f880bf77ec1bd85b7e746a0b80d7c4b4487313ff7ff875f498c`；test `44fced3cab90727c3b83a99f0965ddc5d7c8bb37dae20cf29bfab09df7fe0230`。collection import 與 schema descriptor 範圍不同的早期失敗均保留。此證據補足測試表依賴與 backup 取消缺口，仍不是實際市場 provider、雙來源 Main 旅程、原始 H20 或 EXE 接受。

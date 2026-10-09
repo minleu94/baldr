@@ -21,6 +21,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+from time import monotonic_ns
 from typing import Any, TypedDict, cast
 import uuid
 from urllib.error import HTTPError
@@ -78,8 +79,12 @@ PIT_TAXONOMY_SOURCE_CONFIG_PROOF_MAX_BYTES = 1024 * 1024
 PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH = (
     "output/qa/pit_taxonomy_split_candidate_20261001/source_config_saved_notice.json"
 )
+PIT_TAXONOMY_LIVE_CONFIG_SOURCE_RELATIVE_PATH = "scripts/scheduled/pit_taxonomy_source_config.json"
 PIT_TAXONOMY_CUTOFF = time(8, 30)
 PIT_TAXONOMY_FETCH_TIMEOUT_SECONDS = 30
+# 全市場 ISIN 實際回應約 35 MiB，已觀測完整下載需約 8 分鐘；
+# 保留 15 分鐘總門檻與每次 socket 30 秒，避免誤拒正常的大回應。
+PIT_TAXONOMY_FETCH_TOTAL_TIMEOUT_SECONDS = 15 * 60
 PIT_TAXONOMY_MAX_SOURCE_BYTES = 64 * 1024 * 1024
 PIT_TAXONOMY_CAPTURE_MAX_COMPONENTS = 16
 PIT_TAXONOMY_CAPTURE_MAX_TOTAL_RAW_BYTES = 128 * 1024 * 1024
@@ -876,9 +881,12 @@ def materialize_existing_split_source_config_proof(
     )
     repo = Path(os.path.abspath(str(repository_root.expanduser()))).resolve(strict=True)
     source_relative = source.resolve(strict=True).relative_to(repo).as_posix()
-    if source_relative != PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH:
+    if not isinstance(source_relative, str) or source_relative not in {
+        PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH,
+        PIT_TAXONOMY_LIVE_CONFIG_SOURCE_RELATIVE_PATH,
+    }:
         raise PITTaxonomySourceError(
-            "late source config proof source path is not the approved saved notice config"
+            "source config proof source path is not an approved saved notice or live config"
         )
     canonical_hash = _source_config_canonical_sha256(source_config)
     attempt_root = descriptor_path.parent
@@ -1159,9 +1167,13 @@ def read_existing_split_source_config_proof(
     if _sha256_json(completion) != completion_hash:
         raise PITTaxonomySourceError("source config proof completion receipt hash mismatch")
     config = _decode_json_object_no_duplicates(raw, "hash-addressed source config proof raw")
-    if proof.get("source_config_original_path") != PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH:
+    source_relative = proof.get("source_config_original_path")
+    if not isinstance(source_relative, str) or source_relative not in {
+        PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH,
+        PIT_TAXONOMY_LIVE_CONFIG_SOURCE_RELATIVE_PATH,
+    }:
         raise PITTaxonomySourceError(
-            "source config proof original path is not the approved saved notice config"
+            "source config proof original path is not an approved saved notice or live config"
         )
     raw_hash = _sha256_bytes(raw)
     semantic_hash = _sha256_json(_source_config_semantic_value(config))
@@ -1209,7 +1221,7 @@ def read_existing_split_source_config_proof(
         "descriptor_sha256": attempt.get("descriptor_sha256"),
         "receipt_path": f"{binding_fields.get('path')}/capture_receipt.json",
         "receipt_sha256": attempt.get("receipt_sha256"),
-        "source_config_original_path": PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH,
+        "source_config_original_path": source_relative,
         "source_config_raw_path": "source_config.json",
         "source_config_raw_sha256": raw_hash,
         "source_config_raw_bytes": len(raw),
@@ -1801,6 +1813,27 @@ def _capture_configured_daily_pit_taxonomy_bundle_impl(
     )
 
 
+def _read_bounded_taxonomy_http_body(response: Any, *, started_ns: int) -> bytes:
+    """限制完整回應時間；read1 避免慢速串流一直重設 socket timeout。"""
+    read_chunk = getattr(response, "read1", None)
+    if not callable(read_chunk):
+        raise PITTaxonomySourceError("official taxonomy response lacks bounded streaming reader")
+    deadline_ns = started_ns + PIT_TAXONOMY_FETCH_TOTAL_TIMEOUT_SECONDS * 1_000_000_000
+    body = bytearray()
+    while len(body) <= PIT_TAXONOMY_MAX_SOURCE_BYTES:
+        if monotonic_ns() >= deadline_ns:
+            raise PITTaxonomySourceError("official taxonomy response total read timeout")
+        chunk = read_chunk(min(64 * 1024, PIT_TAXONOMY_MAX_SOURCE_BYTES + 1 - len(body)))
+        if monotonic_ns() >= deadline_ns:
+            raise PITTaxonomySourceError("official taxonomy response total read timeout")
+        if not isinstance(chunk, bytes):
+            raise PITTaxonomySourceError("official taxonomy response returned invalid bytes")
+        if not chunk:
+            break
+        body.extend(chunk)
+    return bytes(body)
+
+
 def fetch_official_pit_taxonomy_source(url: str) -> PITTaxonomySourceResponse:
     """以 bounded HTTPS GET 取得官方 static／security bytes。"""
 
@@ -1809,13 +1842,15 @@ def fetch_official_pit_taxonomy_source(url: str) -> PITTaxonomySourceResponse:
         endpoint,
         headers={
             "Accept": "application/json, text/html, application/pdf, */*",
-            "User-Agent": "technical-analysis-pit-taxonomy-producer/1.0",
+            "User-Agent": "Mozilla/5.0",
+            "Cache-Control": "no-cache",
         },
         method="GET",
     )
+    started_ns = monotonic_ns()
     try:
         with urlopen(request, timeout=PIT_TAXONOMY_FETCH_TIMEOUT_SECONDS) as response:
-            body = response.read(PIT_TAXONOMY_MAX_SOURCE_BYTES + 1)
+            body = _read_bounded_taxonomy_http_body(response, started_ns=started_ns)
             completed_at = datetime.now(timezone.utc)
             final_url = response.geturl()
             status = response.status
@@ -1823,14 +1858,15 @@ def fetch_official_pit_taxonomy_source(url: str) -> PITTaxonomySourceResponse:
     except HTTPError as error:
         # HTTPError is itself a response: retain its bounded body and headers in
         # split-attempt custody before the status validator rejects it.
-        body = error.read(PIT_TAXONOMY_MAX_SOURCE_BYTES + 1)
+        body = _read_bounded_taxonomy_http_body(error, started_ns=started_ns)
         completed_at = datetime.now(timezone.utc)
         final_url = error.geturl()
         status = error.code
         headers = error.headers
     except Exception as error:  # noqa: BLE001 - transport boundary is fail closed
         raise PITTaxonomySourceError(
-            f"official PIT taxonomy source fetch failed: {endpoint}"
+            f"official PIT taxonomy source fetch failed: {endpoint}; "
+            f"{type(error).__name__}:{str(error)[:160]}"
         ) from error
     metadata: dict[str, object] = {
         "requested_url": endpoint,

@@ -23,6 +23,34 @@
 
 > 封存計畫中的待辦或日期化狀態不會自動成為目前優先事項或執行授權；判讀目前狀態請回到 Snapshot、對應 QA 與現行 Roadmap。
 
+<a id="2026-10-09-early-plan-specs"></a>
+## 2026-10-09 早期 SQLite、Evidence Importer、V1.1 與 V2.2 計畫／規格歸檔
+
+以下四組原文已逐位元組移至 `superpowers/plans/` 與 `superpowers/specs/`；七個舊路徑保留相容導引。這些歷史 plan/spec 不代表原計畫全數完成，也不自動構成目前待辦或授權。現況、操作與 Gate 依 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md)、[V2.1–V4.0 maturity](../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)、[Application Manual](../07_guides/APPLICATION_MANUAL.md) 及具名 QA 判讀。
+
+| 歷史主題 | Archive 原文 | 當時效力與目前邊界 |
+|---|---|---|
+| SQLite 分頁與 Excel 匯出 | [plan](superpowers/plans/2026-06-14-sqlite-pagination-excel-report-export.md) | 原 plan checklist 0/54；SQLite／Excel 的目前能力另依 Legacy Carryover 與操作手冊判讀，Full App B-037 仍是 candidate lane，PDF 仍在 backlog。封存不表示原計畫完成或完整 UI 驗收通過。 |
+| Post-V1 Evidence Importers | [plan](superpowers/plans/2026-07-02-post-v1-evidence-importers.md)、[design spec](superpowers/specs/2026-07-02-post-v1-evidence-importers-design.md) | 原 plan 0/8；配套 QA 記錄 28 項測試，但 DDD importer CLI 尚未自動建構完整 provider，沒有 dashboard、scheduler 或投資有效性結論。 |
+| V1.1 Decision Workflow Integration | [plan](superpowers/plans/2026-07-02-v1-1-decision-workflow-integration.md)、[design spec](superpowers/specs/2026-07-02-v1-1-decision-workflow-integration-design.md) | 原 plan 0/16；V1.1–V2.0 版本演進列為歷史不代表原 plan 逐項完成。 |
+| V2.2 Simulated Phase Progress | [plan](superpowers/plans/2026-07-07-v2-2-simulated-phase-progress.md)、[design spec](superpowers/specs/2026-07-07-v2-2-simulated-phase-progress-design.md) | 原 plan 0/16；當日 official weekly history 0/3、multi-day dry-run 1/3，historical replay 不計 Gate。現行 Gate 2 仍要求真實週期與操作日 evidence；Manual 保留 CLI 操作與 simulated 結果判讀。 |
+
+來源路徑導引與逐檔來源／Archive bytes、SHA-256、引用核對見 [Coverage History Entry 163](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-163)。歷史文件目錄另見 [Superpowers README](../superpowers/README.md) 與 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
+<a id="2026-10-09-strategy-scoring-governance"></a>
+## 2026-10-09 Strategy & Scoring Governance plan/spec
+
+四份 2026-06-13 的策略評分治理 plan/spec 原文已封存至 `superpowers/plans/` 與 `superpowers/specs/`；原路徑保留相容導引。三份 plan 的 checklist 仍為 0/4、0/54、0/49，不因搬移補勾。現行 [Strategy Design Specification](../02_features/STRATEGY_DESIGN_SPECIFICATION.md) 承接策略規則入口；[Walk Forward Comparison Report](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md) 的結果限於 10 檔、單一策略 bounded pilot，不代表跨策略或全市場通過；quantile 操作仍依 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 判讀。
+
+| 原計畫／規格 | Archive 原文 |
+|---|---|
+| [治理總計畫原路徑導引](../superpowers/plans/2026-06-13-strategy-scoring-governance.md) | [Archive plan 原文](superpowers/plans/2026-06-13-strategy-scoring-governance.md) |
+| [A：回測門檻原路徑導引](../superpowers/plans/2026-06-13-strategy-scoring-governance-a-backtest.md) | [Archive plan 原文](superpowers/plans/2026-06-13-strategy-scoring-governance-a-backtest.md) |
+| [B：推薦排名原路徑導引](../superpowers/plans/2026-06-13-strategy-scoring-governance-b-recommendation.md) | [Archive plan 原文](superpowers/plans/2026-06-13-strategy-scoring-governance-b-recommendation.md) |
+| [治理設計規格原路徑導引](../superpowers/specs/2026-06-13-strategy-scoring-governance-design.md) | [Archive spec 原文](superpowers/specs/2026-06-13-strategy-scoring-governance-design.md) |
+
+來源／Archive bytes、SHA-256、LF-normalized Git identities 與引用判讀見 [Coverage History Entry 164](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-164)；全體計畫清單見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
 ## 2026-10-09 券商分點早期設計與實作記錄
 
 - [券商分點文件封存專區](broker_branch/README.md)：保存早期資料模組設計、實作摘要、錯誤檢測、解析改進與手動測試指南原文。現況看[券商分點導覽](../04_broker_branch/README.md)、[系統架構](../01_architecture/system_architecture.md)與[操作手冊](../07_guides/APPLICATION_MANUAL.md)；四份早期設計／實作記錄見 [Coverage History Entry 126](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-126)，手動測試指南見 [Entry 155](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-155)。
@@ -689,6 +717,13 @@ Month 3 closure audit 與 8 份實作步驟全完成、各有 implementation com
 - [Relative Strength／Liquidity Ranking 原文](superpowers/plans/2026-06-15-decision-desk-relative-strength-liquidity-ranking.md)、[Risk Prompt Bridge 原文](superpowers/plans/2026-06-15-decision-desk-risk-prompt-bridge.md)、[Watchlist Trigger 原文](superpowers/plans/2026-06-15-decision-desk-watchlist-trigger.md) 已移入 Archive；三個[原路徑](../superpowers/plans/)保留相容導引。原 plan 的 Step checklist 分別是 0/31、0/33、0/25；這是保存當時核取狀態，不代表實作已完成或未完成。
 - Full App QA 的 D-007、D-008、D-009 仍標示「需確認」，各自保留低流動性／歷史不足提示、候選池真實狀態、Portfolio 真實狀態的人工確認要求。本次沒有變更 QA 狀態。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，架構看 [system architecture](../01_architecture/system_architecture.md)。
 - 原路徑、Archive 位置、bytes／SHA-256 與正規化雜湊見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 及 [Coverage History Entry 161](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-161)。
+
+<a id="2026-10-09-recommendation-portfolio-optimization-plan-spec"></a>
+## 2026-10-09 Recommendation Portfolio Optimization 歷史 plan/spec
+
+- [舊 plan 路徑導引](../superpowers/plans/2026-05-26-recommendation-portfolio-optimization.md)與[舊 spec 路徑導引](../superpowers/specs/2026-05-26-recommendation-portfolio-optimization-design.md)保留相容入口；逐位元組原文分別在 [plan](superpowers/plans/2026-05-26-recommendation-portfolio-optimization.md) 與 [spec](superpowers/specs/2026-05-26-recommendation-portfolio-optimization-design.md)。
+- 原 plan checklist 為 0/38。`RecommendationPortfolioOptimizerService` 與一個參數排序單元測試存在，但這只證明有一段程式與有限測試，不代表原計畫、使用者流程或真實大型搜尋全部驗收；Full App B-027 仍需確認，真實大型搜尋限人工。此歷史提案不構成目前待辦或交易依據。
+- 目前方向與狀態回到 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 及 [6M Gate 4](../00_core/ROADMAP_6M_ENGINEERING.md#8-gate-4portfolio-coach-v1)；操作與推薦組合回測能力看 [Backtest Lab 功能文件](../02_features/BACKTEST_LAB_FEATURES.md)，QA 範圍看 [Full App coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)。逐檔 bytes／SHA、引用核對與效力見 [Coverage History Entry 165](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-165)。
 
 ## ⚠️ 注意
 

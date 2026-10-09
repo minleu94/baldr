@@ -42,3 +42,7 @@
 - 不要 revert、刪除或清理你沒有產生的 dirty files。
 - 若遇到不在本文件中的新暫存/輸出目錄，先判斷來源並更新本文件，再決定是否加入 `.gitignore`。
 - 若是正式資料根目錄 `DATA_ROOT` / `OUTPUT_ROOT` 內的資料，遵守 `docs/agents/shared_context.md` 的資料完整性規則，不做破壞性操作。
+
+## 2026-10-09 本機交接排除
+
+本機 .git/info/exclude 保留並排除已識別 .h20pytest_tmp_20261007、.h20snapshot_tmp_20261008_*、.qa_f17_*、.qa_temp_technical_*、兩個 .rptv4-* 與 .t-ouxfxe6t 暫存；根目錄六個殘留來源及 scripts/maintenance 一次性本機封存工具不提交、不刪除。精確範圍與接手審查見 docs/06_qa/BALDR_COMPLETION_HANDOFF_20261009.md。此規則不是對新正式來源的通用忽略。

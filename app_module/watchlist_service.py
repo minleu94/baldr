@@ -60,6 +60,18 @@ from app_module.daily_market_technical_official_disposition_bookmark_v1 import (
     canonical_daily_market_technical_official_disposition_bookmark_json_v1,
 )
 from app_module.original_stock_ranking import OriginalStockRankingError
+from app_module.daily_market_technical_official_disposition_revenue_bookmark_v1 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V1,
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE,
+    DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
+    DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1Error,
+)
+from app_module.daily_market_technical_official_disposition_ma_bookmark_v1 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_BOOKMARK_V1_SCHEMA,
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE,
+    DailyMarketTechnicalOfficialDispositionMaBookmarkV1,
+    DailyMarketTechnicalOfficialDispositionMaBookmarkV1Error,
+)
 from app_module.watchlist_review_state import (
     WatchlistReviewSourceIdentity, WatchlistReviewState, WatchlistReviewStateError,
     WatchlistSavedChange, ReviewState, REVIEW_EXTENSION, read_review_state,
@@ -73,14 +85,26 @@ _RESEARCH_BOOKMARK_SOURCES = frozenset(
     {DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE, ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE,
      DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE,
      DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_RESEARCH_BOOKMARK_SOURCE,
+     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE,
+     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE,
      PERSONAL_H20_RESEARCH_BOOKMARK_SOURCE, TECHNICAL_UNIVERSE_PRICE_BOOKMARK_SOURCE}
 )
 
 
 def decode_daily_market_research_bookmark(
     value: Any,
-) -> DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1:
+) -> DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | DailyMarketTechnicalOfficialDispositionMaBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1:
     """既有儲存 caller 按固定 schema 分派，不混用不同研究來源契約。"""
+    if isinstance(value, Mapping) and value.get("schema_version") == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V1:
+        try:
+            return DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1.from_dict(value)
+        except DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1Error as exc:
+            raise DailyMarketResearchBookmarkError(exc.code, str(exc)) from exc
+    if isinstance(value, Mapping) and value.get("schema_version") == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_BOOKMARK_V1_SCHEMA:
+        try:
+            return DailyMarketTechnicalOfficialDispositionMaBookmarkV1.from_dict(dict(value))
+        except DailyMarketTechnicalOfficialDispositionMaBookmarkV1Error as exc:
+            raise DailyMarketResearchBookmarkError(exc.code, str(exc)) from exc
     if isinstance(value, Mapping) and value.get("schema_version") == DAILY_MARKET_TECHNICAL_UNIVERSE_PRICE_BOOKMARK_V1_SCHEMA:
         try:
             return DailyMarketTechnicalUniversePriceBookmarkV1.from_dict(value)
@@ -115,6 +139,10 @@ def _bookmark_payload_id(value: Any) -> Any:
 
 
 def _bookmark_source(bookmark: Any) -> str:
+    if isinstance(bookmark, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1):
+        return DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE
+    if isinstance(bookmark, DailyMarketTechnicalOfficialDispositionMaBookmarkV1):
+        return DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE
     if isinstance(bookmark, DailyMarketTechnicalUniversePriceBookmarkV1):
         return TECHNICAL_UNIVERSE_PRICE_BOOKMARK_SOURCE
     if isinstance(bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1):
@@ -130,7 +158,7 @@ def _bookmark_source(bookmark: Any) -> str:
 
 def _bookmark_item_name(bookmark: Any) -> str:
     """沒有獨立名稱的 typed 收藏以股票代碼作清單標籤。"""
-    if isinstance(bookmark, (DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1)):
+    if isinstance(bookmark, (DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, DailyMarketTechnicalOfficialDispositionMaBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1)):
         return bookmark.stock_code
     return str(bookmark.stock_name)
 
@@ -203,6 +231,14 @@ class WatchlistItem:
             source = (
                 ORIGINAL_STOCK_RANKING_BOOKMARK_SOURCE
                 if bookmark_schema == "daily-market-research-bookmark.v2"
+                else DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE
+                if isinstance(bookmark_schema, str)
+                and bookmark_schema.startswith("daily-market-technical-official-disposition-revenue-bookmark.")
+                or bookmark_source == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE
+                else DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE
+                if isinstance(bookmark_schema, str)
+                and bookmark_schema.startswith("daily-market-technical-official-disposition-ma-bookmark.")
+                or bookmark_source == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE
                 else TECHNICAL_UNIVERSE_PRICE_BOOKMARK_SOURCE
                 if isinstance(bookmark_schema, str)
                 and bookmark_schema.startswith("daily-market-technical-universe-price-bookmark.")
@@ -1682,7 +1718,7 @@ class WatchlistService:
 
     def add_research_bookmark(
         self,
-        bookmark: DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1 | Dict[str, Any],
+        bookmark: DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | DailyMarketTechnicalOfficialDispositionMaBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1 | Dict[str, Any],
         watchlist_id: str = "default",
         *,
         revision_id: str | None = None,
@@ -1692,7 +1728,7 @@ class WatchlistService:
 
         verified_bookmark = decode_daily_market_research_bookmark(
             bookmark.to_dict()
-            if isinstance(bookmark, (DailyMarketResearchBookmark, OriginalStockRankingBookmark, DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1))
+            if isinstance(bookmark, (DailyMarketResearchBookmark, OriginalStockRankingBookmark, DailyMarketTechnicalUniverseV4Bookmark, DailyMarketTechnicalOfficialDispositionBookmarkV1, DailyMarketTechnicalOfficialDispositionMaBookmarkV1, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1, PersonalH20ResearchBookmark, DailyMarketTechnicalUniversePriceBookmarkV1))
             else bookmark
         )
         expected_source = _bookmark_source(verified_bookmark)
@@ -1812,7 +1848,7 @@ class WatchlistService:
         self,
         bookmark_id: str,
         watchlist_id: str = "default",
-    ) -> DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1 | None:
+    ) -> DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | DailyMarketTechnicalOfficialDispositionMaBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1 | None:
         """讀取指定收藏身份；符合 ID 但格式錯誤的 payload 會拒絕讀取。"""
 
         identity = str(bookmark_id or "").strip()
@@ -1943,6 +1979,16 @@ class WatchlistService:
         """以 watchlist 來源重建 pinned context，不建立 Advice 身份。"""
 
         bookmark = self.get_research_bookmark(bookmark_id, watchlist_id)
+        if isinstance(bookmark, DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1):
+            raise DailyMarketResearchBookmarkError(
+                "technical_official_revenue_bookmark_typed_reopen_required",
+                "月營收收藏須沿原查詢與固定來源核驗重開，不能轉成一般研究 context。",
+            )
+        if isinstance(bookmark, DailyMarketTechnicalOfficialDispositionMaBookmarkV1):
+            raise DailyMarketResearchBookmarkError(
+                "technical_official_ma_bookmark_typed_reopen_required",
+                "MA 複合收藏須從原查詢與固定來源重新核驗，不能轉成一般研究 context。",
+            )
         if isinstance(bookmark, DailyMarketTechnicalUniversePriceBookmarkV1):
             raise DailyMarketResearchBookmarkError(
                 "technical_price_bookmark_typed_reopen_required",
@@ -2043,7 +2089,7 @@ class WatchlistService:
                 bookmark_id=identity,
                 watchlist_id=watchlist_id,
             )
-        matches: list[tuple[int, WatchlistItem, DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1]] = []
+        matches: list[tuple[int, WatchlistItem, DailyMarketResearchBookmark | OriginalStockRankingBookmark | DailyMarketTechnicalUniverseV4Bookmark | DailyMarketTechnicalOfficialDispositionBookmarkV1 | DailyMarketTechnicalOfficialDispositionMaBookmarkV1 | DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1 | PersonalH20ResearchBookmark | DailyMarketTechnicalUniversePriceBookmarkV1]] = []
         for index, item in enumerate(current.items):
             raw = item.research_bookmark
             if not isinstance(raw, dict) or _bookmark_payload_id(raw) != identity:

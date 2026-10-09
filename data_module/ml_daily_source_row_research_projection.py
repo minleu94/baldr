@@ -82,7 +82,7 @@ _NUMERIC_FIELDS: dict[str, set[str]] = {
 }
 # 僅保留實際觀察且既有 parser 接受的 TPEx 漲跌欄來源標註。
 _KNOWN_SOURCE_ANNOTATIONS: dict[str, dict[str, frozenset[str]]] = {
-    "tpex": {"漲跌": frozenset({"除息"})},
+    "tpex": {"漲跌": frozenset({"除息", "除權"})},
 }
 
 

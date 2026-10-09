@@ -2,6 +2,33 @@
 
 本次核對保留原補完計畫範圍，不以目前已完成的技術研究頁代替所有選股條件。依據為目前 app／UI／query contracts 與只讀代理審查；不包含正式資料 SQL、重新訓練或正式排程變更。
 
+## 2026-10-09 本輪證據更新
+
+以下更新優先於本文較早的接續紀錄；完整 F01–F23、M1–M3／P00–P14 範圍未縮減，沒有新的完整產品或真人接受。
+
+最新接續：P01 lexical renderer memo 已保存於 `f9ead461`；component tuple memo 已保存於本機 dev `30812082`。Root 已審核兩來源 diff、10-case 測試與最後 junction 單項增補、七項 fresh-I/O 回歸及 scoped mypy。新固定效能候選正準備中，尚未取得新 p95；525.9606 ms 的 filter 失敗仍有效。以下「memo 尚未接受」為較早歷史狀態，不能當作目前狀態。
+
+F02 V10 完整父流程三組條件與正常關閉通過，但 fresh child 收藏恢復逾時。V11 已修正 QA 操作的 Watchlist workspace route 與單擊後雙擊序列；Root 獨立核 33 個來源 pin、13 個 QA artifact 全部一致，已授權一次完整 native Main 旅程，結果仍待。沒有新 EXE 或真人接受。H20 M 仍在補 exact cycle-terminal 讀取與異常清理切片，不重跑已失敗的 L。
+
+V11 最新終態：唯一 attempt `run_attempt_ffce90498c624514a7f3f1874b89e644` exit0、78.984秒，Root 已直接核 parent 三組逐頁名單59／158／97及 fresh child 真 Watchlist click→doubleClick、typed1/generic0、page1/50、selected1000、比較籃1010與1000保留。來源與收藏bytes不變，父child worker0、正常關閉、Job清理及guards恢復成立。接受固定合成MA完整閉環，替代上句「結果仍待」；不代表新EXE、原來源或H20驗收。該owner接續F12完整Main候選。
+
+- P01 proof-gated rehydration 已保存至本機 dev commit `55086ec40511d041f6ae5d4dfa9c73b0eb396536`，37 項定向回歸通過。原固定 1,000 檔、五 cold／一 warm、每類 30 samples 的矩陣：翻頁 p95 220.0639 ms 與全域排序 248.2336 ms 通過嚴格小於 300 ms 門檻；篩選 677.9689 ms 未通過。首次冷啟動至 page0 p95 21.1921328 秒，與操作 p95 分開，不可推導原 2382 的速度已改善。
+- P01 新增 operation-local lexical path memo 尚在受控實作與定向測試。只省字串轉換、不省 lstat/reparse/bytes/SHA/cancel；Root 已要求精確大小寫 key、absolute Path、creating-thread 與回呼／strict API 隔離。既有路徑回歸原生 113 項通過，唯一長路徑測試前提失敗以新較長 fixture 單項重跑通過；新增 memo 定向案例仍有測試 API／長路徑 I/O 問題，尚未接受或重測完整效能矩陣。
+- F02 固定 R/J query 與逐頁 backend 證據已有；新版完整父 Main→收藏→正常關閉→新子 Main→Watchlist 雙擊重開尚未通過。V9 helper 的真 `detect_build_identity` 20 項與退休 5 項通過，但完整 self-test 被 P01 兩個來源 pin 漂移擋在啟動前，不能換用未審 dirty source 宣稱完成。
+- H20 K 合成公共 pipeline 在 config root mismatch／終端來源核驗處失敗；L 正以明示 H9 DATA_ROOT／私有 OUTPUT_ROOT 驗證實際 source-port 兩個 config instances。L native 設定純測已到來源入口，但 terminal-reader WindowsPath exact type 與 config.log 許可錯誤仍待修正。這是 QA seam 問題，不能判定原 H20 資料錯誤；原 2382 684 bp、同版圖表、收藏、新 EXE 與真人接受仍未通過。
+- F12 全母體 index/query 與 standalone revenue view／收藏服務已有後續來源切片；完整 Main async 收藏、新程序 Main typed revenue 重開仍未通過，現由獨立 owner 準備固定候選。
+- F17 正常產製技術與官方來源的後端 pair builder、UI button／worker 接線已存在。較早「尚未接正常來源更新至產製」不能再解讀為完全沒有 builder／UI；完整受控 Main、固定 EXE、原來源與真人閉環仍待，不授歷史 PIT。
+
+目前沒有要求使用者重跑舊 EXE。真人短清單已備妥，但須待同一可交付版本的上述工程驗證通過後，提供確切啟動入口才生效。
+
+### 後續實證更新
+
+固定 d12 archive 加四個受審 overlays 的新 1,000 檔矩陣已完成六角色，來源與原 sealed store 保持。Root 直接讀 `C:/t/p01cur_rd_5b47031f1c/child_result.json` 的全部三類各 30 筆原始耗時，按 nearest-rank 第 29 筆獨立重算：翻頁 p95 174.3009 ms、全域排序 219.2445 ms 通過；篩選 525.9606 ms 仍未通過 300 ms。高耗時集中於完整篩選後有 30／32 筆結果的頁面，不能以零結果較快或平均值宣稱完成。下一步利用已產生 profile 定位，不重跑相同矩陣，也不減少 fresh source checks。完整 Main、新 EXE 與原 2382 等待時間仍另行驗證。
+
+P01 lexical memo 的七項定向測試已通過；query／metadata／指定 read-session 的 37 項回歸與另行執行的 semantic rehydration 13 項均已終態通過。Root 直接讀取原始 logs、來源 diff 與 SHA，並獨立執行兩個來源檔 scoped mypy，結果無問題。尚待新的固定 1,000 檔矩陣，不能宣稱篩選速度已達標。
+
+H20 L 的 actual source-port 設定純測 04 已通過，但唯一完整公共 pipeline 終態失敗：固定 cycle terminal JSON 的讀取角色未納入 QA guard，initial 被拒絕、terminal 返回來源綁定核驗失敗；來源與 fixture 起訖相同。M 正準備精確角色與呼叫診斷，不重跑 L、不清拒絕計數；完整 Main 與原 684 bp 研究仍未接受。F12 正準備完整 Main／收藏／新程序重開候選，尚未執行原生完整旅程。
+
 ## 使用者回報與驗收仍開放的項目
 
 - d9a115f67d2b 的推薦理由、排名門檻及排名因素不能完整閱讀，仍屬未接受。後續完整理由來源／presenter 修正已保存於 `396c08e8`，中央版面與捲動測試見 `BALDR_COMPLETE_REASONS_REVIEW_20261008.md`；新版入口仍待完整流程驗證，真人尚未確認最後一段可見，不能以文字存在或 widget 測試代替真人接受。
@@ -81,3 +108,29 @@ F17 最新封套的 source parent 另確認 catalog 更新成功且只有一筆�
 - P01 新固定 d12 source 的 v4 exact-read supervisor 已保存來源／sealed-store前後一致及程序清理證據，但 venv 啟動器 return101，未進入 P01 opener。Python 啟動器與單程序 Job限制正查證；1000檔完整讀取、三操作30樣本與300ms門檻仍未通過。
 - F02 J 私有長路徑 signature 已由 Root 獨立核對短樹一致、277字元 descendant、真junction及metadata drift拒絕；此僅 helper工程證據。固定257檔provider/fullquery矩陣、正常來源、新EXE與真人仍待；既有scope/lineage/原始來源pins不變。
 - 所有 P00–P14、M1–M3、F01–F23 與前述資料域缺口仍保留。三條續驗不是完整補完計畫的替代出口。最新原始封套與root審閱摘要集中於 `BALDR_PARALLEL_ROOT_REVIEW_20261009.md`；尚無新EXE交付或本輪真人驗收指令。
+
+### 2026-10-09 查詢與容量實測更新
+
+- F02 J 已完成固定來源 22 個完整查詢案例與一次 canonical reopen；Root 逐頁對照獨立 oracle，完整分母、unknown 與原始 OHLC 合格窗口一致。接受範圍是後端 query continuation，正常 Main 下鑽／返回／收藏、新程序重開、EXE／真人仍待；不把此更新當成完整 F02 或其他資料域接受。
+- P01 固定 d12／1,000 檔已完成五 cold／一 warm 矩陣，完整讀回及來源保護通過，但換頁 998.100 ms、篩選 1820.728 ms、排序 1189.493 ms 的 p95 皆未達原 300 ms 門檻。追加容量實測完整 20 頁一致，三個互斥頁共 150 snapshots 的快取估算 22,306,284 bytes、5,960 raw rows，清理後歸零；這不是快取命中效能或全母體 RAM 證明。下一步沿原矩陣驗有界快取，不降低 fresh 來源核驗。
+- H20 C 已進 public pipeline 的 reference read，因 QA 對固定 Windows no-follow reader 的 fdopen／close 拒絕而未完成 cohort 核驗。獨立唯讀重核證實固定來源 inventory 一致；原 C 的 source_after=null 是 postflight 被 guard 拒絕，不能當成來源變更。精確 fd token 修補仍在準備，不授原 684 bp、Main 或真人接受。
+
+### 2026-10-09 後續中央審核更新
+
+- P01 metadata 優化的正式切片已提交 `c5f4d169`，24 項定向回歸通過。其後完整五 cold／一 warm 矩陣仍未達門檻：換頁 p95 604.9607 ms、篩選 1541.0285 ms、排序 1533.123 ms。先前有界 DTO 快取只是診斷，未作為正式實作；現在準備同一 reader-issued proof 的私有 DTO 重建，仍完整 fresh 核全部 artifact bytes／SHA／layout。實作與測試尚未接受，未授下一輪矩陣，300 ms 門檻不變。
+- F12 已完成 compact index／query、獨立真來源 view／worker、隔離服務收藏及 typed 還原，並掛載 Main 研究分頁；詳見 `BALDR_F12_MAIN_INTEGRATION_REVIEW_20261009.md`。完整 Main constructor 到月營收收藏／新 PID 還原仍缺實際旅程，不能以 standalone view 或 unbound Main route 代替。
+- F02 v6 正常 Main 測試尚未啟動：prelaunch 核對發現正在實作的 query／repository 兩檔已與舊固定三十檔 manifest 不同，安全停止並保留封套。正式切片審核後才另固定來源，不還原或覆寫其他 agent 變更。
+- H20 J 已進初始 manifest，但 capture reader local 名稱及 capture 後 manifest 的 callback 計數守衛錯誤仍使合成 pipeline 失敗；來源及 fixture 起訖一致、Job 清理成立。K 正準備實際固定函式呼叫鏈驗證，不以手工 frame 正例替代產品流程。原 2382／684 bp／同版圖表與延遲、完整 Main／EXE／真人皆未通過。
+- F03／F06 原子 parent 整合、F17 正常更新到保存版的閉環、其餘 F08–F23 資料域與多策略／三面向條件仍保留未完成。現在沒有新 EXE，也沒有要求真人重驗舊版本；完整 P00–P14／M1–M3／F01–F23 範圍不縮減。
+
+F17 現況補核：目前程式已有 `selection_current_source_pair.produce_current_selection_bundle`，技術研究頁的「產製技術與官方來源研究」真 worker 會先固定同版官方來源，再產製並交真 writer。Root 重新實讀既有 `combined_ui_tests_d.log`（28 passed／8 deselected）及 `cow_child_journey_tests_b.log`（6 passed），並核目前 UI caller；後者覆蓋隔離 WatchlistService 保存及獨立研究 view 的新程序 exact reopen。不能再把 F17 描述為完全沒有正常產製接點；剩餘閉環是完整 Main 路由／全母體／同候選版本、EXE 與真人接受。上述日誌的 Qt 收尾明示未載入 ui_qt.main，故不證完整 Main 或其 worker 收尾。詳細範圍見 `BALDR_F17_NORMAL_PRODUCTION_UI_REVIEW_20261009.md`。
+
+### F03 後續接手的目前程式證據
+
+Root 重新查看目前來源：daily_market_technical_universe_kdj_alignment_query_v1 的 module 契約明示只發 unqualified compact projection group，不建立 qualified index/session/query/page；daily_market_technical_official_disposition_kdj_query_v1 同樣只驗 request、三值 predicate 與 bounded排序，不讀來源或發 reader-qualified page。現行 daily_market_technical_official_disposition_query_reader_v1 可見 MA projection binding，但沒有 KDJ 接線；推薦、觀察清單與 Main 本次全文搜尋亦沒有 KDJ 路由。故現有 KDJ 純契約測試不能替代完整母體、原子發行、UI、收藏及新程序驗收。後續須補同一 exact observer 的 MA／KDJ 原子核驗與失敗不發布，再接查詢／頁面／收藏；不可把未核 projection 直接標為 qualified。此項維持未完成，現三個葉片先完成效能、F12及H20既定工作。
+
+### F03 原子發行的具體接線障礙
+
+Root 進一步實讀現有發行邊界：F17 query reader `_bind_ma_projection` 只建立 MA collector；`_issue_session_from_verified_bundle` 直接呼叫 MA `finalize_verified_publication`。現有 MA finalize 要求 `builder._verified_projection is self`，而 KDJ group 綁定後 builder projection 是 group，因此不能把現有 group 直接塞入 reader 就宣稱兩群 qualified。KDJ group 現有 immutable ordered fan-out、同一 MA source request identity、parent/segment順序與 poison-on-failure 可保留，但缺共同終態發行。
+
+接手實作需把驗證與發行分開：先完整驗 MA/KDJ 的來源request、同一builder/session/bundle/selection、全部parent observations、counts及compact identities；兩群均合格且最終cancel check通過後才對外發行一個共同 qualified state。任何一群失敗或取消，外部不能拿到另一群的qualified session；不得單純放寬 `is self`、允許任意duck-typed group或先發MA再驗KDJ。既有純MA入口必須保持原契約。驗收至少包含跨兩parent、missing/unknown、第二群失敗、最終取消、錯group/member/來源pins、排序後分頁、收藏新程序復原；之後才接UI。此段是具體施工入口，尚未實作。

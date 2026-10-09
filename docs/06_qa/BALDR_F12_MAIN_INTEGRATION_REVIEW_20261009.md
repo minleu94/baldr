@@ -2,6 +2,10 @@
 
 ## 接線進度更新
 
+Main 掛載測試同步後，Root 另跑既有 Watchlist MA 路由、月營收損毀／未知版本收藏路由與取消／shutdown lifecycle 合併小測：**7 passed，2.36 秒**。沒有重跑昂貴來源產製；此範圍確認相容路由及拒絕／晚回傳，真月營收來源完整保存重開仍依 attempt04 證據。
+
+Root 補跑既有 Main mount harness，首次 **1 failed**：舊測試固定要求兩分頁，但新掛載實際已有三分頁。保留前像後同步測試為三個獨立研究分頁，並核月營收標籤、未指定 bundle／monthly／operation roots、current_result／active_worker 為空，以及 `_freeze_child_refresh_sources` 後兩個 view 都 closing，重跑 **1 passed，2.14 秒**。這接受真掛載方法與合作關閉 harness，不代表完整 Main constructor、來源旅程或 EXE。
+
 Root 新增獨立 `tests/test_ui_qt_revenue_worker_lifecycle.py`，**2 passed，0.90 秒**。使用真 TaskWorker 與受控阻塞／釋放事件，分別在取消及 shutdown 後送入已排程的遲到成功結果，再等待 native worker 結束；確認 apply 未呼叫、原摘要保留、operationSettled 不成功及最後可安全關閉。這補足取消與關閉的遲到訊號證據，不修改已凍結研究 view，也不取代真來源旅程。
 
 最新終態：真來源 UI attempt04 **1 passed／5 deselected，246.52 秒**。Root 已實讀原始 Tee log；旅程覆蓋 exact source 開啟、跨頁比較、isolated WatchlistService 保存及新 service typed 讀回、Main unbound route fresh restore 與 shutdown 拒絕。此測試使用真 view／worker，但不是完整 Main constructor 或新版 EXE 驗收。修正後 Root 再跑必要 gate：更新工作台 **85 passed，5.22 秒**、QA **25 passed／0 failed／4 skipped**、mypy **926 source files 無錯誤**，整合七檔 py_compile 通過。原長路徑與 tooltip 失敗封套繼續保留。

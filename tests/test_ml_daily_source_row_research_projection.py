@@ -265,10 +265,11 @@ def test_tpex_price_limits_allow_decimal_values_but_integer_fields_do_not() -> N
         )
 
 
-def test_tpex_known_change_annotation_is_preserved_without_numeric_interpretation() -> None:
+@pytest.mark.parametrize("source_annotation", ["除息", "除權"])
+def test_tpex_known_change_annotation_is_preserved_without_numeric_interpretation(source_annotation: str) -> None:
     _twse_payload, payload = _source_payloads()
     table = payload["tables"][0]  # type: ignore[index]
-    table["data"][0][3] = "除息"  # type: ignore[index]
+    table["data"][0][3] = source_annotation  # type: ignore[index]
     raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
     rows, table_count = _project_tpex_rows(
@@ -283,12 +284,27 @@ def test_tpex_known_change_annotation_is_preserved_without_numeric_interpretatio
     annotation = rows[0]["exact_numeric_values"]["漲跌"]  # type: ignore[index]
     assert table_count == 1
     assert rows[0]["symbol"] == "6488"
-    assert rows[0]["source_values"]["漲跌"] == "除息"  # type: ignore[index]
+    assert rows[0]["source_values"]["漲跌"] == source_annotation  # type: ignore[index]
     assert annotation["state"] == "source_annotation"  # type: ignore[index]
-    assert annotation["source_text"] == "除息"  # type: ignore[index]
-    assert annotation["annotation_text"] == "除息"  # type: ignore[index]
+    assert annotation["source_text"] == source_annotation  # type: ignore[index]
+    assert annotation["annotation_text"] == source_annotation  # type: ignore[index]
     assert annotation["value_int"] is None  # type: ignore[index]
     assert annotation["scale"] is None  # type: ignore[index]
+
+
+def test_mis_venues_use_verified_prior_day_official_custody(tmp_path: Path) -> None:
+    from data_module.paper_event_source_capture import resolve_mis_venues_from_daily_custody, PaperEventSourceCaptureError
+    repo, _, _, source_before = _candidate(tmp_path)
+    kwargs = dict(source_output_root=repo / "source-custody", source_date=SOURCE_DATE,
+                  symbols=("2330", "6488"), observed_at=datetime.now(timezone.utc))
+    mapping, pins = resolve_mis_venues_from_daily_custody(**kwargs)
+    assert mapping == {"2330": "tse", "6488": "otc"}
+    assert len(pins) == 2
+    assert all((repo / path).read_bytes() == raw for path, raw in source_before.items())
+    with pytest.raises(PaperEventSourceCaptureError, match="must precede"):
+        resolve_mis_venues_from_daily_custody(**{**kwargs, "source_date": (datetime.now(timezone.utc) + timedelta(days=1)).date().isoformat()})
+    with pytest.raises(PaperEventSourceCaptureError, match="does not cover"):
+        resolve_mis_venues_from_daily_custody(**{**kwargs, "symbols": ("9999",)})
 
 
 def test_tpex_unknown_change_annotation_remains_fail_closed() -> None:

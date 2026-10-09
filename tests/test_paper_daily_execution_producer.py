@@ -323,6 +323,36 @@ def _legacy_eight_row_ledger(path: Path) -> None:
         connection.execute("DROP TABLE paper_trade_transitions")
 
 
+def test_policy_history_keeps_eight_rows_before_latest_snapshot(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.sqlite"
+    _legacy_eight_row_ledger(ledger)
+    before = ledger.read_bytes()
+    start = paper_producer._policy_ledger_history_start(
+        ledger, portfolio_id="paper-main", snapshot_date=date(2026, 9, 8),
+        decision_date=date(2026, 10, 7),
+    )
+    assert start == date(2026, 9, 4)
+    assert ledger.read_bytes() == before
+    assert paper_producer._policy_ledger_history_start(
+        ledger, portfolio_id="another-account", snapshot_date=date(2026, 9, 8),
+        decision_date=date(2026, 10, 7),
+    ) == date(2026, 9, 8)
+
+
+def test_policy_history_excludes_future_and_rejects_invalid_dates(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.sqlite"
+    _legacy_eight_row_ledger(ledger)
+    with sqlite3.connect(ledger) as connection:
+        connection.execute("UPDATE paper_trade_ledger SET event_date = '2026-10-08'")
+    kwargs = dict(portfolio_id="paper-main", snapshot_date=date(2026, 9, 8),
+                  decision_date=date(2026, 10, 7))
+    assert paper_producer._policy_ledger_history_start(ledger, **kwargs) == date(2026, 9, 8)
+    with sqlite3.connect(ledger) as connection:
+        connection.execute("UPDATE paper_trade_ledger SET event_date = 'invalid'")
+    with pytest.raises(paper_producer.PaperExecutionProducerError):
+        paper_producer._policy_ledger_history_start(ledger, **kwargs)
+
+
 def _set_fixture_state_to_existing_target(path: Path) -> None:
     """將 fixture 持倉調到 recommendation 的 board-lot target。"""
 
@@ -2865,8 +2895,29 @@ def test_schedule_snapshots_before_t1_candidate_handoff() -> None:
     assert "--confirm-append-paper-ledger" not in text
 
 
+def test_queue_resolves_sector_using_verified_frozen_identity(tmp_path: Path) -> None:
+    paths = _paths(tmp_path)
+    source = json.loads(paths.recommendation_json.read_text(encoding="utf-8"))
+    calls = []
+
+    def resolve_sector(identity):
+        calls.append(dict(identity))
+        return paths.sector_membership_path, paths.sector_membership_file_hash
+
+    result = run_paper_execution_daily_from_queue(
+        paths, recommendation_root=paths.recommendation_json.parent,
+        now=EOD_REPLAY_NOW, calendar=_open_calendar(), sector_source_resolver=resolve_sector,
+    )
+    assert result["status"] == "machine_verified_candidate"
+    assert len(calls) == 1
+    assert calls[0]["source_file_hash"] == "sha256:" + _sha256(paths.recommendation_json)
+    assert datetime.fromisoformat(calls[0]["created_at"]) == datetime.fromisoformat(source["created_at"])
+
+
 @pytest.mark.parametrize("tamper", [False, True])
-def test_nonretryable_policy_rejection_closes_only_verified_old_source(tmp_path: Path, tamper: bool) -> None:
+@pytest.mark.parametrize("expired_capture", [False, True])
+@pytest.mark.parametrize("secondary_fills_error", [False, True])
+def test_nonretryable_policy_rejection_closes_only_verified_old_source(tmp_path: Path, tamper: bool, expired_capture: bool, secondary_fills_error: bool) -> None:
     """舊政策拒絕可結束 queue，但任何 candidate 異動仍需阻擋。"""
     paths = _paths(tmp_path)
     result = run_paper_execution_daily(paths, now=EOD_REPLAY_NOW, calendar=_open_calendar())
@@ -2876,6 +2927,11 @@ def test_nonretryable_policy_rejection_closes_only_verified_old_source(tmp_path:
     body.update(status="blocked", retryable=False, ledger=None, formal_credit=False,
                 blockers=["paper policy sector archive rejected:PITArchiveConsumerError:archive was not persisted before consumer decision",
                           "paper_event_source_capture_missing_durable_manifest"])
+    if expired_capture:
+        body.update(broker_execution=False, late_replay_policy="no_historical_backfill_pending_session_missed",
+                    blockers=["paper policy adapter blocked:ledger row predates declared history:fixture-fill", "paper_event_source_capture_missing_durable_manifest"])
+    elif secondary_fills_error:
+        body["blockers"] = [body["blockers"][0], "paper_event_source_binding_failed:PaperEventSourceCaptureError:Paper result fills missing"]
     body["content_sha256"] = paper_producer._payload_hash(body)
     candidate_path.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
     result.update(body, candidate_path=str(candidate_path), candidate_file_hash=paper_producer._file_sha256(candidate_path))

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Protocol, Sequence
 
@@ -307,6 +307,27 @@ class SQLiteRankingProvider:
         self.db_path = Path(db_path)
         self.actual_date: date | None = None
 
+    @staticmethod
+    def _recent_date_key(conn: sqlite3.Connection, target: date, *, previous: bool) -> str | None:
+        """先用既有日期索引找近期日；長期缺口仍由原查詢判讀。"""
+        for offset in range(1 if previous else 0, 8):
+            day = target - timedelta(days=offset)
+            keys = (day.strftime("%Y%m%d"), day.isoformat(), day.strftime("%Y/%m/%d"))
+            if conn.execute(
+                "SELECT 1 FROM technical_indicators WHERE 日期 IN (?, ?, ?) LIMIT 1", keys
+            ).fetchone() is not None:
+                return keys[0]
+        return None
+
+    @staticmethod
+    def _date_rows(conn: sqlite3.Connection, key: str) -> pd.DataFrame:
+        day = datetime.strptime(key, "%Y%m%d").date()
+        return pd.read_sql_query(
+            "SELECT 證券代號, RSI, Close, lowerband FROM technical_indicators WHERE 日期 IN (?, ?, ?)",
+            conn,
+            params=(key, day.isoformat(), day.strftime("%Y/%m/%d")),
+        )
+
     def _compute_metrics(self, rsi_val: Any, close_val: Any, lower_val: Any) -> tuple[int | None, bool]:
         # numeric-boundary: analytics
         score_bp = None
@@ -351,34 +372,30 @@ class SQLiteRankingProvider:
             with sqlite3.connect(db_uri, uri=True) as conn:
                 conn.execute("PRAGMA query_only=ON")
                 cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    SELECT DISTINCT 日期
-                    FROM technical_indicators
-                    WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') <= ?
-                    ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') DESC
-                    LIMIT 1
-                    """,
-                    (target_key,),
-                )
-                row = cursor.fetchone()
-                if row is None or not row[0]:
-                    return {}
-                actual_key = str(row[0]).replace("-", "").replace("/", "")
+                recent_key = self._recent_date_key(conn, as_of_date, previous=False)
+                if recent_key is None:
+                    cursor.execute(
+                        """
+                        SELECT DISTINCT 日期
+                        FROM technical_indicators
+                        WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') <= ?
+                        ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') DESC
+                        LIMIT 1
+                        """,
+                        (target_key,),
+                    )
+                    row = cursor.fetchone()
+                    if row is None or not row[0]:
+                        return {}
+                    actual_key = str(row[0]).replace("-", "").replace("/", "")
+                else:
+                    actual_key = recent_key
                 try:
                     self.actual_date = datetime.strptime(actual_key, "%Y%m%d").date()
                 except ValueError:
                     pass
 
-                df = pd.read_sql_query(
-                    """
-                    SELECT 證券代號, RSI, Close, lowerband
-                    FROM technical_indicators
-                    WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') = ?
-                    """,
-                    conn,
-                    params=(actual_key,),
-                )
+                df = self._date_rows(conn, actual_key)
         except sqlite3.OperationalError:
             return {}
 
@@ -410,30 +427,26 @@ class SQLiteRankingProvider:
             with sqlite3.connect(db_uri, uri=True) as conn:
                 conn.execute("PRAGMA query_only=ON")
                 cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    SELECT DISTINCT 日期
-                    FROM technical_indicators
-                    WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') < ?
-                    ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') DESC
-                    LIMIT 1
-                    """,
-                    (target_key,),
-                )
-                row = cursor.fetchone()
-                if row is None or not row[0]:
-                    return None
-                prev_key = str(row[0]).replace("-", "").replace("/", "")
+                recent_key = self._recent_date_key(conn, as_of_date, previous=True)
+                if recent_key is None:
+                    cursor.execute(
+                        """
+                        SELECT DISTINCT 日期
+                        FROM technical_indicators
+                        WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') < ?
+                        ORDER BY REPLACE(REPLACE(日期, '-', ''), '/', '') DESC
+                        LIMIT 1
+                        """,
+                        (target_key,),
+                    )
+                    row = cursor.fetchone()
+                    if row is None or not row[0]:
+                        return None
+                    prev_key = str(row[0]).replace("-", "").replace("/", "")
+                else:
+                    prev_key = recent_key
 
-                df = pd.read_sql_query(
-                    """
-                    SELECT 證券代號, RSI, Close, lowerband
-                    FROM technical_indicators
-                    WHERE REPLACE(REPLACE(日期, '-', ''), '/', '') = ?
-                    """,
-                    conn,
-                    params=(prev_key,),
-                )
+                df = self._date_rows(conn, prev_key)
         except sqlite3.OperationalError:
             return None
 

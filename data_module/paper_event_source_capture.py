@@ -464,6 +464,40 @@ def _validate_persisted_response_binding(
     return request_channels
 
 
+def resolve_mis_venues_from_daily_custody(
+    *, source_output_root: Path, source_date: str,
+    symbols: Sequence[str], observed_at: datetime,
+) -> tuple[dict[str, str], list[dict[str, object]]]:
+    """從已驗證的決策日官方行情解析 venue，不猜市場、不使用執行日新資料。"""
+    from data_module.ml_prospective_daily_price_capture import _read_verified_source
+    from data_module.ml_daily_source_row_research_projection import _project_twse_rows, _project_tpex_rows
+
+    source_day = date.fromisoformat(source_date)
+    if source_day.isoformat() != source_date or source_day >= observed_at.astimezone(TAIPEI).date():
+        raise PaperEventSourceCaptureError("MIS venue source date must precede capture day")
+    required = set(_validate_symbols(symbols))
+    mapping: dict[str, str] = {}
+    pins: list[dict[str, object]] = []
+    for venue, exchange, parser in (("twse", "tse", _project_twse_rows), ("tpex", "otc", _project_tpex_rows)):
+        root = source_output_root / "scheduled" / "daily_price_source_custody" / venue / source_day.strftime("%Y%m%d")
+        receipts = sorted(root.glob("*/receipt.json"))
+        if not receipts or len(receipts) > 8:
+            raise PaperEventSourceCaptureError(f"MIS venue custody missing or exceeds bounded scope:{venue}")
+        for receipt in receipts:
+            source = _read_verified_source(receipt_path=receipt, custody_root=root, venue=venue, expected_date=source_date, observed_at=observed_at)
+            rows, _ = parser(source["raw_response_bytes"], source_date=source_date, source_available_at=source["available_at"], raw_sha256=source["raw_response_sha256"], receipt_sha256=source["receipt_file_sha256"], expected_row_count=source["row_count"])
+            pins.append({"venue": venue, "receipt_path": str(receipt.resolve()), "receipt_sha256": source["receipt_file_sha256"], "raw_sha256": source["raw_response_sha256"], "available_at": source["available_at"], "source_date": source_date})
+            for row in rows:
+                symbol = str(row["symbol"])
+                if symbol in required:
+                    if symbol in mapping and mapping[symbol] != exchange:
+                        raise PaperEventSourceCaptureError("MIS venue official sources conflict")
+                    mapping[symbol] = exchange
+    if set(mapping) != required:
+        raise PaperEventSourceCaptureError("MIS venue official custody does not cover frozen symbols")
+    return mapping, pins
+
+
 def capture_twse_session_open_prices(
     *,
     symbols: Sequence[str],
@@ -472,6 +506,7 @@ def capture_twse_session_open_prices(
     now: datetime | None = None,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     fetcher: Callable[[Request, float], object] | None = None,
+    venue_by_symbol: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """在當日台北 regular session 內保存 TWSE MIS session-open quote capture。
 
@@ -498,9 +533,12 @@ def capture_twse_session_open_prices(
             "capture 必須位於台北 09:00..13:30 regular session"
         )
     normalized_symbols = _validate_symbols(symbols)
+    venues = {symbol: "tse" for symbol in normalized_symbols} if venue_by_symbol is None else dict(venue_by_symbol)
+    if set(venues) != set(normalized_symbols) or any(value not in {"tse", "otc"} for value in venues.values()):
+        raise PaperEventSourceCaptureError("MIS venue mapping must cover exactly the frozen symbols")
     output_root = _require_temp_directory(output_dir)
     request_channels = "|".join(
-        f"tse_{symbol}.tw" for symbol in normalized_symbols
+        f"{venues[symbol]}_{symbol}.tw" for symbol in normalized_symbols
     )
     request_url = _twse_mis_request_url(request_channels)
     try:
@@ -1300,6 +1338,7 @@ def capture_twse_session_open_prices_for_recommendation(
     allowed_durable_root: Path | None = None,
     expected_recommendation_file_hash: str | None = None,
     expected_recommendation_content_hash: str | None = None,
+    venue_source_output_root: Path | None = None,
 ) -> dict[str, object]:
     """以 frozen recommendation 作唯一 symbol source，完成 capture→durable custody。
 
@@ -1414,6 +1453,15 @@ def capture_twse_session_open_prices_for_recommendation(
     symbols_value = identity.get("symbols")
     if not isinstance(symbols_value, list) or not symbols_value:
         raise PaperEventSourceCaptureError("frozen recommendation symbols 缺失")
+    venue_mapping = None
+    venue_pins: list[dict[str, object]] = []
+    if venue_source_output_root is not None:
+        venue_mapping, venue_pins = resolve_mis_venues_from_daily_custody(
+            source_output_root=venue_source_output_root,
+            source_date=decision_date.isoformat(),
+            symbols=tuple(str(item) for item in symbols_value),
+            observed_at=observed,
+        )
     result = capture_twse_session_open_prices(
         symbols=tuple(str(item) for item in symbols_value),
         execution_date=execution_date,
@@ -1425,11 +1473,14 @@ def capture_twse_session_open_prices_for_recommendation(
         now=observed if now is not None else None,
         timeout_seconds=timeout_seconds,
         fetcher=fetcher,
+        venue_by_symbol=venue_mapping,
     )
     source = result.get("market_source")
     if not isinstance(source, Mapping):  # pragma: no cover - producer invariant
         raise PaperEventSourceCaptureError("capture market_source 缺失")
     bound_source = dict(source)
+    if venue_pins:
+        bound_source["execution_source_venue_custody"] = venue_pins
     bound_source.update(
         {
             "execution_source_recommendation_path": identity["path"],

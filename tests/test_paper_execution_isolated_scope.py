@@ -311,6 +311,21 @@ def test_pit_sector_manifest_resolver_freezes_exact_hash_and_available_at(
     assert projection["effective_from"] == "2026-09-08"
     assert projection["available_at"] == "2026-09-08T00:31:00+00:00"
 
+    prior_path, _, prior_projection = isolated._resolve_pit_sector_manifest(
+        datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
+    )
+    assert prior_path == (archive_root / "2026-09-07" / "old" / "archive_manifest.json").resolve()
+    assert prior_projection["effective_from"] == "2026-09-07"
+
+
+def test_policy_blocked_candidate_does_not_attempt_fill_binding(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unexpected_capture(**kwargs: object) -> None:
+        pytest.fail("被拒絕候選不可嘗試成交綁定")
+
+    monkeypatch.setattr(isolated, "resolve_persisted_twse_event_source_capture_for_recommendation", unexpected_capture)
+    result = {"status": "blocked", "blockers": ["paper policy sector archive rejected:fixture"], "retryable": False}
+    assert isolated._bind_paper_result_to_event_capture(result, observed=datetime.now(timezone.utc)) == result
+
 
 @pytest.mark.parametrize(
     "runner_status",
@@ -452,8 +467,11 @@ def test_isolated_adapter_initializes_ledger_before_queue_or_no_fill_return(
     assert paths.state_db == state_db
     assert paths.market_db == market_db
     assert paths.ledger_db == ledger_db
-    assert paths.sector_membership_path == sector_manifest
-    assert paths.sector_membership_file_hash == sector_hash
+    assert paths.sector_membership_path is None
+    assert paths.sector_membership_file_hash is None
+    resolver = observed["sector_source_resolver"]
+    assert callable(resolver)
+    assert resolver({"created_at": "2026-09-08T12:00:00+00:00"}) == (sector_manifest, sector_hash)
     assert paths.controlled_output_root == candidate_root
     assert paths.output_root.parent == candidate_root
     assert observed["recommendation_root"] == recommendation_root

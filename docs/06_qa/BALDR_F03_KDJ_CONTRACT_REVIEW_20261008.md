@@ -11,6 +11,8 @@ Root 初讀實作續記：Decimal 計算使用固定 precision／rounding／Emin
 
 ## 回滾與變更範圍
 
+受控切片已保存本機 dev 提交 `0460f45f`（純方法、測試、契約三檔）；未推送或發布。Root 隨後跑既有 v4 方法契約及 selection technical window-reuse 相容測試，**11 passed，1.11 秒**。沒有修改舊 KD／v4 程式；這項相容證據不替代 KDJ 全母體或同版 EXE。
+
 Root 複驗續記：重算 source `8559E01C...74A625D`／test `791D927F...555967DC` 與 owner 凍結值一致；全新 native 合成 basetemp 複跑 **12 passed，1.05 秒**，兩檔 mypy clean。已實讀合法 future-source 同 cutoff、末 14 列、J 負值及下降／不重複交叉測試。接受純方法 leaf 這一切片，資格仍 false；owner 接續設計同次 F17 exact verified-parent collector／全母體 index／global query／SavedRecipe，暫不修改共享 reader／builder，以維持 F02 固定 pins。完整 F03 尚未完成。
 
 - 變更類型：新增純計算 evidence leaf、合成測試與本 QA 契約紀錄；不改既有 KD／v4、Main、Watchlist 或來源 reader。

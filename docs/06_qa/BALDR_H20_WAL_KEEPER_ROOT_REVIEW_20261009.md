@@ -31,6 +31,8 @@ Root 實讀 C loader、差異檔與 plan，重算八個 candidate pins 都符合
 
 # D 候選合成接縫審查（尚未放行 Main）
 
+新 QA-only Main 整合副本位於 `output/qa/h20_main_d_seam_integration_20261009_a/attempts/main_integration_candidate_20261009_a`。Root 已要求維持 frozen guard／legacy 原件，case 與 output 改為兄弟目錄，非空市場 WAL 僅由已核 D operation 私有複製／合併而非直接連來源。Main 預計的 H20 finish／permit release → market finish 順序與已通過小接縫不同，必須另驗正向與 primary failure cleanup，再審完整 Main 計畫。Main workers 必須 native 終態後才釋放 reader。其 s3 固定來源與最新 dev F12／Main 整合不同；此輪即使成功也不能當作最新整合來源或 EXE 同版驗收。
+
 最新 Root 實讀正向 seam001、故障注入003與 runner 清理順序：正向 status passed，market permit 在 typed H20 reader 活躍期間核驗；market finish 在 H20 finish 前完成，來源 main／WAL 起訖相等、來源 SQLite connect attempts 為 0。兩個 SQLite alias 使用同一 frozen wrapper，結束還原；私有目錄建立／清理皆 3，private root 最後為空。故障注入保留 primary row comparison failure，detach、session close、permit release、abort、keeper close 均完成，cleanup_errors 空。這些只接受合成接縫與清理；Main 尚未執行，合成 1234 bp 不取代原保存 684 bp。已交 owner 整合 QA-only Main controller／child 並先提交新的 pins／執行計畫，Root 審查後才執行。
 
 後續 owner 已修正 runner 路徑及匯入、兩個 SQLite alias 指向同一 frozen guarded wrapper，以及 H20 source 與 runtime/output 的測試佈局。seam006 已讀市場與 H20 副本，但在合成 REAL 欄位與字串比對時失敗；失敗後 dispatcher 未 detach 導致 abort 次錯，完整接縫尚未通過。Root 已授權僅 QA row 正規化及先 detach 再 abort／保留主次錯誤修正，要求故障注入與正常清理證據。permit 的內部 inventory 登記並非 H20 資格證明；上層必須核驗真 typed active session、來源副本 pin、query_only、transaction 與實際 guard 建立生命週期，不能只傳入任意 counters。Main 仍未放行。

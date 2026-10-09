@@ -439,12 +439,15 @@ class _PaperRunState:
             return
         observed = observed_at.astimezone(timezone.utc)
         previous_phase = str(self.state.get("phase") or "")
+        heartbeat_count = self.state.get("heartbeat_count", 0)
+        if isinstance(heartbeat_count, bool) or not isinstance(heartbeat_count, int) or heartbeat_count < 0:
+            raise ValueError("invalid run-state heartbeat_count")
         self.state.update(
             {
                 "status": "running",
                 "phase": phase,
                 "last_heartbeat_at": observed.isoformat(),
-                "heartbeat_count": int(self.state.get("heartbeat_count") or 0) + 1,
+                "heartbeat_count": heartbeat_count + 1,
             }
         )
         self._persist(event=phase if phase != previous_phase else None)
@@ -956,7 +959,7 @@ def main(argv: list[str] | None = None) -> int:
             observed_at=datetime.now(timezone.utc),
             result=result,
         )
-    except Exception as error:
+    except BaseException as error:
         run_state.fail(observed_at=datetime.now(timezone.utc), error=error)
         raise
     _print_json(result)

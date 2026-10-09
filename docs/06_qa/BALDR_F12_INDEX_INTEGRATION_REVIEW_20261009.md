@@ -26,8 +26,20 @@ Root 靜態核對發現新 revenue source-pins 把沿用 MA 的原時區 cutoff 
 
 修正後 Root 獨立檢查 production cutoff helper：`2026-10-07T16:00:00+08:00` 與 `2026-10-07T08:00:00+00:00` 解析為同一時刻，相差一分鐘則不同；naive、無效字串、bool 及不符合 canonical ISO 的空格形式均拒絕。收據 `root_cutoff_helper_1791509868186656100.json`，共享 reader SHA 起訖為 `1f50cb364ab6c4aa0e913d6a10ec8e3c1820106e7e8dcc46f4f9c100efd09eb6`。只涵蓋純 helper 與本輪靜態修正，沒有 SQLite／完整 source join；保留合成母體重現與整檔驗收仍待。
 
-後續 attempt03 已取得完整 reader 整合結果：8 passed／218.14 秒、exit 0。Root 直接讀回 `output/qa/F12_REVENUE_READER_REPAIR_20261008_A/attempt03/pytest.log`、`terminal.json` 及實際 cutoff 收據，並重新雜湊來源與測試，分別符合 `fc9c3d089c703f2bc815d0ce02310916de49aa1ce35cdfa8336ca7e630dc8045`、`da303aeb5eaaed76b9f983c7af3098c368681fc1f290052c121af86e3c012171`。保留 attempt02 的 6 passed／2 failed 結果，未覆寫舊封套。
+後續 attempt03 已取得完整 reader 整合結果：8 passed／218.14 秒、exit 0。Root 直接讀回 `output/qa/F12_REVENUE_READER_REPAIR_20261008_A/attempt03/pytest.log`、`terminal.json` 及實際 cutoff 收據，並重新雜湊共享 reader 與測試檔：共享 reader SHA-256 為 `fc9c3d089c703f2bc815d0ce02310916de49aa1ce35cdfa8336ca7e630dc8045`，測試檔 SHA-256 為 `da303aeb5eaaed76b9f983c7af3098c368681fc1f290052c121af86e3c012171`。保留 attempt02 的 6 passed／2 failed 結果，未覆寫舊封套。
 
 Root 同時核對測試實際斷言：三個啟用條件組的 AND／OR 各涵蓋 include、exclude、only；25% 營收門檻另驗明確 no-match 對 AND／OR 的影響。排除列可依 row scope 瀏覽，但不被 unknown policy 納入，且頁面身分與結果封印相符；真正不完整 store 不能冒充合格完整 bundle。此證據限於該合成母體與條件分布，不推論全市場或 UI 接線完成。
 
-合成收據 `C:/t/f12_revenue_reader_repair_attempt03/test_active_or_query_is_global0/f12_cutoff_normalization_receipt.json` 的 DB、capture 起訖 pins 及頁面前後 source pins 逐項相同。索引整份核驗在 execute 為兩次，第一頁讀完累計三次；未逐列重掃。來源仍未具 PIT 資格。接續範圍為產品 UI、收藏序列化與跨程序 exact reopen；真人接受尚未開放。
+合成收據 `C:/t/f12_revenue_reader_repair_attempt03/test_active_or_query_is_global0/f12_cutoff_normalization_receipt.json` 記錄的 `database_file_pins_start`／`database_file_pins_finish` 相同；`snapshot_binding.source_file_pins_start`、`source_file_pins_after_copy`、`source_file_pins_finish` 三組相同；HTML／CSV 的 `capture_file_pins_start`／`capture_file_pins_finish` 相同；頁面 source pins before／after 也逐項相同。索引整份核驗在 execute 為兩次，第一頁讀完累計三次；未逐列重掃。來源仍未具 PIT 資格。接續範圍為產品 UI、收藏序列化與跨程序 exact reopen；真人接受尚未開放。
+
+### F12 完整 Main 候選 c 的施工核對
+
+Root 已直接讀 c 的 fixed_inputs.json：operation_root_parent 位於頂層 private_run_requirements，b runner 卻取 fixed['f12']，會在流程前失敗；須按固定schema取得並展開到新隔離run root，不改來源輸入。b child另有未切Watchlist workspace、只送mouseDClick的問題，需沿用已接受V11可見model/row核對及先click後doubleClick方式。c現有route contract為AST/字串檢查，只能證明靜態接線，不能當成真正UI操作通過。待owner交b→c exactdiff、純Qtfocused測試與所有來源pins更新後，Root才審完整native授權。個人資料opt-in、COW、原seed不變及新程序typed revenue/generic0保持驗收要求。
+
+Root續讀c生命週期WIP：child已初始化watchlist=None，finally實際呼叫retirement helper並保存cleanup_errors，原exception保留；parent正常路徑已接helper，但失敗finally仍需正常close/drain及避免吞掉Job/guard cleanup錯誤。已要求owner在純測中驗parent失敗、constructor失敗與cleanup失敗不被誤標成功。候選尚未ready，沒有完整native執行授權。
+
+Root 後續重新核對 c 的 source_pin_manifest.json 實際 schema：code_files 共 54 個，guard_dependencies 共 4 個，逐檔大小與 SHA-256 均符合。先前將不存在的 runtime_stdlib_files 欄位轉成陣列而多算一筆 null 的 55 筆檢查無效，不作接受依據。此處 58 筆檢查只證明固定來源與依賴未變，不涵蓋仍施工中的 runner／測試，也不代表完整 Main 已通過。
+
+本輪已讀回新增 focused test：包含可見 QTableView 的實際單擊→雙擊訊號、隱藏表格拒絕、foreign model 拒絕、retirement 後不得存取 Qt wrapper 與隔離 operation root 檢查。測試結果及最終不可變封套仍待 owner 提交；完整流程仍未授權執行。
+
+Root 接續直接核對 parent finally，已實際接上 retirement，並分別記錄 child poll／stop、Job snapshot／close、guard restore、環境還原錯誤；cleanup 失敗不再被當成成功。retirement 在呼叫 drain 前先設 drain_started，finally 會避免再次存取可能已失效的 wrapper。仍要求 focused test 補上 drain 失敗與尚未建立 window 的 constructor 失敗；現有正常 helper 測試不能替代整個 parent failure 路徑驗證。operation root 測試的 run_root junction mock 也不能替代祖先 junction 與原始 '..' 路徑拒絕驗證。

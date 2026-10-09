@@ -22,3 +22,5 @@ Root 直接閱讀並執行 `tests/test_ui_qt_recommendation_layout.py` 的理由
 另新增真正 view 選列案例，使用回報的 2382、`-31.22936518258622391666432545／50`、`liquidity_volume_ratio_below_min` 與 degraded 品質。實際詳情會先說明觀測量縮 -31.23%、策略要求至少 50.00%、本次尚未產生推薦分數或排名，並保留原始完整數值、原因代碼及品質。H20 原保存研究另由個人模型研究入口查看，不將未入選紀錄升格為推薦。
 
 Root 已實讀 evaluator：此原因來自 `latest_volume_change_percent` 與 `volume_change_min_percent` 的比較，百分比呈現符合實際語義。選列案例 1 passed／10 deselected，2.97 秒，日誌 `output/qa/f17_normal_capture_pair_20261009_a/root_screening_row_explanation.log`；沒有重新分析原始股票資料或修改策略門檻。此新增案例之後 test 檔版本已更新；上節 SHA 保留為先前四項及截圖驗證當時的版本。
+
+新增案例後已執行完整 recommendation layout suite：11 passed，19.87 秒，terminal exit 0，日誌 `output/qa/f17_normal_capture_pair_20261009_a/root_recommendation_layout_full_current.log`。目前 view SHA 仍為 `5F0FAA96F246C62C7693E1771D538D88B72AE95A6544208D74B14650ED16EDD5`；test SHA 為 `61E4ECAF7F4E339798C73950808D5CB17B4F03B9A23B8C1B73DF48C33C340701`。此完整 suite 包含桌面與窄窗幾何、選列保存理由、個人控制項、全文與鍵盤捲動；仍不包含正式資料、原 H20 或 EXE 同版驗收。

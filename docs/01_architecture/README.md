@@ -16,12 +16,12 @@
   - 31 個具依賴、驗收與回滾契約的任務；另含[任務規格索引](target_architecture_2026_09_22/REFACTOR_TASKS/README.md)、[執行波次](target_architecture_2026_09_22/REFACTOR_EXECUTION_ORDER.md)、[驗證矩陣](target_architecture_2026_09_22/REFACTOR_VALIDATION_MATRIX.md)與[風險登錄](target_architecture_2026_09_22/REFACTOR_RISK_REGISTER.md)
   - 保存任務的依賴、驗收與回滾契約；各任務結果見 [實作報告](target_architecture_2026_09_22/REFACTOR_REPORTS/)。R027 的 versioned logical-time revision 與 R028 scoped production migration 已接受；原 R027 strict verdict 仍為 `INCONCLUSIVE`。詳見 [R031 closeout](../06_qa/R031_FINAL_REFACTOR_CLOSEOUT_20260925.md) 與 [R027 acceptance revision](../06_qa/R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md)。這些 scoped acceptance 不代表整體重構或正式產品核准。
 
-- **`system_architecture.md`**
+- **[system_architecture.md](system_architecture.md)**
   - 系統的技術架構說明
   - 模組結構、數據流程、技術細節
   - 架構主文為第 1–15 節；首頁導覽與研究 context 契約、personal store 路由，以及 orchestration、SQLite connection、ML initialization、Personal H20 lineage、ML reader custody 與 model-loader 契約已抽回第 3、4、8、11 節。原第 16 節流水帳、9/27 lifecycle 收據、9/29 排程 custody 切片及 10/06 H20／ML／private-store／homepage dated status 已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，舊標題保留導引；10/06 P2／M03 的技術契約仍在主文，當日治理與性能收據見 [QA integration receipt](../06_qa/BALDR_SECOND_WAVE_INTEGRATION_20261006.md)。其餘未歸檔日期段落仍可能含 scoped contract，不能依日期推斷現況。
 
-- **`target_system_architecture.md`**
+- **[target_system_architecture.md](target_system_architecture.md)**
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
   - 不代表 target-only package 或能力目前已實作
   - 日期化更新記錄移至[歷史摘錄](../09_archive/TARGET_SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202607_TO_202609.md)；本文件仍保留背景與治理邊界，當前狀態及實作設計分別看 Snapshot／FINAL_TARGET_ARCHITECTURE。
@@ -53,7 +53,7 @@
 
 以上 QA 檔保留原日期與證據用途，不因狀態更新而搬入 Archive 或改名。閱讀時要區分 Recommendation Shadow、Portfolio Allocation Research 與 Personal H20，避免把模型訓練、consumer 接線或研究頁投影說成正式選股已使用 ML。
 
-- **`system_vision_specification.md`**
+- **[system_vision_specification.md](system_vision_specification.md)**
   - North Star、Bounded Advice、Evidence Requirements、Success Levels 與 Non-goals
 
 - **[舊端到端流程藍圖（歷史）](../09_archive/SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md)**
@@ -63,7 +63,7 @@
   - 早期 API、CSV、檔案路徑與更新流程設計，作為歷史參考。
   - 現行系統資料流看 [system_architecture](system_architecture.md)；操作看 [docs/03_data README](../03_data/README.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。原路徑保留導引。
 
-- **`runtime_observatory_rules.md`**
+- **[runtime_observatory_rules.md](runtime_observatory_rules.md)**
   - Runtime Subsystem、DTO、UI bridge 與依賴方向治理規範
 
 - **[ui_design_system_midnight_analyst.md](ui_design_system_midnight_analyst.md)**

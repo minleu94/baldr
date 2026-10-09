@@ -70,6 +70,10 @@ APPLICATION_MANUAL 是目前操作權威，篇幅較長；依任務讀相關章�
 - **[PHASE3C_CANDIDATE_REPAIR_RUNBOOK.md](PHASE3C_CANDIDATE_REPAIR_RUNBOOK.md)**
   - 2026-09-11 candidate DB 的隔離法人資料修復歷史 runbook；不適用於正式資料庫或目前日常操作
 
+### 6. 已封存的歷史工作計畫
+
+- [LUNA 平行工作計畫舊路徑導引](LUNA_PARALLEL_PLAN_2026_09_07.md)：原始計畫與[整併檢查](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)、[整合結案收據](../09_archive/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)均可由此追溯。該輪工作已於 2026-09-08 結案，不是目前任務清單；逐檔來源與 SHA 見 [Coverage History Entry 118](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)。
+
 ## 🔗 相關目錄
 
 - `../00_core/DOCUMENTATION_INDEX.md` - 全域文檔索引

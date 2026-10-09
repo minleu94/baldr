@@ -1,5 +1,9 @@
 # 資料資產用途與恢復登記
 
+## 2026-10-09 C 槽歷史封存更新
+
+使用者明確授權後，六批歷史 QA／備份／2026-10-02 研究快照已搬至 `E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009`，12,862 檔、148.06 logical GiB，逐檔 SHA-256 複驗通過，原位置改為 Junction。實際 C 可用空間淨增加約 90.67 GiB，postflight 約剩 204.06 GiB；E 約剩 205.86 GiB。既有冷封存、正式 D 槽來源、近期候選、dist 及排程未改。精確範圍、收據與回滾見 [C 槽歷史 QA 冷封存](C_DRIVE_QA_COLD_ARCHIVE_20261009.md)。下方 10/06 容量與原地保留狀態是歷史盤點，不作為本輪目前位置；嚴格拒絕 reparse point 的歷史重跑需先還原普通目錄。補完計畫仍暫停。
+
 ## 2026-10-06 後續集中整理狀態
 
 - 先前可恢復隔離已完成：repo 351 個根、Croot r015/r20/r26 17 個根，共 368 個、5,439,427,167 logical bytes。完整保留內容與 manifest，尚未釋放容量；隔離根為 `C:/Projects/RepositoryBackups/technical_analysis_temp_quarantine_20261006` 與 `C:/Projects/RepositoryBackups/technical_analysis_croot_temp_quarantine_20261006`。metadata 全量複驗 0 差異，正式來源／H20／私人配置保護項目 0 變更。
@@ -42,3 +46,7 @@
 原盤點：`output/qa/baldr_storage_inventory_20261006/{report.md,inventory.csv,output_deep_report.md}`；最終處置：`approved_cleanup_terminal.md`、`approved_cleanup_final_receipt.json`、`repo_temp_empty_cleanup_receipt.json`。完整 exact paths／identity／pins 以本機 manifest 為準，不把敏感細節複製到公開文件。
 
 精確 owner、dynamic process consumer、部分來源重新建置成本、是否存在其他 unique backup 與未量測子 root 均保留 unknown。本輪未新增外部備份、資料移動、Task／DB／模型／ACL 變更。下次容量更新須註明日期、logical／allocated、errors／下限及 terminal action；不能從 mtime 猜測無用。
+
+## 2026-10-09 第二批封存追加索引
+
+使用者針對精確清單授權後，28 個歷史 QA／備份與舊候選封裝已移至 `E:/FA_Data_ColdArchive/baldr_c_drive_archive_20261009_batch2_plain`，原位置建立 Junction。145,850 個檔案、36.57 logical GiB，兩輪全檔 SHA-256 核驗通過；28 個連結目標及 27 個非空根抽樣讀回相符。釋放程序期間 C 可用空間淨增加約 32.08 GiB，postflight C 約剩 213.27 GiB、E 約剩 168.89 GiB。保留現行／回退版本、d9a115f67d2b 及含 Junction 測試案例的 integration_20261002。精確清單、收據與回滾見 [第二批封存說明](C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md)。本段為追加，不改寫前述歷史盤點；補完計畫仍暫停。

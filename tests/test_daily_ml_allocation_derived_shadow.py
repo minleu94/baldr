@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from data_module.ml_storage_capacity import (
+    CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES,
     MLStorageCapacityBudget,
     acquire_heavy_chain_reservation,
     release_heavy_chain_reservation,
@@ -1275,7 +1276,7 @@ def test_research_capture_delegates_with_bounded_budget_and_rule_comparison(
     assert budget.persistent_new_bytes_budget is not None
     assert budget.persistent_new_bytes_budget < 256 * 1024**2
     assert budget.temporary_peak_bytes_budget == 256 * 1024**2
-    assert budget.safety_reserve_bytes == 200 * 1024**3
+    assert budget.safety_reserve_bytes == CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES
     source = cast(dict[str, Any], payload["source"])
     assert cast(dict[str, Any], source["database"])["unchanged"] is True
     assert cast(dict[str, Any], source["paper_state_db"])["unchanged"] is True
@@ -1364,6 +1365,37 @@ def test_research_capture_forwards_exact_archive_contract_to_daily(
     assert captured["pit_machine_archive_root"] == archive_root.resolve()
     assert captured["pit_machine_archive_manifest"] == manifest.resolve()
     assert captured["pit_machine_archive_manifest_file_hash"] == frozen_hash
+
+
+@pytest.mark.parametrize("revision_blocked", [False, True])
+def test_release_load_failure_preserves_revision_blocker_without_daily_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, revision_blocked: bool,
+) -> None:
+    database = tmp_path / "twstock.db"
+    paper = tmp_path / "paper.sqlite"
+    database.write_bytes(b"readonly-db")
+    paper.write_bytes(b"readonly-paper")
+    monkeypatch.setattr(shadow, "preflight_capacity", lambda **_: _preflight())
+    def reject(_self: object, _root: Path) -> None:
+        if revision_blocked:
+            raise shadow.DailyPriceSourceRevisionError("model artifact is quarantined")
+        raise FileNotFoundError("release does not exist")
+    monkeypatch.setattr(shadow.AllocationReleaseAdapter, "load", reject)
+    monkeypatch.setattr(shadow.daily, "run", lambda **_: pytest.fail("invalid release must stop before daily"))
+    result = shadow.run(
+        database_path=database, paper_state_db_path=paper,
+        output_root=tmp_path / "output", release_root=tmp_path / "release",
+        now=datetime(2026, 7, 31, 10, 0, tzinfo=TAIPEI),
+        calendar=_Calendar({date(2026, 7, 31): (True, "open"), date(2026, 7, 30): (True, "open")}),
+        lock_path=tmp_path / "shared.lock",
+    )
+    payload = cast(dict[str, Any], result)
+    assert payload["status"] == ("blocked_source_revision_release" if revision_blocked else "blocked_missing_release")
+    if revision_blocked:
+        assert payload["blocked_reason"] == "release_quarantined_by_daily_price_source_revision"
+    assert Path(str(payload["record_path"])).is_file()
+    assert database.read_bytes() == b"readonly-db"
+    assert paper.read_bytes() == b"readonly-paper"
 
 
 def test_missing_paper_input_is_persisted_without_daily_call(

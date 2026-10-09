@@ -19,7 +19,7 @@ snapshot。
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR, ROUND_HALF_UP
@@ -708,6 +708,7 @@ def run_paper_execution_daily_from_queue(
     confirm_append: bool = False,
     persist_receipt: bool = True,
     recommendation_pattern: str = "*.json",
+    sector_source_resolver: Callable[[Mapping[str, str]], tuple[Path | None, str | None]] | None = None,
 ) -> dict[str, object]:
     """由持久 recommendation queue 選取一筆待執行決策並可保存 receipt。
 
@@ -797,6 +798,10 @@ def run_paper_execution_daily_from_queue(
             queue_selection_metadata["resolved_historical_receipts"] = [
                 dict(item) for item in resolved_historical_receipt_diagnostics
             ]
+        sector_path, sector_hash = paths.sector_membership_path, paths.sector_membership_file_hash
+        if sector_source_resolver is not None:
+            # 以已驗證的凍結來源身份選 archive；producer 仍會重驗來源／hash／時序。
+            sector_path, sector_hash = sector_source_resolver(selected_source_identities[0])
         selected_paths = PaperExecutionPaths(
             recommendation_json=selected,
             state_db=paths.state_db,
@@ -805,8 +810,8 @@ def run_paper_execution_daily_from_queue(
             ledger_db=paths.ledger_db,
             clock_manifest=paths.clock_manifest,
             controlled_output_root=paths.controlled_output_root,
-            sector_membership_path=paths.sector_membership_path,
-            sector_membership_file_hash=paths.sector_membership_file_hash,
+            sector_membership_path=sector_path,
+            sector_membership_file_hash=sector_hash,
             queue_selection_metadata=queue_selection_metadata,
         )
         result = run_paper_execution_daily(
@@ -2027,6 +2032,25 @@ def _is_nonretryable_policy_rejection(value: Mapping[object, object]) -> bool:
     if not isinstance(result, Mapping):
         return False
     blockers = result.get("blockers")
+    expired_capture = False
+    if (
+        isinstance(blockers, list)
+        and "paper_event_source_capture_missing_durable_manifest" in blockers
+        and result.get("late_replay_policy") == "no_historical_backfill_pending_session_missed"
+        and result.get("formal_credit") is False
+        and result.get("broker_execution") is False
+        and all(isinstance(item, str) and (
+            item == "paper_event_source_capture_missing_durable_manifest"
+            or item.startswith("paper policy adapter blocked:ledger row predates declared history:")
+        ) for item in blockers)
+    ):
+        try:
+            execution_day = _strict_date(value.get("execution_date"), "execution_date")
+            recorded = datetime.fromisoformat(str(value.get("recorded_at")).replace("Z", "+00:00"))
+            cutoff = datetime.combine(execution_day, time(15), tzinfo=TAIPEI)
+            expired_capture = recorded.tzinfo is not None and recorded >= cutoff
+        except (ValueError, TypeError, PaperExecutionProducerError):
+            expired_capture = False
     return (
         value.get("queue_state") in {"failed", "rejected"}
         and result.get("status") == "blocked"
@@ -2034,11 +2058,12 @@ def _is_nonretryable_policy_rejection(value: Mapping[object, object]) -> bool:
         and value.get("ledger") is None
         and result.get("ledger") is None
         and isinstance(blockers, list) and bool(blockers)
-        and all(isinstance(item, str) and (
+        and (expired_capture or (all(isinstance(item, str) and (
             item == "paper_event_source_capture_missing_durable_manifest"
             or item == "paper policy sector archive rejected:PITArchiveConsumerError:archive was not persisted before consumer decision"
+            or item == "paper_event_source_binding_failed:PaperEventSourceCaptureError:Paper result fills missing"
         ) for item in blockers)
-        and any(isinstance(item, str) and item.startswith("paper policy sector archive rejected:") for item in blockers)
+        and any(isinstance(item, str) and item.startswith("paper policy sector archive rejected:") for item in blockers)))
     )
 
 
@@ -3349,10 +3374,16 @@ def _evaluate_policy_batch(
         decision_date=recommendation.decision_date,
         symbols=symbols,
     )
+    ledger_history_start = _policy_ledger_history_start(
+        paths.ledger_db,
+        portfolio_id=state.portfolio_id,
+        snapshot_date=state.decision_date,
+        decision_date=execution_date,
+    )
     official_days, calendar_source = _policy_calendar_snapshot(
         paths.market_db,
         calendar=calendar,
-        start_date=state.decision_date,
+        start_date=ledger_history_start,
         end_date=execution_date,
     )
     current_weights = {
@@ -3420,8 +3451,8 @@ def _evaluate_policy_batch(
         current_weights_bp=current_weights,
         sector_by_symbol=sector_by_symbol,
         official_trading_days=official_days,
-        ledger_history_start=state.decision_date,
-        official_calendar_coverage_start=state.decision_date,
+        ledger_history_start=ledger_history_start,
+        official_calendar_coverage_start=ledger_history_start,
         official_calendar_coverage_end=execution_date,
         official_calendar_source_hash=str(calendar_source["source_hash"]),
         official_calendar_complete=True,
@@ -3480,7 +3511,8 @@ def _evaluate_policy_batch(
         "ledger_source": {
             "path": str(paths.ledger_db.expanduser().resolve()),
             "mode": "ro/query_only",
-            "ledger_history_start": state.decision_date.isoformat(),
+            "ledger_history_start": ledger_history_start.isoformat(),
+            "history_start_basis": "same_portfolio_visible_ledger_and_snapshot",
             "portfolio_id": state.portfolio_id,
         },
         "context": {
@@ -3764,6 +3796,41 @@ def _load_policy_sector_mapping(
             }
         )
     return result, source_projection
+
+
+def _policy_ledger_history_start(
+    ledger_db: Path,
+    *,
+    portfolio_id: str,
+    snapshot_date: date,
+    decision_date: date,
+) -> date:
+    """快照不是 ledger 起點；只讀同帳戶且非未來的已保存日期。
+
+    日期完整性與成交／turnover 仍由原 policy adapter 驗證；這裡不寫入
+    ledger、不排除舊紀錄，也不把已保存日期當成歷史 PIT 可得性證明。
+    """
+    connection = sqlite3.connect(ledger_db.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        connection.execute("PRAGMA query_only=ON")
+        rows = connection.execute(
+            "SELECT DISTINCT event_date FROM paper_trade_ledger "
+            "WHERE portfolio_id = ? LIMIT 3662",
+            (portfolio_id,),
+        ).fetchall()
+    finally:
+        connection.close()
+    if len(rows) > 3661:
+        raise PaperExecutionProducerError("paper policy ledger date scope exceeded")
+    visible_dates = [snapshot_date]
+    for (value,) in rows:
+        event_date = _strict_date(value, "paper_trade_ledger.event_date")
+        if event_date <= decision_date:
+            visible_dates.append(event_date)
+    start = min(visible_dates)
+    if (decision_date - start).days > 3660:
+        raise PaperExecutionProducerError("paper policy ledger calendar scope exceeded")
+    return start
 
 
 def _policy_calendar_snapshot(

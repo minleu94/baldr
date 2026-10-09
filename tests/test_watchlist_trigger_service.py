@@ -224,15 +224,36 @@ def test_sqlite_ranking_provider_handles_missing_db_gracefully(tmp_path):
     assert not non_existent_db.exists()
 
     provider = SQLiteRankingProvider(non_existent_db)
-
     res = provider.fetch(date(2026, 6, 15))
     assert res == {}
-
     prev_res = provider.fetch_previous(date(2026, 6, 15))
     assert prev_res is None
-
     assert not non_existent_db.exists()
 
 
+def test_ranking_date_index_keeps_mixed_dates_future_guard_and_long_gap(tmp_path):
+    import sqlite3
+    from app_module.watchlist_trigger_service import SQLiteRankingProvider
 
-
+    db = tmp_path / "ranking.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute('CREATE TABLE technical_indicators (日期 TEXT, 證券代號 TEXT, RSI REAL, Close REAL, lowerband REAL)')
+        conn.execute('CREATE INDEX date_idx ON technical_indicators (日期)')
+        conn.executemany('INSERT INTO technical_indicators VALUES (?, ?, ?, ?, ?)', [
+            ('20261008', '2330', 70, 100, 90),
+            ('2026-10-08', '1101', 60, 40, 35),
+            ('2026/10/08', '2454', 50, 80, 75),
+            ('20261009', '9999', 99, 99, 90),
+            ('2026-09-01', '2330', 30, 80, 70),
+        ])
+    before = db.read_bytes()
+    provider = SQLiteRankingProvider(db)
+    current = provider.fetch(date(2026, 10, 8))
+    assert set(current) == {'2330', '1101', '2454'}
+    assert current['2330']['score_bp'] == 7000
+    assert provider.actual_date == date(2026, 10, 8)
+    previous = provider.fetch_previous(date(2026, 10, 8))
+    assert previous['2330']['score_bp'] == 3000
+    assert provider.fetch(date(2026, 9, 20))['2330']['score_bp'] == 3000
+    assert provider.actual_date == date(2026, 9, 1)
+    assert db.read_bytes() == before

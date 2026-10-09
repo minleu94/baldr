@@ -29,8 +29,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=REPOSITORY_ROOT / PROJECTION_OUTPUT_ROOT,
-        help="只能位於 repo 的 output/qa/ml_daily_source_row_research_projections 下",
+        default=None,
+        help="預設使用已設定的 active ML research root；明示路徑仍須通過共同研究寫入邊界",
     )
     parser.add_argument(
         "--write-candidate",

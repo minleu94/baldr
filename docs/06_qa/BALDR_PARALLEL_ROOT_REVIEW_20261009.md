@@ -895,3 +895,154 @@ H20 H frozen child `c8d14e28ff5574686a5f37262af0e87937643a29384d7c7326dd8f4ba6c4
 ### 更新後效能候選的來源等價性（2026-10-09）
 
 新 source-only 效能候選沿固定 d12 archive 加唯一 query overlay，不啟用 QA DTO cache，維持五 cold／一 warm、90 筆真 API 操作樣本與嚴格 300 ms。Root 直接比較 archive query（133,817 bytes、CRLF、SHA `75e036c229a7eec50877e5300ad97a3d411a0929eb791a31ebb9354ec74d0e72`）與工作樹前像（130,894 bytes、LF、SHA `6a9c322c17267876250f8fd611463b9ecf5f1924d6d02d23e95fd5590a049509`）：正規化換行後完整 bytes 相同。Overlay 副本 SHA 仍為 `166355640a95b7d7a39c62d5d4b0cf1013e81bf7859381d1132191457f5164fe`，normalized diff SHA `323ed231ba27e4f0ae38ccd296305fb55a37187e81fd0b6c0ce6556b92d551b8` 與報告一致。因此 baseline 差別不是額外程式邏輯；新版完整 runtime 實樹、controller／manifest 尚在建立，尚無 static preflight、exact read 或新版 p95 結果。
+
+### Metadata 效能候選的完整清冊與靜態預檢審核（2026-10-09）
+
+正式摘要優化及 24 項回歸已保存於本機 dev commit `c5f4d169f0e82c46a5f9576b907250726dd8ae0b`。新的隔離 runtime `C:/t/p01_smeta16635564_a/technical_analysis` 實際建立 4,465 files／112 dirs／80,191,895 bytes／0 pyc，inventory `fe9b2a0e0c2f81d6a1d45c0ec27e06666d9d5478f8ec90790fa8c6b86959099a`，tree build receipt SHA `059114a425a31a74007e68cbe4daf59e54da5e7e8a3bab5a3783d76b30a7c14b`。這是 d12 archive 加唯一 query overlay，不冒稱原 d12 tree。
+
+Root 完整讀專用 controller 10,492-byte diff、aggregator 單行目錄差異、新增九項契約及 static-mode 函式，獨立核 controller SHA `f29a4281452bd08966aad9aee1368bad77d0c3037dbef020b12fb60ced296dbb`、manifest `6b457d306a1b80840f69b531fe9f94c6d51a8ee80e044d3fb0395a01c2e8daa6`、aggregator `488b0f67fb365a2b21e0b49ebda4ecaf1611f1d83313b538f03726a2ce632504`。直接讀純測試 log：28 passed／3.72 秒。來源身分變更未調整操作、樣本、計時或門檻；不套 QA cache、不增加預熱。
+
+已授 universe_run 在最後只讀實樹核對成功後執行一次固定 manifest 的 static-input preflight；禁止產品匯入、SQLite、worker、producer、network，未授 exact-reader 或矩陣。預檢終態尚待，不宣稱效能達標或新 EXE 可驗收。
+
+Main v4 唯讀 parity 診斷顯示五個原 helper 可讀 roots 的完整 signature rows 與新 adapter 相同；其餘三 roots 原 helper 因長路徑 WinError 3 無法核對。新 R inventory `8d33767904ab1c75222e021510cf7b6ea6aae188eed308fc5257211f1a343d6a` 與原固定 pin 不同，owner 正核原清冊及強制長路徑的原語意。保留失敗封套，不直接換 pin，Main 暫未獲執行資格。
+Root 隨後直接讀 `static_preflight_b2ea6c2b963a.json`：exit 0／9.3645358 秒、failures 空，來源 4,465 檔及 DB／1,457-entry sealed store 起訖完全相同，network／SQLite／subprocess 計數 0、opener／worker／producer 未啟。接受靜態輸入範圍後，授相同 frozen controller／manifest 的五 cold→唯一 warm 完整矩陣；每角色只一次、原 600 秒及 cleanup 10 秒不變，上一角色 terminal 0、來源一致、guards 0、Job 空及 cleanup completed 才可續啟。Owner 的 cold_01 唯一 live exec handle 為 `90470`；尚無新版 runtime 或 p95 結果，不重跑挑數。
+
+前三個 cold 終態 Root 直接核 `C:/t/p01cur_rd_8d7e3e73cc`、`C:/t/p01cur_rd_9d50a83f05`、`C:/t/p01cur_rd_f1e0c05aa3` 的 parent／child 收據：皆 passed／failures 空／來源及 store unchanged／guards 0／Job 空／cleanup completed；完整 1,000 股與 20×50 頁、順序 SHA `6613555ad6e1f45dd7c199f20724282962d48b1a01c199e35e9053df04797b86` 相同。首頁分別 548.6223、514.3402、544.9092 ms。這是完整 cold 讀回證據，不能由單頁時間或前三次 cold 宣稱暖操作 p95 通過。其餘兩 cold 與唯一 warm 仍待。
+
+Cold_04／05 的 Root 直接收據複核亦通過：attempt `C:/t/p01cur_rd_40c5471671`、`C:/t/p01cur_rd_998d21ee37` 完整頁面順序相同，來源起訖一致、guards 0、Job 空、cleanup completed，首頁 573.378／516.537 ms。五 cold 已完整保存；唯一 warm 的 90 個操作樣本與彙總仍待，未授產品效能資格。
+
+### H20 I 完整呼叫鏈候選審查（2026-10-09）
+
+Root 分段讀 H→I 變更及原產品 pipeline：manifest 與 capture 各綁實際 trace wrappers／closure／callable／code／globals，initial 與 terminal 分支按原 finalizer→session.finish→pipeline；manifest callback 計數 0、capture 計數 1。不任意跳 frame，也不改固定檔案、root、byte budget、fd ledger 或原 source/fixture pins。獨立核 child SHA `491726d24404f3624ffc5638217c2772ee3aff8586c1bf7f4cff8a750a3f461d`、runner `406d36d0eb20d070996a3f096f44d22152de78393373602b65aa88d81e8f2efc`。讀 i12 純自測初始／終態 manifest/capture 及 foreign frame／closure／callable 拒絕；owner 最後 i13 同結果，capture 正例由固定 nested reader 實際遞增 row_index，仍在檔案 I/O 前停止，沒有 pipeline API／SQLite／Main。
+
+授同 pins 一次 120 秒／cleanup 20 秒的合成 H9 public pipeline native，但必須等 P01 唯一 warm handle `6397` 與彙總終態後由 Root 明示解除量測排他；本記錄時尚未啟動 I。保留 H／G 與 i01–i10 純自測失敗，不由 frame 自測推論原 2382／684 bp 或 Main 完成。
+
+### Metadata 矩陣終態及九根來源範圍修正（2026-10-09）
+
+唯一 warm handle `6397` terminal exit 0，attempt `C:/t/p01cur_rd_aba26c9143`；Root 直接核 parent／child 的完整結果、來源及 sealed store 起訖相同、guards 0、Job 空與 cleanup completed。Frozen aggregator 亦已 terminal 0；Root 直接讀 `session_metadata_matrix_aggregate_v1.json`，五 cold／一 warm、三類各 30 樣本、cProfile 不納入百分位。換頁 p95 **604.9607 ms**、篩選 **1541.0285 ms**、全域排序 **1533.123 ms**，全部未達嚴格 300 ms；完整讀回通過不等於速度達標。保留全部樣本與失敗結論，不增加預熱或重跑挑數。下一步只讀本輪三份 profile，準備正式產品可驗證的優化設計；原全母體與門檻不改。
+
+Main 來源雜湊差異實為 QA 比較範圍錯誤：J 收據的 `cdbe04e1528e5deb6906f8dd5feb65930247c3415e6fcf744dbe57ced951f237` 包含八個 R roots 加 J output，原 resolver 診斷卻只計八根。v5 明示九根有序 tuple 做真 pin，另保留八根診斷，不改原 receipt 或來源。Root 全讀 candidate／preflight scope diff及 `readonly_inventory_report_002.json`：13 checks／14 helper 契約成立、九根前後及原收據 digest 相同，R／J manifest與 shards內容相符，inventory 期間 SQLite／network／subprocess 0。原helper parity 自測確有匯入 app_module／personal_data_paths，紀錄已改成列明匯入，不虛稱全零。v5 candidate SHA `0fd943b1f13e0d2a436979271c9bfbee7b842f940099bdce0931ae4227809a28`，receipt SHA `76781c810b79f649eb18759aecb99b046d53f6192a47fa5213e48f16f9aa4e27`。原來源沒有歷史 per-root rows，不能宣稱持有舊 rows；固定 combined digest 現時完整重算相符。Main 尚未啟，v6只準備標準庫平台探測的無 spawn fallback。
+
+P01 排他已解除，Root 授固定 I child／runner一次合成 H9 public pipeline native，原 120 秒／cleanup 20 秒與 exact guard 不變。h20_summary 為唯一 handle owner；尚未有 terminal 收據，不授 Main／原始 H20 或真人接受。
+
+I 唯一 native handle `32796` terminal exit 1／18.922 秒；Root 直接核 child 收據，首錯 `pipeline_trace_module_identity_mismatch`，cohort 0、Main 未啟。來源／14-file fixture／H20 source group 起訖一致，private SQLite clean、trace／OS／SQLite aliases 已還原；owner parent 收據確認 Job closed／empty、cleanup errors 空、未 timeout。Root 實讀 helper：`_load_bind_and_install_fixed_reader` 回傳 `data_module.pinned_sqlite_read_session`，呼叫端卻傳此回傳值給要求 `app_module.recommendation.personal_h20_read_session` 的 trace-context binder。另建 J 最小修正，保留既有 helper API 與 startup guard順序，明確核取得 PersonalH20 module；須補真 helper-return種類的 startup 正負契約，未授 J native，不把 I 當 cohort mismatch 或產品下鑽完成。
+
+### 下一個正式效能切片與 J 啟動自測（2026-10-09）
+
+Root 全讀 profile 設計後授最小 proof-gated 私有 rehydration 實作：同一 reader-issued P01 session／issued semantic proof／manifest/ref/root/method/schema 綁定，加本次完整 fresh bytes/SHA/layout/path/reparse/cancel，才可略過原 exact-read 已證明的重複語義重建。一般 from_json／一般 reader 仍 strict，不加公開 skip flag或自我雜湊 bypass、不保留全批 snapshots、不混入 ancestor cache。先精確 DTO／identity、tamper／clone／foreign／跨來源／取消回歸與 scoped 型態檢查，未授下一輪效能矩陣或 EXE。既有 read-session 沒有 close API，須按真實能力生命週期設計，不虛構關閉證據。
+
+Root 全讀 I→J child 最小差異及啟動自測：固定 SQLite reader helper API 未改，另核真正 PersonalH20 read-session module 的 origin/SHA/identity，純自測沿真 helper 回傳種類驗正例與錯模組負例。第一次自測在 guard 後讀 fixture pins 遭拒，失敗保留；移至自測 guard 安裝前後，`j_startup_frame_selftest_native_02.log` startup／initial／terminal／foreign frame／closure／callable 均 passed、pipeline API／H20 SQLite 0。Root 獨立核 child `3bab946806e74f01e68b318c19a90e46932d7e35d1a1056654728f61bece6353`、runner `4d1ed7bb1605117d1c9d671445f0b1bf2d84e8c6252a1ffbce19b27e1c2649ec`。三檔 compile 與 finalfreeze成立後，授同 pins一次合成 J publicpipeline native，120秒／cleanup20秒／新attempt，仍不授Main或正式來源。終態尚待。
+
+### J 實際守衛失敗與 v6 主視窗測試授權（2026-10-09）
+
+J 唯一合成 pipeline native 已 terminal exit 1／3.281 秒，未 timeout；Job closed／empty、cleanup errors 空，來源及 fixture 起訖一致、private SQLite clean、aliases 還原。初始 manifest 已讀一次，但 capture 的 os.open 與 capture 後第二次 manifest 被拒。Root 直接讀固定 capture 函式確認 `read_pinned_json(path, expected)` 使用 local `path`，J predicate 卻核 `file`；第二次 manifest 原產品流程發生在 prediction callback 完成後，J 卻要求 callback 計數仍為 0。K 僅獲精確修正及真實函式 seam 自測準備資格，尚未授 native；不放寬來源、讀取次數或 caller 身分，不把純 frame 自測視為產品流程通過。
+
+Root 全讀 v5→v6 平台 fallback 最終差異、native_004 stdout 及 terminal：21 個既有守衛與 13 個平台 checks 全通過，真實未快取 platform.machine 回傳 AMD64，三個標準庫命令均無 spawn 並走真實 Windows API fallback；外部 caller 相同命令仍拒絕，aliases／cache 還原。候選 SHA `415c15869d6c1e0e9c31366add753a64653e044fe9065ba852f10d5bf7917dae`。授一次固定 v6 Main／new-PID journey，沿原九根來源、30 個 code pins、隔離 app root、Job／timeout／cleanup；未授 producer、正式資料或 EXE。bootstrap_identity 為唯一 live handle owner，主視窗實際驗收終態尚待。
+
+Root 已讀第一輪 rehydration 三個正式檔案完整 diff 與新增測試。一般 reader 保留 strict 解碼，共用 fresh-read 核心仍讀所有 artifacts；私有能力透過 session weakref、issued proof、metadata owner token、reference 身分綁定。首輪測試 3 failed／3 passed，包含測試把 internal path 字串當 Path，以及空查詢／錯誤 artifact 計數；失敗保留，尚未接受實作。要求補完整 DTO／identity 與非空 AND／OR／排序頁對照、session GC、同名假 session、reference clone，以及 ContextVar 巢狀／取消／例外還原邊界。新效能矩陣仍未授權，不以 parser 呼叫次數下降宣稱速度或產品驗收通過。
+
+v6 Main 授權在 prelaunch_001 核 pin 階段安全停止，exit 1，product imports／producer 0，沒有 Main run attempt。Root 直接讀 stdout：候選、manifest、resolver、bindings、三個 external pins 及九根路徑型態成立，但 query／repository 兩檔與舊三十檔 manifest 不同。這是同時進行的正式 rehydration 實作，不能改 pin 繼續跑混合版本，也不還原其他 agent 變更。須等正式版本審核後另備新 manifest 及相容性審查；此 prelaunch 只核來源根存在／plain，不取代完整 inventory 起訖核驗。主視窗 owner 先轉做 F12 完整 Main／new-PID 月營收旅程的只讀缺口與追加步驟設計。
+
+Root 再讀 v6 完整 code pin 清單，發現沒有 `app_module/daily_market_technical_feature_snapshot_v4.py`，但它是本輪第三個正式改動且 repository 直接匯入的 decoder。下一個主視窗候選須把此依賴加入固定清單，不只換 query／repository 的舊 pins；F12／F17 追加旅程亦須列出其實際來源依賴。現有三十檔清單只能聲明原列明範圍，不能作本輪完整三檔凍結證據。
+
+Root 再讀最新 repository／query 完整 diff，指出 ContextVar 的 strict fallback 尚未清除外層 context：無 metadata 的 session clone 直接呼舊 helper，而 helper 仍讀 ambient context；在 fast session 的巢狀呼叫內，clone 共享 reference 時可能借用外層 session 的 capability，不同 reference 則可能誤拒絕。這是程式碼路徑審查 finding，尚未由真 nested clone 案例重現，不宣稱已有 runtime 漏洞封套。Owner 已確認需修 strict helper call 的 `set(None)`／`finally reset`，補真巢狀 clone strict decoder 次數、外層還原與 foreign session scope。正在執行的 attempt06 handle `73991` 必須先結束，不修改執行中 bytes，其結果不得算作新增邊界通過；正式切片仍未接受。
+
+Root 已執行 `output/qa/p01_proof_rehydration_20261009_b/root_strict_scope_probe.py`，exit 0：實際 strict fallback 分支配合只觀測的 helper，`strict_helper_inherited_outer=true`、`strict_helper_observed_none=false`，外層 context／helper 已還原，query 起訖 SHA 同為 `3bbb41b0dd991f88e1fc446aef7c1f63125fe6cc2386611317bc8942050b0968`。此為無股票來源 I/O 的窄 runtime 證據，證明分支確有 ambient 傳遞；不是完整 session clone／來源／頁面案例。修後須再核 strict helper 接收 None，並完成真正 session 回歸。
+
+修後 Root 以同一 probe 實際重核，exit 0：`strict_helper_observed_none=true`、`strict_helper_inherited_outer=false`，外層 context／helper 正確還原，query 起訖 SHA `341b9d9de98b1fa760023de0021bf547e0181a90e066900add0dffb10d1d7b1b` 相同。已讀 `set(None)`／`finally reset` 正式分支，接受這個窄修正；真正 nested clone／另一 session 與最終整組回歸仍待。前版 attempt06 為 34 passed／1 failed（55.71 秒，合法 AND 空結果被測試誤判），不可算修後版本完整綠燈。
+
+K 真 callback seam 自測 03／04 尚未通過，四次 manifest frame 的 phase 全為 None。Root 實讀 guard 與 seam：seam 直接呼內部 pipeline 並用 require-copy=false／issue-view=false／root=None，guard 卻要求真 public view caller、兩旗標 true 及固定 private root，因此拒絕符合契約。已要求 seam 從原 public entry 配同一參數執行，僅窄替換 SQLite／capture open 並明示預期未發行 view；不放寬 caller 或正式 guard，尚未授 K native pipeline。
+
+### 正式 rehydration 定向接受（2026-10-09）
+
+Root 直接讀 `output/qa/p01_proof_rehydration_20261009_d/final_owned_plus_session_metadata_and_read_session_regressions.log`：37 passed／56.96 秒，owner 唯一 handle `62208` terminal exit 0。包括新專屬模組、metadata suite 與六個既有 read-session 回歸；兩個 nested session 測試亦在本輪。Root 重核 repository SHA `1bbfb41a41283fcfefea861248ccf9158e9f1484bf691b9a77d1cb4552b41ec7`、snapshot `844bce406a0e477c8dfd29c1f51e9831dac01b0db3a6e5f6405681b6b8121cd5`、query `341b9d9de98b1fa760023de0021bf547e0181a90e066900add0dffb10d1d7b1b`、test `30871d1fcd121988e29a6656c81095f78a010ab82e90e55aac4b443ec0286d29` 全相符。完整差異已讀；一般 reader／parser strict、完整 fresh artifacts SHA／layout 核驗保留，callback 不留 ambient capability。型別修正有 exact-type 早期拒絕，沒有僅靠 cast 授資格。接受此定向正確性，尚不接受效能、Main、EXE 或正式資料結果。
+
+授下一版 source-only runtime overlay／manifest／controller 準備，沿原 d12 archive 加明示三檔已接受 overlay，不能打包整個 dirty tree。另授 MA v7 最小來源 pin 清單準備，新增 snapshot decoder 並保留 v6 失敗；Main／native 矩陣都需 final diff／pins 審查與另次執行授權，未直接啟動。
+
+## 2026-10-09 固定 MA v7 與 H20 K 後續執行審查
+
+Root 直接讀取 MA v7 native pure stdout、v6→v7 pin 差異，並重算 31 個 code files 的 SHA-256 與大小，全部符合固定清冊。21 項 runtime guard、13 項 stdlib fallback 與 5 項 window retirement 純契約通過。已授權 owner 執行一次固定 v7 完整 Main 與新 PID journey；這項授權本身不代表 journey 通過，也不是新 EXE 驗收。候選 source manifest：8810c8b02d121a3fd3e9dbe51628a43481a601e7e52cde94fd0003e129dbd17a。
+
+Root 完整讀取 H20 K 的 J→K 差異及 final06 log，並重算 child／runner／test 的雜湊與大小，全數符合凍結清冊。真實 public callback seam 有 initial／terminal 各前後兩次 manifest phase，capture callback 兩次，錯誤路徑與 digest 均拒絕。此 seam 截停於 capture descriptor 開啟前，使用零 SQL 測試 operation，未簽發 verified view。已授權一次 K 固定 native public pipeline diagnostic，沿用固定 s3／H9、120 秒 child 與 20 秒 cleanup、Windows Job 與原 audit guards；尚待實際 terminal receipt。候選 manifest：caea37380498e8c9dbcdd67867edff3404b2643e2c3107cf198fc288d6ff9687。
+
+兩項執行皆未使用真人 H20 原始來源；目前不要求使用者重測，完整補完計畫仍未完成。P01 效能矩陣須等上述流程終態後才開始量測，以避免同時執行干擾。
+
+### 上述唯一執行的終態更新
+
+MA v7 native outer attempt `output/qa/f02_ma_normal_ui_fresh_pid_20261009_v7_rehydration_native_001` 已 terminal exit 1。Root 直接讀 stderr：guard 將 subprocess.Popen 換為 function 後，asyncio.windows_utils 的 class Popen(subprocess.Popen) 宣告失敗，Main constructor 尚未執行。Owner 正準備 QA-only v8 保留 class 繼承能力並維持精確 spawn gate；不得將此失敗稱為 UI 旅程通過。未完成 pre-inventory，故沒有來源起訖一致接受。
+
+H20 K 唯一 attempt `C:/t/h20_h9_public_cohort_pipeline_20261009_k` 已 terminal exit 1。Root 直接讀 primary traceback 與 receipt：兩輪 cohort 已執行，但 terminal finalizer 拋出 personal_h20_cohort_changed_during_terminal_read。fixture 與 H20 source group unchanged 為 true，private SQLite clean、SQLite aliases restored 為 true，trace／OS restore errors 為空；整體 source_unchanged 為 false，須拆分內容與 ancestor metadata 差異，不能宣稱整體起訖一致。已交 owner 只讀定位兩輪實際差異，未授重跑或變更固定 source。完整 pipeline、Main、原 684 bp 與 EXE／真人仍未接受。
+
+### H20 K 根因補核
+
+Root 直接讀 cohort_comparison：唯一 DTO 差異是 rows[0].reason，initial 為 configured_data_root_mismatch，terminal 為 personal_h20_source_binding_changed_before_terminal_read。capture 固定內容 SHA 起訖一致，兩次 capture read 共 20,100 bytes，四個 manifest phase 全成立；未開 SQLite。Root 查 fixed source 的 scripts/scheduled/run_personal_current_observed_h20_daily.py:_source_port，確認其比較 capture binding.data_root 與 TWStockConfig().data_root；K child 並未設定 DATA_ROOT／OUTPUT_ROOT，config 使用預設正式根目錄，而 guard 拒絕相關 mkdir／寫入。這是隔離測試配置缺件，尚不代表原 H20 資料錯誤。已要求 owner 另建 L 候選：DATA_ROOT 精確固定 H9 capture binding，OUTPUT_ROOT 使用當次 private writable root，保留 prod profile、不更改原 fixture，所有 config 寫入需 exact path／callsite 範圍與純負例核驗；未授執行。
+
+P01 Root 已直接比較新 controller 與前次 metadata controller，以及 aggregator：controller 的差異限定為新候選路徑、三檔 overlay provenance schema／pins／counts；aggregator 僅改 QA_DIRECTORY。Owner 指出建置清冊使用舊 controller hash，故尚未授 static／native；要求重新 freeze 清冊與純契約證據，不採尚未同步的 manifest 作執行依據。
+
+### P01 三檔固定 overlay 候選的純契約與 static 授權
+
+Root 直接讀取 final pure log（45 passed／1.83 秒）、controller 與 aggregator 的前後 diff，以及 final build manifest。controller SHA def25b8abd1959975779aa81c328f7ecc36c1328c4cf2eab15df07b1a6c8cd6d、aggregator SHA 46e1e7467e7c18c90fdb74432a913982c19aedb7a3326847af49517bbfa513e9 與 final manifest 欄位相符；manifest SHA ec49199e3f1a375af5096fb2f79c1dbac66cc9e8c8137a4d37f66472ca016e9b。Root 已授權一次 --preflight-reviewed-static-inputs 完整唯讀來源／輸入盤點，禁止 SQLite／producer／worker／product import／exact reader。此 static 授權不是效能矩陣接受，300 毫秒門檻與五 cold／一 warm／三 operation 各三十樣本保持。
+
+### P01 完整效能矩陣授權
+
+Root 已實讀 static_preflight_b0300a1f224e.json 與 terminal log：exit 0、9.3978848 秒、前後來源 inventory／DB inventory／sealed store tree 全部一致，network／SQLite／subprocess counters 為零。已授 owner 在 compile 通過後，沿同 controller／manifest 執行一次五 cold／一 warm 完整 native matrix，保留三種 operation 各三十樣本與 strict 300ms 門檻、原 1,000 檔 store、Windows Job deadline／cleanup 與 guards；不再產製、不增加 prewarm、不使用 QA DTO cache。量測期間其他 Main／H20 native 旅程不得同時啟動。等待真正 process handle 與 terminal receipts，這項授權不構成 p95 或產品接受。
+
+Root 已審當前 MA v8 QA-only diff：subprocess.Popen 改用 GuardedPopen subclass，保留 class 可繼承性並於原 __init__ 前驗固定 gate。要求 owner 補子類建構 gate 拒絕、fake 原 __init__ 單次精確授權／二次拒絕及 asyncio.windows_utils 來源 pin；尚未授 Main 執行。
+
+### P01 cold_01 實際終態
+
+Owner handle 33904 已 terminal exit 0，attempt C:/t/p01cur_rd_3582f14974。Root 直接讀 supervisor_result.json：無 failures，child returncode 0，Job PID 清單為空、cleanup completed；來源／store postflight unchanged。Root 讀 child_result.json：全 1,000 檔、20 頁與 selection 排序一致、固定 ordered-code digest 6613555ad6e1f45dd7c199f20724282962d48b1a01c199e35e9053df04797b86，S00256 跨 segment probe 正確。read-session 15.0906647 秒；page0 API 222.0419 ms；完整二十頁讀回 4.3216871 秒。這是一個 cold 樣本，不能據此授 p95／UI／EXE 接受。cold_02 已以同固定來源啟動，owner handle 66518，仍待完整矩陣。
+
+### P01 cold_02／cold_03 實讀核驗
+
+Root 分別直接讀 C:/t/p01cur_rd_98c2e5ce18 與 C:/t/p01cur_rd_72ec7a7a0b 的 child_result.json／supervisor_result.json。兩者 status passed、完整 20 頁且 1,000 ordered-code digest 與 cold_01 相同；guard counters 全零、Job PID 空、cleanup completed／child exit 0。首頁 API 分別 180.3229 ms／184.166 ms。其餘 cold／warm samples 與三 operation 的 p95 尚待，不以單頁數字宣稱效能接受。
+
+### P01 cold_04／cold_05 與 MA v8 追加審查
+
+Root 已直接讀 C:/t/p01cur_rd_288fe74660 的 child／supervisor receipts，及 C:/t/p01cur_rd_97554cf3bc 的 child receipt／controller stdout：兩 cold 均完整 1,000 檔／20 頁、ordered digest 與前三 cold 一致、guard counters 零、Job empty／cleanup completed。page0 分別 165.9444／171.1169 ms。cold_04 原命令曾於 CreateProcess 前 automatic review deadline 逾時，無 handle／process／attempt root，工具明示允同命令一次重試；原錯誤封套 cold_04_escalation_attempt01_failure.json 保留，重試有效且未替代任何已建立 worker 的失敗。仍須 warm 的三 operation 各三十樣本與六程序 aggregate，不能以五個首頁數字授 p95。
+
+Root 實讀 MA v8 追加 QA 差異：固定 asyncio/windows_utils.py SHA、真子類 base gate 拒絕、foreign subclass 拒絕、fake original initializer 一次精確授權與二次拒絕；另要求 receipt 保留 initializer attempts／completed／real 三計數，child 必須全零、parent 成功必須全一。原 init 在 finally 還原；fake-init 測試需明示零 OS spawn，不能以 completed=0 推斷一般執行沒有建立程序。仍未授 v8 Main，P01 測量排他不變。
+
+### P01 warm 終態與 Root 獨立 p95 計算
+
+warm owner handle 28003 已 terminal exit 0，attempt C:/t/p01cur_rd_cff229168b；Root 直接讀 child／supervisor receipts，child passed、guard counters 零、Job empty／cleanup completed、無 failures。Root 以三個 operation 各三十筆 elapsed_ns 排序，依 nearest-rank 第29筆獨立重算 p95：page_flip 220.0639 ms、filter_select_and_page 677.9689 ms、global_sort_select_and_page 248.2336 ms；九十筆均 status ok。嚴格 300ms 門檻下換頁／排序通過、篩選失敗，完整效能目標尚未達成，六程序 aggregate 另待 owner 固定彙總。
+
+慢篩選集中於 and_match（六筆605.0278–677.9689ms）及 or_match_unknown（630.3954–695.2566ms）；其他 case 為 and_no_match154.8883–199.3597ms、and_two_match136.5792–145.1074ms、and_unknown23.3602–25.6119ms。已要求 owner 查既有 profile／telemetry，缺件才另準備一次兩案例隔離 cProfile 診斷供審；不得放鬆 fresh bytes／SHA／layout 或直接改產品。
+
+量測角色已全部終態，排他窗口解除。Root 授一次固定 MA v8 純 --self-test（runner83602e3dafb7fbdb8356083bbea24c818b8a34d6d9a34d9e6e48726ed67ccb19／manifest8f5c12717da66d00d20da3448d070499f836ad7d6a7d64a18cb11297cad77bc9），無 Main／真 SQL／worker／真 subprocess。尚未授 v8 完整旅程。
+
+### MA v8 純契約接受與完整旅程授權
+
+Root 直接讀 v8_pure_contract_003 terminal／stdout：exit 0、189ms、stderr 空；36 runtime guard assertions、13 stdlib fallback assertions 全通過。fake initializer evidence 為 calls1／initializer attempts1／completed0／real0，明示 OS spawn 被測試 initializer 抑制；platform attempts／completed／real 全零。Root 重算固定 runner SHA 83602e3dafb7fbdb8356083bbea24c818b8a34d6d9a34d9e6e48726ed67ccb19 與 source manifest SHA 8f5c12717da66d00d20da3448d070499f836ad7d6a7d64a18cb11297cad77bc9，皆相符。
+
+已授 owner 一次固定 v8 完整 Main／fresh PID journey，沿原九根來源、31 app pins＋1 stdlib pin、三case／basket／typed bookmark／實際 doubleclick route、唯一 Job child 與既有 timeout／cleanup；執行前全 pins 再核。這是執行授權，尚非 Main、EXE 或真人接受。P01 六角色 aggregate 已實讀，仍只有換頁／排序操作 p95 達門檻，篩選未達；H20 L 尚在純配置候選準備。
+
+### H20 L 配置守衛與 P01 診斷候選追加審查
+
+Root 實讀 L 新增 fixture binding／environment contract／config guard bind 與 mkdir callsite。候選要求固定 H9 manifest、binding、capture root 一致，DATA_ROOT 精確 H9 FA_Data、OUTPUT_ROOT 當次 private config_output、PROFILE prod；既有目錄 mkdir no-op 以固定 code／globals／config instance／mode／parents／exist_ok／directory identity 限定。Root 要求純測先證真正 public 初始／終態是否各建 TWStockConfig，若兩輪皆建需按精確 phase 計數，不可用任意加額度或手工 frame 正例補洞；第三次／foreign caller／missing directory 必須拒絕。L 尚未凍結或授 native。
+
+Root 已實讀 P01 two-case filter-tail profile controller 相對正式接受矩陣的完整差異；只替換 warm profiling 功能與 candidate paths，沿用 guards/source，兩案例預期 AND30／OR32。要求 warm-only 拒其他role、單一case規格、各一次 cProfile／無九十wall samples／無p95資格；owner 正準備純契約與封套。尚未授診斷執行或祖先proof正式實作。
+
+### MA v8 Main 終態與 v9 準備授權
+
+v8 唯一 Main attempt run_attempt_98eb055ae6764fdfa52f2244a9de0070 已 terminal exit 1，未重跑。Root 直接讀 outer stderr 與 app_module/build_identity.py：MainWindow constructor 內 detect_build_identity→_read_git_identity 的第一個 git rev-parse --show-toplevel，被 QA strict Popen gate 拒絕為 CandidateError；尚未進三case／bookmark／freshPID journey。原產品已捕獲 OSError 並返回 unverified build identity，故授 owner 準備 v9 QA-only 精確 blocked-no-spawn 首probe OSError 分支，固定code／globals／argv／sanitized env／kwargs與來源SHA，外部caller和變體必須拒絕。不得 mock建置身份或擴其他Git命令，v9待diff／pure／pins審核後才授Main。
+
+owner 回報 source before／after digest fca9b8…b606a 與歷史九根cdbe04…f237不同，Root 要求提供欄位／schema及逐根差異以區分metadata與content；在原因確定前不宣稱原九根source qualification重新成立。原v8封套與fail全部保留。
+
+### MA v8 來源 pin 疑慮已實讀釐清
+
+Root 直接讀 v8 normal_ui_receipt.json：input_inventory_sha256_before／after 均 cdbe04e1528e5deb6906f8dd5feb65930247c3415e6fcf744dbe57ced951f237，R-only digest 均 8d33767904ab1c75222e021510cf7b6ea6aae188eed308fc5257211f1a343d6a，與原接受 pins 一致。fca9b8…b606a 是另一本九筆摘要 records 的序列化 digest，不能與 authoritative tuple-full-signature digest cdbe04 交叉比較；兩者各自起訖一致，receipt source_unchanged=true。parent initializer attempts／completed／real 為零、guards restored=true；Main旅程仍失敗，未授功能接受。Root 已讀 counter correction receipt，platform0 與 runtime fake1 的範圍已拆開。
+
+H20 L 真 source call 靜態核對確認 initial／terminal 各建一次 TWStockConfig，應為兩個 instance、11個 ensure目標各兩次加backup post-init兩次，共24次mkdir與首次一次config.log open。Root 要求 phase-bound 真函式純seam核驗，不能用任意增加額度；application_state只作父目錄身份核驗，不授mkdir。L尚未執行。
+
+### Filter-tail 診斷執行授權與優化方向更新
+
+Root 親跑 test_filter_tail_profile_contract_v1.py：10 passed／1.02s，獨立重算 controller SHA 09fe189c5bdcd005db3a158c65d218c16cd5a43d0ed1c8804c7989f9848c95c8 與 manifest SHA 2b0634e5cb7bfad11aded6ca3813e65d4fca4b81f9a2022815cb4cf093c706ce，相符。已授一次 warm-only 固定 AND30／OR32 各一次 cProfile 診斷，沿同來源／Job／guard／deadline／cleanup，無 producer／額外prewarm／90 wall samples／p95接受。
+
+Root 補讀 warm AND profile 次層：to_internal_io_path cumulative823.665ms，其中_validate_absolute_syntax797.640ms／11102calls；Path.__new__126728calls／531ms，而真正nt.lstat10556calls self281.123ms。累積時間重疊且含cProfile overhead，不能直接加總或換算wall。Root 查 personal_data_paths.py 驗證語法逐component反覆建立Path(part).is_reserved，要求 owner 優先提出單 operation純canonicalPath→IO string運算重用的隔離prototype，保留每次fresh lstat／reparse／leaf／bytes／SHA，不先引入Windows handle-relative新架構。正式產品仍未授變更。
+
+### Root 純字串試驗與兩案例 profile 實讀
+
+Root 新增隔離 output/qa/root_path_render_probe_20261009_a/probe.py，以固定 runtime personal_data_paths.py SHA55f1c451e6cdb8341c25673a517081935f9d20bfe40ad195f3b3af39749b1ce5 純轉換11102次／442唯一synthetic paths；三次baseline181.3231／196.3675／163.7227ms，單operation純字串memo9.2745／9.1102／11.6130ms。輸出與長路徑完全一致、六非法路徑仍拒絕、stat嘗試零、memo清空、source unchanged。初次曾使用目前workingtree版本b95…，隨後更正為上述固定來源；結果只證純字串運算潛力，不證page／p95。
+
+已授filter-tail handle12318 terminal exit0，attempt C:/t/p01cur_rd_9666ac5ae7。Root 直接讀 child／supervisor receipts：AND30／OR32兩cProfile診斷完成，status明示excluded_from_p95，無failures、Job empty／cleanup completed。AND路徑syntax11102次cumulative791.291ms，nt.lstat10556次self288.919ms；OR syntax11529次cumulative818.669ms，nt.lstat10962次self304.209ms。含profiling overhead／巢狀累積，不加總、不用作p95。要求owner停止追加診斷，交有界單page-operation純render memo正式切片設計供Root審；所有fresh stat／bytes／SHA／reparse仍維持。

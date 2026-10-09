@@ -825,3 +825,18 @@ def test_paper_portfolio_taipei_wake_is_five_minutes_before_cutoff_in_both_dst_m
         assert cutoff - taipei == timedelta(minutes=5)
         assert pacific_time.strftime("%H:%M") == expected_pacific_time
         assert pacific_time.date() < taipei.date()
+
+
+def test_keyboard_interrupt_persists_failed_terminal(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(preopen_adapter, "OPERATIONAL_ROOT", tmp_path)
+    def interrupted(**kwargs):
+        raise KeyboardInterrupt("controlled interruption")
+    monkeypatch.setattr(preopen_adapter, "_wait_until_taipei_cutoff", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        preopen_adapter.main([])
+    state = json.loads((tmp_path / "scheduled" / "paper_portfolio_isolated" /
+                        "run_state" / "latest.json").read_text(encoding="utf-8"))
+    assert state["terminal"] is True
+    assert state["terminal_status"] == "wrapper_exception"
+    assert state["error_type"] == "KeyboardInterrupt"
+    assert state["formal_credit"] is False

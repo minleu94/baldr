@@ -1099,6 +1099,10 @@ def _bind_paper_result_to_event_capture(
 ) -> dict[str, object]:
     """由 EOD writer 消費同一 recommendation 的 durable event capture。"""
 
+    if result.get("status") == "blocked":
+        # 政策／來源已拒絕的候選沒有 fills；保留原原因，不授事件綁定或成交資格。
+        return dict(result)
+
     candidate_value = result.get("candidate_path")
     recommendation_value = result.get("recommendation")
     execution_value = result.get("execution_date")
@@ -1353,7 +1357,9 @@ def run_isolated(*, now: datetime | None = None) -> dict[str, object]:
             error=error,
             observed=observed,
         )
-    sector_resolution = _resolve_pit_sector_manifest(observed)
+    sector_resolution: tuple[Path | None, str | None, dict[str, object]] = (
+        None, None, {"status": "pending_frozen_queue_selection"}
+    )
     paths = _paths(observed, sector_resolution=sector_resolution)
     try:
         source_observation = _scope_preflight()
@@ -1410,6 +1416,14 @@ def run_isolated(*, now: datetime | None = None) -> dict[str, object]:
         calendar_cache_path=_calendar_cache_root(),
         temporary_closure_path=_calendar_cache_root(),
     )
+    def resolve_frozen_sector(identity: Mapping[str, str]) -> tuple[Path | None, str | None]:
+        freeze = datetime.fromisoformat(identity["created_at"])
+        if freeze.tzinfo is None or freeze > observed:
+            raise ValueError("Paper frozen recommendation clock invalid")
+        selected_sector = _resolve_pit_sector_manifest(freeze)
+        source_observation["sector_membership_source"] = selected_sector[2]
+        return selected_sector[0], selected_sector[1]
+
     result = run_paper_execution_daily_from_queue(
         paths,
         recommendation_root=RECOMMENDATION_ROOT,
@@ -1419,6 +1433,7 @@ def run_isolated(*, now: datetime | None = None) -> dict[str, object]:
         confirm_append=True,
         persist_receipt=False,
         recommendation_pattern="paper_frozen_*.json",
+        sector_source_resolver=resolve_frozen_sector,
     )
     result = _bind_paper_result_to_event_capture(result, observed=observed)
     persisted_result = persist_operational_receipt(

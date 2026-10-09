@@ -411,6 +411,7 @@ def _is_transient_capture_error(error: BaseException) -> bool:
         "market_source_capture_raw_response_status_invalid",
         "market_source_capture_raw_response_message_invalid",
         "market_source_capture_raw_response_rows_missing",
+        "market_source_capture_raw_response_session_open_not_ready",
     )
     terminal_markers = (
         "identity",
@@ -487,7 +488,7 @@ def run_capture(
         "retry_delay_seconds": retry_delay_seconds,
         "same_frozen_recommendation_required": True,
         "same_taipei_session_required": True,
-        "retryable_failures": "official_transient_get_or_empty_response_only",
+        "retryable_failures": "official_transient_get_or_empty_response_or_verified_opening_not_ready",
         "terminal_failures": "identity/hash/path/schema/capture-custody violations",
     }
     base["taipei_now"] = local.isoformat()
@@ -638,6 +639,10 @@ def run_capture(
                     fetcher=fetcher,
                     expected_recommendation_file_hash=recommendation.file_hash,
                     expected_recommendation_content_hash=recommendation.content_hash,
+                    venue_source_output_root=(
+                        market_db.parent.parent / "output"
+                        if now is None and fetcher is None else None
+                    ),
                 )
                 successful_attempt: dict[str, object] = {
                     "attempt": attempt,

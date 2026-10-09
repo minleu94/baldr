@@ -5,7 +5,7 @@ param(
     [string]$OfficialEventsAt = "04:50",
     [string]$FreshnessAt = "05:00",
     [string]$MLRawPitRefreshAt = "05:05",
-    [string]$MLDirectChainMaintainerAt = "05:30",
+    [string]$MLDirectChainMaintainerAt = "10:00",
     [string]$RecommendationAt = "05:10",
     [string]$EvidenceAt = "05:15",
     [string]$MLPromotionEvidenceAt = "05:17",

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from threading import Thread
 
 import pytest
 
+import data_module.fundamental_read_snapshot as snapshot_module
+from app_module.personal_data_paths import to_internal_io_path
 from data_module.fundamental_read_snapshot import (
     FundamentalReadSnapshotError,
     FundamentalReadSnapshotSession,
@@ -150,3 +153,32 @@ def test_owner_thread_rejects_cross_thread_database_close(tmp_path: Path) -> Non
 
     session.close()
     assert session.closed is True
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows extended-length I/O 專屬驗收")
+def test_atomic_snapshot_json_roundtrips_when_temp_path_exceeds_260_units(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path
+    target_name = "snapshot_capture.json"
+    temporary_name = f".{target_name}.{'0' * 32}.tmp"
+
+    while len(str(parent / temporary_name).encode("utf-16-le")) // 2 <= 260:
+        parent = parent / ("segment-" + "x" * 24)
+
+    target = parent / target_name
+    expected_temporary = target.with_name(temporary_name)
+    parent_units = len(str(parent).encode("utf-16-le")) // 2
+    temporary_units = len(str(expected_temporary).encode("utf-16-le")) // 2
+    assert parent_units < 248
+    assert temporary_units > 260
+
+    parent.mkdir(parents=True)
+    payload: dict[str, object] = {"state": "atomic-long-path", "count": 7}
+    snapshot_module._write_atomic_json(target, payload)
+
+    io_target = Path(to_internal_io_path(target))
+    assert io_target.is_file()
+    assert io_target.read_bytes() == snapshot_module._canonical_json_bytes(payload)
+    io_parent = Path(to_internal_io_path(parent))
+    assert sorted(item.name for item in io_parent.iterdir()) == [target_name]

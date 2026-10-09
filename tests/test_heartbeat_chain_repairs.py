@@ -15,6 +15,24 @@ from scripts.scheduled import current_stock_research_cycle as cycle
 from scripts.scheduled import run_scheduled_decision_evidence_capture as capture
 
 
+@pytest.mark.skipif(os.name != "nt", reason="固定 CMD launcher 僅供 Windows Task")
+def test_hidden_launcher_preserves_real_child_failure_and_transcript(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts.scheduled import run_scheduled_cmd_hidden as hidden
+    monkeypatch.setattr(hidden, "ROOT", tmp_path)
+    task = "baldr-paper-portfolio-daily"
+    script = tmp_path / "scripts" / "scheduled" / hidden.TASK_SCRIPTS[task]
+    script.parent.mkdir(parents=True)
+    script.write_text('@echo off\necho saved-output\necho saved-error 1>&2\nexit /b 7\n', encoding="ascii")
+    assert hidden.run_task(task) == 7
+    terminal_path = next((tmp_path / "output" / "scheduled_launches" / task).glob('*/terminal.json'))
+    terminal = json.loads(terminal_path.read_text(encoding="utf-8"))
+    assert terminal["exit_code"] == 7
+    assert terminal["child_pid"] > 0
+    assert terminal["pipeline_success_claimed"] is False
+    assert b'saved-output' in (terminal_path.parent / 'stdout.bin').read_bytes()
+    assert b'saved-error' in (terminal_path.parent / 'stderr.bin').read_bytes()
+
+
 @pytest.mark.parametrize("forged", [False, True])
 def test_real_evidence_child_requires_valid_parent_lease(tmp_path: Path, forged: bool) -> None:
     root = tmp_path / "release_v4"

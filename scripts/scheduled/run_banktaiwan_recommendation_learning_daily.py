@@ -475,8 +475,12 @@ def _current_upstream_run_proof(
         seconds=_UPSTREAM_STATUS_MTIME_EARLY_TOLERANCE_SECONDS
     ):
         return None, "upstream_running_status_mtime_precedes_task_last_run"
-    if status_mtime > last_run_time + late_tolerance:
-        return None, "upstream_running_status_mtime_too_late_for_task_start"
+    # running status 會由 dependency progress 持續更新；啟動界線綁 run_id，
+    # mtime 只驗非未來、非舊 Task，不能要求仍落在啟動後 30 秒內。
+    if status_mtime < run_start - timedelta(
+        seconds=_UPSTREAM_STATUS_MTIME_EARLY_TOLERANCE_SECONDS
+    ):
+        return None, "upstream_running_status_mtime_precedes_run_start"
 
     if recheck_task_state:
         latest_observation = task_state_reader()

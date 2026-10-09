@@ -15,6 +15,43 @@ CAPTURE_DATE = date(2026, 10, 1)
 STARTED_AT = datetime(2026, 10, 1, 7, 50, tzinfo=TAIPEI)
 
 
+@pytest.mark.parametrize("reason,live,allowed", [
+    ("late source config proof is missing", True, True),
+    ("late source config proof is missing", False, False),
+    ("source config proof cache is partial or has unexpected files", True, False),
+    ("source config proof metadata hash mismatch", True, False),
+])
+def test_wrapper_only_materializes_missing_live_proof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    reason: str, live: bool, allowed: bool,
+) -> None:
+    from scripts.scheduled import run_pit_sector_membership_preopen_capture as scheduled
+    monkeypatch.setattr(scheduled, "ROOT", tmp_path)
+    reads = []
+    writes = []
+    def read(**kwargs: object) -> dict[str, object]:
+        reads.append(kwargs)
+        if len(reads) == 1:
+            raise producer.PITTaxonomySourceError(reason)
+        return {"status": "hash_addressed_source_config_proof_verified"}
+    monkeypatch.setattr(scheduled, "read_existing_split_source_config_proof", read)
+    monkeypatch.setattr(scheduled, "materialize_existing_split_source_config_proof", lambda **kwargs: writes.append(kwargs))
+    path = tmp_path / (producer.PIT_TAXONOMY_LIVE_CONFIG_SOURCE_RELATIVE_PATH if live else "custom.json")
+    def invoke() -> dict[str, object]:
+        return scheduled._ensure_live_split_source_config_proof(
+            publication_root=tmp_path / "output", bundle_path=tmp_path / "bundle.json",
+            config={}, config_path=path, observed=STARTED_AT,
+            now_provider=lambda: STARTED_AT + timedelta(minutes=1),
+        )
+    if allowed:
+        assert invoke()["status"] == "hash_addressed_source_config_proof_verified"
+        assert len(writes) == 1 and len(reads) == 2
+    else:
+        with pytest.raises(producer.PITTaxonomySourceError):
+            invoke()
+        assert writes == []
+
+
 def _bytes_hash(raw: bytes) -> str:
     import hashlib
 
@@ -163,13 +200,20 @@ def _synthetic_candidate(
     }
 
 
+@pytest.mark.parametrize("live_config", [False, True])
 def test_late_source_config_proof_materializes_readbacks_and_is_idempotent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    live_config: bool,
 ) -> None:
     repo, publication_root, bundle_path, config, fixture = _synthetic_candidate(
         tmp_path, monkeypatch
     )
+    if live_config:
+        config_path = repo / producer.PIT_TAXONOMY_LIVE_CONFIG_SOURCE_RELATIVE_PATH
+        config_path.parent.mkdir(parents=True)
+        config_path.write_bytes(fixture["config_raw"])
+        fixture["config_path"] = config_path
     timestamps = iter(
         (
             datetime(2026, 10, 1, 8, 10, tzinfo=TAIPEI),

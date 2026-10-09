@@ -18,6 +18,7 @@
 | 資料、ML 與來源治理 | [資料與 ML 索引](DATA_ML_GOVERNANCE_QA_INDEX.md) | R026／R031、ML Shadow、前瞻證據、PIT、基本面與來源接受。 |
 | 跨工作流整合 | [整合索引](INTEGRATION_QA_INDEX.md) | WP1–WP5、Task Loop、Continuity／Decision Journey、LUNA 與跨工作流收據。 |
 | 營運與測試 | [營運與測試索引](OPERATIONS_TESTING_QA_INDEX.md) | 排程、資料更新效能、測試路由、固定路徑與維運證據。 |
+| 儲存與冷封存 | [C 槽冷封存狀態對照（2026-10-09）](C_DRIVE_QA_COLD_ARCHIVE_RECONCILIATION_20261009.md) | 第一批 6/6、第二批 28/28 已按終態收據完成；摘要未重新計算全量 SHA，容量數字是時間點快照。 |
 
 ## 相容深連結
 

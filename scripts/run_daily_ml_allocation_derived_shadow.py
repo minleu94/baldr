@@ -52,6 +52,9 @@ from data_module.ml_storage_capacity import (  # noqa: E402
 from data_module.official_trading_calendar import (  # noqa: E402
     OfficialTradingCalendar,
 )
+from data_module.ml_daily_price_revision_gate import (  # noqa: E402
+    DailyPriceSourceRevisionError,
+)
 from scripts import run_daily_ml_allocation_orchestration as daily  # noqa: E402
 
 
@@ -70,8 +73,7 @@ MAX_FORWARD_CAPTURE_DELAY = timedelta(minutes=5)
 # Raw exporter checkpoints receive a small allowance for the wrapper's
 # immutable record and daily orchestration metadata.
 RAW_PERSISTENT_NEW_BYTES = MAX_PERSISTENT_NEW_BYTES - 8 * 1024**2
-# 與既有 heavy-chain 雙碟政策一致；這不是本次輸出配額，不能因為
-# shadow 輕量就把安全保留空間降回舊版 20 GiB。
+# 使用既有 heavy-chain 容量政策 SSOT；安全保留空間與本次輸出配額分開。
 DEFAULT_SAFETY_RESERVE_BYTES = CANONICAL_HEAVY_CHAIN_SAFETY_RESERVE_BYTES
 DEFAULT_RAW_LOOKBACK_DAYS = daily.DEFAULT_RAW_LOOKBACK_DAYS
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "output" / "v4_ml_daily_derived_shadow"
@@ -1296,6 +1298,7 @@ def _run_unlocked(
 
     release: LoadedAllocationRelease | None = None
     release_evidence: dict[str, object] | None = None
+    release_revision_blocked = False
     try:
         release = AllocationReleaseAdapter().load(release_root)
         release_evidence = _release_evidence(
@@ -1305,6 +1308,7 @@ def _run_unlocked(
             capture_at=capture_at,
         )
     except (OSError, TypeError, ValueError, KeyError) as exc:
+        release_revision_blocked = isinstance(exc, DailyPriceSourceRevisionError)
         missing_inputs.append(f"release:{type(exc).__name__}:{exc}")
 
     calendar_service = calendar or OfficialTradingCalendar(database_path)
@@ -1400,7 +1404,13 @@ def _run_unlocked(
             "record_file_hash": file_hash,
         }
     if release is None:
-        record["status"] = "blocked_missing_release"
+        record["status"] = (
+            "blocked_source_revision_release"
+            if release_revision_blocked
+            else "blocked_missing_release"
+        )
+        if release_revision_blocked:
+            record["blocked_reason"] = "release_quarantined_by_daily_price_source_revision"
         record["cost_performance"] = _cost_performance_state({})
         path, record_hash, file_hash = _write_immutable_record(
             output_root=output_root,

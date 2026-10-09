@@ -4,6 +4,11 @@
 """
 
 from collections.abc import Mapping
+from app_module.daily_market_technical_official_disposition_revenue_bookmark_v1 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V1,
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE,
+    DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
+)
 import json
 from pathlib import Path
 
@@ -35,6 +40,10 @@ from ui_qt.widgets.daily_market_technical_price_bookmark_controls_v1 import Dail
 from app_module.daily_market_technical_official_disposition_bookmark_v1 import (
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_RESEARCH_BOOKMARK_SOURCE,
     DailyMarketTechnicalOfficialDispositionBookmarkV1,
+)
+from app_module.daily_market_technical_official_disposition_ma_bookmark_v1 import (
+    DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE,
+    DailyMarketTechnicalOfficialDispositionMaBookmarkV1,
 )
 from app_module.watchlist_review_state import WatchlistReviewSourceIdentity, WatchlistReviewState
 from app_module.dtos.decision_continuity_dtos import (
@@ -86,6 +95,8 @@ class WatchlistView(QWidget):
     technicalPriceBookmarkStateReady = Signal(object)
     personalH20BookmarkStateReady = Signal(object)
     technicalOfficialBookmarkReady = Signal(object)
+    technicalOfficialMaBookmarkReady = Signal(object)
+    technicalOfficialRevenueBookmarkReady = Signal(object)
     
     def __init__(
         self,
@@ -967,6 +978,10 @@ class WatchlistView(QWidget):
                     df["source"] = ""
                 df["來源"] = [
                     (
+                        "均線／月營收／官方對照研究收藏"
+                        if str(value or "").strip()
+                        == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE
+                        else
                         "完整母體技術研究收藏"
                         if str(value or "").strip()
                         == DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE
@@ -1725,6 +1740,25 @@ class WatchlistView(QWidget):
 
     @classmethod
     def _exact_research_bookmark_id_for_row(cls, row: object) -> str:
+        if cls._row_is_technical_official_revenue_bookmark(row):
+            try:
+                return cls._decode_revenue_bookmark_row(row).bookmark_id
+            except (TypeError, ValueError):
+                return ""
+        if cls._row_is_technical_official_ma_bookmark(row):
+            try:
+                from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved
+                ma_bookmark = decode_saved(row.get("research_bookmark"))
+                if (
+                    isinstance(ma_bookmark, DailyMarketTechnicalOfficialDispositionMaBookmarkV1)
+                    and ma_bookmark.stock_code == str(row.get("證券代號", row.get("stock_code", ""))).strip()
+                    and row.get("source") == ma_bookmark.source
+                    and row.get("source_id") == ma_bookmark.bookmark_id
+                ):
+                    return ma_bookmark.bookmark_id
+            except (TypeError, ValueError):
+                pass
+            return ""
         if cls._row_is_technical_official_bookmark(row):
             try:
                 from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved
@@ -1779,7 +1813,45 @@ class WatchlistView(QWidget):
             DAILY_MARKET_RESEARCH_BOOKMARK_SOURCE,
             DAILY_MARKET_TECHNICAL_UNIVERSE_V4_BOOKMARK_SOURCE,
             DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_RESEARCH_BOOKMARK_SOURCE,
+            DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE,
+            DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE,
         }
+
+    @staticmethod
+    def _row_is_technical_official_revenue_bookmark(row: object) -> bool:
+        if not hasattr(row, "get"):
+            return False
+        raw = row.get("research_bookmark")
+        return (
+            row.get("source") == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SOURCE
+            or isinstance(raw, Mapping)
+            and isinstance(raw.get("schema_version"), str)
+            and raw.get("schema_version").startswith("daily-market-technical-official-disposition-revenue-bookmark.")
+        )
+
+    @staticmethod
+    def _decode_revenue_bookmark_row(row) -> DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1:
+        from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved
+        bookmark = decode_saved(row.get("research_bookmark"))
+        if (
+            type(bookmark) is not DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1
+            or bookmark.stock_code != str(row.get("證券代號", row.get("stock_code", ""))).strip()
+            or row.get("source") != bookmark.source
+            or row.get("source_id") != bookmark.bookmark_id
+        ):
+            raise ValueError("月營收收藏與選取股票或來源不符")
+        return bookmark
+
+    @staticmethod
+    def _row_is_technical_official_ma_bookmark(row: object) -> bool:
+        if not hasattr(row, "get"):
+            return False
+        raw = row.get("research_bookmark")
+        schema = raw.get("schema_version") if isinstance(raw, Mapping) else None
+        return (
+            row.get("source") == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_RESEARCH_BOOKMARK_SOURCE
+            or isinstance(schema, str) and schema.startswith("daily-market-technical-official-disposition-ma-bookmark.")
+        )
 
     @staticmethod
     def _row_is_technical_official_bookmark(row: object) -> bool:
@@ -1819,6 +1891,21 @@ class WatchlistView(QWidget):
         if not isinstance(value, Mapping):
             return "書籤格式錯誤；來源不可核驗"
         schema = str(value.get("schema_version", "") or "").strip()
+        if schema == DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_BOOKMARK_SCHEMA_V1:
+            try:
+                bookmark = DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1.from_dict(value)
+                return f"已收藏均線／月營收／官方對照研究｜股票 {bookmark.stock_code}｜固定原來源"
+            except (TypeError, ValueError):
+                return "月營收研究收藏無效；來源不可核驗"
+        if schema.startswith("daily-market-technical-official-disposition-ma-bookmark."):
+            try:
+                from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved
+                ma_bookmark = decode_saved(value)
+                if not isinstance(ma_bookmark, DailyMarketTechnicalOfficialDispositionMaBookmarkV1):
+                    raise ValueError("四均線官方對照收藏類型不符")
+                return f"已收藏四均線／官方對照研究｜股票 {ma_bookmark.stock_code}｜固定原來源"
+            except (TypeError, ValueError):
+                return "四均線官方對照收藏無效；來源不可核驗"
         if schema == "daily-market-technical-official-disposition-bookmark.v1":
             try:
                 from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved
@@ -2455,6 +2542,30 @@ class WatchlistView(QWidget):
         frame = self.stocks_model.getDataFrame()
         row = frame.iloc[rows[0].row()]
         code = str(row["證券代號"]).strip()
+        if self._row_is_technical_official_revenue_bookmark(row):
+            try:
+                revenue_bookmark = self._decode_revenue_bookmark_row(row)
+            except (TypeError, ValueError) as exc:
+                self._set_status_label(f"月營收收藏無法核驗：{exc}", level="warning")
+                return
+            self.technicalOfficialRevenueBookmarkReady.emit(revenue_bookmark)
+            self._set_status_label("正在核驗原月營收收藏；完成前保留原研究。", level="info")
+            return
+        if self._row_is_technical_official_ma_bookmark(row):
+            try:
+                from app_module.watchlist_service import decode_daily_market_research_bookmark as decode_saved
+                ma_bookmark = decode_saved(row.get("research_bookmark"))
+                if (not isinstance(ma_bookmark, DailyMarketTechnicalOfficialDispositionMaBookmarkV1)
+                        or ma_bookmark.stock_code != code
+                        or row.get("source") != ma_bookmark.source
+                        or row.get("source_id") != ma_bookmark.bookmark_id):
+                    raise ValueError("四均線官方對照收藏與選取股票不符")
+            except (TypeError, ValueError) as exc:
+                self._set_status_label(f"四均線官方對照收藏無法核驗：{exc}", level="warning")
+                return
+            self.technicalOfficialMaBookmarkReady.emit(ma_bookmark)
+            self._set_status_label("已要求核驗原四均線官方對照收藏；完成前不替換原研究。", level="info")
+            return
         if self._row_is_price_bookmark(row):
             identity = str(row.get("source_id", "")).strip()
             selected_status = self.price_bookmark_controls.open_bookmark(identity)

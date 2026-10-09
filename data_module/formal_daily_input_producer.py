@@ -5521,13 +5521,15 @@ def _parse_twse_mis_raw_rows(
     if not isinstance(messages, list) or not messages:
         return [], "market_source_capture_raw_response_rows_missing"
     requested_codes: list[str] = []
+    requested_exchanges: dict[str, str] = {}
     for channel in request_channels.split("|"):
-        if not channel.startswith("tse_") or not channel.endswith(".tw"):
+        if channel[:4] not in {"tse_", "otc_"} or not channel.endswith(".tw"):
             return [], "market_source_capture_request_channel_invalid"
         code = channel[4:-3]
         if len(code) != 4 or not code.isdigit() or code in requested_codes:
             return [], "market_source_capture_request_channel_invalid"
         requested_codes.append(code)
+        requested_exchanges[code] = channel[:3]
     requested = set(requested_codes)
     rows: list[dict[str, object]] = []
     seen_codes: set[str] = set()
@@ -5537,7 +5539,7 @@ def _parse_twse_mis_raw_rows(
         stock_code = message.get("c")
         if not isinstance(stock_code, str) or stock_code not in requested:
             return [], "market_source_capture_raw_response_symbol_mismatch"
-        if message.get("ex") != "tse" or stock_code in seen_codes:
+        if message.get("ex") != requested_exchanges[stock_code] or stock_code in seen_codes:
             return [], "market_source_capture_raw_response_symbol_invalid"
         trade_date = message.get("d")
         if not isinstance(trade_date, str) or trade_date != execution_date.strftime("%Y%m%d"):
@@ -5558,6 +5560,19 @@ def _parse_twse_mis_raw_rows(
         if row_event_local.date() != execution_date:
             return [], "market_source_capture_raw_response_event_date_mismatch"
         if not RULE_SESSION_OPEN <= row_event_local.time().replace(tzinfo=None) < RULE_SESSION_CLOSE:
+            # 開盤瞬間 MIS 可回傳同日尚未成交的盤前列；拒絕該列，僅允許
+            # 排程有限重取。價格、日期、時鐘不補造，盤後／錯日仍永久拒絕。
+            capture_local = captured_at.astimezone(TAIPEI)
+            opening = datetime.combine(execution_date, RULE_SESSION_OPEN, tzinfo=TAIPEI)
+            if (
+                opening <= capture_local < opening + timedelta(minutes=2)
+                and opening - timedelta(minutes=1) <= row_event_local < opening
+                and message.get("t") == row_event_local.strftime("%H:%M:%S")
+                and message.get("o") == "-"
+                and message.get("z") == "-"
+                and message.get("v") == "0"
+            ):
+                return [], "market_source_capture_raw_response_session_open_not_ready"
             return [], "market_source_capture_raw_response_event_outside_session"
         if row_event_at > captured_at:
             return [], "market_source_capture_raw_response_event_after_capture"
@@ -5573,12 +5588,12 @@ def _parse_twse_mis_raw_rows(
         seen_codes.add(stock_code)
         rows.append(
             {
-                "raw_row_id": f"tse:{stock_code}:{tlong}",
+                "raw_row_id": f"{requested_exchanges[stock_code]}:{stock_code}:{tlong}",
                 "stock_code": stock_code,
                 "execution_date": execution_date.isoformat(),
                 "observed_at": row_event_at.isoformat(),
                 "price": format(open_price, "f"),
-                "exchange": "tse",
+                "exchange": requested_exchanges[stock_code],
                 "tlong": tlong,
             }
         )
@@ -6902,7 +6917,10 @@ def _fetch_official_source(url: str) -> OfficialSourceResponse:
         url,
         headers={
             "Accept": "application/json",
-            "User-Agent": "technical-analysis-formal-input-producer/1.0",
+            # 官方 TPEx gateway 對部分 client UA 回傳 HTML／520；仍用同一
+            # 公開 endpoint，以相容標頭取得原始 JSON，來源驗證不變。
+            "User-Agent": "Mozilla/5.0",
+            "Cache-Control": "no-cache",
         },
         method="GET",
     )

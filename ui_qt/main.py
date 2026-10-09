@@ -2490,6 +2490,23 @@ class MainWindow(QMainWindow):
         view.bookmark_button.setText("收藏原研究")
         view.bookmarkPrepared.connect(self._save_technical_official_bookmark)
         view.comparisonReady.connect(self._show_technical_official_comparison)
+        from ui_qt.views.daily_market_technical_official_disposition_ma_view import (
+            DailyMarketTechnicalOfficialDispositionMaView,
+        )
+        ma_view = DailyMarketTechnicalOfficialDispositionMaView(
+            getattr(self.config, "technical_official_disposition_read_root", None),
+            parent=recommendation,
+        )
+        self.technical_official_ma_research_view = ma_view
+        recommendation.result_source_tabs.addTab(ma_view, "四均線／官方對照研究")
+        ma_view.bookmarkPrepared.connect(self._save_technical_official_bookmark)
+        from ui_qt.views.daily_market_technical_official_disposition_revenue_view import (
+            DailyMarketTechnicalOfficialDispositionRevenueView,
+        )
+        revenue_view = DailyMarketTechnicalOfficialDispositionRevenueView(parent=recommendation)
+        self.technical_official_revenue_research_view = revenue_view
+        recommendation.result_source_tabs.addTab(revenue_view, "均線／月營收／官方對照研究")
+        revenue_view.bookmarkPrepared.connect(self._save_technical_official_bookmark)
 
     def _show_technical_official_comparison(self, value: object) -> None:
         """並列同來源已核事實，保留原結果頁與各股獨立捲動。"""
@@ -2543,12 +2560,29 @@ class MainWindow(QMainWindow):
             DailyMarketTechnicalOfficialDispositionBookmarkV1,
         )
         from ui_qt.workers.task_worker import TaskWorker
-        if type(value) is not DailyMarketTechnicalOfficialDispositionBookmarkV1:
+        from app_module.daily_market_technical_official_disposition_ma_bookmark_v1 import (
+            DailyMarketTechnicalOfficialDispositionMaBookmarkV1,
+        )
+        from app_module.daily_market_technical_official_disposition_revenue_bookmark_v1 import (
+            DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
+        )
+        if type(value) not in (
+            DailyMarketTechnicalOfficialDispositionBookmarkV1,
+            DailyMarketTechnicalOfficialDispositionMaBookmarkV1,
+            DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
+        ):
             return
         service = getattr(self, "watchlist_service", None)
         if service is None or getattr(self, "_shutdown_close_requested", False):
             return
-        view = self.technical_official_research_view
+        view = (
+            self.technical_official_revenue_research_view
+            if type(value) is DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1
+            else
+            self.technical_official_ma_research_view
+            if type(value) is DailyMarketTechnicalOfficialDispositionMaBookmarkV1
+            else self.technical_official_research_view
+        )
         worker = TaskWorker(service.add_research_bookmark, value)
         workers = getattr(self, "_technical_official_bookmark_workers", None)
         if workers is None:
@@ -2568,8 +2602,16 @@ class MainWindow(QMainWindow):
             if callable(refresh):
                 refresh()
         worker.finished.connect(completed)
-        worker.error.connect(lambda message: self.statusBar().showMessage(f"收藏失敗：{message}"))
-        worker.native_thread_finished.connect(lambda: view.bookmark_button.setEnabled(True))
+        def failed(message: str) -> None:
+            if getattr(self, "_shutdown_close_requested", False):
+                return
+            view.status_label.setText(f"收藏失敗：{message}")
+            self.statusBar().showMessage(f"收藏失敗：{message}")
+        def native_finished() -> None:
+            if not getattr(self, "_shutdown_close_requested", False):
+                view.bookmark_button.setEnabled(True)
+        worker.error.connect(failed)
+        worker.native_thread_finished.connect(native_finished)
         worker.native_thread_finished.connect(lambda: workers.discard(worker))
         worker.native_thread_finished.connect(worker.deleteLater)
         # 本視窗強引用保留到原生終態；全域registry供Main關閉gate核對。
@@ -2612,6 +2654,42 @@ class MainWindow(QMainWindow):
         watchlist.technicalBookmarkStateReady.connect(self._open_technical_bookmark_state)
         watchlist.technicalPriceBookmarkStateReady.connect(self._open_price_bookmark_state)
         watchlist.technicalOfficialBookmarkReady.connect(self._open_technical_official_bookmark)
+        watchlist.technicalOfficialMaBookmarkReady.connect(self._open_technical_official_ma_bookmark)
+        watchlist.technicalOfficialRevenueBookmarkReady.connect(self._open_technical_official_revenue_bookmark)
+
+    def _open_technical_official_revenue_bookmark(self, value: object) -> None:
+        """沿原月營收收藏核驗，保留來源、篩選與原結果頁。"""
+        from app_module.daily_market_technical_official_disposition_revenue_bookmark_v1 import (
+            DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1,
+        )
+        if (type(value) is not DailyMarketTechnicalOfficialDispositionRevenueBookmarkV1
+                or getattr(self, "_shutdown_close_requested", False)):
+            return
+        view = getattr(self, "technical_official_revenue_research_view", None)
+        if view is None:
+            return
+        if not view.restore_bookmark(value):
+            self.statusBar().showMessage("月營收研究頁尚忙；原研究保留，請稍後重開收藏。")
+            return
+        self._select_main_workspace("recommendation")
+        self.recommendation_view.result_source_tabs.setCurrentWidget(view)
+
+    def _open_technical_official_ma_bookmark(self, value: object) -> None:
+        """專用 MA 頁一次核驗原收藏，保留同源查詢與跨頁比較。"""
+        from app_module.daily_market_technical_official_disposition_ma_bookmark_v1 import (
+            DailyMarketTechnicalOfficialDispositionMaBookmarkV1,
+        )
+        if (type(value) is not DailyMarketTechnicalOfficialDispositionMaBookmarkV1
+                or getattr(self, "_shutdown_close_requested", False)):
+            return
+        view = getattr(self, "technical_official_ma_research_view", None)
+        if view is None:
+            return
+        if not view.restore_bookmark(value):
+            self.statusBar().showMessage("四均線研究頁尚忙；原研究保留，請稍後重開收藏。")
+            return
+        self._select_main_workspace("recommendation")
+        self.recommendation_view.result_source_tabs.setCurrentWidget(view)
 
     def _open_price_bookmark_state(self, value: object) -> None:
         """交接同次收藏核驗的價格頁，不再重開第二遍來源。"""
@@ -3296,7 +3374,7 @@ class MainWindow(QMainWindow):
     def _freeze_child_refresh_sources(self) -> None:
         """凍結有 pending generation 的子頁，避免取消後又補起新 worker。"""
 
-        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view", "watchlist_view", "technical_official_research_view"):
+        for attribute in ("workbench_view", "decision_desk_view", "portfolio_view", "recommendation_view", "watchlist_view", "technical_official_research_view", "technical_official_ma_research_view", "technical_official_revenue_research_view"):
             view = getattr(self, attribute, None)
             begin_shutdown = getattr(view, "begin_shutdown", None)
             if not callable(begin_shutdown):

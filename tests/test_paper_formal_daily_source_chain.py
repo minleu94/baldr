@@ -65,6 +65,53 @@ FORMAL_OBSERVED = datetime(2026, 9, 9, 9, 5, tzinfo=TAIPEI)
 EOD_OBSERVED = datetime(2026, 9, 7, 15, 0, tzinfo=TAIPEI)
 
 
+@pytest.mark.parametrize("capture_time,event_time,open_price,expected", [
+    ("09:00:06", "08:59:59", "-", "session_open_not_ready"),
+    ("09:02:00", "08:59:59", "-", "event_outside_session"),
+    ("09:00:06", "08:59:55", "-", "session_open_not_ready"),
+    ("09:00:06", "08:58:59", "-", "event_outside_session"),
+    ("09:00:06", "08:59:59", "10", "event_outside_session"),
+    ("13:31:00", "13:30:00", "-", "event_outside_session"),
+])
+def test_opening_retry_never_accepts_preopen_or_postclose_quote(
+    capture_time: str, event_time: str, open_price: str, expected: str,
+) -> None:
+    event = datetime.fromisoformat("2026-10-07T" + event_time + "+08:00")
+    raw = json.dumps({"rtcode": "0000", "rtmessage": "OK", "msgArray": [{
+        "c": "2330", "ex": "tse", "d": "20261007",
+        "tlong": str(int(event.timestamp()) * 1000), "t": event_time,
+        "o": open_price, "z": "-", "v": "0",
+    }]}).encode()
+    rows, reason = formal_daily_input_producer_module._parse_twse_mis_raw_rows(
+        raw, request_channels="tse_2330.tw", execution_date=date(2026, 10, 7),
+        captured_at=datetime.fromisoformat("2026-10-07T" + capture_time + "+08:00"),
+    )
+    assert rows == []
+    assert reason == "market_source_capture_raw_response_" + expected
+    assert capture_scheduler_module._is_transient_capture_error(
+        PaperEventSourceCaptureError(str(reason))
+    ) is (expected == "session_open_not_ready")
+
+
+@pytest.mark.parametrize("wrong_exchange", [False, True])
+def test_mis_mixed_market_rows_must_match_each_requested_channel(wrong_exchange: bool) -> None:
+    raw = json.dumps({"rtcode": "000", "rtmessage": "OK", "msgArray": [
+        {"c": "2330", "ex": "tse", "d": "20260907", "t": "09:00:00", "tlong": "1788742800000", "o": "10.20"},
+        {"c": "1569", "ex": "tse" if wrong_exchange else "otc", "d": "20260907", "t": "09:00:00", "tlong": "1788742800000", "o": "20.30"},
+    ]}).encode()
+    rows, reason = formal_daily_input_producer_module._parse_twse_mis_raw_rows(
+        raw, request_channels="tse_2330.tw|otc_1569.tw", execution_date=date(2026, 9, 7),
+        captured_at=datetime(2026, 9, 7, 1, 0, 3, tzinfo=ZoneInfo("UTC")),
+    )
+    if wrong_exchange:
+        assert rows == []
+        assert reason == "market_source_capture_raw_response_symbol_invalid"
+    else:
+        assert reason is None
+        assert [row["exchange"] for row in rows] == ["tse", "otc"]
+        assert rows[1]["raw_row_id"].startswith("otc:1569:")
+
+
 class _ChainCalendar(OfficialTradingCalendar):
     """隔離測試的官方日曆證據；未列日期不以 weekday 推定。"""
 
@@ -1361,21 +1408,25 @@ def test_twse_event_source_producer_rejects_late_capture_and_immutable_conflict(
         )
 
 
+@pytest.mark.parametrize("exchange", ["tse", "otc"])
 def test_frozen_recommendation_capture_persists_and_replays_without_refetch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    exchange: str,
 ) -> None:
     """自然 caller 以 frozen recommendation 綁定 durable source，retry 不重抓。"""
 
     recommendation_path = tmp_path / "recommendation.json"
     _write_recommendation(recommendation_path)
+    import data_module.paper_event_source_capture as event_capture
+    monkeypatch.setattr(event_capture, "resolve_mis_venues_from_daily_custody", lambda **kwargs: ({"2330": exchange}, [{"venue": exchange, "source_date": "2026-09-04"}]))
     raw_payload = {
         "rtcode": "000",
         "rtmessage": "OK",
         "msgArray": [
             {
                 "c": "2330",
-                "ex": "tse",
+                "ex": exchange,
                 "d": "20260907",
                 "t": "09:00:00",
                 "tlong": "1788742800000",
@@ -1426,10 +1477,12 @@ def test_frozen_recommendation_capture_persists_and_replays_without_refetch(
         allowed_durable_root=tmp_path / "controlled-output",
         now=datetime(2026, 9, 7, 1, 0, 3, tzinfo=ZoneInfo("UTC")),
         fetcher=fetcher,
+        venue_source_output_root=tmp_path,
     )
     assert first["status"] == "source_capture_ready"
     assert first["durable_readback_verified"] is True
     assert len(requested_urls) == 1
+    assert exchange + "_2330.tw" in requested_urls[0]
     durable_value = first["durable_capture"]
     assert isinstance(durable_value, dict)
     manifest_path = Path(str(durable_value["manifest_path"]))
@@ -1479,6 +1532,7 @@ def test_frozen_recommendation_capture_persists_and_replays_without_refetch(
             symbols=("2330",),
             execution_date=date(2026, 9, 7),
             output_dir=tmp_path / "second-candidate",
+            venue_by_symbol={"2330": exchange},
             now=datetime(2026, 9, 7, 1, 0, 4, tzinfo=ZoneInfo("UTC")),
             fetcher=fetcher,
         )
@@ -2079,8 +2133,10 @@ def test_scheduled_event_capture_retry_pins_initial_recommendation_identity(
     assert "file hash changed" in str(attempts[1]["reason"])
 
 
+@pytest.mark.parametrize("opening_not_ready", [False, True])
 def test_scheduled_event_capture_archives_rejected_raw_before_retry(
     tmp_path: Path,
+    opening_not_ready: bool,
 ) -> None:
     """被 parser 拒絕的 response 先隔離留存，再清 TEMP 並重試。"""
 
@@ -2094,6 +2150,11 @@ def test_scheduled_event_capture_archives_rejected_raw_before_retry(
     status_root = controlled / "status"
     calendar = _ChainCalendar(tmp_path / "calendar.sqlite")
     rejected_raw = b'{"rtcode":"999","rtmessage":"not ready","msgArray":[]}'
+    if opening_not_ready:
+        rejected_raw = json.dumps({"rtcode": "0000", "rtmessage": "OK", "msgArray": [{
+            "c": "2330", "ex": "tse", "d": "20260907", "t": "08:59:59",
+            "tlong": "1788742799000", "o": "-", "z": "-", "v": "0",
+        }]}).encode()
     accepted_raw = formal_daily_input_producer_module._canonical_json(
         {
             "rtcode": "000",

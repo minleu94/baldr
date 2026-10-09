@@ -17,7 +17,9 @@
 
 - [基本面來源盤點入口](FUNDAMENTAL_SOURCE_INVENTORY.md)：短導引連到目前狀態、現行架構及來源 QA；Month 5 詳細盤點已封存。
 - [備份保留稽核（歷史快照）](../09_archive/BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md)：保存 2026-07-06 的來源與容量盤點；現行保留行為看每日更新指南，資產用途／恢復看較新的資產登記。舊路徑保留導引。
-- [資料資產用途與恢復登記](STORAGE_ASSET_REGISTER_20261006.md)：2026-10-06 的用途、保留與恢復快照；不是即時容量清單。
+- [資料資產用途與恢復登記](STORAGE_ASSET_REGISTER_20261006.md)：以 2026-10-06 盤點為基線，頂部另有 2026-10-09 C 槽封存更新；不是即時容量清單。
+- [C 槽歷史 QA 與研究副本冷封存說明](C_DRIVE_QA_COLD_ARCHIVE_20261009.md)：記錄六批歷史副本的封存位置、核驗結果與回滾方式；不代表正式資料或生產流程變更。
+- [C 槽歷史封存第二批清單（待授權）](C_DRIVE_QA_COLD_ARCHIVE_BATCH2_20261009.md)：28 個目錄目前只複製與核驗、來源保留；移除來源及建立 Junction 尚待明確授權，不視為已完成搬移。
 - [歷史測試資料集中清冊](HISTORICAL_TEST_QUARANTINE_20261006.md)：記錄 2026-10-06 提案及當時未執行狀態；不可據此推定資料已搬移。
 - [月營收公告日 mapping 範本](templates/monthly_revenue_availability.csv)：欄位範本，不是正式公告日資料。正式路徑由資產登記與操作手冊指示。
 

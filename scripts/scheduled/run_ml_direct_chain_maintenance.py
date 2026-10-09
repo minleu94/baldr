@@ -429,7 +429,10 @@ def _resolve_inputs(args: argparse.Namespace) -> tuple[list[str], dict[str, Any]
         str(args.poll_seconds),
         "--retry-delay-seconds",
         str(args.retry_delay_seconds),
-        "--watch-formal-inputs",
+        # 每日 Task 只跑一個有限 cycle；常駐 watcher 會在無新輸入時
+        # 繼續持有 heavy-chain lock，使 Forward／Capture 永久無法取得鎖。
+        "--max-restarts",
+        "1",
     ]
     safety_reserve_value = getattr(args, "safety_reserve_bytes", None)
     if safety_reserve_value is None:

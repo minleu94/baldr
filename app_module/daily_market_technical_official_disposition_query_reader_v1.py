@@ -3,19 +3,44 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from bisect import bisect_left
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Literal, NoReturn, cast
+from typing import TYPE_CHECKING, Any, Literal, NoReturn, cast
+
+if TYPE_CHECKING:
+    from app_module.daily_market_monthly_revenue_yoy_index_v1 import (
+        DailyMarketMonthlyRevenueYoyIndexSessionV1,
+        DailyMarketMonthlyRevenueYoyCompactIndexV1,
+    )
+    from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+        DailyMarketTechnicalOfficialDispositionMaPageRequestV1,
+        DailyMarketTechnicalOfficialDispositionMaQueryPageV1,
+        DailyMarketTechnicalOfficialDispositionMaQueryV1,
+        DailyMarketTechnicalOfficialDispositionMaSortClauseV1,
+        DailyMarketTechnicalOfficialDispositionMaVerifiedQueryResultV1,
+        MaState,
+    )
+    from app_module.daily_market_technical_official_disposition_revenue_query_v1 import (
+        DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1,
+        DailyMarketTechnicalOfficialDispositionRevenueQueryV1,
+        DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1,
+        DailyMarketTechnicalOfficialDispositionRevenueQueryPageV1,
+    )
 
 from app_module import daily_market_technical_universe_v4_query as _universe_query_module
 from app_module.daily_market_technical_universe_ma_alignment_query_v1 import (
+    DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_ID_V1,
+    DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_VERSION_V1,
     DailyMarketTechnicalMaAlignmentReadSessionV1,
     DailyMarketTechnicalMaAlignmentSourceRequestV1,
     DailyMarketTechnicalMaAlignmentVerifiedCollectorV1,
+    DailyMarketTechnicalMaAlignmentCompactEntryV1,
+    DailyMarketTechnicalMaAlignmentCompactIndexV1,
 )
 from app_module.daily_market_technical_official_disposition_bundle_v1 import (
     DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_BUNDLE_MAX_BYTES,
@@ -40,6 +65,7 @@ from app_module.daily_market_technical_official_disposition_query_v1 import (
     DailyMarketTechnicalOfficialDispositionQueryV1Error,
     DailyMarketTechnicalOfficialDispositionSortValueV1,
     DailyMarketTechnicalOfficialDispositionSortClauseV1,
+    SortValue,
     RowScope,
     evaluate_f17_membership_v1,
     normalize_daily_market_technical_official_source_pin_identity_sha256,
@@ -64,6 +90,10 @@ from app_module.daily_market_technical_universe_v4_query import (
 from app_module.daily_market_technical_universe_v4_store import (
     DailyMarketTechnicalUniverseV4StoreError,
     daily_market_technical_source_clock_v4_from_dict,
+)
+from decision_module.factors.selection_fundamental_chip_rules import (
+    SELECTION_REVENUE_YOY_METHOD_ID,
+    SELECTION_REVENUE_YOY_METHOD_VERSION,
 )
 from data_module.selection_market_assignments import (
     CurrentMarketAssignmentError,
@@ -1040,6 +1070,9 @@ class DailyMarketTechnicalOfficialDispositionReadSessionV1:
     _ma_alignment_session: DailyMarketTechnicalMaAlignmentReadSessionV1 | None = field(
         default=None, repr=False, compare=False,
     )
+    _monthly_yoy_index_session: DailyMarketMonthlyRevenueYoyIndexSessionV1 | None = field(
+        default=None, repr=False, compare=False,
+    )
 
     @property
     def ma_alignment_session(self) -> DailyMarketTechnicalMaAlignmentReadSessionV1 | None:
@@ -1072,6 +1105,19 @@ class DailyMarketTechnicalOfficialDispositionReadSessionV1:
             or ma_session.source_request.expected_manifest_sha256 != self.bundle_reference.manifest_sha256
         ):
             _fail("ma_projection_read_session_source_mismatch")
+        monthly_session = self._monthly_yoy_index_session
+        if monthly_session is not None:
+            from app_module.daily_market_monthly_revenue_yoy_index_v1 import (
+                DailyMarketMonthlyRevenueYoyIndexSessionV1,
+            )
+
+            if (
+                type(monthly_session) is not DailyMarketMonthlyRevenueYoyIndexSessionV1
+                or not monthly_session.finished
+                or monthly_session.decision_cutoff.astimezone(timezone.utc)
+                != self.query.decision_cutoff.astimezone(timezone.utc)
+            ):
+                _fail("monthly_revenue_index_session_source_mismatch")
 
     @staticmethod
     def _selection_query_spec_identity(
@@ -1264,6 +1310,1145 @@ class DailyMarketTechnicalOfficialDispositionReadSessionV1:
         )
         _check_cancel(cancel_callback)
         return result
+
+    def create_ma_query_v1(
+        self,
+        *,
+        ma_states: Sequence[MaState] | None = None,
+        condition_combine_mode: Literal["AND", "OR"] = "AND",
+        unknown_policy: Literal["include", "exclude", "only"] = "include",
+        sort_clauses: Sequence[DailyMarketTechnicalOfficialDispositionMaSortClauseV1] = (),
+    ) -> DailyMarketTechnicalOfficialDispositionMaQueryV1:
+        """在本次 exact F17/MA 來源工作階段建立複合條件請求。"""
+        from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+            DailyMarketTechnicalOfficialDispositionMaQueryV1,
+            DailyMarketTechnicalOfficialDispositionMaQueryV1Error,
+        )
+
+        if self._seal is not _SESSION_SEAL:
+            _fail("read_session_not_reader_issued")
+        self.__post_init__()
+        _validate_bundle_query_relationship(self.query, self._bundle_state)
+        ma_session = self._ma_alignment_session
+        if ma_session is None:
+            _fail("ma_projection_session_unavailable")
+        try:
+            result = DailyMarketTechnicalOfficialDispositionMaQueryV1.create(
+                self.query,
+                ma_session,
+                ma_states=ma_states,
+                condition_combine_mode=condition_combine_mode,
+                unknown_policy=unknown_policy,
+                sort_clauses=sort_clauses,
+            )
+        except DailyMarketTechnicalOfficialDispositionMaQueryV1Error as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_ma_query_invalid"
+            ) from exc
+        return result
+
+    def verified_declared_stock_codes(
+        self,
+        *,
+        cancel_callback: Callable[[], object] | None = None,
+    ) -> tuple[str, ...]:
+        """回傳 exact bundle 已核的完整 declared code 順序，包含 excluded/pending。"""
+        _validate_cancel_callback(cancel_callback)
+        _check_cancel(cancel_callback)
+        self.__post_init__()
+        codes: list[str] = []
+        last_code: str | None = None
+        for fact in self._iter_verified_bundle_rows(cancel_callback):
+            _check_cancel(cancel_callback)
+            if last_code is not None and fact.stock_code <= last_code:
+                _fail("bundle_rows_not_unique_sorted")
+            last_code = fact.stock_code
+            codes.append(fact.stock_code)
+            if len(codes) > self.bundle_reference.row_count:
+                _fail("bundle_declared_code_count_overflow")
+        if len(codes) != self.bundle_reference.row_count:
+            _fail("bundle_declared_code_count_mismatch")
+        _check_cancel(cancel_callback)
+        return tuple(codes)
+
+    def with_monthly_revenue_yoy_index(
+        self,
+        index_session: DailyMarketMonthlyRevenueYoyIndexSessionV1,
+        *,
+        cancel_callback: Callable[[], object] | None = None,
+    ) -> DailyMarketTechnicalOfficialDispositionReadSessionV1:
+        """把已完成的真月營收來源 index 綁到同一 exact F17/MA session。"""
+        from app_module.daily_market_monthly_revenue_yoy_index_v1 import (
+            DailyMarketMonthlyRevenueYoyIndexError,
+            DailyMarketMonthlyRevenueYoyIndexSessionV1,
+        )
+
+        _validate_cancel_callback(cancel_callback)
+        _check_cancel(cancel_callback)
+        self.__post_init__()
+        if type(index_session) is not DailyMarketMonthlyRevenueYoyIndexSessionV1:
+            _fail("monthly_revenue_index_session_invalid")
+        try:
+            index, entries = index_session.validated_index_and_entries()
+        except DailyMarketMonthlyRevenueYoyIndexError as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_monthly_index_not_issued"
+            ) from exc
+        if (
+            not index_session.finished
+            or index.source_clock.decision_cutoff.astimezone(timezone.utc)
+            != self.query.decision_cutoff.astimezone(timezone.utc)
+            or len(entries) != self.bundle_reference.row_count
+        ):
+            _fail("monthly_revenue_index_scope_mismatch")
+        bound = replace(self, _monthly_yoy_index_session=index_session)
+        _check_cancel(cancel_callback)
+        return bound
+
+    def create_revenue_query_v1(
+        self,
+        *,
+        ma_states: Sequence[MaState] | None = None,
+        minimum_yoy_percent: Decimal | None = None,
+        condition_combine_mode: Literal["AND", "OR"] = "AND",
+        unknown_policy: Literal["include", "exclude", "only"] = "include",
+        sort_clauses: Sequence[DailyMarketTechnicalOfficialDispositionMaSortClauseV1] = (),
+    ) -> DailyMarketTechnicalOfficialDispositionRevenueQueryV1:
+        """在同一 F17 source 上建立 F17/MA/月營收條件的 canonical request。"""
+        from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+            DailyMarketTechnicalOfficialDispositionMaSortClauseV1,
+        )
+        from app_module.daily_market_technical_official_disposition_revenue_query_v1 import (
+            DailyMarketTechnicalOfficialDispositionRevenueQueryV1,
+            DailyMarketTechnicalOfficialDispositionRevenueQueryV1Error,
+        )
+
+        self.__post_init__()
+        index_session = self._monthly_yoy_index_session
+        if index_session is None:
+            _fail("monthly_revenue_index_session_unavailable")
+        nested_ma_query = self.create_ma_query_v1(
+            ma_states=ma_states,
+            condition_combine_mode="AND",
+            unknown_policy="include",
+            sort_clauses=(DailyMarketTechnicalOfficialDispositionMaSortClauseV1("stock_code", "asc"),),
+        )
+        try:
+            return DailyMarketTechnicalOfficialDispositionRevenueQueryV1.create(
+                nested_ma_query,
+                index_session,
+                minimum_yoy_percent=minimum_yoy_percent,
+                condition_combine_mode=condition_combine_mode,
+                unknown_policy=unknown_policy,
+                sort_clauses=sort_clauses,
+            )
+        except DailyMarketTechnicalOfficialDispositionRevenueQueryV1Error as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_revenue_query_invalid"
+            ) from exc
+
+    def execute_revenue_query_v1(
+        self,
+        query: DailyMarketTechnicalOfficialDispositionRevenueQueryV1,
+        *,
+        cancel_callback: Callable[[], object] | None = None,
+    ) -> DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1:
+        """同一 full-N pass 合併 F17、P01、MA 與月營收 index，再全域排序。"""
+        from app_module.daily_market_monthly_revenue_yoy_index_v1 import (
+            DailyMarketMonthlyRevenueYoyIndexCancelled,
+            DailyMarketMonthlyRevenueYoyIndexError,
+            DailyMarketMonthlyRevenueYoyIndexSessionV1,
+        )
+        from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+            DailyMarketTechnicalOfficialDispositionMaQueryV1,
+            combine_truth_v1,
+        )
+        from app_module.daily_market_technical_official_disposition_revenue_query_v1 import (
+            DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_MAX_ROWS_V1,
+            DailyMarketTechnicalOfficialDispositionRevenueCountsV1,
+            DailyMarketTechnicalOfficialDispositionRevenueQueryV1,
+            DailyMarketTechnicalOfficialDispositionRevenueQueryV1Error,
+            DailyMarketTechnicalOfficialDispositionRevenueResultRowV1,
+            DailyMarketTechnicalOfficialDispositionRevenueSortKeyV1,
+            DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1,
+            _issue_result_v1,
+            sort_revenue_keys_v1,
+        )
+        from decision_module.factors.selection_fundamental_chip_rules import (
+            evaluate_monthly_revenue_yoy_min,
+        )
+
+        if self._seal is not _SESSION_SEAL:
+            _fail("read_session_not_reader_issued")
+        _validate_cancel_callback(cancel_callback)
+        _check_cancel(cancel_callback)
+        self.__post_init__()
+        _validate_bundle_query_relationship(self.query, self._bundle_state)
+        if type(query) is not DailyMarketTechnicalOfficialDispositionRevenueQueryV1:
+            _fail("revenue_query_invalid")
+        try:
+            query.to_json()
+            ma_query = query.ma_query
+        except (DailyMarketTechnicalOfficialDispositionRevenueQueryV1Error, ValueError) as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_revenue_query_invalid"
+            ) from exc
+        if ma_query.f17_query.query_identity_sha256 != self.query.query_identity_sha256:
+            _fail("revenue_query_f17_source_mismatch")
+        ma_session = self._ma_alignment_session
+        index_session = self._monthly_yoy_index_session
+        if ma_session is None or index_session is None:
+            _fail("revenue_source_session_unavailable")
+        if type(index_session) is not DailyMarketMonthlyRevenueYoyIndexSessionV1:
+            _fail("monthly_revenue_index_session_invalid")
+        try:
+            ma_session._validate_session_anchor()
+            ma_index = cast(DailyMarketTechnicalMaAlignmentCompactIndexV1, ma_session._index)
+            ma_index.to_dict()
+            monthly_index, monthly_entries = index_session.validated_index_and_entries()
+        except DailyMarketMonthlyRevenueYoyIndexCancelled as exc:
+            _fail_cancelled()
+        except DailyMarketMonthlyRevenueYoyIndexError as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_monthly_index_invalid"
+            ) from exc
+        except Exception as exc:
+            if "cancelled" in str(getattr(exc, "code", "")):
+                _fail_cancelled()
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_ma_session_invalid"
+            ) from exc
+        source_request = ma_session.source_request
+        if (
+            query.monthly_yoy_read_session_identity_sha256 != index_session.read_session_identity_sha256
+            or query.monthly_yoy_index_identity_sha256 != monthly_index.index_identity_sha256
+            or query.monthly_yoy_finished_cohort_identity_sha256 != monthly_index.finished_cohort_identity_sha256
+            or query.monthly_yoy_source_clock_identity_sha256 != monthly_index.source_clock_identity_sha256
+            or datetime.fromisoformat(query.monthly_yoy_cutoff).astimezone(timezone.utc)
+            != monthly_index.decision_cutoff.astimezone(timezone.utc)
+            or monthly_index.decision_cutoff.astimezone(timezone.utc)
+            != self.query.decision_cutoff.astimezone(timezone.utc)
+            or query.monthly_yoy_method_id != SELECTION_REVENUE_YOY_METHOD_ID
+            or query.monthly_yoy_method_version != SELECTION_REVENUE_YOY_METHOD_VERSION
+            or ma_query.f17_query.query_identity_sha256 != self.query.query_identity_sha256
+            or ma_query.ma_alignment_read_session_identity_sha256 != ma_session.read_session_identity_sha256
+            or ma_query.ma_alignment_index_identity_sha256 != ma_session.index_identity_sha256
+            or ma_query.ma_source_request_identity_sha256 != source_request.request_identity_sha256
+            or source_request.bundle_output_root != self.bundle_reference.output_root
+            or source_request.bundle_identity_sha256 != self.bundle_reference.bundle_identity_sha256
+            or source_request.expected_manifest_sha256 != self.bundle_reference.manifest_sha256
+            or source_request.market_assignment_pin_identity_sha256
+            != self.query.market_assignment_pin_identity_sha256
+            or source_request.official_disposal_pin_identity_sha256
+            != self.query.official_disposal_pin_identity_sha256
+            or source_request.decision_date != self.query.decision_date
+            or source_request.decision_cutoff != self.query.decision_cutoff.isoformat()
+            or ma_index.counts.to_dict() != self._technical_session.source_counts.to_dict()
+            or len(ma_index.entries) != self._technical_session.source_counts.processed_count
+            or len(monthly_entries) != self.bundle_reference.row_count
+            or len(monthly_index.declared_stock_codes) != self.bundle_reference.row_count
+        ):
+            _fail("revenue_query_source_scope_mismatch")
+
+        base_counts_builder = _CountsBuilder(self.query, self._technical_session.source_counts)
+        monthly_state_counts = {name: 0 for name in ("observed", "unknown", "blocked")}
+        technical_truth_counts = {name: 0 for name in _TRUTH_VALUES}
+        ma_truth_counts = {name: 0 for name in _TRUTH_VALUES}
+        revenue_truth_counts = {name: 0 for name in _TRUTH_VALUES}
+        composite_truth_counts = {name: 0 for name in _TRUTH_VALUES}
+        eligible_truth_counts = {name: 0 for name in _TRUTH_VALUES}
+        hard_eligible_count = 0
+        visible_count = 0
+        unknown_policy_included_count = 0
+        unknown_policy_excluded_count = 0
+        sort_keys: list[DailyMarketTechnicalOfficialDispositionRevenueSortKeyV1] = []
+        expected_counts = self._technical_session.source_counts
+        if expected_counts.declared_count != self.bundle_reference.row_count:
+            _fail("bundle_declared_population_count_mismatch")
+        if len(monthly_entries) > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_MAX_ROWS_V1:
+            _fail("monthly_index_population_limit")
+        if len(ma_index.entries) != expected_counts.processed_count:
+            _fail("ma_index_population_mismatch")
+
+        technical_rows = iter(self._iter_selection_rows(cancel_callback))
+        current_technical = next(technical_rows, None)
+        ma_entries = iter(ma_index.entries)
+        current_ma_entry = next(ma_entries, None)
+        monthly_iterator = iter(monthly_entries)
+        current_monthly_entry = next(monthly_iterator, None)
+        processed_index = 0
+        last_fact_code: str | None = None
+        f17_projection_clauses = tuple(
+            item for item in query.sort_clauses
+            if item.field not in {"ma_alignment_state", "monthly_revenue_yoy_percent"}
+        )
+        projection_query = _ma_sort_projection_f17_query(self.query, f17_projection_clauses)
+        active_groups = (
+            bool(ma_query.f17_query.technical_query.rule_state_filters),
+            ma_query.ma_states is not None,
+            query.minimum_yoy_percent is not None,
+        )
+        for fact in self._iter_verified_bundle_rows(cancel_callback):
+            _check_cancel(cancel_callback)
+            if last_fact_code is not None and fact.stock_code <= last_fact_code:
+                _fail("bundle_rows_not_unique_sorted")
+            last_fact_code = fact.stock_code
+            if current_monthly_entry is None or current_monthly_entry.stock_code != fact.stock_code:
+                _fail("monthly_index_declared_code_join_mismatch")
+            monthly_entry = current_monthly_entry
+            current_monthly_entry = next(monthly_iterator, None)
+            monthly_state = monthly_entry.source_fact.state
+            if monthly_state not in monthly_state_counts:
+                _fail("monthly_index_source_state_invalid")
+            monthly_state_counts[monthly_state] += 1
+
+            payload = fact.to_dict()
+            status = payload.get("technical_status")
+            if status == "processed":
+                if (
+                    processed_index >= len(self._selection.stock_codes)
+                    or self._selection.stock_codes[processed_index] != fact.stock_code
+                    or current_technical is None
+                    or current_technical.stock_code != fact.stock_code
+                ):
+                    _fail("processed_stock_join_mismatch")
+                technical_row = current_technical
+                current_technical = next(technical_rows, None)
+                processed_index += 1
+                if current_ma_entry is None or current_ma_entry.stock_code != fact.stock_code:
+                    _fail("ma_index_processed_stock_join_mismatch")
+                ma_entry = current_ma_entry
+                current_ma_entry = next(ma_entries, None)
+                if not _ma_entry_matches_parent_row(ma_entry, technical_row):
+                    _fail("ma_entry_parent_row_mismatch")
+            else:
+                technical_row = None
+                ma_entry = None
+                if current_technical is not None and current_technical.stock_code <= fact.stock_code:
+                    _fail("unexpected_technical_stock_row")
+                if current_ma_entry is not None and current_ma_entry.stock_code <= fact.stock_code:
+                    _fail("unexpected_ma_index_stock_row")
+
+            outer = evaluate_f17_membership_v1(self.query, fact)
+            f17_technical_match, _f17_truth, technical_stock_match = _technical_filter_evaluation(
+                self.query, fact, technical_row,
+            )
+            if status in {"pending", "excluded"}:
+                technical_truth: ConditionTruth = "not_evaluated"
+                ma_truth: ConditionTruth = "not_evaluated"
+                revenue_truth: ConditionTruth = "not_evaluated"
+                composite_truth: ConditionTruth = "not_evaluated"
+            else:
+                technical_truth = _ma_rule_group_truth(ma_query.f17_query, fact, technical_row)
+                ma_truth = _ma_condition_truth(ma_query, fact, ma_entry)
+                if query.minimum_yoy_percent is None:
+                    revenue_truth = "not_applicable"
+                else:
+                    revenue_truth = cast(
+                        ConditionTruth,
+                        evaluate_monthly_revenue_yoy_min(
+                            monthly_entry.projected_fact,
+                            minimum_yoy_percent=query.minimum_yoy_percent,
+                        ),
+                    )
+                active_truths: list[ConditionTruth] = []
+                if active_groups[0]:
+                    active_truths.append(technical_truth)
+                if active_groups[1]:
+                    active_truths.append(ma_truth)
+                if active_groups[2]:
+                    active_truths.append(revenue_truth)
+                composite_truth = combine_truth_v1(
+                    active_truths,
+                    query.condition_combine_mode,
+                )
+            hard_eligible = outer.filter_membership and technical_stock_match
+            if hard_eligible:
+                hard_eligible_count += 1
+                eligible_truth_counts[composite_truth] += 1
+            technical_truth_counts[technical_truth] += 1
+            ma_truth_counts[ma_truth] += 1
+            revenue_truth_counts[revenue_truth] += 1
+            composite_truth_counts[composite_truth] += 1
+            if not any(active_groups):
+                included = hard_eligible
+            elif not hard_eligible:
+                included = False
+            elif query.unknown_policy == "include":
+                included = composite_truth in {"match", "unknown"}
+            elif query.unknown_policy == "exclude":
+                included = composite_truth == "match"
+            else:
+                included = composite_truth == "unknown"
+            if hard_eligible and composite_truth == "unknown":
+                if included:
+                    unknown_policy_included_count += 1
+                else:
+                    unknown_policy_excluded_count += 1
+            included_by_unknown_policy = (
+                any(active_groups)
+                and hard_eligible
+                and composite_truth == "unknown"
+                and included
+            )
+
+            base_counts_builder.add(
+                fact=fact,
+                technical_row=technical_row,
+                outer=outer,
+                technical_stock_match=technical_stock_match,
+                technical_match=f17_technical_match,
+                technical_truth=technical_truth,
+                overall_match=outer.filter_membership and f17_technical_match,
+            )
+            if included:
+                visible_count += 1
+                base_key = project_daily_market_technical_official_disposition_sort_key_v1(
+                    projection_query,
+                    DailyMarketTechnicalOfficialDispositionJoinedRowV1(fact, technical_row),
+                    cancel_callback=cancel_callback,
+                )
+                f17_values = {item.field: item.value for item in base_key.sort_values}
+                sort_values: list[DailyMarketTechnicalOfficialDispositionSortValueV1] = []
+                for clause in query.sort_clauses:
+                    value: SortValue | None
+                    if clause.field == "monthly_revenue_yoy_percent":
+                        value = monthly_entry.projected_fact.growth_percent
+                    elif clause.field == "ma_alignment_state":
+                        value = (
+                            ma_entry.ma_state
+                            if ma_entry is not None and ma_entry.ma_state != "unknown"
+                            else None
+                        )
+                    else:
+                        if clause.field not in f17_values:
+                            _fail("revenue_sort_projection_field_missing")
+                        value = f17_values[clause.field]
+                    sort_values.append(DailyMarketTechnicalOfficialDispositionSortValueV1(
+                        field=clause.field,
+                        direction=clause.direction,
+                        value=value,
+                    ))
+                sort_keys.append(DailyMarketTechnicalOfficialDispositionRevenueSortKeyV1(
+                    query_identity_sha256=query.query_identity_sha256,
+                    stock_code=fact.stock_code,
+                    sort_values=tuple(sort_values),
+                    fact_row_sha256=hashlib.sha256(fact.body_json.encode("utf-8")).hexdigest(),
+                    technical_snapshot_identity_sha256=(
+                        technical_row.snapshot_identity_sha256 if technical_row is not None else None
+                    ),
+                    technical_source_identity=(
+                        technical_row.source_identity if technical_row is not None else None
+                    ),
+                    ma_evidence_identity_sha256=(
+                        ma_entry.evidence_identity_sha256 if ma_entry is not None else None
+                    ),
+                    monthly_result_identity_sha256=monthly_entry.result_identity_sha256,
+                    monthly_fact_identity_sha256=monthly_entry.projected_fact.identity_sha256,
+                ))
+            _check_cancel(cancel_callback)
+
+        if (
+            current_technical is not None
+            or next(technical_rows, None) is not None
+            or current_ma_entry is not None
+            or next(ma_entries, None) is not None
+            or current_monthly_entry is not None
+            or next(monthly_iterator, None) is not None
+        ):
+            _fail("extra_joined_stock_rows")
+        if processed_index != expected_counts.processed_count or processed_index != len(self._selection.stock_codes):
+            _fail("processed_count_mismatch")
+        if processed_index != len(ma_index.entries):
+            _fail("ma_index_processed_count_mismatch")
+        base_counts = base_counts_builder.finish()
+        if base_counts.population != expected_counts:
+            _fail("bundle_technical_counts_mismatch")
+        if visible_count > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_REVENUE_MAX_ROWS_V1:
+            _fail("matching_stock_limit")
+        counts = DailyMarketTechnicalOfficialDispositionRevenueCountsV1(
+            base_f17_counts=base_counts,
+            monthly_source_state_counts=tuple((name, monthly_state_counts[name]) for name in ("observed", "unknown", "blocked")),
+            technical_truth_counts=tuple((name, technical_truth_counts[name]) for name in _TRUTH_VALUES),
+            ma_truth_counts=tuple((name, ma_truth_counts[name]) for name in _TRUTH_VALUES),
+            revenue_truth_counts=tuple((name, revenue_truth_counts[name]) for name in _TRUTH_VALUES),
+            composite_truth_counts=tuple((name, composite_truth_counts[name]) for name in _TRUTH_VALUES),
+            eligible_truth_counts=tuple((name, eligible_truth_counts[name]) for name in _TRUTH_VALUES),
+            hard_eligible_count=hard_eligible_count,
+            visible_count=visible_count,
+            unknown_policy_included_count=unknown_policy_included_count,
+            unknown_policy_excluded_count=unknown_policy_excluded_count,
+        )
+        _check_cancel(cancel_callback)
+        ordered_keys = sort_revenue_keys_v1(query, sort_keys, cancel_callback=cancel_callback)
+        if len(ordered_keys) != visible_count or len({item.stock_code for item in ordered_keys}) != visible_count:
+            _fail("revenue_sort_population_mismatch")
+        source_pins = _revenue_query_source_pins(self, monthly_index)
+        # 在發行前再核一次來源錨點，確保操作期間 index identity 未變。
+        final_index, final_entries = index_session.validated_index_and_entries()
+        if (
+            final_index.index_identity_sha256 != monthly_index.index_identity_sha256
+            or final_entries is not monthly_entries
+            or tuple(index_session.declared_stock_codes) != tuple(item.stock_code for item in monthly_entries)
+        ):
+            _fail("monthly_index_changed_before_publish")
+        f17_counts = cast(DailyMarketTechnicalOfficialDispositionQueryCountsV1, counts.base_f17_counts)
+        population_counts = f17_counts.population
+        technical_complete = (
+            self.bundle_reference.technical_receipt_status == "complete"
+            and population_counts.pending_count == 0
+            and population_counts.processed_count == population_counts.included_count
+        )
+        coverage = self.bundle_reference.source_coverage_status
+        result_status: Literal["complete", "partial"] = (
+            "complete" if technical_complete and coverage == "complete" else "partial"
+        )
+        _check_cancel(cancel_callback)
+        result = _issue_result_v1(
+            query=query,
+            counts=counts,
+            source_pins=source_pins,
+            ordered_keys=ordered_keys,
+            result_status=result_status,
+            official_source_coverage_status=coverage,
+            read_session=self,
+        )
+        _check_cancel(cancel_callback)
+        return result
+
+    def _materialize_revenue_query_page_v1(
+        self,
+        result: DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1,
+        request: DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1,
+        cancel_callback: Callable[[], object] | None,
+    ) -> DailyMarketTechnicalOfficialDispositionRevenueQueryPageV1:
+        from app_module.daily_market_monthly_revenue_yoy_index_v1 import (
+            DailyMarketMonthlyRevenueYoyIndexError,
+            DailyMarketMonthlyRevenueYoyIndexSessionV1,
+        )
+        from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+            DailyMarketTechnicalOfficialDispositionMaPageRequestV1,
+            combine_truth_v1,
+        )
+        from app_module.daily_market_technical_official_disposition_revenue_query_v1 import (
+            DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1,
+            DailyMarketTechnicalOfficialDispositionRevenueQueryV1Error,
+            DailyMarketTechnicalOfficialDispositionRevenueResultRowV1,
+            DailyMarketTechnicalOfficialDispositionRevenueSortKeyV1,
+            DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1,
+            _issue_page_v1,
+            _validate_page_request_for_result_v1,
+        )
+        from decision_module.factors.selection_fundamental_chip_rules import (
+            evaluate_monthly_revenue_yoy_min,
+        )
+
+        _validate_cancel_callback(cancel_callback)
+        _check_cancel(cancel_callback)
+        if type(result) is not DailyMarketTechnicalOfficialDispositionRevenueVerifiedQueryResultV1:
+            _fail("revenue_page_input_or_session_mismatch")
+        if type(request) is not DailyMarketTechnicalOfficialDispositionRevenuePageRequestV1:
+            _fail("revenue_page_input_or_session_mismatch")
+        try:
+            result_f17_query_identity = result.query.ma_query.f17_query.query_identity_sha256
+        except Exception as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_revenue_page_input_or_session_mismatch"
+            ) from exc
+        if (
+            result._read_session is not self
+            or result_f17_query_identity != self.query.query_identity_sha256
+        ):
+            _fail("revenue_page_input_or_session_mismatch")
+        try:
+            _validate_page_request_for_result_v1(result, request)
+        except DailyMarketTechnicalOfficialDispositionRevenueQueryV1Error as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_revenue_page_request_invalid"
+            ) from exc
+        self.__post_init__()
+        result.__post_init__()
+        _validate_bundle_query_relationship(self.query, self._bundle_state)
+        monthly_session = self._monthly_yoy_index_session
+        ma_session = self._ma_alignment_session
+        if monthly_session is None or ma_session is None:
+            _fail("revenue_page_source_session_unavailable")
+        try:
+            monthly_index, monthly_entries = monthly_session.validated_index_and_entries()
+        except DailyMarketMonthlyRevenueYoyIndexError as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_monthly_index_invalid"
+            ) from exc
+        source_pins = _revenue_query_source_pins(self, monthly_index)
+        if result.source_pins != source_pins:
+            _fail("revenue_page_source_pins_changed")
+        ma_session._validate_session_anchor()
+        ma_index = cast(DailyMarketTechnicalMaAlignmentCompactIndexV1, ma_session._index)
+        visible_count = result.counts.visible_count
+        page_count = (visible_count + request.page_size - 1) // request.page_size
+        start = request.page_index * request.page_size
+        selected_keys = result.ordered_sort_keys[start:start + request.page_size]
+        ma_query = result.query.ma_query
+        selected_codes = tuple(item.stock_code for item in selected_keys)
+        if len(set(selected_codes)) != len(selected_codes):
+            _fail("revenue_page_duplicate_stock")
+        try:
+            selected = self._bundle_state.read_selected_rows(
+                selected_codes,
+                cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+            )
+        except DailyMarketTechnicalOfficialDispositionBundleError as exc:
+            _check_source_error_cancelled(exc)
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_revenue_bundle_selected_rows_failed"
+            ) from exc
+        if (
+            type(selected) is not DailyMarketTechnicalOfficialDispositionBundleSelectedRowsV1
+            or selected.output_root != self.bundle_reference.output_root
+            or selected.bundle_identity_sha256 != self.bundle_reference.bundle_identity_sha256
+            or selected.manifest_relative_path != self.bundle_reference.manifest_relative_path
+            or selected.manifest_sha256 != self.bundle_reference.manifest_sha256
+            or selected.requested_stock_codes != selected_codes
+            or tuple(item.stock_code for item in selected.rows) != selected_codes
+        ):
+            _fail("revenue_page_bundle_rows_mismatch")
+        processed_codes = tuple(
+            fact.stock_code for fact in selected.rows
+            if fact.to_dict().get("technical_status") == "processed"
+        )
+        materialization = self._materialize_selected_rows(processed_codes, cancel_callback)
+        technical_by_code = {row.stock_code: row for row in materialization.rows}
+        if tuple(technical_by_code) != processed_codes or len(technical_by_code) != len(materialization.rows):
+            _fail("revenue_page_parent_rows_mismatch")
+        f17_projection_clauses = tuple(
+            item for item in result.query.sort_clauses
+            if item.field not in {"ma_alignment_state", "monthly_revenue_yoy_percent"}
+        )
+        projection_query = _ma_sort_projection_f17_query(self.query, f17_projection_clauses)
+        active_groups = (
+            bool(ma_query.f17_query.technical_query.rule_state_filters),
+            ma_query.ma_states is not None,
+            result.query.minimum_yoy_percent is not None,
+        )
+        rows: list[DailyMarketTechnicalOfficialDispositionRevenueResultRowV1] = []
+        for key, fact in zip(selected_keys, selected.rows, strict=True):
+            _check_cancel(cancel_callback)
+            status = fact.to_dict().get("technical_status")
+            technical_row = technical_by_code.get(fact.stock_code)
+            if (status == "processed") != (technical_row is not None):
+                _fail("revenue_page_technical_row_scope_invalid")
+            monthly_position = bisect_left(
+                monthly_entries,
+                fact.stock_code,
+                key=lambda entry: entry.stock_code,
+            )
+            if monthly_position >= len(monthly_entries) or monthly_entries[monthly_position].stock_code != fact.stock_code:
+                _fail("revenue_page_monthly_entry_missing")
+            monthly_entry = monthly_entries[monthly_position]
+            if (
+                monthly_entry.result_identity_sha256 != key.monthly_result_identity_sha256
+                or monthly_entry.projected_fact.identity_sha256 != key.monthly_fact_identity_sha256
+            ):
+                _fail("revenue_page_monthly_identity_changed")
+            ma_entry: DailyMarketTechnicalMaAlignmentCompactEntryV1 | None = None
+            if status == "processed":
+                ma_position = bisect_left(ma_index.entries, fact.stock_code, key=lambda entry: entry.stock_code)
+                if ma_position >= len(ma_index.entries) or ma_index.entries[ma_position].stock_code != fact.stock_code:
+                    _fail("revenue_page_ma_entry_missing")
+                ma_entry = ma_index.entries[ma_position]
+                if not _ma_entry_matches_parent_row(ma_entry, cast(DailyMarketTechnicalParentV4Row, technical_row)):
+                    _fail("revenue_page_ma_entry_parent_mismatch")
+            outer = evaluate_f17_membership_v1(self.query, fact)
+            _base_match, _base_truth, technical_stock_match = _technical_filter_evaluation(
+                self.query, fact, technical_row,
+            )
+            if status in {"pending", "excluded"}:
+                technical_truth: ConditionTruth = "not_evaluated"
+                ma_truth: ConditionTruth = "not_evaluated"
+                revenue_truth: ConditionTruth = "not_evaluated"
+                composite_truth: ConditionTruth = "not_evaluated"
+            else:
+                technical_truth = _ma_rule_group_truth(ma_query.f17_query, fact, technical_row)
+                ma_truth = _ma_condition_truth(ma_query, fact, ma_entry)
+                if result.query.minimum_yoy_percent is None:
+                    revenue_truth = "not_applicable"
+                else:
+                    revenue_truth = cast(ConditionTruth, evaluate_monthly_revenue_yoy_min(
+                        monthly_entry.projected_fact,
+                        minimum_yoy_percent=result.query.minimum_yoy_percent,
+                    ))
+                active_truths: list[ConditionTruth] = []
+                if active_groups[0]:
+                    active_truths.append(technical_truth)
+                if active_groups[1]:
+                    active_truths.append(ma_truth)
+                if active_groups[2]:
+                    active_truths.append(revenue_truth)
+                composite_truth = combine_truth_v1(active_truths, result.query.condition_combine_mode)
+            hard_eligible = outer.filter_membership and technical_stock_match
+            if not hard_eligible:
+                _fail("revenue_page_row_not_hard_eligible")
+            if not any(active_groups):
+                included = True
+            elif result.query.unknown_policy == "include":
+                included = composite_truth in {"match", "unknown"}
+            elif result.query.unknown_policy == "exclude":
+                included = composite_truth == "match"
+            else:
+                included = composite_truth == "unknown"
+            if not included:
+                _fail("revenue_page_row_no_longer_matches")
+            included_by_unknown_policy = (
+                any(active_groups)
+                and hard_eligible
+                and composite_truth == "unknown"
+                and included
+            )
+            base_key = project_daily_market_technical_official_disposition_sort_key_v1(
+                projection_query,
+                DailyMarketTechnicalOfficialDispositionJoinedRowV1(fact, technical_row),
+                cancel_callback=cancel_callback,
+            )
+            f17_values = {item.field: item.value for item in base_key.sort_values}
+            sort_values: list[DailyMarketTechnicalOfficialDispositionSortValueV1] = []
+            for clause in result.query.sort_clauses:
+                value: SortValue | None
+                if clause.field == "monthly_revenue_yoy_percent":
+                    value = monthly_entry.projected_fact.growth_percent
+                elif clause.field == "ma_alignment_state":
+                    value = ma_entry.ma_state if ma_entry is not None and ma_entry.ma_state != "unknown" else None
+                else:
+                    value = f17_values.get(clause.field)
+                sort_values.append(DailyMarketTechnicalOfficialDispositionSortValueV1(
+                    field=clause.field,
+                    direction=clause.direction,
+                    value=value,
+                ))
+            regenerated = DailyMarketTechnicalOfficialDispositionRevenueSortKeyV1(
+                query_identity_sha256=result.query.query_identity_sha256,
+                stock_code=fact.stock_code,
+                sort_values=tuple(sort_values),
+                fact_row_sha256=hashlib.sha256(fact.body_json.encode("utf-8")).hexdigest(),
+                technical_snapshot_identity_sha256=technical_row.snapshot_identity_sha256 if technical_row is not None else None,
+                technical_source_identity=technical_row.source_identity if technical_row is not None else None,
+                ma_evidence_identity_sha256=ma_entry.evidence_identity_sha256 if ma_entry is not None else None,
+                monthly_result_identity_sha256=monthly_entry.result_identity_sha256,
+                monthly_fact_identity_sha256=monthly_entry.projected_fact.identity_sha256,
+            )
+            if regenerated != key:
+                _fail("revenue_page_sort_key_changed")
+            row_identity = _sha256_json({
+                "schema_version": "daily-market-technical-official-disposition-revenue-result-row.v1",
+                "fact_row_sha256": key.fact_row_sha256,
+                "technical_snapshot_identity_sha256": key.technical_snapshot_identity_sha256,
+                "technical_source_identity": key.technical_source_identity,
+                "ma_evidence_identity_sha256": key.ma_evidence_identity_sha256,
+                "monthly_result_identity_sha256": key.monthly_result_identity_sha256,
+                "monthly_fact_identity_sha256": key.monthly_fact_identity_sha256,
+                "filter_evaluation": _filter_evaluation_payload(outer),
+                "technical_condition_truth": technical_truth,
+                "ma_condition_truth": ma_truth,
+                "revenue_condition_truth": revenue_truth,
+                "composite_condition_truth": composite_truth,
+                "hard_filter_match": hard_eligible,
+                "included_by_unknown_policy": included_by_unknown_policy,
+                "scope": "current_only",
+                "official_available_at": None,
+                "monthly_official_available_at": None,
+                "historical_pit_eligible": False,
+            })
+            rows.append(DailyMarketTechnicalOfficialDispositionRevenueResultRowV1(
+                fact_row=fact,
+                technical_row=technical_row,
+                ma_entry=ma_entry,
+                monthly_entry=monthly_entry,
+                filter_evaluation=outer,
+                technical_condition_truth=technical_truth,
+                ma_condition_truth=ma_truth,
+                revenue_condition_truth=revenue_truth,
+                composite_condition_truth=composite_truth,
+                hard_filter_match=hard_eligible,
+                included_by_unknown_policy=included_by_unknown_policy,
+                row_identity_sha256=row_identity,
+            ))
+        _check_cancel(cancel_callback)
+        page = _issue_page_v1(result=result, request=request, rows=tuple(rows))
+        _check_cancel(cancel_callback)
+        return page
+
+    def execute_ma_query_v1(
+        self,
+        query: DailyMarketTechnicalOfficialDispositionMaQueryV1,
+        *,
+        cancel_callback: Callable[[], object] | None = None,
+    ) -> DailyMarketTechnicalOfficialDispositionMaVerifiedQueryResultV1:
+        """以同一 F17 facts/P01 rows/MA index 單次 join、篩選、全域排序。"""
+        from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+            DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_MAX_ROWS,
+            DailyMarketTechnicalOfficialDispositionMaCountsV1,
+            DailyMarketTechnicalOfficialDispositionMaQueryV1,
+            DailyMarketTechnicalOfficialDispositionMaQueryV1Error,
+            DailyMarketTechnicalOfficialDispositionMaSortKeyV1,
+            _issue_result_v1,
+            sort_composite_keys_v1,
+        )
+
+        if self._seal is not _SESSION_SEAL:
+            _fail("read_session_not_reader_issued")
+        _validate_cancel_callback(cancel_callback)
+        _check_cancel(cancel_callback)
+        self.__post_init__()
+        _validate_bundle_query_relationship(self.query, self._bundle_state)
+        if type(query) is not DailyMarketTechnicalOfficialDispositionMaQueryV1:
+            _fail("ma_query_invalid")
+        try:
+            query.to_json()
+            f17_query = query.f17_query
+        except (DailyMarketTechnicalOfficialDispositionMaQueryV1Error, ValueError) as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_ma_query_invalid"
+            ) from exc
+        if f17_query.query_identity_sha256 != self.query.query_identity_sha256:
+            _fail("ma_query_f17_query_mismatch")
+        ma_session = self._ma_alignment_session
+        if ma_session is None:
+            _fail("ma_projection_session_unavailable")
+        try:
+            ma_session._validate_session_anchor()
+            ma_index = cast(DailyMarketTechnicalMaAlignmentCompactIndexV1, ma_session._index)
+            ma_index.to_dict()
+        except Exception as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_ma_session_invalid"
+            ) from exc
+        source_request = ma_session.source_request
+        if (
+            query.ma_alignment_read_session_identity_sha256 != ma_session.read_session_identity_sha256
+            or query.ma_alignment_index_identity_sha256 != ma_session.index_identity_sha256
+            or query.ma_source_request_identity_sha256 != source_request.request_identity_sha256
+            or query.ma_method_id != DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_ID_V1
+            or query.ma_method_version != DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_VERSION_V1
+            or source_request.bundle_output_root != self.bundle_reference.output_root
+            or source_request.bundle_identity_sha256 != self.bundle_reference.bundle_identity_sha256
+            or source_request.expected_manifest_sha256 != self.bundle_reference.manifest_sha256
+            or source_request.market_assignment_pin_identity_sha256
+            != self.query.market_assignment_pin_identity_sha256
+            or source_request.official_disposal_pin_identity_sha256
+            != self.query.official_disposal_pin_identity_sha256
+            or source_request.decision_date != self.query.decision_date
+            or source_request.decision_cutoff != self.query.decision_cutoff.isoformat()
+            or ma_index.index_identity_sha256 != ma_session.index_identity_sha256
+            or ma_index.generation_identity_sha256 != self._base_query.generation_identity_sha256
+            or ma_index.plan_identity_sha256 != self._base_query.plan_identity_sha256
+            or ma_index.plan_sha256 != self._base_query.plan_sha256
+            or ma_index.receipt_identity_sha256 != self._base_query.receipt_identity_sha256
+            or ma_index.receipt_sha256 != self._base_query.receipt_sha256
+            or ma_index.cohort_identity_sha256 != self._base_query.cohort_identity_sha256
+            or ma_index.source_clock_identity_sha256 != self._base_query.source_clock_identity_sha256
+            or ma_index.method_contracts_sha256 != self._base_query.method_contracts_sha256
+            or ma_index.counts.to_dict() != self._technical_session.source_counts.to_dict()
+            or len(ma_index.entries) != self._technical_session.source_counts.processed_count
+        ):
+            _fail("ma_query_source_scope_mismatch")
+
+        if len(ma_index.entries) != self._technical_session.source_counts.processed_count:
+            _fail("ma_index_population_mismatch")
+
+        counts_builder = _CountsBuilder(self.query, self._technical_session.source_counts)
+        state_counts = {name: 0 for name in ("match", "no_match", "unknown")}
+        technical_truth_counts = {name: 0 for name in _TRUTH_VALUES}
+        ma_truth_counts = {name: 0 for name in _TRUTH_VALUES}
+        composite_truth_counts = {name: 0 for name in _TRUTH_VALUES}
+        eligible_truth_counts = {name: 0 for name in _TRUTH_VALUES}
+        hard_eligible_count = 0
+        visible_count = 0
+        unknown_policy_included_count = 0
+        unknown_policy_excluded_count = 0
+        sort_keys: list[DailyMarketTechnicalOfficialDispositionMaSortKeyV1] = []
+        expected_counts = self._technical_session.source_counts
+        processed_index = 0
+        last_fact_code: str | None = None
+        technical_rows = iter(self._iter_selection_rows(cancel_callback))
+        current_technical = next(technical_rows, None)
+        ma_entries = iter(ma_index.entries)
+        current_ma_entry = next(ma_entries, None)
+        projection_query = _ma_sort_projection_f17_query(self.query, query.sort_clauses)
+        for fact in self._iter_verified_bundle_rows(cancel_callback):
+            _check_cancel(cancel_callback)
+            if last_fact_code is not None and fact.stock_code <= last_fact_code:
+                _fail("bundle_rows_not_unique_sorted")
+            last_fact_code = fact.stock_code
+            status = fact.to_dict().get("technical_status")
+            if status == "processed":
+                if (
+                    processed_index >= len(self._selection.stock_codes)
+                    or self._selection.stock_codes[processed_index] != fact.stock_code
+                    or current_technical is None
+                    or current_technical.stock_code != fact.stock_code
+                ):
+                    _fail("processed_stock_join_mismatch")
+                technical_row = current_technical
+                current_technical = next(technical_rows, None)
+                processed_index += 1
+                if current_ma_entry is None or current_ma_entry.stock_code != fact.stock_code:
+                    _fail("ma_index_processed_stock_join_mismatch")
+                ma_entry = current_ma_entry
+                current_ma_entry = next(ma_entries, None)
+                if ma_entry is None or not _ma_entry_matches_parent_row(ma_entry, technical_row):
+                    _fail("ma_entry_parent_row_mismatch")
+                state_counts[ma_entry.ma_state] += 1
+            else:
+                technical_row = None
+                ma_entry = None
+                if current_technical is not None and current_technical.stock_code <= fact.stock_code:
+                    _fail("unexpected_technical_stock_row")
+                if current_ma_entry is not None and current_ma_entry.stock_code <= fact.stock_code:
+                    _fail("unexpected_ma_index_stock_row")
+            outer = evaluate_f17_membership_v1(self.query, fact)
+            f17_technical_match, f17_technical_truth, technical_stock_match = _technical_filter_evaluation(
+                self.query, fact, technical_row,
+            )
+            technical_truth = _ma_rule_group_truth(f17_query, fact, technical_row)
+            ma_truth = _ma_condition_truth(query, fact, ma_entry)
+            composite_truth = _ma_composite_truth(
+                query, fact, technical_row, technical_truth, ma_truth,
+            )
+            hard_eligible = outer.filter_membership and technical_stock_match
+            if hard_eligible:
+                hard_eligible_count += 1
+                eligible_truth_counts[composite_truth] += 1
+            technical_truth_counts[technical_truth] += 1
+            ma_truth_counts[ma_truth] += 1
+            composite_truth_counts[composite_truth] += 1
+            included = _ma_policy_includes(query, composite_truth)
+            if hard_eligible and composite_truth == "unknown":
+                if included:
+                    unknown_policy_included_count += 1
+                else:
+                    unknown_policy_excluded_count += 1
+            base_f17_match = outer.filter_membership and f17_technical_match
+            counts_builder.add(
+                fact=fact,
+                technical_row=technical_row,
+                outer=outer,
+                technical_stock_match=technical_stock_match,
+                technical_match=f17_technical_match,
+                technical_truth=f17_technical_truth,
+                overall_match=base_f17_match,
+            )
+            if hard_eligible and included:
+                visible_count += 1
+                sort_keys.append(cast(
+                    DailyMarketTechnicalOfficialDispositionMaSortKeyV1,
+                    _ma_project_composite_sort_key(
+                        query, projection_query, fact, technical_row, ma_entry,
+                    ),
+                ))
+            _check_cancel(cancel_callback)
+        if (
+            current_technical is not None
+            or next(technical_rows, None) is not None
+            or current_ma_entry is not None
+            or next(ma_entries, None) is not None
+        ):
+            _fail("extra_technical_stock_rows")
+        if processed_index != expected_counts.processed_count or processed_index != len(self._selection.stock_codes):
+            _fail("processed_count_mismatch")
+        if processed_index != len(ma_index.entries):
+            _fail("ma_index_processed_count_mismatch")
+        base_counts = counts_builder.finish()
+        if base_counts.population != expected_counts:
+            _fail("bundle_technical_counts_mismatch")
+        if visible_count > DAILY_MARKET_TECHNICAL_OFFICIAL_DISPOSITION_MA_MAX_ROWS:
+            _fail("matching_stock_limit")
+        counts = DailyMarketTechnicalOfficialDispositionMaCountsV1(
+            base_f17_counts=base_counts,
+            ma_state_counts=tuple((name, state_counts[name]) for name in ("match", "no_match", "unknown")),
+            technical_truth_counts=tuple((name, technical_truth_counts[name]) for name in _TRUTH_VALUES),
+            ma_truth_counts=tuple((name, ma_truth_counts[name]) for name in _TRUTH_VALUES),
+            composite_truth_counts=tuple((name, composite_truth_counts[name]) for name in _TRUTH_VALUES),
+            eligible_truth_counts=tuple((name, eligible_truth_counts[name]) for name in _TRUTH_VALUES),
+            hard_eligible_count=hard_eligible_count,
+            visible_count=visible_count,
+            unknown_policy_included_count=unknown_policy_included_count,
+            unknown_policy_excluded_count=unknown_policy_excluded_count,
+        )
+        _check_cancel(cancel_callback)
+        ordered_keys = sort_composite_keys_v1(query, sort_keys, cancel_callback=cancel_callback)
+        source_pins = _ma_query_source_pins(self)
+        population_counts = cast(DailyMarketTechnicalUniverseV4Counts, counts.population)
+        technical_complete = (
+            self.bundle_reference.technical_receipt_status == "complete"
+            and population_counts.pending_count == 0
+            and population_counts.processed_count == population_counts.included_count
+        )
+        coverage = self.bundle_reference.source_coverage_status
+        result_status: Literal["complete", "partial"] = (
+            "complete" if technical_complete and coverage == "complete" else "partial"
+        )
+        _check_cancel(cancel_callback)
+        result = _issue_result_v1(
+            query=query,
+            counts=counts,
+            source_pins=source_pins,
+            ordered_keys=ordered_keys,
+            result_status=result_status,
+            official_source_coverage_status=coverage,
+            read_session=self,
+        )
+        _check_cancel(cancel_callback)
+        return result
+
+    def _materialize_ma_query_page_v1(
+        self,
+        result: DailyMarketTechnicalOfficialDispositionMaVerifiedQueryResultV1,
+        request: DailyMarketTechnicalOfficialDispositionMaPageRequestV1,
+        cancel_callback: Callable[[], object] | None,
+    ) -> DailyMarketTechnicalOfficialDispositionMaQueryPageV1:
+        from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+            DailyMarketTechnicalOfficialDispositionMaPageRequestV1,
+            DailyMarketTechnicalOfficialDispositionMaQueryV1,
+            DailyMarketTechnicalOfficialDispositionMaSortKeyV1,
+            DailyMarketTechnicalOfficialDispositionMaVerifiedQueryResultV1,
+            DailyMarketTechnicalOfficialDispositionMaResultRowV1,
+            DailyMarketTechnicalOfficialDispositionMaQueryV1Error,
+            _validate_page_request_for_result_v1,
+            _issue_page_v1,
+        )
+
+        _validate_cancel_callback(cancel_callback)
+        _check_cancel(cancel_callback)
+        if type(result) is not DailyMarketTechnicalOfficialDispositionMaVerifiedQueryResultV1 or type(request) is not DailyMarketTechnicalOfficialDispositionMaPageRequestV1:
+            _fail("ma_page_input_invalid")
+        try:
+            _validate_page_request_for_result_v1(result, request)
+        except DailyMarketTechnicalOfficialDispositionMaQueryV1Error as exc:
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_ma_page_request_invalid"
+            ) from exc
+        if result._read_session is not self or result.query.f17_query.query_identity_sha256 != self.query.query_identity_sha256:
+            _fail("ma_result_session_mismatch")
+        self.__post_init__()
+        result.__post_init__()
+        _validate_bundle_query_relationship(self.query, self._bundle_state)
+        ma_session = self._ma_alignment_session
+        if ma_session is None:
+            _fail("ma_projection_session_unavailable")
+        ma_session._validate_session_anchor()
+        if result.source_pins != _ma_query_source_pins(self):
+            _fail("ma_result_source_pins_mismatch")
+        _check_cancel(cancel_callback)
+        visible_count = result.counts.visible_count
+        page_count = (visible_count + request.page_size - 1) // request.page_size
+        start = request.page_index * request.page_size
+        selected_keys = result.ordered_sort_keys[start:start + request.page_size]
+        selected_codes = tuple(item.stock_code for item in selected_keys)
+        if len(set(selected_codes)) != len(selected_codes):
+            _fail("ma_page_duplicate_stock")
+        try:
+            selected = self._bundle_state.read_selected_rows(
+                selected_codes,
+                cancel_callback=cast(Callable[[], bool] | None, cancel_callback),
+            )
+        except DailyMarketTechnicalOfficialDispositionBundleError as exc:
+            _check_source_error_cancelled(exc)
+            raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+                "technical_official_query_reader_v1_ma_bundle_selected_rows_failed"
+            ) from exc
+        if (
+            type(selected) is not DailyMarketTechnicalOfficialDispositionBundleSelectedRowsV1
+            or selected.output_root != self.bundle_reference.output_root
+            or selected.bundle_identity_sha256 != self.bundle_reference.bundle_identity_sha256
+            or selected.manifest_relative_path != self.bundle_reference.manifest_relative_path
+            or selected.manifest_sha256 != self.bundle_reference.manifest_sha256
+            or selected.requested_stock_codes != selected_codes
+            or tuple(item.stock_code for item in selected.rows) != selected_codes
+        ):
+            _fail("ma_page_bundle_rows_mismatch")
+        processed_codes = tuple(
+            fact.stock_code for fact in selected.rows
+            if fact.to_dict().get("technical_status") == "processed"
+        )
+        materialization = self._materialize_selected_rows(processed_codes, cancel_callback)
+        technical_by_code = {row.stock_code: row for row in materialization.rows}
+        if tuple(technical_by_code) != processed_codes or len(technical_by_code) != len(materialization.rows):
+            _fail("ma_page_parent_rows_mismatch")
+        ma_index = cast(DailyMarketTechnicalMaAlignmentCompactIndexV1, ma_session._index)
+        projection_query = _ma_sort_projection_f17_query(self.query, result.query.sort_clauses)
+        rows: list[Any] = []
+        for key, fact in zip(selected_keys, selected.rows, strict=True):
+            _check_cancel(cancel_callback)
+            status = fact.to_dict().get("technical_status")
+            technical_row = technical_by_code.get(fact.stock_code)
+            ma_entry: DailyMarketTechnicalMaAlignmentCompactEntryV1 | None = None
+            if status == "processed":
+                ma_position = bisect_left(
+                    ma_index.entries,
+                    fact.stock_code,
+                    key=lambda entry: entry.stock_code,
+                )
+                if (
+                    ma_position >= len(ma_index.entries)
+                    or ma_index.entries[ma_position].stock_code != fact.stock_code
+                ):
+                    _fail("ma_page_index_entry_missing")
+                ma_entry = ma_index.entries[ma_position]
+            if (status == "processed") != (technical_row is not None) or (status == "processed") != (ma_entry is not None):
+                _fail("ma_page_row_scope_invalid")
+            if technical_row is not None and not _ma_entry_matches_parent_row(ma_entry, technical_row):
+                _fail("ma_page_entry_parent_mismatch")
+            outer = evaluate_f17_membership_v1(self.query, fact)
+            _base_match, _base_truth, technical_stock_match = _technical_filter_evaluation(
+                self.query, fact, technical_row,
+            )
+            technical_truth = _ma_rule_group_truth(result.query.f17_query, fact, technical_row)
+            ma_truth = _ma_condition_truth(result.query, fact, ma_entry)
+            composite_truth = _ma_composite_truth(
+                result.query, fact, technical_row, technical_truth, ma_truth,
+            )
+            hard_eligible = outer.filter_membership and technical_stock_match
+            included = _ma_policy_includes(
+                result.query,
+                composite_truth,
+            )
+            if not hard_eligible or not included:
+                _fail("ma_page_row_no_longer_matches")
+            regenerated = _ma_project_composite_sort_key(
+                result.query, projection_query, fact, technical_row, ma_entry,
+            )
+            if regenerated != key:
+                _fail("ma_page_sort_key_changed")
+            row_identity = _sha256_json({
+                "schema_version": "daily-market-technical-official-disposition-ma-result-row.v1",
+                "fact_row_sha256": key.fact_row_sha256,
+                "technical_snapshot_identity_sha256": key.technical_snapshot_identity_sha256,
+                "ma_evidence_identity_sha256": key.ma_evidence_identity_sha256,
+                "filter_evaluation": _filter_evaluation_payload(outer),
+                "technical_condition_truth": technical_truth,
+                "ma_condition_truth": ma_truth,
+                "composite_condition_truth": composite_truth,
+                "hard_filter_match": hard_eligible,
+                "included_by_unknown_policy": included,
+                "scope": "current_only",
+                "official_available_at": None,
+                "historical_pit_eligible": False,
+            })
+            rows.append(DailyMarketTechnicalOfficialDispositionMaResultRowV1(
+                fact_row=fact,
+                technical_row=technical_row,
+                ma_entry=ma_entry,
+                filter_evaluation=outer,
+                technical_condition_truth=technical_truth,
+                ma_condition_truth=ma_truth,
+                composite_condition_truth=composite_truth,
+                hard_filter_match=hard_eligible,
+                included_by_unknown_policy=included,
+                row_identity_sha256=row_identity,
+            ))
+        _check_cancel(cancel_callback)
+        page = _issue_page_v1(result=result, request=request, rows=tuple(rows))
+        _check_cancel(cancel_callback)
+        return page
 
     def _iter_selection_rows(
         self,
@@ -1825,6 +3010,385 @@ def _technical_filter_evaluation(
     technical_truth = _three_valued_combine(applied_truths, "AND")
     technical_match = stock_match and rule_match
     return technical_match, technical_truth, stock_match
+
+
+def _ma_query_source_pins(
+    read_session: DailyMarketTechnicalOfficialDispositionReadSessionV1,
+) -> tuple[tuple[str, str], ...]:
+    ma_session = read_session._ma_alignment_session
+    if ma_session is None:
+        _fail("ma_projection_session_unavailable")
+    request = ma_session.source_request
+    index = cast(DailyMarketTechnicalMaAlignmentCompactIndexV1, ma_session._index)
+    pins = (
+        ("bundle_output_root", read_session.bundle_reference.output_root),
+        ("bundle_identity_sha256", read_session.bundle_reference.bundle_identity_sha256),
+        ("bundle_manifest_sha256", read_session.bundle_reference.manifest_sha256),
+        ("p01_read_session_identity_sha256", read_session.p01_read_session_identity_sha256),
+        ("p01_selection_identity_sha256", read_session.p01_selection_identity_sha256),
+        ("p01_query_spec_identity_sha256", read_session.p01_query_spec_identity_sha256),
+        ("p01_generation_identity_sha256", read_session._base_query.generation_identity_sha256),
+        ("p01_plan_identity_sha256", read_session._base_query.plan_identity_sha256),
+        ("p01_plan_sha256", read_session._base_query.plan_sha256),
+        ("p01_receipt_identity_sha256", read_session._base_query.receipt_identity_sha256),
+        ("p01_receipt_sha256", read_session._base_query.receipt_sha256),
+        ("p01_cohort_identity_sha256", read_session._base_query.cohort_identity_sha256),
+        ("p01_source_clock_identity_sha256", read_session._base_query.source_clock_identity_sha256),
+        ("p01_method_contracts_sha256", read_session._base_query.method_contracts_sha256),
+        ("ma_read_session_identity_sha256", ma_session.read_session_identity_sha256),
+        ("ma_index_identity_sha256", ma_session.index_identity_sha256),
+        ("ma_source_request_identity_sha256", request.request_identity_sha256),
+        ("ma_index_source_clock_identity_sha256", index.source_clock_identity_sha256),
+        ("market_assignment_pin_identity_sha256", request.market_assignment_pin_identity_sha256),
+        ("official_disposal_pin_identity_sha256", request.official_disposal_pin_identity_sha256),
+        ("decision_date", request.decision_date.isoformat()),
+        ("decision_cutoff", request.decision_cutoff),
+        ("ma_method_id", DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_ID_V1),
+        ("ma_method_version", DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_VERSION_V1),
+    )
+    if len({key for key, _value in pins}) != len(pins) or any(
+        not isinstance(key, str) or not isinstance(value, str) or not value
+        for key, value in pins
+    ):
+        _fail("ma_query_source_pins_invalid")
+    return pins
+
+
+def _revenue_query_source_pins(
+    read_session: DailyMarketTechnicalOfficialDispositionReadSessionV1,
+    monthly_index: DailyMarketMonthlyRevenueYoyCompactIndexV1,
+) -> tuple[tuple[str, str], ...]:
+    """將 F17/MA pins 與已完成的月營收來源 pins 綁成同一操作來源。"""
+    from app_module.daily_market_technical_official_disposition_revenue_query_v1 import (
+        _SOURCE_PIN_KEYS,
+    )
+    from app_module.daily_market_monthly_revenue_yoy_index_v1 import (
+        DailyMarketMonthlyRevenueYoyCompactIndexV1 as MonthlyIndexType,
+    )
+
+    if type(monthly_index) is not MonthlyIndexType:
+        _fail("revenue_query_monthly_index_invalid")
+    pins = _ma_query_source_pins(read_session)
+    monthly_session = read_session._monthly_yoy_index_session
+    if monthly_session is None:
+        _fail("revenue_query_monthly_session_unavailable")
+    pins = (*pins,
+        ("monthly_yoy_read_session_identity_sha256", monthly_index.read_session_identity_sha256),
+        ("monthly_yoy_index_identity_sha256", monthly_index.index_identity_sha256),
+        ("monthly_yoy_finished_cohort_identity_sha256", monthly_index.finished_cohort_identity_sha256),
+        ("monthly_yoy_source_clock_identity_sha256", monthly_index.source_clock_identity_sha256),
+        ("monthly_yoy_cutoff", monthly_index.decision_cutoff.astimezone(timezone.utc).isoformat()),
+        ("monthly_yoy_method_id", SELECTION_REVENUE_YOY_METHOD_ID),
+        ("monthly_yoy_method_version", SELECTION_REVENUE_YOY_METHOD_VERSION),
+    )
+    by_name = dict(pins)
+    expected_names = set(_SOURCE_PIN_KEYS)
+    if (
+        len(by_name) != len(pins)
+        or set(by_name) != expected_names
+        or any(type(key) is not str or type(value) is not str or not value for key, value in pins)
+    ):
+        _fail("revenue_query_source_pins_invalid")
+    for name in (
+        "bundle_identity_sha256", "bundle_manifest_sha256",
+        "p01_read_session_identity_sha256", "p01_selection_identity_sha256",
+        "p01_query_spec_identity_sha256", "p01_generation_identity_sha256",
+        "p01_plan_identity_sha256", "p01_plan_sha256", "p01_receipt_identity_sha256",
+        "p01_receipt_sha256", "p01_cohort_identity_sha256", "p01_source_clock_identity_sha256",
+        "p01_method_contracts_sha256", "ma_read_session_identity_sha256",
+        "ma_index_identity_sha256", "ma_source_request_identity_sha256",
+        "ma_index_source_clock_identity_sha256", "market_assignment_pin_identity_sha256",
+        "official_disposal_pin_identity_sha256", "monthly_yoy_read_session_identity_sha256",
+        "monthly_yoy_index_identity_sha256", "monthly_yoy_finished_cohort_identity_sha256",
+        "monthly_yoy_source_clock_identity_sha256",
+    ):
+        _require_sha256(by_name[name], "revenue_query_source_pin_sha_invalid")
+    decision_cutoff_utc = _revenue_source_cutoff_utc(
+        by_name["decision_cutoff"], "revenue_query_decision_cutoff_invalid",
+    )
+    monthly_cutoff_utc = _revenue_source_cutoff_utc(
+        by_name["monthly_yoy_cutoff"], "revenue_query_monthly_cutoff_invalid",
+    )
+    expected_cutoff_utc = read_session.query.decision_cutoff.astimezone(timezone.utc)
+    if (
+        by_name["bundle_output_root"] != read_session.bundle_reference.output_root
+        or by_name["monthly_yoy_read_session_identity_sha256"] != monthly_session.read_session_identity_sha256
+        or by_name["decision_date"] != read_session.query.decision_date.isoformat()
+        or decision_cutoff_utc != expected_cutoff_utc
+        or monthly_cutoff_utc != expected_cutoff_utc
+        or by_name["ma_method_id"] != DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_ID_V1
+        or by_name["ma_method_version"] != DAILY_MARKET_TECHNICAL_MA_ALIGNMENT_METHOD_VERSION_V1
+        or by_name["monthly_yoy_method_id"] != SELECTION_REVENUE_YOY_METHOD_ID
+        or by_name["monthly_yoy_method_version"] != SELECTION_REVENUE_YOY_METHOD_VERSION
+    ):
+        _fail("revenue_query_source_pin_scope_mismatch")
+    # 只在新月營收合成 pin 中把同一 aware 時點正規成 UTC；保留 MA source request
+    # 本身的 identity 與 JSON，避免改動既有 F17/MA query 身分。
+    by_name["decision_cutoff"] = decision_cutoff_utc.isoformat()
+    by_name["monthly_yoy_cutoff"] = monthly_cutoff_utc.isoformat()
+    return tuple((name, by_name[name]) for name in _SOURCE_PIN_KEYS)
+
+
+def _revenue_source_cutoff_utc(value: object, error_code: str) -> datetime:
+    """嚴格解析來源兩種精確 aware ISO 形式，再正規成 UTC。"""
+    if not isinstance(value, str) or len(value) > 128:
+        _fail(error_code)
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        _fail(error_code)
+    if (
+        parsed.tzinfo is None
+        or parsed.utcoffset() is None
+        or value not in {parsed.isoformat(), parsed.isoformat(timespec="microseconds")}
+    ):
+        _fail(error_code)
+    return parsed.astimezone(timezone.utc)
+
+
+def _ma_sort_projection_f17_query(
+    f17_query: DailyMarketTechnicalOfficialDispositionQueryV1,
+    composite_sort_clauses: Sequence[object],
+) -> DailyMarketTechnicalOfficialDispositionQueryV1:
+    from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+        DailyMarketTechnicalOfficialDispositionMaSortClauseV1,
+    )
+
+    clauses: list[DailyMarketTechnicalOfficialDispositionSortClauseV1] = []
+    for clause in composite_sort_clauses:
+        if type(clause) is not DailyMarketTechnicalOfficialDispositionMaSortClauseV1:
+            _fail("ma_sort_clause_invalid")
+        if clause.field != "ma_alignment_state":
+            clauses.append(DailyMarketTechnicalOfficialDispositionSortClauseV1(
+                field=clause.field,
+                direction=clause.direction,
+            ))
+    if not clauses:
+        clauses.append(DailyMarketTechnicalOfficialDispositionSortClauseV1("stock_code", "asc"))
+    try:
+        return DailyMarketTechnicalOfficialDispositionQueryV1.create(
+            technical_query=f17_query.technical_query,
+            decision_cutoff=f17_query.decision_cutoff,
+            bundle_output_root=f17_query.bundle_output_root,
+            bundle_identity_sha256=f17_query.bundle_identity_sha256,
+            expected_manifest_sha256=f17_query.expected_manifest_sha256,
+            market_assignment_pin_identity_sha256=f17_query.market_assignment_pin_identity_sha256,
+            official_disposal_pin_identity_sha256=f17_query.official_disposal_pin_identity_sha256,
+            row_scope_filter=f17_query.row_scope_filter,
+            market_assignment_states=f17_query.market_assignment_states,
+            official_disposal_states=f17_query.official_disposal_states,
+            outer_stock_filter_mode=f17_query.outer_stock_filter_mode,
+            outer_stock_codes=f17_query.outer_stock_codes,
+            sort_clauses=tuple(clauses),
+        )
+    except DailyMarketTechnicalOfficialDispositionQueryV1Error as exc:
+        raise DailyMarketTechnicalOfficialDispositionQueryReaderV1Error(
+            "technical_official_query_reader_v1_ma_sort_projection_invalid"
+        ) from exc
+
+
+def _ma_entry_matches_parent_row(
+    entry: object,
+    row: DailyMarketTechnicalParentV4Row,
+) -> bool:
+    if type(entry) is not DailyMarketTechnicalMaAlignmentCompactEntryV1:
+        return False
+    if (
+        entry.stock_code != row.stock_code
+        or entry.decision_date != row.decision_date
+        or entry.latest_feature_date != row.latest_feature_date
+        or entry.feature_date != row.latest_feature_date
+        or entry.snapshot_identity_sha256 != row.snapshot_identity_sha256
+        or entry.source_identity != row.source_identity
+        or entry.raw_row_count != row.raw_row_count
+        or entry.observed_prefix_contiguous is not row.observed_prefix_contiguous
+        or not isinstance(row.decision_date, date)
+        or (row.latest_feature_date is not None and row.latest_feature_date > row.decision_date)
+        or len(entry.base_rule_facts) != len(row.rules)
+    ):
+        return False
+    for saved, technical in zip(entry.base_rule_facts, row.rules, strict=True):
+        if (
+            saved.key != technical.key
+            or saved.state != technical.state
+            or not _decimal_text_equal(saved.numerator, technical.numerator)
+            or not _decimal_text_equal(saved.denominator, technical.denominator)
+            or not _decimal_text_equal(saved.ratio, technical.ratio)
+        ):
+            return False
+    return True
+
+
+def _decimal_text_equal(value: str | None, expected: Decimal | None) -> bool:
+    if value is None or expected is None:
+        return value is None and expected is None
+    try:
+        parsed = Decimal(value)
+    except Exception:
+        return False
+    return parsed.is_finite() and parsed == expected
+
+
+def _ma_rule_group_truth(
+    f17_query: DailyMarketTechnicalOfficialDispositionQueryV1,
+    fact: DailyMarketTechnicalOfficialDispositionFactRowV1,
+    row: DailyMarketTechnicalParentV4Row | None,
+) -> ConditionTruth:
+    filters = f17_query.technical_query.rule_state_filters
+    status = fact.to_dict().get("technical_status")
+    if status in {"pending", "excluded"}:
+        return "not_evaluated"
+    if not filters:
+        return "not_applicable"
+    if status != "processed" or row is None:
+        _fail("ma_rule_group_row_missing")
+    truths: list[ConditionTruth] = []
+    for item in filters:
+        evidence = row.rule(item.rule_key)
+        if evidence.state not in _RULE_STATE_VALUES:
+            _fail("ma_rule_group_state_invalid")
+        if evidence.state == "unknown":
+            truths.append("unknown")
+        elif evidence.state in item.states:
+            truths.append("match")
+        else:
+            truths.append("no_match")
+    return _three_valued_combine(truths, cast(Literal["AND", "OR"], f17_query.technical_query.combine_mode))
+
+
+def _ma_condition_truth(
+    query: object,
+    fact: DailyMarketTechnicalOfficialDispositionFactRowV1,
+    entry: object | None,
+) -> ConditionTruth:
+    from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+        DailyMarketTechnicalOfficialDispositionMaQueryV1,
+    )
+
+    if type(query) is not DailyMarketTechnicalOfficialDispositionMaQueryV1:
+        _fail("ma_condition_query_invalid")
+    status = fact.to_dict().get("technical_status")
+    if status in {"pending", "excluded"}:
+        return "not_evaluated"
+    if query.ma_states is None:
+        return "not_applicable"
+    if status != "processed" or type(entry) is not DailyMarketTechnicalMaAlignmentCompactEntryV1:
+        _fail("ma_condition_entry_missing")
+    if entry.ma_state == "unknown":
+        return "unknown"
+    if entry.ma_state not in _RULE_STATE_VALUES:
+        _fail("ma_condition_state_invalid")
+    return "match" if entry.ma_state in query.ma_states else "no_match"
+
+
+def _ma_composite_truth(
+    query: object,
+    fact: DailyMarketTechnicalOfficialDispositionFactRowV1,
+    row: DailyMarketTechnicalParentV4Row | None,
+    technical_truth: ConditionTruth,
+    ma_truth: ConditionTruth,
+) -> ConditionTruth:
+    from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+        DailyMarketTechnicalOfficialDispositionMaQueryV1,
+    )
+
+    if type(query) is not DailyMarketTechnicalOfficialDispositionMaQueryV1:
+        _fail("ma_composite_query_invalid")
+    status = fact.to_dict().get("technical_status")
+    if status in {"pending", "excluded"}:
+        return "not_evaluated"
+    if status != "processed" or row is None:
+        _fail("ma_composite_row_missing")
+    active: list[ConditionTruth] = []
+    if query.f17_query.technical_query.rule_state_filters:
+        if technical_truth in {"not_applicable", "not_evaluated"}:
+            _fail("ma_composite_technical_truth_invalid")
+        active.append(technical_truth)
+    if query.ma_states is not None:
+        if ma_truth in {"not_applicable", "not_evaluated"}:
+            _fail("ma_composite_ma_truth_invalid")
+        active.append(ma_truth)
+    if not active:
+        return "not_applicable"
+    if len(active) == 1:
+        return active[0]
+    return _three_valued_combine(active, cast(Literal["AND", "OR"], query.condition_combine_mode))
+
+
+def _ma_policy_includes(
+    query: object,
+    truth: ConditionTruth,
+) -> bool:
+    """決定可見會員；無啟用條件時包含 hard-eligible rows，非 predicate match。"""
+    from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+        DailyMarketTechnicalOfficialDispositionMaQueryV1,
+    )
+
+    if type(query) is not DailyMarketTechnicalOfficialDispositionMaQueryV1:
+        _fail("ma_policy_query_invalid")
+    has_conditions = bool(query.f17_query.technical_query.rule_state_filters) or query.ma_states is not None
+    if not has_conditions:
+        return True
+    if query.unknown_policy == "include":
+        return truth in {"match", "unknown"}
+    if query.unknown_policy == "exclude":
+        return truth == "match"
+    if query.unknown_policy == "only":
+        return truth == "unknown"
+    _fail("ma_policy_invalid")
+
+
+def _ma_project_composite_sort_key(
+    query: object,
+    f17_projection_query: DailyMarketTechnicalOfficialDispositionQueryV1,
+    fact: DailyMarketTechnicalOfficialDispositionFactRowV1,
+    technical_row: DailyMarketTechnicalParentV4Row | None,
+    ma_entry: object | None,
+) -> object:
+    from app_module.daily_market_technical_official_disposition_ma_query_v1 import (
+        DailyMarketTechnicalOfficialDispositionMaQueryV1,
+        DailyMarketTechnicalOfficialDispositionMaSortKeyV1,
+    )
+
+    if type(query) is not DailyMarketTechnicalOfficialDispositionMaQueryV1:
+        _fail("ma_sort_query_invalid")
+    projected = project_daily_market_technical_official_disposition_sort_key_v1(
+        f17_projection_query,
+        DailyMarketTechnicalOfficialDispositionJoinedRowV1(fact, technical_row),
+    )
+    f17_values = {item.field: item.value for item in projected.sort_values}
+    values: list[DailyMarketTechnicalOfficialDispositionSortValueV1] = []
+    for clause in query.sort_clauses:
+        if clause.field == "ma_alignment_state":
+            value: str | None = (
+                cast(DailyMarketTechnicalMaAlignmentCompactEntryV1, ma_entry).ma_state
+                if type(ma_entry) is DailyMarketTechnicalMaAlignmentCompactEntryV1
+                and ma_entry.ma_state != "unknown"
+                else None
+            )
+        else:
+            if clause.field not in f17_values:
+                _fail("ma_sort_projection_field_missing")
+            value = cast(Any, f17_values[clause.field])
+        values.append(DailyMarketTechnicalOfficialDispositionSortValueV1(
+            field=clause.field,
+            direction=clause.direction,
+            value=cast(Any, value),
+        ))
+    return DailyMarketTechnicalOfficialDispositionMaSortKeyV1(
+        query_identity_sha256=query.query_identity_sha256,
+        stock_code=fact.stock_code,
+        sort_values=tuple(values),
+        fact_row_sha256=hashlib.sha256(fact.body_json.encode("utf-8")).hexdigest(),
+        ma_evidence_identity_sha256=(
+            cast(DailyMarketTechnicalMaAlignmentCompactEntryV1, ma_entry).evidence_identity_sha256
+            if type(ma_entry) is DailyMarketTechnicalMaAlignmentCompactEntryV1 else None
+        ),
+        technical_snapshot_identity_sha256=(
+            technical_row.snapshot_identity_sha256 if technical_row is not None else None
+        ),
+        technical_source_identity=(technical_row.source_identity if technical_row is not None else None),
+    )
 
 
 def _filter_evaluation_payload(

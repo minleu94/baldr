@@ -1660,7 +1660,6 @@ implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_
 
 三份原 plan 分別保留 0/31、0/33、0/25 個 Step 核取狀態；這只描述 plan 原文，不推定程式實作、功能缺失、QA 通過或目前待辦。Full App QA 的 D-007、D-008、D-009 仍為「需確認」，分別要求人工確認低流動性／歷史不足提示、候選池真實狀態與 Portfolio 真實狀態。本批沒有修改 QA、Snapshot、Roadmap、Manual 或架構權威。
 
-
 <a id="coverage-entry-162"></a>
 ## 2026-10-09 補齊 Path Isolation 歷史封存逐檔來源追蹤資料
 
@@ -1671,3 +1670,57 @@ implementation plan 原核取為 0/23。配套的 [V1.6 closeout QA](V1_6_CROSS_
 | [`docs/08_technical/path_isolation_update.md`](../08_technical/path_isolation_update.md) | [PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md](PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md) | 2,607 / `a51c6749cf758ac60cb3d3f5d2156fba9093caec13d13e5338ffe898a9c98d1c` | 3,022 / `51618a54bf8e298a2a88c07899924c3574b09b7152e10dead57b2acfa4a10f8d` | 3,106 / `a30fe504292978b6d0b4aa57e139d080f94887b71cad6eafbf55e1de13d45e23` |
 
 本筆補上逐檔來源追蹤資料，沒有再次搬移或改寫 Archive 原件；歷史檔不代表目前路徑設定或操作方式。
+
+<a id="coverage-entry-163"></a>
+## 2026-10-09 封存四組早期 Superpowers 計畫／規格
+
+將 SQLite 分頁／Excel 匯出、Post-V1 Evidence Importers、V1.1 Decision Workflow Integration、V2.2 Simulated Phase Progress 四組共七份歷史 plan/spec 原文逐位元組移至 `docs/09_archive/superpowers/{plans,specs}/`。所有來源路徑改為相容導引，原文 bytes 與 SHA-256 保持不變。搬移前七份來源均 tracked／clean，目的地不存在；沒有 stage 或 commit 其他工作。
+
+| 原路徑導引 | Archive 原文 | 搬移前原件 bytes／SHA-256 | Archive bytes／SHA-256 |
+|---|---|---:|---:|
+| [`docs/superpowers/plans/2026-06-14-sqlite-pagination-excel-report-export.md`](../superpowers/plans/2026-06-14-sqlite-pagination-excel-report-export.md) | [`2026-06-14-sqlite-pagination-excel-report-export.md`](superpowers/plans/2026-06-14-sqlite-pagination-excel-report-export.md) | 34,720 / `391a07ba427e6dd4eb38d8cae62c05895d123a2b7376ab9df1f2dece268eea4e` | 34,720 / `391a07ba427e6dd4eb38d8cae62c05895d123a2b7376ab9df1f2dece268eea4e` |
+| [`docs/superpowers/plans/2026-07-02-post-v1-evidence-importers.md`](../superpowers/plans/2026-07-02-post-v1-evidence-importers.md) | [`2026-07-02-post-v1-evidence-importers.md`](superpowers/plans/2026-07-02-post-v1-evidence-importers.md) | 2,173 / `2c06a41e4f226272514dd9da5b2bd5aea0399c795ea7bcba724fea5fcd19f1e5` | 2,173 / `2c06a41e4f226272514dd9da5b2bd5aea0399c795ea7bcba724fea5fcd19f1e5` |
+| [`docs/superpowers/specs/2026-07-02-post-v1-evidence-importers-design.md`](../superpowers/specs/2026-07-02-post-v1-evidence-importers-design.md) | [`2026-07-02-post-v1-evidence-importers-design.md`](superpowers/specs/2026-07-02-post-v1-evidence-importers-design.md) | 3,530 / `5f9bc9a7c5906b4feb69ad10c324654303e7d7e190e7b3bb2fa3a9e74d2ae4bd` | 3,530 / `5f9bc9a7c5906b4feb69ad10c324654303e7d7e190e7b3bb2fa3a9e74d2ae4bd` |
+| [`docs/superpowers/plans/2026-07-02-v1-1-decision-workflow-integration.md`](../superpowers/plans/2026-07-02-v1-1-decision-workflow-integration.md) | [`2026-07-02-v1-1-decision-workflow-integration.md`](superpowers/plans/2026-07-02-v1-1-decision-workflow-integration.md) | 7,999 / `533781669c15cdb9fb26042eb00274b0040f692e1889c9d30c05dd8a58d1a4ce` | 7,999 / `533781669c15cdb9fb26042eb00274b0040f692e1889c9d30c05dd8a58d1a4ce` |
+| [`docs/superpowers/specs/2026-07-02-v1-1-decision-workflow-integration-design.md`](../superpowers/specs/2026-07-02-v1-1-decision-workflow-integration-design.md) | [`2026-07-02-v1-1-decision-workflow-integration-design.md`](superpowers/specs/2026-07-02-v1-1-decision-workflow-integration-design.md) | 5,581 / `202b4c76f98c287ce8e41319e7dd5a7ec7a9ca84e3e3e858cb08f06dfef32db6` | 5,581 / `202b4c76f98c287ce8e41319e7dd5a7ec7a9ca84e3e3e858cb08f06dfef32db6` |
+| [`docs/superpowers/plans/2026-07-07-v2-2-simulated-phase-progress.md`](../superpowers/plans/2026-07-07-v2-2-simulated-phase-progress.md) | [`2026-07-07-v2-2-simulated-phase-progress.md`](superpowers/plans/2026-07-07-v2-2-simulated-phase-progress.md) | 11,460 / `2688091080de9e67e44512129519c42fb753de52cd9b5300cb2dbcbc94c329c9` | 11,460 / `2688091080de9e67e44512129519c42fb753de52cd9b5300cb2dbcbc94c329c9` |
+| [`docs/superpowers/specs/2026-07-07-v2-2-simulated-phase-progress-design.md`](../superpowers/specs/2026-07-07-v2-2-simulated-phase-progress-design.md) | [`2026-07-07-v2-2-simulated-phase-progress-design.md`](superpowers/specs/2026-07-07-v2-2-simulated-phase-progress-design.md) | 10,355 / `09a1d806da37545ce4b36bdb46e0abbc62fa0bb5c1d9c1d82421e3aa3071bd8e` | 10,355 / `09a1d806da37545ce4b36bdb46e0abbc62fa0bb5c1d9c1d82421e3aa3071bd8e` |
+
+## 生命週期與目前替代入口
+
+- SQLite 分頁／Excel plan 原 checklist 為 0/54。`LEGACY_ROADMAP_CARRYOVER` 將 SQLite 分頁和 Excel 匯出列為完成；Full App QA B-037 仍是 candidate lane，PDF 仍在 backlog。封存不代表原計畫全數完成或 B-037 完整 UI 通過。
+- Post-V1 Importers plan 原 checklist 為 0/8。配套 QA 收據記錄 28 項測試，但 DDD importer CLI 尚未自動建構完整 provider；沒有 dashboard、scheduler 或投資有效性結論。這些證據不補勾原 plan。
+- V1.1 Decision Workflow plan 原 checklist 為 0/16；V1.1–V2.0 版本演進位於歷史版本紀錄。歸檔不推定原 plan 逐項完成。
+- V2.2 Simulated Phase Progress plan 原 checklist 為 0/16；當日 official weekly history 為 0/3、multi-day dry-run 為 1/3，historical replay 不計 Gate。現行 6M Roadmap Gate 2 仍要求真實 weekly review periods 與真實操作日 evidence。Manual 的 CLI 與 rehearsal 判讀留在原處，本批沒有搬動操作指南。
+
+搬移前以精確檔名掃描 3,058 份 tracked code/config/test，未見 path consumer；全 repo Markdown 的精確檔名搜尋僅找到歷史 Catalog 與 Index History。現行 DOCUMENTATION_INDEX 仍以 Superpowers README 與 Archive README 導航，兩處及 Archive manifest 已更新；舊 Catalog／Index 連結由來源 stub 承接。未修改 dirty 的 DOCUMENTATION_INDEX、PROJECT_SNAPSHOT、APPLICATION_MANUAL，也未修改 DOC_COVERAGE_MAP：權威分工未改，Gate 與操作入口仍在各自 scoped authority。每份 Archive plan/spec 內的相對 Markdown link 均已核對；來源／Archive byte length 與 SHA-256 一致。本批只整理文件位置與導航，未執行程式測試。
+
+<a id="coverage-entry-164"></a>
+## 2026-10-09 封存 Strategy & Scoring Governance plan/spec
+
+將 2026-06-13 Strategy & Scoring Governance 的總計畫、A 回測門檻計畫、B 推薦排名計畫與設計規格移至 `docs/09_archive/superpowers/{plans,specs}/`。四份來源搬移前均為 tracked／clean，目的地原先不存在；原路徑改為相容導引，舊路徑引用仍可到達 Archive 原文。搬移及導引均只處理 Markdown，未 stage 或 commit。
+
+| 原路徑導引 | Archive 原文 | 工作樹原件／Archive bytes 與 SHA-256 | LF-normalized Git bytes 與 SHA-256 |
+|---|---|---|---|
+| [`docs/superpowers/plans/2026-06-13-strategy-scoring-governance.md`](../superpowers/plans/2026-06-13-strategy-scoring-governance.md) | [`2026-06-13-strategy-scoring-governance.md`](superpowers/plans/2026-06-13-strategy-scoring-governance.md) | 2,741 / `2c34acc225a4bb36ba7d012a638f674af7f1b2045173e49364ddc3a74f412a07` | 2,691 / `e7e57dcd97fb700bda1a9161b35529e2f57aeac9826b9ed42cfa7e8504bb303b` |
+| [`docs/superpowers/plans/2026-06-13-strategy-scoring-governance-a-backtest.md`](../superpowers/plans/2026-06-13-strategy-scoring-governance-a-backtest.md) | [`2026-06-13-strategy-scoring-governance-a-backtest.md`](superpowers/plans/2026-06-13-strategy-scoring-governance-a-backtest.md) | 14,393 / `8428929f4c182f2b81c14637cd6236023a1c246886f5406a56a33faa2fcf51e7` | 14,001 / `060acb25e28d99d2ef458b3a59cd3303fc283b5fb3e9a77a531b3e68c98de9f6` |
+| [`docs/superpowers/plans/2026-06-13-strategy-scoring-governance-b-recommendation.md`](../superpowers/plans/2026-06-13-strategy-scoring-governance-b-recommendation.md) | [`2026-06-13-strategy-scoring-governance-b-recommendation.md`](superpowers/plans/2026-06-13-strategy-scoring-governance-b-recommendation.md) | 12,403 / `4d322aa62891c3d51f6909411383b47e0378bc84ad7e6cad58054f2d9af13cce` | 12,050 / `370cd6d0fa6e485236284bf17a243c20de6ba941f61e7c6993537ad687daf3b8` |
+| [`docs/superpowers/specs/2026-06-13-strategy-scoring-governance-design.md`](../superpowers/specs/2026-06-13-strategy-scoring-governance-design.md) | [`2026-06-13-strategy-scoring-governance-design.md`](superpowers/specs/2026-06-13-strategy-scoring-governance-design.md) | 9,597 / `44d4423afd72f67c5a7074ae0ebdc6380a1aa0f709eda83b4819335cf367ae2d` | 9,314 / `faf2cae021e6f052ecbf884aab86e7a5b1c9bcb1257422b77c4ad75535df96cd` |
+
+三份 plan 原 checklist 分別為 **0/4、0/54、0/49**，設計規格沒有執行 checklist；封存沒有補勾或重新判定計畫完成。[Walk Forward Comparison Report](../06_qa/WALK_FORWARD_COMPARISON_REPORT.md) 保存的 fixed／quantile 機制回歸及 10 檔、單一策略 OOS pilot 僅是 bounded 證據，報告本身明示不代表跨策略或全市場；quantile 未顯示平均 OOS Sharpe 優於 fixed。`APPLICATION_MANUAL.md` 記錄 quantile 為 opt-in。故本筆封存不代表全市場有效性、正式預設切換或整體策略治理 Gate 通過。
+
+精確檔名搜尋未找到程式、測試、腳本或設定中的固定路徑 consumer；導覽引用主要在 Superpowers README、Phase README 與歷史 Catalog／Index／Roadmap。Superpowers README 與 Phase README 已直接連到 Archive，四個舊路徑 stub 承接歷史深連結；Archive README、此 Coverage History 與 plan/spec manifest 已同步。未修改 dirty 的 Snapshot、Index、QA README、Manual；DOC_COVERAGE_MAP 權威分工不變，本批未更動。四份封存原文各自的相對 Markdown 連結已核對；原始工作樹 bytes／SHA 與 LF-normalized Git bytes／SHA 分別列示，以免把 CRLF 與 Git clean-filter 後的識別值混為一談。本批未執行程式測試。
+
+<a id="coverage-entry-165"></a>
+## 2026-10-09 歸檔 2026-05-26 Recommendation Portfolio Optimization plan/spec
+
+將歷史 Recommendation Portfolio Optimization plan/spec 原文移至 `docs/09_archive/superpowers/{plans,specs}/`，兩個原路徑保留短導引。來源搬移前 tracked／clean、Archive 目的地不存在；先複製並核對原始 bytes／SHA-256，再建立相容導引。沒有改動程式或 QA 狀態，也沒有 stage／commit。
+
+| 原路徑導引 | Archive 原文 | 原件 bytes／SHA-256 | Archive bytes／SHA-256 |
+|---|---|---:|---:|
+| [`docs/superpowers/plans/2026-05-26-recommendation-portfolio-optimization.md`](../superpowers/plans/2026-05-26-recommendation-portfolio-optimization.md) | [`plan 原文`](superpowers/plans/2026-05-26-recommendation-portfolio-optimization.md) | 39,837 / `c7be179465be5c0b0946064df27b8ce24fd7158cd33baf9b257271b1e0e7f1e2` | 39,837 / `c7be179465be5c0b0946064df27b8ce24fd7158cd33baf9b257271b1e0e7f1e2` |
+| [`docs/superpowers/specs/2026-05-26-recommendation-portfolio-optimization-design.md`](../superpowers/specs/2026-05-26-recommendation-portfolio-optimization-design.md) | [`design spec 原文`](superpowers/specs/2026-05-26-recommendation-portfolio-optimization-design.md) | 8,581 / `8bc7d002f51921945f4a939605a4774561d75eb0ef596da0aadca1bddebc0191` | 8,581 / `8bc7d002f51921945f4a939605a4774561d75eb0ef596da0aadca1bddebc0191` |
+
+原 plan 的 **38 個核取項目皆未勾**。目前 repo 有 [`RecommendationPortfolioOptimizerService`](../../app_module/recommendation_portfolio_optimizer_service.py) 與[參數排序單元測試](../../tests/test_recommendation_portfolio_optimizer.py)，Git 記錄顯示服務於 commit `4e26f48c1` 加入；這些只證明存在一段 optimizer 實作與有限測試，不代表原 plan 全部項目、UI 整合或真實大型搜尋已驗收。Full App coverage mapping 的 B-027「參數最佳化」仍需確認，真實大型掃描限人工；本次沒有改 QA 判定。Gate 4 的現行產品方向仍依 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [6M Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md#8-gate-4portfolio-coach-v1)，舊 spec 中後續穩健指標及新資料因子仍是歷史提案，不作已交付證據。
+
+精確路徑引用位於 Superpowers README 與 plan/spec manifest，兩處已改連 Archive 原文；舊 Catalog 或外部引用仍可由來源導引到達。全域 Index 本來以 Superpowers README、Archive README 作目錄入口，沒有本組檔名的直接索引；未改動目前 dirty 的 Index、Snapshot、Manual 或 QA README。`DOC_COVERAGE_MAP.md` 的權威分工未改，因此只更新本 History、Archive README 與 Superpowers README，沒有改寫 Coverage Map。

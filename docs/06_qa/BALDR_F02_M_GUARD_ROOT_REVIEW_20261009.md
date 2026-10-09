@@ -46,6 +46,12 @@ Root 直接核對 supervisor `_run_fixed_target`：`runpy.run_path(..., run_name
 
 ## r 終態與長路徑診斷
 
+下一切片已授權建立 `query_continuation_only` 新候選，尚未執行：精確重用既有 complete 合成 store 與兩份原 source pointers，以真正 public readers 取得 typed pins、真正 BundleWriter 寫新隔離 bundle，再跑原全母體 Decimal oracle／AND-OR／unknown／排序／分頁。原 DB／store／captures／failed receipt 只讀，新 scope 僅新 attempt 可寫；runner／supervisor 差異、oracle AST 等值、完整 pins、deadline／Job／FD／hardlink 守衛均須先審。此切片不重產、不改原 full status，也不替代 1,000 檔效能驗收。
+
+原生環境對照 002 已 exit 0。Root 實讀收據／原始 stdout：read_exact **success，5.606616 秒**，宣告 259／納入 258／排除 1／處理 258／pending 0／缺資料 1，11 項 unchanged 全 true。副本僅 REPORT_PATH 常值不同（SHA `647abc13...508a14c1`），新 report SHA `06307284...94b19fb`；001 sandbox 失敗完整保留。結果證明相同保存 store 在原生 context 可重開，並不定位原 fixture_creation WinError 3；下一步需具 traceback 的新 QA-only 版本或明示重用 complete 合成 store 的完整矩陣 continuation，保持真 public reader／writer／query／獨立 oracle 與 guard。原 full run 不改稱成功。
+
+證據補全 001 已終態 exit 1。Root 重算凍結 diagnostic／preflight SHA、27 pins 無失配並實讀新收據：public read_exact 在 segment 1 的 extended child manifest 路徑得到 PermissionError／WinError 5，所有 11 項 source／DB／store／segments／原 failed receipt 起訖比較均 true；沒有 producer 或 SQLite connection。此為 sandbox context 的唯讀失敗，不能與較早成功重開合併宣稱穩定產品缺陷。下一步新 native 收據只允許副本改 exclusive REPORT_PATH 常值，先核差異與 pins 再執行；不更動 strict realpath 或來源 guards。原 001 封套保留。
+
 Owner 最新有效 public StoreReader exact 重開成功（5.704 秒）：宣告 259、納入 258、排除 1、處理 258、pending 0、缺資料 1，terminal store receipt 是 complete。此前 raw plan read 與漏掉 research_snapshots/full-technical-store 的 output_root 均屬診斷命令錯誤，不能當產品缺陷。完整重開不重現 WinError 5；仍須實讀新收據與定位原 fixture_creation 的普通 generation path API。保存完整不代表原 full run 或剩餘 AND／OR／排序／逐頁 oracle 已通過。
 
 後續核對更新：Owner 對同一長度 manifest 再驗 extended strict realpath 及 handle final path 均成功，單一 segment parent reader exact 重開亦成功。前述 WinError 5 並非已證明可穩定重現的超長路徑缺陷；必須區分實際 path、guard 與 sandbox/native 執行上下文。Root 已授權一次完整 public StoreReader 唯讀重開以保存真正 traceback／pins，不先修改產品，也不重跑 producer。

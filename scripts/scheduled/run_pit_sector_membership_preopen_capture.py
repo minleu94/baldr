@@ -39,6 +39,7 @@ from data_module.formal_runtime_config import (  # noqa: E402
 from data_module.pit_taxonomy_source_producer import (  # noqa: E402
     OFFICIAL_COMPANY_SOURCE_DEFINITIONS,
     PIT_TAXONOMY_LATE_CONFIG_SOURCE_RELATIVE_PATH,
+    PIT_TAXONOMY_LIVE_CONFIG_SOURCE_RELATIVE_PATH,
     PIT_TAXONOMY_MAX_SOURCE_BYTES,
     PIT_TAXONOMY_SOURCE_CONFIG_ENV,
     PITTaxonomySourceError,
@@ -842,8 +843,22 @@ def _capture_taxonomy_for_run(
             now_provider=now_provider,
             capture_attempt_id=capture_attempt_id,
         )
+        result_payload = result.to_dict()
+        proof_source = config_path or _env_path(PIT_TAXONOMY_SOURCE_CONFIG_ENV)
+        if (
+            split_denominator_contract and not injected_clock
+            and proof_source is not None
+            and proof_source.resolve() == (ROOT / PIT_TAXONOMY_LIVE_CONFIG_SOURCE_RELATIVE_PATH).resolve()
+        ):
+            proof_observed = (now_provider or (lambda: datetime.now(timezone.utc)))()
+            result_payload["source_config_proof"] = _ensure_live_split_source_config_proof(
+                publication_root=publication_root,
+                bundle_path=Path(str(result_payload["bundle_manifest_path"])),
+                config=config, config_path=proof_source, observed=proof_observed,
+                now_provider=now_provider,
+            )
         return {
-            **result.to_dict(),
+            **result_payload,
             "status": "preopen_captured",
             "source_config_path": str(config_path.resolve()) if config_path else os.environ.get(PIT_TAXONOMY_SOURCE_CONFIG_ENV),
             "archive": archive_lineage,
@@ -1057,6 +1072,37 @@ def _verify_reused_attempt_source_config(
             )
 
 
+def _ensure_live_split_source_config_proof(
+    *, publication_root: Path, bundle_path: Path,
+    config: Mapping[str, object], config_path: Path | None,
+    observed: datetime, now_provider: Callable[[], datetime] | None = None,
+) -> dict[str, object]:
+    """只為正式 live 設定補同日 hash-matched proof；其他錯誤不重建。"""
+    try:
+        return read_existing_split_source_config_proof(
+            publication_root=publication_root, bundle_manifest_path=bundle_path,
+            repository_root=ROOT, current_config=config, now=observed,
+        )
+    except PITTaxonomySourceError as error:
+        source = config_path or _env_path(PIT_TAXONOMY_SOURCE_CONFIG_ENV)
+        if (
+            str(error) != "late source config proof is missing"
+            or source is None
+            or source.resolve() != (ROOT / PIT_TAXONOMY_LIVE_CONFIG_SOURCE_RELATIVE_PATH).resolve()
+        ):
+            raise
+        materialize_existing_split_source_config_proof(
+            publication_root=publication_root, bundle_manifest_path=bundle_path,
+            source_config_path=source, repository_root=ROOT,
+            materialized_at=observed, now_provider=now_provider,
+        )
+        completed = (now_provider or (lambda: datetime.now(timezone.utc)))()
+        return read_existing_split_source_config_proof(
+            publication_root=publication_root, bundle_manifest_path=bundle_path,
+            repository_root=ROOT, current_config=config, now=completed,
+        )
+
+
 def _reuse_existing_split_taxonomy_candidate(
     *,
     publication_root: Path,
@@ -1077,12 +1123,10 @@ def _reuse_existing_split_taxonomy_candidate(
     _assert_no_link_path(bundle_root, allow_missing=False, confine_to=root)
     bundle_path = bundle_root / "bundle_manifest.json"
     config = load_pit_taxonomy_source_config(config_path, bounded_read=True)
-    config_proof = read_existing_split_source_config_proof(
-        publication_root=root,
-        bundle_manifest_path=bundle_path,
-        repository_root=ROOT,
-        current_config=config,
-        now=observed,
+    config_proof = _ensure_live_split_source_config_proof(
+        publication_root=root, bundle_path=bundle_path,
+        config=config, config_path=config_path, observed=observed,
+        now_provider=now_provider,
     )
     proof_config = config_proof.get("config")
     if not isinstance(proof_config, Mapping):

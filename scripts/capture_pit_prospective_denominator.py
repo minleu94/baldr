@@ -119,7 +119,9 @@ def _fetch_one(
     request = Request(
         url,
         headers={
-            "User-Agent": "technical-analysis-pit-prospective-denominator/1.0",
+            "User-Agent": "Mozilla/5.0",
+            "Cache-Control": "no-cache",
+            "Accept": "application/json,text/csv,text/html;q=0.8",
             "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.7",
         },
     )

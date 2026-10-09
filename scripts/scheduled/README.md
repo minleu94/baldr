@@ -1,5 +1,15 @@
 # baldr Scheduled Operational Wrappers
 
+## 2026-10-08 背景入口與故障修正
+
+四個已存在的 Direct／Paper Portfolio／Sector／ML Allocation Forward Task 已改用 `.venv/Scripts/pythonw.exe` 呼叫 `run_scheduled_cmd_hidden.py --task <固定 task 名稱>`。原 CMD 與環境參數保留；每 run 的 stdout／stderr、started／terminal 位於 `output/scheduled_launches`。launcher exit 只表示 child 程式結束，必須另核 pipeline terminal／consumer pins。
+
+`update_interrupted_tasks_hidden_launcher.ps1 -Mode DryRun` 只檢視；`-Mode Apply` 只修改固定四個非 Running Task 的 action，備份 XML／ACL，保留 trigger／principal／settings／LastRun，不 Run Task。總註冊器可能恢復原 CMD action，重新註冊後須再次核對與套用。實際備份在 `output/qa/schedule_hidden_launcher_20261008T1726139894070Z`。
+
+G9 CMD 總 timeout 預設 14400 秒；Bank running heartbeat mtime 不再誤拒晚於 Task 起始 30 秒的更新，但 run 起始綁定／未來／stale 防線保留。Paper 依 queue freeze 選 sector archive，不對 blocked result 綁 fills；Decision watchlist 日期查詢先使用索引。仍保留 G6 skipped_locked、缺價、source revision 等阻擋。
+
+管理員可執行 `enable_scheduler_event_log.ps1`，只啟用 TaskScheduler Operational，不清除／Run Task。本輪 UAC 取消，日誌尚未啟用。原始故障與完整驗證見 [10/08 QA](../../docs/06_qa/BALDR_SCHEDULE_REPAIR_20261008.md)。
+
 ## 2026-10-06 隔離研究 runtime 入口
 
 run_rule_research_daily_isolated.py 可用 --runtime-request 讀 strict typed request，預設 preflight；--execute-isolated 僅明示隔離執行，--task-review 只輸出 disabled/unconfigured 的包，不註冊 Task。明示 calendar coverage／terminal pins／segment runtime hashes／同一 coordination_root，缺件 unknown 不造資格；preflight／成功 terminal 必須明示 exact int zero subprocess exit。timeout／cancel 保留 partial，原 snapshot20GiB／capture200GiB lower bound 與高 override 保留，不自動清理。正式 Task/account/ACL/source roots 仍未授權，詳細操作以 [Manual](../../docs/07_guides/APPLICATION_MANUAL.md) 與 [B12 QA](../../docs/06_qa/BALDR_B12_DAILY_RUNTIME_20261006.md) 為準。以下既有正式 wrappers 是各自歷史契約，不代表本新入口已啟用。
@@ -71,8 +81,10 @@ aggregate `register`／`register-all` 不會建立或覆蓋它；aggregate `unre
 | `baldr-formal-pit-sidecar-postcutoff-daily` | enabled after dedicated register | daily local time 18:00（PDT 台北 09:00；PST 台北 10:00） | 先只讀盤前已完成的 PIT archive，以當下 Taipei decision clock 重建 handoff；sidecar 階段通過獨立 denominator、coverage、license scope 與 assembler readback 才 create-only 發布 sidecar，隨後同一 action 呼叫 `run_paper_event_source_capture_daily.py`，在台北 09:00..13:30 以固定 TWSE MIS endpoint 保存 Paper session-open raw bytes。沒有完整證據寫 blocked receipt，不重新抓取同一自然日 PIT HTTP source；Paper capture 缺來源時只保留 bounded retry 診斷，不建立 fill。 |
 | `baldr-formal-input-producer-daily` | enabled after register | daily local time 21:25（PDT 台北 12:25；PST 台北 13:25） | 使用當下自然時間執行 Rule／causal Paper ledger／current PIT 的 bounded machine handoff。Rule 與 ledger 的 immutable manifest、source custody、publication context 與 receipt 寫入 repository output durable root；candidate 與 development 工作區每輪使用新的 TEMP 子目錄。缺 Rule source 不會阻止 PIT capture；缺任一 input 會保存具體 blocker，candidate-only 或 blocked 回傳非零狀態，不計入 Formal 3/3。 |
 | `baldr-paper-execution-eod-replay-daily` | enabled after register | daily local time 06:00（PDT／PST 分別對應台北 21:00／22:00） | 先以固定 D 槽唯讀 dependency gate 驗證同一台北自然日的 quick update、freshness、daily_prices open rows 與 TWSE／TPEX source hash，再從持久 recommendation queue 選取下一官方 session 已到期的 frozen input。Paper writer 以 execution date 與完整 recommendation file/content hash 讀取同一份 repository `event_captures` durable manifest；缺失、hash／日期／source custody 不符時 fail closed。只有 durable capture、candidate、processed receipt 與 query-only ledger readback 全部綁定才保存 research-only fill；Formal consumer 仍另驗 event-time 與三來源 common identity。上游暫時來源最多重試 3 次並保留每次診斷，terminal blocker 立即停止；不跑 snapshot valuation，也不接受 D／環境變數 writer path 覆寫。 |
-| `baldr-ml-direct-chain-maintainer` | enabled after register | daily local time 05:30 | 自動解析並重驗最新全市場 immutable raw PIT pointer、official market-event custody 與目前 Direct identity，然後啟動／維持 `maintain_ml_direct_v3_refresh_chain.py --watch-formal-inputs`。使用既有 instance lock 防止重複訓練；無效輸入只寫 `blocked_invalid_bootstrap_input`，不寫來源 SQLite、不建立未受控 sidecar、不放寬 formal／alpha／broker gate。 |
+| `baldr-ml-direct-chain-maintainer` | enabled after register | daily local time 10:00 | 避開早晨 Forward／Capture 的共用鎖窗口；自動解析並重驗最新全市場 immutable raw PIT pointer、official market-event custody 與目前 Direct identity，再執行有限 Direct cycle（`--max-restarts 1`，不啟用長駐 watcher）；完成或 blocked 後釋放既有共用鎖。使用既有 instance lock 防止重複訓練；無效輸入只寫 `blocked_invalid_bootstrap_input`，不寫來源 SQLite、不建立未受控 sidecar、不放寬 formal／alpha／broker gate。 |
 | `baldr-v2-2-weekly-collection` | `weekly-register` 後啟用 | 每週日 18:00 | 執行 `run_v2_2_weekly_collection.cmd`，以 SQLite read-only 讀取來源並將 evidence append 至 sidecar。對外狀態為 `pending_human_review`；需要人工判讀，但不代表 Gate 通過、不寫 weekly history，且 `write_intent=false`。只有 core collection exit 0 才啟動兩個獨立 research children：statement availability 預設開啟、`BALDR_ENABLE_MOPS_STATEMENT_CUSTODY=0` 可停用；季度 OpenAPI 預設開啟、`BALDR_ENABLE_MOPS_QUARTERLY_OPENAPI_RESEARCH=0` 可個別停用。Child 狀態／failure 以各自 per-run receipt 與 wrapper process output 判讀，不覆寫 core exit 或 pending 狀態。季度入口每週最多 26 GET（2 catalog + 24 數值 endpoint），只產生 repo create-only research candidate。 |
+
+2026-10-07 修復補充：Sector 全分母仍驗證官方 JSON／CSV／metadata／Swagger／license；正式分類設定移除已不在當日官方分母的 8183 inactive overlay，歷史公告／raw 保留。全市場 ISIN 約 35 MB，socket 30 秒及完整回應 15 分鐘門檻分開。canonical live 設定的 split source config proof 自動與原 attempt hash 綁定，僅同日盤前產製／重用；partial cache、hash 錯誤及 custom path 不自動重建。ML Allocation 顯示 `blocked_source_revision_release` 時須處理修訂模型與輸入契約，不能用改 path 或刪 quarantine 通關。實測與自然／研究邊界見 [修復 QA](../../docs/06_qa/BALDR_SCHEDULE_REPAIR_20261007.md)。
 
 ### 2026-10-01 研究 child readback 範圍
 
@@ -419,6 +431,8 @@ projection marker 的 legacy 日期，窗口外日期不重抓，既有有效 ma
 才退回該輪 requested start/end，仍維持 fail closed。
 
 ## Direct chain automatic bootstrap
+
+2026-10-07 修正：每日 wrapper 不再啟用 `--watch-formal-inputs`，避免已完成的長駐 watcher 持有共用 heavy-chain lock，阻擋 Forward／Capture。每日採 `--max-restarts 1`；有效訓練仍可能耗時，Forward 的 deadline／互斥 gate 不變。下文人工 watcher 操作仍可使用，但會持鎖，須與每日消費窗口協調。原 run 不回填成功，詳見 [排程修正 QA](../../docs/06_qa/BALDR_SCHEDULE_REPAIR_20261007.md)。
 
 `baldr-ml-direct-chain-maintainer` 的入口是
 `scripts/scheduled/run_ml_direct_chain_maintenance.cmd`。wrapper 會從

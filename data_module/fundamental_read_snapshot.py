@@ -18,6 +18,7 @@ from typing import Callable, Literal, Sequence, cast
 from uuid import uuid4
 
 from data_module.config import TWStockConfig
+from app_module.personal_data_paths import to_internal_io_path
 
 from data_module.recommendation_current_fundamental_provider import (
     RecommendationCurrentFundamentalProvider,
@@ -2876,11 +2877,11 @@ def _write_attempt_status(
 def _write_atomic_json(path: Path, payload: dict[str, object]) -> None:
     raw = _canonical_json_bytes(payload)
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
-    with temporary.open("xb") as stream:
+    with open(to_internal_io_path(temporary), "xb") as stream:
         stream.write(raw)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    os.replace(to_internal_io_path(temporary), to_internal_io_path(path))
 
 
 def _write_create_only_bytes(path: Path, raw: bytes) -> None:

@@ -576,7 +576,9 @@ def test_raw_and_direct_callers_share_release_root_reservation_path(
         safety_reserve_bytes=SCHEDULED_SAFETY_RESERVE_BYTES,
     )
 
-    _, metadata = runner._resolve_inputs(direct_args)
+    command, metadata = runner._resolve_inputs(direct_args)
+    assert "--watch-formal-inputs" not in command
+    assert command[command.index("--max-restarts") + 1] == "1"
     raw_release_root = (
         raw_args.release_root
         if raw_args.release_root is not None

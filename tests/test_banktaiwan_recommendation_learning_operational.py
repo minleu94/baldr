@@ -2382,14 +2382,16 @@ def test_wait_pins_new_current_run_and_accepts_snapshot_after_parent_learning_fa
     assert heartbeat_rows[-1]["status"] == "ready"
 
 
+@pytest.mark.parametrize("mtime_offset", [29, 300, 3600])
 def test_running_task_proof_checks_real_identity_and_30_second_start_bound(
     tmp_path: Path,
+    mtime_offset: int,
 ) -> None:
     args = _fixture_args(tmp_path, decision_date="2026-09-30")
     output_root = Path(args.snapshot_output_root).resolve()
     decision_date = date(2026, 9, 30)
     last_run = datetime(2026, 9, 30, 9, 0, tzinfo=timezone.utc)
-    now = last_run + timedelta(seconds=35)
+    now = last_run + timedelta(seconds=mtime_offset + 35)
 
     run_id_at_boundary = _producer_run_id(
         decision_date,
@@ -2400,7 +2402,7 @@ def test_running_task_proof_checks_real_identity_and_30_second_start_bound(
         decision_date=decision_date,
         run_id=run_id_at_boundary,
         last_run_time=last_run,
-        mtime_offset_seconds=29.0,
+        mtime_offset_seconds=mtime_offset,
     )
     proof, error = operational._current_upstream_run_proof(
         output_root=output_root,
@@ -2411,7 +2413,7 @@ def test_running_task_proof_checks_real_identity_and_30_second_start_bound(
     assert error is None
     assert proof is not None
     assert proof.run_id == run_id_at_boundary
-    assert (proof.status_mtime_utc - last_run).total_seconds() == pytest.approx(29.0)
+    assert (proof.status_mtime_utc - last_run).total_seconds() == mtime_offset
 
     run_id_too_late = _producer_run_id(
         decision_date,

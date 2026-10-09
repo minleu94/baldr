@@ -6,67 +6,15 @@
 ## 相關文檔
 - [系統架構文檔](../01_architecture/system_architecture.md) - 系統架構和模組說明
 - [早期資料收集架構藍圖（歷史）](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md) - 舊 API、CSV 與路徑設計追溯
-- [技術分析優化文檔](../08_technical/technical_analysis_optimizations.md) - 技術分析模塊優化說明
+- [早期技術分析優化備忘錄（歷史）](../09_archive/TECHNICAL_ANALYSIS_OPTIMIZATIONS_HISTORY.md) - 原 API／路徑範例已過時；目前實作與模組邊界以 [System Architecture](../01_architecture/system_architecture.md) 和 source 為準
 - [專案快照](../00_core/PROJECT_SNAPSHOT.md) - 當前開發進度總覽
 - [測試目錄說明](tests_readme.md) - 測試相關說明
 
-## 數據存儲路徑
+## 資料路徑與設定
 
-所有腳本默認使用以下數據存儲路徑：
+使用 `TWStockConfig` 的腳本以 `DATA_ROOT`、`OUTPUT_ROOT` 與 `PROFILE` 解析資料和輸出位置；個別入口是否支援命令列覆蓋，請查看該腳本的 `--help`。不要使用舊文件中的 `TWSTOCK_DATA_DIR` 或直接在建構後改寫衍生欄位 `base_dir`。
 
-```
-D:/Min/Python/Project/FA_Data/
-├── meta_data/         # 元數據
-│   ├── market_index.csv    # 市場指數數據
-│   ├── industry_index.csv  # 產業指數數據
-│   ├── stock_data_whole.csv # 股票整合數據
-│   ├── all_stocks_data.csv  # 所有股票整合數據
-│   └── backup/             # 數據備份
-├── daily_price/       # 每日價格數據
-├── technical_analysis/ # 技術分析數據
-├── ml_models/         # 機器學習模型
-└── logs/              # 日誌文件
-```
-
-### 配置方式
-
-#### 1. 路徑隔離功能（推薦用於測試）
-系統支援靈活的路徑覆蓋，確保測試環境不會影響生產數據：
-
-**環境變量覆蓋**:
-```bash
-# 設置測試環境
-export DATA_ROOT=./test_data
-export OUTPUT_ROOT=./test_output
-export PROFILE=test
-```
-
-**命令行參數覆蓋**:
-```bash
-# 直接指定測試路徑
-python scripts/update_all_data.py --profile test --data-root ./sandbox_data --output-root ./sandbox_output --dry-run
-```
-
-**乾運行模式**:
-```bash
-# 測試腳本邏輯而不實際寫入檔案
-python scripts/update_all_data.py --dry-run
-```
-
-#### 2. 傳統配置方式（向後兼容）
-可以通過以下方式修改存儲路徑：
-
-1. 使用 `TWStockConfig` 類：
-```python
-from data_module.config import TWStockConfig
-config = TWStockConfig()
-config.base_dir = Path("your/custom/path")
-```
-
-2. 使用環境變數：
-```bash
-set TWSTOCK_DATA_DIR=your/custom/path
-```
+完整環境設定與隔離操作請看 [Application Manual](APPLICATION_MANUAL.md)；資料來源與輸出位置看 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md) 及 [daily data update guide](../03_data/daily_data_update_guide.md)。目前設定欄位定義見 [TWStockConfig](../../data_module/config.py)。
 
 ## 腳本列表
 
@@ -275,7 +223,7 @@ set TWSTOCK_DATA_DIR=your/custom/path
 - 詳細的系統架構和數據流程可參考 `../01_architecture/system_architecture.md`
 - 早期 API、CSV 與檔案路徑設計見[歷史藍圖](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md)；現行流程以 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md) 為準
 - 測試相關的說明可參考 `tests_readme.md`
-- 技術分析模組的優化說明可參考 `../08_technical/technical_analysis_optimizations.md`
+- 早期技術分析優化備忘錄只供歷史追溯，見 [Archive 原文](../09_archive/TECHNICAL_ANALYSIS_OPTIMIZATIONS_HISTORY.md)；目前模組邊界與實作請看系統架構及 source
 
 ## 版本更新記錄
 

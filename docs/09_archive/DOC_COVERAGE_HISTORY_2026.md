@@ -1023,3 +1023,14 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/superpowers/specs/2026-07-11-post-v1-evidence-review-dashboards-design.md` | [design spec 原文](superpowers/specs/2026-07-11-post-v1-evidence-review-dashboards-design.md) | 2,508 / `E5BE319F8565B1299E5F3E92E0BBDD9167034AEF9C74C3FE527E644D72365654` | 2,508 / `E5BE319F8565B1299E5F3E92E0BBDD9167034AEF9C74C3FE527E644D72365654` |
 
 原文的工程完成收據為 [7/11 QA](POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md)，人工 UI 驗收仍以[7/12 checklist](POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md)的實際結果為準；歸檔不替代後續 Gate。
+
+<a id="coverage-entry-115"></a>
+## 2026-10-09 歸檔早期技術分析優化備忘錄
+
+此早期文件的 API、指標回傳型態、`TechnicalAnalyzer` 範例、資料路徑及 ML 敘述與目前程式不符。舊路徑保留短導引；Archive 保存原始 bytes。精確檔名引用盤點找到三處現行文件引用，已改連歷史原件並標明不可作為現況依據；三處歷史 Archive 文件仍引用舊路徑，由短導引保持可達。未找到程式、測試、腳本、固定輸出路徑或 hash manifest consumer。現況改由 system architecture、technical analysis source、`TWStockConfig` 與 Application Manual 承接。本次不改變權威邊界，因此不更新 Coverage Map。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/08_technical/technical_analysis_optimizations.md` | [原始技術分析優化備忘錄](TECHNICAL_ANALYSIS_OPTIMIZATIONS_HISTORY.md) | 5,401 / `142CF76EA4955FD7721BC7E684FF20BE5C482D9632340379B2F2461513C17EC0` | 5,401 / `142CF76EA4955FD7721BC7E684FF20BE5C482D9632340379B2F2461513C17EC0` |
+
+現行實作依據：[system architecture](../01_architecture/system_architecture.md)、[TechnicalAnalyzer](../../analysis_module/technical_analysis/technical_analyzer.py)、[TechnicalIndicatorCalculator](../../analysis_module/technical_analysis/technical_indicators.py)、[TWStockConfig](../../data_module/config.py) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊路徑只負責相容導引；歷史原文中的操作範例不得直接執行或視為目前功能承諾。

@@ -9,8 +9,8 @@
 - [歷史參數設計改進紀錄（Phase 2.5）](PARAMETER_DESIGN_IMPROVEMENTS.md)
   - 保存當時的參數建議與實施記錄；內文日期、優先級及「待執行」狀態不可直接當作目前待辦。
 
-- **`technical_analysis_optimizations.md`**
-  - 技術分析優化文檔
+- [早期技術分析優化備忘錄（歷史）](../09_archive/TECHNICAL_ANALYSIS_OPTIMIZATIONS_HISTORY.md)
+  - [舊路徑](technical_analysis_optimizations.md)保留短導引；原文的 API、回傳型態與資料路徑範例不符合目前實作。現況看系統架構與實際 source。
 
 - **`UI_QT_CHART_RENDERING.md`**
   - Qt Backtest 圖表 fast Canvas renderer、payload layer 與 Matplotlib fallback 架構

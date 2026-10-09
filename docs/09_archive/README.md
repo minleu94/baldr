@@ -89,6 +89,10 @@
 - [V1.9 Read-only Agent MCP plan](superpowers/plans/2026-07-06-v1-9-read-only-agent-mcp.md) 與 [design spec](superpowers/specs/2026-07-06-v1-9-read-only-agent-mcp-design.md)：唯讀 v1 closeout 依 [QA 收據](V1_9_READ_ONLY_AGENT_MCP_CLOSEOUT_2026_07_06.md) 判讀；計畫留有未勾項目，weekly evidence、人工 UI smoke、多日 dry-run、真實 workflow sample 等不視為由該 closeout 自動完成。歷史文件不授權 production scheduler 或寫入。
 - 四份 `docs/superpowers/` 原位置保留短導引；目前狀態與架構分別看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 及 [system architecture](../01_architecture/system_architecture.md)。bytes、SHA-256、old→new 路徑與生命週期判讀見 [plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
 
+## 2026-10-09 早期技術分析優化備忘錄
+
+- [技術分析模組優化文檔原文](TECHNICAL_ANALYSIS_OPTIMIZATIONS_HISTORY.md)：保留早期指標 API、回傳型態、資料路徑、形態與 ML 描述，僅供歷史追溯；其中 API／路徑與目前實作不符，不應當作現況或操作指引。現況看 [系統架構](../01_architecture/system_architecture.md)、[TechnicalAnalyzer](../../analysis_module/technical_analysis/technical_analyzer.py)、[TechnicalIndicatorCalculator](../../analysis_module/technical_analysis/technical_indicators.py)、[TWStockConfig](../../data_module/config.py) 與 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊路徑保留短導引，原文 bytes／SHA 與引用盤點見 [Coverage History Entry 115](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-115)。
+
 ## 2026-10-08 資料實作摘要
 
 - [Month 5 Fundamental Source Inventory（截至 2026-08-12）](FUNDAMENTAL_SOURCE_INVENTORY_HISTORY_20260812.md)：保留基本面來源搜尋、available_date／PIT 缺口及候選工作歷史；目前狀態看 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)，來源與接受判斷看 [近期基本面 QA](../06_qa/README.md) 及 current architecture。

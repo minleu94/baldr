@@ -15,8 +15,8 @@
 - **`UI_QT_CHART_RENDERING.md`**
   - Qt Backtest 圖表 fast Canvas renderer、payload layer 與 Matplotlib fallback 架構
 
-- **`path_isolation_update.md`**
-  - 路徑隔離更新文檔
+- [路徑隔離功能更新說明（v1.3.0，歷史）](../09_archive/PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md)
+  - 保存 2024-10-16 舊版本的命令、預設與測試記錄；目前路徑規則依 `TWStockConfig`、系統架構與操作手冊判讀。
 
 - **`RUN_WITHOUT_VENV.md`**
   - 不使用虛擬環境運行指南

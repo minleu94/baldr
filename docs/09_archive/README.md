@@ -20,6 +20,8 @@
 
 - [早期資料收集架構藍圖](DATA_COLLECTION_ARCHITECTURE_HISTORY.md)：保留 2026-06 資料/API 基線、2026-06-11 券商雙指標契約與 2026-10-03 freshness 補記；現行架構看 [system_architecture](../01_architecture/system_architecture.md)，操作看 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 
+- [路徑隔離更新 v1.3.0（2024-10-16）](PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md)：保留舊版路徑覆蓋、dry-run 與測試說明；原 `docs/08_technical/path_isolation_update.md` 路徑提供轉址。目前設定依 `TWStockConfig`、[系統架構](../01_architecture/system_architecture.md) 與 [操作手冊](../07_guides/APPLICATION_MANUAL.md) 判讀。
+
 
 - [全文件目錄快照（2026-10-06）](DOCUMENTATION_CATALOG_20261006_HISTORY.md)：保留當日 tracked 文件清單；它不是即時清冊，目前導航看 DOCUMENTATION_INDEX 與各專區 README。
 

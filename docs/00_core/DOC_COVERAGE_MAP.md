@@ -280,6 +280,8 @@ Phase 目錄逐檔導覽已補上可點文件路徑；`phase3_5_research/README.
 
 `docs/08_technical/PARAMETER_DESIGN_IMPROVEMENTS.md` 的標題與前言標明為 Phase 2.5 歷史建議／當時清單，README 不再將其列為現行改進計畫；原建議與完成狀態全文保留，現況導回 Snapshot、6M Roadmap、Score Explanation 與 QA。Index 正有其他工作修改，本批不移動檔案或修改 Index。
 
+將 2024-10-16 `path_isolation_update.md` 歸檔為 `docs/09_archive/PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md`，加上歷史標示；原技術路徑保留轉址，技術／Archive README 同步導覽。2026-10-06 文件目錄快照與舊 Index 歷史中的原路徑刻意保留，連到轉址頁仍可追溯；核心 Index 沒有該檔案的個別條目，故本次不修改正由其他工作編輯的 Index。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

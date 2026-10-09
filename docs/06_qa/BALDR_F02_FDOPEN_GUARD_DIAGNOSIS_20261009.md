@@ -13,3 +13,7 @@ f 候選已完成精確 fdopen 防護修正，但完整驗收仍失敗。Root �
 本次停止位置是 bundle shard 原子發布。Root 核對產品 `daily_market_technical_official_disposition_bundle_v1.py` SHA 為 `8251087995636762aa55bbab74923ba2d762aea6bc95b11a286acbc7bc1ee47a`；`_publish_objects()` 先驗 staged shard SHA，再以 `os.link` 將本次 `.attempts/<uuid>/shard-000001.jsonl` 發布至 `objects/<sha256>.jsonl`。該步被 QA 的全面 link 禁止擋下，尚未到 manifest 發布；不能將此封套視為查詢結果或完整 257 接受。
 
 下一個 g QA 候選只可對已釘選的兩個產品發布呼叫端核精確來源／目的、同一隔離 attempt 與同卷、排他目的、內容 SHA／定址名稱、native 檔案身分及合法 link-count 生命週期。未知呼叫端、外部路徑、覆寫及 symlink 仍拒絕；需先完成正反例自測，再執行同一固定 target。f 失敗封套保留，不修改產品發布或金融計算語意。
+
+另有尚待解決的產品入口契約差異，必須先於下一次完整產製重跑釐清。Root 直接核固定 target：明示納入 258 檔、最後一檔沒有來源列，預期 257 processed／1 pending，並要求瀏覽回讀該 pending row；不是將缺資料改稱合格觀測。現行 bundle metadata validator 要求 `technical.receipt_status == complete`，而 universe store `complete()` 要求 processed 等於 included 且 pending 為零。這些來源規則與該固定 target 的 pending 目標表面矛盾。已要求交叉核對完整 opener 是否另有 partial 研究入口；在契約確認前，不縮減固定母體以取得綠燈，也不把 partial ledger 的可讀性當成推薦資格。
+
+Owner 進一步定位 `_technical_code_status()` 與 shard writer：完成 segment 覆蓋的 included 股票均為 processed，缺價格資料另記 `technical_missing_data`，不會成為 pending。因此舊 target 的 pending 判讀是錯誤 oracle。已指示保留舊 target／封套，另建待審 v3：仍 259 declared／258 included／1 excluded、最後碼仍無價格來源，完整處理應為 258 processed／0 pending／1 missing-data；原 257 有價格來源股票的跨 256 分段與完整 AND／OR、hard gate、排序案例必須保留。新版本需重新推導缺資料列的真未知狀態，不能只改計數；真正 partial／pending ledger 仍為另一個未驗收範圍，不由此版本宣告接受。

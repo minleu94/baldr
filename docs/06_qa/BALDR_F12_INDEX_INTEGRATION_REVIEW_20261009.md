@@ -15,3 +15,5 @@ Root native 執行 `tests/test_daily_market_monthly_revenue_yoy_index_v1.py`，e
 原 reader／MA 回歸的 root session `23017` 已終止：外層 harness 的 120 秒期限觸發 `subprocess.TimeoutExpired`，沒有取得 pytest 完成結果，因此通過與產品失敗均未證明。逾時紀錄為 `output/qa/F12_MONTHLY_REVENUE_QUERY_20261009_A/root_old_query_timeout_1791508549780502700.json`；該初次程序觀察誤將觀察用 PowerShell 命令文字列入匹配，不能用作殘留判定。後續以 Python 執行檔及 `-m pytest` 的實際參數精確匹配，未見本次舊 reader 測試程序殘留，收據為 `root_old_query_terminal_cleanup_1791508566274104800.json`。下次回歸須保存串流輸出並給予真實 257 檔 fixture 適當有界期限。
 
 目前新 reader 測試來源涵蓋 258 declared／257 processed／1 excluded 的母體、兩組 OR、排除 hard gate、跨分段分頁與索引整份驗證次數。該 fixture 沒有 pending，且 MA 為 unknown、營收只有一筆合格觀測；尚不能證明三組 AND／OR、完整未知政策與 pending 行為，已要求補齊實際來源案例。
+
+後續 root native 回歸 session `71554` 已完成：原 F17 reader 與 MA query DTO 共 45 passed／497.79 秒、exit 0，600 秒有界期限未觸發。共享 reader SHA 起訖皆為 `3a8274201402709b2d9515d6da552ee4502f3a0b3be0e3c0b14c0473bc21ae39`。收據與串流日誌為 `root_old_query_regression_1791508671465035500.json`／`.log`；此結果證明既有契約回歸，不能取代新增營收三組條件與完整來源整合驗收。

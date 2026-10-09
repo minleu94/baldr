@@ -1009,3 +1009,17 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/06_qa/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17.md` | [A 線 latest-status review 原文](A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md) | 4,070 / `6A5D8E601B6870846B7B34D9F31F7CF949A3099EBF4A1370AE6AC1E719211EFA` | 4,070 / `6A5D8E601B6870846B7B34D9F31F7CF949A3099EBF4A1370AE6AC1E719211EFA` |
 
 現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[QA 證據導覽](../06_qa/README.md) 與最新排程收據；原 QA 路徑僅供相容導引，不作目前狀態依據。
+
+<a id="coverage-entry-114"></a>
+## 2026-10-09 歸檔 Post-V1 Evidence Review Dashboards plan/spec
+
+這對 2026-07-11 工程計畫與設計規格描述 read-only Evidence Review dashboard pack。具名 QA 收據記錄工程實作與測試完成；獨立的 7/12 人工 UI smoke checklist 結果表仍空白，multi-day dry-run 與 production scheduler approval 仍是開放 Gate。本次只整理 plan/spec 的歷史位置，不將工程 QA 擴大成真人驗收、長期 dry-run 或排程核准完成。
+
+兩份原文的來源路徑均留短導引，Archive 副本逐位元組保留。精確路徑檢查未找到程式、測試或腳本 consumer；既有 QA 收據、人工 checklist 與歷史 Catalog 經原路徑導引保持可達。現行狀態／優先序回到 Snapshot 與 6M Roadmap，操作以 Application Manual 為準。此變更不改變文件權威邊界，因此不需更新 Coverage Map；`DOCUMENTATION_INDEX.md` 目前有其他工作樹修改，本批不改寫該檔。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/superpowers/plans/2026-07-11-post-v1-evidence-review-dashboards.md` | [plan 原文](superpowers/plans/2026-07-11-post-v1-evidence-review-dashboards.md) | 1,949 / `16A8F9576588688D02C9E6D8EB3641E781CC3DA81E2C36056FFC402B7F8253EE` | 1,949 / `16A8F9576588688D02C9E6D8EB3641E781CC3DA81E2C36056FFC402B7F8253EE` |
+| `docs/superpowers/specs/2026-07-11-post-v1-evidence-review-dashboards-design.md` | [design spec 原文](superpowers/specs/2026-07-11-post-v1-evidence-review-dashboards-design.md) | 2,508 / `E5BE319F8565B1299E5F3E92E0BBDD9167034AEF9C74C3FE527E644D72365654` | 2,508 / `E5BE319F8565B1299E5F3E92E0BBDD9167034AEF9C74C3FE527E644D72365654` |
+
+原文的工程完成收據為 [7/11 QA](POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md)，人工 UI 驗收仍以[7/12 checklist](POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md)的實際結果為準；歸檔不替代後續 Gate。

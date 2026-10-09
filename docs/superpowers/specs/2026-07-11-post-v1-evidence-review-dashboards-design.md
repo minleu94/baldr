@@ -1,57 +1,9 @@
-# Post-V1 Evidence Review Dashboards Read-only UI Pack 設計
+# Post-V1 Evidence Review Dashboards Read-only UI Pack 設計（2026-07-11）— 歷史路徑導引
 
-## Scope
+> 完整原文已移至 [Archive design spec](../../09_archive/superpowers/specs/2026-07-11-post-v1-evidence-review-dashboards-design.md)。原件 2,508 bytes，SHA-256 `E5BE319F8565B1299E5F3E92E0BBDD9167034AEF9C74C3FE527E644D72365654`；來源與封存位置見 [plan/spec manifest](../../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
 
-本設計補上 Research Lab 內的 Evidence Review dashboard pack：
+此設計規格描述當時的 read-only Evidence Review dashboard 範圍與邊界，供歷史追溯，不是目前實作架構權威。工程 QA 收據與 7/12 人工 UI smoke checklist 分開保存；人工 smoke、multi-day dry-run 與 scheduler approval 不由歸檔推定完成。
 
-- Decision Quality Review Dashboard。
-- Signal Decay Dashboard。
-- Live vs Research Gap Dashboard。
-- 共用 evidence boundary banner。
-
-Dashboard 只讀取已保存的 evidence / review / observation read service，不建立 scheduler、不寫 evidence、不改 portfolio、不改 strategy lifecycle、不重算 scoring。
-
-## UI Placement
-
-採用最小侵入方案：在 Research Lab / 策略回測結果區新增 `Evidence Review` 分頁，內含四個子頁：
-
-1. Forward Evidence
-2. Live vs Research Gap
-3. Signal Decay
-4. Decision Quality
-
-既有 Forward Performance view 保留，移入 Evidence Review 子頁第一個 tab。
-
-## Read-only Boundary
-
-- UI 只呼叫 dashboard service。
-- dashboard service 只呼叫既有 read/list service method。
-- UI 不直接讀 SQLite、不 import repository、不 import scoring 或 portfolio mutation flow。
-- Dashboard 不呼叫 capture、save、mark reviewed、dismiss、action item 或 lifecycle apply。
-- 所有 `demote_candidate` / `retire_candidate` 只呈現為人工覆盤候選。
-
-## Evidence Boundary
-
-畫面必須明確顯示：
-
-- 這是 research evidence，不是買賣建議。
-- Close-to-close forward return 不代表可執行實盤績效。
-- 樣本不足、benchmark / industry 缺失與 data quality degraded 需要人工判讀。
-- Decision Quality Review 是流程覆盤，不是投資能力分數，也不是責備使用者。
-
-## Dashboard Contracts
-
-Decision Quality Dashboard 顯示 process score、open / reviewed / dismissed item、warning counts、review question、reason codes、quality 與 warning breakdown。
-
-Signal Decay Dashboard 顯示 scope、短窗 / 長窗樣本、forward excess、win rate、MAE、live gap、decay score、status、lifecycle candidate、confidence、quality 與 warnings。
-
-Live vs Research Gap Dashboard 顯示 position source trace、portfolio mode、Research Run / strategy version linkage、evidence event / outcome linkage、gap metrics、condition / chip / regime state、attribution categories、match confidence、quality 與 warnings。
-
-## Not Goals
-
-- 不建立正式 scheduler。
-- 不做自動 promote / demote / retire。
-- 不修改持倉。
-- 不宣稱 alpha。
-- 不把 dashboard summary 包裝成買賣建議。
-- 不把 close-to-close forward return 說成實盤績效。
+- 現行操作： [APPLICATION_MANUAL](../../07_guides/APPLICATION_MANUAL.md)
+- 現行模組邊界： [system architecture](../../01_architecture/system_architecture.md)
+- 對應工程與人工驗收證據： [Post-V1 QA 收據](../../09_archive/POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md)、[UI smoke checklist](../../09_archive/POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md)

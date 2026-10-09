@@ -421,6 +421,10 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 13 份有完成計畫及具名 QA 收據的 Post-V1 plan/spec 原文已依原子目錄層次移至 `superpowers/plans/` 與 `superpowers/specs/`，舊路徑保留短導引。完整對應及雜湊見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；執行結果見 [Post-V1 Evidence Pipeline QA](#post-v1-evidence-pipeline-qa)。Scheduler Approval plan/spec 配對仍保留原路徑，因既有測試會讀取它們的實際內容。
 
+### 2026-10-09 Post-V1 Evidence Review Dashboards plan/spec
+
+[7/11 dashboard plan 原文](superpowers/plans/2026-07-11-post-v1-evidence-review-dashboards.md) 與[設計 spec 原文](superpowers/specs/2026-07-11-post-v1-evidence-review-dashboards-design.md) 已移至 Archive，`docs/superpowers/` 原路徑保留短導引。工程實作及對應測試由[具名 QA 收據](POST_V1_EVIDENCE_REVIEW_DASHBOARDS_QA_2026_07_11.md)記錄；[7/12 人工 UI smoke checklist](POST_V1_EVIDENCE_REVIEW_UI_SMOKE_CHECKLIST_2026_07_12.md) 的結果表仍空白，multi-day dry-run 與 production scheduler approval 是分開的開放 Gate。本次歸檔不代表這些 Gate 已完成；原件 bytes／SHA 與生命週期判讀見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+
 ### 2026-10-08 Month 2 Registry／storage plan
 
 [Month 2 Parameter & Run Storage Governance Plan 原文](superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) 已結案並移至本目錄；[舊路徑](../superpowers/plans/2026-06-14-month-2-parameter-run-storage-governance.md) 保留導引。原文 C4 驗證證據與 Definition of Done 記錄最終完成狀態；前段「等待核准」文字是過程快照，不能作為目前狀態。原始 bytes／SHA 與生命週期見 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。

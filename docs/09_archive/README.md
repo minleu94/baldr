@@ -29,6 +29,14 @@
 - **Operations／scheduler**：[Weekly history run](POST_V1_EVIDENCE_OPERATIONS_WEEKLY_HISTORY_RUN_2026_07_03.md)、[multi-day dry run](POST_V1_EVIDENCE_PIPELINE_MULTI_DAY_DRY_RUN_RECORD.md)、[working-copy smoke](POST_V1_EVIDENCE_DECISION_DESK_WORKING_COPY_SMOKE_2026_07_03.md)、[approval checklist](POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md)、[approval SOP](POST_V1_EVIDENCE_SCHEDULER_APPROVAL_SOP.md)、[scheduler dry run](POST_V1_EVIDENCE_SCHEDULER_DRY_RUN_QA_2026_07_06.md)、[scheduled dry-run history](POST_V1_EVIDENCE_SCHEDULED_DRY_RUN_QA_2026_07_12.md)、[scheduled pipeline](POST_V1_SCHEDULED_EVIDENCE_PIPELINE_QA_2026_07_12.md)。
 - **Versioned evidence operations**：[V1.3 operations](POST_V1_V1_3_EVIDENCE_OPERATIONS_QA_2026_07_03.md) · [V1.4 review history](POST_V1_V1_4_EVIDENCE_REVIEW_HISTORY_QA_2026_07_03.md)。
 
+### V4 2026-09-07 bounded evidence
+
+以下是 2026-09-07 的 bounded data recovery、machine review 與 ML release 收據，不代表目前 source acceptance、ML eligibility 或待辦狀態。資料後續收尾見 [10/03 data closeout](../06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md)；目前判讀看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與後續 QA。
+
+- [V4 data recovery record](V4_DATA_RECOVERY_2026_09_07.md)
+- [V4 automated review](V4_AUTOMATED_REVIEW_2026_09_07.md)
+- [V4 ML release bounded QA](V4_ML_RELEASE_2026_09_07.md)
+
 - [早期資料收集架構藍圖](DATA_COLLECTION_ARCHITECTURE_HISTORY.md)：保留 2026-06 資料/API 基線、2026-06-11 券商雙指標契約與 2026-10-03 freshness 補記；現行架構看 [system_architecture](../01_architecture/system_architecture.md)，操作看 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。
 
 - [路徑隔離更新 v1.3.0（2024-10-16）](PATH_ISOLATION_UPDATE_V1_3_HISTORY_20241016.md)：保留舊版路徑覆蓋、dry-run 與測試說明；原 `docs/08_technical/path_isolation_update.md` 路徑提供轉址。目前設定依 `TWStockConfig`、[系統架構](../01_architecture/system_architecture.md) 與 [操作手冊](../07_guides/APPLICATION_MANUAL.md) 判讀。

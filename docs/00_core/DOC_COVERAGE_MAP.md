@@ -288,6 +288,10 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將 21 份 2026-07 Post-V1 Evidence Pipeline 收據從 `docs/06_qa/` 歸檔至 `docs/09_archive/`，按 Evidence store／review／scheduler 分組建立入口；原文內容保留，舊路徑改為短轉址，已檢查歸檔後的相對連結。QA README 與 Archive README 同步；`DOCUMENTATION_STRUCTURE.md` 明確規定一次性證據先核對再歸檔、不因一次性而刪除。核心 `DOCUMENTATION_INDEX.md` 正有其他工作，未修改；既有路徑仍可透過轉址追溯。當時的 scheduler SOP 與 readiness 不代表目前操作或狀態。
 
+## 2026-10-08 V4 9/7 bounded QA 歷史歸檔
+
+將三份 2026-09-07 V4 data recovery、automated review 與 ML release 收據移至 Archive；原文保留，舊路徑改為短轉址，`V4_DATA_RECOVERY` 中指向 10/03 closeout 的相對連結改為 `../06_qa/` 明確路徑。QA／Archive README 與 Structure 同步；Snapshot 仍是現況權威，9/7 bounded evidence 不用來判斷目前 source／ML qualification。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

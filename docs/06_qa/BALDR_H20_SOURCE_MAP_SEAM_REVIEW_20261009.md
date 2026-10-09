@@ -51,3 +51,13 @@ Root 實讀 `source_map_seam_selftest_20261009_f/terminal_receipt.json` 與完�
 授權後的 n attempt 誤配舊 m controller／preparer；Root 比對 owner 報出的 SHA 即指出版本選取錯誤。該次已 terminal，舊 preparer 建成合成 fixture，但 child 因缺少 H20_SYNTHETIC_QA_ROOT 在 Main 前失敗；Job 清空。此結果不能證 d 的獨立行情 fixture 或新 Main 旅程；錯版 fixture 保留，不續跑。
 
 已要求 o 只從明示 d 路徑複製 controller `82529c9e658ed0f505d9c3899eb6b759bcba167c3d909df7ddf2f61070b38a9c`、獨立行情 preparer `4bb1747fa9526e70163289e1e82862c7da6b630e6c3dd52affcd559ce4b767ed`，搭配新 child `35fac99dfbbe3980da5727079e3508809956f93ad61c4f249a25e2e09329d3c1`；不修改 controller／dual／legacy／guard。Root 再次直接計算 o 三個目的檔 SHA 全符。只批准這個全新隔離合成 Main 組合的一次執行，終態仍待讀回；原十股、684 bp 與真人 EXE 尚未驗。
+
+## o 失敗與 SHA 格式候選的中央複驗
+
+Root 已直接讀 o 的 child stderr：主錯誤為 `canonical_main_module_source_hash_mismatch:ui_qt.main`，後續 missing child result 的 `FileNotFoundError` 保留為次級還原錯誤。固定 legacy `_sha_file()` 回傳 `sha256:` 前綴，來源 map 提供裸 hex；不能把格式比較失敗解讀成產品來源漂移。o 沒有實際 import-origin／preloaded telemetry，不推定其 Main 模組路徑。
+
+新 QA child `bootstrap_format_candidate_20261009_a/synthetic_main_child_bootstrap_candidate.py` SHA 為 `49b348056bb1fc72c6f815c4ae398fddc3edf807b68054315ea72d3d31fc58ff`。固定 legacy、dual、s3 與 expected digest 未更改。候選僅在呼叫原 verifier 期間正規化 actual SHA 表示法，finally 還原 helper；增加清理時缺結果的具名診斷，以及不輸出絕對路徑的 Main 來源 telemetry。
+
+Root 獨立 native 純合成測試為 7/7、exit 0，Main 未呼叫、SQLite connect 0。正例包含裸／前綴 expected SHA；錯 hash、錯來源與非法雙重前綴仍拒絕；失敗未產出 child result 不掩蓋 primary，成功卻缺結果則拒絕。日誌 `bootstrap_format_candidate_20261009_a/root_format_selftest_a.log` SHA 為 `E95830DFE518BF2036A85ADEC38797B81D40580F58B7A9476971984B97497107`。
+
+此 selftest 暫將 legacy MODULES 限為合成 ui_qt.main，再原值還原；不是完整來源 import closure 或 Main 旅程。Root 已要求補 helper 身分變動拒絕，並沿新 child 重跑完整 4,161 map／22 pins seam 前置驗證，再核下一個正確 triplet。尚未批准新 Main 嘗試、原 2382 或真人 EXE。

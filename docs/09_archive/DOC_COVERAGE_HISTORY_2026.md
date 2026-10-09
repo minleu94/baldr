@@ -972,7 +972,7 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 <a id="coverage-entry-110"></a>
 ## 2026-10-09 成對歸檔平行系統執行 plan 與啟動 prompts
 
-這兩份文件是 2026-07-13 的一次性平行工作拆分與 handoff 指令。Plan 涵蓋 workstream ownership、ready slice、Coordinator commit／push 與 integration gate；prompt 是當時的啟動文字，不能直接視為目前任務授權。兩份原文互相參照；README 與歷史 Catalog 也連到 prompt。精確檔名搜尋沒有發現程式或測試讀者。`docs/superpowers/` 原路徑改為短導引 stub，Archive 保存逐位元組副本；原路徑與 Archive 目的地同步列於 manifest。歸檔不代表當時計畫已完成，不授權目前工作或 Git 寫入；現況回到 Snapshot／Roadmap。
+這兩份文件是 2026-07-13 的一次性平行工作拆分與 handoff 指令。Plan 涵蓋 workstream ownership、ready slice、Coordinator commit／push 與 integration gate；prompt 是當時的啟動文字，不能直接視為目前任務授權。兩份原文互相參照；README 與歷史 Catalog 也連到 prompt。精確檔名搜尋沒有發現程式或測試讀者。`docs/superpowers/` 原路徑改為短導引 stub，Archive 保存逐位元組副本；原路徑與 Archive 目的地同步列於 manifest。另修正 Manifest 六筆早期封存項目的「原路徑」連結，現在會先到相容 stub，並保留獨立的 Archive 原文連結。歸檔不代表當時計畫已完成，不授權目前工作或 Git 寫入；現況回到 Snapshot／Roadmap。
 
 | 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
 |---|---|---|---|

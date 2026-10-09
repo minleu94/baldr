@@ -6,6 +6,10 @@
 本目錄包含歷史記錄、總結報告等歸檔文檔。這些文檔主要用於記錄歷史，不影響日常使用。
 歸檔文件中的狀態、下一步、Phase 或完成度描述，若與 Snapshot、6M Roadmap、版本 Roadmap 或 Architecture 衝突，一律以 active authority 為準。
 
+## 2026-10-09 目標架構舊草案
+
+- [2026-09-22 目標架構草案包](target_architecture_2026_09_22/README.md)：六份非 FINAL 草案已由同目錄的 `FINAL_*` 設計取代；Archive 保留決策追溯，原架構路徑留有相容導引。舊提案不代表目前實作或已完成狀態，開放中的遷移 Gate 仍看 FINAL migration sequence、Snapshot 與具名 QA。
+
 ## 2026-10-09 歷史狀態快照
 
 - [BALDR 本機狀態報告（2026-08-14）](project_status_2026_08_14/README.md)：保存當日 JSON／HTML 原件；舊 `next_actions` 與 CPU／MCP／QA 數字不代表目前狀態。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，來源與 SHA 見 [Coverage History Entry 117](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-117)。

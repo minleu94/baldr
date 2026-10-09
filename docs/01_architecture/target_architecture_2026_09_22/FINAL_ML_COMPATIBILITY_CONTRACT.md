@@ -1,6 +1,6 @@
 # 最終 ML 相容性契約
 
-> **狀態：最終設計，尚未實作。** [FINAL_TARGET_ARCHITECTURE.md](FINAL_TARGET_ARCHITECTURE.md) 是本輪唯一設計權威；本文件是其 ML 規範分冊，細化資料、模型與遷移契約，不建立另一套目標架構。既有 [ML_COMPATIBILITY_PLAN.md](ML_COMPATIBILITY_PLAN.md) 留作上一輪提案追溯，衝突處依最終主文與本分冊。本文件不授權重訓、資料重建、正式寫入或 promotion。
+> **狀態：最終設計，尚未實作。** [FINAL_TARGET_ARCHITECTURE.md](FINAL_TARGET_ARCHITECTURE.md) 是本輪唯一設計權威；本文件是其 ML 規範分冊，細化資料、模型與遷移契約，不建立另一套目標架構。既有 [ML_COMPATIBILITY_PLAN.md](../../09_archive/target_architecture_2026_09_22/ML_COMPATIBILITY_PLAN.md) 留作上一輪提案追溯，衝突處依最終主文與本分冊。本文件不授權重訓、資料重建、正式寫入或 promotion。
 
 **2026-09-27 dated acceptance addendum：** 使用者接受另立 R027 logical-time revision B；Root其後依frozen source diff、R028 full8與獨立source/runtime review接受scoped R028 migration。此決策不改寫本分冊原 strict gate、Direct／OOC identity、artifact ABI或任何既有 `INCONCLUSIVE` receipt。原R027 strict仍INCONCLUSIVE，原oracle/raw receipts保留。詳見 [R027 logical-time acceptance revision](../../06_qa/R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md) 與 [R028 implementation report](REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md)；R031 attempt6 current relevant regression及mandatory checks已由root接受；本紀錄為提交前snapshot，staged review與commit結果以Git history及root最後交付為準。原strict與artifact/identity邊界不變。
 

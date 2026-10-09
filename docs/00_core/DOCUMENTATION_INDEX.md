@@ -35,6 +35,8 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 ## 歷史與原始證據
 
+[2026-09-22 目標架構草案封存](../09_archive/target_architecture_2026_09_22/README.md)：六份已被 FINAL 設計取代的提案及接續權威入口。歸檔來源 bytes／SHA 與引用核對見 [Coverage History Entry 124](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-124)。
+
 原本索引的日期化補充全文見 [歷史索引](../09_archive/DOCUMENTATION_INDEX_HISTORY_20261006.md)，舊入口紀錄見 [入口歷史](../09_archive/DOCUMENTATION_ENTRY_HISTORY_20261006.md)。[整理 manifest](../09_archive/DOCUMENTATION_REORGANIZATION_MANIFEST_20261006.md) 保存 old→new、原 SHA 與恢復規則。
 
 [Qt MainWindow shutdown teardown 修正 QA（2026-09-15）](../09_archive/QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md)：MainWindow 關閉後的 bounded Qt teardown 證據；不代表 Native crash popup 根因或 SQLite inspector shutdown 問題已解。原 QA 路徑保留短導引，完整移動與 bytes/hash 記錄見 [Coverage History Entry 100](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-100)。

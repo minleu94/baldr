@@ -8,7 +8,7 @@
 
 Attempt 3執行環境限制：此輪使用外部root exec `require_escalated`，attempt 1／2是在workspace QA default sandbox；TEMP位置與execution context同時變更。因此native stack只定位到QtWebEngine／PySide shutdown wait，不能據此單獨判定workspace watcher、antivirus、file lock或Qt本身是根因。其後已修正並接受兩個具名UI views的callback lifetime路徑；有效的 bounded four-file observer run（receipt `output/qa/refactor_completion_20260927/qt_webengine_full_route_observer_20260927_02/receipt.json`、JUnit `output/qa/refactor_completion_20260927/qt_webengine_full_route_observer_20260927_02/pytest.xml`）自然結束：57P／0F／0E／0S、61.25秒、return code 0、未timeout或terminate，source_changed=[]。cleanup前後觀測為top-level Qt objects 552→0、QWebEngineView 72→0，72個view wrappers於cleanup後皆invalid。這只限四檔diagnostic；observer使用weak references且不查`QWebEngineProfile.defaultProfile()`，wrapper invalid／collected不能證明native page/profile資源已teardown，也不能定位先前shutdown failure根因。不改Qt版本、強制退出或驗收門檻。
 
-配套文件：[資料流](FINAL_DATA_FLOW.md)、[擴充模型](FINAL_EXTENSIBILITY_MODEL.md)、[ML 相容契約](FINAL_ML_COMPATIBILITY_CONTRACT.md)、[架構不變條件](FINAL_ARCHITECTURE_INVARIANTS.md)。本序列取代舊 [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md) 的實作順序；舊稿只保留設計歷史，不再作為新增實作的依據。
+配套文件：[資料流](FINAL_DATA_FLOW.md)、[擴充模型](FINAL_EXTENSIBILITY_MODEL.md)、[ML 相容契約](FINAL_ML_COMPATIBILITY_CONTRACT.md)、[架構不變條件](FINAL_ARCHITECTURE_INVARIANTS.md)。本序列取代舊 [MIGRATION_STRATEGY.md](../../09_archive/target_architecture_2026_09_22/MIGRATION_STRATEGY.md) 的實作順序；舊稿只保留設計歷史，不再作為新增實作的依據。
 
 ## 1. 唯一實作順序
 

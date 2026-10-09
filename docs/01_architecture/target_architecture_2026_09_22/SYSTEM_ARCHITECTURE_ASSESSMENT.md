@@ -99,7 +99,7 @@ A＝依賴方向不對，抽出資料契約／注入 port；B＝整個元件實�
 4. **歷史相容不代表歷史可信**：舊資料可讀，但缺可得時間或已知修訂／隔離的模型不能升格 verified，也不能回填當時未知資料。
 5. **逐步收口相容層**：移除 runtime 舊路徑與重複 field mapping；保留必要的歷史格式 decoder 是格式支援，不是永久第二套 engine。
 
-實作順序、驗收與 rollback 見 [MIGRATION_STRATEGY](MIGRATION_STRATEGY.md)，完整目標見 [TARGET_ARCHITECTURE](TARGET_ARCHITECTURE.md)。
+實作順序、驗收與 rollback 見歷史草案 [MIGRATION_STRATEGY](../../09_archive/target_architecture_2026_09_22/MIGRATION_STRATEGY.md)，完整目標見歷史草案 [TARGET_ARCHITECTURE](../../09_archive/target_architecture_2026_09_22/TARGET_ARCHITECTURE.md)。現行設計權威仍以各 `FINAL_*` 文件為準。
 
 ## 更新記錄
 

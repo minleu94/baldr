@@ -14,6 +14,6 @@
 
 ## 歷史設計與裁決輸入
 
-[SYSTEM_ARCHITECTURE_ASSESSMENT](SYSTEM_ARCHITECTURE_ASSESSMENT.md)、[紅隊審查](ARCHITECTURE_RED_TEAM_REVIEW.md)、[必要變更](ARCHITECTURE_REQUIRED_CHANGES.md)，以及沒有 `FINAL_` 前綴的目標架構、資料流、ML 相容、擴充、不變條件與遷移草案，保留作決策追溯。草案已被 FINAL 裁決取代，不能授權實作；其中的舊模組路徑與「尚未實作」只代表當時基線。
+[SYSTEM_ARCHITECTURE_ASSESSMENT](SYSTEM_ARCHITECTURE_ASSESSMENT.md)、[紅隊審查](ARCHITECTURE_RED_TEAM_REVIEW.md)與[必要變更](ARCHITECTURE_REQUIRED_CHANGES.md)仍保留在本目錄，作為 FINAL 裁決的來源證據。六份已被取代的草案已移至[架構草案歷史封存](../../09_archive/target_architecture_2026_09_22/README.md)；原路徑留有相容導引。草案不能授權實作，其中的舊模組路徑與「尚未實作」只代表當時基線。
 
 閱讀目前架構請回到 [system_architecture](../system_architecture.md)，不要把歷史評估或目標設計當成目前程式結構。

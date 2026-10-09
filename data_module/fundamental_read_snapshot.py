@@ -13,7 +13,7 @@ import sqlite3
 import stat
 import struct
 import sys
-from threading import Event, Lock
+from threading import Event, Lock, get_ident
 from typing import Callable, Literal, Sequence
 from uuid import uuid4
 
@@ -351,6 +351,7 @@ class FundamentalReadSnapshotSession:
         self._publication_gate = Lock()
         self._state: Literal["open", "finished", "cancelled", "failed"] = "open"
         self._finished: FinishedFundamentalSnapshotReadCohort | None = None
+        self._owner_thread_id = get_ident()
 
     @classmethod
     def open_from_config(
@@ -497,16 +498,23 @@ class FundamentalReadSnapshotSession:
         return self._read_session.declared_stock_codes
 
     def load_batch(self, stock_codes: Sequence[str]) -> FundamentalReadBatchCandidate:
+        self._require_owner_thread()
         self._require_open()
         return self._read_session.load_batch(stock_codes)
 
     def finish(self) -> FinishedFundamentalSnapshotReadCohort:
+        self._require_owner_thread()
         if self._finished is not None:
             return self._finished
         self._require_open()
+        published = False
         try:
             _poll_cancel(self._effective_cancel_callback)
             reader_finished = self._read_session.finish()
+            if not self._read_session.closed:
+                raise FundamentalReadSnapshotError(
+                    "fundamental_snapshot_reader_connection_not_closed_after_finish"
+                )
             reader_file_pins_finish = _pin_reader_file_set(
                 self._attempt.reader_database_path,
                 cancel_callback=self._effective_cancel_callback,
@@ -597,12 +605,12 @@ class FundamentalReadSnapshotSession:
                 self._attempt.snapshot_root / "finished_source_clock.json",
                 finished_manifest,
             )
+            _poll_cancel(self._effective_cancel_callback)
             with self._publication_gate:
                 if self._state != "open":
                     raise FundamentalReadSnapshotCancelled(
                         "fundamental_snapshot_cancelled_before_publication"
                     )
-                _poll_cancel(self._effective_cancel_callback)
                 finished_manifest["manifest_state"] = "complete"
                 finished_manifest.pop("manifest_sha256", None)
                 finished_manifest["manifest_sha256"] = _canonical_sha256(
@@ -614,6 +622,7 @@ class FundamentalReadSnapshotSession:
                 )
                 self._state = "finished"
                 self._finished = finished
+                published = True
             _write_attempt_status(
                 self._attempt.snapshot_root,
                 status="complete",
@@ -623,21 +632,48 @@ class FundamentalReadSnapshotSession:
             )
             return finished
         except BaseException as exc:
-            self._state = "cancelled" if isinstance(
-                exc, (FundamentalReadSessionCancelled, FundamentalReadSnapshotCancelled)
-            ) else "failed"
+            if published:
+                raise FundamentalReadSnapshotError(
+                    "fundamental_snapshot_finished_but_status_write_failed"
+                ) from exc
+            with self._publication_gate:
+                self._state = "cancelled" if isinstance(
+                    exc, (FundamentalReadSessionCancelled, FundamentalReadSnapshotCancelled)
+                ) else "failed"
+            reader_cleanup_error: BaseException | None = None
             try:
-                self._read_session.cancel()
-            except BaseException:
-                pass
-            _write_attempt_status(
-                self._attempt.snapshot_root,
-                status="cancelled" if self._state == "cancelled" else "failed",
-                reason=f"finish_failed:{type(exc).__name__}",
-            )
+                self._read_session.close()
+            except BaseException as close_exc:
+                reader_cleanup_error = close_exc
+            if not self._read_session.closed and reader_cleanup_error is None:
+                reader_cleanup_error = FundamentalReadSnapshotError(
+                    "fundamental_snapshot_reader_connection_remains_open_after_finish_failure"
+                )
+            if reader_cleanup_error is not None:
+                raise FundamentalReadSnapshotError(
+                    "fundamental_snapshot_finish_failed_and_reader_cleanup_failed"
+                ) from BaseExceptionGroup(
+                    "primary snapshot finish failure and reader cleanup failure",
+                    [exc, reader_cleanup_error],
+                )
+            try:
+                _write_attempt_status(
+                    self._attempt.snapshot_root,
+                    status="cancelled" if self._state == "cancelled" else "failed",
+                    reason=f"finish_failed:{type(exc).__name__}",
+                )
+            except BaseException as status_exc:
+                raise FundamentalReadSnapshotError(
+                    "fundamental_snapshot_finish_failed_and_status_write_failed"
+                ) from BaseExceptionGroup(
+                    "primary snapshot finish failure and attempt-status failure",
+                    [exc, status_exc],
+                )
             raise
 
     def cancel(self) -> bool:
+        """可跨執行緒要求取消；connection 必須由 owner thread close。"""
+
         with self._publication_gate:
             if self._state == "finished":
                 return False
@@ -653,6 +689,57 @@ class FundamentalReadSnapshotSession:
         )
         return True
 
+    def close(self) -> None:
+        """由建立 session 的 thread 關閉唯讀副本；不會產生 finished token。"""
+
+        self._require_owner_thread()
+        cancel_error: BaseException | None = None
+        if self._state == "open":
+            try:
+                self.cancel()
+            except BaseException as exc:
+                cancel_error = exc
+        close_error: BaseException | None = None
+        try:
+            self._read_session.close()
+        except BaseException as exc:
+            close_error = exc
+        if not self._read_session.closed:
+            close_error = close_error or FundamentalReadSnapshotError(
+                "fundamental_snapshot_reader_connection_not_closed"
+            )
+        errors = [error for error in (cancel_error, close_error) if error is not None]
+        if len(errors) == 1:
+            raise errors[0]
+        if len(errors) == 2:
+            raise FundamentalReadSnapshotError(
+                "fundamental_snapshot_cancel_and_reader_cleanup_failed"
+            ) from BaseExceptionGroup("snapshot cancel and cleanup failures", errors)
+
+    def __enter__(self) -> FundamentalReadSnapshotSession:
+        self._require_owner_thread()
+        self._require_open()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: object,
+    ) -> Literal[False]:
+        try:
+            self.close()
+        except BaseException as cleanup_exc:
+            if exc is not None:
+                raise FundamentalReadSnapshotError(
+                    "fundamental_snapshot_context_exit_cleanup_failed"
+                ) from BaseExceptionGroup(
+                    "primary context exception and snapshot cleanup exception",
+                    [exc, cleanup_exc],
+                )
+            raise
+        return False
+
     def _effective_cancel_callback(self) -> bool:
         if self._cancel_event.is_set():
             return True
@@ -664,6 +751,12 @@ class FundamentalReadSnapshotSession:
         if self._state != "open":
             raise FundamentalReadSnapshotError(
                 f"fundamental_snapshot_session_{self._state}"
+            )
+
+    def _require_owner_thread(self) -> None:
+        if get_ident() != self._owner_thread_id:
+            raise FundamentalReadSnapshotError(
+                "fundamental_snapshot_session_thread_affinity_violation"
             )
 
 

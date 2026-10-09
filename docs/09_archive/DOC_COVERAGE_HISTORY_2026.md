@@ -863,3 +863,12 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
 |---|---|---|---|
 | `docs/06_qa/POSITION_HEALTH_SOURCE_PROVIDER_CALENDAR_CACHE_ISOLATION_QA_2026_09_15.md` | [Position Health calendar-cache 隔離原文](POSITION_HEALTH_SOURCE_PROVIDER_CALENDAR_CACHE_ISOLATION_QA_2026_09_15.md) | 2,060 / `AC38A7CA6E5159092E43F7201A6BD84686037FF2A85BC1EEF0626FB8C65C1791` | 2,060 / `AC38A7CA6E5159092E43F7201A6BD84686037FF2A85BC1EEF0626FB8C65C1791` |
+
+<a id="coverage-entry-102"></a>
+## 2026-10-09 歸檔 ML allocation Formal input readiness 歷史快照
+
+這是 2026-09-20 對隔日 9/21 的事件前唯讀快照：候選設定為 `candidate_only=true`、`formal_oos_allowed=false`，未執行 readiness validator、writer 或 scheduler。原文保存當時的 runtime config、source pins 與 PIT／Rule／Paper/common identity 缺件，不構成 9/21 實際自然證據、accepted sidecar、Formal 3/3 或 ML natural eligibility。`NATURAL_SHADOW_WEEKLY_EVIDENCE_AUDIT_2026_09_20.md` 與 `WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20.md` 記錄的是不同 ML shadow lane，不是這份 Formal candidate 的替代驗收。程式／測試沒有固定讀取原 QA Markdown；唯一精確 inbound link 是 2026-10-06 歷史 Catalog，舊 QA 路徑保留短導引，讓歷史連結仍可讀。現況一律回到 Snapshot、Gate 7 與 External Validation Register。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md` | [ML allocation Formal input readiness 歷史原文](ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md) | 6,938 / `CCD8D60D87321A346616A3C9D44CD7E49DA01302DE758139063EB9B334FE2518` | 6,938 / `CCD8D60D87321A346616A3C9D44CD7E49DA01302DE758139063EB9B334FE2518` |

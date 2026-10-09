@@ -128,8 +128,9 @@
 - `ui_qt/README.md` 不屬於 `docs/`，但若 `docs` 索引引用它，需標註它可能落後於 roadmap。
 - `09_archive/` 保留歷史文件，但 Active 文件不應依賴 archive 內容判斷目前狀態。
 - `output/`、`output/qa/` 與根目錄臨時資料樣本屬於本機執行產物，不應作為 Active 文件或乾淨 `main` 內容；需要保存結論時整理為 `docs/06_qa/` 摘要。
-- 一次性 QA debug / patch 文件可刪除，保留 summary / issues / audit 類文件即可。
+- 一次性 QA debug／patch 收據先做生命週期與引用核對；有追溯價值者歸檔並保留原路徑轉址，不因為是一次性就刪除證據。只有確認屬本機臨時輸出、且不是原始資料或正式 QA 證據的產物，才可清理。
 - `docs/05_phases/` 保留歷史目錄 README 與舊路徑轉址；13 份 Phase／SOP 原文已依原層次移至 `docs/09_archive/`，舊引用可經轉址開啟原文。目前核實到的 Active 直接引用只有 `docs/02_features/STRATEGY_DESIGN_SPECIFICATION.md` 指向 `PHASE2_ARCHITECTURE.md`。歸檔內容中的「下一步」「進行中」「Phase Gate」不代表目前 roadmap。
+- `docs/06_qa/` 保存日期化驗證與調查證據；已結束的收據可在核對內容、現況權威與引用後移至 `docs/09_archive/`，原路徑以短轉址維持相容。2026-07 的 21 份 Post-V1 Evidence Pipeline 收據已集中歸檔；當時的 Scheduler SOP／待辦不作為目前操作權威。
 - 若要採用歸檔 Phase SOP 中的操作內容，先依目前程式與 `docs/07_guides/APPLICATION_MANUAL.md` 核對並另行改寫；不要直接把歷史 Phase gate 重新當成目前規範。
 - `docs/superpowers/` 保留為 spec / plan 追溯區；新增 `README.md` 作為資料夾邊界，避免大量 plan / spec 被誤讀成目前 roadmap。
 - `docs/06_qa/UI_QT_DEVELOPMENT_ROADMAP_AUDIT.md` 已因 2026-05-19 舊狀態容易誤導而歸檔為 `docs/09_archive/UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`。
@@ -161,6 +162,7 @@
 - 2026-10-08：補齊 Scoped SSOT 的願景、產品、工程、現況、成熟度與歷史移交分工；將 Roadmap Hub 定義為純導覽，並說明版本成熟度不代表工程 Gate 順序。
 - 2026-10-08：依逐檔引用檢查修正 `05_phases/` 保留理由，明列目前唯一核實的 Active 直接引用；歷史文件仍須按引用、證據與追溯價值逐檔判讀。
 - 2026-10-08：將 13 份 Phase／SOP 原文按原相對層次歸檔，保留舊路徑轉址與唯一 Active Phase 2 架構引用；目前 Phase 目錄只保留索引與相容入口。
+- 2026-10-08：將 21 份 2026-07 Post-V1 Evidence Pipeline QA 原文歸檔，原路徑保留轉址；同步 QA／Archive 導覽與歸檔規則，未改動核心 Index。
 - 2026-07-12：完成全 docs 位置稽核，將 Agent workflow、Shim removal audit 與兩份已完成重構文件分別移至 `agents/`、`06_qa/`、`09_archive/`，並同步所有 Active 引用與目錄 README。
 - 2026-07-06：完成 push 前 docs 結構稽核後補上 `superpowers/` folder ownership、歸檔舊 UI Qt roadmap audit，並將 MCP patch memo 移至技術文件。
 - 2026-07-06：新增 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 作為 V2.0 之後長期版本階梯 companion，納入核心入口與文件權威層級。

@@ -92,6 +92,10 @@
 
 - [ML allocation Formal input readiness（2026-09-20）](ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md)：保存 9/21 自然日之前的 candidate runtime wiring、source pins 與當時缺件；沒有執行 validator、writer 或 scheduler，也不是 9/21 的實際驗收。同期 Natural Shadow weekly receipts 屬不同 lane，不能替代這份 Formal candidate snapshot。原 QA 路徑保留相容導引；目前 Gate／狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 與 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)，逐檔 bytes／SHA 見 [Coverage History Entry 102](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-102)。
 
+## 2026-10-09 V4 daily natural evidence loop handoff 歷史
+
+- [V4 每日自然證據運行閉環 QA handoff（2026-09-12）](V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12_HISTORY.md)：保存當日 scheduler、forward outcome、progress receipt、Paper ledger 與跨日證據交接。原收據明列 5／10／20／60 horizons 尚待自然成熟、benchmark 截止 2026-08-28、外部 fills CSV 缺件、saved checkout Scheduler／receipt freshness 待 owner 確認及 ACL warning；歸檔不表示這些 Gate 已解除。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。原 QA 路徑保留相容導引；bytes／SHA 見 [Coverage History Entry 127](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-127)。
+
 ## 2026-10-09 V4.2 Daily Recommendation Learning 9/13 歷史 QA
 
 - [每日推薦自動學習與受控調整 QA（2026-09-13）](V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13_HISTORY.md)：保存單一 learning task 註冊與 bounded CLI entrypoint 驗證，不代表 task 已執行、正式推薦權重變更、promotion 或 production evidence credit。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，工程邊界看 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留導引，bytes／SHA 見 [Coverage History Entry 105](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。

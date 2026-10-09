@@ -75,6 +75,15 @@
 - **基本面與資料快照**：[選股基本面副本 session](SELECTION_FUNDAMENTAL_COPY_SESSION_20261007.md)、[月營收 YoY](SELECTION_MONTHLY_REVENUE_YOY_20261007.md)、[Snapshot typed parts reuse](SNAPSHOT_TYPED_PARTS_REUSE_20261007.md)。
 - **日期語義、篩選與 Universe**：[決策 Snapshot 日期語義](DECISION_SNAPSHOT_DATE_SEMANTICS_20261006.md)、[P01 篩選 Profile diagnostics](P01_FILTER_PROFILE_DIAGNOSTIC_CONTRACT_20261008.md)、[技術規則視窗重用](TECHNICAL_RULE_WINDOW_REUSE_20261007.md)、[技術 Universe query stream](TECHNICAL_UNIVERSE_QUERY_STREAM_20261007.md)、[技術 Universe read root](TECHNICAL_UNIVERSE_READ_ROOT_20261007.md)。
 
+### F02／F03／F06／F12 功能驗收鏈（2026-10-09）
+
+先看[產品補完缺口再核對](BALDR_COMPLETION_GAP_REVIEW_20261008.md)與[平行工作 root review](BALDR_PARALLEL_ROOT_REVIEW_20261009.md)掌握跨功能阻礙，再按下列收據追查各自範圍。這些是 bounded 工程證據，不等於完整 UI、EXE 或真人驗收，也不代表相關 Gate 已通過。
+
+- **F12 月營收**：[來源審查](BALDR_F12_MONTHLY_REVENUE_SOURCE_REVIEW_20261009.md) → [index 整合複核](BALDR_F12_INDEX_INTEGRATION_REVIEW_20261009.md) → [saved-recipe root review](BALDR_F12_SAVED_RECIPE_ROOT_REVIEW_20261009.md) → [WAL exact reopen](BALDR_F12_WAL_EXACT_REOPEN_ROOT_REVIEW_20261009.md) → [durable raw archive v2](BALDR_F12_DURABLE_RAW_ARCHIVE_V2_20261009.md) → [archived finish root review](BALDR_F12_ARCHIVED_FINISH_ROOT_REVIEW_20261009.md) → [Main integration review](BALDR_F12_MAIN_INTEGRATION_REVIEW_20261009.md)。Reader 仍是 current-only，來源時間不明時不可授予歷史 PIT 資格；完整 Main／UI、EXE 與真人驗收仍待完成。
+- **F02 均線條件**：[fdopen guard 診斷](BALDR_F02_FDOPEN_GUARD_DIAGNOSIS_20261009.md) → [M guard root review](BALDR_F02_M_GUARD_ROOT_REVIEW_20261009.md) → [V4 oracle／supervisor review](BALDR_F02_V4_ORACLE_SUPERVISOR_REVIEW_20261009.md)。完整 257 檔矩陣、正常來源、新 EXE、真人驗收與 MA20 上彎契約仍未完成；局部 guard／oracle 結果不可當成產品通過。
+- **F03 KDJ 條件**：[full-population 整合計畫](BALDR_F03_FULL_POPULATION_INTEGRATION_PLAN_20261009.md) → [KDJ query contract](BALDR_F03_KDJ_QUERY_CONTRACT_20261009.md) → [MA／KDJ／Volatility group v2](BALDR_F03_MA_KDJ_VOLATILITY_GROUP_V2_20261009.md) → [multi-parent callback review](BALDR_F03_MULTI_PARENT_CALLBACK_REVIEW_20261009.md)。有界切片不代表 full-population query、共同發布或 UI 已完成。
+- **F06 波動條件**：[composite query contract](BALDR_F06_COMPOSITE_VOLATILITY_QUERY_CONTRACT_20261009.md) → [Decimal 方法提案](BALDR_F06_DECIMAL_VOLATILITY_METHOD_PROPOSAL_20261009.md) → [collector contract](BALDR_F06_VOLATILITY_COLLECTOR_CONTRACT_20261009.md)。目前尚無 full-N reader-issued 結果；方法提案不是已採納的產品規則。
+
 ## 其他常用路徑
 
 - **排程與自動化**：[10/08 修復](BALDR_SCHEDULE_REPAIR_20261008.md) → [10/07 修復](BALDR_SCHEDULE_REPAIR_20261007.md) → [10/06 稽核](BALDR_SCHEDULE_AUDIT_20261006.md)；需要歷史初始狀況再讀 [9/30 收據](SCHEDULED_OPERATIONS_REPAIR_20260930.md)，8/27 舊 health snapshot 已移至 [Archive](../09_archive/README.md#2026-10-09-qa-historical-snapshots-scheduler-health-and-ux08-controller)。

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections import Counter
+from contextvars import copy_context
+from dataclasses import replace as dataclass_replace
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 import hashlib
@@ -13,13 +15,17 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from threading import Thread
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
 
 import app_module.daily_market_technical_parent_v4_query as parent_query_module
+import app_module.daily_market_technical_snapshot_v4_repository as snapshot_repository_module
+import app_module.daily_market_technical_universe_v4_query as universe_query_module
+import app_module.personal_data_paths as personal_data_paths_module
 from app_module.daily_market_technical_parent_v4_query import (
     DailyMarketTechnicalRuleStateFilterV4,
 )
@@ -381,6 +387,36 @@ def _make_query(
         receipt_sha256=receipt_sha256 or complete.content_sha256,
         **conditions,
     )
+
+
+def _open_small_read_session(
+    fixture: dict[str, Any],
+) -> Any:
+    plan = fixture["plan"]
+    complete = fixture["complete"]
+    return open_daily_market_technical_universe_v4_read_session(
+        store_output_root=fixture["store_output_root"],
+        generation_identity_sha256=plan.generation_identity_sha256,
+        plan_identity_sha256=plan.identity_sha256,
+        plan_sha256=fixture["plan_sha256"],
+        receipt_identity_sha256=complete.identity_sha256,
+        receipt_sha256=complete.content_sha256,
+    )
+
+
+def _read_selection_page_payload(value: Any) -> dict[str, Any]:
+    """保留 selection wrapper 身份欄位並序列化完整 inner page。"""
+    page = value.page
+    return {
+        "selection_identity_sha256": value.selection_identity_sha256,
+        "page_index": value.page_index,
+        "page_size": value.page_size,
+        "matching_count": value.matching_count,
+        "page_count": value.page_count,
+        "is_explicit_empty": value.is_explicit_empty,
+        "page_query_identity_sha256": None if page is None else page.query.query_identity_sha256,
+        "page": None if page is None else page.to_dict(),
+    }
 
 
 def _resign_query(payload: dict[str, Any]) -> dict[str, Any]:
@@ -943,3 +979,425 @@ def test_stock_drilldown_binds_origin_page_and_rejects_missing_tampered_or_cance
             read_daily_market_technical_universe_v4_stock(query, "S0000")
     finally:
         Path(manifest_path).write_bytes(original_manifest)
+
+
+def test_p01_page_path_render_memo_preserves_lexical_key_and_thread_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if os.name != "nt":
+        pytest.skip("WindowsPath 的大小寫折疊相等語義只在 Windows 驗證")
+
+    original_render = personal_data_paths_module._render_internal_io_path
+    rendered_inputs: list[str] = []
+
+    def observed_render(path: str | Path) -> str:
+        rendered_inputs.append(str(path))
+        return original_render(path)
+
+    monkeypatch.setattr(
+        personal_data_paths_module, "_render_internal_io_path", observed_render
+    )
+    upper = Path("C:/P01-Memo/Case")
+    lower = Path("c:/p01-memo/case")
+    assert upper.is_absolute() and lower.is_absolute()
+    assert upper == lower
+    assert str(upper) != str(lower)
+
+    worker_result: list[str] = []
+    with personal_data_paths_module._p01_page_operation_path_render_scope():
+        memo = personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get()
+        assert memo is not None
+        upper_rendered = personal_data_paths_module.to_internal_io_path(upper)
+        assert personal_data_paths_module.to_internal_io_path(upper) == upper_rendered
+
+        copied_context = copy_context()
+        worker = Thread(
+            target=lambda: worker_result.append(
+                copied_context.run(personal_data_paths_module.to_internal_io_path, upper)
+            )
+        )
+        worker.start()
+        worker.join(timeout=10)
+        assert not worker.is_alive()
+        assert worker_result == [upper_rendered]
+
+        lower_rendered = personal_data_paths_module.to_internal_io_path(lower)
+        assert lower_rendered == original_render(lower)
+        assert personal_data_paths_module.to_internal_io_path(lower) == lower_rendered
+
+        # 相對與 tilde Path 不進 memo；strict renderer 仍各自處理或拒絕。
+        tilde_path = Path("~/p01-render-probe")
+        tilde_expected = original_render(tilde_path)
+        assert personal_data_paths_module.to_internal_io_path(tilde_path) == tilde_expected
+        assert personal_data_paths_module.to_internal_io_path(tilde_path) == tilde_expected
+        relative_path = Path("relative/p01")
+        with pytest.raises(ValueError, match="absolute_path_required"):
+            personal_data_paths_module.to_internal_io_path(relative_path)
+
+        assert memo._values == {
+            (type(upper), str(upper)): upper_rendered,
+            (type(lower), str(lower)): lower_rendered,
+        }
+
+    assert memo._closed is True
+    assert memo._values == {}
+    assert rendered_inputs.count(str(upper)) == 2  # 主執行緒與複製 Context 的另一執行緒
+    assert rendered_inputs.count(str(lower)) == 1
+    assert rendered_inputs.count(str(tilde_path)) == 2
+    assert rendered_inputs.count(str(relative_path)) == 1
+
+
+def test_p01_page_path_render_memo_is_bounded_nested_and_always_cleared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(personal_data_paths_module, "_PAGE_PATH_RENDER_MEMO_MAX_ENTRIES", 1)
+    monkeypatch.setattr(
+        personal_data_paths_module, "_PAGE_PATH_RENDER_MEMO_MAX_UTF16_BYTES", 1024
+    )
+    original_render = personal_data_paths_module._render_internal_io_path
+    calls: list[str] = []
+
+    def observed_render(path: str | Path) -> str:
+        calls.append(str(path))
+        return original_render(path)
+
+    monkeypatch.setattr(
+        personal_data_paths_module, "_render_internal_io_path", observed_render
+    )
+    first = Path.cwd() / "p01-memo-first"
+    second = Path.cwd() / "p01-memo-second"
+    outer_memo = None
+    inner_memo = None
+    inner_entry_count = 0
+    with personal_data_paths_module._p01_page_operation_path_render_scope():
+        outer_memo = personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get()
+        assert outer_memo is not None
+        first_rendered = personal_data_paths_module.to_internal_io_path(first)
+        assert personal_data_paths_module.to_internal_io_path(first) == first_rendered
+
+        with personal_data_paths_module._p01_page_operation_path_render_scope():
+            inner_memo = personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get()
+            assert inner_memo is not None and inner_memo is not outer_memo
+            assert personal_data_paths_module.to_internal_io_path(first) == first_rendered
+            assert personal_data_paths_module.to_internal_io_path(first) == first_rendered
+            inner_entry_count = len(inner_memo._values)
+        assert personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get() is outer_memo
+
+        for _ in range(2):
+            assert personal_data_paths_module.to_internal_io_path(second) == original_render(second)
+        assert len(outer_memo._values) == 1
+        assert inner_entry_count == 1
+
+    assert outer_memo is not None and outer_memo._closed and outer_memo._values == {}
+    assert inner_memo is not None and inner_memo._closed and inner_memo._values == {}
+    assert calls.count(str(first)) == 2  # 外層與巢狀 scope 各一次
+    assert calls.count(str(second)) == 2  # 滿額後 strict fallback
+
+    monkeypatch.setattr(personal_data_paths_module, "_PAGE_PATH_RENDER_MEMO_MAX_ENTRIES", 8)
+    monkeypatch.setattr(personal_data_paths_module, "_PAGE_PATH_RENDER_MEMO_MAX_UTF16_BYTES", 0)
+    calls.clear()
+    with personal_data_paths_module._p01_page_operation_path_render_scope():
+        for _ in range(2):
+            personal_data_paths_module.to_internal_io_path(first)
+        active = personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get()
+        assert active is not None and active._values == {}
+    assert calls == [str(first), str(first)]
+
+
+def test_p01_page_read_matches_strict_clone_and_preserves_every_fresh_io_event(
+    synthetic_small_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _open_small_read_session(synthetic_small_full_store)
+    query = session.create_query(
+        rule_state_filters=(
+            DailyMarketTechnicalRuleStateFilterV4.create(
+                "ma5_20_golden_cross", ("no_match",)
+            ),
+            DailyMarketTechnicalRuleStateFilterV4.create(
+                "volume_ratio_20_including_current", ("unknown",)
+            ),
+        ),
+        combine_mode="OR",
+        stock_filter=tuple(f"S{index:04d}" for index in range(17)),
+        sort_key=_RATIO_KEY,
+        descending=True,
+        page_size=4,
+    )
+    selection = session.select_stock_codes(query)
+    assert selection.matching_count > 0
+    strict_clone = dataclass_replace(session)
+
+    original_render = personal_data_paths_module._render_internal_io_path
+    original_lstat = snapshot_repository_module._lstat_optional
+    original_reject = snapshot_repository_module._reject_link_components
+    original_read = snapshot_repository_module._read_bounded_file
+    phase = ["fast"]
+    render_calls: dict[str, list[str]] = {"fast": [], "strict": []}
+    io_events: dict[str, list[tuple[str, str]]] = {"fast": [], "strict": []}
+
+    def observed_render(path: str | Path) -> str:
+        render_calls[phase[0]].append(str(path))
+        return original_render(path)
+
+    def observe(name: str, original: Any) -> Any:
+        def wrapped(path: Path, *args: Any, **kwargs: Any) -> Any:
+            io_events[phase[0]].append((name, str(path)))
+            return original(path, *args, **kwargs)
+        return wrapped
+
+    monkeypatch.setattr(personal_data_paths_module, "_render_internal_io_path", observed_render)
+    monkeypatch.setattr(snapshot_repository_module, "_lstat_optional", observe("lstat", original_lstat))
+    monkeypatch.setattr(
+        snapshot_repository_module, "_reject_link_components", observe("reparse", original_reject)
+    )
+    monkeypatch.setattr(
+        snapshot_repository_module, "_read_bounded_file", observe("read", original_read)
+    )
+
+    fast_page = session.read_selection_page(selection, page_index=1, page_size=4)
+    phase[0] = "strict"
+    strict_page = strict_clone.read_selection_page(selection, page_index=1, page_size=4)
+
+    assert fast_page.page is not None and fast_page.page.rows
+    assert _read_selection_page_payload(fast_page) == _read_selection_page_payload(
+        strict_page
+    )
+    assert io_events["fast"] == io_events["strict"]
+    assert render_calls["fast"]
+    assert len(render_calls["fast"]) < len(render_calls["strict"])
+    assert personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get() is None
+
+
+def test_p01_page_cancel_clears_memo_and_callback_strict_reads_do_not_borrow_it(
+    synthetic_small_full_store: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = synthetic_small_full_store
+    session = _open_small_read_session(fixture)
+    query = session.create_query(
+        stock_filter=("S0000", "S0001", "S0002", "S0003"),
+        sort_key="stock_code",
+        page_size=2,
+    )
+    selection = session.select_stock_codes(query)
+    reference = session._artifact_references[0]
+    proof = reference.semantic_proof
+    assert proof is not None
+    strict_repository = DailyMarketTechnicalSnapshotV4Repository(
+        reference.repository_output_root
+    )
+    strict_code = proof.manifest.expected_stock_codes[0]
+    original_render = personal_data_paths_module._render_internal_io_path
+    render_contexts: list[object | None] = []
+    strict_render_contexts: list[object | None] = []
+    strict_active = [False]
+
+    def observed_render(path: str | Path) -> str:
+        current = personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get()
+        render_contexts.append(current)
+        if strict_active[0]:
+            strict_render_contexts.append(current)
+        return original_render(path)
+
+    monkeypatch.setattr(personal_data_paths_module, "_render_internal_io_path", observed_render)
+    nested_once = [False]
+    callback_contexts: list[object | None] = []
+    nested_pages: list[Any] = []
+
+    def reentrant_callback() -> bool:
+        callback_contexts.append(personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get())
+        if not nested_once[0]:
+            nested_once[0] = True
+            assert personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get() is None
+            strict_active[0] = True
+            strict_rows = strict_repository.read_selected_exact(
+                proof, selected_stock_codes=(strict_code,)
+            )
+            strict_active[0] = False
+            assert tuple(row.stock_code for row in strict_rows) == (strict_code,)
+            nested_pages.append(session.read_selection_page(selection, page_index=1, page_size=2))
+            assert personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get() is None
+        return False
+
+    outer_page = session.read_selection_page(
+        selection,
+        page_index=0,
+        page_size=2,
+        cancel_callback=reentrant_callback,
+    )
+    assert outer_page.page is not None and outer_page.page.rows
+    assert nested_pages and nested_pages[0].page is not None
+    assert callback_contexts and all(item is None for item in callback_contexts)
+    assert strict_render_contexts and all(item is None for item in strict_render_contexts)
+    assert len({id(item) for item in render_contexts if item is not None}) >= 2
+    assert personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get() is None
+
+    memo_type = personal_data_paths_module._PageOperationPathRenderMemo
+    created_memos: list[Any] = []
+
+    class TrackedMemo(memo_type):
+        __slots__ = ()
+
+        def __init__(self) -> None:
+            super().__init__()
+            created_memos.append(self)
+
+    monkeypatch.setattr(personal_data_paths_module, "_PageOperationPathRenderMemo", TrackedMemo)
+    original_bounded_read = snapshot_repository_module._read_bounded_file
+    completed_reads: list[Path] = []
+
+    def observed_bounded_read(path: Path, limit: int) -> bytes:
+        raw = original_bounded_read(path, limit)
+        completed_reads.append(path)
+        return raw
+
+    monkeypatch.setattr(
+        snapshot_repository_module, "_read_bounded_file", observed_bounded_read
+    )
+    cancelled_callback_contexts: list[object | None] = []
+
+    def cancel_after_first_read() -> bool:
+        cancelled_callback_contexts.append(
+            personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get()
+        )
+        return bool(completed_reads)
+
+    with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as cancellation_error:
+        session.read_selection_page(
+            selection,
+            page_index=0,
+            page_size=2,
+            cancel_callback=cancel_after_first_read,
+        )
+    assert cancellation_error.value.code == "technical_universe_v4_query_cancelled"
+    assert completed_reads
+    assert cancelled_callback_contexts and all(
+        item is None for item in cancelled_callback_contexts
+    )
+    assert len(created_memos) == 1
+    assert created_memos[0]._closed is True
+    assert created_memos[0]._values == {}
+    assert personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get() is None
+
+
+@pytest.mark.parametrize("tamper_selected", (True, False), ids=("selected", "unselected-sibling"))
+def test_p01_page_rereads_selected_and_unselected_artifact_bytes_after_mtime_restore(
+    synthetic_small_full_store: dict[str, Any],
+    tamper_selected: bool,
+) -> None:
+    session = _open_small_read_session(synthetic_small_full_store)
+    query = session.create_query(sort_key="stock_code", page_size=1)
+    selection = session.select_stock_codes(query)
+    original_page = session.read_selection_page(selection, page_index=0, page_size=1)
+    assert original_page.page is not None
+    assert tuple(row.stock_code for row in original_page.page.rows) == ("S0000",)
+
+    reference = next(
+        item for item in session._artifact_references
+        if item.semantic_proof is not None
+        and "S0000" in item.semantic_proof.manifest.expected_stock_codes
+    )
+    proof = reference.semantic_proof
+    assert proof is not None
+    selected_code = "S0000"
+    artifact = next(
+        item for item in proof.manifest.artifact_refs if item.stock_code == selected_code
+    )
+    if not tamper_selected:
+        artifact = next(
+            item for item in proof.manifest.artifact_refs if item.stock_code != selected_code
+        )
+    artifact_path = proof.manifest.manifest_path.parent.joinpath(
+        *PurePosixPath(artifact.relative_path).parts
+    )
+    assert artifact_path.is_relative_to(synthetic_small_full_store["temporary_root"])
+    artifact_io_path = to_internal_io_path(artifact_path)
+    original_bytes = Path(artifact_io_path).read_bytes()
+    original_stat = os.stat(artifact_io_path)
+    tampered = bytes([original_bytes[0] ^ 1]) + original_bytes[1:]
+    try:
+        Path(artifact_io_path).write_bytes(tampered)
+        os.utime(
+            artifact_io_path,
+            ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+        )
+        with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as error:
+            session.read_selection_page(selection, page_index=0, page_size=1)
+        assert error.value.code == "technical_snapshot_v4_artifact_sha_mismatch"
+    finally:
+        Path(artifact_io_path).write_bytes(original_bytes)
+        os.utime(
+            artifact_io_path,
+            ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns),
+        )
+    assert Path(artifact_io_path).read_bytes() == original_bytes
+
+
+def test_p01_page_rejects_reparse_component_and_restores_synthetic_tree(
+    synthetic_small_full_store: dict[str, Any],
+) -> None:
+    if os.name != "nt":
+        pytest.skip("此負例使用 Windows junction 驗證 reparse attribute")
+
+    fixture = synthetic_small_full_store
+    session = _open_small_read_session(fixture)
+    query = session.create_query(stock_filter=("S0000",), sort_key="stock_code", page_size=1)
+    selection = session.select_stock_codes(query)
+    assert selection.matching_count == 1
+    reference = next(
+        item for item in session._artifact_references
+        if item.semantic_proof is not None
+        and "S0000" in item.semantic_proof.manifest.expected_stock_codes
+    )
+    fixture_root = fixture["temporary_root"]
+    batch_root = reference.manifest_path.parent
+    configured_component_root = Path(fixture["scope"].root).parents[2]
+    assert batch_root.is_relative_to(fixture_root)
+    assert configured_component_root.parent == fixture_root
+    target = fixture_root / "saved-reparse-target"
+    assert configured_component_root.is_relative_to(fixture_root)
+    assert not target.exists()
+    moved = False
+    junction_created = False
+    try:
+        os.rename(
+            to_internal_io_path(configured_component_root),
+            to_internal_io_path(target),
+        )
+        moved = True
+        result = subprocess.run(
+            [
+                os.environ.get("COMSPEC", "cmd.exe"),
+                "/d",
+                "/c",
+                "mklink",
+                "/J",
+                to_internal_io_path(configured_component_root),
+                to_internal_io_path(target),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=20,
+        )
+        if result.returncode != 0:
+            pytest.skip(f"隔離 fixture 無法建立 junction：{result.stderr or result.stdout}")
+        junction_created = True
+        info = os.lstat(to_internal_io_path(configured_component_root))
+        assert getattr(info, "st_file_attributes", 0) & 0x400
+        with pytest.raises(DailyMarketTechnicalUniverseV4QueryError) as error:
+            session.read_selection_page(selection, page_index=0, page_size=1)
+        assert error.value.code in {
+            "technical_snapshot_v4_link_rejected",
+            "technical_snapshot_v4_directory_invalid",
+        }
+    finally:
+        component_io_path = to_internal_io_path(configured_component_root)
+        target_io_path = to_internal_io_path(target)
+        if junction_created and os.path.lexists(component_io_path):
+            os.rmdir(component_io_path)
+        if moved and os.path.lexists(target_io_path):
+            os.rename(target_io_path, component_io_path)

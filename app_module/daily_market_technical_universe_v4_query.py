@@ -27,6 +27,10 @@ from app_module.daily_market_technical_parent_v4_query import (
 from app_module.daily_market_technical_feature_snapshot_v4 import (
     DailyMarketTechnicalFeatureSnapshotV4,
 )
+from app_module.personal_data_paths import (
+    _p01_page_operation_path_render_scope,
+    _suspend_p01_page_operation_path_render_scope,
+)
 from app_module.daily_market_technical_snapshot_v4_repository import (
     DailyMarketTechnicalBatchArtifactV4,
     DailyMarketTechnicalSnapshotV4Repository,
@@ -2529,6 +2533,32 @@ class DailyMarketTechnicalUniverseV4ReadSession:
     ) -> DailyMarketTechnicalUniverseV4ReadSelectionPage:
         """切既有全域排序清單，僅精確重開該頁需要的 child artifact。"""
 
+        operation_cancel_callback = cancel_callback
+        if cancel_callback is not None:
+            def isolated_cancel_callback() -> bool:
+                # 使用者回呼可重入 strict API 或另一個 page；不借用外層 memo。
+                with _suspend_p01_page_operation_path_render_scope():
+                    return cancel_callback()
+            operation_cancel_callback = isolated_cancel_callback
+
+        with _p01_page_operation_path_render_scope():
+            return self._read_selection_page_scoped(
+                selection,
+                page_index=page_index,
+                page_size=page_size,
+                cancel_callback=operation_cancel_callback,
+            )
+
+    def _read_selection_page_scoped(
+        self,
+        selection: DailyMarketTechnicalUniverseV4ReadSelection,
+        *,
+        page_index: int,
+        page_size: int,
+        cancel_callback: Callable[[], bool] | None,
+    ) -> DailyMarketTechnicalUniverseV4ReadSelectionPage:
+        """執行已建立 page-operation path scope 的頁面讀取。"""
+
         self._validate_selection(selection)
         if (
             type(page_index) is not int
@@ -2866,11 +2896,12 @@ def _read_session_child_snapshots_for_session(
         # 嚴格 clone 即使在 fast session 的回呼中重入，也不能借用外層 ContextVar。
         token = _P01_REHYDRATION_CALL_CONTEXT.set(None)
         try:
-            return _read_session_child_snapshots(
-                reference,
-                selected_stock_codes=selected_stock_codes,
-                cancel_callback=cancel_callback,
-            )
+            with _suspend_p01_page_operation_path_render_scope():
+                return _read_session_child_snapshots(
+                    reference,
+                    selected_stock_codes=selected_stock_codes,
+                    cancel_callback=cancel_callback,
+                )
         finally:
             _P01_REHYDRATION_CALL_CONTEXT.reset(token)
     if not any(item is reference for item in session._artifact_references):

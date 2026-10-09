@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-import os
-import stat
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
+import os
 from pathlib import Path, PurePosixPath
-from typing import Iterable, Literal, Mapping
+import stat
+from threading import get_ident
+from typing import Iterable, Iterator, Literal, Mapping
 from urllib.parse import quote
 
 
@@ -60,8 +63,93 @@ def _render_internal_io_path(canonical_path: str | Path) -> str:
     return "\\\\?\\" + raw
 
 
+_PAGE_PATH_RENDER_MEMO_MAX_ENTRIES = 4096
+_PAGE_PATH_RENDER_MEMO_MAX_UTF16_BYTES = 1024 * 1024
+_PAGE_PATH_RENDER_PATH_TYPE = type(Path())
+
+
+class _PageOperationPathRenderMemo:
+    """只在單次 P01 page operation 暫存已驗證的純路徑渲染。"""
+
+    __slots__ = ("_values", "_used_utf16_bytes", "_closed", "_owner_thread_id")
+
+    def __init__(self) -> None:
+        self._values: dict[tuple[type[Path], str], str] = {}
+        self._used_utf16_bytes = 0
+        self._closed = False
+        self._owner_thread_id = get_ident()
+
+    @staticmethod
+    def _utf16_byte_size(value: str) -> int:
+        return len(value.encode("utf-16-le", errors="surrogatepass"))
+
+    def render(self, path: str | Path) -> str:
+        if (
+            self._closed
+            or not isinstance(path, Path)
+            or type(path) is not _PAGE_PATH_RENDER_PATH_TYPE
+            or not path.is_absolute()
+            or get_ident() != self._owner_thread_id
+        ):
+            return _render_internal_io_path(path)
+
+        # Path 在 Windows 上的 equality 會忽略大小寫，因此以原始 lexical 字串作 key。
+        lexical_path = str(path)
+        key = (type(path), lexical_path)
+        cached = self._values.get(key)
+        if cached is not None:
+            return cached
+
+        rendered = _render_internal_io_path(path)
+        entry_bytes = self._utf16_byte_size(lexical_path) + self._utf16_byte_size(rendered)
+        if (
+            len(self._values) < _PAGE_PATH_RENDER_MEMO_MAX_ENTRIES
+            and self._used_utf16_bytes + entry_bytes
+            <= _PAGE_PATH_RENDER_MEMO_MAX_UTF16_BYTES
+        ):
+            self._values[key] = rendered
+            self._used_utf16_bytes += entry_bytes
+        # 容量滿時只停止新增 memo；本次轉換仍已通過原 strict renderer。
+        return rendered
+
+    def clear(self) -> None:
+        self._values.clear()
+        self._used_utf16_bytes = 0
+        self._closed = True
+
+
+_PAGE_OPERATION_PATH_RENDER_MEMO: ContextVar[_PageOperationPathRenderMemo | None] = (
+    ContextVar("p01_page_operation_path_render_memo", default=None)
+)
+
+
+@contextmanager
+def _p01_page_operation_path_render_scope() -> Iterator[None]:
+    """建立獨立且有界的 page memo；巢狀操作結束後恢復外層 scope。"""
+    memo = _PageOperationPathRenderMemo()
+    token = _PAGE_OPERATION_PATH_RENDER_MEMO.set(memo)
+    try:
+        yield
+    finally:
+        memo.clear()
+        _PAGE_OPERATION_PATH_RENDER_MEMO.reset(token)
+
+
+@contextmanager
+def _suspend_p01_page_operation_path_render_scope() -> Iterator[None]:
+    """讓 strict API 或外部回呼不會繼承 page memo。"""
+    token = _PAGE_OPERATION_PATH_RENDER_MEMO.set(None)
+    try:
+        yield
+    finally:
+        _PAGE_OPERATION_PATH_RENDER_MEMO.reset(token)
+
+
 def to_internal_io_path(path: str | Path) -> str:
     """僅渲染 OS I/O 形式；caller 須先做路徑守衛並保留 canonical identity。"""
+    memo = _PAGE_OPERATION_PATH_RENDER_MEMO.get()
+    if memo is not None:
+        return memo.render(path)
     return _render_internal_io_path(path)
 
 

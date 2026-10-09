@@ -46,6 +46,11 @@
 
 - [V5 日常操作與可讀性驗收報告（2026-09-21）](V5_READABILITY_ACCEPTANCE_2026_09_21.md)：保存 frozen worktree 的 R1–R10 工程證據；整合 route 為 299 passed、1 warning，八項 sign-off 均完成。範圍不構成正式 V4／V5 Gate、V6 個人化成熟、自然 learning 效果或 production data readiness。原始測試日誌、效能 JSON、截圖與基線 sidecar 位於 Git 忽略的 `output/qa/v5_readability_20260921/`，未封存且不保證乾淨 checkout 可重現；目前狀態看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，現行操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。原路徑保留相容導引，原件 bytes／SHA 與引用清點見 [Coverage History Entry 149](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-149)。
 
+<a id="ux24-first-version-engineering-seal-20261006"></a>
+## 2026-10-09 UX24 第一版有限工程封存收據
+
+- [UX24 第一版 stage 1–3 有限工程封存](UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)：保存 F1–F4 範圍內七項有限工程終點的實測結果。它記錄 9 stages 為 1 done／7 partial／1 pending，24 UX 為 2 done／20 partial／2 pending；不構成整體 UX 結案、正式 apply、Native／真人接受、PIT／自然 maturity、ML OOS 或 benchmark／target policy 通過。`output/qa/ux24_first_version_20261006/` 的 run receipts、logs、XML、baseline／容量 raw evidence 屬本機 ignored output，未封存；原文只保留當時記錄與 hash。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)，UX QA 導覽看 [PRODUCT_UX_QA_INDEX](../06_qa/PRODUCT_UX_QA_INDEX.md) 與 [Feature Test Routing Matrix](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md)。原路徑保留相容導引，逐檔 bytes／SHA 與引用核對見 [Coverage History Entry 150](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-150)。
+
 ## 2026-10-09 歷史狀態快照
 
 - [BALDR 本機狀態報告（2026-08-14）](project_status_2026_08_14/README.md)：保存當日 JSON／HTML 原件；舊 `next_actions` 與 CPU／MCP／QA 數字不代表目前狀態。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，來源與 SHA 見 [Coverage History Entry 117](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-117)。

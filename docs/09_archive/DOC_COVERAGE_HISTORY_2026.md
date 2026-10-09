@@ -1490,3 +1490,14 @@ R031 對應狀態維持限定範圍：R002 ACCEPTED（固定輸出與排序不�
 | 原路徑 | Archive 原文 | 工作樹原件／Archive bytes／SHA-256 |
 |---|---|---:|
 | [docs/06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md](../06_qa/V5_READABILITY_ACCEPTANCE_2026_09_21.md) | [V5_READABILITY_ACCEPTANCE_2026_09_21.md](V5_READABILITY_ACCEPTANCE_2026_09_21.md) | 14,082 / `4DBA8DFA78FEE7351707F208AABC4B76429431CFAB233C453CFB0C3FB8DF8A32` |
+
+<a id="coverage-entry-150"></a>
+## 2026-10-09 封存 UX24 第一版有限工程 QA 收據
+
+將 `docs/06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md` 先逐位元組複製到 Archive，核對來源與副本相同後，僅修正封存副本中的兩個相對連結，讓 F2／F3 shared-consumers 與 F4 retention 收據從新位置仍可到達。來源批次前為 tracked／clean，目的地不存在；舊 QA 路徑改成相容導引。原文記錄七項有限工程終點完成，不代表整體 UX closeout：9 stages 為 1 done／7 partial／1 pending，24 UX 為 2 done／20 partial／2 pending。正式 apply、Native／真人接受、PIT／自然 maturity、ML OOS、benchmark／target policy 等仍各有未結 Gate，保留原件範圍與判讀。
+
+原始 `output/qa/ux24_first_version_20261006/` run receipts、logs、XML、baseline／容量資料及其他 raw evidence 是 Git 忽略的本機輸出，沒有封存或提交，不能宣稱乾淨 checkout 可重現當時測量。全 repo 搬移前精確檔名稽核找到七處 Markdown 入鏈，未找到程式、測試、腳本、排程或設定中的固定路徑 consumer。現行 [Product UX QA Index](../06_qa/PRODUCT_UX_QA_INDEX.md) 與 [Feature Test Routing Matrix](../06_qa/FEATURE_TEST_ROUTING_MATRIX_2026_06_23.md) 已直接連至 Archive。dirty 的 `APPLICATION_MANUAL.md` 保留舊連結，由相容導引承接；歷史 Index／Catalog／Snapshot／本清冊既有引用也保留舊路徑。DOC_COVERAGE_MAP 權責邊界未變，因此不修改該 Map、Snapshot 或 Manual。
+
+| 原路徑原件 | Archive 原文 | bytes／SHA-256 |
+|---|---|---:|
+| [docs/06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md](../06_qa/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md) | [UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md](UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md) | 原件 7,652 / `C362F6A1023DB88C6D4C21460DD3EC83A1734DB769C0F77DF152C5A26BFD1417`；修正兩個相對連結後 Archive 7,668 / `389698E972B2D311E8D630A3E407C411CB02CAEA38C06F3E193DA8A19648152D` |

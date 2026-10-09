@@ -145,7 +145,7 @@ B01：`test_ml_shadow_boundary_cli`／`test_model_registry_readonly`核exact sym
 
 ## 2026-10-06 第一版有限工程封存路由
 
-`scripts/qa_validate_first_version_release.py`重用F4 actual MainWindow隔離三程序，唯讀既有250次保存與當下容量；須保留原raw案例，不重跑producer／舊Native／已接受性能。context補驗使用`test_ui_qt_stock_research_navigation`／`test_stock_research_source_recovery`／`test_stock_research_ml_scope_context`／`test_research_bookmark_main_bridge`／`test_ui_qt_research_context_status`。MainWindow修改後仍強制Workbench／update validator／完整mypy；有限工程、完整UX與外部接受分界見[UX24收據](UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)。
+`scripts/qa_validate_first_version_release.py`重用F4 actual MainWindow隔離三程序，唯讀既有250次保存與當下容量；須保留原raw案例，不重跑producer／舊Native／已接受性能。context補驗使用`test_ui_qt_stock_research_navigation`／`test_stock_research_source_recovery`／`test_stock_research_ml_scope_context`／`test_research_bookmark_main_bridge`／`test_ui_qt_research_context_status`。MainWindow修改後仍強制Workbench／update validator／完整mypy；有限工程、完整UX與外部接受分界見[封存的UX24收據](../09_archive/UX24_FIRST_VERSION_ENGINEERING_SEAL_20261006.md)。
 
 > **Scope**: 本文件是 Testing / QA Agent 所使用的功能對應測試路由矩陣（Feature-to-Test Routing Matrix），定義六大高頻 UI 工作區之測試橋接、對照測試路徑與模式支援。
 >

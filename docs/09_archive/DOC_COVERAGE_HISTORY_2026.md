@@ -1385,3 +1385,16 @@ Archive 原件保留搬移前 Windows 工作樹 CRLF bytes。各原件正規化�
 | 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
 |---|---|---:|
 | [`docs/superpowers/plans/2026-06-23-healthcheck-batch3-recommendation-profile-regime.md`](../superpowers/plans/2026-06-23-healthcheck-batch3-recommendation-profile-regime.md) | [`2026-06-23-healthcheck-batch3-recommendation-profile-regime.md`](superpowers/plans/2026-06-23-healthcheck-batch3-recommendation-profile-regime.md) | 9,375 / `9c2efb867a9c599b0ab7fd5ae280a4ed9e624611df61c7be945466959a412407` |
+
+<a id="coverage-entry-143"></a>
+## 2026-10-09 封存 Healthcheck Batch 4 Research Lab Results 歷史 plan
+
+將 `docs/superpowers/plans/2026-06-23-healthcheck-batch4-research-lab-results.md` 的歷史計畫原文逐位元組複製至 `docs/09_archive/superpowers/plans/`；原路徑改為相容導引。來源原件為 tracked／clean，18,737 bytes，SHA-256 `9978f6b4793ff750d83a7ce14c44268bdbd50b3c112bf7704ee49b04791c7fa1`；Archive 副本大小與 SHA 相同。`git log --follow` 可追溯實作提交 `d7016d32366df3e96aae094412cadb0af760e97f`。計畫的 Execution Summary 與 Docs Update Checklist 已勾選；TDD Steps 是列出的驗證步驟，不能單憑清單存在推定每項人工驗收已完成。
+
+Full App healthcheck 與現行 QA coverage mapping 仍將 BACKTEST-ISSUE-013／015／022／024、B-029／030／033／040／042 標為「已修正待驗證」；Coverage Mapping 原件留在 `docs/06_qa/`。本次只整理計畫入口，不宣稱人工重測通過。精確檔名搜尋找到計畫自身、plan/spec manifest、固定歷史 `DOCUMENTATION_INDEX_HISTORY_2026_09_27.md` 與 `DOCUMENTATION_CATALOG_20261006_HISTORY.md`；README 導覽已改連 Archive 原文，固定歷史連結由舊路徑導引承接。未找到程式、測試、腳本、排程或設定中的固定路徑 consumer。
+
+目前操作與結果判讀看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，目前呈現邊界看 [system architecture](../01_architecture/system_architecture.md)，目前狀態與優先序看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)；QA 待驗狀態看[原 Coverage Mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)。原路徑、封存原文、效力限制、替代入口與逐檔 provenance 由本 History、[Archive README](README.md#2026-10-09-healthcheck-batch-4-research-lab-results-plan) 與 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 追蹤。Scoped authority 與同步規則未變，因此不修改 `DOC_COVERAGE_MAP.md`。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes / SHA-256 |
+|---|---|---:|
+| [`docs/superpowers/plans/2026-06-23-healthcheck-batch4-research-lab-results.md`](../superpowers/plans/2026-06-23-healthcheck-batch4-research-lab-results.md) | [`2026-06-23-healthcheck-batch4-research-lab-results.md`](superpowers/plans/2026-06-23-healthcheck-batch4-research-lab-results.md) | 18,737 / `9978f6b4793ff750d83a7ce14c44268bdbd50b3c112bf7704ee49b04791c7fa1` |

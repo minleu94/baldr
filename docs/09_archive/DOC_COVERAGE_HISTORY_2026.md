@@ -1187,7 +1187,7 @@ README、Archive README、DOCUMENTATION_INDEX 與仍有效的 troubleshooting �
 <a id="coverage-entry-127"></a>
 ## 2026-10-09 封存 V4 每日自然證據 loop handoff
 
-將日期化 `V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md` 從 QA 導覽移入 `docs/09_archive/`，因其記錄的是 9/12 worktree 的一次性交接與當時讀回，不是目前狀態入口。原文逐 byte 搬移；QA 原路徑保留短導引，列出原件 hash 與仍需追蹤的限制。收據中的 V4 forward horizons 尚待自然成熟、Paper benchmark 截止 2026-08-28 且 weekly evidence 不可計算、外部 fills CSV 缺件、saved checkout Scheduler／receipt freshness 待 owner 確認及 ACL warning 均保留為歷史未完成事項，沒有標記為 Gate 已解除。現況仍以 Snapshot／Gate 7 為準，操作看 Manual。QA README 與 Archive README 已更新直接入口；DOCUMENTATION_INDEX 已有通往 Archive README 的目錄入口，因此不需逐檔新增索引項。權威邊界未變，不修改 DOC_COVERAGE_MAP。
+將日期化 `V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12.md` 從 QA 導覽移入 `docs/09_archive/`，因其記錄的是 9/12 worktree 的一次性交接與當時讀回，不是目前狀態入口。原文逐 byte 搬移；QA 原路徑保留短導引，列出原件 hash 與仍需追蹤的限制。收據中的 V4 forward horizons 尚待自然成熟、Paper benchmark 截止 2026-08-28 且 weekly evidence 不可計算、外部 fills CSV 缺件、saved checkout Scheduler／receipt freshness 待 owner 確認及 ACL warning 均保留為歷史未完成事項，沒有標記為 Gate 已解除。現況仍以 Snapshot／Gate 7 為準，操作看 Manual。QA README、Archive README 與 DOCUMENTATION_INDEX 均已增加直接入口；權威邊界未變，不修改 DOC_COVERAGE_MAP。
 
 | 原 QA 路徑 | Archive 原文 | 原件 bytes / SHA-256 | Archive bytes / SHA-256 |
 |---|---|---:|---:|

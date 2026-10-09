@@ -57,6 +57,8 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 [Weekly Natural Evidence Review（2026-09-20，歷史）](../09_archive/WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20_HISTORY.md)：保存 9/14–20 週期與 9/21 唯讀觀測，分清 weekly collection、BankTaiwan capture 與 ML natural shadow，不代表成熟、promotion 或 human approval。現況看 Snapshot／Gate 7；bytes/hash 見 [Coverage History Entry 106](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-106)。
 
+[V4 每日自然證據運行閉環 handoff（2026-09-12，歷史）](../09_archive/V4_DAILY_EVIDENCE_LOOP_HANDOFF_2026_09_12_HISTORY.md)：保存當時 maturity、Paper benchmark／fills 與 saved checkout 交接缺口；均為歷史未完成事項，不代表目前 Gate 已解除。現況看 Snapshot／Gate 7，操作看 Manual；原 QA 路徑保留導引，bytes／SHA 見 [Coverage History Entry 127](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-127)。
+
 [BankTaiwan 研究型學習（2026-09-14，單日 bounded run）](../09_archive/README.md#2026-10-09-banktaiwan-2026-09-14-initial-shadow-run)：成本估算與營運 QA 保留為歷史快照；`retain_current`、自然成熟樣本 0，不代表 lane maturity 或 promotion。現況看 Snapshot／Gate 7，逐檔 bytes／SHA 見 [Coverage History Entry 120](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-120)。
 
 [資料補齊驗收（2026-09-09，歷史）](../06_qa/DATA_COMPLETION_2026_09_09.md)：為延續既有交接引用，完整總驗收保留 QA 原路徑；封存副本、flows／TDCC 歷史收據見 [Archive 專區](../09_archive/README.md#data-completion-20260909) 與 [Coverage History Entry 122](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-122)。現況看 Snapshot／QA Data Governance。

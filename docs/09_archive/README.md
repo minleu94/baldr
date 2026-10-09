@@ -52,6 +52,10 @@
 
 - [每日推薦自動學習與受控調整 QA（2026-09-13）](V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13_HISTORY.md)：保存單一 learning task 註冊與 bounded CLI entrypoint 驗證，不代表 task 已執行、正式推薦權重變更、promotion 或 production evidence credit。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，工程邊界看 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留導引，bytes／SHA 見 [Coverage History Entry 105](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。
 
+## 2026-10-09 Weekly Natural Evidence 9/20 歷史快照
+
+- [Weekly Natural Evidence Review（2026-09-20）](WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20_HISTORY.md)：保留 9/14–20 週期與 9/21 唯讀觀測；V2.2 collection、BankTaiwan capture、ML natural shadow 是不同 lane，pending 不等於 matured／promotion／Formal／human approval。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)。舊 QA 路徑保留導引，原件 SHA 見 [Coverage History Entry 106](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-106)。
+
 ## 2026-10-09 9/14 排程與週資料受託審查歷史
 
 - [排程與週資料受託審查（2026-09-14）](SCHEDULED_OPERATIONS_OWNER_REVIEW_2026_09_14_HISTORY.md)：單次 `reviewed_with_follow_up` 記錄，正式採認未通過；保留 SQLite read-only 檢查與 warning／持倉證據的日期範圍，不代表 CSV／SQLite 全量一致、目前 scheduler 狀態或出場建議。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與近期排程 QA。原 QA 路徑保留相容導引，bytes／SHA 見 [Coverage History Entry 103](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-103)。

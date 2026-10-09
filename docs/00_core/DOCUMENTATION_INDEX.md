@@ -49,6 +49,8 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 [V4.2 每日推薦自動學習部署 QA（2026-09-13，歷史）](../09_archive/V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13_HISTORY.md)：保留單一 task 註冊與 bounded run 證據，task 當時尚未執行，未取得正式 promotion／production credit。現況看 Snapshot／Gate 7，操作看 Manual；bytes/hash 見 [Coverage History Entry 105](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。
 
+[Weekly Natural Evidence Review（2026-09-20，歷史）](../09_archive/WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20_HISTORY.md)：保存 9/14–20 週期與 9/21 唯讀觀測，分清 weekly collection、BankTaiwan capture 與 ML natural shadow，不代表成熟、promotion 或 human approval。現況看 Snapshot／Gate 7；bytes/hash 見 [Coverage History Entry 106](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-106)。
+
 `output/plans/` 與 `output/qa/` 是 ignored 本機需求／原始驗收證據，不因 ignored 即可刪。唯一 Danny Quant plan 原路徑 `output/plans/baldr_product_experience_plan_20261004.md` 保留原 bytes，另有本轮可還原快照；raw 失敗、JUnit 與 receipts 不重寫。正式摘要可放 QA，私人內容不能直接公開。
 
 

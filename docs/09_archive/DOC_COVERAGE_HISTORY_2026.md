@@ -911,3 +911,16 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/06_qa/V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13.md` | [V4.2 每日推薦學習部署原文](V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13_HISTORY.md) | 18,557 / `F9015BD845FD2E1F3F973C31903D9B1A3AC3C034D91772550DA97EBEC5F6C422` | 18,557 / `F9015BD845FD2E1F3F973C31903D9B1A3AC3C034D91772550DA97EBEC5F6C422` |
 
 此 Entry 只記錄文件生命週期、來源 bytes 與現行閱讀入口，不複製原 QA 的部署／測試細節作為目前運行保證。
+
+<a id="coverage-entry-106"></a>
+## 2026-10-09 歸檔 Weekly Natural Evidence Review（9/20）
+
+此為 2026-09-14 至 09-20 的 weekly natural evidence 整理，加上 9/21 唯讀觀測；它是帶時間範圍的證據快照，不是長期契約、Gate 核准或目前 ML／scheduler 狀態。原文刻意分開 V2.2 weekly collection、BankTaiwan natural capture 與 ML natural shadow 三個 lane；collection metadata、pending observation、技術 prospective ready 與自然 matured／promotion／Formal／人工核准不能互相替代。9/21 的 hash 對齊不證明根因永久修復；未完成事項仍由 Snapshot、Gate 7 與目前操作入口承接。
+
+精確檔名 inbound 為 2026-10-06 歷史 Catalog；Entry 102 的歷史敘述也提到此檔名，以區分另一份 Natural Shadow audit lane。程式、測試、manifest、QA README、Coverage Map 與 DOCUMENTATION_INDEX 沒有精確路徑 consumer；舊 QA 路徑短導引維持歷史連結可達。 ignored `output/qa/` readback sidecars 未隨此歸檔搬動或提交。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20.md` | [Weekly Natural Evidence Review 原文](WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20_HISTORY.md) | 10,654 / `B9DF841D120E5F6C9A4B2A5784CDEC9756EC127784A498F961AFE268CDFB2D6E` | 10,654 / `B9DF841D120E5F6C9A4B2A5784CDEC9756EC127784A498F961AFE268CDFB2D6E` |
+
+目前狀態看 Snapshot；本 Entry 只保留來源身分、當時證據範圍與原件 provenance，不把 9/21 數字當成現在值。

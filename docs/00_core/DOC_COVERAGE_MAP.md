@@ -387,11 +387,11 @@ Healthcheck Batch 3 Recommendation Profile／Regime plan 經審核後留在 `doc
 
 ## 2026-10-08 Program Status Rebaseline 日期快照歸檔
 
-將 `PROGRAM_STATUS_REBASELINE_2026_08_29.md` 移至 Archive；該文包含 8/29／30 的 readiness 數字，已由 10 月 Snapshot 與近期 lane QA 取代 current-state 用途。Application Manual Supplements、Gate 7 Engineering 與 External Validation Register 已改為把這些數字標示成歷史快照，現況以 Snapshot／近期 QA 判讀；舊 QA 路徑保留導引。Archive 副本只修正指向仍留在 QA 的相對連結，完整保留報告內容。`DOCUMENTATION_INDEX.md` 目前有其他未提交編輯，本輪未修改；其既有舊路徑可經導引開啟 Archive 原文。
+將 `PROGRAM_STATUS_REBASELINE_2026_08_29.md` 移至 Archive；該文包含 8/29／30 的 readiness 數字，已由 10 月 Snapshot 與近期 lane QA 取代 current-state 用途。Application Manual Supplements、Gate 7 Engineering 與 External Validation Register 已改為把這些數字標示成歷史快照，現況以 Snapshot／近期 QA 判讀；舊 QA 路徑保留導引。Archive 副本僅修正相對連結，不改報告結論與數據。`DOCUMENTATION_INDEX.md` 目前有其他未提交編輯，本輪未修改；其既有舊路徑可經導引開啟 Archive 原文。
 
 | 原路徑 | 歸檔路徑 | 原文 bytes / SHA-256 | 封存 bytes / SHA-256 |
 |---|---|---|---|
-| docs/06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md | [PROGRAM_STATUS_REBASELINE_2026_08_29.md](../09_archive/PROGRAM_STATUS_REBASELINE_2026_08_29.md) | 15,546 / `8d21f040f9236344e67fecd43ced62cc80c38e775ebc058cbb85c982c301c636` | 15,602 / `10a6145483f79f7e695874719f45b8951a9019103a02ebd90705dd3e4daeb7df` |
+| docs/06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md | [PROGRAM_STATUS_REBASELINE_2026_08_29.md](../09_archive/PROGRAM_STATUS_REBASELINE_2026_08_29.md) | 15,546 / `8d21f040f9236344e67fecd43ced62cc80c38e775ebc058cbb85c982c301c636` | 15,557 / `35f0993e37f84fef9aa9eed70ca828673cb711a322d851952d1e7f55f501e3d8` |
 
 ## 2026-10-08 ML Release v4 retention cleanup custody 歸檔
 
@@ -400,6 +400,16 @@ Healthcheck Batch 3 Recommendation Profile／Regime plan 經審核後留在 `doc
 | 原路徑 | 歸檔路徑 | 原文 bytes / SHA-256 | 封存 bytes / SHA-256 |
 |---|---|---|---|
 | docs/06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md | [ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md](../09_archive/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md) | 13,921 / `642c6b025dee93d844332028b0e2c865cd558e2f903278cbfc49d657c7ecd878` | 13,921 / `642c6b025dee93d844332028b0e2c865cd558e2f903278cbfc49d657c7ecd878` |
+
+## 2026-10-08 Runtime／Paper／Formal readiness detail snapshots 歸檔
+
+將 2026-08-30 Runtime／Performance、Paper Portfolio 與 Formal／ML Input 的詳細 readiness refresh 移至 Archive，作為 8/29 Program Status Rebaseline 的配套證據。當日容量、21 個 Paper snapshots、`0/3` Formal inputs 均是 historical observations；目前狀態以 Snapshot 與最新 QA 為準。QA 原路徑保留短導引，舊索引／審查連結可繼續抵達封存原文；P0 與 Evidence weekly reviewer handoff 仍留 QA，因 External Validation Register 明確引用其原始 receipts。
+
+| 原路徑 | 歸檔路徑 | 原文 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/06_qa/RUNTIME_PERFORMANCE_READINESS_REFRESH_2026_08_30.md | [RUNTIME_PERFORMANCE_READINESS_REFRESH_2026_08_30.md](../09_archive/RUNTIME_PERFORMANCE_READINESS_REFRESH_2026_08_30.md) | 8,594 / `474bbdebd0b20b53feb54116fa62187eeaeacbe99736c7ee3dc3c680e8afe045` | 8,594 / `474bbdebd0b20b53feb54116fa62187eeaeacbe99736c7ee3dc3c680e8afe045` |
+| docs/06_qa/PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md | [PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md](../09_archive/PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md) | 4,254 / `5d1994f05463d01352daa2f131c9cfd647be8ba22ac78313edd74426bedd60e9` | 4,254 / `5d1994f05463d01352daa2f131c9cfd647be8ba22ac78313edd74426bedd60e9` |
+| docs/06_qa/FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md | [FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md](../09_archive/FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md) | 3,376 / `f08c2cbadbe9912f5381907019b854b991d742992acacdaf3476fa37cb78c3e9` | 3,376 / `f08c2cbadbe9912f5381907019b854b991d742992acacdaf3476fa37cb78c3e9` |
 
 ## 2026-10-08 QA 導覽補充：Gate 2 與 Data Update 效能基線
 

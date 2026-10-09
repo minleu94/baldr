@@ -139,6 +139,7 @@
 - 七份 2026-08-18 至 08-28 的 Prospective Formal clock activation、execution、staging、calendar 與 failure receipts 已歸檔；目前 restart direction 與 decision-clock contract 留在 QA，歷史 staging 不構成重啟／發布授權，8/26 僅為具名一次性例外。
 - `PROGRAM_STATUS_REBASELINE_2026_08_29.md` 已改為 Archive 日期快照；目前狀態以 PROJECT_SNAPSHOT 為準，Manual、Gate 7 與 External Validation Register 已解除對 8/29 snapshot 的 current-state 依賴，舊 QA 路徑保留轉址。
 - 2026-08-29 ML Release v4 Storage Retention Cleanup 是使用者授權的一次性 custody 收據，已移至 Archive 並保留舊 QA 路徑轉址；目前 immutable publication retention 規則以 system_architecture §11.1 為準，操作以 Application Manual Supplements 為準。
+- 三份 2026-08-30 Runtime／Performance、Paper、Formal／ML readiness 詳細快照已移至 Archive；目前狀態以 PROJECT_SNAPSHOT 為準。P0 與 Evidence weekly approval handoff 仍留在 QA 並由 External Validation Register 引用，日期化數字不代表今日 Gate 狀態。
 - 六份 2026-07 V2.4／V2.5 paper baseline、V3.0 readiness／manual validation 與 V4.0 dated release-freeze receipt 已歸檔；成熟度文件保留 Gate 與決議摘要、移除單日 metrics，舊 QA 路徑仍供 script existence check 與歷史引用相容。
 - 三份 2026-09-14／15 decision workbench、next-increment 與 continuity write-path audit 已歸檔；QA 導覽與 PIT industry discovery 改連 Archive 原文，日期化剩餘工作不再混作目前優先序。
 - 2026-09-07 的三份 V4 bounded data／machine／ML QA 亦已歸檔；仍以 Snapshot 與較新的專題收據判讀目前狀態，不將單日 release evidence 當成現行資格結論。

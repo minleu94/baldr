@@ -40,11 +40,19 @@
 
 ### 2026-10-08 Program Status Rebaseline snapshot
 
-[Program Status Rebaseline（2026-08-29）](PROGRAM_STATUS_REBASELINE_2026_08_29.md) 記錄當時全專案七個 readiness lanes、Gate blockers 與 8/30 更新收據。報告中的 current／ready 數字是日期快照，現況以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準；原 QA 路徑保留相容導引，內部相對連結已改指向仍在 QA 的原始收據。
+[Program Status Rebaseline（2026-08-29）](PROGRAM_STATUS_REBASELINE_2026_08_29.md) 記錄當時全專案七個 readiness lanes、Gate blockers 與 8/30 更新收據。報告中的 current／ready 數字是日期快照，現況以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準；原 QA 路徑保留相容導引，內部連結分別指向仍留在 QA 的 P0／Evidence handoff 及 Archive 原件。
 
 ### 2026-10-08 ML storage retention cleanup custody
 
 [ML Release v4 Storage Retention Cleanup（2026-08-29）](ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md) 保存使用者授權的一次性 release_v4 清理範圍、不可逆性、before／after inventory、保留鏈與 tombstone。它不是目前容量或 run inventory；現行 retention policy 看 [system architecture §11.1](../01_architecture/system_architecture.md#111-immutable-ml-publication-retention)，操作程序看 [Application Manual Supplements](../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md)。原 QA 路徑保留相容導引。
+
+### 2026-10-08 Program readiness refresh details
+
+- [Runtime／Performance Readiness Refresh（2026-08-30）](RUNTIME_PERFORMANCE_READINESS_REFRESH_2026_08_30.md)：保留當日容量、`preflight-only` 與 canary owner packet；不是目前 runtime readiness。
+- [Paper Portfolio Readiness Refresh（2026-08-30）](PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md)：保留當日 snapshot／fills／cost ledger 盤點；不是目前 Paper 狀態。
+- [Formal／ML Input Readiness Refresh（2026-08-30）](FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md)：保留當日 strict `0/3` 與 owner-controlled input 證據；不是目前 validator 結果。
+
+三份文件補充同日的 Program Status Rebaseline；目前狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，QA 原路徑保留相容導引。
 
 ### 2026-10-08 Decision workbench and continuity audit history
 

@@ -31,4 +31,4 @@
 - [文件索引](../00_core/DOCUMENTATION_INDEX.md) - 已納入索引的主要 spec / plan。
 - [Plan/spec archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) - 原路徑保留表與生命週期判讀。
 - [Plan/spec 日期與狀態稽核（2026-07-06）](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md)。
-- [歷史 push 前文件稽核（2026-07-06）](../06_qa/DOCUMENTATION_PRE_PUSH_AUDIT_2026_07_06.md)。
+- [歷史 push 前文件稽核（2026-07-06）](../09_archive/DOCUMENTATION_PRE_PUSH_AUDIT_2026_07_06_HISTORY.md)。

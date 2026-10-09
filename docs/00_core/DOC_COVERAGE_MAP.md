@@ -1,5 +1,15 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 歸檔三份一次性 QA 收據
+
+將已完成的文件治理稽核、V2.0 非排程 closeout 與 ML Shadow 工程操作 closeout 移入 `docs/09_archive/`；內容各保留原文與原路徑轉址。下表 SHA-256 為搬移前工作樹原件；歷史 `DOCUMENTATION_CATALOG_20261006.md` 與既有 archive/history 引用繼續由轉址承接。QA README、Archive README 已新增分類入口；Superpowers README 的 push 前稽核連結改為直達歸檔副本。現況以 Snapshot、現行 Runbook 與具名最新 QA 為準。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes | SHA-256 | 歸檔理由 |
+|---|---|---:|---|---|
+| `docs/06_qa/DOCUMENTATION_PRE_PUSH_AUDIT_2026_07_06.md` | [`DOCUMENTATION_PRE_PUSH_AUDIT_2026_07_06_HISTORY.md`](../09_archive/DOCUMENTATION_PRE_PUSH_AUDIT_2026_07_06_HISTORY.md) | 4,816 | `180FD1F6BCAB2727255CCEAB13A9DBBF177E53952D90914DDF327C2E2771FFA4` | 單次文件治理盤點；後續 2026-09-27／10-06 rebaseline 已更新入口與結構。 |
+| `docs/06_qa/PRE_V2_NON_SCHEDULE_READINESS_CLOSEOUT_2026_07_06.md` | [`PRE_V2_NON_SCHEDULE_READINESS_CLOSEOUT_2026_07_06_HISTORY.md`](../09_archive/PRE_V2_NON_SCHEDULE_READINESS_CLOSEOUT_2026_07_06_HISTORY.md) | 8,990 | `BBEFCDFD0EC32BA23A7A2B7578EE6C99BA929EF20F7EAE1ABD3386DFCA852748` | V2.0 前的時間點 closeout；剩餘時間門檻及 scheduler 狀態不代表目前 readiness。 |
+| `docs/06_qa/ML_SHADOW_INFERENCE_OPERATIONS_CLOSEOUT_2026_07_15.md` | [`ML_SHADOW_INFERENCE_OPERATIONS_CLOSEOUT_2026_07_15_HISTORY.md`](../09_archive/ML_SHADOW_INFERENCE_OPERATIONS_CLOSEOUT_2026_07_15_HISTORY.md) | 3,343 | `73957B26B668AD601BD512D4952054D3577D7534A9DD3A5528D8E9DD3C28EA75` | 一次性受控工程 closeout；真實 frozen artifact smoke 當時 blocked，current steps 仍見 Runbook。 |
+
 ## 2026-10-08 歸檔舊端到端架構藍圖
 
 將 `docs/01_architecture/system_flow_end_to_end.md` 的 8,440-byte 舊流程藍圖移至 [`docs/09_archive/SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md`](../09_archive/SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md)。搬移前 SHA-256：`BFEE295DF4EFCAC0ED678DEAEEA589681258BD72EC87BACC2C634A35AB8911ED`；保留原文段落，只移除檔尾多餘的空白行。該藍圖描述舊 feature store／recommendation／UI 路徑與建議新增模組，不再作現況權威。原架構路徑改為導引，接住 2026-10-06 靜態 Catalog、歷史計畫與 QA 引用；架構 README、Archive README 已更新現況入口。不改未提交的 `DOCUMENTATION_INDEX.md`。

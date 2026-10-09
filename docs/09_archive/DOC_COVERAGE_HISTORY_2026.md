@@ -1548,3 +1548,21 @@ V1.3 Evidence Operations plan 原有 11 項 checked、3 項 open（checkpoint co
 This follow-up supersedes only the earlier decision to keep full prompt bodies at their live paths: the prior [Entry 147](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-147) and its supplemental note above remain unchanged as historical decisions. WAVE1 records completed analysis/review routing; the unknown formal R006 binary remains unloaded and RK-19 stays open. WAVE2 records a completed read-only R008 pre-analysis prompt, not a formal independent review or Wave 3 authorization. No task acceptance or migration Gate is upgraded.
 
 Exact filename search found the live Dispatch README, its archive README, this Archive route, historical Catalog/coverage snapshots, and a prior archived review prompt; no code, test, script, scheduler, or setting consumer was found. The live Dispatch README and both Archive navigation levels now point to the Archive originals. Historical Catalog and any uncommitted `DOCUMENTATION_INDEX.md` references remain reachable through the source-path stubs; the dirty Index was not modified. `DOC_COVERAGE_MAP` authority boundaries did not change, so this batch updates Coverage History/Archive navigation only and does not modify the Map or target architecture contract.
+
+<a id="coverage-entry-154"></a>
+## 2026-10-09 封存 Post-V1 Evidence Event Store plan/spec
+
+將 2026-07-01 Evidence Event Store v1／Forward Outcome Calculator v1 的 plan 與 design spec 原文逐位元組複製至 Archive，核對來源與副本 bytes／SHA 後，將舊路徑改成短導引。兩份來源在批次前均 tracked／clean，Archive 目的地不存在；原文沒有 repo 內部相對 Markdown 連結。兩份原件與 Archive 副本均保持原始 bytes，沒有改寫內容或 checklist。
+
+Plan 原有 **0/20 項已勾選**；spec 無 checklist。配套 [QA 收據](POST_V1_EVIDENCE_EVENT_STORE_QA_2026_07_01.md) 記錄第一增量實作與測試，包括 focused pytest `18 passed`、金融 float boundary exit 0、展開 Python 檔案清單後的 py_compile exit 0。這些是原 QA 記載，不是本次重跑。QA 與 plan 的狀態差異保留，不替 plan 補勾，也不延伸推定 Gate 2、投資有效性、正式交易績效或 UI／importer／dashboard 工作已完成。
+
+依 plan、spec 與 QA，該增量新增 append-only evidence events、forward outcomes 與 CLI；沒有改動 scoring／recommendation weight／portfolio position，也沒有建立 UI 或接入 importer。v1 close-to-close outcome 不是可執行績效；QA 所列交易限制、concept／industry mapping、benchmark 缺值處理、dashboard 與 importer 缺口仍依 QA 原文判讀。
+
+搬移前精確檔名搜尋找到 Archive manifest、歷史 Documentation Catalog／Index snapshot、具名 QA 收據與 Archive 導覽引用；未找到程式、測試、腳本、排程或設定以這兩個 Markdown 路徑作為 consumer。歷史快照保留舊路徑，由舊路徑導引承接。現行 [Superpowers README](../superpowers/README.md)、本 [Archive README](README.md#2026-10-09-post-v1-evidence-event-store-plan-spec) 與 [plan/spec manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 已提供入口和判讀。`DOCUMENTATION_INDEX.md` 有其他未提交修改，本批未觸碰；`DOC_COVERAGE_MAP` 權威邊界未變，因此不修改 Map、Snapshot、Manual 或 Roadmap。
+
+| 原路徑 | Archive 原文 | 原件／Archive bytes／SHA-256 |
+|---|---|---:|
+| [`docs/superpowers/plans/2026-07-01-post-v1-evidence-event-store.md`](../superpowers/plans/2026-07-01-post-v1-evidence-event-store.md) | [`2026-07-01-post-v1-evidence-event-store.md`](superpowers/plans/2026-07-01-post-v1-evidence-event-store.md) | 4,782 / `5BC8F3A0614BCE62762CE5DEEBCC515AE3026D89DD63C91B12812C32D12D4407` |
+| [`docs/superpowers/specs/2026-07-01-post-v1-evidence-event-store-design.md`](../superpowers/specs/2026-07-01-post-v1-evidence-event-store-design.md) | [`2026-07-01-post-v1-evidence-event-store-design.md`](superpowers/specs/2026-07-01-post-v1-evidence-event-store-design.md) | 7,544 / `5C4410599509CF914A288D9994FDF5D8EB6BE74172CC0E36CEF36390CFB8B327` |
+
+Windows 工作樹原件與 Archive 副本均為 CRLF。Git 將換行正規化為 LF 後，來源 HEAD blob 與暫存的 Archive blob 仍逐位元組相同：plan 為 4,701 bytes、SHA-256 `8B74722A0B7ECD1B651005913AC35390F3F303CC9108CA69B2AC9B67C6218C63`；spec 為 7,376 bytes、SHA-256 `81E8BA1F59606E9619D94A321A0AF841A0DEEF22B6FDC7781FA6772DF9204749`。原件結尾空白行也保留以維持雜湊；`git diff --cached --check` 對新增的逐 byte 副本會提示這兩行，沒有其他 whitespace 診斷。

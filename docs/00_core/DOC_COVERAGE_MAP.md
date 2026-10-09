@@ -278,6 +278,8 @@ Phase 目錄逐檔導覽已補上可點文件路徑；`phase3_5_research/README.
 
 `docs/superpowers/README.md` 新增主題閱讀入口，按 Research Lab、scoring、ML、valuation、Portfolio／Watchlist、資料更新／UI 導向現行權威與少量歷史 plan/spec；保留 165 項 manifest，不推定完成狀態。另明示舊外部證據授權、任務 prompts 及日期稽核的 Next Action 只能作歷史追溯，避免被搜尋後誤當現行指令。未移動或改寫 superpowers 原文件。
 
+`docs/08_technical/PARAMETER_DESIGN_IMPROVEMENTS.md` 的標題與前言標明為 Phase 2.5 歷史建議／當時清單，README 不再將其列為現行改進計畫；原建議與完成狀態全文保留，現況導回 Snapshot、6M Roadmap、Score Explanation 與 QA。Index 正有其他工作修改，本批不移動檔案或修改 Index。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

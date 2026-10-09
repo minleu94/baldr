@@ -6,9 +6,8 @@
 
 ## 📄 文檔列表
 
-- **`PARAMETER_DESIGN_IMPROVEMENTS.md`**
-  - 參數設計改進計劃
-  - Phase 2.5 參數優化詳細說明
+- [歷史參數設計改進紀錄（Phase 2.5）](PARAMETER_DESIGN_IMPROVEMENTS.md)
+  - 保存當時的參數建議與實施記錄；內文日期、優先級及「待執行」狀態不可直接當作目前待辦。
 
 - **`technical_analysis_optimizations.md`**
   - 技術分析優化文檔

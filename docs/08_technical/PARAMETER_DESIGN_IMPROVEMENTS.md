@@ -1,4 +1,6 @@
-# 參數設計改進計劃
+# 歷史參數設計改進紀錄（Phase 2.5）
+
+> **狀態：Historical / Reference。** 本文保存 Phase 2.5 時期的設計建議、實施清單與當時完成狀態。文中的「立即修改」「本週」「下週」「待執行」是原計畫用語，不代表目前仍有效的工作項目或現況；目前優先順序看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [6M Engineering Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md)，評分行為看 [Score Explanation](../02_features/SCORE_EXPLANATION.md)，實際驗收看具名 QA。
 
 ## 📋 問題概述
 

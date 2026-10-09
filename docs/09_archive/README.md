@@ -102,6 +102,10 @@
 
 [完整驗收原文](NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005_HISTORY.md)記錄 2026-10-05 的 bounded Native 操作鏈：取消後以新 generation 重試、保存新結果、由新程序讀回，並驗證截止日、artifact 決策日、result/run identity 與 index hash 四種拒絕案例。原結果是未入選篩選紀錄，不是推薦成功；也不代表自然成熟、ML 正式資格、PIT 或交易資格。原 QA 路徑保留短導引，來源／Archive bytes 與引用追蹤見 [Coverage History Entry 132](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-132)。
 
+## 2026-10-09 封存 Batch9 最小續接 handoff 歷史
+
+[封存全文](MINIMAL_CONTINUATION_HANDOFF_20261005_HISTORY.md)保存 2026-10-05 起多批 UX、Native、效能與儲存工程的 append-only handoff；較早狀態由後續批次更正，並保留當日失敗、容量與未解資格限制。它不是目前任務清單或 Gate 狀態，最新狀態與工作順序看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 及 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。原 QA 路徑留短導引；Archive 副本已把同層 QA 文件連結改成來源目錄路徑，原件與封存 hash 見 [Coverage History Entry 133](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-133)。
+
 ## 2026-10-09 V4.2 Daily Recommendation Learning 9/13 歷史 QA
 
 - [每日推薦自動學習與受控調整 QA（2026-09-13）](V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13_HISTORY.md)：保存單一 learning task 註冊與 bounded CLI entrypoint 驗證，不代表 task 已執行、正式推薦權重變更、promotion 或 production evidence credit。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，工程邊界看 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留導引，bytes／SHA 見 [Coverage History Entry 105](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。

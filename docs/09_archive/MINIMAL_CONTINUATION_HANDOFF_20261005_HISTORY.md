@@ -1,0 +1,358 @@
+# 最小續接清單（2026-10-05，Batch9）
+
+## 2026-10-05 原排名收藏與個股來源版本化（最新限定收尾）
+
+已完成原排名選股→個股原排名／原 feature→版本化收藏→新程序 pinned 讀回→精確返回原收藏。v2 保存四模式、實際比較窗、原母體／方法／hash／排序／所選股；舊非 rank v1 內容與 bookmark/query/payload 雜湊不變，沒有真實清單遷移。缺件／錯版本／日期／股號／hash／來源修訂顯示原因，可明確另開最新個股研究，保留原證據。完整 Top/Bottom 字串照原 publisher 顯示，3–5 筆週 fallback 明示實際日期與非完整週，不反推 score／勝率。
+
+受影響測試 136 首輪通過＋1 項定向修正後通過（合計 137 個案例）；Workbench 85；更新頁 validator 25 通過／4 略過；mypy 783 檔；18 個 Python 檔語法與 quant guard 通過。 真實既有 D 來源的 2382 四模式，在程序 24368 保存至隔離清單，程序 26516 重開核對來源與返回；兩程序正常退出且 worker=0。17 個 feature/rank 原檔及 DB/WAL/SHM stat、原引擎／母體設定保持不變；未重跑既有真實來源 publisher／learner，未寫正式 DB／registry 或真實收藏。排名來源測試僅用三股小型 fixture DB 與隔離產物。
+
+其他原大盤／強弱 consumer 融合、完整 feature/method dictionary、正式合格母體／排程部署、長期 storage/growth 及其他 lifecycle crash 驗收仍是第一版工程。Backtest 18.62%／20% 未達保留。正式母體權威、official availability／歷史 membership／PIT，以及舊 Top/Bottom 口徑與 numeric score 暴露屬來源／方法版本決策。Native 鍵鼠／縮放／跨頁、完整 App startup 與 3–5 位真人驗收另待桌面時段；不把工程缺件稱為自然成熟。 詳見[本批限定 QA](../06_qa/UX18_RANK_BOOKMARK_SOURCE_VERSIONING_20261005.md)。原計畫 append-only；本地 commit/blob 核驗後交父層，不 push／清理／操控用戶視窗，未知 capture 與還原映射不動。以下較早紀錄只代表其版本當時狀態。
+
+
+## 2026-10-05 UX13／18共用盤勢最新限定交接
+
+基線 f07f298，具名 cohort Market→同快照名單→pinned個股閉環完成；原排名未提供明示unknown，僅排序原Decimal指標值，不做強弱／投資分數。partial缺件保完整分母與unknown，不假造下鑽列。45受影響tests／9重疊UI重驗、Workbench85、validator25／4skip、mypy777＋變更DailyView單檔、compile7／quant guard通過。真2382／1477／2026-10-05與隔離缺件／revision／schema拒絕恢復Native通過，12code pins與正式source stat穩定，worker0／程序退出；非全App／效能／真人驗收。6張Library IDs與逐項收據見[最新QA章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+原計畫保留append-only，本地commit/blob核驗後停止，不push／全量producer／正式DBwrite／train／清理。整體UX13／18／19、stage2／3仍partial；原排名發布／其他consumer融合／完整母體與收藏等工程另包。Backtest18.62%<20%未達不改，PIT／自然ML／真人證據不偽造。未知paper檔／還原映射不動。
+
+
+## 最新接續：UX18 固定研究方法契約（基線 c50cefcd）
+
+本包補既有 MA20／MA60 方向性觀察的方法契約、cache／manifest 身分及錯方法／版本／參數／日期／hash 拒絕。舊研究 schema 需明確更新重產，唯讀不升版或 live fallback；公式不改，不授 alpha／勝率。實際驗證與提交以 [方法綁定 QA 新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md) 及 Git 為準。
+
+原排名／強弱需補既有 ScreeningResultDTO 的排序方法／來源版本、day／week、母體與 top-N 邊界，不能取兩條 MA 條件創分數；市場目前另走 ScreeningService，超出本包小改，列下一包。UX18／19 與 stage2／3 仍 partial，Backtest18.62%／20%未達保留，歷史 PIT／自然 ML／3–5 位真人驗收另列；不重跑舊 Native1477、Frozen 效能、訓練、全量回歸或清理／push。
+
+## 最新接續：UX04／05 日常研究名單與同源個股（基線695797ec）
+
+本包承接有限UX18／19工程，把研究快照接到Recommendation實際入口與個股pinned讀回：既有兩條close／MA AND／OR、三態why／why-not、來源metadata經session完整保留，返回核對原manifest。repo專用研究區僅明確更新才bounded寫入；不改正式DB／排程，不升研究或離線候選為推薦。真實來源Native QTest與受控缺資料／revision場景分列，數字與提交以[QA新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)及Git為準。
+
+完整UX18／19／stage2／3仍待更多feature／method、全母體／原排名融合、其他consumer、正式排程／長期storage與跨process崩潰；Backtest18.62%／20%與自然PIT／ML限制不改。不重做舊ML、Frozen效能、Native1477或全量回歸，未授清理／security／push；paper與還原映射保留。
+
+## 最新優先：UX19 最小 producer／reader／consumer 閉環
+
+基線 `3a975e3`，本包允許既有兩股唯讀資料在隔離 output 實跑有界 producer；候選先驗 manifest／artifact，latest 最後原子切換，個股 consumer 明示 opt-in 並核對有限當前來源 hash。來源缺件停止發布；reader 支援具名 partial 驗證。實跑／測試結果與版本以[QA UX19 新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)及實際 Git 為準，較早「不 producer」只適用其原包。
+
+仍待完整 feature／method／其他 consumer 與選股融合、全母體與正式排程、長期 storage 治理；Backtest18.62%／20%未達，自然 PIT／ML 另列。不要重跑舊 ML、Native1477、效能或全套回歸，未授權清理／push；paper 檔與還原映射保留。
+
+## 最新優先：UX18 既有日特徵研究 consumer
+
+以50f45ce為基線：close／MA20／MA60共用readonly snapshot已接個股 `read_report()`、研究理由及首屏；source內容／日期／scope／版本綁identity，LRU最多4筆，末段有效OHLC必要20／60暖機不足或來源不符保持unknown。原數值／排名不重算，故障fail closed／取消傳遞。原plan append-only，有限研究切片不代表整個UX18／19或階段2完成；Backtest18.62%／20%維持未達。完整feature／method／選股consumer、UX19 bounded writer／manifest／整批完整性／原子發布／容量是工程待辦；歷史PIT／自然成熟另列。詳見[既有QA收據新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。不重跑ML／效能／Native1477，未碰正式DB／paper檔／還原映射，未清理／push。以下較早段落只作其版本歷史。
+
+## 最新優先：UX16唯讀來源契約與UX02 Native中文
+
+以dc14c080為基線新增source contract／CLI及loader opt-in timing／strict SQL，原預設caller不變。Root最終21passed、mypy3files、compile4檔、quant guard通過；9個UI blob不變，沿用85／25+4skip。正式D兩檔3日6列穩定研究讀取、scoped hash保留；availability未知、cutoff-screened0、PIT／formal training／published snapshot false。所有已知／未知／拒絕與前置失敗見[UX16限定收據](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)，不要重跑60檔審查／learner／1477／效能baseline。
+
+四用途Native代表畫面已用既有JhengHei清楚顯示中文；三頁受控，個股記錄DTO明示SHA／331.0／10-05／ML unavailable，非此run即時DB。前三失敗保留；四輪driver／launcher均退出。未改產品UI、OS設定或使用者視窗。Native畫面不授新自然資格，不替代1000×835已接受與1000×800限制。
+
+原plan只追加本包結果；stage1 Backtest18.62%仍低於20%原門檻，不宣告全部通過。下一包先按父層裁定處置stage1與UX16缺證據，再選具單位／版本／暖機依據的共用feature dictionary與增量等價性；UX19需原universe／decision manifest／完整性／原子發布／revision／容量，不啟UX18新方法或正式writer。當期研究可以具名復用，歷史PIT未知不當全產品阻塞。Phase3C法人lane本包未讀；若後續復用9/29個股與10/2aggregate，須另核同版identity。
+
+本地commit/blob/status收據留 `output/qa/ux02_native_source_contract_20261005/`，以Git實際HEAD為準。無push、producer、訓練、永久清理或大DBcopy；未知paper檔與C:/ta_iso_1005保留。本批完成後停止，由父層安排下一批。
+
+## 2026-10-05 小型 learner／Library 收尾（本節優先於歷史待辦）
+
+接手核驗：`dev` HEAD `cd908443fe8a4afb098a5103e70ff6fe728ef6aa`；只有未知未追蹤 `paper_event_source_capture.py`，未讀、未改、未提交。既有 checkpoint、60 檔有界審查與 UI gate 不重做。
+
+- 補強 `test_real_runner_writes_only_current_observed_research_candidate`：180 筆／20 特徵、360 筆重複輸入經真實 semantic dedup 回到 180 筆；重驗 capture／outcome 綁定後實際執行 learner、候選寫入與收據讀回。錯 entry source hash 在 learner 啟動前拒絕，沒有隔離候選產物；既有正式區與 canonical marker bytes 不變、active pointer 不存在、promotion／formal 資格均未取得。
+- 來源驗證器使用受控 fixture（非官方原件或自然 producer）；learner、候選、lineage／receipt 是實際執行。結果 `fitted_research_only`，candidate `rec-cal-eef7ecbbcd02e49e5f57d98f`，dataset hash `sha256:428ca5f4c617a9652bf9c6dadd34bc2ab0e9632e2f3ca5081ff1baa4afe45b3a`。收據 hash `sha256:41bbb1958aaad358ec195b16dfe5addd6090f7f53e9effb4a116c7b8aea4d796`。測試暫存依原 fixture 結束回收，JUnit 保留身份；不冒稱原件仍留存。
+- 最終單模組 pytest **19 passed／1 Windows symlink skipped，0.99 秒**；changed-test py_compile 與 diff check 通過。前置四個精確 nodes 4 passed，之後增加 JUnit 身份輸出才重跑此單模組；沒有全套或 UI 重驗，也沒有正式 DB／registry 寫入。
+- 三張圖已保存使用者 Library（見下表）。全部為 `cd90844` 最小 UI 切片的**受控 DTO／offscreen**圖，不是真實模型、Native 或自然資格證據。雲端保存成功；Windows helper 不支援本機版本屬性寫回，ID 對照另存收據。
+- 原始 QA：`output/qa/bounded_learner_library_20261005/pytest.xml`、`receipt.json`；指定原計畫原位更新，保留修改前副本 `plan_before_batch.md`。output／暫存不提交。
+
+| 圖片 | 正式 library_file_id | file_id |
+|---|---|---|
+| `2382_summary_controlled.png` | `libfile_d0e11bd2f2b08191b4606269aded4421` | `file_0000000043dc81f4afc7e59ff82b5c42` |
+| `2382_ml_collapsed_controlled.png` | `libfile_978664747334819186cbe7fb4dd6dd5c` | `file_00000000aa8881f4b90cc9edcd1922c4` |
+| `2382_ml_audit_controlled.png` | `libfile_452fcff4b41481919827de371cdbd486` | `file_000000005d6c8243aa5e2a701547c2c5` |
+
+尚待另批：Native 1477 真正取消完成→重試→新身份→正常保存→新程序重開，以及錯 date／run／hash。1000×835 outer／125% 已接受，1000×800 未達保留限制，不新增硬門檻。D 正式 raw-PIT 與清理沿用既有具名依賴；本批沒有重做容量 guard 或清理、沒有操作使用者 App。
+
+後續明確指示已保留：先完成現有 Native 驗收及逐次具體批准的暫存清理，全部收尾後再按唯一 `output/plans/baldr_product_experience_plan_20261004.md` 推進，由 **Sol Medium＋Fast／GPT-6 Luna Max subagents** 分批實作，父層負責規劃審核。此新授權適用後續計畫階段，本批不開子代理、不跳到大計畫、不 push；永久刪除未獲隱含授權。
+
+回退：本批只修改整合測試與兩份交接文件，可針對本批 commit 作 Git revert；ignored 原計畫可從修改前副本復原。Library 檔案保留，不因本機回退自動刪除。Manual／產品／架構無行為變更，不把本次工程測試改寫成正式產品完成。
+
+
+本文件只供方案變更後續接，不取代目前狀態 SSOT 或宣稱工程全部完成。本輪只補最後一次 native 單步取證、逐檔提交審查及清單凍結，未修改產品、新增 DB、重訓、全回歸、stage 或 commit。最後一次 probe 已停止，不再追加嘗試。
+
+## 已接受證據
+
+- 分支 `dev`；HEAD `13f7a410c2ad850d981ed552ef09515220718ade`。先前工作樹有 217 個變更路徑、index 空；不得盲收根目錄未知 `paper_event_source_capture.py`。
+- 工程七項驗證沿用 `output/qa/g11_sol_batch3_20261005/final_independent_readback.json`：Workbench 85 passed；validator 25 passed／4 skipped；全域 mypy 766、scoped mypy 38；120 模組回歸 1892 passed／12 Windows symlink skipped；222 路徑 compile、量化防禦檢查通過。不能用此取代完整原生 UI 驗收。
+- G11 公開 service 真實讀回：`output/qa/g11_sol_batch1_20261005/public_service_real_receipt.json`。TDCC 為既有官方原件受控搬移，非新 HTTP 成功。
+- G6 既有 CORE19 十股模型 train/save/public load、G9 15／17／50 股受控 cohorts、Forward 既有處理證據保留；本批未重跑。G9 最後 53 個 producer pins 未變。
+- 固定程式 inventory SHA256：`4a4a22643b561db60cd7884c1c8bbe0b54db9dc8ce3262bd35b61899492a6904`；測試：`55d496cc384aa2f9706657dbcda3da5ec94ac2e7c360f88ac79139e1c960a151`；ML 儲存設定：`39198481b876830d195388bfa54930c6e84c28a7ebec358550a6d4c8a3763ccc`。後續若改動，應按影響範圍重新驗證。
+
+## 三項 UI 判定與最小後續
+
+1. **current-ML Advice／Rule：內容存在；harness 在新控件可見前立即斷言。** 單步原生使用既有隔離資料與精確來源 `rec_3a882dd9fc06407298ccbd2a5e1c994f`，1477、決策日 2026-10-05、行情日 2026-10-02；request 1 保存 → 2 current → 3 返回保存。`reportLoaded` 時 group 已建立但 `isVisible=False`；Qt 事件處理後新 Advice、當下技術／Rule、原保存 Rule 可見，保存 Advice DTO 完整相同。原生截圖及返回保存模式實際點擊成功。最小修正是 future harness 等待同 request／stock／source／date 的活頁控件可見，不修改產品或放寬內容斷言。本次診斷在 125% 進行，原 100% 整個 source-recovery 尚未重驗。
+2. **取消／重試：UTF-8 啟動問題排除；runner 漏選 lazy Rule 分頁。** 正確環境已實際啟動 UI，`cancel-retry-20261005T031447-963aa2f084.json` 停在 `create_analysis_button` 不存在。原生失敗畫面是「摘要」；產品只在 `_render_decision()` 建立此按鈕，單步 Rule 頁已確認按鈕可見、可用。因此不是按鈕被產品移除。最小修正是先進 Rule 頁並等待按鈕；本批未改 runner、未再次執行推薦取消／重試，真正取消、丟棄部分結果、重試及保存尚未驗證。
+3. **1000×835：內容 min-size 與 frame/client 換算，不是指定尺寸已通過。** Win32 外框 `[20,20,1020,855]`；client `[28,51,1012,847]`（984×796）；Qt 內容 787×637 邏輯像素，最小高度與 layout minimum 均 637，DPR 1.25。637×1.25 約 796，再加 39 外框成 835。必要來源、建立分析、模式按鈕可見且有 visible region；current／保存切換實際成功，Advice／Rule 以捲動閱讀並有截圖。最小後續是明確以 client 還是 outer 定義驗收尺寸並評估原 800 實體高度需求；若仍要求 outer 800，需另行批准處理實際 layout 最小高度。未放寬原 1000×800 斷言，也未宣稱所有頁面無裁切。
+
+診斷證據：`output/qa/g11_sol_batch5_20261005/single_step_native_readback.json` 與同目錄 PNG；舊原生局部失敗：`output/qa/g11_sol_batch4_20261005/final_independent_readback.json`。沒有可用 CUA 工具；使用 Windows 平台 Qt 實際點擊、Win32 讀取與螢幕截圖，不是 offscreen。
+
+## 有限實際行為補驗（Batch6）
+
+- **精確重開通過**：新 process 啟動時未自動套來源，以可見 exact ID 讀取入口重開原始 receipt 的 canonical 篩選紀錄；1477 原未入選原因、result ID 與保存檔一致。未偽造原 source-recovery 的 success 標記。
+- **錯來源／錯股拒絕通過**：不存在的 exact ID 顯示讀取失敗並保留原完成結果；2382 頁不包含 1477-only 的原保存來源。僅將該真實 ID 作為可見 combo 的 QA 負向輸入，點擊後顯示「請先明確選取保存來源」，request 未增加、context result ID 仍空、沒有借用 1477 Advice；QA combo 輸入未持久化。錯日期／獨立 run/hash 負例未在本批補驗。
+- **真實取消已執行；取消→重試整段仍未通過**：由合法 Rule 分頁的建立分析按鈕進入推薦，scope 1477，真實 worker generation 2 啟動後點擊取消，terminal 為「已取消：沒有套用部分結果」。所有既有 recommendation JSON 保存檔雜湊不變；UI 仍保留原 canonical result ID 與原篩選列。單步 probe 誤沿用「取消後 current_execution/result ID 必須空」的舊判準而停止重試；這不是產品 bug 的證據。產品 `_on_recommendation_cancelled` 保留既有完成內容且不套用部分結果。原 probe 失敗保留，沒有改寫為整段 PASS；**重試至完成及其新 stock/run/date 證據仍缺**。
+- **1000×835 實際小視窗已逐頁讀取**：盤勢總覽、持倉、推薦，以及個股研究六分頁，共 32 張原生 PNG。盤勢主結論與研究入口、3 筆使用者持倉與個股入口、1477 推薦 scope／執行按鈕／保存結果讀取、個股價格／基本面／籌碼與 source/mode 控件在畫面或捲動範圍內。1477 非使用者持倉，Health/Exit 明確顯示不對非持倉推導動作，未補造持倉。
+- 尺寸仍為既有 layout 最小高度 637 邏輯像素 × 125% 與外框造成，**原 1000×800 未達**。在實際 835 高度可閱讀與捲動；窄視窗的表格仍需水平捲動。部分研究頁捲到極底有空白尾段；未將此當資料內容通過，未逐個展開進階、逐格驗證表格或實際點擊所有按鈕。可用工作區高度少於 835 實體像素的螢幕可能受最低高度限制，不能宣稱所有一般螢幕皆無阻礙。
+
+原始行為收據：`output/qa/g11_sol_batch6_20261005/actual_behaviors.json`；獨立核對與限制見同目錄 `final_behavior_readback.json`。Batch6 未修改 production、既有 runner 或原失敗收據，未修工具追加重試。
+
+## 最後一次取消／重試（Batch7）
+
+- 在同一隔離資料、單一 UTF-8 原生 process 重新做合法 Rule → 分析 → 取消 → 再分析，**沒有重跑完整 runner**。
+- 取消 generation 2：舊完整 execution/read model、canonical result ID 與可見表格的序列化 digest，於執行中及取消後均相同；所有既有 recommendation JSON 檔案雜湊不變，terminal 明示不套用部分結果。此次使用正確保留 last-good 的期待。
+- 重試 generation 3：執行中仍保留原完成結果；實際出現正常「篩選紀錄／未入選」訊息框，經原生畫面核對後只按可見 OK。最終原生畫面顯示新的 1477 單筆未入選紀錄，原因 `liquidity_volume_ratio_below_min`，取代原估值原因；未自動保存新的結果，原 canonical artifact 雜湊仍與原 receipt 一致。
+- **完整身份綁定驗收仍未通過**：正常資訊 modal 的等待／人工核對耗盡單步 probe 90 秒期限，按 OK 後走到 timeout 分支，沒有保存新 completed execution 的結構化 result/run ID、決策日／行情日。這是本次取證缺口，不能以原來源日期或新 generation 猜填新 run，也不能當產品重試失敗。沒有再執行第二次重試、修產品或更改原失敗收據。
+- 後續僅剩在一次適當處理正常資訊 modal 的原生觀測中保留 completed execution 的新 run／日期／股票／未保存狀態；取消的 last-good 保留與原 artifact 不變已有直接證據，不應重列為清空舊結果要求。
+
+證據：`output/qa/g11_sol_batch7_20261005/retry_once_receipt.json`（原始 timeout）、`pending_windows_readback.json`／對話框 PNG、`normal_terminal_dialog_ack.json`、`true_terminal_or_verification_failure.png`；獨立核對見同目錄 `final_retry_readback.json`。本批未 commit。
+
+## Batch9 最後一次 native 嘗試與提交邊界
+
+- 最後一次正確 UTF-8 native probe 已停止，**後續重試未啟動**。cancel generation 2 的 worker 結束時 UI 仍「取消中」；probe 就緒條件提前返回，後續要求「已取消」的檢查失敗。last-good 與兩個原 artifact SHA 均不變。這是 probe 終態等待缺件，不足以判定產品取消失敗；不能把本次「取消中」列為取消 PASS。沒有 completion events、沒有新 retry generation、沒有新保存結果；未延長 90 秒上限或追加嘗試。原失敗保留於 `output/qa/g11_sol_batch9_20261005/native_retry_final_receipt.json`。
+- Batch8 只讀補證確認 Batch7 process 已結束、保存 store 仍只有原兩筆；`output/qa/g11_sol_batch8_20261005/timeout_after_readonly_supplement.json` 不改寫 timeout，不能補出新 run/result ID、日期或來源身分。
+- **自然 ML 容量仍是實際阻礙**：Batch1 歷史讀回 C 可用 211,644,039,168 bytes／研究需求 215,285,235,712 bytes；D 可用 281,449,877,504 bytes／正式 raw-PIT 需求 295,279,001,600 bytes。這不是本輪即時容量量測，也不保證已恢復；不降低 reserve、不套用未量測壓縮率或刪除資料。
+- 官方 DNS／外部來源、歷史月營收／季報 availability map、coverage／units／basis 與正式 PIT／revision 資格仍須核驗；現況可讀不授正式估值、歷史回測或正式 ML 資格。Forward／H5／Paper 真正未到期可留待交易日累積，缺到期行情／來源／治理證據則是具名缺件。不能宣稱只剩自然累積。
+- Native 尚缺完整取消→重試→新 execution 身分→正常保存→重開，以及錯日期／錯 run/hash 驗收；**1000x800 未過**。21 個 task Ready 是先前受控／唯讀觀察，不證明新自然 run 已成功；權限不可讀保持 unknown，不改 ACL。
+- 目前 218 個變更路徑／217 個候選，index 空。v12 是 209 個候選的 provisional inventory；目前 200 個 bytes 相同、8 個新增路徑、9 個內容變動。本輪 `output/qa/g11_sol_batch9_20261005/` 逐檔審查與 checkpoint whitelist 保存精確路徑、SHA、HEAD diff 與同版 gate pins；舊審查狀態逐檔保留，不因測試通過自動升級完整語意審查。
+- **本輪不 stage 或 commit**；凍結清單供父層審核 checkpoint，並非全部產品完成批准。任何檔案、HEAD 或 index 改變均須重驗；QA 清單不提交，未知根目錄 `paper_event_source_capture.py` 僅保留檔名，不讀取／雜湊／提交。禁止 `git add .`、push、amend、reset/clean 或覆蓋未知工作。
+
+## 容量、自然累積與提交
+
+- 容量阻礙沿用 Batch1 量測：C 自然 ML guard 約少 3.64 GB；D 正式 raw guard 約少 13.83 GB。這是當時量測，後續需重新讀回，不能視為即時餘量。本批未清理檔案、移根、降低 guard、改排程或 OS 設定。
+- 自然排程成功不能用受控 receipt 替代；歷史 PIT／可用日期及成熟度保護不得猜填或取消。Forward／H5／Paper 資格仍依真實時間累積，外部來源／DNS／官方歷史證據限制另看既有報告。
+- **Commit 未完成。** 後續先確認活躍 writer 與工作樹，完成剩餘有限原生驗收，再逐檔審 diff／依 git exclusions stage 必要程式、測試、文檔與依賴；不提交 DB、raw、runtime、credentials、未知檔，不 push／amend／reset／clean。
+- 目前未完成的原生項：完整 source-recovery、錯日期／獨立 run/hash 拒絕、重試 completed execution 的新 run／日期結構化身份綁定、原指定小視窗尺寸及完整四用途內容驗收。重試的新 1477 未入選畫面已在 Batch7 實際出現，不能將取證 timeout 當產品重試失敗。精確重開、錯來源／錯股拒絕已由 Batch6 單步補驗，不應重列為未驗證。已接受工程結果在固定 inputs 不變時可沿用。
+
+## 2026-10-05 Native 可行性與最小 UI 追補（基線 0831633c）
+
+- 唯讀桌面核驗：前景 ChatGPT；Python 程序為 MCP／formatter，未發現正在執行的 baldr UI。沙箱前景 handle=0／CIM denied 不代表桌面空閒，改以獲批准的唯讀核驗取得真實前景。沒有操作／關閉既有程序、鍵盤、滑鼠或持倉。Native app 控制未開放；舊驅動 `window.show()` 與 modal 不能保證不搶前景，因此**本輪沒有啟動 Native 流程**。需協調短暫桌面時段，不能以 offscreen 替代。
+- 1477 舊保存來源 `rec_3a882dd9fc06407298ccbd2a5e1c994f` 的 public query 在 41,453 bytes 小型 artifact／index 副本中讀回；重新編碼錯決策日、換 result/run ID、變造 index payload hash 三項均遭完整性拒絕。原 artifact／DB hash 未變。原封存事件證明 decision=2026-10-05、market=2026-10-02、invocation=`rec_3a882dd9fc06407298ccbd2a5e1c994f:9bbae285d1da44018eba40e6f3b3ae35`，market fingerprint=`cac39aaa588692578b88497d0e3fb2f58b557d740f73ea3aad8948ffbe22182c`。這是原保存來源完整性拒絕，**不是新 retry run、Native 選擇日期／run／hash 驗收或保存重開成功**。
+- 確定小 UI 缺陷已修：ML 稽核按鈕依 toggle 狀態顯示展開／收合。DTO 明示 current scope 才標「當前ML研究」與研究日；saved scope 標「所選保存決策ML研究」與模型事件日，未知 scope 維持中性標題。歷史保存決策回顧顯示已讀回 Advice／保存分析日期；沒有所選日期時標未選定。品質降級呈現來源限制，無原因時明示原因未提供；沒有改計算、來源、資格或 hash 契約。
+- 真實 2382 唯讀 current consumer：as_of=2026-10-05，ML event_date=2026-10-02、run=`20261002-ffb8777d33621369a15c3c22`、scope=`current_stock_research`；degraded 原因為「H5 標籤尚未成熟；不顯示報酬或成功結果。」已確認可見。沒有注入持倉服務，首屏只是 DTO 的 offscreen 投影，不是完整 MainWindow／Native 驗收。TWStockConfig 的 D 槽 config log 寫入被沙箱拒絕並回退 console-only；未實際寫入正式資料或 registry。
+- 真實首屏 Library：`libfile_d7d04064bca881918a985dcada1ab24b`／`file_0000000054f88210b0ea43e50941efb7`。雲端成功，本機版本屬性 helper 在 Windows 不支援，身份對照保存在本批收據。
+- affected tests **14 passed**；Workbench **85 passed**；validator **25 passed／4 skipped**；全域 mypy **766 files／0 issues**；兩個 changed Python py_compile 與 diff check 通過。新增測試的兩次失敗是 lookup 抓到 `deleteLater` 舊 group，最終改用獨立 view 觀察各狀態，未改產品 renderer；失敗 XML 保留。1477 負例全部完成後，最後 stdout cp1252 編碼失敗，收據與三項拒絕已落盤且獨立讀回，沒有重跑此負例或改寫 process exit 0。
+- 原始證據：`output/qa/native_feasibility_followup_20261005/`，含 final affected XML、Workbench XML、validator／mypy log、真實 DTO／畫面、1477 完整性負例與 Library identity。原計畫原位更新。僅 stage 必要 UI／測試／Manual／功能文件／Snapshot／交接；output 與未知根檔不提交，不 push。
+
+最小下一條 Native 流程已限定：獨立 QA settings／小型既有隔離來源；1477 原來源→Rule 分頁→scope 1477→開始→取消後必須等 `已取消` 且 worker 結束→檢查 last-good 與原 artifact 不變→一次重試；正常資訊 modal 只確認可見資訊，完成以新 execution/result/invocation 與 completed 終態綁定→正常 Save→保存 receipt/hash→新程序精確讀同一新 result。日期／股票／run／source／hash 在每一步從該步實際結果取證，不沿用舊 run；獨立 Native 負例另驗。每步沿用 90 秒上限，不反覆修跑；若失敗，停止並分清產品與驅動缺陷。本輪未執行上述流程，完整 Native 待辦保留。
+
+桌面時段未確認前不顯示 QA 視窗，不修改使用者視窗與資料。暫存清理與大計畫維持前批順序及 Sol Medium＋Fast／Luna Max 後續配置。本輪不 producer、重訓、子代理、cleanup 或外觀擴張。回退僅針對本批 commit 的 UI／測試／文件；原計畫追加段落可還原修改前副本，原保存來源未變。
+
+## 2026-10-05 使用者授權桌面 Native 有限驗收
+
+- 本批基線 dev `e312dc61141d7f0a812466e0ba5f7c0b56ecbbae`，使用者明確授權桌面；僅 PySide6 QTest 的 Windows Native 隔離驗收視窗。無 node_repl Native 控制工具。未訓練、未執行 producer／全套回歸、未修改正式資料／排程／持倉、未刪暫存。
+- 首次 sandbox 程序在原來源載入後 screen grab 失敗，尚未取消／重試；以已授權 desktop access 執行相同流程，不計為產品失敗。
+- 1477 精確原保存來源 `rec_3a882dd9fc06407298ccbd2a5e1c994f` 成功載入（決策 2026-10-05／行情 2026-10-02）。取消 generation 2 確认「已取消」且 worker 結束，完整 last-good UI 與原來源 JSON 保持不變。
+- 重試進入 generation 3，但 `completed retry` 等待逾 90 秒：無完成事件、無 worker_finished_objects、無新 completed result 身分。harness 記錄 TimeoutError 後關閉自己的視窗並退出。新身份→保存→新程序重開，以及新 run 的錯 date/result-run/hash Native 拒絕 **仍未驗收**；不能拿舊來源完整性負例替代。重試超時是工程／驗收阻礙，原因尚未定位，不能稱為等待自然成熟。本批沒有再次重跑1477。
+- 外部停止只嘗試 PID 綁定核對，當時 QA PID 已不存在，未停止任何程序。中間推測 mouseClick 未返回已由最終收據更正：實際進入 completed retry 的 bounded_wait，generation=3。桌面已釋放，自己的1477與2382 QA程序均退出；其他應用未關閉。
+- 2382 用真實只讀 consumer、Native 報告視窗正常 load_button→背景worker完成，非 MainWindow 全流程／持倉驗收。為禁止正式目錄與 logging 寫入，僅在 config 初始化封鎖該寫入，consumer 讀取與回報未替換。初始 badge/提示更新為「部分可用／報告部分載入」，as_of=2026-10-05，行情 2026-10-02/收盤332；ML current_stock_research run=`20261002-ffb8777d33621369a15c3c22`、source hash=`76368e75edaa665ee363cc25506687288f3ddeb2475c40cdb4c933fb16ba8d2e`，與先前真實2382來源一致。
+- Header 疑點拆開：正常 load 沒有殘留「尚未載入」，證實該初始狀態源於 offscreen 直呼 render 未走 loaded callback；但未選定保存來源時「來源：未標示／決策日：未知／資料日：未知」仍存在，下方獨立行情來源另有2026-10-02。這是未提供 source context 的文字歧義，未取得資料混用證據，不直接判為產品 bug，也未改 UI。若要確認 MainWindow 選定來源脈絡需另批有限驗收。
+- 1000×835/125%既有接受限制沿用，不重做尺寸工程；本批不宣告1000×800通過。沒有產品修改，沒有新增/重跑tests。
+- 收據／截圖：`output/qa/native_acceptance_authorized_20261005/native_retry_final_receipt.json`、`2382_normal_load_receipt.json`、`library_identity.json`。2382圖正式Library `libfile_3dbdfe10c6c48191bd65b687bb8b7444`（`file_000000006d3081f4bf3bd49b257c7d4e`）；取消圖 `libfile_57e26618f2a081919724e90426e8be2a`；超時圖 `libfile_65f3870d3a908191998117af696e853c`。這批為 Native QA 證據，仍不是自然模型成熟證據。
+- 下一批由父層裁定1477重試超時的有限診斷；暫存清理盤點已交付但未執行，仍須遵守先Native閉環→已批准清理→唯一原計畫的順序。永久刪除另需逐項批准。
+
+## 2026-10-05 Generation 3 重試超時診斷（未再開 Native）
+
+- 結論：實際重試超時根因仍未知；已確認 driver 缺少 timeout 當下 worker/phase/error/stack 的觀測，不能回推90秒時是否仍運算、等待IO或signal遺漏。沒有明確產品bug，未修改產品程式，Native仍未通過、工程未完成。
+- 先前成功1477 strict-PE從03:08:25.013198Z開始到03:08:29.711005Z保存讀回約4.697807秒（包含modal/save）。當時native_runner_v23.py的_wait用processEvents+time.sleep(.02)。本批qWait(1)小型離屏A/B為0.359秒對0.047秒，證實可增加等待延遲，但不能外推或證明真實90秒根因。Batch7亦曾generation3超時，其pump已用Python sleep；因此不能把兩次缺口都歸因qWait。Batch9沒有開始重試，是取消中誤判。
+- timeout截圖仍分析中/舊結果，dialogs=0、completion_events=0、額外finished callback=0；沒有timeout isRunning/isFinished、progress/error/native_finished或stack紀錄。completed handler原本會先更新UI後開modal，支持當時不是完成modal卡住，但證據不足完全排除其他瞬時問題。
+- 靜態路徑每次建立新ProgressTaskWorker，cancel event預設false，_begin_execution_status重設UI cancel flag；隔離離屏cancel generation2→retry generation3完成及native_finished通過，22事件、新cancel flag=false。這僅驗證Qt訊號/執行緒，不替代真實Native。既有兩個精準測試2P/1.44秒（pytest cache permission warning），沒有全量重測。
+- graphify只查既有graph導引（72相關節點/427鄰邊），未重建或開子代理；目前HEAD原始碼為權威。沒有操作桌面、真實推薦/資料查詢、producer、learner、刪除或壓縮。
+- 修好的隔離driver `output/qa/native_retry_diagnosis_20261005/native_retry_instrumented_not_run.py` **尚未執行**，保持90秒及原接受條件；恢復sleep(.02)，pre-start接全部worker訊號，記錄run-enter/exit、thread id/generation/ns time、實際retry config/scope；timeout保存worker flags、UIphase/progress/last_activity、result identity與Python全thread stacks；modal保留wrapper避免id重用漏記錄。`worker_diagnostic.py`已py_compile，觀測器離屏探針exit0。首個探針末尾stdout cp1252錯誤已保留，修UTF8後另用probe_utf8成功，未覆寫舊證據。
+- 最小後續：父層安排新的桌面時段，先核對原來源/inputs/hash與retry config差異，只跑同一1477一次。遇error/timeout立即讀phase/stack/terminal紀錄，不延長期限掩蓋、不再盲跑；僅正確completed新identity才繼續save→fresh reopen→新run date/result/hash負例。依合作式shutdown安全收尾，不能強制terminate持有資料資源的thread；未安全退出就明示worker/桌面狀態。
+- 完整證據及策略：`output/qa/native_retry_diagnosis_20261005/README.md`、pump_probe.json、probe_utf8/receipt.json、affected.xml、graph_probe.json。本批只修ignored驗收driver與文檔，沒有用fixture pass宣告Native接受，清理/roadmap順序保持。
+
+## 2026-10-05 09:23 UTC：Native有界操作鏈已完成（更新較早待驗）
+
+- 本次基線770625cd，遵照使用者09:11UTC授權直接操作；1477 generation2真正已取消、native thread完成且last-good保留，generation3在4.5秒完成並保存新來源 `rec_e677f9ba56d84a5cbcd6f18d5778a01c`。新程序PID34768與首次35148不同，完整execution/result/hash一致；決策2026-10-05、行情2026-10-02。payload `sha256:708fcd18c1980817203549d7a81440811c01a5677d39642e1d26cd6d9c0b5802`，raw artifact `sha256:40c62704e28ccd1f52e724de456b7b1af93942f0e6b90d62b590ff6f0e822965`。
+- 本次正常UI新分析設定為PE999／volume ratio min1，因量能未入選，與原PE1的舊來源原因分開記錄；不得稱為推薦成功或原run。新來源Native截止日10/4拒絕10/5未來Advice；42,087-byte隔離副本的artifact日期／result-run／index hash三負例拒絕且保留同一last-good，原artifact/index不變。缺少source_snapshot_hash的欄位仍留空，沒有代填。
+- driver觀測修正後真正重試一次就完成。讀回driver誤查Request.universe的失敗保留，改讀sealed config；metadata通過但畫面擷取偏早的版本也保留，最終reopen3加可見提示／表格條件及repaint350ms並實際看圖。只重開讀回／負例程序，未重跑已完成分析；沒有產品修正，不延長90秒。此前超時根因因原telemetry不足仍不回填為已定位。
+- [完整Native驗收](../06_qa/NATIVE_1477_RETRY_READBACK_ACCEPTANCE_20261005.md)及本機output/qa/native_retry_completion_20261005/acceptance.json、attempt1/native_retry_final_receipt.json、reopen3/reopen_negative_receipt.json、library_identity.json為最終證據。新程序圖Library `libfile_4a0caaa465ec819188c4b880b112470c`，錯hash圖 `libfile_0583c30490608191981996418201059c`，其餘3圖ID見驗收表。
+- 四個自己的QA程序均退出，09:23:01UTC核對PID全無，桌面釋放。未修改正式資料/持倉/排程、未訓練/producer/全量tests、未清理、未push。本次僅完成原Native工程鏈，不授自然成熟/正式模型/PIT資格；1000×835/125%沿用，不宣告1000×800。2382header前批正常load結果保留。
+- Native已達標，交回父層安排安全清理，再依指定原plan分階段推進；永久刪除另需逐項批准。原plan正文保留，追加本收據，不另開替代計畫。
+
+## 2026-10-05 可恢復暫存整理已交付
+
+- 1251原白名單中879根同C盤隔離至C:/ta_iso_1005，642純pytest fixture、229空根、8mypy快取，108054檔、AllocationSize前後4,951,450,624bytes一致；不釋放檔案容量，未永久刪除／清空回收筒／改權限。r015 d/e/f成功，g/h/i保留；R20/R26 user Temp136空根成功，具QA引用的群組保留。372根保留，58引用根及19占用／權限未通過者均未動，精確理由／映射／還原步驟見[整理收據](../06_qa/TEST_TEMP_REVERSIBLE_ISOLATION_20261005.md)與output/qa/reversible_cleanup_20261005。實際r015 d還原並重新隔離、全879項identity核對通過。
+- 最新只讀容量：C free237,505,548,288／既有需求215,285,235,712；D free300,638,941,184／既有需求295,279,001,600，兩者點時間PASS；不歸因本批隔離，不啟動writer，實際writer前重新查核。本批必要永久刪除清單為空；若要真正釋空間，879項未批准候選另需逐路徑批准。
+- Native不重開：此前driver的pre-start訊號／run與timeout觀測、sleep(.02)等待及讀回sealed config／paint條件修正已記錄；歷史90秒根因仍未知，最終4.5秒真實鏈已接受。未開代理／producer／訓練／全量tests，未動正式資料／模型／持倉／排程。本批結束交回父層，按唯一原plan啟動後續階段。
+
+
+## 2026-10-05 原產品計畫階段 0 首包
+
+沿用原計畫，UX01有界基線／UX16來源子集／UX17量測已交付；產品程式未改，階段1優化尚未開始。首屏median10.148秒、資料10.126秒，30次列選取高亮p95=116.60ms；不能當篩選／圖表驗收。首次市場探索Overview worker發生重資料切片，loaded全程CPU60.94秒／RSS1.57GB、約90秒合作退出，是下一包工程入口，不歸因自然成熟。來源／正式資格／暖機／全市場與benchmark缺口仍見矩陣；原UX依賴不跳過。
+
+完整結論／同版hash／失敗紀錄／兩位Luna工具派發及自省限制見[效能基線](../06_qa/PRODUCT_STAGE01_PERFORMANCE_BASELINE_20261005.md)及[來源矩陣](../06_qa/PRODUCT_STAGE01_SOURCE_MATRIX_20261005.md)。五個child與輸入guard通過，PID均退出；外層末尾Unicode print exit1保留，提交版僅輸出與CPU命名收尾，基線未重跑。不重開已接受的1477／learner、不producer／訓練／全量回歸／永久刪除／push，unknown根檔及還原隔離均保留。本包本地commit／blob核驗後停止交父層。
+
+
+## 2026-10-05 階段1限定效能修正包
+
+兩位指定Luna Max完成7個產品檔及6個test檔修正，root整合；profiler及main未改。日期解析單次memoize、回測／組合首次圖表lazy與可見錯誤重試、同輪盤勢整批近期價格及合作取消／native-finished關閉已驗。同條件5跑首屏10.148→8.642s（14.84%）、Industry3.206→1.842s（42.56%）、Backtest1.098→0.893s（18.62%），完整rowset SHA不變；四筆只啟動RSS約0.70→0.57GB。Loaded30關閉13.349s且worker0；完整盤勢正常完成另以Native探針驗，peakRSS1.452GB不與提前取消0.675GB混報。30列高亮p95 49.65ms不代表全互動速度。
+
+Market61、root loader9（8項重跑）、整合47、Workbench85、validator25／4skip、mypy766、13檔compile通過；唯一Windows fixture長路徑失敗保留，短新Temp重跑1pass。5＋1 Native場景12個launcher／Python PID觀測均退出。來源與資源邊界、code／summary SHA與原始收據見[階段1收據](../06_qa/PRODUCT_STAGE1_PERFORMANCE_IMPROVEMENT_20261005.md)，commit readback留output。原plan append-only，UX01→UX16/17→UX18/19→UX04/05依賴維持。階段1／UX17仍部分完成：早期breadth／relative SQL僅區段前後取消，來源availability／warm-up／PIT／universe／benchmark與自然ML資格未全部完成；不新增方法或UX18 Gate。
+
+1477既有Native驗收不重開，1000×835／125%接受與1000×800限制維持；沒有writer／訓練／永久刪除／push，未知paper檔及C:/ta_iso_1005映射未動。本地commit/blob/status驗證後停止交父層。
+
+
+## 2026-10-05 階段1早期SQL取消小包
+
+基於2acdbe2c，四檔backend補Builder→Breadth／Relative service→provider→shared loader取消callback，獨立SQLite分支亦用連線專屬progress handler；SQL確實中止才轉取消例外，真實DB故障不遮蔽，舊provider／Series.map dtype／Decimal／cutoff／排名不改。47 focused、50 UI/Shutdown整合、mypy766及7檔compile通過。Native早期SELECT中關閉：worker仍running時視窗保留，32.77ms至native-finished、131.31ms至hidden、沒有完成snapshot／殘留worker；取消→同來源按鈕重試21.141s正常產生真實snapshot。3個Native場景6個launcher／Python PID全退出，input guard／來源rowset SHA不變。
+
+最終單跑loaded30首屏9.350s、p95 54.173ms、peakRSS618,389,504 bytes、全程13.421s退出；這是spot check，不替換舊5跑median。五跑凍結gate逐項核對：首屏-14.84%、四筆純啟動RSS-18.19%、loaded30+close峰值-57.00%（含提前取消）、p95 49.65<300ms皆通過；Industry42.56%通過20%，Backtest18.62%未達20%（原凍結是兩段各自20%，已更正文案，不放寬或微調湊數）。上包13.349s是全程序時間而非close latency，PID退出證實不是只藏UI。完整normal retry RSS1,456,594,944 bytes與提前取消分列。
+
+詳見[取消與gate收據](../06_qa/PRODUCT_STAGE1_SQL_CANCELLATION_20261005.md)與output/qa/product_stage01_20261005/stage1_sql_verified.json。main／view／原初始化優化／profiler的未變blob已核對，舊數字保持其版本身份。沒有重跑五baseline／訓練／producer／大DBcopy／永久清理／push；未知paper檔與C:/ta_iso_1005映射未動。停止交父層。
+
+下一原plan包是stage1／UX02純呈現共用狀態字典，先接Research Console／Backtest，沿用上下文列與分層元件，保留未知碼、狀態維度及結果身份；本包只盤點，未實作。UX16來源能力、UX19容量／writer依賴與自然ML資格分開，不拿自然成熟阻擋UX17／UX02工程。不宣告整個stage1／UX17或全部gate完成，也不盲跳UX18／新ML。
+
+
+## 2026-10-05 UX02 共用狀態有限切片
+
+`ui_qt/status_vocabulary.py` 提供純呈現 `status_label`／`status_detail`，明確區分 data／load／research／qualification／event／validation；未知碼保留，completed 不跨維度授予資格。盤勢、持倉系統健康、選股、個股及 Console 的既有入口共用詞彙；Workbench 將時間等待／休市與具名故障分開，回測保留 PASS／WARN／FAIL 並加白話驗證狀態。原始診斷、來源及日期／身份沿原 DTO 保留，沒有修改策略／producer／模型或拒絕 guards。
+
+本包是 UX02 有限落點，非全頁狀態重構或整個階段1完成。Backtest 初始化18.62%仍未達20%凍結門檻；UX16來源／PIT及UX19 writer／容量依賴另列，不以自然成熟阻擋本包工程。詳見 [UX02驗證收據](../06_qa/UX02_SHARED_STATUS_VOCABULARY_20261005.md)。未重跑效能／learner／Native1477、未producer／清理／push，未知根檔及C:/ta_iso_1005還原映射未動。完成本地commit／blob核驗後停止交父層。
+
+
+## 2026-10-05 UX03／06／13 收藏原來源增量交付
+
+基線3239d23；收藏→既有觀察清單→同源個股→同query已收藏股票切換→exact返回已完成限定工程閉環。JSON／SQLite兼容且明確同股書籤升級已由隔離fixture核驗；沒有自動真實遷移或第二ledger。取消、冪等、錯來源拒絕及精確移除／還原均有受控證據。
+
+Storage/UI agent21項＋root related93項已解決全部失敗；WB85、validator25／4skip、mypy778、compile／quant guard通過。Native保存／新程序重開與post-copy final readback均passed，PID33448／14424／36364退出、worker0；原快照／正式DB stat不變。raw與最終codepins在 `output/qa/ux03_research_bookmark_20261005/`，最終Native收據SHA=`4b0360162532a6fc9569e8741a79695c3e57efae73d41f55bda43f1d977ffdc4`；Library四圖ID見library_metadata。真正HEAD／提交以新commit_readback與Git為準，勿以舊handoff倒退。
+
+僅更新既定原計畫 `output/plans/baldr_product_experience_plan_20261004.md` append葉片，原內容保留。完整stage1–3與其他工程pending、Backtest18.62%／20%、真人／PIT／availability／自然ML資格仍各自保留；後續由父層安排。清理／永久刪除、push、producer／learner、真實使用者視窗操作皆未執行。
+
+
+## 2026-10-05 UX04／05 預設與候選摘要背景包
+
+基線42ff54b；五個固定MA預設明確套用、完整母體／缺件／三態與可見排除理由、選取支持／反證／資料限制立即刷新，來源／日期／方法／資格和exact收藏／返回保留。原排名未提供停用，不造新方法／分數／勝率。final43定向、WB85、validator25／4skip、mypy779、compile／guard與真D已發布2股readonly offscreen通過；receipt SHA=82ab54465294c69dc81828b009b40febb69dd31168f9a74d2307e1ebe9b40602，原snapshot／DB stat／code pins不變、worker0。初字型probe overload誤判與漏接選取信號修正後重驗，原收據保留，見同一UX16 QA新增章。
+
+**新Native互動尚待桌面時段**：本包不開前景或操控鍵鼠，背景code/tests仍可繼續。原plan首版stage1–3尚缺Backtest18.62%／20%凍結改善、完整合格母體及原排名版本／day-week／topN發布、其他同源市場／強弱consumer融合，以及長期storage/growth與跨程序crash工程；PIT／official availability／自然ML／真人限制分列。下一背景包可先UX16／18母體與原排名來源契約。soleplan append-only，原前綴保留；本地commit/blob核驗後交父層，未push／正式或全量producer／training／永久清理／真實收藏寫入／遷移，未知paper與restore maps不動。
+
+
+### UX16／18 有界母體來源契約延伸（2026-10-05，基線7e11f5a8）
+
+明示母體設定是隔離研究批次來源：ID／版本／截至日／原檔hash、納入／排除與理由、已知或未知設定分母。可選manifest extension納入原不可變identity，讀取與consumer重新核對來源revision／刪除／成員／date；舊無設定cohort保留來源與原始分母未知。清單、母體盤勢及候選摘要共享同一契約，設定不授予PIT或推薦資格，不計算新分數。CLI明示讀included，禁止無設定手動更新默默降格已綁來源。
+
+原排名來源audit：原計畫指StockScreener本日／本週價量強弱排序（原公式不改）。ScreeningResultDTO有period／method／version／eligible count，但即時結果未有不可變run／完整成員排除／hash發布；strong_stocks_view僅記憶體快取。saved recommendation屬另一rank kind不能代用。有限currentDB schema唯讀未找到rank／screen tables，不推論全球不存在。原排名未知且停用；需原引擎不可變結果發布工程，不稱等待自然成熟。
+
+本包無Native前景或使用者視窗操作，無訓練、全市場producer、正式DB／registry或真實書籤寫入；永久清理仍未執行。驗證與commit結果見同章最終收據補記。
+
+
+### 本包最終驗證與接受邊界
+
+- 最終受影響9檔共104 passed；Workbench85 passed；validator25 passed／4 skipped／0 failed；全域mypy781 source files通過；13個changed Python compile通過；金融float／look-ahead guard及diff check通過。母體JSON／manifest嚴格比較包含bool／int alias拒絕。第一輪6個failure是新測試fixture明示reserve=1違反中央200GiB，已改mock204GiB並保留200GiB guard；原failure receipts保留，未降低產品容量限制。各局部agent測試與104重疊，不加總。
+- 真D SQLite唯讀小批次1477／2330／2382，以明示設定排除2317（研究批次選擇，不是資料／投資風險判斷）。設定納入3／排除1／已知設定分母4，發布涵蓋3/3、缺件0；producer新增14832 bytes、暫存峰4455 bytes，200GiB預檢通過。2382個股consumer讀回verified；正式DB／WAL／SHM前後stat一致。沒有原排名／新分數／learner。
+- manifest SHA256 `2d241068d3b6df9a06c65267da0c0925c30d3244c6116da626d6a537f742311c`；identity `6c4a3fd3c82f074f5085a9ac6dff0437c7ba287c80ea8e696bc16118d3f2d9e6`；設定來源SHA `264dd7632fded527d82f20e7199c5f48d7acb33f9f56e33ee85b2feabfbe3379`。截圖為真D唯讀＋隔離發布有界母體，offscreen；名單／盤勢／候選同identity與分母，手動更新不啟worker；source inventory與code pins前後一致、worker0。首輪未註冊中文字型的截圖保留為initial_font失敗證據，harness採既有font helper重拍後可讀；產品字型未改。
+- QA收據：`output/qa/ux16_universe_20261005/verification_summary.json`、`related.xml/log`、`real_producer_receipt.json/log`、`offscreen_receipt.json`及兩張`real_configured_*.png`。本地commit/blob以同目錄commit_readback與Git為準；QA raw仍ignored，未push。唯一原plan原146969-byte prefix SHA `1be4f4eb34aa6d043915f60280a65ae4ab8c5482198a8ea0e503931318a05713`保留，僅追加。
+- 已完成工程：有界母體設定custody、可選v2manifest extension、source revision/deletion/member/date拒絕、明示小批次CLI、同源consumer呈現、來源未知與排名停用。仍缺工程：原StockScreener day/week不可變結果發布（run／method/version／完整eligible成員與排除／原始rank/score/topN／sourcehash），以及原plan其他生命周期／storage/growth項；不稱等自然成熟。來源決策另須明確合格母體權威與可用性/PIT證據，本包手工研究成員不是正式母體。Native鍵鼠／縮放／跨頁及真人驗收未執行；全App startup未由本包證明。下一背景包建議先原排名publisher契約，沿原公式不重算新分數。永久清理、真實書籤遷移仍未授權執行。
+
+
+## 最新延伸：2026-10-05 UX18 原引擎排名有限收尾（基線27768eb9）
+
+已交付：既有StockScreener原公式day/week × strong/weak四mode不可變publisher／verified reader；原engine/method/version/params、parent feature/universe/date/inputhash、原rank／舊score label與窗口、research-only資格；來源拒絕、OSlock、atomic manifest、unchanged、容量有界；Daily名單／candidate／Market同排名身份。原引擎檔案未改，不以MA／其他score替代，沒有新公式。
+
+驗證：87個不同affected有pass證據（首輪82pass／4fail→四案精準重驗4pass，新增inflight mode1pass），WB85、validator25／4skip、mypy783、12compile、guard／diff。初14typing、舊fixture參數及未提供label修正，失敗保留。真D既有三股feature parent不變，四modepublished→readback，repeatdaystrong unchanged且inventory不變；eligible3／missing0、18478bytes；DB/WAL/SHM stat、原5sourcefiles及engine SHA穩定。8offscreen圖同rank object／parent、worker0、finalcodepins吻合，不能替代Native。
+
+剩餘第一版工程具名：rank-aware收藏／回訪及StockReport來源context版本化（本包明示拒絕原排名排序收藏）；其他原大盤／強弱consumer融合；完整feature/method dictionary；正式合格母體與排程部署；長期storage/growth及其他lifecycle crash驗收。Backtest18.62%／20%門檻未達仍保留。來源決策：正式母體權威、officialavailability／歷史membership／PIT；legacyTop/Bottom百分比口徑非一般前幾％，numeric score未暴露，若修改須原引擎方法版本決策。手工研究母體不是正式全市場。工程缺件不稱等自然成熟。
+
+Native鍵鼠／縮放／跨頁、全Appstartup及3–5真人驗收另待桌面時段；未操控使用者視窗。沒有全市場採集／正式DB或registry寫入／train／大DBcopy／永久清理／push；未知paper及C:/ta_iso_1005映射不動。既有featurev2／舊bookmarks保持身份，無rank來源仍unknown，未靜默遷移。raw與commitreadback output/qa/original_rank_publisher_20261005；tracked證據 docs/06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md。原plan151202bytes前綴完整保留，只追加，本地commit核驗後停止交父層。
+
+
+[UX18完整收據](../06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md)
+
+
+## 2026-10-05 UX19 有界儲存與發布復原延伸
+
+本批唯讀參照盤點與 dry-run 不提供永久刪除授權；歷史 manifest／artifact／v1-v2 收藏參照保留，未知 schema、缺件、來源不完整及超預算採保守保留。排名首次發布的缺件指標 CAS 與隔離跨程序復原收據、容量時點政策及驗證結果見 [限定收尾收據](../06_qa/UX19_STORAGE_AND_PUBLICATION_RECOVERY_20261005.md)。未改原引擎／排名／方法／日期，未重跑既有真實 publisher 或 ML。
+
+真實 MainWindow 九工作區在空資料、隔離配置、offscreen 子程序最小啟動／正常關閉通過（PID 23772，worker 0，guard 無違規）；這不替代帶正式資料的 App 功能、Native 或真人驗收。其他 consumer／完整方法字典／正式母體與排程／其他 writer 生命周期／長期自然成長仍是工程待辦；Backtest18.62%／20%保持未達，來源 availability／PIT／自然資格另列。使用者其他對話的容量／Evidence 變更保留且不納入本批提交，中央政策以時點 pin 為準。
+
+
+## 2026-10-05 UX09 有界 MA 名單入選歷程
+
+既有兩條 MA 三態快照經純比較模型、有限歷史 reader 與背景 UI 呈現本次新入選／持續符合／重新入選／未再符合，並保存前次日期、理由與可回放來源身份；不是策略升降級服務。無效／缺件／漏日／同日修訂／版本或母體變更及回填保持未知，不在刷新時寫事件。日曆只讀現有快取，publication 前可得性核驗；現有真實來源只有同日，不能作跨日自然歷程證明。
+
+此為原計畫 §8.1／UX09 的研究讀取切片；不更換母體權威或舊標籤、不啟動自然 capture／outcome 階段5，不宣告首版完成。完整方法字典、其他 consumer 融合、正式母體／排程與其他 writer 生命周期仍是工程待辦，Backtest18.62%／20%不變；Native與真人驗收另待桌面時段。詳見 [UX09 限定收據](../06_qa/UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md)。
+
+
+### UX09 最終限定收據（2026-10-05）
+
+78 個不重複受影響案例、Workbench 85、validator 25／4 略過、mypy 786、8 檔編譯通過。真實單日三檔維持未知（翌日發布且無有效前次比較），17 檔來源雜湊及正式 DB/WAL/SHM 狀態不變；未授予 PIT／自然成熟。完整第一版與 Backtest 18.62%／20% gate 未變，長期歷史索引／分頁、部署／其他 consumer 與 Native 驗收仍待完成；容量工作屬其他 owner。詳細證據與回滾見 UX09_RESEARCH_MEMBERSHIP_LIFECYCLE_20261005.md。
+
+
+## 2026-10-05 UX09 歷史索引／分頁與有限版本復原（最新）
+
+長期保存的研究manifest以可重建SQLite派生索引查詢，32 refs／頁、固定來源／query／generation游標、64頁滑動導航窗口且可持續向更早頁讀取。背景history／explicit rebuild保持當期個股與篩選主線可用；schema／來源／hash／cancel／故障不偽造完整，原immutable來源／舊收藏不遷移。索引最多64MiB，每頁串流重核全index SHA及頁內原manifest/artifact，年度calendar以4096entries／32MiB逐份驗證，不再32份正常累積即整批未知。
+
+限定受影響79個不重複案例、Workbench85、validator25／4skip、mypy788、11變更Python編譯與精度／未來函數guard通過。真實已保存三股來源隔離offscreen回放：晚發布仍unknown、17來源hash與正式DBsize/mtime不變、worker0；沒有讀正式DB去重核current identity。130日×2修訂合成metadata全260refs走9頁，index159744 bytes、最大page JSON13814 bytes／tracemalloc1226583 bytes；不當自然樣本或正式長期總容量證明。
+
+本包關閉UX09索引／分頁／索引程式內版本復原；第一版工程剩餘固定F1–F4，詳細終點與owner見收據。Backtest18.62%／20%仍差1.38百分點，不重測湊數或放寬。舊1477 Native已在6691ec78通過，較早「仍待1477」文字由此更正；新分頁／跨頁Native及3–5位真人另驗。1000×835 outer／125%已接受，不新增1000×800硬門檻。具名full-cohort與原完整Top/Bottom標籤沿現況，官方全市場／新百分位方法只有擴充時才要明確決定，不阻塞目前研究限定工程。
+
+完整操作與排錯見 APPLICATION_MANUAL 的歷史索引小節；[詳細驗證、來源選項與F1–F4凍結清單](../06_qa/UX09_HISTORY_INDEX_AND_RECOVERY_20261005.md)。
+
+
+## 2026-10-05 F2／F3 原市場頁共享來源與已開能力矩陣（最新）
+
+F2／F3 在已接受的 A／A 研究限定範圍完成：原大盤指數併列具名摘要，強勢個股、弱勢個股可明示切換至每日研究名單同一 immutable 來源；日／周 × 強／弱四模式保留原完整 eligible、Top／Bottom 標籤、實際比較窗及兩種排除。榜外與研究資料缺件分欄，來源變更／清除／過期回應拒絕，切返嚴格唯讀不啟 producer。既有全市場／產業來源、母體與可比較性仍獨立，沒有用三股取代全市場統計。
+
+能力矩陣只登記 close／MA20／MA60、close_above_ma20／close_above_ma60，完整 field／unit／warmup／missing／availability／version／cost／source 與逐股 audit 可查；官方時點及未量測成本維持 unknown。完整只相對 named declared cohort；既有 feature v2／method hash／原引擎與收藏版本不變，沒有新增正式 B 母體或方法版本。
+
+本批驗證：43 個不重複受影響案例有通過證據（根層首9＋相容29＋實際橋接新增1＋F2 focused4；最後11頁面相容重驗為既有案例不加總）、Workbench85、validator25／4skip／0fail、mypy790、12檔編譯及精度／未來函數 guard 通過。受控小型來源驗實際背景 consumer；真實既有三股保存來源驗能力投影與 offscreen 畫面，17 來源 hash 與正式 DB size／mtime 不變、worker 0；後者沒有開正式 DB 重核 current identity，不能宣稱自然跨日證據或 PIT。詳細來源、失敗保留及回滾見本批 QA 收據。
+
+第一版工程剩 F1（18.62%／20%，差 1.38pp；不重測微調）及 F4（整條跨頁整合、部署、長期總容量）。新 Native／3–5 位真人另驗；舊1477 Native已在6691ec78完成，不重列待辦。1000×835 outer／125%沿已接受，不加1000×800硬門檻。工程缺陷不稱等自然成熟；source/capacity／Evidence 屬另一 owner，保留其變更並排除本批提交。沒有清理、正式資料寫入、訓練、前景視窗操作或 push。
+
+[本批詳細收據](../06_qa/F2_F3_SHARED_CONSUMERS_AND_CAPABILITIES_20261005.md)
+
+
+## 2026-10-05 F4跨頁整合與資源終驗（最新）
+
+MainWindow明示snapshot root/cohort、original-rank root接線完成；actual9工作區三個不同子程序跑通research v1源頁收藏／original-rank v2報告收藏、精確返回、新程序同source/report identity讀回及no-arg配置回滾。8個發布檔案hash在跨頁／cancel／fresh process／close後不變，schema/cancel/stale last-good與有限cache核對通過；不是Native或自然資格。25個不重複受影響案例有通過證據，Workbench85、validator25/4skip/0fail、mypy790、兩檔compile與Main量化guard通過。
+
+20個同日受控session共用tiny3股×120列DB，實體留存1,714,653 B、index staging32,768 B另計、index WAL0、單份backup32,768 B；當下policy SHA6e7b018f...111e880／20GiB reserve的隔離preflight通過。Formal inventory unknown，不授writer，retention僅dry-run。
+
+**120／250 sessions仍blocked**：Watchlist revision保存整份清單，payload呈二次累積，下界37,251,702／159,588,787 B，均超4MiB payload及32MiB DB上限；精確未來physical未知。原9.9／20.5MB線性預估已撤回，以resource v4為準。不能宣告F4全閉／首版完成，也不能把已知儲存預算限制寫成等自然成熟；後續容量／Watchlist owner需提出可審核方案，本包不擅改policy／migration／清理。
+
+F2／F3 A／A不重開；F1保持18.62%／20%、差1.38pp，由父層處理例外／後續方向，不重測微調。正式WindowsTask未查改，manual/on-demand沿用；其他owner三檔與Paper未納提交，未寫正式資料、未操作使用者視窗、未刪資料、未push。新Native／真人／自然資格另列，舊1477 Native不重跑，1000×835 outer／125%維持、不新增1000×800門檻。
+
+[本批逐項收據／明確阻塞／回滾](../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)
+
+
+## 2026-10-05 F4 項目 revision 儲存與長留存實測（最新）
+
+新／空庫採 schema3 `watchlist-item-events.v1`，不可變item＋稀疏events取代每版完整清單；舊v1/v2與兩種bookmark可讀，禁止初始化隱升級。4MiB payload／32MiB DB／64MiB scan／4096rows不變，容量未知／不足及schema/hash/refs/sourcehash不一致拒絕；歷史完整payload hash由有界增量replay另驗。
+
+受控同日期3股×120列，實際發布／收藏250次，20／120／250總實體留存781,365／3,887,695／7,912,388 B；250時Watchlist DB4,145,152 B、聚合payload2,600,012 B、全治理掃描6,202,133 B。三節點capacity／scan／references及全部250歷史回放通過，actual v3 offscreen MainWindow三程序讀回通過。39項統一路由＋最後新增sourcehash拒絕1案共40 distinct有通過證據；mypy791、最後單點module mypy、6檔compile與精度／未來函數guard通過。
+
+新隔離v3長留存限制已修，舊格式歷史估算不回寫；**正式v1/v2 COW converter／activation切換尚未實作及核准**。本批僅readonly dry-run，原DBbytes不變；不得把正式部署未做寫成等自然成熟，F4不能全關閉。F1差1.38pp交父層、F2/F3 A/A不重開，新Native／真人／自然資格另列；不清理、不push、不改其他owner。
+
+[完整收據與 COW 剩餘工程](../06_qa/F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md)
+
+
+## 2026-10-05 F4 SQLite COW converter 與明示 activation（最新）
+
+SQLite v1/v2→獨立v3 COW converter、CLI dry-run/convert/activation-preview/activate/status/rollback、fresh-service pointer與錯marker拒寫、bounded governance audit接線已實作並完成隔離驗證；取代前批「converter尚待工程」狀態。lexical codec保留逐版raw payload/hash、IDs/metadata/timestamps/source/order，v1缺歷史只標synthetic baseline。原4MiB/32MiB/64MiB/4096上限不變，取消、容量未知/不足、bad rows/schema、concurrent writer及身份錯誤failclosed。
+
+限定路由 70 passed，mypy 793 source files + CLI 1 source file pass，11檔compile及精度/未來函數guard通過。已許可舊20-session fixture副本由CLI新程序完成轉換、啟用讀回、target r21追加、rollback回source r20；target r21、雙DB/audit保留，不自動合併。原fixture及17份已接受immutable pins保持相同；無producer重跑、正式資料套用、Native、清理或push。
+
+本批COW實作工程關閉；正式使用者apply另行核准。預設canonical SQLite不存在、legacy default.json存在，實際store/mode/override仍待父層確認；沒有初始化缺失DB或讀真實JSON。F1差1.38pp交父層方向，F2/F3 A/A不重開；新Native/真人/自然資格分列，不能把部署批准寫成等自然成熟。
+
+[逐項COW驗證、操作與正式部署邊界](../06_qa/F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md)
+
+
+### 最終容量守衛收尾（2026-10-05）
+
+啟用與回退發布 audit／marker 前重新核對當下中央 reserve；容量未知／不足具名拒絕並保留原指標、雙庫與內容。最終限定路由72 passed（focused_root_05.log；另有pytest cache唯讀警告），mypy793及CLI1通過，11檔compile／7產品檔精度與未來函數AST守衛0違規。14個獨立程序實際CLI回放全部exit0、隔離guard0違規，17份immutable來源及原20-session fixture SHA不變。最終case為output/qa/f4_cow_converter_activation_20261005/cli-roundtrip/run-615b305783f9；原失敗與中間收據保留，不替換為自然或正式驗收。
+
+
+## 2026-10-05 Legacy JSON v1 COW 與明示切換（最新）
+
+實際一般啟動沿 legacy JSON v1；本批補齊單一 JSON→獨立 SQLite v3 converter、原升級按鈕的 convert／核對／activate、新程序 discovery、source-aware writer 與 rollback，不建立缺失 canonical。多份 JSON、已有 canonical 歧義、錯來源／marker、容量／版本／型態／編碼與並發 writer 具名拒絕。來源 raw bytes 與合法未知巢狀欄位保留，opaque history 不臆造 ledger；JSON 無版本鏈只建明示 synthetic baseline。回退回 JSON，保留 target 新 revision、雙來源和 audit，不自動合併。既有 SQLite COW 路徑沿原契約。
+
+限定統一路由 113 passed，Workbench85、validator25／4skip、mypy 794及CLI1、12檔compile與6產品檔精度／未來函數AST守衛0違規。14個隔離新程序完成 JSON CLI轉換／啟用／追加／回退，來源 bytes unchanged、target r2保留、canonical未建立；合成 JSON 起點20／120／250次保存之總留存 181,902／444,060／816,793 B，未冒稱自然來源／全書籤負載增長。17份已接受immutable來源SHA及正式JSONsize／mtime保持，正式資料未套用。
+
+正式來源 `D:/Min/Python/Project/FA_Data/output/watchlist/default.json` 為1948B；候選 `watchlists.v3-cow.sqlite`、marker `default.json.cow-active.json` 與 canonical `watchlists.db` 仍不存在。本批不讀原 JSON 內容／不初始化缺失 DB。真正apply另由父層／使用者確認單來源、writer時段、當下容量與明示批准，再按Manual dry-run→convert→preview→activate→新程序讀回；rollback保留雙來源／新內容。PID39400／41588無原PID/starttime owner收據，保留未停止，不能當writer已停止的證據。
+
+F1 exact18.621965821542936%／20%差15.1294400013285ms（約15.13ms）例外尚未批准；F2／F3 A/A不重開。UX07未啟動，新Native／真人／自然資格另列。原整份計畫階段done1／partial5／pending3、UX done2／partial14／pending8保持，有限工程完成不等於整份產品計畫完成。沒有清理、producer／ML重跑、Native或push；其他對話檔案保留排除。
+
+[JSON路徑逐項驗證與正式批准邊界](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md)

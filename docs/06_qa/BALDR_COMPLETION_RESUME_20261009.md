@@ -71,3 +71,9 @@ MA 原碼 targeted mypy、原碼與新測試 py_compile、tracked diff whitespac
 三路私有 preparation 首輪為 **7 passed／281.43s**（`three_member_prepare_attempt01.log`）。其後補齊 canonical payload 的 identity 欄位大小、途中 budget 變動與候選 entry 物件一致性核驗；純雜湊／大小計算測試 **2 passed／0.78s**。最後實際雙 parent 正例、整體 payload 超限及晚到 budget 變動負例為 **3 passed／211.46s，exit 0**，log：`output/qa/resume_root_validation_20261009_a/three_member_prepare_attempt02_boundary.log`。最終 module SHA：`fdfd3602f346335365b3b14d31b1dd58b18ae5ad335509f87a69c379a7e823fa`；targeted mypy、兩檔 py_compile 與 whitespace 檢查通過。候選仍未授 reader 資格，不代表共同 issuer、公開 query 或 UI 已完成。
 
 F12 C2 的「parent 不存在」判斷已補正：實際目錄存在，274 字元普通路徑檢查誤判，extended 路徑讀取成功。C3 僅修正 QA helper，使用原 pinned resolver 的 plain canonical label、fresh ancestry/no-reparse 及原 extended tree signature；實際長路徑正例與同 lexical path junction 負例均通過。root 獨立審閱 C2→C3 diff 與 receipt，接受此窄範圍證據：**14 passed、4 subtests passed**，self-test／route contract exit 0，58 source pins 一致；僅 paths pin 更新為核准的 `adf0b776dbced091e0f27b84de76daa87986302548ff635cc6e6e738d92650f2`。收據：`output/qa/f12_main_revenue_new_pid_20261009_c3/evidence/20261009T235351Z_40512_f619993c/receipt.json`。未重建來源、未執行 full Main；安排在 P01 效能量測後驗證，避免競爭 CPU。
+
+### P01 定向修補保存
+
+root 已再次實讀 paths diff、16 項定向回歸工具輸出轉錄及修正後 1 MiB cap 測試原 log。16 項原輸出沒有獨立原生 pytest log，`focused_regression_16passed_tool_capture_20261009_b.json` 明示為工具 stdout 轉錄；其測試 SHA `8cf046…c0f` 與最終測試 SHA `ef2adf6100159add524aba4ac1ca52beec092222f15a9a541e8bfbb9382c6786` 不同，差異為 cap 負例改查真正 `(type(path), lexical_path)` key，修正後該測試另有 **1 passed／0.36s** 原 log。產品 source SHA 維持 `adf0b776…650f2`。尚無新完整效能矩陣結果，不把回歸通過寫成效能門檻通過。
+
+三路 preparation 與 paths 修補後，全域 mypy **934 source files 無錯誤，exit 0**；原 log `output/qa/resume_root_validation_20261009_a/mypy_after_three_member_prepare.log`。本輪未修改 UI 原碼，沿用前述 UI 基線；這些驗證不代表正式排程或全產品驗收。

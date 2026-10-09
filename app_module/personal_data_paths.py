@@ -136,28 +136,8 @@ class _PageOperationPathRenderMemo:
         if str(canonical_path) != str(path):
             return tuple(reversed((path, *path.parents)))
 
-        # Path equality 可能在 Windows 忽略大小寫；保留精確 lexical spelling。
-        lexical_path = str(path)
-        key = (type(path), lexical_path)
-        cached = self._components.get(key)
-        if cached is not None:
-            return cached
-
-        components = tuple(reversed((path, *path.parents)))
-        # 預算包含 key 與 tuple 中每個 Path 的完整 lexical 字串。
-        entry_bytes = self._utf16_byte_size(lexical_path) + sum(
-            self._utf16_byte_size(str(component)) for component in components
-        )
-        if (
-            len(self._values) + len(self._components)
-            < _PAGE_PATH_RENDER_MEMO_MAX_ENTRIES
-            and self._used_utf16_bytes + entry_bytes
-            <= _PAGE_PATH_RENDER_MEMO_MAX_UTF16_BYTES
-        ):
-            self._components[key] = components
-            self._used_utf16_bytes += entry_bytes
-        # 預算不足時仍回傳原本相同的 strict tuple，不記錄任何 I/O 結果。
-        return components
+        # 保留 strict canonical guard；tuple 由 Path 詞法欄位重建，不佔用 render memo 預算。
+        return tuple(reversed((path, *path.parents)))
 
     def clear(self) -> None:
         self._values.clear()

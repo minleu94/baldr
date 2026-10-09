@@ -43,8 +43,8 @@
 已移出或刪除：
 
 - `CLEANUP_PLAN.md`：舊清理計劃，內容已執行或被新版 docs 結構取代，已刪除。
-- `策略回測功能清單.md`：已移至 `docs/02_features/BACKTEST_LAB_CHECKLIST.md`。
-- `策略回測常見問題解答.md`：已移至 `docs/02_features/BACKTEST_LAB_FAQ.md`。
+- `策略回測功能清單.md`：原件已歸檔至[歷史清單](docs/09_archive/BACKTEST_LAB_CHECKLIST.md)；[舊路徑](docs/02_features/BACKTEST_LAB_CHECKLIST.md)是相容導引，現行功能契約看 [BACKTEST_LAB_FEATURES](docs/02_features/BACKTEST_LAB_FEATURES.md)。
+- `策略回測常見問題解答.md`：原件已歸檔至[歷史 FAQ](docs/09_archive/BACKTEST_LAB_FAQ.md)；[舊路徑](docs/02_features/BACKTEST_LAB_FAQ.md)是相容導引，現行操作看[完整操作手冊](docs/07_guides/APPLICATION_MANUAL.md)，功能契約看 [BACKTEST_LAB_FEATURES](docs/02_features/BACKTEST_LAB_FEATURES.md)。
 - `01_stock_data_collector_enhanced.py`：舊 notebook 匯出參考腳本，已刪除；正式資料處理請看 `data_module/` 與 `scripts/update_all_data.py`。
 - `tests/test_finmind_integration.py`：只測舊參考腳本且依賴外部 FinMind token，已刪除。
 - `readme.txt`：原根目錄長版舊 README，內容停留在舊 Phase、舊入口與舊路徑說明；2026-06-18 已移至 `docs/09_archive/root_readme_legacy_2025_12.txt`。

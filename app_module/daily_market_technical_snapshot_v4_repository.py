@@ -29,7 +29,10 @@ from app_module.daily_market_technical_read_session import (
     DAILY_MARKET_TECHNICAL_READ_SESSION_BATCH_MAX_STOCKS,
     DailyMarketTechnicalSourceClockV4,
 )
-from app_module.personal_data_paths import to_internal_io_path
+from app_module.personal_data_paths import (
+    _p01_page_operation_path_components,
+    to_internal_io_path,
+)
 
 
 DAILY_MARKET_TECHNICAL_SNAPSHOT_V4_BATCH_MANIFEST_SCHEMA = (
@@ -1357,7 +1360,7 @@ def _strip_io_prefix(value: str) -> str:
 
 
 def _reject_link_components(path: Path) -> None:
-    for component in reversed((path, *path.parents)):
+    for component in _p01_page_operation_path_components(path):
         info = _lstat_optional(component)
         if info is not None and _is_link_or_reparse(info):
             _fail("technical_snapshot_v4_link_rejected")

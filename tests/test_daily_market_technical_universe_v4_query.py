@@ -1231,6 +1231,12 @@ def test_p01_page_cancel_clears_memo_and_callback_strict_reads_do_not_borrow_it(
     assert callback_contexts and all(item is None for item in callback_contexts)
     assert strict_render_contexts and all(item is None for item in strict_render_contexts)
     assert len({id(item) for item in render_contexts if item is not None}) >= 2
+    scoped_memos = {id(item): item for item in render_contexts if item is not None}
+    assert scoped_memos
+    assert all(
+        item._closed and item._values == {} and item._components == {}
+        for item in scoped_memos.values()
+    )
     assert personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get() is None
 
     memo_type = personal_data_paths_module._PageOperationPathRenderMemo
@@ -1278,6 +1284,7 @@ def test_p01_page_cancel_clears_memo_and_callback_strict_reads_do_not_borrow_it(
     assert len(created_memos) == 1
     assert created_memos[0]._closed is True
     assert created_memos[0]._values == {}
+    assert created_memos[0]._components == {}
     assert personal_data_paths_module._PAGE_OPERATION_PATH_RENDER_MEMO.get() is None
 
 

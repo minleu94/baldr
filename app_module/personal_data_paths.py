@@ -69,12 +69,19 @@ _PAGE_PATH_RENDER_PATH_TYPE = type(Path())
 
 
 class _PageOperationPathRenderMemo:
-    """只在單次 P01 page operation 暫存已驗證的純路徑渲染。"""
+    """只在單次 P01 page operation 暫存有界的純路徑運算。"""
 
-    __slots__ = ("_values", "_used_utf16_bytes", "_closed", "_owner_thread_id")
+    __slots__ = (
+        "_values",
+        "_components",
+        "_used_utf16_bytes",
+        "_closed",
+        "_owner_thread_id",
+    )
 
     def __init__(self) -> None:
         self._values: dict[tuple[type[Path], str], str] = {}
+        self._components: dict[tuple[type[Path], str], tuple[Path, ...]] = {}
         self._used_utf16_bytes = 0
         self._closed = False
         self._owner_thread_id = get_ident()
@@ -103,7 +110,8 @@ class _PageOperationPathRenderMemo:
         rendered = _render_internal_io_path(path)
         entry_bytes = self._utf16_byte_size(lexical_path) + self._utf16_byte_size(rendered)
         if (
-            len(self._values) < _PAGE_PATH_RENDER_MEMO_MAX_ENTRIES
+            len(self._values) + len(self._components)
+            < _PAGE_PATH_RENDER_MEMO_MAX_ENTRIES
             and self._used_utf16_bytes + entry_bytes
             <= _PAGE_PATH_RENDER_MEMO_MAX_UTF16_BYTES
         ):
@@ -112,8 +120,48 @@ class _PageOperationPathRenderMemo:
         # 容量滿時只停止新增 memo；本次轉換仍已通過原 strict renderer。
         return rendered
 
+    def components(self, path: Path) -> tuple[Path, ...]:
+        if (
+            self._closed
+            or type(path) is not _PAGE_PATH_RENDER_PATH_TYPE
+            or not path.is_absolute()
+            or get_ident() != self._owner_thread_id
+        ):
+            return tuple(reversed((path, *path.parents)))
+
+        try:
+            canonical_path = _validate_absolute_syntax(path)
+        except PersonalDataPathError:
+            return tuple(reversed((path, *path.parents)))
+        if str(canonical_path) != str(path):
+            return tuple(reversed((path, *path.parents)))
+
+        # Path equality 可能在 Windows 忽略大小寫；保留精確 lexical spelling。
+        lexical_path = str(path)
+        key = (type(path), lexical_path)
+        cached = self._components.get(key)
+        if cached is not None:
+            return cached
+
+        components = tuple(reversed((path, *path.parents)))
+        # 預算包含 key 與 tuple 中每個 Path 的完整 lexical 字串。
+        entry_bytes = self._utf16_byte_size(lexical_path) + sum(
+            self._utf16_byte_size(str(component)) for component in components
+        )
+        if (
+            len(self._values) + len(self._components)
+            < _PAGE_PATH_RENDER_MEMO_MAX_ENTRIES
+            and self._used_utf16_bytes + entry_bytes
+            <= _PAGE_PATH_RENDER_MEMO_MAX_UTF16_BYTES
+        ):
+            self._components[key] = components
+            self._used_utf16_bytes += entry_bytes
+        # 預算不足時仍回傳原本相同的 strict tuple，不記錄任何 I/O 結果。
+        return components
+
     def clear(self) -> None:
         self._values.clear()
+        self._components.clear()
         self._used_utf16_bytes = 0
         self._closed = True
 
@@ -153,6 +201,14 @@ def to_internal_io_path(path: str | Path) -> str:
     return _render_internal_io_path(path)
 
 
+def _p01_page_operation_path_components(path: Path) -> tuple[Path, ...]:
+    """取得 root-to-leaf tuple；memo 僅重用詞法運算，不重用檔案狀態。"""
+    memo = _PAGE_OPERATION_PATH_RENDER_MEMO.get()
+    if memo is not None:
+        return memo.components(path)
+    return tuple(reversed((path, *path.parents)))
+
+
 def to_internal_sqlite_uri(
     path: str | Path, mode: Literal["ro", "rw"]
 ) -> str:
@@ -165,7 +221,7 @@ def to_internal_sqlite_uri(
 
 def _reject_links(path: Path) -> None:
     # lstat 保留 link 身分；Windows reparse 包含 junction，不僅 symlink。
-    for component in reversed((path, *path.parents)):
+    for component in _p01_page_operation_path_components(path):
         try:
             info = os.lstat(_render_internal_io_path(component))
         except FileNotFoundError:

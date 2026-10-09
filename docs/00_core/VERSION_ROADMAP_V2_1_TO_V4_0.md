@@ -18,6 +18,7 @@
 5. V4.0 必須由長期 Forward / Paper / Live Evidence 支持，不能用規劃日期提前宣告。
 6. 版本 closeout 必須有明確 non-goals、residual、rollback 與 evidence boundary。
 7. 版本成熟度的列序代表產品能力門檻，不等於工程實作先後。以持倉健康為例，V2.5 定義 thesis／invalidation contract、health read model 與人工決策日誌的 Foundation；[六個月工程路線](ROADMAP_6M_ENGINEERING.md)則將完整 Position Health / Exit Engine 排在 Gate 6，並要求先有 Gate 5 signal-effectiveness baseline。兩者回答不同問題，V2.5 的版號順序不表示 Gate 6 必須先於 Gate 5。
+8. 本文件正式定義範圍為 V2.1–V4.0。Product Roadmap 中的 V5／V6 描述是產品方向約束，不是本文件定義的成熟度等級或正式 Exit Criteria；不得由方向摘要推定額外版本 Gate。
 
 ## 2. Scoped Authority
 
@@ -209,5 +210,5 @@ V4.0 仍不代表：
 
 ## 更新記錄
 
-- 2026-10-09：補充成熟度版號列序與 6M 工程 Gate 順序的判讀，避免將 V2.5 Foundation 誤讀為 Gate 6 工程必須先於 Gate 5。
+- 2026-10-09：補充成熟度版號列序與 6M 工程 Gate 順序的判讀，並界定 V5／V6 方向摘要不構成本文件的正式 Exit Criteria。
 > 日期化狀態、closeout 快照與工程 handoff 已集中至[版本路線更新歷史](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_UPDATE_HISTORY_20260711_TO_20260915.md)；本文件只追加成熟度 Gate／責任邊界的規範變更，不在此維護目前進度。

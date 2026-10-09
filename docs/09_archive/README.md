@@ -367,8 +367,8 @@ These are completed, dated engineering/readiness records. Current source accepta
 - **`API_INVESTIGATION_REPORT.md`**
   - API 調查報告（歷史記錄）
 
-- **`ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md`**
-  - 原 6M Roadmap 中 V1 / Month 1-6 / V1.1-V1.9 的詳細完工紀錄與更新流水帳；只作歷史追溯。
+- **[ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md](ROADMAP_6M_ENGINEERING_V1_COMPLETION_RECORD_2026_07.md)**
+  - 原 6M Roadmap 中 V1 / Month 1-6 / V1.1-V1.9 的歷史完工紀錄；目前工程順序仍以 [6M Engineering Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md) 為準。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
 
 - **`UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`**
   - 2026-05-19 `ui_qt` 對照舊 roadmap 的歷史審核報表；部分狀態已被後續 UI / Portfolio / Workbench 進度取代。
@@ -376,8 +376,8 @@ These are completed, dated engineering/readiness records. Current source accepta
 - **`PHASE_3_3B_IMPLEMENTATION_PLAN.md`**
   - Phase 3.3b 實施規劃（已執行，歷史歸檔）
 
-- **`NEXT_ACTION_PLAN.md`**
-  - 下一輪 Roadmap Rebaseline、技術治理與 Agent 交接行動計畫（已執行，歷史歸檔）
+- **[NEXT_ACTION_PLAN.md](NEXT_ACTION_PLAN.md)**
+  - 下一輪 Roadmap Rebaseline、技術治理與 Agent 交接行動計畫（已執行，歷史歸檔）；現行狀態與優先序請看 Snapshot 與各 scoped roadmap。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
 
 - **`REFACTORING_MIGRATION_PLAN_2025.md`**
   - 2025 年專案結構化與遷移計畫；各遷移步驟已完成，只作架構演進追溯
@@ -385,8 +385,8 @@ These are completed, dated engineering/readiness records. Current source accepta
 - **`SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md`**
   - Gate 0 行為不變安全重構的已完成執行紀錄、rollback 與 residual candidate companion
 
-- **`DEVELOPMENT_ROADMAP_LEGACY_2026_06.md`**
-  - 2026-06-13 前的完整 Roadmap，包含舊線性 Phase、歷史 Done、舊 Living Section 與歷史風險；只作追溯，不作目前狀態依據。
+- **[DEVELOPMENT_ROADMAP_LEGACY_2026_06.md](DEVELOPMENT_ROADMAP_LEGACY_2026_06.md)**
+  - 2026-06-13 前的 Roadmap 歷史副本，包含舊線性 Phase、歷史 Done 與舊 Living Section；只作追溯，不作目前狀態依據。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
 
 - **`readme_test.txt`**
   - 歷史測試文檔（已過時，保留作為參考）
@@ -409,8 +409,8 @@ These are completed, dated engineering/readiness records. Current source accepta
 - **`MASTER_GOAL_PLAYBOOK_2026_09_06.md`**
   - 2026-09-06 八卡任務拆解手冊（TASK-01～TASK-08）；01–07 的逐卡 bounded 工程交接見[歷史封存組](#2026-10-08-task-loop-01-07-historical-handoffs)，08-B 中央整合收據仍在 `docs/06_qa/TASK_LOOP_08_HANDOFF.md`。逐卡與中央工程整合不代表正式來源接受、自然前瞻、真實 Paper fills、具名 Formal review 或 V4 closeout 完成。
 
-- **`LUNA_PARALLEL_PLAN_2026_09_07.md`**
-  - 2026-09-07 Luna 三線平行規劃伴隨文件；該輪三線已於 2026-09-08 結案（見 `docs/09_archive/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md`）。
+- **[LUNA_PARALLEL_PLAN_2026_09_07.md](LUNA_PARALLEL_PLAN_2026_09_07.md)**
+  - 2026-09-07 Luna 三線平行規劃，該輪已於 2026-09-08 結案；整合結果見 [Luna Integration Closeout](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)。[Provenance：Entry 118](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-118)
 
 - **`LUNA_PROMPT_A_DATA_ML_2026_09_07.md`**、**`LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md`**、**`LUNA_PROMPT_C_UX_2026_09_07.md`**
   - 2026-09-07 給 Luna A/B/C 三位子代理的一次性任務 Prompt；任務已結案並整合，歷史提示詞歸檔。

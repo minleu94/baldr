@@ -144,6 +144,8 @@
 - LUNA A／C handoff 與 9/8 integration closeout 已移至 Archive；Luna B handoff、pre-integration review 保留在 QA，因 audit scripts 直接讀取這兩份原文。QA README 導覽明列歸檔與保留理由，舊路徑均有短導引。
 - 六份 2026-07 V2.4／V2.5 paper baseline、V3.0 readiness／manual validation 與 V4.0 dated release-freeze receipt 已歸檔；成熟度文件保留 Gate 與決議摘要、移除單日 metrics，舊 QA 路徑仍供 script existence check 與歷史引用相容。
 - 三份 2026-09-14／15 decision workbench、next-increment 與 continuity write-path audit 已歸檔；QA 導覽與 PIT industry discovery 改連 Archive 原文，日期化剩餘工作不再混作目前優先序。
+- 四份 2026-09-15／16 PIT source discovery、daily source design、probability-learning audit 與 decision/evidence clock QA 已歸檔；後續 reader／caller acceptance QA 與目前狀態入口仍保留，舊 QA 路徑以短導引承接引用。
+- 五份 BALDR 2026-09-25／26 整合、scheduler、readiness 與技術修補 closeout 收據及兩份已執行 request／inventory JSON 已歸檔；QA 舊路徑保留導引，本機 ignored inventory／baseline sidecars 留在 QA，並明示乾淨 checkout 不一定包含。
 - 2026-09-07 的三份 V4 bounded data／machine／ML QA 亦已歸檔；仍以 Snapshot 與較新的專題收據判讀目前狀態，不將單日 release evidence 當成現行資格結論。
 - `FULL_APP_HEALTHCHECK_2026_06_16.md` 已歸檔為早期 UI smoke 快照；現行架構與操作分別看 system architecture 和 Application Manual，舊 QA 路徑保留轉址。
 - 若要採用歸檔 Phase SOP 中的操作內容，先依目前程式與 `docs/07_guides/APPLICATION_MANUAL.md` 核對並另行改寫；不要直接把歷史 Phase gate 重新當成目前規範。
@@ -190,6 +192,8 @@
 - 2026-10-08：歸檔七份 Prospective Formal clock 歷史收據，QA 保留目前 restart direction 與契約；標明 staging／failure 的有限效力及 8/26 一次性具名例外。
 - 2026-10-08：歸檔六份 V2/V3/V4 dated readiness 收據並保留 QA 相容導引；收斂版本成熟度正文中的重複單日數字，V4 跨文件連結改為明確指向仍有效的 QA／core 路徑。
 - 2026-10-08：歸檔三份 2026-09 decision workbench／continuity audit；將 PIT industry discovery 的歷史 audit 引用改為直達封存原文，並以 QA／Archive 導覽保留查找路徑。
+- 2026-10-08：將 2026-09-15／16 PIT source discovery、daily source design、probability-learning audit 與 decision/evidence clock QA 歸檔；保留 QA 舊路徑轉址，後續 acceptance QA 與現況入口仍留在 QA／Snapshot。
+- 2026-10-08：將 BALDR 9/25–26 已完成的整合／scheduler／evidence readiness／technical QA 收據與已套用 prompt request 歸檔；兩個 ignored local baseline／inventory sidecars 不移動、不提交，歸檔導覽明示其僅在本機可得。
 - 2026-10-08：將 13 份已完成 Post-V1 plan/spec 原文依 plans／specs 層次封存；以原路徑短導引、manifest bytes／SHA 與 Q1–Q8 QA links 保留追溯，Scheduler Approval pair 留在來源路徑供內容測試檢查。
 - 2026-10-08：封存已結案 Month 2 parameter／run storage plan，修正既有 manifest bytes／SHA 不符原件的列，保留來源路徑導引並明示最終完成證據已取代早期「等待核准」快照。
 - 2026-10-08：封存 Month 3 Factor Layer 的兩份實施計畫與配套設計規格；保留原路徑轉址及 plan/spec bytes／SHA，並明示原計畫中的提交核准核取方塊仍未勾選。

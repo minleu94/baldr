@@ -54,6 +54,18 @@
 
 三份文件補充同日的 Program Status Rebaseline；目前狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，QA 原路徑保留相容導引。
 
+### 2026-10-08 BALDR September integration closeout and readiness history
+
+以下文件保存 2026-09-25／26 的產品整合盤點、排程 inventory、evidence-model readback、technical parser closeout，以及已套用 automation prompt 的 before／after 與 request receipt。這些是已結束的日期快照；目前產品缺口、排程與 ML readiness 分別看 [QA 主題地圖](../06_qa/README.md) 與 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。舊 QA 路徑保留相容導引；原始 JSON request／inventory receipt 也在此封存，並非現行操作設定。
+
+- [BALDR product integration acceptance（9/25–26）](BALDR_PRODUCT_INTEGRATION_ACCEPTANCE_20260925.md)：當時的跨線盤點及後續 closeout；不代表目前完成度。
+- [Windows Scheduler reconciliation（9/25）](BALDR_SCHEDULER_RECONCILIATION_20260925.md) 與 [結構化 inventory JSON](BALDR_SCHEDULER_RECONCILIATION_20260925.json)：保留當時唯讀匯出與原始 hash。
+- [Daily evidence-model readiness（9/25）](BALDR_DAILY_EVIDENCE_MODEL_READINESS_20260925.md)：當日 maturity／candidate readback，非目前模型資格。
+- [Daily technical parse／partial-failure QA（9/25）](BALDR_DAILY_TECHNICAL_PARSE_DIAGNOSTIC_QA_20260925.md)：完成的隔離 bug-fix 驗證。
+- [Paper automation prompt proposal（9/25）](BALDR_PAPER_AUTOMATION_PROMPT_PROPOSAL_20260925.md) 與 [update request JSON](BALDR_PAPER_AUTOMATION_UPDATE_REQUEST_20260925.json)：9/26 已套用並 read back；目前 prompt／task 狀態仍須看近期 inventory。
+
+Product-integration baseline 與 Codex automation inventory 的大型 JSON 伴隨物是本機 ignored 檔，依排除規則沒有移動或提交；它們留在 QA 原路徑供當前工作樹中的歸檔報告連結。乾淨 checkout 可能不含這兩個本機 sidecar。
+
 ### 2026-10-08 V2.3 data-source decision receipts
 
 - [V2.3 P0 Sources Batch Principle Approval（2026-07-12）](V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md) 保存使用者核准 13 個 P0 source 的導入方向；下游 eligibility 當時仍為 `none`，不是來源接受或正式 ingestion 授權。
@@ -82,6 +94,15 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - **Gate／ML bounded closeouts**：[Gate 1 Advice](GATE_1_ADVICE_CLOSEOUT_2026_07_12.md)、[Gate 2–7 pure engineering](GATE_2_TO_7_PURE_ENGINEERING_CLOSEOUT_2026_07_12.md)（External Register／Control Center 的舊引用由轉址承接）、[historical ML Shadow MVP](HISTORICAL_ML_SHADOW_MVP_CLOSEOUT_2026_07_15.md)。pure-engineering 收據不等於目前 external qualification；狀態回到 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 與 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)。
 - **Healthcheck／PIT／project audit**：[Full App agent closeout](FULL_APP_HEALTHCHECK_AGENT_CLOSEOUT_2026_06_23.md)、[PIT historical data repair](PIT_HISTORICAL_DATA_REPAIR_CLOSEOUT_2026_07_15.md)、[PROJECT_SNAPSHOT audit](PROJECT_SNAPSHOT_AUDIT_2026_07_12.md)、[shim removal audit](SHIM_LEGACY_REMOVAL_AUDIT_2026-07-12.md)。目前測試覆蓋看 [Full App coverage mapping](../06_qa/FULL_APP_HEALTHCHECK_COVERAGE_MAPPING_2026_06_24.md)，目前狀態看 Snapshot。
 - **文件治理／執行藍圖**：[Gemini documentation adjudication](GEMINI_DOCUMENTATION_CROSS_AUDIT_ADJUDICATION_2026_07_13.md)、[Superpowers date audit](SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md)、[system execution blueprint closeout](SYSTEM_EXECUTION_BLUEPRINT_CLOSEOUT_2026_07_15.md)。目前文檔生命週期看 [DOCUMENTATION_STRUCTURE](../00_core/DOCUMENTATION_STRUCTURE.md)，目前架構看 [system_architecture](../01_architecture/system_architecture.md)。原 QA 路徑保留短轉址。
+
+### 2026-10-08 Source, clock and probability-learning audits
+
+以下文件保存已完成的 2026-09-15／16 discovery、read-only source design 與有界機率學習 audit。來源／caller 的後續驗收仍留在 QA；clock 與 ML 原文中的日期狀態及當時建議只供追溯，現況回到 Snapshot、Manual 與 QA 主題地圖。原 QA 路徑保留短轉址。
+
+- [Decision Desk／Evidence capture 真實時鐘 QA（9/16）](DECISION_EVIDENCE_CAPTURE_CLOCK_QA_2026_09_16.md)：保存 clock 修正、跨線 readback 與當時後續事項，不作目前排程狀態。
+- [PIT 產業來源驗收 discovery（9/15）](PIT_INDUSTRY_SOURCE_ACCEPTANCE_DISCOVERY_2026_09_15.md)：source/wiring discovery baseline；後續 caller acceptance 與 taxonomy source QA 仍在 QA。
+- [PIT taxonomy daily source plan（9/15）](PIT_TAXONOMY_DAILY_SOURCE_PLAN_2026_09_15.md)：read-only source/design proposal；後續實作與驗收看 QA 原件。
+- [每日機率學習下一增量 audit（9/15）](DAILY_PROBABILITY_LEARNING_NEXT_INCREMENT_AUDIT_2026_09_15.md)：保存 P1 實作補報及審計界線，不代表目前 ML 待辦或 adoption。
 
 ### 2026-07 Broker Flow and UI closeout
 

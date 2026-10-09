@@ -1,6 +1,6 @@
 # 系統架構更新記錄（2026-06 至 2026-10）
 
-> 原 system_architecture 的日期化歷史切片與第 16 節更新流水帳；僅作歷史追溯。2026-10-06 Personal H20、ML source custody 與 session proof／publisher loader 增量全文亦保留於此。現行架構契約請看 system_architecture，目前狀態請看 PROJECT_SNAPSHOT。
+> 原 system_architecture 的日期化歷史切片與第 16 節更新流水帳；僅作歷史追溯。2026-10-05／06 的 Personal H20、ML source custody、session proof／publisher loader 與 daily research snapshot／chart 增量全文亦保留於此。現行架構契約請看 system_architecture，目前狀態請看 PROJECT_SNAPSHOT。
 
 > 以下保留 system_architecture 於 2026-09-27 記下的決策與驗收快照；日期化 verdict 以文中 QA 收據為準，現況以 PROJECT_SNAPSHOT 為準。原 R027 strict INCONCLUSIVE 與之後的 versioned logical-time revision 是兩個獨立判定。
 
@@ -174,3 +174,57 @@ M01 `47873e1d→5cc54631`、二次source補正 `ff7adffe→a5304f1c` 已採。�
 原 natural maturity session proof verifier 經 data_module/recommendation_natural_maturity_proof.py → 原 NaturalMaturitySessionResolver；App personalization 不再直接 import ML evidence wrapper，20 session／cutoff／calendar／market custody 不變。完整 personalization 仍有其他既有 allowed training imports，不宣稱全面冷載入隔離。
 
 CurrentRestatedMLRunRegistry readonly 查詢無 loader；publish_current_restated_stock_research_run 新 keyword-only model_loader，缺件前置拒絕。原 scheduled current_stock_research_cycle 在 script composition 明示注入原 ML loader；不在 App 偷移 dynamic import。原 bundle／manifest／sidecar hash checks 與 source/account/PIT 資格不變。中央20 focused 通過，guard677/3仍 FAIL，剩 M01 H1–H3；原重型 union 不冒稱涵蓋新 head。
+
+<a id="ux21-benchmark-flow-20261006"></a>
+## 2026-10-06 UX21 明示基準的有限資料流
+
+原exact parent／children＋明示runtime v2 benchmark settings→source同calendar decision/H5/H10/H20/asof→query-only市場adapter＋target revision pin→原Decimal core→saved.v2 immutable envelope（設定／basis／availability／期間／source／cost version核驗）→舊receipt reader→readonly Qt。unconfigured沿v1/null；可選CLI設定檔raw pin連同原／effective runtime保存，不自動接受observed hash。新leaf只管設定／保存驗證，不引入政策選擇或ML訓練。
+
+caller-declared target basis與benchmark qualified research只在同期間相容時計算excess；原source availability／calendar資格及自然權威保持unknown/false。revision另存；讀回不依live DB。benchmark工程完成不代表完整期間labels或PIT。[收據](../06_qa/UX21_BENCHMARK_SOURCE_STORE_UI_20261006.md)。
+
+<a id="ux08-saved-chart-flow-20261006"></a>
+## 2026-10-06 保存圖表資料流限定追加
+
+SQLiteDailyMarketSnapshotSource.load_input（既有唯讀transaction／source pin）→DailyMarketSnapshotProducer（nested saved_technical_chart v1；外層feature v2 optional欄位）→DailyMarketSnapshotRepository exact manifest/hash/cutoff核驗→StockResearchReportReadService frozen保存價格與MA20／60→純StockChartPayload→既有QPainter與精確表。codec只序列化／驗證Decimal字串／整數，不查SQL或計算指標。各120列、raw256KiB／envelope48KiB，外層容量／atomic publication不放寬。
+
+方法／原排名revision核驗仍獨立，圖表可重現不授予排名、PIT、ML或交易資格。舊無chart保存來源留空，可明示另開最新研究；只新日研究parent producer接線，推薦writer及舊結果補建尚無。[收據](../06_qa/UX08_SAVED_CHART_READBACK_20261006.md)。
+
+<a id="ux13-research-cohort-projection-20261005"></a>
+## 2026-10-05 UX13 具名研究母體共用投影
+
+`DailyMarketResearchScreenerService` 唯讀讀回原 verified v2 快照；`daily_market_cohort_projection.py` 將完整發布 rows 與相同 manifest 投影為 immutable 母體 DTO，核對 scope／日期／hash／方法／實際條件結果，保留 declared／published／missing 分母。既有 Decimal 值排序不改發布資料或原方法；原強弱排名不存在時明示 unknown。
+
+`DailyMarketResearchView` 發出 snapshotAccepted／snapshotCleared；Main 的 `DailyMarketCohortView` 直接收相同物件，盤勢重載委派名單既有 worker，沒有第二份資料庫讀取或跨日期計算。市場探索 → 同來源名單 → 原 pinned 個股研究路由沿用既有 DTO，篩選不改市場方法統計分母。這是具名≤16檔研究入口；其他原大盤／強弱 consumer 不在此共用契約內，完整市場融合仍待工程。
+
+<a id="ux18-method-publication-20261005"></a>
+## 2026-10-05 UX18 固定研究方法與發布契約
+
+兩條既有 close／MA20／MA60 觀察的方法 metadata 由 application 層單一契約 owner 提供；feature snapshot 在投影時捕獲方法規格與 canonical hash，納入 input fingerprint／cache identity，而非序列化時重讀可變規格。producer 將同一規格綁入 immutable manifest，repository 同時驗證現行契約、manifest、逐股 payload 與條件身分；screener 和 StockReport 的 pinned readback 保留同一方法結果，不另創公式或分數。
+
+舊研究 schema、錯方法／版本／參數／日期／hash 停止唯讀；只有明確 producer 更新才能重新發布，候選驗證後原子切換 latest，保留舊 immutable。固定參數只有20／60窗口，資格只指本觀察的輸入足夠，不授歷史 PIT、正式推薦或模型權限。原排名／市場共用 consumer 為下一工程切片，非本次 metadata 自動達成；見 [限定 QA](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+<a id="ux0405-pinned-stock-route-20261005"></a>
+## 2026-10-05 日常研究名單與pinned個股
+
+Main共用DailyMarketResearchScreenerService，Recommendation研究來源頁只讀snapshot並組合既有條件，明確更新命令才呼叫現有有界source／producer。列表row→ResearchStockContextDTO→session event/store/reducer→StockReport的pinned reader，固定manifest/root/cohort/date及條件；當前有限source input核驗失敗不fallback live。返回需原manifest，與原保存推薦／Advice資格分離。參數與研究區路徑見[Manual日常研究flow](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux0405-每日研究條件與同源個股)；本包不另建正式writer／scheduler。
+
+<a id="ux19-isolated-daily-research-snapshot-20261005"></a>
+## 2026-10-05 隔離日研究快照資料流
+
+`SQLiteDailyMarketSnapshotSource` 在同一 query-only transaction 重用 StockReport 既有有限價格／technical DTO 查詢；`DailyMarketSnapshotProducer` 重用既有 close／MA 特徵投影和容量政策，核驗候選後才原子替換 latest。`DailyMarketSnapshotRepository` 每次驗證 manifest／artifact／版本／身分與來源 pins；StockReport 明示 root／cohort 才讀已發布版本，live 預設維持。CLI 僅允許 repo output 的隔離子目錄，不是正式 Rule／Evidence writer 或排程。
+
+來源 main／WAL 變動拒發布；只重算失效股票，明示 cohort 缺件即停止。reader 可辨識 partial research，current-observed／PIT=false 與 unknown available-at／calendar 限制沿用。完整參數、發布與失敗邊界見 [Manual UX19](../07_guides/APPLICATION_MANUAL.md#2026-10-05-ux19-隔離研究快照生產與讀回)；限定驗證見 [QA 新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+<a id="shared-daily-features-research-consumers-20261005"></a>
+## 2026-10-05 共用日特徵的研究 consumer
+
+**最新個人資料分離約束**：可單獨分享的市場／抓取來源資料與個人收藏、研究紀錄、筆記、記帳／持倉狀態必須分 root／專用 DB，不能只分表或放市場包的 output 子目錄。既有 Watchlist `OUTPUT_ROOT/watchlist` 與 Portfolio JSONL `OUTPUT_ROOT/portfolio` 尚在市場 output 邊界；本批不宣稱已搬離。候選 `%LOCALAPPDATA%/baldr/personal`（本機 `C:/Users/archi/AppData/Local/baldr/personal`），個人 watchlist DB 為 `watchlists/watchlists.v3.sqlite`；配置、marker／receipt／audit／backups 與 SQLite sidecar 一併留私有 root。路徑選定、writer/discovery 及市場匯出 allowlist／排除驗證是正式套用前的工程，位置待使用者確認，不改其他 owner 帳本。詳細邊界見 [本批 QA](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md)。
+
+UX08 個股價格圖在既有 StockResearchReportDTO 與原生 Qt consumer 之間增加純 application 投影：同一份核對後 points 供圖與精確表，來源上下文 pin 與逐列價格指紋分別按原語義核對，不新增 SQL／producer／金融公式。cutoff 與已知 available_at 在投影前過濾；未知可得時間不升格 PIT。Qt 不重新讀最新行情、不自行重算來源 hash；原生 renderer 初始化／填值失敗保留已核對表格。單日 technical snapshot 不變成歷史線，無完整身份的 event 不轉已驗證交易 marker。詳細工程範圍與未完成項見 [UX08 QA](../06_qa/UX08_NATIVE_CHART_CONTRACT_20261005.md)。
+
+UX08 後續歷史技術切片：read service 有界讀既存 technical_indicators 的 MA20／MA60，報告追加 frozen 歷史列；純投影核對 stock／source／date／row hash／cutoff，再按價格日期對齊給原生覆蓋線與精確表。缺值保 None 並斷線，不推導指標、不延伸單日快照、不把 live 歷史補入缺件的保存來源；可得時間與暖機資格仍明示未知。此新增 readonly query 不改 producer、儲存 schema 或金融公式。
+
+`StockResearchReportReadService` 在既有價格／技術唯讀查詢後，交由 `DailyMarketFeatureSnapshotService` 投影close／MA20／MA60；不加SQL或producer。每service有RLock與最多4筆LRU，契約版本／scope／日期／全DTO內容及來源fingerprint綁identity。DTO的 `shared_daily_features` 交給研究理由與Qt首屏同一三態，失敗／不足暖機保留unknown。必要暖機沿既有SMA的末段有效OHLC20／60窗口；不授calendar／available-at／PIT或完整producer等價資格。舊DTO空mapping相容，既有RSI／Advice／原排名與canonical writer不變。此為UX18有限consumer；UX19 manifest／bounded writer／atomic publish仍待，詳見[QA新章](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)。
+
+> **最後更新：2026-10-04｜目前程式結構；不代替運行狀態。**
+> `release_v4` 是 storage／engineering namespace，不等同正式 V4.0。配置 ML、Rule／ML bp 混合、風險投影、Decision／Evidence 與 Paper ledger 的責任邊界如下。Formal input 計數、ledger 是否已產生、scheduler 是否啟用、D 剩餘容量均是可變運行事實，須讀 Snapshot 與當次具 hash／時間的驗收產物；不再以本架構檔的舊值作現況。Live broker execution 不在此系統範圍。

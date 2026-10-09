@@ -768,3 +768,18 @@ system_architecture 主文原 9/27 區塊的逐次 gate verdict、舊 attempt／
 |---|---|---|
 | `docs/01_architecture/system_architecture.md#2026-10-06-ml-source-custody依賴方向閉合` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#architecture-ml-source-custody-20261006) | 1,367 / `0D01FC896B1AB6E0AA6917B0A18248F3DB469463CD773B8FA40A500A71D8E08C` |
 | `docs/01_architecture/system_architecture.md#2026-10-06-session-proof-與-publisher-loader-邊界` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#architecture-session-proof-publisher-loader-20261006) | 894 / `70969E2BA6A04F0B2AAAA10F0678C72C0703B121AD840811EC4F3DA35A77B25A` |
+
+<a id="coverage-entry-094"></a>
+## 2026-10-09 整理 Daily Market Research dated architecture updates
+
+七段 2026-10-05／06 UX13、UX18、UX19、UX21 與 UX08 增量含 immutable snapshot、source revision／method pin、完整 cohort 分母、pinned 個股讀回、saved benchmark／chart、available-at unknown 與個人資料 root separation。已將穩定 source／cohort／method／readback／presentation contract 濃縮至 `system_architecture.md` §8；逐次資料流、UI 接線、容量與驗收收據移至本歷史檔，舊 heading 保留導引。10/05 的 LocalAppData 候選根與「待確認」是當日狀態，不能視為目前批准／實際路徑；使用 Snapshot／Manual 判讀現況。README、Archive README、Coverage Map 與 DOCUMENTATION_STRUCTURE 已同步。
+
+| 原路徑標題 | 歷史原文位置 | 原文 bytes / SHA-256 |
+|---|---|---|
+| `docs/01_architecture/system_architecture.md#2026-10-06-ux21-明示基準的有限資料流` | [歷史原文](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#ux21-benchmark-flow-20261006) | 894 / `81C4A9040AC6C4AE3722DA9E54701B90F9A98EF8D46F4A208F515573E7017E6C` |
+| `docs/01_architecture/system_architecture.md#2026-10-06-保存圖表資料流限定追加` | [歷史原文](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#ux08-saved-chart-flow-20261006) | 885 / `3E9BE0AECE64351ABC009291C8C4E1122CC59DECA476B79B75364958200D46D1` |
+| `docs/01_architecture/system_architecture.md#2026-10-05-ux13-具名研究母體共用投影` | [歷史原文](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#ux13-research-cohort-projection-20261005) | 916 / `CC78C36BD4367D182959CE08F7CED01D68EA48B6CF710CE0B45B253DB2948719` |
+| `docs/01_architecture/system_architecture.md#2026-10-05-ux18-固定研究方法與發布契約` | [歷史原文](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#ux18-method-publication-20261005) | 1,023 / `E7102EF0B481D6A09E6E86D75C2263FD83A90871613966EB7F27703697381A5F` |
+| `docs/01_architecture/system_architecture.md#2026-10-05-日常研究名單與pinned個股` | [歷史原文](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#ux0405-pinned-stock-route-20261005) | 667 / `F1DC83D3A92DE790D69BFCFBACD17690787BE3ABF09DF18200F889149A2F72D6` |
+| `docs/01_architecture/system_architecture.md#2026-10-05-隔離日研究快照資料流` | [歷史原文](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#ux19-isolated-daily-research-snapshot-20261005) | 1,013 / `2B1001E6C69C809F2ADF7B3E0D0AB2F046D01763294770C0550B266F02A3FA20` |
+| `docs/01_architecture/system_architecture.md#2026-10-05-共用日特徵的研究-consumer` | [歷史原文](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#shared-daily-features-research-consumers-20261005) | 3,364 / `6D317DA3E922B405DFB78D1B1E833FD5285C8128F27C2D3963932EAC3F97E06E` |

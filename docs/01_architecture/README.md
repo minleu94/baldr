@@ -34,6 +34,7 @@
 | 系統定位與整體分層 | 第 1–2 節 |
 | UI、Application、Decision、Backtest、Portfolio | 第 3–7 節 |
 | 資料、券商分點與 Runtime | 第 8–10 節 |
+| Daily Market Research snapshot、cohort、method 與 saved chart custody | 第 8 節；日期化 UX 收據依各舊 heading 導引到 Archive／QA |
 | 保存治理、匯出、文件架構、高風險修改與驗證 | 第 11–15 節 |
 | Watchlist／bookmark 保存與 COW 遷移 | 第 4、8、11 節；操作與批准狀態看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) |
 

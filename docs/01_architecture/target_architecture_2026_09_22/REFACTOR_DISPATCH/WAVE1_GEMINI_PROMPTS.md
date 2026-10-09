@@ -1,6 +1,6 @@
 # Wave 1 Gemini 回修交接 prompts
 
-> 歷史交接紀錄：以下是原先交給 Gemini 回修的 prompts。使用者其後改為 Luna Max 執行 R003／R005／R006 回修；**目前不要再使用以下實作 prompts**。現在可交給 Gemini 的唯讀同步工作請用 [GEMINI_WAVE1_PARALLEL_ANALYSIS.md](GEMINI_WAVE1_PARALLEL_ANALYSIS.md)。這些 prompt 不授權 Wave 2。
+> **2026-10-09 歷史提示：**以下是當時的 Gemini 回修 prompts；R003／R005／R006 後續改由 Luna Max 執行，Wave 1 的唯讀分析與 review 也已完成。**不要重新執行以下 prompts，也不要將其視為目前 task 或授權。**分析輸入已移至 [Archive](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_WAVE1_PARALLEL_ANALYSIS.md)，結果看同目錄 `REFACTOR_REPORTS/WAVE1_GEMINI_PARALLEL_ANALYSIS_REPORT.md` 與 `WAVE1_R003_R005_GEMINI_REVIEW.md`。以下正文保留作歷史交接紀錄。
 
 ## R003 — execution state characterization
 

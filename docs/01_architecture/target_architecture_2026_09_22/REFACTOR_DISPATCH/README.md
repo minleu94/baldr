@@ -2,6 +2,8 @@
 
 本目錄由 SOL orchestrator 維護。每個 wave 只有在 `REFACTOR_EXECUTION_ORDER.md` 的前置 task、review 與 checkpoint gate 全部通過後才能釋出。
 
+> 2026-10-09 生命週期整理：R003／R005／R006 回修封包與 Wave 1／Wave 2 唯讀分析輸入已移至 [Archive 歷史索引](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md)；舊路徑保留短導引。這些封包不再代表目前待辦、正式驗收或新工作授權。R006 未知正式 binary 風險仍依 R031／具名 QA 列管。
+
 每次釋出 wave 的固定順序：
 
 1. SOL 重新核對 dependency、HEAD、既有 dirty scope、中央檔案獨占與當次 gate 證據。
@@ -13,9 +15,9 @@
 - `GEMINI_REWORK_Rxxx.md`：SOL 審查為 `CHANGES_REQUIRED` 後，在原 task scope 內回修的完整 packet。
 - `GEMINI_REVIEW_Rxxx.md`：Gemini 對 Luna implementation 的獨立 review packet。
 - `WAVEx_GEMINI_PROMPTS.md`：該 wave 的可複製交接 prompt；review readiness 不等於要求 Gemini 提前審查未完成的 Luna diff。
-- `GEMINI_WAVE1_PARALLEL_ANALYSIS.md`：使用者將 Wave 1 回修交 Luna 後，供 Gemini 同步進行唯讀獨立驗收分析；正式 PASS/CHANGES_REQUIRED review 仍以回修後凍結的 diff 與測試為準。
+- `GEMINI_WAVE1_PARALLEL_ANALYSIS.md`：已封存的一次性唯讀分析輸入；實際分析與正式 review 結果見 `REFACTOR_REPORTS/WAVE1_GEMINI_PARALLEL_ANALYSIS_REPORT.md` 與 `WAVE1_R003_R005_GEMINI_REVIEW.md`。
 - `WAVE1_GEMINI_REVIEW_PROMPTS.md`：已凍結的 Wave 1 Luna 回修之正式 Gemini review 啟動 prompt；每個 prompt 指向含完整規格、報告及測試的自足封包。
-- `GEMINI_WAVE2_PARALLEL_ANALYSIS.md` 與 `WAVE2_GEMINI_PROMPTS.md`：Wave 1 gate PASS 後，供 Gemini 與 R008 Luna 實作同步進行的唯讀契約驗收風險分析；不是正式 review，也不釋出 Wave 3。
+- `GEMINI_WAVE2_PARALLEL_ANALYSIS.md` 與 `WAVE2_GEMINI_PROMPTS.md`：已完成的 R008 唯讀預分析封包與一次性提示；輸入封存、prompt 首段已標為歷史。結果看 R008 report／Wave 2 checkpoint；不是新 review，也不釋出 Wave 3。
 - `GEMINI_REVIEW_R008.md` 與 `WAVE2_GEMINI_REVIEW_PROMPTS.md`：R008 Luna 的 ML availability 回修與 SOL 重驗後，依最新九檔 SHA 凍結的正式唯讀獨立審查封包／prompt；Gemini 結果仍須由 SOL 核對才能進 Wave 2 checkpoint。
 
 未解鎖 task 不預先建立 packet，避免 dependency evidence、HEAD、dirty scope 或測試結果過時。Packet 本身不授權下一 wave。
@@ -31,7 +33,7 @@
 #### R003
 - [GEMINI_R003.md](GEMINI_R003.md)
 - [GEMINI_REVIEW_R003.md](GEMINI_REVIEW_R003.md)
-- [GEMINI_REWORK_R003.md](GEMINI_REWORK_R003.md)
+- [已封存的 GEMINI_REWORK_R003.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REWORK_R003.md)（來源路徑保留導引）
 
 #### R004
 - [GEMINI_REVIEW_R004.md](GEMINI_REVIEW_R004.md)
@@ -39,19 +41,19 @@
 #### R005
 - [GEMINI_R005.md](GEMINI_R005.md)
 - [GEMINI_REVIEW_R005.md](GEMINI_REVIEW_R005.md)
-- [GEMINI_REWORK_R005.md](GEMINI_REWORK_R005.md)
+- [已封存的 GEMINI_REWORK_R005.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REWORK_R005.md)（來源路徑保留導引）
 
 #### R006
 - [GEMINI_R006.md](GEMINI_R006.md)
 - [GEMINI_REVIEW_R006.md](GEMINI_REVIEW_R006.md)
-- [GEMINI_REWORK_R006.md](GEMINI_REWORK_R006.md)
+- [已封存的 GEMINI_REWORK_R006.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_REWORK_R006.md)（來源路徑保留導引）
 
 #### R008
 - [GEMINI_REVIEW_R008.md](GEMINI_REVIEW_R008.md)
 
 ### Wave／共用 packets
-- [GEMINI_WAVE1_PARALLEL_ANALYSIS.md](GEMINI_WAVE1_PARALLEL_ANALYSIS.md)
-- [GEMINI_WAVE2_PARALLEL_ANALYSIS.md](GEMINI_WAVE2_PARALLEL_ANALYSIS.md)
+- [已封存的 GEMINI_WAVE1_PARALLEL_ANALYSIS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_WAVE1_PARALLEL_ANALYSIS.md)
+- [已封存的 GEMINI_WAVE2_PARALLEL_ANALYSIS.md](../../../09_archive/target_architecture_2026_09_22/REFACTOR_DISPATCH/GEMINI_WAVE2_PARALLEL_ANALYSIS.md)
 - [WAVE1_GEMINI_PROMPTS.md](WAVE1_GEMINI_PROMPTS.md)
 - [WAVE1_GEMINI_REVIEW_PROMPTS.md](WAVE1_GEMINI_REVIEW_PROMPTS.md)
 - [WAVE2_GEMINI_PROMPTS.md](WAVE2_GEMINI_PROMPTS.md)

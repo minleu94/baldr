@@ -15,6 +15,10 @@
 
 評估、紅隊審查與必要變更等 FINAL 設計輸入仍保留在[現行架構套件](../../01_architecture/target_architecture_2026_09_22/README.md)。仍開放的工作與驗收狀態以 [PROJECT_SNAPSHOT](../../00_core/PROJECT_SNAPSHOT.md)、FINAL migration sequence 及具名 QA 為準；本次封存不代表遷移 Gate 結案。
 
+## 2026-10-09 已結束的 dispatch／分析封包
+
+[R003／R005／R006 回修指示與 Wave 1／Wave 2 唯讀分析輸入](REFACTOR_DISPATCH/README.md)已封存；來源目錄保留相容導引。這些歷史封包不改寫任務驗收；R006 未知正式 binary 的保留風險仍依 R031 與具名 QA 判讀。原件 bytes／SHA-256 與引用核對見 [Coverage History Entry 135](../DOC_COVERAGE_HISTORY_2026.md#coverage-entry-135)。
+
 <a id="wave2-old-sha-checkpoint"></a>
 ## Wave 2 舊 SHA 驗收快照
 

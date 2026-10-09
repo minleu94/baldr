@@ -14,6 +14,7 @@
 
 - [2026-09-22 目標架構草案包](target_architecture_2026_09_22/README.md)：六份非 FINAL 草案已由同目錄的 `FINAL_*` 設計取代；Archive 保留決策追溯，原架構路徑留有相容導引。舊提案不代表目前實作或已完成狀態，開放中的遷移 Gate 仍看 FINAL migration sequence、Snapshot 與具名 QA。
 - 同一架構套件另保留[Wave 2 舊 R008 SHA checkpoint](target_architecture_2026_09_22/README.md#wave2-old-sha-checkpoint)：舊快照只適用原 SHA；現行 result_id 驗收與 Gate 狀態看原架構報告索引及 Coverage History Entry 129。
+- [已結束的架構 dispatch／分析封包](target_architecture_2026_09_22/REFACTOR_DISPATCH/README.md)：五份 R003／R005／R006 回修指示與 Wave 1／Wave 2 唯讀分析輸入。舊路徑保留導引；結果以 R031 報告索引與原架構 reports 為準。R006 未知正式 binary 風險仍未解除，來源 bytes／SHA 見 Coverage History Entry 135。
 
 <a id="workbench-liquidity-routing-qa-20260921"></a>
 ## 2026-10-09 Workbench 低流動性提示分流歷史 QA

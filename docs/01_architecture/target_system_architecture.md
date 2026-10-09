@@ -65,7 +65,7 @@
 
 ### 2026-09-06 八卡工程後的剩餘差距
 
-本節校正上表與八卡直接相關的 Current／Transitional 能力，依 [目前架構](C:/Projects/PythonProjects/technical_analysis/docs/01_architecture/system_architecture.md) 與 [TASK-08 整合證據](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md) 判讀；不是 V4 closeout，整體仍 `action_required`／V4 Evidence Accumulation。
+本節校正上表與八卡直接相關的 Current／Transitional 能力，依 [目前架構](system_architecture.md) 與 [TASK-08 整合證據](../06_qa/TASK_LOOP_08_HANDOFF.md) 判讀；不是 V4 closeout，整體仍 `action_required`／V4 Evidence Accumulation。
 
 | 邊界 | 本輪已落地的工程能力 | 尚需完成的 Target／外部條件 |
 |---|---|---|

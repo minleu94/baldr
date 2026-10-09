@@ -84,7 +84,7 @@
 - 最新完整 pytest 證據（`output/qa/full_pytest_20260827_paper_gate4_cli_utf8_final2.xml`）：`3562 passed / 1 skipped / 26 warnings`（`532.59s`）；inventory audit（`output/qa/test_inventory_audit_20260827_paper_gate4_cli_utf8_final2.json`）回報 `overall_status=passed`、無 machine-checkable blocker，最新 collection=`3563`。Warnings 主要是既有 joblib 核心數偵測、研究回測同日成交理想化假設與 pytest cache 權限提示，沒有 failure。
 - 本輪 Update no-op、日期／錯誤可見性、長檔讀取批次取消、候選資料源頁內摘要、窄版重排與 Paper fills template／append CLI UTF-8 修正後 focused regression：`test_update_service_status.py` + `test_ui_qt_update_view_workbench.py` 共 `118 passed / 1 warning`；`test_append_paper_trade_csv_cli.py` 共 `9 passed / 1 warning`；未觸碰正式資料。
 - 本輪 Update no-op、日期／錯誤可見性、長檔讀取批次取消、候選資料源頁內摘要與窄版重排修正後 focused regression：`test_update_service_status.py` + `test_ui_qt_update_view_workbench.py` 共 `118 passed / 1 warning`；另加候選資料源頁狀態測試共 `61 passed / 1 warning`；未觸碰正式資料。
-- Scheduler report：[SCHEDULER_HEALTH_OBSERVABILITY_REPORT.md](SCHEDULER_HEALTH_OBSERVABILITY_REPORT.md)。
+- Scheduler report：[SCHEDULER_HEALTH_OBSERVABILITY_REPORT.md](../06_qa/SCHEDULER_HEALTH_OBSERVABILITY_REPORT.md)。
 
 ## 可以如何持續推進
 

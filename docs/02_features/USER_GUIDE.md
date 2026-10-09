@@ -16,7 +16,7 @@
 
 市場／決策區塊保留實際資料日與降級；來源未知不等於零風險，日資料 Trigger 不是即時突破證明。觀察清單仍預設 JSON、手動持倉仍預設 JSONL，候選 SQLite／append-only 帳本只在隔離副本與明確注入下驗證；沒有把回測成交轉成真實 Paper fills。Runtime UNKNOWN 表示來源未確認，不是閒置。
 
-當前入口、費率與結果排錯以 [完整操作手冊](C:/Projects/PythonProjects/technical_analysis/docs/07_guides/APPLICATION_MANUAL.md) 為準；工程證據見 [TASK-08](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md)。V4 Evidence Accumulation／`action_required` 維持；自然前瞻時間、具名覆盤、來源 acceptance 與正式成交成本不能由 fixture 或 replay 折抵。
+當前入口、費率與結果排錯以 [完整操作手冊](../07_guides/APPLICATION_MANUAL.md) 為準；工程證據見 [TASK-08](../06_qa/TASK_LOOP_08_HANDOFF.md)。V4 Evidence Accumulation／`action_required` 維持；自然前瞻時間、具名覆盤、來源 acceptance 與正式成交成本不能由 fixture 或 replay 折抵。
 
 ## 📋 目錄
 

@@ -140,4 +140,4 @@ SQLite Inspector 日期控件預設為單一日期今天、區間本月 1 日至
 
 ### 詳細故障排除
 
-見 [TROUBLESHOOTING_DAILY_UPDATE.md](TROUBLESHOOTING_DAILY_UPDATE.md) 與 [DATA_FETCHING_LOGIC.md](DATA_FETCHING_LOGIC.md)。
+目前排錯請見[操作手冊第 12 節](../07_guides/APPLICATION_MANUAL.md#12-常見問題)；更新操作與安全限制見[操作手冊第 4 節](../07_guides/APPLICATION_MANUAL.md#4-數據更新)。舊故障排除指南已[封存](../09_archive/TROUBLESHOOTING_DAILY_UPDATE_HISTORY.md)。

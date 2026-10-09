@@ -480,13 +480,13 @@ Application Services / DTO / Repository
 
 ### 主要服務群
 
-2026-09-06 閉環增量以 [八卡交接索引](C:/Projects/PythonProjects/technical_analysis/docs/00_core/DOCUMENTATION_INDEX.md) 與 [TASK-08 整合交接](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md) 追溯；以下新增契約已在隔離來源驗證，正式 source acceptance／writer 切換與 V4 產品成熟度維持既有 Gate。
+2026-09-06 閉環增量以 [八卡交接索引](../00_core/DOCUMENTATION_INDEX.md) 與 [TASK-08 整合交接](../06_qa/TASK_LOOP_08_HANDOFF.md) 追溯；以下新增契約已在隔離來源驗證，正式 source acceptance／writer 切換與 V4 產品成熟度維持既有 Gate。
 
-- 更新的 [update_loop_dtos.py](C:/Projects/PythonProjects/technical_analysis/app_module/dtos/update_loop_dtos.py) 保留來源、實際日期、quality、warnings、candidate 與 read mode；UpdateService 的 status／overview／detail 查詢不寫 manifest，不建 schema。離線落地維持 broker 四欄身份鍵與指標父程序單一寫入者。
-- 市場的 [market_loop_dtos.py](C:/Projects/PythonProjects/technical_analysis/app_module/dtos/market_loop_dtos.py) 統一 `decision_date`／`effective_date` 與來源品質。ScreeningService 先以決策日裁切再排名；既有 tuple／DataFrame API 保留相容。較舊有效日期降級，未知或未來資料不補零；Regime 匹配度不代表勝率。
-- 推薦的 [RecommendationService](C:/Projects/PythonProjects/technical_analysis/app_module/recommendation_service.py) 先凍結行情／可得日再評分，以 query-only 讀 SQLite，產出 `recommendation-context.v1`。RecommendationResultDTO 相容保存設定、Profile、行情與實際基本面指紋、母體及 Why Not；已啟用技術因子缺值不使用中性預設。歷史產業 membership 缺 PIT 證據時明確拒用；fixed 仍預設、quantile 仍 opt-in。
-- 候選池的 [WatchlistService](C:/Projects/PythonProjects/technical_analysis/app_module/watchlist_service.py) 提供 UI 股票名稱查詢與可注入的 SQLite 副本 repository；預設正式 JSON 未切換，損毀保留原檔並回報錯誤。`added_at` 截止不等於完整歷史 membership；Trigger 仍是日資料研究提示。
-- [DecisionDeskSnapshot](C:/Projects/PythonProjects/technical_analysis/app_module/decision_desk_dtos.py) 的 additive `recommendations`／`source_lineage` 保存已存推薦與候選 ledger 的日期、品質與 hash。App provider 不重算推薦或帳務；缺行情的候選帳本為 blocked。完整 loop payload 保存在既有 snapshot schema 的 metadata，`generated_at` 不參與身份 hash；08-B 已注入保存推薦 provider，Workbench 重載也保留新增推薦與來源鏈；其他既有 typed section 的完整 hydration 限制仍保留。
+- 更新的 [update_loop_dtos.py](../../app_module/dtos/update_loop_dtos.py) 保留來源、實際日期、quality、warnings、candidate 與 read mode；UpdateService 的 status／overview／detail 查詢不寫 manifest，不建 schema。離線落地維持 broker 四欄身份鍵與指標父程序單一寫入者。
+- 市場的 [market_loop_dtos.py](../../app_module/dtos/market_loop_dtos.py) 統一 `decision_date`／`effective_date` 與來源品質。ScreeningService 先以決策日裁切再排名；既有 tuple／DataFrame API 保留相容。較舊有效日期降級，未知或未來資料不補零；Regime 匹配度不代表勝率。
+- 推薦的 [RecommendationService](../../app_module/recommendation_service.py) 先凍結行情／可得日再評分，以 query-only 讀 SQLite，產出 `recommendation-context.v1`。RecommendationResultDTO 相容保存設定、Profile、行情與實際基本面指紋、母體及 Why Not；已啟用技術因子缺值不使用中性預設。歷史產業 membership 缺 PIT 證據時明確拒用；fixed 仍預設、quantile 仍 opt-in。
+- 候選池的 [WatchlistService](../../app_module/watchlist_service.py) 提供 UI 股票名稱查詢與可注入的 SQLite 副本 repository；預設正式 JSON 未切換，損毀保留原檔並回報錯誤。`added_at` 截止不等於完整歷史 membership；Trigger 仍是日資料研究提示。
+- [DecisionDeskSnapshot](../../app_module/decision_desk_dtos.py) 的 additive `recommendations`／`source_lineage` 保存已存推薦與候選 ledger 的日期、品質與 hash。App provider 不重算推薦或帳務；缺行情的候選帳本為 blocked。完整 loop payload 保存在既有 snapshot schema 的 metadata，`generated_at` 不參與身份 hash；08-B 已注入保存推薦 provider，Workbench 重載也保留新增推薦與來源鏈；其他既有 typed section 的完整 hydration 限制仍保留。
 
 | 領域 | 主要元件 |
 |---|---|
@@ -719,7 +719,7 @@ Research Run metadata 可透過 `data_manifest.factor_snapshot` 與 `data_manife
 - benchmark、停損停利、標準化與篩選都只能使用決策當下可取得資料。
 - Walk-forward 的 OOS 測試可用該 fold 訓練起點至 T-1 的歷史產生訊號門檻，但交易狀態必須在測試窗起點以空倉重置，撮合、權益曲線與績效也只從測試窗起點計算；`signal_context_start_date` 不得把訓練期持倉或交易混入 OOS 指標。
 
-推薦 v2 已保存現金帳、未成交、gap／流動性診斷、期末開放部位與已實現／未實現損益；無後續 session 不合成期末清倉。成本後 Equal Weight 使用同一批 frozen selections／session，單股 Buy & Hold 使用相同撮合成本。固定組合仍是 per-stock 研究，尚非完整共享現金引擎；沒有委託簿或真實 fills，不能以本次工程結果宣稱策略有效。研究 UI 的行情經 [BacktestService](C:/Projects/PythonProjects/technical_analysis/app_module/backtest_service.py) 的 query-only loader 取得，不直接查庫。
+推薦 v2 已保存現金帳、未成交、gap／流動性診斷、期末開放部位與已實現／未實現損益；無後續 session 不合成期末清倉。成本後 Equal Weight 使用同一批 frozen selections／session，單股 Buy & Hold 使用相同撮合成本。固定組合仍是 per-stock 研究，尚非完整共享現金引擎；沒有委託簿或真實 fills，不能以本次工程結果宣稱策略有效。研究 UI 的行情經 [BacktestService](../../app_module/backtest_service.py) 的 query-only loader 取得，不直接查庫。
 
 ### 金融數值防線
 
@@ -743,7 +743,7 @@ Research Run metadata 可透過 `data_manifest.factor_snapshot` 與 `data_manife
 
 ### 資料流
 
-預設手動 Portfolio 仍沿用既有 JSONL；下圖的 recommendation／backtest 是人工交易的來源依據，不會把研究成交自動匯入真實 fills。TASK-06 新增 [portfolio_ledger_repository.py](C:/Projects/PythonProjects/technical_analysis/data_module/portfolio_ledger_repository.py) 與 [portfolio_ledger_migration.py](C:/Projects/PythonProjects/technical_analysis/data_module/portfolio_ledger_migration.py)，只有 caller 明確注入 candidate repository 才啟用精確 SQLite 帳本。事件只 append；撤銷新增 compensation，分／股／Decimal 費稅由 domain 重播檢查超賣、重複與現金守恆。副本 migration 保留原始 record／hash 並具冪等，未執行正式切換。
+預設手動 Portfolio 仍沿用既有 JSONL；下圖的 recommendation／backtest 是人工交易的來源依據，不會把研究成交自動匯入真實 fills。TASK-06 新增 [portfolio_ledger_repository.py](../../data_module/portfolio_ledger_repository.py) 與 [portfolio_ledger_migration.py](../../data_module/portfolio_ledger_migration.py)，只有 caller 明確注入 candidate repository 才啟用精確 SQLite 帳本。事件只 append；撤銷新增 compensation，分／股／Decimal 費稅由 domain 重播檢查超賣、重複與現金守恆。副本 migration 保留原始 record／hash 並具冪等，未執行正式切換。
 
 `PortfolioService.build_ledger_read_model()` 輸出 `PortfolioLedgerReadModelDTO`，含 namespace、決策日、ledger hash、positions／cash／PnL、quality／missing_inputs 與 `candidate_only=True`。讀取只選截止日已發生事件；有部位缺已提交行情為 blocked，缺 thesis／source 保留降級。backtest namespace 不得轉成 fills；paper namespace 宣告也仍需要真實 producer acceptance。
 
@@ -901,7 +901,7 @@ Smart Money 語意層沿用上述資料品質契約：observed / estimated 可�
 - Runtime event UI 只保留本次 session 開啟後的最近 500 筆新事件；底層 JSONL 仍 append-only，不因 UI 裁切而刪除。
 - RuntimeView 的內容容器使用 query-only `QScrollArea`；小於 720px 時將治理 Splitter 切為垂直單欄，且所有長路徑／狀態文字允許收縮或換行。這只改 presentation，不改 DTO、事件流或任何寫入邊界。
 - `runtime-state.v2` 保留 task／context read state、raw status 與 diagnostics；缺來源、非 object 或未知狀態不冒充 IDLE。既有 store 無法細分缺檔與被吞掉的讀取錯誤時，保留 `missing_or_unreadable`。
-- 純 Python EventBus 位於 [app_module/runtime_services/event_bus.py](C:/Projects/PythonProjects/technical_analysis/app_module/runtime_services/event_bus.py)，訂閱回傳可重複取消句柄，Qt bridge 的 dispose／destroyed 解除訂閱。Controller 只對最近 2,000 個非空 event ID 同內容去重，衝突保留診斷；重啟 attach at tail，不執行或重試 task。byte cursor 沒有 log generation 契約，不是 durable exactly-once queue。
+- 純 Python EventBus 位於 [app_module/runtime_services/event_bus.py](../../app_module/runtime_services/event_bus.py)，訂閱回傳可重複取消句柄，Qt bridge 的 dispose／destroyed 解除訂閱。Controller 只對最近 2,000 個非空 event ID 同內容去重，衝突保留診斷；重啟 attach at tail，不執行或重試 task。byte cursor 沒有 log generation 契約，不是 durable exactly-once queue。
 
 ### 禁止依賴
 
@@ -924,11 +924,11 @@ Smart Money 語意層沿用上述資料品質契約：observed / estimated 可�
 - Universe
 - Portfolio trade / journal
 
-Research Run Registry 由 [ResearchRunService](C:/Projects/PythonProjects/technical_analysis/app_module/research_run_service.py) 統一負責保存 owner，metadata 寫入 OUTPUT_ROOT 的 research Registry SQLite，equity curve／trades 寫入 Parquet；它與 DATA_ROOT 的市場 twstock.db 是不同儲存邊界。初始 row 原子 INSERT 為 staging／pending，再經 files_ready → committed。建構與 query 不建 schema、不 reconcile；save 顯式初始化相容 schema，reconcile 由 owner 明確呼叫。list 只投影 committed＋valid；load 再驗雙檔 hash 與版本。六階段故障與同 run_id 實際內容衝突已有隔離測試，不能只憑相同宣告 hash 視為冪等成功。
+Research Run Registry 由 [ResearchRunService](../../app_module/research_run_service.py) 統一負責保存 owner，metadata 寫入 OUTPUT_ROOT 的 research Registry SQLite，equity curve／trades 寫入 Parquet；它與 DATA_ROOT 的市場 twstock.db 是不同儲存邊界。初始 row 原子 INSERT 為 staging／pending，再經 files_ready → committed。建構與 query 不建 schema、不 reconcile；save 顯式初始化相容 schema，reconcile 由 owner 明確呼叫。list 只投影 committed＋valid；load 再驗雙檔 hash 與版本。六階段故障與同 run_id 實際內容衝突已有隔離測試，不能只憑相同宣告 hash 視為冪等成功。
 
 metadata 保存 frozen `execution_price`／`data_manifest.execution_contract` 與 `execution_assumptions`，不依當前 UI 重建。v2／legacy／unversioned 不互相升級；未知或矛盾版本拒用，跨版本與 cancelled／partial 結果 Incompatible，成本／稅／lot 差異為 Caution。比較只用已保存 benchmark 與資料，損毀不觸發重算或修復。
 
-[EvidenceEventService](C:/Projects/PythonProjects/technical_analysis/app_module/evidence_event_service.py) 的 `evidence-lineage.v1` 保留 declared replay／forward／paper／live tier；無宣告維持 unclassified。Forward outcome 是 close-to-close 事後診斷，`is_execution_pnl=False`，不替代 next-open PnL，成熟也不自動升 tier。`build_review_proposal()` 以唯讀完整研究連回推薦 snapshot、event、outcome，產出 `EvidenceReviewProposalDTO` 的缺件與下一輪問題；proposal_only／零 Formal credit／禁止 promotion 固定保留。這是跨 epoch 來源引用，不回寫原 run，不新增 UI 核准按鈕或生命週期權限。
+[EvidenceEventService](../../app_module/evidence_event_service.py) 的 `evidence-lineage.v1` 保留 declared replay／forward／paper／live tier；無宣告維持 unclassified。Forward outcome 是 close-to-close 事後診斷，`is_execution_pnl=False`，不替代 next-open PnL，成熟也不自動升 tier。`build_review_proposal()` 以唯讀完整研究連回推薦 snapshot、event、outcome，產出 `EvidenceReviewProposalDTO` 的缺件與下一輪問題；proposal_only／零 Formal credit／禁止 promotion 固定保留。這是跨 epoch 來源引用，不回寫原 run，不新增 UI 核准按鈕或生命週期權限。
 
 ### 11.1 Immutable ML publication retention
 
@@ -1234,11 +1234,7 @@ scheduled wrapper 分列實際 child code、summary errors、source qualificatio
 
 明示母體設定是隔離研究批次來源：ID／版本／截至日／原檔hash、納入／排除與理由、已知或未知設定分母。可選manifest extension納入原不可變identity，讀取與consumer重新核對來源revision／刪除／成員／date；舊無設定cohort保留來源與原始分母未知。清單、母體盤勢及候選摘要共享同一契約，設定不授予PIT或推薦資格，不計算新分數。CLI明示讀included，禁止無設定手動更新默默降格已綁來源。
 
-原排名來源audit：原計畫指StockScreener本日／本週價量強弱排序（原公式不改）。ScreeningResultDTO有period／method／version／eligible count，但即時結果未有不可變run／完整成員排除／hash發布；strong_stocks_view僅記憶體快取。saved recommendation屬另一rank kind不能代用。有限currentDB schema唯讀未找到rank／screen tables，不推論全球不存在。原排名未知且停用；需原引擎不可變結果發布工程，不稱等待自然成熟。
-
-本包無Native前景或使用者視窗操作，無訓練、全市場producer、正式DB／registry或真實書籤寫入；永久清理仍未執行。驗證與commit結果見同章最終收據補記。
-
-最終驗證：104相關tests、WB85、validator25/4skip/0fail、mypy781、compile13及guard通過；真D三股隔離發布／2382讀回／offscreen同源通過。詳見UX16 QA最新最終驗證章；原排名publisher與Native仍pending，未push。
+本節早期「原排名尚無不可變 publisher」的審查結論已由下方原生排名 publisher 與版本化收藏章節取代。當時的檢查範圍及驗證收據仍保留於 [UX16 來源契約 QA](../06_qa/UX16_CURRENT_OBSERVED_SOURCE_CONTRACT_20261005.md)、[UX18 publisher QA](../06_qa/UX18_ORIGINAL_STOCK_RANKING_PUBLISHER_20261005.md) 與 [UX19 儲存／復原 QA](../06_qa/UX19_STORAGE_AND_PUBLICATION_RECOVERY_20261005.md)；當前實作邊界以本章後續契約為準。
 
 
 ## 2026-10-05 原生排名獨立研究來源

@@ -1,15 +1,17 @@
-# 券商分點資料更新功能 - 測試與故障排除指南
+# 券商分點資料更新功能 - 手動整合檢查與故障排除指南
 
 ## 最後更新：2025-12-29
 
+> **暫停腳本執行（2026-10-08）：** 本頁三個整合腳本的舊命令指向不存在的 `scripts/` 路徑；檔案實際在 `tests/scripts/`，且腳本的 `project_root` 仍指向 `tests/`。這些腳本會連網並呼叫資料更新，可能寫入 `TWStockConfig` 指定的 `DATA_ROOT`；全分點腳本還使用 `force_all=True`。它們屬於人工整合檢查，不是預設 pytest。請勿執行，直到腳本 root 與隔離 `DATA_ROOT` 條件修復；目前操作看[操作手冊](../07_guides/APPLICATION_MANUAL.md)，測試分類看[tests_readme](../07_guides/tests_readme.md)。
+
 ---
 
-## 一、快速測試方法
+## 一、過往腳本範圍（執行暫停）
 
-### 1.1 測試單一分點（推薦先用這個）
+### 1.1 單一分點手動探測（目前暫停）
 
 ```bash
-python scripts/test_broker_branch_single.py
+# 暫停執行；見本文開頭的路徑與資料根目錄警告。
 ```
 
 **預期結果**：
@@ -17,10 +19,10 @@ python scripts/test_broker_branch_single.py
 - 記錄數 > 0
 - 無錯誤訊息
 
-### 1.2 測試所有分點（一天）
+### 1.2 全分點手動探測（目前暫停）
 
 ```bash
-python scripts/test_all_branches_one_day.py
+# 暫停執行；見本文開頭的路徑與資料根目錄警告。
 ```
 
 **預期結果**：
@@ -28,10 +30,10 @@ python scripts/test_all_branches_one_day.py
 - 每個分點都有記錄數（通常 50-100 筆）
 - 總記錄數 = 6 × 單一分點記錄數
 
-### 1.3 測試多天資料（10 天）
+### 1.3 多日資料手動探測（目前暫停）
 
 ```bash
-python scripts/test_broker_branch_10days.py
+# 暫停執行；見本文開頭的路徑與資料根目錄警告。
 ```
 
 **預期結果**：
@@ -204,12 +206,12 @@ url = service._build_branch_url(branch_info, '2025-12-21', '2025-12-22')
 
 **功能**：
 - 測試單一分點（永豐竹北）
-- 強制重新抓取（`force_all=True`）
+- 預設 `force_all=False`；仍可能連網並寫入所設定的資料根目錄
 - 顯示詳細結果
 
 **使用方式**：
 ```bash
-python scripts/test_broker_branch_single.py
+# 暫停執行；見本文開頭的路徑與資料根目錄警告。
 ```
 
 ### 3.2 `test_all_branches_one_day.py`
@@ -223,7 +225,7 @@ python scripts/test_broker_branch_single.py
 
 **使用方式**：
 ```bash
-python scripts/test_all_branches_one_day.py
+# 暫停執行；見本文開頭的路徑與資料根目錄警告。
 ```
 
 ### 3.3 `test_broker_branch_10days.py`
@@ -237,7 +239,7 @@ python scripts/test_all_branches_one_day.py
 
 **使用方式**：
 ```bash
-python scripts/test_broker_branch_10days.py
+# 暫停執行；見本文開頭的路徑與資料根目錄警告。
 ```
 
 ### 3.4 `check_branch_files.py`

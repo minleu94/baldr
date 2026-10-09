@@ -3,10 +3,10 @@
 ## 📖 快速導航
 
 - **快速開始** → 查看 [HOW_TO_UPDATE_DAILY_DATA.md](HOW_TO_UPDATE_DAILY_DATA.md) ⭐ 快速指南
-- **批量更新（推薦）** → 查看 [批量更新](#批量更新推薦-) 章節
-- **單日更新** → 查看 [單日更新](#單日更新) 章節
-- **合併數據** → 查看 [合併數據](#合併數據) 章節
-- **遇到問題** → 查看 [問題排查](#問題排查) 章節
+- **現行操作與安全限制** → 查看[操作手冊第 4 節](../07_guides/APPLICATION_MANUAL.md#4-數據更新)
+- **遇到問題** → 查看[操作手冊第 12 節](../07_guides/APPLICATION_MANUAL.md#12-常見問題)
+
+> 下方批量、單日、合併與 API 範例沿用早期 CSV／CLI 流程，並非目前操作指示；請勿只依這些範例直接更新或重建資料。日常操作以快速指南和操作手冊為準。本文 2026-10-03 freshness／隔離補充及券商分點注意事項保留作為專項說明。
 
 ## 概述
 
@@ -20,7 +20,7 @@
 
 更新頁「取消目前工作」採合作式停止，於檔案／日期／transaction 安全邊界生效。已安全提交的部分資料可保留，但本輪仍應明示取消或失敗並重新檢查，不可標為完整成功。TDCC 是週候選、只對應官方最近一個每週最後營業日；資料 rows 與 checkpoint 同 transaction，完全相同自然鍵可冪等重試，衝突或未完成 transaction 仍須診斷。MOPS 月營收抓取取消可以保留完整 raw HTML，未完成 candidate CSV 不發布；「已解析資料」數量不表示候選列已可用。詳細 UI 操作與安全邊界見[完整手冊第 4 節](../07_guides/APPLICATION_MANUAL.md)。
 
-## 批量更新（推薦 ⭐⭐⭐）
+## 舊版 CLI／CSV 範例：批量更新（歷史參考）
 
 ### 使用方式
 
@@ -72,7 +72,7 @@ python scripts/batch_update_daily_data.py --start-date 2025-08-28 --delay-min 4 
 請檢查數據無誤後，再執行合併：python scripts/merge_daily_data.py
 ```
 
-## 單日更新
+## 舊版 CLI／CSV 範例：單日更新（歷史參考）
 
 ### 使用方式
 
@@ -91,7 +91,7 @@ python scripts/update_daily_stock_data.py --date 2025-08-29 --merge
 - ✅ 可選擇是否自動合併
 - ✅ 統一的日誌記錄
 
-## 合併數據
+## 舊版 CLI／CSV 範例：合併數據（歷史參考）
 
 ### 使用方式
 
@@ -148,7 +148,7 @@ UpdateService overview／detail 在 SQLite 缺失時會先停在 `unavailable`�
 
 若既有 SQLite 已出現空股票代號、已驗證非交易日資料或沒有 `指數名稱` 的大盤列，請使用 `scripts/repair_market_data_integrity.py` 先 dry-run；正式套用需要 `--apply --confirm apply-market-data-integrity-repair`，會先建立一份 SQLite snapshot，絕不修改 raw CSV。操作與回復步驟見 [APPLICATION_MANUAL.md](../07_guides/APPLICATION_MANUAL.md#46-市場資料完整性修復受控-cli)。
 
-### 標準流程（推薦）
+### 舊版標準流程（歷史參考）
 
 ```bash
 # 步驟 1：批量更新每日數據（只更新 daily_price）
@@ -161,7 +161,7 @@ python scripts/batch_update_daily_data.py --start-date 2025-08-28
 python scripts/merge_daily_data.py
 ```
 
-### 一鍵更新（自動合併）
+### 舊版一鍵更新（歷史參考）
 
 ```bash
 # 單日更新並自動合併
@@ -174,13 +174,13 @@ python scripts/update_daily_stock_data.py --date 2025-08-29 --merge
 - **存儲位置**：`D:/Min/Python/Project/FA_Data/daily_price/`
 - **主模組會自動轉換**：`2025-08-29` → `20250829.csv`
 
-## 問題排查
+## 舊版 CLI／CSV 問題排查（歷史參考）
 
 ### 問題 1：HTTP 307 錯誤
 
 **解決方案**：
 - 主模組已包含 Session 和 cookie 處理
-- 如果仍然失敗，使用增強版：`python update_daily_enhanced.py --date 2025-08-29`
+- `update_daily_enhanced.py` 已不在 repository；不要照舊文重建或執行該命令。請依操作手冊第 12 節排查目前 UI 流程。
 
 ### 問題 2：API 返回錯誤狀態
 

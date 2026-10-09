@@ -6,13 +6,12 @@
 
 - [每日更新快速指南](HOW_TO_UPDATE_DAILY_DATA.md)：一般每日更新入口。
 - [每日資料更新詳細指南](daily_data_update_guide.md)：資料源更新、capture／projection、結果判讀與更新流程。
-- [每日更新故障排除](TROUBLESHOOTING_DAILY_UPDATE.md)：狀態不一致或更新失敗時使用。
+- [每日更新排錯](../07_guides/APPLICATION_MANUAL.md#12-常見問題)：目前故障排除入口；操作邊界見手冊第 4 節。
 - [資料獲取邏輯](DATA_FETCHING_LOGIC.md)：來源、請求及擷取邏輯；實際操作仍以操作手冊與最新程式行為為準。
 
 ## 流程、重建與儲存
 
-- [分析資料流程](DATA_FLOW_LOGIC.md)：資料流及其與分析流程的關係。
-- [目前 SQLite 與資料保存邊界](../01_architecture/system_architecture.md)：目前模組、資料來源與 read/write 邊界。
+- [目前推薦分析與 SQLite 資料保存邊界](../01_architecture/system_architecture.md)：模組、資料來源、時間截止、技術指標重用與 read/write 邊界。
 
 ## 來源資格、保留與資產盤點
 
@@ -30,5 +29,7 @@
 - [合併與大盤指數摘要（歷史）](../09_archive/MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md)
 - [SQLite 雙軌相容指南（2026-06 歷史版）](../09_archive/SQLITE_STORAGE_GUIDE_HISTORY_20260602.md)
 - [CSV 全量重建指南（歷史版）](../09_archive/DATA_REBUILD_GUIDE_HISTORY.md)
+- [舊版推薦分析流程（歷史）](../09_archive/RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md)：保存舊 CSV／`ui_app` 流程；現況請讀上方系統架構。
+- [每日更新故障排除舊指南（歷史）](../09_archive/TROUBLESHOOTING_DAILY_UPDATE_HISTORY.md)：保留舊路徑與命令作為追溯；目前排錯請看操作手冊第 12 節。
 
 現行使用方式請看 [操作手冊](../07_guides/APPLICATION_MANUAL.md) 與上方每日更新指南；現行模組邊界看 [系統架構](../01_architecture/system_architecture.md)。

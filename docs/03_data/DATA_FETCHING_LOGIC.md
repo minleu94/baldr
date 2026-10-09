@@ -1,5 +1,7 @@
 # 股票數據獲取邏輯說明
 
+> 本文件保留早期 API／CSV 擷取實作說明及歷史命令，不能用來判定目前資料路徑或執行更新。現行操作與排錯請看[操作手冊第 4、12 節](../07_guides/APPLICATION_MANUAL.md#4-數據更新)；架構邊界請看[系統架構](../01_architecture/system_architecture.md)。
+
 ## 📖 快速導航
 
 - **如何使用** → 查看 [使用方式](#使用方式) 章節
@@ -321,14 +323,15 @@ if file_path.exists():
 
 ### 📞 需要更多幫助？
 
-1. 查看 `TROUBLESHOOTING_DAILY_UPDATE.md` - 每日股票更新故障排除指南
+1. 查看[目前操作手冊第 12 節](../07_guides/APPLICATION_MANUAL.md#12-常見問題)；舊版[每日更新故障排除指南](../09_archive/TROUBLESHOOTING_DAILY_UPDATE_HISTORY.md)僅供追溯
 2. 查看 `../00_core/PROJECT_SNAPSHOT.md` - 目前狀態、已知風險與優先事項
 3. 現行跨模組資料流請看 [system_architecture.md](../01_architecture/system_architecture.md)；早期 API／CSV 設計見[歷史藍圖](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md)。
 
 ## 相關文檔
 
 ### 主要文檔
-- **`TROUBLESHOOTING_DAILY_UPDATE.md`** - 每日股票更新故障排除指南（包含 API 連接問題解決方案）
+- **[目前操作手冊第 12 節](../07_guides/APPLICATION_MANUAL.md#12-常見問題)** - 目前故障排除入口
+- **[每日更新故障排除舊指南（歷史）](../09_archive/TROUBLESHOOTING_DAILY_UPDATE_HISTORY.md)** - 保留早期路徑與 API 錯誤處理內容
 - **`../00_core/PROJECT_SNAPSHOT.md`** - 目前狀態、已知風險與優先事項
 - **[歷史資料收集架構藍圖](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md)** - 早期 API、CSV 與儲存路徑設計；現行流程以本文件及 [system_architecture.md](../01_architecture/system_architecture.md) 為準。
 

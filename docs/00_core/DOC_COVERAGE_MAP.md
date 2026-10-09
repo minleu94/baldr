@@ -1,5 +1,45 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 封存舊版每日更新故障排除指南
+
+將包含過時 log／資料路徑、CLI 命令及可能資料清理建議的每日更新故障排除指南原文保留於 archive；舊路徑改為短導引，指向目前操作手冊第 4 節（更新操作與安全限制）及第 12 節（常見問題）。README、快速參考、每日更新指南與資料獲取文件的現行入口已改指 Manual；每日更新詳細指南則明確標示早期 CSV／CLI 範例為歷史參考，保留 2026 freshness／隔離補充與券商分點說明。未執行舊命令；封存副本只重設兩個跨目錄相對連結並清除尾端空白。
+
+| 原路徑 | 歸檔路徑 | 原文 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/03_data/TROUBLESHOOTING_DAILY_UPDATE.md | [TROUBLESHOOTING_DAILY_UPDATE_HISTORY.md](../09_archive/TROUBLESHOOTING_DAILY_UPDATE_HISTORY.md) | 13,070 / `0CE96D05410F0AAC78D64E8477A4817CC97BA2458569DED01145ADD57CD768ED` | 13,088 / `544714E7D02A10637AEBD974D16816E9220E7E92E6ACF6F78716DD4711B5AEAD` |
+
+## 2026-10-08 歸檔舊版推薦分析資料流程
+
+將舊版 `DATA_FLOW_LOGIC.md` 內容移至 [`RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md`](../09_archive/RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md)，原路徑保留導引。舊文把 CSV 當唯一／首選行情來源、推薦指標一概描述為即時計算，並引用已淘汰的 `ui_app` 路徑；現行流程有 SQLite 優先、PIT membership cutoff、指標 JOIN／符合條件時重用等差異。封存副本只清除尾端空白並保留內容；原文與歸檔副本雜湊分列如下。歷史 Catalog、Index 與提案原有引用由導引承接，不改寫快照。資料區 README 改指 current architecture，Archive README 增加歷史入口。
+
+| 原路徑 | 歸檔路徑 | 原文 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/03_data/DATA_FLOW_LOGIC.md | [RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md](../09_archive/RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md) | 4,421 / `720F14286B4AF492C4E79B4A5CFF04D9EEBE1DB8F05F87C9CD3053CE2AD28211` | 4,418 / `8CC1DF986D8DF3FDCD1CC38FCBE3FC99CE452F005015D2F49D949DFD70623583` |
+
+## 2026-10-08 修復封存文件失效連結
+
+全文件 Markdown 本機連結盤點發現 7 個失效連結。兩份歷史 readiness 報告的 3 個連結改指向 QA 區仍存在的收據；測試資產歷史清冊的 4 個連結所指測試檔已不存在，保留原檔名文字並移除失效跳轉，避免把歷史快照誤當成目前可開啟的測試。未刪除任何證據內容；同步移除本矩陣重複的 SQLite 歸檔標題。修正後 Markdown 本機連結檢查為 0 個失效。
+
+| 文件 | 修正前 bytes / SHA-256 | 修正後 bytes / SHA-256 |
+|---|---|---|
+| [PROGRAM_READINESS_AUDIT_2026_08_27.md](../09_archive/PROGRAM_READINESS_AUDIT_2026_08_27.md) | 24,249 / `EE1FEE9FEB44E804F34A03565045CD8F6DF3DB005EF3C8804F0678CCFDC11F44` | 24,258 / `B69C47A60DC674C5EDFCBEC96AB0BC0956C29D13D0AA01361984D6CC278CD458` |
+| [PROGRAM_READINESS_AUDIT_2026_08_28.md](../09_archive/PROGRAM_READINESS_AUDIT_2026_08_28.md) | 138,627 / `3F0423EF60E7CAB9F1800D4BC936B6D5487E804DA24F3412303AC77FF4B5BC4B` | 138,645 / `A478B67F96584ABED1AAC37DEAFABA2A7728D83254B1075A868784BFFD6919D0` |
+| [TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md](../09_archive/TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md) | 38,300 / `6623A4A02F05851E1EFB1FB090A02327604C9EABA71E160F7AF8B58E23E0A723` | 37,922 / `EA6714B3AE2AD98252FC43C7B8D8CBDDBD8942C8E2A8C27C43B24416B99679C4` |
+
+## 2026-10-08 修復現行架構頁的絕對連結
+
+將 `system_architecture.md` 的 13 個與 `target_system_architecture.md` 的 2 個 `C:/Projects/...` 工作區連結改為相對路徑；15 個目標在 repo 內均存在。只修連結目的地，保留段落與架構判斷；歷史 review 收據中的絕對路徑維持原樣。架構主文的日期化增量仍需逐段審核，不在本次批次移動。
+
+同一輪日期化內容核對發現 UX16 區塊保留「原排名尚無不可變 publisher」的早期審查結論，與後續已落地 publisher／版本化收藏章節矛盾。已將過時狀態流水帳收斂為指向 UX16／UX18／UX19 QA 的歷史收據入口；保留 UX16 的母體來源契約及後續原排名架構內容，未移除 QA 證據。
+
+## 2026-10-08 修復功能文件的絕對連結
+
+將 `UI_FEATURES_DOCUMENTATION.md`、`USER_GUIDE.md`、`BACKTEST_LAB_FEATURES.md` 的 8 個本機絕對連結改為 repo 相對路徑。Manual 與 TASK_LOOP handoff 目標均已驗證存在；只修連結，不改功能描述。
+
+## 2026-10-08 標記券商分點手動腳本暫停執行
+
+券商分點指南的三組舊命令指向不存在的 `scripts/test_*.py`；實際檔案位於 `tests/scripts/`，但其 `project_root` 計算目前落在 `tests/`。腳本會連網並可能寫入設定的 `DATA_ROOT`，全分點腳本另強制重抓。指南改以暫停提示取代可複製命令，並移除「測試必讀」標籤，連回 Manual 與 tests_readme。腳本未修改、未執行；恢復命令前仍需修正 repo-root import 與配置隔離資料根目錄。
+
 ## 2026-10-08 操作手冊依任務分段閱讀
 
 APPLICATION_MANUAL 有 13 個工作區章節及日期化補充。docs/07_guides/README.md 新增章節標題地圖，Codex、Gemini、Documentation、Testing／QA 與 Antigravity 入口改為依任務讀相關章節；跨工作區流程讀涉及章節，日期化細節讀相關附冊／QA。Manual 本身仍是操作權威，沒有改寫其內容；這項調整只改閱讀路由，避免一般任務載入整份長手冊。
@@ -16,7 +56,6 @@ APPLICATION_MANUAL 有 13 個工作區章節及日期化補充。docs/07_guides/
 
 將 4,603-byte 舊版 `DATA_REBUILD_GUIDE.md` 移至 archive，原位置保留警示導引。原文直接建議 `--force-all` 重寫合併 CSV 與重算衍生資料，並使用固定個人路徑；它未反映目前受控來源／projection、資料修復與 QA 邊界。`data_audit_agent.md` 改指每日更新指南、current architecture 與具名 QA 收據，明確將舊全量命令列為歷史操作。封存只修正 1 個指向備份稽核的相對連結；其餘原文保留。來源 SHA-256 為 `1876E8FC64C825F4CF72CC29927FAA079BBC8DE04AB4B9E2D2DD8862905BCDAD`；更新連結後 archive 為 4,613 bytes，SHA-256 為 `558974868D100BBB71FC223DC4FBFB4860D3AF1A7F39D010FCD14CFCD3D1A443`。
 
-## 2026-10-08 舊版 SQLite 雙軌指南歸檔
 ## 2026-10-08 舊版 SQLite 雙軌指南歸檔
 
 將 2026-06-02 v1.1 SQLite 雙軌指南移至 `docs/09_archive/`，原路徑留下導引。原文的 CSV 唯一真實來源／SQLite 快取定位、322 倍效能聲稱與全量遷移步驟不再代表目前資料契約；現況依據為 current architecture、每日資料更新指南及 Manual。同步修正 UI feature 文件的維護指向與資料專區入口；歷史索引的舊路徑由導引承接。歸檔原文未改寫，bytes 與 SHA-256 保持不變。

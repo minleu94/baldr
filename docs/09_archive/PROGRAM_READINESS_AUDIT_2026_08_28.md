@@ -7,9 +7,9 @@
 > post-cleanup inventory=`headroom_ok`。目前整體仍為 `action_required`，但 performance
 > 的真實剩餘 blocker 是 technical production single-writer canary；P0／Evidence／Paper／
 > Formal 與 Runtime production canary 狀態不因清理自動改變。最新 canonical 判讀見
-> [Program Status Rebaseline](PROGRAM_STATUS_REBASELINE_2026_08_29.md)，完整刪除／保留／
+> [Program Status Rebaseline](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md)，完整刪除／保留／
 > pointer／tombstone 證據見
-> [ML Release v4 Storage Retention Cleanup](ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)。
+> [ML Release v4 Storage Retention Cleanup](../06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)。
 
 ## 結論
 

@@ -13,6 +13,8 @@
 - [合併與大盤指數實作摘要](MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md)：保留舊 merge、CSV 路徑及欄位假設；現行架構看 [system_architecture](../01_architecture/system_architecture.md)，操作看每日資料更新指南與操作手冊。
 - [SQLite 雙軌相容指南（2026-06-02）](SQLITE_STORAGE_GUIDE_HISTORY_20260602.md)：保留 v1.1 CSV-SSOT／SQLite-cache 描述、當時遷移步驟與效能聲稱；目前資料保存與同步邊界看 [system_architecture](../01_architecture/system_architecture.md)，操作看每日資料更新指南與操作手冊。
 - [CSV 全量重建指南](DATA_REBUILD_GUIDE_HISTORY.md)：保留舊 `merge_daily_data.py --force-all`／`calculate_technical_indicators.py --force-all` 操作說明，不作目前修復程序；操作看 [每日資料更新指南](../03_data/daily_data_update_guide.md) 與 [操作手冊](../07_guides/APPLICATION_MANUAL.md)。
+- [推薦分析資料流程（舊版）](RECOMMENDATION_ANALYSIS_DATA_FLOW_LOGIC_HISTORY.md)：保留舊 CSV／`ui_app`／`StrategyConfigurator` 流程；目前資料來源與指標重用邊界以 [system_architecture](../01_architecture/system_architecture.md) 為準。
+- [每日更新故障排除指南（舊版）](TROUBLESHOOTING_DAILY_UPDATE_HISTORY.md)：保留已過時的 log／資料路徑與早期 API 排錯命令；目前更新操作看 [APPLICATION_MANUAL 第 4 節](../07_guides/APPLICATION_MANUAL.md#4-數據更新)，排錯看第 12 節。
 
 ## 2026-10-08 歸檔
 

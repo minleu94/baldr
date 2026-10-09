@@ -14,7 +14,7 @@ Registry 保存 frozen execution_contract／成本／terminal policy／status；
 
 固定組合模式目前仍是固定清單的逐檔研究（`fixed_basket_stock`），不是共享現金、共同再平衡的 portfolio engine；排行榜與 Registry 類型會明確標示「固定組合（逐檔）」。
 
-操作及排錯以 [Application Manual](C:/Projects/PythonProjects/technical_analysis/docs/07_guides/APPLICATION_MANUAL.md) 為準；精確限制與驗收見 [TASK-04](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_04_HANDOFF.md)／[TASK-05](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_05_HANDOFF.md)，跨卡結果見 [TASK-08](C:/Projects/PythonProjects/technical_analysis/docs/06_qa/TASK_LOOP_08_HANDOFF.md)。離線研究不等於真實 fills、有效投資證據或 V4 closeout。
+操作及排錯以 [Application Manual](../07_guides/APPLICATION_MANUAL.md) 為準；精確限制與驗收見 [TASK-04](../06_qa/TASK_LOOP_04_HANDOFF.md)／[TASK-05](../06_qa/TASK_LOOP_05_HANDOFF.md)，跨卡結果見 [TASK-08](../06_qa/TASK_LOOP_08_HANDOFF.md)。離線研究不等於真實 fills、有效投資證據或 V4 closeout。
 
 ## 已實作功能（優先級 1-4）
 

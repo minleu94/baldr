@@ -8,7 +8,7 @@
 | 三步啟動 | [QUICK_START.md](QUICK_START.md) |
 | 安裝與環境 | [INSTALL_GUIDE.md](INSTALL_GUIDE.md) |
 | 更新每日資料 | [HOW_TO_UPDATE_DAILY_DATA.md](../03_data/HOW_TO_UPDATE_DAILY_DATA.md) |
-| 更新故障排除 | [TROUBLESHOOTING_DAILY_UPDATE.md](../03_data/TROUBLESHOOTING_DAILY_UPDATE.md) |
+| 更新故障排除 | [APPLICATION_MANUAL.md 第 12 節](APPLICATION_MANUAL.md#12-常見問題) |
 | 回測功能 | [BACKTEST_LAB_FEATURES.md](../02_features/BACKTEST_LAB_FEATURES.md) |
 | 回測 FAQ | [BACKTEST_LAB_FAQ.md](../02_features/BACKTEST_LAB_FAQ.md) |
 | 目前狀態 | [PROJECT_SNAPSHOT.md](../00_core/PROJECT_SNAPSHOT.md) |

@@ -68,11 +68,11 @@
 | 19 | [test_scheduled_evidence_pipeline_dry_run_wrapper.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_scheduled_evidence_pipeline_dry_run_wrapper.py) | automated_test_cases | 1,348 | 1,250 | 18 | 51,911 | 排程證據管道 Dry-run 安全封裝 |
 | 20 | [qa_ml_direct_ooc_shared_reuse.py](file:///c:/Projects/PythonProjects/technical_analysis/scripts/qa_ml_direct_ooc_shared_reuse.py) | qa_runners_and_tooling | 1,319 | 1,239 | 0 | 66,567 | ML OOC 數值重用機制驗證腳本 |
 | 21 | [test_ml_allocation_copilot.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_ml_allocation_copilot.py) | automated_test_cases | 1,273 | 1,180 | 14 | 44,986 | ML 配置副駕駛合規審查與權限控制 |
-| 22 | [test_ml_teacher_shadow_pipeline.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_ml_teacher_shadow_pipeline.py) | automated_test_cases | 1,256 | 1,173 | 18 | 44,611 | ML 教師模型 Shadow 模式管道隔離 |
-| 23 | [test_portfolio_ml_ooc_release_gate.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_portfolio_ml_ooc_release_gate.py) | automated_test_cases | 1,250 | 1,147 | 25 | 43,473 | ML OOC 發布閥門與回歸指標驗收 |
-| 24 | [test_official_events_pipeline.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_official_events_pipeline.py) | automated_test_cases | 1,213 | 1,114 | 22 | 44,528 | 官方重大訊息與市場事件抓取清洗管線 |
+| 22 | `test_ml_teacher_shadow_pipeline.py` | automated_test_cases | 1,256 | 1,173 | 18 | 44,611 | ML 教師模型 Shadow 模式管道隔離 |
+| 23 | `test_portfolio_ml_ooc_release_gate.py` | automated_test_cases | 1,250 | 1,147 | 25 | 43,473 | ML OOC 發布閥門與回歸指標驗收 |
+| 24 | `test_official_events_pipeline.py` | automated_test_cases | 1,213 | 1,114 | 22 | 44,528 | 官方重大訊息與市場事件抓取清洗管線 |
 | 25 | [test_corporate_action_availability_history.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_corporate_action_availability_history.py) | automated_test_cases | 1,202 | 1,130 | 18 | 46,281 | 除權息歷史可用日與復權因子防未來函數 |
-| 26 | [test_market_data_service.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_market_data_service.py) | automated_test_cases | 1,198 | 1,067 | 37 | 45,984 | 市場資料服務查詢、快取與 Fallback |
+| 26 | `test_market_data_service.py` | automated_test_cases | 1,198 | 1,067 | 37 | 45,984 | 市場資料服務查詢、快取與 Fallback |
 | 27 | [test_fubon_shadow_decision_service.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_fubon_shadow_decision_service.py) | automated_test_cases | 1,184 | 1,091 | 28 | 42,951 | 富邦 Shadow 決策服務與唯讀授權防護 |
 | 28 | [test_ui_qt_workbench_view.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_ui_qt_workbench_view.py) | automated_test_cases | 1,183 | 1,048 | 29 | 44,821 | 決策工作台視圖 UI 渲染與事件流 |
 | 29 | [test_scheduled_decision_evidence_capture.py](file:///c:/Projects/PythonProjects/technical_analysis/tests/test_scheduled_decision_evidence_capture.py) | automated_test_cases | 1,173 | 1,080 | 15 | 42,504 | 定時排程決策存證抓取契約 |

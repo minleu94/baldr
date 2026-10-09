@@ -1055,3 +1055,17 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/05_phases/phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md` | [導引](../05_phases/phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md) | [原文](phase3_5_research/METRIC_INTERPRETATION_PRIORITY.md) | 10,439 / `DB77858E5937890700ED2BE80C96531BB3F9F141E5C6E1C991C20B071D01C236` |
 | `docs/05_phases/phase3_5_research/BENCHMARK_PRESENTATION.md` | [導引](../05_phases/phase3_5_research/BENCHMARK_PRESENTATION.md) | [原文](phase3_5_research/BENCHMARK_PRESENTATION.md) | 10,002 / `3D8BA56371A6E08FFD28903E356C7C3D7EBBE6E89DE00D9324A966A100B7412B` |
 | `docs/05_phases/phase3_5_research/PHASE4_ENTRY_CRITERIA.md` | [導引](../05_phases/phase3_5_research/PHASE4_ENTRY_CRITERIA.md) | [原文](phase3_5_research/PHASE4_ENTRY_CRITERIA.md) | 12,060 / `DBC3788CB209D0B93C60E99548EBD1970D11ACD1578362AC8610601629209CD6` |
+
+<a id="coverage-entry-117"></a>
+## 2026-10-09 歸檔 8/14 BALDR 本機狀態報告快照
+
+將 `docs/06_qa/project_status_2026_08_14/` 內的 JSON 證據快照與 HTML 報告成對移入 Archive，保留當日唯讀觀測及原始 bytes。來源的 `generatedAt` 為 2026-08-14；報告說明 CPU 僅為短時取樣、`remoting_host.exe` 歸屬是推論，Git 工作樹與 `next_actions` 也只反映當日。這些內容不得用來表示目前狀態、Gate 完成度或執行授權。
+
+全庫路徑檢查僅找到 QA README 的歷史報告入口及 2026-10-06 歷史 Catalog 的兩個檔案連結；未找到程式、測試、腳本、產生器或固定輸出路徑 consumer。QA README 已改列歷史快照並連回目前 Snapshot；舊目錄、JSON 與 HTML 路徑保留短導引，因此歷史 Catalog 連結仍可到達。Archive README 增加可點擊入口。沒有改變 scoped authority，`DOC_COVERAGE_MAP` 與索引無需變更。
+
+目前狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準；近期 QA 證據與主題路由看 [QA README](../06_qa/README.md)。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/project_status_2026_08_14/artifact.json` | [JSON 原件](project_status_2026_08_14/artifact.json) | 29,956 / `5B359D261E828D8C381B3BBB50A9A2DE24A2F105A946B723A7721432985AC890` | 29,956 / `5B359D261E828D8C381B3BBB50A9A2DE24A2F105A946B723A7721432985AC890` |
+| `docs/06_qa/project_status_2026_08_14/report.html` | [HTML 原件](project_status_2026_08_14/report.html) | 450,692 / `01A50150B83B5205F08E2C870E1545C4FB29670CA4483555AB6F910838E0CA42` | 450,692 / `01A50150B83B5205F08E2C870E1545C4FB29670CA4483555AB6F910838E0CA42` |

@@ -6,6 +6,10 @@
 本目錄包含歷史記錄、總結報告等歸檔文檔。這些文檔主要用於記錄歷史，不影響日常使用。
 歸檔文件中的狀態、下一步、Phase 或完成度描述，若與 Snapshot、6M Roadmap、版本 Roadmap 或 Architecture 衝突，一律以 active authority 為準。
 
+## 2026-10-09 歷史狀態快照
+
+- [BALDR 本機狀態報告（2026-08-14）](project_status_2026_08_14/README.md)：保存當日 JSON／HTML 原件；舊 `next_actions` 與 CPU／MCP／QA 數字不代表目前狀態。現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)，來源與 SHA 見 [Coverage History Entry 117](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-117)。
+
 ## 2026-10-08 Coverage Map 歷史清冊
 
 - [逐批文件整理與歸檔沿革](DOC_COVERAGE_HISTORY_2026.md)：收錄 Coverage Map 移出的日期化批次記錄、原路徑／封存路徑與 hash 證據。
@@ -313,9 +317,9 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [Pre-V2 非排程 readiness closeout（2026-07-06）](PRE_V2_NON_SCHEDULE_READINESS_CLOSEOUT_2026_07_06_HISTORY.md)：保留當時非時間型 V2.0 closeout 與仍待時間累積的限制；不得用來判定目前 readiness。
 - [ML Shadow 推論操作 closeout（2026-07-15）](ML_SHADOW_INFERENCE_OPERATIONS_CLOSEOUT_2026_07_15_HISTORY.md)：保留受控工程操作層結論及當時真實 frozen artifact smoke blocker；操作步驟仍看現行 runbook，模型資格仍看 Snapshot／現行 QA。
 - [SQLite inspector 關閉探測（2026-09-15）](QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md)：保留 bounded probe 收據；當時未重現問題，不代表排除所有競態。
-- [Program Readiness 稽核（2026-08-27／28）](PROGRAM_READINESS_AUDIT_2026_08_27.md)：按 8/27 初版與 8/28 更新保留歷史盤點；容量與 readiness 後續已變更，目前狀態看 Snapshot。
+- [Program Readiness 稽核（2026-08-27）](PROGRAM_READINESS_AUDIT_2026_08_27.md)保存初版盤點；[8/28 cleanup 前快照](PROGRAM_READINESS_AUDIT_2026_08_28.md)保留授權清理前的容量與剩餘 blocker，兩者均非目前狀態。8/29 後續處置見 [Program Status Rebaseline](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md) 與 [Storage Retention Cleanup](../06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)；目前 readiness 回 Snapshot。
 - [Prospective Formal Restart 被拒絕的 V2 staging（2026-08-27）](PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V2_STAGING_HISTORY.md)：v2 calibration identity 綁定錯誤而遭拒絕；v3 是當時 successor。保留 staging／PIT hash 作歷史證據，不可採用此 clock，現況看 Snapshot。
-- [測試資產盤點與結案（2026-09-17）](TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md)：依結案報告、V2 方法補正、V1 撤回紀錄閱讀；139 組候選／1,107 檔是 bounded union，不是完整測試母體。
+- [測試資產整理與候選處置結案（2026-09-17）](TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md)是當時 bounded inventory 與處置依據；閱讀方法沿革時，同看[已撤回估算的 V1](TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17.md)與[方法補正的 V2](TEST_ASSET_RELATIONSHIP_AUDIT_2026_09_17_V2.md)。V1 的重複數／可刪數與行數收益已撤回，V2 的歷史檔案數及 inventory 口徑也不能當目前狀態；139 組候選／1,107 檔只屬 bounded union，不是完整測試母體。
 
 ### V1.5–V2.0 QA milestones
 

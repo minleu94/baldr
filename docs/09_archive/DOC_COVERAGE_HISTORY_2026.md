@@ -968,3 +968,13 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/06_qa/UI_QT_DEVELOPMENT_ROADMAP_AUDIT.md` | [`UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md`](UI_QT_DEVELOPMENT_ROADMAP_AUDIT_2026_05_19.md) | 14,262 / `69988E347E7DB724D72522140A25E3B92421BB6BD1F7541869A944B9274F8BF7` |
 | `docs/01_architecture/REFACTORING_MIGRATION_PLAN.md` | [`REFACTORING_MIGRATION_PLAN_2025.md`](REFACTORING_MIGRATION_PLAN_2025.md) | 19,578 / `5067CA53219C82AD6D90B368EE8C87076B0E463B4FC42132414D3C4519DE70D3` |
 | `docs/01_architecture/SAFE_REFACTORING_MASTER_REPORT.md` | [`SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md`](SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md) | 33,418 / `F4E6C69104E2A676D1879EC2124775709D4A32957430AEE38B5C092FE733E4E4` |
+
+<a id="coverage-entry-110"></a>
+## 2026-10-09 成對歸檔平行系統執行 plan 與啟動 prompts
+
+這兩份文件是 2026-07-13 的一次性平行工作拆分與 handoff 指令。Plan 涵蓋 workstream ownership、ready slice、Coordinator commit／push 與 integration gate；prompt 是當時的啟動文字，不能直接視為目前任務授權。兩份原文互相參照；README 與歷史 Catalog 也連到 prompt。精確檔名搜尋沒有發現程式或測試讀者。`docs/superpowers/` 原路徑改為短導引 stub，Archive 保存逐位元組副本；原路徑與 Archive 目的地同步列於 manifest。歸檔不代表當時計畫已完成，不授權目前工作或 Git 寫入；現況回到 Snapshot／Roadmap。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/superpowers/plans/2026-07-13-parallel-system-execution-master-plan.md` | [`平行系統執行 master plan 原文`](superpowers/plans/2026-07-13-parallel-system-execution-master-plan.md) | 24,767 / `C89A8838DC2B8E0C1CD583FFFE0653697B5E03E14A7EFFB94B2ACCCBF3C62523` | 24,767 / `C89A8838DC2B8E0C1CD583FFFE0653697B5E03E14A7EFFB94B2ACCCBF3C62523` |
+| `docs/superpowers/prompts/2026-07-13-parallel-workstream-start-prompts.md` | [`平行工作流啟動 prompts 原文`](superpowers/prompts/2026-07-13-parallel-workstream-start-prompts.md) | 37,186 / `5867D4DFBADC30BF179EF10D19C89FD589379B1D00EA558A5EDC153FB5C23429` | 37,186 / `5867D4DFBADC30BF179EF10D19C89FD589379B1D00EA558A5EDC153FB5C23429` |

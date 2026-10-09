@@ -1,6 +1,6 @@
 # Superpowers Specs / Plans 目錄
 
-> **最後整理**：2026-10-08
+> **最後整理**：2026-10-09
 > **定位**：本目錄保存 Superpowers 流程產生的設計規格、實作計畫與 execution artifacts。既有文件通常是歷史追溯資料；目前例外是已由 Snapshot／Index 明確接續的 [Baldr 產品補完計畫](plans/baldr_product_completion_plan_20261006.md)，其工作狀態仍以 Snapshot 與對應 QA 為準。
 
 目前專案的狀態與方向仍以 scoped authority 判讀：
@@ -44,12 +44,12 @@
 
 下列歷史內容特別容易被搜尋後誤用，引用時先回到本 README 確認生命週期：
 
-- [平行工作流啟動 prompts](prompts/2026-07-13-parallel-workstream-start-prompts.md) 是過去的任務分派文字，不能直接貼上當成目前授權。
+- [平行系統執行 master plan 原路徑](plans/2026-07-13-parallel-system-execution-master-plan.md) 與[工作流啟動 prompts 原路徑](prompts/2026-07-13-parallel-workstream-start-prompts.md)現為導引 stub；逐位元組原文分別保存在 [Archive plan](../09_archive/superpowers/plans/2026-07-13-parallel-system-execution-master-plan.md) 與 [Archive prompts](../09_archive/superpowers/prompts/2026-07-13-parallel-workstream-start-prompts.md)。這是 2026-07-13 的歷史任務拆分和工作指令，不代表已完成、目前優先序、工作授權或 Git commit／push 授權；現況看 Snapshot／Roadmap。
 - [Plan/spec 日期與狀態稽核](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md) 是 7 月稽核收據；其中的 `Next Action` 保留當時結論，不是目前待辦。
 
 ## 維護規則
 
-- 不刪除歷史 plan/spec/prompt 原文。13 份具名 QA 證據的 Post-V1 plan/spec（另含 V1.5、V1.9 兩組 closeout plan/spec）、1 份 Month 2 結案 plan、4 份 Month 3 implementation plan、1 份 Month 3 設計規格、1 份 Month 4 Daily Decision Desk closure plan、1 份已結案 Safe Refactor continuation plan、8 份 Month 3 Portfolio Replay implementation plans（步驟核取項目全勾）與 1 份 Month 3 closure audit、3 份已結案 V3 ML／UI polish plans 和 3 份配套 design specs 的原文 bytes 保存在 `docs/09_archive/superpowers/{plans,specs}/`，原路徑留短導引；另有第 9 份 weight/exposure plan 已封存，但保留最後 diff／stage 核取項目未勾的原始狀態。完整 old→new、日期標籤、生命週期、QA evidence 與雜湊逐檔列於 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。其餘歷史文件保留原路徑，唯一目前進行中的 Baldr 計畫維持原入口。
+- 不刪除歷史 plan/spec/prompt 原文。13 份具名 QA 證據的 Post-V1 plan/spec（另含 V1.5、V1.9 兩組 closeout plan/spec）、1 份 Month 2 結案 plan、4 份 Month 3 implementation plan、1 份 Month 3 設計規格、1 份 Month 4 Daily Decision Desk closure plan、1 份已結案 Safe Refactor continuation plan、8 份 Month 3 Portfolio Replay implementation plans（步驟核取項目全勾）與 1 份 Month 3 closure audit、3 份已結案 V3 ML／UI polish plans 和 3 份配套 design specs，以及 2026-07-13 平行系統執行 master plan／啟動 prompts 的原文 bytes 保存在 `docs/09_archive/superpowers/{plans,specs,prompts}/`，原路徑留短導引；另有第 9 份 weight/exposure plan 已封存，但保留最後 diff／stage 核取項目未勾的原始狀態。完整 old→new、日期標籤、生命週期、QA evidence 與雜湊逐檔列於 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。其餘歷史文件保留原路徑，唯一目前進行中的 Baldr 計畫維持原入口。
 - 檔名日期是里程碑或計畫日期，不一定等於完成日期；不依檔名推定完成。個別結果以 Snapshot、Roadmap、對應 QA 收據與 Git 記錄為準。
 - 新增仍在推動中的 spec / plan 時，若會被日常引用，應同步加入 [文件索引](../00_core/DOCUMENTATION_INDEX.md)；完成或 superseded 後更新 manifest 的狀態與 evidence 路徑。
 - 原始輸出、暫存報告與本機執行產物不應放入本目錄；需要保存結論時整理為 `../06_qa/` 摘要。

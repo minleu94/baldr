@@ -924,3 +924,16 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/06_qa/WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20.md` | [Weekly Natural Evidence Review 原文](WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20_HISTORY.md) | 10,654 / `B9DF841D120E5F6C9A4B2A5784CDEC9756EC127784A498F961AFE268CDFB2D6E` | 10,654 / `B9DF841D120E5F6C9A4B2A5784CDEC9756EC127784A498F961AFE268CDFB2D6E` |
 
 目前狀態看 Snapshot；本 Entry 只保留來源身分、當時證據範圍與原件 provenance，不把 9/21 數字當成現在值。
+
+<a id="coverage-entry-107"></a>
+## 2026-10-09 歸檔 Watchlist analysis／ML visibility handoff（9/6）
+
+此文件是 2026-09-06 的 Watchlist analysis／ML visibility 一次性工程與 QA 收據，記錄當時 UI 導覽、保存推薦摘要的唯讀讀取、操作證據與 ML readiness inspection。`ready=0/3`、stale projection、`alpha=0`、`formal_oos=false`、`broker=false` 均是該日觀測；這次工作沒有啟用 ML、執行訓練或 promotion。不可把日期數字當成目前 readiness，也不可把當時手動／UI acceptance 擴大為完整 MainWindow 真人驗收。
+
+現行 Watchlist 操作看 Application Manual，唯讀 source boundary 看 system architecture，ML 工程 Gate 看 Gate 7，目前狀態看 Snapshot。精確檔名 inbound 僅為 2026-10-06 歷史 Catalog；程式、測試、manifest、QA README 與目前 Index 沒有固定讀者。原 QA 路徑以短導引承接該歷史連結。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/WATCHLIST_ANALYSIS_ML_HANDOFF_2026_09_06.md` | [Watchlist analysis／ML visibility QA 原文](WATCHLIST_ANALYSIS_ML_HANDOFF_2026_09_06_HISTORY.md) | 3,729 / `14EFBB59B8A84DA62D2D11E0C51ADA072827687820EACD8CD238BA6B55B883CB` | 3,729 / `14EFBB59B8A84DA62D2D11E0C51ADA072827687820EACD8CD238BA6B55B883CB` |
+
+只歸檔日期化收據；現行 UI 行為、ML Gate 與成熟度不由此 Entry 裁定。

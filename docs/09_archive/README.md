@@ -44,6 +44,7 @@
 - [Position Health Source Provider Calendar Cache 隔離 QA（2026-09-15）](POSITION_HEALTH_SOURCE_PROVIDER_CALENDAR_CACHE_ISOLATION_QA_2026_09_15.md)：保留測試把年度 calendar cache 移至 isolated `tmp_path` fixture 的 bounded 修復收據。現行 test helper 仍在 [`tests/test_position_health_source_providers.py`](../../tests/test_position_health_source_providers.py)；這份歷史 QA 不代表 Position Health source-backed transition Gate 已結案。原 QA 路徑與歷史 Catalog 引用保留相容導引；逐檔 bytes／SHA 見 [Coverage History Entry 101](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-101)。
 
 <a id="2026-10-09-ml-formal-input-candidate-snapshot"></a>
+<a id="ml-dated-readiness-evidence-20261009"></a>
 ## 2026-10-09 ML Formal input candidate-only 歷史快照
 
 - [ML allocation Formal input readiness（2026-09-20）](ML_ALLOCATION_FORMAL_INPUT_READINESS_2026_09_20.md)：保存 9/21 自然日之前的 candidate runtime wiring、source pins 與當時缺件；沒有執行 validator、writer 或 scheduler，也不是 9/21 的實際驗收。同期 Natural Shadow weekly receipts 屬不同 lane，不能替代這份 Formal candidate snapshot。原 QA 路徑保留相容導引；目前 Gate／狀態看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)、[Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 與 [External Validation Register](../06_qa/GATE_2_TO_7_EXTERNAL_VALIDATION_REGISTER.md)，逐檔 bytes／SHA 見 [Coverage History Entry 102](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-102)。
@@ -55,6 +56,10 @@
 ## 2026-10-09 Weekly Natural Evidence 9/20 歷史快照
 
 - [Weekly Natural Evidence Review（2026-09-20）](WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20_HISTORY.md)：保留 9/14–20 週期與 9/21 唯讀觀測；V2.2 collection、BankTaiwan capture、ML natural shadow 是不同 lane，pending 不等於 matured／promotion／Formal／human approval。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)。舊 QA 路徑保留導引，原件 SHA 見 [Coverage History Entry 106](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-106)。
+
+## 2026-10-09 Watchlist analysis／ML visibility 9/6 歷史 QA
+
+- [觀察清單分析與 ML 可見性驗收（2026-09-06）](WATCHLIST_ANALYSIS_ML_HANDOFF_2026_09_06_HISTORY.md)：保留 Watchlist 摘要／導覽與當日 readiness inspection；`0/3` 與 stale projection 不是目前 ML 狀態，也沒有啟用訓練或 promotion。現行操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)，來源邊界看 [system architecture](../01_architecture/system_architecture.md)，Gate／現況看 Gate 7／Snapshot。原 QA 路徑保留導引，SHA 見 [Coverage History Entry 107](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-107)。
 
 ## 2026-10-09 9/14 排程與週資料受託審查歷史
 

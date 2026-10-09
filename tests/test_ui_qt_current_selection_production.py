@@ -3,6 +3,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+import json
+import os
+import subprocess
+import sys
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -25,6 +30,7 @@ from tests.test_daily_market_technical_universe_v4_producer import (
 from tests.test_daily_market_technical_official_disposition_bundle_v1 import _FrozenDateTime
 from tests.test_ui_qt_daily_market_technical_universe_v4_view import app, _wait
 from app_module.rule_research_sample_capture import ResearchCaptureWriteScope
+from app_module.watchlist_service import WatchlistService
 from ui_qt.widgets.daily_market_technical_v4_production_setup import (
     DailyMarketTechnicalV4DeferredProductionSetup, ProductionSetupSummary,
 )
@@ -114,6 +120,43 @@ def test_actual_button_runs_worker_and_reports_saved_or_failed_bundle(
                 QTest.mouseClick(official.bookmark_button, Qt.MouseButton.LeftButton)
                 _wait(app, lambda: official.active_worker is None)
                 assert len(bookmarks) == 1 and bookmarks[0].selected_stock_code == "1101"
+                if use_deferred:
+                    watchlist_root = tmp_path / "isolated-watchlist"
+                    config = SimpleNamespace(output_root=watchlist_root, resolve_output_path=lambda relative: watchlist_root / relative)
+                    service = WatchlistService(config)
+                    assert service.add_research_bookmark(bookmarks[0]).status == "added"
+                    original_json = service.default_watchlist_file.read_bytes()
+                    assert service.upgrade_to_repository().is_repository
+                    child = Path(__file__).parent / "helpers/current_selection_bookmark_reopen_child.py"
+                    argv = [sys.executable, "-X", "utf8", "-B", "-I", str(child), str(watchlist_root),
+                            bookmarks[0].bookmark_id, reference.bundle_identity_sha256, reference.manifest_sha256]
+                    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    try:
+                        stdout, stderr = process.communicate(timeout=90)
+                    finally:
+                        if process.poll() is None:
+                            process.kill()
+                            process.communicate()
+                    (tmp_path / "bookmark_child.stdout.log").write_bytes(stdout)
+                    (tmp_path / "bookmark_child.stderr.log").write_bytes(stderr)
+                    assert process.returncode == 0, stderr.decode("utf-8", errors="replace")
+                    child_result = json.loads(stdout)
+                    assert child_result["status"] == "passed_new_process_cow_exact_ui_reopen"
+                    assert child_result["pid"] != os.getpid()
+                    # Windows venv 啟動器可能再建立實際 Python 程序；兩種明確父子鏈皆須核對。
+                    assert (
+                        child_result["pid"] == process.pid and child_result["parent_pid"] == os.getpid()
+                    ) or (
+                        child_result["pid"] != process.pid and child_result["parent_pid"] == process.pid
+                    )
+                    (tmp_path / "bookmark_child.process_chain.json").write_text(
+                        json.dumps({"host_pid": os.getpid(), "launcher_pid": process.pid,
+                                    "child_pid": child_result["pid"], "child_parent_pid": child_result["parent_pid"]}),
+                        encoding="utf-8",
+                    )
+                    assert child_result["query_identity"] == bookmarks[0].query_identity_sha256
+                    assert service.default_watchlist_file.read_bytes() == original_json
+                    assert database.read_bytes() == source_before
             finally:
                 official.begin_shutdown()
                 _wait(app, lambda: official.active_worker is None)

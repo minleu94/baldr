@@ -27,3 +27,9 @@
 新增測試沿新產製的 reference，由「選擇保存來源資料夾」真正 Qt 按鈕進入既有官方研究頁；metadata catalog 列出新版本、選列觸發 strict query，讀回 1101 與明示一股分母。再以「查看個股」及「返回原結果頁」按鈕驗原 page request 未變，並以「準備原研究收藏」取得同股原來源 bookmark。同步／deferred 兩種 factory 正例均經過這個流程；來源 PITfalse 保持。
 
 日誌 `output/qa/f17_normal_capture_pair_20261009_a/normal_ui_journey_tests_a.log`：6 passed，6.46 秒。此為兩個獨立 Qt 視圖的同程序實際 worker／按鈕路由，沒有完整 Main、觀察清單 COW 保存、新程序收藏重開或真人可讀性測量；不得將準備 bookmark DTO 當成已保存收藏。只新增測試，未再次修改 UI source；先前強制 UI／validator／型別結果的範圍保持。
+
+## 收藏保存與新程序重開增量
+
+deferred 合成正例將真產製 bookmark 經 WatchlistService 保存到全新隔離觀察清單，再升級 repository。獨立 Python 程序從該 repository 讀回 typed bookmark，以官方研究頁 restore_bookmark 真 worker 嚴格重開；核對 1101、原 bundle／manifest／query identity、PITfalse 與非全市場聲明。原 JSON 與合成行情 DB 位元組保持不變。此為服務保存與獨立研究視圖重開，尚未驗證完整 Main 的觀察清單按鈕或原 H20 收藏。
+
+`cow_child_journey_tests_b.log`：6 passed，10.18 秒。失敗 a 保留：子程序已成功重開，但測試未考慮 Windows venv 啟動器的父子程序鏈。b 記錄 Popen 啟動 PID 與實際 Python PID／父 PID，要求直接父子或明確啟動器鏈，沒有移除新程序隔離檢查。各合成案例保存 stdout、stderr 與 process_chain.json；未修改產品來源。

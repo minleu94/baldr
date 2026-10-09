@@ -1,6 +1,6 @@
 # Superpowers Specs / Plans 目錄
 
-> **最後整理**：2026-10-06
+> **最後整理**：2026-10-08
 > **定位**：本目錄保存 Superpowers 流程產生的設計規格、實作計畫與 execution artifacts。既有文件通常是歷史追溯資料；目前例外是已由 Snapshot／Index 明確接續的 [Baldr 產品補完計畫](plans/baldr_product_completion_plan_20261006.md)，其工作狀態仍以 Snapshot 與對應 QA 為準。
 
 目前專案的狀態與方向仍以 scoped authority 判讀：
@@ -21,7 +21,7 @@
 
 ## 主題閱讀入口
 
-先依序看 [目前狀態](../00_core/PROJECT_SNAPSHOT.md)、對應的 scoped authority 與 [QA 主題地圖](../06_qa/README.md)，再按需要回查下表中的歷史 plan／spec。下表只降低找文件的成本，不代表其中計畫仍有效、已完成或獲得目前授權；完整 165 份歷史路徑及雜湊仍以 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 為準。
+先依序看 [目前狀態](../00_core/PROJECT_SNAPSHOT.md)、對應的 scoped authority 與 [QA 主題地圖](../06_qa/README.md)，再按需要回查下表中的歷史 plan／spec。下表只降低找文件的成本，不代表其中計畫仍有效、已完成或獲得目前授權；165 份歷史文件的原路徑、實際位置與雜湊以 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) 為準，其中 13 份已執行 Post-V1 plan/spec 原文已移入 Archive。
 
 | 主題 | 目前閱讀入口 | 可選的歷史 plan／spec | 判讀提示 |
 |---|---|---|---|
@@ -31,6 +31,7 @@
 | 基本面與估值 | [Fundamental Source Inventory](../03_data/FUNDAMENTAL_SOURCE_INVENTORY.md)、[目前架構](../01_architecture/system_architecture.md)、[QA 主題地圖](../06_qa/README.md) | [估值資料層 plan](plans/2026-06-16-month5-valuation-data-layer-v1.md)、[估值呈現政策 plan](plans/2026-06-16-month5-valuation-presentation-policy.md) | 歷史計畫不代表資料覆蓋、PIT 可得性或估值已納入正式評分；依現行資料與 scoring contract 判讀。 |
 | Portfolio 與 Watchlist | [Application Manual](../07_guides/APPLICATION_MANUAL.md)、[保存治理架構](../01_architecture/system_architecture.md)、[F4 Watchlist COW QA](../06_qa/README.md) | [Recommendation Portfolio optimization plan](plans/2026-05-26-recommendation-portfolio-optimization.md)、[Watchlist Trigger plan](plans/2026-06-15-decision-desk-watchlist-trigger.md) | 區分每日研究提示、Portfolio 政策與使用者 Watchlist 儲存；歷史轉換工程不等於已套用正式資料。 |
 | 資料更新與 UI 工作台 | [Application Manual](../07_guides/APPLICATION_MANUAL.md)、[UX／產品 QA 主題地圖](../06_qa/README.md) | [Data Update Workbench plan](plans/2026-05-20-data-update-workbench.md)、[設計 spec](specs/2026-05-20-data-update-workbench-design.md)、[非破壞 healthcheck runner](plans/2026-06-23-non-destructive-release-healthcheck-runner.md) | 操作以 Manual 為準；日期化 plan 和 healthcheck 分別代表設計、工程或驗收，不互相替代。 |
+| Post-V1 Evidence Pipeline | [QA 主題地圖](../06_qa/README.md)、[Post-V1 QA receipts](../09_archive/README.md#post-v1-evidence-pipeline-qa) | [已執行 plan/spec 封存導覽](../09_archive/README.md#2026-10-08-post-v1-engineering-plans-and-specs) | 原始 plan/spec 與完成證據成組保存；現行操作看 Manual，狀態看 Snapshot。Scheduler Approval 配對文件保留原路徑，依其測試內容契約判讀。 |
 
 下列歷史內容特別容易被搜尋後誤用，引用時先回到本 README 確認生命週期：
 
@@ -39,7 +40,7 @@
 
 ## 維護規則
 
-- 目前已存在的 plan/spec/prompt 原 bytes 與原路徑保留；本輪不搬檔、不改其正文。位置、日期標籤、生命週期判讀與現行權威替代關係逐檔列在 [`../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md`](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。
+- 不刪除歷史 plan/spec/prompt 原文。已審核的 13 份 Post-V1 plan/spec 原 bytes 保存在 `docs/09_archive/superpowers/{plans,specs}/`，原路徑留短導引；完整 old→new、日期標籤、生命週期、QA evidence 與雜湊逐檔列於 [archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。其餘歷史文件保留原路徑，唯一目前進行中的 Baldr 計畫維持原入口。
 - 檔名日期是里程碑或計畫日期，不一定等於完成日期；不依檔名推定完成。個別結果以 Snapshot、Roadmap、對應 QA 收據與 Git 記錄為準。
 - 新增仍在推動中的 spec / plan 時，若會被日常引用，應同步加入 [文件索引](../00_core/DOCUMENTATION_INDEX.md)；完成或 superseded 後更新 manifest 的狀態與 evidence 路徑。
 - 原始輸出、暫存報告與本機執行產物不應放入本目錄；需要保存結論時整理為 `../06_qa/` 摘要。
@@ -47,6 +48,6 @@
 ## 相關入口
 
 - [文件索引](../00_core/DOCUMENTATION_INDEX.md) - 已納入索引的主要 spec / plan。
-- [Plan/spec archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) - 原路徑保留表與生命週期判讀。
+- [Plan/spec archive manifest](../09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md) - 原路徑、封存目的地、bytes／SHA 與生命週期判讀。
 - [Plan/spec 日期與狀態稽核（2026-07-06）](../06_qa/SUPERPOWERS_PLAN_SPEC_DATE_AUDIT_2026_07_06.md)。
 - [歷史 push 前文件稽核（2026-07-06）](../09_archive/DOCUMENTATION_PRE_PUSH_AUDIT_2026_07_06_HISTORY.md)。

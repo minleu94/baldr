@@ -70,6 +70,7 @@
 - **2026-07／08 日期化資料與 owner 收據**：查 [Archive 專區](../09_archive/README.md#2026-10-08-data-and-source-owner-receipts)；source pilot、license capture、owner packet 與 data reconciliation 保留原始限制，不代表目前來源採納或 production approval。
 - **2026-08 前瞻正式時鐘歷史**：查 [Archive 專區](../09_archive/README.md#2026-10-08-prospective-formal-clock-history)；目前重啟方向與決策時鐘契約仍留在此目錄，歷史 activation、staging 與失敗收據不授權重啟或發布。
 - **2026-09 決策工作台與 continuity dated audits**：查 [Archive 專區](../09_archive/README.md#2026-10-08-decision-workbench-and-continuity-audit-history)；當時的 gap 與 next-increment 判讀不代表目前優先序，現在狀態回 Snapshot／Roadmap。
+- **Post-V1 Evidence Pipeline 已執行計畫／規格**：原文與 QA 收據分別收於 [Archive 歷史索引](../09_archive/README.md#2026-10-08-post-v1-engineering-plans-and-specs) 與 [QA 收據索引](../09_archive/README.md#post-v1-evidence-pipeline-qa)；Scheduler Approval 配對因測試內容依賴保留原文路徑。
 
 ## 閱讀與歸檔規則
 

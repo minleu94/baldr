@@ -328,6 +328,22 @@ Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁�
 
 將 2026-09-14／15 的三份整合缺口矩陣、產品完成度／下一增量 audit 與 continuity write-path audit 移至 [Archive 專區](../09_archive/README.md#2026-10-08-decision-workbench-and-continuity-audit-history)，原 QA 路徑保留短導引；同層唯一 Markdown 連結已更新為 QA 相對路徑，PIT industry discovery 的交叉引用已改為直達 Archive。這些報告描述當時的 scope／evidence，不再作目前待辦與優先序權威。
 
+## 2026-10-08 Post-V1 已執行 plan/spec 原文歸檔
+
+將 13 份有具名完成證據的歷史 plan/spec 原文移至 `docs/09_archive/superpowers/{plans,specs}/`，來源舊路徑保留相容導引。Archive manifest 已逐筆記錄 old→new、原始 bytes／SHA-256 與驗收收據；原始 165 個歷史文件身份不因 redirect stub 重複計數。
+
+| QA receipt | 封存 plan／spec 原件 |
+|---|---|
+| [Q1 read model](../09_archive/POST_V1_FORWARD_PERFORMANCE_READ_MODEL_QA_2026_07_03.md) | [P1 plan](../09_archive/superpowers/plans/2026-07-03-post-v1-forward-performance-read-model.md)、[S1 spec](../09_archive/superpowers/specs/2026-07-03-post-v1-forward-performance-read-model-design.md) |
+| [Q2 dashboard](../09_archive/POST_V1_FORWARD_PERFORMANCE_DASHBOARD_QA_2026_07_05.md) | [P2 plan](../09_archive/superpowers/plans/2026-07-05-post-v1-forward-performance-dashboard.md)、[S2 spec](../09_archive/superpowers/specs/2026-07-05-post-v1-forward-performance-dashboard-design.md) |
+| [Q3 historical replay](../09_archive/POST_V1_HISTORICAL_EVIDENCE_REPLAY_QA_2026_07_06.md) | [P3 plan](../09_archive/superpowers/plans/2026-07-06-historical-evidence-replay.md) |
+| [Q4 scheduler dry run](../09_archive/POST_V1_EVIDENCE_SCHEDULER_DRY_RUN_QA_2026_07_06.md) | [P4 plan](../09_archive/superpowers/plans/2026-07-06-post-v1-evidence-scheduler-dry-run.md)、[S3 spec](../09_archive/superpowers/specs/2026-07-06-post-v1-evidence-scheduler-dry-run-design.md) |
+| [Q6 live/research gap](../09_archive/POST_V1_LIVE_RESEARCH_GAP_LINKAGE_QA_2026_07_08.md) | [P6 plan](../09_archive/superpowers/plans/2026-07-08-post-v1-live-research-gap-linkage.md)、[S5 spec](../09_archive/superpowers/specs/2026-07-08-post-v1-live-research-gap-linkage-design.md) |
+| [Q7 signal decay](../09_archive/POST_V1_SIGNAL_DECAY_MONITOR_QA_2026_07_09.md) | [P7 plan](../09_archive/superpowers/plans/2026-07-09-post-v1-signal-decay-monitor.md)、[S6 spec](../09_archive/superpowers/specs/2026-07-09-post-v1-signal-decay-monitor-design.md) |
+| [Q8 decision quality](../09_archive/POST_V1_DECISION_QUALITY_REVIEW_QA_2026_07_10.md) | [P8 plan](../09_archive/superpowers/plans/2026-07-10-post-v1-decision-quality-review.md)、[S7 spec](../09_archive/superpowers/specs/2026-07-10-post-v1-decision-quality-review-design.md) |
+
+P5／S4 Scheduler Approval pair 留在原路徑，因現有 `tests/test_production_scheduler_approval_checklist.py` 會檢查兩份原文內容；該測試原本讀取已歸檔 QA 的來源路徑已改為 Archive 原文，本次不執行測試。這些封存僅整理歷史工程計畫，不更改 Gate、排程授權或目前優先序。
+
 ## 一、文件權威邊界（Scoped SSOT）
 
 本專案不再使用單一文件承擔所有最高權威。當文件描述衝突時，先判斷主題，再依主題對應的權威文件處理。

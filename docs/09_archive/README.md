@@ -229,7 +229,11 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 ## 開發計畫與規格追溯
 
-`docs/superpowers/plans/`、`specs/` 與 `prompts/` 中的大多數既有文件是歷史追溯資料；唯一目前明確列為進行中的例外是 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。[Superpowers README](../superpowers/README.md) 是該目錄的生命週期入口；歷史文件的位置與日期、狀態判讀、現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。原 bytes 和舊路徑均保留，以免打斷既有 QA 收據、phase 文件與交叉引用；計畫結果仍以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
+`docs/superpowers/plans/`、`specs/` 與 `prompts/` 中的大多數既有文件是歷史追溯資料；唯一目前明確列為進行中的例外是 [Baldr 產品補完計畫](../superpowers/plans/baldr_product_completion_plan_20261006.md)。[Superpowers README](../superpowers/README.md) 是該目錄的生命週期入口；原路徑、目的地、日期、QA evidence、bytes／SHA 與現行權威替代入口逐檔列於 [Superpowers plan/spec archive manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)。已移動原文的 bytes 保存在 Archive，原始目錄保留短導引；未移動項目仍保留原路徑。計畫結果以對應 QA 收據、目前 Snapshot／Roadmap 與 Git 歷史為準。
+
+### 2026-10-08 Post-V1 engineering plans and specs
+
+13 份有完成計畫及具名 QA 收據的 Post-V1 plan/spec 原文已依原子目錄層次移至 `superpowers/plans/` 與 `superpowers/specs/`，舊路徑保留短導引。完整對應及雜湊見 [manifest](SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md)；執行結果見 [Post-V1 Evidence Pipeline QA](#post-v1-evidence-pipeline-qa)。Scheduler Approval plan/spec 配對仍保留原路徑，因既有測試會讀取它們的實際內容。
 
 ## 2026-10-06 治理入口整理原文快照
 

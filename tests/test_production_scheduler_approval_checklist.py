@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-CHECKLIST = Path("docs/06_qa/POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md")
+CHECKLIST = Path("docs/09_archive/POST_V1_EVIDENCE_PRODUCTION_SCHEDULER_APPROVAL_CHECKLIST_2026_07_07.md")
 
 
 def test_approval_checklist_exists_and_contains_required_sections() -> None:

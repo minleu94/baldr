@@ -86,3 +86,87 @@ Owner 下一步須保存事件時點的實際 canonical pins、修正為固定 h
 新 request/predicate/unqualified sort 切片已完成上述排序型別、64 MiB 投影預算及超長整數穩定拒絕補強。Root 使用凍結來源獨立重驗配對測試，結果 23 passed／0.82 秒；兩檔 scoped mypy clean。來源 SHA `5D99A71C789523A04AF6EA5B9AF44EF3FDACB47FE4B0F9F7D9FD0A7E9A9637A8`、測試 SHA `F0DA1B257CF03FEB809186FF1EE54C7BCE07EB3F6FC7F345FDA8AD89CC365970`、契約 SHA `1376C0408D874E9D0AFF835949A81E4ADC3A5F82EFB321E2D1C1CE25AF7B1B98` 均與 owner 凍結值吻合。Root 本次 pytest 命令指定的封套位置為 `output/qa/f06_root_query_20261009_r1.xml`；Root 已另讀該 JUnit 封套，確認 tests=23、errors=0、failures=0、skipped=0；py_compile 亦 exit 0。
 
 這些證據只核純請求／判斷／排序契約，不包含 reader qualification、全母體 sealed result/page、F03 KDJ、UI 或 EXE。代理已接續 F03 KDJ 查詢契約，完整原計畫與真人驗收仍未完成。
+
+
+### P03 正常更新到 F17 bundle 的來源入口核對
+
+Root 實讀正常官方來源 wrapper `scripts/scheduled/run_official_market_status_bundle.py:650`，其 current child 呼叫 `scripts/refresh_current_market_status_observation.py`，輸出根為 `release_v4/current_market_status`。capture_sources 保存每次原始本文、SHA、captured_at、HTTP／parse 狀態；source_specs 同時包含上市／上櫃／興櫃 roster 與 TWSE／TPEx disposition。不能只由 wrapper 成功推論 F17 bundle 已建立。
+
+`CurrentMarketAssignmentReader.from_pointer` 要求指定 current_market_status_pointer.json，先核 schema、current_only／PIT false、發布時間不晚於 cutoff、run 相對路徑及 snapshot／manifest SHA，再由 exact payload 建立來源 pin。BundleWriter.create_from_pins 另要求 technical store generation／plan／receipt 三個 exact identity 與 byte SHA，加上市場及處置 typed source pins，先核來源與 output 不重疊，再建立新 attempt；其 API 明示不讀 latest pointer。
+
+下一正常更新 adapter 必須把同次 capture 的確切 pointer／run 與兩種 typed pins 留在封套，再連同 technical exact pins 送入 writer；不得於後段重新尋 latest 或從 current capture 借 historical PIT 資格。當前僅完成呼叫與契約核對，尚未有 updater→bundle→收藏新程序的完整執行證據；正式排程未修改或啟動。
+
+
+### H20 收尾失敗分支的順序風險審查
+
+Root 實讀 child.finish：H20 session 未終態或其 finish 拋錯時，原流程記錄錯誤後仍往 market detach／finish 前進。Bridge 自身只檢查市場連線 _active／_opening，不能代表 H20 session 或 permit 已釋放；helper inventory 最後拒絕亦不能作正常延後機制。Bridge.abort 在 finally 標 finished，即使保留未知 artifact，故不能以先 abort 再重試作可靠收尾。已要求 owner 在市場 detach／finish／abort 前核 H20 reader／permit 與真正 worker 狀態，以純合成故障案例證明保持資源與可恢復狀態。這是靜態風險與待驗項，不宣稱已在 Main 重現或修復。
+
+
+### P03 同次擷取、兩種 typed reader 的真合成接縫
+
+Root 新增隔離探針，以真 capture_sources 保存五個合成 roster／disposition 回應，再呼叫兩個公開 from_pointer 及 from_exact。Native b attempt exit 0，八個檢查全部通過：五個合成來源、相同 run／snapshot SHA／manifest SHA／pointer SHA、2382 assigned_twse、市場 exact reopen、處置 exact reopen。receipt 位於 `output/qa/p03_same_capture_readers_20261009_b/receipt.json`，SHA `820199ac987b4f6049d8c0ba0db4c49f13053b96ccbf1df33687828007114fcc`。
+
+Sandbox a attempt 在 strict realpath WinError 5 失敗，原 captures／script 保留；不把該環境失敗當成來源壞損。這個接縫不接網路／SQLite／producer／正式排程，合成2382不是原H20研究。尚未涵蓋 pointer 競態拒絕、bundle writer、全母體結果、收藏新程序、Main／EXE；原P03正常更新完整閉環未因此完成。
+
+
+### P03 pointer 前進後仍重開原來源
+
+Root native d 合成案例再擷取第二次來源，使 pointer 前進並把新市場名錄改為1101；舊 typed pins 以原 cutoff 重開仍保存2382與原兩種pin identity，新 pointer readers 則一致讀到新run／1101。12項檢查全部通過，receipt SHA `ec771b9db0586e4e73c18793483133f7bf7ea30cd7bb4811a91abdcdc4e5e09b`，位於 `output/qa/p03_same_capture_readers_20261009_d/receipt.json`。
+
+原 c 案例錯以 advanced cutoff 重開舊市場 pin，被 `market_assignment_exact_cutoff_mismatch` 正確拒絕；該失敗與來源保留，修正的是 QA 呼叫，不是放寬 reader。這證明保存 recipe 需要保留原 cutoff，不能僅保存 bundle或來源SHA。尚未測 pointer在兩reader取得pin中途前進的原子拒絕，亦未包含完整writer／UI／EXE。
+
+
+### P03 同次擷取 adapter 的競態契約證據
+
+Root native e 探針確認：pointer 更新前取得的市場 reader 與更新後取得的處置 reader，各自都通過公開 reader 驗證，但 run／snapshot 不相同。15項探針檢查通過，包含此混版情境被辨識，並非產品 adapter 已拒絕；receipt SHA `a2f15646bfb6882714d70972af4b43d7531c1610fd90f9b5441c99be3667dfd4`，位於 `output/qa/p03_same_capture_readers_20261009_e/receipt.json`。
+
+因此正常更新的「同次 capture」adapter 必須核兩pin對指定run／snapshot／manifest／pointer身份再發布，或從已固定的原run建立exact兩pin。不能只檢查兩reader各自有效就聲稱同次來源。這是該adapter的同次擷取契約，不改通用BundleWriter可接受明示獨立市場／處置來源的設計；F02原固定來源可來自不同root/run，仍按各來源pins與cutoff獨立核驗。正式流程尚未接線。
+
+
+### KDJ 新 DTO 首次語義驗證審查
+
+Root 實讀尚未凍結的 KDJ query：完整 canonical payload byte budget 已含最終 identity，typed predicate 綁 stock／snapshot／clock／cutoff，排序先核64 MiB投影再配置索引。另指出直接 dataclass 構造或 replace 後自洽重雜湊可能避開 from_dict 的語義驗證；to_dict/to_json 只核 hash／bytes，不足以保證 states／combine／source pair／sort fields 合法，而 predicate/sort目前僅呼 to_json。已要求 owner 建立無遞迴的共用語義核驗並補自洽 malformed request 負例；未核資格請求同樣不能接受非法語義。這是mutable來源的靜態缺口，不代表已接受最終來源。
+
+
+### F02 continuation b 啟動前拒絕：未定義名稱
+
+Root 重算 b supervisor `694c2d3046ccf1f73724013b92cc12e16bf05032dee8b68e8d8a3b30196d16eb`、target `ca8663ad43dc3c83e4132ec740ca6d7fad84c38197dfa65a4763c31eda3f485b`、manifest及diff雜湊吻合。完整讀新增inventory段後發現 `_capture_continuation_inputs` 回傳使用 `original_receipt_pin`，該名稱只在另一函式的local內定義。Root對生成候選本身跑mypy，L494確實報[name-defined]；log保存在b/root_mypy_review.log，整檔173 errors不屬產品gate通過。首次錯用mypy disable-error-code=all的命令亦未完成檢查，後續正常命令已確認此缺陷。
+
+b尚未執行，Root未授權run；要求owner保留b immutable，另立c讓capture自行取得並驗原failedreceipt pin，對生成來源而非僅derivation腳本核name-defined／compile。原target oracle bytes／AST與原失敗收據均保留。這是具體啟動阻礙，不要求真人操作。
+
+
+### F02 b 其餘 provider／唯讀差異續審
+
+Root 完成 provider/create_from_pins 及RO guard新增段閱讀：exact來源DB以固定SHA／size／single-link／無sidecar核驗，connect要求完整固定mode=ro URI、uri=True與timeout=5.0；原SQLite audit必經wrapper／threadlocal target身份，不能直接繞過connect wrapper。Provider經真StoreReader exact核complete counts 259/258/1/258/0與missing1257，再核固定市場／處置pins對原bundle來源，經真BundleWriter建立新sidecar。來源起訖inventory與每個protected tree起訖保留；原oracle／targetbytes／AST未改，producer deny與receipt continuation-only保留。
+
+此部分未發現須縮母體或改產品writer的理由；b仍因L494未定義名稱而拒絕run。下一c以窄修正及對生成來源name-defined核驗後，Root再核b→c immutable diff與fresh target／outer roots才放行一次native完整矩陣。不能由本次靜態閱讀宣稱完整query或來源資格已通過。
+
+
+### H20 Windows path 修正與正例仍失敗
+
+Root 已讀9c41b8原failure receipt，H20 permit release以type(path) is Path錯拒WindowsPath；現child改核type(Path())的本平台具體類別，並保留parent、lexists、guard removal delta與permit身份核驗。Root搜尋current候選未見其餘同類判斷，preimages保留原錯誤。
+
+後續bf7a21原failure receipt仍為failed，原因synthetic_guard_denial_counter_nonzero，另有keeper close deferred；該receipt未保存各counter值，不能由此宣稱guard放寬或來源寫入。已要求owner在失敗封套保存有界counter／first-deny並定位原因，不能清零或略過gate。fallback keeper close另須接受已核no-Main proof且所有reader／permit零活躍與市場真正finish binding，不能以proof字典本身算終態。尚未有完整H20-first正例或Main通過。
+
+
+### F02 c 窄修正核對與一次執行授權
+
+Root 已完整讀 b→c 1833-byte diff：只有新target／input manifest路徑及capture local receipt pin賦值／SHA／size核驗。Root重新compile生成supervisor、跑generated mypy，未有name-defined（整檔172其他錯仍保留，不稱mypy clean）；c target目錄僅原84,223-byte target且與b逐位元組相同。12個direct product module SHA全部吻合原manifest，sqlite_read_only helper f608de...86ae吻合。
+
+c supervisor SHA `70d1b25a85c3ffbb74ddadd687a937d836e7998ba52eb10d5a1ca9487a06b9a9`、manifest `5d29a1a95c3bce5486ee16f4206bd4eb118c68b92ee15fa02d31b727a437d9e0`、v2 input `84da626532cb7132f1ede72409793c0f511139568be6b61cf58f25318fe2bc3a`、diff `9ecbb1fe4a7330b6acd698c934e0bb007e041464fb892d3340346ad6ee011539`、plan `b3e7f03dd08652a7f8bbbc03ee303d64c4d502587b1ceddf8d50ad1b6b300c8c` 均由Root實算。
+
+Root已授權owner一次native完整query_continuation_only執行，仍須最後pin／fresh root核對並回報live handle，owner自行poll／保存stdout/stderr／來源起訖／Job終態。此授權紀錄不是已啟動或通過證據；不得restart或改凍結runtime，失敗封套保留，producer／原資料／正式排程不啟動。
+
+
+### H20 counter 契約：缺欄位與真拒絕分辨
+
+Root實讀004004完整診斷及固定canonical guard來源：guard未定義source_write_denied專用counter，故原gate因None而fail；實際catch-all write_attempts_denied／sqlite_write_sql_denied及其他必填counter為0，events空、overflow0，legacy source_write_denied0。原failure保留，不能說原gate通過。fallback keeper已在該封套實際close，status passed／committed marker與rollback證據保存。
+
+Root允許owner新增限定已pin guard版本／SHA的counter contract：未提供專用欄位時必須catch-all0、相關deny事件不存在、overflow0及legacy專用counter0；有專用欄位則strict int0。缺其他必填欄、bool、catch-all非零／專用非零／event或overflow皆拒絕。需合成正負例再進完整seam，不改guard、不清counter，不接受任意缺key fallback。Main尚未驗。
+
+
+### F03 KDJ query 凍結來源 Root 接受
+
+Root 獨立重驗18 passed／0.97秒，實讀JUnit tests18/errors0/failures0；兩檔scoped mypy clean、py_compile exit0。來源SHA `2DA8E37359F85FD7D278330C80C30559DC1AE3E9319AC03CB2D32AD24F00F11A`、測試 `1986E6E68ABA4B429214795D3C6E3C9030306E1854A67EF400D0F545A497F3D7`、契約 `B54EEA93CC2EE3DF6CEDA53117626F6D9D6933160B2FB3E433DC4400327AC05F`皆吻合。直接constructor／replace後自洽重hash的非法語義負例已補。
+
+只接受request/predicate/unqualified sort/page contract，沒有full-N reader發行或UI／收藏。Owner接續F06有界collector骨架與同次MA/KDJ/volatility四群publication方案；full-N共享接線待F02實證，整份原計畫仍未完成。另Root重算c最新補齊文件manifest `26f0fad86dada228a786eadb2c78102e1480ae21652ca14ebcaa3037bba180b4`及plan `d0bf3e4c0fdfb9d519312b260d029db7bfc21ab1640083944407ee5df092352b`吻合owner補記，runtime source不變；準備中不能當live handle。

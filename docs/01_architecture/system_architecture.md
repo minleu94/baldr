@@ -49,21 +49,11 @@
 
 ## 2026-10-06 第二波來源與私人審查邊界
 
-Watchlist 沿原 repository revisions，以 immutable item digest 排除私人 notes／review extension 後核來源；個人 service writer guard＋CAS 僅更新理由與查看狀態。UI 成功前讀回 exact identity/revision，兩個明示同源 revision 比較不借 live。Portfolio 三帳摘要只投影既有 DTO／同列 cache，root/mode 任一已配置即要求中央注入同帳服務；Paper pair 核 portfolio／benchmark 與 state/benchmark/cost DB 全同，不能缺件 fallback。
-
-圖表 marker reader 接原 Portfolio／Journal readonly adapters，以 caller 先核保存原列 custody SHA pins，分別驗來源、帳戶、aware clock、cutoff 與 report context，再投影至 chart；推薦確認與實際買賣分域，缺 account_kind 不推定 actual。主程式注入尚未完成，不從 report.events 造來源。Update／Runtime 只翻譯原 DTO，成功日／行情日期與觀測時間分離，明細收合不解除原 blocker。
-
-generic personal selection → exact Review route → DecisionQuality 私人 review reader／writer＋原 notes selector；Evidence/Gap/Decay 仍 query-only 市場 source。EvidenceOperationsService 的 readiness 用 config 副本，週報 lineage 保存原 ID/hash/路徑但 snapshot qualification unknown；HistoryRepository 沿相同私人 Review DB，每 connection 核 DB/sidecars custody，readonly list 不 mkdir/schema。CLI source --db-path 的 production-like guard 保留，私人輸出不 retarget 市場來源。B09 custody 完成尚未確認，使用者已批准仍適用修正合併並由原 lane 重試；backend／main 最終 composition 仍是獨立剩餘，不以這些葉節點代替。[接線與限定驗證](../06_qa/BALDR_B10_PRIVATE_REVIEW_20261006.md)。
-
-B12 typed calendar／terminal 來源 pins → strict request codec → subprocess preflight／execute → 原 owner acceptance／saved status；明示零 process exit，缺 clock／coverage／terminal 及 hash mismatch 拒絕，default 不 execute。共享 coordination lock 約束多 segment，timeout／cancel 保留 partial。producer/repository 使用共用 OS renderer，source identity 與所有外部 receipt 仍 canonical；既有 capture200GiB 下限不由較低 override 降級。此鏈只完成隔離工程，正式 Task／account／ACL／來源 qualification 未授。[B12 收據](../06_qa/BALDR_B12_DAILY_RUNTIME_20261006.md)。
+本標題保留舊連結。個人 store 路由、Portfolio／Paper 同帳來源、唯讀 Evidence 與保存交易 marker 的身份邊界已整理至[第 11 節](#personal-store-routing-and-account-identity-boundary)；10/06 接線、限制與驗收全文見[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#private-store-routing-20261006)及[B10 QA](../06_qa/BALDR_B10_PRIVATE_REVIEW_20261006.md)。
 
 ## 2026-10-06 首頁接線與personal IO邊界
 
-`personal_store_routes.select_personal_store_route` 純選擇 trades／聲明／Paper trade ledger／Portfolio ledger／Review／Evidence 的 read source 與 write target，不開 store、不 mkdir。PERSONAL 固定同 store；legacy readonly 無 writer；Evidence 強制市場 readonly；Review 保留市場 Evidence refs 不搬整庫。Portfolio ledger 路徑與身份由 caller 明示，不猜 schema。B09／B10 接線仍是下一步，現有 Journal 主 UI selector 不重做。B02 六檔 COW／activation／repository 已沿同版 helper 完成 canonical DB >260 與 suffix 的隔離全鏈驗證；公開身份不變。
-
-首頁四用途沿既有callbacks到原工作區，股號搜尋建立明示當下`ResearchStockContextDTO`，原保存候選保留原exact context；沒有新dashboard／domain計算／全域狀態平台。大盤只翻譯原DTO分類與明示布林條件，缺件保持unknown，刷新不重置收合。個股focus summary沿原change／section status，與ML限制併列，不升模型資格。
-
-`personal_data_paths`保留canonical path給containment／equality／hash／receipt，只在Windows OS IO使用UTF16門檻extended renderer；SQLite URI只ro/rw，不授writer／migration。links/hardlinks與device namespace守衛保留。registry exact symbols僅DTO／transition policy，reader仍sidecar-free一致snapshot；舊8ML boundary未解，不稱架構全通過。[範圍與驗證](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。
+本標題保留舊連結。首頁導覽、明示個股研究 context 與只組合既有 DTO 的責任界線已整理至[第 3 節](#homepage-navigation-and-research-context-boundary)；當日接線與限制全文見[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#homepage-wiring-20261006)及[首波整合 QA](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。
 
 ## 2026-10-06 UX21 明示基準的有限資料流
 
@@ -386,6 +376,11 @@ Application Services / DTO / Repository
 `StockResearchWorkspace` 是主視窗 stack 內的單一 QWidget，組合既有 `StockResearchReportView` 與 `DecisionOutcomeJourneyWidget`；來源頁共用 `ResearchStockContextDTO` 下鑽與返回。切離工作區保留內容，換來源更新同一實例，主程式關閉同時取消兩個讀取元件。舊 `StockResearchReportDialog` 僅保留相容入口，主程式不再建立它。
 
 完整操作見 [APPLICATION_MANUAL.md](../07_guides/APPLICATION_MANUAL.md)。
+
+<a id="homepage-navigation-and-research-context-boundary"></a>
+### 首頁導覽與研究 context 邊界
+
+首頁負責導覽及組合既有 application DTO，不另建 ranking、portfolio 或領域計算 owner。股號搜尋須建立明示的 `ResearchStockContextDTO`；保存候選重開原始 context。UI 不自行補缺件或改變來源資格，未知欄位保持 unknown，首頁摘要與個股 focus 不提升 Recommendation／ML 資格。接線驗收範圍見[首波整合 QA](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。
 
 ## 4. Application Layer
 
@@ -889,6 +884,13 @@ Smart Money 語意層沿用上述資料品質契約：observed / estimated 可�
 Watchlist v3 `watchlist-item-events.v1` 以 immutable item 與 sparse events 保存 revision；既有 v1／v2 與 bookmark 格式可讀，讀取不隱式升級。遷移使用 source／target 分離的 COW converter，保留原 payload、hash、IDs、metadata 與順序；marker、CAS／鎖及 rollback audit 用來阻止並行寫入或錯誤來源切換。容量未知／不足、schema／hash／reference／source identity 不一致時必須 fail closed。
 
 隔離工程驗證不等於已將正式使用者資料套用轉換或啟用新 store。正式 apply／activation 必須另行明示批准，重新核對來源、writer 時段與當下容量；回滾保留來源、target 新 revision 與 audit，不自動合併或刪除。操作程序看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。日期化範圍與證據分別見 [revision retention](../06_qa/F4_ITEM_REVISION_STORAGE_AND_RETENTION_20261005.md)、[SQLite COW](../06_qa/F4_SQLITE_COW_CONVERTER_AND_ACTIVATION_20261005.md)、[Legacy JSON COW](../06_qa/F4_LEGACY_JSON_COW_AND_ACTIVATION_20261005.md) 與 [整合／容量驗收](../06_qa/F4_RELEASE_INTEGRATION_AND_RESOURCE_ACCEPTANCE_20261005.md)。這些收據的隔離範圍與目前批准狀態分開判讀。
+
+<a id="personal-store-routing-and-account-identity-boundary"></a>
+### Personal store 路由與帳戶身份邊界
+
+`personal_store_routes` 只依 caller 明示的用途、來源與身份選擇 read source／write target；路由選擇本身不開啟 store、不建立目錄或 schema，也不啟用 writer。`PERSONAL` 讀寫固定同一 store；legacy route 保持唯讀；Evidence／Gap／Decay 只能查詢市場來源，Review 私人紀錄保留市場 Evidence refs，不搬移市場資料庫。Portfolio root／mode／account identity 由 caller 明示；若已有配置，摘要與比較必須由同帳服務提供，缺件不得跨帳或 fallback。Paper portfolio／benchmark compare 必須核對 state、benchmark 與成本來源身份一致。
+
+持倉／成交圖表 marker 只投影 caller 已核驗的原始交易列與 custody pins，並分別核對 account、aware clock、cutoff 與 report context；推薦確認不等同實際成交，缺少 account kind 不得推定 actual。私人 Review／History 讀取不得 mkdir、建 schema 或 retarget 市場來源。這些規則描述來源與寫入責任，不代表某個私人 root 已啟用或 B09／B10 接線已完成；詳見[第二波私人審查 QA](../06_qa/BALDR_B10_PRIVATE_REVIEW_20261006.md)。
 
 目前保存能力包括：
 

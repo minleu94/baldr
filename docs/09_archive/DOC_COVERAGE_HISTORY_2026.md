@@ -783,3 +783,13 @@ system_architecture 主文原 9/27 區塊的逐次 gate verdict、舊 attempt／
 | `docs/01_architecture/system_architecture.md#2026-10-05-日常研究名單與pinned個股` | [歷史原文](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#ux0405-pinned-stock-route-20261005) | 667 / `F1DC83D3A92DE790D69BFCFBACD17690787BE3ABF09DF18200F889149A2F72D6` |
 | `docs/01_architecture/system_architecture.md#2026-10-05-隔離日研究快照資料流` | [歷史原文](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#ux19-isolated-daily-research-snapshot-20261005) | 1,013 / `2B1001E6C69C809F2ADF7B3E0D0AB2F046D01763294770C0550B266F02A3FA20` |
 | `docs/01_architecture/system_architecture.md#2026-10-05-共用日特徵的研究-consumer` | [歷史原文](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#shared-daily-features-research-consumers-20261005) | 3,364 / `6D317DA3E922B405DFB78D1B1E833FD5285C8128F27C2D3963932EAC3F97E06E` |
+
+<a id="coverage-entry-095"></a>
+## 2026-10-09 整理 Homepage 與 personal store 架構增量
+
+將 system architecture 前置區的 10/06 首頁接線及第二波 private review／personal IO 段落移入架構更新歷史，原標題保留導引。首頁只導覽並組合既有 DTO、傳遞明示 `ResearchStockContextDTO` 的責任整理至 §3；personal source／writer routing、Portfolio／Paper 同帳身份、唯讀 Evidence、交易 marker 與不得 fallback 的邊界整理至 §11。歸檔只保留當日實作與未完成狀態，不能據此推定 B09／B10 完成或私人 root 已啟用。架構 README、Archive README、Coverage Map 與 DOCUMENTATION_STRUCTURE 已同步。
+
+| 原路徑標題 | 歷史原文位置 | 原文 bytes / SHA-256 |
+|---|---|---|
+| `docs/01_architecture/system_architecture.md#2026-10-06-第二波來源與私人審查邊界` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#private-store-routing-20261006) | 2,444 / `F910A44CEF8CD5BFFA1FE90B1B1CC764F6E3438D94E4E0790A97EB1938E60BD9` |
+| `docs/01_architecture/system_architecture.md#2026-10-06-首頁接線與personal-io邊界` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#homepage-wiring-20261006) | 1,525 / `50312F5CFA65D3473D38A88CA1F58551CD9C4B772BDED60A42A6CC2AADC88F86` |

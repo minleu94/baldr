@@ -19,7 +19,7 @@
 - **`system_architecture.md`**
   - 系統的技術架構說明
   - 模組結構、數據流程、技術細節
-  - 架構主文為第 1–15 節；仍有效的 orchestration、SQLite connection、ML initialization、Personal H20 artifact／lineage、ML reader custody 與 model-loader 契約已抽回第 4、8、11 節。原第 16 節逐次更新、9/27 邊界／資源 lifecycle 收據與 10/06 H20／ML dated status 已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，主文保留舊標題導引；其餘未歸檔的日期段落仍可能含有尚未濃縮的 scoped contract，狀態不可依段落日期或先後順序推斷。
+  - 架構主文為第 1–15 節；首頁導覽與研究 context 契約、personal store 路由，以及 orchestration、SQLite connection、ML initialization、Personal H20 lineage、ML reader custody 與 model-loader 契約已抽回第 3、4、8、11 節。原第 16 節流水帳、9/27 lifecycle 收據及 10/06 H20／ML／private-store／homepage dated status 已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，舊標題保留導引；其餘未歸檔日期段落仍可能含 scoped contract，不能依日期推斷現況。
 
 - **`target_system_architecture.md`**
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
@@ -33,10 +33,12 @@
 |---|---|
 | 系統定位與整體分層 | 第 1–2 節 |
 | UI、Application、Decision、Backtest、Portfolio | 第 3–7 節 |
+| 首頁導覽與明示研究 context | 第 3 節 |
 | 資料、券商分點與 Runtime | 第 8–10 節 |
 | Daily Market Research snapshot、cohort、method 與 saved chart custody | 第 8 節；日期化 UX 收據依各舊 heading 導引到 Archive／QA |
 | 保存治理、匯出、文件架構、高風險修改與驗證 | 第 11–15 節 |
 | Watchlist／bookmark 保存與 COW 遷移 | 第 4、8、11 節；操作與批准狀態看 [Application Manual](../07_guides/APPLICATION_MANUAL.md) |
+| Personal store 路由、帳戶身份與禁止 fallback | 第 11 節；狀態看 Snapshot／Manual |
 
 主文前後的日期化架構增量保存當時的局部變更與限制，適合在需要追溯指定切片時查閱；不要從文件前後順序推斷目前狀態。R01 的逐次測試數字已集中到 [QA 收據](../06_qa/BALDR_FINAL_AUTHORIZED_UNION_20261006.md)，bounded Registry read contract 保留於主文第 11 節；原重複摘錄見 [Archive](../09_archive/SYSTEM_ARCHITECTURE_R01_VALIDATION_EXCERPT_20261006.md)。2026-09-27 邊界／資源 lifecycle 的 dated verdict 與證據已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，穩定契約留在主文第 4、8、11 節。9/30 排程資料流也已歸檔，穩定的 lane 來源 identity 規則留在主文第 10 節。第 16 節舊更新流水帳同樣位於歷史檔；目前完成度看 Snapshot，具體驗收看對應 QA 收據。
 

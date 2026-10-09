@@ -16,6 +16,12 @@
 
 - [R029 retirement gate 草稿](R029_RETIREMENT_GATE_DRAFT_20260925_HISTORY.md) 與[唯讀 caller／alias 預檢清冊](R029_RETIREMENT_PREFLIGHT_INVENTORY_20260925_HISTORY.md)：保留 2026-09-25 裁定前狀態與當時有限搜尋證據，不代表目前 caller 完整性或 cleanup 授權。現行裁定看 [implementation/acceptance report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R029_IMPLEMENTATION_REPORT.md) 與 [FINAL_MIGRATION_SEQUENCE](../01_architecture/target_architecture_2026_09_22/FINAL_MIGRATION_SEQUENCE.md)；原 QA 路徑保留相容導引，逐檔 bytes／SHA 見 [Coverage History Entry 098](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。
 
+<a id="2026-10-09-qa-historical-snapshots-scheduler-health-and-ux08-controller"></a>
+## 2026-10-09 歷史 QA 快照：排程 health 與 UX08 controller handoff
+
+- [Scheduler Health & Observability（2026-08-27）](SCHEDULER_HEALTH_OBSERVABILITY_REPORT_20260827_HISTORY.md)：保存當日五個邏輯任務的 read-only 狀態；不是目前 scheduler health。產生器只有在明確傳入 `--markdown-output` 時才寫檔，沒有固定 QA 路徑 consumer；現況以 Snapshot 與近期排程 QA 為準。
+- [UX08 純 chart viewport controller handoff（2026-10-06）](UX08_CHART_VIEWPORT_STATE_QA_20261006_HISTORY.md)：保存整合前 controller API、測試與 owner 邊界；後續產品按鈕接線看 [UX08 viewport integration QA](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)，Native／真人驗收仍未完成。原 QA 路徑保留相容導引，hash 見 [Coverage History Entry 099](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-099)。
+
 <a id="qa-historical-process-failure-review-20261009"></a>
 ## 2026-10-09 QA 歷史流程與失效分析
 

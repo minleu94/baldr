@@ -223,6 +223,7 @@
 - 2026-10-08：封存已完成的 Safe Refactor continuation plan；其 Wave 6 核准與 release healthcheck 由專項 QA audit 保留，舊路徑轉址至 Archive。
 - 2026-10-09：將 Portfolio Replay weight/exposure implementation plan 原文補入 Archive，保留最後 diff／stage 核取項目未勾的差異。舊路徑留導引，README 與 manifest 記錄原始狀態。
 - 2026-10-09：R029 gate 草稿與 retirement preflight 的現行交叉引用已改指 Archive 原文後成對歸檔；QA 舊路徑保留短導引，Entry 098 記錄原件／封存 hash，凍結 WAVE14 manifest 不修改。
+- 2026-10-09：確認 scheduler health generator 無固定 QA 輸出路徑，並歸檔其 8/27 dated snapshot；UX08 初始 controller handoff 由後續整合收據接手，兩個原 QA 路徑都保留短導引與 hash provenance。
 - 2026-10-09：整理 Architecture 前置 H20 dated increment：lineage／artifact 身分契約抽回 §11，10/06 當日狀態與原文保存在架構更新歷史，舊 heading 保留導引；README、Coverage Map 與 Archive 索引同步。
 - 2026-10-09：整理 Architecture 兩個 10/06 ML source custody／session proof dated blocks：穩定依賴方向契約移入 §11，日期化驗收與 guard 狀態留在歷史檔及 QA；原標題保留導引並更新 README／Coverage Map。
 - 2026-10-09：將七段 10/05–06 Daily Market Research snapshot、cohort、method、pinned route 與 chart 增量移入架構更新歷史；來源／讀回／未知資格邊界濃縮至 §8，原標題保留導引並更新 README／Coverage Map。

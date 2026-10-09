@@ -408,6 +408,7 @@
 - 2026-10-09：將 10/06 homepage wiring 與 private review dated increments 移入架構更新歷史；首頁 routing 和 personal store／account identity 契約整理至 §§3、11。細節見 [Coverage History Entry 095](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-095)。
 - 2026-10-09：將 2026-09-29 排程 operational custody dated slice 歸檔；各 lane source／release pins、同次 terminal receipt 與不可跨 lane 授權規則保留於 Architecture §10。細節見 [Coverage History Entry 096](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-096)。
 - 2026-10-09：明確 QA 收據歸檔條件：仍被 Gate、未解問題或工具固定路徑使用的文件留在 QA；純歷史收據只有解除活躍依賴並保留相容導引後才搬移。
+- 2026-10-09：將 8/27 Scheduler Health dated output snapshot 與 UX08 pre-integration controller handoff 歸檔；確認 scheduler 報告工具無固定 QA writer、UX08 目前整合收據保留在 QA，並以舊路徑 stub 維持引用。詳見 [Coverage History Entry 099](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-099)。
 - 2026-10-09：核對 Gemini 提出的 10 份 QA 歸檔候選，只封存 3 份無活躍依賴的歷史紀錄；其餘 7 份因 tracked manifest 固定原 bytes／路徑或仍被現行入口引用而保留。詳見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
 - 2026-10-09：精簡 V2.1–V4.0 maturity spec 中重複的 7/12、8/30 status notes；歷史判讀仍由既有 Archive 提供，正文保留版本標準並以 Snapshot 表示現況。
 - 2026-10-09：修正 R029 active report／R031 index 對 gate 草稿與預檢清冊的引用後，將兩份已 superseded 的 dated preflight 成對歸檔；保留 QA 原路徑導引與 WAVE14 凍結 manifest。細節見 [Coverage History Entry 098](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。
@@ -461,3 +462,7 @@
 ## 2026-10-09 歸檔 R029 gate 草稿與 preflight 清冊
 
 [成對歸檔紀錄與逐檔 SHA-256](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。
+
+## 2026-10-09 歸檔 scheduler health snapshot 與 UX08 controller handoff
+
+[逐檔來源與封存 SHA-256](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-099)。

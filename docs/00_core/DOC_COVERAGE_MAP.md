@@ -1,5 +1,9 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 歸檔舊端到端架構藍圖
+
+將 `docs/01_architecture/system_flow_end_to_end.md` 的 8,440-byte 舊流程藍圖移至 [`docs/09_archive/SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md`](../09_archive/SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md)。搬移前 SHA-256：`BFEE295DF4EFCAC0ED678DEAEEA589681258BD72EC87BACC2C634A35AB8911ED`；保留原文段落，只移除檔尾多餘的空白行。該藍圖描述舊 feature store／recommendation／UI 路徑與建議新增模組，不再作現況權威。原架構路徑改為導引，接住 2026-10-06 靜態 Catalog、歷史計畫與 QA 引用；架構 README、Archive README 已更新現況入口。不改未提交的 `DOCUMENTATION_INDEX.md`。
+
 ## 2026-10-08 封存被拒絕的 prospective clock staging
 
 將 `docs/06_qa/PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V2_STAGING.md` 的 6,246-byte 歷史收據移至 [`docs/09_archive/PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V2_STAGING_HISTORY.md`](../09_archive/PROSPECTIVE_FORMAL_RESTART_CLOCK_2026_08_27_V2_STAGING_HISTORY.md)。封存前 SHA-256：`D3BCEB710AB0CDCF1CEF82B7F0DF28F8378AB6AAA3F5D1C8B4C52378F4F1555F`。只將原文指向同目錄 v3 successor 的絕對本機連結改成相對連結；其餘 staging、clock、calendar 與 PIT hashes 原樣保留。原 QA 路徑改為轉址頁，接住歷史 `DOCUMENTATION_CATALOG_20261006.md` 引用；QA README 與 Archive README 已同步標示「V2 當時被拒絕、v3 當時為 successor」，避免被解讀為目前狀態。沒有更改外部 DATA_ROOT 的任何資料或 staging。

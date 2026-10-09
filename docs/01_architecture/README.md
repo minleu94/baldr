@@ -50,9 +50,8 @@
 - **`system_vision_specification.md`**
   - North Star、Bounded Advice、Evidence Requirements、Success Levels 與 Non-goals
 
-- **`system_flow_end_to_end.md`**
-  - 系統端到端流程說明
-  - 從環境初始化到 UI 應用的完整流程
+- **[舊端到端流程藍圖（歷史）](../09_archive/SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md)**
+  - 舊模組、資料路徑與建議新增元件僅供架構演進追溯；目前系統流程以 `system_architecture.md` 為準，UI 操作以 `../07_guides/APPLICATION_MANUAL.md` 為準。原路徑保留轉址，接住歷史 catalog 與計畫引用。
 
 - **`data_collection_architecture.md`**
   - 數據收集系統的架構

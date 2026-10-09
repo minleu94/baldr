@@ -21,6 +21,7 @@
 - [V2.1–V4.0 工程交接紀錄（2026-09-15）](VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)：保存當時工程分流與下一步；版本成熟度標準仍以核心 Roadmap 為準。
 - [V2.1–V4.0 版本狀態快照（2026-07-12 至 2026-08-30）](VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)：保存各成熟度版本曾附加的階段狀態；目前狀態以 Snapshot 為準。
 - [系統架構更新歷史（2026-06 至 2026-10）](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)：保留原架構文檔第 16 節的逐次狀態記錄；目前模組邊界與資料流仍以 `system_architecture.md` 主文為準。
+- [舊端到端流程藍圖](SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md)：保存舊 feature store、signals／recommendation 路徑、過時模組位置與建議新增元件；現況請看 `docs/01_architecture/system_architecture.md`，目標請看 `target_system_architecture.md`。
 - [文件編碼稽核（2026-06-16）](DOCUMENT_ENCODING_AUDIT_2026_06_16.md)：一次性 UTF-8／mojibake 掃描；保留當時結論，不代表目前 repo 的完整編碼檢查。
 - [文件與 Roadmap 重整稽核（2026-07-03）](DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md)：一次性文件治理稽核；Phase 歷史判讀已納入現行 `DOCUMENTATION_STRUCTURE.md`。
 - [SQLite inspector 關閉探測（2026-09-15）](QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md)：保留 bounded probe 收據；當時未重現問題，不代表排除所有競態。

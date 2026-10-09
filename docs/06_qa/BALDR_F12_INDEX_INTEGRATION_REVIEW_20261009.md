@@ -17,3 +17,9 @@ Root native 執行 `tests/test_daily_market_monthly_revenue_yoy_index_v1.py`，e
 目前新 reader 測試來源涵蓋 258 declared／257 processed／1 excluded 的母體、兩組 OR、排除 hard gate、跨分段分頁與索引整份驗證次數。該 fixture 沒有 pending，且 MA 為 unknown、營收只有一筆合格觀測；尚不能證明三組 AND／OR、完整未知政策與 pending 行為，已要求補齊實際來源案例。
 
 後續 root native 回歸 session `71554` 已完成：原 F17 reader 與 MA query DTO 共 45 passed／497.79 秒、exit 0，600 秒有界期限未觸發。共享 reader SHA 起訖皆為 `3a8274201402709b2d9515d6da552ee4502f3a0b3be0e3c0b14c0473bc21ae39`。收據與串流日誌為 `root_old_query_regression_1791508671465035500.json`／`.log`；此結果證明既有契約回歸，不能取代新增營收三組條件與完整來源整合驗收。
+
+Root 另以真正合成 SQLite load 注入投影錯誤及投影／close 雙錯誤，兩例通過、exit 0。單一投影錯誤立即關閉來源且不發行索引；close 被故障注入阻止時，錯誤 cause 的 `BaseExceptionGroup` 精確保留原始與清理兩錯誤，來源當時尚未關閉，不能冒稱清理成功；還原故障後 owner 真正關閉，仍沒有索引。收據 `C:/t/root_f12_failure_tjcv_ww7/receipt.json`，可重跑腳本 `output/qa/F12_MONTHLY_REVENUE_QUERY_20261009_A/root_failure_probe.py`。索引 SHA 起訖同為 `09d9bd969a0221cce4af089104c1cefb00926b6d55b3fbf5ceabaa4d662a2bf9`；此檢查補足 batch 投影與清理雙錯誤範圍，不涵蓋全部 finish／query 失敗路徑。
+
+新 reader 整檔 session `24856` 由 owner 回報 terminal 摘要為 6 failed／2 passed、209.02 秒；該次 pytest 輸出與來源起訖 pins 沒有落盤，無法提供 root 可重查的完整 traceback，故保留稽核缺口，不能授予接受。合成 basetemp `C:/t/f12_revenue_reader_20261009_a` 保留，後續修正須使用新封套並保存完整串流日誌與來源 pins。
+
+Root 靜態核對發現新 revenue source-pins 把沿用 MA 的原時區 cutoff 字串與 UTC cutoff 字串直接比較。MA request 由 `metadata.decision_cutoff_label.isoformat()` 建立，而 monthly cutoff 使用 UTC；即使同一 aware 時刻，兩種時區字串也可能不相同。已要求用保留的真合成 fixture 記錄實際值重現，僅在新 revenue 契約明示正規化，先驗 aware instant 一致，保留既有 MA request／identity；不得為了通過而把真正不同的 cutoff 改成相同。

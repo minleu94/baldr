@@ -53,6 +53,10 @@ F17 最新封套的 source parent 另確認 catalog 更新成功且只有一筆�
 
 ## 更新記錄
 
+- 2026-10-09 中央回歸：新增營收查詢接線後，原 F17 reader／MA query DTO 由 Root native 執行 45 passed／497.79 秒、exit 0；共享 reader SHA 起訖一致。詳見 `BALDR_F12_INDEX_INTEGRATION_REVIEW_20261009.md`。營收三組條件整合、新 UI 與跨程序原版重開仍待；此 45 項與前述營收來源層 45 項為不同範圍，不能相互代替。
+- 2026-10-09 F02 target 診斷：舊固定驗收把最後一檔缺價格來源誤判為 pending；真完整 segment 處理應保存 processed 與 missing-data 標記。已要求另建待審 v3，保留 259 declared／258 included／1 excluded、原 257 有資料股票的跨分段與所有複合條件，另驗缺資料股票保持未知。舊 target 與失敗封套保留；完整矩陣尚未通過，真正 partial／pending ledger 是獨立未驗收範圍，產品完整性門檻不改。詳見 `BALDR_F02_FDOPEN_GUARD_DIAGNOSIS_20261009.md`。
+- 2026-10-09 H20 bridge：凍結 d 的真外層雙 SQLite router 已由 Root 通過 7 項合成契約測試，補足僅內層 adapter 測試的不足；仍不是 Main 視窗旅程或原始 10 檔／684 bp 來源接受。新的固定 22-pin 合成 Main 操作程序正在建置，缺 typed 成功收據與完整程序清理時不得通過。
+
 - 2026-10-08／09 中央補記：F02 四均線排列的複合 query／UI／收藏接線已取得完整 `MainWindow` 建構、選版、選股、儲存收藏、重新開啟與正常關閉的隔離合成證據。Root 獨立執行 `tests/test_ui_qt_ma_bookmark_full_mainwindow_startup.py` 為 2 passed，收據 `output/qa/ma_bookmark_main_startup_20261008_a/attempt_1791504241000148100_34728/main_startup_receipt.json`；同版 source hash 前後一致、exact open 2 次、無 generic fallback、關閉時 worker 為 0。這補足先前表格的產品接線缺口，但不代表固定 257 檔完整 AND／OR 矩陣、原始來源、新程序 EXE 或真人驗收通過；MA20 上彎亦仍未完成。
 - 2026-10-08／09 效能補記：1,000 檔冷暖矩陣曾取得有效樣本，page p95 約 813 ms、filter 約 1,208 ms、sort 約 879 ms，未達 300 ms 目標；不能再以「沒有任何有效樣本」描述所有後續輪次。JSON 型別檢查 fastpath 已完成局部回歸，完整矩陣尚需重新量測。Root 的原始 token decode memo 合成實驗中位數由 8.1822 ms 變成 8.4736 ms，沒有改善，故未納入產品。此實驗不代表完整頁面或使用者 2382 的延遲。
 - 2026-10-08／09 H20 補記：市場來源含非空 WAL，僅複製 main DB 不能作為完整來源。合成 WAL helper 已由 Root 獨立通過已提交／未提交資料、來源變動、取消、清理與 reparse 負測；來源 SQLite 連線數為 0，SHM 僅核對 metadata identity。另已獨立通過 21 項 case/output 路徑契約測試。兩者尚未接成原始來源完整 Main 旅程；typed WAL market bridge、固定來源封套與新 EXE 仍待，不授予原始 H20 或真人接受。

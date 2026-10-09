@@ -34,3 +34,11 @@ Owner 8 passed／1.28 秒；Root 獨立 native 執行 `test_wal_merged_market_br
 Root 獨立 native 執行 c 候選的 `test_wal_market_dispatcher_composition_qa.py`，terminal exit 0，3 passed／0.55 秒（工具輸出 f09de9）。閱讀測試後確認：三例直接使用 market operation 的 owner-issued attachment 與 `open_connection()`，涵蓋精確 URI、錯誤 token／原庫路徑拒絕、跨執行緒連線未關閉時拒絕 detach，以及正常 finish／副本清理。
 
 三例沒有實例化或安裝 `_DualSQLiteRouter`，也沒有同時走 H20 與兩個 runtime DB 路由，因此只能授予 market attachment 契約證據，不能稱為外層雙來源 dispatcher 或 Main 旅程通過。後續須以真 router 經公開 `sqlite3.connect` 與 `sqlite3.dbapi2.connect` 核驗四條資料庫路由及拒絕、hook 還原、連線關閉，再進行真 Main 合成旅程。原始來源仍未啟動。
+
+## 真外層路由合成複驗
+
+新 d 候選保存 c 前像與失敗收據，移入已審 CASE_ROOT／OUTPUT_ROOT 契約，修正 Windows concrete Path 核對及私有 copy 初始化前不得讀 active-only 公開 getter 的時序。Root 初輪 5 passed／2 failed 收據仍保存；後續測試補齊 H20 copy／finish 生命週期，不放寬 terminal 對單一 H20 來源的要求。
+
+Owner native 7 passed／0.73 秒。Root 依交付四檔固定 SHA 獨立執行七項，exit 0、7 passed／0.79 秒、四檔前後 pins 完全一致；收據 `output/qa/h20_dual_sqlite_readonly_main_20261009_d/root_frozen_router_review_1791507394490505500.json`。覆蓋 root/output 正例與錯配拒絕、真 router 的 market／H20／兩個 runtime DB、原始／未知／第三 runtime 路徑拒絕，以及 native 連線未關閉時拒絕 finish、關閉後清理與還原 hooks。Runtime delegate 使用合成精確路徑 adapter；此處不是 legacy guard 完整 Main 啟動驗收。
+
+固定 SHA：child `1cfaf5eb3a0be649f5a993c9f3381db125d55e351c5d2c22121a26bad7f0399a`；bridge `864301254a2f930e6680b2f523b54a88bc3bb8fefb80df7805de8b307589ba27`；helper `0480f1ced50d05481a62d6e19c636d259ee23976289162d40076a96d66783bb4`；test `38074366b866d61d02a8acc62001d8295d5ba95f2edf6a9110c4a0acf52179ca`。下一步是真 Main 雙來源合成旅程與固定源封套；原始 H20、EXE、真人及效能接受仍待。

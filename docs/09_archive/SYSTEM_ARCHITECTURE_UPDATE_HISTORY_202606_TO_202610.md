@@ -1,6 +1,6 @@
 # 系統架構更新記錄（2026-06 至 2026-10）
 
-> 原 system_architecture 的日期化歷史切片與第 16 節更新流水帳；僅作歷史追溯。現行架構請看 system_architecture 主文，目前狀態請看 PROJECT_SNAPSHOT。
+> 原 system_architecture 的日期化歷史切片與第 16 節更新流水帳；僅作歷史追溯。2026-10-06 Personal H20 原模型讀取增量全文亦保留於此。現行架構契約請看 system_architecture，目前狀態請看 PROJECT_SNAPSHOT。
 
 > 以下保留 system_architecture 於 2026-09-27 記下的決策與驗收快照；日期化 verdict 以文中 QA 收據為準，現況以 PROJECT_SNAPSHOT 為準。原 R027 strict INCONCLUSIVE 與之後的 versioned logical-time revision 是兩個獨立判定。
 
@@ -149,3 +149,10 @@ ML forward 使用不同來源／release pins，不因同日 Task 成功互相授
 
 
 2026-10-03後續驗證：見 `docs/06_qa/FINAL_DATA_CLOSEOUT_AND_COMMIT_20261003.md`。current fundamentals 為weekly成功後的獨立writer；current revision與正式PIT分離，decision date使用Asia/Taipei、market cutoff保留獨立日期；Evidence依child stdout/summary/report與來源品質驗收。個股研究提供明確保存來源／指定股票分析及獨立技術觀察，仍守正式ML來源修訂隔離。
+
+<a id="system-architecture-h20-20261006"></a>
+## 2026-10-06 個人 H20 原模型讀取增量
+
+`H20GrossModelContract` 與 `PersonalH20GrossInference` 沿原 artifact loader 的 captured-manifest／same-bytes decode。受控 composition 注入原 `read_recommendation_training_lineage`，模型 final-fold training_as_of 與 merged-lineage cutoff 分域；candidate.training_cutoff 精確綁後者，兩者不得晚於決策日。原中文 lineage canonical bytes 語義保持。中央 preflight 只讀可信 fit receipt 的 raw pin→原 sidecars→原 verifier→typed contract，不重造 lineage、不載 artifact或啟 Task。
+
+真 artifact 原保存請求重播已驗，尚未把 current-restated inference source 與 frozen training source 完成 daily composition。config personal_model_policy_path 只選 policy 位置，explicit MainWindow override 優先，不自動啟用；私人 policy／預測紀錄仍與 FA_Data／marketdb 分離。證據與剩餘見[中央整合 QA](../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md)。

@@ -1,6 +1,6 @@
 # 系統架構
 
-> **閱讀入口**：本文件包含架構主文與日期化增量。要理解系統定位、分層與模組責任，請從[第 1 節：系統定位](#1-系統定位)開始；要確認目前完成度與阻礙，先看[PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。前後日期記錄只保留各次變更脈絡，不取代 Snapshot 或下方架構主文。
+> **閱讀入口**：本文件包含架構主文與日期化增量。要理解系統定位、分層與模組責任，請從[第 1 節：系統定位](#1-系統定位)開始；要確認目前完成度與阻礙，先看[PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)。日期化增量可能保存尚未濃縮進主文的細部架構契約；其測試結果與當日狀態只作追溯，不能取代 Snapshot 或各主題最新 QA。
 
 ## Windows 可攜 composition（2026-10-06）
 
@@ -8,7 +8,7 @@
 
 `baldr_launcher.py` 在重型匯入前分流 frozen multiprocessing，再以原 `ui_qt.main` composition 啟動。原 `sys.executable + scripts/*.py`／`-m`／`-c` 子程序沿包內資源分流；不依 cwd。市場、私人與模型契約不改；外部 config 明示 roots，Runtime 使用 `OUTPUT_ROOT/application_state`，ML registry 獨立使用 LOCALAPPDATA/baldr/research_state，避免 OUTPUT_ROOT 位於市場根內時觸發原 ML 邊界；缺件仍 unknown，安全 guard 不變。PyInstaller onedir 收集 Qt plugins 與 scipy／sklearn／TA-Lib，正式資料、私人模型、QA／experiments 與 `.env` 不打包。操作見 [可攜指南](../07_guides/PORTABLE_WINDOWS.md)，建置成功與驗證範圍另看交付收據。
 
-> **2026-10-06 現況判讀入口**：現行啟用／收據與下一自然排程見 [Snapshot](../00_core/PROJECT_SNAPSHOT.md)。本頁日期化 caller／工程段落保留各自 fixed-head 的架構證據；早期 U1/U2 pending／私人未啟用／舊邊界問題不能覆蓋後來具名接受。H20 gross consumer 與 canonical 機率 head 分域，自然 10 pending／0 成熟，Native 真人／下一 Task 未驗；目標分冊不自動代表 current。資料根與冷封存依 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)，不得從架構整理取得資料清理或模型 promotion 權限。
+> **2026-10-06 歷史狀態快照入口**：本頁日期化 caller／工程段落保存各自 fixed-head 的架構證據，不代表目前狀態。現行啟用、收據與排程以 [Snapshot](../00_core/PROJECT_SNAPSHOT.md) 及各路線最新 QA 判讀；個人 H20 gross consumer 與 canonical 機率 head 仍須分開判讀，不因個人研究 consumer 接線提升全域 Recommendation／Portfolio ML 資格。資料根與冷封存依 [資產登記](../03_data/STORAGE_ASSET_REGISTER_20261006.md)，不得從架構整理取得資料清理或模型 promotion 權限。
 
 ## ML 路線與狀態判讀
 
@@ -25,9 +25,7 @@
 
 ## 2026-10-06 個人 H20 原模型讀取增量
 
-`H20GrossModelContract` 與 `PersonalH20GrossInference` 沿原 artifact loader 的 captured-manifest／same-bytes decode。受控 composition 注入原 `read_recommendation_training_lineage`，模型 final-fold training_as_of 與 merged-lineage cutoff 分域；candidate.training_cutoff 精確綁後者，兩者不得晚於決策日。原中文 lineage canonical bytes 語義保持。中央 preflight 只讀可信 fit receipt 的 raw pin→原 sidecars→原 verifier→typed contract，不重造 lineage、不載 artifact或啟 Task。
-
-真 artifact 原保存請求重播已驗，尚未把 current-restated inference source 與 frozen training source 完成 daily composition。config personal_model_policy_path 只選 policy 位置，explicit MainWindow override 優先，不自動啟用；私人 policy／預測紀錄仍與 FA_Data／marketdb 分離。證據與剩餘見[中央整合 QA](../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md)。
+本標題保留舊連結。穩定的 artifact／lineage 身分界線已整理至[第 11 節](#personal-h20-artifact-and-lineage-boundary)；10/06 當日的 caller 狀態與驗收文字完整保存在[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#system-architecture-h20-20261006)。後續個人 H20 consumer 整合見[10/07 QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md)，目前完成度仍以 Snapshot 與最新收據為準。
 
 ## 2026-10-06 final authorized validation / R01 accepted
 
@@ -889,6 +887,11 @@ Smart Money 語意層沿用上述資料品質契約：observed / estimated 可�
 ### ML entry initialization boundary
 
 正式 app CLI 入口會執行 application bootstrap；直接呼叫 ML entry 時，若尚未完成明示初始化，必須在 training 或產生輸出前 fail-closed。此入口前置條件不代表 artifact 已通過載入、預測、release 或正式資格驗證；仍須遵守下方 immutable publication 與來源驗證契約。
+
+<a id="personal-h20-artifact-and-lineage-boundary"></a>
+### Personal H20 artifact and lineage boundary
+
+個人 H20 gross reader 沿用 captured manifest 與同一份已核驗 bytes 解碼；受控 composition 注入原 training-lineage reader。模型 final-fold `training_as_of` 與 merged-lineage cutoff 是不同時鐘，`candidate.training_cutoff` 綁定後者，兩者均不得晚於決策日；lineage canonical bytes 保留原序列化語意。Fit-receipt preflight 依 raw pin → 原 sidecars → 原 verifier → typed contract 核驗，不重造 lineage、不載入 artifact、不啟動 Task。此為來源／模型身分契約，不授予模型成熟、全域 promotion 或正式推薦資格；具名證據見[個人 H20 整合 QA](../06_qa/BALDR_PERSONAL_MODEL_ACTIVATION_INTEGRATION_20261006.md)。
 
 ### Technical-universe provenance boundary
 

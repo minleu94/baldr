@@ -19,7 +19,7 @@
 - **`system_architecture.md`**
   - 系統的技術架構說明
   - 模組結構、數據流程、技術細節
-  - 架構主文為第 1–15 節；日期化增量分布在主文前後。原第 16 節逐次更新記錄與 9/27 邊界／資源 lifecycle 收據已移至 [架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，主文保留舊標題導引；仍有效的 orchestration、SQLite connection 與 ML initialization 契約已抽回第 4、8、11 節。
+  - 架構主文為第 1–15 節；仍有效的 orchestration、SQLite connection、ML initialization 與 Personal H20 artifact／lineage 契約已抽回第 4、8、11 節。原第 16 節逐次更新、9/27 邊界／資源 lifecycle 收據與 10/06 Personal H20 當日狀態已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)，主文保留舊標題導引；其餘未歸檔的日期段落仍可能含有尚未濃縮的 scoped contract，狀態不可依段落日期或先後順序推斷。
 
 - **`target_system_architecture.md`**
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
@@ -27,7 +27,7 @@
 
 ## 目前架構速讀
 
-`system_architecture.md` 開頭先列目前的 Windows composition 與 ML 路線入口，之後有日期化增量，再進入第 1–15 節架構主文；主文後也有日期化增量。若要理解系統定位與模組責任，先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判斷目前狀態，再直接跳到第 1 節，按問題讀主文：
+`system_architecture.md` 開頭先列 Windows composition 與 ML 路線入口，再進入第 1–15 節架構主文；前後日期段落保存 scoped contracts 或歷史增量，依各段落導引查找，不按日期推斷現況。若要理解系統定位與模組責任，先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判斷目前狀態，再直接跳到第 1 節，按問題讀主文：
 
 | 要理解的內容 | 主文位置 |
 |---|---|
@@ -41,10 +41,11 @@
 
 ## ML 架構閱讀順序
 
-1. 先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 確認日期化現況，再看 [目前系統架構](system_architecture.md) 中的「ML 路線與狀態判讀」。
-2. [目標架構 ML Shadow Layer](target_system_architecture.md#1011-ml-shadow-layer) 描述全域 Recommendation ML 的設計邊界，不作為 active model 或目前資格的證據。
-3. [Gate 7 ML Shadow Engineering](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 記錄投組配置 ML 的研究訓練與 Formal gate；[Personal H20 整合 QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md) 記錄個股研究 H20 投影範圍。
-4. [ASTRA Engineering Closeout（2026-10-03）](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md) 是特定日期的歷史執行記錄；只用來追溯當時狀態，不覆蓋較新的 Snapshot／QA。
+1. 先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 確認現況，再看 [目前系統架構](system_architecture.md) 中的「ML 路線與狀態判讀」。
+2. Personal H20 的 artifact／lineage 身分界線見 [系統架構第 11 節](system_architecture.md#personal-h20-artifact-and-lineage-boundary)；10/06 原模型讀取增量已移至[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#system-architecture-h20-20261006)，其當日狀態不代表目前接線。
+3. [目標架構 ML Shadow Layer](target_system_architecture.md#1011-ml-shadow-layer) 描述全域 Recommendation ML 的設計邊界，不作為 active model 或目前資格的證據。
+4. [Gate 7 ML Shadow Engineering](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md) 記錄投組配置 ML 的研究訓練與 Formal gate；[Personal H20 整合 QA](../06_qa/BALDR_CENTRAL_COHORT_NATURAL_BBUI_INTEGRATION_20261007.md) 記錄個股研究 H20 投影範圍。
+5. [ASTRA Engineering Closeout（2026-10-03）](../06_qa/ASTRA_ENGINEERING_CLOSEOUT_20261003.md) 是特定日期的歷史執行記錄；只用來追溯當時狀態，不覆蓋較新的 Snapshot／QA。
 
 以上 QA 檔保留原日期與證據用途，不因狀態更新而搬入 Archive 或改名。閱讀時要區分 Recommendation Shadow、Portfolio Allocation Research 與 Personal H20，避免把模型訓練、consumer 接線或研究頁投影說成正式選股已使用 ML。
 

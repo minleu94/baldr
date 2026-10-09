@@ -213,6 +213,7 @@
 - 2026-10-08：另封存兩份具提交及驗證證據的 Month 3 Factor Layer 延伸計畫，以及 Month 4 Decision Desk closure 原文；保留 Month 4 結案摘要與未勾選模板核取方塊的差異。
 - 2026-10-08：封存已完成的 Safe Refactor continuation plan；其 Wave 6 核准與 release healthcheck 由專項 QA audit 保留，舊路徑轉址至 Archive。
 - 2026-10-09：將 Portfolio Replay weight/exposure implementation plan 原文補入 Archive，保留最後 diff／stage 核取項目未勾的差異。舊路徑留導引，README 與 manifest 記錄原始狀態。
+- 2026-10-09：整理 Architecture 前置 H20 dated increment：lineage／artifact 身分契約抽回 §11，10/06 當日狀態與原文保存在架構更新歷史，舊 heading 保留導引；README、Coverage Map 與 Archive 索引同步。
 - 2026-10-08：將四份早期 Recommendation／Update Tab QA 問題盤點與摘要移至 Archive，保留 byte-identical 原件、相容導引及現況判讀界線；同步 QA／Archive README 與 coverage map。
 - 2026-10-08：將回測 Lab 過期 checklist／FAQ 歸檔並保留舊路徑導引；快速參考改指操作手冊，功能目錄與 coverage map 同步現行入口。
 - 2026-10-08：將 V3 ML readiness 與兩組 UI readability polish 的已結案 plan/spec 配對歸檔；ML 原件明定僅研究／closeout readiness，不代表 production ML。

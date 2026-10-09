@@ -53,6 +53,10 @@ F17 最新封套的 source parent 另確認 catalog 更新成功且只有一筆�
 
 ## 更新記錄
 
+- 2026-10-08／09 中央補記：F02 四均線排列的複合 query／UI／收藏接線已取得完整 `MainWindow` 建構、選版、選股、儲存收藏、重新開啟與正常關閉的隔離合成證據。Root 獨立執行 `tests/test_ui_qt_ma_bookmark_full_mainwindow_startup.py` 為 2 passed，收據 `output/qa/ma_bookmark_main_startup_20261008_a/attempt_1791504241000148100_34728/main_startup_receipt.json`；同版 source hash 前後一致、exact open 2 次、無 generic fallback、關閉時 worker 為 0。這補足先前表格的產品接線缺口，但不代表固定 257 檔完整 AND／OR 矩陣、原始來源、新程序 EXE 或真人驗收通過；MA20 上彎亦仍未完成。
+- 2026-10-08／09 效能補記：1,000 檔冷暖矩陣曾取得有效樣本，page p95 約 813 ms、filter 約 1,208 ms、sort 約 879 ms，未達 300 ms 目標；不能再以「沒有任何有效樣本」描述所有後續輪次。JSON 型別檢查 fastpath 已完成局部回歸，完整矩陣尚需重新量測。Root 的原始 token decode memo 合成實驗中位數由 8.1822 ms 變成 8.4736 ms，沒有改善，故未納入產品。此實驗不代表完整頁面或使用者 2382 的延遲。
+- 2026-10-08／09 H20 補記：市場來源含非空 WAL，僅複製 main DB 不能作為完整來源。合成 WAL helper 已由 Root 獨立通過已提交／未提交資料、來源變動、取消、清理與 reparse 負測；來源 SQLite 連線數為 0，SHM 僅核對 metadata identity。另已獨立通過 21 項 case/output 路徑契約測試。兩者尚未接成原始來源完整 Main 旅程；typed WAL market bridge、固定來源封套與新 EXE 仍待，不授予原始 H20 或真人接受。
+
 - 2026-10-08 分段診斷：隔離 attempt `attempt_5e851f27208e` 的 controller 為 `failed_preserved_attempt`，全程 281.046 秒，沒有啟動 frozen child。實際 call-site 記錄顯示 `bundle.read_exact` 成功返回、耗時 143.357 秒；隨後 `p01.open_read_session` 耗時 121.005 秒，以 `technical_universe_v4_query_cancelled` 結束；外層 bundle session 累計 264.655 秒。尚未進入 selection、execute 或 page 階段。這是含診斷記錄的合成案例，不能授予產品效能接受，也不能直接套用至使用者 2382 的 20 秒問題。
 
 - 2026-10-08：對照使用者回報與目前程式，保留全條件缺口、H20 同版圖表與速度驗收，記錄 F17 失敗及隔離效能驗證的範圍。

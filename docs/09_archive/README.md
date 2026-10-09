@@ -205,7 +205,7 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 - [V2.1–V4.0 版本路線更新歷史（2026-07-11 至 09-15）](VERSION_ROADMAP_V2_1_TO_V4_0_UPDATE_HISTORY_20260711_TO_20260915.md)：保存成熟度文件曾附加的狀態快照與 handoff；版本 Gate 標準仍看核心版本 Roadmap。
 - [V2.1–V4.0 工程交接紀錄（2026-09-15）](VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)：保存當時工程分流與下一步；版本成熟度標準仍以核心 Roadmap 為準。
 - [V2.1–V4.0 版本狀態快照（2026-07-12 至 2026-08-30）](VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)：保存各成熟度版本曾附加的階段狀態；目前狀態以 Snapshot 為準。
-- [系統架構更新歷史（2026-06 至 2026-10）](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)：保留原架構文檔第 16 節的逐次狀態記錄與 2026-09-30 排程資料流歷史切片；目前模組邊界及排程 lane 規則以 `system_architecture.md` 主文為準，當期狀態以 Snapshot／QA 為準。
+- [系統架構更新歷史（2026-06 至 2026-10）](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)：保留原架構文檔第 16 節逐次狀態記錄、2026-09-27 邊界／資源 lifecycle 收據與 2026-09-30 排程資料流切片；TechnicalIndicatorJob／IndustryMapper、SQLite connection lifecycle 及 ML initialization 的現行契約已留在 `system_architecture.md` 第 4、8、11 節。當期驗收看 QA，現況看 Snapshot。
 - [System Architecture R01 validation excerpt（2026-10-06）](SYSTEM_ARCHITECTURE_R01_VALIDATION_EXCERPT_20261006.md)：保存從架構主文抽出的逐次 QA 記錄全文（僅去掉段落分隔用的尾端空白）；R01 讀取預算契約已集中於 `system_architecture.md` 第 11 節，驗收現況看對應 QA 與 Snapshot。
 - [舊端到端流程藍圖](SYSTEM_FLOW_END_TO_END_BLUEPRINT_HISTORY.md)：保存舊 feature store、signals／recommendation 路徑、過時模組位置與建議新增元件；現況請看 `docs/01_architecture/system_architecture.md`，目標請看 `target_system_architecture.md`。
 - [文件編碼稽核（2026-06-16）](DOCUMENT_ENCODING_AUDIT_2026_06_16.md)：一次性 UTF-8／mojibake 掃描；保留當時結論，不代表目前 repo 的完整編碼檢查。

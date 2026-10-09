@@ -199,21 +199,11 @@ credit。這些接線／觀測修正不包含新模型、thesis、Paper 舊成�
 
 ## 2026-09-27 邊界／資源 lifecycle 現況
 
+本節原始日期化決策與驗收已移至[系統架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)。有效契約已分別整理至[Application Layer](#4-application-layer)、[Data Infrastructure](#8-data-infrastructure)與[ML entry initialization boundary](#ml-entry-initialization-boundary)；逐次驗收、限制與收據仍由該歷史切片及其 QA 引用保存。
+
 ### 2026-09-27 latest decision overlay
 
-本節舊 R027 full8 段落描述的是原 strict gate，該 gate仍`INCONCLUSIVE`，原oracle與raw receipt不變。使用者接受的logical-time revision另以full8 PASS；Root其後依frozen source diff、R028 full8與獨立source/runtime review接受scoped R028 migration。Production orchestration現由`app_module.technical_indicator_job.TechnicalIndicatorJob`單一擁有，UpdateService facade lazy-delegate；R031 attempt6 current 288-path relevant regression及mandatory checks已由root接受；目前為提交前snapshot，staged review與commit結果以Git history及root最後交付為準。詳見 [R027 logical-time acceptance revision addendum](../06_qa/R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md) 與 [R028 implementation report](target_architecture_2026_09_22/REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md)。
-
-IndustryMapper明示provider source slice已凍結，13個changed paths／4個focused route paths（14 distinct inputs）、18P/0F/0S，獨立source review未發現功能阻礙；舊264全域route已含`tests/test_decision_data_providers.py`，但缺`tests/test_industry_mapper_provider.py`與`tests/test_industry_mapper_performance_cache.py`，新全域route尚未執行。H5 app-initialization slice已bounded接受：freeze manifest `4c6b89a8f3b0817118478e8b1455a9633684017f01f3711c8e8465d03f9706db`，9 suites／105P；app CLI bootstrap與未bootstrap bare entry fail-closed保留。其CLI驗證只到`--help` bootstrap與target-free synthetic parity，不代表正式artifact loading、完整training/release或最終全域regression。
-
-R024 root最終檢視的5-path bounded slice及9-suite route為67P/0F/0S。data-owned diagnostics/to_dict保存source facts，data→decision FactorDiagnostic imports移除；原decision FactorDiagnostic classpath、FactorService與序列化不變。新data record nominal identity不同。此處理限R024 reverse-edge，不代表R021當時已遷移IndustryMapper I/O。使用者已接受IndustryMapper follow-up：company與index均以data-owned providers明示注入、app composition建立兩者並遷移已知caller；domain缺少provider時須明確fail-closed並引導composition，不保留暗讀config／檔案／DB。遷移須保留原來源優先序、日期解析、欄位/排序及None／有效empty／error語意。Boundary目前凍結13個changed paths；4個focused route paths為14 distinct inputs，manifest SHA-256 `566c0fce31ce063b57c0f53a069e0d6a308b5cce19007fd56026e7d8ae48e602`，focused 18P/0F/0S、0.84秒。獨立source review未發現功能阻礙；attempt6 current route已包含兩個mapper tests及受影響路徑並自然通過。不得把這個follow-up回寫成R024原始驗收，也不宣稱domain-wide no-I/O。
-
-`DBManager.execute_query` 已在獨立 bounded resource slice 增加 `finally: conn.close()`；仍使用原 `sqlite3.connect(self.db_path)` defaults、`with conn` transaction/rollback 及 `pandas.read_sql_query`。實際 TEMP API probe 在修正前 25/25 query return 後仍見 open handle，修正後 7/7 query return 後均為 0；真 connection success/error/rows/dtypes test及相鄰 regression為 92P/0F/0S。這是已 review 接受的 connection lifecycle 修正，不改 SQL、dtype、log、exception／schema 或 R027 oracle，也不被視為 R027差異的因果證明。
-
-下列 R027 full8 段落記錄原 strict歷史receipt，而非新revision verdict：`r027_post_qt_lifecycle_root_all_20260927.json` runner exit1、projector exit0，8/8 `INCONCLUSIVE`／0 semantic／947 strict differences。原strict raw clock、mtime、WAL/SHM/reader evidence仍按原規則保存，不把947差異升為新gate結果；原oracle亦保持原bytes/hash。新revision PASS、3,303-file source scope及R028 start裁決依上述 dated addendum記錄，不取代該strict receipt。
-
-bb68d020…ae0ae91是兩個Qt callback runtime修補前的歷史1,370-path full8；其舊taxonomy為738 raw OS、146 publication mtime、63 SQLite lifecycle。較早`ae0ddb3b…c83658`是未含TWSE暫存名修補版，`1d457f7f…e161`是REC-05前版。最新9a19 full8把current selected scope更新至1,233 paths，taxonomy為738／143／64／2；所有版本均INCONCLUSIVE，不可互相覆寫或把947差異升為PASS。
-
-REC-02 bounded consumer/projection、canonical query與journey slice已依R029原criteria由root接受；completed business path由typed DecisionBatch產生current v1 projection，v1 event僅作wire相容／一致性核對，failed/cancelled partial snapshot只作diagnostics。R016 saved_recommendation_queries.select_latest_saved_recommendation是合法canonical readonly adapter，不是REC-02 Service list/latest。兩個in-repo業務consumer exit已達；REC-02分類ACCEPTED_WITH_RETAINED_PERMANENT_COMPATIBILITY，保留run_recommendation/list/latest public API、v1 projection、diagnostic partial output及rev1/2 decoder為必要具名compat，owner app recommendation compatibility；這不代表last_* writer全部刪除或外部support已終止。Portfolio navigation P2只驗canonical source navigation identity，不認證from_position display或Journey LINKED摘要內容。
+原 R027 strict gate 仍為 `INCONCLUSIVE`；後續 logical-time revision 是另立版本的判定，不能回寫或取代原 oracle／receipt。當前實作與狀態請看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 及各自 QA 收據。
 
 ## Recommendation calibration prepared runtime 與 typed handoff（2026-09-25）
 
@@ -629,6 +619,7 @@ Research Run metadata 可透過 `data_manifest.factor_snapshot` 與 `data_manife
 
 ### Application orchestration
 
+- 技術指標正式發布由 `app_module.technical_indicator_job.TechnicalIndicatorJob` 統籌；`UpdateService` 保留相容 facade 並 lazy-delegate。耗時計算可由 worker／process pool 分散，正式資料庫寫入仍由父程序單一 writer 執行。
 - 一般回測：`app_module/backtest_service.py`
 - 回測輸入契約：`app_module/backtest_contracts.py`（BacktestService 所需的最小結構型 Walk-forward 結果介面；不含計算或持久化行為）
 - UI 薄殼化續作：`BacktestView` / `RecommendationView` 的純文字規則分別委派至各自 `presenter.py`；`UpdateView` 委派多 worker 存活與 current-worker 選擇至 `worker_coordinator.py`；`UnifiedDecisionWorkbenchView` 的 review queue DTO mapping 位於 `workbench_presenter.py`；`MainWindow` 的 workspace alias routing 位於 `main_window_coordinator.py`。QWidget 仍保留 ownership、signal wiring 與既有相容方法。
@@ -650,7 +641,7 @@ Research Run metadata 可透過 `data_manifest.factor_snapshot` 與 `data_manife
 - Recommendation input preparation：`RecommendationService` 必須由 composition 明示注入 `RecommendationInputPreparer`；`app_module/recommendation/input_preparation.py` 負責 cutoff request 驗證／解析、行情日期與 `available_date` 篩選、universe 與既有 fingerprint/context identity。每次 `execute_recommendation` 建立 invocation-local session，市場與基本面仍在原流程需要時逐步讀取，沒有全候選預取。
 - Recommendation source owners：目前行情 provider 維持 `app_module/recommendation_market_data_provider.py` 的零參數 contract；`data_module/recommendation_input_providers.py` 擁有歷史行情唯讀 SQLite `daily_prices`／`technical_indicators` join、CSV `all_stocks_data_file`→`stock_data_file` fallback、PIT industry membership 與 PE source observations。月營收使用 app preparation 明示傳入的 lazy `FundamentalSQLiteProvider` factory；首次 DB missing 不建檔且不重試，PIT 讀取失敗維持 unavailable／missing fail-closed。
 - Recommendation input parity：source readers 保留原 60 日窗口、`YYYYMMDD` 日期解析、SQLite 優先序、availability cutoff、修訂選擇、候選 loop 的 PE→月營收時點與 early-exit。`RecommendationService` 保留 filter/factor/ranking/reasons 與 context 組裝，但不再直接查推薦 history／PE SQLite 或自行建構市場／基本面/PIT provider。
-- Decision service composition：`app_module/decision_service_composition.py` 組裝共享 `IndustryMapper`、`ScreeningService`、`RegimeService` 與 `RecommendationService`。目前 IndustryMapper follow-up candidate 把 company／industry index readers 放在 `data_module.industry_mapper_data_provider.py`，由 app provider adapters及 `build_industry_mapper()` 注入；裸 `IndustryMapper(config)` 缺少provider時會fail-closed，RecommendationService／ScreeningService的舊預設建構路徑則轉交app composition。source review已完成且未發現功能阻礙；attempt6 route已包含相關IndustryMapper tests與paths並自然通過。此回歸不擴大成domain-wide no-I/O claim。`MarketRegimeDetector`仍只消費可注入frame provider，MainWindow不直接建立這組concrete dependency graph。
+- Decision service composition：`app_module/decision_service_composition.py` 組裝共享 `IndustryMapper`、`ScreeningService`、`RegimeService` 與 `RecommendationService`。Company／industry-index 資料由 `data_module.industry_mapper_data_provider.py` 提供，並由 app composition 明示注入；缺少 provider 的裸 `IndustryMapper` 必須 fail-closed 並導向 composition，不可暗讀 config、檔案或資料庫。資料來源優先序、日期解析、欄位與排序，以及 `None`、有效空結果、錯誤三種狀態語意須維持既有契約。`MarketRegimeDetector` 只消費可注入的 frame provider；MainWindow 不直接建立這組 concrete dependency graph。
 - Domain contract ownership：`analysis_module/technical_analysis/indicator_parameter_registry.py` 是指標參數 schema 唯一入口；`decision_module/flow_contracts.py` 是 Broker/Flow dataclasses 唯一入口；`decision_module/strategies/contracts.py`、`registry.py` 與 `decision_module/strategies/` executors 是 strategy 契約、唯一 registry 與執行器 owner。舊 app strategy import paths 僅透過 `TMP-STR-01` 薄 facade 暫時相容。舊 decision registry 與 Application Flow DTO shim 已於 2026-07-12 移除，核心不再反向 import Application DTO。
 - Indicator pure kernel：`analysis_module/technical_analysis/indicator_kernels.py` 提供 causal price normalization；缺值只允許 forward-fill 過去觀測值，前導缺值使用零邊界，不允許 backward-fill 未來價格。
 - Scoring pure kernel：`decision_module/scoring_kernels.py` 擁有 Decimal 最大餘額法與 10,000 bp 不變量；`ScoringEngine` 保留 façade method 與公開結果型態。
@@ -790,6 +781,8 @@ Watchlist／bookmark 是使用者保存狀態，不等同市場 `twstock.db`、�
 
 日常快速更新可直接同步 SQLite；安全更新同時維護完整 CSV 與 SQLite。每日股價資料源包含 TWSE `DATA_ROOT/daily_price/` 與 TPEX `DATA_ROOT/daily_price_tpex/`，SQLite sync 會讀取兩個目錄並依 `(證券代號, 日期)` upsert 到 `daily_prices`。
 
+`DBManager.execute_query()` 必須在查詢成功或失敗後都於 `finally` 關閉 connection。維持既有 `sqlite3.connect(self.db_path)` defaults、`with conn` 的 transaction／rollback 語意及 `pandas.read_sql_query` 行為；資源釋放修正不改 SQL、dtype、log、exception 或 schema 契約。
+
 ### 主要資料表
 
 - `daily_prices`
@@ -892,6 +885,10 @@ Smart Money 語意層沿用上述資料品質契約：observed / estimated 可�
 詳細規則見 [runtime_observatory_rules.md](runtime_observatory_rules.md)。
 
 ## 11. 保存與研究治理
+
+### ML entry initialization boundary
+
+正式 app CLI 入口會執行 application bootstrap；直接呼叫 ML entry 時，若尚未完成明示初始化，必須在 training 或產生輸出前 fail-closed。此入口前置條件不代表 artifact 已通過載入、預測、release 或正式資格驗證；仍須遵守下方 immutable publication 與來源驗證契約。
 
 ### Technical-universe provenance boundary
 

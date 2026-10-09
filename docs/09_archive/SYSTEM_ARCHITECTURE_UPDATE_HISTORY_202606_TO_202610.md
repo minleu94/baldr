@@ -2,6 +2,26 @@
 
 > 原 system_architecture 的日期化歷史切片與第 16 節更新流水帳；僅作歷史追溯。現行架構請看 system_architecture 主文，目前狀態請看 PROJECT_SNAPSHOT。
 
+> 以下保留 system_architecture 於 2026-09-27 記下的決策與驗收快照；日期化 verdict 以文中 QA 收據為準，現況以 PROJECT_SNAPSHOT 為準。原 R027 strict INCONCLUSIVE 與之後的 versioned logical-time revision 是兩個獨立判定。
+
+## 2026-09-27 邊界／資源 lifecycle 現況
+
+### 2026-09-27 latest decision overlay
+
+本節舊 R027 full8 段落描述的是原 strict gate，該 gate仍`INCONCLUSIVE`，原oracle與raw receipt不變。使用者接受的logical-time revision另以full8 PASS；Root其後依frozen source diff、R028 full8與獨立source/runtime review接受scoped R028 migration。Production orchestration現由`app_module.technical_indicator_job.TechnicalIndicatorJob`單一擁有，UpdateService facade lazy-delegate；R031 attempt6 current 288-path relevant regression及mandatory checks已由root接受；目前為提交前snapshot，staged review與commit結果以Git history及root最後交付為準。詳見 [R027 logical-time acceptance revision addendum](../06_qa/R027_LOGICAL_TIME_ACCEPTANCE_REVISION_20260927.md) 與 [R028 implementation report](../01_architecture/target_architecture_2026_09_22/REFACTOR_REPORTS/R028_IMPLEMENTATION_REPORT.md)。
+
+IndustryMapper明示provider source slice已凍結，13個changed paths／4個focused route paths（14 distinct inputs）、18P/0F/0S，獨立source review未發現功能阻礙；舊264全域route已含`tests/test_decision_data_providers.py`，但缺`tests/test_industry_mapper_provider.py`與`tests/test_industry_mapper_performance_cache.py`，新全域route尚未執行。H5 app-initialization slice已bounded接受：freeze manifest `4c6b89a8f3b0817118478e8b1455a9633684017f01f3711c8e8465d03f9706db`，9 suites／105P；app CLI bootstrap與未bootstrap bare entry fail-closed保留。其CLI驗證只到`--help` bootstrap與target-free synthetic parity，不代表正式artifact loading、完整training/release或最終全域regression。
+
+R024 root最終檢視的5-path bounded slice及9-suite route為67P/0F/0S。data-owned diagnostics/to_dict保存source facts，data→decision FactorDiagnostic imports移除；原decision FactorDiagnostic classpath、FactorService與序列化不變。新data record nominal identity不同。此處理限R024 reverse-edge，不代表R021當時已遷移IndustryMapper I/O。使用者已接受IndustryMapper follow-up：company與index均以data-owned providers明示注入、app composition建立兩者並遷移已知caller；domain缺少provider時須明確fail-closed並引導composition，不保留暗讀config／檔案／DB。遷移須保留原來源優先序、日期解析、欄位/排序及None／有效empty／error語意。Boundary目前凍結13個changed paths；4個focused route paths為14 distinct inputs，manifest SHA-256 `566c0fce31ce063b57c0f53a069e0d6a308b5cce19007fd56026e7d8ae48e602`，focused 18P/0F/0S、0.84秒。獨立source review未發現功能阻礙；attempt6 current route已包含兩個mapper tests及受影響路徑並自然通過。不得把這個follow-up回寫成R024原始驗收，也不宣稱domain-wide no-I/O。
+
+`DBManager.execute_query` 已在獨立 bounded resource slice 增加 `finally: conn.close()`；仍使用原 `sqlite3.connect(self.db_path)` defaults、`with conn` transaction/rollback 及 `pandas.read_sql_query`。實際 TEMP API probe 在修正前 25/25 query return 後仍見 open handle，修正後 7/7 query return 後均為 0；真 connection success/error/rows/dtypes test及相鄰 regression為 92P/0F/0S。這是已 review 接受的 connection lifecycle 修正，不改 SQL、dtype、log、exception／schema 或 R027 oracle，也不被視為 R027差異的因果證明。
+
+下列 R027 full8 段落記錄原 strict歷史receipt，而非新revision verdict：`r027_post_qt_lifecycle_root_all_20260927.json` runner exit1、projector exit0，8/8 `INCONCLUSIVE`／0 semantic／947 strict differences。原strict raw clock、mtime、WAL/SHM/reader evidence仍按原規則保存，不把947差異升為新gate結果；原oracle亦保持原bytes/hash。新revision PASS、3,303-file source scope及R028 start裁決依上述 dated addendum記錄，不取代該strict receipt。
+
+bb68d020…ae0ae91是兩個Qt callback runtime修補前的歷史1,370-path full8；其舊taxonomy為738 raw OS、146 publication mtime、63 SQLite lifecycle。較早`ae0ddb3b…c83658`是未含TWSE暫存名修補版，`1d457f7f…e161`是REC-05前版。最新9a19 full8把current selected scope更新至1,233 paths，taxonomy為738／143／64／2；所有版本均INCONCLUSIVE，不可互相覆寫或把947差異升為PASS。
+
+REC-02 bounded consumer/projection、canonical query與journey slice已依R029原criteria由root接受；completed business path由typed DecisionBatch產生current v1 projection，v1 event僅作wire相容／一致性核對，failed/cancelled partial snapshot只作diagnostics。R016 saved_recommendation_queries.select_latest_saved_recommendation是合法canonical readonly adapter，不是REC-02 Service list/latest。兩個in-repo業務consumer exit已達；REC-02分類ACCEPTED_WITH_RETAINED_PERMANENT_COMPATIBILITY，保留run_recommendation/list/latest public API、v1 projection、diagnostic partial output及rev1/2 decoder為必要具名compat，owner app recommendation compatibility；這不代表last_* writer全部刪除或外部support已終止。Portfolio navigation P2只驗canonical source navigation identity，不認證from_position display或Journey LINKED摘要內容。
+
 ## 9/30 排程資料流與 lane 邊界（歷史架構切片）
 
 ```mermaid

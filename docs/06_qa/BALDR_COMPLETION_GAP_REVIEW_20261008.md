@@ -74,3 +74,10 @@ F17 最新封套的 source parent 另確認 catalog 更新成功且只有一筆�
 - 2026-10-09 最新 root 審查：H20 同一凍結 E child／runner 的四個 native 清理案例（正例、主要錯誤、半安裝失敗、H20 finish 失敗後重試）均 exit0，詳見 `BALDR_PARALLEL_ROOT_REVIEW_20261009.md`。這些明示沒有進入 Main，不替代完整視窗旅程；原 controller 仍引用 D 元件且未明示 E keeper 環境依賴，因此另建 F 接線候選，原 D／E 封套保持不變。原 2382 的 684 bp／20 秒與真人接受仍未通過。
 - 2026-10-09 F02 continuation c terminal exit1：來源存取前解析不存在的 local DB URI 觸發拒絕，尚未執行完整 query 矩陣。d 僅修正分支次序，root 核實 guard-only 唯讀正例及13負例、來源未變，已授權相同 frozen d 在 actual source/product preflight 通過後唯一一次 continuation；未授予 producer、1,000 檔效能或全產品完成。
 - 2026-10-09 F03／F06：KDJ raw leaf、bounded collector、query 契約以及 BB30／ATR14-SMA raw leaf、query 契約已有中央定向證據。F06 collector 初次審查另發現 strict segment 型別、final payload byte budget 與 index/request 同源語意缺口，正在修正。MA／KDJ／volatility 與 F17 parent row 的同次觀察及原子發布尚未整合；不能將這些 bounded unqualified 切片宣稱為完整 KDJ、波動收斂／突破或 full-N UI 完成。
+
+## 2026-10-09 最新接續範圍
+
+- H20 H5 synthetic integration 已實際啟動 child，但在固定 guard 初始化前置缺件失敗（absent `twstock.db-journal` 被誤列為 strict-existing readonly member）；未證明 MainWindow 建構。H6 正修正存在成員與父目錄保護接線，並補實際 guard 初始化的隔離測試；不建立假 journal、不放寬固定 guard。原 2382 的 684 bp、同版圖表與約 20 秒下鑽仍待原來源與真人接受。
+- P01 新固定 d12 source 的 v4 exact-read supervisor 已保存來源／sealed-store前後一致及程序清理證據，但 venv 啟動器 return101，未進入 P01 opener。Python 啟動器與單程序 Job限制正查證；1000檔完整讀取、三操作30樣本與300ms門檻仍未通過。
+- F02 J 私有長路徑 signature 已由 Root 獨立核對短樹一致、277字元 descendant、真junction及metadata drift拒絕；此僅 helper工程證據。固定257檔provider/fullquery矩陣、正常來源、新EXE與真人仍待；既有scope/lineage/原始來源pins不變。
+- 所有 P00–P14、M1–M3、F01–F23 與前述資料域缺口仍保留。三條續驗不是完整補完計畫的替代出口。最新原始封套與root審閱摘要集中於 `BALDR_PARALLEL_ROOT_REVIEW_20261009.md`；尚無新EXE交付或本輪真人驗收指令。

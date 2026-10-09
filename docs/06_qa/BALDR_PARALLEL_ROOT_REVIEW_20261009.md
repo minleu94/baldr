@@ -430,3 +430,58 @@ P01 v2 root獨立static preflight exit0：controller e21216b098778c6019ca963a94e
 P01 v2 唯一 native prelaunch session結果 failed，attempt C:/t/p01cur_rd_8d3a751d47；root實讀 supervisor_result.json rawSHA403e843930d6f41a82249473fdff14b03974b9921386d96459a96600501261de。child_launch_count0、parent subprocess attempts1／approved0、Job空／cleanupcompleted；source_and_store_before/after皆null，不能聲稱此次native有來源前後驗證。完整traceback指出audit1769拒絕Windows Popen payload。Root讀本機CPython Windows _execute_child確認argv已list2cmdline成string；既有OR判定已足以因非list拒絕，不能推論default executable當時非None。已接派v3保存四欄actual audit probe（audit hook在CreateProcess前sentinel中止／無OSchild），固定單一精確exe/cmd/cwd/env/single-use契約、純負例與新版本封套，不改v2失敗。另要求before inventory及failure後postflight/未完成狀態保存完整；尚未授v3native。
 
 H5 root 靜態續審（未凍結、未執行）：restore 已分開 verification_reasons 與 restoration_errors，legacy 尚未載入以 not_activated_module_not_loaded、partial import 移除以 partial_import_removed 記錄；已要求 operation 中途 import／helper cache 錯 origin／legacy 未載入／wrapper 被替換／setter 還原失敗負例，成功仍須完整 verification。新的控制器/純案例尚在實作，不以此靜態審核聲稱 Main 通過。
+
+H5 最終 frozen root 重驗：16 passed／1.73s，Junit output/qa/h20_h5_root_contract_20261009_a.xml。Root逐檔核 manifest7973e88720eb8f6b36b239cf5812ebbc112bb41f1066dfaefe5f8b9abe796654／diff e44e957d9c1a354366ab39c9048141541cd5e33235684275008054fd7e743272 與64個filepins吻合，結果 h20_h5_root_frozen_pins_20261009_a.json。現diff包含H5途中preimage→最終restore修正，root要求另存完整H4 frozen run-copy→H5最終delta以涵蓋先前mapping修改，不覆寫既有diff；尚未授Main。
+
+P01 v3 root獨立audit探針pass：已精確傳EXPECTED_PYTHON時audit四欄str/str/str/dict，command line=list2cmdline，CreateProcess calls0／OSchild false，controller與probe執行前後SHA相同。root result/pins於 output/qa/p01_v3_root_audit_probe_20261009_a.json 及同前綴pins檔；當時controller b7698cb6…c3e54dafe／probe a0c90dd5…4281c9a。這只驗已讀的該版probe形狀，不證後續v3候選SHA或actual子程序完整流程；待最終manifest／負例與static再核。
+
+### 續驗：P01 v3 root 預檢與 H20 H4→H5 差異
+- Root 對 frozen P01 v3 獨立執行 launch contract：14 passed；靜態預檢 `static_preflight_dbbbb2f49740.json` exit 0，controller SHA `59b38076c5a29143df0bd69da11d4cc904a4a369853d3fb3bcd93008ee2756b9`、manifest SHA `4c999d4863122dae1745fdc9a88ff29b8b8abf5c702524af602453a6443af06e` 實際匹配。network / SQLite / subprocess attempts 均 0；此結果只證明 static inputs，尚非 runtime 資格。
+- 已授 universe owner 此固定 v3 一次隔離 native exact-read；不得 producer/profile 或原始資料寫入。等待其 terminal 與 source/store before-after，不能先宣稱 1,000 檔讀取完成。
+- H20 補件完整 H4 run-copy→H5 diff SHA `fb2bdaa42a225316ff3d9ae0adba35568f4affa1e44ed0eb9e492e79c87e7ecc`，147,534 bytes；收據 SHA `3b34cb71c374bebb3ddad7720b0998f4ce9289b4f11a84fdeee2c13fe573ab6c`。4 個修改、4 個原 bytes 相同、2 個固定 E sibling 新增及候選根外 synthetic test。Root 已讀精確 mapping loader；Main 尚未授權，先準備 prelaunch pins。
+- F02 J selftest #006 保留失敗：長路徑/parity/junction/負例通過，但 helper import 的 urllib3 loopback capability socket.bind 被 guard 阻擋；不可改稱 network attempts 0，也不預熱以移除該紀錄。尚未授 J native。
+
+### 續驗：P01 v3 終端失敗與 H20 還原審閱
+- P01 v3 唯一 native attempt terminal exit 1，attempt_root=null、child_launch_count=0，原 log `native_exactread_v3_e8129a34b81a4968b53bbafc8434d10d.log` SHA `1370255cde2cba1b01eeb4901e96615a7e69f69cf917e9e5f54e824893eb5f18`（334 bytes）。摘要 failure_codes=[null]，沒有原 exception、source/store before-after 或 1,000 選取結果；不得推論完整讀取通過。Owner 確認該工具使用預設 sandbox，wall 1.121 秒；不能據此斷定 WinError 5。
+- 已要求新 v4 QA-only 診斷候選：前置失敗需保存 phase/type/message/traceback，即使 attempt root 未建也能由 stdout 留證；加入 injected preflight/allocation failure 測試。原 v3 不重跑、不修改，尚不授 v4 native。
+- Root 已直接讀 H5 精確 operation/helper/bridge mapping loader與 `_restore_source_map_read_seam` 全段：固定 E 與 attempt sibling 均檢查 path/SHA/cache origin，失敗拆成 restoration_errors 與 verification_reasons，完整 pass 要求雙 reader 各一次、verifier passed、module scope 還原。等待 H5 prelaunch argv/pins 補件後安排一次整合驗證。
+- Root 直接讀 F02 J #006 收據（SHA `9d590706df4699b703519ca48fa99fa95131f0e1c6c280b00222ae36fbee4c41`）與 I→J diff（SHA `8cd47fa4bfb151a676181ea7a919760362d02754c2b93ff99dc8ce3abead4d15`）。J 僅替換 protected source 三處 tree signature；output bundle helper維持。新 QA 判讀必須保留已阻擋 socket.bind attempt=1，只可明示辨識精確 loopback capability probe，其他 bind/connect/DNS 不可放行。
+
+### H5 Main gate 程式審閱補件
+- Root 已讀 H5 legacy verifier wrapper 與 controller main 啟動分支：原 verifier 保留、SHA format 只做既有格式正規化，錯誤保留原 traceback；preparer 120 秒，Main child 300 秒，preparer exit 0 且 Job empty/cleanup complete/manifest present 才允許 Main。
+- 實際重算 H5 controller `9502ba802a0f485a7d9692119171e9c3a41eb94a962a7ea27b0e3f2eae51010b`、child `2af1b77346b9b7291f97fc77a967ba86bce83ec4a38e3389a66d4d09f1153929`、manifest `7973e88720eb8f6b36b239cf5812ebbc112bb41f1066dfaefe5f8b9abe796654` 均匹配既有 frozen pins。Manifest 實際位於 QA case 根目錄 `output/qa/h20_main_h_preparer_fix_20261009_a/candidate_manifest_h5_source_map.json`；第一次誤查 attempts 下找不到，已定位並重新核實，沒有重建或覆寫 manifest。
+- 三位 owner 目前仍為 running；H20 正準備可執行 prelaunch/argv，P01 正補前置錯誤診斷，F02 正補精確 blocked loopback probe 判讀。上述程式審閱不代表 Main 已執行或人驗已通過。
+
+### H5 已啟動與 P01 診斷 WIP 測試
+- H20 owner 已依授權啟動唯一固定 H5 controller，live exec session_id=34444（chunk d1d125），首 10 秒無 stdout；owner 負責持續 poll 同一 handle。沒有終端結果前不宣稱整合通過。
+- Root 對現存 P01 v4 WIP 的 injected parent-validation/allocation/pinned-manifest-read failure tests 獨立 pytest：3 passed / 1.06 秒 / exit 0；JUnit `output/qa/p01_v4_root_failure_diagnostics_20261009_a.xml`。驗證 rootnull/child0 時 stdout 仍留 phase/type/message/traceback，及已建 root 的 receipt 保留失敗和未捕捉來源狀態。這是 WIP scope；owner 隨後指出 Mapping narrowing 新增一個 mypy 診斷，待修正及 final pins，不授 v4 native。
+
+### F02 J root 合成驗證與 H5 原始封套核實
+- Root 獨立執行 frozen `tree_signature_contract_selftest_007.py`（SHA `8781333216b28e2f39c951e7747b7a1be3984553c742b2055700d32b9c2d95a7`），新隔離 `C:/t/f02_j_tree_signature_2b80863e8527`，exit 0。receipt SHA `57de4cf65737506958e550caa025850cdc07d55ff3bac424339c48f602515974`；28 checks 全 true，277-unit descendant原 helper WinError3重現、新 helper正確、短樹一致、真junction與非regular/metadata drift負例拒絕。network_attempts=1/blocked exact loopback probe=1、connect/DNS=0、other socket=0、SQLite/process=0；不宣稱零網路嘗試。此僅合成 path contract，provider/query/store未執行。已要求 owner 準備 J provider-only frozen prelaunch，尚不授 native。
+- Root 直接讀 H5 controller receipt SHA `807a6c3ea0a926caaea4513268704647d9725598f900913d623ad98a4e9e81b3`、child stderr SHA `5e2853f3cc1800513c7aa29b35e7c89c3098f9f3d5887f437d07a31b00f07f7a`：child exit1/preparer0，legacy guard458 strict resolve不存在twstock.db-journal，未到 Main import/Window。原 receipt `main_started=true` 表示controller已啟動child，不可作UI啟動證據；已要求H6明確區分欄位，原H5不改。
+- 兩Job cleanup/tree_empty=true，4161 source snapshot/artifact/E deps/local copies unchanged=true；Watchlist COW DB前後SHA `8c716ad80003e42d03cc20ba359f8db4dd04bbb55d125ac7523ffe214cb73db7`、sidecars absent。H6只調整已驗證存在成員的readonly list並保護父目錄，保留完整4member/absent journal pins；不得造空journal或放寬固定guard。尚不授H6 native。
+
+### P01 v4 frozen root review 與一次 native 授權
+- Root 讀完整 v3→v4 diff/Review並重算 frozen controller SHA `eaa9a67d5e1da46a14cb9cc058b5ab9c303d70cd7676da3cc2b19207bd8eef50`、manifest `f1f4805a7f443c89d87c7110ec85e6893a4babb68730d408738a23bec6d325a5` 匹配；final injected tests再驗3 passed/1.08 秒/exit0（JUnit `output/qa/p01_v4_root_frozen_diagnostics_20261009_b.xml`）。
+- Root static `static_preflight_8f9c1d4ef048.json` exit0，elapsed6.2708461秒，network/SQLite/subprocess0，固定 controller/manifest匹配，僅static輸入證據。
+- 已透過 followup_task 授 universe owner 此fixedv4 ONE native exactread，精確 -I -B -X utf8、expected manifest SHA與private-parent C:/t，require_escalated涵蓋隔離目錄寫入。Owner poll其唯一handle；不得producer/profile、原資料讀寫或失敗重跑。尚無native terminal，不宣稱1000結果或beforeafter完成。
+
+### P01 v4 terminal 原始證據
+- ONE native v4 terminal exit1，attempt `C:/t/p01cur_rd_f4b0b381d7`，receipt SHA `f45bfe335a9266100e2d4e82cbb5d4e6c8efde348022fd8e1f9a250938e0df99`，原摘要 log SHA `dfd40ad06f88d086a97a17ffe4d9d5c0ec0f8186ce91deb3268e6931070ea97c`。Root直接讀receipt，parent approved launch1、PID53584、child return101、child result missing；captures.stderr 499bytes完整保留 `Unable to create process using ... C:/Program Files/Python311/python.exe ...`，stdout0。沒有P01 opener/1000selection結果。
+- before/after source/store comparison unchanged：4,465files/80,182,012bytes/source content3c872f…f6b7df7、DB54ad8d…674f27、DBinventory e87a96…a4593d、sealedstoretree a8d994…7f3b9。Job cleanup completed/activePID列表空；總elapsed4.889秒，launch2.561秒。
+- Root讀本機pyvenv.cfg確認home/executable為Python311，venv python與basepython為不同binary；v4 Job ActiveProcessLimit=1。Redirector需要子程序而受Job限制是待證假說，不當成已確認根因。已要求owner唯讀調查啟動器與提出精確有界方案，不直接放寬processlimit，不重跑v4。F02同時核對既有成功啟動契約，避免未審核地套用此失敗方式。
+
+### Windows venv launcher 契約查證接續
+- Owner唯讀確認venv python為Python3.11.9 venvlauncher範本複本；base interpreter與venv prefix/site-packages不同。Root選擇先做保留venv語意的有界launcher/base身份小型QA，不採直接base加path來改套件環境。P01 v4不改、不重跑，尚不授v5。
+- Root直接讀F02 J `_classify_owned_processes`/`_spawn_worker`與Job設定；F02固定方案為 suspended assign後resume，釘launcher/base/conhost的image/argv/PPID/create_time，Job kill-on-close而非P01 active1。Bootstrap解析I實際receipt：launcher56628、base56632、conhost58716均被核身份，最終Jobempty；該provider整體仍因WinError3失敗。
+- 因實際F02在CREATE_NO_WINDOW下仍見conhost，撤回NO_WINDOW必無conhost的先前假設。P01小probe須驗具名角色數與清理；若需要conhost須另明示最多3具名角色、精確System32image/argv/PPID，不能只提高數量或沿用單PID=worker假設。尚未進入P01source/store讀取。
+
+### H6 readonly adapter root focused verification
+- Root直接讀H6現存完整readonly adapter與test（4member exactpins保留、present main/WAL/SHM及plain父目錄交守衛、absent journal仍lexists拒絕）；獨立native pytest readonly tests 6 passed/1.51秒/exit0，新隔離basetemp `C:/t/h20-h6-root-readonly-20261009-a`，JUnit `output/qa/h20_h6_root_readonly_20261009_a.xml`。
+- 實際固定guard installer在新合成subprocess通過：io.open/os.open新增journal兩次皆PermissionError、write_attempts_denied=2、journal仍absent、SQLite0、Main未import。此不是Main旅程。
+- 測後現存child SHA `e635ceb3be5c5dad9107947bea7edee4bf13c6ee09e6cd97cbba4a8536374e81`、test SHA `1f70b45f2caa76e7d9a3b4381896b612e9e940b1e8c37d37413cda3a79efad56`；final freeze尚待owner核對。Owner先前sandboxfocused test WinError5保留，不應將權限失敗當功能拒絕或為此改成較弱AST假測試。尚不授H6 Main。
+
+### H6 固定候選前置回歸
+- Owner核目前H6 child `e635ceb3be5c5dad9107947bea7edee4bf13c6ee09e6cd97cbba4a8536374e81`、readonly test `1f70b45f2caa76e7d9a3b4381896b612e9e940b1e8c37d37413cda3a79efad56`與Root前輪讀回一致；sibling test `7c22fdcf58d38a77689af004fc15d415cfd7f180951504c92bcc771a26482d49`。Owner將自己產生9個pyc搬至排除的QA留存，不變更來源程式。
+- Root在全新basetemp `C:/t/h20-h6-root-regression-20261009-b`以native permission驗三組：readonly6、sibling6、industry1，共13 passed/8.69秒/exit0。Root session32468已terminal，JUnit `output/qa/h20_h6_root_regression_20261009_b.xml`。這補候選根與新fixed依賴驗證，並非Main/window或原H20接受。
+- 已要求owner保持核心bytes、不重複focused測試，完成finalmanifest/diff/prelaunch。H6 native尚未授，P01有界launcher小probe與F02 providerprelaunch仍由其他owner推進。

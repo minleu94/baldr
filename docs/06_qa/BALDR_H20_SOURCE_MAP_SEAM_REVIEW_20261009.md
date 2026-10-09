@@ -43,3 +43,11 @@ Root 發現原合成 preparer 以 H20 SQLite bytes 建行情庫後，要求改�
 批准後的新 `synthetic_main_full_20261009_e` 已 terminal exit 1；fixture preparer exit 0，child 在 dual verifier 讀取 `H20_CANONICAL_SOURCE_FILE_SHAS` 時失敗，尚未進 Main／SQLite。舊 seam 只提供 legacy verifier 的單 key 讀取，漏接 dual verifier 本身的同 key；不是產品行情讀取或下鑽失敗。
 
 新 `source_map_seam_candidate_20261009_a/synthetic_main_child_candidate.py` SHA `35fac99dfbbe3980da5727079e3508809956f93ad61c4f249a25e2e09329d3c1` 改為兩個精確 pinned 模組共用同份已核 map，各限一次讀取，finally 各自還原原 os 及 loader；主例外不被 cleanup 訊息掩蓋。Root 實讀 seam 與 selftest，要求補完整成功 terminal／streams／起訖 pins 封套，不能只依工具輸出批准下一次 Main。selftest 暫清 legacy MODULES 僅核讀取／還原 callsite，不等於完整 legacy inventory；真正 Main 不得清空 MODULES。尚未批准該新候選 Main。
+
+## 新 seam 成功封套與正確版本重配
+
+Root 實讀 `source_map_seam_selftest_20261009_f/terminal_receipt.json` 與完整 stdout：native child exit 0、15 outer checks／10 callsite assertions true，stderr 空；收據 SHA `38f7c96c67abcd96d3a352d230e393bcbcba4e7da1bf3fc5dd2c4e5b8287c60e`。4161 檔 map、22 pins、候選與兩 fixed verifier 前後一致。只接受來源映射 seam 前置範圍，未改 selftest 的 MODULES 限制；b–e 外層 runner 自身前置失敗留存，不算 Main 嘗試成功。
+
+授權後的 n attempt 誤配舊 m controller／preparer；Root 比對 owner 報出的 SHA 即指出版本選取錯誤。該次已 terminal，舊 preparer 建成合成 fixture，但 child 因缺少 H20_SYNTHETIC_QA_ROOT 在 Main 前失敗；Job 清空。此結果不能證 d 的獨立行情 fixture 或新 Main 旅程；錯版 fixture 保留，不續跑。
+
+已要求 o 只從明示 d 路徑複製 controller `82529c9e658ed0f505d9c3899eb6b759bcba167c3d909df7ddf2f61070b38a9c`、獨立行情 preparer `4bb1747fa9526e70163289e1e82862c7da6b630e6c3dd52affcd559ce4b767ed`，搭配新 child `35fac99dfbbe3980da5727079e3508809956f93ad61c4f249a25e2e09329d3c1`；不修改 controller／dual／legacy／guard。Root 再次直接計算 o 三個目的檔 SHA 全符。只批准這個全新隔離合成 Main 組合的一次執行，終態仍待讀回；原十股、684 bp 與真人 EXE 尚未驗。

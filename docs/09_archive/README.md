@@ -37,6 +37,7 @@
 ## 2026-10-09 歷史 QA 快照：排程 health 與 UX08 controller handoff
 
 - [Scheduler Health & Observability（2026-08-27）](SCHEDULER_HEALTH_OBSERVABILITY_REPORT_20260827_HISTORY.md)：保存當日五個邏輯任務的 read-only 狀態；不是目前 scheduler health。產生器只有在明確傳入 `--markdown-output` 時才寫檔，沒有固定 QA 路徑 consumer；現況以 Snapshot 與近期排程 QA 為準。
+- [A 線正式與相鄰 lane latest-status review（2026-09-17）](A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md)：保存當日 Formal／isolated Paper、BankTaiwan、official-events 與 Raw PIT 的唯讀狀態及未完成 Gate；reader 隔離修正未代表正式 job 已重跑。現況以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [近期排程 QA](../06_qa/README.md) 為準；QA 舊路徑保留導引，原件 bytes／SHA 見 [Coverage History Entry 113](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-113)。
 - [UX08 純 chart viewport controller handoff（2026-10-06）](UX08_CHART_VIEWPORT_STATE_QA_20261006_HISTORY.md)：保存整合前 controller API、測試與 owner 邊界；後續產品按鈕接線看 [UX08 viewport integration QA](../06_qa/UX08_VIEWPORT_INTEGRATION_20261006.md)，Native／真人驗收仍未完成。原 QA 路徑保留相容導引，hash 見 [Coverage History Entry 099](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-099)。
 
 <a id="qa-historical-process-failure-review-20261009"></a>

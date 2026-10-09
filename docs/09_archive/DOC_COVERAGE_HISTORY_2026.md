@@ -996,3 +996,16 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/03_data/BACKUP_RETENTION_AUDIT_2026_07_06.md` | [BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md](BACKUP_RETENTION_AUDIT_2026_07_06_HISTORY.md) | 10,269 / `F66C2864208C5D284552AF04D255516522023006C4ADA1DC3122B63E5C69147A` | 10,269 / `F66C2864208C5D284552AF04D255516522023006C4ADA1DC3122B63E5C69147A` |
 
 目前 retention 行為與使用方式以每日更新指南／Application Manual 為準；歷史清理候選仍須個別核對最新資產登記並取得明確授權。本 Entry 保存原件身分、引用相容性與現行替代入口，不把 7/6 容量數字當成目前狀態。
+
+<a id="coverage-entry-113"></a>
+## 2026-10-09 歸檔 A 線正式與相鄰 lane latest-status 唯讀 review
+
+此報告是 2026-09-17 的唯讀時點審查，不是目前排程狀態或 Gate closeout。當時 Formal Paper 與 isolated Paper terminal 均為舊日期；BankTaiwan 尚有 18 筆 pending、matured 0；legacy 05:45 有 degraded 186、eligible 14；official-events 的隔離 reader 修正與 next-publication readback 尚未由正式 job 重跑更新 pointer；Raw PIT 為 quarantine，invalid 7、unavailable 16,913。封存僅整理歷史位置，保留原證據與未完成限制。
+
+精確檔名 inbound 共 5 處：`APPLICATION_MANUAL_SUPPLEMENTS.md` 的現行引用已改為直連 Archive；4 處日期化歷史 Catalog／Snapshot／Roadmap／QA 引用仍由 QA 原路徑短導引承接。精確搜尋未發現 Python、測試或固定輸出路徑 consumer。QA README 的排程主題入口已加入此歷史快照，並把目前判讀導回 Snapshot 與較新排程 QA。沒有改變文件權威邊界，因此不需修改 Coverage Map。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17.md` | [A 線 latest-status review 原文](A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md) | 4,070 / `6A5D8E601B6870846B7B34D9F31F7CF949A3099EBF4A1370AE6AC1E719211EFA` | 4,070 / `6A5D8E601B6870846B7B34D9F31F7CF949A3099EBF4A1370AE6AC1E719211EFA` |
+
+現況看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md)、[QA 證據導覽](../06_qa/README.md) 與最新排程收據；原 QA 路徑僅供相容導引，不作目前狀態依據。

@@ -2365,7 +2365,7 @@ A lineage path 跨檔 focused QA 為 `8 passed`（其中 `tests/test_official_ma
 `raw=95`、`missing=0`，且 source bindings 均在 self-contained output 內。先前 failed latest receipt
 仍保留其歷史狀態；正式 job 尚未重跑，因此不能當 Paper／Formal 完成，也不能歸類為 raw 缺件或純
 external missing。ancestor custody review 同樣核對 current 37＋ancestor 43＝80 required raw
-hash、missing 0 且 raw bytes 全驗證。詳見 [A operations latest status review](../06_qa/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17.md)。
+hash、missing 0 且 raw bytes 全驗證。詳見 [A operations latest status review（2026-09-17 歷史快照）](../09_archive/A_OPERATIONS_LATEST_STATUS_REVIEW_2026_09_17_HISTORY.md)。
 
 formal input readiness 的原始 aware clock 為
 `training_as_of=2026-09-17T11:19:45.4764372-07:00`、

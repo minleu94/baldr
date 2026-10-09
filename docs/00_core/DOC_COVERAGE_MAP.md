@@ -1,5 +1,10 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 舊版 CSV 全量重建指南歸檔
+
+將 4,603-byte 舊版 `DATA_REBUILD_GUIDE.md` 移至 archive，原位置保留警示導引。原文直接建議 `--force-all` 重寫合併 CSV 與重算衍生資料，並使用固定個人路徑；它未反映目前受控來源／projection、資料修復與 QA 邊界。`data_audit_agent.md` 改指每日更新指南、current architecture 與具名 QA 收據，明確將舊全量命令列為歷史操作。封存只修正 1 個指向備份稽核的相對連結；其餘原文保留。來源 SHA-256 為 `1876E8FC64C825F4CF72CC29927FAA079BBC8DE04AB4B9E2D2DD8862905BCDAD`；更新連結後 archive 為 4,613 bytes，SHA-256 為 `558974868D100BBB71FC223DC4FBFB4860D3AF1A7F39D010FCD14CFCD3D1A443`。
+
+## 2026-10-08 舊版 SQLite 雙軌指南歸檔
 ## 2026-10-08 舊版 SQLite 雙軌指南歸檔
 
 將 2026-06-02 v1.1 SQLite 雙軌指南移至 `docs/09_archive/`，原路徑留下導引。原文的 CSV 唯一真實來源／SQLite 快取定位、322 倍效能聲稱與全量遷移步驟不再代表目前資料契約；現況依據為 current architecture、每日資料更新指南及 Manual。同步修正 UI feature 文件的維護指向與資料專區入口；歷史索引的舊路徑由導引承接。歸檔原文未改寫，bytes 與 SHA-256 保持不變。

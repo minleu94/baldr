@@ -312,7 +312,7 @@ SQLite 資料：`{DATA_ROOT}/sqlite/twstock.db` 的 `technical_indicators`
 - **共用上下文**：[shared_context.md](./shared_context.md)
 - **現行資料架構**：[系統架構](../01_architecture/system_architecture.md) 與 [資料獲取邏輯](../03_data/DATA_FETCHING_LOGIC.md)；早期設計見[歸檔藍圖](../09_archive/DATA_COLLECTION_ARCHITECTURE_HISTORY.md)。
 - **資料更新指南**：`docs/03_data/daily_data_update_guide.md`
-- **資料重建指南**：`docs/03_data/DATA_REBUILD_GUIDE.md`
+- **資料修復／重建**：先閱讀[每日資料更新指南](../03_data/daily_data_update_guide.md)、[系統架構](../01_architecture/system_architecture.md)及對應 QA 收據，確認精確來源、目標與備份；舊版 `--force-all` 全量重建指令已歸檔，不作目前核准流程。
 - **設定來源**：`data_module/config.py`
 - **更新服務**：`app_module/update_service.py`
 - **SQLite 等價驗證**：`scripts/validate_sqlite_equivalence.py`

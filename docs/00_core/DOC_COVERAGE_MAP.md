@@ -1024,3 +1024,12 @@ Task Loop 01–07 的個別 bounded 工程 handoff 已由 08-B 中央整合收�
 ## 2026-10-08 精簡架構主文的 9/27 邊界／資源 lifecycle 記錄
 
 system_architecture 主文原 9/27 區塊的逐次 gate verdict、舊 attempt／hash、測試數與提交前快照移入既有[架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)；舊兩個標題保留短導引。刪改前逐位元組切片為 5,213 bytes／SHA-256 `F461DB846416E016DAFC86B2979F19287B13D5687084F2DA552F9CD30561FDD3`；歸檔副本只把 R028 實作報告的相對連結改為 Archive 位置，切片為 5,232 bytes／SHA-256 `1BF065E4319DF5EBB9A363A7A8C3AB8B9C77AA1065D354B14D76ACA1D037A566`。TechnicalIndicatorJob 單一 orchestration owner、IndustryMapper provider injection／fail-closed 語意、DBManager connection close 與 ML app initialization 前置條件改留在架構第 4、8、11 節；R027 原 strict `INCONCLUSIVE` 與後續 versioned logical-time revision 分開保留。當期驗收依各自 QA，現況看 Snapshot；架構目錄與 Archive README 已同步。
+
+## 2026-10-08 Decision Continuity Increment B／C QA 歷史歸檔
+
+將 2026-09-14／15 的 Increment B、C 詳細 QA 原文逐位元組移至 Archive，QA 原路徑保留短導引；舊 Catalog、Project Snapshot history 與 next-increment audit 的舊引用由導引承接。B 記錄 isolated widget smoke、watchlist 儲存啟用與當時測試結果；C 記錄 launcher／TPEX 取消、MainWindow 單次關閉與 child readback。兩者均不是完整跨頁 MainWindow acceptance；後續狀態看 R1 QA 與仍開放的跨頁 acceptance plan。本機 screenshots、`output/qa` raw JSON／runner logs 未隨封存提交，導引與 Archive README 明示這項限制。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/06_qa/DECISION_CONTINUITY_INCREMENT_B_QA_2026_09_14.md | [Increment B 原文](../09_archive/DECISION_CONTINUITY_INCREMENT_B_QA_2026_09_14.md) | 6,314 / `80EF9560BD55C34456E0D72E724884C0693DA893E315AC272BB59D81C2C594E4` | 6,314 / `80EF9560BD55C34456E0D72E724884C0693DA893E315AC272BB59D81C2C594E4` |
+| docs/06_qa/DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md | [Increment C 原文](../09_archive/DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md) | 11,559 / `A1242DD2837395B149D9B1DD8E16D4395E82FFC6B720F58D0BD0BA17EC58872E` | 11,559 / `A1242DD2837395B149D9B1DD8E16D4395E82FFC6B720F58D0BD0BA17EC58872E` |

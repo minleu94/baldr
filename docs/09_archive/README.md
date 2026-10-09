@@ -104,9 +104,11 @@ Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJE
 
 ### 2026-10-08 Early decision and industry journey receipts
 
-四份 2026-09-14 收據保存當時的 bounded write-path、read-model、UI 與 current-research industry smoke。Decision／Outcome 的後續 reader 證據看 [R1 Workbench QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)，完整 MainWindow 跨頁 round-trip 仍由 [open acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md) 追蹤；產業 smoke 的 PIT eligible 為 0，較新 provenance、UI observation 與 source/caller gate 看 [WP2 current provenance](../06_qa/WP2_INDUSTRY_INDEX_CURRENT_PROVENANCE_20260928.md)、[WP2 UI observation](../06_qa/WP2_INDUSTRY_INDEX_UI_OBSERVATION_20260928.md)、[PIT taxonomy](../06_qa/PIT_TAXONOMY_DAILY_SOURCE_QA_2026_09_15.md) 與 [industry caller acceptance](../06_qa/PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md)。這批歷史收據不代表完整旅程、自然／正式 outcome 或 PIT qualification 已成立。
+六份 2026-09-14／15 收據保存當時的 bounded write-path、read-model、UI、watchlist 儲存啟用、MainWindow shutdown／child readback 與 current-research industry smoke。Decision／Outcome 的後續 reader 證據看 [R1 Workbench QA](../06_qa/CONTINUITY_REVIEW_WORKBENCH_R1_QA_2026_09_15.md)，完整 MainWindow 跨頁 round-trip 仍由 [open acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md) 追蹤；產業 smoke 的 PIT eligible 為 0，較新 provenance、UI observation 與 source/caller gate 看 [WP2 current provenance](../06_qa/WP2_INDUSTRY_INDEX_CURRENT_PROVENANCE_20260928.md)、[WP2 UI observation](../06_qa/WP2_INDUSTRY_INDEX_UI_OBSERVATION_20260928.md)、[PIT taxonomy](../06_qa/PIT_TAXONOMY_DAILY_SOURCE_QA_2026_09_15.md) 與 [industry caller acceptance](../06_qa/PIT_INDUSTRY_CALLER_ACCEPTANCE_QA_2026_09_15.md)。這批歷史收據不代表完整旅程、自然／正式 outcome 或 PIT qualification 已成立。Increment B 的 screenshots 與 Increment C 的 raw JSON／runner output 是本機 sidecar，未隨文件封存。
 
 - [Decision Continuity Write Path Increment A QA（9/14）](DECISION_CONTINUITY_WRITE_PATH_QA_2026_09_14.md)
+- [Decision Continuity Increment B QA（9/14）](DECISION_CONTINUITY_INCREMENT_B_QA_2026_09_14.md)：保留當時 isolated widget smoke、exact identity 與 explicit watchlist storage activation 驗收；測試數字不是目前基線。
+- [Decision Continuity Increment C QA（9/14–15）](DECISION_CONTINUITY_INCREMENT_C_QA_2026_09_14.md)：保留當時 launcher／TPEX cancellation、MainWindow close lifecycle 與獨立 child readback；不代表完整跨頁 acceptance。
 - [Decision → Outcome Journey read model QA（9/14）](DECISION_OUTCOME_JOURNEY_2026_09_14.md)
 - [Decision → Outcome Journey UI QA（9/14）](DECISION_OUTCOME_JOURNEY_UI_2026_09_14.md)
 - [產業強弱與產業→個股決策旅程 QA（9/14）](INDUSTRY_DECISION_JOURNEY_2026_09_14.md)

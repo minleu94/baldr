@@ -1,6 +1,6 @@
 # V2.1 至 V4.0 產品成熟度路線圖
 
-> **內容基線**：2026-09-15（提交 `0219d709`，並承接 Qt 修復 `9a9e778b`）；2026-10-08 僅整理歷史交接與入口，未改成熟度標準。
+> **內容基線**：2026-09-15（提交 `0219d709`，並承接 Qt 修復 `9a9e778b`）；2026-10-08–09 僅整理歷史交接、入口與重複狀態註記，未改成熟度標準。
 > **狀態判讀**：成熟度標準與目前專案進度分開維護；目前狀態、阻礙與優先事項以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準。2026-07 至 2026-08 的版本狀態快照、2026-09-15 工程／產品交接及原更新記錄，分別見[狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)、[工程交接歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)與[更新歷史](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_UPDATE_HISTORY_20260711_TO_20260915.md)。
 > **定位**：本文件是 V2.0 之後的長期產品成熟度與版本階梯權威；版號代表產品能力與證據成熟度，不代表功能數量。
 > **工程順序**：未來六個月以 [ROADMAP_6M_ENGINEERING.md](ROADMAP_6M_ENGINEERING.md) 為準。
@@ -61,8 +61,6 @@
 
 Closeout Gate：Advice 可拒絕、可重算、可回溯；UI 不直接計算；不串 broker。
 
-> 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
-
 ### V2.2：Evidence Operating Loop
 
 目的：讓 Evidence 不再只有 dashboard / dry-run，而形成真實 weekly review、manual note 與 action-item rhythm。
@@ -77,10 +75,6 @@ Closeout Gate：Advice 可拒絕、可重算、可回溯；UI 不直接計算；
 
 Closeout Gate：production evidence scheduler 如獲批准只保存 evidence；不自動交易、不套 lifecycle action。
 
-> 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
-
-> 歷史狀態快照（2026-08-30）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
-
 ### V2.3：P0 Data Credibility
 
 目的：逐一處理 Corporate Action、trading restriction、三大法人、信用交易、TDCC、PIT fundamentals。
@@ -92,10 +86,6 @@ Closeout Gate：production evidence scheduler 如獲批准只保存 evidence；�
 - Data Source Control Center 可見 freshness、coverage、quarantine、retry 與 downstream eligibility。
 
 Closeout Gate：每個 P0 source 有 accepted / limited / rejected / deferred 決議；candidate 不冒充 formal。
-
-> 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
-
-> 歷史狀態快照（2026-08-30）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
 ### V2.4：Portfolio Coach Foundation
 
@@ -124,12 +114,6 @@ Closeout Gate：能安全輸出 Portfolio Advice 或 `NO_NEW_POSITION`；不串 
 
 Closeout Gate：每個 transition 可解釋、可回溯；不自動平倉。
 
-> 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
-
-**Paper baseline 歷史收據（2026-07-12）**：V2.4／V2.5 首份 saved-Recommendation paper 與 position-health baseline 只證明當時的研究用初始產物，未構成版本 formal closeout。政策、配置、樣本與人工必填欄位見 [V2.4 paper baseline](../09_archive/V2_4_PAPER_BASELINE_2026_07_12.md) 與 [V2.5 position-health baseline](../09_archive/V2_5_POSITION_HEALTH_BASELINE_2026_07_12.md)；目前成熟度看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
-
-> 歷史狀態快照（2026-08-30）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
-
 ## 5. V3.x：Signal、Portfolio、Exit、Pruning、ML Shadow、Paper Validation
 
 ### V3.0：Signal Effectiveness & Pruning
@@ -142,12 +126,6 @@ Closeout Gate：每個 transition 可解釋、可回溯；不自動平倉。
 - MAE / MFE、hit、payoff、bucket monotonicity、Precision@K。
 - Fixed threshold robustness、component ablation、regime / liquidity stability。
 - Signal / gate / alert / Profile 的 retain / restrict / downweight / retire 決議。
-
-現況邊界：2026-07 的 score effectiveness / V3 engineering candidate 收據只代表 read-only scaffold 與當時的 `ready_for_manual_validation`，不是本版本 closeout。日期化自動／人工驗證細節見 [Archive 導覽](../09_archive/README.md#2026-10-08-v2v3v4-dated-readiness-reports)；目前狀態看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
-
-**Week 1 人工驗證歷史決議（2026-07-12）**：當時資料不足，決議為 `DEFER_ALL_PRUNING_DECISIONS`，不調整 score、threshold、Profile、gate、alert 或 lifecycle。樣本與缺失值明細保存於 [Archive 原文](../09_archive/V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md)；目前狀態看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
-
-> 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
 ### V3.1：Portfolio Advice Validation
 
@@ -171,8 +149,6 @@ Closeout Gate：每個 transition 可解釋、可回溯；不自動平倉。
 
 Closeout Gate：最多提出繼續 shadow、拒絕或人工 promotion review；不自動上線、不改 scheduler / Portfolio / lifecycle、不交易。
 
-> 歷史狀態快照（2026-08-30）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
-
 ## 6. V4.0：Evidence-Validated Investment Decision System
 
 V4.0 是長期 maturity milestone，不是目前六個月工程承諾。只有以下條件由長期 Forward / Paper / Live Evidence 支持時才成立：
@@ -186,16 +162,6 @@ V4.0 是長期 maturity milestone，不是目前六個月工程承諾。只有�
 7. 持續調參受到 Experiment Contract、search budget、OOS 與 pruning 約束，沒有用過度擬合換取版號。
 8. Model / source / policy 出現 drift 或 failure 時，可回到 last approved champion。
 
-目前已接上的 `baldr-forward-outcomes-daily` 只是第 1、2、4、5 項的資料累積入口：
-它以固定的 close-to-close basis、自然交易日與明確的事件／日期上限寫入
-`evidence_outcomes`，並保留缺價、benchmark、成本與成熟度缺口。producer 的成功不等於
-上述八項已達標；未具備的成本後績效、Paper／Live 成交、Exit、drift、OOS 與 rollback
-證據仍須自然累積並逐項驗收。
-
-每日推薦 producer 的 cohort identity 已固定保存策略版本、`TAIEX` benchmark、20 日主要
-horizon 與 `gross-close-to-close-no-cost-v1` 成本標籤；no-cost 標籤只代表尚未扣除費稅、
-滑價與流動性成本，evaluator 會保留警告，不能被當成第 2 項的成本後比較。
-
 V4.0 仍不代表：
 
 - 保證獲利。
@@ -203,8 +169,6 @@ V4.0 仍不代表：
 - AI 報牌。
 - 免人工審核。
 - 所有市場環境都有效。
-
-> **歷史交接（2026-09-15）**：當時的工程分流與下一步見[歸檔紀錄](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)；本 Roadmap 只定義成熟度標準，目前進度與優先順序以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準。
 
 ## 7. 版本 Promotion / Demotion 規則
 

@@ -11,6 +11,15 @@
 - [逐批文件整理與歸檔沿革](DOC_COVERAGE_HISTORY_2026.md)：收錄 Coverage Map 移出的日期化批次記錄、原路徑／封存路徑與 hash 證據。
 - 現行權威邊界、文件同步矩陣與 DoD 仍由 [DOC_COVERAGE_MAP](../00_core/DOC_COVERAGE_MAP.md) 維護；本清冊只供追溯。
 
+<a id="qa-historical-process-failure-review-20261009"></a>
+## 2026-10-09 QA 歷史流程與失效分析
+
+- [Branch/worktree 整理紀錄](BRANCH_WORKTREE_CONSOLIDATION_20260927_HISTORY.md)：保存 2026-09-27 當時的本機分支與工作樹盤點；目前 Git 狀態看實際 checkout 與 `PROJECT_SNAPSHOT`。
+- [文件整併審查](DOCUMENTATION_CONSOLIDATION_20260927_HISTORY.md)：保存 2026-09-27 的文件盤點數字與整理方法；不是目前文件數量或現行索引。
+- [舊推薦學習失效回顧](LEGACY_RECOMMENDATION_LEARNING_FAILURE_REVIEW_2026_09_21_HISTORY.md)：保留當日 read-only failure review 與 BankTaiwan capture 邊界；目前行為與狀態以 Snapshot、Architecture 及近期 QA 為準。
+
+來源 `docs/06_qa/` 路徑保留短導引；原始 bytes／SHA 與其餘待覆核候選的處置見 [Coverage History Entry 097](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
+
 ## 2026-10-08 V1.5／V1.9 plan/spec history
 
 - [V1.5 Data Credibility plan](superpowers/plans/2026-07-04-v1-5-data-credibility.md) 與 [design spec](superpowers/specs/2026-07-04-v1-5-data-credibility-design.md)：保留完整原文；v1 closeout 範圍以 [QA 收據](V1_5_DATA_CREDIBILITY_CLOSEOUT_2026_07_04.md) 為準。原計畫未勾項目仍留作歷史，QA 未證明外部來源採用、調整後價格整合、ScoringEngine 或正式排程完成。

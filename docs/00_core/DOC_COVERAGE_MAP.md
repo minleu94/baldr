@@ -16,7 +16,7 @@
 | 重構完成後產品方向、投資問題、產品能力演進 | `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` | 定義 bounded advice、Portfolio、Exit、Evidence、Data、ML 與 pruning 產品 Gate；不保存工程 checklist。 |
 | 未來 6 個月工程路線 | `docs/00_core/ROADMAP_6M_ENGINEERING.md` | 里程碑、交付物與驗收標準以 6M Roadmap 為準；Month 1–6 是相對順序，進度看 Snapshot。 |
 | 外部專案參考、資料源優先序、V1.5-V2.0 版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` | 作為 6M Roadmap / Version Roadmap companion；不取代 Vision 或目前狀態權威。 |
-| V2.0 之後長期產品成熟度 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` | 維護 V2.1-V4.0 maturity milestone；不代表 6M 工程 Gate 順序，也不取代 Product / 6M Roadmap、Vision 或目前狀態權威。 |
+| V2.0 之後長期產品成熟度 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` | 只維護 V2.1–V4.0 maturity milestone；目前進度看 Snapshot，日期化狀態／工程交接看 `docs/09_archive/`；不取代 Product / 6M Roadmap、Vision。 |
 | Roadmap 入口與權威導覽 | `docs/00_core/DEVELOPMENT_ROADMAP.md` | Roadmap Hub 只連結權威文件，不複製 Next、狀態、風險或完整歷史。 |
 | 舊 Roadmap 項目處置與移交 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` | 每個 Legacy 項目有唯一處置；移交項目標示新版落點與驗收，舊月份標籤只供歷史追溯。 |
 | 系統架構、模組邊界、資料流 | `docs/01_architecture/system_architecture.md` | 架構描述衝突時，以系統架構文件為準。 |
@@ -408,6 +408,8 @@
 - 2026-10-09：將 10/06 homepage wiring 與 private review dated increments 移入架構更新歷史；首頁 routing 和 personal store／account identity 契約整理至 §§3、11。細節見 [Coverage History Entry 095](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-095)。
 - 2026-10-09：將 2026-09-29 排程 operational custody dated slice 歸檔；各 lane source／release pins、同次 terminal receipt 與不可跨 lane 授權規則保留於 Architecture §10。細節見 [Coverage History Entry 096](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-096)。
 - 2026-10-09：明確 QA 收據歸檔條件：仍被 Gate、未解問題或工具固定路徑使用的文件留在 QA；純歷史收據只有解除活躍依賴並保留相容導引後才搬移。
+- 2026-10-09：核對 Gemini 提出的 10 份 QA 歸檔候選，只封存 3 份無活躍依賴的歷史紀錄；其餘 7 份因 tracked manifest 固定原 bytes／路徑或仍被現行入口引用而保留。詳見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
+- 2026-10-09：精簡 V2.1–V4.0 maturity spec 中重複的 7/12、8/30 status notes；歷史判讀仍由既有 Archive 提供，正文保留版本標準並以 Snapshot 表示現況。
 - 2026-08-30：補入 P0／Evidence／Paper／Formal／Runtime／Performance／Data Update refresh 文件，並把 UI 舊 readiness artifact marker、週末 freshness 語意與最新測試 inventory 納入 coverage。
 - 2026-09-10：補入 V4.1 A 線推薦機率校準的 QA handoff、Snapshot、Current architecture、Manual 與 Index；確認 20／5 outcome contract、walk-forward split、整數 bp calibration、read-only DB boundary 與自然 forward evidence 尚未成熟的 not-evaluable 狀態。chip／funding、industry、PIT theme 保持 deferred，沒有回填歷史 event。
 - 2026-09-12：補入 V4.1 A 線第二輪歷史研究與候選方法包的 QA handoff、Snapshot、Current architecture、Navigation、Manual、Runbook 與 Index；新增逐列 manifest、gap／candidate coverage、自然時間分類與 create-only frozen artifact，確認正式 DB 僅 query-only 讀取且沒有 promotion／formal writer 變更。
@@ -450,3 +452,7 @@
 ## 2026-10-09 歸檔 9/29 排程 operational custody 切片
 
 [完整批次紀錄](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-096)。
+
+## 2026-10-09 覆核 QA 歸檔候選
+
+[完整批次紀錄與逐檔 SHA-256](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。

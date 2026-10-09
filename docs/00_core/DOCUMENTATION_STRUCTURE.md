@@ -228,6 +228,8 @@
 - 2026-10-09：將 10/06 homepage／personal IO dated increment 歸入架構歷史；首頁 DTO routing 與 personal store/account identity 契約整理至 §§3、11，保留舊 heading 導引、原文及 coverage 記錄。
 - 2026-10-09：將 9/29 operational custody 固定時間／inventory／接線快照移入架構更新歷史；lane source／receipt 隔離的長期規則留在 §10，舊標題保留導引並補齊 README／Coverage Map。
 - 2026-10-09：補充 QA evidence retention 規則：按 Gate／未解項／固定路徑／替代證據判斷 QA 原件是否保留，不能只按日期或完成標籤歸檔；同步 QA README 與 Coverage Map。
+- 2026-10-09：覆核 QA 生命週期清冊的 10 份歸檔候選：僅移動 3 份無活躍依賴的歷史流程／失效紀錄；對保留原路徑、保留原 bytes 的判定與 coverage 見 Entry 097。
+- 2026-10-09：移除 Version Roadmap 內重複的 7/12、8/30 狀態註記及已封存的單次驗收摘要；保留 maturity criteria，現況／歷史入口改由 Snapshot／Archive 導覽。
 - 2026-10-08：將四份早期 Recommendation／Update Tab QA 問題盤點與摘要移至 Archive，保留 byte-identical 原件、相容導引及現況判讀界線；同步 QA／Archive README 與 coverage map。
 - 2026-10-08：將回測 Lab 過期 checklist／FAQ 歸檔並保留舊路徑導引；快速參考改指操作手冊，功能目錄與 coverage map 同步現行入口。
 - 2026-10-08：將 V3 ML readiness 與兩組 UI readability polish 的已結案 plan/spec 配對歸檔；ML 原件明定僅研究／closeout readiness，不代表 production ML。

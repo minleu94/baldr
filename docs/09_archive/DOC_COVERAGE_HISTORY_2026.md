@@ -802,3 +802,24 @@ system_architecture 主文原 9/27 區塊的逐次 gate verdict、舊 attempt／
 | 原路徑標題 | 歷史原文位置 | 原文 bytes / SHA-256 |
 |---|---|---|
 | `docs/01_architecture/system_architecture.md#排程來源與-operational-custody-2026-09-29` | [架構更新歷史](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md#scheduled-operational-custody-20260929) | 1,267 / `52EBADB21E43430B5D9E14D244D572B549E2B2FFC106488C05F89C33343ED96A` |
+
+<a id="coverage-entry-097"></a>
+## 2026-10-09 覆核 Gemini QA 生命週期盤點之歸檔候選
+
+Gemini 對 `docs/06_qa/` 根目錄 527 份 Markdown 提出 10 份 `ARCHIVE_CANDIDATE`。逐項核對 repository 引用與內容後，僅將三份純歷史流程／失效紀錄移入 Archive，並以原 QA 路徑短導引維持舊連結；原文件全文以原始 bytes 保存。此批不刪除證據、不推定失效分析所述問題已全面解決。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/BRANCH_WORKTREE_CONSOLIDATION_20260927.md` | [branch/worktree 原文](BRANCH_WORKTREE_CONSOLIDATION_20260927_HISTORY.md) | 5,335 / `6C7608E14082FC295875236C1A23DE4D121A51640404D7F45047A9F4E424723C` | 5,335 / `6C7608E14082FC295875236C1A23DE4D121A51640404D7F45047A9F4E424723C` |
+| `docs/06_qa/DOCUMENTATION_CONSOLIDATION_20260927.md` | [文件整併審查原文](DOCUMENTATION_CONSOLIDATION_20260927_HISTORY.md) | 4,671 / `EEDEFDD1658096C8ADF1D2CC486870F9025080DC9EA19D61C6E1579362089131` | 4,671 / `EEDEFDD1658096C8ADF1D2CC486870F9025080DC9EA19D61C6E1579362089131` |
+| `docs/06_qa/LEGACY_RECOMMENDATION_LEARNING_FAILURE_REVIEW_2026_09_21.md` | [舊推薦學習失效回顧原文](LEGACY_RECOMMENDATION_LEARNING_FAILURE_REVIEW_2026_09_21_HISTORY.md) | 9,283 / `2095916E15EFE42D2380E9B91A233F275A3835364AA9B453D376D5AEA63F8CA9` | 9,283 / `2095916E15EFE42D2380E9B91A233F275A3835364AA9B453D376D5AEA63F8CA9` |
+
+其餘七份暫不移動，因為原始路徑／內容仍有可驗證依賴或尚待釐清的來源差異：
+
+- `C2_NON_ML_CONSUMER_UNION_PREFLIGHT_20260925.md`、`R029_RETIREMENT_GATE_DRAFT_20260925.md` 與 `R029_RETIREMENT_PREFLIGHT_INVENTORY_20260925.md` 仍被 R020／R029／R031 文件直接引用。tracked 的 `WAVE14_CANDIDATE_CHANGE_MANIFEST_20260926.json` 是歷史快照而非 runtime reader；其中 C2 與兩份 R029 文件的 LF 正規化 bytes／SHA 仍與目前原件相符。歸檔前需先把現行文件引用改指向原件歸檔位置。
+- `C3_C4_RELEVANT_SUITE_PREFLIGHT_DRAFT_20260925.md` 也出現在同一份 tracked manifest；目前 LF 正規化後只少一個尾端 LF，但原文還連到 QA 內的 C3/C4 manifest 與 R026 allowlist。保留原路徑，待連結遷移與凍結 bytes 的回溯方式一併規劃後再處置。
+- `R031_TASK_REPORT_INDEX_DRAFT_20260925.md` 雖然檔名帶 `DRAFT`，內文已更新為目前 task disposition，且由 QA README 作為 31-task 導覽；目前檔案也比 WAVE14 manifest 所記錄的舊快照大，不能把舊分類直接套用到現件。
+- `WP5_INTEGRATION_CHECKLIST_20260928.md` 仍由 QA README、`WP5_CHECKPOINT_CURRENT_20260928.md` 及 `M11_PERSONAL_RESEARCH_OUTCOME_STAGEC_20260928.md` 引用，承載 checkpoint continuity 與候選限制。
+- `V2_2_PHASE5_APPROVAL_REHEARSAL_PACKAGE_2026_07_07.md` 仍由 QA README 和 Application Manual 指引用於準備審核材料；內容明確是模擬預演，尚非正式 approval。
+
+因此這 7 份目前保留原文和原路徑；後續若解除文件依賴或釐清 SHA 差異，再以新的 coverage entry 記錄處置。此次覆核不等於完整重新分類其餘 517 份非候選文件，也不核實 ignored `output/` sidecars。

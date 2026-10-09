@@ -424,6 +424,16 @@ Healthcheck Batch 3 Recommendation Profile／Regime plan 經審核後留在 `doc
 
 `PROSPECTIVE_FORMAL_SIMULATED_PORTFOLIO_EXECUTION_PLAN_2026_08_14.md` 雖為 8/14 日期化長文，仍由 Product Roadmap、Gate 2–7 Engineering Control Center 與 Gate 7 Engineering 引用為執行 SSOT；尚無後續文件完整取代其 prospective-only、frozen-candidate、clock、PIT 與 no-backfill 順序，因此保留在 QA。QA README 已補直接入口與相關方向／clock contract；歷史快照及被拒絕的 staging 仍由 Archive 導覽。
 
+## 2026-10-08 LUNA A／C handoff 與 integration closeout 歸檔
+
+已完成的 LUNA A／C 單線交付摘要與 9/8 三線整合 closeout 移入 Archive；原 QA 路徑保留短導引。A／C 與 integration closeout 是 dated workstream／commit／test evidence，不作目前狀態或測試結果。Luna B handoff 與 pre-integration Project Consolidation Review 刻意留在 QA：`scripts/audit_test_inventory.py` 將它們納入 Governance Markdown scan，`scripts/audit_luna_b_repo_map.py` 直接讀取 Consolidation Review 的原文；保留舊路徑與原內容以維持稽核 coverage。
+
+| 原路徑 | 歸檔路徑 | 原文 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/06_qa/LUNA_A_HANDOFF_2026_09_07.md | [LUNA_A_HANDOFF_2026_09_07.md](../09_archive/LUNA_A_HANDOFF_2026_09_07.md) | 13,633 / `f8605b436eb97b4c0bce56541469e89ef59251f2cd04f94a975253933ec0d64e` | 13,633 / `f8605b436eb97b4c0bce56541469e89ef59251f2cd04f94a975253933ec0d64e` |
+| docs/06_qa/LUNA_C_HANDOFF_2026_09_07.md | [LUNA_C_HANDOFF_2026_09_07.md](../09_archive/LUNA_C_HANDOFF_2026_09_07.md) | 14,179 / `ec9f1778b7a681edb14b45a75faf2893899f8ac7eebe749dcd7be434569a2841` | 14,179 / `ec9f1778b7a681edb14b45a75faf2893899f8ac7eebe749dcd7be434569a2841` |
+| docs/06_qa/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md | [LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md](../09_archive/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md) | 7,696 / `7130365ee56b3f6152a43eb48f3c5225024379b096d357cb6233c8788a3ae3c7` | 7,696 / `7130365ee56b3f6152a43eb48f3c5225024379b096d357cb6233c8788a3ae3c7` |
+
 ## 2026-10-08 QA 導覽補充：Gate 2 與 Data Update 效能基線
 
 盤點 2026-07／08 剩餘長篇 QA 時，保留 [Gate 2 7/22 稽核](../06_qa/GATE_2_DATA_GOVERNANCE_CONSOLIDATION_AUDIT_2026_07_22.md)：唯讀稽核腳本仍固定輸出至該路徑，報告也明示不構成人工 Gate credit 或 production enablement。保留 [Data Update 8/28 效能基線](../06_qa/DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md)：Application Manual 直接引用，且報告內 bounded worker、單寫入者與 production opt-in 邊界仍需追溯。兩者均是日期化證據，不代表目前資料筆數、執行速度或 Gate 狀態；QA README 已補主題入口。

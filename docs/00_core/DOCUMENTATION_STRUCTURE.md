@@ -141,6 +141,7 @@
 - 2026-08-29 ML Release v4 Storage Retention Cleanup 是使用者授權的一次性 custody 收據，已移至 Archive 並保留舊 QA 路徑轉址；目前 immutable publication retention 規則以 system_architecture §11.1 為準，操作以 Application Manual Supplements 為準。
 - 三份 2026-08-30 Runtime／Performance、Paper、Formal／ML readiness 詳細快照已移至 Archive；目前狀態以 PROJECT_SNAPSHOT 為準。P0 與 Evidence weekly approval handoff 仍留在 QA 並由 External Validation Register 引用，日期化數字不代表今日 Gate 狀態。
 - 兩份 2026-07-12 V2.3 P0 source decision receipts 已移至 Archive；P0 逐來源 Register 留在 QA 作為目前分類入口。V2.2 Phase 5 simulated approval rehearsal 因 Application Manual 仍引用，保留原文於 QA 並標明不構成 approval／scheduler enablement。
+- LUNA A／C handoff 與 9/8 integration closeout 已移至 Archive；Luna B handoff、pre-integration review 保留在 QA，因 audit scripts 直接讀取這兩份原文。QA README 導覽明列歸檔與保留理由，舊路徑均有短導引。
 - 六份 2026-07 V2.4／V2.5 paper baseline、V3.0 readiness／manual validation 與 V4.0 dated release-freeze receipt 已歸檔；成熟度文件保留 Gate 與決議摘要、移除單日 metrics，舊 QA 路徑仍供 script existence check 與歷史引用相容。
 - 三份 2026-09-14／15 decision workbench、next-increment 與 continuity write-path audit 已歸檔；QA 導覽與 PIT industry discovery 改連 Archive 原文，日期化剩餘工作不再混作目前優先序。
 - 2026-09-07 的三份 V4 bounded data／machine／ML QA 亦已歸檔；仍以 Snapshot 與較新的專題收據判讀目前狀態，不將單日 release evidence 當成現行資格結論。
@@ -173,6 +174,7 @@
 
 ## 六、更新記錄
 
+- 2026-10-08：歸檔 LUNA A／C handoff 與整合 closeout；因 inventory 工具直接讀取原文而保留 LUNA B handoff／Project Consolidation Review，QA 地圖標示兩者界線並直達 Archive 收據。
 - 2026-10-08：依目前引用歸檔 Program Status、ML retention custody、8/30 readiness details 與 V2.3 source decisions；QA 導覽保留當前 Gate 7 execution SSOT，並明確區分有效契約、owner handoff 與歷史快照。
 - 2026-10-08：補齊 Scoped SSOT 的願景、產品、工程、現況、成熟度與歷史移交分工；將 Roadmap Hub 定義為純導覽，並說明版本成熟度不代表工程 Gate 順序。
 - 2026-10-08：依逐檔引用檢查修正 `05_phases/` 保留理由，明列目前唯一核實的 Active 直接引用；歷史文件仍須按引用、證據與追溯價值逐檔判讀。

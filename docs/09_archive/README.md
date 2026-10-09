@@ -61,6 +61,13 @@
 
 目前逐來源決議以 [P0 Source Acceptance Register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 與 [近期資料來源 QA](../06_qa/README.md) 為準；兩份原 QA 路徑保留相容導引。
 
+### 2026-10-08 LUNA three-line integration history
+
+- [Luna A data／ML handoff（9/7）](LUNA_A_HANDOFF_2026_09_07.md) 與 [Luna C UI/UX handoff（9/7）](LUNA_C_HANDOFF_2026_09_07.md)：保留各線交付當時的範圍、未完成項、驗收限制及 rollback 邊界。
+- [LUNA integration closeout（9/8）](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)：整合缺陷、當時完整驗證及 Git 收尾的最終收據；其測試數字不代表目前 HEAD。
+
+Luna B handoff 與 pre-integration [Project Consolidation Review](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 保留在 QA，因 repository inventory／repo-map audits 直接讀取這兩份原始文件；舊 QA 路徑仍保留導引。當前程式與狀態分別看 system architecture 與 PROJECT_SNAPSHOT。
+
 ### 2026-10-08 Decision workbench and continuity audit history
 
 三份 2026-09-14／15 audit 記錄當時的全決策工作台整合證據、下一增量判讀及 continuity write-path 保存鏈缺口。內文列出的剩餘工作與優先序是當時快照，不取代目前的 Snapshot／Roadmap，也不直接授權後續工程；原 QA 路徑保留相容導引。
@@ -239,7 +246,7 @@ These are completed, dated engineering/readiness records. Current source accepta
   - 2026-09-06 八卡任務拆解手冊（TASK-01～TASK-08）；八卡已全數交付驗收（見 `docs/06_qa/TASK_LOOP_01_HANDOFF.md` ~ `08_HANDOFF.md`），歷史任務指派歸檔。
 
 - **`LUNA_PARALLEL_PLAN_2026_09_07.md`**
-  - 2026-09-07 Luna 三線平行規劃伴隨文件；該輪三線已於 2026-09-08 結案（見 `docs/06_qa/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md`）。
+  - 2026-09-07 Luna 三線平行規劃伴隨文件；該輪三線已於 2026-09-08 結案（見 `docs/09_archive/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md`）。
 
 - **`LUNA_PROMPT_A_DATA_ML_2026_09_07.md`**、**`LUNA_PROMPT_B_ARCHITECTURE_2026_09_07.md`**、**`LUNA_PROMPT_C_UX_2026_09_07.md`**
   - 2026-09-07 給 Luna A/B/C 三位子代理的一次性任務 Prompt；任務已結案並整合，歷史提示詞歸檔。

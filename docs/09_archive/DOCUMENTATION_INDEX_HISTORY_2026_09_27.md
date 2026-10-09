@@ -68,7 +68,7 @@
 - [資料更新](../06_qa/V4_DATA_FRESHNESS_HANDOFF.md)、[Direct資料鏈](../06_qa/V4_DIRECT_RELEASE_HANDOFF.md)、[個股研究報告](../06_qa/V4_STOCK_RESEARCH_REPORT_HANDOFF.md)。
 - [工作區檔案說明](../06_qa/WORKSPACE_FILES_AND_CLEANUP_2026_09_08.md)、[三線接手Prompt（歷史歸檔）](../09_archive/V4_THREE_LUNA_HANDOFF_PROMPTS_2026_09_08.md)。
 
-- [LUNA 三線整合驗收](../06_qa/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)：三線判定、整合缺陷修補、全域驗證、正式 ML 限制與 Git 收尾。
+- [LUNA 三線整合驗收](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)：三線判定、整合缺陷修補、全域驗證、正式 ML 限制與 Git 收尾。
 
 - [專案整併查核](../06_qa/PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md)：實際整理結果、驗證限制、邏輯衝突與重大改動判斷。
 - [LUNA 三線執行 companion（歷史歸檔）](../09_archive/LUNA_PARALLEL_PLAN_2026_09_07.md)：共同基線、資源預算、A／B／C Prompt 與整合驗收。

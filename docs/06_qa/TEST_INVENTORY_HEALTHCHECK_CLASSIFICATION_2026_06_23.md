@@ -484,7 +484,7 @@ Current collected test cases: `5811`
 - 原先列為 residual 的 `tests/test_cross_page_decision_journey_mainwindow.py`、`tests/test_db_lock_wait.py`、`tests/test_pit_taxonomy_daily_source.py`、`tests/test_review_warning_classification.py`、`tests/test_security_lifecycle_caller.py`、`tests/test_security_lifecycle_contract.py` 已依責任分類登錄；cross-page 仍為 candidate UI bridge，其他各自維持 data／governance／general unit 邊界。
 - 本輪清理前實測為 748 個 Python 檔、4639 測項；舊 679 檔／4005 測項是較早檢查點。
 - 本輪補登 69 個檔案（含既有 ml_teacher_fixture 支援檔），刪除七份一次性診斷，兩份欄位測試合為參數化雙入口測試。
-- 2026-09-08 最終 collection 為 4,655；全量 pytest 為 4,652 passed、3 skipped；missing／stale／count drift 為零。見 [LUNA 三線整合驗收](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)；[前次查核](PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 保留為歷史。
+- 2026-09-08 最終 collection 為 4,655；全量 pytest 為 4,652 passed、3 skipped；missing／stale／count drift 為零。見 [LUNA 三線整合驗收](../09_archive/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md)；[前次查核](PROJECT_CONSOLIDATION_REVIEW_2026_09_07.md) 保留為歷史。
 - 2026-09-09 TDCC candidate completion 新增 2 個定向測試與 2 個同輪資料服務測試登錄；本輪 V4 forward outcome producer 再新增 1 個治理測試並完成登錄。本段計數以當前 filesystem／registry machine audit 為準，TDCC raw/candidate 仍位於 ignored output。
 - 2026-09-10 登錄跨日 evidence contract 整合測試，以及既有 UI theme／watchlist layout 測試；本輪新增測試仍只使用隔離資料或 UI fixture，不因此進入 direct bridge。
 - 2026-09-13 登錄每日 recommendation calibration learning、官方 daily-price custody、corporate-action adjustment custody、source-contract 與 capture-binding 測試；均維持 service oracle 分類，不因此進入 direct bridge。

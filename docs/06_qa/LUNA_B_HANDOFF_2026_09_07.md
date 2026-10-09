@@ -1,6 +1,6 @@
 # LUNA B：架構、冗餘與測試治理 handoff
 
-> 整合補註（2026-09-08）：以下保留本線交付當時的數字與 Git 狀態；整合修補、全域測試及 main／dev 收尾以 [三線整合驗收](LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md) 為準。
+> 整合補註（2026-09-08）：以下保留本線交付當時的數字與 Git 狀態；整合修補、全域測試及 main／dev 收尾以 [三線整合驗收](../09_archive/LUNA_INTEGRATION_CLOSEOUT_2026_09_08.md) 為準。
 
 > 文件標籤：2026-09-07；最後驗證：2026-09-08。這份 handoff 是 B 線交付摘要，不是新的 Snapshot、Roadmap 或產品狀態來源。
 
@@ -154,7 +154,7 @@ Inventory audit 的 JSON 目前有 27 筆既有 nonportable absolute Markdown li
 
 ## 9. A／C 整合狀態與可執行步驟
 
-已閱讀：[`LUNA_A_HANDOFF_2026_09_07.md`](LUNA_A_HANDOFF_2026_09_07.md) 與 [`LUNA_C_HANDOFF_2026_09_07.md`](LUNA_C_HANDOFF_2026_09_07.md)。
+已閱讀：[`LUNA_A_HANDOFF_2026_09_07.md`](../09_archive/LUNA_A_HANDOFF_2026_09_07.md) 與 [`LUNA_C_HANDOFF_2026_09_07.md`](../09_archive/LUNA_C_HANDOFF_2026_09_07.md)。
 
 - A：`incomplete / fail-closed`；沒有正式資料寫入、fit、promotion 或 broker 啟用。仍缺 formal causal non-cash ledger、同日 Rule Champion history、PIT sector membership 與符合 reserve 的新 OOC fit。
 - C：UI／UX、Workbench source projection、Manual、offscreen 兩 viewport 與 mandatory Update QA 已由 C handoff 報告；其程式與 handoff 已在目前 HEAD 的 C commit 中。C 也明示 native Windows DPI／字型、真實 populated result 與 live source 不在其隔離驗收範圍。

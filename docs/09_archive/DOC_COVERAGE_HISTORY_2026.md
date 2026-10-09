@@ -1125,3 +1125,14 @@ Archive 兩份原件與其歸檔前 `docs/06_qa/` bytes／SHA-256 相同，QA �
 Entry 121 封存三份 2026-09-09 收據後，進一步檢查被 Git 忽略、不可提交的 `docs/agents/shared_state/handoff_log.md:407`，發現跨 Agent 交接仍以 `docs/06_qa/DATA_COMPLETION_2026_09_09.md` 指向每日 quick 管線與來源缺口證據。依 `git_exclusions.md`，handoff log 可能含進行中工作，故本次沒有修改或提交該檔；為保持該入口可直接讀取，已將完整總驗收原文從 Archive 副本逐 byte 恢復至 QA 原路徑。QA 原件與 Archive 快照同為 3,730 bytes、SHA-256 `60EB28DCFC788C42F37992B2C0AE64EC5B428386ACCAE1363343EBA87E18F2E4`。Entry 121 的 hash 與來源記錄仍有效，但其「三份 QA 路徑皆改為導引」的生命週期結論由本 Entry supersede。
 
 `V4_DATA_COMPLETION_FLOWS_HANDOFF_20260909.md` 與 `V4_TDCC_DATA_COMPLETION_20260909.md` 沒有此交接 log 的引用，舊路徑維持相容導引、Archive 保存完整原文。`output/data_completion_20260909/` 是 sidecar 輸出位置而不是 QA 文件固定 writer；程式預設輸出根未改，ignored raw／candidate／manifest／backup 仍不在 repo。QA README 與 DOCUMENTATION_INDEX 已列出保留的總驗收入口及 flows／TDCC 封存專區，Archive README 明示總驗收 Archive 副本為凍結快照。沒有改變文件權威分工；DOC_COVERAGE_MAP 不需改動。
+
+<a id="coverage-entry-123"></a>
+## 2026-10-09 歸檔 V4.2 C 線每日決策工作台 QA handoff
+
+`V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12.md` 是 2026-09-12 的 bounded UI／read-model handoff，當日記錄 Qt 測試、更新頁 QA、mypy 與量化邊界檢查，並明列真人鍵盤、實體顯示器縮放與 screen reader 未驗證。後續整合 commit 已存在目前 dev HEAD；現行操作流程由 Application Manual Supplements 承接，presentation-only 邊界由 system architecture 承接。QA README 仍列出 2026-09-15 跨頁 acceptance plan 為 open，因此本次只將單一歷史 handoff 移入 Archive，不代表整體跨頁流程或其他 Gate 結案。
+
+| 原 QA 路徑 | Archive 原文 | 原件 bytes / SHA-256 | Archive 副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12.md` | [`V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12_HISTORY.md`](V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12_HISTORY.md) | 5,230 / `A351406CCE0A7364E84CD51FAAE5DB55DA793B223A29E36FB1E3E8ACE0712ABB` | 5,230 / `A351406CCE0A7364E84CD51FAAE5DB55DA793B223A29E36FB1E3E8ACE0712ABB` |
+
+全庫精確檔名引用僅見三份歷史 Archive 文件與 ignored export／Graphify 輸出；未發現程式、測試、腳本、固定 writer／reader、目前 Snapshot／Manual／Architecture 或 shared_state 依賴。舊 QA 原路徑保留相容導引，供歷史索引仍可到達原文。QA README、Archive README 與 DOCUMENTATION_INDEX 已同步；文件權威分工未變，DOC_COVERAGE_MAP 不需修改。

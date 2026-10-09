@@ -82,6 +82,10 @@
 
 - [每日推薦自動學習與受控調整 QA（2026-09-13）](V4_2_DAILY_RECOMMENDATION_LEARNING_2026_09_13_HISTORY.md)：保存單一 learning task 註冊與 bounded CLI entrypoint 驗證，不代表 task 已執行、正式推薦權重變更、promotion 或 production evidence credit。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md)，工程邊界看 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)，操作看 [Application Manual](../07_guides/APPLICATION_MANUAL.md)。舊 QA 路徑保留導引，bytes／SHA 見 [Coverage History Entry 105](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-105)。
 
+## 2026-10-09 V4.2 C 線每日決策工作台 9/12 QA 歷史
+
+- [V4.2 C 線每日決策工作台 QA handoff（2026-09-12）](V4_2_C_DAILY_DECISION_WORKBENCH_QA_HANDOFF_2026_09_12_HISTORY.md)：保留該輪 bounded UI／read-model adapter 測試結果與人工／視覺驗證限制。後續整合證據已在主線；目前操作看 [Application Manual Supplements](../07_guides/APPLICATION_MANUAL_SUPPLEMENTS.md)，presentation-only 邊界看 [System Architecture](../01_architecture/system_architecture.md)。整體跨頁流程仍由 QA 的 [open acceptance plan](../06_qa/CROSS_PAGE_DECISION_JOURNEY_ACCEPTANCE_PLAN_2026_09_15.md) 追蹤，不能把此 handoff 當作全流程結案。原 QA 路徑保留導引，原件 bytes／SHA 見 [Coverage History Entry 123](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-123)。
+
 ## 2026-10-09 Weekly Natural Evidence 9/20 歷史快照
 
 - [Weekly Natural Evidence Review（2026-09-20）](WEEKLY_NATURAL_EVIDENCE_REVIEW_2026_09_20_HISTORY.md)：保留 9/14–20 週期與 9/21 唯讀觀測；V2.2 collection、BankTaiwan capture、ML natural shadow 是不同 lane，pending 不等於 matured／promotion／Formal／human approval。現況看 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 與 [Gate 7](../06_qa/GATE_7_ML_SHADOW_ENGINEERING.md)。舊 QA 路徑保留導引，原件 SHA 見 [Coverage History Entry 106](DOC_COVERAGE_HISTORY_2026.md#coverage-entry-106)。

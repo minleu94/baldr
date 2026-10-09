@@ -410,3 +410,23 @@ H4 終端覆核：owner session 56165 已 exit 1；root 實讀 controller_receip
 Root 實讀 F02 pinned complete receipt4：segment_reference 為 null，last_parent_reference 才等於 receipt3 的 parent_reference。已指示 I oracle 對 complete receipt 保持 sequence4／previous ID+SHA／counts／last parent 精確檢核，同時要求 segment_reference is None 並加入非 null 造假負例；不得把 partial receipt 的 segment_reference 形狀套到 complete receipt。
 
 P01 owner 實證 b3 是 recovery/source/store 根，mc6 僅 benchmark attempt；root 接受此角色區分，要求新候選保存獨立 correction receipt，不改 manifest08、不搜尋 fallback 路徑。Root 初讀 WIP controller 仍見 mc6 固定 input paths，已要求修正且所有整數 counts 必須排除 bool；尚未凍結或啟動新 runtime exact read。
+
+F02 I root 獨立純驗證通過：候選 SHA bad3a219ec0e92fc7dc4cfb5a3df75c6fc2d241f062e3bf10466f9334afc6be7，執行前後一致，output/qa/f02_i_root_parent_contract_20261009_a/exit_code.txt 為 0；stdout status passed_pure_readonly_contract_only，所有 predicates true／15 mutation negatives rejected，輸入六根前後相等。Root 查 H→I diff 刪除的是錯誤 generation container root 判定；新 provider protected_sources 使用收據推導的精確 segment roots，不改 product guard。此結果僅證明 pure receipt oracle，不代表 provider／SQLite／query／Main／性能通過；待 frozen manifest 與 DTO audit 才核准唯一 provider。
+
+根目錄六檔已複製到 output/qa/root_file_inventory_20261009_a/preserved_originals，backup_receipt.json 核每檔 copy SHA 等於原檔且原檔前後 SHA 相等；尚未移動或刪除原檔。
+
+P01 current archive root 全清冊獨立驗證：root 未載入產品，逐一讀取 extracted d12 tree 的每個 regular file，拒絕 reparse，核相對路徑、原字節 SHA、size、missing/extra；4465 files／80182012 bytes／0 pyc、errors 空。結果 output/qa/p01_current_root_inventory_20261009_a.json；manifest08 actual SHA 123dbbbe27a02a922bea2e08345c34cbedb2b45af53ecbaceb3e65fec7f74149。這證明目前封存 source bytes 清冊相符，仍不證明 runtime exact-read 相容或任何效能 gate。
+
+F02 I 進入唯一 provider-only 續驗：root 已獨立核 supervisor BAD3A219…AFC6BE7、target CA8663…3F485B、輸入 manifest84da、RO/capture/store/repository/bundlewriter actual pins 相符；讀 DTO audit 後要求修正兩個 provider 函式歸屬為 supervisor（不是 fixed target）與 README 繁體。已授權 owner 在保存 freeze manifest 且 prelaunch 全 pins／全新 attempt 核驗通過後，唯一執行 I provider-only：兩個精確唯讀 caller、有界 Job／原期限、前後六根與產品 pins、producer/bundle/query 0。任何核心 pins 改變／preflight 拒絕均停止，不自行重跑；full query 仍未授權，尚未收到實際 handle。
+
+F02 I freeze 最終 root 獨立核：manifest SHA 08532148d6e044fa73267ad2c1cb8289cb4a4e2a01e1f3e367607f13e93376a5，其 24 個 path/SHA/size file pins 全部吻合；output/qa/f02_i_root_freeze_pins_20261009_a.json 保存逐檔結果。已通知 owner 沿唯一 provider-only 授權執行，仍未收到 live handle。
+
+P01 path correction root 實讀固定原 report 與 receipt，兩 raw bytes SHA 皆與 correction receipt 相符：report.case_root=b3、receipt.sealed_store_case_root=b3，而 receipt.case_root=bo 是獨立 readback-run 根；report source_root 是原 acd18 extracted source。mc6 不得作 source/store 路徑，新 d12 runtime 不得取代原 producer/readback provenance。
+
+F02 I 唯一 provider-only session37617 terminal1：root實讀 C:/t/f02_ma_composite_257_v4_7865e8cd59c8/supervisor_receipt.json，SHA ec718c3c99f363d7aaedd356bbbad4c323e8e14168a62e48bfb66330f8c3c5d3；worker1、輸入六根unchanged、Jobclosed且zero_owned_processes_proven true。錯誤 canonical generation path299 UTF16 units普通exists false，extendedexists true且plan/receipts存在；root診斷保存 f02_i_root_failure_longpath_20261009_a.json，不把WinError3判成來源遺失。固定 QA tree_signature 對短根render後直接lstat長descendant，與錯誤路徑/階段一致但原stack未保存；J僅QA等價逐descendant渲染與隔離重現/負例實作授權，未native、不移來源、不改產品pins。
+
+P01 v2 root獨立static preflight exit0：controller e21216b098778c6019ca963a94ecc1cb2e81195dfff882efc3e4628a716b1b3b／manifest4606d20bba3281035b1337c1c4cea3823d2854f24bc573a6910c78bf0ebc3743，root log p01_current_root_static_20261009_a.log、收據 static_preflight_4387b581c021.json；來源/store before-after一致、product/network/SQLite/subprocess0。已授權 owner 唯一fresh native P01 exact-open/full1000selection/page0，600s有界Job，不重產、不profile；尚未收到handle，效能矩陣未授權。
+
+P01 v2 唯一 native prelaunch session結果 failed，attempt C:/t/p01cur_rd_8d3a751d47；root實讀 supervisor_result.json rawSHA403e843930d6f41a82249473fdff14b03974b9921386d96459a96600501261de。child_launch_count0、parent subprocess attempts1／approved0、Job空／cleanupcompleted；source_and_store_before/after皆null，不能聲稱此次native有來源前後驗證。完整traceback指出audit1769拒絕Windows Popen payload。Root讀本機CPython Windows _execute_child確認argv已list2cmdline成string；既有OR判定已足以因非list拒絕，不能推論default executable當時非None。已接派v3保存四欄actual audit probe（audit hook在CreateProcess前sentinel中止／無OSchild），固定單一精確exe/cmd/cwd/env/single-use契約、純負例與新版本封套，不改v2失敗。另要求before inventory及failure後postflight/未完成狀態保存完整；尚未授v3native。
+
+H5 root 靜態續審（未凍結、未執行）：restore 已分開 verification_reasons 與 restoration_errors，legacy 尚未載入以 not_activated_module_not_loaded、partial import 移除以 partial_import_removed 記錄；已要求 operation 中途 import／helper cache 錯 origin／legacy 未載入／wrapper 被替換／setter 還原失敗負例，成功仍須完整 verification。新的控制器/純案例尚在實作，不以此靜態審核聲稱 Main 通過。

@@ -15,6 +15,9 @@
 - [舊 AI Context Pack（截至 2026-08-30）](AI_CONTEXT_PACK_HISTORY_20260830.md)：封存過期狀態包；目前 Agent／開發者入口改看根目錄 `AGENT_CONTEXT.md`。
 - [6M Roadmap 歷史狀態與更新流水帳（2026-07 至 2026-09）](ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)：保存首屏補記、單輪 handoff、Gate 7 狀態、Gate 校正與變更記錄；Gate 定義仍在核心 Roadmap。
 - [產品 Roadmap 歷史狀態與行動草案（2026-07 至 2026-09）](PRODUCT_ROADMAP_STATUS_HISTORY_20260712_TO_20260917.md)：保存當時的工程／handoff 狀態與原始 30／60／90 日行動草案，不承擔產品方向或目前狀態權威。
+- [Product Roadmap 日期化交接紀錄（2026-09-14 至 09-21）](PRODUCT_ROADMAP_HANDOFF_HISTORY_20260914_TO_20260921.md)：保存 V4.1／V4.2 工程觀測與 V5／V6 當時 handoff；產品原則仍看核心 Product Roadmap。
+- [6M Roadmap Gate 3／4 歷史狀態（2026-08-26 至 08-28）](ROADMAP_6M_GATE_STATUS_HISTORY_20260826_TO_20260828.md)：保留原先留在 Gate 定義中的日期化 P0、Portfolio 與 Paper 工程觀測；目前狀態仍以 Snapshot 為準。
+- [V2.1–V4.0 版本路線更新歷史（2026-07-11 至 09-15）](VERSION_ROADMAP_V2_1_TO_V4_0_UPDATE_HISTORY_20260711_TO_20260915.md)：保存成熟度文件曾附加的狀態快照與 handoff；版本 Gate 標準仍看核心版本 Roadmap。
 - [V2.1–V4.0 工程交接紀錄（2026-09-15）](VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)：保存當時工程分流與下一步；版本成熟度標準仍以核心 Roadmap 為準。
 - [V2.1–V4.0 版本狀態快照（2026-07-12 至 2026-08-30）](VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)：保存各成熟度版本曾附加的階段狀態；目前狀態以 Snapshot 為準。
 - [系統架構更新歷史（2026-06 至 2026-10）](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)：保留原架構文檔第 16 節的逐次狀態記錄；目前模組邊界與資料流仍以 `system_architecture.md` 主文為準。

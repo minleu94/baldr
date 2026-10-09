@@ -1,7 +1,9 @@
 ﻿# 舊 Roadmap 移交矩陣
 
-> **最後更新**：2026-06-15
+> **原始移交日期**：2026-06-15
+> **最後整理**：2026-10-08（僅補歷史 Gate 與現行路線界線）
 > **定位**：本文件是舊 Roadmap 未完成事項的結案與移交證據。它不新增平行 Roadmap，而是確保每個舊項目都有唯一處置。
+> **現行路線**：第 4 節的 Month 1–3 Carryover Gate 是 2026-06-15 的歷史交接條件，不控制目前 Gate 0–7；目前工程順序看 [6M Engineering Roadmap](ROADMAP_6M_ENGINEERING.md)，目前狀態看 [PROJECT_SNAPSHOT](PROJECT_SNAPSHOT.md)。
 
 ## 1. 判讀規則
 
@@ -37,9 +39,11 @@
 | 自動參數建議 | 被取代 | Month 2 Cross-run + Month 6 策略生命週期 | 不直接做黑箱自動調參；先用可追溯 run 比較與 rule-based promote/demote/retire。 |
 | 清理過期 `app_module/README.md`、`ui_qt/README.md` | 已納入本次文件重構 | 2026-06-13 Documentation Patch Pass | README 必須反映 `ui_qt` 主入口、目前 service 邊界與已完成 Phase。 |
 
-## 4. Carryover Gate
+## 4. Carryover Gate（2026-06-15 歷史交接條件）
 
-新版 Roadmap 可以執行 Month 1 與 Month 2，但 **Month 3 Factor Layer 不得在下列項目仍無正式結果時宣告開始**：
+> 以下 Month 1–3 語彙只描述舊 Roadmap 移交當時的 Gate，不代表目前 6M Roadmap 的 Gate 狀態或執行順序。
+
+當時交接基線中的新版 Roadmap 可執行 Month 1 與 Month 2，但 **Month 3 Factor Layer 不得在下列項目仍無正式結果時宣告開始**：
 
 1. fixed / quantile 真實 walk-forward Gate 已通過；報告保留 quantile 未優於 fixed 的結果，且 quantile 維持 opt-in。
 2. Phase 5 最小可用輸出已有實作結果，不只是設計稿。

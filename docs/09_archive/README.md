@@ -391,6 +391,11 @@ These are completed, dated engineering/readiness records. Current source accepta
 
 ## 📄 文檔列表
 
+### 2026-10-09 技術歷史參考
+
+- [Phase 2.5 參數設計改進紀錄](PARAMETER_DESIGN_IMPROVEMENTS_HISTORY.md)：保留當時的參數建議與實施狀態；目前優先順序看 Snapshot／6M Roadmap，評分行為看 Score Explanation 與具名 QA。來源路徑留下相容導引。
+- [MCP Yahoo Finance／openmarkets 本機 Patch 備忘](MCP_YFINANCE_OPENMARKETS_PATCH_MEMO_HISTORY.md)：特定本機環境觀察，沒有套件版本鎖定或 artifact hash；不可直接重套。新環境安裝看 [INSTALL_GUIDE](../07_guides/INSTALL_GUIDE.md)。來源路徑留下相容導引。
+
 - [操作手冊更新歷史（2026-09-27）](APPLICATION_MANUAL_CHANGELOG_2026_09_27.md)：原手冊的逐次更新記錄；操作步驟保留於主手冊與附冊。
 
 - [Roadmap Hub 整理前歷史（2026-09-27）](DEVELOPMENT_ROADMAP_HISTORY_2026_09_27.md)：原 Hub 的日期化狀態、Next 與更新紀錄；現行導航已收斂至核心 Hub，不以本頁判斷目前進度。

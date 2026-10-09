@@ -11,8 +11,8 @@
 
 ## 📄 文檔列表
 
-- [歷史參數設計改進紀錄（Phase 2.5）](PARAMETER_DESIGN_IMPROVEMENTS.md)
-  - 保存當時的參數建議與實施記錄；內文日期、優先級及「待執行」狀態不可直接當作目前待辦。
+- [歷史參數設計改進紀錄（Phase 2.5）](../09_archive/PARAMETER_DESIGN_IMPROVEMENTS_HISTORY.md)
+  - 完整原件已歸檔；[舊路徑](PARAMETER_DESIGN_IMPROVEMENTS.md)保留導引。內文日期、優先級及「待執行」狀態不可直接當作目前待辦。
 
 - [早期技術分析優化備忘錄（歷史）](../09_archive/TECHNICAL_ANALYSIS_OPTIMIZATIONS_HISTORY.md)
   - [舊路徑](technical_analysis_optimizations.md)保留短導引；原文的 API、回傳型態與資料路徑範例不符合目前實作。現況看系統架構與實際 source。
@@ -26,8 +26,8 @@
 - [受限 System Python 備援](RUN_WITHOUT_VENV.md)
   - 只供已配置相容 runtime 的本機解譯器；新環境與 PowerShell activation 問題依 [INSTALL_GUIDE](../07_guides/INSTALL_GUIDE.md) 使用 `.venv`，不執行無約束全域安裝。
 
-- [MCP Yahoo Finance / openmarkets 本機 patch 備忘（環境限定）](MCP_YFINANCE_OPENMARKETS_PATCH_MEMO.md)
-  - 保存特定 Python／套件環境中的相容性觀察；沒有鎖定套件版本或 hash，不可直接當成新環境安裝或自動重套步驟。
+- [MCP Yahoo Finance / openmarkets 本機 patch 備忘（環境限定）](../09_archive/MCP_YFINANCE_OPENMARKETS_PATCH_MEMO_HISTORY.md)
+  - 完整原件已歸檔；[舊路徑](MCP_YFINANCE_OPENMARKETS_PATCH_MEMO.md)保留導引。沒有鎖定套件版本或 hash，不可直接當成新環境安裝或自動重套步驟；新環境請看 [INSTALL_GUIDE](../07_guides/INSTALL_GUIDE.md)。
 
 ## 🔗 相關目錄
 

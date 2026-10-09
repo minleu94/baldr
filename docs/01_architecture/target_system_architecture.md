@@ -57,15 +57,15 @@
 | Position Health & Exit | `CURRENT_ENGINEERING`：thesis contract、state machine、append-only transition、Exit read model | 累積真實 thesis、人工 transition 與 exit outcome | domain reposition候選；不自動平倉 |
 | Data Source Governance | `data_module` registry / policy / candidate readiness | Source Registry、Control Center、quarantine、eligibility port | 所有來源具 PIT、quality、license、missing 與 downstream eligibility；未接受來源無法進 formal layer |
 | Execution Realism | Backtest broker simulator、sandbox trace | 統一 execution assumption / feasibility / rejected taxonomy | 研究撮合與 broker execution port 分離；正式系統仍不提供 broker command |
-| ML Shadow Layer | `RecommendationService` 在 exact consumer、明列 NP1／NP2 profile 與同次 capability 成立時預設使用 `PreparedMLRuntimeInputV1`；其餘 caller 保留 `project_many()` 相容路徑。此 bounded R026 runtime migration 已獲 C2 接受，`TMP-ML-01` 對此支援集合已關閉；C3 新 exact imports 已限縮為 source/symbol allowlist，584-file guard 回報 11 個既有 occurrences，具名 owners 追蹤；C4 union 為 2,446P／2F／5S／35W，root 接受 `ACCEPTED_WITH_NAMED_BOUNDARY_BASELINE`，兩項既有 shadow-boundary aggregate assertion failure 與 11-occurrence baseline 仍列管。Rule／ML snapshot identity 分離，typed projector 不做 I/O；formal 權限仍受 Gate 限制 | Feature / Label / Dataset / Model Registry 與 shadow store 的受治理整合；完成所有合法 runtime profile/model graph adapter 與 parity gate | Challenger 只透過 Promotion Review 影響 formal Advice；不是本輪八卡啟用項目 |
+| ML Shadow Layer | `app_module`／`ml_module` 已有受限 runtime 與 research 路徑；Rule／ML snapshot identity 分離，typed projector 不做 I/O。現況與 Gate 限制見[目前架構](system_architecture.md)及[專案快照](../00_core/PROJECT_SNAPSHOT.md)。 | Feature / Label / Dataset / Model Registry 與 shadow store 的受治理整合；完成所有合法 runtime profile/model graph adapter 與 parity gate | Challenger 只透過 Promotion Review 影響 formal Advice；不是本輪八卡啟用項目 |
 | AI Research Copilot | read-only evidence access / MCP | governed retrieval + citation / permission boundary | 只能摘要、比較、提問與找 evidence gap；不成為計算或 action owner |
 | Runtime / Scheduling / Operations | `runtime/`、Windows tasks、dry-run wrappers | 依 job type 區隔 market data write、evidence dry-run、approved evidence write | Scheduler 只執行已核准 application command；不交易、不自動 lifecycle |
 | Storage & Artifact Registry | SQLite、Parquet、JSON、Research Run / Evidence repositories | 統一 artifact identity、hash、status、lineage、backup / rollback | 每個 decision / advice / model / policy / outcome 可重建與稽核 |
 | External Source Adapters | `data_module` fetcher / provider / candidate CLI | 每個 adapter 實作同一 source contract，先 diagnostics / shadow | adapter 可替換；domain 不知道 vendor、HTTP 或 SQLite 細節 |
 
-### 2026-09-06 八卡工程後的剩餘差距
+### 2026-09-06 八卡工程後的差距基線（歷史快照）
 
-本節校正上表與八卡直接相關的 Current／Transitional 能力，依 [目前架構](system_architecture.md) 與 [TASK-08 整合證據](../06_qa/TASK_LOOP_08_HANDOFF.md) 判讀；不是 V4 closeout，整體仍 `action_required`／V4 Evidence Accumulation。
+本節保留 2026-09-06 八卡工程後的差距基線，供追溯當時的 Current／Transitional 判讀；表內狀態不代表目前完成度。現況以[專案快照](../00_core/PROJECT_SNAPSHOT.md)、[目前架構](system_architecture.md)及最新 QA 收據為準；目標設計以 [FINAL 目標架構](target_architecture_2026_09_22/FINAL_TARGET_ARCHITECTURE.md) 為準。
 
 | 邊界 | 本輪已落地的工程能力 | 尚需完成的 Target／外部條件 |
 |---|---|---|

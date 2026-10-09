@@ -410,6 +410,7 @@
 - 2026-10-09：明確 QA 收據歸檔條件：仍被 Gate、未解問題或工具固定路徑使用的文件留在 QA；純歷史收據只有解除活躍依賴並保留相容導引後才搬移。
 - 2026-10-09：將 8/27 Scheduler Health dated output snapshot 與 UX08 pre-integration controller handoff 歸檔；確認 scheduler 報告工具無固定 QA writer、UX08 目前整合收據保留在 QA，並以舊路徑 stub 維持引用。詳見 [Coverage History Entry 099](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-099)。
 - 2026-10-09：將 Qt MainWindow shutdown teardown bounded 修復收據歸檔，保留 QA 舊路徑導引並明確區分仍待追查的 Native crash 與 SQLite inspector 問題。詳見 [Coverage History Entry 100](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-100)。
+- 2026-10-09：將 Position Health source-provider calendar-cache 測試隔離收據歸檔；保留原 QA 路徑與舊 Catalog 引用，並明示此收據不代表 Position Health 正式 Gate 結案。詳見 [Coverage History Entry 101](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-101)。
 - 2026-10-09：核對 Gemini 提出的 10 份 QA 歸檔候選，只封存 3 份無活躍依賴的歷史紀錄；其餘 7 份因 tracked manifest 固定原 bytes／路徑或仍被現行入口引用而保留。詳見 [Coverage History Entry 097](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-097)。
 - 2026-10-09：精簡 V2.1–V4.0 maturity spec 中重複的 7/12、8/30 status notes；歷史判讀仍由既有 Archive 提供，正文保留版本標準並以 Snapshot 表示現況。
 - 2026-10-09：修正 R029 active report／R031 index 對 gate 草稿與預檢清冊的引用後，將兩份已 superseded 的 dated preflight 成對歸檔；保留 QA 原路徑導引與 WAVE14 凍結 manifest。細節見 [Coverage History Entry 098](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-098)。
@@ -471,3 +472,7 @@
 ## 2026-10-09 歸檔 Qt MainWindow shutdown teardown bounded QA
 
 [原始 QA 與封存原文 SHA-256、引用及未涵蓋問題](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-100)。
+
+## 2026-10-09 歸檔 Position Health calendar-cache 測試隔離 QA
+
+[原始 QA 與封存原文 SHA-256、引用及範圍界線](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-101)。

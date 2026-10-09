@@ -39,6 +39,8 @@ Windows 雙擊入口、整個資料夾需求與外部設定：[PORTABLE_WINDOWS]
 
 [Qt MainWindow shutdown teardown 修正 QA（2026-09-15）](../09_archive/QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md)：MainWindow 關閉後的 bounded Qt teardown 證據；不代表 Native crash popup 根因或 SQLite inspector shutdown 問題已解。原 QA 路徑保留短導引，完整移動與 bytes/hash 記錄見 [Coverage History Entry 100](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-100)。
 
+[Position Health calendar-cache 測試隔離 QA（2026-09-15）](../09_archive/POSITION_HEALTH_SOURCE_PROVIDER_CALENDAR_CACHE_ISOLATION_QA_2026_09_15.md)：保存以 isolated `tmp_path` fixture 修復測試時間相依性的原文；不代表 Position Health 正式 transition Gate 結案。QA 舊路徑與歷史 Catalog 引用保留導引，bytes/hash 見 [Coverage History Entry 101](../09_archive/DOC_COVERAGE_HISTORY_2026.md#coverage-entry-101)。
+
 `output/plans/` 與 `output/qa/` 是 ignored 本機需求／原始驗收證據，不因 ignored 即可刪。唯一 Danny Quant plan 原路徑 `output/plans/baldr_product_experience_plan_20261004.md` 保留原 bytes，另有本轮可還原快照；raw 失敗、JUnit 與 receipts 不重寫。正式摘要可放 QA，私人內容不能直接公開。
 
 

@@ -854,3 +854,12 @@ Entry 097 當時因現行 R029 acceptance report 與 R031 index 仍連到這兩�
 | `docs/06_qa/QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md` | [Qt MainWindow shutdown teardown 修正原文](QT_SHUTDOWN_TEARDOWN_FIX_QA_2026_09_15.md) | 5,269 / `94169D3CC7C5E10B8BF4DCB3723377526495816C2DAC858217BFAD6A6A07AE43` | 5,269 / `94169D3CC7C5E10B8BF4DCB3723377526495816C2DAC858217BFAD6A6A07AE43` |
 
 後續現況判讀看 Snapshot／最新 QA；[Native crash read-only follow-up](../06_qa/QT_NATIVE_CRASH_READONLY_FOLLOWUP_2026_09_15.md) 與 [SQLite inspector shutdown probe](../06_qa/QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md) 是不同故障範圍，不得以此 Entry 合併或結案。
+
+<a id="coverage-entry-101"></a>
+## 2026-10-09 歸檔 Position Health calendar-cache 測試隔離 QA
+
+此 bounded QA 記錄 2026-09-15 的測試隔離修復：將 Position Health source-provider 的年度 calendar cache fixture 寫入 pytest `tmp_path`，不再依賴會變動的正式 cache。現行測試仍由 [`_write_isolated_calendar_cache`](../../tests/test_position_health_source_providers.py) 實作；歸檔不改 production 判定、正式 cache 或排程，也不代表 Position Health source-backed transition Gate 結案。程式與測試沒有固定讀取此 Markdown；唯一精確 inbound link 是 2026-10-06 歷史 Catalog，舊 QA 路徑因此保留短導引，使 Catalog 連結持續可達。原始測試結果只代表 2026-09-15 當次兩輪 16 passed，不作目前整體測試狀態依據。
+
+| 原路徑 | 封存路徑 | 原件 bytes / SHA-256 | 封存副本 bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/POSITION_HEALTH_SOURCE_PROVIDER_CALENDAR_CACHE_ISOLATION_QA_2026_09_15.md` | [Position Health calendar-cache 隔離原文](POSITION_HEALTH_SOURCE_PROVIDER_CALENDAR_CACHE_ISOLATION_QA_2026_09_15.md) | 2,060 / `AC38A7CA6E5159092E43F7201A6BD84686037FF2A85BC1EEF0626FB8C65C1791` | 2,060 / `AC38A7CA6E5159092E43F7201A6BD84686037FF2A85BC1EEF0626FB8C65C1791` |

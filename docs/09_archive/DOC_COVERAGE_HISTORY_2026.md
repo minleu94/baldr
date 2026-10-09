@@ -1154,3 +1154,16 @@ Entry 121 封存三份 2026-09-09 收據後，進一步檢查被 Git 忽略、�
 六份封存草案的所有相對 `.md` 連結均已核對可解析。全庫精確檔名引用檢查未發現 Python、測試、腳本、固定路徑 reader／writer；FINAL ML contract、FINAL migration sequence 與 architecture assessment 的現行追溯連結已改為直達 Archive。紅隊審查與必要變更文件中的舊草案引用保留作裁決證據，由原路徑導引承接；歷史 Catalog 與 R001 baseline 原文未改。其餘 task specs、reports、dispatch 與未完成 Gate 不在本次範圍，狀態仍以 Snapshot、FINAL migration sequence 和具名 QA 為準。
 
 Archive package README、原套件 README、Archive README 及 DOCUMENTATION_INDEX 已同步。Scoped authority 與 Gate 狀態未改，因此 DOC_COVERAGE_MAP 不需變更；此筆生命週期、來源 hash 與替代入口由本 History Entry 追蹤。
+
+<a id="coverage-entry-125"></a>
+## 2026-10-09 歸檔 Workbench 低流動性提示分流 QA
+
+`WORKBENCH_LIQUIDITY_REVIEW_ROUTING_QA_2026_09_21.md` 是 2026-09-21 針對既有 `DecisionDeskSnapshot.risk_prompts` 的 bounded read-only projection/UI 收據。它記錄正式 snapshot `dds_290832656f329969`，其中 liquidity `1121` 與 weakness `10` 各聚合為一筆背景 batch；另保存人工佇列、下鑽與不寫入邊界。它不驗證上游流動性資料品質、正式 source admission、snapshot 重建或全流程 Gate。較後續的 V5 acceptance 以更廣整合 route 重跑 `299 passed`、`1 warning`，不改寫這份原始觀測。
+
+Archive 副本與 QA 原件逐 byte 相同，舊 QA 路徑留有短導引。全庫精確檔名查找僅發現歷史 Catalog 仍連至舊路徑；保留導引使其可達。未發現程式、測試、腳本、固定路徑 reader／writer 依賴。QA README、Archive README 與其既有的 DOCUMENTATION_INDEX → Archive 入口已連通；DOC_COVERAGE_MAP 的現行權威邊界未變，不需修改。
+
+| 原 QA 路徑 | Archive 原文 | 原件 bytes / SHA-256 | Archive bytes / SHA-256 |
+|---|---|---|---|
+| `docs/06_qa/WORKBENCH_LIQUIDITY_REVIEW_ROUTING_QA_2026_09_21.md` | [`WORKBENCH_LIQUIDITY_REVIEW_ROUTING_QA_2026_09_21_HISTORY.md`](WORKBENCH_LIQUIDITY_REVIEW_ROUTING_QA_2026_09_21_HISTORY.md) | 5,829 / `0C07A7CB5D0B8794202885DA91C8BF3A6E2CA1EB1402E10EE932B7B255E31690` | 5,829 / `0C07A7CB5D0B8794202885DA91C8BF3A6E2CA1EB1402E10EE932B7B255E31690` |
+
+收據提及的 `output/qa/` 原始 pytest／更新頁報告是 Git 忽略輸出，本次未移動或提交；Archive 保存的是 QA 文件原文。當前操作看 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)，目前狀態與 Gate 仍依 Snapshot、架構契約及具名 QA 判讀。

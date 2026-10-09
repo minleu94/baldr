@@ -67,10 +67,10 @@
 
 ### 2026-10-06 至 10-09 收據直達索引
 
-以下連結補齊近期 25 份原始收據的閱讀入口。收據仍保留各自的範圍與時點；此索引不把它們合併成新的現況、完成度或待辦判定。
+以下連結補齊近期 26 份原始收據的閱讀入口。收據仍保留各自的範圍與時點；此索引不把它們合併成新的現況、完成度或待辦判定。
 
 - **H20 研究來源與讀回**：[固定來源建置](BALDR_H20_FIXED_SOURCE_BUILD_REVIEW_20261009.md)、[Runtime root 契約](BALDR_H20_RUNTIME_ROOT_CONTRACT_REVIEW_20261008.md)、[Snapshot builder](BALDR_H20_SNAPSHOT_BUILDER_REVIEW_20261008.md)、[WAL snapshot](BALDR_H20_WAL_SNAPSHOT_REVIEW_20261008.md)、[版面 teardown 與窄控制](BALDR_LAYOUT_TEARDOWN_AND_NARROW_CONTROLS_20261008.md)、[Bookmark controls](H20_BOOKMARK_CONTROLS_20261007.md)、[Bookmark core](H20_BOOKMARK_CORE_20261007.md)、[凍結來源 root 修復](H20_FROZEN_SOURCE_ROOT_REPAIR_20261007.md)。
-- **推薦介面與個人工作區**：[推薦鍵盤捲動](BALDR_RECOMMENDATION_KEYBOARD_SCROLL_20261008.md)、[個人 Watchlist thread serialization](PERSONAL_WATCHLIST_THREAD_SERIALIZATION_20261007.md)、[推薦閱讀版面](RECOMMENDATION_READING_LAYOUT_20261007.md)。
+- **推薦介面與個人工作區**：[推薦理由完整保存審核](BALDR_COMPLETE_REASONS_REVIEW_20261008.md)、[推薦鍵盤捲動](BALDR_RECOMMENDATION_KEYBOARD_SCROLL_20261008.md)、[個人 Watchlist thread serialization](PERSONAL_WATCHLIST_THREAD_SERIALIZATION_20261007.md)、[推薦閱讀版面](RECOMMENDATION_READING_LAYOUT_20261007.md)。完整理由審核只涵蓋程式碼與版面驗證；新版 EXE 與真人操作驗收仍待完成，H20 下鑽另有獨立關卡。
 - **產品補完與發布**：[F17 正常 capture pair review](BALDR_F17_NORMAL_CAPTURE_PAIR_REVIEW_20261009.md)、[平行工作交接](BALDR_PARALLEL_NEXT_WORK_20261009.md)、[portable configured bootstrap](BALDR_PORTABLE_CONFIGURED_BOOTSTRAP_20261006.md)、[portable Windows](BALDR_PORTABLE_WINDOWS_20261006.md)、[F07 固定候選](F07_FIXED_CANDIDATE_F2FBA4C7_20261008.md)、[F17 single graph integration](F17_SINGLE_GRAPH_INTEGRATION_20261008.md)。
 - **基本面與資料快照**：[選股基本面副本 session](SELECTION_FUNDAMENTAL_COPY_SESSION_20261007.md)、[月營收 YoY](SELECTION_MONTHLY_REVENUE_YOY_20261007.md)、[Snapshot typed parts reuse](SNAPSHOT_TYPED_PARTS_REUSE_20261007.md)。
 - **日期語義、篩選與 Universe**：[決策 Snapshot 日期語義](DECISION_SNAPSHOT_DATE_SEMANTICS_20261006.md)、[P01 篩選 Profile diagnostics](P01_FILTER_PROFILE_DIAGNOSTIC_CONTRACT_20261008.md)、[技術規則視窗重用](TECHNICAL_RULE_WINDOW_REUSE_20261007.md)、[技術 Universe query stream](TECHNICAL_UNIVERSE_QUERY_STREAM_20261007.md)、[技術 Universe read root](TECHNICAL_UNIVERSE_READ_ROOT_20261007.md)。
@@ -80,7 +80,7 @@
 先看[產品補完缺口再核對](BALDR_COMPLETION_GAP_REVIEW_20261008.md)與[平行工作 root review](BALDR_PARALLEL_ROOT_REVIEW_20261009.md)掌握跨功能阻礙，再按下列收據追查各自範圍。這些是 bounded 工程證據，不等於完整 UI、EXE 或真人驗收，也不代表相關 Gate 已通過。
 
 - **F12 月營收**：[來源審查](BALDR_F12_MONTHLY_REVENUE_SOURCE_REVIEW_20261009.md) → [index 整合複核](BALDR_F12_INDEX_INTEGRATION_REVIEW_20261009.md) → [saved-recipe root review](BALDR_F12_SAVED_RECIPE_ROOT_REVIEW_20261009.md) → [WAL exact reopen](BALDR_F12_WAL_EXACT_REOPEN_ROOT_REVIEW_20261009.md) → [durable raw archive v2](BALDR_F12_DURABLE_RAW_ARCHIVE_V2_20261009.md) → [archived finish root review](BALDR_F12_ARCHIVED_FINISH_ROOT_REVIEW_20261009.md) → [Main integration review](BALDR_F12_MAIN_INTEGRATION_REVIEW_20261009.md)。Reader 仍是 current-only，來源時間不明時不可授予歷史 PIT 資格；完整 Main／UI、EXE 與真人驗收仍待完成。
-- **F02 均線條件**：[fdopen guard 診斷](BALDR_F02_FDOPEN_GUARD_DIAGNOSIS_20261009.md) → [M guard root review](BALDR_F02_M_GUARD_ROOT_REVIEW_20261009.md) → [V4 oracle／supervisor review](BALDR_F02_V4_ORACLE_SUPERVISOR_REVIEW_20261009.md)。完整 257 檔矩陣、正常來源、新 EXE、真人驗收與 MA20 上彎契約仍未完成；局部 guard／oracle 結果不可當成產品通過。
+- **F02 均線條件**：[四均線來源缺口與葉模組根審（10/08）](F02_SAVED_FEATURE_GAP_20261008.md) → [fdopen guard 診斷](BALDR_F02_FDOPEN_GUARD_DIAGNOSIS_20261009.md) → [M guard root review](BALDR_F02_M_GUARD_ROOT_REVIEW_20261009.md) → [V4 oracle／supervisor review](BALDR_F02_V4_ORACLE_SUPERVISOR_REVIEW_20261009.md)。10/08 報告確認保存特徵缺口並記錄單一葉模組驗證，不代表產品接線或驗收。完整 257 檔矩陣、正常來源、新 EXE、真人驗收與 MA20 上彎契約仍未完成；局部 guard／oracle 結果不可當成產品通過。
 - **F03 KDJ 條件**：[full-population 整合計畫](BALDR_F03_FULL_POPULATION_INTEGRATION_PLAN_20261009.md) → [KDJ query contract](BALDR_F03_KDJ_QUERY_CONTRACT_20261009.md) → [MA／KDJ／Volatility group v2](BALDR_F03_MA_KDJ_VOLATILITY_GROUP_V2_20261009.md) → [multi-parent callback review](BALDR_F03_MULTI_PARENT_CALLBACK_REVIEW_20261009.md)。有界切片不代表 full-population query、共同發布或 UI 已完成。
 - **F06 波動條件**：[composite query contract](BALDR_F06_COMPOSITE_VOLATILITY_QUERY_CONTRACT_20261009.md) → [Decimal 方法提案](BALDR_F06_DECIMAL_VOLATILITY_METHOD_PROPOSAL_20261009.md) → [collector contract](BALDR_F06_VOLATILITY_COLLECTOR_CONTRACT_20261009.md)。目前尚無 full-N reader-issued 結果；方法提案不是已採納的產品規則。
 

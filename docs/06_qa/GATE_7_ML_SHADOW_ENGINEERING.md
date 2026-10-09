@@ -1,12 +1,13 @@
 # Gate 7 ML Shadow Engineering
 
-> **2026-08-30 current correction**：Gate 7 目前仍是 shadow-only；strict validator 以
+> **2026-08-30 歷史檢查點**：當時 Gate 7 仍是 shadow-only；strict validator 以
 > cutoff=`2026-08-28T00:00:00+08:00` 重驗且完整 manifest scan 的
 > Formal inputs=`0/3`，`formal_oos_allowed=false`、production alpha=`0`、broker／promotion
 > disabled。2026-07-30 的「Production Co-pilot／V4.0 覆寫」是當日 engineering freeze 的
 > 歷史命名，只表示管線與 fail-closed lane 可日常檢查，不授予正式 OOS 或 V4 product
-> closeout。若狀態衝突，以 [Program Status Rebaseline](PROGRAM_STATUS_REBASELINE_2026_08_29.md)
-> 與 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 為準。
+> closeout。以上是該次驗證結果，不代表目前狀態；目前狀態以
+> [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 為準，近期收據由
+> [QA 主題地圖](README.md) 導覽。
 >
 > **歷史 engineering overlay（2026-07-30）**：Gate 7 當時由「價格／技術 shadow challenger」擴充為「全欄位配置型 Production Co-pilot」。該詞只表示資料、訓練、推論、shadow sidecar 與 promotion/rollback lane 的工程入口可執行；不表示已有非零配置權重。截至該次 freeze，reference v2 與逐 horizon metrics artifact 已存在，但 machine gate 仍缺正式 OOS、實際因果投組 replay 及 20 個真實成熟 shadow days，因此 ECE／Brier／PSI 為 `null / NOT EVALUATED`，並輸出 `alpha=0`、`formal_oos_allowed=false`。下方原 shadow 文件保留作歷史底座。
 

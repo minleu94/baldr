@@ -385,6 +385,14 @@ Month 3 closure audit 與 8 份全部勾選完成且具 implementation commit �
 
 Healthcheck Batch 3 Recommendation Profile／Regime plan 經審核後留在 `docs/superpowers/plans/`：實作 commit `a0e07273c` 已存在，但原始 Full App healthcheck 中 R-002–R-005 與 RECOMMEND-ISSUE-001–004／008 仍記為「已修正待驗證」。由於找不到使用者重測結案證據，本輪不把它當成完全結案的 plan 歸檔；README 已連到目前 Manual、Architecture 與歷史 QA 收據。
 
+## 2026-10-08 Program Status Rebaseline 日期快照歸檔
+
+將 `PROGRAM_STATUS_REBASELINE_2026_08_29.md` 移至 Archive；該文包含 8/29／30 的 readiness 數字，已由 10 月 Snapshot 與近期 lane QA 取代 current-state 用途。Application Manual Supplements、Gate 7 Engineering 與 External Validation Register 已改為把這些數字標示成歷史快照，現況以 Snapshot／近期 QA 判讀；舊 QA 路徑保留導引。Archive 副本只修正指向仍留在 QA 的相對連結，完整保留報告內容。`DOCUMENTATION_INDEX.md` 目前有其他未提交編輯，本輪未修改；其既有舊路徑可經導引開啟 Archive 原文。
+
+| 原路徑 | 歸檔路徑 | 原文 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md | [PROGRAM_STATUS_REBASELINE_2026_08_29.md](../09_archive/PROGRAM_STATUS_REBASELINE_2026_08_29.md) | 15,546 / `8d21f040f9236344e67fecd43ced62cc80c38e775ebc058cbb85c982c301c636` | 15,602 / `10a6145483f79f7e695874719f45b8951a9019103a02ebd90705dd3e4daeb7df` |
+
 ## 2026-10-08 QA 導覽補充：Gate 2 與 Data Update 效能基線
 
 盤點 2026-07／08 剩餘長篇 QA 時，保留 [Gate 2 7/22 稽核](../06_qa/GATE_2_DATA_GOVERNANCE_CONSOLIDATION_AUDIT_2026_07_22.md)：唯讀稽核腳本仍固定輸出至該路徑，報告也明示不構成人工 Gate credit 或 production enablement。保留 [Data Update 8/28 效能基線](../06_qa/DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md)：Application Manual 直接引用，且報告內 bounded worker、單寫入者與 production opt-in 邊界仍需追溯。兩者均是日期化證據，不代表目前資料筆數、執行速度或 Gate 狀態；QA README 已補主題入口。

@@ -1391,9 +1391,10 @@ Evidence `latest_status.json` 使用 schema v3，並保存
 > 但其中 `4/3 complete` 是 2026-07-30 的歷史投影，不是 current SSOT。2026-08-29
 > Evidence 必須分層為 formal/canonical credit 未授予、歷史 working-copy=`1/3`、
 > owner-approved UI projection=`3/3`、sidecar pending=`10`、multi-day=`3/3`，且
-> `formal_credit_authorized=false`。Current 全程式狀態以
-> [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 頂部與
-> [Program Status Rebaseline](../06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md) 為準。
+> `formal_credit_authorized=false`。本段其他 lane 數字是 2026-08-29／30 歷史快照，完整脈絡見
+> [Program Status Rebaseline 歸檔原文](../09_archive/PROGRAM_STATUS_REBASELINE_2026_08_29.md)。
+> 目前全專案狀態以 [Project Snapshot](../00_core/PROJECT_SNAPSHOT.md) 頂部為準；最新收據由
+> [QA 主題地圖](../06_qa/README.md) 導覽。
 
 > Daily / Weekly / Monthly / Maturity / Failure 的完整操作契約見 [V3.3 Engineering Closeout](../06_qa/V3_3_ENGINEERING_CLOSEOUT_2026_07_12.md)。`verify_artifact_lineage.py` 只做唯讀工程驗證，fixture 不得冒充 forward/paper/live evidence。
 

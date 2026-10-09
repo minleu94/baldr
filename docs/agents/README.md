@@ -94,7 +94,7 @@
 #### Tech Lead Agent 補充必讀
 - `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` - 重構完成後的產品方向權威。
 - `docs/00_core/ROADMAP_6M_ENGINEERING.md` - 未來 6 個月工程路線（涉及方向、優先順序或大型規劃時必讀）
-- `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 外部專案參考、資料源優先序與 V1.5-V2.0 版本形狀（涉及外部參考、資料源擴充或未來版本規劃時必讀）
+- `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 外部專案參考、資料源優先序與歷史版本形狀；不定義目前交付順序（涉及外部參考或資料源擴充時必讀）
 - `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期版本階梯（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
 - `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交矩陣（涉及舊工作承接、Phase Gate 或優先順序時必讀）
 - `docs/01_architecture/system_architecture.md` - 系統架構（涉及架構、模組邊界或資料流時必讀）
@@ -107,7 +107,7 @@
 - `docs/00_core/DOCUMENTATION_INDEX.md` - 文檔索引（了解文檔結構）
 - `docs/00_core/DEVELOPMENT_ROADMAP.md` - Roadmap Hub
 - `docs/00_core/ROADMAP_6M_ENGINEERING.md` - 未來 6 個月工程路線
-- `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 外部專案參考與 V1.5-V2.0 版本形狀（涉及 roadmap / 版本規劃 / 外部參考同步時必讀）
+- `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` - 外部專案參考與歷史版本形狀；目前 roadmap／版本順序以 Product／6M Roadmap 為準（涉及外部參考同步時必讀）
 - `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` - V2.0 之後長期版本階梯（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時必讀）
 - `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` - 舊 Roadmap 移交矩陣
 - `docs/01_architecture/system_architecture.md` - 系統架構

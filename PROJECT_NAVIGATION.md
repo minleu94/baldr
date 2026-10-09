@@ -193,7 +193,7 @@ Evidence rehearsal 的唯讀工程預演底座已收口為 `engineering_rehearsa
 - `scripts/inspect_recommendation_calibration.py`
 - `scripts/build_v41_historical_method_pack.py`
 
-**如果我要改 evidence source coverage / data credibility**：先看 `docs/00_core/PROJECT_SNAPSHOT.md`、`docs/00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md` 與 `docs/01_architecture/system_architecture.md`；程式改動優先從 `EvidenceSourceCoverageService` 或 `data_module/*policy/*registry` 切入，不要在 CLI、runner 或 UI 各自複製分級邏輯。
+**如果我要改 evidence source coverage / data credibility**：先看 `docs/00_core/PROJECT_SNAPSHOT.md` 確認現況，再看 `docs/01_architecture/system_architecture.md` 與 `docs/00_core/ROADMAP_6M_ENGINEERING.md` 確認邊界與 Gate；程式改動優先從 `EvidenceSourceCoverageService` 或 `data_module/*policy/*registry` 切入，不要在 CLI、runner 或 UI 各自複製分級邏輯。
 
 **如果我要改 V1.6 factor snapshots / attribution**：先看 `CrossSectionalFactorPipeline`、`CrossSectionalFactorRepository` 與 `scripts/inspect_cross_sectional_factor_snapshot.py`；新增 factor 或 concept metadata 仍必須先經 `FactorGate`、`available_date <= decision_date` 與 missing policy，不要直接改 `ScoringEngine`。
 
@@ -557,7 +557,7 @@ python ui_qt/main.py
 - **產品方向**：`docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`
 - **6 個月工程路線**：`docs/00_core/ROADMAP_6M_ENGINEERING.md`
 - **目前／目標架構**：`docs/01_architecture/system_architecture.md` / `docs/01_architecture/target_system_architecture.md`
-- **V1.1 至 V2.0 版本節奏**：`docs/00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md`
+- **V1.1 至 V2.0 歷史版本**：`docs/09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`
 - **V2.1 至 V4.0 長期版號階梯**：`docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`
 - **baldr 產品北極星**：`docs/01_architecture/system_vision_specification.md`
 - **Roadmap Hub**：`docs/00_core/DEVELOPMENT_ROADMAP.md`

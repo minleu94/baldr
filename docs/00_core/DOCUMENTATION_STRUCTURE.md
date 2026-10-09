@@ -27,7 +27,7 @@
 
 5. **外部參考與版本形狀 companion**
    - `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`
-   - 保存外部開源專案參考、資料源補強優先序、V1.5 至 V2.0 版本形狀與 deferred 技術邊界；不取代 Vision 或 6M Roadmap。
+   - 保存外部開源專案參考、資料源補強優先序、V1.8 至 V2.0 歷史版本形狀與 deferred 技術邊界；不定義目前交付順序，也不取代 Vision 或 6M Roadmap。
 
 6. **舊 Roadmap 移交權威**
    - `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`

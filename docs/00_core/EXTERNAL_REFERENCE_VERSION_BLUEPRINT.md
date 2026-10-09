@@ -1,8 +1,8 @@
-# 外部專案參考與未來版本藍圖
+# 外部專案參考與歷史版本形狀
 
 > **最後更新**：2026-07-11
 > **狀態校正**：P0 adapters 已完成 shadow engineering，但仍須逐來源 license / quality / PIT 人工接受；candidate 不得進 ScoringEngine 或 formal Advice。
-> **定位**：本文件是 `ROADMAP_6M_ENGINEERING.md`、`VERSION_ROADMAP_V1_1_TO_V2_0.md` 與 `VERSION_ROADMAP_V2_1_TO_V4_0.md` 的參考 companion。它負責保存外部開源專案對照、資料源補強優先序、可借鑑設計、Blueprint 衝突檢查與 V1.8 至 V2.0 版本形狀；不取代 Vision、Snapshot、6M Roadmap、長期版本階梯或 Architecture。
+> **定位**：本文件保存外部開源專案對照、資料源補強優先序、可借鑑設計、Blueprint 衝突檢查，以及當時 V1.8 至 V2.0 的歷史版本形狀參考。V1.1 至 V2.0 的已完成路線已移至 [歷史封存](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)；本文件不表示該版本節奏仍是目前交付順序，也不取代 Vision、Snapshot、6M Roadmap、長期版本階梯或 Architecture。
 
 ---
 
@@ -16,7 +16,7 @@
 |---|---|
 | `PROJECT_SNAPSHOT.md` | 目前狀態、本週優先事項、高風險區。 |
 | `ROADMAP_6M_ENGINEERING.md` | 未來 6 個月工程執行順序。 |
-| `VERSION_ROADMAP_V1_1_TO_V2_0.md` | V1.1 至 V2.0 的版本化交付節奏。 |
+| [`../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md) | V1.1 至 V2.0 已完成版本的歷史交棒；非目前交付順序。 |
 | `VERSION_ROADMAP_V2_1_TO_V4_0.md` | V2.0 之後長期版號階梯與 maturity milestone 邊界。 |
 | `system_vision_specification.md` | 長期產品願景、Evidence Requirement、Gap Register。 |
 | 本文件 | 外部專案參考、資料源優先序、衝突檢查、版本形狀補充。 |

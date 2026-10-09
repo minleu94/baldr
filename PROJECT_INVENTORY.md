@@ -1,7 +1,7 @@
 # 專案盤點報告
 
-> **最後整理**：2026-09-08
-> **用途**：提供根目錄層級的目前結構盤點。細節文件以 `docs/00_core/DOCUMENTATION_INDEX.md` 為準。
+> **最後整理**：2026-10-08
+> **用途**：提供根目錄層級的結構盤點，不複製會快速過期的進度狀態。文件位置以 `docs/00_core/DOCUMENTATION_INDEX.md` 為準；目前狀態以 `docs/00_core/PROJECT_SNAPSHOT.md` 為準。
 >
 > **2026-08-29歷史程式盤點**：七個 readiness lane、當時工程與產品 Gate 見
 > `docs/06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md`。2026-08-29 的
@@ -83,7 +83,7 @@
 
 目前 `ui_qt` 近期狀態：
 
-- 8 個頂層工作區：決策工作台、市場探索（市場總覽／每日決策唯一實例與主力流向等子頁）、推薦分析、策略回測（Research Lab）、觀察清單、持倉管理、數據更新、Runtime。
+- 9 個頂層工作區：決策工作台、市場探索、推薦分析、策略回測、觀察清單、個股研究、持倉管理、數據更新、系統狀態；名稱與註冊順序以 `ui_qt/main_window_coordinator.py` 的 `WORKSPACE_DEFINITIONS` 為準。
 - `ui_qt/views/update_view.py` 已重整為數據更新工作台，包含左側資料來源導覽與「安全更新所有數據」入口。
 - `ui_qt/views/runtime_view.py` 與 `runtime/` 已完成 Runtime Observatory MVP。
 - `ui_qt` 主 UI 已接上 Daily Decision Desk v1，透過 service snapshot 顯示 Market Breadth、Sector Rotation、Relative Strength / Liquidity Ranking、Watchlist Trigger、Portfolio Alert 與 fundamental risk prompts。
@@ -134,21 +134,20 @@
 
 ---
 
-## 5. 目前開發主線
+## 5. 狀態與路線圖入口
 
-專案已形成四個可操作產品閉環：資料與市場狀態 ✅、研究驗證 ✅、持倉檢查 ✅、每日決策 ✅。V1 release baseline 已完成，V1 的意義是工程入口、資料契約、操作流程與 release gate 可用，不代表投資有效性。
+本盤點只記錄結構、模組責任與導航。完成度、阻礙、容量觀測與本週優先事項會隨時間改變，集中由以下文件負責，避免在多份根目錄文件重複維護：
 
-- Strategy & Scoring Governance 增量 A / B 與 10 檔 fixed / quantile OOS 實證已完成；quantile 未優於 fixed，維持 opt-in。
-- Phase 5 圖表渲染、批次並行化、SQLite 穩定分頁與規格化 Excel 報告匯出已完成；PDF 報告輸出仍在後續 backlog。
-- Month 2 Research Run Registry、Cross-run Comparison 與 Registry-based Promote Gate 已完成 final governance gate；Month 3 Factor Layer / Portfolio Replay 可信度與 Month 5 Fundamental Layer v1 已關閉。Month 6 Strategy Lifecycle / Portfolio Feedback v1 已落地 lifecycle gate、append-only lifecycle evidence、current state projection、drift detector、Portfolio feedback attribution、Portfolio Review snapshot 與持倉管理生命週期回顧分頁。
-- Post-V1 V1.1 至 V1.9 v1 已完成，包含 workflow bridge、research credibility、weekly evidence operations、evidence review history、data credibility gate、cross-sectional factor snapshot、negative evidence、portfolio sandbox 與 read-only Agent / MCP。
-- V3.3 engineering foundation 與 Workbench 主 UI 已 closeout；目前是 V4 evidence accumulation，而不是正式 V4.0。七個 current lane 中 Update History 最近觀測為 ready，Runtime 已有 TEMP transaction probe 但正式 Registry canary 仍待核准；P0 acceptance、Evidence formal credit、Paper fills／成本、Formal inputs 與 production canary 仍未完成。8/30 fresh capacity inventory 為 `headroom_ok`（約 338.9 GiB），但不改上述 Gate；Data Update timeline 與舊 readiness artifact 顯示邊界已補上 regression。
-- `docs/05_phases/` 保留為 Historical / Reference；Phase 文件內的下一步或 Gate 不作目前 roadmap 判斷。
-
-目前狀態以 `docs/00_core/PROJECT_SNAPSHOT.md` 為準；未來 6 個月路線以 `docs/00_core/ROADMAP_6M_ENGINEERING.md` 為準；V2.0 之後長期版號階梯以 `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` 為準；舊 Roadmap 未完成事項是否已承接，以 `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` 為準。
+- 目前狀態與本週優先事項：[`docs/00_core/PROJECT_SNAPSHOT.md`](docs/00_core/PROJECT_SNAPSHOT.md)
+- Roadmap 導覽：[`docs/00_core/DEVELOPMENT_ROADMAP.md`](docs/00_core/DEVELOPMENT_ROADMAP.md)
+- 產品方向：[`docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`](docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md)
+- 六個月工程 Gate：[`docs/00_core/ROADMAP_6M_ENGINEERING.md`](docs/00_core/ROADMAP_6M_ENGINEERING.md)
+- 長期成熟度：[`docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`](docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)
+- 舊工作移交：[`docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`](docs/00_core/LEGACY_ROADMAP_CARRYOVER.md)
 
 ## 6. 更新記錄
 
+- 2026-10-08：將專案盤點收斂為結構與導航文件，移除重複的 8/30 動態狀態摘要；工作區數量校正為 9，並指定 `WORKSPACE_DEFINITIONS` 為名稱與順序來源。
 - 2026-08-30：完成 P0／Evidence／Paper／Formal／Runtime／Performance／Data Update refresh；整理 current SSOT、8/30 fresh capacity、週末 freshness 語意、舊 readiness artifact marker 與完整 pytest `3,826 passed / 1 skipped`。
 - 2026-08-29：依全程式 rebaseline 校正八個工作區名稱與目前主線；新增七個 readiness lane、release_v4 retention cleanup 與容量不等於 Gate closeout 的邊界。
 - 2026-07-06：補上 V2.1 至 V4.0 長期版本路線圖入口，並同步 Post-V1 V1.7-V1.9、V2.0 Phase 1 與後續 gate-based 主線描述。

@@ -19,6 +19,7 @@
 - **`system_architecture.md`**
   - 系統的技術架構說明
   - 模組結構、數據流程、技術細節
+  - 原第 16 節逐次更新記錄已移至 [架構更新歷史](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)；主文保留舊錨點導引
 
 - **`target_system_architecture.md`**
   - 領域背景與治理邊界導覽；工程目標決策導向 FINAL_TARGET_ARCHITECTURE
@@ -26,7 +27,7 @@
 
 ## 目前架構速讀
 
-`system_architecture.md` 同時保存架構主文與日期化增量，篇幅很長。先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判斷目前狀態，再按問題讀主文：
+`system_architecture.md` 的第 1–15 節是架構主文；原第 16 節更新記錄已歸檔，後續日期化增量仍保存有用的架構決策。先看 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 判斷目前狀態，再按問題讀主文：
 
 | 要理解的內容 | 主文位置 |
 |---|---|
@@ -35,7 +36,7 @@
 | 資料、券商分點與 Runtime | 第 8–10 節 |
 | 保存治理、匯出、文件架構、高風險修改與驗證 | 第 11–15 節 |
 
-主文前段與第 15 節之後另有日期化增量紀錄。它們保存當時的架構變更與限制，不是按時間排序的目前狀態摘要；目前完成度看 Snapshot，具體驗收看對應 QA 收據。
+主文後仍有日期化架構增量；它們保存當時的架構變更與限制，不是按時間排序的目前狀態摘要。第 16 節舊更新流水帳已移至 [歸檔](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)。目前完成度看 Snapshot，具體驗收看對應 QA 收據。
 
 ## ML 架構閱讀順序
 

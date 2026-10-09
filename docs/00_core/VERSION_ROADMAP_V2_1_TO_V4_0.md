@@ -1,12 +1,11 @@
 # V2.1 至 V4.0 產品成熟度路線圖
 
-> **最後更新**：2026-09-15；本輪基線為已提交 `0219d709`，並承接 Qt 修復 `9a9e778b`，不升級 maturity 版號。
-> **目前狀態**：`V3.3 Engineering Complete` / `V4.0 Evidence Accumulation Track`；不可宣稱正式 V4.0，真實 evidence 與人工 Gate仍待累積。
-> **跨流整合校正**：V3.3 的 engineering shadow chain 已通過 committed-handoff 與跨模組驗證；真實 frozen artifact smoke、formal OOS、必要 shadow days、人工 promotion review 與 production alpha 仍未完成，因此 maturity 不升級。
+> **內容基線**：2026-09-15（提交 `0219d709`，並承接 Qt 修復 `9a9e778b`）；2026-10-08 僅整理歷史交接與入口，未改成熟度標準。
+> **狀態判讀**：成熟度標準與目前專案進度分開維護；目前狀態、阻礙與優先事項以 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md) 為準。2026-07 至 2026-08 的版本狀態快照，以及 2026-09-15 工程／產品交接，均已移至 [歷史狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md) 與[工程交接歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)。
 > **定位**：本文件是 V2.0 之後的長期產品成熟度與版本階梯權威；版號代表產品能力與證據成熟度，不代表功能數量。
 > **工程順序**：未來六個月以 [ROADMAP_6M_ENGINEERING.md](ROADMAP_6M_ENGINEERING.md) 為準。
 > **產品方向**：投資問題、能力演進與產品 Gate 以 [PRODUCT_ROADMAP_POST_REFACTOR.md](PRODUCT_ROADMAP_POST_REFACTOR.md) 為準。
-> **歷史交棒**：V1.1 至 V2.0 的已完成演進見 [VERSION_ROADMAP_V1_1_TO_V2_0.md](VERSION_ROADMAP_V1_1_TO_V2_0.md)。
+> **歷史交棒**：V1.1 至 V2.0 的已完成演進見 [歷史封存](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)；目前成熟度標準由本文件定義，當前狀態以 Snapshot 為準。
 
 ---
 
@@ -62,7 +61,7 @@
 
 Closeout Gate：Advice 可拒絕、可重算、可回溯；UI 不直接計算；不串 broker。
 
-**目前版本狀態（2026-07-12）**：V2.1 已於 2026-07-12 14:51:42 -07:00 獲 release owner 明確 `approve`，正式 closeout 狀態為 `formal_closeout_complete`。已驗證的 bounded / read-only Daily Usable Workbench 行為為：Guided 僅接受 `promoted`、parameters locked 與 disclosure complete 的策略；`max_positions` 只允許 `1..8`；Professional candidate 僅 `RESEARCH` 並與正式 Advice 分區。focused suite 為 `94 passed in 2.91s`，engineering readiness 與 approval record 分別見 `docs/06_qa/V2_1_ENGINEERING_READINESS_2026_07_12.md`、`docs/06_qa/V2_1_FORMAL_CLOSEOUT_2026_07_12.md`。此狀態不改變本文件的 maturity 定義，亦不代表投資有效性、broker execution、production scheduler、P0 source acceptance 或後續版本 Gate 已完成。
+> 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
 ### V2.2：Evidence Operating Loop
 
@@ -78,14 +77,9 @@ Closeout Gate：Advice 可拒絕、可重算、可回溯；UI 不直接計算；
 
 Closeout Gate：production evidence scheduler 如獲批准只保存 evidence；不自動交易、不套 lifecycle action。
 
-**目前版本狀態（2026-07-12）**：V2.2 的 weekly review CLI、append-only history 操作介面、working-copy runbook 與 scheduler approval package 已具 engineering readiness；2026-07-06 至 2026-07-12 的 Week 1 已以隔離 working-copy 完成 repeat=2 idempotency smoke、人工 review 與 append-only history，weekly history 為 `1/3 waiting_for_time`。multi-day dry-run 已為 `3/3 ready`，scheduler 未獲核准且 `production_scheduler_allowed=false`。因此不得建立 V2.2 formal closeout，也不得將 replay、fixture、raw scheduled report 或單次 smoke 解讀為 Week 2 / Week 3。Week 1 證據見 `docs/06_qa/V2_2_WEEK1_REVIEW_2026_07_12.md`；三週人工操作格式詳見 `docs/07_guides/V2_2_WEEKLY_REVIEW_RUNBOOK.md`。本狀態不代表 production trading、lifecycle action 或投資有效性。
+> 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
-**現況補充（2026-08-30）**：上述 `1/3` 是歷史 working-copy 層，不是唯一 current
-counter。現況必須同時列出 formal/canonical credit 未授予、歷史 working-copy=`1/3`、
-owner-approved UI projection=`3/3`、正式 sidecar pending=`10`、multi-day=`3/3` 與
-`formal_credit_authorized=false`。因此 V2.2 仍未 closeout，但真正下一步已轉為 10 期具名
-review、formal credit、backup／rollback／recovery 與 scheduler approval；不得再裸寫一個
-`X/3` 代表全部 Evidence 狀態。
+> 歷史狀態快照（2026-08-30）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
 ### V2.3：P0 Data Credibility
 
@@ -99,13 +93,9 @@ review、formal credit、backup／rollback／recovery 與 scheduler approval；�
 
 Closeout Gate：每個 P0 source 有 accepted / limited / rejected / deferred 決議；candidate 不冒充 formal。
 
-**目前版本狀態（2026-07-12）**：V2.3 已建立工程 readiness 與完整 Gate 3 P0 source-by-source 人工接受台帳，見 `docs/06_qa/V2_3_ENGINEERING_READINESS_2026_07_12.md`、`docs/06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md`。除權息 / 除權、未登錄的減資 / 分割 / 面額變更與停牌 / 復牌、其他交易限制、三大法人、信用交易、TDCC 與 PIT fundamentals 目前全部是 `requires_human_acceptance`，且 `downstream eligibility=none`；每列保留 source version、as-of / available date、rate limit、freshness / coverage、quarantine / retry、evidence / review / rollback 與分離 owner / date。`decision_ready_candidate` 只屬診斷結果，不是 accepted feature；既有 `corporate_action.ex_dividend_timeline` 不涵蓋未登錄 corporate-action 事件。V2.3 formal closeout 尚未建立，必須等待逐來源完成 license、quality、PIT / available-date、missing / outage 與具名 owner / date 的 accepted / limited / rejected / deferred 決議。本狀態不改變本節 maturity definition，亦不代表正式 ingestion、`ScoringEngine` 接線、Advice / Portfolio eligibility、scheduler approval 或投資有效性。
+> 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
-**現況補充（2026-08-30）**：P0 已由 contract-only 推進到 13/13 machine evidence，8/30
-bounded retry 為 `1 verified / 9 degraded / 3 official_no_data`，3/3 唯一官方條款頁
-candidate 可取得；accepted／limited 仍為 0、downstream eligibility none。未完成項目是
-publication／獨立 coverage denominator／decision-time PIT／license acceptance 與 13 筆具名
-決議，不應把 machine evidence 或條款頁 hash 當成 V2.3 closeout。
+> 歷史狀態快照（2026-08-30）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
 ### V2.4：Portfolio Coach Foundation
 
@@ -134,15 +124,11 @@ Closeout Gate：能安全輸出 Portfolio Advice 或 `NO_NEW_POSITION`；不串 
 
 Closeout Gate：每個 transition 可解釋、可回溯；不自動平倉。
 
-**目前版本狀態（2026-07-12）**：V2.5 已有 read-only `PositionHealthService` 與 sample report，將既有 condition、feedback 與 source trace 投影為 HEALTHY / WATCH / EXIT_CANDIDATE，固定 `auto_action_allowed=false`。缺 condition 或 source trace 時維持 WATCH；它不讀實際持倉、不寫 DB、不自動減碼或平倉。工程 readiness 詳見 `docs/06_qa/V2_5_ENGINEERING_READINESS_2026_07_12.md`；真實 thesis、人工 state transition 與 decision journal 尚未累積，故 formal closeout 尚未建立。
+> 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
 **Paper baseline 補充（2026-07-12）**：V2.4 已用 `scheduled_rec_20260712_051002` 建立第一個真實 saved-Recommendation paper baseline，3 筆 allocation 的紙上可執行總額為 NT$159,000、殘餘現金 NT$341,000；V2.5 已由相同 artifact 建立 3 筆 `WATCH` health baseline，並將 thesis / invalidation / horizon / review date 保留為必填人工欄位。兩者均不寫持倉 DB、不下單、不自動 action；尚缺後續交易日 paper evidence、成本後 benchmark、人工 thesis 與 state transition，不能 formal closeout。證據見 `docs/06_qa/V2_4_PAPER_BASELINE_2026_07_12.md`、`docs/06_qa/V2_5_POSITION_HEALTH_BASELINE_2026_07_12.md`。
 
-**Paper 現況補充（2026-08-30）**：已累積 21 snapshots 與 21 Equal Weight observations，
-但 Paper Trade Ledger 仍 missing、fills／cost records=`0`，weekly=
-`not_computable_cost_ledger_missing`。Import、Decimal 成本與 reconciliation contract 已存在，
-repo 內仍沒有自然產生真實 Paper fills 的 producer；因此 V2.4／V3.1 缺口是 execution
-producer 與真實 partial-fill／override／execution-gap evidence，不是再增加一個 snapshot。
+> 歷史狀態快照（2026-08-30）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
 ## 5. V3.x：Signal、Portfolio、Exit、Pruning、ML Shadow、Paper Validation
 
@@ -161,7 +147,7 @@ producer 與真實 partial-fill／override／execution-gap evidence，不是再�
 
 **Week 1 人工驗證（2026-07-12）**：真實 working-copy 只有 3 筆有 score 的事件，12 個 outcome 全為 missing，另有 1,134 個事件缺 `score_bp`；所有 score bucket 均未達 30 筆成熟樣本門檻。因此本輪正式決議為 `DEFER_ALL_PRUNING_DECISIONS`，不調整 score、threshold、Profile、gate、alert 或 lifecycle。證據見 `docs/06_qa/V3_0_WEEK1_MANUAL_VALIDATION_2026_07_12.md`。
 
-**目前版本狀態（2026-07-12）**：V3.0 focused suite 重新驗證 26 passed，artifact readiness 為 complete 且無程式 blocking gap；sample evidence 仍有樣本不足、產業 benchmark 缺口及舊 screening-matrix payload gap。故狀態維持 `ready_for_manual_validation`，任何正式 effectiveness、pruning 或版本 closeout 均未成立。
+> 歷史狀態快照（2026-07-12）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
 ### V3.1：Portfolio Advice Validation
 
@@ -185,11 +171,7 @@ producer 與真實 partial-fill／override／execution-gap evidence，不是再�
 
 Closeout Gate：最多提出繼續 shadow、拒絕或人工 promotion review；不自動上線、不改 scheduler / Portfolio / lifecycle、不交易。
 
-**目前版本狀態（2026-08-30）**：Formal validator 對整個 output 的 `19,942` manifests
-做 exact-schema cross-check 後仍為 owner-controlled inputs `0/3`；causal=`0`、Rule=`0`、
-PIT=`1`，且唯一 PIT 是 prospective diagnostic-only。PIT／Direct／OOC immutable shadow chain
-與 owner handoff 工程存在，storage headroom 亦已恢復，但 `formal_oos_allowed=false`、alpha=0、
-promotion／broker=false。容量通過不構成 V3.3 formal closeout，更不構成 V4.0。
+> 歷史狀態快照（2026-08-30）已移至 [版本狀態歸檔](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)；目前狀態請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md).
 
 ## 6. V4.0：Evidence-Validated Investment Decision System
 
@@ -224,69 +206,8 @@ V4.0 仍不代表：
 
 ## 6A. 2026-09-15 工程／產品版本分流
 
-本 companion 仍只負責 V2.1 至 V4.0 的 maturity definition；本次新增的 V4.1／V4.2
-是工程軌名稱，不是本文件新增或提前宣告的 maturity version：
-
-- **V4.1 engineering** 的 bounded slice 已驗收：`0d9d72af`／`cad07762` 的 content-first
-  每日首屏、`25544142` 的可比產業讀模型、`421ab844` 的每日 evidence／typed learning
-  projection，以及 `53b456a0`／`ffb66c6f` 的唯讀 Decision → Outcome journey。rank／
-  probability／confidence 分離、model／dataset／source／日期／樣本 provenance、Research
-  fallback 與臺銀 `estimated_research_only` read model 仍保持 read-only；`7e029933` 另有
-  A/B/C continuity runtime／跨程序 writer→reader readback 工程實證，`9a9e778b` 再補
-  `MainWindow DeferredDelete`、busy 單次 close、實際 OS process exit `0` 的 teardown；`5a3ed5db`／`ef594007` 已驗收
-  Position Health source-backed read model，`031e11ab` 已驗收 Continuity Review Workbench R1，
-  C 的 P1 provenance 已驗收；下一個施工面是 L official taxonomy source chain 與後續跨頁一致性／
-  推薦／決策／outcome 追溯整合，不提前宣稱 V5。
-- **V4.2 engineering** 的既有 shadow／custody slice 有 bounded acceptance，涵蓋 05:40→05:45 自然時間
-  邊界、typed natural authority projection、frozen challenger、既有 policy 內的自動
-  shadow adoption／rollback、active monitor 與 durable receipt；`8acf29f0`／`b39fd399`
-  的臺銀成本／排程 lane 也保持隔離。沒有 verifier 時 natural status 必須 unknown；
-  source `available`、hash 或 evidence kind 不等於 authority。就 2026-09-14 臺銀正常 shadow
-  lane 觀測，natural sample 為 `0`、`retain_current`；legacy 50bp lane 可為 blocked；05:50 task
-  registration／Ready 不等於自然證據。首次實際 run 已於 `05:50:03–05:50:05 -07:00` 以
-  `failed_dependency` 結束，root guard 已由 `086ba60c` 修復，`0aaf0dff` 受控 retry 成功但
-  仍為 `completed_waiting_natural_maturity`，後續正常排程持續觀察。這些是既有 shadow／
-  projection observation；截至 `0219d709`，C 的 bounded canonical learning runner／training
-  lineage／cutoff／ML boundary 與 P1 next-day inference／projection provenance 已提交並驗收
-  （75 tests、mypy 9 source files、ML guard 509 inspected／0 violations）。training／inference
-  source／PIT hash 分離，shared schema／transform compatibility、immutable receipt、normal UI
-  UUID→save→exact readback 與 identity conflict fail-closed 可核對，rule selection authority 保留。
-  L 的官方 taxonomy source chain 仍待完成。
-- **Decision continuity**：`5339230f` 的 Increment A append-only storage contract、
-  `7e029933` 的 A/B/C continuity runtime／跨程序 writer→reader readback、`9a9e778b` 的 Qt teardown／close lifecycle、
-  `031e11ab` 的 Continuity Review Workbench R1 與
-  `5a3ed5db`／`ef594007` 的 Position Health source-backed read model 均已驗收；完整跨頁一致性
-  及推薦／決策／outcome 追溯整合仍待驗收。
-- **`user_declared` research lane**：2026-09-15 Increment 2 已完成 bounded engineering
-  acceptance。Portfolio 內的使用者聲明持倉以獨立 append-only revision／PIT read model
-  提供研究檢視、聲明成本資訊性觀察與人工 review；不提升為 V2.5／V3.x／V4.0 maturity，
-  不進 Paper／formal effectiveness，也不授權 broker 或 auto action。QA 與 rollback 邊界見
-  [Increment 2 QA](../06_qa/USER_DECLARED_HOLDING_RESEARCH_INCREMENT_2_QA_2026_09_15.md)。
-- **V5／V6** 是 Product Roadmap 的後續 handoff，不屬於本文件的 V4.0 maturity closeout。
-  V5 的 content-first／真實唯讀 journey／decision continuity 可與 V4 formal evidence
-  accumulation 並行；V6 的 user-level evidence-driven personalization 則需在 V5 的
-  decision／outcome continuity 上另建治理，兩者都不授權 broker 或自動交易。
-
-2026-09-21 的「V5日常操作與可讀性工程」是上述 handoff 的 bounded engineering evidence：首頁、工作區分層、候選／報告／持倉摘要、推薦／回測進階入口、按需圖表與白話錯誤已完成 frozen review；after perf 僅是小型隔離 fixture 的比較，整合 route 已以 `299 passed` 完成，pytest cache permission warning 另列。它不新增版本 maturity、不關閉 V4.0、不授予 formal／natural evidence，也不把 V6 personal sample 或 learning 效果視為完成。
-
-本次下一工程順序為：1. **L official taxonomy source chain**（C bounded canonical runner／training
-lineage／cutoff／ML boundary 與 P1 next-day inference／projection provenance 已由 `0219d709` 驗收；
-P1 receipt 的 training／inference source／PIT hash 分離、shared schema／transform compatibility、
-immutable receipt、normal UI UUID→save→exact readback 與 conflict fail-closed 均已具工程證據；L 官方
-taxonomy raw producer／v3／publisher／reader／caller 及 PDF／preopen completion-time 修正仍待完成）；
-2. **整合使用流程**（在已驗收的
-Position Health、`user_declared`、Continuity Review Workbench R1 與 PIT reader／caller 上，完成
-market→industry→stock→watchlist／portfolio 的跨頁一致性及推薦／決策／outcome 追溯整合）；
-3. **V6 evidence-driven personalization**（先建立 contract、population baseline、歷史回放、
-離線 learning／calibration、negative evidence、guardrail 與 rollback；以後續 user decision／
-outcome sample 決定效果宣稱與採用）。L source chain 尚未完成，不以既有 shadow receipt 或 natural
-sample `0` 折抵；natural forward、同 scope calibration 與 05:50 後續正常排程另列觀察線，
-不宣稱 V4 formal 完工。策略評估效果不保證逐日單調改善，正式交易資格不作所有研究功能的前置；
-V5／V6 仍按 Product／6M Roadmap handoff，不為小 patch 發新版。
-
-工程詳情與 acceptance sequence 以 [ROADMAP_6M_ENGINEERING.md](ROADMAP_6M_ENGINEERING.md)
-及 [終極決策工作台整合缺口矩陣](../06_qa/ULTIMATE_DECISION_WORKBENCH_2026_09_14.md)
-為準；V4.0 的 formal Gate 仍只能由本節長期 evidence 判定。
+> 此為 2026-09-15 的工程交接與當時下一步，已移至[歷史交接紀錄](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)。
+> 目前狀態與優先順序請看 [PROJECT_SNAPSHOT.md](PROJECT_SNAPSHOT.md)；本文件後續章節只用於理解版本成熟度標準。
 
 ## 7. 版本 Promotion / Demotion 規則
 

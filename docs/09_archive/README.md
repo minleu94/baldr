@@ -9,6 +9,16 @@
 ## 2026-10-08 歸檔
 
 - [V4 完成計畫（2026-09-07）](V4_COMPLETION_PLAN_2026_09_07_HISTORY.md)：保留截至 2026-09-10 仍標示「進行中」的計畫與執行紀錄；這是當時狀態，不表示目前 V4 完成度。舊核心路徑保留導引頁。
+- [V1.1–V2.0 歷史版本路線](VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)：保留已完成版本的歷史演進；工程優先順序與目前狀態看 Snapshot／6M Roadmap。
+- [舊 AI Context Pack（截至 2026-08-30）](AI_CONTEXT_PACK_HISTORY_20260830.md)：封存過期狀態包；目前 Agent／開發者入口改看根目錄 `AGENT_CONTEXT.md`。
+- [6M Roadmap 歷史狀態與更新流水帳（2026-07 至 2026-09）](ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md)：保存首屏補記、單輪 handoff、Gate 7 狀態、Gate 校正與變更記錄；Gate 定義仍在核心 Roadmap。
+- [產品 Roadmap 歷史狀態與行動草案（2026-07 至 2026-09）](PRODUCT_ROADMAP_STATUS_HISTORY_20260712_TO_20260917.md)：保存當時的工程／handoff 狀態與原始 30／60／90 日行動草案，不承擔產品方向或目前狀態權威。
+- [V2.1–V4.0 工程交接紀錄（2026-09-15）](VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md)：保存當時工程分流與下一步；版本成熟度標準仍以核心 Roadmap 為準。
+- [V2.1–V4.0 版本狀態快照（2026-07-12 至 2026-08-30）](VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md)：保存各成熟度版本曾附加的階段狀態；目前狀態以 Snapshot 為準。
+- [系統架構更新歷史（2026-06 至 2026-10）](SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md)：保留原架構文檔第 16 節的逐次狀態記錄；目前模組邊界與資料流仍以 `system_architecture.md` 主文為準。
+- [文件編碼稽核（2026-06-16）](DOCUMENT_ENCODING_AUDIT_2026_06_16.md)：一次性 UTF-8／mojibake 掃描；保留當時結論，不代表目前 repo 的完整編碼檢查。
+- [文件與 Roadmap 重整稽核（2026-07-03）](DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md)：一次性文件治理稽核；Phase 歷史判讀已納入現行 `DOCUMENTATION_STRUCTURE.md`。
+- [SQLite inspector 關閉探測（2026-09-15）](QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md)：保留 bounded probe 收據；當時未重現問題，不代表排除所有競態。
 
 ## 📄 文檔列表
 

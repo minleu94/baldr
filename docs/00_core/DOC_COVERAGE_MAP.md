@@ -8,6 +8,39 @@
 
 將 `docs/00_core/V4_COMPLETION_PLAN_2026_09_07.md` 的原文完整移至 [`docs/09_archive/V4_COMPLETION_PLAN_2026_09_07_HISTORY.md`](../09_archive/V4_COMPLETION_PLAN_2026_09_07_HISTORY.md)，保存原 bytes；封存 SHA-256：`C812B1A98B68968DE3D17DA1EFEE232787778C95DFD5D2C66D92BC7557DBE005`。原文最後記錄截至 2026-09-10 仍為「進行中」，不得解讀為目前狀態或已完成。舊核心位置保留短導引，維持日期化 catalog 與歷史快照中的連結；全庫 10 處舊路徑引用皆落在歷史／快照文件。README 已同步，現況仍以 Snapshot 與 V2.1–V4.0 成熟度階梯為準。未變更 `DOCUMENTATION_INDEX.md`：本次查核未找到該索引對此計畫的引用；索引目前另有未提交編輯，避免觸碰。
 
+## 2026-10-08 QA 稽核歸檔第二批
+
+以下一次性稽核原文移入 `docs/09_archive/`，原位置保留轉址，接住 2026-10-06 靜態 catalog 與 2026-09-27 歷史索引的舊連結；保留原 bytes／SHA，不將單次 probe 的未重現解讀為問題不存在。現行 Index 未直接列出這三份文件，本次不改仍有其他對話未提交變更的 `DOCUMENTATION_INDEX.md`。
+
+| 原路徑 | 封存路徑 | SHA-256 | 保留理由 |
+|---|---|---|---|
+| `docs/06_qa/QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md` | [`docs/09_archive/QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md`](../09_archive/QT_SQLITE_INSPECTOR_SHUTDOWN_PROBE_2026_09_15.md) | `78E0775E3B4A6A70616311A6EC9256132CD40B0D00B983D14317D51E5F5A7B91` | 單次 bounded probe；未重現 deadlock，仍不能排除其他 signal race。 |
+| `docs/06_qa/DOCUMENT_ENCODING_AUDIT_2026_06_16.md` | [`docs/09_archive/DOCUMENT_ENCODING_AUDIT_2026_06_16.md`](../09_archive/DOCUMENT_ENCODING_AUDIT_2026_06_16.md) | `350A0999F0FAEDCEA568F24E7E132388BF3BDF11275FC9DC60FF9150707FE835` | 一次性掃描結論；不作目前 repo 完整編碼狀態保證。 |
+| `docs/06_qa/DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md` | [`docs/09_archive/DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md`](../09_archive/DOCUMENTATION_ROADMAP_REBASELINE_AUDIT_2026_07_03.md) | `E29EC4897AE201B6EF22E65E5170A8CC433B11DAD9B64C606BE92E1AAA3A3C16` | 一次性治理稽核；Phase 歷史判讀與歸檔規則已納入現行 `DOCUMENTATION_STRUCTURE.md`。 |
+
+## 2026-10-08 QA 導覽瘦身與超長報告導讀
+
+`docs/06_qa/README.md` 已收斂為八個主題地圖、近期證據入口與歷史／操作路徑；將重複報告摘要改為導向專題入口，保留原始 QA 文件與目錄路徑。主題涵蓋 H20、R026/R031、UX、BALDR、WP、Task Loop、ML Shadow／前瞻證據與 Data Governance。對 `TEST_ASSET_CONSOLIDATION_CLOSEOUT_2026_09_17.md` 加入範圍卡，明示 bounded union、139 組候選、26 組已明確處置、113 組僅靜態篩選的界線；未把靜態清冊描述成完整測試母體或動態回歸。未搬移、改名或刪除其他 QA 原始報告；V1/V2 QA 搬移候選仍待逐檔引用盤點。
+
+## 2026-10-08 核心入口歷史內容瘦身
+
+| 原路徑 | 封存路徑 | 原文 SHA-256 | 處置 |
+|---|---|---|---|
+| `docs/00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md` | [`docs/09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md) | `626D90738E07CE7A3D25044901A9D8B34395F0B580FBCC05316328B374B025FC` | 已完成版本演進移出核心；核心舊路徑保留轉址，現行入口與歷史引用已更新。封存原文只調整相對連結，讓歸檔位置可正常導航。 |
+| `docs/00_core/AI_CONTEXT_PACK.md` | [`docs/09_archive/AI_CONTEXT_PACK_HISTORY_20260830.md`](../09_archive/AI_CONTEXT_PACK_HISTORY_20260830.md) | `E6EB1267BC06C40DAE1F02C552C655D34EED52D4DD3F1F911EF1F5DD9E04591B` | 舊上下文包含過期優先事項與 8 工作區數量；根目錄舊路徑導向 `AGENT_CONTEXT.md` 與 Scoped SSOT。 |
+| `docs/00_core/ROADMAP_6M_ENGINEERING.md` 開頭 dated status | [`docs/09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md`](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md) | `B70EA0F3A13B9B93C188DE44F34268A1A5E9E48D9AD185F28E04D235EBF3FFDB` | 保留原開頭狀態／QA 補記；核心首屏只留 Gate 職責、Snapshot 狀態入口與歷史連結。 |
+| `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` 開頭 dated status | [`docs/09_archive/PRODUCT_ROADMAP_STATUS_HISTORY_20260712_TO_20260917.md`](../09_archive/PRODUCT_ROADMAP_STATUS_HISTORY_20260712_TO_20260917.md) | `E8BDE0CF8FCC1C3323772D21F80555DCE0FBB9E6FCED2186BAD22D8B86AC8916` | 保存原工程／handoff 快照；核心首屏回到產品方向、Snapshot 與 6M Roadmap 的職責。 |
+| `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md` §14 與更新記錄 | [`docs/09_archive/PRODUCT_ROADMAP_STATUS_HISTORY_20260712_TO_20260917.md`](../09_archive/PRODUCT_ROADMAP_STATUS_HISTORY_20260712_TO_20260917.md) | `9B0E3D9BD78CD43E6CB5DBE36406300F5FD1B99213793C00A9D43ECBC586828E`；`4ADEE85A7FC5B8E90EB35C3957B95C6AAA51EC858B4F1C2DDD66AD1165F98CE2` | 原始 30／60／90 日行動草案已由 6M Roadmap 承接；歷史更新記錄保留於同一 archive。 |
+| `docs/00_core/ROADMAP_6M_ENGINEERING.md` 單輪 Gate 交接、Gate 7 狀態、Gate 校正與更新記錄 | [`docs/09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md`](../09_archive/ROADMAP_6M_ENGINEERING_STATUS_HISTORY_20260712_TO_20260917.md) | `D5452DEEC9A5C4569992881F58AAEE3DA825BB3FC2BBC1B0C56F3602558084F8`；`91C1E0C5F4F9DE9003CB82FCD9BA290D33A776A7A149235DCC017515911B9B6C`；`5EA60A15730B7248073C2D2E30B9D58A810A1EE25237E1D426B6927092E79E18`；`8DF39676D2CE3AB8F14C434C0EBDA332C2B991477F635E05FDCC8B08F7F5DCE4` | 日期化執行收據移出工程 Gate 標準；每個原標題保留短導引，完整原文可追溯。 |
+| `docs/00_core/DEVELOPMENT_ROADMAP.md` 的 UX23 日期狀態補記 | 已有 [`docs/06_qa/UX23_REGISTRY_INTEGRATION_20261006.md`](../06_qa/UX23_REGISTRY_INTEGRATION_20261006.md)、[`docs/09_archive/PROJECT_SNAPSHOT_HISTORY_20261006.md`](../09_archive/PROJECT_SNAPSHOT_HISTORY_20261006.md) | — | 移除 Hub 中的重複狀態行；保留專項 QA 與整理前快照，不新增第二份紀錄。 |
+| `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` §6A | [`docs/09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md`](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_ENGINEERING_HANDOFF_20260915_HISTORY.md) | `C646B548594A97E41B4543FF52F1459EC68E519BC25D3F6A45BDCA849C6411A6` | 2026-09-15 工程分流、觀測與下一步移出成熟度標準；原 §6A 標題與導引保留。 |
+| `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` 的日期化版本狀態 | [`docs/09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md`](../09_archive/VERSION_ROADMAP_V2_1_TO_V4_0_STATUS_HISTORY_20260712_TO_20260830.md) | `CB43F6AED0CCBA9FCADBA523C8BB501ED84ABE54C7EE8FA5A0D9BCB2A61E3A2C` | 保留 9 段原狀態文字；成熟度條件留在核心文件，現況只看 Snapshot。 |
+| `docs/01_architecture/system_architecture.md` §16 更新記錄 | [`docs/09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md`](../09_archive/SYSTEM_ARCHITECTURE_UPDATE_HISTORY_202606_TO_202610.md) | `6b086fd3da22096c819001e2fa8923f5bffb16d3b448af6e80b049a8882884dc` | 原始 25,705-byte 記錄完整保留；現架構文件保留 §16 錨點轉址，其他日期增量未移動。 |
+
+## 2026-10-08 工作區數量一致性
+
+依 [現行架構主文](../01_architecture/system_architecture.md) 第 3 節，主 UI 為 9 個頂層工作區；同步修正 `docs/02_features/README.md` 與 `USER_GUIDE.md` 的現行操作手冊介紹。日期化 QA 收據中 8／8 的歷史測試結果維持原文，不回寫成新的測試結果。
+
 ## 2026-10-06 原計畫首波coverage
 
 Must：Manual現行六處舊路徑／保存圖／CSV說明校正，以及首頁四用途／當下搜尋／大盤刷新／個股摘要操作與限制；Snapshot目前摘要、現行Architecture、Index與QA routing對應[首波QA](../06_qa/BALDR_FIRST_WAVE_INTEGRATION_20261006.md)。原plan只append、prefix保持；沒有方向／maturity／6M gate變更，相關roadmap不擴改。B08/B02工程與B09/B10 caller未完成不寫done；後續依真交付更新來源／步驟／排錯。歷史QA收據保留原policy／失敗，不回寫為成功。

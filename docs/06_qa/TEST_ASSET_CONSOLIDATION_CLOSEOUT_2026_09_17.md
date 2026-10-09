@@ -2,6 +2,8 @@
 > **日期**：2026-09-17
 > **性質**：repository-only bounded QA audit；不修改 production、不讀取正式資料、不呼叫網路、不執行排程。本次子任務不執行 commit，由 root 統一提交。
 
+> **閱讀導覽**：本報告是 2026-09-17 的 bounded repository-only 測試資產盤點；清冊含 139 組候選及固定範圍 1,107 檔，不代表完整 repository 測試母體。26 組有明確處置核對；另 113 組只完成靜態契約／fixture／import 篩選，未完成動態回歸或深層語意驗證。請先按摘要與各組處置讀取；目前專案狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準。原始清冊與證據均保留。
+
 ## 1. 判讀結論
 本次重建把候選成員清冊、檔案母體計數與業務語意審查分開記錄。139 組候選均列入清冊，但清冊 identity 檢查不等於 139 組均完成深層查核；Category B 69 組與 Category C 其餘 44 組已逐組完成靜態契約／fixture／import 篩選，保留原寫法並明確記錄尚未動態回歸的邊界。
 `DUP-C-025` 僅保留既有 commit 已證實的 7 處純 HTTP response 樣板整併；其餘 4 組 Top C 候選完成隔離性核對後保留原寫法。Category D 的跨層候選全部撤回整併收益。

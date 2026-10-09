@@ -18,10 +18,6 @@
   - 安全重構完成後的產品方向權威
   - 定義 bounded investment advice、Guided / Professional Mode、Portfolio Advice、Position Health / Exit、Evidence、Data、ML 與 signal pruning 的產品演進
 
-- **`VERSION_ROADMAP_V1_1_TO_V2_0.md`**
-  - V1.1 至 V2.0 已完成歷史版本與 V2.0 形成過程
-  - 不承擔目前產品 Next，且工程完成不等於投資有效性
-
 - **`VERSION_ROADMAP_V2_1_TO_V4_0.md`**
   - V2.0 之後的長期產品成熟度與版本階梯
   - V2.x 聚焦 Daily Advice / Evidence / Data / Portfolio foundation；V3.x 聚焦 effectiveness / pruning / ML shadow；V4.0 需長期 evidence 支持
@@ -58,7 +54,7 @@
 | North Star、Product Principles、Bounded Advice、Evidence、Success Levels、Non-goals | `../01_architecture/system_vision_specification.md` |
 | 重構完成後產品方向、投資問題與產品能力演進 | `PRODUCT_ROADMAP_POST_REFACTOR.md` |
 | 未來六個月工程 Gate、deliverables、dependencies、tests、Exit Criteria | `ROADMAP_6M_ENGINEERING.md` |
-| V1.1-V2.0 歷史版本 | `VERSION_ROADMAP_V1_1_TO_V2_0.md` |
+| V1.1-V2.0 歷史版本 | [`../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md) |
 | V2.1-V4.0 長期產品成熟度 | `VERSION_ROADMAP_V2_1_TO_V4_0.md` |
 | 現在真實架構 | `../01_architecture/system_architecture.md` |
 | Transitional / Target Architecture | `../01_architecture/target_system_architecture.md` |
@@ -79,7 +75,7 @@
 2. 若要理解產品為何存在與安全邊界，讀 `../01_architecture/system_vision_specification.md`。
 3. 若要規劃重構完成後的產品方向，讀 `PRODUCT_ROADMAP_POST_REFACTOR.md`。
 4. 若要執行未來六個月工程，讀 `ROADMAP_6M_ENGINEERING.md`。
-5. 若要理解歷史或長期版號，分別讀兩份 Version Roadmap。
+5. 若要追溯 V1.1-V2.0 歷史，讀 archive；V2.1-V4.0 的成熟度標準讀 `VERSION_ROADMAP_V2_1_TO_V4_0.md`。
 6. 若要確認目前或目標架構，分別讀 `system_architecture.md` 與 `target_system_architecture.md`。
 7. 若要追溯已完成的安全重構，讀 `../09_archive/SAFE_REFACTORING_MASTER_REPORT_2026_07_12.md`；新的重構工作仍以目前架構與當期核准計畫為準。
 8. 若要操作目前系統，讀 `../07_guides/APPLICATION_MANUAL.md`。

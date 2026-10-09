@@ -6,15 +6,9 @@
 
 baldr 是一套可驗證、可回溯、可演化的台股研究與投資決策工作台。核心不是「每天吐股票」，而是把資料、研究、回測、候選、持倉與策略生命週期串成可檢查的決策流程。
 
-## 目前狀態（2026-08-30）
+## 開始任務前的狀態入口
 
-目前為 `V3.3 Engineering Complete / V4 Evidence Accumulation`，整體 readiness=`action_required`，
-不是正式 V4.0 Production。開始工作前先讀
-[Program Status Rebaseline](docs/06_qa/PROGRAM_STATUS_REBASELINE_2026_08_29.md)；涉及
-`FA_Data/output/release_v4` 時再讀
-[Storage Retention Cleanup](docs/06_qa/ML_RELEASE_V4_STORAGE_RETENTION_CLEANUP_2026_08_29.md)，
-不可依舊 low-space artifact 或已刪 run 路徑推論現在狀態；8/30 fresh inventory 觀察到
-約 `338.9 GiB` headroom，Direct/OOC 僅以 `--preflight-only` 做安全檢查，未啟動長任務。
+本檔只提供穩定的專案與協作導覽，不保存日期化 readiness、容量或待辦摘要。開始任務時先讀 [`PROJECT_SNAPSHOT.md`](docs/00_core/PROJECT_SNAPSHOT.md)；其他主題依下方 Scoped SSOT 導航到各自權威文件。
 
 ## 分支與工作流
 
@@ -48,7 +42,7 @@ baldr 是一套可驗證、可回溯、可演化的台股研究與投資決策�
 | 目前狀態 / 高風險區 | `docs/00_core/PROJECT_SNAPSHOT.md` |
 | 未來 6 個月工程路線 | `docs/00_core/ROADMAP_6M_ENGINEERING.md` |
 | V2.0 之後長期版本階梯 | `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md` |
-| 外部參考 / V1.5-V2.0 版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md` |
+| 外部專案／資料源參考與歷史版本形狀 | `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`（不作目前工程順序） |
 | Roadmap 入口 | `docs/00_core/DEVELOPMENT_ROADMAP.md` |
 | 舊 Roadmap 移交 | `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md` |
 | 架構 / 模組邊界 | `docs/01_architecture/system_architecture.md` |

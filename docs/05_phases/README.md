@@ -8,7 +8,7 @@
 
 - 目前狀態、本週優先事項與高風險區看 `../00_core/PROJECT_SNAPSHOT.md`。
 - 未來 6 個月工程路線看 `../00_core/ROADMAP_6M_ENGINEERING.md`。
-- V1 release 後的 V1.1 / V1.2 / V1.3 / V1.4 / V2.0 節奏看 `../00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md`。
+- V1.1 至 V2.0 已完成版本演進見 [`../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md`](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)，僅作歷史追溯。
 - 架構與模組邊界看 `../01_architecture/system_architecture.md`。
 - 實際操作方式看 `../07_guides/APPLICATION_MANUAL.md`。
 
@@ -48,7 +48,7 @@
 - Roadmap 入口、Next 摘要與歷史導引由 `../00_core/DEVELOPMENT_ROADMAP.md` 負責。
 - Phase 3.3b、Phase 3.5 與 Phase 4 相關文件保留為設計與實作脈絡，不再代表目前未完成狀態。
 - Phase 4 Portfolio 主要深化已完成；後續主線已從舊 Phase 敘事轉為 Post-V1 evidence-driven 版本節奏與 6M Roadmap。
-- V1.1 / V1.2 / V1.3 / V1.4 v1 已完成；下一步是以 weekly evidence operations 與 history 累積多週覆盤證據，V2.0 才評估完整 Unified Decision Workbench。
+- V1.1 至 V2.0 的完成狀態與當時下一步已封存在上述歷史路線圖；目前待辦與優先順序只依 `PROJECT_SNAPSHOT.md`、`ROADMAP_6M_ENGINEERING.md` 判讀。
 
 ## 🔗 相關目錄
 

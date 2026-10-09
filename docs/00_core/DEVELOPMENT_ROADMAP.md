@@ -9,7 +9,7 @@
 - 六個月工程順序、里程碑與驗收：[ROADMAP_6M_ENGINEERING](ROADMAP_6M_ENGINEERING.md)。
 - 長期成熟度：[VERSION_ROADMAP_V2_1_TO_V4_0](VERSION_ROADMAP_V2_1_TO_V4_0.md)。
 - 舊工作承接：[LEGACY_ROADMAP_CARRYOVER](LEGACY_ROADMAP_CARRYOVER.md)。
-- 外部參考與版本形狀：[EXTERNAL_REFERENCE_VERSION_BLUEPRINT](EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md)。
+- 外部專案／資料源參考與歷史版本形狀：[EXTERNAL_REFERENCE_VERSION_BLUEPRINT](EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md)；目前交付順序仍以 Product／6M Roadmap 為準。
 
 ## 架構與操作
 
@@ -20,8 +20,3 @@
 - 歷史路線圖原文：[DEVELOPMENT_ROADMAP 封存副本](../09_archive/DEVELOPMENT_ROADMAP_HISTORY_2026_09_27.md)。
 
 本 Hub 的舊完整來源保留於封存副本；封存版相對連結已依新位置校正。
-
-
-### 2026-10-06 UX23 registry readonly 整合補記
-
-UX23 registry readonly consumer 接線完成；正式 shadow 啟用／custody 未完成，無優先序或方向變更。

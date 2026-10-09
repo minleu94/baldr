@@ -23,7 +23,7 @@
 5. `docs/00_core/DEVELOPMENT_ROADMAP.md`
 6. `docs/00_core/PRODUCT_ROADMAP_POST_REFACTOR.md`（涉及產品方向、Advice、Portfolio、Exit、Data、ML 或大型規劃時）
 7. `docs/00_core/ROADMAP_6M_ENGINEERING.md`（涉及方向、優先順序或大型規劃時）
-8. `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`（涉及外部專案參考或資料源擴充時）
+8. `docs/00_core/EXTERNAL_REFERENCE_VERSION_BLUEPRINT.md`（涉及外部專案參考或資料源擴充時；歷史版本形狀不代表目前交付順序）
 9. `docs/00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md`（涉及 V2.1+ 版號、長期成熟度或 V3/V4 規劃時）
 10. `docs/00_core/LEGACY_ROADMAP_CARRYOVER.md`（涉及舊工作承接或 Phase Gate 時）
 11. `docs/01_architecture/system_architecture.md`（涉及目前架構、模組邊界或資料流時）

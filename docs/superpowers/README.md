@@ -1,13 +1,13 @@
 # Superpowers Specs / Plans 目錄
 
 > **最後整理**：2026-10-06
-> **定位**：本目錄保存 Superpowers 流程產生的設計規格、實作計畫與歷史 execution artifacts。既有 plan/spec/prompt 均為歷史追溯資料，不是目前狀態、roadmap 或版本權威。
+> **定位**：本目錄保存 Superpowers 流程產生的設計規格、實作計畫與 execution artifacts。既有文件通常是歷史追溯資料；目前例外是已由 Snapshot／Index 明確接續的 [Baldr 產品補完計畫](plans/baldr_product_completion_plan_20261006.md)，其工作狀態仍以 Snapshot 與對應 QA 為準。
 
 目前專案的狀態與方向仍以 scoped authority 判讀：
 
 - 目前狀態、本週優先事項與高風險區看 [專案快照](../00_core/PROJECT_SNAPSHOT.md)。
 - 未來 6 個月工程路線看 [6M 工程 Roadmap](../00_core/ROADMAP_6M_ENGINEERING.md)。
-- V1 release 後至 V2.0 的版本節奏看 [V1.1–V2.0 版本 Roadmap](../00_core/VERSION_ROADMAP_V1_1_TO_V2_0.md)。
+- V1.1–V2.0 已完成版本演進看 [歷史歸檔](../09_archive/VERSION_ROADMAP_V1_1_TO_V2_0_HISTORY.md)。
 - V2.0 之後的長期版號階梯看 [V2.1–V4.0 版本 Roadmap](../00_core/VERSION_ROADMAP_V2_1_TO_V4_0.md)。
 - 架構與模組邊界看 [目前系統架構](../01_architecture/system_architecture.md)。
 
@@ -16,7 +16,7 @@
 | 目錄 | 放什麼 | 判讀方式 |
 |---|---|---|
 | `specs/` | 功能或治理增量的設計規格、邊界、資料契約與非目標 | 歷史設計追溯；是否已完成仍以 Snapshot、QA closeout 與 Git closeout 為準。 |
-| `plans/` | 實作計畫、工作拆分、驗收 gate 與文件同步清單 | 歷史 execution trace；不單獨代表目前優先順序。 |
+| `plans/` | 實作計畫、工作拆分、驗收 gate 與文件同步清單 | 除非 Snapshot／Index 明確接續，否則視為歷史 execution trace；計畫本身不代表目前優先順序。 |
 | `prompts/` | 一次性工作拆分與 handoff prompt | 歷史指派紀錄；不能直接當成現行工作授權。 |
 
 ## 維護規則

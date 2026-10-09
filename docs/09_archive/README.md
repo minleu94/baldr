@@ -54,6 +54,13 @@
 
 三份文件補充同日的 Program Status Rebaseline；目前狀態以 [PROJECT_SNAPSHOT](../00_core/PROJECT_SNAPSHOT.md) 為準，QA 原路徑保留相容導引。
 
+### 2026-10-08 V2.3 data-source decision receipts
+
+- [V2.3 P0 Sources Batch Principle Approval（2026-07-12）](V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md) 保存使用者核准 13 個 P0 source 的導入方向；下游 eligibility 當時仍為 `none`，不是來源接受或正式 ingestion 授權。
+- [V2.3 FinMind Candidate Source Audit（2026-07-12）](V2_3_FINMIND_CANDIDATE_SOURCE_AUDIT_2026_07_12.md) 保存當時帳戶權限與 dataset / available-date 限制；帳戶方案可能改變，不把歷史權限當成目前狀態。
+
+目前逐來源決議以 [P0 Source Acceptance Register](../06_qa/V2_3_P0_SOURCE_ACCEPTANCE_REGISTER.md) 與 [近期資料來源 QA](../06_qa/README.md) 為準；兩份原 QA 路徑保留相容導引。
+
 ### 2026-10-08 Decision workbench and continuity audit history
 
 三份 2026-09-14／15 audit 記錄當時的全決策工作台整合證據、下一增量判讀及 continuity write-path 保存鏈缺口。內文列出的剩餘工作與優先序是當時快照，不取代目前的 Snapshot／Roadmap，也不直接授權後續工程；原 QA 路徑保留相容導引。

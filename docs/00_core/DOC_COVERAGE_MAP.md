@@ -411,6 +411,15 @@ Healthcheck Batch 3 Recommendation Profile／Regime plan 經審核後留在 `doc
 | docs/06_qa/PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md | [PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md](../09_archive/PAPER_PORTFOLIO_READINESS_REFRESH_2026_08_30.md) | 4,254 / `5d1994f05463d01352daa2f131c9cfd647be8ba22ac78313edd74426bedd60e9` | 4,254 / `5d1994f05463d01352daa2f131c9cfd647be8ba22ac78313edd74426bedd60e9` |
 | docs/06_qa/FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md | [FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md](../09_archive/FORMAL_INPUT_READINESS_REFRESH_2026_08_30.md) | 3,376 / `f08c2cbadbe9912f5381907019b854b991d742992acacdaf3476fa37cb78c3e9` | 3,376 / `f08c2cbadbe9912f5381907019b854b991d742992acacdaf3476fa37cb78c3e9` |
 
+## 2026-10-08 V2.3 P0 source decision receipts 歸檔
+
+將 2026-07-12 的批次導入方向核准與 FinMind 候選來源 audit 移入 Archive。前者只授權 13 個 P0 source 的方向／補證，明確維持 `downstream eligibility=none`；後者保存當日帳戶方案、dataset 權限與 PIT available-date 限制，並非目前帳戶權限。QA 保留 V2.3 P0 Source Acceptance Register 作為目前逐來源入口，兩個原路徑以短導引相容歷史索引。
+
+| 原路徑 | 歸檔路徑 | 原文 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/06_qa/V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md | [V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md](../09_archive/V2_3_BATCH_PRINCIPLE_APPROVAL_2026_07_12.md) | 1,807 / `c5d8f2aa0c4beb69cc327f78c7b5f77b835705a98e2cf44500d42e0e3948402b` | 1,807 / `c5d8f2aa0c4beb69cc327f78c7b5f77b835705a98e2cf44500d42e0e3948402b` |
+| docs/06_qa/V2_3_FINMIND_CANDIDATE_SOURCE_AUDIT_2026_07_12.md | [V2_3_FINMIND_CANDIDATE_SOURCE_AUDIT_2026_07_12.md](../09_archive/V2_3_FINMIND_CANDIDATE_SOURCE_AUDIT_2026_07_12.md) | 4,206 / `e35e8187930f54986454f58d4fa9caa69284360f9cc93316a9e6ed1a20a5aba9` | 4,206 / `e35e8187930f54986454f58d4fa9caa69284360f9cc93316a9e6ed1a20a5aba9` |
+
 ## 2026-10-08 QA 導覽補充：Gate 2 與 Data Update 效能基線
 
 盤點 2026-07／08 剩餘長篇 QA 時，保留 [Gate 2 7/22 稽核](../06_qa/GATE_2_DATA_GOVERNANCE_CONSOLIDATION_AUDIT_2026_07_22.md)：唯讀稽核腳本仍固定輸出至該路徑，報告也明示不構成人工 Gate credit 或 production enablement。保留 [Data Update 8/28 效能基線](../06_qa/DATA_UPDATE_PERFORMANCE_BASELINE_2026_08_28.md)：Application Manual 直接引用，且報告內 bounded worker、單寫入者與 production opt-in 邊界仍需追溯。兩者均是日期化證據，不代表目前資料筆數、執行速度或 Gate 狀態；QA README 已補主題入口。

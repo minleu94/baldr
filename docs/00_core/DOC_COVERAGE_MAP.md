@@ -1,5 +1,14 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 資料文件導覽與舊實作摘要歸檔
+
+`docs/03_data/README.md` 改按日常更新、流程／儲存、來源／保留盤點及歷史摘要分組，補上原先漏列的備份保留、SQLite、資產登記與 quarantine 文件，並標示各日期化盤點的範圍與限制。兩份描述舊 CSV/API 操作的一次性摘要移入 archive；原路徑留下導引，現行入口指向每日更新指南、Manual 與 current architecture。歸檔原文未改寫，封存前後 bytes 與 SHA-256 相同。歷史目錄與索引中的舊路徑由導引頁承接。
+
+| 原路徑 | 歸檔路徑 | 原件 bytes / SHA-256 | 封存 bytes / SHA-256 |
+|---|---|---|---|
+| docs/03_data/INDUSTRY_INDEX_UPDATE_SUMMARY.md | [INDUSTRY_INDEX_UPDATE_SUMMARY_HISTORY.md](../09_archive/INDUSTRY_INDEX_UPDATE_SUMMARY_HISTORY.md) | 3,120 / 129551C5E5221E6D8703D3072BA7149656D579381BDC855C203BC48A509B08DC | 3,120 / 129551C5E5221E6D8703D3072BA7149656D579381BDC855C203BC48A509B08DC |
+| docs/03_data/MERGE_AND_MARKET_INDEX_SUMMARY.md | [MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md](../09_archive/MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md) | 4,023 / 28AE1A86BD43B35234162D2011400BEC3DDD1A9BBB4508A30453A4537A76F92D | 4,023 / 28AE1A86BD43B35234162D2011400BEC3DDD1A9BBB4508A30453A4537A76F92D |
+
 ## 2026-10-08 早期資料收集架構歸檔
 
 將 2026-06 的 496 行資料收集藍圖移至 docs/09_archive/；原 2026-10-03 freshness 補記與 2026-06-11 券商 E/B 契約均保留。它們的目前適用結論分別由 Integration Repair QA／Manual，以及 system_architecture §9／DATA_FETCHING_LOGIC 承接。舊架構路徑保留導引，現行 README、資料操作指南、Agent 參考與本 Coverage Map 均已改指現況或標示歷史。原文 14 個本地連結均有效，僅重設 1 個 system_architecture 同層連結。

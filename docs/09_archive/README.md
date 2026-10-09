@@ -6,6 +6,11 @@
 本目錄包含歷史記錄、總結報告等歸檔文檔。這些文檔主要用於記錄歷史，不影響日常使用。
 歸檔文件中的狀態、下一步、Phase 或完成度描述，若與 Snapshot、6M Roadmap、版本 Roadmap 或 Architecture 衝突，一律以 active authority 為準。
 
+## 2026-10-08 資料實作摘要
+
+- [產業指數更新摘要](INDUSTRY_INDEX_UPDATE_SUMMARY_HISTORY.md)：保留舊 CSV／API 更新步驟；現行操作看 [每日資料更新指南](../03_data/daily_data_update_guide.md) 與 [操作手冊](../07_guides/APPLICATION_MANUAL.md)。
+- [合併與大盤指數實作摘要](MERGE_AND_MARKET_INDEX_SUMMARY_HISTORY.md)：保留舊 merge、CSV 路徑及欄位假設；現行架構看 [system_architecture](../01_architecture/system_architecture.md)，操作看每日資料更新指南與操作手冊。
+
 ## 2026-10-08 歸檔
 
 - [早期資料收集架構藍圖](DATA_COLLECTION_ARCHITECTURE_HISTORY.md)：保留 2026-06 資料/API 基線、2026-06-11 券商雙指標契約與 2026-10-03 freshness 補記；現行架構看 [system_architecture](../01_architecture/system_architecture.md)，操作看 [DATA_FETCHING_LOGIC](../03_data/DATA_FETCHING_LOGIC.md) 與 [APPLICATION_MANUAL](../07_guides/APPLICATION_MANUAL.md)。

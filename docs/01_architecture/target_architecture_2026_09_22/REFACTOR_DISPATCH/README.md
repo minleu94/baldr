@@ -19,3 +19,40 @@
 - `GEMINI_REVIEW_R008.md` 與 `WAVE2_GEMINI_REVIEW_PROMPTS.md`：R008 Luna 的 ML availability 回修與 SOL 重驗後，依最新九檔 SHA 凍結的正式唯讀獨立審查封包／prompt；Gemini 結果仍須由 SOL 核對才能進 Wave 2 checkpoint。
 
 未解鎖 task 不預先建立 packet，避免 dependency evidence、HEAD、dirty scope 或測試結果過時。Packet 本身不授權下一 wave。
+
+## 逐檔導覽索引
+
+> 此索引只協助回溯既有 dispatch packet 和 wave 分析。舊 prompt 不構成新的執行授權；釋出條件仍以本目錄上方規則、Execution Order 與目前狀態為準。新增 packet 時請同步補入本索引。
+
+### R-task packets
+#### R002
+- [GEMINI_REVIEW_R002.md](GEMINI_REVIEW_R002.md)
+
+#### R003
+- [GEMINI_R003.md](GEMINI_R003.md)
+- [GEMINI_REVIEW_R003.md](GEMINI_REVIEW_R003.md)
+- [GEMINI_REWORK_R003.md](GEMINI_REWORK_R003.md)
+
+#### R004
+- [GEMINI_REVIEW_R004.md](GEMINI_REVIEW_R004.md)
+
+#### R005
+- [GEMINI_R005.md](GEMINI_R005.md)
+- [GEMINI_REVIEW_R005.md](GEMINI_REVIEW_R005.md)
+- [GEMINI_REWORK_R005.md](GEMINI_REWORK_R005.md)
+
+#### R006
+- [GEMINI_R006.md](GEMINI_R006.md)
+- [GEMINI_REVIEW_R006.md](GEMINI_REVIEW_R006.md)
+- [GEMINI_REWORK_R006.md](GEMINI_REWORK_R006.md)
+
+#### R008
+- [GEMINI_REVIEW_R008.md](GEMINI_REVIEW_R008.md)
+
+### Wave／共用 packets
+- [GEMINI_WAVE1_PARALLEL_ANALYSIS.md](GEMINI_WAVE1_PARALLEL_ANALYSIS.md)
+- [GEMINI_WAVE2_PARALLEL_ANALYSIS.md](GEMINI_WAVE2_PARALLEL_ANALYSIS.md)
+- [WAVE1_GEMINI_PROMPTS.md](WAVE1_GEMINI_PROMPTS.md)
+- [WAVE1_GEMINI_REVIEW_PROMPTS.md](WAVE1_GEMINI_REVIEW_PROMPTS.md)
+- [WAVE2_GEMINI_PROMPTS.md](WAVE2_GEMINI_PROMPTS.md)
+- [WAVE2_GEMINI_REVIEW_PROMPTS.md](WAVE2_GEMINI_REVIEW_PROMPTS.md)

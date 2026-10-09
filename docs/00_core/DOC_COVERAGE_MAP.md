@@ -1,5 +1,9 @@
 # 文檔覆蓋矩陣（Documentation Coverage Map）
 
+## 2026-10-08 架構重構證據包索引
+
+為 `docs/01_architecture/target_architecture_2026_09_22/` 的重構證據補上逐檔導航：上層入口直達 `REFACTOR_REPORTS/README.md` 與 `REFACTOR_DISPATCH/README.md`；前者依 R-task、C1 與 Wave 索引 143 份報告／審查／checkpoint，後者依 R-task 與 Wave 索引 18 份分派封包。只增加目錄連結，未移動或改寫任何架構、任務、報告或 dispatch 原文；狀態與接受判讀仍看 Snapshot 及具名 QA closeout。
+
 ## 2026-10-08 Superpowers 清冊生命週期校正
 
 修正 `docs/09_archive/SUPERPOWERS_PLAN_SPEC_ARCHIVE_MANIFEST_20261006.md` 的適用範圍與導覽：165 筆清冊記錄明確限定為歷史追溯文件，排除唯一現行進行中的 `docs/superpowers/plans/baldr_product_completion_plan_20261006.md`；補上該計畫與 `docs/superpowers/README.md` 的生命週期連結，並將版本入口分開指向 V1.1–V2.0 歷史與 V2.1–V4.0 現行成熟度標準。同步修正 Archive README 將整個 Superpowers 目錄一概描述為歷史文件的句子。沒有改動 165 筆清冊資料列、歷史 plan/spec/prompt 原文或進行中計畫正文。
